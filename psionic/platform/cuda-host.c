@@ -27,7 +27,9 @@ static double pc_now(void) {
 }
 #else
 #include <dlfcn.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 static void *pc_lib_open(const char *path) { return dlopen(path, RTLD_NOW | RTLD_LOCAL); }
 static void *pc_lib_symbol(void *lib, const char *name) { return dlsym(lib, name); }
 static double pc_now(void) {
@@ -53,7 +55,7 @@ static struct {
     void *cuda, *nvrtc;
     CUcontext context;
     CUdevice device;
-    int major, minor, ready;
+    int major, minor, driver_version, ready;
     char log[16384];
     CUresult (*cuInit)(unsigned);
     CUresult (*cuDriverGetVersion)(int *);
@@ -229,6 +231,8 @@ PcStatus pc_open(PcDeviceInfo *info) {
         /* 75 and 76: compute capability major and minor. */
         if (check(g.cuDeviceGetAttribute(&g.major, 75, g.device), "cuDeviceGetAttribute")) return PC_DRIVER;
         if (check(g.cuDeviceGetAttribute(&g.minor, 76, g.device), "cuDeviceGetAttribute")) return PC_DRIVER;
+        g.driver_version = 0;
+        g.cuDriverGetVersion(&g.driver_version);
         g.ready = 1;
     } else if (check(g.cuCtxSetCurrent(g.context), "cuCtxSetCurrent")) return PC_DRIVER;
     if (info) {
@@ -250,11 +254,119 @@ PcStatus pc_memory(size_t *free_bytes, size_t *total_bytes) {
     return check(g.cuMemGetInfo(free_bytes, total_bytes), "cuMemGetInfo");
 }
 
+static void pc_hash128(const char *data, size_t len, uint64_t *h1, uint64_t *h2) {
+    uint64_t a = 14695981039346656037ULL, b = 0x9e3779b97f4a7c15ULL;
+    for (size_t i = 0; i < len; i++) {
+        uint8_t c = (uint8_t)data[i];
+        a ^= c; a *= 1099511628211ULL;
+        b ^= (uint64_t)c + (i * 0x517cc1b727220a95ULL);
+        b = (b << 27) | (b >> 37);
+        b *= 0x2545f4914f6cdd1dULL;
+    }
+    *h1 = a ^ (len * 0x94d049bb133111ebULL);
+    *h2 = b ^ (len * 0xbf58476d1ce4e5b9ULL);
+}
+
+static int pc_mkdir_one(const char *dir) {
+#ifdef _WIN32
+    return CreateDirectoryA(dir, NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
+#else
+    return mkdir(dir, 0755) == 0 || (access(dir, F_OK) == 0);
+#endif
+}
+
+static int pc_cache_path(const char *source, size_t length, char *out, size_t cap) {
+    const char *off = getenv("PSIONIC_NO_PTX_CACHE");
+    if (off && *off && strcmp(off, "0") != 0) return 0;
+    const char *override = getenv("PSIONIC_PTX_CACHE");
+    char dir[3800];
+    if (override && *override) {
+        snprintf(dir, sizeof dir, "%s", override);
+        pc_mkdir_one(dir);
+    } else {
+#ifdef _WIN32
+        const char *home = getenv("USERPROFILE");
+        const char sep = '\\';
+        if (!home || !*home) home = getenv("LOCALAPPDATA");
+        if (!home || !*home) return 0;
+#else
+        const char *home = getenv("HOME");
+        const char sep = '/';
+        if (!home || !*home) return 0;
+#endif
+        snprintf(dir, sizeof dir, "%s%c.openagents", home, sep); pc_mkdir_one(dir);
+        snprintf(dir, sizeof dir, "%s%c.openagents%ccache", home, sep, sep); pc_mkdir_one(dir);
+        snprintf(dir, sizeof dir, "%s%c.openagents%ccache%cpsionic", home, sep, sep, sep); pc_mkdir_one(dir);
+    }
+    uint64_t h1 = 0, h2 = 0;
+    pc_hash128(source, length, &h1, &h2);
+#ifdef _WIN32
+    const char sep = '\\';
+#else
+    const char sep = '/';
+#endif
+    int n = snprintf(out, cap, "%s%cptx-v1-%016llx%016llx-%zu-sm%d%d-d%d.ptx",
+                     dir, sep, (unsigned long long)h1, (unsigned long long)h2,
+                     length, g.major, g.minor, g.driver_version);
+    return n > 0 && (size_t)n < cap;
+}
+
+static char *pc_cache_read(const char *path, size_t *out_len) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
+    long n = ftell(f);
+    if (n <= 0 || n > (64L << 20) || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
+    char *buf = malloc((size_t)n + 1);
+    if (!buf) { fclose(f); return NULL; }
+    if (fread(buf, 1, (size_t)n, f) != (size_t)n) { free(buf); fclose(f); return NULL; }
+    fclose(f);
+    buf[n] = 0;
+    if (out_len) *out_len = (size_t)n;
+    return buf;
+}
+
+static void pc_cache_write(const char *path, const char *ptx, size_t ptx_size) {
+    char tmp[4200];
+#ifdef _WIN32
+    unsigned long pid = (unsigned long)GetCurrentProcessId();
+#else
+    unsigned long pid = (unsigned long)getpid();
+#endif
+    int n = snprintf(tmp, sizeof tmp, "%s.tmp.%lu", path, pid);
+    if (n <= 0 || (size_t)n >= sizeof tmp) return;
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return;
+    size_t wrote = fwrite(ptx, 1, ptx_size, f);
+    int ok = (wrote == ptx_size) && (fclose(f) == 0);
+    if (!ok) { remove(tmp); return; }
+#ifdef _WIN32
+    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING)) remove(tmp);
+#else
+    if (rename(tmp, path) != 0) remove(tmp);
+#endif
+}
+
 PcStatus pc_compile(const char *source, size_t length, const char *name, PcModule *module, double *seconds) {
     if (!g.ready) return PC_ABSENT;
     if (!source || !name || !module) return PC_ARGUMENT;
-    if (!load_nvrtc()) return PC_NO_NVRTC;
     double began = pc_now();
+    char cache_file[4096];
+    int has_cache = pc_cache_path(source, length, cache_file, sizeof cache_file);
+    if (has_cache) {
+        size_t clen = 0;
+        char *cached = pc_cache_read(cache_file, &clen);
+        if (cached) {
+            if (g.cuModuleLoadDataEx(module, cached, 0, NULL, NULL) == 0) {
+                free(cached);
+                if (seconds) *seconds = pc_now() - began;
+                return PC_OK;
+            }
+            free(cached);
+            remove(cache_file);
+        }
+    }
+    if (!load_nvrtc()) return PC_NO_NVRTC;
     char *text = malloc(length + 1);
     if (!text) return PC_MEMORY;
     memcpy(text, source, length);
@@ -283,6 +395,7 @@ PcStatus pc_compile(const char *source, size_t length, const char *name, PcModul
     g.nvrtcGetPTX(program, ptx);
     g.nvrtcDestroyProgram(&program);
     PcStatus s = check(g.cuModuleLoadDataEx(module, ptx, 0, NULL, NULL), "cuModuleLoadDataEx");
+    if (s == PC_OK && has_cache && ptx_size > 0) pc_cache_write(cache_file, ptx, ptx_size);
     free(ptx);
     if (seconds) *seconds = pc_now() - began;
     return s;
@@ -372,9 +485,21 @@ PcStatus pc_launch_groups(PcKernel kernel, int64_t groups, int threads, const Pc
 }
 double pc_seconds(void) { return pc_now(); }
 
+#ifdef _MSC_VER
+static __declspec(thread) CUcontext pc_tls_ctx;
+#else
+static __thread CUcontext pc_tls_ctx;
+#endif
+static void pc_ensure_ctx(void) {
+    if (g.ready && g.context && pc_tls_ctx != g.context) {
+        if (g.cuCtxSetCurrent(g.context) == 0) pc_tls_ctx = g.context;
+    }
+}
+
 /* Parameter values are copied by the driver before these calls return. */
 PcStatus pc_program_create(size_t capacity,PcProgram *out){
     if(!g.ready)return PC_ABSENT;
+    pc_ensure_ctx();
     if(!out || !capacity || capacity>SIZE_MAX/sizeof(void*))return PC_ARGUMENT;
     *out=NULL;
     PcProgramData *p=calloc(1,sizeof *p);if(!p)return PC_MEMORY;
@@ -383,6 +508,7 @@ PcStatus pc_program_create(size_t capacity,PcProgram *out){
 }
 static PcStatus program_node(PcProgram graph,size_t node,PcKernel kernel,int64_t items,int block,const PcArg *args,int count,int add){
     if(!g.ready)return PC_ABSENT;
+    pc_ensure_ctx();
     PcProgramData *p=graph;
     if(!p || !kernel || items<1 || block<1 || block>1024 || count<0 || count>30 || (count && !args) || items>INT64_MAX-block)return PC_ARGUMENT;
     int64_t blocks=(items+block-1)/block;if(blocks>2147483647)return PC_ARGUMENT;
@@ -398,16 +524,19 @@ PcStatus pc_program_add(PcProgram p,PcKernel k,int64_t items,int block,const PcA
 PcStatus pc_program_set(PcProgram p,size_t node,PcKernel k,int64_t items,int block,const PcArg *args,int count){return program_node(p,node,k,items,block,args,count,0);}
 PcStatus pc_program_ready(PcProgram graph){
     if(!g.ready)return PC_ABSENT;
+    pc_ensure_ctx();
     PcProgramData *p=graph;if(!p || p->exec || !p->count)return PC_ARGUMENT;
     return check(g.cuGraphInstantiate(&p->exec,p->graph,0),"cuGraphInstantiate");
 }
 PcStatus pc_program_replay(PcProgram graph,PcStream stream){
     if(!g.ready)return PC_ABSENT;
+    pc_ensure_ctx();
     PcProgramData *p=graph;if(!p || !p->exec)return PC_ARGUMENT;
     return check(g.cuGraphLaunch(p->exec,stream),"cuGraphLaunch");
 }
 PcStatus pc_program_free(PcProgram graph){
     if(!g.ready)return PC_ABSENT;
+    pc_ensure_ctx();
     PcProgramData *p=graph;if(!p)return PC_OK;PcStatus code=PC_OK;
     if(p->exec)code=check(g.cuGraphExecDestroy(p->exec),"cuGraphExecDestroy");
     PcStatus last=check(g.cuGraphDestroy(p->graph),"cuGraphDestroy");free(p->nodes);free(p);return code?code:last;
@@ -420,11 +549,14 @@ PcStatus pc_destroy_event(PcEvent event) { return g.ready ? check(g.cuEventDestr
 /* Record the work issued to `stream` (and to streams that join it through
    events) without running it, then replay the recording as one launch. */
 PcStatus pc_capture_begin(PcStream stream) {
+    if (!g.ready) return PC_ABSENT;
+    pc_ensure_ctx();
     /* 2: CU_STREAM_CAPTURE_MODE_RELAXED */
-    return g.ready ? check(g.cuStreamBeginCapture(stream, 2), "cuStreamBeginCapture") : PC_ABSENT;
+    return check(g.cuStreamBeginCapture(stream, 2), "cuStreamBeginCapture");
 }
 PcStatus pc_capture_end(PcStream stream, PcGraph *graph) {
     if (!g.ready) return PC_ABSENT;
+    pc_ensure_ctx();
     void *recorded = NULL;
     PcStatus s = check(g.cuStreamEndCapture(stream, &recorded), "cuStreamEndCapture");
     if (s) return s;
@@ -432,5 +564,13 @@ PcStatus pc_capture_end(PcStream stream, PcGraph *graph) {
     g.cuGraphDestroy(recorded);
     return s;
 }
-PcStatus pc_replay(PcGraph graph, PcStream stream) { return g.ready ? check(g.cuGraphLaunch(graph, stream), "cuGraphLaunch") : PC_ABSENT; }
-PcStatus pc_graph_free(PcGraph graph) { return g.ready ? check(g.cuGraphExecDestroy(graph), "cuGraphExecDestroy") : PC_ABSENT; }
+PcStatus pc_replay(PcGraph graph, PcStream stream) {
+    if (!g.ready) return PC_ABSENT;
+    pc_ensure_ctx();
+    return check(g.cuGraphLaunch(graph, stream), "cuGraphLaunch");
+}
+PcStatus pc_graph_free(PcGraph graph) {
+    if (!g.ready) return PC_ABSENT;
+    pc_ensure_ctx();
+    return check(g.cuGraphExecDestroy(graph), "cuGraphExecDestroy");
+}

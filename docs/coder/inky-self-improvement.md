@@ -2,7 +2,7 @@
 
 > **Status:** Inky (`coax/lib/inky/`, `coder/tui/inky.coax`) is the local-model worker in OpenAgents Desktop v1.0 (#13982). Microcoder is deprecated for local use (#13983). This doc records what Inky has proven, what it has not, and the plan for improving it.
 > **Updated:** 2026-11-22
-> **Hardware:** Apple M5 Max (128 GB unified memory, macOS arm64, Metal 4)
+> **Hardware:** Apple M5 Max (128 GB unified memory, macOS arm64, Metal 4); CUDA engine verified on NVIDIA GeForce RTX 4080 (16 GB VRAM, Linux `sm_89`, `coderos-4080`)
 > **Local model:** `~/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf` (17.6 GB / 16.4 GiB IQ4_NL GGUF served by `psionic-inkling-serve --ctx 32768`, \$0.0000)
 > **Compiled weight store:** `~/.openagents/modules/` (10/10 W2.2 Class-E dense F64 `exec-vm-v1` modules, SHA-256 verified)
 > **Codename policy:** "Inky" is an internal codename. It never appears in user-facing UI strings or in the system prompt persona.
@@ -17,6 +17,7 @@
 - **Tool calling is clean.** Across 27 live runs after Phase 2 (93 native tool calls): 0% `edit_file` misses, 0 malformed tool calls, 0 near-duplicate loops.
 - **The #13978 failure is fixed.** Microcoder spent 7+ minutes and 37 commands failing to find its own system prompt. Inky's regression task (`b4_self_prompt_citation`) passes in 16–31 s with 1 command.
 - **The Class-E edit guard is cheap, and routing works without training.** The guard adds 5.5 µs per edit (§3.2). Base Inkling routed 8/8 exact-computation tasks to `executor_verify` on the first attempt (§3.4).
+- **The Psionic CUDA engine clears the 500 tok/s prefill bar (#13966).** On RTX 4080 (16 GB, streaming 114/128 experts at 4K), 100% Coax zero-spill Tensor Core prefill + online-softmax GQA attention reaches **634.3 tok/s** at 900 tokens (**598.0 tok/s** at 1,993 tokens), segmented CUDA Graph decode reaches **78.19 tok/s** CLI / **83.1 tok/s** warm `psionic-inkling-serve --ctx 32768` (bit-identical to non-graph), warm PTX disk cache drops NVRTC compile from `3.77 s` to `0.00 s`, and MinGW Windows `.exe` binaries cross-compile cleanly (§7.7, [`psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md`](../../psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md)).
 
 ### 1.2 What is not proven
 
@@ -24,6 +25,7 @@
 - **Dev-9.** The 5/9 result is from v2. The v3 rerun was aborted because a second inference server started during the run (§7.6).
 - **The routing LoRA.** Its 26/26 (§7.5) is accuracy on its own 26 training rows. There is no held-out routing measurement yet.
 - **Speed inside the agent.** Engine benchmarks reach about 120 tok/s on short-context decode. Inside agent runs, Inky decodes at 38–46 tok/s at about 18K context, and at 13–25 tok/s on the held-out tasks. The held-out failures are timeouts, so **long-context decode speed is the bottleneck**, not short-context decode.
+- **Inky agent loops and long-context decode on CUDA.** CUDA has been verified on direct CLI/server benchmarks and `--ctx 32768` smoke checks, not yet on Tier 2 / Session History agent suites, 16K–24K decode speed, a 24 GB+ resident GPU (`decode_graph[2]`), or native Windows execution. `inkling-cuda.c` also still uses a 2-slot prefix cache rather than `inkling-metal.c`'s 8-slot SWA-backed prefix cache (`71d5d3d92a`).
 
 **The number to move is the Locked Held-Out pass rate, together with time to pass.** Every suite already at 100% is a regression lock, not a target (§2.3).
 
@@ -287,7 +289,8 @@ All planned phases (Class-E executor integration, Level 0–1 harness upgrades, 
 | **Phase 2 — Level 0–1 Harness Upgrades** | `7af77a2fdd` | Native `coax/lib/inky/instructions.coax` (2.5 KB `AGENTS.md`/`CLAUDE.md` loader + `##` heading index + `read_file` cursor); strict-unique indent-tolerant `ik_fmt_try_loose_edit` + `<1 ms` deterministic Coax pre-edit lint (`E0216`/`let`/`const`/`fn`) + 4 KB search-output cap (`coax/lib/inky/format.coax`); `#authority` normalized duplicate shell-read blocking (`coax/lib/inky/guard.coax`); Class-E `wire-bounds` & `step-budget` pre-exec guards + `INKY_MAX_TOKENS`. |
 | **Phase 3 — Psionic Metal 4 Engine** | `71d5d3d92a` | Expanded `InkSession` prefix cache `2 → 8` LRU + pinned SWA-backed checkpoints (`live_tokens` + `swa_valid_from`, SWA window backup gated on `headroom_mb >= 4096`), pinning both `tool_declare` end and `<|message_user|>` boundary across compaction and cross-task SWA wraps; lowered `direct_thresh` `16 → 7` (`-27.5%` GPU time on `nb=8` prefill tail chunks via `K_MOE_MM_IQ4_16`); added `ink_verify_draft` + opt-in `INK_SPEC_LOOKUP=1` (off by default — see §7.3); made `INKY_ADAPTIVE_EFFORT` opt-in (`== "1"`) to preserve multi-turn KV prefix cache. |
 | **Phase 4 — Self-Improvement Pipeline & TBench Port** | `2b74624632` | Ported `coax/lib/tbench/{agent,hillclimb}.coax` to first-class `inky-native` mode (`tb_propose_inky_challenger`, 4 bounded axes); added `#authority coax/lib/inky/improve-policy.coax` (`inky-policy.v1` SHA-256, Ch 247 held-out quarantine, zero-LLM-call offline ReAnchor K-fold CV, fail-closed Ch 239/241/247 promotion gate), `coax/lib/inky/improve.coax`, and CLI `coder/tui/inky-improve.coax` (`audit`, `reanchor`, `mine-skills`, `distill`, `train-router`, `selftest`). |
-| **Phase 5 — Host Cleanliness Benchmark Guard** | *(this commit)* | Added `evals/openagents-desktop/tier2/host_clean.py` + `test_host_clean.py` and wired preflight + per-task mid-run interference detection into `evals/openagents-desktop/tier2/run_tasks.py` (blocks local Metal runs on competing active GPU/LLM inference, memory pressure, thermal throttling, or concurrent evals unless `--allow-dirty-host` is explicitly passed; records `host_clean` & `host_preflight` in `summary.json`). |
+| **Phase 5 — Host Cleanliness Benchmark Guard** | `573db22434` | Added `evals/openagents-desktop/tier2/host_clean.py` + `test_host_clean.py` and wired preflight + per-task mid-run interference detection into `evals/openagents-desktop/tier2/run_tasks.py` (blocks local Metal runs on competing active GPU/LLM inference, memory pressure, thermal throttling, or concurrent evals unless `--allow-dirty-host` is explicitly passed; records `host_clean` & `host_preflight` in `summary.json`). |
+| **Phase 6 — Psionic CUDA Engine Hillclimb (#13966)** | *(this commit)* | Cross-platform 128-bit PTX disk cache (`3.77 s → 0.00 s` warm) + TLS `cuCtxSetCurrent` in `cuda-host.c`; zero-spill Coax BF16 Tensor Core prefill (`634.3 tok/s` at 900 tok, `598.0 tok/s` at 1,993 tok, `INK_MAX_BATCH = 128`) + online-softmax GQA prefill attention (`ink_attn_online`); resident & segmented streaming CUDA Graph decode (`78.19 tok/s` CLI / `83.1 tok/s` warm 32K serve, bit-identical). Full report in [`psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md`](../../psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md). |
 
 ### 7.2 Verification & Zero-Survivor Mutation Receipts
 
@@ -373,13 +376,29 @@ python3 evals/openagents-desktop/tier2/run_tasks.py --worker inky \
   --timeout-floor 300 --out evals/openagents-desktop/results/clean-inky-v3-lean-alg
 ```
 
+### 7.7 Psionic CUDA Engine Hillclimb (#13966, RTX 4080 16 GB)
+
+Verified live on `coderos-4080` (NVIDIA GeForce RTX 4080 16 GB, `sm_89`, driver `595.71.05`, 100% Coax kernels emitted via `coax cuda --release`, zero cuBLAS/cuDNN). See [`psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md`](../../psionic/docs/inkling-cuda-hillclimb-report-2026-11-22.md) and [`psionic/docs/inkling-cuda.md`](../../psionic/docs/inkling-cuda.md) for the full audit.
+
+- **Zero-spill Tensor Core prefill + online-softmax GQA attention:** Eliminated all `.local` spills (`0 B` stack frame, `0` spill loads/stores across all 47 entry functions via `ptxas --gpu-name=sm_89 -v`) and lifted `INK_MAX_BATCH` to `128` (`114/128` experts cached at 4K, `106/128` at 32K):
+  - **900-tok prefill:** `634.3 tok/s` (`1.419 s`, 4.06× vs `INK_NO_MMA=1` at `156.2 tok/s`, `cos=0.999777`, exact top-5 match).
+  - **1,219-tok prefill:** `632.7 tok/s` (`1.927 s`, 5.90× vs scalar `107.3 tok/s`; run-to-run determinism `max_abs=0.00e+00`).
+  - **1,993-tok prefill:** `598.0 tok/s` (`3.333 s`).
+  - **Simulated 8 GB GPU (`INK_VRAM_MB=8192`, 1,219 tok):** `93.1 tok/s` prefill (up from `38.7 tok/s`), `35.89 tok/s` decode, logits **bit-identical** (`max_abs=0.00e+00`) to 16 GB.
+- **CUDA Graph decode + PTX disk cache:** Added device-side `dev_pos` + single-graph resident decode (`decode_graph[2]`) + segmented streaming decode (`stream_seg[]` + `stream_tail[2]`, collapsing ~750 launches into 49 graph replays per token on 16 GB GPUs):
+  - **128-tok CLI decode:** `78.19 tok/s` (`75.49 tok/s` with `INK_NO_GRAPH=1`, bit-identical `max_abs=0.00e+00`); 64-tok decode after 900-tok prompt: `63.87 tok/s`.
+  - **Live `psionic-inkling-serve --ctx 32768`:** loads in `1.43 s` (`0.00 s` warm PTX cache vs `3.77 s` cold), `/v1/chat/completions` (`74.3 tok/s` cold) and `/v1/responses` (`23/23` prefix-cached in `0.001 s`, **`83.1 tok/s`** warm decode).
+  - **Verification gates:** `18/18` Coax tests (`kernels-cuda`, `inkling-budget`, `mma`), `--test-quant-kernels` `0.00e+00`, `--verify-prefill-decode` `cos=0.999957 top1_diff=0.01818`, `INK_VRAM_MB=3000` clean refusal, macOS Metal build clean, and MinGW Windows `.exe` cross-compile clean with 0 warnings.
+- **Bugs caught and fixed before landing:** (1) a non-dividing GQA (`gqa=3`) write-write race in `ink_attn_online` when `dt == t_step` (fixed with `dt < t_step` guard + reverse-CTA regression `#test`, restoring `0.00e+00` determinism); (2) `cuGraphInstantiate` failing with `CUDA error 201` on `psionic-inkling-serve` HTTP worker pthreads (fixed via TLS-cached `cuCtxSetCurrent` in `cuda-host.c`).
+- **Engine parity follow-up before CUDA Inky evals:** Port `inkling-metal.c`'s 8-slot SWA-backed prefix cache (`71d5d3d92a`) to `inkling-cuda.c` (currently 2-slot) and measure CUDA decode tok/s at 16K–24K context alongside Metal (§1.3 step 3).
+
 ---
 
 ## 8. Benchmark Protocol
 
 On 2026-11-22 three agents worked on Inky and its engine at once. They duplicated speculative-decoding work in `inkling-metal.c` and skewed each other's GPU benchmarks. From now on one agent owns Inky end to end: the agent, the Metal and CUDA engines, and the evals. It works in its own worktree from `origin/main`, never in the main checkout.
 
-- **One benchmark at a time on the M5 Max.** Run `python3 evals/openagents-desktop/tier2/host_clean.py` before every local run; `run_tasks.py` refuses a dirty host unless `--allow-dirty-host` is passed. Never publish a number from a run marked `host_contaminated`.
+- **One benchmark at a time on the M5 Max (and on `coderos-4080`).** Run `python3 evals/openagents-desktop/tier2/host_clean.py` before every local Metal run; `run_tasks.py` refuses a dirty host unless `--allow-dirty-host` is passed. Never publish a number from a run marked `host_contaminated`. Before CUDA runs on `coderos-4080`, verify via `nvidia-smi` that GPU utilization is `0%` with no competing inference servers.
 - **Quit OpenAgents Desktop before a benchmark.** Its bundled `psionic-inkling-serve` (port 18795) shares the GPU memory bus and counts as competing inference.
 - **Engine changes** are judged on output parity (`--verify-prefill-decode`, bit-exact speculative verify) and on tok/s at short and long context (§1.3 step 3) on an idle GPU.
 - **Agent changes** are judged on the scorecard:

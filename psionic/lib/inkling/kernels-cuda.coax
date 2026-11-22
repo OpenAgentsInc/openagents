@@ -11,10 +11,12 @@
 // Every kernel takes a batch of tokens: activations are [tokens, width], and
 // a kernel's work items are the tokens times one token's items. Decode is a
 // batch of one, so prefill and decode run the same code.
+#load "../../../coax/lib/compute/mma.coax";
 
 INK_T :: 64;
 INK_NT :: 256;
 INK_AT :: 1024;  // threads of an attention group
+INK_OA :: 256;   // threads of an online-softmax GQA attention group (8 Q vectors x 32 lanes)
 INK_MT :: 1024;  // threads of a direct expert group
 INK_DR :: 4;
 INK_D :: 8;
@@ -578,13 +580,14 @@ ink_convolve :: (item:int,n_channels:int,n_heads:int,has_dyn:int,nb:int,cur:[]f3
 
 // ---- Per-head clip: optional per-channel scale, L2 norm clip to threshold, optional tau multiplier.
 // Launch items = n_heads (each item handles head_dim elements, 1 threadgroup of 64 threads).
-ink_clip :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,tau_alpha:f32,tau_floor:f32,pos:int,x:[]f32,scale:[]f32) #export_c #effects(all) {
+ink_clip :: (item:int,head_dim:int,n_heads:int,has_scale:int,threshold:f32,tau_alpha:f32,tau_floor:f32,pos:int,x:[]f32,scale:[]f32,pos_buf:[]u32) #export_c #effects(all) {
     part:[64]f32;
     hd:=cast(u32)head_dim;base:=mul_wrap(cast(u32)item,hd);sbase:=mul_wrap(cast(u32)(item%n_heads),hd);
+    epos:=ifx pos<0 then cast(int)pos_buf[0] else pos;
     // tau = 1 + alpha * log(max(1, (position + 1) / floor)), for the token this head belongs to.
     tau:f32=1.0f32;
     if tau_alpha!=0.0f32 {
-        ratio:=f32(pos+item/n_heads+1)/tau_floor;
+        ratio:=f32(epos+item/n_heads+1)/tau_floor;
         if ratio<1.0f32 {ratio=1.0f32;}
         tau=1.0f32+tau_alpha*log(ratio);
     }
@@ -647,8 +650,9 @@ ink_head_rmsnorm :: (item:int,head_dim:int,eps:f32,x:[]f32) #export_c #effects(a
 // (ink_clip without a scale), V's RMSNorm (ink_head_rmsnorm) and the store
 // (ink_kv_store). Launch items = n_head_kv, a group of 256 threads: thread d
 // takes K's dimension d and thread 128 + d takes V's. Heads are 128 wide.
-ink_kv1 :: (item:int,n_kv_elem:int,has_dyn:int,pos:int,cap:int,thr:f32,eps:f32,kraw:[]f32,vraw:[]f32,kw:[]f32,vw:[]f32,kdyn:[]f32,vdyn:[]f32,khist:[]f32,vhist:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
+ink_kv1 :: (item:int,n_kv_elem:int,has_dyn:int,pos:int,cap:int,thr:f32,eps:f32,kraw:[]f32,vraw:[]f32,kw:[]f32,vw:[]f32,kdyn:[]f32,vdyn:[]f32,khist:[]f32,vhist:[]f32,k_cache:[]u16,v_cache:[]u16,pos_buf:[]u32) #export_c #effects(all) {
     ys:[256]f32;part:[256]f32;mid:[16]f32;
+    epos:=ifx pos<0 then cast(int)pos_buf[0] else pos;
     for thread:0..<INK_NT {
         d:=thread%128;c:=item*128+d;
         x0:f32=0;x1:f32=0;x2:f32=0;x3:f32=0;w0:f32=0;w1:f32=0;w2:f32=0;w3:f32=0;d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
@@ -676,7 +680,7 @@ ink_kv1 :: (item:int,n_kv_elem:int,has_dyn:int,pos:int,cap:int,thr:f32,eps:f32,k
         }
     }
     for thread:0..<INK_NT {
-        d:=thread%128;dst:=(pos%cap)*n_kv_elem+item*128+d;
+        d:=thread%128;dst:=(epos%cap)*n_kv_elem+item*128+d;
         if thread<128 {
             tot:=((mid[0]+mid[1])+(mid[2]+mid[3]))+((mid[4]+mid[5])+(mid[6]+mid[7]));
             fac:=thr/(sqrt(tot)+0.000001f32);
@@ -693,8 +697,9 @@ ink_kv1 :: (item:int,n_kv_elem:int,has_dyn:int,pos:int,cap:int,thr:f32,eps:f32,k
 // ---- Store K and V into f16 KV cache at position `pos` (circular mod cap for SWA, or linear).
 // k_cache / v_cache layout: [cap, n_head_kv, head_dim] u16.
 // Launch items = n_head_kv * head_dim, lanes = 1.
-ink_kv_store :: (item:int,n_kv_elem:int,pos:int,cap:int,k_in:[]f32,v_in:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
-    dst:=((pos+item/n_kv_elem)%cap)*n_kv_elem+item%n_kv_elem;
+ink_kv_store :: (item:int,n_kv_elem:int,pos:int,cap:int,k_in:[]f32,v_in:[]f32,k_cache:[]u16,v_cache:[]u16,pos_buf:[]u32) #export_c #effects(all) {
+    epos:=ifx pos<0 then cast(int)pos_buf[0] else pos;
+    dst:=((epos+item/n_kv_elem)%cap)*n_kv_elem+item%n_kv_elem;
     k_cache[dst]=cast(u16)ink_f16(k_in[item]);
     v_cache[dst]=cast(u16)ink_f16(v_in[item]);
 }
@@ -712,12 +717,13 @@ ink_kv_store :: (item:int,n_kv_elem:int,pos:int,cap:int,k_in:[]f32,v_in:[]f32,k_
 // say whether Q and R have a scale (qclip [n_head, head_dim], rclip [n_head,
 // n_rel]); thr_q and thr_r are the norm thresholds; tau_alpha and tau_floor
 // give tau for the token's position.
-ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32,flags:int,thr_q:f32,thr_r:f32,tau_alpha:f32,tau_floor:f32,qclip:[]f32,rclip:[]f32) #export_c #effects(all) {
+ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32,flags:int,thr_q:f32,thr_r:f32,tau_alpha:f32,tau_floor:f32,qclip:[]f32,rclip:[]f32,pos_buf:[]u32) #export_c #effects(all) {
     smax:[1024]f32;ssum:[1024]f32;vpart:[1024]f32;dp:[1024]f32;gm:[32]f32;gs:[32]f32;qsh:[128]f32;rsh:[16]f32;
     n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
     extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
     kv_cap:=kv_info&4294967295;score_stride:=(kv_info>>32)&4294967295;
-    h:=item;pos:=pos0+item/n_head;
+    epos0:=ifx pos0<0 then cast(int)pos_buf[0] else pos0;
+    h:=item;pos:=epos0+item/n_head;
     kv_h:=(item%n_head)/(n_head/n_head_kv);
     n_kv_elem:=n_head_kv*head_dim;
     scale:=1.0f32/sqrt(f32(head_dim));
@@ -869,6 +875,241 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,r
             for p:0..<8 {vsum+=vpart[p*INK_HEAD+thread];}
             idx:=h*head_dim+thread;
             out[idx]=vsum/gsum*ink_sigmoid(gate[idx]);
+        }
+    }
+}
+
+// ---- Single-pass online-softmax GQA attention (zero scratch_scores DRAM buffer).
+// Each group of INK_OA=256 threads processes up to 8 Q vectors sharing one KV head
+// (for gqa=2: 4 consecutive tokens x 2 Q heads), reusing every K/V tile 8x in shared
+// memory (KV_TILE=8 keys, 13 KB smem). Exact sink logit 0 via initial m=0, s=1.
+// Launch items = ceil(np / t_step) * n_head_kv * g_chunks, where
+//   q_in_g = min(gqa, 8), t_step = 8 / q_in_g, g_chunks = ceil(gqa / q_in_g).
+ink_attn_online :: (item:int,dims0:int,dims1:int,kv_cap:int,pos0:int,np:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,out:[]f32,flags:int,thr_q:f32,thr_r:f32,tau_alpha:f32,tau_floor:f32,qclip:[]f32,rclip:[]f32) #export_c #effects(all) {
+    kvsh:[1024]f32;pdot:[2048]f32;rsh:[128]f32;sc:[128]f32;wt:[64]f32;
+    s_pos:[8]int;s_start:[8]int;s_h:[8]int;s_valid:[8]int;s_sink:[8]f32;
+    s_m:[8]f32;s_s:[8]f32;s_alpha:[8]f32;
+    qr:[1024]f32;ov:[1024]f32;
+    n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
+    extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
+    gqa:=n_head/n_head_kv;
+    q_in_g:=ifx gqa<8 then gqa else 8;
+    t_step:=8/q_in_g;
+    g_chunks:=(gqa+q_in_g-1)/q_in_g;
+    kv_g:=item%(n_head_kv*g_chunks);
+    tok0:=(item/(n_head_kv*g_chunks))*t_step;
+    kv_h:=kv_g/g_chunks;
+    g0:=(kv_g%g_chunks)*q_in_g;
+    n_kv_elem:=cast(u32)(n_head_kv*head_dim);
+    kv_off:=mul_wrap(cast(u32)kv_h,128);
+    cap32:=cast(u32)kv_cap;
+    scale:=1.0f32/sqrt(f32(head_dim));
+    // Setup metadata, load Q & R, compute norms for clipping.
+    for thread:0..<INK_OA {
+        if thread<8 {
+            dt:=thread/q_in_g;dg:=thread%q_in_g;
+            tok:=tok0+dt;qh:=kv_h*gqa+g0+dg;
+            valid:=ifx dt<t_step && tok<np && g0+dg<gqa then 1 else 0;
+            h:=ifx valid!=0 then tok*n_head+qh else 0;
+            pos:=pos0+tok;
+            st:int=0;
+            if is_swa!=0 && pos>=swa {st=pos-swa+1;}
+            s_valid[thread]=valid;s_h[thread]=h;s_pos[thread]=pos;s_start[thread]=st;
+            s_sink[thread]=ifx valid!=0 then sinks[h] else 0.0f32;
+            s_m[thread]=0.0f32;s_s[thread]=1.0f32;s_alpha[thread]=1.0f32;
+        }
+        if thread<128 {
+            qi:=thread/16;rj:=thread%16;
+            dt:=qi/q_in_g;dg:=qi%q_in_g;
+            tok:=tok0+dt;qh:=kv_h*gqa+g0+dg;
+            if dt<t_step && tok<np && g0+dg<gqa {
+                h:=tok*n_head+qh;
+                rv:=r[h*INK_REL+rj];
+                if (flags&2)!=0 {rv=rv*rclip[qh*INK_REL+rj];}
+                rsh[thread]=rv;sc[thread]=rv*rv;
+            } else {
+                rsh[thread]=0.0f32;sc[thread]=0.0f32;
+            }
+        }
+        qi:=thread/32;lane:=thread%32;
+        dt:=qi/q_in_g;dg:=qi%q_in_g;
+        tok:=tok0+dt;qh:=kv_h*gqa+g0+dg;
+        qss:f32=0.0f32;
+        if dt<t_step && tok<np && g0+dg<gqa {
+            h:=tok*n_head+qh;
+            qb:=h*INK_HEAD+lane*4;cb:=qh*INK_HEAD+lane*4;
+            v0:=q[qb+0];v1:=q[qb+1];v2:=q[qb+2];v3:=q[qb+3];
+            if (flags&1)!=0 {
+                v0=v0*qclip[cb+0];v1=v1*qclip[cb+1];v2=v2*qclip[cb+2];v3=v3*qclip[cb+3];
+            }
+            qr[thread*4+0]=v0;qr[thread*4+1]=v1;qr[thread*4+2]=v2;qr[thread*4+3]=v3;
+            qss=(v0*v0+v1*v1)+(v2*v2+v3*v3);
+        } else {
+            qr[thread*4+0]=0.0f32;qr[thread*4+1]=0.0f32;qr[thread*4+2]=0.0f32;qr[thread*4+3]=0.0f32;
+        }
+        pdot[thread]=qss;
+        ov[thread*4+0]=0.0f32;ov[thread*4+1]=0.0f32;ov[thread*4+2]=0.0f32;ov[thread*4+3]=0.0f32;
+    }
+    // Apply Q/R L2 norm clip and log-scale tau.
+    for thread:0..<INK_OA {
+        qi:=thread/32;
+        if s_valid[qi]!=0 {
+            tau:f32=1.0f32;
+            if tau_alpha!=0.0f32 {
+                ratio:=f32(s_pos[qi]+1)/tau_floor;
+                if ratio<1.0f32 {ratio=1.0f32;}
+                tau=1.0f32+tau_alpha*log(ratio);
+            }
+            tot_q:f32=0.0f32;
+            for j:0..<32 {tot_q+=pdot[qi*32+j];}
+            qfac:=thr_q/(sqrt(tot_q)+0.000001f32);
+            if qfac>1.0f32 {qfac=1.0f32;}
+            qm:=qfac*tau;
+            qr[thread*4+0]=qr[thread*4+0]*qm;qr[thread*4+1]=qr[thread*4+1]*qm;
+            qr[thread*4+2]=qr[thread*4+2]*qm;qr[thread*4+3]=qr[thread*4+3]*qm;
+        }
+        if thread<128 {
+            rq:=thread/16;
+            if s_valid[rq]!=0 {
+                tau:f32=1.0f32;
+                if tau_alpha!=0.0f32 {
+                    ratio:=f32(s_pos[rq]+1)/tau_floor;
+                    if ratio<1.0f32 {ratio=1.0f32;}
+                    tau=1.0f32+tau_alpha*log(ratio);
+                }
+                tot_r:f32=0.0f32;
+                for j:0..<INK_REL {tot_r+=sc[rq*INK_REL+j];}
+                rfac:=thr_r/(sqrt(tot_r)+0.000001f32);
+                if rfac>1.0f32 {rfac=1.0f32;}
+                rsh[thread]=rsh[thread]*rfac*tau;
+            }
+        }
+    }
+    // Union key range across the CTA's tokens: [k_min .. k_max].
+    tok_last:=tok0+t_step-1;
+    if tok_last>=np {tok_last=np-1;}
+    pos_first:=pos0+tok0;
+    pos_last:=pos0+tok_last;
+    k_min:int=0;
+    if is_swa!=0 && pos_first>=swa {k_min=pos_first-swa+1;}
+    n_keys_cta:=pos_last-k_min+1;
+    n_tiles:=cast(u32)((n_keys_cta+7)/8);
+    k_min32:=cast(u32)k_min;
+    pos_last32:=cast(u32)pos_last;
+    ext32:=cast(u32)extent;
+    n_rel32:=cast(u32)n_rel;
+    for blk:cast(u32)0..<n_tiles {
+        k_base:=add_wrap(k_min32,mul_wrap(blk,8));
+        // Step 1: cooperatively load 8 K vectors (4 f16/thread -> kvsh[thread*4 .. +3]).
+        for thread:0..<INK_OA {
+            t:=cast(u32)thread;
+            kk:=t/32;d0:=mul_wrap(t%32,4);
+            kp:=add_wrap(k_base,kk);
+            if kp<=pos_last32 {
+                slot:=ifx is_swa!=0 then kp%cap32 else kp;
+                kb:=add_wrap(add_wrap(mul_wrap(slot,n_kv_elem),kv_off),d0);
+                k0:=cast(u32)k_cache[cast(int)kb];k1:=cast(u32)k_cache[cast(int)add_wrap(kb,1)];
+                k2:=cast(u32)k_cache[cast(int)add_wrap(kb,2)];k3:=cast(u32)k_cache[cast(int)add_wrap(kb,3)];
+                kvsh[thread*4+0]=ink_half(k0);kvsh[thread*4+1]=ink_half(k1);
+                kvsh[thread*4+2]=ink_half(k2);kvsh[thread*4+3]=ink_half(k3);
+            } else {
+                kvsh[thread*4+0]=0.0f32;kvsh[thread*4+1]=0.0f32;
+                kvsh[thread*4+2]=0.0f32;kvsh[thread*4+3]=0.0f32;
+            }
+        }
+        // Step 2: each thread computes its 4-dim partial Q.K dot for all 8 keys.
+        for thread:0..<INK_OA {
+            d0:=mul_wrap(cast(u32)(thread%32),4);
+            q0:=qr[thread*4+0];q1:=qr[thread*4+1];q2:=qr[thread*4+2];q3:=qr[thread*4+3];
+            for kk:0..<8 {
+                kb:=cast(int)add_wrap(mul_wrap(cast(u32)kk,128),d0);
+                pdot[thread*8+kk]=(q0*kvsh[kb+0]+q1*kvsh[kb+1])+(q2*kvsh[kb+2]+q3*kvsh[kb+3]);
+            }
+        }
+        // Step 3: load 8 V vectors into kvsh WHILE threads 0..63 reduce pdot + rel_bias -> sc[0..63].
+        for thread:0..<INK_OA {
+            t:=cast(u32)thread;
+            kk:=t/32;d0:=mul_wrap(t%32,4);
+            kp:=add_wrap(k_base,kk);
+            if kp<=pos_last32 {
+                slot:=ifx is_swa!=0 then kp%cap32 else kp;
+                vb:=add_wrap(add_wrap(mul_wrap(slot,n_kv_elem),kv_off),d0);
+                v0:=cast(u32)v_cache[cast(int)vb];v1:=cast(u32)v_cache[cast(int)add_wrap(vb,1)];
+                v2:=cast(u32)v_cache[cast(int)add_wrap(vb,2)];v3:=cast(u32)v_cache[cast(int)add_wrap(vb,3)];
+                kvsh[thread*4+0]=ink_half(v0);kvsh[thread*4+1]=ink_half(v1);
+                kvsh[thread*4+2]=ink_half(v2);kvsh[thread*4+3]=ink_half(v3);
+            } else {
+                kvsh[thread*4+0]=0.0f32;kvsh[thread*4+1]=0.0f32;
+                kvsh[thread*4+2]=0.0f32;kvsh[thread*4+3]=0.0f32;
+            }
+            if thread<64 {
+                qi:=thread/8;sk:=cast(u32)(thread%8);
+                skp:=add_wrap(k_base,sk);
+                sp:=cast(u32)s_pos[qi];sst:=cast(u32)s_start[qi];
+                if s_valid[qi]!=0 && skp>=sst && skp<=sp {
+                    dot:f32=0.0f32;
+                    qbase:=mul_wrap(cast(u32)qi,256);
+                    for j:cast(u32)0..<32 {dot+=pdot[cast(int)add_wrap(add_wrap(qbase,mul_wrap(j,8)),sk)];}
+                    dist:=sp-skp;
+                    rb:f32=0.0f32;
+                    if dist<ext32 {
+                        rbb:=mul_wrap(dist,n_rel32);rbq:=mul_wrap(cast(u32)qi,16);
+                        for j:cast(u32)0..<16 {rb+=rel_bias[cast(int)add_wrap(rbb,j)]*rsh[cast(int)add_wrap(rbq,j)];}
+                    }
+                    sc[thread]=dot*scale+rb-s_sink[qi];
+                } else {
+                    sc[thread]=INK_NEG_INF;
+                }
+            }
+        }
+        // Step 3b: compute per-Q online softmax weights ONCE per Q (8 threads x 8 keys).
+        for thread:0..<INK_OA {
+            if thread<8 {
+                if s_valid[thread]!=0 {
+                    m_old:=s_m[thread];m_new:=m_old;
+                    sb:=thread*8;
+                    for kk:0..<8 {sv:=sc[sb+kk];if sv>m_new {m_new=sv;}}
+                    alpha:f32=1.0f32;
+                    if m_new>m_old {alpha=exp(m_old-m_new);}
+                    s_cur:=s_s[thread]*alpha;
+                    for kk:0..<8 {
+                        sv:=sc[sb+kk];
+                        w:f32=0.0f32;
+                        if sv>-100000000000000000000000000000.0f32 {w=exp(sv-m_new);s_cur+=w;}
+                        wt[thread*8+kk]=w;
+                    }
+                    s_m[thread]=m_new;s_s[thread]=s_cur;s_alpha[thread]=alpha;
+                }
+            }
+        }
+        // Step 4: branchless pure-FMA weighted V accumulation into per-thread registers.
+        for thread:0..<INK_OA {
+            qi:=thread/32;
+            if s_valid[qi]!=0 {
+                alpha:=s_alpha[qi];
+                o0:=ov[thread*4+0]*alpha;o1:=ov[thread*4+1]*alpha;
+                o2:=ov[thread*4+2]*alpha;o3:=ov[thread*4+3]*alpha;
+                d0:=mul_wrap(cast(u32)(thread%32),4);
+                sb:=mul_wrap(cast(u32)qi,8);
+                for kk:cast(u32)0..<8 {
+                    w:=wt[cast(int)add_wrap(sb,kk)];
+                    vb:=cast(int)add_wrap(mul_wrap(kk,128),d0);
+                    o0+=w*kvsh[vb+0];o1+=w*kvsh[vb+1];o2+=w*kvsh[vb+2];o3+=w*kvsh[vb+3];
+                }
+                ov[thread*4+0]=o0;ov[thread*4+1]=o1;ov[thread*4+2]=o2;ov[thread*4+3]=o3;
+            }
+        }
+    }
+    // Epilogue: divide by softmax denominator and multiply by sigmoid(gate).
+    for thread:0..<INK_OA {
+        qi:=thread/32;lane:=thread%32;
+        if s_valid[qi]!=0 {
+            inv_s:=1.0f32/s_s[qi];
+            idx:=s_h[qi]*128+lane*4;
+            out[idx+0]=ov[thread*4+0]*inv_s*ink_sigmoid(gate[idx+0]);
+            out[idx+1]=ov[thread*4+1]*inv_s*ink_sigmoid(gate[idx+1]);
+            out[idx+2]=ov[thread*4+2]*inv_s*ink_sigmoid(gate[idx+2]);
+            out[idx+3]=ov[thread*4+3]*inv_s*ink_sigmoid(gate[idx+3]);
         }
     }
 }
@@ -1528,4 +1769,1279 @@ ink_dvs_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #e
     base:=(item%rows)*cols;xb:=(item/rows)*cols;sum:f32=0;
     for c:0..<cols {sum+=w[base+c]*x[xb+c];}
     if add!=0 {out[item]=out[item]+sum;}else {out[item]=sum;}
+}
+
+// =========================================================================
+// Tensor Core (cu_mma_bf16_16x8x16) prefill kernels for Q8_0 and IQ4_NL.
+// =========================================================================
+// Every Q8_0 signed integer (-128..127) and every IQ4_NL table integer
+// (-127..113) is exact in BF16 (8-bit significand), so weights decode into
+// BF16 fragments with zero rounding error and each 32-element block applies
+// its exact FP16 scale d in FP32 after the block's two k=16 MMA steps.
+
+ink_bf16_rne :: (x:f32)->u32 #effects(all) {
+    b:=f32_bits(x);
+    if (b&0x7f800000)==0x7f800000 {return b>>16;}
+    return add_wrap(b,add_wrap(0x7fff,(b>>16)&1))>>16;
+}
+
+ink_q8_pair_bf16 :: (u:u32)->u32 #effects(all) {
+    x:=u^0x8080;
+    f0:=f32_bits(f32(x&255)-128.0f32)>>16;
+    f1:=f32_bits(f32((x>>8)&255)-128.0f32)>>16;
+    return f0|(f1<<16);
+}
+
+// Branchless exact BF16 upper 16 bits for the 16 IQ4_NL integer levels (-127..113).
+ink_iq4_bf16 :: (q:u32)->u32 #effects(all) {
+    w0:=ifx (q&2)==0 then cast(u32)0xC2D0C2FE else cast(u32)0xC282C2A6;
+    w1:=ifx (q&2)==0 then cast(u32)0xC20CC244 else cast(u32)0xC120C1B0;
+    w2:=ifx (q&2)==0 then cast(u32)0x41503F80 else cast(u32)0x421841C8;
+    w3:=ifx (q&2)==0 then cast(u32)0x428A4254 else cast(u32)0x42E242B2;
+    lo:=ifx (q&4)==0 then w0 else w1;
+    hi:=ifx (q&4)==0 then w2 else w3;
+    w:=ifx (q&8)==0 then lo else hi;
+    return (w>>((q&1)*16))&0xffff;
+}
+
+// Pack [rows, cols] f32 activations into [rows, cols/2] u32 (two RNE BF16 per u32).
+// Launch items = n_pairs = rows * (cols / 2).
+ink_bf16_pack :: (item:int,n_pairs:int,x:[]f32,out:[]u32) #export_c #effects(all) {
+    if item<n_pairs {
+        i:=mul_wrap(cast(u32)item,2);
+        out[item]=ink_bf16_rne(x[cast(int)i])|(ink_bf16_rne(x[cast(int)add_wrap(i,1)])<<16);
+    }
+}
+
+// Batched Q8_0 Tensor Core GEMM: out[tok, row] = W[row, :] . x[tok, :] (or +=).
+// One warp computes 16 rows by up to 16 tokens (2 x 8) with zero local-memory spills.
+// Launch warps = ceil(rows / 16) * ceil(tokens / 16).
+// wq/wd are in ink_relayout block-major Q8_0 order; xb is [tokens, cols/2] packed BF16.
+ink_q8_mma :: (item:int,rows:int,lrows:int,cols:int,tokens:int,add:int,wq:[]u32,wd:[]u16,xb:[]u32,out:[]f32) #export_c #effects(all) {
+    rtiles:=(rows+15)/16;
+    r0:=cast(u32)((item%rtiles)*16);
+    t0:=cast(u32)((item/rtiles)*16);
+    nr:=cast(u32)rows;lr:=cast(u32)lrows;blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;ntoks:=cast(u32)tokens;
+    has1:=add_wrap(t0,8)<ntoks;
+    fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+    a0:[128]f32;a1:[128]f32;ds:[64]f32;
+    for b:cast(u32)0..<blocks {
+        qbase:=mul_wrap(mul_wrap(b,8),lr);
+        dbase:=mul_wrap(b,lr);
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            wo:=t/2;sh:=(t&1)*16;
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            if rl<nr {
+                ds[lane*2+0]=ink_half(cast(u32)wd[cast(int)add_wrap(dbase,rl)]);
+                fa0[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(wo,lr)),rl)]>>sh)&0xffff);
+                fa0[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,2),lr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,4),lr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,6),lr)),rl)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+            }
+            if rh<nr {
+                ds[lane*2+1]=ink_half(cast(u32)wd[cast(int)add_wrap(dbase,rh)]);
+                fa0[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(wo,lr)),rh)]>>sh)&0xffff);
+                fa0[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,2),lr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,4),lr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,6),lr)),rh)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+            }
+        }
+        // Token tile 0: t0 .. t0+7
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            tk:=add_wrap(t0,g);
+            if tk<ntoks {
+                base:=add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t));
+                fb0[lane*2+0]=xb[cast(int)base];
+                fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];
+                fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+            }
+            fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+        }
+        cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+        cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+        for lane:0..<32 {
+            dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+            a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+            a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+        }
+        // Token tile 1: t0+8 .. t0+15
+        if has1 {
+            for lane:0..<32 {
+                g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                tk:=add_wrap(add_wrap(t0,8),g);
+                if tk<ntoks {
+                    base:=add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t));
+                    fb0[lane*2+0]=xb[cast(int)base];
+                    fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];
+                    fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+            }
+        }
+    }
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        tk0:=add_wrap(t0,mul_wrap(t,2));tk1:=add_wrap(tk0,1);
+        if rl<nr {
+            if tk0<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk0,nr),rl);v:=a0[lane*4+0];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+            if tk1<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk1,nr),rl);v:=a0[lane*4+1];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+        }
+        if rh<nr {
+            if tk0<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk0,nr),rh);v:=a0[lane*4+2];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+            if tk1<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk1,nr),rh);v:=a0[lane*4+3];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+        }
+        if has1 {
+            tk2:=add_wrap(tk0,8);tk3:=add_wrap(tk2,1);
+            if rl<nr {
+                if tk2<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk2,nr),rl);v:=a1[lane*4+0];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+                if tk3<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk3,nr),rl);v:=a1[lane*4+1];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+            }
+            if rh<nr {
+                if tk2<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk2,nr),rh);v:=a1[lane*4+2];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+                if tk3<ntoks {oi:=cast(int)add_wrap(mul_wrap(tk3,nr),rh);v:=a1[lane*4+3];if add!=0 {out[oi]=out[oi]+v;} else {out[oi]=v;}}
+            }
+        }
+    }
+}
+
+// Fused attention projections Tensor Core GEMM: runs all n_mats Q8_0 matrices
+// in `desc` in one launch. Each warp computes 16 rows by up to 32 tokens (4 x 8)
+// with explicit accumulators a0..a3 (zero local-memory spills).
+// desc word 9 holds each matrix's cumulative end of 16-row tiles.
+// Launch warps = rtiles_total * ceil(tokens / 32).
+ink_proj_mma :: (item:int,n_mats:int,rtiles_total:int,cols:int,tokens:int,desc:[]u32,wq:[]u32,wd:[]u16,xb:[]u32,out:[]f32) #export_c #effects(all) {
+    rt:=cast(u32)(item%rtiles_total);
+    t0:=cast(u32)((item/rtiles_total)*32);
+    nm:=cast(u32)n_mats;m:u32=0;first:u32=0;
+    for i:cast(u32)0..<nm {
+        e:=desc[cast(int)add_wrap(mul_wrap(i,10),9)];
+        if rt>=e {m=add_wrap(i,1);first=e;}
+    }
+    if m<nm {
+        at:=cast(int)mul_wrap(m,10);
+        q0:=desc[at];d0:=desc[at+1];nr:=desc[at+2];lr:=desc[at+3];
+        xb0:=desc[at+4]/2;out0:=desc[at+5];
+        r0:=mul_wrap(rt-first,16);
+        blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;ntoks:=cast(u32)tokens;
+        has1:=add_wrap(t0,8)<ntoks;has2:=add_wrap(t0,16)<ntoks;has3:=add_wrap(t0,24)<ntoks;
+        fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+        a0:[128]f32;a1:[128]f32;a2:[128]f32;a3:[128]f32;ds:[64]f32;
+        for b:cast(u32)0..<blocks {
+            qbase:=add_wrap(q0,mul_wrap(mul_wrap(b,8),lr));
+            dbase:=add_wrap(d0,mul_wrap(b,lr));
+            for lane:0..<32 {
+                g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                wo:=t/2;sh:=(t&1)*16;
+                rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+                if rl<nr {
+                    ds[lane*2+0]=ink_half(cast(u32)wd[cast(int)add_wrap(dbase,rl)]);
+                    fa0[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(wo,lr)),rl)]>>sh)&0xffff);
+                    fa0[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,2),lr)),rl)]>>sh)&0xffff);
+                    fa1[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,4),lr)),rl)]>>sh)&0xffff);
+                    fa1[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,6),lr)),rl)]>>sh)&0xffff);
+                } else {
+                    ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+                }
+                if rh<nr {
+                    ds[lane*2+1]=ink_half(cast(u32)wd[cast(int)add_wrap(dbase,rh)]);
+                    fa0[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(wo,lr)),rh)]>>sh)&0xffff);
+                    fa0[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,2),lr)),rh)]>>sh)&0xffff);
+                    fa1[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,4),lr)),rh)]>>sh)&0xffff);
+                    fa1[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qbase,mul_wrap(add_wrap(wo,6),lr)),rh)]>>sh)&0xffff);
+                } else {
+                    ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+                }
+            }
+            // Tile 0: t0 .. t0+7
+            for lane:0..<32 {
+                g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                tk:=add_wrap(t0,g);
+                if tk<ntoks {
+                    base:=add_wrap(xb0,add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t)));
+                    fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+                a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+            }
+            // Tile 1: t0+8 .. t0+15
+            if has1 {
+                for lane:0..<32 {
+                    g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                    tk:=add_wrap(add_wrap(t0,8),g);
+                    if tk<ntoks {
+                        base:=add_wrap(xb0,add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t)));
+                        fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                        fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                    } else {
+                        fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                    }
+                    fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+                }
+                cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+                cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+                for lane:0..<32 {
+                    dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                    a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                    a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+                }
+            }
+            // Tile 2: t0+16 .. t0+23
+            if has2 {
+                for lane:0..<32 {
+                    g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                    tk:=add_wrap(add_wrap(t0,16),g);
+                    if tk<ntoks {
+                        base:=add_wrap(xb0,add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t)));
+                        fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                        fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                    } else {
+                        fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                    }
+                    fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+                }
+                cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+                cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+                for lane:0..<32 {
+                    dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                    a2[lane*4+0]+=dl*fc[lane*4+0];a2[lane*4+1]+=dl*fc[lane*4+1];
+                    a2[lane*4+2]+=dh*fc[lane*4+2];a2[lane*4+3]+=dh*fc[lane*4+3];
+                }
+            }
+            // Tile 3: t0+24 .. t0+31
+            if has3 {
+                for lane:0..<32 {
+                    g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+                    tk:=add_wrap(add_wrap(t0,24),g);
+                    if tk<ntoks {
+                        base:=add_wrap(xb0,add_wrap(mul_wrap(tk,half),add_wrap(mul_wrap(b,16),t)));
+                        fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                        fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                    } else {
+                        fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                    }
+                    fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+                }
+                cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+                cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+                for lane:0..<32 {
+                    dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                    a3[lane*4+0]+=dl*fc[lane*4+0];a3[lane*4+1]+=dl*fc[lane*4+1];
+                    a3[lane*4+2]+=dh*fc[lane*4+2];a3[lane*4+3]+=dh*fc[lane*4+3];
+                }
+            }
+        }
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            tk0:=add_wrap(t0,mul_wrap(t,2));tk1:=add_wrap(tk0,1);
+            if rl<nr {
+                if tk0<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk0,nr),rl))]=a0[lane*4+0];}
+                if tk1<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk1,nr),rl))]=a0[lane*4+1];}
+            }
+            if rh<nr {
+                if tk0<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk0,nr),rh))]=a0[lane*4+2];}
+                if tk1<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk1,nr),rh))]=a0[lane*4+3];}
+            }
+            if has1 {
+                tk2:=add_wrap(tk0,8);tk3:=add_wrap(tk2,1);
+                if rl<nr {
+                    if tk2<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk2,nr),rl))]=a1[lane*4+0];}
+                    if tk3<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk3,nr),rl))]=a1[lane*4+1];}
+                }
+                if rh<nr {
+                    if tk2<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk2,nr),rh))]=a1[lane*4+2];}
+                    if tk3<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk3,nr),rh))]=a1[lane*4+3];}
+                }
+            }
+            if has2 {
+                tk4:=add_wrap(tk0,16);tk5:=add_wrap(tk4,1);
+                if rl<nr {
+                    if tk4<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk4,nr),rl))]=a2[lane*4+0];}
+                    if tk5<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk5,nr),rl))]=a2[lane*4+1];}
+                }
+                if rh<nr {
+                    if tk4<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk4,nr),rh))]=a2[lane*4+2];}
+                    if tk5<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk5,nr),rh))]=a2[lane*4+3];}
+                }
+            }
+            if has3 {
+                tk6:=add_wrap(tk0,24);tk7:=add_wrap(tk6,1);
+                if rl<nr {
+                    if tk6<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk6,nr),rl))]=a3[lane*4+0];}
+                    if tk7<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk7,nr),rl))]=a3[lane*4+1];}
+                }
+                if rh<nr {
+                    if tk6<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk6,nr),rh))]=a3[lane*4+2];}
+                    if tk7<ntoks {out[cast(int)add_wrap(out0,add_wrap(mul_wrap(tk7,nr),rh))]=a3[lane*4+3];}
+                }
+            }
+        }
+    }
+}
+
+// Grouped IQ4_NL MoE gate_up Tensor Core GEMM (16 rows x up to 16 tokens per task).
+// Launch warps = n_tasks * ceil(2*n_ff / 16). Zero local-memory spills.
+ink_moe_gu_iq4_mma :: (item:int,n_ff:int,cols:int,wq:[]u32,wd:[]u16,xb:[]u32,task_slot:[]u32,task_base:[]u32,task_cnt:[]u32,sorted_tok:[]u32,out:[]f32) #export_c #effects(all) {
+    nr:=mul_wrap(cast(u32)n_ff,2);
+    rtiles:=(nr+15)/16;
+    gi:=cast(u32)item;
+    tk_idx:=gi/rtiles;
+    r0:=mul_wrap(gi%rtiles,16);
+    blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;
+    cells:=mul_wrap(nr,blocks);
+    slot:=task_slot[cast(int)tk_idx];
+    tbase:=task_base[cast(int)tk_idx];
+    tcnt:=task_cnt[cast(int)tk_idx];
+    has1:=tcnt>8;
+    qb:=mul_wrap(slot,add_wrap(mul_wrap(cells,4),cells/2));
+    db:=add_wrap(mul_wrap(slot,mul_wrap(cells,9)),mul_wrap(cells,8));
+    tok0:[32]u32;tok1:[32]u32;
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);
+        tok0[lane*1]=ifx g<tcnt then sorted_tok[cast(int)add_wrap(tbase,g)] else 0xffffffff;
+        g1:=add_wrap(g,8);
+        tok1[lane*1]=ifx g1<tcnt then sorted_tok[cast(int)add_wrap(tbase,g1)] else 0xffffffff;
+    }
+    fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+    a0:[128]f32;a1:[128]f32;ds:[64]f32;
+    for b:cast(u32)0..<blocks {
+        qblk:=add_wrap(qb,mul_wrap(mul_wrap(b,4),nr));
+        dblk:=add_wrap(db,mul_wrap(b,nr));
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            wo:=t/2;sh:=(t&1)*16;
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            d_l:u32=0;w0_l:u32=0;w2_l:u32=0;d_h:u32=0;w0_h:u32=0;w2_h:u32=0;
+            if rl<nr {
+                d_l=cast(u32)wd[cast(int)add_wrap(dblk,rl)];
+                w0_l=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rl)];
+                w2_l=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rl)];
+            }
+            if rh<nr {
+                d_h=cast(u32)wd[cast(int)add_wrap(dblk,rh)];
+                w0_h=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rh)];
+                w2_h=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rh)];
+            }
+            if rl<nr {
+                ds[lane*2+0]=ink_half(d_l);
+                u0:=(w0_l>>sh)&0xffff;u2:=(w2_l>>sh)&0xffff;
+                fa0[lane*4+0]=ink_iq4_bf16(u0&15)|(ink_iq4_bf16((u0>>8)&15)<<16);
+                fa0[lane*4+2]=ink_iq4_bf16(u2&15)|(ink_iq4_bf16((u2>>8)&15)<<16);
+                fa1[lane*4+0]=ink_iq4_bf16((u0>>4)&15)|(ink_iq4_bf16(u0>>12)<<16);
+                fa1[lane*4+2]=ink_iq4_bf16((u2>>4)&15)|(ink_iq4_bf16(u2>>12)<<16);
+            } else {
+                ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+            }
+            if rh<nr {
+                ds[lane*2+1]=ink_half(d_h);
+                u0:=(w0_h>>sh)&0xffff;u2:=(w2_h>>sh)&0xffff;
+                fa0[lane*4+1]=ink_iq4_bf16(u0&15)|(ink_iq4_bf16((u0>>8)&15)<<16);
+                fa0[lane*4+3]=ink_iq4_bf16(u2&15)|(ink_iq4_bf16((u2>>8)&15)<<16);
+                fa1[lane*4+1]=ink_iq4_bf16((u0>>4)&15)|(ink_iq4_bf16(u0>>12)<<16);
+                fa1[lane*4+3]=ink_iq4_bf16((u2>>4)&15)|(ink_iq4_bf16(u2>>12)<<16);
+            } else {
+                ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+            }
+        }
+        for lane:0..<32 {
+            t:=cast(u32)(lane%4);tid:=tok0[lane*1];
+            if tid!=0xffffffff {
+                base:=add_wrap(mul_wrap(tid,half),add_wrap(mul_wrap(b,16),t));
+                fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+            }
+            fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+        }
+        cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+        cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+        for lane:0..<32 {
+            dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+            a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+            a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+        }
+        if has1 {
+            for lane:0..<32 {
+                t:=cast(u32)(lane%4);tid:=tok1[lane*1];
+                if tid!=0xffffffff {
+                    base:=add_wrap(mul_wrap(tid,half),add_wrap(mul_wrap(b,16),t));
+                    fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+            }
+        }
+    }
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        c0:=mul_wrap(t,2);c1:=add_wrap(c0,1);
+        if rl<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c0),nr),rl)]=a0[lane*4+0];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c1),nr),rl)]=a0[lane*4+1];}
+        }
+        if rh<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c0),nr),rh)]=a0[lane*4+2];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c1),nr),rh)]=a0[lane*4+3];}
+        }
+        if has1 {
+            c2:=add_wrap(c0,8);c3:=add_wrap(c2,1);
+            if rl<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c2),nr),rl)]=a1[lane*4+0];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c3),nr),rl)]=a1[lane*4+1];}
+            }
+            if rh<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c2),nr),rh)]=a1[lane*4+2];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c3),nr),rh)]=a1[lane*4+3];}
+            }
+        }
+    }
+}
+
+// Grouped Q8_0 MoE gate_up Tensor Core GEMM (16 rows x up to 16 tokens per task).
+// Launch warps = n_tasks * ceil(2*n_ff / 16). Zero local-memory spills.
+ink_moe_gu_q8_mma :: (item:int,n_ff:int,cols:int,wq:[]u32,wd:[]u16,xb:[]u32,task_slot:[]u32,task_base:[]u32,task_cnt:[]u32,sorted_tok:[]u32,out:[]f32) #export_c #effects(all) {
+    nr:=mul_wrap(cast(u32)n_ff,2);
+    rtiles:=(nr+15)/16;
+    gi:=cast(u32)item;
+    tk_idx:=gi/rtiles;
+    r0:=mul_wrap(gi%rtiles,16);
+    blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;
+    cells:=mul_wrap(nr,blocks);
+    slot:=task_slot[cast(int)tk_idx];
+    tbase:=task_base[cast(int)tk_idx];
+    tcnt:=task_cnt[cast(int)tk_idx];
+    has1:=tcnt>8;
+    qb:=mul_wrap(slot,add_wrap(mul_wrap(cells,8),cells/2));
+    db:=add_wrap(mul_wrap(slot,mul_wrap(cells,17)),mul_wrap(cells,16));
+    tok0:[32]u32;tok1:[32]u32;
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);
+        tok0[lane*1]=ifx g<tcnt then sorted_tok[cast(int)add_wrap(tbase,g)] else 0xffffffff;
+        g1:=add_wrap(g,8);
+        tok1[lane*1]=ifx g1<tcnt then sorted_tok[cast(int)add_wrap(tbase,g1)] else 0xffffffff;
+    }
+    fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+    a0:[128]f32;a1:[128]f32;ds:[64]f32;
+    for b:cast(u32)0..<blocks {
+        qblk:=add_wrap(qb,mul_wrap(mul_wrap(b,8),nr));
+        dblk:=add_wrap(db,mul_wrap(b,nr));
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            wo:=t/2;sh:=(t&1)*16;
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            if rl<nr {
+                ds[lane*2+0]=ink_half(cast(u32)wd[cast(int)add_wrap(dblk,rl)]);
+                fa0[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rl)]>>sh)&0xffff);
+                fa0[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,4),nr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,6),nr)),rl)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+            }
+            if rh<nr {
+                ds[lane*2+1]=ink_half(cast(u32)wd[cast(int)add_wrap(dblk,rh)]);
+                fa0[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rh)]>>sh)&0xffff);
+                fa0[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,4),nr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,6),nr)),rh)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+            }
+        }
+        for lane:0..<32 {
+            t:=cast(u32)(lane%4);tid:=tok0[lane*1];
+            if tid!=0xffffffff {
+                base:=add_wrap(mul_wrap(tid,half),add_wrap(mul_wrap(b,16),t));
+                fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+            }
+            fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+        }
+        cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+        cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+        for lane:0..<32 {
+            dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+            a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+            a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+        }
+        if has1 {
+            for lane:0..<32 {
+                t:=cast(u32)(lane%4);tid:=tok1[lane*1];
+                if tid!=0xffffffff {
+                    base:=add_wrap(mul_wrap(tid,half),add_wrap(mul_wrap(b,16),t));
+                    fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+            }
+        }
+    }
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        c0:=mul_wrap(t,2);c1:=add_wrap(c0,1);
+        if rl<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c0),nr),rl)]=a0[lane*4+0];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c1),nr),rl)]=a0[lane*4+1];}
+        }
+        if rh<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c0),nr),rh)]=a0[lane*4+2];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c1),nr),rh)]=a0[lane*4+3];}
+        }
+        if has1 {
+            c2:=add_wrap(c0,8);c3:=add_wrap(c2,1);
+            if rl<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c2),nr),rl)]=a1[lane*4+0];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c3),nr),rl)]=a1[lane*4+1];}
+            }
+            if rh<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c2),nr),rh)]=a1[lane*4+2];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(add_wrap(tbase,c3),nr),rh)]=a1[lane*4+3];}
+            }
+        }
+    }
+}
+
+// Apply SITU activation + router weight to grouped gate_up outputs and pack
+// directly into BF16 pairs for ink_moe_down_*_mma.
+// Launch items = n_entries * (n_ff / 2).
+ink_moe_situ_pack :: (item:int,n_entries:int,n_ff:int,beta:f32,lb:f32,gu:[]f32,sorted_pair:[]u32,wts:[]f32,out_bf16:[]u32) #export_c #effects(all) {
+    half:=cast(u32)n_ff/2;
+    gi:=cast(u32)item;
+    ent:=gi/half;
+    if ent<cast(u32)n_entries {
+        j:=gi%half;
+        ew:=wts[cast(int)sorted_pair[cast(int)ent]];
+        base:=add_wrap(mul_wrap(ent,mul_wrap(cast(u32)n_ff,2)),mul_wrap(j,4));
+        g0:=gu[cast(int)base];u0:=gu[cast(int)add_wrap(base,1)];
+        g1:=gu[cast(int)add_wrap(base,2)];u1:=gu[cast(int)add_wrap(base,3)];
+        a0:=beta*ink_tanh(g0/beta)*ink_sigmoid(g0);
+        if lb>0.0f32 {u0=lb*ink_tanh(u0/lb);}
+        a1:=beta*ink_tanh(g1/beta)*ink_sigmoid(g1);
+        if lb>0.0f32 {u1=lb*ink_tanh(u1/lb);}
+        out_bf16[item]=ink_bf16_rne(a0*u0*ew)|(ink_bf16_rne(a1*u1*ew)<<16);
+    }
+}
+
+// Grouped IQ4_NL MoE down Tensor Core GEMM (16 rows x up to 16 tokens per task).
+// Launch warps = n_tasks * ceil(rows / 16). Zero local-memory spills.
+ink_moe_down_iq4_mma :: (item:int,rows:int,cols:int,wq:[]u32,wd:[]u16,xb:[]u32,task_slot:[]u32,task_base:[]u32,task_cnt:[]u32,sorted_pair:[]u32,out:[]f32) #export_c #effects(all) {
+    nr:=cast(u32)rows;
+    rtiles:=(nr+15)/16;
+    gi:=cast(u32)item;
+    tk_idx:=gi/rtiles;
+    r0:=mul_wrap(gi%rtiles,16);
+    blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;
+    cells:=mul_wrap(nr,blocks);
+    slot:=task_slot[cast(int)tk_idx];
+    tbase:=task_base[cast(int)tk_idx];
+    tcnt:=task_cnt[cast(int)tk_idx];
+    has1:=tcnt>8;
+    qb:=mul_wrap(slot,add_wrap(mul_wrap(cells,4),cells/2));
+    db:=add_wrap(mul_wrap(slot,mul_wrap(cells,9)),mul_wrap(cells,8));
+    fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+    a0:[128]f32;a1:[128]f32;ds:[64]f32;
+    for b:cast(u32)0..<blocks {
+        qblk:=add_wrap(qb,mul_wrap(mul_wrap(b,4),nr));
+        dblk:=add_wrap(db,mul_wrap(b,nr));
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            wo:=t/2;sh:=(t&1)*16;
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            d_l:u32=0;w0_l:u32=0;w2_l:u32=0;d_h:u32=0;w0_h:u32=0;w2_h:u32=0;
+            if rl<nr {
+                d_l=cast(u32)wd[cast(int)add_wrap(dblk,rl)];
+                w0_l=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rl)];
+                w2_l=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rl)];
+            }
+            if rh<nr {
+                d_h=cast(u32)wd[cast(int)add_wrap(dblk,rh)];
+                w0_h=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rh)];
+                w2_h=wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rh)];
+            }
+            if rl<nr {
+                ds[lane*2+0]=ink_half(d_l);
+                u0:=(w0_l>>sh)&0xffff;u2:=(w2_l>>sh)&0xffff;
+                fa0[lane*4+0]=ink_iq4_bf16(u0&15)|(ink_iq4_bf16((u0>>8)&15)<<16);
+                fa0[lane*4+2]=ink_iq4_bf16(u2&15)|(ink_iq4_bf16((u2>>8)&15)<<16);
+                fa1[lane*4+0]=ink_iq4_bf16((u0>>4)&15)|(ink_iq4_bf16(u0>>12)<<16);
+                fa1[lane*4+2]=ink_iq4_bf16((u2>>4)&15)|(ink_iq4_bf16(u2>>12)<<16);
+            } else {
+                ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+            }
+            if rh<nr {
+                ds[lane*2+1]=ink_half(d_h);
+                u0:=(w0_h>>sh)&0xffff;u2:=(w2_h>>sh)&0xffff;
+                fa0[lane*4+1]=ink_iq4_bf16(u0&15)|(ink_iq4_bf16((u0>>8)&15)<<16);
+                fa0[lane*4+3]=ink_iq4_bf16(u2&15)|(ink_iq4_bf16((u2>>8)&15)<<16);
+                fa1[lane*4+1]=ink_iq4_bf16((u0>>4)&15)|(ink_iq4_bf16(u0>>12)<<16);
+                fa1[lane*4+3]=ink_iq4_bf16((u2>>4)&15)|(ink_iq4_bf16(u2>>12)<<16);
+            } else {
+                ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+            }
+        }
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            if g<tcnt {
+                base:=add_wrap(mul_wrap(add_wrap(tbase,g),half),add_wrap(mul_wrap(b,16),t));
+                fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+            }
+            fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+        }
+        cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+        cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+        for lane:0..<32 {
+            dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+            a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+            a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+        }
+        if has1 {
+            for lane:0..<32 {
+                g:=add_wrap(cast(u32)(lane/4),8);t:=cast(u32)(lane%4);
+                if g<tcnt {
+                    base:=add_wrap(mul_wrap(add_wrap(tbase,g),half),add_wrap(mul_wrap(b,16),t));
+                    fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+            }
+        }
+    }
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        c0:=mul_wrap(t,2);c1:=add_wrap(c0,1);
+        p0:u32=ifx c0<tcnt then sorted_pair[cast(int)add_wrap(tbase,c0)] else 0;
+        p1:u32=ifx c1<tcnt then sorted_pair[cast(int)add_wrap(tbase,c1)] else 0;
+        if rl<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(p0,nr),rl)]=a0[lane*4+0];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(p1,nr),rl)]=a0[lane*4+1];}
+        }
+        if rh<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(p0,nr),rh)]=a0[lane*4+2];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(p1,nr),rh)]=a0[lane*4+3];}
+        }
+        if has1 {
+            c2:=add_wrap(c0,8);c3:=add_wrap(c2,1);
+            p2:u32=ifx c2<tcnt then sorted_pair[cast(int)add_wrap(tbase,c2)] else 0;
+            p3:u32=ifx c3<tcnt then sorted_pair[cast(int)add_wrap(tbase,c3)] else 0;
+            if rl<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(p2,nr),rl)]=a1[lane*4+0];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(p3,nr),rl)]=a1[lane*4+1];}
+            }
+            if rh<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(p2,nr),rh)]=a1[lane*4+2];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(p3,nr),rh)]=a1[lane*4+3];}
+            }
+        }
+    }
+}
+
+// Grouped Q8_0 MoE down Tensor Core GEMM (16 rows x up to 16 tokens per task).
+// Launch warps = n_tasks * ceil(rows / 16). Zero local-memory spills.
+ink_moe_down_q8_mma :: (item:int,rows:int,cols:int,wq:[]u32,wd:[]u16,xb:[]u32,task_slot:[]u32,task_base:[]u32,task_cnt:[]u32,sorted_pair:[]u32,out:[]f32) #export_c #effects(all) {
+    nr:=cast(u32)rows;
+    rtiles:=(nr+15)/16;
+    gi:=cast(u32)item;
+    tk_idx:=gi/rtiles;
+    r0:=mul_wrap(gi%rtiles,16);
+    blocks:=cast(u32)cols/32;half:=cast(u32)cols/2;
+    cells:=mul_wrap(nr,blocks);
+    slot:=task_slot[cast(int)tk_idx];
+    tbase:=task_base[cast(int)tk_idx];
+    tcnt:=task_cnt[cast(int)tk_idx];
+    has1:=tcnt>8;
+    qb:=mul_wrap(slot,add_wrap(mul_wrap(cells,8),cells/2));
+    db:=add_wrap(mul_wrap(slot,mul_wrap(cells,17)),mul_wrap(cells,16));
+    fa0:[128]u32;fa1:[128]u32;fb0:[64]u32;fb1:[64]u32;fc:[128]f32;
+    a0:[128]f32;a1:[128]f32;ds:[64]f32;
+    for b:cast(u32)0..<blocks {
+        qblk:=add_wrap(qb,mul_wrap(mul_wrap(b,8),nr));
+        dblk:=add_wrap(db,mul_wrap(b,nr));
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            wo:=t/2;sh:=(t&1)*16;
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            if rl<nr {
+                ds[lane*2+0]=ink_half(cast(u32)wd[cast(int)add_wrap(dblk,rl)]);
+                fa0[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rl)]>>sh)&0xffff);
+                fa0[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+0]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,4),nr)),rl)]>>sh)&0xffff);
+                fa1[lane*4+2]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,6),nr)),rl)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+0]=0.0f32;fa0[lane*4+0]=0;fa0[lane*4+2]=0;fa1[lane*4+0]=0;fa1[lane*4+2]=0;
+            }
+            if rh<nr {
+                ds[lane*2+1]=ink_half(cast(u32)wd[cast(int)add_wrap(dblk,rh)]);
+                fa0[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(wo,nr)),rh)]>>sh)&0xffff);
+                fa0[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,2),nr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+1]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,4),nr)),rh)]>>sh)&0xffff);
+                fa1[lane*4+3]=ink_q8_pair_bf16((wq[cast(int)add_wrap(add_wrap(qblk,mul_wrap(add_wrap(wo,6),nr)),rh)]>>sh)&0xffff);
+            } else {
+                ds[lane*2+1]=0.0f32;fa0[lane*4+1]=0;fa0[lane*4+3]=0;fa1[lane*4+1]=0;fa1[lane*4+3]=0;
+            }
+        }
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            if g<tcnt {
+                base:=add_wrap(mul_wrap(add_wrap(tbase,g),half),add_wrap(mul_wrap(b,16),t));
+                fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+            }
+            fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+        }
+        cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+        cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+        for lane:0..<32 {
+            dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+            a0[lane*4+0]+=dl*fc[lane*4+0];a0[lane*4+1]+=dl*fc[lane*4+1];
+            a0[lane*4+2]+=dh*fc[lane*4+2];a0[lane*4+3]+=dh*fc[lane*4+3];
+        }
+        if has1 {
+            for lane:0..<32 {
+                g:=add_wrap(cast(u32)(lane/4),8);t:=cast(u32)(lane%4);
+                if g<tcnt {
+                    base:=add_wrap(mul_wrap(add_wrap(tbase,g),half),add_wrap(mul_wrap(b,16),t));
+                    fb0[lane*2+0]=xb[cast(int)base];fb0[lane*2+1]=xb[cast(int)add_wrap(base,4)];
+                    fb1[lane*2+0]=xb[cast(int)add_wrap(base,8)];fb1[lane*2+1]=xb[cast(int)add_wrap(base,12)];
+                } else {
+                    fb0[lane*2+0]=0;fb0[lane*2+1]=0;fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+                fc[lane*4+0]=0.0f32;fc[lane*4+1]=0.0f32;fc[lane*4+2]=0.0f32;fc[lane*4+3]=0.0f32;
+            }
+            cu_mma_bf16_16x8x16(fa0[..],fb0[..],fc[..]);
+            cu_mma_bf16_16x8x16(fa1[..],fb1[..],fc[..]);
+            for lane:0..<32 {
+                dl:=ds[lane*2+0];dh:=ds[lane*2+1];
+                a1[lane*4+0]+=dl*fc[lane*4+0];a1[lane*4+1]+=dl*fc[lane*4+1];
+                a1[lane*4+2]+=dh*fc[lane*4+2];a1[lane*4+3]+=dh*fc[lane*4+3];
+            }
+        }
+    }
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        c0:=mul_wrap(t,2);c1:=add_wrap(c0,1);
+        p0:u32=ifx c0<tcnt then sorted_pair[cast(int)add_wrap(tbase,c0)] else 0;
+        p1:u32=ifx c1<tcnt then sorted_pair[cast(int)add_wrap(tbase,c1)] else 0;
+        if rl<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(p0,nr),rl)]=a0[lane*4+0];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(p1,nr),rl)]=a0[lane*4+1];}
+        }
+        if rh<nr {
+            if c0<tcnt {out[cast(int)add_wrap(mul_wrap(p0,nr),rh)]=a0[lane*4+2];}
+            if c1<tcnt {out[cast(int)add_wrap(mul_wrap(p1,nr),rh)]=a0[lane*4+3];}
+        }
+        if has1 {
+            c2:=add_wrap(c0,8);c3:=add_wrap(c2,1);
+            p2:u32=ifx c2<tcnt then sorted_pair[cast(int)add_wrap(tbase,c2)] else 0;
+            p3:u32=ifx c3<tcnt then sorted_pair[cast(int)add_wrap(tbase,c3)] else 0;
+            if rl<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(p2,nr),rl)]=a1[lane*4+0];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(p3,nr),rl)]=a1[lane*4+1];}
+            }
+            if rh<nr {
+                if c2<tcnt {out[cast(int)add_wrap(mul_wrap(p2,nr),rh)]=a1[lane*4+2];}
+                if c3<tcnt {out[cast(int)add_wrap(mul_wrap(p3,nr),rh)]=a1[lane*4+3];}
+            }
+        }
+    }
+}
+
+// Sum each token's n_used expert down outputs in deterministic slot order,
+// apply post shortconv, and add to residual cur. Launch items = n_channels.
+ink_moe_reduce_post :: (item:int,n_channels:int,nb:int,n_used:int,down_out:[]f32,w:[]f32,hist:[]f32,cur:[]f32) #export_c #effects(all) {
+    if item<n_channels {
+        c:=cast(u32)item;nc:=cast(u32)n_channels;nu:=cast(u32)n_used;
+        h0:=mul_wrap(c,3);w_at:=mul_wrap(c,4);
+        x0:=hist[cast(int)h0];x1:=hist[cast(int)add_wrap(h0,1)];x2:=hist[cast(int)add_wrap(h0,2)];
+        w0:=w[cast(int)w_at];w1:=w[cast(int)add_wrap(w_at,1)];w2:=w[cast(int)add_wrap(w_at,2)];w3:=w[cast(int)add_wrap(w_at,3)];
+        inv_s5:=1.0f32/sqrt(5.0f32);
+        for b:cast(u32)0..<cast(u32)nb {
+            x3:f32=0.0f32;
+            pbase:=add_wrap(mul_wrap(mul_wrap(b,nu),nc),c);
+            if nu==8 {
+                v0:=down_out[cast(int)pbase];
+                v1:=down_out[cast(int)add_wrap(pbase,nc)];
+                v2:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,2))];
+                v3:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,3))];
+                v4:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,4))];
+                v5:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,5))];
+                v6:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,6))];
+                v7:=down_out[cast(int)add_wrap(pbase,mul_wrap(nc,7))];
+                x3=(((v0+v1)+(v2+v3))+((v4+v5)+(v6+v7)));
+            } else {
+                for k:cast(u32)0..<nu {x3+=down_out[cast(int)add_wrap(pbase,mul_wrap(k,nc))];}
+            }
+            acc:=x0*w0+x1*w1+x2*w2+x3*w3;
+            ci:=cast(int)add_wrap(mul_wrap(b,nc),c);
+            cur[ci]=cur[ci]+(x3+acc)*inv_s5;
+            x0=x1;x1=x2;x2=x3;
+        }
+        hist[cast(int)h0]=x0;hist[cast(int)add_wrap(h0,1)]=x1;hist[cast(int)add_wrap(h0,2)]=x2;
+    }
+}
+
+// =========================================================================
+// Batched Tensor Core cross-pass recurrence gate (ink_ctrl_pack_bf16,
+// ink_ctrl_gate_mma, ink_ctrl_out_mma): reads D, G, F once per batch instead
+// of once per token (64x-128x less DRAM traffic in prefill).
+// =========================================================================
+
+// Pack [rms(cur), rms(msg)] for (cl, tok) into out_bf16[item * dim + 0..dim-1]
+// (each u32 holds 2 BF16 values -> 2*dim BF16 elements per (cl, tok)).
+// Launch items = n * np, group of INK_NT=256 threads.
+ink_ctrl_pack_bf16 :: (item:int,dim:int,np:int,stack:int,flags:int,cur:[]f32,msg:[]f32,out_bf16:[]u32) #export_c #effects(all) {
+    pc:[256]f32;pm:[256]f32;mc:[16]f32;mm:[16]f32;
+    swa:=flags&255;c0:=(flags>>8)&255;
+    cl:=item/np;tok:=item%np;
+    cb:=(ifx swa!=0 then 0 else cl)*stack+tok*dim;
+    gb:=(c0+cl)*stack+tok*dim;
+    half:=dim/2;ob:=item*dim;
+    for thread:0..<INK_NT {
+        sc:f32=0.0f32;sm:f32=0.0f32;
+        for k:0..<(dim+INK_NT-1)/INK_NT {
+            i:=k*INK_NT+thread;
+            if i<dim {
+                a:=cur[cb+i];m:=msg[gb+i];
+                sc+=a*a;sm+=m*m;
+            }
+        }
+        pc[thread]=sc;pm[thread]=sm;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            sc:f32=0.0f32;sm:f32=0.0f32;
+            for j:0..<16 {sc+=pc[thread*16+j];sm+=pm[thread*16+j];}
+            mc[thread]=sc;mm[thread]=sm;
+        }
+    }
+    for thread:0..<INK_NT {
+        tc:f32=0.0f32;tm:f32=0.0f32;
+        for j:0..<16 {tc+=mc[j];tm+=mm[j];}
+        inv_c:=1.0f32/sqrt(tc/f32(dim)+0.000001f32);
+        inv_m:=1.0f32/sqrt(tm/f32(dim)+0.000001f32);
+        for k:0..<(half+INK_NT-1)/INK_NT {
+            i:=k*INK_NT+thread;
+            if i<half {
+                i2:=i*2;
+                out_bf16[ob+i]=ink_bf16_rne(cur[cb+i2]*inv_c)|(ink_bf16_rne(cur[cb+i2+1]*inv_c)<<16);
+                out_bf16[ob+half+i]=ink_bf16_rne(msg[gb+i2]*inv_m)|(ink_bf16_rne(msg[gb+i2+1]*inv_m)<<16);
+            }
+        }
+    }
+}
+
+// Batched gate projection: gate[(cl*np + tok)*64 + r] = D_cl[r, :] . [rms(cur), rms(msg)].
+// One warp computes 16 rows x up to 16 tokens (2 x 8) directly in fc0/fc1 (0 local-memory spills).
+// Launch warps = n * 4 * ceil(np / 16).
+ink_ctrl_gate_mma :: (item:int,dim:int,np:int,off0:int,off1:int,off2:int,arena:[]f32,xb:[]u32,gate:[]f32) #export_c #effects(all) {
+    ttiles:=(np+15)/16;
+    cl:=item/(4*ttiles);
+    rem:=item%(4*ttiles);
+    r0:=cast(u32)((rem%4)*16);
+    t0:=cast(u32)((rem/4)*16);
+    d_off:=cast(u32)(ifx cl==0 then off0 else ifx cl==1 then off1 else off2);
+    k2:=mul_wrap(cast(u32)dim,2);
+    steps:=k2/16;
+    ntoks:=cast(u32)np;
+    has1:=add_wrap(t0,8)<ntoks;
+    xbase:=mul_wrap(cast(u32)(cl*np),cast(u32)dim);
+    fa:[128]u32;fb0:[64]u32;fb1:[64]u32;fc0:[128]f32;fc1:[128]f32;
+    for lane:0..<32 {
+        fc0[lane*4+0]=0.0f32;fc0[lane*4+1]=0.0f32;fc0[lane*4+2]=0.0f32;fc0[lane*4+3]=0.0f32;
+        fc1[lane*4+0]=0.0f32;fc1[lane*4+1]=0.0f32;fc1[lane*4+2]=0.0f32;fc1[lane*4+3]=0.0f32;
+    }
+    for bk:cast(u32)0..<steps {
+        k0:=mul_wrap(bk,16);
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            al:=add_wrap(d_off,add_wrap(mul_wrap(rl,k2),add_wrap(k0,mul_wrap(t,2))));
+            ah:=add_wrap(d_off,add_wrap(mul_wrap(rh,k2),add_wrap(k0,mul_wrap(t,2))));
+            w00:=arena[cast(int)al];w01:=arena[cast(int)add_wrap(al,1)];
+            w02:=arena[cast(int)add_wrap(al,8)];w03:=arena[cast(int)add_wrap(al,9)];
+            w10:=arena[cast(int)ah];w11:=arena[cast(int)add_wrap(ah,1)];
+            w12:=arena[cast(int)add_wrap(ah,8)];w13:=arena[cast(int)add_wrap(ah,9)];
+            fa[lane*4+0]=ink_bf16_rne(w00)|(ink_bf16_rne(w01)<<16);
+            fa[lane*4+1]=ink_bf16_rne(w10)|(ink_bf16_rne(w11)<<16);
+            fa[lane*4+2]=ink_bf16_rne(w02)|(ink_bf16_rne(w03)<<16);
+            fa[lane*4+3]=ink_bf16_rne(w12)|(ink_bf16_rne(w13)<<16);
+            tk:=add_wrap(t0,g);
+            if tk<ntoks {
+                xb_at:=add_wrap(xbase,add_wrap(mul_wrap(tk,cast(u32)dim),add_wrap(mul_wrap(bk,8),t)));
+                fb0[lane*2+0]=xb[cast(int)xb_at];
+                fb0[lane*2+1]=xb[cast(int)add_wrap(xb_at,4)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;
+            }
+            if has1 {
+                tk1:=add_wrap(tk,8);
+                if tk1<ntoks {
+                    xb_at1:=add_wrap(xbase,add_wrap(mul_wrap(tk1,cast(u32)dim),add_wrap(mul_wrap(bk,8),t)));
+                    fb1[lane*2+0]=xb[cast(int)xb_at1];
+                    fb1[lane*2+1]=xb[cast(int)add_wrap(xb_at1,4)];
+                } else {
+                    fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+            }
+        }
+        cu_mma_bf16_16x8x16(fa[..],fb0[..],fc0[..]);
+        if has1 {cu_mma_bf16_16x8x16(fa[..],fb1[..],fc1[..]);}
+    }
+    gbase:=mul_wrap(cast(u32)(cl*np),64);
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        tk0:=add_wrap(t0,mul_wrap(t,2));tk1:=add_wrap(tk0,1);
+        if tk0<ntoks {
+            gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk0,64),rl))]=fc0[lane*4+0];
+            gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk0,64),rh))]=fc0[lane*4+2];
+        }
+        if tk1<ntoks {
+            gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk1,64),rl))]=fc0[lane*4+1];
+            gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk1,64),rh))]=fc0[lane*4+3];
+        }
+        if has1 {
+            tk2:=add_wrap(tk0,8);tk3:=add_wrap(tk2,1);
+            if tk2<ntoks {
+                gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk2,64),rl))]=fc1[lane*4+0];
+                gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk2,64),rh))]=fc1[lane*4+2];
+            }
+            if tk3<ntoks {
+                gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk3,64),rl))]=fc1[lane*4+1];
+                gate[cast(int)add_wrap(gbase,add_wrap(mul_wrap(tk3,64),rh))]=fc1[lane*4+3];
+            }
+        }
+    }
+}
+
+// Batched gain/forget projection + fused gated recurrence apply:
+// out = cur - tanh(F . gate) * cur + tanh(G . gate) * msg.
+// One warp computes 16 channels x up to 16 tokens across rank 64 (4 k=16 steps).
+// Launch warps = n * ceil(dim / 16) * ceil(np / 16).
+ink_ctrl_out_mma :: (item:int,dim:int,np:int,stack:int,flags:int,gf0:int,gf1:int,gf2:int,arena:[]f32,cur:[]f32,msg:[]f32,gate_bf16:[]u32,out:[]f32) #export_c #effects(all) {
+    swa:=flags&255;c0:=(flags>>8)&255;
+    rtiles:=(dim+15)/16;ttiles:=(np+15)/16;
+    cl:=item/(rtiles*ttiles);
+    rem:=item%(rtiles*ttiles);
+    r0:=cast(u32)((rem%rtiles)*16);
+    t0:=cast(u32)((rem/rtiles)*16);
+    nd:=cast(u32)dim;ntoks:=cast(u32)np;
+    has1:=add_wrap(t0,8)<ntoks;
+    gf:=ifx cl==0 then gf0 else ifx cl==1 then gf1 else gf2;
+    gbase:=cast(u32)(gf&4294967295);fbase:=cast(u32)((gf>>32)&4294967295);
+    gb_base:=mul_wrap(cast(u32)(cl*np),32);
+    fg:[128]u32;ff:[128]u32;fb0:[64]u32;fb1:[64]u32;
+    ga0:[128]f32;ga1:[128]f32;fa0:[128]f32;fa1:[128]f32;
+    for lane:0..<32 {
+        ga0[lane*4+0]=0.0f32;ga0[lane*4+1]=0.0f32;ga0[lane*4+2]=0.0f32;ga0[lane*4+3]=0.0f32;
+        ga1[lane*4+0]=0.0f32;ga1[lane*4+1]=0.0f32;ga1[lane*4+2]=0.0f32;ga1[lane*4+3]=0.0f32;
+        fa0[lane*4+0]=0.0f32;fa0[lane*4+1]=0.0f32;fa0[lane*4+2]=0.0f32;fa0[lane*4+3]=0.0f32;
+        fa1[lane*4+0]=0.0f32;fa1[lane*4+1]=0.0f32;fa1[lane*4+2]=0.0f32;fa1[lane*4+3]=0.0f32;
+    }
+    for bk:cast(u32)0..<4 {
+        k0:=mul_wrap(bk,16);
+        for lane:0..<32 {
+            g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+            rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+            if rl<nd {
+                gl:=add_wrap(gbase,add_wrap(mul_wrap(rl,64),add_wrap(k0,mul_wrap(t,2))));
+                fl:=add_wrap(fbase,add_wrap(mul_wrap(rl,64),add_wrap(k0,mul_wrap(t,2))));
+                fg[lane*4+0]=ink_bf16_rne(arena[cast(int)gl])|(ink_bf16_rne(arena[cast(int)add_wrap(gl,1)])<<16);
+                fg[lane*4+2]=ink_bf16_rne(arena[cast(int)add_wrap(gl,8)])|(ink_bf16_rne(arena[cast(int)add_wrap(gl,9)])<<16);
+                ff[lane*4+0]=ink_bf16_rne(arena[cast(int)fl])|(ink_bf16_rne(arena[cast(int)add_wrap(fl,1)])<<16);
+                ff[lane*4+2]=ink_bf16_rne(arena[cast(int)add_wrap(fl,8)])|(ink_bf16_rne(arena[cast(int)add_wrap(fl,9)])<<16);
+            } else {
+                fg[lane*4+0]=0;fg[lane*4+2]=0;ff[lane*4+0]=0;ff[lane*4+2]=0;
+            }
+            if rh<nd {
+                gh:=add_wrap(gbase,add_wrap(mul_wrap(rh,64),add_wrap(k0,mul_wrap(t,2))));
+                fh:=add_wrap(fbase,add_wrap(mul_wrap(rh,64),add_wrap(k0,mul_wrap(t,2))));
+                fg[lane*4+1]=ink_bf16_rne(arena[cast(int)gh])|(ink_bf16_rne(arena[cast(int)add_wrap(gh,1)])<<16);
+                fg[lane*4+3]=ink_bf16_rne(arena[cast(int)add_wrap(gh,8)])|(ink_bf16_rne(arena[cast(int)add_wrap(gh,9)])<<16);
+                ff[lane*4+1]=ink_bf16_rne(arena[cast(int)fh])|(ink_bf16_rne(arena[cast(int)add_wrap(fh,1)])<<16);
+                ff[lane*4+3]=ink_bf16_rne(arena[cast(int)add_wrap(fh,8)])|(ink_bf16_rne(arena[cast(int)add_wrap(fh,9)])<<16);
+            } else {
+                fg[lane*4+1]=0;fg[lane*4+3]=0;ff[lane*4+1]=0;ff[lane*4+3]=0;
+            }
+            tk:=add_wrap(t0,g);
+            if tk<ntoks {
+                at0:=add_wrap(gb_base,add_wrap(mul_wrap(tk,32),add_wrap(mul_wrap(bk,8),t)));
+                fb0[lane*2+0]=gate_bf16[cast(int)at0];fb0[lane*2+1]=gate_bf16[cast(int)add_wrap(at0,4)];
+            } else {
+                fb0[lane*2+0]=0;fb0[lane*2+1]=0;
+            }
+            if has1 {
+                tk1:=add_wrap(tk,8);
+                if tk1<ntoks {
+                    at1:=add_wrap(gb_base,add_wrap(mul_wrap(tk1,32),add_wrap(mul_wrap(bk,8),t)));
+                    fb1[lane*2+0]=gate_bf16[cast(int)at1];fb1[lane*2+1]=gate_bf16[cast(int)add_wrap(at1,4)];
+                } else {
+                    fb1[lane*2+0]=0;fb1[lane*2+1]=0;
+                }
+            }
+        }
+        cu_mma_bf16_16x8x16(fg[..],fb0[..],ga0[..]);
+        cu_mma_bf16_16x8x16(ff[..],fb0[..],fa0[..]);
+        if has1 {
+            cu_mma_bf16_16x8x16(fg[..],fb1[..],ga1[..]);
+            cu_mma_bf16_16x8x16(ff[..],fb1[..],fa1[..]);
+        }
+    }
+    cb0:=cast(u32)((ifx swa!=0 then 0 else cl)*stack);
+    mb0:=cast(u32)((c0+cl)*stack);
+    ob0:=cast(u32)(cl*stack);
+    for lane:0..<32 {
+        g:=cast(u32)(lane/4);t:=cast(u32)(lane%4);
+        rl:=add_wrap(r0,g);rh:=add_wrap(rl,8);
+        tk0:=add_wrap(t0,mul_wrap(t,2));tk1:=add_wrap(tk0,1);
+        if rl<nd {
+            if tk0<ntoks {
+                off:=add_wrap(mul_wrap(tk0,nd),rl);
+                c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa0[lane*4+0])*c+ink_tanh(ga0[lane*4+0])*m;
+            }
+            if tk1<ntoks {
+                off:=add_wrap(mul_wrap(tk1,nd),rl);
+                c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa0[lane*4+1])*c+ink_tanh(ga0[lane*4+1])*m;
+            }
+        }
+        if rh<nd {
+            if tk0<ntoks {
+                off:=add_wrap(mul_wrap(tk0,nd),rh);
+                c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa0[lane*4+2])*c+ink_tanh(ga0[lane*4+2])*m;
+            }
+            if tk1<ntoks {
+                off:=add_wrap(mul_wrap(tk1,nd),rh);
+                c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa0[lane*4+3])*c+ink_tanh(ga0[lane*4+3])*m;
+            }
+        }
+        if has1 {
+            tk2:=add_wrap(tk0,8);tk3:=add_wrap(tk2,1);
+            if rl<nd {
+                if tk2<ntoks {
+                    off:=add_wrap(mul_wrap(tk2,nd),rl);
+                    c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                    out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa1[lane*4+0])*c+ink_tanh(ga1[lane*4+0])*m;
+                }
+                if tk3<ntoks {
+                    off:=add_wrap(mul_wrap(tk3,nd),rl);
+                    c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                    out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa1[lane*4+1])*c+ink_tanh(ga1[lane*4+1])*m;
+                }
+            }
+            if rh<nd {
+                if tk2<ntoks {
+                    off:=add_wrap(mul_wrap(tk2,nd),rh);
+                    c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                    out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa1[lane*4+2])*c+ink_tanh(ga1[lane*4+2])*m;
+                }
+                if tk3<ntoks {
+                    off:=add_wrap(mul_wrap(tk3,nd),rh);
+                    c:=cur[cast(int)add_wrap(cb0,off)];m:=msg[cast(int)add_wrap(mb0,off)];
+                    out[cast(int)add_wrap(ob0,off)]=c-ink_tanh(fa1[lane*4+3])*c+ink_tanh(ga1[lane*4+3])*m;
+                }
+            }
+        }
+    }
+}
+
+#test "IQ4_NL and Q8_0 BF16 tables are bit-exact and Q8 MMA kernels match scalar reference" {
+    for q:0..<16 {
+        #assert cu_bf16(ink_iq4_bf16(cast(u32)q),false)==ink_iq4_val(cast(u32)q);
+    }
+    for b:0..<256 {
+        p:=ink_q8_pair_bf16(cast(u32)b|(cast(u32)((b+1)&255)<<8));
+        #assert cu_bf16(p,false)==ink_signed(cast(u32)b);
+        #assert cu_bf16(p,true)==ink_signed(cast(u32)((b+1)&255));
+    }
+    rows:=32;cols:=32;tokens:=10;blocks:=1;words:=8;
+    wq:[32*1*8]u32;wd:[32*1]u16;x:[10*32]f32;xb:[10*16]u32;
+    out_mma:[10*32]f32;out_proj:[10*32]f32;out_ref:[10*32]f32;
+    for r:0..<rows {
+        wd[r]=cast(u16)ink_f16(0.25f32+0.03125f32*f32(r%7));
+        for w:0..<words {
+            v0:=cast(u32)((r*3+w*7+1)&255);v1:=cast(u32)((r*5+w*11+2)&255);
+            v2:=cast(u32)((r*7+w*13+3)&255);v3:=cast(u32)((r*11+w*17+4)&255);
+            wq[w*rows+r]=v0|(v1<<8)|(v2<<16)|(v3<<24);
+        }
+    }
+    for i:0..<tokens*cols {x[i]=f32((i%15)-7)*0.25f32;}
+    for i:0..<tokens*(cols/2) {ink_bf16_pack(i,tokens*(cols/2),x[..],xb[..]);}
+    for w:0..<2 {ink_q8_mma(w,rows,rows,cols,tokens,0,wq[..],wd[..],xb[..],out_mma[..]);}
+    pdesc:[10]u32;
+    pdesc[0]=0;pdesc[1]=0;pdesc[2]=32;pdesc[3]=32;pdesc[4]=0;pdesc[5]=0;pdesc[6]=0;pdesc[7]=8;pdesc[8]=32;pdesc[9]=2;
+    for w:0..<2 {ink_proj_mma(w,1,2,cols,tokens,pdesc[..],wq[..],wd[..],xb[..],out_proj[..]);}
+    for tok:0..<tokens {ink_mvq(tok,rows,rows,cols,0,1,wq[..],wd[..],x[..],out_ref[..]);}
+    for i:0..<tokens*rows {
+        d1:=out_mma[i]-out_ref[i];if d1<0 {d1=-d1;}
+        d2:=out_proj[i]-out_ref[i];if d2<0 {d2=-d2;}
+        #assert d1<0.001f32 && d2<0.001f32;
+    }
+}
+
+#test "MoE IQ4_NL MMA kernels match scalar reference including >8-token tasks" {
+    n_ff:=32;d:=32;tokens:=9;
+    x:[9*32]f32;xb:[9*16]u32;
+    for i:0..<tokens*d {x[i]=f32((i%15)-7)*0.25f32;}
+    for i:0..<tokens*(d/2) {ink_bf16_pack(i,tokens*(d/2),x[..],xb[..]);}
+    gu_buf:[64*1*4+64*1/2]u32;gu_h:[64*1*9]u16;
+    dn_buf:[32*1*4+32*1/2]u32;dn_h:[32*1*9]u16;
+    for i:0..<64*4 {gu_buf[i]=cast(u32)((i*17+3)&255)|(cast(u32)((i*23+7)&255)<<8)|(cast(u32)((i*31+11)&255)<<16)|(cast(u32)((i*37+13)&255)<<24);}
+    for i:0..<64 {gu_h[64*8+i]=cast(u16)ink_f16(0.0625f32+0.015625f32*f32(i%5));}
+    for i:0..<32*4 {dn_buf[i]=cast(u32)((i*19+5)&255)|(cast(u32)((i*29+9)&255)<<8)|(cast(u32)((i*41+15)&255)<<16)|(cast(u32)((i*43+1)&255)<<24);}
+    for i:0..<32 {dn_h[32*8+i]=cast(u16)ink_f16(0.0625f32+0.015625f32*f32(i%4));}
+    tslot:[1]u32;tbase:[1]u32;tcnt:[1]u32;stok:[9]u32;spair:[9]u32;wts:[9]f32;
+    tslot[0]=0;tbase[0]=0;tcnt[0]=9;
+    for e:0..<9 {stok[e]=cast(u32)e;spair[e]=cast(u32)e;wts[e]=0.25f32+0.125f32*f32(e%4);}
+    gu_out:[9*64]f32;hid_bf16:[9*16]u32;dn_out:[9*32]f32;
+    for w:0..<4 {ink_moe_gu_iq4_mma(w,n_ff,d,gu_buf[..],gu_h[..],xb[..],tslot[..],tbase[..],tcnt[..],stok[..],gu_out[..]);}
+    for i:0..<9*(n_ff/2) {ink_moe_situ_pack(i,9,n_ff,1.5f32,10.0f32,gu_out[..],spair[..],wts[..],hid_bf16[..]);}
+    for w:0..<2 {ink_moe_down_iq4_mma(w,d,n_ff,dn_buf[..],dn_h[..],hid_bf16[..],tslot[..],tbase[..],tcnt[..],spair[..],dn_out[..]);}
+    ids9:[9]u32;hid9:[9*32]f32;ref9:[9*32]f32;
+    for e:0..<9 {ids9[e]=0;}
+    for gi:0..<9*2 {ink_moe_gu(gi,n_ff,d,1,0,1.5f32,10.0f32,gu_buf[..],gu_h[..],x[..],ids9[..],hid9[..]);}
+    for gi:0..<9 {ink_moe_down(gi,d,n_ff,1,0,dn_buf[..],dn_h[..],hid9[..],ids9[..],wts[..],ref9[..]);}
+    max_abs:f32=0;max_ref:f32=0;
+    for i:0..<9*d {
+        diff:=dn_out[i]-ref9[i];if diff<0 {diff=-diff;}
+        mag:=ref9[i];if mag<0 {mag=-mag;}
+        if diff>max_abs {max_abs=diff;}
+        if mag>max_ref {max_ref=mag;}
+    }
+    #assert max_ref>1.0f32 && max_abs<0.01f32*max_ref;
+    for e:0..<9 {
+        for j:0..<n_ff {
+            g0:=gu_out[e*2*n_ff+2*j];u0:=gu_out[e*2*n_ff+2*j+1];
+            act:=1.5f32*ink_tanh(g0/1.5f32)*ink_sigmoid(g0);
+            up:=10.0f32*ink_tanh(u0/10.0f32);
+            d0:=act*up-hid9[e*n_ff+j];if d0<0 {d0=-d0;}
+            #assert d0<0.005f32;
+        }
+    }
+}
+
+#test "ink_attn_online matches ink_attn with non-dividing GQA, SWA, rel_bias, clip, tau, and sink" {
+    n_head:=3;n_head_kv:=1;head_dim:=128;n_rel:=16;extent:=6;swa:=4;kv_cap:=8;np:=3;pos0:=3;
+    dims0:=n_head|(n_head_kv<<16)|(head_dim<<32)|(n_rel<<48);
+    dims1:=extent|(1<<24)|(swa<<32);
+    kv_info:=kv_cap|(16<<32);
+    q:[3*3*128]f32;r:[3*3*16]f32;rel_bias:[6*16]f32;sinks:[3*3]f32;gate:[3*3*128]f32;
+    k_cache:[8*128]u16;v_cache:[8*128]u16;scores:[3*3*16]f32;
+    qclip:[3*128]f32;rclip:[3*16]f32;out_ref:[3*3*128]f32;out_on:[3*3*128]f32;
+    for i:0..<3*3*128 {q[i]=f32((i%17)-8)*0.125f32;gate[i]=f32((i%11)-5)*0.2f32;}
+    for i:0..<3*3*16 {r[i]=f32((i%13)-6)*0.15f32;}
+    for i:0..<6*16 {rel_bias[i]=f32((i%9)-4)*0.1f32;}
+    for i:0..<3*3 {sinks[i]=f32((i%5)-2)*0.3f32;}
+    for i:0..<8*128 {
+        k_cache[i]=cast(u16)ink_f16(f32((i%19)-9)*0.125f32);
+        v_cache[i]=cast(u16)ink_f16(f32((i%15)-7)*0.125f32);
+    }
+    for i:0..<3*128 {qclip[i]=0.5f32+0.05f32*f32(i%7);}
+    for i:0..<3*16 {rclip[i]=0.6f32+0.05f32*f32(i%5);}
+    pbuf:[1]u32;pbuf[0]=cast(u32)pos0;
+    for itm:0..<np*n_head {
+        ink_attn(itm,dims0,dims1,kv_info,pos0,q[..],r[..],rel_bias[..],sinks[..],gate[..],k_cache[..],v_cache[..],scores[..],out_ref[..],3,2.0f32,1.5f32,0.1f32,2.0f32,qclip[..],rclip[..],pbuf[..]);
+    }
+    // Run both CTAs (t_step=2 for gqa=3, np=3) in reverse order so out-of-range dt=2 would clobber CTA 1's tok=2.
+    for ri:0..<2 {
+        itm:=1-ri;
+        ink_attn_online(itm,dims0,dims1,kv_cap,pos0,np,q[..],r[..],rel_bias[..],sinks[..],gate[..],k_cache[..],v_cache[..],out_on[..],3,2.0f32,1.5f32,0.1f32,2.0f32,qclip[..],rclip[..]);
+    }
+    max_d:f32=0.0f32;
+    for i:0..<3*3*128 {
+        d:=out_on[i]-out_ref[i];if d<0 {d=-d;}
+        if d>max_d {max_d=d;}
+    }
+    #assert max_d<0.0001f32;
+}
+
+#test "ink_ctrl MMA kernels match ink_ctrl_gate and ink_ctrl_out" {
+    dim:=32;np:=3;stack:=3*32;
+    // arena holds D [64, 64] at 0, G [32, 64] at 4096, F [32, 64] at 6144.
+    arena:[8192]f32;cur:[3*32]f32;msg:[3*32]f32;
+    gate_ref:[3*64]f32;gate_mma:[3*64]f32;out_ref:[3*32]f32;out_mma:[3*32]f32;
+    xb:[3*32]u32;gb:[3*32]u32;
+    for i:0..<8192 {arena[i]=f32((i%13)-6)*0.0625f32;}
+    for i:0..<3*32 {cur[i]=f32((i%11)-5)*0.25f32;msg[i]=f32((i%9)-4)*0.25f32;}
+    gf0:=4096|(6144<<32);
+    for itm:0..<np*64 {ink_ctrl_gate(itm,dim,np,stack,0,0,0,0,arena[..],cur[..],msg[..],gate_ref[..]);}
+    for itm:0..<np {ink_ctrl_out(itm,dim,np,stack,0,gf0,0,0,arena[..],cur[..],msg[..],gate_ref[..],out_ref[..]);}
+    for itm:0..<np {ink_ctrl_pack_bf16(itm,dim,np,stack,0,cur[..],msg[..],xb[..]);}
+    for w:0..<4 {ink_ctrl_gate_mma(w,dim,np,0,0,0,arena[..],xb[..],gate_mma[..]);}
+    for i:0..<np*32 {ink_bf16_pack(i,np*32,gate_mma[..],gb[..]);}
+    for w:0..<2 {ink_ctrl_out_mma(w,dim,np,stack,0,gf0,0,0,arena[..],cur[..],msg[..],gb[..],out_mma[..]);}
+    max_g:f32=0.0f32;max_o:f32=0.0f32;
+    for i:0..<np*64 {d:=gate_mma[i]-gate_ref[i];if d<0 {d=-d;} if d>max_g {max_g=d;}}
+    for i:0..<np*dim {d:=out_mma[i]-out_ref[i];if d<0 {d=-d;} if d>max_o {max_o=d;}}
+    #assert max_g<0.02f32 && max_o<0.02f32;
 }

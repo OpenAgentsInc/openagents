@@ -61,19 +61,32 @@ checkpoint, 15.07 GiB is the MoE experts, and a token uses 8 of each layer's
   one the router has lately scored lowest. That cut the misses of a 128-token
   reply from 551 to 422. The arithmetic is the same either way: an 8 GB plan
   and a 16 GB plan produce bit-identical logits.
-- A prefill batch is at most `slots / 8` tokens (and at most 32), so a batch's
-  experts are always in the cache together.
+- A prefill batch is up to 128 tokens (`INK_MAX_BATCH = 128` on GPUs with >= 12 GiB
+  free, 64 on 8–12 GiB, 16 below 8 GiB). With grouped-expert Tensor Core MoE
+  streaming, in-cache hits execute in Pass 1 and missed experts stream in
+  chunks of at most `slots` experts without thrashing the cache. (The legacy
+  scalar/table fallback path with `INK_NO_MMA=1` or `INK_NO_TABLES=1` still
+  caps the batch at `min(32, slots / 8)`.)
 
 The plan is made before any large allocation: `resident`, `streaming`, or
 `refused` when even 16 slots a layer do not fit. A refusal names the VRAM
 needed and the longest context that fits.
 
-Environment switches for testing: `INK_VRAM_MB` plans as if that much VRAM were
-free, `INK_EXPERT_SLOTS` caps every layer's cache, `INK_BATCH` caps the prefill
-batch, `INK_PROFILE=1` prints time per kernel, and `INK_ORACLE_Q8=1` rounds
-matvec inputs the way ggml does (a parity diagnostic, see below).
+Environment switches for testing and diagnostics:
+- `INK_VRAM_MB` plans as if that much VRAM were free.
+- `INK_EXPERT_SLOTS` caps every layer's expert cache.
+- `INK_BATCH` caps the prefill batch size.
+- `INK_NO_MMA=1` disables Tensor Core (`cu_mma_bf16_16x8x16`) prefill kernels.
+- `INK_NO_GRAPH=1` disables CUDA Graph decode capture/replay.
+- `INK_NO_TABLES=1` runs direct scalar/fallback kernels (also disables online-softmax prefill attention).
+- `INK_PROFILE=1` synchronizes and prints per-kernel time (disables CUDA Graphs while profiling).
+- `INK_ORACLE_Q8=1` rounds matvec inputs the way ggml does (parity diagnostic, see below).
+- `PSIONIC_PTX_CACHE` overrides the PTX disk cache directory (default `~/.openagents/cache/psionic`, or `%LOCALAPPDATA%\.openagents\cache\psionic` on Windows); `PSIONIC_NO_PTX_CACHE=1` forces fresh NVRTC compilation.
 
 ## Measured on an RTX 4080 (16 GB), Linux, driver 595.71, 2026-11-22
+
+See [inkling-cuda-hillclimb-report-2026-11-22.md](inkling-cuda-hillclimb-report-2026-11-22.md)
+for the full optimization breakdown, register/spill audit, and bug postmortems.
 
 Checkpoint `Inkling-2-Mini-IQ4_NL.gguf`, SHA-256
 `cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4`. The card
@@ -84,16 +97,20 @@ layers on the GPU, the most that fit.
 
 | Check | Result |
 | --- | --- |
+| PTX disk cache (`--test-quant-kernels` startup compile) | cold `3.77s` → warm **`0.00s`** (server load `1.43s` at ctx 32,768) |
 | `--test-quant-kernels` | `nvfp4_max_abs=0.00e+00 mxfp8_max_abs=0.00e+00 iq4_max_abs=0.00e+00 ok=true` |
-| `--verify-prefill-decode` (batched against one token at a time) | `max_abs=0.00105 cos=1.000000 ok=true` (the two paths now add in a different order) |
-| Decode, short context (128 tokens after a 23-token prompt) | 75.7 tok/s (llama.cpp: 8.6) |
-| Decode after a 900-token prompt | 64.5 tok/s |
-| Prefill, 900-token prompt | 180 tok/s (llama.cpp on a 1,356-token prompt: 21.7 to 22.9, see the note) |
-| Plan as an 8 GB card (`INK_VRAM_MB=8192`) | prefill 38.7 tok/s, decode 42.3 tok/s, logits bit-identical to the 16 GB plan |
-| Plan with 3,000 MB free | refused before allocation: `insufficient VRAM: 3000 MB free ... needs 3868 MB with the smallest expert cache (17050 MB with every expert in VRAM)` |
-| `psionic-inkling-serve --ctx 32768` | loads, plans 15,441 MB, answers `/v1/chat/completions` (`391`, 29 prompt tokens, as on Metal) and `/v1/responses` |
+| `ptxas --gpu-name=sm_89 -v` spill audit | **0 bytes stack frame, 0 spill loads/stores** across all 47 kernels |
+| `--verify-prefill-decode` (MMA batched prefill vs CUDA Graph 1-token decode) | `top1_diff=0.01818 max_abs=0.62459 rmse=0.124458 cos=0.999957 ok=true` |
+| Decode, short context (128 tokens, 28-token prompt) | **`78.19 tok/s`** with segmented CUDA Graphs (`75.49 tok/s` with `INK_NO_GRAPH=1`, bit-identical `max_abs=0.00e+00`; llama.cpp: `8.6 tok/s`) |
+| Decode after a 900-token prompt (64 tokens) | **`63.87 tok/s`** |
+| Prefill, 900-token prompt | **`634.3 tok/s`** (`1.419s`, **4.06×** vs `INK_NO_MMA=1` at `156.2 tok/s`, **3.52×** vs prior `180 tok/s`; `cos=0.999777`, exact top-5 match; target `>= 500 tok/s` exceeded) |
+| Prefill, 1,219-token prompt | **`632.7 tok/s`** (`1.927s`, **5.90×** vs scalar `107.3 tok/s`; run-to-run determinism `max_abs=0.00e+00`) |
+| Prefill, 1,993-token prompt | **`598.0 tok/s`** (`3.333s`) |
+| Plan as an 8 GB card (`INK_VRAM_MB=8192`, 1,219-token prompt) | prefill **`93.1 tok/s`** (up from `38.7 tok/s`), decode `35.89 tok/s`, logits **bit-identical** (`max_abs=0.00e+00`) to 16 GB plan |
+| Plan with 3,000 MB free (`INK_VRAM_MB=3000`) | refused before allocation: `insufficient VRAM: 3000 MB free ... needs 3845 MB with the smallest expert cache (17028 MB with every expert in VRAM); largest context that fits: 0` |
+| `psionic-inkling-serve --ctx 32768` (CUDA Graphs ON) | loads in `1.43s`, plans `15,422 MB` (`106/128` experts cached), answers `/v1/chat/completions` (`17 * 23 = 391`, `74.3 tok/s`) and `/v1/responses` (`23/23` prefix-cached in `0.001s`, **`83.1 tok/s`** warm decode) |
 | Driver hidden | `pc_open` returns `PC_ABSENT`; the CLI exits with `no NVIDIA GPU: no CUDA driver library (libcuda.so.1)` |
-| MinGW cross-compile | `psionic-inkling-serve.exe` and `psionic-inkling-cli.exe` link. Not run: there is no Windows host here. |
+| MinGW Windows cross-compile | `psionic-inkling-serve.exe` (295 KB) and `psionic-inkling-cli.exe` (200 KB) link with 0 warnings. Not run: no Windows host here. |
 
 Note on the llama.cpp prefill number. When b12626 is given 32 or more tokens in
 one batch on this card, it returns NaN logits for this model (at 64, 128, 256,
@@ -166,17 +183,45 @@ path), 71.1 (gate outputs), 73.6 (sums and router), 75.7 (expert replacement).
 Every step kept the logits: the cosine against the step before is 1.0000000,
 and against llama.cpp it is what the table above shows.
 
+## How prefill reached 634+ tok/s and decode reached 78–83 tok/s
+
+1. **Cross-platform PTX disk cache (`cuda-host.c`).** Compiled PTX is cached by
+   a 128-bit hash of the generated kernel source, byte length, SM capability,
+   and driver version (atomic write-temp-and-rename on POSIX and Win32), taking
+   warm startup compile time from `3.77s` to `0.00s`.
+2. **Zero-spill Tensor Core (`cu_mma_bf16_16x8x16`) dense and grouped-MoE
+   kernels (`kernels-cuda.coax`).** Per-lane fragments use unrolled scalar
+   arrays so NVVM keeps every tile in registers (`0 B` stack frame across all
+   47 kernels). `ink_proj_mma` (`16×32`) fuses all 6–8 attention Q8\_0
+   projections into one launch; `ink_q8_mma` (`16×16`) handles `attn_output`;
+   `ink_moe_{gu,down}_{iq4,q8}_mma` group tokens by active expert (up to 16
+   tokens/task) with branchless BF16 dequantization and two-pass streaming
+   (cached hits first, then chunked misses) so batches scale to `INK_MAX_BATCH
+   = 128`.
+3. **Batched Tensor Core cross-pass recurrence control gate.** `ink_ctrl_pack_bf16`,
+   `ink_ctrl_gate_mma`, and `ink_ctrl_out_mma` cut recurrence control gate cost
+   from `0.322 ms` to `0.078 ms/step`.
+4. **Online-softmax GQA prefill attention (`ink_attn_online`).** Processes up
+   to 8 Q vectors sharing one KV head (`t_step = 8 / min(gqa, 8)`, reusing each
+   8-key KV tile in shared memory), handles exact sink logit `0` via initial
+   `m = 0, s = 1`, and eliminates the `attn_scores` DRAM buffer for prefill (so
+   `INK_MAX_BATCH = 128` fits at both 4K and 32K context while keeping
+   `114/128` experts cached at 4K).
+5. **CUDA Graph decode (`dev_pos` + `decode_graph[2]` / `stream_seg[]`).**
+   `ink_kv1`, `ink_clip`, `ink_kv_store`, and `ink_attn` read the token
+   position from a 4-byte device buffer `dev_pos` when `pos < 0`. Resident GPUs
+   capture the entire forward pass into one graph; streaming GPUs capture one
+   graph per inter-sync segment (collapsing ~750 launches into 49 graph replays
+   per token). `cuda-host.c` binds the primary context per host thread via TLS
+   so multi-threaded HTTP servers (`psionic-inkling-serve`) capture and replay
+   cleanly.
+
 ## Not done yet
 
-- **Fully resident run on a 24 GB card.** Not possible on this machine. The
-  planner tests cover it; no 24 GB card has run it.
-- **The 500 tok/s prefill target.** Not met: 180 tok/s on a 900-token prompt.
-  Batched prefill still decodes each weight block once per token. A
-  tensor-core GEMM (`cu_mma_bf16_16x8x16`) that decodes a block once per batch
-  is the path to hundreds of tokens a second.
-- **Decode beyond 75 tok/s.** See the next section for where a token's time
-  goes. CUDA Graphs (`pc_capture_begin` / `pc_replay`) would remove the
-  host's part of the roughly 750 launches a token.
-- **Windows.** The code cross-compiles. Nothing has run on Windows.
+- **Fully resident run on a 24 GB+ card.** Not possible on this 16 GB machine.
+  Both the planner tests and the single-graph `decode_graph[2]` path are wired;
+  no 24 GB+ card has executed the resident path yet.
+- **Native Windows execution.** Both `.exe` binaries cross-compile cleanly via
+  MinGW with zero warnings; runtime verification requires a Windows NVIDIA host.
 - **Tier 2 and the 27-task Session History suites.** They run through
-  OpenAgents Desktop, which needs the Linux host work of Track B3 and B4.
+  OpenAgents Desktop against the Linux/Windows local model host (Track B3/B4).
