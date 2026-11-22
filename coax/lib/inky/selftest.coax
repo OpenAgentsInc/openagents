@@ -153,6 +153,19 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("FAIL: spill readback"); return 1;
   }
 
+  // 8b. Global filesystem find is refused immediately before spawning (exit 126, no TCC scan);
+  // workspace-scoped find runs normally (exit 0).
+  ne = ik_st_run_tool(r[..], h[..], b[..], 11, "c11b", "run_command", "{\"command\":\"find / -name \\\"OpenAgents.app\\\" -maxdepth 8 -type d 2>/dev/null | head\"}", evs[..]);
+  o11b := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || ne != 1 || evs[0].kind != IK_EV_COMMAND || evs[0].exit != 126 || !ik_st_has(o11b, "Refused: `find` scans outside the workspace") {
+    tool_errln("FAIL: global find must be refused before spawning"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 11, "c11c", "run_command", "{\"command\":\"find . -maxdepth 3 -name app.txt\"}", evs[..]);
+  o11c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || ne != 1 || evs[0].exit != 0 || !ik_st_has(o11c, "app.txt") {
+    tool_errln("FAIL: workspace-scoped find should succeed"); return 1;
+  }
+
   // 9. update_todos emits IK_EV_TODOS
   ne = ik_st_run_tool(r[..], h[..], b[..], 12, "c12", "update_todos", "{\"todos\":[{\"id\":\"1\",\"content\":\"ship inky\",\"status\":\"in_progress\"}]}", evs[..]);
   if h[0].msgs[h[0].n - 1].is_error || ne != 1 || evs[0].kind != IK_EV_TODOS {

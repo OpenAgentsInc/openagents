@@ -24,26 +24,34 @@
 // deep. A folder that can't be told ($VAR, ~user, cd -, --git-dir) counts as a shared one. A heredoc's
 // body and a quoted message are text, never commands.
 //
-// mc_gg_check is pure: it lists each refused git command with the folder it would run in.
-// mc_gg_refuse then asks the filesystem which of those folders are main checkouts. Microcoder's shell
-// tool (tools.coax mc_git_refusal) and Claude sub-agents' Bash tool (coder/tui/gitguard.coax, a
-// Claude Code PreToolUse hook, GitHub #13771) both refuse through it.
+// mc_gg_check is pure: it lists each refused git command with the folder it would run in, plus any
+// broad/global filesystem scan (find/fd/rg/grep -r/ls -R/ls ~/*/tree/du/mdfind/locate/glob /**/
+// python -c global walk targeting /, ~, $HOME, /Users, /Volumes, /System/Volumes/Data, ~/Library,
+// or macOS TCC folders like Photos/Desktop/Documents/Downloads outside cwd). mc_gg_refuse always
+// refuses broad scans (even in worktrees) and checks shared checkouts for git mutations. Inky,
+// Microcoder (tools.coax mc_git_refusal), and Claude Code (coder/tui/gitguard.coax) all refuse through it.
 
 #load "commit.coax";
 #load "../sys/fs.coax";
 
-MC_GG_HITS :: 8;
+MC_GG_HITS :: 16;
 MC_GG_ARENA :: 16384;
 MC_GG_DEPTH :: 2;                // sh -c / eval levels read inside a command
 MC_GG_NEST :: 8;                 // subshells deep whose folder is remembered
+
+MC_GG_KIND_GIT :: 0;             // destructive git command (refused in shared checkouts only)
+MC_GG_KIND_SCAN :: 1;            // broad/TCC filesystem scan outside workspace (refused everywhere)
 
 // A folder as the guard knows it: bytes at..<at+size of the arena, size -1 when it can't be told.
 McGgDir :: struct { at: int; size: int; }
 
 McGitHits :: struct {
   n: int;
+  kind: [MC_GG_HITS] int;        // MC_GG_KIND_GIT or MC_GG_KIND_SCAN
   why: [MC_GG_HITS] string;      // the refused form, as the refusal names it
-  dir: [MC_GG_HITS] McGgDir;     // the folder it would run in
+  dir: [MC_GG_HITS] McGgDir;     // the folder it would run in / scan
+  cwd: McGgDir;                  // normalized starting workspace of the command
+  home: McGgDir;                 // normalized HOME folder (size -1 when unset)
   arena: [MC_GG_ARENA] u8; na: int;
   over: bool;                    // the command is longer than the guard reads whole
 }
@@ -55,49 +63,74 @@ mc_gg_dir :: (h: [] McGitHits, d: McGgDir) -> string {
   return cast(string) h[0].arena[d.at..<d.at + d.size];
 }
 
-// One path's parts onto the folder being built at the arena's end (size bytes of it so far):
-// "." stays, ".." goes up one, an empty part (//) is nothing. -1 when the arena is full.
-mc_gg_push_parts :: (h: [] McGitHits, start: int, size: int, path: string) -> int {
+mc_gg_store :: (h: [] McGitHits, s: string) -> McGgDir {
+  if s.count == 0 { return MC_GG_UNKNOWN; }
+  if h[0].na + s.count > MC_GG_ARENA { return MC_GG_UNKNOWN; }
+  at := h[0].na;
+  for b: s { h[0].arena[h[0].na] = b; h[0].na += 1; }
+  return McGgDir.{at = at, size = s.count};
+}
+
+// One path's parts onto a path buffer (size bytes of it so far):
+// "." stays, ".." goes up one, an empty part (//) is nothing. -1 when out is full.
+mc_gg_push_buf :: (out: [] u8, size: int, path: string) -> int {
   n := size; i := 0;
   while i <= path.count {
     j := i;
     while j < path.count && path[j] != '/' { j += 1; }
     part := cast(string) path[i..<j];
     if part == ".." {
-      while n > 0 && h[0].arena[start + n - 1] != '/' { n -= 1; }
+      while n > 0 && out[n - 1] != '/' { n -= 1; }
       if n > 0 { n -= 1; }
     } else if part.count > 0 && part != "." {
-      if start + n + 1 + part.count > MC_GG_ARENA { return -1; }
-      h[0].arena[start + n] = '/'; n += 1;
-      for b: part { h[0].arena[start + n] = b; n += 1; }
+      if n + 1 + part.count > out.count { return -1; }
+      out[n] = '/'; n += 1;
+      for b: part { out[n] = b; n += 1; }
     }
     i = j + 1;
   }
   return n;
 }
 
-// Where `cd arg` from dir lands: an absolute path, ~ or ~/x (home), or a path under dir, its . and ..
-// worked out. Unknown when the word has an expansion in it, names another user's home, is cd -, or
-// dir itself is unknown.
+// One path's parts onto the folder being built at the arena's end (size bytes of it so far):
+// "." stays, ".." goes up one, an empty part (//) is nothing. -1 when the arena is full.
+mc_gg_push_parts :: (h: [] McGitHits, start: int, size: int, path: string) -> int {
+  return mc_gg_push_buf(h[0].arena[start..<MC_GG_ARENA], size, path);
+}
+
+// Where `cd arg` from dir lands: an absolute path, ~ / ~/x / $HOME / ${HOME} (home), or a path
+// under dir, its . and .. worked out. Unknown when the word has an expansion in it, names another
+// user's home, is cd -, or dir itself is unknown.
 mc_gg_resolve :: (h: [] McGitHits, dir: McGgDir, arg: string, home: string) -> McGgDir {
-  for b: arg { if b == '$' || b == '`' || b == '*' || b == '?' || b == '[' || b == '{' || b == '\\' { return MC_GG_UNKNOWN; } }
-  if arg == "-" { return MC_GG_UNKNOWN; }
+  sub := arg;
+  from_home := false;
+  if sub.count == 0 || sub == "~" || sub == "$HOME" || sub == "${HOME}" {
+    from_home = true; sub = "";
+  } else if mc_cmd_starts(sub, "~/") {
+    from_home = true; sub = cast(string) sub[2..<sub.count];
+  } else if mc_cmd_starts(sub, "$HOME/") {
+    from_home = true; sub = cast(string) sub[6..<sub.count];
+  } else if mc_cmd_starts(sub, "${HOME}/") {
+    from_home = true; sub = cast(string) sub[8..<sub.count];
+  }
+  for b: sub { if b == '$' || b == '`' || b == '*' || b == '?' || b == '[' || b == '{' || b == '\\' { return MC_GG_UNKNOWN; } }
+  if !from_home && sub == "-" { return MC_GG_UNKNOWN; }
   start := h[0].na; n := 0;
-  if arg.count == 0 || arg == "~" || mc_cmd_starts(arg, "~/") {
+  if from_home {
     if home.count == 0 || home[0] != '/' { return MC_GG_UNKNOWN; }
     n = mc_gg_push_parts(h, start, 0, home);
-    if n >= 0 && arg.count > 1 { n = mc_gg_push_parts(h, start, n, cast(string) arg[2..<arg.count]); }
-  } else if arg[0] == '~' {
+    if n >= 0 && sub.count > 0 { n = mc_gg_push_parts(h, start, n, sub); }
+  } else if sub[0] == '~' {
     return MC_GG_UNKNOWN;
-  } else if arg[0] == '/' {
-    n = mc_gg_push_parts(h, start, 0, arg);
+  } else if sub[0] == '/' {
+    n = mc_gg_push_parts(h, start, 0, sub);
   } else {
     if dir.size < 0 { return MC_GG_UNKNOWN; }
     base := mc_gg_dir(h, dir);
     if base.count == 0 || base[0] != '/' { return MC_GG_UNKNOWN; }
     // the base is a folder this guard worked out already, so it is copied as it is ("/" as nothing)
     if base != "/" { for b: base { if start + n >= MC_GG_ARENA { return MC_GG_UNKNOWN; } h[0].arena[start + n] = b; n += 1; } }
-    n = mc_gg_push_parts(h, start, n, arg);
+    n = mc_gg_push_parts(h, start, n, sub);
   }
   if n < 0 { return MC_GG_UNKNOWN; }
   if n == 0 { if start >= MC_GG_ARENA { return MC_GG_UNKNOWN; } h[0].arena[start] = '/'; n = 1; }
@@ -107,7 +140,15 @@ mc_gg_resolve :: (h: [] McGitHits, dir: McGgDir, arg: string, home: string) -> M
 
 mc_gg_hit :: (h: [] McGitHits, why: string, dir: McGgDir) {
   if h[0].n >= MC_GG_HITS { h[0].over = true; return; }
-  h[0].why[h[0].n] = why; h[0].dir[h[0].n] = dir; h[0].n += 1;
+  h[0].kind[h[0].n] = MC_GG_KIND_GIT; h[0].why[h[0].n] = why; h[0].dir[h[0].n] = dir; h[0].n += 1;
+}
+
+mc_gg_scan_hit :: (h: [] McGitHits, why: string, path: string) {
+  if h[0].n >= MC_GG_HITS { h[0].over = true; return; }
+  h[0].kind[h[0].n] = MC_GG_KIND_SCAN;
+  h[0].why[h[0].n] = why;
+  h[0].dir[h[0].n] = mc_gg_store(h, path);
+  h[0].n += 1;
 }
 
 mc_gg_lower_starts :: (s: string, head: string) -> bool {
@@ -239,23 +280,579 @@ mc_gg_unquote :: (s: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-// One simple command, words w[0..<n] of c, run in dir: its refused git command, if any, is listed;
-// the folder later commands run in is given back (a cd moves it).
+// ---------------------------------------------------------------- global scan / TCC guard
+
+mc_gg_lower :: (b: u8) -> u8 { return ifx b >= 'A' && b <= 'Z' then b + 32 else b; }
+
+mc_gg_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if mc_gg_lower(a[i]) != mc_gg_lower(b[i]) { return false; } }
+  return true;
+}
+
+mc_gg_starts_ci :: (s: string, head: string) -> bool {
+  if s.count < head.count { return false; }
+  for i: 0..<head.count { if mc_gg_lower(s[i]) != mc_gg_lower(head[i]) { return false; } }
+  return true;
+}
+
+mc_gg_under_ci :: (root: string, path: string) -> bool {
+  if root.count == 0 || path.count == 0 || root[0] != '/' || path[0] != '/' { return false; }
+  if root == "/" { return true; }
+  if path.count < root.count { return false; }
+  if !mc_gg_eq_ci(cast(string) path[0..<root.count], root) { return false; }
+  return path.count == root.count || path[root.count] == '/';
+}
+
+mc_gg_rel_starts_ci :: (rel: string, prefix: string) -> bool {
+  if rel.count < prefix.count { return false; }
+  if !mc_gg_eq_ci(cast(string) rel[0..<prefix.count], prefix) { return false; }
+  return rel.count == prefix.count || rel[prefix.count] == '/';
+}
+
+mc_gg_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if cast(string) hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+// True when p is strictly one path component beneath parent (e.g. "/Users/alice" under "/Users").
+mc_gg_single_child_of :: (parent: string, p: string) -> bool {
+  if p.count <= parent.count + 1 { return false; }
+  if !mc_gg_eq_ci(cast(string) p[0..<parent.count], parent) || p[parent.count] != '/' { return false; }
+  for i: parent.count + 1..<p.count { if p[i] == '/' { return false; } }
+  return true;
+}
+
+// Returns the relative path inside a user's home folder (e.g. "Pictures/foo" for "/Users/alice/Pictures/foo"),
+// or "" when p is not strictly beneath any user home folder.
+mc_gg_user_home_rel :: (p: string, home: string) -> string {
+  if home.count > 1 && mc_gg_under_ci(home, p) {
+    if p.count == home.count { return ""; }
+    return cast(string) p[home.count + 1..<p.count];
+  }
+  prefixes := [3] string.["/Users/", "/home/", "/System/Volumes/Data/Users/"];
+  for pi: 0..<3 {
+    pre := prefixes[pi];
+    if mc_gg_starts_ci(p, pre) {
+      j := pre.count;
+      while j < p.count && p[j] != '/' { j += 1; }
+      if j + 1 < p.count && p[j] == '/' { return cast(string) p[j + 1..<p.count]; }
+    }
+  }
+  return "";
+}
+
+// Broad filesystem / user-home roots whose recursive scan crawls the whole disk or all user folders
+// (including macOS TCC-protected Photos, Desktop, Documents, Downloads, Mail, Messages, etc.).
+mc_gg_is_broad_root :: (p: string, home: string) -> bool {
+  if p == "/" { return true; }
+  if mc_gg_eq_ci(p, "/Users") || mc_gg_eq_ci(p, "/home") || mc_gg_eq_ci(p, "/Volumes") { return true; }
+  if mc_gg_eq_ci(p, "/System") || mc_gg_eq_ci(p, "/System/Volumes") || mc_gg_eq_ci(p, "/System/Volumes/Data") || mc_gg_eq_ci(p, "/System/Volumes/Data/Users") { return true; }
+  if mc_gg_eq_ci(p, "/Network") || mc_gg_eq_ci(p, "/private") { return true; }
+  if home.count > 0 && mc_gg_eq_ci(p, home) { return true; }
+  if mc_gg_single_child_of("/Users", p) || mc_gg_single_child_of("/home", p) || mc_gg_single_child_of("/System/Volumes/Data/Users", p) { return true; }
+  if mc_gg_single_child_of("/Volumes", p) { return true; }
+  rel := mc_gg_user_home_rel(p, home);
+  if rel.count > 0 && (mc_gg_eq_ci(rel, "Library") || mc_gg_eq_ci(rel, "Library/Application Support")) { return true; }
+  return false;
+}
+
+// Relative paths under a user home folder that trigger macOS TCC permission dialogs.
+mc_gg_is_tcc_rel :: (rel: string) -> bool {
+  if mc_gg_rel_starts_ci(rel, "Desktop") || mc_gg_rel_starts_ci(rel, "Documents") || mc_gg_rel_starts_ci(rel, "Downloads") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Pictures") || mc_gg_rel_starts_ci(rel, "Movies") || mc_gg_rel_starts_ci(rel, "Music") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Mail") || mc_gg_rel_starts_ci(rel, "Library/Messages") || mc_gg_rel_starts_ci(rel, "Library/Calendars") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Contacts") || mc_gg_rel_starts_ci(rel, "Library/Reminders") || mc_gg_rel_starts_ci(rel, "Library/Safari") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/HomeKit") || mc_gg_rel_starts_ci(rel, "Library/IdentityServices") || mc_gg_rel_starts_ci(rel, "Library/PersonalizationPortrait") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Suggestions") || mc_gg_rel_starts_ci(rel, "Library/Cookies") || mc_gg_rel_starts_ci(rel, "Library/Photos") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Containers") || mc_gg_rel_starts_ci(rel, "Library/Group Containers") || mc_gg_rel_starts_ci(rel, "Library/Mobile Documents") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Application Support/AddressBook") || mc_gg_rel_starts_ci(rel, "Library/Application Support/CallHistoryDB") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Application Support/MobileSync") || mc_gg_rel_starts_ci(rel, "Library/Application Support/com.apple.TCC") { return true; }
+  if mc_gg_rel_starts_ci(rel, "Library/Application Support/FileProvider") || mc_gg_rel_starts_ci(rel, "Library/Application Support/CloudDocs") { return true; }
+  return false;
+}
+
+mc_gg_is_tcc_path :: (p: string, home: string) -> bool {
+  if mc_gg_under_ci("/Volumes", p) { return true; }
+  rel := mc_gg_user_home_rel(p, home);
+  return rel.count > 0 && mc_gg_is_tcc_rel(rel);
+}
+
+// Strips from the first glob-containing path segment onward, keeping the directory being globbed.
+// e.g. "/*" -> "/", "/Users/*" -> "/Users", "apps/*.coax" -> "apps", "*" -> ".".
+mc_gg_strip_glob :: (s: string) -> string {
+  g := -1;
+  for i: 0..<s.count {
+    b := s[i];
+    if b == '*' || b == '?' || b == '[' || b == '{' { g = i; break; }
+  }
+  if g < 0 { return s; }
+  slash := g - 1;
+  while slash >= 0 && s[slash] != '/' { slash -= 1; }
+  if slash < 0 { return "."; }
+  if slash == 0 { return "/"; }
+  return cast(string) s[0..<slash];
+}
+
+// Resolves a scan target path into out (expanding ~, $HOME, ${HOME}, ~+, and glob bases).
+// Returns "" when the target uses an unexpanded variable or cannot be resolved cleanly.
+mc_gg_norm_scan_path :: (base: string, raw: string, home: string, out: [] u8) -> string {
+  if raw.count == 0 { return ""; }
+  sub := raw;
+  from_home := false;
+  if sub == "~" || sub == "$HOME" || sub == "${HOME}" {
+    from_home = true; sub = "";
+  } else if mc_cmd_starts(sub, "~/") {
+    from_home = true; sub = cast(string) sub[2..<sub.count];
+  } else if mc_cmd_starts(sub, "$HOME/") {
+    from_home = true; sub = cast(string) sub[6..<sub.count];
+  } else if mc_cmd_starts(sub, "${HOME}/") {
+    from_home = true; sub = cast(string) sub[8..<sub.count];
+  } else if sub == "~+" {
+    sub = ".";
+  } else if mc_cmd_starts(sub, "~+/") {
+    sub = cast(string) sub[3..<sub.count];
+  }
+  sub = mc_gg_strip_glob(sub);
+  for b: sub { if b == '$' || b == '`' { return ""; } }
+  n := 0;
+  if from_home {
+    if home.count == 0 || home[0] != '/' { return ""; }
+    n = mc_gg_push_buf(out, 0, home);
+    if n >= 0 && sub.count > 0 { n = mc_gg_push_buf(out, n, sub); }
+  } else if sub.count > 0 && sub[0] == '/' {
+    n = mc_gg_push_buf(out, 0, sub);
+  } else {
+    if base.count == 0 || base[0] != '/' { return ""; }
+    if base != "/" {
+      if base.count > out.count { return ""; }
+      for b, bi: base { out[bi] = b; }
+      n = base.count;
+    }
+    n = mc_gg_push_buf(out, n, sub);
+  }
+  if n < 0 { return ""; }
+  if n == 0 { if out.count < 1 { return ""; } out[0] = '/'; n = 1; }
+  return cast(string) out[0..<n];
+}
+
+// Checks one recursive scan target path against broad roots (always blocked) and macOS TCC dirs
+// (blocked unless the chat's own workspace cwd is inside that directory).
+mc_gg_scan_target :: (h: [] McGitHits, here: McGgDir, arg: string, why: string) {
+  if arg.count == 0 { return; }
+  // ~otheruser (or ~otheruser/Pictures): always check without needing HOME.
+  if arg[0] == '~' && arg != "~" && !mc_cmd_starts(arg, "~/") && arg != "~+" && !mc_cmd_starts(arg, "~+/") {
+    sl := -1;
+    for j: 1..<arg.count { if arg[j] == '/' { sl = j; break; } }
+    if sl < 0 { mc_gg_scan_hit(h, why, arg); return; }
+    tail := mc_gg_strip_glob(cast(string) arg[sl + 1..<arg.count]);
+    if tail.count == 0 || tail == "." || mc_gg_eq_ci(tail, "Library") || mc_gg_is_tcc_rel(tail) {
+      mc_gg_scan_hit(h, why, arg);
+    }
+    return;
+  }
+  home := mc_gg_dir(h, h[0].home);
+  // Even when HOME is unset, ~ / $HOME / ${HOME} targets still refer to the user's home folder.
+  if home.count == 0 {
+    tail := ""; is_home := false;
+    if arg == "~" || arg == "$HOME" || arg == "${HOME}" { is_home = true; }
+    else if mc_cmd_starts(arg, "~/") { is_home = true; tail = cast(string) arg[2..<arg.count]; }
+    else if mc_cmd_starts(arg, "$HOME/") { is_home = true; tail = cast(string) arg[6..<arg.count]; }
+    else if mc_cmd_starts(arg, "${HOME}/") { is_home = true; tail = cast(string) arg[8..<arg.count]; }
+    if is_home {
+      clean := mc_gg_strip_glob(tail);
+      if clean.count == 0 || clean == "." || mc_gg_eq_ci(clean, "Library") || mc_gg_is_tcc_rel(clean) {
+        mc_gg_scan_hit(h, why, arg);
+      }
+      return;
+    }
+  }
+  pbuf: [1024] u8;
+  p := mc_gg_norm_scan_path(mc_gg_dir(h, here), arg, home, pbuf[..]);
+  if p.count == 0 { return; }
+  if mc_gg_is_broad_root(p, home) { mc_gg_scan_hit(h, why, p); return; }
+  if mc_gg_is_tcc_path(p, home) {
+    cwd := mc_gg_dir(h, h[0].cwd);
+    if cwd.count > 0 && mc_gg_under_ci(cwd, p) { return; }
+    mc_gg_scan_hit(h, why, p);
+  }
+}
+
+// How many words starting at k are a shell redirection (0 if not, 1 for 2>/dev/null or 2>&1, 2 for > file).
+mc_gg_redir_skip :: (c: string, w: [] McWord, k: int, n: int) -> int {
+  raw := cast(string) c[w[k].a..<w[k].b];
+  if raw.count == 0 || raw[0] == '\'' || raw[0] == '"' { return 0; }
+  p := 0;
+  if raw[0] == '&' { p = 1; }
+  else { while p < raw.count && raw[p] >= '0' && raw[p] <= '9' { p += 1; } }
+  if p >= raw.count || (raw[p] != '>' && raw[p] != '<') { return 0; }
+  op := raw[p]; p += 1;
+  if p < raw.count && (raw[p] == op || (op == '<' && raw[p] == '>') || (op == '>' && raw[p] == '|')) { p += 1; }
+  if op == '<' && p < raw.count && raw[p] == '<' { p += 1; } // <<<
+  if p < raw.count { return 1; }                             // self-contained: 2>/dev/null, 2>&1, >out
+  return ifx k + 1 < n then 2 else 1;                        // separate target word: > out, 2> /dev/null
+}
+
+// Catches unquoted recursive shell globs over broad roots (e.g. /**/OpenAgents.app, ~/**/*).
+mc_gg_check_globs :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits) {
+  for k: k0..<n {
+    raw := cast(string) c[w[k].a..<w[k].b];
+    if raw.count < 3 || raw[0] == '\'' || raw[0] == '"' { continue; }
+    if mc_cmd_starts(raw, "/**") { mc_gg_scan_hit(h, "glob /**", "/"); return; }
+    if mc_cmd_starts(raw, "~/**") || mc_cmd_starts(raw, "$HOME/**") || mc_cmd_starts(raw, "${HOME}/**") {
+      home := mc_gg_dir(h, h[0].home);
+      mc_gg_scan_hit(h, "glob ~/**", ifx home.count > 0 then home else "~"); return;
+    }
+    if mc_gg_starts_ci(raw, "/Users/**") { mc_gg_scan_hit(h, "glob /Users/**", "/Users"); return; }
+    if mc_gg_starts_ci(raw, "/Volumes/**") { mc_gg_scan_hit(h, "glob /Volumes/**", "/Volumes"); return; }
+    if mc_gg_starts_ci(raw, "/System/Volumes/Data/**") { mc_gg_scan_hit(h, "glob /System/Volumes/Data/**", "/System/Volumes/Data"); return; }
+  }
+}
+
+mc_gg_find_leading_flag :: (a: string) -> bool {
+  if a == "--" || mc_cmd_starts(a, "-O") { return true; }
+  if a.count < 2 || a[0] != '-' || a[1] == '-' { return false; }
+  for j: 1..<a.count {
+    ch := a[j];
+    if ch != 'H' && ch != 'L' && ch != 'P' && ch != 'E' && ch != 'X' && ch != 'd' && ch != 's' && ch != 'x' { return false; }
+  }
+  return true;
+}
+
+// find / gfind [-H|-L|-P|-E|-X|-d|-s|-x] [-f path] [path ...] [expression]
+mc_gg_scan_find :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir) {
+  k := k0; saw_path := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if a == "-f" && k + 1 < n {
+      pb: [1024] u8;
+      mc_gg_scan_target(h, here, mc_gg_unquote(cast(string) c[w[k + 1].a..<w[k + 1].b], pb[..]), "find");
+      saw_path = true; k += 2; continue;
+    }
+    if !saw_path {
+      if a == "-D" { k += 2; continue; }
+      if mc_gg_find_leading_flag(a) { k += 1; continue; }
+    }
+    if a.count == 0 || a[0] == '-' || a == "!" || a == "(" || a == ")" || a == "," { break; }
+    mc_gg_scan_target(h, here, a, "find");
+    saw_path = true; k += 1;
+  }
+  if !saw_path { mc_gg_scan_target(h, here, ".", "find"); }
+}
+
+// fd / fdfind [options] [pattern] [path ...]
+mc_gg_fd_takes_val :: (o: string) -> bool {
+  return o == "-d" || o == "--max-depth" || o == "--maxdepth" || o == "--min-depth" || o == "--exact-depth"
+      || o == "-t" || o == "--type" || o == "-e" || o == "--extension" || o == "-E" || o == "--exclude"
+      || o == "-c" || o == "--color" || o == "-j" || o == "--threads" || o == "-S" || o == "--size"
+      || o == "--changed-within" || o == "--changed-before" || o == "--newer" || o == "--older"
+      || o == "-o" || o == "--owner" || o == "-x" || o == "--exec" || o == "-X" || o == "--exec-batch"
+      || o == "--path-separator" || o == "--max-results" || o == "--format" || o == "--strip-cwd-prefix"
+      || o == "--ignore-file" || o == "--and";
+}
+
+mc_gg_scan_fd :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir) {
+  k := k0; saw_pat := false; saw_path := false; end_opts := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if (a == "--search-path" || a == "--base-directory") && k + 1 < n {
+        pb: [1024] u8;
+        mc_gg_scan_target(h, here, mc_gg_unquote(cast(string) c[w[k + 1].a..<w[k + 1].b], pb[..]), "fd");
+        saw_path = true; k += 2; continue;
+      }
+      if mc_cmd_starts(a, "--search-path=") { mc_gg_scan_target(h, here, cast(string) a[14..<a.count], "fd"); saw_path = true; k += 1; continue; }
+      if mc_cmd_starts(a, "--base-directory=") { mc_gg_scan_target(h, here, cast(string) a[17..<a.count], "fd"); saw_path = true; k += 1; continue; }
+      if mc_gg_fd_takes_val(a) { k += 2; continue; }
+      k += 1; continue;
+    }
+    if !saw_pat { saw_pat = true; k += 1; continue; }
+    mc_gg_scan_target(h, here, a, "fd");
+    saw_path = true; k += 1;
+  }
+  if !saw_path { mc_gg_scan_target(h, here, ".", "fd"); }
+}
+
+// rg / ag / ack [options] PATTERN [PATH ...]
+mc_gg_rg_takes_val :: (o: string) -> bool {
+  return o == "-g" || o == "--glob" || o == "--iglob" || o == "-t" || o == "--type" || o == "-T" || o == "--type-not"
+      || o == "--type-add" || o == "--type-clear" || o == "-A" || o == "--after-context" || o == "-B" || o == "--before-context"
+      || o == "-C" || o == "--context" || o == "-m" || o == "--max-count" || o == "-d" || o == "--max-depth" || o == "--maxdepth"
+      || o == "-M" || o == "--max-columns" || o == "--max-filesize" || o == "-j" || o == "--threads"
+      || o == "--color" || o == "--colors" || o == "--encoding" || o == "--engine" || o == "--ignore-file"
+      || o == "--pre" || o == "--pre-glob" || o == "-r" || o == "--replace" || o == "--sort" || o == "--sortr"
+      || o == "--field-context-separator" || o == "--field-match-separator" || o == "--path-separator"
+      || o == "--context-separator" || o == "--hostname-bin" || o == "-G" || o == "--ignore" || o == "--ignore-dir";
+}
+
+mc_gg_scan_rg :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir, prog: string) {
+  k := k0; has_pat := false; saw_path := false; end_opts := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if a == "-e" || a == "--regexp" || a == "-f" || a == "--file" { has_pat = true; k += 2; continue; }
+      if a == "--files" || mc_cmd_starts(a, "--regexp=") || mc_cmd_starts(a, "--file=") { has_pat = true; k += 1; continue; }
+      if mc_gg_rg_takes_val(a) { k += 2; continue; }
+      k += 1; continue;
+    }
+    if !has_pat { has_pat = true; k += 1; continue; }
+    mc_gg_scan_target(h, here, a, prog);
+    saw_path = true; k += 1;
+  }
+  if !saw_path { mc_gg_scan_target(h, here, ".", prog); }
+}
+
+// grep / egrep / fgrep / ggrep (only when recursive: -r, -R, --recursive, -d recurse)
+mc_gg_grep_takes_val :: (o: string) -> bool {
+  return o == "-m" || o == "--max-count" || o == "-A" || o == "--after-context" || o == "-B" || o == "--before-context"
+      || o == "-C" || o == "--context" || o == "-d" || o == "--directories" || o == "-D" || o == "--devices"
+      || o == "--include" || o == "--exclude" || o == "--exclude-dir" || o == "--exclude-from"
+      || o == "--label" || o == "--binary-files" || o == "--color" || o == "--colour";
+}
+
+mc_gg_scan_grep :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir, prog: string) {
+  k := k0; recursive := false; has_pat := false; end_opts := false;
+  // Pass 1: find whether recursive and whether -e/-f supplies the pattern.
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if a == "--recursive" || a == "--dereference-recursive" || a == "--directories=recurse" { recursive = true; k += 1; continue; }
+      if a == "-e" || a == "--regexp" || a == "-f" || a == "--file" { has_pat = true; k += 2; continue; }
+      if mc_cmd_starts(a, "--regexp=") || mc_cmd_starts(a, "--file=") { has_pat = true; k += 1; continue; }
+      if (a == "-d" || a == "--directories") && k + 1 < n {
+        vb: [64] u8;
+        if mc_gg_unquote(cast(string) c[w[k + 1].a..<w[k + 1].b], vb[..]) == "recurse" { recursive = true; }
+        k += 2; continue;
+      }
+      if mc_gg_grep_takes_val(a) { k += 2; continue; }
+      if a[1] != '-' {
+        take_next := false;
+        for j: 1..<a.count {
+          ch := a[j];
+          if ch == 'r' || ch == 'R' { recursive = true; }
+          else if ch == 'e' || ch == 'f' { has_pat = true; if j + 1 == a.count { take_next = true; } break; }
+          else if ch == 'm' || ch == 'A' || ch == 'B' || ch == 'C' || ch == 'd' || ch == 'D' {
+            if ch == 'd' && j + 1 < a.count && cast(string) a[j + 1..<a.count] == "recurse" { recursive = true; }
+            if j + 1 == a.count { take_next = true; }
+            break;
+          }
+        }
+        k += ifx take_next then 2 else 1;
+        continue;
+      }
+      k += 1; continue;
+    }
+    k += 1;
+  }
+  if !recursive { return; }
+  // Pass 2: validate target paths (skipping the first positional pattern unless -e/-f was used).
+  k = k0; pat_seen := has_pat; saw_path := false; end_opts = false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if a == "-e" || a == "--regexp" || a == "-f" || a == "--file" || mc_gg_grep_takes_val(a) { k += 2; continue; }
+      if a[1] != '-' {
+        take_next := false;
+        for j: 1..<a.count {
+          ch := a[j];
+          if ch == 'e' || ch == 'f' || ch == 'm' || ch == 'A' || ch == 'B' || ch == 'C' || ch == 'd' || ch == 'D' {
+            if j + 1 == a.count { take_next = true; }
+            break;
+          }
+        }
+        k += ifx take_next then 2 else 1;
+        continue;
+      }
+      k += 1; continue;
+    }
+    if !pat_seen { pat_seen = true; k += 1; continue; }
+    mc_gg_scan_target(h, here, a, "grep -r");
+    saw_path = true; k += 1;
+  }
+  if !saw_path { mc_gg_scan_target(h, here, ".", "grep -r"); }
+}
+
+// ls / gls / eza / exa: recursive (-R/--recursive, eza -T/--tree) OR non-directory-mode wildcard
+// over a broad root (e.g. `ls ~/*` expands every subdir of ~ and opens Photos/Desktop/Documents).
+mc_gg_has_glob :: (raw: string) -> bool {
+  if raw.count == 0 || raw[0] == '\'' || raw[0] == '"' { return false; }
+  for b: raw { if b == '*' || b == '?' || b == '[' || b == '{' { return true; } }
+  return false;
+}
+
+mc_gg_scan_ls :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir, prog: string) {
+  is_eza := prog == "eza" || prog == "exa";
+  recursive := false; dir_only := false; end_opts := false; k := k0;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if a == "--recursive" || mc_gg_short(a, 'R') || (is_eza && (a == "--tree" || mc_gg_short(a, 'T'))) { recursive = true; }
+      if a == "--directory" || mc_gg_short(a, 'd') { dir_only = true; }
+      if a == "-w" || a == "--width" || a == "-I" || a == "--ignore" || a == "--time-style" || (is_eza && (a == "-L" || a == "--level")) { k += 2; continue; }
+      k += 1; continue;
+    }
+    k += 1;
+  }
+  if !recursive && dir_only { return; }
+  k = k0; end_opts = false; saw_path := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    raw := cast(string) c[w[k].a..<w[k].b];
+    ab: [1024] u8;
+    a := mc_gg_unquote(raw, ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if a == "-w" || a == "--width" || a == "-I" || a == "--ignore" || a == "--time-style" || (is_eza && (a == "-L" || a == "--level")) { k += 2; continue; }
+      k += 1; continue;
+    }
+    if recursive {
+      mc_gg_scan_target(h, here, a, "ls -R");
+    } else if mc_gg_has_glob(raw) {
+      mc_gg_scan_target(h, here, a, "ls *");
+    }
+    saw_path = true; k += 1;
+  }
+  if recursive && !saw_path { mc_gg_scan_target(h, here, ".", "ls -R"); }
+}
+
+// tree / du (always recursive directory walks)
+mc_gg_scan_paths :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir, prog: string) {
+  k := k0; end_opts := false; saw_path := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !end_opts && a == "--" { end_opts = true; k += 1; continue; }
+    if !end_opts && mc_cmd_starts(a, "-") && a.count > 1 {
+      if prog == "du" && (a == "-d" || a == "--max-depth" || a == "-I" || a == "--exclude" || a == "--exclude-from" || a == "-B" || a == "--block-size" || a == "-t" || a == "--threshold" || a == "--time-style") {
+        k += 2; continue;
+      }
+      if prog == "tree" && (a == "-L" || a == "-P" || a == "-I" || a == "-o" || a == "-H" || a == "-T" || a == "--charset" || a == "--filelimit" || a == "--timefmt" || a == "--sort") {
+        k += 2; continue;
+      }
+      k += 1; continue;
+    }
+    mc_gg_scan_target(h, here, a, prog);
+    saw_path = true; k += 1;
+  }
+  if !saw_path { mc_gg_scan_target(h, here, ".", prog); }
+}
+
+// mdfind: Spotlight search across the whole Mac unless scoped with a safe -onlyin directory.
+mc_gg_scan_mdfind :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, here: McGgDir) {
+  k := k0; saw_onlyin := false;
+  while k < n {
+    rs := mc_gg_redir_skip(c, w, k, n);
+    if rs > 0 { k += rs; continue; }
+    ab: [1024] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if a == "-onlyin" && k + 1 < n {
+      saw_onlyin = true;
+      pb: [1024] u8;
+      mc_gg_scan_target(h, here, mc_gg_unquote(cast(string) c[w[k + 1].a..<w[k + 1].b], pb[..]), "mdfind");
+      k += 2; continue;
+    }
+    k += 1;
+  }
+  if !saw_onlyin { mc_gg_scan_hit(h, "mdfind", ""); }
+}
+
+// Inline python* -c scripts that recursively walk "/" or "~" / "/Users".
+mc_gg_scan_python :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits) {
+  for k: k0..<n - 1 {
+    ab: [64] u8;
+    a := mc_gg_unquote(cast(string) c[w[k].a..<w[k].b], ab[..]);
+    if !mc_gg_short(a, 'c') { continue; }
+    sb: [2048] u8;
+    raw := cast(string) c[w[k + 1].a..<w[k + 1].b];
+    sc := mc_gg_unquote(raw, sb[..]);
+    if sc.count == 0 && raw.count > 0 { sc = mc_cmd_word(c, w[k + 1]); }
+    if mc_gg_has(sc, "os.walk(\"/\")") || mc_gg_has(sc, "os.walk('/')")
+      || mc_gg_has(sc, "Path(\"/\").rglob") || mc_gg_has(sc, "Path('/').rglob")
+      || mc_gg_has(sc, "glob.glob(\"/**") || mc_gg_has(sc, "glob.glob('/**")
+      || mc_gg_has(sc, "glob.iglob(\"/**") || mc_gg_has(sc, "glob.iglob('/**") {
+      mc_gg_scan_hit(h, "python global walk", "/");
+      return;
+    }
+    if mc_gg_has(sc, "os.walk(\"~\")") || mc_gg_has(sc, "os.walk('~')")
+      || mc_gg_has(sc, "os.walk(os.path.expanduser(\"~\")") || mc_gg_has(sc, "os.walk(os.path.expanduser('~')")
+      || mc_gg_has(sc, "os.walk(os.environ") || mc_gg_has(sc, "os.walk(Path.home()")
+      || mc_gg_has(sc, "Path.home().rglob")
+      || mc_gg_has(sc, "Path(\"~\").expanduser().rglob") || mc_gg_has(sc, "Path('~').expanduser().rglob") {
+      home := mc_gg_dir(h, h[0].home);
+      mc_gg_scan_hit(h, "python global walk", ifx home.count > 0 then home else "~");
+      return;
+    }
+    if mc_gg_has(sc, "os.walk(\"/Users\")") || mc_gg_has(sc, "os.walk('/Users')") {
+      mc_gg_scan_hit(h, "python global walk", "/Users");
+      return;
+    }
+    break;
+  }
+}
+
+mc_gg_scan_cmd :: (c: string, w: [] McWord, i: int, n: int, prog: string, h: [] McGitHits, here: McGgDir) {
+  if prog == "find" || prog == "gfind" { mc_gg_scan_find(c, w, i + 1, n, h, here); return; }
+  if prog == "fd" || prog == "fdfind" { mc_gg_scan_fd(c, w, i + 1, n, h, here); return; }
+  if prog == "rg" { mc_gg_scan_rg(c, w, i + 1, n, h, here, "rg"); return; }
+  if prog == "ag" { mc_gg_scan_rg(c, w, i + 1, n, h, here, "ag"); return; }
+  if prog == "ack" { mc_gg_scan_rg(c, w, i + 1, n, h, here, "ack"); return; }
+  if prog == "grep" || prog == "egrep" || prog == "fgrep" || prog == "ggrep" { mc_gg_scan_grep(c, w, i + 1, n, h, here, "grep"); return; }
+  if prog == "ls" || prog == "gls" { mc_gg_scan_ls(c, w, i + 1, n, h, here, "ls"); return; }
+  if prog == "eza" || prog == "exa" { mc_gg_scan_ls(c, w, i + 1, n, h, here, "eza"); return; }
+  if prog == "tree" { mc_gg_scan_paths(c, w, i + 1, n, h, here, "tree"); return; }
+  if prog == "du" { mc_gg_scan_paths(c, w, i + 1, n, h, here, "du"); return; }
+  if prog == "mdfind" { mc_gg_scan_mdfind(c, w, i + 1, n, h, here); return; }
+  if prog == "locate" || prog == "glocate" { mc_gg_scan_hit(h, "locate", ""); return; }
+  if mc_cmd_starts(prog, "python") { mc_gg_scan_python(c, w, i + 1, n, h); return; }
+}
+
+// One simple command, words w[0..<n] of c, run in dir: its refused git or broad-scan commands,
+// if any, are listed; the folder later commands run in is given back (a cd moves it).
 mc_gg_simple :: (c: string, w: [] McWord, n: int, h: [] McGitHits, dir: McGgDir, home: string, depth: int) -> McGgDir {
   i := 0; here := dir;
   while i < n {
     s := mc_cmd_word(c, w[i]);
     if mc_cmd_assign(s) || mc_gg_keyword(s) { i += 1; continue; }
-    if mc_gg_wrapper(s) {
+    wb := mc_cmd_base(s);
+    if mc_gg_wrapper(wb) {
       i += 1;
       while i < n && mc_cmd_starts(mc_cmd_word(c, w[i]), "-") {
         o := mc_cmd_word(c, w[i]);
-        if mc_gg_takes_value(s, o) {
-          if s == "env" && o == "-C" && i + 1 < n { here = mc_gg_resolve(h, here, mc_cmd_word(c, w[i + 1]), home); }
+        if mc_gg_takes_value(wb, o) {
+          if wb == "env" && o == "-C" && i + 1 < n { here = mc_gg_resolve(h, here, mc_cmd_word(c, w[i + 1]), home); }
           i += 2;
         } else { i += 1; }
       }
-      if s == "timeout" { i += 1; }                // its duration
+      if wb == "timeout" { i += 1; }                // its duration
       continue;
     }
     if mc_cmd_base(s) == "remote.sh" {
@@ -268,6 +865,7 @@ mc_gg_simple :: (c: string, w: [] McWord, n: int, h: [] McGitHits, dir: McGgDir,
   if i >= n { return dir; }
   pb: [256] u8;
   prog := mc_cmd_base(mc_gg_unquote(mc_cmd_word(c, w[i]), pb[..]));
+  mc_gg_check_globs(c, w, i + 1, n, h);
   if prog == "cd" || prog == "pushd" {
     k := i + 1;
     while k < n && mc_cmd_starts(mc_cmd_word(c, w[k]), "-") && mc_cmd_word(c, w[k]) != "-" { k += 1; }
@@ -275,6 +873,7 @@ mc_gg_simple :: (c: string, w: [] McWord, n: int, h: [] McGitHits, dir: McGgDir,
   }
   if prog == "popd" { return MC_GG_UNKNOWN; }
   if prog == "git" { mc_gg_git(c, w, i + 1, n, h, here, home); return dir; }
+  mc_gg_scan_cmd(c, w, i, n, prog, h, here);
   if depth >= MC_GG_DEPTH { return dir; }
   if mc_gg_shell(prog) {
     for k: i + 1..<n - 1 {
@@ -313,10 +912,12 @@ mc_gg_scan :: (c: string, h: [] McGitHits, dir: McGgDir, home: string, depth: in
   }
 }
 
-// The refused git commands in command, run from cwd (home for ~), each with its folder.
+// The refused git and broad-scan commands in command, run from cwd (home for ~), each with its folder.
 mc_gg_check :: (command: string, cwd: string, home: string, h: [] McGitHits) {
   h[0].n = 0; h[0].na = 0; h[0].over = false;
   start := mc_gg_resolve(h, MC_GG_UNKNOWN, ifx cwd.count > 0 && cwd[0] == '/' then cwd else "$", home);
+  h[0].cwd = start;
+  h[0].home = ifx home.count > 0 && home[0] == '/' then mc_gg_resolve(h, MC_GG_UNKNOWN, home, home) else MC_GG_UNKNOWN;
   mc_gg_scan(command, h, start, home, 0);
 }
 
@@ -328,6 +929,20 @@ mc_gg_refusal :: (why: string, dir: string, out: [] u8) -> string {
   if dir.count > 0 { n = json_raw(out, n, " ("); n = json_raw(out, n, dir); n = json_raw(out, n, ")"); }
   n = json_raw(out, n, ", where other chats may have unsaved work. Nothing ran. Work in your own worktree instead: this chat's folder when Coder made one for it, or `git worktree add ../NAME origin/main` and run it there.");
   return ifx n < 0 then "Refused: this git command would change the files of a shared checkout. Nothing ran." else cast(string) out[0..<n];
+}
+
+// The refusal a broad filesystem or macOS TCC scan gets everywhere (worktrees and main checkouts alike).
+mc_gg_scan_refusal :: (why: string, dir: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "Refused: `");
+  n = json_raw(out, n, why);
+  if dir.count > 0 {
+    n = json_raw(out, n, "` scans outside the workspace (");
+    n = json_raw(out, n, dir);
+    n = json_raw(out, n, "), which walks broad system/home folders or triggers macOS permission prompts (Photos, Desktop, Documents, Downloads). Nothing ran. Stay inside the workspace or target a specific narrow path instead (or use `list_dir`/`grep`/`read_file`).");
+  } else {
+    n = json_raw(out, n, "` searches globally across the whole filesystem outside the workspace, which is slow and triggers macOS permission prompts. Nothing ran. Stay inside the workspace or target a specific narrow path instead (or use `list_dir`/`grep`/`read_file`).");
+  }
+  return ifx n < 0 then "Refused: global filesystem search outside the workspace is blocked to prevent macOS permission prompts. Nothing ran." else cast(string) out[0..<n];
 }
 
 // Whether dir is in a repository's main checkout, the one other chats share: walking up from it,
@@ -346,13 +961,15 @@ mc_gg_shared :: (dir: string) -> bool {
   return false;
 }
 
-// Why command, run from cwd (home for ~), is refused, into out; "" when it runs. A folder the guard
-// can't tell counts as shared when cwd is in a main checkout or is unknown.
+// Why command, run from cwd (home for ~), is refused, into out; "" when it runs. Broad filesystem
+// scans are refused everywhere; destructive git commands are refused in shared checkouts (where an
+// unknown folder counts as shared when cwd is in a main checkout or is unknown).
 mc_gg_refuse :: (cwd: string, command: string, home: string, out: [] u8) -> string {
   h: [1] McGitHits;
   mc_gg_check(command, cwd, home, h[..]);
   for i: 0..<h[0].n {
     d := mc_gg_dir(h[..], h[0].dir[i]);
+    if h[0].kind[i] == MC_GG_KIND_SCAN { return mc_gg_scan_refusal(h[0].why[i], d, out); }
     if (d.count == 0 && (cwd.count == 0 || mc_gg_shared(cwd))) || (d.count > 0 && mc_gg_shared(d)) { return mc_gg_refusal(h[0].why[i], d, out); }
   }
   if h[0].over && mc_gg_shared(cwd) {
@@ -452,4 +1069,165 @@ gg_count :: (command: string) -> int { h: [1] McGitHits; mc_gg_check(command, "/
   h: [1] McGitHits;
   mc_gg_check(cast(string) long[..], "/r", "/h", h[..]);
   #assert h[0].over && h[0].n == 0;
+}
+
+gg_scan :: (command: string, cwd: string, home: string, out: [] u8) -> string {
+  h: [1] McGitHits;
+  mc_gg_check(command, cwd, home, h[..]);
+  for i: 0..<h[0].n {
+    if h[0].kind[i] == MC_GG_KIND_SCAN {
+      n := json_raw(out, 0, h[0].why[i]); n = json_raw(out, n, " @ ");
+      d := h[0].dir[i];
+      n = json_raw(out, n, ifx d.size < 0 then "?" else mc_gg_dir(h[..], d));
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+
+#test "global scan guard refuses root, home, Users, Volumes, Library, and TCC directory crawls" {
+  b: [512] u8;
+  ws := "/Users/alice/work/openagents";
+  hm := "/Users/alice";
+  // Exact real-world command that popped 5 macOS TCC windows:
+  #assert gg_scan("find / -name \"OpenAgents.app\" -maxdepth 8 -type d 2>/dev/null | head; echo ---", ws, hm, b[..]) == "find @ /";
+  // find with flags, -f, multiple roots, globs, ~, $HOME, ${HOME}, relative escape, case-insensitive, wrappers, subshells:
+  #assert gg_scan("find -L -x / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("find -Lx / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("find -f / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("find /Applications / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("find /* -name OpenAgents.app", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("find ~ -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find ~/ -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find ~/* -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find \"$HOME\" -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find ${HOME} -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find /Users -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users";
+  #assert gg_scan("find /users/alice -name OpenAgents.app", ws, hm, b[..]) == "find @ /users/alice";
+  #assert gg_scan("find /Users/* -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users";
+  #assert gg_scan("find /Volumes -name OpenAgents.app", ws, hm, b[..]) == "find @ /Volumes";
+  #assert gg_scan("find \"/Volumes/Macintosh HD\" -name OpenAgents.app", ws, hm, b[..]) == "find @ /Volumes/Macintosh HD";
+  #assert gg_scan("find /System/Volumes/Data -name OpenAgents.app", ws, hm, b[..]) == "find @ /System/Volumes/Data";
+  #assert gg_scan("find ../.. -name OpenAgents.app", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find ~/Library -name '*.plist'", ws, hm, b[..]) == "find @ /Users/alice/Library";
+  #assert gg_scan("find ~/Library/\"Application Support\" -name '*.db'", ws, hm, b[..]) == "find @ /Users/alice/Library/Application Support";
+  #assert gg_scan("find ~/Pictures -name '*.png'", ws, hm, b[..]) == "find @ /Users/alice/Pictures";
+  #assert gg_scan("find ~/desktop -name '*.md'", ws, hm, b[..]) == "find @ /Users/alice/desktop";
+  #assert gg_scan("find \"$HOME/Documents\" -maxdepth 2", ws, hm, b[..]) == "find @ /Users/alice/Documents";
+  #assert gg_scan("find ~/Downloads -type f", ws, hm, b[..]) == "find @ /Users/alice/Downloads";
+  #assert gg_scan("find ~/Library/Mail -type f", ws, hm, b[..]) == "find @ /Users/alice/Library/Mail";
+  #assert gg_scan("find ~bob -name foo", ws, hm, b[..]) == "find @ ~bob";
+  #assert gg_scan("find ~bob/Pictures -name foo", ws, hm, b[..]) == "find @ ~bob/Pictures";
+  // Empty HOME fallback still blocks ~ and $HOME:
+  #assert gg_scan("find ~ -name foo", ws, "", b[..]) == "find @ ~";
+  #assert gg_scan("find \"$HOME/Pictures\" -name foo", ws, "", b[..]) == "find @ $HOME/Pictures";
+  // cd / subshell / env -C / wrappers / sh -c / eval:
+  #assert gg_scan("cd / && find . -name OpenAgents.app", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("cd / && find -name OpenAgents.app", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("cd ~ && find", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("cd \"$HOME\" && find .", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("(cd /; find . -name foo)", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("env -C / find . -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("timeout 30 /usr/bin/find / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("/usr/bin/env find / -name foo", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("sh -c 'find / -name foo'", ws, hm, b[..]) == "find @ /";
+  #assert gg_scan("eval \"find ~ -name foo\"", ws, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("echo $(find / -name foo)", ws, hm, b[..]) == "find @ /";
+  // Even when cwd itself is HOME or /, broad root scans are still refused:
+  #assert gg_scan("find . -name foo", hm, hm, b[..]) == "find @ /Users/alice";
+  #assert gg_scan("find . -name foo", "/", hm, b[..]) == "find @ /";
+}
+
+#test "global scan guard covers fd, rg, grep -r, ls -R, tree, du, mdfind, locate, /** globs, and python -c walks" {
+  b: [512] u8;
+  ws := "/Users/alice/work/openagents";
+  hm := "/Users/alice";
+  // fd / fdfind
+  #assert gg_scan("fd OpenAgents /", ws, hm, b[..]) == "fd @ /";
+  #assert gg_scan("fd -e app \"\" ~", ws, hm, b[..]) == "fd @ /Users/alice";
+  #assert gg_scan("fd --search-path=/ OpenAgents", ws, hm, b[..]) == "fd @ /";
+  #assert gg_scan("fd --base-directory ~ OpenAgents", ws, hm, b[..]) == "fd @ /Users/alice";
+  #assert gg_scan("cd / && fd OpenAgents", ws, hm, b[..]) == "fd @ /";
+  // rg / ag / ack
+  #assert gg_scan("rg OpenAgents /", ws, hm, b[..]) == "rg @ /";
+  #assert gg_scan("rg --files /", ws, hm, b[..]) == "rg @ /";
+  #assert gg_scan("rg -e OpenAgents ~", ws, hm, b[..]) == "rg @ /Users/alice";
+  #assert gg_scan("rg OpenAgents ~/Documents", ws, hm, b[..]) == "rg @ /Users/alice/Documents";
+  #assert gg_scan("ag OpenAgents /Users", ws, hm, b[..]) == "ag @ /Users";
+  // recursive grep
+  #assert gg_scan("grep -rn OpenAgents /", ws, hm, b[..]) == "grep -r @ /";
+  #assert gg_scan("grep -R -e OpenAgents ~", ws, hm, b[..]) == "grep -r @ /Users/alice";
+  #assert gg_scan("grep -rne OpenAgents /", ws, hm, b[..]) == "grep -r @ /";
+  #assert gg_scan("grep -r -- -flag /", ws, hm, b[..]) == "grep -r @ /";
+  #assert gg_scan("grep -d recurse foo /Users", ws, hm, b[..]) == "grep -r @ /Users";
+  #assert gg_scan("cd / && grep -rn foo", ws, hm, b[..]) == "grep -r @ /";
+  // ls -R / ls ~/* / tree / du
+  #assert gg_scan("ls -laR /", ws, hm, b[..]) == "ls -R @ /";
+  #assert gg_scan("ls -R ~", ws, hm, b[..]) == "ls -R @ /Users/alice";
+  #assert gg_scan("ls ~/*", ws, hm, b[..]) == "ls * @ /Users/alice";
+  #assert gg_scan("ls -la $HOME/*", ws, hm, b[..]) == "ls * @ /Users/alice";
+  #assert gg_scan("eza -T /", ws, hm, b[..]) == "ls -R @ /";
+  #assert gg_scan("tree -L 3 /", ws, hm, b[..]) == "tree @ /";
+  #assert gg_scan("du -sh /", ws, hm, b[..]) == "du @ /";
+  #assert gg_scan("du -d 2 ~", ws, hm, b[..]) == "du @ /Users/alice";
+  #assert gg_scan("du -sh ~/Pictures", ws, hm, b[..]) == "du @ /Users/alice/Pictures";
+  // mdfind / locate
+  #assert gg_scan("mdfind OpenAgents.app", ws, hm, b[..]) == "mdfind @ ?";
+  #assert gg_scan("mdfind -onlyin / OpenAgents.app", ws, hm, b[..]) == "mdfind @ /";
+  #assert gg_scan("mdfind -onlyin ~ OpenAgents.app", ws, hm, b[..]) == "mdfind @ /Users/alice";
+  #assert gg_scan("mdfind -onlyin ~/Pictures foo", ws, hm, b[..]) == "mdfind @ /Users/alice/Pictures";
+  #assert gg_scan("locate OpenAgents.app", ws, hm, b[..]) == "locate @ ?";
+  // unquoted recursive globs & python -c walks
+  #assert gg_scan("ls /**/OpenAgents.app", ws, hm, b[..]) == "glob /** @ /";
+  #assert gg_scan("echo ~/**/*", ws, hm, b[..]) == "glob ~/** @ /Users/alice";
+  #assert gg_scan("ls /Users/**/OpenAgents.app", ws, hm, b[..]) == "glob /Users/** @ /Users";
+  #assert gg_scan("python3 -c 'import os; list(os.walk(\"/\"))'", ws, hm, b[..]) == "python global walk @ /";
+  #assert gg_scan("python3 -c \"import pathlib; list(pathlib.Path('/').rglob('OpenAgents.app'))\"", ws, hm, b[..]) == "python global walk @ /";
+  #assert gg_scan("python3 -c 'import pathlib; list(pathlib.Path.home().rglob(\"*.app\"))'", ws, hm, b[..]) == "python global walk @ /Users/alice";
+}
+
+#test "global scan guard allows workspace searches, narrow system paths, non-recursive tools, and workspaces under Desktop" {
+  b: [512] u8;
+  ws := "/Users/alice/work/openagents";
+  hm := "/Users/alice";
+  // Normal workspace & narrow path searches stay allowed:
+  #assert gg_scan("find . -name '*.coax'", ws, hm, b[..]) == "";
+  #assert gg_scan("find apps/openagents-desktop -maxdepth 3 -type f", ws, hm, b[..]) == "";
+  #assert gg_scan("find /Users/alice/work/openagents -name '*.swift'", ws, hm, b[..]) == "";
+  #assert gg_scan("find /Applications/OpenAgents.app -maxdepth 3", ws, hm, b[..]) == "";
+  #assert gg_scan("find /Applications -maxdepth 2 -name 'OpenAgents*'", ws, hm, b[..]) == "";
+  #assert gg_scan("find /tmp/oa-build -name '*.o'", ws, hm, b[..]) == "";
+  #assert gg_scan("find ~/.openagents/worktrees -maxdepth 2", ws, hm, b[..]) == "";
+  #assert gg_scan("find ~/Library/\"Application Support\"/OpenAgents -maxdepth 2", ws, hm, b[..]) == "";
+  #assert gg_scan("ls -d ~/*", ws, hm, b[..]) == "";
+  #assert gg_scan("find . -path '/*'", ws, hm, b[..]) == "";
+  #assert gg_scan("fd OpenAgents apps/", ws, hm, b[..]) == "";
+  #assert gg_scan("fd '\\.coax$'", ws, hm, b[..]) == "";
+  #assert gg_scan("rg '/' apps/openagents-desktop", ws, hm, b[..]) == "";
+  #assert gg_scan("rg '/Users'", ws, hm, b[..]) == "";
+  #assert gg_scan("grep -rn '/' apps/", ws, hm, b[..]) == "";
+  #assert gg_scan("grep -n handleModifierFlags apps/openagents-desktop/Window.swift", ws, hm, b[..]) == "";
+  #assert gg_scan("grep -n OpenAgents /Applications/OpenAgents.app/Contents/Info.plist", ws, hm, b[..]) == "";
+  #assert gg_scan("ls -la / && ls -la /Applications && ls -la ~", ws, hm, b[..]) == "";
+  #assert gg_scan("(cd /; ls); find . -name '*.coax'", ws, hm, b[..]) == "";
+  #assert gg_scan("du -sh . && du -sh /Applications/OpenAgents.app", ws, hm, b[..]) == "";
+  #assert gg_scan("tree -L 2 apps/openagents-desktop", ws, hm, b[..]) == "";
+  #assert gg_scan("mdfind -onlyin /Applications OpenAgents", ws, hm, b[..]) == "";
+  #assert gg_scan("mdfind -onlyin . OpenAgents", ws, hm, b[..]) == "";
+  #assert gg_scan("echo 'find / -name foo' && echo '/**'", ws, hm, b[..]) == "";
+  #assert gg_scan("cat <<'EOF'\nfind / -name OpenAgents.app\nEOF", ws, hm, b[..]) == "";
+  #assert gg_scan("python3 -c 'import os; print(os.path.exists(\"/Applications/OpenAgents.app\"))'", ws, hm, b[..]) == "";
+  // Workspace explicitly located under Desktop allows searching inside cwd, while still blocking siblings/Pictures/root:
+  desk_ws := "/Users/alice/Desktop/my-app";
+  #assert gg_scan("find . -name '*.ts'", desk_ws, hm, b[..]) == "";
+  #assert gg_scan("find src -name '*.ts'", desk_ws, hm, b[..]) == "";
+  #assert gg_scan("find .. -name '*.ts'", desk_ws, hm, b[..]) == "find @ /Users/alice/Desktop";
+  #assert gg_scan("find ~/Pictures -name '*.png'", desk_ws, hm, b[..]) == "find @ /Users/alice/Pictures";
+  #assert gg_scan("find / -name foo", desk_ws, hm, b[..]) == "find @ /";
+  // mc_gg_refuse enforces scan blocks everywhere (even outside a git checkout) with a clear message:
+  r := mc_gg_refuse("/tmp", "find / -name \"OpenAgents.app\" -maxdepth 8 -type d 2>/dev/null | head", hm, b[..]);
+  #assert mc_cmd_starts(r, "Refused: `find` scans outside the workspace (/),");
+  r2 := mc_gg_refuse("/tmp", "mdfind OpenAgents.app", hm, b[..]);
+  #assert mc_cmd_starts(r2, "Refused: `mdfind` searches globally across the whole filesystem");
+  #assert mc_gg_refuse("/tmp", "find /Applications/OpenAgents.app -maxdepth 2", hm, b[..]) == "";
 }

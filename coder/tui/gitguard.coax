@@ -71,5 +71,9 @@ tool_main :: () -> int #export_c #effects(all) {
   // the JSON's own escapes are undone before the command is read
   r = gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo \\\"hi\\\" && git reset --hard\"}}", "", "/h", out[..]);
   #assert mc_cmd_starts(r, "Refused: `git reset --hard`");
+  // global filesystem searches are refused even outside a shared checkout
+  r = gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find / -name OpenAgents.app -maxdepth 8\"}}", "/tmp", "/Users/u", out[..]);
+  #assert mc_cmd_starts(r, "Refused: `find` scans outside the workspace (/),");
+  #assert gh_decide("{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Applications/OpenAgents.app -maxdepth 2\"}}", "/tmp", "/Users/u", out[..]) == "";
   // which folders are main checkouts is the filesystem's: coder/tui/gitguard-test.sh runs those
 }

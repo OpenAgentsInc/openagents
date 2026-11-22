@@ -93,6 +93,7 @@ ik_prompt_build_mode :: (os_name: string, cwd: string, git_info: string, user_in
   n = ik_fmt_put(out, n, "- Before editing a file, read the relevant lines with `read_file`. Always use `edit_file` for targeted changes and `write_file` for new files—do not use `python3`, `sed`, or shell heredocs in `run_command` to edit files.\n");
   n = ik_fmt_put(out, n, "- After making code changes, run the relevant test or check command once with `run_command` to verify before answering.\n");
   n = ik_fmt_put(out, n, "- Stay inside the workspace directory below. Refuse destructive or out-of-workspace file operations unless explicitly authorized.\n");
+  n = ik_fmt_put(out, n, "- Never run global filesystem searches (`find /`, `find ~`, `find /Users`, `mdfind`, etc.)—they trigger macOS permission prompts and are blocked. Inspect specific narrow paths or search inside the workspace.\n");
   if !user_mentions_git {
     n = ik_fmt_put(out, n, "- Never run `git commit` or `git push` unless the user explicitly asks you to in their message.\n");
   }
