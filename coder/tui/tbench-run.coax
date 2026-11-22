@@ -66,6 +66,8 @@ tbc_cmd_doctor :: (a: [] Args) -> int #effects(all) {
     cast(string) env[0].psionic_bin[0..<env[0].psionic_bin_n]);
   print("  llama.cpp: % (%)\n", ifx env[0].llama_ok then "OK" else "MISSING",
     cast(string) env[0].llama_bin[0..<env[0].llama_bin_n]);
+  print("  agy:       % (%)\n", ifx env[0].agy_ok then "OK" else "MISSING",
+    cast(string) env[0].agy_bin[0..<env[0].agy_bin_n]);
   print("  model:     % (%)\n", ifx env[0].model_ok then "OK" else "MISSING",
     cast(string) env[0].model_path[0..<env[0].model_path_n]);
   print("  executor:  % W2.2 module(s) in ~/.openagents/modules\n", env[0].exec_modules_count);

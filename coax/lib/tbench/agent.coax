@@ -102,7 +102,32 @@ tba_count_substr :: (hay: string, needle: string, first_out: [] int) -> int #eff
   return ifx p2 >= 0 then 2 else 1;
 }
 
+// Head+tail compaction: keeps 40% head and 60% tail (preserving error diagnostics at the bottom).
+tba_compact_head_tail :: (src: string, lim: int, out: [] u8) -> string #effects(all) {
+  if lim <= 0 { return ""; }
+  cap := ifx lim < out.count then lim else out.count;
+  if src.count <= cap {
+    n := tba_cat(out, 0, src);
+    return cast(string) out[0..<n];
+  }
+  marker := "\n...[truncated]...\n";
+  if cap <= marker.count + 32 {
+    n := tba_cat(out, 0, src[0..<cap]);
+    return cast(string) out[0..<n];
+  }
+  avail := cap - marker.count;
+  head_n := (avail * 4) / 10;
+  tail_n := avail - head_n;
+  n := tba_cat(out, 0, src[0..<head_n]);
+  n = tba_cat(out, n, marker);
+  n = tba_cat(out, n, src[src.count - tail_n..<src.count]);
+  return cast(string) out[0..<n];
+}
+
 tba_system_prompt :: (profile: string, exec_guard: bool) -> string #effects(all) {
+  if profile == "tassadar-v2" {
+    return "You are OpenAgents Microcoder (Tassadar W2.2 Executor-Guided) solving a Linux Terminal-Bench task inside a real Docker container. Follow strict high-efficiency engineering discipline:\n1. Keep internal reasoning brief and action-oriented (under 250 words per turn) so you never exhaust token budgets before issuing tool calls.\n2. Batch related inspection, installation, configuration, and verification commands into compound `Bash` scripts (`set -e`) rather than wasting turns on 1-line micro-commands.\n3. Use `Write` or `Edit` (pre-verified by deterministic W2.2 Class-E compiled weight guards before touching disk) or atomic heredoc scripts to create/update files cleanly.\n4. Before giving your final answer, run ONE comprehensive verification script checking EVERY explicit requirement in the prompt (file paths, permissions, syntax, exact formatting/delimiters/quotes, edge cases, service ports, and exit codes) and inspect the actual stdout/file contents to confirm 100% compliance.";
+  }
   if profile == "verify-first" {
     return "You are OpenAgents Microcoder solving a Linux Terminal-Bench task inside a real Docker container. Inspect the workspace and task requirements carefully, formulate a verification command first, apply minimal clean edits with Read/Write/Edit/Bash, run your verification check until every requirement holds, and finish concisely when done. Never fabricate output.";
   }
@@ -283,7 +308,12 @@ tba_tools_json :: () -> string #effects(all) {
 }
 
 // Build OpenAI /v1/chat/completions request JSON from message history + tools + policy.
-tba_build_request :: (w: [] TbAgentWork, model: string, max_tokens: int, temp_milli: int) -> int #effects(all) {
+// Supports Psionic Metal native `reasoning_effort` ("none"|"minimal"|"low"|"medium"|"high")
+// and `cache_prompt` (exact KV + shortconv prefix caching in psionic/platform/inkling-serve.c).
+tba_build_request :: (
+  w: [] TbAgentWork, model: string, max_tokens: int, temp_milli: int,
+  reasoning_effort: string, cache_prompt: bool
+) -> int #effects(all) {
   o: [1] Jo; jo_start(o[..], w[0].req_body[..]);
   jo_obj(o[..]);
   jo_key(o[..], "model"); jo_str(o[..], model);
@@ -303,6 +333,12 @@ tba_build_request :: (w: [] TbAgentWork, model: string, max_tokens: int, temp_mi
     tb[tn] = cast,trunc(u8) ('0' + d1); tn += 1;
     tb[tn] = cast,trunc(u8) ('0' + d2); tn += 1;
     jo_raw(o[..], cast(string) tb[0..<tn]);
+  }
+  if reasoning_effort.count > 0 {
+    jo_key(o[..], "reasoning_effort"); jo_str(o[..], reasoning_effort);
+  }
+  if cache_prompt {
+    jo_key(o[..], "cache_prompt"); jo_bool(o[..], true);
   }
   jo_key(o[..], "stream"); jo_bool(o[..], false);
   jo_end(o[..]);
@@ -353,16 +389,19 @@ tb_agent_loop :: (
   tba_emit_chat_prompt(events_path, task_id, instruction);
 
   // Optional deterministic read-only orientation probe before Turn 1
-  probe_note: [4096] u8;
+  // Captures pwd, directory listing, OS + installed runtimes, and git reflog/status if in a repo
+  // so the agent saves 3-5 exploratory turns immediately.
+  probe_note: [6144] u8;
   probe_n := 0;
   if policy[0].orientation_probe {
     ex: [1] int;
-    po := tba_bridge_exec(w, "pwd && ls -la | head -n 40", 20, ex[..]);
-    if ex[0] == 0 && po.count > 0 {
-      probe_n = tba_cat(probe_note[..], 0, "\n\n[Deterministic Workspace Orientation Probe (pwd && ls -la)]:\n");
-      cap := ifx po.count > 3000 then 3000 else po.count;
+    probe_cmd := "echo '=== PWD & FILES ==='; pwd; ls -la | head -n 40; echo '=== OS & RUNTIMES ==='; (grep -E '^(PRETTY_NAME|ID)=' /etc/os-release 2>/dev/null || uname -a); printf 'bins: '; for c in python3 python perl node gcc g++ rustc go git curl openssl nginx sqlite3 jq rg; do command -v $c >/dev/null 2>&1 && printf '%s ' \"$c\"; done; echo ''; if [ -d .git ]; then echo '=== GIT ==='; git status -sb; git branch -a | head -n 10; git log --oneline -n 6; git reflog -n 8; fi";
+    po := tba_bridge_exec(w, probe_cmd, 20, ex[..]);
+    if po.count > 0 {
+      probe_n = tba_cat(probe_note[..], 0, "\n\n[Deterministic Step-0 Container Orientation Probe]:\n");
+      cap := ifx po.count > 5500 then 5500 else po.count;
       probe_n = tba_cat(probe_note[..], probe_n, po[0..<cap]);
-      tba_emit_chat_cmd(events_path, "[probe] pwd && ls -la", ex[0], po[0..<cap]);
+      tba_emit_chat_cmd(events_path, "[probe] workspace + runtimes + git", ex[0], po[0..<cap]);
     }
   }
 
@@ -394,10 +433,27 @@ tb_agent_loop :: (
   compact_lim := ifx policy[0].compact_chars > 512 then policy[0].compact_chars else 8000;
   last_reply: [16384] u8;
   last_reply_n := 0;
+  last_cmd_exit := 0;
+  nudged_verify := false;
+  trunc_streak := 0;
+  profile_s := cast(string) policy[0].prompt_profile[0..<policy[0].prompt_profile_n];
+  is_tassadar_v2 := profile_s == "tassadar-v2";
+  verify_guard := policy[0].executor_guard || is_tassadar_v2;
 
   for turn: 1..<(max_turns + 1) {
     res[0].turns = turn;
-    req_n := tba_build_request(w, model, max_tokens, policy[0].temp_milli);
+    // Psionic adaptive reasoning_effort controller (inkling-serve.c lines 700-710):
+    //   tassadar-v2 runs at "low" (0.2) by default + exact KV/shortconv cache_prompt=true,
+    //   and steps down to "minimal" (0.1) -> "none" (0) immediately if a turn truncates.
+    effort_s := "";
+    if is_tassadar_v2 {
+      effort_s = ifx trunc_streak >= 2 then "none" else (ifx trunc_streak == 1 then "minimal" else "low");
+    } else if trunc_streak >= 2 {
+      effort_s = "none";
+    } else if trunc_streak == 1 {
+      effort_s = "minimal";
+    }
+    req_n := tba_build_request(w, model, max_tokens, policy[0].temp_milli, effort_s, is_tassadar_v2);
     if req_n <= 0 {
       res[0].error_note_n = tbw_put(res[0].error_note[..], "request buffer exceeded");
       break;
@@ -443,11 +499,14 @@ tb_agent_loop :: (
     }
 
     content_buf: [16384] u8;
-    reason_buf: [16384] u8;
+    reason_buf: [24576] u8;
+    fr_buf: [32] u8;
     cn := jv_str(d[0], jv_get(d[0], msg, "content"), content_buf[..]);
     if cn < 0 { cn = 0; }
     rn := jv_str(d[0], jv_get(d[0], msg, "reasoning_content"), reason_buf[..]);
     if rn < 0 { rn = 0; }
+    frn := jv_str(d[0], jv_get(d[0], ch0, "finish_reason"), fr_buf[..]);
+    fr_s := ifx frn > 0 then cast(string) fr_buf[0..<frn] else "";
 
     content_s := cast(string) content_buf[0..<cn];
     reason_s := cast(string) reason_buf[0..<rn];
@@ -459,6 +518,39 @@ tb_agent_loop :: (
 
     tcs := jv_get(d[0], msg, "tool_calls");
     tc_count := ifx tcs >= 0 then jv_len(d[0], tcs) else 0;
+
+    // Guard against finish_reason == "length" or empty assistant reply (thinking exhausted max_tokens).
+    // Never treat a truncated thought with zero tool calls and empty content as task completion!
+    // Carry forward the tail of the truncated thought draft so the model never restarts with amnesia,
+    // and step down Psionic reasoning_effort ("low" -> "minimal" -> "none") to break thinking spirals.
+    if tc_count <= 0 && (fr_s == "length" || cn == 0) {
+      trunc_streak += 1;
+      a_step := AtifStep.{
+        step_id = w[0].atif_steps + 1, timestamp = "2026-11-21T00:00:00Z", source = ATIF_SOURCE_AGENT,
+        message = content_s, reasoning_content = reason_s, model_name = model,
+        metrics = AtifMetrics.{has_prompt = pt > 0, prompt_tokens = pt, has_completion = ct > 0, completion_tokens = ct},
+      };
+      tba_atif_append_step(w, a_step);
+      if turn < max_turns {
+        nudge_b: [2048] u8;
+        nn := tba_cat(nudge_b[..], 0, "[System: Your previous response hit max_tokens while thinking without emitting a tool call. ");
+        if rn > 0 {
+          tail_start := ifx rn > 900 then rn - 900 else 0;
+          nn = tba_cat(nudge_b[..], nn, "Continue directly from your draft excerpt:\n---\n");
+          nn = tba_cat(nudge_b[..], nn, reason_s[tail_start..<rn]);
+          nn = tba_cat(nudge_b[..], nn, "\n---\n");
+        }
+        nn = tba_cat(nudge_b[..], nn, "Stop over-thinking and IMMEDIATELY invoke a Bash or Write tool call to create and test your solution in the container right now.]");
+        nb: [4096] u8; no: [1] Jo; jo_start(no[..], nb[..]);
+        jo_obj(no[..]); jo_key(no[..], "role"); jo_str(no[..], "user"); jo_key(no[..], "content"); jo_str(no[..], cast(string) nudge_b[0..<nn]); jo_end(no[..]);
+        _ = tba_push_msg(w, jo_text(no[..]));
+        tba_emit_chat_kind(events_path, "reply", "[Microcoder Guard] Thinking truncated (finish_reason=length); carrying draft forward & stepping down reasoning_effort.");
+        continue;
+      }
+      res[0].error_note_n = tbw_put(res[0].error_note[..], "truncated at max_tokens without tool call");
+      break;
+    }
+    trunc_streak = 0;
 
     // Push assistant message verbatim into history
     {
@@ -474,6 +566,15 @@ tb_agent_loop :: (
     }
 
     if tc_count <= 0 {
+      // Optional verification guard: if the last command failed, nudge once before accepting completion.
+      if verify_guard && !nudged_verify && last_cmd_exit != 0 && turn < max_turns {
+        nudged_verify = true;
+        vn := "[System: Your last command exited non-zero. Run a verification Bash check confirming every required output file, format, permission, and test passes inside the container before finishing.]";
+        vb: [512] u8; vo: [1] Jo; jo_start(vo[..], vb[..]);
+        jo_obj(vo[..]); jo_key(vo[..], "role"); jo_str(vo[..], "user"); jo_key(vo[..], "content"); jo_str(vo[..], vn); jo_end(vo[..]);
+        _ = tba_push_msg(w, jo_text(vo[..]));
+        continue;
+      }
       // Agent finished! Record final ATIF step and stop.
       a_step := AtifStep.{
         step_id = w[0].atif_steps + 1, timestamp = "2026-11-21T00:00:00Z", source = ATIF_SOURCE_AGENT,
@@ -513,15 +614,23 @@ tb_agent_loop :: (
       if fn_name == "Bash" {
         cb: [8192] u8; cn2 := jv_str(ad[0], jv_get(ad[0], 0, "command"), cb[..]);
         cmd := ifx cn2 > 0 then cast(string) cb[0..<cn2] else "";
-        // Optional Executor Network Class-E budget guard on turn count
+        // Optional Executor Network Class-E guards: Wave 1 budget + Wave 2 wire-bounds with Ch 234 replay
         if policy[0].executor_guard {
           bv := mc_exec_check_budget(turn, 1, max_turns, 100000, 1, 100000);
           bgi := [6] int.[turn, 1, max_turns, 100000, 1, 100000];
           rep_ok := mc_exec_verify_replay(MC_EXEC_MOD_BUDGET, bgi[..], bv.digest);
           res[0].exec_checks += 1;
           if rep_ok { res[0].exec_replays += 1; }
+
+          cmd_len := ifx cmd.count > 0 && cmd.count <= 8000 then cmd.count else 1;
+          wbv := mc_exec_check_wire_bounds(1, 16, 2, 1, cmd_len, cmd_len + 2, 8192);
+          wbi := [7] int.[1, 16, 2, 1, cmd_len, cmd_len + 2, 8192];
+          wrep := mc_exec_verify_replay(MC_EXEC_MOD_WIRE_BOUNDS, wbi[..], wbv.digest);
+          res[0].exec_checks += 1;
+          if wrep { res[0].exec_replays += 1; }
         }
         out_s := tba_bridge_exec(w, cmd, 90, ex[..]);
+        last_cmd_exit = ex[0];
         t_out_n = tba_cat(t_out_b[..], 0, out_s);
         tba_emit_chat_cmd(events_path, cmd, ex[0], out_s);
       } else if fn_name == "Read" {
@@ -632,9 +741,9 @@ tb_agent_loop :: (
         t_out_n = tba_cat(t_out_b[..], t_out_n, fn_name);
       }
 
-      // Compact oversized tool output to respect policy.compact_chars
-      comp_n := ifx t_out_n > compact_lim then compact_lim else t_out_n;
-      tool_str := cast(string) t_out_b[0..<comp_n];
+      // Compact oversized tool output using head+tail preservation so error tails are never lost
+      comp_buf: [24576] u8;
+      tool_str := tba_compact_head_tail(cast(string) t_out_b[0..<t_out_n], compact_lim, comp_buf[..]);
       atif_jo_obs_result(obo[..], tc_id, tool_str, ex[0] != 0);
 
       // Push tool response message into conversation
@@ -722,5 +831,11 @@ tb_agent_loop :: (
   #assert tba_system_prompt("minimal", false).count > 40;
   #assert tba_system_prompt("executor-guided", true).count > 80;
   #assert tba_system_prompt("verify-first", true).count > 80;
+  #assert tba_system_prompt("tassadar-v2", true).count > 200;
   #assert tba_tools_json().count > 200;
+  cb: [128] u8;
+  #assert tba_compact_head_tail("short", 64, cb[..]) == "short";
+  long_s := "HEADER_START_0123456789_MIDDLE_PADDING_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA_ERROR_TAIL_999";
+  cut_s := tba_compact_head_tail(long_s, 64, cb[..]);
+  #assert cut_s.count == 64 && tba_find_substr(cut_s, "HEADER", 0) == 0 && tba_find_substr(cut_s, "ERROR_TAIL_999", 0) >= 0;
 }

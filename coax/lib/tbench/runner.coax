@@ -38,6 +38,8 @@ TbEnv :: struct {
   psionic_ok: bool;
   llama_bin: [512] u8; llama_bin_n: int;
   llama_ok: bool;
+  agy_bin: [512] u8; agy_bin_n: int;
+  agy_ok: bool;
   model_path: [512] u8; model_path_n: int;
   model_ok: bool;
   harbor_adapter_dir: [512] u8; harbor_adapter_dir_n: int;
@@ -253,7 +255,7 @@ tbr_discover :: (e: [] TbEnv) #effects(all) {
     }
   }
 
-  // 4. llama-server
+  // 4. llama-server & Antigravity CLI (agy)
   {
     l0: [FS_PATH_MAX] u8;
     p0 := fs_join(home, ".openagents/bin/llama-server", l0[..]);
@@ -262,6 +264,16 @@ tbr_discover :: (e: [] TbEnv) #effects(all) {
     if lf.count > 0 {
       e[0].llama_bin_n = tbw_put(e[0].llama_bin[..], lf);
       e[0].llama_ok = true;
+    }
+  }
+  {
+    a0: [FS_PATH_MAX] u8;
+    p0 := fs_join(home, ".local/bin/agy", a0[..]);
+    cands := [3] string.[p0, "/opt/homebrew/bin/agy", "/usr/local/bin/agy"];
+    af := fs_first_file(cands[..]);
+    if af.count > 0 {
+      e[0].agy_bin_n = tbw_put(e[0].agy_bin[..], af);
+      e[0].agy_ok = true;
     }
   }
 
@@ -331,6 +343,8 @@ tbr_doctor_json :: (e: [] TbEnv, out: [] u8) -> int #effects(all) {
   jo_key(o[..], "psionic_bin"); jo_str(o[..], cast(string) e[0].psionic_bin[0..<e[0].psionic_bin_n]);
   jo_key(o[..], "llama_ok"); jo_bool(o[..], e[0].llama_ok);
   jo_key(o[..], "llama_bin"); jo_str(o[..], cast(string) e[0].llama_bin[0..<e[0].llama_bin_n]);
+  jo_key(o[..], "agy_ok"); jo_bool(o[..], e[0].agy_ok);
+  jo_key(o[..], "agy_bin"); jo_str(o[..], cast(string) e[0].agy_bin[0..<e[0].agy_bin_n]);
   jo_key(o[..], "model_ok"); jo_bool(o[..], e[0].model_ok);
   jo_key(o[..], "model_path"); jo_str(o[..], cast(string) e[0].model_path[0..<e[0].model_path_n]);
   jo_key(o[..], "exec_modules"); jo_int(o[..], e[0].exec_modules_count);
@@ -359,7 +373,18 @@ tbr_resolve_policy :: (e: [] TbEnv, spec: string, out: [] TbPolicy) -> bool #eff
   }
   // 3. Built-in defaults
   out[0] = TbPolicy.{};
-  if spec == "executor-hybrid-v1" || spec == "psionic-executor" {
+  if spec == "microcoder-v2-executor" || spec == "microcoder-v2" {
+    out[0].id_n = tbw_put(out[0].id[..], "microcoder-v2-executor");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder v2 · Psionic Metal + Tassadar W2.2");
+    out[0].backend_n = tbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_n = tbw_put(out[0].model[..], "inkling-2-mini");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "tassadar-v2");
+    out[0].executor_guard = true;
+    out[0].orientation_probe = true;
+    out[0].compact_chars = 12000;
+    out[0].max_turns = 16;
+    out[0].max_tokens = 2048;
+  } else if spec == "executor-hybrid-v1" || spec == "psionic-executor" {
     out[0].id_n = tbw_put(out[0].id[..], "executor-hybrid-v1");
     out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic Metal + Executor");
     out[0].backend_n = tbw_put(out[0].backend[..], "psionic-metal");
@@ -392,6 +417,17 @@ tbr_resolve_policy :: (e: [] TbEnv, spec: string, out: [] TbPolicy) -> bool #eff
     out[0].compact_chars = 8000;
     out[0].max_turns = 14;
     out[0].max_tokens = 1536;
+  } else if spec == "antigravity" || spec == "agy" {
+    out[0].id_n = tbw_put(out[0].id[..], "antigravity");
+    out[0].label_n = tbw_put(out[0].label[..], "Antigravity CLI (agy · Harbor Docker)");
+    out[0].backend_n = tbw_put(out[0].backend[..], "antigravity-cli");
+    out[0].model_n = tbw_put(out[0].model[..], "antigravity-default");
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "minimal");
+    out[0].executor_guard = false;
+    out[0].orientation_probe = false;
+    out[0].compact_chars = 16000;
+    out[0].max_turns = 20;
+    out[0].max_tokens = 4096;
   } else if spec == "openrouter-claude" {
     out[0].id_n = tbw_put(out[0].id[..], "openrouter-claude");
     out[0].label_n = tbw_put(out[0].label[..], "OpenRouter · Claude Sonnet");
@@ -461,6 +497,10 @@ tbr_server_start :: (
   if custom_endpoint.count > 0 {
     return tbw_put(endpoint_out, custom_endpoint);
   }
+  if backend == "antigravity-cli" {
+    if !e[0].agy_ok { return -1; }
+    return tbw_put(endpoint_out, "agy://local");
+  }
   if backend == "openrouter" {
     api_env_n_out[0] = tbw_put(api_env_out, "OPENROUTER_API_KEY");
     return tbw_put(endpoint_out, "https://openrouter.ai/api/v1/chat/completions");
@@ -480,14 +520,14 @@ tbr_server_start :: (
       && proc_arg(h, "--model") && proc_arg(h, model_path)
       && proc_arg(h, "--metal") && proc_arg(h, cast(string) e[0].psionic_metal[0..<e[0].psionic_metal_n])
       && proc_arg(h, "--port") && proc_arg(h, port_s)
-      && proc_arg(h, "--ctx") && proc_arg(h, "8192")
+      && proc_arg(h, "--ctx") && proc_arg(h, "16384")
       && proc_quiet(h);
   } else if backend == "llamacpp-metal" {
     if !e[0].llama_ok { _ = proc_release(h); return -1; }
     ok = proc_arg(h, cast(string) e[0].llama_bin[0..<e[0].llama_bin_n])
       && proc_arg(h, "-m") && proc_arg(h, model_path)
       && proc_arg(h, "--port") && proc_arg(h, port_s)
-      && proc_arg(h, "-c") && proc_arg(h, "8192")
+      && proc_arg(h, "-c") && proc_arg(h, "16384")
       && proc_arg(h, "-ngl") && proc_arg(h, "99")
       && proc_arg(h, "--jinja")
       && proc_arg(h, "--cache-prompt")
@@ -671,6 +711,10 @@ tbr_run_harbor_trial :: (
   }
   if ok && api_key_env.count > 0 {
     ev: [256] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_API_KEY_ENV="); n = tbr_cat(ev[..], n, api_key_env);
+    ok = proc_env(h, cast(string) ev[0..<n]);
+  }
+  if ok && e[0].agy_ok {
+    ev: [600] u8; n := tbr_cat(ev[..], 0, "OA_TBENCH_AGY_BIN="); n = tbr_cat(ev[..], n, cast(string) e[0].agy_bin[0..<e[0].agy_bin_n]);
     ok = proc_env(h, cast(string) ev[0..<n]);
   }
   if ok && max_turns_override > 0 {

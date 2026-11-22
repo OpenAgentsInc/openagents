@@ -23,15 +23,16 @@ tb_propose_challenger :: (champ: [] TbPolicy, round_num: int, out: [] TbPolicy, 
 
   note := "";
   if step == 0 {
-    // Axis 1: Enable W2.2 Class-E Executor Network pre-edit guards + orientation probe + executor-guided prompt.
-    out[0].id_n = tbw_put(out[0].id[..], "executor-hybrid-r1");
-    out[0].label_n = tbw_put(out[0].label[..], "Microcoder · Psionic + Executor R1");
+    // Axis 1: Tassadar v2 compound-turn discipline + Wave 1/2 Class-E Executor guards + rich Step-0 probe + 3072-tok headroom.
+    out[0].id_n = tbw_put(out[0].id[..], "microcoder-v2-r1");
+    out[0].label_n = tbw_put(out[0].label[..], "Microcoder v2 · Psionic + Tassadar W2.2 R1");
     out[0].executor_guard = true;
     out[0].orientation_probe = true;
-    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "executor-guided");
-    if out[0].compact_chars < 14000 { out[0].compact_chars = 14000; }
+    out[0].prompt_profile_n = tbw_put(out[0].prompt_profile[..], "tassadar-v2");
+    if out[0].compact_chars < 12000 { out[0].compact_chars = 12000; }
     if out[0].max_turns < 16 { out[0].max_turns = 16; }
-    note = "enable W2.2 Class-E executor_guard + orientation_probe + executor-guided prompt";
+    if out[0].max_tokens < 2048 { out[0].max_tokens = 2048; }
+    note = "tassadar-v2 adaptive effort + KV prefix cache + Wave 1/2 Class-E guards + Step-0 probe + 2048 max_tokens";
   } else if step == 1 {
     // Axis 2: Verify-first discipline + wider compaction window + 20-turn horizon.
     out[0].id_n = tbw_put(out[0].id[..], "executor-verify-r2");

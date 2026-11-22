@@ -107,6 +107,7 @@ private struct TbDoctorReport: Codable {
     var adapter_ok: Bool
     var psionic_ok: Bool
     var llama_ok: Bool
+    var agy_ok: Bool?
     var model_ok: Bool
     var exec_modules: Int
     var openrouter_key_set: Bool
@@ -481,9 +482,11 @@ final class GymTerminalBenchView: NSView {
     var workingFolderProvider: (() -> URL?)?
 
     private static let armPresets: [(id: String, label: String)] = [
-        ("executor-hybrid-v1", "Psionic Metal + W2.2 Executor"),
+        ("microcoder-v2-executor", "Microcoder v2 · Psionic + Tassadar W2.2"),
+        ("executor-hybrid-v1", "Psionic Metal + W2.2 Executor (v1)"),
         ("baseline-microcoder", "Psionic Metal (Base)"),
         ("llamacpp-microcoder", "llama.cpp Metal"),
+        ("antigravity", "Antigravity CLI (agy)"),
         ("openrouter-claude", "OpenRouter · Claude Sonnet"),
     ]
 
@@ -875,8 +878,9 @@ final class GymTerminalBenchView: NSView {
             let hStr = doc.harbor_ok ? "Harbor \(doc.harbor_version)" : "Harbor OFF"
             let pStr = doc.psionic_ok ? "Psionic ✓" : "Psionic —"
             let lStr = doc.llama_ok ? "llama.cpp ✓" : "llama.cpp —"
+            let aStr = (doc.agy_ok ?? false) ? "agy ✓" : "agy —"
             let eStr = "W2.2 ×\(doc.exec_modules)"
-            self.doctorPill.stringValue = "\(dStr)  •  \(hStr)  •  \(pStr)  •  \(lStr)  •  \(eStr)"
+            self.doctorPill.stringValue = "\(dStr)  •  \(hStr)  •  \(pStr)  •  \(lStr)  •  \(aStr)  •  \(eStr)"
             self.doctorPill.textColor = doc.ok
                 ? NSColor(calibratedRed: 0.45, green: 0.92, blue: 0.72, alpha: 1)
                 : NSColor(calibratedRed: 0.98, green: 0.65, blue: 0.35, alpha: 1)
