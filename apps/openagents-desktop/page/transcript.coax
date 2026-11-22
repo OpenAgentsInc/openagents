@@ -484,8 +484,15 @@ coder_page_agent_next :: (s: [] CoderPage) -> int #export_c #effects(all) {
   for j: 0..<s[0].turns[i].nagents { if s[0].turns[i].agents[j].start_due { s[0].turns[i].agents[j].start_due = false; return j; } }
   return -1;
 }
-// Whether Claude Code is installed on this computer: with it, Microcoder may pick a Claude level.
-coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].claude = on; } }
+// Whether Claude Code is installed on this computer: with it, a chat may run on a Claude model
+// (the picker's last entries), and its orchestrator may pick a Claude level for a sub-agent. A
+// chat with no message yet starts on the model Settings picked.
+coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].claude == on { return; }
+  s[0].claude = on;
+  if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); }
+  s[0].model = cp_model_index(s);
+}
 // Whether sub-agent j runs in Claude Code: the host starts the Claude worker for it, not Microcoder's.
 coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(all) {
   if s.count < 1 || s[0].nturns < 1 { return false; }

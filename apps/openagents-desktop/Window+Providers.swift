@@ -9,6 +9,7 @@ enum ExternalProviders {
     static let providerCodex: Int32 = 3
     static let providerCursor: Int32 = 4
     static let providerAcp: Int32 = 5
+    static let providerClaude: Int32 = 7   // a chat on a Claude model: Claude Code, through claudeworker
 
     static var registryURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -95,6 +96,7 @@ enum ExternalProviders {
         case providerCodex: return "Codex"
         case providerCursor: return "Cursor"
         case providerAcp: return "ACP Agent"
+        case providerClaude: return "Claude"
         default: return "Microcoder"
         }
     }
@@ -293,6 +295,9 @@ extension CoderWindow {
             r.worker.extraEnv.removeValue(forKey: "CODER_AGY_PROFILE")
             r.worker.extraEnv.removeValue(forKey: "CODER_AGY_PROFILE_DIR")
             r.worker.extraEnv["CODER_ACP_PROVIDER"] = "acp"
+        case ExternalProviders.providerClaude:
+            program = "claudeworker"
+            r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerCodex:
             program = "mcworker"
             if let bin = ExternalProviders.codexBinaryPath() {
@@ -347,7 +352,7 @@ extension CoderWindow {
             guard let back = cd_headless() else { continue }
             syncExternalProviders(on: back)
             coderApplyOpenRouter(back)
-            cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+            coderApplyClaude(back)
             cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
             cd_inkling(back, LocalModelStore.isSelectable ? 1 : 0)
             let execSnap = ExecutorModelStore.scan()

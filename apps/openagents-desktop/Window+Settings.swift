@@ -2,6 +2,29 @@
 // Settings (settings.coax): opening and closing, the search's keyboard, and what only the app knows.
 import AppKit
 
+/// Settings > Models > the model new chats start on: Gemini 4 Neon unless set, else one of the
+/// Claude models (0 Fable 5.2, 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5), which Claude Code runs.
+/// Kept in UserDefaults (`orchestratorClaude`, `orchestratorClaudeModel`).
+enum CoderOrchestrator {
+    static let claudeKey = "orchestratorClaude", modelKey = "orchestratorClaudeModel"
+    static var claude: Bool {
+        get { UserDefaults.standard.bool(forKey: claudeKey) }
+        set { UserDefaults.standard.set(newValue, forKey: claudeKey) }
+    }
+    static var model: Int {
+        get { UserDefaults.standard.object(forKey: modelKey) as? Int ?? 1 }
+        set { UserDefaults.standard.set(newValue, forKey: modelKey) }
+    }
+    /// Tells a page the pick. A page learns whether Claude Code is installed first (coderApplyClaude).
+    static func apply(_ page: UnsafeMutableRawPointer?) { cd_orchestrator_set(page, claude ? 1 : 0, Int32(model)) }
+}
+/// What every page is told of Claude: whether Claude Code is installed here (its models join the
+/// picker, and sub-agents may run on them), and the model new chats start on.
+func coderApplyClaude(_ page: UnsafeMutableRawPointer?) {
+    cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
+    CoderOrchestrator.apply(page)
+}
+
 /// Settings > General > Experimental features, off unless set (UserDefaults `experimentalFeatures`):
 /// log in and the account, Gym, and Foreman (its sidebar row, its menu and its control server).
 /// Off, Coder is local: chats, runs and pairing a phone over Tailscale need no login.
@@ -97,6 +120,13 @@ extension CoderWindow {
 
     /// The page's Experimental features row was pressed (CP_ASK_EXPERIMENTAL): keep it, then show or
     /// hide what it covers here and in the menu bar.
+    /// Settings > Models > "New chats start on" or "Claude model" was pressed (CP_ASK_ORCHESTRATOR):
+    /// the pick is kept, and every chat out of view with no message yet moves to it.
+    func orchestratorChanged() {
+        CoderOrchestrator.claude = cd_orchestrator(page) != 0
+        CoderOrchestrator.model = Int(cd_orchestrator_model(page))
+        for r in runs.values where r.page != page { CoderOrchestrator.apply(r.page) }
+    }
     func experimentalChanged() {
         let on = cd_experimental(page) != 0
         UserDefaults.standard.set(on, forKey: Experimental.key)

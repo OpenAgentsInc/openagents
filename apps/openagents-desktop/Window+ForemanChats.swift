@@ -150,7 +150,7 @@ extension CoderWindow {
             return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
         }
         cd_skills(back, coderSkillsNote())
-        cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyClaude(back)
         cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(back)
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
@@ -263,7 +263,7 @@ extension CoderWindow {
             return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
         }
         cd_skills(back, coderSkillsNote())
-        cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyClaude(back)
         cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(back)
         guard cd_load(back, saved) != 0 else {
@@ -281,7 +281,7 @@ extension CoderWindow {
         if cd_action(back) == 1 {
             var out = [CChar](repeating: 0, count: 262144)
             moved.worker.folder = moved.folder.path
-            moved.worker.program = cd_model_agy(back) != 0 ? "agyworker" : "mcworker"
+            moved.worker.program = cd_model_agy(back) != 0 ? "agyworker" : cd_model_claude(back) != 0 ? "claudeworker" : "mcworker"
             if moved.worker.start() {
                 var rn = cd_recall_line(back, &out, Int32(out.count))
                 if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }

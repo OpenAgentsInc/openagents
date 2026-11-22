@@ -434,6 +434,10 @@ void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_agy(cd_state(c), on != 0); }
 int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model_agy(cd_state(c)) ? 1 : 0; }
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
+int cd_model_claude(void *page) { CoderHost *c = page; return c && coder_page_model_claude(cd_state(c)) ? 1 : 0; }
+void cd_orchestrator_set(void *page, int claude, int model) { CoderHost *c = page; if (!c) return; coder_page_orchestrator_set(cd_state(c), claude != 0, model); cd_woke(c); }
+int cd_orchestrator(void *page) { CoderHost *c = page; return c ? (int)coder_page_orchestrator(cd_state(c)) : 0; }
+int cd_orchestrator_model(void *page) { CoderHost *c = page; return c ? (int)coder_page_orchestrator_model(cd_state(c)) : 1; }
 int cd_model_hybrid(void *page) { CoderHost *c = page; return c && coder_page_model_hybrid(cd_state(c)) ? 1 : 0; }
 void cd_openrouter(void *page, const char *main, const char *sub) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_set_openrouter(cd_state(c), cd_string(main), cd_string(sub)); } }
 int cd_pick_model(void *page, const char *name) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_pick_model(cd_state(c), cd_string(name)); }

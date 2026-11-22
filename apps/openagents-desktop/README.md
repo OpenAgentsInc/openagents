@@ -124,12 +124,12 @@ level for each task:
 - **Neon** (Gemini 4 Neon) takes complex work that should finish fast: frontier-level software, research and analysis tasks done end to end.
 
 Microcoder knows all three by name, so "task it to Carbon" or "give it to Neon" works.
-- **Claude** tasks go to Claude Code, on the model Microcoder picks: Haiku, Sonnet, Opus or Fable. See [Claude sub-agents](#claude-sub-agents).
+- **Claude** tasks go to Claude Code, on the model Microcoder picks: Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2. See [Claude sub-agents](#claude-sub-agents).
 - **OpenRouter** tasks go to the OpenRouter model you set for sub-agents. Microcoder uses it when you ask for OpenRouter or name the model. See [OpenRouter models](#openrouter-models).
 
 Sub-agents handed over in one step run at the same time. Each is a row above
-the reply, named for its model (Hydrogen, Carbon, Neon, or Claude Haiku, Claude
-Sonnet, Claude Opus, Claude Fable), with its task beside the name and its
+the reply, named for its model (Hydrogen, Carbon, Neon, or Claude Haiku 5.5, Claude
+Sonnet 5.5, Claude Opus 5.5, Claude Fable 5.2), with its task beside the name and its
 elapsed time on the right. While a sub-agent runs, the line under its row
 says how many tool calls it has made and names the newest.
 
@@ -163,6 +163,11 @@ Code (#13660). It is told the order of the models, weakest to strongest: Haiku, 
 Carbon, Opus, Fable. So it picks Haiku or Sonnet only when you ask for them,
 and Opus or Fable when you ask or when a task needs more than Carbon gives. For example: "Have Claude Opus review the last commit."
 
+Each level is one model: Claude Haiku 5.5 (`claude-haiku-5-5`), Claude Sonnet
+5.5 (`claude-sonnet-5-5`), Claude Opus 5.5 (`claude-opus-5-5`) and Claude Fable
+5.2 (`claude-fable-5-2`). The worker asks Claude Code for the model by its id,
+so a sub-agent runs on the model its row names.
+
 A Claude sub-agent runs through the Coax Claude Agent SDK
 (`coax/lib/agent/claude`), in the worker `coder/tui/claudeworker.coax`:
 
@@ -174,11 +179,43 @@ A Claude sub-agent runs through the Coax Claude Agent SDK
 
 Coder looks for `claude` in `~/.local/bin`, `/opt/homebrew/bin`,
 `/usr/local/bin` and the system `PATH` when it starts. Without it,
-Microcoder is not offered the Claude models.
+Microcoder is not offered the Claude models, and the model picker has no
+Claude entries.
+
+### Claude as the chat's main model
+
+When the `claude` command is installed, the composer's model picker has four
+more entries: Claude Fable 5.2, Claude Opus 5.5, Claude Sonnet 5.5 and Claude
+Haiku 5.5. A chat on one of them runs on Claude Code in place of Microcoder,
+through the same Coax Claude Agent SDK and the same worker
+(`coder/tui/claudeworker.coax`). To try one from a terminal:
+
+```sh
+open -n apps/openagents-desktop/build/OpenAgents.app --args --model claude-opus-5-5 --send "What does this repo do?"
+```
+
+To start every new chat on Claude, open **Settings > Models > Claude** and set
+**New chats start on** to Claude, then pick the **Claude model**. Gemini 4 Neon
+is the default. A chat that already has messages keeps its own model, and the
+composer's picker still changes one chat.
+
+A chat on Claude works like a chat on Microcoder:
+
+- Claude hands tasks to sub-agents with its `delegate` tool, up to 6 a call. A task's level is `haiku`, `sonnet`, `opus` or `fable`, or `hydrogen`, `carbon` or `neon` for Gemini, or `openrouter` when you set a model for it. The sub-agents show as rows above the reply, as Microcoder's do. Claude Code's own Agent and Task tools are off, so every sub-agent is one you can see.
+- The reply shows as Claude writes it. Tool calls and thinking show as they do for a Claude sub-agent.
+- Stop ends the turn and keeps the conversation. A message you send while a turn runs reaches Claude at its next step. Follow-ups queue as usual.
+- One Claude Code session lasts for the chat. A change of working folder or thinking level starts a new session, which is told the chat's earlier messages and replies (the newest 262,144 bytes, without their tool calls). The same happens when you open a saved chat.
+- The thinking level is High until you pick another in the composer.
+- A turn's cost is what Claude Code reports for it.
+- It uses the Claude login on this Mac, or the [Claude key](#claude-key), and needs no Gemini sign-in.
+
+Limits: a message is up to 262,144 bytes. One `delegate` call's answer carries
+up to 400,000 bytes of the sub-agents' replies, shared equally when they are
+longer together; a cut reply says how many bytes are not shown.
 
 #### Claude key
 
-Claude sub-agents can use a key instead of the Claude Code login: an
+Claude chats and sub-agents can use a key instead of the Claude Code login: an
 Anthropic API key (`sk-ant-api…`, from the Claude Console), or a long-lived
 Claude Code token (`sk-ant-oat…`, from `claude setup-token`). An API key is
 billed to its Console account; a token counts against the plan it came from.
@@ -190,8 +227,8 @@ billed to its Console account; a token counts against the plan it came from.
 open -n apps/openagents-desktop/build/OpenAgents.app --env CODER_CLAUDE_KEY="$ANTHROPIC_API_KEY"
 ```
 
-A key applies to the next Claude sub-agent; one that is running keeps what it
-started with. Only the Claude worker gets the key, as `ANTHROPIC_API_KEY` or
+A key applies to the next Claude sub-agent and the next Claude session of a
+chat; one that is running keeps what it started with. Only the Claude worker gets the key, as `ANTHROPIC_API_KEY` or
 `CLAUDE_CODE_OAUTH_TOKEN`: Microcoder and the commands it runs never see it.
 Any other `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`
 or `CLAUDE_CODE_OAUTH_TOKEN` in Coder's environment is not passed on. If

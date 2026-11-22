@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 75;
+CP_SET_ENTRIES :: 77;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -46,6 +46,8 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_MODELS, id = "", name = "Models", terms = "providers keys gemini antigravity agy"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini", name = "Gemini API key", terms = "gemini google api key microcoder aistudio"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini.auth", name = "Gemini sign-in", terms = "vertex adc gcloud google cloud gemini sign-in credentials"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.orch", name = "New chats start on", terms = "claude neon gemini main model orchestrator default agent sdk"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.orch.model", name = "Claude model", terms = "claude fable opus sonnet haiku main model orchestrator default"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.claude", name = "Claude key", terms = "anthropic api token login sub-agents"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or", name = "OpenRouter key", terms = "openrouter api"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or.main", name = "Model for Microcoder", terms = "openrouter model main"},
@@ -204,6 +206,10 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   urec := cp_number(id, "set.usage.recovery.");
   if urec == 0 || urec == 1 { s[0].usage[0].recovery_enabled = (urec == 1); s[0].ask = CP_ASK_USAGE_RECOVERY; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
+  omodel := cp_number(id, "set.orch.model.");
+  if omodel >= 0 && omodel < CP_CLAUDE_MODELS { coder_page_orchestrator_set(s, s[0].orch_claude, omodel); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
+  omain := cp_number(id, "set.orch.");
+  if id.count == "set.orch.0".count && (omain == 0 || (omain == 1 && s[0].claude)) { coder_page_orchestrator_set(s, omain == 1, s[0].orch_model); s[0].ask = CP_ASK_ORCHESTRATOR; return true; }
   if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
   if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
   amode := cp_number(id, "set.agy.mode.");
@@ -403,11 +409,30 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       value = gemini, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.gemini.group", x, y, w, gone[..]) + t.block_gap;
     claude := ifx s[0].set_claude_n > 0 then sheet_pool(sh, cast(string) s[0].set_claude[0..<s[0].set_claude_n]) else "Not set";
-    y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "") + t.section_gap;
-    one: [1] SetRow;
-    one[0] = SetRow.{id = "set.claude", name = "Claude key", desc = "Claude sub-agents use it in place of the Claude Code login on this computer.",
+    y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "A chat can run on Claude through Claude Code on this computer, and any chat can hand tasks to Claude sub-agents: Haiku 5.5, Sonnet 5.5, Opus 5.5 or Fable 5.2.") + t.section_gap;
+    one: [3] SetRow; cn := 0;
+    // the model new chats start on; a chat's own picker still changes it for that chat
+    on_claude := s[0].orch_claude && s[0].claude;
+    one[cn] = SetRow.{id = "set.orch", name = "New chats start on",
+      desc = ifx !s[0].claude then "Claude Code is not installed on this computer. To install it, run: curl -fsSL https://claude.ai/install.sh | bash"
+             else ifx on_claude then "Claude runs each new chat and hands tasks to sub-agents. Change one chat's model in its composer."
+             else "Gemini 4 Neon runs each new chat and hands tasks to sub-agents. Change one chat's model in its composer.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx on_claude then 1 else 0, action = CP_SET_ACT, state = ifx s[0].claude then 0 else EL_S_DISABLED};
+    one[cn].options[0] = "Gemini 4 Neon"; one[cn].options[1] = "Claude";
+    cn += 1;
+    if s[0].claude {
+      shorts := CP_CLAUDE_SHORT;
+      om := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
+      one[cn] = SetRow.{id = "set.orch.model", name = "Claude model",
+        desc = ifx on_claude then "The Claude model new chats start on." else "The Claude model new chats start on when Claude is picked above.",
+        kind = SET_ROW_CHOICE, noptions = CP_CLAUDE_MODELS, chosen = om, action = CP_SET_ACT};
+      for ci: 0..<CP_CLAUDE_MODELS { one[cn].options[ci] = shorts[ci]; }
+      cn += 1;
+    }
+    one[cn] = SetRow.{id = "set.claude", name = "Claude key", desc = "Claude chats and sub-agents use it in place of the Claude Code login on this computer.",
       value = claude, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.claude.group", x, y, w, one[..]) + t.block_gap;
+    cn += 1;
+    y += cp_set_group(s, f, "set.claude.group", x, y, w, one[0..<cn]) + t.block_gap;
     orkey := ifx s[0].set_orkey_n > 0 then sheet_pool(sh, cast(string) s[0].set_orkey[0..<s[0].set_orkey_n]) else "Not set";
     y += set_section_head(f, "set.or.head", x, y, w, "OpenRouter", "Run Microcoder or its sub-agents on an OpenRouter model that takes a strict JSON schema.") + t.section_gap;
     rows: [3] SetRow;
@@ -686,6 +711,7 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
 // The Gemini API key's state ("Ends 1a2b", "" not set); also updates model picker availability.
 coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
@@ -693,6 +719,7 @@ coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effec
   if was_agy { s[0].model = cp_agy_idx(s); }
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 // Local Models status in Settings > Models ("Inkling 2 Mini installed (~20 GB)", "None downloaded"; #13826).
@@ -954,4 +981,22 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.wallet.send.a") && coder_page_action(s) == CP_ASK_WALLET_SEND;
   #assert cp_settings_press(s, CP_SET_ACT, "set.wallet.limit.a") && coder_page_action(s) == CP_ASK_WALLET_LIMIT;
   #assert cp_settings_press(s, CP_SET_ACT, "set.wallet.backup.a") && coder_page_action(s) == CP_ASK_WALLET_BACKUP;
+}
+
+#test "settings: Models picks the model new chats start on, Neon or one of the four Claude models" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_settings_open(s, CP_PG_MODELS, "");
+  // Claude Code not here: the row says how to install it, and picks nothing
+  #assert cp_set_test_frame(s, 1200, 2400);
+  #assert surface_find(s[0].surface[..], "set.orch") >= 0 && surface_find(s[0].surface[..], "set.orch.model") < 0;
+  #assert !cp_settings_press(s, CP_SET_ACT, "set.orch.1") && !s[0].orch_claude;
+  coder_page_set_claude(s, true);
+  #assert cp_set_test_frame(s, 1200, 2400);
+  #assert surface_find(s[0].surface[..], "set.orch.model") >= 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.1") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 1 && cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator_model(s) == 0 && cp_model_id(s, cp_model_index(s)) == "claude-fable-5-2";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.3") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
+  #assert !cp_settings_press(s, CP_SET_ACT, "set.orch.model.4");
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "gemini-4-neon";
 }

@@ -223,6 +223,15 @@ void cd_agy(void *page, int on);
 int cd_model_agy(void *page);
 int cd_model_inkling(void *page);
 int cd_model_hybrid(void *page);
+// cd_model_claude: whether the shown chat's model is a Claude one, which the Claude worker runs
+// (cd_model_provider says 7). cd_orchestrator_set: Settings > Models' pick of the model new chats
+// start on, as the host kept it: claude 0 for Gemini 4 Neon, 1 for Claude, and the Claude model
+// (0 Fable 5.2, 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5). cd_orchestrator and cd_orchestrator_model
+// read the pick back after the page asks (action 97), for the host to keep.
+int cd_model_claude(void *page);
+void cd_orchestrator_set(void *page, int claude, int model);
+int cd_orchestrator(void *page);
+int cd_orchestrator_model(void *page);
 // cd_openrouter: the OpenRouter models set with Coder > OpenRouter Models ("" for none): main is a
 // composer picker entry for Microcoder, sub is a sub-agent level (openrouter).
 void cd_openrouter(void *page, const char *main, const char *sub);

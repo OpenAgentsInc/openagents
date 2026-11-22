@@ -282,6 +282,30 @@ fx_mcp :: (id: string, server: string, message: string, buf: [] u8) -> string {
   #assert cl_eq(r, cl_at(r, "response.response.message"), "Permission answer denied: updatedPermissions holds 4097 entries, over the limit of 4096");
 }
 
+#test "a tool call held for later is answered once its result is there, and lines read in between owe nothing for it" {
+  f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
+  o: [1] ClOptions; fx_calc(o[..]); q[0].options = o[0];
+  #assert cl_begin(q[..], "", true) == "";
+  c: [8192] u8; fb: [2048] u8;
+  init := fx_take(q[..], c[..]);
+  d: [1] ClToolLater;
+  #assert !cl_tool_later(q[..], d[..]) && !d[0].held;
+  ev := cl_feed(q[..], fx_mcp("cli-mcp-9", "calc", "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"add\",\"arguments\":{\"a\":2,\"b\":3}}}", fb[..]));
+  #assert ev.kind == ClEventKind.tool_call;
+  #assert cl_tool_later(q[..], d[..]) && d[0].held;
+  // the next line settles nothing: the call is the host's to answer
+  ev = cl_feed(q[..], "{\"type\":\"keep_alive\"}");
+  #assert cl_outbox(q[..]).count == 0;
+  cl_tool_text_later(q[..], d[..], "5", false);
+  r := fx_take(q[..], c[..]);
+  #assert !d[0].held;
+  #assert cl_eq(r, cl_at(r, "response.request_id"), "cli-mcp-9") && cl_int(r, "response.response.mcp_response.id").value == 7;
+  #assert cl_raw(r, "response.response.mcp_response.result") == "{\"content\":[{\"type\":\"text\",\"text\":\"5\"}]}";
+  // answered once
+  cl_tool_text_later(q[..], d[..], "6", false);
+  #assert cl_outbox(q[..]).count == 0;
+}
+
 #test "set_model and set_permission_mode go out as control requests" {
   f: [1] Fx; q: [1] ClQuery; fx_query(q[..], f[..]);
   #assert cl_begin(q[..], "", true) == "";

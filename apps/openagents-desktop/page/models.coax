@@ -17,6 +17,7 @@ cp_models :: (s: [] CoderPage) -> int {
     if s.count > 0 && s[0].prov[0].codex { n += 1; }
     if s.count > 0 && s[0].prov[0].cursor { n += 1; }
     n += cp_acp_enabled_count(s);
+    if s.count > 0 && s[0].claude { n += CP_CLAUDE_MODELS; }
     return n;
   }
   n := CP_MODELS;
@@ -28,8 +29,45 @@ cp_models :: (s: [] CoderPage) -> int {
   if s[0].prov[0].codex { n += 1; }
   if s[0].prov[0].cursor { n += 1; }
   n += cp_acp_enabled_count(s);
+  if s[0].claude { n += CP_CLAUDE_MODELS; }
   return n;
 }
+// The Claude entries, after every other: where they start, which of them the entry at idx is
+// (-1: none), and one by a name (its id, its label, or fable, opus, sonnet, haiku; -1: none).
+cp_claude_base_idx :: (s: [] CoderPage) -> int { return cp_acp_base_idx(s) + cp_acp_enabled_count(s); }
+cp_claude_slot :: (s: [] CoderPage, idx: int) -> int {
+  if s.count < 1 || !s[0].claude { return -1; }
+  k := idx - cp_claude_base_idx(s);
+  return ifx k >= 0 && k < CP_CLAUDE_MODELS then k else -1;
+}
+cp_is_claude :: (s: [] CoderPage, idx: int) -> bool { return cp_claude_slot(s, idx) >= 0; }
+cp_claude_find :: (name: string) -> int {
+  ids := CP_CLAUDE_ID; labels := CP_CLAUDE_LABEL; alias := CP_CLAUDE_ALIAS;
+  for i: 0..<CP_CLAUDE_MODELS { if name == ids[i] || name == labels[i] || name == alias[i] { return i; } }
+  return -1;
+}
+// A chat on a Claude entry stays on it when the entries before it change: slot is what
+// cp_claude_slot said before the change.
+cp_claude_keep :: (s: [] CoderPage, slot: int) { if slot >= 0 && s[0].claude { s[0].model = cp_claude_base_idx(s) + slot; } }
+// The entry a new chat starts on: the Claude model Settings picked when Claude Code is installed, else Neon.
+cp_model_start :: (s: [] CoderPage) -> int {
+  if s.count > 0 && s[0].orch_claude && s[0].claude {
+    k := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
+    return cp_claude_base_idx(s) + k;
+  }
+  return CP_MODEL_DEFAULT;
+}
+// Settings > Models: whether new chats start on Claude, and on which Claude model (0 Fable 5.2,
+// 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5). A chat with no message yet moves to it now.
+coder_page_orchestrator_set :: (s: [] CoderPage, claude: bool, model: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].orch_claude = claude;
+  s[0].orch_model = ifx model >= 0 && model < CP_CLAUDE_MODELS then model else CP_CLAUDE_START;
+  if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); s[0].model = cp_model_index(s); }
+}
+// What Settings picked: 0 Neon, 1 Claude; and the Claude model.
+coder_page_orchestrator :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].orch_claude then 1 else 0; }
+coder_page_orchestrator_model :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].orch_model else CP_CLAUDE_START; }
 cp_agy_idx :: (s: [] CoderPage) -> int {
   if s.count < 1 || !s[0].agy { return -1; }
   if !cp_cloud_ok(s) { return 0; }
@@ -120,6 +158,11 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
     }
     return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
+  cslot := cp_claude_find(name);
+  if cslot >= 0 {
+    if s.count > 0 && s[0].claude { return cp_claude_base_idx(s) + cslot; }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
   if !cp_cloud_ok(s) { return ifx cp_models(s) > 0 then 0 else -1; }
   return cp_model_find(name);
 }
@@ -140,6 +183,8 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].prov[0].acp_id_buf[n..<s[0].prov[0].acp_id_buf.count], cast(string) s[0].prov[0].acp[acp_slot].id[0..<s[0].prov[0].acp[acp_slot].id_n]);
     return cast(string) s[0].prov[0].acp_id_buf[0..<n];
   }
+  cslot := cp_claude_slot(s, idx);
+  if cslot >= 0 { cids := CP_CLAUDE_ID; return cids[cslot]; }
   if !cp_cloud_ok(s) { return ""; }
   if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
   ids := CP_MODEL_ID;
@@ -155,6 +200,8 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_cursor(s, idx) { return "Cursor"; }
   acp_slot := cp_acp_slot_for_model(s, idx);
   if acp_slot >= 0 { return cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]; }
+  cslot := cp_claude_slot(s, idx);
+  if cslot >= 0 { clabels := CP_CLAUDE_LABEL; return clabels[cslot]; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     m := cp_or_main(s); at := 0;
@@ -194,6 +241,8 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].prov[0].acp_desc_buf[n..<s[0].prov[0].acp_desc_buf.count], cast(string) s[0].prov[0].acp[acp_slot].program[0..<s[0].prov[0].acp[acp_slot].program_n]);
     return cast(string) s[0].prov[0].acp_desc_buf[0..<n];
   }
+  cslot := cp_claude_slot(s, idx);
+  if cslot >= 0 { cdescs := CP_CLAUDE_DESC; return cdescs[cslot]; }
   if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy) or download a Local Model"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
@@ -234,6 +283,7 @@ coder_page_agy_seen :: (s: [] CoderPage, id: string, name: string) #export_c #ef
 // The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its text.
 coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
@@ -245,6 +295,7 @@ coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #expo
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
@@ -262,6 +313,8 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].prov[0].acp_meta_buf[n..<s[0].prov[0].acp_meta_buf.count], cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]);
     return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
   }
+  cslot := cp_claude_slot(s, idx);
+  if cslot >= 0 { cmetas := CP_CLAUDE_META; return cmetas[cslot]; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
@@ -320,6 +373,12 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
     }
     return false;
   }
+  cslot := cp_claude_find(name);
+  if cslot >= 0 {
+    if !s[0].claude { return false; }
+    s[0].model = cp_claude_base_idx(s) + cslot;
+    return true;
+  }
   if !cp_cloud_ok(s) { return false; }
   idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
   if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
@@ -329,6 +388,7 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
 }
 coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
@@ -339,10 +399,12 @@ coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #expor
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
   was_combo := cp_is_inkling_neon(s, s[0].model);
@@ -350,26 +412,32 @@ coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
   was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].inkling = on;
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 coder_page_set_hybrid_exec :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_combo := cp_is_inkling_neon(s, s[0].model);
   s[0].hybrid_exec = on;
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
@@ -379,6 +447,7 @@ coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(al
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
 }
 // The name of what runs the next message: the Antigravity CLI (agyworker), or Microcoder (mcworker)
@@ -394,6 +463,7 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if cp_is_codex(s, idx) { return "Codex CLI"; }
   if cp_is_cursor(s, idx) { return "Cursor ACP"; }
   if cp_is_acp(s, idx) { return "ACP Registry"; }
+  if cp_is_claude(s, idx) { return "Claude Code"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   if s[0].gauth_vertex { return "Vertex AI"; }                // Microcoder tries Vertex before any key (microcoder_keys.coax mk_plan)
   return "Gemini API";                                         // a Gemini API key, or Microcoder's own credentials with Experimental features
@@ -410,6 +480,9 @@ coder_page_model_inkling :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 coder_page_model_hybrid :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_hybrid(s, cp_model_index(s));
 }
+coder_page_model_claude :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_is_claude(s, cp_model_index(s));
+}
 
 // ---------------------------------------------------------------- effort
 
@@ -424,8 +497,10 @@ cp_effort_of :: (word: string) -> int {
   return CP_EFFORT_DEFAULT;
 }
 // The level a model runs at when the chat names none: for Antigravity, the effort Settings sets
-// (its model summary, "MODEL · high"), else agyworker's own, medium; Microcoder's models, low.
+// (its model summary, "MODEL · high"), else agyworker's own, medium; Claude's, high, as Claude Code
+// runs it; Microcoder's models, low.
 cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
+  if cp_is_claude(s, idx) { return CP_EFFORT_HIGH; }
   if !cp_is_agy(s, idx) { return CP_EFFORT_LOW; }
   m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
   dot := " · ";
@@ -448,6 +523,7 @@ cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_L
 cp_task_effort :: (s: [] CoderPage, model: int) -> string {
   words := CP_EFFORT_WORD;
   if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_HIGH { return words[s[0].effort]; }
+  if cp_is_claude(s, model) { return "high"; }
   return ifx cp_is_agy(s, model) then "" else "low";
 }
 // A press on the effort chip: the next level after the one shown, high wrapping to low.

@@ -41,7 +41,7 @@ typedef struct {
   char agy_bin[OA_PATH];
   char agy_model[128];
   int agy_mode;
-  int worker_is_agy;
+  int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude
   int foreman_tier;
   char folder[OA_PATH];
   char worktree_path[OA_PATH];
@@ -195,15 +195,18 @@ static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
 
 static int ensure_worker(DesktopApp *a) {
   int want_agy = cd_model_agy(a->page) != 0 && a->agy_worker_bin[0] != '\0';
+  // a chat on a Claude model runs on the Claude worker (kind 2), as its sub-agents do
+  int want_claude = !want_agy && cd_model_claude(a->page) != 0 && a->claude_worker_bin[0] != '\0';
+  int want_kind = want_agy ? 1 : want_claude ? 2 : 0;
   if (oa_core_worker_alive(vc(a))) {
-    if (a->worker_is_agy == want_agy) return 1;
+    if (a->worker_is_agy == want_kind) return 1;
     if (!cd_running(a->page)) {
       oa_core_worker_stop(vc(a), 0);
     } else {
       return 1;
     }
   }
-  const char *bin = want_agy ? a->agy_worker_bin : a->worker_bin;
+  const char *bin = want_agy ? a->agy_worker_bin : want_claude ? a->claude_worker_bin : a->worker_bin;
   if (!bin[0]) {
     cd_failed(a->page, want_agy ? "agyworker binary not found" : "mcworker binary not found");
     return 0;
@@ -218,7 +221,7 @@ static int ensure_worker(DesktopApp *a) {
     cd_failed(a->page, err[0] ? err : "could not start worker");
     return 0;
   }
-  a->worker_is_agy = want_agy;
+  a->worker_is_agy = want_kind;
   return 1;
 }
 
@@ -888,6 +891,13 @@ static void handle_action(DesktopApp *a, int act) {
     case 35:
       cd_toast(a->page, "Run 'agy auth login' in a terminal to sign in to Antigravity.", 0);
       break;
+    case 97: {
+      // Settings > Models: the model new chats start on, kept beside the keys
+      char pick[16];
+      snprintf(pick, sizeof pick, "%s%d", cd_orchestrator(a->page) ? "claude:" : "neon:", cd_orchestrator_model(a->page));
+      if (!oa_core_key_save(cs("orchestrator"), cs(pick))) cd_toast(a->page, "The setting could not be saved.", 0);
+      break;
+    }
     case 36: break;   // Experimental features: the page shows or hides them; Foreman and the Gym are Mac-only
     case 37: fork_shown(a); break;
     case 40: handle_file_save(a); break;
@@ -1676,6 +1686,15 @@ static int oa_main(int argc, char **argv) {
   app.portal = shot ? NULL : portal_open();
   oa_started();
   cd_claude(app.page, app.claude_worker_bin[0] ? 1 : 0);
+  {
+    // the model new chats start on, as Settings > Models kept it ("claude:N" or "neon:N")
+    char pick[16] = {0};
+    if (oa_core_key_read(cs("orchestrator"), vu(pick, (int)sizeof pick)) > 0) {
+      int on = strncmp(pick, "claude:", 7) == 0;
+      const char *num = strchr(pick, ':');
+      cd_orchestrator_set(app.page, on, num && num[1] >= '0' && num[1] <= '3' ? num[1] - '0' : 1);
+    }
+  }
   cd_agy(app.page, app.agy_worker_bin[0] ? 1 : 0);
   set_folder(&app, app.folder);
   refresh_settings_info(&app);

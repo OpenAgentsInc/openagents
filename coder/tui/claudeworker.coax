@@ -1,6 +1,10 @@
-// Claude Code as a worker process (GitHub #13660): one task, run by the claude CLI through the
-// Coax Claude Agent SDK (coax/lib/agent/claude), speaking the Microcoder worker's lines
+// Claude Code as a worker process (GitHub #13660): the claude CLI run through the Coax Claude Agent
+// SDK (coax/lib/agent/claude), speaking the Microcoder worker's lines
 // (coax/lib/agent/engine/mcworker-wire.coax) so an owner drives it as it drives mcworker.
+//
+// It runs in one of two ways, which its first task line picks.
+//
+// A sub-agent (a task line without "agents"): one task, then it exits.
 //
 //   in   {"task":"...","cwd":"/path","model":"sonnet"}   the task; model is haiku, sonnet, opus or fable, or a model id
 //        {"stop":true}                                    STOP the run
@@ -11,7 +15,39 @@
 //        {"kind":"reply","text":"..."}                     what Claude says between tool calls; the last text is the reply, in ended
 //        {"kind":"ended","ending":"finished","text":"..."}   the reply; or stopped, or failed with why
 //
-// It takes one task and then exits. Closing its stdin stops it like STOP.
+// Closing its stdin stops it like STOP.
+//
+// A chat's orchestrator (a task line with "agents":true, as the desktop app sends for the chat's own
+// model): Claude in place of Microcoder. The worker lives across the chat's turns, in one Claude
+// Code session, and hands work to the owner's sub-agents.
+//
+//   in   {"task":"...","cwd":"/path","model":"claude-opus-5-5","effort":"high","agents":true,"claude":true}   a turn
+//        {"results":[{"exit":N,"output":O}],"ticket":N}   the sub-agents' results for a delegate line
+//        {"steer":"...","id":"I"}                         more input for the running turn: it reaches Claude at its next step
+//        {"stop":true} or {"interrupt":true}              end the running turn; the session stays
+//        {"recall":[{"task":T,"reply":R}]}                the conversation is these turns now (a chat opened again)
+//        {"forget":true}                                  forget the conversation
+//        {"queue":OP,...}                                 the follow-up queue, as mcworker holds it (mcworker-queue.coax)
+//   out  the lines above, and
+//        {"kind":"turn","turn":N,"source":"message|queue","id":"I","text":"T"}   a turn starts
+//        {"kind":"reply","text":"..."}                     more of the reply as Claude writes it
+//        {"kind":"attempt","gateway":"claude","model":"...","outcome":"started",...}   a model request starts: the text after it is a new reply
+//        {"kind":"delegate","tasks":[{"level":L,"task":T}],"ticket":N}   Claude called its delegate tool: the owner runs the sub-agents
+//        {"kind":"stop_agent","agent":N}                   Claude stopped sub-agent N
+//        {"kind":"steer","id":"I","status":"accepted|applied|rejected",...}
+//        {"kind":"queue",...}  {"kind":"queue_refused",...}
+//
+// Sub-agents of the orchestrator: Claude gets one more tool, delegate (mcp__coder__delegate, an
+// in-process SDK MCP tool), whose call becomes a delegate line; its answer is the owner's results
+// line, however long the sub-agents take (cl_tool_later). A task's level is haiku, sonnet, opus or
+// fable (Claude Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.2, when the task line has "claude":true),
+// hydrogen, carbon or neon (Gemini), or openrouter (when the task line names its model). Claude
+// Code's own Agent and Task tools are off, so every sub-agent is one the owner shows.
+//
+// The session is one claude process. A change of folder, thinking level or sub-agent levels starts
+// another, which is told the conversation so far (the turns this worker ran or was told with
+// recall: the newest CW_HIST bytes, without their tool calls). A turn's cost is what the session's
+// total grew by.
 //
 // The login is the one Claude Code already has on this computer, unless the owner passes a key
 // in CODER_CLAUDE_KEY: an Anthropic API key (sk-ant-api...) becomes the child's ANTHROPIC_API_KEY,
@@ -28,7 +64,9 @@
 // run whose guard can't be found does not start.
 //
 // A run has no time limit: it ends when Claude replies or its owner stops it. Limits: a tool call's line names it in up to 300 bytes and
-// carries up to 4,000 bytes of its output. Up to 32 tool calls are open at once.
+// carries up to 4,000 bytes of its output. Up to 32 tool calls are open at once. A task is up to
+// 262,144 bytes. A delegate call hands over up to 6 tasks, and its answer carries up to 400,000
+// bytes of the sub-agents' replies, shared equally when they are longer together.
 //
 //   coax/web/tool.sh coder/tui/claudeworker.coax
 
@@ -36,6 +74,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "../../coax/lib/agent/engine/mcworker-queue.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 
@@ -47,6 +86,11 @@ CW_LABEL :: 300;
 CW_OUTPUT :: 4000;
 CW_OPEN :: 32;
 CW_ID :: 96;
+CW_TASK :: 262144;          // bytes of a task
+CW_HIST :: 262144;          // bytes of the conversation so far a new session is told
+CW_ROUND :: 6;              // tasks one delegate call hands over (the owner's CP_ROUND)
+CW_RESULTS :: 400000;       // bytes of the sub-agents' replies one delegate answer carries
+CW_STOP_WAIT_MS :: 8000;    // how long an interrupted turn has to end before its session is closed
 
 // A tool call that has started and not ended: its id, the words its lines carry, and any unified diff.
 CwCall :: struct { id: [CW_ID] u8; id_n: int; label: [CW_LABEL] u8; label_n: int; diff: [CW_OUTPUT] u8; diff_n: int; used: bool; }
@@ -111,10 +155,20 @@ cw_label :: (ar: [] ClArena, name: string, input: string, out: [] u8) -> int {
   if n == 0 { n = cw_put(out, 0, name); }
   return n;
 }
-// The model the CLI is asked for: the four levels are its own aliases; anything else goes as it is.
+// The model the CLI is asked for. The four levels are the Claude 5 models by id (Haiku, Sonnet and
+// Opus 5.5, Fable 5.2), so a sub-agent runs on the model its row names whatever the CLI's aliases
+// point at; anything else goes as it is.
+CW_LEVELS :: 4;
+CW_LEVEL :: [CW_LEVELS] string.["haiku", "sonnet", "opus", "fable"];
+CW_LEVEL_MODEL :: [CW_LEVELS] string.["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2"];
 cw_model :: (level: string) -> string {
-  if level == "haiku" || level == "sonnet" || level == "opus" || level == "fable" { return level; }
-  return ifx level.count > 0 then level else "sonnet";
+  levels := CW_LEVEL; models := CW_LEVEL_MODEL;
+  for i: 0..<CW_LEVELS { if level == levels[i] { return models[i]; } }
+  return ifx level.count > 0 then level else models[1];
+}
+#test "a level is its Claude 5 model; a model id goes as it is" {
+  #assert cw_model("haiku") == "claude-haiku-5-5" && cw_model("sonnet") == "claude-sonnet-5-5" && cw_model("opus") == "claude-opus-5-5" && cw_model("fable") == "claude-fable-5-2";
+  #assert cw_model("claude-opus-5-5") == "claude-opus-5-5" && cw_model("") == "claude-sonnet-5-5";
 }
 // The variable a key passed in CODER_CLAUDE_KEY goes into: a Claude Code token from
 // `claude setup-token` starts sk-ant-oat; anything else is taken as an API key.
@@ -313,42 +367,447 @@ cw_output :: (ar: [] ClArena, item: string, out: [] u8) -> int {
   return n;
 }
 
+// ---------------------------------------------------------------- the orchestrator
+
+// The tool Claude hands work to sub-agents with: an in-process SDK MCP tool, mcp__coder__delegate.
+CW_SERVER :: "coder";
+CW_TOOL :: "delegate";
+CW_TOOL_NAME :: "mcp__coder__delegate";
+CW_TOOL_ABOUT :: "Hand tasks to sub-agents of this chat. Each task runs as a sub-agent of its own in your working folder, with tools like yours, and the app shows it to the person. Up to 6 tasks a call, run at the same time. The answer comes as soon as one sub-agent ends and gives each task's reply, or says a task's sub-agent is still running and gives its number. A task with resume set to that number waits for that sub-agent (its task is a note sent to it, or empty); with stop true as well, it stops it.";
+
+// The call's input schema: the levels are the Claude models when the owner runs Claude Code
+// sub-agents, the three Gemini levels, and openrouter when the owner set a model for it.
+cw_delegate_schema :: (claude: bool, openrouter: bool, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"type\":\"object\",\"properties\":{\"tasks\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":6,\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[");
+  if claude { n = json_raw(out, n, "\"haiku\",\"sonnet\",\"opus\",\"fable\","); }
+  n = json_raw(out, n, "\"hydrogen\",\"carbon\",\"neon\"");
+  if openrouter { n = json_raw(out, n, ",\"openrouter\""); }
+  n = json_raw(out, n, "]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"},\"stop\":{\"type\":\"boolean\"}},\"required\":[\"level\",\"task\"]}}},\"required\":[\"tasks\"]}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+cw_level_ok :: (level: string, claude: bool, openrouter: bool) -> bool {
+  if level == "hydrogen" || level == "carbon" || level == "neon" { return true; }
+  if level == "openrouter" { return openrouter; }
+  levels := CW_LEVEL;
+  for i: 0..<CW_LEVELS { if level == levels[i] { return claude; } }
+  return false;
+}
+// What the orchestrator is told about its sub-agents, after the person's own instructions in its
+// system prompt. or_model is the OpenRouter model set for sub-agents ("" for none).
+cw_orchestrator_note :: (claude: bool, or_model: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "\n\nYou are the orchestrator of this chat in the OpenAgents desktop app. To hand work to a sub-agent, call the delegate tool (mcp__coder__delegate). The app runs each task as a sub-agent of its own in your working folder, with tools like yours, and shows it to the person. A call takes up to 6 standalone tasks, which run at the same time. A sub-agent knows only what its task says, so write each task whole. Pick a level for each task:");
+  if claude { n = json_raw(out, n, "\n- haiku: Claude Haiku 5.5, for lookups, searches and small changes.\n- sonnet: Claude Sonnet 5.5, for everyday coding work.\n- opus: Claude Opus 5.5, for work that needs many steps or careful reasoning.\n- fable: Claude Fable 5.2, for the hardest work."); }
+  n = json_raw(out, n, "\n- hydrogen, carbon, neon: Gemini 4 Hydrogen (fast and light), Carbon (strong) and Neon (frontier, fast). Use one when the person asks for Gemini or names it.");
+  if or_model.count > 0 { n = json_raw(out, n, "\n- openrouter: "); n = json_raw(out, n, or_model); n = json_raw(out, n, " through OpenRouter. Use it when the person asks for OpenRouter or names this model."); }
+  n = json_raw(out, n, "\nWhen the person names a model for a sub-agent, use that level. The call answers as soon as one sub-agent ends; any other is left running, and the answer gives its number. To wait for a running sub-agent, delegate one task with resume set to its number (its task is a note sent to it, or empty). To stop one, set resume to its number and stop to true. Do small work yourself, and do not hand the same work to two sub-agents. The Agent and Task tools are off here: delegate is how you start sub-agents.");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// s, or its first most bytes ending on a character's end.
+cw_cut :: (s: string, most: int) -> string {
+  if s.count <= most { return s; }
+  n := ifx most < 0 then 0 else most;
+  while n > 0 && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return cast(string) s[0..<n];
+}
+
+// A delegate call's tasks as the delegate line's list (mww_delegate), in out. A task with stop is
+// not in the list: its sub-agent's number is in stops, for a stop_agent line each. why says what is
+// wrong with the call, and then nothing is handed over.
+CwRound :: struct { n: int; asked: int; nstops: int; stops: [CW_ROUND] int; why: string; }
+cw_round :: (ar: [] ClArena, tasks: string, claude: bool, openrouter: bool, out: [] u8) -> CwRound {
+  r: CwRound;
+  have := ifx tasks.count > 1 && tasks[0] == '[' then cl_count(tasks) else 0;
+  if have == 0 { r.why = "delegate needs tasks: a list with at least one task."; return r; }
+  if have > CW_ROUND { r.why = "delegate takes up to 6 tasks a call. Send the rest in another call."; return r; }
+  n := json_raw(out, 0, "[");
+  for i: 0..<have {
+    one := cl_json(tasks, cl_item(tasks, i));
+    level := cl_str(ar, one, "level"); task := cl_str(ar, one, "task");
+    resume := cl_int(one, "resume"); stop := cl_bool(one, "stop");
+    rn := ifx resume.ok && resume.value > 0 then resume.value else 0;
+    if stop.ok && stop.value {
+      if rn == 0 { return CwRound.{why = "a task with stop needs resume set to the sub-agent's number."}; }
+      r.stops[r.nstops] = rn; r.nstops += 1;
+      continue;
+    }
+    if !cw_level_ok(level, claude, openrouter) { return CwRound.{why = "a task's level is not one this chat has. Use a level the delegate tool lists."}; }
+    if task.count == 0 && rn == 0 { return CwRound.{why = "a delegated task is empty."}; }
+    n = json_raw(out, n, ifx r.asked > 0 then ",{\"level\":" else "{\"level\":"); n = json_write_string(out, n, level);
+    n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, task);
+    if rn > 0 { n = json_raw(out, n, ",\"resume\":"); n = json_write_int(out, n, rn); }
+    n = json_raw(out, n, "}");
+    r.asked += 1;
+  }
+  n = json_raw(out, n, "]");
+  if n < 0 || ar[0].full { return CwRound.{why = "the delegated tasks are too long together. Send shorter tasks, or fewer in one call."}; }
+  r.n = n;
+  return r;
+}
+
+// The owner's results line (a JSON list, one {"exit":N,"output":O} for each task handed over, in
+// order) as the delegate call's answer, in out. Replies longer than CW_RESULTS bytes together get an
+// equal share each, and a cut one says how much is not shown.
+cw_results_text :: (ar: [] ClArena, results: string, asked: int, out: [] u8) -> string {
+  have := ifx results.count > 1 && results[0] == '[' then cl_count(results) else 0;
+  all := 0;
+  for i: 0..<have {
+    ar[0].at = 0; ar[0].full = false;
+    all += cl_str(ar, cl_json(results, cl_item(results, i)), "output").count;
+  }
+  share := ifx all > CW_RESULTS && asked > 0 then CW_RESULTS / asked else all;
+  n := 0;
+  for i: 0..<asked {
+    n = json_raw(out, n, ifx i > 0 then "\n\nTask " else "Task "); n = json_write_int(out, n, i + 1);
+    if i >= have { n = json_raw(out, n, ": its sub-agent did not run."); continue; }
+    one := cl_json(results, cl_item(results, i));
+    exit := cl_int(one, "exit");
+    ar[0].at = 0; ar[0].full = false;
+    text := cl_str(ar, one, "output");
+    n = json_raw(out, n, ifx exit.ok && exit.value == 0 then ": finished. Its reply:\n" else ": not finished.\n");
+    shown := cw_cut(text, share);
+    n = json_raw(out, n, shown);
+    if shown.count < text.count {
+      n = json_raw(out, n, "\n[The reply is longer: "); n = json_write_int(out, n, text.count - shown.count); n = json_raw(out, n, " more bytes are not shown here.]");
+    }
+  }
+  return ifx n < 0 then "The sub-agents' replies did not fit in one answer." else cast(string) out[0..<n];
+}
+
+// One more turn of the conversation a new session is told: the message and its reply, each up to
+// a quarter of h. When it does not fit, the oldest turns go. The new length.
+CW_HIST_USER :: "User:\n";
+CW_HIST_REPLY :: "\n\nAssistant:\n";
+cw_hist_starts :: (h: [] u8, n: int, at: int, word: string) -> bool {
+  if at + word.count > n { return false; }
+  for c, i: word { if h[at + i] != c { return false; } }
+  return true;
+}
+cw_hist_add :: (h: [] u8, hn: int, task: string, reply: string) -> int {
+  t := cw_cut(task, h.count / 4); r := cw_cut(reply, h.count / 4);
+  need := CW_HIST_USER.count + t.count + CW_HIST_REPLY.count + r.count + 2;
+  n := hn;
+  if n + need > h.count {
+    // the oldest turns go: from the first turn that starts at or after the bytes to free
+    from := n + need - h.count;
+    while from < n && !(from >= 2 && h[from - 1] == 10 && h[from - 2] == 10 && cw_hist_starts(h, n, from, CW_HIST_USER)) { from += 1; }
+    for i: from..<n { h[i - from] = h[i]; }
+    n -= from;
+  }
+  n = json_raw(h, n, CW_HIST_USER); n = json_raw(h, n, t);
+  n = json_raw(h, n, CW_HIST_REPLY); n = json_raw(h, n, r);
+  n = json_raw(h, n, "\n\n");
+  return ifx n < 0 then 0 else n;
+}
+// A recall line's turns (a JSON list of {"task":T,"reply":R}, oldest first) as the conversation so far.
+cw_hist_recall :: (ar: [] ClArena, turns: string, h: [] u8) -> int {
+  n := 0;
+  have := ifx turns.count > 1 && turns[0] == '[' then cl_count(turns) else 0;
+  for i: 0..<have {
+    one := cl_json(turns, cl_item(turns, i));
+    ar[0].at = 0; ar[0].full = false;
+    t := cl_str(ar, one, "task"); r := cl_str(ar, one, "reply");
+    if t.count == 0 && r.count == 0 { continue; }
+    n = cw_hist_add(h, n, t, r);
+  }
+  return n;
+}
+// A turn's message for Claude: the task, after the conversation so far when the session is new
+// and there is one. Its length in out.
+cw_prompt :: (hist: string, task: string, out: [] u8) -> int {
+  n := 0;
+  if hist.count > 0 {
+    n = json_raw(out, n, "<conversation_so_far>\nThis chat's earlier turns, oldest first: what the person asked and what was replied. Their tool calls are not kept.\n\n");
+    n = json_raw(out, n, hist);
+    n = json_raw(out, n, "</conversation_so_far>\n\n");
+  }
+  n = json_raw(out, n, task);
+  return ifx n < 0 then 0 else n;
+}
+
+// An attempt line for the owner: a model request that starts (outcome started, with the context
+// it sent: the text after it is a new reply), or a turn's cost in millionths of a dollar.
+cw_attempt :: (o: [] u8, model: string, outcome: string, input: int, cached: int, micros: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"attempt\",\"gateway\":\"claude\"");
+  if model.count > 0 { n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, model); }
+  n = json_raw(o, n, ",\"outcome\":"); n = json_write_string(o, n, outcome);
+  n = json_raw(o, n, ",\"status\":200");
+  if input > 0 {
+    n = json_raw(o, n, ",\"input_tokens\":"); n = json_write_int(o, n, input);
+    n = json_raw(o, n, ",\"cached_tokens\":"); n = json_write_int(o, n, cached);
+  }
+  if micros > 0 {
+    n = json_raw(o, n, ",\"provider_cost_usd_micros\":"); n = json_write_int(o, n, micros);
+    n = json_raw(o, n, ",\"usd_micros\":"); n = json_write_int(o, n, micros);
+  }
+  return json_raw(o, n, "}");
+}
+
+// The follow-up queue of an orchestrator, as mcworker holds it (coder/tui/mcworker.coax MwFollow,
+// mcworker-queue.coax). A steer goes to Claude at once, so no turn ends with one it never took.
+CW_SRC_MESSAGE :: 0; CW_SRC_QUEUE :: 1;
+CwFollow :: struct {
+  turn: int;                       // turns started by this worker; the running one's number
+  src: int; src_id: [MWQ_ID] u8; nsrc_id: int; src_text: [MWQ_TEXT] u8; nsrc_text: int;   // where the next turn comes from
+  force_head: bool;                // the queue's head starts next, paused or not (promote now)
+  qbuf: [MWQ_FILE] u8; qarena: [MWQ_MESSAGE + MWQ_TEXT] u8;
+}
+// The whole queue goes out, after it is written to its file.
+cw_queue_changed :: (q: [] MwQueue, f: [] CwFollow, o: [] u8) {
+  ok := mwq_save(q, f[0].qbuf[..]);
+  cw_send(o, mwq_line(q, o));
+}
+// A turn starts: its number and source go out.
+cw_turn_begin :: (f: [] CwFollow, o: [] u8) {
+  f[0].turn += 1;
+  cw_send(o, mww_turn(o, f[0].turn, ifx f[0].src == CW_SRC_QUEUE then "queue" else "message", cast(string) f[0].src_id[0..<f[0].nsrc_id], cast(string) f[0].src_text[0..<f[0].nsrc_text]));
+  f[0].src = CW_SRC_MESSAGE; f[0].nsrc_id = 0; f[0].nsrc_text = 0;
+}
+// A turn ended: a stopped one pauses the queue (interrupted) unless the person asked for the head
+// to start now, and a failed one pauses it (error).
+cw_turn_end :: (ending: string, q: [] MwQueue, f: [] CwFollow, o: [] u8) {
+  mwq_ended(q);
+  if ending == "stopped" && !f[0].force_head { mwq_pause(q, "interrupted"); }
+  else if ending == "failed" { mwq_pause(q, "error"); }
+  cw_queue_changed(q, f, o);
+}
+// When no turn runs: the queue's head as the next turn's task object into line, unless it is
+// paused. Its length; 0 for none.
+cw_dispatch :: (q: [] MwQueue, f: [] CwFollow, line: [] u8, o: [] u8) -> int {
+  if q[0].n == 0 || (q[0].paused && !f[0].force_head) { return 0; }
+  n := cl_copy(line, mwq_message(q, 0));
+  f[0].src = CW_SRC_QUEUE;
+  f[0].nsrc_id = cl_copy(f[0].src_id[..], mwq_id(q, 0)); f[0].nsrc_text = cl_copy(f[0].src_text[..], mwq_text(q, 0));
+  f[0].force_head = false;
+  x := mwq_start_head(q);
+  cw_queue_changed(q, f, o);
+  return n;
+}
+// A queue op. True when the running turn is to stop (promote now while a turn runs).
+cw_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] CwFollow, home: string, o: [] u8) -> bool {
+  op := req[0].op; id := req[0].id; why := "";
+  stop := false;
+  if op == "open" {
+    pb: [4096] u8; path := mwq_path(home, req[0].key, pb[..]);
+    if path.count == 0 { why = "invalid"; }
+    else if cast(string) q[0].path[0..<q[0].npath] != path {
+      ok := mwq_save(q, f[0].qbuf[..]);
+      if q[0].npath == 0 && q[0].n > 0 { q[0].npath = cl_copy(q[0].path[..], path); }
+      else { ok = mwq_load(q, path, f[0].qbuf[..], f[0].qarena[..]); }
+    }
+  }
+  else if op == "add" { why = mwq_add(q, id, req[0].text, req[0].message); }
+  else if op == "update" { why = mwq_update(q, id, req[0].text, req[0].message); }
+  else if op == "delete" { why = mwq_delete(q, id); }
+  else if op == "move" { why = mwq_move(q, id, ifx req[0].to.ok then req[0].to.value else 0); }
+  else if op == "promote" {
+    why = mwq_move(q, id, 0);
+    if why.count == 0 && req[0].now { f[0].force_head = true; stop = running; }
+  }
+  else if op == "pause" { mwq_pause(q, "user"); }
+  else if op == "resume" { mwq_resume(q); }
+  else if op == "clear" { mwq_clear(q); }
+  else if op != "list" { why = "invalid"; }
+  if why.count > 0 { cw_send(o, mww_queue_refused(o, op, id, why)); return false; }
+  cw_queue_changed(q, f, o);
+  return stop;
+}
+
+// The options every run has: the sub-agent's (cw_options), and for an orchestrator its reply as
+// it is written, the delegate tool, its thinking level, and Claude Code's own sub-agents off.
+// schema is cw_delegate_schema's.
+cw_main_options :: (o: [] ClOptions, effort: string, schema: string) {
+  o[0].include_partial_messages = true;
+  if effort.count > 0 { o[0].effort = effort; }
+  cl_add_disallowed(o, "Agent");
+  cl_add_disallowed(o, "Task");
+  // a delegate call waits as long as its sub-agents run, and carries their replies whole
+  cl_add_env(o, "MCP_TOOL_TIMEOUT=604800000");
+  cl_add_env(o, "MAX_MCP_OUTPUT_TOKENS=200000");
+  s := cl_add_server(o, CW_SERVER, "1.0.0");
+  if s >= 0 {
+    o[0].servers[s].timeout_ms = 604800000;
+    o[0].servers[s].always_load = true;   // Claude has the tool's schema from the start, with no tool search first
+    t := cl_add_server_tool(o, s, CW_TOOL, CW_TOOL_ABOUT, schema);
+  }
+}
+
+#test "the delegate tool: its schema lists the levels the chat has, and its note names the Claude 5 models" {
+  b: [1024] u8; nb: [4096] u8;
+  s := cw_delegate_schema(true, false, b[..]);
+  #assert json_valid(s) && cl_count(cl_raw(s, "properties.tasks.items.properties.level.enum")) == 7 && cl_eq(s, cl_at(s, "properties.tasks.items.properties.level.enum.3"), "fable");
+  s = cw_delegate_schema(false, true, b[..]);
+  #assert json_valid(s) && cl_count(cl_raw(s, "properties.tasks.items.properties.level.enum")) == 4 && cl_eq(s, cl_at(s, "properties.tasks.items.properties.level.enum.3"), "openrouter");
+  #assert cw_delegate_schema(true, true, b[0..<64]) == "";
+  #assert cw_level_ok("fable", true, false) && !cw_level_ok("fable", false, false) && cw_level_ok("neon", false, false) && !cw_level_ok("openrouter", true, false) && cw_level_ok("openrouter", false, true) && !cw_level_ok("hard", true, true);
+  n := cw_orchestrator_note(true, "", nb[..]);
+  #assert uinstr_find(n, "Claude Haiku 5.5") > 0 && uinstr_find(n, "Claude Sonnet 5.5") > 0 && uinstr_find(n, "Claude Opus 5.5") > 0 && uinstr_find(n, "Claude Fable 5.2") > 0 && uinstr_find(n, "OpenRouter") < 0;
+  n = cw_orchestrator_note(false, "deepseek/deepseek-v4", nb[..]);
+  #assert uinstr_find(n, "Claude Opus") < 0 && uinstr_find(n, "deepseek/deepseek-v4 through OpenRouter") > 0;
+}
+
+#test "an orchestrator's options: the delegate tool, its reply as it is written, and Claude Code's own sub-agents off" {
+  o: [1] ClOptions; sb: [1024] u8;
+  cw_options(o[..], "claude-opus-5-5", "/tmp/work");
+  cw_main_options(o[..], "high", cw_delegate_schema(true, false, sb[..]));
+  #assert o[0].servers[0].always_load;
+  #assert o[0].include_partial_messages && o[0].effort == "high" && o[0].server_count == 1 && o[0].servers[0].name == "coder" && o[0].servers[0].tool_count == 1 && o[0].servers[0].tools[0].name == "delegate";
+  #assert o[0].disallowed_count == 3 && o[0].disallowed_tools[1] == "Agent" && o[0].disallowed_tools[2] == "Task";
+  #assert cl_validate(o[0]) == "";
+  // the name Claude calls it by
+  w: [1] ClOut; wb: [64] u8; w[0].buf = wb[..];
+  cl_put_tool_name(w[..], CW_SERVER, CW_TOOL);
+  #assert cast(string) wb[0..<w[0].len] == CW_TOOL_NAME;
+}
+
+#test "a delegate call becomes the delegate line's list, its stops apart, and a wrong call says why" {
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; o: [2048] u8;
+  r := cw_round(ar[..], "[{\"level\":\"opus\",\"task\":\"review a\"},{\"level\":\"haiku\",\"task\":\"count b\"}]", true, false, o[..]);
+  #assert r.why == "" && r.asked == 2 && r.nstops == 0 && cast(string) o[0..<r.n] == "[{\"level\":\"opus\",\"task\":\"review a\"},{\"level\":\"haiku\",\"task\":\"count b\"}]";
+  // the owner reads the line as Microcoder's
+  lb: [4096] u8; l: [1] MwwLine;
+  n := mww_delegate(lb[..], cast(string) o[0..<r.n], 3);
+  #assert mww_read(ar[..], cast(string) lb[0..<n], l[..]) == MWW_DELEGATE && l[0].ticket.value == 3 && cl_count(l[0].tasks) == 2;
+  r = cw_round(ar[..], "[{\"level\":\"fable\",\"task\":\"\",\"resume\":2},{\"level\":\"sonnet\",\"task\":\"\",\"resume\":1,\"stop\":true}]", true, false, o[..]);
+  #assert r.why == "" && r.asked == 1 && r.nstops == 1 && r.stops[0] == 1 && cast(string) o[0..<r.n] == "[{\"level\":\"fable\",\"task\":\"\",\"resume\":2}]";
+  r = cw_round(ar[..], "[{\"level\":\"sonnet\",\"task\":\"x\",\"resume\":3,\"stop\":true}]", true, false, o[..]);
+  #assert r.why == "" && r.asked == 0 && r.nstops == 1 && r.stops[0] == 3;
+  #assert cw_round(ar[..], "[{\"level\":\"opus\",\"task\":\"x\"}]", false, false, o[..]).why != "";
+  #assert cw_round(ar[..], "[{\"level\":\"opus\",\"task\":\"\"}]", true, false, o[..]).why == "a delegated task is empty.";
+  #assert cw_round(ar[..], "[{\"level\":\"opus\",\"task\":\"x\",\"stop\":true}]", true, false, o[..]).why != "";
+  #assert cw_round(ar[..], "", true, false, o[..]).why != "" && cw_round(ar[..], "[]", true, false, o[..]).why != "" && cw_round(ar[..], "{}", true, false, o[..]).why != "";
+  seven := "[{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"a\"}]";
+  #assert cw_round(ar[..], seven, true, false, o[..]).why != "";
+  #assert cw_round(ar[..], "[{\"level\":\"neon\",\"task\":\"a long task\"}]", true, false, o[0..<16]).why != "";
+}
+
+#test "the sub-agents' results as the delegate call's answer: each task's reply, a task with none, and an equal share when they are long" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; o: [CW_RESULTS + 4096] u8;
+  t := cw_results_text(ar[..], "[{\"exit\":0,\"output\":\"12 tests\"},{\"exit\":1,\"output\":\"still running in the background (sub-agent #2).\"}]", 3, o[..]);
+  #assert t == "Task 1: finished. Its reply:\n12 tests\n\nTask 2: not finished.\nstill running in the background (sub-agent #2).\n\nTask 3: its sub-agent did not run.";
+  #assert cw_results_text(ar[..], "", 1, o[..]) == "Task 1: its sub-agent did not run.";
+  #assert cw_cut("abc", 5) == "abc" && cw_cut("abc", 2) == "ab" && cw_cut("aé", 2) == "a" && cw_cut("abc", 0) == "";
+}
+
+#test "the conversation so far: turns in order, the oldest dropped when it is full, a recall's turns, and the first message of a new session" {
+  h: [256] u8; ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; pb: [1024] u8;
+  n := cw_hist_add(h[..], 0, "add a test", "Added.");
+  #assert cast(string) h[0..<n] == "User:\nadd a test\n\nAssistant:\nAdded.\n\n";
+  n = cw_hist_add(h[..], n, "run it", "It passes.");
+  #assert cast(string) h[0..<n] == "User:\nadd a test\n\nAssistant:\nAdded.\n\nUser:\nrun it\n\nAssistant:\nIt passes.\n\n";
+  // a long turn pushes the oldest out, whole
+  long: [60] u8; for i: 0..<60 { long[i] = 'x'; }
+  n = cw_hist_add(h[..], n, cast(string) long[..], cast(string) long[..]);
+  n = cw_hist_add(h[..], n, cast(string) long[..], "end");
+  #assert n <= 256 && cw_hist_starts(h[..], n, 0, CW_HIST_USER) && uinstr_find(cast(string) h[0..<n], "add a test") < 0 && uinstr_find(cast(string) h[0..<n], "Assistant:\nend\n\n") > 0;
+  n = cw_hist_recall(ar[..], "[{\"task\":\"a\",\"reply\":\"b\"},{\"task\":\"c \\\"d\\\"\",\"reply\":\"e\"}]", h[..]);
+  #assert cast(string) h[0..<n] == "User:\na\n\nAssistant:\nb\n\nUser:\nc \"d\"\n\nAssistant:\ne\n\n";
+  #assert cw_hist_recall(ar[..], "[]", h[..]) == 0 && cw_hist_recall(ar[..], "", h[..]) == 0;
+  pn := cw_prompt("", "hello", pb[..]);
+  #assert cast(string) pb[0..<pn] == "hello";
+  pn = cw_prompt("User:\na\n\nAssistant:\nb\n\n", "hello", pb[..]);
+  #assert uinstr_find(cast(string) pb[0..<pn], "<conversation_so_far>") == 0 && uinstr_find(cast(string) pb[0..<pn], "Assistant:\nb\n\n</conversation_so_far>\n\nhello") > 0;
+}
+
+#test "an attempt line: a request that starts carries its context, a turn's end its cost; the owner reads both" {
+  o: [512] u8; ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; l: [1] MwwLine;
+  n := cw_attempt(o[..], "claude-opus-5-5", "started", 1200, 1000, 0);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"model\":\"claude-opus-5-5\",\"outcome\":\"started\",\"status\":200,\"input_tokens\":1200,\"cached_tokens\":1000}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT && l[0].gateway == "claude" && l[0].model == "claude-opus-5-5" && l[0].input_tokens.value == 1200;
+  n = cw_attempt(o[..], "", "done", 0, 0, 717);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":717,\"usd_micros\":717}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT && l[0].provider_cost_usd_micros.value == 717;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   line: [CW_LINE] u8; nl := 0;
   out: [CW_LINE] u8;
-  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  cline: [CL_LINE_MAX] u8; carena: [262144] u8; cout: [262144] u8; scratch: [196608] u8;
-  task: [32768] u8; cwd: [4096] u8; model: [128] u8;
+  ab: [CW_LINE] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  cline: [CL_LINE_MAX] u8; carena: [CW_LINE] u8; cout: [4194304] u8; scratch: [393216] u8;
+  task: [CW_TASK] u8; tn := 0; cwd: [4096] u8; cn := 0; model: [128] u8; mn := 0; effort: [16] u8; en := 0;
   calls: [CW_OPEN] CwCall;
   lb: [CW_LABEL] u8; ob: [CW_OUTPUT] u8; eb: [2048] u8;
   q: [1] ClQuery; p: [1] ClProcess;
   req: [1] MwwRequest;
-  held: [65536] u8; held_n := 0;   // the newest thing Claude said, not sent yet
+  held: [65536] u8; held_n := 0;   // the newest thing Claude said, not sent yet (a sub-agent's)
   keyb: [4096] u8; kentry: [4200] u8; keyed := false;   // a key passed in CODER_CLAUDE_KEY
   gpath: [4096] u8; selfb: [4096] u8; gsettings: [4400] u8;   // the guard hook (GitHub #13771)
   uib: [UINSTR_BLOCK_BYTES] u8;   // the user instructions (GitHub #13808)
-  running := false; ticket := 0;
+  ticket := 0;
+  // the run: main is a chat's orchestrator, which lives across turns; alive, its claude process
+  // runs; ready, it answered initialize; turn_on, a turn (or a sub-agent's one task) runs
+  main := false; alive := false; ready := false; turn_on := false;
+  stopping := false; stop_at := 0; stop_now := false;
+  prompt: [CW_TASK + CW_HIST + 512] u8; pn := 0; prompt_due := false;
+  hist: [CW_HIST] u8; hn := 0; told := false;   // the conversation so far, and whether this session was told it
+  s_claude := false; orb: [512] u8; orn := 0;   // the session's sub-agent levels: Claude's, and the OpenRouter model
+  schema: [1024] u8; noteb: [4096] u8; sysb: [UINSTR_BLOCK_BYTES + 4096] u8;
+  later: [1] ClToolLater; wait_ticket := 0; wait_asked := 0;   // the delegate call that waits for its results
+  dl: [CW_TASK] u8; dab: [CW_TASK] u8; rab: [CW_LINE] u8; rtext: [CW_RESULTS + 4096] u8;
+  spent := 0;                                   // the session's cost so far, in millionths of a dollar
+  qq: [1] MwQueue; f: [1] CwFollow;
+  next: [CW_LINE] u8; nn := 0;                  // the task line to start
+  homeb: [4096] u8; home := cl_getenv("CODER_HOME", homeb[..]);
+  if home.count == 0 { home = cl_getenv("HOME", homeb[..]); }
   cw_send(out[..], mww_ready(out[..]));
   while true {
-    if running {
+    ended := ""; text := ""; dead := false;
+    if stop_now { stop_now = false; if turn_on { ended = "stopped"; } }
+    else if alive && main && turn_on && stopping && cxproc_now_ms() - stop_at > CW_STOP_WAIT_MS { ended = "stopped"; dead = true; }
+    else if alive {
+      if main && ready && prompt_due { cl_send_user(q[..], cast(string) prompt[0..<pn]); prompt_due = false; told = true; }
       ev := cl_poll(q[..], p[..], 20);
-      ended := ""; text := "";
-      if ev.kind == ClEventKind.failed { ended = "failed"; text = cl_error(q[..]); }
+      if ev.kind == ClEventKind.failed { ended = "failed"; text = cl_error(q[..]); dead = true; }
       else if ev.kind == ClEventKind.end {
-        ended = "failed";
+        ended = "failed"; dead = true;
         text = cl_stderr(p[..], eb[..]);
         if text.count == 0 { text = "Claude Code ended before it replied."; }
       }
+      else if ev.kind == ClEventKind.initialized { ready = true; }
       else if ev.kind == ClEventKind.permission { cl_allow(q[..], "", ""); }
+      else if ev.kind == ClEventKind.tool_call {
+        // Claude's delegate call: its tasks go to the owner, and its answer waits for their results
+        if !main || !turn_on { cl_tool_text(q[..], "No turn runs, so nothing can be delegated.", true); }
+        else if later[0].held { cl_tool_text(q[..], "A delegate call is still waiting for its sub-agents. Wait for its answer, then call delegate again.", true); }
+        else {
+          da: [1] ClArena; da[0] = ClArena.{buf = dab[..]};
+          rd := cw_round(da[..], cl_raw(ev.arguments, "tasks"), s_claude, orn > 0, dl[..]);
+          if rd.why.count > 0 { cl_tool_text(q[..], rd.why, true); }
+          else {
+            for k: 0..<rd.nstops { cw_send(out[..], mww_stop_agent(out[..], rd.stops[k])); }
+            if rd.asked == 0 { cl_tool_text(q[..], "Its owner was told to stop it. A sub-agent that had already ended is left as it was.", false); }
+            else if cl_tool_later(q[..], later[..]) {
+              ticket += 1; wait_ticket = ticket; wait_asked = rd.asked;
+              cw_send(out[..], mww_delegate(out[..], cast(string) dl[0..<rd.n], ticket));
+            }
+          }
+        }
+      }
       else if ev.kind == ClEventKind.message && ev.message.parent_tool_use_id.count == 0 {
         m := ev.message; l := m.line; car := q[0].ar[..];
-        if m.kind == ClKind.assistant {
+        if m.kind == ClKind.stream_event {
+          // an orchestrator's reply as Claude writes it; each model request starts a new one
+          if main && turn_on {
+            se := cl_stream_event_of(car, m);
+            if se.event_type == "message_start" {
+              u := cl_raw(se.event, "message.usage");
+              fresh := cl_int(u, "input_tokens"); read := cl_int(u, "cache_read_input_tokens"); made := cl_int(u, "cache_creation_input_tokens");
+              cached := ifx read.ok then read.value else 0;
+              cw_send(out[..], cw_attempt(out[..], cast(string) model[0..<mn], "started", (ifx fresh.ok then fresh.value else 0) + cached + (ifx made.ok then made.value else 0), cached, 0));
+            } else if se.event_type == "content_block_delta" && cl_str(car, se.event, "delta.type") == "text_delta" {
+              said := cl_str(car, se.event, "delta.text");
+              if said.count > 0 { cw_send(out[..], mww_reply(out[..], said)); }
+            }
+          }
+        } else if m.kind == ClKind.assistant {
           content := cl_raw(l, "message.content");
           for i: 0..<cl_count(content) {
             item := cl_json(content, cl_item(content, i));
-            // What Claude says goes out once more follows it: the last text of the run is its reply,
-            // which ended carries, so it is held until something comes after it.
+            // What a sub-agent's Claude says goes out once more follows it: the last text of the run is
+            // its reply, which ended carries, so it is held until something comes after it. An
+            // orchestrator's text went out as it was written.
             if cl_str(car, item, "type") == "text" {
+              if main { continue; }
               said := cl_str(car, item, "text");
               if said.count > 0 { if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); } held_n = cl_copy(held[..], said); }
               continue;
@@ -362,6 +821,7 @@ tool_main :: () -> int #export_c #effects(all) {
             }
             if cl_str(car, item, "type") != "tool_use" { continue; }
             tname := cl_str(car, item, "name");
+            if tname == CW_TOOL_NAME { continue; }   // the owner shows its sub-agents, not the call
             tinput := cl_raw(item, "input");
             n := cw_label(car, tname, tinput, lb[..]);
             id := cl_str(car, item, "id");
@@ -380,7 +840,7 @@ tool_main :: () -> int #export_c #effects(all) {
           }
           e := cl_assistant_error(l, cl_at(l, "error"));
           if e == ClAssistantError.authentication_failed || e == ClAssistantError.oauth_org_not_allowed {
-            ended = "failed";
+            ended = "failed"; dead = true;
             text = ifx keyed then "Claude refused the key Coder has. Set another with Coder > Claude Key, then send the message again."
                    else "Claude Code is not logged in on this computer. Run `claude` in a terminal and log in, or set a key with Coder > Claude Key, then send the message again.";
           }
@@ -403,38 +863,49 @@ tool_main :: () -> int #export_c #effects(all) {
           }
         } else if m.kind == ClKind.result {
           r := cl_result_of(car, m);
-          if r.total_cost_usd > 0.0 {
-            micros := cast(int) (r.total_cost_usd * 1000000.0 + 0.5);
-            if micros > 0 {
-              an := json_raw(out[..], 0, "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"outcome\":\"");
-              an = json_raw(out[..], an, ifx r.kind == ClResultKind.success && !r.is_error then "done" else "failed");
-              an = json_raw(out[..], an, "\",\"status\":200,\"provider_cost_usd_micros\":");
-              an = json_write_int(out[..], an, micros);
-              an = json_raw(out[..], an, ",\"usd_micros\":");
-              an = json_write_int(out[..], an, micros);
-              an = json_raw(out[..], an, "}");
-              cw_send(out[..], an);
-            }
-          }
+          good := r.kind == ClResultKind.success && !r.is_error;
+          // the session's total cost grows with each turn: this turn's is what it grew by
+          micros := cast(int) (r.total_cost_usd * 1000000.0 + 0.5);
+          grew := ifx micros >= spent then micros - spent else micros;
+          spent = micros;
+          if grew > 0 { cw_send(out[..], cw_attempt(out[..], cast(string) model[0..<mn], ifx good then "done" else "failed", 0, 0, grew)); }
           // held text that is not the reply was said along the way
           if held_n > 0 && cast(string) held[0..<held_n] != r.result { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); }
           held_n = 0;
-          if r.kind == ClResultKind.success && !r.is_error { ended = "finished"; text = r.result; }
-          else {
-            ended = "failed"; text = cl_str(car, l, "result");
-            if text.count == 0 { text = cl_str(car, l, "errors.0"); }
-            if text.count == 0 { text = "Claude Code ended with an error."; }
+          // a steer Claude took as a turn of its own follows: the owner's turn goes on with it
+          more := main && !stopping && r.queued_turn_count.has && r.queued_turn_count.value > 0;
+          if !more {
+            if main && stopping { ended = "stopped"; }
+            else if good { ended = "finished"; text = r.result; }
+            else {
+              ended = "failed"; text = cl_str(car, l, "result");
+              if text.count == 0 { text = cl_str(car, l, "errors.0"); }
+              if text.count == 0 { text = "Claude Code ended with an error."; }
+            }
           }
         }
       }
-      if ended.count > 0 {
+    }
+    if ended.count > 0 {
+      if !main {
         if held_n > 0 { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); held_n = 0; }   // a run that failed keeps what it said
         cw_send(out[..], mww_ended(out[..], ended, text));
-        r := cl_kill(p[..]); cl_close(p[..]);
+        kr := cl_kill(p[..]); cl_close(p[..]);
         return 0;
       }
+      // an orchestrator's turn ended: the session stays for the next, unless it is gone
+      if turn_on {
+        cw_send(out[..], mww_ended(out[..], ended, text));
+        if ended == "finished" { hn = cw_hist_add(hist[..], hn, cast(string) task[0..<tn], text); }
+        else if ended == "stopped" { hn = cw_hist_add(hist[..], hn, cast(string) task[0..<tn], "[The person stopped this turn before it replied.]"); }
+        turn_on = false;
+        cw_turn_end(ended, qq[..], f[..], out[..]);
+      }
+      stopping = false; prompt_due = false; later[0].held = false;
+      for k: 0..<CW_OPEN { calls[k].used = false; }
+      if dead && alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
     }
-    b := cxterm_byte(ifx running then 0 else 200);
+    b := cxterm_byte(ifx alive then 0 else 200);
     got_line := false;
     while b >= 0 {
       if b == 10 { got_line = true; break; }
@@ -442,65 +913,157 @@ tool_main :: () -> int #export_c #effects(all) {
       b = cxterm_byte(0);
     }
     if b == -2 && !got_line {       // stdin closed: the owner is gone
-      if running { r := cl_kill(p[..]); cl_close(p[..]); }
+      if alive { kr := cl_kill(p[..]); cl_close(p[..]); }
       return 0;
     }
-    if !got_line { continue; }
-    msg := cast(string) line[0..<nl];
-    nl = 0;
-    ar[0].at = 0; ar[0].full = false;
-    what := mww_request(ar[..], msg, req[..]);
-    if what == MWW_STOP {
-      if running {
-        r := cl_kill(p[..]); cl_close(p[..]);
-        cw_send(out[..], mww_ended(out[..], "stopped", ""));
-        return 0;
+    if got_line {
+      msg := cast(string) line[0..<nl];
+      nl = 0;
+      ar[0].at = 0; ar[0].full = false;
+      what := mww_request(ar[..], msg, req[..]);
+      if what == MWW_STOP && !main {
+        if alive {
+          kr := cl_kill(p[..]); cl_close(p[..]);
+          cw_send(out[..], mww_ended(out[..], "stopped", ""));
+          return 0;
+        }
       }
+      else if what == MWW_STOP || what == MWW_INTERRUPT {
+        // the turn ends and the session stays: Claude Code is told to stop, and has CW_STOP_WAIT_MS to
+        if turn_on && !stopping {
+          if alive && ready && !prompt_due { ir := cl_interrupt(q[..]); stopping = true; stop_at = cxproc_now_ms(); }
+          else { prompt_due = false; stop_now = true; }   // nothing reached Claude yet
+        }
+      }
+      else if what == MWW_FORGET {
+        if alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
+        hn = 0;
+        if turn_on { stop_now = true; }
+      }
+      else if what == MWW_RECALL {
+        // the conversation is these turns now: the next turn starts a session that is told them
+        if !turn_on {
+          if alive { kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false; }
+          ra: [1] ClArena; ra[0] = ClArena.{buf = rab[..]};
+          hn = cw_hist_recall(ra[..], req[0].recall, hist[..]);
+        }
+      }
+      else if what == MWW_RESULTS {
+        if main && alive && turn_on && later[0].held && (!req[0].ticket.ok || req[0].ticket.value == wait_ticket) {
+          ra: [1] ClArena; ra[0] = ClArena.{buf = rab[..]};
+          cl_tool_text_later(q[..], later[..], cw_results_text(ra[..], req[0].results, wait_asked, rtext[..]), false);
+        }
+      }
+      else if what == MWW_STEER {
+        if main {
+          why := "";
+          if !turn_on || !alive || !ready || prompt_due || stopping { why = "no_active_turn"; }
+          else if req[0].turn.ok && req[0].turn.value != f[0].turn { why = "expected_turn_mismatch"; }
+          else if req[0].text.count == 0 || req[0].text.count > CW_TASK { why = "invalid"; }
+          cw_send(out[..], mww_steered(out[..], req[0].id, ifx why.count == 0 then "accepted" else "rejected", f[0].turn, why, 0, ifx why.count == 0 then req[0].text else ""));
+          if why.count == 0 {
+            // it reaches Claude at its next step, without ending what it is doing
+            w: [1] ClOut; w[0].buf = prompt[..];
+            cl_put(w[..], "["); cl_text_block(w[..], req[0].text); cl_put(w[..], "]");
+            if !w[0].failed {
+              cl_user_blocks(q[0].out[..], cast(string) prompt[0..<w[0].len], cl_session_id(q[..]), "next", -1, false);
+              cw_send(out[..], mww_steered(out[..], req[0].id, "applied", f[0].turn, "", 0, ""));
+            }
+          }
+        }
+      }
+      else if what == MWW_QUEUE {
+        if cw_queue_op(turn_on, req[..], qq[..], f[..], home, out[..]) && turn_on && !stopping {
+          if alive && ready && !prompt_due { ir := cl_interrupt(q[..]); stopping = true; stop_at = cxproc_now_ms(); }
+          else { prompt_due = false; stop_now = true; }
+        }
+      }
+      else if what == MWW_TASK && !turn_on && nn == 0 && (main || !alive) { nn = cl_copy(next[..], msg); if nn < msg.count { nn = 0; cw_send(out[..], mww_ended(out[..], "failed", "The message is longer than 1,048,576 bytes.")); if !main { return 0; } } }
+    }
+    // an orchestrator with nothing to do starts its queue's head
+    if main && !turn_on && !stop_now && nn == 0 { nn = cw_dispatch(qq[..], f[..], next[..], out[..]); }
+    if nn == 0 || turn_on { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    started := mww_request(ar[..], cast(string) next[0..<nn], req[..]);
+    nn = 0;
+    if started != MWW_TASK { continue; }
+    if req[0].agents { main = true; }
+    if main { cw_turn_begin(f[..], out[..]); }
+    tn = cl_copy(task[..], req[0].task);
+    if tn < req[0].task.count {
+      cw_send(out[..], mww_ended(out[..], "failed", "The task is longer than 262,144 bytes."));
+      if !main { return 0; }
+      cw_turn_end("failed", qq[..], f[..], out[..]);
       continue;
     }
-    if what != MWW_TASK || running { continue; }
-    tn := cl_copy(task[..], req[0].task); cn := cl_copy(cwd[..], req[0].cwd); mn := cl_copy(model[..], cw_model(req[0].model));
-    if tn < req[0].task.count { cw_send(out[..], mww_ended(out[..], "failed", "The task is longer than 32,768 bytes.")); return 0; }
-    cl_init(q[..], cline[..], carena[..], cout[..]);
-    o: [1] ClOptions;
-    cw_options(o[..], cast(string) model[0..<mn], cast(string) cwd[0..<cn]);
-    cl_remove_env(o[..], "ANTHROPIC_API_KEY");
-    cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
-    cl_remove_env(o[..], "ANTHROPIC_BASE_URL");
-    cl_remove_env(o[..], "CLAUDECODE");
-    cl_remove_env(o[..], "CLAUDE_CODE_ENTRYPOINT");
-    cl_remove_env(o[..], "CLAUDE_CODE_OAUTH_TOKEN");
-    cl_remove_env(o[..], "CODER_CLAUDE_KEY");
-    keyed = false;
-    kn := cw_key_entry(cl_getenv("CODER_CLAUDE_KEY", keyb[..]), kentry[..]);
-    if kn > 0 { cl_add_env(o[..], cast(string) kentry[0..<kn]); keyed = true; }
-    // the shared-checkout guard before every Bash call (GitHub #13771); no guard, no run
-    guard := cl_getenv("CODER_GIT_GUARD", gpath[..]);
-    if guard.count == 0 { guard = cw_guard_beside(tool_self(selfb[..]), gpath[..]); }
-    hooks := ifx guard.count > 0 && fs_kind(guard) == FS_FILE then cw_guard_settings(guard, gsettings[..]) else "";
-    if hooks.count == 0 {
-      cw_send(out[..], mww_ended(out[..], "failed", "Coder's git guard (gitguard) is not beside its Claude worker, so Claude can't run commands safely here. Reinstall or rebuild Coder."));
-      return 0;
+    want := cw_model(req[0].model);
+    // a session runs in one folder, at one thinking level, with one set of sub-agent levels: a
+    // change of any starts another, which is told the conversation so far
+    if alive && (cast(string) cwd[0..<cn] != req[0].cwd || cast(string) effort[0..<en] != req[0].effort || s_claude != req[0].claude || cast(string) orb[0..<orn] != req[0].openrouter) {
+      kr := cl_kill(p[..]); cl_close(p[..]); alive = false; ready = false;
     }
-    o[0].settings = hooks;
-    // the iOS Simulator's tools (oasim mcp, #13811) and Lean 4 / RH tools (lean-run mcp, #13947)
-    simb: [FS_PATH_MAX] u8; leanb: [FS_PATH_MAX] u8; simsv: [FS_PATH_MAX * 2 + 256] u8;
-    sim := cl_getenv("OA_SIMHOST", simb[..]);
-    if sim.count == 0 { sim = cw_beside(tool_self(selfb[..]), "oasim", simb[..]); }
-    if sim.count > 0 && fs_kind(sim) != FS_FILE { sim = ""; }
-    lean_mcp := cl_getenv("OA_LEANRUN", leanb[..]);
-    if lean_mcp.count == 0 { lean_mcp = cw_beside(tool_self(selfb[..]), "lean-run", leanb[..]); }
-    if lean_mcp.count > 0 && fs_kind(lean_mcp) != FS_FILE { lean_mcp = ""; }
-    o[0].mcp_servers = cw_mcp_servers(sim, lean_mcp, simsv[..]);
-    uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
-    cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
-    q[0].options = o[0];
-    problem := cl_start(q[..], p[..], cast(string) task[0..<tn], false, scratch[..]);
-    if problem.count > 0 {
-      cw_send(out[..], mww_ended(out[..], "failed", ifx problem == "claude executable not found" then "Claude Code is not installed on this computer: the claude command was not found." else problem));
-      return 0;
+    if alive && cast(string) model[0..<mn] != want { sr := cl_set_model(q[..], want); mn = cl_copy(model[..], want); }
+    if !alive {
+      mn = cl_copy(model[..], want); cn = cl_copy(cwd[..], req[0].cwd); en = cl_copy(effort[..], req[0].effort);
+      s_claude = req[0].claude; orn = cl_copy(orb[..], req[0].openrouter);
+      cl_init(q[..], cline[..], carena[..], cout[..]);
+      o: [1] ClOptions;
+      cw_options(o[..], cast(string) model[0..<mn], cast(string) cwd[0..<cn]);
+      cl_remove_env(o[..], "ANTHROPIC_API_KEY");
+      cl_remove_env(o[..], "ANTHROPIC_AUTH_TOKEN");
+      cl_remove_env(o[..], "ANTHROPIC_BASE_URL");
+      cl_remove_env(o[..], "CLAUDECODE");
+      cl_remove_env(o[..], "CLAUDE_CODE_ENTRYPOINT");
+      cl_remove_env(o[..], "CLAUDE_CODE_OAUTH_TOKEN");
+      cl_remove_env(o[..], "CODER_CLAUDE_KEY");
+      keyed = false;
+      kn := cw_key_entry(cl_getenv("CODER_CLAUDE_KEY", keyb[..]), kentry[..]);
+      if kn > 0 { cl_add_env(o[..], cast(string) kentry[0..<kn]); keyed = true; }
+      // the shared-checkout guard before every Bash call (GitHub #13771); no guard, no run
+      guard := cl_getenv("CODER_GIT_GUARD", gpath[..]);
+      if guard.count == 0 { guard = cw_guard_beside(tool_self(selfb[..]), gpath[..]); }
+      hooks := ifx guard.count > 0 && fs_kind(guard) == FS_FILE then cw_guard_settings(guard, gsettings[..]) else "";
+      if hooks.count == 0 {
+        cw_send(out[..], mww_ended(out[..], "failed", "Coder's git guard (gitguard) is not beside its Claude worker, so Claude can't run commands safely here. Reinstall or rebuild Coder."));
+        if !main { return 0; }
+        cw_turn_end("failed", qq[..], f[..], out[..]);
+        continue;
+      }
+      o[0].settings = hooks;
+      // the iOS Simulator's tools (oasim mcp, #13811) and Lean 4 / RH tools (lean-run mcp, #13947)
+      simb: [FS_PATH_MAX] u8; leanb: [FS_PATH_MAX] u8; simsv: [FS_PATH_MAX * 2 + 256] u8;
+      sim := cl_getenv("OA_SIMHOST", simb[..]);
+      if sim.count == 0 { sim = cw_beside(tool_self(selfb[..]), "oasim", simb[..]); }
+      if sim.count > 0 && fs_kind(sim) != FS_FILE { sim = ""; }
+      lean_mcp := cl_getenv("OA_LEANRUN", leanb[..]);
+      if lean_mcp.count == 0 { lean_mcp = cw_beside(tool_self(selfb[..]), "lean-run", leanb[..]); }
+      if lean_mcp.count > 0 && fs_kind(lean_mcp) != FS_FILE { lean_mcp = ""; }
+      o[0].mcp_servers = cw_mcp_servers(sim, lean_mcp, simsv[..]);
+      uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
+      cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
+      if main {
+        // the delegate tool, and what the orchestrator is told of it after the person's instructions
+        cw_main_options(o[..], cast(string) effort[0..<en], cw_delegate_schema(s_claude, orn > 0, schema[..]));
+        sn := json_raw(sysb[..], 0, o[0].append_system_prompt);
+        sn = json_raw(sysb[..], sn, cw_orchestrator_note(s_claude, cast(string) orb[0..<orn], noteb[..]));
+        if sn > 0 { o[0].append_system_prompt = cast(string) sysb[0..<sn]; }
+      }
+      q[0].options = o[0];
+      problem := cl_start(q[..], p[..], ifx main then "" else cast(string) task[0..<tn], main, scratch[..]);
+      if problem.count > 0 {
+        cw_send(out[..], mww_ended(out[..], "failed", ifx problem == "claude executable not found" then "Claude Code is not installed on this computer: the claude command was not found." else problem));
+        if !main { return 0; }
+        cw_turn_end("failed", qq[..], f[..], out[..]);
+        continue;
+      }
+      alive = true; ready = false; spent = 0; told = false;
     }
-    running = true;
+    turn_on = true; stopping = false; held_n = 0; later[0].held = false;
+    for k: 0..<CW_OPEN { calls[k].used = false; }
+    if main {
+      pn = cw_prompt(ifx told then "" else cast(string) hist[0..<hn], cast(string) task[0..<tn], prompt[..]);
+      prompt_due = true;
+    }
   }
   return 0;
 }

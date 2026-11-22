@@ -41,7 +41,7 @@ CP_LEVELS :: 9;
 CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "openrouter", "inkling", "haiku", "sonnet", "opus", "fable"];
 // What the first two were called before 2026-11-17, as chats kept then have them.
 CP_LEVEL_OLD :: [2] string.["simple", "complex"];
-CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Inkling", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Inkling", "Claude Haiku 5.5", "Claude Sonnet 5.5", "Claude Opus 5.5", "Claude Fable 5.2"];
 CP_LEVEL_OR :: 3;                           // the OpenRouter level
 CP_LEVEL_INKLING :: 4;                      // the free local Inkling/psionic level
 CP_LEVEL_CLAUDE :: 5;                       // the first Claude level
@@ -81,6 +81,18 @@ CP_MODEL_SHORT :: [CP_MODELS] string.["Neon", "Carbon", "Hydrogen", "Argon"];
 CP_MODEL_DESC_VERTEX :: [CP_MODELS] string.["Fast frontier · Vertex AI", "Deep reasoning · Vertex AI", "Fast & light · Vertex AI", "Heavyweight · Vertex AI"];
 CP_MODEL_DESC_API :: [CP_MODELS] string.["Fast frontier · Gemini API", "Deep reasoning · Gemini API", "Fast & light · Gemini API", "Heavyweight · Gemini API"];
 CP_MODEL_META :: [CP_MODELS] string.["Microcoder · Gemini 4 Neon", "Microcoder · Gemini 4 Carbon", "Microcoder · Gemini 4 Hydrogen", "Microcoder · Gemini 4 Argon"];
+// Claude as a chat's main model, when Claude Code is installed here: the last entries of the
+// picker. Claude Code runs the chat (coder/tui/claudeworker.coax) and hands tasks to sub-agents as
+// Microcoder does. Settings > Models can make one of them the model new chats start on.
+CP_CLAUDE_MODELS :: 4;
+CP_CLAUDE_ID :: [CP_CLAUDE_MODELS] string.["claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+CP_CLAUDE_LABEL :: [CP_CLAUDE_MODELS] string.["Claude Fable 5.2", "Claude Opus 5.5", "Claude Sonnet 5.5", "Claude Haiku 5.5"];
+CP_CLAUDE_SHORT :: [CP_CLAUDE_MODELS] string.["Fable 5.2", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+CP_CLAUDE_ALIAS :: [CP_CLAUDE_MODELS] string.["fable", "opus", "sonnet", "haiku"];
+CP_CLAUDE_DESC :: [CP_CLAUDE_MODELS] string.["Hardest work · Claude Code", "Deep reasoning · Claude Code", "Everyday coding · Claude Code", "Fast & light · Claude Code"];
+CP_CLAUDE_META :: [CP_CLAUDE_MODELS] string.["Claude Code · Claude Fable 5.2", "Claude Code · Claude Opus 5.5", "Claude Code · Claude Sonnet 5.5", "Claude Code · Claude Haiku 5.5"];
+CP_CLAUDE_START :: 1;       // the Claude model new chats start on until Settings picks another: Opus 5.5
+CP_ASK_ORCHESTRATOR :: 97;  // Settings > Models > the model new chats start on changed (coder_page_orchestrator)
 
 // Default per-chat-thread max budget in microdollars ($50.00).
 CP_BUDGET_DEFAULT :: 50000000;
@@ -249,7 +261,8 @@ CoderPage :: struct {
   fld: [1] CpFields;          // the composer's and settings' search's text fields, drawn here (editor.coax; GitHub #13742)
   reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
-  claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
+  claude: bool;               // Claude Code is installed here: a chat may run on it, and hand tasks to it
+  orch_claude: bool; orch_model: int;   // Settings > Models: new chats start on Claude (which of CP_CLAUDE_ID), not Neon
   agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
   inkling: bool;              // Inkling 2 Mini local checkpoint is installed on >=32GB Mac: shown in the model picker (#13825)
   hybrid_exec: bool;          // Hybrid Executor (hybrid-exec-v1) verified Ready (base + 4/4 Class-E SHA-256 modules, #13924)
@@ -523,7 +536,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].notify_mode = CP_NOTIFY_DEFAULT;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
-  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
+  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false; s[0].orch_model = CP_CLAUDE_START;
   s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
   cp_git_init(s);

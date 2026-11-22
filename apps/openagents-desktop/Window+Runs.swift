@@ -84,7 +84,8 @@ extension CoderWindow {
         let useInkling = cd_model_inkling(r.page) != 0
         let useHybrid = cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
-        let useExternal = provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp
+        // Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
+        let useExternal = provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp || provKind == ExternalProviders.providerClaude
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
@@ -150,7 +151,7 @@ extension CoderWindow {
             guard cd_running(r.page) != 0 else { return }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
-                cd_failed(r.page, r.worker.failure ?? "Microcoder could not start.")
+                cd_failed(r.page, r.worker.failure ?? (r.worker.program == "claudeworker" ? "Claude could not start." : "Microcoder could not start."))
                 self.wake()
                 return
             }
@@ -201,7 +202,7 @@ extension CoderWindow {
                   let kept = t.chatText, let sent = CoderTurn.withoutLast(kept), let back = cd_headless() else {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
-            coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
+            coderApplyOpenRouter(back); coderApplyClaude(back); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
             syncExternalProviders(on: back)
             cd_experimental_set(back, Experimental.on ? 1 : 0)
             cd_cloud_authed_set(back, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
@@ -388,7 +389,8 @@ extension CoderWindow {
             env["CODER_FOREMAN_TOKEN"] = foremanServer.token
             env["CODER_FOREMAN_TIER"] = foremanTier.wireName
             if let res = Bundle.main.resourcePath {
-                env["PATH"] = res
+                // Claude Code is found on the person's PATH, so a Foreman on Claude keeps it after the app's tools
+                env["PATH"] = cd_model_claude(r.page) != 0 ? res + ":" + CoderWorker.path : res
             }
         }
         if cd_model_hybrid(r.page) != 0 {

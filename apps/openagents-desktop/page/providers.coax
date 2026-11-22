@@ -11,6 +11,8 @@ CP_PROV_CURSOR :: 4;    // Cursor ACP CLI (`agent` / `cursor`)
 CP_PROV_ACP :: 5;       // User-registered generic ACP CLI binary
 CP_PROV_HYBRID :: 6;    // Local Hybrid Executor (hybrid-exec-v1) via Psionic Metal + W2.2 modules (#13924)
 
+CP_PROV_CLAUDE :: 7;    // Claude Code as the chat's main model via claudeworker
+
 // Host actions (coder_page_action; non-conflicting with state.coax / mcpskills.coax 0..74).
 CP_ASK_CODEX :: 75;        // Settings > Models > Codex status/configure dialog
 CP_ASK_CURSOR :: 76;       // Settings > Models > Cursor status/configure dialog
@@ -150,6 +152,7 @@ cp_acp_refresh_status :: (s: [] CoderPage) {
 
 cp_acp_add :: (s: [] CoderPage, id: string, name: string, program: string, args: string, enabled: bool) -> bool {
   if s.count < 1 || name.count == 0 || program.count == 0 { return false; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   id_buf: [CP_ACP_ID] u8;
   id_n := ifx id.count > 0 then cp_out(id_buf[..], id) else cp_acp_make_id(name, id_buf[..]);
   eff_id := cast(string) id_buf[0..<id_n];
@@ -168,12 +171,14 @@ cp_acp_add :: (s: [] CoderPage, id: string, name: string, program: string, args:
   s[0].prov[0].acp[at].enabled = enabled;
   s[0].prov[0].acp[at].used = true;
   cp_acp_refresh_status(s);
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
   return true;
 }
 
 cp_acp_remove :: (s: [] CoderPage, id: string) -> bool {
   if s.count < 1 { return false; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   at := cp_acp_find_by_id(s, id);
   if at < 0 { return false; }
   for i: at + 1..<s[0].prov[0].acp_n {
@@ -182,16 +187,19 @@ cp_acp_remove :: (s: [] CoderPage, id: string) -> bool {
   s[0].prov[0].acp_n -= 1;
   s[0].prov[0].acp[s[0].prov[0].acp_n] = CpAcpEntry.{};
   cp_acp_refresh_status(s);
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
   return true;
 }
 
 cp_acp_set_enabled :: (s: [] CoderPage, id: string, enabled: bool) -> bool {
   if s.count < 1 { return false; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   at := cp_acp_find_by_id(s, id);
   if at < 0 { return false; }
   s[0].prov[0].acp[at].enabled = enabled;
   cp_acp_refresh_status(s);
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
   return true;
 }
@@ -223,6 +231,7 @@ cp_acp_serialize :: (s: [] CoderPage, out: [] u8) -> int {
 // Returns number of valid entries loaded, or -1 on invalid JSON.
 cp_acp_parse :: (s: [] CoderPage, text: string) -> int {
   if s.count < 1 { return -1; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   // Clear existing entries.
   for i: 0..<CP_ACP_MAX { s[0].prov[0].acp[i] = CpAcpEntry.{}; }
   s[0].prov[0].acp_n = 0;
@@ -231,6 +240,7 @@ cp_acp_parse :: (s: [] CoderPage, text: string) -> int {
   while a < text.count && (text[a] == ' ' || text[a] == '\t' || text[a] == '\n' || text[a] == '\r') { a += 1; }
   if a >= text.count || text[a] != '[' {
     cp_acp_refresh_status(s);
+    cp_claude_keep(s, claude_slot);
     s[0].model = cp_model_index(s);
     return -1;
   }
@@ -254,6 +264,7 @@ cp_acp_parse :: (s: [] CoderPage, text: string) -> int {
     if cp_acp_add(s, id, name, program, args, enabled) { loaded += 1; }
   }
   cp_acp_refresh_status(s);
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
   return loaded;
 }
@@ -324,6 +335,7 @@ cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
   if cp_is_codex(s, idx) { return CP_PROV_CODEX; }
   if cp_is_cursor(s, idx) { return CP_PROV_CURSOR; }
   if cp_is_acp(s, idx) { return CP_PROV_ACP; }
+  if cp_is_claude(s, idx) { return CP_PROV_CLAUDE; }
   return CP_PROV_CLOUD;
 }
 

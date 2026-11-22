@@ -194,7 +194,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
-        cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyClaude(page)
         cd_agy(page, CoderWorker.hasAntigravity ? 1 : 0)
         syncExternalProviders(on: page)
         coderApplyOpenRouter(page)
@@ -430,6 +430,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 34: setAntigravityMode(Int(cd_settings_agy_mode(page)))
         case 35: chooseAntigravityAuth()
         case 36: experimentalChanged()
+        case 97: orchestratorChanged()
         case 37: forkShown()
         case 38: chooseGeminiKey()
         case 44: editInstructions()

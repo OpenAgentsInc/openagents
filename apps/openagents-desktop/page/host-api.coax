@@ -116,7 +116,8 @@ cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, sess
   // the note on installed skills, optional active thread goal context, then the message and the
   // note on its attachments and the files it mentions (attach.coax)
   whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + CP_REFS + 4096] u8;
-  n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
+  // Claude Code finds its skills itself, so a chat on Claude gets no note
+  n := ifx cp_is_claude(s, model) then 0 else cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
     n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
     n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
@@ -313,6 +314,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
 // rows, pages and palette items are gone, an open Gym closes, and settings on a hidden page shows General.
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  claude_slot := cp_claude_slot(s, s[0].model);
   was_agy := cp_is_agy(s, s[0].model);
   was_inkling := cp_is_inkling(s, s[0].model);
   was_hybrid := cp_is_hybrid(s, s[0].model);
@@ -322,6 +324,7 @@ coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(al
   if was_inkling { s[0].model = cp_inkling_idx(s); }
   if was_hybrid { s[0].model = cp_hybrid_idx(s); }
   if was_combo { s[0].model = cp_inkling_neon_idx(s); }
+  cp_claude_keep(s, claude_slot);
   s[0].model = cp_model_index(s);
   if on { return; }
   s[0].gym_open = false;

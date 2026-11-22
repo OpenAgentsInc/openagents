@@ -433,3 +433,66 @@
   an := coder_page_agent_task(s, 0, "sess-sub", "/w", out[..]);
   #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], back[..]) && back[0].local && back[0].model == "inkling-2-mini";
 }
+
+#test "Claude as a chat's main model: four picker entries when Claude Code is here, its task line, and the model new chats start on" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert cp_models(s) == CP_MODELS && cp_model_start(s) == CP_MODEL_DEFAULT && !coder_page_pick_model(s, "claude-opus-5-5") && cp_model_find_s(s, "claude-opus-5-5") == CP_MODEL_DEFAULT;
+  coder_page_set_claude(s, true);
+  base := cp_claude_base_idx(s);
+  #assert cp_models(s) == CP_MODELS + CP_CLAUDE_MODELS && base == CP_MODELS && s[0].model == CP_MODEL_DEFAULT;
+  #assert cp_model_label(s, base) == "Claude Fable 5.2" && cp_model_label(s, base + 1) == "Claude Opus 5.5" && cp_model_label(s, base + 2) == "Claude Sonnet 5.5" && cp_model_label(s, base + 3) == "Claude Haiku 5.5";
+  #assert cp_model_id(s, base) == "claude-fable-5-2" && cp_model_id(s, base + 1) == "claude-opus-5-5" && cp_model_id(s, base + 2) == "claude-sonnet-5-5" && cp_model_id(s, base + 3) == "claude-haiku-5-5";
+  #assert cp_model_desc(s, base + 1) == "Deep reasoning · Claude Code" && cp_model_meta(s, base) == "Claude Code · Claude Fable 5.2";
+  #assert cp_model_provider_kind(s, base + 3) == CP_PROV_CLAUDE && cp_model_provider_kind(s, CP_MODEL_DEFAULT) == CP_PROV_CLOUD && !cp_is_claude(s, base + 4) && !cp_is_claude(s, base - 1);
+  // by name: an id, a label, a short name
+  #assert coder_page_pick_model(s, "opus") && s[0].model == base + 1 && coder_page_model_claude(s) && coder_page_model_provider(s) == CP_PROV_CLAUDE && cp_backend_label(s) == "Claude Code";
+  #assert cp_model_find_s(s, "claude-fable-5-2") == base && cp_model_find_s(s, "Claude Haiku 5.5") == base + 3;
+  // its task line: the model's id, sub-agents with the Claude levels, high effort, and no skills note
+  coder_page_skills(s, "SKILLS NOTE\n");
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "claude-opus-5-5" && back[0].agents && back[0].claude && back[0].effort == "high" && back[0].task == "hi";
+  // the worker's lines read as Microcoder's: its reply, and a delegate call's sub-agents by level
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"model\":\"claude-opus-5-5\",\"outcome\":\"started\",\"status\":200,\"input_tokens\":1200,\"cached_tokens\":1000}") == MWW_ATTEMPT;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"fable\",\"task\":\"prove it\"},{\"level\":\"haiku\",\"task\":\"count\"},{\"level\":\"sonnet\",\"task\":\"build\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 4 && coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 3);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Claude Fable 5.2" && CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Haiku 5.5" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Sonnet 5.5" && CP_LEVEL_NAME[s[0].turns[0].agents[3].level] == "Claude Opus 5.5";
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "fable" && !back[0].agents;
+  // a chat on Claude stays on it when an entry joins before it
+  coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert cp_claude_base_idx(s) == CP_MODELS + 1 && s[0].model == CP_MODELS + 2 && cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5";
+  coder_page_set_openrouter(s, "", "");
+  #assert s[0].model == base + 1;
+}
+
+#test "Settings picks the model new chats start on: Neon until Claude is picked, and a chat with messages keeps its own" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  // picked before the host says Claude Code is here: it takes hold when it does
+  coder_page_orchestrator_set(s, true, 0);
+  #assert coder_page_orchestrator(s) == 1 && coder_page_orchestrator_model(s) == 0 && cp_model_index(s) == CP_MODEL_DEFAULT && cp_model_start(s) == CP_MODEL_DEFAULT;
+  coder_page_set_claude(s, true);
+  #assert cp_model_id(s, cp_model_index(s)) == "claude-fable-5-2";
+  coder_page_orchestrator_set(s, true, 2);
+  #assert cp_model_id(s, cp_model_index(s)) == "claude-sonnet-5-5";
+  coder_page_orchestrator_set(s, true, 9);
+  #assert coder_page_orchestrator_model(s) == CP_CLAUDE_START && cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5";
+  // a chat with a message keeps its model; the next new chat starts on the pick
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  coder_page_orchestrator_set(s, false, 3);
+  #assert cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5" && cp_model_start(s) == CP_MODEL_DEFAULT;
+  #assert cp_new(s) && cp_model_id(s, cp_model_index(s)) == "gemini-4-neon";
+  coder_page_orchestrator_set(s, true, 3);
+  #assert cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  #assert cp_new(s) && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
+  // Claude Code gone: new chats start on Neon again
+  coder_page_set_claude(s, false);
+  #assert cp_models(s) == CP_MODELS && cp_model_index(s) == CP_MODEL_DEFAULT;
+}

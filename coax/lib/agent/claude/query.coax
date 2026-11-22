@@ -337,6 +337,37 @@ cl_tool_answer :: (q: [] ClQuery, content: string, is_error: bool, structured: s
   cl_tool_close(q);
 }
 
+// A tool call the host answers later (a tool that waits on other work): the
+// call's ids go into d and nothing is owed for it at the next line. The host
+// answers with cl_tool_text_later once it has the result; the query goes on
+// reading in between. False when no tool call is pending.
+ClToolLater :: struct {
+  id: [CL_ID_MAX] u8; id_len: int;           // the control request's id, as JSON
+  mcp_id: [CL_ID_MAX] u8; mcp_id_len: int;   // the JSON-RPC id of the tools/call, as JSON
+  held: bool;
+}
+cl_tool_later :: (q: [] ClQuery, d: [] ClToolLater) -> bool {
+  if q[0].pending != ClEventKind.tool_call { return false; }
+  d[0].id_len = cl_copy(d[0].id[..], cl_pending_id(q));
+  d[0].mcp_id_len = cl_copy(d[0].mcp_id[..], cast(string) q[0].pending_mcp_id[0..<q[0].pending_mcp_id_len]);
+  d[0].held = true;
+  q[0].pending = ClEventKind.none;
+  return true;
+}
+// The answer to a tool call held with cl_tool_later: one text block.
+cl_tool_text_later :: (q: [] ClQuery, d: [] ClToolLater, text: string, is_error: bool) {
+  if !d[0].held { return; }
+  d[0].held = false;
+  cl_success_open(q, cast(string) d[0].id[0..<d[0].id_len]);
+  o := q[0].out[..];
+  cl_put(o, "{\"mcp_response\":{\"jsonrpc\":\"2.0\",\"id\":");
+  cl_put(o, cast(string) d[0].mcp_id[0..<d[0].mcp_id_len]);
+  cl_put(o, ",\"result\":");
+  cl_put_tool_text(o, text, is_error);
+  cl_put(o, "}}");
+  cl_success_close(q);
+}
+
 // The answer the SDK owes for a request the host left unanswered.
 cl_settle_pending :: (q: [] ClQuery) {
   if q[0].pending == ClEventKind.none { return; }

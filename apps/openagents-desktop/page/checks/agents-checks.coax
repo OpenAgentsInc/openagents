@@ -126,7 +126,7 @@
   #assert cp_agent_wait(s, 0, 0, wb[..]) == "";                       // just started
   s[0].clock += 185;
   #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Carbon · 3m 05s";
-  #assert cp_agent_wait(s, 0, 1, wb[..]) == "waiting on Claude Opus · 3m 05s";
+  #assert cp_agent_wait(s, 0, 1, wb[..]) == "waiting on Claude Opus 5.5 · 3m 05s";
   // a call that got nothing and went again; then one that was rate-limited
   s[0].clock += 85;
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":0}") == MWW_ATTEMPT;
@@ -155,7 +155,7 @@
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 2 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Neon" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
-  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus";
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus 5.5";
   #assert coder_page_agent_next(s) == 0;
   n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "build it" && back[0].model == "gemini-4-neon" && back[0].effort == "medium" && back[0].gated && back[0].edits;
@@ -219,7 +219,7 @@
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1) && coder_page_agent_claude(s, 2) && !coder_page_agent_claude(s, 3);
-  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Fable";
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus 5.5" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Fable 5.2";
   n = coder_page_agent_task(s, 1, "s-a1", "/w", out[..]);
   r: [1] MwwRequest;
   #assert mww_request(ar[..], cast(string) out[0..<n - 1], r[..]) == MWW_TASK && r[0].task == "find the bug" && r[0].model == "opus" && r[0].cwd == "/w" && !r[0].agents;
