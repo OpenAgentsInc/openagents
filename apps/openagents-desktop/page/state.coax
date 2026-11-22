@@ -283,6 +283,7 @@ CoderPage :: struct {
   hybrid_exec: bool;          // Hybrid Executor (hybrid-exec-v1) verified Ready (base + 4/4 Class-E SHA-256 modules, #13924)
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
+  chat_gen: int;                                            // bumped when the shown chat changes so per-turn fold springs snap instead of replaying across chats
   open: int;                  // the row a press asked to open
   pin_drag: int; pin_dragging: bool; pin_drop: int;   // 1-based chat index being dragged in Pinned, whether past threshold, target 0-based pin slot
   pin_top: f32; pin_row_h: f32;                       // y of the first pinned row and row height as last drawn

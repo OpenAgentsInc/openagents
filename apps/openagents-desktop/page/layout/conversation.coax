@@ -155,6 +155,8 @@ cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, t
 // out of view between top and bottom keep their place and are not drawn. Returns its height,
 // 0 when it did nothing. steers, when not negative, is the turn whose steers stand among the rows
 // where each was taken (#13809), done[0] counting those drawn; the caller draws the rest.
+// Critically damped glide duration for expanding/collapsing an activity group (~280ms visible settle).
+CP_ACT_FOLD_DUR :: 0.50f32;
 cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows: int, early: int, more: int, i: int, nagents: int,
                  live: bool, open: bool, worked: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int, steers: int, done: [] int) -> f32 {
   a := f[0].skin.act; sh := f[0].sheet;
@@ -176,10 +178,36 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   wn := ifx said > 0 then el_put(sb[..], said, " · ") else 0;
   sn = wn + app_act_summary(sb[wn..<sb.count], c[0]);
   if sn == wn { sn = ifx said > 0 then said else el_put(sb[..], 0, "Worked"); }   // nothing counted: "Worked for 42s" alone
-  ib: [EL_ID] u8; tb: [EL_ID] u8;
+  ib: [EL_ID] u8; tb: [EL_ID] u8; fb: [EL_ID] u8;
   y := y0;
   y += app_act_head(f, cp_named(ib[..], name, ".grp", -1), x, y, cw, sheet_pool(sh, cast(string) sb[0..<sn]), live, open, CP_GROUP);
-  if !open { return y - y0; }
+  // Smoothly animate collapse/expand on a critically damped spring (snaps on chat switch,
+  // newly mounted rows, and reduced motion).
+  gk := uiframe_key(f, cp_named(fb[..], name, ".fold", -1));
+  target := ifx open then 1.0f32 else 0.0f32;
+  if keyed_ok(f[0].keyed, gk) {
+    gen := cast(f32) s[0].chat_gen;
+    if keyed_fresh(f[0].keyed, gk) || keyed_slot(f[0].keyed, gk, 0) != gen {
+      keyed_spring_set(f[0].keyed, gk, target);
+      keyed_slot_set(f[0].keyed, gk, 0, gen);
+    }
+  }
+  p := keyed_glide(f[0].keyed, gk, target, CP_ACT_FOLD_DUR, target);
+  if p < 0.0f32 { p = 0.0f32; } else if p > 1.0f32 { p = 1.0f32; }
+  if !open && p <= 0.003f32 { return y - y0; }
+  animating := !open || p < 0.997f32;
+  if animating { s[0].anim = true; }
+  body_y := y;
+  from := app_slide_mark(f);
+  from_nl := sh[0].nl;
+  from_focus := ifx f[0].rows.count > 0 then f[0].rows[0].focus_n else 0;
+  clip_u := -1; clip_o := -1; paint_u := sh[0].nu; paint_o := sh[0].no;
+  if animating {
+    uiframe_clip(f, x - 4.0f32, body_y, x + cw + 4.0f32, PRIM_OPEN);
+    clip_u = sh[0].nu - 1; clip_o = sh[0].no - 1;
+    paint_u = sh[0].nu; paint_o = sh[0].no;
+  }
+  steers_here := ifx open then steers else -1;
   // the tree's rows: its sub-agents each in its place among the message's own, after the rows
   // that came before it was handed over
   last := nrows + nagents - 1; pos := 0; drawn := 0;
@@ -200,7 +228,7 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
     }
     nx := s[0].calls[q].next - 1;
     // a steer taken before this row stands above it, as the person's message (#13809)
-    if steers >= 0 { sth := cp_fu_steered(s, f, steers, x, y, cw, at, done); if sth > 0 { y += sth; } }
+    if steers_here >= 0 { sth := cp_fu_steered(s, f, steers_here, x, y, cw, at, done); if sth > 0 { y += sth; } }
     // a row out of view keeps its place and is not drawn, so a long run costs what shows
     rh := s[0].calls[q].h;
     if rh > 0 && (y + rh < top - CP_PANE_MARGIN || y > bottom + CP_PANE_MARGIN) { y += rh; q = nx; at += 1; pos += 1; continue; }
@@ -211,6 +239,42 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   if more > 0 {
     mb: [96] u8; mn := el_put_i(mb[..], 0, more); mn = el_put(mb[..], mn, " more ran after these and were not kept.");
     y += app_meta(f, cp_named(ib[..], name, ".xm", -1), x + a.gutter, y, cw - a.gutter, sheet_pool(sh, cast(string) mb[0..<mn]), false);
+  }
+  if animating {
+    body_h := y - body_y;
+    shown_h := body_h * p;
+    clip_bottom := body_y + shown_h;
+    if clip_u >= 0 && clip_u < sh[0].nu && sh[0].under[clip_u].kind == PRIM_CLIP { sh[0].under[clip_u].b = clip_bottom; }
+    if clip_o >= 0 && clip_o < sh[0].no && sh[0].over[clip_o].kind == PRIM_CLIP { sh[0].over[clip_o].b = clip_bottom; }
+    tuck_max := ifx body_h < 6.0f32 then body_h else 6.0f32;
+    tuck := (1.0f32 - p) * tuck_max;
+    alpha := p * (0.35f32 + 0.65f32 * p);
+    if tuck > 0.0f32 {
+      prim_move(sh[0].under, paint_u, sh[0].nu, 0, -tuck);
+      prim_move(sh[0].over, paint_o, sh[0].no, 0, -tuck);
+      if open {
+        sheet_hits_move(sh, from.nh, 0, -tuck);
+        elt_move(f[0].rows, from.nr, 0, -tuck);
+        for li: from_nl..<sh[0].nl { sh[0].lines[li].y -= tuck; }
+      }
+    }
+    prim_opacity(sh[0].under, paint_u, sh[0].nu, alpha);
+    prim_opacity(sh[0].over, paint_o, sh[0].no, alpha);
+    uiframe_unclip(f);
+    if !open {
+      sh[0].nh = from.nh;
+      sh[0].nl = from_nl;
+      for oi: paint_o..<sh[0].no { if sh[0].over[oi].kind == PRIM_TEXT { sh[0].over[oi].line = -1; } }
+      if f[0].rows.count > 0 { f[0].rows[0].n = from.nr; f[0].rows[0].focus_n = from_focus; }
+    } else if f[0].rows.count > 0 {
+      for ri: from.nr..<f[0].rows[0].n {
+        if f[0].rows[0].rows[ri].clipped {
+          if f[0].rows[0].rows[ri].ct < body_y { f[0].rows[0].rows[ri].ct = body_y; }
+          if f[0].rows[0].rows[ri].cb > clip_bottom { f[0].rows[0].rows[ri].cb = clip_bottom; }
+        }
+      }
+    }
+    y = clip_bottom;
   }
   return y - y0;
 }

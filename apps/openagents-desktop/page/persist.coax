@@ -131,12 +131,12 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   chat_model_buf: [64] u8;
   chat_model_n := cp_out(chat_model_buf[..], chat_model_raw);
   chat_model_str := cast(string) chat_model_buf[0..<chat_model_n];
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_docs_reset(s); cp_ckpt_reset(s);
+  s[0].nturns = 0; s[0].chat_gen += 1; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_docs_reset(s); cp_ckpt_reset(s);
   for i: 0..<count {
     s[0].nturns = i + 1; s[0].turns[i].nagents = 0;
     worked := cl_int(cl_json(turns, cl_item(turns, i)), "worked");
     s[0].turns[i].took = ifx worked.ok && worked.value >= 0 then cast(f32) worked.value else -1.0f32;
-    s[0].turns[i].ask_open = false; s[0].turns[i].heard = true; s[0].turns[i].seen_h = 0;
+    s[0].turns[i].ask_open = false; s[0].turns[i].fold = APP_ACT_UNCHOSEN; s[0].turns[i].heard = true; s[0].turns[i].seen_h = 0;
     t := cl_json(turns, cl_item(turns, i));
     ar[0].at = 0; ar[0].full = false;
     s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], cl_str(ar[..], t, "ask"));
@@ -290,7 +290,7 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
 // host first moves that chat out of view (coder_page_take), where its run goes on.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_ckpt_reset(s); cp_permit_new_chat(s); cp_prov_reset_chat(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
+  s[0].nturns = 0; s[0].chat_gen += 1; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_ckpt_reset(s); cp_permit_new_chat(s); cp_prov_reset_chat(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
   s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].migrated_from_n = 0; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
@@ -331,7 +331,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   ka := ifx from[0].agent_n < to[0].agent_buf.count then from[0].agent_n else to[0].agent_buf.count;
   for k: 0..<ka { to[0].agent_buf[k] = from[0].agent_buf[k]; }
   to[0].agent_n = ka;   // a reply past a smaller pool (a check's) is dropped by cp_agent_reply
-  to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
+  to[0].nturns = from[0].nturns; to[0].chat_gen += 1; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model; to[0].kept_effort = from[0].kept_effort;
@@ -360,7 +360,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   if from[0].pane_open && from[0].pane_turn >= 0 && from[0].pane_turn < to[0].nturns && from[0].pane_agent >= 0 && from[0].pane_agent < to[0].turns[from[0].pane_turn].nagents {
     cp_pane_open(to, from[0].pane_turn, from[0].pane_agent);
   }
-  from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
+  from[0].nturns = 0; from[0].chat_gen += 1; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
   from[0].model = cp_model_start(from); from[0].kept_model = from[0].model; from[0].model_menu = false; from[0].effort = CP_EFFORT_DEFAULT; from[0].kept_effort = CP_EFFORT_DEFAULT;
