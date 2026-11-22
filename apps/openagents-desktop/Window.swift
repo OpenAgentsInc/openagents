@@ -277,7 +277,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif
-        detectInstalledEditors()
+        if FeatureFlags.isOn(.files) { detectInstalledEditors() }
         #if OA_FULL
         if FeatureFlags.isOn(.rich) { setupRichComposer() }
         #endif
@@ -326,6 +326,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         reattach()
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
+        NotificationCenter.default.addObserver(forName: LocalModelServer.stateChangedNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.syncLocalModels()
+        }
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && (!FeatureFlags.anyExtraModel || cd_model_inkling(self.page) != 0) {
+                LocalModelServer.shared.prewarmIfReady()
+            }
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in self?.rightClick(event) == true ? nil : event }
         // Frames come with the display's refresh, measured by the system (Zeron's per-display link):
         // 120 Hz on a ProMotion screen. Idle, the page draws nothing; its other work runs at most 60 times a second.
@@ -472,6 +481,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 22: checkForUpdates()
         case 23: focusSearch()
         case 24:
+            guard FeatureFlags.isOn(.files) else { return }
             // a file a row or a reply names: opened in the right-side file pane (from the working folder unless whole)
             guard cd_open_path(page, &out, Int32(out.count)) > 0 else { return }
             let named = (String(cString: out) as NSString).expandingTildeInPath
@@ -480,7 +490,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 25: followUp()
         case 26: paletteAsked()
         case 27: attachMenu()
-        case 28: listFiles()
+        case 28: if FeatureFlags.isOn(.files) { listFiles() }
         case 29: zoom(nil)
         case 30: let j = Int(cd_stop_agent(run.page)); if j >= 0 { cancelAgent(run, j) }
         case 31:
@@ -526,7 +536,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 63: focusFind()
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
-        case 86...89: fileTreeAsked(what)
+        case 86...89: if FeatureFlags.isOn(.files) { fileTreeAsked(what) }
         #if OA_FULL
         case 66: if FeatureFlags.isOn(.usage) { refreshUsageDashboard() }
         case 67: if FeatureFlags.isOn(.usage) { editUsagePriceOverrides() }
@@ -577,7 +587,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
-        case 40...43: fileAsked(what)
+        case 40...43: if FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes) { fileAsked(what) }
         default: break
         }
     }

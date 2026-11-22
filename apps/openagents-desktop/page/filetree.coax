@@ -749,6 +749,7 @@ cp_ft_editor_cmd :: (editor_id: int, path: string, line: int, ssh_host: string, 
 // ---------------------------------------------------------------- pane visibility, press & scroll
 
 cp_ft_shown :: (s: [] CoderPage) -> bool {
+  if !cp_flag(s, DC_FLAG_FILES) { return false; }
   ft := s[0].ft[..];
   return ft[0].open && !cp_sim_front(s) && !cp_term_front(s) && (ft[0].front || !(s[0].pane_open || s[0].review));
 }
@@ -993,6 +994,7 @@ coder_page_filetree_set :: (s: [] CoderPage, lines: string) -> int #export_c #ef
 coder_page_filetree_open :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   if !s[0].ready { cp_init(s); }
+  if on && !cp_flag(s, DC_FLAG_FILES) { return; }
   s[0].ft[0].open = on;
   s[0].ft[0].front = on;
   if on {

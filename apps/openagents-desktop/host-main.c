@@ -1056,6 +1056,7 @@ static void on_portal_chosen(void *user, int request, const char *path) {
 
 static void handle_file_open(DesktopApp *a, const char *path) {
   if (!path || !path[0]) return;
+  if (!(a->flags & (1LL << 28))) return; // DC_FLAG_FILES
   char full[OA_PATH];
   if (oa_absolute(path)) snprintf(full, sizeof(full), "%s", path);
   else snprintf(full, sizeof(full), "%s/%s", effective_cwd(a), path);

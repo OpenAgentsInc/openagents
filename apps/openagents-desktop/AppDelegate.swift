@@ -55,7 +55,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         for url in early {
             if url.scheme?.lowercased() == "openagents" {
                 _ = DesktopActivation.shared.handleURL(url)
-            } else if url.isFileURL {
+            } else if url.isFileURL && (FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes)) {
                 main.openFileInPane(url)
             }
         }
@@ -76,7 +76,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         guard let main else { opened += files; return }
         NSApp.activate(ignoringOtherApps: true)
         main.show()
-        for url in files { main.openFileInPane(url) }
+        if FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes) {
+            for url in files { main.openFileInPane(url) }
+        }
     }
     func openNewWindow(folderPath: String? = nil) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path,
@@ -182,7 +184,6 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         #if OA_FULL
         ScheduledTaskManager.shared.stop()
         #endif
-        LocalModelServer.shared.stop()
         main?.retire()
         for w in extraWindows { w.retire() }
         LocalModelServer.shared.stopIfIdle(runsOutlive: keepLocalServer)

@@ -53,8 +53,11 @@ cp_fp_is_lean :: (s: [] CoderPage) -> bool {
 // Whether the pane draws the file or file explorer: open, in front, or nothing else wants the pane.
 cp_fp_shown :: (s: [] CoderPage) -> bool {
   fp := s[0].fp[..]; ft := s[0].ft[..];
-  any_open := fp[0].open || ft[0].open;
-  any_front := fp[0].front || ft[0].front;
+  has_files := cp_flag(s, DC_FLAG_FILES);
+  scene_ok := cp_flag(s, DC_FLAG_SCENES) && fp[0].open && fp[0].mode == CP_FP_SCENE;
+  if !has_files && !scene_ok { return false; }
+  any_open := (has_files && (fp[0].open || ft[0].open)) || scene_ok;
+  any_front := (has_files && (fp[0].front || ft[0].front)) || (scene_ok && fp[0].front);
   return any_open && !cp_sim_front(s) && !cp_term_front(s) && (any_front || !(s[0].pane_open || s[0].review));
 }
 // Whether the file's editor is on screen: the keyboard can go to it.
@@ -573,6 +576,7 @@ coder_page_file_line :: (s: [] CoderPage) -> int #export_c #effects(all) { retur
 coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
   if s.count < 1 || bytes.count > CP_FP_MOST { return false; }
   if !s[0].ready { cp_init(s); }
+  if !cp_flag(s, DC_FLAG_FILES) { return false; }
   cp_fp_begin(s, path);
   fp := s[0].fp[..];
   fp[0].src = bytes; fp[0].size = size;
@@ -617,6 +621,7 @@ coder_page_file_scene_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #
 coder_page_file_failed :: (s: [] CoderPage, path: string, why: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   if !s[0].ready { cp_init(s); }
+  if !cp_flag(s, DC_FLAG_FILES) { return; }
   cp_fp_begin(s, path);
   s[0].fp[0].mode = CP_FP_FAILED; s[0].fp[0].why_n = cp_out(s[0].fp[0].why[..], why);
 }

@@ -41,7 +41,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || s[0].fp[0].open || s[0].ft[0].open || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
+  pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || (cp_flag(s, DC_FLAG_FILES) && (s[0].fp[0].open || s[0].ft[0].open)) || (cp_flag(s, DC_FLAG_SCENES) && s[0].fp[0].open && s[0].fp[0].mode == CP_FP_SCENE) || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
   shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them

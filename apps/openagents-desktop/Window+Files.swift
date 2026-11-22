@@ -22,6 +22,12 @@ extension CoderWindow {
     /// A file into the pane. The open one, if it has changes, is asked about first; the same file
     /// opened again comes forward with its changes, or is read again when it has none.
     func openFileInPane(_ url: URL) {
+        #if OA_FULL
+        let sceneOk = FeatureFlags.isOn(.scenes) && (PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url))
+        #else
+        let sceneOk = false
+        #endif
+        guard FeatureFlags.isOn(.files) || sceneOk else { return }
         let url = url.standardizedFileURL
         if let open = fileURL, cd_file_mode(page) != 0, cd_file_dirty(page) != 0 {
             if open == url { _ = cd_file_front(page); return }

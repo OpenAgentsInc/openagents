@@ -70,10 +70,11 @@ enum DesktopFlag: Int64, CaseIterable {
     case agents = 25
     case scenes = 26
     case rich = 27
+    case files = 28
 }
 
 /// Resolved desktop feature flag mask backed by #authority coax/lib/agent/desktop/flags.coax.
-/// All 28 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
+/// All 29 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
 enum FeatureFlags {
     #if OA_FULL
     private static let flagNames: [String] = {
@@ -310,6 +311,9 @@ extension CoderWindow {
         if !FeatureFlags.isOn(.voice) {
             voice.stop(cancel: true)
         }
+        if FeatureFlags.isOn(.files) {
+            detectInstalledEditors()
+        }
         (NSApp.delegate as? CoderDelegate)?.applyFlags()
         syncSettingsInfo()
         wake()
@@ -398,16 +402,40 @@ extension CoderWindow {
         #endif
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
-        let status = LocalModelStore.statusSummary()
-        let on: Int32 = LocalModelStore.isSelectable ? 1 : 0
         let ui = LocalModelStore.uiState()
+        let singleModel = !FeatureFlags.anyExtraModel
+        var status = LocalModelStore.statusSummary()
+        var statusCode = ui.statusCode
+        var err = ui.err
+        var on: Int32 = 0
+        if LocalModelStore.isSelectable {
+            switch LocalModelServer.shared.state {
+            case .ready:
+                on = 1
+                statusCode = 3 // CP_LOCAL_READY
+                err = ""
+            case .failed(let msg):
+                on = singleModel ? 0 : 1
+                statusCode = 6 // CP_LOCAL_SERVER_ERROR
+                err = msg
+                status = "Server error — click Retry"
+            case .idle, .starting:
+                on = singleModel ? 0 : 1
+                statusCode = 5 // CP_LOCAL_STARTING
+                err = ""
+                status = "Starting Inkling 2 Mini on Metal…"
+            }
+        }
         cd_settings_local(target, status)
         cd_inkling(target, on)
-        cd_local_state(target, ui.osOk, ui.hwOk, ui.ramGB, ui.statusCode, ui.pct, ui.dlMB, ui.totalMB, ui.err)
+        cd_local_state(target, ui.osOk, ui.hwOk, ui.ramGB, statusCode, ui.pct, ui.dlMB, ui.totalMB, err)
     }
     func syncLocalModels() {
         LocalModelStore.verifyExistingIfNeeded { [weak self] in
             self?.syncLocalModels()
+        }
+        if LocalModelStore.isSelectable && (!FeatureFlags.anyExtraModel || cd_model_inkling(page) != 0) {
+            LocalModelServer.shared.prewarmIfReady()
         }
         syncLocalState(on: page)
         for r in runs.values where r.page != page {

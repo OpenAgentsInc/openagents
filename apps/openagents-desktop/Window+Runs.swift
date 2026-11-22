@@ -159,7 +159,16 @@ extension CoderWindow {
                     self.wake()
                     return
                 }
-                self.launchWorker(r, useAgy: false, needsRecall: needsRecall)
+                let latestURL = LocalModelServer.baseURL
+                var retryRecall = needsRecall
+                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL {
+                    r.worker.extraEnv["PSIONIC_BASE_URL"] = latestURL
+                    if r.worker.alive {
+                        r.worker.stop(forget: false)
+                        retryRecall = true
+                    }
+                }
+                self.launchWorker(r, useAgy: false, needsRecall: retryRecall)
             }
             return
         }

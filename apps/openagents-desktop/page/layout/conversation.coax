@@ -491,47 +491,74 @@ cp_foreman_hud :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, runn
   }
   return fhud_hud(f, x, y, cw, hud[..]) + a.gap;
 }
-// The buttons in the window's top corners (the chat's cost and goal are in the composer's foot): Copy chat, and with no sidebar
-// Show sidebar and New chat.
+// The buttons in the window's top corners (the chat's cost and goal are in the composer's foot): Copy chat
+// (only when the chat has messages), gated tool toggles, and with no sidebar New chat.
 cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32, exceeded: bool) {
   k := f[0].skin; a := k.app;
   side := a.icon_button;
   // the corners' buttons stand on the window's title bar, on its line, clear of its controls at the left
   cy := cp_bar_y(s, side);
-  // New chat floats in the window's top right corner, over what scrolls
   all := s[0].copied_kind == CP_COPIED_ALL;
-  copy_x := ifx left > 0 then w - a.icon_button - CP_CORNER else w - 2 * a.icon_button - CP_CORNER;
+  has_new := left == 0;
+  has_copy := s[0].nturns > 0;
   // the code review (#13696): its button shows once an edit changed a file, or while it is open (git flag)
   review := cp_flag(s, DC_FLAG_GIT) && (s[0].review || cp_has_edits(s));
-  lead_x := ifx review then copy_x - side else copy_x;
   has_term := cp_flag(s, DC_FLAG_TERMINAL);
-  ft_x := ifx has_term then lead_x - 2 * side else lead_x - side;
-  // Reserve space for terminal (when enabled) and files toggle buttons so Git toolbar chips never overlap them.
+  has_files := cp_flag(s, DC_FLAG_FILES);
+  // Pack visible corner buttons right-to-left with no dead gaps.
+  rx := w - CP_CORNER;
+  new_x: f32 = 0; copy_x: f32 = 0; rev_x: f32 = 0; term_x: f32 = 0; ft_x: f32 = 0;
+  if has_new   { rx -= side; new_x = rx; }
+  if has_copy  { rx -= side; copy_x = rx; }
+  if review    { rx -= side; rev_x = rx; }
+  if has_term  { rx -= side; term_x = rx; }
+  if has_files { rx -= side; ft_x = rx; }
+  // Reserve space for visible corner buttons so Git toolbar chips never overlap them.
   if cp_flag(s, DC_FLAG_GIT) {
-    cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), ft_x - a.gap_small, cy);
+    cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), rx - a.gap_small, cy);
   }
   if review {
     shown := cp_review_shown(s);
-    _ := app_icon_button(f, "coder.review", lead_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);
+    _ := app_icon_button(f, "coder.review", rev_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);
   }
   if has_term {
     term_shown := cp_term_shown(s);
-    _ := app_icon_button(f, "coder.term.toggle", lead_x - side, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
+    _ := app_icon_button(f, "coder.term.toggle", term_x, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
   }
-  ft_shown := cp_ft_shown(s);
-  _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
-  _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
-                       ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
-  if left == 0 {
+  if has_files {
+    ft_shown := cp_ft_shown(s);
+    _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
+  }
+  if has_copy {
+    _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
+                         0, CP_COPY_ALL);
+  }
+  if has_new {
     loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
-    _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, cy, ICON_COMPOSE, cp_tr(loc, "new_chat"), APP_BUTTON_QUIET,
+    _ := app_icon_button(f, "coder.new", new_x, cy, ICON_COMPOSE, cp_tr(loc, "new_chat"), APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
-// First-run Inkling 2 Mini onboarding card when running in single-model release mode before the
-// local model weights are installed and verified on disk (Audit §5.6).
+// First-run Inkling 2 Mini onboarding / server readiness view when running in single-model release
+// mode before the local model is ready to accept messages (Audit §5.6).
 cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme();
+  if s[0].local_os_ok && s[0].local_hw_ok && s[0].local_dl_state == CP_LOCAL_STARTING {
+    s[0].anim = true;
+    msg := "Starting Inkling 2 Mini…";
+    tw := ceil(measure_width(f[0].m, k.small.face, msg));
+    row_w := a.icon + a.gap_small + tw;
+    if row_w > cw { row_w = cw; }
+    rx := x + (cw - row_w) / 2.0f32;
+    ry := (h - k.small.line) / 2.0f32;
+    min_y := cp_bar(s) + a.gap;
+    if ry < min_y { ry = min_y; }
+    _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Starting Inkling 2 Mini", rx, ry, row_w, k.small.line, 0, 0);
+    activity(sh, k, rx, ry + (k.small.line - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+    _ := app_meta(f, "coder.onboarding.starting", rx + a.icon + a.gap_small, ry, row_w - a.icon - a.gap_small, msg, false);
+    s[0].bar_h = 0.0f32;
+    return;
+  }
   card_w := ifx cw < 520.0f32 then cw else 520.0f32;
   cx := x + (cw - card_w) / 2.0f32;
   pad := 20.0f32;
@@ -550,7 +577,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   // Measure body height cleanly depending on state
   body_h := 110.0f32;
   if !s[0].local_os_ok || !s[0].local_hw_ok { body_h = 84.0f32; }
-  else if s[0].local_dl_state == CP_LOCAL_ERROR { body_h = 128.0f32; }
+  else if s[0].local_dl_state == CP_LOCAL_ERROR || s[0].local_dl_state == CP_LOCAL_SERVER_ERROR { body_h = 128.0f32; }
   total_h := 2.0f32 * pad + title_h + a.gap_small + sub_h + a.gap + body_h;
   _ := sheet_box(sh, cx, cy, card_w, total_h, 16.0f32, 1.0f32, th.surface, th.border);
   _ := uiframe_semantic(f, "coder.onboarding", EL_REGION, "Inkling 2 Mini setup", cx, cy, card_w, total_h, 0, 0);
@@ -591,9 +618,16 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     cw_btn := app_button_width(f, -1, "Cancel download");
     _ := app_button(f, "coder.local.cancel", cx + pad, y, cw_btn, -1, "Cancel download", APP_BUTTON_DEFAULT, 0, CP_LOCAL_CANCEL);
   } else if s[0].local_dl_state == CP_LOCAL_VERIFYING {
+    s[0].anim = true;
     activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
     _ := app_meta(f, "coder.onboarding.verifying", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
                   "Verifying SHA-256 checksum of Inkling-2-Mini-IQ4_NL.gguf…", false);
+  } else if s[0].local_dl_state == CP_LOCAL_SERVER_ERROR {
+    emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
+            else "Inkling 2 Mini could not start. Click Retry to try again.";
+    y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
+    bw := app_button_width(f, -1, "Retry");
+    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
   } else if s[0].local_dl_state == CP_LOCAL_ERROR {
     emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
             else "Download failed. Check your internet connection and free disk space, then try again.";
@@ -646,18 +680,60 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   oauth_h := ifx cp_flag(s, DC_FLAG_MCP) then cp_mcp_oauth_card(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h, cw) else 0.0f32;
   voice_h := ifx cp_flag(s, DC_FLAG_VOICE) then cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw) else 0.0f32;
   stash_h := ifx cp_flag(s, DC_FLAG_RICH) then cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw) else 0.0f32;
-  // Kept-chat migration notice when an existing chat was started on a model that is now disabled.
-  if s[0].migrated_from_n > 0 && s[0].nturns > 0 {
+  tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
+  // Quiet, borderless single-line readiness or migration caption above the composer.
+  if no_local {
+    sh := f[0].sheet; th := cp_theme();
+    st := s[0].local_dl_state;
+    spinning := st == CP_LOCAL_STARTING || st == CP_LOCAL_VERIFYING || st == CP_LOCAL_DOWNLOADING;
+    show_action := !spinning && s[0].local_os_ok && s[0].local_hw_ok;
+    cap_h := ifx show_action then k.cmp.chip_h else k.small.line;
+    cap_y := tray_top - cap_h - 4.0f32;
+    if spinning {
+      s[0].anim = true;
+      msg := ifx st == CP_LOCAL_STARTING then "Starting Inkling 2 Mini…"
+             else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
+             else "Downloading Inkling 2 Mini…";
+      mfit := app_fit(f, k.small.face, msg, cw - a.icon - a.gap_small - 16.0f32);
+      mw := ceil(measure_width(f[0].m, k.small.face, mfit));
+      row_w := a.icon + a.gap_small + mw;
+      rx := x + (cw - row_w) / 2.0f32;
+      activity(sh, k, rx, cap_y + (cap_h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+      _ := uiframe_semantic(f, "coder.local.status", EL_TEXT, mfit, rx + a.icon + a.gap_small, cap_y, mw, k.small.line, 0, 0);
+      _ := sheet_text(sh, f[0].m, -1, rx + a.icon + a.gap_small, cap_y, k.small.line, k.small.face, th.muted, mfit);
+    } else {
+      btn_lbl := ifx st == CP_LOCAL_SERVER_ERROR || st == CP_LOCAL_ERROR then "Retry" else "Download";
+      btn_w := ifx show_action then cp_foot_chip_width(f, -1, btn_lbl, false) else 0.0f32;
+      raw_msg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
+                 else ifx !s[0].local_os_ok || !s[0].local_hw_ok then "Inkling 2 Mini is not supported on this Mac"
+                 else "Inkling 2 Mini is not ready";
+      avail_w := cw - (ifx show_action then btn_w + a.gap_small else 0.0f32) - 16.0f32;
+      if avail_w < 60.0f32 { avail_w = 60.0f32; }
+      mfit := app_fit(f, k.small.face, raw_msg, avail_w);
+      mw := ceil(measure_width(f[0].m, k.small.face, mfit));
+      row_w := mw + (ifx show_action then a.gap_small + btn_w else 0.0f32);
+      rx := x + (cw - row_w) / 2.0f32;
+      ty := cap_y + (cap_h - k.small.line) / 2.0f32;
+      _ := uiframe_semantic(f, "coder.local.status", EL_TEXT, mfit, rx, ty, mw, k.small.line, 0, 0);
+      _ := sheet_text(sh, f[0].m, -1, rx, ty, k.small.line, k.small.face, th.muted, mfit);
+      if show_action {
+        _ := cp_foot_chip(f, "coder.local.dl", btn_lbl, rx + mw + a.gap_small, cap_y, btn_w, -1, btn_lbl, false, 0, CP_LOCAL_DL);
+      }
+    }
+    s[0].bar_h += cap_h + a.gap_small + 4.0f32;
+  } else if s[0].migrated_from_n > 0 && s[0].nturns > 0 {
+    sh := f[0].sheet; th := cp_theme();
     from_id := cast(string) s[0].migrated_from[0..<s[0].migrated_from_n];
     mb: [160] u8; mn := el_put(mb[..], 0, "Started on ");
     mn = el_put(mb[..], mn, cp_model_known_label(from_id));
-    mn = el_put(mb[..], mn, " · Next message runs on Inkling 2 Mini");
-    tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
-    mh := k.small.line + 2.0f32 * a.gap_small + 16.0f32;
-    enter_m := f[0].skin.motion.enter; f[0].skin.motion.enter = 0;
-    actual_mh := app_notice(f, "coder.migrated", x, tray_top - mh, cw, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), APP_NOTICE_INFO);
-    f[0].skin.motion.enter = enter_m;
-    s[0].bar_h += actual_mh + a.gap_small;
+    mn = el_put(mb[..], mn, " · continues on Inkling 2 Mini");
+    mfit := app_fit(f, k.small.face, sheet_pool(sh, cast(string) mb[0..<mn]), cw - 16.0f32);
+    mw := ceil(measure_width(f[0].m, k.small.face, mfit));
+    mx := x + (cw - mw) / 2.0f32;
+    cap_y := tray_top - k.small.line - 4.0f32;
+    _ := uiframe_semantic(f, "coder.migrated", EL_TEXT, mfit, mx, cap_y, mw, k.small.line, 0, 0);
+    _ := sheet_text(sh, f[0].m, -1, mx, cap_y, k.small.line, k.small.face, th.faint, mfit);
+    s[0].bar_h += k.small.line + a.gap_small + 4.0f32;
   }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
@@ -711,11 +787,20 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   field_row := uiframe_semantic(f, "coder.composer", EL_FIELD, "Message", x, y, w, g.height, field_state, CP_FIELD);
   elt_value(f[0].rows, field_row, text);
   elt_value(f[0].rows, uiframe_semantic(f, "coder.composer.shape", EL_REGION, ifx g.expanded then "Expanded" else "Compact", x, y, w, g.height, 0, 0), ifx g.expanded then "expanded" else "compact");
-  _ := sheet_box(sh, x, y, w, g.height, radius, border, z_solid, ifx editing then z_edge_focus else z_edge);
+  _ := sheet_box(sh, x, y, w, g.height, radius, border, z_solid, ifx editing && !off then z_edge_focus else z_edge);
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
   // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
   // says what Return does (#13717)
-  hint := ifx !running then "Do anything…" else "Steer the reply · ⇧Return queues · Esc stops";
+  hint := "Do anything…";
+  if running {
+    hint = "Steer the reply · ⇧Return queues · Esc stops";
+  } else if !cp_has_model_picker(s) && !s[0].inkling {
+    st := s[0].local_dl_state;
+    hint = ifx st == CP_LOCAL_STARTING then "Starting Inkling 2 Mini…"
+           else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
+           else ifx st == CP_LOCAL_DOWNLOADING then "Downloading Inkling 2 Mini…"
+           else "Inkling 2 Mini is not ready";
+  }
   has_voice := cp_flag(s, DC_FLAG_VOICE);
   mic_side := cast(f32) ZC_CONTROL; mic_gap := 6.0f32;
   tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right - (ifx g.expanded || !has_voice then 0.0f32 else mic_side + mic_gap);

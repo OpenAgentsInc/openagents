@@ -167,7 +167,7 @@ CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission car
 CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Models downloader/manager (#13826)
 CP_LOCAL_DL :: 400;         // first-run onboarding: Download / Retry Inkling 2 Mini
 CP_LOCAL_CANCEL :: 401;     // first-run onboarding: Cancel download
-CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4;
+CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries

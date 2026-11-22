@@ -10,7 +10,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   return uiframe_end(f[..], s[0].surface[..]);
 }
 
-#test "flags release mode: single-model Inkling hides model selector and all 28 gated surfaces" {
+#test "flags release mode: single-model Inkling hides model selector and all 29 gated surfaces" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_flags_set(s, 0);
@@ -20,11 +20,13 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_branch(s, "main");
   #assert !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
 
-  // Main chat view: composer renders without coder.model, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage.
+  // Main chat view: composer renders without coder.model, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage, files, or copy on empty chat.
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
   #assert surface_find(s[0].surface[..], "coder.effort") >= 0;
   #assert surface_find(s[0].surface[..], "coder.folder") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.copy") < 0;
+  #assert surface_find(s[0].surface[..], "coder.ft.toggle") < 0;
   #assert surface_find(s[0].surface[..], "coder.model") < 0;
   #assert surface_find(s[0].surface[..], "coder.foreman") < 0;
   #assert surface_find(s[0].surface[..], "coder.gym") < 0;
@@ -36,6 +38,14 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.usage.ring") < 0;
   #assert surface_find(s[0].surface[..], "coder.fresh") < 0;
   #assert surface_find(s[0].surface[..], "coder.fanout") < 0;
+
+  // File pane, file explorer, @file mentions, and palette Files mode are disabled when DC_FLAG_FILES is off.
+  fb: [32] u8; fn := cp_out(fb[..], "hello\n");
+  #assert !coder_page_file_open(s, "~/demo.txt", fb[0..<fn], fn) && !coder_page_file_shown(s);
+  coder_page_filetree_open(s, true);
+  #assert !coder_page_filetree_shown(s);
+  coder_page_palette_set_mode(s, CP_PAL_MODE_FILES);
+  #assert coder_page_palette_mode(s) != CP_PAL_MODE_FILES;
 
   // Cmd+/ model menu toggle is a no-op in single-model release mode.
   coder_page_toggle_models(s);
@@ -136,14 +146,32 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.onboarding.error") >= 0;
   #assert surface_find(s[0].surface[..], "coder.local.dl") >= 0;
 
-  // 7. Installed & verified -> onboarding disappears, composer ready, sends on inkling-2-mini local=true agents=false
+  // 6b. Starting Psionic Metal server -> centered starting status, composer hidden, send & /goal refused
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_STARTING, 100, 16811, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.starting") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") < 0;
+  #assert coder_page_set_text(s, "who are you") && !coder_page_submit(s) && s[0].nturns == 0;
+  #assert coder_page_set_text(s, "/goal fix it") && !coder_page_submit(s) && s[0].nturns == 0;
+
+  // 6c. Server startup error -> error notice + Retry button, send refused
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_SERVER_ERROR, 100, 16811, 16811, "Metal init failed");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.error") >= 0;
+  retry_btn := surface_find(s[0].surface[..], "coder.local.dl");
+  #assert retry_btn >= 0 && cp_press(s, retry_btn) && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
+  #assert coder_page_set_text(s, "who are you") && !coder_page_submit(s) && s[0].nturns == 0;
+
+  // 7. Installed & server ready -> onboarding disappears, composer ready, sends on inkling-2-mini local=true agents=false
   coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
   coder_page_set_inkling(s, true);
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
   #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
   #assert surface_find(s[0].surface[..], "coder.model") < 0;
+  #assert surface_find(s[0].surface[..], "coder.copy") < 0;
   #assert coder_page_set_text(s, "fix bug") && coder_page_submit(s);
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.copy") >= 0;
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "sess-rel", "/w", out[..]);
   #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
@@ -164,9 +192,18 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert s[0].migrated_from_n > 0 && cast(string) s[0].migrated_from[0..<s[0].migrated_from_n] == "gemini-4-carbon";
   // Turn 0 keeps its original model byline read-only.
   #assert cp_turn_meta(s, 0) == "Microcoder · Gemini 4 Carbon";
-  // Migration notice renders above the composer.
+  // Migration notice renders as quiet caption above the composer (no notice box), and copy button is visible because nturns > 0.
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.migrated") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.copy") >= 0;
+  // While Inkling server is starting on an existing chat, composer is disabled, send is refused, and status caption shows.
+  coder_page_set_inkling(s, false);
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_STARTING, 100, 16811, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.local.status") >= 0;
+  #assert coder_page_set_text(s, "too early") && !coder_page_submit(s) && s[0].nturns == 1;
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
   // Next message sends on Inkling 2 Mini and clears the migration notice.
   #assert coder_page_set_text(s, "continue locally") && coder_page_submit(s);
   #assert s[0].migrated_from_n == 0;
@@ -180,7 +217,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cp_turn_meta(s, 1) == "Psionic Metal · Inkling 2 Mini";
 }
 
-#test "flags per-flag gating: enabling each of the 28 flags independently exposes only its own surface" {
+#test "flags per-flag gating: enabling each of the 29 flags independently exposes only its own surface" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
@@ -237,6 +274,9 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_CUSTOMIZE));
   #assert cp_set_page_ok_flags(s[0].flags, CP_PG_APPEARANCE) && cp_set_page_ok_flags(s[0].flags, CP_PG_KEYBINDINGS);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_FILES));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.ft.toggle") >= 0 && surface_find(s[0].surface[..], "coder.term.toggle") < 0;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_SCENES));
   #assert coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");

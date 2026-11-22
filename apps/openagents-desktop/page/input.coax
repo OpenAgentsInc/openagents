@@ -3,6 +3,7 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
+  if !cp_flag(s, DC_FLAG_FILES) { return false; }
   s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false; s[0].find[0].open_file_path_n = 0;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
@@ -42,8 +43,8 @@ cp_turn_call :: (s: [] CoderPage, i: int, k: int) -> int {
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
-  if act >= CP_FP_CLOSE && act <= CP_FP_LEAN_GOAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
-  if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
+  if act >= CP_FP_CLOSE && act <= CP_FP_LEAN_GOAL { return (cp_flag(s, DC_FLAG_FILES) || cp_flag(s, DC_FLAG_SCENES)) && cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
+  if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_flag(s, DC_FLAG_FILES) && cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_flag(s, DC_FLAG_GIT) && cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)

@@ -29,7 +29,7 @@ Everything outside the core local coding loop—cloud models, accounts, Bitcoin 
 ### Core Principles
 
 1. **One model, zero model selector.** v1.0 runs only Inkling 2 Mini (26.4B looped MoE, 3.4B active, ~17.6 GB `IQ4_NL` GGUF) locally. There is no model picker, no cloud API key setup, no account login, and no dollar metering.
-2. **Minimal surface area.** Keep only the features required to open a repo, talk to Inkling 2 Mini, inspect/edit files, approve actions, run `/goal`, keep worktrees clean, and update the app.
+2. **Minimal surface area.** Keep only the features required to open a repo, talk to Inkling 2 Mini, attach files, approve actions, run `/goal`, keep worktrees clean, and update the app.
 3. **Code stays in the codebase; only v1.0 ships.** All non-v1.0 code remains tracked, compiled, and tested in full developer builds (`build.sh --full`). The v1.0 release build (`build.sh --minimal`) strips excluded frameworks, helper CLIs, workers, Swift files, and Coax modules out of the shipped package so dead weight is never distributed, signed, or loaded.
 4. **Coax-emitted kernels everywhere, no cuBLAS/cuDNN.** Per `AGENTS.md`, Psionic writes all GPU arithmetic in Coax (`coax metal-compute`, `coax cuda`, `coax spirv`). No hand-written vendor kernels and no cuBLAS/cuDNN in anything shipped; `llama.cpp` (and opt-in cuBLAS harnesses) serve strictly as parity and throughput oracles during hillclimbing.
 5. **Honest hardware and quality bars.** Unsupported machines (macOS Intel or < 32 GB RAM; Linux/Windows without a qualifying GPU/VRAM budget) are told immediately on first run. Release quality is measured solely on the real shipped minimal app and `psionic-inkling-serve` binary against real weights on each platform that ships.
@@ -43,9 +43,9 @@ Everything outside the core local coding loop—cloud models, accounts, Bitcoin 
 | Area | Included Capabilities | Shared Coax / Workers | macOS Host | Linux & Windows Host (§5) |
 | --- | --- | --- | --- | --- |
 | **Core Chat** | Send, stop, steer, follow-up queue, markdown replies, tool rows, streaming thoughts. No model selector; no sub-agents (`agents = false`). | `page/transcript.coax`, `page/followups.coax`, `page/compose.coax`, `page/input.coax`, `mcworker` | `Window.swift`, `Window+Runs.swift`, `Worker.swift` | `host-main.c`, `host.c`, `host-core.coax` |
-| **First-Run & Local Model** | Hardware/VRAM check, resumable Hugging Face download into `~/.openagents/models/inkling-2-mini/`, progress bar, SHA-256 verification, safe delete (blocked during active runs), auto-managed `psionic-inkling-serve` with logs and port-collision diagnostics. | `page/layout/conversation.coax`, proposed `#authority coax/lib/agent/desktop/local-model.coax` | `Window+Dialogs.swift` (`LocalModelStore`, `LocalModelServer`) | Thin OS adapter in `host-main.c` + `linux/main.c` / `windows/main.c` |
+| **First-Run & Local Model** | Hardware/VRAM check, resumable Hugging Face download into `~/.openagents/models/inkling-2-mini/`, progress bar, SHA-256 verification, safe delete (blocked during active runs), eager launch prewarm of `psionic-inkling-serve` with automatic free-port selection and logs, and composer send lock until the server is ready. | `page/layout/conversation.coax`, `#authority coax/lib/agent/desktop/local-model.coax` | `Window+Dialogs.swift` (`LocalModelStore`, `LocalModelServer`) | Thin OS adapter in `host-main.c` + `linux/main.c` / `windows/main.c` |
 | **Chat History & Sidebar** | Persisted chats, sidebar list, new/rename/delete/fork. Pre-existing chats created on hidden models open readable and continue on Inkling with an explicit notice. | `page/chats.coax`, `page/persist.coax`, `page/layout/sidebar.coax` | `Store.swift` | `host-core.coax` / `host-main.c` |
-| **Workspace & Files** | Working folder picker, file attachments, `@` file mentions, read-only file pane. | `page/attach.coax`, `page/mention.coax`, `page/filepane.coax`, `page/filetree.coax` | `Window+Attach.swift`, `Window+Files.swift` | `portal.c`, `host-main.c` |
+| **Workspace & Attachments** | Working folder picker, file attachments, and `/` slash commands (`/goal`, `/new`, `/fork`). No `@` file mentions and no file viewer pane in v1.0. | `page/attach.coax`, `page/mention.coax` (`/` only) | `Window+Attach.swift` | `portal.c`, `host-main.c` |
 | **Navigation & Search** | Command palette (v1.0 commands only) and in-chat Find. | `page/palette.coax`, `page/find.coax` | `Window+Palette.swift` | `host-main.c` |
 | **Agent Interaction** | Permission prompts, interactive question cards, to-do tray, `/goal` autonomous loop with end-of-goal verification turn. | `page/permit.coax`, `page/todos.coax`, `page/goal.coax` | `Window.swift` | `host-main.c` |
 | **Background Execution & Safety** | Detached daemon (`coder-host`) so runs survive app quit; per-chat git worktrees and `gitguard`. | `coder-host`, `gitguard` | `DaemonClient.swift`, `Worktree.swift`, `Window+Worktrees.swift` | `host-core.coax`, `host-main.c` |
@@ -54,7 +54,7 @@ Everything outside the core local coding loop—cloud models, accounts, Bitcoin 
 
 > **Candidate first post-v1.0 addition (`git`):** Keep `git` (diff viewer, git actions toolbar, checkpoints/rewind) excluded from v1.0.0 so the initial surface stays minimal, and designate it as the first flag to turn on in **v1.0.1**.
 
-### 2.2 Excluded from OpenAgents v1.0 (28 Flags, All Off & Stripped at Build Time)
+### 2.2 Excluded from OpenAgents v1.0 (29 Flags, All Off & Stripped at Build Time)
 
 Every row below stays in the repository and compiles under `--full` developer builds, is controlled by the shared Coax flag registry (`coax/lib/agent/desktop/flags.coax`) with default `false`, and is **excluded from shipped v1.0 builds** under `--minimal`.
 
@@ -67,7 +67,7 @@ Every row below stays in the repository and compiles under `--full` developer bu
 - `models.executor` — Hybrid Executor, weight modules, Local Pylon, settled sats, shadow rollout.
 - `models.inklingNeon` — Inkling + Neon hybrid routing and Inkling as a cloud sub-agent.
 
-**Excluded Features (21 flags):**
+**Excluded Features (22 flags):**
 - `account` — OpenAgents login, account profile, passkey/device-key linking (`lab-sign.o`, `Account.swift`, `AppAuth.swift`, `DeviceKey.swift`, `KitPasskey.swift`).
 - `foreman` — Foreman chat, menu, permission tiers, control server, `foreman-ctl`.
 - `gym` — Benchmarks, Terminal-Bench, PLE 3D, Lean · RH, 3D RH Flythrough (`RhFlythroughView.swift`, `rh-flythrough.o`), `lean-run`, `tbench-run`, `ple-run`, `gym-evals/`.
@@ -89,6 +89,7 @@ Every row below stays in the repository and compiles under `--full` developer bu
 - `agents` — Agents page (Coder, Tester, Game Builder), `agents-catalog`, `tester-cli`.
 - `scenes` — Open 3D Scene and 3D scene side panel (`SceneModel.swift`, `SceneView.swift`, `ScenePanelView.swift`).
 - `rich` — Prompt stash, prompt history, side chat, and extended composer widgets (`page/rich.coax`).
+- `files` — File Explorer tree, inline file viewer/editor pane (`page/filepane.coax`, `page/filetree.coax`, `Window+Files.swift`), `@` file mentions in the composer, and the repository Files tab in the command palette.
 
 ### 2.3 Hard Invariants for Excluded Features
 
@@ -113,7 +114,7 @@ Desktop (`#13825` on macOS, plus Linux/Windows adapters in §5) must lock onto t
 | **Server binary** | Ship and run `psionic-inkling-serve` (`psionic-inkling-serve.exe` on Windows) paired with the platform's Coax-emitted kernel file (`inkling-kernels.metal` on macOS; `inkling-kernels-cuda.cu` and/or `inkling-kernels-vulkan.spv` on Linux/Windows). Never measure one server (`llama-server`) and ship another. |
 | **Context length** | `--ctx 32768` across the desktop server supervisor, `coax/lib/gateway/card.coax`, and all eval harnesses. |
 | **Weights path & integrity** | `~/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf` (`%USERPROFILE%\.openagents\models\inkling-2-mini\...` on Windows). Download is resumable (`curl -fSL -C -`) and **must** pass SHA-256 verification against pinned digest `cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4` before writing the manifest or reporting "Ready". Existing weights on disk are verified before first use. |
-| **Logging & port handling** | Never discard server or download output to `/dev/null` or `NUL`. Write logs under `~/.openagents/logs/` (`inkling-download.log`, `psionic-inkling-serve.log`). Default port `18794`, overridable via `OA_INKLING_PORT`. On startup conflict, inspect the listener (`lsof` on macOS, `ss`/`lsof` on Linux, `GetExtendedTcpTable` on Windows) and surface the conflicting process immediately instead of hanging 45s. |
+| **Logging, prewarm & port handling** | Never discard server or download output to `/dev/null` or `NUL`. Write logs under `~/.openagents/logs/` (`inkling-download.log`, `psionic-inkling-serve.log`). Prewarm `psionic-inkling-serve` eagerly on launch once weights are verified and block message submission until `/health` is green. Default port `18794`; if occupied by another process (unless `OA_INKLING_PORT` was explicitly set), automatically scan and bind the next free localhost port (`18794..18857`) and reuse any already-running healthy Psionic server on the recorded port. |
 | **Server lifetime on quit** | Start `psionic-inkling-serve` detached with `--idle-exit-s 300`. If the user quits the app while a daemon-owned (`coder-host`) Inkling run is active, leave the server running so the turn finishes cleanly; terminate immediately on quit only when idle. |
 | **Safe removal** | Refuse to delete weights while any run is active (`runningCount > 0`). |
 | **First-run onboarding** | On launch with no verified weights: (a) if hardware fails the platform's floor (e.g., Intel Mac / < 32 GB RAM, or Linux/Windows without a qualifying GPU/VRAM budget), show a clear hardware-requirement screen; (b) if supported, show a single-action download card with progress, byte count, SHA-256 verification state, and automatic transition into a ready chat on completion. |
@@ -136,8 +137,8 @@ Measured from an actual `OpenAgents.app` build (`apps/openagents-desktop/build.s
 | `Contents/Frameworks/breez_sdk_sparkFFI.framework` | **37.1 MB** | **17 MB** | Rust FFI dylib | **No** (`wallet`) |
 | 17 flagged items in `Contents/Resources/` (`lean-run`, `tbench-run`, `oasim`, `claudeworker`, `ple-run`, `agyworker`, `tester-cli`, `proof-export`, `capability-eval`, `agents-catalog`, `gym-evals/`, `fixtures/`, `foreman-ctl`, `bip39-english.txt`, `tbench-harbor/`, `tbench-policies/`, `lean-checker/`) | **3.7 MB** | ~1.5 MB | Separate CLIs | **No** (various flags) |
 | `Contents/MacOS/OpenAgents` — Breez static libs (`libBreezSdkSpark.a` 8.5 MB + `libBigNumber.a` 0.3 MB, ~29% of `__text`) | **~4.0 MB** | ~1.5 MB | Static archives | **No** (`wallet`) |
-| `Contents/MacOS/OpenAgents` — Other flagged Swift (46 files), Coax modules (19 files), and C objs (`lab-sign.o` 558 KB, `rh-flythrough.o` 62 KB, `pay-wallet*.o` 12 KB) | **~4.5 MB** | ~1.5 MB | **36,866 LOC** (22,998 Swift + 13,868 Coax) | **No** (28 flags) |
-| `Contents/MacOS/OpenAgents` — v1.0 Core (23 Swift files, 35 Coax files, `carrier.o`, `ui-host.o`, `desktop-core.o`) | **~5.1 MB** | ~1.5 MB | **22,865 LOC** (8,818 Swift + 14,047 Coax) | **Yes** |
+| `Contents/MacOS/OpenAgents` — Other flagged Swift (47 files), Coax modules (21 files), and C objs (`lab-sign.o` 558 KB, `rh-flythrough.o` 62 KB, `pay-wallet*.o` 12 KB) | **~4.5 MB** | ~1.5 MB | **36,866+ LOC** | **No** (29 flags) |
+| `Contents/MacOS/OpenAgents` — v1.0 Core (22 Swift files, 33 Coax files, `carrier.o`, `ui-host.o`, `desktop-core.o`) | **~5.1 MB** | ~1.5 MB | **~21,000 LOC** | **Yes** |
 | Core v1.0 `Contents/Resources/` (`coder-host` 2.5 MB, `inkling-kernels.metal` 1.2 MB, `mcworker` 0.9 MB, `Components/` 0.8 MB, `psionic-inkling-serve` 0.2 MB, `OpenAgents.icns` 0.2 MB, `gitguard` 0.1 MB, metadata) | **6.1 MB** | ~2.0 MB | Core runtime | **Yes** |
 | **Total today** | **60.5 MB** | **25 MB** | **59,731 LOC** | **~49 MB (81%) removable** |
 
@@ -147,7 +148,7 @@ Introduce one consistent build switch across `apps/openagents-desktop/build.sh`,
 
 - **Developer / Full build (default for local dev & CI):** `./build.sh` or `./build.sh --full`
   - Defines `-DOA_FULL -DOA_WALLET` (on macOS).
-  - Compiles and bundles everything; all 28 runtime flags still default to `false` and remain toggleable via OS prefs / `OA_FLAGS` / `--flag` / `experimentalFeatures`.
+  - Compiles and bundles everything; all 29 runtime flags still default to `false` and remain toggleable via OS prefs / `OA_FLAGS` / `--flag` / `experimentalFeatures`.
   - Full test suites continue to cover all features.
 - **v1.0 Minimal Release build:** `./build.sh --minimal` (or `OA_RELEASE_MINIMAL=1`)
   - Used by `install.sh --minimal` and v1.0 release packaging.
@@ -176,13 +177,13 @@ Introduce one consistent build switch across `apps/openagents-desktop/build.sh`,
 **Target outcome:** **~16 MB → ~11–12 MB on disk (−81% vs. today)**, **~5–6 MB → ~4 MB zipped (−84% vs. today)**, **−62% compiled UI/host LOC**.
 
 1. **Split `swiftc` inputs into `CORE_SWIFT` and `FULL_SWIFT`:**
-   - **`CORE_SWIFT` (23 files, ~8,818 LOC):** `Activation.swift`, `AppDelegate.swift`, `DaemonClient.swift`, `DefaultsMigration.swift`, `DesktopCore.swift`, `Notifications.swift`, `Store.swift`, `Updater.swift`, `Window.swift`, `Window+Attach.swift`, `Window+Chats.swift`, `Window+Dialogs.swift`, `Window+Files.swift`, `Window+FollowUps.swift`, `Window+Menus.swift`, `Window+Palette.swift`, `Window+Runs.swift`, `Window+Settings.swift`, `Window+TitleBar.swift`, `Window+Update.swift`, `Window+Worktrees.swift`, `Worker.swift`, `Worktree.swift`.
-   - **`FULL_SWIFT` (46 files, ~22,998 LOC, omitted under `--minimal`):** All Gym/Benchmarks/Terminal-Bench/RhFlythrough files (7), Scenes (3), Foreman (5), Account/Auth/Passkey (4), Wallet/Spark (6), Git actions/diff/checkpoints (3), Tailnet (2), Scheduled (2), plus `AgentsPage.swift`, `CapabilityStudio.swift`, `ThreadProof.swift`, `Window+Customize.swift`, `Window+Environments.swift`, `Window+Forge.swift`, `Window+McpSkills.swift`, `Window+Preview.swift`, `Window+Providers.swift`, `Window+Rich.swift`, `Window+Simulator.swift`, `Window+Terminal.swift`, `Window+Usage.swift`, `Window+Voice.swift`.
+   - **`CORE_SWIFT` (22 files):** `Activation.swift`, `AppDelegate.swift`, `DaemonClient.swift`, `DefaultsMigration.swift`, `DesktopCore.swift`, `Notifications.swift`, `Store.swift`, `Updater.swift`, `Window.swift`, `Window+Attach.swift`, `Window+Chats.swift`, `Window+Dialogs.swift`, `Window+FollowUps.swift`, `Window+Menus.swift`, `Window+Palette.swift`, `Window+Runs.swift`, `Window+Settings.swift`, `Window+TitleBar.swift`, `Window+Update.swift`, `Window+Worktrees.swift`, `Worker.swift`, `Worktree.swift`.
+   - **`FULL_SWIFT` (47 files, omitted under `--minimal`):** All Gym/Benchmarks/Terminal-Bench/RhFlythrough files (7), Scenes (3), Foreman (5), Account/Auth/Passkey (4), Wallet/Spark (6), Git actions/diff/checkpoints (3), Tailnet (2), Scheduled (2), plus `AgentsPage.swift`, `CapabilityStudio.swift`, `ThreadProof.swift`, `Window+Customize.swift`, `Window+Environments.swift`, `Window+Files.swift`, `Window+Forge.swift`, `Window+McpSkills.swift`, `Window+Preview.swift`, `Window+Providers.swift`, `Window+Rich.swift`, `Window+Simulator.swift`, `Window+Terminal.swift`, `Window+Usage.swift`, `Window+Voice.swift`.
    - Guard cross-file references inside `CORE_SWIFT` with `#if OA_FULL` so `--minimal` compiles cleanly with zero dead symbols.
 2. **Exclude non-v1 C/Coax link objects:**
    - Skip `lab-sign.o` (558 KB) and `rh-flythrough.o` (62 KB) in `--minimal`.
-3. **Slim Coax page build (`app-v1.coax`, ~13,868 LOC excluded — shared by macOS, Linux, and Windows):**
-   - Provide a minimal Coax root (`apps/openagents-desktop/app-v1.coax` + stub module for excluded panels) so `--minimal` omits the 19 flagged-off Coax page modules (`rich`, `gym-lean*`, `termpane`, `customize`, `forge`, `simpane`, `environments`, `usage`, `git*`, `mcpskills`, `providers`, `voice`, `preview`, `scheduled`, `layout/review`) when emitting `gallery.c` / `gallery.o` (shrinking `gallery.o` from ~3.2 MB to ~1.5 MB across all three OSes).
+3. **Slim Coax page build (`app-v1.coax`, shared by macOS, Linux, and Windows):**
+   - Provide a minimal Coax root (`apps/openagents-desktop/app-v1.coax` + stub module for excluded panels) so `--minimal` omits the 21 flagged-off Coax page modules (`rich`, `gym-lean*`, `termpane`, `customize`, `forge`, `simpane`, `environments`, `usage`, `git*`, `mcpskills`, `providers`, `voice`, `preview`, `scheduled`, `layout/review`, `filepane`, `filetree`) when emitting `gallery.c` / `gallery.o` (shrinking `gallery.o` from ~3.2 MB to ~1.5 MB across all three OSes).
    - Keep `app.coax` untouched for `--full` builds so all 846+ existing page checks continue running unchanged.
 4. **Unlink unused Apple system frameworks in `--minimal`:**
    - Drop `-framework Speech`, `-framework AVFoundation`, `-framework CoreMedia`, `-framework CoreVideo`, `-framework WebKit`, `-framework AuthenticationServices`, and `-framework breez_sdk_sparkFFI`.
@@ -222,7 +223,7 @@ A large fraction of OpenAgents Desktop is already cross-platform; the remaining 
 | **GPU UI Shaders** (`components/backend/*.coax`) | `coax metal` → `.metal` | **Already shared** (`coax spirv` → `.spv` on Vulkan) | **Already shared** (`coax spirv` → `.spv` on Vulkan) | None. |
 | **Window / Input Host** | Swift + ObjC (`ui-host.m`) | **Already works** (Wayland + Vulkan `ui-host.c`, `portal.c`, real-window input tests passing) | **Already works** (Win32 + Vulkan `ui-host.c`, `portal.c`, Wine smoke tests; needs real Win11 verification) | Real Windows 11 native smoke & GPU run. |
 | **Workers & Daemon** (`mcworker`, `coder-host`, `gitguard`) | Coax → Mach-O | **Already shared** (Coax → Linux ELF) | **Already shared** (Coax → MinGW `.exe`, except `gitguard.exe` needs bundling) | Bundle `gitguard.exe` on Windows; omit `claudeworker`/`agyworker` in `--minimal`. |
-| **28-Flag Registry** (`coax/lib/agent/desktop/flags.coax`) | Coax → Swift (`defaults`, `OA_FLAGS`, `--flag`) | Only stub `case 36` in `host-main.c` | Only stub `case 36` in `host-main.c` | Wire `flags.coax` into `host-main.c` (env `OA_FLAGS`, `--flag`, `--experimental`, and `~/.openagents/desktop-flags.json`). |
+| **29-Flag Registry** (`coax/lib/agent/desktop/flags.coax`) | Coax → Swift (`defaults`, `OA_FLAGS`, `--flag`) | Wired into `host-main.c` | Wired into `host-main.c` | Done (`flags.coax` + `desktop-flags.json`). |
 | **Local Model Store & Server Supervisor** | **macOS-only Swift** (`Window+Dialogs.swift`: download, SHA-256, manifest, server spawn, port check, quit lifetime) | **Missing** in `host-main.c` | **Missing** in `host-main.c` | Extract policy/state machine into `#authority coax/lib/agent/desktop/local-model.coax`; add thin OS adapters in `host-main.c` (see §5.5). |
 | **Inkling HTTP/SSE & Schema Server** (`psionic/platform/inkling-serve.c`, `inkling-responses.coax`) | POSIX sockets + hardcoded `inkling-metal.h` | Compiles only against POSIX + Metal | Does not compile (POSIX sockets, `mmap`, `clock_gettime`, Metal) | Split out backend-agnostic `inkling-engine.h`; add `#ifdef _WIN32` Winsock2 + Win32 `MapViewOfFile` in `inkling-gguf.c` (see §5.3). |
 | **Inkling GPU Inference Backend** (`psionic/lib/inkling/kernels*.coax`) | **Done & hillclimbed** (`coax metal-compute` + `inkling-metal.c`) | **Not built yet** (`cuda-host.c` exists for Linux `dlopen`!) | **Not built yet** (`cuda-host.c` needs Win32 `LoadLibraryA`) | Build & hillclimb `kernels-cuda.coax` + `inkling-cuda.c` from scratch (and optionally `kernels-vulkan.coax` + `inkling-vulkan.c`; see §5.4). |
@@ -278,10 +279,10 @@ To avoid maintaining two divergent implementations (Swift on macOS vs. C on Linu
 
 1. **Shared Coax Policy (`coax/lib/agent/desktop/local-model.coax`, `#authority`, 0 surviving mutants):**
    - Owns model ID (`inkling-2-mini`), Hugging Face URL, pinned SHA-256 digest (`cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4`), expected byte size, manifest JSON codec (`bytes`, `mtime`, `inode`/`file_id`, `sha256`, `loops`), platform hardware admission rules (macOS Apple Silicon ≥ 32 GB; Linux/Windows CUDA ≥ 24 GB VRAM or verified NVFP4/Vulkan budget), state machine (`not_downloaded` / `downloading` / `verifying` / `ready` / `error` / `unsupported_hw`), and safe-removal rule (`running_count == 0`).
-2. **Wire the 28-Flag Registry Into `host-main.c`:**
+2. **Wire the 29-Flag Registry Into `host-main.c`:**
    - Replace the stub `case 36` in `apps/openagents-desktop/host-main.c` with calls into `coax/lib/agent/desktop/flags.coax` (via `host-core.coax`).
    - Support the exact same overrides on Linux and Windows as macOS: `--flag NAME`, `--experimental`, `OA_FLAGS=name,name`, `OA_EXPERIMENTAL=1`, plus a simple persistent config file (`~/.openagents/desktop-flags.json` on Linux; `%USERPROFILE%\.openagents\desktop-flags.json` on Windows).
-   - Default in all builds: all 28 flags `false` (Inkling-only, no model selector, no CLI/auth auto-probing).
+   - Default in all builds: all 29 flags `false` (Inkling-only, no model selector, no file viewer, no `@` file mentions, no CLI/auth auto-probing).
 3. **Thin OS Adapters in `host-main.c` (Linux & Windows) Matching macOS `Window+Dialogs.swift`:**
 
 | Adapter Concern | macOS (`Window+Dialogs.swift`) | Linux (`host-main.c` + `linux/main.c`) | Windows (`host-main.c` + `windows/main.c`) |

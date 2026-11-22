@@ -270,17 +270,31 @@ enum ExecutorModelStore {
 }
 #endif
 
-/// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:<port> (default 18794, override via OA_INKLING_PORT).
+/// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:<port>.
+/// Defaults to 18794 and automatically picks the next free localhost port (18794..<18858) when
+/// another process occupies 18794, unless OA_INKLING_PORT was explicitly set.
 final class LocalModelServer {
+    enum State: Equatable {
+        case idle
+        case starting
+        case ready(Int)
+        case failed(String)
+    }
+
     static let shared = LocalModelServer()
+    static let stateChangedNotification = Notification.Name("OpenAgentsLocalModelServerStateChanged")
     static let host = "127.0.0.1"
+    static let defaultPort = 18794
+    static let portScanCount = 64
     static let contextTokens = 32768
-    static var port: Int {
+
+    static var explicitPort: Int? {
         if let raw = ProcessInfo.processInfo.environment["OA_INKLING_PORT"], let p = Int(raw), p > 0, p < 65536 {
             return p
         }
-        return 18794
+        return nil
     }
+    static var port: Int { shared.currentPort }
     static var baseURL: String { "http://\(host):\(port)" }
     static var logURL: URL { LocalModelStore.logsDir.appendingPathComponent("inkling-serve.log") }
     static var runDir: URL {
@@ -288,8 +302,46 @@ final class LocalModelServer {
             .appendingPathComponent(".openagents/run", isDirectory: true)
     }
     static var pidURL: URL { runDir.appendingPathComponent("inkling-serve.pid") }
+    static var portURL: URL { runDir.appendingPathComponent("inkling-serve.port") }
+
+    private let stateLock = NSLock()
+    private var _state: State = .idle
+    private var _currentPort: Int = explicitPort ?? defaultPort
     private var process: Process?
+    private var bootInFlight = false
+    private var waiters: [(String?) -> Void] = []
     private let queue = DispatchQueue(label: "openagents.local-model-server")
+
+    var state: State {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _state
+    }
+    var currentPort: Int {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _currentPort
+    }
+    var isReady: Bool {
+        if case .ready = state { return true }
+        return false
+    }
+
+    private func setState(_ next: State, port: Int? = nil) {
+        var changed = false
+        stateLock.lock()
+        if let port, port > 0, port < 65536 { _currentPort = port }
+        if _state != next {
+            _state = next
+            changed = true
+        }
+        stateLock.unlock()
+        if changed {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Self.stateChangedNotification, object: self)
+            }
+        }
+    }
 
     static func findPsionicServer() -> (bin: String, metal: String)? {
         let fm = FileManager.default
@@ -305,7 +357,30 @@ final class LocalModelServer {
         return nil
     }
 
-    private enum PortProbe { case psionicHealthy, occupied(String), free }
+    private enum PortProbe: Equatable { case psionicHealthy, occupied(String), free }
+
+    private static func readRecordedPort() -> Int? {
+        guard let raw = try? String(contentsOf: portURL, encoding: .utf8) else { return nil }
+        guard let p = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)), p > 0, p < 65536 else { return nil }
+        return p
+    }
+
+    private static func isLocalPortFree(_ port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        if fd < 0 { return false }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(UInt16(port).bigEndian)
+        addr.sin_addr = in_addr(s_addr: inet_addr(host))
+        let res = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return res == 0
+    }
 
     private static func listenerDescription(port: Int) -> String? {
         let p = Process()
@@ -329,8 +404,8 @@ final class LocalModelServer {
         return nil
     }
 
-    private func probePortHealth() -> PortProbe {
-        guard let url = URL(string: Self.baseURL + "/health") else { return .free }
+    private func probePortHealth(port: Int) -> PortProbe {
+        guard let url = URL(string: "http://\(Self.host):\(port)/health") else { return .free }
         var req = URLRequest(url: url)
         req.timeoutInterval = 1.0
         let sem = DispatchSemaphore(value: 0)
@@ -342,17 +417,67 @@ final class LocalModelServer {
                    body.contains("psionic-metal") {
                     result = .psionicHealthy
                 } else {
-                    let who = Self.listenerDescription(port: Self.port) ?? "another HTTP server"
+                    let who = Self.listenerDescription(port: port) ?? "another HTTP server"
                     result = .occupied(who)
                 }
             }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 1.5)
-        if case .free = result, let who = Self.listenerDescription(port: Self.port) {
-            return .occupied(who)
+        if case .free = result {
+            if !Self.isLocalPortFree(port) {
+                return .occupied(Self.listenerDescription(port: port) ?? "another process")
+            }
+            if let who = Self.listenerDescription(port: port) {
+                return .occupied(who)
+            }
         }
         return result
+    }
+
+    private func findExistingHealthyPort() -> Int? {
+        var candidates: [Int] = []
+        if let p = Self.explicitPort {
+            candidates = [p]
+        } else {
+            let cur = currentPort
+            candidates.append(cur)
+            if let recorded = Self.readRecordedPort(), !candidates.contains(recorded) {
+                candidates.append(recorded)
+            }
+            if !candidates.contains(Self.defaultPort) {
+                candidates.append(Self.defaultPort)
+            }
+        }
+        for p in candidates {
+            if case .psionicHealthy = probePortHealth(port: p) {
+                return p
+            }
+        }
+        return nil
+    }
+
+    private func pickCandidatePorts() -> (ports: [Int], explicitError: String?) {
+        if let p = Self.explicitPort {
+            switch probePortHealth(port: p) {
+            case .psionicHealthy, .free:
+                return ([p], nil)
+            case .occupied(let who):
+                return ([], "Configured port \(p) (OA_INKLING_PORT) is already in use by \(who).")
+            }
+        }
+        var freePorts: [Int] = []
+        for offset in 0..<Self.portScanCount {
+            let p = Self.defaultPort + offset
+            if Self.isLocalPortFree(p) && Self.listenerDescription(port: p) == nil {
+                freePorts.append(p)
+                if freePorts.count >= 4 { break }
+            }
+        }
+        if freePorts.isEmpty {
+            return ([], "No free localhost port found between \(Self.defaultPort) and \(Self.defaultPort + Self.portScanCount - 1) for Inkling 2 Mini.")
+        }
+        return (freePorts, nil)
     }
 
     private static func readLogTail() -> String {
@@ -361,85 +486,180 @@ final class LocalModelServer {
         return lines.suffix(3).joined(separator: " | ")
     }
 
-    func ensureRunning(completion: @escaping (String?) -> Void) {
+    /// Eagerly starts Inkling 2 Mini in the background once weights are verified so the composer
+    /// unlocks automatically before the user submits a message.
+    func prewarmIfReady() {
+        guard LocalModelStore.isSelectable, Self.findPsionicServer() != nil else { return }
         queue.async {
-            switch self.probePortHealth() {
-            case .psionicHealthy:
-                DispatchQueue.main.async { completion(nil) }
+            if self.bootInFlight { return }
+            switch self.state {
+            case .failed:
                 return
-            case .occupied(let who):
-                DispatchQueue.main.async {
-                    completion("Port \(Self.port) is already in use by \(who). Stop that process or launch with OA_INKLING_PORT=<free-port>.")
+            case .ready(let p):
+                if self.process?.isRunning == true || (self.probePortHealth(port: p) == .psionicHealthy) {
+                    return
                 }
-                return
-            case .free:
+            case .idle, .starting:
                 break
             }
-            guard LocalModelStore.hardwareSupported else {
-                DispatchQueue.main.async { completion("Inkling 2 Mini requires Apple Silicon and >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).") }
-                return
-            }
-            guard LocalModelStore.isInstalled else {
-                DispatchQueue.main.async { completion("Inkling 2 Mini weights are not verified on disk (\(LocalModelStore.statusSummary())).") }
-                return
-            }
-            guard let server = Self.findPsionicServer() else {
-                DispatchQueue.main.async { completion("psionic-inkling-serve not found in app bundle or ~/.openagents/bin.") }
-                return
-            }
-            if self.process?.isRunning != true {
-                try? FileManager.default.createDirectory(at: LocalModelStore.logsDir, withIntermediateDirectories: true)
-                try? FileManager.default.createDirectory(at: Self.runDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-                FileManager.default.createFile(atPath: Self.logURL.path, contents: nil)
-                let logHandle = try? FileHandle(forWritingTo: Self.logURL)
-                try? logHandle?.truncate(atOffset: 0)
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: server.bin)
-                p.arguments = [
-                    "--model", LocalModelStore.weightsURL.path,
-                    "--metal", server.metal,
-                    "--host", Self.host,
-                    "--port", String(Self.port),
-                    "--ctx", String(Self.contextTokens),
-                    "--idle-exit-s", "300",
-                ]
-                p.standardOutput = logHandle ?? FileHandle.nullDevice
-                p.standardError = logHandle ?? FileHandle.nullDevice
-                do {
-                    try p.run()
-                    self.process = p
-                    try? "\(p.processIdentifier)\n".write(to: Self.pidURL, atomically: true, encoding: .utf8)
-                } catch {
-                    try? logHandle?.close()
-                    DispatchQueue.main.async { completion("Could not start Psionic Metal server: \(error.localizedDescription)") }
+            self.startBootLocked()
+        }
+    }
+
+    /// Clears any previous server error and retries starting Inkling 2 Mini.
+    func retry(completion: ((String?) -> Void)? = nil) {
+        queue.async {
+            if let completion { self.waiters.append(completion) }
+            if self.bootInFlight { return }
+            self.startBootLocked()
+        }
+    }
+
+    func ensureRunning(completion: @escaping (String?) -> Void) {
+        queue.async {
+            if case .ready(let p) = self.state {
+                if case .psionicHealthy = self.probePortHealth(port: p) {
+                    DispatchQueue.main.async { completion(nil) }
                     return
                 }
             }
+            self.waiters.append(completion)
+            if self.bootInFlight { return }
+            self.startBootLocked()
+        }
+    }
+
+    private func finishBootLocked(port: Int?, error: String?) {
+        self.bootInFlight = false
+        if let port, error == nil {
+            self.setState(.ready(port), port: port)
+        } else {
+            self.setState(.failed(error ?? "Inkling 2 Mini could not start."))
+        }
+        let callbacks = self.waiters
+        self.waiters = []
+        if !callbacks.isEmpty {
+            DispatchQueue.main.async {
+                for cb in callbacks { cb(error) }
+            }
+        }
+    }
+
+    private func startBootLocked() {
+        self.bootInFlight = true
+        self.setState(.starting)
+
+        if let healthyPort = self.findExistingHealthyPort() {
+            self.finishBootLocked(port: healthyPort, error: nil)
+            return
+        }
+        guard LocalModelStore.hardwareSupported else {
+            self.finishBootLocked(port: nil, error: "Inkling 2 Mini requires Apple Silicon and >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).")
+            return
+        }
+        guard LocalModelStore.isInstalled else {
+            self.finishBootLocked(port: nil, error: "Inkling 2 Mini weights are not verified on disk (\(LocalModelStore.statusSummary())).")
+            return
+        }
+        guard let server = Self.findPsionicServer() else {
+            self.finishBootLocked(port: nil, error: "psionic-inkling-serve not found in app bundle or ~/.openagents/bin.")
+            return
+        }
+        let picked = self.pickCandidatePorts()
+        if let explicitError = picked.explicitError {
+            self.finishBootLocked(port: nil, error: explicitError)
+            return
+        }
+        var lastError = "Could not start Psionic Metal server."
+        for targetPort in picked.ports {
+            self.terminateOwnedSync()
+            try? FileManager.default.createDirectory(at: LocalModelStore.logsDir, withIntermediateDirectories: true)
+            try? FileManager.default.createDirectory(at: Self.runDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            FileManager.default.createFile(atPath: Self.logURL.path, contents: nil)
+            let logHandle = try? FileHandle(forWritingTo: Self.logURL)
+            try? logHandle?.truncate(atOffset: 0)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: server.bin)
+            p.arguments = [
+                "--model", LocalModelStore.weightsURL.path,
+                "--metal", server.metal,
+                "--host", Self.host,
+                "--port", String(targetPort),
+                "--ctx", String(Self.contextTokens),
+                "--idle-exit-s", "300",
+            ]
+            p.standardOutput = logHandle ?? FileHandle.nullDevice
+            p.standardError = logHandle ?? FileHandle.nullDevice
+            p.terminationHandler = { [weak self] proc in
+                guard let self else { return }
+                self.queue.async {
+                    guard self.process === proc else { return }
+                    self.process = nil
+                    try? FileManager.default.removeItem(at: Self.pidURL)
+                    try? FileManager.default.removeItem(at: Self.portURL)
+                    if !self.bootInFlight {
+                        if proc.terminationStatus == 0 {
+                            self.setState(.idle)
+                        } else {
+                            let tail = Self.readLogTail()
+                            let msg = tail.isEmpty
+                                ? "Inkling 2 Mini server stopped unexpectedly (exit \(proc.terminationStatus))."
+                                : "Inkling 2 Mini server stopped: \(tail)"
+                            self.setState(.failed(msg))
+                        }
+                    }
+                }
+            }
+            do {
+                try p.run()
+                self.process = p
+                try? "\(p.processIdentifier)\n".write(to: Self.pidURL, atomically: true, encoding: .utf8)
+                try? "\(targetPort)\n".write(to: Self.portURL, atomically: true, encoding: .utf8)
+            } catch {
+                try? logHandle?.close()
+                lastError = "Could not start Psionic Metal server: \(error.localizedDescription)"
+                break
+            }
+            var bindCollision = false
             for _ in 0..<120 {
-                if case .psionicHealthy = self.probePortHealth() {
-                    DispatchQueue.main.async { completion(nil) }
+                if case .psionicHealthy = self.probePortHealth(port: targetPort) {
+                    self.finishBootLocked(port: targetPort, error: nil)
                     return
                 }
                 if self.process?.isRunning != true {
                     let status = self.process?.terminationStatus ?? -1
                     let tail = Self.readLogTail()
-                    let msg = tail.isEmpty
+                    let lower = tail.lowercased()
+                    if lower.contains("address already in use") || lower.contains("bind") {
+                        bindCollision = true
+                        lastError = tail
+                        break
+                    }
+                    lastError = tail.isEmpty
                         ? "Psionic Metal server exited (\(status)) before becoming ready (see \(Self.logURL.path))."
                         : "Psionic Metal server exited (\(status)): \(tail)"
-                    DispatchQueue.main.async { completion(msg) }
-                    return
+                    break
                 }
-                Thread.sleep(forTimeInterval: 0.5)
+                Thread.sleep(forTimeInterval: 0.25)
             }
-            let tail = Self.readLogTail()
-            let suffix = tail.isEmpty ? "See \(Self.logURL.path)." : tail
-            DispatchQueue.main.async { completion("Timed out waiting for Psionic Metal server on \(Self.baseURL). \(suffix)") }
+            if bindCollision { continue }
+            if self.process?.isRunning == true {
+                let tail = Self.readLogTail()
+                let suffix = tail.isEmpty ? "See \(Self.logURL.path)." : tail
+                lastError = "Timed out waiting for Psionic Metal server on 127.0.0.1:\(targetPort). \(suffix)"
+                self.terminateOwnedSync()
+            }
+            break
         }
+        self.finishBootLocked(port: nil, error: lastError)
     }
 
     func stop() {
         queue.async {
             self.terminateOwnedSync()
+            if !self.bootInFlight {
+                self.setState(.idle)
+            }
         }
     }
 
@@ -463,6 +683,7 @@ final class LocalModelServer {
             }
         }
         try? FileManager.default.removeItem(at: Self.pidURL)
+        try? FileManager.default.removeItem(at: Self.portURL)
     }
 }
 
@@ -587,6 +808,13 @@ extension CoderWindow {
     #endif
     /// Onboarding / Settings direct actions (CP_ASK_LOCAL_DOWNLOAD=160, CP_ASK_LOCAL_CANCEL=161).
     func startInklingDownload() {
+        if LocalModelStore.isSelectable {
+            LocalModelServer.shared.retry { [weak self] _ in
+                self?.syncLocalModels()
+            }
+            syncLocalModels()
+            return
+        }
         LocalModelStore.startDownload { [weak self] in
             self?.syncLocalModels()
         }

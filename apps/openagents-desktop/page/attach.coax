@@ -109,6 +109,7 @@ cp_cargo_press :: (s: [] CoderPage, id: string, drop: bool) -> bool {
   j := app_cargo_pressed("coder.cargo", id, cross[..]);
   if j < 0 || j >= cp_cargo_n(s) { return false; }
   if drop { at_remove(s[0].cargo[..], j); return true; }
+  if !cp_flag(s, DC_FLAG_FILES) { return false; }
   s[0].open_call = -1; s[0].open_turn = -1; s[0].open_cargo = j; s[0].open_show = -1;
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
@@ -145,6 +146,7 @@ cp_files_forget :: (s: [] CoderPage) { s[0].files = s[0].files[0..<0]; s[0].nfil
 // as the note a message's task carries. Its length in out.
 cp_refs_note :: (s: [] CoderPage, text: string, out: [] u8) -> int {
   k := at_note(s[0].cargo[..], true, out, 0);
+  if !cp_flag(s, DC_FLAG_FILES) { return k; }
   named := 0; i := 0;
   while i < text.count {
     e := composer_token_at(text, i);
