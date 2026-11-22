@@ -212,7 +212,7 @@
   #assert s[0].surface[0].sheet[sf2].no == base_o;
 }
 
-#test "gym sidebar row sits right under foreman, dispatches CP_ASK_GYM, and reports workbench rect" {
+#test "gym sidebar icon sits in the footer bar, dispatches CP_ASK_GYM, and reports workbench rect" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
@@ -222,12 +222,12 @@
   cp_layout(s, f[..], 1200.0f32, 800.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
-  fi := elt_find(t[..], "coder.foreman");
+  si := elt_find(t[..], "coder.me.settings");
   gi := elt_find(t[..], "coder.gym");
-  #assert fi >= 0 && gi >= 0;
-  fb := el_box(t[0].rows[fi]);
+  #assert si >= 0 && gi >= 0;
+  sb := el_box(t[0].rows[si]);
   gb := el_box(t[0].rows[gi]);
-  #assert gb.y >= fb.y + fb.h - 1.0f32 && gb.y <= fb.y + fb.h + 12.0f32;
+  #assert abs(gb.y - sb.y) < 0.01 && gb.x > sb.x && gb.w <= 32.0f32;
   gx := gb.x + 12.0f32;
   gy := gb.y + gb.h * 0.5f32;
   #assert coder_page_pointer(s, gx, gy, 0);

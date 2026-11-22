@@ -904,7 +904,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   }
   me := cp_set_test_row(s, "set.me");
   t := cp_skin().set;
-  #assert me.action == CP_SET_TOGGLE && abs(me.y + t.account + t.list_pad - h) < 0.01;
+  #assert me.action == CP_SET_TOGGLE && me.w <= 32.0f32 && me.y >= h - t.account - t.list_pad - 0.01 && me.y + me.h <= h - t.list_pad + 0.01;
   #assert abs(me.y - gear.y) < 0.01;   // the settings footer stays where it was
   #assert cp_set_test_row(s, "set.title").w > 0 && cp_set_test_row(s, "set.folder.a").action == CP_SET_ACT;
   // Back: the chat as it was

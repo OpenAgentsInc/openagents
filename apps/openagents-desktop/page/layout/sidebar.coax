@@ -45,15 +45,9 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), 0, CP_NEW);
   cur := cast(string) s[0].current[0..<s[0].current_n];
-  // Flag-gated sidebar destinations: off in the Inkling first release.
+  // Flag-gated sidebar destinations: Foreman stays at top; Gym and PRs & Issues live in the icon-only footer bar.
   if cp_flag(s, DC_FLAG_FOREMAN) {
     sy += cp_side_foreman(s, f, sw, sy, cur, running);
-  }
-  if cp_flag(s, DC_FLAG_GYM) {
-    sy += app_side_action(f, "coder.gym", 0, sy, sw, ICON_WIDGET, "Gym", ifx s[0].gym_open then EL_S_CURRENT else 0, CP_GYM);
-  }
-  if cp_flag(s, DC_FLAG_FORGE) {
-    sy += app_side_action(f, "coder.forge", 0, sy, sw, ICON_SHARE, "PRs & Issues", ifx cp_forge_shown(s) then EL_S_CURRENT else 0, CP_FORGE_TOGGLE);
   }
   sy += 4.0f32;
   sy += cp_sb_bulk_bar(s, f, sw, sy);
@@ -264,31 +258,53 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     if my + k.small.line > stop && my < stop + s[0].side_view { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
   }
   if footer_h > 0 { cp_side_footer(s, f, 0, h - me_h - footer_h, sw); }
-  if me_h > 0 { _ := cp_side_settings_row(f, "coder.me.settings", 0, h - st.list_pad - st.account, sw, st.account, false, CP_SET_TOGGLE); }
+  if me_h > 0 { _ := cp_side_utility_bar(s, f, 0, h - st.list_pad - st.account, sw, st.account); }
 }
-// Unified bottom-left Settings row (Antigravity style): single gear icon + "Settings" label aligned
-// with the sidebar's action/folder rail, linking directly to Settings.
-cp_side_settings_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, row_h: f32, open: bool, action: int) -> f32 {
-  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+// Quiet icon-only utility button for the sidebar footer (T3 Code SidebarUtilityMenu style: 28x28pt, no text label).
+cp_side_icon_btn :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, side: f32, icon: int, active: bool, action: int) -> f32 {
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
   kk := uiframe_key(f, id);
   p := uiframe_press(f, kk, id);
   hv := uiframe_hover(f, kk, id);
-  if open { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, row_h, a.row_radius, k.raised); }
-  else if hv > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, row_h, a.row_radius, opacity(k.raised, 0.75f32 * hv)); }
-  if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, row_h, a.row_radius, opacity(k.hover, p)); }
-  state := EL_S_TOGGLES | (ifx open then EL_S_PRESSED | EL_S_CURRENT else 0);
-  row := uiframe_semantic(f, id, EL_BUTTON, "Settings", x, y, w, row_h, state, action);
-  tf := ifx a.side_text.line > 0 then a.side_text else k.body;
-  tx := x + a.side_pad;
+  r := 6.0f32;
+  if active { sheet_fill(sh, x, y, side, side, r, k.raised); }
+  else if hv > 0 { sheet_fill(sh, x, y, side, side, r, opacity(k.raised, 0.85f32 * hv)); }
+  if p > 0 { sheet_fill(sh, x, y, side, side, r, opacity(k.hover, p)); }
+  state := EL_S_TOGGLES | (ifx active then EL_S_PRESSED | EL_S_CURRENT else 0);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, side, side, state, action);
   mark := a.icon;
-  ink := ifx open then k.ink else rgba_mix(k.muted, k.ink, hv);
-  sheet_icon(sh, ICON_SETTINGS, tx, y + (row_h - mark) / 2.0f32, mark, ink);
-  tx += mark + a.row_inset;
-  room := x + w - a.side_pad - tx;
-  if room > 0 {
-    _ := sheet_text(sh, m, -1, tx, y + (row_h - tf.line) / 2.0f32, tf.line, tf.face, ink, app_fit(f, tf.face, "Settings", room));
+  ink := ifx active then k.ink else rgba_mix(k.muted, k.ink, hv);
+  sheet_icon(sh, icon, x + (side - mark) / 2.0f32, y + (side - mark) / 2.0f32, mark, ink);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, side, side);
+  return side;
+}
+// Icon-only Settings button (also used by settings.coax's sidebar footer).
+cp_side_settings_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, row_h: f32, open: bool, action: int) -> f32 {
+  k := f[0].skin; a := k.app;
+  sheet_fill(f[0].sheet, x, y - 4.0f32, w, 1.0f32, 0, k.hairline);
+  side := ifx row_h < 28.0f32 then row_h else 28.0f32;
+  _ := cp_side_icon_btn(f, id, "Settings", x + a.row_inset, y + (row_h - side) / 2.0f32, side, ICON_SETTINGS, open, action);
+  return row_h;
+}
+// T3 Code-style horizontal icon-only sidebar footer bar: Settings, Archived toggle, and flag-gated PRs/Issues & Gym.
+cp_side_utility_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, row_h: f32) -> f32 {
+  k := f[0].skin; a := k.app;
+  sheet_fill(f[0].sheet, x, y - 4.0f32, w, 1.0f32, 0, k.hairline);
+  side := ifx row_h < 28.0f32 then row_h else 28.0f32;
+  by := y + (row_h - side) / 2.0f32;
+  bx := x + a.row_inset;
+  gap := 4.0f32;
+  bx += cp_side_icon_btn(f, "coder.me.settings", "Settings", bx, by, side, ICON_SETTINGS, false, CP_SET_TOGGLE) + gap;
+  is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
+  if bx + side <= x + w - a.row_inset {
+    bx += cp_side_icon_btn(f, "coder.sb.archived", ifx is_arch then "Active chats" else "Archived chats", bx, by, side, ICON_ARCHIVE, is_arch, ifx is_arch then CP_SB_VIEW_ACTIVE_ACT else CP_SB_VIEW_ARCHIVED_ACT) + gap;
   }
-  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, row_h);
+  if cp_flag(s, DC_FLAG_FORGE) && bx + side <= x + w - a.row_inset {
+    bx += cp_side_icon_btn(f, "coder.forge", "PRs & Issues", bx, by, side, ICON_SHARE, cp_forge_shown(s), CP_FORGE_TOGGLE) + gap;
+  }
+  if cp_flag(s, DC_FLAG_GYM) && bx + side <= x + w - a.row_inset {
+    bx += cp_side_icon_btn(f, "coder.gym", "Gym", bx, by, side, ICON_WIDGET, s[0].gym_open, CP_GYM) + gap;
+  }
   return row_h;
 }
 // The Foreman row at the sidebar's top, above Pinned and Recents, sw wide at sy: its tier, or how many
