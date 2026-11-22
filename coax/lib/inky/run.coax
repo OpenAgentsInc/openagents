@@ -8,13 +8,13 @@
 // Checks: coax/bin/coax test coax/lib/inky/run.coax --library
 
 #load "loop.coax";
+#load "instructions.coax";
 #load "../sys/fs.coax";
 #load "../sys/proc.coax";
 #load "../agent/journal-file.coax";
 #load "../agent/user-instructions.coax";
 #load "../agent/native-profile.coax";
 #load "../microcoder/git-guard.coax";
-#load "../microcoder/instructions.coax";
 #load "../microcoder/steer.coax";
 #load "../microcoder/executor-guard.coax";
 
@@ -115,6 +115,8 @@ IkRun :: struct {
   effort: [32] u8; neffort: int;
   det_mode: bool;
   hybrid_exec: bool;
+  adaptive_effort: bool;
+  max_tokens_step: int;
   gated: bool;
   edits_free: bool;
   ceiling: int;
@@ -202,12 +204,8 @@ ik_run_build_system :: (cwd: string, os_name: string, is_goal: bool, hybrid_exec
   upb: [FS_PATH_MAX] u8;
   upath := uinstr_path(upb[..]);
   usr := uinstr_read(upath, b[0].usr_instr[..]);
-  // Workspace instructions (AGENTS.md with CLAUDE.md fallback).
-  ws := mc_instructions_load(cwd, b[0].ws_instr[..]);
-  // Strip MC_INSTR_HEADER prefix if mc_instr_load added it, so prompt.coax writes a single clean header.
-  if ws.count >= MC_INSTR_HEADER.count && cast(string) ws[0..<MC_INSTR_HEADER.count] == MC_INSTR_HEADER {
-    ws = cast(string) ws[MC_INSTR_HEADER.count..<ws.count];
-  }
+  // Workspace instructions (native Inky AGENTS.md / CLAUDE.md loader with 2.5 KB budget + read_file cursors).
+  ws := ik_ws_instructions_load(cwd, b[0].ws_instr[..]);
   n := ik_prompt_build_mode(os_name, cwd, git_info, usr, ws, is_goal, hybrid_exec, b[0].sys_buf[..]);
   return cast(string) b[0].sys_buf[0..<n];
 }
@@ -249,6 +247,8 @@ ik_run_start :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, cwd: string, bas
     return ik_put_ev(out, 0, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
   }
   r[0].l[0].hybrid_exec = r[0].hybrid_exec;
+  r[0].l[0].adaptive_effort = r[0].adaptive_effort;
+  r[0].l[0].max_tokens_step = r[0].max_tokens_step;
   return 0;
 }
 
@@ -302,13 +302,32 @@ ik_linux_sandbox_args :: (h: int, cwd: string, profile: string) -> bool {
   return ok;
 }
 
+// Whether a shell command is a pure read-only inspection/search command (no file redirects or in-place edits).
+ik_cmd_is_readonly_inspect :: (cmd: string) -> bool {
+  s := ik_fmt_trim_ws(cmd);
+  if s.count == 0 { return false; }
+  // Any redirection, in-place sed/python/tee, or sub-write disqualifies readonly classification.
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '>' { return false; }
+    if i + 2 <= s.count && cast(string) s[i..<i + 2] == "-i" && (i == 0 || s[i - 1] == ' ') && (i + 2 == s.count || s[i + 2] == ' ') { return false; }
+  }
+  if mc_cmd_is_search(s) { return true; }
+  prefixes := [10] string.["cat ", "sed -n ", "head ", "tail ", "wc ", "git show ", "git diff ", "git log", "git status", "ls"];
+  for pi: 0..<10 {
+    pre := prefixes[pi];
+    if s.count >= pre.count && cast(string) s[0..<pre.count] == pre { return true; }
+  }
+  return false;
+}
+
 ik_cmd_begin :: (r: [] IkRun, b: [] IkRunBufs, command: string, timeout_s: int) {
   c := r[0].cmd[..];
   c[0] = IkCmdState.{
     active = true, h = -1, eof_at = -1, exit = -1,
     timeout_s = timeout_s,
     is_check = mc_cmd_kind(command) == MC_CMD_CHECK,
-    is_search = mc_cmd_is_search(command),
+    is_search = ik_cmd_is_readonly_inspect(command),
   };
   c[0].ncmd = ik_loop_copy(c[0].cmd[..], command);
   // Prepare spill file path if spill_dir is configured.
@@ -592,6 +611,7 @@ ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
     if mn > 0 && b[0].tool_out[mn - 1] != '\n' { mn = ik_fmt_byte(b[0].tool_out[..], mn, '\n'); }
     mn = ik_fmt_put(b[0].tool_out[..], mn, pill);
   }
+  mn = ik_fmt_coax_lint(a.path, a.new_str, b[0].tool_out[..], mn);
   msg := cast(string) b[0].tool_out[0..<mn];
   db: [4224] u8;
   dn := ik_fmt_unified_diff(er.first_line, a.old_str, a.new_str, pill, db[..]);
@@ -680,6 +700,7 @@ ik_exec_write :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: stri
   n = ik_fmt_put(b[0].tool_out[..], n, cast(string) hb[..]);
   n = ik_fmt_put(b[0].tool_out[..], n, ")\n");
   n = ik_fmt_put(b[0].tool_out[..], n, pill);
+  n = ik_fmt_coax_lint(a.path, a.content, b[0].tool_out[..], n);
   msg := cast(string) b[0].tool_out[0..<n];
   lb: [512] u8; ln := ik_fmt_put(lb[..], 0, "write "); ln = ik_fmt_put(lb[..], ln, a.path);
   db: [4224] u8;
@@ -1048,10 +1069,14 @@ ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEv
   tail_s := cast(string) tail_lin[0..<c[0].nt];
   sp_s := ifx !c[0].spill_failed && c[0].spill_written > 0 then cast(string) c[0].spill_path[0..<c[0].nspill] else "";
 
-  fn := ik_fmt_cmd_output(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, b[0].tool_out[..]);
-  shown := cast(string) b[0].tool_out[0..<fn];
   cmd_s := cast(string) c[0].cmd[0..<c[0].ncmd];
   is_err := c[0].timed_out || c[0].exit != 0;
+  // Passing read-only search/inspect commands trim at 4 KB (full output stays in spill file) so
+  // large cat/sed/grep outputs don't bloat 32K context; test/check/failing commands keep full 16 KB.
+  fn := ifx c[0].is_search && !c[0].is_check && !is_err
+    then ik_fmt_cmd_output_cap(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, IK_CMD_SEARCH_INLINE, IK_CMD_SEARCH_HEAD, IK_CMD_SEARCH_TAIL, b[0].tool_out[..])
+    else ik_fmt_cmd_output(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, b[0].tool_out[..]);
+  shown := cast(string) b[0].tool_out[0..<fn];
 
   if r[0].journal.count > 0 && r[0].journal[0].flow.phase == AfPhase.command {
     if shown.count > 0 { _ = jf_output(r[0].journal, shown); }
@@ -1117,6 +1142,34 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
       en = ik_fmt_put(eb[..], en, " with no edits since. Proceed to your final answer.");
       _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 0, cast(string) eb[0..<en], true);
       return ne;
+    }
+    dup_ro := ik_guard_check_read_cmd(r[0].l[0].guard[..], a.command, !is_chk && ik_cmd_is_readonly_inspect(a.command), r[0].l[0].step);
+    if dup_ro > 0 {
+      eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate shell inspection: equivalent command already ran at step ");
+      en = ik_fmt_int(eb[..], en, dup_ro);
+      en = ik_fmt_put(eb[..], en, " with no edits since. Use prior output, read_file, or apply edit_file.");
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 1, cast(string) eb[0..<en], true);
+      return ne;
+    }
+    if r[0].hybrid_exec {
+      wbv := mc_exec_check_wire_bounds(1, 16, 2, 1, a.command.count, a.command.count + 2, 8192);
+      if !wbv.ok {
+        pb: [96] u8; pill := mc_exec_format_pill(false, wbv.label, wbv.digest, pb[..]);
+        eb: [256] u8; en := ik_fmt_put(eb[..], 0, "run_command refused by Class-E wire-bounds guard (");
+        en = ik_fmt_put(eb[..], en, mc_exec_code_text(wbv.code));
+        en = ik_fmt_put(eb[..], en, ")\n"); en = ik_fmt_put(eb[..], en, pill);
+        _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 126, cast(string) eb[0..<en], true);
+        return ne;
+      }
+      bgv := mc_exec_check_budget(r[0].l[0].guard[0].max_steps, r[0].l[0].step, 1, r[0].l[0].guard[0].max_steps + 2, 0, 0);
+      if !bgv.ok {
+        pb: [96] u8; pill := mc_exec_format_pill(false, bgv.label, bgv.digest, pb[..]);
+        eb: [256] u8; en := ik_fmt_put(eb[..], 0, "run_command refused by Class-E step-budget guard (");
+        en = ik_fmt_put(eb[..], en, mc_exec_code_text(bgv.code));
+        en = ik_fmt_put(eb[..], en, ")\n"); en = ik_fmt_put(eb[..], en, pill);
+        _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 126, cast(string) eb[0..<en], true);
+        return ne;
+      }
     }
     if admit == IK_ADMIT_ASK {
       r[0].asking = true;

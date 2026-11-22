@@ -56,6 +56,8 @@ IkLoop :: struct {
   last_usage: GwUsage;
   obs_input_tokens: int;
   hybrid_exec: bool;
+  adaptive_effort: bool;
+  max_tokens_step: int;
   retried_ctx: bool;
   retried_stream: bool;
   retrying_same_step: bool;
@@ -136,12 +138,23 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   tbuf: [6144] u8;
   tools := ik_prompt_tools_for_mode(ik_loop_profile(l), disable_tools, l[0].hybrid_exec, tbuf[..]);
 
+  // Adaptive effort scheduling (Level 1): during pure early discovery (steps 1..3 before any edit)
+  // or final summary after a passing check, trim thinking overhead when effort == "medium".
+  eff := effort;
+  if l[0].adaptive_effort && effort == "medium" {
+    if (l[0].step <= 3 && l[0].guard[0].files_edited == 0) ||
+       (l[0].guard[0].has_check && l[0].guard[0].last_check_exit == 0 && l[0].guard[0].files_edited > 0) {
+      eff = "low";
+    }
+  }
+  max_tok := ifx l[0].max_tokens_step > 0 then l[0].max_tokens_step else IK_MAX_TOKENS_STEP;
+
   req := GwRequest.{
     model = model,
     system = ik_loop_system(l),
     messages = msgs[0..<nm],
-    effort = effort,
-    max_tokens = IK_MAX_TOKENS_STEP,
+    effort = eff,
+    max_tokens = max_tok,
     stream = true,
     tools = tools,
     has_temp = true,

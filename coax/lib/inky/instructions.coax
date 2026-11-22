@@ -1,0 +1,287 @@
+// Inky native workspace instruction loader (AGENTS.md with CLAUDE.md fallback).
+// Walks from git root down to cwd, deduplicates by canonical realpath, budgets up to
+// IK_WS_INSTR_MAX bytes (preserving ~1.9 KB of actual instructions instead of Microcoder's
+// 256-byte 5-line cut), and emits native Inky `read_file(path=..., start_line=N)` cursors
+// with a Level-1/2 Markdown section index when truncated.
+//
+// Checks: coax/bin/coax test coax/lib/inky/instructions.coax --library
+
+#load "format.coax";
+#load "../sys/fs.coax";
+
+IK_WS_MAX_DIRS :: 32;
+IK_WS_INSTR_MAX :: 2560;
+IK_WS_NOTE_MAX :: 640;
+IK_WS_FILE_BUF :: 16384;
+IK_WS_SCAN_MAX :: 262144;
+
+ik_ws_norm_dir :: (path: string) -> string {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  return cast(string) path[0..<end];
+}
+
+ik_ws_utf8_cut :: (s: string, limit: int) -> int {
+  if limit <= 0 { return 0; }
+  if limit >= s.count { return s.count; }
+  n := limit;
+  while n > 0 && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+
+ik_ws_is_blank :: (s: string) -> bool {
+  for c: s { if c != ' ' && c != '\n' && c != '\r' && c != '\t' { return false; } }
+  return true;
+}
+
+ik_ws_has_git :: (dir: string) -> bool {
+  pb: [1024] u8;
+  p := fs_join(dir, ".git", pb[..]);
+  return p.count > 0 && fs_exists(p);
+}
+
+IkWsDirs :: struct {
+  buf: [8192] u8;
+  from: [IK_WS_MAX_DIRS] int;
+  to: [IK_WS_MAX_DIRS] int;
+  n: int;
+}
+
+ik_ws_dir_at :: (d: [] IkWsDirs, i: int) -> string {
+  if i < 0 || i >= d[0].n { return ""; }
+  return cast(string) d[0].buf[d[0].from[i]..<d[0].to[i]];
+}
+
+ik_ws_collect_dirs :: (cwd: string, out: [] IkWsDirs) {
+  out[0].n = 0;
+  if cwd.count == 0 { return; }
+  rb: [1024] u8;
+  cur := fs_realpath(cwd, rb[..]);
+  if cur.count == 0 { cur = ik_ws_norm_dir(cwd); } else { cur = ik_ws_norm_dir(cur); }
+  if cur.count == 0 { return; }
+
+  rev: [1] IkWsDirs;
+  pos := 0;
+  found_git := false;
+  for step: 0..<IK_WS_MAX_DIRS {
+    if pos + cur.count > rev[0].buf.count { break; }
+    rev[0].from[rev[0].n] = pos;
+    for i: 0..<cur.count { rev[0].buf[pos + i] = cur[i]; }
+    pos += cur.count;
+    rev[0].to[rev[0].n] = pos;
+    rev[0].n += 1;
+    if ik_ws_has_git(cur) { found_git = true; break; }
+    parent := fs_dir(cur);
+    if parent.count == 0 || parent == cur || parent == "." { break; }
+    cur = parent;
+  }
+  if !found_git && rev[0].n > 1 { rev[0].n = 1; }
+
+  opos := 0;
+  i := rev[0].n - 1;
+  while i >= 0 {
+    s := ik_ws_dir_at(rev[..], i);
+    if opos + s.count <= out[0].buf.count && out[0].n < IK_WS_MAX_DIRS {
+      out[0].from[out[0].n] = opos;
+      for j: 0..<s.count { out[0].buf[opos + j] = s[j]; }
+      opos += s.count;
+      out[0].to[out[0].n] = opos;
+      out[0].n += 1;
+    }
+    i -= 1;
+  }
+}
+
+IkWsSeen :: struct {
+  buf: [4096] u8;
+  from: [IK_WS_MAX_DIRS] int;
+  to: [IK_WS_MAX_DIRS] int;
+  n: int;
+  pos: int;
+}
+
+ik_ws_seen_add :: (seen: [] IkWsSeen, path: string) -> bool {
+  for i: 0..<seen[0].n {
+    if cast(string) seen[0].buf[seen[0].from[i]..<seen[0].to[i]] == path { return false; }
+  }
+  if seen[0].n >= IK_WS_MAX_DIRS || seen[0].pos + path.count > seen[0].buf.count { return true; }
+  seen[0].from[seen[0].n] = seen[0].pos;
+  for i: 0..<path.count { seen[0].buf[seen[0].pos + i] = path[i]; }
+  seen[0].pos += path.count;
+  seen[0].to[seen[0].n] = seen[0].pos;
+  seen[0].n += 1;
+  return true;
+}
+
+ik_ws_find_in_dir :: (dir: string, upper: string, lower: string, pb: [] u8) -> string {
+  p := fs_join(dir, upper, pb);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  p = fs_join(dir, lower, pb);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  return "";
+}
+
+ik_ws_label :: (root: string, path: string) -> string {
+  if root.count > 0 && path.count > root.count + 1 && cast(string) path[0..<root.count] == root && path[root.count] == '/' {
+    return cast(string) path[root.count + 1..<path.count];
+  }
+  return fs_base(path);
+}
+
+ik_ws_is_heading :: (line: string) -> bool {
+  if line.count >= 2 && line[0] == '#' && line[1] == ' ' { return true; }
+  return line.count >= 3 && line[0] == '#' && line[1] == '#' && line[2] == ' ';
+}
+
+// Formats a native Inky truncation note with read_file continuation cursor and omitted ## headings.
+ik_ws_trunc_note :: (path: string, label: string, shown: string, out: [] u8) -> string {
+  line := 1;
+  for c: shown { if c == '\n' { line += 1; } }
+  n := ik_fmt_put(out, 0, "\n[... truncated at line ");
+  n = ik_fmt_int(out, n, line);
+  n = ik_fmt_put(out, n, "; call read_file(path=\"");
+  n = ik_fmt_put(out, n, label);
+  n = ik_fmt_put(out, n, "\", start_line=");
+  n = ik_fmt_int(out, n, line);
+  n = ik_fmt_put(out, n, ") for more.");
+
+  at_start := shown.count == 0 || shown[shown.count - 1] == '\n';
+  hb: [100] u8; hn := 0;
+  heads := 0; full := false;
+  off := shown.count;
+  chunk: [4096] u8;
+  while off - shown.count < IK_WS_SCAN_MAX && !full {
+    got := fs_read_at(path, off, chunk[..]);
+    if got <= 0 { break; }
+    for i: 0..<got {
+      c := chunk[i];
+      if c == '\n' {
+        if at_start && ik_ws_is_heading(cast(string) hb[0..<hn]) {
+          need := 18 + hn + 8;
+          if n + need > out.count { full = true; break; }
+          if heads == 0 { n = ik_fmt_put(out, n, " Sections not shown:"); }
+          n = ik_fmt_put(out, n, "\n- line ");
+          n = ik_fmt_int(out, n, line);
+          n = ik_fmt_put(out, n, ": ");
+          n = ik_fmt_put(out, n, cast(string) hb[0..<hn]);
+          heads += 1;
+        }
+        line += 1; hn = 0; at_start = true;
+      } else if hn < hb.count && c != '\r' {
+        hb[hn] = c; hn += 1;
+      }
+    }
+    off += got;
+  }
+  if at_start && hn > 0 && !full && ik_ws_is_heading(cast(string) hb[0..<hn]) {
+    if n + 18 + hn + 8 <= out.count {
+      if heads == 0 { n = ik_fmt_put(out, n, " Sections not shown:"); }
+      n = ik_fmt_put(out, n, "\n- line ");
+      n = ik_fmt_int(out, n, line);
+      n = ik_fmt_put(out, n, ": ");
+      n = ik_fmt_put(out, n, cast(string) hb[0..<hn]);
+    }
+  }
+  if full { n = ik_fmt_put(out, n, "\n- ..."); }
+  n = ik_fmt_put(out, n, " ...]\n");
+  return cast(string) out[0..<n];
+}
+
+ik_ws_append_file :: (out: [] u8, at: int, cap: int, label: string, path: string, appended: [] bool) -> int {
+  if at >= cap { return at; }
+  fb: [IK_WS_FILE_BUF] u8;
+  rn := fs_read_at(path, 0, fb[..]);
+  if rn <= 0 { return at; }
+  raw := cast(string) fb[0..<rn];
+  if ik_ws_is_blank(raw) { return at; }
+
+  extra: [1] u8;
+  has_more := rn == IK_WS_FILE_BUF && fs_read_at(path, rn, extra[..]) > 0;
+
+  hdr_len := 10 + label.count;
+  if at + hdr_len + 16 > cap { return at; }
+  n := ik_fmt_put(out, at, "--- ");
+  n = ik_fmt_put(out, n, label);
+  n = ik_fmt_put(out, n, " ---\n");
+  avail := cap - n;
+  if !has_more && raw.count <= avail {
+    n = ik_fmt_put(out, n, raw);
+    if raw[raw.count - 1] != '\n' && n < cap { n = ik_fmt_byte(out, n, '\n'); }
+    appended[0] = true;
+    return n;
+  }
+  // Reserve space for truncation note with heading index, keeping at least 60% of budget for body.
+  note_room := IK_WS_NOTE_MAX;
+  if note_room > (avail * 4) / 10 { note_room = (avail * 4) / 10; }
+  body_lim := avail - note_room;
+  if body_lim < 128 { body_lim = ifx avail > 128 then avail - 64 else avail; }
+  cut := ik_ws_utf8_cut(raw, body_lim);
+  // Snap back to last newline when reasonably close so we don't sever a line mid-word.
+  if cut > 128 && cut < raw.count {
+    k := cut;
+    while k > cut - 120 && k > 0 && raw[k - 1] != '\n' { k -= 1; }
+    if k > cut - 120 && k > 0 { cut = k; }
+  }
+  shown := cast(string) raw[0..<cut];
+  n = ik_fmt_put(out, n, shown);
+  nb: [IK_WS_NOTE_MAX] u8;
+  note := ik_ws_trunc_note(path, label, shown, nb[..]);
+  if n + note.count <= cap {
+    n = ik_fmt_put(out, n, note);
+  } else {
+    n = ik_fmt_put(out, n, "\n[... truncated ...]\n");
+  }
+  appended[0] = true;
+  return n;
+}
+
+// Loads AGENTS.md (or CLAUDE.md fallback) from git root down to cwd into out.
+ik_ws_instructions_load :: (cwd: string, out: [] u8) -> string {
+  if cwd.count == 0 || out.count < 128 { return ""; }
+  cap := ifx out.count < IK_WS_INSTR_MAX then out.count else IK_WS_INSTR_MAX;
+  dirs: [1] IkWsDirs;
+  ik_ws_collect_dirs(cwd, dirs[..]);
+  if dirs[0].n == 0 { return ""; }
+  root := ik_ws_dir_at(dirs[..], 0);
+  seen: [1] IkWsSeen;
+  n := 0;
+  any := [1] bool.[false];
+
+  // Pass 1: AGENTS.md / agents.md
+  for i: 0..<dirs[0].n {
+    pb: [1024] u8; rb: [1024] u8;
+    p := ik_ws_find_in_dir(ik_ws_dir_at(dirs[..], i), "AGENTS.md", "agents.md", pb[..]);
+    if p.count == 0 { continue; }
+    real_p := fs_realpath(p, rb[..]);
+    key := ifx real_p.count > 0 then real_p else p;
+    if !ik_ws_seen_add(seen[..], key) { continue; }
+    n = ik_ws_append_file(out, n, cap, ik_ws_label(root, p), p, any[..]);
+  }
+  if any[0] { return cast(string) out[0..<n]; }
+
+  // Pass 2: CLAUDE.md / claude.md fallback
+  for i: 0..<dirs[0].n {
+    pb: [1024] u8; rb: [1024] u8;
+    p := ik_ws_find_in_dir(ik_ws_dir_at(dirs[..], i), "CLAUDE.md", "claude.md", pb[..]);
+    if p.count == 0 { continue; }
+    real_p := fs_realpath(p, rb[..]);
+    key := ifx real_p.count > 0 then real_p else p;
+    if !ik_ws_seen_add(seen[..], key) { continue; }
+    n = ik_ws_append_file(out, n, cap, ik_ws_label(root, p), p, any[..]);
+  }
+  return ifx any[0] then cast(string) out[0..<n] else "";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky instructions: native heading detection, label normalization, and UTF-8 cut" {
+  #assert ik_ws_norm_dir("/a/b///") == "/a/b" && ik_ws_norm_dir("/") == "/";
+  #assert ik_ws_is_heading("# Title") && ik_ws_is_heading("## Rules") && !ik_ws_is_heading("### Deep") && !ik_ws_is_heading("plain");
+  #assert ik_ws_label("/work/repo", "/work/repo/AGENTS.md") == "AGENTS.md";
+  #assert ik_ws_label("/work/repo", "/work/repo/sub/AGENTS.md") == "sub/AGENTS.md";
+  #assert ik_ws_is_blank("  \n\t\r ") && !ik_ws_is_blank(" a ");
+  #assert ik_ws_utf8_cut("hello", 3) == 3 && ik_ws_utf8_cut("hello", 99) == 5 && ik_ws_utf8_cut("hello", 0) == 0;
+  // Multi-byte UTF-8 boundary: "a" + "é" (0xC3 0xA9) -> cutting at 2 backs up to 1
+  u := [3] u8.['a', 0xC3, 0xA9];
+  #assert ik_ws_utf8_cut(cast(string) u[..], 2) == 1;
+}

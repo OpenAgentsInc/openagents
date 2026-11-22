@@ -8,7 +8,7 @@
 #load "format.coax";
 
 IK_PROMPT_MAX :: 8192;
-IK_INSTR_CAP :: 2048;
+IK_INSTR_CAP :: 2560;
 
 // Default stock ~/.openagents/instructions.md template (coax/lib/agent/user-instructions.coax).
 // Kept here as a pure constant so prompt.coax stays I/O-free and resolves the
@@ -124,7 +124,7 @@ ik_prompt_build_mode :: (os_name: string, cwd: string, git_info: string, user_in
   if hybrid_exec {
     n = ik_fmt_put(out, n, "\nHybrid Executor mode:\n");
     n = ik_fmt_put(out, n, "- Every `edit_file` and `write_file` call is pre-verified by compiled Class-E weight modules with Ch 234 SHA-256 replay receipts.\n");
-    n = ik_fmt_put(out, n, "- For exact diff bounds, schema caps, DAG scheduling, budget math, patch rebasing, glob matching, SemVer compatibility, or wire bounds, call `executor_verify` instead of doing mental arithmetic.\n");
+    n = ik_fmt_put(out, n, "- For exact diff bounds, schema caps, DAG scheduling, budget math, patch rebasing, glob matching, SemVer compatibility, or wire bounds, invoke `executor_verify` directly without doing multi-digit arithmetic in your thoughts.\n");
   }
 
   n = ik_fmt_put(out, n, "\nEnvironment:\n- OS: ");

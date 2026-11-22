@@ -115,6 +115,53 @@ ik_guard_nudge_explore :: (step: int, files_edited: int) -> bool #effects(all) {
   return files_edited == 0 && (step == 8 || step == 14);
 }
 
+// Normalizes a read-only shell command for near-duplicate detection: trims leading/trailing
+// whitespace, collapses runs of ASCII whitespace into one space, and drops simple quotes so
+// `sed -n '1,60p' a.coax` and `sed -n  1,60p a.coax` produce the same canonical signature.
+ik_guard_canon_cmd :: (cmd: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  in_ws: bool;
+  for c: cmd {
+    if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+      in_ws = true;
+      continue;
+    }
+    if c == '\'' || c == '"' { continue; }
+    if in_ws && n > 0 {
+      if n >= out.count { break; }
+      out[n] = ' ';
+      n += 1;
+    }
+    in_ws = false;
+    if n >= out.count { break; }
+    out[n] = c;
+    n += 1;
+  }
+  return n;
+}
+
+// Checks a read-only inspection/search shell command (cat/sed/grep/ls/find/head/tail/git log).
+// Allows 1st and 2nd equivalent calls; short-circuits 3rd+ call with prior step > 0 until mutation.
+ik_guard_check_read_cmd :: (g: [] IkGuard, cmd: string, is_readonly_cmd: bool, step: int) -> int #effects(all) {
+  if !is_readonly_cmd { return 0; }
+  cb: [512] u8;
+  cn := ik_guard_canon_cmd(cmd, cb[..]);
+  if cn == 0 { return 0; }
+  sig := ik_guard_sig(IK_TK_CMD, cast(string) cb[0..<cn]);
+  idx := ik_guard_find(g, IK_TK_CMD, sig);
+  if idx >= 0 {
+    if g[0].entries[idx].passed_check { return 0; }
+    if g[0].entries[idx].count >= 2 { return g[0].entries[idx].step; }
+    g[0].entries[idx].count += 1;
+    return 0;
+  }
+  if g[0].n < IK_GUARD_SLOTS {
+    g[0].entries[g[0].n] = IkGuardEntry.{kind = IK_TK_CMD, sig = sig, step = step, count = 1};
+    g[0].n += 1;
+  }
+  return 0;
+}
+
 // Final closing call disables tools at step >= max_steps so the model summarizes cleanly.
 ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
   return step >= max_steps;
@@ -200,4 +247,36 @@ ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
   #assert !ik_guard_nudge_explore(7, 0) && ik_guard_nudge_explore(8, 0) && !ik_guard_nudge_explore(9, 0);
   #assert !ik_guard_nudge_explore(13, 0) && ik_guard_nudge_explore(14, 0) && !ik_guard_nudge_explore(15, 0);
   #assert !ik_guard_nudge_explore(8, 1) && !ik_guard_nudge_explore(14, 1);
+
+  // Near-duplicate read-only shell command canonicalization & blocking:
+  cb1: [64] u8; cb2: [64] u8; tiny: [4] u8;
+  n1 := ik_guard_canon_cmd("  sed -n '1,60p'\tloop.coax \r\n", cb1[..]);
+  n2 := ik_guard_canon_cmd("sed -n \"1,60p\"   loop.coax", cb2[..]);
+  #assert cast(string) cb1[0..<n1] == "sed -n 1,60p loop.coax" && cast(string) cb2[0..<n2] == "sed -n 1,60p loop.coax";
+  #assert ik_guard_canon_cmd("a b", cb1[..]) == 3 && cast(string) cb1[0..<3] == "a b";
+  #assert ik_guard_canon_cmd("   \t\n ", cb1[..]) == 0;
+  #assert ik_guard_canon_cmd("ab cd", tiny[..]) == 4 && cast(string) tiny[..] == "ab c";
+  #assert ik_guard_canon_cmd("abc d", tiny[..]) == 4 && cast(string) tiny[..] == "abc ";
+  #assert ik_guard_canon_cmd("abcd e", tiny[..]) == 4 && cast(string) tiny[..] == "abcd";
+  g2: [1] IkGuard;
+  ik_guard_init(g2[..], 30);
+  // Non-readonly or blank commands never intercepted:
+  #assert ik_guard_check_read_cmd(g2[..], "cat a.coax", false, 1) == 0 && g2[0].n == 0;
+  #assert ik_guard_check_read_cmd(g2[..], "   ", true, 1) == 0 && g2[0].n == 0;
+  // 1st and 2nd equivalent shell reads allowed, 3rd blocked with step 2:
+  #assert ik_guard_check_read_cmd(g2[..], "sed -n '1,60p' a.coax", true, 2) == 0 && g2[0].n == 1 && g2[0].entries[0].count == 1;
+  #assert g2[0].entries[0].sig == ik_guard_sig(IK_TK_CMD, "sed -n 1,60p a.coax");
+  #assert ik_guard_check_read_cmd(g2[..], "sed -n  1,60p   a.coax", true, 3) == 0 && g2[0].n == 1 && g2[0].entries[0].count == 2;
+  #assert ik_guard_check_read_cmd(g2[..], "sed -n \"1,60p\" a.coax", true, 4) == 2;
+  // Passing check command entry is not treated as read_cmd dup:
+  ik_guard_record_cmd(g2[..], "check_cmd", true, 0, 5);
+  #assert ik_guard_check_read_cmd(g2[..], "check_cmd", true, 6) == 0;
+  // Full table never overflows:
+  g3: [1] IkGuard;
+  ik_guard_init(g3[..], 30);
+  for k: 0..<IK_GUARD_SLOTS + 2 {
+    kb: [8] u8; kn := json_write_int(kb[..], 0, k);
+    #assert ik_guard_check_read_cmd(g3[..], cast(string) kb[0..<kn], true, k + 1) == 0;
+  }
+  #assert g3[0].n == IK_GUARD_SLOTS;
 }

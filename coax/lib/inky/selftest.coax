@@ -159,6 +159,22 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("FAIL: update_todos"); return 1;
   }
 
+  // 9b. Coax pre-edit lint hint, indent-tolerant loose replace, and near-duplicate shell read guard
+  ne = ik_st_run_tool(r[..], h[..], b[..], 13, "c13", "write_file", "{\"path\":\"src/demo.coax\",\"content\":\"f :: () {\\n    if ok {\\n      x := 1;\\n    }\\n}\\n\"}", evs[..]);
+  if h[0].msgs[h[0].n - 1].is_error { tool_errln("FAIL: write demo.coax"); return 1; }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 14, "c14", "edit_file", "{\"path\":\"src/demo.coax\",\"old_string\":\"if ok {\\n  x := 1;\\n}\",\"new_string\":\"if ok {\\n  for i: 0..n { x := 2; }\\n}\"}", evs[..]);
+  o14 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o14, "indent-normalized") || !ik_st_has(o14, "coax-lint hint") || !ik_st_has(o14, "[E] replay verified") {
+    tool_errln("FAIL: loose edit + coax lint"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 15, "c15a", "run_command", "{\"command\":\"cat 'src/demo.coax'\"}", evs[..]);
+  ne = ik_st_run_tool(r[..], h[..], b[..], 16, "c15b", "run_command", "{\"command\":\"cat   src/demo.coax\"}", evs[..]);
+  ne = ik_st_run_tool(r[..], h[..], b[..], 17, "c15c", "run_command", "{\"command\":\"cat \\\"src/demo.coax\\\"\"}", evs[..]);
+  o15c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o15c, "Duplicate shell inspection") {
+    tool_errln("FAIL: normalized duplicate shell read guard"); return 1;
+  }
+
   // 10. Verify entire accumulated history passes gateway gwt_history_valid
   gmsgs: [IK_MAX_MSGS] GwMessage; gcalls: [IK_MAX_CALLS] GwToolCall;
   nm := ik_hist_messages(h[..], gmsgs[..], gcalls[..]);

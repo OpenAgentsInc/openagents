@@ -348,6 +348,9 @@ tool_main :: () -> int #export_c #effects(all) {
   det_mode := gw_env("INKY_DETERMINISTIC", det_b[..]) == "1";
   exec_b: [16] u8;
   env_hybrid := gw_env("INKY_EXECUTOR", exec_b[..]) == "1";
+  ae_b: [16] u8;
+  env_adaptive := gw_env("INKY_ADAPTIVE_EFFORT", ae_b[..]) != "0";
+  env_max_tok := ikw_env_int("INKY_MAX_TOKENS", 0);
 
   while true {
     ended := "";
@@ -486,6 +489,8 @@ tool_main :: () -> int #export_c #effects(all) {
 
     ev: [8] IkRunEvent;
     run[0].hybrid_exec = env_hybrid;
+    run[0].adaptive_effort = env_adaptive;
+    run[0].max_tokens_step = env_max_tok;
     ne := ik_run_start(
       run[..], hist[..], bufs[..], cd,
       cast(string) ep[0].base[0..<ep[0].nbase],

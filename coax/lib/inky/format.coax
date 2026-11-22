@@ -11,6 +11,9 @@
 IK_READ_LINES :: 200;
 IK_READ_BYTES :: 16384;
 IK_CMD_INLINE :: 16384;
+IK_CMD_SEARCH_INLINE :: 4096;
+IK_CMD_SEARCH_HEAD :: 2048;
+IK_CMD_SEARCH_TAIL :: 2048;
 IK_CMD_HEAD :: 8192;
 IK_CMD_TAIL :: 8192;
 IK_GREP_BYTES :: 12288;
@@ -155,6 +158,188 @@ IkEditResult :: struct {
   msg_len: int;
   matches: int;
   first_line: int;
+  loose_matched: bool;
+}
+
+ik_fmt_line_indent :: (s: string) -> string {
+  i := 0;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  return cast(string) s[0..<i];
+}
+
+// Strict-unique whitespace/indentation-tolerant edit fallback (inspired by locals _loose_replace):
+// tries line-trimmed contiguous matching ONLY when exact match returned 0 hits; applies ONLY when
+// exactly 1 unique region matches, shifting new_str lines by the file's actual leading indentation.
+ik_fmt_try_loose_edit :: (content: string, path: string, old_str: string, new_str: string, new_buf: [] u8, msg_out: [] u8) -> IkEditResult {
+  res: IkEditResult;
+  // Split old_str into logical lines (cap 64 lines for loose fallback).
+  o_from: [64] int; o_to: [64] int; on := 0;
+  op := 0;
+  old_has_nonempty := false;
+  old_indent := "";
+  while op < old_str.count {
+    e := op;
+    while e < old_str.count && old_str[e] != '\n' { e += 1; }
+    if on >= 64 { return res; }
+    ln := cast(string) old_str[op..<e];
+    if ln.count > 0 && ln[ln.count - 1] == '\r' { ln = cast(string) ln[0..<ln.count - 1]; }
+    t := ik_fmt_trim_ws(ln);
+    if !old_has_nonempty && t.count > 0 { old_has_nonempty = true; old_indent = ik_fmt_line_indent(ln); }
+    o_from[on] = op; o_to[on] = e; on += 1;
+    if e < old_str.count { op = e + 1; } else { break; }
+  }
+  if on == 0 || !old_has_nonempty { return res; }
+
+  // Index content lines up to 16384 lines.
+  // Stream line-by-line using a circular window of `on` lines so we stay tiny on stack!
+  w_from: [64] int; w_to: [64] int; w_line: [64] int;
+  wn := 0;
+  matches := 0;
+  hit_byte0 := 0; hit_byte1 := 0; hit_line := 0;
+  file_indent := "";
+  lno := 1; p := 0;
+  while p < content.count {
+    e := p;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    slot := wn % on;
+    w_from[slot] = p;
+    w_to[slot] = e;
+    w_line[slot] = lno;
+    wn += 1;
+    if wn >= on {
+      ok := true;
+      cand_indent := "";
+      got_ind := false;
+      for k: 0..<on {
+        idx := (wn - on + k) % on;
+        cl := cast(string) content[w_from[idx]..<w_to[idx]];
+        if cl.count > 0 && cl[cl.count - 1] == '\r' { cl = cast(string) cl[0..<cl.count - 1]; }
+        ol := cast(string) old_str[o_from[k]..<o_to[k]];
+        if ol.count > 0 && ol[ol.count - 1] == '\r' { ol = cast(string) ol[0..<ol.count - 1]; }
+        ct := ik_fmt_trim_ws(cl);
+        ot := ik_fmt_trim_ws(ol);
+        if ct != ot { ok = false; break; }
+        if !got_ind && ct.count > 0 { got_ind = true; cand_indent = ik_fmt_line_indent(cl); }
+      }
+      if ok {
+        matches += 1;
+        if matches == 1 {
+          first_idx := (wn - on) % on;
+          hit_byte0 = w_from[first_idx];
+          hit_byte1 = e;
+          hit_line = w_line[first_idx];
+          file_indent = cand_indent;
+        } else if matches > 1 {
+          return res; // Ambiguous loose match — strictly refuse!
+        }
+      }
+    }
+    lno += 1;
+    if e < content.count { p = e + 1; } else { break; }
+  }
+  if matches != 1 { return res; }
+
+  // Build shifted replacement preserving indentation delta cleanly.
+  out_n := 0;
+  if hit_byte0 > new_buf.count { return res; }
+  for i: 0..<hit_byte0 { new_buf[out_n] = content[i]; out_n += 1; }
+
+  // Trim trailing '\n' on new_str for line-span splice (content's '\n' at hit_byte1 stays intact).
+  ns := new_str;
+  if ns.count > 0 && ns[ns.count - 1] == '\n' { ns = cast(string) ns[0..<ns.count - 1]; }
+  np := 0;
+  first_out_line := true;
+  while true {
+    ne := np;
+    while ne < ns.count && ns[ne] != '\n' { ne += 1; }
+    ln := cast(string) ns[np..<ne];
+    if !first_out_line {
+      if out_n >= new_buf.count { return res; }
+      new_buf[out_n] = '\n'; out_n += 1;
+    }
+    first_out_line = false;
+    if ik_fmt_trim_ws(ln).count > 0 {
+      body := ln;
+      if old_indent.count > 0 && body.count >= old_indent.count && cast(string) body[0..<old_indent.count] == old_indent {
+        body = cast(string) body[old_indent.count..<body.count];
+      }
+      if out_n + file_indent.count + body.count > new_buf.count { return res; }
+      for c: file_indent { new_buf[out_n] = c; out_n += 1; }
+      for c: body { new_buf[out_n] = c; out_n += 1; }
+    }
+    if ne >= ns.count { break; }
+    np = ne + 1;
+  }
+
+  tail_len := content.count - hit_byte1;
+  if out_n + tail_len > new_buf.count { return res; }
+  for i: hit_byte1..<content.count { new_buf[out_n] = content[i]; out_n += 1; }
+
+  hb: [8] u8;
+  _ = ik_hash8(cast(string) new_buf[0..<out_n], hb[..]);
+  res.ok = true;
+  res.new_len = out_n;
+  res.matches = 1;
+  res.first_line = hit_line;
+  res.loose_matched = true;
+  n := ik_fmt_put(msg_out, 0, "Edited ");
+  n = ik_fmt_put(msg_out, n, path);
+  n = ik_fmt_put(msg_out, n, " (1 replacement via unique indent-normalized match, line ");
+  n = ik_fmt_int(msg_out, n, hit_line);
+  n = ik_fmt_put(msg_out, n, ", hash=");
+  n = ik_fmt_put(msg_out, n, cast(string) hb[..]);
+  n = ik_fmt_put(msg_out, n, ")\n");
+  cap := ifx msg_out.count < IK_EDIT_DIFF_CAP then msg_out.count else IK_EDIT_DIFF_CAP;
+  n = ik_fmt_diff_lines(msg_out, n, "- ", old_str, cap / 2 + n / 2);
+  n = ik_fmt_diff_lines(msg_out, n, "+ ", new_str, cap);
+  res.msg_len = n;
+  return res;
+}
+
+// Fast deterministic pre-edit Coax syntax lint (Level 0): flags common LLM Coax mistakes
+// (E0216 inclusive `..` in `for` loops, `let`/`const`/`fn` keywords) right in edit output
+// so Inkling fixes them in 1 step instead of waiting 15s for a full `coax test` failure.
+ik_fmt_coax_lint :: (path: string, code: string, out: [] u8, at: int) -> int {
+  if path.count < 5 || cast(string) path[path.count - 5..<path.count] != ".coax" { return at; }
+  has_for_dots := false;
+  has_kw := false;
+  p := 0;
+  while p < code.count {
+    e := p;
+    while e < code.count && code[e] != '\n' { e += 1; }
+    ln := ik_fmt_trim_ws(cast(string) code[p..<e]);
+    // Ignore comment lines and string-heavy lines.
+    if ln.count >= 4 && !(ln[0] == '/' && ln[1] == '/') {
+      // Check `for ... ..` without `..<` and without `[..]` slice syntax
+      if ln.count >= 8 && cast(string) ln[0..<4] == "for " {
+        in_str := false;
+        for i: 4..<ln.count - 2 {
+          if ln[i] == '"' && (i == 0 || ln[i - 1] != '\\') { in_str = !in_str; }
+          if in_str { continue; }
+          if ln[i] == '/' && ln[i + 1] == '/' { break; }
+          if ln[i] == '.' && ln[i + 1] == '.' && ln[i + 2] != '<' && ln[i + 2] != ']' && ln[i + 2] != '.' {
+            has_for_dots = true;
+            break;
+          }
+        }
+      }
+      // Check Rust/JS keywords at start of statement: `let `, `const `, `fn `
+      if (ln.count >= 5 && cast(string) ln[0..<4] == "let ") ||
+         (ln.count >= 7 && cast(string) ln[0..<6] == "const ") ||
+         (ln.count >= 4 && cast(string) ln[0..<3] == "fn ") {
+        has_kw = true;
+      }
+    }
+    if e < code.count { p = e + 1; } else { break; }
+  }
+  n := at;
+  if has_for_dots {
+    n = ik_fmt_put(out, n, "\n[coax-lint hint: detected `for ... ..` — Coax ranges use `..<` (exclusive, e.g. `for i: 0..<n`), not `..` (E0216).]");
+  }
+  if has_kw {
+    n = ik_fmt_put(out, n, "\n[coax-lint hint: Coax has no `let`/`const`/`fn` keywords — use `x := val;`, `X :: val;`, and `name :: (args) -> T { ... }`.]");
+  }
+  return n;
 }
 
 ik_fmt_trim_ws :: (s: string) -> string {
@@ -250,6 +435,10 @@ ik_fmt_edit :: (content: string, path: string, old_str: string, new_str: string,
   res.matches = n_matches;
 
   if n_matches == 0 {
+    if !replace_all {
+      loose := ik_fmt_try_loose_edit(content, path, old_str, new_str, new_buf, msg_out);
+      if loose.ok { return loose; }
+    }
     n := ik_fmt_put(msg_out, 0, "edit_file error: old_string not found in ");
     n = ik_fmt_put(msg_out, n, path);
     n = ik_fmt_put(msg_out, n, ".");
@@ -409,9 +598,9 @@ ik_fmt_unified_diff :: (start_line: int, old_str: string, new_str: string, pill:
 
 // ---------------------------------------------------------------- run_command output budget
 
-// Formats command output with 16 KiB inline budget verbatim; past 16 KiB keeps
-// 8 KiB head + 8 KiB tail + exact spill path. Never drops bytes under 16 KiB.
-ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int, total_lines: int, exit_code: int, timed_out: bool, spill_path: string, out: [] u8) -> int {
+// Formats command output with configurable inline budget (16 KiB normal/error, 4 KiB passing search)
+// verbatim; past budget keeps head + tail + exact spill path readable via read_file.
+ik_fmt_cmd_output_cap :: (head: string, tail: string, dropped: int, total_bytes: int, total_lines: int, exit_code: int, timed_out: bool, spill_path: string, inline_cap: int, head_cap: int, tail_cap: int, out: [] u8) -> int {
   n := 0;
   if timed_out {
     n = ik_fmt_put(out, n, "[timed out]\n");
@@ -420,7 +609,7 @@ ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int
     n = ik_fmt_int(out, n, exit_code);
     n = ik_fmt_put(out, n, "]\n");
   }
-  if dropped == 0 && total_bytes <= IK_CMD_INLINE {
+  if dropped == 0 && total_bytes <= inline_cap {
     n = ik_fmt_put(out, n, head);
     n = ik_fmt_put(out, n, tail);
     if head.count == 0 && tail.count == 0 && !timed_out && exit_code == 0 {
@@ -428,9 +617,17 @@ ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int
     }
     return n;
   }
-  h_take := ifx head.count <= IK_CMD_HEAD then head.count else IK_CMD_HEAD;
-  t_take := ifx tail.count <= IK_CMD_TAIL then tail.count else IK_CMD_TAIL;
+  h_take := ifx head.count <= head_cap then head.count else head_cap;
+  t_take := ifx tail.count <= tail_cap then tail.count else tail_cap;
+  // If tail is empty (all bytes fit inside cmd_head > inline_cap), split head cleanly into head + tail!
+  t_src := tail;
   t_start := tail.count - t_take;
+  if tail.count == 0 && head.count > head_cap {
+    t_src = head;
+    rem := head.count - h_take;
+    t_take = ifx rem < tail_cap then rem else tail_cap;
+    t_start = head.count - t_take;
+  }
   omitted := total_bytes - h_take - t_take;
   if omitted < 0 { omitted = 0; }
 
@@ -451,8 +648,12 @@ ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int
     n = ik_fmt_put(out, n, "\", start_line=1) to inspect.");
   }
   n = ik_fmt_put(out, n, " ...]\n");
-  n = ik_fmt_put(out, n, cast(string) tail[t_start..<tail.count]);
+  n = ik_fmt_put(out, n, cast(string) t_src[t_start..<t_src.count]);
   return n;
+}
+
+ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int, total_lines: int, exit_code: int, timed_out: bool, spill_path: string, out: [] u8) -> int {
+  return ik_fmt_cmd_output_cap(head, tail, dropped, total_bytes, total_lines, exit_code, timed_out, spill_path, IK_CMD_INLINE, IK_CMD_HEAD, IK_CMD_TAIL, out);
 }
 
 ik_fmt_size :: (bytes: int, out: [] u8) -> int {
@@ -532,6 +733,20 @@ ik_fmt_size :: (bytes: int, out: [] u8) -> int {
     if cast(string) msg4[k..<k + hint.count] == hint { found = true; break; }
   }
   #assert found;
+  // Whitespace/indent-tolerant unique loose replace shifts indentation cleanly:
+  ind_src := "fn_root :: () {\n    if ok {\n      x := 1;\n    }\n}\n";
+  r5 := ik_fmt_edit(ind_src, "a.coax", "if ok {\n  x := 1;\n}", "if ok {\n  x := 2;\n}", false, nb[..], mb[..]);
+  #assert r5.ok && r5.loose_matched && r5.first_line == 2 && cast(string) nb[0..<r5.new_len] == "fn_root :: () {\n    if ok {\n      x := 2;\n    }\n}\n";
+  // Ambiguous loose match is strictly refused:
+  dup_ind := "  x := 1;\n    x := 1;\n";
+  r6 := ik_fmt_edit(dup_ind, "a.coax", "x := 1;", "x := 2;", false, nb[..], mb[..]);
+  #assert !r6.ok;
+  // Coax pre-edit lint detects E0216 `for ... ..` and `let ` keywords on .coax files only:
+  lb: [512] u8;
+  ln1 := ik_fmt_coax_lint("a.coax", "  for i: 0..n { let x = 1; }\n", lb[..], 0);
+  #assert ln1 > 40;
+  #assert ik_fmt_coax_lint("a.coax", "  for i: 0..<n { x := a[..]; }\n", lb[..], 0) == 0;
+  #assert ik_fmt_coax_lint("a.rs", "for i in 0..n { let x = 1; }\n", lb[..], 0) == 0;
 }
 
 #test "inky format: run_command keeps <= 16 KB verbatim and spills > 16 KB with head+tail+path" {
