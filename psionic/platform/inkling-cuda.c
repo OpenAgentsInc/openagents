@@ -80,6 +80,7 @@ enum {
     K_ATTN_POST,
     K_PROJ_P,
     K_PROJ_S,
+    K_KV1,
     K_COUNT
 };
 
@@ -116,6 +117,7 @@ static const char *const k_names[K_COUNT] = {
     "ink_attn_post",
     "ink_proj_p",
     "ink_proj_s",
+    "ink_kv1",
 };
 
 /* Threads per work item: the T of a group kernel's `for thread: 0..<T`
@@ -153,6 +155,7 @@ static const int k_threads[K_COUNT] = {
     1,      /* K_ATTN_POST */
     1,      /* K_PROJ_P */
     1,      /* K_PROJ_S */
+    INK_NT, /* K_KV1 */
 };
 
 /* One layer's experts on the device. cap == n_expert means every expert is
@@ -547,47 +550,47 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
     if (!fused && dispatch_mv(s, &L->attn_q, np, n_q, d, 0, xin, xq, s->q_buf, 0)) return 1;
     if (!fused && dispatch_mv(s, &L->attn_k, np, n_kv, d, 0, xin, xk, s->k_raw, 0)) return 1;
     int k_dyn = !is_swa && L->attn_k_conv_proj.present;
-    if (!fused && k_dyn && dispatch_mv(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, xin, xk, s->kdyn_buf, 0)) return 1;
-    CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(k_dyn), a_int(np),
-         a_f32v(s->k_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_k_conv),
-         k_dyn ? a_f32v(s->kdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, np * n_kv));
-
-    if (!fused && dispatch_mv(s, &L->attn_v, np, n_kv, d, 0, xin, xv, s->v_raw, 0)) return 1;
     int v_dyn = !is_swa && L->attn_v_conv_proj.present;
+    if (!fused && k_dyn && dispatch_mv(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, xin, xk, s->kdyn_buf, 0)) return 1;
+    if (!fused && dispatch_mv(s, &L->attn_v, np, n_kv, d, 0, xin, xv, s->v_raw, 0)) return 1;
     if (!fused && v_dyn && dispatch_mv(s, &L->attn_v_conv_proj, np, n_dyn, d, 0, xin, xv, s->vdyn_buf, 0)) return 1;
-    CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(v_dyn), a_int(np),
-         a_f32v(s->v_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_v_conv),
-         v_dyn ? a_f32v(s->vdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
-         a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, np * n_kv));
-
     if (!fused && dispatch_mv(s, &L->attn_rel, np, n_head * n_rel, d, 0, xin, xq, s->r_buf, 0)) return 1;
 
-    /* Clip Q, K, R; RMSNorm V. Full-attention Q and R are scaled by
-       tau = 1 + alpha * log(max(1, (position + 1) / floor)), which the
-       kernel computes for each token's own position. */
+    /* K and V: the causal short convolutions, K's clip and V's RMSNorm, then
+       into the KV cache of slot il. One token takes one launch. The
+       attention kernel clips Q and R itself. */
+    int64_t kv_cap = s->kv_cap[il];
+    if (np == 1 && hd == 128 && k_dyn == v_dyn) {
+        CALL(s, K_KV1, n_head_kv, a_int(n_kv), a_int(k_dyn), a_int(s->pos), a_int(kv_cap), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
+             a_f32v(s->k_raw, 0, n_kv), a_f32v(s->v_raw, 0, n_kv),
+             a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
+             k_dyn ? a_f32v(s->kdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             v_dyn ? a_f32v(s->vdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->conv_v[il], 0, n_kv * 3),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    } else {
+        CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(k_dyn), a_int(np),
+             a_f32v(s->k_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_k_conv),
+             k_dyn ? a_f32v(s->kdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->k_buf, 0, np * n_kv));
+        CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(v_dyn), a_int(np),
+             a_f32v(s->v_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_v_conv),
+             v_dyn ? a_f32v(s->vdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_v[il], 0, n_kv * 3), a_f32v(s->v_buf, 0, np * n_kv));
+        CALL(s, K_CLIP, np * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
+             a_f32(hp->qk_clip), a_f32(0.0f), a_f32(1.0f), a_int(s->pos),
+             a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->dummy_f32, 0, 64));
+        CALL(s, K_HEAD_RMSNORM, np * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
+             a_f32v(s->v_buf, 0, np * n_kv));
+        CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(s->pos), a_int(kv_cap),
+             a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    }
+    /* Full-attention Q and R are scaled by tau = 1 + alpha * log(max(1,
+       (position + 1) / floor)), which the attention kernel computes for
+       each token's own position. */
     float tau_alpha = is_swa ? 0.0f : hp->log_scale_alpha;
     float tau_floor = (float)hp->log_scale_floor;
-    CALL(s, K_CLIP, np * n_head, a_int(hd), a_int(n_head), a_int(L->attn_q_clip.present ? 1 : 0),
-         a_f32(hp->qk_clip), a_f32(tau_alpha), a_f32(tau_floor), a_int(s->pos),
-         a_f32v(s->q_buf, 0, np * n_q),
-         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64));
-    CALL(s, K_CLIP, np * n_head_kv, a_int(hd), a_int(n_head_kv), a_int(0),
-         a_f32(hp->qk_clip), a_f32(0.0f), a_f32(1.0f), a_int(s->pos),
-         a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->dummy_f32, 0, 64));
-    CALL(s, K_HEAD_RMSNORM, np * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
-         a_f32v(s->v_buf, 0, np * n_kv));
-    CALL(s, K_CLIP, np * n_head, a_int(n_rel), a_int(n_head), a_int(L->attn_rel_clip.present ? 1 : 0),
-         a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor), a_int(s->pos),
-         a_f32v(s->r_buf, 0, np * n_head * n_rel),
-         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
-
-    /* Store the batch's K and V into the KV cache of slot il, then attend:
-       each token sees the positions up to its own. */
-    int64_t kv_cap = s->kv_cap[il];
-    CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(s->pos), a_int(kv_cap),
-         a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
 
     /* Sink logits and the attention output gate. */
     if (!fused && dispatch_mv(s, &L->attn_sink_proj, np, n_head, d, 0, xin, xq, s->sinks_buf, 0)) return 1;
@@ -607,7 +610,11 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
          a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
          a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
          a_f32v(s->attn_scores, 0, np * n_head * s->max_ctx),
-         a_f32v(s->attn_out, 0, np * n_q));
+         a_f32v(s->attn_out, 0, np * n_q),
+         a_int((L->attn_q_clip.present ? 1 : 0) | (L->attn_rel_clip.present ? 2 : 0)),
+         a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor),
+         L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
+         L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
 
     /* Output projection + post shortconv. */
     if (dispatch_mv(s, &L->attn_output, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;

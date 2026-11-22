@@ -585,6 +585,54 @@ ink_head_rmsnorm :: (item:int,head_dim:int,eps:f32,x:[]f32) #export_c #effects(a
     }
 }
 
+// ---- One token's K and V for one KV head, from the projections to the KV
+// cache: the causal short convolutions (ink_convolve), K's norm clip
+// (ink_clip without a scale), V's RMSNorm (ink_head_rmsnorm) and the store
+// (ink_kv_store). Launch items = n_head_kv, a group of 256 threads: thread d
+// takes K's dimension d and thread 128 + d takes V's. Heads are 128 wide.
+ink_kv1 :: (item:int,n_kv_elem:int,has_dyn:int,pos:int,cap:int,thr:f32,eps:f32,kraw:[]f32,vraw:[]f32,kw:[]f32,vw:[]f32,kdyn:[]f32,vdyn:[]f32,khist:[]f32,vhist:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
+    ys:[256]f32;part:[256]f32;mid:[16]f32;
+    for thread:0..<INK_NT {
+        d:=thread%128;c:=item*128+d;
+        x0:f32=0;x1:f32=0;x2:f32=0;x3:f32=0;w0:f32=0;w1:f32=0;w2:f32=0;w3:f32=0;d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
+        if thread<128 {
+            x0=khist[c*3+0];x1=khist[c*3+1];x2=khist[c*3+2];x3=kraw[c];
+            w0=kw[c*4+0];w1=kw[c*4+1];w2=kw[c*4+2];w3=kw[c*4+3];
+            if has_dyn!=0 {d0=kdyn[item*4+0];d1=kdyn[item*4+1];d2=kdyn[item*4+2];d3=kdyn[item*4+3];}
+            khist[c*3+0]=x1;khist[c*3+1]=x2;khist[c*3+2]=x3;
+        } else {
+            x0=vhist[c*3+0];x1=vhist[c*3+1];x2=vhist[c*3+2];x3=vraw[c];
+            w0=vw[c*4+0];w1=vw[c*4+1];w2=vw[c*4+2];w3=vw[c*4+3];
+            if has_dyn!=0 {d0=vdyn[item*4+0];d1=vdyn[item*4+1];d2=vdyn[item*4+2];d3=vdyn[item*4+3];}
+            vhist[c*3+0]=x1;vhist[c*3+1]=x2;vhist[c*3+2]=x3;
+        }
+        acc:=x0*w0+x1*w1+x2*w2+x3*w3;
+        y:f32=0;
+        if has_dyn!=0 {acc+=d0*x3+d1*x2+d2*x1+d3*x0;y=(x3+acc)/sqrt(9.0f32);} else {y=(x3+acc)/sqrt(5.0f32);}
+        ys[thread]=y;part[thread]=y*y;
+    }
+    for thread:0..<INK_NT {
+        if thread<16 {
+            sum:f32=0;
+            for j:0..<16 {sum+=part[thread*16+j];}
+            mid[thread]=sum;
+        }
+    }
+    for thread:0..<INK_NT {
+        d:=thread%128;dst:=(pos%cap)*n_kv_elem+item*128+d;
+        if thread<128 {
+            tot:=((mid[0]+mid[1])+(mid[2]+mid[3]))+((mid[4]+mid[5])+(mid[6]+mid[7]));
+            fac:=thr/(sqrt(tot)+0.000001f32);
+            if fac>1.0f32 {fac=1.0f32;}
+            k_cache[dst]=cast(u16)ink_f16(ys[thread]*fac);
+        } else {
+            tot:=((mid[8]+mid[9])+(mid[10]+mid[11]))+((mid[12]+mid[13])+(mid[14]+mid[15]));
+            inv:=1.0f32/sqrt(tot/128.0f32+eps);
+            v_cache[dst]=cast(u16)ink_f16(ys[thread]*inv);
+        }
+    }
+}
+
 // ---- Store K and V into f16 KV cache at position `pos` (circular mod cap for SWA, or linear).
 // k_cache / v_cache layout: [cap, n_head_kv, head_dim] u16.
 // Launch items = n_head_kv * head_dim, lanes = 1.
@@ -603,7 +651,11 @@ ink_kv_store :: (item:int,n_kv_elem:int,pos:int,cap:int,k_in:[]f32,v_in:[]f32,k_
 // scratch_scores: [n_head * score_stride] f32 scratch buffer in device memory (score_stride >= max_ctx).
 // pos: current 0-based token position.
 // rel_bias: [extent, n_rel] f32; R: [n_head, n_rel] f32; sinks: [n_head] f32; gate: [n_head, head_dim] f32.
-ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32) #export_c #effects(all) {
+// Q and R are clipped here first, as ink_clip would: flags bit 0 and bit 1
+// say whether Q and R have a scale (qclip [n_head, head_dim], rclip [n_head,
+// n_rel]); thr_q and thr_r are the norm thresholds; tau_alpha and tau_floor
+// give tau for the token's position.
+ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,scratch_scores:[]f32,out:[]f32,flags:int,thr_q:f32,thr_r:f32,tau_alpha:f32,tau_floor:f32,qclip:[]f32,rclip:[]f32) #export_c #effects(all) {
     smax:[1024]f32;ssum:[1024]f32;vpart:[1024]f32;dp:[1024]f32;gm:[32]f32;gs:[32]f32;qsh:[128]f32;rsh:[16]f32;
     n_head:=dims0&65535;n_head_kv:=(dims0>>16)&65535;head_dim:=(dims0>>32)&65535;n_rel:=(dims0>>48)&65535;
     extent:=dims1&16777215;is_swa:=(dims1>>24)&255;swa:=(dims1>>32)&16777215;
@@ -618,9 +670,46 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,r
     if is_swa!=0 && pos>=swa {start=pos-swa+1;}
     n_keys:=pos-start+1;
     n_chunks:=(n_keys+INK_AT-1)/INK_AT;
+    tau:f32=1.0f32;
+    if tau_alpha!=0.0f32 {
+        ratio:=f32(pos+1)/tau_floor;
+        if ratio<1.0f32 {ratio=1.0f32;}
+        tau=1.0f32+tau_alpha*log(ratio);
+    }
     for thread:0..<INK_AT {
-        if thread<head_dim {qsh[thread]=q[h*head_dim+thread];}
-        if thread<n_rel {rsh[thread]=r[h*n_rel+thread];}
+        if thread<INK_HEAD {
+            v:=q[h*INK_HEAD+thread];
+            if (flags&1)!=0 {v=v*qclip[(h%n_head)*INK_HEAD+thread];}
+            qsh[thread]=v;dp[thread]=v*v;
+        }
+        if thread<INK_REL {
+            v:=r[h*INK_REL+thread];
+            if (flags&2)!=0 {v=v*rclip[(h%n_head)*INK_REL+thread];}
+            rsh[thread]=v;ssum[thread]=v*v;
+        }
+    }
+    for thread:0..<INK_AT {
+        if thread<16 {
+            sum:f32=0.0f32;
+            for j:0..<8 {sum+=dp[thread*8+j];}
+            gs[thread]=sum;
+        }
+    }
+    for thread:0..<INK_AT {
+        if thread<INK_HEAD {
+            tot:f32=0.0f32;
+            for j:0..<16 {tot+=gs[j];}
+            fac:=thr_q/(sqrt(tot)+0.000001f32);
+            if fac>1.0f32 {fac=1.0f32;}
+            qsh[thread]=qsh[thread]*fac*tau;
+        }
+        if thread<INK_REL {
+            tot:f32=0.0f32;
+            for j:0..<INK_REL {tot+=ssum[j];}
+            fac:=thr_r/(sqrt(tot)+0.000001f32);
+            if fac>1.0f32 {fac=1.0f32;}
+            rsh[thread]=rsh[thread]*fac*tau;
+        }
     }
     // Pass 1: Q.K * scale + rel_bias - sink for every key in the window, into
     // scratch_scores, 128 keys at a time. Eight threads share a key: each
@@ -697,13 +786,18 @@ ink_attn :: (item:int,dims0:int,dims1:int,kv_info:int,pos0:int,q:[]f32,r:[]f32,r
         d:=thread%INK_HEAD;part:=thread/INK_HEAD;
         vsum:f32=0.0f32;
         if d<head_dim {
-            for c:0..<(n_keys+7)/8 {
-                kidx:=c*8+part;
-                if kidx<n_keys {
-                    kp:=start+kidx;
-                    slot:=ifx is_swa!=0 then kp%kv_cap else kp;
-                    vsum+=scratch_scores[sbase+kidx]*ink_half(cast(u32)v_cache[slot*n_kv_elem+kv_h*head_dim+d]);
+            for c:0..<(n_keys+31)/32 {
+                ws:[4]f32;vv:[4]u16;
+                for j:0..<4 {
+                    kidx:=(c*4+j)*8+part;
+                    ws[j]=0.0f32;vv[j]=0;
+                    if kidx<n_keys {
+                        kp:=start+kidx;
+                        slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                        ws[j]=scratch_scores[sbase+kidx];vv[j]=v_cache[slot*n_kv_elem+kv_h*head_dim+d];
+                    }
                 }
+                for j:0..<4 {vsum+=ws[j]*ink_half(cast(u32)vv[j]);}
             }
         }
         vpart[thread]=vsum;
