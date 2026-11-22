@@ -1134,6 +1134,37 @@ cp_foot_chip_width :: (f: [] UiFrame, icon: int, text: string, chevron: bool) ->
   if chevron { w += cast(f32) CP_CHEVRON + c.chip_gap; }
   return w;
 }
+CP_FOOT_CHECKBOX_BOX :: 13.0f32;
+CP_FOOT_CHECKBOX_GAP :: 6.0f32;
+CP_FOOT_CHECKBOX_MARK :: 9.0f32;
+cp_foot_checkbox_width :: (f: [] UiFrame, text: string) -> f32 {
+  k := f[0].skin; c := k.cmp;
+  return 2 * c.chip_pad + CP_FOOT_CHECKBOX_BOX + CP_FOOT_CHECKBOX_GAP + ceil(measure_width(f[0].m, k.small.face, text));
+}
+cp_foot_checkbox :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, w: f32, text: string, checked: bool, action: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme(); c := k.cmp;
+  st := EL_S_CHECKS | (ifx checked then EL_S_CHECKED else 0);
+  row := uiframe_semantic(f, id, EL_TOGGLE, label, x, y, w, c.chip_h, st, action);
+  elt_value(f[0].rows, row, ifx checked then "on" else "off");
+  hov := uiframe_hovered(f, id); prs := uiframe_pressed(f, id);
+  if prs || hov { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx prs then th.pressed else th.hover); }
+  bx := x + c.chip_pad;
+  by := y + (c.chip_h - CP_FOOT_CHECKBOX_BOX) / 2;
+  if checked {
+    sheet_fill(sh, bx, by, CP_FOOT_CHECKBOX_BOX, CP_FOOT_CHECKBOX_BOX, 3.5f32, th.primary);
+    mk := CP_FOOT_CHECKBOX_MARK;
+    sheet_icon(sh, ICON_CHECK, bx + (CP_FOOT_CHECKBOX_BOX - mk) / 2, by + (CP_FOOT_CHECKBOX_BOX - mk) / 2, mk, th.bg);
+  } else {
+    edge := ifx hov || prs then th.text else th.muted;
+    _ := sheet_box(sh, bx, by, CP_FOOT_CHECKBOX_BOX, CP_FOOT_CHECKBOX_BOX, 3.5f32, 1.0f32, Rgba.{}, edge);
+  }
+  ink := ifx checked || hov || prs then th.text else th.muted;
+  tx := bx + CP_FOOT_CHECKBOX_BOX + CP_FOOT_CHECKBOX_GAP;
+  room := w - 2 * c.chip_pad - CP_FOOT_CHECKBOX_BOX - CP_FOOT_CHECKBOX_GAP;
+  if room > 0 { _ := sheet_text(sh, f[0].m, -1, tx, y + (c.chip_h - k.small.line) / 2, k.small.line, k.small.face, ink, app_fit(f, k.small.face, text, room + 0.5f32)); }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, c.chip_h);
+  return w;
+}
 // The composer's foot at y: on the left the model (and while a reply runs, Steer and Queue for a
 // draft); on the right the chat's goal, its cost (once a chat has a turn, or in Foreman), how full
 // the context is, and the working folder › its branch. Which harness or backend runs a model shows
@@ -1192,10 +1223,16 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     if need <= room { break; }
     if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
-  // the left side: Steer & Queue (while a reply runs with a draft), Fresh & Fan-out when enabled.
-  // Model and Effort live inside the composer card's bottom bar (T3 Code layout).
+  // the left side: New worktree checkbox on new chats, Steer & Queue (while a reply runs with a
+  // draft), Fresh & Fan-out when enabled. Model and Effort live inside the composer card's bottom bar.
   fx := x + side;
   end_x := x + cw - side;
+  if home && !running {
+    w_wt := cp_foot_checkbox_width(f, "New worktree");
+    if fx + w_wt <= end_x {
+      fx += cp_foot_checkbox(f, "coder.worktree", "Create a new git worktree for this chat", fx, y, w_wt, "New worktree", s[0].new_chat_worktree, CP_WORKTREE_TOGGLE);
+    }
+  }
   if show_fu_draft {
     sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
     if fx + sw + qw + gap <= end_x {

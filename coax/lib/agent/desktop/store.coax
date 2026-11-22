@@ -15,7 +15,7 @@ DC_INDEX_MAX :: 2097152;
 DC_FOREMAN_TITLE :: "Foreman";      // Foreman.title
 DC_KEY_CLAUDE :: "claude-key";      // CoderKey.file
 DC_KEY_OPENROUTER :: "openrouter-key";   // CoderOpenRouter.file
-DC_SET_WORKTREES :: "chatWorktrees";     // ChatWorktree.enabled (true when unset)
+DC_SET_WORKTREES :: "newChatWorktree";   // ChatWorktree.enabled (false when unset)
 DC_SET_OR_MAIN :: "openRouterMain"; DC_SET_OR_SUB :: "openRouterSub";
 
 // The store: its folder and the list read from it.
@@ -204,8 +204,19 @@ dc_key_tail :: (key: string, out: [] u8) -> string {
   n := dc_copy(out, "…"); from := ifx key.count > 4 then key.count - 4 else 0;
   return dc_fits(out, dc_cat(out, n, key[from..<key.count]));
 }
-// Whether new chats get their own worktree (ChatWorktree.enabled: on unless set off).
-dc_worktrees_on :: () -> bool { b: [64] u8; v := dcos_setting(DC_SET_WORKTREES, b[..]); return v != "0"; }
+// Whether new chats get their own worktree (ChatWorktree.enabled: off unless turned on).
+dc_worktrees_parse :: (v: string) -> bool { return v == "1" || v == "true"; }
+dc_worktrees_format :: (on: bool) -> string { return ifx on then "1" else "0"; }
+dc_worktrees_kind :: () -> int { return DC_SET_BOOL; }
+dc_worktrees_enabled :: (name: string) -> bool {
+  if name.count == 0 { return false; }
+  b: [64] u8;
+  return dc_worktrees_parse(dcos_setting(name, b[..]));
+}
+dc_worktrees_save :: (name: string, on: bool) -> bool {
+  if name.count == 0 { return false; }
+  return dcos_set_setting(name, dc_worktrees_format(on), dc_worktrees_kind());
+}
 
 // ---- full-text chat search (GitHub #13876) ----
 
@@ -328,4 +339,12 @@ dc_store_search_chat :: (chat_json: string, query: string, out: [] DcSearchHit) 
   n3 := dc_store_search_chat(sample, "wallet-policy", hits[..]);
   #assert n3 == 1 && hits[0].turn == 2 && hits[0].score == 60;
   #assert dc_store_search_chat(sample, "nonexistent", hits[..]) == 0;
+}
+
+#test "desktop core store: worktree preference defaults off and round-trips booleans" {
+  #assert !dc_worktrees_parse("") && !dc_worktrees_parse("0") && !dc_worktrees_parse("false");
+  #assert dc_worktrees_parse("1") && dc_worktrees_parse("true");
+  #assert dc_worktrees_format(false) == "0" && dc_worktrees_format(true) == "1" && dc_worktrees_kind() == DC_SET_BOOL;
+  #assert !dc_worktrees_parse(dc_worktrees_format(false)) && dc_worktrees_parse(dc_worktrees_format(true));
+  #assert !dc_worktrees_enabled("") && !dc_worktrees_save("", true);
 }

@@ -164,6 +164,14 @@ coder_page_branch :: (s: [] CoderPage, name: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].branch_n = cp_out(s[0].branch[..], name);
 }
+// Sticky new-chat git worktree preference (default false; persisted by host on toggle).
+coder_page_worktree_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].new_chat_worktree = on;
+}
+coder_page_worktree :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].new_chat_worktree;
+}
 // The answer the worker is owed for the command it asked about: yes, run it. The page shows every
 // command as it starts; it does not hold one back. Its length in out, 0 when none is owed.
 coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {

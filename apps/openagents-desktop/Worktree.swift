@@ -8,9 +8,16 @@ struct ChatWorktree: Codable, Equatable {
     var source: String
     var branch: String
 
+    static let prefKey = "newChatWorktree"
+
     static var enabled: Bool {
-        if let v = UserDefaults.standard.object(forKey: "chatWorktrees") as? Bool { return v }
-        return DesktopCore.onCoreStack { oa_dc_worktrees_on() != 0 }
+        get {
+            if let v = UserDefaults.standard.object(forKey: prefKey) as? Bool { return v }
+            return DesktopCore.onCoreStack { oa_dc_worktrees_on() != 0 }
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: prefKey)
+        }
     }
 
     static var home: String {

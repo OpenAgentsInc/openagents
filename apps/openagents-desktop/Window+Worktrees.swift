@@ -150,14 +150,14 @@ extension CoderWindow {
         StandbyWorktreePool.shared.warm(folder: url.path)
     }
 
-    /// Never blocks sending a message on git worktree creation: if a pre-warmed standby worktree is
-    /// already ready for this repository, claims it immediately (<1 ms) and starts replenishing the
-    /// next standby in the background; otherwise sends immediately in the chosen folder and warms a
-    /// standby worktree in the background for subsequent chats.
+    /// Creates or claims an isolated git worktree when the user opted in via the "New worktree"
+    /// checkbox (default false). Claims a pre-warmed standby immediately (<1 ms) when available,
+    /// otherwise creates the requested worktree asynchronously before starting the worker.
     func holdForWorktree() -> Bool {
         let r = run
         if r.worktreeSkip { r.worktreeSkip = false; return false }
         guard ChatWorktree.enabled, !isForemanShown, chat == nil else { return false }
+        if r.preparingWorktree { return true }
         // already assigned a worktree for this unsaved chat
         if let w = r.worktree, store.meta(w.chat) == nil, folder.path == URL(fileURLWithPath: w.path).standardizedFileURL.path { return false }
         guard let repo = ChatWorktree.mainCheckout(of: worktreeSource(folder.path) ?? folder.path) else { return false }
@@ -169,10 +169,39 @@ extension CoderWindow {
             StandbyWorktreePool.shared.warm(repo: repo)
             return false
         }
-        // Standby isn't ready yet: do not block inference — run immediately in the chosen folder.
-        r.worktreeSkip = true
-        StandbyWorktreePool.shared.warm(repo: repo)
-        return false
+        // User explicitly opted into a new worktree, and no standby is ready yet: create it off the main thread.
+        r.preparingWorktree = true
+        let gen = r.startGen
+        let id = UUID().uuidString.lowercased()
+        r.pendingChat = id
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak r] in
+            let made = ChatWorktree.create(repo: repo, chat: id)
+            DispatchQueue.main.async {
+                guard let self, let r, r.startGen == gen else { return }
+                r.preparingWorktree = false
+                guard cd_running(r.page) != 0 else {
+                    if case .success(let w) = made {
+                        DispatchQueue.global(qos: .utility).async { _ = ChatWorktree.remove(w) }
+                    }
+                    return
+                }
+                switch made {
+                case .success(let w):
+                    r.worktree = w
+                    r.pendingChat = w.chat
+                    r.folder = URL(fileURLWithPath: w.path, isDirectory: true)
+                    if r === self.run { self.setFolder(r.folder, keep: false) }
+                    StandbyWorktreePool.shared.warm(repo: repo)
+                case .failure:
+                    r.pendingChat = nil
+                    r.worktreeSkip = true
+                    cd_toast(r.page, "Couldn’t make this chat’s worktree", 1)
+                }
+                self.wake()
+                self.sendTask(r)
+            }
+        }
+        return true
     }
 
     /// The main checkout a chat's worktree folder was made from, when folder is one.

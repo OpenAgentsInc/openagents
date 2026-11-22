@@ -233,6 +233,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return false;
   }
   if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_WORKTREE_TOGGLE {
+    if cp_running(s) { return false; }
+    s[0].model_menu = false; s[0].effort_menu = false;
+    s[0].new_chat_worktree = !s[0].new_chat_worktree;
+    s[0].ask = CP_ASK_WORKTREE_TOGGLE;
+    return true;
+  }
   if act == CP_ASK_ADD_PRESS { s[0].model_menu = false; s[0].effort_menu = false; s[0].ask = CP_ASK_ADD; return true; }
   if act == CP_CARGO || act == CP_CARGO_REMOVE { return cp_cargo_press(s, surface_id(s[0].surface[..], row), act == CP_CARGO_REMOVE); }
   if act == CP_TOAST_CLOSE { return app_toast_dismiss(s[0].toasts[..], app_toast_pressed(surface_id(s[0].surface[..], row)), s[0].clock); }

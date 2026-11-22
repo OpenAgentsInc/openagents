@@ -271,6 +271,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         } else if let kept = UserDefaults.standard.string(forKey: "folder"), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue {
             setFolder(URL(fileURLWithPath: kept), keep: false)
         } else { setFolder(folder, keep: false) }
+        cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
         syncSettingsInfo()
         #if OA_FULL
         if FeatureFlags.isOn(.usage) { setupUsageDashboard() }
@@ -434,6 +435,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             #endif
             guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
+            cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
             leaveWorktreeFolder()
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
@@ -591,6 +593,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
+        case 163:
+            let on = cd_worktree(page) != 0
+            ChatWorktree.enabled = on
+            #if OA_FULL
+            cd_git_mode_set(page, on ? 1 : 0)
+            #endif
+            for r in runs.values where r.page != page { cd_worktree_set(r.page, on ? 1 : 0) }
+            if on { prewarmWorktree(for: folder) }
+            wake()
         case 40...43: if FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes) { fileAsked(what) }
         default: break
         }

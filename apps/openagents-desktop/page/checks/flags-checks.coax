@@ -29,6 +29,8 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert m_row >= 0 && e_row >= 0;
   #assert surface_rows(s[0].surface[..]).rows[m_row].x + surface_rows(s[0].surface[..]).rows[m_row].w < surface_rows(s[0].surface[..]).rows[e_row].x;
   #assert surface_find(s[0].surface[..], "coder.folder") >= 0;
+  wt_row := surface_find(s[0].surface[..], "coder.worktree");
+  #assert wt_row >= 0 && !coder_page_worktree(s);
   #assert surface_find(s[0].surface[..], "coder.copy") < 0;
   #assert surface_find(s[0].surface[..], "coder.ft.toggle") < 0;
   #assert surface_find(s[0].surface[..], "coder.foreman") < 0;

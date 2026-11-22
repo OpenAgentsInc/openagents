@@ -72,7 +72,7 @@ CpGit :: struct {
 cp_git_init :: (s: [] CoderPage) {
   g := s[0].git[..];
   g[0] = CpGit.{};
-  g[0].worktree_mode = CP_GIT_MODE_WORKTREE;
+  g[0].worktree_mode = CP_GIT_MODE_LOCAL;
 }
 
 // ---------------------------------------------------------------- pure rules & parsers

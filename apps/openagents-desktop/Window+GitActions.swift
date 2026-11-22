@@ -8,6 +8,7 @@ extension CoderWindow {
         let dir = folder.path
         let wtEnabled = ChatWorktree.enabled
         cd_git_mode_set(page, wtEnabled ? 1 : 0)
+        cd_worktree_set(page, wtEnabled ? 1 : 0)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let inside = ChatWorktree.git(["rev-parse", "--is-inside-work-tree"], in: dir)
             guard inside.status == 0, inside.output == "true" else {
@@ -43,6 +44,7 @@ extension CoderWindow {
                 cd_branch(self.page, ChatWorktree.shown(branch))
                 cd_git_status(self.page, 1, isWorktree ? 1 : 0, Int32(dirty), Int32(ahead), Int32(behind))
                 cd_git_mode_set(self.page, ChatWorktree.enabled ? 1 : 0)
+                cd_worktree_set(self.page, ChatWorktree.enabled ? 1 : 0)
                 _ = cd_git_branches(self.page, branchLines)
                 cd_git_wt_status(self.page, 1, wtNote)
                 self.wake()
@@ -70,10 +72,13 @@ extension CoderWindow {
         }
     }
 
-    /// Toggles Local checkout vs. Worktree mode directly in UI (replaces hidden `defaults write chatWorktrees`).
+    /// Toggles Local checkout vs. Worktree mode directly in UI (stays synced with new-chat checkbox).
     private func toggleWorktreeMode() {
         let worktreeOn = cd_git_mode(page) == 1
-        UserDefaults.standard.set(worktreeOn, forKey: "chatWorktrees")
+        ChatWorktree.enabled = worktreeOn
+        cd_worktree_set(page, worktreeOn ? 1 : 0)
+        for r in runs.values where r.page != page { cd_worktree_set(r.page, worktreeOn ? 1 : 0) }
+        if worktreeOn { prewarmWorktree(for: folder) }
         let msg = worktreeOn
             ? "Worktree mode enabled: new chats start in isolated Git worktrees"
             : "Local checkout mode enabled: new chats run directly in the chosen folder"

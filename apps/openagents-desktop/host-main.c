@@ -258,7 +258,7 @@ static const char *effective_cwd(DesktopApp *a) {
 }
 
 static void maybe_prepare_worktree(DesktopApp *a) {
-  if (!oa_core_worktrees_on() || a->worktree_path[0]) return;
+  if (!oa_core_worktrees_get(cs("newChatWorktree")) || a->worktree_path[0]) return;
   if (!a->chat_id[0]) oa_core_new_id(vu(a->chat_id, (int)sizeof(a->chat_id)));
   char wp[OA_PATH] = {0}, wb[256] = {0}, wr[OA_PATH] = {0}, why[512] = {0};
   if (oa_core_wt_create(vc(a), cs(a->folder), cs(a->chat_id),
@@ -1882,6 +1882,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;
     case 162: agy_connect_start(a); break;
+    case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
     case 52: {
       int op = cd_term_op(a->page);
       int tid = cd_term_op_tab(a->page);
@@ -2774,6 +2775,7 @@ static int oa_main(int argc, char **argv) {
   cd_agy(app.page, ((dc_flags & (1LL << 3)) && app.agy_worker_bin[0]) ? 1 : 0);
   agy_connect_sync(&app);   // the onboarding offers Connect Google Antigravity when agyworker is bundled
   set_folder(&app, app.folder);
+  cd_worktree_set(app.page, oa_core_worktrees_get(cs("newChatWorktree")) ? 1 : 0);
   refresh_settings_info(&app);
   refresh_chats(&app);
   if (!store_ok) cd_toast(app.page, "Your chat list could not be read. New chats are not saved until it can be.", 1);

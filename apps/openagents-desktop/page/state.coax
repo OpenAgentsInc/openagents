@@ -134,6 +134,7 @@ CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and m
 CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding: start downloading Inkling 2 Mini
 CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding: cancel Inkling 2 Mini download
 CP_ASK_AGY_CONNECT :: 162;    // First-run onboarding where Inkling cannot run: install agy if needed, sign in, use Antigravity
+CP_ASK_WORKTREE_TOGGLE :: 163; // New-chat composer foot checkbox: persist sticky new-chat worktree preference (coder_page_worktree)
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
@@ -172,6 +173,7 @@ CP_TURN_INFO :: 402;        // reply hover lane info icon button: toggles model/
 CP_EFFORT_MENU :: 403;      // composer thinking-level chip: toggles the thinking-level dropdown menu
 CP_EFFORT_PICK :: 404;      // thinking-level menu option (coder.effort.1..5): selects that level and closes the menu
 CP_AGY_CONNECT :: 405;      // first-run onboarding on a machine that cannot run Inkling: Connect Google Antigravity / Try again
+CP_WORKTREE_TOGGLE :: 406;  // new-chat composer foot checkbox: toggle sticky new-chat git worktree preference
 CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
@@ -296,6 +298,7 @@ CoderPage :: struct {
   agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
   inkling: bool;              // Inkling 2 Mini local checkpoint is installed on >=32GB Mac: shown in the model picker (#13825)
   hybrid_exec: bool;          // Hybrid Executor (hybrid-exec-v1) verified Ready (base + 4/4 Class-E SHA-256 modules, #13924)
+  new_chat_worktree: bool;    // sticky preference: create an isolated git worktree on new chats (default false)
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
   chat_gen: int;                                            // bumped when the shown chat changes so per-turn fold springs snap instead of replaying across chats

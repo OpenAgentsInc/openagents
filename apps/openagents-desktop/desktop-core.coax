@@ -123,7 +123,7 @@ oa_dc_semver_cmp :: (a: string, b: string) -> int #export_c #effects(all) {
 // --- Worktrees & Paths ---
 
 oa_dc_worktrees_on :: () -> int #export_c #effects(all) {
-  return ifx dc_worktrees_on() then 1 else 0;
+  return ifx dc_worktrees_enabled(DC_SET_WORKTREES) then 1 else 0;
 }
 
 oa_dc_wt_root :: (out: [] u8) -> int #export_c #effects(all) {

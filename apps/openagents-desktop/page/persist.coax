@@ -345,7 +345,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].kept_pane_open = from[0].kept_pane_open; to[0].kept_pane_turn = from[0].kept_pane_turn; to[0].kept_pane_agent = from[0].kept_pane_agent; to[0].kept_pane_manual = from[0].kept_pane_manual;
   to[0].ctx_in = from[0].ctx_in; to[0].ctx_cached = from[0].ctx_cached; to[0].ctx_out = from[0].ctx_out; to[0].ctx_window = from[0].ctx_window; cp_ctx_reset(from);
   to[0].flags = from[0].flags; to[0].experimental = from[0].experimental; to[0].cloud_authed = from[0].cloud_authed;
-  to[0].claude = from[0].claude; to[0].agy = from[0].agy; to[0].inkling = from[0].inkling; to[0].hybrid_exec = from[0].hybrid_exec;
+  to[0].claude = from[0].claude; to[0].agy = from[0].agy; to[0].inkling = from[0].inkling; to[0].hybrid_exec = from[0].hybrid_exec; to[0].new_chat_worktree = from[0].new_chat_worktree;
   to[0].migrated_from_n = cp_out(to[0].migrated_from[..], cast(string) from[0].migrated_from[0..<from[0].migrated_from_n]);
   from[0].migrated_from_n = 0;
   to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false; to[0].effort_menu = false; to[0].effort = from[0].effort;

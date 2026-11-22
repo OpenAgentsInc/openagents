@@ -99,8 +99,8 @@ cp_git_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   coder_page_folder(s, "~/work/openagents");
   coder_page_branch(s, "feat/git-toolbar");
 
-  // Default mode is Worktree
-  #assert coder_page_git_mode(s) == CP_GIT_MODE_WORKTREE;
+  // Default mode is Local (worktrees are opt-in via the new-chat checkbox)
+  #assert coder_page_git_mode(s) == CP_GIT_MODE_LOCAL;
   #assert cp_git_mode_label(CP_GIT_MODE_WORKTREE) == "Worktree";
   #assert cp_git_mode_label(CP_GIT_MODE_LOCAL) == "Local";
 
@@ -122,11 +122,11 @@ cp_git_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   more_row := elt_find(t[..], "coder.git.actions");
   #assert br_row >= 0 && mode_row >= 0 && commit_row >= 0 && push_row >= 0 && pull_row >= 0 && pr_row >= 0 && more_row >= 0;
   #assert elt_value_of(t[..], br_row) == "feat/git-toolbar · 3 ↑2 ↓1";
-  #assert elt_value_of(t[..], mode_row) == "Worktree";
+  #assert elt_value_of(t[..], mode_row) == "Local";
 
-  // Pressing mode chip toggles Worktree -> Local and emits CP_ASK_GIT / CP_GIT_OP_TOGGLE_MODE
+  // Pressing mode chip toggles Local -> Worktree and emits CP_ASK_GIT / CP_GIT_OP_TOGGLE_MODE
   #assert cp_press(s, mode_row);
-  #assert coder_page_git_mode(s) == CP_GIT_MODE_LOCAL;
+  #assert coder_page_git_mode(s) == CP_GIT_MODE_WORKTREE;
   #assert coder_page_action(s) == CP_ASK_GIT && coder_page_git_op(s) == CP_GIT_OP_TOGGLE_MODE;
 
   // Pressing each action chip emits the expected CP_GIT_OP_*

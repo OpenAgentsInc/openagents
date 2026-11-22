@@ -179,8 +179,15 @@ oa_core_key_save :: (name: string, key: string) -> int #export_c #effects(all) {
   return ifx dc_key_save(name, key) then 1 else 0;
 }
 
-oa_core_worktrees_on :: () -> int #export_c #effects(all) {
-  return ifx dc_worktrees_on() then 1 else 0;
+oa_bool_i :: (b: bool) -> int { return ifx b then 1 else 0; }
+oa_worktrees_flag :: (on: int) -> bool { return on != 0; }
+
+oa_core_worktrees_get :: (name: string) -> int #export_c #effects(all) {
+  return oa_bool_i(dc_worktrees_enabled(name));
+}
+
+oa_core_worktrees_set :: (name: string, on: int) -> int #export_c #effects(all) {
+  return oa_bool_i(dc_worktrees_save(name, oa_worktrees_flag(on)));
 }
 
 oa_core_wt_create :: (c: [] OaCore, folder: string, chat_id: string, out_path: [] u8, out_branch: [] u8, out_repo: [] u8, out_why: [] u8) -> int #export_c #effects(all) {
@@ -695,4 +702,7 @@ oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
   #assert oa_flags_json_to_csv("{bad", cb[..]) == 0;
   #assert oa_core_flag_persist("models.does_not_exist", 1) == 0;
   #assert oa_core_flag_persist("", 1) == 0;
+  #assert oa_bool_i(false) == 0 && oa_bool_i(true) == 1;
+  #assert !oa_worktrees_flag(0) && oa_worktrees_flag(1) && oa_worktrees_flag(-1);
+  #assert oa_core_worktrees_get("") == 0 && oa_core_worktrees_set("", 1) == 0;
 }

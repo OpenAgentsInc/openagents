@@ -219,10 +219,10 @@ smoke_store :: (root: string) -> int {
 
 smoke_settings :: () -> int {
   b: [256] u8;
-  if !dc_worktrees_on() { return fail("settings: worktrees on when unset"); }
-  if !dcos_set_setting(DC_SET_WORKTREES, "0", DC_SET_BOOL) || dc_worktrees_on() { return fail("settings: worktrees off"); }
+  if dc_worktrees_enabled(DC_SET_WORKTREES) { return fail("settings: worktrees off when unset"); }
+  if !dcos_set_setting(DC_SET_WORKTREES, "1", DC_SET_BOOL) || !dc_worktrees_enabled(DC_SET_WORKTREES) { return fail("settings: worktrees on"); }
   if !dcos_set_setting(DC_SET_OR_MAIN, "vendor/model-1", DC_SET_STRING) || dcos_setting(DC_SET_OR_MAIN, b[..]) != "vendor/model-1" { return fail("settings: a string"); }
-  if !dcos_set_setting(DC_SET_WORKTREES, "1", DC_SET_BOOL) || dcos_setting(DC_SET_WORKTREES, b[..]) != "1" || dcos_setting(DC_SET_OR_MAIN, b[..]) != "vendor/model-1" { return fail("settings: on again, the others kept"); }
+  if !dcos_set_setting(DC_SET_WORKTREES, "0", DC_SET_BOOL) || dc_worktrees_enabled(DC_SET_WORKTREES) || dcos_setting(DC_SET_OR_MAIN, b[..]) != "vendor/model-1" { return fail("settings: off again, the others kept"); }
   say(ifx dcos_os() == DC_OS_MAC then "settings: a defaults domain written and read" else "settings: settings.json written and read");
   return 0;
 }

@@ -54,6 +54,9 @@ void cd_skills(void *page, const char *note);
 void cd_folder(void *page, const char *shown);
 // The working folder's Git branch ("" for none), shown after the folder in the composer's foot.
 void cd_branch(void *page, const char *name);
+// Sticky new-chat git worktree preference (default 0/off; persisted when toggled by user).
+void cd_worktree_set(void *page, int on);
+int cd_worktree(void *page);
 // The answer the worker is owed after a line that asked about a command: its length, 0 for none.
 int cd_answer_line(void *page, char *out, int cap);
 // Sub-agents: Microcoder hands tasks over, and the app runs each on a worker of its own.

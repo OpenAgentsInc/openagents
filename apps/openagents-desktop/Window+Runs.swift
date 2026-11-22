@@ -26,9 +26,10 @@ extension CoderWindow {
         wake()
     }
     func stopRun(_ r: CoderRun) {
-        if r.startingWorker {
+        if r.startingWorker || r.preparingWorktree {
             r.startGen &+= 1
             r.startingWorker = false
+            r.preparingWorktree = false
             cd_turn_loading_model(r.page, 0)
             cd_line(r.page, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}")
             wake()
