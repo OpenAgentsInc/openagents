@@ -67,6 +67,7 @@ GwRequest :: struct {
   schema_hint: string;           // added to the system prompt by a gateway that drops the schema (GW_NO_STRICT_SCHEMA), "" for none
   effort: string;                // "low" | "medium" | "high", "" to leave it to the provider
   max_tokens: int;               // 0 to leave it to the provider
+  max_thinking_tokens: int;      // > 0 to enforce sampler-level thinking cap (Psionic native)
   stream: bool = true;
   tools: string;                 // Chat Completions function tools, a JSON array sent as it is; "" for none
   has_temp: bool;                // emit temperature when true

@@ -100,6 +100,25 @@ class TestHostClean(unittest.TestCase):
         self.assertEqual(hits[0]["pid"], 400)
         self.assertTrue(hits[0]["spawned_mid_task"])
 
+    def test_parse_ioreg_gpu_util_and_non_llm_metal_refused(self):
+        sample = '"PerformanceStatistics" = {"Renderer Utilization %"=94,"Device Utilization %"=96,"Tiler Utilization %"=12}'
+        self.assertEqual(hc.parse_ioreg_gpu_util(sample), (96, 94))
+        self.assertEqual(hc.parse_ioreg_gpu_util("no stats here"), (None, None))
+        dirty = hc.evaluate_host_cleanliness(
+            [], [], own_pid=999,
+            mem_free_pct=80, total_ram_mb=131072, load_avg_1m=2.0, cpu_count=16,
+            gpu_device_util_pct=92, gpu_renderer_util_pct=90,
+        )
+        self.assertFalse(dirty.clean)
+        self.assertTrue(any("IOAccelerator" in r for r in dirty.reasons))
+        ok = hc.evaluate_host_cleanliness(
+            [], [], own_pid=999,
+            mem_free_pct=80, total_ram_mb=131072, load_avg_1m=2.0, cpu_count=16,
+            gpu_device_util_pct=8, gpu_renderer_util_pct=8,
+        )
+        self.assertTrue(ok.clean, ok.reasons)
+        self.assertEqual(ok.to_dict()["gpu_device_util_pct"], 8)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -175,6 +175,36 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("FAIL: normalized duplicate shell read guard"); return 1;
   }
 
+  // 9c. Atomic multi-hunk edit_file (abort leaves file untouched, repeated fail hints read_file, valid applies both hunks)
+  ne = ik_st_run_tool(r[..], h[..], b[..], 18, "c16a", "edit_file", "{\"path\":\"src/app.txt\",\"edits\":[{\"old_string\":\"alpha\",\"new_string\":\"ALPHA_TMP\"},{\"old_string\":\"NO_SUCH_LINE\",\"new_string\":\"X\"}]}", evs[..]);
+  o16a := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o16a, "file on disk was NOT modified") {
+    tool_errln("FAIL: atomic multi-hunk abort"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 19, "c16b", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"STILL_MISSING\",\"new_string\":\"X\"}", evs[..]);
+  o16b := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o16b, "Call read_file around the target lines") {
+    tool_errln("FAIL: consecutive failed edit hint"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 20, "c16c", "edit_file", "{\"path\":\"src/app.txt\",\"edits\":[{\"old_string\":\"alpha\",\"new_string\":\"ALPHA_2\"},{\"old_string\":\"delta\",\"new_string\":\"DELTA_2\"}]}", evs[..]);
+  o16c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o16c, "2 atomic hunks") || !ik_st_has(o16c, "[E] replay verified") {
+    tool_errln("FAIL: atomic multi-hunk apply"); return 1;
+  }
+  // 9d. Default shell-edit post-command Class-E verification + opt-in strict refusal arm
+  ne = ik_st_run_tool(r[..], h[..], b[..], 21, "c17a", "run_command", "{\"command\":\"python3 -c 'open(\\\"src/app.txt\\\", \\\"a\\\").write(\\\"z\\\\n\\\")'\"}", evs[..]);
+  o17a := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o17a, "shell-edit verified") || !ik_st_has(o17a, "[E] replay verified") {
+    tool_errln("FAIL: shell-edit post-command Class-E verification"); return 1;
+  }
+  r[0].refuse_shell_edit = true;
+  ne = ik_st_run_tool(r[..], h[..], b[..], 22, "c17b", "run_command", "{\"command\":\"sed -i '' 's/ALPHA_2/X/' src/app.txt\"}", evs[..]);
+  o17b := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  r[0].refuse_shell_edit = false;
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o17b, "detected shell-based file edit") {
+    tool_errln("FAIL: opt-in shell-edit refusal"); return 1;
+  }
+
   // 10. Verify entire accumulated history passes gateway gwt_history_valid
   gmsgs: [IK_MAX_MSGS] GwMessage; gcalls: [IK_MAX_CALLS] GwToolCall;
   nm := ik_hist_messages(h[..], gmsgs[..], gcalls[..]);

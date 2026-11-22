@@ -30,6 +30,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import socket
@@ -201,11 +202,40 @@ def probe_psionic_health(base_url: str, timeout: float = 1.5) -> dict[str, Any] 
         with urllib.request.urlopen(base_url.rstrip("/") + "/health", timeout=timeout) as r:
             if r.status == 200:
                 data = json.loads(r.read().decode())
-                if data.get("engine") == "psionic-metal":
+                if data.get("engine") in ("psionic-metal", "psionic-cuda"):
                     return data
     except Exception:
         return None
     return None
+
+
+_PSIONIC_REQ_RE = re.compile(
+    r"\[psionic-inkling-serve\] req#\d+ \S+ stream=\d+ prompt=(\d+) \(cached=(\d+), ([0-9.]+)s\) "
+    r"gen=(\d+) \(reason=(\d+), ([0-9.]+)s"
+)
+
+
+def parse_psionic_server_log(text: str) -> dict[str, Any]:
+    """Parse exact server-measured prefill/decode timings and token counts from psionic-inkling-serve logs."""
+    reqs = 0
+    prefill_s = 0.0
+    decode_s = 0.0
+    gen_toks = 0
+    reason_toks = 0
+    for m in _PSIONIC_REQ_RE.finditer(text):
+        reqs += 1
+        prefill_s += float(m.group(3))
+        gen_toks += int(m.group(4))
+        reason_toks += int(m.group(5))
+        decode_s += float(m.group(6))
+    return {
+        "server_requests": reqs,
+        "prefill_ms": int(round(prefill_s * 1000.0)),
+        "decode_ms": int(round(decode_s * 1000.0)),
+        "server_gen_tokens": gen_toks,
+        "server_reason_tokens": reason_toks,
+        "pure_decode_tps": round(gen_toks / decode_s, 2) if decode_s > 0.001 and gen_toks > 0 else 0.0,
+    }
 
 
 class PsionicServerManager:
@@ -216,11 +246,38 @@ class PsionicServerManager:
         self.port = port
         self.ctx = ctx
         self.base_url: str = ""
+        self.engine_name: str = "psionic-metal"
         self.proc: subprocess.Popen | None = None
+        self.log_path: Path | None = None
         self.log_fp: Any = None
         self.boot_ms: int = 0
         self.reused: bool = False
         self.peak_rss_mb: int = 0
+
+    def log_offset(self) -> int:
+        if self.log_fp is not None:
+            try:
+                self.log_fp.flush()
+            except Exception:
+                pass
+        if self.log_path is not None and self.log_path.exists():
+            return self.log_path.stat().st_size
+        return 0
+
+    def read_log_since(self, offset: int) -> str:
+        if self.log_fp is not None:
+            try:
+                self.log_fp.flush()
+            except Exception:
+                pass
+        if self.log_path is None or not self.log_path.exists():
+            return ""
+        try:
+            with open(self.log_path, "rb") as f:
+                f.seek(offset)
+                return f.read().decode("utf-8", errors="replace")
+        except Exception:
+            return ""
 
     def __enter__(self) -> "PsionicServerManager":
         if not self.enabled:
@@ -229,8 +286,9 @@ class PsionicServerManager:
         if env_url:
             h = probe_psionic_health(env_url)
             if h is None:
-                raise RuntimeError(f"PSIONIC_BASE_URL={env_url} did not answer /health with engine=psionic-metal")
+                raise RuntimeError(f"PSIONIC_BASE_URL={env_url} did not answer /health with engine=psionic-metal/cuda")
             self.base_url = env_url.rstrip("/")
+            self.engine_name = str(h.get("engine") or "psionic-metal")
             self.ctx = int(h.get("ctx") or self.ctx)
             self.reused = True
             return self
@@ -240,6 +298,7 @@ class PsionicServerManager:
         port = self.port if self.port > 0 else find_free_port(18894)
         self.base_url = f"http://127.0.0.1:{port}"
         log_path = self.run_dir / "psionic-inkling-serve.log"
+        self.log_path = log_path
         self.log_fp = open(log_path, "w")
         t0 = time.time()
         self.proc = subprocess.Popen(
@@ -1058,20 +1117,31 @@ def main() -> int:
     midrun_aborted = False
     try:
         with PsionicServerManager(enabled=is_local, run_dir=run_dir, port=args.port, ctx=args.ctx) as srv:
+            server_meta["engine"] = srv.engine_name if is_local else "cloud"
             server_meta["server_boot_ms"] = srv.boot_ms
             server_meta["server_reused"] = srv.reused
             server_meta["ctx"] = srv.ctx if is_local else None
             srv_port = urllib.parse.urlparse(srv.base_url).port if srv.base_url else own_port
             srv_pid = srv.proc.pid if srv.proc is not None else None
             if is_local:
-                print(f"[psionic-metal] ready at {srv.base_url} (ctx={srv.ctx}, boot={srv.boot_ms}ms, reused={srv.reused})", flush=True)
+                print(f"[{srv.engine_name}] ready at {srv.base_url} (ctx={srv.ctx}, boot={srv.boot_ms}ms, reused={srv.reused})", flush=True)
 
             def _run_one(t: dict[str, Any]) -> dict[str, Any]:
                 pre_procs = hc.sample_processes() if is_local else []
+                log_off0 = srv.log_offset() if is_local else 0
                 r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
                              eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na)
                 srv.sample_rss()
                 if is_local and not r.get("not_applicable"):
+                    r["effective_tps"] = r.get("decode_tps", 0.0)
+                    srv_stats = parse_psionic_server_log(srv.read_log_since(log_off0))
+                    if srv_stats["server_requests"] > 0:
+                        r["prefill_ms"] = srv_stats["prefill_ms"]
+                        r["decode_ms"] = srv_stats["decode_ms"]
+                        r["tool_and_overhead_ms"] = max(0, int(r["wall_ms"]) - srv_stats["prefill_ms"] - srv_stats["decode_ms"])
+                        r["server_gen_tokens"] = srv_stats["server_gen_tokens"]
+                        r["server_reason_tokens"] = srv_stats["server_reason_tokens"]
+                        r["pure_decode_tps"] = srv_stats["pure_decode_tps"]
                     post_procs = hc.sample_processes()
                     hits = hc.detect_midrun_interference(
                         pre_procs, post_procs, own_pid=os.getpid(), own_port=srv_port, own_server_pid=srv_pid,
@@ -1081,9 +1151,9 @@ def main() -> int:
                         r["host_interference"] = hits
                         server_meta["host_clean"] = False
                         server_meta["mid_run_interference"].append({"task": r["id"], "procs": hits})
-                        case_res_p = run_dir / "cases" / t["id"] / "result.json"
-                        if case_res_p.exists():
-                            case_res_p.write_text(json.dumps(r, indent=2) + "\n")
+                    case_res_p = run_dir / "cases" / t["id"] / "result.json"
+                    if case_res_p.exists():
+                        case_res_p.write_text(json.dumps(r, indent=2) + "\n")
                 if r.get("not_applicable"):
                     with print_lock:
                         print(f"N/A  task {r['id']}: {r['description']} ({r['not_applicable_reason']})", flush=True)
@@ -1092,10 +1162,15 @@ def main() -> int:
                 fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
                 toks = r["tokens"]
                 dirty_note = " [HOST_CONTAMINATED]" if r.get("host_contaminated") else ""
+                tps_str = (
+                    f"pure={r['pure_decode_tps']} tok/s (eff={r['decode_tps']}, pre={r.get('prefill_ms', 0)}ms, dec={r.get('decode_ms', 0)}ms, tool={r.get('tool_and_overhead_ms', 0)}ms)"
+                    if r.get("pure_decode_tps")
+                    else f"{r['decode_tps']} tok/s"
+                )
                 with print_lock:
                     print(f"{tag} task {r['id']}: {r['description']} ({r['wall_ms']} ms, ${r['cost_usd_micros'] / 1e6:.4f}, "
                           f"{r['attempts']} attempts, {r['turns']} turns, {r['tool_calls']} commands, "
-                          f"{toks['input']}in/{toks['output']}out, ttft={r['ttft_ms']}ms, {r['decode_tps']} tok/s)"
+                          f"{toks['input']}in/{toks['output']}out, ttft={r['ttft_ms']}ms, {tps_str})"
                           + (f" -- {fails}" if fails else "") + dirty_note, flush=True)
                 return r
 
@@ -1159,6 +1234,10 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
     tot_cached = sum(r.get("tokens", {}).get("cached", 0) for r in applicable)
     ttfts = [int(r.get("ttft_ms") or 0) for r in applicable if r.get("ttft_ms")]
     tps_vals = [float(r.get("decode_tps") or 0.0) for r in applicable if r.get("decode_tps")]
+    pure_tps_vals = [float(r.get("pure_decode_tps") or 0.0) for r in applicable if r.get("pure_decode_tps")]
+    tot_prefill_ms = sum(int(r.get("prefill_ms") or 0) for r in applicable)
+    tot_decode_ms = sum(int(r.get("decode_ms") or 0) for r in applicable)
+    tot_tool_ms = sum(int(r.get("tool_and_overhead_ms") or 0) for r in applicable)
     summary = {
         "tier": tier, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "engine": meta.get("engine", "psionic-metal"),
@@ -1178,6 +1257,9 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "pass_rate_pct": round(100.0 * passed_n / app_n, 1) if app_n else 0.0,
         "cost_usd_micros": sum(r["cost_usd_micros"] for r in applicable),
         "wall_ms": sum(r["wall_ms"] for r in applicable),
+        "prefill_ms": tot_prefill_ms,
+        "decode_ms": tot_decode_ms,
+        "tool_and_overhead_ms": tot_tool_ms,
         "cost_per_task_usd_micros": (sum(r["cost_usd_micros"] for r in applicable) // app_n) if app_n else 0,
         "wall_p50_ms": percentile([r["wall_ms"] for r in applicable], 0.5),
         "wall_p95_ms": percentile([r["wall_ms"] for r in applicable], 0.95),
@@ -1187,9 +1269,11 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "cache_hit_pct": round(100.0 * tot_cached / tot_in, 1) if tot_in else 0.0,
         "mean_ttft_ms": int(round(sum(ttfts) / len(ttfts))) if ttfts else 0,
         "mean_decode_tps": round(sum(tps_vals) / len(tps_vals), 2) if tps_vals else 0.0,
+        "mean_pure_decode_tps": round(sum(pure_tps_vals) / len(pure_tps_vals), 2) if pure_tps_vals else 0.0,
         "categories": cats,
         "cases": [{k: r.get(k) for k in ("id", "category", "group", "passed", "not_applicable", "not_applicable_reason",
-                                         "known_failure", "cost_usd_micros", "wall_ms", "ttft_ms", "decode_tps",
+                                         "known_failure", "cost_usd_micros", "wall_ms", "prefill_ms", "decode_ms",
+                                         "tool_and_overhead_ms", "ttft_ms", "decode_tps", "pure_decode_tps",
                                          "tokens", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

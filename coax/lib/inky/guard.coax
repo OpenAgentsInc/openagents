@@ -27,6 +27,9 @@ IkGuard :: struct {
   files_edited: int;
   last_check_exit: int;
   has_check: bool;
+  fail_edit_sig: u64;
+  fail_edit_streak: int;
+  zero_grep_streak: int;
 }
 
 ik_guard_init :: (g: [] IkGuard, max_steps: int) #effects(all) {
@@ -48,6 +51,9 @@ ik_guard_sig :: (kind: int, canon: string) -> u64 #effects(all) {
 // Clears the read/search/check cache on any workspace mutation so fresh reads and checks run.
 ik_guard_mutated :: (g: [] IkGuard, is_file_edit: bool) #effects(all) {
   g[0].n = 0;
+  g[0].fail_edit_sig = 0;
+  g[0].fail_edit_streak = 0;
+  g[0].zero_grep_streak = 0;
   if is_file_edit { g[0].files_edited += 1; }
 }
 
@@ -160,6 +166,53 @@ ik_guard_check_read_cmd :: (g: [] IkGuard, cmd: string, is_readonly_cmd: bool, s
     g[0].n += 1;
   }
   return 0;
+}
+
+// Tracks consecutive failed edit_file calls on the same path (§9.3 #4).
+// Returns the updated consecutive failure streak (>= 2 triggers a targeted re-read hint).
+ik_guard_record_edit_fail :: (g: [] IkGuard, path: string) -> int #effects(all) {
+  sig := ik_guard_sig(IK_TK_EDIT, path);
+  if g[0].fail_edit_sig == sig {
+    g[0].fail_edit_streak += 1;
+  } else {
+    g[0].fail_edit_sig = sig;
+    g[0].fail_edit_streak = 1;
+  }
+  return g[0].fail_edit_streak;
+}
+
+// Tracks consecutive zero-match grep calls (§9.3 #4).
+// Resets on any match; returns updated streak (>= 4 nudges toward list_dir / read_file).
+ik_guard_record_grep :: (g: [] IkGuard, had_matches: bool) -> int #effects(all) {
+  if had_matches {
+    g[0].zero_grep_streak = 0;
+    return 0;
+  }
+  g[0].zero_grep_streak += 1;
+  return g[0].zero_grep_streak;
+}
+
+ik_guard_has_sub :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count {
+      if hay[i + k] != needle[k] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Detects shell-based workspace file edits (sed -i, perl -i, python open+write/write_text,
+// or cat << heredoc redirected to a workspace file) so run_command redirects to edit_file (§9.2 #2).
+// Commands targeting /tmp/ are always allowed.
+ik_guard_is_shell_edit :: (cmd: string) -> bool #effects(all) {
+  if ik_guard_has_sub(cmd, "/tmp/") { return false; }
+  if ik_guard_has_sub(cmd, "sed -i") || ik_guard_has_sub(cmd, "perl -i") { return true; }
+  if ik_guard_has_sub(cmd, "python") && (ik_guard_has_sub(cmd, "write_text(") || (ik_guard_has_sub(cmd, "open(") && ik_guard_has_sub(cmd, ".write("))) { return true; }
+  if ik_guard_has_sub(cmd, "cat <<") && ik_guard_has_sub(cmd, " > ") { return true; }
+  return false;
 }
 
 // Final closing call disables tools at step >= max_steps so the model summarizes cleanly.
@@ -279,4 +332,34 @@ ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
     #assert ik_guard_check_read_cmd(g3[..], cast(string) kb[0..<kn], true, k + 1) == 0;
   }
   #assert g3[0].n == IK_GUARD_SLOTS;
+
+  // Consecutive failed-edit & zero-match grep spiral guards + mutation reset:
+  g4: [1] IkGuard;
+  ik_guard_init(g4[..], 30);
+  #assert ik_guard_record_edit_fail(g4[..], "a.coax") == 1 && g4[0].fail_edit_streak == 1;
+  #assert ik_guard_record_edit_fail(g4[..], "a.coax") == 2 && g4[0].fail_edit_streak == 2;
+  #assert ik_guard_record_edit_fail(g4[..], "b.coax") == 1 && g4[0].fail_edit_streak == 1 && g4[0].fail_edit_sig == ik_guard_sig(IK_TK_EDIT, "b.coax");
+  #assert ik_guard_record_grep(g4[..], false) == 1 && ik_guard_record_grep(g4[..], false) == 2;
+  #assert ik_guard_record_grep(g4[..], true) == 0 && g4[0].zero_grep_streak == 0;
+  #assert ik_guard_record_grep(g4[..], false) == 1;
+  ik_guard_mutated(g4[..], true);
+  #assert g4[0].fail_edit_sig == 0 && g4[0].fail_edit_streak == 0 && g4[0].zero_grep_streak == 0;
+  // After mutation reset, same path starts fresh at 1:
+  #assert ik_guard_record_edit_fail(g4[..], "b.coax") == 1;
+
+  // Substring helper & shell-edit detector:
+  #assert !ik_guard_has_sub("abc", "") && !ik_guard_has_sub("ab", "abc");
+  #assert ik_guard_has_sub("abc", "abc") && ik_guard_has_sub("xxab", "ab") && !ik_guard_has_sub("xxac", "ab");
+  #assert !ik_guard_has_sub("xbc", "abc") && !ik_guard_has_sub("axb", "bc");
+  #assert ik_guard_is_shell_edit("sed -i '' 's/a/b/' foo.coax");
+  #assert ik_guard_is_shell_edit("perl -i -pe 's/a/b/' foo.coax");
+  #assert ik_guard_is_shell_edit("python3 -c \"Path('a.py').write_text('x')\"");
+  #assert ik_guard_is_shell_edit("python3 - <<'EOF'\nopen('a.py','w').write('x')\nEOF");
+  #assert ik_guard_is_shell_edit("cat << 'EOF' > foo.coax\nhi\nEOF");
+  #assert !ik_guard_is_shell_edit("sed -i '' 's/a/b/' /tmp/scratch.txt");
+  #assert !ik_guard_is_shell_edit("python3 -m pytest tests/");
+  #assert !ik_guard_is_shell_edit("python3 -c \"print(open('a.py').read())\"");
+  #assert !ik_guard_is_shell_edit("cat << 'EOF'\nhello\nEOF");
+  #assert !ik_guard_is_shell_edit("echo ok > /tmp/out.txt");
+  #assert !ik_guard_is_shell_edit("coax test a.coax");
 }

@@ -117,6 +117,9 @@ IkRun :: struct {
   hybrid_exec: bool;
   adaptive_effort: bool;
   max_tokens_step: int;
+  max_thinking_tokens: int;
+  refuse_shell_edit: bool;
+  require_exit_verify: bool;
   gated: bool;
   edits_free: bool;
   ceiling: int;
@@ -249,6 +252,8 @@ ik_run_start :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, cwd: string, bas
   r[0].l[0].hybrid_exec = r[0].hybrid_exec;
   r[0].l[0].adaptive_effort = r[0].adaptive_effort;
   r[0].l[0].max_tokens_step = r[0].max_tokens_step;
+  r[0].l[0].max_thinking_tokens = r[0].max_thinking_tokens;
+  r[0].l[0].require_exit_verify = r[0].require_exit_verify;
   return 0;
 }
 
@@ -535,23 +540,27 @@ ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
   a := ik_admit_edit(ar[..], args_json);
   if !a.ok {
-    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, "", 1, "edit_file error: invalid arguments (require path, non-empty old_string, new_string).", true);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, "", 1, "edit_file error: invalid arguments (require path plus old_string+new_string or edits:[{old_string,new_string}]).", true);
     return ne;
   }
-  // Class-E compiled weight-core schema check (oa-exec-json-schema, ~5 us) before touching disk.
+  // Class-E compiled weight-core schema check (oa-exec-json-schema, ~5 us) across all hunks before touching disk.
   pill_b: [96] u8;
-  sv := mc_exec_check_schema(1, a.path.count, MC_EXEC_MAX_PATH, 1, a.old_str.count, 1, a.new_str.count, b[0].edit_buf.count);
-  if !sv.ok {
-    pill := mc_exec_format_pill(false, sv.label, sv.digest, pill_b[..]);
-    n := ik_fmt_put(b[0].tool_out[..], 0, "edit_file error: Class-E schema guard refused (");
-    n = ik_fmt_put(b[0].tool_out[..], n, mc_exec_code_text(sv.code));
-    n = ik_fmt_put(b[0].tool_out[..], n, ")\n");
-    n = ik_fmt_put(b[0].tool_out[..], n, pill);
-    msg := cast(string) b[0].tool_out[0..<n];
-    lb: [512] u8; ln := ik_fmt_put(lb[..], 0, "edit "); ln = ik_fmt_put(lb[..], ln, a.path);
-    ik_journal_cmd(r, cast(string) lb[0..<ln], msg, 1);
-    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, msg, true);
-    return ik_emit_edit_ev(b, out, ne, "edit ", a.path, false, msg);
+  lb: [512] u8; ln := ik_fmt_put(lb[..], 0, "edit "); ln = ik_fmt_put(lb[..], ln, a.path);
+  label := cast(string) lb[0..<ln];
+  for hi: 0..<a.n_hunks {
+    hk := a.hunks[hi];
+    sv := mc_exec_check_schema(1, a.path.count, MC_EXEC_MAX_PATH, 1, hk.old_str.count, 1, hk.new_str.count, b[0].edit_buf.count);
+    if !sv.ok {
+      pill := mc_exec_format_pill(false, sv.label, sv.digest, pill_b[..]);
+      n := ik_fmt_put(b[0].tool_out[..], 0, "edit_file error: Class-E schema guard refused (");
+      n = ik_fmt_put(b[0].tool_out[..], n, mc_exec_code_text(sv.code));
+      n = ik_fmt_put(b[0].tool_out[..], n, ")\n");
+      n = ik_fmt_put(b[0].tool_out[..], n, pill);
+      msg := cast(string) b[0].tool_out[0..<n];
+      ik_journal_cmd(r, label, msg, 1);
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, msg, true);
+      return ik_emit_edit_ev(b, out, ne, "edit ", a.path, false, msg);
+    }
   }
   pbuf: [4096] u8;
   pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
@@ -571,50 +580,101 @@ ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: file could not be read (or exceeds 512 KB).", true);
     return ne;
   }
-  src := cast(string) b[0].file_buf[0..<rn];
-  er := ik_fmt_edit(src, a.path, a.old_str, a.new_str, a.replace_all, b[0].edit_buf[..], b[0].tool_out[..]);
-  // Class-E compiled weight-core diff pre-verification (oa-exec-diff-verify, ~5 us) BEFORE any disk write.
-  file_lines := ik_fmt_count_lines(src);
-  old_lines := ik_fmt_count_lines(a.old_str);
-  new_lines := ik_fmt_count_lines(a.new_str);
-  old_start := ifx er.first_line > 0 then er.first_line else 1;
-  exp_ctx := ifx a.replace_all && er.matches > 0 then er.matches else 1;
-  dv := mc_exec_check_diff(old_start, old_lines, old_start, new_lines, file_lines, er.matches, exp_ctx);
-  edit_ok := er.ok && dv.ok;
-  pill := mc_exec_format_pill(edit_ok, dv.label, dv.digest, pill_b[..]);
-  lb: [512] u8; ln := ik_fmt_put(lb[..], 0, "edit "); ln = ik_fmt_put(lb[..], ln, a.path);
-  label := cast(string) lb[0..<ln];
 
-  if !edit_ok {
-    mn := er.msg_len;
-    if mn == 0 {
-      mn = ik_fmt_put(b[0].tool_out[..], 0, "edit_file error: Class-E diff guard refused (");
-      mn = ik_fmt_put(b[0].tool_out[..], mn, mc_exec_code_text(dv.code));
-      mn = ik_fmt_byte(b[0].tool_out[..], mn, ')');
+  // Apply all hunks sequentially in memory; pre-verify EVERY hunk with Class-E BEFORE any disk write!
+  cur_len := rn;
+  last_er: IkEditResult;
+  last_pill_len := 0;
+  first_line_any := 0;
+  total_repl := 0;
+  for hi: 0..<a.n_hunks {
+    hk := a.hunks[hi];
+    src := cast(string) b[0].file_buf[0..<cur_len];
+    er := ik_fmt_edit(src, a.path, hk.old_str, hk.new_str, hk.replace_all, b[0].edit_buf[..], b[0].tool_out[..]);
+    file_lines := ik_fmt_count_lines(src);
+    old_lines := ik_fmt_count_lines(hk.old_str);
+    new_lines := ik_fmt_count_lines(hk.new_str);
+    old_start := ifx er.first_line > 0 then er.first_line else 1;
+    exp_ctx := ifx hk.replace_all && er.matches > 0 then er.matches else 1;
+    dv := mc_exec_check_diff(old_start, old_lines, old_start, new_lines, file_lines, er.matches, exp_ctx);
+    edit_ok := er.ok && dv.ok;
+    pill := mc_exec_format_pill(edit_ok, dv.label, dv.digest, pill_b[..]);
+    last_pill_len = pill.count;
+    last_er = er;
+
+    if !edit_ok {
+      streak := ik_guard_record_edit_fail(r[0].l[0].guard[..], a.path);
+      mn := er.msg_len;
+      if mn == 0 {
+        mn = ik_fmt_put(b[0].tool_out[..], 0, "edit_file error: Class-E diff guard refused (");
+        mn = ik_fmt_put(b[0].tool_out[..], mn, mc_exec_code_text(dv.code));
+        mn = ik_fmt_byte(b[0].tool_out[..], mn, ')');
+      }
+      if a.n_hunks > 1 {
+        mn = ik_fmt_put(b[0].tool_out[..], mn, "\n[Atomic multi-hunk edit aborted at hunk ");
+        mn = ik_fmt_int(b[0].tool_out[..], mn, hi + 1);
+        mn = ik_fmt_put(b[0].tool_out[..], mn, " of ");
+        mn = ik_fmt_int(b[0].tool_out[..], mn, a.n_hunks);
+        mn = ik_fmt_put(b[0].tool_out[..], mn, "; file on disk was NOT modified.]");
+      }
+      if streak >= 2 {
+        mn = ik_fmt_put(b[0].tool_out[..], mn, "\n[Hint: edit_file failed repeatedly on ");
+        mn = ik_fmt_put(b[0].tool_out[..], mn, a.path);
+        mn = ik_fmt_put(b[0].tool_out[..], mn, ". Call read_file around the target lines to inspect exact text and indentation before retrying.]");
+      }
+      if mn + pill.count + 2 <= b[0].tool_out.count {
+        mn = ik_fmt_byte(b[0].tool_out[..], mn, '\n');
+        mn = ik_fmt_put(b[0].tool_out[..], mn, pill);
+      }
+      msg := cast(string) b[0].tool_out[0..<mn];
+      ik_journal_cmd(r, label, msg, 1);
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, msg, true);
+      return ik_emit_edit_ev(b, out, ne, "edit ", a.path, false, msg);
     }
-    if mn + pill.count + 2 <= b[0].tool_out.count {
-      mn = ik_fmt_byte(b[0].tool_out[..], mn, '\n');
-      mn = ik_fmt_put(b[0].tool_out[..], mn, pill);
+    if first_line_any == 0 { first_line_any = er.first_line; }
+    total_repl += ifx er.matches > 0 then er.matches else 1;
+    cur_len = er.new_len;
+    if hi + 1 < a.n_hunks {
+      if cur_len > b[0].file_buf.count {
+        _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: multi-hunk edit exceeded 512 KB file buffer.", true);
+        return ne;
+      }
+      for ci: 0..<cur_len { b[0].file_buf[ci] = b[0].edit_buf[ci]; }
     }
-    msg := cast(string) b[0].tool_out[0..<mn];
-    ik_journal_cmd(r, label, msg, 1);
-    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, msg, true);
-    return ik_emit_edit_ev(b, out, ne, "edit ", a.path, false, msg);
   }
-  if !fs_write(real_p, cast(string) b[0].edit_buf[0..<er.new_len]) {
+
+  if !fs_write(real_p, cast(string) b[0].edit_buf[0..<cur_len]) {
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: failed writing updated file.", true);
     return ne;
   }
   ik_guard_mutated(r[0].l[0].guard[..], true);
-  mn := er.msg_len;
+  pill := cast(string) pill_b[0..<last_pill_len];
+  mn := last_er.msg_len;
+  if a.n_hunks > 1 {
+    hb: [8] u8;
+    _ = ik_hash8(cast(string) b[0].edit_buf[0..<cur_len], hb[..]);
+    mn = ik_fmt_put(b[0].tool_out[..], 0, "Edited ");
+    mn = ik_fmt_put(b[0].tool_out[..], mn, a.path);
+    mn = ik_fmt_put(b[0].tool_out[..], mn, " (");
+    mn = ik_fmt_int(b[0].tool_out[..], mn, a.n_hunks);
+    mn = ik_fmt_put(b[0].tool_out[..], mn, " atomic hunks, ");
+    mn = ik_fmt_int(b[0].tool_out[..], mn, total_repl);
+    mn = ik_fmt_put(b[0].tool_out[..], mn, " replacements, first line ");
+    mn = ik_fmt_int(b[0].tool_out[..], mn, first_line_any);
+    mn = ik_fmt_put(b[0].tool_out[..], mn, ", hash=");
+    mn = ik_fmt_put(b[0].tool_out[..], mn, cast(string) hb[..]);
+    mn = ik_fmt_put(b[0].tool_out[..], mn, ")\n");
+  }
   if mn + pill.count + 2 <= b[0].tool_out.count {
     if mn > 0 && b[0].tool_out[mn - 1] != '\n' { mn = ik_fmt_byte(b[0].tool_out[..], mn, '\n'); }
     mn = ik_fmt_put(b[0].tool_out[..], mn, pill);
   }
-  mn = ik_fmt_coax_lint(a.path, a.new_str, b[0].tool_out[..], mn);
+  for hi: 0..<a.n_hunks {
+    mn = ik_fmt_coax_lint(a.path, a.hunks[hi].new_str, b[0].tool_out[..], mn);
+  }
   msg := cast(string) b[0].tool_out[0..<mn];
   db: [4224] u8;
-  dn := ik_fmt_unified_diff(er.first_line, a.old_str, a.new_str, pill, db[..]);
+  dn := ik_fmt_unified_diff(first_line_any, a.old_str, a.new_str, pill, db[..]);
   ev_out := cast(string) db[0..<dn];
   ik_journal_cmd(r, label, msg, 0);
   _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 0, msg, false);
@@ -988,8 +1048,12 @@ ik_exec_grep :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, status, msg, true);
     return ne;
   }
+  zstreak := ik_guard_record_grep(r[0].l[0].guard[..], shown > 0);
   if shown == 0 {
     out_n = ik_fmt_put(b[0].tool_out[..], 0, "(no matches)");
+    if zstreak >= 4 {
+      out_n = ik_fmt_put(b[0].tool_out[..], out_n, "\n[Note: multiple consecutive grep calls returned no matches. Use list_dir to inspect workspace files or read_file on a relevant file instead of guessing symbol names.]");
+    }
   } else if omitted > 0 {
     out_n = ik_fmt_put(b[0].tool_out[..], out_n, "[");
     out_n = ik_fmt_int(b[0].tool_out[..], out_n, omitted);
@@ -1058,6 +1122,60 @@ ik_start_model_call :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] I
   return ne;
 }
 
+// Post-command Class-E diff verification for shell-based edits (docs/coder/inky-avenues-from-other-projects.md Row 5).
+// Keeps Class-E receipts and edit tracking without refusing the model's trained shell interface.
+ik_verify_shell_edit_diff :: (cwd: string, out: [] u8) -> int {
+  files := 0;
+  added := 0;
+  deleted := 0;
+  if ik_cwd_is_git(cwd) {
+    h := proc_new();
+    if h >= 0 {
+      ok := proc_arg(h, "git") && proc_arg(h, "-C") && proc_arg(h, cwd) && proc_arg(h, "diff") && proc_arg(h, "--numstat");
+      if ok && proc_start(h) == 0 {
+        _ = proc_close_stdin(h);
+        lb: [512] u8;
+        for step: 0..<64 {
+          ln := proc_line(h, 1500, lb[..]);
+          if ln <= 0 { break; }
+          // Parse "<added>\t<deleted>\t<path>"
+          a := 0; d := 0; i := 0;
+          while i < ln && lb[i] >= '0' && lb[i] <= '9' { a = a * 10 + cast(int)(lb[i] - '0'); i += 1; }
+          if i < ln && lb[i] == 9 {
+            i += 1;
+            while i < ln && lb[i] >= '0' && lb[i] <= '9' { d = d * 10 + cast(int)(lb[i] - '0'); i += 1; }
+          }
+          files += 1;
+          added += a;
+          deleted += d;
+        }
+        _ = proc_wait(h, 1500);
+      }
+      _ = proc_release(h);
+    }
+  }
+  f_chk := ifx files > 0 then files else 1;
+  a_chk := ifx added > 0 then added else 1;
+  d_chk := deleted;
+  tot_chk := ifx d_chk > 0 then d_chk + 1 else a_chk;
+  dv := mc_exec_check_diff(1, d_chk, 1, a_chk, tot_chk, f_chk, f_chk);
+  pb: [96] u8;
+  pill := mc_exec_format_pill(dv.ok, dv.label, dv.digest, pb[..]);
+  n := ik_fmt_put(out, 0, "\n[shell-edit verified: ");
+  if files > 0 {
+    n = ik_fmt_int(out, n, files);
+    n = ik_fmt_put(out, n, " file(s), +");
+    n = ik_fmt_int(out, n, added);
+    n = ik_fmt_put(out, n, "/-");
+    n = ik_fmt_int(out, n, deleted);
+    n = ik_fmt_put(out, n, "]\n");
+  } else {
+    n = ik_fmt_put(out, n, "workspace mutated]\n");
+  }
+  n = ik_fmt_put(out, n, pill);
+  return n;
+}
+
 ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent, ne: int) -> int {
   c := r[0].cmd[..];
   ik_cmd_spill_flush(c, b);
@@ -1072,10 +1190,16 @@ ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEv
   cmd_s := cast(string) c[0].cmd[0..<c[0].ncmd];
   is_err := c[0].timed_out || c[0].exit != 0;
   // Passing read-only search/inspect commands trim at 4 KB (full output stays in spill file) so
-  // large cat/sed/grep outputs don't bloat 32K context; test/check/failing commands keep full 16 KB.
+  // large cat/sed/grep outputs don't bloat 32K context; test/check/failing commands keep full inline cap.
   fn := ifx c[0].is_search && !c[0].is_check && !is_err
     then ik_fmt_cmd_output_cap(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, IK_CMD_SEARCH_INLINE, IK_CMD_SEARCH_HEAD, IK_CMD_SEARCH_TAIL, b[0].tool_out[..])
     else ik_fmt_cmd_output(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, b[0].tool_out[..]);
+  is_shell_ed := !is_err && !c[0].is_check && !c[0].is_search && ik_guard_is_shell_edit(cmd_s);
+  if is_shell_ed {
+    vb: [256] u8;
+    vn := ik_verify_shell_edit_diff(ik_run_cwd(r), vb[..]);
+    fn = ik_fmt_put(b[0].tool_out[..], fn, cast(string) vb[0..<vn]);
+  }
   shown := cast(string) b[0].tool_out[0..<fn];
 
   if r[0].journal.count > 0 && r[0].journal[0].flow.phase == AfPhase.command {
@@ -1086,8 +1210,13 @@ ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEv
   }
 
   ik_guard_record_cmd(r[0].l[0].guard[..], cmd_s, c[0].is_check, c[0].exit, r[0].l[0].step);
-  if !c[0].is_check && !c[0].is_search && !is_err {
+  if is_shell_ed {
+    ik_guard_mutated(r[0].l[0].guard[..], true);
+    r[0].l[0].edited_since_check = true;
+  } else if !c[0].is_check && !c[0].is_search && !is_err {
     ik_guard_mutated(r[0].l[0].guard[..], false);
+  } else if c[0].is_check && !is_err {
+    r[0].l[0].edited_since_check = false;
   }
 
   _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, cmd_s, c[0].exit, shown, is_err);
@@ -1133,6 +1262,15 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
     if !a.ok {
       _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, "", 1, "run_command error: invalid arguments (require non-empty command).", true);
       return ne;
+    }
+    if ik_guard_is_shell_edit(a.command) {
+      sb: [16] u8;
+      // Default: allow + verify post-command with Class-E diff receipt (matches trained shell interface);
+      // opt-in strict refusal arm via INKY_REFUSE_SHELL_EDIT=1 or r[0].refuse_shell_edit for A/B/C Dev runs.
+      if r[0].refuse_shell_edit || proc_getenv("INKY_REFUSE_SHELL_EDIT", sb[..]) == "1" {
+        _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 1, "run_command refused: detected shell-based file edit (sed/perl/python/heredoc). Use edit_file (supports single or atomic multi-hunk edits) or write_file instead.", true);
+        return ne;
+      }
     }
     is_chk := mc_cmd_kind(a.command) == MC_CMD_CHECK;
     dup := ik_guard_check_cmd(r[0].l[0].guard[..], a.command, is_chk);

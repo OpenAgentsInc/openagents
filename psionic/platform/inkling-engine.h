@@ -90,6 +90,9 @@ void ink_close(InkSession *s);
 void ink_reset(InkSession *s);
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits);
 int  ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens);
+/* Optional predicted-output token buffer (Cursor Instant Apply / OpenAI Predicted Outputs) for
+   zero-cost exact speculative drafting during file rewrites. Pass tokens=NULL or n_tokens=0 to clear. */
+void ink_set_prediction(InkSession *s, const int32_t *tokens, int n_tokens);
 int  ink_step(InkSession *s, int32_t token_id, int compute_logits);
 int  ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits);
 /* Verify tokens[0..n_tokens-1] in one batched forward pass starting at current s->pos:

@@ -18,6 +18,7 @@ IK_GREP_DEFAULT_MAX :: 50;
 IK_GREP_MAX :: 200;
 IK_LIST_MAX_DEPTH :: 3;
 IK_TODOS_MAX :: 64;
+IK_MAX_EDIT_HUNKS :: 8;
 
 ik_tool_kind :: (name: string) -> int #effects(all) {
   if name == "read_file" { return IK_TK_READ; }
@@ -144,7 +145,8 @@ ik_clamp :: (v: int, lo: int, hi: int) -> int #effects(all) {
 // ---------------------------------------------------------------- argument admission
 
 IkReadArgs :: struct { ok: bool; path: string; start_line: int; end_line: int; }
-IkEditArgs :: struct { ok: bool; path: string; old_str: string; new_str: string; replace_all: bool; }
+IkEditHunk :: struct { old_str: string; new_str: string; replace_all: bool; }
+IkEditArgs :: struct { ok: bool; path: string; old_str: string; new_str: string; replace_all: bool; n_hunks: int; hunks: [IK_MAX_EDIT_HUNKS] IkEditHunk; }
 IkWriteArgs :: struct { ok: bool; path: string; content: string; }
 IkGrepArgs :: struct { ok: bool; pattern: string; path: string; glob: string; fixed_strings: bool; max_results: int; }
 IkListArgs :: struct { ok: bool; path: string; depth: int; }
@@ -183,13 +185,37 @@ ik_admit_read :: (ar: [] ClArena, args_json: string) -> IkReadArgs #effects(all)
 }
 
 ik_admit_edit :: (ar: [] ClArena, args_json: string) -> IkEditArgs #effects(all) {
-  if !json_valid(args_json) || cl_at(args_json, "new_string").tok != JSON_STRING { return IkEditArgs.{}; }
+  if !json_valid(args_json) { return IkEditArgs.{}; }
   p := cl_str(ar, args_json, "path");
+  if ar[0].full || p.count == 0 || ik_has_nul(p) { return IkEditArgs.{}; }
+  if cl_at(args_json, "edits").tok == JSON_ARRAY {
+    arr := cl_raw(args_json, "edits");
+    n := cl_count(arr);
+    if n < 1 || n > IK_MAX_EDIT_HUNKS { return IkEditArgs.{}; }
+    out := IkEditArgs.{ok = true, path = p, n_hunks = n};
+    for i: 0..<n {
+      item := cl_json(arr, cl_item(arr, i));
+      if cl_at(item, "new_string").tok != JSON_STRING { return IkEditArgs.{}; }
+      old_s := cl_str(ar, item, "old_string");
+      new_s := cl_str(ar, item, "new_string");
+      if ar[0].full || old_s.count == 0 { return IkEditArgs.{}; }
+      ra := cl_bool(item, "replace_all");
+      out.hunks[i] = IkEditHunk.{old_str = old_s, new_str = new_s, replace_all = ra.ok && ra.value};
+    }
+    out.old_str = out.hunks[0].old_str;
+    out.new_str = out.hunks[0].new_str;
+    out.replace_all = out.hunks[0].replace_all;
+    return out;
+  }
+  if cl_at(args_json, "new_string").tok != JSON_STRING { return IkEditArgs.{}; }
   old_s := cl_str(ar, args_json, "old_string");
   new_s := cl_str(ar, args_json, "new_string");
-  if ar[0].full || p.count == 0 || ik_has_nul(p) || old_s.count == 0 { return IkEditArgs.{}; }
+  if ar[0].full || old_s.count == 0 { return IkEditArgs.{}; }
   ra := cl_bool(args_json, "replace_all");
-  return IkEditArgs.{ok = true, path = p, old_str = old_s, new_str = new_s, replace_all = ra.ok && ra.value};
+  h0 := IkEditHunk.{old_str = old_s, new_str = new_s, replace_all = ra.ok && ra.value};
+  out := IkEditArgs.{ok = true, path = p, old_str = old_s, new_str = new_s, replace_all = h0.replace_all, n_hunks = 1};
+  out.hunks[0] = h0;
+  return out;
 }
 
 ik_admit_write :: (ar: [] ClArena, args_json: string) -> IkWriteArgs #effects(all) {
@@ -402,14 +428,39 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert !ik_admit_read(ar[..], "{\"path\":\"a.coax\" junk}").ok && !ik_admit_read(ar[..], "{\"path\":\"a.coax\"} x").ok;
   #assert !ik_admit_read(ar[..], "{\"path\":\"\"}").ok && !ik_admit_read(ar[..], "{}").ok && !ik_admit_read(ar[..], "{").ok;
 
-  // edit_file
+  // edit_file (single hunk + atomic multi-hunk edits array)
   ar[0].at = 0; ar[0].full = false;
   e := ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"x\",\"new_string\":\"\",\"replace_all\":true}");
-  #assert e.ok && e.path == "a.coax" && e.old_str == "x" && e.new_str == "" && e.replace_all;
+  #assert e.ok && e.path == "a.coax" && e.old_str == "x" && e.new_str == "" && e.replace_all && e.n_hunks == 1 && e.hunks[0].old_str == "x" && e.hunks[0].new_str == "" && e.hunks[0].replace_all;
   ar[0].at = 0; ar[0].full = false;
   e = ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"x\",\"new_string\":\"y\",\"replace_all\":false}");
-  #assert e.ok && !e.replace_all;
+  #assert e.ok && !e.replace_all && e.n_hunks == 1 && !e.hunks[0].replace_all;
   ar[0].at = 0; ar[0].full = false;
+  e = ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[{\"old_string\":\"a\",\"new_string\":\"b\"}]}");
+  #assert e.ok && e.n_hunks == 1 && e.hunks[0].old_str == "a" && e.hunks[0].new_str == "b";
+  ar[0].at = 0; ar[0].full = false;
+  e = ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[{\"old_string\":\"a\",\"new_string\":\"b\",\"replace_all\":true},{\"old_string\":\"c\",\"new_string\":\"\",\"replace_all\":false}]}");
+  #assert e.ok && e.path == "a.coax" && e.n_hunks == 2 && e.old_str == "a" && e.new_str == "b" && e.replace_all;
+  #assert e.hunks[0].old_str == "a" && e.hunks[0].new_str == "b" && e.hunks[0].replace_all;
+  #assert e.hunks[1].old_str == "c" && e.hunks[1].new_str == "" && !e.hunks[1].replace_all;
+  // Exactly IK_MAX_EDIT_HUNKS (8) passes; 0 or 9 hunks rejected:
+  mbuf: [1024] u8; mn := json_raw(mbuf[..], 0, "{\"path\":\"a.coax\",\"edits\":[");
+  for mi: 0..<IK_MAX_EDIT_HUNKS {
+    if mi > 0 { mn = json_raw(mbuf[..], mn, ","); }
+    mn = json_raw(mbuf[..], mn, "{\"old_string\":\"x\",\"new_string\":\"y\"}");
+  }
+  mn8 := json_raw(mbuf[..], mn, "]}");
+  ar[0].at = 0; ar[0].full = false;
+  e8 := ik_admit_edit(ar[..], cast(string) mbuf[0..<mn8]);
+  #assert e8.ok && e8.n_hunks == IK_MAX_EDIT_HUNKS;
+  mn9 := json_raw(mbuf[..], mn, ",{\"old_string\":\"x\",\"new_string\":\"y\"}]}");
+  ar[0].at = 0; ar[0].full = false;
+  #assert !ik_admit_edit(ar[..], cast(string) mbuf[0..<mn9]).ok;
+  ar[0].at = 0; ar[0].full = false;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[]}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[{\"old_string\":\"\",\"new_string\":\"y\"}]}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[{\"old_string\":\"x\"}]}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"edits\":[{\"old_string\":\"x\",\"new_string\":\"y\"},{\"old_string\":\"\",\"new_string\":\"z\"}]}").ok;
   #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"\",\"new_string\":\"y\"}").ok;
   #assert !ik_admit_edit(ar[..], "{\"path\":\"\",\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
   #assert !ik_admit_edit(ar[..], "{\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
@@ -505,6 +556,10 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert !ik_admit_read(tar[..], "{\"path\":\"\\u0061\\u0062\"}").ok;
   tar[0].at = 0; tar[0].full = false;
   #assert !ik_admit_edit(tar[..], "{\"path\":\"\\u0061\\u0062\",\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_edit(tar[..], "{\"path\":\"a\",\"old_string\":\"\\u0061\\u0062\",\"new_string\":\"y\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_edit(tar[..], "{\"path\":\"a\",\"edits\":[{\"old_string\":\"\\u0061\\u0062\",\"new_string\":\"y\"}]}").ok;
   tar[0].at = 0; tar[0].full = false;
   #assert !ik_admit_write(tar[..], "{\"path\":\"\\u0061\\u0062\",\"content\":\"x\"}").ok;
   tar[0].at = 0; tar[0].full = false;

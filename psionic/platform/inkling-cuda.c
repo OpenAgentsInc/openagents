@@ -97,6 +97,45 @@ enum {
     K_CTRL_PACK_BF16,
     K_CTRL_GATE_MMA,
     K_CTRL_OUT_MMA,
+    K_Q8_TO_IQ4_RELAYOUT,
+    K_ARGMAX_S1,
+    K_ARGMAX_S2,
+    K_TOPK_FILTER,
+    K_MOE_PLAN_NB,
+    K_MOE_REDUCE_POST_LOG,
+    K_CONV_REWIND_ALL,
+    K_Q8_MMA_NB8_SK,
+    K_SK_REDUCE,
+    K_PROJ_MMA_NB8_SK,
+    K_PROJ_SK_REDUCE,
+    K_MOE_GU_IQ4_NB8,
+    K_MOE_DOWN_IQ4_NB8,
+    K_BF16_TO_IQ4_RELAYOUT,
+    K_BF16_TO_IQ4_ROW,
+    K_F32T_TO_IQ4_ROW,
+    K_IQ4_MMA_NB8_SK,
+    K_DSPARK_MIX_NORM,
+    K_DSPARK_KV_ABSORB,
+    K_DSPARK_BLOCK_PREP,
+    K_DSPARK_ADD_NORM_BF16,
+    K_DSPARK_QKV_ROPE,
+    K_DSPARK_ATTN_SK,
+    K_DSPARK_ATTN_REDUCE,
+    K_DSPARK_SILU_MUL_BF16,
+    K_DSPARK_MARKOV_CTX_PREP,
+    K_DSPARK_MARKOV_STEP,
+    K_DSPARK_FOLD_LOGITS_S1,
+    K_DSPARK_LOGITS_S2,
+    K_KV_STORE_FP8,
+    K_ATTN_ONLINE_SK,
+    K_ATTN_SK_REDUCE,
+    K_CTRL_RMS,
+    K_CTRL_GATE_NB8_SK,
+    K_KV_NB,
+    K_ATTN_POST_LOG,
+    K_DVR_F32_NB8,
+    K_PROJ_IQ4_P,
+    K_PROJ_IQ4_MMA_NB8_SK,
     K_COUNT
 };
 
@@ -148,6 +187,45 @@ static const char *const k_names[K_COUNT] = {
     "ink_ctrl_pack_bf16",
     "ink_ctrl_gate_mma",
     "ink_ctrl_out_mma",
+    "ink_q8_to_iq4_relayout",
+    "ink_argmax_s1",
+    "ink_argmax_s2",
+    "ink_topk_filter",
+    "ink_moe_plan_nb",
+    "ink_moe_reduce_post_log",
+    "ink_conv_rewind_all",
+    "ink_q8_mma_nb8_sk",
+    "ink_sk_reduce",
+    "ink_proj_mma_nb8_sk",
+    "ink_proj_sk_reduce",
+    "ink_moe_gu_iq4_nb8",
+    "ink_moe_down_iq4_nb8",
+    "ink_bf16_to_iq4_relayout",
+    "ink_bf16_to_iq4_row",
+    "ink_f32t_to_iq4_row",
+    "ink_iq4_mma_nb8_sk",
+    "ink_dspark_mix_norm",
+    "ink_dspark_kv_absorb",
+    "ink_dspark_block_prep",
+    "ink_dspark_add_norm_bf16",
+    "ink_dspark_qkv_rope",
+    "ink_dspark_attn_sk",
+    "ink_dspark_attn_reduce",
+    "ink_dspark_silu_mul_bf16",
+    "ink_dspark_markov_ctx_prep",
+    "ink_dspark_markov_step",
+    "ink_dspark_fold_logits_s1",
+    "ink_dspark_logits_s2",
+    "ink_kv_store_fp8",
+    "ink_attn_online_sk",
+    "ink_attn_sk_reduce",
+    "ink_ctrl_rms",
+    "ink_ctrl_gate_nb8_sk",
+    "ink_kv_nb",
+    "ink_attn_post_log",
+    "ink_dvr_f32_nb8",
+    "ink_proj_iq4_p",
+    "ink_proj_iq4_mma_nb8_sk",
 };
 
 /* Threads per work item: >1 for group kernels (`for thread: 0..<T`), -1 for
@@ -201,13 +279,91 @@ static const int k_threads[K_COUNT] = {
     INK_NT, /* K_CTRL_PACK_BF16 */
     -1,     /* K_CTRL_GATE_MMA */
     -1,     /* K_CTRL_OUT_MMA */
+    1,      /* K_Q8_TO_IQ4_RELAYOUT */
+    INK_NT, /* K_ARGMAX_S1 */
+    INK_T,  /* K_ARGMAX_S2 */
+    128,    /* K_TOPK_FILTER */
+    128,    /* K_MOE_PLAN_NB */
+    1,      /* K_MOE_REDUCE_POST_LOG */
+    1,      /* K_CONV_REWIND_ALL */
+    -1,     /* K_Q8_MMA_NB8_SK */
+    1,      /* K_SK_REDUCE */
+    -1,     /* K_PROJ_MMA_NB8_SK */
+    1,      /* K_PROJ_SK_REDUCE */
+    -1,     /* K_MOE_GU_IQ4_NB8 */
+    -1,     /* K_MOE_DOWN_IQ4_NB8 */
+    1,      /* K_BF16_TO_IQ4_RELAYOUT */
+    1,      /* K_BF16_TO_IQ4_ROW */
+    1,      /* K_F32T_TO_IQ4_ROW */
+    -1,     /* K_IQ4_MMA_NB8_SK */
+    INK_NT, /* K_DSPARK_MIX_NORM */
+    INK_T,  /* K_DSPARK_KV_ABSORB */
+    INK_NT, /* K_DSPARK_BLOCK_PREP */
+    INK_NT, /* K_DSPARK_ADD_NORM_BF16 */
+    INK_NT, /* K_DSPARK_QKV_ROPE */
+    INK_NT, /* K_DSPARK_ATTN_SK */
+    128,    /* K_DSPARK_ATTN_REDUCE */
+    1,      /* K_DSPARK_SILU_MUL_BF16 */
+    1,      /* K_DSPARK_MARKOV_CTX_PREP */
+    INK_NT, /* K_DSPARK_MARKOV_STEP */
+    INK_NT, /* K_DSPARK_FOLD_LOGITS_S1 */
+    INK_NT, /* K_DSPARK_LOGITS_S2 */
+    1,      /* K_KV_STORE_FP8 */
+    INK_OA, /* K_ATTN_ONLINE_SK */
+    128,    /* K_ATTN_SK_REDUCE */
+    INK_NT, /* K_CTRL_RMS */
+    INK_T,  /* K_CTRL_GATE_NB8_SK */
+    INK_NT, /* K_KV_NB */
+    1,      /* K_ATTN_POST_LOG */
+    INK_NT, /* K_DVR_F32_NB8 */
+    1,      /* K_PROJ_IQ4_P */
+    -1,     /* K_PROJ_IQ4_MMA_NB8_SK */
 };
+
+typedef struct {
+    int64_t off;
+    int64_t bytes;
+} MtpSpan;
+
+typedef struct {
+    int is_swa, kv_cap;
+    PcBuffer kv_k, kv_v;
+    PcBuffer dflare_norm, input_ln, post_attn_ln, q_norm, k_norm, k_norm_ctx;
+    PcBuffer qkv_q, qkv_d, o_q, o_d, gu_q, gu_d, dn_q, dn_d;
+    PcBuffer kctx_q, kctx_d, vctx_q, vctx_d;
+} CudaDsparkLayer;
+
+typedef struct {
+    int ready;
+    int kv_fp8;
+    float fuse_alpha[4][4];
+    PcBuffer small_buf, weights_buf, scratch_buf;
+    PcBuffer mask_embed, norm_w, mh_dflare_norm, mh_rnn_bias, rnn_w_step, inv_freq;
+    PcBuffer rnn_ctx_q, rnn_ctx_d, mw1_q, mw1_d, fold_q, fold_d, fold_b;
+    CudaDsparkLayer layers[3];
+    PcBuffer taps, last_taps, ctx_bf16, ctx_k_f32, ctx_v_f32;
+    PcBuffer anchor_emb, f_rnn_bf16, res, x_bf16, qkv_f32, attn_bf16, tmp_f32;
+    PcBuffer q_rot, k_rot, v_blk, attn_sk_o, attn_sk_ms;
+    PcBuffer gu_f32, mlp_bf16, markov_in_bf16, rnn_ctx;
+    PcBuffer rnn_state, rnn_state2, rnn_latent, base_logits;
+    PcBuffer s1_m, s1_i, s1_s, draft_toks, draft_probs, dev_pos;
+    uint32_t pos_host;
+    PcGraph  draft_graph[8];
+    PcGraph  absorb_graph[9][9];
+    int pos, pending_pos0, pending_nb, pending_got;
+    int skip_countdown, skip_mult, req_rounds, req_disabled;
+    float ema_acc, util_ema;
+    double b1_ema_s, last_draft_s, last_verify_s, draft_gpu_s;
+    uint64_t rounds, drafted, accepted;
+} CudaDspark;
 
 /* One layer's experts on the device. cap == n_expert means every expert is
    resident in file order and ids need no translation. */
 typedef struct {
     int      cap;
-    size_t   gu_bytes, dn_bytes;          /* one expert's gate_up and down blocks */
+    uint32_t gu_type, dn_type;            /* device type (may be IQ4_NL quantized on-load from Q8_0 to fit 16 GB VRAM) */
+    size_t   src_gu_bytes, src_dn_bytes;  /* one expert's raw GGUF bytes */
+    size_t   gu_bytes, dn_bytes;          /* one expert's device gate_up and down blocks */
     PcBuffer gu, dn;                      /* cap experts each */
     int16_t  slot_of[INK_MAX_EXPERTS];    /* expert -> slot, or -1 */
     int16_t  expert_in[INK_MAX_EXPERTS];  /* slot -> expert, or -1 */
@@ -253,8 +409,12 @@ struct InkSession {
        matrices, [0] when Q, K and V share one input and [1] when each has
        its own. n_mats == 0: the layer's matrices go one at a time. */
     PcBuffer proj_desc;
-    struct { int n_mats; int64_t items, rows, rtiles; } proj_list[32][2];
+    struct { int n_mats, is_iq4; int64_t items, rows, rtiles; } proj_list[32][2];
     PcBuffer attn_scores, attn_out, o_raw, norm_buf;
+    PcBuffer attn_sk_o, attn_sk_ms, ctrl_inv;
+    int kv_fp8;
+    int output_iq4;
+    int fast_q4;
     PcBuffer router_logits;
     PcBuffer moe_ids;                                /* [batch, n_expert_used] u32, expert ids from the router */
     PcBuffer moe_slots;                              /* [batch, n_expert_used] u32, cache slots of those experts */
@@ -275,12 +435,57 @@ struct InkSession {
     PcBuffer dev_pos;                                /* [1] u32, device-side token position for graph replay */
     uint32_t pos_host;                               /* stable host storage for dev_pos upload */
     PcGraph  decode_graph[2];                        /* full-step resident decode graphs [compute_logits] */
+    PcGraph  verify_graph[9];                        /* full-step resident speculative verify graphs [nb = 2..8] */
     PcGraph  stream_seg[INK_MAX_SLOTS];              /* streaming decode graphs between expert syncs */
     PcGraph  stream_tail[2];                         /* streaming decode final MoE + optional logits [compute_logits] */
     int      seg_ip[INK_MAX_SLOTS];                  /* physical layer ip for each streaming segment */
     int      stream_segs_ready;
     int      last_il, last_ip, final_n_blocks;
     PcBuffer logits;
+    PcBuffer argmax_vals, argmax_ids, argmax_out;    /* [64] f32, [64] u32, [1] u32 GPU argmax */
+    PcBuffer topk_cnt, topk_ids, topk_vals;          /* [256] u32, [256*16] u32, [256*16] f32 sparse GPU top-k */
+    uint32_t argmax_host;
+    uint32_t topk_cnt_host[256];
+    uint32_t topk_ids_host[256 * 16];
+    float    topk_vals_host[256 * 16];
+    int      argmax_valid;
+    int      logits_host_valid;
+    int      hidden_host_valid;
+
+    /* Stage C3A: CUDA Graph speculative verification (nb = 2..8) + GPU shortconv rewind + PLD/Prediction/SessHist. */
+    int      can_verify_nb;
+    int      spec_recording;                         /* inside verify_graph capture: log raw conv inputs */
+    PcBuffer spec_conv_bak;                          /* [conv_all_elems] f32 pre-batch conv snapshot */
+    PcBuffer spec_raw_log;                           /* [n_slots * 8 * (2*n_kv + 2*d)] f32 raw conv inputs */
+    size_t   spec_raw_log_elems;
+    PcBuffer spec_logits;                            /* [8 * n_vocab] f32 */
+    PcBuffer spec_hidden;                            /* [8 * d] f32 */
+    PcBuffer spec_argmax_out;                        /* [8] u32 */
+    PcBuffer spec_topk_cnt;                          /* [8 * 256] u32 */
+    PcBuffer spec_topk_ids;                          /* [8 * 256 * 16] u32 */
+    PcBuffer spec_topk_vals;                         /* [8 * 256 * 16] f32 */
+    uint32_t spec_argmax_host[8];
+    uint32_t spec_topk_cnt_host[8 * 256];
+    uint32_t spec_topk_ids_host[8 * 256 * 16];
+    float    spec_topk_vals_host[8 * 256 * 16];
+    int32_t  spec_q[8];
+    int      spec_head;
+    int      spec_tail;
+    int      spec_active_idx;                        /* >= 0: active logits/hidden live in spec_logits/spec_hidden[idx] */
+    int      conv_pending_nb;                        /* total tokens run in last verify batch */
+    int      conv_pending_n;                         /* how many of those tokens have been consumed */
+    int32_t *tok_hist;                               /* [max_ctx] prompt + generated tokens for PLD */
+    int      tok_hist_len;
+    int32_t *pred_toks;                              /* optional OpenAI prediction token buffer */
+    int      pred_len;
+    int      pred_cap;
+    int32_t *sess_hist;                              /* cross-turn output history ring buffer (SuffixDecoding-lite) */
+    int      sess_hist_len;
+    int      sess_hist_cap;
+    float    pld_ema2, pld_ema3;
+    uint64_t spec_rounds, spec_drafted, spec_accepted;
+    CudaDspark dspark;
+
     PcBuffer dummy_f32;
     PcBuffer oracle_x;                               /* INK_ORACLE_Q8: a matvec input rounded as ggml rounds it */
     int oracle_q8;
@@ -291,6 +496,8 @@ struct InkSession {
     InkMemoryBudget budget;
     int kv_cap[INK_MAX_SLOTS];
     PcBuffer kv_k[INK_MAX_SLOTS], kv_v[INK_MAX_SLOTS];
+    PcBuffer conv_all;                               /* single contiguous [n_slots * (2*n_kv + 2*d) * 3] f32 */
+    size_t   conv_all_elems;
     PcBuffer conv_k[INK_MAX_SLOTS], conv_v[INK_MAX_SLOTS], conv_ao[INK_MAX_SLOTS], conv_fo[INK_MAX_SLOTS];
 
     /* Host copies of what the engine contract returns by pointer. */
@@ -304,9 +511,11 @@ struct InkSession {
         int valid;
         int pos;
         int has_logits;
+        int has_dspark;
         int32_t *tokens;
         float   *conv_state;
         float   *logits;
+        float   *dspark_last_taps;
     } snaps[2];
     double total_gpu_seconds;
     int total_steps;
@@ -402,17 +611,41 @@ static int relayout(InkSession *s, const uint8_t *src, PcBuffer dst, int64_t row
     return 0;
 }
 
+/* Quantize a Q8_0 GGUF matrix on-device directly into block-major IQ4_NL device order. */
+static int relayout_q8_to_iq4(InkSession *s, const uint8_t *src, PcBuffer dst, int64_t rows, int64_t blocks, int64_t pair) {
+    int64_t row_bytes = blocks * 34;
+    int64_t piece = (int64_t)s->stage_bytes / row_bytes;
+    if (piece > rows) piece = rows;
+    if (piece <= 0 || (pair > 0 && piece < rows)) {
+        snprintf(s->error, sizeof s->error, "staging buffer too small for Q8->IQ4 matrix (%lld-byte rows)", (long long)row_bytes);
+        return 1;
+    }
+    for (int64_t row0 = 0; row0 < rows; row0 += piece) {
+        int64_t n = rows - row0 < piece ? rows - row0 : piece;
+        if (pc_upload(s->stage, src + row0 * row_bytes, (size_t)(n * row_bytes), s->stream) != PC_OK) return host_fail(s, "upload q8 weights");
+        CALL(s, K_Q8_TO_IQ4_RELAYOUT, n * blocks, a_int(rows), a_int(row0), a_int(n), a_int(blocks), a_int(pair),
+             a_view(s->stage, 0, n * row_bytes / 2),
+             a_view(dst, 0, rows * blocks * 4), a_view(dst, rows * blocks * 16, rows * blocks));
+    }
+    return 0;
+}
+
 /* One expert of layer ip from the GGUF into cache slot `slot`. */
 static int load_expert(InkSession *s, int ip, int e, int slot) {
     const InkHParams *hp = &s->gguf.hp;
     const InkLayerTensors *L = &s->gguf.layers[ip];
     ExpertCache *c = &s->experts[ip];
-    const uint8_t *gu = s->gguf.map + L->ffn_gate_up_exps.offset + (size_t)e * c->gu_bytes;
-    const uint8_t *dn = s->gguf.map + L->ffn_down_exps.offset + (size_t)e * c->dn_bytes;
-    return relayout(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32,
-                    quant_words(L->ffn_gate_up_exps.type), hp->n_ff_exp) ||
-           relayout(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32,
-                    quant_words(L->ffn_down_exps.type), 0);
+    const uint8_t *gu = s->gguf.map + L->ffn_gate_up_exps.offset + (size_t)e * c->src_gu_bytes;
+    const uint8_t *dn = s->gguf.map + L->ffn_down_exps.offset + (size_t)e * c->src_dn_bytes;
+    int q_gu = (L->ffn_gate_up_exps.type == INK_GGML_Q8_0 && c->gu_type == INK_GGML_IQ4_NL);
+    int q_dn = (L->ffn_down_exps.type == INK_GGML_Q8_0 && c->dn_type == INK_GGML_IQ4_NL);
+    int rc_gu = q_gu
+        ? relayout_q8_to_iq4(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, hp->n_ff_exp)
+        : relayout(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, quant_words(c->gu_type), hp->n_ff_exp);
+    if (rc_gu) return rc_gu;
+    return q_dn
+        ? relayout_q8_to_iq4(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, 0)
+        : relayout(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, quant_words(c->dn_type), 0);
 }
 
 static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t rows, int64_t cols, int add,
@@ -464,9 +697,15 @@ static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t
              a_view(dev, 0, lrows * blocks * words), a_view(dev, lrows * blocks * words * 4, lrows * blocks),
              a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
     } else if (w->type == INK_GGML_F32) {
-        /* A wide matrix gets a group per output; a narrow one, a thread. */
-        CALL(s, cols >= 1024 ? K_DVR_F32 : K_DVS_F32, n * rows, a_int(rows), a_int(cols), a_int(add),
-             a_tensor_f32(s, w), a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
+        /* Batched wide FP32 matvec (e.g. MoE router 128x2304): read W ONCE for all n <= 8 tokens (8x less DRAM!). */
+        if (cols >= 1024 && n >= 2 && n <= 8) {
+            CALL(s, K_DVR_F32_NB8, rows, a_int(rows), a_int(cols), a_int(n), a_int(add),
+                 a_tensor_f32(s, w), a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
+        } else {
+            /* A wide matrix gets a group per output; a narrow one, a thread. */
+            CALL(s, cols >= 1024 ? K_DVR_F32 : K_DVS_F32, n * rows, a_int(rows), a_int(cols), a_int(add),
+                 a_tensor_f32(s, w), a_f32v(x_buf, x_off, n * cols), a_f32v(out_buf, out_off, n * rows));
+        }
     } else {
         snprintf(s->error, sizeof s->error, "unsupported weight type %u for matvec", w->type);
         return 1;
@@ -497,12 +736,30 @@ static int dispatch_control(InkSession *s, const InkLayerTensors *L, int c0, int
     }
     int64_t cur_n = (single ? 1 : n) * stack;
     if (np >= 2 && !s->no_mma && !s->oracle_q8 && !s->no_tables && d % 16 == 0 && hp->gate_rank == 64) {
-        int64_t x_words = n * np * d;
-        CALL(s, K_CTRL_PACK_BF16, n * np, a_int(d), a_int(np), a_int(stack), a_int(flags),
-             a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_u32v(s->x_bf16, 0, x_words));
-        CALL(s, K_CTRL_GATE_MMA, n * 4 * ((np + 15) / 16), a_int(d), a_int(np),
-             a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
-             a_u32v(s->x_bf16, 0, x_words), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
+        if (np <= 8 && s->ctrl_inv && (size_t)(4 * n * np * hp->gate_rank) <= s->mv_part_floats) {
+            /* Split-K FP32 control gate: reads D[64, 2*d] ONCE across all np tokens (8x less DRAM, 100% FP32 exact!). */
+            int64_t sk = 4;
+            CALL(s, K_CTRL_RMS, n * np, a_int(d), a_int(np), a_int(stack), a_int(flags),
+                 a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_inv, 0, n * np * 2));
+            CALL(s, K_CTRL_GATE_NB8_SK, n * hp->gate_rank * sk,
+                 a_int(d), a_int(np), a_int(n), a_int(stack), a_int(flags), a_int(sk),
+                 a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
+                 a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack),
+                 a_f32v(s->ctrl_inv, 0, n * np * 2), a_f32v(s->mv_part, 0, sk * n * np * hp->gate_rank));
+            CALL(s, K_SK_REDUCE, n * np * hp->gate_rank, a_int(n * np * hp->gate_rank), a_int(sk), a_int(0),
+                 a_f32v(s->mv_part, 0, sk * n * np * hp->gate_rank), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
+        } else if (np <= 16) {
+            CALL(s, K_CTRL_PREP, n * np * hp->gate_rank, a_int(d), a_int(np), a_int(stack), a_int(flags),
+                 a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
+                 a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
+        } else {
+            int64_t x_words = n * np * d;
+            CALL(s, K_CTRL_PACK_BF16, n * np, a_int(d), a_int(np), a_int(stack), a_int(flags),
+                 a_f32v(cur_buf, 0, cur_n), a_f32v(s->messages, 0, 4 * stack), a_u32v(s->x_bf16, 0, x_words));
+            CALL(s, K_CTRL_GATE_MMA, n * 4 * ((np + 15) / 16), a_int(d), a_int(np),
+                 a_int(down[0]), a_int(down[1]), a_int(down[2]), a_arena(s),
+                 a_u32v(s->x_bf16, 0, x_words), a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank));
+        }
         int64_t g_pairs = n * np * (hp->gate_rank / 2);
         CALL(s, K_BF16_PACK, g_pairs, a_int(g_pairs),
              a_f32v(s->ctrl_gate, 0, n * np * hp->gate_rank), a_u32v(s->x_bf16, 0, g_pairs));
@@ -585,12 +842,53 @@ static int stream_experts(InkSession *s, int ip, int n, PcBuffer *ids_buf) {
     return 0;
 }
 
+static int dispatch_iq4_mma(InkSession *s, const InkTensor *w, int64_t np, int64_t rows, int64_t cols,
+                            PcBuffer xb_buf, int64_t xb_off, PcBuffer out_buf, int64_t out_off) {
+    int64_t blocks = cols / 32;
+    int64_t lrows = (int64_t)(w->nbytes / (uint64_t)(blocks * 18));
+    PcBuffer dev = tensor_dev(s, w);
+    int64_t rtiles = (rows + 15) / 16;
+    for (int64_t t0 = 0; t0 < np; t0 += 8) {
+        int64_t tn = (np - t0 < 8) ? (np - t0) : 8;
+        int64_t want_sk = (rows <= 2304) ? 8 : 4;
+        int64_t sk = (rows <= 4096 && blocks >= 16 && (size_t)(want_sk * tn * rows) <= s->mv_part_floats) ? want_sk : 1;
+        if (sk > 1) {
+            CALL(s, K_IQ4_MMA_NB8_SK, rtiles * sk, a_int(rows), a_int(lrows), a_int(cols), a_int(tn), a_int(sk),
+                 a_view(dev, 0, lrows * blocks * 4), a_view(dev, lrows * blocks * 16, lrows * blocks),
+                 a_u32v(xb_buf, xb_off + t0 * (cols / 2), tn * (cols / 2)), a_f32v(s->mv_part, 0, sk * tn * rows));
+            CALL(s, K_SK_REDUCE, tn * rows, a_int(tn * rows), a_int(sk), a_int(0),
+                 a_f32v(s->mv_part, 0, sk * tn * rows), a_f32v(out_buf, out_off + t0 * rows, tn * rows));
+        } else {
+            CALL(s, K_IQ4_MMA_NB8_SK, rtiles, a_int(rows), a_int(lrows), a_int(cols), a_int(tn), a_int(1),
+                 a_view(dev, 0, lrows * blocks * 4), a_view(dev, lrows * blocks * 16, lrows * blocks),
+                 a_u32v(xb_buf, xb_off + t0 * (cols / 2), tn * (cols / 2)), a_f32v(out_buf, out_off + t0 * rows, tn * rows));
+        }
+    }
+    return 0;
+}
+
 static int dispatch_q8_mma(InkSession *s, const InkTensor *w, int64_t np, int64_t rows, int64_t cols, int add,
                            PcBuffer xb_buf, int64_t xb_off, PcBuffer out_buf, int64_t out_off) {
     int64_t blocks = cols / 32;
     int64_t lrows = (int64_t)(w->nbytes / (uint64_t)(blocks * 34));
     PcBuffer dev = tensor_dev(s, w);
-    int64_t warps = ((rows + 15) / 16) * ((np + 15) / 16);
+    int64_t rtiles = (rows + 15) / 16;
+    if (np <= 8 && rows <= 4096 && blocks >= 16 && (size_t)(8 * np * rows) <= s->mv_part_floats) {
+        int64_t sk = 8;
+        CALL(s, K_Q8_MMA_NB8_SK, rtiles * sk, a_int(rows), a_int(lrows), a_int(cols), a_int(np), a_int(sk),
+             a_view(dev, 0, lrows * blocks * 8), a_view(dev, lrows * blocks * 32, lrows * blocks),
+             a_u32v(xb_buf, xb_off, np * (cols / 2)), a_f32v(s->mv_part, 0, sk * np * rows));
+        CALL(s, K_SK_REDUCE, np * rows, a_int(np * rows), a_int(sk), a_int(add),
+             a_f32v(s->mv_part, 0, sk * np * rows), a_f32v(out_buf, out_off, np * rows));
+        return 0;
+    }
+    if (np <= 8 && add == 0) {
+        CALL(s, K_Q8_MMA_NB8_SK, rtiles, a_int(rows), a_int(lrows), a_int(cols), a_int(np), a_int(1),
+             a_view(dev, 0, lrows * blocks * 8), a_view(dev, lrows * blocks * 32, lrows * blocks),
+             a_u32v(xb_buf, xb_off, np * (cols / 2)), a_f32v(out_buf, out_off, np * rows));
+        return 0;
+    }
+    int64_t warps = rtiles * ((np + 15) / 16);
     CALL(s, K_Q8_MMA, warps, a_int(rows), a_int(lrows), a_int(cols), a_int(np), a_int(add),
          a_view(dev, 0, lrows * blocks * 8), a_view(dev, lrows * blocks * 32, lrows * blocks),
          a_u32v(xb_buf, xb_off, np * (cols / 2)), a_f32v(out_buf, out_off, np * rows));
@@ -683,6 +981,61 @@ static int dispatch_moe_mma(InkSession *s, int il, int ip, int64_t np, int64_t g
     /* Pack MoE input activations to BF16 while downloading router ids. */
     CALL(s, K_BF16_PACK, np * (d / 2), a_int(np * (d / 2)),
          a_f32v(s->norm_buf, 0, np * d), a_u32v(s->x_bf16, 0, np * (d / 2)));
+
+    /* Stage C3A: Resident small-batch (np <= 8) zero-sync GPU-planned MoE (100% CUDA-Graph capturable!). */
+    if (!streaming && np <= 8 && n_used <= 8 && hp->n_expert <= 128) {
+        int64_t n_ff = hp->n_ff_exp;
+        int64_t n_entries = (int64_t)n;
+        int64_t off_slot = 0;
+        int64_t off_base = n_entries;
+        int64_t off_cnt  = n_entries * 2;
+        int64_t off_tok  = n_entries * 3;
+        int64_t off_pair = n_entries * 4;
+        PcArg a_slot = a_u32v(s->moe_tasks, off_slot, n_entries);
+        PcArg a_base = a_u32v(s->moe_tasks, off_base, n_entries);
+        PcArg a_cnt  = a_u32v(s->moe_tasks, off_cnt,  n_entries);
+        PcArg a_tok  = a_u32v(s->moe_tasks, off_tok,  n_entries);
+        PcArg a_pair = a_u32v(s->moe_tasks, off_pair, n_entries);
+        CALL(s, K_MOE_PLAN_NB, 1, a_int(hp->n_expert), a_int(n_used), a_int(np),
+             a_u32v(s->moe_ids, 0, n_entries), a_slot, a_base, a_cnt, a_tok, a_pair);
+        int64_t gu_words = (int64_t)((size_t)c->cap * c->gu_bytes / 4);
+        int64_t dn_words = (int64_t)((size_t)c->cap * c->dn_bytes / 4);
+        CALL(s, gu_q8 ? K_MOE_GU_Q8_MMA : K_MOE_GU_IQ4_NB8, n_entries * ((2 * n_ff + 15) / 16),
+             a_int(n_ff), a_int(d),
+             a_view(c->gu, 0, gu_words), a_view(c->gu, 0, gu_words * 2),
+             a_u32v(s->x_bf16, 0, (int64_t)s->batch * (d / 2)),
+             a_slot, a_base, a_cnt, a_tok,
+             a_f32v(s->moe_gu_out, 0, n_entries * 2 * n_ff));
+        CALL(s, K_MOE_SITU_PACK, n_entries * (n_ff / 2),
+             a_int(n_entries), a_int(n_ff), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+             a_f32v(s->moe_gu_out, 0, n_entries * 2 * n_ff),
+             a_pair, a_f32v(s->moe_wts, 0, (int64_t)s->batch * n_used),
+             a_u32v(s->moe_hid_bf16, 0, n_entries * (n_ff / 2)));
+        CALL(s, dn_q8 ? K_MOE_DOWN_Q8_MMA : K_MOE_DOWN_IQ4_NB8, n_entries * ((d + 15) / 16),
+             a_int(d), a_int(n_ff),
+             a_view(c->dn, 0, dn_words), a_view(c->dn, 0, dn_words * 2),
+             a_u32v(s->moe_hid_bf16, 0, n_entries * (n_ff / 2)),
+             a_slot, a_base, a_cnt, a_pair,
+             a_f32v(s->moe_down_out, 0, (int64_t)s->batch * n_used * d));
+        if (s->spec_recording) {
+            int64_t n_kv = hp->n_head_kv * hp->head_dim;
+            int64_t slot_ch = 2 * n_kv + 2 * d;
+            int64_t bak_off = ((int64_t)il * slot_ch + 2 * n_kv + d) * 3;
+            int64_t log_off = (int64_t)il * 8 * slot_ch + 16 * n_kv + 8 * d;
+            CALL(s, K_MOE_REDUCE_POST_LOG, d, a_int(d), a_int(np), a_int(n_used),
+                 a_f32v(s->moe_down_out, 0, np * n_used * d),
+                 a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                 a_f32v(s->spec_conv_bak, bak_off, d * 3),
+                 a_f32v(s->spec_raw_log, log_off, 8 * d),
+                 a_f32v(s->cur, 0, np * d));
+        } else {
+            CALL(s, K_MOE_REDUCE_POST, d, a_int(d), a_int(np), a_int(n_used),
+                 a_f32v(s->moe_down_out, 0, np * n_used * d),
+                 a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                 a_f32v(s->cur, 0, np * d));
+        }
+        return 0;
+    }
 
     uint32_t ids[INK_MAX_BATCH * 16];
     static float logits[INK_MAX_BATCH * INK_MAX_EXPERTS];
@@ -843,40 +1196,62 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
             CALL(s, K_BF16_PACK, np * (d / 2), a_int(np * (d / 2)),
                  a_f32v(xin, xv, np * d), a_u32v(s->x_bf16, 2 * half_stack, np * (d / 2)));
         }
-        if (s->proj_list[ip][variant].n_mats > 0) {
+        if (s->proj_list[ip][variant].n_mats > 0 && (!s->proj_list[ip][variant].is_iq4 || np <= 8)) {
             PcArg desc = a_u32v(s->proj_desc, (int64_t)(ip * 2 + variant) * 80, 80);
             int64_t rtiles = s->proj_list[ip][variant].rtiles;
-            int64_t warps = rtiles * ((np + 31) / 32);
-            CALL(s, K_PROJ_MMA, warps, a_int(s->proj_list[ip][variant].n_mats), a_int(rtiles), a_int(d), a_int(np), desc,
-                 a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)), a_view(s->weights, 0, (int64_t)(s->weights_bytes / 2)),
-                 a_u32v(s->x_bf16, 0, (int64_t)s->x_bf16_words), a_f32v(s->proj, 0, (int64_t)s->proj_floats));
+            int64_t rows_all = s->proj_list[ip][variant].rows;
+            if (np <= 8 && (size_t)(4 * np * rows_all) <= s->mv_part_floats) {
+                int64_t sk = 4;
+                int kern = s->proj_list[ip][variant].is_iq4 ? K_PROJ_IQ4_MMA_NB8_SK : K_PROJ_MMA_NB8_SK;
+                CALL(s, kern, rtiles * sk, a_int(s->proj_list[ip][variant].n_mats), a_int(rtiles),
+                     a_int(rows_all), a_int(d), a_int(np), a_int(sk), desc,
+                     a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)), a_view(s->weights, 0, (int64_t)(s->weights_bytes / 2)),
+                     a_u32v(s->x_bf16, 0, (int64_t)s->x_bf16_words), a_f32v(s->mv_part, 0, sk * np * rows_all));
+                CALL(s, K_PROJ_SK_REDUCE, np * rows_all, a_int(s->proj_list[ip][variant].n_mats), a_int(rows_all),
+                     a_int(np), a_int(sk), desc, a_f32v(s->mv_part, 0, sk * np * rows_all),
+                     a_f32v(s->proj, 0, (int64_t)s->proj_floats));
+            } else {
+                int64_t warps = rtiles * ((np + 31) / 32);
+                CALL(s, K_PROJ_MMA, warps, a_int(s->proj_list[ip][variant].n_mats), a_int(rtiles), a_int(d), a_int(np), desc,
+                     a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)), a_view(s->weights, 0, (int64_t)(s->weights_bytes / 2)),
+                     a_u32v(s->x_bf16, 0, (int64_t)s->x_bf16_words), a_f32v(s->proj, 0, (int64_t)s->proj_floats));
+            }
         } else {
             int64_t xbq = 0, xbk = same ? 0 : half_stack, xbv = same ? 0 : 2 * half_stack;
             if (L->attn_q.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_q, np, n_q, d, 0, s->x_bf16, xbq, s->q_buf, 0)) return 1; }
+            else if (L->attn_q.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_q, np, n_q, d, s->x_bf16, xbq, s->q_buf, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_q, np, n_q, d, 0, xin, xq, s->q_buf, 0)) return 1;
             if (L->attn_k.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_k, np, n_kv, d, 0, s->x_bf16, xbk, s->k_raw, 0)) return 1; }
+            else if (L->attn_k.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_k, np, n_kv, d, s->x_bf16, xbk, s->k_raw, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_k, np, n_kv, d, 0, xin, xk, s->k_raw, 0)) return 1;
             if (k_dyn) {
                 if (L->attn_k_conv_proj.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, s->x_bf16, xbk, s->kdyn_buf, 0)) return 1; }
+                else if (L->attn_k_conv_proj.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_k_conv_proj, np, n_dyn, d, s->x_bf16, xbk, s->kdyn_buf, 0)) return 1; }
                 else if (dispatch_mv(s, &L->attn_k_conv_proj, np, n_dyn, d, 0, xin, xk, s->kdyn_buf, 0)) return 1;
             }
             if (L->attn_v.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_v, np, n_kv, d, 0, s->x_bf16, xbv, s->v_raw, 0)) return 1; }
+            else if (L->attn_v.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_v, np, n_kv, d, s->x_bf16, xbv, s->v_raw, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_v, np, n_kv, d, 0, xin, xv, s->v_raw, 0)) return 1;
             if (v_dyn) {
                 if (L->attn_v_conv_proj.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_v_conv_proj, np, n_dyn, d, 0, s->x_bf16, xbv, s->vdyn_buf, 0)) return 1; }
+                else if (L->attn_v_conv_proj.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_v_conv_proj, np, n_dyn, d, s->x_bf16, xbv, s->vdyn_buf, 0)) return 1; }
                 else if (dispatch_mv(s, &L->attn_v_conv_proj, np, n_dyn, d, 0, xin, xv, s->vdyn_buf, 0)) return 1;
             }
             if (L->attn_rel.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_rel, np, n_head * n_rel, d, 0, s->x_bf16, xbq, s->r_buf, 0)) return 1; }
+            else if (L->attn_rel.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_rel, np, n_head * n_rel, d, s->x_bf16, xbq, s->r_buf, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_rel, np, n_head * n_rel, d, 0, xin, xq, s->r_buf, 0)) return 1;
             if (L->attn_sink_proj.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_sink_proj, np, n_head, d, 0, s->x_bf16, xbq, s->sinks_buf, 0)) return 1; }
+            else if (L->attn_sink_proj.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_sink_proj, np, n_head, d, s->x_bf16, xbq, s->sinks_buf, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_sink_proj, np, n_head, d, 0, xin, xq, s->sinks_buf, 0)) return 1;
             if (L->attn_gate.type == INK_GGML_Q8_0) { if (dispatch_q8_mma(s, &L->attn_gate, np, n_q, d, 0, s->x_bf16, xbq, s->gate_buf, 0)) return 1; }
+            else if (L->attn_gate.type == INK_GGML_IQ4_NL) { if (dispatch_iq4_mma(s, &L->attn_gate, np, n_q, d, s->x_bf16, xbq, s->gate_buf, 0)) return 1; }
             else if (dispatch_mv(s, &L->attn_gate, np, n_q, d, 0, xin, xq, s->gate_buf, 0)) return 1;
         }
     } else {
         for (int64_t tok = 0; fused && tok < np; tok++) {
             PcArg desc = a_u32v(s->proj_desc, (int64_t)(ip * 2 + variant) * 80, 80);
-            CALL(s, K_PROJ_P, s->proj_list[ip][variant].items, a_int(s->proj_list[ip][variant].n_mats), a_int(tok), a_int(d), desc,
+            int pkern = s->proj_list[ip][variant].is_iq4 ? K_PROJ_IQ4_P : K_PROJ_P;
+            CALL(s, pkern, s->proj_list[ip][variant].items, a_int(s->proj_list[ip][variant].n_mats), a_int(tok), a_int(d), desc,
                  a_view(s->weights, 0, (int64_t)(s->weights_bytes / 4)), a_view(s->weights, 0, (int64_t)(s->weights_bytes / 2)),
                  a_f32v(xin, 0, 3 * stack), a_f32v(s->mv_part, 0, (int64_t)s->mv_part_floats));
             CALL(s, K_PROJ_S, s->proj_list[ip][variant].rows, a_int(s->proj_list[ip][variant].n_mats), a_int(tok), a_int(d / 32), desc,
@@ -894,16 +1269,41 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
        into the KV cache of slot il. One token takes one launch. The
        attention kernel clips Q and R itself. */
     int64_t kv_cap = s->kv_cap[il];
+    int64_t kv_u16 = kv_cap * (s->kv_fp8 ? (n_kv / 2) : n_kv);
     if (np == 1 && hd == 128 && k_dyn == v_dyn) {
-        CALL(s, K_KV1, n_head_kv, a_int(n_kv), a_int(k_dyn), a_int(pos_arg), a_int(kv_cap), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
+        CALL(s, K_KV1, n_head_kv, a_int(n_kv), a_int(k_dyn | (s->kv_fp8 ? 2 : 0)), a_int(pos_arg), a_int(kv_cap), a_f32(hp->qk_clip), a_f32(hp->rms_eps),
              a_f32v(s->k_raw, 0, n_kv), a_f32v(s->v_raw, 0, n_kv),
              a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
              k_dyn ? a_f32v(s->kdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
              v_dyn ? a_f32v(s->vdyn_buf, 0, n_dyn) : a_f32v(s->dummy_f32, 0, 64),
              a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->conv_v[il], 0, n_kv * 3),
-             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_u16), a_u16v(s->kv_v[il], 0, kv_u16),
+             a_u32v(s->dev_pos, 0, 1));
+    } else if (np >= 2 && np <= 8 && hd == 128 && k_dyn == v_dyn) {
+        int64_t kv_flags = k_dyn | (s->kv_fp8 ? 2 : 0) | (s->spec_recording ? 4 : 0);
+        int64_t slot_ch = 2 * n_kv + 2 * d;
+        PcArg log_arg = s->spec_recording
+            ? a_f32v(s->spec_raw_log, (int64_t)il * 8 * slot_ch, 16 * n_kv)
+            : a_f32v(s->dummy_f32, 0, 64);
+        CALL(s, K_KV_NB, n_head_kv, a_int(n_kv), a_int(np), a_int(kv_flags), a_int(pos_arg), a_int(kv_cap),
+             a_f32(hp->qk_clip), a_f32(hp->rms_eps),
+             a_f32v(s->k_raw, 0, np * n_kv), a_f32v(s->v_raw, 0, np * n_kv),
+             a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
+             k_dyn ? a_f32v(s->kdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             v_dyn ? a_f32v(s->vdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->conv_k[il], 0, n_kv * 3), a_f32v(s->conv_v[il], 0, n_kv * 3),
+             log_arg,
+             a_u16v(s->kv_k[il], 0, kv_u16), a_u16v(s->kv_v[il], 0, kv_u16),
              a_u32v(s->dev_pos, 0, 1));
     } else {
+        if (s->spec_recording) {
+            int64_t slot_ch = 2 * n_kv + 2 * d;
+            int64_t rslot = (int64_t)il * 8 * slot_ch;
+            CALL(s, K_COPY, np * n_kv, a_int(np * n_kv), a_f32v(s->k_raw, 0, np * n_kv),
+                 a_f32v(s->spec_raw_log, rslot, np * n_kv));
+            CALL(s, K_COPY, np * n_kv, a_int(np * n_kv), a_f32v(s->v_raw, 0, np * n_kv),
+                 a_f32v(s->spec_raw_log, rslot + 8 * n_kv, np * n_kv));
+        }
         CALL(s, K_CONVOLVE, n_kv, a_int(n_kv), a_int(n_head_kv), a_int(k_dyn), a_int(np),
              a_f32v(s->k_raw, 0, np * n_kv), a_tensor_f32(s, &L->attn_k_conv),
              k_dyn ? a_f32v(s->kdyn_buf, 0, np * n_dyn) : a_f32v(s->dummy_f32, 0, 64),
@@ -918,10 +1318,17 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
              a_u32v(s->dev_pos, 0, 1));
         CALL(s, K_HEAD_RMSNORM, np * n_head_kv, a_int(hd), a_f32(hp->rms_eps),
              a_f32v(s->v_buf, 0, np * n_kv));
-        CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(pos_arg), a_int(kv_cap),
-             a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
-             a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
-             a_u32v(s->dev_pos, 0, 1));
+        if (s->kv_fp8) {
+            CALL(s, K_KV_STORE_FP8, np * (n_kv / 2), a_int(n_kv), a_int(pos_arg), a_int(kv_cap),
+                 a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
+                 a_u16v(s->kv_k[il], 0, kv_u16), a_u16v(s->kv_v[il], 0, kv_u16),
+                 a_u32v(s->dev_pos, 0, 1));
+        } else {
+            CALL(s, K_KV_STORE, np * n_kv, a_int(n_kv), a_int(pos_arg), a_int(kv_cap),
+                 a_f32v(s->k_buf, 0, np * n_kv), a_f32v(s->v_buf, 0, np * n_kv),
+                 a_u16v(s->kv_k[il], 0, kv_u16), a_u16v(s->kv_v[il], 0, kv_u16),
+                 a_u32v(s->dev_pos, 0, 1));
+        }
     }
     /* Full-attention Q and R are scaled by tau = 1 + alpha * log(max(1,
        (position + 1) / floor)), which the attention kernel computes for
@@ -933,30 +1340,62 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
     if (!fused && !use_mma && dispatch_mv(s, &L->attn_sink_proj, np, n_head, d, 0, xin, xq, s->sinks_buf, 0)) return 1;
     if (!fused && !use_mma && dispatch_mv(s, &L->attn_gate, np, n_q, d, 0, xin, xq, s->gate_buf, 0)) return 1;
 
-    /* Attention. Online-softmax GQA attention eliminates the attn_scores DRAM buffer
-       and reuses each KV tile across 4 Q vectors (2 tokens x 2 Q heads). */
+    /* Attention:
+       - For np == 1 with FP16 KV: K_ATTN (single launch, ~10.85 ms B=1).
+       - For np == 2..8 (and np == 1 with FP8 KV): K_ATTN_ONLINE_SK (zero attn_scores DRAM,
+         saturates all SMs across context length, 2.4 ms faster than K_ATTN at nb=8, FP8 KV ready!).
+       - For prefill (np > 8): K_ATTN_ONLINE (zero attn_scores DRAM, full SM saturation). */
     int64_t dims0 = n_head | (n_head_kv << 16) | (hd << 32) | (n_rel << 48);
-    int64_t dims1 = hp->rel_extent | ((int64_t)is_swa << 24) | (hp->swa << 32);
-    if (np >= 2 && s->use_online_attn) {
+    int64_t dims1 = hp->rel_extent | ((int64_t)is_swa << 24) | (hp->swa << 32) | ((int64_t)s->kv_fp8 << 56);
+    if (s->use_online_attn && ((np >= 2 && np <= 8) || (np == 1 && s->kv_fp8)) && s->attn_sk_o) {
+        int64_t gqa = n_head / n_head_kv;
+        int64_t q_in_g = gqa < 8 ? gqa : 8;
+        int64_t t_step = 8 / q_in_g;
+        int64_t g_chunks = (gqa + q_in_g - 1) / q_in_g;
+        int64_t oa_items = ((np + t_step - 1) / t_step) * n_head_kv * g_chunks;
+        int64_t sk = 16;
+        CALL(s, K_ATTN_ONLINE_SK, oa_items * sk,
+             a_int(dims0), a_int(dims1), a_int(kv_cap), a_int(pos_arg), a_int(np | (sk << 16)),
+             a_f32v(s->q_buf, 0, np * n_q),
+             a_f32v(s->r_buf, 0, np * n_head * n_rel),
+             a_tensor_f32(s, &L->attn_rel_bias),
+             a_f32v(s->sinks_buf, 0, np * n_head),
+             a_u16v(s->kv_k[il], 0, kv_u16),
+             a_u16v(s->kv_v[il], 0, kv_u16),
+             a_f32v(s->attn_sk_o, 0, np * n_head * sk * hd),
+             a_f32v(s->attn_sk_ms, 0, np * n_head * sk * 2),
+             a_int((L->attn_q_clip.present ? 1 : 0) | (L->attn_rel_clip.present ? 2 : 0)),
+             a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor),
+             L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
+             L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64),
+             a_u32v(s->dev_pos, 0, 1));
+        CALL(s, K_ATTN_SK_REDUCE, np * n_head,
+             a_int(sk),
+             a_f32v(s->attn_sk_o, 0, np * n_head * sk * hd),
+             a_f32v(s->attn_sk_ms, 0, np * n_head * sk * 2),
+             a_f32v(s->gate_buf, 0, np * n_q),
+             a_f32v(s->attn_out, 0, np * n_q));
+    } else if (np >= 9 && s->use_online_attn) {
         int64_t gqa = n_head / n_head_kv;
         int64_t q_in_g = gqa < 8 ? gqa : 8;
         int64_t t_step = 8 / q_in_g;
         int64_t g_chunks = (gqa + q_in_g - 1) / q_in_g;
         int64_t oa_items = ((np + t_step - 1) / t_step) * n_head_kv * g_chunks;
         CALL(s, K_ATTN_ONLINE, oa_items,
-             a_int(dims0), a_int(dims1), a_int(kv_cap), a_int(s->pos), a_int(np),
+             a_int(dims0), a_int(dims1), a_int(kv_cap), a_int(pos_arg), a_int(np),
              a_f32v(s->q_buf, 0, np * n_q),
              a_f32v(s->r_buf, 0, np * n_head * n_rel),
              a_tensor_f32(s, &L->attn_rel_bias),
              a_f32v(s->sinks_buf, 0, np * n_head),
              a_f32v(s->gate_buf, 0, np * n_q),
-             a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
-             a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_u16),
+             a_u16v(s->kv_v[il], 0, kv_u16),
              a_f32v(s->attn_out, 0, np * n_q),
              a_int((L->attn_q_clip.present ? 1 : 0) | (L->attn_rel_clip.present ? 2 : 0)),
              a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(tau_alpha), a_f32(tau_floor),
              L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
-             L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
+             L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64),
+             a_u32v(s->dev_pos, 0, 1));
     } else {
         int64_t kv_info = kv_cap | ((int64_t)s->max_ctx << 32);
         CALL(s, K_ATTN, np * n_head,
@@ -998,18 +1437,38 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
         CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(blocks), a_int(block_start),
              a_f32v(s->mv_part, 0, d * blocks), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
              a_f32v(s->cur, 0, nd), blk_arg);
-    } else if (use_mma && wo->type == INK_GGML_Q8_0 && n_q % 32 == 0) {
+    } else if (use_mma && (wo->type == INK_GGML_Q8_0 || wo->type == INK_GGML_IQ4_NL) && n_q % 32 == 0) {
         CALL(s, K_BF16_PACK, np * (n_q / 2), a_int(np * (n_q / 2)),
              a_f32v(s->attn_out, 0, np * n_q), a_u32v(s->x_bf16, 0, np * (n_q / 2)));
-        if (dispatch_q8_mma(s, wo, np, d, n_q, 0, s->x_bf16, 0, s->o_raw, 0)) return 1;
-        CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
-             a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
-             a_f32v(s->cur, 0, nd), blk_arg);
+        if (wo->type == INK_GGML_Q8_0) {
+            if (dispatch_q8_mma(s, wo, np, d, n_q, 0, s->x_bf16, 0, s->o_raw, 0)) return 1;
+        } else {
+            if (dispatch_iq4_mma(s, wo, np, d, n_q, s->x_bf16, 0, s->o_raw, 0)) return 1;
+        }
+        if (s->spec_recording) {
+            int64_t slot_ch = 2 * n_kv + 2 * d;
+            CALL(s, K_ATTN_POST_LOG, d, a_int(d), a_int(np), a_int(block_start),
+                 a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+                 a_f32v(s->spec_raw_log, (int64_t)il * 8 * slot_ch + 16 * n_kv, nd),
+                 a_f32v(s->cur, 0, nd), blk_arg);
+        } else {
+            CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
+                 a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+                 a_f32v(s->cur, 0, nd), blk_arg);
+        }
     } else {
         if (dispatch_mv(s, wo, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
-        CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
-             a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
-             a_f32v(s->cur, 0, nd), blk_arg);
+        if (s->spec_recording) {
+            int64_t slot_ch = 2 * n_kv + 2 * d;
+            CALL(s, K_ATTN_POST_LOG, d, a_int(d), a_int(np), a_int(block_start),
+                 a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+                 a_f32v(s->spec_raw_log, (int64_t)il * 8 * slot_ch + 16 * n_kv, nd),
+                 a_f32v(s->cur, 0, nd), blk_arg);
+        } else {
+            CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
+                 a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+                 a_f32v(s->cur, 0, nd), blk_arg);
+        }
     }
     if (block_start) (*n_blocks)++;
 
@@ -1050,7 +1509,7 @@ static int dispatch_layer_moe(InkSession *s, int il, int ip, int64_t np, PcBuffe
     int64_t nd = np * d;
     int64_t n_used = hp->n_expert_used;
     int64_t n_ff = hp->n_ff_exp;
-    uint32_t gu_type = L->ffn_gate_up_exps.type, dn_type = L->ffn_down_exps.type;
+    uint32_t gu_type = c->gu_type, dn_type = c->dn_type;
     if ((gu_type != INK_GGML_IQ4_NL && gu_type != INK_GGML_Q8_0) || (dn_type != INK_GGML_IQ4_NL && dn_type != INK_GGML_Q8_0)) {
         snprintf(s->error, sizeof s->error, "unsupported expert types %u and %u", gu_type, dn_type);
         return 1;
@@ -1117,8 +1576,8 @@ static int dispatch_layer_moe(InkSession *s, int il, int ip, int64_t np, PcBuffe
 static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_blocks, int has_messages) {
     if (dispatch_layer_pre(s, il, ip, np, n_blocks, has_messages) != 0) return 1;
     const InkHParams *hp = &s->gguf.hp;
-    const InkLayerTensors *L = &s->gguf.layers[ip];
-    uint32_t gu_type = L->ffn_gate_up_exps.type, dn_type = L->ffn_down_exps.type;
+    const ExpertCache *c = &s->experts[ip];
+    uint32_t gu_type = c->gu_type, dn_type = c->dn_type;
     if ((gu_type != INK_GGML_IQ4_NL && gu_type != INK_GGML_Q8_0) || (dn_type != INK_GGML_IQ4_NL && dn_type != INK_GGML_Q8_0)) {
         snprintf(s->error, sizeof s->error, "unsupported expert types %u and %u", gu_type, dn_type);
         return 1;
@@ -1176,6 +1635,17 @@ static int is_expert_tensor(const InkLayerTensors *L, const InkTensor *t) {
     return t == &L->ffn_gate_up_exps || t == &L->ffn_down_exps;
 }
 
+static int is_fast_q4_attn_tensor(const InkLayerTensors *L, const InkTensor *t) {
+    return t == &L->attn_q || t == &L->attn_k || t == &L->attn_k_conv_proj ||
+           t == &L->attn_v || t == &L->attn_v_conv_proj || t == &L->attn_rel ||
+           t == &L->attn_sink_proj || t == &L->attn_gate || t == &L->attn_output;
+}
+
+static int env_on(const char *name) {
+    const char *v = getenv(name);
+    return v != NULL && v[0] != '\0' && v[0] != '0';
+}
+
 static int64_t env_mb(const char *name) {
     const char *v = getenv(name);
     if (!v || !*v) return -1;
@@ -1184,6 +1654,815 @@ static int64_t env_mb(const char *name) {
 }
 
 static int64_t to_mb(size_t bytes) { return (int64_t)((bytes + 1048575u) / 1048576u); }
+
+/* ---- Stage C3B: Native Coax CUDA DSpark (mtp.safetensors) ---- */
+static float bf16_to_f32_cuda_host(uint16_t b) {
+    uint32_t u = (uint32_t)b << 16;
+    float f;
+    memcpy(&f, &u, 4);
+    return f;
+}
+
+static int mtp_seek(FILE *f, int64_t off) {
+#ifdef _WIN32
+    return _fseeki64(f, off, SEEK_SET);
+#else
+    return fseeko(f, (off_t)off, SEEK_SET);
+#endif
+}
+
+static int mtp_find_span_cuda(const char *hdr, int64_t data_start, size_t file_size,
+                              const char *name, int64_t expected_bytes, MtpSpan *out) {
+    out->off = -1;
+    out->bytes = 0;
+    char needle[128];
+    snprintf(needle, sizeof needle, "\"%s\"", name);
+    const char *p = strstr(hdr, needle);
+    if (!p) return 1;
+    const char *obj = strchr(p + strlen(needle), '{');
+    if (!obj) return 1;
+    const char *end = strchr(obj, '}');
+    if (!end) return 1;
+    const char *doff = strstr(obj, "\"data_offsets\"");
+    if (!doff || doff > end) return 1;
+    const char *lb = strchr(doff, '[');
+    if (!lb || lb > end) return 1;
+    char *ep = NULL;
+    int64_t s0 = strtoll(lb + 1, &ep, 10);
+    if (!ep || ep > end) return 1;
+    const char *comma = strchr(ep, ',');
+    if (!comma || comma > end) return 1;
+    int64_t s1 = strtoll(comma + 1, &ep, 10);
+    if (!ep || ep > end) return 1;
+    if (s0 < 0 || s1 <= s0 || (s1 - s0) != expected_bytes) return 1;
+    int64_t off = data_start + s0;
+    if ((off & 3) != 0 || (size_t)(data_start + s1) > file_size) return 1;
+    out->off = off;
+    out->bytes = s1 - s0;
+    return 0;
+}
+
+static int dspark_iq4_mm(InkSession *s, PcBuffer wq, PcBuffer wd, int64_t rows, int64_t cols, int64_t np,
+                         PcBuffer xb_buf, int64_t xb_word_off, PcBuffer out_buf, int64_t out_elem_off) {
+    int64_t blocks = cols / 32;
+    int64_t rtiles = (rows + 15) / 16;
+    for (int64_t t0 = 0; t0 < np; t0 += 8) {
+        int64_t tn = (np - t0 < 8) ? (np - t0) : 8;
+        int64_t sk = (rows <= 2560 && blocks >= 32 && (size_t)(4 * tn * rows) <= s->mv_part_floats) ? 4 : 1;
+        if (sk > 1) {
+            CALL(s, K_IQ4_MMA_NB8_SK, rtiles * sk, a_int(rows), a_int(rows), a_int(cols), a_int(tn), a_int(sk),
+                 a_view(wq, 0, rows * blocks * 4), a_view(wd, 0, rows * blocks),
+                 a_u32v(xb_buf, xb_word_off + t0 * (cols / 2), tn * (cols / 2)),
+                 a_f32v(s->mv_part, 0, sk * tn * rows));
+            CALL(s, K_SK_REDUCE, tn * rows, a_int(tn * rows), a_int(sk), a_int(0),
+                 a_f32v(s->mv_part, 0, sk * tn * rows), a_f32v(out_buf, out_elem_off + t0 * rows, tn * rows));
+        } else {
+            CALL(s, K_IQ4_MMA_NB8_SK, rtiles, a_int(rows), a_int(rows), a_int(cols), a_int(tn), a_int(1),
+                 a_view(wq, 0, rows * blocks * 4), a_view(wd, 0, rows * blocks),
+                 a_u32v(xb_buf, xb_word_off + t0 * (cols / 2), tn * (cols / 2)),
+                 a_f32v(out_buf, out_elem_off + t0 * rows, tn * rows));
+        }
+    }
+    return 0;
+}
+
+static int dspark_upload_iq4_relayout(InkSession *s, FILE *f, MtpSpan sp, uint8_t *hbuf, size_t hbuf_bytes,
+                                      PcBuffer dst_q, PcBuffer dst_d, int64_t total_rows, int64_t row0_base,
+                                      int64_t n_rows, int64_t cols) {
+    int64_t blocks = cols / 32;
+    size_t row_bytes = (size_t)cols * 2;
+    size_t cap_bytes = hbuf_bytes < s->stage_bytes ? hbuf_bytes : s->stage_bytes;
+    int64_t piece = (int64_t)(cap_bytes / row_bytes);
+    if (piece > n_rows) piece = n_rows;
+    if (piece <= 0) return 1;
+    if (mtp_seek(f, sp.off) != 0) return 1;
+    for (int64_t r = 0; r < n_rows; r += piece) {
+        int64_t n = (n_rows - r < piece) ? (n_rows - r) : piece;
+        size_t nb = (size_t)n * row_bytes;
+        if (fread(hbuf, 1, nb, f) != nb) return 1;
+        if (pc_upload(s->stage, hbuf, nb, s->stream) != PC_OK) return 1;
+        CALL(s, K_BF16_TO_IQ4_RELAYOUT, n * blocks,
+             a_int(total_rows), a_int(row0_base + r), a_int(n), a_int(blocks),
+             a_u16v(s->stage, 0, n * cols),
+             a_view(dst_q, 0, total_rows * blocks * 4), a_view(dst_d, 0, total_rows * blocks));
+        if (pc_sync_stream(s->stream) != PC_OK) return 1;
+    }
+    return 0;
+}
+
+static int dspark_upload_iq4_row(InkSession *s, FILE *f, MtpSpan sp, uint8_t *hbuf, size_t hbuf_bytes,
+                                 PcBuffer dst_q, PcBuffer dst_d, int64_t n_rows, int64_t cols) {
+    int64_t blocks = cols / 32;
+    size_t row_bytes = (size_t)cols * 2;
+    size_t cap_bytes = hbuf_bytes < s->stage_bytes ? hbuf_bytes : s->stage_bytes;
+    int64_t piece = (int64_t)(cap_bytes / row_bytes);
+    if (piece > n_rows) piece = n_rows;
+    if (piece <= 0) return 1;
+    if (mtp_seek(f, sp.off) != 0) return 1;
+    for (int64_t r = 0; r < n_rows; r += piece) {
+        int64_t n = (n_rows - r < piece) ? (n_rows - r) : piece;
+        size_t nb = (size_t)n * row_bytes;
+        if (fread(hbuf, 1, nb, f) != nb) return 1;
+        if (pc_upload(s->stage, hbuf, nb, s->stream) != PC_OK) return 1;
+        CALL(s, K_BF16_TO_IQ4_ROW, n * blocks,
+             a_int(r), a_int(n), a_int(blocks),
+             a_u16v(s->stage, 0, n * cols),
+             a_view(dst_q, 0, n_rows * blocks * 4), a_view(dst_d, 0, n_rows * blocks));
+        if (pc_sync_stream(s->stream) != PC_OK) return 1;
+    }
+    return 0;
+}
+
+static void ink_dspark_close(InkSession *s) {
+    if (!s) return;
+    CudaDspark *d = &s->dspark;
+    for (int i = 0; i < 8; i++) {
+        if (d->draft_graph[i]) { pc_graph_free(d->draft_graph[i]); d->draft_graph[i] = NULL; }
+    }
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 9; j++) {
+            if (d->absorb_graph[i][j]) { pc_graph_free(d->absorb_graph[i][j]); d->absorb_graph[i][j] = NULL; }
+        }
+    }
+    for (int i = 0; i < 3; i++) {
+        free_buf(&d->layers[i].kv_k);
+        free_buf(&d->layers[i].kv_v);
+    }
+    free_buf(&d->small_buf);
+    free_buf(&d->weights_buf);
+    free_buf(&d->scratch_buf);
+    d->ready = 0;
+}
+
+static void ink_dspark_open(InkSession *s, const char *gguf_path) {
+    CudaDspark *d = &s->dspark;
+    d->ready = 0;
+    const char *ds_env = getenv("INK_DSPARK");
+    if (ds_env && ds_env[0] == '0') return;
+    const InkHParams *hp = &s->gguf.hp;
+    if (!s->can_verify_nb || s->gguf.output.type != INK_GGML_Q8_0) return;
+    if (hp->n_embd != 2304 || hp->loop_count != 3 || hp->loop_start != 6 ||
+        hp->loop_end != 18 || hp->n_phys != 24 || hp->n_vocab > 201024) return;
+
+    char path_buf[1024];
+    const char *mtp_path = getenv("INK_MTP_PATH");
+    if (!mtp_path || !*mtp_path) {
+        const char *sl1 = gguf_path ? strrchr(gguf_path, '/') : NULL;
+        const char *sl2 = gguf_path ? strrchr(gguf_path, '\\') : NULL;
+        const char *slash = (sl1 && sl2) ? (sl1 > sl2 ? sl1 : sl2) : (sl1 ? sl1 : sl2);
+        if (slash) {
+            size_t dir_len = (size_t)(slash - gguf_path);
+            if (dir_len + 17 >= sizeof path_buf) return;
+            memcpy(path_buf, gguf_path, dir_len);
+            memcpy(path_buf + dir_len, "/mtp.safetensors", 17);
+        } else {
+            snprintf(path_buf, sizeof path_buf, "mtp.safetensors");
+        }
+        mtp_path = path_buf;
+    }
+
+    FILE *f = fopen(mtp_path, "rb");
+    if (!f) return;
+    if (mtp_seek(f, 0) != 0) { fclose(f); return; }
+#ifdef _WIN32
+    _fseeki64(f, 0, SEEK_END);
+    int64_t fsize64 = _ftelli64(f);
+#else
+    fseeko(f, 0, SEEK_END);
+    int64_t fsize64 = (int64_t)ftello(f);
+#endif
+    if (fsize64 < 64) { fclose(f); return; }
+    size_t fsize = (size_t)fsize64;
+    mtp_seek(f, 0);
+    uint64_t hdr_len = 0;
+    if (fread(&hdr_len, 1, 8, f) != 8 || hdr_len == 0 || hdr_len > (1ULL << 20) || 8 + hdr_len >= fsize) {
+        fclose(f); return;
+    }
+    int64_t data_start = (int64_t)(8 + hdr_len);
+    char *hdr = (char *)malloc((size_t)hdr_len + 1);
+    if (!hdr) { fclose(f); return; }
+    if (fread(hdr, 1, (size_t)hdr_len, f) != (size_t)hdr_len) { free(hdr); fclose(f); return; }
+    hdr[hdr_len] = '\0';
+
+    MtpSpan sp_fuse, sp_mask, sp_norm, sp_mh_dn, sp_mh_hw, sp_mh_hb, sp_mh_mw1, sp_mh_rw, sp_mh_rb;
+    MtpSpan sp_l[3][15];
+    int err = 0;
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "fuse_weight", 4 * 4 * 2, &sp_fuse);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "mask_embed", 2304 * 2, &sp_mask);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "norm.weight", 2304 * 2, &sp_norm);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.dflare_norm.weight", 2304 * 2, &sp_mh_dn);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.hidden_out.weight", 2304LL * 256 * 2, &sp_mh_hw);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.hidden_out.bias", 2304 * 2, &sp_mh_hb);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.markov_w1.weight", 201024LL * 256 * 2, &sp_mh_mw1);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.rnn_proj.weight", 768LL * 5120 * 2, &sp_mh_rw);
+    err |= mtp_find_span_cuda(hdr, data_start, fsize, "markov_head.rnn_proj.bias", 768 * 2, &sp_mh_rb);
+    static const char *const lsuf[15] = {
+        "dflare_norm.weight", "input_layernorm.weight", "post_attention_layernorm.weight",
+        "self_attn.q_norm.weight", "self_attn.k_norm.weight", "self_attn.k_norm_ctx.weight",
+        "self_attn.q_proj.weight", "self_attn.k_proj.weight", "self_attn.v_proj.weight",
+        "self_attn.k_proj_ctx.weight", "self_attn.v_proj_ctx.weight", "self_attn.o_proj.weight",
+        "mlp.gate_proj.weight", "mlp.up_proj.weight", "mlp.down_proj.weight"
+    };
+    static const int64_t lbytes[15] = {
+        2304*2, 2304*2, 2304*2, 128*2, 128*2, 128*2,
+        3072LL*2304*2, 1024LL*2304*2, 1024LL*2304*2,
+        1024LL*2304*2, 1024LL*2304*2, 2304LL*3072*2,
+        9216LL*2304*2, 9216LL*2304*2, 2304LL*9216*2
+    };
+    for (int i = 0; i < 3; i++) {
+        char nbuf[96];
+        for (int k = 0; k < 15; k++) {
+            snprintf(nbuf, sizeof nbuf, "layers.%d.%s", i, lsuf[k]);
+            err |= mtp_find_span_cuda(hdr, data_start, fsize, nbuf, lbytes[k], &sp_l[i][k]);
+        }
+    }
+    free(hdr);
+    if (err != 0) { fclose(f); return; }
+
+    int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+    int64_t pb = s->batch;
+    d->kv_fp8 = s->kv_fp8;
+    size_t kv_need_bf16 = 0, kv_need_fp8 = 0;
+    for (int i = 0; i < 3; i++) {
+        d->layers[i].is_swa = (i == 0 || i == 2) ? 1 : 0;
+        int ring = 1024 + (int)pb;
+        int cap = d->layers[i].is_swa ? (ring < s->max_ctx ? ring : s->max_ctx) : s->max_ctx;
+        d->layers[i].kv_cap = cap;
+        kv_need_bf16 += (size_t)cap * 1024 * 4;
+        kv_need_fp8  += (size_t)cap * 1024 * 2;
+    }
+
+    /* Plan contiguous arenas: small_buf (~1 MB), weights_buf (~215 MB IQ4_NL), scratch_buf (~13 MB). */
+#define ALIGN256(x) (((x) + 255u) & ~(size_t)255u)
+    size_t small_sz = 0;
+    size_t off_mask = small_sz; small_sz += ALIGN256(2304 * 2);
+    size_t off_norm = small_sz; small_sz += ALIGN256(2304 * 2);
+    size_t off_mhdn = small_sz; small_sz += ALIGN256(2304 * 2);
+    size_t off_mhrb = small_sz; small_sz += ALIGN256(768 * 2);
+    size_t off_rwst = small_sz; small_sz += ALIGN256(768 * 512 * 2);
+    size_t off_ifrq = small_sz; small_sz += ALIGN256(64 * 4);
+    size_t off_foldb = small_sz; small_sz += ALIGN256((size_t)nv * 4);
+    size_t off_l1d[3][6];
+    for (int i = 0; i < 3; i++) {
+        for (int k = 0; k < 6; k++) {
+            off_l1d[i][k] = small_sz;
+            small_sz += ALIGN256((size_t)lbytes[k]);
+        }
+    }
+
+    size_t w_sz = 0;
+    size_t off_lq[3][6], off_ld[3][6]; /* 0=qkv, 1=o, 2=gu, 3=dn, 4=kctx, 5=vctx */
+    static const int64_t lshape[6][2] = {{5120,2304},{2304,3072},{18432,2304},{2304,9216},{1024,2304},{1024,2304}};
+    for (int i = 0; i < 3; i++) {
+        for (int k = 0; k < 6; k++) {
+            size_t nblk = (size_t)lshape[k][0] * (size_t)(lshape[k][1] / 32);
+            off_lq[i][k] = w_sz; w_sz += ALIGN256(nblk * 16);
+            off_ld[i][k] = w_sz; w_sz += ALIGN256(nblk * 2);
+        }
+    }
+    size_t off_rc_q = w_sz; w_sz += ALIGN256((size_t)768 * (4608 / 32) * 16);
+    size_t off_rc_d = w_sz; w_sz += ALIGN256((size_t)768 * (4608 / 32) * 2);
+    size_t off_mw_q = w_sz; w_sz += ALIGN256((size_t)201024 * 8 * 16);
+    size_t off_mw_d = w_sz; w_sz += ALIGN256((size_t)201024 * 8 * 2);
+    size_t off_fw_q = w_sz; w_sz += ALIGN256((size_t)nv * 8 * 16);
+    size_t off_fw_d = w_sz; w_sz += ALIGN256((size_t)nv * 8 * 2);
+
+    size_t sc_sz = 0;
+    size_t off_taps = sc_sz; sc_sz += ALIGN256((size_t)4 * (size_t)pb * 2304 * 4);
+    size_t off_ltap = sc_sz; sc_sz += ALIGN256((size_t)4 * 2304 * 4);
+    size_t off_ctxb = sc_sz; sc_sz += ALIGN256((size_t)pb * 2304 * 2);
+    size_t off_ctxk = sc_sz; sc_sz += ALIGN256((size_t)pb * 1024 * 4);
+    size_t off_ctxv = sc_sz; sc_sz += ALIGN256((size_t)pb * 1024 * 4);
+    size_t off_anc  = sc_sz; sc_sz += ALIGN256(2304 * 4);
+    size_t off_frnn = sc_sz; sc_sz += ALIGN256(2304 * 2);
+    size_t off_res  = sc_sz; sc_sz += ALIGN256(8 * 2304 * 4);
+    size_t off_xb   = sc_sz; sc_sz += ALIGN256(8 * 2304 * 2);
+    size_t off_qkv  = sc_sz; sc_sz += ALIGN256(8 * 5120 * 4);
+    size_t off_attb = sc_sz; sc_sz += ALIGN256(8 * 3072 * 2);
+    size_t off_tmp  = sc_sz; sc_sz += ALIGN256(8 * 2304 * 4);
+    size_t off_gu   = sc_sz; sc_sz += ALIGN256(8 * 18432 * 4);
+    size_t off_mlpb = sc_sz; sc_sz += ALIGN256(8 * 9216 * 2);
+    size_t off_mkin = sc_sz; sc_sz += ALIGN256(7 * 4608 * 2);
+    size_t off_rctx = sc_sz; sc_sz += ALIGN256(7 * 768 * 4);
+    size_t off_rst1 = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_rst2 = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_rlat = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_qrot = sc_sz; sc_sz += ALIGN256(8 * 3072 * 4);
+    size_t off_krot = sc_sz; sc_sz += ALIGN256(8 * 1024 * 4);
+    size_t off_vblk = sc_sz; sc_sz += ALIGN256(8 * 1024 * 4);
+    size_t off_asko = sc_sz; sc_sz += ALIGN256(24 * 8 * 8 * 128 * 4);
+    size_t off_askm = sc_sz; sc_sz += ALIGN256(24 * 8 * 8 * 2 * 4);
+    size_t off_s1m  = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_s1i  = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_s1s  = sc_sz; sc_sz += ALIGN256(256 * 4);
+    size_t off_dtok = sc_sz; sc_sz += ALIGN256(8 * 4);
+    size_t off_dprb = sc_sz; sc_sz += ALIGN256(8 * 4);
+    size_t off_dpos = sc_sz; sc_sz += ALIGN256(256);
+#undef ALIGN256
+
+    size_t kv_need = d->kv_fp8 ? kv_need_fp8 : kv_need_bf16;
+    size_t stage_reclaim = (!s->streaming && s->stage) ? s->stage_bytes : 0;
+    size_t total_need = small_sz + w_sz + sc_sz + kv_need;
+    size_t free_now = 0, total_now = 0;
+    if (pc_memory(&free_now, &total_now) != PC_OK) { fclose(f); return; }
+    if (!d->kv_fp8 && free_now + stage_reclaim < total_need + ((size_t)48 << 20) &&
+        free_now + stage_reclaim >= small_sz + w_sz + sc_sz + kv_need_fp8 + ((size_t)8 << 20)) {
+        d->kv_fp8 = 1;
+        kv_need = kv_need_fp8;
+        total_need = small_sz + w_sz + sc_sz + kv_need;
+    }
+    if (free_now + stage_reclaim < total_need + ((size_t)8 << 20)) {
+        fprintf(stderr, "psionic-cuda: DSpark skipped (need %lld MB, %lld MB VRAM free)\n",
+                (long long)to_mb(total_need), (long long)to_mb(free_now));
+        fclose(f);
+        return;
+    }
+
+    if (alloc_zero(s, &d->small_buf, small_sz) ||
+        alloc_zero(s, &d->weights_buf, w_sz) ||
+        alloc_zero(s, &d->scratch_buf, sc_sz)) {
+        s->error[0] = '\0';
+        ink_dspark_close(s); fclose(f); return;
+    }
+
+    d->mask_embed = d->small_buf + off_mask;
+    d->norm_w = d->small_buf + off_norm;
+    d->mh_dflare_norm = d->small_buf + off_mhdn;
+    d->mh_rnn_bias = d->small_buf + off_mhrb;
+    d->rnn_w_step = d->small_buf + off_rwst;
+    d->inv_freq = d->small_buf + off_ifrq;
+    d->fold_b = d->small_buf + off_foldb;
+    for (int i = 0; i < 3; i++) {
+        d->layers[i].dflare_norm  = d->small_buf + off_l1d[i][0];
+        d->layers[i].input_ln     = d->small_buf + off_l1d[i][1];
+        d->layers[i].post_attn_ln = d->small_buf + off_l1d[i][2];
+        d->layers[i].q_norm       = d->small_buf + off_l1d[i][3];
+        d->layers[i].k_norm       = d->small_buf + off_l1d[i][4];
+        d->layers[i].k_norm_ctx   = d->small_buf + off_l1d[i][5];
+        d->layers[i].qkv_q  = d->weights_buf + off_lq[i][0]; d->layers[i].qkv_d  = d->weights_buf + off_ld[i][0];
+        d->layers[i].o_q    = d->weights_buf + off_lq[i][1]; d->layers[i].o_d    = d->weights_buf + off_ld[i][1];
+        d->layers[i].gu_q   = d->weights_buf + off_lq[i][2]; d->layers[i].gu_d   = d->weights_buf + off_ld[i][2];
+        d->layers[i].dn_q   = d->weights_buf + off_lq[i][3]; d->layers[i].dn_d   = d->weights_buf + off_ld[i][3];
+        d->layers[i].kctx_q = d->weights_buf + off_lq[i][4]; d->layers[i].kctx_d = d->weights_buf + off_ld[i][4];
+        d->layers[i].vctx_q = d->weights_buf + off_lq[i][5]; d->layers[i].vctx_d = d->weights_buf + off_ld[i][5];
+    }
+    d->rnn_ctx_q = d->weights_buf + off_rc_q; d->rnn_ctx_d = d->weights_buf + off_rc_d;
+    d->mw1_q = d->weights_buf + off_mw_q; d->mw1_d = d->weights_buf + off_mw_d;
+    d->fold_q = d->weights_buf + off_fw_q; d->fold_d = d->weights_buf + off_fw_d;
+
+    d->taps = d->scratch_buf + off_taps;
+    d->last_taps = d->scratch_buf + off_ltap;
+    d->ctx_bf16 = d->scratch_buf + off_ctxb;
+    d->ctx_k_f32 = d->scratch_buf + off_ctxk;
+    d->ctx_v_f32 = d->scratch_buf + off_ctxv;
+    d->anchor_emb = d->scratch_buf + off_anc;
+    d->f_rnn_bf16 = d->scratch_buf + off_frnn;
+    d->res = d->scratch_buf + off_res;
+    d->x_bf16 = d->scratch_buf + off_xb;
+    d->qkv_f32 = d->scratch_buf + off_qkv;
+    d->attn_bf16 = d->scratch_buf + off_attb;
+    d->tmp_f32 = d->scratch_buf + off_tmp;
+    d->gu_f32 = d->scratch_buf + off_gu;
+    d->mlp_bf16 = d->scratch_buf + off_mlpb;
+    d->markov_in_bf16 = d->scratch_buf + off_mkin;
+    d->rnn_ctx = d->scratch_buf + off_rctx;
+    d->rnn_state = d->scratch_buf + off_rst1;
+    d->rnn_state2 = d->scratch_buf + off_rst2;
+    d->rnn_latent = d->scratch_buf + off_rlat;
+    d->base_logits = s->spec_logits; /* Aliased safely: draft_graph & verify_graph never overlap! Saves 5.6 MB VRAM! */
+    d->q_rot = d->scratch_buf + off_qrot;
+    d->k_rot = d->scratch_buf + off_krot;
+    d->v_blk = d->scratch_buf + off_vblk;
+    d->attn_sk_o = d->scratch_buf + off_asko;
+    d->attn_sk_ms = d->scratch_buf + off_askm;
+    d->s1_m = d->scratch_buf + off_s1m;
+    d->s1_i = d->scratch_buf + off_s1i;
+    d->s1_s = d->scratch_buf + off_s1s;
+    d->draft_toks = d->scratch_buf + off_dtok;
+    d->draft_probs = d->scratch_buf + off_dprb;
+    d->dev_pos = d->scratch_buf + off_dpos;
+
+    size_t hbuf_bytes = (size_t)20 << 20;
+    uint8_t *hbuf = (uint8_t *)malloc(hbuf_bytes);
+    if (!hbuf) { ink_dspark_close(s); fclose(f); return; }
+
+    /* 1. fuse_weight softmax -> fuse_alpha[4][4] + NeoX inv_freq */
+    uint16_t fw_raw[16];
+    if (mtp_seek(f, sp_fuse.off) != 0 || fread(fw_raw, 2, 16, f) != 16) goto fail_open;
+    for (int r = 0; r < 4; r++) {
+        float v[4], mx = -1e30f, sum = 0.0f;
+        for (int c = 0; c < 4; c++) { v[c] = bf16_to_f32_cuda_host(fw_raw[r * 4 + c]); if (v[c] > mx) mx = v[c]; }
+        for (int c = 0; c < 4; c++) { v[c] = expf(v[c] - mx); sum += v[c]; }
+        for (int c = 0; c < 4; c++) d->fuse_alpha[r][c] = v[c] / sum;
+    }
+    {
+        float ifreq[64];
+        for (int i = 0; i < 64; i++) ifreq[i] = powf(1000000.0f, -(float)(2 * i) / 128.0f);
+        if (pc_upload(d->inv_freq, ifreq, sizeof ifreq, s->stream) != PC_OK) goto fail_open;
+    }
+
+    /* 2. Upload 1D BF16 norms/biases */
+#define UP_SMALL(SPAN, DST) do { \
+    if (mtp_seek(f, (SPAN).off) != 0 || fread(hbuf, 1, (size_t)(SPAN).bytes, f) != (size_t)(SPAN).bytes) goto fail_open; \
+    if (pc_upload((DST), hbuf, (size_t)(SPAN).bytes, s->stream) != PC_OK) goto fail_open; \
+} while (0)
+    UP_SMALL(sp_mask, d->mask_embed);
+    UP_SMALL(sp_norm, d->norm_w);
+    UP_SMALL(sp_mh_dn, d->mh_dflare_norm);
+    UP_SMALL(sp_mh_rb, d->mh_rnn_bias);
+    for (int i = 0; i < 3; i++) {
+        UP_SMALL(sp_l[i][0], d->layers[i].dflare_norm);
+        UP_SMALL(sp_l[i][1], d->layers[i].input_ln);
+        UP_SMALL(sp_l[i][2], d->layers[i].post_attn_ln);
+        UP_SMALL(sp_l[i][3], d->layers[i].q_norm);
+        UP_SMALL(sp_l[i][4], d->layers[i].k_norm);
+        UP_SMALL(sp_l[i][5], d->layers[i].k_norm_ctx);
+    }
+#undef UP_SMALL
+
+    /* 3. Split rnn_proj.weight [768, 5120] -> BF16 rnn_w_step [768, 512] + IQ4_NL rnn_ctx [768, 4608] */
+    {
+        if (mtp_seek(f, sp_mh_rw.off) != 0 || fread(hbuf, 1, (size_t)sp_mh_rw.bytes, f) != (size_t)sp_mh_rw.bytes) goto fail_open;
+        uint16_t *rw_step = (uint16_t *)malloc(768 * 512 * 2);
+        uint16_t *rw_ctx  = (uint16_t *)malloc(768 * 4608 * 2);
+        if (!rw_step || !rw_ctx) { free(rw_step); free(rw_ctx); goto fail_open; }
+        const uint16_t *rw = (const uint16_t *)hbuf;
+        for (int r = 0; r < 768; r++) {
+            memcpy(rw_step + (size_t)r * 512, rw + (size_t)r * 5120, 512 * 2);
+            memcpy(rw_ctx  + (size_t)r * 4608, rw + (size_t)r * 5120 + 512, 4608 * 2);
+        }
+        int ok = (pc_upload(d->rnn_w_step, rw_step, 768 * 512 * 2, s->stream) == PC_OK &&
+                  pc_upload(s->stage, rw_ctx, 768 * 4608 * 2, s->stream) == PC_OK);
+        free(rw_step); free(rw_ctx);
+        if (!ok) goto fail_open;
+        int64_t rblk = 4608 / 32;
+        PcArg ra[] = { a_int(768), a_int(0), a_int(768), a_int(rblk),
+                       a_u16v(s->stage, 0, 768 * 4608),
+                       a_view(d->rnn_ctx_q, 0, 768 * rblk * 4), a_view(d->rnn_ctx_d, 0, 768 * rblk) };
+        if (call_k(s, K_BF16_TO_IQ4_RELAYOUT, 768 * rblk, 7, ra) != 0 || pc_sync_stream(s->stream) != PC_OK) goto fail_open;
+    }
+
+    /* 4. Quantize 3 DraftLayers + ctx projections -> block-major IQ4_NL on GPU */
+    for (int i = 0; i < 3; i++) {
+        CudaDsparkLayer *L = &d->layers[i];
+        if (dspark_upload_iq4_relayout(s, f, sp_l[i][6], hbuf, hbuf_bytes, L->qkv_q, L->qkv_d, 5120, 0, 3072, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][7], hbuf, hbuf_bytes, L->qkv_q, L->qkv_d, 5120, 3072, 1024, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][8], hbuf, hbuf_bytes, L->qkv_q, L->qkv_d, 5120, 4096, 1024, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][11], hbuf, hbuf_bytes, L->o_q, L->o_d, 2304, 0, 2304, 3072) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][12], hbuf, hbuf_bytes, L->gu_q, L->gu_d, 18432, 0, 9216, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][13], hbuf, hbuf_bytes, L->gu_q, L->gu_d, 18432, 9216, 9216, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][14], hbuf, hbuf_bytes, L->dn_q, L->dn_d, 2304, 0, 2304, 9216) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][9],  hbuf, hbuf_bytes, L->kctx_q, L->kctx_d, 1024, 0, 1024, 2304) ||
+            dspark_upload_iq4_relayout(s, f, sp_l[i][10], hbuf, hbuf_bytes, L->vctx_q, L->vctx_d, 1024, 0, 1024, 2304))
+            goto fail_open;
+    }
+
+    /* 5. Quantize markov_w1 [201024, 256] -> row-major IQ4_NL on GPU */
+    if (dspark_upload_iq4_row(s, f, sp_mh_mw1, hbuf, hbuf_bytes, d->mw1_q, d->mw1_d, 201024, 256) != 0) goto fail_open;
+
+    /* 6. Fold fold_b = lm_head(hidden_out.bias) and fold_w = IQ4_NL(lm_head @ hidden_out.weight) on GPU Tensor Cores! */
+    {
+        uint16_t hb_raw[2304];
+        float hb_f32[2304];
+        if (mtp_seek(f, sp_mh_hb.off) != 0 || fread(hb_raw, 2, 2304, f) != 2304) goto fail_open;
+        for (int i = 0; i < 2304; i++) hb_f32[i] = bf16_to_f32_cuda_host(hb_raw[i]);
+        if (pc_upload(d->anchor_emb, hb_f32, sizeof hb_f32, s->stream) != PC_OK) goto fail_open;
+        int64_t out_blocks = 2304 / 32;
+        int64_t lrows = (int64_t)(s->gguf.output.nbytes / (uint64_t)(out_blocks * 34));
+        if (s->output_iq4) {
+            PcArg fa[] = {
+                a_int(nv), a_int(lrows), a_int(2304), a_int(0), a_int(0),
+                a_view(s->output_dev, 0, lrows * out_blocks * 4),
+                a_view(s->output_dev, lrows * out_blocks * 16, lrows * out_blocks),
+                a_f32v(d->anchor_emb, 0, 2304), a_f32v(d->fold_b, 0, nv)
+            };
+            if (call_k(s, K_DVQ, (nv + 31) / 32, 9, fa) != 0) goto fail_open;
+        } else {
+            if (dispatch_mv(s, &s->gguf.output, 1, nv, 2304, 0, d->anchor_emb, 0, d->fold_b, 0) != 0) goto fail_open;
+        }
+
+        if (mtp_seek(f, sp_mh_hw.off) != 0 || fread(hbuf, 1, (size_t)sp_mh_hw.bytes, f) != (size_t)sp_mh_hw.bytes) goto fail_open;
+        uint16_t *hw_t = (uint16_t *)malloc(256 * 2304 * 2);
+        if (!hw_t) goto fail_open;
+        const uint16_t *hw = (const uint16_t *)hbuf;
+        for (int r = 0; r < 2304; r++) {
+            for (int c = 0; c < 256; c++) hw_t[(size_t)c * 2304 + r] = hw[(size_t)r * 256 + c];
+        }
+        int ok = (pc_upload(s->stage, hw_t, 256 * 2304 * 2, s->stream) == PC_OK);
+        free(hw_t);
+        if (!ok) goto fail_open;
+
+        PcBuffer out_tmp = s->stage + ((size_t)2 << 20); /* 4 MB chunk buffer inside s->stage */
+        for (int64_t row0 = 0; row0 < nv; row0 += 4096) {
+            int64_t vc = (nv - row0 < 4096) ? (nv - row0) : 4096;
+            if (s->output_iq4) {
+                int64_t rtiles = (vc + 15) / 16;
+                for (int64_t c0 = 0; c0 < 256; c0 += 8) {
+                    PcArg ma[] = {
+                        a_int(vc), a_int(lrows), a_int(2304), a_int(8), a_int(1),
+                        a_view(s->output_dev, row0 * 4, lrows * out_blocks * 4 - row0),
+                        a_view(s->output_dev, lrows * out_blocks * 16 + row0 * 2, lrows * out_blocks - row0),
+                        a_u32v(s->stage, c0 * 1152, 8 * 1152),
+                        a_f32v(out_tmp, c0 * vc, 8 * vc)
+                    };
+                    if (call_k(s, K_IQ4_MMA_NB8_SK, rtiles, 9, ma) != 0) goto fail_open;
+                }
+            } else {
+                int64_t warps = ((vc + 15) / 16) * (256 / 16);
+                PcArg ma[] = {
+                    a_int(vc), a_int(lrows), a_int(2304), a_int(256), a_int(0),
+                    a_view(s->output_dev, row0 * 4, lrows * out_blocks * 8 - row0),
+                    a_view(s->output_dev, lrows * out_blocks * 32 + row0 * 2, lrows * out_blocks - row0),
+                    a_u32v(s->stage, 0, 256 * 1152),
+                    a_f32v(out_tmp, 0, 256 * vc)
+                };
+                if (call_k(s, K_Q8_MMA, warps, 9, ma) != 0) goto fail_open;
+            }
+            PcArg qa[] = {
+                a_int(vc), a_int(row0), a_int(8),
+                a_f32v(out_tmp, 0, 256 * vc),
+                a_view(d->fold_q, 0, nv * 8 * 4), a_view(d->fold_d, 0, nv * 8)
+            };
+            if (call_k(s, K_F32T_TO_IQ4_ROW, vc * 8, 6, qa) != 0) goto fail_open;
+        }
+        if (pc_sync_stream(s->stream) != PC_OK) goto fail_open;
+    }
+
+    free(hbuf);
+    fclose(f);
+    /* Reclaim staging buffer on resident GPUs BEFORE allocating DSpark KV caches so 32K FP8 KV + DSpark fit in 16 GB! */
+    if (!s->streaming && s->stage) { free_buf(&s->stage); s->stage_bytes = 0; }
+    {
+        size_t dkv_b = d->kv_fp8 ? 1024 : 2048;
+        for (int i = 0; i < 3; i++) {
+            size_t cap = (size_t)d->layers[i].kv_cap;
+            if (alloc_zero(s, &d->layers[i].kv_k, cap * dkv_b) ||
+                alloc_zero(s, &d->layers[i].kv_v, cap * dkv_b)) {
+                s->error[0] = '\0';
+                ink_dspark_close(s);
+                return;
+            }
+        }
+    }
+    d->pos = 0;
+    d->pending_pos0 = 0;
+    d->pending_nb = 0;
+    d->pending_got = 0;
+    d->skip_countdown = 0;
+    d->skip_mult = 1;
+    d->req_rounds = 0;
+    d->req_disabled = 0;
+    d->ema_acc = 3.0f;
+    d->util_ema = 1.10f;
+    d->ready = 1;
+    fprintf(stderr, "psionic-cuda: DSpark ready (%lld MB VRAM, default ON; INK_DSPARK=0 to disable)\n",
+            (long long)to_mb(total_need));
+    return;
+
+fail_open:
+    free(hbuf);
+    fclose(f);
+    s->error[0] = '\0';
+    ink_dspark_close(s);
+}
+
+static int enqueue_dspark_absorb_body(InkSession *s, int stride_nb, int n_tok, int64_t pos_arg) {
+    CudaDspark *d = &s->dspark;
+    int64_t d_dim = 2304;
+    int64_t kv_u16_stride = d->kv_fp8 ? 512 : 1024;
+    for (int k = 0; k < 4; k++) {
+        int64_t src_off = ((int64_t)k * stride_nb + (n_tok - 1)) * d_dim;
+        CALL(s, K_COPY, d_dim, a_int(d_dim),
+             a_f32v(d->taps, src_off, d_dim), a_f32v(d->last_taps, (int64_t)k * d_dim, d_dim));
+    }
+    for (int li = 0; li < 3; li++) {
+        CudaDsparkLayer *L = &d->layers[li];
+        CALL(s, K_DSPARK_MIX_NORM, n_tok,
+             a_int(stride_nb), a_int(d_dim),
+             a_f32(d->fuse_alpha[li][0]), a_f32(d->fuse_alpha[li][1]),
+             a_f32(d->fuse_alpha[li][2]), a_f32(d->fuse_alpha[li][3]),
+             a_f32(1e-6f),
+             a_f32v(d->taps, 0, (int64_t)4 * stride_nb * d_dim),
+             a_u16v(L->dflare_norm, 0, d_dim),
+             a_u16v(d->ctx_bf16, 0, (int64_t)n_tok * d_dim));
+        if (dspark_iq4_mm(s, L->kctx_q, L->kctx_d, 1024, d_dim, n_tok, d->ctx_bf16, 0, d->ctx_k_f32, 0) != 0) return 1;
+        if (dspark_iq4_mm(s, L->vctx_q, L->vctx_d, 1024, d_dim, n_tok, d->ctx_bf16, 0, d->ctx_v_f32, 0) != 0) return 1;
+        CALL(s, K_DSPARK_KV_ABSORB, (int64_t)n_tok * 8,
+             a_int(pos_arg), a_int(L->kv_cap), a_int(L->is_swa | (d->kv_fp8 ? 2 : 0)), a_f32(1e-6f),
+             a_f32v(d->ctx_k_f32, 0, (int64_t)n_tok * 1024),
+             a_f32v(d->ctx_v_f32, 0, (int64_t)n_tok * 1024),
+             a_u16v(L->k_norm_ctx, 0, 128),
+             a_f32v(d->inv_freq, 0, 64),
+             a_u16v(L->kv_k, 0, (int64_t)L->kv_cap * kv_u16_stride),
+             a_u16v(L->kv_v, 0, (int64_t)L->kv_cap * kv_u16_stride),
+             a_u32v(d->dev_pos, 0, 1));
+    }
+    return 0;
+}
+
+static int ink_dspark_enqueue_absorb(InkSession *s, int stride_nb, int n_tok, int pos0) {
+    CudaDspark *d = &s->dspark;
+    if (!d->ready || n_tok <= 0 || n_tok > stride_nb) return 0;
+    if (stride_nb <= 8 && n_tok <= 8 && !s->no_graph && !s->profile) {
+        d->pos_host = (uint32_t)pos0;
+        if (pc_upload(d->dev_pos, &d->pos_host, 4, s->stream) != PC_OK) return 1;
+        if (!d->absorb_graph[stride_nb][n_tok]) {
+            if (pc_capture_begin(s->stream) != PC_OK) return 1;
+            s->capturing = 1;
+            if (enqueue_dspark_absorb_body(s, stride_nb, n_tok, -1) != 0) {
+                PcGraph tmp = NULL;
+                pc_capture_end(s->stream, &tmp);
+                if (tmp) pc_graph_free(tmp);
+                s->capturing = 0;
+                return 1;
+            }
+            s->capturing = 0;
+            if (pc_capture_end(s->stream, &d->absorb_graph[stride_nb][n_tok]) != PC_OK) return 1;
+        }
+        if (pc_replay(d->absorb_graph[stride_nb][n_tok], s->stream) != PC_OK) return 1;
+    } else {
+        if (enqueue_dspark_absorb_body(s, stride_nb, n_tok, (int64_t)pos0) != 0) return 1;
+    }
+    d->pos = pos0 + n_tok;
+    return 0;
+}
+
+static int ink_dspark_flush_pending(InkSession *s) {
+    CudaDspark *d = &s->dspark;
+    if (!d->ready || d->pending_got <= 0) return 0;
+    int n_tok = d->pending_got;
+    int stride_nb = d->pending_nb;
+    int pos0 = d->pending_pos0;
+    d->pending_got = 0;
+    d->pending_nb = 0;
+    if (pos0 != d->pos) return 0;
+    return ink_dspark_enqueue_absorb(s, stride_nb, n_tok, pos0);
+}
+
+static int enqueue_dspark_draft_body(InkSession *s, int count) {
+    CudaDspark *d = &s->dspark;
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t d_dim = 2304;
+    int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+    int64_t pos_arg = s->capturing ? -1 : (int64_t)d->pos;
+
+    /* 1. Anchor embedding + MarkovHead f_rnn mix/norm */
+    CALL(s, K_EMBED_Q8, 1, a_int(0), a_int(d_dim),
+         a_u16v(s->embd_row, 0, (int64_t)(row_bytes / 2)),
+         a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+         a_f32v(d->anchor_emb, 0, d_dim));
+    CALL(s, K_DSPARK_MIX_NORM, 1,
+         a_int(1), a_int(d_dim),
+         a_f32(d->fuse_alpha[3][0]), a_f32(d->fuse_alpha[3][1]),
+         a_f32(d->fuse_alpha[3][2]), a_f32(d->fuse_alpha[3][3]),
+         a_f32(1e-6f),
+         a_f32v(d->last_taps, 0, 4 * d_dim),
+         a_u16v(d->mh_dflare_norm, 0, d_dim),
+         a_u16v(d->f_rnn_bf16, 0, d_dim));
+
+    /* 2. Prepare 8-token block [anchor_emb, mask_embed x 7] + layer-0 input_layernorm */
+    CALL(s, K_DSPARK_BLOCK_PREP, 8, a_int(d_dim), a_f32(1e-6f),
+         a_f32v(d->anchor_emb, 0, d_dim),
+         a_u16v(d->mask_embed, 0, d_dim),
+         a_u16v(d->layers[0].input_ln, 0, d_dim),
+         a_f32v(d->res, 0, 8 * d_dim),
+         a_u16v(d->x_bf16, 0, 8 * d_dim));
+
+    /* 3. Three IQ4_NL DraftLayers (139 MB total, 0 spills, split-K attention!) */
+    int64_t dkv_u16_stride = d->kv_fp8 ? 512 : 1024;
+    for (int li = 0; li < 3; li++) {
+        CudaDsparkLayer *L = &d->layers[li];
+        PcBuffer next_ln = (li < 2) ? d->layers[li + 1].input_ln : d->norm_w;
+        if (dspark_iq4_mm(s, L->qkv_q, L->qkv_d, 5120, d_dim, 8, d->x_bf16, 0, d->qkv_f32, 0) != 0) return 1;
+        CALL(s, K_DSPARK_QKV_ROPE, 24,
+             a_int(pos_arg), a_f32(1e-6f),
+             a_f32v(d->qkv_f32, 0, 8 * 5120),
+             a_u16v(L->q_norm, 0, 128), a_u16v(L->k_norm, 0, 128),
+             a_f32v(d->inv_freq, 0, 64),
+             a_f32v(d->q_rot, 0, 8 * 3072), a_f32v(d->k_rot, 0, 8 * 1024), a_f32v(d->v_blk, 0, 8 * 1024),
+             a_u32v(d->dev_pos, 0, 1));
+        CALL(s, K_DSPARK_ATTN_SK, 24 * 8,
+             a_int(pos_arg), a_int(L->kv_cap), a_int(L->is_swa | (d->kv_fp8 ? 2 : 0)), a_int(1024), a_int(8),
+             a_f32v(d->q_rot, 0, 8 * 3072), a_f32v(d->k_rot, 0, 8 * 1024), a_f32v(d->v_blk, 0, 8 * 1024),
+             a_u16v(L->kv_k, 0, (int64_t)L->kv_cap * dkv_u16_stride),
+             a_u16v(L->kv_v, 0, (int64_t)L->kv_cap * dkv_u16_stride),
+             a_f32v(d->attn_sk_o, 0, 24 * 8 * 8 * 128),
+             a_f32v(d->attn_sk_ms, 0, 24 * 8 * 8 * 2),
+             a_u32v(d->dev_pos, 0, 1));
+        CALL(s, K_DSPARK_ATTN_REDUCE, 24 * 8,
+             a_int(8),
+             a_f32v(d->attn_sk_o, 0, 24 * 8 * 8 * 128),
+             a_f32v(d->attn_sk_ms, 0, 24 * 8 * 8 * 2),
+             a_u16v(d->attn_bf16, 0, 8 * 3072));
+        if (dspark_iq4_mm(s, L->o_q, L->o_d, d_dim, 3072, 8, d->attn_bf16, 0, d->tmp_f32, 0) != 0) return 1;
+        CALL(s, K_DSPARK_ADD_NORM_BF16, 8, a_int(d_dim), a_f32(1e-6f),
+             a_f32v(d->tmp_f32, 0, 8 * d_dim), a_f32v(d->res, 0, 8 * d_dim),
+             a_u16v(L->post_attn_ln, 0, d_dim), a_u16v(d->x_bf16, 0, 8 * d_dim));
+        if (dspark_iq4_mm(s, L->gu_q, L->gu_d, 18432, d_dim, 8, d->x_bf16, 0, d->gu_f32, 0) != 0) return 1;
+        CALL(s, K_DSPARK_SILU_MUL_BF16, 8 * 9216,
+             a_f32v(d->gu_f32, 0, 8 * 18432), a_u16v(d->mlp_bf16, 0, 8 * 9216));
+        if (dspark_iq4_mm(s, L->dn_q, L->dn_d, d_dim, 9216, 8, d->mlp_bf16, 0, d->tmp_f32, 0) != 0) return 1;
+        CALL(s, K_DSPARK_ADD_NORM_BF16, 8, a_int(d_dim), a_f32(1e-6f),
+             a_f32v(d->tmp_f32, 0, 8 * d_dim), a_f32v(d->res, 0, 8 * d_dim),
+             a_u16v(next_ln, 0, d_dim), a_u16v(d->x_bf16, 0, 8 * d_dim));
+    }
+
+    /* 4. Base lm_head logits for block positions 1..count + MarkovHead context prep */
+    CALL(s, K_DSPARK_MARKOV_CTX_PREP, (int64_t)count * d_dim, a_int(count), a_int(d_dim),
+         a_u16v(d->x_bf16, 0, 8 * d_dim), a_u16v(d->f_rnn_bf16, 0, d_dim),
+         a_u16v(d->markov_in_bf16, 0, (int64_t)count * 4608));
+    if (s->output_iq4) {
+        int64_t blocks = d_dim / 32;
+        int64_t lrows = (int64_t)(s->gguf.output.nbytes / (uint64_t)(blocks * 34));
+        CALL(s, K_IQ4_MMA_NB8_SK, (nv + 15) / 16, a_int(nv), a_int(lrows), a_int(d_dim), a_int(count), a_int(1),
+             a_view(s->output_dev, 0, lrows * blocks * 4),
+             a_view(s->output_dev, lrows * blocks * 16, lrows * blocks),
+             a_u32v(d->x_bf16, d_dim / 2, count * (d_dim / 2)),
+             a_f32v(d->base_logits, 0, (int64_t)count * nv));
+    } else {
+        if (dispatch_q8_mma(s, &s->gguf.output, count, nv, d_dim, 0, d->x_bf16, d_dim / 2, d->base_logits, 0) != 0) return 1;
+    }
+    if (dspark_iq4_mm(s, d->rnn_ctx_q, d->rnn_ctx_d, 768, 4608, count, d->markov_in_bf16, 0, d->rnn_ctx, 0) != 0) return 1;
+
+    /* 5. GPU-chained autoregressive MarkovHead: 0 CPU syncs across all count steps! */
+    for (int step = 0; step < count; step++) {
+        PcBuffer st_in = (step & 1) ? d->rnn_state2 : d->rnn_state;
+        PcBuffer st_out = (step & 1) ? d->rnn_state : d->rnn_state2;
+        CALL(s, K_DSPARK_MARKOV_STEP, 32, a_int(step),
+             a_u32v(d->draft_toks, 0, 8),
+             a_view(d->mw1_q, 0, 201024LL * 8 * 4), a_view(d->mw1_d, 0, 201024LL * 8),
+             a_u16v(d->rnn_w_step, 0, 768 * 512),
+             a_f32v(d->rnn_ctx, 0, (int64_t)count * 768),
+             a_u16v(d->mh_rnn_bias, 0, 768),
+             a_f32v(st_in, 0, 256), a_f32v(st_out, 0, 256), a_f32v(d->rnn_latent, 0, 256));
+        CALL(s, K_DSPARK_FOLD_LOGITS_S1, 256, a_int(nv), a_int(step), a_f32(hp->logit_softcap),
+             a_view(d->fold_q, 0, nv * 8 * 4), a_view(d->fold_d, 0, nv * 8),
+             a_f32v(d->rnn_latent, 0, 256),
+             a_f32v(d->base_logits, 0, (int64_t)count * nv),
+             a_f32v(d->fold_b, 0, nv),
+             a_f32v(d->s1_m, 0, 256), a_u32v(d->s1_i, 0, 256), a_f32v(d->s1_s, 0, 256));
+        CALL(s, K_DSPARK_LOGITS_S2, 1, a_int(step),
+             a_f32v(d->s1_m, 0, 256), a_u32v(d->s1_i, 0, 256), a_f32v(d->s1_s, 0, 256),
+             a_u32v(d->draft_toks, 0, 8), a_f32v(d->draft_probs, 0, 8));
+    }
+    return 0;
+}
+
+static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *out_toks, float *out_probs) {
+    CudaDspark *d = &s->dspark;
+    const InkHParams *hp = &s->gguf.hp;
+    if (!d->ready || count < 1 || count > 7) return 1;
+    if (d->pos + d->pending_got != s->pos || s->pos < 1) return 1;
+    double began = pc_seconds();
+    if (d->pending_got > 0) {
+        if (ink_dspark_flush_pending(s) != 0) return 1;
+    }
+    if (d->pos != s->pos) return 1;
+
+    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+    uint32_t anc_u32 = (uint32_t)anchor;
+    d->pos_host = (uint32_t)d->pos;
+    if (pc_upload(s->embd_row, s->gguf.map + s->gguf.tok_embd.offset + (size_t)anchor * row_bytes, row_bytes, s->stream) != PC_OK ||
+        pc_upload(d->draft_toks, &anc_u32, 4, s->stream) != PC_OK ||
+        pc_upload(d->dev_pos, &d->pos_host, 4, s->stream) != PC_OK)
+        return 1;
+
+    if (!s->no_graph && !s->profile) {
+        if (!d->draft_graph[count]) {
+            if (pc_capture_begin(s->stream) != PC_OK) return 1;
+            s->capturing = 1;
+            if (enqueue_dspark_draft_body(s, count) != 0) {
+                PcGraph tmp = NULL;
+                pc_capture_end(s->stream, &tmp);
+                if (tmp) pc_graph_free(tmp);
+                s->capturing = 0;
+                return 1;
+            }
+            s->capturing = 0;
+            if (pc_capture_end(s->stream, &d->draft_graph[count]) != PC_OK) return 1;
+        }
+        if (pc_replay(d->draft_graph[count], s->stream) != PC_OK) return 1;
+    } else {
+        if (enqueue_dspark_draft_body(s, count) != 0) return 1;
+    }
+
+    uint32_t h_toks[8] = {0};
+    float h_probs[8] = {0};
+    if (pc_download(h_toks, d->draft_toks, 8 * 4, s->stream) != PC_OK ||
+        pc_download(h_probs, d->draft_probs, 8 * 4, s->stream) != PC_OK ||
+        pc_sync_stream(s->stream) != PC_OK)
+        return 1;
+    double dt = pc_seconds() - began;
+    s->total_gpu_seconds += dt;
+    d->draft_gpu_s += dt;
+    d->last_draft_s = dt;
+    for (int i = 0; i < count; i++) {
+        out_toks[i] = (int32_t)h_toks[i + 1];
+        out_probs[i] = h_probs[i];
+    }
+    return 0;
+}
 
 int ink_open(const char *gguf_path, const char *kernel_path, int max_ctx, InkSession **out, char *err, size_t err_bytes) {
     return ink_open_ex(gguf_path, kernel_path, max_ctx, 0, out, err, err_bytes);
@@ -1250,25 +2529,44 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
     size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
     size_t resident_bytes = 0, expert_bytes = 0, smallest_cache = 0;
+    s->fast_q4 = (env_on("INK_FAST_Q4") && !s->oracle_q8);
+    size_t fast_q4_orig_attn = 0, fast_q4_new_attn = 0;
     for (int ip = 0; ip < hp->n_phys; ip++) {
         const InkLayerTensors *L = &s->gguf.layers[ip];
         const InkTensor *t = (const InkTensor *)L;
         for (int i = 0; i < INK_LAYER_TENSORS; i++) {
             if (!t[i].present || is_expert_tensor(L, &t[i])) continue;
-            resident_bytes += (t[i].nbytes + 255) & ~(uint64_t)255;
+            uint64_t nb_dev = t[i].nbytes;
+            if (s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
+                t[i].type == INK_GGML_Q8_0 && t[i].ndims == 2 &&
+                (t[i].dims[0] % 32) == 0 && (t[i].nbytes % 34) == 0) {
+                fast_q4_orig_attn += (size_t)t[i].nbytes;
+                nb_dev = (t[i].nbytes / 34) * 18;
+                fast_q4_new_attn += (size_t)nb_dev;
+            }
+            resident_bytes += (nb_dev + 255) & ~(uint64_t)255;
         }
         ExpertCache *c = &s->experts[ip];
         if (!L->ffn_gate_up_exps.present || !L->ffn_down_exps.present) {
             snprintf(err, err_bytes, "layer %d has no expert tensors", ip);
             ink_close(s); return 1;
         }
-        c->gu_bytes = (size_t)(L->ffn_gate_up_exps.nbytes / (uint64_t)hp->n_expert);
-        c->dn_bytes = (size_t)(L->ffn_down_exps.nbytes / (uint64_t)hp->n_expert);
+        c->gu_type = L->ffn_gate_up_exps.type;
+        c->dn_type = L->ffn_down_exps.type;
+        c->src_gu_bytes = (size_t)(L->ffn_gate_up_exps.nbytes / (uint64_t)hp->n_expert);
+        c->src_dn_bytes = (size_t)(L->ffn_down_exps.nbytes / (uint64_t)hp->n_expert);
+        c->gu_bytes = c->src_gu_bytes;
+        c->dn_bytes = c->src_dn_bytes;
         expert_bytes += (c->gu_bytes + c->dn_bytes) * (size_t)hp->n_expert;
         smallest_cache += (c->gu_bytes + c->dn_bytes) * INK_MIN_EXPERT_SLOTS;
     }
+    size_t out_nbytes_dev = (size_t)s->gguf.output.nbytes;
+    s->output_iq4 = (!s->oracle_q8 && s->gguf.output.type == INK_GGML_Q8_0 && (s->gguf.output.nbytes % 34) == 0 &&
+                     (s->fast_q4 || env_on("INK_Q4_LM_HEAD") ||
+                      (info.free_bytes < ((size_t)18432 << 20) && s->max_ctx > 8192 && !env_on("INK_EXACT_LM_HEAD"))));
+    if (s->output_iq4) out_nbytes_dev = (size_t)(s->gguf.output.nbytes / 34) * 18;
     resident_bytes += ((s->gguf.out_res_query.nbytes + 255) & ~(uint64_t)255) + ((s->gguf.out_norm.nbytes + 255) & ~(uint64_t)255) +
-                      ((s->gguf.output.nbytes + 255) & ~(uint64_t)255) + ((s->gguf.tok_norm.nbytes + 255) & ~(uint64_t)255);
+                      ((out_nbytes_dev + 255) & ~(uint64_t)255) + ((s->gguf.tok_norm.nbytes + 255) & ~(uint64_t)255);
 
     size_t free_b = info.free_bytes, total_b = info.total_bytes;
     int64_t test_mb = env_mb("INK_VRAM_MB"); /* plan as if this much VRAM were free */
@@ -1279,12 +2577,40 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
        on >=12 GiB GPUs (64 on 8..12 GiB, 16 on <8 GiB). */
     int plan_batch = INK_MAX_BATCH;
     if (free_b < ((size_t)8192 << 20)) plan_batch = 16;
-    else if (free_b < ((size_t)12288 << 20)) plan_batch = 64;
+    else if (free_b < ((size_t)18432 << 20)) plan_batch = 64;
     if (!s->use_online_attn && s->max_ctx > 8192 && plan_batch > 32) plan_batch = 32;
     if (s->no_mma || s->oracle_q8 || s->no_tables) { if (plan_batch > 32) plan_batch = 32; }
 
     int full_slots = 0, swa_slots = 0;
     size_t kv_bytes = 0, kv_full_per_token = 0, kv_fixed = 0;
+    size_t kv_bytes_fp16 = 0;
+    s->kv_fp8 = (getenv("INK_FP8_KV") != NULL && s->use_online_attn && !s->oracle_q8 && (n_kv % 2) == 0);
+    /* First compute FP16 KV footprint; if 128/128 IQ4 experts don't fit at long context (e.g. 16K..32K on 16 GB RTX 4080),
+       auto-enable FP8 E4M3 KV (opt-out via INK_FP16_KV=1) to keep 128/128 experts + verify_graph + DSpark resident! */
+    for (int il = 0; il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
+        int ring = (int)hp->swa + plan_batch;
+        int cap = hp->is_swa[ip] ? (ring < s->max_ctx ? ring : s->max_ctx) : s->max_ctx;
+        size_t conv = (2 * n_kv + 2 * d) * 3 * 4;
+        kv_bytes_fp16 += (size_t)cap * n_kv * 4 + conv;
+    }
+    if (!s->kv_fp8 && s->use_online_attn && !s->oracle_q8 && (n_kv % 2) == 0 && getenv("INK_FP16_KV") == NULL) {
+        size_t q4_exp_est = 0;
+        for (int ip = 0; ip < hp->n_phys; ip++) {
+            ExpertCache *c = &s->experts[ip];
+            size_t gb = (c->gu_type == INK_GGML_Q8_0 && (c->src_gu_bytes % 34) == 0 && getenv("INK_EXACT_Q8_EXPS") == NULL)
+                        ? (c->src_gu_bytes / 34) * 18 : c->gu_bytes;
+            size_t db = (c->dn_type == INK_GGML_Q8_0 && (c->src_dn_bytes % 34) == 0 && getenv("INK_EXACT_Q8_EXPS") == NULL)
+                        ? (c->src_dn_bytes / 34) * 18 : c->dn_bytes;
+            q4_exp_est += (gb + db) * (size_t)hp->n_expert;
+        }
+        size_t est_fixed_fp16 = resident_bytes + kv_bytes_fp16 + ((size_t)70 << 20) + ((size_t)INK_VRAM_MARGIN_MB << 20);
+        if (free_b < est_fixed_fp16 + q4_exp_est) {
+            s->kv_fp8 = 1;
+            if (free_b < ((size_t)18432 << 20) && s->max_ctx > 8192 && plan_batch > 32) plan_batch = 32;
+        }
+    }
+    size_t kv_elem_pair = s->kv_fp8 ? 2 : 4; /* K+V bytes per element (2B FP8 or 4B FP16) */
     for (int il = 0; il < s->n_slots; il++) {
         int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
         /* A window slot is a ring. It holds the window and a whole batch, so
@@ -1293,25 +2619,68 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         int cap = hp->is_swa[ip] ? (ring < s->max_ctx ? ring : s->max_ctx) : s->max_ctx;
         s->kv_cap[il] = cap;
         size_t conv = (2 * n_kv + 2 * d) * 3 * 4;
-        kv_bytes += (size_t)cap * n_kv * 4 + conv;
-        if (hp->is_swa[ip]) { swa_slots++; kv_fixed += (size_t)ring * n_kv * 4 + conv; }
-        else { full_slots++; kv_full_per_token += n_kv * 4; kv_fixed += conv; }
+        kv_bytes += (size_t)cap * n_kv * kv_elem_pair + conv;
+        if (hp->is_swa[ip]) { swa_slots++; kv_fixed += (size_t)ring * n_kv * kv_elem_pair + conv; }
+        else { full_slots++; kv_full_per_token += n_kv * kv_elem_pair; kv_fixed += conv; }
     }
     size_t attn_score_floats = s->use_online_attn
-        ? (size_t)hp->n_head * (size_t)s->max_ctx
+        ? (s->kv_fp8 ? 64 : (size_t)hp->n_head * (size_t)s->max_ctx)
         : (size_t)plan_batch * (size_t)hp->n_head * (size_t)s->max_ctx;
-    size_t scratch_bytes = ((size_t)hp->n_vocab + attn_score_floats) * 4 + ((size_t)8 << 20) + (size_t)plan_batch * 4 *
+    size_t spec_scratch_bytes = (!s->no_mma && !s->oracle_q8 && !s->no_tables && !s->no_graph &&
+                                 free_b >= ((size_t)12288 << 20))
+        ? ((size_t)s->n_slots * 11 * (2 * n_kv + 2 * d) * 4 + 8 * (size_t)hp->n_vocab * 4 + ((size_t)3 << 20))
+        : ((size_t)2 << 20);
+    size_t scratch_bytes = ((size_t)hp->n_vocab + attn_score_floats) * 4 + ((size_t)8 << 20) + spec_scratch_bytes +
+                           (size_t)plan_batch * 4 *
                            (44 * d + 3 * n_q + 4 * n_kv +
                             (size_t)hp->n_expert_used * (5 * (size_t)hp->n_ff_exp / 2 + d) + 1024);
 
     size_t margin = (size_t)INK_VRAM_MARGIN_MB << 20;
+    if (s->kv_fp8 && free_b < resident_bytes + kv_bytes + scratch_bytes + margin + ((size_t)13122 << 20)) {
+        margin = (size_t)96 << 20;
+    }
     size_t fixed = resident_bytes + kv_bytes + scratch_bytes + margin;
     int64_t forced_slots = env_mb("INK_EXPERT_SLOTS"); /* cap every layer's cache, to exercise streaming */
 
     /* The plan of psionic/lib/inkling-budget.coax (inkling_vram_plan), in the
-       same integer arithmetic: one slot is one expert in every layer. */
-    size_t slot_bytes = expert_bytes / (size_t)hp->n_expert;
+       same integer arithmetic: one slot is one expert in every layer.
+       On 16 GB GPUs (e.g. RTX 4080), quantizing the 4 Q8_0 coda MoE expert layers
+       to IQ4_NL on-load saves ~1.90 GB so all 128/128 experts fit 100% resident in
+       VRAM (zero PCIe streaming + single decode CUDA Graph; opt-out via INK_EXACT_Q8_EXPS=1). */
     size_t expert_budget = free_b > fixed ? free_b - fixed : 0;
+    int q8_exps_quantized = 0;
+    size_t orig_expert_bytes = expert_bytes;
+    if (expert_budget < expert_bytes && forced_slots <= 0 && !s->oracle_q8 &&
+        getenv("INK_EXACT_Q8_EXPS") == NULL) {
+        size_t q4_expert_bytes = 0;
+        int n_q8_layers = 0;
+        for (int ip = 0; ip < hp->n_phys; ip++) {
+            ExpertCache *c = &s->experts[ip];
+            size_t gb = (c->gu_type == INK_GGML_Q8_0 && (c->src_gu_bytes % 34) == 0) ? (c->src_gu_bytes / 34) * 18 : c->gu_bytes;
+            size_t db = (c->dn_type == INK_GGML_Q8_0 && (c->src_dn_bytes % 34) == 0) ? (c->src_dn_bytes / 34) * 18 : c->dn_bytes;
+            if (gb != c->gu_bytes || db != c->dn_bytes) n_q8_layers++;
+            q4_expert_bytes += (gb + db) * (size_t)hp->n_expert;
+        }
+        if (n_q8_layers > 0 && q4_expert_bytes <= expert_budget) {
+            expert_bytes = 0;
+            smallest_cache = 0;
+            for (int ip = 0; ip < hp->n_phys; ip++) {
+                ExpertCache *c = &s->experts[ip];
+                if (c->gu_type == INK_GGML_Q8_0 && (c->src_gu_bytes % 34) == 0) {
+                    c->gu_type = INK_GGML_IQ4_NL;
+                    c->gu_bytes = (c->src_gu_bytes / 34) * 18;
+                }
+                if (c->dn_type == INK_GGML_Q8_0 && (c->src_dn_bytes % 34) == 0) {
+                    c->dn_type = INK_GGML_IQ4_NL;
+                    c->dn_bytes = (c->src_dn_bytes / 34) * 18;
+                }
+                expert_bytes += (c->gu_bytes + c->dn_bytes) * (size_t)hp->n_expert;
+                smallest_cache += (c->gu_bytes + c->dn_bytes) * INK_MIN_EXPERT_SLOTS;
+            }
+            q8_exps_quantized = n_q8_layers;
+        }
+    }
+    size_t slot_bytes = expert_bytes / (size_t)hp->n_expert;
     int slots = (int)hp->n_expert;
     if (expert_budget / slot_bytes < (size_t)hp->n_expert) {
         slots = (int)(expert_budget / slot_bytes);
@@ -1367,6 +2736,19 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     }
     int64_t forced_batch = env_mb("INK_BATCH"); /* a smaller prefill batch, for tests */
     if (forced_batch > 0 && forced_batch < s->batch) s->batch = (int)forced_batch;
+    if (s->fast_q4 && fast_q4_orig_attn > 0)
+        fprintf(stderr, "psionic-cuda: INK_FAST_Q4=1 quantized Q8_0 attn projections -> IQ4_NL (%lld -> %lld MB)\n",
+                (long long)to_mb(fast_q4_orig_attn), (long long)to_mb(fast_q4_new_attn));
+    if (s->output_iq4)
+        fprintf(stderr, "psionic-cuda: quantized lm_head Q8_0 -> IQ4_NL on-load (%lld -> %lld MB; INK_EXACT_LM_HEAD=1 for Q8_0)\n",
+                (long long)to_mb((size_t)s->gguf.output.nbytes), (long long)to_mb(out_nbytes_dev));
+    if (s->kv_fp8)
+        fprintf(stderr, "psionic-cuda: enabled FP8 E4M3 KV cache (%lld -> %lld MB, ctx=%d; INK_FP16_KV=1 for FP16 KV)\n",
+                (long long)to_mb(kv_bytes_fp16), (long long)to_mb(kv_bytes), s->max_ctx);
+    if (q8_exps_quantized > 0)
+        fprintf(stderr, "psionic-cuda: quantized %d Q8_0 MoE expert layers -> IQ4_NL on-load (%lld -> %lld MB, %d/%lld resident in VRAM; INK_EXACT_Q8_EXPS=1 for streaming Q8_0)\n",
+                q8_exps_quantized, (long long)to_mb(orig_expert_bytes), (long long)to_mb(expert_bytes),
+                slots, (long long)hp->n_expert);
     if (s->streaming)
         fprintf(stderr, "psionic-cuda: experts do not all fit in VRAM: %d of %lld per layer cached (%lld of %lld MB), the rest stream from host memory\n",
                 slots, (long long)hp->n_expert, (long long)to_mb(cache_bytes), (long long)to_mb(expert_bytes));
@@ -1398,9 +2780,9 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         snprintf(err, err_bytes, "out of VRAM for %lld MB of weights: %s", (long long)to_mb(resident_bytes), pc_log());
         ink_close(s); return 1;
     }
-    s->stage_bytes = (size_t)32 << 20;
+    s->stage_bytes = (s->kv_fp8 && !s->streaming) ? ((size_t)8 << 20) : ((size_t)32 << 20);
     for (int ip = 0; ip < hp->n_phys; ip++)
-        if (s->experts[ip].gu_bytes > s->stage_bytes) s->stage_bytes = s->experts[ip].gu_bytes;
+        if (s->experts[ip].src_gu_bytes > s->stage_bytes) s->stage_bytes = s->experts[ip].src_gu_bytes;
     if (pc_alloc(s->stage_bytes, &s->stage) != PC_OK) {
         snprintf(err, err_bytes, "out of VRAM for the staging buffer: %s", pc_log());
         ink_close(s); return 1;
@@ -1419,16 +2801,38 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         at += ((size_t)(tensor)->nbytes + 255) & ~(size_t)255; \
     } while (0)
     for (int ip = 0; ip < hp->n_phys; ip++) {
-        const InkLayerTensors *L = &s->gguf.layers[ip];
-        const InkTensor *t = (const InkTensor *)L;
+        InkLayerTensors *L = &s->gguf.layers[ip];
+        InkTensor *t = (InkTensor *)L;
         for (int i = 0; i < INK_LAYER_TENSORS; i++) {
             if (!t[i].present || is_expert_tensor(L, &t[i])) continue;
-            PLACE(&t[i], s->layer_dev[ip][i]);
+            if (s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
+                t[i].type == INK_GGML_Q8_0 && t[i].ndims == 2 &&
+                (t[i].dims[0] % 32) == 0 && (t[i].nbytes % 34) == 0) {
+                s->layer_dev[ip][i] = s->weights + at;
+                if (relayout_q8_to_iq4(s, s->gguf.map + t[i].offset, s->layer_dev[ip][i],
+                                       (int64_t)t[i].dims[1], (int64_t)t[i].dims[0] / 32, 0)) {
+                    snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1;
+                }
+                t[i].type = INK_GGML_IQ4_NL;
+                t[i].nbytes = (t[i].nbytes / 34) * 18;
+                at += ((size_t)t[i].nbytes + 255) & ~(size_t)255;
+            } else {
+                PLACE(&t[i], s->layer_dev[ip][i]);
+            }
         }
     }
     PLACE(&s->gguf.out_res_query, s->out_res_query_dev);
     PLACE(&s->gguf.out_norm, s->out_norm_dev);
-    PLACE(&s->gguf.output, s->output_dev);
+    if (s->output_iq4) {
+        s->output_dev = s->weights + at;
+        if (relayout_q8_to_iq4(s, s->gguf.map + s->gguf.output.offset, s->output_dev,
+                               (int64_t)s->gguf.output.dims[1], (int64_t)s->gguf.output.dims[0] / 32, 0)) {
+            snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1;
+        }
+        at += (out_nbytes_dev + 255) & ~(size_t)255;
+    } else {
+        PLACE(&s->gguf.output, s->output_dev);
+    }
     PLACE(&s->gguf.tok_norm, s->tok_norm_dev);
 #undef PLACE
 
@@ -1473,7 +2877,10 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         alloc_zero(s, &s->ctrl_gate, 3 * nb * (size_t)hp->gate_rank * 4) ||
         alloc_zero(s, &s->k_buf, nb * n_kv * 4) ||
         alloc_zero(s, &s->v_buf, nb * n_kv * 4) ||
-        alloc_zero(s, &s->attn_scores, (s->use_online_attn ? 1 : nb) * (size_t)hp->n_head * (size_t)s->max_ctx * 4) ||
+        alloc_zero(s, &s->attn_scores, (s->use_online_attn ? (s->kv_fp8 ? 64 : ((size_t)hp->n_head * (size_t)s->max_ctx)) : (nb * (size_t)hp->n_head * (size_t)s->max_ctx)) * 4) ||
+        alloc_zero(s, &s->attn_sk_o, (size_t)8 * (size_t)hp->n_head * 16 * (size_t)hp->head_dim * 4) ||
+        alloc_zero(s, &s->attn_sk_ms, (size_t)8 * (size_t)hp->n_head * 16 * 2 * 4) ||
+        alloc_zero(s, &s->ctrl_inv, 256) ||
         alloc_zero(s, &s->attn_out, nb * n_q * 4) ||
         alloc_zero(s, &s->o_raw, nb * d * 4) ||
         alloc_zero(s, &s->norm_buf, nb * d * 4) ||
@@ -1494,22 +2901,53 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         alloc_zero(s, &s->gu_part, n_used * (d / 32) * 2 * (size_t)hp->n_ff_exp * 4) ||
         alloc_zero(s, &s->dn_part, n_used * ((size_t)hp->n_ff_exp / 32) * d * 4) ||
         alloc_zero(s, &s->logits, (size_t)hp->n_vocab * 4) ||
+        alloc_zero(s, &s->argmax_vals, 64 * 4) ||
+        alloc_zero(s, &s->argmax_ids, 64 * 4) ||
+        alloc_zero(s, &s->argmax_out, 4) ||
+        alloc_zero(s, &s->topk_cnt, 256 * 4) ||
+        alloc_zero(s, &s->topk_ids, 256 * 16 * 4) ||
+        alloc_zero(s, &s->topk_vals, 256 * 16 * 4) ||
         alloc_zero(s, &s->dev_pos, 4) ||
         alloc_zero(s, &s->oracle_x, s->oracle_q8 ? nb * widest * 4 : 256) ||
         alloc_zero(s, &s->dummy_f32, 64 * 4)) {
         snprintf(err, err_bytes, "%s", s->error);
         ink_close(s); return 1;
     }
+    size_t conv_slot_elems = (2 * n_kv + 2 * d) * 3;
+    s->conv_all_elems = (size_t)s->n_slots * conv_slot_elems;
+    if (alloc_zero(s, &s->conv_all, s->conv_all_elems * 4)) {
+        snprintf(err, err_bytes, "%s", s->error);
+        ink_close(s); return 1;
+    }
+    size_t kv_b_per_tok = s->kv_fp8 ? n_kv : (n_kv * 2);
     for (int il = 0; il < s->n_slots; il++) {
         size_t cap = (size_t)s->kv_cap[il];
-        if (alloc_zero(s, &s->kv_k[il], cap * n_kv * 2) ||
-            alloc_zero(s, &s->kv_v[il], cap * n_kv * 2) ||
-            alloc_zero(s, &s->conv_k[il], n_kv * 3 * 4) ||
-            alloc_zero(s, &s->conv_v[il], n_kv * 3 * 4) ||
-            alloc_zero(s, &s->conv_ao[il], d * 3 * 4) ||
-            alloc_zero(s, &s->conv_fo[il], d * 3 * 4)) {
+        if (alloc_zero(s, &s->kv_k[il], cap * kv_b_per_tok) ||
+            alloc_zero(s, &s->kv_v[il], cap * kv_b_per_tok)) {
             snprintf(err, err_bytes, "%s", s->error);
             ink_close(s); return 1;
+        }
+        PcBuffer cb = s->conv_all + (uint64_t)((size_t)il * conv_slot_elems * 4);
+        s->conv_k[il]  = cb;
+        s->conv_v[il]  = cb + (uint64_t)(n_kv * 3 * 4);
+        s->conv_ao[il] = cb + (uint64_t)(2 * n_kv * 3 * 4);
+        s->conv_fo[il] = cb + (uint64_t)((2 * n_kv + d) * 3 * 4);
+    }
+    s->can_verify_nb = (!s->streaming && !s->no_mma && !s->oracle_q8 && !s->no_tables && !s->no_graph &&
+                        s->batch >= 8 && hp->n_embd % 32 == 0 && hp->n_ff_exp % 32 == 0 &&
+                        hp->n_expert <= 128 && hp->n_expert_used <= 8);
+    if (s->can_verify_nb) {
+        s->spec_raw_log_elems = (size_t)s->n_slots * 8 * (2 * n_kv + 2 * d);
+        if (alloc_zero(s, &s->spec_conv_bak, s->conv_all_elems * 4) ||
+            alloc_zero(s, &s->spec_raw_log, s->spec_raw_log_elems * 4) ||
+            alloc_zero(s, &s->spec_logits, 8 * (size_t)hp->n_vocab * 4) ||
+            alloc_zero(s, &s->spec_hidden, 8 * d * 4) ||
+            alloc_zero(s, &s->spec_argmax_out, 8 * 4) ||
+            alloc_zero(s, &s->spec_topk_cnt, 8 * 256 * 4) ||
+            alloc_zero(s, &s->spec_topk_ids, 8 * 256 * 16 * 4) ||
+            alloc_zero(s, &s->spec_topk_vals, 8 * 256 * 16 * 4)) {
+            s->can_verify_nb = 0;
+            s->error[0] = '\0';
         }
     }
     /* The projections' outputs, side by side in s->proj. */
@@ -1540,17 +2978,20 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         };
         for (int variant = 0; variant < 2; variant++) {
             uint32_t desc[80] = {0};
-            int n = 0, ok = 1;
+            uint32_t want_type = L->attn_q.type;
+            int is_iq4 = (want_type == INK_GGML_IQ4_NL);
+            int n = 0, ok = (want_type == INK_GGML_Q8_0 || want_type == INK_GGML_IQ4_NL);
+            uint64_t q_bytes_per_block = is_iq4 ? 16 : 32;
             int64_t items = 0, rows_all = 0, rtiles_all = 0, blocks = (int64_t)d / 32;
             for (int m = 0; m < 8 && ok; m++) {
                 const InkTensor *t = mats[m].t;
                 if (!mats[m].use) continue;
-                if (!t->present || t->type != INK_GGML_Q8_0 || t->ndims != 2 || t->dims[0] != d || t->dims[1] % 4 != 0) { ok = 0; break; }
+                if (!t->present || t->type != want_type || t->ndims != 2 || t->dims[0] != d || t->dims[1] % 4 != 0) { ok = 0; break; }
                 int64_t rows = (int64_t)t->dims[1];
                 PcBuffer dev = tensor_dev(s, t);
                 uint32_t *e = desc + n * 10;
                 e[0] = (uint32_t)((dev - s->weights) / 4);
-                e[1] = (uint32_t)((dev - s->weights + (uint64_t)(rows * blocks * 32)) / 2);
+                e[1] = (uint32_t)((dev - s->weights + (uint64_t)(rows * blocks * q_bytes_per_block)) / 2);
                 e[2] = (uint32_t)rows;
                 e[3] = (uint32_t)rows;
                 e[4] = (uint32_t)(variant ? (size_t)mats[m].sel * nb * d : 0);
@@ -1566,6 +3007,7 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
             }
             if (!ok || (size_t)(rows_all * blocks) > s->mv_part_floats) n = 0;
             s->proj_list[ip][variant].n_mats = n;
+            s->proj_list[ip][variant].is_iq4 = is_iq4;
             s->proj_list[ip][variant].items = items;
             s->proj_list[ip][variant].rows = rows_all;
             s->proj_list[ip][variant].rtiles = rtiles_all;
@@ -1581,7 +3023,8 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     s->hidden_host = (float *)calloc(d, sizeof(float));
     s->zeros = (float *)calloc(zeros, sizeof(float));
     s->moe_tasks_host = (uint32_t *)calloc(s->moe_tasks_words, sizeof(uint32_t));
-    if (!s->logits_host || !s->hidden_host || !s->zeros || !s->moe_tasks_host) {
+    s->tok_hist = (int32_t *)calloc((size_t)s->max_ctx, sizeof(int32_t));
+    if (!s->logits_host || !s->hidden_host || !s->zeros || !s->moe_tasks_host || !s->tok_hist) {
         snprintf(err, err_bytes, "out of memory");
         ink_close(s); return 1;
     }
@@ -1592,6 +3035,11 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     memset(s->prof_seconds, 0, sizeof s->prof_seconds);
     memset(s->prof_calls, 0, sizeof s->prof_calls);
     s->pos = 0;
+    s->spec_active_idx = -1;
+    s->pld_ema2 = 0.25f;
+    s->pld_ema3 = 0.50f;
+    ink_dspark_open(s, gguf_path);
+    if (!s->streaming) { free_buf(&s->stage); s->stage_bytes = 0; }
     *out = s;
     return 0;
 }
@@ -1630,11 +3078,12 @@ void ink_close(InkSession *s) {
             if (s->decode_graph[i]) { pc_graph_free(s->decode_graph[i]); s->decode_graph[i] = NULL; }
             if (s->stream_tail[i]) { pc_graph_free(s->stream_tail[i]); s->stream_tail[i] = NULL; }
         }
+        for (int i = 0; i < 9; i++) {
+            if (s->verify_graph[i]) { pc_graph_free(s->verify_graph[i]); s->verify_graph[i] = NULL; }
+        }
         for (int il = 0; il < INK_MAX_SLOTS; il++) {
             if (s->stream_seg[il]) { pc_graph_free(s->stream_seg[il]); s->stream_seg[il] = NULL; }
             free_buf(&s->kv_k[il]); free_buf(&s->kv_v[il]);
-            free_buf(&s->conv_k[il]); free_buf(&s->conv_v[il]);
-            free_buf(&s->conv_ao[il]); free_buf(&s->conv_fo[il]);
         }
         for (int ip = 0; ip < 32; ip++) { free_buf(&s->experts[ip].gu); free_buf(&s->experts[ip].dn); }
         PcBuffer *scratch[] = {
@@ -1642,74 +3091,114 @@ void ink_close(InkSession *s) {
             &s->blocks, &s->prelude_blk, &s->bank_blk, &s->messages,
             &s->inp3, &s->inp3b, &s->norm_b2, &s->ctrl_gate,
             &s->proj, &s->proj_desc, &s->k_buf, &s->v_buf,
-            &s->attn_scores, &s->attn_out, &s->o_raw, &s->norm_buf, &s->router_logits,
+            &s->attn_scores, &s->attn_sk_o, &s->attn_sk_ms, &s->ctrl_inv, &s->attn_out, &s->o_raw, &s->norm_buf, &s->router_logits,
             &s->moe_ids, &s->moe_slots, &s->moe_wts, &s->moe_hid, &s->moe_out,
             &s->x_bf16, &s->moe_gu_out, &s->moe_hid_bf16, &s->moe_down_out, &s->moe_tasks,
-            &s->gu_part, &s->dn_part, &s->mv_part, &s->logits, &s->dev_pos, &s->dummy_f32, &s->oracle_x,
+            &s->gu_part, &s->dn_part, &s->mv_part, &s->logits,
+            &s->argmax_vals, &s->argmax_ids, &s->argmax_out,
+            &s->topk_cnt, &s->topk_ids, &s->topk_vals,
+            &s->conv_all, &s->spec_conv_bak, &s->spec_raw_log,
+            &s->spec_logits, &s->spec_hidden, &s->spec_argmax_out,
+            &s->spec_topk_cnt, &s->spec_topk_ids, &s->spec_topk_vals,
+            &s->dev_pos, &s->dummy_f32, &s->oracle_x,
         };
+        ink_dspark_close(s);
         for (size_t i = 0; i < sizeof scratch / sizeof *scratch; i++) free_buf(scratch[i]);
         if (s->module) pc_unload(s->module);
         if (s->stream) pc_destroy_stream(s->stream);
     }
-    for (int i = 0; i < 2; i++) { free(s->snaps[i].tokens); free(s->snaps[i].conv_state); free(s->snaps[i].logits); }
+    for (int i = 0; i < 2; i++) {
+        free(s->snaps[i].tokens); free(s->snaps[i].conv_state);
+        free(s->snaps[i].logits); free(s->snaps[i].dspark_last_taps);
+    }
     free(s->logits_host); free(s->hidden_host); free(s->zeros); free(s->moe_tasks_host);
+    free(s->tok_hist); free(s->pred_toks); free(s->sess_hist);
     ink_gguf_close(&s->gguf);
     free(s);
 }
 
+static int ink_flush_spec(InkSession *s);
+
 void ink_reset(InkSession *s) {
     if (!s) return;
-    const InkHParams *hp = &s->gguf.hp;
-    size_t d = (size_t)hp->n_embd;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
-    for (int il = 0; il < s->n_slots; il++) {
-        pc_fill(s->conv_k[il], 0, n_kv * 3, s->stream);
-        pc_fill(s->conv_v[il], 0, n_kv * 3, s->stream);
-        pc_fill(s->conv_ao[il], 0, d * 3, s->stream);
-        pc_fill(s->conv_fo[il], 0, d * 3, s->stream);
+    if (s->conv_all && s->conv_all_elems > 0) {
+        pc_fill(s->conv_all, 0, s->conv_all_elems, s->stream);
     }
     s->pos = 0;
     s->max_pos_written = 0;
+    s->tok_hist_len = 0;
+    s->spec_head = 0;
+    s->spec_tail = 0;
+    s->spec_active_idx = -1;
+    s->conv_pending_nb = 0;
+    s->conv_pending_n = 0;
+    s->argmax_valid = 0;
+    s->logits_host_valid = 0;
+    s->hidden_host_valid = 0;
     s->snaps[0].valid = 0;
     s->snaps[1].valid = 0;
+    if (s->dspark.ready) {
+        s->dspark.pos = 0;
+        s->dspark.pending_pos0 = 0;
+        s->dspark.pending_nb = 0;
+        s->dspark.pending_got = 0;
+        s->dspark.skip_countdown = 0;
+        s->dspark.skip_mult = 1;
+        s->dspark.req_rounds = 0;
+        s->dspark.req_disabled = 0;
+        s->dspark.util_ema = 1.10f;
+    }
 }
 
 /* The exact shortconv state after n_tokens, so a later request that starts
    with the same tokens resumes there. The KV cache stays on the device:
    positions before the snapshot are not rewritten until the ring wraps. */
+void ink_set_prediction(InkSession *s, const int32_t *tokens, int n_tokens) {
+    if (!s) return;
+    if (!tokens || n_tokens <= 0) { s->pred_len = 0; return; }
+    if (n_tokens > 16384) n_tokens = 16384;
+    if (n_tokens > s->pred_cap) {
+        int32_t *p = (int32_t *)realloc(s->pred_toks, (size_t)n_tokens * sizeof(int32_t));
+        if (!p) { s->pred_len = 0; return; }
+        s->pred_toks = p;
+        s->pred_cap = n_tokens;
+    }
+    memcpy(s->pred_toks, tokens, (size_t)n_tokens * sizeof(int32_t));
+    s->pred_len = n_tokens;
+}
+
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits) {
     if (!s || !tokens || n_tokens <= 0 || n_tokens != s->pos || n_tokens > s->max_ctx) return;
+    if (ink_flush_spec(s) != 0) return;
+    if (s->dspark.ready && s->dspark.pending_got > 0) ink_dspark_flush_pending(s);
     const InkHParams *hp = &s->gguf.hp;
-    size_t d = (size_t)hp->n_embd;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
-    size_t conv_elems = (size_t)s->n_slots * (2 * n_kv + 2 * d) * 3;
     int slot = save_logits ? 0 : 1;
     if (!s->snaps[slot].tokens) {
         s->snaps[slot].tokens = (int32_t *)malloc((size_t)s->max_ctx * sizeof(int32_t));
-        s->snaps[slot].conv_state = (float *)malloc(conv_elems * sizeof(float));
+        s->snaps[slot].conv_state = (float *)malloc(s->conv_all_elems * sizeof(float));
         s->snaps[slot].logits = (float *)malloc((size_t)hp->n_vocab * sizeof(float));
-        if (!s->snaps[slot].tokens || !s->snaps[slot].conv_state || !s->snaps[slot].logits) {
+        s->snaps[slot].dspark_last_taps = (float *)malloc((size_t)4 * 2304 * sizeof(float));
+        if (!s->snaps[slot].tokens || !s->snaps[slot].conv_state || !s->snaps[slot].logits || !s->snaps[slot].dspark_last_taps) {
             s->snaps[slot].valid = 0;
             return;
         }
     }
+    if (save_logits) {
+        const float *lg = ink_logits(s);
+        if (!lg) { s->snaps[slot].valid = 0; return; }
+        memcpy(s->snaps[slot].logits, lg, (size_t)hp->n_vocab * sizeof(float));
+    }
     memcpy(s->snaps[slot].tokens, tokens, (size_t)n_tokens * sizeof(int32_t));
-    float *dst = s->snaps[slot].conv_state;
-    PcStatus st = PC_OK;
-    for (int il = 0; il < s->n_slots && st == PC_OK; il++) {
-        st = pc_download(dst, s->conv_k[il], n_kv * 3 * 4, s->stream); dst += n_kv * 3;
-        if (st == PC_OK) st = pc_download(dst, s->conv_v[il], n_kv * 3 * 4, s->stream);
-        dst += n_kv * 3;
-        if (st == PC_OK) st = pc_download(dst, s->conv_ao[il], d * 3 * 4, s->stream);
-        dst += d * 3;
-        if (st == PC_OK) st = pc_download(dst, s->conv_fo[il], d * 3 * 4, s->stream);
-        dst += d * 3;
+    PcStatus st = pc_download(s->snaps[slot].conv_state, s->conv_all, s->conv_all_elems * 4, s->stream);
+    int save_ds = (s->dspark.ready && s->dspark.pos == n_tokens);
+    if (st == PC_OK && save_ds) {
+        st = pc_download(s->snaps[slot].dspark_last_taps, s->dspark.last_taps, 4 * 2304 * 4, s->stream);
     }
     if (st == PC_OK) st = pc_sync_stream(s->stream);
     if (st != PC_OK) { s->snaps[slot].valid = 0; return; }
-    if (save_logits) memcpy(s->snaps[slot].logits, s->logits_host, (size_t)hp->n_vocab * sizeof(float));
     s->snaps[slot].pos = n_tokens;
     s->snaps[slot].has_logits = save_logits ? 1 : 0;
+    s->snaps[slot].has_dspark = save_ds;
     s->snaps[slot].valid = 1;
 }
 
@@ -1734,24 +3223,41 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
         if (best < 0 || sp > s->snaps[best].pos) best = i;
     }
     if (best < 0) { ink_reset(s); return 0; }
-    size_t d = (size_t)hp->n_embd;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
-    const float *src = s->snaps[best].conv_state;
-    PcStatus st = PC_OK;
-    for (int il = 0; il < s->n_slots && st == PC_OK; il++) {
-        st = pc_upload(s->conv_k[il], src, n_kv * 3 * 4, s->stream); src += n_kv * 3;
-        if (st == PC_OK) st = pc_upload(s->conv_v[il], src, n_kv * 3 * 4, s->stream);
-        src += n_kv * 3;
-        if (st == PC_OK) st = pc_upload(s->conv_ao[il], src, d * 3 * 4, s->stream);
-        src += d * 3;
-        if (st == PC_OK) st = pc_upload(s->conv_fo[il], src, d * 3 * 4, s->stream);
-        src += d * 3;
+    s->spec_head = 0;
+    s->spec_tail = 0;
+    s->spec_active_idx = -1;
+    s->conv_pending_nb = 0;
+    s->conv_pending_n = 0;
+    PcStatus st = pc_upload(s->conv_all, s->snaps[best].conv_state, s->conv_all_elems * 4, s->stream);
+    if (st == PC_OK && s->dspark.ready && s->snaps[best].has_dspark && s->snaps[best].dspark_last_taps) {
+        st = pc_upload(s->dspark.last_taps, s->snaps[best].dspark_last_taps, 4 * 2304 * 4, s->stream);
     }
     if (st == PC_OK) st = pc_sync_stream(s->stream);
     if (st != PC_OK) { ink_reset(s); return 0; }
     int sp = s->snaps[best].pos;
-    if (sp == n_tokens && s->snaps[best].has_logits)
+    if (s->dspark.ready) {
+        s->dspark.pos = s->snaps[best].has_dspark ? sp : -1;
+        s->dspark.pending_pos0 = 0;
+        s->dspark.pending_nb = 0;
+        s->dspark.pending_got = 0;
+        s->dspark.skip_countdown = 0;
+        s->dspark.skip_mult = 1;
+        s->dspark.req_rounds = 0;
+        s->dspark.req_disabled = 0;
+        s->dspark.util_ema = 1.10f;
+    }
+    if (sp == n_tokens && s->snaps[best].has_logits) {
         memcpy(s->logits_host, s->snaps[best].logits, (size_t)hp->n_vocab * sizeof(float));
+        s->logits_host_valid = 1;
+    } else {
+        s->logits_host_valid = 0;
+    }
+    s->argmax_valid = 0;
+    s->hidden_host_valid = 0;
+    if (s->tok_hist && sp <= s->max_ctx) {
+        memcpy(s->tok_hist, tokens, (size_t)sp * sizeof(int32_t));
+        s->tok_hist_len = sp;
+    }
     s->pos = sp;
     s->max_pos_written = sp;
     for (int i = 0; i < 2; i++) {
@@ -1766,6 +3272,7 @@ static void abort_capture(InkSession *s) {
     pc_capture_end(s->stream, &tmp);
     if (tmp) pc_graph_free(tmp);
     s->capturing = 0;
+    s->spec_recording = 0;
 }
 
 static int dispatch_output_logits(InkSession *s, int64_t np, int n_blocks) {
@@ -1781,21 +3288,87 @@ static int dispatch_output_logits(InkSession *s, int64_t np, int n_blocks) {
          a_f32v(s->norm_buf, 0, d));
     CALL(s, K_RMSNORM, 1, a_int(d), a_int(1), a_f32(hp->rms_eps),
          a_f32v(s->norm_buf, 0, d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, 0, d));
-    if (dispatch_mv(s, &s->gguf.output, 1, nv, d, 0, s->norm_buf, 0, s->logits, 0) != 0) return 1;
+    if (s->output_iq4) {
+        int64_t blocks = d / 32;
+        int64_t lrows = (int64_t)(s->gguf.output.nbytes / (uint64_t)(blocks * 34));
+        CALL(s, K_DVQ, (nv + 31) / 32, a_int(nv), a_int(lrows), a_int(d), a_int(0), a_int(0),
+             a_view(s->output_dev, 0, lrows * blocks * 4),
+             a_view(s->output_dev, lrows * blocks * 16, lrows * blocks),
+             a_f32v(s->norm_buf, 0, d), a_f32v(s->logits, 0, nv));
+    } else {
+        if (dispatch_mv(s, &s->gguf.output, 1, nv, d, 0, s->norm_buf, 0, s->logits, 0) != 0) return 1;
+    }
     if (hp->logit_softcap > 0.0f) {
         CALL(s, K_SOFTCAP, nv, a_int(nv), a_f32(hp->logit_softcap), a_f32v(s->logits, 0, nv));
+    }
+    CALL(s, K_ARGMAX_S1, 64, a_int(nv), a_f32v(s->logits, 0, nv),
+         a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64));
+    CALL(s, K_ARGMAX_S2, 1, a_int(64), a_f32v(s->argmax_vals, 0, 64),
+         a_u32v(s->argmax_ids, 0, 64), a_u32v(s->argmax_out, 0, 1));
+    CALL(s, K_TOPK_FILTER, 256, a_int(nv), a_f32(16.0f), a_f32v(s->argmax_vals, 0, 64),
+         a_f32v(s->logits, 0, nv), a_u32v(s->topk_cnt, 0, 256),
+         a_u32v(s->topk_ids, 0, 256 * 16), a_f32v(s->topk_vals, 0, 256 * 16));
+    return 0;
+}
+
+/* Multi-token output mix -> out_norm -> BF16 Tensor Core lm_head -> softcap -> per-token GPU argmax + sparse top-k. */
+static int dispatch_spec_logits(InkSession *s, int64_t np, int n_blocks) {
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t d = hp->n_embd;
+    int64_t stack = (int64_t)s->batch * d;
+    int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+    CALL(s, K_MIX, np, a_int(d), a_int(n_blocks), a_int(1), a_int(stack),
+         a_f32v(s->blocks, 0, INK_MAX_BLOCKS * stack),
+         a_f32v(s->cur, 0, np * d),
+         a_tensor_f32(s, &s->gguf.out_res_query),
+         a_f32v(s->spec_hidden, 0, np * d));
+    CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
+         a_f32v(s->spec_hidden, 0, np * d), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->spec_hidden, 0, np * d));
+    if (s->output_iq4 && !s->no_mma && !s->oracle_q8 && d % 32 == 0) {
+        int64_t blocks = d / 32;
+        int64_t lrows = (int64_t)(s->gguf.output.nbytes / (uint64_t)(blocks * 34));
+        CALL(s, K_BF16_PACK, np * (d / 2), a_int(np * (d / 2)),
+             a_f32v(s->spec_hidden, 0, np * d), a_u32v(s->x_bf16, 0, np * (d / 2)));
+        CALL(s, K_IQ4_MMA_NB8_SK, (nv + 15) / 16, a_int(nv), a_int(lrows), a_int(d), a_int(np), a_int(1),
+             a_view(s->output_dev, 0, lrows * blocks * 4),
+             a_view(s->output_dev, lrows * blocks * 16, lrows * blocks),
+             a_u32v(s->x_bf16, 0, np * (d / 2)), a_f32v(s->spec_logits, 0, np * nv));
+    } else if (s->gguf.output.type == INK_GGML_Q8_0 && !s->no_mma && !s->oracle_q8 && d % 32 == 0) {
+        CALL(s, K_BF16_PACK, np * (d / 2), a_int(np * (d / 2)),
+             a_f32v(s->spec_hidden, 0, np * d), a_u32v(s->x_bf16, 0, np * (d / 2)));
+        if (dispatch_q8_mma(s, &s->gguf.output, np, nv, d, 0, s->x_bf16, 0, s->spec_logits, 0) != 0) return 1;
+    } else {
+        if (dispatch_mv(s, &s->gguf.output, np, nv, d, 0, s->spec_hidden, 0, s->spec_logits, 0) != 0) return 1;
+    }
+    if (hp->logit_softcap > 0.0f) {
+        CALL(s, K_SOFTCAP, np * nv, a_int(np * nv), a_f32(hp->logit_softcap), a_f32v(s->spec_logits, 0, np * nv));
+    }
+    for (int64_t t = 0; t < np; t++) {
+        CALL(s, K_ARGMAX_S1, 64, a_int(nv), a_f32v(s->spec_logits, t * nv, nv),
+             a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64));
+        CALL(s, K_ARGMAX_S2, 1, a_int(64), a_f32v(s->argmax_vals, 0, 64),
+             a_u32v(s->argmax_ids, 0, 64), a_u32v(s->spec_argmax_out, t, 1));
+        CALL(s, K_TOPK_FILTER, 256, a_int(nv), a_f32(16.0f), a_f32v(s->argmax_vals, 0, 64),
+             a_f32v(s->spec_logits, t * nv, nv), a_u32v(s->spec_topk_cnt, t * 256, 256),
+             a_u32v(s->spec_topk_ids, t * 256 * 16, 256 * 16), a_f32v(s->spec_topk_vals, t * 256 * 16, 256 * 16));
     }
     return 0;
 }
 
 /* Device-side body of a batch (embedding norm through optional logit softcap).
-   Safe to capture into one CUDA Graph when np == 1 and !s->streaming. */
+   Safe to capture into one CUDA Graph when !s->streaming and (np == 1 || np <= 8). */
 static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
     const InkHParams *hp = &s->gguf.hp;
     int64_t d = hp->n_embd;
     int64_t nd = np * d;
     int64_t stack = (int64_t)s->batch * d;
     size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+
+    if (s->spec_recording) {
+        CALL(s, K_COPY, (int64_t)s->conv_all_elems, a_int((int64_t)s->conv_all_elems),
+             a_f32v(s->conv_all, 0, (int64_t)s->conv_all_elems),
+             a_f32v(s->spec_conv_bak, 0, (int64_t)s->conv_all_elems));
+    }
 
     CALL(s, K_EMBED_Q8, np, a_int(0), a_int(d),
          a_u16v(s->embd_row, 0, np * (int64_t)(row_bytes / 2)),
@@ -1806,9 +3379,13 @@ static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
     int n_blocks = 0;
     int start = (int)hp->loop_start;
     int end = (int)hp->loop_end;
+    int cap_taps = s->dspark.ready ? 1 : 0;
 
     /* 2. Prelude layers [0 .. start). */
     for (int il = 0; il < start; il++) {
+        if (cap_taps && il == 5) {
+            CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->dspark.taps, 0, nd));
+        }
         if (dispatch_layer(s, il, il, np, &n_blocks, 0) != 0) return 1;
     }
 
@@ -1840,6 +3417,11 @@ static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
             }
         }
         for (int ip = start; ip < end; ip++) {
+            if (cap_taps && pass == 1 && ip == 11) {
+                CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->dspark.taps, nd, nd));
+            } else if (cap_taps && pass == 2 && ip == 17) {
+                CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->cur, 0, nd), a_f32v(s->dspark.taps, 2 * nd, nd));
+            }
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
             if (pass > 0) {
                 /* The four messages of this layer, from the previous pass. */
@@ -1859,9 +3441,32 @@ static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
         if (dispatch_layer(s, il, il, np, &n_blocks, 0) != 0) return 1;
     }
 
-    /* 5. For the last token: output mix -> output_norm -> lm_head -> logit softcap. */
-    if (compute_logits) {
+    /* 5. Output mix -> output_norm -> lm_head -> logit softcap (+ DSpark tap 3). */
+    if (compute_logits == 2) {
+        if (dispatch_spec_logits(s, np, n_blocks) != 0) return 1;
+        if (cap_taps) {
+            CALL(s, K_COPY, nd, a_int(nd), a_f32v(s->spec_hidden, 0, nd), a_f32v(s->dspark.taps, 3 * nd, nd));
+        }
+    } else if (compute_logits) {
+        if (cap_taps && np > 1) {
+            CALL(s, K_MIX, np, a_int(d), a_int(n_blocks), a_int(1), a_int(stack),
+                 a_f32v(s->blocks, 0, INK_MAX_BLOCKS * stack), a_f32v(s->cur, 0, nd),
+                 a_tensor_f32(s, &s->gguf.out_res_query), a_f32v(s->dspark.taps, 3 * nd, nd));
+            CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
+                 a_f32v(s->dspark.taps, 3 * nd, nd), a_tensor_f32(s, &s->gguf.out_norm),
+                 a_f32v(s->dspark.taps, 3 * nd, nd));
+        }
         if (dispatch_output_logits(s, np, n_blocks) != 0) return 1;
+        if (cap_taps && np == 1) {
+            CALL(s, K_COPY, d, a_int(d), a_f32v(s->norm_buf, 0, d), a_f32v(s->dspark.taps, 3 * d, d));
+        }
+    } else if (cap_taps) {
+        CALL(s, K_MIX, np, a_int(d), a_int(n_blocks), a_int(1), a_int(stack),
+             a_f32v(s->blocks, 0, INK_MAX_BLOCKS * stack), a_f32v(s->cur, 0, nd),
+             a_tensor_f32(s, &s->gguf.out_res_query), a_f32v(s->dspark.taps, 3 * nd, nd));
+        CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
+             a_f32v(s->dspark.taps, 3 * nd, nd), a_tensor_f32(s, &s->gguf.out_norm),
+             a_f32v(s->dspark.taps, 3 * nd, nd));
     }
     return 0;
 }
@@ -2044,7 +3649,6 @@ static int enqueue_batch(InkSession *s, const int32_t *tokens, int np_tokens, in
         snprintf(s->error, sizeof s->error, "context full (%d + %d of %d)", s->pos, np_tokens, s->max_ctx);
         return 1;
     }
-    int64_t d = hp->n_embd;
 
     /* 1. Upload the batch's embedding rows from host memory. */
     size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
@@ -2083,10 +3687,20 @@ static int enqueue_batch(InkSession *s, const int32_t *tokens, int np_tokens, in
     }
 
     if (compute_logits) {
-        int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
-        if (pc_download(s->logits_host, s->logits, (size_t)nv * 4, s->stream) != PC_OK ||
-            pc_download(s->hidden_host, s->norm_buf, (size_t)d * 4, s->stream) != PC_OK)
-            return host_fail(s, "read logits");
+        /* Download ONLY 4-byte GPU argmax + 33 KB sparse top-k bins (eliminates 804 KB full-vocab D2H copy per step!).
+           Full logits_host and hidden_host are downloaded lazily if ink_logits()/ink_hidden() are called. */
+        if (pc_download(&s->argmax_host, s->argmax_out, 4, s->stream) != PC_OK ||
+            pc_download(s->topk_cnt_host, s->topk_cnt, 256 * 4, s->stream) != PC_OK ||
+            pc_download(s->topk_ids_host, s->topk_ids, 256 * 16 * 4, s->stream) != PC_OK ||
+            pc_download(s->topk_vals_host, s->topk_vals, 256 * 16 * 4, s->stream) != PC_OK)
+            return host_fail(s, "read argmax/topk");
+        s->argmax_valid = 1;
+        s->logits_host_valid = 0;
+        s->hidden_host_valid = 0;
+    } else {
+        s->argmax_valid = 0;
+        s->logits_host_valid = 0;
+        s->hidden_host_valid = 0;
     }
 
     s->pos += np_tokens;
@@ -2095,15 +3709,292 @@ static int enqueue_batch(InkSession *s, const int32_t *tokens, int np_tokens, in
     return 0;
 }
 
+static int ink_flush_spec(InkSession *s) {
+    if (!s || s->conv_pending_n <= 0) return 0;
+    int got = s->conv_pending_n;
+    int nb = s->conv_pending_nb;
+    s->conv_pending_n = 0;
+    s->conv_pending_nb = 0;
+    if (got >= nb) return 0;
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t d = hp->n_embd;
+    int64_t n_kv = hp->n_head_kv * hp->head_dim;
+    int64_t items = (int64_t)s->n_slots * (2 * n_kv + 2 * d);
+    CALL(s, K_CONV_REWIND_ALL, items,
+         a_int(s->n_slots), a_int(n_kv), a_int(d), a_int(got),
+         a_f32v(s->spec_conv_bak, 0, (int64_t)s->conv_all_elems),
+         a_f32v(s->spec_raw_log, 0, (int64_t)s->spec_raw_log_elems),
+         a_f32v(s->conv_all, 0, (int64_t)s->conv_all_elems));
+    return 0;
+}
+
+static void ink_sess_hist_push(InkSession *s, int32_t tok) {
+    if (!s || tok < 0) return;
+    if (!s->sess_hist) {
+        s->sess_hist_cap = 16384;
+        s->sess_hist = (int32_t *)malloc((size_t)s->sess_hist_cap * sizeof(int32_t));
+        if (!s->sess_hist) { s->sess_hist_cap = 0; return; }
+        s->sess_hist_len = 0;
+    }
+    if (s->sess_hist_len >= s->sess_hist_cap) {
+        int keep = s->sess_hist_cap / 2;
+        memmove(s->sess_hist, s->sess_hist + (s->sess_hist_cap - keep), (size_t)keep * sizeof(int32_t));
+        s->sess_hist_len = keep;
+    }
+    s->sess_hist[s->sess_hist_len++] = tok;
+}
+
+static int pld_search_buf_cuda(const int32_t *ctx, int ctx_len, int32_t cur_tok,
+                               const int32_t *src, int src_len, int min_n, int max_n,
+                               int *out_found) {
+    if (!src || src_len < min_n + 1 || ctx_len < min_n) return 0;
+    int lo = src_len - 8192;
+    if (lo < 0) lo = 0;
+    for (int n = max_n; n >= min_n; n--) {
+        if (ctx_len < n || src_len < n + 1) continue;
+        for (int j = src_len - n - 1; j >= lo; j--) {
+            if (src[j + n - 1] != cur_tok) continue;
+            int ok = 1;
+            for (int k = 0; k < n - 1; k++) {
+                if (src[j + k] != ctx[ctx_len - n + k]) { ok = 0; break; }
+            }
+            if (ok) { *out_found = j + n; return n; }
+        }
+    }
+    return 0;
+}
+
+static int ink_pld_draft_cuda(const InkSession *s, int32_t cur_tok, int32_t *out_draft, int *out_match_n) {
+    *out_match_n = 0;
+    if (!s->tok_hist || s->pos < 2 || s->pos + 2 >= s->max_ctx) return 0;
+    const int32_t *h = s->tok_hist;
+    int len = s->pos + 1;
+    int min_n = (s->pld_ema2 >= 0.25f) ? 2 : 3;
+    const int32_t *src = NULL;
+    int src_len = 0, found = -1, match_n = 0;
+    if (s->pred_toks && s->pred_len >= 4) {
+        int pn = pld_search_buf_cuda(h, len, cur_tok, s->pred_toks, s->pred_len, 3, 10, &found);
+        if (pn >= 3) { src = s->pred_toks; src_len = s->pred_len; match_n = pn; }
+    }
+    if (!src) {
+        int lo = len - 4096; if (lo < 0) lo = 0;
+        for (int n = 10; n >= min_n && found < 0; n--) {
+            if (len < n + 1) continue;
+            for (int j = len - n - 1; j >= lo; j--) {
+                if (h[j + n - 1] != cur_tok) continue;
+                int ok = 1;
+                for (int k = 0; k < n - 1; k++) {
+                    if (h[j + k] != h[len - n + k]) { ok = 0; break; }
+                }
+                if (ok) { found = j + n; match_n = n; src = h; src_len = len - 1; break; }
+            }
+        }
+    }
+    if (!src && s->sess_hist && s->sess_hist_len >= 5) {
+        int sn = pld_search_buf_cuda(h, len, cur_tok, s->sess_hist, s->sess_hist_len, 4, 10, &found);
+        if (sn >= 4) { src = s->sess_hist; src_len = s->sess_hist_len; match_n = sn; }
+    }
+    if (!src || found < 0) return 0;
+    int m = (match_n >= 6) ? 7
+          : (match_n == 5) ? 6
+          : (match_n == 4) ? 5
+          : (match_n == 3) ? ((s->pld_ema3 >= 0.55f) ? 4 : (s->pld_ema3 >= 0.35f) ? 3 : 2)
+          : ((s->pld_ema2 >= 0.45f) ? 2 : 1);
+    int max_m = s->max_ctx - s->pos - 1;
+    if (max_m > 7) max_m = 7;
+    if (m > max_m) m = max_m;
+    int avail = src_len - found;
+    if (avail < 1) return 0;
+    if (m > avail) m = avail;
+    for (int k = 0; k < m; k++) {
+        int32_t tk = src[found + k];
+        if (tk < 0 || tk >= s->gguf.hp.n_vocab) { m = k; break; }
+        out_draft[k] = tk;
+    }
+    *out_match_n = match_n;
+    return m;
+}
+
+static int ink_verify_batch_cuda(InkSession *s, const int32_t *tokens, int nb) {
+    const InkHParams *hp = &s->gguf.hp;
+    if (nb < 2 || nb > 8 || !s->can_verify_nb) return 1;
+    if (s->pos + nb > s->max_ctx) {
+        snprintf(s->error, sizeof s->error, "context full (%d + %d of %d)", s->pos, nb, s->max_ctx);
+        return 1;
+    }
+    double began = pc_seconds();
+    if (ink_flush_spec(s) != 0) return 1;
+    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+    for (int b = 0; b < nb; b++) {
+        if (tokens[b] < 0 || tokens[b] >= hp->n_vocab) {
+            snprintf(s->error, sizeof s->error, "token id %d out of range [0,%lld)", tokens[b], (long long)hp->n_vocab);
+            return 1;
+        }
+        if (pc_upload(s->embd_row + (uint64_t)b * row_bytes,
+                      s->gguf.map + s->gguf.tok_embd.offset + (size_t)tokens[b] * row_bytes,
+                      row_bytes, s->stream) != PC_OK)
+            return host_fail(s, "upload verify embedding rows");
+    }
+    s->pos_host = (uint32_t)s->pos;
+    if (pc_upload(s->dev_pos, &s->pos_host, 4, s->stream) != PC_OK)
+        return host_fail(s, "upload verify position");
+
+    if (!s->no_graph && !s->profile) {
+        if (!s->verify_graph[nb]) {
+            if (pc_capture_begin(s->stream) != PC_OK) return host_fail(s, "capture verify begin");
+            s->capturing = 1;
+            s->spec_recording = 1;
+            if (enqueue_body(s, nb, 2) != 0) {
+                abort_capture(s);
+                return 1;
+            }
+            s->spec_recording = 0;
+            s->capturing = 0;
+            if (pc_capture_end(s->stream, &s->verify_graph[nb]) != PC_OK) return host_fail(s, "capture verify end");
+        }
+        if (pc_replay(s->verify_graph[nb], s->stream) != PC_OK) return host_fail(s, "replay verify");
+    } else {
+        s->spec_recording = 1;
+        int rc = enqueue_body(s, nb, 2);
+        s->spec_recording = 0;
+        if (rc != 0) return 1;
+    }
+
+    if (pc_download(s->spec_argmax_host, s->spec_argmax_out, (size_t)nb * 4, s->stream) != PC_OK ||
+        pc_download(s->spec_topk_cnt_host, s->spec_topk_cnt, (size_t)nb * 256 * 4, s->stream) != PC_OK ||
+        pc_download(s->spec_topk_ids_host, s->spec_topk_ids, (size_t)nb * 256 * 16 * 4, s->stream) != PC_OK ||
+        pc_download(s->spec_topk_vals_host, s->spec_topk_vals, (size_t)nb * 256 * 16 * 4, s->stream) != PC_OK)
+        return host_fail(s, "read verify argmax/topk");
+    double queued = pc_seconds();
+    if (pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "verify sync");
+    double dt = pc_seconds() - began;
+    s->total_gpu_seconds += dt;
+    s->queue_seconds += queued - began;
+    s->dspark.last_verify_s = dt;
+    if (s->pos + nb > s->max_pos_written) s->max_pos_written = s->pos + nb;
+    return 0;
+}
+
+static float next_u01_cuda(uint64_t *rng_state) {
+    uint64_t x = rng_state ? *rng_state : 0x9e3779b97f4a7c15ULL;
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
+    if (rng_state) *rng_state = x;
+    return (float)((x * 2685821657736338717ULL) >> 40) / (float)(1ULL << 24);
+}
+
+static int32_t sample_logits_ex_cuda(const float *logits, int n, const InkSampleParams *p, uint64_t *rng_state,
+                                     int32_t verify_draft, int *out_accepted) {
+    if (!logits || n <= 0) return -1;
+    float temp = p ? p->temperature : 0.0f;
+    if (temp <= 1e-6f) {
+        int best = 0; float bv = logits[0];
+        for (int i = 1; i < n; i++) {
+            if (logits[i] > bv) { bv = logits[i]; best = i; }
+        }
+        if (out_accepted) *out_accepted = (verify_draft >= 0 && best == verify_draft) ? 1 : 0;
+        return (int32_t)best;
+    }
+    int top_k = (p && p->top_k > 0 && p->top_k < n) ? p->top_k : 40;
+    float top_p = (p && p->top_p > 0.0f && p->top_p < 1.0f) ? p->top_p : 0.95f;
+    int idx_stack[64];
+    float val_stack[64];
+    int *idx = (top_k <= 64) ? idx_stack : (int *)malloc((size_t)top_k * sizeof(int));
+    float *val = (top_k <= 64) ? val_stack : (float *)malloc((size_t)top_k * sizeof(float));
+    if (!idx || !val) { if (top_k > 64) { free(idx); free(val); } return 0; }
+    int k = 0;
+    float inv_t = 1.0f / temp;
+    for (int i = 0; i < n; i++) {
+        float v = logits[i] * inv_t;
+        if (k < top_k) {
+            int j = k++;
+            while (j > 0 && val[j - 1] < v) { val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--; }
+            val[j] = v; idx[j] = i;
+        } else if (v > val[top_k - 1]) {
+            int j = top_k - 1;
+            while (j > 0 && val[j - 1] < v) { val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--; }
+            val[j] = v; idx[j] = i;
+        }
+    }
+    float mx = val[0], sum = 0.0f;
+    for (int i = 0; i < k; i++) { val[i] = expf(val[i] - mx); sum += val[i]; }
+    float cum = 0.0f;
+    int cut = k;
+    for (int i = 0; i < k; i++) {
+        val[i] /= sum;
+        cum += val[i];
+        if (cum >= top_p) { cut = i + 1; break; }
+    }
+    float norm = 0.0f;
+    for (int i = 0; i < cut; i++) norm += val[i];
+    for (int i = 0; i < cut; i++) val[i] /= norm;
+
+    int chosen = idx[0];
+    if (verify_draft >= 0) {
+        float p_draft = 0.0f;
+        int draft_pos = -1;
+        for (int i = 0; i < cut; i++) {
+            if (idx[i] == verify_draft) { p_draft = val[i]; draft_pos = i; break; }
+        }
+        float u = next_u01_cuda(rng_state);
+        if (u < p_draft) {
+            if (out_accepted) *out_accepted = 1;
+            chosen = verify_draft;
+        } else {
+            if (out_accepted) *out_accepted = 0;
+            float rem = 1.0f - p_draft;
+            if (rem <= 1e-7f) {
+                chosen = idx[0];
+            } else {
+                float r = next_u01_cuda(rng_state);
+                float acc = 0.0f;
+                chosen = (draft_pos == 0 && cut > 1) ? idx[1] : idx[0];
+                for (int i = 0; i < cut; i++) {
+                    if (i == draft_pos) continue;
+                    acc += val[i] / rem;
+                    if (r <= acc) { chosen = idx[i]; break; }
+                }
+            }
+        }
+    } else {
+        float r = next_u01_cuda(rng_state);
+        float acc = 0.0f;
+        for (int i = 0; i < cut; i++) {
+            acc += val[i];
+            if (r <= acc) { chosen = idx[i]; break; }
+        }
+    }
+    if (top_k > 64) { free(idx); free(val); }
+    return (int32_t)chosen;
+}
+
 int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_last_logits) {
     if (n_tokens <= 0) return 0;
+    if (n_tokens == 1) return ink_step(s, tokens[0], compute_last_logits);
+    s->spec_head = 0;
+    s->spec_tail = 0;
+    s->spec_active_idx = -1;
+    if (ink_flush_spec(s) != 0) return 1;
+    if (s->dspark.ready && s->dspark.pending_got > 0) {
+        if (ink_dspark_flush_pending(s) != 0) return 1;
+    }
+    if (s->tok_hist && s->pos + n_tokens <= s->max_ctx) {
+        memcpy(s->tok_hist + s->pos, tokens, (size_t)n_tokens * sizeof(int32_t));
+        if (s->pos + n_tokens > s->tok_hist_len) s->tok_hist_len = s->pos + n_tokens;
+    }
     double began = pc_seconds();
     for (int at = 0; at < n_tokens; at += s->batch) {
         int np = n_tokens - at < s->batch ? n_tokens - at : s->batch;
         int need_logits = compute_last_logits && at + np == n_tokens;
+        int chunk_pos0 = s->pos;
         if (enqueue_batch(s, tokens + at, np, need_logits) != 0) {
             pc_sync_stream(s->stream);
             return 1;
+        }
+        if (s->dspark.ready && s->dspark.pos == chunk_pos0) {
+            if (ink_dspark_enqueue_absorb(s, np, np, chunk_pos0) != 0) {
+                pc_sync_stream(s->stream);
+                return 1;
+            }
         }
     }
     double queued = pc_seconds();
@@ -2114,20 +4005,297 @@ int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_
 }
 
 int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
-    return ink_prefill(s, &token_id, 1, compute_logits);
+    if (!s) return 1;
+    const InkHParams *hp = &s->gguf.hp;
+    if (s->pos >= s->max_ctx) {
+        snprintf(s->error, sizeof s->error, "context full (%d/%d)", s->pos, s->max_ctx);
+        return 1;
+    }
+    if (token_id < 0 || token_id >= hp->n_vocab) {
+        snprintf(s->error, sizeof s->error, "token id %d out of range [0,%lld)", token_id, (long long)hp->n_vocab);
+        return 1;
+    }
+    /* Stage C3A/C3B: 0.000 ms speculative queue hit (exact for BOTH greedy temp=0 and sampled temp>0!) */
+    if (s->spec_head < s->spec_tail && compute_logits && token_id == s->spec_q[s->spec_head]) {
+        int idx = s->spec_head++;
+        ink_sess_hist_push(s, token_id);
+        if (s->tok_hist && s->pos < s->max_ctx) {
+            s->tok_hist[s->pos] = token_id;
+            if (s->pos + 1 > s->tok_hist_len) s->tok_hist_len = s->pos + 1;
+        }
+        s->pos++;
+        s->total_steps++;
+        s->conv_pending_n++;
+        if (s->dspark.ready && s->dspark.pending_got > 0) s->dspark.pending_got++;
+        s->spec_active_idx = idx;
+        s->argmax_valid = 1;
+        s->logits_host_valid = 0;
+        s->hidden_host_valid = 0;
+        return 0;
+    }
+    s->spec_head = 0;
+    s->spec_tail = 0;
+    s->spec_active_idx = -1;
+
+    int allow_spec = (s->can_verify_nb && compute_logits && !s->profile && getenv("INK_NO_SPEC") == NULL);
+    if (allow_spec) {
+        int32_t draft[7];
+        float ds_probs[7] = {0};
+        int match_n = 0;
+        int m = ink_pld_draft_cuda(s, token_id, draft, &match_n);
+        int used_dspark = 0;
+
+        /* Prefer zero-cost PLD only on high-confidence >=4-gram matches; otherwise run Native Coax CUDA DSpark! */
+        if (!(m >= 1 && match_n >= 4) &&
+            s->dspark.ready && !s->dspark.req_disabled &&
+            s->dspark.pos + s->dspark.pending_got == s->pos &&
+            s->pos >= 1 && s->pos + 1 < s->max_ctx && s->dspark.skip_countdown == 0) {
+            int max_c = s->max_ctx - s->pos - 1;
+            const char *k_env = getenv("INK_DSPARK_K");
+            int k_cap = (k_env && atoi(k_env) >= 1 && atoi(k_env) <= 7) ? atoi(k_env) : 7;
+            if (max_c > k_cap) max_c = k_cap;
+            int32_t ds_toks[7];
+            if (ink_dspark_draft(s, token_id, max_c, ds_toks, ds_probs) == 0) {
+                /* Decision-theoretic CUDA MoE pruning:
+                   Include token k while cumulative prob >= 0.12 with E[acc] >= 1.35! */
+                const char *mp_env = getenv("INK_DSPARK_MIN_P");
+                float min_cum = mp_env ? strtof(mp_env, NULL) : 0.12f;
+                const char *ea_env = getenv("INK_DSPARK_MIN_EACC");
+                float min_eacc = ea_env ? strtof(ea_env, NULL) : 1.35f;
+                int dm = 0;
+                float cum = 1.0f, e_acc = 0.0f;
+                while (dm < max_c) {
+                    cum *= ds_probs[dm];
+                    if (cum < min_cum) break;
+                    e_acc += cum;
+                    dm++;
+                }
+                if (dm >= 2 && e_acc >= min_eacc) {
+                    for (int k = 0; k < dm; k++) draft[k] = ds_toks[k];
+                    m = dm;
+                    used_dspark = 1;
+                } else {
+                    /* Low-confidence token: skip verify and run fast 10.8 ms B=1 instead of losing on m=1! */
+                    s->dspark.rounds++;
+                    s->dspark.req_rounds++;
+                    s->dspark.ema_acc = 0.80f * s->dspark.ema_acc;
+                    double b1 = s->dspark.b1_ema_s > 1e-4 ? s->dspark.b1_ema_s : 0.0109;
+                    double denom = s->dspark.last_draft_s + b1;
+                    float util = (denom > 1e-6) ? (float)(b1 / denom) : 0.8f;
+                    s->dspark.util_ema = 0.70f * s->dspark.util_ema + 0.30f * util;
+                    if (s->dspark.req_rounds >= 3 && s->dspark.util_ema < 0.94f) {
+                        s->dspark.skip_countdown = 6 * s->dspark.skip_mult;
+                        if (s->dspark.skip_mult < 4) s->dspark.skip_mult *= 2;
+                    }
+                }
+            }
+        }
+
+        if (m >= 1 && (used_dspark || m >= 2)) {
+            if (s->dspark.ready && s->dspark.pending_got > 0) {
+                if (ink_dspark_flush_pending(s) != 0) return 1;
+            }
+            int32_t batch_toks[8];
+            batch_toks[0] = token_id;
+            for (int k = 0; k < m; k++) batch_toks[k + 1] = draft[k];
+            int nb = m + 1;
+            int pos0 = s->pos;
+            if (ink_verify_batch_cuda(s, batch_toks, nb) != 0) return 1;
+            int n_acc = 0;
+            for (int k = 0; k < m; k++) {
+                if ((int32_t)s->spec_argmax_host[k] == draft[k]) n_acc++;
+                else break;
+            }
+            if (used_dspark) {
+                s->dspark.rounds++;
+                s->dspark.req_rounds++;
+                s->dspark.drafted += (uint64_t)m;
+                s->dspark.accepted += (uint64_t)n_acc;
+                s->dspark.ema_acc = 0.75f * s->dspark.ema_acc + 0.25f * (float)n_acc;
+                double b1 = s->dspark.b1_ema_s > 1e-4 ? s->dspark.b1_ema_s : 0.0109;
+                double round_s = s->dspark.last_draft_s + s->dspark.last_verify_s;
+                float util = (round_s > 1e-6) ? (float)((double)(1 + n_acc) * b1 / round_s) : 1.0f;
+                s->dspark.util_ema = 0.70f * s->dspark.util_ema + 0.30f * util;
+                if (util >= 1.05f) {
+                    s->dspark.skip_mult = 1;
+                } else if (s->dspark.req_rounds >= 3 && s->dspark.util_ema < 0.94f) {
+                    s->dspark.skip_countdown = 6 * s->dspark.skip_mult;
+                    if (s->dspark.skip_mult < 4) s->dspark.skip_mult *= 2;
+                }
+                if (getenv("INK_DSPARK_TRACE") != NULL) {
+                    fprintf(stderr, "[CUDA-DSPARK pos=%d m=%d acc=%d avg=%.2f ema=%.2f util=%.2f(ema=%.2f) sk=%d dr=%.2fms vf=%.2fms b1=%.2fms]\n",
+                            pos0, m, n_acc, (double)s->dspark.accepted / (double)s->dspark.rounds,
+                            (double)s->dspark.ema_acc, util, s->dspark.util_ema, s->dspark.skip_countdown,
+                            s->dspark.last_draft_s * 1000.0, s->dspark.last_verify_s * 1000.0, b1 * 1000.0);
+                }
+            } else {
+                float rate = (float)n_acc / (float)m;
+                if (match_n == 2) s->pld_ema2 = 0.80f * s->pld_ema2 + 0.20f * rate;
+                else if (match_n == 3) s->pld_ema3 = 0.80f * s->pld_ema3 + 0.20f * rate;
+            }
+            s->spec_rounds++;
+            s->spec_drafted += (uint64_t)m;
+            s->spec_accepted += (uint64_t)n_acc;
+
+            ink_sess_hist_push(s, token_id);
+            if (s->tok_hist && pos0 < s->max_ctx) {
+                s->tok_hist[pos0] = token_id;
+                if (pos0 + 1 > s->tok_hist_len) s->tok_hist_len = pos0 + 1;
+            }
+            for (int t = 0; t < nb; t++) s->spec_q[t] = batch_toks[t];
+            s->spec_head = 1;
+            s->spec_tail = nb; /* Queue ALL verified drafts so temp>0 hits match seamlessly too! */
+            s->spec_active_idx = 0;
+            s->conv_pending_nb = nb;
+            s->conv_pending_n = 1;
+            if (s->dspark.ready && s->dspark.pos == pos0) {
+                s->dspark.pending_pos0 = pos0;
+                s->dspark.pending_nb = nb;
+                s->dspark.pending_got = 1;
+            }
+            s->pos = pos0 + 1;
+            s->total_steps++;
+            s->argmax_valid = 1;
+            s->logits_host_valid = 0;
+            s->hidden_host_valid = 0;
+            return 0;
+        }
+    }
+
+    if (ink_flush_spec(s) != 0) return 1;
+    int spec_allowed_env = (getenv("INK_NO_SPEC") == NULL);
+    if (spec_allowed_env && s->dspark.ready && s->dspark.pending_got > 0) {
+        if (ink_dspark_flush_pending(s) != 0) return 1;
+    }
+    if (s->dspark.ready && s->dspark.skip_countdown > 0) s->dspark.skip_countdown--;
+    ink_sess_hist_push(s, token_id);
+    int step_pos0 = s->pos;
+    if (s->tok_hist && step_pos0 < s->max_ctx) {
+        s->tok_hist[step_pos0] = token_id;
+        if (step_pos0 + 1 > s->tok_hist_len) s->tok_hist_len = step_pos0 + 1;
+    }
+    double began = pc_seconds();
+    if (enqueue_batch(s, &token_id, 1, compute_logits) != 0) {
+        pc_sync_stream(s->stream);
+        return 1;
+    }
+    double queued = pc_seconds();
+    if (pc_sync_stream(s->stream) != PC_OK) return host_fail(s, "device");
+    double dt = pc_seconds() - began;
+    s->total_gpu_seconds += dt;
+    s->queue_seconds += queued - began;
+    if (compute_logits && dt > 0.002 && dt < 0.25) {
+        s->dspark.b1_ema_s = (s->dspark.b1_ema_s > 1e-4) ? (0.8 * s->dspark.b1_ema_s + 0.2 * dt) : dt;
+    }
+    if (spec_allowed_env && s->dspark.ready && s->dspark.pos == step_pos0) {
+        s->dspark.pending_pos0 = step_pos0;
+        s->dspark.pending_nb = 1;
+        s->dspark.pending_got = 1;
+    }
+    return 0;
 }
 
 int ink_verify_draft(InkSession *s, const int32_t *tokens, int n_tokens,
                      const InkSampleParams *p, uint64_t *rng_state,
                      int32_t *out_next_token) {
     if (!s || !tokens || n_tokens < 1 || !out_next_token) return -1;
-    if (ink_step(s, tokens[0], 1) != 0) return -1;
-    *out_next_token = ink_sample(s, p, rng_state);
-    return 0;
+    if (n_tokens == 1 || !s->can_verify_nb || n_tokens > 8) {
+        if (ink_step(s, tokens[0], 1) != 0) return -1;
+        *out_next_token = ink_sample(s, p, rng_state);
+        return 0;
+    }
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
+    s->spec_head = 0;
+    s->spec_tail = 0;
+    s->spec_active_idx = -1;
+    if (s->dspark.ready && s->dspark.pending_got > 0) {
+        if (ink_dspark_flush_pending(s) != 0) return -1;
+    }
+    int pos0 = s->pos;
+    if (ink_verify_batch_cuda(s, tokens, n_tokens) != 0) return -1;
+    float temp = p ? p->temperature : 0.0f;
+    int accepted = 0;
+    int32_t next_tok = -1;
+    if (temp <= 1e-6f) {
+        for (int j = 0; j < n_tokens - 1; j++) {
+            int32_t best = (int32_t)s->spec_argmax_host[j];
+            if (best == tokens[j + 1]) accepted++;
+            else { next_tok = best; break; }
+        }
+        if (accepted == n_tokens - 1) next_tok = (int32_t)s->spec_argmax_host[n_tokens - 1];
+    } else {
+        float *vlog = (float *)malloc((size_t)n_tokens * (size_t)nv * sizeof(float));
+        if (!vlog) return -1;
+        if (pc_download(vlog, s->spec_logits, (size_t)n_tokens * (size_t)nv * 4, s->stream) != PC_OK ||
+            pc_sync_stream(s->stream) != PC_OK) {
+            free(vlog);
+            return -1;
+        }
+        for (int j = 0; j < n_tokens - 1; j++) {
+            int ok = 0;
+            int32_t sampled = sample_logits_ex_cuda(vlog + (size_t)j * (size_t)nv, (int)nv, p, rng_state, tokens[j + 1], &ok);
+            if (ok) accepted++;
+            else { next_tok = sampled; break; }
+        }
+        if (accepted == n_tokens - 1) {
+            next_tok = sample_logits_ex_cuda(vlog + (size_t)(n_tokens - 1) * (size_t)nv, (int)nv, p, rng_state, -1, NULL);
+        }
+        free(vlog);
+    }
+    int a = accepted + 1;
+    for (int k = 0; k < a; k++) ink_sess_hist_push(s, tokens[k]);
+    if (s->tok_hist && pos0 + a <= s->max_ctx) {
+        memcpy(s->tok_hist + pos0, tokens, (size_t)a * sizeof(int32_t));
+        if (pos0 + a > s->tok_hist_len) s->tok_hist_len = pos0 + a;
+    }
+    s->conv_pending_nb = n_tokens;
+    s->conv_pending_n = a;
+    if (s->dspark.ready && s->dspark.pos == pos0) {
+        s->dspark.pending_pos0 = pos0;
+        s->dspark.pending_nb = n_tokens;
+        s->dspark.pending_got = a;
+    }
+    s->spec_active_idx = accepted;
+    s->argmax_valid = 1;
+    s->logits_host_valid = 0;
+    s->hidden_host_valid = 0;
+    s->pos = pos0 + a;
+    s->total_steps += a;
+    *out_next_token = next_tok;
+    return accepted;
 }
 
-const float *ink_logits(const InkSession *s) { return s ? s->logits_host : NULL; }
-const float *ink_hidden(const InkSession *s) { return s ? s->hidden_host : NULL; }
+const float *ink_logits(const InkSession *s) {
+    if (!s) return NULL;
+    InkSession *ms = (InkSession *)s;
+    if (!ms->logits_host_valid && ms->logits_host) {
+        int64_t nv = ms->gguf.hp.n_vocab_unpadded > 0 ? ms->gguf.hp.n_vocab_unpadded : ms->gguf.hp.n_vocab;
+        PcBuffer src = (ms->spec_active_idx >= 0 && ms->spec_logits)
+            ? (ms->spec_logits + (uint64_t)((size_t)ms->spec_active_idx * (size_t)nv * 4))
+            : ms->logits;
+        if (src && pc_download(ms->logits_host, src, (size_t)nv * 4, ms->stream) == PC_OK &&
+            pc_sync_stream(ms->stream) == PC_OK) {
+            ms->logits_host_valid = 1;
+        }
+    }
+    return s->logits_host;
+}
+const float *ink_hidden(const InkSession *s) {
+    if (!s) return NULL;
+    InkSession *ms = (InkSession *)s;
+    if (!ms->hidden_host_valid && ms->hidden_host) {
+        int64_t d = ms->gguf.hp.n_embd;
+        PcBuffer src = (ms->spec_active_idx >= 0 && ms->spec_hidden)
+            ? (ms->spec_hidden + (uint64_t)((size_t)ms->spec_active_idx * (size_t)d * 4))
+            : ms->norm_buf;
+        if (src && pc_download(ms->hidden_host, src, (size_t)d * 4, ms->stream) == PC_OK &&
+            pc_sync_stream(ms->stream) == PC_OK) {
+            ms->hidden_host_valid = 1;
+        }
+    }
+    return s->hidden_host;
+}
 const InkHParams *ink_hparams(const InkSession *s) { return s ? &s->gguf.hp : NULL; }
 const InkMemoryBudget *ink_memory_budget(const InkSession *s) { return s ? &s->budget : NULL; }
 int ink_vocab_size(const InkSession *s) { return s ? (int)s->gguf.hp.n_vocab : 0; }
@@ -2156,37 +4324,47 @@ const char *ink_token_str(const InkSession *s, int32_t id) {
     return s->gguf.tok.tokens[id].text;
 }
 
-int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_state) {
-    const float *logits = ink_logits(s);
-    int n = ink_vocab_unpadded(s);
-    if (!logits || n <= 0) return -1;
-
+static int32_t sample_topk_sparse_cuda(const uint32_t *cnts, const uint32_t *ids, const float *vals,
+                                       int n, const InkSampleParams *p, uint64_t *rng_state, int *used_fast) {
+    *used_fast = 0;
     float temp = p ? p->temperature : 0.0f;
-    if (temp <= 1e-6f) {
-        int best = 0; float bv = logits[0];
-        for (int i = 1; i < n; i++) {
-            if (logits[i] > bv) { bv = logits[i]; best = i; }
-        }
-        return (int32_t)best;
-    }
-
+    if (temp <= 1e-6f) return -1;
     int top_k = (p && p->top_k > 0 && p->top_k < n) ? p->top_k : 40;
     float top_p = (p && p->top_p > 0.0f && p->top_p < 1.0f) ? p->top_p : 0.95f;
-
-    int *idx = (int *)malloc((size_t)top_k * sizeof(int));
-    float *val = (float *)malloc((size_t)top_k * sizeof(float));
-    if (!idx || !val) { free(idx); free(val); return 0; }
+    int total = 0;
+    for (int g = 0; g < 256; g++) {
+        uint32_t c = cnts[g];
+        if (c > 16u) return -1;
+        total += (int)c;
+    }
+    if (total <= 0 || (total < top_k && temp > 0.8f)) return -1;
+    int idx_stack[64];
+    float val_stack[64];
+    int *idx = (top_k <= 64) ? idx_stack : (int *)malloc((size_t)top_k * sizeof(int));
+    float *val = (top_k <= 64) ? val_stack : (float *)malloc((size_t)top_k * sizeof(float));
+    if (!idx || !val) { if (top_k > 64) { free(idx); free(val); } return -1; }
     int k = 0;
-    for (int i = 0; i < n; i++) {
-        float v = logits[i] / temp;
-        if (k < top_k) {
-            int j = k++;
-            while (j > 0 && val[j - 1] < v) { val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--; }
-            val[j] = v; idx[j] = i;
-        } else if (v > val[top_k - 1]) {
-            int j = top_k - 1;
-            while (j > 0 && val[j - 1] < v) { val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--; }
-            val[j] = v; idx[j] = i;
+    float inv_t = 1.0f / temp;
+    for (int g = 0; g < 256; g++) {
+        uint32_t c = cnts[g];
+        if (c == 0u) continue;
+        int base = g * 16;
+        for (uint32_t j0 = 0; j0 < c; j0++) {
+            int id = (int)ids[base + (int)j0];
+            float v = vals[base + (int)j0] * inv_t;
+            if (k < top_k) {
+                int j = k++;
+                while (j > 0 && (val[j - 1] < v || (val[j - 1] == v && idx[j - 1] > id))) {
+                    val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--;
+                }
+                val[j] = v; idx[j] = id;
+            } else if (v > val[top_k - 1] || (v == val[top_k - 1] && id < idx[top_k - 1])) {
+                int j = top_k - 1;
+                while (j > 0 && (val[j - 1] < v || (val[j - 1] == v && idx[j - 1] > id))) {
+                    val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--;
+                }
+                val[j] = v; idx[j] = id;
+            }
         }
     }
     float mx = val[0], sum = 0.0f;
@@ -2200,20 +4378,41 @@ int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_
     }
     float norm = 0.0f;
     for (int i = 0; i < cut; i++) norm += val[i];
-
     uint64_t x = rng_state ? *rng_state : 0x9e3779b97f4a7c15ULL;
     x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
     if (rng_state) *rng_state = x;
     float r = (float)((x * 2685821657736338717ULL) >> 40) / (float)(1ULL << 24);
-
     float acc = 0.0f;
     int chosen = idx[0];
     for (int i = 0; i < cut; i++) {
         acc += val[i] / norm;
         if (r <= acc) { chosen = idx[i]; break; }
     }
-    free(idx); free(val);
+    if (top_k > 64) { free(idx); free(val); }
+    *used_fast = 1;
     return (int32_t)chosen;
+}
+
+int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_state) {
+    if (!s) return -1;
+    int n = ink_vocab_unpadded(s);
+    if (n <= 0) return -1;
+    float temp = p ? p->temperature : 0.0f;
+    if (temp <= 1e-6f && s->argmax_valid) {
+        if (s->spec_active_idx >= 0) return (int32_t)s->spec_argmax_host[s->spec_active_idx];
+        return (int32_t)s->argmax_host;
+    }
+    if (temp > 1e-6f && s->argmax_valid) {
+        int used_fast = 0;
+        const uint32_t *cnts = s->spec_active_idx >= 0 ? &s->spec_topk_cnt_host[s->spec_active_idx * 256] : s->topk_cnt_host;
+        const uint32_t *ids  = s->spec_active_idx >= 0 ? &s->spec_topk_ids_host[s->spec_active_idx * 256 * 16] : s->topk_ids_host;
+        const float    *vals = s->spec_active_idx >= 0 ? &s->spec_topk_vals_host[s->spec_active_idx * 256 * 16] : s->topk_vals_host;
+        int32_t tok = sample_topk_sparse_cuda(cnts, ids, vals, n, p, rng_state, &used_fast);
+        if (used_fast) return tok;
+    }
+    const float *logits = ink_logits(s);
+    if (!logits) return -1;
+    return sample_logits_ex_cuda(logits, n, p, rng_state, -1, NULL);
 }
 
 const char *ink_error(const InkSession *s) { return s ? s->error : "null session"; }

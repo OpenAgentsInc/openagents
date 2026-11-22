@@ -216,12 +216,37 @@ and against llama.cpp it is what the table above shows.
    so multi-threaded HTTP servers (`psionic-inkling-serve`) capture and replay
    cleanly.
 
+## Phase 8: 150–238+ tok/s Speculative Decode, Native Coax CUDA DSpark, & Full `--ctx 32768` Auto-Fit in 16 GB VRAM (RTX 4080 `sm_89`)
+
+Building on the zero-spill Tensor Core prefill and CUDA Graph decode baseline above, all **88** Coax CUDA kernels in `psionic/lib/inkling/kernels-cuda.coax` (`13/13` Coax tests) compile under `ptxas --gpu-name=sm_89 -v` with **`0 bytes spill stores, 0 bytes spill loads`** and zero cuBLAS/cuDNN dependencies:
+
+1. **OCP FP8 E4M3 KV cache (`ink_f32_to_fp8_e4m3`, `ink_kv_store_fp8`, FP8 paths in `ink_kv1`/`ink_attn_online`/`ink_attn_online_sk`/`ink_dspark_kv_absorb`):** Auto-enabled at `ctx > 8192` on `< 18 GiB` cards (`INK_FP16_KV=1` opt-out), halving 32K KV cache from `1,198 → 599 MB`.
+2. **Full `--ctx 32768` resident auto-fit on 16 GB VRAM:** Combining FP8 E4M3 KV (`599 MB`), auto IQ4\_NL `lm_head` (`470 → 249 MB`, `INK_EXACT_LM_HEAD=1` opt-out), and on-load IQ4\_NL conversion of the 4 Q8\_0 MoE layers fits **128/128 experts 100% resident** (`0.000 ms` streaming) **plus Native Coax CUDA DSpark (`271 MB` VRAM)** inside `15,199 MB / 15,468 MB` free VRAM (`1.81 s` load, `--verify-prefill-decode cos=0.999973 ok=true`).
+3. **Split-K online GQA attention & fused verify kernels:** `ink_attn_online_sk` + `ink_attn_sk_reduce` (`sk=16`, zero `attn_scores` DRAM, eliminates `pos=366` and `pos=4096` cliffs), split-K FP32 `ink_ctrl_rms` + `ink_ctrl_gate_nb8_sk` (2-level reduction), fused `ink_kv_nb` (`336 → 48` launches), `ink_attn_post_log` (drops 48 `K_COPY`s), and batched `ink_dvr_f32_nb8` (2-level reduction).
+4. **Native Coax CUDA DSpark (default ON, `INK_DSPARK=0` opt-out) + OpenAI `"prediction"` + SuffixDecoding-lite:** `ink_dspark_qkv_rope`, split-K `ink_dspark_attn_sk` + `ink_dspark_attn_reduce`, coalesced 0-spill `ink_dspark_fold_logits_s1` + `ink_dspark_logits_s2`, CUDA-graphed `verify_graph[2..8]` and `absorb_graph[9][9]`, Cascade per-request utility gate, cross-turn `sess_hist[16384]`, and `ink_set_prediction()`.
+5. **Opt-in `INK_FAST_Q4=1` fused IQ4\_NL attention projections:** `ink_proj_iq4_mma_nb8_sk` + `ink_proj_iq4_p` (reusing `ink_proj_sk_reduce` and `ink_proj_s`), cutting `529 MB` VRAM (`655 → 347 MB` attn + `470 → 249 MB` `lm_head`; `--verify-prefill-decode cos=0.999997 ok=true`).
+
+### Measured RTX 4080 Throughput (`nvidia-smi` idle `0%`, `38–56°C`)
+
+- **4K `nb=8` peak verify:** **`24.12 ms` (`331.7 tok/s`)** default lossless `Q8_0` (`B=1` `11.19 ms` = `89.4 tok/s`); **`23.64 ms` (`338.4 tok/s`)** `INK_FAST_Q4=1`.
+- **4K end-to-end 200-token decode (default lossless `Q8_0`, DSpark + PLD):** `warmup` **`159.6 tok/s`**, `file_edit` **`141.8 tok/s`** (`temp=0.0`) / **`129.0 tok/s`** (`temp=0.6`), **`file_edit` with OpenAI `"prediction"` `218.5 tok/s` (`2.59×` vs `84.5 tok/s` `B=1`)**, `code` `96.0` / `101.6` (`temp=0.6`), `tech` `96.0` / `97.7`, `story` `91.5` / `93.5`.
+- **4K opt-in `INK_FAST_Q4=1`:** `warmup` **`166.6 tok/s`**, **`file_edit` with OpenAI `"prediction"` `238.8 tok/s` (`3.02×` vs `79.0 tok/s` `B=1`)**, `tech` `98.5` / **`111.6 tok/s`** (`temp=0.6`).
+- **Full `--ctx 32768` context curve (`15,199 MB` VRAM, auto FP8 KV + IQ4\_NL `lm_head` + 128/128 resident experts + DSpark):**
+
+| Context | Prefill | 64-tok Decode (DSpark+PLD) |
+| ---: | ---: | ---: |
+| `128` | `506.8 tok/s` (`0.253 s`) | **`175.3 tok/s`** |
+| `1,024` | `440.2 tok/s` (`2.326 s`) | `105.3 tok/s` |
+| `4,096` | `381.8 tok/s` (`10.727 s`) | `93.9 tok/s` |
+| `8,192` | `354.2 tok/s` (`23.129 s`) | `104.4 tok/s` |
+| `16,384` | `317.2 tok/s` (`51.659 s`) | **`134.5 tok/s`** |
+| `24,576` | `287.7 tok/s` (`85.425 s`) | **`119.2 tok/s`** |
+
+- **Live `psionic-inkling-serve --ctx 32768` HTTP smoke test:** loaded in `1.81 s`, `/v1/chat/completions` with `max_thinking_tokens=64` + `reasoning_effort="0.5"` ran at **`118.8 tok/s`** (`thinking_budget_hits=1`, `post_budget_thinking_tokens=0`); OpenAI `"prediction"` ran at **`122.6 tok/s`**.
+
 ## Not done yet
 
-- **Fully resident run on a 24 GB+ card.** Not possible on this 16 GB machine.
-  Both the planner tests and the single-graph `decode_graph[2]` path are wired;
-  no 24 GB+ card has executed the resident path yet.
-- **Native Windows execution.** Both `.exe` binaries cross-compile cleanly via
-  MinGW with zero warnings; runtime verification requires a Windows NVIDIA host.
-- **Tier 2 and the 27-task Session History suites.** They run through
-  OpenAgents Desktop against the Linux/Windows local model host (Track B3/B4).
+- **8-slot SWA-backed prefix cache parity:** `inkling-cuda.c` still uses a 2-slot prefix cache rather than `inkling-metal.c`'s 8-slot SWA-backed prefix cache (`71d5d3d92a`).
+- **Fully resident run on a 24 GB+ card (all lossless `Q8_0` + FP16 KV at 32K):** Planner tests and single-graph paths are verified on 16 GB (resident via auto FP8 KV + IQ4\_NL); a 24 GB+ card has not yet been benchmarked.
+- **Native Windows runtime execution:** All 5 Windows `.c` units compile cleanly under `x86_64-w64-mingw32-gcc -Wall -Wextra` with 0 warnings; runtime verification requires a Windows NVIDIA host.
+- **Tier 2 and the 27-task Session History suites on CUDA:** Verified on direct CLI/server 4K and 32K benchmarks; end-to-end Inky agent suites on CUDA remain next.

@@ -515,20 +515,23 @@ WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 // Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
 static bool is_device_primitive(const ProcDecl *p) {
-  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_bf16_x16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16") || str_eq(p->name, "am_dot_f16_tg_write") || str_eq(p->name, "am_dot_f16_tg_write_rms") || str_eq(p->name, "am_rmsnorm_f32") || str_eq(p->name, "am_ctrl_up_apply_f16") || str_eq(p->name, "am_ctrl_up_apply_gf") || str_eq(p->name, "am_ctrl_up_apply_gf_norm") || str_eq(p->name, "am_ctrl_up_apply_gf_rm_norm") || str_eq(p->name, "am_ctrl_up_apply_gf_batch") || str_eq(p->name, "am_mix_fused") || str_eq(p->name, "am_mix_batch_f32") || str_eq(p->name, "am_router_top8") || str_eq(p->name, "am_conv_kv_both") || str_eq(p->name, "am_attn_gqa_1pass") || str_eq(p->name, "am_kv_attn_gqa_1pass") || str_eq(p->name, "am_attn_scores_m4") || str_eq(p->name, "am_attn_values_m4") || str_eq(p->name, "am_dot_q4_conv_2_write") || str_eq(p->name, "am_dot_q4_2_write_ex") || str_eq(p->name, "am_dot_q4s_2_write_ex") || str_eq(p->name, "am_dot_q4s_conv_2_write") || str_eq(p->name, "am_dot_q4s_1row_tg") || str_eq(p->name, "am_dot_q4s_qrgkv_sdyn") || str_eq(p->name, "am_moe_gu_iq4_tg") || str_eq(p->name, "am_moe_gu_q4_tg") || str_eq(p->name, "am_moe_down_iq4_tg") || str_eq(p->name, "am_moe_down_q4_tg") || str_eq(p->name, "am_moe_gu_q4s_tg") || str_eq(p->name, "am_moe_down_q4s_tg") || str_eq(p->name, "am_moe_gu_iq4s_tg") || str_eq(p->name, "am_moe_down_iq4s_tg") || str_eq(p->name, "am_dot_q4_qrgkv") || str_eq(p->name, "am_dot_q4s_2_write_nb") || str_eq(p->name, "am_dot_q4s_qrgkv_sdyn_nb") || str_eq(p->name, "am_kv_attn_gqa_1pass_nb") || str_eq(p->name, "am_dot_q4s_conv_nb") || str_eq(p->name, "am_moe_plan_nb") || str_eq(p->name, "am_moe_gu_iq4_nb") || str_eq(p->name, "am_moe_gu_q4s_nb") || str_eq(p->name, "am_moe_gu_iq4s_nb") || str_eq(p->name, "am_moe_down_iq4_nb") || str_eq(p->name, "am_moe_down_q4s_nb") || str_eq(p->name, "am_moe_down_iq4s_nb") || str_eq(p->name, "am_conv_commit_nb") || str_eq(p->name, "am_dot_q4s_small_nb") || str_eq(p->name, "am_mix_fused_nb") || str_eq(p->name, "am_ctrl_up_apply_gf_rm_nb"));
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_bf16_x16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16") || str_eq(p->name, "am_dot_f16_tg_write") || str_eq(p->name, "am_dot_f16_tg_write_rms") || str_eq(p->name, "am_rmsnorm_f32") || str_eq(p->name, "am_ctrl_up_apply_f16") || str_eq(p->name, "am_ctrl_up_apply_gf") || str_eq(p->name, "am_ctrl_up_apply_gf_norm") || str_eq(p->name, "am_ctrl_up_apply_gf_rm_norm") || str_eq(p->name, "am_ctrl_up_apply_gf_batch") || str_eq(p->name, "am_mix_fused") || str_eq(p->name, "am_mix_batch_f32") || str_eq(p->name, "am_router_top8") || str_eq(p->name, "am_conv_kv_both") || str_eq(p->name, "am_attn_gqa_1pass") || str_eq(p->name, "am_kv_attn_gqa_1pass") || str_eq(p->name, "am_attn_scores_m4") || str_eq(p->name, "am_attn_values_m4") || str_eq(p->name, "am_dot_q4_conv_2_write") || str_eq(p->name, "am_dot_q4_2_write_ex") || str_eq(p->name, "am_dot_q4s_2_write_ex") || str_eq(p->name, "am_dot_q4s_conv_2_write") || str_eq(p->name, "am_dot_q4s_1row_tg") || str_eq(p->name, "am_dot_q4s_qrgkv_sdyn") || str_eq(p->name, "am_moe_gu_iq4_tg") || str_eq(p->name, "am_moe_gu_q4_tg") || str_eq(p->name, "am_moe_down_iq4_tg") || str_eq(p->name, "am_moe_down_q4_tg") || str_eq(p->name, "am_moe_gu_q4s_tg") || str_eq(p->name, "am_moe_down_q4s_tg") || str_eq(p->name, "am_moe_gu_iq4s_tg") || str_eq(p->name, "am_moe_down_iq4s_tg") || str_eq(p->name, "am_dot_q4_qrgkv") || str_eq(p->name, "am_dot_q4s_2_write_nb") || str_eq(p->name, "am_dot_q4s_8row_nb") || str_eq(p->name, "am_dot_q4s_mma32_nb") || str_eq(p->name, "am_dot_q8_mma32_nb") || str_eq(p->name, "am_dot_q4s_qrgkv_sdyn_nb") || str_eq(p->name, "am_kv_attn_gqa_1pass_nb") || str_eq(p->name, "am_dot_q4s_conv_nb") || str_eq(p->name, "am_moe_plan_nb") || str_eq(p->name, "am_moe_gu_iq4_nb") || str_eq(p->name, "am_moe_gu_q4s_nb") || str_eq(p->name, "am_moe_gu_iq4s_nb") || str_eq(p->name, "am_moe_down_iq4_nb") || str_eq(p->name, "am_moe_down_q4s_nb") || str_eq(p->name, "am_moe_down_iq4s_nb") || str_eq(p->name, "am_moe_down_p1_iq4s_nb") || str_eq(p->name, "am_moe_down_p1_q4s_nb") || str_eq(p->name, "am_conv_commit_nb") || str_eq(p->name, "am_dot_q4s_small_nb") || str_eq(p->name, "am_mix_fused_nb") || str_eq(p->name, "am_ctrl_up_apply_gf_rm_nb") || str_eq(p->name, "am_dspark_fold_logits_s1"));
 }
 static int am_tg_prim_size(const ProcDecl *p) {
   if (!p) return 0;
   if (str_eq(p->name, "am_attn_scores_m4")) return 7680;
   if (str_eq(p->name, "am_attn_values_m4")) return 4096;
+  if (str_eq(p->name, "am_dot_q8_mma32_nb")) return 2560;
   if (str_eq(p->name, "am_kv_attn_gqa_1pass_nb")) return 2336;
   if (str_eq(p->name, "am_kv_attn_gqa_1pass")) return 1536;
+  if (str_eq(p->name, "am_dot_q4s_mma32_nb")) return 1280;
   if (str_eq(p->name, "am_ctrl_up_apply_gf_batch")) return 1024;
   if (str_eq(p->name, "am_dot_f16_tg_write") || str_eq(p->name, "am_dot_f16_tg_write_rms") || str_eq(p->name, "am_rmsnorm_f32") || str_eq(p->name, "am_ctrl_up_apply_f16") || str_eq(p->name, "am_mix_fused") || str_eq(p->name, "am_mix_fused_nb") || str_eq(p->name, "am_mix_batch_f32") || str_eq(p->name, "am_attn_gqa_1pass")) return 640;
   if (str_eq(p->name, "am_ctrl_up_apply_gf_rm_nb")) return 544;
   if (str_eq(p->name, "am_moe_plan_nb")) return 512;
   if (str_eq(p->name, "am_moe_gu_iq4_tg") || str_eq(p->name, "am_moe_gu_iq4s_tg")) return 260;
-  if (str_eq(p->name, "am_moe_down_iq4_tg") || str_eq(p->name, "am_moe_down_iq4s_tg") || str_eq(p->name, "am_moe_gu_iq4_nb") || str_eq(p->name, "am_moe_gu_iq4s_nb") || str_eq(p->name, "am_moe_down_iq4_nb") || str_eq(p->name, "am_moe_down_iq4s_nb")) return 256;
+  if (str_eq(p->name, "am_moe_down_iq4_tg") || str_eq(p->name, "am_moe_down_iq4s_tg") || str_eq(p->name, "am_moe_gu_iq4_nb") || str_eq(p->name, "am_moe_gu_iq4s_nb") || str_eq(p->name, "am_moe_down_iq4_nb") || str_eq(p->name, "am_moe_down_iq4s_nb") || str_eq(p->name, "am_moe_down_p1_iq4s_nb")) return 256;
+  if (str_eq(p->name, "am_dspark_fold_logits_s1")) return 96;
   if (str_eq(p->name, "am_dot_q4s_small_nb")) return 40;
   if (str_eq(p->name, "am_dot_q4s_1row_tg")) return 16;
   if (str_eq(p->name, "am_ctrl_up_apply_gf_rm_norm") || str_eq(p->name, "am_moe_gu_q4_tg") || str_eq(p->name, "am_moe_gu_q4s_tg")) return 4;
@@ -1989,6 +1992,30 @@ struct Emitter {
             for (int i = 0; i < 15; i++) s += ex(e->args[i]) + ", ";
             return s + "coax_lane, " + line + ", coax_err)";
           }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_dot_q4s_8row_nb")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q4s_8row_nb(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_dot_q4s_mma32_nb")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q4s_mma32_nb(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 11 && str_eq(e->proc->name, "am_dot_q8_mma32_nb")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q8_mma32_nb(";
+            for (int i = 0; i < 11; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_dspark_fold_logits_s1")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dspark_fold_logits_s1(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
           if (e->args.count == 20 && str_eq(e->proc->name, "am_dot_q4s_qrgkv_sdyn_nb")) {
             apple_tensor = true;
             std::string s = "coax_am_dot_q4s_qrgkv_sdyn_nb(";
@@ -2048,6 +2075,18 @@ struct Emitter {
             std::string s = "coax_am_moe_down_iq4s_nb(";
             for (int i = 0; i < 18; i++) s += ex(e->args[i]) + ", ";
             return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 14 && str_eq(e->proc->name, "am_moe_down_p1_iq4s_nb")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_down_p1_iq4s_nb(";
+            for (int i = 0; i < 14; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 14 && str_eq(e->proc->name, "am_moe_down_p1_q4s_nb")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_down_p1_q4s_nb(";
+            for (int i = 0; i < 14; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
           }
           if (e->args.count == 8 && str_eq(e->proc->name, "am_conv_commit_nb")) {
             apple_tensor = true;
@@ -5191,10 +5230,13 @@ static __attribute__((noinline)) void coax_am_moe_down_q4s_slow(int64_t r0, int6
       s0 += float(dp0[b]) * coax_q4s_dot16_u2(qp0[b * 2], xl0, xl1, xh0, xh1, xs);
       if (r0 + 1 < rows) s1 += float(dp0[blocks + b]) * coax_q4s_dot16_u2(qp0[blocks * 2 + b * 2], xl0, xl1, xh0, xh1, xs);
     }
-    a0 += ewt * s0;
-    a1 += ewt * s1;
+    float v0 = simd_sum(s0), v1 = simd_sum(s1);
+    if (lane == 0) {
+      a0 += ewt * v0;
+      a1 += ewt * v1;
+    }
   }
-  float t0 = simd_sum(a0), t1 = simd_sum(a1);
+  float t0 = a0, t1 = a1;
   if (lane == 0) {
     device float *h0 = hist.data + r0 * 3;
     float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5248,10 +5290,13 @@ COAX_DEV void coax_am_moe_down_q4s_tg(int64_t row0, int64_t rows, int64_t cols, 
         s0 += float(dp0[b]) * coax_q4s_dot16_u2(qp0[b * 2], xl0, xl1, xh0, xh1, xs);
         s1 += float(dp1[b]) * coax_q4s_dot16_u2(qp1[b * 2], xl0, xl1, xh0, xh1, xs);
       }
-      a0 = fma(ewt, s0, a0);
-      a1 = fma(ewt, s1, a1);
+      float v0 = simd_sum(s0), v1 = simd_sum(s1);
+      if (lane == 0) {
+        a0 += ewt * v0;
+        a1 += ewt * v1;
+      }
     }
-    float t0 = simd_sum(a0), t1 = simd_sum(a1);
+    float t0 = a0, t1 = a1;
     if (lane == 0) {
       device float *h0 = hist.data + r0 * 3;
       float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5392,10 +5437,13 @@ static __attribute__((noinline)) void coax_am_moe_down_iq4s_slow(int64_t r0, int
       s0 += float(dp0[b]) * coax_iq4s_dot16_u2(qp0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
       if (r0 + 1 < rows) s1 += float(dp0[blocks + b]) * coax_iq4s_dot16_u2(qp0[blocks * 2 + b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
     }
-    a0 += ewt * s0;
-    a1 += ewt * s1;
+    float v0 = simd_sum(s0), v1 = simd_sum(s1);
+    if (lane == 0) {
+      a0 += ewt * v0;
+      a1 += ewt * v1;
+    }
   }
-  float t0 = simd_sum(a0), t1 = simd_sum(a1);
+  float t0 = a0, t1 = a1;
   if (lane == 0) {
     device float *h0 = hist.data + r0 * 3;
     float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5450,10 +5498,13 @@ COAX_DEV void coax_am_moe_down_iq4s_tg(int64_t row0, int64_t rows, int64_t cols,
         s0 += float(dp0[b]) * coax_iq4s_dot16_u2(qp0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
         s1 += float(dp1[b]) * coax_iq4s_dot16_u2(qp1[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
       }
-      a0 = fma(ewt, s0, a0);
-      a1 = fma(ewt, s1, a1);
+      float v0 = simd_sum(s0), v1 = simd_sum(s1);
+      if (lane == 0) {
+        a0 += ewt * v0;
+        a1 += ewt * v1;
+      }
     }
-    float t0 = simd_sum(a0), t1 = simd_sum(a1);
+    float t0 = a0, t1 = a1;
     if (lane == 0) {
       device float *h0 = hist.data + r0 * 3;
       float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5558,10 +5609,13 @@ static __attribute__((noinline)) void coax_am_moe_down_iq4_slow(int64_t r0, int6
       s0 += float(as_type<half>(bw[0])) * coax_iq4_dot16_tg(*(const device packed_ushort4 *)(bw + 1 + k0), x0, x1, x2, x3, x4, x5, x6, x7, tlut);
       if (r0 + 1 < rows) s1 += float(as_type<half>(bw[rw])) * coax_iq4_dot16_tg(*(const device packed_ushort4 *)(bw + rw + 1 + k0), x0, x1, x2, x3, x4, x5, x6, x7, tlut);
     }
-    a0 += ewt * s0;
-    a1 += ewt * s1;
+    float v0 = simd_sum(s0), v1 = simd_sum(s1);
+    if (lane == 0) {
+      a0 += ewt * v0;
+      a1 += ewt * v1;
+    }
   }
-  float t0 = simd_sum(a0), t1 = simd_sum(a1);
+  float t0 = a0, t1 = a1;
   if (lane == 0) {
     device float *h0 = hist.data + r0 * 3;
     float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5616,10 +5670,13 @@ COAX_DEV void coax_am_moe_down_iq4_tg(int64_t row0, int64_t rows, int64_t cols, 
         bw += 324;
         s1 += float(as_type<half>(bw[0])) * coax_iq4_dot16_tg(*(const device packed_ushort4 *)(bw + 1 + k0), x0, x1, x2, x3, x4, x5, x6, x7, tlut);
       }
-      a0 = fma(ewt, s0, a0);
-      a1 = fma(ewt, s1, a1);
+      float v0 = simd_sum(s0), v1 = simd_sum(s1);
+      if (lane == 0) {
+        a0 += ewt * v0;
+        a1 += ewt * v1;
+      }
     }
-    float t0 = simd_sum(a0), t1 = simd_sum(a1);
+    float t0 = a0, t1 = a1;
     if (lane == 0) {
       device float *h0 = hist.data + r0 * 3;
       float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -5660,10 +5717,13 @@ static __attribute__((noinline)) void coax_am_moe_down_q4_slow(int64_t r0, int64
       s0 += float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum);
       if (r0 + 1 < rows) s1 += float(as_type<half>(bw[rw])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + rw + 1 + k0), xl, xh, xsum);
     }
-    a0 += ewt * s0;
-    a1 += ewt * s1;
+    float v0 = simd_sum(s0), v1 = simd_sum(s1);
+    if (lane == 0) {
+      a0 += ewt * v0;
+      a1 += ewt * v1;
+    }
   }
-  float t0 = simd_sum(a0), t1 = simd_sum(a1);
+  float t0 = a0, t1 = a1;
   if (lane == 0) {
     device float *h0 = hist.data + r0 * 3;
     float u0 = h0[0], u1 = h0[1], u2 = h0[2];
@@ -6113,6 +6173,242 @@ COAX_DEV void coax_am_dot_q4s_2_write_nb(coax_v_u32 qs, coax_v_u16 ds, int64_t b
     #undef Q4NB_WR
   }
 }
+COAX_DEV void coax_am_dot_q4s_8row_nb(int64_t row0, int64_t rows, int64_t cols, int64_t nb, int64_t row_base, int64_t x_off, int64_t out_off, float cap, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 x, coax_v_f32 out, uint32_t tid, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  if (cols <= 0 || (cols & 31) != 0 || rows <= 0 || nb < 1 || nb > 8 || row0 < 0 || row_base < 0 || (row_base + rows) * blocks * 4 > qs.count || (row_base + rows) * blocks > ds.count || x_off < 0 || x_off + nb * cols > x.count || out_off < 0 || out_off + nb * rows > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u, sg = tid >> 5, blk_lane = lane >> 1, hb = lane & 1u;
+  int xq = (int)(hb * 8u), inb = (int)nb, iblocks = (int)blocks;
+  const device float *xp = x.data + x_off;
+  for (int ri = 0; ri < 2; ri++) {
+    int64_t r0 = row0 + (int64_t)(sg * 2u) + ri;
+    if (r0 >= rows) continue;
+    int64_t b0_row = (row_base + r0) * blocks;
+    const device uint2 *qp0 = (const device uint2 *)(qs.data + b0_row * 4) + hb;
+    const device half *dp0 = (const device half *)(ds.data + b0_row);
+    float a0=0,a1=0,a2=0,a3=0,a4=0,a5=0,a6=0,a7=0;
+    #define Q8_1R(T, A) if ((T) < inb) { \
+      const device float *bx = xp + (int64_t)(T) * cols + bo; \
+      float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4); \
+      float4 f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20); \
+      float4 fs = (f0 + f1) + (f2 + f3); float xs = (fs.x + fs.y) + (fs.z + fs.w); \
+      A += d0 * coax_q4s_dot16_pre(p0, p1, p2, p3, half4(f0), half4(f1), half4(f2), half4(f3), xs); }
+    for (int b = (int)blk_lane; b < iblocks; b += 16) {
+      uint2 w0 = qp0[b * 2]; float d0 = float(dp0[b]);
+      half4 p0 = half4(as_type<uchar4>(w0.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w0.x >> 4u) & 0x0f0f0f0fu));
+      half4 p2 = half4(as_type<uchar4>(w0.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w0.y >> 4u) & 0x0f0f0f0fu));
+      int bo = b * 32 + xq;
+      Q8_1R(0,a0) Q8_1R(1,a1) Q8_1R(2,a2) Q8_1R(3,a3)
+      Q8_1R(4,a4) Q8_1R(5,a5) Q8_1R(6,a6) Q8_1R(7,a7)
+    }
+    #undef Q8_1R
+    #define Q8_WR(T, A) if ((T) < inb) { \
+      float v = simd_sum(A); \
+      if (lane == 0) { \
+        if (cap > 0.0f) v = cap * tanh(v / cap); \
+        out.data[out_off + (int64_t)(T) * rows + r0] = v; } }
+    Q8_WR(0,a0) Q8_WR(1,a1) Q8_WR(2,a2) Q8_WR(3,a3)
+    Q8_WR(4,a4) Q8_WR(5,a5) Q8_WR(6,a6) Q8_WR(7,a7)
+    #undef Q8_WR
+  }
+}
+COAX_DEV void coax_am_dot_q4s_mma32_nb(int64_t row0, int64_t rows, int64_t cols, int64_t nb, int64_t row_base, int64_t x_off, int64_t out_off, float cap, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 x, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  if (cols <= 0 || (cols & 31) != 0 || rows <= 0 || nb < 1 || nb > 8 || row0 < 0 || row_base < 0 || (row_base + rows) * blocks * 4 > qs.count || (row_base + rows) * blocks > ds.count || x_off < 0 || x_off + nb * cols > x.count || out_off < 0 || out_off + nb * rows > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup half *tg_X = (threadgroup half *)tg;          /* 8 * 64 half = 256 floats */
+  threadgroup half *tg_W = (threadgroup half *)(tg + 256);  /* 32 * 64 half = 1024 floats */
+  int iblocks = (int)blocks, inb = (int)nb;
+  uint32_t sg = tid >> 5, r_loc = tid >> 2, q_loc = tid & 3u;
+  int64_t r_glob = row0 + (int64_t)r_loc;
+  bool r_ok = (r_glob < rows);
+  int64_t r_off = r_ok ? ((row_base + r_glob) * blocks) : 0;
+  const device uint32_t *qrow = qs.data + r_off * 4 + (int64_t)q_loc;
+  const device half *drow = (const device half *)(ds.data + r_off);
+  const device float *xp = x.data + x_off;
+  simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.0f);
+  for (int b = 0; b < iblocks; b += 2) {
+    int b1 = b + 1; bool has_b1 = (b1 < iblocks);
+    int p = (int)tid * 4, t = p >> 6, c = p & 63;
+    if (t < inb && (b * 32 + c) < (int)cols) {
+      *(threadgroup half4 *)(tg_X + p) = half4(*(const device float4 *)(xp + (int64_t)t * cols + b * 32 + c));
+    } else {
+      *(threadgroup half4 *)(tg_X + p) = half4(0.0h);
+    }
+    int woff = (int)r_loc * 64 + (int)q_loc * 4;
+    if (r_ok) {
+      uint32_t w0 = qrow[b * 4]; half d0 = drow[b];
+      *(threadgroup half4 *)(tg_W + woff)      = (half4(as_type<uchar4>(w0 & 0x0f0f0f0fu)) - 8.0h) * d0;
+      *(threadgroup half4 *)(tg_W + woff + 16) = (half4(as_type<uchar4>((w0 >> 4u) & 0x0f0f0f0fu)) - 8.0h) * d0;
+      if (has_b1) {
+        uint32_t w1 = qrow[b1 * 4]; half d1 = drow[b1];
+        *(threadgroup half4 *)(tg_W + woff + 32) = (half4(as_type<uchar4>(w1 & 0x0f0f0f0fu)) - 8.0h) * d1;
+        *(threadgroup half4 *)(tg_W + woff + 48) = (half4(as_type<uchar4>((w1 >> 4u) & 0x0f0f0f0fu)) - 8.0h) * d1;
+      } else {
+        *(threadgroup half4 *)(tg_W + woff + 32) = half4(0.0h);
+        *(threadgroup half4 *)(tg_W + woff + 48) = half4(0.0h);
+      }
+    } else {
+      *(threadgroup half4 *)(tg_W + woff)      = half4(0.0h);
+      *(threadgroup half4 *)(tg_W + woff + 16) = half4(0.0h);
+      *(threadgroup half4 *)(tg_W + woff + 32) = half4(0.0h);
+      *(threadgroup half4 *)(tg_W + woff + 48) = half4(0.0h);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const threadgroup half *w_sg = tg_W + sg * 8 * 64;
+    for (int k = 0; k < 64; k += 8) {
+      simdgroup_half8x8 A, B;
+      simdgroup_load(A, tg_X + k, 64, ulong2(0, 0), false);
+      simdgroup_load(B, w_sg + k, 64, ulong2(0, 0), true);
+      simdgroup_multiply_accumulate(acc, A, B, acc);
+    }
+    if (b + 2 < iblocks) threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  threadgroup float *tg_out = (threadgroup float *)tg_W + sg * 64;
+  simdgroup_store(acc, tg_out, 8, ulong2(0, 0), false);
+  simdgroup_barrier(mem_flags::mem_threadgroup);
+  uint32_t lane = tid & 31u;
+  for (int e = (int)lane; e < 64; e += 32) {
+    int t = e >> 3, rl = e & 7;
+    int64_t rg = row0 + (int64_t)(sg * 8u) + rl;
+    if (t < inb && rg < rows) {
+      float v = tg_out[e];
+      if (cap > 0.0f) v = cap * tanh(v / cap);
+      out.data[out_off + (int64_t)t * rows + rg] = v;
+    }
+  }
+}
+COAX_DEV void coax_am_dot_q8_mma32_nb(int64_t row0, int64_t rows, int64_t cols, int64_t nb, int64_t row_base, int64_t x_off, int64_t out_off, float cap, coax_v_u16 w, coax_v_f32 x, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  if (cols <= 0 || (cols & 31) != 0 || rows <= 0 || nb < 1 || nb > 8 || row0 < 0 || row_base < 0 || (row_base + rows) * blocks * 17 > w.count || x_off < 0 || x_off + nb * cols > x.count || out_off < 0 || out_off + nb * rows > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup half *tg_X = (threadgroup half *)tg;          /* 8 * 128 half = 512 floats */
+  threadgroup half *tg_W = (threadgroup half *)(tg + 512);  /* 32 * 128 half = 2048 floats */
+  int iblocks = (int)blocks, inb = (int)nb;
+  uint32_t sg = tid >> 5, r_loc = tid >> 2, b_loc = tid & 3u;
+  int64_t r_glob = row0 + (int64_t)r_loc;
+  bool r_ok = (r_glob < rows);
+  const device uint16_t *wrow = w.data + (r_ok ? ((row_base + r_glob) * blocks * 17) : 0);
+  const device float *xp = x.data + x_off;
+  simdgroup_float8x8 acc = make_filled_simdgroup_matrix<float, 8, 8>(0.0f);
+  for (int b = 0; b < iblocks; b += 4) {
+    for (int s = 0; s < 2; s++) {
+      int p = ((int)tid + s * 128) * 4, t = p >> 7, c = p & 127;
+      if (t < inb && (b * 32 + c) < (int)cols) {
+        *(threadgroup half4 *)(tg_X + p) = half4(*(const device float4 *)(xp + (int64_t)t * cols + b * 32 + c));
+      } else {
+        *(threadgroup half4 *)(tg_X + p) = half4(0.0h);
+      }
+    }
+    int bi = b + (int)b_loc;
+    int woff = (int)r_loc * 128 + (int)b_loc * 32;
+    if (r_ok && bi < iblocks) {
+      const device uint16_t *bw = wrow + (int64_t)bi * 17;
+      half d = as_type<half>(bw[0]);
+      const device char *qb = (const device char *)(bw + 1);
+      for (int q = 0; q < 32; q += 4) {
+        char4 c4 = *(const device packed_char4 *)(qb + q);
+        *(threadgroup half4 *)(tg_W + woff + q) = half4(c4) * d;
+      }
+    } else {
+      for (int z = 0; z < 32; z += 4) *(threadgroup half4 *)(tg_W + woff + z) = half4(0.0h);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const threadgroup half *w_sg = tg_W + sg * 8 * 128;
+    for (int k = 0; k < 128; k += 8) {
+      simdgroup_half8x8 A, B;
+      simdgroup_load(A, tg_X + k, 128, ulong2(0, 0), false);
+      simdgroup_load(B, w_sg + k, 128, ulong2(0, 0), true);
+      simdgroup_multiply_accumulate(acc, A, B, acc);
+    }
+    if (b + 4 < iblocks) threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  threadgroup float *tg_out = (threadgroup float *)tg_W + sg * 64;
+  simdgroup_store(acc, tg_out, 8, ulong2(0, 0), false);
+  simdgroup_barrier(mem_flags::mem_threadgroup);
+  uint32_t lane = tid & 31u;
+  for (int e = (int)lane; e < 64; e += 32) {
+    int t = e >> 3, rl = e & 7;
+    int64_t rg = row0 + (int64_t)(sg * 8u) + rl;
+    if (t < inb && rg < rows) {
+      float v = tg_out[e];
+      if (cap > 0.0f) v = cap * tanh(v / cap);
+      out.data[out_off + (int64_t)t * rows + rg] = v;
+    }
+  }
+}
+COAX_DEV void coax_am_dspark_fold_logits_s1(int64_t item, int64_t nv, int64_t step_idx, float cap, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 latent, coax_v_f32 base, coax_v_f32 fold_b, coax_v_f32 out_m, coax_v_u32 out_i, coax_v_f32 out_s, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (item < 0 || item >= 64 || nv <= 0 || step_idx < 0 || nv * 32 > qs.count || nv * 8 > ds.count || 256 > latent.count || (step_idx + 1) * nv > base.count || nv > fold_b.count || item >= out_m.count || item >= out_i.count || item >= out_s.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int64_t chunk = (nv + 63) / 64;
+  int64_t lo = item * chunk;
+  int64_t hi = lo + chunk;
+  if (hi > nv) hi = nv;
+  int64_t b_off = step_idx * nv;
+  uint32_t sub = tid >> 3, blk = tid & 7u;
+  const device float *lx = latent.data + blk * 32;
+  float4 f0 = *(const device float4 *)(lx + 0), f1 = *(const device float4 *)(lx + 4);
+  float4 f2 = *(const device float4 *)(lx + 16), f3 = *(const device float4 *)(lx + 20);
+  float4 fs0 = (f0 + f1) + (f2 + f3); float xs0 = (fs0.x + fs0.y) + (fs0.z + fs0.w);
+  half4 l0 = half4(f0), l1 = half4(f1), h0 = half4(f2), h1 = half4(f3);
+  float4 g0 = *(const device float4 *)(lx + 8), g1 = *(const device float4 *)(lx + 12);
+  float4 g2 = *(const device float4 *)(lx + 24), g3 = *(const device float4 *)(lx + 28);
+  float4 fs1 = (g0 + g1) + (g2 + g3); float xs1 = (fs1.x + fs1.y) + (fs1.z + fs1.w);
+  half4 l2 = half4(g0), l3 = half4(g1), h2 = half4(g2), h3 = half4(g3);
+  float bm = -1.0e30f, bs = 0.0f;
+  uint32_t bi = 0u;
+  for (int64_t r = lo + (int64_t)sub; r < hi; r += 32) {
+    uint4 w = ((const device uint4 *)(qs.data + r * 32))[blk];
+    float d = float(((const device half *)(ds.data + r * 8))[blk]);
+    half4 p0 = half4(as_type<uchar4>(w.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w.x >> 4u) & 0x0f0f0f0fu));
+    half4 p2 = half4(as_type<uchar4>(w.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w.y >> 4u) & 0x0f0f0f0fu));
+    half4 q0 = half4(as_type<uchar4>(w.z & 0x0f0f0f0fu)), q1 = half4(as_type<uchar4>((w.z >> 4u) & 0x0f0f0f0fu));
+    half4 q2 = half4(as_type<uchar4>(w.w & 0x0f0f0f0fu)), q3 = half4(as_type<uchar4>((w.w >> 4u) & 0x0f0f0f0fu));
+    float val = d * (coax_q4s_dot16_pre(p0, p1, p2, p3, l0, l1, h0, h1, xs0) + coax_q4s_dot16_pre(q0, q1, q2, q3, l2, l3, h2, h3, xs1));
+    val += simd_shuffle_xor(val, 4);
+    val += simd_shuffle_xor(val, 2);
+    val += simd_shuffle_xor(val, 1);
+    if (blk == 0u) {
+      float v = base.data[b_off + r] + fold_b.data[r] + val;
+      if (cap > 0.0f) v = cap * tanh(v / cap);
+      if (v > bm) {
+        bs = (bs > 0.0f) ? (bs * exp(bm - v) + 1.0f) : 1.0f;
+        bm = v;
+        bi = (uint32_t)r;
+      } else {
+        bs += exp(v - bm);
+      }
+    }
+  }
+  threadgroup float *pm = tg;
+  threadgroup uint32_t *pi = (threadgroup uint32_t *)(tg + 32);
+  threadgroup float *ps = tg + 64;
+  if (blk == 0u) { pm[sub] = bm; pi[sub] = bi; ps[sub] = bs; }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0u) {
+    float gm = -1.0e30f; uint32_t gi = 0u;
+    for (int k = 0; k < 32; k++) {
+      if (ps[k] > 0.0f && (pm[k] > gm || (pm[k] == gm && pi[k] < gi))) { gm = pm[k]; gi = pi[k]; }
+    }
+    float gs = 0.0f;
+    for (int k = 0; k < 32; k++) {
+      if (ps[k] > 0.0f) gs += ps[k] * exp(pm[k] - gm);
+    }
+    out_m.data[item] = gm;
+    out_i.data[item] = gi;
+    out_s.data[item] = gs;
+  }
+}
 COAX_DEV void coax_am_dot_q4s_qrgkv_sdyn_nb(int64_t row0, uint32_t dims0, uint32_t dims1, uint32_t dims2, int64_t cols, int64_t nb, float eps, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 xq_v, coax_v_f32 xk_v, coax_v_f32 xv_v, coax_v_f32 parts, coax_v_f32 oq, coax_v_f32 or_, coax_v_f32 og, coax_v_f32 ok, coax_v_f32 ov, coax_v_f32 osinks, coax_v_f32 odyn, uint32_t tid, int32_t line, COAX_ERR) {
   int64_t n_q = (int64_t)(dims0 & 65535u), n_r = (int64_t)((dims0 >> 16u) & 65535u);
   int64_t n_kv = (int64_t)(dims1 & 65535u), n_sinks = (int64_t)((dims1 >> 16u) & 65535u);
@@ -6125,9 +6421,9 @@ COAX_DEV void coax_am_dot_q4s_qrgkv_sdyn_nb(int64_t row0, uint32_t dims0, uint32
   }
   int64_t r0 = row0 + (int64_t)(tid >> 5);
   if (r0 >= tot) return;
-  const device float *xp;
-  device float *op;
-  int64_t orow, ostr, pslot;
+  const device float *xp = xq_v.data;
+  device float *op = oq.data;
+  int64_t orow = 0, ostr = n_q, pslot = 0;
   if (r0 < n_q) { xp = xq_v.data; op = oq.data; orow = r0; ostr = n_q; pslot = 0; }
   else if (r0 < e1) { xp = xq_v.data; op = or_.data; orow = r0 - n_q; ostr = n_r; pslot = 0; }
   else if (r0 < e2) { xp = xq_v.data; op = og.data; orow = r0 - e1; ostr = n_q; pslot = 0; }
@@ -6372,48 +6668,43 @@ COAX_DEV void coax_am_dot_q4s_conv_nb(coax_v_u32 qs, coax_v_u16 ds, int64_t b0, 
   }
   const device uint2 *qp1 = (const device uint2 *)(qs.data + b1 * 4) + hb;
   const device half *dp1 = (const device half *)(ds.data + b1);
-  for (int tbase = 0; tbase < inb; tbase += 4) {
-    int rem = inb - tbase; if (rem > 4) rem = 4;
-    const device float *xp = x.data + (int64_t)tbase * cols;
-    float a0_0=0,a1_0=0,a0_1=0,a1_1=0,a0_2=0,a1_2=0,a0_3=0,a1_3=0;
-    #define CNV_NB(T, A0, A1) if ((T) < rem) { \
-      const device float *bx = xp + (int64_t)(T) * cols + bo; \
-      float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4); \
-      float4 f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20); \
-      float4 fs = (f0 + f1) + (f2 + f3); float xs = (fs.x + fs.y) + (fs.z + fs.w); \
-      half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3); \
-      A0 += d0 * coax_q4s_dot16_pre(p0, p1, p2, p3, xl0, xl1, xh0, xh1, xs); \
-      A1 += d1 * coax_q4s_dot16_pre(q0, q1, q2, q3, xl0, xl1, xh0, xh1, xs); }
-    for (int b = (int)blk_lane; b < iblocks; b += 16) {
-      uint2 w0 = qp0[b * 2], w1 = qp1[b * 2];
-      float d0 = float(dp0[b]), d1 = float(dp1[b]);
-      half4 p0 = half4(as_type<uchar4>(w0.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w0.x >> 4u) & 0x0f0f0f0fu));
-      half4 p2 = half4(as_type<uchar4>(w0.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w0.y >> 4u) & 0x0f0f0f0fu));
-      half4 q0 = half4(as_type<uchar4>(w1.x & 0x0f0f0f0fu)), q1 = half4(as_type<uchar4>((w1.x >> 4u) & 0x0f0f0f0fu));
-      half4 q2 = half4(as_type<uchar4>(w1.y & 0x0f0f0f0fu)), q3 = half4(as_type<uchar4>((w1.y >> 4u) & 0x0f0f0f0fu));
-      int bo = b * 32 + xq;
-      CNV_NB(0,a0_0,a1_0) CNV_NB(1,a0_1,a1_1) CNV_NB(2,a0_2,a1_2) CNV_NB(3,a0_3,a1_3)
-    }
-    #undef CNV_NB
-    float t0_0 = simd_sum(a0_0), t1_0 = simd_sum(a1_0);
-    float t0_1 = (rem > 1) ? simd_sum(a0_1) : 0.0f, t1_1 = (rem > 1) ? simd_sum(a1_1) : 0.0f;
-    float t0_2 = (rem > 2) ? simd_sum(a0_2) : 0.0f, t1_2 = (rem > 2) ? simd_sum(a1_2) : 0.0f;
-    float t0_3 = (rem > 3) ? simd_sum(a0_3) : 0.0f, t1_3 = (rem > 3) ? simd_sum(a1_3) : 0.0f;
-    if (lane == 0) {
-      #define CNV_WR(T, D0, D1) if ((T) < rem) { \
-        int64_t tr = (int64_t)(tbase + (T)) * rows; \
-        raw_log.data[tr + r0] = D0; \
-        float y0 = (D0 + u0*c0.x + u1*c0.y + u2*c0.z + D0*c0.w) * 0.4472135954999579f; \
-        out.data[tr + r0] = add_res ? (res.data[tr + r0] + y0) : y0; \
-        u0 = u1; u1 = u2; u2 = D0; \
-        raw_log.data[tr + r1] = D1; \
-        float y1 = (D1 + v0*c1.x + v1*c1.y + v2*c1.z + D1*c1.w) * 0.4472135954999579f; \
-        out.data[tr + r1] = add_res ? (res.data[tr + r1] + y1) : y1; \
-        v0 = v1; v1 = v2; v2 = D1; }
-      CNV_WR(0,t0_0,t1_0) CNV_WR(1,t0_1,t1_1) CNV_WR(2,t0_2,t1_2) CNV_WR(3,t0_3,t1_3)
-      #undef CNV_WR
-    }
+  float a0_0=0,a0_1=0,a0_2=0,a0_3=0,a0_4=0,a0_5=0,a0_6=0,a0_7=0;
+  float a1_0=0,a1_1=0,a1_2=0,a1_3=0,a1_4=0,a1_5=0,a1_6=0,a1_7=0;
+  #define CNV_NB(T, A0, A1) if ((T) < inb) { \
+    const device float *bx = x.data + (int64_t)(T) * cols + bo; \
+    float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4); \
+    float4 f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20); \
+    float4 fs = (f0 + f1) + (f2 + f3); float xs = (fs.x + fs.y) + (fs.z + fs.w); \
+    half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3); \
+    A0 += d0 * coax_q4s_dot16_pre(p0, p1, p2, p3, xl0, xl1, xh0, xh1, xs); \
+    A1 += d1 * coax_q4s_dot16_pre(q0, q1, q2, q3, xl0, xl1, xh0, xh1, xs); }
+  for (int b = (int)blk_lane; b < iblocks; b += 16) {
+    uint2 w0 = qp0[b * 2], w1 = qp1[b * 2];
+    float d0 = float(dp0[b]), d1 = float(dp1[b]);
+    half4 p0 = half4(as_type<uchar4>(w0.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w0.x >> 4u) & 0x0f0f0f0fu));
+    half4 p2 = half4(as_type<uchar4>(w0.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w0.y >> 4u) & 0x0f0f0f0fu));
+    half4 q0 = half4(as_type<uchar4>(w1.x & 0x0f0f0f0fu)), q1 = half4(as_type<uchar4>((w1.x >> 4u) & 0x0f0f0f0fu));
+    half4 q2 = half4(as_type<uchar4>(w1.y & 0x0f0f0f0fu)), q3 = half4(as_type<uchar4>((w1.y >> 4u) & 0x0f0f0f0fu));
+    int bo = b * 32 + xq;
+    CNV_NB(0,a0_0,a1_0) CNV_NB(1,a0_1,a1_1) CNV_NB(2,a0_2,a1_2) CNV_NB(3,a0_3,a1_3)
+    CNV_NB(4,a0_4,a1_4) CNV_NB(5,a0_5,a1_5) CNV_NB(6,a0_6,a1_6) CNV_NB(7,a0_7,a1_7)
   }
+  #undef CNV_NB
+  #define CNV_WR(T, A0, A1) if ((T) < inb) { \
+    float D0 = simd_sum(A0), D1 = simd_sum(A1); \
+    if (lane == 0) { \
+      int64_t tr = (int64_t)(T) * rows; \
+      raw_log.data[tr + r0] = D0; \
+      float y0 = (D0 + u0*c0.x + u1*c0.y + u2*c0.z + D0*c0.w) * 0.4472135954999579f; \
+      out.data[tr + r0] = add_res ? (res.data[tr + r0] + y0) : y0; \
+      u0 = u1; u1 = u2; u2 = D0; \
+      raw_log.data[tr + r1] = D1; \
+      float y1 = (D1 + v0*c1.x + v1*c1.y + v2*c1.z + D1*c1.w) * 0.4472135954999579f; \
+      out.data[tr + r1] = add_res ? (res.data[tr + r1] + y1) : y1; \
+      v0 = v1; v1 = v2; v2 = D1; } }
+  CNV_WR(0,a0_0,a1_0) CNV_WR(1,a0_1,a1_1) CNV_WR(2,a0_2,a1_2) CNV_WR(3,a0_3,a1_3)
+  CNV_WR(4,a0_4,a1_4) CNV_WR(5,a0_5,a1_5) CNV_WR(6,a0_6,a1_6) CNV_WR(7,a0_7,a1_7)
+  #undef CNV_WR
 }
 COAX_DEV void coax_am_moe_plan_nb(int64_t n_exp, int64_t n_used, int64_t nb, int64_t gpe, int64_t has_bias, float scale, coax_v_f32 logits, coax_v_f32 bias, coax_v_u32 ids, coax_v_f32 wts, coax_v_u32 u_eids, coax_v_u32 u_mask, coax_v_u32 u_slot, coax_v_u32 u_cnt, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
   if (n_exp < 1 || n_exp > 128 || n_used < 1 || n_used > 32 || nb < 1 || nb > 8 || gpe < 0 || nb * n_exp > logits.count || (has_bias != 0 && n_exp > bias.count) || nb * n_used > ids.count || nb * n_used > wts.count || nb * n_used > u_eids.count || nb * n_used > u_mask.count || nb * n_used * 8 > u_slot.count || u_cnt.count < 4) {
@@ -6575,38 +6866,50 @@ COAX_DEV void coax_am_moe_gu_q4s_nb(int64_t u, int64_t row0, int64_t n_ff, int64
       if (lb > 0.0f) { u0 = lb * tanh(u0 / lb); u1 = lb * tanh(u1 / lb); } \
       int64_t ob = ((int64_t)(T) * n_used + (int64_t)u_slot.data[u * 8 + (T)]) * n_ff; \
       out.data[ob + r0] = a0 * u0; if (r1 != r0) out.data[ob + r1] = a1 * u1; } }
-  uint32_t m = mask;
-  while (m) {
-    int t0 = (int)ctz(m); m &= (m - 1u);
-    int t1 = m ? (int)ctz(m) : -1; if (m) m &= (m - 1u);
-    const device float *xp0 = x.data + (int64_t)t0 * cols + xq;
-    const device float *xp1 = (t1 >= 0) ? (x.data + (int64_t)t1 * cols + xq) : nullptr;
-    float ag0=0,au0=0,ag1=0,au1=0, bg0a=0,bu0a=0,bg1a=0,bu1a=0;
-    for (int b = blk_lane; b < iblocks; b += 16) {
-      int bo = b * 32;
-      const device float *bx0 = xp0 + bo;
-      float4 f0 = *(const device float4 *)bx0, f1 = *(const device float4 *)(bx0 + 4), f2 = *(const device float4 *)(bx0 + 16), f3 = *(const device float4 *)(bx0 + 20);
-      float4 fs0 = (f0 + f1) + (f2 + f3); float xs0 = (fs0.x + fs0.y) + (fs0.z + fs0.w);
-      half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
-      float xs1 = 0.0f; half4 yl0(0), yl1(0), yh0(0), yh1(0);
-      if (xp1) {
+  while (mask) {
+    int t0 = (int)ctz(mask); mask &= (mask - 1u);
+    if (!mask) {
+      const device float *xp0 = x.data + (int64_t)t0 * cols + xq;
+      float ag0=0,au0=0,ag1=0,au1=0;
+      for (int b = blk_lane; b < iblocks; b += 16) {
+        const device float *bx0 = xp0 + b * 32;
+        float4 f0 = *(const device float4 *)bx0, f1 = *(const device float4 *)(bx0 + 4), f2 = *(const device float4 *)(bx0 + 16), f3 = *(const device float4 *)(bx0 + 20);
+        float4 fs0 = (f0 + f1) + (f2 + f3); float xs0 = (fs0.x + fs0.y) + (fs0.z + fs0.w);
+        half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
+        ag0 += float(dg0[b]) * coax_q4s_dot16_u2(qg0[b * 2], xl0, xl1, xh0, xh1, xs0);
+        au0 += float(du0[b]) * coax_q4s_dot16_u2(qu0[b * 2], xl0, xl1, xh0, xh1, xs0);
+        ag1 += float(dg1[b]) * coax_q4s_dot16_u2(qg1[b * 2], xl0, xl1, xh0, xh1, xs0);
+        au1 += float(du1[b]) * coax_q4s_dot16_u2(qu1[b * 2], xl0, xl1, xh0, xh1, xs0);
+      }
+      GUQ_WR(t0, ag0, au0, ag1, au1)
+    } else {
+      int t1 = (int)ctz(mask); mask &= (mask - 1u);
+      const device float *xp0 = x.data + (int64_t)t0 * cols + xq;
+      const device float *xp1 = x.data + (int64_t)t1 * cols + xq;
+      float ag0=0,au0=0,ag1=0,au1=0, bg0a=0,bu0a=0,bg1a=0,bu1a=0;
+      for (int b = blk_lane; b < iblocks; b += 16) {
+        int bo = b * 32;
+        const device float *bx0 = xp0 + bo;
+        float4 f0 = *(const device float4 *)bx0, f1 = *(const device float4 *)(bx0 + 4), f2 = *(const device float4 *)(bx0 + 16), f3 = *(const device float4 *)(bx0 + 20);
+        float4 fs0 = (f0 + f1) + (f2 + f3); float xs0 = (fs0.x + fs0.y) + (fs0.z + fs0.w);
+        half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
         const device float *bx1 = xp1 + bo;
         float4 g0 = *(const device float4 *)bx1, g1 = *(const device float4 *)(bx1 + 4), g2 = *(const device float4 *)(bx1 + 16), g3 = *(const device float4 *)(bx1 + 20);
-        float4 fs1 = (g0 + g1) + (g2 + g3); xs1 = (fs1.x + fs1.y) + (fs1.z + fs1.w);
-        yl0 = half4(g0); yl1 = half4(g1); yh0 = half4(g2); yh1 = half4(g3);
+        float4 fs1 = (g0 + g1) + (g2 + g3); float xs1 = (fs1.x + fs1.y) + (fs1.z + fs1.w);
+        half4 yl0 = half4(g0), yl1 = half4(g1), yh0 = half4(g2), yh1 = half4(g3);
+        #define Q4S_PAIR(QP, DP, ACCA, ACCB) { \
+          uint2 w_ = (QP)[b * 2]; float d_ = float((DP)[b]); \
+          half4 p0 = half4(as_type<uchar4>(w_.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w_.x >> 4u) & 0x0f0f0f0fu)); \
+          half4 p2 = half4(as_type<uchar4>(w_.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w_.y >> 4u) & 0x0f0f0f0fu)); \
+          ACCA += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, xl0, xl1, xh0, xh1, xs0); \
+          ACCB += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, yl0, yl1, yh0, yh1, xs1); }
+        Q4S_PAIR(qg0, dg0, ag0, bg0a) Q4S_PAIR(qu0, du0, au0, bu0a)
+        Q4S_PAIR(qg1, dg1, ag1, bg1a) Q4S_PAIR(qu1, du1, au1, bu1a)
+        #undef Q4S_PAIR
       }
-      #define Q4S_PAIR(QP, DP, ACCA, ACCB) { \
-        uint2 w_ = (QP)[b * 2]; float d_ = float((DP)[b]); \
-        half4 p0 = half4(as_type<uchar4>(w_.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w_.x >> 4u) & 0x0f0f0f0fu)); \
-        half4 p2 = half4(as_type<uchar4>(w_.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w_.y >> 4u) & 0x0f0f0f0fu)); \
-        ACCA += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, xl0, xl1, xh0, xh1, xs0); \
-        if (xp1) ACCB += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, yl0, yl1, yh0, yh1, xs1); }
-      Q4S_PAIR(qg0, dg0, ag0, bg0a) Q4S_PAIR(qu0, du0, au0, bu0a)
-      Q4S_PAIR(qg1, dg1, ag1, bg1a) Q4S_PAIR(qu1, du1, au1, bu1a)
-      #undef Q4S_PAIR
+      GUQ_WR(t0, ag0, au0, ag1, au1)
+      GUQ_WR(t1, bg0a, bu0a, bg1a, bu1a)
     }
-    GUQ_WR(t0, ag0, au0, ag1, au1)
-    if (t1 >= 0) GUQ_WR(t1, bg0a, bu0a, bg1a, bu1a)
   }
   #undef GUQ_WR
 }
@@ -6640,29 +6943,27 @@ COAX_DEV void coax_am_moe_gu_iq4s_nb(int64_t u, int64_t row0, int64_t n_ff, int6
       if (lb > 0.0f) { u0 = lb * tanh(u0 / lb); u1 = lb * tanh(u1 / lb); } \
       int64_t ob = ((int64_t)(T) * n_used + (int64_t)u_slot.data[u * 8 + (T)]) * n_ff; \
       out.data[ob + r0] = a0 * u0; if (r1 != r0) out.data[ob + r1] = a1 * u1; } }
-  if (popcount(mask) == 1u) {
-    int t0 = (int)ctz(mask);
-    const device float *xp = x.data + (int64_t)t0 * cols + xq;
-    float ag0 = 0, au0 = 0, ag1 = 0, au1 = 0;
-    for (int b = blk_lane; b < iblocks; b += 16) {
-      const device float *bx = xp + b * 32;
-      half4 xl0 = half4(*(const device float4 *)bx), xl1 = half4(*(const device float4 *)(bx + 4));
-      half4 xh0 = half4(*(const device float4 *)(bx + 16)), xh1 = half4(*(const device float4 *)(bx + 20));
-      half2 x0(xl0.x, xh0.x), x1(xl0.y, xh0.y), x2(xl0.z, xh0.z), x3(xl0.w, xh0.w);
-      half2 x4(xl1.x, xh1.x), x5(xl1.y, xh1.y), x6(xl1.z, xh1.z), x7(xl1.w, xh1.w);
-      ag0 += float(dg0[b]) * coax_iq4s_dot16_u2(qg0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
-      au0 += float(du0[b]) * coax_iq4s_dot16_u2(qu0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
-      ag1 += float(dg1[b]) * coax_iq4s_dot16_u2(qg1[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
-      au1 += float(du1[b]) * coax_iq4s_dot16_u2(qu1[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
-    }
-    GUIS_WR(t0, ag0, au0, ag1, au1)
-  } else {
-    uint32_t m = mask;
-    while (m) {
-      int t0 = (int)ctz(m); m &= (m - 1u);
-      int t1 = m ? (int)ctz(m) : -1; if (m) m &= (m - 1u);
+  while (mask) {
+    int t0 = (int)ctz(mask); mask &= (mask - 1u);
+    if (!mask) {
+      const device float *xp = x.data + (int64_t)t0 * cols + xq;
+      float ag0 = 0, au0 = 0, ag1 = 0, au1 = 0;
+      for (int b = blk_lane; b < iblocks; b += 16) {
+        const device float *bx = xp + b * 32;
+        half4 xl0 = half4(*(const device float4 *)bx), xl1 = half4(*(const device float4 *)(bx + 4));
+        half4 xh0 = half4(*(const device float4 *)(bx + 16)), xh1 = half4(*(const device float4 *)(bx + 20));
+        half2 x0(xl0.x, xh0.x), x1(xl0.y, xh0.y), x2(xl0.z, xh0.z), x3(xl0.w, xh0.w);
+        half2 x4(xl1.x, xh1.x), x5(xl1.y, xh1.y), x6(xl1.z, xh1.z), x7(xl1.w, xh1.w);
+        ag0 += float(dg0[b]) * coax_iq4s_dot16_u2(qg0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
+        au0 += float(du0[b]) * coax_iq4s_dot16_u2(qu0[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
+        ag1 += float(dg1[b]) * coax_iq4s_dot16_u2(qg1[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
+        au1 += float(du1[b]) * coax_iq4s_dot16_u2(qu1[b * 2], x0, x1, x2, x3, x4, x5, x6, x7, tlut);
+      }
+      GUIS_WR(t0, ag0, au0, ag1, au1)
+    } else {
+      int t1 = (int)ctz(mask); mask &= (mask - 1u);
       const device float *xp0 = x.data + (int64_t)t0 * cols + xq;
-      const device float *xp1 = (t1 >= 0) ? (x.data + (int64_t)t1 * cols + xq) : nullptr;
+      const device float *xp1 = x.data + (int64_t)t1 * cols + xq;
       float ag0=0,au0=0,ag1=0,au1=0, bg0a=0,bu0a=0,bg1a=0,bu1a=0;
       for (int b = blk_lane; b < iblocks; b += 16) {
         int bo = b * 32;
@@ -6670,27 +6971,23 @@ COAX_DEV void coax_am_moe_gu_iq4s_nb(int64_t u, int64_t row0, int64_t n_ff, int6
         half4 xl0 = half4(*(const device float4 *)bx0), xl1 = half4(*(const device float4 *)(bx0 + 4));
         half4 xh0 = half4(*(const device float4 *)(bx0 + 16)), xh1 = half4(*(const device float4 *)(bx0 + 20));
         half2 a0(xl0.x,xh0.x),a1(xl0.y,xh0.y),a2(xl0.z,xh0.z),a3(xl0.w,xh0.w),a4(xl1.x,xh1.x),a5(xl1.y,xh1.y),a6(xl1.z,xh1.z),a7(xl1.w,xh1.w);
-        half2 c0(0),c1(0),c2(0),c3(0),c4(0),c5(0),c6(0),c7(0);
-        if (xp1) {
-          const device float *bx1 = xp1 + bo;
-          half4 yl0 = half4(*(const device float4 *)bx1), yl1 = half4(*(const device float4 *)(bx1 + 4));
-          half4 yh0 = half4(*(const device float4 *)(bx1 + 16)), yh1 = half4(*(const device float4 *)(bx1 + 20));
-          c0=half2(yl0.x,yh0.x);c1=half2(yl0.y,yh0.y);c2=half2(yl0.z,yh0.z);c3=half2(yl0.w,yh0.w);
-          c4=half2(yl1.x,yh1.x);c5=half2(yl1.y,yh1.y);c6=half2(yl1.z,yh1.z);c7=half2(yl1.w,yh1.w);
-        }
+        const device float *bx1 = xp1 + bo;
+        half4 yl0 = half4(*(const device float4 *)bx1), yl1 = half4(*(const device float4 *)(bx1 + 4));
+        half4 yh0 = half4(*(const device float4 *)(bx1 + 16)), yh1 = half4(*(const device float4 *)(bx1 + 20));
+        half2 c0(yl0.x,yh0.x),c1(yl0.y,yh0.y),c2(yl0.z,yh0.z),c3(yl0.w,yh0.w),c4(yl1.x,yh1.x),c5(yl1.y,yh1.y),c6(yl1.z,yh1.z),c7(yl1.w,yh1.w);
         #define IQ4S_PAIR(QP, DP, ACCA, ACCB) { \
           float ds_ = float((DP)[b]); uint2 p_ = (QP)[b * 2]; \
           uchar4 b0 = as_type<uchar4>(p_.x), b1 = as_type<uchar4>(p_.y); \
           half2 w0=tlut[b0.x],w1=tlut[b0.y],w2=tlut[b0.z],w3=tlut[b0.w]; \
           half2 w4=tlut[b1.x],w5=tlut[b1.y],w6=tlut[b1.z],w7=tlut[b1.w]; \
           half2 s0 = w0*a0+w1*a1+w2*a2+w3*a3; s0 += w4*a4+w5*a5+w6*a6+w7*a7; ACCA += ds_ * float(s0.x + s0.y); \
-          if (xp1) { half2 s1 = w0*c0+w1*c1+w2*c2+w3*c3; s1 += w4*c4+w5*c5+w6*c6+w7*c7; ACCB += ds_ * float(s1.x + s1.y); } }
+          half2 s1 = w0*c0+w1*c1+w2*c2+w3*c3; s1 += w4*c4+w5*c5+w6*c6+w7*c7; ACCB += ds_ * float(s1.x + s1.y); }
         IQ4S_PAIR(qg0, dg0, ag0, bg0a) IQ4S_PAIR(qu0, du0, au0, bu0a)
         IQ4S_PAIR(qg1, dg1, ag1, bg1a) IQ4S_PAIR(qu1, du1, au1, bu1a)
         #undef IQ4S_PAIR
       }
       GUIS_WR(t0, ag0, au0, ag1, au1)
-      if (t1 >= 0) GUIS_WR(t1, bg0a, bu0a, bg1a, bu1a)
+      GUIS_WR(t1, bg0a, bu0a, bg1a, bu1a)
     }
   }
   #undef GUIS_WR
@@ -6792,7 +7089,8 @@ COAX_DEV void coax_am_moe_down_q4s_nb(int64_t row0, int64_t rows, int64_t cols, 
     int64_t rb0 = eb + r0 * blocks;
     const device uint2 *qp = (const device uint2 *)(qs.data + rb0 * 4) + hb;
     const device half *dp = (const device half *)(ds.data + rb0);
-    if ((m & (m - 1u)) == 0u) {
+    uint32_t pc = popcount(m);
+    if (pc == 1u) {
       int t = (int)ctz(m);
       int sl = (int)u_slot.data[u * 8 + t];
       float wt = wts.data[(int64_t)t * n_used + sl];
@@ -6806,23 +7104,52 @@ COAX_DEV void coax_am_moe_down_q4s_nb(int64_t row0, int64_t rows, int64_t cols, 
       }
       if (t==0) a0=fma(wt,s0,a0); else if (t==1) a1=fma(wt,s0,a1); else if (t==2) a2=fma(wt,s0,a2); else if (t==3) a3=fma(wt,s0,a3);
       else if (t==4) a4=fma(wt,s0,a4); else if (t==5) a5=fma(wt,s0,a5); else if (t==6) a6=fma(wt,s0,a6); else a7=fma(wt,s0,a7);
+    } else if (pc == 2u) {
+      int t0 = (int)ctz(m), t1 = (int)ctz(m & (m - 1u));
+      int sl0 = (int)u_slot.data[u * 8 + t0], sl1 = (int)u_slot.data[u * 8 + t1];
+      float wt0 = wts.data[(int64_t)t0 * n_used + sl0], wt1 = wts.data[(int64_t)t1 * n_used + sl1];
+      const device float *xp0 = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+      const device float *xp1 = x.data + ((int64_t)t1 * n_used + sl1) * cols + xq;
+      float s0 = 0.0f, s1 = 0.0f;
+      for (int b = blk_lane; b < iblocks; b += 16) {
+        uint2 w0 = qp[b * 2]; float d0 = float(dp[b]);
+        half4 p0 = half4(as_type<uchar4>(w0.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w0.x >> 4u) & 0x0f0f0f0fu));
+        half4 p2 = half4(as_type<uchar4>(w0.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w0.y >> 4u) & 0x0f0f0f0fu));
+        int bo = b * 32;
+        const device float *bx0 = xp0 + bo;
+        float4 f0=*(const device float4 *)bx0, f1=*(const device float4 *)(bx0+4), f2=*(const device float4 *)(bx0+16), f3=*(const device float4 *)(bx0+20);
+        float4 fs0=(f0+f1)+(f2+f3); s0 += d0 * coax_q4s_dot16_pre(p0,p1,p2,p3,half4(f0),half4(f1),half4(f2),half4(f3),(fs0.x+fs0.y)+(fs0.z+fs0.w));
+        const device float *bx1 = xp1 + bo;
+        float4 g0=*(const device float4 *)bx1, g1=*(const device float4 *)(bx1+4), g2=*(const device float4 *)(bx1+16), g3=*(const device float4 *)(bx1+20);
+        float4 fs1=(g0+g1)+(g2+g3); s1 += d0 * coax_q4s_dot16_pre(p0,p1,p2,p3,half4(g0),half4(g1),half4(g2),half4(g3),(fs1.x+fs1.y)+(fs1.z+fs1.w));
+      }
+      #define MDQ_ADD1(T, W, S) if ((T)==0) a0=fma(W,S,a0); else if ((T)==1) a1=fma(W,S,a1); else if ((T)==2) a2=fma(W,S,a2); else if ((T)==3) a3=fma(W,S,a3); else if ((T)==4) a4=fma(W,S,a4); else if ((T)==5) a5=fma(W,S,a5); else if ((T)==6) a6=fma(W,S,a6); else a7=fma(W,S,a7);
+      MDQ_ADD1(t0, wt0, s0) MDQ_ADD1(t1, wt1, s1)
+      #undef MDQ_ADD1
     } else {
+      int ts[8]; const device float *xps[8]; float wtv[8]; int nt = 0;
+      for (uint32_t mm = m; mm; mm &= (mm - 1u)) {
+        int t = (int)ctz(mm); int sl = (int)u_slot.data[u * 8 + t];
+        ts[nt] = t; xps[nt] = x.data + ((int64_t)t * n_used + sl) * cols + xq;
+        wtv[nt] = wts.data[(int64_t)t * n_used + sl]; nt++;
+      }
       float s0=0,s1=0,s2=0,s3=0,s4=0,s5=0,s6=0,s7=0;
       for (int b = blk_lane; b < iblocks; b += 16) {
         uint2 w0 = qp[b * 2]; float d0 = float(dp[b]);
         half4 p0 = half4(as_type<uchar4>(w0.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w0.x >> 4u) & 0x0f0f0f0fu));
         half4 p2 = half4(as_type<uchar4>(w0.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w0.y >> 4u) & 0x0f0f0f0fu));
-        int bo = b * 32 + xq;
-        #define MDQ_S(T, S) if ((T) < inb && (m & (1u << (T)))) { \
-          const device float *bx = x.data + ((int64_t)(T) * n_used + (int64_t)u_slot.data[u * 8 + (T)]) * cols + bo; \
-          float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4), f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20); \
-          float4 fs = (f0 + f1) + (f2 + f3); float xs = (fs.x + fs.y) + (fs.z + fs.w); \
-          S += d0 * coax_q4s_dot16_pre(p0, p1, p2, p3, half4(f0), half4(f1), half4(f2), half4(f3), xs); }
+        int bo = b * 32;
+        #define MDQ_S(K, S) if ((K) < nt) { \
+          const device float *bx = xps[K] + bo; \
+          float4 f0=*(const device float4 *)bx, f1=*(const device float4 *)(bx+4), f2=*(const device float4 *)(bx+16), f3=*(const device float4 *)(bx+20); \
+          float4 fs=(f0+f1)+(f2+f3); S += d0 * coax_q4s_dot16_pre(p0,p1,p2,p3,half4(f0),half4(f1),half4(f2),half4(f3),(fs.x+fs.y)+(fs.z+fs.w)); }
         MDQ_S(0,s0) MDQ_S(1,s1) MDQ_S(2,s2) MDQ_S(3,s3) MDQ_S(4,s4) MDQ_S(5,s5) MDQ_S(6,s6) MDQ_S(7,s7)
         #undef MDQ_S
       }
-      #define MDQ_A(T, A, S) if ((T) < inb && (m & (1u << (T)))) A = fma(wts.data[(int64_t)(T) * n_used + u_slot.data[u * 8 + (T)]], (S), A);
-      MDQ_A(0,a0,s0) MDQ_A(1,a1,s1) MDQ_A(2,a2,s2) MDQ_A(3,a3,s3) MDQ_A(4,a4,s4) MDQ_A(5,a5,s5) MDQ_A(6,a6,s6) MDQ_A(7,a7,s7)
+      #define MDQ_A(K, S) if ((K) < nt) { int T = ts[K]; float W = wtv[K]; \
+        if (T==0) a0=fma(W,S,a0); else if (T==1) a1=fma(W,S,a1); else if (T==2) a2=fma(W,S,a2); else if (T==3) a3=fma(W,S,a3); \
+        else if (T==4) a4=fma(W,S,a4); else if (T==5) a5=fma(W,S,a5); else if (T==6) a6=fma(W,S,a6); else a7=fma(W,S,a7); }
+      MDQ_A(0,s0) MDQ_A(1,s1) MDQ_A(2,s2) MDQ_A(3,s3) MDQ_A(4,s4) MDQ_A(5,s5) MDQ_A(6,s6) MDQ_A(7,s7)
       #undef MDQ_A
     }
   }
@@ -6863,7 +7190,8 @@ COAX_DEV void coax_am_moe_down_iq4s_nb(int64_t row0, int64_t rows, int64_t cols,
     int64_t rb0 = eb + r0 * blocks;
     const device uint2 *qp = (const device uint2 *)(qs.data + rb0 * 4) + hb;
     const device half *dp = (const device half *)(ds.data + rb0);
-    if ((m & (m - 1u)) == 0u) {
+    uint32_t pc = popcount(m);
+    if (pc == 1u) {
       int t = (int)ctz(m);
       int sl = (int)u_slot.data[u * 8 + t];
       float wt = 16.0f * wts.data[(int64_t)t * n_used + sl];
@@ -6878,25 +7206,63 @@ COAX_DEV void coax_am_moe_down_iq4s_nb(int64_t row0, int64_t rows, int64_t cols,
       }
       if (t==0) a0=fma(wt,s0,a0); else if (t==1) a1=fma(wt,s0,a1); else if (t==2) a2=fma(wt,s0,a2); else if (t==3) a3=fma(wt,s0,a3);
       else if (t==4) a4=fma(wt,s0,a4); else if (t==5) a5=fma(wt,s0,a5); else if (t==6) a6=fma(wt,s0,a6); else a7=fma(wt,s0,a7);
+    } else if (pc == 2u) {
+      int t0 = (int)ctz(m), t1 = (int)ctz(m & (m - 1u));
+      int sl0 = (int)u_slot.data[u * 8 + t0], sl1 = (int)u_slot.data[u * 8 + t1];
+      float wt0 = 16.0f * wts.data[(int64_t)t0 * n_used + sl0], wt1 = 16.0f * wts.data[(int64_t)t1 * n_used + sl1];
+      const device float *xp0 = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+      const device float *xp1 = x.data + ((int64_t)t1 * n_used + sl1) * cols + xq;
+      float s0 = 0.0f, s1 = 0.0f;
+      for (int b = blk_lane; b < iblocks; b += 16) {
+        float d0 = float(dp[b]); uint2 p_ = qp[b * 2];
+        uchar4 b0 = as_type<uchar4>(p_.x), b1 = as_type<uchar4>(p_.y);
+        half2 w0=tlut[b0.x],w1=tlut[b0.y],w2=tlut[b0.z],w3=tlut[b0.w];
+        half2 w4=tlut[b1.x],w5=tlut[b1.y],w6=tlut[b1.z],w7=tlut[b1.w];
+        int bo = b * 32;
+        const device float *bx0 = xp0 + bo;
+        half4 xl0=half4(*(const device float4 *)bx0), xl1=half4(*(const device float4 *)(bx0+4));
+        half4 xh0=half4(*(const device float4 *)(bx0+16)), xh1=half4(*(const device float4 *)(bx0+20));
+        half2 d0v = w0*half2(xl0.x,xh0.x)+w1*half2(xl0.y,xh0.y)+w2*half2(xl0.z,xh0.z)+w3*half2(xl0.w,xh0.w);
+        d0v += w4*half2(xl1.x,xh1.x)+w5*half2(xl1.y,xh1.y)+w6*half2(xl1.z,xh1.z)+w7*half2(xl1.w,xh1.w);
+        s0 += d0 * float(d0v.x + d0v.y);
+        const device float *bx1 = xp1 + bo;
+        half4 yl0=half4(*(const device float4 *)bx1), yl1=half4(*(const device float4 *)(bx1+4));
+        half4 yh0=half4(*(const device float4 *)(bx1+16)), yh1=half4(*(const device float4 *)(bx1+20));
+        half2 d1v = w0*half2(yl0.x,yh0.x)+w1*half2(yl0.y,yh0.y)+w2*half2(yl0.z,yh0.z)+w3*half2(yl0.w,yh0.w);
+        d1v += w4*half2(yl1.x,yh1.x)+w5*half2(yl1.y,yh1.y)+w6*half2(yl1.z,yh1.z)+w7*half2(yl1.w,yh1.w);
+        s1 += d0 * float(d1v.x + d1v.y);
+      }
+      #define MDIS_ADD1(T, W, S) if ((T)==0) a0=fma(W,S,a0); else if ((T)==1) a1=fma(W,S,a1); else if ((T)==2) a2=fma(W,S,a2); else if ((T)==3) a3=fma(W,S,a3); else if ((T)==4) a4=fma(W,S,a4); else if ((T)==5) a5=fma(W,S,a5); else if ((T)==6) a6=fma(W,S,a6); else a7=fma(W,S,a7);
+      MDIS_ADD1(t0, wt0, s0) MDIS_ADD1(t1, wt1, s1)
+      #undef MDIS_ADD1
     } else {
+      int ts[8]; const device float *xps[8]; float wtv[8]; int nt = 0;
+      for (uint32_t mm = m; mm; mm &= (mm - 1u)) {
+        int t = (int)ctz(mm); int sl = (int)u_slot.data[u * 8 + t];
+        ts[nt] = t; xps[nt] = x.data + ((int64_t)t * n_used + sl) * cols + xq;
+        wtv[nt] = 16.0f * wts.data[(int64_t)t * n_used + sl]; nt++;
+      }
       float s0=0,s1=0,s2=0,s3=0,s4=0,s5=0,s6=0,s7=0;
       for (int b = blk_lane; b < iblocks; b += 16) {
         float d0 = float(dp[b]); uint2 p_ = qp[b * 2];
         uchar4 b0 = as_type<uchar4>(p_.x), b1 = as_type<uchar4>(p_.y);
         half2 w0=tlut[b0.x],w1=tlut[b0.y],w2=tlut[b0.z],w3=tlut[b0.w];
         half2 w4=tlut[b1.x],w5=tlut[b1.y],w6=tlut[b1.z],w7=tlut[b1.w];
-        int bo = b * 32 + xq;
-        #define MDIS_S(T, S) if ((T) < inb && (m & (1u << (T)))) { \
-          const device float *bx = x.data + ((int64_t)(T) * n_used + (int64_t)u_slot.data[u * 8 + (T)]) * cols + bo; \
-          half4 xl0 = half4(*(const device float4 *)bx), xl1 = half4(*(const device float4 *)(bx + 4)); \
-          half4 xh0 = half4(*(const device float4 *)(bx + 16)), xh1 = half4(*(const device float4 *)(bx + 20)); \
-          half2 x0(xl0.x,xh0.x),x1(xl0.y,xh0.y),x2(xl0.z,xh0.z),x3(xl0.w,xh0.w),x4(xl1.x,xh1.x),x5(xl1.y,xh1.y),x6(xl1.z,xh1.z),x7(xl1.w,xh1.w); \
-          half2 dpv = w0*x0+w1*x1+w2*x2+w3*x3; dpv += w4*x4+w5*x5+w6*x6+w7*x7; S += d0 * float(dpv.x + dpv.y); }
+        int bo = b * 32;
+        #define MDIS_S(K, S) if ((K) < nt) { \
+          const device float *bx = xps[K] + bo; \
+          half4 xl0=half4(*(const device float4 *)bx), xl1=half4(*(const device float4 *)(bx+4)); \
+          half4 xh0=half4(*(const device float4 *)(bx+16)), xh1=half4(*(const device float4 *)(bx+20)); \
+          half2 dpv = w0*half2(xl0.x,xh0.x)+w1*half2(xl0.y,xh0.y)+w2*half2(xl0.z,xh0.z)+w3*half2(xl0.w,xh0.w); \
+          dpv += w4*half2(xl1.x,xh1.x)+w5*half2(xl1.y,xh1.y)+w6*half2(xl1.z,xh1.z)+w7*half2(xl1.w,xh1.w); \
+          S += d0 * float(dpv.x + dpv.y); }
         MDIS_S(0,s0) MDIS_S(1,s1) MDIS_S(2,s2) MDIS_S(3,s3) MDIS_S(4,s4) MDIS_S(5,s5) MDIS_S(6,s6) MDIS_S(7,s7)
         #undef MDIS_S
       }
-      #define MDIS_A(T, A, S) if ((T) < inb && (m & (1u << (T)))) A = fma(16.0f * wts.data[(int64_t)(T) * n_used + u_slot.data[u * 8 + (T)]], (S), A);
-      MDIS_A(0,a0,s0) MDIS_A(1,a1,s1) MDIS_A(2,a2,s2) MDIS_A(3,a3,s3) MDIS_A(4,a4,s4) MDIS_A(5,a5,s5) MDIS_A(6,a6,s6) MDIS_A(7,a7,s7)
+      #define MDIS_A(K, S) if ((K) < nt) { int T = ts[K]; float W = wtv[K]; \
+        if (T==0) a0=fma(W,S,a0); else if (T==1) a1=fma(W,S,a1); else if (T==2) a2=fma(W,S,a2); else if (T==3) a3=fma(W,S,a3); \
+        else if (T==4) a4=fma(W,S,a4); else if (T==5) a5=fma(W,S,a5); else if (T==6) a6=fma(W,S,a6); else a7=fma(W,S,a7); }
+      MDIS_A(0,s0) MDIS_A(1,s1) MDIS_A(2,s2) MDIS_A(3,s3) MDIS_A(4,s4) MDIS_A(5,s5) MDIS_A(6,s6) MDIS_A(7,s7)
       #undef MDIS_A
     }
   }
@@ -6911,6 +7277,165 @@ COAX_DEV void coax_am_moe_down_iq4s_nb(int64_t row0, int64_t rows, int64_t cols,
       u0 = u1; u1 = u2; u2 = D0; } }
   MDIS_1W(0,a0) MDIS_1W(1,a1) MDIS_1W(2,a2) MDIS_1W(3,a3) MDIS_1W(4,a4) MDIS_1W(5,a5) MDIS_1W(6,a6) MDIS_1W(7,a7)
   #undef MDIS_1W
+}
+COAX_DEV void coax_am_moe_down_p1_iq4s_nb(int64_t u, int64_t row0, int64_t rows, int64_t cols, int64_t nb, int64_t n_used, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 x, coax_v_u32 u_eids, coax_v_u32 u_mask, coax_v_u32 u_slot, coax_v_u32 u_cnt, coax_v_f32 slot_out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5, ew = rows * blocks;
+  if (u_cnt.count < 1 || nb < 1 || nb > 8 || n_used < 1 || rows <= 0 || cols <= 0 || (cols & 31) != 0 || row0 < 0 || nb * n_used * cols > x.count || nb * n_used * rows > slot_out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  if (u < 0 || u >= (int64_t)u_cnt.data[0]) return;
+  if (u >= u_eids.count || u >= u_mask.count || (u + 1) * 8 > u_slot.count) { coax_trap_(line, coax_err); return; }
+  int64_t eb = (int64_t)u_eids.data[u] * ew;
+  if ((eb + ew) * 4 > qs.count || eb + ew > ds.count) { coax_trap_(line, coax_err); return; }
+  threadgroup half2 *tlut = (threadgroup half2 *)tg;
+  coax_iq4_init_tlut(tlut, tid);
+  uint32_t sg = tid >> 5, lane = tid & 31u;
+  int blk_lane = (int)(lane >> 1), hb = (int)(lane & 1u), xq = hb * 8, iblocks = (int)blocks;
+  for (int rp = 0; rp < 2; rp++) {
+    int64_t r0 = row0 + (int64_t)(sg * 4u + (uint32_t)rp * 2u);
+    if (r0 >= rows) continue;
+    int64_t r1 = (r0 + 1 < rows) ? (r0 + 1) : r0;
+    const device uint2 *qp0 = (const device uint2 *)(qs.data + (eb + r0 * blocks) * 4) + hb;
+    const device half *dp0 = (const device half *)(ds.data + eb + r0 * blocks);
+    const device uint2 *qp1 = (const device uint2 *)(qs.data + (eb + r1 * blocks) * 4) + hb;
+    const device half *dp1 = (const device half *)(ds.data + eb + r1 * blocks);
+    uint32_t mask = u_mask.data[u];
+    while (mask) {
+      int t0 = (int)ctz(mask); mask &= (mask - 1u);
+      int sl0 = (int)u_slot.data[u * 8 + t0];
+      if (!mask) {
+        const device float *xp = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+        float s0 = 0.0f, s1 = 0.0f;
+        for (int b = blk_lane; b < iblocks; b += 16) {
+          const device float *bx = xp + b * 32;
+          half4 xl0 = half4(*(const device float4 *)bx), xl1 = half4(*(const device float4 *)(bx + 4));
+          half4 xh0 = half4(*(const device float4 *)(bx + 16)), xh1 = half4(*(const device float4 *)(bx + 20));
+          half2 a0(xl0.x,xh0.x),a1(xl0.y,xh0.y),a2(xl0.z,xh0.z),a3(xl0.w,xh0.w),a4(xl1.x,xh1.x),a5(xl1.y,xh1.y),a6(xl1.z,xh1.z),a7(xl1.w,xh1.w);
+          s0 += float(dp0[b]) * coax_iq4s_dot16_u2(qp0[b * 2], a0,a1,a2,a3,a4,a5,a6,a7, tlut);
+          s1 += float(dp1[b]) * coax_iq4s_dot16_u2(qp1[b * 2], a0,a1,a2,a3,a4,a5,a6,a7, tlut);
+        }
+        float v0 = simd_sum(s0) * 16.0f, v1 = simd_sum(s1) * 16.0f;
+        if (lane == 0) {
+          int64_t ob = ((int64_t)t0 * n_used + sl0) * rows;
+          slot_out.data[ob + r0] = v0;
+          if (r1 != r0) slot_out.data[ob + r1] = v1;
+        }
+      } else {
+        int t1 = (int)ctz(mask); mask &= (mask - 1u);
+        int sl1 = (int)u_slot.data[u * 8 + t1];
+        const device float *xp0 = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+        const device float *xp1 = x.data + ((int64_t)t1 * n_used + sl1) * cols + xq;
+        float s00 = 0, s01 = 0, s10 = 0, s11 = 0;
+        for (int b = blk_lane; b < iblocks; b += 16) {
+          int bo = b * 32;
+          const device float *bx0 = xp0 + bo;
+          half4 xl0 = half4(*(const device float4 *)bx0), xl1 = half4(*(const device float4 *)(bx0 + 4));
+          half4 xh0 = half4(*(const device float4 *)(bx0 + 16)), xh1 = half4(*(const device float4 *)(bx0 + 20));
+          half2 a0(xl0.x,xh0.x),a1(xl0.y,xh0.y),a2(xl0.z,xh0.z),a3(xl0.w,xh0.w),a4(xl1.x,xh1.x),a5(xl1.y,xh1.y),a6(xl1.z,xh1.z),a7(xl1.w,xh1.w);
+          const device float *bx1 = xp1 + bo;
+          half4 yl0 = half4(*(const device float4 *)bx1), yl1 = half4(*(const device float4 *)(bx1 + 4));
+          half4 yh0 = half4(*(const device float4 *)(bx1 + 16)), yh1 = half4(*(const device float4 *)(bx1 + 20));
+          half2 c0(yl0.x,yh0.x),c1(yl0.y,yh0.y),c2(yl0.z,yh0.z),c3(yl0.w,yh0.w),c4(yl1.x,yh1.x),c5(yl1.y,yh1.y),c6(yl1.z,yh1.z),c7(yl1.w,yh1.w);
+          #define DP_IQ4S(QP, DP, AA, BB) { \
+            float ds_ = float((DP)[b]); uint2 p_ = (QP)[b * 2]; \
+            uchar4 b0 = as_type<uchar4>(p_.x), b1 = as_type<uchar4>(p_.y); \
+            half2 w0=tlut[b0.x],w1=tlut[b0.y],w2=tlut[b0.z],w3=tlut[b0.w]; \
+            half2 w4=tlut[b1.x],w5=tlut[b1.y],w6=tlut[b1.z],w7=tlut[b1.w]; \
+            half2 rA = w0*a0+w1*a1+w2*a2+w3*a3; rA += w4*a4+w5*a5+w6*a6+w7*a7; AA += ds_ * float(rA.x + rA.y); \
+            half2 rB = w0*c0+w1*c1+w2*c2+w3*c3; rB += w4*c4+w5*c5+w6*c6+w7*c7; BB += ds_ * float(rB.x + rB.y); }
+          DP_IQ4S(qp0, dp0, s00, s10) DP_IQ4S(qp1, dp1, s01, s11)
+          #undef DP_IQ4S
+        }
+        float v00 = simd_sum(s00) * 16.0f, v01 = simd_sum(s01) * 16.0f;
+        float v10 = simd_sum(s10) * 16.0f, v11 = simd_sum(s11) * 16.0f;
+        if (lane == 0) {
+          int64_t ob0 = ((int64_t)t0 * n_used + sl0) * rows;
+          slot_out.data[ob0 + r0] = v00; if (r1 != r0) slot_out.data[ob0 + r1] = v01;
+          int64_t ob1 = ((int64_t)t1 * n_used + sl1) * rows;
+          slot_out.data[ob1 + r0] = v10; if (r1 != r0) slot_out.data[ob1 + r1] = v11;
+        }
+      }
+    }
+  }
+}
+COAX_DEV void coax_am_moe_down_p1_q4s_nb(int64_t u, int64_t row0, int64_t rows, int64_t cols, int64_t nb, int64_t n_used, coax_v_u32 qs, coax_v_u16 ds, coax_v_f32 x, coax_v_u32 u_eids, coax_v_u32 u_mask, coax_v_u32 u_slot, coax_v_u32 u_cnt, coax_v_f32 slot_out, uint32_t tid, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5, ew = rows * blocks;
+  if (u_cnt.count < 1 || nb < 1 || nb > 8 || n_used < 1 || rows <= 0 || cols <= 0 || (cols & 31) != 0 || row0 < 0 || nb * n_used * cols > x.count || nb * n_used * rows > slot_out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  if (u < 0 || u >= (int64_t)u_cnt.data[0]) return;
+  if (u >= u_eids.count || u >= u_mask.count || (u + 1) * 8 > u_slot.count) { coax_trap_(line, coax_err); return; }
+  int64_t eb = (int64_t)u_eids.data[u] * ew;
+  if ((eb + ew) * 4 > qs.count || eb + ew > ds.count) { coax_trap_(line, coax_err); return; }
+  uint32_t sg = tid >> 5, lane = tid & 31u;
+  int blk_lane = (int)(lane >> 1), hb = (int)(lane & 1u), xq = hb * 8, iblocks = (int)blocks;
+  for (int rp = 0; rp < 2; rp++) {
+    int64_t r0 = row0 + (int64_t)(sg * 4u + (uint32_t)rp * 2u);
+    if (r0 >= rows) continue;
+    int64_t r1 = (r0 + 1 < rows) ? (r0 + 1) : r0;
+    const device uint2 *qp0 = (const device uint2 *)(qs.data + (eb + r0 * blocks) * 4) + hb;
+    const device half *dp0 = (const device half *)(ds.data + eb + r0 * blocks);
+    const device uint2 *qp1 = (const device uint2 *)(qs.data + (eb + r1 * blocks) * 4) + hb;
+    const device half *dp1 = (const device half *)(ds.data + eb + r1 * blocks);
+    uint32_t mask = u_mask.data[u];
+    while (mask) {
+      int t0 = (int)ctz(mask); mask &= (mask - 1u);
+      int sl0 = (int)u_slot.data[u * 8 + t0];
+      if (!mask) {
+        const device float *xp = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+        float s0 = 0.0f, s1 = 0.0f;
+        for (int b = blk_lane; b < iblocks; b += 16) {
+          const device float *bx = xp + b * 32;
+          float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4), f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20);
+          float4 fs = (f0 + f1) + (f2 + f3); float xs = (fs.x + fs.y) + (fs.z + fs.w);
+          half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
+          s0 += float(dp0[b]) * coax_q4s_dot16_u2(qp0[b * 2], xl0, xl1, xh0, xh1, xs);
+          s1 += float(dp1[b]) * coax_q4s_dot16_u2(qp1[b * 2], xl0, xl1, xh0, xh1, xs);
+        }
+        float v0 = simd_sum(s0), v1 = simd_sum(s1);
+        if (lane == 0) {
+          int64_t ob = ((int64_t)t0 * n_used + sl0) * rows;
+          slot_out.data[ob + r0] = v0;
+          if (r1 != r0) slot_out.data[ob + r1] = v1;
+        }
+      } else {
+        int t1 = (int)ctz(mask); mask &= (mask - 1u);
+        int sl1 = (int)u_slot.data[u * 8 + t1];
+        const device float *xp0 = x.data + ((int64_t)t0 * n_used + sl0) * cols + xq;
+        const device float *xp1 = x.data + ((int64_t)t1 * n_used + sl1) * cols + xq;
+        float s00 = 0, s01 = 0, s10 = 0, s11 = 0;
+        for (int b = blk_lane; b < iblocks; b += 16) {
+          int bo = b * 32;
+          const device float *bx0 = xp0 + bo;
+          float4 f0 = *(const device float4 *)bx0, f1 = *(const device float4 *)(bx0 + 4), f2 = *(const device float4 *)(bx0 + 16), f3 = *(const device float4 *)(bx0 + 20);
+          float4 fs0 = (f0 + f1) + (f2 + f3); float xs0 = (fs0.x + fs0.y) + (fs0.z + fs0.w);
+          half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
+          const device float *bx1 = xp1 + bo;
+          float4 g0 = *(const device float4 *)bx1, g1 = *(const device float4 *)(bx1 + 4), g2 = *(const device float4 *)(bx1 + 16), g3 = *(const device float4 *)(bx1 + 20);
+          float4 fs1 = (g0 + g1) + (g2 + g3); float xs1 = (fs1.x + fs1.y) + (fs1.z + fs1.w);
+          half4 yl0 = half4(g0), yl1 = half4(g1), yh0 = half4(g2), yh1 = half4(g3);
+          #define DP_Q4S(QP, DP, AA, BB) { \
+            uint2 w_ = (QP)[b * 2]; float d_ = float((DP)[b]); \
+            half4 p0 = half4(as_type<uchar4>(w_.x & 0x0f0f0f0fu)), p1 = half4(as_type<uchar4>((w_.x >> 4u) & 0x0f0f0f0fu)); \
+            half4 p2 = half4(as_type<uchar4>(w_.y & 0x0f0f0f0fu)), p3 = half4(as_type<uchar4>((w_.y >> 4u) & 0x0f0f0f0fu)); \
+            AA += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, xl0, xl1, xh0, xh1, xs0); \
+            BB += d_ * coax_q4s_dot16_pre(p0, p1, p2, p3, yl0, yl1, yh0, yh1, xs1); }
+          DP_Q4S(qp0, dp0, s00, s10) DP_Q4S(qp1, dp1, s01, s11)
+          #undef DP_Q4S
+        }
+        float v00 = simd_sum(s00), v01 = simd_sum(s01);
+        float v10 = simd_sum(s10), v11 = simd_sum(s11);
+        if (lane == 0) {
+          int64_t ob0 = ((int64_t)t0 * n_used + sl0) * rows;
+          slot_out.data[ob0 + r0] = v00; if (r1 != r0) slot_out.data[ob0 + r1] = v01;
+          int64_t ob1 = ((int64_t)t1 * n_used + sl1) * rows;
+          slot_out.data[ob1 + r0] = v10; if (r1 != r0) slot_out.data[ob1 + r1] = v11;
+        }
+      }
+    }
+  }
 }
 COAX_DEV void coax_am_conv_commit_nb(int64_t item, int64_t n_slots, int64_t n_kv, int64_t d, int64_t pos0, int64_t got, coax_v_f32 conv_all, coax_v_f32 raw_log, int32_t line, COAX_ERR) {
   int64_t ch_per = 2 * n_kv + 2 * d;

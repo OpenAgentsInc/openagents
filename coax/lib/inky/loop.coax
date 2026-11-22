@@ -58,6 +58,10 @@ IkLoop :: struct {
   hybrid_exec: bool;
   adaptive_effort: bool;
   max_tokens_step: int;
+  max_thinking_tokens: int;
+  require_exit_verify: bool;
+  edited_since_check: bool;
+  exit_verify_nudged: bool;
   retried_ctx: bool;
   retried_stream: bool;
   retrying_same_step: bool;
@@ -155,6 +159,7 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
     messages = msgs[0..<nm],
     effort = eff,
     max_tokens = max_tok,
+    max_thinking_tokens = l[0].max_thinking_tokens,
     stream = true,
     tools = tools,
     has_temp = true,
@@ -322,10 +327,17 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
     return IK_PH_TOOLS;
   }
 
-  // Zero tool calls: natural finish (unless user steers are waiting).
+  // Zero tool calls: natural finish (unless user steers are waiting or edited files lack a verification check).
   if has_steers {
     l[0].phase = IK_PH_MODEL;
     return IK_PH_MODEL;
+  }
+  if l[0].require_exit_verify && l[0].edited_since_check && !l[0].exit_verify_nudged && l[0].step + 1 < l[0].guard[0].max_steps {
+    if ik_hist_steer(h, "Before finishing: you modified files without running a verification check since your last edit. Run the relevant build or test command and report its real result.") {
+      l[0].exit_verify_nudged = true;
+      l[0].phase = IK_PH_MODEL;
+      return IK_PH_MODEL;
+    }
   }
   return ik_loop_end(l, IK_END_FINISHED, ik_loop_reply(l));
 }
@@ -341,7 +353,8 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
   tc := gwt_step_call(l[0].tstep[..], l[0].tool_idx);
   is_last := l[0].tool_idx + 1 >= l[0].tstep[0].n;
 
-  // Soft wrap-up notice (step == max_steps - 2) or exploration nudge (steps 8, 14 with 0 edits).
+  // Soft wrap-up notice (step == max_steps - 2), exploration nudge (steps 8, 14 with 0 edits),
+  // or cache-safe step-budget awareness once past the halfway mark (docs/coder/inky-avenues-from-other-projects.md).
   final_out := output;
   wbuf: [24576] u8;
   if is_last && ik_guard_warn_budget(l[0].step, l[0].guard[0].max_steps) {
@@ -350,8 +363,19 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
     final_out = cast(string) wbuf[0..<n];
   } else if is_last && ik_guard_nudge_explore(l[0].step, l[0].guard[0].files_edited) {
     n := ik_fmt_put(wbuf[..], 0, output);
-    n = ik_fmt_put(wbuf[..], n, "\n[Note: you have spent several steps exploring without making edits. If this task requires code changes, apply your targeted edit_file change now; otherwise answer directly.]");
+    n = ik_fmt_put(wbuf[..], n, "\n[Note: you have spent several steps exploring without making edits. State a brief 2-line plan (1: exact file + symbol to edit; 2: single verification command) and apply your targeted edit_file change now; otherwise answer directly.]");
     final_out = cast(string) wbuf[0..<n];
+  } else if is_last && l[0].guard[0].max_steps >= 6 && l[0].step >= l[0].guard[0].max_steps / 2 {
+    n := ik_fmt_put(wbuf[..], 0, output);
+    n = ik_fmt_put(wbuf[..], n, "\n[step ");
+    n = ik_fmt_int(wbuf[..], n, l[0].step);
+    n = ik_fmt_byte(wbuf[..], n, '/');
+    n = ik_fmt_int(wbuf[..], n, l[0].guard[0].max_steps);
+    n = ik_fmt_byte(wbuf[..], n, ']');
+    final_out = cast(string) wbuf[0..<n];
+  }
+  if !is_error && (tool_kind == IK_TK_EDIT || tool_kind == IK_TK_WRITE) {
+    l[0].edited_since_check = true;
   }
 
   if !ik_hist_tool(h, l[0].step, tc.call_id, tc.name, tool_kind, path_summary, exit_code, final_out, is_error) {
@@ -403,9 +427,10 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
   body_buf: [32768] u8; why: [1] string;
 
-  // Step 1: parallel 2 tool calls
+  // Step 1: parallel 2 tool calls (also verify max_thinking_tokens wire propagation)
+  l[0].max_thinking_tokens = 2048;
   b1 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
-  #assert b1.count > 0 && cl_raw(b1, "tools").count > 10 && cl_raw(b1, "temperature") == "0.00" && cl_int(b1, "seed").value == 0;
+  #assert b1.count > 0 && cl_raw(b1, "tools").count > 10 && cl_raw(b1, "temperature") == "0.00" && cl_int(b1, "seed").value == 0 && cl_int(b1, "max_thinking_tokens").value == 2048;
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Read both."});
   f := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c1", text = "read_file", reason = "{\"path\":\"a.coax\"}"});
   #assert f.emit_thought;

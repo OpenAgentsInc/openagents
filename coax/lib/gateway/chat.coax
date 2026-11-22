@@ -85,6 +85,10 @@ gw_chat_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
     n = json_raw(out, n, ifx (flags & GW_CHAT_LEGACY_MAX_TOKENS) != 0 then ",\"max_tokens\":" else ",\"max_completion_tokens\":");
     n = json_write_int(out, n, req.max_tokens);
   }
+  if req.max_thinking_tokens > 0 && emit_tool_err {
+    n = json_raw(out, n, ",\"max_thinking_tokens\":");
+    n = json_write_int(out, n, req.max_thinking_tokens);
+  }
   if req.has_temp { n = json_raw(out, n, ",\"temperature\":"); n = gw_chat_write_f2(out, n, req.temperature); }
   if req.top_p > 0.0 { n = json_raw(out, n, ",\"top_p\":"); n = gw_chat_write_f2(out, n, req.top_p); }
   if req.top_k > 0 { n = json_raw(out, n, ",\"top_k\":"); n = json_write_int(out, n, req.top_k); }

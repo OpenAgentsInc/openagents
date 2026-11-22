@@ -353,6 +353,13 @@ tool_main :: () -> int #export_c #effects(all) {
   // the multi-turn KV prefix cache, so keep it opt-in (INKY_ADAPTIVE_EFFORT=1).
   env_adaptive := gw_env("INKY_ADAPTIVE_EFFORT", ae_b[..]) == "1";
   env_max_tok := ikw_env_int("INKY_MAX_TOKENS", 0);
+  env_max_think := ikw_env_int("INKY_MAX_THINK_TOKENS", 0);
+  eff_env_b: [32] u8;
+  env_effort := gw_env("INKY_EFFORT", eff_env_b[..]);
+  rse_b: [16] u8;
+  env_refuse_shell_edit := gw_env("INKY_REFUSE_SHELL_EDIT", rse_b[..]) == "1";
+  nev_b: [16] u8;
+  env_exit_verify := gw_env("INKY_NO_EXIT_VERIFY", nev_b[..]) != "1";
 
   while true {
     ended := "";
@@ -482,8 +489,9 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       ceiling = c.value;
     }
-    effort := req[0].effort;
-    if effort != "none" && effort != "minimal" && effort != "low" && effort != "medium" && effort != "high" && effort != "xhigh" && effort != "max" {
+    effort := ifx env_effort.count > 0 then env_effort else req[0].effort;
+    eff_num := effort.count >= 1 && effort.count <= 4 && effort[0] >= '0' && effort[0] <= '9';
+    if !eff_num && effort != "none" && effort != "minimal" && effort != "low" && effort != "medium" && effort != "high" && effort != "xhigh" && effort != "max" {
       effort = "medium";
     }
     ms_field := cl_int(msg, "max_steps");
@@ -493,6 +501,9 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].hybrid_exec = env_hybrid;
     run[0].adaptive_effort = env_adaptive;
     run[0].max_tokens_step = env_max_tok;
+    run[0].max_thinking_tokens = env_max_think;
+    run[0].refuse_shell_edit = env_refuse_shell_edit;
+    run[0].require_exit_verify = env_exit_verify;
     ne := ik_run_start(
       run[..], hist[..], bufs[..], cd,
       cast(string) ep[0].base[0..<ep[0].nbase],

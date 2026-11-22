@@ -82,6 +82,8 @@ class HostCheckResult:
     cpu_count: int = 1
     thermal_speed_limit: int | None = None
     thermal_level: int | None = None
+    gpu_device_util_pct: int | None = None
+    gpu_renderer_util_pct: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,6 +100,8 @@ class HostCheckResult:
             "cpu_count": self.cpu_count,
             "thermal_speed_limit": self.thermal_speed_limit,
             "thermal_level": self.thermal_level,
+            "gpu_device_util_pct": self.gpu_device_util_pct,
+            "gpu_renderer_util_pct": self.gpu_renderer_util_pct,
         }
 
 
@@ -241,6 +245,34 @@ def probe_thermal_mac() -> tuple[int | None, int | None]:
         return None, None
 
 
+def parse_ioreg_gpu_util(text: str) -> tuple[int | None, int | None]:
+    """Parse macOS `ioreg -r -d 1 -c IOAccelerator` PerformanceStatistics utilization percentages."""
+    dev = None
+    ren = None
+    m_dev = re.search(r'"Device Utilization %"\s*=\s*(\d+)', text)
+    if m_dev:
+        dev = int(m_dev.group(1))
+    m_ren = re.search(r'"Renderer Utilization %"\s*=\s*(\d+)', text)
+    if m_ren:
+        ren = int(m_ren.group(1))
+    return dev, ren
+
+
+def probe_gpu_util_mac() -> tuple[int | None, int | None]:
+    if sys.platform != "darwin":
+        return None, None
+    try:
+        r = subprocess.run(
+            ["ioreg", "-r", "-d", "1", "-c", "IOAccelerator"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0:
+            return parse_ioreg_gpu_util(r.stdout)
+    except Exception:
+        pass
+    return None, None
+
+
 def evaluate_host_cleanliness(
     before: list[ProcSample],
     after: list[ProcSample],
@@ -255,9 +287,12 @@ def evaluate_host_cleanliness(
     cpu_count: int = 1,
     thermal_speed_limit: int | None = None,
     thermal_level: int | None = None,
+    gpu_device_util_pct: int | None = None,
+    gpu_renderer_util_pct: int | None = None,
     active_delta_ms: int = 30,
     active_pcpu: float = 1.5,
     min_free_pct: int = 30,
+    max_gpu_util_pct: int = 50,
 ) -> HostCheckResult:
     """Pure decision function classifying whether competing host activity would interfere."""
     before_by_pid = {p.pid: p for p in before}
@@ -322,6 +357,11 @@ def evaluate_host_cleanliness(
         reasons.append(f"thermal throttling active: CPU_Speed_Limit={thermal_speed_limit}% (< 85%)")
     if thermal_level is not None and thermal_level > 0:
         reasons.append(f"thermal warning active: Thermal_Level={thermal_level}")
+    if gpu_device_util_pct is not None and gpu_device_util_pct >= max_gpu_util_pct:
+        reasons.append(
+            f"external GPU utilization high: IOAccelerator Device Utilization={gpu_device_util_pct}% "
+            f"(>= {max_gpu_util_pct}% limit; non-LLM Metal workload contending on GPU)"
+        )
 
     return HostCheckResult(
         clean=len(reasons) == 0,
@@ -337,6 +377,8 @@ def evaluate_host_cleanliness(
         cpu_count=cpu_count,
         thermal_speed_limit=thermal_speed_limit,
         thermal_level=thermal_level,
+        gpu_device_util_pct=gpu_device_util_pct,
+        gpu_renderer_util_pct=gpu_renderer_util_pct,
     )
 
 
@@ -345,11 +387,22 @@ def check_host_preflight(
     own_port: int | None = None,
     own_server_pid: int | None = None,
     sample_window_s: float = 1.5,
+    max_gpu_util_pct: int = 50,
 ) -> HostCheckResult:
     before = sample_processes()
+    gpu_dev_before, gpu_ren_before = probe_gpu_util_mac()
     if sample_window_s > 0:
         time.sleep(sample_window_s)
     after = sample_processes()
+    gpu_dev_after, gpu_ren_after = probe_gpu_util_mac()
+    if gpu_dev_before is not None and gpu_dev_after is not None:
+        gpu_dev = min(gpu_dev_before, gpu_dev_after)
+    else:
+        gpu_dev = gpu_dev_after if gpu_dev_after is not None else gpu_dev_before
+    if gpu_ren_before is not None and gpu_ren_after is not None:
+        gpu_ren = min(gpu_ren_before, gpu_ren_after)
+    else:
+        gpu_ren = gpu_ren_after if gpu_ren_after is not None else gpu_ren_before
     load_1m = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0.0
     cpus = os.cpu_count() or 1
     mem_free = probe_memory_free_pct()
@@ -367,6 +420,9 @@ def check_host_preflight(
         cpu_count=cpus,
         thermal_speed_limit=spd,
         thermal_level=lvl,
+        gpu_device_util_pct=gpu_dev,
+        gpu_renderer_util_pct=gpu_ren,
+        max_gpu_util_pct=max_gpu_util_pct,
     )
 
 
@@ -406,10 +462,13 @@ def detect_midrun_interference(
 def format_preflight_summary(res: HostCheckResult) -> str:
     status = "CLEAN" if res.clean else "DIRTY (REFUSED)"
     mem_s = f"{res.mem_free_pct}% free" if res.mem_free_pct is not None else "n/a"
+    gpu_s = f"{res.gpu_device_util_pct}%" if res.gpu_device_util_pct is not None else "n/a"
     lines = [
         f"[host-preflight] {status} | mem={mem_s} (total={res.total_ram_mb}MB, other_gpu_rss={res.competing_gpu_rss_mb}MB) "
-        f"| load={res.load_avg_1m:.2f}/{res.cpu_count}c | active_gpu={len(res.active_gpu_procs)} idle_gpu={len(res.idle_gpu_procs)}"
+        f"| load={res.load_avg_1m:.2f}/{res.cpu_count}c | active_gpu={len(res.active_gpu_procs)} idle_gpu={len(res.idle_gpu_procs)} | gpu_util={gpu_s}"
     ]
+    if res.clean and res.gpu_device_util_pct is not None and res.gpu_device_util_pct > 10:
+        lines.append(f"  NOTE: IOAccelerator Device Utilization={res.gpu_device_util_pct}% (> 10% idle floor; report alongside headline tok/s)")
     for reason in res.reasons:
         lines.append(f"  BLOCK: {reason}")
     return "\n".join(lines)
@@ -419,9 +478,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Check if this host is clean enough for local Metal/GPU benchmarks.")
     ap.add_argument("--port", type=int, default=0, help="exclude our own psionic-inkling-serve on this port")
     ap.add_argument("--window", type=float, default=1.5, help="CPU-time delta sampling window in seconds")
+    ap.add_argument("--max-gpu-util", type=int, default=50, help="fail if IOAccelerator Device Utilization %% >= N (use 10 for strict idle)")
     ap.add_argument("--json", action="store_true", help="emit JSON report")
     args = ap.parse_args()
-    res = check_host_preflight(own_port=args.port or None, sample_window_s=args.window)
+    res = check_host_preflight(own_port=args.port or None, sample_window_s=args.window, max_gpu_util_pct=args.max_gpu_util)
     if args.json:
         print(json.dumps(res.to_dict(), indent=2))
     else:

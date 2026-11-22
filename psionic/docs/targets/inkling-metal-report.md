@@ -268,11 +268,18 @@ psionic-inkling-serve \
 
 ---
 
-## 6. Next Levers
+## 6. Phase 8 Update (Default `Q8_0` `_nb` + `169.8 tok/s` + Cascade DSpark) & Next Levers
 
-1. **Port bit-exact `_nb` grouped-MoE verification to default `Q8_0` (`INK_FAST_Q4=0`):** Adding `Q8_0` dense `_nb` projections alongside our already-shipped lossless `ink_moe_{gu,down}_iq4s_nb` and `ink_kv_attn_gqa_1pass_nb` unlocks **100% full-quality (`cos = 0.999993`) DSpark speculative decoding** — eliminating the 4-bit attention disagreement on open prose and bringing the **`1.93×` 16K–24K long-context speedup** directly to default Inky agent sessions with zero accuracy compromise.
-2. **Idle-host re-measurement & `host_clean.py` `IOAccelerator` guard:** Re-run the 1K–24K curve on a `0%` `Device Utilization %` host (extending `host_clean.py` to sample `ioreg -r -d 1 -c IOAccelerator`).
-3. **SSD cold-tier prompt cache (`DiskPromptCache`):** Persist the 8-slot SWA-backed prefix snapshots to disk so chat switches and Desktop restarts avoid cold 16K–32K prefill.
+### Shipped Since Sprints 68–72
+- **Default lossless `Q8_0` grouped-MoE `_nb` verification + Metal 4 `simdgroup_matrix` (`am_dot_{q4s,q8}_mma32_nb`, `ink_moe_down_p1/p2_{iq4s,q4s,q8}_nb`, `ink_moe_gu_q8_nb`):** Brings unified bit-exact (`0.00e+00`, `TOTAL MISMATCHES: 0` across all 9 parity tests) speculative verification to **both** default lossless `Q8_0` (**`188.1 tok/s`** `nb=8` peak) and opt-in `INK_FAST_Q4=1` (**`169.8 tok/s`** end-to-end `file_edit`, **`260.9 tok/s`** `nb=8` peak) — even under `94–99%` external `IOAccelerator` GPU load.
+- **Default-on Native Coax DSpark + Cascade per-request utility gate (`INK_DSPARK=0` opt-out):** Automatically backs off when `util_ema` falls below live `B=1` throughput so prose never regresses while code/edit tasks accelerate.
+- **GPU sparse top-k filter (`ink_topk_filter`), SuffixDecoding-lite (`sess_hist[16384]`), OpenAI `"prediction"` (`ink_set_prediction`), and selective `INK_Q4_LM_HEAD=1`:** Eliminates the `temp > 0` 804 KB CPU logit scan stall and enables deterministic Predicted Outputs Fast Apply.
+- **`#authority` & regression gates:** `coax/lib/compute/apple.coax` mutation check **`3,556` mutants, `3,525` killed, `0` survived, `31` equivalent**; `run_metal_host.sh`, `run_metal_kernels.sh`, `metal-parity.coax` (`8/8`), `metal_compute.py` (`13/13`), `kernels.coax` (`17/17`), `--test-quant-kernels` (`0.00e+00`) all passed; `host_clean.py` extended with `ioreg IOAccelerator` GPU-utilization gating (`8/8` tests).
+
+### Next Levers
+1. **Clean-host (`0%` `IOAccelerator`) 128..24K curve & global KV quantization:** Re-measure the full 128..24K curve once external Mac GPU load clears, and evaluate Q8_0/FP8 quantization on the 8 global attention KV caches (mirroring our CUDA FP8 E4M3 KV win).
+2. **SSD cold-tier prompt cache (`DiskPromptCache`):** Persist the 8-slot SWA-backed prefix snapshots to disk so chat switches and Desktop restarts avoid cold 16K–32K prefill.
+3. **Native NVFP4/MXFP8 safetensors loader:** Cut weight bandwidth further without 4-bit attention degradation and unlock 24 GB Apple Silicon Macs.
 
 ---
 

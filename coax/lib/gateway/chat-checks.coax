@@ -24,6 +24,9 @@
   plain := Gateway.{name = "psionic", url = "http://127.0.0.1:8080/v1/chat/completions", wire = GW_WIRE_CHAT};
   whole := GwRequest.{model = "gpt-oss-20b", messages = msgs[..], stream = false};
   #assert gw_translate(plain, whole, out[..], why[..]) == "{\"model\":\"gpt-oss-20b\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false}";
+  ps_native := Gateway.{name = "psionic", url = "http://127.0.0.1:8080/v1/chat/completions", wire = GW_WIRE_CHAT, flags = GW_CHAT_TOOL_ERROR};
+  capped := GwRequest.{model = "inkling-2-mini", messages = msgs[..], stream = false, max_thinking_tokens = 1536};
+  #assert gw_translate(ps_native, capped, out[..], why[..]) == "{\"model\":\"inkling-2-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_thinking_tokens\":1536,\"stream\":false}";
 }
 
 #test "the recorded OpenRouter Chat Completions stream: reasoning, then the answer, then done with usage at [DONE]" {

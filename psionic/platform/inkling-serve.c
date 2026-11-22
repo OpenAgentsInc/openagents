@@ -589,6 +589,7 @@ typedef struct {
     Buf      json_schema_raw;
     int      stream;
     int      max_tokens;
+    int      max_thinking_tokens; /* 0 = unlimited; sampler-level thinking cap (preserves KV cache!) */
     float    temperature;
     float    top_p;
     int      top_k;
@@ -597,6 +598,7 @@ typedef struct {
     int      cache_prompt;
     int      resp_fmt;          /* 0=none, 1=json_object, 2=json_schema */
     Buf      resp_schema_json;  /* raw JSON schema object when resp_fmt==2 */
+    Buf      prediction;        /* optional OpenAI Predicted Outputs content string */
 } Req;
 
 static void tc_free(ToolCall *tc) {
@@ -635,6 +637,7 @@ static void req_free(Req *r) {
     buf_free(&r->json_schema_name);
     buf_free(&r->json_schema_raw);
     buf_free(&r->resp_schema_json);
+    buf_free(&r->prediction);
 }
 
 static ChatMsg *req_add_msg(Req *r) {
@@ -926,7 +929,7 @@ static int parse_message_obj(JScan *j, Req *r) {
 }
 
 static void apply_effort_str(Req *r, const char *s) {
-    if (!s) return;
+    if (!s || !s[0]) return;
     r->effort.len = 0;
     if (!strcmp(s, "none")) buf_adds(&r->effort, "0");
     else if (!strcmp(s, "minimal")) buf_adds(&r->effort, "0.1");
@@ -934,7 +937,19 @@ static void apply_effort_str(Req *r, const char *s) {
     else if (!strcmp(s, "medium")) buf_adds(&r->effort, "0.7");
     else if (!strcmp(s, "high")) buf_adds(&r->effort, "0.9");
     else if (!strcmp(s, "xhigh") || !strcmp(s, "max")) buf_adds(&r->effort, "0.99");
-    else buf_adds(&r->effort, "0.7");
+    else {
+        /* Support direct numeric Inkling effort strings "0.0" .. "0.99" (for fitted fixed-effort sweeps). */
+        char *endp = NULL;
+        double v = strtod(s, &endp);
+        if (endp && endp != s && *endp == '\0' && v >= 0.0 && v <= 0.999) {
+            if (v > 0.99) v = 0.99;
+            char nb[32];
+            snprintf(nb, sizeof nb, "%.2g", v);
+            buf_adds(&r->effort, nb);
+        } else {
+            buf_adds(&r->effort, "0.7");
+        }
+    }
 }
 
 static void parse_json_schema_body(JScan *j, Req *r) {
@@ -1040,6 +1055,9 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
         } else if (!strcmp(ks, "max_tokens") || !strcmp(ks, "max_completion_tokens") || !strcmp(ks, "max_output_tokens")) {
             double v = 0;
             if (!j_number(&j, &v) && v > 0) r->max_tokens = (int)v;
+        } else if (!strcmp(ks, "max_thinking_tokens")) {
+            double v = 0;
+            if (!j_number(&j, &v) && v >= 0) r->max_thinking_tokens = (int)v;
         } else if (!strcmp(ks, "temperature")) {
             double v = 0;
             if (!j_number(&j, &v) && v >= 0.0) r->temperature = (float)v;
@@ -1052,6 +1070,37 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
         } else if (!strcmp(ks, "seed")) {
             double v = 0;
             if (!j_number(&j, &v)) { r->has_seed = 1; r->seed = (uint64_t)(int64_t)v; }
+        } else if (!strcmp(ks, "prediction")) {
+            j_ws(&j);
+            r->prediction.len = 0;
+            if (j.pos < j.len && j.s[j.pos] == '"') {
+                j_string(&j, &r->prediction);
+            } else if (j.pos < j.len && j.s[j.pos] == '{') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != '}') {
+                    Buf pk = {0};
+                    if (j_string(&j, &pk)) { buf_free(&pk); break; }
+                    j_ws(&j);
+                    if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&pk); break; }
+                    j.pos++;
+                    if (pk.data && !strcmp(pk.data, "content")) {
+                        j_ws(&j);
+                        if (j.pos < j.len && j.s[j.pos] == '"') {
+                            j_string(&j, &r->prediction);
+                        } else {
+                            j_skip(&j);
+                        }
+                    } else {
+                        j_skip(&j);
+                    }
+                    buf_free(&pk);
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
         } else if (!strcmp(ks, "reasoning_effort")) {
             Buf ev = {0};
             j_ws(&j);
@@ -1077,6 +1126,9 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
                         j_string(&j, &ev);
                         apply_effort_str(r, ev.data);
                         buf_free(&ev);
+                    } else if (rk.data && (!strcmp(rk.data, "max_tokens") || !strcmp(rk.data, "max_thinking_tokens"))) {
+                        double v = 0;
+                        if (!j_number(&j, &v) && v >= 0) r->max_thinking_tokens = (int)v;
                     } else {
                         j_skip(&j);
                     }
@@ -1991,6 +2043,26 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             if (v >= 2 && v <= 4) spec_min_ngram = v;
         }
     }
+    int eff_max_think = r.max_thinking_tokens;
+    if (eff_max_think <= 0) {
+        const char *mte = getenv("INK_MAX_THINKING_TOKENS");
+        if (mte && mte[0]) {
+            int v = atoi(mte);
+            if (v > 0) eff_max_think = v;
+        }
+    }
+    int think_budget_hits = 0;
+    int post_budget_think_toks = 0;
+    if (r.prediction.len > 0) {
+        int32_t *ptoks = (int32_t *)malloc(16384 * sizeof(int32_t));
+        if (ptoks) {
+            int pn = ink_encode(sv->sess, r.prediction.data, r.prediction.len, ptoks, 16384, 0);
+            if (pn > 0) ink_set_prediction(sv->sess, ptoks, pn);
+            free(ptoks);
+        }
+    } else {
+        ink_set_prediction(sv->sess, NULL, 0);
+    }
     int32_t verified_buf[8];
     int v_head = 0, v_tail = 0;
     int32_t prefetched_tok = -1;
@@ -2032,6 +2104,20 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             }
         } else {
             tok = ink_sample(sv->sess, &sp, &sv->rng);
+        }
+        /* Once thinking budget or thinking-loop breaker has fired, forbid reopening a 2nd thinking block. */
+        if (think_broken && !tok_already_stepped && sv->tok_thinking >= 0 && tok == sv->tok_thinking) {
+            const float *lg = ink_logits(sv->sess);
+            int nv_l = ink_vocab_unpadded(sv->sess);
+            if (lg && nv_l > 0) {
+                int best_alt = -1;
+                float best_v = -1e30f;
+                for (int vi = 0; vi < nv_l; vi++) {
+                    if (vi == sv->tok_thinking) continue;
+                    if (lg[vi] > best_v) { best_v = lg[vi]; best_alt = vi; }
+                }
+                if (best_alt >= 0) tok = (int32_t)best_alt;
+            }
         }
         if (tok < 0) break;
         n_gen++;
@@ -2126,7 +2212,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         } else if (tok >= 200000) {
             /* Other special control token: ignore in user-visible output */
         } else {
-            if (channel == 1) n_reason++;
+            if (channel == 1) {
+                n_reason++;
+                if (think_budget_hits > 0) post_budget_think_toks++;
+            }
             char piece[512];
             int plen = ink_decode_piece(sv->sess, tok, piece, sizeof piece);
             if (plen > 0) {
@@ -2214,8 +2303,9 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             }
             if (n_all < max_ctx) all_toks[n_all++] = tok;
             if (v_head == v_tail && channel == 1 && !think_broken && think_start >= 0 && sv->tok_end_msg >= 0 && n_all < max_ctx) {
-                int lp = detect_thinking_loop(all_toks, think_start, n_all);
-                if (lp > 0) {
+                int budget_hit = (eff_max_think > 0 && (n_all - think_start) >= eff_max_think);
+                int lp = budget_hit ? 0 : detect_thinking_loop(all_toks, think_start, n_all);
+                if (budget_hit || lp > 0) {
                     if (pending.len > 0) {
                         buf_append(&full_think, pending.data, pending.len);
                         if (r.stream) {
@@ -2226,15 +2316,21 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
                         }
                         pending.len = 0;
                     }
-                    fprintf(stderr, "[psionic-inkling-serve] req#%d thinking-loop breaker triggered (period=%d, think_toks=%d)\n",
-                            sv->req_seq, lp, n_all - think_start);
+                    if (budget_hit) {
+                        think_budget_hits++;
+                        fprintf(stderr, "[psionic-inkling-serve] req#%d thinking-budget cap triggered (max=%d, think_toks=%d)\n",
+                                sv->req_seq, eff_max_think, n_all - think_start);
+                    } else {
+                        fprintf(stderr, "[psionic-inkling-serve] req#%d thinking-loop breaker triggered (period=%d, think_toks=%d)\n",
+                                sv->req_seq, lp, n_all - think_start);
+                    }
                     fflush(stderr);
                     think_broken = 1;
                     channel = 0;
                     think_start = -1;
                     has_prefetched = 0;
                     if (ink_step(sv->sess, sv->tok_end_msg, 1) != 0) {
-                        fprintf(stderr, "[psionic-inkling-serve] step error on loop break: %s\n", ink_error(sv->sess));
+                        fprintf(stderr, "[psionic-inkling-serve] step error on think-close: %s\n", ink_error(sv->sess));
                         break;
                     }
                     all_toks[n_all++] = sv->tok_end_msg;
@@ -2255,6 +2351,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         }
     }
     if (r.has_seed) sv->rng = saved_rng;
+    ink_set_prediction(sv->sess, NULL, 0);
     if (r.cache_prompt && !g_stop && !client_gone && !out_loop_broken && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
         ink_prefix_save(sv->sess, all_toks, n_all, 0);
     }
@@ -2324,8 +2421,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             char u[448];
             long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
             snprintf(u, sizeof u,
-                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d},\"loop_count\":%lld}}}",
-                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, lc);
+                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d},\"loop_count\":%lld}}}",
+                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks, lc);
             buf_adds(&done, u);
             send_sse_event(fd, "response.completed", done.data, done.len);
             buf_free(&done);
@@ -2349,10 +2446,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
                      (long long)created);
             buf_adds(&usg, head);
             buf_add_json_escaped(&usg, model, strlen(model));
-            char utail[320];
+            char utail[384];
             snprintf(utail, sizeof utail,
-                     "\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d}}}",
-                     n_prompt, n_gen, n_prompt + n_gen, cached, n_reason);
+                     "\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
+                     n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks);
             buf_adds(&usg, utail);
             send_sse_event(fd, NULL, usg.data, usg.len);
             buf_free(&usg);
@@ -2397,11 +2494,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             else buf_adds(&out, "{}");
             buf_adds(&out, "\",\"status\":\"completed\"}");
         }
-        char utail[320];
+        char utail[384];
         long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
         snprintf(utail, sizeof utail,
-                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d},\"loop_count\":%lld}}",
-                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, lc);
+                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d},\"loop_count\":%lld}}",
+                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks, lc);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", origin, out.data, out.len);
         buf_free(&out);
@@ -2438,10 +2535,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         }
         buf_adds(&out, "},\"finish_reason\":\"");
         buf_adds(&out, finish_reason);
-        char utail[320];
+        char utail[384];
         snprintf(utail, sizeof utail,
-                 "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d}}}",
-                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason);
+                 "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
+                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", origin, out.data, out.len);
         buf_free(&out);
