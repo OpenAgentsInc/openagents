@@ -67,6 +67,7 @@
 | **`comboA-v2-rtx4080-neon-dev9`** | Combo A2 v2 (RTX 4080 + Vertex Neon + budget fallback) | **4/9 (44%)** | **6/9** | **`\$1.2429`** | **`-32.0%`** | Bucket A `2/2` for **`\$0.0693`** (`sh_004` **`\$0.0248`**, `-81.6%`!); Bucket D `2/2` for `\$0.1997`; `sh_010` & `sh_023` cmd passed |
 | **`comboA-v2-inkling-neon-dev9`** | **Combo A1 v2 (M5 Max `inkling-2-mini` + Vertex Neon)** | **4/9 (44%)** | 5/9 | **`\$1.1213`** | **`-38.7%`** | **Lowest total cost across all Dev-9 runs; 0/9 budget overruns, 0 failed edits, 0 guard trips!** Bucket A `2/2` (`\$0.0707`, `-73.5%`), Bucket D `2/2` (`\$0.1296`: `sh_019` `\$0.1014`, `sh_021` `\$0.0282`); `sh_010` cmd passed at `\$0.1904 < \$0.20` |
 | **`comboA-v3-inkling-neon-dev9`** | Combo A1 v3 (M5 Max + Vertex Neon, Iter 5) | 3/9 (33%) | 5/9 | `\$1.2011` | `-34.3%` | **`sh_004` solved for `\$0.0000`** (70s); Bucket A **`\$0.0648`** (`-75.7%`); `sh_010` (`\$0.1800 < \$0.20`) & `sh_023` cmd passed — exposed 16.9K uncompacted closing-turn bug fixed in Iter 5B |
+| **`comboA-v4-2dev-pool-neon-dev9`** | **Combo A3 v4 (`PSIONIC_PEERS` Two-Device Pool: M5 Max `inkling-2-mini` + `coderos-4080` RTX 4080 `qwen35-9b` + Vertex Neon)** | **4/9 (44%)** | 4/9 | **`\$1.0566`** | **`-42.2%`** | **Lowest Dev-9 cost across all runs; 0/9 budget overruns, 0 guard trips!** Unlocked 3-file Bucket B **`sh_010` (`PASS`, `\$0.1540`, 174s)** via compact 3K-token free local closing turn (`sh_004` **`\$0.0184`**, `-86.3%`!); live load-balanced **67.4% of all model calls (58/86)** onto the two free GPUs (`17` M5 Max + `41` RTX 4080 vs `28` Vertex Neon) |
 | **`comboB-neon-delegate-4080-dev9`** | Combo B v1 (Neon Architect + `level:"inkling"` sub-agents) | 3/9 (33%) | 5/9 | `\$1.4535` | `-20.5%` | `agent_tasks=0` on all 9 tasks (passive `MC_AGENTS` wording kept Neon solo) → strengthened `MC_AGENTS_INKLING` in Iter 5B |
 
 ---
@@ -89,13 +90,14 @@
      - Predictive budget-aware cloud-to-local fallback (`MC_HYBRID_CLOUD_BUDGET_MICROS`) switches back to free local GPU before a paid cloud call would breach the chat's dollar budget ceiling.
    - **Combo B — `neon+inkling` (`action.coax`, `loop.coax`, `mcworker.coax`, `page/`):** Exposes `level: "inkling"` free local sub-agents to cloud runs whenever a local/LAN psionic server is reachable.
    - **Two-Device `PSIONIC_PEERS` Pooling (`psionic.coax`, `microcoder_keys.coax`):** Supports heterogeneous `URL#MODEL` peer lists spanning Apple M5 Max Metal 4 and `coderos-4080` NVIDIA RTX 4080 CUDA.
-   - **Eval Harness Reliability (`evals/openagents-desktop/tier2/run_tasks.py`):** Bumped `git worktree add` timeout to 300 s and hardened `sb.remove()` against macOS parallel disk I/O timeouts.
+   - **Eval Harness Reliability (`evals/openagents-desktop/tier2/run_tasks.py`):** Bumped `git worktree add` timeout to 300 s, hardened `sb.remove()` against macOS parallel disk I/O timeouts, and eliminated cross-process `.git/worktrees/repo*` index-file collisions by giving every sandbox a unique `wt-<pid>-<rand>` basename guarded by cross-process `fcntl.flock` + retry.
 
 ---
 
 ## Pylon & Trajectory Contribution Pipeline Verification (Live)
 
 - **`openagents pylon onboard --json`** (Apple M5 Max): `executor_selftest: true`, `tamper_refused: true`, `artifact_sha256: b1b6bbceedeb3c446791a4dd675acd092726a775ac30697ff2e6f8c59d32bc71`, `modules_installed: 10`, `ok: true`.
+- **`openagents pylon status`** (run from `coderos-4080` NixOS/RTX 4080): reached live Pylon relay and reported `online Mac M5 Max (network lane) UnifiedMemory/Xl busy 0/2 jobs 0`.
 - **`openagents contribute selftest`**: `PASS (default_off=ok adversarial_redaction=clean verifier_gate=ok heldout_block=ok)`.
 - **Live redacted `ATIF-v1.8` trajectory shard submission** (real verified `iter4b-neon-dev9` `sh_004` journal, isolated temp `$HOME`, keeping real home `contribute: OFF`):
   - Default-OFF refusal verified on real home (`REFUSED: contribution is OFF by default`).
@@ -116,5 +118,33 @@
 
 ---
 
-*Next section (appended after Iteration 5B Two-Device Pool check and the Final Full 27-Task Dev-9 + Held-Out-18 Showdown across Pure Neon, Pure Inkling, and Hybrid Combo):*
-- *Final 27-Task Full Benchmark Scorecard (Dev-9 vs. Held-Out-18)*
+## Final 27-Task Full Benchmark Showdown (Dev-9 vs. Untouched Held-Out-18)
+
+Evaluated on the full 27-task stratified suite (`evals/session-history/tasks/`, identical budgets and graders as `evals/session-history/README.md`). All 18 held-out tasks were never inspected during Dev-9 iteration.
+
+### Pure `gemini-4-neon` Progression (All 27 Tasks)
+
+| Run / Phase | Overall Pass | Dev-9 Pass | Held-Out-18 Pass | Cmd Grader Pass | Budget-Stopped | Guard Trips | Total Cost | Wall |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Phase 3 baseline (`README.md`) | 5/27 (18.5%) | - | - | 10/27 (37.0%) | 20 | 3 | `\$6.3495` | 1361s |
+| Phase 4 baseline (`README.md`) | 8/27 (29.6%) | - | - | 9/27 (33.3%) | 19 | 0 | `\$6.2481` | 1220s |
+| **Phase 5 Lab (`final-neon-27`)** | **10/27 (37.0%)** | **5/9 (55.6%, `\$1.4019`)** | **5/18 (27.8%, `\$3.6622`)** | **13/27 (48.1%)** | **17** | **0** | **`\$5.0641` (`-19.0%` vs P4 / `-20.2%` vs P3)** | 1624s |
+
+- **Bucket breakdown (`final-neon-27`):** `A_edit_precision` **6/6 (100%, `\$0.3227`, 20.6s/task avg)** · `B_multi_file` **1/5 (20%, `sh_008` PASS)** · `C_verification` 0/6 · `D_error_recovery` **3/5 (60%, `sh_019`, `sh_021`, untouched held-out `sh_022` PASS)** · `E_long_context` 0/5 · `edit_mismatch: 0`, `compaction_drop: 0`.
+- **Vertex cache-hit telemetry (`final-neon-27`):** `966,521` input tokens, `145,308` output tokens, only **`5,282` cached input tokens (`0.55%` hit rate)** across all 27 tasks. Three additional multi-file / long-context tasks passed the real verification command (`sh_010` `\$0.2032`, held-out `sh_012` `\$0.2635`, held-out `sh_026` `\$0.3070`) but stopped on budget right before closing — highlighting why free local closing turns and real multi-turn prompt caching are the two highest-leverage wins.
+
+### Pure Local Inkling & Hybrid Combo Held-Out Validation (Captured Before Lab Stop)
+
+- **Pure Local Inkling (`final-inkling-27`, Apple M5 Max Metal 4, `\$0.00`, 10/27 tasks completed before stop):**
+  - **5/10 passed, 0 guard trips, `\$0.0000` total cost.**
+  - Passed **4/4 (100%) of all untouched held-out Bucket A tasks** at `\$0.00`: `sh_002` (`71.5s`), `sh_005` (`36.6s`), `sh_006` (`44.4s`), `sh_007` (`48.4s`), plus Dev-9 `sh_004` (`42.7s`, `2.3×` faster than 98s baseline). (`sh_001` hit 301s timeout during brief initial GPU contention with another local Metal run; Buckets B/C `sh_003`, `sh_008`–`sh_010` reached 300s local wall-clock limits.)
+- **Hybrid Combo (`final-combo-rtx4080-neon-27`, `coderos-4080` RTX 4080 CUDA `qwen35-9b` + Vertex `gemini-4-neon`, 19/27 tasks completed before stop):**
+  - **7/19 passed (8/19 cmd grader passed), 0 guard trips, `\$3.1263`.**
+  - On `sh_001` (`PASS`, `\$0.0652`, 71s), untouched held-out `sh_002` (`PASS`, `\$0.0537`, 32s), and `sh_003` (`\$0.1296` vs `\$0.2121` Pure Neon, `-38.9%`), live hybrid routing spanned both `qwen35-9b` (96% RTX 4080 utilization, 77% local KV-cache hit) and Vertex `gemini-4-neon`. When remote peer probe missed from `sh_004` onward, `inkling-neon` degraded gracefully to Vertex `gemini-4-neon` with zero crashes, passing `sh_004`–`sh_007` (6/6 Bucket A) and `sh_019`.
+
+## Key Lessons & Next High-Leverage Opportunities
+
+1. **Context hygiene beats prompt cleverness:** Trimming `MC_SYSTEM`, symbol-anchored Step-0 seeding, passing check/search output compaction, and token-subsequence verification doubled Pure Neon's full-suite pass rate vs. Phase 3 (`5/27 → 10/27`, `13/27` cmd pass) while cutting total cost by `-19.0%` vs. Phase 4 (`\$6.25 → \$5.06`).
+2. **Local systems fixes unlock `\$0.00` coding:** Opening 32K context windows, adding GBNF `max_tokens=4096`, bounding local history to `57 KB` (eliminating KV-cache thrashing), and blocking `/usr/bin/view` vim hangs doubled local `inkling-2-mini` on Dev-9 (`2/9 → 4/9` at `\$0.00`) and achieved `100%` (4/4) on untouched held-out Bucket A tasks in 36–71 s.
+3. **Fine-tuned discipline vs. raw speed:** Generic `qwen35-9b` on `coderos-4080` RTX 4080 runs ~3× faster than `inkling-2-mini` on M5 Max (ideal as a fast hybrid scout/closer), but tripped `git push` guards on 4/9 solo tasks where fine-tuned `inkling-2-mini` had 0 trips. Quantizing a 16 GB-VRAM-friendly Inkling build for consumer NVIDIA GPUs combines both.
+4. **Cloud prompt caching is the biggest remaining lever for Buckets B–E:** Vertex `us` multi-region averaged `0.55%` implicit cache hits across `final-neon-27`; enabling real multi-turn prefix caching alongside compact free local closing turns (`comboA-v4-2dev-pool-neon-dev9`, `-42.2%` cost, unlocking `sh_010`) directly targets the 17 remaining budget-stopped tasks.

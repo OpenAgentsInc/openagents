@@ -138,6 +138,7 @@ Re-run on the same 27-task suite (`./evals/session-history/run.sh run --model <m
 | `gemini-4-hydrogen` | **Phase 4 (after)** | **14/27 (51%)** | **16/27 (59%)** | **10** | **0** | **\$4.3282** | 1361s | `premature_done` (12), `compaction_drop` (1), `edit_mismatch` (0) |
 | `gemini-4-neon` | Phase 3 (before) | 5/27 (18%) | 10/27 (37%) | 20 | 3 | \$6.3495 | 1361s | `premature_done` (19), `edit_mismatch` (2), `compaction_drop` (1) |
 | `gemini-4-neon` | **Phase 4 (after)** | **8/27 (29%)** | 9/27 (33%) | **19** | **0** | **\$6.2481** | **1220s** | `premature_done` (19), `edit_mismatch` (0), `compaction_drop` (0) |
+| `gemini-4-neon` | **Phase 5 Lab** ([log](../../docs/verification/microcoder-neon-inkling-lab.md)) | **10/27 (37%)** | **13/27 (48%)** | **17** | **0** | **\$5.0641** | 1624s | `premature_done` (14), `search_bloat` (3), `edit_mismatch` (0), `compaction_drop` (0) |
 | `gemini-4-carbon` | Phase 3 (before) | 0/27 (0%) | 4/27 (15%) | 27 | 0 | \$7.2356 | 1026s | `premature_done` (23), `edit_mismatch` (2), `compaction_drop` (2) |
 | `gemini-4-carbon` | **Phase 4 (after)** | 0/27 (0%) | 4/27 (15%) | 27 | **0** | **\$6.7253** | **1021s** | `premature_done` (22), `compaction_drop` (3), `edit_mismatch` (1), `search_bloat` (1) |
 

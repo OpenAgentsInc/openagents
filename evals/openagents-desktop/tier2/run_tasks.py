@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
+import fcntl
 import fnmatch
 import glob
 import hashlib
@@ -39,6 +41,17 @@ from pathlib import Path
 from typing import Any
 
 GIT_WORKTREE_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def git_worktree_lock():
+    with GIT_WORKTREE_LOCK:
+        with open("/tmp/oa-git-worktree.lock", "a+") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVAL_DIR = REPO_ROOT / "evals/openagents-desktop"
@@ -147,10 +160,19 @@ class Sandbox:
             shutil.copytree(self.fixture, self.repo)
         elif self.base_sha:
             self.fixture = None
-            with GIT_WORKTREE_LOCK:
-                r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=300)
-            if r.returncode != 0:
-                raise RuntimeError(f"git worktree add {self.base_sha} failed: {r.stderr}")
+            # Unique worktree basename avoids cross-process `.git/worktrees/repo*` collisions.
+            self.repo = self.root / f"wt-{os.getpid()}-{self.root.name[-8:]}"
+            r = None
+            for attempt in range(3):
+                with git_worktree_lock():
+                    if self.repo.exists():
+                        shutil.rmtree(self.repo, ignore_errors=True)
+                    r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=300)
+                if r.returncode == 0:
+                    break
+                time.sleep(2)
+            if r is None or r.returncode != 0:
+                raise RuntimeError(f"git worktree add {self.base_sha} failed: {r.stderr if r else 'unknown'}")
             self.is_git_worktree = True
             coax_src = coax_bin()
             if coax_src.exists():
@@ -212,15 +234,17 @@ class Sandbox:
         return sh(["git", "diff", "--cached", self.head], cwd=self.repo, env=env).stdout
 
     def remove(self) -> None:
+        need_prune = False
         if self.is_git_worktree:
-            with GIT_WORKTREE_LOCK:
+            with git_worktree_lock():
                 try:
-                    sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=120)
+                    r = sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=120)
+                    need_prune = r.returncode != 0
                 except subprocess.TimeoutExpired:
-                    pass
+                    need_prune = True
         shutil.rmtree(self.root, ignore_errors=True)
-        if self.is_git_worktree:
-            with GIT_WORKTREE_LOCK:
+        if self.is_git_worktree and need_prune:
+            with git_worktree_lock():
                 try:
                     sh(["git", "-C", str(REPO_ROOT), "worktree", "prune"], timeout=30)
                 except subprocess.TimeoutExpired:
