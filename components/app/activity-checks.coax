@@ -219,3 +219,30 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   }
   #assert brain && elbow;
 }
+
+#test "app activity: fade_text never paints glyphs past right and thought code blocks wrap without dead header hits" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  r := AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = "git -C /Users/christopherdavid/work/openagents log --oneline -n 50 --stat origin/main"};
+  _ := app_act_row(f, "fade.0", 0, 0, 260, r, false, 9);
+  #assert app_test_end(t[..]);
+  sh := surface_sheet(t[0].sf[..]);
+  for i: 0..<sh.no {
+    p := sh.over[i];
+    if p.kind == PRIM_TEXT { #assert p.x + p.w <= 260.5f32; }
+  }
+  // A thought containing a wide fenced code block wraps inside width w and emits no Wrap/Copy hits:
+  doc: [1] MdDoc;
+  nb := md_parse(doc[..], "Checking:\n\n```\n/Users/christopherdavid/.cache/openagents/coder-release/stage/OpenAgents.app: replacing existing signature\n```", 0);
+  #assert nb == 2;
+  th := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = "Checking", doc = doc[..], block0 = 0, blocks = nb};
+  app_test_begin(t[..], "", "", true);
+  _ := app_act_row(f, "th.code", 0, 0, 280, th, false, 9);
+  #assert app_test_end(t[..]);
+  sh2 := surface_sheet(t[0].sf[..]);
+  for i: 0..<sh2.no {
+    p := sh2.over[i];
+    if p.kind == PRIM_TEXT { #assert p.x + p.w <= 280.5f32; }
+  }
+  for i: 0..<sh2.nh { #assert sh2.hits[i].kind != MARKDOWN_HIT_WRAP && sh2.hits[i].kind != MARKDOWN_HIT_COPY; }
+}

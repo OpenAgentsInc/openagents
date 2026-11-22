@@ -344,7 +344,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   oauth_tray := ifx cp_flag(s, DC_FLAG_MCP) then s[0].mcp_skills[0].oauth_tray_h else 0.0f32;
   voice_tray := ifx cp_flag(s, DC_FLAG_VOICE) then s[0].voice[0].pill_h else 0.0f32;
   rich_tray := ifx cp_flag(s, DC_FLAG_RICH) then s[0].rich[0].tray_h else 0.0f32;
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - git_tray - s[0].permit[0].tray_h - oauth_tray - voice_tray - rich_tray;   // what scrolls runs up to the trays and the bar
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - git_tray - s[0].permit[0].tray_h - oauth_tray - voice_tray - rich_tray - 10.0f32;   // what scrolls stops 10pt above the trays and the composer
+  if bottom < 0.0f32 { bottom = 0.0f32; }
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -1082,9 +1083,12 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
   send_prs := can_send && uiframe_pressed(f, "coder.composer.send");
-  stop_bg := ifx send_prs then noir_mix(th.danger, 0, 0.16) else ifx send_hov then noir_mix(th.danger, 1, 0.14) else th.danger;
+  mono := cp_cust_is_monochrome(s);
+  stop_bg := ifx mono
+    then (ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg)
+    else (ifx send_prs then noir_mix(th.danger, 0, 0.16) else ifx send_hov then noir_mix(th.danger, 1, 0.14) else th.danger);
   send_bg := ifx running then stop_bg else ifx !can_send then z_dis_bg else ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg;
-  send_ink := ifx running then hex(0xffffff, 1) else ifx !can_send then z_dis_ink else z_pri_ink;
+  send_ink := ifx running then (ifx mono then z_pri_ink else hex(0xffffff, 1)) else ifx !can_send then z_dis_ink else z_pri_ink;
   sheet_fill(sh, sx, sy, send, send, send / 2, send_bg);
   if running {
     sq := k.cmp.stop;

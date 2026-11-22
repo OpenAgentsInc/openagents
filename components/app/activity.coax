@@ -196,8 +196,9 @@ app_act_fade_text :: (sh: [] Sheet, m: TextMeasure, x: f32, y: f32, lh: f32, fac
   while i < text.count && pen < right {
     j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }   // not a size
     cw := measure_width(m, face, cast(string) text[i..<j]);
-    k := (right - (pen + cw / 2)) / band; k = ifx k < 0 then 0.0f32 else ifx k > 1 then 1.0f32 else k;
-    if k > 0 { _ := sheet_text(sh, m, -1, pen, y, lh, face, opacity(ink, k), cast(string) text[i..<j]); }
+    if pen + cw > right + 0.5f32 { break; }
+    k := (right - (pen + cw)) / band; k = ifx k < 0 then 0.0f32 else ifx k > 1 then 1.0f32 else k;
+    if k > 0.02f32 { _ := sheet_text(sh, m, -1, pen, y, lh, face, opacity(ink, k), cast(string) text[i..<j]); }
     pen += cw; i = j;
   }
   return right - x;
@@ -411,6 +412,9 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   if t < 0 { t = 0; } else if t > 1 { t = 1; }
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
   ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
+  ns.accent = rgba_mix(s.muted, s.ink, 0.30f32);
+  ns.code_wash = opacity(s.code_wash, 0.70f32);
+  ns.md.action = 0;
   // a step smaller where the skin has the faces (Zeron's prose.small): its plain, bold and code text
   if a.thought_face >= 0 { ns.body.face = a.thought_face; ns.strong.face = ifx a.thought_bold >= 0 then a.thought_bold else a.thought_face; }
   if a.thought_code >= 0 { ns.code.face = a.thought_code; }

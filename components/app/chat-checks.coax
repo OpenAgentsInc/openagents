@@ -148,6 +148,12 @@ APP_TEST_MD :: "## Plan\n\nRead the **composer** and *fix* [the test](https://ex
   #assert r.h == a.pill_h && r.y + r.h == 500 && abs(r.x + r.w / 2 - 150) < 0.5;
   app_test_begin(t[..], "", "", false);
   #assert app_jump_pill(f, "jump", 150, 500, "New reply", true, true, 6) && app_test_end(t[..]) && app_test_label(t[..], "jump") == "New reply";
+  // The floating pill paints its opaque ground and dot in `over` (above transcript text), never `under`:
+  sh_j := surface_sheet(t[0].sf[..]);
+  #assert sh_j.nu == 0;
+  over_boxes := 0;
+  for qi: 0..<sh_j.no { if sh_j.over[qi].kind == PRIM_BOX { over_boxes += 1; } }
+  #assert over_boxes >= 2;
   // no longer shown: it sinks and fades, then draws nothing
   app_test_begin(t[..], "", "", false);
   going := app_jump_pill(f, "jump", 150, 500, "Jump to latest", false, false, 6);

@@ -454,13 +454,15 @@ app_jump_pill :: (f: [] UiFrame, id: string, cx: f32, bottom: f32, label: string
   pw := ceil(a.pill_pad + dot + tw + a.pill_gap + a.pill_icon + a.pill_pad); ph := a.pill_h;
   px := cx - pw / 2; py := bottom - ph; r := ph / 2;
   hovered := uiframe_hover(f, k, id);
-  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, px, py, pw, ph, r));
-  sheet_under(sh, prim_box(sh[0].under, sh[0].nu, px, py, pw, ph, r, s.border, ifx s.float_ground.a > 0 then s.float_ground else s.surface, s.field_edge));
-  if hovered > 0 { sheet_fill(sh, px, py, pw, ph, r, opacity(s.hover, hovered)); }
+  // Paint the entire floating pill (shadow, opaque ground, hover wash, dot, label, chevron) into
+  // `over` so it floats cleanly above scrolled transcript text instead of behind it.
+  sheet_over_n(sh, uiskin_float(sh[0].over, sh[0].no, s, px, py, pw, ph, r));
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, r, s.border, ifx s.float_ground.a > 0 then s.float_ground else s.surface, s.field_edge));
+  if hovered > 0 { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, r, 0, opacity(s.hover, hovered), opacity(s.hover, hovered))); }
   tx := px + a.pill_pad;
-  if writing { sheet_fill(sh, tx, py + (ph - a.state_dot) / 2, a.state_dot, a.state_dot, a.state_dot / 2, s.ink); tx += dot; }
+  if writing { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, tx, py + (ph - a.state_dot) / 2, a.state_dot, a.state_dot, a.state_dot / 2, 0, s.ink, s.ink)); tx += dot; }
   _ := sheet_text(sh, m, -1, tx, py + (ph - s.tool.line) / 2, s.tool.line, s.tool.face, s.ink, label);
-  if s.icon_chevron >= 0 { sheet_icon(sh, s.icon_chevron, tx + tw + a.pill_gap, py + (ph - a.pill_icon) / 2, a.pill_icon, s.ink); }
+  if s.icon_chevron >= 0 { sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, s.icon_chevron, tx + tw + a.pill_gap, py + (ph - a.pill_icon) / 2, a.pill_icon, a.pill_icon, s.ink)); }
   if shown {
     row := uiframe_semantic(f, id, EL_BUTTON, label, px, py, pw, ph, 0, action);
     sheet_hit(sh, UIFRAME_HIT, row, 0, px, py, pw, ph);

@@ -210,7 +210,7 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
       _ := sheet_text(sh, m, -1, r1_right - ww, sy1, s.small.line, s.small.face, s.accent, w_lbl);
       r1_right -= ww + 4.0f32;
       activity(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);
-      r1_right -= spin_s + 6.0f32;
+      r1_right -= spin_s + 8.0f32;
     }
   } else if mark_unread {
     d_lbl := "Done";

@@ -198,6 +198,61 @@ markdown_syntax_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, line: s
   if i < line.count { pen = markdown_syntax_seg(sh, m, ln, line, i, line.count, pen, y, lh, face, plain, base, vv); }
 }
 
+// A slice [from..<to) of a syntax-highlighted line as one selectable line.
+markdown_syntax_slice_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, line: string, runs: [] MdRun, nruns: int, from: int, to: int, x: f32, y: f32, lh: f32, face: int, plain: Rgba, base: int, vv: MdVeil, hard: bool) {
+  ln := sheet_line(sh, x, y, lh, hard);
+  pen := x; i := from;
+  for k: 0..<nruns {
+    rf := runs[k].from; rt := runs[k].to;
+    if rt <= from { continue; }
+    if rf >= to { break; }
+    if rf < from { rf = from; }
+    if rt > to { rt = to; }
+    if rf > i { pen = markdown_syntax_seg(sh, m, ln, line, i, rf, pen, y, lh, face, plain, base, vv); }
+    pen = markdown_syntax_seg(sh, m, ln, line, rf, rt, pen, y, lh, face, uiskin_syntax(s, runs[k].style, plain), base, vv);
+    i = rt;
+  }
+  if i < to { pen = markdown_syntax_seg(sh, m, ln, line, i, to, pen, y, lh, face, plain, base, vv); }
+}
+
+// Wraps one logical line of code to fit inside `room` layout units so code never overflows its frame.
+markdown_code_wrap :: (m: TextMeasure, face: int, line: string, room: f32, out: [] TextLine) -> int {
+  if line.count == 0 || room <= 0.0f32 || out.count == 0 || measure_width(m, face, line) <= room + 0.5f32 {
+    if out.count > 0 { out[0] = TextLine.{from = 0, to = line.count}; return 1; }
+    return 0;
+  }
+  n := 0; at := 0;
+  while at < line.count && n < out.count {
+    rem := cast(string) line[at..<line.count];
+    if n + 1 == out.count || measure_width(m, face, rem) <= room + 0.5f32 {
+      out[n] = TextLine.{from = at, to = line.count};
+      n += 1;
+      break;
+    }
+    i := at; last_fit := at; brk := -1;
+    while i < line.count {
+      j := i + 1;
+      while j < line.count && (line[j] & 0xC0) == 0x80 { j += 1; }
+      if measure_width(m, face, cast(string) line[at..<j]) > room + 0.5f32 { break; }
+      last_fit = j;
+      ch := line[i];
+      if (ch == ' ' || ch == '\t' || ch == '/' || ch == ':' || ch == '-' || ch == ',' || ch == ';' || ch == '=') && j - at >= 4 {
+        brk = j;
+      }
+      i = j;
+    }
+    cut := ifx brk > at then brk else last_fit;
+    if cut <= at {
+      cut = at + 1;
+      while cut < line.count && (line[cut] & 0xC0) == 0x80 { cut += 1; }
+    }
+    out[n] = TextLine.{from = at, to = cut};
+    n += 1;
+    at = cut;
+  }
+  return ifx n > 0 then n else 1;
+}
+
 // A fenced code block's height at any width: its borders, header, padding and lines.
 markdown_code_height :: (s: UiSkin, code: string) -> f32 {
   nl := 1;
@@ -207,14 +262,26 @@ markdown_code_height :: (s: UiSkin, code: string) -> f32 {
 
 // A fenced code block (render.rs code_block_frame): the frame, the header
 // with the language and its two actions (a skin with no header or no
-// actions draws none), the highlighted lines.
+// actions draws none), the highlighted lines soft-wrapped to stay inside w.
 markdown_code :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
   return markdown_code_veiled(sh, m, s, doc, b, x, y, w, MdVeil.{});
 }
 markdown_code_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32, vv: MdVeil) -> f32 {
   code := md_block_text(doc, b);
-  h := markdown_code_height(s, code);
-  bd := s.md.block_border; head := s.md.block_header;
+  lang := md_lang(doc, b);
+  bd := s.md.block_border;
+  head := ifx s.md.block_header > 0 && (lang.count > 0 || s.md.action > 0) then s.md.block_header else 0.0f32;
+  room := w - 2 * bd - 2 * s.md.block_pad_x;
+  wraps: [32] TextLine;
+  total_rows := 0;
+  ci := 0;
+  while ci <= code.count {
+    cj := ci; while cj < code.count && code[cj] != '\n' { cj += 1; }
+    total_rows += markdown_code_wrap(m, s.mono.face, cast(string) code[ci..<cj], room, wraps[..]);
+    ci = cj + 1;
+  }
+  if total_rows < 1 { total_rows = 1; }
+  h := 2 * bd + head + 2 * s.md.block_pad_y + cast(f32) total_rows * s.md.block_line;
   border := s.hairline;
   bb := sheet_box(sh, x, y, w, h, s.md.block_radius, bd, s.sunk, border);
   if head > 0 {
@@ -223,7 +290,7 @@ markdown_code_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc,
     sheet_fill(sh, x + bd, y + head, w - 2 * bd, bd, 0, border);
     llh := s.small.line;
     ly := y + bd + (head - bd - llh) / 2;
-    lw := sheet_text(sh, m, -1, x + bd + s.md.block_pad_x, ly, llh, s.small.face, s.muted, md_lang(doc, b));
+    lw := sheet_text(sh, m, -1, x + bd + s.md.block_pad_x, ly, llh, s.small.face, s.muted, lang);
     act := s.md.action;
     if act > 0 {
       // actions, right to left: Copy (two wider than Wrap: its side padding and its icon), then Wrap, 2 apart, 5 from the edge
@@ -240,15 +307,26 @@ markdown_code_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc,
       sheet_hit(sh, MARKDOWN_HIT_COPY, b, 0, copy_x, ay, copy_w, act);
     }
   }
-  // the lines
+  // the lines (soft-wrapped to stay inside the code frame)
   top := y + bd + head + s.md.block_pad_y;
+  lx := x + bd + s.md.block_pad_x;
   i := 0; k := 0;
   runs: [128] MdRun;
   while i <= code.count {
     j := i; while j < code.count && code[j] != '\n' { j += 1; }
     line := cast(string) code[i..<j];
-    markdown_syntax_line_veiled(sh, m, s, line, runs[..], x + bd + s.md.block_pad_x, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink, doc[0].blocks[b].at + i, vv);
-    k += 1; i = j + 1;
+    nw := markdown_code_wrap(m, s.mono.face, line, room, wraps[..]);
+    if nw <= 1 {
+      markdown_syntax_line_veiled(sh, m, s, line, runs[..], lx, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink, doc[0].blocks[b].at + i, vv);
+      k += 1;
+    } else {
+      nruns := syn_rust(line, runs[..]);
+      for wi: 0..<nw {
+        markdown_syntax_slice_veiled(sh, m, s, line, runs[..], nruns, wraps[wi].from, wraps[wi].to, lx, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink, doc[0].blocks[b].at + i, vv, wi + 1 == nw);
+        k += 1;
+      }
+    }
+    i = j + 1;
   }
   return h;
 }
