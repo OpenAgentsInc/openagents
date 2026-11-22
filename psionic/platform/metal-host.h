@@ -97,4 +97,12 @@ PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
                             const PmArg *args, int count);
 PmStatus pm_wait(PmBatch batch, double *gpu_seconds);
 
+/* Metal 4 double-buffered async submission (overlap CPU encoding of step t+1 with GPU execution of step t). */
+int pm_is_m4(void);
+PmStatus pm_begin_concurrent_slot(PmBatch *batch, int slot);
+void pm_patch_first_arg_int(PmBatch batch, int64_t value);
+PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out);
+PmStatus pm_wait_ticket(uint64_t ticket, int slot, double *gpu_seconds);
+void pm_abort(PmBatch batch);
+
 #endif

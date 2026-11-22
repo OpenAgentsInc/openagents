@@ -130,7 +130,7 @@ class MetalCompute(unittest.TestCase):
         self.assertIn('float l_own[2] = {};',out);self.assertNotIn('coax_tg_l_own',out)
         self.assertIn('uint coax_tid [[thread_index_in_threadgroup]], uint coax_tpg [[threads_per_threadgroup]]',out)
         self.assertIn('if (coax_tpg != 128u)',out);self.assertIn('int64_t coax_item = (int64_t)coax_tgid;',out)
-        self.assertGreaterEqual(out.count('threadgroup_barrier(mem_flags::mem_threadgroup | mem_flags::mem_device);'),5)
+        self.assertGreaterEqual(out.count('threadgroup_barrier(mem_flags::mem_threadgroup);'),5)
     def test_a_place_in_threadgroup_memory_is_a_threadgroup_pointer(self):
         for flags in ([],['--release']):
             r=self.run_metal(GROUP_PLACE,*flags);self.assertEqual(r.returncode,0,r.stderr)

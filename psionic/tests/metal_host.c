@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
     a[4].offset = COLS * 4; a[4].count = 1; refuse(matvec, 8, 1, a, 6, "a view starting at the end"); memcpy(a, mv, sizeof a);
     a[0].kind = (PmArgKind)9; refuse(matvec, 8, 1, a, 6, "an unknown argument kind"); memcpy(a, mv, sizeof a);
     refuse(matvec, -1, 1, a, 6, "negative items"); refuse(matvec, 8, 33, a, 6, "33 lanes"); refuse(matvec, 8, 2048, a, 6, "2048 lanes");
-    PmArg many[17]; for (int i = 0; i < 17; i++) many[i] = I(0); refuse(matvec, 8, 1, many, 17, "17 arguments");
+    PmArg many[33]; for (int i = 0; i < 33; i++) many[i] = I(0); refuse(matvec, 8, 1, many, 33, "33 arguments");
     puts("binding: null, negative, past-the-end and over-long views, unknown kinds and malformed launches refuse before encoding");
 
     /* An empty launch does nothing; a launch whose Coax checks fail is void. */

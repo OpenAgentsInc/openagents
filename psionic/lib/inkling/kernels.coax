@@ -86,30 +86,11 @@ ink_embed_q8 :: (item:int,tok:int,dim:int,w:[]u16,norm_w:[]f32,eps:f32,out:[]f32
     }
 }
 
-// ---- RMSNorm (Sprint 31B: hardware am_simd_sum, 1 barrier instead of 3!).
+// ---- RMSNorm (Sprint 61: single-pass register-cached float4 am_rmsnorm_f32).
 ink_rmsnorm :: (item:int,dim:int,has_w:int,eps:f32,x:[]f32,w:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
     base:=item*dim;
     for thread:0..<INK_NT {
-        s:f32=0;
-        for k:0..<(dim+255)/256 {
-            i:=k*256+thread;
-            if i<dim {v:=x[base+i];s+=v*v;}
-        }
-        part[thread]=am_simd_sum(s);
-    }
-    for thread:0..<INK_NT {
-        tot:=part[0]+part[32]+part[64]+part[96]+part[128]+part[160]+part[192]+part[224];
-        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
-        for k:0..<(dim+255)/256 {
-            i:=k*256+thread;
-            if i<dim {
-                idx:=base+i;
-                v:=x[idx]*inv;
-                if has_w!=0 {v=v*w[i];}
-                out[idx]=v;
-            }
-        }
+        am_rmsnorm_f32(dim,has_w,eps,x,base,w,0,out,base);
     }
 }
 
@@ -412,25 +393,13 @@ ink_ctrl_up_apply :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate
     }
 }
 
-// ---- Sprint 31A: MoE gate_up + SITU (IQ4_NL) via vectorized am_dot_iq4_lane (ZERO TGEM, ZERO barriers, 16 blocks/step!).
-// ---- Sprint 60: 1-row-per-warp (4 rows/TG, 128 threads) IQ4_NL MoE gate_up + SITU with simd_shuffle LUT + packed_ushort2!
-ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
-    groups_per_exp:=(n_ff+3)/4;
+// ---- Sprint 65/67: 2-row-per-warp (1152 TGs) 4lb + 1KB TGEM byte-LUT + 1-warp noinline fused Router top-8 IQ4_NL MoE gate_up + SITU!
+ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,n_exp:int,n_used:int,has_bias:int,r_scale:f32,beta:f32,lb:f32,w:[]u16,x:[]f32,logits:[]f32,bias:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
+    groups_per_exp:=(n_ff+7)/8;
     slot:=item/groups_per_exp;
-    rgrp:=item%groups_per_exp;
-    exp_id:=cast(int)ids[slot];
-    blocks:=cols/32;row_words:=blocks*9;
-    exp_base:=exp_id*2*n_ff*row_words;
-    row0:=rgrp*4;
+    row0:=(item%groups_per_exp)*8;
     for thread:0..<128 {
-        lane:=thread%32;simd:=thread/32;
-        row:=row0+simd;
-        if row<n_ff {
-            gb:=exp_base+row*row_words;
-            ub:=gb+n_ff*row_words;
-            val:=am_dot_iq4_situ_lane(w,gb,ub,x,0,blocks,beta,lb);
-            if lane==0 {out[slot*n_ff+row]=val;}
-        }
+        am_moe_gu_iq4_tg(slot,row0,n_ff,cols,n_exp,n_used,has_bias,r_scale,beta,lb,w,x,logits,bias,ids,wts,out);
     }
 }
 
@@ -500,38 +469,10 @@ ink_moe_gu_q8 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids
     }
 }
 
-// ---- Sprint 35: MoE down (IQ4_NL) 1 row/simdgroup via am_dot_iq4_moe_lane (simd_shuffle LUT + 0 x re-reads!).
-// ---- Sprint 44: 4-row-per-TG (128 threads, 576 TGs) contiguous-cache-line MoE down + shortconv!
-// ---- Sprint 59: 2-row-per-warp (8 rows/TG, 128 threads) IQ4_NL MoE down + post_conv + residual (shares xl,xh across 2 rows + packed_ushort2!).
+// ---- Sprint 65: 4-row-per-TG (576 TGs, 4 warps x 2 experts, 4lb + 1KB TGEM half2 byte-LUT) IQ4_NL MoE down + fused post_conv + res (483.4 GB/s cold DRAM!).
 ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,tmp:[]f32,out:[]f32) #export_c #effects(all) {
-    blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
     for thread:0..<128 {
-        row:=item*8+(thread/32)*2;
-        lane:=thread%32;
-        if row+1<rows {
-            am_dot_iq4_moe_2_write(w,ids,wts,x,exp_words,row*row_words,(row+1)*row_words,cols,n_used,0,tmp,row,row+1);
-            if lane==0 {
-                s0:=tmp[row];
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=s0;
-                acc0:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+s0*conv_w[row*4+3];
-                out[row]=res[row]+(s0+acc0)*0.4472135954999579f32;
-                r1:=row+1;
-                s1:=tmp[r1];
-                y0:=hist[r1*3+0];y1:=hist[r1*3+1];y2:=hist[r1*3+2];
-                hist[r1*3+0]=y1;hist[r1*3+1]=y2;hist[r1*3+2]=s1;
-                acc1:=y0*conv_w[r1*4+0]+y1*conv_w[r1*4+1]+y2*conv_w[r1*4+2]+s1*conv_w[r1*4+3];
-                out[r1]=res[r1]+(s1+acc1)*0.4472135954999579f32;
-            }
-        } else if row<rows {
-            sum0:=am_dot_iq4_moe_lane(w,ids,wts,x,exp_words,row*row_words,cols,n_used);
-            if lane==0 {
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=sum0;
-                acc0:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+sum0*conv_w[row*4+3];
-                out[row]=res[row]+(sum0+acc0)*0.4472135954999579f32;
-            }
-        }
+        am_moe_down_iq4_tg(item*4,rows,cols,n_used,w,x,ids,wts,conv_w,hist,res,out);
     }
 }
 
@@ -573,195 +514,18 @@ ink_dequant_q4_bf16 :: (item:int,rows:int,cols:int,w:[]u16,out_bf16:[]u32) #expo
     }
 }
 
-// ---- Sprint 32: Single-pass Flash-Decoding GQA Attention for n_keys <= 512 (-48 dispatches & -48 barriers/tok!).
-// Launch items = n_head (18), lanes = 128 (4 simdgroups of 32 lanes).
-// ---- Sprint 47: 18-TG 1-pass Flash-Decoding GQA with FUSED Q-clip + R-clip (deletes 96 K_CLIP dispatches/tok!).
+// ---- Sprint 61: Native half4/float4 1-barrier Flash-Decoding GQA Attention with fused Q-clip & R-clip!
 ink_attn_gqa_1pass :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos:int,qk_clip:f32,rel_clip:f32,q_tau:f32,q:[]f32,q_scale:[]f32,r:[]f32,r_scale:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,out:[]f32) #export_c #effects(all) {
-    rsh:[128]f32;
-    msh:[128]f32;lsh:[128]f32;
-    v0sh:[128]f32;v1sh:[128]f32;v2sh:[128]f32;v3sh:[128]f32;
-    n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
-    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
-    kv_cap:=cast(int)(kv_info&65535);
-    has_qs:=cast(int)((kv_info>>16)&1);
-    has_rs:=cast(int)((kv_info>>17)&1);
-    h:=item;
-    kv_h:=h/3;
-    n_kv_elem:=n_head_kv*head_dim;
-    scale:=1.0f32/sqrt(f32(head_dim));
-    sk:=sinks[h];
-    start:int=0;
-    if is_swa!=0 && pos>=swa {start=pos-swa+1;}
-    n_keys:=pos-start+1;
-    n_iters:=(n_keys+3)/4;
     for thread:0..<128 {
-        if thread<32 {
-            rv:f32=0.0f32;
-            if thread<INK_REL {
-                ridx:=h*n_rel+thread;
-                rv=r[ridx];
-                if has_rs!=0 {rv=rv*r_scale[ridx];}
-            }
-            rnrm:=sqrt(am_simd_sum(rv*rv))+0.000001f32;
-            rfac:=rel_clip/rnrm;
-            if rfac>1.0f32 {rfac=1.0f32;}
-            rfac=rfac*q_tau;
-            rsh[thread]=rv*rfac;
-        }
-    }
-    for thread:0..<128 {
-        lane:=thread%32;
-        sg:=thread/32;
-        qb:=h*INK_HEAD;
-        q0:=q[qb+lane];q1:=q[qb+lane+32];q2:=q[qb+lane+64];q3:=q[qb+lane+96];
-        if has_qs!=0 {
-            q0=q0*q_scale[qb+lane];q1=q1*q_scale[qb+lane+32];
-            q2=q2*q_scale[qb+lane+64];q3=q3*q_scale[qb+lane+96];
-        }
-        qnrm:=sqrt(am_simd_sum(q0*q0+q1*q1+q2*q2+q3*q3))+0.000001f32;
-        qfac:=qk_clip/qnrm;
-        if qfac>1.0f32 {qfac=1.0f32;}
-        qfac=qfac*q_tau;
-        q0=q0*qfac;q1=q1*qfac;q2=q2*qfac;q3=q3*qfac;
-        rreg:=ifx lane<INK_REL then rsh[lane] else 0.0f32;
-        m:f32=INK_NEG_INF;l:f32=0.0f32;
-        a0:f32=0.0f32;a1:f32=0.0f32;a2:f32=0.0f32;a3:f32=0.0f32;
-        for ki:0..<n_iters {
-            kidx:=ki*4+sg;
-            if kidx<n_keys {
-                kp:=start+kidx;
-                slot:=ifx is_swa!=0 then kp%kv_cap else kp;
-                kb:=slot*n_kv_elem+kv_h*INK_HEAD;
-                dot:=q0*am_f16(cast(u32)k_cache[kb+lane])+q1*am_f16(cast(u32)k_cache[kb+lane+32])+q2*am_f16(cast(u32)k_cache[kb+lane+64])+q3*am_f16(cast(u32)k_cache[kb+lane+96]);
-                dot=am_simd_sum(dot);
-                dist:=pos-kp;
-                rbp:f32=0.0f32;
-                if dist<extent && lane<INK_REL {rbp=rel_bias[dist*n_rel+lane]*rreg;}
-                rb:=am_simd_sum(rbp);
-                sc:=dot*scale+rb-sk;
-                nm:=ifx sc>m then sc else m;
-                alpha:=ifx m>-1.0e20f32 then exp(m-nm) else 0.0f32;
-                wt:=exp(sc-nm);
-                m=nm;
-                l=l*alpha+wt;
-                a0=a0*alpha+wt*am_f16(cast(u32)v_cache[kb+lane]);
-                a1=a1*alpha+wt*am_f16(cast(u32)v_cache[kb+lane+32]);
-                a2=a2*alpha+wt*am_f16(cast(u32)v_cache[kb+lane+64]);
-                a3=a3*alpha+wt*am_f16(cast(u32)v_cache[kb+lane+96]);
-            }
-        }
-        msh[thread]=m;lsh[thread]=l;
-        v0sh[thread]=a0;v1sh[thread]=a1;v2sh[thread]=a2;v3sh[thread]=a3;
-    }
-    for thread:0..<128 {
-        lane:=thread%32;
-        qtr:=thread/32;
-        gmax:f32=0.0f32;
-        for sg:0..<4 {
-            mv:=msh[sg*32];
-            if mv>gmax {gmax=mv;}
-        }
-        gsum:f32=exp(-gmax);
-        vtot:f32=0.0f32;
-        for sg:0..<4 {
-            lv:=lsh[sg*32];
-            if lv>0.0f32 {
-                sc:=exp(msh[sg*32]-gmax);
-                gsum+=lv*sc;
-                vv:=ifx qtr==0 then v0sh[sg*32+lane] else ifx qtr==1 then v1sh[sg*32+lane] else ifx qtr==2 then v2sh[sg*32+lane] else v3sh[sg*32+lane];
-                vtot+=vv*sc;
-            }
-        }
-        idx:=h*INK_HEAD+thread;
-        out[idx]=(vtot/gsum)*ink_sigmoid(gate[idx]);
+        am_attn_gqa_1pass(item,dims0,dims1,kv_info,pos,qk_clip,rel_clip,q_tau,q,q_scale,r,r_scale,rel_bias,sinks,gate,k_cache,v_cache,out);
     }
 }
 
-// ---- Sprint 32: Fused Depth-Attention Mix + QKV Ctrl Prep (3 TGs, uses precomputed pass_messages -> -36 barriers/tok!).
-// ---- Sprint 48: 2-barrier simdgroup-per-state ink_mix_ctrl_prep_qkv (was 10 barriers + 11 KB TGEM -> 2 barriers + 4 KB TGEM!).
+// ---- Sprint 61: Vectorized float4 register-cached am_mix_fused QKV ctrl prep!
 ink_mix_ctrl_prep_qkv :: (item:int,dim:int,n_blocks:int,is_swa:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,msg:[]f32,out_mix:[]f32,out_cat:[]f32) #export_c #effects(all) {
-    sc0:[256]f32;in0:[256]f32;sc1:[256]f32;in1:[256]f32;ps0:[256]f32;pd0:[256]f32;
-    n_states:=n_blocks+1;
     qbase:=ifx is_swa!=0 then 0 else item*dim;
-    mbase:=item*dim;
-    obase:=item*dim;
-    cbase:=item*2*dim;
-    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    steps:=(dim+255)/256;
-    wsteps:=(dim+31)/32;
     for thread:0..<INK_NT {
-        sg:=thread/32;lane:=thread%32;
-        s0:=sg;s1:=sg+8;
-        ss0:f32=0;d0:f32=0;ss1:f32=0;d1:f32=0;
-        if s0<n_states {
-            b0:=s0*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
-                    ss0+=v*v;d0+=v*query[qbase+i];
-                }
-            }
-            ts:=am_simd_sum(ss0);td:=am_simd_sum(d0);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in0[thread]=iv;sc0[thread]=td*iv*inv_sqrt_d;
-        } else {in0[thread]=0.0f32;sc0[thread]=INK_NEG_INF;}
-        if s1<n_states {
-            b1:=s1*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s1<n_blocks then blocks_buf[b1+i] else cur[i];
-                    ss1+=v*v;d1+=v*query[qbase+i];
-                }
-            }
-            ts:=am_simd_sum(ss1);td:=am_simd_sum(d1);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in1[thread]=iv;sc1[thread]=td*iv*inv_sqrt_d;
-        } else {in1[thread]=0.0f32;sc1[thread]=INK_NEG_INF;}
-    }
-    for thread:0..<INK_NT {
-        mx:f32=sc0[0];
-        for s:1..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            if sv>mx {mx=sv;}
-        }
-        esum:f32=0;
-        for s:0..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            esum+=exp(sv-mx);
-        }
-        inv_e:=1.0f32/esum;
-        s1:f32=0;s2:f32=0;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                acc:f32=0;
-                for s:0..<n_states {
-                    sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-                    iv:=ifx s<8 then in0[s*32] else in1[(s-8)*32];
-                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
-                    acc+=(exp(sv-mx)*inv_e*iv)*v;
-                }
-                out_mix[obase+i]=acc;
-                mv:=msg[mbase+i];
-                s1+=acc*acc;s2+=mv*mv;
-            }
-        }
-        ps0[thread]=am_simd_sum(s1);pd0[thread]=am_simd_sum(s2);
-    }
-    for thread:0..<INK_NT {
-        t1:=ps0[0]+ps0[32]+ps0[64]+ps0[96]+ps0[128]+ps0[160]+ps0[192]+ps0[224];
-        t2:=pd0[0]+pd0[32]+pd0[64]+pd0[96]+pd0[128]+pd0[160]+pd0[192]+pd0[224];
-        inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
-        inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                out_cat[cbase+i]=out_mix[obase+i]*inv1;
-                out_cat[cbase+dim+i]=msg[mbase+i]*inv2;
-            }
-        }
+        am_mix_fused(2,dim,n_blocks,0.000001f32,blocks_buf,cur,query,qbase,msg,item*dim,out_mix,item*dim,out_cat,item*2*dim);
     }
 }
 
@@ -825,210 +589,24 @@ ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]
     }
 }
 
-// ---- Sprint 20: Parallel rank-based Router (256 threads, 2 TGEM barriers instead of 18!).
-// ---- Sprint 44: 32-lane single-simdgroup zero-TGEM, zero-barrier warp MoE Router!
+// ---- Sprint 61: Native zero-overhead 32-lane warp MoE Router!
 ink_router :: (item:int,n_exp:int,n_used:int,has_bias:int,scale:f32,logits:[]f32,bias:[]f32,out_ids:[]u32,out_wts:[]f32) #export_c #effects(all) {
     for lane:0..<32 {
-        e0:=lane;e1:=lane+32;e2:=lane+64;e3:=lane+96;
-        p0:f32=0.0f32;s0:f32=INK_NEG_INF;
-        if e0<n_exp {p0=ink_sigmoid(logits[e0]);s0=ifx has_bias!=0 then p0+bias[e0] else p0;}
-        p1:f32=0.0f32;s1:f32=INK_NEG_INF;
-        if e1<n_exp {p1=ink_sigmoid(logits[e1]);s1=ifx has_bias!=0 then p1+bias[e1] else p1;}
-        p2:f32=0.0f32;s2:f32=INK_NEG_INF;
-        if e2<n_exp {p2=ink_sigmoid(logits[e2]);s2=ifx has_bias!=0 then p2+bias[e2] else p2;}
-        p3:f32=0.0f32;s3:f32=INK_NEG_INF;
-        if e3<n_exp {p3=ink_sigmoid(logits[e3]);s3=ifx has_bias!=0 then p3+bias[e3] else p3;}
-        wsum:f32=0.0f32;
-        my_id:u32=0;my_w:f32=0.0f32;
-        for k:0..<n_used {
-            bs:=s0;be:=e0;bp:=p0;
-            if s1>bs {bs=s1;be=e1;bp=p1;}
-            if s2>bs {bs=s2;be=e2;bp=p2;}
-            if s3>bs {bs=s3;be=e3;bp=p3;}
-            gmax:=am_simd_max(bs);
-            neg_e:=ifx bs==gmax then f32(-be) else -999999.0f32;
-            win_e:=cast(int)(-am_simd_max(neg_e));
-            win_p:=am_simd_sum(ifx be==win_e then bp else 0.0f32);
-            wsum+=win_p;
-            if lane==k {my_id=cast(u32)win_e;my_w=win_p;}
-            if be==win_e {
-                if win_e==e0 {s0=INK_NEG_INF;}
-                if win_e==e1 {s1=INK_NEG_INF;}
-                if win_e==e2 {s2=INK_NEG_INF;}
-                if win_e==e3 {s3=INK_NEG_INF;}
-            }
-        }
-        if wsum<0.00006103515625f32 {wsum=0.00006103515625f32;}
-        if lane<n_used {
-            out_ids[lane]=my_id;
-            out_wts[lane]=my_w*(scale/wsum);
-        }
+        am_router_top8(n_exp,n_used,has_bias,scale,logits,bias,out_ids,out_wts);
     }
 }
 
-// ---- Sprint 19A: Depth attention residual mix (256 threads, 4-state chunked -> 4x fewer barriers & query reads!).
+// ---- Sprint 61: Vectorized float4 register-cached am_mix_fused depth-attention mix!
 ink_mix :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
-    ps0:[256]f32;ps1:[256]f32;ps2:[256]f32;ps3:[256]f32;
-    pd0:[256]f32;pd1:[256]f32;pd2:[256]f32;pd3:[256]f32;
-    scores:[256]f32;invs:[256]f32;w:[256]f32;
-    n_states:=n_blocks+1;qbase:=item*dim;obase:=qbase;
-    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    steps:=(dim+255)/256;
-    n_chunks:=(n_states+3)/4;
-    for ch:0..<n_chunks {
-        s0:=ch*4;
-        for thread:0..<INK_NT {
-            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
-            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
-            b0:=s0*dim;b1:=b0+dim;b2:=b1+dim;b3:=b2+dim;
-            for k:0..<steps {
-                i:=k*256+thread;
-                if i<dim {
-                    qv:=query[qbase+i];
-                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
-                    ss0+=v0*v0;d0+=v0*qv;
-                    if s0+1<n_states {
-                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[i];
-                        ss1+=v1*v1;d1+=v1*qv;
-                    }
-                    if s0+2<n_states {
-                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[i];
-                        ss2+=v2*v2;d2+=v2*qv;
-                    }
-                    if s0+3<n_states {
-                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[i];
-                        ss3+=v3*v3;d3+=v3*qv;
-                    }
-                }
-            }
-            ps0[thread]=am_simd_sum(ss0);ps1[thread]=am_simd_sum(ss1);ps2[thread]=am_simd_sum(ss2);ps3[thread]=am_simd_sum(ss3);
-            pd0[thread]=am_simd_sum(d0);pd1[thread]=am_simd_sum(d1);pd2[thread]=am_simd_sum(d2);pd3[thread]=am_simd_sum(d3);
-        }
-        for thread:0..<INK_NT {
-            if thread>=s0 && thread<s0+4 && thread<n_states {
-                st:=thread-s0;
-                tss:f32=0;tdot:f32=0;
-                if st==0 {
-                    tss=ps0[0]+ps0[32]+ps0[64]+ps0[96]+ps0[128]+ps0[160]+ps0[192]+ps0[224];
-                    tdot=pd0[0]+pd0[32]+pd0[64]+pd0[96]+pd0[128]+pd0[160]+pd0[192]+pd0[224];
-                } else if st==1 {
-                    tss=ps1[0]+ps1[32]+ps1[64]+ps1[96]+ps1[128]+ps1[160]+ps1[192]+ps1[224];
-                    tdot=pd1[0]+pd1[32]+pd1[64]+pd1[96]+pd1[128]+pd1[160]+pd1[192]+pd1[224];
-                } else if st==2 {
-                    tss=ps2[0]+ps2[32]+ps2[64]+ps2[96]+ps2[128]+ps2[160]+ps2[192]+ps2[224];
-                    tdot=pd2[0]+pd2[32]+pd2[64]+pd2[96]+pd2[128]+pd2[160]+pd2[192]+pd2[224];
-                } else {
-                    tss=ps3[0]+ps3[32]+ps3[64]+ps3[96]+ps3[128]+ps3[160]+ps3[192]+ps3[224];
-                    tdot=pd3[0]+pd3[32]+pd3[64]+pd3[96]+pd3[128]+pd3[160]+pd3[192]+pd3[224];
-                }
-                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
-                invs[thread]=inv;
-                scores[thread]=tdot*inv*inv_sqrt_d;
-            }
-        }
-    }
     for thread:0..<INK_NT {
-        if thread<n_states {
-            mx:f32=scores[0];
-            for s:1..<n_states {if scores[s]>mx {mx=scores[s];}}
-            w[thread]=exp(scores[thread]-mx);
-        } else {
-            w[thread]=0.0f32;
-        }
-    }
-    for thread:0..<INK_NT {
-        esum:f32=0;
-        for s:0..<n_states {esum+=w[s];}
-        inv_e:=1.0f32/esum;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                acc:f32=0;
-                for s:0..<n_states {
-                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
-                    acc+=(w[s]*inv_e*invs[s])*v;
-                }
-                out[obase+i]=acc;
-            }
-        }
+        am_mix_fused(0,dim,n_blocks,0.000001f32,blocks_buf,cur,query,item*dim,cur,0,out,item*dim,out,0);
     }
 }
 
-// ---- Sprint 32: Fused Depth-Attention Mix + RMSNorm (am_simd_sum: 2x fewer TG barriers!).
-// ---- Sprint 48: 2-barrier simdgroup-per-state ink_mix_rmsnorm (was 10 barriers + 11 KB TGEM -> 2 barriers + 4 KB TGEM!).
+// ---- Sprint 61: Vectorized float4 register-cached am_mix_fused depth-attention mix + RMSNorm!
 ink_mix_rmsnorm :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[]f32,query:[]f32,norm_w:[]f32,out:[]f32) #export_c #effects(all) {
-    sc0:[256]f32;in0:[256]f32;sc1:[256]f32;in1:[256]f32;ps0:[256]f32;
-    n_states:=n_blocks+1;
-    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    steps:=(dim+255)/256;
-    wsteps:=(dim+31)/32;
     for thread:0..<INK_NT {
-        sg:=thread/32;lane:=thread%32;
-        s0:=sg;s1:=sg+8;
-        ss0:f32=0;d0:f32=0;ss1:f32=0;d1:f32=0;
-        if s0<n_states {
-            b0:=s0*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
-                    ss0+=v*v;d0+=v*query[i];
-                }
-            }
-            ts:=am_simd_sum(ss0);td:=am_simd_sum(d0);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in0[thread]=iv;sc0[thread]=td*iv*inv_sqrt_d;
-        } else {in0[thread]=0.0f32;sc0[thread]=INK_NEG_INF;}
-        if s1<n_states {
-            b1:=s1*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s1<n_blocks then blocks_buf[b1+i] else cur[i];
-                    ss1+=v*v;d1+=v*query[i];
-                }
-            }
-            ts:=am_simd_sum(ss1);td:=am_simd_sum(d1);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in1[thread]=iv;sc1[thread]=td*iv*inv_sqrt_d;
-        } else {in1[thread]=0.0f32;sc1[thread]=INK_NEG_INF;}
-    }
-    for thread:0..<INK_NT {
-        mx:f32=sc0[0];
-        for s:1..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            if sv>mx {mx=sv;}
-        }
-        esum:f32=0;
-        for s:0..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            esum+=exp(sv-mx);
-        }
-        inv_e:=1.0f32/esum;
-        ss:f32=0;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                acc:f32=0;
-                for s:0..<n_states {
-                    sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-                    iv:=ifx s<8 then in0[s*32] else in1[(s-8)*32];
-                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
-                    acc+=(exp(sv-mx)*inv_e*iv)*v;
-                }
-                out[i]=acc;
-                ss+=acc*acc;
-            }
-        }
-        ps0[thread]=am_simd_sum(ss);
-    }
-    for thread:0..<INK_NT {
-        tot:=ps0[0]+ps0[32]+ps0[64]+ps0[96]+ps0[128]+ps0[160]+ps0[192]+ps0[224];
-        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {out[i]=out[i]*inv*norm_w[i];}
-        }
+        am_mix_fused(1,dim,n_blocks,eps,blocks_buf,cur,query,0,norm_w,0,out,0,out,0);
     }
 }
 
@@ -1635,82 +1213,11 @@ ink_embed_q8_batch :: (item:int,dim:int,toks:[]u32,w:[]u16,norm_w:[]f32,eps:f32,
 // Launch items = n_queries * n_tok, lanes = 256.
 // ---- Sprint 20: Batched Depth-Attention Mix (256 threads, 4-state chunked -> 4x fewer barriers & query reads!).
 ink_mix_batch :: (item:int,dim:int,n_blocks:int,n_tok:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,out:[]f32) #export_c #effects(all) {
-    // Sprint 57: hardware am_simd_sum (1 barrier/chunk instead of 3!).
-    p_ss:[1024]f32;p_dot:[1024]f32;scores:[256]f32;invs:[256]f32;w:[256]f32;
+    // Sprint 64: Native float4 register-cached single-pass depth-attention mix!
     q_idx:=item/n_tok;
     t_idx:=item%n_tok;
-    n_states:=n_blocks+1;
-    qbase:=q_idx*dim;
-    obase:=item*dim;
-    cbase:=t_idx*dim;
-    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    steps:=(dim+255)/256;
-    n_chunks:=(n_states+3)/4;
-    s_stride:=n_tok*dim;
-    for ch:0..<n_chunks {
-        s0:=ch*4;
-        for thread:0..<INK_NT {
-            ss0:f32=0;ss1:f32=0;ss2:f32=0;ss3:f32=0;
-            d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
-            b0:=(s0*n_tok+t_idx)*dim;b1:=b0+s_stride;b2:=b1+s_stride;b3:=b2+s_stride;
-            for k:0..<steps {
-                i:=k*256+thread;
-                if i<dim {
-                    qv:=query[qbase+i];
-                    v0:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[cbase+i];
-                    ss0+=v0*v0;d0+=v0*qv;
-                    if s0+1<n_states {
-                        v1:=ifx s0+1<n_blocks then blocks_buf[b1+i] else cur[cbase+i];
-                        ss1+=v1*v1;d1+=v1*qv;
-                    }
-                    if s0+2<n_states {
-                        v2:=ifx s0+2<n_blocks then blocks_buf[b2+i] else cur[cbase+i];
-                        ss2+=v2*v2;d2+=v2*qv;
-                    }
-                    if s0+3<n_states {
-                        v3:=ifx s0+3<n_blocks then blocks_buf[b3+i] else cur[cbase+i];
-                        ss3+=v3*v3;d3+=v3*qv;
-                    }
-                }
-            }
-            p_ss[thread*4+0]=am_simd_sum(ss0);p_ss[thread*4+1]=am_simd_sum(ss1);p_ss[thread*4+2]=am_simd_sum(ss2);p_ss[thread*4+3]=am_simd_sum(ss3);
-            p_dot[thread*4+0]=am_simd_sum(d0);p_dot[thread*4+1]=am_simd_sum(d1);p_dot[thread*4+2]=am_simd_sum(d2);p_dot[thread*4+3]=am_simd_sum(d3);
-        }
-        for thread:0..<INK_NT {
-            if thread>=s0 && thread<s0+4 && thread<n_states {
-                st:=thread-s0;
-                tss:f32=p_ss[0*4+st]+p_ss[32*4+st]+p_ss[64*4+st]+p_ss[96*4+st]+p_ss[128*4+st]+p_ss[160*4+st]+p_ss[192*4+st]+p_ss[224*4+st];
-                tdot:f32=p_dot[0*4+st]+p_dot[32*4+st]+p_dot[64*4+st]+p_dot[96*4+st]+p_dot[128*4+st]+p_dot[160*4+st]+p_dot[192*4+st]+p_dot[224*4+st];
-                inv:=1.0f32/sqrt(tss/f32(dim)+0.000001f32);
-                invs[thread]=inv;
-                scores[thread]=tdot*inv*inv_sqrt_d;
-            }
-        }
-    }
     for thread:0..<INK_NT {
-        if thread<n_states {
-            mx:f32=scores[0];
-            for s:1..<n_states {if scores[s]>mx {mx=scores[s];}}
-            w[thread]=exp(scores[thread]-mx);
-        } else {
-            w[thread]=0.0f32;
-        }
-    }
-    for thread:0..<INK_NT {
-        esum:f32=0;
-        for s:0..<n_states {esum+=w[s];}
-        inv_e:=1.0f32/esum;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                acc:f32=0;
-                for s:0..<n_states {
-                    v:=ifx s<n_blocks then blocks_buf[(s*n_tok+t_idx)*dim+i] else cur[cbase+i];
-                    acc+=(w[s]*inv_e*invs[s])*v;
-                }
-                out[obase+i]=acc;
-            }
-        }
+        am_mix_batch_f32(dim,n_blocks,n_tok,q_idx,t_idx,blocks_buf,cur,query,out);
     }
 }
 
@@ -3509,86 +3016,10 @@ ink_dequant_f32_bf16 :: (item:int,rows:int,cols:int,w:[]f32,out_bf16:[]u32) #exp
 // ---- Sprint 29: Fused depth-attention mix + ctrl_prep (for MoE looped control, -24 dispatches & -24 barriers/tok).
 // Writes raw mix output to out_mix[0..dim-1], and concat(rms(out_mix, 1e-6), rms(msg, 1e-6)) to out_cat[0..2*dim-1].
 // Launch 1 work item, lanes = 256.
-// ---- Sprint 48: 2-barrier simdgroup-per-state ink_mix_ctrl_prep (was 10 barriers + 11 KB TGEM -> 2 barriers + 4 KB TGEM!).
+// ---- Sprint 61: Vectorized float4 register-cached am_mix_fused FFN ctrl prep!
 ink_mix_ctrl_prep :: (item:int,dim:int,n_blocks:int,blocks_buf:[]f32,cur:[]f32,query:[]f32,msg:[]f32,out_mix:[]f32,out_cat:[]f32) #export_c #effects(all) {
-    sc0:[256]f32;in0:[256]f32;sc1:[256]f32;in1:[256]f32;ps0:[256]f32;pd0:[256]f32;
-    n_states:=n_blocks+1;
-    inv_sqrt_d:=1.0f32/sqrt(f32(dim));
-    steps:=(dim+255)/256;
-    wsteps:=(dim+31)/32;
     for thread:0..<INK_NT {
-        sg:=thread/32;lane:=thread%32;
-        s0:=sg;s1:=sg+8;
-        ss0:f32=0;d0:f32=0;ss1:f32=0;d1:f32=0;
-        if s0<n_states {
-            b0:=s0*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s0<n_blocks then blocks_buf[b0+i] else cur[i];
-                    ss0+=v*v;d0+=v*query[i];
-                }
-            }
-            ts:=am_simd_sum(ss0);td:=am_simd_sum(d0);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in0[thread]=iv;sc0[thread]=td*iv*inv_sqrt_d;
-        } else {in0[thread]=0.0f32;sc0[thread]=INK_NEG_INF;}
-        if s1<n_states {
-            b1:=s1*dim;
-            for k:0..<wsteps {
-                i:=k*32+lane;
-                if i<dim {
-                    v:=ifx s1<n_blocks then blocks_buf[b1+i] else cur[i];
-                    ss1+=v*v;d1+=v*query[i];
-                }
-            }
-            ts:=am_simd_sum(ss1);td:=am_simd_sum(d1);
-            iv:=1.0f32/sqrt(ts/f32(dim)+0.000001f32);
-            in1[thread]=iv;sc1[thread]=td*iv*inv_sqrt_d;
-        } else {in1[thread]=0.0f32;sc1[thread]=INK_NEG_INF;}
-    }
-    for thread:0..<INK_NT {
-        mx:f32=sc0[0];
-        for s:1..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            if sv>mx {mx=sv;}
-        }
-        esum:f32=0;
-        for s:0..<n_states {
-            sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-            esum+=exp(sv-mx);
-        }
-        inv_e:=1.0f32/esum;
-        s1:f32=0;s2:f32=0;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                acc:f32=0;
-                for s:0..<n_states {
-                    sv:=ifx s<8 then sc0[s*32] else sc1[(s-8)*32];
-                    iv:=ifx s<8 then in0[s*32] else in1[(s-8)*32];
-                    v:=ifx s<n_blocks then blocks_buf[s*dim+i] else cur[i];
-                    acc+=(exp(sv-mx)*inv_e*iv)*v;
-                }
-                out_mix[i]=acc;
-                mv:=msg[i];
-                s1+=acc*acc;s2+=mv*mv;
-            }
-        }
-        ps0[thread]=am_simd_sum(s1);pd0[thread]=am_simd_sum(s2);
-    }
-    for thread:0..<INK_NT {
-        t1:=ps0[0]+ps0[32]+ps0[64]+ps0[96]+ps0[128]+ps0[160]+ps0[192]+ps0[224];
-        t2:=pd0[0]+pd0[32]+pd0[64]+pd0[96]+pd0[128]+pd0[160]+pd0[192]+pd0[224];
-        inv1:=1.0f32/sqrt(t1/f32(dim)+0.000001f32);
-        inv2:=1.0f32/sqrt(t2/f32(dim)+0.000001f32);
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                out_cat[i]=out_mix[i]*inv1;
-                out_cat[dim+i]=msg[i]*inv2;
-            }
-        }
+        am_mix_fused(2,dim,n_blocks,0.000001f32,blocks_buf,cur,query,0,msg,0,out_mix,0,out_cat,0);
     }
 }
 
@@ -3609,13 +3040,18 @@ ink_argmax_s1 :: (item:int,n:int,logits:[]f32,out_vals:[]f32,out_ids:[]u32) #exp
                 if v>bv {bv=v;bi=cast(u32)i;}
             }
         }
-        pv[thread]=bv;pi[thread]=bi;
+        wmax:=am_simd_max(bv);
+        tie:f32=ifx bv==wmax then -f32(bi) else -1.0e30f32;
+        wbest:=-am_simd_max(tie);
+        pv[thread]=wmax;
+        pi[thread]=cast(u32)wbest;
     }
     for thread:0..<INK_NT {
         if thread==0 {
             bv:=pv[0];bi:=pi[0];
-            for j:1..<INK_NT {
-                if pv[j]>bv || (pv[j]==bv && pi[j]<bi) {bv=pv[j];bi=pi[j];}
+            for j:1..<8 {
+                idx:=j*32;
+                if pv[idx]>bv || (pv[idx]==bv && pi[idx]<bi) {bv=pv[idx];bi=pi[idx];}
             }
             out_vals[item]=bv;
             out_ids[item]=bi;
@@ -3679,115 +3115,57 @@ ink_dv_q4 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
     }
 }
 
-// ---- Sprint 46: 4-row-per-TG (128 threads, 1 row/warp) Fused Q4_0 matvec + post shortconv + residual!
+// ---- Sprint 62/65: 2-row-per-warp (8 rows/TG, 128 threads) single-loop Q4_0 matvec + fused shortconv + residual!
 ink_dv_q4_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
     blocks:=cols/32;words:=blocks*9;
     for thread:0..<128 {
-        row:=item*4+thread/32;
-        lane:=thread%32;
+        row:=item*8+(thread/32)*2;
         if row<rows {
-            tot:=am_simd_sum(am_dot_q4_lane(w,row*words,x,0,blocks));
-            if lane==0 {
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=tot;
-                cv:=(tot+x0*cw[row*4+0]+x1*cw[row*4+1]+x2*cw[row*4+2]+tot*cw[row*4+3])*0.4472135954999579f32;
-                if add_res!=0 {out[row]=res[row]+cv;} else {out[row]=cv;}
-            }
+            r1:=ifx row+1<rows then row+1 else row;
+            am_dot_q4_conv_2_write(w,row*words,r1*words,x,blocks,add_res,cw,hist,res,out,row,r1);
         }
     }
 }
 
-// ---- Sprint 46: 4-row-per-TG (128 threads, 1 row/warp) Vectorized half4+float4 F16 small-row matvec!
+// ---- Sprint 61: 128-thread (4 warps/row) half4+float4 F16 small-row matvec (high warp occupancy on 40 cores!).
 ink_dv_f16_small :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
-    for thread:0..<64 {
-        row:=item*2+thread/32;
-        lane:=thread%32;
-        if row<rows {
-            tot:=am_dot_f16_lane(w,row*cols,x,0,cols);
-            if lane==0 {
-                if add!=0 {out[row]=out[row]+tot;} else {out[row]=tot;}
-            }
+    for thread:0..<128 {
+        if item<rows {
+            am_dot_f16_tg_write(w,item*cols,x,0,cols,add,0.0f32,out,item);
         }
     }
 }
 
-// ---- Sprint 58B: 64-lane (2 rows/TG) F16 GEMV with fused RMSNorm scale (weights pre-folded with norm_w) -> runs CONCURRENTLY with K_RMSNORM!
-// Launch items = (rows + 1) / 2, lanes = 64.
+// ---- Sprint 61: 128-thread (4 warps/row) SINGLE-PASS F16 GEMV + RMSNorm scale (runs concurrently with K_RMSNORM!).
 ink_dv_f16_norm :: (item:int,rows:int,cols:int,eps:f32,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
-    for thread:0..<64 {
-        row:=item*2+thread/32;
-        lane:=thread%32;
-        if row<rows {
-            ss:f32=0.0f32;
-            for k:0..<(cols+31)/32 {
-                i:=k*32+lane;
-                if i<cols {v:=x[i];ss+=v*v;}
-            }
-            inv:=1.0f32/sqrt(am_simd_sum(ss)/f32(cols)+eps);
-            tot:=am_dot_f16_lane(w,row*cols,x,0,cols)*inv;
-            if lane==0 {out[row]=tot;}
+    for thread:0..<128 {
+        if item<rows {
+            am_dot_f16_tg_write(w,item*cols,x,0,cols,0,eps,out,item);
         }
     }
 }
 
-// ---- Sprint 40: Coalesced transposed [rank, dim] F16 loop_ctrl_gain + loop_ctrl_forget + apply (72 TGs x 64 threads, 100% coalesced!).
+// ---- Sprint 61: Native unrolled-4 half + hardware tanh loop_ctrl_gain + loop_ctrl_forget + apply!
 ink_ctrl_up_apply_f16 :: (item:int,dim:int,rank:int,w_gain:[]u16,w_forget:[]u16,gate:[]f32,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
-    gsh:[64]f32;
     for thread:0..<INK_T {
-        if thread<rank {gsh[thread]=gate[thread];}
-    }
-    for thread:0..<INK_T {
-        row:=item*INK_T+thread;
-        if row<dim {
-            sg:f32=0;sf:f32=0;
-            for k:0..<rank {
-                gv:=gsh[k];
-                idx:=k*dim+row;
-                sg+=am_f16(cast(u32)w_gain[idx])*gv;
-                sf+=am_f16(cast(u32)w_forget[idx])*gv;
-            }
-            c:=cur[row];m:=msg[row];
-            out[row]=c-ink_tanh(sf)*c+ink_tanh(sg)*m;
-        }
+        am_ctrl_up_apply_f16(dim,rank,item*INK_T,w_gain,0,w_forget,0,gate,0,cur,0,msg,0,out,0);
     }
 }
 
-// ---- Sprint 31B: Q4_0 MoE gate_up + SITU (for Layers 0 & 23 when INK_FAST_Q4=1, via am_dot_q4_lane).
-ink_moe_gu_q4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
-    groups_per_exp:=(n_ff+3)/4;
+// ---- Sprint 65/67: 2-row-per-warp (1152 TGs, 4lb zero-LUT ALU + 1-warp noinline fused Router top-8) Q4_0 MoE gate_up + SITU!
+ink_moe_gu_q4 :: (item:int,n_ff:int,cols:int,n_exp:int,n_used:int,has_bias:int,r_scale:f32,beta:f32,lb:f32,w:[]u16,x:[]f32,logits:[]f32,bias:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
+    groups_per_exp:=(n_ff+7)/8;
     slot:=item/groups_per_exp;
-    rgrp:=item%groups_per_exp;
-    exp_id:=cast(int)ids[slot];
-    blocks:=cols/32;row_words:=blocks*9;
-    exp_base:=exp_id*2*n_ff*row_words;
-    row0:=rgrp*4;
+    row0:=(item%groups_per_exp)*8;
     for thread:0..<128 {
-        lane:=thread%32;simd:=thread/32;
-        row:=row0+simd;
-        if row<n_ff {
-            gb:=exp_base+row*row_words;
-            ub:=gb+n_ff*row_words;
-            val:=am_dot_q4_situ_lane(w,gb,ub,x,0,blocks,beta,lb);
-            if lane==0 {out[slot*n_ff+row]=val;}
-        }
+        am_moe_gu_q4_tg(slot,row0,n_ff,cols,n_exp,n_used,has_bias,r_scale,beta,lb,w,x,logits,bias,ids,wts,out);
     }
 }
 
-// ---- Sprint 35: Q4_0 MoE down 1 row/simdgroup via am_dot_q4_moe_lane.
+// ---- Sprint 65: 4-row-per-TG (576 TGs, 4 warps x 2 experts, 4lb zero-LUT ALU) Q4_0 MoE down + fused post_conv + res (448.3 GB/s!).
 ink_moe_down_q4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
-    blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
     for thread:0..<128 {
-        row:=item*4+thread/32;
-        lane:=thread%32;
-        if row<rows {
-            sum0:=am_dot_q4_moe_lane(w,ids,wts,x,exp_words,row*row_words,cols,n_used);
-            if lane==0 {
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=sum0;
-                acc0:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+sum0*conv_w[row*4+3];
-                out[row]=res[row]+(sum0+acc0)*0.4472135954999579f32;
-            }
-        }
+        am_moe_down_q4_tg(item*4,rows,cols,n_used,w,x,ids,wts,conv_w,hist,res,out);
     }
 }
 
@@ -3914,128 +3292,41 @@ ink_dv_q4_qrg :: (item:int,n_q:int,n_r:int,cols:int,w:[]u16,x:[]f32,out_q:[]f32,
     }
 }
 
-// ---- Sprint 50: Fused 3-TG RMSNorm for (Q, K, V) inputs (-72 dispatches/tok!).
-// Launch items = 3, lanes = 256.
+// ---- Sprint 61: Native register-cached float4 3-TG RMSNorm for (Q, K, V)!
 ink_rmsnorm_3 :: (item:int,dim:int,is_swa:int,eps:f32,xq:[]f32,xk:[]f32,xv:[]f32,wq:[]f32,wk:[]f32,wv:[]f32,oq:[]f32,ok:[]f32,ov:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    steps:=(dim+255)/256;
     for thread:0..<INK_NT {
-        s:f32=0;
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                v:=ifx item==0 then xq[i] else (ifx item==1 then xk[i] else xv[i]);
-                s+=v*v;
-            }
-        }
-        part[thread]=am_simd_sum(s);
-    }
-    for thread:0..<INK_NT {
-        tot:=part[0]+part[32]+part[64]+part[96]+part[128]+part[160]+part[192]+part[224];
-        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
-        for k:0..<steps {
-            i:=k*256+thread;
-            if i<dim {
-                if item==0 {oq[i]=xq[i]*inv*wq[i];}
-                else if item==1 {ok[i]=xk[i]*inv*(ifx is_swa!=0 then wq[i] else wk[i]);}
-                else {ov[i]=xv[i]*inv*(ifx is_swa!=0 then wq[i] else wv[i]);}
-            }
-        }
-    }
-}
-
-// ---- Sprint 50: 32-lane ZERO-TGEM/ZERO-BARRIER Fused K (shortconv+clip+KV) + V (shortconv+RMSNorm+KV) (-48 dispatches/tok!).
-// Launch items = 2 * n_head_kv, lanes = 32 (head_dim == 128).
-ink_conv_kv_both :: (item:int,n_head_kv:int,n_kv_elem:int,slot_pos:int,has_dyn:int,threshold:f32,eps:f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
-    is_v:=item/n_head_kv;
-    h:=item%n_head_kv;
-    base:=h*128;
-    dbase:=slot_pos*n_kv_elem+base;
-    inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
-    dyn_base:=(is_v*n_head_kv+h)*4;
-    for lane:0..<32 {
-        d0:f32=0;d1:f32=0;d2:f32=0;d3:f32=0;
-        if has_dyn!=0 {d0=dyn[dyn_base+0];d1=dyn[dyn_base+1];d2=dyn[dyn_base+2];d3=dyn[dyn_base+3];}
-        if is_v==0 {
-            c0:=base+lane;c1:=c0+32;c2:=c0+64;c3:=c0+96;
-            x0:=k_hist[c0*3+0];x1:=k_hist[c0*3+1];x2:=k_hist[c0*3+2];x3:=k_raw[c0];
-            k_hist[c0*3+0]=x1;k_hist[c0*3+1]=x2;k_hist[c0*3+2]=x3;
-            a0:=x0*kw[c0*4+0]+x1*kw[c0*4+1]+x2*kw[c0*4+2]+x3*kw[c0*4+3];
-            if has_dyn!=0 {a0+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v0:=(x3+a0)*inv_s;
-            x0=k_hist[c1*3+0];x1=k_hist[c1*3+1];x2=k_hist[c1*3+2];x3=k_raw[c1];
-            k_hist[c1*3+0]=x1;k_hist[c1*3+1]=x2;k_hist[c1*3+2]=x3;
-            a1:=x0*kw[c1*4+0]+x1*kw[c1*4+1]+x2*kw[c1*4+2]+x3*kw[c1*4+3];
-            if has_dyn!=0 {a1+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v1:=(x3+a1)*inv_s;
-            x0=k_hist[c2*3+0];x1=k_hist[c2*3+1];x2=k_hist[c2*3+2];x3=k_raw[c2];
-            k_hist[c2*3+0]=x1;k_hist[c2*3+1]=x2;k_hist[c2*3+2]=x3;
-            a2:=x0*kw[c2*4+0]+x1*kw[c2*4+1]+x2*kw[c2*4+2]+x3*kw[c2*4+3];
-            if has_dyn!=0 {a2+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v2:=(x3+a2)*inv_s;
-            x0=k_hist[c3*3+0];x1=k_hist[c3*3+1];x2=k_hist[c3*3+2];x3=k_raw[c3];
-            k_hist[c3*3+0]=x1;k_hist[c3*3+1]=x2;k_hist[c3*3+2]=x3;
-            a3:=x0*kw[c3*4+0]+x1*kw[c3*4+1]+x2*kw[c3*4+2]+x3*kw[c3*4+3];
-            if has_dyn!=0 {a3+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v3:=(x3+a3)*inv_s;
-            tot:=am_simd_sum(v0*v0+v1*v1+v2*v2+v3*v3);
-            fac:=threshold/(sqrt(tot)+0.000001f32);
-            if fac>1.0f32 {fac=1.0f32;}
-            k_cache[dbase+lane]=am_to_f16(v0*fac);
-            k_cache[dbase+lane+32]=am_to_f16(v1*fac);
-            k_cache[dbase+lane+64]=am_to_f16(v2*fac);
-            k_cache[dbase+lane+96]=am_to_f16(v3*fac);
+        if item==0 {am_rmsnorm_f32(dim,1,eps,xq,0,wq,0,oq,0);}
+        else if item==1 {
+            if is_swa!=0 {am_rmsnorm_f32(dim,1,eps,xk,0,wq,0,ok,0);}
+            else {am_rmsnorm_f32(dim,1,eps,xk,0,wk,0,ok,0);}
         } else {
-            c0:=base+lane;c1:=c0+32;c2:=c0+64;c3:=c0+96;
-            x0:=v_hist[c0*3+0];x1:=v_hist[c0*3+1];x2:=v_hist[c0*3+2];x3:=v_raw[c0];
-            v_hist[c0*3+0]=x1;v_hist[c0*3+1]=x2;v_hist[c0*3+2]=x3;
-            a0:=x0*vw[c0*4+0]+x1*vw[c0*4+1]+x2*vw[c0*4+2]+x3*vw[c0*4+3];
-            if has_dyn!=0 {a0+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v0:=(x3+a0)*inv_s;
-            x0=v_hist[c1*3+0];x1=v_hist[c1*3+1];x2=v_hist[c1*3+2];x3=v_raw[c1];
-            v_hist[c1*3+0]=x1;v_hist[c1*3+1]=x2;v_hist[c1*3+2]=x3;
-            a1:=x0*vw[c1*4+0]+x1*vw[c1*4+1]+x2*vw[c1*4+2]+x3*vw[c1*4+3];
-            if has_dyn!=0 {a1+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v1:=(x3+a1)*inv_s;
-            x0=v_hist[c2*3+0];x1=v_hist[c2*3+1];x2=v_hist[c2*3+2];x3=v_raw[c2];
-            v_hist[c2*3+0]=x1;v_hist[c2*3+1]=x2;v_hist[c2*3+2]=x3;
-            a2:=x0*vw[c2*4+0]+x1*vw[c2*4+1]+x2*vw[c2*4+2]+x3*vw[c2*4+3];
-            if has_dyn!=0 {a2+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v2:=(x3+a2)*inv_s;
-            x0=v_hist[c3*3+0];x1=v_hist[c3*3+1];x2=v_hist[c3*3+2];x3=v_raw[c3];
-            v_hist[c3*3+0]=x1;v_hist[c3*3+1]=x2;v_hist[c3*3+2]=x3;
-            a3:=x0*vw[c3*4+0]+x1*vw[c3*4+1]+x2*vw[c3*4+2]+x3*vw[c3*4+3];
-            if has_dyn!=0 {a3+=d0*x3+d1*x2+d2*x1+d3*x0;}
-            v3:=(x3+a3)*inv_s;
-            tot:=am_simd_sum(v0*v0+v1*v1+v2*v2+v3*v3);
-            inv:=1.0f32/sqrt(tot/128.0f32+eps);
-            v_cache[dbase+lane]=am_to_f16(v0*inv);
-            v_cache[dbase+lane+32]=am_to_f16(v1*inv);
-            v_cache[dbase+lane+64]=am_to_f16(v2*inv);
-            v_cache[dbase+lane+96]=am_to_f16(v3*inv);
+            if is_swa!=0 {am_rmsnorm_f32(dim,1,eps,xv,0,wq,0,ov,0);}
+            else {am_rmsnorm_f32(dim,1,eps,xv,0,wv,0,ov,0);}
         }
     }
 }
 
-// ---- Sprint 51: Fused 1-dispatch lossless F16 ctrl_down[0..2] (-48 dispatches/tok!).
-// Launch items = (3 * rank + 3) / 4, lanes = 128.
+// ---- Sprint 61: Native float4/half4 zero-TGEM/zero-barrier fused K+V conv+clip/norm+KV store!
+ink_conv_kv_both :: (item:int,n_head_kv:int,n_kv_elem:int,slot_pos:int,has_dyn:int,threshold:f32,eps:f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,k_cache:[]u16,v_cache:[]u16) #export_c #effects(all) {
+    for lane:0..<32 {
+        am_conv_kv_both(item,n_head_kv,n_kv_elem,slot_pos,has_dyn,threshold,eps,k_raw,v_raw,kw,vw,dyn,k_hist,v_hist,k_cache,v_cache);
+    }
+}
+
+// ---- Sprint 61: 128-thread (4 warps/row) Fused 1-dispatch lossless F16 ctrl_down[0..2]!
+// Launch items = 3 * rank, lanes = 128.
 ink_dv_q4_ctrl_down_3 :: (item:int,rank:int,cols:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
     tot_rows:=3*rank;
     for thread:0..<128 {
-        row:=item*4+thread/32;
-        lane:=thread%32;
-        if row<tot_rows {
-            slot:=row/rank;
-            tot:=am_dot_f16_lane(w,row*cols,x,slot*cols,cols);
-            if lane==0 {out[row]=tot;}
+        if item<tot_rows {
+            slot:=item/rank;
+            am_dot_f16_tg_write(w,item*cols,x,slot*cols,cols,0,0.0f32,out,item);
         }
     }
 }
 
-// ---- Sprint 51: Fused 1-dispatch F16 ctrl_up_apply[0..2] (-48 dispatches/tok!).
-// Launch items = 3 * ceil(dim / 64), lanes = 64.
+// ---- Sprint 61: Native unrolled-4 half + hardware tanh Fused 1-dispatch F16 ctrl_up_apply[0..2]!
 ink_ctrl_up_apply_f16_3 :: (item:int,dim:int,rank:int,is_swa:int,w_gain:[]u16,w_forget:[]u16,gate:[]f32,cur:[]f32,msg:[]f32,out_q:[]f32,out_k:[]f32,out_v:[]f32) #export_c #effects(all) {
-    gsh:[64]f32;
     per:=(dim+INK_T-1)/INK_T;
     slot:=item/per;
     tile:=item%per;
@@ -4044,24 +3335,117 @@ ink_ctrl_up_apply_f16_3 :: (item:int,dim:int,rank:int,is_swa:int,w_gain:[]u16,w_
     mbase:=slot*dim;
     gbase:=slot*rank;
     for thread:0..<INK_T {
-        if thread<rank {gsh[thread]=gate[gbase+thread];}
+        if slot==0 {am_ctrl_up_apply_f16(dim,rank,tile*INK_T,w_gain,wbase,w_forget,wbase,gate,gbase,cur,cbase,msg,mbase,out_q,0);}
+        else if slot==1 {am_ctrl_up_apply_f16(dim,rank,tile*INK_T,w_gain,wbase,w_forget,wbase,gate,gbase,cur,cbase,msg,mbase,out_k,0);}
+        else {am_ctrl_up_apply_f16(dim,rank,tile*INK_T,w_gain,wbase,w_forget,wbase,gate,gbase,cur,cbase,msg,mbase,out_v,0);}
     }
-    for thread:0..<INK_T {
-        row:=tile*INK_T+thread;
-        if row<dim {
-            sg:f32=0;sf:f32=0;
-            for k:0..<rank {
-                gv:=gsh[k];
-                idx:=wbase+k*dim+row;
-                sg+=am_f16(cast(u32)w_gain[idx])*gv;
-                sf+=am_f16(cast(u32)w_forget[idx])*gv;
-            }
-            c:=cur[cbase+row];m:=msg[mbase+row];
-            val:=c-ink_tanh(sf)*c+ink_tanh(sg)*m;
-            if slot==0 {out_q[row]=val;}
-            else if slot==1 {out_k[row]=val;}
-            else {out_v[row]=val;}
+}
+
+// ---- Sprint 62: Fused 256-thread (8-warp) K+V conv+clip/norm+KV-store + 3-head GQA Flash-Decoding Attention (-48 dispatches & -48 barriers, 3x less KV reads!).
+ink_kv_attn_gqa_1pass :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos:int,slot_pos:int,qk_clip:f32,rel_clip:f32,q_tau:f32,eps:f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,q:[]f32,q_scale:[]f32,r:[]f32,r_scale:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,out:[]f32) #export_c #effects(all) {
+    for thread:0..<256 {
+        am_kv_attn_gqa_1pass(item,dims0,dims1,kv_info,pos,slot_pos,qk_clip,rel_clip,q_tau,eps,k_raw,v_raw,kw,vw,dyn,k_hist,v_hist,q,q_scale,r,r_scale,rel_bias,sinks,gate,k_cache,v_cache,out);
+    }
+}
+
+// ---- Sprint 62/63: Interleaved half2 (gain, forget) loop ctrl_up_apply (zero-TG 32-lane half4 + simd_shuffle!).
+ink_ctrl_up_apply_gf :: (item:int,dim:int,rank:int,w_gf:[]u32,gate:[]f32,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
+    for lane:0..<32 {
+        am_ctrl_up_apply_gf(dim,rank,item*INK_T,w_gf,0,gate,0,cur,0,msg,0,out,0);
+    }
+}
+
+ink_ctrl_up_apply_gf_3 :: (item:int,dim:int,rank:int,is_swa:int,w_gf:[]u32,gate:[]f32,cur:[]f32,msg:[]f32,out_q:[]f32,out_k:[]f32,out_v:[]f32) #export_c #effects(all) {
+    per:=(dim+INK_T-1)/INK_T;
+    slot:=item/per;
+    tile:=item%per;
+    wbase:=slot*rank*dim;
+    cbase:=ifx is_swa!=0 then 0 else slot*dim;
+    mbase:=slot*dim;
+    gbase:=slot*rank;
+    for lane:0..<32 {
+        if slot==0 {am_ctrl_up_apply_gf(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,out_q,0);}
+        else if slot==1 {am_ctrl_up_apply_gf(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,out_k,0);}
+        else {am_ctrl_up_apply_gf(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,out_v,0);}
+    }
+}
+
+// ---- Sprint 63: Fused ctrl_up_apply_gf + w_norm multiply + tile sum_sq into rms_parts (deletes 24 K_RMSNORM_3 + 24 barriers!).
+ink_ctrl_up_apply_gf_3_norm :: (item:int,dim:int,rank:int,is_swa:int,w_gf:[]u32,gate:[]f32,cur:[]f32,msg:[]f32,wq:[]f32,wk:[]f32,wv:[]f32,out_q:[]f32,out_k:[]f32,out_v:[]f32,rms_parts:[]f32) #export_c #effects(all) {
+    per:=(dim+INK_T-1)/INK_T;
+    slot:=item/per;
+    tile:=item%per;
+    wbase:=slot*rank*dim;
+    cbase:=ifx is_swa!=0 then 0 else slot*dim;
+    mbase:=slot*dim;
+    gbase:=slot*rank;
+    for lane:0..<32 {
+        if slot==0 {am_ctrl_up_apply_gf_norm(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,wq,out_q,0,rms_parts,item);}
+        else if slot==1 {
+            if is_swa!=0 {am_ctrl_up_apply_gf_norm(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,wq,out_k,0,rms_parts,item);}
+            else {am_ctrl_up_apply_gf_norm(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,wk,out_k,0,rms_parts,item);}
+        } else {
+            if is_swa!=0 {am_ctrl_up_apply_gf_norm(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,wq,out_v,0,rms_parts,item);}
+            else {am_ctrl_up_apply_gf_norm(dim,rank,tile*INK_T,w_gf,wbase,gate,gbase,cur,cbase,msg,mbase,wv,out_v,0,rms_parts,item);}
         }
+    }
+}
+
+// ---- Sprint 63: Fused 3-stream depth-attention mix + RMSNorm for non-looped Full attention layers (deletes 4 K_RMSNORM_3 + 4 barriers!).
+ink_mix_rmsnorm_3 :: (item:int,dim:int,n_blocks:int,eps:f32,blocks_buf:[]f32,cur:[]f32,query:[]f32,wq:[]f32,wk:[]f32,wv:[]f32,oq:[]f32,ok:[]f32,ov:[]f32) #export_c #effects(all) {
+    qoff:=item*dim;
+    for thread:0..<INK_NT {
+        if item==0 {am_mix_fused(1,dim,n_blocks,eps,blocks_buf,cur,query,qoff,wq,0,oq,0,oq,0);}
+        else if item==1 {am_mix_fused(1,dim,n_blocks,eps,blocks_buf,cur,query,qoff,wk,0,ok,0,ok,0);}
+        else {am_mix_fused(1,dim,n_blocks,eps,blocks_buf,cur,query,qoff,wv,0,ov,0,ov,0);}
+    }
+}
+
+// ---- Sprint 65: Fused 1-dispatch Q+R+Gate+K+V Q4_0 matvec (with optional deferred RMSNorm from rms_parts, -96 dispatches/tok!).
+ink_dv_q4_qrgkv :: (item:int,n_q:int,n_r:int,n_kv:int,cols:int,n_parts:int,eps:f32,w:[]u16,xq:[]f32,xk:[]f32,xv:[]f32,parts:[]f32,oq:[]f32,or_:[]f32,og:[]f32,ok:[]f32,ov:[]f32) #export_c #effects(all) {
+    for thread:0..<128 {
+        am_dot_q4_qrgkv(item*8,n_q,n_r,n_kv,cols,n_parts,eps,w,xq,xk,xv,parts,oq,or_,og,ok,ov);
+    }
+}
+
+ink_dv_q4_rms :: (item:int,rows:int,cols:int,p_off:int,n_parts:int,eps:f32,cap:f32,w:[]u16,x:[]f32,parts:[]f32,out:[]f32) #export_c #effects(all) {
+    blocks:=cols/32;words:=blocks*9;
+    for thread:0..<128 {
+        row:=item*8+(thread/32)*2;
+        if row<rows {
+            r1:=ifx row+1<rows then row+1 else row;
+            am_dot_q4_2_write_ex(w,row*words,r1*words,x,0,blocks,parts,p_off,n_parts,eps,cap,out,row,r1);
+        }
+    }
+}
+
+ink_dv_f16_small_rms :: (item:int,rows:int,cols:int,p_off:int,n_parts:int,eps:f32,w:[]u16,x:[]f32,parts:[]f32,out:[]f32) #export_c #effects(all) {
+    for thread:0..<128 {
+        if item<rows {
+            am_dot_f16_tg_write_rms(w,item*cols,x,0,cols,parts,p_off,n_parts,eps,out,item);
+        }
+    }
+}
+
+// ---- Sprint 64: Coalesced 16-token half2 ctrl_up_apply_gf_batch & Metal 4 Neural Accelerator Flash-Prefill Attention!
+ink_ctrl_up_apply_gf_batch :: (item:int,dim:int,rank:int,n_tok:int,w_off:int,w_gf:[]u32,gate:[]f32,cur:[]f32,msg:[]f32,out:[]f32) #export_c #effects(all) {
+    groups:=(dim+INK_T-1)/INK_T;
+    t0:=(item/groups)*16;
+    row0:=(item%groups)*INK_T;
+    for thread:0..<128 {
+        am_ctrl_up_apply_gf_batch(dim,rank,n_tok,t0,row0,w_gf,w_off,gate,0,cur,0,msg,0,out,0);
+    }
+}
+
+ink_attn_scores_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,scores:[]u16) #export_c #effects(all) {
+    for thread:0..<128 {
+        am_attn_scores_m4(item,dims0,dims1,kv_info,pos0,n_tok,k_start,q,r,rel_bias,sinks,k_cache,scores);
+    }
+}
+
+ink_attn_values_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,scores:[]u16,inv_gsum:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #export_c #effects(all) {
+    for thread:0..<128 {
+        am_attn_values_m4(item,dims0,dims1,kv_info,pos0,n_tok,k_start,scores,inv_gsum,v_cache,gate,out);
     }
 }
 

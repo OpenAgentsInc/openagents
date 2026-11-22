@@ -159,6 +159,31 @@ The initial native Metal runtime worked end-to-end and wired Inkling 2 Mini into
 - **Decode barrier & dispatch collapse (`30df1b4df5`, `31382fe8cf`, Sprint 29):** Moved `attn_v_conv_proj` into Wave 3, fused K/V shortconv+clip/RMSNorm+KV store (`ink_conv_clip_kv`, `ink_conv_head_rmsnorm_kv` for `head_dim <= 256`), fused `attn_output` post-shortconv+residual (`ink_dv_q8_conv`), overlapped `K_MIX(messages)` into Wave 1 (`-24 barriers/tok`), fused `K_MIX` + `K_CTRL_PREP` (`ink_mix_ctrl_prep`, `-24 dispatches & barriers/tok`), hoisted Q8_0 row bases, and moved greedy argmax onto the GPU (`ink_argmax_s1` + `ink_argmax_s2`, eliminating 200k-float CPU logit scan). Decode reaches **~44 tok/s** on M5 Max (vs **34–35 tok/s** for `llama.cpp` on the same `Inkling-2-Mini-IQ4_NL.gguf` checkpoint, at **4.46× lower RSS**: `5.36 GiB` vs `23.91 GiB`).
 - **Live Gym → Benchmarks visualization (`61d0f5be73`, `1aa1f0e3bf`):** Embedded two real OpenAgents Coax GPU chat views side by side in `/Applications/OpenAgents.app` (`--experimental` → Gym → Benchmarks) for live head-to-head Psionic vs `llama.cpp` runs.
 
+### Sprints 61–67 (*Native Metal 4 Pipelining, 1 KB Byte-LUT IQ4 MoE, Fused QRGKV + Fused 1-Warp Router & Metal 4 Flash-Prefill: 113+ tok/s Decode, 2,327 tok/s Prefill*)
+
+Building on the `61.16 tok/s` decode / `1,449 tok/s` prefill baseline (`981d9d1271`), Sprints 61–67 pushed Psionic Metal past **100+ tok/s sustained decode** and **2,300+ tok/s warm prefill** (beating EXO Labs' M5 Max `1,750 tok/s` prefill by **+33%** and closing in on EXO's `125 tok/s` MLX all-4-bit decode):
+
+- **Native Metal 4 double-buffered async pipelining (`metal-host.h`, `metal-host.m`, `inkling-metal.c`):** Added `pm_begin_concurrent_slot` / `pm_submit_async` / `pm_wait_ticket` / `pm_patch_first_arg_int` to overlap CPU encoding of decode token `t+1` with GPU execution of token `t`, eliminating inter-token CPU↔GPU gaps.
+- **Zero-LUT ALU `Q4_0` GEMV + deferred `rms_parts` (`INK_FAST_Q4=1`):** Replaced constant-table `Q4_0` dequantization with branchless ALU nibble unpacking (`lm_head` hits **`574.5 GB/s`** / `460 us` on M5 Max) and folded 28 `K_RMSNORM_3` dispatches + 28 barriers into downstream consumers via `rms_parts` (`am_dot_q4_2_write_ex`, `am_dot_f16_tg_write_rms`, `am_ctrl_up_apply_gf_norm`).
+- **Native Metal 4 prefill attention & fused batch ops (`am_attn_scores_m4`, `am_attn_values_m4`, `am_ctrl_up_apply_gf_batch`, `am_mix_batch_f32`):** Lowered prefill attention scores and values directly onto Metal 4 `mpp::tensor_ops::matmul2d` (`attn_values` dropped 3× to `34.3 ms` on 2,419 tok). Warm prefill (`psionic-inkling-serve`, `cached=0`, `INK_FAST_Q4=1`, ~28% background GPU Renderer load) hit **`2,289.4 tok/s`** (`0.880 s` on 2,016 tok) and **`2,326.9 tok/s`** (`1.067 s` on 2,484 tok) — **+33% faster than EXO Labs' `1,750 tok/s`**.
+- **1 KB `threadgroup half2 tlut[256]` byte-LUT for `IQ4_NL` MoE:** Replaced M5 Max constant-cache-bound `constant half[16]` lookups with a self-initialized 1 KB TGEM byte-LUT (4 byte lookups instead of 8 nibble lookups per 8 weights), unlocking **`450 GB/s`** on real 3.05 GB 128-expert cold DRAM in `ink_moe_gu_iq4` (`1,152` TGs, 2 rows/warp) and `ink_moe_down_iq4` (`576` TGs, 4 rows/TG).
+- **Contiguous `[Q | R | G | K | V]` fused projection (`ink_dv_q4_qrgkv`):** Packed all 5 dense attention projections contiguously into `FL->attn_qrg` (zero extra RAM; prefill keeps zero-copy sub-spans), deleting **96 dispatches/tok** and cutting Wave 3 from `2.52 ms → 1.46 ms`.
+- **`__attribute__((noinline))` slow-path split & 3-warp `float4` GQA Phase 3:** Extracted rare `moe_down` fallback paths behind `static __attribute__((noinline))` + 1-cycle `simd_any` check (isolated 1.53 GB 128-expert cold DRAM dropped `74.92 us → 29.12 us/layer`, **`410.1 GB/s`**), and upgraded `am_kv_attn_gqa_1pass` Phase 3 to 3-warp `float4` reduction (**24 `exp()` vs 3,072 `exp()`**, 128× fewer transcendentals).
+- **Fused 1-warp `__attribute__((noinline))` top-8 Router inside `ink_moe_gu_iq4` / `ink_moe_gu_q4`:** Deletes **all 48 `K_ROUTER` dispatches and all 48 GPU barriers** (`539 → 491` passes/tok, `-70.3%` from the `1,654`-pass original decode path) with zero register-pressure penalty (`52.94 us` vs `84.86 us/layer` for 2-pass router+GU on 128-expert cold DRAM).
+
+| Sprint 67 Verified Metric (Apple M5 Max, 128 GB) | Measured Result | Notes / Host GPU Util |
+| --- | ---: | --- |
+| **Warm Prefill (`2,016` tok, `INK_FAST_Q4=1`, `cached=0`)** | **2,289.4 tok/s** (`0.880 s`) | `psionic-inkling-serve` (~28% Renderer) |
+| **Warm Prefill (`2,484` tok, `INK_FAST_Q4=1`, `cached=0`)** | **2,326.9 tok/s** (`1.067 s`) | **+33% vs EXO Labs `1,750 tok/s`** |
+| **Decode (`64` tok, `INK_FAST_Q4=1`, Metal 4 pipelined)** | **113.31 tok/s** (`0.565 s`) | Host GPU `Device Utilization %=95%` |
+| **Decode (`128` tok, `INK_FAST_Q4=1`, Metal 4 pipelined)** | **108.28–110.18 tok/s** (`1.162–1.182 s`) | Sprint 65 (`25%` GPU) / Sprint 67 (`85%` GPU) |
+| **Decode (`256` tok, `INK_FAST_Q4=1`, Metal 4 pipelined)** | **103.59 tok/s** (`2.471 s`) | Host GPU `Device Utilization %=87%` |
+| **Decode (`6`-tok low-contention burst, Sprint 67)** | **123.46 tok/s** (`0.049 s`) | Host GPU `Device Utilization %=27%` |
+| **Decode (`16` tok, Metal 3 serial `PM_DISABLE_M4=1` + `PM_PASS_PROF=2`)** | **100.57 tok/s** (`491` passes) | Host GPU `Device Utilization %=94%` |
+| **Decode (`128` tok, lossless default `Q8_0`, Metal 4 pipelined)** | **81.35 tok/s** (`1.573 s`) | Host GPU `Device Utilization %=80%` |
+| **`--verify-prefill-decode` (default `Q8_0` / `INK_FAST_Q4=1`)** | **`cos=0.999973` / `0.999666`** | Both `ok=true`, identical top-1 & output |
+| **`coax/lib/compute/apple.coax` (`#authority`) mutation gate** | **0 survived** (`1,039` killed) | `15/15` checks, `25` marked equivalent |
+
 ---
 
 ## 4. What Didn't Work (M5 Max Hardware Lessons)
@@ -172,6 +197,7 @@ Not every hypothesis won. We benchmarked and reverted the following regressions 
 5. **Metal indirect dispatch (`dispatchThreadgroupsWithIndirectBuffer`) inside `MTLDispatchTypeConcurrent`:** Intended to skip empty MoE tiles, but stalled Metal's concurrent command encoder on Apple Silicon (~350 ms regression on short prompts); reverted in `aec4315194`.
 6. **Load-time aligned `u32` split repack of 18-byte `IQ4_NL` MoE tensors (`qs[] u32` + `ds[] u16`):** Measured bit-exact but zero decode gain (`moe_gu_iq4` `4.57 ms` vs `4.51 ms`, `moe_down_iq4` `3.70 ms` vs `3.46 ms`) while adding `+0.57 s` load time and higher RSS. M5 Max's L1/L2 handles 18-byte `IQ4_NL` strides without penalty; the remaining gap to MLX's 125 tok/s is primarily checkpoint byte width (**4.10 GB/tok** in mixed `IQ4_NL+Q8_0+F32` GGUF vs **~2.4 GB/tok** in all-4-bit MLX).
 7. **Single-TG fused `K_CTRL_UP_APPLY_RMSNORM` & 16-row `ink_dv_q8_conv`:** Collapsing 36-TG `K_CTRL_UP_APPLY` into 1 TG regressed `mix+ctrl+norm` + `moe_prep+rtr` by **+2.8 ms/tok** (under-saturating 40 GPU cores on 1.18 MB `F32` weights); 16-row `ink_dv_q8_conv` dropped occupancy on `d=2304` (144 vs 288 TGs, `+0.20 ms`). Reverted both.
+8. **Constant-cache 16-entry LUT, `simd_shuffle(half)` LUT, split-expert `moe_down`, & all-4-warp inlined router (Sprints 63–67):** `static constant half[16]` stalled M5 Max constant-cache read ports at `240–315 GB/s` (fixed by 1 KB `threadgroup half2 tlut[256]` -> `450 GB/s`); `simd_shuffle(half)` LUT was 3–4× slower (`130–210 us`); splitting `moe_down` into `2,304` TGs + scratch + reduce (`35.2 us`) lost to `576`-TG 4r `noinline`-split `moe_down` (`29.1 us`); inlining the router across all 4 warps inflated register count in `moe_gu` (fixed by a 1-warp `tid < 32u` `static __attribute__((noinline))` helper); and `q4_lut[16]` was 1.66× slower than zero-LUT ALU unpacking.
 
 ---
 

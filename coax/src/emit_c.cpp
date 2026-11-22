@@ -515,8 +515,38 @@ WarpInfo g_warp;
 static bool is_mma_primitive(const ProcDecl *p) { return p && str_eq(p->name, "cu_mma_bf16_16x8x16"); }
 // Every device primitive: its Coax body is the CPU meaning; the device emitters lower calls to it.
 static bool is_device_primitive(const ProcDecl *p) {
-  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_bf16_x16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16"));
+  return p && (is_mma_primitive(p) || str_eq(p->name, "am_sg_mma_64x32x32") || str_eq(p->name, "am_sg_mma_f16_64x32x32") || str_eq(p->name, "am_sg_spill_64x32") || str_eq(p->name, "am_sg_zero_64x32") || str_eq(p->name, "am_matmul_bf16") || str_eq(p->name, "am_matmul_bf16_x16") || str_eq(p->name, "am_matmul_iq4") || str_eq(p->name, "am_matmul_iq4_bf16") || str_eq(p->name, "am_dot_f16_tg_write") || str_eq(p->name, "am_dot_f16_tg_write_rms") || str_eq(p->name, "am_rmsnorm_f32") || str_eq(p->name, "am_ctrl_up_apply_f16") || str_eq(p->name, "am_ctrl_up_apply_gf") || str_eq(p->name, "am_ctrl_up_apply_gf_norm") || str_eq(p->name, "am_ctrl_up_apply_gf_batch") || str_eq(p->name, "am_mix_fused") || str_eq(p->name, "am_mix_batch_f32") || str_eq(p->name, "am_router_top8") || str_eq(p->name, "am_conv_kv_both") || str_eq(p->name, "am_attn_gqa_1pass") || str_eq(p->name, "am_kv_attn_gqa_1pass") || str_eq(p->name, "am_attn_scores_m4") || str_eq(p->name, "am_attn_values_m4") || str_eq(p->name, "am_dot_q4_conv_2_write") || str_eq(p->name, "am_dot_q4_2_write_ex") || str_eq(p->name, "am_moe_gu_iq4_tg") || str_eq(p->name, "am_moe_gu_q4_tg") || str_eq(p->name, "am_moe_down_iq4_tg") || str_eq(p->name, "am_moe_down_q4_tg") || str_eq(p->name, "am_dot_q4_qrgkv"));
 }
+static int am_tg_prim_size(const ProcDecl *p) {
+  if (!p) return 0;
+  if (str_eq(p->name, "am_attn_scores_m4")) return 7680;
+  if (str_eq(p->name, "am_kv_attn_gqa_1pass") || str_eq(p->name, "am_attn_values_m4")) return 4096;
+  if (str_eq(p->name, "am_ctrl_up_apply_gf_batch")) return 1024;
+  if (str_eq(p->name, "am_dot_f16_tg_write") || str_eq(p->name, "am_dot_f16_tg_write_rms") || str_eq(p->name, "am_rmsnorm_f32") || str_eq(p->name, "am_ctrl_up_apply_f16") || str_eq(p->name, "am_mix_fused") || str_eq(p->name, "am_mix_batch_f32") || str_eq(p->name, "am_attn_gqa_1pass")) return 640;
+  if (str_eq(p->name, "am_moe_down_iq4_tg")) return 288;
+  if (str_eq(p->name, "am_moe_gu_iq4_tg")) return 260;
+  if (str_eq(p->name, "am_moe_down_q4_tg")) return 16;
+  if (str_eq(p->name, "am_moe_gu_q4_tg")) return 4;
+  return 0;
+}
+static int expr_am_tg_size(const Expr *e) {
+  if (!e) return 0;
+  int r = (e->kind == ExprKind::call) ? am_tg_prim_size(e->proc) : 0;
+  r = std::max(r, expr_am_tg_size(e->lhs));
+  r = std::max(r, expr_am_tg_size(e->rhs));
+  r = std::max(r, expr_am_tg_size(e->third));
+  for (const Expr *a : e->args) r = std::max(r, expr_am_tg_size(a));
+  return r;
+}
+static int stmt_am_tg_size(const Stmt *s) {
+  if (!s) return 0;
+  int r = std::max({expr_am_tg_size(s->expr), expr_am_tg_size(s->expr2), expr_am_tg_size(s->target)});
+  for (const Stmt *c : s->body) r = std::max(r, stmt_am_tg_size(c));
+  r = std::max(r, stmt_am_tg_size(s->then_));
+  return std::max(r, stmt_am_tg_size(s->else_));
+}
+static int proc_am_tg_size(const ProcDecl *p) { return p ? stmt_am_tg_size(p->body) : 0; }
+static bool proc_uses_am_tg(const ProcDecl *p) { return proc_am_tg_size(p) > 0; }
 // The integer value of a constant expression (a literal or a named constant).
 static int64_t constant_of_expr(const Expr *e) {
   if (e && e->kind == ExprKind::ident && e->constant && e->constant->expr) e = e->constant->expr;
@@ -1827,6 +1857,134 @@ struct Emitter {
             return s + "coax_lane, " + line + ", coax_err)";
           }
         }
+        if (opts.metal_compute && e->proc) {
+          if (e->args.count == 9 && (str_eq(e->proc->name, "am_dot_f16_tg_write") || str_eq(e->proc->name, "am_rmsnorm_f32"))) {
+            apple_tensor = true;
+            std::string s = str_eq(e->proc->name, "am_dot_f16_tg_write") ? "coax_am_dot_f16_tg_write(" : "coax_am_rmsnorm_f32(";
+            for (int i = 0; i < 9; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 15 && str_eq(e->proc->name, "am_ctrl_up_apply_f16")) {
+            apple_tensor = true;
+            std::string s = "coax_am_ctrl_up_apply_f16(";
+            for (int i = 0; i < 15; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 14 && str_eq(e->proc->name, "am_mix_fused")) {
+            apple_tensor = true;
+            std::string s = "coax_am_mix_fused(";
+            for (int i = 0; i < 14; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 8 && str_eq(e->proc->name, "am_router_top8")) {
+            apple_tensor = true;
+            std::string s = "coax_am_router_top8(";
+            for (int i = 0; i < 8; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 17 && str_eq(e->proc->name, "am_moe_gu_iq4_tg")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_gu_iq4_tg(";
+            for (int i = 0; i < 17; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 17 && str_eq(e->proc->name, "am_moe_gu_q4_tg")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_gu_q4_tg(";
+            for (int i = 0; i < 17; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_moe_down_iq4_tg")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_down_iq4_tg(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_moe_down_q4_tg")) {
+            apple_tensor = true;
+            std::string s = "coax_am_moe_down_q4_tg(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 17 && str_eq(e->proc->name, "am_dot_q4_qrgkv")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q4_qrgkv(";
+            for (int i = 0; i < 17; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 16 && str_eq(e->proc->name, "am_conv_kv_both")) {
+            apple_tensor = true;
+            std::string s = "coax_am_conv_kv_both(";
+            for (int i = 0; i < 16; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 18 && str_eq(e->proc->name, "am_attn_gqa_1pass")) {
+            apple_tensor = true;
+            std::string s = "coax_am_attn_gqa_1pass(";
+            for (int i = 0; i < 18; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 27 && str_eq(e->proc->name, "am_kv_attn_gqa_1pass")) {
+            apple_tensor = true;
+            std::string s = "coax_am_kv_attn_gqa_1pass(";
+            for (int i = 0; i < 27; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_dot_q4_conv_2_write")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q4_conv_2_write(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 13 && str_eq(e->proc->name, "am_ctrl_up_apply_gf")) {
+            apple_tensor = true;
+            std::string s = "coax_am_ctrl_up_apply_gf(";
+            for (int i = 0; i < 13; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 16 && str_eq(e->proc->name, "am_ctrl_up_apply_gf_norm")) {
+            apple_tensor = true;
+            std::string s = "coax_am_ctrl_up_apply_gf_norm(";
+            for (int i = 0; i < 16; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 14 && str_eq(e->proc->name, "am_dot_q4_2_write_ex")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_q4_2_write_ex(";
+            for (int i = 0; i < 14; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, " + line + ", coax_err)";
+          }
+          if (e->args.count == 11 && str_eq(e->proc->name, "am_dot_f16_tg_write_rms")) {
+            apple_tensor = true;
+            std::string s = "coax_am_dot_f16_tg_write_rms(";
+            for (int i = 0; i < 11; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 15 && str_eq(e->proc->name, "am_ctrl_up_apply_gf_batch")) {
+            apple_tensor = true;
+            std::string s = "coax_am_ctrl_up_apply_gf_batch(";
+            for (int i = 0; i < 15; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 9 && str_eq(e->proc->name, "am_mix_batch_f32")) {
+            apple_tensor = true;
+            std::string s = "coax_am_mix_batch_f32(";
+            for (int i = 0; i < 9; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 13 && str_eq(e->proc->name, "am_attn_scores_m4")) {
+            apple_tensor = true;
+            std::string s = "coax_am_attn_scores_m4(";
+            for (int i = 0; i < 13; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+          if (e->args.count == 12 && str_eq(e->proc->name, "am_attn_values_m4")) {
+            apple_tensor = true;
+            std::string s = "coax_am_attn_values_m4(";
+            for (int i = 0; i < 12; i++) s += ex(e->args[i]) + ", ";
+            return s + "coax_lane, coax_am_tg, " + line + ", coax_err)";
+          }
+        }
         if (opts.metal_compute && e->proc && e->args.count == 1) {
           if (str_eq(e->proc->name, "am_simd_sum")) return "simd_sum(" + ex(e->args[0]) + ")";
           if (str_eq(e->proc->name, "am_simd_max")) return "simd_max(" + ex(e->args[0]) + ")";
@@ -2709,6 +2867,7 @@ struct Emitter {
     // A group kernel's threadgroup arrays live in its entry, which passes them in.
     if (opts.metal_compute && g_warp.shared_arrays.count(p))
       for (const Stmt *d : g_warp.shared_arrays.at(p)) s += ", threadgroup " + c_type(d->type) + " *coax_tg_" + local_name(d->name);
+    if (opts.metal_compute && proc_uses_am_tg(p)) s += ", threadgroup float *coax_am_tg";
     return s + ")";
   }
 
@@ -3357,7 +3516,7 @@ COAX_DEV void coax_am_matmul(int64_t rows, int64_t cols, int64_t tokens, int64_t
   auto X = tensor<device float, dextents<int32_t, 2>, tensor_inline>(x.data + t0 * cols, dextents<int32_t, 2>(c, nt), array<int32_t, 2>({1, c}));
   auto W = tensor<device bfloat, dextents<int32_t, 2>, tensor_inline>((device bfloat *)w.data + r0 * cols, dextents<int32_t, 2>(c, nr), array<int32_t, 2>({1, c}));
   auto C = tensor<device float, dextents<int32_t, 2>, tensor_inline>(out.data + t0 * rows + r0, dextents<int32_t, 2>(nr, nt), array<int32_t, 2>({1, (int)rows}));
-  constexpr auto d = matmul2d_descriptor(TM, TN, static_cast<int>(dynamic_extent), false, true, true);
+  constexpr auto d = matmul2d_descriptor(TM, TN, static_cast<int>(dynamic_extent), false, true, false);
   matmul2d<d, execution_simdgroups<SG>> op;
   op.run(X, W, C);
 }
@@ -3378,7 +3537,6 @@ COAX_DEV void coax_am_matmul_x16(int64_t rows, int64_t cols, int64_t tokens, int
   op.run(X, W, C);
 }
 static constant float coax_iq4_lut[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -35.0f, -22.0f, -10.0f, 1.0f, 13.0f, 25.0f, 38.0f, 53.0f, 69.0f, 89.0f, 113.0f};
-static constant int8_t coax_iq4_lut_i8[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
 COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int64_t x_off, int64_t blocks, uint32_t tid, int32_t line, COAX_ERR) {
   if (blocks < 0 || base < 0 || base + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count) {
     coax_trap_(line, coax_err);
@@ -3411,6 +3569,26 @@ COAX_DEV float coax_am_dot_iq4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, in
   }
   return acc;
 }
+COAX_DEV float coax_q4_alu_dot8_f16(packed_ushort2 p, half4 xl, half4 xh, float xsum) {
+  uint32_t a = p.x, c = p.y;
+  half4 s = half4(a & 15u, (a >> 8u) & 15u, c & 15u, (c >> 8u) & 15u) * xl
+          + half4((a >> 4u) & 15u, a >> 12u, (c >> 4u) & 15u, c >> 12u) * xh;
+  return float((s.x + s.y) + (s.z + s.w)) - 8.0f * xsum;
+}
+COAX_DEV float coax_q4_alu_dot16_f16(packed_ushort4 p, half4 xl0, half4 xl1, half4 xh0, half4 xh1, float xsum) {
+  uint32_t a = p.x, c = p.y, d = p.z, e = p.w;
+  half4 s = half4(a & 15u, (a >> 8u) & 15u, c & 15u, (c >> 8u) & 15u) * xl0
+          + half4((a >> 4u) & 15u, a >> 12u, (c >> 4u) & 15u, c >> 12u) * xh0
+          + half4(d & 15u, (d >> 8u) & 15u, e & 15u, (e >> 8u) & 15u) * xl1
+          + half4((d >> 4u) & 15u, d >> 12u, (e >> 4u) & 15u, e >> 12u) * xh1;
+  return float((s.x + s.y) + (s.z + s.w)) - 8.0f * xsum;
+}
+COAX_DEV float coax_inv_rms_parts(coax_v_f32 parts, int64_t p_off, int64_t n_parts, int64_t dim, float eps, uint32_t lane) {
+  if (n_parts <= 0) return 1.0f;
+  float s = 0.0f;
+  for (int i = (int)lane; i < (int)n_parts; i += 32) s += parts.data[p_off + i];
+  return rsqrt(simd_sum(s) / float(dim) + eps);
+}
 COAX_DEV float coax_am_dot_q4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int64_t x_off, int64_t blocks, uint32_t tid, int32_t line, COAX_ERR) {
   if (blocks < 0 || base < 0 || base + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count) {
     coax_trap_(line, coax_err);
@@ -3425,21 +3603,23 @@ COAX_DEV float coax_am_dot_q4_lane(coax_v_u16 w, int64_t base, coax_v_f32 x, int
   const device float *xp = x.data + x_off;
   float acc = 0.0f;
   for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
-    const device uint16_t *bw = wp + b * 9;
     const device float *bx = xp + b * 32 + xq;
-    float4 xl = *(const device float4 *)bx;
-    float4 xh = *(const device float4 *)(bx + 16);
-    float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
-    float sc = float(as_type<half>(bw[0]));
-    packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
-    float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
-            + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
-            + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
-            + float((v1 >> 8u) & 15u) * xl.w + float(v1 >> 12u) * xh.w
-            - 8.0f * xsum;
-    acc += sc * s;
+    float4 xlf = *(const device float4 *)bx;
+    float4 xhf = *(const device float4 *)(bx + 16);
+    float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+    const device uint16_t *bw = wp + b * 9;
+    acc += float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), half4(xlf), half4(xhf), xsum);
   }
   return acc;
+}
+static constant half coax_iq4_lut_f16s[16] = {-7.9375h, -6.5h, -5.1875h, -4.0625h, -3.0625h, -2.1875h, -1.375h, -0.625h, 0.0625h, 0.8125h, 1.5625h, 2.375h, 3.3125h, 4.3125h, 5.5625h, 7.0625h};
+COAX_DEV float coax_iq4_dot16_f16s(packed_ushort4 p, half4 xl0, half4 xl1, half4 xh0, half4 xh1) {
+  uint32_t a = p.x, c = p.y, d = p.z, e = p.w;
+  half4 s = half4(coax_iq4_lut_f16s[a & 15u], coax_iq4_lut_f16s[(a >> 8u) & 15u], coax_iq4_lut_f16s[c & 15u], coax_iq4_lut_f16s[(c >> 8u) & 15u]) * xl0
+          + half4(coax_iq4_lut_f16s[(a >> 4u) & 15u], coax_iq4_lut_f16s[a >> 12u], coax_iq4_lut_f16s[(c >> 4u) & 15u], coax_iq4_lut_f16s[c >> 12u]) * xh0
+          + half4(coax_iq4_lut_f16s[d & 15u], coax_iq4_lut_f16s[(d >> 8u) & 15u], coax_iq4_lut_f16s[e & 15u], coax_iq4_lut_f16s[(e >> 8u) & 15u]) * xl1
+          + half4(coax_iq4_lut_f16s[(d >> 4u) & 15u], coax_iq4_lut_f16s[d >> 12u], coax_iq4_lut_f16s[(e >> 4u) & 15u], coax_iq4_lut_f16s[e >> 12u]) * xh1;
+  return float((s.x + s.y) + (s.z + s.w));
 }
 COAX_DEV float coax_am_dot_iq4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, coax_v_f32 x, int64_t x_off, int64_t blocks, float beta, float lb, uint32_t tid, int32_t line, COAX_ERR) {
   if (blocks < 0 || gb < 0 || gb + blocks * 9 > w.count || ub < 0 || ub + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count) {
@@ -3447,46 +3627,46 @@ COAX_DEV float coax_am_dot_iq4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, c
     return 0.0f;
   }
   uint32_t lane = tid & 31u;
-  uint32_t blk_lane = lane >> 2;
-  uint32_t qtr = lane & 3u;
-  int k0 = (int)(qtr * 2u);
-  int xq = (int)(qtr * 4u);
-  const device uint16_t *wgp = w.data + gb;
-  const device uint16_t *wup = w.data + ub;
+  uint32_t is_up = lane >> 4;
+  uint32_t sub = lane & 15u;
+  uint32_t blk_lane = sub >> 1;
+  uint32_t half_b = sub & 1u;
+  int k0 = (int)(half_b * 4u);
+  int xq = (int)(half_b * 8u);
+  const device uint16_t *wp = w.data + (is_up ? ub : gb);
   const device float *xp = x.data + x_off;
-  float ag = 0.0f, au = 0.0f;
-  for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
-    const device float *bx = xp + b * 32 + xq;
-    float4 xl = *(const device float4 *)bx;
-    float4 xh = *(const device float4 *)(bx + 16);
-    const device uint16_t *bg = wgp + b * 9;
-    const device uint16_t *bu = wup + b * 9;
-    float scg = float(as_type<half>(bg[0]));
-    float scu = float(as_type<half>(bu[0]));
-    packed_ushort2 _gv = *(const device packed_ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
-    packed_ushort2 _uv = *(const device packed_ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
-    float sg = coax_iq4_lut[g0 & 15u] * xl.x
-             + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x
-             + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y
-             + coax_iq4_lut[g0 >> 12u] * xh.y
-             + coax_iq4_lut[g1 & 15u] * xl.z
-             + coax_iq4_lut[(g1 >> 4u) & 15u] * xh.z
-             + coax_iq4_lut[(g1 >> 8u) & 15u] * xl.w
-             + coax_iq4_lut[g1 >> 12u] * xh.w;
-    float su = coax_iq4_lut[u0 & 15u] * xl.x
-             + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x
-             + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y
-             + coax_iq4_lut[u0 >> 12u] * xh.y
-             + coax_iq4_lut[u1 & 15u] * xl.z
-             + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z
-             + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w
-             + coax_iq4_lut[u1 >> 12u] * xh.w;
-    ag += scg * sg;
-    au += scu * su;
+  float acc = 0.0f;
+  int iblocks = (int)blocks;
+  if (iblocks == 72) {
+    for (int b = (int)blk_lane; b < 72; b += 8) {
+      const device float *bx = xp + b * 32 + xq;
+      half4 xl0 = half4(*(const device float4 *)bx);
+      half4 xl1 = half4(*(const device float4 *)(bx + 4));
+      half4 xh0 = half4(*(const device float4 *)(bx + 16));
+      half4 xh1 = half4(*(const device float4 *)(bx + 20));
+      const device uint16_t *bw = wp + b * 9;
+      float sc = 16.0f * float(as_type<half>(bw[0]));
+      acc += sc * coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw + 1 + k0), xl0, xl1, xh0, xh1);
+    }
+  } else {
+    for (int b = (int)blk_lane; b < iblocks; b += 8) {
+      const device float *bx = xp + b * 32 + xq;
+      half4 xl0 = half4(*(const device float4 *)bx);
+      half4 xl1 = half4(*(const device float4 *)(bx + 4));
+      half4 xh0 = half4(*(const device float4 *)(bx + 16));
+      half4 xh1 = half4(*(const device float4 *)(bx + 20));
+      const device uint16_t *bw = wp + b * 9;
+      float sc = 16.0f * float(as_type<half>(bw[0]));
+      acc += sc * coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw + 1 + k0), xl0, xl1, xh0, xh1);
+    }
   }
-  float g = simd_sum(ag);
-  float u = simd_sum(au);
-  float act = beta * tanh(g / beta) / (1.0f + exp(-g));
+  acc += simd_shuffle_xor(acc, 8);
+  acc += simd_shuffle_xor(acc, 4);
+  acc += simd_shuffle_xor(acc, 2);
+  acc += simd_shuffle_xor(acc, 1);
+  float u = simd_shuffle(acc, 16);
+  if (lane != 0) return 0.0f;
+  float act = beta * tanh(acc / beta) / (1.0f + exp(-acc));
   if (lb > 0.0f) u = lb * tanh(u / lb);
   return act * u;
 }
@@ -3496,41 +3676,31 @@ COAX_DEV float coax_am_dot_q4_situ_lane(coax_v_u16 w, int64_t gb, int64_t ub, co
     return 0.0f;
   }
   uint32_t lane = tid & 31u;
-  uint32_t blk_lane = lane >> 2;
-  uint32_t qtr = lane & 3u;
-  int k0 = (int)(qtr * 2u);
-  int xq = (int)(qtr * 4u);
-  const device uint16_t *wgp = w.data + gb;
-  const device uint16_t *wup = w.data + ub;
+  uint32_t is_up = lane >> 4;
+  uint32_t sub = lane & 15u;
+  uint32_t blk_lane = sub >> 1;
+  uint32_t half_b = sub & 1u;
+  int k0 = (int)(half_b * 4u);
+  int xq = (int)(half_b * 8u);
+  const device uint16_t *wp = w.data + (is_up ? ub : gb);
   const device float *xp = x.data + x_off;
-  float ag = 0.0f, au = 0.0f;
+  float acc = 0.0f;
   for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
     const device float *bx = xp + b * 32 + xq;
-    float4 xl = *(const device float4 *)bx;
-    float4 xh = *(const device float4 *)(bx + 16);
-    float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
-    const device uint16_t *bg = wgp + b * 9;
-    const device uint16_t *bu = wup + b * 9;
-    float scg = float(as_type<half>(bg[0]));
-    float scu = float(as_type<half>(bu[0]));
-    packed_ushort2 _gv = *(const device packed_ushort2 *)(bg + 1 + k0); uint32_t g0 = _gv.x, g1 = _gv.y;
-    packed_ushort2 _uv = *(const device packed_ushort2 *)(bu + 1 + k0); uint32_t u0 = _uv.x, u1 = _uv.y;
-    float sg = float(g0 & 15u) * xl.x + float((g0 >> 4u) & 15u) * xh.x
-             + float((g0 >> 8u) & 15u) * xl.y + float(g0 >> 12u) * xh.y
-             + float(g1 & 15u) * xl.z + float((g1 >> 4u) & 15u) * xh.z
-             + float((g1 >> 8u) & 15u) * xl.w + float(g1 >> 12u) * xh.w
-             - 8.0f * xsum;
-    float su = float(u0 & 15u) * xl.x + float((u0 >> 4u) & 15u) * xh.x
-             + float((u0 >> 8u) & 15u) * xl.y + float(u0 >> 12u) * xh.y
-             + float(u1 & 15u) * xl.z + float((u1 >> 4u) & 15u) * xh.z
-             + float((u1 >> 8u) & 15u) * xl.w + float(u1 >> 12u) * xh.w
-             - 8.0f * xsum;
-    ag += scg * sg;
-    au += scu * su;
+    float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4);
+    float4 f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20);
+    float4 fs = (f0 + f1) + (f2 + f3);
+    float xsum = (fs.x + fs.y) + (fs.z + fs.w);
+    const device uint16_t *bw = wp + b * 9;
+    acc += float(as_type<half>(bw[0])) * coax_q4_alu_dot16_f16(*(const device packed_ushort4 *)(bw + 1 + k0), half4(f0), half4(f1), half4(f2), half4(f3), xsum);
   }
-  float g = simd_sum(ag);
-  float u = simd_sum(au);
-  float act = beta * tanh(g / beta) / (1.0f + exp(-g));
+  acc += simd_shuffle_xor(acc, 8);
+  acc += simd_shuffle_xor(acc, 4);
+  acc += simd_shuffle_xor(acc, 2);
+  acc += simd_shuffle_xor(acc, 1);
+  float u = simd_shuffle(acc, 16);
+  if (lane != 0) return 0.0f;
+  float act = beta * tanh(acc / beta) / (1.0f + exp(-acc));
   if (lb > 0.0f) u = lb * tanh(u / lb);
   return act * u;
 }
@@ -3581,36 +3751,52 @@ COAX_DEV float coax_am_dot_q4_moe_lane(coax_v_u16 w, coax_v_u32 ids, coax_v_f32 
     coax_trap_(line, coax_err);
     return 0.0f;
   }
-  uint32_t lane = tid & 31u;
-  uint32_t blk_lane = lane >> 2;
-  uint32_t qtr = lane & 3u;
-  int k0 = (int)(qtr * 2u);
-  int xq = (int)(qtr * 4u);
-  float acc = 0.0f;
   for (int slot = 0; slot < (int)n_used; slot++) {
     int64_t eid = (int64_t)ids.data[slot];
-    int64_t rb = eid * exp_words + row_off;
-    if (rb + blocks * 9 > w.count) { coax_trap_(line, coax_err); return 0.0f; }
-    float ew = wts.data[slot];
-    const device uint16_t *wp = w.data + rb;
-    const device float *xp = x.data + slot * cols;
-    float sa = 0.0f;
-    for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
-      const device uint16_t *bw = wp + b * 9;
-      const device float *bx = xp + b * 32 + xq;
-      float4 xl = *(const device float4 *)bx;
-      float4 xh = *(const device float4 *)(bx + 16);
-      float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
-      float sc = float(as_type<half>(bw[0]));
-      packed_ushort2 _vv = *(const device packed_ushort2 *)(bw + 1 + k0); uint32_t v0 = _vv.x, v1 = _vv.y;
-      float s = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
-              + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
-              + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
-              + float((v1 >> 8u) & 15u) * xl.w + float(v1 >> 12u) * xh.w
-              - 8.0f * xsum;
-      sa += sc * s;
+    if (eid * exp_words + row_off + blocks * 9 > w.count) { coax_trap_(line, coax_err); return 0.0f; }
+  }
+  uint32_t lane = tid & 31u;
+  int iblocks = (int)blocks;
+  int total_b = (int)n_used * iblocks;
+  float acc = 0.0f;
+  if (iblocks == 36) {
+    for (int tb = (int)lane; tb < total_b; tb += 32) {
+      int slot = tb / 36;
+      int b = tb - slot * 36;
+      int64_t eid = (int64_t)ids.data[slot];
+      float ew = wts.data[slot];
+      const device float *bx = x.data + slot * 1152 + b * 32;
+      const device uint16_t *bw = w.data + eid * exp_words + row_off + b * 9;
+      float sc = ew * float(as_type<half>(bw[0]));
+      float s = 0.0f;
+      for (int q = 0; q < 2; q++) {
+        float4 f0 = *(const device float4 *)(bx + q * 8), f1 = *(const device float4 *)(bx + q * 8 + 4);
+        float4 f2 = *(const device float4 *)(bx + q * 8 + 16), f3 = *(const device float4 *)(bx + q * 8 + 20);
+        float4 fs = (f0 + f1) + (f2 + f3);
+        float xsum = (fs.x + fs.y) + (fs.z + fs.w);
+        s += coax_q4_alu_dot16_f16(*(const device packed_ushort4 *)(bw + 1 + q * 4), half4(f0), half4(f1), half4(f2), half4(f3), xsum);
+      }
+      acc += sc * s;
     }
-    acc += ew * sa;
+  } else {
+    for (int tb = (int)lane; tb < total_b; tb += 32) {
+      int slot = tb / iblocks;
+      int b = tb - slot * iblocks;
+      int64_t eid = (int64_t)ids.data[slot];
+      float ew = wts.data[slot];
+      const device float *bx = x.data + slot * (int)cols + b * 32;
+      const device uint16_t *bw = w.data + eid * exp_words + row_off + b * 9;
+      float sc = ew * float(as_type<half>(bw[0]));
+      float s = 0.0f;
+      for (int q = 0; q < 2; q++) {
+        float4 f0 = *(const device float4 *)(bx + q * 8), f1 = *(const device float4 *)(bx + q * 8 + 4);
+        float4 f2 = *(const device float4 *)(bx + q * 8 + 16), f3 = *(const device float4 *)(bx + q * 8 + 20);
+        float4 fs = (f0 + f1) + (f2 + f3);
+        float xsum = (fs.x + fs.y) + (fs.z + fs.w);
+        s += coax_q4_alu_dot16_f16(*(const device packed_ushort4 *)(bw + 1 + q * 4), half4(f0), half4(f1), half4(f2), half4(f3), xsum);
+      }
+      acc += sc * s;
+    }
   }
   return simd_sum(acc);
 }
@@ -3652,30 +3838,52 @@ COAX_DEV void coax_am_dot_q4_2_write(coax_v_u16 w, int64_t b0, int64_t b1, coax_
   float acc0 = 0.0f, acc1 = 0.0f;
   for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
     const device float *bx = xp + b * 32 + xq;
-    float4 xl = *(const device float4 *)bx;
-    float4 xh = *(const device float4 *)(bx + 16);
-    float xsum = (xl.x + xl.y) + (xl.z + xl.w) + (xh.x + xh.y) + (xh.z + xh.w);
+    float4 xlf = *(const device float4 *)bx;
+    float4 xhf = *(const device float4 *)(bx + 16);
+    float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+    half4 xl = half4(xlf), xh = half4(xhf);
     const device uint16_t *bw0 = wp0 + b * 9;
     const device uint16_t *bw1 = wp1 + b * 9;
-    float sc0 = float(as_type<half>(bw0[0]));
-    float sc1 = float(as_type<half>(bw1[0]));
-    packed_ushort2 p0 = *(const device packed_ushort2 *)(bw0 + 1 + k0);
-    packed_ushort2 p1 = *(const device packed_ushort2 *)(bw1 + 1 + k0);
-    uint32_t v0 = p0.x, v1 = p0.y, u0 = p1.x, u1 = p1.y;
-    float s0 = float(v0 & 15u) * xl.x + float((v0 >> 4u) & 15u) * xh.x
-             + float((v0 >> 8u) & 15u) * xl.y + float(v0 >> 12u) * xh.y
-             + float(v1 & 15u) * xl.z + float((v1 >> 4u) & 15u) * xh.z
-             + float((v1 >> 8u) & 15u) * xl.w + float(v1 >> 12u) * xh.w - 8.0f * xsum;
-    float s1 = float(u0 & 15u) * xl.x + float((u0 >> 4u) & 15u) * xh.x
-             + float((u0 >> 8u) & 15u) * xl.y + float(u0 >> 12u) * xh.y
-             + float(u1 & 15u) * xl.z + float((u1 >> 4u) & 15u) * xh.z
-             + float((u1 >> 8u) & 15u) * xl.w + float(u1 >> 12u) * xh.w - 8.0f * xsum;
-    acc0 += sc0 * s0;
-    acc1 += sc1 * s1;
+    acc0 += float(as_type<half>(bw0[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw0 + 1 + k0), xl, xh, xsum);
+    acc1 += float(as_type<half>(bw1[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw1 + 1 + k0), xl, xh, xsum);
   }
   float t0 = simd_sum(acc0);
   float t1 = simd_sum(acc1);
   if (lane == 0) { out.data[r0] = t0; out.data[r1] = t1; }
+}
+COAX_DEV void coax_am_dot_q4_2_write_ex(coax_v_u16 w, int64_t b0, int64_t b1, coax_v_f32 x, int64_t x_off, int64_t blocks, coax_v_f32 parts, int64_t p_off, int64_t n_parts, float eps, float cap, coax_v_f32 out, int64_t r0, int64_t r1, uint32_t tid, int32_t line, COAX_ERR) {
+  if (blocks < 0 || b0 < 0 || b0 + blocks * 9 > w.count || b1 < 0 || b1 + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count || p_off < 0 || n_parts < 0 || p_off + n_parts > parts.count || r0 < 0 || r0 >= out.count || r1 < 0 || r1 >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  float inv_rms = coax_inv_rms_parts(parts, p_off, n_parts, blocks * 32, eps, lane);
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u);
+  int xq = (int)(qtr * 4u);
+  const device uint16_t *wp0 = w.data + b0;
+  const device uint16_t *wp1 = w.data + b1;
+  const device float *xp = x.data + x_off;
+  float acc0 = 0.0f, acc1 = 0.0f;
+  for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 xlf = *(const device float4 *)bx * inv_rms;
+    float4 xhf = *(const device float4 *)(bx + 16) * inv_rms;
+    float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+    half4 xl = half4(xlf), xh = half4(xhf);
+    const device uint16_t *bw0 = wp0 + b * 9;
+    const device uint16_t *bw1 = wp1 + b * 9;
+    acc0 += float(as_type<half>(bw0[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw0 + 1 + k0), xl, xh, xsum);
+    acc1 += float(as_type<half>(bw1[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw1 + 1 + k0), xl, xh, xsum);
+  }
+  float t0 = simd_sum(acc0);
+  float t1 = simd_sum(acc1);
+  if (lane == 0) {
+    if (cap > 0.0f) { t0 = cap * tanh(t0 / cap); t1 = cap * tanh(t1 / cap); }
+    out.data[r0] = t0;
+    if (r1 != r0) out.data[r1] = t1;
+  }
 }
 COAX_DEV void coax_am_dot_iq4_situ_2_write(coax_v_u16 w, int64_t gb0, int64_t ub0, int64_t gb1, int64_t ub1, coax_v_f32 x, int64_t x_off, int64_t blocks, float beta, float lb, coax_v_f32 out, int64_t o0, int64_t o1, uint32_t tid, int32_t line, COAX_ERR) {
   if (blocks < 0 || gb0 < 0 || gb0 + blocks * 9 > w.count || ub0 < 0 || ub0 + blocks * 9 > w.count || gb1 < 0 || gb1 + blocks * 9 > w.count || ub1 < 0 || ub1 + blocks * 9 > w.count || x_off < 0 || x_off + blocks * 32 > x.count || o0 < 0 || o0 >= out.count || o1 < 0 || o1 >= out.count) {
@@ -3683,42 +3891,36 @@ COAX_DEV void coax_am_dot_iq4_situ_2_write(coax_v_u16 w, int64_t gb0, int64_t ub
     return;
   }
   uint32_t lane = tid & 31u;
-  uint32_t blk_lane = lane >> 2;
-  uint32_t qtr = lane & 3u;
-  int k0 = (int)(qtr * 2u);
-  int xq = (int)(qtr * 4u);
-  const device uint16_t *wgp0 = w.data + gb0, *wup0 = w.data + ub0;
-  const device uint16_t *wgp1 = w.data + gb1, *wup1 = w.data + ub1;
+  uint32_t is_up = lane >> 4;
+  uint32_t sub = lane & 15u;
+  uint32_t blk_lane = sub >> 1;
+  uint32_t half_b = sub & 1u;
+  int k0 = (int)(half_b * 4u);
+  int xq = (int)(half_b * 8u);
+  const device uint16_t *wp0 = w.data + (is_up ? ub0 : gb0);
+  const device uint16_t *wp1 = w.data + (is_up ? ub1 : gb1);
   const device float *xp = x.data + x_off;
-  float ag0 = 0.0f, au0 = 0.0f, ag1 = 0.0f, au1 = 0.0f;
+  float acc0 = 0.0f, acc1 = 0.0f;
   for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
     const device float *bx = xp + b * 32 + xq;
-    float4 xl = *(const device float4 *)bx;
-    float4 xh = *(const device float4 *)(bx + 16);
-    const device uint16_t *bg0 = wgp0 + b * 9, *bu0 = wup0 + b * 9;
-    const device uint16_t *bg1 = wgp1 + b * 9, *bu1 = wup1 + b * 9;
-    float scg0 = float(as_type<half>(bg0[0])), scu0 = float(as_type<half>(bu0[0]));
-    float scg1 = float(as_type<half>(bg1[0])), scu1 = float(as_type<half>(bu1[0]));
-    packed_ushort2 pg0 = *(const device packed_ushort2 *)(bg0 + 1 + k0);
-    packed_ushort2 pu0 = *(const device packed_ushort2 *)(bu0 + 1 + k0);
-    packed_ushort2 pg1 = *(const device packed_ushort2 *)(bg1 + 1 + k0);
-    packed_ushort2 pu1 = *(const device packed_ushort2 *)(bu1 + 1 + k0);
-    uint32_t g0 = pg0.x, g1 = pg0.y, u0 = pu0.x, u1 = pu0.y;
-    ag0 += scg0 * (coax_iq4_lut[g0 & 15u] * xl.x + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y + coax_iq4_lut[g0 >> 12u] * xh.y
-                 + coax_iq4_lut[g1 & 15u] * xl.z + coax_iq4_lut[(g1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(g1 >> 8u) & 15u] * xl.w + coax_iq4_lut[g1 >> 12u] * xh.w);
-    au0 += scu0 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
-                 + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
-    g0 = pg1.x; g1 = pg1.y; u0 = pu1.x; u1 = pu1.y;
-    ag1 += scg1 * (coax_iq4_lut[g0 & 15u] * xl.x + coax_iq4_lut[(g0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(g0 >> 8u) & 15u] * xl.y + coax_iq4_lut[g0 >> 12u] * xh.y
-                 + coax_iq4_lut[g1 & 15u] * xl.z + coax_iq4_lut[(g1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(g1 >> 8u) & 15u] * xl.w + coax_iq4_lut[g1 >> 12u] * xh.w);
-    au1 += scu1 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
-                 + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
+    half4 xl0 = half4(*(const device float4 *)bx);
+    half4 xl1 = half4(*(const device float4 *)(bx + 4));
+    half4 xh0 = half4(*(const device float4 *)(bx + 16));
+    half4 xh1 = half4(*(const device float4 *)(bx + 20));
+    const device uint16_t *bw0 = wp0 + b * 9;
+    const device uint16_t *bw1 = wp1 + b * 9;
+    float sc0 = 16.0f * float(as_type<half>(bw0[0]));
+    float sc1 = 16.0f * float(as_type<half>(bw1[0]));
+    acc0 += sc0 * coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw0 + 1 + k0), xl0, xl1, xh0, xh1);
+    acc1 += sc1 * coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw1 + 1 + k0), xl0, xl1, xh0, xh1);
   }
-  float vg0 = simd_sum(ag0), vu0 = simd_sum(au0);
-  float vg1 = simd_sum(ag1), vu1 = simd_sum(au1);
+  acc0 += simd_shuffle_xor(acc0, 8); acc0 += simd_shuffle_xor(acc0, 4); acc0 += simd_shuffle_xor(acc0, 2); acc0 += simd_shuffle_xor(acc0, 1);
+  acc1 += simd_shuffle_xor(acc1, 8); acc1 += simd_shuffle_xor(acc1, 4); acc1 += simd_shuffle_xor(acc1, 2); acc1 += simd_shuffle_xor(acc1, 1);
+  float vu0 = simd_shuffle(acc0, 16);
+  float vu1 = simd_shuffle(acc1, 16);
   if (lane == 0) {
-    float a0 = beta * tanh(vg0 / beta) / (1.0f + exp(-vg0));
-    float a1 = beta * tanh(vg1 / beta) / (1.0f + exp(-vg1));
+    float a0 = beta * tanh(acc0 / beta) / (1.0f + exp(-acc0));
+    float a1 = beta * tanh(acc1 / beta) / (1.0f + exp(-acc1));
     if (lb > 0.0f) { vu0 = lb * tanh(vu0 / lb); vu1 = lb * tanh(vu1 / lb); }
     out.data[o0] = a0 * vu0;
     out.data[o1] = a1 * vu1;
@@ -3730,46 +3932,1168 @@ COAX_DEV void coax_am_dot_iq4_moe_2_write(coax_v_u16 w, coax_v_u32 ids, coax_v_f
     coax_trap_(line, coax_err);
     return;
   }
-  uint32_t lane = tid & 31u;
-  uint32_t blk_lane = lane >> 2;
-  uint32_t qtr = lane & 3u;
-  int k0 = (int)(qtr * 2u);
-  int xq = (int)(qtr * 4u);
-  float acc0 = 0.0f, acc1 = 0.0f;
   for (int slot = 0; slot < (int)n_used; slot++) {
     int64_t eid = (int64_t)ids.data[slot];
-    int64_t rb0 = eid * exp_words + r0_off;
-    int64_t rb1 = eid * exp_words + r1_off;
-    if (rb0 + blocks * 9 > w.count || rb1 + blocks * 9 > w.count) { coax_trap_(line, coax_err); return; }
-    float ew = wts.data[slot];
-    const device uint16_t *wp0 = w.data + rb0;
-    const device uint16_t *wp1 = w.data + rb1;
-    const device float *xp = x.data + slot * cols;
-    float sa0 = 0.0f, sa1 = 0.0f;
-    for (int b = (int)blk_lane; b < (int)blocks; b += 8) {
-      const device float *bx = xp + b * 32 + xq;
-      float4 xl = *(const device float4 *)bx;
-      float4 xh = *(const device float4 *)(bx + 16);
-      const device uint16_t *bw0 = wp0 + b * 9;
-      const device uint16_t *bw1 = wp1 + b * 9;
-      float sc0 = float(as_type<half>(bw0[0]));
-      float sc1 = float(as_type<half>(bw1[0]));
-      packed_ushort2 p0 = *(const device packed_ushort2 *)(bw0 + 1 + k0);
-      packed_ushort2 p1 = *(const device packed_ushort2 *)(bw1 + 1 + k0);
-      uint32_t v0 = p0.x, v1 = p0.y, u0 = p1.x, u1 = p1.y;
-      sa0 += sc0 * (coax_iq4_lut[v0 & 15u] * xl.x + coax_iq4_lut[(v0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(v0 >> 8u) & 15u] * xl.y + coax_iq4_lut[v0 >> 12u] * xh.y
-                  + coax_iq4_lut[v1 & 15u] * xl.z + coax_iq4_lut[(v1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(v1 >> 8u) & 15u] * xl.w + coax_iq4_lut[v1 >> 12u] * xh.w);
-      sa1 += sc1 * (coax_iq4_lut[u0 & 15u] * xl.x + coax_iq4_lut[(u0 >> 4u) & 15u] * xh.x + coax_iq4_lut[(u0 >> 8u) & 15u] * xl.y + coax_iq4_lut[u0 >> 12u] * xh.y
-                  + coax_iq4_lut[u1 & 15u] * xl.z + coax_iq4_lut[(u1 >> 4u) & 15u] * xh.z + coax_iq4_lut[(u1 >> 8u) & 15u] * xl.w + coax_iq4_lut[u1 >> 12u] * xh.w);
+    if (eid * exp_words + r0_off + blocks * 9 > w.count || eid * exp_words + r1_off + blocks * 9 > w.count) {
+      coax_trap_(line, coax_err);
+      return;
     }
-    acc0 += ew * sa0;
-    acc1 += ew * sa1;
+  }
+  uint32_t lane = tid & 31u;
+  int iblocks = (int)blocks;
+  int total_b = (int)n_used * iblocks;
+  float acc0 = 0.0f, acc1 = 0.0f;
+  if (iblocks == 36) {
+    for (int tb = (int)lane; tb < total_b; tb += 32) {
+      int slot = tb / 36;
+      int b = tb - slot * 36;
+      int64_t eid = (int64_t)ids.data[slot];
+      float ew = 16.0f * wts.data[slot];
+      const device float *bx = x.data + slot * 1152 + b * 32;
+      const device uint16_t *bw0 = w.data + eid * exp_words + r0_off + b * 9;
+      const device uint16_t *bw1 = w.data + eid * exp_words + r1_off + b * 9;
+      float sc0 = ew * float(as_type<half>(bw0[0]));
+      float sc1 = ew * float(as_type<half>(bw1[0]));
+      float s0 = 0.0f, s1 = 0.0f;
+      for (int q = 0; q < 2; q++) {
+        half4 xl0 = half4(*(const device float4 *)(bx + q * 8));
+        half4 xl1 = half4(*(const device float4 *)(bx + q * 8 + 4));
+        half4 xh0 = half4(*(const device float4 *)(bx + q * 8 + 16));
+        half4 xh1 = half4(*(const device float4 *)(bx + q * 8 + 20));
+        s0 += coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw0 + 1 + q * 4), xl0, xl1, xh0, xh1);
+        s1 += coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw1 + 1 + q * 4), xl0, xl1, xh0, xh1);
+      }
+      acc0 += sc0 * s0;
+      acc1 += sc1 * s1;
+    }
+  } else {
+    for (int tb = (int)lane; tb < total_b; tb += 32) {
+      int slot = tb / iblocks;
+      int b = tb - slot * iblocks;
+      int64_t eid = (int64_t)ids.data[slot];
+      if ((eid + 1) * exp_words > w.count) { coax_trap_(line, coax_err); return; }
+      float ew = 16.0f * wts.data[slot];
+      const device float *bx = x.data + slot * (int)cols + b * 32;
+      const device uint16_t *bw0 = w.data + eid * exp_words + r0_off + b * 9;
+      const device uint16_t *bw1 = w.data + eid * exp_words + r1_off + b * 9;
+      float sc0 = ew * float(as_type<half>(bw0[0]));
+      float sc1 = ew * float(as_type<half>(bw1[0]));
+      float s0 = 0.0f, s1 = 0.0f;
+      for (int q = 0; q < 2; q++) {
+        half4 xl0 = half4(*(const device float4 *)(bx + q * 8));
+        half4 xl1 = half4(*(const device float4 *)(bx + q * 8 + 4));
+        half4 xh0 = half4(*(const device float4 *)(bx + q * 8 + 16));
+        half4 xh1 = half4(*(const device float4 *)(bx + q * 8 + 20));
+        s0 += coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw0 + 1 + q * 4), xl0, xl1, xh0, xh1);
+        s1 += coax_iq4_dot16_f16s(*(const device packed_ushort4 *)(bw1 + 1 + q * 4), xl0, xl1, xh0, xh1);
+      }
+      acc0 += sc0 * s0;
+      acc1 += sc1 * s1;
+    }
   }
   float t0 = simd_sum(acc0);
   float t1 = simd_sum(acc1);
   if (lane == 0) {
     if (add != 0) { out.data[o0] += t0; out.data[o1] += t1; }
     else { out.data[o0] = t0; out.data[o1] = t1; }
+  }
+}
+COAX_DEV void coax_am_dot_f16_tg_write(coax_v_u16 w, int64_t base, coax_v_f32 x, int64_t x_off, int64_t cols, int64_t add, float eps, coax_v_f32 out, int64_t out_idx, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (cols < 0 || base < 0 || base + cols > w.count || x_off < 0 || x_off + cols > x.count || out_idx < 0 || out_idx >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  const device uint16_t *wp = w.data + base;
+  const device float *xp = x.data + x_off;
+  int n4 = (int)(cols >> 2);
+  float4 acc4 = float4(0.0f);
+  float4 ss4 = float4(0.0f);
+  const device half4 *w4 = (const device half4 *)wp;
+  const device float4 *x4 = (const device float4 *)xp;
+  if (eps > 0.0f) {
+    for (int i = (int)tid; i < n4; i += 128) {
+      float4 xv = x4[i];
+      acc4 += float4(w4[i]) * xv;
+      ss4 += xv * xv;
+    }
+  } else {
+    for (int i = (int)tid; i < n4; i += 128) {
+      acc4 += float4(w4[i]) * x4[i];
+    }
+  }
+  float acc = (acc4.x + acc4.y) + (acc4.z + acc4.w);
+  float ss = (ss4.x + ss4.y) + (ss4.z + ss4.w);
+  int tail = n4 << 2;
+  if (tail + (int)tid < (int)cols) {
+    float xv = xp[tail + (int)tid];
+    acc += float(as_type<half>(wp[tail + (int)tid])) * xv;
+    if (eps > 0.0f) ss += xv * xv;
+  }
+  float wa = simd_sum(acc);
+  float ws = (eps > 0.0f) ? simd_sum(ss) : 0.0f;
+  if (lane == 0) {
+    tg[sg] = wa;
+    if (eps > 0.0f) tg[4 + sg] = ws;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    float tot = (tg[0] + tg[1]) + (tg[2] + tg[3]);
+    if (eps > 0.0f && cols > 0) {
+      float tss = (tg[4] + tg[5]) + (tg[6] + tg[7]);
+      tot *= rsqrt(tss / (float)cols + eps);
+    }
+    if (add != 0) out.data[out_idx] += tot;
+    else out.data[out_idx] = tot;
+  }
+}
+COAX_DEV void coax_am_dot_f16_tg_write_rms(coax_v_u16 w, int64_t base, coax_v_f32 x, int64_t x_off, int64_t cols, coax_v_f32 parts, int64_t p_off, int64_t n_parts, float eps, coax_v_f32 out, int64_t out_idx, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (cols < 0 || base < 0 || base + cols > w.count || x_off < 0 || x_off + cols > x.count || p_off < 0 || n_parts < 0 || p_off + n_parts > parts.count || out_idx < 0 || out_idx >= out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  const device uint16_t *wp = w.data + base;
+  const device float *xp = x.data + x_off;
+  int n4 = (int)(cols >> 2);
+  float4 acc4 = float4(0.0f);
+  const device half4 *w4 = (const device half4 *)wp;
+  const device float4 *x4 = (const device float4 *)xp;
+  for (int i = (int)tid; i < n4; i += 128) {
+    acc4 += float4(w4[i]) * x4[i];
+  }
+  float acc = (acc4.x + acc4.y) + (acc4.z + acc4.w);
+  int tail = n4 << 2;
+  if (tail + (int)tid < (int)cols) {
+    acc += float(as_type<half>(wp[tail + (int)tid])) * xp[tail + (int)tid];
+  }
+  float wa = simd_sum(acc);
+  float inv_rms = (sg == 0u) ? coax_inv_rms_parts(parts, p_off, n_parts, cols, eps, lane) : 1.0f;
+  if (lane == 0) tg[sg] = wa;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    out.data[out_idx] = ((tg[0] + tg[1]) + (tg[2] + tg[3])) * inv_rms;
+  }
+}
+COAX_DEV void coax_am_rmsnorm_f32(int64_t dim, int64_t has_w, float eps, coax_v_f32 x, int64_t x_off, coax_v_f32 w, int64_t w_off, coax_v_f32 out, int64_t o_off, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (dim <= 0 || x_off < 0 || x_off + dim > x.count || o_off < 0 || o_off + dim > out.count || (has_w != 0 && (w_off < 0 || w_off + dim > w.count))) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  if ((dim & 3) == 0 && dim <= 3072) {
+    int n4 = (int)(dim >> 2);
+    int i0 = (int)tid, i1 = i0 + 256, i2 = i0 + 512;
+    const device float4 *x4 = (const device float4 *)(x.data + x_off);
+    float4 v0 = (i0 < n4) ? x4[i0] : float4(0.0f);
+    float4 v1 = (i1 < n4) ? x4[i1] : float4(0.0f);
+    float4 v2 = (i2 < n4) ? x4[i2] : float4(0.0f);
+    float ss = dot(v0, v0) + dot(v1, v1) + dot(v2, v2);
+    float ts = simd_sum(ss);
+    if (lane == 0) tg[sg] = ts;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float tot = (tg[0] + tg[1]) + (tg[2] + tg[3]) + (tg[4] + tg[5]) + (tg[6] + tg[7]);
+    float inv = rsqrt(tot / (float)dim + eps);
+    device float4 *o4 = (device float4 *)(out.data + o_off);
+    if (has_w != 0) {
+      const device float4 *w4 = (const device float4 *)(w.data + w_off);
+      if (i0 < n4) o4[i0] = v0 * inv * w4[i0];
+      if (i1 < n4) o4[i1] = v1 * inv * w4[i1];
+      if (i2 < n4) o4[i2] = v2 * inv * w4[i2];
+    } else {
+      if (i0 < n4) o4[i0] = v0 * inv;
+      if (i1 < n4) o4[i1] = v1 * inv;
+      if (i2 < n4) o4[i2] = v2 * inv;
+    }
+    return;
+  }
+  const device float *xp = x.data + x_off;
+  device float *op = out.data + o_off;
+  float ss = 0.0f;
+  for (int i = (int)tid; i < (int)dim; i += 256) { float v = xp[i]; ss += v * v; }
+  float ts = simd_sum(ss);
+  if (lane == 0) tg[sg] = ts;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float tot = (tg[0] + tg[1]) + (tg[2] + tg[3]) + (tg[4] + tg[5]) + (tg[6] + tg[7]);
+  float inv = rsqrt(tot / (float)dim + eps);
+  if (has_w != 0) {
+    const device float *wp = w.data + w_off;
+    for (int i = (int)tid; i < (int)dim; i += 256) op[i] = xp[i] * inv * wp[i];
+  } else {
+    for (int i = (int)tid; i < (int)dim; i += 256) op[i] = xp[i] * inv;
+  }
+}
+COAX_DEV void coax_am_ctrl_up_apply_f16(int64_t dim, int64_t rank, int64_t row0, coax_v_u16 w_gain, int64_t wg_off, coax_v_u16 w_forget, int64_t wf_off, coax_v_f32 gate, int64_t g_off, coax_v_f32 cur, int64_t c_off, coax_v_f32 msg, int64_t m_off, coax_v_f32 out, int64_t o_off, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (dim <= 0 || rank < 0 || rank > 64 || row0 < 0 || wg_off < 0 || wg_off + rank * dim > w_gain.count || wf_off < 0 || wf_off + rank * dim > w_forget.count || g_off < 0 || g_off + rank > gate.count || c_off < 0 || c_off + dim > cur.count || m_off < 0 || m_off + dim > msg.count || o_off < 0 || o_off + dim > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  if ((int)tid < (int)rank) tg[tid] = gate.data[g_off + tid];
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  int64_t row = row0 + (int64_t)tid;
+  if (row < dim) {
+    const device half *wgp = (const device half *)(w_gain.data + wg_off) + row;
+    const device half *wfp = (const device half *)(w_forget.data + wf_off) + row;
+    int idim = (int)dim, irank = (int)rank;
+    float sg = 0.0f, sf = 0.0f;
+    int k = 0;
+    for (; k + 3 < irank; k += 4) {
+      float g0 = tg[k], g1 = tg[k + 1], g2 = tg[k + 2], g3 = tg[k + 3];
+      sg += float(wgp[0]) * g0 + float(wgp[idim]) * g1 + float(wgp[2 * idim]) * g2 + float(wgp[3 * idim]) * g3;
+      sf += float(wfp[0]) * g0 + float(wfp[idim]) * g1 + float(wfp[2 * idim]) * g2 + float(wfp[3 * idim]) * g3;
+      wgp += 4 * idim;
+      wfp += 4 * idim;
+    }
+    for (; k < irank; k++) {
+      float gv = tg[k];
+      sg += float(wgp[0]) * gv;
+      sf += float(wfp[0]) * gv;
+      wgp += idim;
+      wfp += idim;
+    }
+    float c = cur.data[c_off + row];
+    float m = msg.data[m_off + row];
+    out.data[o_off + row] = c - tanh(sf) * c + tanh(sg) * m;
+  }
+}
+COAX_DEV void coax_am_mix_fused(int64_t mode, int64_t dim, int64_t n_blocks, float eps, coax_v_f32 blocks_buf, coax_v_f32 cur, coax_v_f32 query, int64_t q_off, coax_v_f32 aux, int64_t aux_off, coax_v_f32 out0, int64_t o0_off, coax_v_f32 out1, int64_t o1_off, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int n_states = (int)n_blocks + 1;
+  if (dim <= 0 || n_blocks < 0 || n_states > 32 || n_blocks * dim > blocks_buf.count || dim > cur.count || q_off < 0 || q_off + dim > query.count || o0_off < 0 || o0_off + dim > out0.count || (mode >= 1 && (aux_off < 0 || aux_off + dim > aux.count)) || (mode == 2 && (o1_off < 0 || o1_off + 2 * dim > out1.count))) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup float *tg_ss = tg;
+  threadgroup float *tg_dot = tg + 256;
+  threadgroup float *tg_w = tg + 512;
+  threadgroup float *tg_r1 = tg + 544;
+  threadgroup float *tg_r2 = tg + 552;
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  if ((dim & 3) == 0 && dim <= 3072) {
+    int n4 = (int)(dim >> 2);
+    int i0 = (int)tid, i1 = i0 + 256, i2 = i0 + 512;
+    const device float4 *q4 = (const device float4 *)(query.data + q_off);
+    float4 qv0 = (i0 < n4) ? q4[i0] : float4(0.0f);
+    float4 qv1 = (i1 < n4) ? q4[i1] : float4(0.0f);
+    float4 qv2 = (i2 < n4) ? q4[i2] : float4(0.0f);
+    for (int s = 0; s < n_states; s++) {
+      const device float4 *v4 = (s < (int)n_blocks) ? (const device float4 *)(blocks_buf.data + s * dim) : (const device float4 *)cur.data;
+      float ss = 0.0f, dd = 0.0f;
+      if (i0 < n4) { float4 v = v4[i0]; ss += dot(v, v); dd += dot(v, qv0); }
+      if (i1 < n4) { float4 v = v4[i1]; ss += dot(v, v); dd += dot(v, qv1); }
+      if (i2 < n4) { float4 v = v4[i2]; ss += dot(v, v); dd += dot(v, qv2); }
+      float ts = simd_sum(ss), td = simd_sum(dd);
+      if (lane == 0) { tg_ss[s * 8 + sg] = ts; tg_dot[s * 8 + sg] = td; }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (tid < 32u) {
+      float inv_d = 1.0f / (float)dim;
+      float inv_sqrt_d = rsqrt((float)dim);
+      float sc = -3.0e38f, iv = 0.0f;
+      if ((int)tid < n_states) {
+        int b = (int)tid * 8;
+        float tss = (tg_ss[b] + tg_ss[b+1]) + (tg_ss[b+2] + tg_ss[b+3]) + (tg_ss[b+4] + tg_ss[b+5]) + (tg_ss[b+6] + tg_ss[b+7]);
+        float tdot = (tg_dot[b] + tg_dot[b+1]) + (tg_dot[b+2] + tg_dot[b+3]) + (tg_dot[b+4] + tg_dot[b+5]) + (tg_dot[b+6] + tg_dot[b+7]);
+        iv = rsqrt(tss * inv_d + 1.0e-6f);
+        sc = tdot * iv * inv_sqrt_d;
+      }
+      float mx = simd_max(sc);
+      float w = ((int)tid < n_states) ? exp(sc - mx) : 0.0f;
+      float inv_e = 1.0f / simd_sum(w);
+      if ((int)tid < n_states) tg_w[tid] = w * inv_e * iv;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float4 a0 = float4(0.0f), a1 = float4(0.0f), a2 = float4(0.0f);
+    for (int s = 0; s < n_states; s++) {
+      float ws = tg_w[s];
+      const device float4 *v4 = (s < (int)n_blocks) ? (const device float4 *)(blocks_buf.data + s * dim) : (const device float4 *)cur.data;
+      if (i0 < n4) a0 += ws * v4[i0];
+      if (i1 < n4) a1 += ws * v4[i1];
+      if (i2 < n4) a2 += ws * v4[i2];
+    }
+    device float4 *o0_4 = (device float4 *)(out0.data + o0_off);
+    if (mode == 0) {
+      if (i0 < n4) o0_4[i0] = a0;
+      if (i1 < n4) o0_4[i1] = a1;
+      if (i2 < n4) o0_4[i2] = a2;
+    } else if (mode == 1) {
+      float s1 = 0.0f;
+      if (i0 < n4) s1 += dot(a0, a0);
+      if (i1 < n4) s1 += dot(a1, a1);
+      if (i2 < n4) s1 += dot(a2, a2);
+      float ts1 = simd_sum(s1);
+      if (lane == 0) tg_r1[sg] = ts1;
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      float tot = (tg_r1[0] + tg_r1[1]) + (tg_r1[2] + tg_r1[3]) + (tg_r1[4] + tg_r1[5]) + (tg_r1[6] + tg_r1[7]);
+      float inv = rsqrt(tot / (float)dim + eps);
+      const device float4 *nw4 = (const device float4 *)(aux.data + aux_off);
+      if (i0 < n4) o0_4[i0] = a0 * inv * nw4[i0];
+      if (i1 < n4) o0_4[i1] = a1 * inv * nw4[i1];
+      if (i2 < n4) o0_4[i2] = a2 * inv * nw4[i2];
+    } else {
+      if (i0 < n4) o0_4[i0] = a0;
+      if (i1 < n4) o0_4[i1] = a1;
+      if (i2 < n4) o0_4[i2] = a2;
+      const device float4 *m4 = (const device float4 *)(aux.data + aux_off);
+      float4 m0 = (i0 < n4) ? m4[i0] : float4(0.0f);
+      float4 m1 = (i1 < n4) ? m4[i1] : float4(0.0f);
+      float4 m2 = (i2 < n4) ? m4[i2] : float4(0.0f);
+      float s1 = 0.0f, s2 = 0.0f;
+      if (i0 < n4) { s1 += dot(a0, a0); s2 += dot(m0, m0); }
+      if (i1 < n4) { s1 += dot(a1, a1); s2 += dot(m1, m1); }
+      if (i2 < n4) { s1 += dot(a2, a2); s2 += dot(m2, m2); }
+      float ts1 = simd_sum(s1), ts2 = simd_sum(s2);
+      if (lane == 0) { tg_r1[sg] = ts1; tg_r2[sg] = ts2; }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      float tot1 = (tg_r1[0] + tg_r1[1]) + (tg_r1[2] + tg_r1[3]) + (tg_r1[4] + tg_r1[5]) + (tg_r1[6] + tg_r1[7]);
+      float tot2 = (tg_r2[0] + tg_r2[1]) + (tg_r2[2] + tg_r2[3]) + (tg_r2[4] + tg_r2[5]) + (tg_r2[6] + tg_r2[7]);
+      float inv1 = rsqrt(tot1 / (float)dim + 1.0e-6f);
+      float inv2 = rsqrt(tot2 / (float)dim + 1.0e-6f);
+      device float4 *o1_a = (device float4 *)(out1.data + o1_off);
+      device float4 *o1_b = (device float4 *)(out1.data + o1_off + dim);
+      if (i0 < n4) { o1_a[i0] = a0 * inv1; o1_b[i0] = m0 * inv2; }
+      if (i1 < n4) { o1_a[i1] = a1 * inv1; o1_b[i1] = m1 * inv2; }
+      if (i2 < n4) { o1_a[i2] = a2 * inv1; o1_b[i2] = m2 * inv2; }
+    }
+    return;
+  }
+  const device float *qp = query.data + q_off;
+  for (int s = 0; s < n_states; s++) {
+    const device float *vp = (s < (int)n_blocks) ? (blocks_buf.data + s * dim) : cur.data;
+    float ss = 0.0f, dd = 0.0f;
+    for (int i = (int)tid; i < (int)dim; i += 256) { float v = vp[i]; ss += v * v; dd += v * qp[i]; }
+    float ts = simd_sum(ss), td = simd_sum(dd);
+    if (lane == 0) { tg_ss[s * 8 + sg] = ts; tg_dot[s * 8 + sg] = td; }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < 32u) {
+    float inv_d = 1.0f / (float)dim, inv_sqrt_d = rsqrt((float)dim);
+    float sc = -3.0e38f, iv = 0.0f;
+    if ((int)tid < n_states) {
+      int b = (int)tid * 8;
+      float tss = (tg_ss[b] + tg_ss[b+1]) + (tg_ss[b+2] + tg_ss[b+3]) + (tg_ss[b+4] + tg_ss[b+5]) + (tg_ss[b+6] + tg_ss[b+7]);
+      float tdot = (tg_dot[b] + tg_dot[b+1]) + (tg_dot[b+2] + tg_dot[b+3]) + (tg_dot[b+4] + tg_dot[b+5]) + (tg_dot[b+6] + tg_dot[b+7]);
+      iv = rsqrt(tss * inv_d + 1.0e-6f);
+      sc = tdot * iv * inv_sqrt_d;
+    }
+    float mx = simd_max(sc);
+    float w = ((int)tid < n_states) ? exp(sc - mx) : 0.0f;
+    float inv_e = 1.0f / simd_sum(w);
+    if ((int)tid < n_states) tg_w[tid] = w * inv_e * iv;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  device float *o0p = out0.data + o0_off;
+  float s1 = 0.0f, s2 = 0.0f;
+  for (int i = (int)tid; i < (int)dim; i += 256) {
+    float acc = 0.0f;
+    for (int s = 0; s < n_states; s++) {
+      const device float *vp = (s < (int)n_blocks) ? (blocks_buf.data + s * dim) : cur.data;
+      acc += tg_w[s] * vp[i];
+    }
+    o0p[i] = acc;
+    s1 += acc * acc;
+    if (mode == 2) { float mv = aux.data[aux_off + i]; s2 += mv * mv; }
+  }
+  if (mode == 0) return;
+  float ts1 = simd_sum(s1), ts2 = simd_sum(s2);
+  if (lane == 0) { tg_r1[sg] = ts1; tg_r2[sg] = ts2; }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float tot1 = (tg_r1[0] + tg_r1[1]) + (tg_r1[2] + tg_r1[3]) + (tg_r1[4] + tg_r1[5]) + (tg_r1[6] + tg_r1[7]);
+  if (mode == 1) {
+    float inv = rsqrt(tot1 / (float)dim + eps);
+    const device float *nwp = aux.data + aux_off;
+    for (int i = (int)tid; i < (int)dim; i += 256) o0p[i] = o0p[i] * inv * nwp[i];
+  } else {
+    float tot2 = (tg_r2[0] + tg_r2[1]) + (tg_r2[2] + tg_r2[3]) + (tg_r2[4] + tg_r2[5]) + (tg_r2[6] + tg_r2[7]);
+    float inv1 = rsqrt(tot1 / (float)dim + 1.0e-6f);
+    float inv2 = rsqrt(tot2 / (float)dim + 1.0e-6f);
+    const device float *mp = aux.data + aux_off;
+    device float *o1p = out1.data + o1_off;
+    for (int i = (int)tid; i < (int)dim; i += 256) { o1p[i] = o0p[i] * inv1; o1p[dim + i] = mp[i] * inv2; }
+  }
+}
+COAX_DEV void coax_am_router_top8(int64_t n_exp, int64_t n_used, int64_t has_bias, float scale, coax_v_f32 logits, coax_v_f32 bias, coax_v_u32 out_ids, coax_v_f32 out_wts, uint32_t lane, int32_t line, COAX_ERR) {
+  if (n_exp < 1 || n_exp > 128 || n_used < 1 || n_used > 32 || n_exp > logits.count || (has_bias != 0 && n_exp > bias.count) || n_used > out_ids.count || n_used > out_wts.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int e0 = (int)lane, e1 = e0 + 32, e2 = e0 + 64, e3 = e0 + 96;
+  float p0 = 0.0f, s0 = -3.0e38f, p1 = 0.0f, s1 = -3.0e38f, p2 = 0.0f, s2 = -3.0e38f, p3 = 0.0f, s3 = -3.0e38f;
+  if (e0 < (int)n_exp) { p0 = 1.0f / (1.0f + exp(-logits.data[e0])); s0 = has_bias ? (p0 + bias.data[e0]) : p0; }
+  if (e1 < (int)n_exp) { p1 = 1.0f / (1.0f + exp(-logits.data[e1])); s1 = has_bias ? (p1 + bias.data[e1]) : p1; }
+  if (e2 < (int)n_exp) { p2 = 1.0f / (1.0f + exp(-logits.data[e2])); s2 = has_bias ? (p2 + bias.data[e2]) : p2; }
+  if (e3 < (int)n_exp) { p3 = 1.0f / (1.0f + exp(-logits.data[e3])); s3 = has_bias ? (p3 + bias.data[e3]) : p3; }
+  float wsum = 0.0f, my_w = 0.0f;
+  uint32_t my_id = 0u;
+  for (int k = 0; k < (int)n_used; k++) {
+    float bs = s0, bp = p0; int be = e0;
+    if (s1 > bs) { bs = s1; be = e1; bp = p1; }
+    if (s2 > bs) { bs = s2; be = e2; bp = p2; }
+    if (s3 > bs) { bs = s3; be = e3; bp = p3; }
+    float gmax = simd_max(bs);
+    float neg_e = (bs == gmax) ? (float)(-be) : -999999.0f;
+    int win_e = (int)(-simd_max(neg_e));
+    float win_p = simd_sum((be == win_e) ? bp : 0.0f);
+    wsum += win_p;
+    if ((int)lane == k) { my_id = (uint32_t)win_e; my_w = win_p; }
+    if (be == win_e) {
+      if (win_e == e0) s0 = -3.0e38f;
+      else if (win_e == e1) s1 = -3.0e38f;
+      else if (win_e == e2) s2 = -3.0e38f;
+      else if (win_e == e3) s3 = -3.0e38f;
+    }
+  }
+  if (wsum < 0.00006103515625f) wsum = 0.00006103515625f;
+  if ((int)lane < (int)n_used) {
+    out_ids.data[lane] = my_id;
+    out_wts.data[lane] = my_w * (scale / wsum);
+  }
+}
+COAX_DEV void coax_am_conv_kv_both(int64_t item, int64_t n_head_kv, int64_t n_kv_elem, int64_t slot_pos, int64_t has_dyn, float threshold, float eps, coax_v_f32 k_raw, coax_v_f32 v_raw, coax_v_f32 kw, coax_v_f32 vw, coax_v_f32 dyn, coax_v_f32 k_hist, coax_v_f32 v_hist, coax_v_u16 k_cache, coax_v_u16 v_cache, uint32_t lane, int32_t line, COAX_ERR) {
+  int64_t is_v = item / n_head_kv;
+  int64_t h = item % n_head_kv;
+  int64_t base = h * 128;
+  int64_t dbase = slot_pos * n_kv_elem + base;
+  int64_t dyn_base = (is_v * n_head_kv + h) * 4;
+  if (n_head_kv <= 0 || base + 128 > k_raw.count || base + 128 > v_raw.count || (base + 128) * 4 > kw.count || (base + 128) * 4 > vw.count || (base + 128) * 3 > k_hist.count || (base + 128) * 3 > v_hist.count || dbase + 128 > k_cache.count || dbase + 128 > v_cache.count || (has_dyn != 0 && dyn_base + 4 > dyn.count)) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  float inv_s = has_dyn ? 0.3333333333333333f : 0.4472135954999579f;
+  float4 dv = has_dyn ? *(const device float4 *)(dyn.data + dyn_base) : float4(0.0f);
+  int64_t c0 = base + (int64_t)(lane * 4u);
+  const device float *rawp = (is_v == 0) ? k_raw.data : v_raw.data;
+  const device float *wp = (is_v == 0) ? kw.data : vw.data;
+  device float *hp = (is_v == 0) ? k_hist.data : v_hist.data;
+  float4 xr = *(const device float4 *)(rawp + c0);
+  float vals[4];
+  for (int j = 0; j < 4; j++) {
+    int64_t c = c0 + j;
+    device float *hc = hp + c * 3;
+    float x0 = hc[0], x1 = hc[1], x2 = hc[2], x3 = xr[j];
+    hc[0] = x1; hc[1] = x2; hc[2] = x3;
+    float4 cw = *(const device float4 *)(wp + c * 4);
+    float a = x0 * cw.x + x1 * cw.y + x2 * cw.z + x3 * cw.w;
+    if (has_dyn) a += dv.x * x3 + dv.y * x2 + dv.z * x1 + dv.w * x0;
+    vals[j] = (x3 + a) * inv_s;
+  }
+  float4 vv = float4(vals[0], vals[1], vals[2], vals[3]);
+  float tot = simd_sum(dot(vv, vv));
+  if (is_v == 0) {
+    float fac = threshold / (sqrt(tot) + 1.0e-6f);
+    if (fac > 1.0f) fac = 1.0f;
+    *(device half4 *)(k_cache.data + dbase + lane * 4u) = half4(vv * fac);
+  } else {
+    float inv = rsqrt(tot * (1.0f / 128.0f) + eps);
+    *(device half4 *)(v_cache.data + dbase + lane * 4u) = half4(vv * inv);
+  }
+}
+COAX_DEV void coax_am_attn_gqa_1pass(int64_t h, uint32_t dims0, uint32_t dims1, uint32_t kv_info, int64_t pos, float qk_clip, float rel_clip, float q_tau, coax_v_f32 q, coax_v_f32 q_scale, coax_v_f32 r, coax_v_f32 r_scale, coax_v_f32 rel_bias, coax_v_f32 sinks, coax_v_f32 gate, coax_v_u16 k_cache, coax_v_u16 v_cache, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int n_head_kv = (int)((dims0 >> 8u) & 255u);
+  int head_dim = (int)((dims0 >> 16u) & 255u);
+  int n_rel = (int)((dims0 >> 24u) & 255u);
+  int extent = (int)(dims1 & 65535u);
+  int is_swa = (int)((dims1 >> 16u) & 1u);
+  int swa = (int)((dims1 >> 17u) & 32767u);
+  int kv_cap = (int)(kv_info & 65535u);
+  int has_qs = (int)((kv_info >> 16u) & 1u);
+  int has_rs = (int)((kv_info >> 17u) & 1u);
+  int64_t kv_h = h / 3;
+  int64_t n_kv_elem = (int64_t)n_head_kv * 128;
+  if (head_dim != 128 || h < 0 || (h + 1) * 128 > q.count || (h + 1) * 128 > gate.count || (h + 1) * 128 > out.count || h >= sinks.count || (h + 1) * n_rel > r.count || (has_qs && (h + 1) * 128 > q_scale.count) || (has_rs && (h + 1) * n_rel > r_scale.count) || (int64_t)kv_cap * n_kv_elem > k_cache.count || (int64_t)kv_cap * n_kv_elem > v_cache.count || (int64_t)extent * n_rel > rel_bias.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  int64_t start = (is_swa && pos >= swa) ? (pos - swa + 1) : 0;
+  int n_keys = (int)(pos - start + 1);
+  float scale = 1.0f / sqrt(128.0f);
+  float sk = sinks.data[h];
+  int64_t qb = h * 128 + (int64_t)(lane * 4u);
+  float4 qv = *(const device float4 *)(q.data + qb);
+  if (has_qs) qv *= *(const device float4 *)(q_scale.data + qb);
+  float qfac = qk_clip / (sqrt(simd_sum(dot(qv, qv))) + 1.0e-6f);
+  if (qfac > 1.0f) qfac = 1.0f;
+  qv *= (qfac * q_tau);
+  float rv = 0.0f;
+  if ((int)lane < n_rel) {
+    int64_t ridx = h * n_rel + (int64_t)lane;
+    rv = r.data[ridx];
+    if (has_rs) rv *= r_scale.data[ridx];
+  }
+  float rfac = rel_clip / (sqrt(simd_sum(rv * rv)) + 1.0e-6f);
+  if (rfac > 1.0f) rfac = 1.0f;
+  float rreg = rv * (rfac * q_tau);
+  float m = -3.0e38f, l = 0.0f;
+  float4 acc = float4(0.0f);
+  int64_t kh_off = kv_h * 128 + (int64_t)(lane * 4u);
+  for (int kidx = (int)sg; kidx < n_keys; kidx += 4) {
+    int64_t kp = start + kidx;
+    int64_t slot = is_swa ? (kp % kv_cap) : kp;
+    int64_t kb = slot * n_kv_elem + kh_off;
+    float4 kv = float4(*(const device half4 *)(k_cache.data + kb));
+    float d = simd_sum(dot(qv, kv));
+    int dist = (int)(pos - kp);
+    float rbp = (dist < extent && (int)lane < n_rel) ? (rel_bias.data[dist * n_rel + (int)lane] * rreg) : 0.0f;
+    float sc = d * scale + simd_sum(rbp) - sk;
+    float nm = (sc > m) ? sc : m;
+    float alpha = (m > -1.0e20f) ? exp(m - nm) : 0.0f;
+    float wt = exp(sc - nm);
+    m = nm;
+    l = l * alpha + wt;
+    float4 vv = float4(*(const device half4 *)(v_cache.data + kb));
+    acc = acc * alpha + wt * vv;
+  }
+  threadgroup float *msh = tg;
+  threadgroup float *lsh = tg + 4;
+  threadgroup float *vsh = tg + 8;
+  if (lane == 0) { msh[sg] = m; lsh[sg] = l; }
+  *(threadgroup float4 *)(vsh + sg * 128 + lane * 4u) = acc;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float gmax = 0.0f;
+  for (int s = 0; s < 4; s++) if (msh[s] > gmax) gmax = msh[s];
+  float gsum = exp(-gmax);
+  float vtot = 0.0f;
+  for (int s = 0; s < 4; s++) {
+    float lv = lsh[s];
+    if (lv > 0.0f) {
+      float sc = exp(msh[s] - gmax);
+      gsum += lv * sc;
+      vtot += vsh[s * 128 + tid] * sc;
+    }
+  }
+  int64_t oidx = h * 128 + (int64_t)tid;
+  out.data[oidx] = (vtot / gsum) / (1.0f + exp(-gate.data[oidx]));
+}
+COAX_DEV void coax_am_dot_q4_conv_2_write(coax_v_u16 w, int64_t b0, int64_t b1, coax_v_f32 x, int64_t blocks, int64_t add_res, coax_v_f32 cw, coax_v_f32 hist, coax_v_f32 res, coax_v_f32 out, int64_t r0, int64_t r1, uint32_t tid, int32_t line, COAX_ERR) {
+  if (blocks < 0 || b0 < 0 || b0 + blocks * 9 > w.count || b1 < 0 || b1 + blocks * 9 > w.count || blocks * 32 > x.count || r0 < 0 || r1 < 0 || r0 >= out.count || r1 >= out.count || (r0 + 1) * 4 > cw.count || (r1 + 1) * 4 > cw.count || (r0 + 1) * 3 > hist.count || (r1 + 1) * 3 > hist.count || (add_res != 0 && (r0 >= res.count || r1 >= res.count))) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 1;
+  uint32_t half_b = lane & 1u;
+  int k0 = (int)(half_b * 4u);
+  int xq = (int)(half_b * 8u);
+  const device uint16_t *wp0 = w.data + b0;
+  const device uint16_t *wp1 = w.data + b1;
+  const device float *xp = x.data;
+  float acc0 = 0.0f, acc1 = 0.0f;
+  for (int b = (int)blk_lane; b < (int)blocks; b += 16) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 f0 = *(const device float4 *)bx, f1 = *(const device float4 *)(bx + 4);
+    float4 f2 = *(const device float4 *)(bx + 16), f3 = *(const device float4 *)(bx + 20);
+    float4 fs = (f0 + f1) + (f2 + f3);
+    float xsum = (fs.x + fs.y) + (fs.z + fs.w);
+    half4 xl0 = half4(f0), xl1 = half4(f1), xh0 = half4(f2), xh1 = half4(f3);
+    const device uint16_t *bw0 = wp0 + b * 9;
+    const device uint16_t *bw1 = wp1 + b * 9;
+    acc0 += float(as_type<half>(bw0[0])) * coax_q4_alu_dot16_f16(*(const device packed_ushort4 *)(bw0 + 1 + k0), xl0, xl1, xh0, xh1, xsum);
+    acc1 += float(as_type<half>(bw1[0])) * coax_q4_alu_dot16_f16(*(const device packed_ushort4 *)(bw1 + 1 + k0), xl0, xl1, xh0, xh1, xsum);
+  }
+  float t0 = simd_sum(acc0);
+  float t1 = simd_sum(acc1);
+  if (lane == 0) {
+    device float *h0 = hist.data + r0 * 3;
+    float x0 = h0[0], x1 = h0[1], x2 = h0[2];
+    h0[0] = x1; h0[1] = x2; h0[2] = t0;
+    float4 c0 = *(const device float4 *)(cw.data + r0 * 4);
+    float a0 = (t0 + x0 * c0.x + x1 * c0.y + x2 * c0.z + t0 * c0.w) * 0.4472135954999579f;
+    out.data[r0] = add_res ? (res.data[r0] + a0) : a0;
+    if (r1 != r0) {
+      device float *h1 = hist.data + r1 * 3;
+      float y0 = h1[0], y1 = h1[1], y2 = h1[2];
+      h1[0] = y1; h1[1] = y2; h1[2] = t1;
+      float4 c1 = *(const device float4 *)(cw.data + r1 * 4);
+      float a1 = (t1 + y0 * c1.x + y1 * c1.y + y2 * c1.z + t1 * c1.w) * 0.4472135954999579f;
+      out.data[r1] = add_res ? (res.data[r1] + a1) : a1;
+    }
+  }
+}
+COAX_DEV void coax_iq4_init_tlut(threadgroup half2 *tlut, uint32_t tid) {
+  tlut[tid]        = half2(coax_iq4_lut_f16s[tid & 15u], coax_iq4_lut_f16s[tid >> 4u]);
+  tlut[tid + 128u] = half2(coax_iq4_lut_f16s[tid & 15u], coax_iq4_lut_f16s[(tid + 128u) >> 4u]);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+}
+COAX_DEV float coax_iq4_dot8_tg(packed_ushort2 p, half2 x0, half2 x1, half2 x2, half2 x3, threadgroup const half2 *tlut) {
+  uint32_t a = p.x, c = p.y;
+  half2 s = tlut[a & 255u] * x0 + tlut[a >> 8u] * x1 + tlut[c & 255u] * x2 + tlut[c >> 8u] * x3;
+  return float(s.x + s.y);
+}
+static __attribute__((noinline)) int coax_router_pick_slot_noinline(int n_exp, int n_used, int has_bias, float scale, const device float *logits, const device float *bias, int slot, int write_out, device uint32_t *out_ids, device float *out_wts, uint32_t lane) {
+  int e0 = (int)lane, e1 = e0 + 32, e2 = e0 + 64, e3 = e0 + 96;
+  float p0 = 0.0f, s0 = -3.0e38f, p1 = 0.0f, s1 = -3.0e38f, p2 = 0.0f, s2 = -3.0e38f, p3 = 0.0f, s3 = -3.0e38f;
+  if (e0 < n_exp) { p0 = 1.0f / (1.0f + exp(-logits[e0])); s0 = has_bias ? (p0 + bias[e0]) : p0; }
+  if (e1 < n_exp) { p1 = 1.0f / (1.0f + exp(-logits[e1])); s1 = has_bias ? (p1 + bias[e1]) : p1; }
+  if (e2 < n_exp) { p2 = 1.0f / (1.0f + exp(-logits[e2])); s2 = has_bias ? (p2 + bias[e2]) : p2; }
+  if (e3 < n_exp) { p3 = 1.0f / (1.0f + exp(-logits[e3])); s3 = has_bias ? (p3 + bias[e3]) : p3; }
+  float wsum = 0.0f, my_w = 0.0f;
+  uint32_t my_id = 0u;
+  int slot_id = 0;
+  int lim = write_out ? n_used : (slot + 1);
+  for (int k = 0; k < lim; k++) {
+    float bs = s0, bp = p0; int be = e0;
+    if (s1 > bs) { bs = s1; be = e1; bp = p1; }
+    if (s2 > bs) { bs = s2; be = e2; bp = p2; }
+    if (s3 > bs) { bs = s3; be = e3; bp = p3; }
+    float gmax = simd_max(bs);
+    float neg_e = (bs == gmax) ? (float)(-be) : -999999.0f;
+    int win_e = (int)(-simd_max(neg_e));
+    if (k == slot) slot_id = win_e;
+    if (write_out) {
+      float win_p = simd_sum((be == win_e) ? bp : 0.0f);
+      wsum += win_p;
+      if ((int)lane == k) { my_id = (uint32_t)win_e; my_w = win_p; }
+    }
+    if (be == win_e) {
+      if (win_e == e0) s0 = -3.0e38f;
+      else if (win_e == e1) s1 = -3.0e38f;
+      else if (win_e == e2) s2 = -3.0e38f;
+      else if (win_e == e3) s3 = -3.0e38f;
+    }
+  }
+  if (write_out) {
+    if (wsum < 0.00006103515625f) wsum = 0.00006103515625f;
+    if ((int)lane < n_used) { out_ids[lane] = my_id; out_wts[lane] = my_w * (scale / wsum); }
+  }
+  return slot_id;
+}
+COAX_DEV void coax_am_moe_gu_iq4_tg(int64_t slot, int64_t row0, int64_t n_ff, int64_t cols, int64_t n_exp, int64_t n_used, int64_t has_bias, float r_scale, float beta, float lb, coax_v_u16 w, coax_v_f32 x, coax_v_f32 logits, coax_v_f32 bias, coax_v_u32 ids, coax_v_f32 wts, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  int64_t rw = blocks * 9;
+  if (n_exp < 1 || n_exp > 128 || n_used < 1 || n_used > 32 || slot < 0 || slot >= n_used || row0 < 0 || n_ff <= 0 || cols <= 0 || (cols & 31) != 0 || cols > x.count || n_exp > logits.count || (has_bias != 0 && n_exp > bias.count) || n_used > ids.count || n_used > wts.count || (slot + 1) * n_ff > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup half2 *tlut = (threadgroup half2 *)tg;
+  threadgroup int *tg_eid = (threadgroup int *)(tg + 256);
+  tlut[tid]        = half2(coax_iq4_lut_f16s[tid & 15u], coax_iq4_lut_f16s[tid >> 4u]);
+  tlut[tid + 128u] = half2(coax_iq4_lut_f16s[tid & 15u], coax_iq4_lut_f16s[(tid + 128u) >> 4u]);
+  if (tid < 32u) {
+    int e = coax_router_pick_slot_noinline((int)n_exp, (int)n_used, (int)has_bias, r_scale, logits.data, bias.data, (int)slot, (slot == 0 && row0 == 0) ? 1 : 0, ids.data, wts.data, tid);
+    if (tid == 0u) tg_eid[0] = e;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  int64_t eid = (int64_t)tg_eid[0];
+  int64_t eb = eid * 2 * n_ff * rw;
+  if (eb + 2 * n_ff * rw > w.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int64_t r0 = row0 + (int64_t)((tid >> 5) * 2u);
+  if (r0 >= n_ff) return;
+  int64_t r1 = (r0 + 1 < n_ff) ? (r0 + 1) : r0;
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u), xq = (int)(qtr * 4u);
+  const device uint16_t *wg0 = w.data + eb + r0 * rw;
+  const device uint16_t *wu0 = wg0 + n_ff * rw;
+  const device uint16_t *wg1 = w.data + eb + r1 * rw;
+  const device uint16_t *wu1 = wg1 + n_ff * rw;
+  const device float *xp = x.data;
+  int iblocks = (int)blocks;
+  float ag0 = 0.0f, au0 = 0.0f, ag1 = 0.0f, au1 = 0.0f;
+  for (int b = (int)blk_lane; b < iblocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    half4 xl = half4(*(const device float4 *)bx), xh = half4(*(const device float4 *)(bx + 16));
+    half2 x0(xl.x, xh.x), x1(xl.y, xh.y), x2(xl.z, xh.z), x3(xl.w, xh.w);
+    const device uint16_t *bg0 = wg0 + b * 9, *bu0 = wu0 + b * 9;
+    const device uint16_t *bg1 = wg1 + b * 9, *bu1 = wu1 + b * 9;
+    ag0 += 16.0f * float(as_type<half>(bg0[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bg0 + 1 + k0), x0, x1, x2, x3, tlut);
+    au0 += 16.0f * float(as_type<half>(bu0[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bu0 + 1 + k0), x0, x1, x2, x3, tlut);
+    ag1 += 16.0f * float(as_type<half>(bg1[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bg1 + 1 + k0), x0, x1, x2, x3, tlut);
+    au1 += 16.0f * float(as_type<half>(bu1[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bu1 + 1 + k0), x0, x1, x2, x3, tlut);
+  }
+  float g0 = simd_sum(ag0), u0 = simd_sum(au0), g1 = simd_sum(ag1), u1 = simd_sum(au1);
+  if (lane == 0) {
+    float a0 = beta * tanh(g0 / beta) / (1.0f + exp(-g0));
+    float a1 = beta * tanh(g1 / beta) / (1.0f + exp(-g1));
+    if (lb > 0.0f) { u0 = lb * tanh(u0 / lb); u1 = lb * tanh(u1 / lb); }
+    out.data[slot * n_ff + r0] = a0 * u0;
+    if (r0 + 1 < n_ff) out.data[slot * n_ff + r0 + 1] = a1 * u1;
+  }
+}
+COAX_DEV void coax_am_moe_gu_q4_tg(int64_t slot, int64_t row0, int64_t n_ff, int64_t cols, int64_t n_exp, int64_t n_used, int64_t has_bias, float r_scale, float beta, float lb, coax_v_u16 w, coax_v_f32 x, coax_v_f32 logits, coax_v_f32 bias, coax_v_u32 ids, coax_v_f32 wts, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  int64_t rw = blocks * 9;
+  if (n_exp < 1 || n_exp > 128 || n_used < 1 || n_used > 32 || slot < 0 || slot >= n_used || row0 < 0 || n_ff <= 0 || cols <= 0 || (cols & 31) != 0 || cols > x.count || n_exp > logits.count || (has_bias != 0 && n_exp > bias.count) || n_used > ids.count || n_used > wts.count || (slot + 1) * n_ff > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup int *tg_eid = (threadgroup int *)tg;
+  if (tid < 32u) {
+    int e = coax_router_pick_slot_noinline((int)n_exp, (int)n_used, (int)has_bias, r_scale, logits.data, bias.data, (int)slot, (slot == 0 && row0 == 0) ? 1 : 0, ids.data, wts.data, tid);
+    if (tid == 0u) tg_eid[0] = e;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  int64_t eid = (int64_t)tg_eid[0];
+  int64_t eb = eid * 2 * n_ff * rw;
+  if (eb + 2 * n_ff * rw > w.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int64_t r0 = row0 + (int64_t)((tid >> 5) * 2u);
+  if (r0 >= n_ff) return;
+  int64_t r1 = (r0 + 1 < n_ff) ? (r0 + 1) : r0;
+  uint32_t lane = tid & 31u;
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u), xq = (int)(qtr * 4u);
+  const device uint16_t *wg0 = w.data + eb + r0 * rw;
+  const device uint16_t *wu0 = wg0 + n_ff * rw;
+  const device uint16_t *wg1 = w.data + eb + r1 * rw;
+  const device uint16_t *wu1 = wg1 + n_ff * rw;
+  const device float *xp = x.data;
+  int iblocks = (int)blocks;
+  float ag0 = 0.0f, au0 = 0.0f, ag1 = 0.0f, au1 = 0.0f;
+  for (int b = (int)blk_lane; b < iblocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 xlf = *(const device float4 *)bx, xhf = *(const device float4 *)(bx + 16);
+    float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+    half4 xl = half4(xlf), xh = half4(xhf);
+    const device uint16_t *bg0 = wg0 + b * 9, *bu0 = wu0 + b * 9;
+    const device uint16_t *bg1 = wg1 + b * 9, *bu1 = wu1 + b * 9;
+    ag0 += float(as_type<half>(bg0[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bg0 + 1 + k0), xl, xh, xsum);
+    au0 += float(as_type<half>(bu0[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bu0 + 1 + k0), xl, xh, xsum);
+    ag1 += float(as_type<half>(bg1[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bg1 + 1 + k0), xl, xh, xsum);
+    au1 += float(as_type<half>(bu1[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bu1 + 1 + k0), xl, xh, xsum);
+  }
+  float g0 = simd_sum(ag0), u0 = simd_sum(au0), g1 = simd_sum(ag1), u1 = simd_sum(au1);
+  if (lane == 0) {
+    float a0 = beta * tanh(g0 / beta) / (1.0f + exp(-g0));
+    float a1 = beta * tanh(g1 / beta) / (1.0f + exp(-g1));
+    if (lb > 0.0f) { u0 = lb * tanh(u0 / lb); u1 = lb * tanh(u1 / lb); }
+    out.data[slot * n_ff + r0] = a0 * u0;
+    if (r0 + 1 < n_ff) out.data[slot * n_ff + r0 + 1] = a1 * u1;
+  }
+}
+static __attribute__((noinline)) void coax_am_moe_down_iq4_slow(int64_t row0, int64_t rows, int64_t cols, int64_t n_used, int64_t rw, int64_t ew, coax_v_u16 w, coax_v_f32 x, coax_v_u32 ids, coax_v_f32 wts, threadgroup const half2 *tlut, threadgroup float *p, uint32_t tid, int32_t line, COAX_ERR) {
+  for (int s = 0; s < (int)n_used; s++) {
+    int64_t eid = (int64_t)ids.data[s];
+    if ((eid + 1) * ew > w.count) { coax_trap_(line, coax_err); return; }
+  }
+  uint32_t lane = tid & 31u;
+  int sg = (int)(tid >> 5), blk_lane = (int)(lane >> 2), qtr = (int)(lane & 3u);
+  int k0 = qtr * 2, xq = qtr * 4, iblocks = (int)(cols >> 5);
+  float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+  for (int slot = sg; slot < (int)n_used; slot += 4) {
+    int64_t eid = (int64_t)ids.data[slot];
+    float ewt = 16.0f * wts.data[slot];
+    const device uint16_t *wbase = w.data + eid * ew + row0 * rw;
+    for (int b = blk_lane; b < iblocks; b += 8) {
+      const device float *bx = x.data + slot * (int)cols + b * 32 + xq;
+      half4 xl = half4(*(const device float4 *)bx), xh = half4(*(const device float4 *)(bx + 16));
+      half2 x0(xl.x, xh.x), x1(xl.y, xh.y), x2(xl.z, xh.z), x3(xl.w, xh.w);
+      const device uint16_t *bw = wbase + b * 9;
+      if (row0 < rows)     a0 += ewt * float(as_type<half>(bw[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 1 + k0), x0, x1, x2, x3, tlut);
+      if (row0 + 1 < rows) a1 += ewt * float(as_type<half>(bw[rw])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + rw + 1 + k0), x0, x1, x2, x3, tlut);
+      if (row0 + 2 < rows) a2 += ewt * float(as_type<half>(bw[2 * rw])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 2 * rw + 1 + k0), x0, x1, x2, x3, tlut);
+      if (row0 + 3 < rows) a3 += ewt * float(as_type<half>(bw[3 * rw])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 3 * rw + 1 + k0), x0, x1, x2, x3, tlut);
+    }
+  }
+  float v0 = simd_sum(a0), v1 = simd_sum(a1), v2 = simd_sum(a2), v3 = simd_sum(a3);
+  if (lane == 0) { p[sg] = v0; p[sg + 4] = v1; p[sg + 8] = v2; p[sg + 12] = v3; }
+}
+COAX_DEV void coax_am_moe_down_iq4_tg(int64_t row0, int64_t rows, int64_t cols, int64_t n_used, coax_v_u16 w, coax_v_f32 x, coax_v_u32 ids, coax_v_f32 wts, coax_v_f32 cw, coax_v_f32 hist, coax_v_f32 res, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  int64_t rw = blocks * 9;
+  int64_t ew = rows * rw;
+  if (n_used < 0 || rows <= 0 || cols <= 0 || (cols & 31) != 0 || row0 < 0 || n_used > ids.count || n_used > wts.count || n_used * cols > x.count || rows > out.count || rows > res.count || rows * 4 > cw.count || rows * 3 > hist.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup half2 *tlut = (threadgroup half2 *)tg;
+  threadgroup float *p = tg + 256;
+  coax_iq4_init_tlut(tlut, tid);
+  uint32_t lane = tid & 31u;
+  int sg = (int)(tid >> 5);
+  if (n_used == 8 && blocks == 36 && row0 + 4 <= rows) {
+    bool bad = (lane < 8u) && (((int64_t)ids.data[lane] + 1) * ew > w.count);
+    if (simd_any(bad)) { coax_trap_(line, coax_err); return; }
+    int blk_lane = (int)(lane >> 2), qtr = (int)(lane & 3u);
+    int k0 = qtr * 2, xq = qtr * 4;
+    int s0 = sg * 2, s1 = s0 + 1;
+    int64_t e0 = (int64_t)ids.data[s0], e1 = (int64_t)ids.data[s1];
+    float ew0 = 16.0f * wts.data[s0], ew1 = 16.0f * wts.data[s1];
+    const device uint16_t *w0 = w.data + e0 * ew + row0 * 324;
+    const device uint16_t *w1 = w.data + e1 * ew + row0 * 324;
+    float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+    for (int tb = blk_lane; tb < 72; tb += 8) {
+      bool is1 = (tb >= 36);
+      int b = is1 ? (tb - 36) : tb;
+      float ewt = is1 ? ew1 : ew0;
+      const device float *bx = x.data + (is1 ? s1 : s0) * 1152 + b * 32 + xq;
+      half4 xl = half4(*(const device float4 *)bx), xh = half4(*(const device float4 *)(bx + 16));
+      half2 x0(xl.x, xh.x), x1(xl.y, xh.y), x2(xl.z, xh.z), x3(xl.w, xh.w);
+      const device uint16_t *bw = (is1 ? w1 : w0) + b * 9;
+      a0 += ewt * float(as_type<half>(bw[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 1 + k0), x0, x1, x2, x3, tlut); bw += 324;
+      a1 += ewt * float(as_type<half>(bw[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 1 + k0), x0, x1, x2, x3, tlut); bw += 324;
+      a2 += ewt * float(as_type<half>(bw[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 1 + k0), x0, x1, x2, x3, tlut); bw += 324;
+      a3 += ewt * float(as_type<half>(bw[0])) * coax_iq4_dot8_tg(*(const device packed_ushort2 *)(bw + 1 + k0), x0, x1, x2, x3, tlut);
+    }
+    float v0 = simd_sum(a0), v1 = simd_sum(a1), v2 = simd_sum(a2), v3 = simd_sum(a3);
+    if (lane == 0) { p[sg] = v0; p[sg + 4] = v1; p[sg + 8] = v2; p[sg + 12] = v3; }
+  } else {
+    coax_am_moe_down_iq4_slow(row0, rows, cols, n_used, rw, ew, w, x, ids, wts, tlut, p, tid, line, coax_err);
+    if (coax_err[0]) return;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < 4u) {
+    int64_t r = row0 + (int64_t)tid;
+    if (r < rows) {
+      float t = p[tid * 4u] + p[tid * 4u + 1u] + p[tid * 4u + 2u] + p[tid * 4u + 3u];
+      device float *h = hist.data + r * 3;
+      float h0 = h[0], h1 = h[1], h2 = h[2];
+      h[0] = h1; h[1] = h2; h[2] = t;
+      float4 c = *(const device float4 *)(cw.data + r * 4);
+      out.data[r] = res.data[r] + (t + h0 * c.x + h1 * c.y + h2 * c.z + t * c.w) * 0.4472135954999579f;
+    }
+  }
+}
+static __attribute__((noinline)) void coax_am_moe_down_q4_slow(int64_t row0, int64_t rows, int64_t cols, int64_t n_used, int64_t rw, int64_t ew, coax_v_u16 w, coax_v_f32 x, coax_v_u32 ids, coax_v_f32 wts, threadgroup float *tg, uint32_t tid, int32_t line, COAX_ERR) {
+  for (int s = 0; s < (int)n_used; s++) {
+    int64_t eid = (int64_t)ids.data[s];
+    if ((eid + 1) * ew > w.count) { coax_trap_(line, coax_err); return; }
+  }
+  uint32_t lane = tid & 31u;
+  int sg = (int)(tid >> 5), blk_lane = (int)(lane >> 2), qtr = (int)(lane & 3u);
+  int k0 = qtr * 2, xq = qtr * 4, iblocks = (int)(cols >> 5);
+  float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+  for (int slot = sg; slot < (int)n_used; slot += 4) {
+    int64_t eid = (int64_t)ids.data[slot];
+    float ewt = wts.data[slot];
+    const device uint16_t *wbase = w.data + eid * ew + row0 * rw;
+    for (int b = blk_lane; b < iblocks; b += 8) {
+      const device float *bx = x.data + slot * (int)cols + b * 32 + xq;
+      float4 xlf = *(const device float4 *)bx, xhf = *(const device float4 *)(bx + 16);
+      float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+      half4 xl = half4(xlf), xh = half4(xhf);
+      const device uint16_t *bw = wbase + b * 9;
+      if (row0 < rows)     a0 += ewt * float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum);
+      if (row0 + 1 < rows) a1 += ewt * float(as_type<half>(bw[rw])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + rw + 1 + k0), xl, xh, xsum);
+      if (row0 + 2 < rows) a2 += ewt * float(as_type<half>(bw[2 * rw])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 2 * rw + 1 + k0), xl, xh, xsum);
+      if (row0 + 3 < rows) a3 += ewt * float(as_type<half>(bw[3 * rw])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 3 * rw + 1 + k0), xl, xh, xsum);
+    }
+  }
+  float v0 = simd_sum(a0), v1 = simd_sum(a1), v2 = simd_sum(a2), v3 = simd_sum(a3);
+  if (lane == 0) { tg[sg] = v0; tg[sg + 4] = v1; tg[sg + 8] = v2; tg[sg + 12] = v3; }
+}
+COAX_DEV void coax_am_moe_down_q4_tg(int64_t row0, int64_t rows, int64_t cols, int64_t n_used, coax_v_u16 w, coax_v_f32 x, coax_v_u32 ids, coax_v_f32 wts, coax_v_f32 cw, coax_v_f32 hist, coax_v_f32 res, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  int64_t rw = blocks * 9;
+  int64_t ew = rows * rw;
+  if (n_used < 0 || rows <= 0 || cols <= 0 || (cols & 31) != 0 || row0 < 0 || n_used > ids.count || n_used > wts.count || n_used * cols > x.count || rows > out.count || rows > res.count || rows * 4 > cw.count || rows * 3 > hist.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  int sg = (int)(tid >> 5);
+  if (n_used == 8 && blocks == 36 && row0 + 4 <= rows) {
+    bool bad = (lane < 8u) && (((int64_t)ids.data[lane] + 1) * ew > w.count);
+    if (simd_any(bad)) { coax_trap_(line, coax_err); return; }
+    int blk_lane = (int)(lane >> 2), qtr = (int)(lane & 3u);
+    int k0 = qtr * 2, xq = qtr * 4;
+    int s0 = sg * 2, s1 = s0 + 1;
+    int64_t e0 = (int64_t)ids.data[s0], e1 = (int64_t)ids.data[s1];
+    float ew0 = wts.data[s0], ew1 = wts.data[s1];
+    const device uint16_t *w0 = w.data + e0 * ew + row0 * 324;
+    const device uint16_t *w1 = w.data + e1 * ew + row0 * 324;
+    float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+    for (int tb = blk_lane; tb < 72; tb += 8) {
+      bool is1 = (tb >= 36);
+      int b = is1 ? (tb - 36) : tb;
+      float ewt = is1 ? ew1 : ew0;
+      const device float *bx = x.data + (is1 ? s1 : s0) * 1152 + b * 32 + xq;
+      float4 xlf = *(const device float4 *)bx, xhf = *(const device float4 *)(bx + 16);
+      float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+      half4 xl = half4(xlf), xh = half4(xhf);
+      const device uint16_t *bw = (is1 ? w1 : w0) + b * 9;
+      a0 += ewt * float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum); bw += 324;
+      a1 += ewt * float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum); bw += 324;
+      a2 += ewt * float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum); bw += 324;
+      a3 += ewt * float(as_type<half>(bw[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw + 1 + k0), xl, xh, xsum);
+    }
+    float v0 = simd_sum(a0), v1 = simd_sum(a1), v2 = simd_sum(a2), v3 = simd_sum(a3);
+    if (lane == 0) { tg[sg] = v0; tg[sg + 4] = v1; tg[sg + 8] = v2; tg[sg + 12] = v3; }
+  } else {
+    coax_am_moe_down_q4_slow(row0, rows, cols, n_used, rw, ew, w, x, ids, wts, tg, tid, line, coax_err);
+    if (coax_err[0]) return;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < 4u) {
+    int64_t r = row0 + (int64_t)tid;
+    if (r < rows) {
+      float t = tg[tid * 4u] + tg[tid * 4u + 1u] + tg[tid * 4u + 2u] + tg[tid * 4u + 3u];
+      device float *h = hist.data + r * 3;
+      float h0 = h[0], h1 = h[1], h2 = h[2];
+      h[0] = h1; h[1] = h2; h[2] = t;
+      float4 c = *(const device float4 *)(cw.data + r * 4);
+      out.data[r] = res.data[r] + (t + h0 * c.x + h1 * c.y + h2 * c.z + t * c.w) * 0.4472135954999579f;
+    }
+  }
+}
+COAX_DEV void coax_am_dot_q4_qrgkv(int64_t row0, int64_t n_q, int64_t n_r, int64_t n_kv, int64_t cols, int64_t n_parts, float eps, coax_v_u16 w, coax_v_f32 xq_v, coax_v_f32 xk_v, coax_v_f32 xv_v, coax_v_f32 parts, coax_v_f32 oq, coax_v_f32 or_, coax_v_f32 og, coax_v_f32 ok, coax_v_f32 ov, uint32_t tid, int32_t line, COAX_ERR) {
+  int64_t blocks = cols >> 5;
+  int64_t rw = blocks * 9;
+  int64_t n_qr = n_q + n_r, n_qrg = n_qr + n_q, n_qrgk = n_qrg + n_kv, tot = n_qrgk + n_kv;
+  if (cols <= 0 || (cols & 31) != 0 || row0 < 0 || n_q < 0 || n_r < 0 || n_kv < 0 || (n_q & 1) != 0 || (n_r & 1) != 0 || (n_kv & 1) != 0 || n_parts < 0 || (n_parts > 0 && 3 * n_parts > parts.count) || tot * rw > w.count || cols > xq_v.count || cols > xk_v.count || cols > xv_v.count || n_q > oq.count || n_r > or_.count || n_q > og.count || n_kv > ok.count || n_kv > ov.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int64_t r0 = row0 + (int64_t)((tid >> 5) * 2u);
+  if (r0 >= tot) return;
+  const device float *xp;
+  device float *op;
+  int64_t orow, poff;
+  if (r0 < n_q) { xp = xq_v.data; op = oq.data; orow = r0; poff = 0; }
+  else if (r0 < n_qr) { xp = xq_v.data; op = or_.data; orow = r0 - n_q; poff = 0; }
+  else if (r0 < n_qrg) { xp = xq_v.data; op = og.data; orow = r0 - n_qr; poff = 0; }
+  else if (r0 < n_qrgk) { xp = xk_v.data; op = ok.data; orow = r0 - n_qrg; poff = n_parts; }
+  else { xp = xv_v.data; op = ov.data; orow = r0 - n_qrgk; poff = 2 * n_parts; }
+  uint32_t lane = tid & 31u;
+  float inv_rms = coax_inv_rms_parts(parts, poff, n_parts, cols, eps, lane);
+  uint32_t blk_lane = lane >> 2;
+  uint32_t qtr = lane & 3u;
+  int k0 = (int)(qtr * 2u), xq = (int)(qtr * 4u);
+  const device uint16_t *wp0 = w.data + r0 * rw;
+  const device uint16_t *wp1 = wp0 + rw;
+  int iblocks = (int)blocks;
+  float acc0 = 0.0f, acc1 = 0.0f;
+  for (int b = (int)blk_lane; b < iblocks; b += 8) {
+    const device float *bx = xp + b * 32 + xq;
+    float4 xlf = *(const device float4 *)bx * inv_rms;
+    float4 xhf = *(const device float4 *)(bx + 16) * inv_rms;
+    float xsum = (xlf.x + xlf.y) + (xlf.z + xlf.w) + (xhf.x + xhf.y) + (xhf.z + xhf.w);
+    half4 xl = half4(xlf), xh = half4(xhf);
+    const device uint16_t *bw0 = wp0 + b * 9, *bw1 = wp1 + b * 9;
+    acc0 += float(as_type<half>(bw0[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw0 + 1 + k0), xl, xh, xsum);
+    acc1 += float(as_type<half>(bw1[0])) * coax_q4_alu_dot8_f16(*(const device packed_ushort2 *)(bw1 + 1 + k0), xl, xh, xsum);
+  }
+  float t0 = simd_sum(acc0), t1 = simd_sum(acc1);
+  if (lane == 0) { op[orow] = t0; op[orow + 1] = t1; }
+}
+COAX_DEV void coax_am_ctrl_up_apply_gf_impl(int64_t dim, int64_t rank, int64_t row0, coax_v_u32 w_gf, int64_t w_off, coax_v_f32 gate, int64_t g_off, coax_v_f32 cur, int64_t c_off, coax_v_f32 msg, int64_t m_off, bool do_norm, const device float *w_norm_p, coax_v_f32 out, int64_t o_off, device float *part_dst, uint32_t tid) {
+  uint32_t lane = tid & 31u;
+  int64_t r0 = row0 + (int64_t)(lane * 2u);
+  int idim = (int)dim, irank = (int)rank;
+  float v0 = 0.0f, v1 = 0.0f;
+  if (row0 + 64 <= dim && (idim & 1) == 0 && irank == 64 && (((uintptr_t)(w_gf.data + w_off + row0)) & 7u) == 0) {
+    float g0 = gate.data[g_off + lane];
+    float g1 = gate.data[g_off + lane + 32];
+    const device half4 *wp = (const device half4 *)(w_gf.data + w_off + r0);
+    int s4 = idim >> 1;
+    float2 a0 = float2(0.0f), a1 = float2(0.0f);
+    for (int k = 0; k < 32; k += 4) {
+      float k0 = simd_shuffle(g0, k), k1 = simd_shuffle(g0, k + 1), k2 = simd_shuffle(g0, k + 2), k3 = simd_shuffle(g0, k + 3);
+      half4 p0 = wp[0], p1 = wp[s4], p2 = wp[2 * s4], p3 = wp[3 * s4];
+      a0 += float2(p0.xy) * k0 + float2(p1.xy) * k1 + float2(p2.xy) * k2 + float2(p3.xy) * k3;
+      a1 += float2(p0.zw) * k0 + float2(p1.zw) * k1 + float2(p2.zw) * k2 + float2(p3.zw) * k3;
+      wp += 4 * s4;
+    }
+    for (int k = 0; k < 32; k += 4) {
+      float k0 = simd_shuffle(g1, k), k1 = simd_shuffle(g1, k + 1), k2 = simd_shuffle(g1, k + 2), k3 = simd_shuffle(g1, k + 3);
+      half4 p0 = wp[0], p1 = wp[s4], p2 = wp[2 * s4], p3 = wp[3 * s4];
+      a0 += float2(p0.xy) * k0 + float2(p1.xy) * k1 + float2(p2.xy) * k2 + float2(p3.xy) * k3;
+      a1 += float2(p0.zw) * k0 + float2(p1.zw) * k1 + float2(p2.zw) * k2 + float2(p3.zw) * k3;
+      wp += 4 * s4;
+    }
+    float2 cv = *(const device float2 *)(cur.data + c_off + r0);
+    float2 mv = *(const device float2 *)(msg.data + m_off + r0);
+    v0 = cv.x - tanh(a0.y) * cv.x + tanh(a0.x) * mv.x;
+    v1 = cv.y - tanh(a1.y) * cv.y + tanh(a1.x) * mv.y;
+    if (do_norm) {
+      float2 wv = *(const device float2 *)(w_norm_p + r0);
+      *(device float2 *)(out.data + o_off + r0) = float2(v0 * wv.x, v1 * wv.y);
+    } else {
+      *(device float2 *)(out.data + o_off + r0) = float2(v0, v1);
+    }
+  } else {
+    if (r0 < dim) {
+      const device half2 *wp0 = (const device half2 *)(w_gf.data + w_off) + r0;
+      float2 a0 = float2(0.0f);
+      for (int k = 0; k < irank; k++) a0 += float2(wp0[k * idim]) * gate.data[g_off + k];
+      float c0 = cur.data[c_off + r0], m0 = msg.data[m_off + r0];
+      v0 = c0 - tanh(a0.y) * c0 + tanh(a0.x) * m0;
+      out.data[o_off + r0] = do_norm ? (v0 * w_norm_p[r0]) : v0;
+    }
+    if (r0 + 1 < dim) {
+      const device half2 *wp1 = (const device half2 *)(w_gf.data + w_off) + (r0 + 1);
+      float2 a1 = float2(0.0f);
+      for (int k = 0; k < irank; k++) a1 += float2(wp1[k * idim]) * gate.data[g_off + k];
+      float c1 = cur.data[c_off + r0 + 1], m1 = msg.data[m_off + r0 + 1];
+      v1 = c1 - tanh(a1.y) * c1 + tanh(a1.x) * m1;
+      out.data[o_off + r0 + 1] = do_norm ? (v1 * w_norm_p[r0 + 1]) : v1;
+    }
+  }
+  if (do_norm) {
+    float ss = simd_sum(v0 * v0 + v1 * v1);
+    if (lane == 0) *part_dst = ss;
+  }
+}
+COAX_DEV void coax_am_ctrl_up_apply_gf(int64_t dim, int64_t rank, int64_t row0, coax_v_u32 w_gf, int64_t w_off, coax_v_f32 gate, int64_t g_off, coax_v_f32 cur, int64_t c_off, coax_v_f32 msg, int64_t m_off, coax_v_f32 out, int64_t o_off, uint32_t tid, int32_t line, COAX_ERR) {
+  if (dim <= 0 || rank < 0 || rank > 64 || row0 < 0 || w_off < 0 || w_off + rank * dim > w_gf.count || g_off < 0 || g_off + rank > gate.count || c_off < 0 || c_off + dim > cur.count || m_off < 0 || m_off + dim > msg.count || o_off < 0 || o_off + dim > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  coax_am_ctrl_up_apply_gf_impl(dim, rank, row0, w_gf, w_off, gate, g_off, cur, c_off, msg, m_off, false, nullptr, out, o_off, nullptr, tid);
+}
+COAX_DEV void coax_am_ctrl_up_apply_gf_norm(int64_t dim, int64_t rank, int64_t row0, coax_v_u32 w_gf, int64_t w_off, coax_v_f32 gate, int64_t g_off, coax_v_f32 cur, int64_t c_off, coax_v_f32 msg, int64_t m_off, coax_v_f32 w_norm, coax_v_f32 out, int64_t o_off, coax_v_f32 rms_parts, int64_t part_idx, uint32_t tid, int32_t line, COAX_ERR) {
+  if (dim <= 0 || rank < 0 || rank > 64 || row0 < 0 || w_off < 0 || w_off + rank * dim > w_gf.count || g_off < 0 || g_off + rank > gate.count || c_off < 0 || c_off + dim > cur.count || m_off < 0 || m_off + dim > msg.count || dim > w_norm.count || o_off < 0 || o_off + dim > out.count || part_idx < 0 || part_idx >= rms_parts.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  coax_am_ctrl_up_apply_gf_impl(dim, rank, row0, w_gf, w_off, gate, g_off, cur, c_off, msg, m_off, true, w_norm.data, out, o_off, rms_parts.data + part_idx, tid);
+}
+COAX_DEV void coax_am_kv_attn_gqa_1pass(int64_t kv_h, uint32_t dims0, uint32_t dims1, uint32_t kv_info, int64_t pos, int64_t slot_pos, float qk_clip, float rel_clip, float q_tau, float eps, coax_v_f32 k_raw, coax_v_f32 v_raw, coax_v_f32 kw, coax_v_f32 vw, coax_v_f32 dyn, coax_v_f32 k_hist, coax_v_f32 v_hist, coax_v_f32 q, coax_v_f32 q_scale, coax_v_f32 r, coax_v_f32 r_scale, coax_v_f32 rel_bias, coax_v_f32 sinks, coax_v_f32 gate, coax_v_u16 k_cache, coax_v_u16 v_cache, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int n_head_kv = (int)((dims0 >> 8u) & 255u);
+  int head_dim = (int)((dims0 >> 16u) & 255u);
+  int n_rel = (int)((dims0 >> 24u) & 255u);
+  int extent = (int)(dims1 & 65535u);
+  int is_swa = (int)((dims1 >> 16u) & 1u);
+  int swa = (int)((dims1 >> 17u) & 32767u);
+  int kv_cap = (int)(kv_info & 65535u);
+  int has_qs = (int)((kv_info >> 16u) & 1u);
+  int has_rs = (int)((kv_info >> 17u) & 1u);
+  int has_dyn = (int)((kv_info >> 18u) & 1u);
+  int64_t n_kv_elem = (int64_t)n_head_kv * 128;
+  int64_t base = kv_h * 128;
+  int64_t dbase = slot_pos * n_kv_elem + base;
+  int64_t h0 = kv_h * 3;
+  if (head_dim != 128 || n_rel > 32 || kv_h < 0 || kv_h >= n_head_kv || base + 128 > k_raw.count || base + 128 > v_raw.count || (base + 128) * 4 > kw.count || (base + 128) * 4 > vw.count || (base + 128) * 3 > k_hist.count || (base + 128) * 3 > v_hist.count || (has_dyn && (n_head_kv + kv_h + 1) * 4 > dyn.count) || (h0 + 3) * 128 > q.count || (h0 + 3) * 128 > gate.count || (h0 + 3) * 128 > out.count || h0 + 3 > sinks.count || (h0 + 3) * n_rel > r.count || (has_qs && (h0 + 3) * 128 > q_scale.count) || (has_rs && (h0 + 3) * n_rel > r_scale.count) || (int64_t)kv_cap * n_kv_elem > k_cache.count || (int64_t)kv_cap * n_kv_elem > v_cache.count || (int64_t)extent * n_rel > rel_bias.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  threadgroup float *tg_k = tg;          /* 128 */
+  threadgroup float *tg_v = tg + 128;    /* 128 */
+  threadgroup float *tg_q = tg + 256;    /* 384 */
+  threadgroup float *tg_r = tg + 640;    /* 96 */
+  threadgroup float *msh  = tg + 736;    /* 24 */
+  threadgroup float *lsh  = tg + 760;    /* 24 */
+  threadgroup float *vsh  = tg + 784;    /* 3072 */
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  /* Phase 1: Warp 0 = K conv+clip+store, Warp 1 = V conv+norm+store, Warps 2..4 = Q0..2 & R0..2 clip! */
+  if (sg == 0u || sg == 1u) {
+    int is_v = (int)sg;
+    float inv_s = has_dyn ? 0.3333333333333333f : 0.4472135954999579f;
+    float4 dv = has_dyn ? *(const device float4 *)(dyn.data + (is_v * n_head_kv + kv_h) * 4) : float4(0.0f);
+    int64_t c0 = base + (int64_t)(lane * 4u);
+    const device float *rawp = is_v ? v_raw.data : k_raw.data;
+    const device float *wp = is_v ? vw.data : kw.data;
+    device float *hp = is_v ? v_hist.data : k_hist.data;
+    float4 xr = *(const device float4 *)(rawp + c0);
+    float vals[4];
+    for (int j = 0; j < 4; j++) {
+      int64_t c = c0 + j;
+      device float *hc = hp + c * 3;
+      float x0 = hc[0], x1 = hc[1], x2 = hc[2], x3 = xr[j];
+      hc[0] = x1; hc[1] = x2; hc[2] = x3;
+      float4 cw = *(const device float4 *)(wp + c * 4);
+      float a = x0 * cw.x + x1 * cw.y + x2 * cw.z + x3 * cw.w;
+      if (has_dyn) a += dv.x * x3 + dv.y * x2 + dv.z * x1 + dv.w * x0;
+      vals[j] = (x3 + a) * inv_s;
+    }
+    float4 vv = float4(vals[0], vals[1], vals[2], vals[3]);
+    float tot = simd_sum(dot(vv, vv));
+    if (is_v == 0) {
+      float fac = qk_clip / (sqrt(tot) + 1.0e-6f);
+      if (fac > 1.0f) fac = 1.0f;
+      half4 hv = half4(vv * fac);
+      *(device half4 *)(k_cache.data + dbase + lane * 4u) = hv;
+      *(threadgroup float4 *)(tg_k + lane * 4u) = float4(hv);
+    } else {
+      float inv = rsqrt(tot * (1.0f / 128.0f) + eps);
+      half4 hv = half4(vv * inv);
+      *(device half4 *)(v_cache.data + dbase + lane * 4u) = hv;
+      *(threadgroup float4 *)(tg_v + lane * 4u) = float4(hv);
+    }
+  } else if (sg >= 2u && sg <= 4u) {
+    int g = (int)(sg - 2u);
+    int64_t h = h0 + g;
+    int64_t qb = h * 128 + (int64_t)(lane * 4u);
+    float4 qv = *(const device float4 *)(q.data + qb);
+    if (has_qs) qv *= *(const device float4 *)(q_scale.data + qb);
+    float qfac = qk_clip / (sqrt(simd_sum(dot(qv, qv))) + 1.0e-6f);
+    if (qfac > 1.0f) qfac = 1.0f;
+    *(threadgroup float4 *)(tg_q + g * 128 + lane * 4u) = qv * (qfac * q_tau);
+    float rv = 0.0f;
+    if ((int)lane < n_rel) {
+      int64_t ridx = h * n_rel + (int64_t)lane;
+      rv = r.data[ridx];
+      if (has_rs) rv *= r_scale.data[ridx];
+    }
+    float rfac = rel_clip / (sqrt(simd_sum(rv * rv)) + 1.0e-6f);
+    if (rfac > 1.0f) rfac = 1.0f;
+    tg_r[g * 32 + lane] = rv * (rfac * q_tau);
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  /* Phase 2: All 8 warps stream KV cache ONCE for all 3 Q heads! */
+  int64_t start = (is_swa && pos >= swa) ? (pos - swa + 1) : 0;
+  int n_keys = (int)(pos - start + 1);
+  float scale = 1.0f / sqrt(128.0f);
+  float4 q0 = *(threadgroup float4 *)(tg_q + 0 * 128 + lane * 4u);
+  float4 q1 = *(threadgroup float4 *)(tg_q + 1 * 128 + lane * 4u);
+  float4 q2 = *(threadgroup float4 *)(tg_q + 2 * 128 + lane * 4u);
+  float r0 = tg_r[0 * 32 + lane], r1 = tg_r[1 * 32 + lane], r2 = tg_r[2 * 32 + lane];
+  float sk0 = sinks.data[h0], sk1 = sinks.data[h0 + 1], sk2 = sinks.data[h0 + 2];
+  float m0 = -3.0e38f, l0 = 0.0f, m1 = -3.0e38f, l1 = 0.0f, m2 = -3.0e38f, l2 = 0.0f;
+  float4 a0 = float4(0.0f), a1 = float4(0.0f), a2 = float4(0.0f);
+  int64_t kh_off = base + (int64_t)(lane * 4u);
+  for (int kidx = (int)sg; kidx < n_keys; kidx += 8) {
+    int64_t kp = start + kidx;
+    float4 kv, vv;
+    if (kp == pos) {
+      kv = *(threadgroup float4 *)(tg_k + lane * 4u);
+      vv = *(threadgroup float4 *)(tg_v + lane * 4u);
+    } else {
+      int64_t slot = (is_swa && kp >= kv_cap) ? (int64_t)((int)kp % kv_cap) : kp;
+      int64_t kb = slot * n_kv_elem + kh_off;
+      kv = float4(*(const device half4 *)(k_cache.data + kb));
+      vv = float4(*(const device half4 *)(v_cache.data + kb));
+    }
+    int dist = (int)(pos - kp);
+    float rbv = (dist < extent && (int)lane < n_rel) ? rel_bias.data[dist * n_rel + (int)lane] : 0.0f;
+    float sc0 = simd_sum(dot(q0, kv)) * scale + simd_sum(rbv * r0) - sk0;
+    float sc1 = simd_sum(dot(q1, kv)) * scale + simd_sum(rbv * r1) - sk1;
+    float sc2 = simd_sum(dot(q2, kv)) * scale + simd_sum(rbv * r2) - sk2;
+    float nm0 = (sc0 > m0) ? sc0 : m0; float al0 = (m0 > -1.0e20f) ? exp(m0 - nm0) : 0.0f; float wt0 = exp(sc0 - nm0);
+    m0 = nm0; l0 = l0 * al0 + wt0; a0 = a0 * al0 + wt0 * vv;
+    float nm1 = (sc1 > m1) ? sc1 : m1; float al1 = (m1 > -1.0e20f) ? exp(m1 - nm1) : 0.0f; float wt1 = exp(sc1 - nm1);
+    m1 = nm1; l1 = l1 * al1 + wt1; a1 = a1 * al1 + wt1 * vv;
+    float nm2 = (sc2 > m2) ? sc2 : m2; float al2 = (m2 > -1.0e20f) ? exp(m2 - nm2) : 0.0f; float wt2 = exp(sc2 - nm2);
+    m2 = nm2; l2 = l2 * al2 + wt2; a2 = a2 * al2 + wt2 * vv;
+  }
+  if (lane == 0) {
+    msh[0 * 8 + sg] = m0; lsh[0 * 8 + sg] = l0;
+    msh[1 * 8 + sg] = m1; lsh[1 * 8 + sg] = l1;
+    msh[2 * 8 + sg] = m2; lsh[2 * 8 + sg] = l2;
+  }
+  *(threadgroup float4 *)(vsh + (0 * 8 + sg) * 128 + lane * 4u) = a0;
+  *(threadgroup float4 *)(vsh + (1 * 8 + sg) * 128 + lane * 4u) = a1;
+  *(threadgroup float4 *)(vsh + (2 * 8 + sg) * 128 + lane * 4u) = a2;
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  /* Phase 3 (Sprint 66): 3 warps (1 per Q head), 8 exp()/head (128x fewer!), vectorized float4 TGEM+gate+out! */
+  if (sg < 3u) {
+    int g = (int)sg;
+    float mv = (lane < 8u) ? msh[g * 8 + lane] : -3.0e38f;
+    float lv = (lane < 8u) ? lsh[g * 8 + lane] : 0.0f;
+    float gmax = simd_max(mv);
+    if (gmax < 0.0f) gmax = 0.0f;
+    float sc = (lane < 8u && lv > 0.0f) ? exp(mv - gmax) : 0.0f;
+    float inv_gsum = 1.0f / (exp(-gmax) + simd_sum(lv * sc));
+    float4 vtot = float4(0.0f);
+    #pragma unroll
+    for (int s = 0; s < 8; s++) {
+      vtot += *(threadgroup float4 *)(vsh + (g * 8 + s) * 128 + lane * 4u) * simd_shuffle(sc, s);
+    }
+    int64_t oidx = (h0 + g) * 128 + (int64_t)(lane * 4u);
+    float4 gv = *(const device float4 *)(gate.data + oidx);
+    *(device float4 *)(out.data + oidx) = (vtot * inv_gsum) / (float4(1.0f) + exp(-gv));
   }
 }
 template <int TM, int TN, int SG, typename XT, typename XV>
@@ -3872,6 +5196,324 @@ COAX_DEV void coax_am_matmul_iq4(int64_t rows, int64_t cols, int64_t tokens, int
 template <int TM, int TN, int SG>
 COAX_DEV void coax_am_matmul_iq4_bf16(int64_t rows, int64_t cols, int64_t tokens, int64_t r0, int64_t t0, coax_v_u16 w, coax_v_u16 x, coax_v_f32 out, threadgroup bfloat *W_tg, uint32_t tid, int32_t line, COAX_ERR) {
   coax_am_matmul_iq4_impl<TM, TN, SG, bfloat>(rows, cols, tokens, r0, t0, w, x, out, W_tg, tid, line, coax_err);
+}
+COAX_DEV void coax_am_ctrl_up_apply_gf_batch(int64_t dim, int64_t rank, int64_t n_tok, int64_t t0, int64_t row0, coax_v_u32 w_gf, int64_t w_off, coax_v_f32 gate, int64_t g_off, coax_v_f32 cur, int64_t c_off, coax_v_f32 msg, int64_t m_off, coax_v_f32 out, int64_t o_off, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  if (dim <= 0 || rank < 0 || rank > 64 || n_tok <= 0 || t0 < 0 || row0 < 0 || w_off < 0 || w_off + rank * dim > w_gf.count || g_off < 0 || g_off + n_tok * rank > gate.count || c_off < 0 || c_off + n_tok * dim > cur.count || m_off < 0 || m_off + n_tok * dim > msg.count || o_off < 0 || o_off + n_tok * dim > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int idim = (int)dim, irank = (int)rank;
+  int nt = (int)min((int64_t)16, n_tok - t0);
+  /* Load gate[t0..t0+nt-1, 0..rank-1] into tg[k * 16 + m] (1024 floats = 8 floats/thread). */
+  for (int idx = (int)tid; idx < irank * 16; idx += 128) {
+    int k = idx >> 4;
+    int m = idx & 15;
+    tg[idx] = (m < nt) ? gate.data[g_off + (t0 + m) * rank + k] : 0.0f;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  int half_g = (int)(tid >> 6);
+  int row = (int)row0 + (int)(tid & 63u);
+  int m0 = half_g * 8;
+  int mc = nt - m0;
+  if (mc > 8) mc = 8;
+  if (row < idim && mc > 0) {
+    const device half2 *wp = (const device half2 *)(w_gf.data + w_off) + row;
+    float2 a0 = float2(0.0f), a1 = float2(0.0f), a2 = float2(0.0f), a3 = float2(0.0f);
+    float2 a4 = float2(0.0f), a5 = float2(0.0f), a6 = float2(0.0f), a7 = float2(0.0f);
+    for (int k = 0; k < irank; k++) {
+      float2 wv = float2(wp[k * idim]);
+      float4 g0 = *(const threadgroup float4 *)(tg + k * 16 + m0);
+      float4 g1 = *(const threadgroup float4 *)(tg + k * 16 + m0 + 4);
+      a0 += wv * g0.x; a1 += wv * g0.y; a2 += wv * g0.z; a3 += wv * g0.w;
+      a4 += wv * g1.x; a5 += wv * g1.y; a6 += wv * g1.z; a7 += wv * g1.w;
+    }
+    float2 accs[8] = {a0, a1, a2, a3, a4, a5, a6, a7};
+    for (int j = 0; j < mc; j++) {
+      int64_t off = (t0 + m0 + j) * dim + row;
+      float c = cur.data[c_off + off];
+      float mv = msg.data[m_off + off];
+      out.data[o_off + off] = c - tanh(accs[j].y) * c + tanh(accs[j].x) * mv;
+    }
+  }
+}
+COAX_DEV void coax_am_mix_batch_f32(int64_t dim, int64_t n_blocks, int64_t n_tok, int64_t q_idx, int64_t t_idx, coax_v_f32 blocks_buf, coax_v_f32 cur, coax_v_f32 query, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  int ns = (int)n_blocks + 1;
+  if (dim <= 0 || n_blocks < 0 || ns > 16 || n_tok <= 0 || q_idx < 0 || t_idx < 0 || t_idx >= n_tok || n_blocks * n_tok * dim > blocks_buf.count || n_tok * dim > cur.count || (q_idx + 1) * dim > query.count || (q_idx * n_tok + t_idx + 1) * dim > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  uint32_t lane = tid & 31u;
+  uint32_t sg = tid >> 5;
+  int n4 = (int)(dim >> 2);
+  int64_t qbase = q_idx * dim;
+  int64_t cbase = t_idx * dim;
+  int64_t obase = (q_idx * n_tok + t_idx) * dim;
+  const device float4 *q4 = (const device float4 *)(query.data + qbase);
+  const device float4 *c4 = (const device float4 *)(cur.data + cbase);
+  device float4 *o4 = (device float4 *)(out.data + obase);
+  float4 qv[3];
+  int qi = 0;
+  for (int i = (int)tid; i < n4 && qi < 3; i += 256) qv[qi++] = q4[i];
+  for (int s = 0; s < ns; s++) {
+    const device float4 *s4 = (s < (int)n_blocks) ? (const device float4 *)(blocks_buf.data + (s * n_tok + t_idx) * dim) : c4;
+    float4 ss4 = float4(0.0f), dt4 = float4(0.0f);
+    qi = 0;
+    for (int i = (int)tid; i < n4; i += 256) {
+      float4 v = s4[i];
+      float4 qx = (qi < 3) ? qv[qi++] : q4[i];
+      ss4 += v * v;
+      dt4 += v * qx;
+    }
+    float ss = (ss4.x + ss4.y) + (ss4.z + ss4.w);
+    float dt = (dt4.x + dt4.y) + (dt4.z + dt4.w);
+    int tail = n4 << 2;
+    if (tail + (int)tid < (int)dim) {
+      int k = tail + (int)tid;
+      float v = (s < (int)n_blocks) ? blocks_buf.data[(s * n_tok + t_idx) * dim + k] : cur.data[cbase + k];
+      ss += v * v;
+      dt += v * query.data[qbase + k];
+    }
+    float wss = simd_sum(ss), wdt = simd_sum(dt);
+    if (lane == 0) { tg[s * 16 + sg] = wss; tg[s * 16 + 8 + sg] = wdt; }
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid < (uint32_t)ns) {
+    float tss = 0.0f, tdt = 0.0f;
+    for (int w = 0; w < 8; w++) { tss += tg[tid * 16 + w]; tdt += tg[tid * 16 + 8 + w]; }
+    float inv = rsqrt(tss / float(dim) + 1.0e-6f);
+    tg[256 + tid] = inv;
+    tg[272 + tid] = tdt * inv * rsqrt(float(dim));
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    float mx = tg[272];
+    for (int s = 1; s < ns; s++) if (tg[272 + s] > mx) mx = tg[272 + s];
+    float esum = 0.0f;
+    for (int s = 0; s < ns; s++) { float w = exp(tg[272 + s] - mx); tg[288 + s] = w; esum += w; }
+    float inv_e = 1.0f / esum;
+    for (int s = 0; s < ns; s++) tg[288 + s] *= inv_e * tg[256 + s];
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  float wts[16];
+  for (int s = 0; s < ns; s++) wts[s] = tg[288 + s];
+  for (int i = (int)tid; i < n4; i += 256) {
+    float4 acc = float4(0.0f);
+    for (int s = 0; s < ns; s++) {
+      const device float4 *s4 = (s < (int)n_blocks) ? (const device float4 *)(blocks_buf.data + (s * n_tok + t_idx) * dim) : c4;
+      acc += wts[s] * s4[i];
+    }
+    o4[i] = acc;
+  }
+  int tail = n4 << 2;
+  if (tail + (int)tid < (int)dim) {
+    int k = tail + (int)tid;
+    float acc = 0.0f;
+    for (int s = 0; s < ns; s++) {
+      float v = (s < (int)n_blocks) ? blocks_buf.data[(s * n_tok + t_idx) * dim + k] : cur.data[cbase + k];
+      acc += wts[s] * v;
+    }
+    out.data[obase + k] = acc;
+  }
+}
+COAX_DEV void coax_am_attn_scores_m4(int64_t item, uint32_t dims0, uint32_t dims1, uint32_t kv_info, int64_t pos0, int64_t n_tok, int64_t k_start, coax_v_f32 q, coax_v_f32 r, coax_v_f32 rel_bias, coax_v_f32 sinks, coax_v_u16 k_cache, coax_v_u16 scores, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  using namespace mpp::tensor_ops;
+  int n_head = (int)(dims0 & 255u);
+  int n_head_kv = (int)((dims0 >> 8u) & 255u);
+  int head_dim = (int)((dims0 >> 16u) & 255u);
+  int n_rel = (int)((dims0 >> 24u) & 255u);
+  int extent = (int)(dims1 & 65535u);
+  int is_swa = (int)((dims1 >> 16u) & 1u);
+  int swa = (int)((dims1 >> 17u) & 32767u);
+  int kv_cap = (int)(kv_info & 65535u);
+  int score_stride = (int)((kv_info >> 16u) & 65535u);
+  if (head_dim != 128 || n_rel != 16 || n_head < 1 || n_head_kv < 1 || n_tok < 1 || (int64_t)n_tok * n_head * 128 > q.count || (int64_t)n_tok * n_head * 16 > r.count || (int64_t)extent * 16 > rel_bias.count || (int64_t)n_tok * n_head > sinks.count || (int64_t)kv_cap * n_head_kv * 128 > k_cache.count || (int64_t)n_head * n_tok * score_stride > scores.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int span = (int)(pos0 + n_tok - k_start);
+  int qt = (int)((n_tok + 63) / 64);
+  int k_split = (int)(item & 3);
+  int hq = (int)(item >> 2);
+  int h = hq / qt;
+  int t0 = (hq % qt) * 64;
+  int nt = (int)min((int64_t)64, n_tok - t0);
+  int last_t = t0 + nt - 1;
+  int kv_h = h / (n_head / n_head_kv);
+  int n_kv_elem = n_head_kv * 128;
+  int64_t min_k = (is_swa && pos0 + t0 >= swa) ? (pos0 + t0 - swa + 1) : 0;
+  int j_lo_tile = (min_k > k_start) ? (int)((min_k - k_start) / 32) : 0;
+  int j_hi_val = (int)(pos0 + last_t - k_start);
+  int j_hi_tile = (j_hi_val >= 0) ? (j_hi_val / 32) : -1;
+  int n_valid = j_hi_tile - j_lo_tile + 1;
+  if (n_valid <= 0) return;
+
+  threadgroup half *Q_tg = (threadgroup half *)tg;           /* 64 * 128 = 8192 halfs (4096 floats) */
+  threadgroup float *S_mat = tg + 4096;                      /* 64 * 32  = 2048 floats (also K_tg 32 * 128 halfs) */
+  threadgroup half *R_tg = (threadgroup half *)(tg + 6144);  /* 64 * 16  = 1024 halfs (512 floats) */
+  threadgroup half *RB_tg = (threadgroup half *)(tg + 6656); /* 96 * 16  = 1536 halfs (768 floats) */
+  threadgroup float *sinks_tg = tg + 7424;                   /* 64 floats */
+
+  /* Load Q[t0..t0+nt-1, h, 0..127], R[t0..t0+nt-1, h, 0..15], sinks[t0..t0+nt-1, h] ONCE for all k_tiles! */
+  for (int idx = (int)tid; idx < 2048; idx += 128) {
+    int dt = idx >> 5;
+    int d4 = (idx & 31) << 2;
+    half4 hv = half4(0.0h);
+    if (dt < nt) {
+      hv = half4(*(const device float4 *)(q.data + ((int64_t)(t0 + dt) * n_head + h) * 128 + d4));
+    }
+    *(threadgroup half4 *)(Q_tg + dt * 128 + d4) = hv;
+  }
+  for (int idx = (int)tid; idx < 256; idx += 128) {
+    int dt = idx >> 2;
+    int m4 = (idx & 3) << 2;
+    half4 hv = half4(0.0h);
+    if (dt < nt) {
+      hv = half4(*(const device float4 *)(r.data + ((int64_t)(t0 + dt) * n_head + h) * 16 + m4));
+    }
+    *(threadgroup half4 *)(R_tg + dt * 16 + m4) = hv;
+  }
+  if ((int)tid < 64) {
+    sinks_tg[tid] = ((int)tid < nt) ? sinks.data[(int64_t)(t0 + (int)tid) * n_head + h] : 0.0f;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+  float scale = 1.0f / sqrt(128.0f);
+  int step_k = (n_valid + 3) / 4;
+  int kt_start = j_lo_tile + k_split * step_k;
+  int kt_end = min(kt_start + step_k, j_hi_tile + 1);
+  auto tQ = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(Q_tg, dextents<int32_t, 2>(128, nt), array<int32_t, 2>({1, 128}));
+  constexpr auto d_qk = matmul2d_descriptor(64, 32, 128, false, true, true);
+  matmul2d<d_qk, execution_simdgroups<4>> op;
+  for (int kt = kt_start; kt < kt_end; kt++) {
+    int j0 = kt * 32;
+    int nk = min(32, span - j0);
+    if (nk <= 0) continue;
+    int slot0 = is_swa ? ((int)(k_start + j0) % kv_cap) : (int)(k_start + j0);
+    auto tS = tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline>(S_mat, dextents<int32_t, 2>(nk, nt), array<int32_t, 2>({1, 32}));
+    if (!is_swa || slot0 + nk <= kv_cap) {
+      auto tK = tensor<device half, dextents<int32_t, 2>, tensor_inline>((device half *)(k_cache.data + (int64_t)slot0 * n_kv_elem + kv_h * 128), dextents<int32_t, 2>(128, nk), array<int32_t, 2>({1, n_kv_elem}));
+      op.run(tQ, tK, tS);
+    } else {
+      threadgroup half *K_tg = (threadgroup half *)S_mat;
+      for (int idx = (int)tid; idx < 1024; idx += 128) {
+        int dj = idx >> 5;
+        int d4 = (idx & 31) << 2;
+        half4 hv = half4(0.0h);
+        if (dj < nk) {
+          int sl = (int)(k_start + j0 + dj) % kv_cap;
+          hv = *(const device half4 *)(k_cache.data + (int64_t)sl * n_kv_elem + kv_h * 128 + d4);
+        }
+        *(threadgroup half4 *)(K_tg + dj * 128 + d4) = hv;
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      auto tK_tg = tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline>(K_tg, dextents<int32_t, 2>(128, nk), array<int32_t, 2>({1, 128}));
+      auto ct = op.template get_destination_cooperative_tensor<decltype(tQ), decltype(tK_tg), float>();
+      op.run(tQ, tK_tg, ct);
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      ct.store(tS);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    bool no_rb = (k_start + j0 + 31 <= pos0 + t0) && (!is_swa || (pos0 + last_t) - (k_start + j0) < swa) && ((pos0 + t0) - (k_start + j0 + 31) >= extent);
+    if (no_rb) {
+      for (int e = (int)tid; e < nt * 32; e += 128) {
+        int dt = e >> 5;
+        int dj = e & 31;
+        if (dj < nk) {
+          scores.data[((int64_t)h * n_tok + (t0 + dt)) * score_stride + (j0 + dj)] = as_type<ushort>((half)(S_mat[e] * scale - sinks_tg[dt]));
+        }
+      }
+    } else {
+      int d_lo = (int)((pos0 + t0) - (k_start + j0) - 31);
+      for (int idx = (int)tid; idx < 384; idx += 128) {
+        int di = idx >> 2;
+        int m4 = (idx & 3) << 2;
+        int dist = d_lo + di;
+        half4 hv = (dist >= 0 && dist < extent) ? half4(*(const device float4 *)(rel_bias.data + (int64_t)dist * 16 + m4)) : half4(0.0h);
+        *(threadgroup half4 *)(RB_tg + di * 16 + m4) = hv;
+      }
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+      for (int e = (int)tid; e < nt * 32; e += 128) {
+        int dt = e >> 5;
+        int dj = e & 31;
+        if (dj < nk) {
+          int64_t p = pos0 + t0 + dt;
+          int64_t kp = k_start + j0 + dj;
+          if (kp <= p && (!is_swa || p - kp < swa)) {
+            int dist = (int)(p - kp);
+            float rb = 0.0f;
+            if (dist < extent) {
+              int di = dist - d_lo;
+              const threadgroup half4 *rp = (const threadgroup half4 *)(R_tg + dt * 16);
+              const threadgroup half4 *bp = (const threadgroup half4 *)(RB_tg + di * 16);
+              rb = dot(float4(rp[0]), float4(bp[0])) + dot(float4(rp[1]), float4(bp[1])) + dot(float4(rp[2]), float4(bp[2])) + dot(float4(rp[3]), float4(bp[3]));
+            }
+            scores.data[((int64_t)h * n_tok + (t0 + dt)) * score_stride + (j0 + dj)] = as_type<ushort>((half)(S_mat[e] * scale + rb - sinks_tg[dt]));
+          }
+        }
+      }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+}
+COAX_DEV void coax_am_attn_values_m4(int64_t item, uint32_t dims0, uint32_t dims1, uint32_t kv_info, int64_t pos0, int64_t n_tok, int64_t k_start, coax_v_u16 scores, coax_v_f32 inv_gsum, coax_v_u16 v_cache, coax_v_f32 gate, coax_v_f32 out, uint32_t tid, threadgroup float *tg, int32_t line, COAX_ERR) {
+  using namespace mpp::tensor_ops;
+  int n_head = (int)(dims0 & 255u);
+  int n_head_kv = (int)((dims0 >> 8u) & 255u);
+  int head_dim = (int)((dims0 >> 16u) & 255u);
+  int is_swa = (int)((dims1 >> 16u) & 1u);
+  int swa = (int)((dims1 >> 17u) & 32767u);
+  int kv_cap = (int)(kv_info & 65535u);
+  int score_stride = (int)((kv_info >> 16u) & 65535u);
+  if (head_dim != 128 || n_head < 1 || n_head_kv < 1 || n_tok < 1 || (int64_t)n_head * n_tok * score_stride > scores.count || (int64_t)n_tok * n_head > inv_gsum.count || (int64_t)kv_cap * n_head_kv * 128 > v_cache.count || (int64_t)n_tok * n_head * 128 > gate.count || (int64_t)n_tok * n_head * 128 > out.count) {
+    coax_trap_(line, coax_err);
+    return;
+  }
+  int span = (int)(pos0 + n_tok - k_start);
+  int qt = (int)((n_tok + 63) / 64);
+  int per = qt * 2;
+  int h = (int)(item / per);
+  int rem = (int)(item % per);
+  int t0 = (rem >> 1) * 64;
+  int c0 = (rem & 1) * 64;
+  int nt = (int)min((int64_t)64, n_tok - t0);
+  int last_t = t0 + nt - 1;
+  int kv_h = h / (n_head / n_head_kv);
+  int n_kv_elem = n_head_kv * 128;
+  int j_lo = (is_swa && pos0 + t0 >= swa) ? (int)(pos0 + t0 - swa + 1 - k_start) : 0;
+  if (j_lo < 0) j_lo = 0;
+  int j_hi = min((int)(pos0 + last_t - k_start + 1), span);
+  int k_len = j_hi - j_lo;
+
+  constexpr auto dv = matmul2d_descriptor(64, 64, static_cast<int>(dynamic_extent), false, false, true, matmul2d_descriptor::mode::multiply_accumulate);
+  matmul2d<dv, execution_simdgroups<4>> op;
+  using DevHalf2D = tensor<device half, dextents<int32_t, 2>, tensor_inline>;
+  auto ct = op.template get_destination_cooperative_tensor<DevHalf2D, DevHalf2D, float>();
+  for (int i = 0; i < ct.get_capacity(); i++) ct[i] = 0.0f;
+  if (k_len > 0) {
+    int slot_lo = is_swa ? ((int)(k_start + j_lo) % kv_cap) : (int)(k_start + j_lo);
+    int len1 = (is_swa && slot_lo + k_len > kv_cap) ? (kv_cap - slot_lo) : k_len;
+    int len2 = k_len - len1;
+    auto tP1 = DevHalf2D((device half *)(scores.data + ((int64_t)h * n_tok + t0) * score_stride + j_lo), dextents<int32_t, 2>(len1, nt), array<int32_t, 2>({1, score_stride}));
+    auto tV1 = DevHalf2D((device half *)(v_cache.data + (int64_t)slot_lo * n_kv_elem + kv_h * 128 + c0), dextents<int32_t, 2>(64, len1), array<int32_t, 2>({1, n_kv_elem}));
+    op.run(tP1, tV1, ct);
+    if (len2 > 0) {
+      auto tP2 = DevHalf2D((device half *)(scores.data + ((int64_t)h * n_tok + t0) * score_stride + j_lo + len1), dextents<int32_t, 2>(len2, nt), array<int32_t, 2>({1, score_stride}));
+      auto tV2 = DevHalf2D((device half *)(v_cache.data + kv_h * 128 + c0), dextents<int32_t, 2>(64, len2), array<int32_t, 2>({1, n_kv_elem}));
+      op.run(tP2, tV2, ct);
+    }
+  }
+  auto tO = tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline>(tg, dextents<int32_t, 2>(64, nt), array<int32_t, 2>({1, 64}));
+  ct.store(tO);
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+  for (int idx = (int)tid; idx < nt * 16; idx += 128) {
+    int dt = idx >> 4;
+    int dc = (idx & 15) << 2;
+    float ig = inv_gsum.data[(int64_t)(t0 + dt) * n_head + h];
+    int64_t oidx = ((int64_t)(t0 + dt) * n_head + h) * 128 + c0 + dc;
+    float4 ov = *(const threadgroup float4 *)(tg + dt * 64 + dc);
+    float4 gv = *(const device float4 *)(gate.data + oidx);
+    *(device float4 *)(out.data + oidx) = (ov * ig) / (float4(1.0f) + exp(-gv));
+  }
 }
 )COAXRT";
 
@@ -4346,9 +5988,13 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
   }
   // Arrays and views hold scalars only (admission), so they never depend on each other.
   std::string types, helpers;
+  bool has_v_u16 = false, has_v_u32 = false, has_v_f32 = false;
   for (Type t : used) {
     std::string c = c_type(t), e = c_type(t->elem), tg = tag(t);
     if (t->kind == TypeKind::array) { types += "typedef struct { " + e + " e[" + std::to_string(t->length) + "]; } " + c + ";\n"; continue; }
+    if (c == "coax_v_u16") has_v_u16 = true;
+    else if (c == "coax_v_u32") has_v_u32 = true;
+    else if (c == "coax_v_f32") has_v_f32 = true;
     types += "typedef struct { device " + e + " *data; int64_t count; } " + c + ";\n";
     helpers += "COAX_DEV device " + e + " *coax_elem_" + tg + "_(" + c + " v, int64_t i, int32_t l, COAX_ERR) { return &v.data[coax_index(i, v.count, l)]; }\n";
     helpers += "#define coax_elem_" + tg + "(v, i, l) coax_elem_" + tg + "_(v, i, l, coax_err)\n";
@@ -4357,6 +6003,11 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
     helpers += "COAX_DEV " + c + " coax_reslice_" + tg + "_(" + c + " v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) {\n"
                "  " + c + " r = {v.data, 0};\n  if (coax_slice_ok_(lo, hi, v.count, l, coax_err)) { r.data = v.data + lo; r.count = hi - lo; }\n  return r;\n}\n";
     helpers += "#define coax_reslice_" + tg + "(v, lo, hi, l) coax_reslice_" + tg + "_(v, lo, hi, l, coax_err)\n";
+  }
+  if (em.apple_tensor) {
+    if (!has_v_u16) types += "typedef struct { device uint16_t *data; int64_t count; } coax_v_u16;\n";
+    if (!has_v_u32) types += "typedef struct { device uint32_t *data; int64_t count; } coax_v_u32;\n";
+    if (!has_v_f32) types += "typedef struct { device float *data; int64_t count; } coax_v_f32;\n";
   }
   std::string s = "/* Generated by coax0 from " + file->src->path + " (coax metal-compute). Do not edit: change the .coax file. */\n";
   s += METAL_RUNTIME;
@@ -4397,6 +6048,10 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
           s += "  threadgroup " + c_type(d->type) + " coax_tg_" + em.local_name(d->name) + ";\n";
           shared_args += ", &coax_tg_" + em.local_name(d->name);
         }
+      if (int tgsz = proc_am_tg_size(p)) {
+        s += "  threadgroup float coax_am_tg[" + std::to_string(tgsz) + "];\n";
+        shared_args += ", coax_am_tg";
+      }
       s += "  if (coax_tpg != " + T + "u) {  /* launched with the wrong group size: the launch is void */\n"
            "    if (coax_tid == 0) { atomic_fetch_add_explicit(&coax_errors[0], 1u, memory_order_relaxed); atomic_fetch_max_explicit(&coax_errors[1], " +
            std::to_string(p->loc.line) + "u, memory_order_relaxed); }\n    return;\n  }\n";
