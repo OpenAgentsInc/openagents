@@ -1,0 +1,961 @@
+// Byte-level JSON Schema constrained-decoding automaton for Psionic Inkling 2 Mini.
+// Used by psionic/platform/inkling-serve.c to enforce OpenAI response_format
+// (json_schema and json_object) and Responses API text.format during channel-2
+// (<|content_text|>) generation, without constraining channel-1 (<|content_thinking|>).
+//
+// Supported JSON Schema constructs:
+//   - types: object, array, string, integer, number, boolean, null, any (empty schema)
+//   - nullable type arrays (e.g. ["string", "null"])
+//   - object: properties, required (enforced before '}'), additionalProperties (false/true),
+//             duplicate-key prevention, exact unseen-key prefix pruning when additionalProperties=false
+//   - array: items
+//   - string: full RFC 8259 escapes (\" \\ \/ \b \f \n \r \t \uXXXX), UTF-8 multi-byte sequences,
+//             and exact enum prefix pruning
+//   - whitespace: RFC 8259 whitespace outside strings, capped at JS_MAX_WS consecutive bytes
+//
+// Checks:
+//   coax/bin/coax test psionic/lib/inkling/json-schema.coax
+#load "../../../coax/lib/json/json.coax";
+
+JS_KIND_ANY     :: 0;
+JS_KIND_OBJECT  :: 1;
+JS_KIND_ARRAY   :: 2;
+JS_KIND_STRING  :: 3;
+JS_KIND_INTEGER :: 4;
+JS_KIND_NUMBER  :: 5;
+JS_KIND_BOOL    :: 6;
+JS_KIND_NULL    :: 7;
+
+JS_MAX_NODES :: 64;
+JS_MAX_PROPS :: 128;
+JS_MAX_ENUMS :: 64;
+JS_STR_POOL  :: 8192;
+JS_MAX_DEPTH :: 16;
+JS_KEY_MAX   :: 64;
+JS_MAX_WS    :: 16;
+
+// Automaton frame phases
+JP_VALUE       :: 0;
+JP_OBJ_FIRST   :: 1;
+JP_OBJ_KEY     :: 2;
+JP_OBJ_KEY_ESC :: 3;
+JP_OBJ_KEY_HEX :: 4;
+JP_OBJ_COLON   :: 5;
+JP_OBJ_AFTER   :: 6;
+JP_OBJ_NEXT    :: 7;
+JP_ARR_FIRST   :: 8;
+JP_ARR_AFTER   :: 9;
+JP_ARR_NEXT    :: 10;
+JP_STR_BODY    :: 11;
+JP_STR_ESC     :: 12;
+JP_STR_HEX     :: 13;
+JP_ENUM_BODY   :: 14;
+JP_INT_SIGN    :: 15;
+JP_INT_ZERO    :: 16;
+JP_INT_DIGITS  :: 17;
+JP_NUM_SIGN    :: 18;
+JP_NUM_ZERO    :: 19;
+JP_NUM_DIGITS  :: 20;
+JP_NUM_DOT     :: 21;
+JP_NUM_FRAC    :: 22;
+JP_NUM_EXP     :: 23;
+JP_NUM_ESIGN   :: 24;
+JP_NUM_EDIGITS :: 25;
+JP_LIT         :: 26;
+
+JsStr :: struct { off: int; len: int; }
+
+JsProp :: struct {
+  name: JsStr;
+  node: int;
+}
+
+JsNode :: struct {
+  kind: int;
+  nullable: bool;
+  prop_start: int;
+  prop_count: int;
+  req_mask: u32;
+  allow_extra: bool;
+  item_node: int;
+  enum_start: int;
+  enum_count: int;
+}
+
+JsSchema :: struct {
+  nodes: [JS_MAX_NODES] JsNode;
+  nnodes: int;
+  props: [JS_MAX_PROPS] JsProp;
+  nprops: int;
+  enums: [JS_MAX_ENUMS] JsStr;
+  nenums: int;
+  pool: [JS_STR_POOL] u8;
+  npool: int;
+  root: int;
+  any_node: int;
+  valid: bool;
+}
+
+JsFrame :: struct {
+  node: int;
+  phase: int;
+  seen_mask: u32;
+  aux: int;
+  aux2: int;
+}
+
+JsState :: struct {
+  stack: [JS_MAX_DEPTH] JsFrame;
+  top: int;
+  done: bool;
+  ws_run: int;
+  utf8_rem: int;
+  utf8_lo: u8;
+  utf8_hi: u8;
+  esc_u: int;
+  cur_len: int;
+  cur_buf: [JS_KEY_MAX] u8;
+}
+
+// ---------------------------------------------------------------- pool & schema compilation
+
+js_is_ws :: (c: u8) -> bool #effects() {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+js_is_digit :: (c: u8) -> bool #effects() {
+  return c >= '0' && c <= '9';
+}
+
+js_is_hex :: (c: u8) -> bool #effects() {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+js_pool_str :: (sc: [] JsSchema, ref: JsStr) -> string #effects(all) {
+  return cast(string) sc[0].pool[ref.off..<ref.off + ref.len];
+}
+
+js_pool_add :: (sc: [] JsSchema, text: string, out: [] JsStr) -> bool #effects(all) {
+  if text.count > JS_KEY_MAX || sc[0].npool + text.count > JS_STR_POOL { return false; }
+  off := sc[0].npool;
+  for i: 0..<text.count { sc[0].pool[off + i] = text[i]; }
+  sc[0].npool = off + text.count;
+  out[0] = JsStr.{off = off, len = text.count};
+  return true;
+}
+
+js_alloc_node :: (sc: [] JsSchema, kind: int) -> int #effects(all) {
+  if sc[0].nnodes >= JS_MAX_NODES { return -1; }
+  id := sc[0].nnodes;
+  sc[0].nnodes += 1;
+  sc[0].nodes[id] = JsNode.{kind = kind, allow_extra = true, item_node = sc[0].any_node};
+  return id;
+}
+
+js_kind_from_name :: (name: string) -> int #effects(all) {
+  if name == "object" { return JS_KIND_OBJECT; }
+  if name == "array" { return JS_KIND_ARRAY; }
+  if name == "string" { return JS_KIND_STRING; }
+  if name == "integer" { return JS_KIND_INTEGER; }
+  if name == "number" { return JS_KIND_NUMBER; }
+  if name == "boolean" { return JS_KIND_BOOL; }
+  if name == "null" { return JS_KIND_NULL; }
+  return -1;
+}
+
+js_compile_node :: (sc: [] JsSchema, doc: Jv, jidx: int, depth: int) -> int #effects(all) {
+  if depth >= JS_MAX_DEPTH || jidx < 0 || jv_kind(doc, jidx) != JV_OBJECT { return -1; }
+  kind := -1;
+  nullable := false;
+  t_idx := jv_get(doc, jidx, "type");
+  if t_idx >= 0 {
+    tk := jv_kind(doc, t_idx);
+    if tk == JV_STRING {
+      tb: [32] u8; tn := jv_str(doc, t_idx, tb[..]);
+      if tn <= 0 { return -1; }
+      kind = js_kind_from_name(cast(string) tb[0..<tn]);
+      if kind < 0 { return -1; }
+    } else if tk == JV_ARRAY {
+      n_el := jv_len(doc, t_idx);
+      for i: 0..<n_el {
+        ei := jv_at(doc, t_idx, i);
+        if jv_kind(doc, ei) != JV_STRING { return -1; }
+        tb: [32] u8; tn := jv_str(doc, ei, tb[..]);
+        if tn <= 0 { return -1; }
+        k := js_kind_from_name(cast(string) tb[0..<tn]);
+        if k < 0 { return -1; }
+        if k == JS_KIND_NULL { nullable = true; }
+        else if kind < 0 { kind = k; }
+      }
+      if kind < 0 && nullable { kind = JS_KIND_NULL; nullable = false; }
+    } else {
+      return -1;
+    }
+  }
+  props_idx := jv_get(doc, jidx, "properties");
+  items_idx := jv_get(doc, jidx, "items");
+  enum_idx := jv_get(doc, jidx, "enum");
+  if kind < 0 {
+    if props_idx >= 0 { kind = JS_KIND_OBJECT; }
+    else if items_idx >= 0 { kind = JS_KIND_ARRAY; }
+    else if enum_idx >= 0 { kind = JS_KIND_STRING; }
+    else { kind = JS_KIND_ANY; }
+  }
+  nid := js_alloc_node(sc, kind);
+  if nid < 0 { return -1; }
+  sc[0].nodes[nid].nullable = nullable;
+
+  if kind == JS_KIND_OBJECT {
+    ap_idx := jv_get(doc, jidx, "additionalProperties");
+    if ap_idx >= 0 && jv_kind(doc, ap_idx) == JV_FALSE {
+      sc[0].nodes[nid].allow_extra = false;
+    }
+    if props_idx >= 0 && jv_kind(doc, props_idx) == JV_OBJECT {
+      // Reserve a contiguous slice in sc[0].props for this object's properties
+      // before recursing into child schemas so sibling props stay contiguous!
+      pcount := jv_len(doc, props_idx);
+      if pcount > 32 || sc[0].nprops + pcount > JS_MAX_PROPS { return -1; }
+      pstart := sc[0].nprops;
+      sc[0].nprops += pcount;
+      sc[0].nodes[nid].prop_start = pstart;
+      sc[0].nodes[nid].prop_count = pcount;
+      c := doc.nodes[props_idx].first;
+      slot := 0;
+      while c >= 0 {
+        // Property key
+        kb: [JS_KEY_MAX] u8;
+        raw_k := jv_key(doc, c);
+        if raw_k.count == 0 || raw_k.count > JS_KEY_MAX { return -1; }
+        sref: [1] JsStr;
+        if !js_pool_add(sc, raw_k, sref[..]) { return -1; }
+        sc[0].props[pstart + slot].name = sref[0];
+        child_nid := js_compile_node(sc, doc, c, depth + 1);
+        if child_nid < 0 { return -1; }
+        sc[0].props[pstart + slot].node = child_nid;
+        slot += 1;
+        c = doc.nodes[c].next;
+      }
+      // Required property bitmask
+      req_idx := jv_get(doc, jidx, "required");
+      if req_idx >= 0 && jv_kind(doc, req_idx) == JV_ARRAY {
+        rc := doc.nodes[req_idx].first;
+        while rc >= 0 {
+          if jv_kind(doc, rc) == JV_STRING {
+            rb: [JS_KEY_MAX] u8; rn := jv_str(doc, rc, rb[..]);
+            if rn > 0 {
+              rname := cast(string) rb[0..<rn];
+              for k: 0..<pcount {
+                if js_pool_str(sc, sc[0].props[pstart + k].name) == rname {
+                  sc[0].nodes[nid].req_mask = sc[0].nodes[nid].req_mask | (cast(u32) 1 << cast(u32) k);
+                  break;
+                }
+              }
+            }
+          }
+          rc = doc.nodes[rc].next;
+        }
+      }
+    }
+  } else if kind == JS_KIND_ARRAY {
+    if items_idx >= 0 && jv_kind(doc, items_idx) == JV_OBJECT {
+      inid := js_compile_node(sc, doc, items_idx, depth + 1);
+      if inid < 0 { return -1; }
+      sc[0].nodes[nid].item_node = inid;
+    } else {
+      sc[0].nodes[nid].item_node = sc[0].any_node;
+    }
+  } else if kind == JS_KIND_STRING {
+    if enum_idx >= 0 && jv_kind(doc, enum_idx) == JV_ARRAY {
+      ecount := jv_len(doc, enum_idx);
+      if ecount <= 0 || sc[0].nenums + ecount > JS_MAX_ENUMS { return -1; }
+      estart := sc[0].nenums;
+      ec := doc.nodes[enum_idx].first;
+      while ec >= 0 {
+        if jv_kind(doc, ec) != JV_STRING { return -1; }
+        eb: [JS_KEY_MAX] u8; en := jv_str(doc, ec, eb[..]);
+        if en < 0 { return -1; }
+        sref: [1] JsStr;
+        if !js_pool_add(sc, cast(string) eb[0..<en], sref[..]) { return -1; }
+        sc[0].enums[sc[0].nenums] = sref[0];
+        sc[0].nenums += 1;
+        ec = doc.nodes[ec].next;
+      }
+      sc[0].nodes[nid].enum_start = estart;
+      sc[0].nodes[nid].enum_count = ecount;
+    }
+  }
+  return nid;
+}
+
+js_schema_init_base :: (sc: [] JsSchema) #effects(all) {
+  sc[0] = JsSchema.{};
+  sc[0].nodes[0] = JsNode.{kind = JS_KIND_ANY, allow_extra = true, item_node = 0};
+  sc[0].nnodes = 1;
+  sc[0].any_node = 0;
+  sc[0].root = 0;
+  sc[0].valid = false;
+}
+
+// Compiles a JSON Schema object string into `sc`. Returns true on success.
+js_compile_schema :: (sc: [] JsSchema, schema_json: string) -> bool #effects(all) {
+  if sc.count < 1 || schema_json.count == 0 { return false; }
+  js_schema_init_base(sc);
+  jnodes: [1024] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], schema_json, jnodes[..]) { return false; }
+  root := js_compile_node(sc, doc[0], 0, 0);
+  if root < 0 { sc[0].valid = false; return false; }
+  sc[0].root = root;
+  sc[0].valid = true;
+  return true;
+}
+
+// Initializes `sc` to accept any valid RFC 8259 JSON object (`response_format: {"type":"json_object"}`).
+js_init_object :: (sc: [] JsSchema) -> bool #effects(all) {
+  if sc.count < 1 { return false; }
+  js_schema_init_base(sc);
+  root := js_alloc_node(sc, JS_KIND_OBJECT);
+  sc[0].nodes[root].allow_extra = true;
+  sc[0].root = root;
+  sc[0].valid = true;
+  return true;
+}
+
+// Resets `st` to the initial state for `sc`.
+js_reset :: (sc: [] JsSchema, st: [] JsState) -> bool #effects(all) {
+  if sc.count < 1 || st.count < 1 || !sc[0].valid { return false; }
+  st[0] = JsState.{};
+  st[0].stack[0] = JsFrame.{node = sc[0].root, phase = JP_VALUE, aux = -1};
+  st[0].top = 1;
+  return true;
+}
+
+// ---------------------------------------------------------------- automaton helpers
+
+js_has_unseen_prop :: (nd: JsNode, seen: u32) -> bool #effects(all) {
+  for k: 0..<nd.prop_count {
+    if (seen & (cast(u32) 1 << cast(u32) k)) == 0 { return true; }
+  }
+  return false;
+}
+
+js_key_prefix_ok :: (sc: [] JsSchema, nd: JsNode, seen: u32, buf: [] const u8, n: int, next_b: u8) -> bool #effects(all) {
+  for k: 0..<nd.prop_count {
+    if (seen & (cast(u32) 1 << cast(u32) k)) != 0 { continue; }
+    name := js_pool_str(sc, sc[0].props[nd.prop_start + k].name);
+    if name.count <= n { continue; }
+    match := true;
+    for j: 0..<n { if name[j] != buf[j] { match = false; break; } }
+    if match && name[n] == next_b { return true; }
+  }
+  return false;
+}
+
+js_key_find_exact :: (sc: [] JsSchema, nd: JsNode, buf: [] const u8, n: int) -> int #effects(all) {
+  for k: 0..<nd.prop_count {
+    name := js_pool_str(sc, sc[0].props[nd.prop_start + k].name);
+    if name.count != n { continue; }
+    match := true;
+    for j: 0..<n { if name[j] != buf[j] { match = false; break; } }
+    if match { return k; }
+  }
+  return -1;
+}
+
+js_enum_prefix_ok :: (sc: [] JsSchema, nd: JsNode, buf: [] const u8, n: int, next_b: u8) -> bool #effects(all) {
+  for k: 0..<nd.enum_count {
+    ev := js_pool_str(sc, sc[0].enums[nd.enum_start + k]);
+    if ev.count <= n { continue; }
+    match := true;
+    for j: 0..<n { if ev[j] != buf[j] { match = false; break; } }
+    if match && ev[n] == next_b { return true; }
+  }
+  return false;
+}
+
+js_enum_exact :: (sc: [] JsSchema, nd: JsNode, buf: [] const u8, n: int) -> bool #effects(all) {
+  for k: 0..<nd.enum_count {
+    ev := js_pool_str(sc, sc[0].enums[nd.enum_start + k]);
+    if ev.count != n { continue; }
+    match := true;
+    for j: 0..<n { if ev[j] != buf[j] { match = false; break; } }
+    if match { return true; }
+  }
+  return false;
+}
+
+js_pop :: (st: [] JsState) #effects(all) {
+  st[0].top -= 1;
+  st[0].ws_run = 0;
+  if st[0].top == 0 { st[0].done = true; }
+}
+
+js_push :: (st: [] JsState, node: int) -> bool #effects(all) {
+  if st[0].top >= JS_MAX_DEPTH { return false; }
+  st[0].stack[st[0].top] = JsFrame.{node = node, phase = JP_VALUE, aux = -1};
+  st[0].top += 1;
+  st[0].ws_run = 0;
+  return true;
+}
+
+js_lit_byte :: (kind: int, pos: int) -> u8 #effects(all) {
+  if kind == 0 {
+    s := "true";
+    return ifx pos < s.count then s[pos] else 0;
+  }
+  if kind == 1 {
+    s := "false";
+    return ifx pos < s.count then s[pos] else 0;
+  }
+  s := "null";
+  return ifx pos < s.count then s[pos] else 0;
+}
+
+js_lit_len :: (kind: int) -> int #effects() {
+  if kind == 0 { return 4; }
+  if kind == 1 { return 5; }
+  return 4;
+}
+
+js_utf8_cont :: (st: [] JsState, b: u8) -> bool #effects(all) {
+  if b < st[0].utf8_lo || b > st[0].utf8_hi { return false; }
+  st[0].utf8_rem -= 1;
+  st[0].utf8_lo = 0x80;
+  st[0].utf8_hi = 0xBF;
+  return true;
+}
+
+js_utf8_lead :: (st: [] JsState, b: u8) -> bool #effects(all) {
+  if b >= 0xC2 && b <= 0xDF { st[0].utf8_rem = 1; st[0].utf8_lo = 0x80; st[0].utf8_hi = 0xBF; return true; }
+  if b == 0xE0 { st[0].utf8_rem = 2; st[0].utf8_lo = 0xA0; st[0].utf8_hi = 0xBF; return true; }
+  if (b >= 0xE1 && b <= 0xEC) || b == 0xEE || b == 0xEF { st[0].utf8_rem = 2; st[0].utf8_lo = 0x80; st[0].utf8_hi = 0xBF; return true; }
+  if b == 0xED { st[0].utf8_rem = 2; st[0].utf8_lo = 0x80; st[0].utf8_hi = 0x9F; return true; }
+  if b == 0xF0 { st[0].utf8_rem = 3; st[0].utf8_lo = 0x90; st[0].utf8_hi = 0xBF; return true; }
+  if b >= 0xF1 && b <= 0xF3 { st[0].utf8_rem = 3; st[0].utf8_lo = 0x80; st[0].utf8_hi = 0xBF; return true; }
+  if b == 0xF4 { st[0].utf8_rem = 3; st[0].utf8_lo = 0x80; st[0].utf8_hi = 0x8F; return true; }
+  return false;
+}
+
+// Advances `st` by one byte `b` under schema `sc`. Returns false if `b` violates the schema.
+js_step_byte :: (sc: [] JsSchema, st: [] JsState, b: u8) -> bool #effects(all) {
+  // Re-dispatch loop handles zero-consumption pops (numbers) and pushes (array elements).
+  for iter: 0..<JS_MAX_DEPTH + 4 {
+    if st[0].done {
+      if js_is_ws(b) && st[0].ws_run < JS_MAX_WS {
+        st[0].ws_run += 1;
+        return true;
+      }
+      return false;
+    }
+    if st[0].top <= 0 { return false; }
+    fi := st[0].top - 1;
+    ph := st[0].stack[fi].phase;
+    nid := st[0].stack[fi].node;
+    nd := sc[0].nodes[nid];
+
+    if ph == JP_VALUE {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if nd.nullable && b == 'n' {
+        st[0].stack[fi].phase = JP_LIT;
+        st[0].stack[fi].aux = 2;
+        st[0].stack[fi].aux2 = 1;
+        return true;
+      }
+      if nd.kind == JS_KIND_ANY {
+        if b == '{' { st[0].stack[fi].phase = JP_OBJ_FIRST; return true; }
+        if b == '[' { st[0].stack[fi].phase = JP_ARR_FIRST; return true; }
+        if b == '"' { st[0].stack[fi].phase = JP_STR_BODY; st[0].utf8_rem = 0; return true; }
+        if b == 't' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 0; st[0].stack[fi].aux2 = 1; return true; }
+        if b == 'f' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 1; st[0].stack[fi].aux2 = 1; return true; }
+        if b == 'n' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 2; st[0].stack[fi].aux2 = 1; return true; }
+        if b == '-' { st[0].stack[fi].phase = JP_NUM_SIGN; return true; }
+        if b == '0' { st[0].stack[fi].phase = JP_NUM_ZERO; return true; }
+        if b >= '1' && b <= '9' { st[0].stack[fi].phase = JP_NUM_DIGITS; return true; }
+        return false;
+      }
+      if nd.kind == JS_KIND_OBJECT {
+        if b != '{' { return false; }
+        st[0].stack[fi].phase = JP_OBJ_FIRST;
+        return true;
+      }
+      if nd.kind == JS_KIND_ARRAY {
+        if b != '[' { return false; }
+        st[0].stack[fi].phase = JP_ARR_FIRST;
+        return true;
+      }
+      if nd.kind == JS_KIND_STRING {
+        if b != '"' { return false; }
+        if nd.enum_count > 0 {
+          st[0].stack[fi].phase = JP_ENUM_BODY;
+          st[0].cur_len = 0;
+        } else {
+          st[0].stack[fi].phase = JP_STR_BODY;
+          st[0].utf8_rem = 0;
+        }
+        return true;
+      }
+      if nd.kind == JS_KIND_INTEGER {
+        if b == '-' { st[0].stack[fi].phase = JP_INT_SIGN; return true; }
+        if b == '0' { st[0].stack[fi].phase = JP_INT_ZERO; return true; }
+        if b >= '1' && b <= '9' { st[0].stack[fi].phase = JP_INT_DIGITS; return true; }
+        return false;
+      }
+      if nd.kind == JS_KIND_NUMBER {
+        if b == '-' { st[0].stack[fi].phase = JP_NUM_SIGN; return true; }
+        if b == '0' { st[0].stack[fi].phase = JP_NUM_ZERO; return true; }
+        if b >= '1' && b <= '9' { st[0].stack[fi].phase = JP_NUM_DIGITS; return true; }
+        return false;
+      }
+      if nd.kind == JS_KIND_BOOL {
+        if b == 't' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 0; st[0].stack[fi].aux2 = 1; return true; }
+        if b == 'f' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 1; st[0].stack[fi].aux2 = 1; return true; }
+        return false;
+      }
+      if nd.kind == JS_KIND_NULL {
+        if b == 'n' { st[0].stack[fi].phase = JP_LIT; st[0].stack[fi].aux = 2; st[0].stack[fi].aux2 = 1; return true; }
+        return false;
+      }
+      return false;
+    }
+
+    // ---- Object states
+    if ph == JP_OBJ_FIRST {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b == '}' {
+        if (st[0].stack[fi].seen_mask & nd.req_mask) != nd.req_mask { return false; }
+        js_pop(st);
+        return true;
+      }
+      if b == '"' {
+        if !nd.allow_extra && !js_has_unseen_prop(nd, st[0].stack[fi].seen_mask) { return false; }
+        st[0].stack[fi].phase = JP_OBJ_KEY;
+        st[0].cur_len = 0;
+        st[0].utf8_rem = 0;
+        return true;
+      }
+      return false;
+    }
+
+    if ph == JP_OBJ_KEY {
+      if !nd.allow_extra {
+        if b == '"' {
+          k := js_key_find_exact(sc, nd, st[0].cur_buf[..], st[0].cur_len);
+          if k < 0 { return false; }
+          bit := cast(u32) 1 << cast(u32) k;
+          if (st[0].stack[fi].seen_mask & bit) != 0 { return false; }
+          st[0].stack[fi].seen_mask = st[0].stack[fi].seen_mask | bit;
+          st[0].stack[fi].aux = k;
+          st[0].stack[fi].phase = JP_OBJ_COLON;
+          return true;
+        }
+        if st[0].cur_len >= JS_KEY_MAX { return false; }
+        if !js_key_prefix_ok(sc, nd, st[0].stack[fi].seen_mask, st[0].cur_buf[..], st[0].cur_len, b) { return false; }
+        st[0].cur_buf[st[0].cur_len] = b;
+        st[0].cur_len += 1;
+        return true;
+      }
+      // allow_extra == true: any valid RFC 8259 string
+      if st[0].utf8_rem > 0 {
+        if !js_utf8_cont(st, b) { return false; }
+        if st[0].cur_len < JS_KEY_MAX { st[0].cur_buf[st[0].cur_len] = b; st[0].cur_len += 1; }
+        return true;
+      }
+      if b == '"' {
+        k := js_key_find_exact(sc, nd, st[0].cur_buf[..], st[0].cur_len);
+        if k >= 0 {
+          bit := cast(u32) 1 << cast(u32) k;
+          if (st[0].stack[fi].seen_mask & bit) != 0 { return false; }
+          st[0].stack[fi].seen_mask = st[0].stack[fi].seen_mask | bit;
+        }
+        st[0].stack[fi].aux = k;
+        st[0].stack[fi].phase = JP_OBJ_COLON;
+        return true;
+      }
+      if b == '\\' { st[0].stack[fi].phase = JP_OBJ_KEY_ESC; return true; }
+      if b < 0x20 { return false; }
+      if b >= 0x80 && !js_utf8_lead(st, b) { return false; }
+      if st[0].cur_len < JS_KEY_MAX { st[0].cur_buf[st[0].cur_len] = b; st[0].cur_len += 1; }
+      return true;
+    }
+
+    if ph == JP_OBJ_KEY_ESC {
+      if b == '"' || b == '\\' || b == '/' || b == 'b' || b == 'f' || b == 'n' || b == 'r' || b == 't' {
+        st[0].stack[fi].phase = JP_OBJ_KEY;
+        return true;
+      }
+      if b == 'u' { st[0].esc_u = 4; st[0].stack[fi].phase = JP_OBJ_KEY_HEX; return true; }
+      return false;
+    }
+
+    if ph == JP_OBJ_KEY_HEX {
+      if !js_is_hex(b) { return false; }
+      st[0].esc_u -= 1;
+      if st[0].esc_u == 0 { st[0].stack[fi].phase = JP_OBJ_KEY; }
+      return true;
+    }
+
+    if ph == JP_OBJ_COLON {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b != ':' { return false; }
+      k := st[0].stack[fi].aux;
+      child := ifx k >= 0 then sc[0].props[nd.prop_start + k].node else sc[0].any_node;
+      st[0].stack[fi].phase = JP_OBJ_AFTER;
+      return js_push(st, child);
+    }
+
+    if ph == JP_OBJ_AFTER {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b == '}' {
+        if (st[0].stack[fi].seen_mask & nd.req_mask) != nd.req_mask { return false; }
+        js_pop(st);
+        return true;
+      }
+      if b == ',' {
+        if !nd.allow_extra && !js_has_unseen_prop(nd, st[0].stack[fi].seen_mask) { return false; }
+        st[0].stack[fi].phase = JP_OBJ_NEXT;
+        return true;
+      }
+      return false;
+    }
+
+    if ph == JP_OBJ_NEXT {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b != '"' { return false; }
+      st[0].stack[fi].phase = JP_OBJ_KEY;
+      st[0].cur_len = 0;
+      st[0].utf8_rem = 0;
+      return true;
+    }
+
+    // ---- Array states
+    if ph == JP_ARR_FIRST {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b == ']' { js_pop(st); return true; }
+      st[0].stack[fi].phase = JP_ARR_AFTER;
+      if !js_push(st, nd.item_node) { return false; }
+      continue;   // re-process byte b as start of first element
+    }
+
+    if ph == JP_ARR_AFTER {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      if b == ']' { js_pop(st); return true; }
+      if b == ',' { st[0].stack[fi].phase = JP_ARR_NEXT; return true; }
+      return false;
+    }
+
+    if ph == JP_ARR_NEXT {
+      if js_is_ws(b) {
+        if st[0].ws_run >= JS_MAX_WS { return false; }
+        st[0].ws_run += 1;
+        return true;
+      }
+      st[0].ws_run = 0;
+      st[0].stack[fi].phase = JP_ARR_AFTER;
+      if !js_push(st, nd.item_node) { return false; }
+      continue;   // re-process byte b as start of next element
+    }
+
+    // ---- String states
+    if ph == JP_STR_BODY {
+      if st[0].utf8_rem > 0 { return js_utf8_cont(st, b); }
+      if b == '"' { js_pop(st); return true; }
+      if b == '\\' { st[0].stack[fi].phase = JP_STR_ESC; return true; }
+      if b < 0x20 { return false; }
+      if b < 0x80 { return true; }
+      return js_utf8_lead(st, b);
+    }
+
+    if ph == JP_STR_ESC {
+      if b == '"' || b == '\\' || b == '/' || b == 'b' || b == 'f' || b == 'n' || b == 'r' || b == 't' {
+        st[0].stack[fi].phase = JP_STR_BODY;
+        return true;
+      }
+      if b == 'u' { st[0].esc_u = 4; st[0].stack[fi].phase = JP_STR_HEX; return true; }
+      return false;
+    }
+
+    if ph == JP_STR_HEX {
+      if !js_is_hex(b) { return false; }
+      st[0].esc_u -= 1;
+      if st[0].esc_u == 0 { st[0].stack[fi].phase = JP_STR_BODY; }
+      return true;
+    }
+
+    if ph == JP_ENUM_BODY {
+      if b == '"' {
+        if !js_enum_exact(sc, nd, st[0].cur_buf[..], st[0].cur_len) { return false; }
+        js_pop(st);
+        return true;
+      }
+      if st[0].cur_len >= JS_KEY_MAX { return false; }
+      if !js_enum_prefix_ok(sc, nd, st[0].cur_buf[..], st[0].cur_len, b) { return false; }
+      st[0].cur_buf[st[0].cur_len] = b;
+      st[0].cur_len += 1;
+      return true;
+    }
+
+    // ---- Integer states
+    if ph == JP_INT_SIGN {
+      if b == '0' { st[0].stack[fi].phase = JP_INT_ZERO; return true; }
+      if b >= '1' && b <= '9' { st[0].stack[fi].phase = JP_INT_DIGITS; return true; }
+      return false;
+    }
+    if ph == JP_INT_ZERO {
+      if js_is_digit(b) { return false; }
+      js_pop(st);
+      continue;
+    }
+    if ph == JP_INT_DIGITS {
+      if js_is_digit(b) { return true; }
+      js_pop(st);
+      continue;
+    }
+
+    // ---- Number states
+    if ph == JP_NUM_SIGN {
+      if b == '0' { st[0].stack[fi].phase = JP_NUM_ZERO; return true; }
+      if b >= '1' && b <= '9' { st[0].stack[fi].phase = JP_NUM_DIGITS; return true; }
+      return false;
+    }
+    if ph == JP_NUM_ZERO {
+      if b == '.' { st[0].stack[fi].phase = JP_NUM_DOT; return true; }
+      if b == 'e' || b == 'E' { st[0].stack[fi].phase = JP_NUM_EXP; return true; }
+      if js_is_digit(b) { return false; }
+      js_pop(st);
+      continue;
+    }
+    if ph == JP_NUM_DIGITS {
+      if js_is_digit(b) { return true; }
+      if b == '.' { st[0].stack[fi].phase = JP_NUM_DOT; return true; }
+      if b == 'e' || b == 'E' { st[0].stack[fi].phase = JP_NUM_EXP; return true; }
+      js_pop(st);
+      continue;
+    }
+    if ph == JP_NUM_DOT {
+      if js_is_digit(b) { st[0].stack[fi].phase = JP_NUM_FRAC; return true; }
+      return false;
+    }
+    if ph == JP_NUM_FRAC {
+      if js_is_digit(b) { return true; }
+      if b == 'e' || b == 'E' { st[0].stack[fi].phase = JP_NUM_EXP; return true; }
+      js_pop(st);
+      continue;
+    }
+    if ph == JP_NUM_EXP {
+      if b == '+' || b == '-' { st[0].stack[fi].phase = JP_NUM_ESIGN; return true; }
+      if js_is_digit(b) { st[0].stack[fi].phase = JP_NUM_EDIGITS; return true; }
+      return false;
+    }
+    if ph == JP_NUM_ESIGN {
+      if js_is_digit(b) { st[0].stack[fi].phase = JP_NUM_EDIGITS; return true; }
+      return false;
+    }
+    if ph == JP_NUM_EDIGITS {
+      if js_is_digit(b) { return true; }
+      js_pop(st);
+      continue;
+    }
+
+    // ---- Literal states (true, false, null)
+    if ph == JP_LIT {
+      lk := st[0].stack[fi].aux;
+      lp := st[0].stack[fi].aux2;
+      if b != js_lit_byte(lk, lp) { return false; }
+      lp += 1;
+      if lp >= js_lit_len(lk) { js_pop(st); }
+      else { st[0].stack[fi].aux2 = lp; }
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+js_step_bytes :: (sc: [] JsSchema, st: [] JsState, piece: string) -> bool #effects(all) {
+  if sc.count < 1 || st.count < 1 || !sc[0].valid { return false; }
+  for b: piece {
+    if !js_step_byte(sc, st, b) { return false; }
+  }
+  return true;
+}
+
+js_is_accepting_num :: (ph: int) -> bool #effects() {
+  return ph == JP_INT_ZERO || ph == JP_INT_DIGITS || ph == JP_NUM_ZERO || ph == JP_NUM_DIGITS || ph == JP_NUM_FRAC || ph == JP_NUM_EDIGITS;
+}
+
+// True when the stream may legally terminate (EOG / <|end_message|>) in state `st`.
+js_can_finish :: (sc: [] JsSchema, st: [] JsState) -> bool #effects(all) {
+  if sc.count < 1 || st.count < 1 || !sc[0].valid { return false; }
+  if st[0].done { return true; }
+  return st[0].top == 1 && js_is_accepting_num(st[0].stack[0].phase);
+}
+
+// ---------------------------------------------------------------- C exports for inkling-serve.c
+
+ink_js_compile_schema :: (sc: [] JsSchema, schema_json: string) -> int #export_c #effects(all) {
+  return ifx js_compile_schema(sc, schema_json) then 1 else 0;
+}
+
+ink_js_init_object :: (sc: [] JsSchema) -> int #export_c #effects(all) {
+  return ifx js_init_object(sc) then 1 else 0;
+}
+
+ink_js_reset :: (sc: [] JsSchema, st: [] JsState) -> int #export_c #effects(all) {
+  return ifx js_reset(sc, st) then 1 else 0;
+}
+
+ink_js_step :: (sc: [] JsSchema, st: [] JsState, piece: string) -> int #export_c #effects(all) {
+  return ifx js_step_bytes(sc, st, piece) then 1 else 0;
+}
+
+ink_js_can_finish :: (sc: [] JsSchema, st: [] JsState) -> int #export_c #effects(all) {
+  return ifx js_can_finish(sc, st) then 1 else 0;
+}
+
+ink_js_is_done :: (st: [] JsState) -> int #export_c #effects(all) {
+  return ifx st.count >= 1 && st[0].done then 1 else 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+js_accepts :: (sc: [] JsSchema, text: string) -> bool #effects(all) {
+  st: [1] JsState;
+  if !js_reset(sc, st[..]) { return false; }
+  if !js_step_bytes(sc, st[..], text) { return false; }
+  return js_can_finish(sc, st[..]);
+}
+
+#test "json-schema: compiles MC_SCHEMA_AWARE and enforces required keys, enums, escapes, UTF-8, additionalProperties" {
+  schema := "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"notes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"},\"seen\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\",\"seen\",\"name\"],\"additionalProperties\":false}},\"questions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]},\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"id\",\"content\",\"status\"],\"additionalProperties\":false}}},\"required\":[\"rationale\",\"notes\",\"edits\",\"questions\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+  sc: [1] JsSchema;
+  #assert ink_js_compile_schema(sc[..], schema) == 1;
+  // Valid full response with escapes, quotes, unicode, nested edit & todo, optional todos included
+  good := "{\"rationale\":\"Check \\\"calc.py\\\"\\nline2 \\u0041 é ✓ 🚀\",\"notes\":[],\"edits\":[{\"path\":\"calc.py\",\"old\":\"a\",\"new\":\"b\",\"seen\":\"1\",\"name\":\"fix\"}],\"questions\":[],\"commands\":[\"pytest\"],\"view\":[],\"finished\":true,\"reply\":\"Fixed!\",\"ask\":\"none\",\"todos\":[{\"id\":\"1\",\"content\":\"done\",\"status\":\"completed\"}]}";
+  #assert js_accepts(sc[..], good);
+  // Valid response with keys in different order and optional todos omitted
+  good2 := " { \"ask\": \"question\", \"reply\": \"\", \"finished\": false, \"view\": [], \"commands\": [], \"questions\": [], \"edits\": [], \"notes\": [], \"rationale\": \"hi\" } ";
+  #assert js_accepts(sc[..], good2);
+  // Missing required key ("ask") -> refused
+  missing := "{\"rationale\":\"hi\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\"}";
+  #assert !js_accepts(sc[..], missing);
+  // Unknown extra key when additionalProperties:false -> refused
+  extra := "{\"rationale\":\"hi\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\",\"ask\":\"none\",\"bogus\":1}";
+  #assert !js_accepts(sc[..], extra);
+  // Duplicate key -> refused
+  dup := "{\"rationale\":\"a\",\"rationale\":\"b\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\",\"ask\":\"none\"}";
+  #assert !js_accepts(sc[..], dup);
+  // Bad enum value -> refused
+  bad_enum := "{\"rationale\":\"hi\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\",\"ask\":\"maybe\"}";
+  #assert !js_accepts(sc[..], bad_enum);
+  // Bad todo status enum -> refused
+  bad_todo := "{\"rationale\":\"hi\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\",\"ask\":\"none\",\"todos\":[{\"id\":\"1\",\"content\":\"x\",\"status\":\"done\"}]}";
+  #assert !js_accepts(sc[..], bad_todo);
+  // Wrong field type (finished as string instead of bool) -> refused
+  bad_type := "{\"rationale\":\"hi\",\"notes\":[],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":\"true\",\"reply\":\"ok\",\"ask\":\"none\"}";
+  #assert !js_accepts(sc[..], bad_type);
+  // Empty string or prose outside JSON -> refused
+  #assert !js_accepts(sc[..], "");
+  #assert !js_accepts(sc[..], "Sure, here is the JSON: {}");
+  // Trailing garbage after object -> refused
+  #assert !js_accepts(sc[..], "{\"ask\":\"question\",\"reply\":\"\",\"finished\":false,\"view\":[],\"commands\":[],\"questions\":[],\"edits\":[],\"notes\":[],\"rationale\":\"hi\"} extra");
+}
+
+#test "json-schema: incremental token-by-token stepping, clone/rollback, integers, numbers, nullable, json_object, and malformed inputs" {
+  // Integers, numbers, null, nullable, extra properties
+  s := "{\"type\":\"object\",\"properties\":{\"i\":{\"type\":\"integer\"},\"n\":{\"type\":\"number\"},\"z\":{\"type\":\"null\"},\"opt\":{\"type\":[\"string\",\"null\"]}},\"required\":[\"i\",\"n\",\"z\",\"opt\"],\"additionalProperties\":true}";
+  sc: [1] JsSchema;
+  #assert js_compile_schema(sc[..], s);
+  #assert js_accepts(sc[..], "{\"i\":0,\"n\":-12.5e+2,\"z\":null,\"opt\":null,\"extra\":{\"k\":[1,true,false,null,\"\\t\\r\\f\\b\\/\"]}}");
+  #assert js_accepts(sc[..], "{\"i\":-42,\"n\":0.25E-3,\"z\":null,\"opt\":\"hello\",\"extra\\u0041\":\"v\"}");
+  #assert !js_accepts(sc[..], "{\"i\":1.5,\"n\":0,\"z\":null,\"opt\":null}");    // float for integer
+  #assert !js_accepts(sc[..], "{\"i\":01,\"n\":0,\"z\":null,\"opt\":null}");     // leading zero
+  #assert !js_accepts(sc[..], "{\"i\":-,\"n\":0,\"z\":null,\"opt\":null}");      // bare minus
+  #assert !js_accepts(sc[..], "{\"i\":1,\"n\":1.,\"z\":null,\"opt\":null}");     // trailing dot
+  #assert !js_accepts(sc[..], "{\"i\":1,\"n\":1e,\"z\":null,\"opt\":null}");     // bare exponent
+  #assert !js_accepts(sc[..], "{\"i\":1,\"n\":1e+,\"z\":null,\"opt\":null}");    // bare exponent sign
+  #assert !js_accepts(sc[..], "{\"i\":1,\"n\":0,\"z\":true,\"opt\":null}");      // wrong null
+
+  // Root scalar number can_finish directly
+  sc_num: [1] JsSchema;
+  #assert js_compile_schema(sc_num[..], "{\"type\":\"number\"}");
+  st: [1] JsState;
+  #assert ink_js_reset(sc_num[..], st[..]) == 1;
+  #assert ink_js_can_finish(sc_num[..], st[..]) == 0;
+  #assert ink_js_step(sc_num[..], st[..], "-3.") == 1 && ink_js_can_finish(sc_num[..], st[..]) == 0;
+  #assert ink_js_step(sc_num[..], st[..], "14") == 1 && ink_js_can_finish(sc_num[..], st[..]) == 1;
+
+  // Speculative rollback on bad candidate token
+  sc_obj: [1] JsSchema;
+  #assert ink_js_init_object(sc_obj[..]) == 1;
+  #assert ink_js_reset(sc_obj[..], st[..]) == 1;
+  #assert ink_js_step(sc_obj[..], st[..], "{\"a\":") == 1;
+  trial := st;
+  #assert ink_js_step(sc_obj[..], trial[..], "bad") == 0;
+  // Original state unaffected; valid continuation succeeds
+  #assert ink_js_step(sc_obj[..], st[..], "123}") == 1 && ink_js_can_finish(sc_obj[..], st[..]) == 1;
+
+  // Reject unescaped control byte, bad escape, bad UTF-8, excessive whitespace loop
+  #assert !js_accepts(sc_obj[..], "{\"a\":\"\n\"}");
+  #assert !js_accepts(sc_obj[..], "{\"a\":\"\\q\"}");
+  #assert !js_accepts(sc_obj[..], "{\"a\":\"\\u123g\"}");
+  #assert ink_js_reset(sc_obj[..], st[..]) == 1 && ink_js_step(sc_obj[..], st[..], "{\"a\":\"") == 1;
+  t1 := st; #assert !js_step_byte(sc_obj[..], t1[..], 0xFF);
+  t2 := st; #assert js_step_byte(sc_obj[..], t2[..], 0xC3) && !js_step_byte(sc_obj[..], t2[..], cast(u8) 'x');
+  t3 := st; #assert !js_step_byte(sc_obj[..], t3[..], 0xC0);  // overlong 2-byte lead
+  t4 := st; #assert js_step_byte(sc_obj[..], t4[..], 0xED) && !js_step_byte(sc_obj[..], t4[..], 0xA0);  // UTF-16 surrogate
+  t5 := st; #assert js_step_byte(sc_obj[..], t5[..], 0xF4) && !js_step_byte(sc_obj[..], t5[..], 0x90);  // > U+10FFFF
+  #assert !js_accepts(sc_obj[..], "                 {}");   // 17 leading spaces > JS_MAX_WS
+
+  // Schema compiler rejects invalid JSON / invalid types
+  bad_sc: [1] JsSchema;
+  #assert ink_js_compile_schema(bad_sc[..], "") == 0;
+  #assert ink_js_compile_schema(bad_sc[..], "not json") == 0;
+  #assert ink_js_compile_schema(bad_sc[..], "{\"type\":\"bogus\"}") == 0;
+  #assert ink_js_compile_schema(bad_sc[..], "{\"type\":123}") == 0;
+  #assert ink_js_compile_schema(bad_sc[..], "{\"type\":\"string\",\"enum\":[]}") == 0;
+
+  // Empty object with no required keys, done flag, and additionalProperties=false closing after all keys seen
+  sc_empty: [1] JsSchema;
+  #assert ink_js_compile_schema(sc_empty[..], "{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"}},\"additionalProperties\":false}") == 1;
+  #assert js_accepts(sc_empty[..], "{}");
+  #assert js_accepts(sc_empty[..], "{\"a\":7}");
+  #assert !js_accepts(sc_empty[..], "{\"a\":7,}");
+  #assert !js_accepts(sc_empty[..], "{\"a\":7,\"b\":8}");
+  #assert ink_js_reset(sc_empty[..], st[..]) == 1 && ink_js_is_done(st[..]) == 0;
+  #assert ink_js_step(sc_empty[..], st[..], "{}") == 1 && ink_js_is_done(st[..]) == 1;
+}

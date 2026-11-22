@@ -51,16 +51,22 @@ cp_mn_sync :: (s: [] CoderPage) {
     }
   } else {
     for c: 0..<CP_CMDS {
+      if c == CP_CMD_MODEL && !cp_has_model_picker(s) { continue; }
+      if c == CP_CMD_REVIEW && !cp_flag(s, DC_FLAG_GIT) { continue; }
+      if c == CP_CMD_USAGE && !cp_flag(s, DC_FLAG_USAGE) { continue; }
+      if (c == CP_CMD_COMPACT || c == CP_CMD_CLEAR || c == CP_CMD_STASH) && !cp_flag(s, DC_FLAG_RICH) { continue; }
       fs := [2] MatchField.[MatchField.{text = CP_CMD_NAME[c], weight = 100, title = true}, MatchField.{text = CP_CMD_DESC[c], weight = 50, title = false}];
       app_mn_offer(mn, c, fs[..]);
     }
-    ms := s[0].mcp_skills[..];
-    for si: 0..<ms[0].nskills {
-      if !ms[0].skills[si].enabled { continue; }
-      sname := cp_mcp_str(ms[0].skills[si].name[..], ms[0].skills[si].name_n);
-      sdesc := cp_mcp_str(ms[0].skills[si].desc[..], ms[0].skills[si].desc_n);
-      fs := [2] MatchField.[MatchField.{text = sname, weight = 95, title = true}, MatchField.{text = sdesc, weight = 45, title = false}];
-      app_mn_offer(mn, CP_MN_SKILL_BASE + si, fs[..]);
+    if cp_flag(s, DC_FLAG_MCP) {
+      ms := s[0].mcp_skills[..];
+      for si: 0..<ms[0].nskills {
+        if !ms[0].skills[si].enabled { continue; }
+        sname := cp_mcp_str(ms[0].skills[si].name[..], ms[0].skills[si].name_n);
+        sdesc := cp_mcp_str(ms[0].skills[si].desc[..], ms[0].skills[si].desc_n);
+        fs := [2] MatchField.[MatchField.{text = sname, weight = 95, title = true}, MatchField.{text = sdesc, weight = 45, title = false}];
+        app_mn_offer(mn, CP_MN_SKILL_BASE + si, fs[..]);
+      }
     }
   }
   app_mn_end(mn);
@@ -142,7 +148,7 @@ cp_mn_pick :: (s: [] CoderPage, k: int) -> bool {
   if !done { return false; }
   cp_ed_publish(s, CP_ED_COMPOSER);
   mn[0].open = false; mn[0].shut = -1;
-  if mn[0].trigger == '/' && hit == CP_CMD_MODEL { s[0].model_menu = true; }
+  if mn[0].trigger == '/' && hit == CP_CMD_MODEL && cp_has_model_picker(s) { s[0].model_menu = true; }
   if mn[0].trigger == '/' && hit == CP_CMD_NEW { _ = cp_new(s); }
   if mn[0].trigger == '/' && hit >= CP_CMD_FORK && hit <= CP_CMD_STASH { _ = cp_rich_run_cmd(s, hit); }
   return true;

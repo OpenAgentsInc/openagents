@@ -211,7 +211,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     s[0].ft[0].editor_menu = false;
     return true;
   }
-  if cp_term_focused(s) { return cp_term_key(s, key, mods); }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { return cp_term_key(s, key, mods); }
   which := cp_ed_which(s);
   if which < 0 { return false; }
   if which == CP_ED_FILE && s[0].fp[0].large_edit { return cp_fp_large_key(s, key, mods); }
@@ -224,7 +224,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
   }
   if which == CP_ED_COMPOSER {
     if cp_mn_key(s, key, mods) { return true; }   // the @ and / popover's keys first (mention.coax)
-    if cp_hist_key(s, key, mods) { return true; } // Up/Down prompt history on first/last line (rich.coax)
+    if cp_flag(s, DC_FLAG_RICH) && cp_hist_key(s, key, mods) { return true; } // Up/Down prompt history on first/last line (rich.coax)
     if key == KEY_ENTER && mods == 0 {
       if coder_page_followup_submit(s, false) { return true; }
       _ = cp_send(s); return true;
@@ -267,16 +267,16 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
   return true;
 }
 // Whether a field has the keyboard: typed keys then go through the input method.
-coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ready && (cp_ed_which(s) >= 0 || cp_term_focused(s)); }
+coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ready && (cp_ed_which(s) >= 0 || (cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s))); }
 // The keyboard goes to the composer (1) or settings' search (2), or leaves both (0).
 coder_page_focus :: (s: [] CoderPage, kb: int) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH || kb == CP_KB_TERM || kb == CP_KB_FIND || kb == CP_KB_FT_FILTER then kb else CP_KB_NONE;
+  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH || (kb == CP_KB_TERM && cp_flag(s, DC_FLAG_TERMINAL)) || kb == CP_KB_FIND || kb == CP_KB_FT_FILTER then kb else CP_KB_NONE;
 }
 // Pasted text into the field with the keyboard, as its own undo step. False when none has it or it does not fit.
 coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return false; }
-  if cp_term_focused(s) { return cp_term_queue_input(s, text); }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { return cp_term_queue_input(s, text); }
   which := cp_ed_which(s);
   if which < 0 { return false; }
   if which == CP_ED_FILE && s[0].fp[0].large_edit { return cp_fp_large_insert(s, text); }
@@ -288,7 +288,7 @@ coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(a
 // a composition, or when out does not hold them. Cut removes the selection once it is copied.
 coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return 0; }
-  if cp_term_focused(s) { return cp_term_selected_raw(s, out); }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { return cp_term_selected_raw(s, out); }
   which := cp_ed_which(s);
   if which < 0 { return 0; }
   e := cp_ed(s, which); c := e[0].body[..];
@@ -306,7 +306,7 @@ coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #ef
 // or the transaction does not fit.
 coder_page_text_edit :: (s: [] CoderPage, commit: string, preedit: string, begin: int, end: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return false; }
-  if cp_term_focused(s) { return commit.count == 0 || cp_term_queue_input(s, commit); }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { return commit.count == 0 || cp_term_queue_input(s, commit); }
   which := cp_ed_which(s);
   if which < 0 { return false; }
   if which == CP_ED_FILE && s[0].fp[0].large_edit { return commit.count == 0 || cp_fp_large_insert(s, commit); }
@@ -321,7 +321,7 @@ coder_page_text_cancel :: (s: [] CoderPage) #export_c #effects(all) {
 // NSTextInputClient (ui-host.h UiIme) over the field with the keyboard, in UTF-16 units; points in device pixels.
 coder_page_ime_replace :: (s: [] CoderPage, from16: int, to16: int, text: string) #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return; }
-  if cp_term_focused(s) { _ = cp_term_queue_input(s, text); return; }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_focused(s) { _ = cp_term_queue_input(s, text); return; }
   which := cp_ed_which(s);
   if which < 0 { return; }
   if which == CP_ED_FILE && s[0].fp[0].large_edit { _ = cp_fp_large_insert(s, text); return; }
@@ -365,7 +365,7 @@ coder_page_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, m
   if s.count < 1 || !(s[0].d > 0) { return false; }
   s[0].sb[0].last_mods = mods;
   if cp_ed_pointer(s, x / s[0].d, y / s[0].d, phase, clicks, mods) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
-  if cp_term_pointer(s, x / s[0].d, y / s[0].d, phase) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_pointer(s, x / s[0].d, y / s[0].d, phase) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
   return coder_page_pointer(s, x, y, phase);
 }
 // Seconds until the caret next blinks, after the last frame; -1 when nothing blinks.

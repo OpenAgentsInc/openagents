@@ -52,11 +52,11 @@
   #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ple-run show\",\"exit\":0,\"timed_out\":false,\"output\":\"OA-SHOW: /r/before.jpg\\nOA-SHOW-OPEN: /r/step_000.ple-scene.json\\nOA-SHOW-LIVE: on\\nOA-SHOW: /r/after.jpg\\nOA-SHOW-OPEN: /r/run.ple-scene.json\\nOA-SHOW-LIVE: on\\nOA-SHOW: /r/x.jpg\\nOA-SHOW-OPEN: /r/x.txt\\nOA-SHOW-LIVE: on\"}") == MWW_COMMAND;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
   r: [8] f32; pb: [256] u8;
-  // off while Experimental features are: the cards are pictures, as any other
-  s[0].experimental = false;
+  // off while scenes flag is off: the cards are pictures, as any other
+  coder_page_experimental_set(s, false);
   #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
   #assert coder_page_live_scene(s, r[..], pb[..]) == 0;
-  s[0].experimental = true;
+  coder_page_experimental_set(s, true);
   #assert cp_test_draw(s, f[..]);
   n := coder_page_live_scene(s, r[..], pb[..]);
   #assert n > 0 && cast(string) pb[0..<n] == "/r/run.ple-scene.json";

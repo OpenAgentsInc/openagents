@@ -31,12 +31,15 @@ import hashlib
 import json
 import os
 import shutil
+import signal
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -69,9 +72,22 @@ REAL_HOME = Path(os.path.expanduser("~"))
 
 # Gated commands naming any of these are answered no by host_driver (GUARD), whatever the
 # page says. The temp HOME already keeps ~ inside the sandbox; this is the second wall.
-# The composer's default model. The page offers cloud models only once Gemini or Google auth is set
-# (page/models.coax cp_cloud_ok), so every task picks one, as a signed-in desktop has (SET_MODEL).
-DEFAULT_MODEL = "gemini-4-neon"
+# Default release model: local Inkling 2 Mini on shipped Psionic Metal (32K context, $0.00).
+# Cloud / multi-model runs are opt-in via --model <id>.
+DEFAULT_MODEL = "inkling-2-mini"
+LOCAL_MODELS = {"inkling-2-mini", "inkling", "hybrid-exec-v1"}
+DEFAULT_LOCAL_CTX = 32768
+DEFAULT_LOCAL_TIMEOUT_FLOOR_S = 600
+INKLING_WEIGHTS = REAL_HOME / ".openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf"
+INKLING_EXPECTED_BYTES = 17_627_940_768
+INKLING_NOT_APPLICABLE_TASKS: dict[str, str] = {
+    "c1_parallel_files": "sub-agents disabled on single-model local Inkling release",
+    "c2_delegate_two_fixes": "sub-agents disabled on single-model local Inkling release",
+    "c3_delegated_count": "sub-agents disabled on single-model local Inkling release",
+    "g2_subagent_changes_a_file": "sub-agents disabled on single-model local Inkling release",
+    "d2_budget_autostop": "USD budget cap not applicable to $0 local Inkling inference",
+    "d3_goal_budget_limited": "USD budget cap not applicable to $0 local Inkling inference",
+}
 DEFAULT_GUARDS = [str(REAL_HOME), "sudo ", "git push", "curl ", "wget ", "ssh ", "scp ", "rm -rf /", "/Users/", "/etc/", "launchctl", "osascript"]
 
 # The credentials the worker reads under $HOME (coder/tui/microcoder_keys.coax), linked into
@@ -145,16 +161,140 @@ def build_driver() -> None:
         raise RuntimeError("host_driver build failed")
 
 
+def ensure_psionic_server_built() -> tuple[Path, Path]:
+    bin_p = REPO_ROOT / "psionic/build/psionic-inkling-serve"
+    metal_p = REPO_ROOT / "psionic/build/inkling-kernels.metal"
+    srcs = [
+        REPO_ROOT / "psionic/lib/inkling/kernels.coax",
+        REPO_ROOT / "psionic/lib/inkling/json-schema.coax",
+        REPO_ROOT / "psionic/platform/inkling-serve.c",
+        REPO_ROOT / "psionic/platform/inkling-metal.c",
+        REPO_ROOT / "psionic/platform/inkling-gguf.c",
+    ]
+    newest = max((p.stat().st_mtime for p in srcs if p.exists()), default=0.0)
+    if not bin_p.exists() or not metal_p.exists() or bin_p.stat().st_mtime < newest or metal_p.stat().st_mtime < newest:
+        env = dict(os.environ, COAX=str(coax_bin()))
+        res = sh(["bash", str(REPO_ROOT / "psionic/platform/inkling-build.sh")], cwd=REPO_ROOT, env=env, timeout=300)
+        if res.returncode != 0:
+            sys.stderr.write(res.stdout + res.stderr)
+            raise RuntimeError("psionic/platform/inkling-build.sh failed")
+    return bin_p, metal_p
+
+
+def find_free_port(start: int = 18894) -> int:
+    for port in range(start, start + 100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError("no free localhost port found for psionic-inkling-serve")
+
+
+def probe_psionic_health(base_url: str, timeout: float = 1.5) -> dict[str, Any] | None:
+    try:
+        with urllib.request.urlopen(base_url.rstrip("/") + "/health", timeout=timeout) as r:
+            if r.status == 200:
+                data = json.loads(r.read().decode())
+                if data.get("engine") == "psionic-metal":
+                    return data
+    except Exception:
+        return None
+    return None
+
+
+class PsionicServerManager:
+    """Auto-manages shipped psionic-inkling-serve (--ctx 32768) for local Inkling evals."""
+    def __init__(self, enabled: bool, run_dir: Path, port: int = 0, ctx: int = DEFAULT_LOCAL_CTX):
+        self.enabled = enabled
+        self.run_dir = run_dir
+        self.port = port
+        self.ctx = ctx
+        self.base_url: str = ""
+        self.proc: subprocess.Popen | None = None
+        self.log_fp: Any = None
+        self.boot_ms: int = 0
+        self.reused: bool = False
+        self.peak_rss_mb: int = 0
+
+    def __enter__(self) -> "PsionicServerManager":
+        if not self.enabled:
+            return self
+        env_url = os.environ.get("PSIONIC_BASE_URL", "").strip()
+        if env_url:
+            h = probe_psionic_health(env_url)
+            if h is None:
+                raise RuntimeError(f"PSIONIC_BASE_URL={env_url} did not answer /health with engine=psionic-metal")
+            self.base_url = env_url.rstrip("/")
+            self.ctx = int(h.get("ctx") or self.ctx)
+            self.reused = True
+            return self
+        if not INKLING_WEIGHTS.exists() or INKLING_WEIGHTS.stat().st_size != INKLING_EXPECTED_BYTES:
+            raise RuntimeError(f"Inkling 2 Mini weights missing or wrong size at {INKLING_WEIGHTS}")
+        bin_p, metal_p = ensure_psionic_server_built()
+        port = self.port if self.port > 0 else find_free_port(18894)
+        self.base_url = f"http://127.0.0.1:{port}"
+        log_path = self.run_dir / "psionic-inkling-serve.log"
+        self.log_fp = open(log_path, "w")
+        t0 = time.time()
+        self.proc = subprocess.Popen(
+            [str(bin_p), "--model", str(INKLING_WEIGHTS), "--metal", str(metal_p),
+             "--host", "127.0.0.1", "--port", str(port), "--ctx", str(self.ctx), "--idle-exit-s", "900"],
+            stdout=self.log_fp, stderr=self.log_fp,
+        )
+        for _ in range(240):
+            if self.proc.poll() is not None:
+                self.log_fp.flush()
+                tail = log_path.read_text(errors="replace")[-1200:]
+                raise RuntimeError(f"psionic-inkling-serve exited {self.proc.returncode}: {tail}")
+            h = probe_psionic_health(self.base_url, timeout=1.0)
+            if h is not None:
+                self.boot_ms = int((time.time() - t0) * 1000)
+                self.sample_rss()
+                return self
+            time.sleep(0.25)
+        raise RuntimeError(f"timed out waiting for psionic-inkling-serve on {self.base_url}")
+
+    def sample_rss(self) -> int:
+        if self.proc and self.proc.poll() is None:
+            r = sh(["ps", "-o", "rss=", "-p", str(self.proc.pid)], timeout=5)
+            if r.returncode == 0 and r.stdout.strip().isdigit():
+                mb = int(r.stdout.strip()) // 1024
+                if mb > self.peak_rss_mb:
+                    self.peak_rss_mb = mb
+        return self.peak_rss_mb
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.sample_rss()
+        if self.proc is not None:
+            if self.proc.poll() is None:
+                try:
+                    self.proc.send_signal(signal.SIGTERM)
+                    self.proc.wait(timeout=5)
+                except Exception:
+                    self.proc.kill()
+                    self.proc.wait()
+            self.proc = None
+        if self.log_fp is not None:
+            self.log_fp.close()
+            self.log_fp = None
+
+
 # ---------------------------------------------------------------- sandbox
 
 class Sandbox:
     def __init__(self, task: dict[str, Any], gcloud_cache: Path):
         self.root = Path(tempfile.mkdtemp(prefix=f"coder-t2-{task['id']}-"))
-        self.repo = self.root / "repo"
         self.outside = self.root / "outside"
         self.home = self.root / "home"
         self.base_sha = (task.get("source") or {}).get("base_sha") if isinstance(task.get("source"), dict) else None
         self.is_git_worktree = False
+        if self.base_sha:
+            # Unique worktree basename prevents .git/worktrees/repo collisions across concurrent evals.
+            self.repo = self.root / f"wt-{os.getpid()}-{self.root.name.split('-')[-1]}"
+        else:
+            self.repo = self.root / "repo"
         if task.get("fixture"):
             self.fixture: Path | None = fixture_dir(task)
             shutil.copytree(self.fixture, self.repo)
@@ -217,16 +357,21 @@ class Sandbox:
         return dict(os.environ, HOME=str(self.home), GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                     GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
 
-    def worker_env(self) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE"))}
+    def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL) -> dict[str, str]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE", "PSIONIC_", "MC_DELEGATE_"))}
         # no __pycache__ from the agent's own test runs: it would count as files the task changed
         env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"), PYTHONDONTWRITEBYTECODE="1")
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                    GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
+        if psionic_base_url:
+            env["PSIONIC_BASE_URL"] = psionic_base_url
+            env["PSIONIC_MODEL"] = model
         (self.root / "tmp").mkdir(exist_ok=True)
         return env
 
     def diff(self) -> str:
+        if not self.repo.exists():
+            return ""
         env = self.git_env()
         if self.is_git_worktree:
             return sh(["git", "diff", self.head], cwd=self.repo, env=env).stdout
@@ -317,12 +462,12 @@ def snapshot(d: Path) -> dict[str, str]:
 # ---------------------------------------------------------------- driver
 
 class Driver:
-    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path):
+    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL):
         args = [str(HOST_DRIVER_BIN), "--worker", str(worker)]
         if claude_worker:
             args += ["--claude-worker", str(claude_worker)]
         self.log = open(log_path, "w")
-        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self.log, text=True, bufsize=1)
 
     def cmd(self, line: str) -> dict[str, Any]:
@@ -355,13 +500,15 @@ def esc(text: str) -> str:
 
 
 def open_slot(d: Driver, sb: Sandbox, task: dict[str, Any], session: str, claude: bool, model: str = "") -> None:
+    eff_model = model or DEFAULT_MODEL
+    is_local_release = eff_model in ("inkling-2-mini", "inkling")
     must(d.cmd(f"OPEN 0 0 {RESOURCES_DIR}"), "OPEN")
     must(d.cmd(f"SET_CWD 0 {sb.repo}"), "SET_CWD")
     must(d.cmd(f"SET_SESSION 0 {session}"), "SET_SESSION")
-    must(d.cmd(f"SET_MODEL 0 {model or DEFAULT_MODEL}"), "SET_MODEL")
-    if sb.skills_note:
+    must(d.cmd(f"SET_MODEL 0 {eff_model}"), "SET_MODEL")
+    if not is_local_release and sb.skills_note:
         must(d.cmd(f"SKILLS 0 {esc(sb.skills_note)}"), "SKILLS")
-    if claude:
+    if claude and not is_local_release:
         must(d.cmd("CLAUDE 0 1"), "CLAUDE")
     for g in DEFAULT_GUARDS + [str(sb.outside)] + task.get("guards", []):
         must(d.cmd(f"GUARD 0 {g}"), "GUARD")
@@ -388,24 +535,76 @@ def pump_until_idle(d: Driver, deadline: float) -> tuple[dict[str, Any], bool]:
     return st, False
 
 
-def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path, keep: bool, model: str = "") -> dict[str, Any]:
+def compute_ttft_ms(lines: list[dict[str, Any]]) -> int:
+    t_task: float | None = None
+    for l in lines:
+        if t_task is None and l.get("dir") == "to_worker" and "task" in l.get("msg", {}) and l.get("agent", -1) < 0:
+            t_task = float(l.get("t_ms") or 0.0)
+        elif t_task is not None and l.get("dir") == "from_worker" and l.get("agent", -1) < 0:
+            k = l.get("msg", {}).get("kind", "")
+            if k in ("thought", "reply", "command", "edit", "ended"):
+                return max(0, int(round(float(l.get("t_ms") or 0.0) - t_task)))
+    return 0
+
+
+def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path,
+             keep: bool, model: str = "", psionic_base_url: str = "", timeout_floor: int = 0,
+             include_na: bool = False) -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
+    eff_model = model or DEFAULT_MODEL
+    if eff_model in ("inkling-2-mini", "inkling") and not include_na and task["id"] in INKLING_NOT_APPLICABLE_TASKS:
+        reason = INKLING_NOT_APPLICABLE_TASKS[task["id"]]
+        result = {
+            "id": task["id"],
+            "category": task["category"],
+            "group": task.get("group"),
+            "bug": task.get("bug"),
+            "description": task.get("description", ""),
+            "passed": None,
+            "not_applicable": True,
+            "not_applicable_reason": reason,
+            "known_failure": None,
+            "timed_out": False,
+            "wall_ms": 0,
+            "ttft_ms": 0,
+            "decode_tps": 0.0,
+            "cost_usd_micros": 0,
+            "page_cost_usd_micros": 0,
+            "budget_usd_micros": int(task.get("budget_usd_micros", 100000)),
+            "attempts": 0,
+            "tokens": {"input": 0, "output": 0, "cached": 0},
+            "models": [eff_model],
+            "turns": 0,
+            "agent_tasks": 0,
+            "tool_calls": 0,
+            "guard_trips": 0,
+            "goal_status": "none",
+            "graders": [],
+            "sandbox": None,
+        }
+        (case_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+        return result
+
     sb = Sandbox(task, gcloud_cache)
     wire = case_dir / "wire.jsonl"
     wire.write_text("")
     chat_saved = case_dir / "chat.saved"
     started = time.time()
-    deadline = started + float(task.get("timeout_s", 300))
+    task_timeout = float(task.get("timeout_s", 300))
+    if timeout_floor > 0 and task_timeout < float(timeout_floor):
+        task_timeout = float(timeout_floor)
+    deadline = started + task_timeout
     budget = int(task.get("budget_usd_micros", 100000))
     session = f"t2-{task['id']}"
     states: list[dict[str, Any]] = []
     timed_out = False
     error = None
     reloads = 0
-    d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log")
+    d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log",
+               psionic_base_url=psionic_base_url, model=eff_model)
     try:
         must(d.cmd(f"WIRE_LOG {wire}"), "WIRE_LOG")
-        open_slot(d, sb, task, session, bool(task.get("claude")), model)
+        open_slot(d, sb, task, session, bool(task.get("claude")), eff_model)
         must(d.cmd(f"SET_BUDGET 0 {budget}"), "SET_BUDGET")
         must(d.cmd("SPAWN_EXEC 0"), "SPAWN_EXEC")
         d.cmd("PUMP 0 3000 1")
@@ -426,7 +625,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
                 kept = case_dir / f"chat.reload{reloads}.saved"
                 must(d.cmd(f"SAVE 0 {kept}"), "SAVE")
                 d.cmd("CLOSE 0")
-                open_slot(d, sb, task, session, bool(task.get("claude")), model)
+                open_slot(d, sb, task, session, bool(task.get("claude")), eff_model)
                 must(d.cmd(f"LOAD 0 {kept}"), "LOAD")
                 if step.get("budget_usd_micros"):
                     d.cmd(f"SET_BUDGET 0 {int(step['budget_usd_micros'])}")
@@ -460,6 +659,9 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
         grades.insert(0, {"type": "harness", "pass": False, "detail": error})
     passed = all(g["pass"] for g in grades) and bool(grades)
     known = task.get("known_failure")
+    toks = ctx.tokens()
+    ttft_ms = compute_ttft_ms(lines)
+    decode_tps = round(toks["output"] / max(0.001, wall_ms / 1000.0), 2)
     result = {
         "id": task["id"],
         "category": task["category"],
@@ -467,15 +669,19 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
         "bug": task.get("bug"),
         "description": task.get("description", ""),
         "passed": passed,
+        "not_applicable": False,
+        "not_applicable_reason": None,
         "known_failure": known if (known and not passed) else None,
         "timed_out": timed_out,
         "wall_ms": wall_ms,
+        "ttft_ms": ttft_ms,
+        "decode_tps": decode_tps,
         "cost_usd_micros": ctx.cost_micros(),
         "page_cost_usd_micros": final.get("cost_usd_micros"),
         "budget_usd_micros": budget,
         "attempts": len(attempts),
-        "tokens": ctx.tokens(),
-        "models": sorted({a.get("model", "") for a in attempts}),
+        "tokens": toks,
+        "models": sorted({a.get("model", "") for a in attempts if a.get("model")}) or [eff_model],
         "turns": ctx.count_to_worker("task", main_only=True),
         "agent_tasks": ctx.count_to_worker("task", main_only=False) - ctx.count_to_worker("task", main_only=True),
         "tool_calls": ctx.count_from("command"),
@@ -542,7 +748,7 @@ class Ctx:
         self.states, self.timed_out, self.wall_ms, self.chat_saved, self.diff, self.budget = states, timed_out, wall_ms, chat_saved, diff, budget
 
     def cost_micros(self) -> int:
-        return sum(int(a.get("usd_micros") or 0) for a in self.attempts)
+        return sum(max(0, int(a.get("usd_micros") or 0)) for a in self.attempts)
 
     def tokens(self) -> dict[str, int]:
         t = {"input": 0, "output": 0, "cached": 0}
@@ -688,7 +894,8 @@ def g_task_line(g, c):
     if not tasks:
         return False, "no task line"
     t = tasks[0]
-    bad = [f"{k}={t.get(k)!r}" for k, v in g.get("flags", {}).items() if t.get(k) != v]
+    bad = [f"{k}={t.get(k)!r}" for k, v in g.get("flags", {}).items()
+           if not ((v is False and t.get(k) in (False, None)) or t.get(k) == v)]
     bad += [f"task lacks {s!r}" for s in g.get("contains", []) if s not in t.get("task", "")]
     return not bad, "task line as the desktop sends it" if not bad else "; ".join(bad)
 
@@ -771,9 +978,17 @@ def main() -> int:
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
     ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
     ap.add_argument("--tasks-dir", default="", help="load task JSONs from this directory (e.g. evals/session-history/tasks)")
-    ap.add_argument("--model", default="", help="override composer model (e.g. gemini-4-hydrogen, gemini-4-carbon, gemini-4-neon)")
+    ap.add_argument("--model", default="", help="model id (default inkling-2-mini on local Psionic Metal; cloud models opt-in)")
+    ap.add_argument("--port", type=int, default=0, help="localhost port for auto-launched psionic-inkling-serve (default: auto free port >=18894)")
+    ap.add_argument("--ctx", type=int, default=DEFAULT_LOCAL_CTX, help="context length for auto-launched psionic-inkling-serve (default 32768)")
+    ap.add_argument("--timeout-floor", type=int, default=-1, help="minimum per-task timeout in seconds (default 600 for local Inkling, 0 for cloud)")
+    ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     args = ap.parse_args()
+
+    eff_model = args.model or DEFAULT_MODEL
+    is_local = eff_model in LOCAL_MODELS
+    timeout_floor = args.timeout_floor if args.timeout_floor >= 0 else (DEFAULT_LOCAL_TIMEOUT_FLOOR_S if is_local else 0)
 
     tier = 2
     if args.manifest:
@@ -791,7 +1006,8 @@ def main() -> int:
         tasks = [t for t in tasks if t["category"] == args.category]
     if args.list:
         for t in tasks:
-            print(f"{t['id']:34} {t.get('group') or t['category']:12} {t.get('description', '')}")
+            na = " [N/A on Inkling]" if (is_local and t["id"] in INKLING_NOT_APPLICABLE_TASKS) else ""
+            print(f"{t['id']:34} {t.get('group') or t['category']:12} {t.get('description', '')}{na}")
         return 0
     if not tasks:
         print("no tasks matched", file=sys.stderr)
@@ -800,46 +1016,68 @@ def main() -> int:
     os.environ["BROWSER"] = "/usr/bin/true"
     build_driver()
     worker = build_worker("mcworker")
-    claude_worker = build_worker("claudeworker") if args.claude else None
-    if args.claude:
+    claude_worker = build_worker("claudeworker") if (args.claude and not is_local) else None
+    if claude_worker:
         build_worker("gitguard")   # the git guard hook claudeworker finds beside it (#13771)
 
     sha = sh(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT).stdout.strip() or "nogit"
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    run_dir = Path(args.out) if args.out else EVAL_DIR / f"results/tier{tier}-{ts}-{sha}"
+    run_dir = Path(args.out).resolve() if args.out else EVAL_DIR / f"results/tier{tier}-{ts}-{sha}"
     run_dir.mkdir(parents=True, exist_ok=True)
     gcloud_cache = Path(tempfile.mkdtemp(prefix="coder-t2-gcloud-"))
 
     results = []
     print_lock = threading.Lock()
-    def _run_one(t: dict[str, Any]) -> dict[str, Any]:
-        r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep, args.model)
-        tag = "ok  " if r["passed"] else ("KNOWN" if r["known_failure"] else "FAIL")
-        fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
-        with print_lock:
-            print(f"{tag} task {r['id']}: {r['description']} ({r['wall_ms']} ms, ${r['cost_usd_micros'] / 1e6:.4f}, "
-                  f"{r['attempts']} attempts, {r['turns']} turns, {r['tool_calls']} commands)" + (f" -- {fails}" if fails else ""), flush=True)
-        return r
-
+    server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "ctx": args.ctx if is_local else None,
+                                   "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0}
     try:
-        workers = max(1, int(args.workers))
-        if workers == 1:
-            for t in tasks:
-                results.append(_run_one(t))
-        else:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-                results = list(ex.map(_run_one, tasks))
+        with PsionicServerManager(enabled=is_local, run_dir=run_dir, port=args.port, ctx=args.ctx) as srv:
+            server_meta["server_boot_ms"] = srv.boot_ms
+            server_meta["server_reused"] = srv.reused
+            server_meta["ctx"] = srv.ctx if is_local else None
+            if is_local:
+                print(f"[psionic-metal] ready at {srv.base_url} (ctx={srv.ctx}, boot={srv.boot_ms}ms, reused={srv.reused})", flush=True)
+
+            def _run_one(t: dict[str, Any]) -> dict[str, Any]:
+                r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
+                             eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na)
+                srv.sample_rss()
+                if r.get("not_applicable"):
+                    with print_lock:
+                        print(f"N/A  task {r['id']}: {r['description']} ({r['not_applicable_reason']})", flush=True)
+                    return r
+                tag = "ok  " if r["passed"] else ("KNOWN" if r["known_failure"] else "FAIL")
+                fails = "; ".join(f"{g['type']}: {g['detail']}" for g in r["graders"] if not g["pass"])
+                toks = r["tokens"]
+                with print_lock:
+                    print(f"{tag} task {r['id']}: {r['description']} ({r['wall_ms']} ms, ${r['cost_usd_micros'] / 1e6:.4f}, "
+                          f"{r['attempts']} attempts, {r['turns']} turns, {r['tool_calls']} commands, "
+                          f"{toks['input']}in/{toks['output']}out, ttft={r['ttft_ms']}ms, {r['decode_tps']} tok/s)"
+                          + (f" -- {fails}" if fails else ""), flush=True)
+                return r
+
+            workers = 1 if is_local else max(1, int(args.workers))
+            if workers == 1:
+                for t in tasks:
+                    results.append(_run_one(t))
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                    results = list(ex.map(_run_one, tasks))
+            server_meta["peak_rss_mb"] = srv.sample_rss()
     finally:
         shutil.rmtree(gcloud_cache, ignore_errors=True)
 
-    write_summary(run_dir, results, sha, tier)
-    passed = sum(1 for r in results if r["passed"])
-    known = sum(1 for r in results if r["known_failure"])
-    failed = len(results) - passed - known
-    total = sum(r["cost_usd_micros"] for r in results)
+    write_summary(run_dir, results, sha, tier, server_meta=server_meta)
+    applicable = [r for r in results if not r.get("not_applicable")]
+    na_count = len(results) - len(applicable)
+    passed = sum(1 for r in applicable if r["passed"])
+    known = sum(1 for r in applicable if r["known_failure"])
+    failed = len(applicable) - passed - known
+    total = sum(r["cost_usd_micros"] for r in applicable)
     print(f"Run directory: {run_dir}")
+    print(f"Engine: {server_meta['engine']} (ctx={server_meta['ctx']}, boot={server_meta['server_boot_ms']}ms, peak_rss={server_meta['peak_rss_mb']}MB)")
     print(f"Total cost: ${total / 1e6:.4f}")
-    print(f"{len(results)} checks, {passed} passed, {failed + known} failed ({known} known)")
+    print(f"{len(applicable)} applicable checks ({na_count} N/A), {passed} passed, {failed + known} failed ({known} known)")
     return 0 if failed == 0 else 1
 
 
@@ -850,35 +1088,75 @@ def percentile(values: list[int], q: float) -> int:
     return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
 
 
-def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: int = 2) -> None:
+def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: int = 2, server_meta: dict[str, Any] | None = None) -> None:
+    meta = server_meta or {}
+    applicable = [r for r in results if not r.get("not_applicable")]
+    na_count = len(results) - len(applicable)
     cats: dict[str, dict[str, int]] = {}
     for r in results:
-        c = cats.setdefault(r["category"], {"total": 0, "passed": 0, "cost_usd_micros": 0})
+        c = cats.setdefault(r["category"], {"total": 0, "applicable": 0, "passed": 0, "not_applicable": 0, "cost_usd_micros": 0})
         c["total"] += 1
-        c["passed"] += int(r["passed"])
-        c["cost_usd_micros"] += r["cost_usd_micros"]
+        if r.get("not_applicable"):
+            c["not_applicable"] += 1
+        else:
+            c["applicable"] += 1
+            c["passed"] += int(bool(r["passed"]))
+            c["cost_usd_micros"] += r["cost_usd_micros"]
+    passed_n = sum(int(bool(r["passed"])) for r in applicable)
+    app_n = len(applicable)
+    tot_in = sum(r.get("tokens", {}).get("input", 0) for r in applicable)
+    tot_out = sum(r.get("tokens", {}).get("output", 0) for r in applicable)
+    tot_cached = sum(r.get("tokens", {}).get("cached", 0) for r in applicable)
+    ttfts = [int(r.get("ttft_ms") or 0) for r in applicable if r.get("ttft_ms")]
+    tps_vals = [float(r.get("decode_tps") or 0.0) for r in applicable if r.get("decode_tps")]
     summary = {
         "tier": tier, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "models": sorted({m for r in results for m in r["models"] if m}),
-        "total": len(results), "passed": sum(int(r["passed"]) for r in results),
-        "cost_usd_micros": sum(r["cost_usd_micros"] for r in results),
-        "wall_ms": sum(r["wall_ms"] for r in results),
-        "cost_per_task_usd_micros": (sum(r["cost_usd_micros"] for r in results) // len(results)) if results else 0,
-        "wall_p50_ms": percentile([r["wall_ms"] for r in results], 0.5),
-        "wall_p95_ms": percentile([r["wall_ms"] for r in results], 0.95),
+        "engine": meta.get("engine", "psionic-metal"),
+        "ctx": meta.get("ctx"),
+        "server_boot_ms": meta.get("server_boot_ms", 0),
+        "peak_rss_mb": meta.get("peak_rss_mb", 0),
+        "models": sorted({m for r in applicable for m in r["models"] if m}),
+        "total": app_n,
+        "applicable_total": app_n,
+        "all_tasks_total": len(results),
+        "not_applicable_count": na_count,
+        "passed": passed_n,
+        "pass_rate_pct": round(100.0 * passed_n / app_n, 1) if app_n else 0.0,
+        "cost_usd_micros": sum(r["cost_usd_micros"] for r in applicable),
+        "wall_ms": sum(r["wall_ms"] for r in applicable),
+        "cost_per_task_usd_micros": (sum(r["cost_usd_micros"] for r in applicable) // app_n) if app_n else 0,
+        "wall_p50_ms": percentile([r["wall_ms"] for r in applicable], 0.5),
+        "wall_p95_ms": percentile([r["wall_ms"] for r in applicable], 0.95),
+        "total_input_tokens": tot_in,
+        "total_output_tokens": tot_out,
+        "total_cached_tokens": tot_cached,
+        "mean_ttft_ms": int(round(sum(ttfts) / len(ttfts))) if ttfts else 0,
+        "mean_decode_tps": round(sum(tps_vals) / len(tps_vals), 2) if tps_vals else 0.0,
         "categories": cats,
-        "cases": [{k: r.get(k) for k in ("id", "category", "group", "passed", "known_failure", "cost_usd_micros", "wall_ms", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
+        "cases": [{k: r.get(k) for k in ("id", "category", "group", "passed", "not_applicable", "not_applicable_reason",
+                                         "known_failure", "cost_usd_micros", "wall_ms", "ttft_ms", "decode_tps",
+                                         "tokens", "attempts", "turns", "tool_calls", "guard_trips", "goal_status")} for r in results],
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    rows = ["| task | category | result | cost | wall | attempts | turns | commands |", "|---|---|---|---|---|---|---|---|"]
+    rows = ["| task | category | result | wall | ttft | tokens (in/out) | tok/s | attempts | turns | commands |",
+            "|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
+        if r.get("not_applicable"):
+            rows.append(f"| {r['id']} | {r['category']} | N/A ({r['not_applicable_reason']}) | - | - | - | - | - | - | - |")
+            continue
         res = "pass" if r["passed"] else ("known failure" if r["known_failure"] else "FAIL")
-        rows.append(f"| {r['id']} | {r['category']} | {res} | ${r['cost_usd_micros'] / 1e6:.4f} | {r['wall_ms'] / 1000:.0f} s | {r['attempts']} | {r['turns']} | {r['tool_calls']} |")
-    cat_rows = [f"- {k}: {v['passed']}/{v['total']} (${v['cost_usd_micros'] / 1e6:.4f})" for k, v in sorted(cats.items())]
+        t = r.get("tokens", {})
+        rows.append(f"| {r['id']} | {r['category']} | {res} | {r['wall_ms'] / 1000:.1f} s | {r.get('ttft_ms', 0)} ms | {t.get('input', 0)}/{t.get('output', 0)} | {r.get('decode_tps', 0.0):.1f} | {r['attempts']} | {r['turns']} | {r['tool_calls']} |")
+    cat_rows = [f"- {k}: {v['passed']}/{v['applicable']} applicable" + (f" ({v['not_applicable']} N/A)" if v['not_applicable'] else "") for k, v in sorted(cats.items())]
     (run_dir / "report.md").write_text(
-        f"# Coder Desktop Tier {tier} run ({sha})\n\nModels: {', '.join(summary['models']) or 'none'}\n\n"
-        f"Passed {summary['passed']}/{summary['total']}, cost ${summary['cost_usd_micros'] / 1e6:.4f}, wall {summary['wall_ms'] / 1000:.0f} s, "
-        f"p95 task wall {summary['wall_p95_ms'] / 1000:.0f} s, ${summary['cost_per_task_usd_micros'] / 1e6:.4f} a task.\n\n"
+        f"# OpenAgents Desktop Tier {tier} run ({sha})\n\n"
+        f"Engine: `{summary['engine']}` (ctx={summary['ctx']}, boot={summary['server_boot_ms']} ms, peak RSS={summary['peak_rss_mb']} MB)  \n"
+        f"Models: {', '.join(summary['models']) or 'none'}\n\n"
+        f"Passed **{summary['passed']}/{summary['applicable_total']} ({summary['pass_rate_pct']}%)** ({na_count} N/A), "
+        f"cost ${summary['cost_usd_micros'] / 1e6:.4f}, wall {summary['wall_ms'] / 1000:.1f} s "
+        f"(p50 {summary['wall_p50_ms'] / 1000:.1f} s, p95 {summary['wall_p95_ms'] / 1000:.1f} s), "
+        f"mean TTFT {summary['mean_ttft_ms']} ms, mean {summary['mean_decode_tps']:.1f} tok/s, "
+        f"tokens {tot_in} in / {tot_out} out.\n\n"
         + "\n".join(cat_rows) + "\n\n" + "\n".join(rows) + "\n")
 
 

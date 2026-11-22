@@ -178,10 +178,12 @@
   coder_page_upd_all_set(s, CP_UPD_TARGET_AGY, "1.5.10", "1.5.13", true, 0, true, "1.5.10 → 1.5.13");
   #assert cp_settings_press(s, CP_SET_ACT, "set.update.all.a") && coder_page_action(s) == CP_ASK_SCHED_UPDATE_ALL;
 
-  // Settings search finds Scheduled Tasks and Update Everything
+  // Settings search hides Scheduled Tasks and Update Everything when scheduled flag is off, finds them when on.
   hits: [CP_SET_HITS] int; es := cp_set_entries();
-  n := cp_set_hits_in("cron", hits[..], false);
+  #assert cp_set_hits_in("cron", hits[..], false) == 0 && cp_set_hits_in("update everything", hits[..], false) == 0;
+  sf := dc_flag_bit(DC_FLAG_SCHEDULED);
+  n := cp_set_hits_flags("cron", hits[..], sf);
   #assert n >= 1 && es[hits[0]].page == CP_PG_SCHED;
-  n = cp_set_hits_in("update everything", hits[..], false);
+  n = cp_set_hits_flags("update everything", hits[..], sf);
   #assert n >= 1 && es[hits[0]].id == "set.update.all" && es[hits[0]].page == CP_PG_ABOUT;
 }

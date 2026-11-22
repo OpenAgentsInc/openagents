@@ -16,8 +16,9 @@ Command: `coax/web/tool.sh psionic/tools/executor-h7-qual.coax --out /tmp/oa-h7-
 - **Suite size:** 32 frozen held-out tasks (4 balanced buckets × 8 tasks):
   - `A_repo_multifile_edit` (8 tasks): real edits applied via `mc_edit_file` to fresh sandboxed copies of `executor-desktop.coax`, `hybrid-exec-policy.coax`, `module-v2-policy.coax`, `executor-guard.coax`, `release-promote.coax`, `quarantine-opt.coax`, `executor-release.coax`, and `redact-trajectory.coax`.
   - `B_repo_edit_traps` (8 tasks): malformed edit traps (stale context, whitespace drift, duplicate anchors) on real repository files that must be intercepted pre-disk leaving target files bit-identical.
-  - `C_tbench_verify` (8 tasks): Terminal-Bench-style Class-E deterministic schema, DAG cycle, arithmetic budget, and out-of-bounds diff verifications with independent Ch 234 LE32 SHA-256 replay verification.
-  - `D_tbench_composite` (8 tasks): composite boundary verification tasks across the same Class-E compiled weight cores.
+  - `C_class_e_verify` (8 tasks): deterministic in-process Class-E compiled-weight checks (schema, DAG cycle, arithmetic budget, and out-of-bounds diff verifications) with independent Ch 234 LE32 SHA-256 replay verification. *(Not a Docker/Harbor Terminal-Bench run; see scope note below.)*
+  - `D_class_e_composite` (8 tasks): composite boundary verification tasks across the same Class-E compiled weight cores.
+- **Scope note:** Buckets `C_class_e_verify` and `D_class_e_composite` test deterministic Class-E compiled weight cores and Ch 239–241 gating math in-process; H7's real Terminal-Bench + multi-file repository coding qualification (`psionic/docs/executor-network-master-spec.md:320`) remains open until executed through real Docker/Harbor task containers against live models.
 - **Ch 239 Three-Digest Freeze (partition 0 locked):**
   - `items_sha256`: `f5b68fb49223766ad5fd410a5c0fab2b3415e9d698b22363a261f02e38df1f19`
   - `questions_sha256`: `556a4ec56974b566f8d4ef4d3a16ff864c458145d7f9668767561cda0bfe9a26`
@@ -68,8 +69,8 @@ Commands:
 | `failed_edit_rate` | - | `28% (9/32)` | **`0% (0/32)`** |
 | Bucket `A_repo_multifile_edit` | `5/8 (62%)` | `4/8 (50%)` | **`7/8 (87%)`** |
 | Bucket `B_repo_edit_traps` | `0/8 (0%)` | `5/8 (62%)` | **`8/8 (100%)`** |
-| Bucket `C_tbench_verify` | `2/8 (25%)` | `6/8 (75%)` | **`8/8 (100%)`** |
-| Bucket `D_tbench_composite` | `3/8 (37%)` | `4/8 (50%)` | **`8/8 (100%)`** |
+| Bucket `C_class_e_verify` | `2/8 (25%)` | `6/8 (75%)` | **`8/8 (100%)`** |
+| Bucket `D_class_e_composite` | `3/8 (37%)` | `4/8 (50%)` | **`8/8 (100%)`** |
 | Failure taxonomy: `edit_mismatch` | - | `9` | **`0`** |
 | Failure taxonomy: `premature_done` | - | `4` | **`1`** |
 

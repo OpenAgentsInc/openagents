@@ -541,108 +541,116 @@ cp_settings_connections :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: 
   sh := f[0].sheet;
   ev := s[0].env[..];
   y := y0;
+  has_env := cp_flag(s, DC_FLAG_ENVIRONMENTS);
+  has_pair := cp_flag(s, DC_FLAG_PAIRING);
 
   y += set_page_head(f, "set.title", x, y, w, "Connections", "Remote SSH hosts, Boats, WSL2 backends, LAN/Tailscale pairing, and sleep prevention during active runs.") + t.block_gap;
 
-  // 1. Environments section
-  act_idx := ifx ev[0].active >= 0 && ev[0].active < ev[0].nenvs then ev[0].active else 0;
-  act_name := ifx ev[0].nenvs > 0 then sheet_pool(sh, cp_env_str(ev[0].envs[act_idx].name[..], ev[0].envs[act_idx].name_n)) else "Local";
-  y += set_section_head(f, "set.env.head", x, y, w, "Environments", "Select where new chats execute: this computer, ~/.ssh/config hosts, Boats, or Windows WSL2 distros.") + t.section_gap;
-  hdr: [1] SetRow;
-  hdr[0] = SetRow.{id = "set.env.active", name = "Active environment",
-    desc = "Chats and worktrees run in the active environment. Refresh re-reads ~/.ssh/config and Boats.",
-    value = act_name, kind = SET_ROW_BUTTON, button = "Refresh", action = CP_SET_ACT};
-  y += cp_set_group(s, f, "set.env.active.group", x, y, w, hdr[..]) + t.section_gap;
+  // 1. Environments section (gated by environments flag)
+  if has_env {
+    act_idx := ifx ev[0].active >= 0 && ev[0].active < ev[0].nenvs then ev[0].active else 0;
+    act_name := ifx ev[0].nenvs > 0 then sheet_pool(sh, cp_env_str(ev[0].envs[act_idx].name[..], ev[0].envs[act_idx].name_n)) else "Local";
+    y += set_section_head(f, "set.env.head", x, y, w, "Environments", "Select where new chats execute: this computer, ~/.ssh/config hosts, Boats, or Windows WSL2 distros.") + t.section_gap;
+    hdr: [1] SetRow;
+    hdr[0] = SetRow.{id = "set.env.active", name = "Active environment",
+      desc = "Chats and worktrees run in the active environment. Refresh re-reads ~/.ssh/config and Boats.",
+      value = act_name, kind = SET_ROW_BUTTON, button = "Refresh", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.env.active.group", x, y, w, hdr[..]) + t.section_gap;
 
-  if ev[0].nenvs > 0 {
-    erows: [CP_ENV_MAX] SetRow;
-    for i: 0..<ev[0].nenvs {
-      e := ev[0].envs[i];
-      ib: [32] u8; in_n := el_put(ib[..], 0, "set.env.item."); in_n = el_put_i(ib[..], in_n, i);
-      db: [320] u8; dn := 0;
-      dn = el_put(db[..], dn, cp_env_kind_label(e.kind));
-      if e.user_n > 0 {
+    if ev[0].nenvs > 0 {
+      erows: [CP_ENV_MAX] SetRow;
+      for i: 0..<ev[0].nenvs {
+        e := ev[0].envs[i];
+        ib: [32] u8; in_n := el_put(ib[..], 0, "set.env.item."); in_n = el_put_i(ib[..], in_n, i);
+        db: [320] u8; dn := 0;
+        dn = el_put(db[..], dn, cp_env_kind_label(e.kind));
+        if e.user_n > 0 {
+          dn = el_put(db[..], dn, " · ");
+          dn = el_put(db[..], dn, cp_env_str(e.user[..], e.user_n));
+          dn = el_put(db[..], dn, "@");
+          dn = el_put(db[..], dn, cp_env_str(e.hostname[..], e.hostname_n));
+        } else if e.hostname_n > 0 {
+          dn = el_put(db[..], dn, " · ");
+          dn = el_put(db[..], dn, cp_env_str(e.hostname[..], e.hostname_n));
+        }
+        if (e.kind == CP_ENV_SSH || e.kind == CP_ENV_BOAT) && e.port > 0 && e.port != 22 {
+          dn = el_put(db[..], dn, ":");
+          dn = el_put_i(db[..], dn, e.port);
+        }
+        sb: [160] u8;
         dn = el_put(db[..], dn, " · ");
-        dn = el_put(db[..], dn, cp_env_str(e.user[..], e.user_n));
-        dn = el_put(db[..], dn, "@");
-        dn = el_put(db[..], dn, cp_env_str(e.hostname[..], e.hostname_n));
-      } else if e.hostname_n > 0 {
-        dn = el_put(db[..], dn, " · ");
-        dn = el_put(db[..], dn, cp_env_str(e.hostname[..], e.hostname_n));
+        dn = el_put(db[..], dn, cp_env_state_label(e, sb[..]));
+        is_active := i == act_idx;
+        if e.kind == CP_ENV_LOCAL {
+          erows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+            name = sheet_pool(sh, cp_env_str(e.name[..], e.name_n)),
+            desc = sheet_pool(sh, cast(string) db[0..<dn]),
+            kind = SET_ROW_CHOICE, noptions = 1, chosen = ifx is_active then 0 else -1, action = CP_SET_ACT};
+          erows[i].options[0] = ifx is_active then "Active" else "Use";
+        } else {
+          erows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+            name = sheet_pool(sh, cp_env_str(e.name[..], e.name_n)),
+            desc = sheet_pool(sh, cast(string) db[0..<dn]),
+            kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx is_active then 0 else -1, action = CP_SET_ACT};
+          erows[i].options[0] = ifx is_active then "Active" else "Use";
+          erows[i].options[1] = ifx e.state == CP_ENV_ST_CONNECTED then "Folder…" else "Connect";
+        }
       }
-      if (e.kind == CP_ENV_SSH || e.kind == CP_ENV_BOAT) && e.port > 0 && e.port != 22 {
-        dn = el_put(db[..], dn, ":");
-        dn = el_put_i(db[..], dn, e.port);
-      }
-      sb: [160] u8;
-      dn = el_put(db[..], dn, " · ");
-      dn = el_put(db[..], dn, cp_env_state_label(e, sb[..]));
-      is_active := i == act_idx;
-      if e.kind == CP_ENV_LOCAL {
-        erows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
-          name = sheet_pool(sh, cp_env_str(e.name[..], e.name_n)),
-          desc = sheet_pool(sh, cast(string) db[0..<dn]),
-          kind = SET_ROW_CHOICE, noptions = 1, chosen = ifx is_active then 0 else -1, action = CP_SET_ACT};
-        erows[i].options[0] = ifx is_active then "Active" else "Use";
-      } else {
-        erows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
-          name = sheet_pool(sh, cp_env_str(e.name[..], e.name_n)),
-          desc = sheet_pool(sh, cast(string) db[0..<dn]),
-          kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx is_active then 0 else -1, action = CP_SET_ACT};
-        erows[i].options[0] = ifx is_active then "Active" else "Use";
-        erows[i].options[1] = ifx e.state == CP_ENV_ST_CONNECTED then "Folder…" else "Connect";
-      }
+      y += cp_set_group(s, f, "set.env.list.group", x, y, w, erows[0..<ev[0].nenvs]) + t.block_gap;
     }
-    y += cp_set_group(s, f, "set.env.list.group", x, y, w, erows[0..<ev[0].nenvs]) + t.block_gap;
   }
 
-  // 2. Server Exposure & Mobile Pairing section
-  emode := cp_env_clamp_expose(ev[0].expose_mode);
-  est := ifx ev[0].expose_status_n > 0 then sheet_pool(sh, cp_env_str(ev[0].expose_status[..], ev[0].expose_status_n))
-         else ifx emode == CP_EXPOSE_LOCAL then "Local-only — bound to 127.0.0.1; mobile pairing disabled."
-         else ifx emode == CP_EXPOSE_LAN then "LAN — reachable on your local network for paired devices."
-         else "Tailscale — zero-config pairing with your own Tailscale devices.";
-  pcode := ifx ev[0].pair_code_n > 0 then sheet_pool(sh, cp_env_str(ev[0].pair_code[..], ev[0].pair_code_n)) else "Ready";
-  y += set_section_head(f, "set.env.expose.head", x, y, w, "Server Exposure & Mobile Pairing", "Control how OpenAgents Desktop accepts connections from your phone or other devices.") + t.section_gap;
-  prows: [2] SetRow;
-  prows[0] = SetRow.{id = "set.env.expose", name = "Server exposure", desc = est,
-    kind = SET_ROW_CHOICE, noptions = 3, chosen = emode, action = CP_SET_ACT};
-  prows[0].options[0] = "Local-only"; prows[0].options[1] = "LAN"; prows[0].options[2] = "Tailscale";
-  prows[1] = SetRow.{id = "set.env.pair", name = "Pair mobile device",
-    desc = "Generate a pairing link and code for OpenAgents iOS to connect to this computer's daemon.",
-    value = pcode, kind = SET_ROW_BUTTON, button = "Pair…", action = CP_SET_ACT,
-    state = ifx emode == CP_EXPOSE_LOCAL then EL_S_DISABLED else 0};
-  y += cp_set_group(s, f, "set.env.expose.group", x, y, w, prows[..]) + t.section_gap;
+  // 2. Server Exposure & Mobile Pairing section (gated by pairing flag)
+  if has_pair {
+    emode := cp_env_clamp_expose(ev[0].expose_mode);
+    est := ifx ev[0].expose_status_n > 0 then sheet_pool(sh, cp_env_str(ev[0].expose_status[..], ev[0].expose_status_n))
+           else ifx emode == CP_EXPOSE_LOCAL then "Local-only — bound to 127.0.0.1; mobile pairing disabled."
+           else ifx emode == CP_EXPOSE_LAN then "LAN — reachable on your local network for paired devices."
+           else "Tailscale — zero-config pairing with your own Tailscale devices.";
+    pcode := ifx ev[0].pair_code_n > 0 then sheet_pool(sh, cp_env_str(ev[0].pair_code[..], ev[0].pair_code_n)) else "Ready";
+    y += set_section_head(f, "set.env.expose.head", x, y, w, "Server Exposure & Mobile Pairing", "Control how OpenAgents Desktop accepts connections from your phone or other devices.") + t.section_gap;
+    prows: [2] SetRow;
+    prows[0] = SetRow.{id = "set.env.expose", name = "Server exposure", desc = est,
+      kind = SET_ROW_CHOICE, noptions = 3, chosen = emode, action = CP_SET_ACT};
+    prows[0].options[0] = "Local-only"; prows[0].options[1] = "LAN"; prows[0].options[2] = "Tailscale";
+    prows[1] = SetRow.{id = "set.env.pair", name = "Pair mobile device",
+      desc = "Generate a pairing link and code for OpenAgents iOS to connect to this computer's daemon.",
+      value = pcode, kind = SET_ROW_BUTTON, button = "Pair…", action = CP_SET_ACT,
+      state = ifx emode == CP_EXPOSE_LOCAL then EL_S_DISABLED else 0};
+    y += cp_set_group(s, f, "set.env.expose.group", x, y, w, prows[..]) + t.section_gap;
 
-  // Authorized mobile devices list
-  y += set_section_head(f, "set.env.devs.head", x, y, w, "Authorized devices", ifx ev[0].ndevices > 0 then "Paired mobile devices authorized to reach this computer." else "No mobile devices paired yet.") + t.section_gap;
-  if ev[0].ndevices > 0 {
-    drows: [CP_DEV_MAX] SetRow;
-    for i: 0..<ev[0].ndevices {
-      d := ev[0].devices[i];
-      ib: [32] u8; in_n := el_put(ib[..], 0, "set.env.dev."); in_n = el_put_i(ib[..], in_n, i);
-      drows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
-        name = sheet_pool(sh, cp_env_str(d.name[..], d.name_n)),
-        desc = sheet_pool(sh, cp_env_str(d.detail[..], d.detail_n)),
-        kind = SET_ROW_BUTTON, button = "Revoke", action = CP_SET_ACT, danger = true};
+    // Authorized mobile devices list
+    y += set_section_head(f, "set.env.devs.head", x, y, w, "Authorized devices", ifx ev[0].ndevices > 0 then "Paired mobile devices authorized to reach this computer." else "No mobile devices paired yet.") + t.section_gap;
+    if ev[0].ndevices > 0 {
+      drows: [CP_DEV_MAX] SetRow;
+      for i: 0..<ev[0].ndevices {
+        d := ev[0].devices[i];
+        ib: [32] u8; in_n := el_put(ib[..], 0, "set.env.dev."); in_n = el_put_i(ib[..], in_n, i);
+        drows[i] = SetRow.{id = sheet_pool(sh, cast(string) ib[0..<in_n]),
+          name = sheet_pool(sh, cp_env_str(d.name[..], d.name_n)),
+          desc = sheet_pool(sh, cp_env_str(d.detail[..], d.detail_n)),
+          kind = SET_ROW_BUTTON, button = "Revoke", action = CP_SET_ACT, danger = true};
+      }
+      y += cp_set_group(s, f, "set.env.devs.group", x, y, w, drows[0..<ev[0].ndevices]) + t.block_gap;
+    } else {
+      empty_dev: [1] SetRow;
+      empty_dev[0] = SetRow.{id = "set.env.dev.none", name = "No authorized devices", desc = "Switch exposure to LAN or Tailscale and press Pair… to connect your phone.", kind = SET_ROW_PLAIN};
+      y += cp_set_group(s, f, "set.env.devs.empty", x, y, w, empty_dev[..]) + t.block_gap;
     }
-    y += cp_set_group(s, f, "set.env.devs.group", x, y, w, drows[0..<ev[0].ndevices]) + t.block_gap;
-  } else {
-    empty_dev: [1] SetRow;
-    empty_dev[0] = SetRow.{id = "set.env.dev.none", name = "No authorized devices", desc = "Switch exposure to LAN or Tailscale and press Pair… to connect your phone.", kind = SET_ROW_PLAIN};
-    y += cp_set_group(s, f, "set.env.devs.empty", x, y, w, empty_dev[..]) + t.block_gap;
   }
 
-  // 3. Power & Keep-Awake section
-  y += set_section_head(f, "set.env.power.head", x, y, w, "Power", "Prevent idle system sleep while an agent turn or /goal is running.") + t.section_gap;
-  krows: [1] SetRow;
-  krows[0] = SetRow.{id = "set.env.awake", name = "Keep awake during runs",
-    desc = ifx !ev[0].keep_awake then "Off — macOS may sleep while agents are running."
-           else ifx ev[0].awake_active then "Active — preventing system idle sleep while runs are in progress."
-           else "On — automatically prevents idle sleep when any turn or /goal runs, and releases as soon as all runs finish.",
-    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx ev[0].keep_awake then 1 else 0, action = CP_SET_ACT};
-  krows[0].options[0] = "Off"; krows[0].options[1] = "On";
-  y += cp_set_group(s, f, "set.env.power.group", x, y, w, krows[..]);
+  // 3. Power & Keep-Awake section (gated by environments flag)
+  if has_env {
+    y += set_section_head(f, "set.env.power.head", x, y, w, "Power", "Prevent idle system sleep while an agent turn or /goal is running.") + t.section_gap;
+    krows: [1] SetRow;
+    krows[0] = SetRow.{id = "set.env.awake", name = "Keep awake during runs",
+      desc = ifx !ev[0].keep_awake then "Off — macOS may sleep while agents are running."
+             else ifx ev[0].awake_active then "Active — preventing system idle sleep while runs are in progress."
+             else "On — automatically prevents idle sleep when any turn or /goal runs, and releases as soon as all runs finish.",
+      kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx ev[0].keep_awake then 1 else 0, action = CP_SET_ACT};
+    krows[0].options[0] = "Off"; krows[0].options[1] = "On";
+    y += cp_set_group(s, f, "set.env.power.group", x, y, w, krows[..]);
+  }
 
   return y - y0;
 }
@@ -651,26 +659,31 @@ cp_settings_connections :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: 
 cp_env_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if s.count < 1 { return false; }
   ev := s[0].env[..];
-  if id == "set.env.active.a" { s[0].ask = CP_ASK_ENV_REFRESH; return true; }
+  has_env := cp_flag(s, DC_FLAG_ENVIRONMENTS);
+  has_pair := cp_flag(s, DC_FLAG_PAIRING);
+  if id == "set.env.active.a" { if !has_env { return false; } s[0].ask = CP_ASK_ENV_REFRESH; return true; }
   if id == "set.env.pair.a" {
-    if cp_env_clamp_expose(ev[0].expose_mode) == CP_EXPOSE_LOCAL { return false; }
+    if !has_pair || cp_env_clamp_expose(ev[0].expose_mode) == CP_EXPOSE_LOCAL { return false; }
     s[0].ask = CP_ASK_ENV_PAIR;
     return true;
   }
   emode := cp_number(id, "set.env.expose.");
   if emode >= CP_EXPOSE_LOCAL && emode <= CP_EXPOSE_TAILSCALE {
+    if !has_pair { return false; }
     ev[0].expose_mode = emode;
     s[0].ask = CP_ASK_ENV_EXPOSE;
     return true;
   }
   aw := cp_number(id, "set.env.awake.");
   if aw == 0 || aw == 1 {
+    if !has_env { return false; }
     ev[0].keep_awake = (aw == 1);
     s[0].ask = CP_ASK_ENV_KEEP_AWAKE;
     return true;
   }
   eidx := cp_number(id, "set.env.item.");
   if eidx >= 0 && eidx < ev[0].nenvs && id.count >= 2 && id[id.count - 2] == '.' {
+    if !has_env { return false; }
     opt := cast(int) (id[id.count - 1] - '0');
     if opt == 0 {
       ev[0].active = eidx;
@@ -686,6 +699,7 @@ cp_env_settings_press :: (s: [] CoderPage, id: string) -> bool {
   }
   didx := cp_number(id, "set.env.dev.");
   if didx >= 0 && didx < ev[0].ndevices && cp_contains(id, ".a") {
+    if !has_pair { return false; }
     ev[0].dev_target = didx;
     s[0].ask = CP_ASK_ENV_REVOKE;
     return true;

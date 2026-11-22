@@ -116,8 +116,8 @@ cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, sess
   // the note on installed skills, optional active thread goal context, then the message and the
   // note on its attachments and the files it mentions (attach.coax)
   whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + CP_REFS + 4096] u8;
-  // Claude Code finds its skills itself, so a chat on Claude gets no note
-  n := ifx cp_is_claude(s, model) then 0 else cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
+  // Claude Code finds its skills itself, and MCP/skills injection is gated by the mcp flag.
+  n := ifx cp_is_claude(s, model) || !cp_flag(s, DC_FLAG_MCP) then 0 else cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
     n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
     n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
@@ -139,9 +139,9 @@ cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, sess
   is_combo := cp_is_inkling_neon(s, model);
   use_agents := !is_local && !is_combo;
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = use_agents, claude = use_agents && s[0].claude, local = is_local, model = cp_model_id(s, model), effort = cp_task_effort(s, model), openrouter = ifx use_agents then cp_or_sub(s) else ""};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = use_agents, claude = use_agents && cp_flag(s, DC_FLAG_MODELS_CLAUDE) && s[0].claude, local = is_local, model = cp_model_id(s, model), effort = cp_task_effort(s, model), openrouter = ifx use_agents && cp_flag(s, DC_FLAG_MODELS_OPENROUTER) then cp_or_sub(s) else ""};
   // the simulator pane open and its helper there: the run may drive the device (GitHub #13811)
-  t.device = cp_sim(s)[0].open && cp_sim(s)[0].connected;
+  t.device = cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim(s)[0].open && cp_sim(s)[0].connected;
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -310,33 +310,51 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   return s[0].zoom;
 }
 
-// Experimental features (Settings > General): log in and the account, Gym and Foreman. Off, their
-// rows, pages and palette items are gone, an open Gym closes, and settings on a hidden page shows General.
+// Feature flag mask from coax/lib/agent/desktop/flags.coax. Off features are hidden and closed.
+coder_page_flags_set :: (s: [] CoderPage, mask: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
+  s[0].flags = mask & DC_FLAGS_ALL;
+  s[0].experimental = s[0].flags == DC_FLAGS_ALL;
+  cp_model_restore_id(s, prev);
+  if !cp_has_model_picker(s) { s[0].model_menu = false; }
+  if !cp_flag(s, DC_FLAG_GYM) { s[0].gym_open = false; }
+  if !cp_flag(s, DC_FLAG_FORGE) { s[0].forge[0].open = false; }
+  if !cp_flag(s, DC_FLAG_TERMINAL) { s[0].term[0].open = false; }
+  if !cp_flag(s, DC_FLAG_SIMULATOR) { s[0].sim[0].open = false; }
+  if !cp_flag(s, DC_FLAG_PREVIEW) { s[0].preview[0].open = false; }
+  if !cp_flag(s, DC_FLAG_GIT) { s[0].review = false; }
+  if !cp_flag(s, DC_FLAG_RICH) { s[0].rich[0].side_open = false; }
+  if !cp_flag(s, DC_FLAG_USAGE) { s[0].usage[0].popover_open = false; }
+  if !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
+}
+coder_page_flags :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].flags else 0; }
+
+// First-run / local Inkling hardware and download status pushed from the host.
+coder_page_local_state :: (s: [] CoderPage, os_ok: bool, hw_ok: bool, ram_gb: int, dl_state: int, pct: int, dl_mb: int, total_mb: int, err: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].local_os_ok = os_ok;
+  s[0].local_hw_ok = hw_ok;
+  s[0].local_ram_gb = ram_gb;
+  s[0].local_dl_state = dl_state;
+  s[0].local_dl_pct = pct;
+  s[0].local_dl_mb = dl_mb;
+  s[0].local_dl_total_mb = total_mb;
+  s[0].local_dl_err_n = cp_out(s[0].local_dl_err[..], err);
+}
+
+// Experimental features (Settings > General): developer alias turning every flag on or off.
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_agy := cp_is_agy(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
-  s[0].experimental = on;
-  if was_agy { s[0].model = cp_agy_idx(s); }
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
-  if on { return; }
-  s[0].gym_open = false;
-  if !cp_set_page_ok(false, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
+  coder_page_flags_set(s, ifx on then DC_FLAGS_ALL else 0);
 }
 coder_page_experimental :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].experimental; }
 
 // Gym / 3D PLE Workbench mode (#13792): toggled by the sidebar's Gym row (CP_ASK_GYM) or the host.
 coder_page_gym_set :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].gym_open = open && s[0].experimental;
-  if open { s[0].set_open = false; }
+  s[0].gym_open = open && cp_flag(s, DC_FLAG_GYM);
+  if open && s[0].gym_open { s[0].set_open = false; }
 }
 coder_page_gym_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && s[0].gym_open;

@@ -1,0 +1,245 @@
+// Checks for OpenAgents Desktop feature flags, single-model Inkling release surface (no model selector),
+// first-run onboarding/hardware states, kept-chat migration notice, and per-flag gating (Audit §5.6, §7.2-7.5).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin_for(s), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], w, h);
+  return uiframe_end(f[..], s[0].surface[..]);
+}
+
+#test "flags release mode: single-model Inkling hides model selector and all 28 gated surfaces" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+  coder_page_folder(s, "~/work/demo");
+  coder_page_branch(s, "main");
+  #assert !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
+
+  // Main chat view: composer renders without coder.model, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage.
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.effort") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.folder") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.model") < 0;
+  #assert surface_find(s[0].surface[..], "coder.foreman") < 0;
+  #assert surface_find(s[0].surface[..], "coder.gym") < 0;
+  #assert surface_find(s[0].surface[..], "coder.forge") < 0;
+  #assert surface_find(s[0].surface[..], "coder.term.toggle") < 0;
+  #assert surface_find(s[0].surface[..], "coder.review") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer.mic") < 0;
+  #assert surface_find(s[0].surface[..], "coder.cost") < 0;
+  #assert surface_find(s[0].surface[..], "coder.usage.ring") < 0;
+  #assert surface_find(s[0].surface[..], "coder.fresh") < 0;
+  #assert surface_find(s[0].surface[..], "coder.fanout") < 0;
+
+  // Cmd+/ model menu toggle is a no-op in single-model release mode.
+  coder_page_toggle_models(s);
+  #assert !s[0].model_menu;
+
+  // Command palette has no Switch model, Foreman, Terminal, Simulator, Preview, Forge, or Budget.
+  #assert coder_page_palette_toggle(s, APP_PAL_ALL);
+  pal := cp_pal(s);
+  for r: 0..<pal[0].nrows {
+    if pal[0].rows[r].kind != APP_PAL_ITEM { continue; }
+    lbl := app_pal_label(pal, pal[0].rows[r].item);
+    #assert lbl != "Switch model" && lbl != "Open Foreman" && lbl != "Show terminal" && lbl != "Show iOS Simulator" && lbl != "Toggle Web Preview" && lbl != "Pull Requests inbox" && lbl != "Chat budget…";
+  }
+  #assert !coder_page_palette_toggle(s, APP_PAL_ALL);
+
+  // Settings sidebar shows ONLY General, Models, About; Models shows ONLY Local Model (Inkling).
+  coder_page_settings_open(s, CP_PG_MODELS, "");
+  #assert cp_flag_test_frame(s, 1200, 900);
+  #assert surface_find(s[0].surface[..], "set.page.0") >= 0;
+  #assert surface_find(s[0].surface[..], "set.page.1") >= 0;
+  #assert surface_find(s[0].surface[..], "set.page.4") >= 0;
+  #assert surface_find(s[0].surface[..], "set.page.2") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.3") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.5") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.6") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.7") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.8") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.9") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.10") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.11") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.12") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.13") < 0;
+  #assert surface_find(s[0].surface[..], "set.local.a") >= 0;
+  #assert surface_find(s[0].surface[..], "set.gemini") < 0;
+  #assert surface_find(s[0].surface[..], "set.claude") < 0;
+  #assert surface_find(s[0].surface[..], "set.or.main") < 0;
+  #assert surface_find(s[0].surface[..], "set.agy.status") < 0;
+  #assert surface_find(s[0].surface[..], "set.prov.codex") < 0;
+  #assert surface_find(s[0].surface[..], "set.exec.hybrid") < 0;
+  #assert surface_find(s[0].surface[..], "set.pylon.status") < 0;
+
+  // Settings search returns 0 hits for every disabled feature keyword, while keeping core settings searchable.
+  hits: [CP_SET_HITS] int;
+  disabled_q := [20] string.[
+    "foreman", "account", "wallet", "bitcoin", "usage", "mcp", "skills",
+    "voice", "whisper", "tailscale", "ssh", "cron", "update everything",
+    "appearance", "keybindings", "antigravity", "openrouter", "codex", "pylon", "gemini"
+  ];
+  for q: disabled_q {
+    #assert cp_set_hits_flags(q, hits[..], 0) == 0;
+  }
+  #assert cp_set_hits_flags("inkling", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("instructions", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("zoom", hits[..], 0) >= 1;
+}
+
+#test "flags release mode: first-run onboarding covers unsupported OS, <32GB RAM, download, progress, verify, error, and ready" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_set_inkling(s, false);
+
+  // 1. Unsupported OS (Linux / Windows / Intel Mac)
+  coder_page_local_state(s, false, false, 0, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.unsupported") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.local.dl") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") < 0;
+  #assert coder_page_set_text(s, "hi") && !coder_page_submit(s);
+
+  // 2. Apple Silicon with < 32 GB RAM
+  coder_page_local_state(s, true, false, 16, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.ram") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.local.dl") < 0;
+
+  // 3. Supported Apple Silicon >= 32 GB, not downloaded yet -> Download button dispatches CP_ASK_LOCAL_DOWNLOAD
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  dl_btn := surface_find(s[0].surface[..], "coder.local.dl");
+  #assert dl_btn >= 0 && cp_press(s, dl_btn) && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
+
+  // 4. Downloading -> progress bar + Cancel button dispatches CP_ASK_LOCAL_CANCEL
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_DOWNLOADING, 42, 7060, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.progress") >= 0;
+  cancel_btn := surface_find(s[0].surface[..], "coder.local.cancel");
+  #assert cancel_btn >= 0 && cp_press(s, cancel_btn) && coder_page_action(s) == CP_ASK_LOCAL_CANCEL;
+
+  // 5. Verifying SHA-256
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_VERIFYING, 100, 16811, 16811, "");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.verifying") >= 0;
+
+  // 6. Download / SHA-256 verification error -> error notice + retry button
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_ERROR, 0, 0, 16811, "SHA-256 mismatch");
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding.error") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.local.dl") >= 0;
+
+  // 7. Installed & verified -> onboarding disappears, composer ready, sends on inkling-2-mini local=true agents=false
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.onboarding") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.model") < 0;
+  #assert coder_page_set_text(s, "fix bug") && coder_page_submit(s);
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_task(s, "sess-rel", "/w", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
+  #assert back[0].model == "inkling-2-mini" && back[0].local && !back[0].agents && !back[0].claude && back[0].openrouter == "";
+}
+
+#test "flags release mode: kept chat from disabled model shows read-only original byline, migration notice, and sends on Inkling" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+
+  // Load a saved chat that was created on Gemini 4 Carbon.
+  saved := "{\"model\":\"gemini-4-carbon\",\"turns\":[{\"ask\":\"old question\",\"reply\":\"old answer\",\"state\":1,\"model\":\"gemini-4-carbon\"}]}";
+  #assert coder_page_load(s, saved);
+  #assert s[0].nturns == 1;
+  #assert s[0].migrated_from_n > 0 && cast(string) s[0].migrated_from[0..<s[0].migrated_from_n] == "gemini-4-carbon";
+  // Turn 0 keeps its original model byline read-only.
+  #assert cp_turn_meta(s, 0) == "Microcoder · Gemini 4 Carbon";
+  // Migration notice renders above the composer.
+  #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.migrated") >= 0;
+  // Next message sends on Inkling 2 Mini and clears the migration notice.
+  #assert coder_page_set_text(s, "continue locally") && coder_page_submit(s);
+  #assert s[0].migrated_from_n == 0;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_task(s, "sess-mig", "/w", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]);
+  #assert back[0].model == "inkling-2-mini" && back[0].local && !back[0].agents;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  // Original turn 0 still reports Gemini 4 Carbon; new turn 1 reports Inkling 2 Mini.
+  #assert cp_turn_meta(s, 0) == "Microcoder · Gemini 4 Carbon";
+  #assert cp_turn_meta(s, 1) == "Psionic Metal · Inkling 2 Mini";
+}
+
+#test "flags per-flag gating: enabling each of the 28 flags independently exposes only its own surface" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
+  coder_page_set_inkling(s, true);
+
+  // Every extra model flag enables the model picker; non-model flags do not.
+  for fi: 0..<DC_FLAG_COUNT {
+    mask := dc_flag_bit(fi);
+    coder_page_flags_set(s, mask);
+    #assert coder_page_flags(s) == mask;
+    is_model := (mask & DC_FLAGS_MODELS_MASK) != 0;
+    #assert cp_has_model_picker(s) == is_model;
+  }
+
+  // Verify individual page/UI flags in isolation.
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_FOREMAN));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.foreman") >= 0 && surface_find(s[0].surface[..], "coder.gym") < 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_GYM));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.gym") >= 0 && surface_find(s[0].surface[..], "coder.foreman") < 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_FORGE));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.forge") >= 0 && surface_find(s[0].surface[..], "coder.gym") < 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_TERMINAL));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.term.toggle") >= 0 && surface_find(s[0].surface[..], "coder.composer.mic") < 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_VOICE));
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.composer.mic") >= 0 && surface_find(s[0].surface[..], "coder.term.toggle") < 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_ACCOUNT));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_ACCOUNT) && !cp_set_page_ok_flags(s[0].flags, CP_PG_WALLET);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_WALLET));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_WALLET) && !cp_set_page_ok_flags(s[0].flags, CP_PG_ACCOUNT);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_USAGE));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_USAGE) && !cp_set_page_ok_flags(s[0].flags, CP_PG_MCP);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MCP));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_MCP) && cp_set_page_ok_flags(s[0].flags, CP_PG_SKILLS);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_ENVIRONMENTS));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_CONNECTIONS);
+  hits: [CP_SET_HITS] int;
+  #assert cp_set_hits_flags("keep awake", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("tailscale", hits[..], s[0].flags) == 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_PAIRING));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_CONNECTIONS);
+  #assert cp_set_hits_flags("tailscale", hits[..], s[0].flags) >= 1 && cp_set_hits_flags("keep awake", hits[..], s[0].flags) == 0;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_SCHEDULED));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_SCHED) && cp_set_hits_flags("update everything", hits[..], s[0].flags) >= 1;
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_CUSTOMIZE));
+  #assert cp_set_page_ok_flags(s[0].flags, CP_PG_APPEARANCE) && cp_set_page_ok_flags(s[0].flags, CP_PG_KEYBINDINGS);
+
+  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_SCENES));
+  #assert coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");
+  coder_page_flags_set(s, 0);
+  #assert !coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");
+}

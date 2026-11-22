@@ -269,73 +269,38 @@ cp_acp_parse :: (s: [] CoderPage, text: string) -> int {
   return loaded;
 }
 
-// ---------------------------------------------------------------- Model-picker index helpers
+// ---------------------------------------------------------------- Model-picker index helpers (backed by single cp_model_list in models.coax)
 
-cp_codex_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 || !s[0].prov[0].codex { return -1; }
-  n := 0;
-  if cp_cloud_ok(s) {
-    n = CP_MODELS;
-    if s[0].or_main_n > 0 { n += 1; }
-  }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  if s[0].hybrid_exec { n += 1; }
-  if cp_has_inkling_neon(s) { n += 1; }
-  return n;
-}
-cp_is_codex :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].codex && idx == cp_codex_idx(s); }
+cp_codex_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_CODEX, 0); }
+cp_is_codex :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_CODEX; }
 
-cp_cursor_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 || !s[0].prov[0].cursor { return -1; }
-  n := 0;
-  if cp_cloud_ok(s) {
-    n = CP_MODELS;
-    if s[0].or_main_n > 0 { n += 1; }
-  }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  if s[0].hybrid_exec { n += 1; }
-  if cp_has_inkling_neon(s) { n += 1; }
-  if s[0].prov[0].codex { n += 1; }
-  return n;
-}
-cp_is_cursor :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].prov[0].cursor && idx == cp_cursor_idx(s); }
+cp_cursor_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_CURSOR, 0); }
+cp_is_cursor :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_CURSOR; }
 
 cp_acp_base_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 { return 0; }
-  n := 0;
-  if cp_cloud_ok(s) {
-    n = CP_MODELS;
-    if s[0].or_main_n > 0 { n += 1; }
-  }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  if s[0].hybrid_exec { n += 1; }
-  if cp_has_inkling_neon(s) { n += 1; }
-  if s[0].prov[0].codex { n += 1; }
-  if s[0].prov[0].cursor { n += 1; }
-  return n;
+  idx := cp_model_idx_of(s, CP_MK_ACP, -1);
+  if idx >= 0 { return idx; }
+  c := cp_model_idx_of(s, CP_MK_CLAUDE, 0);
+  return ifx c >= 0 then c else cp_models(s);
 }
 
 // Returns the 0..<acp_n entry index for picker index `idx`, or -1 if `idx` is not an ACP entry.
 cp_acp_slot_for_model :: (s: [] CoderPage, idx: int) -> int {
-  if s.count < 1 { return -1; }
-  base := cp_acp_base_idx(s);
-  if idx < base { return -1; }
-  return cp_acp_nth_enabled(s, idx - base);
+  e := cp_model_entry(s, idx);
+  return ifx e.kind == CP_MK_ACP then e.slot else -1;
 }
 
 cp_is_acp :: (s: [] CoderPage, idx: int) -> bool { return cp_acp_slot_for_model(s, idx) >= 0; }
 
 cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
-  if cp_is_agy(s, idx) { return CP_PROV_AGY; }
-  if cp_is_inkling(s, idx) { return CP_PROV_INKLING; }
-  if cp_is_hybrid(s, idx) || cp_is_inkling_neon(s, idx) { return CP_PROV_HYBRID; }
-  if cp_is_codex(s, idx) { return CP_PROV_CODEX; }
-  if cp_is_cursor(s, idx) { return CP_PROV_CURSOR; }
-  if cp_is_acp(s, idx) { return CP_PROV_ACP; }
-  if cp_is_claude(s, idx) { return CP_PROV_CLAUDE; }
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_AGY { return CP_PROV_AGY; }
+  if e.kind == CP_MK_INKLING { return CP_PROV_INKLING; }
+  if e.kind == CP_MK_HYBRID || e.kind == CP_MK_INKLING_NEON { return CP_PROV_HYBRID; }
+  if e.kind == CP_MK_CODEX { return CP_PROV_CODEX; }
+  if e.kind == CP_MK_CURSOR { return CP_PROV_CURSOR; }
+  if e.kind == CP_MK_ACP { return CP_PROV_ACP; }
+  if e.kind == CP_MK_CLAUDE { return CP_PROV_CLAUDE; }
   return CP_PROV_CLOUD;
 }
 

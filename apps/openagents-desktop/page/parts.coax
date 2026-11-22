@@ -24,6 +24,7 @@
 #load "../../../coax/lib/agent/desktop/checkpoint.coax";
 #load "../../../coax/lib/agent/desktop/scheduled.coax";
 #load "../../../coax/lib/agent/desktop/webhook-auth.coax";
+#load "../../../coax/lib/agent/desktop/flags.coax";
 #load "../../../coax/lib/lean/wire.coax";
 #load "../../../coax/lib/lean/rh-tour.coax";
 #load "../../../coax/lib/lean/rh-math.coax";

@@ -3,12 +3,13 @@
 # evals/openagents-desktop/run.sh and compare.py, and gh for the one issue a bad run opens.
 #
 #   evals/openagents-desktop/nightly.sh night [--commit REV] [--out DIR]
-#       Tier 0, Tier 1 and compaction (free), Tier 2 (15 live tasks, about $0.50) and, on
-#       macOS, Tier 3 (the real Coder.app on the mock worker, free). Tier 2 is compared with
-#       the previous night's run (the committed tier2/baseline before there is one).
+#       Tier 0, Tier 1 and compaction (free), Tier 2 on local Inkling 2 Mini (Psionic Metal 32K,
+#       $0 local; sub-agent & USD-budget tasks marked N/A) and, on macOS, Tier 3 (OpenAgents.app
+#       on the mock worker). Tier 2 is compared with the previous night's run (the committed
+#       tier2/baseline before there is one).
 #   evals/openagents-desktop/nightly.sh week [--commit REV] [--out DIR]
-#       Tier 4 (4 golden trajectories and the 25-task benchmark slice, about $1.20), compared with
-#       the committed tier4/baseline: the weekly and pre-release scorecard.
+#       Tier 4 (golden trajectories and the 25-task benchmark slice on local Inkling 2 Mini, $0),
+#       compared with the committed tier4/baseline: the weekly and pre-release scorecard.
 #   evals/openagents-desktop/nightly.sh trend
 #       The trend table of every kept run (pass rate, cost a task, p95 wall, regressions).
 #   evals/openagents-desktop/nightly.sh install

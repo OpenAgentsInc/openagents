@@ -44,19 +44,21 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
   if act >= CP_FP_CLOSE && act <= CP_FP_LEAN_GOAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
   if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
-  if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
-  if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
-  if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
-  if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
+  if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
+  if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_flag(s, DC_FLAG_GIT) && cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
+  if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
+  if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_flag(s, DC_FLAG_GIT) && cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
   if act >= CP_SB_GROUP_TOGGLE && act <= CP_SB_UNDO_CLOSE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar groups, archive, bulk & undo (sidebar_groups.coax; #13875)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
-  if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
-  if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
-  if act >= CP_SCHED_ACT_ADD && act <= CP_SCHED_ACT_UPDATE_ALL { return cp_sched_press(s, act, surface_id(s[0].surface[..], row)); }  // Scheduled Tasks & Update Everything (scheduled.coax; #13885)
-  if act >= CP_PREVIEW_CLOSE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS { return cp_preview_press(s, act); } // Embedded Web Preview Pane (preview.coax; #13888)
+  if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_flag(s, DC_FLAG_VOICE) && cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
+  if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_flag(s, DC_FLAG_RICH) && cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
+  if act >= CP_SCHED_ACT_ADD && act <= CP_SCHED_ACT_UPDATE_ALL { return cp_flag(s, DC_FLAG_SCHEDULED) && cp_sched_press(s, act, surface_id(s[0].surface[..], row)); }  // Scheduled Tasks & Update Everything (scheduled.coax; #13885)
+  if act >= CP_PREVIEW_CLOSE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS { return cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_press(s, act); } // Embedded Web Preview Pane (preview.coax; #13888)
   _ = cp_preview_yield(s, act);
-  if act >= CP_FORGE_TOGGLE && act <= CP_FORGE_ISS_CHAT { return cp_forge_press(s, act, surface_id(s[0].surface[..], row)); }  // Pull Requests & Issues (forge.coax; #13886)
-  if act >= CP_GYM_MODE_ACT && act <= CP_LEAN_JUMP_ATLAS { return cp_lean_press(s, act, surface_id(s[0].surface[..], row)); }  // Gym mode bar & Lean · RH Workbench (gym-lean.coax; #13946)
+  if act >= CP_FORGE_TOGGLE && act <= CP_FORGE_ISS_CHAT { return cp_flag(s, DC_FLAG_FORGE) && cp_forge_press(s, act, surface_id(s[0].surface[..], row)); }  // Pull Requests & Issues (forge.coax; #13886)
+  if act >= CP_GYM_MODE_ACT && act <= CP_LEAN_JUMP_ATLAS { return cp_flag(s, DC_FLAG_GYM) && cp_lean_press(s, act, surface_id(s[0].surface[..], row)); }  // Gym mode bar & Lean · RH Workbench (gym-lean.coax; #13946)
+  if act == CP_LOCAL_DL { s[0].ask = CP_ASK_LOCAL_DOWNLOAD; return true; }
+  if act == CP_LOCAL_CANCEL { s[0].ask = CP_ASK_LOCAL_CANCEL; return true; }
   _ = cp_forge_yield(s, act);
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
@@ -144,6 +146,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_PANE_STOP { if cp_running(s) && s[0].pane_turn == s[0].nturns - 1 && s[0].pane_agent >= 0 && s[0].pane_agent < s[0].turns[s[0].pane_turn].nagents && s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].state == CP_RUNNING { s[0].stop_agent = s[0].pane_agent; s[0].ask = CP_ASK_STOP_AGENT; } return true; }
   if act == CP_REVIEW {
+    if !cp_flag(s, DC_FLAG_GIT) { return false; }
     // the code review opens in the pane, its tab in front; a press while it shows closes it
     if s[0].review && cp_review_shown(s) { s[0].review = false; return true; }
     s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
@@ -156,8 +159,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].pane_tab = ifx tab == 0 then CP_TAB_AGENT else CP_TAB_CHANGES;
     return true;
   }
-  if act == CP_REVIEW_FILE { return app_diff_press(s[0].keyed[..], "coder.review", surface_id(s[0].surface[..], row)); }
-  if act >= CP_REVIEW_REFRESH && act <= CP_REVIEW_CLEAR { return cp_gd_press(s, act, surface_id(s[0].surface[..], row)); }
+  if act == CP_REVIEW_FILE { return cp_flag(s, DC_FLAG_GIT) && app_diff_press(s[0].keyed[..], "coder.review", surface_id(s[0].surface[..], row)); }
+  if act >= CP_REVIEW_REFRESH && act <= CP_REVIEW_CLEAR { return cp_flag(s, DC_FLAG_GIT) && cp_gd_press(s, act, surface_id(s[0].surface[..], row)); }
   if act == CP_PANE_TOOL {
     // a row of the open sub-agent's activity group (#13744): it opens, or its file opens
     id := surface_id(s[0].surface[..], row);
@@ -199,7 +202,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_PERMIT_DENY { return cp_permit_choose(s, false, -1); }
   if act == CP_PERMIT_PLAN_APPROVE || act == CP_PERMIT_PLAN_REVISE { return cp_permit_plan_action(s, act); }
   if act == CP_PERMIT_SECRET_ENTER { return cp_permit_secret_enter(s); }
-  if act == CP_MCP_OAUTH_SIGNIN || act == CP_MCP_OAUTH_DISMISS { return cp_mcp_oauth_press(s, act); }
+  if act == CP_MCP_OAUTH_SIGNIN || act == CP_MCP_OAUTH_DISMISS { return cp_flag(s, DC_FLAG_MCP) && cp_mcp_oauth_press(s, act); }
   if act == CP_FIELD { cp_ed_focus(s, CP_KB_COMPOSER); return true; }
   if act == CP_SEND {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
@@ -207,12 +210,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_NEW { return cp_new(s); }
   if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
-  if act == CP_FOREMAN { s[0].ask = CP_ASK_FOREMAN; return true; }
-  if act == CP_GYM { s[0].ask = CP_ASK_GYM; return true; }
+  if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].ask = CP_ASK_FOREMAN; return true; }
+  if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].ask = CP_ASK_GYM; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
   if act == CP_SIDE_TOGGLE { s[0].side_collapsed = !s[0].side_collapsed; return true; }
-  if act == CP_FOREMAN_HUD_TOGGLE { s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
+  if act == CP_FOREMAN_HUD_TOGGLE { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
   if act == CP_FOREMAN_HUD_OPEN {
+    if !cp_flag(s, DC_FLAG_FOREMAN) { return false; }
     id := surface_id(s[0].surface[..], row);
     prefix := "foreman.node.";
     if id.count > prefix.count && id[0..<prefix.count] == prefix {
@@ -229,28 +233,33 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_TOAST_CLOSE { return app_toast_dismiss(s[0].toasts[..], app_toast_pressed(surface_id(s[0].surface[..], row)), s[0].clock); }
   if act == CP_MENTION { return cp_mn_pick(s, app_mn_pressed("coder.mention", surface_id(s[0].surface[..], row))); }
   if act == CP_EFFORT_CYCLE { s[0].model_menu = false; cp_effort_cycle(s); return true; }
-  if act == CP_FRESH_TOGGLE { s[0].model_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
-  if act == CP_FANOUT_OPEN { s[0].model_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
+  if act == CP_FRESH_TOGGLE { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) { return false; } s[0].model_menu = false; s[0].prov[0].fresh_session = !s[0].prov[0].fresh_session; return true; }
+  if act == CP_FANOUT_OPEN { if !cp_flag(s, DC_FLAG_MODELS_EXTERNAL) || !cp_has_model_picker(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FANOUT_PICK; return true; }
   if act == CP_MODEL_MENU {
+    if !cp_has_model_picker(s) { return false; }
     s[0].usage[0].popover_open = false;
     s[0].model_menu = !s[0].model_menu;
     return true;
   }
   if act == CP_USAGE_POPOVER {
+    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].model_menu = false;
     s[0].usage[0].popover_open = !s[0].usage[0].popover_open;
     return true;
   }
   if act == CP_USAGE_OPEN {
+    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].usage[0].popover_open = false;
     cp_settings_show(s, true, CP_PG_USAGE);
     return true;
   }
   if act == CP_USAGE_REFRESH {
+    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].ask = CP_ASK_USAGE_REFRESH;
     return true;
   }
   if act == CP_MODEL_PICK {
+    if !cp_has_model_picker(s) { s[0].model_menu = false; return false; }
     idx := cp_number(surface_id(s[0].surface[..], row), "coder.model.");
     s[0].model_menu = false;
     if idx < 0 || idx >= cp_models(s) { return false; }
@@ -277,8 +286,9 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if s[0].nturns == 0 { return false; }
     s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
   }
-  if act == CP_BUDGET_EDIT { s[0].ask = CP_ASK_BUDGET; return true; }
+  if act == CP_BUDGET_EDIT { if !cp_flag(s, DC_FLAG_USAGE) { return false; } s[0].ask = CP_ASK_BUDGET; return true; }
   if act == CP_BUDGET_APPROVE {
+    if !cp_flag(s, DC_FLAG_USAGE) { return false; }
     s[0].budget_override = true;
     if s[0].goal_status == CP_GOAL_BUDGET_LIMITED { s[0].goal_status = CP_GOAL_ACTIVE; }
     return true;

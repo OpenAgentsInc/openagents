@@ -25,7 +25,7 @@ extension CoderWindow {
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         let px = Float(at.x * scale), py = Float(y * scale)
         typealias Item = CoderOverlay.MenuItem
-        if cd_foreman_at(page, px, py) != 0 {
+        if FeatureFlags.isOn(.foreman) && cd_foreman_at(page, px, py) != 0 {
             let raise = UserDefaults.standard.bool(forKey: ForemanAPI.operatorTierRaiseKey)
             var items = [Item(label: "Open Foreman"), Item(kind: 2)]
             var acts: [() -> Void] = [{ [weak self] in self?.openForeman() }, {}]
@@ -55,18 +55,19 @@ extension CoderWindow {
             Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"),
             Item(label: "Rename Chat…"),
             Item(label: "Fork Chat"),
-            Item(label: "Open in Side Pane"),
-            Item(kind: 2),
-            Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)),
         ]
         var acts: [() -> Void] = [
             { [weak self] in self?.togglePin(id) },
             { [weak self] in self?.rename(id) },
             { [weak self] in self?.fork(id) },
-            { [weak self] in self?.openSideChat(id) },
-            {},
-            { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } },
         ]
+        if FeatureFlags.isOn(.rich) {
+            items.append(Item(label: "Open in Side Pane"))
+            acts.append { [weak self] in self?.openSideChat(id) }
+        }
+        items.append(Item(kind: 2)); acts.append {}
+        items.append(Item(label: isArchived ? "Unarchive Chat" : "Archive Chat", disabled: !isArchived && busy(id)))
+        acts.append { [weak self] in if isArchived { self?.unarchiveChat(id) } else { self?.archiveChat(id) } }
         if !isArchived {
             if isSnoozed {
                 items.append(Item(label: "Unsnooze Chat"))

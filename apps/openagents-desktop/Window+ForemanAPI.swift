@@ -22,10 +22,18 @@ extension CoderWindow {
             return
         }
         if request.path.hasPrefix("/v1/wallet/") {
+            guard FeatureFlags.isOn(.wallet) else {
+                done(ForemanResponse(status: 403, body: ["error": "wallet feature flag is disabled"]))
+                return
+            }
             handleWalletRPC(request, done: done)
             return
         }
         if request.path == "/v1/gym" && (request.method == "GET" || request.method == "POST") {
+            guard FeatureFlags.isOn(.gym) else {
+                done(ForemanResponse(status: 403, body: ["error": "gym feature flag is disabled"]))
+                return
+            }
             if request.method == "GET" {
                 done(ForemanResponse(status: 200, body: gymStateForProgram()))
                 return
@@ -41,6 +49,10 @@ extension CoderWindow {
             return
         }
         if request.path == "/v1/gym/lean" && (request.method == "GET" || request.method == "POST") {
+            guard FeatureFlags.isOn(.gym) else {
+                done(ForemanResponse(status: 403, body: ["error": "gym feature flag is disabled"]))
+                return
+            }
             if request.method == "GET" {
                 done(ForemanResponse(status: 200, body: leanGymStateForProgram()))
                 return

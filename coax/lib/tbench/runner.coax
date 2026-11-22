@@ -520,14 +520,14 @@ tbr_server_start :: (
       && proc_arg(h, "--model") && proc_arg(h, model_path)
       && proc_arg(h, "--metal") && proc_arg(h, cast(string) e[0].psionic_metal[0..<e[0].psionic_metal_n])
       && proc_arg(h, "--port") && proc_arg(h, port_s)
-      && proc_arg(h, "--ctx") && proc_arg(h, "16384")
+      && proc_arg(h, "--ctx") && proc_arg(h, "32768")
       && proc_quiet(h);
   } else if backend == "llamacpp-metal" {
     if !e[0].llama_ok { _ = proc_release(h); return -1; }
     ok = proc_arg(h, cast(string) e[0].llama_bin[0..<e[0].llama_bin_n])
       && proc_arg(h, "-m") && proc_arg(h, model_path)
       && proc_arg(h, "--port") && proc_arg(h, port_s)
-      && proc_arg(h, "-c") && proc_arg(h, "16384")
+      && proc_arg(h, "-c") && proc_arg(h, "32768")
       && proc_arg(h, "-ngl") && proc_arg(h, "99")
       && proc_arg(h, "--jinja")
       && proc_arg(h, "--cache-prompt")

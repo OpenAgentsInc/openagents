@@ -3,6 +3,7 @@
 // (page/overlay.coax, GitHub #13746). The field with the keyboard is the page's own editor
 // (page/editor.coax, GitHub #13742): a secure one shows dots and never copies.
 import AppKit
+import CryptoKit
 
 /// A dialog the page draws: its words, its fields and its buttons in the foot's order. `confirm` is
 /// the button Return presses (a destructive dialog names Cancel), `cancel` the one Escape stands for.
@@ -267,19 +268,24 @@ enum ExecutorModelStore {
     }
 }
 
-/// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:18794.
+/// Resident native Psionic Metal inference server for Inkling 2 Mini on 127.0.0.1:<port> (default 18794, override via OA_INKLING_PORT).
 final class LocalModelServer {
     static let shared = LocalModelServer()
     static let host = "127.0.0.1"
-    static let port = 18794
     static let contextTokens = 32768
-    static var baseURL: String { "http://\(host):\(port)" }
-    static var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".openagents", isDirectory: true)
-            .appendingPathComponent("logs", isDirectory: true)
-            .appendingPathComponent("psionic-inkling-serve.log")
+    static var port: Int {
+        if let raw = ProcessInfo.processInfo.environment["OA_INKLING_PORT"], let p = Int(raw), p > 0, p < 65536 {
+            return p
+        }
+        return 18794
     }
+    static var baseURL: String { "http://\(host):\(port)" }
+    static var logURL: URL { LocalModelStore.logsDir.appendingPathComponent("inkling-serve.log") }
+    static var runDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/run", isDirectory: true)
+    }
+    static var pidURL: URL { runDir.appendingPathComponent("inkling-serve.pid") }
     private var process: Process?
     private let queue = DispatchQueue(label: "openagents.local-model-server")
 
@@ -297,51 +303,78 @@ final class LocalModelServer {
         return nil
     }
 
-    private enum HealthProbe { case psionicHealthy, otherService(Int), down }
+    private enum PortProbe { case psionicHealthy, occupied(String), free }
 
-    private func probeHealth() -> HealthProbe {
-        guard let url = URL(string: Self.baseURL + "/health") else { return .down }
+    private static func listenerDescription(port: Int) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        p.arguments = ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN", "-Fp", "-Fc"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
+        var pid = "", cmd = ""
+        for line in lines {
+            if line.hasPrefix("p"), pid.isEmpty { pid = String(line.dropFirst()) }
+            else if line.hasPrefix("c"), cmd.isEmpty { cmd = String(line.dropFirst()) }
+        }
+        if !pid.isEmpty {
+            return cmd.isEmpty ? "PID \(pid)" : "\(cmd) (PID \(pid))"
+        }
+        return nil
+    }
+
+    private func probePortHealth() -> PortProbe {
+        guard let url = URL(string: Self.baseURL + "/health") else { return .free }
         var req = URLRequest(url: url)
         req.timeoutInterval = 1.0
         let sem = DispatchSemaphore(value: 0)
-        var result: HealthProbe = .down
+        var result: PortProbe = .free
         URLSession.shared.dataTask(with: req) { data, resp, _ in
             if let http = resp as? HTTPURLResponse {
-                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                if http.statusCode == 200 && body.contains("psionic-metal") {
+                if http.statusCode == 200,
+                   let data, let body = String(data: data, encoding: .utf8),
+                   body.contains("psionic-metal") {
                     result = .psionicHealthy
                 } else {
-                    result = .otherService(http.statusCode)
+                    let who = Self.listenerDescription(port: Self.port) ?? "another HTTP server"
+                    result = .occupied(who)
                 }
             }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 1.5)
+        if case .free = result, let who = Self.listenerDescription(port: Self.port) {
+            return .occupied(who)
+        }
         return result
     }
 
-    private func recentLogTail() -> String {
-        guard let text = try? String(contentsOf: Self.logURL, encoding: .utf8) else { return "" }
-        let lines = text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        return lines.suffix(2).joined(separator: " | ")
+    private static func readLogTail() -> String {
+        guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return "" }
+        let lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return lines.suffix(3).joined(separator: " | ")
     }
 
     func ensureRunning(completion: @escaping (String?) -> Void) {
         queue.async {
-            switch self.probeHealth() {
+            switch self.probePortHealth() {
             case .psionicHealthy:
                 DispatchQueue.main.async { completion(nil) }
                 return
-            case .otherService(let code):
+            case .occupied(let who):
                 DispatchQueue.main.async {
-                    completion("Port \(Self.port) is already in use by another process (HTTP \(code) on \(Self.baseURL)/health). Stop that process to run Inkling 2 Mini.")
+                    completion("Port \(Self.port) is already in use by \(who). Stop that process or launch with OA_INKLING_PORT=<free-port>.")
                 }
                 return
-            case .down:
+            case .free:
                 break
             }
             guard LocalModelStore.hardwareSupported else {
-                DispatchQueue.main.async { completion("Inkling 2 Mini requires >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).") }
+                DispatchQueue.main.async { completion("Inkling 2 Mini requires Apple Silicon and >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).") }
                 return
             }
             guard LocalModelStore.isInstalled else {
@@ -353,6 +386,11 @@ final class LocalModelServer {
                 return
             }
             if self.process?.isRunning != true {
+                try? FileManager.default.createDirectory(at: LocalModelStore.logsDir, withIntermediateDirectories: true)
+                try? FileManager.default.createDirectory(at: Self.runDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                FileManager.default.createFile(atPath: Self.logURL.path, contents: nil)
+                let logHandle = try? FileHandle(forWritingTo: Self.logURL)
+                try? logHandle?.truncate(atOffset: 0)
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: server.bin)
                 p.arguments = [
@@ -361,53 +399,68 @@ final class LocalModelServer {
                     "--host", Self.host,
                     "--port", String(Self.port),
                     "--ctx", String(Self.contextTokens),
+                    "--idle-exit-s", "300",
                 ]
-                let fm = FileManager.default
-                try? fm.createDirectory(at: Self.logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                fm.createFile(atPath: Self.logURL.path, contents: nil)
-                if let fh = try? FileHandle(forWritingTo: Self.logURL) {
-                    try? fh.truncate(atOffset: 0)
-                    p.standardOutput = fh
-                    p.standardError = fh
-                } else {
-                    p.standardOutput = FileHandle.nullDevice
-                    p.standardError = FileHandle.nullDevice
-                }
+                p.standardOutput = logHandle ?? FileHandle.nullDevice
+                p.standardError = logHandle ?? FileHandle.nullDevice
                 do {
                     try p.run()
                     self.process = p
+                    try? "\(p.processIdentifier)\n".write(to: Self.pidURL, atomically: true, encoding: .utf8)
                 } catch {
+                    try? logHandle?.close()
                     DispatchQueue.main.async { completion("Could not start Psionic Metal server: \(error.localizedDescription)") }
                     return
                 }
             }
             for _ in 0..<120 {
-                if case .psionicHealthy = self.probeHealth() {
+                if case .psionicHealthy = self.probePortHealth() {
                     DispatchQueue.main.async { completion(nil) }
                     return
                 }
                 if self.process?.isRunning != true {
                     let status = self.process?.terminationStatus ?? -1
-                    let tail = self.recentLogTail()
-                    let detail = tail.isEmpty ? "See \(Self.logURL.path)." : tail
-                    DispatchQueue.main.async { completion("Psionic Metal server exited (\(status)): \(detail)") }
+                    let tail = Self.readLogTail()
+                    let msg = tail.isEmpty
+                        ? "Psionic Metal server exited (\(status)) before becoming ready (see \(Self.logURL.path))."
+                        : "Psionic Metal server exited (\(status)): \(tail)"
+                    DispatchQueue.main.async { completion(msg) }
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.5)
             }
-            let tail = self.recentLogTail()
+            let tail = Self.readLogTail()
             let suffix = tail.isEmpty ? "See \(Self.logURL.path)." : tail
             DispatchQueue.main.async { completion("Timed out waiting for Psionic Metal server on \(Self.baseURL). \(suffix)") }
         }
     }
 
     func stop() {
-        queue.sync {
-            if let p = self.process, p.isRunning {
-                p.terminate()
-            }
-            self.process = nil
+        queue.async {
+            self.terminateOwnedSync()
         }
+    }
+
+    /// Called on app quit: when daemon runs outlive quit, leave our detached server alive (it exits via --idle-exit-s 300);
+    /// otherwise send clean SIGTERM so unified memory (~20 GB) is released immediately.
+    func stopIfIdle(runsOutlive: Bool) {
+        if runsOutlive { return }
+        queue.sync {
+            self.terminateOwnedSync()
+        }
+    }
+
+    private func terminateOwnedSync() {
+        guard let p = self.process else { return }
+        self.process = nil
+        if p.isRunning {
+            p.terminate()
+            let deadline = Date().addingTimeInterval(2.0)
+            while p.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        try? FileManager.default.removeItem(at: Self.pidURL)
     }
 }
 
@@ -526,6 +579,20 @@ extension CoderWindow {
             self.refocus()
         }
     }
+    /// Onboarding / Settings direct actions (CP_ASK_LOCAL_DOWNLOAD=160, CP_ASK_LOCAL_CANCEL=161).
+    func startInklingDownload() {
+        LocalModelStore.startDownload { [weak self] in
+            self?.syncLocalModels()
+        }
+        syncLocalModels()
+    }
+    func cancelInklingDownload() {
+        LocalModelStore.cancelDownload { [weak self] in
+            self?.syncLocalModels()
+        }
+        syncLocalModels()
+    }
+
     /// True when the foreground chat or any background chat is actively running a reply on Inkling 2 Mini or Hybrid Executor.
     private func isInklingReplyRunning() -> Bool {
         if cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0) { return true }

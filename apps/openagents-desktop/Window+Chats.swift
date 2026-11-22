@@ -20,8 +20,12 @@ extension CoderWindow {
         if keep { UserDefaults.standard.set(folder.path, forKey: "folder") }
         let home = FileManager.default.homeDirectoryForCurrentUser.path, path = folder.path
         cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
-        refreshBranch()
-        refreshGitDiff()
+        if FeatureFlags.isOn(.git) {
+            refreshBranch()
+            refreshGitDiff()
+        } else {
+            cd_branch(page, "")
+        }
         wake()
     }
     /// The working folder's Git branch for the composer's foot (#13743): HEAD's branch, a detached

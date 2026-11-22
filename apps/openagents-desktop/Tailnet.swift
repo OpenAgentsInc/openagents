@@ -160,6 +160,10 @@ final class CoderTailnet: NSObject {
         l.start(queue: queue)
     }
 
+    func stopListening() {
+        queue.async { self.stop() }
+    }
+
     private func stop() {
         listener?.cancel(); listener = nil; serving = nil
         unadvertise()

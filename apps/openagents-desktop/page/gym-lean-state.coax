@@ -479,7 +479,7 @@ cp_lean_apply_plan :: (s: [] CoderPage, plan_json: string) -> bool {
   if !jv_parse(jd[..], plan_json, nodes[..]) || !jv_bool(jd[0], jv_get(jd[0], 0, "ok")) { return false; }
   d := jd[0];
   l := s[0].lean[..];
-  if jv_bool(d, jv_get(d, 0, "open")) && s[0].experimental {
+  if jv_bool(d, jv_get(d, 0, "open")) && cp_flag(s, DC_FLAG_GYM) {
     s[0].gym_open = true;
     s[0].set_open = false;
     s[0].gym_mode = CP_GYM_LEAN;

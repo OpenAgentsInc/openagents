@@ -12,6 +12,7 @@
 #load "../../coax/lib/agent/desktop/gym.coax";
 #load "../../coax/lib/lean/gym.coax";
 #load "../../coax/lib/agent/desktop/executor-store.coax";
+#load "../../coax/lib/agent/desktop/flags.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../psionic/lib/peer/executor-release-store.coax";
 
@@ -656,4 +657,34 @@ oa_dc_exec_release_promote :: (home: string, out_err: [] u8) -> int #export_c #e
 
 oa_dc_exec_release_rollback :: (home: string, out_err: [] u8) -> int #export_c #effects(all) {
   return cast(int) ers_rollback_active(home, out_err);
+}
+
+// --- Feature flag registry (coax/lib/agent/desktop/flags.coax) ---
+
+oa_dc_flag_count :: () -> int #export_c #effects(all) {
+  return DC_FLAG_COUNT;
+}
+
+oa_dc_flag_name :: (flag: int, out: [] u8) -> int #export_c #effects(all) {
+  return oa_dc_copy(dc_flag_name(flag), out);
+}
+
+oa_dc_flag_desc :: (flag: int, out: [] u8) -> int #export_c #effects(all) {
+  return oa_dc_copy(dc_flag_desc(flag), out);
+}
+
+oa_dc_flag_find :: (name: string) -> int #export_c #effects(all) {
+  return dc_flag_find(name);
+}
+
+oa_dc_flags_all :: () -> int #export_c #effects(all) {
+  return DC_FLAGS_ALL;
+}
+
+oa_dc_flags_any_extra_model :: (mask: int) -> int #export_c #effects(all) {
+  return ifx dc_flags_any_extra_model(mask) then 1 else 0;
+}
+
+oa_dc_flags_resolve :: (experimental: int, defaults_mask: int, env_flags: string, env_experimental: string, args_nl: string) -> int #export_c #effects(all) {
+  return dc_flags_resolve(experimental != 0, defaults_mask, env_flags, env_experimental, args_nl);
 }

@@ -17,15 +17,12 @@
       "flags": {
         "gated": true,
         "edits": true,
-        "agents": true,
+        "agents": false,
+        "local": true,
         "unlimited": true,
         "sandbox": "danger-full-access",
-        "model": "gemini-4-neon"
-      },
-      "contains": [
-        "Skills installed on this computer",
-        "eval-house-style"
-      ]
+        "model": "inkling-2-mini"
+      }
     },
     {
       "type": "ended"

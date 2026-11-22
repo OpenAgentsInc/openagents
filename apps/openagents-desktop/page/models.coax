@@ -1,44 +1,117 @@
-// Coder Desktop page (../page.coax): the composer's model list, the OpenRouter main and sub-agent
-// models, and the picker's host calls.
+// Coder Desktop page (../page.coax): the single model list, model lookups,
+// OpenRouter main/sub-agent models, effort level, and the picker's host calls.
+//
+// Single-list design (Audit §3.5): cp_model_list builds the enabled entries once,
+// gated by the flag registry (coax/lib/agent/desktop/flags.coax). Every index,
+// label, id, description, provider kind and selection repair reads from that list.
+// When every extra model flag is off (the Inkling-only first release), Inkling 2 Mini
+// is the sole model and no model selector is shown.
 
-// Cloud/Microcoder models (Gemini + OpenRouter) are available when the user has entered their own
-// Gemini API key in Settings, or when Experimental features are on and the user is signed into an
-// OpenAgents account. Otherwise the app is local-harness-only (Antigravity).
-// The sign-in mcworker --auth finds (Vertex AI from a service account or ADC, or a Gemini API key
-// in ~/work/.secrets or the environment) counts the same as a key set in Settings.
-cp_cloud_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && (s[0].set_gemini_n > 0 || s[0].set_gauth_n > 0 || (s[0].experimental && s[0].cloud_authed)); }
-// How many entries the picker has: cloud models when authed (Gemini + optional OpenRouter), and Antigravity when installed.
-cp_models :: (s: [] CoderPage) -> int {
-  if !cp_cloud_ok(s) {
-    n := 0;
-    if s.count > 0 && s[0].agy { n += 1; }
-    if s.count > 0 && s[0].inkling { n += 1; }
-    if s.count > 0 && s[0].hybrid_exec { n += 1; }
-    if s.count > 0 && s[0].prov[0].codex { n += 1; }
-    if s.count > 0 && s[0].prov[0].cursor { n += 1; }
-    n += cp_acp_enabled_count(s);
-    if s.count > 0 && s[0].claude { n += CP_CLAUDE_MODELS; }
-    return n;
+CP_MK_NONE :: -1;
+CP_MK_GEMINI :: 0;
+CP_MK_OPENROUTER :: 1;
+CP_MK_AGY :: 2;
+CP_MK_INKLING :: 3;
+CP_MK_HYBRID :: 4;
+CP_MK_INKLING_NEON :: 5;
+CP_MK_CODEX :: 6;
+CP_MK_CURSOR :: 7;
+CP_MK_ACP :: 8;
+CP_MK_CLAUDE :: 9;
+CP_MODEL_LIST_MAX :: 32;
+
+CpModelEntry :: struct {
+  kind: int;    // CP_MK_*
+  slot: int;    // sub-index: 0..3 for Gemini/Claude, ACP slot for ACP, else 0
+}
+
+// Cloud/Microcoder Gemini models require the models.gemini flag plus either a Gemini key
+// in Settings, a sign-in mcworker --auth found (Vertex SA/ADC/env), or an OpenAgents account
+// login when the account flag is also on.
+cp_cloud_ok :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || !cp_flag(s, DC_FLAG_MODELS_GEMINI) { return false; }
+  return s[0].set_gemini_n > 0 || s[0].set_gauth_n > 0 || (cp_flag(s, DC_FLAG_ACCOUNT) && s[0].cloud_authed);
+}
+
+cp_has_inkling_neon :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && cp_flag(s, DC_FLAG_MODELS_INKLING_NEON) && cp_cloud_ok(s) && s[0].inkling;
+}
+
+// Builds the single canonical list of currently available models in picker order.
+cp_model_list :: (s: [] CoderPage, out: [] CpModelEntry) -> int {
+  if s.count < 1 { return 0; }
+  n := 0;
+  if cp_cloud_ok(s) {
+    for i: 0..<CP_MODELS {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_GEMINI, slot = i}; n += 1; }
+    }
+    if cp_flag(s, DC_FLAG_MODELS_OPENROUTER) && s[0].or_main_n > 0 {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_OPENROUTER, slot = 0}; n += 1; }
+    }
   }
-  n := CP_MODELS;
-  if s[0].or_main_n > 0 { n += 1; }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  if s[0].hybrid_exec { n += 1; }
-  if cp_has_inkling_neon(s) { n += 1; }
-  if s[0].prov[0].codex { n += 1; }
-  if s[0].prov[0].cursor { n += 1; }
-  n += cp_acp_enabled_count(s);
-  if s[0].claude { n += CP_CLAUDE_MODELS; }
+  if cp_flag(s, DC_FLAG_MODELS_ANTIGRAVITY) && s[0].agy {
+    if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_AGY, slot = 0}; n += 1; }
+  }
+  // Inkling 2 Mini is the built-in first-release model: always present in single-model release
+  // mode (all extra model flags off), and present whenever installed in multi-model dev mode.
+  if s[0].inkling || !cp_has_model_picker(s) {
+    if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_INKLING, slot = 0}; n += 1; }
+  }
+  if cp_flag(s, DC_FLAG_MODELS_EXECUTOR) && s[0].hybrid_exec {
+    if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_HYBRID, slot = 0}; n += 1; }
+  }
+  if cp_has_inkling_neon(s) {
+    if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_INKLING_NEON, slot = 0}; n += 1; }
+  }
+  if cp_flag(s, DC_FLAG_MODELS_EXTERNAL) {
+    if s[0].prov[0].codex {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_CODEX, slot = 0}; n += 1; }
+    }
+    if s[0].prov[0].cursor {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_CURSOR, slot = 0}; n += 1; }
+    }
+    en := cp_acp_enabled_count(s);
+    for k: 0..<en {
+      slot := cp_acp_nth_enabled(s, k);
+      if slot >= 0 && n < out.count { out[n] = CpModelEntry.{kind = CP_MK_ACP, slot = slot}; n += 1; }
+    }
+  }
+  if cp_flag(s, DC_FLAG_MODELS_CLAUDE) && s[0].claude {
+    for i: 0..<CP_CLAUDE_MODELS {
+      if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_CLAUDE, slot = i}; n += 1; }
+    }
+  }
   return n;
 }
-// The Claude entries, after every other: where they start, which of them the entry at idx is
-// (-1: none), and one by a name (its id, its label, or fable, opus, sonnet, haiku; -1: none).
-cp_claude_base_idx :: (s: [] CoderPage) -> int { return cp_acp_base_idx(s) + cp_acp_enabled_count(s); }
+
+cp_models :: (s: [] CoderPage) -> int {
+  list: [CP_MODEL_LIST_MAX] CpModelEntry;
+  return cp_model_list(s, list[..]);
+}
+
+cp_model_entry :: (s: [] CoderPage, idx: int) -> CpModelEntry {
+  if s.count < 1 || idx < 0 { return CpModelEntry.{kind = CP_MK_NONE, slot = -1}; }
+  list: [CP_MODEL_LIST_MAX] CpModelEntry;
+  n := cp_model_list(s, list[..]);
+  if idx >= n { return CpModelEntry.{kind = CP_MK_NONE, slot = -1}; }
+  return list[idx];
+}
+
+cp_model_idx_of :: (s: [] CoderPage, kind: int, slot: int) -> int {
+  if s.count < 1 { return -1; }
+  list: [CP_MODEL_LIST_MAX] CpModelEntry;
+  n := cp_model_list(s, list[..]);
+  for i: 0..<n {
+    if list[i].kind == kind && (slot < 0 || list[i].slot == slot) { return i; }
+  }
+  return -1;
+}
+
+// Single-list accessors (zero duplicate counting arithmetic).
+cp_claude_base_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_CLAUDE, 0); }
 cp_claude_slot :: (s: [] CoderPage, idx: int) -> int {
-  if s.count < 1 || !s[0].claude { return -1; }
-  k := idx - cp_claude_base_idx(s);
-  return ifx k >= 0 && k < CP_CLAUDE_MODELS then k else -1;
+  e := cp_model_entry(s, idx);
+  return ifx e.kind == CP_MK_CLAUDE then e.slot else -1;
 }
 cp_is_claude :: (s: [] CoderPage, idx: int) -> bool { return cp_claude_slot(s, idx) >= 0; }
 cp_claude_find :: (name: string) -> int {
@@ -46,17 +119,58 @@ cp_claude_find :: (name: string) -> int {
   for i: 0..<CP_CLAUDE_MODELS { if name == ids[i] || name == labels[i] || name == alias[i] { return i; } }
   return -1;
 }
-// A chat on a Claude entry stays on it when the entries before it change: slot is what
-// cp_claude_slot said before the change.
-cp_claude_keep :: (s: [] CoderPage, slot: int) { if slot >= 0 && s[0].claude { s[0].model = cp_claude_base_idx(s) + slot; } }
-// The entry a new chat starts on: the Claude model Settings picked when Claude Code is installed, else Neon.
-cp_model_start :: (s: [] CoderPage) -> int {
-  if s.count > 0 && s[0].orch_claude && s[0].claude {
-    k := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
-    return cp_claude_base_idx(s) + k;
-  }
-  return CP_MODEL_DEFAULT;
+cp_claude_keep :: (s: [] CoderPage, slot: int) {
+  idx := cp_model_idx_of(s, CP_MK_CLAUDE, slot);
+  if slot >= 0 && idx >= 0 { s[0].model = idx; }
 }
+cp_agy_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_AGY, 0); }
+cp_is_agy :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_AGY; }
+cp_inkling_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_INKLING, 0); }
+cp_is_inkling :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_INKLING; }
+cp_hybrid_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_HYBRID, 0); }
+cp_is_hybrid :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_HYBRID; }
+cp_inkling_neon_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_INKLING_NEON, 0); }
+cp_is_inkling_neon :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_INKLING_NEON; }
+cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_model_entry(s, idx).kind == CP_MK_OPENROUTER; }
+cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
+cp_or_sub :: (s: [] CoderPage) -> string { return cast(string) s[0].or_sub[0..<s[0].or_sub_n]; }
+
+// Save the active model id before toggling a flag/provider, then restore it cleanly from the new list.
+cp_model_save_id :: (s: [] CoderPage, out: [] u8) -> string {
+  if s.count < 1 { return ""; }
+  idx := cp_model_index(s);
+  if idx < 0 { return ""; }
+  n := cp_out(out, cp_model_id(s, idx));
+  return cast(string) out[0..<n];
+}
+cp_model_restore_id :: (s: [] CoderPage, prev: string) {
+  if s.count < 1 { return; }
+  if prev.count > 0 {
+    idx := cp_model_find_exact(s, prev);
+    if idx >= 0 { s[0].model = idx; return; }
+  }
+  s[0].model = cp_model_start(s);
+  s[0].model = cp_model_index(s);
+}
+
+// The entry a new chat starts on:
+// - Single-model release mode: Inkling 2 Mini.
+// - Multi-model mode: Claude when Settings picked it and Claude is enabled; else Inkling when
+//   installed; else Gemini 4 Neon when cloud is available; else the first enabled entry (-1 if none).
+cp_model_start :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return -1; }
+  if !cp_has_model_picker(s) { return cp_inkling_idx(s); }
+  if cp_flag(s, DC_FLAG_MODELS_CLAUDE) && s[0].orch_claude && s[0].claude {
+    k := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
+    idx := cp_model_idx_of(s, CP_MK_CLAUDE, k);
+    if idx >= 0 { return idx; }
+  }
+  ink := cp_inkling_idx(s);
+  if ink >= 0 { return ink; }
+  if cp_cloud_ok(s) { return CP_MODEL_DEFAULT; }
+  return ifx cp_models(s) > 0 then 0 else -1;
+}
+
 // Settings > Models: whether new chats start on Claude, and on which Claude model (0 Fable 5.2,
 // 1 Opus 5.5, 2 Sonnet 5.5, 3 Haiku 5.5). A chat with no message yet moves to it now.
 coder_page_orchestrator_set :: (s: [] CoderPage, claude: bool, model: int) #export_c #effects(all) {
@@ -65,54 +179,18 @@ coder_page_orchestrator_set :: (s: [] CoderPage, claude: bool, model: int) #expo
   s[0].orch_model = ifx model >= 0 && model < CP_CLAUDE_MODELS then model else CP_CLAUDE_START;
   if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); s[0].model = cp_model_index(s); }
 }
-// What Settings picked: 0 Neon, 1 Claude; and the Claude model.
 coder_page_orchestrator :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].orch_claude then 1 else 0; }
 coder_page_orchestrator_model :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].orch_model else CP_CLAUDE_START; }
-cp_agy_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 || !s[0].agy { return -1; }
-  if !cp_cloud_ok(s) { return 0; }
-  return ifx s[0].or_main_n > 0 then CP_MODELS + 1 else CP_MODELS;
-}
-cp_is_agy :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].agy && idx == cp_agy_idx(s); }
-cp_inkling_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 || !s[0].inkling { return -1; }
-  if !cp_cloud_ok(s) { return ifx s[0].agy then 1 else 0; }
-  n := CP_MODELS;
-  if s[0].or_main_n > 0 { n += 1; }
-  if s[0].agy { n += 1; }
-  return n;
-}
-cp_is_inkling :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].inkling && idx == cp_inkling_idx(s); }
-cp_hybrid_idx :: (s: [] CoderPage) -> int {
-  if s.count < 1 || !s[0].hybrid_exec { return -1; }
-  n := 0;
-  if cp_cloud_ok(s) {
-    n = CP_MODELS;
-    if s[0].or_main_n > 0 { n += 1; }
-  }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  return n;
-}
-cp_is_hybrid :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].hybrid_exec && idx == cp_hybrid_idx(s); }
-cp_has_inkling_neon :: (s: [] CoderPage) -> bool { return s.count > 0 && cp_cloud_ok(s) && s[0].inkling; }
-cp_inkling_neon_idx :: (s: [] CoderPage) -> int {
-  if !cp_has_inkling_neon(s) { return -1; }
-  n := CP_MODELS;
-  if s[0].or_main_n > 0 { n += 1; }
-  if s[0].agy { n += 1; }
-  if s[0].inkling { n += 1; }
-  if s[0].hybrid_exec { n += 1; }
-  return n;
-}
-cp_is_inkling_neon :: (s: [] CoderPage, idx: int) -> bool { return cp_has_inkling_neon(s) && idx == cp_inkling_neon_idx(s); }
+
 cp_model_index :: (s: [] CoderPage) -> int {
   n := cp_models(s);
   if s.count > 0 && s[0].model >= 0 && s[0].model < n { return s[0].model; }
-  if !cp_cloud_ok(s) { return ifx n > 0 then 0 else -1; }
-  return CP_MODEL_DEFAULT;
+  st := cp_model_start(s);
+  if st >= 0 && st < n { return st; }
+  return ifx n > 0 then 0 else -1;
 }
-// A kept model's entry: a Gemini id or short name, or any "openrouter:" id (CP_MODEL_OR).
+
+// A kept Gemini/OpenRouter name's slot (legacy helper kept for compatibility).
 cp_model_find :: (name: string) -> int {
   if name.count > CP_OR_PREFIX.count && cast(string) name[0..<CP_OR_PREFIX.count] == CP_OR_PREFIX { return CP_MODEL_OR; }
   ids := CP_MODEL_ID; shorts := CP_MODEL_SHORT;
@@ -121,103 +199,139 @@ cp_model_find :: (name: string) -> int {
   }
   return CP_MODEL_DEFAULT;
 }
-cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
-  if name == "antigravity" || name == "Antigravity" || name == "agy" {
-    if s.count > 0 && s[0].agy { return cp_agy_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
-  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
-    if s.count > 0 && s[0].inkling { return cp_inkling_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
-  if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" {
-    if s.count > 0 && s[0].hybrid_exec { return cp_hybrid_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
-  if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" {
-    if cp_has_inkling_neon(s) { return cp_inkling_neon_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
-  if name == "codex" || name == "Codex" {
-    if s.count > 0 && s[0].prov[0].codex { return cp_codex_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
-  if name == "cursor" || name == "Cursor" {
-    if s.count > 0 && s[0].prov[0].cursor { return cp_cursor_idx(s); }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
-  }
+
+// Exact lookup of `name` against the currently enabled model list. Returns -1 when not present.
+cp_model_find_exact :: (s: [] CoderPage, name: string) -> int {
+  if s.count < 1 || name.count == 0 { return -1; }
+  if name == "antigravity" || name == "Antigravity" || name == "agy" { return cp_model_idx_of(s, CP_MK_AGY, 0); }
+  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" || name == "Inkling 2 Mini (Local)" { return cp_model_idx_of(s, CP_MK_INKLING, 0); }
+  if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" { return cp_model_idx_of(s, CP_MK_HYBRID, 0); }
+  if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" { return cp_model_idx_of(s, CP_MK_INKLING_NEON, 0); }
+  if name == "codex" || name == "Codex" { return cp_model_idx_of(s, CP_MK_CODEX, 0); }
+  if name == "cursor" || name == "Cursor" { return cp_model_idx_of(s, CP_MK_CURSOR, 0); }
   if name.count > CP_ACP_PREFIX.count && cast(string) name[0..<CP_ACP_PREFIX.count] == CP_ACP_PREFIX {
     aid := cast(string) name[CP_ACP_PREFIX.count..<name.count];
-    en := cp_acp_enabled_count(s);
-    base := cp_acp_base_idx(s);
-    for k: 0..<en {
-      slot := cp_acp_nth_enabled(s, k);
-      if slot >= 0 && cast(string) s[0].prov[0].acp[slot].id[0..<s[0].prov[0].acp[slot].id_n] == aid {
-        return base + k;
+    list: [CP_MODEL_LIST_MAX] CpModelEntry;
+    n := cp_model_list(s, list[..]);
+    for i: 0..<n {
+      if list[i].kind == CP_MK_ACP {
+        slot := list[i].slot;
+        if cast(string) s[0].prov[0].acp[slot].id[0..<s[0].prov[0].acp[slot].id_n] == aid { return i; }
       }
     }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+    return -1;
   }
   cslot := cp_claude_find(name);
-  if cslot >= 0 {
-    if s.count > 0 && s[0].claude { return cp_claude_base_idx(s) + cslot; }
-    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  if cslot >= 0 { return cp_model_idx_of(s, CP_MK_CLAUDE, cslot); }
+  if name == "openrouter" || (name.count > CP_OR_PREFIX.count && cast(string) name[0..<CP_OR_PREFIX.count] == CP_OR_PREFIX) {
+    return cp_model_idx_of(s, CP_MK_OPENROUTER, 0);
   }
-  if !cp_cloud_ok(s) { return ifx cp_models(s) > 0 then 0 else -1; }
-  return cp_model_find(name);
+  ids := CP_MODEL_ID; shorts := CP_MODEL_SHORT; labels := CP_MODEL_LABEL;
+  for i: 0..<CP_MODELS {
+    if name == ids[i] || name == shorts[i] || name == labels[i] { return cp_model_idx_of(s, CP_MK_GEMINI, i); }
+  }
+  return -1;
 }
-cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
-cp_or_sub :: (s: [] CoderPage) -> string { return cast(string) s[0].or_sub[0..<s[0].or_sub_n]; }
-cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_cloud_ok(s) && idx == CP_MODEL_OR && s[0].or_main_n > 0; }
-// The worker's model id for an entry: "openrouter:VENDOR/MODEL" for OpenRouter, "antigravity" for Antigravity.
+
+// Resolve `name` in the current list, falling back to the start model when unavailable.
+cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
+  exact := cp_model_find_exact(s, name);
+  if exact >= 0 { return exact; }
+  return cp_model_start(s);
+}
+
+// Human-readable display name for any saved model id (including models whose flag is off,
+// for kept-chat turn bylines and migration notices).
+cp_model_known_label :: (name: string) -> string {
+  if name == "inkling-2-mini" || name == "inkling" { return "Inkling 2 Mini"; }
+  if name == "hybrid-exec-v1" || name == "hybrid-executor" { return "Hybrid Executor [E]"; }
+  if name == "inkling-neon" || name == "hybrid-neon" { return "Inkling + Neon"; }
+  if name == "antigravity" || name == "agy" { return "Antigravity"; }
+  if name == "codex" { return "Codex"; }
+  if name == "cursor" { return "Cursor"; }
+  ids := CP_MODEL_ID; labels := CP_MODEL_LABEL;
+  for i: 0..<CP_MODELS { if name == ids[i] { return labels[i]; } }
+  cids := CP_CLAUDE_ID; clabels := CP_CLAUDE_LABEL;
+  for i: 0..<CP_CLAUDE_MODELS { if name == cids[i] { return clabels[i]; } }
+  if name.count > CP_OR_PREFIX.count && cast(string) name[0..<CP_OR_PREFIX.count] == CP_OR_PREFIX {
+    return cast(string) name[CP_OR_PREFIX.count..<name.count];
+  }
+  if name.count > CP_ACP_PREFIX.count && cast(string) name[0..<CP_ACP_PREFIX.count] == CP_ACP_PREFIX {
+    return cast(string) name[CP_ACP_PREFIX.count..<name.count];
+  }
+  return name;
+}
+
+cp_model_known_meta :: (name: string) -> string {
+  if name == "inkling-2-mini" || name == "inkling" { return "Psionic Metal · Inkling 2 Mini"; }
+  if name == "hybrid-exec-v1" || name == "hybrid-executor" { return "Psionic Metal · Hybrid Executor [E]"; }
+  if name == "inkling-neon" || name == "hybrid-neon" { return "Hybrid · Inkling + Gemini 4 Neon"; }
+  if name == "antigravity" || name == "agy" { return "Antigravity CLI"; }
+  if name == "codex" { return "Codex CLI"; }
+  if name == "cursor" { return "Cursor ACP"; }
+  ids := CP_MODEL_ID; metas := CP_MODEL_META;
+  for i: 0..<CP_MODELS { if name == ids[i] { return metas[i]; } }
+  cids := CP_CLAUDE_ID; cmetas := CP_CLAUDE_META;
+  for i: 0..<CP_CLAUDE_MODELS { if name == cids[i] { return cmetas[i]; } }
+  return cp_model_known_label(name);
+}
+
+// The worker's model id for an entry.
 cp_model_id :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) { return "antigravity"; }
-  if cp_is_inkling(s, idx) { return "inkling-2-mini"; }
-  if cp_is_hybrid(s, idx) { return "hybrid-exec-v1"; }
-  if cp_is_inkling_neon(s, idx) { return "inkling-neon"; }
-  if cp_is_codex(s, idx) { return "codex"; }
-  if cp_is_cursor(s, idx) { return "cursor"; }
-  acp_slot := cp_acp_slot_for_model(s, idx);
-  if acp_slot >= 0 {
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_GEMINI { ids := CP_MODEL_ID; return ids[e.slot]; }
+  if e.kind == CP_MK_OPENROUTER {
+    return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))];
+  }
+  if e.kind == CP_MK_AGY { return "antigravity"; }
+  if e.kind == CP_MK_INKLING { return "inkling-2-mini"; }
+  if e.kind == CP_MK_HYBRID { return "hybrid-exec-v1"; }
+  if e.kind == CP_MK_INKLING_NEON { return "inkling-neon"; }
+  if e.kind == CP_MK_CODEX { return "codex"; }
+  if e.kind == CP_MK_CURSOR { return "cursor"; }
+  if e.kind == CP_MK_ACP {
     n := cp_out(s[0].prov[0].acp_id_buf[..], CP_ACP_PREFIX);
-    n += cp_out(s[0].prov[0].acp_id_buf[n..<s[0].prov[0].acp_id_buf.count], cast(string) s[0].prov[0].acp[acp_slot].id[0..<s[0].prov[0].acp[acp_slot].id_n]);
+    n += cp_out(s[0].prov[0].acp_id_buf[n..<s[0].prov[0].acp_id_buf.count], cast(string) s[0].prov[0].acp[e.slot].id[0..<s[0].prov[0].acp[e.slot].id_n]);
     return cast(string) s[0].prov[0].acp_id_buf[0..<n];
   }
-  cslot := cp_claude_slot(s, idx);
-  if cslot >= 0 { cids := CP_CLAUDE_ID; return cids[cslot]; }
-  if !cp_cloud_ok(s) { return ""; }
-  if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
-  ids := CP_MODEL_ID;
-  return ifx idx >= 0 && idx < CP_MODELS then ids[idx] else ids[CP_MODEL_DEFAULT];
+  if e.kind == CP_MK_CLAUDE { cids := CP_CLAUDE_ID; return cids[e.slot]; }
+  st := cp_model_start(s);
+  if st >= 0 && st != idx { return cp_model_id(s, st); }
+  return "inkling-2-mini";
 }
-// The OpenRouter entry's label is the model's name after its vendor (deepseek-v4.1-flash-1017).
+
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) { return "Antigravity"; }
-  if cp_is_inkling(s, idx) { return "Inkling 2 Mini (Local)"; }
-  if cp_is_hybrid(s, idx) { return "Hybrid Executor [E]"; }
-  if cp_is_inkling_neon(s, idx) { return "Inkling + Neon (Hybrid)"; }
-  if cp_is_codex(s, idx) { return "Codex"; }
-  if cp_is_cursor(s, idx) { return "Cursor"; }
-  acp_slot := cp_acp_slot_for_model(s, idx);
-  if acp_slot >= 0 { return cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]; }
-  cslot := cp_claude_slot(s, idx);
-  if cslot >= 0 { clabels := CP_CLAUDE_LABEL; return clabels[cslot]; }
-  if !cp_cloud_ok(s) { return "No model"; }
-  if cp_is_or(s, idx) {
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_GEMINI { labels := CP_MODEL_LABEL; return labels[e.slot]; }
+  if e.kind == CP_MK_OPENROUTER {
     m := cp_or_main(s); at := 0;
     for c, i: m { if c == '/' { at = i + 1; } }
     return ifx at < m.count then cast(string) m[at..<m.count] else m;
   }
-  labels := CP_MODEL_LABEL;
-  return ifx idx >= 0 && idx < CP_MODELS then labels[idx] else labels[CP_MODEL_DEFAULT];
+  if e.kind == CP_MK_AGY { return "Antigravity"; }
+  if e.kind == CP_MK_INKLING { return "Inkling 2 Mini (Local)"; }
+  if e.kind == CP_MK_HYBRID { return "Hybrid Executor [E]"; }
+  if e.kind == CP_MK_INKLING_NEON { return "Inkling + Neon (Hybrid)"; }
+  if e.kind == CP_MK_CODEX { return "Codex"; }
+  if e.kind == CP_MK_CURSOR { return "Cursor"; }
+  if e.kind == CP_MK_ACP { return cast(string) s[0].prov[0].acp[e.slot].name[0..<s[0].prov[0].acp[e.slot].name_n]; }
+  if e.kind == CP_MK_CLAUDE { clabels := CP_CLAUDE_LABEL; return clabels[e.slot]; }
+  return "No model";
 }
+
 cp_model_short :: (idx: int) -> string {
   shorts := CP_MODEL_SHORT;
   return ifx idx >= 0 && idx < CP_MODELS then shorts[idx] else shorts[CP_MODEL_DEFAULT];
 }
+
 cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
-  // the Antigravity CLI and the review mode picked in Settings, never the protocol's name
-  if cp_is_agy(s, idx) {
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_GEMINI {
+    vx := CP_MODEL_DESC_VERTEX; api := CP_MODEL_DESC_API;
+    return ifx s[0].gauth_vertex then vx[e.slot] else api[e.slot];
+  }
+  if e.kind == CP_MK_OPENROUTER { return "OpenRouter"; }
+  if e.kind == CP_MK_AGY {
     mode := ifx s[0].set_agy_mode == 1 then "Default" else ifx s[0].set_agy_mode == 2 then "Plan" else "Auto";
     n := cp_out(s[0].agy_desc[..], "Antigravity CLI · ");
     m := cp_agy_shown(s);
@@ -225,34 +339,25 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], mode);
     return cast(string) s[0].agy_desc[0..<n];
   }
-  if cp_is_inkling(s, idx) { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
-  if cp_is_hybrid(s, idx) {
+  if e.kind == CP_MK_INKLING { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if e.kind == CP_MK_HYBRID {
     badge := ifx s[0].set_exec_badge_n > 0 then cast(string) s[0].set_exec_badge[0..<s[0].set_exec_badge_n] else "Exact Replay [E]";
     n := cp_out(s[0].hybrid_desc[..], "Psionic Metal · hybrid-exec-v1 · ");
     n += cp_out(s[0].hybrid_desc[n..<s[0].hybrid_desc.count], badge);
     return cast(string) s[0].hybrid_desc[0..<n];
   }
-  if cp_is_inkling_neon(s, idx) { return "Local Inkling scout · Vertex Neon escalation · Free finish"; }
-  if cp_is_codex(s, idx) { return "OpenAI Codex CLI · app-server"; }
-  if cp_is_cursor(s, idx) { return "Cursor ACP CLI · agent acp"; }
-  acp_slot := cp_acp_slot_for_model(s, idx);
-  if acp_slot >= 0 {
+  if e.kind == CP_MK_INKLING_NEON { return "Local Inkling scout · Vertex Neon escalation · Free finish"; }
+  if e.kind == CP_MK_CODEX { return "OpenAI Codex CLI · app-server"; }
+  if e.kind == CP_MK_CURSOR { return "Cursor ACP CLI · agent acp"; }
+  if e.kind == CP_MK_ACP {
     n := cp_out(s[0].prov[0].acp_desc_buf[..], "ACP Registry · ");
-    n += cp_out(s[0].prov[0].acp_desc_buf[n..<s[0].prov[0].acp_desc_buf.count], cast(string) s[0].prov[0].acp[acp_slot].program[0..<s[0].prov[0].acp[acp_slot].program_n]);
+    n += cp_out(s[0].prov[0].acp_desc_buf[n..<s[0].prov[0].acp_desc_buf.count], cast(string) s[0].prov[0].acp[e.slot].program[0..<s[0].prov[0].acp[e.slot].program_n]);
     return cast(string) s[0].prov[0].acp_desc_buf[0..<n];
   }
-  cslot := cp_claude_slot(s, idx);
-  if cslot >= 0 { cdescs := CP_CLAUDE_DESC; return cdescs[cslot]; }
-  if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy) or download a Local Model"; }
-  if cp_is_or(s, idx) { return "OpenRouter"; }
-  // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
-  // buffer would give every row the last model's line
-  vx := CP_MODEL_DESC_VERTEX; api := CP_MODEL_DESC_API;
-  i := ifx idx >= 0 && idx < CP_MODELS then idx else CP_MODEL_DEFAULT;
-  return ifx s[0].gauth_vertex then vx[i] else api[i];
+  if e.kind == CP_MK_CLAUDE { cdescs := CP_CLAUDE_DESC; return cdescs[e.slot]; }
+  return "Download Inkling 2 Mini in Settings → Models";
 }
-// The model Antigravity runs, never "default": what agy said it opens a session on with these
-// settings (agyworker --probe), else the model Settings names for it, else "" (not known yet).
+
 cp_agy_shown :: (s: [] CoderPage) -> string {
   if s[0].agy_seen_name_n > 0 { return cast(string) s[0].agy_seen_name[0..<s[0].agy_seen_name_n]; }
   if s[0].agy_seen_n > 0 { return cast(string) s[0].agy_seen[0..<s[0].agy_seen_n]; }
@@ -264,225 +369,132 @@ cp_agy_meta :: (s: [] CoderPage, model: string) -> string {
   n += cp_out(s[0].agy_meta[n..<s[0].agy_meta.count], ifx model.count > 0 then model else "model not reported yet");
   return cast(string) s[0].agy_meta[0..<n];
 }
-// Who wrote turn i's reply: its harness and the model it reported running on, else its entry's.
+
+// Who wrote turn i's reply: preserves the saved model id for kept chats even when that model's flag is off.
 cp_turn_meta :: (s: [] CoderPage, i: int) -> string {
   t := s[0].turns[i].model;
-  if cp_is_agy(s, t) && s[0].turns[i].ran_n > 0 {
+  saved := cast(string) s[0].turns[i].saved_model[0..<s[0].turns[i].saved_model_n];
+  if (cp_is_agy(s, t) || saved == "antigravity") && s[0].turns[i].ran_n > 0 {
     ran := cast(string) s[0].turns[i].ran[0..<s[0].turns[i].ran_n];
     seen := cast(string) s[0].agy_seen[0..<s[0].agy_seen_n];
     return cp_agy_meta(s, ifx ran == seen && s[0].agy_seen_name_n > 0 then cast(string) s[0].agy_seen_name[0..<s[0].agy_seen_name_n] else ran);
   }
+  if saved.count > 0 {
+    idx := cp_model_find_exact(s, saved);
+    if idx >= 0 { return cp_model_meta(s, idx); }
+    return cp_model_known_meta(saved);
+  }
   return cp_model_meta(s, t);
 }
-// The model the host's Antigravity probe found (id, name; "" not known), for the picker and Settings.
+
 coder_page_agy_seen :: (s: [] CoderPage, id: string, name: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].agy_seen_n = cp_out(s[0].agy_seen[..], id);
   s[0].agy_seen_name_n = cp_out(s[0].agy_seen_name[..], name);
 }
-// The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its text.
+
 coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_agy := cp_is_agy(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   ok := kind == "vertex" || kind == "key";
   s[0].set_gauth_n = ifx ok then cp_out(s[0].set_gauth[..], text) else 0;
   s[0].gauth_vertex = kind == "vertex";
-  if was_agy { s[0].model = cp_agy_idx(s); }
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
+
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) {
-    return cp_agy_meta(s, cp_agy_shown(s));
-  }
-  if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
-  if cp_is_hybrid(s, idx) { return "Psionic Metal · Hybrid Executor [E]"; }
-  if cp_is_inkling_neon(s, idx) { return "Hybrid · Inkling + Gemini 4 Neon"; }
-  if cp_is_codex(s, idx) { return "Codex CLI"; }
-  if cp_is_cursor(s, idx) { return "Cursor ACP"; }
-  acp_slot := cp_acp_slot_for_model(s, idx);
-  if acp_slot >= 0 {
-    n := cp_out(s[0].prov[0].acp_meta_buf[..], "ACP · ");
-    n += cp_out(s[0].prov[0].acp_meta_buf[n..<s[0].prov[0].acp_meta_buf.count], cast(string) s[0].prov[0].acp[acp_slot].name[0..<s[0].prov[0].acp[acp_slot].name_n]);
-    return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
-  }
-  cslot := cp_claude_slot(s, idx);
-  if cslot >= 0 { cmetas := CP_CLAUDE_META; return cmetas[cslot]; }
-  if !cp_cloud_ok(s) { return "No model"; }
-  if cp_is_or(s, idx) {
+  e := cp_model_entry(s, idx);
+  if e.kind == CP_MK_GEMINI { metas := CP_MODEL_META; return metas[e.slot]; }
+  if e.kind == CP_MK_OPENROUTER {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
     n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
     return cast(string) s[0].or_meta[0..<n];
   }
-  metas := CP_MODEL_META;
-  return ifx idx >= 0 && idx < CP_MODELS then metas[idx] else metas[CP_MODEL_DEFAULT];
+  if e.kind == CP_MK_AGY { return cp_agy_meta(s, cp_agy_shown(s)); }
+  if e.kind == CP_MK_INKLING { return "Psionic Metal · Inkling 2 Mini"; }
+  if e.kind == CP_MK_HYBRID { return "Psionic Metal · Hybrid Executor [E]"; }
+  if e.kind == CP_MK_INKLING_NEON { return "Hybrid · Inkling + Gemini 4 Neon"; }
+  if e.kind == CP_MK_CODEX { return "Codex CLI"; }
+  if e.kind == CP_MK_CURSOR { return "Cursor ACP"; }
+  if e.kind == CP_MK_ACP {
+    n := cp_out(s[0].prov[0].acp_meta_buf[..], "ACP · ");
+    n += cp_out(s[0].prov[0].acp_meta_buf[n..<s[0].prov[0].acp_meta_buf.count], cast(string) s[0].prov[0].acp[e.slot].name[0..<s[0].prov[0].acp[e.slot].name_n]);
+    return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
+  }
+  if e.kind == CP_MK_CLAUDE { cmetas := CP_CLAUDE_META; return cmetas[e.slot]; }
+  return "No model";
 }
-// The OpenRouter models the person set (Coder > OpenRouter Models): main for Microcoder, sub for
-// sub-agents, each "" for none. A chat on the OpenRouter entry goes back to Neon when main is cleared.
-// The shown chat's model by name (a launch's --model): a Gemini id or short name, "openrouter"
-// (or an "openrouter:" id), or "antigravity"/"agy". False when no entry has that name.
+
 coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
-  if name == "antigravity" || name == "Antigravity" || name == "agy" {
-    if !s[0].agy { return false; }
-    s[0].model = cp_agy_idx(s);
-    return true;
-  }
-  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
-    if !s[0].inkling { return false; }
-    s[0].model = cp_inkling_idx(s);
-    return true;
-  }
-  if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" {
-    if !s[0].hybrid_exec { return false; }
-    s[0].model = cp_hybrid_idx(s);
-    return true;
-  }
-  if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" {
-    if !cp_has_inkling_neon(s) { return false; }
-    s[0].model = cp_inkling_neon_idx(s);
-    return true;
-  }
-  if name == "codex" || name == "Codex" {
-    if !s[0].prov[0].codex { return false; }
-    s[0].model = cp_codex_idx(s);
-    return true;
-  }
-  if name == "cursor" || name == "Cursor" {
-    if !s[0].prov[0].cursor { return false; }
-    s[0].model = cp_cursor_idx(s);
-    return true;
-  }
-  if name.count > CP_ACP_PREFIX.count && cast(string) name[0..<CP_ACP_PREFIX.count] == CP_ACP_PREFIX {
-    aid := cast(string) name[CP_ACP_PREFIX.count..<name.count];
-    en := cp_acp_enabled_count(s);
-    base := cp_acp_base_idx(s);
-    for k: 0..<en {
-      slot := cp_acp_nth_enabled(s, k);
-      if slot >= 0 && cast(string) s[0].prov[0].acp[slot].id[0..<s[0].prov[0].acp[slot].id_n] == aid {
-        s[0].model = base + k;
-        return true;
-      }
-    }
-    return false;
-  }
-  cslot := cp_claude_find(name);
-  if cslot >= 0 {
-    if !s[0].claude { return false; }
-    s[0].model = cp_claude_base_idx(s) + cslot;
-    return true;
-  }
-  if !cp_cloud_ok(s) { return false; }
-  idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
-  if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
-  if idx >= cp_models(s) { return false; }
+  idx := cp_model_find_exact(s, name);
+  if idx < 0 { return false; }
   s[0].model = idx;
   return true;
 }
+
 coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_agy := cp_is_agy(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
   s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
-  if was_agy { s[0].model = cp_agy_idx(s); }
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
+
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].agy = on;
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
+
 coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].inkling = on;
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  if on && s[0].nturns == 0 && !cp_running(s) && prev.count == 0 {
+    s[0].model = cp_model_start(s);
+    s[0].model = cp_model_index(s);
+    return;
+  }
+  cp_model_restore_id(s, prev);
 }
+
 coder_page_set_hybrid_exec :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].hybrid_exec = on;
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
+
 coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  claude_slot := cp_claude_slot(s, s[0].model);
-  was_agy := cp_is_agy(s, s[0].model);
-  was_inkling := cp_is_inkling(s, s[0].model);
-  was_hybrid := cp_is_hybrid(s, s[0].model);
-  was_combo := cp_is_inkling_neon(s, s[0].model);
+  pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].cloud_authed = on;
-  if was_agy { s[0].model = cp_agy_idx(s); }
-  if was_inkling { s[0].model = cp_inkling_idx(s); }
-  if was_hybrid { s[0].model = cp_hybrid_idx(s); }
-  if was_combo { s[0].model = cp_inkling_neon_idx(s); }
-  cp_claude_keep(s, claude_slot);
-  s[0].model = cp_model_index(s);
+  cp_model_restore_id(s, prev);
 }
-// The name of what runs the next message: the Antigravity CLI (agyworker), or Microcoder (mcworker)
-// on OpenRouter or the Gemini API / Vertex AI for the picked entry; "" with no model. Shown inside
-// the model picker dropdown (cp_model_desc), never as a separate chip in the composer's foot.
+
 cp_backend_label :: (s: [] CoderPage) -> string {
-  idx := cp_model_index(s);
-  if idx < 0 { return ""; }
-  if cp_is_agy(s, idx) { return "Antigravity CLI"; }
-  if cp_is_inkling(s, idx) { return "Psionic Metal"; }
-  if cp_is_hybrid(s, idx) { return "Psionic Metal · [E]"; }
-  if cp_is_inkling_neon(s, idx) { return "Inkling + Vertex AI"; }
-  if cp_is_codex(s, idx) { return "Codex CLI"; }
-  if cp_is_cursor(s, idx) { return "Cursor ACP"; }
-  if cp_is_acp(s, idx) { return "ACP Registry"; }
-  if cp_is_claude(s, idx) { return "Claude Code"; }
-  if cp_is_or(s, idx) { return "OpenRouter"; }
-  if s[0].gauth_vertex { return "Vertex AI"; }                // Microcoder tries Vertex before any key (microcoder_keys.coax mk_plan)
-  return "Gemini API";                                         // a Gemini API key, or Microcoder's own credentials with Experimental features
+  e := cp_model_entry(s, cp_model_index(s));
+  if e.kind == CP_MK_NONE { return ""; }
+  if e.kind == CP_MK_AGY { return "Antigravity CLI"; }
+  if e.kind == CP_MK_INKLING { return "Psionic Metal"; }
+  if e.kind == CP_MK_HYBRID { return "Psionic Metal · [E]"; }
+  if e.kind == CP_MK_INKLING_NEON { return "Inkling + Vertex AI"; }
+  if e.kind == CP_MK_CODEX { return "Codex CLI"; }
+  if e.kind == CP_MK_CURSOR { return "Cursor ACP"; }
+  if e.kind == CP_MK_ACP { return "ACP Registry"; }
+  if e.kind == CP_MK_CLAUDE { return "Claude Code"; }
+  if e.kind == CP_MK_OPENROUTER { return "OpenRouter"; }
+  if s[0].gauth_vertex { return "Vertex AI"; }
+  return "Gemini API";
 }
-coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return cp_cloud_ok(s);
-}
-coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return s.count > 0 && cp_is_agy(s, cp_model_index(s));
-}
-coder_page_model_inkling :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return s.count > 0 && cp_is_inkling(s, cp_model_index(s));
-}
-coder_page_model_hybrid :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return s.count > 0 && cp_is_hybrid(s, cp_model_index(s));
-}
-coder_page_model_claude :: (s: [] CoderPage) -> bool #export_c #effects(all) {
-  return s.count > 0 && cp_is_claude(s, cp_model_index(s));
-}
+
+coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) { return cp_cloud_ok(s); }
+coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_is_agy(s, cp_model_index(s)); }
+coder_page_model_inkling :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_is_inkling(s, cp_model_index(s)); }
+coder_page_model_hybrid :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_is_hybrid(s, cp_model_index(s)); }
+coder_page_model_claude :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_is_claude(s, cp_model_index(s)); }
 
 // ---------------------------------------------------------------- effort
 
@@ -527,16 +539,12 @@ cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
   }
   return CP_EFFORT_MEDIUM;
 }
-// The level the model at idx runs at in this chat: the one picked, else its default.
 cp_effort_at :: (s: [] CoderPage, idx: int) -> int {
   e := s[0].effort;
   if e > CP_EFFORT_HIGH && e <= CP_EFFORT_MAX && !cp_is_claude(s, idx) { return CP_EFFORT_HIGH; }
   return ifx e >= CP_EFFORT_LOW && e <= CP_EFFORT_MAX then e else cp_effort_default(s, idx);
 }
 cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_LABEL; return labels[cp_effort_at(s, idx)]; }
-// The effort a task line names for the model at index model: the chat's pick; with none, nothing
-// for Antigravity, so Settings' effort (CODER_AGY_EFFORT) or agyworker's medium decides (a forced
-// low made agy think not at all), and low for Microcoder.
 cp_task_effort :: (s: [] CoderPage, model: int) -> string {
   words := CP_EFFORT_WORD;
   if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_MAX { return words[cp_effort_at(s, model)]; }

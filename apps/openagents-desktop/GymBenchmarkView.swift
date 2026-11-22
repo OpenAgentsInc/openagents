@@ -997,7 +997,6 @@ final class GymBenchmarkView: NSView {
             candidates.append(wf.appendingPathComponent("evals/openagents-desktop"))
         }
         candidates.append(home.appendingPathComponent(".cache/openagents/coder-release/src/evals/openagents-desktop"))
-        candidates.append(URL(fileURLWithPath: "/Users/christopherdavid/work/openagents/evals/openagents-desktop"))
         for c in candidates {
             if fm.fileExists(atPath: c.appendingPathComponent("tier2/tasks").path) { return c }
         }
@@ -1015,7 +1014,6 @@ final class GymBenchmarkView: NSView {
         if let wf = workingFolderProvider?() {
             pairs.append((wf.appendingPathComponent("psionic/build/psionic-inkling-serve").path, wf.appendingPathComponent("psionic/build/inkling-kernels.metal").path))
         }
-        pairs.append(("/Users/christopherdavid/work/openagents/psionic/build/psionic-inkling-serve", "/Users/christopherdavid/work/openagents/psionic/build/inkling-kernels.metal"))
         for (b, m) in pairs {
             if fm.isExecutableFile(atPath: b) && fm.fileExists(atPath: m) { return (b, m) }
         }
@@ -1187,7 +1185,7 @@ final class GymBenchmarkView: NSView {
             self.runSide(
                 side: .psionic,
                 executable: psi.bin,
-                args: ["--model", modelPath, "--metal", psi.metal, "--port", "18445", "--ctx", "8192"],
+                args: ["--model", modelPath, "--metal", psi.metal, "--port", "18445", "--ctx", "32768"],
                 port: 18445,
                 evalRoot: evalRoot,
                 specs: specs
@@ -1196,7 +1194,7 @@ final class GymBenchmarkView: NSView {
                 self.runSide(
                     side: .llamacpp,
                     executable: llamaBin,
-                    args: ["-m", modelPath, "--port", "18446", "-c", "8192", "-ngl", "99", "--jinja", "--cache-prompt"],
+                    args: ["-m", modelPath, "--port", "18446", "-c", "32768", "-ngl", "99", "--jinja", "--cache-prompt"],
                     port: 18446,
                     evalRoot: evalRoot,
                     specs: specs

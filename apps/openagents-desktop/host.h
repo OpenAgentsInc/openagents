@@ -422,6 +422,9 @@ int cd_gym_rect(void *page, float out[4]);
 // Experimental features (log in and the account, Gym, Foreman): set by the host from UserDefaults; read after CP_ASK_EXPERIMENTAL.
 void cd_experimental_set(void *page, int on);
 int cd_experimental(void *page);
+void cd_flags_set(void *page, int64_t mask);
+int64_t cd_flags(void *page);
+void cd_local_state(void *page, int os_ok, int hw_ok, int ram_gb, int dl_state, int pct, int dl_mb, int total_mb, const char *err);
 void cd_cloud_authed_set(void *page, int on);
 // Git Actions toolbar (page/gitactions.coax, GitHub #13871). cd_action 49 asks; cd_git_op says which op.
 void cd_git_status(void *page, int in_repo, int in_worktree, int dirty, int ahead, int behind);

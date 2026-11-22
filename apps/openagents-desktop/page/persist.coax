@@ -66,7 +66,8 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
     n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
     n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
-    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
+    tmid := ifx s[0].turns[i].saved_model_n > 0 then cast(string) s[0].turns[i].saved_model[0..<s[0].turns[i].saved_model_n] else cp_model_id(s, s[0].turns[i].model);
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, tmid);
     if s[0].turns[i].ran_n > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ran[0..<s[0].turns[i].ran_n]); }
     if s[0].turns[i].state != CP_RUNNING && s[0].turns[i].took >= 0 { n = json_raw(out, n, ",\"worked\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].took)); }
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
@@ -125,6 +126,11 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   turns := cl_raw(text, "turns");
   count := cl_count(turns); if count > s[0].turns.count { count = s[0].turns.count; }
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+  chat_model_raw := cl_str(mar[..], text, "model");
+  chat_model_buf: [64] u8;
+  chat_model_n := cp_out(chat_model_buf[..], chat_model_raw);
+  chat_model_str := cast(string) chat_model_buf[0..<chat_model_n];
   s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_docs_reset(s); cp_ckpt_reset(s);
   for i: 0..<count {
     s[0].nturns = i + 1; s[0].turns[i].nagents = 0;
@@ -151,7 +157,9 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     }
     ar[0].at = 0;
     tm := cl_str(ar[..], t, "model");
-    s[0].turns[i].model = ifx tm.count > 0 then cp_model_find_s(s, tm) else s[0].model;
+    eff_tm := ifx tm.count > 0 then tm else chat_model_str;
+    s[0].turns[i].saved_model_n = cp_out(s[0].turns[i].saved_model[..], eff_tm);
+    s[0].turns[i].model = ifx eff_tm.count > 0 then cp_model_find_s(s, eff_tm) else cp_model_start(s);
     ar[0].at = 0;
     s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], cl_str(ar[..], t, "ran"));
     state := cl_int(t, "state"); more := cl_int(t, "more");
@@ -201,8 +209,15 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   s[0].budget_usd_micros = ifx budget.ok && budget.value > 0 then budget.value else CP_BUDGET_DEFAULT;
   ov := cl_bool(text, "budget_override");
   s[0].budget_override = ov.ok && ov.value;
-  mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
-  s[0].model = cp_model_find_s(s, cl_str(mar[..], text, "model"));
+  matched_model := cp_model_find_exact(s, chat_model_str);
+  if chat_model_str.count > 0 && matched_model < 0 {
+    s[0].migrated_from_n = cp_out(s[0].migrated_from[..], chat_model_str);
+    s[0].model = cp_model_start(s);
+  } else {
+    s[0].migrated_from_n = 0;
+    s[0].model = ifx matched_model >= 0 then matched_model else cp_model_start(s);
+  }
+  mar[0].at = 0;
   s[0].effort = cp_effort_of(cl_str(mar[..], text, "effort")); s[0].kept_effort = s[0].effort;
   s[0].model_menu = false;
   cp_ctx_reset(s);
@@ -277,7 +292,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
   s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_ckpt_reset(s); cp_permit_new_chat(s); cp_prov_reset_chat(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
-  s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
+  s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].migrated_from_n = 0; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
   s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; s[0].pane_manual = false; s[0].kept_pane_open = false; s[0].kept_pane_turn = 0; s[0].kept_pane_agent = 0; s[0].kept_pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
@@ -323,6 +338,10 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
   to[0].kept_pane_open = from[0].kept_pane_open; to[0].kept_pane_turn = from[0].kept_pane_turn; to[0].kept_pane_agent = from[0].kept_pane_agent; to[0].kept_pane_manual = from[0].kept_pane_manual;
   to[0].ctx_in = from[0].ctx_in; to[0].ctx_cached = from[0].ctx_cached; to[0].ctx_out = from[0].ctx_out; to[0].ctx_window = from[0].ctx_window; cp_ctx_reset(from);
+  to[0].flags = from[0].flags; to[0].experimental = from[0].experimental; to[0].cloud_authed = from[0].cloud_authed;
+  to[0].claude = from[0].claude; to[0].agy = from[0].agy; to[0].inkling = from[0].inkling; to[0].hybrid_exec = from[0].hybrid_exec;
+  to[0].migrated_from_n = cp_out(to[0].migrated_from[..], cast(string) from[0].migrated_from[0..<from[0].migrated_from_n]);
+  from[0].migrated_from_n = 0;
   to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false; to[0].effort = from[0].effort;
   to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
   to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);

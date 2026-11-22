@@ -17,6 +17,7 @@
 #load "../../sys/tool.coax";
 #load "worker-env.coax";
 #load "update.coax";
+#load "flags.coax";
 
 // What the Mac app's CoderStore writes (Swift's JSONEncoder, generated from CoderChat's shape).
 SWIFT_INDEX :: "[{\"id\":\"c0ffee01\",\"folder\":\"\\/w\\/openagents-3f87407a\\/c0ffee01\",\"created\":1763500200.125,\"repo_root\":\"\\/Users\\/me\\/work\\/OpenAgents\",\"worktree_path\":\"\\/w\\/openagents-3f87407a\\/c0ffee01\",\"worktree_branch\":\"coder\\/c0ffee01\",\"title\":\"Fix the \\\"login\\\" page \\/ é\",\"updated\":1763500300.5},{\"managed_by\":\"foreman\",\"title\":\"Foreman\",\"id\":\"foreman\",\"folder\":\"\\/Users\\/me\",\"updated\":1763500000},{\"created\":1763400000,\"title\":\"Pinned one\",\"pinned\":0,\"folder\":\"\\/tmp\\/two\",\"updated\":1763400010.75,\"renamed\":true,\"id\":\"b0b0b0b0\"}]";
@@ -82,6 +83,16 @@ smoke :: () -> int {
   if smoke_daemon(root) != 0 { return 1; }
   if smoke_worker(root) != 0 { return 1; }
   if smoke_update(root) != 0 { return 1; }
+  if smoke_flags() != 0 { return 1; }
+  return 0;
+}
+
+smoke_flags :: () -> int {
+  if dc_flags_resolve(false, 0, "", "", "") != 0 { return fail("flags: release default not zero"); }
+  if dc_flags_resolve(true, 0, "", "", "") != DC_FLAGS_ALL { return fail("flags: experimental alias"); }
+  m := dc_flags_resolve(false, 0, "git", "", "--flag\nterminal");
+  if !dc_flag_on(m, DC_FLAG_GIT) || !dc_flag_on(m, DC_FLAG_TERMINAL) || dc_flag_on(m, DC_FLAG_WALLET) { return fail("flags: env+cli resolve"); }
+  say("flags: 28 flags default off, experimental alias, OA_FLAGS and --flag");
   return 0;
 }
 

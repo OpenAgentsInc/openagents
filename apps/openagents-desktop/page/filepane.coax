@@ -129,7 +129,7 @@ cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_FP_CLOSE { s[0].ask = CP_ASK_FILE_CLOSE; return true; }
   if act == CP_FP_SAVE { if !s[0].fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
   if act == CP_FP_EXTERNAL { s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
-  if act == CP_FP_LEAN_GOAL { s[0].fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
+  if act == CP_FP_LEAN_GOAL { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
   return false;
 }
 // The wheel over the pane: the editor's rows move, or the read-only / large-edit view does.
@@ -405,7 +405,7 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
   gx := x + gw; tx := gx + a.gap; tw := fx + fw - a.gap - tx;
   body := y;
-  show_lean_strip := cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
+  show_lean_strip := cp_flag(s, DC_FLAG_GYM) && cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
   bh := h - a.gap_small - body - (ifx show_lean_strip then CP_FP_LEAN_STRIP_H + 6.0f32 else 0.0f32);
   if !(bh > 0) || !(tw > 0) { cp_ft_draw_editor_menu(s, f); return; }
   fp[0].body_x = tx; fp[0].body_y = body; fp[0].body_w = tw; fp[0].body_h = bh;
@@ -599,6 +599,7 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
 coder_page_file_open_scene :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if !s[0].ready { cp_init(s); }
+  if !cp_flag(s, DC_FLAG_SCENES) { return false; }
   cp_fp_begin(s, path);
   _ = cp_ft_tab_open(s, path);
   s[0].fp[0].mode = CP_FP_SCENE;
@@ -606,7 +607,7 @@ coder_page_file_open_scene :: (s: [] CoderPage, path: string) -> bool #export_c 
 }
 // The 3D scene viewport rect (x, y, w, h in logical points, top-left origin) while the scene is on screen.
 coder_page_file_scene_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || s[0].set_open { return false; }
+  if s.count < 1 || out.count < 4 || s[0].set_open || !cp_flag(s, DC_FLAG_SCENES) { return false; }
   fp := s[0].fp[..];
   if !cp_fp_shown(s) || fp[0].mode != CP_FP_SCENE || !(fp[0].body_w > 0) || !(fp[0].body_h > 0) { return false; }
   out[0] = fp[0].body_x; out[1] = fp[0].body_y; out[2] = fp[0].body_w; out[3] = fp[0].body_h;

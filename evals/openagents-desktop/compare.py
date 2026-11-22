@@ -60,11 +60,11 @@ def usd(m: int | float) -> str:
 
 
 def diff(base: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
-    b = {c["id"]: c for c in base.get("cases", [])}
-    n = {c["id"]: c for c in new.get("cases", [])}
+    b = {c["id"]: c for c in base.get("cases", []) if not c.get("not_applicable")}
+    n = {c["id"]: c for c in new.get("cases", []) if not c.get("not_applicable")}
     both = [i for i in n if i in b]
-    regressions = [i for i in both if b[i]["passed"] and not n[i]["passed"] and not n[i].get("known_failure")]
-    fixes = [i for i in both if not b[i]["passed"] and n[i]["passed"]]
+    regressions = [i for i in both if b[i].get("passed") and not n[i].get("passed") and not n[i].get("known_failure")]
+    fixes = [i for i in both if not b[i].get("passed") and n[i].get("passed")]
     spikes = []
     for i in both:
         bc, nc = int(b[i].get("cost_usd_micros") or 0), int(n[i].get("cost_usd_micros") or 0)
@@ -83,15 +83,25 @@ def diff(base: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
 def render(base: dict[str, Any], new: dict[str, Any], d: dict[str, Any]) -> str:
     def row(name: str, bv: str, nv: str) -> str:
         return f"| {name} | {bv} | {nv} |"
-    out = [f"# Coder Desktop Tier {new.get('tier', '?')} comparison", "",
+    b_na = base.get("not_applicable_count", 0)
+    n_na = new.get("not_applicable_count", 0)
+    b_pass = f"{base.get('passed', 0)}/{base.get('total', 0)} ({rate(base):.0f}%)" + (f" ({b_na} N/A)" if b_na else "")
+    n_pass = f"{new.get('passed', 0)}/{new.get('total', 0)} ({rate(new):.0f}%)" + (f" ({n_na} N/A)" if n_na else "")
+    out = [f"# OpenAgents Desktop Tier {new.get('tier', '?')} comparison", "",
            f"Base: `{base.get('git_sha', '?')}` ({base.get('created', '?')}, {base['_path']})  ",
            f"New: `{new.get('git_sha', '?')}` ({new.get('created', '?')}, {new['_path']})", "",
            "| | base | new |", "|---|---|---|",
-           row("passed", f"{base.get('passed', 0)}/{base.get('total', 0)} ({rate(base):.0f}%)", f"{new.get('passed', 0)}/{new.get('total', 0)} ({rate(new):.0f}%)"),
-           row("cost", usd(base.get("cost_usd_micros", 0)), usd(new.get("cost_usd_micros", 0))),
-           row("cost a task", usd(per_task(base)), usd(per_task(new))),
-           row("p95 task wall", f"{p95(base) / 1000:.0f} s", f"{p95(new) / 1000:.0f} s"),
-           row("models", ", ".join(base.get("models", [])) or "-", ", ".join(new.get("models", [])) or "-"), ""]
+           row("passed", b_pass, n_pass),
+           row("engine", str(base.get("engine") or "-"), str(new.get("engine") or "-")),
+           row("models", ", ".join(base.get("models", [])) or "-", ", ".join(new.get("models", [])) or "-"),
+           row("p50 task wall", f"{int(base.get('wall_p50_ms', 0)) / 1000:.1f} s", f"{int(new.get('wall_p50_ms', 0)) / 1000:.1f} s"),
+           row("p95 task wall", f"{p95(base) / 1000:.1f} s", f"{p95(new) / 1000:.1f} s"),
+           row("mean TTFT / tok/s", f"{base.get('mean_ttft_ms', 0)} ms / {base.get('mean_decode_tps', 0.0):.1f}",
+               f"{new.get('mean_ttft_ms', 0)} ms / {new.get('mean_decode_tps', 0.0):.1f}"),
+           row("boot / peak RSS", f"{base.get('server_boot_ms', 0)} ms / {base.get('peak_rss_mb', 0)} MB",
+               f"{new.get('server_boot_ms', 0)} ms / {new.get('peak_rss_mb', 0)} MB"),
+           row("cost (total / task)", f"{usd(base.get('cost_usd_micros', 0))} / {usd(per_task(base))}",
+               f"{usd(new.get('cost_usd_micros', 0))} / {usd(per_task(new))}"), ""]
     out.append(f"Regressions ({len(d['regressions'])}): " + (", ".join(d["regressions"]) or "none"))
     out.append("")
     out.append(f"Fixed ({len(d['fixes'])}): " + (", ".join(d["fixes"]) or "none"))

@@ -5,6 +5,7 @@
 #load "../../coax/lib/agent/desktop/os-posix.coax";
 #load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
+#load "../../coax/lib/agent/desktop/flags.coax";
 
 OA_MAX_SUBAGENTS :: 8;
 
@@ -333,3 +334,23 @@ oa_core_update_verify_archive :: (path: string, expected_sha: string, expected_s
   _ := oa_copy_out(dc_update_words(code), err_out);
   return 0;
 }
+
+// Resolve desktop feature flags from settings, OA_FLAGS / OA_EXPERIMENTAL, and CLI argv lines.
+oa_core_flags_resolve :: (args_nl: string) -> int #export_c #effects(all) {
+  sb: [64] u8;
+  exp_s := dcos_setting("experimentalFeatures", sb[..]);
+  exp_on := exp_s == "1" || exp_s == "true" || exp_s == "YES";
+  def_mask := 0;
+  for i: 0..<DC_FLAG_COUNT {
+    kb: [64] u8; kn := dc_copy(kb[..], "flag."); kn = dc_cat(kb[..], kn, dc_flag_name(i));
+    vb: [32] u8; v := dcos_setting(cast(string) kb[0..<kn], vb[..]);
+    if v == "1" || v == "true" || v == "YES" { def_mask = dc_flag_set(def_mask, i, true); }
+  }
+  eb: [512] u8; env_flags := dcos_getenv("OA_FLAGS", eb[..]);
+  xb: [32] u8; env_exp := dcos_getenv("OA_EXPERIMENTAL", xb[..]);
+  return dc_flags_resolve(exp_on, def_mask, env_flags, env_exp, args_nl);
+}
+
+oa_core_flags_all :: () -> int #export_c #effects(all) { return DC_FLAGS_ALL; }
+oa_core_flag_on :: (mask: int, flag: int) -> int #export_c #effects(all) { return ifx dc_flag_on(mask, flag) then 1 else 0; }
+oa_core_flags_any_extra_model :: (mask: int) -> int #export_c #effects(all) { return ifx dc_flags_any_extra_model(mask) then 1 else 0; }

@@ -1,17 +1,18 @@
-# Coder Desktop evals
+# OpenAgents Desktop evals
 
 The tiers from [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals-spec.md), run with one command:
 
 ```sh
 evals/openagents-desktop/run.sh                 # Tier 0, Tier 1 and compaction (the default, --tier all)
 evals/openagents-desktop/run.sh --tier 1        # Tier 1 only
-evals/openagents-desktop/run.sh --tier 2        # Tier 2 live-agent suite: real models, costs money
+evals/openagents-desktop/run.sh --tier 2        # Tier 2 live-agent suite: local Inkling 2 Mini on Psionic Metal (free, 32K ctx)
 evals/openagents-desktop/run.sh --tier 2 --filter a1_,e2_
-evals/openagents-desktop/run.sh --tier 3        # Tier 3: build and drive the real Coder.app, compare captures
+evals/openagents-desktop/run.sh --tier 2 --model gemini-4-neon  # opt-in cloud comparison (costs money)
+evals/openagents-desktop/run.sh --tier 3        # Tier 3: build and drive the real OpenAgents.app, compare captures
 evals/openagents-desktop/run.sh --tier 3 --update-goldens   # write new goldens after a deliberate UI change
-evals/openagents-desktop/run.sh --tier 4        # Tier 4: golden trajectories + 25-task benchmark slice, costs money
+evals/openagents-desktop/run.sh --tier 4        # Tier 4: golden trajectories + 25-task benchmark slice (default: local Inkling, free)
 evals/openagents-desktop/run.sh --compare BASE NEW   # diff two Tier 2 or Tier 4 runs (summary.json or run folder)
-evals/openagents-desktop/run.sh --trend         # one row per kept run: pass rate, cost a task, p95 wall, regressions
+evals/openagents-desktop/run.sh --trend         # one row per kept run: pass rate, engine, wall/TTFT/TPS, regressions
 ```
 
 Run `coax/build.sh` first in a fresh worktree. Results go to `evals/openagents-desktop/results/` (gitignored).
@@ -22,36 +23,26 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/openagents-d
 | 1 | Transcript replay (`tier1/replay_test.coax`) and 20 host scenarios (`tier1/scenarios/`): the real `host.c` and `page.coax` in `host_driver` against `mock_worker/mock_worker.py` | free |
 | 1 | Follow-ups (`followups/run_followups.py`): steer, queue and interrupt on the real `mcworker` with generated `GW_REPLAY` replies in a temp `HOME`, and once through `host_driver` (GitHub #13715, #13716). `followups/capture_wire.py --write` records the follow-up lines each way into `proto/coder/microcoder-worker-lines-v1.json` (#13718) | free (no model is called) |
 | compaction | `compaction/` C1-C12 | free |
-| 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
-| 3 | 10 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 20 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
-| 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | about $1.20 a run |
+| 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` and shipped `psionic-inkling-serve --ctx 32768` (10 applicable tasks; 5 sub-agent/USD-budget tasks marked `N/A` on single-model local Inkling) | free locally (`--model <cloud>` opt-in) |
+| 3 | 10 flows (`tier3/run_ui.py`) on the real built `OpenAgents.app`, driven with real input events on the mock worker; 20 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
+| 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | free locally on Inkling (`--model <cloud>` opt-in) |
 
 ## Tier 2 and Tier 4 are opt-in
 
-Tier 2 and Tier 4 call real models. They run only with `--tier 2` or `--tier 4`. `--tier all`, the
-default, never runs them, so CI and other agents that call `run.sh` with no arguments or `--tier all`
-spend nothing.
+Tier 2 and Tier 4 run real model inference (by default local **Inkling 2 Mini** on the shipped `psionic-inkling-serve --ctx 32768` binary, `$0.00`; cloud models such as `--model gemini-4-neon` are opt-in). They run only with `--tier 2` or `--tier 4`. `--tier all`, the default, never runs them, so CI and fast local checks stay deterministic and quick.
 
 ## How Tier 2 works
 
-`tier2/run_tasks.py` builds `host_driver` and the worker the app ships
-(`coax/web/tool.sh coder/tui/mcworker.coax`, as `apps/coder-desktop/build.sh` does), then for each task:
+`tier2/run_tasks.py` builds `host_driver`, the Microcoder worker (`coax/web/tool.sh coder/tui/mcworker.coax`), and (when using local Inkling) the shipped `psionic-inkling-serve` binary (`psionic/platform/inkling-build.sh`), as `apps/openagents-desktop/build.sh` does. For local runs it auto-starts `psionic-inkling-serve --ctx 32768` on a free localhost port (`>= 18894`, or reuses `PSIONIC_BASE_URL` if already set), measures server boot time and peak RSS, and cleanly terminates it with `SIGTERM` when done. For each task:
 
 1. Makes a temp folder with `repo/` (the task's fixture from `tier2/fixtures/`, committed to a new git
    repo), `outside/` (canary files next to the repo) and `home/` (a temp `HOME`).
-2. Links only the model credentials the worker reads into the temp `HOME`
-   (`work/.secrets/vertex-sa-inference.json`, `openrouter.env`, `openagents-gemini-provider.env`,
-   `google-cloud-sdk`, the Coder OpenRouter key). The worker's journal and any `~` in a command land
-   in the temp folder, never in your home.
-3. Starts `host_driver --worker mcworker` with that `HOME`. The page sends the task line the desktop
-   sends: `gated`, `edits`, `agents`, `unlimited`, `danger-full-access`, the skills prefix (one
-   skill is installed in the temp `HOME`), and the composer's default model (Gemini 4 Neon). With
-   `--claude`, `claudeworker` and its git guard `gitguard` are built too, and tasks marked `"claude": true` turn on Claude levels.
-4. Sets the chat budget from the task (default $0.10) and a wall-clock limit (default 300 s). At the
-   limit it sends stop.
+2. Links `~/.openagents/models` (and, for opt-in cloud runs, the model credentials the worker reads) into the temp `HOME`. The worker's journal and any `~` in a command land in the temp folder, never in your home.
+3. Starts `host_driver --worker mcworker` with that `HOME`. In the default Inkling release mode (`flags = 0`), the page sends the release task line (`gated`, `edits`, `local: true`, `unlimited`, `danger-full-access`, `model: "inkling-2-mini"`, no sub-agents and no skills prefix). Tasks that require sub-agents (`c1`–`c3`, `g2`) or USD budget auto-stop (`d2`, `d3`) are recorded as `not_applicable` (`N/A`) rather than failed (override with `--include-na` or run against a cloud `--model`). With `--model <cloud>` and `--claude`, developer flags are enabled and `claudeworker`/`gitguard` are built too.
+4. Sets the wall-clock limit (default floor 600 s for local Inkling, override with `--timeout-floor`; and chat USD budget for opt-in cloud runs). At the limit it sends stop.
 5. Runs the steps: `send` (a message), `goal` (`/goal`), `reload` (save the chat, close the page and
    its worker, open a new page, load the chat, start a new worker and send `MWW_RECALL`).
-6. Grades the result and deletes the temp folder (`--keep` keeps it).
+6. Grades the result (recording wall time, TTFT, decode tok/s, input/output tokens, turns, and commands) and deletes the temp folder (`--keep` keeps it).
 
 The safety net: `host_driver` answers no to any gated command that names your real home, `/Users/`,
 the `outside/` folder, `sudo`, `git push`, `curl`, `wget`, `ssh` and a few more, plus each task's
@@ -115,13 +106,13 @@ Debug one task at a time with `--filter`; keep tasks small, since each run costs
 
 ## Tier 3: the real app
 
-`tier3/run_ui.py` (or `run.sh --tier 3`) builds `Coder.app` with `apps/coder-desktop/build.sh` into
+`tier3/run_ui.py` (or `run.sh --tier 3`) builds `OpenAgents.app` with `apps/openagents-desktop/build.sh` into
 `results/tier3-build/` (`--no-build` reuses it), copies the bundle into the run folder, gives the copy
 its own bundle id (`com.openagents.coder.evals-t3`) and swaps its `mcworker` and `claudeworker` for
 a two-line script running `tier3/mock_router.py`. The router picks a Tier 1 mock script for every
 worker the app starts (the chat's by the task's text, each sub-agent's by its index), so no model
-is called. It never touches `/Applications/Coder.app`, your `~/Library/Application Support/Coder` or
-Coder's preferences.
+is called. It never touches `/Applications/OpenAgents.app`, your `~/Library/Application Support/Coder` or
+OpenAgents Desktop's preferences.
 
 Each flow starts the copy's own binary with:
 
@@ -147,13 +138,13 @@ streamed reply, prints both, and fails when the footprint grew more than 300 MB
 
 ### Kill what you launch, including coder-host
 
-A scratch `Coder.app` you start for a test or a capture is yours to stop (#13752: eight leftover
+A scratch `OpenAgents.app` you start for a test or a capture is yours to stop (#13752: eight leftover
 test copies grew to 12–26 GB each and the Mac ran out of memory).
 
-- Stop the Coder you started by its PID, never by name (`pkill` hits other agents' copies and the
-  installed `/Applications/Coder.app`).
-- Stop its `coder-host serve` too. Coder starts that daemon in a session of its own so it outlives
-  Coder; killing Coder alone leaves the daemon running under your temp `HOME`. Its PID is in
+- Stop the `OpenAgents.app` you started by its PID, never by name (`pkill` hits other agents' copies and the
+  installed `/Applications/OpenAgents.app`).
+- Stop its `coder-host serve` too. OpenAgents Desktop starts that daemon in a session of its own so it outlives
+  the app; killing the app alone leaves the daemon running under your temp `HOME`. Its PID is in
   `$CODER_HOME/.openagents/coder/host/daemon.json` (`CODER_HOME` falls back to `HOME`); check that
   the PID's command line is under your copy's bundle before you stop it.
 - Start the copy with a temp `HOME` and `CODER_HOME`, `BROWSER=/usr/bin/true` and
@@ -161,7 +152,7 @@ test copies grew to 12–26 GB each and the Mac ran out of memory).
   launch: it stops the daemon it started when it quits or gets SIGTERM, and it quits itself once no
   driver has spoken for `CODER_TEST_IDLE_S` seconds (default 600). The Tier 3 probe sets
   `CODER_TEST_LAUNCH` and counts as the driver on every command; a launch with no probe quits that
-  long after it starts. `/Applications/Coder.app` never does either.
+  long after it starts. `/Applications/OpenAgents.app` never does either.
 
 Controls are pressed where the page draws them: the probe's `box ID` asks the page for that row's
 drawn box (`cd_box`, `coder_page_box`) and the runner clicks its middle. New chat is `coder.new`,
@@ -237,7 +228,7 @@ Every P0 or P1 Coder Desktop bug gets, in the change that fixes it:
 
 1. A Tier 1 case, always: a host scenario in `tier1/scenarios/` (the real page and `host.c` on the
    mock worker), a replay fixture in `tier1/fixtures/` (via `tier1/gen_fixtures.py`), a compaction
-   case, or a `#test` in `apps/coder-desktop/` when the bug is the page's alone. It replays the bug's
+   case, or a `#test` in `apps/openagents-desktop/` when the bug is the page's alone. It replays the bug's
    wire lines with no model, so it fails before the fix and passes after, at no cost.
 2. A Tier 4 golden task, when the bug depends on what a model does (it reads for ever, forgets after a
    reload, stops a `/goal` early, loses track in long output): copy `tier4/golden-template.json` to
@@ -257,9 +248,9 @@ tiers run on a schedule on a Mac:
 
 | When | What | Where |
 |---|---|---|
-| Every head of `main` that reaches Coder Desktop (`apps/coder-desktop/`, `evals/openagents-desktop/`, `components/`, or what Coder's graph reaches) | `check.sh coder` / `coder-since`: the step `coder-desktop-evals` runs `tier1/replay_test.coax`, which loads `page.coax`, so Tier 0's page tests run with Tier 1's replay fixtures (272 checks, about 25 s); `coder-desktop-scenarios` runs the 20 host scenarios and `coder-desktop-compaction` the compaction suite | the Linux build hosts; free. `mcworker-wire.coax` already runs in the pipeline's suites |
-| Nightly, 03:00 | `nightly.sh night`: `run.sh --tier all` (Tier 0, Tier 1 with the host scenarios, compaction), Tier 2 compared with the previous night, and Tier 3 | a Mac with the model credentials; about $0.50 |
-| Weekly (Sunday 05:00), and by hand before a desktop release | `nightly.sh week`: Tier 4, compared with `tier4/baseline/` | the same; about $1.20 |
+| Every head of `main` that reaches OpenAgents Desktop (`apps/openagents-desktop/`, `evals/openagents-desktop/`, `components/`, or what the app's graph reaches) | `check.sh coder` / `coder-since`: the step `coder-desktop-evals` runs `tier1/replay_test.coax`, which loads `page.coax`, so Tier 0's page tests run with Tier 1's replay fixtures; `coder-desktop-scenarios` runs the 20 host scenarios and `coder-desktop-compaction` the compaction suite | the Linux build hosts; free. `mcworker-wire.coax` already runs in the pipeline's suites |
+| Nightly, 03:00 | `nightly.sh night`: `run.sh --tier all` (Tier 0, Tier 1 with the host scenarios, compaction), Tier 2 on local Inkling 2 Mini compared with the previous night, and Tier 3 | a Mac with the Inkling 2 Mini weights; free (`$0.00`) |
+| Weekly (Sunday 05:00), and by hand before a desktop release | `nightly.sh week`: Tier 4 on local Inkling 2 Mini, compared with `tier4/baseline/` | the same; free (`$0.00`) |
 
 `nightly.sh` tests `origin/main-green` (the newest head the pipeline passed; `origin/main` when there
 is none) or `--commit REV`. It checks the commit out into its own worktree under
