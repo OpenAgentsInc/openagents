@@ -53,6 +53,26 @@
       "credits": "Placeholder text"
     }
   ],
+  "voice": {
+    "note": "What the quail says, in the musician's own voice. Placeholder lines until the artist writes theirs. Each plays with the quail's babble voice; a line with a \"file\" plays that recording instead.",
+    "greeting": [
+      "Welcome to the spring, friend. Sit a while; the water remembers every song.",
+      "You found your way here. Listen close, and the grove will share a few songs with you."
+    ],
+    "prayers": [
+      "May the water keep you, and the wind carry what you cannot.",
+      "For every tired heart that finds this place: rest here, and go on lighter.",
+      "Bless the roots that hold the bank, and the hands that tie the ribbons.",
+      "May you hear your own song in the quiet."
+    ],
+    "ribbon": [
+      "I will keep watch over that one. May the wind carry it home.",
+      "Tied with care. The tree holds it now, and so do I."
+    ],
+    "found_all": [
+      "You have heard everything the grove had to give. Come back whenever you need the quiet."
+    ]
+  },
   "ambience": {
     "brook": { "file": null, "placeholder": { "kind": "brook" } },
     "wind": { "file": null, "placeholder": { "kind": "wind" } },

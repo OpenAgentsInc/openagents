@@ -1,15 +1,19 @@
 // Firm reason: 1 (the page's half of The Whispering Spring: panels, journal, settings and sound;
 // world-spring.coax decides everything that happens in the grove and tells this page in events).
 import { SpringAudio } from "./audio.js";
+import { GroveRoom, placeRibbons } from "./room.js";
 
 const $ = (id) => document.getElementById(id);
-const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129 };
+const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129, shared: 131, speak: 132 };
+const HIDDEN_KEY = "whispering-spring.hidden.v1", MUTED_KEY = "whispering-spring.muted.v1";
+const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || "[]")); } catch { return new Set(); } };
+const keepSet = (k, s) => { try { localStorage.setItem(k, JSON.stringify([...s].slice(-500))); } catch {} };
 const ACT_EVENT = 90;
 const SETTINGS_KEY = "whispering-spring.settings.v1";
 
 // ---- per-viewer settings (this browser only)
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const settings = { sound: true, music: 80, ambience: 60, captions: true, motion: reduce, bloom: false, text: false };
+const settings = { sound: true, music: 80, ambience: 60, captions: true, motion: reduce, bloom: false, text: false, voice: true, chat: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch {}
 const keepSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} };
 
@@ -36,7 +40,8 @@ const SLIP = ["", "It slid off at that angle. Try turning it.", "Too wide for th
 const FABRICS = ["Cotton", "Silk", "Linen"];
 const COLOURS = [["Prickly-pear rose", "#bc546b"], ["Bluebonnet", "#4d61b3"], ["Limestone cream", "#e0d6b8"], ["Sage", "#8c9e7a"], ["Persimmon", "#d97338"], ["Indigo", "#383873"]];
 const CHARMS = ["None", "Bell", "Bead", "Feather"];
-const BRANCHES = ["Near the trunk", "Middle of the branch", "Out at the tip"];
+const BRANCHES = ["The low limb over the pool", "The long limb", "The high limb", "The right limb", "The far limb, by the bank", "The right high limb"];
+const SLOT_AUTO = 7;
 const QUAIL_TEXT = ["The quail forages, picking its way across the leaf litter.", "The quail scurries a few quick steps.", "The quail stops and scans the grove, head high.", "The quail pecks at the ground.", "The quail gives a soft call."];
 
 // ---- the world, through the host
@@ -95,14 +100,177 @@ addEventListener("coaxial", (e) => {
   else if (kind === "replayed") announce(`${titleOf(rest)} again.`);
   else if (kind === "mode") { if (rest === "stones") open("stones"); else if (rest === "ribbon") openRibbon(); }
   else if (kind === "slip") { const w = Number(rest) || 1; announce(SLIP[w]); $("balance").textContent = SLIP[w]; $("balance").dataset.b = "2"; }
+  else if (kind === "speak") quailSpeak("prayers");
+  else if (kind === "cpos") { const [sp, x, y] = rest.split(",").map(Number); placeCallout(sp, x, y); }
+  else if (kind === "qpos") { const [x, y] = rest.split(",").map(Number); placeBubble(x, y); }
 });
 
 function onState(before) {
   if (!$("stones").hidden && state.m !== 1 && before.m === 1) close("stones");
-  renderStones(); renderDiscoveries(); renderJournal(); renderText();
+  renderStones(); renderDiscoveries(); renderJournal(); renderText(); renderMini();
   const any = state.f || state.c || state.r;
   $("enter").textContent = any ? "Return to the Grove" : "Enter the Grove";
+  // a ribbon just tied: hang it on the shared tree at the tie point the world chose, and the quail blesses it
+  if (pendingTie && state.r && state.rb) {
+    const [fabric, colour, charm, b] = state.rb.split(",").map(Number);
+    const tie = { fabric, colour, charm, limb: Math.floor(b / 8), slot: b % 8, word: state.rw || "", share: pendingTie.share };
+    pendingTie = null;
+    room.tie(tie).then((r) => { if (!r.ok) announce(r.status === 429 ? "The tree is busy; your ribbon stays here and will join the shared tree next time." : "Your ribbon is tied here; the shared tree could not be reached."); refreshRibbons(); }).catch(() => announce("Your ribbon is tied here; the shared tree could not be reached."));
+    setTimeout(() => quailSpeak("ribbon"), 2600);
+  }
+  if ((state.f & 7) === 7 && (before.f & 7) !== 7 && before.f !== undefined) setTimeout(() => quailSpeak("found_all"), 4000);
 }
+
+// ---- the in-grove frame: the quest card, the small journal, the callout on the next spot
+const GOAL = ["Listen to the spring", "Stack the creek stones", "Hang a prayer ribbon"];
+const CALLOUT = ["Listen to the Spring", "Stack the Creek Stones", "Hang a Prayer Ribbon"];
+const SHORT = { spring: "Spring", cairn: "Stones", ribbon: "Wind" };
+let calloutSpot = -1;
+function placeCallout(sp, x, y) {
+  const c = $("callout");
+  calloutSpot = sp;
+  const n = ["spring", "cairn", "ribbon"].filter(found).length;
+  $("quest-goal").textContent = sp < 0 ? "Every song found. Stay as long as you like." : GOAL[sp];
+  $("quest-count").textContent = `${n} of 3 songs found`;
+  const busy = state.m !== 0 || !$("found").hidden || settings.text || bubbleShown;
+  if (sp < 0 || busy || !inGrove) { c.hidden = true; return; }
+  if (c.textContent !== CALLOUT[sp]) c.textContent = CALLOUT[sp];
+  c.hidden = false;
+  c.style.left = `${Math.min(innerWidth - c.offsetWidth - 40, Math.max(12, x))}px`;
+  c.style.top = `${Math.max(120, y - 20)}px`;
+}
+$("callout").addEventListener("click", () => { if (calloutSpot >= 0) { audio.start(); send(MSG.pick, String(calloutSpot)); } });
+function renderMini() {
+  const ul = $("mini-list"); if (!ul) return; ul.textContent = "";
+  for (const id of ["spring", "cairn", "ribbon"]) {
+    const li = document.createElement("li");
+    if (found(id)) { const m = document.createElement("span"); m.className = "found-mark"; m.textContent = "✦"; li.append(m, document.createTextNode(SHORT[id])); }
+    else { const seal = document.createElement("span"); seal.className = "seal"; seal.setAttribute("aria-hidden", "true"); li.append(seal); const sr = document.createElement("span"); sr.className = "sr"; sr.textContent = "Not yet found"; li.append(sr); }
+    ul.append(li);
+  }
+}
+$("minijournal").addEventListener("click", () => open("journal"));
+function setMenu(openIt) { $("menu").hidden = !openIt; $("t-menu").setAttribute("aria-expanded", String(openIt)); if (openIt) $("menu").querySelector("button")?.focus(); }
+$("t-menu").addEventListener("click", () => setMenu($("menu").hidden));
+for (const b of $("menu").querySelectorAll("button")) b.addEventListener("click", () => setMenu(false));
+$("t-quiet").addEventListener("click", () => { const q = !document.body.classList.contains("quiet"); document.body.classList.toggle("quiet", q); $("t-quiet").setAttribute("aria-pressed", String(q)); announce(q ? "Quiet view: only the grove." : "The quest and journal are back."); });
+$("g-sound").addEventListener("click", () => { audio.start(); setSetting("sound", !settings.sound); });
+
+// ---- the quail speaks: its words type into a bubble over it, in its babble voice
+const said = { greeting: 0, prayers: 0, ribbon: 0, found_all: 0 };
+let bubbleTimer = 0, bubbleShown = false;
+function placeBubble(x, y) {
+  if (!bubbleShown) return;
+  const b = $("bubble");
+  b.style.left = `${Math.max(180, Math.min(innerWidth - 180, x))}px`;
+  b.style.top = `${Math.max(140, y)}px`;
+}
+function quailSpeak(kind) {
+  const lines = manifest.voice?.[kind];
+  if (!Array.isArray(lines) || !lines.length || !inGrove) return;
+  const line = lines[said[kind]++ % lines.length];
+  const b = $("bubble"), t = $("bubble-text");
+  bubbleShown = true;
+  t.textContent = "";
+  if (!b.style.left) { b.style.left = "35%"; b.style.top = "55%"; }
+  b.classList.remove("gone");
+  announce(`The quail says: ${line}`);
+  const chars = [...line];
+  const voice = settings.voice && settings.sound;
+  const seconds = voice
+    ? audio.speak(line, (i) => { t.textContent = chars.slice(0, i + 1).join(""); })
+    : (chars.forEach((_, i) => setTimeout(() => { t.textContent = chars.slice(0, i + 1).join(""); }, i * (settings.motion ? 0 : 30))), chars.length * 0.03 + 0.2);
+  send(MSG.speak, String(Math.min(30, Math.ceil(seconds + 0.8))));
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => { b.classList.add("gone"); bubbleShown = false; }, (seconds + 2.5) * 1000);
+}
+
+// ---- the shared grove: everyone's ribbons and the chat
+const room = new GroveRoom();
+let pendingTie = null, chatOpen = false, unread = 0, othersHere = 0, sharedRibbons = [];
+const hiddenRibbons = readSet(HIDDEN_KEY), mutedNames = readSet(MUTED_KEY);
+async function refreshRibbons() {
+  try {
+    const all = await room.ribbons();
+    sharedRibbons = all.filter((r) => !hiddenRibbons.has(r.n));
+    const rows = sharedRibbons.filter((r) => !r.mine).map((r) => `${r.fabric},${r.colour},${r.charm},${r.limb},${r.slot}`).join(";");
+    send(MSG.shared, rows);
+    renderPrayers();
+  } catch { renderPrayers(true); }
+}
+function renderPrayers(offline = false) {
+  const ul = $("prayers-list"); ul.textContent = "";
+  const others = sharedRibbons.filter((r) => !r.mine);
+  $("prayers-note").textContent = offline ? "The shared tree can't be reached right now; your own ribbon still hangs here."
+    : others.length ? `${others.length} ribbon${others.length === 1 ? "" : "s"} from other visitors, newest first. Hide any you'd rather not see.` : "No one else has tied a ribbon yet.";
+  for (const r of others) {
+    const li = document.createElement("li");
+    const p = document.createElement("p");
+    const cw = COLOURS[r.colour][0].toLowerCase();
+    p.textContent = `${r.name || "A visitor"} tied ${/^[aeiou]/.test(cw) ? "an" : "a"} ${cw} ${FABRICS[r.fabric].toLowerCase()} ribbon on ${BRANCHES[r.limb].toLowerCase()}${r.charm ? `, with a ${CHARMS[r.charm].toLowerCase()}` : ""}.`;
+    li.append(p);
+    if (r.word && !mutedNames.has(r.name)) { const w = document.createElement("p"); w.className = "lyric"; w.textContent = r.word; li.append(w); }
+    const hide = document.createElement("button"); hide.type = "button"; hide.className = "btn small"; hide.textContent = "Hide this ribbon";
+    hide.addEventListener("click", () => { hiddenRibbons.add(r.n); keepSet(HIDDEN_KEY, hiddenRibbons); refreshRibbons(); announce("Hidden."); });
+    li.append(hide); ul.append(li);
+  }
+}
+function chatLine(m) {
+  if (mutedNames.has(m.name)) return;
+  const li = document.createElement("li"); if (m.mine) li.className = "mine";
+  const who = document.createElement("button"); who.type = "button"; who.className = "who"; who.textContent = m.name || "Guest";
+  who.title = m.mine ? "You" : `Hide messages from ${m.name}`;
+  if (!m.mine) who.addEventListener("click", () => { if (confirm(`Hide messages and words from ${m.name} on this device?`)) { mutedNames.add(m.name); keepSet(MUTED_KEY, mutedNames); li.remove(); renderPrayers(); } });
+  li.append(who, document.createTextNode(`: ${m.text}`));
+  $("chat-log").append(li);
+  while ($("chat-log").children.length > 120) $("chat-log").firstChild.remove();
+}
+function chatNote(text) { const li = document.createElement("li"); li.className = "note"; li.textContent = text; $("chat-log").append(li); $("chat-log").scrollTop = 1e9; }
+async function pollChat() {
+  try {
+    const fresh = await room.chatSince();
+    for (const m of fresh) chatLine(m);
+    if (fresh.length) {
+      $("chat-log").scrollTop = 1e9;
+      if (!chatOpen) { unread += fresh.filter((m) => !m.mine).length; $("chat-unread").textContent = unread ? `(${unread})` : ""; }
+    }
+  } catch { if (!room.offlineSaid) { room.offlineSaid = true; chatNote("The grove chat can't be reached right now."); } }
+}
+async function pollPresence() {
+  try { const p = await room.presence(); if (p) { othersHere = p.others; $("chat-count").textContent = othersHere ? `${othersHere + 1} here` : "just you"; if (p.you?.name && !$("s-name").value) $("s-name").placeholder = p.you.name; } } catch {}
+}
+function setChat(open) {
+  chatOpen = open; $("chat").hidden = !open; $("t-chat").setAttribute("aria-expanded", String(open));
+  if (open) { unread = 0; $("chat-unread").textContent = ""; $("chat-log").scrollTop = 1e9; }
+  settings.chat = open; keepSettings();
+}
+$("t-chat").addEventListener("click", () => { setChat(!chatOpen); if (chatOpen) $("chat-input").focus(); });
+$("chat-close").addEventListener("click", () => { setChat(false); $("t-chat").focus(); });
+$("chat-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = $("chat-input").value.trim();
+  if (!text) return;
+  $("chat-input").value = "";
+  try {
+    const r = await room.say(text);
+    if (!r.ok) chatNote(r.status === 429 ? "A little slower, please." : r.status === 403 ? "You can't post in the grove right now." : "That didn't send; try again.");
+    pollChat();
+  } catch { chatNote("That didn't send; the grove chat can't be reached."); }
+});
+$("t-prayers").addEventListener("click", () => toggle("prayers"));
+$("s-voice").addEventListener("change", (e) => setSetting("voice", e.target.checked));
+$("s-name-save").addEventListener("click", async () => {
+  const name = $("s-name").value.trim();
+  try { const r = await room.rename(name); announce(r.ok ? (name ? `You are ${name} in the grove.` : "Your name is back to the guest one.") : "That name wasn't accepted."); pollPresence(); } catch { announce("Couldn't reach the grove to save your name."); }
+});
+let tick = 0;
+setInterval(() => {
+  if (!inGrove || paused || document.hidden) return;
+  tick++;
+  pollChat();
+  if (tick % 3 === 1) refreshRibbons();
+  if (tick % 3 === 2) pollPresence();
+}, 3500);
 
 // ---- telling the visitor
 let captionTimer = 0;
@@ -127,8 +295,8 @@ function quailSays(i, text) {
 }
 
 // ---- panels
-const PANELS = ["discoveries", "stones", "ribbon", "journal", "album", "settings"];
-const toolFor = { discoveries: "t-disc", journal: "t-journal", settings: "t-settings" };
+const PANELS = ["discoveries", "stones", "ribbon", "journal", "prayers", "album", "settings"];
+const toolFor = { discoveries: "t-disc", journal: "t-journal", prayers: "t-prayers", settings: "t-settings" };
 let returnFocus = null;
 function open(id) {
   for (const p of PANELS) if (p !== id && !$(p).hidden) close(p, false);
@@ -154,12 +322,16 @@ const topPanel = () => [...PANELS].reverse().find((p) => !$(p).hidden);
 
 // ---- landing
 function syncSoundInputs() {
-  $("l-sound").setAttribute("aria-pressed", String(settings.sound)); $("l-sound").textContent = settings.sound ? "Sound on" : "Sound off";
+  $("l-sound").setAttribute("aria-pressed", String(settings.sound)); $("l-sound-label").textContent = settings.sound ? "Sound on" : "Sound off";
+  $("l-sound").querySelector(".icon").textContent = settings.sound ? "♪" : "✕";
   $("s-sound").checked = settings.sound;
   $("l-music").value = $("s-music").value = settings.music;
   $("l-amb").value = $("s-amb").value = settings.ambience;
   $("l-captions").checked = $("s-captions").checked = settings.captions;
   $("s-motion").checked = settings.motion; $("s-bloom").checked = settings.bloom; $("s-text").checked = settings.text;
+  $("s-voice").checked = settings.voice;
+  $("g-sound").setAttribute("aria-pressed", String(settings.sound)); $("g-sound-label").textContent = settings.sound ? "Sound on" : "Sound off";
+  $("g-sound").querySelector(".icon").textContent = settings.sound ? "♪" : "✕";
   document.body.classList.toggle("text-mode", settings.text && inGrove);
   $("textmode").hidden = !(settings.text && inGrove);
   applySound();
@@ -186,8 +358,11 @@ function enterGrove() {
   close("album", false); close("settings", false);
   syncSoundInputs(); renderText();
   send(MSG.pause, "0");
-  announce("You are in the grove. A black quail is foraging in front of you. Use the buttons at the bottom to touch the water, the creek stones or the ribbon branch.");
+  announce("You are in the grove. A black quail is foraging in front of you. Use the buttons at the bottom to touch the water, the creek stones, the prayer tree, or greet the quail.");
   (settings.text ? document.querySelector("#textmode [data-spot]") : $("spots").querySelector("button"))?.focus();
+  setChat(!!settings.chat);
+  refreshRibbons(); pollChat(); pollPresence();
+  if (!said.greeting) setTimeout(() => quailSpeak("greeting"), 1400);
 }
 function leaveGrove() {
   send(MSG.save, "1"); send(MSG.close, "0");
@@ -195,6 +370,7 @@ function leaveGrove() {
   inGrove = false; paused = false;
   for (const p of PANELS) close(p, false);
   $("paused").hidden = true; $("found").hidden = true;
+  $("chat").hidden = true; $("bubble").classList.add("gone"); bubbleShown = false;
   $("hud").hidden = true; $("landing").hidden = false;
   syncSoundInputs();
   $("enter").focus();
@@ -284,7 +460,7 @@ radios($("r-branch"), "branch", BRANCHES);
 function openRibbon() {
   if (state.r && state.rb) {
     const [f, c, ch, b] = state.rb.split(",").map(Number);
-    for (const [name, v] of [["fabric", f], ["colour", c], ["charm", ch], ["branch", b]]) { const r = document.querySelector(`input[name=${name}][value="${v}"]`); if (r) r.checked = true; }
+    for (const [name, v] of [["fabric", f], ["colour", c], ["charm", ch], ["branch", Math.floor(b / 8)]]) { const r = document.querySelector(`input[name=${name}][value="${v}"]`); if (r) r.checked = true; }
     $("r-word").value = state.rw || "";
   }
   open("ribbon");
@@ -294,9 +470,10 @@ $("ribbon-form").addEventListener("submit", (e) => {
   const v = (n) => Number(document.querySelector(`input[name=${n}]:checked`)?.value || 0);
   const word = $("r-word").value.replace(/[;,|\n\r\t]/g, " ").slice(0, 40);
   audio.start();
-  send(MSG.ribbon, `${v("fabric")},${v("colour")},${v("charm")},${v("branch")},${word}`);
+  pendingTie = { share: $("r-share").checked };
+  send(MSG.ribbon, `${v("fabric")},${v("colour")},${v("charm")},${v("branch") * 8 + SLOT_AUTO},${word}`);
   $("ribbon").hidden = true;
-  announce(`You tie a ${COLOURS[v("colour")][0].toLowerCase()} ${FABRICS[v("fabric")].toLowerCase()} ribbon ${BRANCHES[v("branch")].toLowerCase()}. It catches the wind.`);
+  announce(`You tie a ${COLOURS[v("colour")][0].toLowerCase()} ${FABRICS[v("fabric")].toLowerCase()} ribbon on ${BRANCHES[v("branch")].toLowerCase()}. It catches the wind, where everyone in the grove can see it.`);
   if (returnFocus?.isConnected) returnFocus.focus();
 });
 
@@ -401,6 +578,7 @@ addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const typing = e.target instanceof HTMLInputElement && (e.target.type === "text" || e.target.type === "range");
   if (e.key === "Escape") {
+    if (!$("menu").hidden) { setMenu(false); $("t-menu").focus(); e.preventDefault(); return; }
     if (!$("found").hidden) { closeFound(); e.preventDefault(); return; }
     const p = topPanel(); if (p) { close(p); e.preventDefault(); return; }
     if (paused) { setPaused(false); e.preventDefault(); }
@@ -431,5 +609,5 @@ for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"])
 }
 
 syncSoundInputs();
-renderDiscoveries(); renderStones();
+renderDiscoveries(); renderStones(); renderMini();
 $("enter").focus();

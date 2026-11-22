@@ -1,7 +1,8 @@
-// The Whispering Spring's grove: one composed shot of a low-poly Texas Hill Country cedar grove.
-// A blue-green pool at the foot of a tall, dark umber cut bank with cedar roots over its face;
-// water spills over a low limestone lip into a shallow brook; Ashe-juniper cedars frame it and
-// their canopy leaves a gap where the warm light falls on the pool. Broad flat-shaded facets in a
+// The Whispering Spring's grove: one composed shot of a low-poly Texas Hill Country grove at golden
+// hour. A blue-green pool at the foot of a tall, banded umber cut bank with roots over its face;
+// the pool spills over a low limestone step into a brook that runs toward you. Twisted live-oak and
+// cedar trunks frame the shot and reach six bare limbs over it, where visitors hang prayer ribbons.
+// Low-poly boulders and spiky agave clumps sit round the edges. Broad flat-shaded facets in a
 // restrained palette (olive, walnut, pale limestone, muted blue-green), built once with the
 // Metaverse Engine's mesh pen. Where everything stands is in PLAN.md's table and here.
 //   coax/bin/coax test gamebuilder/worlds/whispering-spring/world-spring.coax --library
@@ -12,80 +13,90 @@ WS_PI :: 3.14159265;
 WS_TAU :: 6.2831853;
 
 // ---- the layout (metres; +y up; the camera looks toward -z)
-WS_POOL_X :: 0.3;   WS_POOL_Z :: -1.6;
+WS_POOL_X :: 0.4;   WS_POOL_Z :: -1.6;
 WS_POOL_RX :: 1.75; WS_POOL_RZ :: 1.15;
 WS_WATER_Y :: -0.1;
-WS_LIP_X :: 2.0;    WS_LIP_Z :: -1.1;   WS_LIP_YAW :: 0.75;
+// the spill: a low limestone step at the pool's front right, the brook running on toward the camera
+WS_LIP_X :: 1.35;   WS_LIP_Z :: -0.55;  WS_LIP_YAW :: 0.35;
 WS_PILE_X :: -2.95; WS_PILE_Z :: 1.35;
 WS_CAIRN_X :: -2.35; WS_CAIRN_Z :: 0.45; WS_CAIRN_TOP :: 0.08;
-// The ribbon cedar's branch: from near the trunk to its tip, drooping a little in the middle.
-WS_LIMB :: [6] f32.[-3.75, 1.78, -2.45,  -2.15, 2.35, -1.8];
-WS_LIMB_DROOP :: 0.12;
-WS_TIES :: [3] f32.[0.52, 0.74, 0.93];   // where along the branch a ribbon can be tied
-// The quail's range: a foreground strip with nothing in it or between it and the camera.
-WS_RANGE :: [4] f32.[-1.4, 0.0, 2.8, 1.9];   // x0, z0, x1, z1
+// The quail's range: a foreground strip left of the brook, with nothing in it or between it and the camera.
+WS_RANGE :: [4] f32.[-1.7, 0.1, 0.9, 1.9];   // x0, z0, x1, z1
 // Where the quail goes to give each clue (inside its range): stones, ribbon, pool.
-WS_CLUE_AT :: [6] f32.[-1.3, 0.9,  -1.2, 0.05,  0.3, 0.05];
-// The three interaction spots the pointer and keyboard pick: x, y, z, radius.
-WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOTS :: 3;
-WS_SPOT :: [WS_SPOTS * 4] f32.[0.3, -0.05, -1.6, 1.25,   -2.65, 0.15, 0.9, 0.75,   -2.6, 2.15, -1.95, 0.6];
+WS_CLUE_AT :: [6] f32.[-1.55, 0.9,  -1.05, 0.2,  0.3, 0.15];
+// The interaction spots the pointer and keyboard pick: x, y, z, radius. The quail's spot moves with it.
+WS_SPOT_POOL :: 0; WS_SPOT_STONES :: 1; WS_SPOT_BRANCH :: 2; WS_SPOT_QUAIL :: 3; WS_SPOTS :: 4;
+WS_SPOT :: [12] f32.[0.4, -0.05, -1.6, 1.25,   -2.65, 0.15, 0.9, 0.75,   -2.7, 2.35, -1.0, 0.95];
 // What the camera aims at, and the box every frame must show (x0, y0, z0, x1, y1, z1).
-WS_AIM :: [3] f32.[0.0, 0.8, -1.1];
-WS_SAFE :: [6] f32.[-3.35, 0.0, -2.9, 3.1, 2.5, 1.95];
+WS_AIM :: [3] f32.[0.0, 1.0, -1.2];
+WS_SAFE :: [6] f32.[-3.35, 0.0, -2.9, 3.1, 3.1, 1.95];
 
 // ---- the palette (display colours; the shaders decode them)
-WS_OLIVE :: [3] f32.[0.42, 0.45, 0.25];
-WS_OLIVE_DARK :: [3] f32.[0.31, 0.35, 0.19];
-WS_DRY :: [3] f32.[0.55, 0.5, 0.33];
-WS_WALNUT :: [3] f32.[0.34, 0.24, 0.16];
-WS_UMBER :: [3] f32.[0.21, 0.135, 0.085];
-WS_UMBER_LIGHT :: [3] f32.[0.29, 0.19, 0.12];
-WS_LIMESTONE :: [3] f32.[0.8, 0.76, 0.66];
-WS_LIME_SHADE :: [3] f32.[0.69, 0.65, 0.56];
-WS_WATER :: [3] f32.[0.22, 0.44, 0.42];
-WS_BROOK :: [3] f32.[0.3, 0.52, 0.48];
-WS_SPILL :: [3] f32.[0.62, 0.76, 0.72];
-WS_BARK :: [3] f32.[0.3, 0.2, 0.14];
-WS_ROOT :: [3] f32.[0.36, 0.26, 0.18];
-WS_CEDAR :: [3] f32.[0.3, 0.37, 0.2];
-WS_CEDAR_DARK :: [3] f32.[0.22, 0.28, 0.15];
+WS_OLIVE :: [3] f32.[0.45, 0.47, 0.25];
+WS_OLIVE_DARK :: [3] f32.[0.32, 0.36, 0.19];
+WS_DRY :: [3] f32.[0.58, 0.52, 0.32];
+WS_WALNUT :: [3] f32.[0.4, 0.27, 0.16];
+WS_UMBER :: [3] f32.[0.3, 0.19, 0.11];
+WS_UMBER_LIGHT :: [3] f32.[0.42, 0.28, 0.16];
+WS_LIMESTONE :: [3] f32.[0.8, 0.74, 0.62];
+WS_LIME_SHADE :: [3] f32.[0.66, 0.6, 0.5];
+WS_BOULDER :: [3] f32.[0.62, 0.57, 0.5];
+WS_WATER :: [3] f32.[0.24, 0.46, 0.44];
+WS_BROOK :: [3] f32.[0.32, 0.54, 0.5];
+WS_SPILL :: [3] f32.[0.7, 0.8, 0.74];
+WS_BARK :: [3] f32.[0.34, 0.22, 0.14];
+WS_BARK_DARK :: [3] f32.[0.25, 0.16, 0.1];
+WS_ROOT :: [3] f32.[0.4, 0.28, 0.18];
+WS_LEAF :: [3] f32.[0.36, 0.42, 0.2];
+WS_LEAF_DARK :: [3] f32.[0.24, 0.3, 0.14];
+WS_LEAF_SUN :: [3] f32.[0.52, 0.55, 0.26];
+WS_AGAVE :: [3] f32.[0.42, 0.5, 0.26];
 
-// ---- cedars: x, z, base y, height, crown radius, seed
-WS_CEDARS :: 9;
-WS_CEDAR_FLOATS :: 6;
-WS_CEDAR_AT :: [WS_CEDARS * WS_CEDAR_FLOATS] f32.[
-  -4.5, -2.7, 0.0, 6.0, 1.4, 3,     // the ribbon cedar: its crown high, clear of the branch
-   4.5, -2.9, 0.0, 4.7, 1.7, 5,
-  -6.6, -6.4, 3.2, 3.8, 1.6, 7,
-  -2.1, -7.6, 3.2, 4.4, 1.9, 11,
-   1.6, -8.1, 3.2, 4.0, 1.8, 13,
-   5.2, -6.7, 3.2, 3.6, 1.5, 17,
-  -7.4,  2.8, 0.0, 5.2, 1.7, 19,    // foreground framing, at the left edge
-   7.6,  3.4, 0.0, 5.6, 1.8, 23,    // and the right
-   8.8, -1.6, 0.0, 4.4, 1.6, 29];
-WS_CEDAR_BLOBS :: 5;
-// Canopy high over the frame's top: x, y, z, rx, ry, rz. A gap is left over the pool. The last four
-// hang high above and behind the camera, out of the shot: placed back along the sun's way from
-// the ground they shade (the foreground, both sides, the right back), so their shadows leave one
-// warm patch of light on the pool and the quail's strip in front of it.
-WS_CANOPY_N :: 10;
-WS_CANOPY :: [WS_CANOPY_N * 6] f32.[
-  -4.6, 5.6, -0.6, 2.2, 0.8, 1.6,
-  -2.8, 6.3, -3.4, 1.8, 0.7, 1.4,
-   4.2, 5.8, -0.2, 2.3, 0.8, 1.7,
-   3.0, 6.5, -3.6, 1.6, 0.7, 1.3,
-  -6.2, 5.0,  1.4, 1.8, 0.9, 1.5,
-   6.4, 5.2,  1.8, 1.9, 0.9, 1.5,
-  -2.84, 7.5, 6.74, 3.0, 0.8, 2.0,
-  -7.74, 7.5, 2.54, 2.5, 0.8, 2.5,
-   1.06, 7.5, 3.74, 2.0, 0.8, 2.0,
-   0.26, 7.5, 0.34, 1.8, 0.8, 1.5];
+// ---- trees: x, z, base y, height, crown radius, seed, lean x, lean z (twisted live oaks and cedars)
+WS_TREES :: 10;
+WS_TREE_FLOATS :: 8;
+WS_TREE_AT :: [WS_TREES * WS_TREE_FLOATS] f32.[
+  -4.5, -2.7, 0.0, 5.8, 1.6, 3,   0.3, 0.2,    // the ribbon cedar, back left (limbs 0 and 4)
+  -5.1,  1.3, 0.0, 6.4, 2.0, 5,   0.5, -0.3,   // the great live oak, front left (limbs 1 and 2)
+   4.9,  0.4, 0.0, 6.2, 2.0, 7,  -0.5, -0.3,   // the right live oak (limbs 3 and 5)
+   4.6, -3.0, 0.0, 4.6, 1.6, 11, -0.2, 0.2,
+  -6.6, -6.4, 3.2, 3.8, 1.6, 13,  0.2, 0.0,
+  -2.1, -7.6, 3.2, 4.4, 1.9, 17, -0.2, 0.1,
+   1.6, -8.1, 3.2, 4.0, 1.8, 19,  0.1, 0.0,
+   5.2, -6.7, 3.2, 3.6, 1.5, 23, -0.1, 0.1,
+  -8.4,  3.6, 0.0, 6.0, 1.8, 29,  0.4, -0.2,
+   8.8, -1.6, 0.0, 4.6, 1.6, 31, -0.3, 0.1];
+WS_TREE_CLUMPS :: 7;
+
+// ---- the prayer limbs: three points each (from the trunk, its middle, its tip), the tree they grow from
+WS_LIMBS :: 6;
+WS_LIMB_SLOTS :: 6;          // tie points along each limb
+WS_TIE_SLOTS :: WS_LIMBS * WS_LIMB_SLOTS;
+WS_LIMB_AT :: [WS_LIMBS * 9] f32.[
+  -4.05, 1.75, -2.45,   -2.95, 2.05, -2.05,   -1.75, 2.15, -1.75,   // 0 the low limb over the pool
+  -4.45, 2.75,  0.95,   -3.2,  3.05,  0.25,   -2.0,  2.85, -0.4,    // 1 the long limb
+  -4.2,  3.2,   0.85,   -3.25, 3.42,  0.3,    -2.35, 3.35, -0.3,    // 2 the high limb
+   4.3,  2.4,   0.15,    3.3,  2.65, -0.55,    2.35, 2.5,  -1.15,   // 3 the right limb
+  -4.1,  2.95, -2.55,   -2.8,  3.3,  -2.4,    -1.6,  3.35, -2.5,    // 4 the far limb, before the bank
+   4.3,  3.1,   0.2,     3.4,  3.35, -0.45,    2.5,  3.4,  -0.95];  // 5 the right high limb
+WS_LIMB_TRUNK :: [WS_LIMBS] int.[0, 1, 1, 2, 0, 2];
+
+// ---- boulders (x, z, size, seed) and agave clumps (x, z, size)
+WS_BOULDERS :: 12;
+WS_BOULDER_AT :: [WS_BOULDERS * 4] f32.[
+  -3.6, 2.6, 0.55, 1,   -2.0, 2.9, 0.3, 2,   2.9, 2.3, 0.5, 3,   3.9, 1.0, 0.7, 4,
+  -3.4, -1.0, 0.45, 5,  2.7, -2.6, 0.5, 6,   -0.9, -3.3, 0.35, 7, 1.9, 0.0, 0.28, 8,
+   4.8, 3.6, 0.4, 9,    -5.6, -0.6, 0.6, 10, 5.4, 2.4, 0.6, 11,   -1.6, -2.75, 0.3, 12];
+WS_AGAVES :: 10;
+WS_AGAVE_AT :: [WS_AGAVES * 3] f32.[
+  -3.0, -1.7, 0.55,   -2.6, 3.1, 0.5,   3.3, 1.8, 0.55,   2.2, -2.9, 0.45,   -4.0, 0.1, 0.6,
+   4.2, -1.4, 0.5,    1.4, 3.0, 0.45,   -1.1, -3.1, 0.4,   3.6, 3.4, 0.6,    -3.9, 3.2, 0.55];
 // Roots over the bank's face: x along the bank, how far down it hangs.
-WS_ROOTS :: 11;
-WS_ROOT_AT :: [WS_ROOTS * 2] f32.[-3.4, 1.3, -2.6, 0.9, -1.8, 1.7, -1.1, 1.1, -0.4, 2.0, 0.2, 1.4, 0.9, 1.9, 1.5, 1.0, 2.2, 1.6, 2.9, 1.2, 3.7, 0.8];
-// The brook: a polyline from the spill lip off the frame's right.
+WS_ROOTS :: 9;
+WS_ROOT_AT :: [WS_ROOTS * 2] f32.[-3.0, 1.2, -2.0, 1.7, -1.1, 1.1, -0.2, 2.0, 0.7, 1.4, 1.5, 1.9, 2.3, 1.0, 3.1, 1.6, 3.8, 0.9];
+// The brook: from the spill step toward the camera, then off the frame's bottom right.
 WS_BROOK_N :: 6;
-WS_BROOK_AT :: [WS_BROOK_N * 2] f32.[2.25, -0.95, 2.95, -0.35, 3.55, 0.5, 4.35, 1.4, 5.45, 2.4, 7.2, 3.6];
+WS_BROOK_AT :: [WS_BROOK_N * 2] f32.[1.5, -0.25, 1.75, 0.55, 2.15, 1.45, 2.6, 2.4, 3.2, 3.6, 3.9, 5.2];
 
 // ---- small geometry
 WsV :: struct { x: f32; y: f32; z: f32; }
@@ -109,7 +120,6 @@ ws_rand :: (seed: int, k: int) -> f32 {
 ws_mix3 :: (a: [] const f32, b: [] const f32, t: f32) -> [3] f32 {
   return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
-
 ws_mix3v :: (a: [3] f32, b: [] const f32, t: f32) -> [3] f32 {
   return [3] f32.[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
@@ -214,81 +224,140 @@ ws_ground_y :: (x: f32, z: f32) -> f32 {
   d := ws_pool_d(x, z) * 0.9;
   if d < 1 { y -= 0.34 * (1 - d * d); }
   b := ws_brook_dist(x, z);
-  if b < 0.6 { y -= 0.17 * (1 - b / 0.6); }
+  if b < 0.7 { y -= 0.24 * (1 - b / 0.7); }
+  // the land falls gently toward the camera below the spill, as the brook steps down
+  if z > -0.4 && x > 0.8 { y -= 0.06 * clamp(z + 0.4, 0, 2.5) * clamp((x - 0.8) / 1.5, 0, 1); }
   return y;
 }
 
 ws_bank_z :: (x: f32) -> f32 { return -3.9 + 0.35 * sin(x * 0.7) + 0.15 * cos(x * 1.9 + 0.4); }
 ws_bank_top :: (x: f32) -> f32 { return 3.2 + 0.22 * sin(x * 2.3) + 0.12 * cos(x * 0.9); }
 WS_BANK_OVER :: 0.3;   // the cut bank's top leans out over its foot
+WS_BANK_BANDS :: 6;    // strata up its face
 
 ws_bank_point :: (i: int, k: int) -> WsV {
   x: f32 = -11 + 0.55 * cast(f32) i;
-  shares := [4] f32.[0, 0.3, 0.64, 1];
-  f: f32 = shares[k];
+  f: f32 = cast(f32) k / f32(WS_BANK_BANDS);
   over: f32 = WS_BANK_OVER;
-  j := ifx k == 0 || k == 3 then 0.0f32 else (ws_rand(41, i * 5 + k) - 0.5) * 0.16;
+  edge := k == 0 || k == WS_BANK_BANDS;
+  j := ifx edge then 0.0f32 else (ws_rand(41, i * 7 + k) - 0.5) * 0.1;
   z := ws_bank_z(x) + over * f * f + j;
   foot := ws_ground_y(x, ws_bank_z(x)) - 0.05;
-  y := foot + (ws_bank_top(x) - foot) * f + (ifx k == 0 || k == 3 then 0.0f32 else (ws_rand(43, i * 5 + k) - 0.5) * 0.18);
+  y := foot + (ws_bank_top(x) - foot) * f + (ifx edge then 0.0f32 else (ws_rand(43, i * 7 + k) - 0.5) * 0.12);
   return ws_v(x, y, z);
 }
 
-ws_cedar_blob :: (t: int, m: int) -> WsBlob {
-  q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
+// A twisted trunk: where it is at a share of its height, wandering a little as it climbs.
+ws_trunk_at :: (t: int, f: f32) -> WsV {
+  q: [] const f32 = WS_TREE_AT[t * WS_TREE_FLOATS..<(t + 1) * WS_TREE_FLOATS];
+  seed := cast(int) q[5];
+  h := q[3] * 0.62;
+  wob := 0.22 * sin(f * 5.3 + cast(f32) seed) * f;
+  return ws_v(q[0] + q[6] * f * f * 1.6 + wob, q[2] + h * f, q[1] + q[7] * f * f * 1.6 + 0.6 * wob);
+}
+
+ws_tree_clump :: (t: int, m: int) -> WsBlob {
+  q: [] const f32 = WS_TREE_AT[t * WS_TREE_FLOATS..<(t + 1) * WS_TREE_FLOATS];
   seed := cast(int) q[5];
   r := q[4];
-  up := q[2] + q[3];
+  top := ws_trunk_at(t, 1);
   b: WsBlob;
-  b.seed = seed * 10 + m; b.seg = 7; b.rings = 4; b.jag = 0.28;
+  b.seed = seed * 10 + m; b.seg = 7; b.rings = 4; b.jag = 0.3;
   if m == 0 {
-    b.x = q[0]; b.y = up - r * 0.55; b.z = q[1]; b.rx = r * 0.8; b.ry = r * 0.75; b.rz = r * 0.75;
+    b.x = top.x; b.y = top.y + r * 0.7; b.z = top.z; b.rx = r * 0.85; b.ry = r * 0.6; b.rz = r * 0.75;
   } else {
-    a := f32(WS_TAU) * (cast(f32) m / cast(f32) (WS_CEDAR_BLOBS - 1)) + ws_rand(seed, m) * 1.2;
-    far := r * (0.55 + 0.3 * ws_rand(seed, m + 9));
-    b.x = q[0] + cos(a) * far; b.z = q[1] + sin(a) * far * 0.8;
-    b.y = up - r * (0.9 + 0.7 * ws_rand(seed, m + 3));
-    b.rx = r * (0.55 + 0.2 * ws_rand(seed, m + 5)); b.ry = r * 0.5; b.rz = b.rx * 0.85;
+    a := f32(WS_TAU) * (cast(f32) m / cast(f32) (WS_TREE_CLUMPS - 1)) + ws_rand(seed, m) * 0.9;
+    far := r * (0.8 + 0.45 * ws_rand(seed, m + 9));
+    b.x = top.x + cos(a) * far; b.z = top.z + sin(a) * far * 0.7;
+    b.y = top.y + r * (0.15 + 0.55 * ws_rand(seed, m + 3));
+    b.rx = r * (0.5 + 0.2 * ws_rand(seed, m + 5)); b.ry = r * 0.38; b.rz = b.rx * 0.85;
   }
   b.yaw = ws_rand(seed, m + 13) * 3;
   return b;
 }
 
-ws_canopy_blob :: (c: int) -> WsBlob {
-  q: [] const f32 = WS_CANOPY[c * 6..<c * 6 + 6];
-  b: WsBlob;
-  b.x = q[0]; b.y = q[1]; b.z = q[2]; b.rx = q[3]; b.ry = q[4]; b.rz = q[5];
-  b.seg = 8; b.rings = 3; b.jag = 0.3; b.seed = 300 + c; b.yaw = cast(f32) c * 0.7;
-  return b;
+// A prayer limb: three points, a gentle curve through its middle.
+ws_limb_point :: (l: int, t: f32) -> WsV {
+  q: [] const f32 = WS_LIMB_AT[l * 9..<l * 9 + 9];
+  a := ws_v(q[0], q[1], q[2]); m := ws_v(q[3], q[4], q[5]); b := ws_v(q[6], q[7], q[8]);
+  u := 1 - t;
+  return ws_v(u * u * a.x + 2 * u * t * m.x + t * t * b.x, u * u * a.y + 2 * u * t * m.y + t * t * b.y, u * u * a.z + 2 * u * t * m.z + t * t * b.z);
 }
-
-// Where along the ribbon branch (0 at the trunk end, 1 at the tip).
-ws_limb_at :: (t: f32) -> WsV {
-  a := ws_v(WS_LIMB[0], WS_LIMB[1], WS_LIMB[2]); b := ws_v(WS_LIMB[3], WS_LIMB[4], WS_LIMB[5]);
-  p := ws_lerp(a, b, t);
-  droop: f32 = WS_LIMB_DROOP;
-  p.y -= droop * 4 * t * (1 - t);
-  return p;
+// Where tie point `slot` of limb `l` is.
+ws_tie :: (l: int, slot: int) -> WsV {
+  t: f32 = 0.32 + 0.12 * cast(f32) clamp_slot(slot);
+  return ws_limb_point(l, t);
 }
+clamp_slot :: (s: int) -> int { if s < 0 { return 0; } if s >= WS_LIMB_SLOTS { return WS_LIMB_SLOTS - 1; } return s; }
 
 ws_spot :: (s: int) -> [4] f32 {
+  if s < 0 || s >= 3 { return [4] f32.[0, 0, 0, 0]; }
   q: [] const f32 = WS_SPOT[s * 4..<s * 4 + 4];
   return [4] f32.[q[0], q[1], q[2], q[3]];
 }
 
 // ---- the grove's mesh, once
 WS_FAR :: 220.0;
-WS_MESH_VERTICES :: 48000;
+WS_MESH_VERTICES :: 64000;
+
+ws_pen_tree :: (p: [] ArchPen, t: int) {
+  q: [] const f32 = WS_TREE_AT[t * WS_TREE_FLOATS..<(t + 1) * WS_TREE_FLOATS];
+  seed := cast(int) q[5];
+  // the trunk, twisting up in four lengths, thick at the root
+  ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+  for s: 0..<4 {
+    a := ws_trunk_at(t, cast(f32) s / 4); b := ws_trunk_at(t, cast(f32) (s + 1) / 4);
+    ra := 0.3 - 0.05 * cast(f32) s; rb := ra - 0.05;
+    arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, ra, rb, 6);
+  }
+  // a root flare
+  ws_paint(p, ARCH_M_BARK, WS_BARK_DARK[..]);
+  for k: 0..<3 {
+    ang := cast(f32) k * 2.1 + cast(f32) seed;
+    base := ws_trunk_at(t, 0);
+    arch_limb(p, base.x, base.y + 0.35, base.z, base.x + cos(ang) * 0.55, base.y - 0.05, base.z + sin(ang) * 0.45, 0.14, 0.05, 5);
+  }
+  // branches up into the crown
+  ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+  top := ws_trunk_at(t, 1);
+  for m: 1..<WS_TREE_CLUMPS {
+    if m % 2 == 0 { continue; }
+    c := ws_tree_clump(t, m);
+    arch_limb(p, top.x, top.y - 0.2, top.z, (top.x + c.x) * 0.5, c.y - 0.1, (top.z + c.z) * 0.5, 0.1, 0.06, 5);
+  }
+  for m: 0..<WS_TREE_CLUMPS {
+    n := ws_rand(seed, m + 40);
+    sunny := ws_tree_clump(t, m).y > top.y + q[4] * 0.45;
+    if sunny { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF[..], WS_LEAF_SUN[..], n)); }
+    else { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF[..], n)); }
+    ws_pen_blob(p, ws_tree_clump(t, m));
+  }
+}
+
+ws_pen_agave :: (p: [] ArchPen, x: f32, z: f32, size: f32, seed: int) {
+  gy := ws_ground_y(x, z);
+  blades := 9;
+  for i: 0..<blades {
+    a := f32(WS_TAU) * cast(f32) i / cast(f32) blades + ws_rand(seed, i) * 0.5;
+    lean := 0.35 + 0.45 * ws_rand(seed, i + 20);
+    l := size * (0.75 + 0.5 * ws_rand(seed, i + 40));
+    w: f32 = 0.06 * size / 0.5;
+    tip := ws_v(x + cos(a) * l * lean, gy + l, z + sin(a) * l * lean);
+    s0 := ws_v(x - sin(a) * w, gy, z + cos(a) * w); s1 := ws_v(x + sin(a) * w, gy, z - cos(a) * w);
+    ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_AGAVE[..], WS_LEAF_SUN[..], ws_rand(seed, i + 60) * 0.6));
+    ws_pen_tri(p, s0, s1, tip, ws_v(x, gy + l * 0.3, z));
+  }
+}
 
 ws_build_grove :: (p: [] ArchPen) {
   // The far land under and past everything (its own draw; record 0).
   g: f32 = WS_FAR;
   ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
   below := ws_v(0, -100, 0);
-  ws_pen_tri(p, ws_v(-g, -0.35, g), ws_v(g, -0.35, g), ws_v(g, -0.35, -g), below);
-  ws_pen_tri(p, ws_v(-g, -0.35, g), ws_v(g, -0.35, -g), ws_v(-g, -0.35, -g), below);
-  // The grove's ground: a coarse grid, one flat colour a triangle.
-  cols := 30; rows := 18;
+  ws_pen_tri(p, ws_v(-g, -0.45, g), ws_v(g, -0.45, g), ws_v(g, -0.45, -g), below);
+  ws_pen_tri(p, ws_v(-g, -0.45, g), ws_v(g, -0.45, -g), ws_v(-g, -0.45, -g), below);
+  // The grove's ground: a coarse grid of irregular facets, walnut soil by the water, olive elsewhere.
+  cols := 30; rows := 19;
   x0: f32 = -12; z0: f32 = -4.7; cell: f32 = 0.8;
   for r: 0..<rows {
     for c: 0..<cols {
@@ -297,20 +366,20 @@ ws_build_grove :: (p: [] ArchPen) {
       jx := (ws_rand(5, r * 61 + c) - 0.5) * 0.3; jz := (ws_rand(6, r * 61 + c) - 0.5) * 0.3;
       a := ws_v(xa, ws_ground_y(xa, za), za);
       b := ws_v(xb, ws_ground_y(xb, za), za);
-      cc := ws_v(xb + jx * 0, ws_ground_y(xb, zb), zb);
+      cc := ws_v(xb, ws_ground_y(xb, zb), zb);
       d := ws_v(xa, ws_ground_y(xa, zb), zb);
-      // a jittered middle point breaks the grid into irregular facets
       mx := (xa + xb) * 0.5 + jx; mz := (za + zb) * 0.5 + jz;
       m := ws_v(mx, ws_ground_y(mx, mz), mz);
       corners: [5] WsV; corners[0] = a; corners[1] = b; corners[2] = cc; corners[3] = d; corners[4] = a;
       for e: 0..<4 {
         u := corners[e]; w := corners[e + 1];
         tx := (u.x + w.x + m.x) / 3; tz := (u.z + w.z + m.z) / 3;
-        wet := ws_pool_d(tx, tz) < 1.35 || ws_brook_dist(tx, tz) < 0.75;
+        wet := ws_pool_d(tx, tz) < 1.45 || ws_brook_dist(tx, tz) < 0.85;
+        // a soil path along the quail's strip and round to the stones
+        path := tz > -0.4 && tz < 2.2 && tx > -3.4 && tx < 1.2 && (ws_rand(11, r * 31 + c) > 0.35 || (tx > -2.2 && tx < 0.6 && tz > 0.3 && tz < 1.6));
         n := ws_rand(9, r * 251 + c * 7 + e);
-        // broad, slow patches of olive and dry grass; each facet only a little its own
         broad := 0.5 + 0.5 * sin(tx * 0.45 + tz * 0.3) * cos(tz * 0.5 - tx * 0.2);
-        if wet { ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n * 0.5)); }
+        if wet || path { ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n * 0.5)); }
         else {
           grass := ws_mix3(WS_OLIVE_DARK[..], WS_OLIVE[..], clamp(broad + (n - 0.5) * 0.3, 0, 1));
           ws_paint3(p, ARCH_M_PLASTER, ws_mix3v(grass, WS_DRY[..], clamp((1 - broad) * 0.35 + (n - 0.5) * 0.12, 0, 0.5)));
@@ -319,19 +388,20 @@ ws_build_grove :: (p: [] ArchPen) {
       }
     }
   }
-  // The cut bank: three bands of facets up its face, the top leaning out.
+  // The cut bank: strata up its face, alternating umber and walnut, the top leaning out.
   bank_cols := 40;
   for i: 0..<bank_cols {
-    for k: 0..<3 {
+    for k: 0..<WS_BANK_BANDS {
       a := ws_bank_point(i, k); b := ws_bank_point(i + 1, k);
       c := ws_bank_point(i + 1, k + 1); d := ws_bank_point(i, k + 1);
-      n := ws_rand(47, i * 3 + k);
-      ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_UMBER[..], WS_UMBER_LIGHT[..], n * (ifx k == 1 then 1.0f32 else 0.6f32)));
+      n := ws_rand(47, i * 7 + k);
+      band: f32 = ifx (k % 2) == 0 then 0.15f32 else 0.75f32;
+      ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_UMBER[..], WS_UMBER_LIGHT[..], clamp(band + (n - 0.5) * 0.25, 0, 1)));
       facing := ws_v((a.x + c.x) * 0.5, (a.y + c.y) * 0.5, -40);
       ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing);
     }
     // the land above it, back toward the far trees
-    t0 := ws_bank_point(i, 3); t1 := ws_bank_point(i + 1, 3);
+    t0 := ws_bank_point(i, WS_BANK_BANDS); t1 := ws_bank_point(i + 1, WS_BANK_BANDS);
     back0 := ws_v(t0.x, t0.y + 0.1, -9.5); back1 := ws_v(t1.x, t1.y + 0.1, -9.5);
     far0 := ws_v(t0.x, t0.y + 0.4, -18); far1 := ws_v(t1.x, t1.y + 0.4, -18);
     ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_OLIVE_DARK[..], WS_DRY[..], ws_rand(49, i) * 0.5));
@@ -339,17 +409,18 @@ ws_build_grove :: (p: [] ArchPen) {
     ws_paint(p, ARCH_M_PLASTER, WS_OLIVE_DARK[..]);
     ws_pen_tri(p, back0, back1, far1, below); ws_pen_tri(p, back0, far1, far0, below);
   }
-  // Cedar roots hanging over the face.
+  // Roots hanging over the face, each splitting once.
   for i: 0..<WS_ROOTS {
     x: f32 = WS_ROOT_AT[i * 2]; down: f32 = WS_ROOT_AT[i * 2 + 1];
     over: f32 = WS_BANK_OVER;
-    top := ws_v(x, ws_bank_top(x) - 0.08, ws_bank_z(x) + over + 0.04);
+    top := ws_v(x, ws_bank_top(x) - 0.06, ws_bank_z(x) + over + 0.05);
     ws_paint(p, ARCH_M_BARK, WS_ROOT[..]);
-    a := top; r: f32 = 0.055;
+    a := top; r: f32 = 0.065;
     for s: 0..<3 {
-      sway := (ws_rand(53, i * 3 + s) - 0.5) * 0.35;
-      b := ws_v(a.x + sway, a.y - down / 3, a.z - 0.04 * cast(f32) s);
+      sway := (ws_rand(53, i * 3 + s) - 0.5) * 0.4;
+      b := ws_v(a.x + sway, a.y - down / 3, a.z - 0.035 * cast(f32) s);
       arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, r, r * 0.7, 5);
+      if s == 1 { arch_limb(p, b.x, b.y, b.z, b.x - sway * 1.4, b.y - down * 0.3, b.z - 0.05, r * 0.6, r * 0.3, 4); }
       a = b; r *= 0.7;
     }
   }
@@ -361,16 +432,17 @@ ws_build_grove :: (p: [] ArchPen) {
     ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_LIMESTONE[..], WS_LIME_SHADE[..], ws_rand(57, i)));
     ws_pen_box(p, sx, ws_ground_y(sx, sz) + 0.02, sz, 0.3 + 0.1 * ws_rand(59, i), 0.07, 0.17, -ang + 0.3 * ws_rand(61, i));
   }
-  // the spill lip, and a ledge or two at the bank's foot
+  // the spill step, a second step below it, and ledges at the bank's foot
   ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
-  ws_pen_box(p, WS_LIP_X, -0.07, WS_LIP_Z, 0.46, 0.06, 0.2, WS_LIP_YAW);
+  ws_pen_box(p, WS_LIP_X, -0.07, WS_LIP_Z, 0.46, 0.07, 0.2, WS_LIP_YAW);
   ws_paint(p, ARCH_M_SMOOTH, WS_LIME_SHADE[..]);
+  ws_pen_box(p, 1.62, -0.2, 0.2, 0.42, 0.06, 0.18, 0.2);
   ws_pen_box(p, -1.6, 0.05, -3.25, 0.7, 0.12, 0.3, 0.2);
   ws_pen_box(p, 2.4, 0.06, -3.3, 0.55, 0.14, 0.28, -0.3);
   // the cairn's slab
   ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
   ws_pen_box(p, WS_CAIRN_X, 0.03, WS_CAIRN_Z, 0.4, 0.05, 0.3, 0.2);
-  // water: the pool's surface as a fan, the brook as a strip, the spill between them
+  // water: the pool's surface as a fan, the brook as a strip, the spill falls between them
   ws_paint(p, ARCH_M_WATER, WS_WATER[..]);
   segs := 20;
   centre := ws_v(WS_POOL_X, WS_WATER_Y, WS_POOL_Z);
@@ -387,81 +459,85 @@ ws_build_grove :: (p: [] ArchPen) {
     bx: f32 = WS_BROOK_AT[i * 2 + 2]; bz: f32 = WS_BROOK_AT[i * 2 + 3];
     dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz);
     nx := -dz / l; nz := dx / l;
-    wa := 0.22 + 0.05 * cast(f32) i; wb := wa + 0.05;
-    ya: f32 = -0.13; yb: f32 = -0.13;
+    wa := 0.3 + 0.08 * cast(f32) i; wb := wa + 0.08;
+    ya := ws_ground_y(ax, az) + 0.1; yb := ws_ground_y(bx, bz) + 0.1;
     ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx + nx * wb, yb, bz + nz * wb), ws_v(bx - nx * wb, yb, bz - nz * wb), below);
     ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx - nx * wb, yb, bz - nz * wb), ws_v(ax - nx * wa, ya, az - nz * wa), below);
   }
   ws_paint(p, ARCH_M_WATER, WS_SPILL[..]);
   lc: f32 = cos(f32(WS_LIP_YAW)); ls: f32 = sin(f32(WS_LIP_YAW));
   lx: f32 = WS_LIP_X; lz: f32 = WS_LIP_Z;
-  // the lip's outer edge (its +z side once turned), down to where the brook starts
-  e0 := ws_v(lx - 0.42 * lc + 0.2 * ls, -0.02, lz + 0.42 * ls + 0.2 * lc);
-  e1 := ws_v(lx + 0.42 * lc + 0.2 * ls, -0.02, lz - 0.42 * ls + 0.2 * lc);
+  // the step's front edge, down to where the brook begins
+  e0 := ws_v(lx - 0.4 * lc + 0.2 * ls, -0.01, lz + 0.4 * ls + 0.2 * lc);
+  e1 := ws_v(lx + 0.4 * lc + 0.2 * ls, -0.01, lz - 0.4 * ls + 0.2 * lc);
   bx0: f32 = WS_BROOK_AT[0]; bz0: f32 = WS_BROOK_AT[1];
-  f0 := ws_v(bx0 - 0.25, -0.14, bz0 + 0.18); f1 := ws_v(bx0 + 0.2, -0.14, bz0 - 0.2);
+  by0 := ws_ground_y(bx0, bz0) + 0.1;
+  f0 := ws_v(bx0 - 0.3, by0, bz0 + 0.05); f1 := ws_v(bx0 + 0.3, by0, bz0 - 0.08);
   front := ws_v(lx - 3, -3, lz - 3);
   ws_pen_tri(p, e0, e1, f1, front); ws_pen_tri(p, e0, f1, f0, front);
-  // Cedars: a trunk each and a crown of faceted clumps.
-  for t: 0..<WS_CEDARS {
-    q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
-    ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
-    lean := (ws_rand(cast(int) q[5], 99) - 0.5) * 0.5;
-    arch_limb(p, q[0], q[2], q[1], q[0] + lean, q[2] + q[3] * 0.75, q[1] + lean * 0.4, 0.17, 0.09, 6);
-    for m: 0..<WS_CEDAR_BLOBS {
-      n := ws_rand(cast(int) q[5], m + 40);
-      ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_CEDAR_DARK[..], WS_CEDAR[..], n));
-      ws_pen_blob(p, ws_cedar_blob(t, m));
-    }
-  }
-  // the ribbon cedar's branch, bare at its outer end where the ribbon is tied
-  ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
-  steps := 6;
-  for s: 0..<steps {
-    a := ws_limb_at(cast(f32) s / cast(f32) steps); b := ws_limb_at(cast(f32) (s + 1) / cast(f32) steps);
-    ra := 0.085 - 0.01 * cast(f32) s; rb := ra - 0.01;
-    arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, ra, rb, 5);
-  }
-  for m: 0..<2 {
-    at := ws_limb_at(0.12 + 0.16 * cast(f32) m);
+  // Boulders.
+  for i: 0..<WS_BOULDERS {
+    q: [] const f32 = WS_BOULDER_AT[i * 4..<i * 4 + 4];
     b: WsBlob;
-    b.x = at.x; b.y = at.y + 0.28; b.z = at.z - 0.1; b.rx = 0.55; b.ry = 0.34; b.rz = 0.45; b.seed = 500 + m; b.seg = 6; b.rings = 3; b.jag = 0.3;
-    ws_paint(p, ARCH_M_LEAF, WS_CEDAR[..]);
+    b.x = q[0]; b.z = q[1]; b.y = ws_ground_y(q[0], q[1]) + q[2] * 0.35;
+    b.rx = q[2]; b.ry = q[2] * 0.62; b.rz = q[2] * 0.8; b.seg = 6; b.rings = 3; b.jag = 0.35; b.seed = 700 + cast(int) q[3];
+    b.yaw = ws_rand(cast(int) q[3], 3) * 3;
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_BOULDER[..], WS_LIME_SHADE[..], ws_rand(cast(int) q[3], 5)));
     ws_pen_blob(p, b);
   }
-  // Canopy over the top of the frame.
-  for c: 0..<WS_CANOPY_N {
-    ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_CEDAR_DARK[..], WS_CEDAR[..], ws_rand(71, c) * 0.7));
-    ws_pen_blob(p, ws_canopy_blob(c));
+  // Agave clumps.
+  for i: 0..<WS_AGAVES { ws_pen_agave(p, WS_AGAVE_AT[i * 3], WS_AGAVE_AT[i * 3 + 1], WS_AGAVE_AT[i * 3 + 2], 900 + i); }
+  // Trees.
+  for t: 0..<WS_TREES { ws_pen_tree(p, t); }
+  // The prayer limbs: bark from the trunk out to a bare tip, a few leaves near the trunk.
+  for l: 0..<WS_LIMBS {
+    ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+    steps := 7;
+    for s: 0..<steps {
+      a := ws_limb_point(l, cast(f32) s / cast(f32) steps); b := ws_limb_point(l, cast(f32) (s + 1) / cast(f32) steps);
+      ra := 0.11 - 0.012 * cast(f32) s; rb := ra - 0.012;
+      arch_limb(p, a.x, a.y, a.z, b.x, b.y, b.z, ra, rb, 5);
+    }
+    // a twig off the middle
+    mid := ws_limb_point(l, 0.5);
+    arch_limb(p, mid.x, mid.y, mid.z, mid.x + 0.15, mid.y + 0.35, mid.z - 0.1, 0.035, 0.015, 4);
+    near := ws_limb_point(l, 0.12);
+    b: WsBlob;
+    b.x = near.x; b.y = near.y + 0.3; b.z = near.z - 0.05; b.rx = 0.5; b.ry = 0.3; b.rz = 0.42; b.seed = 500 + l; b.seg = 6; b.rings = 3; b.jag = 0.3;
+    ws_paint(p, ARCH_M_LEAF, WS_LEAF[..]);
+    ws_pen_blob(p, b);
   }
 }
 
 // ---- what could stand in the way: every piece of scenery as rough spheres (for the tests and
 // for nothing else; the mesh above is what is drawn).
-WS_PROPS :: WS_CEDARS * (WS_CEDAR_BLOBS + 3) + WS_CANOPY_N + 4;
+WS_PROPS :: WS_TREES * (WS_TREE_CLUMPS + 4) + WS_LIMBS * 8 + WS_BOULDERS + 4;
 ws_props :: (out: [] f32) -> int {
   n := 0;
-  for t: 0..<WS_CEDARS {
-    q: [] const f32 = WS_CEDAR_AT[t * WS_CEDAR_FLOATS..<(t + 1) * WS_CEDAR_FLOATS];
-    for m: 0..<WS_CEDAR_BLOBS {
-      b := ws_cedar_blob(t, m);
+  for t: 0..<WS_TREES {
+    for m: 0..<WS_TREE_CLUMPS {
+      b := ws_tree_clump(t, m);
       r := b.rx; if b.ry > r { r = b.ry; } if b.rz > r { r = b.rz; }
       out[n * 4] = b.x; out[n * 4 + 1] = b.y; out[n * 4 + 2] = b.z; out[n * 4 + 3] = r * 1.15; n += 1;
     }
-    for s: 0..<3 {
-      out[n * 4] = q[0]; out[n * 4 + 1] = q[2] + q[3] * (0.12 + 0.25 * cast(f32) s); out[n * 4 + 2] = q[1]; out[n * 4 + 3] = 0.3; n += 1;
+    for s: 0..<4 {
+      a := ws_trunk_at(t, (cast(f32) s + 0.5) / 4);
+      out[n * 4] = a.x; out[n * 4 + 1] = a.y; out[n * 4 + 2] = a.z; out[n * 4 + 3] = 0.42; n += 1;
     }
   }
-  for c: 0..<WS_CANOPY_N {
-    b := ws_canopy_blob(c);
-    r := b.rx; if b.rz > r { r = b.rz; }
-    out[n * 4] = b.x; out[n * 4 + 1] = b.y; out[n * 4 + 2] = b.z; out[n * 4 + 3] = r * 1.1; n += 1;
+  for l: 0..<WS_LIMBS {
+    for s: 0..<7 {
+      a := ws_limb_point(l, cast(f32) s / 6);
+      out[n * 4] = a.x; out[n * 4 + 1] = a.y; out[n * 4 + 2] = a.z; out[n * 4 + 3] = 0.14; n += 1;
+    }
+    near := ws_limb_point(l, 0.12);
+    out[n * 4] = near.x; out[n * 4 + 1] = near.y + 0.3; out[n * 4 + 2] = near.z - 0.05; out[n * 4 + 3] = 0.55; n += 1;
   }
-  for m: 0..<2 {
-    at := ws_limb_at(0.12 + 0.16 * cast(f32) m);
-    out[n * 4] = at.x; out[n * 4 + 1] = at.y + 0.28; out[n * 4 + 2] = at.z - 0.1; out[n * 4 + 3] = 0.62; n += 1;
+  for i: 0..<WS_BOULDERS {
+    q: [] const f32 = WS_BOULDER_AT[i * 4..<i * 4 + 4];
+    out[n * 4] = q[0]; out[n * 4 + 1] = ws_ground_y(q[0], q[1]) + q[2] * 0.35; out[n * 4 + 2] = q[1]; out[n * 4 + 3] = q[2] * 1.05; n += 1;
   }
-  // the two foot ledges
+  // the foot ledges and the second spill step
   out[n * 4] = -1.6; out[n * 4 + 1] = 0.05; out[n * 4 + 2] = -3.25; out[n * 4 + 3] = 0.75; n += 1;
   out[n * 4] = 2.4; out[n * 4 + 1] = 0.06; out[n * 4 + 2] = -3.3; out[n * 4 + 3] = 0.6; n += 1;
   return n;
@@ -476,16 +552,21 @@ ws_segment_hits :: (a: WsV, b: WsV, x: f32, y: f32, z: f32, r: f32) -> bool {
   return ws_dot(e, e) < r * r;
 }
 
-#test "the grove's mesh fits its buffer and its pieces are where the plan puts them" #steps 4000000000 {
+#test "the grove's mesh fits its buffer and its pieces are where the plan puts them" #steps 6000000000 {
   buf: [WS_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32;
   p: [1] ArchPen; arch_pen(p[..], buf[..]);
   ws_build_grove(p[..]);
-  #assert !p[0].full && p[0].n > 6000 && p[0].n < WS_MESH_VERTICES;
+  #assert !p[0].full && p[0].n > 8000 && p[0].n < WS_MESH_VERTICES;
   // the pool lies below the ground round it, and the bank rises behind it
   #assert ws_ground_y(WS_POOL_X, WS_POOL_Z) < WS_WATER_Y && ws_ground_y(-1.0, 1.0) > WS_WATER_Y;
   #assert ws_bank_z(0) < WS_POOL_Z - WS_POOL_RZ && ws_bank_top(0) > 2.8;
-  // the branch's tie points are above the ground and out from the trunk
-  for k: 0..<3 { at := ws_limb_at(WS_TIES[k]); #assert at.y > 1.8 && at.x > -3.5; }
+  // every tie point hangs clear of the ground, and the brook stays out of the quail's strip
+  for l: 0..<WS_LIMBS { for s: 0..<WS_LIMB_SLOTS { at := ws_tie(l, s); #assert at.y > 1.5; } }
+  for i: 0..<9 { for j: 0..<5 {
+    x: f32 = WS_RANGE[0] + (WS_RANGE[2] - WS_RANGE[0]) * cast(f32) i / 8;
+    z: f32 = WS_RANGE[1] + (WS_RANGE[3] - WS_RANGE[1]) * cast(f32) j / 4;
+    #assert ws_brook_dist(x, z) > 0.45 && ws_pool_d(x, z) > 1.0;
+  } }
   props: [WS_PROPS * 4] f32;
   #assert ws_props(props[..]) <= WS_PROPS;
 }

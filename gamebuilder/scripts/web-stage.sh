@@ -30,7 +30,7 @@ if [[ "${2:-}" == "" ]]; then
   cp "$web/splicebots/fonts/"* "$stage/splicebots/fonts/"
   cp "$web/splicebots/packs/"*.pack "$stage/splicebots/packs/"
   # The Whispering Spring (audio-manifest.json stays unversioned: the artist's files swap in without a release)
-  cp "$web/whispering-spring/index.html" "$web/whispering-spring/glue.js" "$web/whispering-spring/audio.js" "$web/whispering-spring/audio-manifest.json" "$web/whispering-spring/whispering-spring.wgsl" "$stage/whispering-spring/"
+  cp "$web/whispering-spring/index.html" "$web/whispering-spring/glue.js" "$web/whispering-spring/audio.js" "$web/whispering-spring/room.js" "$web/whispering-spring/audio-manifest.json" "$web/whispering-spring/whispering-spring.wgsl" "$stage/whispering-spring/"
   cp "$web/whispering-spring/build/whispering-spring.wasm" "$stage/whispering-spring/build/"
   # Empty response for host.js optional viewer check so the console stays free of 404s.
   : > "$stage/api/auth/viewer"
@@ -51,6 +51,7 @@ if [[ "$2" == release ]]; then
     "$stage/splicebots/fonts/"* \
     "$stage/whispering-spring/glue.js" \
     "$stage/whispering-spring/audio.js" \
+    "$stage/whispering-spring/room.js" \
     "$stage/whispering-spring/build/whispering-spring.wasm" \
     "$stage/whispering-spring/whispering-spring.wgsl" \
     | shasum -a 256 | cut -c1-16)"
@@ -77,7 +78,7 @@ if [[ "$2" == release ]]; then
   mv "$stage/splicebots/packs/"*.pack "$stage/packs/splicebots/"
   rmdir "$stage/splicebots/packs"
   # The Whispering Spring: its code is versioned; its page and audio-manifest.json are not
-  mv "$stage/whispering-spring/glue.js" "$stage/whispering-spring/audio.js" "$stage/whispering-spring/whispering-spring.wgsl" "$stage/b/$name/whispering-spring/"
+  mv "$stage/whispering-spring/glue.js" "$stage/whispering-spring/audio.js" "$stage/whispering-spring/room.js" "$stage/whispering-spring/whispering-spring.wgsl" "$stage/b/$name/whispering-spring/"
   mv "$stage/whispering-spring/build/whispering-spring.wasm" "$stage/b/$name/whispering-spring/build/"
   rmdir "$stage/whispering-spring/build"
 

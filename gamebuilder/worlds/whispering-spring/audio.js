@@ -184,6 +184,45 @@ export class SpringAudio {
     if (e?.placeholder) fragment(ac, out, e.placeholder, t);
   }
 
+  // The quail's voice, as cozy games give their characters: each letter a short pitched blip
+  // shaped like a vowel, pauses at spaces and punctuation. `onChar(i)` fires as letter i sounds,
+  // so a speech bubble can type along. Returns how long it takes, in seconds.
+  speak(text, onChar = () => {}, { pitch = 1 } = {}) {
+    const chars = [...String(text)];
+    const STEP = 0.068, SPACE = 0.05, STOP = 0.24, COMMA = 0.14;
+    const timers = [];
+    let t = 0;
+    const plan = chars.map((c) => {
+      const at = t;
+      if (/[.!?…]/.test(c)) t += STOP; else if (/[,;:—–-]/.test(c)) t += COMMA; else if (/\s/.test(c)) t += SPACE; else t += STEP;
+      return at;
+    });
+    const total = t + 0.2;
+    if (this.ac) {
+      const ac = this.ac, base = ac.currentTime + 0.03;
+      const out = this.ac.createGain(); out.gain.value = 1; out.connect(this.phrases);
+      const formant = { a: 800, e: 600, i: 400, o: 500, u: 350 };
+      chars.forEach((c, i) => {
+        if (!/[\p{L}\p{N}]/u.test(c)) return;
+        const low = c.toLowerCase();
+        const code = low.codePointAt(0);
+        const hz0 = (430 + ((code * 37) % 140) - (/[aeiou]/.test(low) ? 0 : 40)) * pitch;
+        const at = base + plan[i], len = /[aeiou]/.test(low) ? 0.075 : 0.052;
+        const o = ac.createOscillator(); o.type = "square";
+        o.frequency.setValueAtTime(hz0 * 1.08, at); o.frequency.exponentialRampToValueAtTime(hz0 * 0.92, at + len);
+        const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 3.5;
+        bp.frequency.value = formant[low] || [520, 700, 900, 440][code % 4];
+        const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2600;
+        const g = ac.createGain(); g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.16, at + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+        o.connect(bp).connect(lp).connect(g).connect(out); o.start(at); o.stop(at + len + 0.02);
+      });
+    }
+    chars.forEach((_, i) => timers.push(setTimeout(() => onChar(i), plan[i] * 1000 + 30)));
+    this.speaking?.forEach(clearTimeout);
+    this.speaking = timers;
+    return total;
+  }
+
   trackEntry(id) { return this.m.tracks.find((x) => x.id === id) || this.m.extras.find((x) => String(x.id) === String(id)) || null; }
 
   // A whole track (or an extra's take), one at a time. Returns its length in seconds.

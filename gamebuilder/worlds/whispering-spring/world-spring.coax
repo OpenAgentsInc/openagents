@@ -20,6 +20,8 @@ WS_MSG_SAVE :: 125;       // keep the save now (the page is being left)
 WS_MSG_EXTRA :: 127;      // "N": keep extra N in the journal
 WS_MSG_FORGET :: 128;     // start over
 WS_MSG_CLOSE :: 129;      // close the open activity
+WS_MSG_SHARED :: 131;     // everyone's ribbons but this visitor's: "fabric,colour,charm,limb,slot;..." (the page reads them from the room)
+WS_MSG_SPEAK :: 132;      // "SECONDS": the quail speaks that long (the page plays its words and its voice)
 WS_ACT_KEEP :: 4;         // host action: keep this text in the browser
 WS_ACT_EVENT :: 90;       // to the page as a "coaxial" event: "kind|..."
 
@@ -54,11 +56,14 @@ WS_FABRIC_WIDE :: [3] f32.[0.095, 0.075, 0.11];
 WS_FABRIC_FLUTTER :: [3] f32.[1.0, 1.45, 0.8];
 WS_WORD :: 48;
 WS_RIBBON_FOUND_AFTER :: 2.5;
+WS_SHARED :: 36;          // other visitors' ribbons drawn at once (the tie points on all six limbs)
+WS_SLOT_AUTO :: 7;        // a ribbon's slot the world picks: the free one nearest its limb's middle
+WS_SLOT_ORDER :: [6] int.[2, 3, 1, 4, 0, 5];
 
 WS_INBOX :: 512;
 WS_OUT :: 384;
 WS_QUEUE :: 32;
-WS_SKIN_V :: 14000;
+WS_SKIN_V :: 22000;
 WS_RECORDS :: 2;
 WS_RECORD_FLOATS :: 16;
 WS_DRAWS :: 3;
@@ -83,6 +88,9 @@ Spring :: struct {
   // the ribbon
   ribbon: bool; fabric: int; colour: int; charm: int; branch: int;
   word: [WS_WORD] u8; word_n: int; tied_t: f32 = -1;
+  // everyone else's ribbons: fabric, colour, charm, limb, slot, and a number for its sway
+  shared: [WS_SHARED * 6] int; shared_n: int;
+  qpos_t: f32; cpos_t: f32;
   // input
   hover: int = -1; down: bool; down_x: f32; down_y: f32; down_id: int;
   // saving: nothing is kept until last visit's save has come back (or plainly isn't coming)
@@ -270,11 +278,51 @@ ws_set_ribbon :: (h: [] Spring, t: string, from: int) -> bool {
     if at >= t.count || t[at] != ',' { return false; }
     at += 1;
   }
-  if vals[0] < 0 || vals[0] > 2 || vals[1] < 0 || vals[1] > 5 || vals[2] < 0 || vals[2] > 3 || vals[3] < 0 || vals[3] > 2 { return false; }
+  if vals[0] < 0 || vals[0] > 2 || vals[1] < 0 || vals[1] > 5 || vals[2] < 0 || vals[2] > 3 || vals[3] < 0 || vals[3] >= WS_LIMBS * 8 { return false; }
   h[0].fabric = vals[0]; h[0].colour = vals[1]; h[0].charm = vals[2]; h[0].branch = vals[3];
   ws_set_word(h, t, at);
   h[0].ribbon = true;
+  ws_settle_ribbon(h);
   return true;
+}
+
+// Is tie point `slot` of limb `l` free of everyone else's ribbons?
+ws_slot_free :: (h: [] Spring, l: int, slot: int) -> bool {
+  for i: 0..<h[0].shared_n { if h[0].shared[i * 6 + 3] == l && h[0].shared[i * 6 + 4] == slot { return false; } }
+  return true;
+}
+
+// The visitor's ribbon on a real tie point: an asked-for slot (or WS_SLOT_AUTO) becomes the free one
+// nearest the limb's middle; a full limb shares its middle.
+ws_settle_ribbon :: (h: [] Spring) {
+  l := h[0].branch / 8; slot := h[0].branch % 8;
+  if slot < WS_LIMB_SLOTS && ws_slot_free(h, l, slot) { return; }
+  pick := 2;
+  for i: 0..<WS_LIMB_SLOTS { c := WS_SLOT_ORDER[i]; if ws_slot_free(h, l, c) { pick = c; break; } }
+  h[0].branch = l * 8 + pick;
+}
+
+// Everyone else's ribbons, as the page read them from the room: "f,c,ch,l,s;...".
+ws_set_shared :: (h: [] Spring, t: string) {
+  h[0].shared_n = 0;
+  at := 0;
+  while at < t.count && h[0].shared_n < WS_SHARED {
+    vals: [5] int; ok := true;
+    for i: 0..<5 {
+      v := ws_read_int(t, at);
+      if !v.ok { ok = false; break; }
+      vals[i] = v.value; at = v.at;
+      if i < 4 { if at >= t.count || t[at] != ',' { ok = false; break; } at += 1; }
+    }
+    while at < t.count && t[at] != ';' { at += 1; }
+    at += 1;
+    if !ok { continue; }
+    if vals[0] < 0 || vals[0] > 2 || vals[1] < 0 || vals[1] > 5 || vals[2] < 0 || vals[2] > 3 || vals[3] < 0 || vals[3] >= WS_LIMBS || vals[4] < 0 || vals[4] >= WS_LIMB_SLOTS { continue; }
+    o := h[0].shared_n * 6;
+    for i: 0..<5 { h[0].shared[o + i] = vals[i]; }
+    h[0].shared[o + 5] = h[0].shared_n;
+    h[0].shared_n += 1;
+  }
 }
 
 // The last visit's save. Unknown or broken parts are left as they are.
@@ -331,6 +379,13 @@ ws_box_fits :: (u: [] f32, width: f32, height: f32) -> bool {
     z: f32 = ifx (c & 4) != 0 then WS_SAFE[5] else WS_SAFE[2];
     if !ws_fits(u, width, height, x, y, z, m) { return false; }
   }
+  // and the prayer limbs: each end tie point, and a ribbon hanging from it
+  for l: 0..<WS_LIMBS {
+    for e: 0..<2 {
+      at := ws_tie(l, ifx e == 0 then 0 else WS_LIMB_SLOTS - 1);
+      if !ws_fits(u, width, height, at.x, at.y + 0.05, at.z, m) || !ws_fits(u, width, height, at.x, at.y - 0.65, at.z, m) { return false; }
+    }
+  }
   return true;
 }
 
@@ -353,14 +408,15 @@ ws_camera_for :: (width: f32, height: f32) -> StyCamera {
 
 ws_look :: () -> StyLook {
   l: StyLook;
-  l.sun_x = -0.36; l.sun_y = 0.86; l.sun_z = 0.36; l.shadow = 0.82;
-  l.sun_r = 0.8; l.sun_g = 0.69; l.sun_b = 0.5; l.band = 0.38;
-  l.sky_r = 0.25; l.sky_g = 0.3; l.sky_b = 0.33;
-  l.ground_r = 0.21; l.ground_g = 0.19; l.ground_b = 0.14;
+  // dusk: a low warm sun from the left, just behind the grove, so its glow is in the shot and its light rakes the bank
+  l.sun_x = -0.9; l.sun_y = 0.13; l.sun_z = -0.32; l.shadow = 0.45;
+  l.sun_r = 0.98; l.sun_g = 0.64; l.sun_b = 0.44; l.band = 0.45;
+  l.sky_r = 0.32; l.sky_g = 0.25; l.sky_b = 0.3;
+  l.ground_r = 0.27; l.ground_g = 0.2; l.ground_b = 0.12;
   l.zenith_r = 0.32; l.zenith_g = 0.52; l.zenith_b = 0.8;
   l.horizon_r = 0.78; l.horizon_g = 0.83; l.horizon_b = 0.86;
-  l.haze_r = 0.7; l.haze_g = 0.74; l.haze_b = 0.72; l.haze = 0.006; l.haze_start = 14; l.haze_most = 0.6;
-  l.air = 1; l.cloud = 0.3; l.cloud_scale = 1.2;
+  l.haze_r = 0.86; l.haze_g = 0.7; l.haze_b = 0.5; l.haze = 0.008; l.haze_start = 12; l.haze_most = 0.55;
+  l.air = 1.45; l.cloud = 0.35; l.cloud_scale = 1.2;
   return l;
 }
 
@@ -371,7 +427,7 @@ ws_pick :: (h: [] Spring, px: f32, py: f32) -> int {
   best := -1; most: f32 = 1;
   focal := u[STY_U_EYE + 3];
   for s: 0..<WS_SPOTS {
-    q := ws_spot(s);
+    q := ws_spot_at(h, s);
     p := sty_project(u, q[0], q[1], q[2]);
     if !p.ahead { continue; }
     rows := sty_rows(u, STY_U_VIEW, q[0], q[1], q[2]);
@@ -383,6 +439,14 @@ ws_pick :: (h: [] Spring, px: f32, py: f32) -> int {
     if share < most { most = share; best = s; }
   }
   return best;
+}
+
+// A spot where it stands now: the quail's follows the quail.
+ws_spot_at :: (h: [] Spring, s: int) -> [4] f32 {
+  if s != WS_SPOT_QUAIL { return ws_spot(s); }
+  q := h[0].quail[0];
+  k: f32 = h[0].tune.quail_scale;
+  return [4] f32.[q.x, ws_ground_y(q.x, q.z) + 0.2 * k, q.z, 0.2 * k];
 }
 
 ws_next_clue :: (h: [] Spring) -> int {
@@ -534,6 +598,13 @@ ws_stones_message :: (h: [] Spring, t: string) {
 // ---- touching the grove
 ws_activate :: (h: [] Spring, s: int) {
   if h[0].paused { return; }
+  if s == WS_SPOT_QUAIL {
+    if h[0].quail[0].state != WS_Q_SPEAK && h[0].quail[0].state != WS_Q_ALERT {
+      ws_quail_speak(h[0].quail[..], 4.5);
+      ws_event(h, "speak", "tap");
+    }
+    return;
+  }
   if s == WS_SPOT_POOL { ws_spring_touch(h); return; }
   if s == WS_SPOT_STONES {
     if h[0].mode != WS_MODE_STONES {
@@ -643,40 +714,51 @@ ws_draw_stones :: (h: [] Spring, s: [] WsSkin) {
   }
 }
 
-ws_draw_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
-  if !h[0].ribbon { return; }
-  tie := ws_limb_at(WS_TIES[h[0].branch]);
-  col := [3] f32.[WS_RIBBON_COL[h[0].colour * 3], WS_RIBBON_COL[h[0].colour * 3 + 1], WS_RIBBON_COL[h[0].colour * 3 + 2]];
-  wide: f32 = WS_FABRIC_WIDE[h[0].fabric];
-  flutter: f32 = WS_FABRIC_FLUTTER[h[0].fabric];
-  caught := clamp(h[0].tied_t / 2.0, 0, 1);
+// One ribbon hanging from tie point `slot` of limb `l`: `caught` (0..1) is how far it has caught the
+// wind; `seed` gives each its own sway.
+ws_draw_one_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV, fabric: int, colour: int, charm: int, l: int, slot: int, caught: f32, seed: int) {
+  tie := ws_tie(l, slot);
+  col := [3] f32.[WS_RIBBON_COL[colour * 3], WS_RIBBON_COL[colour * 3 + 1], WS_RIBBON_COL[colour * 3 + 2]];
+  wide: f32 = WS_FABRIC_WIDE[fabric];
+  flutter: f32 = WS_FABRIC_FLUTTER[fabric];
   amp: f32 = 0.11 * flutter * caught * (ifx h[0].calm then 0.3f32 else 1.0f32);
   speed: f32 = ifx h[0].calm then 1.2f32 else 2.6f32;
-  n := 10; hang: f32 = 0.62;
+  off: f32 = 1.7 * cast(f32) seed;
+  n := 10; hang: f32 = 0.56 + 0.08 * ws_rand(seed + 41, 3);
   pts: [11] WsV;
   for i: 0..<n + 1 {
     f := cast(f32) i / cast(f32) n;
-    sway := amp * f * sin(h[0].time * speed * flutter - f * 3.4);
+    sway := amp * f * sin(h[0].time * speed * flutter - f * 3.4 + off);
     lift := amp * 0.5 * f * f;
-    pts[i] = ws_v(tie.x + sway + lift, tie.y - 0.03 - hang * f + abs(sway) * 0.4, tie.z + amp * 0.35 * f * cos(h[0].time * speed * 0.7 - f * 2.0));
+    pts[i] = ws_v(tie.x + sway + lift, tie.y - 0.03 - hang * f + abs(sway) * 0.4, tie.z + amp * 0.35 * f * cos(h[0].time * speed * 0.7 - f * 2.0 + off));
   }
   side := ws_v(0.94, 0, 0.34);
   for i: 0..<n {
     taper := 1 - 0.3 * cast(f32) i / cast(f32) n;
     ws_skin_strip(s, pts[i], pts[i + 1], side, wide * taper, wide * (taper - 0.03), col, eye);
   }
-  // the knot round the branch
+  // the knot round the limb
   kb: WsBlob; kb.x = tie.x; kb.y = tie.y; kb.z = tie.z; kb.rx = wide * 1.6; kb.ry = wide * 1.2; kb.rz = wide * 1.4; kb.seg = 5; kb.rings = 3; kb.seed = 901;
   ws_skin_blob(s, kb, col);
   tail := pts[n];
-  if h[0].charm == 1 {
+  if charm == 1 {
     ws_skin_octa(s, ws_v(tail.x, tail.y - 0.03, tail.z), 0.03, 1.2, [3] f32.[0.82, 0.68, 0.4]);
-  } else if h[0].charm == 2 {
+  } else if charm == 2 {
     bb: WsBlob; bb.x = tail.x; bb.y = tail.y - 0.025; bb.z = tail.z; bb.rx = 0.025; bb.ry = 0.025; bb.rz = 0.025; bb.seg = 6; bb.rings = 3; bb.seed = 903;
     ws_skin_blob(s, bb, [3] f32.[col[0] * 0.6, col[1] * 0.6, col[2] * 0.6]);
-  } else if h[0].charm == 3 {
+  } else if charm == 3 {
     ws_skin_strip(s, tail, ws_v(tail.x + 0.03, tail.y - 0.16, tail.z), side, 0.022, 0.006, [3] f32.[0.86, 0.83, 0.76], eye);
   }
+}
+
+// The visitor's own ribbon, and everyone else's that the room holds.
+ws_draw_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
+  for i: 0..<h[0].shared_n {
+    o := i * 6;
+    ws_draw_one_ribbon(h, s, eye, h[0].shared[o], h[0].shared[o + 1], h[0].shared[o + 2], h[0].shared[o + 3], h[0].shared[o + 4], 1, 100 + h[0].shared[o + 5]);
+  }
+  if !h[0].ribbon { return; }
+  ws_draw_one_ribbon(h, s, eye, h[0].fabric, h[0].colour, h[0].charm, h[0].branch / 8, h[0].branch % 8, clamp(h[0].tied_t / 2.0, 0, 1), 7);
 }
 
 ws_draw_water_light :: (h: [] Spring, s: [] WsSkin) {
@@ -808,6 +890,31 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
   ws_quail_step(q, h[0].tune, sim, clue, h[0].calm, alert);
   if q[0].called { ws_event(h, "cue", "quail.call"); }
   if q[0].clued >= 0 { ws_event(h, "clue", ws_clue_name(q[0].clued)); h[0].clue_turn += 1; }
+  // where the quest's next spot is on the page (CSS pixels), for its callout: "cpos|SPOT,x,y" (-1: all found)
+  h[0].cpos_t -= step;
+  if h[0].viewed && h[0].cpos_t <= 0 {
+    h[0].cpos_t = 0.25;
+    nc := ws_next_clue(h);
+    sp := ifx nc == WS_CLUE_STONES then WS_SPOT_STONES else ifx nc == WS_CLUE_RIBBON then WS_SPOT_BRANCH else WS_SPOT_POOL;
+    tc: [1] WsText; ws_put(tc[..], "cpos|");
+    if nc < 0 { ws_put(tc[..], "-1,0,0"); }
+    else {
+      qs := ws_spot(sp);
+      cp := sty_project(h[0].view[..], qs[0], qs[1] + 0.1, qs[2]);
+      ws_put_int(tc[..], sp); ws_put(tc[..], ","); ws_put_int(tc[..], cast(int) (cp.x / d)); ws_put(tc[..], ","); ws_put_int(tc[..], cast(int) (cp.y / d));
+    }
+    ws_send(h, WS_ACT_EVENT, tc[..]);
+  }
+  h[0].qpos_t -= step;
+  if q[0].state == WS_Q_SPEAK && h[0].viewed && h[0].qpos_t <= 0 {
+    h[0].qpos_t = 0.2;
+    k: f32 = h[0].tune.quail_scale;
+    at := sty_project(h[0].view[..], q[0].x, ws_ground_y(q[0].x, q[0].z) + 0.42 * k, q[0].z);
+    if at.ahead {
+      tq: [1] WsText; ws_put(tq[..], "qpos|"); ws_put_int(tq[..], cast(int) (at.x / d)); ws_put(tq[..], ","); ws_put_int(tq[..], cast(int) (at.y / d));
+      ws_send(h, WS_ACT_EVENT, tq[..]);
+    }
+  }
   if width != h[0].cam_w || height != h[0].cam_h { h[0].cam = ws_camera_for(width, height); h[0].cam_w = width; h[0].cam_h = height; }
   if uniforms.count >= WS_UNIFORMS && width >= 1 && height >= 1 {
     u := uniforms;
@@ -879,6 +986,12 @@ ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
     return;
   }
   if kind == WS_MSG_FORGET { ws_forget(h); return; }
+  if kind == WS_MSG_SHARED { ws_set_shared(h, t); if h[0].ribbon { ws_settle_ribbon(h); } return; }
+  if kind == WS_MSG_SPEAK {
+    v := ws_read_int(t, 0);
+    if v.ok && v.value > 0 && v.value <= 30 && h[0].quail[0].state != WS_Q_ALERT { ws_quail_speak(h[0].quail[..], cast(f32) v.value); }
+    return;
+  }
   if kind == WS_MSG_CLOSE { if h[0].mode != WS_MODE_GROVE { h[0].mode = WS_MODE_GROVE; h[0].held = -1; ws_tell_state(h); } return; }
 }
 
@@ -960,14 +1073,17 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
         }
       }
     }
-    for s: 0..<WS_SPOTS {
+    for s: 0..<3 {
       q := ws_spot(s);
       #assert ws_fits(u[..], w, hh, q[0], q[1], q[2], 0.02);
       for k: 0..<np { #assert !ws_segment_hits(eye, ws_v(q[0], q[1], q[2]), props[k * 4], props[k * 4 + 1], props[k * 4 + 2], props[k * 4 + 3]); }
     }
-    for k: 0..<3 {
-      at := ws_limb_at(WS_TIES[k]);
-      #assert ws_fits(u[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
+    // every tie point, and the foot of a ribbon hanging from it, is in the picture
+    for l: 0..<WS_LIMBS {
+      for sl: 0..<WS_LIMB_SLOTS {
+        at := ws_tie(l, sl);
+        #assert ws_fits(u[..], w, hh, at.x, at.y, at.z, 0.02) && ws_fits(u[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
+      }
     }
   }
 }
@@ -1080,9 +1196,17 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
   t: [1] WsTest; h := t[0].h[..];
   ws_test_run(t[..], 2, 0.016, 1280, 720);
   for s: 0..<WS_SPOTS {
-    q := ws_spot(s);
+    q := ws_spot_at(h, s);
     p := sty_project(h[0].view[..], q[0], q[1], q[2]);
     #assert ws_pick(h, p.x, p.y) == s;
   }
+  // a tap on the quail: it turns to speak, and the page hears it
+  _ = ws_test_drain(h, "");
+  qs := ws_spot_at(h, WS_SPOT_QUAIL);
+  qp := sty_project(h[0].view[..], qs[0], qs[1], qs[2]);
+  ws_pointer(h, qp.x, qp.y, 0, 0, 1, 0); ws_pointer(h, qp.x, qp.y, 2, 0, 1, 0);
+  #assert h[0].quail[0].state == WS_Q_SPEAK && ws_test_drain(h, "speak|tap");
+  ws_test_run(t[..], 3, 0.1, 1280, 720);
+  #assert ws_test_drain(h, "qpos|");
   #assert ws_pick(h, 1270, 10) == -1;
 }

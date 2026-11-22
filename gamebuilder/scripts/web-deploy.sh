@@ -42,6 +42,13 @@ if [[ "${1:-}" == domain ]]; then
     api="  - paths: ['/api/rows/*', '/api/levels/*', '/api/play/*', '/api/pictures/*', '/g/*', '/api/capabilities', '/api/openapi.json', '/api/count', '/mcp']
     service: $base/backendServices/gamebuilder-api"
   fi
+  # The Whispering Spring's shared grove: guest keys, its chat and its ribbon tree are the OpenAgents
+  # API's moderated rooms (coax/web/api/room.c), the same Cloud Run service openagents.com routes to.
+  rooms=""
+  if has compute backend-services describe oa-api --global; then
+    rooms="  - paths: ['/api/playtest/player', '/api/playtest/player/name', '/api/playtest/chat/whispering-spring', '/api/playtest/chat/whispering-spring-ribbons', '/api/playtest/presence/whispering-spring']
+    service: $base/backendServices/oa-api"
+  fi
   snapshot_paths=""
   if has compute backend-buckets describe gamebuilder-player-releases; then
     snapshot_paths="  - paths: ['/player-releases/*']
@@ -63,6 +70,7 @@ pathMatchers:
   pathRules:
 $snapshot_paths
 $api
+$rooms
   - paths: ['/fated-dragon/', '/fated-dragon/index.html']
     urlRedirect:
       pathRedirect: /fated-dragon

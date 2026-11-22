@@ -51,6 +51,6 @@ done
 
 # World 3: The Whispering Spring (/whispering-spring)
 ws_src="$gb/worlds/whispering-spring"
-cp "$ws_src/index.html" "$ws_src/glue.js" "$ws_src/audio.js" "$ws_src/audio-manifest.json" "$here/whispering-spring/"
+cp "$ws_src/index.html" "$ws_src/glue.js" "$ws_src/audio.js" "$ws_src/room.js" "$ws_src/audio-manifest.json" "$here/whispering-spring/"
 "$repo/coax/web/wasm.sh" "$ws_src/world-spring.coax" "$ws_src/whispering-spring-face.c" "$here/whispering-spring/build/whispering-spring.wasm"
 (cd "$repo" && COAX="$COAX" COAXIAL_MODE="${COAXIAL_MODE:-release}" "$repo/coax/web/tool.sh" "$repo/coax/web/wgsl-module.coax" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.coax "$here/whispering-spring/whispering-spring.wgsl" gamebuilder/worlds/whispering-spring/gpu/whispering-spring.module)

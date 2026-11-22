@@ -7,17 +7,17 @@ WsTune :: struct {
   // The quail. Seconds each behaviour lasts (a random share more, up to `vary`).
   forage_s: f32 = 2.6;
   scurry_s: f32 = 0.9;
-  scan_s: f32 = 2.2;
+  scan_s: f32 = 3.0;
   peck_s: f32 = 1.6;
   call_s: f32 = 1.2;
   attend_s: f32 = 3.4;      // how long it stays at a clue: scratching, pausing, head up
   alert_s: f32 = 2.8;       // how long it goes still when the water first answers
   resume_s: f32 = 0.6;
   vary: f32 = 0.6;
-  walk_speed: f32 = 0.32;   // metres a second while foraging
-  scurry_speed: f32 = 1.25;
+  walk_speed: f32 = 0.26;   // metres a second while foraging
+  scurry_speed: f32 = 0.9;
   attend_every_s: f32 = 9.0;  // after this long without a clue, the next choice is a clue
-  quail_scale: f32 = 2.2;   // stylized: a real quail is about 0.25 m long
+  quail_scale: f32 = 2.4;   // stylized: a real quail is about 0.25 m long
   // The gold. Particles a second in the plume, how long one lives, how many at most.
   plume_rate: f32 = 42.0;
   plume_life: f32 = 4.2;

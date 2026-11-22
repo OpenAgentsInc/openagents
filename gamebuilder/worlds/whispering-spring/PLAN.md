@@ -67,6 +67,38 @@ IndexedDB `coaxial/kept`, key `whispering-spring`, localStorage if IndexedDB is 
 (sound, volumes, captions, reduced motion and bloom, text-first) are per-viewer and live in
 localStorage `whispering-spring.settings.v1`.
 
+## Second pass (built)
+
+- **Look:** dusk, toward the client's reference art. A low warm sun to the left of the grove, a
+  banded umber cut bank with roots, twisted live-oak and cedar trunks framing the shot, low-poly
+  boulders and agave clumps, and a brook that steps down from the pool toward the camera.
+- **The quail stands for the musician.** It is upright and composed, with a slate breast, a white
+  brow and necklace, and a teardrop plume. It scurries less and pauses more. Tap it, or use
+  "Greet the quail", and it turns to you and speaks.
+- **Speech:** a greeting on arrival, a prayer when greeted, a blessing for each ribbon, and a line
+  once every song is found. The lines live in `audio-manifest.json` `voice` (placeholders for the
+  musician to rewrite). They type into a bubble over the quail in a cozy-game babble voice
+  (`audio.js` `speak`) and are announced to screen readers. The voice can be turned off in Settings.
+- **Six prayer limbs**, six tie points each (36), named in the ribbon form (`grove.coax`
+  `WS_LIMB_AT`). The camera's fit check includes every tie point and its hanging ribbon.
+- **A shared grove:** every visitor sees the same ribbons and a live chat. Both use the OpenAgents
+  API's moderated rooms (`coax/web/api/room.c`): a playtest guest key, a 500-character limit,
+  5 lines per 10 s, the last 50 lines, mutes and bans, and admin removal of a line.
+  - `whispering-spring` is the chat.
+  - `whispering-spring-ribbons` holds one line per ribbon (`ribbon1|f,c,ch,limb,slot|word`).
+    Every screen places them the same way (`room.js` `placeRibbons`): newest first, at most 36.
+  - Words are shared only when the visitor leaves "Let other visitors read my words" ticked.
+    Any visitor can hide a ribbon, or every word from a name, on their own device.
+  - gamebuilder.org routes those paths to the `oa-api` service (`web-deploy.sh domain`).
+- **The frame from the client's mockups:** a title page with Obsidian Quail across the bank,
+  "Enter the Grove" as a ripple on the pool and "Listen to the Album" on a stone. In the grove,
+  an Album Quest card, a small Album Journal with sealed songs, a callout pinned to the next spot,
+  a sound toggle, and a Live Chat · Menu · Quiet View bar.
+
+Not yet: a dedicated ribbon API with a report button (a ribbon line can only be removed by an admin
+today), a display font for the title (the visitor's serif stands in), and painted or modelled
+assets (see the client doc's asset prompts).
+
 ## Later phases (designed for, not built)
 
 What OpenAgents already has: Nostr sign-in (NIP-07/NIP-98) and the browser playtest player;
