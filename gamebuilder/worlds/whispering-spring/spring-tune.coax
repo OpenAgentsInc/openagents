@@ -17,7 +17,7 @@ WsTune :: struct {
   walk_speed: f32 = 0.26;   // metres a second while foraging
   scurry_speed: f32 = 0.9;
   attend_every_s: f32 = 9.0;  // after this long without a clue, the next choice is a clue
-  quail_scale: f32 = 2.4;   // stylized: a real quail is about 0.25 m long
+  quail_scale: f32 = 3.1;   // stylized: a real quail is about 0.25 m long
   // The gold. Particles a second in the plume, how long one lives, how many at most.
   plume_rate: f32 = 42.0;
   plume_life: f32 = 4.2;
