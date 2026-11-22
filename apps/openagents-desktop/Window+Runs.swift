@@ -387,10 +387,36 @@ extension CoderWindow {
             else { one.follow() }
         }
     }
+    /// Fast zero-subprocess `.git/HEAD` reader for sidebar card branch labels.
+    private static func quickGitBranch(at dir: String) -> String {
+        guard !dir.isEmpty else { return "" }
+        let gitPath = (dir as NSString).appendingPathComponent(".git")
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: gitPath, isDirectory: &isDir) else { return "" }
+        let headPath: String
+        if isDir.boolValue {
+            headPath = (gitPath as NSString).appendingPathComponent("HEAD")
+        } else if let ptr = try? String(contentsOfFile: gitPath, encoding: .utf8),
+                  ptr.hasPrefix("gitdir:") {
+            let rel = ptr.dropFirst(7).trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolved = rel.hasPrefix("/") ? rel : (dir as NSString).appendingPathComponent(rel)
+            headPath = (resolved as NSString).appendingPathComponent("HEAD")
+        } else {
+            return ""
+        }
+        guard let head = try? String(contentsOfFile: headPath, encoding: .utf8) else { return "" }
+        let line = head.trimmingCharacters(in: .whitespacesAndNewlines)
+        if line.hasPrefix("ref: refs/heads/") { return String(line.dropFirst(16)) }
+        if line.count >= 7 { return String(line.prefix(7)) }
+        return ""
+    }
     /// The list as the page reads it: one chat a line, its id, a tab, its title, and optional tabs
-    /// for busy, pinned, managed, unread, archived, snoozed_until_ms, and project_folder (#13875).
+    /// for busy, pinned, managed, unread, archived, snoozed_until_ms, project_folder, updated_ms,
+    /// branch, and harness (#13875).
     var chatLines: String {
-        store.orderedList.map { chat in
+        cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
+        var branchCache: [String: String] = [:]
+        return store.orderedList.map { chat in
             let isBusy = runs[chat.id] != nil
             let isPinned = chat.pinned != nil
             let isManaged = chat.managedBy == Foreman.managedTag
@@ -400,7 +426,25 @@ extension CoderWindow {
             let proj = store.effectiveProjectFolder(chat)
                 .replacingOccurrences(of: "\t", with: " ")
                 .replacingOccurrences(of: "\n", with: "")
-            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + proj
+            let updatedMs = Int64(chat.updated * 1000)
+            let branch: String
+            if let wb = chat.worktreeBranch, !wb.isEmpty {
+                branch = wb
+            } else if let cached = branchCache[proj] {
+                branch = cached
+            } else {
+                let b = CoderWindow.quickGitBranch(at: proj)
+                branchCache[proj] = b
+                branch = b
+            }
+            let prog = (runs[chat.id] ?? (chat.id == self.chat ? run : nil))?.worker.program ?? ""
+            let harness = isManaged ? "foreman"
+                : prog == "claudeworker" ? "claude"
+                : prog == "agyworker" ? "agy"
+                : prog == "codex" ? "codex"
+                : "psionic"
+            let cleanBranch = branch.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: "")
+            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + proj + "\t" + String(updatedMs) + "\t" + cleanBranch + "\t" + harness
         }.joined(separator: "\n")
     }
     var isForemanShown: Bool { chat == Foreman.chatID }

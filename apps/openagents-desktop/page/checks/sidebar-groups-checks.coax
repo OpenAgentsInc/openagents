@@ -6,8 +6,8 @@
 
 cp_sb_test_frame :: (s: [] CoderPage, f: [] UiFrame, t: f32) -> bool {
   uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), t, 0.016f32, true, false);
-  cp_layout(s, f, 1200.0f32, 800.0f32);
-  _ = cp_overlay(s, f, 1200.0f32, 800.0f32, 0.016f32);
+  cp_layout(s, f, 1200.0f32, 1600.0f32);
+  _ = cp_overlay(s, f, 1200.0f32, 1600.0f32, 0.016f32);
   return uiframe_end(f, s[0].surface[..]);
 }
 

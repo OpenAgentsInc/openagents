@@ -21,6 +21,9 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
     a := ifx z < e then z + 1 else e; while a < e && list[a] != 9 { a += 1; }   // optional seventh column: '1' when archived (#13875)
     b := ifx a < e then a + 1 else e; while b < e && list[b] != 9 { b += 1; }   // optional eighth column: snoozed_until_ms epoch ms (#13875)
     c := ifx b < e then b + 1 else e; while c < e && list[c] != 9 { c += 1; }   // optional ninth column: project/working folder path (#13875)
+    d := ifx c < e then c + 1 else e; while d < e && list[d] != 9 { d += 1; }   // optional tenth column: updated_ms epoch ms
+    g := ifx d < e then d + 1 else e; while g < e && list[g] != 9 { g += 1; }   // optional eleventh column: git branch name
+    h := ifx g < e then g + 1 else e; while h < e && list[h] != 9 { h += 1; }   // optional twelfth column: harness key
     if t > i {
       if s[0].nchats < CP_CHATS {
         k := s[0].nchats;
@@ -33,7 +36,15 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
         s[0].chats[k].unread = z + 1 < a && list[z + 1] == '1';
         s[0].chats[k].archived = a + 1 < b && list[a + 1] == '1';
         s[0].chats[k].snoozed_until_ms = ifx b + 1 < c then cp_sb_parse_int(cast(string) list[b + 1..<c]) else 0;
-        s[0].chats[k].folder_n = ifx c + 1 < e then cp_sb_norm_path(cast(string) list[c + 1..<e], s[0].chats[k].folder[..]) else 0;
+        s[0].chats[k].folder_n = ifx c + 1 < d then cp_sb_norm_path(cast(string) list[c + 1..<d], s[0].chats[k].folder[..]) else 0;
+        s[0].chats[k].updated_ms = ifx d + 1 < g then cp_sb_parse_int(cast(string) list[d + 1..<g]) else 0;
+        s[0].chats[k].branch_n = ifx g + 1 < h then cp_out(s[0].chats[k].branch[..], cast(string) list[g + 1..<h]) else 0;
+        h_str := ifx h + 1 < e then cast(string) list[h + 1..<e] else "";
+        s[0].chats[k].harness = ifx h_str == "claude" then ICON_CLAUDE
+                                else ifx h_str == "codex" then ICON_OPENAI
+                                else ifx h_str == "agy" then ICON_BRAIN
+                                else ifx h_str == "foreman" then ICON_BOT
+                                else ICON_PSIONIC;
         s[0].nchats += 1;
       } else { s[0].chats_more += 1; }
     }

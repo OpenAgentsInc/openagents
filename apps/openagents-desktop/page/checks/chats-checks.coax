@@ -181,7 +181,7 @@
   coder_page_foreman(s, false, CP_FOREMAN_TIER_OBSERVE);
   f: [1] UiFrame;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
-  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  cp_layout(s, f[..], 1200.0f32, 1200.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   sf0 := s[0].surface[0].front;
   base_u := s[0].surface[0].sheet[sf0].nu;
@@ -190,7 +190,7 @@
   coder_page_cmd_hints(s, true);
   #assert s[0].cmd_hints;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 1, 0.016, false, false);
-  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  cp_layout(s, f[..], 1200.0f32, 1200.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   sf1 := s[0].surface[0].front;
   // 10 badges total: ` for Foreman + 1..9 for the first 9 chats (10th chat has no shortcut).
@@ -205,7 +205,7 @@
   coder_page_cmd_hints(s, false);
   #assert !s[0].cmd_hints;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 2, 0.016, false, false);
-  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  cp_layout(s, f[..], 1200.0f32, 1200.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   sf2 := s[0].surface[0].front;
   #assert s[0].surface[0].sheet[sf2].nu == base_u;

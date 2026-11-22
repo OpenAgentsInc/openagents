@@ -273,6 +273,9 @@ CpChat :: struct {
   busy: bool; pinned: bool; managed: bool; unread: bool;   // busy: a reply runs in it, out of view; pinned: shown in Pinned section; managed: Foreman-managed; unread: completed or updated out of view
   archived: bool; snoozed_until_ms: int;                   // archived: hidden from active list (#13875); snoozed_until_ms: epoch ms wake time (#13875)
   folder: [CP_CHAT_FOLDER] u8; folder_n: int;              // project/working folder path for sidebar grouping (#13875)
+  updated_ms: int;                                         // last updated epoch ms for card relative time
+  branch: [64] u8; branch_n: int;                          // git branch name for card metadata line
+  harness: int;                                            // harness/provider icon id (ICON_PSIONIC, ICON_CLAUDE, etc.)
 }
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
