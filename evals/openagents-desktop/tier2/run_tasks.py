@@ -148,7 +148,7 @@ class Sandbox:
         elif self.base_sha:
             self.fixture = None
             with GIT_WORKTREE_LOCK:
-                r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=120)
+                r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=300)
             if r.returncode != 0:
                 raise RuntimeError(f"git worktree add {self.base_sha} failed: {r.stderr}")
             self.is_git_worktree = True
@@ -214,8 +214,17 @@ class Sandbox:
     def remove(self) -> None:
         if self.is_git_worktree:
             with GIT_WORKTREE_LOCK:
-                sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=60)
+                try:
+                    sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=120)
+                except subprocess.TimeoutExpired:
+                    pass
         shutil.rmtree(self.root, ignore_errors=True)
+        if self.is_git_worktree:
+            with GIT_WORKTREE_LOCK:
+                try:
+                    sh(["git", "-C", str(REPO_ROOT), "worktree", "prune"], timeout=30)
+                except subprocess.TimeoutExpired:
+                    pass
 
 
 def skills_note(home: Path) -> str:

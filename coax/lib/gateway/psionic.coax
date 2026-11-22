@@ -42,7 +42,7 @@ gw_psionic :: (base: string, url_buf: [] u8) -> Gateway {
 
 // The same local gateway with strict json_schema enabled (for llama-server / Inkling 2 Mini GBNF grammar decoding).
 gw_psionic_strict :: (base: string, url_buf: [] u8) -> Gateway {
-  return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = 0};
+  return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = GW_CHAT_LEGACY_MAX_TOKENS};
 }
 
 // One peer entry from PSIONIC_PEERS ("http://host:port" or "http://host:port#model").
@@ -103,10 +103,11 @@ gw_psionic_up :: (base: string) -> bool {
   #assert gw_translate(g, req, out[..], why[..]) == "{\"model\":\"qwen3.5-4b\",\"messages\":[{\"role\":\"system\",\"content\":\"Reply in JSON.\"},{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
   #assert gw_rate("psionic", "qwen3.5-4b").ok == false;
   gs := gw_psionic_strict(GW_PSIONIC_DEFAULT_BASE, ub[..]);
-  #assert gs.flags == 0 && gs.name == "psionic" && gs.url == g.url;
-  body_s := gw_translate(gs, req, out[..], why[..]);
+  #assert gs.flags == GW_CHAT_LEGACY_MAX_TOKENS && gs.name == "psionic" && gs.url == g.url;
+  req_s := GwRequest.{model = "qwen3.5-4b", messages = msgs[..], schema = "{\"type\":\"object\"}", schema_hint = "Reply in JSON.", max_tokens = 4096};
+  body_s := gw_translate(gs, req_s, out[..], why[..]);
   ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  #assert json_valid(body_s) && cl_str(ar[..], body_s, "response_format.type") == "json_schema";
+  #assert json_valid(body_s) && cl_str(ar[..], body_s, "response_format.type") == "json_schema" && cl_int(body_s, "max_tokens").value == 4096;
   peers: [4] GwPsionicPeer;
   np := gw_psionic_parse_peers("http://100.74.238.61:18795/#qwen35-9b, http://127.0.0.1:18794#inkling-2-mini , http://127.0.0.1:8080/", peers[..]);
   #assert np == 3 && peers[0].base == "http://100.74.238.61:18795" && peers[0].model == "qwen35-9b";

@@ -88,12 +88,46 @@ mc_cmd_simple :: (c: string, w: [] McWord, n: int) -> int {
   if prog == "tool.sh" { return ifx mc_cmd_ends(sub, "check") then MC_CMD_CHECK else 0; }
   if mc_cmd_starts(prog, "python") {
     for j: i + 1..<n - 1 {
-      if mc_cmd_word(c, w[j]) == "-m" { m := mc_cmd_word(c, w[j + 1]); if m == "pytest" || m == "unittest" { return MC_CMD_CHECK; } }
+      if mc_cmd_word(c, w[j]) == "-m" { m := mc_cmd_word(c, w[j + 1]); if m == "pytest" || m == "unittest" || m == "py_compile" { return MC_CMD_CHECK; } }
     }
     f := mc_cmd_base(sub);
     if mc_cmd_ends(f, ".py") && (mc_cmd_starts(f, "test") || mc_cmd_ends(f, "_test.py")) { return MC_CMD_CHECK; }
   }
+  if prog == "cc" || prog == "clang" || prog == "gcc" {
+    for j: i + 1..<n {
+      if mc_cmd_word(c, w[j]) == "-fsyntax-only" { return MC_CMD_CHECK; }
+    }
+  }
   return 0;
+}
+
+// Whether a shell command is primarily a read-only search/listing command whose passing output
+// should be bounded tightly in prompt state (full output still spills to disk).
+mc_cmd_is_search :: (c: string) -> bool {
+  k: [1] McCmdCut;
+  mc_cmd_cut(c, k[..]);
+  if k[0].n <= 0 { return false; }
+  // Inspect the first simple command in the pipeline.
+  a := 0; b := k[0].end[0];
+  i := a;
+  while i < b && mc_cmd_assign(mc_cmd_word(c, k[0].w[i])) { i += 1; }
+  if i >= b { return false; }
+  prog := mc_cmd_base(mc_cmd_word(c, k[0].w[i]));
+  if prog == "rg" || prog == "grep" || prog == "egrep" || prog == "fgrep" || prog == "find" || prog == "ls" { return true; }
+  if prog == "git" {
+    j := i + 1;
+    while j < b {
+      o := mc_cmd_word(c, k[0].w[j]);
+      if o == "-C" || o == "-c" { j += 2; continue; }
+      if mc_cmd_starts(o, "-") { j += 1; continue; }
+      break;
+    }
+    if j < b {
+      s := mc_cmd_word(c, k[0].w[j]);
+      if s == "grep" || s == "log" || s == "status" || s == "ls-files" { return true; }
+    }
+  }
+  return false;
 }
 
 mc_cmd_assign :: (s: string) -> bool {
@@ -240,6 +274,9 @@ mc_check_line :: (lc: [] McLastCheck, out: [] u8) -> string {
   #assert mc_cmd_kind("make -j4 check") == MC_CMD_CHECK && mc_cmd_kind("pytest -q tests") == MC_CMD_CHECK;
   #assert mc_cmd_kind("coax/web/api/test.sh --part 1/2") == MC_CMD_CHECK && mc_cmd_kind("metaverse/test_voice.sh") == MC_CMD_CHECK && mc_cmd_kind("psionic/check.sh --only x") == MC_CMD_CHECK;
   #assert mc_cmd_kind("python3 metaverse/test_home.py") == MC_CMD_CHECK && mc_cmd_kind("python3 -m pytest x") == MC_CMD_CHECK && mc_cmd_kind("python3 a/b_test.py") == MC_CMD_CHECK;
+  #assert mc_cmd_kind("python3 -m py_compile a.py b.py") == MC_CMD_CHECK && mc_cmd_kind("cc -fsyntax-only -I. stub.c") == MC_CMD_CHECK && mc_cmd_kind("clang -c stub.c") == 0;
+  #assert mc_cmd_is_search("git grep -n foo coax/") && mc_cmd_is_search("rg bar src/") && mc_cmd_is_search("ls -la coax/lib/") && mc_cmd_is_search("git log -n 10 --oneline");
+  #assert !mc_cmd_is_search("coax/bin/coax test a.coax") && !mc_cmd_is_search("git diff a.coax") && !mc_cmd_is_search("python3 -m py_compile a.py");
 }
 
 #test "reading, building and editing are not checks; a quoted message or a grep for test is not one" {

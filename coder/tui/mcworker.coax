@@ -389,8 +389,18 @@ tool_main :: () -> int #export_c #effects(all) {
       n := mc_run_poll(run[..], ev[..]);
       for i: 0..<n {
         if hybrid_on {
-          if ev[i].kind == MR_COMMAND {
-            if ev[i].text.count >= 5 && cast(string) ev[i].text[0..<5] == "edit " { hy[0].step_had_edit = true; }
+          if ev[i].kind == MR_ATTEMPT && ev[i].log.gateway != "psionic" {
+            c := ifx ev[i].log.cost_usd_micros > 0 then ev[i].log.cost_usd_micros else (ifx ev[i].log.card_usd_micros > 0 then ev[i].log.card_usd_micros else 0);
+            hy[0].cloud_cost_micros += c;
+            if c > 0 { hy[0].last_cloud_micros = c; }
+          } else if ev[i].kind == MR_COMMAND {
+            is_edit := ev[i].text.count >= 5 && cast(string) ev[i].text[0..<5] == "edit ";
+            if is_edit {
+              hy[0].step_had_edit = true;
+              if ev[i].exit == 0 && !ev[i].timed_out { hy[0].had_edit = true; }
+            } else {
+              hy[0].step_cmds += 1;
+            }
             if ev[i].exit != 0 || ev[i].timed_out { hy[0].step_failed = true; }
           } else if ev[i].kind == MR_VIEW {
             hy[0].step_views += 1;
@@ -608,6 +618,7 @@ tool_main :: () -> int #export_c #effects(all) {
       lms := mk_env_int("MC_HYBRID_LOCAL_MS", MC_HYBRID_LOCAL_DEFAULT_MS);
       ff_b: [16] u8; ff := gw_env("MC_HYBRID_FREE_FINISH", ff_b[..]) != "0";
       mc_hybrid_init(hy[..], lsteps, lms, ff, cxproc_now_ms());
+      hy[0].cloud_budget_micros = mk_env_int("MC_HYBRID_CLOUD_BUDGET_MICROS", 0);
     }
     // before the first call, what the task names is looked up: its files viewed (anchored on task symbols), its code names found (GitHub #13325)
     rpb: [1024] u8;

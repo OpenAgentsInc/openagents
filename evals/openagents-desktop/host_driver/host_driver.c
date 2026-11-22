@@ -147,7 +147,7 @@ static void wp_close(WorkerProc *w) {
 }
 
 // exec_bin set: the real worker binary, started in cwd with no arguments (Tier 2).
-static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *record_path, const char *exec_bin, const char *cwd, int slot, int agent) {
+static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *record_path, const char *exec_bin, const char *cwd, int slot, int agent, int64_t budget_micros) {
   wp_close(w);
   wp_init(w);
   w->slot = slot;
@@ -166,6 +166,11 @@ static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *reco
     dup2(p_out[1], STDOUT_FILENO);
     close(p_in[0]); close(p_in[1]); close(p_out[0]); close(p_out[1]);
     if (exec_bin && exec_bin[0]) {
+      if (budget_micros > 0 && !getenv("MC_HYBRID_CLOUD_BUDGET_MICROS")) {
+        char bb[32];
+        snprintf(bb, sizeof(bb), "%lld", (long long)budget_micros);
+        setenv("MC_HYBRID_CLOUD_BUDGET_MICROS", bb, 0);
+      }
       if (cwd && cwd[0] && chdir(cwd) != 0) _exit(126);
       int devnull = open("/dev/null", O_WRONLY);
       if (devnull >= 0) { dup2(devnull, STDERR_FILENO); close(devnull); }
@@ -195,7 +200,7 @@ static int wp_spawn_any(WorkerProc *w, const char *script_path, const char *reco
   return 0;
 }
 static int wp_spawn(WorkerProc *w, const char *script_path, const char *record_path) {
-  return wp_spawn_any(w, script_path, record_path, NULL, NULL, w->slot, w->agent);
+  return wp_spawn_any(w, script_path, record_path, NULL, NULL, w->slot, w->agent, 0);
 }
 
 static int wp_write_all(WorkerProc *w, const char *data, int n) {
@@ -320,7 +325,7 @@ static int slot_dispatch(Slot *s) {
     int si_idx = (int)(s - g_slots);
     if (s->live) {
       const char *bin = cd_agent_claude(s->page, j) ? g_claude_worker_bin : g_worker_bin;
-      if (!bin[0] || wp_spawn_any(&s->agents[j], NULL, NULL, bin, s->cwd, si_idx, j) != 0) {
+      if (!bin[0] || wp_spawn_any(&s->agents[j], NULL, NULL, bin, s->cwd, si_idx, j, 0) != 0) {
         cd_agent_failed(s->page, j, bin[0] ? "the worker could not start" : "no Claude worker configured (--claude-worker)");
       } else {
         char asess[80];
@@ -688,7 +693,7 @@ int main(int argc, char **argv) {
       } else {
         Slot *s = &g_slots[si];
         s->live = 1;
-        int r = wp_spawn_any(&s->main_w, NULL, NULL, g_worker_bin, s->cwd, si, -1);
+        int r = wp_spawn_any(&s->main_w, NULL, NULL, g_worker_bin, s->cwd, si, -1, cd_budget_usd_micros(s->page));
         printf("{\"ok\":%s,\"pid\":%d}\n", r == 0 ? "true" : "false", (int)s->main_w.pid);
       }
     } else if (strcmp(cmd, "SET_CWD") == 0 || strcmp(cmd, "SET_SESSION") == 0) {

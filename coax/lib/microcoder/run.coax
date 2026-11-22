@@ -142,9 +142,16 @@ McHybrid :: struct {
   local_max: int;
   local_ms: int;
   began_ms: int;
+  local_fails: int;
+  had_edit: bool;
   step_had_edit: bool;
   step_failed: bool;
   step_views: int;
+  step_cmds: int;
+  cloud_cost_micros: int;
+  last_cloud_micros: int;
+  cloud_budget_micros: int;
+  cloud_capped: bool;
 }
 
 MC_THINK :: 32768;               // the most bytes of one step's thinking a run hands out; past it the thought is cut and says so
@@ -259,8 +266,10 @@ mc_run_view :: (r: [] McRun, entry: string, room: int) -> McViewResult {
     }
     return McViewResult.{found = false, content = res.why};
   }
-  if r[0].aw.count == 0 { return mc_view_lines(r[0].cwd, entry, r[0].profile, r[0].spill_dir, room, r[0].tb[..]); }
-  return mc_aw_view(r[0].aw, entry, r[0].spill_dir, room, mc_run_step(r), r[0].tb[..]);
+  is_local_gw := r[0].p.count > 0 && r[0].p[0].n > 0 && r[0].p[0].attempts[0].gateway.name == "psionic";
+  lim := ifx !is_local_gw && r[0].low_cache_calls >= 1 && room > 8192 then 8192 else room;
+  if r[0].aw.count == 0 { return mc_view_lines(r[0].cwd, entry, r[0].profile, r[0].spill_dir, lim, r[0].tb[..]); }
+  return mc_aw_view(r[0].aw, entry, r[0].spill_dir, lim, mc_run_step(r), r[0].tb[..]);
 }
 
 // Where this command's whole output goes, if it is long: spill_dir/RUN-STEP-K.txt (K its place among the
@@ -296,8 +305,8 @@ MC_RUN_MS :: 900000;
 mc_run_load_instructions :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string) -> bool {
   return mc_run_load_instructions_from(l, b, cwd, "");
 }
-MC_COAX_CUE :: "\n\nCoax syntax cue: no let/const/fn (declare locals with x := val;); tests use #test \"name\" { #assert ...; } (never #check or package); #test runs pure code at compile time (no fs/proc host calls; use tool_main with coax/web/tool.sh for filesystem tests); put #import \"Basic\"; only in the entry file (never in #load-ed files); ranges are 0..<n; slices are a[..].";
-MC_SAFETY_TAIL :: "\n\nExecution priority (overrides any general commit/push instructions above): once edits are verified and checks pass, finish immediately with finished:true. NEVER run git commit or git push unless the user's task message itself explicitly asks you to commit or push.";
+MC_COAX_CUE :: "\n\nCoax syntax cue: no let/const/fn/default-args/multi-return (locals: x := val; fs_read returns bytes); tests use #test \"name\" { #assert ...; } (never #check/package); #test runs pure code at compile time (no fs/proc calls; for heavy crypto #test add #run_steps 200000; or #steps N in the file, not only CLI flags); put #import \"Basic\"; only in the entry file; ranges 0..<n; slices a[..].";
+MC_SAFETY_TAIL :: "\n\nCRITICAL OVERRIDE (supersedes any commit/push instructions above): NEVER run git commit or git push unless the user's task message itself explicitly asks you to commit or push. Once edits are verified and checks pass, finish immediately with finished:true.";
 
 // The same with the user instructions read from user_path ("" for this process's file). They go
 // first and have their own budget (UINSTR_MAX_BYTES), so a large AGENTS.md never crowds them out;
@@ -355,7 +364,10 @@ mc_plan_window :: (p: [] GwPlan) -> int {
   w := 0;
   for i: 0..<p[0].n {
     t := gw_window(p[0].attempts[i].model);
-    if t <= 0 && p[0].attempts[i].gateway.name == "psionic" { t = 32768; }
+    // Local 32K servers (llama-server/psionic) average ~3.5 B/tok on code and keep full Metal/CUDA KV
+    // cache; mc_budget's pessimistic 2.25 B/tok + 16 KB memory reserve would otherwise thrash compaction
+    // at ~11K tokens every 3 steps. Use 57344 effective window (~24K tokens peak, <32K) while mc_too_long guards overflow.
+    if p[0].attempts[i].gateway.name == "psionic" && (t <= 0 || t == 32768) { t = 57344; }
     if t <= 0 { return 0; }
     if w == 0 || t < w { w = t; }
   }
@@ -369,10 +381,12 @@ mc_plan_window :: (p: [] GwPlan) -> int {
 // Workspace instruction files (AGENTS.md/CLAUDE.md) are skipped because mc_run_load_instructions
 // already puts them in the system prompt.
 MC_SEED_FILES :: 4;
-MC_SEED_BUDGET :: 8192;          // step-0 budget so up to 4 target files fit anchored or whole
+MC_SEED_GREP_MAX :: 4;           // cap step-0 symbol greps so multi-symbol prompts stay lean
+MC_SEED_BUDGET :: 8192;          // step-0 budget so up to 4 anchored target snippets fit cleanly
 MC_SEED_SHARE_MAX :: 3200;       // bytes per seeded file, at most
 MC_SEED_ANCHOR_MIN :: 80;        // files longer than this center their seed view on a matched task symbol
 MC_LOW_CACHE_LOG :: 10240;       // when paid cloud cache hits stay <25%, compact steps older than latest 2 past this log size
+MC_LOW_CACHE_HEAVY :: 28672;     // past this log size on low-cache paid cloud, keep only the latest step verbatim
 MC_LOW_CACHE_KEEP :: 4096;       // target recent bytes when compacting older steps on low-cache paid cloud gateways
 
 mc_seed_is_instr :: (p: string) -> bool {
@@ -380,28 +394,58 @@ mc_seed_is_instr :: (p: string) -> bool {
   return base == "AGENTS.md" || base == "agents.md" || base == "CLAUDE.md" || base == "claude.md";
 }
 
-// First 1-based line in text where any code name in names[0..<nn] appears as a word, or 0 when none.
+mc_seed_is_skip :: (p: string) -> bool {
+  if mc_seed_is_instr(p) { return true; }
+  if p.count >= 9 && cast(string) p[0..<9] == "coax/bin/" { return true; }
+  if mc_cmd_ends(p, ".png") || mc_cmd_ends(p, ".jpg") || mc_cmd_ends(p, ".jpeg") || mc_cmd_ends(p, ".gif") || mc_cmd_ends(p, ".webp") || mc_cmd_ends(p, ".pdf") || mc_cmd_ends(p, ".o") || mc_cmd_ends(p, ".a") || mc_cmd_ends(p, ".so") || mc_cmd_ends(p, ".dylib") || mc_cmd_ends(p, ".gguf") || mc_cmd_ends(p, ".bin") || mc_cmd_ends(p, ".zip") || mc_cmd_ends(p, ".gz") { return true; }
+  return false;
+}
+
+mc_seed_is_guard_macro :: (nm: string) -> bool {
+  return nm == "__APPLE__" || nm == "__linux__" || nm == "_WIN32" || nm == "__unix__" || nm == "__MACH__";
+}
+
+mc_seed_find_word :: (text: string, nm: string) -> int {
+  if nm.count < 3 || nm.count > text.count { return -1; }
+  i := 0;
+  while i + nm.count <= text.count {
+    if text[i] == nm[0] && cast(string) text[i..<i + nm.count] == nm {
+      left_ok := i == 0 || !mc_seed_word_ch(text[i - 1]);
+      right_ok := i + nm.count == text.count || !mc_seed_word_ch(text[i + nm.count]);
+      if left_ok && right_ok { return i; }
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+// First 1-based line in text where a code name in names[0..<nn] appears as a word, or 0 when none.
+// Follows prompt symbol order and prefers non-macro symbols past line 15 so a top-of-file #ifdef
+// (e.g. __APPLE__) does not mask the target function later in the file.
 mc_seed_anchor_line :: (text: string, names: [] string, nn: int) -> int {
   if nn <= 0 || text.count == 0 { return 0; }
-  best := -1;
+  fallback := 0;
   for k: 0..<nn {
     nm := names[k];
-    if nm.count < 3 || nm.count > text.count { continue; }
-    i := 0;
-    while i + nm.count <= text.count {
-      if text[i] == nm[0] && cast(string) text[i..<i + nm.count] == nm {
-        left_ok := i == 0 || !mc_seed_word_ch(text[i - 1]);
-        right_ok := i + nm.count == text.count || !mc_seed_word_ch(text[i + nm.count]);
-        if left_ok && right_ok {
-          if best < 0 || i < best { best = i; }
-          break;
-        }
-      }
-      i += 1;
+    if mc_seed_is_guard_macro(nm) { continue; }
+    at := mc_seed_find_word(text, nm);
+    if at >= 0 {
+      line := mc_line_at(text, at);
+      if line > 15 { return line; }
+      if fallback == 0 { fallback = line; }
     }
   }
-  if best < 0 { return 0; }
-  return mc_line_at(text, best);
+  for k: 0..<nn {
+    nm := names[k];
+    if !mc_seed_is_guard_macro(nm) { continue; }
+    at := mc_seed_find_word(text, nm);
+    if at >= 0 {
+      line := mc_line_at(text, at);
+      if line > 15 { return line; }
+      if fallback == 0 { fallback = line; }
+    }
+  }
+  return fallback;
 }
 mc_seed_word_ch :: (c: u8) -> bool {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
@@ -427,7 +471,7 @@ mc_seed_entry :: (p: string, text: string, names: [] string, nn: int, out: [] u8
 }
 
 MC_HYBRID_LOCAL_DEFAULT_STEPS :: 3;
-MC_HYBRID_LOCAL_DEFAULT_MS :: 75000;
+MC_HYBRID_LOCAL_DEFAULT_MS :: 70000;
 
 mc_hybrid_init :: (h: [] McHybrid, max_steps: int, max_ms: int, free_finish: bool, now_ms: int) {
   h[0] = McHybrid.{
@@ -441,8 +485,9 @@ mc_hybrid_init :: (h: [] McHybrid, max_steps: int, max_ms: int, free_finish: boo
 // Whether an escalated hybrid run can hand the final closing summary turn back to free local Inkling.
 mc_hybrid_ready_finish :: (l: [] McLoop, h: [] McHybrid) -> bool {
   if !h[0].escalated || !h[0].free_finish || h[0].local_finish_tried { return false; }
-  if l[0].check[0].state != MC_CHECK_PASSED { return false; }
   if h[0].step_failed || h[0].step_views > 0 { return false; }
+  verified := l[0].check[0].state == MC_CHECK_PASSED || (h[0].had_edit && h[0].step_cmds > 0);
+  if !verified { return false; }
   if l[0].st[0].nmem > 0 && ps_count(cast(string) l[0].st[0].mem[0..<l[0].st[0].nmem], "\"open\":\"\"") == 0 { return false; }
   return true;
 }
@@ -451,18 +496,20 @@ mc_hybrid_ready_finish :: (l: [] McLoop, h: [] McHybrid) -> bool {
 // Called only by a dual-plan owner (mcworker.coax) before firing a deferred step call.
 mc_hybrid_select :: (l: [] McLoop, h: [] McHybrid, now_ms: int) -> bool {
   if !h[0].escalated {
+    if h[0].step_failed { h[0].local_fails += 1; }
+    else if h[0].local_steps > 0 { h[0].local_fails = 0; }
     over_steps := h[0].local_steps >= h[0].local_max;
     over_time := h[0].local_steps >= 1 && h[0].local_ms > 0 && now_ms - h[0].began_ms >= h[0].local_ms;
     bad_local := l[0].bad >= 1;
-    failed_local := h[0].step_failed && (h[0].step_had_edit || h[0].local_steps >= 2);
+    failed_local := h[0].step_failed && h[0].local_fails >= 2;
     if over_steps || over_time || bad_local || failed_local {
       h[0].escalated = true;
       h[0].use_cloud = true;
       l[0].bad = 0;
-      if l[0].st[0].nlog > MC_LOW_CACHE_LOG && l[0].st[0].nacts > 2 {
-        mc_compact_keep_steps(l[0].st[..], MC_LOW_CACHE_KEEP, 2);
+      if l[0].st[0].nlog > 24576 && l[0].st[0].nacts > 2 {
+        mc_compact_keep_steps(l[0].st[..], 10240, 2);
       }
-      mc_note(l[0].st[..], "Escalated from local scout to frontier model. Review gathered files/errors above, apply the remaining surgical fix, verify, and finish promptly.");
+      mc_note(l[0].st[..], "Escalated from local scout to frontier model. Use the files/errors already gathered above without re-reading unchanged lines, apply the remaining surgical fix, verify, and finish promptly.");
     } else {
       h[0].use_cloud = false;
       h[0].local_steps += 1;
@@ -470,13 +517,22 @@ mc_hybrid_select :: (l: [] McLoop, h: [] McHybrid, now_ms: int) -> bool {
   } else if mc_hybrid_ready_finish(l, h) {
     h[0].local_finish_tried = true;
     h[0].use_cloud = false;
-    mc_note(l[0].st[..], "All checks passed with zero open items. Emit finished:true with a concise summary reply now.");
+    // Compact older history to keep the local closing turn tiny (~3K tokens, 3-6s) and focused on emitting finished:true.
+    if l[0].st[0].nacts > 1 { mc_compact_keep_steps(l[0].st[..], 2048, 1); }
+    mc_note(l[0].st[..], "ALL REQUIRED VERIFICATION CHECKS ALREADY PASSED. Do NOT call any tools (edits=[], commands=[], view=[]). Emit finished:true with a concise 1-sentence summary reply NOW.");
+  } else if h[0].cloud_budget_micros > 0 && (h[0].cloud_cost_micros >= h[0].cloud_budget_micros * 75 / 100 || h[0].cloud_cost_micros + (ifx h[0].last_cloud_micros > 45000 then h[0].last_cloud_micros else 45000) >= h[0].cloud_budget_micros * 95 / 100) {
+    h[0].use_cloud = false;
+    if !h[0].cloud_capped {
+      h[0].cloud_capped = true;
+      mc_note(l[0].st[..], "Cloud budget reserve reached ($0 local mode). If edits and verification checks already passed above, emit finished:true immediately with no tools; otherwise finish the smallest remaining fix and verify.");
+    }
   } else {
     h[0].use_cloud = true;
   }
   h[0].step_had_edit = false;
   h[0].step_failed = false;
   h[0].step_views = 0;
+  h[0].step_cmds = 0;
   return h[0].use_cloud;
 }
 
@@ -498,7 +554,7 @@ mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
   files := 0;
   for i: 0..<s[0].np {
     p := s[0].paths[i];
-    if mc_seed_is_instr(p) { continue; }
+    if mc_seed_is_skip(p) { continue; }
     full := fs_join(r[0].cwd, p, pb[..]);
     if files < MC_SEED_FILES && full.count > 0 && fs_kind(full) == FS_FILE { files += 1; }
   }
@@ -508,7 +564,7 @@ mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
   for i: 0..<s[0].np {
     if viewed >= MC_SEED_FILES { break; }
     p := s[0].paths[i];
-    if mc_seed_is_instr(p) { continue; }
+    if mc_seed_is_skip(p) { continue; }
     full := fs_join(r[0].cwd, p, pb[..]);
     if full.count == 0 || fs_kind(full) != FS_FILE { continue; }
     entry := p;
@@ -538,7 +594,8 @@ mc_run_seed_names :: (r: [] McRun, out: [] McRunEvent, k0: int, from: int) -> in
   pb: [FS_PATH_MAX] u8;
   git := fs_join(r[0].cwd, ".git", pb[..]);
   if git.count > 0 && fs_exists(git) {
-    for i: from..<s[0].nn {
+    lim_n := ifx s[0].nn < MC_SEED_GREP_MAX then s[0].nn else MC_SEED_GREP_MAX;
+    for i: from..<lim_n {
       cb := r[0].cmd_seed[..];
       n := json_raw(cb, 0, "git grep -n -w -F -e "); n = json_raw(cb, n, s[0].names[i]); n = json_raw(cb, n, " | head -n 6");
       if n < 0 { continue; }
@@ -558,15 +615,21 @@ mc_run_call :: (r: [] McRun) {
     r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why=mc_run_limit(MC_LIMIT_CALL,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline);return;
   }
   mc_run_drain(r, "");
-  // Cache-adaptive rolling compaction: when a paid cloud gateway delivers <25% prompt cache hits,
-  // compact steps older than the latest 2 into earlier[] rather than re-paying full input price every turn.
-  // Keeping the newest 2 closed steps prevents multi-file re-view amnesia while shedding older reads.
-  if r[0].low_cache_calls >= 1 && r[0].l[0].st[0].nlog > MC_LOW_CACHE_LOG && r[0].l[0].st[0].nacts > 2 {
-    mc_compact_keep_steps(r[0].l[0].st[..], MC_LOW_CACHE_KEEP, 2);
+  is_local_gw := r[0].p.count > 0 && r[0].p[0].n > 0 && r[0].p[0].attempts[0].gateway.name == "psionic";
+  // Cache-adaptive rolling compaction: ONLY for paid cloud gateways delivering <25% prompt cache hits
+  // (never for local psionic, which preserves full Metal/CUDA KV cache!).
+  // Keep 2 recent steps verbatim up to 28 KB so multi-file context is preserved without re-reads.
+  if !is_local_gw && r[0].low_cache_calls >= 1 {
+    if r[0].l[0].st[0].nlog > MC_LOW_CACHE_HEAVY && r[0].l[0].st[0].nacts >= 2 {
+      mc_compact_keep_steps(r[0].l[0].st[..], MC_LOW_CACHE_KEEP, 1);
+    } else if r[0].l[0].st[0].nlog > MC_LOW_CACHE_LOG && r[0].l[0].st[0].nacts > 2 {
+      mc_compact_keep_steps(r[0].l[0].st[..], MC_LOW_CACHE_KEEP, 2);
+    }
   }
   if r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_render(r[0].aw, r[0].l[..]); x := mc_aw_nudge(r[0].aw, r[0].l[..]); }     // the state's memory key, as the store is now; a long read with no edit is told to edit
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
+  if is_local_gw && req.max_tokens == 0 { req.max_tokens = 4096; }
   mc_rs_reset(r[0].rs[..]);
   r[0].logged = 0;
   gw_plan_start(r[0].p, r[0].bench, req);
@@ -1031,8 +1094,13 @@ mc_run_cmd_done :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
   show := mc_result_room(r[0].l[0].st[..], command) - 512;
   if show > MC_SPILL_SHOW { show = MC_SPILL_SHOW; }
   // Passing test/check suites (exit 0) often dump thousands of "ok #test" lines; keep summary head/tail
-  // in the prompt (1,200 B) and spill the full log to disk. Failing checks always keep full diagnostics.
-  if res.exit == 0 && !res.timed_out && (mc_cmd_kind(command) & MC_CMD_CHECK) != 0 && show > 1200 { show = 1200; }
+  // in the prompt (1,200 B) and spill the full log to disk. Passing read-only search/listing outputs
+  // keep 2,400 B (head/tail + spill path). Failing checks always keep full diagnostics.
+  cmd_kind := mc_cmd_kind(command);
+  if res.exit == 0 && !res.timed_out {
+    if (cmd_kind & MC_CMD_CHECK) != 0 && show > 1200 { show = 1200; }
+    else if cmd_kind == 0 && mc_cmd_is_search(command) && show > 2400 { show = 2400; }
+  }
   if sp.count > 0 && o[0].esc > show && mc_output_spill(o) { shown = mc_output_shown(o, show, sp, r[0].shaped[..]); }
   o[0].spill = ""; o[0].all = r[0].spill_buf[0..<0];
   metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
@@ -1633,21 +1701,23 @@ MC_RUN_NOTE :: "{\"rationale\":\"steer it\",\"delegate\":[{\"level\":\"carbon\",
   #assert !r[0].ended && r[0].asking && k == 1 && out[0].kind == MR_ASK && out[0].text.count == long_cmd.count;
 }
 
-#test "smart step-0 seeding skips instruction files and centers large files on matching task symbols" {
+#test "smart step-0 seeding skips instruction/binary files and centers large files on matching task symbols" {
   #assert mc_seed_is_instr("AGENTS.md") && mc_seed_is_instr("sub/CLAUDE.md") && mc_seed_is_instr("agents.md") && !mc_seed_is_instr("loop.coax");
-  // Build a 120-line file with target_fn at line 95
+  #assert mc_seed_is_skip("coax/bin/coax") && mc_seed_is_skip("shot.png") && mc_seed_is_skip("model.gguf") && !mc_seed_is_skip("apps/host.c");
+  // Build a 120-line file with __APPLE__ at line 5 and target_fn at line 95
   buf: [4096] u8; n := 0;
   for line: 1..<121 {
-    if line == 95 { n = mc_put(buf[..], n, "target_fn :: () -> int { return 1; }\n"); }
+    if line == 5 { n = mc_put(buf[..], n, "#ifdef __APPLE__\n"); }
+    else if line == 95 { n = mc_put(buf[..], n, "target_fn :: () -> int { return 1; }\n"); }
     else { n = mc_put(buf[..], n, "// filler line\n"); }
   }
   text := cast(string) buf[0..<n];
-  names := [2] string.["missing_sym", "target_fn"];
-  #assert mc_seed_anchor_line(text, names[..], 2) == 95;
+  names := [3] string.["__APPLE__", "missing_sym", "target_fn"];
+  #assert mc_seed_anchor_line(text, names[..], 3) == 95;
   eb: [128] u8;
-  #assert mc_seed_entry("big.coax", text, names[..], 2, eb[..]) == "big.coax:80-120";
+  #assert mc_seed_entry("big.coax", text, names[..], 3, eb[..]) == "big.coax:80-120";
   // Small file (<= MC_SEED_ANCHOR_MIN) stays unranged
-  #assert mc_seed_entry("small.coax", "a\nb\ntarget_fn\n", names[..], 2, eb[..]) == "small.coax";
+  #assert mc_seed_entry("small.coax", "a\nb\ntarget_fn\n", names[..], 3, eb[..]) == "small.coax";
 }
 
 #test "cache-adaptive compaction tracks low-cache paid cloud attempts without touching local psionic or cached cloud" {
@@ -1683,14 +1753,15 @@ MC_RUN_NOTE :: "{\"rationale\":\"steer it\",\"delegate\":[{\"level\":\"carbon\",
   #assert mc_cmd_view_arg("git status") == "";
 }
 
-#test "dual-plan hybrid routing starts local, escalates on step/time/failure, and routes verified closing turn back to free local" {
+#test "dual-plan hybrid routing starts local, escalates on step/time/repeated-failure, routes verified closing turn and budget-capped steps to free local" {
   f: [1] McRunFixture; hy: [1] McHybrid;
   mc_run_fixture(f[..], "fix the bug");
   l := f[0].r[0].l[..];
   mc_hybrid_init(hy[..], 2, 60000, true, 1000);
-  // Step 1 and 2 stay local
+  // Step 1 and 2 stay local (a single failed step does not prematurely escalate)
   #assert !mc_hybrid_select(l, hy[..], 5000) && !hy[0].escalated && hy[0].local_steps == 1;
-  #assert !mc_hybrid_select(l, hy[..], 10000) && !hy[0].escalated && hy[0].local_steps == 2;
+  hy[0].step_failed = true;
+  #assert !mc_hybrid_select(l, hy[..], 10000) && !hy[0].escalated && hy[0].local_steps == 2 && hy[0].local_fails == 1;
   // Step 3 hits step cap -> escalates to Neon
   #assert mc_hybrid_select(l, hy[..], 15000) && hy[0].escalated && hy[0].use_cloud;
   // Once a check passes with no failure and no views -> closing step routes back to free local once
@@ -1698,7 +1769,15 @@ MC_RUN_NOTE :: "{\"rationale\":\"steer it\",\"delegate\":[{\"level\":\"carbon\",
   #assert !mc_hybrid_select(l, hy[..], 20000) && hy[0].local_finish_tried && !hy[0].use_cloud;
   // If local didn't finish, subsequent step falls back to Neon
   #assert mc_hybrid_select(l, hy[..], 25000) && hy[0].use_cloud;
-  // Early escalation on failed edit in local phase
-  hy[0].escalated = false; hy[0].use_cloud = false; hy[0].local_steps = 1; hy[0].step_had_edit = true; hy[0].step_failed = true;
-  #assert mc_hybrid_select(l, hy[..], 12000) && hy[0].escalated && hy[0].use_cloud;
+  // Budget-aware cloud fallback: hitting 75% of cloud_budget_micros routes to free local ($0)
+  hy[0].cloud_budget_micros = 200000;
+  hy[0].cloud_cost_micros = 152000;
+  #assert !mc_hybrid_select(l, hy[..], 26000) && !hy[0].use_cloud && hy[0].cloud_capped;
+  // Early escalation on 2 consecutive failed local steps
+  mc_hybrid_init(hy[..], 4, 90000, true, 1000);
+  #assert !mc_hybrid_select(l, hy[..], 2000) && !hy[0].escalated;
+  hy[0].step_failed = true;
+  #assert !mc_hybrid_select(l, hy[..], 3000) && !hy[0].escalated && hy[0].local_fails == 1;
+  hy[0].step_failed = true;
+  #assert mc_hybrid_select(l, hy[..], 4000) && hy[0].escalated && hy[0].use_cloud;
 }
