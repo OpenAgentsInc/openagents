@@ -81,6 +81,7 @@ enum {
     K_PROJ_P,
     K_PROJ_S,
     K_KV1,
+    K_SUM_POST,
     K_COUNT
 };
 
@@ -118,6 +119,7 @@ static const char *const k_names[K_COUNT] = {
     "ink_proj_p",
     "ink_proj_s",
     "ink_kv1",
+    "ink_sum_post",
 };
 
 /* Threads per work item: the T of a group kernel's `for thread: 0..<T`
@@ -131,7 +133,7 @@ static const int k_threads[K_COUNT] = {
     1,      /* K_DVS_F32 */
     INK_MT, /* K_MOE_GU */
     INK_MT, /* K_MOE_DOWN */
-    INK_NT, /* K_ROUTER */
+    INK_MT, /* K_ROUTER */
     INK_NT, /* K_MIX */
     INK_MT, /* K_CTRL_PREP: ink_ctrl_gate */
     INK_NT, /* K_CTRL_APPLY: ink_ctrl_out */
@@ -156,6 +158,7 @@ static const int k_threads[K_COUNT] = {
     1,      /* K_PROJ_P */
     1,      /* K_PROJ_S */
     INK_NT, /* K_KV1 */
+    INK_NT, /* K_SUM_POST */
 };
 
 /* One layer's experts on the device. cap == n_expert means every expert is
@@ -616,19 +619,33 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
          L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
          L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64));
 
-    /* Output projection + post shortconv. */
-    if (dispatch_mv(s, &L->attn_output, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
-    /* The post shortconv and the residual add; a block's first layer starts
-       a new residual stream and keeps the old one as the block's entry. */
+    /* The output projection, the post shortconv and the residual add; a
+       block's first layer starts a new residual stream and keeps the old one
+       as the block's entry. One token's Q8_0 projection leaves its shares
+       for the kernel that also does the rest. */
     int block_start = ip % hp->block_size == 0;
     if (block_start && *n_blocks >= INK_MAX_BLOCKS) {
         snprintf(s->error, sizeof s->error, "block count overflow");
         return 1;
     }
-    CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
-         a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
-         a_f32v(s->cur, 0, nd),
-         block_start ? a_f32v(s->blocks, (int64_t)(*n_blocks) * stack, nd) : a_f32v(s->dummy_f32, 0, 64));
+    PcArg blk_arg = block_start ? a_f32v(s->blocks, (int64_t)(*n_blocks) * stack, nd) : a_f32v(s->dummy_f32, 0, 64);
+    const InkTensor *wo = &L->attn_output;
+    if (np == 1 && wo->type == INK_GGML_Q8_0 && !s->no_tables && !s->oracle_q8 && d % 4 == 0 && n_q % 32 == 0 &&
+        (size_t)(d * (n_q / 32)) <= s->mv_part_floats) {
+        int64_t blocks = n_q / 32, lrows = (int64_t)(wo->nbytes / (uint64_t)(blocks * 34));
+        PcBuffer dev = tensor_dev(s, wo);
+        CALL(s, K_MVQ_P, blocks * (d / 4), a_int(d), a_int(lrows), a_int(n_q),
+             a_view(dev, 0, lrows * blocks * 8), a_view(dev, lrows * blocks * 32, lrows * blocks),
+             a_f32v(s->attn_out, 0, n_q), a_f32v(s->mv_part, 0, d * blocks));
+        CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(blocks), a_int(block_start),
+             a_f32v(s->mv_part, 0, d * blocks), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+             a_f32v(s->cur, 0, nd), blk_arg);
+    } else {
+        if (dispatch_mv(s, wo, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
+        CALL(s, K_ATTN_POST, d, a_int(d), a_int(np), a_int(block_start),
+             a_f32v(s->o_raw, 0, nd), a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
+             a_f32v(s->cur, 0, nd), blk_arg);
+    }
     if (block_start) (*n_blocks)++;
 
     /* MoE input: mix -> optional control -> RMSNorm. */
@@ -681,6 +698,13 @@ static int dispatch_layer(InkSession *s, int il, int ip, int64_t np, int *n_bloc
                  a_view(c->dn, 0, dn_words), a_view(c->dn, 0, dn_words * 2),
                  a_f32v(s->gu_part, 0, gu_n), a_u32v(ids, tok * n_used, n_used), a_f32v(s->moe_wts, tok * n_used, n_used),
                  a_f32v(s->dn_part, 0, n_parts * d));
+            if (np == 1) {
+                /* One token: the sum, the post shortconv and the residual add together. */
+                CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(n_parts), a_int(0),
+                     a_f32v(s->dn_part, 0, n_parts * d), a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                     a_f32v(s->cur, 0, nd), a_f32v(s->dummy_f32, 0, 64));
+                return 0;
+            }
             CALL(s, K_MOE_SUM, (d + 31) / 32, a_int(d), a_int(n_parts),
                  a_f32v(s->dn_part, 0, n_parts * d), a_f32v(s->moe_out, tok * d, d));
         }
@@ -805,6 +829,11 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     s->profile = getenv("INK_PROFILE") != NULL;
     if (hp->n_embd > 2304) {
         snprintf(err, err_bytes, "this engine handles a width of at most 2304, not %lld", (long long)hp->n_embd);
+        ink_close(s); return 1;
+    }
+    if (hp->n_expert > 128 || hp->n_expert_used > 16) {
+        snprintf(err, err_bytes, "this engine routes among at most 128 experts and 16 chosen, not %lld and %lld",
+                 (long long)hp->n_expert, (long long)hp->n_expert_used);
         ink_close(s); return 1;
     }
     if (hp->gate_rank != 64) {
