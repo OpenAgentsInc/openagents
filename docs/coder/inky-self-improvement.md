@@ -1,30 +1,42 @@
-# Inky Eval Qualification, Class-E Executor Integration & Self-Improvement Architecture
+# Inky Self-Improvement: Status, Evidence and Plan
 
-> **Status:** Empirical benchmark qualification, live Metal 4 Class-E Executor integration, and closed-loop self-improvement design for OpenAgents' native Inkling 2.0 harness (`coax/lib/inky/`, `coder/tui/inky.coax`).
-> **Date:** 2026-11-22
-> **Hardware:** Apple M5 Max (64 GB unified memory, macOS arm64, Metal 4)
-> **Local Model:** `~/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf` (`16.4 GB` IQ4_NL GGUF served by native `psionic-inkling-serve --ctx 32768`, `\$0.0000`)
-> **Compiled Weight Store:** `~/.openagents/modules/` (`10/10` W2.2 Class-E dense F64 `exec-vm-v1` modules SHA-256 verified)
-> **Internal Codename Policy:** "Inky" is an internal engineering codename only and is never exposed in user-facing UI strings or system prompt persona.
+> **Status:** Inky (`coax/lib/inky/`, `coder/tui/inky.coax`) is the local-model worker in OpenAgents Desktop v1.0 (#13982). Microcoder is deprecated for local use (#13983). This doc records what Inky has proven, what it has not, and the plan for improving it.
+> **Updated:** 2026-11-22
+> **Hardware:** Apple M5 Max (128 GB unified memory, macOS arm64, Metal 4)
+> **Local model:** `~/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf` (17.6 GB / 16.4 GiB IQ4_NL GGUF served by `psionic-inkling-serve --ctx 32768`, \$0.0000)
+> **Compiled weight store:** `~/.openagents/modules/` (10/10 W2.2 Class-E dense F64 `exec-vm-v1` modules, SHA-256 verified)
+> **Codename policy:** "Inky" is an internal codename. It never appears in user-facing UI strings or in the system prompt persona.
 
 ---
 
-## 1. Executive Summary
+## 1. Where Inky stands (read this first)
 
-We ran **Inky** end-to-end across five live local eval suites (**67 unique real tasks** across Desktop Tiers 2 & 4, formal Lean 4 theorem proving, and real-world OpenAgents session-history trajectories) plus **two paired live Metal 4 Class-E Executor experiments**:
+### 1.1 What is proven
 
-1. **Standard coding & desktop benchmarks are saturated at 100% (`\$0.0000`):**
-   - **Desktop Tier 2:** **14/14 (100.0%)** in `232.3 s` (**1.69× faster** than `mcworker`'s `393.5 s`), `76.9%` continuation KV cache hit vs `mcworker`'s `0.0%`.
-   - **Full Desktop Tier 4 (all applicable tasks):** **27/27 (100.0%)** in `618.5 s` (`22.9 s` mean, `19.2 s` p50), **`91.2%–95.1%` continuation KV cache hit** (`77.7%` overall including cold Step-1 prefill).
-   - **Lean 4 Core Smoke (`#authority lean-run verify`):** **5/5 (100.0%)** in `231.7 s` (`kernel=ok`, `axioms=[]` on all 5 proofs, `84.3%` overall KV cache hit).
-   - **Session History `A_edit_precision` (6 real OpenAgents repo tasks):** **6/6 (100.0%)** in **`194.4 s`** (`32.4 s` mean, `89.9%` continuation KV cache hit) — **5.41× faster** and +17 pp higher pass rate than `mcworker` + `inkling-2-mini` (`5/6` in `1,051 s`), matching cloud `gemini-4-hydrogen` / `gemini-4-neon` (`6/6`) at `\$0.0000`.
-2. **Cross-bucket Session History Dev-9 beats prior cloud & multi-GPU Microcoder baselines — while Locked Held-Out Buckets B–E expose the exact real frontier:**
-   - **Session History Dev-9 (9 tasks across Buckets A–E):** **5/9 (55.6%)** at `\$0.0000` (`1,490 s`), outperforming every prior `mcworker` Dev-9 run in `docs/verification/microcoder-neon-inkling-lab.md` — including `base-inkling-dev9` (`2/9`), 5-iteration tuned `iter3-inkling-dev9` (`4/9`, `2,268 s`), best pure Vertex `gemini-4-neon` (`4/9`, `\$1.39`), and the 2-GPU + Vertex Neon hybrid combo (`4/9`, `\$1.06`).
-   - **Session History Locked Held-Out 6 (hardest multi-file Buckets B–E: `sh_009`, `sh_014`, `sh_015`, `sh_018`, `sh_020`, `sh_024`):** **0/6 (0.0%)**, with **6/6 hitting the 300 s wall-clock timeout** (0 crashes, 0 context overflows, 0 guard trips, `69–90%` continuation KV cache hit). Forensic trace analysis isolated the exact three bottlenecks: single-stream decode speed (`4.0K–7.6K` output tokens at `13–25 tok/s` fills 300 s alone), deeply ingrained shell-edit habits (`101` `run_command` calls vs `0` `edit_file` calls), and multi-file exploration spirals on unfamiliar 2,000-file Coax subsystems.
-3. **Class-E Executor + Inky live Metal 4 integration works zero-shot and delivers 3.6–4.0× speedups over W6.1 Microcoder:**
-   - Wired `#authority coax/lib/microcoder/executor-guard.coax` directly into `coax/lib/inky/` (always-on Class-E `oa-exec-json-schema` + `oa-exec-diff-verify` pre-disk checks + Desktop `"edit <path>"` diff rows + Ch 234 `[E] replay verified · sha256:<12hex>` pills, plus native 8th tool `executor_verify` on `hybrid-exec-v1` / `INKY_EXECUTOR=1`, verified with **0 surviving mutants across 603 mutations** in `tools.coax` and `guard.coax`).
-   - **W6.1 Paired Multi-File Edit Benchmark (`executor-desktop.coax` + `hybrid-exec-policy.coax`):** **`17.21 s`** (`inkling-2-mini`) / **`17.92 s`** (`hybrid-exec-v1`) vs W6.1 `mcworker`'s `61.96 s–69.15 s` (**3.6–4.0× faster**), `2/2` native `edit_file` calls, `0` misses, emitting the **bit-for-bit identical Ch 234 SHA-256 digest `c3e731afbc4d`** previously produced by `mcworker`.
-   - **Zero-Shot Class-E Tool Routing (`executor_verify`, 8 exact-computation tasks, zero LoRA):** **`8/8 (100.0%)`** routed to the exact right compiled dense F64 weight module on Attempt 1, **`8/8` Ch 234 replay receipts verified**, and **`15.2%` faster overall** (`175.5 s` vs `206.9 s` raw; `dep_cycle` dropped `41.5 s → 12.3 s`).
+- **Inky passes every suite built alongside it, and is much faster than `mcworker`.** Desktop Tier 2: 15/15 at 12.0 s per task. Desktop Tier 4: 27/27. Lean 4 core smoke: 5/5. Session History Bucket A: 6/6 in 141.7 s, 7.4× faster than `mcworker` (§2, §7.4).
+- **Tool calling is clean.** Across 27 live runs after Phase 2 (93 native tool calls): 0% `edit_file` misses, 0 malformed tool calls, 0 near-duplicate loops.
+- **The #13978 failure is fixed.** Microcoder spent 7+ minutes and 37 commands failing to find its own system prompt. Inky's regression task (`b4_self_prompt_citation`) passes in 16–31 s with 1 command.
+- **The Class-E edit guard is cheap, and routing works without training.** The guard adds 5.5 µs per edit (§3.2). Base Inkling routed 8/8 exact-computation tasks to `executor_verify` on the first attempt (§3.4).
+
+### 1.2 What is not proven
+
+- **Tasks Inky was not tuned on.** The only held-out run, Locked Held-Out 6, scored **0/6**, with all six tasks hitting the 300 s timeout. That run used Inky v2. It has not been rerun since Phases 2–4 shipped.
+- **Dev-9.** The 5/9 result is from v2. The v3 rerun was aborted because a second inference server started during the run (§7.6).
+- **The routing LoRA.** Its 26/26 (§7.5) is accuracy on its own 26 training rows. There is no held-out routing measurement yet.
+- **Speed inside the agent.** Engine benchmarks reach about 120 tok/s on short-context decode. Inside agent runs, Inky decodes at 38–46 tok/s at about 18K context, and at 13–25 tok/s on the held-out tasks. The held-out failures are timeouts, so **long-context decode speed is the bottleneck**, not short-context decode.
+
+**The number to move is the Locked Held-Out pass rate, together with time to pass.** Every suite already at 100% is a regression lock, not a target (§2.3).
+
+### 1.3 Next steps, ranked
+
+| # | Step | Area | Why |
+| :---: | --- | --- | --- |
+| 1 | **Rerun Locked Held-Out 6 and Dev-9 on the current build on an idle host** (`host_clean.py` must pass). Report pass rate at 300 s and with no time limit, plus time to pass. | Evals | Every v3 claim rests on suites written alongside Inky. Coder has no time limits in the product, so time to pass is the product metric; 300 s stays as the speed target. |
+| 2 | **Fix literal-identifier graders before the rerun (F6).** `sh_019` greps for `created_at > prev`. Audit all 27 `evals/session-history/tasks/*.json` graders for identifier greps and replace them with behavioral checks. | Evals | A correct solution currently fails. A grader fix is not a task change, but record the new `gate_sha256`. |
+| 3 | **Make long-context decode the engine's headline metric.** Report tok/s at 16K–24K context next to short-context tok/s. Settle the speculative-decoding question with one benchmark at 18K context: the DSpark draft head (`mtp.safetensors`) on the batched verify path. Merge `ink_verify_draft` (shipped in `71d5d3d92a`) and the in-progress `ink_verify_batch` work in `oa-150-toks` into one verify path. | Engine | §7.3 measured prompt-lookup verify as net slower on this MoE because of expert fan-out. Locals reports 2.05× with DSpark on the same model. One measurement decides it. |
+| 4 | **Turn real Desktop failures into eval candidates.** Extend `evals/session-history/tools/ingest.coax` to pick up Inky chats that stalled or that the user stopped or steered. Redact them with `redact-trajectory.coax` and add them to the Dev split after review, never to a locked held-out partition. | Evals | #13978 came from real use and was the most useful test case. Self-written suites saturate; real use does not. |
+| 5 | **Re-measure the shell-edit habit (F2) on the held-out rerun.** The 101-shell-calls-to-0-`edit_file` figure is from v2. If it persists, try Level 0–1 fixes (tool descriptions, soft redirect of `python3 -`/`sed` edits) before any LoRA. | Agent | Cheapest fix first (§5, law 5). |
+| 6 | **Hold** Level 3 self-patching, Level 4 LoRA and DSpark distillation, and parallel worktree racing until steps 1–4 produce a held-out score that moves. | — | Without a held-out signal, self-improvement optimizes toward suites Inky wrote itself (§5, law 3). |
 
 ---
 
@@ -248,16 +260,18 @@ Only after Levels 0–3 capture all deterministic, harness, skill, and engine wi
 
 ---
 
-## 6. Prioritized Implementation Roadmap (Ranked by ROI)
+## 6. Original Roadmap and Its Status
 
-| Rank | Milestone | Level | Target Files | Expected Measured Impact |
-| :---: | --- | :---: | --- | --- |
-| **1** | **DSpark (`mtp.safetensors`) + Prompt-Lookup Speculative Decoding** | Engine | `psionic/platform/inkling-metal.c`, `inkling-cuda.c` | **1.6–2.0× single-stream coding decode (`20–38 → 45–80+ tok/s`)**; directly resolves F1 (`6/6` Held-Out timeouts were decode-time-bound!). |
-| **2** | **Inky `run_command` Search-Output Trim + Native `AGENTS.md` Loader + Adaptive Effort** | Level 0–1 | `coax/lib/inky/{run,prompt,loop}.coax` | Cuts 16 KB `cat`/`sed` context blowups (`sh_008`/`sh_009`/`sh_018`), fixes 5-line `AGENTS.md` truncation, and trims search-step thinking bursts. |
-| **3** | **Port `tbench/agent.coax` & `hillclimb.coax` from Microcoder to Inky + ReAnchor Offline Fitter** | Level 1 | `coax/lib/tbench/{agent,hillclimb}.coax` | Unlocks automated, `#authority`-gated two-arm hillclimbing on Inky over Session History Dev-9 + Terminal-Bench Harbor with zero Microcoder dependency. |
-| **4** | **Failure-Mined Coax & Lean Skills Pipeline (`mine.coax` → Reflector → `capability-eval.coax`)** | Level 2 | `evals/session-history/tools/mine.coax`, `coax/lib/agent/desktop/capability-eval.coax` | Automatically distills recurring Coax (`E0216`/`E0381`/`E0400`) and Lean 4 tactic failures into two-arm-verified local skills. |
-| **5** | **Continuous Batching (`B = 4..8`) + Parallel Worktree `/goal` Racing for Self-Patching** | Engine + Level 3 | `psionic/platform/inkling-metal.c`, `coax/lib/inky/` | Enables Inky to race 4 parallel patches on its own repo or hard Buckets B–E tasks in ~1.8× wall time and promote only verified diffs. |
-| **6** | **Rank-8 Tool/Executor Routing LoRA (`H2_ROUTING_ONLY`) + DSpark Coax Draft Distillation** | Level 4 | `psionic/lib/hybrid-lora.coax`, `psionic/tools/diloco-round.coax` | Eliminates shell-edit fallback (`python3`/`sed` → Class-E `edit_file`) and pre-tool mental-math tax (`budget_big` `63.6 s → ~12 s`), gated by 6-tier Byzantine + 4-gate Quarantine Optimizer. |
+This was the roadmap before Phases 1–5 shipped. §1.3 replaces it as the current plan.
+
+| Rank | Milestone | Status (2026-11-22) |
+| :---: | --- | --- |
+| 1 | DSpark (`mtp.safetensors`) + prompt-lookup speculative decoding (`inkling-metal.c`, `inkling-cuda.c`) | **Open.** Prompt-lookup verify shipped opt-in (`INK_SPEC_LOOKUP=1`, `71d5d3d92a`) and measured net slower on single-stream MoE decode (§7.3). DSpark is not integrated yet. See §1.3 step 3. |
+| 2 | Inky search-output trim, native `AGENTS.md` loader, adaptive effort | **Shipped** in `7af77a2fdd`. Adaptive effort is opt-in because changing effort mid-session invalidates the KV prefix cache (§7.3). |
+| 3 | Port `tbench/agent.coax` and `hillclimb.coax` to Inky; ReAnchor offline fitter | **Shipped** in `2b74624632` (`inky-native` mode, `inky-improve reanchor`). |
+| 4 | Failure-mined Coax and Lean skills (`mine.coax` → Reflector → `capability-eval.coax`) | **Scaffolded** (`inky-improve mine-skills`). Not run live; no skill promoted yet. |
+| 5 | Continuous batching (`B = 4..8`) and parallel worktree `/goal` racing | **Open; on hold** (§1.3 step 6). |
+| 6 | Rank-8 routing LoRA and DSpark Coax draft distillation | **Router trained** on 26 rows (§7.5), with no held-out evaluation. DSpark distillation not started. On hold. |
 
 ---
 
@@ -297,6 +311,7 @@ All planned phases (Class-E executor integration, Level 0–1 harness upgrades, 
    - Live M5 Max Metal 4 A/B benchmarks on copy-heavy code-edit prompts (`max_tokens=512`, both short `438`-token and long `18,643`-token contexts) confirmed the lookup drafter works well — achieving **65.6%–79.0% draft acceptance** (`4.56–6.53` tokens verified per call on `draft=5..7`).
    - However, because Inkling 2 Mini is a **128-expert Top-8 sparse MoE** (`16.8 GB` weights, memory-bandwidth bound on decode), verifying `nb = 6..8` tokens fans out from `8` active experts to `~40–50` unique active experts per forward pass (`~5–6×` expert weight memory traffic), while single-token `ink_step` already runs 67 sprints of fused Metal 4 decode kernels + double-buffered lookahead (`41.8–46.6 tok/s` at 18K ctx).
    - Net result: `SPEC=1` measured **`30.6–40.7 tok/s`** vs **`41.8–46.6 tok/s`** for `SPEC=0` (net slower). Therefore `ink_verify_draft` ships cleanly behind opt-in `INK_SPEC_LOOKUP=1` (ready for dense models, MTP heads, or multi-request continuous batching), and default single-stream Metal decode stays on the faster fused `ink_step` path.
+   - **Open question:** Locals reports 2.05× faster file writes with the DSpark draft head on the same Inkling 2 Mini MoE (M4 Pro), and a batched verify path is in progress (`ink_verify_batch`) aimed at the fan-out cost. The two results disagree, so §1.3 step 3 settles it with one measurement at 18K context.
    - **Implication for Roadmap Rank 1:** Real single-stream MoE speedup requires either **MTP-trained heads with expert-routing co-locality** or **multi-stream continuous batching (`B = 4..8`)** across parallel `/goal` worktree candidates rather than unfused single-stream prompt-lookup verification.
 2. **Why Mid-Session `INKY_ADAPTIVE_EFFORT` is Opt-In (`== "1"`):**
    - In `psionic/platform/inkling-serve.c`, `Thinking effort level: <x>` is placed in `<|message_system|>` immediately before `<|message_user|>`. Mutating effort mid-conversation (e.g. `"low"` on steps 1–3 → `"medium"` on step 4) invalidates the entire multi-turn KV prefix cache (`90% → 15%`), costing multiple seconds of cold re-prefill. Keeping session effort constant preserves `80–95%` KV prefix hits and is reinforced by the offline ReAnchor scorer (`trap-adaptive-effort-kv-bust` scored `-734`).
@@ -325,6 +340,7 @@ Executed via `coax/web/tool.sh coder/tui/inky-improve.coax`:
 - **`distill --opt-in`:** exported **`6/6`** passing Dev trajectories into verified `ATIF-v1.8` shards (`openagents.executor.dataset-shard.v1alpha1`), `0` held-out contamination, `0` secret leaks (and default-OFF without `--opt-in` refuses 100%).
 - **`train-router` (Ch 140 Rank-8 LoRA via `psionic/lib/hybrid-lora.coax`):**
   - `train_rows=26`, routing accuracy **`7/26 → 26/26 (100.0%)`**.
+  - **Caveat:** 26/26 is accuracy on the 26 training rows, not on held-out turns. Do not count it as an improvement until a held-out routing set exists.
   - Verified proofs: `zero_exact=true`, `hotswap=ok`, `tamper_refused=true`, `pin_refused=true`, `adapter_sha256=69d1305714443bd77882d0d7c064f60cc1f0b394eea973d778c211f66828ffc8`.
 
 ### 7.6 Host Cleanliness Guard & Clean-Host Follow-Up Benchmarks
@@ -357,3 +373,17 @@ python3 evals/openagents-desktop/tier2/run_tasks.py --worker inky \
   --timeout-floor 300 --out evals/openagents-desktop/results/clean-inky-v3-lean-alg
 ```
 
+---
+
+## 8. Benchmark Protocol
+
+On 2026-11-22 three agents worked on Inky and its engine at once. They duplicated speculative-decoding work in `inkling-metal.c` and skewed each other's GPU benchmarks. From now on one agent owns Inky end to end: the agent, the Metal and CUDA engines, and the evals. It works in its own worktree from `origin/main`, never in the main checkout.
+
+- **One benchmark at a time on the M5 Max.** Run `python3 evals/openagents-desktop/tier2/host_clean.py` before every local run; `run_tasks.py` refuses a dirty host unless `--allow-dirty-host` is passed. Never publish a number from a run marked `host_contaminated`.
+- **Quit OpenAgents Desktop before a benchmark.** Its bundled `psionic-inkling-serve` (port 18795) shares the GPU memory bus and counts as competing inference.
+- **Engine changes** are judged on output parity (`--verify-prefill-decode`, bit-exact speculative verify) and on tok/s at short and long context (§1.3 step 3) on an idle GPU.
+- **Agent changes** are judged on the scorecard:
+  - **Target:** Locked Held-Out pass rate, at 300 s and with no time limit, plus time to pass.
+  - **Locks (must stay at 100%):** Desktop Tier 2, Desktop Tier 4, Lean core smoke, Session History Bucket A.
+  - **Reported per run:** pass, wall time, tok/s, KV prefix hit rate, `host_clean`, and the `(items_sha256, questions_sha256, gate_sha256)` digests.
+  - **Stored** under `evals/openagents-desktop/results/`.
