@@ -40,6 +40,8 @@
 | 5 | **Re-measure the shell-edit habit (F2) on the held-out rerun.** The 101-shell-calls-to-0-`edit_file` figure is from v2. If it persists, try Level 0–1 fixes (tool descriptions, soft redirect of `python3 -`/`sed` edits) before any LoRA. | Agent | Cheapest fix first (§5, law 5). |
 | 6 | **Hold** Level 3 self-patching, Level 4 LoRA and DSpark distillation, and parallel worktree racing until steps 1–4 produce a held-out score that moves. | — | Without a held-out signal, self-improvement optimizes toward suites Inky wrote itself (§5, law 3). |
 
+§9 gives the detailed recommendations behind these steps and the order to try them in.
+
 ---
 
 ## 2. Live Eval Qualification Results
@@ -406,3 +408,87 @@ On 2026-11-22 three agents worked on Inky and its engine at once. They duplicate
   - **Locks (must stay at 100%):** Desktop Tier 2, Desktop Tier 4, Lean core smoke, Session History Bucket A.
   - **Reported per run:** pass, wall time, tok/s, KV prefix hit rate, `host_clean`, and the `(items_sha256, questions_sha256, gate_sha256)` digests.
   - **Stored** under `evals/openagents-desktop/results/`.
+
+---
+
+## 9. Recommendations: How to Improve Inky Dramatically
+
+These are recommendations, not results. Each one names the evidence behind it and how to test it. Expected effects are estimates until the held-out rerun (§1.3 step 1) measures them.
+
+### 9.1 The model to reason with
+
+Every held-out failure is a timeout, so the question is where the time goes:
+
+```
+task time ≈ steps × (prefill time + output tokens ÷ decode speed)
+```
+
+Three things multiply: how many steps Inky takes, how many tokens it writes per step, and how fast each token decodes. `sh_014` wrote 7,591 tokens at about 25 tok/s, which is 304 s by itself. Halving the tokens and doubling the speed puts the same task near 76 s. Work on all three, cheapest first. Writing fewer tokens costs nothing in engine work and helps on every machine, so it comes first.
+
+### 9.2 Write fewer tokens
+
+1. **Enforce a thinking budget in the sampler, not in the prompt.**
+   - **Evidence:** `sh_014` wrote 3,440 tokens in one step. `budget_big` did a 6-digit multiplication in thinking before calling the tool that does it exactly (§3.4). The Terminal-Bench audit found that capping runaway thinking was one of the fixes that took local Microcoder from 1/4 to 3/4.
+   - **Change:** add a per-request thinking-token limit to `psionic-inkling-serve`. When the thinking channel reaches the limit, the sampler forces the end-of-thinking token, so the model must answer or call a tool.
+   - **Why this way:** changing the effort level rewrites the system message and invalidates the KV prefix cache (§7.3). A sampler limit changes no prompt bytes, so the cache survives, and the limit can differ per step: small on search and read steps, larger after a failed check.
+   - **Test:** held-out output tokens per task and pass rate, with the limit at 256, 512 and 1,024.
+2. **Refuse shell edits and name the tool to use.**
+   - **Evidence:** on Held-Out 6, Inky made 101 `run_command` calls and 0 `edit_file` calls (F2). A `python3 - <<'EOF'` rewrite emits the whole file; `edit_file` emits only the changed lines. Shell edits also skip the Class-E guard and the Desktop diff view. Prompt wording did not break the habit on hard tasks.
+   - **Change:** when `run_command` would write to an existing workspace file through a heredoc, `sed -i`, `tee` or `>` redirection, do not run it. Return a tool error that says to use `edit_file`. Inky's native tool calling had 0 malformed calls, so it can follow the redirect.
+   - **Risk:** legitimate scripts that write files. Limit the rule to existing tracked files and count false refusals in the run report.
+   - **Test:** `edit_file` share of edits, output tokens per task, and pass rate on Dev-9.
+3. **Run the check automatically after an edit.**
+   - **Evidence:** each edit is followed by a separate step that only runs the test command. Locals does this after every write.
+   - **Change:** when the task or `/goal` names a verification command, run it after each successful `edit_file` and return its result with the edit result.
+   - **Test:** steps per task on Bucket A and Dev-9.
+
+### 9.3 Take fewer steps
+
+1. **Give Inky the likely files before its first step.**
+   - **Evidence:** on 3–4 file tasks Inky read files for 15–25 steps without editing (F4). `sh_008` ran 23 exploration commands and made 0 edits.
+   - **Change:** port Microcoder's step-0 seeding (`mc_run_seed` in `coax/lib/microcoder/run.coax`) to Inky, and feed it from the deterministic file finder built for #11210 (git-mined candidates, no model call). The first prompt then lists the top candidate files and why each was chosen.
+   - **Test:** steps before the first edit on Dev-9 Buckets B–E.
+2. **Add an outline tool.**
+   - **Change:** a read-only tool that returns a file's top-level declarations with line ranges, so Inky reads the 40 lines it needs instead of 200-line pages (`IK_READ_LINES :: 200`).
+   - **Test:** bytes read per task and steps per task.
+3. **Make the stall nudge ask for a plan.**
+   - **Change:** the existing zero-edit nudges at steps 8 and 14 tell Inky to act. Make the first one require a two-line answer: which files it will edit and what changes. A wrong plan is cheaper than ten more reads.
+
+### 9.4 Make each token faster
+
+1. **Measure decode speed against context length before more kernel work.**
+   - **Evidence:** the engine reports about 120 tok/s on short prompts. Inky sees 38–46 tok/s at 18K context and 13–25 tok/s on held-out tasks. Nobody has measured why. Until that is known, engine work is aimed at the short-prompt number, which is not the one users feel.
+   - **Change:** benchmark decode tok/s at 1K, 4K, 8K, 16K and 24K context, and split in-agent speed into prefill time and decode time. Publish the curve in `psionic/docs/targets/inkling-metal-report.md`.
+2. **Keep the working context small by construction.**
+   - **Evidence:** a command may return 16 KB (`IK_CMD_INLINE :: 16384`) and compaction waits until 80% of 32K (`IK_STAGE1_PCT :: 80`). Hard tasks therefore run above 20K context, where decode is slowest, and each compaction pass invalidates the cache (F3).
+   - **Change:** cap what enters the context instead of removing it later. Return the head and tail of long command output, save the full output to a file, and let Inky read ranges from it. Pick the target context size from the curve in step 1. Nothing is edited retroactively, so the KV prefix cache stays valid.
+   - **Test:** mean context size, KV hit rate and tok/s on Dev-9.
+3. **Settle speculative decoding with one measurement.**
+   - **Evidence:** prompt-lookup verification was net slower here because verifying 6–8 tokens touches 40–50 experts instead of 8 (§7.3). Locals reports 2.05× with the DSpark draft head on the same model.
+   - **Change:** measure DSpark drafts at 18K context with draft lengths of 2, 3, 5 and 8. Short drafts touch fewer extra experts, so the best length may be smaller than Locals uses. Keep one verify path (§1.3 step 3).
+4. **Keep the prompt cache on disk.**
+   - **Change:** add the SSD cold tier that Locals uses (`DiskPromptCache`), so switching chats or restarting Desktop does not pay a full 32K prefill.
+
+### 9.5 Measure on enough tasks
+
+- **Six held-out tasks cannot show progress.** One task is 17 points. Grow the locked held-out partition to at least 30 tasks before tuning against it, and lock it (items, questions and gate digests) the day it is built.
+- **Take the new tasks from real sessions.** The 27 session-history tasks came from real chats through `evals/session-history/tools/ingest.coax`. Hundreds more chats exist. Add stalled, stopped and steered Inky chats from Desktop as they happen (§1.3 step 4).
+- **Report pass rate with no time limit next to the 300 s rate.** It separates "cannot solve" from "solves too slowly", which need different fixes.
+
+### 9.6 What to leave alone for now
+
+- **Cloud escalation.** In the Neon and Inkling lab, the hybrid runs scored 4/9 on Dev-9 at \$1.06, while Inky alone scored 5/9 at \$0. A hybrid is not the current lever.
+- **The routing LoRA.** Its two targets are the shell-edit habit and long thinking before tool calls. §9.2 items 1 and 2 attack both without training. Train only if they fall short.
+- **Self-patching and parallel worktree racing.** Both need a held-out score that responds to changes (§1.3 step 6).
+
+### 9.7 Order
+
+| Order | Work | What it buys |
+| :---: | --- | --- |
+| 1 | Fix graders, rerun held-out and Dev-9, measure the decode-versus-context curve (§1.3 steps 1–2, §9.4 item 1) | A baseline every later change is measured against |
+| 2 | Sampler thinking budget, shell-edit refusal, small working context (§9.2 items 1–2, §9.4 item 2) | Fewer tokens at higher speed; the largest expected cut in task time |
+| 3 | File seeding, outline tool, auto-check after edit, plan nudge (§9.3, §9.2 item 3) | Fewer steps on multi-file tasks |
+| 4 | DSpark measurement and disk prompt cache (§9.4 items 3–4) | Faster tokens, if the measurement supports it |
+| 5 | Grow held-out to 30+ tasks from real sessions (§9.5) | Results that can be trusted at the size of the gains being claimed |
+
+The target is a majority of the locked held-out tasks passing inside 300 s on the M5 Max at \$0.
