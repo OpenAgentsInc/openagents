@@ -120,13 +120,28 @@ gw_test_has_tools :: (body: string) -> bool { return cl_raw(body, "tools").count
 }
 #test "Chat translation retains each existing dialect flag at its one-byte boundaries" {
  messages:=[1]GwMessage.[GwMessage.{role="user",text="x"}];out:[4096]u8;arena:[4096]u8;ar:=[1]ClArena.[ClArena.{buf=arena[..]}];
- for flags:[13]int.[0,1,2,8,9,16,24,32,33,64,96,34,123] {req:=GwRequest.{model="m",system="!",messages=messages[..],schema="{}",schema_name="s",schema_hint="?",max_tokens=1,effort="x"};n:=gw_chat_body(req,flags,out[..]);#assert n>0;body:=cast(string)out[0..<n];#assert json_valid(body);
+ for flags:[16]int.[0,1,2,8,9,16,24,32,33,64,96,34,123,136,137,256] {req:=GwRequest.{model="m",system="!",messages=messages[..],schema="{}",schema_name="s",schema_hint="?",max_tokens=1,effort="x"};n:=gw_chat_body(req,flags,out[..]);#assert n>0;body:=cast(string)out[0..<n];#assert json_valid(body);
   #assert cl_str(ar[..],body,"messages.0.content")==ifx (flags&32)!=0 then "!?" else "!";
   #assert (cl_raw(body,"response_format").count>0)==((flags&32)==0) && (cl_raw(body,"max_tokens")=="1")==((flags&1)!=0) && (cl_raw(body,"max_completion_tokens")=="1")==((flags&1)==0);
   #assert (cl_raw(body,"reasoning_effort").count>0)==((flags&2)==0) && (cl_raw(body,"thinking.type")=="\"enabled\"")==((flags&2)!=0);
   #assert (cl_raw(body,"provider.data_collection")=="\"deny\"")==((flags&24)!=0) && (cl_raw(body,"provider.zdr")=="true")==((flags&16)!=0);
+  #assert (cl_raw(body,"provider.require_parameters")=="true")==(((flags&24)!=0) && ((flags&128)!=0));
   #assert (cl_raw(body,"providerOptions.gateway.zeroDataRetention")=="true")==((flags&64)!=0);
  }
+ calls:=[1]GwToolCall.[GwToolCall.{call_id="c1",name="f",input_json="{}"}];
+ tmsgs:=[3]GwMessage.[GwMessage.{role="user",text="u"},GwMessage.{role="assistant",calls=calls[..]},GwMessage.{role="tool",result=GwToolResult.{call_id="c1",output="err",is_error=true}}];
+ for flags:[4]int.[0,1,256,257] {
+  treq:=GwRequest.{model="m",messages=tmsgs[..],tools="[]",has_temp=true,temperature=1.05,top_p=0.10,top_k=1,has_seed=true,seed=0};
+  tn:=gw_chat_body(treq,flags,out[..]);#assert tn>0;tbody:=cast(string)out[0..<tn];#assert json_valid(tbody);
+  #assert (cl_raw(tbody,"messages.2.is_error")=="true")==((flags&256)!=0);
+  #assert cl_raw(tbody,"temperature")=="1.05" && cl_raw(tbody,"top_p")=="0.10" && cl_raw(tbody,"top_k")=="1" && cl_raw(tbody,"seed")=="0";
+ }
+ fbuf:[32]u8;
+ fn:=gw_chat_write_f2(fbuf[..],0,-0.5);#assert cast(string)fbuf[0..<fn]=="0.00";
+ fn=gw_chat_write_f2(fbuf[..],0,0.05);#assert cast(string)fbuf[0..<fn]=="0.05";
+ fn=gw_chat_write_f2(fbuf[..],0,0.10);#assert cast(string)fbuf[0..<fn]=="0.10";
+ fn=gw_chat_write_f2(fbuf[..],0,1.05);#assert cast(string)fbuf[0..<fn]=="1.05";
+ fn=gw_chat_write_f2(fbuf[..],0,100.5);#assert cast(string)fbuf[0..<fn]=="100.00";
  req:=GwRequest.{model="m",messages=messages[..],schema="{}",schema_hint="?"};n:=gw_chat_body(req,GW_NO_STRICT_SCHEMA,out[..]);#assert n>0 && cl_str(ar[..],cast(string)out[0..<n],"messages.0.content")=="?";
  req.schema="";req.system="";req.schema_hint="?";n=gw_chat_body(req,GW_NO_STRICT_SCHEMA,out[..]);#assert n>0 && cl_str(ar[..],cast(string)out[0..<n],"messages.0.content")=="x";
  messages[0].role="";n=gw_chat_body(req,0,out[..]);#assert n>0 && cl_raw(cast(string)out[0..<n],"messages.0.role")=="\"user\"";

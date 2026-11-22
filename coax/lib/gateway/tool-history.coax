@@ -45,6 +45,19 @@ GW_TOOL_CALLS :: 8; GW_TOOL_HISTORY :: 64; GW_TOOL_MESSAGES :: 128;
  #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"assistant\",\"content\":\"Checking\",\"tool_calls\":[{\"id\":\"call_café\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\" {\\\"path\\\":\\\"note.txt\\\"} \"}}]}";
  n=gwt_chat_message(out[..],0,GwMessage.{role="tool",result=GwToolResult.{call_id="call_café",output="line\nsecond",is_error=true}});
  #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"tool\",\"tool_call_id\":\"call_café\",\"content\":\"line\\nsecond\"}";
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="tool",result=GwToolResult.{call_id="call_café",output="boom",is_error=true}},true);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"tool\",\"tool_call_id\":\"call_café\",\"content\":\"boom\",\"is_error\":true}";
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="tool",result=GwToolResult.{call_id="call_café",output="ok",is_error=false}},true);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"tool\",\"tool_call_id\":\"call_café\",\"content\":\"ok\"}";
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="assistant",text="",reasoning="p",calls=calls[..]},true);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"assistant\",\"content\":\"\",\"reasoning_content\":\"p\",\"tool_calls\":[{\"id\":\"call_café\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\" {\\\"path\\\":\\\"note.txt\\\"} \"}}]}";
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="user",text="Hi",reasoning="p"},true);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":\"Hi\"}";
+ imgs:=[4]GwImage.[GwImage.{media_type="",data="x"},GwImage.{media_type="m",data=""},GwImage.{media_type="a",data="b"},GwImage.{media_type="c",data="d"}];
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="user",text="t",images=imgs[..]},false);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"t\"},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:a;base64,b\"}},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:c;base64,d\"}}]}";
+ n=gwt_chat_message_ex(out[..],0,GwMessage.{role="user",text="",images=imgs[2..<4]},false);
+ #assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:a;base64,b\"}},{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:c;base64,d\"}}]}";
  n=gwt_chat_message(out[..],0,GwMessage.{role="user",text="Hi"});#assert n>0 && cast(string)out[0..<n]=="{\"role\":\"user\",\"content\":\"Hi\"}";
  two:=[2]GwToolCall.[calls[0],GwToolCall.{call_id="b",name="find",input_json="{}"}];n=gwt_chat_message(out[..],0,GwMessage.{role="assistant",calls=two[..]});#assert n>0 && cl_count(cl_raw(cast(string)out[0..<n],"tool_calls"))==2;
  #assert gwt_chat_message(out[0..<1],0,GwMessage.{role="assistant",calls=calls[..]})<0 && gwt_chat_message(out[0..<1],0,GwMessage.{role="tool",result=GwToolResult.{call_id="a"}})<0;
@@ -81,8 +94,9 @@ gwt_history_valid :: (messages:[]GwMessage)->bool #effects(all) {
  }return remaining==0;
 }
 // Provider-native continuation bytes; called only after whole-history admission.
-gwt_chat_message :: (out:[]u8,at:int,m:GwMessage)->int #effects(all) {
- n:=at;if m.role=="tool" {n=json_raw(out,n,"{\"role\":\"tool\",\"tool_call_id\":");n=json_write_string(out,n,m.result.call_id);n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,m.result.output);return json_raw(out,n,"}");}
+gwt_chat_message :: (out:[]u8,at:int,m:GwMessage)->int #effects(all) { return gwt_chat_message_ex(out, at, m, false); }
+gwt_chat_message_ex :: (out:[]u8,at:int,m:GwMessage,tool_error:bool)->int #effects(all) {
+ n:=at;if m.role=="tool" {n=json_raw(out,n,"{\"role\":\"tool\",\"tool_call_id\":");n=json_write_string(out,n,m.result.call_id);n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,m.result.output);if tool_error && m.result.is_error {n=json_raw(out,n,",\"is_error\":true");}return json_raw(out,n,"}");}
  n=json_raw(out,n,ifx m.role=="assistant" then "{\"role\":\"assistant\",\"content\":" else "{\"role\":\"user\",\"content\":");
  if m.images.count==0 { n=json_write_string(out,n,m.text); } else {
   n=json_raw(out,n,"["); first:=true;
@@ -99,6 +113,7 @@ gwt_chat_message :: (out:[]u8,at:int,m:GwMessage)->int #effects(all) {
   }
   n=json_raw(out,n,"]");
  }
+ if m.role=="assistant" && m.reasoning.count>0 { n=json_raw(out,n,",\"reasoning_content\":"); n=json_write_string(out,n,m.reasoning); }
  if m.calls.count>0 {n=json_raw(out,n,",\"tool_calls\":[");for call,i:m.calls {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,call.call_id);n=json_raw(out,n,",\"type\":\"function\",\"function\":{\"name\":");n=json_write_string(out,n,call.name);n=json_raw(out,n,",\"arguments\":");n=json_write_string(out,n,call.input_json);n=json_raw(out,n,"}}");}n=json_raw(out,n,"]");}
  return json_raw(out,n,"}");
 }

@@ -45,6 +45,12 @@ gw_psionic_strict :: (base: string, url_buf: [] u8) -> Gateway {
   return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = GW_CHAT_LEGACY_MAX_TOKENS};
 }
 
+// Native Inkling 2.0 Chat Completions gateway for Inky: native tools, interleaved reasoning_content,
+// native <|content_tool_error|> via is_error:true, and no strict-schema wrapper.
+gw_psionic_native :: (base: string, url_buf: [] u8) -> Gateway {
+  return Gateway.{name = "psionic", url = gw_psionic_url(base, GW_PSIONIC_PATH, url_buf), key_env = "", scheme = "", wire = GW_WIRE_CHAT, flags = GW_CHAT_LEGACY_MAX_TOKENS | GW_CHAT_TOOL_ERROR};
+}
+
 // One peer entry from PSIONIC_PEERS ("http://host:port" or "http://host:port#model").
 GwPsionicPeer :: struct { base: string; model: string; }
 
@@ -108,6 +114,21 @@ gw_psionic_up :: (base: string) -> bool {
   body_s := gw_translate(gs, req_s, out[..], why[..]);
   ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   #assert json_valid(body_s) && cl_str(ar[..], body_s, "response_format.type") == "json_schema" && cl_int(body_s, "max_tokens").value == 4096;
+  gn := gw_psionic_native(GW_PSIONIC_DEFAULT_BASE, ub[..]);
+  #assert gn.flags == (GW_CHAT_LEGACY_MAX_TOKENS | GW_CHAT_TOOL_ERROR) && gn.name == "psionic" && gn.url == g.url;
+  calls := [1] GwToolCall.[GwToolCall.{call_id = "c1", name = "read_file", input_json = "{\"path\":\"a.coax\"}"}];
+  nmsgs := [3] GwMessage.[
+    GwMessage.{role = "user", text = "check"},
+    GwMessage.{role = "assistant", text = "", reasoning = "let me read it", calls = calls[..]},
+    GwMessage.{role = "tool", result = GwToolResult.{call_id = "c1", output = "not found", is_error = true}},
+  ];
+  nbuf: [2048] u8;
+  req_n := GwRequest.{model = "inkling-2-mini", system = "sys", messages = nmsgs[..], tools = "[{\"type\":\"function\",\"function\":{\"name\":\"read_file\"}}]", max_tokens = 4096, effort = "medium", has_temp = true, temperature = 0.6, top_p = 0.95, top_k = 40, has_seed = true, seed = 7};
+  body_n := gw_translate(gn, req_n, nbuf[..], why[..]);
+  ar[0].at = 0; ar[0].full = false;
+  #assert json_valid(body_n) && cl_str(ar[..], body_n, "messages.2.reasoning_content") == "let me read it" && cl_bool(body_n, "messages.3.is_error").value;
+  #assert cl_raw(body_n, "temperature") == "0.60" && cl_raw(body_n, "top_p") == "0.95" && cl_int(body_n, "top_k").value == 40 && cl_int(body_n, "seed").value == 7;
+  #assert cl_raw(body_n, "response_format").count == 0;
   peers: [4] GwPsionicPeer;
   np := gw_psionic_parse_peers("http://100.74.238.61:18795/#qwen35-9b, http://127.0.0.1:18794#inkling-2-mini , http://127.0.0.1:8080/", peers[..]);
   #assert np == 3 && peers[0].base == "http://100.74.238.61:18795" && peers[0].model == "qwen35-9b";

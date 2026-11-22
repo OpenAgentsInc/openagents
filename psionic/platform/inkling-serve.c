@@ -457,6 +457,7 @@ typedef struct {
     Buf       tool_call_id;
     Buf       content;
     Buf       reasoning;
+    int       is_error;
     ToolCall *tcs;
     int       n_tcs;
     int       cap_tcs;
@@ -477,6 +478,8 @@ typedef struct {
     float    temperature;
     float    top_p;
     int      top_k;
+    int      has_seed;
+    uint64_t seed;
     int      cache_prompt;
     int      resp_fmt;          /* 0=none, 1=json_object, 2=json_schema */
     Buf      resp_schema_json;  /* raw JSON schema object when resp_fmt==2 */
@@ -762,6 +765,8 @@ static int parse_message_obj(JScan *j, Req *r) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->reasoning);
             else j_skip(j);
+        } else if (k.data && !strcmp(k.data, "is_error")) {
+            j_bool(j, &m->is_error);
         } else if (k.data && !strcmp(k.data, "tool_calls")) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '[') {
@@ -930,6 +935,9 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
         } else if (!strcmp(ks, "top_k")) {
             double v = 40;
             if (!j_number(&j, &v) && v >= 0) r->top_k = (int)v;
+        } else if (!strcmp(ks, "seed")) {
+            double v = 0;
+            if (!j_number(&j, &v)) { r->has_seed = 1; r->seed = (uint64_t)(int64_t)v; }
         } else if (!strcmp(ks, "reasoning_effort")) {
             Buf ev = {0};
             j_ws(&j);
@@ -1097,7 +1105,11 @@ found_tname:;
         }
         if (m->content.len > 0 || strcmp(role, "assistant") != 0 || (m->reasoning.len == 0 && m->n_tcs == 0)) {
             buf_append(out, rtok.data, rtok.len);
-            buf_adds(out, "<|content_text|>");
+            if (!strcmp(role, "tool") && m->is_error) {
+                buf_adds(out, "<|content_tool_error|>");
+            } else {
+                buf_adds(out, "<|content_text|>");
+            }
             if (m->content.len > 0) buf_append(out, m->content.data, m->content.len);
             buf_adds(out, "<|end_message|>");
         }
@@ -1161,6 +1173,8 @@ typedef struct {
     int32_t         tok_thinking;
     int32_t         tok_text;
     int32_t         tok_invoke_tool;
+    int32_t         tok_invoke_tool_text;
+    int32_t         tok_tool_error;
     int32_t         tok_end_msg;
     int32_t         tok_eog;
     uint64_t        rng;
@@ -1437,6 +1451,40 @@ static void parse_invoked_tool_json(const char *s, size_t n, const Buf *hdr_name
     if (out_args->len == 0) buf_adds(out_args, "{}");
 }
 
+static void parse_invoked_tool_text(const char *s, size_t n, const Buf *hdr_name, Buf *out_name, Buf *out_args) {
+    size_t i = 0;
+    while (i < n && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) i++;
+    if (i < n && s[i] == '{') {
+        parse_invoked_tool_json(s, n, hdr_name, out_name, out_args);
+        return;
+    }
+    if (hdr_name && hdr_name->len > 0) buf_append(out_name, hdr_name->data, hdr_name->len);
+    buf_adds(out_args, "{\"text\":\"");
+    if (n > 0) buf_add_json_escaped(out_args, s, n);
+    buf_adds(out_args, "\"}");
+}
+
+/* Detect degenerate periodic repetition inside <|content_thinking|>: returns period p in [8..64]
+   when the trailing tokens repeat identically (3x for p>=24, 4x for p<24, at least 32 tokens). */
+static int detect_thinking_loop(const int32_t *toks, int start, int end) {
+    int len = end - start;
+    if (len < 64) return 0;
+    for (int p = 8; p <= 64; p++) {
+        int reps = (p >= 24) ? 3 : 4;
+        if (reps * p < 32 || len < reps * p) continue;
+        const int32_t *tail = toks + (end - p);
+        int ok = 1;
+        for (int k = 1; k < reps; k++) {
+            if (memcmp(tail, toks + (end - (k + 1) * p), (size_t)p * sizeof(int32_t)) != 0) {
+                ok = 0;
+                break;
+            }
+        }
+        if (ok) return p;
+    }
+    return 0;
+}
+
 static void emit_chat_tool_call(int fd, int64_t created, const char *model, int idx,
                                 const char *id, const char *name, size_t name_len,
                                 const char *args, size_t args_len) {
@@ -1655,7 +1703,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     fprintf(stderr, "[psionic-inkling-serve] req#%d prefill=%d cached=%d new=%d in %.3fs\n",
             sv->req_seq, n_prompt, cached, n_prompt - cached, t_prefill);
     fflush(stderr);
-    free(toks);
+    int32_t *all_toks = toks;
+    int n_all = n_prompt;
     buf_free(&prompt);
 
     if (r.stream) {
@@ -1673,10 +1722,13 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
     }
 
-    /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json */
+    /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json, 4=invoke_tool_text */
     int channel = 0;
     int in_header = 0;
     int js_started = 0;
+    int think_start = -1;
+    int think_broken = 0;
+    int n_reason = 0;
     Buf header_buf = {0};
     Buf tool_json = {0};
     Buf pending = {0};
@@ -1685,6 +1737,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     ToolCall *emitted_tcs = NULL;
     int n_emitted_tcs = 0, cap_emitted_tcs = 0;
     InkSampleParams sp = { .temperature = r.temperature, .top_p = r.top_p, .top_k = r.top_k };
+    uint64_t saved_rng = sv->rng;
+    if (r.has_seed) sv->rng = r.seed ? r.seed : 0x9E3779B97F4A7C15ULL;
 
     int max_gen = r.max_tokens;
     int avail = max_ctx - n_prompt - 1;
@@ -1723,13 +1777,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         n_gen++;
 
         if (tok == sv->tok_eog || ink_is_eog(sv->sess, tok)) {
+            if (r.cache_prompt && !g_stop && n_all < max_ctx) {
+                if (ink_step(sv->sess, tok, 0) == 0) all_toks[n_all++] = tok;
+            }
             finish_reason = "stop";
             break;
         }
 
         if (tok == sv->tok_model || tok == sv->tok_end_msg) {
             int was_js_text = (use_js && channel == 2);
-            if (channel == 3 && tool_json.len > 0) {
+            if ((channel == 3 || channel == 4) && tool_json.len > 0) {
                 if (n_emitted_tcs >= cap_emitted_tcs) {
                     int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
                     ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
@@ -1741,7 +1798,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     char idbuf[64];
                     snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
                     buf_adds(&tc->id, idbuf);
-                    parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+                    if (channel == 4) parse_invoked_tool_text(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+                    else parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
                     if (r.stream) {
                         if (is_responses) {
                             emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
@@ -1766,6 +1824,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 pending.len = 0;
             }
             channel = 0;
+            think_start = -1;
             if (was_js_text) {
                 finish_reason = "stop";
                 break;
@@ -1780,24 +1839,34 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             channel = 1;
             in_header = 0;
             pending.len = 0;
+            think_start = n_all + 1;
         } else if (tok == sv->tok_text) {
             channel = 2;
             in_header = 0;
             pending.len = 0;
+            think_start = -1;
         } else if (sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) {
             channel = 3;
             in_header = 0;
             pending.len = 0;
             tool_json.len = 0;
+            think_start = -1;
+        } else if (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text) {
+            channel = 4;
+            in_header = 0;
+            pending.len = 0;
+            tool_json.len = 0;
+            think_start = -1;
         } else if (tok >= 200000) {
             /* Other special control token: ignore in user-visible output */
         } else {
+            if (channel == 1) n_reason++;
             char piece[512];
             int plen = ink_decode_piece(sv->sess, tok, piece, sizeof piece);
             if (plen > 0) {
                 if (in_header) {
                     buf_append(&header_buf, piece, (size_t)plen);
-                } else if (channel == 3) {
+                } else if (channel == 3 || channel == 4) {
                     buf_append(&tool_json, piece, (size_t)plen);
                 } else {
                     if (channel == 0) channel = 2;
@@ -1836,9 +1905,41 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                 fprintf(stderr, "[psionic-inkling-serve] step error: %s\n", ink_error(sv->sess));
                 break;
             }
+            if (n_all < max_ctx) all_toks[n_all++] = tok;
+            if (channel == 1 && !think_broken && think_start >= 0 && sv->tok_end_msg >= 0 && n_all < max_ctx) {
+                int lp = detect_thinking_loop(all_toks, think_start, n_all);
+                if (lp > 0) {
+                    if (pending.len > 0) {
+                        buf_append(&full_think, pending.data, pending.len);
+                        if (r.stream) {
+                            if (is_responses) emit_responses_delta(fd, 1, pending.data, pending.len);
+                            else emit_chat_delta(fd, created, model, 1, pending.data, pending.len);
+                        }
+                        pending.len = 0;
+                    }
+                    fprintf(stderr, "[psionic-inkling-serve] req#%d thinking-loop breaker triggered (period=%d, think_toks=%d)\n",
+                            sv->req_seq, lp, n_all - think_start);
+                    fflush(stderr);
+                    think_broken = 1;
+                    channel = 0;
+                    think_start = -1;
+                    if (ink_step(sv->sess, sv->tok_end_msg, 1) != 0) {
+                        fprintf(stderr, "[psionic-inkling-serve] step error on loop break: %s\n", ink_error(sv->sess));
+                        break;
+                    }
+                    all_toks[n_all++] = sv->tok_end_msg;
+                    n_gen++;
+                }
+            }
         }
     }
-    if (channel == 3 && tool_json.len > 0) {
+    if (r.has_seed) sv->rng = saved_rng;
+    if (r.cache_prompt && !g_stop && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
+        ink_prefix_save(sv->sess, all_toks, n_all, 0);
+    }
+    free(all_toks);
+
+    if ((channel == 3 || channel == 4) && tool_json.len > 0) {
         if (n_emitted_tcs >= cap_emitted_tcs) {
             int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
             ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
@@ -1850,7 +1951,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             char idbuf[64];
             snprintf(idbuf, sizeof idbuf, "call_psionic_%d_%d", sv->req_seq, n_emitted_tcs);
             buf_adds(&tc->id, idbuf);
-            parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+            if (channel == 4) parse_invoked_tool_text(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
+            else parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
             if (r.stream) {
                 if (is_responses) {
                     emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
@@ -1876,18 +1978,18 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         finish_reason = "tool_calls";
     }
     double t_decode = now_sec() - td0;
-    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (%.2fs) gen=%d (%.2fs, %.1f tok/s) finish=%s\n",
+    fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d prompt=%d (cached=%d, %.2fs) gen=%d (reason=%d, %.2fs, %.1f tok/s) finish=%s\n",
             sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream,
-            n_prompt, t_prefill, n_gen, t_decode, n_gen / (t_decode + 1e-9), finish_reason);
+            n_prompt, cached, t_prefill, n_gen, n_reason, t_decode, n_gen / (t_decode + 1e-9), finish_reason);
 
     if (r.stream) {
         if (is_responses) {
             Buf done = {0};
-            char u[320];
+            char u[448];
             long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
             snprintf(u, sizeof u,
-                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"loop_count\":%lld}}}",
-                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, lc);
+                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d},\"loop_count\":%lld}}}",
+                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, lc);
             buf_adds(&done, u);
             send_sse_event(fd, "response.completed", done.data, done.len);
             buf_free(&done);
@@ -1911,10 +2013,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                      (long long)created);
             buf_adds(&usg, head);
             buf_add_json_escaped(&usg, model, strlen(model));
-            char utail[160];
+            char utail[320];
             snprintf(utail, sizeof utail,
-                     "\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}",
-                     n_prompt, n_gen, n_prompt + n_gen);
+                     "\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d}}}",
+                     n_prompt, n_gen, n_prompt + n_gen, cached, n_reason);
             buf_adds(&usg, utail);
             send_sse_event(fd, NULL, usg.data, usg.len);
             buf_free(&usg);
@@ -1959,11 +2061,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             else buf_adds(&out, "{}");
             buf_adds(&out, "\",\"status\":\"completed\"}");
         }
-        char utail[200];
+        char utail[320];
         long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
         snprintf(utail, sizeof utail,
-                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"loop_count\":%lld}}",
-                 n_prompt, n_gen, n_prompt + n_gen, lc);
+                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d},\"loop_count\":%lld}}",
+                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, lc);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", out.data, out.len);
         buf_free(&out);
@@ -2000,10 +2102,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
         }
         buf_adds(&out, "},\"finish_reason\":\"");
         buf_adds(&out, finish_reason);
-        char utail[160];
+        char utail[320];
         snprintf(utail, sizeof utail,
-                 "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d}}",
-                 n_prompt, n_gen, n_prompt + n_gen);
+                 "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d}}}",
+                 n_prompt, n_gen, n_prompt + n_gen, cached, n_reason);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", out.data, out.len);
         buf_free(&out);
@@ -2223,6 +2325,8 @@ int main(int argc, char **argv) {
     sv.tok_thinking    = ink_find_token(sv.sess, "<|content_thinking|>");
     sv.tok_text        = ink_find_token(sv.sess, "<|content_text|>");
     sv.tok_invoke_tool = ink_find_token(sv.sess, "<|content_invoke_tool_json|>");
+    sv.tok_invoke_tool_text = ink_find_token(sv.sess, "<|content_invoke_tool_text|>");
+    sv.tok_tool_error  = ink_find_token(sv.sess, "<|content_tool_error|>");
     sv.tok_end_msg     = ink_find_token(sv.sess, "<|end_message|>");
     sv.tok_eog         = ink_eos_token(sv.sess);
     sv.last_active     = now_sec();

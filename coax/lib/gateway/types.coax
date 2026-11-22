@@ -52,6 +52,7 @@ GwImage :: struct {
 GwMessage :: struct {
   role: string;                  // "user", "assistant" or correlated "tool"
   text: string;
+  reasoning: string;             // optional assistant thinking (interleaved reasoning_content)
   images: [] GwImage;            // optional multimodal image attachments
   calls: [] GwToolCall;          // assistant calls, in native order
   result: GwToolResult;          // role tool: correlated output; text and calls are empty
@@ -68,6 +69,12 @@ GwRequest :: struct {
   max_tokens: int;               // 0 to leave it to the provider
   stream: bool = true;
   tools: string;                 // Chat Completions function tools, a JSON array sent as it is; "" for none
+  has_temp: bool;                // emit temperature when true
+  temperature: f64;
+  top_p: f64;                    // > 0.0 to emit top_p
+  top_k: int;                    // > 0 to emit top_k
+  has_seed: bool;                // emit seed when true
+  seed: int;
 }
 
 Gateway :: struct {
