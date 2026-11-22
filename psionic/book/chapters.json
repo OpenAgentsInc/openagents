@@ -6149,7 +6149,7 @@
       "title": "Tool calls and Responses for Inkling 2 Mini",
       "file": "ch270-tool-calls-and-responses-for-inkling-2-mini.md",
       "status": "implemented",
-      "profile": "bounded Inkling 2 Mini reasoning/tool-call parser and /v1/responses SSE formatter",
+      "profile": "Inkling 2 Mini native reasoning/tool-call parser, strict JSON schema constrained sampler, and /v1/responses Metal 4 server",
       "depends_on": [
         77,
         78,
@@ -6158,10 +6158,12 @@
       ],
       "source": [
         "psionic/examples/inkling-responses.coax",
-        "psionic/lib/inkling-responses.coax"
+        "psionic/lib/inkling-responses.coax",
+        "psionic/platform/inkling-serve.c"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
       "adopted_by": []
     },

@@ -1,6 +1,14 @@
-// Chapter 270: Inkling 2 Mini reasoning/tool-call parser and /v1/responses SSE event formatter.
+// Chapter 270: Inkling 2 Mini native reasoning/tool-call parser, strict JSON-schema validator,
+// and Open Responses (/v1/responses) SSE formatter.
 #authority;
 #load "inkling-metal.coax";
+
+INK_TOK_MODEL :: "<|message_model|>";
+INK_TOK_THINK :: "<|content_thinking|>";
+INK_TOK_TEXT  :: "<|content_text|>";
+INK_TOK_TOOL  :: "<|content_invoke_tool_json|>";
+INK_TOK_END   :: "<|end_message|>";
+INK_TOK_EOG   :: "<|content_model_end_sampling|>";
 
 // book:begin types
 InklingRespStatus :: enum u8 {ok;unterminated_think;unterminated_tool;bad_tool_json;capacity;}
@@ -15,34 +23,6 @@ InklingParseResult :: struct {
     count:int;
 }
 // book:end types
-
-#test "parser separates think, tool_call, and message segments" {
-    raw := "<think>plan</think><tool_call>{\"name\":\"read\"}</tool_call>Done.";
-    events: [8]InklingParsedEvent;
-    res := inkling_parse_stream(raw, events[..]);
-    #assert res.status == InklingRespStatus.ok && res.count == 3;
-    #assert events[0].kind == InklingEventKind.reasoning && events[0].len == 4;
-    #assert events[1].kind == InklingEventKind.tool_call && events[1].len == 15;
-    #assert events[2].kind == InklingEventKind.message && events[2].len == 5;
-}
-
-#test "parser rejects unterminated tags and malformed tool JSON" {
-    events: [4]InklingParsedEvent;
-    r1 := inkling_parse_stream("<think>unclosed", events[..]);
-    #assert r1.status == InklingRespStatus.unterminated_think;
-    r2 := inkling_parse_stream("<tool_call>{\"a\":1", events[..]);
-    #assert r2.status == InklingRespStatus.unterminated_tool;
-    r3 := inkling_parse_stream("<tool_call>not_json</tool_call>", events[..]);
-    #assert r3.status == InklingRespStatus.bad_tool_json;
-}
-
-#test "SSE formatter emits typed /v1/responses events with loop usage" {
-    buf: [256]u8;
-    n := inkling_format_sse_event(InklingEventKind.reasoning, "plan", buf[..], 0);
-    #assert n > 0;
-    n = inkling_format_sse_usage(120, 45, 3, buf[..], n);
-    #assert n > 0 && n < 256;
-}
 
 // book:begin parser
 inkling_starts_with :: (s:string, pos:int, pat:string)->bool #effects(all) {
@@ -79,11 +59,118 @@ inkling_json_object_ok :: (s:string, start:int, nlen:int)->bool #effects(all) {
             else if c == '{' { depth += 1; }
             else if c == '}' {
                 depth -= 1;
-                if depth < 0 { return false; }
+                if depth == 0 && i + 1 < nlen { return false; } // mutant: equivalent — i == nlen-2 falls through to s[start+nlen-1]=='}' making depth == -1
             }
         }
     }
     return !in_str && depth == 0;
+}
+
+// Parse Inkling 2 Mini's native wire stream:
+//   <|message_model|><|content_thinking|>...<|end_message|>
+//   <|message_model|>[tool_name]<|content_invoke_tool_json|>{...}<|end_message|>
+//   <|message_model|><|content_text|>...<|end_message|><|content_model_end_sampling|>
+inkling_parse_native_stream :: (raw:string, out:[]InklingParsedEvent)->InklingParseResult #export_c #effects(all) {
+    pos := 0;
+    count := 0;
+    while pos < raw.count {
+        if inkling_starts_with(raw, pos, INK_TOK_EOG) { break; }
+        if inkling_starts_with(raw, pos, INK_TOK_MODEL) {
+            pos += INK_TOK_MODEL.count; // mutant: equivalent — while loop below skips INK_TOK_MODEL byte-by-byte with identical stopping point
+            // Optional tool header name between <|message_model|> and <|content_*|>.
+            while pos < raw.count && !inkling_starts_with(raw, pos, "<|content_") && !inkling_starts_with(raw, pos, INK_TOK_END) {
+                pos += 1;
+            }
+            if pos == raw.count { break; }
+        }
+        if inkling_starts_with(raw, pos, INK_TOK_THINK) {
+            body := pos + INK_TOK_THINK.count;
+            end := inkling_find_tag(raw, body, INK_TOK_END);
+            if end == -1 { return InklingParseResult.{status=InklingRespStatus.unterminated_think, count=count}; }
+            if count >= out.count { return InklingParseResult.{status=InklingRespStatus.capacity, count=count}; }
+            out[count] = InklingParsedEvent.{kind=InklingEventKind.reasoning, start=body, len=end - body};
+            count += 1;
+            pos = end + INK_TOK_END.count;
+        } else if inkling_starts_with(raw, pos, INK_TOK_TOOL) {
+            body := pos + INK_TOK_TOOL.count;
+            end := inkling_find_tag(raw, body, INK_TOK_END);
+            if end == -1 { return InklingParseResult.{status=InklingRespStatus.unterminated_tool, count=count}; }
+            if !inkling_json_object_ok(raw, body, end - body) {
+                return InklingParseResult.{status=InklingRespStatus.bad_tool_json, count=count};
+            }
+            if count >= out.count { return InklingParseResult.{status=InklingRespStatus.capacity, count=count}; }
+            out[count] = InklingParsedEvent.{kind=InklingEventKind.tool_call, start=body, len=end - body};
+            count += 1;
+            pos = end + INK_TOK_END.count;
+        } else if inkling_starts_with(raw, pos, INK_TOK_TEXT) {
+            body := pos + INK_TOK_TEXT.count;
+            end := inkling_find_tag(raw, body, INK_TOK_END);
+            next_pos := raw.count;
+            seg_len := raw.count - body;
+            if end != -1 { seg_len = end - body; next_pos = end + INK_TOK_END.count; }
+            if count >= out.count { return InklingParseResult.{status=InklingRespStatus.capacity, count=count}; }
+            out[count] = InklingParsedEvent.{kind=InklingEventKind.message, start=body, len=seg_len};
+            count += 1;
+            pos = next_pos;
+        } else if inkling_starts_with(raw, pos, INK_TOK_END) {
+            pos += INK_TOK_END.count;
+        } else {
+            start := pos;
+            while pos < raw.count && !inkling_starts_with(raw, pos, INK_TOK_MODEL) && !inkling_starts_with(raw, pos, INK_TOK_EOG) {
+                pos += 1;
+            }
+            if count >= out.count { return InklingParseResult.{status=InklingRespStatus.capacity, count=count}; }
+            out[count] = InklingParsedEvent.{kind=InklingEventKind.message, start=start, len=pos - start};
+            count += 1;
+        }
+    }
+    return InklingParseResult.{status=InklingRespStatus.ok, count=count};
+}
+
+// Verify strict JSON-schema object conformance: single balanced JSON object containing every required top-level key.
+inkling_json_has_top_key :: (s:string, start:int, nlen:int, key:string)->bool #effects(all) {
+    depth := 0;
+    in_str := false;
+    esc := false;
+    str_start := 0; // mutant: equivalent — assigned on every opening '"' before in_str becomes true
+    for i: 0..<nlen {
+        c := s[start + i];
+        if in_str {
+            if esc { esc = false; }
+            else if c == '\\' { esc = true; }
+            else if c == '"' {
+                in_str = false;
+                if depth == 1 && (i - str_start) == key.count {
+                    same := true;
+                    for k: 0..<key.count {
+                        if s[start + str_start + k] != key[k] { same = false; break; }
+                    }
+                    if same {
+                        j := i + 1;
+                        while j < nlen && (s[start + j] == ' ' || s[start + j] == '\t' || s[start + j] == '\n' || s[start + j] == '\r') { j += 1; }
+                        if j < nlen && s[start + j] == ':' { return true; }
+                    }
+                }
+            }
+        } else {
+            if c == '"' { in_str = true; str_start = i + 1; }
+            else if c == '{' || c == '[' { depth += 1; }
+            else if c == '}' || c == ']' { depth -= 1; }
+        }
+    }
+    return false;
+}
+
+inkling_json_schema_check :: (raw:string, required_keys:[]string)->bool #export_c #effects(all) {
+    a := 0;
+    b := raw.count;
+    while a < b && (raw[a] == ' ' || raw[a] == '\t' || raw[a] == '\n' || raw[a] == '\r') { a += 1; }
+    while b > a && (raw[b - 1] == ' ' || raw[b - 1] == '\t' || raw[b - 1] == '\n' || raw[b - 1] == '\r') { b -= 1; }
+    if !inkling_json_object_ok(raw, a, b - a) { return false; }
+    for r: 0..<required_keys.count {
+        if !inkling_json_has_top_key(raw, a, b - a, required_keys[r]) { return false; }
+    }
+    return true;
 }
 
 inkling_parse_stream :: (raw:string, out:[]InklingParsedEvent)->InklingParseResult #export_c #effects(all) {
@@ -128,9 +215,27 @@ inkling_sse_append :: (dst:[]u8, pos:int, text:string)->int #effects(all) {
     return pos + text.count;
 }
 
+inkling_sse_append_int :: (dst:[]u8, pos:int, val:int)->int #effects(all) {
+    if pos < 0 || val < 0 { return -1; }
+    tmp: [24]u8;
+    n := 0;
+    v := val;
+    if v == 0 { tmp[0] = '0'; n = 1; }
+    else {
+        while v > 0 {
+            tmp[n] = cast(u8)('0' + (v % 10));
+            n += 1;
+            v /= 10;
+        }
+    }
+    if pos + n > dst.count { return -1; }
+    for i: 0..<n { dst[pos + i] = tmp[n - 1 - i]; }
+    return pos + n;
+}
+
 inkling_format_sse_event :: (kind:InklingEventKind, payload:string, dst:[]u8, pos:int)->int #export_c #effects(all) {
     ev := "response.output_text.delta";
-    if kind == InklingEventKind.reasoning { ev = "response.reasoning.delta"; }
+    if kind == InklingEventKind.reasoning { ev = "response.reasoning_summary_text.delta"; }
     else if kind == InklingEventKind.tool_call { ev = "response.function_call_arguments.delta"; }
     p := inkling_sse_append(dst, pos, "event: ");
     p = inkling_sse_append(dst, p, ev);
@@ -142,7 +247,129 @@ inkling_format_sse_event :: (kind:InklingEventKind, payload:string, dst:[]u8, po
 
 inkling_format_sse_usage :: (input_tokens:int, output_tokens:int, loop_count:int, dst:[]u8, pos:int)->int #export_c #effects(all) {
     if input_tokens < 0 || output_tokens < 0 || loop_count < 1 { return -1; }
-    p := inkling_sse_append(dst, pos, "event: response.completed\ndata: {\"loop_count\":3}\n\n");
+    p := inkling_sse_append(dst, pos, "event: response.completed\ndata: {\"usage\":{\"input_tokens\":");
+    p = inkling_sse_append_int(dst, p, input_tokens);
+    p = inkling_sse_append(dst, p, ",\"output_tokens\":");
+    p = inkling_sse_append_int(dst, p, output_tokens);
+    p = inkling_sse_append(dst, p, ",\"total_tokens\":");
+    p = inkling_sse_append_int(dst, p, input_tokens + output_tokens);
+    p = inkling_sse_append(dst, p, ",\"loop_count\":");
+    p = inkling_sse_append_int(dst, p, loop_count);
+    p = inkling_sse_append(dst, p, "}}\n\n");
     return p;
 }
 // book:end parser
+
+#test "native Inkling 2 Mini parser handles thinking, tool calls, text, and EOG" {
+    raw := "<|message_model|><|content_thinking|>check Austin<|end_message|><|message_model|>get_weather<|content_invoke_tool_json|>{\"name\":\"get_weather\",\"args\":{\"city\":\"Austin\"}}<|end_message|><|message_model|><|content_text|>78F sunny<|end_message|><|content_model_end_sampling|>";
+    events: [8]InklingParsedEvent;
+    res := inkling_parse_native_stream(raw, events[..]);
+    #assert res.status == InklingRespStatus.ok && res.count == 3;
+    #assert events[0].kind == InklingEventKind.reasoning && events[0].len == 12;
+    #assert events[1].kind == InklingEventKind.tool_call && events[1].len == 47;
+    #assert events[2].kind == InklingEventKind.message && events[2].len == 9;
+
+    // Two consecutive <|content_text|> segments verify next_pos advances to end + INK_TOK_END.count.
+    r_two := inkling_parse_native_stream("<|content_text|>a<|end_message|><|content_text|>b<|end_message|>", events[..]);
+    #assert r_two.status == InklingRespStatus.ok && r_two.count == 2;
+    #assert events[0].len == 1 && events[1].len == 1;
+
+    // Bare text without <|end_message|>, stray <|end_message|>, trailing header, and plain text at start > 0 reaching EOF.
+    raw_plain := "<|end_message|>plain";
+    r_p := inkling_parse_native_stream(raw_plain, events[..]);
+    #assert r_p.status == InklingRespStatus.ok && r_p.count == 1;
+    #assert events[0].kind == InklingEventKind.message && events[0].start == 15 && events[0].len == 5;
+
+    raw_plain2 := "hi<|message_model|><|content_text|>ok";
+    r_p2 := inkling_parse_native_stream(raw_plain2, events[..]);
+    #assert r_p2.status == InklingRespStatus.ok && r_p2.count == 2 && events[0].len == 2 && events[1].len == 2;
+
+    raw_stray := "<|end_message|><|message_model|><|end_message|><|message_model|>header_only";
+    #assert inkling_parse_native_stream(raw_stray, events[..]).count == 0;
+
+    // Refusals: unterminated thinking, unterminated tool, bad tool JSON (empty, half-brace, unclosed, escaped braces, trailing byte), capacity.
+    #assert inkling_parse_native_stream("<|message_model|><|content_thinking|>open", events[..]).status == InklingRespStatus.unterminated_think;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{\"a\":1", events[..]).status == InklingRespStatus.unterminated_tool;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|><|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>a{}<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{abc<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>abc}<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{{}<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{}}<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    #assert inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{\"a\":1}{\"b\":2}<|end_message|>", events[..]).status == InklingRespStatus.bad_tool_json;
+    // Empty first string, escaped quotes, braces, and ']' inside JSON string values must be accepted.
+    r_esc := inkling_parse_native_stream("<|message_model|><|content_invoke_tool_json|>{\"\":\"x\\\"}\",\"b\":\"y]\"}<|end_message|>", events[..]);
+    #assert r_esc.status == InklingRespStatus.ok && r_esc.count == 1;
+    tiny: [1]InklingParsedEvent;
+    #assert inkling_parse_native_stream("<|content_thinking|>x<|end_message|>", tiny[0..<0]).status == InklingRespStatus.capacity;
+    #assert inkling_parse_native_stream("<|content_invoke_tool_json|>{}<|end_message|>", tiny[0..<0]).status == InklingRespStatus.capacity;
+    #assert inkling_parse_native_stream("<|content_text|>x<|end_message|>", tiny[0..<0]).status == InklingRespStatus.capacity;
+    #assert inkling_parse_native_stream("plain", tiny[0..<0]).status == InklingRespStatus.capacity;
+}
+
+#test "strict JSON schema check validates required top-level keys and refuses fences/missing/nested-only keys" {
+    req := [3]string.["rationale", "finished", "reply"];
+    good := " \t\r\n{\"rationale\" \t\r\n: \"2+2=4 \\\"ok\", \"bracket\": \"x]\", \"nested\": {\"x\": [1,2]}, \"finished\": true, \"reply\" :\"4\"}\r\n ";
+    #assert inkling_json_schema_check(good, req[..]);
+
+    // No leading whitespace, 1 leading space, 1 trailing space, trailing tab, and empty first string.
+    rk1 := [1]string.["reply"];
+    #assert inkling_json_schema_check("{\"\":1,\"reply\":\"4\"}", rk1[..]);
+    #assert inkling_json_schema_check(" {\"reply\":\"4\"} ", rk1[..]);
+    #assert inkling_json_schema_check("{\"reply\":\"4\"}\t", rk1[..]);
+
+    // Refused: empty, all-whitespace, leading space with missing key, markdown fences, trailing prose, missing key, nested-only key, first-char mismatch, last-char mismatch, key without colon.
+    #assert !inkling_json_schema_check("", rk1[..]);
+    #assert !inkling_json_schema_check("   ", rk1[..]);
+    #assert !inkling_json_schema_check(" {\"other\":1}", rk1[..]);
+    #assert !inkling_json_schema_check("```json\n{\"rationale\":\"a\",\"finished\":true,\"reply\":\"4\"}\n```", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"a\",\"finished\":true}", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"a\",\"nested\":{\"finished\":true},\"reply\":\"4\"}", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"finished\",\"reply\":\"4\"}", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"a\",\"finished\":true,\"reply\":\"4\"} extra", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"a\",\"finished\":true,\"zeply\":\"4\"}", req[..]);
+    #assert !inkling_json_schema_check("{\"rationale\":\"a\",\"finished\":true,\"replz\":\"4\"}", req[..]);
+    #assert !inkling_json_schema_check("{\"reply\"}", rk1[..]);
+    // Direct EOF boundary checks for inkling_json_has_top_key.
+    #assert !inkling_json_has_top_key("{\"reply\" ", 0, 9, "reply");
+    #assert !inkling_json_has_top_key("{\"reply\"", 0, 8, "reply");
+}
+
+#test "SSE formatter emits real Open Responses event names and dynamic token/loop usage" {
+    buf: [512]u8;
+    n := inkling_format_sse_event(InklingEventKind.reasoning, "plan", buf[..], 0);
+    #assert cast(string)buf[0..<n] == "event: response.reasoning_summary_text.delta\ndata: plan\n\n";
+    n2 := inkling_format_sse_event(InklingEventKind.tool_call, "{}", buf[..], 0);
+    #assert cast(string)buf[0..<n2] == "event: response.function_call_arguments.delta\ndata: {}\n\n";
+    n3 := inkling_format_sse_event(InklingEventKind.message, "ok", buf[..], 0);
+    #assert cast(string)buf[0..<n3] == "event: response.output_text.delta\ndata: ok\n\n";
+
+    u := inkling_format_sse_usage(120, 45, 5, buf[..], 0);
+    #assert cast(string)buf[0..<u] == "event: response.completed\ndata: {\"usage\":{\"input_tokens\":120,\"output_tokens\":45,\"total_tokens\":165,\"loop_count\":5}}\n\n";
+    // Zero tokens boundary + invalid negative/zero loop refusals leave destination untouched.
+    u0 := inkling_format_sse_usage(0, 0, 1, buf[..], 0);
+    #assert cast(string)buf[0..<u0] == "event: response.completed\ndata: {\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"loop_count\":1}}\n\n";
+    buf[0] = 'X';
+    #assert inkling_format_sse_usage(-1, 0, 1, buf[..], 0) == -1 && buf[0] == 'X';
+    #assert inkling_format_sse_usage(0, -1, 1, buf[..], 0) == -1 && buf[0] == 'X';
+    #assert inkling_format_sse_usage(0, 0, 0, buf[..], 0) == -1 && buf[0] == 'X';
+    #assert inkling_sse_append_int(buf[..], 0, 7) == 1 && buf[0] == '7';
+    #assert inkling_sse_append_int(buf[..], -1, 5) == -1;
+    #assert inkling_sse_append_int(buf[..], 0, -1) == -1;
+    #assert inkling_sse_append_int(buf[0..<2], 1, 10) == -1;
+    #assert inkling_sse_append_int(buf[0..<3], 1, 10) == 3;
+}
+
+#test "legacy think/tool_call parser compatibility" {
+    raw := "<think>plan</think><tool_call>{\"name\":\"read\"}</tool_call>Done.";
+    events: [8]InklingParsedEvent;
+    res := inkling_parse_stream(raw, events[..]);
+    #assert res.status == InklingRespStatus.ok && res.count == 3;
+    #assert events[0].kind == InklingEventKind.reasoning && events[0].len == 4;
+    #assert events[1].kind == InklingEventKind.tool_call && events[1].len == 15;
+    #assert events[2].kind == InklingEventKind.message && events[2].len == 5;
+    #assert inkling_parse_stream("<think>unclosed", events[..]).status == InklingRespStatus.unterminated_think;
+    #assert inkling_parse_stream("<tool_call>{\"a\":1", events[..]).status == InklingRespStatus.unterminated_tool;
+    #assert inkling_parse_stream("<tool_call>not_json</tool_call>", events[..]).status == InklingRespStatus.bad_tool_json;
+}

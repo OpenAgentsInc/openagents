@@ -4,21 +4,28 @@
 
 // book:begin example
 main :: () {
-    raw := "<think>check file</think><tool_call>{\"name\":\"read\"}</tool_call>Ready.";
+    raw := "<|message_model|><|content_thinking|>check Austin<|end_message|><|message_model|>get_weather<|content_invoke_tool_json|>{\"city\":\"Austin\"}<|end_message|><|message_model|><|content_text|>78F sunny.<|end_message|><|content_model_end_sampling|>";
     events: [8]InklingParsedEvent;
-    res := inkling_parse_stream(raw, events[..]);
+    res := inkling_parse_native_stream(raw, events[..]);
     #assert res.status == InklingRespStatus.ok && res.count == 3;
-    print("parsed % events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
+    print("parsed % native events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
         res.count, events[0].len, events[1].len, events[2].len);
 
-    bad := "<tool_call>not_json</tool_call>";
-    #assert inkling_parse_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
+    bad := "<|message_model|><|content_invoke_tool_json|>not_json<|end_message|>";
+    #assert inkling_parse_native_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
     print("malformed tool JSON refused\n");
 
-    sse: [256]u8;
-    n := inkling_format_sse_event(InklingEventKind.reasoning, "check file", sse[..], 0);
+    req := [3]string.["rationale", "finished", "reply"];
+    next_action := "{\"rationale\":\"2+2=4\",\"finished\":true,\"reply\":\"4\"}";
+    #assert inkling_json_schema_check(next_action, req[..]);
+    #assert !inkling_json_schema_check("```json\n{\"rationale\":\"a\",\"finished\":true,\"reply\":\"4\"}\n```", req[..]);
+    print("strict next_action JSON schema verified (markdown fences refused)\n");
+
+    sse: [512]u8;
+    n := inkling_format_sse_event(InklingEventKind.reasoning, "check Austin", sse[..], 0);
+    n = inkling_format_sse_event(InklingEventKind.tool_call, "{\"city\":\"Austin\"}", sse[..], n);
     n = inkling_format_sse_usage(120, 45, 3, sse[..], n);
     #assert n > 0;
-    print("/v1/responses SSE frame formatted: % bytes\n", n);
+    print("/v1/responses SSE frame formatted: % bytes (loop_count=3)\n", n);
 }
 // book:end example

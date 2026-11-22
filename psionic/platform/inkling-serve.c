@@ -323,6 +323,9 @@ typedef struct {
     Buf      tools_json;
     Buf      model;
     Buf      effort;
+    int      json_mode; /* 0=off, 1=json_object, 2=json_schema */
+    Buf      json_schema_name;
+    Buf      json_schema_raw;
     int      stream;
     int      max_tokens;
     float    temperature;
@@ -364,6 +367,8 @@ static void req_free(Req *r) {
     buf_free(&r->tools_json);
     buf_free(&r->model);
     buf_free(&r->effort);
+    buf_free(&r->json_schema_name);
+    buf_free(&r->json_schema_raw);
 }
 
 static ChatMsg *req_add_msg(Req *r) {
@@ -652,6 +657,84 @@ static int parse_message_obj(JScan *j, Req *r) {
     return 0;
 }
 
+static void apply_effort_str(Req *r, const char *s) {
+    if (!s) return;
+    r->effort.len = 0;
+    if (!strcmp(s, "none")) buf_adds(&r->effort, "0");
+    else if (!strcmp(s, "minimal")) buf_adds(&r->effort, "0.1");
+    else if (!strcmp(s, "low")) buf_adds(&r->effort, "0.2");
+    else if (!strcmp(s, "medium")) buf_adds(&r->effort, "0.7");
+    else if (!strcmp(s, "high")) buf_adds(&r->effort, "0.9");
+    else if (!strcmp(s, "xhigh") || !strcmp(s, "max")) buf_adds(&r->effort, "0.99");
+    else buf_adds(&r->effort, "0.7");
+}
+
+static void parse_json_schema_body(JScan *j, Req *r) {
+    j_ws(j);
+    if (j->pos >= j->len || j->s[j->pos] != '{') { j_skip(j); return; }
+    j->pos++;
+    j_ws(j);
+    while (j->pos < j->len && j->s[j->pos] != '}') {
+        Buf k = {0};
+        if (j_string(j, &k)) { buf_free(&k); return; }
+        j_ws(j);
+        if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); return; }
+        j->pos++;
+        const char *ks = k.data ? k.data : "";
+        if (!strcmp(ks, "name")) {
+            r->json_schema_name.len = 0;
+            j_string(j, &r->json_schema_name);
+        } else if (!strcmp(ks, "schema")) {
+            r->json_schema_raw.len = 0;
+            j_raw_value(j, &r->json_schema_raw);
+        } else {
+            j_skip(j);
+        }
+        buf_free(&k);
+        j_ws(j);
+        if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+    }
+    if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+}
+
+static void parse_format_obj(JScan *j, Req *r) {
+    j_ws(j);
+    if (j->pos >= j->len || j->s[j->pos] != '{') { j_skip(j); return; }
+    j->pos++;
+    j_ws(j);
+    while (j->pos < j->len && j->s[j->pos] != '}') {
+        Buf k = {0};
+        if (j_string(j, &k)) { buf_free(&k); return; }
+        j_ws(j);
+        if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); return; }
+        j->pos++;
+        const char *ks = k.data ? k.data : "";
+        if (!strcmp(ks, "type")) {
+            Buf tv = {0};
+            j_string(j, &tv);
+            if (tv.data) {
+                if (!strcmp(tv.data, "json_schema")) r->json_mode = 2;
+                else if (!strcmp(tv.data, "json_object")) r->json_mode = 1;
+            }
+            buf_free(&tv);
+        } else if (!strcmp(ks, "json_schema")) {
+            parse_json_schema_body(j, r);
+        } else if (!strcmp(ks, "name")) {
+            r->json_schema_name.len = 0;
+            j_string(j, &r->json_schema_name);
+        } else if (!strcmp(ks, "schema")) {
+            r->json_schema_raw.len = 0;
+            j_raw_value(j, &r->json_schema_raw);
+        } else {
+            j_skip(j);
+        }
+        buf_free(&k);
+        j_ws(j);
+        if (j->pos < j->len && j->s[j->pos] == ',') j->pos++;
+    }
+    if (j->pos < j->len && j->s[j->pos] == '}') j->pos++;
+}
+
 static int parse_request_json(const char *body, size_t body_len, Req *r) {
     memset(r, 0, sizeof *r);
     buf_adds(&r->model, "inkling-2-mini");
@@ -698,20 +781,62 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
             j_ws(&j);
             if (j.pos < j.len && j.s[j.pos] == '"') {
                 j_string(&j, &ev);
-                if (ev.data) {
-                    r->effort.len = 0;
-                    if (!strcmp(ev.data, "none")) buf_adds(&r->effort, "0");
-                    else if (!strcmp(ev.data, "minimal")) buf_adds(&r->effort, "0.1");
-                    else if (!strcmp(ev.data, "low")) buf_adds(&r->effort, "0.2");
-                    else if (!strcmp(ev.data, "medium")) buf_adds(&r->effort, "0.7");
-                    else if (!strcmp(ev.data, "high")) buf_adds(&r->effort, "0.9");
-                    else if (!strcmp(ev.data, "xhigh") || !strcmp(ev.data, "max")) buf_adds(&r->effort, "0.99");
-                    else buf_adds(&r->effort, "0.7");
-                }
+                apply_effort_str(r, ev.data);
             } else {
                 j_skip(&j);
             }
             buf_free(&ev);
+        } else if (!strcmp(ks, "reasoning")) {
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == '{') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != '}') {
+                    Buf rk = {0};
+                    if (j_string(&j, &rk)) { buf_free(&rk); break; }
+                    j_ws(&j);
+                    if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&rk); break; }
+                    j.pos++;
+                    if (rk.data && !strcmp(rk.data, "effort")) {
+                        Buf ev = {0};
+                        j_string(&j, &ev);
+                        apply_effort_str(r, ev.data);
+                        buf_free(&ev);
+                    } else {
+                        j_skip(&j);
+                    }
+                    buf_free(&rk);
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
+        } else if (!strcmp(ks, "response_format")) {
+            parse_format_obj(&j, r);
+        } else if (!strcmp(ks, "text")) {
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == '{') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != '}') {
+                    Buf tk = {0};
+                    if (j_string(&j, &tk)) { buf_free(&tk); break; }
+                    j_ws(&j);
+                    if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&tk); break; }
+                    j.pos++;
+                    if (tk.data && !strcmp(tk.data, "format")) {
+                        parse_format_obj(&j, r);
+                    } else {
+                        j_skip(&j);
+                    }
+                    buf_free(&tk);
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
         } else if (!strcmp(ks, "tools")) {
             r->tools_json.len = 0;
             parse_tools_array(&j, &r->tools_json);
@@ -762,6 +887,14 @@ static void format_inkling_prompt(const Req *r, Buf *out) {
     if (r->tools_json.len > 0) {
         buf_adds(out, "<|message_system|>tool_declare<|content_xml|>");
         buf_append(out, r->tools_json.data, r->tools_json.len);
+        buf_adds(out, "<|end_message|>");
+    }
+    if (r->json_mode > 0) {
+        buf_adds(out, "<|message_system|><|content_text|>Output ONLY one valid JSON object in your final answer (no markdown fences, no prose outside the JSON object)");
+        if (r->json_schema_raw.len > 0) {
+            buf_adds(out, " conforming strictly to this JSON Schema: ");
+            buf_append(out, r->json_schema_raw.data, r->json_schema_raw.len);
+        }
         buf_adds(out, "<|end_message|>");
     }
 
@@ -991,6 +1124,213 @@ static void emit_responses_tool_call(int fd, int idx, const char *id,
     buf_free(&ev);
 }
 
+/* ---------------- Incremental byte-level JSON object grammar constraint ---------------- */
+
+enum {
+    JL_ROOT = 0,       /* expecting '{' */
+    JL_OBJ_KEY_OR_END, /* expecting '"' or '}' */
+    JL_OBJ_KEY,        /* expecting '"' after ',' */
+    JL_OBJ_COLON,      /* expecting ':' */
+    JL_VALUE,          /* expecting any JSON value */
+    JL_ARR_VAL_OR_END, /* expecting any value or ']' */
+    JL_AFTER_VAL,      /* expecting ',' or '}' / ']' */
+    JL_STR,            /* inside string */
+    JL_STR_ESC,        /* after '\' inside string */
+    JL_STR_U1, JL_STR_U2, JL_STR_U3, JL_STR_U4,
+    JL_NUM_SIGN,       /* after '-' */
+    JL_NUM_ZERO,       /* after leading '0' */
+    JL_NUM_INT,        /* inside integer digits */
+    JL_NUM_DOT,        /* after '.' (needs >=1 digit) */
+    JL_NUM_FRAC,       /* inside fraction digits */
+    JL_NUM_EXP,        /* after 'e'/'E' */
+    JL_NUM_EXPSIGN,    /* after 'e+'/'e-' */
+    JL_NUM_EXPDIG,     /* inside exponent digits */
+    JL_LIT_T1, JL_LIT_T2, JL_LIT_T3,
+    JL_LIT_F1, JL_LIT_F2, JL_LIT_F3, JL_LIT_F4,
+    JL_LIT_N1, JL_LIT_N2, JL_LIT_N3,
+    JL_DONE            /* root object closed */
+};
+
+typedef struct {
+    int  state;
+    int  depth;
+    int  str_is_key;
+    char stack[64]; /* '{' or '[' */
+} JsonLex;
+
+static int jl_is_ws(unsigned char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
+static int jl_is_hex(unsigned char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+
+static int jl_finish_val(JsonLex *l) {
+    l->state = (l->depth == 0) ? JL_DONE : JL_AFTER_VAL;
+    return 0;
+}
+
+static int json_lex_byte(JsonLex *l, unsigned char c) {
+    for (;;) {
+        switch (l->state) {
+        case JL_ROOT:
+            if (jl_is_ws(c)) return 0;
+            if (c == '{') { l->stack[l->depth++] = '{'; l->state = JL_OBJ_KEY_OR_END; return 0; }
+            return 1;
+        case JL_OBJ_KEY_OR_END:
+            if (jl_is_ws(c)) return 0;
+            if (c == '}') { l->depth--; return jl_finish_val(l); }
+            if (c == '"') { l->str_is_key = 1; l->state = JL_STR; return 0; }
+            return 1;
+        case JL_OBJ_KEY:
+            if (jl_is_ws(c)) return 0;
+            if (c == '"') { l->str_is_key = 1; l->state = JL_STR; return 0; }
+            return 1;
+        case JL_OBJ_COLON:
+            if (jl_is_ws(c)) return 0;
+            if (c == ':') { l->state = JL_VALUE; return 0; }
+            return 1;
+        case JL_ARR_VAL_OR_END:
+            if (jl_is_ws(c)) return 0;
+            if (c == ']') { l->depth--; return jl_finish_val(l); }
+            l->state = JL_VALUE;
+            continue;
+        case JL_VALUE:
+            if (jl_is_ws(c)) return 0;
+            if (c == '{') { if (l->depth >= 64) return 1; l->stack[l->depth++] = '{'; l->state = JL_OBJ_KEY_OR_END; return 0; }
+            if (c == '[') { if (l->depth >= 64) return 1; l->stack[l->depth++] = '['; l->state = JL_ARR_VAL_OR_END; return 0; }
+            if (c == '"') { l->str_is_key = 0; l->state = JL_STR; return 0; }
+            if (c == '-') { l->state = JL_NUM_SIGN; return 0; }
+            if (c == '0') { l->state = JL_NUM_ZERO; return 0; }
+            if (c >= '1' && c <= '9') { l->state = JL_NUM_INT; return 0; }
+            if (c == 't') { l->state = JL_LIT_T1; return 0; }
+            if (c == 'f') { l->state = JL_LIT_F1; return 0; }
+            if (c == 'n') { l->state = JL_LIT_N1; return 0; }
+            return 1;
+        case JL_AFTER_VAL:
+            if (jl_is_ws(c)) return 0;
+            if (l->depth <= 0) return 1;
+            if (l->stack[l->depth - 1] == '{') {
+                if (c == ',') { l->state = JL_OBJ_KEY; return 0; }
+                if (c == '}') { l->depth--; return jl_finish_val(l); }
+                return 1;
+            } else {
+                if (c == ',') { l->state = JL_VALUE; return 0; }
+                if (c == ']') { l->depth--; return jl_finish_val(l); }
+                return 1;
+            }
+        case JL_STR:
+            if (c < 0x20) return 1; /* unescaped control chars forbidden by RFC 8259 */
+            if (c == '\\') { l->state = JL_STR_ESC; return 0; }
+            if (c == '"') { l->state = l->str_is_key ? JL_OBJ_COLON : ((l->depth == 0) ? JL_DONE : JL_AFTER_VAL); return 0; }
+            return 0;
+        case JL_STR_ESC:
+            if (c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't') {
+                l->state = JL_STR; return 0;
+            }
+            if (c == 'u') { l->state = JL_STR_U1; return 0; }
+            return 1;
+        case JL_STR_U1: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U2; return 0;
+        case JL_STR_U2: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U3; return 0;
+        case JL_STR_U3: if (!jl_is_hex(c)) return 1; l->state = JL_STR_U4; return 0;
+        case JL_STR_U4: if (!jl_is_hex(c)) return 1; l->state = JL_STR; return 0;
+        case JL_NUM_SIGN:
+            if (c == '0') { l->state = JL_NUM_ZERO; return 0; }
+            if (c >= '1' && c <= '9') { l->state = JL_NUM_INT; return 0; }
+            return 1;
+        case JL_NUM_ZERO:
+            if (c == '.') { l->state = JL_NUM_DOT; return 0; }
+            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
+            jl_finish_val(l); continue;
+        case JL_NUM_INT:
+            if (c >= '0' && c <= '9') return 0;
+            if (c == '.') { l->state = JL_NUM_DOT; return 0; }
+            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
+            jl_finish_val(l); continue;
+        case JL_NUM_DOT:
+            if (c >= '0' && c <= '9') { l->state = JL_NUM_FRAC; return 0; }
+            return 1;
+        case JL_NUM_FRAC:
+            if (c >= '0' && c <= '9') return 0;
+            if (c == 'e' || c == 'E') { l->state = JL_NUM_EXP; return 0; }
+            jl_finish_val(l); continue;
+        case JL_NUM_EXP:
+            if (c == '+' || c == '-') { l->state = JL_NUM_EXPSIGN; return 0; }
+            if (c >= '0' && c <= '9') { l->state = JL_NUM_EXPDIG; return 0; }
+            return 1;
+        case JL_NUM_EXPSIGN:
+            if (c >= '0' && c <= '9') { l->state = JL_NUM_EXPDIG; return 0; }
+            return 1;
+        case JL_NUM_EXPDIG:
+            if (c >= '0' && c <= '9') return 0;
+            jl_finish_val(l); continue;
+        case JL_LIT_T1: if (c != 'r') return 1; l->state = JL_LIT_T2; return 0;
+        case JL_LIT_T2: if (c != 'u') return 1; l->state = JL_LIT_T3; return 0;
+        case JL_LIT_T3: if (c != 'e') return 1; return jl_finish_val(l);
+        case JL_LIT_F1: if (c != 'a') return 1; l->state = JL_LIT_F2; return 0;
+        case JL_LIT_F2: if (c != 'l') return 1; l->state = JL_LIT_F3; return 0;
+        case JL_LIT_F3: if (c != 's') return 1; l->state = JL_LIT_F4; return 0;
+        case JL_LIT_F4: if (c != 'e') return 1; return jl_finish_val(l);
+        case JL_LIT_N1: if (c != 'u') return 1; l->state = JL_LIT_N2; return 0;
+        case JL_LIT_N2: if (c != 'l') return 1; l->state = JL_LIT_N3; return 0;
+        case JL_LIT_N3: if (c != 'l') return 1; return jl_finish_val(l);
+        case JL_DONE:
+            if (jl_is_ws(c)) return 0;
+            return 1;
+        default:
+            return 1;
+        }
+    }
+}
+
+static int json_lex_feed(JsonLex *l, const char *s, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if (json_lex_byte(l, (unsigned char)s[i]) != 0) return 1;
+    }
+    return 0;
+}
+
+/* Pick the highest-logit token in [0..nv) accepted by the incremental JSON object grammar. */
+static int32_t sample_constrained_json(Server *sv, const InkSampleParams *sp, JsonLex *jlex) {
+    if (jlex->state == JL_DONE) {
+        return (sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_eog;
+    }
+    /* Fast path: try unconstrained sample first (zero extra cost when model already emits valid JSON). */
+    int32_t cand = ink_sample(sv->sess, sp, &sv->rng);
+    if (cand >= 0 && cand < 200000 && !ink_is_eog(sv->sess, cand)) {
+        char piece[512];
+        int plen = ink_decode_piece(sv->sess, cand, piece, sizeof piece);
+        if (plen > 0) {
+            JsonLex tmp = *jlex;
+            if (json_lex_feed(&tmp, piece, (size_t)plen) == 0) {
+                *jlex = tmp;
+                return cand;
+            }
+        }
+    }
+    /* Constrained fallback: scan logits for best valid JSON continuation token (no fences, no prose, no premature EOG). */
+    const float *lg = ink_logits(sv->sess);
+    int nv = ink_vocab_unpadded(sv->sess);
+    if (nv > 200000) nv = 200000;
+    int32_t best_tok = -1;
+    float best_v = -1e30f;
+    JsonLex best_lex = *jlex;
+    char piece[512];
+    for (int i = 0; i < nv; i++) {
+        float v = lg[i];
+        if (v <= best_v) continue;
+        int plen = ink_decode_piece(sv->sess, i, piece, sizeof piece);
+        if (plen <= 0) continue;
+        JsonLex tmp = *jlex;
+        if (json_lex_feed(&tmp, piece, (size_t)plen) == 0) {
+            best_v = v;
+            best_tok = i;
+            best_lex = tmp;
+        }
+    }
+    if (best_tok >= 0) {
+        *jlex = best_lex;
+        return best_tok;
+    }
+    return (sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_eog;
+}
+
 static void handle_inference(Server *sv, int fd, int is_responses, const char *body, size_t body_len) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
@@ -1090,6 +1430,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json */
     int channel = 0;
     int in_header = 0;
+    JsonLex jlex;
+    memset(&jlex, 0, sizeof jlex);
     Buf header_buf = {0};
     Buf tool_json = {0};
     Buf pending = {0};
@@ -1109,7 +1451,17 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     double td0 = now_sec();
 
     for (int i = 0; i < max_gen && !g_stop; i++) {
-        int32_t tok = ink_sample(sv->sess, &sp, &sv->rng);
+        int32_t tok;
+        if (r.json_mode > 0 && channel == 2) {
+            tok = sample_constrained_json(sv, &sp, &jlex);
+        } else {
+            tok = ink_sample(sv->sess, &sp, &sv->rng);
+            /* Guard against empty first reply when json_mode is required without tool calls. */
+            if (r.json_mode > 0 && r.tools_json.len == 0 && n_emitted_tcs == 0 &&
+                jlex.state == JL_ROOT && (tok == sv->tok_eog || ink_is_eog(sv->sess, tok))) {
+                tok = (channel == 0 && in_header) ? sv->tok_text : sv->tok_model;
+            }
+        }
         if (tok < 0) break;
         n_gen++;
 
@@ -1154,6 +1506,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
                     else emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
                 }
                 pending.len = 0;
+            }
+            if (r.json_mode > 0 && channel == 2 && jlex.state == JL_DONE) {
+                finish_reason = "stop";
+                break;
             }
             channel = 0;
             if (tok == sv->tok_model) {
@@ -1257,10 +1613,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
     if (r.stream) {
         if (is_responses) {
             Buf done = {0};
-            char u[256];
+            char u[320];
+            long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
             snprintf(u, sizeof u,
-                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d}}}",
-                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen);
+                     "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"loop_count\":%lld}}}",
+                     sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, lc);
             buf_adds(&done, u);
             send_sse_event(fd, "response.completed", done.data, done.len);
             buf_free(&done);
@@ -1332,10 +1689,11 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *b
             else buf_adds(&out, "{}");
             buf_adds(&out, "\",\"status\":\"completed\"}");
         }
-        char utail[160];
+        char utail[200];
+        long long lc = ink_hparams(sv->sess) ? (long long)ink_hparams(sv->sess)->loop_count : 3;
         snprintf(utail, sizeof utail,
-                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d}}",
-                 n_prompt, n_gen, n_prompt + n_gen);
+                 "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"loop_count\":%lld}}",
+                 n_prompt, n_gen, n_prompt + n_gen, lc);
         buf_adds(&out, utail);
         send_http_json(fd, 200, "OK", out.data, out.len);
         buf_free(&out);

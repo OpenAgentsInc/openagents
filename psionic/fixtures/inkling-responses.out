@@ -1,3 +1,4 @@
-parsed 3 events: reasoning(10 bytes), tool_call(15 bytes), message(6 bytes)
+parsed 3 native events: reasoning(12 bytes), tool_call(17 bytes), message(10 bytes)
 malformed tool JSON refused
-/v1/responses SSE frame formatted: 100 bytes
+strict next_action JSON schema verified (markdown fences refused)
+/v1/responses SSE frame formatted: 253 bytes (loop_count=3)

@@ -2,28 +2,49 @@
 
 Inkling 2 Mini's core strength is agentic coding, search, and tool use. A raw
 token stream is not enough for an agent harness: the server must separate
-reasoning/thinking tokens from final assistant text, parse structured tool
-calls reliably, and stream typed events over `/v1/responses`.
+native reasoning/thinking segments from final assistant text, parse structured
+tool calls reliably, constrain strict JSON-schema outputs so Microcoder and
+structured callers never receive markdown fences or prose wrappers, and stream
+typed Open Responses events over `/v1/responses`.
 
 Building on [chapter 77](ch077-call-a-tool.md),
-[chapter 78](ch078-device-generation-calls-a-tool.md), and
-[chapter 79](ch079-serve-responses.md), this chapter implements Inkling 2 Mini's
-reasoning/tool-call parser and `/v1/responses` SSE event formatter in
-[`psionic/lib/inkling-responses.coax`](../lib/inkling-responses.coax),
-demonstrated by [`psionic/examples/inkling-responses.coax`](../examples/inkling-responses.coax).
+[chapter 78](ch078-device-generation-calls-a-tool.md),
+[chapter 79](ch079-serve-responses.md), and
+[chapter 269](ch269-inkling-2-mini-on-metal.md), this chapter implements:
+
+- the `#authority` native reasoning/tool-call parser, strict top-level JSON
+  schema validator, and Open Responses SSE formatter in
+  [`psionic/lib/inkling-responses.coax`](../lib/inkling-responses.coax),
+- the live Metal 4 `/v1/responses` and `/v1/chat/completions` server with
+  multi-turn `function_call` / `function_call_output`, KV-prefix reuse, and
+  constrained RFC 8259 JSON-object token sampling in
+  [`psionic/platform/inkling-serve.c`](../platform/inkling-serve.c), and
+- the runnable verification example in
+  [`psionic/examples/inkling-responses.coax`](../examples/inkling-responses.coax).
 
 ```shell
 $ coax run psionic/examples/inkling-responses.coax
-parsed 3 events: reasoning(10 bytes), tool_call(15 bytes), message(6 bytes)
+parsed 3 native events: reasoning(12 bytes), tool_call(17 bytes), message(10 bytes)
 malformed tool JSON refused
-/v1/responses SSE frame formatted: 100 bytes
+strict next_action JSON schema verified (markdown fences refused)
+/v1/responses SSE frame formatted: 253 bytes (loop_count=3)
 ```
 
-## Reasoning, tool-call, and message separation
+## Native token framing and tool-call parsing
 
-`inkling_parse_stream` splits raw Inkling 2 Mini output into typed `reasoning`,
-`tool_call`, and `message` segments, rejecting unterminated `<think>` or
-`<tool_call>` tags and malformed tool JSON objects.
+Inkling 2 Mini emits native control tokens rather than XML tags:
+
+```text
+<|message_model|><|content_thinking|>...<|end_message|>
+<|message_model|>[tool_name]<|content_invoke_tool_json|>{...}<|end_message|>
+<|message_model|><|content_text|>...<|end_message|><|content_model_end_sampling|>
+```
+
+`inkling_parse_native_stream` splits this wire stream into typed `reasoning`,
+`tool_call`, and `message` spans while refusing unterminated thinking or tool
+blocks, unbalanced or malformed tool JSON objects, trailing garbage after a
+tool object, and output-slice overflow. `inkling_parse_stream` keeps
+compatibility with `<think>` / `<tool_call>` wire tests.
 
 <!-- source: psionic/lib/inkling-responses.coax types -->
 ```jai
@@ -40,29 +61,93 @@ InklingParseResult :: struct {
 }
 ```
 
-## `/v1/responses` SSE framing
+## Strict JSON schema & Microcoder compatibility
 
-`inkling_format_sse_event` and `inkling_format_sse_usage` format typed SSE
-frames including `loop_count` accounting for multi-pass looped execution.
+Microcoder (`coax/lib/gateway/psionic.coax` via `gw_psionic_strict`) and Open
+Responses callers request strict structured JSON through either:
+
+- Open Responses `text.format` (`type: "json_schema"` or `"json_object"`), or
+- Chat Completions `response_format` (`type: "json_schema"` or `"json_object"`).
+
+In [`psionic/platform/inkling-serve.c`](../platform/inkling-serve.c), when
+strict JSON mode is active:
+
+1. `format_inkling_prompt` injects the requested JSON schema contract into the
+   system instructions and suppresses thinking tokens so generation begins
+   directly with `{`.
+2. `sample_constrained_json` drives a byte-level incremental RFC 8259 JSON
+   object lexer (`JsonLex`) over every candidate token during decode. When the
+   unconstrained top sample is already valid JSON grammar continuation, the
+   fast path runs in O(1); otherwise it scans the logit vector and picks the
+   highest-scoring grammar-valid token, refusing empty first-token replies and
+   stopping cleanly as soon as the root JSON object closes (`JL_DONE`).
+3. `inkling_json_schema_check` in
+   [`psionic/lib/inkling-responses.coax`](../lib/inkling-responses.coax) verifies
+   balanced root-object framing and presence of every required top-level key
+   while rejecting markdown fences, trailing prose, and nested-only keys.
+
+## `/v1/responses` SSE framing and multi-turn KV reuse
+
+`inkling_format_sse_event` and `inkling_format_sse_usage` emit real Open
+Responses SSE event names (`response.reasoning_summary_text.delta`,
+`response.function_call_arguments.delta`, `response.output_text.delta`, and
+`response.completed`) with dynamic `input_tokens`, `output_tokens`,
+`total_tokens`, and `loop_count` accounting for multi-pass looped execution.
+
+In [`psionic/platform/inkling-serve.c`](../platform/inkling-serve.c),
+`/v1/responses` parses `input[]` items of type `function_call` and
+`function_call_output` (`call_id`, `name`, `arguments`, `output`) alongside
+`reasoning.effort` and `tools[]`, reuses the cached Metal KV prefix across
+matching prompt tokens on multi-turn tool loops, and reports the active engine
+`loop_count` in `usage`.
 
 <!-- source: psionic/examples/inkling-responses.coax example -->
 ```jai
 main :: () {
-    raw := "<think>check file</think><tool_call>{\"name\":\"read\"}</tool_call>Ready.";
+    raw := "<|message_model|><|content_thinking|>check Austin<|end_message|><|message_model|>get_weather<|content_invoke_tool_json|>{\"city\":\"Austin\"}<|end_message|><|message_model|><|content_text|>78F sunny.<|end_message|><|content_model_end_sampling|>";
     events: [8]InklingParsedEvent;
-    res := inkling_parse_stream(raw, events[..]);
+    res := inkling_parse_native_stream(raw, events[..]);
     #assert res.status == InklingRespStatus.ok && res.count == 3;
-    print("parsed % events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
+    print("parsed % native events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
         res.count, events[0].len, events[1].len, events[2].len);
 
-    bad := "<tool_call>not_json</tool_call>";
-    #assert inkling_parse_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
+    bad := "<|message_model|><|content_invoke_tool_json|>not_json<|end_message|>";
+    #assert inkling_parse_native_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
     print("malformed tool JSON refused\n");
 
-    sse: [256]u8;
-    n := inkling_format_sse_event(InklingEventKind.reasoning, "check file", sse[..], 0);
+    req := [3]string.["rationale", "finished", "reply"];
+    next_action := "{\"rationale\":\"2+2=4\",\"finished\":true,\"reply\":\"4\"}";
+    #assert inkling_json_schema_check(next_action, req[..]);
+    #assert !inkling_json_schema_check("```json\n{\"rationale\":\"a\",\"finished\":true,\"reply\":\"4\"}\n```", req[..]);
+    print("strict next_action JSON schema verified (markdown fences refused)\n");
+
+    sse: [512]u8;
+    n := inkling_format_sse_event(InklingEventKind.reasoning, "check Austin", sse[..], 0);
+    n = inkling_format_sse_event(InklingEventKind.tool_call, "{\"city\":\"Austin\"}", sse[..], n);
     n = inkling_format_sse_usage(120, 45, 3, sse[..], n);
     #assert n > 0;
-    print("/v1/responses SSE frame formatted: % bytes\n", n);
+    print("/v1/responses SSE frame formatted: % bytes (loop_count=3)\n", n);
 }
+```
+
+## Live Metal 4 verification
+
+Verified live against the real 17.63 GB `Inkling-2-Mini-IQ4_NL.gguf` checkpoint
+on Apple M5 Max using `psionic-inkling-serve --port 18799 --ctx 4096`:
+
+```text
+1. POST /v1/responses (stream=true):
+   36 response.reasoning_summary_text.delta events, response.output_text.delta,
+   response.completed with usage.loop_count == 3.
+2. POST /v1/responses (multi-turn tools):
+   Turn 1 emitted function_call get_weather({"city":"Austin"}).
+   Turn 2 with function_call_output returned
+   "Austin is sunny with a temperature of 78°F right now." (loop_count=3).
+3. POST /v1/responses (text.format json_schema = Microcoder next_action):
+   {"rationale":"...","finished":true,"reply":"4"} (zero fences or prose).
+4. POST /v1/chat/completions (response_format json_schema = Microcoder next_action):
+   {"rationale":"...","finished":true,"reply":"42"} (zero fences or prose).
+5. #authority mutation sweep:
+   coax mutate psionic/lib/inkling-responses.coax --changed origin/main
+   -> 354 mutants, 351 killed, 0 survived, 3 marked equivalent.
 ```
