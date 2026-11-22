@@ -173,7 +173,7 @@ static PmStatus alloc_buffer(size_t bytes, PmBuffer *buffer, int zero) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
         if (bytes == 0) bytes = 16;
-        id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
+        id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeUntracked];
         if (!b) { note("cannot allocate %zu bytes", bytes); return PM_MEMORY; }
         if (zero) memset(b.contents, 0, bytes);
         return wrap_buf_impl(b, 0, buffer);
@@ -185,7 +185,7 @@ PmStatus pm_wrap(void *bytes, size_t length, PmBuffer *buffer) {
         if (!device) return PM_ABSENT;
         size_t page = (size_t)getpagesize();
         if (!bytes || length == 0 || (uintptr_t)bytes % page || length % page) { note("pm_wrap needs page-aligned memory"); return PM_ARGUMENT; }
-        id<MTLBuffer> b = [device newBufferWithBytesNoCopy:bytes length:length options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked deallocator:nil];
+        id<MTLBuffer> b = [device newBufferWithBytesNoCopy:bytes length:length options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeUntracked deallocator:nil];
         if (!b) { note("cannot wrap %zu bytes", length); return PM_MEMORY; }
         return wrap_buf_impl(b, 1, buffer);
     }

@@ -40,6 +40,20 @@ am_sg_mma_64x32x32 :: (acc:[]f32,a:[]f32,b:[]f32) #effects(all) {
 am_sg_spill_64x32 :: (acc:[]f32,dst:[]f32) #effects(all) {
     for ai:0..<2048 {dst[ai]=acc[ai];}
 }
+// acc = 0, elementwise (the device zeroes each simdgroup's 8x8 tiles).
+am_sg_zero_64x32 :: (acc:[]f32) #effects(all) {
+    for ai:0..<2048 {acc[ai]=0.0f32;}
+}
+// FP16-operand simdgroup MMA (acc += a * b^T, a:[2048]u16, b:[1024]u16 held as IEEE 754 binary16).
+am_sg_mma_f16_64x32x32 :: (acc:[]f32,a:[]u16,b:[]u16) #effects(all) {
+    for ar:0..<64 {
+        for ac:0..<32 {
+            sum:=0.0f64;
+            for ak:0..<32 {sum+=f64(am_f16(cast(u32)a[ar*32+ak]))*f64(am_f16(cast(u32)b[ac*32+ak]));}
+            acc[ar*32+ac]=f32(f64(acc[ar*32+ac])+sum);
+        }
+    }
+}
 
 // out[t*rows+r] = sum over k of x[t*cols+k] W[r][k] for t0 <= t < min(t0+tm,
 // tokens) and r0 <= r < min(r0+tn, rows). Products of a BF16 weight and an
@@ -89,6 +103,16 @@ am_f16 :: (h:u32)->f32 #effects(all) {
     return sign*v;
 }
 am_simd_sum :: (x:f32)->f32 #effects(all) { return x; }
+am_simd_max :: (x:f32)->f32 #effects(all) { return x; }
+am_to_f16 :: (x:f32)->u16 #effects(all) {
+    b:=f32_bits(x);
+    sign:=(b>>16)&0x8000;
+    ex:=cast(int)((b>>23)&255)-127;
+    m:=b&0x7fffff;
+    if ex>15 {return cast(u16)(sign|0x7bff);}
+    if ex<-14 {return cast(u16)sign;}
+    return cast(u16)(sign|(cast(u32)(ex+15)<<10)|(m>>13));
+}
 
 am_dot_iq4_lane :: (w:[]u16,base:int,x:[]f32,x_off:int,blocks:int)->f32 #effects(all) {
     sum:f32=0.0f32;
@@ -171,13 +195,25 @@ am_dot_q4_moe_lane :: (w:[]u16,ids:[]u32,wts:[]f32,x:[]f32,exp_words:int,row_off
     return sum;
 }
 
+am_dot_f16_lane :: (w:[]u16,base:int,x:[]f32,x_off:int,cols:int)->f32 #effects(all) {
+    sum:f32=0.0f32;
+    for c:0..<cols {
+        sum+=am_f16(cast(u32)w[base+c])*x[x_off+c];
+    }
+    return sum;
+}
+
+am_iq4_tile_valid :: (threads:int,tm:int,tn:int)->bool #effects(all) {
+    if tm==128 || tm==256 {return am_tile_valid(threads,64,tn);}
+    return am_tile_valid(threads,tm,tn);
+}
 am_matmul_iq4_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,tn:int,w:int,x:int,out:int,tg:int)->bool #effects(all) {
     if cols<64 || cols%64!=0 || r0<0 || r0>=rows || t0<0 || t0>=tokens || tg<tn*64 {return false;}
     return w>=rows*((cols/32)*9) && x>=tokens*cols && out>=tokens*rows;
 }
 am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,w:[]u16,x:[]f32,out:[]f32,tg:[]u16) #effects(all) {
     #assert am_matmul_iq4_valid(rows,cols,tokens,r0,t0,tn,w.count,x.count,out.count,tg.count);
-    #assert am_tile_valid(threads,tm,tn);
+    #assert am_iq4_tile_valid(threads,tm,tn);
     blocks:=cols/32;
     row_words:=blocks*9;
     for at:t0..<t0+tm {
@@ -205,6 +241,12 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
 #test "BF16 halves decode exactly" {
     #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
     #assert am_simd_sum(3.5f32)==3.5f32 && am_simd_sum(-1.25f32)==-1.25f32;
+    #assert am_simd_max(3.5f32)==3.5f32 && am_simd_max(-1.25f32)==-1.25f32;
+    #assert am_to_f16(1.0f32)==0x3c00 && am_to_f16(-2.0f32)==0xc000 && am_to_f16(0.0f32)==0 && am_to_f16(100000.0f32)==0x7bff;
+    #assert am_to_f16(1.0009765625f32)==0x3c01 && am_to_f16(1.0078125f32)==0x3c08 && am_to_f16(-1.5f32)==0xbe00 && am_to_f16(32768.0f32)==0x7800;
+    #assert am_to_f16(0.00006103515625f32)==0x0400 && am_to_f16(0.000030517578125f32)==0 && am_to_f16(-0.000030517578125f32)==0x8000;
+    #assert am_iq4_tile_valid(128,128,64) && am_iq4_tile_valid(128,256,64) && am_iq4_tile_valid(128,64,64);
+    #assert !am_iq4_tile_valid(128,129,64) && !am_iq4_tile_valid(128,257,64) && !am_iq4_tile_valid(128,128,65);
     wq:[36]u16;xq:[64]f32;
     wq[0]=0x3c00;wq[9]=0x4000;wq[18]=0x3800;wq[27]=0x3c00;
     for k:0..<8 {
@@ -252,6 +294,11 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
     #assert abs(am_dot_q4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,2)-exp_mq)<0.001f32;
     #assert am_dot_iq4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,0)==0.0f32;
     #assert am_dot_q4_moe_lane(wq[..],mids[..],mwts[..],xq[..],18,9,32,0)==0.0f32;
+    wf:[8]u16;
+    wf[0]=0x3c00;wf[1]=0x4000;wf[2]=0xbc00;wf[3]=0x3800;wf[4]=0x4200;wf[5]=0x3c00;wf[6]=0x4000;wf[7]=0xbc00;
+    exp_f16:=1.0f32*xq[4]+2.0f32*xq[5]-1.0f32*xq[6]+0.5f32*xq[7];
+    #assert abs(am_dot_f16_lane(wf[..],0,xq[..],4,4)-exp_f16)<0.0001f32;
+    #assert am_dot_f16_lane(wf[..],4,xq[..],0,0)==0.0f32;
 }
 #test "am_matmul_iq4 decodes IQ4_NL weights and multiplies" {
     exp_lut:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];
@@ -290,6 +337,13 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
         sum:=0;for ak:0..<32 {sum+=((ar+2*ak)%5-2)*((3*ak+ac)%7-3);}
         #assert out[ar*32+ac]==f32(2*sum+(ar*32+ac)%3) && acc[ar*32+ac]==out[ar*32+ac];
     }}
+    am_sg_zero_64x32(acc[..]);
+    for ai:0..<2048 {#assert acc[ai]==0.0f32;}
+    ah:[2048]u16;bh:[1024]u16;
+    for ar:0..<64 {for ak:0..<32 {ah[ar*32+ak]=am_to_f16(f32((ar+ak)%3-1));}}
+    for ac:0..<32 {for ak:0..<32 {bh[ac*32+ak]=am_to_f16(f32((ac+ak)%3-1));}}
+    am_sg_mma_f16_64x32x32(acc[..],ah[..],bh[..]);
+    #assert acc[0]==f32(21) && acc[3*32+5]==f32(-11);
 }
 #test "the 32 products are added before rounding into acc" {
     acc:[2048]f32;a:[2048]f32;b:[1024]f32;
