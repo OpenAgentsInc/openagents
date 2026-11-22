@@ -725,7 +725,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             return
         }
         if !cmdHintsShown && cmdHoldTimer == nil {
-            cmdHoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            cmdHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
                 guard let self else { return }
                 self.cmdHoldTimer = nil
                 let live = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
