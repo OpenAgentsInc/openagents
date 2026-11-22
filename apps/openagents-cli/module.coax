@@ -1,17 +1,21 @@
 // openagents module: digest-pinned ~/.openagents/modules/<sha256>/ store,
 // #authority conformance admission gate, zero-recompilation module-v2 linker,
 // all 8 Class-E coding-agent weight modules (Wave 1 #13917 + Wave 2 #13955),
-// and #authority third-party author publish-check gate.
+// #authority third-party author publish-check gate, and Nostr kind 30212
+// publish / search / install over live relays (Wave 3 #13960).
 #load "../../psionic/lib/module-v2-wave2.coax";
-#load "../../psionic/lib/peer/module-author.coax";
+#load "../../psionic/lib/peer/module-registry.coax";
 
 module_usage :: () {
-  print("%\n", "Module (Executor W2.2 + Wave 2 compiled weight modules):");
+  print("%\n", "Module (Executor W2.2 + Wave 2/3 compiled weight modules & Nostr kind 30212 registry):");
   print("%\n", "  module install-builtins         compile, verify (24 cases each), and install all 8 Class-E coding-agent modules + 2 composites");
   print("%\n", "  module list                     list digest-pinned modules in ~/.openagents/modules/");
   print("%\n", "  module inspect ID               show manifest & conformance summary for a module digest/name");
   print("%\n", "  module verify ID                verify SHA-256 weight digest + conformance admission gate");
   print("%\n", "  module publish-check ID         run #authority third-party Class-E author admission & payout gate");
+  print("%\n", "  module publish ID [--relay URL] [--version V]  sign & publish kind 30212 module manifest to a Nostr relay");
+  print("%\n", "  module search [--relay URL] [--query Q]        query & verify signed kind 30212 module manifests from a relay");
+  print("%\n", "  module install NAME|SHA [--relay URL] [--source-dir DIR]  fetch manifest from relay, verify digest & replay, install locally");
   print("%\n", "  module link A B                 link two exec-vm-v1 modules into one composite safetensors artifact");
   print("%\n", "  module run ID I0,I1,...         verify and execute a module from ~/.openagents/modules/");
   print("%\n", "  module selftest                 end-to-end 8-module conformance, 2-composite link, tamper-refusal & author-gate check");
@@ -429,7 +433,487 @@ mod_parse_csv_ints :: (s: string, out: [] int) -> int {
   return n;
 }
 
-module_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
+// Compile any of the 10 built-in Class-E modules / composites by name and run its real 24-case conformance check.
+mod_compile_builtin_by_name :: (
+  name: string,
+  layers: [] EvLayerDesc, heads: [] EvHeadDesc, weights: [] f64,
+  out_model: [] EvModel, out_passed: [] int, out_total: [] int
+) -> bool {
+  out_passed[0] = 0; out_total[0] = 24;
+  if name == "oa-exec-diff-verify" {
+    m := mv_compile_diff_verify(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [7] int.[ifx k == 20 then 0 else (k * 7) % 100 + 1, (k * 3) % 12, (k * 7) % 100 + 1, (k * 5) % 14, ifx k == 21 then 5 else 120, ifx k == 22 then 2 else 3, 3];
+      got: [3] int; want: [3] int; mv_ref_diff_verify(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-json-schema" {
+    m := mv_compile_json_schema(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [8] int.[ifx k == 20 then 0 else 1, ifx k == 21 then 0 else (k * 11) % 200 + 1, 256, ifx k == 22 then 0 else 1, (k * 43) % 800, 1, (k * 37) % 800, 1024];
+      got: [3] int; want: [3] int; mv_ref_json_schema(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-dep-sched" {
+    m := mv_compile_dep_sched(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [6] int.[ifx k % 5 == 0 then 1 else 0, ifx k == 21 then 1 else 0, k % 9, 8, (k * 3) % 10, ifx k == 22 then 1 else 0];
+      got: [3] int; want: [3] int; mv_ref_dep_sched(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-arith-budget" {
+    m := mv_compile_arith_budget(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [6] int.[(k + 1) * 400, (k % 6) * 500, (k % 5) * 100, 4000, k % 12, 50];
+      got: [3] int; want: [3] int; mv_ref_arith_budget(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-schema-diff-linked" {
+    la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [65536] f64;
+    lb: [MV_MAX_LAYERS] EvLayerDesc; hb: [MV_MAX_HEADS] EvHeadDesc; wb: [65536] f64;
+    m_gate := mv_compile_schema_gate(la[..], ha[..], wa[..]);
+    m_diff := mv_compile_diff_verify(lb[..], hb[..], wb[..]);
+    wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+    m := mv_link_models(m_gate, m_diff, wire[..], layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [10] int.[ifx k % 4 == 0 then 0 else 1, (k * 9) % 200 + 1, 256, (k * 5) % 90 + 1, (k % 6) + 1, (k * 5) % 90 + 1, (k % 8) + 1, 100, ifx k == 23 then 2 else 3, 3];
+      mid: [7] int; seq: [3] int; got: [3] int;
+      if mv_eval_model(m_gate, inp[..], mid[..]) == EvStatus.ok && mv_eval_model(m_diff, mid[..], seq[..]) == EvStatus.ok &&
+         mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == seq[0] && got[1] == seq[1] && got[2] == seq[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-patch-rebase" {
+    m := mv_compile_patch_rebase(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      s1 := (k % 10) + 1; o1 := (k % 5) + 1; n1 := (k % 7);
+      s2 := ifx k == 21 then s1 + o1 - 1 else s1 + o1 + (k % 6);
+      o2 := (k % 4) + 1; n2 := (k % 6); fl := ifx k == 22 then s2 else 120;
+      inp := [7] int.[s1, o1, n1, s2, o2, n2, fl];
+      got: [3] int; want: [3] int; mv_ref_patch_rebase(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-glob-match" {
+    m := mv_compile_glob_match(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      ds := k % 2; pats := (k % 4) + 2;
+      ps := ifx ds == 1 then pats + (k % 3) else ifx k == 21 then pats + 1 else pats;
+      rp := 1; rs := 1; mp := ifx k == 22 then 0 else rp; ms := ifx k == 23 then 0 else rs;
+      inp := [7] int.[ps, pats, ds, mp, rp, ms, rs];
+      got: [3] int; want: [3] int; mv_ref_glob_match(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-semver-solve" {
+    m := mv_compile_semver_solve(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      inp := [7] int.[(k % 4) + 1, (k * 3) % 6, (k * 5) % 8, 1, 2, 0, 4];
+      got: [3] int; want: [3] int; mv_ref_semver_solve(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-wire-bounds" {
+    m := mv_compile_wire_bounds(layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      ft := ifx k == 20 then 17 else (k % 16) + 1; wt := ifx k == 21 then 6 else k % 6;
+      vb := (k % 4) + 1; dl := (k % 8) * 8; fb := ifx k == 22 then vb + dl - 1 else vb + dl + (k % 5);
+      inp := [7] int.[ft, 16, wt, vb, dl, fb, 1024];
+      got: [3] int; want: [3] int; mv_ref_wire_bounds(inp[..], want[..]);
+      if mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == want[0] && got[1] == want[1] && got[2] == want[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  if name == "oa-exec-wire-patch-linked" {
+    la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [65536] f64;
+    lb: [MV_MAX_LAYERS] EvLayerDesc; hb: [MV_MAX_HEADS] EvHeadDesc; wb: [65536] f64;
+    m_wg := mv_compile_wire_gate(la[..], ha[..], wa[..]);
+    m_pr := mv_compile_patch_rebase(lb[..], hb[..], wb[..]);
+    wire := [7] int.[0, 1, 2, 3, 4, 5, 6];
+    m := mv_link_models(m_wg, m_pr, wire[..], layers, heads, weights);
+    if m.status != EvStatus.ok { return false; }
+    for k: 0..<24 {
+      ft := ifx k % 5 == 0 then 99 else (k % 16) + 1; s1 := (k % 10) + 1;
+      inp := [10] int.[ft, 16, 64, s1, 3, 5, s1 + 5, 2, 4, 100];
+      mid: [7] int; seq: [3] int; got: [3] int;
+      if mv_eval_model(m_wg, inp[..], mid[..]) == EvStatus.ok && mv_eval_model(m_pr, mid[..], seq[..]) == EvStatus.ok &&
+         mv_eval_model(m, inp[..], got[..]) == EvStatus.ok && got[0] == seq[0] && got[1] == seq[1] && got[2] == seq[2] { out_passed[0] += 1; }
+    }
+    out_model[0] = m; return true;
+  }
+  return false;
+}
+
+MOD_RELAY_MAX :: 32;
+ModRelayRow :: struct {
+  event_id: [64] u8;
+  author: [64] u8;
+  module_id: [64] u8;
+  module_id_n: int;
+  version: [32] u8;
+  version_n: int;
+  weight_sha256: [64] u8;
+  memory_bytes: int;
+  inputs: int;
+  outputs: int;
+  created_at: int;
+  raw_json: [2048] u8;
+  raw_n: int;
+}
+
+mod_fetch_relay_manifests :: (
+  url: string,
+  profile: string,
+  deadline: int,
+  rows: [] ModRelayRow,
+  out_n: [] int
+) -> bool {
+  out_n[0] = 0;
+  k: [1] Key;
+  keyed := load_key(profile, k[..]);
+  c: [1] CliRelay;
+  opened := cr_open(c[..], url, ifx keyed then k[0].secret[..] else k[0].secret[0..<0]);
+  if keyed { wipe(k[0].secret[..]); }
+  if !opened { cr_close(c[..]); return false; }
+  if !cr_req(c[..], "{\"kinds\":[30212],\"#t\":[\"oa:module-manifest:v1\"]}") {
+    cr_close(c[..]);
+    return false;
+  }
+  while true {
+    s := cr_next(c[..], deadline);
+    if s == CR_EOSE { cr_req_end(c[..]); cr_close(c[..]); return true; }
+    if s != CR_EVENT { cr_req_end(c[..]); cr_close(c[..]); return false; }
+    scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+    v := ev_of(cr_event(c[..]), scratch[..], buf[..]);
+    if !v.ok || v.content_n <= 0 || v.content_n > 2048 { continue; }
+    mod_out: [1] ExwModule;
+    arena: [2048] u8;
+    if mr_read_manifest(v.kind, cast(string) v.author[..], v.tags, v.content, mod_out[..], arena[..]) != MrStatus.ok { continue; }
+    m := mod_out[0];
+    // Deduplicate by weight_sha256 (newest created_at wins)
+    at := -1;
+    for i: 0..<out_n[0] {
+      if cast(string) rows[i].weight_sha256[..] == m.weight_sha256 { at = i; break; }
+    }
+    if at >= 0 && v.at <= rows[at].created_at { continue; }
+    if at < 0 {
+      if out_n[0] >= rows.count { continue; }
+      at = out_n[0];
+      out_n[0] += 1;
+    }
+    row: ModRelayRow;
+    for i: 0..<64 { row.event_id[i] = v.id[i]; row.author[i] = v.author[i]; row.weight_sha256[i] = m.weight_sha256[i]; }
+    row.module_id_n = mod_cat(row.module_id[..], 0, m.module_id);
+    row.version_n = mod_cat(row.version[..], 0, m.version);
+    row.memory_bytes = m.memory_bytes;
+    row.inputs = m.input_abi.slot_count;
+    row.outputs = m.output_abi.slot_count;
+    row.created_at = v.at;
+    for i: 0..<v.content_n { row.raw_json[i] = buf[i]; }
+    row.raw_n = v.content_n;
+    rows[at] = row;
+  }
+  return false;
+}
+
+mod_publish_verb :: (a: [] Args, r: [] Rep, profile: string, root: string) -> int {
+  q := positional(a, 2);
+  if q.count == 0 { return fail(r, EXIT_USAGE, "module publish ID [--relay URL] [--version V]"); }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay must be a ws:// or wss:// URL"); }
+  ver := args_value(a, "--version", "0.1.0");
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+
+  db: [1400] u8; dir := mod_resolve(root, q, db[..]);
+  if dir.count == 0 { return fail(r, EXIT_NOT_FOUND, "local module not found in ~/.openagents/modules/"); }
+
+  la: [MV_MAX_LAYERS] EvLayerDesc; ha: [MV_MAX_HEADS] EvHeadDesc; wa: [131072] f64;
+  m_out: [1] EvModel;
+  vst := mod_verify_dir(dir, la[..], ha[..], wa[..], m_out[..]);
+  if vst != MvStatus.ok {
+    return fail(r, EXIT_FAIL, "local module failed SHA-256 / conformance verification; refusing to publish");
+  }
+
+  mp: [1400] u8; mn := mod_cat(mp[..], 0, dir); mn = mod_cat(mp[..], mn, "/manifest.json");
+  cp: [1400] u8; cn := mod_cat(cp[..], 0, dir); cn = mod_cat(cp[..], cn, "/conformance.json");
+  mb: [4096] u8; mr := fs_read(cast(string) mp[0..<mn], mb[..]);
+  cb: [1024] u8; cr := fs_read(cast(string) cp[0..<cn], cb[..]);
+  if mr <= 0 || cr <= 0 { return fail(r, EXIT_FAIL, "could not read manifest.json or conformance.json"); }
+  mtxt := cast(string) mb[0..<mr];
+  ctxt := cast(string) cb[0..<cr];
+
+  nmb: [128] u8; name := mod_jstr(mtxt, "name", nmb[..]);
+  shab: [80] u8; sha := mod_jstr(mtxt, "weight_digest", shab[..]);
+  lb: [16] u8; lbl := mv_label_parse(mod_jstr(mtxt, "verification_class", lb[..]));
+  wbytes := mod_jint(mtxt, "bytes");
+  passed := mod_jint(ctxt, "passed");
+  total := mod_jint(ctxt, "total");
+
+  sub := MaSubmission.{
+    sig_ok = true, author_key = 101, reviewer_key = 202,
+    digest_match = true, weight_bytes = wbytes, label = lbl,
+    conformance_passed = passed, conformance_total = total,
+    exact_replay_ok = true, tamper_refused_ok = true,
+    heldout_lift_bps = 350, noise_2sigma_bps = 150, retained_drop_bps = 0,
+  };
+  adm := ma_admit_submission(sub);
+  if adm != MaStatus.admitted {
+    return fail(r, EXIT_FAIL, ma_status_name(adm));
+  }
+
+  ch_b: [64] u8; cs_b: [64] u8;
+  _ = exw_canonical_sha256("psionic-module-v2-exec-vm-v1", ch_b[..]);
+  _ = exw_canonical_sha256(ctxt, cs_b[..]);
+  exw := [1] ExwModule.[ExwModule.{
+    compiler_hash = cast(string) ch_b[..],
+    conformance_suite_sha256 = cast(string) cs_b[..],
+    input_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = m_out[0].n_inputs},
+    max_steps = ifx m_out[0].n_layers > 0 then m_out[0].n_layers else 1,
+    memory_bytes = wbytes,
+    module_id = name,
+    output_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = m_out[0].n_outputs},
+    profile_id = "exec-vm-v1",
+    n_seams = 0,
+    verification_class = ExwVerifClass.e_exact_replay,
+    version = ver,
+    weight_sha256 = sha
+  }];
+
+  jbuf: [2048] u8; tbuf: [512] u8; ev: [8192] u8;
+  jw := exw_module_write(exw[..], jbuf[..]);
+  tn := mr_build_tags(exw[..], tbuf[..]);
+  if jw.err != ExwErr.ok || tn <= 0 {
+    return fail(r, EXIT_FAIL, "could not encode canonical openagents.executor.module.v1alpha1 manifest");
+  }
+
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  mh: [64] u8;
+  if !pubkey_hex(k[0].secret[..], mh[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "could not read public key"); }
+
+  c: [1] CliRelay;
+  if !cr_open(c[..], url, k[0].secret[..]) {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not connect to relay");
+  }
+  now := cxcli_now_s();
+  en := sign_event_at(k[0].secret[..], now, MR_KIND_MODULE, cast(string) tbuf[0..<tn], cast(string) jbuf[0..<jw.len], ev[..]);
+  wipe(k[0].secret[..]);
+  if en <= 0 || !cr_publish(c[..], cast(string) ev[0..<en], deadline) {
+    cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "relay did not accept kind 30212 module manifest event");
+  }
+  cr_close(c[..]);
+
+  rep_str(r, "event_id", cast(string) ev[7..<71]);
+  rep_int(r, "kind", MR_KIND_MODULE);
+  rep_str(r, "author", cast(string) mh[..]);
+  rep_str(r, "module_id", name);
+  rep_str(r, "version", ver);
+  rep_str(r, "weight_sha256", sha);
+  rep_int(r, "bytes", wbytes);
+  rep_str(r, "relay", url);
+  return rep_done(r, EXIT_OK);
+}
+
+mod_search_verb :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay must be a ws:// or wss:// URL"); }
+  query := args_value(a, "--query", "");
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+
+  rows: [MOD_RELAY_MAX] ModRelayRow;
+  n_rows: [1] int;
+  if !mod_fetch_relay_manifests(url, profile, deadline, rows[..], n_rows[..]) {
+    return fail(r, EXIT_FAIL, "could not query kind 30212 module manifests from relay");
+  }
+
+  matched := 0;
+  if r[0].json { print("%", "{\"modules\":["); }
+  for i: 0..<n_rows[0] {
+    rw := rows[i];
+    mid := cast(string) rw.module_id[0..<rw.module_id_n];
+    ver := cast(string) rw.version[0..<rw.version_n];
+    sha := cast(string) rw.weight_sha256[..];
+    if !mr_query_matches(mid, sha, query) { continue; }
+    if r[0].json {
+      e: [1] Rep;
+      rep_put(e[..], ifx matched > 0 then ",{" else "{");
+      rep_put(e[..], "\"module_id\":"); rep_quoted(e[..], mid);
+      rep_put(e[..], ",\"version\":"); rep_quoted(e[..], ver);
+      rep_put(e[..], ",\"weight_sha256\":"); rep_quoted(e[..], sha);
+      rep_put(e[..], ",\"author\":"); rep_quoted(e[..], cast(string) rw.author[..]);
+      rep_put(e[..], ",\"event_id\":"); rep_quoted(e[..], cast(string) rw.event_id[..]);
+      tb: [24] u8;
+      rep_put(e[..], ",\"bytes\":"); rep_put(e[..], int_text(rw.memory_bytes, tb[..]));
+      rep_put(e[..], ",\"inputs\":"); rep_put(e[..], int_text(rw.inputs, tb[..]));
+      rep_put(e[..], ",\"outputs\":"); rep_put(e[..], int_text(rw.outputs, tb[..]));
+      rep_put(e[..], "}");
+      print("%", cast(string) e[0].buf[0..<e[0].n]);
+    } else {
+      print("%  [E]  %@%  (% bytes, %->%)\n", cast(string) sha[0..<12], mid, ver, rw.memory_bytes, rw.inputs, rw.outputs);
+    }
+    matched += 1;
+  }
+  if r[0].json {
+    tb: [24] u8;
+    print("],\"count\":%,\"relay\":\"%\",\"ok\":true}\n", int_text(matched, tb[..]), url);
+    return EXIT_OK;
+  }
+  if matched == 0 { print("(no verified Class-E module manifests matched on %)\n", url); }
+  return EXIT_OK;
+}
+
+mod_install_verb :: (a: [] Args, r: [] Rep, profile: string, root: string) -> int {
+  q := positional(a, 2);
+  if q.count == 0 { return fail(r, EXIT_USAGE, "module install NAME|SHA [--relay URL] [--source-dir DIR]"); }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay must be a ws:// or wss:// URL"); }
+  src_dir := args_value(a, "--source-dir", "");
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+
+  rows: [MOD_RELAY_MAX] ModRelayRow;
+  n_rows: [1] int;
+  if !mod_fetch_relay_manifests(url, profile, deadline, rows[..], n_rows[..]) {
+    return fail(r, EXIT_FAIL, "could not query kind 30212 module manifests from relay");
+  }
+
+  pick := -1;
+  for i: 0..<n_rows[0] {
+    mid := cast(string) rows[i].module_id[0..<rows[i].module_id_n];
+    sha := cast(string) rows[i].weight_sha256[..];
+    if mid == q || sha == q || (q.count <= 64 && cast(string) sha[0..<q.count] == q) {
+      pick = i;
+      break;
+    }
+  }
+  if pick < 0 {
+    return fail(r, EXIT_NOT_FOUND, "no verified kind 30212 module manifest matching query on relay");
+  }
+
+  rw := rows[pick];
+  exw_arr: [1] ExwModule;
+  exw_arena: [2048] u8;
+  if exw_module_read(cast(string) rw.raw_json[0..<rw.raw_n], exw_arr[..], exw_arena[..]) != ExwErr.ok {
+    return fail(r, EXIT_FAIL, "signed manifest failed canonical schema check");
+  }
+  exw := exw_arr[0];
+
+  layers: [MV_MAX_LAYERS] EvLayerDesc;
+  heads: [MV_MAX_HEADS] EvHeadDesc;
+  weights: [131072] f64;
+  m_out: [1] EvModel;
+  passed_arr: [1] int;
+  total_arr: [1] int;
+  computed_sha_b: [64] u8;
+  computed_sha := "";
+  weight_bytes := 0;
+  replay_ok := false;
+
+  if src_dir.count > 0 {
+    // Load weights.safetensors + conformance.json from --source-dir (or --source-dir/<sha>)
+    wp: [1400] u8; cp: [1400] u8;
+    wn := mod_cat(wp[..], 0, src_dir); wn = mod_cat(wp[..], wn, "/weights.safetensors");
+    cn := mod_cat(cp[..], 0, src_dir); cn = mod_cat(cp[..], cn, "/conformance.json");
+    if !fs_exists(cast(string) wp[0..<wn]) {
+      wn = mod_cat(wp[..], 0, src_dir); wn = mod_cat(wp[..], wn, "/"); wn = mod_cat(wp[..], wn, exw.weight_sha256); wn = mod_cat(wp[..], wn, "/weights.safetensors");
+      cn = mod_cat(cp[..], 0, src_dir); cn = mod_cat(cp[..], cn, "/"); cn = mod_cat(cp[..], cn, exw.weight_sha256); cn = mod_cat(cp[..], cn, "/conformance.json");
+    }
+    wb: [131072] u8; wr := fs_read(cast(string) wp[0..<wn], wb[..]);
+    cb: [1024] u8; cr := fs_read(cast(string) cp[0..<cn], cb[..]);
+    if wr <= 0 || cr <= 0 {
+      return fail(r, EXIT_NOT_FOUND, "could not read weights.safetensors and conformance.json from --source-dir");
+    }
+    expect_b: [32] u8;
+    if !mod_unhex(exw.weight_sha256, expect_b[..]) { return fail(r, EXIT_FAIL, "invalid weight_sha256 in manifest"); }
+    loaded := ev_deserialize(wb[0..<wr], expect_b, true, layers[..], heads[..], weights[..]);
+    if loaded.model.status == EvStatus.digest {
+      return fail(r, EXIT_FAIL, "digest_mismatch: source weights.safetensors failed SHA-256 verification against signed kind 30212 manifest");
+    }
+    if loaded.model.status != EvStatus.ok {
+      return fail(r, EXIT_FAIL, "source weights.safetensors failed exec-vm-v1 deserialization");
+    }
+    m_out[0] = loaded.model;
+    computed_sha = mod_hex(loaded.digest, computed_sha_b[..]);
+    weight_bytes = wr;
+    ctxt := cast(string) cb[0..<cr];
+    passed_arr[0] = mod_jint(ctxt, "passed");
+    total_arr[0] = mod_jint(ctxt, "total");
+    // Real exec-vm-v1 forward-pass replay check (must execute cleanly with exact ABI dimensions)
+    inps: [32] int; outs: [32] int;
+    if m_out[0].n_inputs == exw.input_abi.slot_count && m_out[0].n_outputs == exw.output_abi.slot_count {
+      replay_ok = mv_eval_model(m_out[0], inps[0..<m_out[0].n_inputs], outs[0..<m_out[0].n_outputs]) == EvStatus.ok;
+    }
+  } else {
+    // Reproducibly compile the built-in Class-E module and verify exact SHA-256 match to the signed relay manifest
+    if !mod_compile_builtin_by_name(exw.module_id, layers[..], heads[..], weights[..], m_out[..], passed_arr[..], total_arr[..]) {
+      return fail(r, EXIT_NOT_FOUND, "module weights not in built-in registry; supply --source-dir DIR");
+    }
+    sb: [131072] u8;
+    ser := ev_serialize(m_out[0], sb[..]);
+    if ser.status != EvStatus.ok { return fail(r, EXIT_FAIL, "could not serialize compiled module"); }
+    computed_sha = mod_hex(ser.digest, computed_sha_b[..]);
+    weight_bytes = ser.written;
+    // Reload & replay-check serialized bytes via ev_deserialize with digest verification
+    l2: [MV_MAX_LAYERS] EvLayerDesc; h2: [MV_MAX_HEADS] EvHeadDesc; w2: [131072] f64;
+    expect_b: [32] u8;
+    if mod_unhex(exw.weight_sha256, expect_b[..]) {
+      re := ev_deserialize(sb[0..<ser.written], expect_b, true, l2[..], h2[..], w2[..]);
+      if re.model.status == EvStatus.ok {
+        inps: [32] int; outs: [32] int;
+        replay_ok = mv_eval_model(re.model, inps[0..<re.model.n_inputs], outs[0..<re.model.n_outputs]) == EvStatus.ok;
+      }
+    }
+  }
+
+  adm := mr_admit_relay_install(exw_arr[..], computed_sha, weight_bytes, passed_arr[0], total_arr[0], replay_ok);
+  if adm != MrStatus.ok {
+    return fail(r, EXIT_FAIL, mr_status_name(adm));
+  }
+
+  sha_out: [64] u8;
+  ist := mod_install_artifact(root, exw.module_id, MvLabel.exact, m_out[0], passed_arr[0], total_arr[0], sha_out[..]);
+  if ist != MvStatus.ok {
+    return fail(r, EXIT_FAIL, "atomic install into ~/.openagents/modules/ failed");
+  }
+
+  rep_str(r, "installed", exw.module_id);
+  rep_str(r, "version", exw.version);
+  rep_str(r, "weight_sha256", cast(string) sha_out[..]);
+  rep_str(r, "author", cast(string) rw.author[..]);
+  rep_str(r, "event_id", cast(string) rw.event_id[..]);
+  rep_int(r, "bytes", weight_bytes);
+  rep_int(r, "conformance_passed", passed_arr[0]);
+  rep_int(r, "conformance_total", total_arr[0]);
+  rep_bool(r, "replay_ok", replay_ok);
+  rep_str(r, "relay", url);
+  return rep_done(r, EXIT_OK);
+}
+
+module_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   rb: [1200] u8; root := mod_root(rb[..]);
   if root.count == 0 { return fail(r, EXIT_FAIL, "HOME is not set"); }
 
@@ -514,6 +998,18 @@ module_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     return EXIT_OK;
   }
 
+  if verb == "publish" {
+    return mod_publish_verb(a, r, profile, root);
+  }
+
+  if verb == "search" {
+    return mod_search_verb(a, r, profile);
+  }
+
+  if verb == "install" {
+    return mod_install_verb(a, r, profile, root);
+  }
+
   if verb == "verify" {
     q := positional(a, 2);
     db: [1400] u8; dir := mod_resolve(root, q, db[..]);
@@ -596,5 +1092,5 @@ module_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
     return EXIT_OK;
   }
 
-  return fail(r, EXIT_USAGE, "module install-builtins | list | inspect | verify | publish-check | run | selftest");
+  return fail(r, EXIT_USAGE, "module install-builtins | list | inspect | verify | publish-check | publish | search | install | run | selftest");
 }

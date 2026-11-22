@@ -1,0 +1,242 @@
+// #authority Nostr Kind 30212 Module Manifest Registry Policy ("Agentic npm" Wave 3, #13960).
+//
+// Reuses the canonical registered `openagents.executor.module.v1alpha1` JCS codec
+// (`psionic/lib/executor-wire.coax`), Class-E install admission (`module-v2-policy.coax`),
+// and third-party author policy (`module-author.coax`) to bind signed NIP-01 kind 30212
+// module announcements (`t = "oa:module-manifest:v1"`, `d = <weight_sha256>`) to exact
+// SHA-256 weight verification and bit-exact replay admission before installing locally.
+//   coax/bin/coax test psionic/lib/peer/module-registry.coax
+//   coax/bin/coax mutate psionic/lib/peer/module-registry.coax --root-only
+#load "../executor-wire.coax";
+#load "module-author.coax";
+#authority;
+
+MR_KIND_MODULE :: 30212;
+MR_TAG_TOPIC :: "oa:module-manifest:v1";
+
+MrStatus :: enum u8 {
+  ok;
+  bad_kind;
+  bad_author;
+  bad_schema;
+  bad_d_tag;
+  not_class_e;
+  bad_size;
+  digest_mismatch;
+  conformance_failed;
+  replay_failed;
+  capacity;
+}
+
+mr_status_name :: (s: MrStatus) -> string #export_c #effects(all) {
+  names := [11] string.[
+    "ok", "bad_kind", "bad_author", "bad_schema", "bad_d_tag",
+    "not_class_e", "bad_size", "digest_mismatch", "conformance_failed",
+    "replay_failed", "capacity"
+  ];
+  return names[cast(int) s];
+}
+
+// Build canonical NIP-01 tags JSON for a kind 30212 ExwModule manifest:
+// [["d","<sha>"],["t","oa:module-manifest:v1"],["t","<module_id>"],["x","<sha>"],["v","<class>"]]
+mr_build_tags :: (m: [] ExwModule, out: [] u8) -> int #export_c #effects(all) {
+  if m.count < 1 || exw_module_valid(m) != ExwErr.ok { return -1; }
+  x := m[0];
+  vnames := EXW_VERIF_NAMES;
+  vc := exw_enum_name(cast(int) x.verification_class, vnames[..]);
+  o: [1] Jo; jo_start(o[..], out); jo_arr(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "d"); jo_str(o[..], x.weight_sha256); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "t"); jo_str(o[..], MR_TAG_TOPIC); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "t"); jo_str(o[..], x.module_id); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "x"); jo_str(o[..], x.weight_sha256); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "v"); jo_str(o[..], vc); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Extract the first `"d"` tag value from a Nostr event tags JSON array.
+// Returns byte length written to `out`, or -1 if missing, malformed, or overflowing `out`.
+mr_extract_d_tag :: (tags_json: string, out: [] u8) -> int #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(d[..], tags_json, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return -1; }
+  v := d[0];
+  n := jv_len(v, 0);
+  for i: 0..<n {
+    row := jv_at(v, 0, i);
+    if jv_kind(v, row) != JV_ARRAY || jv_len(v, row) < 2 { continue; }
+    k0 := jv_at(v, row, 0);
+    v1 := jv_at(v, row, 1);
+    if jv_kind(v, k0) != JV_STRING || jv_kind(v, v1) != JV_STRING { continue; }
+    kb: [8] u8;
+    kn := js_string(v, k0, kb[..]);
+    if kn == 1 && kb[0] == 'd' {
+      return js_string(v, v1, out);
+    }
+  }
+  return -1;
+}
+
+// Parse & validate a kind 30212 Nostr module manifest event (after NIP-01 signature check).
+mr_read_manifest :: (
+  kind: int,
+  author_pubkey: string,
+  tags_json: string,
+  content: string,
+  out_mod: [] ExwModule,
+  arena: [] u8
+) -> MrStatus #export_c #effects(all) {
+  if kind != MR_KIND_MODULE { return MrStatus.bad_kind; }
+  if !exw_hex(author_pubkey, 64) { return MrStatus.bad_author; }
+  if out_mod.count < 1 { return MrStatus.capacity; }
+  if exw_module_read(content, out_mod, arena) != ExwErr.ok { return MrStatus.bad_schema; }
+  db: [64] u8;
+  dn := mr_extract_d_tag(tags_json, db[..]);
+  if dn != 64 || cast(string) db[0..<64] != out_mod[0].weight_sha256 { return MrStatus.bad_d_tag; }
+  if out_mod[0].verification_class != ExwVerifClass.e_exact_replay { return MrStatus.not_class_e; }
+  if out_mod[0].memory_bytes > MA_MAX_WEIGHT_BYTES { return MrStatus.bad_size; }
+  return MrStatus.ok;
+}
+
+// Fail-closed admission gate before installing a relay-discovered module into ~/.openagents/modules/.
+mr_admit_relay_install :: (
+  m: [] ExwModule,
+  computed_sha256: string,
+  weight_bytes: int,
+  passed: int,
+  total: int,
+  replay_ok: bool
+) -> MrStatus #export_c #effects(all) {
+  if m.count < 1 || exw_module_valid(m) != ExwErr.ok { return MrStatus.bad_schema; }
+  if m[0].verification_class != ExwVerifClass.e_exact_replay { return MrStatus.not_class_e; }
+  if weight_bytes != m[0].memory_bytes || weight_bytes > MA_MAX_WEIGHT_BYTES { return MrStatus.bad_size; }
+  if !mv_hex64_eq(m[0].weight_sha256, computed_sha256) { return MrStatus.digest_mismatch; }
+  if total < MA_MIN_CONFORMANCE || mv_admit_install(m[0].weight_sha256, computed_sha256, passed, total, MvLabel.exact) != MvStatus.ok {
+    return MrStatus.conformance_failed;
+  }
+  if !replay_ok { return MrStatus.replay_failed; }
+  return MrStatus.ok;
+}
+
+// Substring match helper for `openagents module search --query Q` (matches module_id or weight_sha256).
+mr_contains :: (hay: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+mr_query_matches :: (module_id: string, weight_sha256: string, query: string) -> bool #export_c #effects(all) {
+  return mr_contains(module_id, query) || mr_contains(weight_sha256, query);
+}
+
+MR_T_SHA :: "1111111111111111111111111111111111111111111111111111111111111111";
+MR_T_SHA2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+MR_T_AUT :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+#test "module-registry: kind 30212 tags, JCS manifest verification, install admission & search (#13960)" {
+  // Status names cover every variant
+  #assert mr_status_name(MrStatus.ok) == "ok";
+  #assert mr_status_name(MrStatus.bad_kind) == "bad_kind";
+  #assert mr_status_name(MrStatus.bad_author) == "bad_author";
+  #assert mr_status_name(MrStatus.bad_schema) == "bad_schema";
+  #assert mr_status_name(MrStatus.bad_d_tag) == "bad_d_tag";
+  #assert mr_status_name(MrStatus.not_class_e) == "not_class_e";
+  #assert mr_status_name(MrStatus.bad_size) == "bad_size";
+  #assert mr_status_name(MrStatus.digest_mismatch) == "digest_mismatch";
+  #assert mr_status_name(MrStatus.conformance_failed) == "conformance_failed";
+  #assert mr_status_name(MrStatus.replay_failed) == "replay_failed";
+  #assert mr_status_name(MrStatus.capacity) == "capacity";
+
+  m := [1] ExwModule.[ExwModule.{
+    compiler_hash = MR_T_SHA,
+    conformance_suite_sha256 = MR_T_SHA,
+    input_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = 7},
+    max_steps = 64,
+    memory_bytes = 24576,
+    module_id = "oa-exec-patch-rebase",
+    output_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = 3},
+    profile_id = "exec-vm-v1",
+    n_seams = 0,
+    verification_class = ExwVerifClass.e_exact_replay,
+    version = "0.1.0",
+    weight_sha256 = MR_T_SHA
+  }];
+  jbuf: [2048] u8;
+  jw := exw_module_write(m[..], jbuf[..]);
+  #assert jw.err == ExwErr.ok;
+  content := cast(string) jbuf[0..<jw.len];
+
+  // Canonical tags build (exact bytes) & capacity check
+  tbuf: [512] u8;
+  tn := mr_build_tags(m[..], tbuf[..]);
+  #assert tn > 0;
+  tags := cast(string) tbuf[0..<tn];
+  #assert tags == "[[\"d\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:module-manifest:v1\"],[\"t\",\"oa-exec-patch-rebase\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"v\",\"E_EXACT_REPLAY\"]]";
+  #assert mr_build_tags(m[0..<0], tbuf[..]) == -1;
+  bad_m := m; bad_m[0].weight_sha256 = "short";
+  #assert mr_build_tags(bad_m[..], tbuf[..]) == -1;
+  #assert mr_build_tags(m[..], tbuf[0..<10]) == -1;
+
+  // Extract d tag (happy path, skipping non-array/short/object/non-string/other-key rows, missing/bad json)
+  db: [64] u8;
+  #assert mr_extract_d_tag(tags, db[..]) == 64 && cast(string) db[..] == MR_T_SHA;
+  #assert mr_extract_d_tag("[1,[\"only\"],{\"a\":\"d\",\"b\":\"bad\"},[1,\"x\"],[\"d\",2],[\"dd\",\"x\"],[\"x\",\"y\"],[\"d\",\"ok\"]]", db[..]) == 2 && cast(string) db[0..<2] == "ok";
+  #assert mr_extract_d_tag("{\"a\":[\"d\",\"x\"]}", db[..]) == -1 && mr_extract_d_tag("bad", db[..]) == -1 && mr_extract_d_tag("[[\"t\",\"a\"]]", db[..]) == -1;
+  #assert mr_extract_d_tag(tags, db[0..<16]) == -1;
+
+  // Read & verify manifest (happy path + exact MA_MAX_WEIGHT_BYTES boundary + every refusal)
+  out: [1] ExwModule; arena: [2048] u8;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, content, out[..], arena[..]) == MrStatus.ok;
+  #assert out[0].module_id == "oa-exec-patch-rebase" && out[0].weight_sha256 == MR_T_SHA;
+
+  #assert mr_read_manifest(30210, MR_T_AUT, tags, content, out[..], arena[..]) == MrStatus.bad_kind;
+  #assert mr_read_manifest(MR_KIND_MODULE, "bad", tags, content, out[..], arena[..]) == MrStatus.bad_author;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, content, out[0..<0], arena[..]) == MrStatus.capacity;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, "{}", out[..], arena[..]) == MrStatus.bad_schema;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, "[[\"d\",\"short\"]]", content, out[..], arena[..]) == MrStatus.bad_d_tag;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, "[[\"d\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]", content, out[..], arena[..]) == MrStatus.bad_d_tag;
+
+  m_d := m; m_d[0].verification_class = ExwVerifClass.d_deterministic_test;
+  wd := exw_module_write(m_d[..], jbuf[..]);
+  #assert wd.err == ExwErr.ok;
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, cast(string) jbuf[0..<wd.len], out[..], arena[..]) == MrStatus.not_class_e;
+
+  m_max := m; m_max[0].memory_bytes = MA_MAX_WEIGHT_BYTES;
+  wmax := exw_module_write(m_max[..], jbuf[..]);
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, cast(string) jbuf[0..<wmax.len], out[..], arena[..]) == MrStatus.ok;
+
+  m_big := m; m_big[0].memory_bytes = MA_MAX_WEIGHT_BYTES + 1;
+  wbig := exw_module_write(m_big[..], jbuf[..]);
+  #assert mr_read_manifest(MR_KIND_MODULE, MR_T_AUT, tags, cast(string) jbuf[0..<wbig.len], out[..], arena[..]) == MrStatus.bad_size;
+
+  // Relay install admission: exact boundary + every refusal
+  #assert mr_admit_relay_install(m[..], MR_T_SHA, 24576, 20, 20, true) == MrStatus.ok;
+  #assert mr_admit_relay_install(m_max[..], MR_T_SHA, MA_MAX_WEIGHT_BYTES, 24, 24, true) == MrStatus.ok;
+  #assert mr_admit_relay_install(m[0..<0], MR_T_SHA, 24576, 24, 24, true) == MrStatus.bad_schema;
+  #assert mr_admit_relay_install(bad_m[..], MR_T_SHA, 24576, 24, 24, true) == MrStatus.bad_schema;
+  #assert mr_admit_relay_install(m_d[..], MR_T_SHA, 24576, 24, 24, true) == MrStatus.not_class_e;
+  #assert mr_admit_relay_install(m[..], MR_T_SHA, 24575, 24, 24, true) == MrStatus.bad_size;
+  #assert mr_admit_relay_install(m_big[..], MR_T_SHA, MA_MAX_WEIGHT_BYTES + 1, 24, 24, true) == MrStatus.bad_size;
+  #assert mr_admit_relay_install(m[..], MR_T_SHA2, 24576, 24, 24, true) == MrStatus.digest_mismatch;
+  #assert mr_admit_relay_install(m[..], MR_T_SHA, 24576, 19, 19, true) == MrStatus.conformance_failed;
+  #assert mr_admit_relay_install(m[..], MR_T_SHA, 24576, 23, 24, true) == MrStatus.conformance_failed;
+  #assert mr_admit_relay_install(m[..], MR_T_SHA, 24576, 24, 24, false) == MrStatus.replay_failed;
+
+  // Search query matching (empty, full-length, prefix, suffix, first-char mismatch, 1-char miss)
+  #assert mr_query_matches("oa-exec-patch-rebase", MR_T_SHA, "");
+  #assert mr_query_matches("abc", "def", "abc");
+  #assert !mr_query_matches("abc", "def", "xbc");
+  #assert !mr_query_matches("ab", "cd", "z");
+  #assert mr_query_matches("oa-exec-patch-rebase", MR_T_SHA, "patch");
+  #assert mr_query_matches("oa-exec-patch-rebase", MR_T_SHA, "rebase");
+  #assert mr_query_matches("oa-exec-patch-rebase", MR_T_SHA, "11111111");
+  #assert !mr_query_matches("oa-exec-patch-rebase", MR_T_SHA, "semver");
+  #assert !mr_query_matches("abc", "def", "abcd");
+}
