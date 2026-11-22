@@ -103,7 +103,7 @@ fi
 
 "$GB_ROOT/scripts/web.sh" check > /dev/null
 COAXIAL_MODE=release "$GB_ROOT/web/build.sh" > /dev/null
-stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
+stage="$(mktemp -d)"; pages="$(mktemp -d)"; trap 'rm -rf "$stage" "$pages"' EXIT
 "$GB_ROOT/scripts/web-stage.sh" "$stage"
 release="$("$GB_ROOT/scripts/web-stage.sh" "$stage" release)"
 "$GB_ROOT/scripts/web-stage.sh" "$stage" stored
@@ -121,18 +121,23 @@ g storage cp --recursive "$stage/b/$release/coaxial" "$stage/b/$release/build" "
 g storage cp --recursive "$stage/b/$release/splicebots/build" "$stage/b/$release/splicebots/splice-jam.wgsl" "$bucket/b/$release/splicebots/" --cache-control "$kept" --content-encoding gzip > /dev/null
 
 # Extensionless HTML routes served directly (trailing slashes and /index.html 301-redirect here).
-# Remove directory index.html files from $stage before rsync so GCS --web-main-page-suffix
-# does not 301-redirect /fated-dragon -> /fated-dragon/index.html into a loop with the URL map.
+# Pull directory index.html files out of $stage before rsync so GCS --web-main-page-suffix
+# never sees <world>/index.html, and use ^,^ so gcloud's ArgList parser does not treat the
+# regex ^ anchors as a custom list delimiter.
 cache="no-cache"
-g storage cp "$stage/credits.html" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
-g storage cp "$stage/fated-dragon/index.html" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
-g storage cp "$stage/splicebots/index.html" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
-rm -f "$stage/fated-dragon/index.html" "$stage/splicebots/index.html"
-rmdir "$stage/fated-dragon" 2>/dev/null || true
+cp "$stage/credits.html" "$pages/credits"
+mv "$stage/fated-dragon/index.html" "$pages/fated-dragon"
+mv "$stage/splicebots/index.html" "$pages/splicebots"
+rmdir "$stage/fated-dragon" "$stage/splicebots" 2>/dev/null || true
 
 # Sync top-level pages, images, and content-verified packs; remove stale unmanaged legacy objects.
-g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^(credits|fated-dragon|splicebots)$|^b/' --cache-control "$cache" > /dev/null
+g storage rsync "$stage" "$bucket" --recursive --delete-unmatched-destination-objects --exclude '^,^^b/,^credits$,^fated-dragon$,^splicebots$' --cache-control "$cache" > /dev/null
 g storage objects update "$bucket/api/auth/viewer" --cache-control "public, max-age=86400" > /dev/null
+
+# Upload extensionless HTML pages after rsync; packs live under /packs/splicebots/ so no prefix collides.
+g storage cp "$pages/credits" "$bucket/credits" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/fated-dragon" "$bucket/fated-dragon" --content-type "text/html" --cache-control "$cache" > /dev/null
+g storage cp "$pages/splicebots" "$bucket/splicebots" --content-type "text/html" --cache-control "$cache" > /dev/null
 
 # Prune old immutable releases, keeping the previous release during rollout.
 for old in $(g storage ls "$bucket/b/" 2> /dev/null); do

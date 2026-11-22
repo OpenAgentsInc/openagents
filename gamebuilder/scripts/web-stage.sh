@@ -64,6 +64,9 @@ if [[ "$2" == release ]]; then
   rmdir "$stage/splicebots/build"
   mv "$stage/splicebots/fonts/"* "$stage/b/$name/splicebots/fonts/"
   rmdir "$stage/splicebots/fonts"
+  mkdir -p "$stage/packs/splicebots"
+  mv "$stage/splicebots/packs/"*.pack "$stage/packs/splicebots/"
+  rmdir "$stage/splicebots/packs"
 
   sed -i.was -e "s|/fonts/\([A-Za-z-]*\)\.woff2|/b/$name/fonts/\1.woff2|g" "$stage/index.html" "$stage/credits.html"
   rm -f "$stage/index.html.was" "$stage/credits.html.was"
@@ -82,6 +85,7 @@ if [[ "$2" == release ]]; then
     -e "s|\"/splicebots/build/splice-jam\.wasm\"|\"/b/$name/splicebots/build/splice-jam.wasm\"|g" \
     -e "s|\"/splicebots/splice-jam\.wgsl\"|\"/b/$name/splicebots/splice-jam.wgsl\"|g" \
     -e "s|\"/splicebots/fonts/|\"/b/$name/splicebots/fonts/|g" \
+    -e "s|pack:/splicebots/packs/|pack:/packs/splicebots/|g" \
     "$stage/splicebots/index.html"
   rm -f "$stage/splicebots/index.html.was"
   echo "$name"
