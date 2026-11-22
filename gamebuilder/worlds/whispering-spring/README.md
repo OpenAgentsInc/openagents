@@ -28,7 +28,7 @@ Plan, layout, timeline, rooms and save format: [PLAN.md](PLAN.md).
 | `spring-layout.coax` | the frame block shared with the shaders |
 | `gpu/` | shaders (the engine's stylized shading; the live grove reuses Fated Dragon's HDR bloom path) |
 | `whispering-spring-face.c` | the scalar Wasm face for `coax/web/host.js` |
-| `models/*.glb` | the modelled pieces from the Obsidian Quail grove asset kit: earthen bank, cedar, limestone, exposed roots (and the pool, not placed: its layout is for the kit's own camera) |
+| `models/*.glb` | the modelled pieces from the Obsidian Quail grove asset kit: earthen bank, cedar (its crowns also top the three prayer-limb trunks), limestone, exposed roots, and the pool with its spill sheet, stream and sill. The grove is laid out around the kit's scene, placed at `WS_KIT` |
 | `index.html`, `glue.js` | the page: title page, in-grove frame, panels, journal, settings, text-first grove, speech bubble, chat |
 | `room.js` | the shared grove over the OpenAgents API's rooms: guest key, chat, everyone's ribbons |
 | `audio.js`, `audio-manifest.json` | sound and words: lore pages, the quail's lines, recordings when present, synthesized placeholders until then |

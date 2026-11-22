@@ -128,3 +128,14 @@ app byte storage (`coax/web/STORAGE.md`) and per-slot keeps; WebSocket rooms
 (`docs/metaverse/makers.md`, WebLN in `host.js`). Accounts take over the `WS1` text; a shared
 ribbon tree and listening parties sit on rooms with moderation; tips map onto makers. Nothing
 involving real payments is built until the artist picks prices and providers.
+
+## Fourth pass: laid out around the asset kit (built)
+
+The grove now follows the kit's Blender layout. The kit's scene sits at `WS_KIT` (3.2 m toward the camera,
+0.55 m down), so its bank and pool line up as in the kit. The kit's pool, spill sheet, stream and sill are
+placed; the ground is carved under the basin (`ws_basin_in`) and the stream (`WS_STREAM_HALF`), with a low
+rim round both, and the stream is carried on to the frame's bottom. The quail's strip is the near bank
+left of the stream (`WS_RANGE`), with the creek stones and cairn beyond it on the left. The three
+prayer-limb trunks keep their limbs and wear the kit cedar's crowns. The camera stands at a fixed low
+height, tilted up (`WS_TILT`), and moves straight back until the safe box fits; a phone held upright gets a
+wider lens. The fit, nothing-in-the-way and long-visit tests all pass at 16:9, portrait and ultra-wide.
