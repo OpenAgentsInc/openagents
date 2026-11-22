@@ -1,0 +1,283 @@
+// Inky SWA-aware 2-stage zero-LLM-call compaction (docs/coder/inky-spec.md §7).
+//   Stage 1 (>= 70% ctx or >= 96 msgs or >= 48 tool calls):
+//     Strips reasoning_content from older completed turns and replaces >512 B tool outputs
+//     older than the latest 2 turns / latest 4 active-turn steps with 1-line deterministic stubs.
+//   Stage 2 (>= 88% ctx, >= 112 msgs, >= 56 tool calls, or HTTP 400/413 overflow):
+//     Collapses the oldest half of history (at a safe tool-pair boundary) into a single
+//     deterministic `[Earlier session summary]` user message, freeing both message and
+//     GW_TOOL_HISTORY call slots while preserving gwt_history_valid == true.
+//
+// Checks: coax/bin/coax test coax/lib/inky/compact.coax --library
+
+#load "prompt.coax";
+
+IK_DEFAULT_CTX :: 32768;
+IK_MASK_MIN_BYTES :: 512;
+IK_STAGE1_PCT :: 70;
+IK_STAGE2_PCT :: 88;
+IK_STAGE1_MSGS :: 96;
+IK_STAGE2_MSGS :: 112;
+IK_STAGE1_CALLS :: 48;
+IK_STAGE2_CALLS :: 56;
+
+ik_compact_needed :: (h: [] IkHistory, system_bytes: int, max_ctx: int) -> int {
+  ctx := ifx max_ctx > 1024 then max_ctx else IK_DEFAULT_CTX;
+  est := ik_hist_est_tokens(h) + (system_bytes * 10 + 34) / 35 + 600;
+  if est >= (ctx * IK_STAGE2_PCT) / 100 || h[0].n >= IK_STAGE2_MSGS || h[0].nc >= IK_STAGE2_CALLS || h[0].na >= (IK_ARENA * 85) / 100 {
+    return 2;
+  }
+  if est >= (ctx * IK_STAGE1_PCT) / 100 || h[0].n >= IK_STAGE1_MSGS || h[0].nc >= IK_STAGE1_CALLS || h[0].na >= (IK_ARENA * 70) / 100 {
+    return 1;
+  }
+  return 0;
+}
+
+ik_compact_stub :: (h: [] IkHistory, m: IkMsg, out: [] u8) -> int {
+  tname := ik_hist_str(h, m.tool_name);
+  tpath := ik_hist_str(h, m.tool_path);
+  if tpath.count > 100 { tpath = cast(string) tpath[0..<100]; }
+  n := ik_fmt_put(out, 0, "[");
+  n = ik_fmt_put(out, n, ifx tname.count > 0 then tname else "tool");
+  if tpath.count > 0 {
+    n = ik_fmt_byte(out, n, ' ');
+    n = ik_fmt_put(out, n, tpath);
+  }
+  n = ik_fmt_put(out, n, " -> ");
+  if m.tool_kind == IK_TK_CMD {
+    n = ik_fmt_put(out, n, "exit ");
+    n = ik_fmt_int(out, n, m.tool_exit);
+    n = ik_fmt_put(out, n, ", ");
+  } else if m.is_error {
+    n = ik_fmt_put(out, n, "error, ");
+  }
+  n = ik_fmt_int(out, n, m.raw_bytes);
+  n = ik_fmt_put(out, n, " bytes omitted to save context");
+  if m.tool_kind == IK_TK_READ {
+    n = ik_fmt_put(out, n, "; call read_file again if needed");
+  }
+  return ik_fmt_put(out, n, "]");
+}
+
+ik_compact_copy_msg :: (dst: [] IkHistory, src: [] IkHistory, idx: int, strip_reason: bool, mask_tool: bool) -> bool {
+  m := src[0].msgs[idx];
+  dst[0].turn = m.turn;
+  if m.role == IK_ROLE_USER {
+    return ik_hist_user(dst, ik_hist_str(src, m.text));
+  }
+  if m.role == IK_ROLE_ASSISTANT {
+    calls: [IK_STEP_CALLS] GwToolCall;
+    cc := m.call_count;
+    if cc > IK_STEP_CALLS { cc = IK_STEP_CALLS; }
+    for k: 0..<cc {
+      c := src[0].calls[m.call_start + k];
+      calls[k] = GwToolCall.{
+        call_id = ik_hist_str(src, c.id),
+        name = ik_hist_str(src, c.name),
+        input_json = ik_hist_str(src, c.args),
+      };
+    }
+    rsn := ifx strip_reason then "" else ik_hist_str(src, m.reasoning);
+    return ik_hist_assistant(dst, m.step, ik_hist_str(src, m.text), rsn, calls[0..<cc]);
+  }
+  // IK_ROLE_TOOL
+  stub: [384] u8;
+  body := ik_hist_str(src, m.text);
+  was_masked := m.masked;
+  if mask_tool && !m.masked && m.text.len > IK_MASK_MIN_BYTES {
+    sn := ik_compact_stub(src, m, stub[..]);
+    body = cast(string) stub[0..<sn];
+    was_masked = true;
+  }
+  ok := ik_hist_tool(dst, m.step, ik_hist_str(src, m.tool_call_id), ik_hist_str(src, m.tool_name),
+                     m.tool_kind, ik_hist_str(src, m.tool_path), m.tool_exit, body, m.is_error);
+  if ok && dst[0].n > 0 {
+    dst[0].msgs[dst[0].n - 1].raw_bytes = m.raw_bytes;
+    dst[0].msgs[dst[0].n - 1].masked = was_masked;
+  }
+  return ok;
+}
+
+// Stage 1: Observation & old-thought masking. Keeps latest 2 turns and latest 4
+// active-turn tool steps verbatim; masks older >512 B tool outputs and strips
+// reasoning_content from turns older than latest 2. Returns true if history shrank.
+ik_compact_stage1 :: (h: [] IkHistory, tmp: [] IkHistory) -> bool {
+  if h[0].n == 0 { return false; }
+  saved_turn := h[0].turn;
+  before_na := h[0].na;
+  keep_turn := saved_turn - 1;
+  // Find latest tool step inside active turn.
+  max_step := 0;
+  for i: 0..<h[0].n {
+    m := h[0].msgs[i];
+    if m.turn == saved_turn && m.role == IK_ROLE_TOOL && m.step > max_step { max_step = m.step; }
+  }
+  ik_hist_init(tmp);
+  for i: 0..<h[0].n {
+    m := h[0].msgs[i];
+    strip_r := m.role == IK_ROLE_ASSISTANT && m.turn < keep_turn;
+    mask_t := m.role == IK_ROLE_TOOL && (m.turn < keep_turn || (m.turn == saved_turn && max_step >= 5 && m.step <= max_step - 4));
+    if !ik_compact_copy_msg(tmp, h, i, strip_r, mask_t) { return false; }
+  }
+  tmp[0].turn = saved_turn;
+  if tmp[0].na >= before_na { return false; }
+  h[0] = tmp[0];
+  return true;
+}
+
+ik_compact_line_snippet :: (s: string, cap: int, out: [] u8, at: int) -> int {
+  n := at;
+  lim := ifx s.count < cap then s.count else cap;
+  for i: 0..<lim {
+    c := s[i];
+    if c == '\n' || c == '\r' || c == '\t' { c = ' '; }
+    n = ik_fmt_byte(out, n, c);
+  }
+  if s.count > cap { n = ik_fmt_put(out, n, "..."); }
+  return n;
+}
+
+// Stage 2: Deterministic turn rollover. Collapses the oldest safe prefix of history
+// into a structured `[Earlier session summary]` user message, guaranteeing valid
+// tool_calls <-> tool pairing for every retained message.
+ik_compact_stage2 :: (h: [] IkHistory, tmp: [] IkHistory) -> bool {
+  if h[0].n < 4 { return false; }
+  saved_turn := h[0].turn;
+
+  // Find all safe cut indices > 0 where no assistant tool_calls are pending.
+  safe: [IK_MAX_MSGS] int;
+  nsafe := 0;
+  pending := 0;
+  for i: 0..<h[0].n {
+    m := h[0].msgs[i];
+    if i > 0 && pending == 0 && m.role != IK_ROLE_TOOL {
+      safe[nsafe] = i;
+      nsafe += 1;
+    }
+    if m.role == IK_ROLE_ASSISTANT { pending += m.call_count; }
+    else if m.role == IK_ROLE_TOOL && pending > 0 { pending -= 1; }
+  }
+  if nsafe == 0 { return false; }
+
+  // Target dropping roughly the oldest half of messages, keeping at least the tail.
+  target := h[0].n / 2;
+  if target < 2 { target = 2; }
+  cut := safe[0];
+  for k: 0..<nsafe {
+    cut = safe[k];
+    if cut >= target { break; }
+  }
+  // Never drop the entire history; keep at least the final message group if possible.
+  if cut >= h[0].n { return false; }
+
+  // Build deterministic handover summary of msgs[0..<cut].
+  sum: [4096] u8;
+  sn := ik_fmt_put(sum[..], 0, "[Earlier session summary]\n");
+  sn = ik_fmt_put(sum[..], sn, "Tasks & observations from earlier in this conversation:\n");
+  for i: 0..<cut {
+    if sn >= 3800 { sn = ik_fmt_put(sum[..], sn, "- [... earlier items truncated ...]\n"); break; }
+    m := h[0].msgs[i];
+    if m.role == IK_ROLE_USER {
+      sn = ik_fmt_put(sum[..], sn, "- User: ");
+      sn = ik_compact_line_snippet(ik_hist_str(h, m.text), 220, sum[..], sn);
+      sn = ik_fmt_byte(sum[..], sn, '\n');
+    } else if m.role == IK_ROLE_ASSISTANT && m.call_count == 0 && m.text.len > 0 {
+      sn = ik_fmt_put(sum[..], sn, "- Assistant: ");
+      sn = ik_compact_line_snippet(ik_hist_str(h, m.text), 220, sum[..], sn);
+      sn = ik_fmt_byte(sum[..], sn, '\n');
+    } else if m.role == IK_ROLE_TOOL {
+      tname := ik_hist_str(h, m.tool_name);
+      tpath := ik_hist_str(h, m.tool_path);
+      sn = ik_fmt_put(sum[..], sn, "- ");
+      sn = ik_fmt_put(sum[..], sn, ifx tname.count > 0 then tname else "tool");
+      if tpath.count > 0 {
+        sn = ik_fmt_byte(sum[..], sn, ' ');
+        sn = ik_compact_line_snippet(tpath, 90, sum[..], sn);
+      }
+      if m.tool_kind == IK_TK_CMD {
+        sn = ik_fmt_put(sum[..], sn, " (exit ");
+        sn = ik_fmt_int(sum[..], sn, m.tool_exit);
+        sn = ik_fmt_byte(sum[..], sn, ')');
+      } else if m.is_error {
+        sn = ik_fmt_put(sum[..], sn, " (error)");
+      }
+      sn = ik_fmt_byte(sum[..], sn, '\n');
+    }
+  }
+
+  ik_hist_init(tmp);
+  tmp[0].turn = h[0].msgs[cut].turn;
+  if !ik_hist_user(tmp, cast(string) sum[0..<sn]) { return false; }
+  for i: cut..<h[0].n {
+    m := h[0].msgs[i];
+    strip_r := m.role == IK_ROLE_ASSISTANT && m.turn < saved_turn;
+    mask_t := m.role == IK_ROLE_TOOL && m.turn < saved_turn;
+    if !ik_compact_copy_msg(tmp, h, i, strip_r, mask_t) { return false; }
+  }
+  tmp[0].turn = saved_turn;
+  h[0] = tmp[0];
+  return true;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky compact: Stage 1 masks old >512B outputs and strips old reasoning while keeping recent turns intact" {
+  h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  big: [1200] u8; for i: 0..<big.count { big[i] = 'a'; }
+  big_s := cast(string) big[..];
+  none: [1] GwToolCall;
+
+  // Turn 1 (will be old once turn 3 starts):
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Read big file");
+  c1 := [1] GwToolCall.[GwToolCall.{call_id = "c1", name = "read_file", input_json = "{\"path\":\"big.coax\"}"}];
+  #assert ik_hist_assistant(h[..], 1, "", "long old thought in turn 1", c1[..]);
+  #assert ik_hist_tool(h[..], 1, "c1", "read_file", IK_TK_READ, "big.coax", 0, big_s, false);
+  #assert ik_hist_assistant(h[..], 2, "Turn 1 reply", "closing thought 1", none[0..<0]);
+
+  // Turn 2 (recent: kept verbatim):
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Turn 2 task");
+  c2 := [1] GwToolCall.[GwToolCall.{call_id = "c2", name = "read_file", input_json = "{\"path\":\"recent.coax\"}"}];
+  #assert ik_hist_assistant(h[..], 1, "", "recent thought 2", c2[..]);
+  #assert ik_hist_tool(h[..], 1, "c2", "read_file", IK_TK_READ, "recent.coax", 0, big_s, false);
+  #assert ik_hist_assistant(h[..], 2, "Turn 2 reply", "", none[0..<0]);
+
+  // Turn 3 (active):
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Turn 3 task");
+
+  before := h[0].na;
+  #assert ik_compact_stage1(h[..], tmp[..]);
+  #assert h[0].na < before && h[0].n == 9;
+
+  msgs: [IK_MAX_MSGS] GwMessage; gcalls: [IK_MAX_CALLS] GwToolCall;
+  n := ik_hist_messages(h[..], msgs[..], gcalls[..]);
+  #assert n == 9 && gwt_history_valid(msgs[0..<n]);
+  // Turn 1 assistant reasoning stripped & tool output masked:
+  #assert msgs[1].reasoning == "" && msgs[2].result.output.count < 200;
+  // Turn 2 kept verbatim:
+  #assert msgs[5].reasoning == "recent thought 2" && msgs[6].result.output.count == 1200;
+}
+
+#test "inky compact: Stage 2 collapses oldest half cleanly and preserves gwt_history_valid across 25+ steps" {
+  h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Investigate 26 files");
+  idb: [16] u8;
+  for s: 1..<27 {
+    k := json_raw(idb[..], 0, "call_"); k = json_write_int(idb[..], k, s);
+    cid := cast(string) idb[0..<k];
+    cs := [1] GwToolCall.[GwToolCall.{call_id = cid, name = "read_file", input_json = "{\"path\":\"f.coax\"}"}];
+    #assert ik_hist_assistant(h[..], s, "", "thinking", cs[..]);
+    #assert ik_hist_tool(h[..], s, cid, "read_file", IK_TK_READ, "f.coax", 0, "1\tok\n", false);
+  }
+  #assert h[0].n == 53 && h[0].nc == 26;
+  #assert ik_compact_stage2(h[..], tmp[..]);
+  #assert h[0].n < 35 && h[0].nc < 20;
+  msgs: [IK_MAX_MSGS] GwMessage; gcalls: [IK_MAX_CALLS] GwToolCall;
+  n := ik_hist_messages(h[..], msgs[..], gcalls[..]);
+  #assert n == h[0].n && gwt_history_valid(msgs[0..<n]);
+  #assert msgs[0].role == "user" && cast(string) msgs[0].text[0..<25] == "[Earlier session summary]";
+}

@@ -12,6 +12,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
+WORKER="mcworker"
 T3_ARGS=""
 HERE="$ROOT/evals/openagents-desktop"
 
@@ -36,6 +37,18 @@ while [ "$#" -gt 0 ]; do
       fi
       FILTER="$2"
       shift 2
+      ;;
+    --worker)
+      if [ "$#" -lt 2 ]; then
+        echo "error: --worker requires an argument (mcworker or inky)" >&2
+        exit 2
+      fi
+      WORKER="$2"
+      shift 2
+      ;;
+    --worker=*)
+      WORKER="${1#--worker=}"
+      shift
       ;;
     --update-goldens)
       T3_ARGS="$T3_ARGS --update-goldens"
@@ -302,9 +315,9 @@ fi
 # Tier 2 is opt-in: real models, real cost. Never part of --tier all.
 if [ "$TIER" = "2" ]; then
   if [ -n "$FILTER" ]; then
-    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --filter "$FILTER"
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --worker "$WORKER" --filter "$FILTER"
   else
-    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py
+    run_case 2 "tier2_live_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --worker "$WORKER"
   fi
 fi
 
@@ -314,9 +327,9 @@ fi
 if [ "$TIER" = "4" ]; then
   T4_OUT="$RESULTS_DIR/tier4-${TS_FILE}-${SHA}"
   if [ -n "$FILTER" ]; then
-    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT" --filter "$FILTER"
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --worker "$WORKER" --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT" --filter "$FILTER"
   else
-    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT"
+    run_case 4 "tier4_suite" env BROWSER=/usr/bin/true python3 evals/openagents-desktop/tier2/run_tasks.py --worker "$WORKER" --manifest evals/openagents-desktop/tier4/slice.json --out "$T4_OUT"
   fi
   if [ -f "$T4_OUT/summary.json" ] && [ -f "$HERE/tier4/baseline/summary.json" ]; then
     python3 "$HERE/compare.py" diff "$HERE/tier4/baseline/summary.json" "$T4_OUT/summary.json" --out "$T4_OUT/compare.md" > /dev/null || true

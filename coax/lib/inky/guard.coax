@@ -1,0 +1,193 @@
+// Inky stateless per-turn guardrails (docs/coder/inky-spec.md §8).
+// Replaces Microcoder's sticky state.notes + MkLocalGuard with exact, per-call
+// native <|content_tool_error|> short-circuiting and clean step-budget wrap-up.
+//
+// Checks: coax/bin/coax test coax/lib/inky/guard.coax --library
+// Mutate: coax/bin/coax mutate coax/lib/inky/guard.coax --root-only
+
+#load "protocol.coax";
+#authority;
+
+IK_GUARD_SLOTS :: 64;
+IK_MAX_STEPS_INTERACTIVE :: 30;
+IK_MAX_STEPS_GOAL :: 60;
+
+IkGuardEntry :: struct {
+  kind: int;
+  sig: u64;
+  step: int;
+  count: int;
+  passed_check: bool;
+}
+
+IkGuard :: struct {
+  entries: [IK_GUARD_SLOTS] IkGuardEntry;
+  n: int;
+  max_steps: int;
+  files_edited: int;
+  last_check_exit: int;
+  has_check: bool;
+}
+
+ik_guard_init :: (g: [] IkGuard, max_steps: int) #effects(all) {
+  g[0] = IkGuard.{max_steps = ifx max_steps < 1 then IK_MAX_STEPS_INTERACTIVE else max_steps};
+}
+
+// Overflow-safe dual 32-bit FNV-1a signature over (kind, canon) combined into u64.
+ik_guard_sig :: (kind: int, canon: string) -> u64 #effects(all) {
+  h1: u64 = 2166136261 ^ cast(u64) kind;
+  h2: u64 = 3735928559 ^ cast(u64) (kind + 17);
+  for c: canon {
+    b := cast(u64) c;
+    h1 = ((h1 ^ b) * 16777619) & 0xFFFFFFFF;
+    h2 = ((h2 ^ (b + 31)) * 16777619) & 0xFFFFFFFF;
+  }
+  return (h1 << 32) | h2;
+}
+
+// Clears the read/search/check cache on any workspace mutation so fresh reads and checks run.
+ik_guard_mutated :: (g: [] IkGuard, is_file_edit: bool) #effects(all) {
+  g[0].n = 0;
+  if is_file_edit { g[0].files_edited += 1; }
+}
+
+ik_guard_find :: (g: [] IkGuard, kind: int, sig: u64) -> int #effects(all) {
+  for i: 0..<g[0].n {
+    if g[0].entries[i].kind == kind && g[0].entries[i].sig == sig { return i; }
+  }
+  return -1;
+}
+
+// Checks a read-only tool call (read_file, grep, list_dir).
+// Allows 1st and 2nd identical calls; short-circuits 3rd+ call with prior step > 0.
+ik_guard_check_read :: (g: [] IkGuard, kind: int, canon: string, step: int) -> int #effects(all) {
+  if kind != IK_TK_READ && kind != IK_TK_GREP && kind != IK_TK_LIST { return 0; }
+  sig := ik_guard_sig(kind, canon);
+  idx := ik_guard_find(g, kind, sig);
+  if idx >= 0 {
+    if g[0].entries[idx].count >= 2 { return g[0].entries[idx].step; }
+    g[0].entries[idx].count += 1;
+    return 0;
+  }
+  if g[0].n < IK_GUARD_SLOTS {
+    g[0].entries[g[0].n] = IkGuardEntry.{kind = kind, sig = sig, step = step, count = 1};
+    g[0].n += 1;
+  }
+  return 0;
+}
+
+// Checks a command call before execution.
+// Short-circuits a duplicate passing check command (returns prior step > 0).
+ik_guard_check_cmd :: (g: [] IkGuard, canon: string, is_check: bool) -> int #effects(all) {
+  if !is_check { return 0; }
+  sig := ik_guard_sig(IK_TK_CMD, canon);
+  idx := ik_guard_find(g, IK_TK_CMD, sig);
+  if idx >= 0 && g[0].entries[idx].passed_check { return g[0].entries[idx].step; }
+  return 0;
+}
+
+// Records a completed command outcome.
+ik_guard_record_cmd :: (g: [] IkGuard, canon: string, is_check: bool, exit_code: int, step: int) #effects(all) {
+  if !is_check { return; }
+  g[0].has_check = true;
+  g[0].last_check_exit = exit_code;
+  if exit_code != 0 { return; }
+  sig := ik_guard_sig(IK_TK_CMD, canon);
+  idx := ik_guard_find(g, IK_TK_CMD, sig);
+  if idx >= 0 {
+    g[0].entries[idx].step = step;
+    return;
+  }
+  if g[0].n < IK_GUARD_SLOTS {
+    g[0].entries[g[0].n] = IkGuardEntry.{kind = IK_TK_CMD, sig = sig, step = step, passed_check = true};
+    g[0].n += 1;
+  }
+}
+
+// Soft wrap-up warning fires once at step == max_steps - 2.
+ik_guard_warn_budget :: (step: int, max_steps: int) -> bool #effects(all) {
+  return max_steps >= 3 && step == max_steps - 2;
+}
+
+// Final closing call disables tools at step >= max_steps so the model summarizes cleanly.
+ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
+  return step >= max_steps;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky guard: duplicate reads allow 1st and 2nd call, block 3rd, and reset after mutation" {
+  g: [1] IkGuard;
+  ik_guard_init(g[..], 0);
+  #assert g[0].max_steps == IK_MAX_STEPS_INTERACTIVE && g[0].n == 0 && g[0].files_edited == 0;
+  ik_guard_init(g[..], 1);
+  #assert g[0].max_steps == 1;
+  ik_guard_init(g[..], 10);
+  #assert g[0].max_steps == 10;
+  // Exact golden signature pins both 32-bit FNV-1a lanes:
+  // kind=1 ("a"): h1 = ((2166136261^1)^97)*16777619 & 0xffffffff = 0xe70c2dc7
+  //               h2 = ((3735928559^18)^128)*16777619 & 0xffffffff = 0x159c039b
+  #assert ik_guard_sig(IK_TK_READ, "a") == (cast(u64) 0xe50c2abf << 32) | cast(u64) 0x0882dec7;
+  #assert ik_guard_sig(IK_TK_READ, "ab") != ik_guard_sig(IK_TK_READ, "ba");
+  // Non-read kinds are ignored by check_read:
+  #assert ik_guard_check_read(g[..], IK_TK_CMD, "ls", 1) == 0 && g[0].n == 0;
+  // Same read_file: 1st & 2nd allowed, 3rd blocked with step 1:
+  #assert ik_guard_check_read(g[..], IK_TK_READ, "a.coax:1-200", 1) == 0 && g[0].n == 1 && g[0].entries[0].count == 1;
+  #assert ik_guard_check_read(g[..], IK_TK_READ, "a.coax:1-200", 2) == 0 && g[0].n == 1 && g[0].entries[0].count == 2;
+  #assert ik_guard_check_read(g[..], IK_TK_READ, "a.coax:1-200", 3) == 1;
+  // Different kind or different args are distinct:
+  #assert ik_guard_check_read(g[..], IK_TK_GREP, "a.coax:1-200", 4) == 0 && g[0].n == 2;
+  #assert ik_guard_check_read(g[..], IK_TK_LIST, ".", 5) == 0 && g[0].n == 3;
+  #assert ik_guard_sig(IK_TK_READ, "x") != ik_guard_sig(IK_TK_GREP, "x");
+  #assert ik_guard_sig(IK_TK_READ, "x") != ik_guard_sig(IK_TK_READ, "y");
+  // Mutation resets cache and increments files_edited when is_file_edit=true:
+  ik_guard_mutated(g[..], false);
+  #assert g[0].n == 0 && g[0].files_edited == 0;
+  #assert ik_guard_check_read(g[..], IK_TK_READ, "a.coax:1-200", 6) == 0;
+  ik_guard_mutated(g[..], true);
+  #assert g[0].n == 0 && g[0].files_edited == 1;
+}
+
+#test "inky guard: duplicate passing check command short-circuits until mutation; failed checks rerun" {
+  g: [1] IkGuard;
+  ik_guard_init(g[..], 20);
+  // Non-check command never intercepted or recorded:
+  #assert ik_guard_check_cmd(g[..], "ls", false) == 0;
+  ik_guard_record_cmd(g[..], "ls", false, 0, 1);
+  #assert !g[0].has_check && g[0].n == 0;
+  // Failing check is recorded in status, but does NOT block re-running:
+  ik_guard_record_cmd(g[..], "coax test a.coax", true, 1, 2);
+  #assert g[0].has_check && g[0].last_check_exit == 1 && g[0].n == 0;
+  #assert ik_guard_check_cmd(g[..], "coax test a.coax", true) == 0;
+  // Passing check records and blocks 2nd identical run with step 3:
+  ik_guard_record_cmd(g[..], "coax test a.coax", true, 0, 3);
+  #assert g[0].last_check_exit == 0 && g[0].n == 1;
+  #assert ik_guard_check_cmd(g[..], "coax test a.coax", true) == 3;
+  // Recording again updates step without duplicating entry:
+  ik_guard_record_cmd(g[..], "coax test a.coax", true, 0, 5);
+  #assert g[0].n == 1 && ik_guard_check_cmd(g[..], "coax test a.coax", true) == 5;
+  // Different check command still allowed:
+  #assert ik_guard_check_cmd(g[..], "coax test b.coax", true) == 0;
+  // Mutation clears passing check cache:
+  ik_guard_mutated(g[..], true);
+  #assert ik_guard_check_cmd(g[..], "coax test a.coax", true) == 0;
+}
+
+#test "inky guard: capacity boundary and step budget thresholds" {
+  g: [1] IkGuard;
+  ik_guard_init(g[..], 30);
+  buf: [8] u8;
+  for i: 0..<IK_GUARD_SLOTS + 2 {
+    k := json_write_int(buf[..], 0, i);
+    #assert ik_guard_check_read(g[..], IK_TK_READ, cast(string) buf[0..<k], i + 1) == 0;
+  }
+  #assert g[0].n == IK_GUARD_SLOTS;
+  // Also fill check command at full capacity safely (no overflow):
+  ik_guard_record_cmd(g[..], "check_full", true, 0, 99);
+  #assert g[0].n == IK_GUARD_SLOTS;
+  // Step budget thresholds:
+  #assert !ik_guard_warn_budget(0, 2) && !ik_guard_warn_budget(1, 2);
+  #assert ik_guard_warn_budget(1, 3) && !ik_guard_warn_budget(2, 3);
+  #assert ik_guard_warn_budget(28, 30) && !ik_guard_warn_budget(27, 30) && !ik_guard_warn_budget(29, 30);
+  #assert !ik_guard_disable_tools(29, 30) && ik_guard_disable_tools(30, 30) && ik_guard_disable_tools(31, 30);
+}

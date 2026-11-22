@@ -1,0 +1,511 @@
+// Inky tool output formatting & pure edit engine (docs/coder/inky-spec.md §5).
+// Guarantees:
+//   - read_file is ALWAYS head-only (200 lines / 16 KiB) with explicit next-line cursor & hash; NEVER middle-cuts.
+//   - edit_file returns compact diff hunks on success and nearest-line diagnostics on 0-match / multi-match failure.
+//   - run_command allows 16 KiB inline verbatim before spilling to 8 KiB head + 8 KiB tail + spill path.
+//
+// Checks: coax/bin/coax test coax/lib/inky/format.coax --library
+
+#load "tools.coax";
+
+IK_READ_LINES :: 200;
+IK_READ_BYTES :: 16384;
+IK_CMD_INLINE :: 16384;
+IK_CMD_HEAD :: 8192;
+IK_CMD_TAIL :: 8192;
+IK_GREP_BYTES :: 12288;
+IK_LIST_BYTES :: 8192;
+IK_LIST_MAX :: 200;
+IK_EDIT_DIFF_CAP :: 2048;
+
+ik_fmt_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at >= out.count { return out.count; }
+  n := s.count;
+  if at + n > out.count { n = out.count - at; }
+  for i: 0..<n { out[at + i] = s[i]; }
+  return at + n;
+}
+
+ik_fmt_byte :: (out: [] u8, at: int, b: u8) -> int {
+  if at < 0 || at >= out.count { return out.count; }
+  out[at] = b;
+  return at + 1;
+}
+
+ik_fmt_int :: (out: [] u8, at: int, v: int) -> int {
+  tmp: [24] u8;
+  k := json_write_int(tmp[..], 0, v);
+  if k < 0 { return at; }
+  return ik_fmt_put(out, at, cast(string) tmp[0..<k]);
+}
+
+ik_fmt_is_binary :: (data: string) -> bool {
+  lim := ifx data.count < 8192 then data.count else 8192;
+  for i: 0..<lim { if data[i] == 0 { return true; } }
+  return false;
+}
+
+ik_fmt_count_lines :: (data: string) -> int {
+  if data.count == 0 { return 0; }
+  lines := 1;
+  for i: 0..<data.count {
+    if data[i] == '\n' && i + 1 < data.count { lines += 1; }
+  }
+  return lines;
+}
+
+// Formats a file read as numbered lines ("N\tline\n") starting at 1-based start_line,
+// strictly head-only up to IK_READ_LINES (or end_line) and IK_READ_BYTES, with an
+// explicit continuation cursor and 8-hex hash trailer.
+ik_fmt_read :: (content: string, path: string, start_line: int, end_line: int, out: [] u8) -> int {
+  if ik_fmt_is_binary(content) {
+    n := ik_fmt_put(out, 0, "[binary file: ");
+    n = ik_fmt_put(out, n, path);
+    n = ik_fmt_put(out, n, ", ");
+    n = ik_fmt_int(out, n, content.count);
+    return ik_fmt_put(out, n, " bytes — not shown]");
+  }
+  hb: [8] u8;
+  _ = ik_hash8(content, hb[..]);
+  hash := cast(string) hb[..];
+  if content.count == 0 {
+    n := ik_fmt_put(out, 0, "[empty file: ");
+    n = ik_fmt_put(out, n, path);
+    n = ik_fmt_put(out, n, " | 0 lines | hash=");
+    n = ik_fmt_put(out, n, hash);
+    return ik_fmt_put(out, n, "]");
+  }
+  total := ik_fmt_count_lines(content);
+  sline := ifx start_line < 1 then 1 else start_line;
+  if sline > total {
+    n := ik_fmt_put(out, 0, "[");
+    n = ik_fmt_put(out, n, path);
+    n = ik_fmt_put(out, n, " has ");
+    n = ik_fmt_int(out, n, total);
+    n = ik_fmt_put(out, n, " lines; requested start_line=");
+    n = ik_fmt_int(out, n, sline);
+    n = ik_fmt_put(out, n, " | hash=");
+    n = ik_fmt_put(out, n, hash);
+    return ik_fmt_put(out, n, "]");
+  }
+  max_end := ifx end_line > 0 then end_line else sline + IK_READ_LINES - 1;
+  if max_end > total { max_end = total; }
+  // Reserve 256 bytes for the trailer inside out.
+  body_cap := IK_READ_BYTES;
+  if out.count - 256 < body_cap { body_cap = out.count - 256; }
+  if body_cap < 256 { body_cap = out.count; }
+
+  n := 0;
+  line_no := 1;
+  shown_first := 0;
+  shown_last := 0;
+  pos := 0;
+  while pos < content.count {
+    e := pos;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    line := cast(string) content[pos..<e];
+    if line.count > 0 && line[line.count - 1] == '\r' { line = cast(string) line[0..<line.count - 1]; }
+    next_pos := ifx e < content.count then e + 1 else e;
+
+    if line_no >= sline && line_no <= max_end {
+      need := line.count + 12;
+      if shown_first > 0 && n + need > body_cap { break; }
+      if shown_first == 0 { shown_first = line_no; }
+      n = ik_fmt_int(out, n, line_no);
+      n = ik_fmt_byte(out, n, '\t');
+      if n + line.count + 2 <= body_cap {
+        n = ik_fmt_put(out, n, line);
+      } else {
+        room := body_cap - n - 24;
+        if room > 0 { n = ik_fmt_put(out, n, cast(string) line[0..<room]); }
+        n = ik_fmt_put(out, n, " [... line truncated]");
+      }
+      n = ik_fmt_byte(out, n, '\n');
+      shown_last = line_no;
+      if line_no == max_end { break; }
+    }
+    if line_no > max_end { break; }
+    line_no += 1;
+    pos = next_pos;
+  }
+
+  n = ik_fmt_put(out, n, "[lines ");
+  n = ik_fmt_int(out, n, shown_first);
+  n = ik_fmt_byte(out, n, '-');
+  n = ik_fmt_int(out, n, shown_last);
+  n = ik_fmt_put(out, n, " of ");
+  n = ik_fmt_int(out, n, total);
+  n = ik_fmt_put(out, n, " | hash=");
+  n = ik_fmt_put(out, n, hash);
+  if shown_last < total {
+    n = ik_fmt_put(out, n, "; call read_file(path=\"");
+    n = ik_fmt_put(out, n, path);
+    n = ik_fmt_put(out, n, "\", start_line=");
+    n = ik_fmt_int(out, n, shown_last + 1);
+    n = ik_fmt_put(out, n, ") for more");
+  }
+  return ik_fmt_put(out, n, "]");
+}
+
+// ---------------------------------------------------------------- edit_file engine
+
+IkEditResult :: struct {
+  ok: bool;
+  new_len: int;
+  msg_len: int;
+  matches: int;
+  first_line: int;
+}
+
+ik_fmt_trim_ws :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+ik_fmt_first_line :: (s: string) -> string {
+  pos := 0;
+  while pos < s.count {
+    e := pos;
+    while e < s.count && s[e] != '\n' { e += 1; }
+    t := ik_fmt_trim_ws(cast(string) s[pos..<e]);
+    if t.count > 0 { return t; }
+    pos = ifx e < s.count then e + 1 else e;
+  }
+  return "";
+}
+
+// Simple token overlap score between needle and line for nearest-line hints on 0-match edit failure.
+ik_fmt_line_score :: (needle: string, line: string) -> int {
+  if needle.count == 0 || line.count == 0 { return 0; }
+  // Direct substring match gets highest priority.
+  if needle.count <= line.count {
+    for i: 0..<line.count - needle.count + 1 {
+      if cast(string) line[i..<i + needle.count] == needle { return 1000 + needle.count; }
+    }
+  }
+  // Score matching words of length >= 3.
+  score := 0;
+  i := 0;
+  while i < needle.count {
+    while i < needle.count && (needle[i] == ' ' || needle[i] == '\t' || needle[i] == '(' || needle[i] == ')' || needle[i] == '{' || needle[i] == '}' || needle[i] == ',' || needle[i] == ';') { i += 1; }
+    s := i;
+    while i < needle.count && needle[i] != ' ' && needle[i] != '\t' && needle[i] != '(' && needle[i] != ')' && needle[i] != '{' && needle[i] != '}' && needle[i] != ',' && needle[i] != ';' { i += 1; }
+    w := cast(string) needle[s..<i];
+    if w.count >= 3 && w.count <= line.count {
+      for k: 0..<line.count - w.count + 1 {
+        if cast(string) line[k..<k + w.count] == w { score += w.count; break; }
+      }
+    }
+  }
+  return score;
+}
+
+ik_fmt_diff_lines :: (out: [] u8, at: int, prefix: string, text: string, cap: int) -> int {
+  n := at;
+  pos := 0;
+  shown := 0;
+  while pos < text.count && shown < 12 && n < cap {
+    e := pos;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    ln := cast(string) text[pos..<e];
+    if ln.count > 160 { ln = cast(string) ln[0..<160]; }
+    n = ik_fmt_put(out, n, prefix);
+    n = ik_fmt_put(out, n, ln);
+    n = ik_fmt_byte(out, n, '\n');
+    shown += 1;
+    pos = ifx e < text.count then e + 1 else e;
+  }
+  if pos < text.count { n = ik_fmt_put(out, n, "  [...]\n"); }
+  return n;
+}
+
+ik_fmt_edit :: (content: string, path: string, old_str: string, new_str: string, replace_all: bool, new_buf: [] u8, msg_out: [] u8) -> IkEditResult {
+  res: IkEditResult;
+  if old_str.count == 0 {
+    res.msg_len = ik_fmt_put(msg_out, 0, "edit_file error: old_string must not be empty (use write_file to create or replace a file).");
+    return res;
+  }
+  // Find non-overlapping matches and their 1-based line numbers.
+  match_pos: [16] int;
+  match_lines: [16] int;
+  n_matches := 0;
+  line_no := 1;
+  pos := 0;
+  while pos + old_str.count <= content.count {
+    if content[pos] == old_str[0] && cast(string) content[pos..<pos + old_str.count] == old_str {
+      if n_matches < 16 {
+        match_pos[n_matches] = pos;
+        match_lines[n_matches] = line_no;
+      }
+      n_matches += 1;
+      for k: pos..<pos + old_str.count { if content[k] == '\n' { line_no += 1; } }
+      pos += old_str.count;
+      continue;
+    }
+    if content[pos] == '\n' { line_no += 1; }
+    pos += 1;
+  }
+  res.matches = n_matches;
+
+  if n_matches == 0 {
+    n := ik_fmt_put(msg_out, 0, "edit_file error: old_string not found in ");
+    n = ik_fmt_put(msg_out, n, path);
+    n = ik_fmt_put(msg_out, n, ".");
+    // Find up to 3 nearest lines to help Inkling recover in one step.
+    needle := ik_fmt_first_line(old_str);
+    best_line: [3] int; best_off: [3] int; best_len: [3] int; best_sc: [3] int;
+    lno := 1; p := 0;
+    while p < content.count {
+      e := p;
+      while e < content.count && content[e] != '\n' { e += 1; }
+      ln := cast(string) content[p..<e];
+      sc := ik_fmt_line_score(needle, ln);
+      if sc > 0 {
+        for slot: 0..<3 {
+          if sc > best_sc[slot] {
+            j := 2;
+            while j > slot {
+              best_sc[j] = best_sc[j - 1]; best_line[j] = best_line[j - 1];
+              best_off[j] = best_off[j - 1]; best_len[j] = best_len[j - 1];
+              j -= 1;
+            }
+            best_sc[slot] = sc; best_line[slot] = lno; best_off[slot] = p; best_len[slot] = e - p;
+            break;
+          }
+        }
+      }
+      lno += 1;
+      p = ifx e < content.count then e + 1 else e;
+    }
+    if best_sc[0] > 0 {
+      n = ik_fmt_put(msg_out, n, " Nearest lines:\n");
+      for s: 0..<3 {
+        if best_sc[s] <= 0 { break; }
+        n = ik_fmt_put(msg_out, n, "  ");
+        n = ik_fmt_int(msg_out, n, best_line[s]);
+        n = ik_fmt_byte(msg_out, n, '\t');
+        seg_len := ifx best_len[s] > 160 then 160 else best_len[s];
+        n = ik_fmt_put(msg_out, n, cast(string) content[best_off[s]..<best_off[s] + seg_len]);
+        n = ik_fmt_byte(msg_out, n, '\n');
+      }
+    } else {
+      n = ik_fmt_put(msg_out, n, "\n");
+    }
+    n = ik_fmt_put(msg_out, n, "Call read_file to inspect exact text before retrying.");
+    res.msg_len = n;
+    return res;
+  }
+
+  if n_matches > 1 && !replace_all {
+    n := ik_fmt_put(msg_out, 0, "edit_file error: old_string matched ");
+    n = ik_fmt_int(msg_out, n, n_matches);
+    n = ik_fmt_put(msg_out, n, " times in ");
+    n = ik_fmt_put(msg_out, n, path);
+    n = ik_fmt_put(msg_out, n, " (lines ");
+    lim := ifx n_matches < 16 then n_matches else 16;
+    for i: 0..<lim {
+      if i > 0 { n = ik_fmt_put(msg_out, n, ", "); }
+      n = ik_fmt_int(msg_out, n, match_lines[i]);
+    }
+    n = ik_fmt_put(msg_out, n, "). Include more surrounding lines for a unique match or set replace_all=true.");
+    res.msg_len = n;
+    return res;
+  }
+
+  // Apply replacements into new_buf.
+  out_n := 0;
+  src := 0;
+  applied := 0;
+  while src < content.count {
+    if (!replace_all && applied == 0 && src == match_pos[0]) ||
+       (replace_all && src + old_str.count <= content.count && content[src] == old_str[0] && cast(string) content[src..<src + old_str.count] == old_str) {
+      if out_n + new_str.count > new_buf.count {
+        res.msg_len = ik_fmt_put(msg_out, 0, "edit_file error: resulting file exceeds maximum edit buffer size.");
+        return res;
+      }
+      for k: 0..<new_str.count { new_buf[out_n + k] = new_str[k]; }
+      out_n += new_str.count;
+      src += old_str.count;
+      applied += 1;
+      continue;
+    }
+    if out_n >= new_buf.count {
+      res.msg_len = ik_fmt_put(msg_out, 0, "edit_file error: resulting file exceeds maximum edit buffer size.");
+      return res;
+    }
+    new_buf[out_n] = content[src];
+    out_n += 1;
+    src += 1;
+  }
+
+  hb: [8] u8;
+  _ = ik_hash8(cast(string) new_buf[0..<out_n], hb[..]);
+  res.ok = true;
+  res.new_len = out_n;
+  res.first_line = match_lines[0];
+  n := ik_fmt_put(msg_out, 0, "Edited ");
+  n = ik_fmt_put(msg_out, n, path);
+  n = ik_fmt_put(msg_out, n, " (");
+  n = ik_fmt_int(msg_out, n, applied);
+  n = ik_fmt_put(msg_out, n, ifx applied == 1 then " replacement, line " else " replacements, first line ");
+  n = ik_fmt_int(msg_out, n, match_lines[0]);
+  n = ik_fmt_put(msg_out, n, ", hash=");
+  n = ik_fmt_put(msg_out, n, cast(string) hb[..]);
+  n = ik_fmt_put(msg_out, n, ")\n");
+  cap := ifx msg_out.count < IK_EDIT_DIFF_CAP then msg_out.count else IK_EDIT_DIFF_CAP;
+  n = ik_fmt_diff_lines(msg_out, n, "- ", old_str, cap / 2 + n / 2);
+  n = ik_fmt_diff_lines(msg_out, n, "+ ", new_str, cap);
+  res.msg_len = n;
+  return res;
+}
+
+// ---------------------------------------------------------------- run_command output budget
+
+// Formats command output with 16 KiB inline budget verbatim; past 16 KiB keeps
+// 8 KiB head + 8 KiB tail + exact spill path. Never drops bytes under 16 KiB.
+ik_fmt_cmd_output :: (head: string, tail: string, dropped: int, total_bytes: int, total_lines: int, exit_code: int, timed_out: bool, spill_path: string, out: [] u8) -> int {
+  n := 0;
+  if timed_out {
+    n = ik_fmt_put(out, n, "[timed out]\n");
+  } else if exit_code != 0 {
+    n = ik_fmt_put(out, n, "[exit ");
+    n = ik_fmt_int(out, n, exit_code);
+    n = ik_fmt_put(out, n, "]\n");
+  }
+  if dropped == 0 && total_bytes <= IK_CMD_INLINE {
+    n = ik_fmt_put(out, n, head);
+    n = ik_fmt_put(out, n, tail);
+    if head.count == 0 && tail.count == 0 && !timed_out && exit_code == 0 {
+      n = ik_fmt_put(out, n, "(no output, exit 0)");
+    }
+    return n;
+  }
+  h_take := ifx head.count <= IK_CMD_HEAD then head.count else IK_CMD_HEAD;
+  t_take := ifx tail.count <= IK_CMD_TAIL then tail.count else IK_CMD_TAIL;
+  t_start := tail.count - t_take;
+  omitted := total_bytes - h_take - t_take;
+  if omitted < 0 { omitted = 0; }
+
+  n = ik_fmt_put(out, n, cast(string) head[0..<h_take]);
+  if h_take > 0 && head[h_take - 1] != '\n' { n = ik_fmt_byte(out, n, '\n'); }
+  n = ik_fmt_put(out, n, "[... ");
+  n = ik_fmt_int(out, n, omitted);
+  n = ik_fmt_put(out, n, " bytes omitted (");
+  n = ik_fmt_int(out, n, total_bytes);
+  n = ik_fmt_put(out, n, " bytes, ");
+  n = ik_fmt_int(out, n, total_lines);
+  n = ik_fmt_put(out, n, " lines total).");
+  if spill_path.count > 0 {
+    n = ik_fmt_put(out, n, " Full output saved to ");
+    n = ik_fmt_put(out, n, spill_path);
+    n = ik_fmt_put(out, n, " — call read_file(path=\"");
+    n = ik_fmt_put(out, n, spill_path);
+    n = ik_fmt_put(out, n, "\", start_line=1) to inspect.");
+  }
+  n = ik_fmt_put(out, n, " ...]\n");
+  n = ik_fmt_put(out, n, cast(string) tail[t_start..<tail.count]);
+  return n;
+}
+
+ik_fmt_size :: (bytes: int, out: [] u8) -> int {
+  if bytes < 1024 {
+    n := ik_fmt_int(out, 0, bytes);
+    return ik_fmt_put(out, n, " B");
+  }
+  if bytes < 1048576 {
+    kb10 := (bytes * 10 + 512) / 1024;
+    n := ik_fmt_int(out, 0, kb10 / 10);
+    n = ik_fmt_byte(out, n, '.');
+    n = ik_fmt_int(out, n, kb10 % 10);
+    return ik_fmt_put(out, n, " KB");
+  }
+  mb10 := (bytes * 10 + 524288) / 1048576;
+  n := ik_fmt_int(out, 0, mb10 / 10);
+  n = ik_fmt_byte(out, n, '.');
+  n = ik_fmt_int(out, n, mb10 % 10);
+  return ik_fmt_put(out, n, " MB");
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky format: read_file is strictly head-only and NEVER middle-cuts lines" {
+  // Build an 80-line file where line 47 has MC_SYSTEM :: "hello";
+  src: [4096] u8; sn := 0;
+  for i: 1..<81 {
+    sn = ik_fmt_put(src[..], sn, "line_");
+    sn = ik_fmt_int(src[..], sn, i);
+    if i == 47 { sn = ik_fmt_put(src[..], sn, " MC_SYSTEM :: \"hello\";"); }
+    sn = ik_fmt_byte(src[..], sn, '\n');
+  }
+  out: [20480] u8;
+  n := ik_fmt_read(cast(string) src[0..<sn], "loop.coax", 1, 80, out[..]);
+  s := cast(string) out[0..<n];
+  // Line 47 MUST be present verbatim!
+  found := false;
+  needle := "47\tline_47 MC_SYSTEM :: \"hello\";";
+  for k: 0..<s.count - needle.count + 1 {
+    if cast(string) s[k..<k + needle.count] == needle { found = true; break; }
+  }
+  #assert found;
+  // Explicit continuation cursor when reading lines 1-10 of 80:
+  n2 := ik_fmt_read(cast(string) src[0..<sn], "loop.coax", 1, 10, out[..]);
+  s2 := cast(string) out[0..<n2];
+  cur := "start_line=11";
+  found2 := false;
+  for k: 0..<s2.count - cur.count + 1 {
+    if cast(string) s2[k..<k + cur.count] == cur { found2 = true; break; }
+  }
+  #assert found2;
+  // Binary detection:
+  bin := [4] u8.['a', 0, 'b', 'c'];
+  nb := ik_fmt_read(cast(string) bin[..], "a.bin", 1, 0, out[..]);
+  #assert cast(string) out[0..<13] == "[binary file:";
+}
+
+#test "inky format: edit_file exact match, replace_all, multi-match refusal, and nearest-line hints" {
+  src := "alpha := 1;\nbeta := 2;\nalpha := 3;\n";
+  nb: [1024] u8; mb: [2048] u8;
+  // Unique edit succeeds:
+  r := ik_fmt_edit(src, "a.coax", "beta := 2;", "beta := 20;", false, nb[..], mb[..]);
+  #assert r.ok && cast(string) nb[0..<r.new_len] == "alpha := 1;\nbeta := 20;\nalpha := 3;\n" && r.first_line == 2;
+  // Ambiguous match refused without replace_all:
+  r2 := ik_fmt_edit(src, "a.coax", "alpha", "gamma", false, nb[..], mb[..]);
+  #assert !r2.ok && r2.matches == 2;
+  // Ambiguous match succeeds with replace_all:
+  r3 := ik_fmt_edit(src, "a.coax", "alpha", "gamma", true, nb[..], mb[..]);
+  #assert r3.ok && cast(string) nb[0..<r3.new_len] == "gamma := 1;\nbeta := 2;\ngamma := 3;\n";
+  // Zero match gives nearest-line hint:
+  r4 := ik_fmt_edit(src, "a.coax", "beta := 999;", "x", false, nb[..], mb[..]);
+  #assert !r4.ok && r4.matches == 0;
+  msg4 := cast(string) mb[0..<r4.msg_len];
+  hint := "2\tbeta := 2;";
+  found := false;
+  for k: 0..<msg4.count - hint.count + 1 {
+    if cast(string) msg4[k..<k + hint.count] == hint { found = true; break; }
+  }
+  #assert found;
+}
+
+#test "inky format: run_command keeps <= 16 KB verbatim and spills > 16 KB with head+tail+path" {
+  out: [20480] u8;
+  // 5 KB output must NOT be truncated:
+  five: [5120] u8; for i: 0..<five.count { five[i] = 'x'; }
+  n := ik_fmt_cmd_output(cast(string) five[..], "", 0, 5120, 1, 0, false, "", out[..]);
+  #assert n == 5120;
+  // 30 KB spilled output includes head, spill path, and tail:
+  h := "HEAD_LINE\n"; t := "TAIL_LINE\n";
+  n2 := ik_fmt_cmd_output(h, t, 30000, 30020, 500, 1, false, "/tmp/spill/1.txt", out[..]);
+  s2 := cast(string) out[0..<n2];
+  #assert cast(string) s2[0..<9] == "[exit 1]\n";
+  needle := "/tmp/spill/1.txt";
+  found := false;
+  for k: 0..<s2.count - needle.count + 1 {
+    if cast(string) s2[k..<k + needle.count] == needle { found = true; break; }
+  }
+  #assert found;
+  sb: [32] u8;
+  #assert cast(string) sb[0..<ik_fmt_size(512, sb[..])] == "512 B";
+  #assert cast(string) sb[0..<ik_fmt_size(1536, sb[..])] == "1.5 KB";
+}

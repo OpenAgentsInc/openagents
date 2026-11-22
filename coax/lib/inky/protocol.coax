@@ -1,0 +1,309 @@
+// Inky native conversation history (docs/coder/inky-spec.md §7).
+// Append-only native Chat Completions message log owned in a flat caller-allocated
+// byte arena so every string stays valid across steps, survives compaction without
+// dangling slices, and preserves exact assistant reasoning_content + tool_calls
+// prefixes for Psionic's post-decode KV + shortconv cache.
+//
+// Checks: coax/bin/coax test coax/lib/inky/protocol.coax --library
+
+#load "../gateway/tool-step.coax";
+
+IK_MAX_MSGS :: 128;              // matches GW_TOOL_MESSAGES
+IK_MAX_CALLS :: 64;              // matches GW_TOOL_HISTORY
+IK_STEP_CALLS :: 8;              // matches GW_TOOL_CALLS
+IK_ARENA :: 524288;              // 512 KiB flat arena (> 32K tokens * 4 B/tok with headroom)
+
+IK_ROLE_USER :: 1;
+IK_ROLE_ASSISTANT :: 2;
+IK_ROLE_TOOL :: 3;
+
+// Tool kind tags stored on role:tool messages for deterministic Stage 1 masking.
+IK_TK_NONE :: 0;
+IK_TK_READ :: 1;
+IK_TK_EDIT :: 2;
+IK_TK_WRITE :: 3;
+IK_TK_GREP :: 4;
+IK_TK_LIST :: 5;
+IK_TK_CMD :: 6;
+IK_TK_TODOS :: 7;
+
+IkSpan :: struct { off: int; len: int; }
+
+IkCall :: struct {
+  id: IkSpan;
+  name: IkSpan;
+  args: IkSpan;
+}
+
+IkMsg :: struct {
+  role: int;
+  turn: int;
+  step: int;
+  text: IkSpan;
+  reasoning: IkSpan;
+  call_start: int;
+  call_count: int;
+  tool_call_id: IkSpan;
+  tool_name: IkSpan;
+  tool_path: IkSpan;             // optional path / command summary for Stage 1 stubs
+  tool_kind: int;
+  tool_exit: int;
+  raw_bytes: int;                // original tool output byte length (before any masking)
+  is_error: bool;
+  masked: bool;
+}
+
+IkHistory :: struct {
+  msgs: [IK_MAX_MSGS] IkMsg;
+  n: int;
+  calls: [IK_MAX_CALLS] IkCall;
+  nc: int;
+  arena: [IK_ARENA] u8;
+  na: int;
+  turn: int;
+}
+
+ik_hist_init :: (h: [] IkHistory) {
+  h[0].n = 0;
+  h[0].nc = 0;
+  h[0].na = 0;
+  h[0].turn = 0;
+}
+
+ik_hist_clear :: (h: [] IkHistory) { ik_hist_init(h); }
+
+ik_hist_str :: (h: [] IkHistory, sp: IkSpan) -> string {
+  if sp.len <= 0 || sp.off < 0 || sp.off + sp.len > h[0].na { return ""; }
+  return cast(string) h[0].arena[sp.off..<sp.off + sp.len];
+}
+
+ik_hist_alloc :: (h: [] IkHistory, s: string) -> IkSpan {
+  if s.count == 0 { return IkSpan.{off = 0, len = 0}; }
+  if h[0].na + s.count > IK_ARENA { return IkSpan.{off = -1, len = 0}; }
+  off := h[0].na;
+  for i: 0..<s.count { h[0].arena[off + i] = s[i]; }
+  h[0].na = off + s.count;
+  return IkSpan.{off = off, len = s.count};
+}
+
+ik_hist_begin_turn :: (h: [] IkHistory) -> int {
+  h[0].turn += 1;
+  return h[0].turn;
+}
+
+ik_hist_user :: (h: [] IkHistory, text: string) -> bool {
+  if h[0].n >= IK_MAX_MSGS { return false; }
+  saved_na := h[0].na;
+  sp := ik_hist_alloc(h, text);
+  if sp.off < 0 { h[0].na = saved_na; return false; }
+  h[0].msgs[h[0].n] = IkMsg.{role = IK_ROLE_USER, turn = h[0].turn, text = sp};
+  h[0].n += 1;
+  return true;
+}
+
+ik_hist_steer :: (h: [] IkHistory, text: string) -> bool {
+  if text.count == 0 || h[0].n >= IK_MAX_MSGS { return false; }
+  lead := "[User follow-up while you were working]\n";
+  if h[0].na + lead.count + text.count > IK_ARENA { return false; }
+  off := h[0].na;
+  for i: 0..<lead.count { h[0].arena[off + i] = lead[i]; }
+  for i: 0..<text.count { h[0].arena[off + lead.count + i] = text[i]; }
+  h[0].na = off + lead.count + text.count;
+  h[0].msgs[h[0].n] = IkMsg.{role = IK_ROLE_USER, turn = h[0].turn, text = IkSpan.{off = off, len = lead.count + text.count}};
+  h[0].n += 1;
+  return true;
+}
+
+ik_hist_assistant :: (h: [] IkHistory, step: int, text: string, reasoning: string, calls: [] GwToolCall) -> bool {
+  if h[0].n >= IK_MAX_MSGS { return false; }
+  if calls.count > IK_STEP_CALLS || h[0].nc + calls.count > IK_MAX_CALLS { return false; }
+  saved_na := h[0].na;
+  saved_nc := h[0].nc;
+  tsp := ik_hist_alloc(h, text);
+  rsp := ik_hist_alloc(h, reasoning);
+  if tsp.off < 0 || rsp.off < 0 { h[0].na = saved_na; return false; }
+  cstart := h[0].nc;
+  for c: calls {
+    isp := ik_hist_alloc(h, c.call_id);
+    nsp := ik_hist_alloc(h, c.name);
+    asp := ik_hist_alloc(h, c.input_json);
+    if isp.off < 0 || nsp.off < 0 || asp.off < 0 {
+      h[0].na = saved_na; h[0].nc = saved_nc; return false;
+    }
+    h[0].calls[h[0].nc] = IkCall.{id = isp, name = nsp, args = asp};
+    h[0].nc += 1;
+  }
+  h[0].msgs[h[0].n] = IkMsg.{
+    role = IK_ROLE_ASSISTANT, turn = h[0].turn, step = step,
+    text = tsp, reasoning = rsp, call_start = cstart, call_count = calls.count,
+  };
+  h[0].n += 1;
+  return true;
+}
+
+ik_hist_tool :: (h: [] IkHistory, step: int, call_id: string, tool_name: string, tool_kind: int, path_summary: string, exit_code: int, output: string, is_error: bool) -> bool {
+  if h[0].n >= IK_MAX_MSGS || call_id.count == 0 { return false; }
+  saved_na := h[0].na;
+  csp := ik_hist_alloc(h, call_id);
+  nsp := ik_hist_alloc(h, tool_name);
+  psp := ik_hist_alloc(h, path_summary);
+  osp := ik_hist_alloc(h, output);
+  if csp.off < 0 || nsp.off < 0 || psp.off < 0 || osp.off < 0 { h[0].na = saved_na; return false; }
+  h[0].msgs[h[0].n] = IkMsg.{
+    role = IK_ROLE_TOOL, turn = h[0].turn, step = step,
+    text = osp, tool_call_id = csp, tool_name = nsp, tool_path = psp,
+    tool_kind = tool_kind, tool_exit = exit_code, raw_bytes = output.count, is_error = is_error,
+  };
+  h[0].n += 1;
+  return true;
+}
+
+// Hydrates MWW_RECALL JSON array [{"task":T,"reply":R}, ...] as real alternating
+// user/assistant messages, keeping the newest turns that fit within max_bytes.
+ik_hist_recall :: (h: [] IkHistory, recall_json: string, max_bytes: int) -> int {
+  ik_hist_clear(h);
+  if recall_json.count < 2 || max_bytes <= 0 { return 0; }
+  total := cl_count(recall_json);
+  if total <= 0 { return 0; }
+  // Pass 1: find oldest index whose suffix fits within max_bytes and IK_MAX_MSGS / 2.
+  ab: [65536] u8;
+  ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  used := 0;
+  keep_turns := 0;
+  start := total;
+  i := total - 1;
+  while i >= 0 && keep_turns < (IK_MAX_MSGS / 4) {
+    ar[0].at = 0; ar[0].full = false;
+    item := cl_json(recall_json, cl_item(recall_json, i));
+    tk := cl_str(ar[..], item, "task");
+    rp := cl_str(ar[..], item, "reply");
+    if tk.count > 0 {
+      need := tk.count + rp.count + 64;
+      if keep_turns > 0 && used + need > max_bytes { break; }
+      if used + need <= max_bytes {
+        used += need;
+        keep_turns += 1;
+        start = i;
+      } else {
+        break;
+      }
+    }
+    i -= 1;
+  }
+  loaded := 0;
+  for k: start..<total {
+    ar[0].at = 0; ar[0].full = false;
+    item := cl_json(recall_json, cl_item(recall_json, k));
+    tk := cl_str(ar[..], item, "task");
+    rp := cl_str(ar[..], item, "reply");
+    if tk.count == 0 { continue; }
+    _ = ik_hist_begin_turn(h);
+    if !ik_hist_user(h, tk) { break; }
+    if rp.count > 0 {
+      none: [1] GwToolCall;
+      if !ik_hist_assistant(h, 0, rp, "", none[0..<0]) { break; }
+    }
+    loaded += 1;
+  }
+  return loaded;
+}
+
+// Materializes Gateway messages and calls referencing h[0].arena; returns message count.
+ik_hist_messages :: (h: [] IkHistory, out_msgs: [] GwMessage, out_calls: [] GwToolCall) -> int {
+  if h[0].n > out_msgs.count || h[0].nc > out_calls.count { return -1; }
+  for i: 0..<h[0].nc {
+    c := h[0].calls[i];
+    out_calls[i] = GwToolCall.{
+      call_id = ik_hist_str(h, c.id),
+      name = ik_hist_str(h, c.name),
+      input_json = ik_hist_str(h, c.args),
+    };
+  }
+  for i: 0..<h[0].n {
+    m := h[0].msgs[i];
+    if m.role == IK_ROLE_TOOL {
+      out_msgs[i] = GwMessage.{
+        role = "tool",
+        result = GwToolResult.{
+          call_id = ik_hist_str(h, m.tool_call_id),
+          output = ik_hist_str(h, m.text),
+          is_error = m.is_error,
+        },
+      };
+    } else if m.role == IK_ROLE_ASSISTANT {
+      out_msgs[i] = GwMessage.{
+        role = "assistant",
+        text = ik_hist_str(h, m.text),
+        reasoning = ik_hist_str(h, m.reasoning),
+        calls = out_calls[m.call_start..<m.call_start + m.call_count],
+      };
+    } else {
+      out_msgs[i] = GwMessage.{
+        role = "user",
+        text = ik_hist_str(h, m.text),
+      };
+    }
+  }
+  return h[0].n;
+}
+
+// Conservative token estimate of the conversation messages (bytes/3.5 + per-message overhead).
+ik_hist_est_tokens :: (h: [] IkHistory) -> int {
+  bytes := 0;
+  for i: 0..<h[0].n {
+    m := h[0].msgs[i];
+    bytes += m.text.len + m.reasoning.len;
+    for k: 0..<m.call_count {
+      c := h[0].calls[m.call_start + k];
+      bytes += c.name.len + c.args.len + 24;
+    }
+  }
+  return (bytes * 10 + 34) / 35 + h[0].n * 12;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky protocol: append-only history, interleaved reasoning, parallel calls, and gateway admission" {
+  h: [1] IkHistory;
+  ik_hist_init(h[..]);
+  #assert ik_hist_begin_turn(h[..]) == 1;
+  #assert ik_hist_user(h[..], "Inspect a.coax and b.coax");
+  calls := [2] GwToolCall.[
+    GwToolCall.{call_id = "call_1_0", name = "read_file", input_json = "{\"path\":\"a.coax\"}"},
+    GwToolCall.{call_id = "call_1_1", name = "read_file", input_json = "{\"path\":\"b.coax\"}"},
+  ];
+  #assert ik_hist_assistant(h[..], 1, "", "I will read both files in parallel.", calls[..]);
+  #assert ik_hist_tool(h[..], 1, "call_1_0", "read_file", IK_TK_READ, "a.coax", 0, "1\tx :: 1;\n", false);
+  #assert ik_hist_tool(h[..], 1, "call_1_1", "read_file", IK_TK_READ, "b.coax", 1, "ENOENT: b.coax", true);
+  #assert ik_hist_steer(h[..], "Also check c.coax.");
+  none: [1] GwToolCall;
+  #assert ik_hist_assistant(h[..], 2, "Found x :: 1 in a.coax; b.coax missing.", "Done.", none[0..<0]);
+
+  msgs: [IK_MAX_MSGS] GwMessage;
+  gcalls: [IK_MAX_CALLS] GwToolCall;
+  n := ik_hist_messages(h[..], msgs[..], gcalls[..]);
+  #assert n == 6 && gwt_history_valid(msgs[0..<n]);
+  #assert msgs[0].role == "user" && msgs[0].text == "Inspect a.coax and b.coax";
+  #assert msgs[1].role == "assistant" && msgs[1].reasoning == "I will read both files in parallel." && msgs[1].calls.count == 2;
+  #assert msgs[2].role == "tool" && msgs[2].result.call_id == "call_1_0" && !msgs[2].result.is_error;
+  #assert msgs[3].role == "tool" && msgs[3].result.call_id == "call_1_1" && msgs[3].result.is_error;
+  #assert msgs[4].role == "user" && msgs[4].text == "[User follow-up while you were working]\nAlso check c.coax.";
+  #assert msgs[5].role == "assistant" && msgs[5].text == "Found x :: 1 in a.coax; b.coax missing." && msgs[5].reasoning == "Done.";
+  #assert ik_hist_est_tokens(h[..]) > 60;
+}
+
+#test "inky protocol: MWW_RECALL hydrates newest alternating turns within byte budget" {
+  h: [1] IkHistory;
+  ik_hist_init(h[..]);
+  raw := "[{\"task\":\"old question one\",\"reply\":\"old answer one\"},{\"task\":\"recent two\",\"reply\":\"reply two\"},{\"task\":\"latest three\",\"reply\":\"reply three\"}]";
+  loaded := ik_hist_recall(h[..], raw, 180);
+  #assert loaded == 2 && h[0].n == 4;
+  msgs: [IK_MAX_MSGS] GwMessage;
+  gcalls: [IK_MAX_CALLS] GwToolCall;
+  n := ik_hist_messages(h[..], msgs[..], gcalls[..]);
+  #assert n == 4 && gwt_history_valid(msgs[0..<n]);
+  #assert msgs[0].role == "user" && msgs[0].text == "recent two";
+  #assert msgs[1].role == "assistant" && msgs[1].text == "reply two";
+  #assert msgs[2].role == "user" && msgs[2].text == "latest three";
+  #assert msgs[3].role == "assistant" && msgs[3].text == "reply three";
+}

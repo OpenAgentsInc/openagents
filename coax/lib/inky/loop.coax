@@ -1,0 +1,436 @@
+// Inky pure native Inkling 2.0 loop state machine (docs/coder/inky-spec.md §4, §7, §8).
+// Completely I/O-free: consumes GwEvents, assembles parallel tool calls via GwToolStep,
+// streams <|content_text|> and <|content_thinking|> directly, drives 2-stage compaction,
+// and coordinates step budgets & steers cleanly.
+//
+// Checks: coax/bin/coax test coax/lib/inky/loop.coax --library
+
+#load "compact.coax";
+#load "guard.coax";
+#load "../gateway/psionic.coax";
+
+IK_PH_IDLE :: 0;
+IK_PH_MODEL :: 1;
+IK_PH_STREAM :: 2;
+IK_PH_TOOLS :: 3;
+IK_PH_ENDED :: 4;
+
+IK_END_NONE :: 0;
+IK_END_FINISHED :: 1;
+IK_END_STOPPED :: 2;
+IK_END_FAILED :: 3;
+IK_END_NO_CAPACITY :: 4;
+IK_END_BUDGET :: 5;
+
+IK_THINK_CAP :: 32768;
+IK_REPLY_CAP :: 65536;
+IK_MAX_TOKENS_STEP :: 8192;
+
+ik_ending_name :: (e: int) -> string {
+  if e == IK_END_FINISHED { return "finished"; }
+  if e == IK_END_STOPPED { return "stopped"; }
+  if e == IK_END_NO_CAPACITY { return "no_capacity"; }
+  if e == IK_END_BUDGET { return "budget"; }
+  return "failed";
+}
+
+IkLoop :: struct {
+  phase: int;
+  step: int;
+  max_ctx: int;
+  profile: [32] u8; nprofile: int;
+  system: [IK_PROMPT_MAX] u8; nsystem: int;
+  guard: [1] IkGuard;
+  tstep: [1] GwToolStep;
+  reply: [IK_REPLY_CAP] u8; nreply: int;
+  think: [IK_THINK_CAP + 64] u8; nthink: int;
+  think_cut: bool;
+  thought_emitted: bool;
+  final_text: [IK_REPLY_CAP] u8; nfinal: int;
+  ending: int;
+  tool_idx: int;
+  refused: bool;
+  refuse_status: int;
+  refuse_reason: [512] u8; nrefuse: int;
+  done_reason: [32] u8; ndone: int;
+  last_usage: GwUsage;
+  retried_ctx: bool;
+  retried_stream: bool;
+  retrying_same_step: bool;
+}
+
+IkFeedRes :: struct {
+  emit_thought: bool;
+  emit_reply: bool;
+  reply_delta: string;
+}
+
+ik_loop_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+ik_loop_system :: (l: [] IkLoop) -> string { return cast(string) l[0].system[0..<l[0].nsystem]; }
+ik_loop_profile :: (l: [] IkLoop) -> string { return cast(string) l[0].profile[0..<l[0].nprofile]; }
+ik_loop_think :: (l: [] IkLoop) -> string { return cast(string) l[0].think[0..<l[0].nthink]; }
+ik_loop_reply :: (l: [] IkLoop) -> string { return cast(string) l[0].reply[0..<l[0].nreply]; }
+ik_loop_final :: (l: [] IkLoop) -> string { return cast(string) l[0].final_text[0..<l[0].nfinal]; }
+ik_loop_refuse_reason :: (l: [] IkLoop) -> string { return cast(string) l[0].refuse_reason[0..<l[0].nrefuse]; }
+
+ik_loop_end :: (l: [] IkLoop, ending: int, text: string) -> int {
+  l[0].ending = ending;
+  l[0].nfinal = ik_loop_copy(l[0].final_text[..], text);
+  l[0].phase = IK_PH_ENDED;
+  return IK_PH_ENDED;
+}
+
+ik_loop_begin :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, system: string, profile: string, max_steps: int, max_ctx: int, task: string) -> bool {
+  l[0] = IkLoop.{
+    phase = IK_PH_MODEL,
+    max_ctx = ifx max_ctx > 1024 then max_ctx else IK_DEFAULT_CTX,
+  };
+  l[0].nsystem = ik_loop_copy(l[0].system[..], system);
+  l[0].nprofile = ik_loop_copy(l[0].profile[..], ifx profile.count > 0 then profile else "danger-full-access");
+  ik_guard_init(l[0].guard[..], max_steps);
+
+  need := ik_compact_needed(h, l[0].nsystem, l[0].max_ctx);
+  if need >= 1 { _ = ik_compact_stage1(h, tmp); }
+  if ik_compact_needed(h, l[0].nsystem, l[0].max_ctx) >= 2 { _ = ik_compact_stage2(h, tmp); }
+
+  _ = ik_hist_begin_turn(h);
+  if !ik_hist_user(h, task) {
+    _ = ik_compact_stage2(h, tmp);
+    if !ik_hist_user(h, task) {
+      _ = ik_loop_end(l, IK_END_FAILED, "task exceeds conversation history capacity");
+      return false;
+    }
+  }
+  return true;
+}
+
+// Prepares the next Chat Completions request body into out_body; returns body slice or "" on error.
+ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gateway, model: string, effort: string, det_mode: bool, out_body: [] u8, out_why: [] string) -> string {
+  if l[0].phase != IK_PH_MODEL { out_why[0] = "loop not ready for model request"; return ""; }
+  if !l[0].retrying_same_step {
+    l[0].step += 1;
+  }
+  l[0].retrying_same_step = false;
+
+  need := ik_compact_needed(h, l[0].nsystem, l[0].max_ctx);
+  if need >= 1 { _ = ik_compact_stage1(h, tmp); }
+  if ik_compact_needed(h, l[0].nsystem, l[0].max_ctx) >= 2 { _ = ik_compact_stage2(h, tmp); }
+
+  msgs: [IK_MAX_MSGS] GwMessage;
+  gcalls: [IK_MAX_CALLS] GwToolCall;
+  nm := ik_hist_messages(h, msgs[..], gcalls[..]);
+  if nm <= 0 { out_why[0] = "empty conversation history"; return ""; }
+
+  disable_tools := ik_guard_disable_tools(l[0].step, l[0].guard[0].max_steps);
+  tools := ik_prompt_tools_for(ik_loop_profile(l), disable_tools);
+
+  req := GwRequest.{
+    model = model,
+    system = ik_loop_system(l),
+    messages = msgs[0..<nm],
+    effort = effort,
+    max_tokens = IK_MAX_TOKENS_STEP,
+    stream = true,
+    tools = tools,
+    has_temp = true,
+    temperature = ifx det_mode then 0.0 else 0.6,
+    top_p = ifx det_mode then 1.0 else 0.95,
+    top_k = ifx det_mode then 0 else 40,
+    has_seed = det_mode,
+    seed = 0,
+  };
+  body := gw_translate(g, req, out_body, out_why);
+  if body.count == 0 {
+    // If request overflowed buffer, try Stage 2 compaction once before giving up.
+    if ik_compact_stage2(h, tmp) {
+      nm = ik_hist_messages(h, msgs[..], gcalls[..]);
+      if nm > 0 {
+        req.messages = msgs[0..<nm];
+        body = gw_translate(g, req, out_body, out_why);
+      }
+    }
+    if body.count == 0 { return ""; }
+  }
+
+  gwt_step_begin(l[0].tstep[..]);
+  l[0].nreply = 0;
+  l[0].nthink = 0;
+  l[0].think_cut = false;
+  l[0].thought_emitted = false;
+  l[0].refused = false;
+  l[0].refuse_status = 0;
+  l[0].nrefuse = 0;
+  l[0].ndone = 0;
+  l[0].last_usage = GwUsage.{};
+  l[0].tool_idx = 0;
+  l[0].phase = IK_PH_STREAM;
+  return body;
+}
+
+ik_loop_append_think :: (l: [] IkLoop, text: string) {
+  if l[0].think_cut || text.count == 0 { return; }
+  if l[0].nthink + text.count <= IK_THINK_CAP {
+    for c: text { l[0].think[l[0].nthink] = c; l[0].nthink += 1; }
+    return;
+  }
+  room := IK_THINK_CAP - l[0].nthink;
+  for i: 0..<room { l[0].think[l[0].nthink] = text[i]; l[0].nthink += 1; }
+  note := "\n[thinking truncated at 32 KB]";
+  for c: note { if l[0].nthink < l[0].think.count { l[0].think[l[0].nthink] = c; l[0].nthink += 1; } }
+  l[0].think_cut = true;
+}
+
+// Consumes one GwEvent during IK_PH_STREAM; returns what UI deltas should be emitted now.
+ik_loop_event :: (l: [] IkLoop, ev: GwEvent) -> IkFeedRes {
+  res: IkFeedRes;
+  if l[0].phase != IK_PH_STREAM { return res; }
+  _ = gwt_step_feed(l[0].tstep[..], ev);
+  if ev.kind == GW_EV_REASONING {
+    ik_loop_append_think(l, ev.text);
+    return res;
+  }
+  if ev.kind == GW_EV_TEXT {
+    if !l[0].thought_emitted && l[0].nthink > 0 {
+      l[0].thought_emitted = true;
+      res.emit_thought = true;
+    }
+    for c: ev.text {
+      if l[0].nreply < IK_REPLY_CAP { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; }
+    }
+    if ev.text.count > 0 {
+      res.emit_reply = true;
+      res.reply_delta = ev.text;
+    }
+    return res;
+  }
+  if ev.kind == GW_EV_TOOL {
+    if !l[0].thought_emitted && l[0].nthink > 0 {
+      l[0].thought_emitted = true;
+      res.emit_thought = true;
+    }
+    return res;
+  }
+  if ev.kind == GW_EV_DONE {
+    l[0].last_usage = ev.usage;
+    l[0].ndone = ik_loop_copy(l[0].done_reason[..], ev.reason);
+    if !l[0].thought_emitted && l[0].nthink > 0 {
+      l[0].thought_emitted = true;
+      res.emit_thought = true;
+    }
+    return res;
+  }
+  if ev.kind == GW_EV_REFUSED {
+    l[0].refused = true;
+    l[0].refuse_status = ev.status;
+    l[0].nrefuse = ik_loop_copy(l[0].refuse_reason[..], ev.reason);
+    return res;
+  }
+  return res;
+}
+
+// Seals the finished model stream and transitions to IK_PH_TOOLS, IK_PH_MODEL (retry/steer), or IK_PH_ENDED.
+ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transport_ok: bool, has_steers: bool) -> int {
+  if l[0].phase != IK_PH_STREAM { return l[0].phase; }
+  if l[0].refused {
+    why := ik_loop_refuse_reason(l);
+    if gw_too_long(l[0].refuse_status, why) && !l[0].retried_ctx {
+      _ = ik_compact_stage1(h, tmp);
+      if ik_compact_stage2(h, tmp) {
+        l[0].retried_ctx = true;
+        l[0].retrying_same_step = true;
+        l[0].phase = IK_PH_MODEL;
+        return IK_PH_MODEL;
+      }
+    }
+    if l[0].refuse_status == 0 || l[0].refuse_status == 503 {
+      return ik_loop_end(l, IK_END_NO_CAPACITY, ifx why.count > 0 then why else "local model server unavailable");
+    }
+    return ik_loop_end(l, IK_END_FAILED, ifx why.count > 0 then why else "model request refused");
+  }
+
+  sealed := gwt_step_end(l[0].tstep[..], transport_ok);
+  if !sealed {
+    // Allow partial text reply on clean length cut with 0 tool calls.
+    done_r := cast(string) l[0].done_reason[0..<l[0].ndone];
+    if transport_ok && done_r == "length" && l[0].tstep[0].n == 0 && l[0].nreply > 0 {
+      none: [1] GwToolCall;
+      _ = ik_hist_assistant(h, l[0].step, ik_loop_reply(l), ik_loop_think(l), none[0..<0]);
+      if has_steers { l[0].phase = IK_PH_MODEL; return IK_PH_MODEL; }
+      return ik_loop_end(l, IK_END_FINISHED, ik_loop_reply(l));
+    }
+    if !l[0].retried_stream {
+      l[0].retried_stream = true;
+      l[0].retrying_same_step = true;
+      l[0].phase = IK_PH_MODEL;
+      return IK_PH_MODEL;
+    }
+    return ik_loop_end(l, IK_END_FAILED, "incomplete or malformed model tool stream");
+  }
+
+  l[0].retried_ctx = false;
+  l[0].retried_stream = false;
+
+  // Handle degenerate length cut with 0 text and 0 tool calls (thinking exhausted max_tokens).
+  done_r := cast(string) l[0].done_reason[0..<l[0].ndone];
+  if l[0].tstep[0].n == 0 && l[0].nreply == 0 && done_r == "length" && !l[0].retried_stream {
+    l[0].retried_stream = true;
+    l[0].retrying_same_step = true;
+    l[0].phase = IK_PH_MODEL;
+    return IK_PH_MODEL;
+  }
+
+  // Record assistant message with exact interleaved reasoning_content & tool_calls.
+  calls: [IK_STEP_CALLS] GwToolCall;
+  nc := l[0].tstep[0].n;
+  for i: 0..<nc { calls[i] = gwt_step_call(l[0].tstep[..], i); }
+  if !ik_hist_assistant(h, l[0].step, ik_loop_reply(l), ik_loop_think(l), calls[0..<nc]) {
+    _ = ik_compact_stage2(h, tmp);
+    if !ik_hist_assistant(h, l[0].step, ik_loop_reply(l), ik_loop_think(l), calls[0..<nc]) {
+      return ik_loop_end(l, IK_END_FAILED, "conversation history full");
+    }
+  }
+
+  if nc > 0 {
+    l[0].tool_idx = 0;
+    l[0].phase = IK_PH_TOOLS;
+    return IK_PH_TOOLS;
+  }
+
+  // Zero tool calls: natural finish (unless user steers are waiting).
+  if has_steers {
+    l[0].phase = IK_PH_MODEL;
+    return IK_PH_MODEL;
+  }
+  return ik_loop_end(l, IK_END_FINISHED, ik_loop_reply(l));
+}
+
+ik_loop_next_tool :: (l: [] IkLoop) -> GwToolCall {
+  if l[0].phase != IK_PH_TOOLS || l[0].tool_idx >= l[0].tstep[0].n { return GwToolCall.{}; }
+  return gwt_step_call(l[0].tstep[..], l[0].tool_idx);
+}
+
+// Records the current pending tool's result into history and advances to the next tool or model step.
+ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kind: int, path_summary: string, exit_code: int, output: string, is_error: bool) -> int {
+  if l[0].phase != IK_PH_TOOLS { return l[0].phase; }
+  tc := gwt_step_call(l[0].tstep[..], l[0].tool_idx);
+  is_last := l[0].tool_idx + 1 >= l[0].tstep[0].n;
+
+  // Soft wrap-up notice appended once on the final tool of step == max_steps - 2.
+  final_out := output;
+  wbuf: [24576] u8;
+  if is_last && ik_guard_warn_budget(l[0].step, l[0].guard[0].max_steps) {
+    n := ik_fmt_put(wbuf[..], 0, output);
+    n = ik_fmt_put(wbuf[..], n, "\n[Step budget nearly reached: synthesize your findings and answer the user now.]");
+    final_out = cast(string) wbuf[0..<n];
+  }
+
+  if !ik_hist_tool(h, l[0].step, tc.call_id, tc.name, tool_kind, path_summary, exit_code, final_out, is_error) {
+    _ = ik_compact_stage1(h, tmp);
+    if !ik_hist_tool(h, l[0].step, tc.call_id, tc.name, tool_kind, path_summary, exit_code, final_out, is_error) {
+      return ik_loop_end(l, IK_END_FAILED, "conversation history full while recording tool result");
+    }
+  }
+
+  l[0].tool_idx += 1;
+  if l[0].tool_idx >= l[0].tstep[0].n {
+    l[0].phase = IK_PH_MODEL;
+  }
+  return l[0].phase;
+}
+
+ik_loop_stop :: (l: [] IkLoop) -> int {
+  return ik_loop_end(l, IK_END_STOPPED, "stopped");
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky loop: direct greeting finishes in 1 call with 0 tools and streams text directly" {
+  l: [1] IkLoop; h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 30, 32768, "Hello!");
+  ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
+  body_buf: [16384] u8; why: [1] string;
+  body := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", false, body_buf[..], why[..]);
+  #assert body.count > 0 && l[0].phase == IK_PH_STREAM && l[0].step == 1;
+
+  f1 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Plain greeting, answer directly."});
+  #assert !f1.emit_thought && !f1.emit_reply;
+  f2 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "Hello! "});
+  #assert f2.emit_thought && f2.emit_reply && f2.reply_delta == "Hello! " && ik_loop_think(l[..]) == "Plain greeting, answer directly.";
+  f3 := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "How can I help?"});
+  #assert !f3.emit_thought && f3.emit_reply && f3.reply_delta == "How can I help?";
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED;
+  #assert l[0].ending == IK_END_FINISHED && ik_loop_final(l[..]) == "Hello! How can I help?";
+  #assert h[0].n == 2;
+}
+
+#test "inky loop: parallel tool calls, error recovery, soft wrap-up, and tool-disabled closing step" {
+  l: [1] IkLoop; h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  // max_steps = 3 -> step 1 warns at step == max_steps - 2 (step 1), step 3 disables tools!
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 3, 32768, "Inspect files");
+  ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
+  body_buf: [32768] u8; why: [1] string;
+
+  // Step 1: parallel 2 tool calls
+  b1 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
+  #assert b1.count > 0 && cl_raw(b1, "tools").count > 10 && cl_raw(b1, "temperature") == "0.00" && cl_int(b1, "seed").value == 0;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "Read both."});
+  f := ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c1", text = "read_file", reason = "{\"path\":\"a.coax\"}"});
+  #assert f.emit_thought;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 1, call_id = "c2", text = "read_file", reason = "{\"path\":\"b.coax\"}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
+
+  tc0 := ik_loop_next_tool(l[..]);
+  #assert tc0.call_id == "c1" && tc0.name == "read_file";
+  #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_READ, "a.coax", 1, "ENOENT", true) == IK_PH_TOOLS;
+  tc1 := ik_loop_next_tool(l[..]);
+  #assert tc1.call_id == "c2";
+  #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_READ, "b.coax", 0, "1\tok\n", false) == IK_PH_MODEL;
+  // Soft wrap-up notice appended on final tool of step 1 (max_steps - 2 == 1):
+  last_out := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  #assert ik_prompt_has_ci(last_out, "Step budget nearly reached");
+
+  // Step 2: one more tool call
+  b2 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
+  #assert b2.count > 0 && cl_raw(b2, "messages.3.is_error") == "true";
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c3", text = "list_dir", reason = "{}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
+  #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_LIST, ".", 0, "b.coax\n", false) == IK_PH_MODEL;
+
+  // Step 3 (step == max_steps): tools MUST be disabled in request!
+  b3 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
+  #assert b3.count > 0 && cl_raw(b3, "tools").count == 0;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "Summary: b.coax ok."});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED;
+  #assert l[0].ending == IK_END_FINISHED && ik_loop_final(l[..]) == "Summary: b.coax ok.";
+}
+
+#test "inky loop: context_length_exceeded triggers Stage 2 compaction and automatic retry" {
+  l: [1] IkLoop; h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  none: [1] GwToolCall;
+  for t: 0..<4 {
+    _ = ik_hist_begin_turn(h[..]);
+    #assert ik_hist_user(h[..], "earlier question");
+    #assert ik_hist_assistant(h[..], 1, "earlier answer", "", none[0..<0]);
+  }
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 30, 32768, "new question");
+  ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
+  body_buf: [16384] u8; why: [1] string;
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", false, body_buf[..], why[..]).count > 0;
+  before_n := h[0].n;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REFUSED, status = 400, reason = "context_length_exceeded"});
+  // Should compact via Stage 2 and transition back to IK_PH_MODEL on same step!
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], false, false) == IK_PH_MODEL;
+  #assert h[0].n < before_n && l[0].retried_ctx && l[0].retrying_same_step;
+}

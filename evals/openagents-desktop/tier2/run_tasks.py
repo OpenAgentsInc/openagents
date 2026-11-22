@@ -983,6 +983,7 @@ def main() -> int:
     ap.add_argument("--ctx", type=int, default=DEFAULT_LOCAL_CTX, help="context length for auto-launched psionic-inkling-serve (default 32768)")
     ap.add_argument("--timeout-floor", type=int, default=-1, help="minimum per-task timeout in seconds (default 600 for local Inkling, 0 for cloud)")
     ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
+    ap.add_argument("--worker", default="mcworker", choices=["mcworker", "inky"], help="worker binary to run (mcworker or inky; default mcworker)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     args = ap.parse_args()
 
@@ -1015,7 +1016,7 @@ def main() -> int:
 
     os.environ["BROWSER"] = "/usr/bin/true"
     build_driver()
-    worker = build_worker("mcworker")
+    worker = build_worker(args.worker)
     claude_worker = build_worker("claudeworker") if (args.claude and not is_local) else None
     if claude_worker:
         build_worker("gitguard")   # the git guard hook claudeworker finds beside it (#13771)
@@ -1028,7 +1029,7 @@ def main() -> int:
 
     results = []
     print_lock = threading.Lock()
-    server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "ctx": args.ctx if is_local else None,
+    server_meta: dict[str, Any] = {"engine": "psionic-metal" if is_local else "cloud", "worker": args.worker, "ctx": args.ctx if is_local else None,
                                    "server_boot_ms": 0, "server_reused": False, "peak_rss_mb": 0}
     try:
         with PsionicServerManager(enabled=is_local, run_dir=run_dir, port=args.port, ctx=args.ctx) as srv:
@@ -1112,6 +1113,7 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
     summary = {
         "tier": tier, "git_sha": sha, "os": sys.platform, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "engine": meta.get("engine", "psionic-metal"),
+        "worker": meta.get("worker", "mcworker"),
         "ctx": meta.get("ctx"),
         "server_boot_ms": meta.get("server_boot_ms", 0),
         "peak_rss_mb": meta.get("peak_rss_mb", 0),
@@ -1130,6 +1132,7 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]], sha: str, tier: 
         "total_input_tokens": tot_in,
         "total_output_tokens": tot_out,
         "total_cached_tokens": tot_cached,
+        "cache_hit_pct": round(100.0 * tot_cached / tot_in, 1) if tot_in else 0.0,
         "mean_ttft_ms": int(round(sum(ttfts) / len(ttfts))) if ttfts else 0,
         "mean_decode_tps": round(sum(tps_vals) / len(tps_vals), 2) if tps_vals else 0.0,
         "categories": cats,

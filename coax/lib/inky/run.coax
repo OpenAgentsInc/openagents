@@ -1,0 +1,1104 @@
+// Inky live non-blocking agent runner (docs/coder/inky-spec.md §4–§8).
+// Binds IkLoop (native Inkling 2.0 tool loop) to GwCall (streaming Chat Completions
+// over gw_psionic_native), real workspace-confined tools (read_file, edit_file,
+// write_file, grep, list_dir, async run_command, update_todos), shared-checkout
+// gitguard, durable AJR1 journaling (logging exact model-visible tool bytes),
+// approval gating (run_command + ungated edits only), and mid-turn steers.
+//
+// Checks: coax/bin/coax test coax/lib/inky/run.coax --library
+
+#load "loop.coax";
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+#load "../agent/journal-file.coax";
+#load "../agent/user-instructions.coax";
+#load "../agent/native-profile.coax";
+#load "../microcoder/git-guard.coax";
+#load "../microcoder/instructions.coax";
+#load "../microcoder/steer.coax";
+
+cxproc_platform :: () -> int #foreign #effects(all);
+cxproc_flush_timeout :: (h: int, ms: int) -> int #foreign #effects(all);
+
+IK_EV_REPLY :: 1;
+IK_EV_THOUGHT :: 2;
+IK_EV_ATTEMPT :: 3;
+IK_EV_COMMAND :: 4;
+IK_EV_VIEW :: 5;
+IK_EV_TODOS :: 6;
+IK_EV_ASK :: 7;
+IK_EV_ENDED :: 8;
+
+IK_CMD_SPILL_MAX :: 16777216;    // 16 MiB cap on one command spill file
+IK_CMD_EXIT_WAIT_MS :: 5000;
+IK_CMD_STEP_LINES :: 2048;
+
+IkRunEvent :: struct {
+  kind: int;
+  ticket: int;
+  text: string;
+  output: string;
+  exit: int;
+  timed_out: bool;
+  found: bool;
+  ending: int;
+  usage: GwUsage;
+  gateway: string;
+  model: string;
+  effort: string;
+  outcome: string;
+  status: int;
+  ttft_ms: int;
+  decode_ms: int;
+  output_tokens: int;
+}
+
+// Large working buffers owned by the caller (e.g. tool_main) and passed by slice
+// so IkRun stays well within Coax's storage budget.
+IkRunBufs :: struct {
+  req_body: [262144] u8;
+  call_bufs: [1] GwCallBuffers;
+  file_buf: [524288] u8;
+  edit_buf: [524288] u8;
+  tool_out: [32768] u8;
+  spill_buf: [65536] u8;
+  cmd_head: [IK_CMD_HEAD] u8;
+  cmd_tail: [IK_CMD_TAIL] u8;
+  fs_list: [1] FsList;
+  arg_arena: [65536] u8;
+  hist_tmp: [1] IkHistory;
+  ev_text: [65536] u8;
+  ev_out: [32768] u8;
+  sys_buf: [IK_PROMPT_MAX] u8;
+  ws_instr: [4096] u8;
+  usr_instr: [4608] u8;
+}
+
+IkCmdState :: struct {
+  active: bool;
+  h: int;
+  deadline: int;
+  eof_at: int;
+  exit: int;
+  timed_out: bool;
+  stopped: bool;
+  nh: int;
+  nt: int;
+  tail_at: int;
+  dropped: int;
+  total_bytes: int;
+  total_lines: int;
+  spill_path: [4096] u8; nspill: int;
+  spill_written: int;
+  spill_failed: bool;
+  nall: int;
+  cmd: [8192] u8; ncmd: int;
+  is_check: bool;
+  is_search: bool;
+  timeout_s: int;
+}
+
+IkRun :: struct {
+  l: [1] IkLoop;
+  call: [1] GwCall;
+  calling: bool;
+  active: bool;
+  ended: bool;
+  cwd: [4096] u8; ncwd: int;
+  real_cwd: [4096] u8; nreal_cwd: int;
+  spill_dir: [4096] u8; nspill_dir: int;
+  real_spill: [4096] u8; nreal_spill: int;
+  url_buf: [512] u8;
+  g: Gateway;
+  model: [128] u8; nmodel: int;
+  effort: [32] u8; neffort: int;
+  det_mode: bool;
+  gated: bool;
+  edits_free: bool;
+  ceiling: int;
+  asking: bool;
+  ask_ticket: int;
+  ask_kind: int;
+  cmd: [1] IkCmdState;
+  journal: [] JfWriter;
+  steers: [] McSteers;
+  runs: int;
+  // Per-attempt telemetry
+  req_start_ms: int;
+  first_ms: int;
+  attempt_status: int;
+}
+
+ik_put_ev :: (out: [] IkRunEvent, n: int, e: IkRunEvent) -> int {
+  if n >= out.count { return n; }
+  out[n] = e;
+  return n + 1;
+}
+
+ik_run_cwd :: (r: [] IkRun) -> string { return cast(string) r[0].cwd[0..<r[0].ncwd]; }
+ik_run_real_cwd :: (r: [] IkRun) -> string { return cast(string) r[0].real_cwd[0..<r[0].nreal_cwd]; }
+ik_run_spill :: (r: [] IkRun) -> string { return cast(string) r[0].spill_dir[0..<r[0].nspill_dir]; }
+ik_run_real_spill :: (r: [] IkRun) -> string { return cast(string) r[0].real_spill[0..<r[0].nreal_spill]; }
+ik_run_model :: (r: [] IkRun) -> string { return cast(string) r[0].model[0..<r[0].nmodel]; }
+ik_run_effort :: (r: [] IkRun) -> string { return cast(string) r[0].effort[0..<r[0].neffort]; }
+
+// Probes git status of cwd cleanly (branch name + worktree indicator) for the prompt.
+ik_probe_git :: (cwd: string, out: [] u8) -> string {
+  gb: [4096] u8;
+  gp := fs_join(cwd, ".git", gb[..]);
+  k := ifx gp.count > 0 then fs_kind(gp) else FS_NONE;
+  // Walk up to find ancestor .git if cwd is a subdirectory.
+  is_worktree := k == FS_FILE;
+  has_git := k == FS_DIR || k == FS_FILE;
+  if !has_git {
+    cur := cwd;
+    for step: 0..<16 {
+      up := fs_dir(cur);
+      if up.count == 0 || up == cur || up == "." { break; }
+      cur = up;
+      p2 := fs_join(cur, ".git", gb[..]);
+      k2 := ifx p2.count > 0 then fs_kind(p2) else FS_NONE;
+      if k2 == FS_DIR || k2 == FS_FILE { has_git = true; is_worktree = k2 == FS_FILE; break; }
+    }
+  }
+  if !has_git { return "no"; }
+  // Ask git rev-parse --abbrev-ref HEAD with a short 2s timeout.
+  h := proc_new();
+  br: [128] u8; nbr := 0;
+  if h >= 0 {
+    ok := proc_arg(h, "git") && proc_arg(h, "-C") && proc_arg(h, cwd) && proc_arg(h, "rev-parse") && proc_arg(h, "--abbrev-ref") && proc_arg(h, "HEAD");
+    if ok && proc_start(h) == 0 {
+      _ = proc_close_stdin(h);
+      ln := proc_line(h, 2000, br[..]);
+      if ln > 0 { nbr = ln; }
+      st := proc_wait(h, 2000);
+      if st != 0 { nbr = 0; }
+    }
+    _ = proc_release(h);
+  }
+  n := ik_fmt_put(out, 0, "yes");
+  if nbr > 0 || is_worktree {
+    n = ik_fmt_put(out, n, " (");
+    if nbr > 0 { n = ik_fmt_put(out, n, "branch "); n = ik_fmt_put(out, n, cast(string) br[0..<nbr]); }
+    if nbr > 0 && is_worktree { n = ik_fmt_put(out, n, ", "); }
+    if is_worktree { n = ik_fmt_put(out, n, "worktree"); }
+    n = ik_fmt_byte(out, n, ')');
+  }
+  return cast(string) out[0..<n];
+}
+
+// Loads workspace instructions (AGENTS.md / CLAUDE.md) and user instructions (~/.openagents/instructions.md),
+// then builds the zero-contradiction system prompt into b[0].sys_buf.
+ik_run_build_system :: (cwd: string, os_name: string, is_goal: bool, b: [] IkRunBufs) -> string {
+  git_b: [256] u8;
+  git_info := ik_probe_git(cwd, git_b[..]);
+  // User instructions (raw text, NOT pre-wrapped, so prompt.coax can resolve stock auto-commit conflicts).
+  upb: [FS_PATH_MAX] u8;
+  upath := uinstr_path(upb[..]);
+  usr := uinstr_read(upath, b[0].usr_instr[..]);
+  // Workspace instructions (AGENTS.md with CLAUDE.md fallback).
+  ws := mc_instructions_load(cwd, b[0].ws_instr[..]);
+  // Strip MC_INSTR_HEADER prefix if mc_instr_load added it, so prompt.coax writes a single clean header.
+  if ws.count >= MC_INSTR_HEADER.count && cast(string) ws[0..<MC_INSTR_HEADER.count] == MC_INSTR_HEADER {
+    ws = cast(string) ws[MC_INSTR_HEADER.count..<ws.count];
+  }
+  n := ik_prompt_build(os_name, cwd, git_info, usr, ws, is_goal, b[0].sys_buf[..]);
+  return cast(string) b[0].sys_buf[0..<n];
+}
+
+// Initializes a new turn in IkRun. Returns false if setup failed (ended event emitted).
+ik_run_start :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, cwd: string, base_url: string, model: string, effort: string, profile: string, ceiling: int, gated: bool, edits_free: bool, max_steps: int, max_ctx: int, det_mode: bool, os_name: string, task: string, out: [] IkRunEvent) -> int {
+  r[0].runs += 1;
+  r[0].active = true;
+  r[0].ended = false;
+  r[0].calling = false;
+  r[0].asking = false;
+  r[0].ask_kind = IK_TK_NONE;
+  r[0].cmd[0] = IkCmdState.{h = -1, eof_at = -1, exit = -1};
+  r[0].ncwd = ik_loop_copy(r[0].cwd[..], cwd);
+  rc := fs_realpath(cwd, r[0].real_cwd[..]);
+  r[0].nreal_cwd = ifx rc.count > 0 then rc.count else ik_loop_copy(r[0].real_cwd[..], cwd);
+  if r[0].nspill_dir > 0 {
+    rs := fs_realpath(ik_run_spill(r), r[0].real_spill[..]);
+    r[0].nreal_spill = ifx rs.count > 0 then rs.count else ik_loop_copy(r[0].real_spill[..], ik_run_spill(r));
+  }
+  r[0].g = gw_psionic_native(base_url, r[0].url_buf[..]);
+  r[0].nmodel = ik_loop_copy(r[0].model[..], ifx model.count > 0 then model else "inkling-2-mini");
+  r[0].neffort = ik_loop_copy(r[0].effort[..], ifx effort.count > 0 then effort else "medium");
+  r[0].det_mode = det_mode;
+  r[0].gated = gated;
+  r[0].edits_free = edits_free;
+  r[0].ceiling = ceiling;
+
+  gw_call_init(r[0].call[..], b[0].call_bufs[..]);
+  is_goal := ik_prompt_is_goal(task);
+  steps_cap := max_steps;
+  if steps_cap <= 0 { steps_cap = ifx is_goal then IK_MAX_STEPS_GOAL else IK_MAX_STEPS_INTERACTIVE; }
+
+  sys := ik_run_build_system(ik_run_cwd(r), os_name, is_goal, b);
+  if !ik_loop_begin(r[0].l[..], h, b[0].hist_tmp[..], sys, profile, steps_cap, max_ctx, task) {
+    r[0].active = false;
+    r[0].ended = true;
+    return ik_put_ev(out, 0, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------- async command helpers
+
+ik_cmd_spill_flush :: (c: [] IkCmdState, b: [] IkRunBufs) {
+  if c[0].nall == 0 { return; }
+  if c[0].nspill == 0 || c[0].spill_failed || c[0].spill_written + c[0].nall > IK_CMD_SPILL_MAX {
+    c[0].nall = 0; return;
+  }
+  sp := cast(string) c[0].spill_path[0..<c[0].nspill];
+  chunk := cast(string) b[0].spill_buf[0..<c[0].nall];
+  ok := ifx c[0].spill_written == 0 then fs_write(sp, chunk) else fs_append(sp, chunk);
+  if !ok { c[0].spill_failed = true; }
+  c[0].spill_written += c[0].nall;
+  c[0].nall = 0;
+}
+
+ik_cmd_push_byte :: (c: [] IkCmdState, b: [] IkRunBufs, ch: u8) {
+  c[0].total_bytes += 1;
+  if ch == '\n' { c[0].total_lines += 1; }
+  if c[0].nspill > 0 && !c[0].spill_failed {
+    if c[0].nall < b[0].spill_buf.count { b[0].spill_buf[c[0].nall] = ch; c[0].nall += 1; }
+    if c[0].nall == b[0].spill_buf.count { ik_cmd_spill_flush(c, b); }
+  }
+  if c[0].nh < IK_CMD_HEAD {
+    b[0].cmd_head[c[0].nh] = ch; c[0].nh += 1;
+    return;
+  }
+  if c[0].nt == IK_CMD_TAIL { c[0].dropped += 1; } else { c[0].nt += 1; }
+  b[0].cmd_tail[c[0].tail_at] = ch;
+  c[0].tail_at = (c[0].tail_at + 1) % IK_CMD_TAIL;
+}
+
+ik_cmd_say :: (c: [] IkCmdState, b: [] IkRunBufs, s: string) {
+  for ch: s { ik_cmd_push_byte(c, b, ch); }
+}
+
+ik_linux_sandbox_args :: (h: int, cwd: string, profile: string) -> bool {
+  if profile == "danger-full-access" { return true; }
+  if cxproc_platform() != 3 { return true; } // macOS/non-Linux: confinement enforced by Inky path authority + gitguard
+  hb: [4096] u8;
+  home := proc_getenv("HOME", hb[..]);
+  if !np_root(cwd, home) { return false; }
+  ok := proc_arg(h, "bwrap") && proc_arg(h, "--unshare-all") && proc_arg(h, "--die-with-parent") && proc_arg(h, "--new-session");
+  ok = ok && proc_arg(h, "--ro-bind") && proc_arg(h, "/") && proc_arg(h, "/") && proc_arg(h, "--proc") && proc_arg(h, "/proc") && proc_arg(h, "--dev") && proc_arg(h, "/dev");
+  ok = ok && proc_arg(h, "--tmpfs") && proc_arg(h, "/tmp");
+  if profile == "workspace-write" { ok = ok && proc_arg(h, "--bind") && proc_arg(h, cwd) && proc_arg(h, cwd); }
+  else { ok = ok && proc_arg(h, "--ro-bind") && proc_arg(h, cwd) && proc_arg(h, cwd); }
+  ok = ok && proc_arg(h, "--chdir") && proc_arg(h, cwd) && proc_arg(h, "--");
+  return ok;
+}
+
+ik_cmd_begin :: (r: [] IkRun, b: [] IkRunBufs, command: string, timeout_s: int) {
+  c := r[0].cmd[..];
+  c[0] = IkCmdState.{
+    active = true, h = -1, eof_at = -1, exit = -1,
+    timeout_s = timeout_s,
+    is_check = mc_cmd_kind(command) == MC_CMD_CHECK,
+    is_search = mc_cmd_is_search(command),
+  };
+  c[0].ncmd = ik_loop_copy(c[0].cmd[..], command);
+  // Prepare spill file path if spill_dir is configured.
+  if r[0].nspill_dir > 0 {
+    _ = fs_mkdir_all(ik_run_spill(r));
+    if r[0].nreal_spill == 0 {
+      rs := fs_realpath(ik_run_spill(r), r[0].real_spill[..]);
+      r[0].nreal_spill = ifx rs.count > 0 then rs.count else ik_loop_copy(r[0].real_spill[..], ik_run_spill(r));
+    }
+    sp_base := ifx r[0].nreal_spill > 0 then ik_run_real_spill(r) else ik_run_spill(r);
+    n := ik_fmt_put(c[0].spill_path[..], 0, sp_base);
+    if n > 0 && c[0].spill_path[n - 1] != '/' { n = ik_fmt_byte(c[0].spill_path[..], n, '/'); }
+    n = ik_fmt_int(c[0].spill_path[..], n, r[0].runs);
+    n = ik_fmt_byte(c[0].spill_path[..], n, '-');
+    n = ik_fmt_int(c[0].spill_path[..], n, r[0].l[0].step);
+    n = ik_fmt_byte(c[0].spill_path[..], n, '-');
+    n = ik_fmt_int(c[0].spill_path[..], n, r[0].l[0].tool_idx);
+    n = ik_fmt_put(c[0].spill_path[..], n, ".txt");
+    c[0].nspill = n;
+  }
+
+  // Shared-checkout gitguard check before spawning.
+  hb: [4096] u8; rb: [2048] u8;
+  refused := mc_gg_refuse(ik_run_cwd(r), command, proc_getenv("HOME", hb[..]), rb[..]);
+  if refused.count > 0 {
+    ik_cmd_say(c, b, refused);
+    c[0].exit = 126;
+    return;
+  }
+
+  // Journal command_intent before spawning.
+  if r[0].journal.count > 0 {
+    if !jf_intent(r[0].journal, AjKind.command_intent, command) {
+      ik_cmd_say(c, b, "durable journal failed before command start");
+      c[0].exit = -1;
+      return;
+    }
+  }
+
+  h := proc_new();
+  if h < 0 {
+    ik_cmd_say(c, b, "no process slot is free");
+    return;
+  }
+  ok := ik_linux_sandbox_args(h, ik_run_cwd(r), ik_loop_profile(r[0].l[..]));
+  ok = ok && proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, command);
+  ok = ok && proc_cwd(h, ik_run_cwd(r));
+  ok = ok && proc_err_to_out(h);
+  if !ok || proc_start(h) != 0 {
+    _ = proc_release(h);
+    ik_cmd_say(c, b, "failed to start command");
+    return;
+  }
+  _ = proc_close_stdin(h);
+  c[0].h = h;
+  c[0].deadline = proc_now_ms() + timeout_s * 1000;
+}
+
+// Polls an active async command without blocking the worker loop. Returns true when finished.
+ik_cmd_poll :: (c: [] IkCmdState, b: [] IkRunBufs) -> bool {
+  if !c[0].active { return true; }
+  if c[0].h < 0 { return true; } // refused or failed before spawn
+  h := c[0].h;
+  if c[0].eof_at < 0 {
+    for guard: 0..<IK_CMD_STEP_LINES {
+      left := c[0].deadline - proc_now_ms();
+      if left <= 0 { c[0].timed_out = true; break; }
+      n := cxproc_read_line(h, 0);
+      if n == CL_TIMEOUT { return false; }
+      if n == CL_TOO_LONG { ik_cmd_say(c, b, "[line truncated]\n"); continue; }
+      if n < 0 { c[0].eof_at = proc_now_ms(); break; }
+      for i: 0..<n { ik_cmd_push_byte(c, b, cast,trunc(u8) cxproc_line_byte(h, i)); }
+      ik_cmd_push_byte(c, b, '\n');
+    }
+    if !c[0].timed_out && c[0].eof_at < 0 { return false; }
+  }
+  if c[0].timed_out {
+    _ = proc_kill(h, PROC_SIGKILL);
+    _ = proc_wait(h, 2000);
+    _ = proc_release(h);
+    c[0].h = -1;
+    return true;
+  }
+  status := proc_wait(h, 0);
+  if status == PROC_RUNNING {
+    if proc_now_ms() < c[0].eof_at + IK_CMD_EXIT_WAIT_MS { return false; }
+    _ = proc_kill(h, PROC_SIGKILL);
+    _ = proc_wait(h, 2000);
+    c[0].timed_out = true;
+    c[0].exit = -1;
+  } else {
+    c[0].exit = status;
+  }
+  _ = proc_release(h);
+  c[0].h = -1;
+  return true;
+}
+
+ik_cmd_abort :: (c: [] IkCmdState) {
+  if c[0].h >= 0 {
+    _ = proc_kill(c[0].h, PROC_SIGKILL);
+    _ = proc_wait(c[0].h, 2000);
+    _ = proc_release(c[0].h);
+    c[0].h = -1;
+  }
+  c[0].stopped = true;
+  c[0].active = false;
+}
+
+// ---------------------------------------------------------------- local tool execution
+
+ik_journal_view :: (r: [] IkRun, target: string, model_output: string, found: bool) {
+  if r[0].journal.count == 0 { return; }
+  if !jf_intent(r[0].journal, AjKind.view_intent, target) { return; }
+  if model_output.count > 0 { _ = jf_output(r[0].journal, model_output); }
+  _ = jf_result(r[0].journal, ifx found then "{\"found\":true}" else "{\"found\":false}");
+}
+
+ik_exec_read :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_read(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, "", 1, "read_file error: invalid arguments (expected path, optional start_line/end_line).", true);
+    return ne;
+  }
+  // Duplicate read guard check.
+  cb: [512] u8; cn := ik_fmt_put(cb[..], 0, a.path); cn = ik_fmt_byte(cb[..], cn, ':');
+  cn = ik_fmt_int(cb[..], cn, a.start_line); cn = ik_fmt_byte(cb[..], cn, '-'); cn = ik_fmt_int(cb[..], cn, a.end_line);
+  dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_READ, cast(string) cb[0..<cn], r[0].l[0].step);
+  if dup > 0 {
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same read_file already succeeded at step ");
+    en = ik_fmt_int(eb[..], en, dup);
+    en = ik_fmt_put(eb[..], en, " with no changes since. Use the prior output, read a different line range, or answer directly.");
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, cast(string) eb[0..<en], true);
+    return ne;
+  }
+
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), ik_run_real_spill(r), a.path, true, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), ik_run_spill(r), a.path, true, pbuf[..]); }
+  if pn < 0 {
+    msg := "read_file error: path is outside the workspace.";
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  resolved := cast(string) pbuf[0..<pn];
+  rbuf: [4096] u8;
+  real_p := fs_realpath(resolved, rbuf[..]);
+  if real_p.count == 0 || fs_kind(real_p) != FS_FILE {
+    mb: [512] u8; mn := ik_fmt_put(mb[..], 0, "read_file error: file not found: "); mn = ik_fmt_put(mb[..], mn, a.path);
+    msg := cast(string) mb[0..<mn];
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  if !ik_path_under(ik_run_real_cwd(r), real_p) && !(r[0].nreal_spill > 0 && ik_path_under(ik_run_real_spill(r), real_p)) {
+    msg := "read_file error: symlink resolves outside the workspace.";
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  rn := fs_read_at(real_p, 0, b[0].file_buf[..]);
+  if rn < 0 {
+    msg := "read_file error: unable to read file.";
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  fn := ik_fmt_read(cast(string) b[0].file_buf[0..<rn], a.path, a.start_line, a.end_line, b[0].tool_out[..]);
+  shown := cast(string) b[0].tool_out[0..<fn];
+  ik_journal_view(r, a.path, shown, true);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 0, shown, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
+}
+
+ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_edit(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, "", 1, "edit_file error: invalid arguments (require path, non-empty old_string, new_string).", true);
+    return ne;
+  }
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
+  if pn < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: path is outside the workspace.", true);
+    return ne;
+  }
+  rbuf: [4096] u8;
+  real_p := fs_realpath(cast(string) pbuf[0..<pn], rbuf[..]);
+  if real_p.count == 0 || fs_kind(real_p) != FS_FILE || !ik_path_under(ik_run_real_cwd(r), real_p) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: file does not exist inside the workspace.", true);
+    return ne;
+  }
+  rn := fs_read(real_p, b[0].file_buf[..]);
+  if rn < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: file could not be read (or exceeds 512 KB).", true);
+    return ne;
+  }
+  er := ik_fmt_edit(cast(string) b[0].file_buf[0..<rn], a.path, a.old_str, a.new_str, a.replace_all, b[0].edit_buf[..], b[0].tool_out[..]);
+  msg := cast(string) b[0].tool_out[0..<er.msg_len];
+  if !er.ok {
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, msg, true);
+    return ne;
+  }
+  if !fs_write(real_p, cast(string) b[0].edit_buf[0..<er.new_len]) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 1, "edit_file error: failed writing updated file.", true);
+    return ne;
+  }
+  ik_guard_mutated(r[0].l[0].guard[..], true);
+  ik_journal_view(r, a.path, msg, true);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 0, msg, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
+}
+
+ik_exec_write :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_write(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, "", 1, "write_file error: invalid arguments (require path and content).", true);
+    return ne;
+  }
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
+  if pn < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 1, "write_file error: path is outside the workspace.", true);
+    return ne;
+  }
+  resolved := cast(string) pbuf[0..<pn];
+  parent := fs_dir(resolved);
+  if !fs_mkdir_all(parent) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 1, "write_file error: could not create parent directory.", true);
+    return ne;
+  }
+  prbuf: [4096] u8;
+  real_parent := fs_realpath(parent, prbuf[..]);
+  if real_parent.count == 0 || !ik_path_under(ik_run_real_cwd(r), real_parent) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 1, "write_file error: parent directory resolves outside the workspace.", true);
+    return ne;
+  }
+  if fs_exists(resolved) {
+    frbuf: [4096] u8;
+    real_f := fs_realpath(resolved, frbuf[..]);
+    if real_f.count == 0 || !ik_path_under(ik_run_real_cwd(r), real_f) {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 1, "write_file error: target symlink resolves outside the workspace.", true);
+      return ne;
+    }
+  }
+  if !fs_write(resolved, a.content) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 1, "write_file error: failed writing file.", true);
+    return ne;
+  }
+  ik_guard_mutated(r[0].l[0].guard[..], true);
+  hb: [8] u8; _ = ik_hash8(a.content, hb[..]);
+  n := ik_fmt_put(b[0].tool_out[..], 0, "Wrote ");
+  n = ik_fmt_put(b[0].tool_out[..], n, a.path);
+  n = ik_fmt_put(b[0].tool_out[..], n, " (");
+  n = ik_fmt_int(b[0].tool_out[..], n, ik_fmt_count_lines(a.content));
+  n = ik_fmt_put(b[0].tool_out[..], n, " lines, ");
+  n = ik_fmt_int(b[0].tool_out[..], n, a.content.count);
+  n = ik_fmt_put(b[0].tool_out[..], n, " bytes, hash=");
+  n = ik_fmt_put(b[0].tool_out[..], n, cast(string) hb[..]);
+  n = ik_fmt_put(b[0].tool_out[..], n, ")");
+  msg := cast(string) b[0].tool_out[0..<n];
+  ik_journal_view(r, a.path, msg, true);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 0, msg, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
+}
+
+ik_list_walk :: (dir: string, rel: string, depth: int, max_depth: int, b: [] IkRunBufs, out_n: [] int, entries: [] int, omitted: [] int) {
+  k := fs_list(dir, b[0].fs_list[..]);
+  if k <= 0 { return; }
+  // Copy names for recursion if depth < max_depth (only up to 64 subdirs per level).
+  sub_offs: [64] int; sub_lens: [64] int; sub_buf: [4096] u8; nsub_buf := 0; nsubs := 0;
+  for i: 0..<k {
+    name := fs_entry(b[0].fs_list[..], i);
+    if name == ".git" { continue; }
+    if entries[0] >= IK_LIST_MAX || out_n[0] >= IK_LIST_BYTES - 128 {
+      omitted[0] += 1;
+      continue;
+    }
+    pbuf: [4096] u8;
+    full := fs_join(dir, name, pbuf[..]);
+    fk := fs_kind(full);
+    n := out_n[0];
+    for d: 0..<depth { n = ik_fmt_put(b[0].tool_out[..], n, "  "); }
+    n = ik_fmt_put(b[0].tool_out[..], n, name);
+    if fk == FS_DIR {
+      n = ik_fmt_put(b[0].tool_out[..], n, "/\n");
+      if depth + 1 < max_depth && nsubs < 64 && nsub_buf + name.count <= sub_buf.count {
+        sub_offs[nsubs] = nsub_buf; sub_lens[nsubs] = name.count;
+        for c, ci: name { sub_buf[nsub_buf + ci] = c; }
+        nsub_buf += name.count; nsubs += 1;
+      }
+    } else {
+      sz := fs_size(full);
+      sb: [32] u8; sn := ik_fmt_size(ifx sz > 0 then sz else 0, sb[..]);
+      n = ik_fmt_put(b[0].tool_out[..], n, " (");
+      n = ik_fmt_put(b[0].tool_out[..], n, cast(string) sb[0..<sn]);
+      n = ik_fmt_put(b[0].tool_out[..], n, ")\n");
+    }
+    out_n[0] = n;
+    entries[0] += 1;
+  }
+  for si: 0..<nsubs {
+    if entries[0] >= IK_LIST_MAX || out_n[0] >= IK_LIST_BYTES - 128 { break; }
+    sname := cast(string) sub_buf[sub_offs[si]..<sub_offs[si] + sub_lens[si]];
+    nb: [4096] u8;
+    sub_dir := fs_join(dir, sname, nb[..]);
+    ik_list_walk(sub_dir, sname, depth + 1, max_depth, b, out_n, entries, omitted);
+  }
+}
+
+ik_exec_list :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_list(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, "", 1, "list_dir error: invalid arguments.", true);
+    return ne;
+  }
+  cb: [512] u8; cn := ik_fmt_put(cb[..], 0, a.path); cn = ik_fmt_byte(cb[..], cn, ':'); cn = ik_fmt_int(cb[..], cn, a.depth);
+  dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_LIST, cast(string) cb[0..<cn], r[0].l[0].step);
+  if dup > 0 {
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same list_dir already succeeded at step ");
+    en = ik_fmt_int(eb[..], en, dup);
+    en = ik_fmt_put(eb[..], en, " with no changes since. Use the prior listing or inspect a specific path.");
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, a.path, 1, cast(string) eb[0..<en], true);
+    return ne;
+  }
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
+  if pn < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, a.path, 1, "list_dir error: path is outside the workspace.", true);
+    return ne;
+  }
+  rbuf: [4096] u8;
+  real_p := fs_realpath(cast(string) pbuf[0..<pn], rbuf[..]);
+  if real_p.count == 0 || fs_kind(real_p) != FS_DIR || !ik_path_under(ik_run_real_cwd(r), real_p) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, a.path, 1, "list_dir error: directory not found inside the workspace.", true);
+    return ne;
+  }
+  out_n := [1] int.[0];
+  entries := [1] int.[0];
+  omitted := [1] int.[0];
+  ik_list_walk(real_p, a.path, 0, a.depth, b, out_n[..], entries[..], omitted[..]);
+  n := out_n[0];
+  if entries[0] == 0 { n = ik_fmt_put(b[0].tool_out[..], 0, "(empty directory)"); }
+  else if omitted[0] > 0 {
+    n = ik_fmt_put(b[0].tool_out[..], n, "[");
+    n = ik_fmt_int(b[0].tool_out[..], n, omitted[0]);
+    n = ik_fmt_put(b[0].tool_out[..], n, " more entries omitted; pass a subdirectory path]");
+  }
+  shown := cast(string) b[0].tool_out[0..<n];
+  ik_journal_view(r, a.path, shown, true);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, a.path, 0, shown, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
+}
+
+ik_cwd_is_git :: (cwd: string) -> bool {
+  cur := cwd;
+  gb: [4096] u8;
+  for step: 0..<16 {
+    gp := fs_join(cur, ".git", gb[..]);
+    if gp.count > 0 && fs_exists(gp) { return true; }
+    up := fs_dir(cur);
+    if up.count == 0 || up == cur || up == "." { break; }
+    cur = up;
+  }
+  return false;
+}
+
+ik_exec_grep :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_grep(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, "", 1, "grep error: invalid arguments (require non-empty pattern).", true);
+    return ne;
+  }
+  // Duplicate grep guard check.
+  cb: [1024] u8; cn := ik_fmt_put(cb[..], 0, a.pattern); cn = ik_fmt_byte(cb[..], cn, '|');
+  cn = ik_fmt_put(cb[..], cn, a.path); cn = ik_fmt_byte(cb[..], cn, '|'); cn = ik_fmt_put(cb[..], cn, a.glob);
+  dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_GREP, cast(string) cb[0..<cn], r[0].l[0].step);
+  if dup > 0 {
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same grep already succeeded at step ");
+    en = ik_fmt_int(eb[..], en, dup);
+    en = ik_fmt_put(eb[..], en, " with no changes since. Try a different pattern/path or answer directly.");
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, 1, cast(string) eb[0..<en], true);
+    return ne;
+  }
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
+  if pn < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.path, 1, "grep error: path is outside the workspace.", true);
+    return ne;
+  }
+  rbuf: [4096] u8;
+  real_p := fs_realpath(cast(string) pbuf[0..<pn], rbuf[..]);
+  if real_p.count == 0 || !ik_path_under(ik_run_real_cwd(r), real_p) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.path, 1, "grep error: search path not found inside the workspace.", true);
+    return ne;
+  }
+
+  use_git := ik_cwd_is_git(ik_run_cwd(r));
+  ph := proc_new();
+  if ph < 0 {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, 1, "grep error: no process slot free.", true);
+    return ne;
+  }
+  ok := true;
+  if use_git {
+    ok = proc_arg(ph, "git") && proc_arg(ph, "grep") && proc_arg(ph, "-n") && proc_arg(ph, "-I") && proc_arg(ph, "--no-color");
+    if a.fixed_strings { ok = ok && proc_arg(ph, "-F"); }
+    else { ok = ok && proc_arg(ph, "-E"); }
+    ok = ok && proc_arg(ph, "-e") && proc_arg(ph, a.pattern) && proc_arg(ph, "--");
+    if a.glob.count > 0 {
+      gb2: [512] u8; gn := ik_fmt_put(gb2[..], 0, ":(glob)");
+      if a.path != "." && a.path.count > 0 {
+        gn = ik_fmt_put(gb2[..], gn, a.path);
+        if gb2[gn - 1] != '/' { gn = ik_fmt_byte(gb2[..], gn, '/'); }
+      }
+      gn = ik_fmt_put(gb2[..], gn, "**/" );
+      gn = ik_fmt_put(gb2[..], gn, a.glob);
+      ok = ok && proc_arg(ph, cast(string) gb2[0..<gn]);
+    } else {
+      ok = ok && proc_arg(ph, a.path);
+    }
+  } else {
+    ok = proc_arg(ph, "grep") && proc_arg(ph, "-rnI") && proc_arg(ph, "--exclude-dir=.git") && proc_arg(ph, "--exclude-dir=node_modules") && proc_arg(ph, "--exclude-dir=build") && proc_arg(ph, "--exclude-dir=target");
+    if a.fixed_strings { ok = ok && proc_arg(ph, "-F"); }
+    else { ok = ok && proc_arg(ph, "-E"); }
+    if a.glob.count > 0 {
+      inc: [256] u8; in_n := ik_fmt_put(inc[..], 0, "--include="); in_n = ik_fmt_put(inc[..], in_n, a.glob);
+      ok = ok && proc_arg(ph, cast(string) inc[0..<in_n]);
+    }
+    ok = ok && proc_arg(ph, "-e") && proc_arg(ph, a.pattern) && proc_arg(ph, "--") && proc_arg(ph, a.path);
+  }
+  ok = ok && proc_cwd(ph, ik_run_cwd(r));
+  if !ok || proc_start(ph) != 0 {
+    _ = proc_release(ph);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, 1, "grep error: could not start grep.", true);
+    return ne;
+  }
+  _ = proc_close_stdin(ph);
+  deadline := proc_now_ms() + 15000;
+  lbuf: [4096] u8;
+  out_n := 0;
+  shown := 0;
+  omitted := 0;
+  while true {
+    left := deadline - proc_now_ms();
+    if left <= 0 { _ = proc_kill(ph, PROC_SIGKILL); break; }
+    ln := proc_line(ph, left, lbuf[..]);
+    if ln == PROC_EOF || ln == PROC_ERROR || ln == PROC_TIMEOUT { break; }
+    if ln == PROC_TOO_LONG { omitted += 1; continue; }
+    if shown >= a.max_results || out_n + ln + 2 > IK_GREP_BYTES - 128 {
+      omitted += 1;
+      continue;
+    }
+    line_s := cast(string) lbuf[0..<ln];
+    if line_s.count > 300 { line_s = cast(string) line_s[0..<300]; }
+    out_n = ik_fmt_put(b[0].tool_out[..], out_n, line_s);
+    out_n = ik_fmt_byte(b[0].tool_out[..], out_n, '\n');
+    shown += 1;
+  }
+  err_b: [512] u8;
+  status := proc_wait(ph, 2000);
+  if status == PROC_RUNNING { _ = proc_kill(ph, PROC_SIGKILL); status = proc_wait(ph, 2000); }
+  err_s := proc_stderr(ph, err_b[..]);
+  _ = proc_release(ph);
+
+  if status >= 2 && shown == 0 {
+    en := ik_fmt_put(b[0].tool_out[..], 0, "grep error: ");
+    en = ik_fmt_put(b[0].tool_out[..], en, ifx err_s.count > 0 then err_s else "invalid regex or search failure");
+    msg := cast(string) b[0].tool_out[0..<en];
+    ik_journal_view(r, a.pattern, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, status, msg, true);
+    return ne;
+  }
+  if shown == 0 {
+    out_n = ik_fmt_put(b[0].tool_out[..], 0, "(no matches)");
+  } else if omitted > 0 {
+    out_n = ik_fmt_put(b[0].tool_out[..], out_n, "[");
+    out_n = ik_fmt_int(b[0].tool_out[..], out_n, omitted);
+    out_n = ik_fmt_put(b[0].tool_out[..], out_n, " more matches omitted; narrow path or pattern]");
+  }
+  res_s := cast(string) b[0].tool_out[0..<out_n];
+  ik_journal_view(r, a.pattern, res_s, shown > 0);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, 0, res_s, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = shown > 0});
+}
+
+ik_exec_todos :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  if !ik_admit_todos(args_json) {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_TODOS, "", 1, "update_todos error: invalid todos array.", true);
+    return ne;
+  }
+  arr := cl_raw(args_json, "todos");
+  cnt := cl_count(arr);
+  mb: [64] u8; mn := ik_fmt_put(mb[..], 0, "Updated "); mn = ik_fmt_int(mb[..], mn, cnt); mn = ik_fmt_put(mb[..], mn, " todos.");
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_TODOS, "", 0, cast(string) mb[0..<mn], false);
+  tlen := ik_loop_copy(b[0].ev_text[..], arr);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_TODOS, text = cast(string) b[0].ev_text[0..<tlen]});
+}
+
+// ---------------------------------------------------------------- main poll loop
+
+ik_drain_steers :: (r: [] IkRun, h: [] IkHistory) {
+  if r[0].steers.count == 0 { return; }
+  while r[0].steers[0].n > 0 {
+    txt := mc_steer_text(r[0].steers, 0);
+    if !ik_hist_steer(h, txt) { break; }
+    if !mc_steer_take(r[0].steers, r[0].l[0].step + 1) { break; }
+  }
+}
+
+ik_start_model_call :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent, ne: int) -> int {
+  ik_drain_steers(r, h);
+  why: [1] string;
+  body := ik_loop_prepare_req(r[0].l[..], h, b[0].hist_tmp[..], r[0].g, ik_run_model(r), ik_run_effort(r), r[0].det_mode, b[0].req_body[..], why[..]);
+  if body.count == 0 {
+    _ = ik_loop_end(r[0].l[..], IK_END_FAILED, ifx why[0].count > 0 then why[0] else "failed to encode model request");
+    r[0].active = false; r[0].ended = true;
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+  }
+  if r[0].journal.count > 0 {
+    meta: [256] u8; mn := ik_fmt_put(meta[..], 0, "psionic/"); mn = ik_fmt_put(meta[..], mn, ik_run_model(r));
+    if !jf_request(r[0].journal, body, cast(string) meta[0..<mn]) || !jf_begin(r[0].journal, AjKind.model_intent) {
+      _ = ik_loop_end(r[0].l[..], IK_END_FAILED, "durable request journal failed");
+      r[0].active = false; r[0].ended = true;
+      return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+    }
+  }
+  none: [1] string;
+  err := gw_call_start(r[0].call[..], r[0].g, body, none[0..<0]);
+  if err.count > 0 {
+    if r[0].journal.count > 0 { _ = jf_model_end(r[0].journal, "start_failed"); }
+    _ = ik_loop_end(r[0].l[..], IK_END_NO_CAPACITY, err);
+    r[0].active = false; r[0].ended = true;
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+  }
+  r[0].calling = true;
+  r[0].req_start_ms = proc_now_ms();
+  r[0].first_ms = -1;
+  r[0].attempt_status = 0;
+  return ne;
+}
+
+ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent, ne: int) -> int {
+  c := r[0].cmd[..];
+  ik_cmd_spill_flush(c, b);
+  // Linearize ring tail into contiguous slice.
+  tail_lin: [IK_CMD_TAIL] u8;
+  tstart := ifx c[0].nt == IK_CMD_TAIL then c[0].tail_at else 0;
+  for i: 0..<c[0].nt { tail_lin[i] = b[0].cmd_tail[(tstart + i) % IK_CMD_TAIL]; }
+  head_s := cast(string) b[0].cmd_head[0..<c[0].nh];
+  tail_s := cast(string) tail_lin[0..<c[0].nt];
+  sp_s := ifx !c[0].spill_failed && c[0].spill_written > 0 then cast(string) c[0].spill_path[0..<c[0].nspill] else "";
+
+  fn := ik_fmt_cmd_output(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, b[0].tool_out[..]);
+  shown := cast(string) b[0].tool_out[0..<fn];
+  cmd_s := cast(string) c[0].cmd[0..<c[0].ncmd];
+  is_err := c[0].timed_out || c[0].exit != 0;
+
+  if r[0].journal.count > 0 && r[0].journal[0].flow.phase == AfPhase.command {
+    if shown.count > 0 { _ = jf_output(r[0].journal, shown); }
+    mb: [64] u8; mn := json_raw(mb[..], 0, "{\"exit\":"); mn = json_write_int(mb[..], mn, c[0].exit);
+    mn = json_raw(mb[..], mn, ifx c[0].timed_out then ",\"timed_out\":true}" else ",\"timed_out\":false}");
+    _ = jf_result(r[0].journal, cast(string) mb[0..<mn]);
+  }
+
+  ik_guard_record_cmd(r[0].l[0].guard[..], cmd_s, c[0].is_check, c[0].exit, r[0].l[0].step);
+  if !c[0].is_check && !c[0].is_search && !is_err {
+    ik_guard_mutated(r[0].l[0].guard[..], false);
+  }
+
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, cmd_s, c[0].exit, shown, is_err);
+
+  clen := ik_loop_copy(b[0].ev_text[..], cmd_s);
+  olen := ik_loop_copy(b[0].ev_out[..], shown);
+  c[0].active = false;
+  return ik_put_ev(out, ne, IkRunEvent.{
+    kind = IK_EV_COMMAND,
+    text = cast(string) b[0].ev_text[0..<clen],
+    output = cast(string) b[0].ev_out[0..<olen],
+    exit = c[0].exit,
+    timed_out = c[0].timed_out,
+  });
+}
+
+ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent, ne: int) -> int {
+  tc := ik_loop_next_tool(r[0].l[..]);
+  if tc.call_id.count == 0 { return ne; }
+  kind := ik_tool_kind(tc.name);
+  if kind == IK_TK_NONE {
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Unknown tool: "); en = ik_fmt_put(eb[..], en, tc.name);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_NONE, tc.name, 1, cast(string) eb[0..<en], true);
+    return ne;
+  }
+  admit := ik_tool_admit(kind, ik_loop_profile(r[0].l[..]), r[0].ceiling, r[0].gated, r[0].edits_free);
+  if admit == IK_ADMIT_DENY {
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Tool denied by sandbox profile or effect ceiling: ");
+    en = ik_fmt_put(eb[..], en, tc.name);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, tc.name, 126, cast(string) eb[0..<en], true);
+    return ne;
+  }
+  if kind == IK_TK_READ { return ik_exec_read(r, h, b, tc.input_json, out, ne); }
+  if kind == IK_TK_GREP { return ik_exec_grep(r, h, b, tc.input_json, out, ne); }
+  if kind == IK_TK_LIST { return ik_exec_list(r, h, b, tc.input_json, out, ne); }
+  if kind == IK_TK_TODOS { return ik_exec_todos(r, h, b, tc.input_json, out, ne); }
+
+  // Gated write or command: check args/guards first before asking user!
+  if kind == IK_TK_CMD {
+    ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+    a := ik_admit_cmd(ar[..], tc.input_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, "", 1, "run_command error: invalid arguments (require non-empty command).", true);
+      return ne;
+    }
+    is_chk := mc_cmd_kind(a.command) == MC_CMD_CHECK;
+    dup := ik_guard_check_cmd(r[0].l[0].guard[..], a.command, is_chk);
+    if dup > 0 {
+      eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Check already passed (exit 0) at step ");
+      en = ik_fmt_int(eb[..], en, dup);
+      en = ik_fmt_put(eb[..], en, " with no edits since. Proceed to your final answer.");
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 0, cast(string) eb[0..<en], true);
+      return ne;
+    }
+    if admit == IK_ADMIT_ASK {
+      r[0].asking = true;
+      r[0].ask_ticket += 1;
+      r[0].ask_kind = IK_TK_CMD;
+      clen := ik_loop_copy(b[0].ev_text[..], a.command);
+      return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ASK, ticket = r[0].ask_ticket, text = cast(string) b[0].ev_text[0..<clen]});
+    }
+    ik_cmd_begin(r, b, a.command, a.timeout_s);
+    if !r[0].cmd[0].active || r[0].cmd[0].h < 0 { return ik_finish_cmd(r, h, b, out, ne); }
+    return ne;
+  }
+
+  // IK_TK_EDIT or IK_TK_WRITE
+  if admit == IK_ADMIT_ASK {
+    ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+    p := cl_str(ar[..], tc.input_json, "path");
+    r[0].asking = true;
+    r[0].ask_ticket += 1;
+    r[0].ask_kind = kind;
+    ab: [512] u8; an := ik_fmt_put(ab[..], 0, tc.name); an = ik_fmt_byte(ab[..], an, ' '); an = ik_fmt_put(ab[..], an, p);
+    clen := ik_loop_copy(b[0].ev_text[..], cast(string) ab[0..<an]);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ASK, ticket = r[0].ask_ticket, text = cast(string) b[0].ev_text[0..<clen]});
+  }
+  if kind == IK_TK_EDIT { return ik_exec_edit(r, h, b, tc.input_json, out, ne); }
+  return ik_exec_write(r, h, b, tc.input_json, out, ne);
+}
+
+// Delivers the owner's MWW_ANSWER to a pending MWW_ASK approval gate.
+ik_run_answer :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, ticket: int, allow: bool, why: string, out: [] IkRunEvent) -> int {
+  if !r[0].active || !r[0].asking || ticket != r[0].ask_ticket { return 0; }
+  r[0].asking = false;
+  kind := r[0].ask_kind;
+  r[0].ask_kind = IK_TK_NONE;
+  tc := ik_loop_next_tool(r[0].l[..]);
+  if !allow {
+    eb: [512] u8; en := ik_fmt_put(eb[..], 0, "Denied by user: ");
+    en = ik_fmt_put(eb[..], en, ifx why.count > 0 then why else "refused");
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], kind, tc.name, 126, cast(string) eb[0..<en], true);
+    return 0;
+  }
+  if kind == IK_TK_CMD {
+    ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+    a := ik_admit_cmd(ar[..], tc.input_json);
+    if !a.ok {
+      _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, "", 1, "run_command error: invalid arguments.", true);
+      return 0;
+    }
+    ik_cmd_begin(r, b, a.command, a.timeout_s);
+    if !r[0].cmd[0].active || r[0].cmd[0].h < 0 { return ik_finish_cmd(r, h, b, out, 0); }
+    return 0;
+  }
+  if kind == IK_TK_EDIT { return ik_exec_edit(r, h, b, tc.input_json, out, 0); }
+  if kind == IK_TK_WRITE { return ik_exec_write(r, h, b, tc.input_json, out, 0); }
+  return 0;
+}
+
+// Non-blocking poll of the active Inky turn; returns emitted IkRunEvents count.
+ik_run_poll :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEvent) -> int {
+  if !r[0].active || r[0].ended { return 0; }
+  if r[0].asking { return 0; }
+  ne := 0;
+
+  // 1. Active async command?
+  if r[0].cmd[0].active {
+    if ik_cmd_poll(r[0].cmd[..], b) {
+      ne = ik_finish_cmd(r, h, b, out, ne);
+    }
+    return ne;
+  }
+
+  // 2. Active streaming model call?
+  if r[0].calling {
+    gevs: [16] GwEvent;
+    ng := gw_call_poll(r[0].call[..], gevs[..]);
+    now := proc_now_ms();
+    for i: 0..<ng {
+      ev := gevs[i];
+      if r[0].first_ms < 0 && (ev.kind == GW_EV_TEXT || ev.kind == GW_EV_REASONING || ev.kind == GW_EV_TOOL) {
+        r[0].first_ms = now - r[0].req_start_ms;
+      }
+      if ev.kind == GW_EV_REFUSED { r[0].attempt_status = ev.status; }
+      if ev.kind == GW_EV_DONE { r[0].attempt_status = 200; }
+      fr := ik_loop_event(r[0].l[..], ev);
+      if fr.emit_thought {
+        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_THOUGHT, text = ik_loop_think(r[0].l[..])});
+      }
+      if fr.emit_reply {
+        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_REPLY, text = fr.reply_delta});
+      }
+    }
+    if r[0].call[0].finished {
+      r[0].calling = false;
+      clean := r[0].call[0].complete;
+      total_ms := proc_now_ms() - r[0].req_start_ms;
+      ttft := ifx r[0].first_ms >= 0 then r[0].first_ms else -1;
+      dec := ifx r[0].first_ms >= 0 && total_ms > r[0].first_ms then total_ms - r[0].first_ms else total_ms;
+      u := r[0].l[0].last_usage;
+      if r[0].journal.count > 0 && r[0].journal[0].flow.phase == AfPhase.model {
+        rep := ik_loop_reply(r[0].l[..]);
+        if rep.count > 0 { _ = jf_reply(r[0].journal, rep); }
+        _ = jf_model_end(r[0].journal, ifx clean then "done" else "refused");
+      }
+      ne = ik_put_ev(out, ne, IkRunEvent.{
+        kind = IK_EV_ATTEMPT,
+        gateway = r[0].g.name,
+        model = ik_run_model(r),
+        effort = ik_run_effort(r),
+        outcome = ifx clean && !r[0].l[0].refused then "done" else "refused",
+        status = ifx clean && !r[0].l[0].refused then 200 else r[0].attempt_status,
+        usage = u,
+        ttft_ms = ttft,
+        decode_ms = dec,
+        output_tokens = u.output_tokens,
+      });
+      has_steers := r[0].steers.count > 0 && r[0].steers[0].n > 0;
+      next_ph := ik_loop_stream_end(r[0].l[..], h, b[0].hist_tmp[..], clean, has_steers);
+      if next_ph == IK_PH_ENDED {
+        r[0].active = false; r[0].ended = true;
+        if r[0].journal.count > 0 { _ = jf_stop(r[0].journal, ik_ending_name(r[0].l[0].ending)); }
+        ne = ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+      }
+    }
+    return ne;
+  }
+
+  // 3. Pending tool calls? Execute one per poll so worker stays responsive to stdin.
+  if r[0].l[0].phase == IK_PH_TOOLS {
+    return ik_dispatch_next_tool(r, h, b, out, ne);
+  }
+
+  // 4. Ready to start next model call!
+  if r[0].l[0].phase == IK_PH_MODEL {
+    return ik_start_model_call(r, h, b, out, ne);
+  }
+
+  return ne;
+}
+
+ik_run_stop :: (r: [] IkRun, out: [] IkRunEvent) -> int {
+  if !r[0].active { return 0; }
+  if r[0].calling { gw_call_close(r[0].call[..]); r[0].calling = false; }
+  if r[0].cmd[0].active { ik_cmd_abort(r[0].cmd[..]); }
+  r[0].asking = false;
+  r[0].active = false;
+  r[0].ended = true;
+  _ = ik_loop_stop(r[0].l[..]);
+  if r[0].journal.count > 0 { _ = jf_stop(r[0].journal, "stopped"); }
+  return ik_put_ev(out, 0, IkRunEvent.{kind = IK_EV_ENDED, ending = IK_END_STOPPED, text = "stopped"});
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky run: event buffer helper bounds and spill head/tail accounting" {
+  ev: [2] IkRunEvent;
+  #assert ik_put_ev(ev[..], 0, IkRunEvent.{kind = IK_EV_REPLY, text = "hi"}) == 1;
+  #assert ik_put_ev(ev[..], 1, IkRunEvent.{kind = IK_EV_THOUGHT, text = "t"}) == 2;
+  #assert ik_put_ev(ev[..], 2, IkRunEvent.{kind = IK_EV_ENDED}) == 2;
+  #assert ev[0].kind == IK_EV_REPLY && ev[1].kind == IK_EV_THOUGHT;
+}

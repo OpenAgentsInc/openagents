@@ -1,0 +1,148 @@
+// End-to-end filesystem & process smoke test for Inky's 7 native tools,
+// confinement, spill readback, and guardrails in an isolated temporary directory.
+//
+// Run: coax/web/tool.sh coax/lib/inky/selftest.coax
+
+#import "Basic";
+#load "../sys/tool.coax";
+#load "run.coax";
+
+ik_st_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if cast(string) hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+ik_st_run_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, step: int, cid: string, name: string, args: string, evs: [] IkRunEvent) -> int {
+  r[0].l[0].step = step;
+  gwt_step_begin(r[0].l[0].tstep[..]);
+  _ = gwt_step_feed(r[0].l[0].tstep[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = cid, text = name, reason = args});
+  _ = gwt_step_feed(r[0].l[0].tstep[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  _ = gwt_step_end(r[0].l[0].tstep[..], true);
+  calls := [1] GwToolCall.[gwt_step_call(r[0].l[0].tstep[..], 0)];
+  _ = ik_hist_assistant(h, step, "", "", calls[..]);
+  r[0].l[0].tool_idx = 0;
+  r[0].l[0].phase = IK_PH_TOOLS;
+
+  ne := ik_dispatch_next_tool(r, h, b, evs, 0);
+  while r[0].cmd[0].active {
+    if ik_cmd_poll(r[0].cmd[..], b) {
+      ne = ik_finish_cmd(r, h, b, evs, ne);
+    } else {
+      proc_sleep(5);
+    }
+  }
+  return ne;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  tmp_b: [512] u8;
+  dir := fs_temp("inky-selftest-", tmp_b[..]);
+  if dir.count == 0 { tool_errln("FAIL: fs_temp failed"); return 1; }
+  defer { _ = fs_remove(dir); }
+
+  spill_b: [512] u8;
+  spill := fs_join(dir, ".spill", spill_b[..]);
+  ws_b: [512] u8;
+  ws := fs_join(dir, "repo", ws_b[..]);
+  if !fs_mkdir_all(ws) || !fs_mkdir_all(spill) { tool_errln("FAIL: mkdir failed"); return 1; }
+
+  // Initialize a git repo inside ws so git grep path is exercised.
+  git_init := [3] string.["git", "init", ws];
+  go_out: [4096] u8; go_err: [4096] u8;
+  _ = proc_run(git_init[..], 10000, go_out[..], go_err[..]);
+
+  r: [1] IkRun;
+  b: [1] IkRunBufs;
+  h: [1] IkHistory;
+  ik_hist_init(h[..]);
+  evs: [8] IkRunEvent;
+
+  r[0].nspill_dir = ik_loop_copy(r[0].spill_dir[..], spill);
+  ne := ik_run_start(r[..], h[..], b[..], ws, "http://127.0.0.1:18795", "inkling-2-mini", "medium", "workspace-write", 3, false, true, 30, 32768, true, "macOS", "selftest", evs[..]);
+  if ne != 0 { tool_errln("FAIL: ik_run_start failed"); return 1; }
+
+  // 1. write_file creates parent dirs and file
+  ne = ik_st_run_tool(r[..], h[..], b[..], 1, "c1", "write_file", "{\"path\":\"src/app.txt\",\"content\":\"alpha\\nbeta\\ngamma\\nMC_SYSTEM_LINE\\ndelta\\n\"}", evs[..]);
+  o1 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o1, "Wrote src/app.txt") { tool_errln("FAIL: write_file"); return 1; }
+
+  // Stage in git so git grep sees it.
+  git_add := [5] string.["git", "-C", ws, "add", "."];
+  _ = proc_run(git_add[..], 10000, go_out[..], go_err[..]);
+
+  // 2. read_file head-only range with continuation cursor
+  ne = ik_st_run_tool(r[..], h[..], b[..], 2, "c2", "read_file", "{\"path\":\"src/app.txt\",\"start_line\":1,\"end_line\":3}", evs[..]);
+  o2 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o2, "1\talpha") || !ik_st_has(o2, "start_line=4") { tool_errln("FAIL: read_file range"); return 1; }
+
+  // 3. Duplicate read interception: 2nd allowed, 3rd blocked with is_error=true
+  ne = ik_st_run_tool(r[..], h[..], b[..], 3, "c3", "read_file", "{\"path\":\"src/app.txt\",\"start_line\":1,\"end_line\":3}", evs[..]);
+  if h[0].msgs[h[0].n - 1].is_error { tool_errln("FAIL: 2nd read should be allowed"); return 1; }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 4, "c4", "read_file", "{\"path\":\"src/app.txt\",\"start_line\":1,\"end_line\":3}", evs[..]);
+  o4 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o4, "Duplicate call") { tool_errln("FAIL: 3rd read must short-circuit"); return 1; }
+
+  // 4. Path traversal rejected
+  ne = ik_st_run_tool(r[..], h[..], b[..], 5, "c5", "read_file", "{\"path\":\"../../etc/passwd\"}", evs[..]);
+  if !h[0].msgs[h[0].n - 1].is_error { tool_errln("FAIL: traversal must be rejected"); return 1; }
+
+  // 5. list_dir skips .git and lists src/
+  ne = ik_st_run_tool(r[..], h[..], b[..], 6, "c6", "list_dir", "{\"path\":\".\",\"depth\":2}", evs[..]);
+  o6 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o6, "src/") || !ik_st_has(o6, "app.txt") || ik_st_has(o6, ".git") { tool_errln("FAIL: list_dir"); return 1; }
+
+  // 6. grep finds MC_SYSTEM_LINE
+  ne = ik_st_run_tool(r[..], h[..], b[..], 7, "c7", "grep", "{\"pattern\":\"MC_SYSTEM_LINE\"}", evs[..]);
+  o7 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o7, "src/app.txt:4:MC_SYSTEM_LINE") { tool_errln("FAIL: grep"); return 1; }
+
+  // 7. edit_file nearest-line error on miss, then clean apply on hit
+  ne = ik_st_run_tool(r[..], h[..], b[..], 8, "c8", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"MC_SYSTEM_LINE_TYPO\",\"new_string\":\"X\"}", evs[..]);
+  o8 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o8, "not found") { tool_errln("FAIL: edit_file miss"); return 1; }
+
+  ne = ik_st_run_tool(r[..], h[..], b[..], 9, "c9", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"beta\",\"new_string\":\"BETA_UPDATED\"}", evs[..]);
+  o9 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o9, "+ BETA_UPDATED") { tool_errln("FAIL: edit_file hit"); return 1; }
+
+  // 8. run_command >16 KB spills to spill_dir and read_file can inspect spill file
+  ne = ik_st_run_tool(r[..], h[..], b[..], 10, "c10", "run_command", "{\"command\":\"python3 -c 'for i in range(1, 1201): print(f\\\"row_{i:04d}_payload_0123456789\\\")'\"}", evs[..]);
+  o10 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o10, "row_0001") || !ik_st_has(o10, "row_1200") || !ik_st_has(o10, "Full output saved to") {
+    tool_errln("FAIL: run_command spill"); return 1;
+  }
+  // Also verify MWW_COMMAND event carried exact same bytes shown to model!
+  if ne != 1 || evs[0].kind != IK_EV_COMMAND || evs[0].output != o10 {
+    tool_errln("FAIL: run_command event/model output mismatch"); return 1;
+  }
+
+  // Read back the spill file via read_file (lines 600-605):
+  sp_path: [512] u8; sp_n := ik_fmt_put(sp_path[..], 0, spill);
+  sp_n = ik_fmt_put(sp_path[..], sp_n, "/1-10-0.txt");
+  req_j: [1024] u8; rjn := json_raw(req_j[..], 0, "{\"path\":"); rjn = json_write_string(req_j[..], rjn, cast(string) sp_path[0..<sp_n]);
+  rjn = json_raw(req_j[..], rjn, ",\"start_line\":600,\"end_line\":605}");
+  ne = ik_st_run_tool(r[..], h[..], b[..], 11, "c11", "read_file", cast(string) req_j[0..<rjn], evs[..]);
+  o11 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o11, "600\trow_0600_payload") {
+    tool_errln("FAIL: spill readback"); return 1;
+  }
+
+  // 9. update_todos emits IK_EV_TODOS
+  ne = ik_st_run_tool(r[..], h[..], b[..], 12, "c12", "update_todos", "{\"todos\":[{\"id\":\"1\",\"content\":\"ship inky\",\"status\":\"in_progress\"}]}", evs[..]);
+  if h[0].msgs[h[0].n - 1].is_error || ne != 1 || evs[0].kind != IK_EV_TODOS {
+    tool_errln("FAIL: update_todos"); return 1;
+  }
+
+  // 10. Verify entire accumulated history passes gateway gwt_history_valid
+  gmsgs: [IK_MAX_MSGS] GwMessage; gcalls: [IK_MAX_CALLS] GwToolCall;
+  nm := ik_hist_messages(h[..], gmsgs[..], gcalls[..]);
+  if nm <= 0 || !gwt_history_valid(gmsgs[0..<nm]) {
+    tool_errln("FAIL: gwt_history_valid failed on selftest history"); return 1;
+  }
+
+  print("inky selftest: ok (10 checks passed, % messages valid)\n", nm);
+  return 0;
+}

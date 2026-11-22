@@ -1,0 +1,487 @@
+// Inky tool authority: path confinement, sandbox/ceiling/gating admission,
+// strict argument validation, and 8-hex content digest (docs/coder/inky-spec.md §5).
+// Pure, I/O-free, zero heap allocation.
+//
+// Checks: coax/bin/coax test coax/lib/inky/tools.coax --library
+// Mutate: coax/bin/coax mutate coax/lib/inky/tools.coax --root-only
+
+#load "protocol.coax";
+#authority;
+
+IK_ADMIT_DENY :: 0;
+IK_ADMIT_RUN :: 1;
+IK_ADMIT_ASK :: 2;
+
+IK_CMD_DEFAULT_S :: 120;
+IK_CMD_MAX_S :: 300;
+IK_GREP_DEFAULT_MAX :: 50;
+IK_GREP_MAX :: 200;
+IK_LIST_MAX_DEPTH :: 3;
+IK_TODOS_MAX :: 64;
+
+ik_tool_kind :: (name: string) -> int #effects(all) {
+  if name == "read_file" { return IK_TK_READ; }
+  if name == "edit_file" { return IK_TK_EDIT; }
+  if name == "write_file" { return IK_TK_WRITE; }
+  if name == "grep" { return IK_TK_GREP; }
+  if name == "list_dir" { return IK_TK_LIST; }
+  if name == "run_command" { return IK_TK_CMD; }
+  if name == "update_todos" { return IK_TK_TODOS; }
+  return IK_TK_NONE;
+}
+
+ik_tool_is_readonly :: (kind: int) -> bool #effects(all) {
+  return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS;
+}
+
+// Decides whether a tool call runs immediately, waits for MWW_ASK approval, or is denied.
+// Read-only workspace tools NEVER block on MWW_ASK.
+ik_tool_admit :: (kind: int, profile: string, ceiling: int, gated: bool, edits_free: bool) -> int #effects(all) {
+  if kind == IK_TK_NONE || ceiling < 0 || ceiling > 3 { return IK_ADMIT_DENY; }
+  if profile != "danger-full-access" && profile != "workspace-write" && profile != "read-only" { return IK_ADMIT_DENY; }
+  if ik_tool_is_readonly(kind) { return IK_ADMIT_RUN; }
+  if profile == "read-only" { return IK_ADMIT_DENY; }
+  if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
+    if ceiling < 1 { return IK_ADMIT_DENY; }
+    return ifx gated && !edits_free then IK_ADMIT_ASK else IK_ADMIT_RUN;
+  }
+  if kind == IK_TK_CMD {
+    if ceiling < 3 { return IK_ADMIT_DENY; }
+    return ifx gated then IK_ADMIT_ASK else IK_ADMIT_RUN;
+  }
+  return IK_ADMIT_DENY;
+}
+
+// Whether s contains a NUL byte.
+ik_has_nul :: (s: string) -> bool #effects(all) {
+  for c: s { if c == 0 { return true; } }
+  return false;
+}
+
+// Strips trailing slashes from an absolute path (keeping "/" intact).
+ik_trim_slash :: (p: string) -> string #effects(all) {
+  n := p.count;
+  while n > 1 && p[n - 1] == '/' { n -= 1; }
+  return cast(string) p[0..<n];
+}
+
+// True when normalized absolute path `cand` equals `root` or lies strictly beneath it.
+// Rejects non-absolute paths, NUL bytes, and any ".." segment.
+ik_path_under :: (root: string, cand: string) -> bool #effects(all) {
+  if root.count == 0 || cand.count == 0 || root[0] != '/' || cand[0] != '/' { return false; }
+  if ik_has_nul(cand) { return false; }
+  // Reject any ".." segment in cand (cand[0] is already verified '/').
+  i := 1;
+  while i < cand.count {
+    while i < cand.count && cand[i] == '/' { i += 1; }
+    s := i;
+    while i < cand.count && cand[i] != '/' { i += 1; }
+    if i - s == 2 && cand[s] == '.' && cand[s + 1] == '.' { return false; }
+  }
+  r := ik_trim_slash(root);
+  c := ik_trim_slash(cand);
+  if r == "/" { return true; }
+  if c.count < r.count || cast(string) c[0..<r.count] != r { return false; }
+  return c.count == r.count || c[r.count] == '/';
+}
+
+// Pure lexical normalization of raw (relative to absolute base, or absolute) into out.
+// Returns normalized byte length, or -1 on invalid input or overflow.
+ik_path_normalize :: (base: string, raw: string, out: [] u8) -> int #effects(all) {
+  if base.count == 0 || base[0] != '/' || raw.count == 0 { return -1; }
+  if ik_has_nul(base) || ik_has_nul(raw) { return -1; }
+  if out.count < 1 { return -1; }
+  n := 0;
+  starts: [128] int;
+  depth := 0;
+  first_pass := ifx raw[0] == '/' then 1 else 0;
+  for pass: first_pass..<2 {
+    s := ifx pass == 0 then base else raw;
+    i := 0;
+    while i < s.count {
+      while i < s.count && s[i] == '/' { i += 1; }
+      e := i;
+      while e < s.count && s[e] != '/' { e += 1; }
+      seg := cast(string) s[i..<e];
+      i = e;
+      if seg.count == 0 || seg == "." { continue; }
+      if seg == ".." {
+        if depth > 0 { depth -= 1; n = starts[depth]; }
+        continue;
+      }
+      if depth >= 128 || n + 1 + seg.count > out.count { return -1; }
+      starts[depth] = n;
+      depth += 1;
+      out[n] = '/'; n += 1;
+      for b: seg { out[n] = b; n += 1; }
+    }
+  }
+  if n == 0 { // mutant: equivalent (every segment pushes '/' + >=1 byte, so n is 0 or >=2)
+    out[0] = '/';
+    return 1;
+  }
+  return n;
+}
+
+// Resolves raw against cwd and enforces confinement to cwd (or spill_dir when allow_spill).
+// Returns resolved length in out, or -1 if invalid or escaping confinement.
+ik_path_resolve :: (cwd: string, spill_dir: string, raw: string, allow_spill: bool, out: [] u8) -> int #effects(all) {
+  n := ik_path_normalize(cwd, raw, out);
+  if n < 1 { return -1; }
+  resolved := cast(string) out[0..<n];
+  if ik_path_under(cwd, resolved) { return n; }
+  if allow_spill && ik_path_under(spill_dir, resolved) { return n; }
+  return -1;
+}
+
+ik_clamp :: (v: int, lo: int, hi: int) -> int #effects(all) {
+  if v < lo { return lo; } // mutant: equivalent (when v == lo both branches return lo)
+  if v > hi { return hi; } // mutant: equivalent (when v == hi both branches return hi)
+  return v;
+}
+
+// ---------------------------------------------------------------- argument admission
+
+IkReadArgs :: struct { ok: bool; path: string; start_line: int; end_line: int; }
+IkEditArgs :: struct { ok: bool; path: string; old_str: string; new_str: string; replace_all: bool; }
+IkWriteArgs :: struct { ok: bool; path: string; content: string; }
+IkGrepArgs :: struct { ok: bool; pattern: string; path: string; glob: string; fixed_strings: bool; max_results: int; }
+IkListArgs :: struct { ok: bool; path: string; depth: int; }
+IkCmdArgs :: struct { ok: bool; command: string; timeout_s: int; }
+
+ik_admit_read :: (ar: [] ClArena, args_json: string) -> IkReadArgs #effects(all) {
+  if !json_valid(args_json) { return IkReadArgs.{}; }
+  p := cl_str(ar, args_json, "path");
+  if ar[0].full || p.count == 0 || ik_has_nul(p) { return IkReadArgs.{}; }
+  sl := cl_int(args_json, "start_line");
+  el := cl_int(args_json, "end_line");
+  start := ifx sl.ok && sl.value > 0 then sl.value else 1; // mutant: equivalent (when sl.value == 1 both branches yield 1)
+  end := ifx el.ok && el.value > 0 then el.value else 0; // mutant: equivalent (when el.value == 0 both branches yield 0)
+  if end > 0 && end < start { return IkReadArgs.{}; }
+  return IkReadArgs.{ok = true, path = p, start_line = start, end_line = end};
+}
+
+ik_admit_edit :: (ar: [] ClArena, args_json: string) -> IkEditArgs #effects(all) {
+  if !json_valid(args_json) || cl_at(args_json, "new_string").tok != JSON_STRING { return IkEditArgs.{}; }
+  p := cl_str(ar, args_json, "path");
+  old_s := cl_str(ar, args_json, "old_string");
+  new_s := cl_str(ar, args_json, "new_string");
+  if ar[0].full || p.count == 0 || ik_has_nul(p) || old_s.count == 0 { return IkEditArgs.{}; }
+  ra := cl_bool(args_json, "replace_all");
+  return IkEditArgs.{ok = true, path = p, old_str = old_s, new_str = new_s, replace_all = ra.ok && ra.value};
+}
+
+ik_admit_write :: (ar: [] ClArena, args_json: string) -> IkWriteArgs #effects(all) {
+  if !json_valid(args_json) { return IkWriteArgs.{}; }
+  if cl_at(args_json, "path").tok != JSON_STRING || cl_at(args_json, "content").tok != JSON_STRING { return IkWriteArgs.{}; }
+  p := cl_str(ar, args_json, "path");
+  c := cl_str(ar, args_json, "content");
+  if ar[0].full || p.count == 0 || ik_has_nul(p) { return IkWriteArgs.{}; }
+  return IkWriteArgs.{ok = true, path = p, content = c};
+}
+
+ik_admit_grep :: (ar: [] ClArena, args_json: string) -> IkGrepArgs #effects(all) {
+  if !json_valid(args_json) { return IkGrepArgs.{}; }
+  pat := cl_str(ar, args_json, "pattern");
+  if ar[0].full || pat.count == 0 || ik_has_nul(pat) { return IkGrepArgs.{}; }
+  p := ".";
+  if cl_at(args_json, "path").tok == JSON_STRING {
+    q := cl_str(ar, args_json, "path");
+    if ar[0].full || ik_has_nul(q) { return IkGrepArgs.{}; }
+    if q.count > 0 { p = q; }
+  }
+  g := "";
+  if cl_at(args_json, "glob").tok == JSON_STRING {
+    g = cl_str(ar, args_json, "glob");
+    if ar[0].full || ik_has_nul(g) { return IkGrepArgs.{}; }
+  }
+  fs := cl_bool(args_json, "fixed_strings");
+  mr := cl_int(args_json, "max_results");
+  max_r := ifx mr.ok then ik_clamp(mr.value, 1, IK_GREP_MAX) else IK_GREP_DEFAULT_MAX;
+  return IkGrepArgs.{ok = true, pattern = pat, path = p, glob = g, fixed_strings = fs.ok && fs.value, max_results = max_r};
+}
+
+ik_admit_list :: (ar: [] ClArena, args_json: string) -> IkListArgs #effects(all) {
+  if !json_valid(args_json) { return IkListArgs.{}; }
+  p := ".";
+  if cl_at(args_json, "path").tok == JSON_STRING {
+    q := cl_str(ar, args_json, "path");
+    if ar[0].full || ik_has_nul(q) { return IkListArgs.{}; }
+    if q.count > 0 { p = q; }
+  }
+  d := cl_int(args_json, "depth");
+  depth := ifx d.ok then ik_clamp(d.value, 1, IK_LIST_MAX_DEPTH) else 1;
+  return IkListArgs.{ok = true, path = p, depth = depth};
+}
+
+ik_admit_cmd :: (ar: [] ClArena, args_json: string) -> IkCmdArgs #effects(all) {
+  if !json_valid(args_json) { return IkCmdArgs.{}; }
+  cmd := cl_str(ar, args_json, "command");
+  if ar[0].full || cmd.count == 0 || ik_has_nul(cmd) { return IkCmdArgs.{}; }
+  t := cl_int(args_json, "timeout_seconds");
+  ts := ifx t.ok then ik_clamp(t.value, 1, IK_CMD_MAX_S) else IK_CMD_DEFAULT_S;
+  return IkCmdArgs.{ok = true, command = cmd, timeout_s = ts};
+}
+
+ik_admit_todos :: (args_json: string) -> bool #effects(all) {
+  if !json_valid(args_json) || cl_at(args_json, "todos").tok != JSON_ARRAY { return false; }
+  arr := cl_raw(args_json, "todos");
+  n := cl_count(arr);
+  if n > IK_TODOS_MAX { return false; }
+  ab: [512] u8;
+  ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  for i: 0..<n {
+    ar[0].at = 0;
+    item := cl_json(arr, cl_item(arr, i));
+    id := cl_str(ar[..], item, "id");
+    ct := cl_str(ar[..], item, "content");
+    st := cl_str(ar[..], item, "status");
+    if ar[0].full || id.count == 0 || ct.count == 0 { return false; }
+    if st != "pending" && st != "in_progress" && st != "completed" { return false; }
+  }
+  return true;
+}
+
+// 8-hex-digit FNV-1a 32-bit digest for read_file/edit_file/write_file version tracking.
+ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
+  if out.count < 8 { return -1; }
+  h: u64 = 2166136261;
+  for c: data {
+    h = ((h ^ cast(u64) c) * 16777619) & 0xFFFFFFFF;
+  }
+  hex := "0123456789abcdef";
+  for i: 0..<8 {
+    shift := cast(u64) ((7 - i) * 4);
+    out[i] = hex[cast(int) ((h >> shift) & 15)];
+  }
+  return 8;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky tools: kind classification and read-only admission never gate reads" {
+  #assert ik_tool_kind("read_file") == IK_TK_READ && ik_tool_kind("edit_file") == IK_TK_EDIT;
+  #assert ik_tool_kind("write_file") == IK_TK_WRITE && ik_tool_kind("grep") == IK_TK_GREP;
+  #assert ik_tool_kind("list_dir") == IK_TK_LIST && ik_tool_kind("run_command") == IK_TK_CMD;
+  #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("other") == IK_TK_NONE;
+  #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS);
+  #assert !ik_tool_is_readonly(IK_TK_EDIT) && !ik_tool_is_readonly(IK_TK_WRITE) && !ik_tool_is_readonly(IK_TK_CMD) && !ik_tool_is_readonly(IK_TK_NONE);
+}
+
+#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<9, ceiling:-1..<5, gated:bool, edits_free:bool {
+  profiles := [4] string.["read-only", "workspace-write", "danger-full-access", "bogus"];
+  for pi: 0..<4 {
+    p := profiles[pi];
+    got := ik_tool_admit(kind, p, ceiling, gated, edits_free);
+    want := IK_ADMIT_DENY;
+    if kind >= 1 && kind <= 7 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
+      if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS {
+        want = IK_ADMIT_RUN;
+      } else if p != "read-only" {
+        if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
+          if ceiling >= 1 { want = ifx gated && !edits_free then IK_ADMIT_ASK else IK_ADMIT_RUN; }
+        } else if kind == IK_TK_CMD {
+          if ceiling >= 3 { want = ifx gated then IK_ADMIT_ASK else IK_ADMIT_RUN; }
+        }
+      }
+    }
+    #assert got == want;
+  }
+}
+
+#test "inky tools: path normalization and confinement block traversal and prefix spoofing" {
+  out: [128] u8;
+  n := ik_path_resolve("/work/repo", "/tmp/spill", "src/a.coax", false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/work/repo/src/a.coax";
+  n = ik_path_resolve("/work/repo/", "/tmp/spill", "./src/../lib/./b.coax", false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/work/repo/lib/b.coax";
+  n = ik_path_resolve("/work/repo", "/tmp/spill", ".", false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/work/repo";
+  n = ik_path_resolve("/work/repo", "/tmp/spill", "/work/repo/file.txt", false, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/work/repo/file.txt";
+  // Traversal and prefix spoofing rejected:
+  #assert ik_path_resolve("/work/repo", "/tmp/spill", "../secret", false, out[..]) < 0;
+  #assert ik_path_resolve("/work/repo", "/tmp/spill", "/work/repo2/file.txt", false, out[..]) < 0;
+  #assert ik_path_resolve("/work/repo", "/tmp/spill", "/etc/passwd", false, out[..]) < 0;
+  #assert ik_path_resolve("/work/repo", "/tmp/spill", "", false, out[..]) < 0;
+  #assert ik_path_resolve("rel/repo", "/tmp/spill", "a.txt", false, out[..]) < 0;
+  // Spill dir allowed only when allow_spill=true and spill_dir non-empty:
+  n = ik_path_resolve("/work/repo", "/tmp/spill", "/tmp/spill/1-2.txt", true, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "/tmp/spill/1-2.txt";
+  #assert ik_path_resolve("/work/repo", "/tmp/spill", "/tmp/spill/1-2.txt", false, out[..]) < 0;
+  #assert ik_path_resolve("/work/repo", "", "/tmp/spill/1-2.txt", true, out[..]) < 0;
+  // Root "/" normalization and under check:
+  #assert ik_trim_slash("/") == "/" && ik_trim_slash("/a/") == "/a" && ik_trim_slash("//") == "/";
+  out[0] = 'X';
+  n = ik_path_normalize("/", "..", out[..]);
+  #assert n == 1 && cast(string) out[0..<1] == "/";
+  one: [1] u8; one[0] = 'X';
+  #assert ik_path_normalize("/", "..", one[..]) == 1 && one[0] == '/';
+  n = ik_path_resolve("/", "", "..", false, out[..]);
+  #assert n == 1 && cast(string) out[0..<1] == "/";
+  n = ik_path_normalize("/a", "../b", out[..]);
+  #assert n == 2 && cast(string) out[0..<2] == "/b";
+  #assert ik_path_under("/", "/etc") && ik_path_under("/a", "/a/") && ik_path_under("/a", "/a/ab") && ik_path_under("/a", "/a/.b");
+  #assert !ik_path_under("/", "/..") && !ik_path_under("/a", "/a/..") && !ik_path_under("/a", "/a/../b") && !ik_path_under("", "/a") && !ik_path_under("/a", "");
+  #assert !ik_path_under("a", "/a") && !ik_path_under("/a", "a");
+  nul := [3] u8.['a', 0, 'b'];
+  nul_abs := [6] u8.['/', 'a', '/', 'x', 0, 'y'];
+  #assert ik_has_nul(cast(string) nul[..]) && !ik_has_nul("abc");
+  #assert !ik_path_under("/a", cast(string) nul_abs[..]);
+  #assert ik_path_normalize("/a", cast(string) nul[..], out[..]) < 0 && ik_path_normalize(cast(string) nul_abs[..], "x", out[..]) < 0;
+  #assert ik_path_normalize("", "a", out[..]) < 0;
+  // Exact 128-segment depth passes; 129-segment depth fails:
+  deep128: [256] u8; deep129: [258] u8; deep_out: [512] u8;
+  for k: 0..<128 { deep128[k * 2] = '/'; deep128[k * 2 + 1] = 'a'; }
+  for k: 0..<129 { deep129[k * 2] = '/'; deep129[k * 2 + 1] = 'a'; }
+  #assert ik_path_normalize("/", cast(string) deep128[..], deep_out[..]) == 256;
+  #assert ik_path_normalize("/", cast(string) deep129[..], deep_out[..]) < 0;
+  // Tiny buffer boundary:
+  small: [3] u8;
+  #assert ik_path_normalize("/a", "bc", small[..]) < 0;
+  #assert ik_path_normalize("/a", "b", small[0..<0]) < 0;
+  exact: [4] u8;
+  #assert ik_path_normalize("/a", "b", exact[..]) == 4 && cast(string) exact[0..<4] == "/a/b";
+}
+
+#test "inky tools: strict JSON argument admission and boundary clamping" {
+  ab: [1024] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  // read_file
+  r := ik_admit_read(ar[..], "{\"path\":\"a.coax\"}");
+  #assert r.ok && r.path == "a.coax" && r.start_line == 1 && r.end_line == 0;
+  ar[0].at = 0; ar[0].full = false;
+  r = ik_admit_read(ar[..], "{\"path\":\"a.coax\",\"start_line\":1,\"end_line\":1}");
+  #assert r.ok && r.start_line == 1 && r.end_line == 1;
+  ar[0].at = 0; ar[0].full = false;
+  r = ik_admit_read(ar[..], "{\"path\":\"a.coax\",\"start_line\":10,\"end_line\":20}");
+  #assert r.ok && r.start_line == 10 && r.end_line == 20;
+  ar[0].at = 0; ar[0].full = false;
+  r = ik_admit_read(ar[..], "{\"path\":\"a.coax\",\"start_line\":0,\"end_line\":-1}");
+  #assert r.ok && r.start_line == 1 && r.end_line == 0;
+  ar[0].at = 0; ar[0].full = false;
+  #assert !ik_admit_read(ar[..], "{\"path\":\"a.coax\",\"start_line\":2,\"end_line\":1}").ok;
+  #assert !ik_admit_read(ar[..], "{\"path\":\"a.coax\" junk}").ok && !ik_admit_read(ar[..], "{\"path\":\"a.coax\"} x").ok;
+  #assert !ik_admit_read(ar[..], "{\"path\":\"\"}").ok && !ik_admit_read(ar[..], "{}").ok && !ik_admit_read(ar[..], "{").ok;
+
+  // edit_file
+  ar[0].at = 0; ar[0].full = false;
+  e := ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"x\",\"new_string\":\"\",\"replace_all\":true}");
+  #assert e.ok && e.path == "a.coax" && e.old_str == "x" && e.new_str == "" && e.replace_all;
+  ar[0].at = 0; ar[0].full = false;
+  e = ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"x\",\"new_string\":\"y\",\"replace_all\":false}");
+  #assert e.ok && !e.replace_all;
+  ar[0].at = 0; ar[0].full = false;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a.coax\",\"old_string\":\"\",\"new_string\":\"y\"}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"\",\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a\",\"new_string\":\"y\"}").ok;
+  #assert !ik_admit_edit(ar[..], "{\"path\":\"a\",\"old_string\":\"x\"}").ok && !ik_admit_edit(ar[..], "{\"path\":\"a\",\"old_string\":\"x\",\"new_string\":\"y\"} x").ok && !ik_admit_edit(ar[..], "bad").ok;
+
+  // write_file
+  ar[0].at = 0; ar[0].full = false;
+  w := ik_admit_write(ar[..], "{\"path\":\"b.coax\",\"content\":\"\"}");
+  #assert w.ok && w.path == "b.coax" && w.content == "";
+  ar[0].at = 0; ar[0].full = false;
+  #assert !ik_admit_write(ar[..], "{\"path\":\"b.coax\"}").ok && !ik_admit_write(ar[..], "{\"content\":\"x\"}").ok;
+  #assert !ik_admit_write(ar[..], "{\"path\":\"\",\"content\":\"x\"}").ok && !ik_admit_write(ar[..], "bad").ok;
+
+  // grep
+  ar[0].at = 0; ar[0].full = false;
+  g := ik_admit_grep(ar[..], "{\"pattern\":\"foo\"}");
+  #assert g.ok && g.pattern == "foo" && g.path == "." && g.glob == "" && !g.fixed_strings && g.max_results == IK_GREP_DEFAULT_MAX;
+  ar[0].at = 0; ar[0].full = false;
+  g = ik_admit_grep(ar[..], "{\"pattern\":\"foo\",\"path\":\"a\",\"glob\":\"*.coax\",\"fixed_strings\":true,\"max_results\":500}");
+  #assert g.ok && g.path == "a" && g.glob == "*.coax" && g.fixed_strings && g.max_results == IK_GREP_MAX;
+  ar[0].at = 0; ar[0].full = false;
+  g = ik_admit_grep(ar[..], "{\"pattern\":\"foo\",\"path\":\"\",\"fixed_strings\":false,\"max_results\":0}");
+  #assert g.ok && g.path == "." && !g.fixed_strings && g.max_results == 1;
+  ar[0].at = 0; ar[0].full = false;
+  g = ik_admit_grep(ar[..], "{\"pattern\":\"foo\",\"max_results\":10}");
+  #assert g.ok && g.max_results == 10;
+  #assert !ik_admit_grep(ar[..], "{\"pattern\":\"foo\" junk}").ok && !ik_admit_grep(ar[..], "{\"pattern\":\"foo\"} x").ok;
+  #assert !ik_admit_grep(ar[..], "{\"pattern\":\"\"}").ok && !ik_admit_grep(ar[..], "{}").ok && !ik_admit_grep(ar[..], "bad").ok;
+
+  // list_dir
+  ar[0].at = 0; ar[0].full = false;
+  l := ik_admit_list(ar[..], "{}");
+  #assert l.ok && l.path == "." && l.depth == 1;
+  ar[0].at = 0; ar[0].full = false;
+  l = ik_admit_list(ar[..], "{\"path\":\"a\",\"depth\":9}");
+  #assert l.ok && l.path == "a" && l.depth == IK_LIST_MAX_DEPTH;
+  ar[0].at = 0; ar[0].full = false;
+  l = ik_admit_list(ar[..], "{\"path\":\"\",\"depth\":0}");
+  #assert l.ok && l.path == "." && l.depth == 1;
+  ar[0].at = 0; ar[0].full = false;
+  l = ik_admit_list(ar[..], "{\"depth\":2}");
+  #assert l.ok && l.depth == 2;
+  #assert !ik_admit_list(ar[..], "bad").ok;
+
+  // run_command
+  ar[0].at = 0; ar[0].full = false;
+  c := ik_admit_cmd(ar[..], "{\"command\":\"ls\"}");
+  #assert c.ok && c.command == "ls" && c.timeout_s == IK_CMD_DEFAULT_S;
+  ar[0].at = 0; ar[0].full = false;
+  c = ik_admit_cmd(ar[..], "{\"command\":\"ls\",\"timeout_seconds\":999}");
+  #assert c.ok && c.timeout_s == IK_CMD_MAX_S;
+  ar[0].at = 0; ar[0].full = false;
+  c = ik_admit_cmd(ar[..], "{\"command\":\"ls\",\"timeout_seconds\":0}");
+  #assert c.ok && c.timeout_s == 1;
+  ar[0].at = 0; ar[0].full = false;
+  c = ik_admit_cmd(ar[..], "{\"command\":\"ls\",\"timeout_seconds\":45}");
+  #assert c.ok && c.timeout_s == 45;
+  #assert !ik_admit_cmd(ar[..], "{\"command\":\"ls\" junk}").ok && !ik_admit_cmd(ar[..], "{\"command\":\"ls\"} x").ok;
+  #assert !ik_admit_cmd(ar[..], "{\"command\":\"\"}").ok && !ik_admit_cmd(ar[..], "{}").ok && !ik_admit_cmd(ar[..], "bad").ok;
+
+  // update_todos (boundaries: 0, 64, 65, per-item arena reset, missing each field)
+  #assert ik_admit_todos("{\"todos\":[{\"id\":\"1\",\"content\":\"a\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"b\",\"status\":\"in_progress\"},{\"id\":\"3\",\"content\":\"c\",\"status\":\"completed\"}]}");
+  #assert ik_admit_todos("{\"todos\":[]}");
+  #assert !ik_admit_todos("{\"todos\":[] junk}");
+  #assert !ik_admit_todos("{\"todos\":[{\"id\":\"1\",\"content\":\"a\",\"status\":\"done\"}]}");
+  #assert !ik_admit_todos("{\"todos\":[{\"id\":\"\",\"content\":\"a\",\"status\":\"pending\"}]}");
+  #assert !ik_admit_todos("{\"todos\":[{\"id\":\"1\",\"content\":\"\",\"status\":\"pending\"}]}");
+  #assert !ik_admit_todos("{\"todos\":[{\"content\":\"a\",\"status\":\"pending\"}]}");
+  #assert !ik_admit_todos("{\"todos\":[{\"id\":\"1\",\"status\":\"pending\"}]}");
+  #assert !ik_admit_todos("{\"todos\":[{\"id\":\"1\",\"content\":\"a\"}]}");
+  #assert !ik_admit_todos("{}") && !ik_admit_todos("bad");
+  // 64 valid todos pass; 65 fail:
+  tbuf: [4096] u8; tn := json_raw(tbuf[..], 0, "{\"todos\":[");
+  for ti: 0..<IK_TODOS_MAX {
+    if ti > 0 { tn = json_raw(tbuf[..], tn, ","); }
+    tn = json_raw(tbuf[..], tn, "{\"id\":\"1\",\"content\":\"a\",\"status\":\"pending\"}");
+  }
+  tn64 := json_raw(tbuf[..], tn, "]}");
+  #assert ik_admit_todos(cast(string) tbuf[0..<tn64]);
+  tn = json_raw(tbuf[..], tn, ",{\"id\":\"1\",\"content\":\"a\",\"status\":\"pending\"}]}");
+  #assert !ik_admit_todos(cast(string) tbuf[0..<tn]);
+  // Two escaped items of 512 bytes each require ar.at == 0 per item:
+  ebuf: [2048] u8; en := json_raw(ebuf[..], 0, "{\"todos\":[{\"id\":\"1\",\"content\":\"\\n");
+  for ei: 0..<511 { en = json_raw(ebuf[..], en, "a"); }
+  en = json_raw(ebuf[..], en, "\",\"status\":\"pending\"},{\"id\":\"2\",\"content\":\"\\n");
+  for ei: 0..<511 { en = json_raw(ebuf[..], en, "b"); }
+  en = json_raw(ebuf[..], en, "\",\"status\":\"pending\"}]}");
+  #assert ik_admit_todos(cast(string) ebuf[0..<en]);
+
+  // Arena overflow rejections & NUL rejections:
+  tiny: [1] u8; tar := [1] ClArena.[ClArena.{buf = tiny[..]}];
+  #assert !ik_admit_read(tar[..], "{\"path\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_edit(tar[..], "{\"path\":\"\\u0061\\u0062\",\"old_string\":\"x\",\"new_string\":\"y\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_write(tar[..], "{\"path\":\"\\u0061\\u0062\",\"content\":\"x\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_grep(tar[..], "{\"pattern\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_grep(tar[..], "{\"pattern\":\"a\",\"path\":\"\\u0062\\u0063\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_grep(tar[..], "{\"pattern\":\"a\",\"glob\":\"\\u0062\\u0063\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_list(tar[..], "{\"path\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_cmd(tar[..], "{\"command\":\"\\u0061\\u0062\"}").ok;
+
+  // FNV-1a 8-hex digest
+  hb: [8] u8;
+  #assert ik_hash8("", hb[..]) == 8 && cast(string) hb[..] == "811c9dc5";
+  #assert ik_hash8("hello", hb[..]) == 8 && cast(string) hb[..] == "4f9f2cab";
+  #assert ik_hash8("hello", hb[0..<7]) < 0;
+}
