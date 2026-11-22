@@ -2029,7 +2029,8 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     local_init(a);
     local_sync(a);
     if (oa_core_local_admit_hw(2, 0, 64, 2, 24, 0) != OA_LM_HW_OK ||
-        oa_core_local_admit_hw(2, 0, 64, 2, 16, 0) != OA_LM_HW_LOW_VRAM_CUDA ||
+        oa_core_local_admit_hw(2, 0, 64, 2, 16, 0) != OA_LM_HW_OK ||
+        oa_core_local_admit_hw(2, 0, 64, 2, 7, 0) != OA_LM_HW_LOW_VRAM_CUDA ||
         oa_core_local_admit_hw(3, 0, 32, 0, 0, 0) != OA_LM_HW_NO_GPU) {
       fprintf(stderr, "smoke: local-model hardware admission check failed\n");
       return 1;

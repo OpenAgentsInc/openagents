@@ -18,7 +18,9 @@ if [[ "${1:-}" != --no-build ]]; then
 fi
 if [[ -z "${OA_INPUT_TEST_SHELL:-}" ]] && command -v nix-shell >/dev/null 2>&1; then
   export OA_INPUT_TEST_SHELL=1
-  exec nix-shell -p sway wtype wl-clipboard grim mesa --run "exec $(printf '%q ' "$0" "$@")"
+  # Use sway-unwrapped: nixpkgs' wrapped sway invokes Nix dbus-run-session, which fails on
+  # non-NixOS Linux hosts lacking /etc/dbus-1/session.conf. Headless sway needs no D-Bus session.
+  exec nix-shell -p sway-unwrapped wtype wl-clipboard grim mesa --run "exec $(printf '%q ' "$0" "$@")"
 fi
 for tool in sway wtype wl-copy python3; do
   command -v "$tool" >/dev/null || { echo "input-test: $tool is needed" >&2; exit 2; }
