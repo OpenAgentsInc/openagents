@@ -1329,7 +1329,7 @@ mc_run_steered_on :: (r: [] McRun) -> bool {
   if r[0].steers.count == 0 || r[0].steers[0].n == 0 || r[0].steers[0].nd >= MC_STEERS { return false; }
   if l[0].ending != MC_END_FINISHED && l[0].ending != MC_END_ASKED && l[0].ending != MC_END_IDLE { return false; }
   reply := l[0].reply;
-  l[0].ending = MC_END_NONE; l[0].idle = 0;
+  l[0].ending = MC_END_NONE; l[0].idle = 0; mc_stall_reset(l);
   mc_run_drain(r, reply);
   l[0].reply = "";
   return true;
@@ -1790,4 +1790,36 @@ MC_RUN_NOTE :: "{\"rationale\":\"steer it\",\"delegate\":[{\"level\":\"carbon\",
   #assert !mc_hybrid_select(l, hy[..], 3000) && !hy[0].escalated && hy[0].local_fails == 1;
   hy[0].step_failed = true;
   #assert mc_hybrid_select(l, hy[..], 4000) && hy[0].escalated && hy[0].use_cloud;
+}
+
+#test "mc_run_steered_on reopens finished, asked, and idle turns, resets idle/stall/reply, and enforces MC_STEERS (#13978)" {
+  f: [1] McRunFixture; st: [1] McSteers;
+  mc_run_fixture(f[..], "look");
+  r := f[0].r[..]; l := r[0].l[..];
+  // No steers slice attached -> false
+  l[0].ending = MC_END_FINISHED;
+  #assert !mc_run_steered_on(r);
+  // Attached but empty -> false
+  r[0].steers = st[..];
+  #assert !mc_run_steered_on(r);
+  // Non-reopenable ending (stopped) -> false even with a pending steer
+  #assert mc_steer_add(st[..], "s1", "keep going") == "";
+  l[0].ending = MC_END_STOPPED;
+  #assert !mc_run_steered_on(r) && st[0].n == 1;
+  // Reopens MC_END_FINISHED and resets ending, idle, stall streak, and reply
+  l[0].ending = MC_END_FINISHED; l[0].idle = 2; l[0].stall[0].count = 4; l[0].reply = "prior";
+  #assert mc_run_steered_on(r);
+  #assert l[0].ending == MC_END_NONE && l[0].idle == 0 && mc_stall_count(l) == 0 && l[0].reply == "";
+  // Reopens MC_END_ASKED and MC_END_IDLE
+  #assert mc_steer_add(st[..], "s2", "answer") == "";
+  l[0].ending = MC_END_ASKED;
+  #assert mc_run_steered_on(r) && l[0].ending == MC_END_NONE;
+  #assert mc_steer_add(st[..], "s3", "retry") == "";
+  l[0].ending = MC_END_IDLE;
+  #assert mc_run_steered_on(r) && l[0].ending == MC_END_NONE;
+  // Exact MC_STEERS cap refuses further steering
+  #assert mc_steer_add(st[..], "s4", "capped") == "";
+  st[0].nd = MC_STEERS;
+  l[0].ending = MC_END_FINISHED;
+  #assert !mc_run_steered_on(r) && st[0].n == 1;
 }

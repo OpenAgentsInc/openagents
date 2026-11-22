@@ -574,7 +574,8 @@ tool_main :: () -> int #export_c #effects(all) {
       continue;
     }
     h[0].ncur = mk_keep(h[0].cur[..], tk);
-    fx := mk_facts(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, MK_COMMAND_SECONDS, facts[..]);
+    self_note := mk_self_note(mk_is_openagents_checkout(cd));
+    fx := mk_facts_ex(h[..], ifx tool_os() == TOOL_LINUX then "Linux" else "macOS", cd, MK_COMMAND_SECONDS, self_note, facts[..]);
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
     run[0].gated = req[0].gated; run[0].asking = false; run[0].delegating = false; run[0].delegated = false; run[0].edits_free = req[0].edits; run[0].unbounded = req[0].unlimited;
     profile := req[0].sandbox;

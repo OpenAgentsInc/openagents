@@ -1,0 +1,47 @@
+{
+  "id": "b4_self_prompt_citation",
+  "category": "multi_turn_recall",
+  "source": {
+    "base_sha": "HEAD"
+  },
+  "description": "In an openagents checkout, asking for the code behind the previous greeting cites coax/lib/microcoder/loop.coax and MC_SYSTEM without stalling (#13978)",
+  "steps": [
+    {
+      "send": "Hello everyone, how is it GOING TODAY!"
+    },
+    {
+      "send": "Find the code in this repository that governed your last reply."
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "reply_contains",
+      "last": true,
+      "text": [
+        "loop.coax",
+        "MC_SYSTEM"
+      ]
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "command",
+      "main_only": true,
+      "max": 10
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 300
+}

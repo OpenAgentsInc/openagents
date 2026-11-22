@@ -287,7 +287,7 @@ mk_is_combo_model :: (model: string) -> bool {
 // Local-model execution guidance appended to Microcoder's system prompt for local Psionic/Inkling
 // runs. Reinforces workspace boundaries, immediate refusal without probing on unsafe/out-of-scope
 // requests, and strict separation between working steps and the closing finished:true step.
-MK_LOCAL_GUIDANCE :: "\n\nLocal execution discipline:\n- Workspace boundary: stay strictly inside environment.cwd. Never run commands that access, list, inspect, measure, or modify parent or sibling directories (no .., ../, or paths outside environment.cwd), even read-only commands like ls .. or du ../*.\n- Unsafe or out-of-workspace requests: when asked to delete files outside environment.cwd, run destructive system commands, or upload/exfiltrate secrets, refuse immediately on your first step with finished:true, commands:[], edits:[], view:[] — do not run diagnostic or probing commands first.\n- Clean finish: whenever finished is true, commands, edits, and view MUST all be empty ([]). Including any command, edit, or view cancels finished:true and forces another turn. Once your edits are applied and the required verification check passes, finish immediately without re-running the same check.";
+MK_LOCAL_GUIDANCE :: "\n\nLocal execution discipline:\n- Workspace boundary: stay strictly inside environment.cwd. Never run commands that access, list, inspect, measure, or modify parent or sibling directories (no .., ../, or paths outside environment.cwd), even read-only commands like ls .. or du ../*.\n- Unsafe or out-of-workspace requests: when asked to delete files outside environment.cwd, run destructive system commands, or upload/exfiltrate secrets, refuse immediately on your first step with finished:true, commands:[], edits:[], view:[] — do not run diagnostic or probing commands first. Reading or citing repository source files inside environment.cwd (including Microcoder's own prompt/loop files named in environment.self) is normal repo work, not secret exfiltration.\n- Clean finish: whenever finished is true, commands, edits, and view MUST all be empty ([]). Including any command, edit, or view cancels finished:true and forces another turn. Once your edits are applied and the required verification check passes, finish immediately without re-running the same check.";
 
 // Active /goal completion guidance appended after MC_SAFETY_TAIL whenever a task carries an active
 // <goal_objective>, so the [GOAL_COMPLETE]/[GOAL_BLOCKED] closing protocol is never overshadowed by
@@ -576,20 +576,65 @@ mw_remember_end :: (h: [] MkTurns, ending: int, text: string) {
 // starting them in the background and polling. STOP waits for a running command to end.
 MK_COMMAND_SECONDS :: 120;
 
+// Self-knowledge line included in environment.self when cwd is an openagents checkout (#13978),
+// so questions about Microcoder's own prompt and behavior have a direct repository answer.
+MK_SELF_KNOWLEDGE :: "This workspace is an openagents checkout: Microcoder's system prompt is MC_SYSTEM in coax/lib/microcoder/loop.coax, its run loop is coax/lib/microcoder/run.coax, and its worker is coder/tui/mcworker.coax. Questions about your own prompt or behavior are normal repository questions — inspect and cite these files directly.";
+
+mk_join_rel :: (out: [] u8, dir: string, rel: string) -> string {
+  n := mk_cat(out, 0, dir);
+  if n > 0 && out[n - 1] != '/' { n = mk_cat(out, n, "/"); }
+  n = mk_cat(out, n, rel);
+  return cast(string) out[0..<n];
+}
+
+mk_parent_dir :: (dir: string) -> string {
+  end := dir.count;
+  while end > 0 && dir[end - 1] == '/' { end -= 1; }
+  i := end;
+  while i > 0 && dir[i - 1] != '/' { i -= 1; }
+  if i == 0 { return ""; }
+  if i == 1 { return "/"; }
+  return cast(string) dir[0..<i - 1];
+}
+
+// True when cwd (or an ancestor up to 6 levels) is an openagents checkout holding Microcoder's prompt and loop.
+mk_is_openagents_checkout :: (cwd: string) -> bool {
+  cur := cwd;
+  p1: [1400] u8; p2: [1400] u8;
+  for depth: 0..<6 {
+    if cur.count == 0 { return false; }
+    if mk_exists(mk_join_rel(p1[..], cur, "coax/lib/microcoder/loop.coax")) &&
+       mk_exists(mk_join_rel(p2[..], cur, "coax/lib/microcoder/run.coax")) {
+      return true;
+    }
+    cur = mk_parent_dir(cur);
+  }
+  return false;
+}
+
+mk_self_note :: (is_openagents: bool) -> string {
+  return ifx is_openagents then MK_SELF_KNOWLEDGE else "";
+}
+
 // The facts a run is told: the machine, the folder, a command's time limit (when the run has
-// its own) and the conversation so far. When they don't fit o, the oldest turns go first.
+// its own), optional self-knowledge for openagents checkouts, and the conversation so far.
+// When they don't fit o, the oldest turns go first.
 mk_facts :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, o: [] u8) -> string {
-  for first: 0..<h[0].turns + 1 {
-    n := mk_facts_from(h, first, os, cwd, command_seconds, o);
-    if n >= 0 { return cast(string) o[0..<n]; }
+  return mk_facts_ex(h, os, cwd, command_seconds, "", o);
+}
+mk_facts_ex :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, self_note: string, o: [] u8) -> string {
+  for first: 0..<h[0].turns + 1 { // mutant: equivalent (first > turns takes the same empty-conversation branch as first == turns)
+    n := mk_facts_from(h, first, os, cwd, command_seconds, self_note, o);
+    if n != -1 { return cast(string) o[0..<n]; }
   }
   return "{\"os\":\"macOS\"}";
 }
-mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_seconds: int, o: [] u8) -> int {
+mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_seconds: int, self_note: string, o: [] u8) -> int {
   n := json_raw(o, 0, "{\"os\":"); n = json_write_string(o, n, os);
   n = json_raw(o, n, ",\"app\":\"Coder in the terminal\",\"cwd\":");
   n = json_write_string(o, n, cwd);
   if command_seconds > 0 { n = json_raw(o, n, ",\"command_seconds\":"); n = json_write_int(o, n, command_seconds); }
+  if self_note.count > 0 { n = json_raw(o, n, ",\"self\":"); n = json_write_string(o, n, self_note); }
   if h[0].turns > first {
     n = json_raw(o, n, ",\"conversation\":[");
     for i: first..<h[0].turns {
@@ -747,4 +792,37 @@ mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_se
   mk_lg_init(g[..], false, audit);
   mk_lg_command(g[..], 1, "python3 -m unittest -v", 0, false);
   #assert mk_lg_note(g[..]) == "";
+}
+
+#test "openagents checkout self-knowledge goes into environment.self and local guidance permits repo self-inspection (#13978)" {
+  pbuf: [256] u8;
+  #assert mk_join_rel(pbuf[..], "", "a") == "a" && mk_join_rel(pbuf[..], "a", "b") == "a/b";
+  #assert mk_join_rel(pbuf[..], "/repo", "coax/lib/microcoder/loop.coax") == "/repo/coax/lib/microcoder/loop.coax";
+  #assert mk_join_rel(pbuf[..], "/repo/", "coax/lib/microcoder/run.coax") == "/repo/coax/lib/microcoder/run.coax";
+  #assert mk_parent_dir("") == "" && mk_parent_dir("/") == "" && mk_parent_dir("a/") == "" && mk_parent_dir("ab") == "";
+  #assert mk_parent_dir("/a") == "/" && mk_parent_dir("/a/") == "/" && mk_parent_dir("a/b") == "a";
+  #assert mk_parent_dir("/a/b/c") == "/a/b" && mk_parent_dir("/a/b/") == "/a";
+  #assert mk_self_note(false) == "" && mk_self_note(true) == MK_SELF_KNOWLEDGE;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "coax/lib/microcoder/loop.coax") >= 0;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "MC_SYSTEM") >= 0;
+  #assert ps_find(MK_SELF_KNOWLEDGE, "coax/lib/microcoder/run.coax") >= 0;
+  #assert ps_find(MK_LOCAL_GUIDANCE, "environment.self") >= 0;
+
+  h: [1] MkTurns; o: [4096] u8; tiny: [8] u8; ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  f_plain := mk_facts_ex(h[..], "macOS", "/tmp/other", 1, mk_self_note(false), o[..]);
+  #assert json_valid(f_plain) && cl_raw(f_plain, "self").count == 0 && cl_raw(f_plain, "command_seconds") == "1";
+  f_tiny_self := mk_facts_ex(h[..], "macOS", "/tmp/other", 0, "x", o[..]);
+  #assert json_valid(f_tiny_self) && cl_str(ar[..], f_tiny_self, "self") == "x";
+  #assert mk_facts_ex(h[..], "macOS", "/tmp/other", 0, "", tiny[..]) == "{\"os\":\"macOS\"}";
+  ar[0].at = 0; ar[0].full = false;
+  f_self := mk_facts_ex(h[..], "macOS", "/work/openagents", MK_COMMAND_SECONDS, mk_self_note(true), o[..]);
+  #assert json_valid(f_self) && cl_str(ar[..], f_self, "self") == MK_SELF_KNOWLEDGE;
+
+  // Tight buffer drops oldest turns while keeping environment.self intact.
+  h[0].ncur = mk_keep(h[0].cur[..], "Hello everyone, how is it GOING TODAY!");
+  mk_remember(h[..], "Hello! Doing well — how can I help today?");
+  f_conv := mk_facts_ex(h[..], "macOS", "/work/openagents", MK_COMMAND_SECONDS, mk_self_note(true), o[..]);
+  #assert json_valid(f_conv) && cl_count(cl_raw(f_conv, "conversation")) == 1;
+  ar[0].at = 0; ar[0].full = false;
+  #assert cl_str(ar[..], f_conv, "self") == MK_SELF_KNOWLEDGE;
 }

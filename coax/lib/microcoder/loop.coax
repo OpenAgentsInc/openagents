@@ -54,6 +54,35 @@ MC_AWARE_MEMORY :: "\n- You have a working memory. Your state shows memory (find
 
 MC_FINISH_REFUSALS :: 2;         // times a finish is refused before it stands
 
+// Loop detection (#13978): counts consecutive read-only steps repeating rationales or
+// same-intent searches with no new facts; nudges at MC_STALL_NUDGE, forces finish at MC_STALL_LIMIT.
+MC_STALL_NUDGE :: 3;
+MC_STALL_LIMIT :: 5;
+MC_STALL_HIST :: 12;
+MC_STALL_INTENTS :: 32;
+MC_RAT_WORDS :: 16;
+MC_STALL_NOTE :: "Loop detected: recent steps repeated prior rationales or searches with no new facts. Stop searching and answer now with finished:true, commands:[], edits:[], view:[].";
+MC_STALL_FALLBACK :: "Stopped after repeated search steps produced no new findings.";
+
+McRatSig :: struct {
+  words: [MC_RAT_WORDS] u32;
+  n: int;
+  exact: u32;
+}
+
+McStall :: struct {
+  count: int;                    // consecutive read-only steps with repeated rationale or no new facts
+  rat_hist: [MC_STALL_HIST] McRatSig;
+  nrat: int;
+  intent_hist: [MC_STALL_INTENTS] u32;
+  nintent: [1] int;
+  out_hist: [MC_STALL_INTENTS] u32;
+  nout: [1] int;
+  mutated: bool;
+  dup_rat: bool;
+  new_fact: bool;
+}
+
 mc_ending_name :: (e: int) -> string {
   if e == MC_END_FINISHED { return "finished"; }
   if e == MC_END_ASKED { return "asked"; }
@@ -97,6 +126,7 @@ McLoop :: struct {
   why: string;                   // no_capacity: the gateways' last reason
   reply: string;                 // finished or asked: what the user sees
   check: [1] McLastCheck;        // the last test or check run, for a commit's result (commit.coax)
+  stall: [1] McStall;            // loop-detection state (value-embedded: zero extra slice origins)
   system: string;                // what every request of the run sends: MC_SYSTEM and MC_SCHEMA, or mc_aware's
   schema: string;
   intel: bool;                   // the action's questions, and each edit's seen and name, are read
@@ -389,6 +419,8 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     l[0].pending[0].nc = 0; l[0].pending[0].ne = 0;
     if a.nv == 0 && a.nq == 0 && a.nn == 0 && a.nd == 0 { mc_action_end(l[0].st[..]); return MC_AGAIN; }
   }
+  p := l[0].pending[0];
+  mc_stall_begin(l[0].stall[..], p);
   return MC_TOOLS;
 }
 
@@ -487,6 +519,217 @@ mc_record_bare :: (l: [] McLoop) {
 // already removed) and views.
 mc_pending :: (l: [] McLoop) -> McAction { return l[0].pending[0]; }
 
+// ---------------------------------------------------------------- loop detection (#13978)
+
+// Standard 32-bit FNV-1a (overflow-free in u64 before masking to u32).
+mc_fnv_step :: (h: u32, c: u8) -> u32 { return cast(u32) ((((cast(u64) h) ^ cast(u64) c) * 16777619) & 0xffffffff); }
+
+mc_fnv_str :: (h0: u32, s: string) -> u32 {
+  h := h0;
+  for c: s { h = mc_fnv_step(h, c); }
+  return h;
+}
+
+mc_fnv :: (prefix: string, s: string) -> u32 {
+  return mc_fnv_str(mc_fnv_str(2166136261, prefix), s);
+}
+
+mc_contains :: (s: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > s.count { return false; }
+  for i: 0..<(s.count - needle.count + 1) {
+    if cast(string) s[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+mc_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+mc_word_ch :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+
+// Compact signature of a step's rationale: unique lowercased words (>= 3 chars) plus normalized text hash.
+mc_rat_sig :: (text: string) -> McRatSig {
+  sig: McRatSig;
+  exact := cast(u32) 2166136261;
+  have_word := false;
+  i := 0;
+  while i < text.count {
+    if !mc_word_ch(text[i]) { i += 1; continue; }
+    if have_word { exact = mc_fnv_step(exact, ' '); }
+    have_word = true;
+    j := i;
+    wh := cast(u32) 2166136261;
+    while j < text.count && mc_word_ch(text[j]) {
+      lc := mc_lower(text[j]);
+      exact = mc_fnv_step(exact, lc);
+      wh = mc_fnv_step(wh, lc);
+      j += 1;
+    }
+    if j - i >= 3 && sig.n < MC_RAT_WORDS {
+      seen := false;
+      for k: 0..<sig.n { if sig.words[k] == wh { seen = true; break; } }
+      if !seen { sig.words[sig.n] = wh; sig.n += 1; }
+    }
+    i = j;
+  }
+  sig.exact = exact;
+  return sig;
+}
+
+mc_rat_similar :: (a: McRatSig, b: McRatSig) -> bool {
+  if a.exact == b.exact { return true; }
+  shared := 0;
+  for i: 0..<a.n {
+    for j: 0..<b.n { if a.words[i] == b.words[j] { shared += 1; break; } }
+  }
+  lo := ifx a.n <= b.n then a.n else b.n;   // mutant: equivalent (when a.n == b.n both arms equal a.n)
+  hi := ifx a.n >= b.n then a.n else b.n;   // mutant: equivalent (when a.n == b.n both arms equal a.n)
+  return shared > 0 && shared * 5 >= lo * 3 && shared * 2 >= hi;
+}
+
+mc_cmd_mutates :: (cmd: string) -> bool {
+  return mc_contains(cmd, ">") || mc_contains(cmd, "tee ") || mc_contains(cmd, "sed -i")
+    || mc_contains(cmd, "rm ") || mc_contains(cmd, "mv ") || mc_contains(cmd, "cp ")
+    || mc_contains(cmd, "mkdir ") || mc_contains(cmd, "touch ") || mc_contains(cmd, "patch ")
+    || mc_contains(cmd, "git add") || mc_contains(cmd, "git commit")
+    || mc_contains(cmd, "git checkout") || mc_contains(cmd, "git apply");
+}
+
+// Strips a single trailing "/" (except bare "/") and leading "./" from a path token.
+mc_norm_path :: (p: string) -> string {
+  s := p;
+  if s.count > 1 && s[s.count - 1] == '/' { s = cast(string) s[0..<s.count - 1]; }
+  if s.count >= 3 && s[0] == '.' && s[1] == '/' { s = cast(string) s[2..<s.count]; }
+  return ifx s.count == 0 then "." else s;
+}
+
+// Strips an unquoted trailing pipeline (e.g. "| head -n 30") and splits into up to out.count non-empty tokens.
+mc_cmd_tokens :: (cmd: string, out: [] string) -> int {
+  end := cmd.count;
+  in_sq := false; in_dq := false;
+  for c, i: cmd {
+    if c == '\'' && !in_dq { in_sq = !in_sq; }
+    else if c == '"' && !in_sq { in_dq = !in_dq; }
+    else if c == '|' && !in_sq && !in_dq { end = i; break; }
+  }
+  n := 0; i := 0;
+  while n < out.count {
+    while i < end && (cmd[i] == ' ' || cmd[i] == '\t' || cmd[i] == '\n') { i += 1; }
+    if i == end { break; }
+    j := i; sq := false; dq := false;
+    while j < end {
+      c := cmd[j];
+      if c == '\'' && !dq { sq = !sq; }
+      else if c == '"' && !sq { dq = !dq; }
+      else if !sq && !dq && (c == ' ' || c == '\t' || c == '\n') { break; }
+      j += 1;
+    }
+    a := i; b := j;
+    if b - a >= 2 && ((cmd[a] == '\'' && cmd[b - 1] == '\'') || (cmd[a] == '"' && cmd[b - 1] == '"')) { a += 1; b -= 1; }
+    if b > a { out[n] = cast(string) cmd[a..<b]; n += 1; }
+    i = j;
+  }
+  return n;
+}
+
+mc_hash_tok_lower :: (h0: u32, s: string) -> u32 {
+  h := mc_fnv_step(h0, ' ');
+  for c: s { h = mc_fnv_step(h, mc_lower(c)); }
+  return h;
+}
+
+mc_is_digits :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if c < '0' || c > '9' { return false; } }
+  return true;
+}
+
+// Canonical intent hash for read/search commands so slight flag or pipeline variations match.
+mc_cmd_intent :: (cmd: string) -> u32 {
+  toks: [16] string;
+  nt := mc_cmd_tokens(cmd, toks[..]);
+  if nt == 0 { return mc_fnv("raw:", cmd); }
+  t0 := toks[0];
+  if t0 == "ls" || t0 == "tree" || t0 == "dir" {
+    path := ".";
+    for i: 1..<nt { if toks[i][0] != '-' { path = mc_norm_path(toks[i]); break; } }
+    return mc_fnv("ls:", path);
+  }
+  is_git_grep := t0 == "git" && nt >= 2 && toks[1] == "grep";
+  if is_git_grep || t0 == "grep" || t0 == "rg" || t0 == "egrep" || t0 == "fgrep" || t0 == "ag" {
+    h := mc_fnv("grep:", "");
+    i := ifx is_git_grep then 2 else 1;
+    while i < nt {
+      t := toks[i];
+      if t[0] == '-' {
+        if (t == "-C" || t == "-A" || t == "-B" || t == "-m") && i + 1 < nt && mc_is_digits(toks[i + 1]) { i += 2; continue; }
+        i += 1; continue;
+      }
+      if t != "." && t != "./" { h = mc_hash_tok_lower(h, t); }
+      i += 1;
+    }
+    return h;
+  }
+  if t0 == "cat" || t0 == "nl" {
+    for i: 1..<nt { if toks[i][0] != '-' { return mc_fnv("read:", mc_norm_path(toks[i])); } }
+  }
+  if t0 == "head" || t0 == "tail" || t0 == "sed" {
+    h := mc_fnv("slice:", "");
+    for i: 1..<nt {
+      if toks[i][0] == '-' { continue; }
+      h = mc_hash_tok_lower(h, mc_norm_path(toks[i]));
+    }
+    return h;
+  }
+  if t0 == "find" || (t0 == "git" && nt >= 2 && toks[1] == "ls-files") {
+    h := mc_fnv("find:", "");
+    i := ifx t0 == "git" then 2 else 1;
+    while i < nt {
+      t := toks[i];
+      if t[0] == '-' {
+        if t == "-type" || t == "-maxdepth" || t == "-mindepth" { i += 2; continue; }
+        i += 1; continue;
+      }
+      h = mc_hash_tok_lower(h, mc_norm_path(t));
+      i += 1;
+    }
+    return h;
+  }
+  return mc_fnv("raw:", cmd);
+}
+
+mc_view_intent :: (path: string) -> u32 {
+  p := mc_norm_path(path);
+  return mc_fnv(ifx mc_contains(p, ":") then "view:" else "read:", p);
+}
+
+mc_ring_add :: (buf: [] u32, count: [] int, h: u32) -> bool {
+  n := ifx count[0] <= buf.count then count[0] else buf.count;   // mutant: equivalent (when count[0] == buf.count both arms equal buf.count)
+  for i: 0..<n { if buf[i] == h { return false; } }
+  buf[count[0] % buf.count] = h;
+  count[0] += 1;
+  return true;
+}
+
+mc_rat_record :: (s: [] McStall, rationale: string) -> bool {
+  sig := mc_rat_sig(rationale);
+  n := ifx s[0].nrat <= MC_STALL_HIST then s[0].nrat else MC_STALL_HIST;   // mutant: equivalent (when nrat == MC_STALL_HIST both arms equal MC_STALL_HIST)
+  dup := false;
+  for i: 0..<n { if mc_rat_similar(s[0].rat_hist[i], sig) { dup = true; break; } }
+  s[0].rat_hist[s[0].nrat % MC_STALL_HIST] = sig;
+  s[0].nrat += 1;
+  return dup;
+}
+
+mc_stall_begin :: (s: [] McStall, p: McAction) {
+  s[0].dup_rat = mc_rat_record(s, p.rationale);
+  s[0].mutated = p.nd > 0;
+  s[0].new_fact = false;
+  for i: 0..<p.nn { if mc_ring_add(s[0].out_hist[..], s[0].nout[..], mc_fnv("note:", p.notes[i])) { s[0].mutated = true; } }
+  for i: 0..<p.nq { if mc_ring_add(s[0].intent_hist[..], s[0].nintent[..], mc_fnv("q:", p.questions[i])) { s[0].new_fact = true; } }
+}
+
+mc_stall_reset :: (l: [] McLoop) { l[0].stall[0].count = 0; }
+mc_stall_count :: (l: [] McLoop) -> int { return l[0].stall[0].count; }
+
 // A command's result, in order.
 // A git commit's result also says how the last test or check before it ended (commit.coax).
 mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output: string) {
@@ -494,6 +737,12 @@ mc_command :: (l: [] McLoop, command: string, exit: int, timed_out: bool, output
   line := ifx (mc_cmd_kind(command) & MC_CMD_COMMIT) != 0 then mc_check_line(l[0].check[..], lb[..]) else "";
   mc_action_command_checked(l[0].st[..], command, exit, timed_out, output, line);
   mc_check_ran(l[0].check[..], command, exit, timed_out);
+  if mc_cmd_mutates(command) { l[0].stall[0].mutated = true; }
+  else {
+    new_intent := mc_ring_add(l[0].stall[0].intent_hist[..], l[0].stall[0].nintent[..], mc_cmd_intent(command));
+    new_out := output.count > 0 && mc_ring_add(l[0].stall[0].out_hist[..], l[0].stall[0].nout[..], mc_fnv("out:", output));
+    if new_intent && new_out { l[0].stall[0].new_fact = true; }
+  }
 }
 
 // An edit's result: applied, or why not.
@@ -501,17 +750,30 @@ mc_edited :: (l: [] McLoop, path: string, ok: bool, why: string) { mc_edited_sho
 // The same with what it shows (tools.coax McEditResult): the new text, lines from..to, or the nearest region.
 mc_edited_shown :: (l: [] McLoop, path: string, ok: bool, why: string, from: int, to: int, shown: string) {
   mc_action_edit_shown(l[0].st[..], path, ok, why, from, to, shown);
-  if ok { mc_check_edited(l[0].check[..]); }
+  if ok { mc_check_edited(l[0].check[..]); l[0].stall[0].mutated = true; }
 }
 
 // A viewed file's content, or found false with why.
 mc_view :: (l: [] McLoop, path: string, found: bool, content: string) {
   mc_file(l[0].st[..], path, found, content);
+  new_intent := mc_ring_add(l[0].stall[0].intent_hist[..], l[0].stall[0].nintent[..], mc_view_intent(path));
+  new_out := found && content.count > 0 && mc_ring_add(l[0].stall[0].out_hist[..], l[0].stall[0].nout[..], mc_fnv("viewout:", content));
+  if new_intent && new_out { l[0].stall[0].new_fact = true; }
 }
 
 mc_tools_done :: (l: [] McLoop) -> int {
   mc_action_end(l[0].st[..]);
   if l[0].ending != MC_END_NONE { return MC_ENDED; }
+  if l[0].stall[0].mutated || (!l[0].stall[0].dup_rat && l[0].stall[0].new_fact) {
+    l[0].stall[0].count = 0;
+  } else {
+    l[0].stall[0].count += 1;
+    if l[0].stall[0].count >= MC_STALL_LIMIT {
+      l[0].reply = MC_STALL_FALLBACK;
+      return mc_end(l, MC_END_FINISHED);
+    }
+    if l[0].stall[0].count >= MC_STALL_NUDGE { mc_note(l[0].st[..], MC_STALL_NOTE); }
+  }
   return MC_AGAIN;
 }
 
@@ -1115,4 +1377,213 @@ ps_count :: (text: string, needle: string) -> int {
   #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[\"a finding\"],\"questions\":[],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
   mc_action_end(l[0].st[..]);
   #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"questions\":[],\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+}
+
+#forall "loop detection: ASCII classification boundaries for mc_lower, mc_word_ch, and mc_is_digits (#13978)" c: 0..<128 {
+  b := cast(u8) c;
+  is_upper := c >= 65 && c <= 90;
+  is_lower := c >= 97 && c <= 122;
+  is_digit := c >= 48 && c <= 57;
+  #assert mc_lower(b) == cast(u8) (ifx is_upper then c + 32 else c);
+  #assert mc_word_ch(b) == (is_upper || is_lower || is_digit || c == 95);
+  s: [1] u8; s[0] = b;
+  #assert mc_is_digits(cast(string) s[..]) == is_digit;
+}
+
+#test "loop detection: FNV-1a, contains, path/token normalization, rationale similarity, and ring wraparound (#13978)" {
+  // 1. Exact published 32-bit FNV-1a vectors and domain separation
+  #assert mc_fnv("", "") == 2166136261 && mc_fnv("", "a") == 0xe40c292c && mc_fnv("", "abc") == 0x1a47e90b;
+  #assert mc_fnv("a:", "x") != mc_fnv("b:", "x") && mc_hash_tok_lower(2166136261, "Ab") == mc_fnv_str(2166136261, " ab");
+  #assert !mc_is_digits("") && mc_is_digits("09") && !mc_is_digits("0a");
+  #assert !mc_contains("abc", "") && !mc_contains("ab", "abc") && mc_contains("abc", "abc") && mc_contains("abc", "bc") && !mc_contains("abc", "bd");
+
+  // 2. Path normalization boundaries
+  #assert mc_norm_path("") == "." && mc_norm_path("./") == "." && mc_norm_path("/") == "/" && mc_norm_path("./a") == "a" && mc_norm_path("./a/") == "a" && mc_norm_path("a/") == "a" && mc_norm_path("ab") == "ab";
+
+  // 3. Tokenizer: pipes outside vs inside single/double quotes, tabs/newlines, quotes, capacity cap
+  toks: [4] string;
+  #assert mc_cmd_tokens("  a\tb\nc 'd e' \"f g\" | tail", toks[..]) == 4 && toks[0] == "a" && toks[1] == "b" && toks[2] == "c" && toks[3] == "d e";
+  toks2: [8] string;
+  #assert mc_cmd_tokens("grep -E 'a|b' \"c|d\" \"\" 'x' 'y \"z", toks2[..]) == 6 && toks2[2] == "a|b" && toks2[3] == "c|d" && toks2[4] == "x" && toks2[5] == "'y \"z";
+  #assert mc_cmd_tokens("a \"b c\" d | grep e", toks2[..]) == 3 && toks2[1] == "b c" && toks2[2] == "d";
+  #assert mc_cmd_tokens("a '", toks2[..]) == 2 && toks2[1] == "'" && mc_cmd_tokens("a \"bc", toks2[..]) == 2 && toks2[1] == "\"bc";
+  #assert mc_cmd_tokens("   \t\n  ", toks2[..]) == 0;
+
+  // 4. Rationale signature: exact normalization, >= 3 char threshold, dedup, cap at MC_RAT_WORDS, and similarity boundaries
+  r_lead := mc_rat_sig("!!!  Hello,   WORLD!! ");
+  #assert r_lead.exact == mc_fnv("", "hello world") && r_lead.words[0] == mc_fnv("", "hello") && r_lead.n == 2;
+  #assert mc_rat_sig("a bb ccc").n == 1 && mc_rat_sig("ccc ccc ccc").n == 1 && mc_rat_sig("alpha beta alpha").n == 2;
+  #assert mc_rat_sig("a b").exact != mc_rat_sig("ab").exact;
+  r_many := mc_rat_sig("w01 w02 w03 w04 w05 w06 w07 w08 w09 w10 w11 w12 w13 w14 w15 w16 w17 w18");
+  #assert r_many.n == MC_RAT_WORDS;
+  r1 := mc_rat_sig("The honest answer is no repo code governs it, but the user keeps pushing. Let me do one more look.");
+  r2 := mc_rat_sig("The honest answer is still nothing here, but the user keeps pushing. Let me check one more file.");
+  r3 := mc_rat_sig("Edit coder/tui/microcoder_keys.coax to add self-knowledge field in mk_facts.");
+  #assert mc_rat_similar(r1, r1) && mc_rat_similar(r1, r2) && !mc_rat_similar(r1, r3);
+  #assert !mc_rat_similar(mc_rat_sig(""), r3) && !mc_rat_similar(r3, mc_rat_sig("")) && !mc_rat_similar(mc_rat_sig("a b"), mc_rat_sig("c d"));
+  #assert mc_rat_similar(mc_rat_sig("alpha a"), mc_rat_sig("alpha b"));
+  // Exact threshold boundaries: shared*5 >= lo*3 && shared*2 >= hi
+  s5 := mc_rat_sig("one two thr fou fiv");
+  #assert mc_rat_similar(s5, mc_rat_sig("one two thr xxx yyy"));          // 3/5: 15>=15 && 6>=5
+  #assert !mc_rat_similar(s5, mc_rat_sig("one two xxx yyy zzz"));         // 2/5: 10<15
+  s7 := mc_rat_sig("w01 w02 w03 w04 w05 w06 w07");
+  #assert !mc_rat_similar(s7, mc_rat_sig("w01 w02 w03 w04 x05 x06 x07")); // 4/7: 20<21 while 8>=7
+  s3 := mc_rat_sig("one two thr");
+  #assert mc_rat_similar(s3, mc_rat_sig("one two thr fou fiv six"));      // 3 of (3,6): 15>=9 && 6>=6
+  #assert !mc_rat_similar(s3, mc_rat_sig("one two thr fou fiv six sev")); // 3 of (3,7): 15>=9 && 6<7
+
+  // 5. Command intent normalization across every branch and edge case
+  #assert mc_cmd_intent("ls") == mc_cmd_intent("ls -la") && mc_cmd_intent("ls -la") == mc_cmd_intent("ls -l ./");
+  #assert mc_cmd_intent("ls coax/") == mc_cmd_intent("ls -la ./coax") && mc_cmd_intent("ls coax/") != mc_cmd_intent("ls");
+  #assert mc_cmd_intent("git grep") == mc_fnv("grep:", "") && mc_cmd_intent("echo grep") == mc_fnv("raw:", "echo grep");
+  #assert mc_cmd_intent("git grep -n \"Hello\"") == mc_cmd_intent("grep -rn 'hello' . | head -n 20");
+  #assert mc_cmd_intent("git grep -n \"Hello\"") == mc_cmd_intent("rg -i -C 2 hello | tail -10");
+  #assert mc_cmd_intent("git grep -A 3 foo") == mc_cmd_intent("egrep -B 1 -m 5 foo ./");
+  #assert mc_cmd_intent("grep foo -C 2") == mc_cmd_intent("grep foo") && mc_cmd_intent("grep -n 2 foo") != mc_cmd_intent("grep foo");
+  #assert mc_cmd_intent("grep a b c d e f g h i j k l m n -C") == mc_cmd_intent("grep a b c d e f g h i j k l m n");
+  #assert mc_cmd_intent("grep foo bar") != mc_cmd_intent("grep foo baz");
+  #assert mc_cmd_intent("git grep -C bar foo") != mc_cmd_intent("git grep foo");
+  #assert mc_cmd_intent("git grep -n \"Hello\"") != mc_cmd_intent("git grep -n \"Other\"");
+  #assert mc_cmd_intent("grep -E \"alpha|beta\" a.coax") != mc_cmd_intent("grep -E \"alpha|gamma\" a.coax");
+  #assert mc_cmd_intent("grep -E 'alpha|beta' a.coax") != mc_cmd_intent("grep -E 'alpha|gamma' a.coax");
+  #assert mc_cmd_intent("git") != mc_cmd_intent("grep") && mc_cmd_intent("git status") == mc_fnv("raw:", "git status");
+  #assert mc_cmd_intent("echo ls-files") == mc_fnv("raw:", "echo ls-files") && mc_cmd_intent("git ls-files") == mc_fnv("find:", "");
+  #assert mc_cmd_intent("cat AGENTS.md") == mc_cmd_intent("cat ./AGENTS.md") && mc_cmd_intent("cat AGENTS.md") == mc_cmd_intent("nl -ba AGENTS.md");
+  #assert mc_cmd_intent("cat AGENTS.md") == mc_view_intent("AGENTS.md") && mc_cmd_intent("cat") == mc_fnv("raw:", "cat");
+  #assert mc_cmd_intent("head") == mc_fnv("slice:", "") && mc_cmd_intent("head a.coax") != mc_cmd_intent("head b.coax");
+  #assert mc_cmd_intent("head -q a.coax") == mc_cmd_intent("head a.coax") && mc_cmd_intent("head a-b.coax") != mc_cmd_intent("head");
+  #assert mc_cmd_intent("sed -n '1,80p' loop.coax") == mc_cmd_intent("sed -n '1,80p' ./loop.coax | head -40");
+  #assert mc_cmd_intent("sed -n '1,80p' loop.coax") != mc_cmd_intent("sed -n '81,160p' loop.coax");
+  #assert mc_cmd_intent("head -n 20 a.coax") == mc_cmd_intent("tail -n 20 ./a.coax") && mc_cmd_intent("head -n 20 a.coax") != mc_cmd_intent("head -n 40 a.coax");
+  #assert mc_view_intent("loop.coax:1-80") != mc_view_intent("loop.coax:81-160") && mc_view_intent("loop.coax:1-80") != mc_view_intent("loop.coax");
+  #assert mc_cmd_intent("find") == mc_fnv("find:", "") && mc_cmd_intent("find coax") != mc_cmd_intent("find coder");
+  #assert mc_cmd_intent("find . -name '*.coax'") == mc_cmd_intent("find ./ -maxdepth 3 -mindepth 1 -type f -name '*.coax'");
+  #assert mc_cmd_intent("find . -name '*.coax'") != mc_cmd_intent("find . -name '*.rs'");
+  #assert mc_cmd_intent("find . -type") == mc_cmd_intent("find .") && mc_cmd_intent("git ls-files coax") != mc_cmd_intent("git ls-files coder");
+  #assert mc_cmd_intent("   ") == mc_fnv("raw:", "   ") && mc_cmd_intent("pwd") != mc_cmd_intent("date");
+
+  // 6. Mutating commands vs read-only inspections
+  #assert mc_cmd_mutates("echo hi > a.txt") && mc_cmd_mutates("tee a.txt") && mc_cmd_mutates("sed -i '' 's/a/b/' f");
+  #assert mc_cmd_mutates("rm foo") && mc_cmd_mutates("mv a b") && mc_cmd_mutates("cp a b") && mc_cmd_mutates("mkdir d");
+  #assert mc_cmd_mutates("touch f") && mc_cmd_mutates("patch -p1") && mc_cmd_mutates("git add a") && mc_cmd_mutates("git commit -m x");
+  #assert mc_cmd_mutates("git checkout -- a") && mc_cmd_mutates("git apply p.diff");
+  #assert !mc_cmd_mutates("ls -la") && !mc_cmd_mutates("git grep -n MC_SYSTEM") && !mc_cmd_mutates("sed -n '1,80p' loop.coax");
+
+  // 7. Ring-buffer exact capacity and wraparound (mc_ring_add and mc_rat_record)
+  ring: [MC_STALL_INTENTS] u32; rcnt: [1] int;
+  for k: 0..<MC_STALL_INTENTS { #assert mc_ring_add(ring[..], rcnt[..], cast(u32) (100 + k)); }
+  #assert rcnt[0] == MC_STALL_INTENTS && !mc_ring_add(ring[..], rcnt[..], 100) && !mc_ring_add(ring[..], rcnt[..], cast(u32) (100 + MC_STALL_INTENTS - 1));
+  // Adding one more wraps to slot 0, evicting 100 while keeping slot 1 (101)
+  #assert mc_ring_add(ring[..], rcnt[..], 999) && rcnt[0] == MC_STALL_INTENTS + 1;
+  #assert !mc_ring_add(ring[..], rcnt[..], 101) && mc_ring_add(ring[..], rcnt[..], 100);
+  st: [1] McStall;
+  for k: 0..<MC_STALL_HIST {
+    wb: [16] u8; wn := json_raw(wb[..], 0, "word_"); wn = json_write_int(wb[..], wn, k);
+    #assert !mc_rat_record(st[..], cast(string) wb[0..<wn]);
+  }
+  #assert st[0].nrat == MC_STALL_HIST && mc_rat_record(st[..], "word_0");
+  // Wrapping evicts word_0 (which was written at slot 0, then overwritten by the duplicate above at slot 0, so add another to evict slot 1 = word_1)
+  #assert !mc_rat_record(st[..], "brand_new_one") && !mc_rat_record(st[..], "word_1");
+}
+
+#test "loop detection: nudges after MC_STALL_NUDGE no-new-fact steps, forces finish at MC_STALL_LIMIT, and resets on real progress (#13978)" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+
+  // 1. Same-intent searches, duplicate outputs, and empty greps stall -> nudge at 3 -> forced MC_END_FINISHED at 5.
+  mc_init(l[..], sb[..], lb[..], "{}", "find prompt", "{}", 1.0);
+  // Step 1: initial ls gets 1-byte output -> stall 0, action closed
+  #assert mc_take(l[..], "{\"rationale\":\"list root files\",\"edits\":[],\"commands\":[\"ls -la\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "ls -la", 0, false, "x");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && l[0].st[0].open < 0 && mc_stall_count(l[..]) == 0;
+  // Step 2 (stall 1): distinct command with identical already-seen output ("x") yields no new fact
+  #assert mc_take(l[..], "{\"rationale\":\"echo single char\",\"edits\":[],\"commands\":[\"printf x\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "printf x", 0, false, "x");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  // Step 3 (stall 2): empty grep yields no new facts
+  #assert mc_take(l[..], "{\"rationale\":\"grep greeting phrase\",\"edits\":[],\"commands\":[\"git grep -n Hello\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "git grep -n Hello", 1, false, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 2;
+  // Step 4 (stall 3 == MC_STALL_NUDGE): variant ls -l . is same intent -> emits MC_STALL_NOTE
+  #assert mc_take(l[..], "{\"rationale\":\"check directory again\",\"edits\":[],\"commands\":[\"ls -l .\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "ls -l .", 0, false, "total 16\nAGENTS.md\n");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == MC_STALL_NUDGE;
+  #assert ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "Loop detected") == 1;
+  // Step 5 (stall 4): view returns empty content -> still stalled
+  #assert mc_take(l[..], "{\"rationale\":\"read empty file\",\"edits\":[],\"commands\":[],\"view\":[\"empty.coax\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_view(l[..], "empty.coax", true, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 4;
+  // Step 6 (stall 5 == MC_STALL_LIMIT): forces MC_END_FINISHED with MC_STALL_FALLBACK
+  #assert mc_take(l[..], "{\"rationale\":\"try listing once more\",\"edits\":[],\"commands\":[\"tree .\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "tree .", 0, false, ".\n");
+  #assert mc_tools_done(l[..]) == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == MC_STALL_FALLBACK;
+
+  // 2. Repeated rationale alone (even with novel commands/output) stalls and forces finish.
+  mc_init(l[..], sb[..], lb[..], "{}", "find prompt", "{}", 1.0);
+  #assert mc_take(l[..], "{\"rationale\":\"The honest answer is no repo code governs it, but the user keeps pushing. Let me do one more look.\",\"edits\":[],\"commands\":[\"cat a.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "cat a.txt", 0, false, "alpha");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  cmds := [5] string.["cat b.txt", "cat c.txt", "cat d.txt", "cat e.txt", "cat f.txt"];
+  outs := [5] string.["beta", "gamma", "delta", "epsilon", "zeta"];
+  for k: 0..<MC_STALL_LIMIT {
+    jb: [512] u8;
+    jn := json_raw(jb[..], 0, "{\"rationale\":\"The honest answer is still nothing here, but the user keeps pushing. Let me check one more file.\",\"edits\":[],\"commands\":[");
+    jn = json_write_string(jb[..], jn, cmds[k]);
+    jn = json_raw(jb[..], jn, "],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+    #assert mc_take(l[..], cast(string) jb[0..<jn]) == MC_TOOLS;
+    mc_command(l[..], cmds[k], 0, false, outs[k]);
+    rc := mc_tools_done(l[..]);
+    if k + 1 < MC_STALL_LIMIT { #assert rc == MC_AGAIN && mc_stall_count(l[..]) == k + 1; }
+    else { #assert rc == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == MC_STALL_FALLBACK; }
+  }
+
+  // 3. New facts, applied edits, mutating commands, delegations, new notes, new questions, and mc_stall_reset each reset stall.
+  mc_init(l[..], sb[..], lb[..], "{}", "work", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true) && mc_agents(l[..], lb[..], false, "");
+  #assert mc_take(l[..], "{\"rationale\":\"search alpha\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"git grep alpha\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "git grep alpha", 1, false, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  // mc_stall_reset clears count cleanly
+  mc_stall_reset(l[..]);
+  #assert mc_stall_count(l[..]) == 0;
+  // Failed edit does NOT reset stall; applied edit DOES reset stall
+  #assert mc_take(l[..], "{\"rationale\":\"bad edit\",\"notes\":[],\"questions\":[],\"edits\":[{\"path\":\"a.coax\",\"old\":\"z\",\"new\":\"y\",\"seen\":\"\",\"name\":\"\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_edited(l[..], "a.coax", false, "not found");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  #assert mc_take(l[..], "{\"rationale\":\"apply change\",\"notes\":[],\"questions\":[],\"edits\":[{\"path\":\"a.coax\",\"old\":\"x\",\"new\":\"y\",\"seen\":\"\",\"name\":\"\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_edited(l[..], "a.coax", true, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  // New view with 1-byte content resets stall; re-reading same view stalls
+  #assert mc_take(l[..], "{\"rationale\":\"search beta\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"git grep beta\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "git grep beta", 1, false, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  #assert mc_take(l[..], "{\"rationale\":\"read loop prompt lines\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[],\"view\":[\"coax/lib/microcoder/loop.coax:1-80\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_view(l[..], "coax/lib/microcoder/loop.coax:1-80", true, "z");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  #assert mc_take(l[..], "{\"rationale\":\"inspect loop lines again\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[],\"view\":[\"coax/lib/microcoder/loop.coax:1-80\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_view(l[..], "coax/lib/microcoder/loop.coax:1-80", true, "z");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  // New working-memory note resets stall; repeating identical note does not
+  #assert mc_take(l[..], "{\"rationale\":\"record finding\",\"notes\":[\"loop.coax:47 defines MC_SYSTEM\"],\"questions\":[],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  #assert mc_take(l[..], "{\"rationale\":\"repeat same finding\",\"notes\":[\"loop.coax:47 defines MC_SYSTEM\"],\"questions\":[],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  // Mutating command resets stall
+  #assert mc_take(l[..], "{\"rationale\":\"write file\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"touch out.txt\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "touch out.txt", 0, false, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  // New compiler question resets stall; repeated question does not
+  #assert mc_take(l[..], "{\"rationale\":\"empty probe three\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"git grep nothing3\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_command(l[..], "git grep nothing3", 1, false, "");
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  #assert mc_take(l[..], "{\"rationale\":\"ask compiler\",\"notes\":[],\"questions\":[\"defines MC_SYSTEM\"],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  #assert mc_take(l[..], "{\"rationale\":\"ask compiler different words\",\"notes\":[],\"questions\":[\"defines MC_SYSTEM\"],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 1;
+  // Delegation resets stall
+  #assert mc_take(l[..], "{\"rationale\":\"delegate search\",\"notes\":[],\"questions\":[],\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"check\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  #assert mc_tools_done(l[..]) == MC_AGAIN && mc_stall_count(l[..]) == 0;
+  // Calling mc_tools_done after mc_stop returns MC_ENDED cleanly
+  #assert mc_take(l[..], "{\"rationale\":\"before stop\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"pwd\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_stop(l[..]);
+  #assert mc_tools_done(l[..]) == MC_ENDED;
 }
