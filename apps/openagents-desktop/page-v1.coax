@@ -25,6 +25,7 @@
 
 #load "page/state.coax";
 #load "page/v1-stubs.coax";
+#load "page/selection.coax";
 #load "page/editor.coax";
 #load "page/compose.coax";
 #load "page/skin.coax";

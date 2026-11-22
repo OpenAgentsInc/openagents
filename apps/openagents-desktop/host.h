@@ -32,6 +32,7 @@ void cd_env(void *page, int active, int reduced);
 // after the last frame, -1 for none. cd_draft: the composer's text, NUL-ended.
 void cd_focus(void *page, int field);
 int cd_wants_text(void *page);
+int cd_has_selection(void *page);
 int cd_key(void *page, int key, int mods);
 float cd_blink(void *page);
 int cd_draft(void *page, char *out, int cap);

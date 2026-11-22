@@ -745,3 +745,138 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   #assert !uiframe_moving(f[..]) && surface_find(s[0].surface[..], "t0.x1") < 0;
 }
+
+#test "reply model metadata stays hidden at rest and reveals only when hovering or clicking the hover-lane info icon" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  s[0].flags = 0; s[0].inkling = true;
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "who are you") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"I am Inkling.\"}") == MWW_ENDED;
+  // At rest (pointer outside reply): copy button, info button, and model byline are all hidden.
+  s[0].px = 0; s[0].py = 0;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_find(s[0].surface[..], "t0.ac") < 0 && surface_find(s[0].surface[..], "t0.ai") < 0 && surface_find(s[0].surface[..], "t0.m") < 0;
+  // Hovering the reply reveals Copy and Info icons while keeping the model byline hidden.
+  s[0].px = s[0].col_x + 120.0f32; s[0].py = s[0].turns[0].ay + 4.0f32;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_find(s[0].surface[..], "t0.ac") >= 0 && surface_find(s[0].surface[..], "t0.ai") >= 0 && surface_find(s[0].surface[..], "t0.m") < 0;
+  // Hovering the Info icon reveals the model/harness text.
+  ir := cp_test_row(s, "t0.ai");
+  s[0].px = ir.x + ir.w / 2.0f32; s[0].py = ir.y + ir.h / 2.0f32;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  mr := surface_find(s[0].surface[..], "t0.m");
+  #assert mr >= 0 && surface_say(s[0].surface[..], mr) == "Psionic Metal · Inkling 2 Mini";
+  // Clicking the Info icon toggles persistent visibility even after the pointer leaves.
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.ai")) && s[0].turns[0].info;
+  s[0].px = 0; s[0].py = 0;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_find(s[0].surface[..], "t0.m") >= 0 && surface_find(s[0].surface[..], "t0.ai") >= 0;
+  // Clicking Info again hides it cleanly.
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.ai")) && !s[0].turns[0].info;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_find(s[0].surface[..], "t0.m") < 0 && surface_find(s[0].surface[..], "t0.ai") < 0;
+}
+
+#test "streaming finish clears veil without flashing or re-parsing and keeps scroll bottom-locked during activity collapse" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  // Fill enough prior turns so the viewport actually scrolls.
+  for k: 0..<5 {
+    #assert coder_page_set_text(s, "earlier turn") && coder_page_submit(s);
+    #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Line one\\nLine two\\nLine three\\nLine four\\nLine five.\"}") == MWW_ENDED;
+  }
+  #assert coder_page_set_text(s, "stream cleanly") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Step 1\\nStep 2\\nStep 3\\nStep 4\\nStep 5\"}") > 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Hello \"}") == MWW_REPLY;
+  #assert cp_test_frame(s, f[..], 1200, 500, false);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"world!\"}") == MWW_REPLY;
+  #assert cp_test_frame(s, f[..], 1200, 500, false);
+  last := s[0].nturns - 1;
+  #assert s[0].veil_turn == last && s[0].stick;
+  rev_before := s[0].turns[last].rev;
+  // MWW_ENDED with matching final text must clear veil without bumping rev or restarting a fade.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hello world!\"}") == MWW_ENDED;
+  #assert s[0].turns[last].state == CP_DONE && s[0].veil_turn == -1 && s[0].turns[last].rev == rev_before;
+  // Every collapse frame must keep scroll strictly clamped at max(0, content - view) with zero overshoot.
+  for step: 0..<35 {
+    #assert cp_test_frame(s, f[..], 1200, 500, false);
+    want := s[0].content - s[0].view; if want < 0 { want = 0; }
+    #assert abs(s[0].scroll - want) < 0.5f32;
+    #assert s[0].turns[last].ay + s[0].turns[last].ah <= s[0].view + 1.0f32;
+  }
+}
+
+#test "GPU text selection supports drag, double-click word, triple-click line, Shift-extend, Cmd+A, copy, I-beam cursor, and Esc clear" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "explain gpu selection") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Alpha beta gamma\\n\\nDelta epsilon\"}") == MWW_ENDED;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  // Locate the two rendered reply lines in the committed sheet.
+  sh := surface_sheet(s[0].surface[..]);
+  reg := cp_sel_region_of(s, CP_SEL_CONV);
+  l1 := -1; l2 := -1;
+  for li: reg.l0..<reg.l1 {
+    ln := sh.lines[li];
+    if ln.items > 0 {
+      txt := sh.over[ln.item0].text;
+      if txt == "Alpha beta gamma" { l1 = li; }
+      if txt == "Delta epsilon" { l2 = li; }
+    }
+  }
+  #assert l1 >= 0 && l2 >= 0;
+  y1 := sh.lines[l1].y + sh.lines[l1].h / 2.0f32;
+  y2 := sh.lines[l2].y + sh.lines[l2].h / 2.0f32;
+  x_a := cp_sel_line_x(s, sh, l1, 0);
+  x_b0 := cp_sel_line_x(s, sh, l1, 6);
+  x_b1 := cp_sel_line_x(s, sh, l1, 10);
+  // Hovering over reply text reports I-beam cursor (1); blank margin reports arrow (0).
+  _ = coder_page_pointer(s, x_b0 + 1.0f32, y1, 1);
+  #assert coder_page_cursor(s) == 1;
+  _ = coder_page_pointer(s, 5.0f32, 5.0f32, 1);
+  #assert coder_page_cursor(s) == 0;
+  // Drag across "beta" on line 1 -> selection active, highlight quad painted in under, copy returns "beta".
+  _ = coder_page_press(s, x_b0, y1, 0, 1, 0);
+  #assert coder_page_press(s, x_b1, y1, 1, 1, 0);
+  #assert coder_page_press(s, x_b1, y1, 2, 1, 0);
+  #assert coder_page_has_selection(s);
+  out: [512] u8;
+  n := coder_page_copy(s, false, out[..]);
+  #assert n == 4 && cast(string) out[0..<n] == "beta";
+  // Repaint and confirm a highlight quad with skin.selection color was emitted into under.
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  sh2 := surface_sheet(s[0].surface[..]);
+  sel_c := cp_skin().selection; found_quad := false;
+  for ui: 0..<sh2.nu {
+    pr := sh2.under[ui];
+    if pr.kind == PRIM_BOX && pr.fill.r == sel_c.r && pr.fill.g == sel_c.g && pr.fill.b == sel_c.b && pr.fill.a == sel_c.a && pr.w > 0 && pr.h > 0 {
+      found_quad = true;
+    }
+  }
+  #assert found_quad;
+  // Shift-click onto paragraph 2 extends selection across both paragraphs with '\n\n' preserved.
+  x_d := cp_sel_line_x(s, sh2, l2, 5);
+  #assert coder_page_press(s, x_d, y2, 0, 1, MOD_SHIFT);
+  #assert coder_page_press(s, x_d, y2, 2, 1, MOD_SHIFT);
+  n = coder_page_copy(s, false, out[..]);
+  #assert cast(string) out[0..<n] == "beta gamma\n\nDelta";
+  // Double-click on "Alpha" selects the whole word.
+  #assert coder_page_press(s, x_a + 2.0f32, y1, 0, 2, 0);
+  #assert coder_page_press(s, x_a + 2.0f32, y1, 2, 2, 0);
+  n = coder_page_copy(s, false, out[..]);
+  #assert cast(string) out[0..<n] == "Alpha";
+  // Triple-click on line 1 selects the entire line.
+  #assert coder_page_press(s, x_a + 2.0f32, y1, 0, 3, 0);
+  #assert coder_page_press(s, x_a + 2.0f32, y1, 2, 3, 0);
+  n = coder_page_copy(s, false, out[..]);
+  #assert cast(string) out[0..<n] == "Alpha beta gamma";
+  // Escape clears selection.
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && !coder_page_has_selection(s);
+  // Cmd+A with empty composer selects all transcript lines.
+  #assert coder_page_key(s, 97, MOD_CMD) && coder_page_has_selection(s);
+  n = coder_page_copy(s, false, out[..]);
+  #assert cp_find(cast(string) out[0..<n], "explain gpu selection") >= 0 && cp_find(cast(string) out[0..<n], "Delta epsilon") >= 0;
+  // New chat clears selection.
+  #assert coder_page_new(s) && !coder_page_has_selection(s);
+}

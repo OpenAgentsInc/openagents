@@ -33,6 +33,7 @@ cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
   s[0].live_on = false;   // a live 3D card the conversation draws this frame sets it (shows.coax)
+  cp_sel_begin_layout(s);
   if s[0].set_open { cp_settings(s, f, window_w, h); return; }
   s[0].todos[0].docked = false;   // cp_side_pane sets it when it draws the task list
   // the task list alone opens the right sidebar only where it sits beside the conversation:

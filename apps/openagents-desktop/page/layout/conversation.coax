@@ -309,6 +309,26 @@ cp_copy_lane :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, copi
   sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
   return lane;
 }
+// Quiet 24x24 hover-lane info button beside Copy: hovering or clicking reveals the model/harness metadata.
+cp_info_button :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, active: bool, action: int) {
+  if !visible { return; }
+  u: f32 = ARCADE_PHONE_SCALE;
+  k := f[0].skin; sh := f[0].sheet;
+  side := 24.0f32 / u;
+  top := 8.0f32 / u;
+  rad := 6.0f32 / u;
+  ico := 14.0f32 / u;
+  by := y + top;
+  key := uiframe_key(f, id);
+  p := uiframe_press(f, key, id);
+  hov := uiframe_hover(f, key, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, "Model info", bx, by, side, side, ifx active then EL_S_CURRENT else 0, action);
+  if p > 0 || active { sheet_fill(sh, bx, by, side, side, rad, k.raised); }
+  else if hov > 0 { sheet_fill(sh, bx, by, side, side, rad, opacity(k.hover, hov)); }
+  ink := ifx p > 0 || active then k.ink else rgba_mix(k.muted, k.ink, hov);
+  sheet_icon(sh, ICON_SET_ABOUT, bx + (side - ico) / 2, by + (side - ico) / 2, ico, ink);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
+}
 // The conversation from x, cw wide, in the window up to w: the messages, their groups and replies,
 // the notices, the goal and the budget, scrolling above the composer.
 cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
@@ -327,6 +347,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   s[0].frame_n += 1; s[0].anim = false;
   cp_follow(s, f[0].dt);
   uiframe_clip(f, left, top, w, bottom);
+  from_conv := app_slide_mark(f);
+  conv_nl := f[0].sheet[0].nl;
   // what scrolls, where a live 3D card's viewport is cut off (shows.coax)
   sc := cp_scale(s);
   s[0].live_r[4] = left * sc; s[0].live_r[5] = top * sc; s[0].live_r[6] = (w - left) * sc; s[0].live_r[7] = (bottom - top) * sc;
@@ -341,14 +363,18 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     _ := app_empty(f, "coder.empty", x, y + a.gap, cw, ICON_BOT, "Foreman is standing by", "Describe a goal or delegate work across managed chats.");
   }
   ib: [EL_ID] u8;
+  culled_top := false; culled_bot := false;
   // Every message stands at its height as last measured, or CP_ROW_ESTIMATE before that, and only
   // the ones near the view are laid out (#13745): a long chat costs what shows. One above the view
   // measured at a new height moves the scroll with it, so what is read stays where it is.
   for i: 0..<s[0].nturns {
     known := s[0].turns[i].h > 0 && s[0].turns[i].hw == cw;
     th := ifx known then s[0].turns[i].h else ifx s[0].turns[i].seen_h > 0 then s[0].turns[i].seen_h else cast(f32) CP_ROW_ESTIMATE;
-    margin := ifx known then 0.0f32 else cast(f32) CP_PANE_MARGIN;
-    if y + th < top - margin || y > bottom + margin { y += th; s[0].turns[i].ah = 0; }
+    margin := ifx known then 160.0f32 else cast(f32) CP_PANE_MARGIN;
+    if y + th < top - margin || y > bottom + margin {
+      if y + th < top - margin { culled_top = true; } else { culled_bot = true; }
+      y += th; s[0].turns[i].ah = 0;
+    }
     else {
       y0 := y;
       enter := f[0].skin.motion.enter;
@@ -384,9 +410,15 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
           q_vis := a_hov || did || s[0].turns[i].info;
           has_quote := cp_flag(s, DC_FLAG_RICH);
           q_off := ifx has_quote && q_vis then lane_btn + a.gap_small else 0.0f32;
-          meta_w := cw - lane_btn - q_off - a.gap_small - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
-          // who wrote it, always beside Copy/Quote: the harness and its model
-          if meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + q_off + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
+          info_x := x + lane_btn + q_off + a.gap_small;
+          info_ib: [EL_ID] u8; info_id := cp_id(info_ib[..], i, ".ai");
+          info_hov := q_vis && (uiframe_hovered(f, info_id) || (in_view && s[0].px >= info_x && s[0].px < info_x + lane_btn && s[0].py >= y + lane_top && s[0].py < y + lane_top + lane_btn));
+          show_meta := q_vis && (info_hov || s[0].turns[i].info);
+          meta_x := info_x + lane_btn + a.gap_small;
+          meta_w := x + cw - meta_x - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
+          // Model/harness metadata stays hidden behind the hover-lane info icon until hovered or toggled.
+          if show_meta && meta_w > 24 { _ := app_meta(f, cp_id(ib[..], i, ".m"), meta_x, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, cp_turn_meta(s, i), false); }
+          cp_info_button(f, info_id, info_x, y, q_vis, s[0].turns[i].info, CP_TURN_INFO);
           if has_quote { cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, q_vis, did, CP_COPY_REPLY);
         } else { y += a.gap; }
@@ -485,8 +517,56 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       y += app_button(f, "coder.budget.edit", x, y, cw, -1, "Edit budget", APP_BUTTON_DEFAULT, 0, CP_BUDGET_EDIT) + a.gap;
     }
   }
+  // Same-frame scroll settle: keep the transcript bottom-locked when stick is true and never
+  // paint a frame overscrolled past new_end when content shrinks (e.g. streaming finishes and
+  // the activity group collapses).
+  new_content := y + s[0].scroll + s[0].scr[0].stretch - top;
+  new_end := new_content - s[0].view; if new_end < 0 { new_end = 0; }
+  if s[0].stick || (!s[0].glide_on && s[0].scroll > new_end) {
+    want := new_end;
+    delta := s[0].scroll - want;
+    if abs(delta) > 0.01f32 {
+      can_shift := s[0].content > 0 && ((delta > 0 && (!culled_top || delta <= 160.0f32)) || (delta < 0 && (!culled_bot || -delta <= 160.0f32)));
+      if can_shift {
+        sh := f[0].sheet;
+        prim_move(sh[0].under, from_conv.nu, sh[0].nu, 0, delta);
+        prim_move(sh[0].over, from_conv.no, sh[0].no, 0, delta);
+        sheet_hits_move(sh, from_conv.nh, 0, delta);
+        if f[0].rows.count > 0 {
+          t := f[0].rows;
+          for ri: from_conv.nr..<t[0].n {
+            t[0].rows[ri].y += delta;
+            if t[0].rows[ri].clipped {
+              if t[0].rows[ri].ct > top {
+                t[0].rows[ri].ct += delta;
+                if t[0].rows[ri].ct < top { t[0].rows[ri].ct = top; }
+              }
+              if t[0].rows[ri].cb < bottom {
+                t[0].rows[ri].cb += delta;
+                if t[0].rows[ri].cb > bottom { t[0].rows[ri].cb = bottom; }
+              }
+            }
+            if t[0].rows[ri].transformed {
+              for pk: 0..<t[0].rows[ri].polygon_n { t[0].rows[ri].polygon[pk * 2 + 1] += delta; }
+            }
+          }
+        }
+        for li: conv_nl..<sh[0].nl { sh[0].lines[li].y += delta; }
+        for ti: 0..<s[0].nturns { if s[0].turns[ti].ah > 0 { s[0].turns[ti].ay += delta; } }
+        if s[0].live_on { s[0].live_r[1] += delta * sc; }
+        s[0].scroll = want;
+        y += delta;
+      } else {
+        s[0].scroll = want;
+        s[0].anim = true;
+      }
+    }
+  }
+  conv_scroll := s[0].scroll + s[0].scr[0].stretch;
+  cp_sel_record(s, CP_SEL_CONV, conv_nl, f[0].sheet[0].nl, left, top, w, bottom, conv_scroll);
+  cp_sel_paint(s, f, CP_SEL_CONV, conv_nl, f[0].sheet[0].nl, conv_scroll);
   uiframe_unclip(f);
-  s[0].content = y + s[0].scroll + s[0].scr[0].stretch - top;
+  s[0].content = new_content;
   app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
   cp_minimap_draw(s, f, w, top, bottom);
   cp_find_bar(s, f, left, w, top);

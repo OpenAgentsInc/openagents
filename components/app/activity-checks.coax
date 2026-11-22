@@ -203,3 +203,19 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   _ := app_working(f, "w", 0, 0, -1, "Sending…");
   #assert app_test_end(t[..]) && app_test_value(t[..], "w") == "Sending…" && app_test_texts(t[..], "0s") == 0 && app_test_texts(t[..], "Sending…") == 1;
 }
+
+#test "app activity: a thought row connects to the tree with an elbow and renders ICON_BRAIN on the glyph rail" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; a := arcade_phone_skin().act;
+  r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = "Checking repository state."};
+  app_test_begin(t[..], "", "", true);
+  h := app_act_row(f, "th.0", 0, 0, 400, r, true, 9);
+  #assert app_test_end(t[..]) && h > 0;
+  sh := surface_sheet(t[0].sf[..]);
+  brain := false; elbow := false;
+  for i: 0..<sh.nu {
+    p := sh.under[i];
+    if p.kind == PRIM_ICON && p.id == ICON_BRAIN && p.x == a.glyph_left { brain = true; }
+    if p.kind == PRIM_ELBOW && p.x == a.trunk && p.a == a.branch_end && p.on { elbow = true; }
+  }
+  #assert brain && elbow;
+}

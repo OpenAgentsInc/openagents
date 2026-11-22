@@ -31,6 +31,7 @@
 #load "../settings.coax";
 
 #load "state.coax";
+#load "selection.coax";
 #load "editor.coax";
 #load "compose.coax";
 #load "skin.coax";

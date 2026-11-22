@@ -33,6 +33,12 @@ cp_send :: (s: [] CoderPage) -> bool {
 }
 cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
   was := s[0].turns[i].reply_n;
+  // When a finished turn's final text matches what was already streamed, clear the veil
+  // in-place without re-copying or re-parsing (eliminates finish re-render flash).
+  if s[0].turns[i].state != CP_RUNNING && !more && was == text.count && cast(string) s[0].turns[i].reply[0..<was] == text {
+    if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+    return;
+  }
   prev_n := ifx s[0].turns[i].state == CP_RUNNING && more && was > 0 then cp_doc(s, i)[0].n else 0;
   n := ifx more then was else 0;
   if was == 0 && text.count > 0 { s[0].live_reply = i; }

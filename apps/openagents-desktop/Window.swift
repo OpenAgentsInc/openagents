@@ -306,9 +306,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 return nil
             }
             #endif
-            // the editing chords go to the field with the keyboard before the menu bar sees them
-            if self.window.firstResponder === self.canvas && cd_wants_text(self.page) != 0, let key = self.editingChord(event) {
+            // the editing chords go to the field with the keyboard (or active transcript selection) before the menu bar sees them
+            if self.window.firstResponder === self.canvas && (cd_wants_text(self.page) != 0 || cd_has_selection(self.page) != 0), let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
+            }
+            // Esc clears an active transcript selection before stopping a reply
+            if event.keyCode == 53 && cd_overlay_open(self.page) == 0 && cd_has_selection(self.page) != 0 {
+                if cd_key(self.page, -1, 0) != 0 { self.wake(); return nil }
             }
             // in-thread Find Escape dismissal (#13876)
             if event.keyCode == 53 && cd_find_is_open(self.page) != 0 && cd_overlay_open(self.page) == 0 {
@@ -395,7 +399,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     func focusSearch() { cd_focus(page, 2); window.makeFirstResponder(canvas); wake() }
     /// Routes Edit menu items (Cmd+A/C/X/V/Z/Shift+Cmd+Z) to the Coax GPU editor when canvas owns focus (#13903).
     func performEditChord(_ code: Int32, mods: Int32) -> Bool {
-        guard window.firstResponder === canvas && cd_wants_text(page) != 0 else { return false }
+        guard window.firstResponder === canvas && (cd_wants_text(page) != 0 || cd_has_selection(page) != 0) else { return false }
         if cd_key(page, code, mods) != 0 { wake(); return true }
         return false
     }

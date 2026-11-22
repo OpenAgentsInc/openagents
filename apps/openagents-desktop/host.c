@@ -234,19 +234,21 @@ static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, i
   }
   // a field's text takes a press first (the caret, a word, a line, Shift's extent), the page the rest
   coder_page_press(cd_state(c), x, y, phase, clicks, mods);
-  // over a sidebar's edge, and while one is dragged, the pointer is the resize arrows
-  int edge = coder_page_edge(cd_state(c)) ? 3 : 0;
-  if (edge != c->edge) { c->edge = edge; ui_cursor(c->app.host, edge); }
+  // over a sidebar's edge, link, selectable text, or active editor: set the matching native cursor
+  int cur = (int)coder_page_cursor(cd_state(c));
+  if (cur != c->edge) { c->edge = cur; ui_cursor(c->app.host, cur); }
   cd_woke(c);
 }
 // The keyboard while the view has it (page/editor.coax): the field with it edits, Return sends.
 // Command-C, -X and -V are the pasteboard's, here; the page has no effects.
-static char cd_clip[16384 + 1];
+static char cd_clip[262144 + 1];
 static int cd_on_key(void *user, int key, int mods, int down) {
   CoderHost *c = user;
   if (!down) return 0;
   int over = coder_page_overlay_open(cd_state(c)), took = 0;
-  if ((mods & 8) && !(mods & 6) && (key == 'c' || key == 'x' || key == 'v') && coder_page_wants_text(cd_state(c))) {
+  int wants = coder_page_wants_text(cd_state(c)) != 0;
+  int has_sel = coder_page_has_selection(cd_state(c)) != 0;
+  if ((mods & 8) && !(mods & 6) && ((key == 'c' && (wants || has_sel)) || ((key == 'x' || key == 'v') && wants))) {
     if (key == 'v') {
       // files or a picture on the pasteboard join the draft's attachments (cd_on_file); else its text
 #if defined(__APPLE__) || defined(_WIN32)
@@ -400,6 +402,7 @@ void cd_env(void *page, int active, int reduced) {
 }
 void cd_focus(void *page, int field) { CoderHost *c = page; if (c) { coder_page_focus(cd_state(c), field); cd_woke(c); } }
 int cd_wants_text(void *page) { CoderHost *c = page; return c && coder_page_wants_text(cd_state(c)); }
+int cd_has_selection(void *page) { CoderHost *c = page; return c && coder_page_has_selection(cd_state(c)); }
 int cd_key(void *page, int key, int mods) { CoderHost *c = page; return c ? cd_on_key(c, key, mods, 1) : 0; }
 float cd_blink(void *page) { CoderHost *c = page; return c ? coder_page_blink(cd_state(c)) : -1; }
 int cd_draft(void *page, char *out, int cap) {

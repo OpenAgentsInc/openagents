@@ -32,7 +32,7 @@ APP_ACT_EXEC :: 0; APP_ACT_READ :: 1; APP_ACT_EDIT :: 2; APP_ACT_WRITE :: 3; APP
 APP_ACT_GLOB :: 5; APP_ACT_WEB :: 6; APP_ACT_TODO :: 7; APP_ACT_AGENT :: 8; APP_ACT_THOUGHT :: 9;
 APP_ACT_KINDS :: 10;
 // Zeron's glyph for each kind (ds/activity GLYPH); a sub-agent's is the bot.
-APP_ACT_GLYPH :: [APP_ACT_KINDS] int.[ICON_TERMINAL, ICON_DOCUMENT, ICON_PEN, ICON_DOCUMENT_ADD, ICON_MAGNIFER, ICON_FOLDER, ICON_GLOBAL, ICON_CHECKLIST, ICON_BOT, ICON_THOUGHT];
+APP_ACT_GLYPH :: [APP_ACT_KINDS] int.[ICON_TERMINAL, ICON_DOCUMENT, ICON_PEN, ICON_DOCUMENT_ADD, ICON_MAGNIFER, ICON_FOLDER, ICON_GLOBAL, ICON_CHECKLIST, ICON_BOT, ICON_BRAIN];
 APP_ACT_OUTPUT_OPEN :: APP_TOOL_RESULT_PAGE;
 APP_ACT_DIFF_LINES :: 24;   // an edit's change shows this many lines at most, then how many more   // the keyed slot that says a row's long output shows whole
 
@@ -464,7 +464,11 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
     _ := app_act_fold_button(f, id, tx, ty + shown + a.fold_room - a.fold_h, sheet_pool(sh, cast(string) lb[0..<ln]), open, action);
     h += a.fold_room;
   }
-  if below { app_act_trunk(f, x, y, h); }
+  tree := opacity(s.ink, a.tree_ink);
+  mid := a.row / 2; bend_y := y + mid - a.bend;
+  if below { app_act_trunk(f, x, y, h); } else { app_act_trunk(f, x, y, mid - a.bend); }
+  sheet_elbow(sh, x + a.trunk, bend_y, a.bend, x + a.branch_end, below, tree);
+  sheet_icon(sh, ICON_BRAIN, x + a.glyph_left, y + (a.row - a.glyph) / 2, a.glyph, opacity(s.muted, 0.85f32));
   return h;
 }
 

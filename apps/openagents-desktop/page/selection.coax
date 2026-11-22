@@ -1,0 +1,565 @@
+// Coder Desktop page (../page.coax): GPU-driven transcript text selection and copy/paste
+// (ported from Zeron / zgx scene_select.rs). Operates directly on the committed Sheet's
+// SheetLine and PRIM_TEXT runs, painting whole-pixel-snapped seam-free highlight quads
+// into Sheet.under between backgrounds and glyphs so selection renders cleanly under text
+// in both flat and composed GPU frames across macOS, Linux, and Windows.
+
+CP_SEL_NONE :: 0;
+CP_SEL_CONV :: 1;
+CP_SEL_PANE :: 2;
+
+CP_SEL_CHAR :: 1;
+CP_SEL_WORD :: 2;
+CP_SEL_LINE :: 3;
+CP_SEL_ALL  :: 4;
+
+CpSelPos :: struct { line: int; off: int; }
+
+CpSelRegion :: struct {
+  l0: int; l1: int;
+  l: f32; t: f32; r: f32; b: f32;
+  scroll: f32;
+}
+
+CpSel :: struct {
+  region: int;                  // CP_SEL_NONE, CP_SEL_CONV, CP_SEL_PANE
+  active: bool;                 // true when a non-empty span is selected
+  dragging: bool;               // true while pointer button is held for selection
+  was_active: bool;             // true when a selection existed at pointer-down (plain click clears only)
+  mode: int;                    // CP_SEL_CHAR / _WORD / _LINE / _ALL
+  // Endpoints in region content coordinates (x: logical px, cy: screen y + scroll).
+  anchor_x: f32; anchor_cy: f32;
+  focus_x: f32;  focus_cy: f32;
+  // Per-surface-generation region line ranges & viewports (indexed by surface.front: 0 or 1).
+  conv: [2] CpSelRegion;
+  pane: [2] CpSelRegion;
+}
+
+cp_sel_clear :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].sel[0].region = CP_SEL_NONE;
+  s[0].sel[0].active = false;
+  s[0].sel[0].dragging = false;
+  s[0].sel[0].was_active = false;
+  s[0].sel[0].mode = 0;
+}
+
+// Reset the back generation's selectable regions at the start of cp_layout.
+cp_sel_begin_layout :: (s: [] CoderPage) {
+  gen := 1 - s[0].surface[0].front;
+  s[0].sel[0].conv[gen] = CpSelRegion.{};
+  s[0].sel[0].pane[gen] = CpSelRegion.{};
+}
+
+// Record a laid-out region's line range, viewport, and scroll into the back generation.
+cp_sel_record :: (s: [] CoderPage, region: int, l0: int, l1: int, l: f32, t: f32, r: f32, b: f32, scroll: f32) {
+  gen := 1 - s[0].surface[0].front;
+  reg := CpSelRegion.{l0 = l0, l1 = l1, l = l, t = t, r = r, b = b, scroll = scroll};
+  if region == CP_SEL_CONV { s[0].sel[0].conv[gen] = reg; }
+  else if region == CP_SEL_PANE { s[0].sel[0].pane[gen] = reg; }
+}
+
+// Read the committed generation's region descriptor.
+cp_sel_region_of :: (s: [] CoderPage, region: int) -> CpSelRegion {
+  if s[0].surface[0].generation == 0 { return CpSelRegion.{}; }
+  f := s[0].surface[0].front;
+  if region == CP_SEL_CONV { return s[0].sel[0].conv[f]; }
+  if region == CP_SEL_PANE { return s[0].sel[0].pane[f]; }
+  return CpSelRegion.{};
+}
+
+// Snap a logical coordinate to the nearest whole device pixel (zgx scene_select.rs shape_pieces).
+cp_sel_snap :: (v: f32, d: f32) -> f32 {
+  if !(d > 0) { return v; }
+  p := v * d + 0.5f32;
+  i := cast(int) p;
+  if p < cast(f32) i { i -= 1; }
+  return cast(f32) i / d;
+}
+
+cp_sel_before :: (a: CpSelPos, b: CpSelPos) -> bool {
+  return a.line < b.line || (a.line == b.line && a.off < b.off);
+}
+
+// Logical x offset of byte `upto` within `text` (atlas fonts when ready, cell measure in tests).
+cp_sel_text_x :: (s: [] CoderPage, face: int, text: string, upto: int) -> f32 {
+  if upto <= 0 || text.count == 0 { return 0.0f32; }
+  n := ifx upto < text.count then upto else text.count;
+  if s[0].atlas[0].ready { return text_x_at(s[0].atlas[..], face, text, n); }
+  return measure_width(measure_cells(), face, cast(string) text[0..<n]);
+}
+
+// Nearest byte boundary in `text` for local logical x.
+cp_sel_text_off :: (s: [] CoderPage, face: int, text: string, x: f32) -> int {
+  if x <= 0 || text.count == 0 { return 0; }
+  if s[0].atlas[0].ready { return text_offset(s[0].atlas[..], face, text, x); }
+  m := measure_cells();
+  pen: f32 = 0; i := 0; prev_i := 0; prev_x: f32 = 0;
+  while i < text.count {
+    st := measure_step(m, face, text, i, -1);
+    if pen >= x { return ifx pen - x < x - prev_x then i else prev_i; }
+    prev_i = i; prev_x = pen; pen += st.advance; i += st.len;
+  }
+  return ifx pen - x < x - prev_x then text.count else prev_i;
+}
+
+cp_sel_line_len :: (sh: Sheet, li: int) -> int {
+  if li < 0 || li >= sh.nl { return 0; }
+  ln := sh.lines[li];
+  n := 0;
+  for k: 0..<ln.items {
+    idx := ln.item0 + k;
+    if idx < 0 || idx >= sh.no { break; }
+    n += sh.over[idx].text.count;
+  }
+  return n;
+}
+
+cp_sel_line_right :: (sh: Sheet, li: int) -> f32 {
+  if li < 0 || li >= sh.nl { return 0; }
+  ln := sh.lines[li];
+  if ln.items <= 0 { return ln.x; }
+  last_idx := ln.item0 + ln.items - 1;
+  if last_idx < 0 || last_idx >= sh.no { return ln.x; }
+  return sh.over[last_idx].x + sh.over[last_idx].w;
+}
+
+cp_sel_line_x :: (s: [] CoderPage, sh: Sheet, li: int, off: int) -> f32 {
+  if li < 0 || li >= sh.nl { return 0; }
+  ln := sh.lines[li];
+  if off <= 0 || ln.items <= 0 { return ln.x; }
+  for k: 0..<ln.items {
+    idx := ln.item0 + k;
+    if idx < 0 || idx >= sh.no { break; }
+    ti := sh.over[idx];
+    if off <= ti.off + ti.text.count { return ti.x + cp_sel_text_x(s, ti.id, ti.text, off - ti.off); }
+  }
+  return cp_sel_line_right(sh, li);
+}
+
+cp_sel_byte_at :: (sh: Sheet, li: int, off: int) -> u8 {
+  if li < 0 || li >= sh.nl || off < 0 { return 0; }
+  ln := sh.lines[li];
+  for k: 0..<ln.items {
+    idx := ln.item0 + k;
+    if idx < 0 || idx >= sh.no { break; }
+    ti := sh.over[idx];
+    if off >= ti.off && off < ti.off + ti.text.count { return ti.text[off - ti.off]; }
+  }
+  return 0;
+}
+
+cp_sel_is_word :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c >= 0x80;
+}
+
+cp_sel_is_space :: (c: u8) -> bool { return c == ' ' || c == '\t'; }
+
+// Word boundaries around byte `off` in line `li` (word chars, whitespace run, or punctuation run).
+cp_sel_word_bounds :: (sh: Sheet, li: int, off: int, out_lo: [] int, out_hi: [] int) {
+  ll := cp_sel_line_len(sh, li);
+  if ll <= 0 { out_lo[0] = 0; out_hi[0] = 0; return; }
+  p := off;
+  if p < 0 { p = 0; }
+  if p >= ll { p = ll - 1; }
+  c := cp_sel_byte_at(sh, li, p);
+  lo := p; hi := p + 1;
+  if cp_sel_is_word(c) {
+    while lo > 0 && cp_sel_is_word(cp_sel_byte_at(sh, li, lo - 1)) { lo -= 1; }
+    while hi < ll && cp_sel_is_word(cp_sel_byte_at(sh, li, hi)) { hi += 1; }
+  } else if cp_sel_is_space(c) {
+    while lo > 0 && cp_sel_is_space(cp_sel_byte_at(sh, li, lo - 1)) { lo -= 1; }
+    while hi < ll && cp_sel_is_space(cp_sel_byte_at(sh, li, hi)) { hi += 1; }
+  } else {
+    while lo > 0 && !cp_sel_is_word(cp_sel_byte_at(sh, li, lo - 1)) && !cp_sel_is_space(cp_sel_byte_at(sh, li, lo - 1)) { lo -= 1; }
+    while hi < ll && !cp_sel_is_word(cp_sel_byte_at(sh, li, hi)) && !cp_sel_is_space(cp_sel_byte_at(sh, li, hi)) { hi += 1; }
+  }
+  out_lo[0] = lo; out_hi[0] = hi;
+}
+
+// Resolve a content-coordinate point (x, cy = screen_y + scroll) to the nearest (line, byte off)
+// within sh.lines[l0..<l1).
+cp_sel_pos_at :: (s: [] CoderPage, sh: Sheet, l0: int, l1: int, scroll: f32, x: f32, cy: f32) -> CpSelPos {
+  first := ifx l0 < 0 then 0 else l0;
+  last := ifx l1 > sh.nl then sh.nl else l1;
+  best := -1; best_dy: f32 = 10000000.0f32; best_dx: f32 = 10000000.0f32;
+  min_top: f32 = 10000000.0f32; max_bot: f32 = -10000000.0f32;
+  for li: first..<last {
+    ln := sh.lines[li];
+    if ln.items <= 0 { continue; }
+    ltop := ln.y + scroll;
+    lbot := ltop + ln.h;
+    if ltop < min_top { min_top = ltop; }
+    if lbot > max_bot { max_bot = lbot; }
+    dy: f32 = 0;
+    if cy < ltop { dy = ltop - cy; }
+    else if cy >= lbot { dy = cy - lbot + 0.001f32; }
+    rx := cp_sel_line_right(sh, li);
+    dx: f32 = 0;
+    if x < ln.x { dx = ln.x - x; }
+    else if x > rx { dx = x - rx; }
+    if dy < best_dy - 0.0005f32 || (abs(dy - best_dy) <= 0.0005f32 && dx < best_dx) {
+      best = li; best_dy = dy; best_dx = dx;
+    }
+  }
+  if best < 0 { return CpSelPos.{line = -1, off = 0}; }
+  if cy < min_top - 8.0f32 { return CpSelPos.{line = best, off = 0}; }
+  if cy > max_bot + 8.0f32 { return CpSelPos.{line = best, off = cp_sel_line_len(sh, best)}; }
+  ln := sh.lines[best];
+  if x <= ln.x { return CpSelPos.{line = best, off = 0}; }
+  for k: 0..<ln.items {
+    idx := ln.item0 + k;
+    if idx < 0 || idx >= sh.no { break; }
+    ti := sh.over[idx];
+    if x < ti.x + ti.w || k + 1 == ln.items {
+      return CpSelPos.{line = best, off = ti.off + cp_sel_text_off(s, ti.id, ti.text, x - ti.x)};
+    }
+  }
+  return CpSelPos.{line = best, off = 0};
+}
+
+// Resolve the active selection into ordered [out_lo[0], out_hi[0]) against sheet lines [l0..<l1).
+cp_sel_resolve :: (s: [] CoderPage, sh: Sheet, l0: int, l1: int, scroll: f32, out_lo: [] CpSelPos, out_hi: [] CpSelPos) -> bool {
+  first := ifx l0 < 0 then 0 else l0;
+  last := ifx l1 > sh.nl then sh.nl else l1;
+  if first >= last { return false; }
+  sel := s[0].sel[0];
+  if sel.mode == CP_SEL_ALL {
+    f_li := -1; l_li := -1;
+    for li: first..<last {
+      if sh.lines[li].items > 0 {
+        if f_li < 0 { f_li = li; }
+        l_li = li;
+      }
+    }
+    if f_li < 0 || l_li < 0 { return false; }
+    out_lo[0] = CpSelPos.{line = f_li, off = 0};
+    out_hi[0] = CpSelPos.{line = l_li, off = cp_sel_line_len(sh, l_li)};
+    return cp_sel_before(out_lo[0], out_hi[0]);
+  }
+  a := cp_sel_pos_at(s, sh, first, last, scroll, sel.anchor_x, sel.anchor_cy);
+  b := cp_sel_pos_at(s, sh, first, last, scroll, sel.focus_x, sel.focus_cy);
+  if a.line < 0 || b.line < 0 { return false; }
+  if sel.mode == CP_SEL_WORD {
+    alo: [1] int; ahi: [1] int; blo: [1] int; bhi: [1] int;
+    cp_sel_word_bounds(sh, a.line, a.off, alo[..], ahi[..]);
+    cp_sel_word_bounds(sh, b.line, b.off, blo[..], bhi[..]);
+    if cp_sel_before(b, a) {
+      out_lo[0] = CpSelPos.{line = b.line, off = blo[0]};
+      out_hi[0] = CpSelPos.{line = a.line, off = ahi[0]};
+    } else {
+      out_lo[0] = CpSelPos.{line = a.line, off = alo[0]};
+      out_hi[0] = CpSelPos.{line = b.line, off = bhi[0]};
+    }
+    return cp_sel_before(out_lo[0], out_hi[0]);
+  }
+  if sel.mode >= CP_SEL_LINE {
+    lo_l := ifx a.line < b.line then a.line else b.line;
+    hi_l := ifx a.line > b.line then a.line else b.line;
+    out_lo[0] = CpSelPos.{line = lo_l, off = 0};
+    out_hi[0] = CpSelPos.{line = hi_l, off = cp_sel_line_len(sh, hi_l)};
+    return cp_sel_before(out_lo[0], out_hi[0]);
+  }
+  if cp_sel_before(b, a) { out_lo[0] = b; out_hi[0] = a; }
+  else { out_lo[0] = a; out_hi[0] = b; }
+  return cp_sel_before(out_lo[0], out_hi[0]);
+}
+
+// Whether a non-empty transcript or pane selection is currently active against the committed sheet.
+cp_sel_has :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || !s[0].sel[0].active || s[0].sel[0].region == CP_SEL_NONE { return false; }
+  if s[0].surface[0].generation == 0 { return false; }
+  reg := cp_sel_region_of(s, s[0].sel[0].region);
+  if reg.l1 <= reg.l0 { return false; }
+  sh := surface_sheet(s[0].surface[..]);
+  lo: [1] CpSelPos; hi: [1] CpSelPos;
+  return cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]);
+}
+
+// Paint GPU selection highlight quads for `region` into f[0].sheet[0].under right before
+// uiframe_unclip(f). Adjacent lines share an exact whole-pixel-snapped midpoint seam so
+// semi-transparent selection rectangles never show 1px gaps or double-alpha overlap stripes.
+cp_sel_paint :: (s: [] CoderPage, f: [] UiFrame, region: int, l0: int, l1: int, scroll: f32) {
+  if !s[0].sel[0].active || s[0].sel[0].region != region || l1 <= l0 { return; }
+  sh := f[0].sheet;
+  lo: [1] CpSelPos; hi: [1] CpSelPos;
+  if !cp_sel_resolve(s, sh[0], l0, l1, scroll, lo[..], hi[..]) { return; }
+  d := ifx s[0].d > 0 then s[0].d else 1.0f32;
+  col := f[0].skin.selection;
+  single := lo[0].line == hi[0].line;
+  rad := ifx single then 3.0f32 else 0.0f32;
+  for li: lo[0].line..<hi[0].line + 1 {
+    if li < l0 || li >= l1 || li >= sh[0].nl { continue; }
+    ln := sh[0].lines[li];
+    if ln.items <= 0 { continue; }
+    from_off := ifx li == lo[0].line then lo[0].off else 0;
+    ll := cp_sel_line_len(sh[0], li);
+    to_off := ifx li == hi[0].line then hi[0].off else ll;
+    x0 := cp_sel_line_x(s, sh[0], li, from_off);
+    x1 := cp_sel_line_x(s, sh[0], li, to_off);
+    if li < hi[0].line && ln.hard && to_off == ll && x1 <= x0 { x1 = x0 + 4.0f32; }
+    if x1 <= x0 { continue; }
+    top_y := cp_sel_snap(ln.y, d);
+    bot_y := cp_sel_snap(ln.y + ln.h, d);
+    if li > lo[0].line && li - 1 >= l0 && sh[0].lines[li - 1].items > 0 {
+      p := sh[0].lines[li - 1];
+      if ln.y >= p.y + 1.0f32 && abs(ln.y - (p.y + p.h)) <= ln.h * 0.35f32 {
+        top_y = cp_sel_snap((p.y + p.h + ln.y) * 0.5f32, d);
+      }
+    }
+    if li < hi[0].line && li + 1 < l1 && li + 1 < sh[0].nl && sh[0].lines[li + 1].items > 0 {
+      nx := sh[0].lines[li + 1];
+      if nx.y >= ln.y + 1.0f32 && abs(nx.y - (ln.y + ln.h)) <= ln.h * 0.35f32 {
+        bot_y = cp_sel_snap((ln.y + ln.h + nx.y) * 0.5f32, d);
+      }
+    }
+    sx0 := cp_sel_snap(x0, d);
+    sx1 := cp_sel_snap(x1, d);
+    if sx1 > sx0 && bot_y > top_y {
+      sheet_fill(sh, sx0, top_y, sx1 - sx0, bot_y - top_y, rad, col);
+    }
+  }
+}
+
+// Extract the selected UTF-8 text into `out`, joining soft wraps seamlessly, inserting '\n'
+// on hard breaks, '\n\n' across paragraph/block gaps, and '\t' across same-row table cells.
+cp_sel_copy :: (s: [] CoderPage, out: [] u8) -> int {
+  if s.count < 1 || !s[0].sel[0].active || s[0].sel[0].region == CP_SEL_NONE || out.count <= 0 { return 0; }
+  if s[0].surface[0].generation == 0 { return 0; }
+  reg := cp_sel_region_of(s, s[0].sel[0].region);
+  if reg.l1 <= reg.l0 { return 0; }
+  sh := surface_sheet(s[0].surface[..]);
+  lo: [1] CpSelPos; hi: [1] CpSelPos;
+  if !cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]) { return 0; }
+  n := 0;
+  for li: lo[0].line..<hi[0].line + 1 {
+    if li < reg.l0 || li >= reg.l1 || li >= sh.nl { continue; }
+    ln := sh.lines[li];
+    if ln.items <= 0 { continue; }
+    from_off := ifx li == lo[0].line then lo[0].off else 0;
+    to_off := ifx li == hi[0].line then hi[0].off else cp_sel_line_len(sh, li);
+    for k: 0..<ln.items {
+      idx := ln.item0 + k;
+      if idx < 0 || idx >= sh.no { break; }
+      ti := sh.over[idx];
+      for q: 0..<ti.text.count {
+        o := ti.off + q;
+        if o >= from_off && o < to_off {
+          if n < out.count { out[n] = ti.text[q]; n += 1; }
+        }
+      }
+    }
+    if li < hi[0].line {
+      // Find the next non-empty line in the selection to determine separator kind.
+      nxt := -1;
+      for j: li + 1..<hi[0].line + 1 {
+        if j < reg.l1 && j < sh.nl && sh.lines[j].items > 0 { nxt = j; break; }
+      }
+      if nxt >= 0 {
+        nx := sh.lines[nxt];
+        if abs(nx.y - ln.y) < 1.0f32 && nx.x > ln.x {
+          if n < out.count { out[n] = '\t'; n += 1; }
+        } else if ln.hard {
+          if n < out.count { out[n] = '\n'; n += 1; }
+          if nx.y - (ln.y + ln.h) > ln.h * 0.45f32 {
+            if n < out.count { out[n] = '\n'; n += 1; }
+          }
+        }
+      }
+    }
+  }
+  // Never cut mid-UTF-8 codepoint if output hit capacity.
+  if n == out.count && n > 0 {
+    while n > 0 && (out[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > 0 && (out[n - 1] & 0x80) != 0 {
+      // Walk back across leading multibyte header if truncated.
+      lead := out[n - 1];
+      need := ifx (lead & 0xE0) == 0xC0 then 2 else ifx (lead & 0xF0) == 0xE0 then 3 else ifx (lead & 0xF8) == 0xF0 then 4 else 1;
+      if out.count - (n - 1) < need { n -= 1; }
+    }
+  }
+  return n;
+}
+
+// Collapse any active selection inside the currently focused text editor so Cmd+C copies
+// the transcript selection the user just created.
+cp_sel_ed_unselect :: (s: [] CoderPage) {
+  which := cp_ed_which(s);
+  if which < 0 || which >= CP_EDS { return; }
+  c := s[0].fld[0].ed[which].body[..];
+  if c[0].ed[0].anchor != c[0].ed[0].caret {
+    c[0].ed[0].anchor = c[0].ed[0].caret;
+  }
+}
+
+// Select all laid-out lines in the conversation (Cmd+A when no non-empty editor owns focus).
+cp_sel_select_all :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || s[0].set_open || cp_overlay_open(s) || s[0].surface[0].generation == 0 { return false; }
+  reg := cp_sel_region_of(s, CP_SEL_CONV);
+  if reg.l1 <= reg.l0 { return false; }
+  s[0].sel[0].region = CP_SEL_CONV;
+  s[0].sel[0].mode = CP_SEL_ALL;
+  s[0].sel[0].dragging = false;
+  s[0].sel[0].was_active = false;
+  s[0].sel[0].active = true;
+  if !cp_sel_has(s) { cp_sel_clear(s); return false; }
+  cp_sel_ed_unselect(s);
+  return true;
+}
+
+cp_sel_in_region :: (reg: CpSelRegion, ux: f32, uy: f32) -> bool {
+  return reg.l1 > reg.l0 && ux >= reg.l && ux < reg.r && uy >= reg.t && uy < reg.b;
+}
+
+// Pointer handler for transcript & sub-agent pane selection.
+// phase: 0 down, 1 move/drag, 2 up, 3 cancel.
+cp_sel_pointer :: (s: [] CoderPage, ux: f32, uy: f32, phase: int, clicks: int, mods: int, acts: bool) -> bool {
+  if s.count < 1 || s[0].surface[0].generation == 0 { return false; }
+  sel := s[0].sel[..];
+  if phase == 0 {
+    if acts {
+      if sel[0].active { cp_sel_clear(s); }
+      return false;
+    }
+    reg_id := CP_SEL_NONE;
+    reg := CpSelRegion.{};
+    if s[0].pane_open {
+      pr := cp_sel_region_of(s, CP_SEL_PANE);
+      if cp_sel_in_region(pr, ux, uy) { reg_id = CP_SEL_PANE; reg = pr; }
+    }
+    if reg_id == CP_SEL_NONE && !s[0].set_open {
+      cr := cp_sel_region_of(s, CP_SEL_CONV);
+      if cp_sel_in_region(cr, ux, uy) { reg_id = CP_SEL_CONV; reg = cr; }
+    }
+    if reg_id == CP_SEL_NONE {
+      if sel[0].active { cp_sel_clear(s); }
+      return false;
+    }
+    sh := surface_sheet(s[0].surface[..]);
+    lo: [1] CpSelPos; hi: [1] CpSelPos;
+    was := sel[0].active && sel[0].region == reg_id;
+    shift := (mods & MOD_SHIFT) != 0;
+    cy := uy + reg.scroll;
+    if shift && was {
+      if sel[0].mode == CP_SEL_ALL { sel[0].mode = CP_SEL_CHAR; }
+      sel[0].focus_x = ux; sel[0].focus_cy = cy;
+      sel[0].dragging = true; sel[0].was_active = true;
+      sel[0].active = cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]);
+      if sel[0].active { cp_sel_ed_unselect(s); }
+      return true;
+    }
+    if clicks >= 2 {
+      sel[0].region = reg_id;
+      sel[0].mode = ifx clicks >= 3 then CP_SEL_LINE else CP_SEL_WORD;
+      sel[0].anchor_x = ux; sel[0].anchor_cy = cy;
+      sel[0].focus_x = ux;  sel[0].focus_cy = cy;
+      sel[0].dragging = true; sel[0].was_active = was;
+      sel[0].active = cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]);
+      if sel[0].active { cp_sel_ed_unselect(s); }
+      return true;
+    }
+    sel[0].region = reg_id;
+    sel[0].mode = CP_SEL_CHAR;
+    sel[0].anchor_x = ux; sel[0].anchor_cy = cy;
+    sel[0].focus_x = ux;  sel[0].focus_cy = cy;
+    sel[0].dragging = true; sel[0].was_active = was;
+    sel[0].active = false;
+    if was { cp_sel_ed_unselect(s); return true; }
+    return false;
+  }
+  if phase == 1 {
+    if !sel[0].dragging { return false; }
+    reg := cp_sel_region_of(s, sel[0].region);
+    if reg.l1 <= reg.l0 { return true; }
+    sel[0].focus_x = ux; sel[0].focus_cy = uy + reg.scroll;
+    if sel[0].mode == CP_SEL_CHAR && !sel[0].active && abs(ux - s[0].dx) < 2.0f32 && abs(uy - s[0].dy) < 2.0f32 {
+      return true;
+    }
+    sh := surface_sheet(s[0].surface[..]);
+    lo: [1] CpSelPos; hi: [1] CpSelPos;
+    sel[0].active = cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]);
+    if sel[0].active { cp_sel_ed_unselect(s); }
+    return true;
+  }
+  if !sel[0].dragging { return false; }
+  sel[0].dragging = false;
+  if phase == 3 { cp_sel_clear(s); return true; }
+  reg := cp_sel_region_of(s, sel[0].region);
+  if reg.l1 > reg.l0 && (sel[0].active || sel[0].mode >= CP_SEL_WORD) {
+    sel[0].focus_x = ux; sel[0].focus_cy = uy + reg.scroll;
+    sh := surface_sheet(s[0].surface[..]);
+    lo: [1] CpSelPos; hi: [1] CpSelPos;
+    sel[0].active = cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]);
+  }
+  had := sel[0].was_active;
+  sel[0].was_active = false;
+  if sel[0].active { cp_sel_ed_unselect(s); return true; }
+  cp_sel_clear(s);
+  return had;
+}
+
+// Whether (ux, uy) lies directly over a selectable line of text in the committed sheet.
+cp_sel_over_region :: (sh: Sheet, reg: CpSelRegion, ux: f32, uy: f32) -> bool {
+  if !cp_sel_in_region(reg, ux, uy) { return false; }
+  last := ifx reg.l1 > sh.nl then sh.nl else reg.l1;
+  for li: reg.l0..<last {
+    ln := sh.lines[li];
+    if ln.items <= 0 || uy < ln.y || uy >= ln.y + ln.h { continue; }
+    if ux >= ln.x && ux <= cp_sel_line_right(sh, li) { return true; }
+  }
+  return false;
+}
+
+cp_sel_over_text :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
+  if s.count < 1 || s[0].surface[0].generation == 0 { return false; }
+  sh := surface_sheet(s[0].surface[..]);
+  if s[0].pane_open && cp_sel_over_region(sh, cp_sel_region_of(s, CP_SEL_PANE), ux, uy) { return true; }
+  if !s[0].set_open && cp_sel_over_region(sh, cp_sel_region_of(s, CP_SEL_CONV), ux, uy) { return true; }
+  return false;
+}
+
+// Whether (ux, uy) lies over any active text editor field (for I-beam cursor).
+cp_ed_over :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
+  fl := s[0].fld[..];
+  over := cp_overlay_open(s);
+  for i: 0..<CP_EDS {
+    if (i == CP_ED_DIALOG || i == CP_ED_PALETTE) && cp_ed_which(s) != i { continue; }
+    if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu) { continue; }
+    if i == CP_ED_FILE && (over || !cp_fp_editing(s) || s[0].fp[0].large_edit) { continue; }
+    if i == CP_ED_FIND && (over || s[0].set_open || !s[0].find[0].open) { continue; }
+    if i == CP_ED_FT_FILTER && (over || s[0].set_open || !cp_fp_shown(s) || !s[0].ft[0].tree_visible) { continue; }
+    c := fl[0].ed[i].body[..];
+    if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }
+    if ux >= c[0].text_x && ux < c[0].text_x + c[0].text_w && uy >= c[0].text_y && uy < c[0].text_y + c[0].view_h { return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- host C exports
+
+// True when a non-empty GPU transcript or pane text selection is active.
+coder_page_has_selection :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || cp_overlay_open(s) || s[0].set_open { return false; }
+  return cp_sel_has(s);
+}
+
+// Native pointer cursor kind at the current pointer position:
+// 0 = arrow, 1 = I-beam (selectable text or active text editor), 2 = pointing hand (link), 3 = resizeLeftRight (pane/sidebar edge).
+coder_page_cursor :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  if s[0].drag != 0 || s[0].hover != 0 { return 3; }
+  if s[0].sel[0].dragging || s[0].fld[0].drag != 0 { return 1; }
+  if cp_overlay_open(s) { return 0; }
+  ux := s[0].px; uy := s[0].py;
+  if cp_ed_over(s, ux, uy) { return 1; }
+  row := surface_hit(s[0].surface[..], ux, uy);
+  if row >= 0 {
+    tb := surface_rows(s[0].surface[..]);
+    if row < tb.n {
+      if tb.rows[row].role == EL_LINK { return 2; }
+      if tb.rows[row].action != 0 { return 0; }
+    }
+  }
+  if cp_sel_over_text(s, ux, uy) { return 1; }
+  return 0;
+}

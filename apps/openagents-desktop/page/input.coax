@@ -283,6 +283,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if turn < 0 || turn >= s[0].nturns { return false; }
     s[0].copied_turn = turn; s[0].copied_block = -1; s[0].copied_kind = ifx act == CP_COPY_ASK then CP_COPIED_ASK else CP_COPIED_REPLY; s[0].copied_at = s[0].clock; s[0].ask = CP_ASK_COPY; return true;
   }
+  if act == CP_TURN_INFO {
+    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    s[0].turns[turn].info = !s[0].turns[turn].info;
+    return true;
+  }
   if act == CP_COPY_ALL {
     if s[0].nturns == 0 { return false; }
     s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
@@ -333,9 +339,12 @@ coder_page_sides_set :: (s: [] CoderPage, left: f32, right: f32) #export_c #effe
 }
 // A click, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled, routed through the committed rows.
 coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  return cp_pointer_with(s, x, y, phase, 1, 0);
+}
+cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool {
   if s.count < 1 || !(s[0].d > 0) { return false; }
   ux := x / s[0].d; uy := y / s[0].d;
-  s[0].px = ux; s[0].py = uy;
+  s[0].px = ux; s[0].py = uy; s[0].pointer_in = phase != 3;
   if cp_minimap_pointer(s, ux, uy, phase) { return true; }
   row := surface_hit(s[0].surface[..], ux, uy);
   id := surface_id(s[0].surface[..], row);
@@ -357,14 +366,6 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   }
   if phase == 1 { s[0].hover = cp_edge(s, ux); }
   if phase == 0 { s[0].dx = ux; s[0].dy = uy; }
-  // a click on a reply, where nothing else takes it, shows or hides who wrote it
-  if phase == 2 && !acts && s[0].pressed_n == 0 && abs(ux - s[0].dx) < 3 && abs(uy - s[0].dy) < 3 && ux >= s[0].col_x && ux < s[0].col_x + s[0].col_w {
-    for i: 0..<s[0].nturns {
-      if s[0].turns[i].ah > 0 && uy >= s[0].turns[i].ay && uy < s[0].turns[i].ay + s[0].turns[i].ah && uy < s[0].view {
-        s[0].turns[i].info = !s[0].turns[i].info; s[0].touching = false; return true;
-      }
-    }
-  }
   if phase == 0 && s[0].model_menu {
     act := surface_action(s[0].surface[..], row);
     if act != CP_MODEL_MENU && act != CP_MODEL_PICK && act != CP_MODEL_LOCAL {
@@ -384,6 +385,31 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
     if act != CP_FT_EDITOR_MENU && act != CP_FT_EDITOR_PICK && id != "coder.ft.edmenu" {
       s[0].ft[0].editor_menu = false;
       return true;
+    }
+  }
+  // Transcript / sub-agent pane GPU text selection (drag, double-click word, triple-click line, Shift-extend).
+  if phase != 0 && s[0].sel[0].dragging {
+    took_sel := cp_sel_pointer(s, ux, uy, phase, clicks, mods, acts);
+    if phase != 1 { s[0].touching = false; s[0].pressed_n = 0; }
+    if took_sel { return true; }
+  }
+  if phase == 0 {
+    if acts {
+      if s[0].sel[0].active { cp_sel_clear(s); }
+    } else {
+      took_sel := cp_sel_pointer(s, ux, uy, 0, clicks, mods, false);
+      if s[0].sel[0].dragging {
+        s[0].touching = true; s[0].pressed_n = 0;
+        return took_sel;
+      }
+    }
+  }
+  // a click on a reply, where nothing else takes it, shows or hides who wrote it
+  if phase == 2 && !acts && s[0].pressed_n == 0 && abs(ux - s[0].dx) < 3 && abs(uy - s[0].dy) < 3 && ux >= s[0].col_x && ux < s[0].col_x + s[0].col_w {
+    for i: 0..<s[0].nturns {
+      if s[0].turns[i].ah > 0 && uy >= s[0].turns[i].ay && uy < s[0].turns[i].ay + s[0].turns[i].ah && uy < s[0].view {
+        s[0].turns[i].info = !s[0].turns[i].info; s[0].touching = false; return true;
+      }
     }
   }
   if phase == 0 {

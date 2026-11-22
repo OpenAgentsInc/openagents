@@ -48,6 +48,16 @@ extension CoderWindow {
         #endif
         var out = [CChar](repeating: 0, count: 128)
         guard cd_chat_at(page, px, py, &out, Int32(out.count)) > 0 else {
+            // Right-click with an active GPU transcript selection offers Copy.
+            if cd_has_selection(page) != 0 {
+                let items = [Item(label: "Copy")]
+                overlay.presentMenu(items, x: px, y: py) { [weak self] chosen in
+                    guard let self, chosen == 0 else { return }
+                    _ = cd_key(self.page, Int32(UnicodeScalar("c").value), 8)
+                    self.wake()
+                }
+                return true
+            }
             // a right-click on nothing closes a menu that is up
             if overlay.menuOpen { _ = overlay.escape(); return true }
             return false
