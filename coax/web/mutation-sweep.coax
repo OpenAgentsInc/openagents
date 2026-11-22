@@ -435,7 +435,7 @@ ms_before_in :: (a: int, b: int) -> bool {
   #assert ms_command_secs("remote: a slot 1: checkout and compiler 1 s, command 7 s, status 0\nremote: b slot 2: checkout and compiler 1 s, command 8 s, status 0") == 8;
   #assert ms_command_secs("x\nremote: h slot 1: checkout and compiler 5 s, command 3 s, status 0\n") == 3;
   #assert ms_before_in(-1, 5) && !ms_before_in(-1, -1) && !ms_before_in(5, -1) && ms_before_in(6, 5) && !ms_before_in(5, 5) && !ms_before_in(4, 5);
-  #assert ms_before_in(0, -1) == false && ms_before_in(1, 0) && ms_before_in(-1, 0);
+  #assert ms_before_in(0, -1) == false && ms_before_in(1, 0) && ms_before_in(-1, 0) && !ms_before_in(0, 0) && !ms_before_in(0, 5);
 }
 // A part's record of its last sweep, STATE/parts/SLUG.partK.meta: "COMMIT\tDATE\tok", or
 // "COMMIT\tDATE\tWHY" when it did not run. The rolling sweep (--hours) reads it to choose the

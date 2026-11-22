@@ -827,4 +827,57 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_ANSWER && r[0].allow && r[0].ticket.value == 9 && r[0].option == "allow_once";
   n = mww_answer_option(o[..], false, 9, "", "user denied");
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_ANSWER && !r[0].allow && r[0].why == "user denied" && r[0].option == "";
+  // edge cases: empty/1-char option and why, denied with option ignored, empty/1-char options_json
+  n = mww_answer_option(o[..], true, 1, "", "");
+  #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":1}\n";
+  n = mww_answer_option(o[..], true, 1, "x", "");
+  #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":1,\"option\":\"x\"}\n";
+  n = mww_answer_option(o[..], false, 1, "x", "");
+  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"why\":\"refused\"}\n";
+  n = mww_answer_option(o[..], false, 1, "", "n");
+  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"why\":\"n\"}\n";
+  n = mww_permit(o[..], 11, false, "T", "", "");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_PERMIT && l[0].options == "[]";
+  n = mww_permit(o[..], 12, false, "T", "", "0");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"permit\",\"ticket\":12,\"question\":false,\"title\":\"T\",\"command\":\"\",\"options\":0}";
+}
+
+#test "microcoder worker lines: task flags, request kinds, explicit false booleans and task_read guards" {
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  o: [2048] u8; r: [1] MwwRequest; back: [1] McTask;
+  // mww_task: claude, 1-char model/effort/openrouter
+  t := McTask.{task = "t", session = "s", cwd = "/w", sandbox = "ro", policy = true, allow = 2, ceiling = 5, roots = "/w", gated = true, claude = true, model = "m", effort = "e", openrouter = "r"};
+  n := mww_task(o[..], t);
+  #assert cast(string) o[0..<n] == "{\"task\":\"t\",\"session\":\"s\",\"cwd\":\"/w\",\"sandbox\":\"ro\",\"policy\":{\"enabled\":true,\"allow\":2,\"ceiling\":5,\"roots\":\"/w\"},\"gated\":true,\"claude\":true,\"model\":\"m\",\"effort\":\"e\",\"openrouter\":\"r\"}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].kind == MWW_TASK && r[0].claude && r[0].model == "m" && r[0].openrouter == "r";
+  ar[0].at = 0;
+  back[0] = McTask.{task = "stale", local = true, gated = true};
+  #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].task == "t" && back[0].policy && back[0].allow == 2 && back[0].gated && back[0].claude && back[0].openrouter == "r" && !back[0].local;
+  // mww_request: r[0].kind set for every kind
+  ar[0].at = 0;
+  #assert mww_request(ar[..], "{\"stop\":true}", r[..]) == MWW_STOP && r[0].kind == MWW_STOP;
+  #assert mww_request(ar[..], "{\"forget\":true}", r[..]) == MWW_FORGET && r[0].kind == MWW_FORGET;
+  #assert mww_request(ar[..], "{\"embed\":\"e\",\"query\":false}", r[..]) == MWW_EMBED && r[0].kind == MWW_EMBED && !r[0].query;
+  #assert mww_request(ar[..], "{\"recall\":[]}", r[..]) == MWW_RECALL && r[0].kind == MWW_RECALL;
+  #assert mww_request(ar[..], "{\"results\":[]}", r[..]) == MWW_RESULTS && r[0].kind == MWW_RESULTS;
+  #assert mww_request(ar[..], "{\"answer\":true}", r[..]) == MWW_ANSWER && r[0].kind == MWW_ANSWER;
+  #assert mww_request(ar[..], "{\"steer\":\"hi\"}", r[..]) == MWW_STEER && r[0].kind == MWW_STEER;
+  #assert mww_request(ar[..], "{\"interrupt\":true,\"resubmit\":false}", r[..]) == MWW_INTERRUPT && r[0].kind == MWW_INTERRUPT && !r[0].resubmit;
+  #assert mww_request(ar[..], "{\"queue\":\"promote\",\"now\":false}", r[..]) == MWW_QUEUE && r[0].kind == MWW_QUEUE && !r[0].now;
+  // explicit false booleans in task (for both mww_request and mww_task_read)
+  ar[0].at = 0;
+  fmsg := "{\"task\":\"t\",\"local\":false,\"gated\":false,\"agents\":false,\"edits\":false,\"unlimited\":false,\"claude\":false,\"no_ask\":false,\"device\":false,\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":0,\"roots\":\"\"}}";
+  #assert mww_request(ar[..], fmsg, r[..]) == MWW_TASK && !r[0].local && !r[0].gated && !r[0].agents && !r[0].edits && !r[0].unlimited && !r[0].claude && !r[0].no_ask && !r[0].device;
+  ar[0].at = 0;
+  #assert mww_task_read(ar[..], fmsg, back[..]) && !back[0].local && !back[0].gated && !back[0].agents && !back[0].edits && !back[0].unlimited && !back[0].claude && !back[0].no_ask && !back[0].device;
+  // mww_task_read rejects missing each required field individually
+  ar[0].at = 0;
+  #assert !mww_task_read(ar[..], "{\"task\":\"\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":0,\"roots\":\"\"}}", back[..]);
+  #assert !mww_task_read(ar[..], "{\"task\":\"t\",\"policy\":{\"allow\":0,\"ceiling\":0,\"roots\":\"\"}}", back[..]);
+  #assert !mww_task_read(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true,\"ceiling\":0,\"roots\":\"\"}}", back[..]);
+  #assert !mww_task_read(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true,\"allow\":0,\"roots\":\"\"}}", back[..]);
+  #assert !mww_task_read(ar[..], "{\"task\":\"t\",\"policy\":{\"enabled\":true,\"allow\":0,\"ceiling\":0}}", back[..]);
+  // clearing stale fields on failed mww_task_read
+  back[0] = McTask.{task = "stale", local = true};
+  #assert !mww_task_read(ar[..], "{}", back[..]) && !back[0].local;
 }

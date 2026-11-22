@@ -176,7 +176,7 @@ mc_device :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
   schema := mc_schema_device(l[0].schema, sb[..]);
   n := json_raw(b[0].system[..], 0, l[0].system);
   n = json_raw(b[0].system[..], n, MC_DEVICE);
-  if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }
+  if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }   // mutant: equivalent (MC_DEVICE.count > 1 so n is -1 or > 1, and sb is 8192 bytes like b[0].schema)
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
   l[0].device = true;
@@ -338,19 +338,19 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].ar[0].at = 0; l[0].ar[0].full = false;
   more := l[0].intel || l[0].memory;
   why := mc_action_parse_as(l[0].ar[..], text, l[0].pending[..], more);
-  if why.count > 0 && more {
+  if why.count > 0 && more {   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
     // an action whose added members are wrong is refused whole: read as text it would lose them, and its edits
     l[0].ar[0].at = 0; l[0].ar[0].full = false;
-    if mc_action_parse(l[0].ar[..], text, l[0].pending[..]).count == 0 { return mc_bad(l, why); }
+    if mc_action_parse(l[0].ar[..], text, l[0].pending[..]).count == 0 { return mc_bad(l, why); }   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
   }
-  if why.count > 0 {
+  if why.count > 0 {   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
     // a gateway without strict schemas answers in text: read the action out of it
-    l[0].ar[0].at = 0; l[0].ar[0].full = false;
+    l[0].ar[0].at = 0; l[0].ar[0].full = false;   // mutant: equivalent (if the prior parse overflowed ar on text, mc_text_action_as at i=0 overflows ar again)
     why = mc_text_action_as(l[0].ar[..], text, l[0].norm, l[0].pending[..], more);
   }
-  if why.count > 0 { return mc_bad(l, why); }
-  if l[0].agents { why = mc_action_delegates_all(l[0].ar[..], text, l[0].pending[..], l[0].claude, l[0].openrouter, l[0].inkling); if why.count > 0 { return mc_bad(l, why); } }
-  if l[0].device { why = mc_action_device(l[0].ar[..], text, l[0].pending[..], l[0].steps + 1); if why.count > 0 { return mc_bad(l, why); } }
+  if why.count > 0 { return mc_bad(l, why); }   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
+  if l[0].agents { why = mc_action_delegates_all(l[0].ar[..], text, l[0].pending[..], l[0].claude, l[0].openrouter, l[0].inkling); if why.count > 0 { return mc_bad(l, why); } }   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
+  if l[0].device { why = mc_action_device(l[0].ar[..], text, l[0].pending[..], l[0].steps + 1); if why.count > 0 { return mc_bad(l, why); } }   // mutant: equivalent (parser error messages are empty or >= 2 bytes)
   l[0].steps += 1;
   l[0].bad = 0;
   // a finish that carries edits, commands or views is a working step: they are run, not
@@ -1042,4 +1042,77 @@ ps_count :: (text: string, needle: string) -> int {
   #assert l[0].system[MC_SYSTEM.count..<l[0].system.count] == instr;
   req := mc_request(l[..]);
   #assert req.system == l[0].system;
+}
+
+#test "mc_take: arena resets, mode stripping, todos, no_ask idle limit, idle reset and local_work boundaries" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  // 1. Arena reset at entry (at = 0, full = false) and valid JSON does not fall through to text parser
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  ok_json := "{\"rationale\":\"a\\\"b\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"ok\",\"ask\":\"none\"}";
+  #assert mc_take(l[..], ok_json) == MC_ENDED;
+  need := l[0].ar[0].at;
+  #assert need > 0 && need < 64;
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  small: [64] u8; l[0].ar[0].buf = small[0..<need]; l[0].ar[0].at = need - 1; l[0].ar[0].full = true;
+  empty_norm: [1] u8; l[0].norm = empty_norm[0..<0];
+  #assert mc_take(l[..], ok_json) == MC_ENDED && !l[0].ar[0].full && l[0].ar[0].at == need && mc_pending(l[..]).rationale == "a\"b";
+  // 2. Arena reset before fallback mc_action_parse when more=true and added member fails after overflowing ar
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true);
+  l[0].ar[0].buf = small[0..<need];
+  #assert mc_take(l[..], "{\"rationale\":\"a\\\"b\",\"notes\":[\"overflow\\\"str\",\"\"],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_AGAIN && !l[0].ar[0].full && l[0].ar[0].at == need;
+  #assert ps_count(mc_state_json(l[0].st[..], lb[0].prompt[..]), "a note is empty") == 1;
+  // 3. Arena reset before mc_text_action_as (empty reply on finished fails strict parse after allocating rationale in ar)
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  l[0].ar[0].buf = small[0..<need];
+  #assert mc_take(l[..], "{\"rationale\":\"a\\\"b\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"\",\"ask\":\"none\"}") == MC_AGAIN && !l[0].ar[0].full && l[0].ar[0].at == need;
+  #assert ps_count(mc_state_json(l[0].st[..], lb[0].prompt[..]), "finished is true but reply is empty") == 1;
+  // 4. memory-only strips edit.name; 1 delegate alone clears finished; todos are recorded
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], false, true) && mc_agents(l[..], lb[..], false, "");
+  st := mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"todos\":[{\"content\":\"do x\",\"status\":\"in_progress\"}],\"edits\":[{\"path\":\"a.coax\",\"old\":\"x\",\"new\":\"y\",\"name\":\"fn\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  #assert st == MC_TOOLS && mc_pending(l[..]).edits[0].name == "" && l[0].todos_dirty && l[0].ntodos > 0;
+  mc_action_end(l[0].st[..]);
+  st_del := mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
+  #assert st_del == MC_TOOLS && !mc_pending(l[..]).finished && mc_pending(l[..]).nd == 1;
+  // 5. no_ask records bare step, notes, counts idle up to MC_IDLE_LIMIT then finishes with reply
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  #assert mc_no_ask(l[..], lb[..]);
+  ask_json := "{\"rationale\":\"ask-step\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"final-q\",\"ask\":\"question\"}";
+  #assert mc_take(l[..], ask_json) == MC_AGAIN && l[0].st[0].steps == 1;
+  j1 := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  #assert ps_count(j1, "Interactive questioning is disabled") == 1 && ps_count(j1, "ask-step") == 1;
+  #assert mc_take(l[..], ask_json) == MC_AGAIN && l[0].st[0].steps == 2;
+  #assert mc_take(l[..], ask_json) == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "final-q";
+  // 6. Regular ask and idle record bare steps; working step resets idle counter
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  #assert mc_take(l[..], ask_json) == MC_ENDED && l[0].ending == MC_END_ASKED && l[0].st[0].steps == 1;
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 1.0);
+  idle_json := "{\"rationale\":\"idle-step\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  #assert mc_take(l[..], idle_json) == MC_AGAIN && l[0].st[0].steps == 1;
+  #assert mc_take(l[..], idle_json) == MC_AGAIN && l[0].idle == 2;
+  #assert mc_take(l[..], "{\"rationale\":\"work\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS && l[0].idle == 0;
+  mc_action_end(l[0].st[..]);
+  #assert mc_take(l[..], idle_json) == MC_AGAIN && l[0].idle == 1;
+  // 7. local_work boundaries: 0.5 allows commands; < 0.5 allows view-only, refuses edits with ok=false and note, and keeps MC_TOOLS when nv/nq/nn/nd > 0
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", MC_LOCAL_WORK_MIN);
+  #assert mc_take(l[..], "{\"rationale\":\"ok\",\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS && mc_pending(l[..]).nc == 1;
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 0.0);
+  #assert mc_take(l[..], "{\"rationale\":\"v\",\"edits\":[],\"commands\":[],\"view\":[\"a.coax\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS && mc_pending(l[..]).nv == 1;
+  mc_action_end(l[0].st[..]);
+  #assert ps_count(mc_state_json(l[0].st[..], lb[0].prompt[..]), "Your commands were refused") == 0;
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 0.0);
+  #assert mc_take(l[..], "{\"rationale\":\"e\",\"edits\":[{\"path\":\"e.coax\",\"old\":\"a\",\"new\":\"b\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_AGAIN && mc_pending(l[..]).ne == 0 && l[0].st[0].open < 0;
+  j2 := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  #assert ps_count(j2, "\"failed\":") == 1 && ps_count(j2, "answer without edits") == 1 && ps_count(j2, "Your commands were refused") == 1;
+  // refused command alongside nv=1, nq=1, nn=1, or nd=1 still returns MC_TOOLS and clears nc to 0
+  mc_init(l[..], sb[..], lb[..], "{}", "t", "{}", 0.0);
+  #assert mc_aware(l[..], lb[..], true, true) && mc_agents(l[..], lb[..], false, "");
+  #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"questions\":[],\"edits\":[],\"commands\":[\"true\"],\"view\":[\"a.coax\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS && mc_pending(l[..]).nc == 0;
+  mc_action_end(l[0].st[..]);
+  #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"questions\":[\"defines area\"],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_action_end(l[0].st[..]);
+  #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[\"a finding\"],\"questions\":[],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
+  mc_action_end(l[0].st[..]);
+  #assert mc_take(l[..], "{\"rationale\":\"r\",\"notes\":[],\"questions\":[],\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") == MC_TOOLS;
 }

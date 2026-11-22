@@ -799,7 +799,7 @@ agy_configure_at :: (x: [] CuEngine, result: string, model: string, effort: stri
       if bn == 0 { missed = missed | AGY_MODEL_NOT_APPLIED; } else { cue_set(x, cast(string) bb[0..<bn], model); }
     }
   }
-  if level.count > 0 {
+  if level.count > 0 {   // mutant: equivalent (when level is empty, cu_config_id returns "" and effort is also empty)
     ib: [128] u8; idn := cl_copy(ib[..], cu_config_id(result, "thought_level", level, ar));
     if idn > 0 { cue_set(x, cast(string) ib[0..<idn], level); }
     else if effort.count > 0 { missed = missed | AGY_EFFORT_NOT_APPLIED; }   // our default is quiet when not offered
@@ -1155,6 +1155,38 @@ AGY_OPENED_DEFAULT :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{
   #assert agy_effective_at(r, "gemini-4-argon-high", "", "medium", ar[..], o[..]) == "gemini-4-argon-high";
   o2: [128] u8;
   #assert agy_effective_at(r, "", "", AGY_EFFORT, ar[..], o[..]) == agy_effective_model(r, "", "", ar[..], o2[..]) && cast(string) o2[0..<19] == "gemini-4-carbon-low";
+}
+
+#test "antigravity: agy_configure_at and agy_effective_at 1-char and truncation boundaries" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [8192] u8; out: [4096] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  r := "{\"models\":{\"currentModelId\":\"m\",\"availableModels\":[{\"modelId\":\"m\"},{\"modelId\":\"m-e\"}]},\"configOptions\":[{\"id\":\"t\",\"category\":\"thought_level\",\"currentValue\":\"e\",\"options\":[{\"value\":\"e\"},{\"value\":\"\"}]}],\"modes\":{\"currentModeId\":\"x\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"a\"},{\"id\":\"x\"}]}}";
+  // 1-char model, 1-char effort, 1-char configId, 1-char want_mode
+  agy_t_reset(x);
+  #assert agy_configure_at(x, r, "m", "e", "a", "low") == 0 && agy_out_has(x, "\"modelId\":\"m\"") && agy_out_has(x, "\"configId\":\"t\",\"value\":\"e\"") && agy_out_has(x, "\"modeId\":\"a\"");
+  // empty want_mode falls back to AGY_MODE ("default"); missing 1-char effort reports AGY_EFFORT_NOT_APPLIED
+  agy_t_reset(x);
+  #assert agy_configure_at(x, r, "", "z", "", "low") == AGY_EFFORT_NOT_APPLIED && agy_out_has(x, "\"modeId\":\"default\"");
+  // empty level (effort "" and fallback "") does not call cue_set even when "" is an option
+  agy_t_reset(x);
+  #assert agy_configure_at(x, r, "", "", "x", "") == 0 && !agy_out_has(x, "set_config_option");
+  // model + "-" + fallback truncated to lb.count (160) is not treated as a listed model
+  long_m: [158] u8; for i: 0..<158 { long_m[i] = 'm'; }
+  long_id: [160] u8; for i: 0..<158 { long_id[i] = 'm'; } long_id[158] = '-'; long_id[159] = 'e';
+  rb: [512] u8; rn := cl_copy(rb[..], "{\"models\":{\"availableModels\":[{\"modelId\":\"");
+  rn += cl_copy(rb[rn..<rb.count], cast(string) long_id[..]);
+  rn += cl_copy(rb[rn..<rb.count], "\"}]}}");
+  agy_t_reset(x);
+  #assert agy_configure_at(x, cast(string) rb[0..<rn], cast(string) long_m[..], "", "", "extra") == AGY_MODEL_NOT_APPLIED;
+  // agy_effective_at: 1-char model & effort, listed model with effort vs without effort, and out truncation
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; o: [128] u8;
+  #assert agy_effective_at(r, "m", "", "e", ar[..], o[..]) == "m";
+  #assert agy_effective_at(r, "m", "e", "low", ar[..], o[..]) == "m-e";
+  #assert agy_effective_at(r, "m", "z", "e", ar[..], o[..]) == "m";
+  short_o: [3] u8;
+  r_short := "{\"models\":{\"availableModels\":[{\"modelId\":\"m-h\"}]}}";
+  #assert agy_effective_at(r_short, "m", "hi", "low", ar[..], short_o[..]) == "m";
 }
 
 #test "antigravity: a session in another mode is set back to default" {

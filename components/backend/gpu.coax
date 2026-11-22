@@ -414,15 +414,23 @@ gp_clip_edges :: (out: [] f32, from: int, to: int, d: f32, left: f32, top: f32, 
  out:[14000]f32;c:=hex(0xffffff,1);
  #assert paint_arc(out[..],0,1,10,20,40,40,3,0,0,c)==0;
  n:=paint_arc(out[..],0,1,10,20,40,40,3,0,0.25,c);
- #assert n>0 && n<=96 && out[4]==30 && out[5]==20;
+ #assert n==96 && abs(out[4]-30)<0.01 && abs(out[5]-20)<0.01 && out[6]>31.5 && out[6]<32.5 && out[7]>20 && out[7]<20.5;
+ o15:=15*6*28;
+ #assert abs(out[o15+6]-50)<0.01 && abs(out[o15+7]-40)<0.01;
+ n2:=paint_arc(out[..],0,1,10,20,40,60,3,0.25,0.25,c);
+ #assert n2==96 && abs(out[4]-50)<0.01 && abs(out[5]-50)<0.01 && out[6]>49 && out[6]<50 && out[7]>52.5 && out[7]<53.5;
+ #assert abs(out[o15+4]-31.96)<0.1 && abs(out[o15+5]-79.86)<0.1 && abs(out[o15+6]-30)<0.01 && abs(out[o15+7]-80)<0.01;
  #assert paint_arc(out[0..<10],0,1,0,0,40,40,3,0,1,c)==0;
  #assert paint_arc(out[..],0,1,0,0,0,40,3,0,1,c)==0;
+ #assert paint_arc(out[..],0,1,0,0,40,0,3,0,1,c)==0;
+ #assert paint_arc(out[..],0,1,0,0,40,40,0,0,1,c)==0;
+ #assert paint_arc(out[..],0,1,0,0,40,40,3,0,1,rgba(1,1,1,0))==0;
 }
 // Bounded polyline approximation (up to 64 segments), with the existing
 // analytic round-cap coverage. Angle convention is the display list's.
 paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32,sweep:f32,c:Rgba)->int {
- if !(w>0) || !(h>0) || !(width>0) || !(abs(sweep)>0) || c.a<=0 {return at;}
- turn:=ifx sweep>1 then 1.0f32 else ifx sweep< -1 then -1.0f32 else sweep;
+ if !(w>0) || !(h>0) || !(width>0) || !(abs(sweep)>0) || c.a<=0 {return at;}   // mutant: equivalent (at 0: paint_segment skips width == 0 or c.a == 0, and sweep == 0 has count == 0)
+ turn:=ifx sweep>1 then 1.0f32 else ifx sweep< -1 then -1.0f32 else sweep;   // mutant: equivalent (at sweep == +/-1 both branches return the same value)
  count:=cast(int)ceil(abs(turn)*64);v:=at;
  for i:0..<count {t0:=(start+turn*cast(f32)i/cast(f32)count)*6.28318530718;t1:=(start+turn*cast(f32)(i+1)/cast(f32)count)*6.28318530718;
  v=paint_segment(out,v,d,x+w/2+sin(t0)*w/2,y+h/2-cos(t0)*h/2,x+w/2+sin(t1)*w/2,y+h/2-cos(t1)*h/2,width,c);}
@@ -434,6 +442,11 @@ paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32
 gpu_draws :: (p: Prim) -> bool {
   if p.kind == PRIM_IMAGE || p.kind == PRIM_LAYER { return false; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
+}
+#test "gpu_draws accepts every primitive kind except images and layers" {
+  #assert gpu_draws(Prim.{kind = 0}) && gpu_draws(Prim.{kind = PRIM_IMAGE + 1});
+  #assert !gpu_draws(Prim.{kind = PRIM_IMAGE}) && !gpu_draws(Prim.{kind = PRIM_LAYER});
+  #assert !gpu_draws(Prim.{kind = -1}) && !gpu_draws(Prim.{kind = PRIM_KINDS});
 }
 
 // Writes a display list's vertices: the list's (0, 0) at logical (ox, oy),
