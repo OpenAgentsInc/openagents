@@ -97,7 +97,7 @@ ht_srv_run_ts :: (arg1: string, arg2: string, arg3: string, out: [] u8) -> int #
 
 ht_srv_load_owner :: (srv: [] HtTailnetServer) #effects(all) {
   buf: [65536] u8;
-  n := ht_srv_run_ts("status", "--json", "", buf[..]);
+  n := ht_srv_run_ts("status", "--peers=false", "--json", buf[..]);
   if n < 2 { return; }
   raw := cast(string) buf[0..<n];
   ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];

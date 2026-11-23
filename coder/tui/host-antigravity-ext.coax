@@ -535,44 +535,82 @@ dm_agy_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) -> bool {
   return false;
 }
 
+dm_ext_hex_digit :: (v: u8) -> u8 {
+  if v < 10 { return '0' + v; }
+  return 'A' + (v - 10);
+}
+
+dm_ext_url_encode :: (dst: [] u8, at: int, s: string) -> int {
+  n := at;
+  for i: 0..<s.count {
+    b := s[i];
+    unreserved := (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '-' || b == '.' || b == '_' || b == '~';
+    if unreserved {
+      if n < dst.count { dst[n] = b; n += 1; }
+    } else if n + 3 <= dst.count {
+      dst[n] = '%';
+      dst[n + 1] = dm_ext_hex_digit((b >> 4) & 0xF);
+      dst[n + 2] = dm_ext_hex_digit(b & 0xF);
+      n += 3;
+    }
+  }
+  return n;
+}
+
+dm_ext_tailscale_bin :: () -> string #effects(all) {
+  if fs_kind("/Applications/Tailscale.app/Contents/MacOS/Tailscale") == FS_FILE {
+    return "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+  }
+  if fs_kind("/opt/homebrew/bin/tailscale") == FS_FILE { return "/opt/homebrew/bin/tailscale"; }
+  if fs_kind("/usr/local/bin/tailscale") == FS_FILE { return "/usr/local/bin/tailscale"; }
+  if fs_kind("/usr/bin/tailscale") == FS_FILE { return "/usr/bin/tailscale"; }
+  return "tailscale";
+}
+
 dm_cmd_pair_url :: (args: [] Args) -> int {
-  out: [16384] u8; err: [1024] u8;
-  argv := [3] string.["tailscale", "status", "--json"];
-  r := proc_run(argv[..], 4000, out[..], err[..]);
-  addr: [256] u8; an := 0;
-  name: [128] u8; nn := 0;
-  if r.started == 0 && r.status == 0 && r.out_n > 2 {
-    raw := cast(string) out[0..<r.out_n];
-    nodes: [2048] JvNode; d: [1] Jv;
-    if jv_parse(d[..], raw, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
-      self_n := jv_get(d[0], 0, "Self");
-      if self_n >= 0 && jv_kind(d[0], self_n) == JV_OBJECT {
-        dns := jv_str(d[0], jv_get(d[0], self_n, "DNSName"), addr[..]);
-        if dns > 0 {
-          if addr[dns - 1] == '.' { dns -= 1; }
-          an = dns;
-        }
-        if an == 0 {
-          ips := jv_get(d[0], self_n, "TailscaleIPs");
-          if ips >= 0 && jv_kind(d[0], ips) == JV_ARRAY && jv_len(d[0], ips) > 0 {
-            an = jv_str(d[0], jv_at(d[0], ips, 0), addr[..]);
-            if an < 0 { an = 0; }
+  addr: [256] u8; an := ea_copy(addr[..], args_value(args, "--address", ""));
+  name: [128] u8; nn := ea_copy(name[..], args_value(args, "--name", ""));
+  if an == 0 || nn == 0 {
+    out: [16384] u8; err: [1024] u8;
+    argv := [4] string.[dm_ext_tailscale_bin(), "status", "--peers=false", "--json"];
+    r := proc_run(argv[..], 4000, out[..], err[..]);
+    if r.started == 0 && r.status == 0 && r.out_n > 2 {
+      raw := cast(string) out[0..<r.out_n];
+      nodes: [2048] JvNode; d: [1] Jv;
+      if jv_parse(d[..], raw, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+        self_n := jv_get(d[0], 0, "Self");
+        if self_n >= 0 && jv_kind(d[0], self_n) == JV_OBJECT {
+          if an == 0 {
+            dns := jv_str(d[0], jv_get(d[0], self_n, "DNSName"), addr[..]);
+            if dns > 0 {
+              if addr[dns - 1] == '.' { dns -= 1; }
+              an = dns;
+            }
+          }
+          if an == 0 {
+            ips := jv_get(d[0], self_n, "TailscaleIPs");
+            if ips >= 0 && jv_kind(d[0], ips) == JV_ARRAY && jv_len(d[0], ips) > 0 {
+              an = jv_str(d[0], jv_at(d[0], ips, 0), addr[..]);
+              if an < 0 { an = 0; }
+            }
+          }
+          if nn == 0 {
+            nn = jv_str(d[0], jv_get(d[0], self_n, "HostName"), name[..]);
+            if nn < 0 { nn = 0; }
           }
         }
-        nn = jv_str(d[0], jv_get(d[0], self_n, "HostName"), name[..]);
-        if nn < 0 { nn = 0; }
       }
     }
   }
-  if an == 0 { an = ea_copy(addr[..], args_value(args, "--address", "127.0.0.1")); }
-  if nn == 0 { nn = ea_copy(name[..], args_value(args, "--name", "OpenAgents-Host")); }
+  if an == 0 { an = ea_copy(addr[..], "127.0.0.1"); }
+  if nn == 0 { nn = ea_copy(name[..], "OpenAgents-Host"); }
   port := args_value(args, "--port", "47109");
   url: [1024] u8; un := hs_cat(url[..], 0, "openagents://pair?address=");
-  un = hs_cat(url[..], un, cast(string) addr[0..<an]);
+  un = dm_ext_url_encode(url[..], un, cast(string) addr[0..<an]);
   un = hs_cat(url[..], un, "&port=");
-  un = hs_cat(url[..], un, port);
+  un = dm_ext_url_encode(url[..], un, port);
   un = hs_cat(url[..], un, "&name=");
-  un = hs_cat(url[..], un, cast(string) name[0..<nn]);
+  un = dm_ext_url_encode(url[..], un, cast(string) name[0..<nn]);
   hs_outln(cast(string) url[0..<un]);
   return 0;
 }
@@ -582,4 +620,7 @@ dm_cmd_pair_url :: (args: [] Args) -> int {
   #assert dm_ext_artifact_kind("implementation_plan.md") == "plan|Implementation Plan";
   #assert dm_ext_artifact_kind("widget.html") == "html|Generative UI Widget";
   #assert dm_ext_artifact_kind("shot.png") == "image|Screenshot Artifact";
+  buf: [128] u8;
+  n := dm_ext_url_encode(buf[..], 0, "Mac Book (2)&x=1");
+  #assert cast(string) buf[0..<n] == "Mac%20Book%20%282%29%26x%3D1";
 }

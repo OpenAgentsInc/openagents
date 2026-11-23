@@ -125,25 +125,39 @@ def run_worker_turn(prompt, resume_id=""):
         env["CODER_AGY_RESUME_SESSION"] = resume_id
     else:
         env.pop("CODER_AGY_RESUME_SESSION", None)
-    p = subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
-    r, _, _ = select.select([p.stdout], [], [], 10.0)
-    assert r, "agyworker timed out waiting for ready"
-    ready_line = p.stdout.readline()
-    assert '"ready"' in ready_line, f"expected ready line, got: {ready_line!r}"
+    p = subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0, env=env)
+    fd = p.stdout.fileno()
+    buf = b""
+    def read_line(timeout):
+        nonlocal buf
+        end = time.time() + timeout
+        while b"\n" not in buf:
+            left = end - time.time()
+            if left <= 0:
+                return None
+            r, _, _ = select.select([fd], [], [], min(1.0, left))
+            if not r:
+                if p.poll() is not None:
+                    return None
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return None
+            buf += chunk
+        line_b, buf = buf.split(b"\n", 1)
+        return line_b.decode("utf-8", "replace")
+
+    ready_line = read_line(10.0)
+    assert ready_line is not None and '"ready"' in ready_line, f"expected ready line, got: {ready_line!r}"
     req = {"task": prompt, "cwd": workdir, "model": "gemini-3.8-flash", "effort": "low"}
-    p.stdin.write(json.dumps(req) + "\n")
+    p.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
     p.stdin.flush()
     reply_chunks = []
     ended = None
     deadline = time.time() + 60
     while time.time() < deadline:
-        r, _, _ = select.select([p.stdout], [], [], 1.0)
-        if not r:
-            if p.poll() is not None:
-                break
-            continue
-        line = p.stdout.readline()
-        if not line:
+        line = read_line(max(0.1, deadline - time.time()))
+        if line is None:
             break
         ev = json.loads(line)
         kind = ev.get("kind", "")
@@ -157,7 +171,7 @@ def run_worker_turn(prompt, resume_id=""):
         p.wait(timeout=10)
     except subprocess.TimeoutExpired:
         p.terminate()
-    assert ended is not None, f"worker did not finish turn; stderr={p.stderr.read()}"
+    assert ended is not None, f"worker did not finish turn; stderr={p.stderr.read().decode('utf-8', 'replace')}"
     assert ended.get("ending") == "finished", f"worker turn failed: {ended}"
     return (ended.get("text") or "".join(reply_chunks)).strip()
 

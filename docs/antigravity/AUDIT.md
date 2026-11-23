@@ -10,6 +10,16 @@
 > - [`sdk-and-ides.md`](./sdk-and-ides.md) — Complete `google-antigravity` Python SDK v0.1.24 API, 9 IDE extension targets, official binary sync pattern, and 226+ release changelog velocity analysis.
 > - [`platform-security-and-extensibility.md`](./platform-security-and-extensibility.md) — Permissions, OS terminal sandbox, hooks, MCP & MCP Apps (`ui://`), customization discovery, swarms/workflows/teamwork/boost/automations, Remote Control/SSH/Voice/Browser/Artifacts, and Enterprise/Quotas/ToS.
 
+> [!NOTE]
+> **Resolution Status (Completed — Nov 23, 2026):** All 25 audit issues (`#13995`–`#14019`) and parent epic `#13993` have been implemented on `main` and closed (`26/26 CLOSED`):
+> - **P0 (`426def2f1f`, `#13995`–`#14002`):** Removed ban-risk `cloudcode-pa.googleapis.com` scraping while preserving native `~/.gemini` + `--app-data-dir antigravity` Google Antigravity sync by default; fixed privilege escalation, path traversal, interactive approvals (`CODER_AGY_INTERACTIVE=1`, `MWW_PERMIT`), workspace pagination & worktree removal, buffer/grant limits, macOS Bonjour key discovery, and image attachments.
+> - **Wave 1 (`f53e87b40b`, `#14003`–`#14005`):** Wire v2 forward-compat negotiation (preserving `mc_v1_ea_compat`), dynamic model discovery, and Tailscale push/grant hardening.
+> - **Wave 2 (`28de5b9f28`, `#14006`–`#14008`):** Session lifecycle, error handling, and real-daemon E2E hardening.
+> - **Wave 3A (`ff7aef3452`, `#14009`–`#14010`):** Streaming UX, thinking rendering, and session resume/history parity.
+> - **Wave 3B (`42b3a29998`, `#14011`–`#14013`):** Pure-SwiftUI GFM Markdown/syntax highlighting, cursor pagination, remote workspace file viewer (Markdown/notebooks/PDF/inline comments), git diff/stage/commit/PR actions, fuzzy `@` mentions, session pin/rename/archive, `/compact`, `/btw`, `/fork`, `/rewind`, and edit-and-resend.
+> - **Wave 4 (`c877710123`, `#14014`–`#14019`):** Host/daemon extensions (`PH_HOST_VERSION = "2.1.0"`), pure-SwiftUI Antigravity Hub (Artifacts/Plan review, Swarms/Subagents, Automations, Permissions/MCP inspector, Browser handoff, official-`agy`-only quotas), 16 kHz PCM Tailscale mic bridge, QR pairing (`openagents://pair` + `coder-host pair-url`), and disk-backed offline prompt outbox.
+> - **Release & E2E (`3a4ba9cff6`):** Multi-host pairing state reset, OLED workspace pill tab bar, 6-stage iOS Simulator pairing E2E green, 4-stage macOS E2E & release DMG green, local `/Applications/OpenAgentsMac.app` + `~/.openagents/bin/{coder-host,agyworker}` installed, and iOS TestFlight v1.0.0 Build `1422` live (`VALID`, internal `Owner` + external `OpenAgents Beta Testers`).
+
 ---
 
 ## 1. Executive Summary

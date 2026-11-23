@@ -590,7 +590,7 @@ final class TailscaleHostServer: ObservableObject {
 
     nonisolated private static func queryTailscaleOwner() -> AppTailnet.Owner? {
         guard let bin = findTailscaleBinary(),
-              let out = runCommand(bin, ["status", "--json"], timeoutSeconds: 8),
+              let out = runCommand(bin, ["status", "--peers=false", "--json"], timeoutSeconds: 8),
               let data = out.data(using: .utf8) else { return nil }
         return AppTailnet.owner(status: data)
     }
