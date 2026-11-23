@@ -77,4 +77,25 @@ final class MacClientTests: XCTestCase {
         let parsedPush = try XCTUnwrap(AppTailnet.parsePush(Data(AppTailnet.pushLine(push).dropLast())))
         XCTAssertEqual(parsedPush, push)
     }
+
+    func testV1LegacyWireCompatAndErrorHumanizationOnMacOS() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let autoReq = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "OpenSession",
+            session: "0123456789abcdef0123456789abcdef",
+            command: "abcdef0123456789abcdef0123456789",
+            generation: 1,
+            revision: 0,
+            text: "Test macOS legacy wire compat",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            model: "gemini-4-neon",
+            effort: "medium",
+            mode: "auto"
+        ))
+        XCTAssertTrue(MobileCore.isV1WireCompatible(autoReq))
+        XCTAssertNotEqual(HostErrorFormatter.describe("unsupported"), "unsupported")
+        XCTAssertNotEqual(HostErrorFormatter.describe("no_agent"), "no_agent")
+    }
 }

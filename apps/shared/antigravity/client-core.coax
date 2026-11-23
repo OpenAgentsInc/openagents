@@ -119,10 +119,35 @@ mc_env_request :: (
   }
   if mode.count > 0 {
     if !ea_mode_ok(mode) { return -1; }
-    q[0].nmd = ea_copy(q[0].mode[..], mode);
-    if q[0].nmd < 1 { return -1; }
+    // Omit "mode" when it is the host default ("auto") so default requests stay 100%
+    // backward-compatible with deployed 16-key openagents-environment daemons.
+    if mode != "auto" {
+      q[0].nmd = ea_copy(q[0].mode[..], mode);
+      if q[0].nmd < 1 { return -1; }
+    }
   }
   return ea_write(q, out);
+}
+
+// Strict frozen v1 wire-compatibility predicate matching the 16-key ea_read allowlist of
+// deployed openagents-environment hosts (before EaRequest.mode existed). Any default request
+// produced by OpenAgents iOS/macOS MUST satisfy this predicate so legacy hosts never return "unsupported".
+mc_v1_ea_compat :: (raw: string) -> bool #export_c #effects(all) {
+  nodes: [64] JvNode; d: [1] Jv;
+  if raw.count > 24576 || !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  v1_fields := [16] string.[
+    "method", "workspace_id", "session_id", "command_id",
+    "generation", "expected_revision", "text", "interaction_id",
+    "allow", "before", "expires_at_ms", "issued_at_ms",
+    "model", "effort", "folder", "item_id",
+  ];
+  for i: 0..<jv_len(d[0], 0) {
+    k := jv_key(d[0], jv_at(d[0], 0, i));
+    known := false;
+    for allowed: v1_fields { if k == allowed { known = true; break; } }
+    if !known { return false; }
+  }
+  return true;
 }
 
 mc_view_valid :: (v: [] EaView, host: string, method: string, raw: string) -> bool #export_c #effects(all) {
@@ -199,4 +224,56 @@ mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) ->
   wn = mc_ws_request(wq[..], "SwitchBranch", "default", "feat/antigravity", "", "", "", 0, 0, 0, rev, "0123456789abcdef0123456789abcdef", 1700000000000, 1700000060000, out[..]);
   #assert wn > 0 && ws_read(cast(string) out[0..<wn], wr[..]) && cast(string) wr[0].branch[0..<wr[0].nb] == "feat/antigravity";
   #assert mc_ws_request(wq[..], "SwitchBranch", "default", "-rf", "", "", "", 0, 0, 0, rev, "0123456789abcdef0123456789abcdef", 1700000000000, 1700000060000, out[..]) < 0;
+}
+
+#test "default OpenSession and SendMessage requests strictly obey v1 16-key legacy host wire compatibility" {
+  q: [1] EaRequest;
+  out: [24576] u8;
+  r: [1] EaRequest;
+  sid := "0123456789abcdef0123456789abcdef";
+  cmd := "abcdef0123456789abcdef0123456789";
+
+  // Default mode ("auto" or "") MUST omit "mode" and pass mc_v1_ea_compat
+  models := [5] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"];
+  efforts := [4] string.["low", "medium", "high", "xhigh"];
+  for m: models {
+    for e: efforts {
+      n := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "hello world", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "auto", out[..]);
+      #assert n > 0;
+      raw := cast(string) out[0..<n];
+      #assert mc_v1_ea_compat(raw) && ea_read(raw, r[..]) && r[0].nmd == 0;
+
+      n2 := mc_env_request(q[..], "SendMessage", sid, cmd, 1, 2, "follow up", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "", out[..]);
+      #assert n2 > 0;
+      raw2 := cast(string) out[0..<n2];
+      #assert mc_v1_ea_compat(raw2) && ea_read(raw2, r[..]) && r[0].nmd == 0;
+    }
+  }
+
+  // Explicit non-default mode ("plan" / "default") emits "mode" (v2 host) and fails strict v1 allowlist as expected
+  np := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "plan it", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "plan", out[..]);
+  #assert np > 0 && !mc_v1_ea_compat(cast(string) out[0..<np]) && ea_read(cast(string) out[0..<np], r[..]) && cast(string) r[0].mode[0..<r[0].nmd] == "plan";
+
+  // Every read/control method stays strictly v1 compatible
+  methods := [6] string.["DescribeEnvironment", "ListSessions", "ReadSession", "StopTurn", "RespondInteraction", "ReadSubagent"];
+  for meth: methods {
+    item_arg := ifx meth == "ReadSubagent" then "0:0" else "";
+    nr := mc_env_request(q[..], meth, sid, cmd, 1, 0, "", "int-1", true, 0, 1700000000000, 1700000300000, "", "", "", item_arg, "", out[..]);
+    #assert nr > 0 && mc_v1_ea_compat(cast(string) out[0..<nr]) && ea_read(cast(string) out[0..<nr], r[..]);
+  }
+}
+
+#forall "fuzz: arbitrary ASCII bytes in message text round-trip safely through mc_env_request and mc_v1_ea_compat" b: u8 {
+  q: [1] EaRequest;
+  out: [24576] u8;
+  r: [1] EaRequest;
+  tb: [4] u8;
+  tb[0] = 'x';
+  // Keep valid printable/newline UTF-8 ASCII bytes (ea_write escapes quotes/backslashes/control chars cleanly)
+  tb[1] = ifx b < 128 && (b >= 32 || b == 10 || b == 9) then b else 'a';
+  tb[2] = '"';
+  tb[3] = '\\';
+  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "abcdef0123456789abcdef0123456789", 1, 0, cast(string) tb[..], "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "auto", out[..]);
+  #assert n > 0 && mc_v1_ea_compat(cast(string) out[0..<n]) && ea_read(cast(string) out[0..<n], r[..]);
+  #assert cast(string) r[0].text[0..<r[0].nt] == cast(string) tb[..];
 }

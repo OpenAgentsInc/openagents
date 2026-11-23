@@ -1,5 +1,6 @@
 // Firm reason: 6 (iOS SwiftUI Tailscale Computers sheet with relay-free one-tap direct Tailscale pairing, MagicDNS/IP entry, and refusal diagnostics).
 import SwiftUI
+import UIKit
 
 struct ComputersView: View {
     @ObservedObject var store: AppStore
@@ -62,6 +63,7 @@ struct ComputersView: View {
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 90)
+                            .accessibilityIdentifier("computers.addPort")
                     }
                     .listRowBackground(OATheme.surface)
 
@@ -78,6 +80,7 @@ struct ComputersView: View {
                     }
 
                     Button {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         Task {
                             isAdding = true
                             manualError = nil

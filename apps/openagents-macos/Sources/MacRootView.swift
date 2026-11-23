@@ -575,10 +575,12 @@ struct MacRootView: View {
                         }
                         .id(item.id)
                     }
-                    if store.activeSession?.busy == true {
+                    if store.activeSession?.busy == true || store.isAwaitingTurnStart {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Antigravity is working…")
+                            Text(store.isAwaitingTurnStart && store.activeSession?.busy != true
+                                 ? "Starting Antigravity…"
+                                 : "Antigravity is working…")
                                 .font(.system(size: 13))
                                 .foregroundStyle(OATheme.textSecondary)
                         }

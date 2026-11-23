@@ -137,6 +137,17 @@ struct MacHostSettingsView: View {
                     .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
                     .buttonStyle(.plain)
 
+                    Button("Sign in Antigravity") {
+                        hostServer.connectAntigravityAuth()
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(OATheme.elevated, in: Capsule())
+                    .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                    .buttonStyle(.plain)
+
                     Spacer()
 
                     Button("Refresh") {

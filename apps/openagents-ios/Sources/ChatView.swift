@@ -48,6 +48,10 @@ struct ChatView: View {
                 slashCommandMenu
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
+            } else if !store.matchingFolders.isEmpty {
+                folderMentionMenu
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
             }
 
             if let queued = store.queuedDraft, !queued.isEmpty {
@@ -143,6 +147,8 @@ struct ChatView: View {
         .padding(.vertical, 10)
         .background(OATheme.surface)
         .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chat.errorBanner")
     }
 
     private func queuedBanner(_ text: String) -> some View {
@@ -195,6 +201,33 @@ struct ChatView: View {
         .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
         .accessibilityIdentifier("chat.slashMenu")
+    }
+
+    private var folderMentionMenu: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(store.matchingFolders, id: \.self) { folder in
+                Button {
+                    store.applyFolderMention(folder)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 11))
+                            .foregroundStyle(OATheme.textSecondary)
+                        Text("@\(folder)")
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundStyle(OATheme.textPrimary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        .accessibilityIdentifier("chat.folderMenu")
     }
 
     // MARK: - Empty states
@@ -318,12 +351,14 @@ struct ChatView: View {
                         }
                         .id(item.id)
                     }
-                    if store.activeSession?.busy == true {
+                    if store.activeSession?.busy == true || store.isAwaitingTurnStart {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .controlSize(.small)
                                 .tint(OATheme.textSecondary)
-                            Text("Antigravity is working…")
+                            Text(store.isAwaitingTurnStart && store.activeSession?.busy != true
+                                 ? "Starting Antigravity…"
+                                 : "Antigravity is working…")
                                 .font(.system(size: 13))
                                 .foregroundStyle(OATheme.textSecondary)
                         }
@@ -398,9 +433,14 @@ struct ChatView: View {
                 .lineLimit(1...6)
                 .font(.system(size: 15))
                 .foregroundStyle(OATheme.textPrimary)
+                .scrollIndicators(.hidden)
                 .focused($composerFocused)
+                .frame(minHeight: 36, alignment: .center)
                 .padding(.horizontal, 12)
-                .padding(.top, store.pendingAttachments.isEmpty ? 10 : 2)
+                .padding(.top, store.pendingAttachments.isEmpty ? 6 : 2)
+                .padding(.bottom, 2)
+                .contentShape(Rectangle())
+                .onTapGesture { composerFocused = true }
                 .accessibilityIdentifier("chat.composer")
 
             HStack(spacing: 6) {

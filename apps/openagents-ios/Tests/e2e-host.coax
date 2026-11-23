@@ -1,0 +1,459 @@
+// Real NIP-44 + Tailscale Direct Transport E2E Host for OpenAgents iOS & macOS Simulator tests (#13993).
+// Speaks the EXACT production wire (apps/shared/app/device/seal.coax + coax/lib/nostr/host/tailnet.coax +
+// coax/lib/agent/environment/wire.coax + coax/lib/agent/workspace/wire.coax) over loopback TCP.
+//
+// Modes:
+//   --legacy-v1   Enforces the frozen 16-key v1 ea_read allowlist of deployed openagents-environment
+//                 hosts and returns a real NIP-44 signed "unsupported" refusal if any 17th key (such
+//                 as "mode") is present — reproducing the exact production wire mismatch.
+//   (default v2)  Accepts EaRequest.mode, emits real-time openagents.host-tailnet-push.v1 frames,
+//                 serves interactive approvals (when text contains "approve"), subagents, and live
+//                 Workspace Git Diff / Branch / Worktree / PR state.
+//
+// Usage:
+//   coax/web/tool.sh apps/openagents-ios/Tests/e2e-host.coax --port-file /tmp/port.txt [--legacy-v1] [--idle-ms 60000]
+#run_steps 250000000;
+#import "Basic";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/clock.coax";
+#load "../../../coax/lib/crypto/rand_foreign.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../shared/antigravity/client-core.coax";
+
+E2E_MAX_LINE :: 262144;
+
+E2eState :: struct {
+  legacy_v1: bool;
+  sk: [32] u8;
+  x: [32] u8;
+  xhex: [64] u8;
+  grant: [64] u8;
+  has_session: bool;
+  sess_id: [64] u8;
+  nsess_id: int;
+  sess_title: [128] u8;
+  nsess_title: int;
+  sess_gen: int;
+  sess_rev: int;
+  sess_busy: bool;
+  sess_inter: [64] u8;
+  nsess_inter: int;
+  last_user: [2048] u8;
+  nlast_user: int;
+  last_reply: [2048] u8;
+  nlast_reply: int;
+  approved: bool;
+  branch: [64] u8;
+  nbranch: int;
+  push_seq: int;
+  w: [1] HbWork;
+}
+
+e2e_cat :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s { if n < out.count { out[n] = c; n += 1; } }
+  return n;
+}
+
+e2e_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  x := v; neg := false; if x < 0 { neg = true; x = -x; }
+  tmp: [32] u8; k := 0;
+  while x > 0 { tmp[k] = cast(u8) ('0' + (x % 10)); k += 1; x /= 10; }
+  n := 0; if neg { out[n] = '-'; n += 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+e2e_atoi :: (s: string, fb: int) -> int {
+  if s.count == 0 { return fb; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return fb; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+e2e_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count { if hay[i + j] != needle[j] { ok = false; break; } }
+    if ok { return true; }
+  }
+  return false;
+}
+
+e2e_write_line :: (conn: int, data: string) #effects(all) {
+  for c: data { _ = cxsock_write(conn, cast(int) c); }
+  _ = cxsock_write(conn, 10);
+  _ = cxsock_flush(conn, 2000);
+}
+
+e2e_seal_raw :: (st: [] E2eState, body: string, signer_hex: string, mailbox: string, now: int, out: [] u8) -> int #effects(all) {
+  peer_x: [32] u8;
+  if !hb_unhex(signer_hex, peer_x[..]) { return -1; }
+  rnd: [64] u8;
+  if cxrand_draw(rnd[..], 64) != 0 { return -1; }
+  return hb_seal(body, HB_REPLY_SCHEMA, st[0].sk[..], peer_x[..], mailbox, rnd[0..<32], rnd[32..<64], now, st[0].w[..], out);
+}
+
+e2e_seal_refusal :: (st: [] E2eState, req_id: string, ev_id: string, signer_hex: string, mailbox: string, now: int, expires: int, code: string, out: [] u8) -> int #effects(all) {
+  rp := HbReply.{
+    request = req_id, request_event = ev_id, host = cast(string) st[0].xhex[..],
+    issued_at = now, expires_at = ifx expires > now then expires else now + 60,
+    ok = false, code = code,
+  };
+  body: [4096] u8;
+  bn := hb_reply_write(rp, body[..]);
+  if bn < 1 { return -1; }
+  return e2e_seal_raw(st, cast(string) body[0..<bn], signer_hex, mailbox, now, out);
+}
+
+e2e_fill_offer :: (v: [] EaView) #effects(all) {
+  o := EaOffer.{};
+  o.nv = 4; o.default_level = 1;
+  l0 := EaLevel.{}; l0.ni = ea_copy(l0.id[..], "low"); l0.nl = ea_copy(l0.label[..], "Low"); o.levels[0] = l0;
+  l1 := EaLevel.{}; l1.ni = ea_copy(l1.id[..], "medium"); l1.nl = ea_copy(l1.label[..], "Medium"); o.levels[1] = l1;
+  l2 := EaLevel.{}; l2.ni = ea_copy(l2.id[..], "high"); l2.nl = ea_copy(l2.label[..], "High"); o.levels[2] = l2;
+  l3 := EaLevel.{}; l3.ni = ea_copy(l3.id[..], "xhigh"); l3.nl = ea_copy(l3.label[..], "X-High"); o.levels[3] = l3;
+  // Include Antigravity + non-Antigravity models to verify client-side Antigravity filtering!
+  o.n = 5;
+  m0 := EaModel.{}; m0.ni = ea_copy(m0.id[..], "gemini-4-neon"); m0.nl = ea_copy(m0.label[..], "Gemini 4 Neon"); m0.ladder = 15; o.models[0] = m0;
+  m1 := EaModel.{}; m1.ni = ea_copy(m1.id[..], "gemini-4-carbon"); m1.nl = ea_copy(m1.label[..], "Gemini 4 Carbon"); m1.ladder = 15; o.models[1] = m1;
+  m2 := EaModel.{}; m2.ni = ea_copy(m2.id[..], "gemini-3.8-flash"); m2.nl = ea_copy(m2.label[..], "Gemini 3.8 Flash"); m2.ladder = 7; o.models[2] = m2;
+  m3 := EaModel.{}; m3.ni = ea_copy(m3.id[..], "claude-opus-5-5"); m3.nl = ea_copy(m3.label[..], "Claude Opus 5.5"); m3.ladder = 7; o.models[3] = m3;
+  m4 := EaModel.{}; m4.ni = ea_copy(m4.id[..], "inkling-2-mini"); m4.nl = ea_copy(m4.label[..], "Inkling 2 Mini"); m4.ladder = 7; o.models[4] = m4;
+  v[0].offer = o;
+}
+
+e2e_add_item :: (v: [] EaView, id: string, role: string, text: string, tool: string, calls: int, now_s: string) #effects(all) {
+  if v[0].ni >= EA_ITEMS { return; }
+  idx := v[0].ni;
+  m := EaItem.{};
+  m.ni = ea_copy(m.id[..], id);
+  m.nr = ea_copy(m.role[..], role);
+  m.nk = ea_copy(m.tool[..], tool);
+  m.complete = true;
+  m.calls = calls;
+  m.nn = ea_copy(m.now[..], now_s);
+  at := ea_text_put(v, text);
+  if at >= 0 { m.text_at = at; m.nt = text.count; }
+  v[0].items[idx] = m;
+  v[0].ni = idx + 1;
+}
+
+e2e_put_session :: (st: [] E2eState, v: [] EaView) #effects(all) {
+  if !st[0].has_session { return; }
+  s := EaSession.{};
+  s.ni = ea_copy(s.id[..], cast(string) st[0].sess_id[0..<st[0].nsess_id]);
+  s.nw = ea_copy(s.workspace[..], "default");
+  s.nt = ea_copy(s.title[..], cast(string) st[0].sess_title[0..<st[0].nsess_title]);
+  s.managed = true;
+  s.nc = ea_copy(s.control[..], "available");
+  s.generation = st[0].sess_gen;
+  s.revision = st[0].sess_rev;
+  s.busy = st[0].sess_busy;
+  s.nr = ea_copy(s.interaction[..], cast(string) st[0].sess_inter[0..<st[0].nsess_inter]);
+  s.updated = cxproc_wall_us() / 1000;
+  s.nmo = ea_copy(s.model[..], "gemini-4-neon");
+  s.nef = ea_copy(s.effort[..], "medium");
+  v[0].sessions[0] = s;
+  v[0].ns = 1;
+}
+
+e2e_populate_items :: (st: [] E2eState, v: [] EaView) #effects(all) {
+  if !st[0].has_session { return; }
+  e2e_add_item(v, "item-user-1", "user", cast(string) st[0].last_user[0..<st[0].nlast_user], "", 0, "");
+  e2e_add_item(v, "item-sub-1", "tool", "Audited Swift & Coax wire boundaries.", "task", 2, "Audited 12 files");
+  e2e_add_item(v, "item-asst-1", "assistant", cast(string) st[0].last_reply[0..<st[0].nlast_reply], "", 0, "");
+  if st[0].approved {
+    e2e_add_item(v, "item-asst-2", "assistant", "Approved and executed cleanly.", "", 0, "");
+  }
+}
+
+e2e_handle_ea :: (st: [] E2eState, q: [] EaRequest, v: [] EaView, push_needed: [] bool) #effects(all) {
+  v[0] = EaView.{};
+  v[0].nh = ea_copy(v[0].host[..], cast(string) st[0].xhex[..]);
+  v[0].nl = ea_copy(v[0].label[..], ifx st[0].legacy_v1 then "Legacy V1 Mac" else "E2E Studio Mac");
+  method := cast(string) q[0].method[0..<q[0].nm];
+  v[0].nm = ea_copy(v[0].method[..], method);
+  v[0].complete = true;
+  v[0].nroot = ea_copy(v[0].root[..], "openagents");
+  e2e_fill_offer(v);
+  f0 := EaFolder.{}; f0.np = ea_copy(f0.path[..], "apps/openagents-ios"); v[0].folders[0] = f0;
+  f1 := EaFolder.{}; f1.np = ea_copy(f1.path[..], "apps/openagents-macos"); v[0].folders[1] = f1;
+  f2 := EaFolder.{}; f2.np = ea_copy(f2.path[..], "coder"); v[0].folders[2] = f2;
+  v[0].nfolders = 3;
+
+  if method == "DescribeEnvironment" { return; }
+  if method == "ListSessions" {
+    if cast(string) q[0].model[0..<q[0].nmo] == "antigravity" {
+      s := EaSession.{};
+      s.ni = ea_copy(s.id[..], "agy-local-demo");
+      s.nw = ea_copy(s.workspace[..], "default");
+      s.nt = ea_copy(s.title[..], "Native Antigravity chat");
+      s.managed = false;
+      s.nc = ea_copy(s.control[..], "observe-only");
+      s.updated = cxproc_wall_us() / 1000 - 120000;
+      s.nmo = ea_copy(s.model[..], "gemini-4-neon");
+      v[0].sessions[0] = s;
+      v[0].ns = 1;
+      return;
+    }
+    e2e_put_session(st, v);
+    return;
+  }
+  if method == "ReadSession" {
+    e2e_put_session(st, v);
+    e2e_populate_items(st, v);
+    return;
+  }
+  if method == "ReadSubagent" || method == "StopSubagent" {
+    e2e_add_item(v, "sub-1", "assistant", "Subagent inspected 12 files cleanly.", "", 0, "");
+    return;
+  }
+  if method == "OpenSession" || method == "SendMessage" {
+    if method == "OpenSession" {
+      st[0].nsess_id = ea_copy(st[0].sess_id[..], cast(string) q[0].session[0..<q[0].ns]);
+      st[0].sess_gen = 1;
+      st[0].sess_rev = 1;
+      st[0].approved = false;
+      st[0].has_session = true;
+    } else {
+      st[0].sess_rev += 1;
+    }
+    txt := cast(string) q[0].text[0..<q[0].nt];
+    st[0].nlast_user = ea_copy(st[0].last_user[..], txt);
+    tlen := ifx txt.count > 60 then 60 else txt.count;
+    st[0].nsess_title = ea_copy(st[0].sess_title[..], cast(string) txt[0..<tlen]);
+    rb: [2048] u8;
+    rn := e2e_cat(rb[..], 0, "Antigravity verified reply: ");
+    rn = e2e_cat(rb[..], rn, txt);
+    st[0].nlast_reply = ea_copy(st[0].last_reply[..], cast(string) rb[0..<rn]);
+    if e2e_has(txt, "approve") {
+      st[0].nsess_inter = ea_copy(st[0].sess_inter[..], "int-allow-1");
+      st[0].sess_busy = true;
+    } else {
+      st[0].nsess_inter = 0;
+      st[0].sess_busy = false;
+    }
+    e2e_put_session(st, v);
+    e2e_populate_items(st, v);
+    v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]);
+    v[0].nt = ea_copy(v[0].status[..], "accepted");
+    push_needed[0] = true;
+    return;
+  }
+  if method == "RespondInteraction" {
+    st[0].nsess_inter = 0;
+    st[0].sess_busy = false;
+    st[0].approved = q[0].allow;
+    st[0].sess_rev += 1;
+    e2e_put_session(st, v);
+    e2e_populate_items(st, v);
+    v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]);
+    v[0].nt = ea_copy(v[0].status[..], "accepted");
+    push_needed[0] = true;
+    return;
+  }
+  if method == "StopTurn" {
+    st[0].sess_busy = false;
+    st[0].nsess_inter = 0;
+    e2e_put_session(st, v);
+    v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]);
+    v[0].nt = ea_copy(v[0].status[..], "accepted");
+    return;
+  }
+}
+
+e2e_handle_ws :: (st: [] E2eState, q: [] WsRequest, v: [] WsView) #effects(all) {
+  v[0] = WsView.{};
+  _ = js_copy(v[0].host[..], cast(string) st[0].xhex[..]);
+  method := cast(string) q[0].method[0..<q[0].nm];
+  v[0].nm = js_copy(v[0].method[..], method);
+  v[0].nc = js_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]);
+  v[0].nw = js_copy(v[0].workspace[..], "default");
+  if method == "SwitchBranch" && q[0].nb > 0 {
+    st[0].nbranch = js_copy(st[0].branch[..], cast(string) q[0].branch[0..<q[0].nb]);
+  }
+  v[0].nx = js_copy(v[0].revision[..], "1111111111111111111111111111111111111111111111111111111111111111");
+  v[0].npath = js_copy(v[0].path[..], "/Users/test/openagents");
+  v[0].nr = js_copy(v[0].repository[..], "OpenAgentsInc/openagents");
+  v[0].nb = js_copy(v[0].branch[..], cast(string) st[0].branch[0..<st[0].nbranch]);
+  v[0].ns = js_copy(v[0].status[..], " M apps/openagents-ios/Sources/ChatView.swift\n M apps/shared/antigravity/Swift/AntigravityStore.swift");
+  v[0].nd = js_copy(v[0].diff[..], "diff --git a/apps/openagents-ios/Sources/ChatView.swift b/apps/openagents-ios/Sources/ChatView.swift\n@@ -10,2 +10,3 @@\n-let old = true\n+let fixed = true\n+let verified = true");
+  v[0].nbra = 2;
+  v[0].branches[0].n = js_copy(v[0].branches[0].name[..], "main");
+  v[0].branches[1].n = js_copy(v[0].branches[1].name[..], "feat/antigravity");
+  v[0].nt = 1;
+  _ = js_copy(v[0].trees[0].id[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  v[0].trees[0].np = js_copy(v[0].trees[0].path[..], "/Users/test/openagents");
+  v[0].trees[0].nb = js_copy(v[0].trees[0].branch[..], cast(string) st[0].branch[0..<st[0].nbranch]);
+  v[0].np = 1;
+  v[0].prs[0].number = 13993;
+  v[0].prs[0].nt = js_copy(v[0].prs[0].title[..], "Antigravity over Tailscale");
+  v[0].prs[0].nh = js_copy(v[0].prs[0].head[..], "feat/antigravity");
+  v[0].prs[0].nb = js_copy(v[0].prs[0].base[..], "main");
+  v[0].prs[0].ns = js_copy(v[0].prs[0].state[..], "open");
+}
+
+e2e_handle_rpc :: (st: [] E2eState, conn: int, line: string, subscribed: bool) #effects(all) {
+  body: [HB_BODY_MAX] u8;
+  o := hb_open(line, st[0].sk[..], st[0].x[..], HB_REQUEST_SCHEMA, st[0].w[..], body[..]);
+  if o.error != HB_OK { return; }
+  signer := cast(string) o.signer[..];
+  eid := cast(string) o.id[..];
+  mb := cast(string) o.mailbox[..];
+  now := cxproc_wall_us() / 1000000;
+
+  rpc: [1] HbRpcRequest; space: [49152] u8; arena := [1] HbText.[HbText.{buf = space[..]}];
+  if !hb_rpc_read(cast(string) body[0..<o.body_n], rpc[..], arena[..]) { return; }
+
+  sealed_out: [131072] u8;
+  // In --legacy-v1 mode, strictly enforce the 16-key deployed openagents-environment field list!
+  if st[0].legacy_v1 && ea_right(rpc[0].method) >= 0 && !mc_v1_ea_compat(rpc[0].params) {
+    sn := e2e_seal_refusal(st, rpc[0].request, eid, signer, mb, now, rpc[0].expires_at, "unsupported", sealed_out[..]);
+    if sn > 0 { e2e_write_line(conn, cast(string) sealed_out[0..<sn]); }
+    return;
+  }
+
+  ea_q: [1] EaRequest;
+  if ea_read(rpc[0].params, ea_q[..]) {
+    v: [1] EaView; push_needed := [1] bool.[false];
+    e2e_handle_ea(st, ea_q[..], v[..], push_needed[..]);
+    vbuf: [HB_BODY_MAX] u8; vn := ea_view_write(v[..], vbuf[..]);
+    if vn < 1 { return; }
+    rbuf: [HB_BODY_MAX] u8;
+    rn := hb_app_reply_write(rpc[0].request, eid, cast(string) st[0].xhex[..], now, rpc[0].expires_at, rpc[0].method, cast(string) vbuf[0..<vn], rbuf[..]);
+    if rn < 1 { return; }
+    sn := e2e_seal_raw(st, cast(string) rbuf[0..<rn], signer, mb, now, sealed_out[..]);
+    if sn > 0 { e2e_write_line(conn, cast(string) sealed_out[0..<sn]); }
+    if subscribed && push_needed[0] && !st[0].legacy_v1 {
+      st[0].push_seq += 1;
+      ev: [1] HtPushEvent;
+      ev[0].seq = st[0].push_seq;
+      ev[0].revision = st[0].sess_rev;
+      ev[0].busy = st[0].sess_busy;
+      ev[0].has_interaction = st[0].nsess_inter > 0;
+      ev[0].nkind = ht_copy(ev[0].kind[..], ifx ev[0].has_interaction then "interaction_pending" else "session_updated");
+      ev[0].nsess = ht_copy(ev[0].session[..], cast(string) st[0].sess_id[0..<st[0].nsess_id]);
+      pbuf: [HT_LINE_MAX] u8; pn := ht_push_write(ev[..], pbuf[..]);
+      if pn > 0 { e2e_write_line(conn, cast(string) pbuf[0..<pn]); }
+    }
+    return;
+  }
+
+  ws_q: [1] WsRequest;
+  if ws_read(rpc[0].params, ws_q[..]) {
+    wv: [1] WsView;
+    e2e_handle_ws(st, ws_q[..], wv[..]);
+    wbuf: [HB_BODY_MAX] u8; wn := ws_view_write(wv[..], wbuf[..]);
+    if wn < 1 { return; }
+    rbuf: [HB_BODY_MAX] u8;
+    rn := hb_app_reply_write(rpc[0].request, eid, cast(string) st[0].xhex[..], now, rpc[0].expires_at, rpc[0].method, cast(string) wbuf[0..<wn], rbuf[..]);
+    if rn < 1 { return; }
+    sn := e2e_seal_raw(st, cast(string) rbuf[0..<rn], signer, mb, now, sealed_out[..]);
+    if sn > 0 { e2e_write_line(conn, cast(string) sealed_out[0..<sn]); }
+    return;
+  }
+
+  sn := e2e_seal_refusal(st, rpc[0].request, eid, signer, mb, now, rpc[0].expires_at, "unsupported", sealed_out[..]);
+  if sn > 0 { e2e_write_line(conn, cast(string) sealed_out[0..<sn]); }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("e2e-host: bad args"); return 2; }
+  port_file := args_value(args[..], "--port-file", "");
+  idle_ms := e2e_atoi(args_value(args[..], "--idle-ms", "90000"), 90000);
+  port_want := e2e_atoi(args_value(args[..], "--port", "0"), 0);
+
+  st: [1] E2eState;
+  st[0].legacy_v1 = args_has(args[..], "--legacy-v1");
+  st[0].sk[31] = ifx st[0].legacy_v1 then 7 else 9;
+  if !hb_public(st[0].sk[..], st[0].x[..]) || !hb_hex(st[0].x[..], st[0].xhex[..]) { return 1; }
+  _ = ht_copy(st[0].grant[..], ifx st[0].legacy_v1 then "4444444444444444444444444444444444444444444444444444444444444444" else "5555555555555555555555555555555555555555555555555555555555555555");
+  st[0].nbranch = js_copy(st[0].branch[..], "main");
+
+  srv := cxsock_listen(port_want);
+  if srv < 0 { tool_errln("e2e-host: listen failed"); return 1; }
+  defer { _ = cxsock_close(srv); }
+  port := cxsock_port(srv);
+
+  if port_file.count > 0 {
+    pb: [128] u8; dg: [32] u8;
+    pn := e2e_cat(pb[..], 0, e2e_itoa(port, dg[..]));
+    pn = e2e_cat(pb[..], pn, " ");
+    pn = e2e_cat(pb[..], pn, cast(string) st[0].xhex[..]);
+    pn = e2e_cat(pb[..], pn, "\n");
+    _ = fs_write(port_file, cast(string) pb[0..<pn]);
+  }
+
+  // Up to 8 concurrent connections (direct-grant one-shots + persistent multiplexed client streams)
+  conns: [8] int; for i: 0..<8 { conns[i] = -1; }
+  direct_ok: [8] bool;
+  sub_ok: [8] bool;
+  bufs: [8][E2E_MAX_LINE] u8;
+  blens: [8] int;
+
+  last_activity := cxsock_now_ms();
+  while cxsock_now_ms() - last_activity < idle_ms {
+    nc := cxsock_accept(srv, 25);
+    if nc >= 0 {
+      last_activity = cxsock_now_ms();
+      placed := false;
+      for i: 0..<8 {
+        if conns[i] < 0 { conns[i] = nc; direct_ok[i] = false; sub_ok[i] = false; blens[i] = 0; placed = true; break; }
+      }
+      if !placed { _ = cxsock_close(nc); }
+    }
+
+    for i: 0..<8 {
+      c := conns[i];
+      if c < 0 { continue; }
+      got := cxsock_read(c, 5);
+      if got == -2 { continue; }
+      if got <= 0 { _ = cxsock_close(c); conns[i] = -1; continue; }
+      last_activity = cxsock_now_ms();
+      for b: 0..<got {
+        ch := cast(u8) cxsock_byte(c, b);
+        if ch == 10 {
+          line := cast(string) bufs[i][0..<blens[i]];
+          blens[i] = 0;
+          if !direct_ok[i] {
+            gq: [1] HtGrantRequest;
+            if ht_grant_request_read(line, gq[..]) {
+              ans: [1] HtGrantAnswer;
+              ans[0].nhost = ht_copy(ans[0].host[..], cast(string) st[0].xhex[..]);
+              ans[0].nlabel = ht_copy(ans[0].label[..], ifx st[0].legacy_v1 then "Legacy V1 Mac" else "E2E Studio Mac");
+              ans[0].ngrant = ht_copy(ans[0].grant[..], cast(string) st[0].grant[..]);
+              ans[0].epoch = 1;
+              ans[0].expires = cxproc_wall_us() / 1000000 + 86400 * 30;
+              ab: [HT_ANSWER_MAX] u8; an := ht_grant_answer_write(ans[..], ab[..]);
+              if an > 0 { e2e_write_line(c, cast(string) ab[0..<an]); }
+              _ = cxsock_close(c); conns[i] = -1; break;
+            }
+            if ht_direct_hello_read(line) {
+              ab: [HT_LINE_MAX] u8; an := ht_direct_ack_write("", ab[..]);
+              if an > 0 { e2e_write_line(c, cast(string) ab[0..<an]); }
+              direct_ok[i] = true;
+            } else {
+              _ = cxsock_close(c); conns[i] = -1; break;
+            }
+          } else {
+            sub_buf: [128] u8;
+            if ht_subscribe_read(line, sub_buf[..]) >= 0 {
+              sub_ok[i] = true;
+            } else {
+              e2e_handle_rpc(st[..], c, line, sub_ok[i]);
+            }
+          }
+        } else if blens[i] < E2E_MAX_LINE {
+          bufs[i][blens[i]] = ch;
+          blens[i] += 1;
+        }
+      }
+    }
+  }
+  return 0;
+}

@@ -245,4 +245,176 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(parsed.antigravityModels.map(\.id), ["gemini-4-neon", "gemini-3.8-flash"])
         XCTAssertEqual(parsed.folders, ["apps/openagents-ios"])
     }
+
+    func testDefaultRequestsPassStrictV1LegacyWireCompatibility() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let models = ["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"]
+        let efforts = ["low", "medium", "high", "xhigh"]
+
+        for model in models {
+            for effort in efforts {
+                let open = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+                    work: work,
+                    method: "OpenSession",
+                    session: "0123456789abcdef0123456789abcdef",
+                    command: "abcdef0123456789abcdef0123456789",
+                    generation: 1,
+                    revision: 0,
+                    text: "Ship Antigravity build 1420",
+                    issuedMs: 1_700_000_000_000,
+                    expiresMs: 1_700_000_300_000,
+                    model: model,
+                    effort: effort,
+                    mode: "auto"
+                ))
+                // Default ("auto") MUST omit "mode" and pass strict 16-key deployed-host validation.
+                XCTAssertTrue(MobileCore.isV1WireCompatible(open), "Default OpenSession (\(model)/\(effort)) broke v1 wire compatibility!")
+                let json = try XCTUnwrap(JSONSerialization.jsonObject(with: open) as? [String: Any])
+                XCTAssertNil(json["mode"])
+
+                let send = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+                    work: work,
+                    method: "SendMessage",
+                    session: "0123456789abcdef0123456789abcdef",
+                    command: "abcdef0123456789abcdef0123456789",
+                    generation: 1,
+                    revision: 2,
+                    text: "Continue",
+                    issuedMs: 1_700_000_000_000,
+                    expiresMs: 1_700_000_300_000,
+                    model: model,
+                    effort: effort,
+                    mode: ""
+                ))
+                XCTAssertTrue(MobileCore.isV1WireCompatible(send), "Default SendMessage (\(model)/\(effort)) broke v1 wire compatibility!")
+            }
+        }
+
+        // Non-default explicit "plan" emits "mode":"plan" (triggers transparent downgrade on v1 hosts).
+        let plan = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "OpenSession",
+            session: "0123456789abcdef0123456789abcdef",
+            command: "abcdef0123456789abcdef0123456789",
+            generation: 1,
+            revision: 0,
+            text: "Plan carefully",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            model: "gemini-4-neon",
+            effort: "high",
+            mode: "plan"
+        ))
+        XCTAssertFalse(MobileCore.isV1WireCompatible(plan))
+    }
+
+    func testHostErrorFormatterHumanizesEveryWireRefusalCode() {
+        let rawCodes = [
+            "unsupported", "forbidden", "expired", "revoked", "conflict",
+            "no_agent", "model_unavailable", "capacity", "not_found",
+            "unsupported_profile", "folder_refused", "workspace_refused",
+            "storage_unavailable", "source_unavailable", "interaction_expired",
+            "malformed", "rate_limited", "too_large", "bounds", "output_limit",
+            "idempotency_conflict", "unavailable",
+        ]
+        for code in rawCodes {
+            let msg = HostErrorFormatter.describe(code, method: "OpenSession")
+            XCTAssertFalse(msg.isEmpty)
+            XCTAssertNotEqual(msg, code, "Wire refusal code '\(code)' must never leak raw to users!")
+            XCTAssertGreaterThan(msg.count, 20, "Error copy for '\(code)' should be plain, actionable English.")
+        }
+        let wsForbidden = HostErrorFormatter.describe("forbidden", method: "ReadWorkspace")
+        XCTAssertTrue(wsForbidden.contains("workspace-enable"))
+    }
+
+    func testWorkspaceChangedFilesSplitsUnifiedDiffPerFile() {
+        let snap = WorkspaceSnapshot(
+            host: String(repeating: "a", count: 64),
+            workspace: "default",
+            revision: String(repeating: "1", count: 64),
+            path: "/Users/dev/openagents",
+            repository: "OpenAgentsInc/openagents",
+            branch: "main",
+            status: " M apps/openagents-ios/Sources/ChatView.swift\n?? README-new.md",
+            diff: """
+            diff --git a/apps/openagents-ios/Sources/ChatView.swift b/apps/openagents-ios/Sources/ChatView.swift
+            @@ -1,2 +1,3 @@
+            -old
+            +new
+            +extra
+            """,
+            diffCut: false,
+            error: "",
+            githubError: "",
+            worktrees: [],
+            branches: ["main", "feat/antigravity"],
+            pullRequests: []
+        )
+        let files = snap.changedFiles
+        XCTAssertEqual(files.count, 2)
+        XCTAssertEqual(files[0].path, "apps/openagents-ios/Sources/ChatView.swift")
+        XCTAssertEqual(files[0].code, "M")
+        XCTAssertTrue(files[0].diff.contains("+extra"))
+        XCTAssertEqual(files[1].path, "README-new.md")
+        XCTAssertEqual(files[1].code, "??")
+        XCTAssertTrue(files[1].diff.isEmpty)
+    }
+
+    func testFuzz120RandomizedPromptsAndFoldersThroughCoaxAndNIP44() throws {
+        var sk = Data(repeating: 0, count: 32)
+        sk[31] = 3
+        let host = "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+        let grant = String(repeating: "9", count: 64)
+        let work = try XCTUnwrap(MobileCoreWork())
+
+        // Deterministic xorshift64* PRNG so fuzz failures reproduce identically.
+        var rng: UInt64 = 0xD1B54A32D192ED03
+        func nextU64() -> UInt64 {
+            rng ^= rng >> 12
+            rng ^= rng << 25
+            rng ^= rng >> 27
+            return rng &* 2685821657736338717
+        }
+
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 !@#%^&*()_+-=[]{}|;':\",.<>?/`~\\\n\t😀🚀")
+        let models = ["gemini-4-neon", "gemini-4-carbon", "gemini-3.8-flash"]
+        let efforts = ["low", "medium", "high", "xhigh"]
+
+        for i in 0..<120 {
+            let len = Int(nextU64() % 240) + 1
+            var prompt = ""
+            prompt.reserveCapacity(len)
+            for _ in 0..<len {
+                prompt.append(alphabet[Int(nextU64() % UInt64(alphabet.count))])
+            }
+            let model = models[i % models.count]
+            let effort = MobileCore.normalizeAntigravityEffort(model: model, want: efforts[i % efforts.count])
+            let req = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+                work: work,
+                method: i % 2 == 0 ? "OpenSession" : "SendMessage",
+                session: "0123456789abcdef0123456789abcdef",
+                command: String(format: "%032x", i + 1),
+                generation: 1,
+                revision: Int64(i),
+                text: prompt,
+                issuedMs: 1_700_000_000_000,
+                expiresMs: 1_700_000_300_000,
+                model: model,
+                effort: effort,
+                mode: "auto"
+            ), "Fuzz prompt #\(i) failed Coax encoding")
+            XCTAssertTrue(MobileCore.isV1WireCompatible(req), "Fuzz prompt #\(i) violated v1 wire compatibility")
+            let sealed = try XCTUnwrap(MobileCore.sealRPC(
+                work: work,
+                secret: sk,
+                host: host,
+                relay: MobileCore.directRelayLabel,
+                grant: grant,
+                epoch: 1,
+                params: req,
+                nowSeconds: 1_790_000_000
+            ), "Fuzz prompt #\(i) failed NIP-44 seal")
+            XCTAssertEqual(sealed.eventID.count, 64)
+        }
+    }
 }

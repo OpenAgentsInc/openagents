@@ -43,6 +43,7 @@ int64_t oa_mobile_normalize_agy_model(const char *want, uint8_t *out, int64_t ca
 int64_t oa_mobile_normalize_agy_effort(const char *model, const char *want, uint8_t *out, int64_t cap);
 int oa_mobile_folder_ok(const char *folder);
 int oa_mobile_mode_ok(const char *mode);
+int oa_mobile_v1_ea_compat(const uint8_t *raw, int64_t n);
 
 int64_t oa_mobile_env_request(
     void *work,

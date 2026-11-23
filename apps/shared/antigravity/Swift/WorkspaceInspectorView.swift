@@ -5,6 +5,7 @@ struct WorkspaceInspectorView: View {
     @ObservedObject var store: AntigravityStore
 
     enum Tab: String, CaseIterable, Identifiable {
+        case files = "Files"
         case diff = "Diff"
         case branches = "Branches"
         case worktrees = "Worktrees"
@@ -13,6 +14,7 @@ struct WorkspaceInspectorView: View {
     }
 
     @State private var selectedTab: Tab = .diff
+    @State private var selectedFilePath: String?
     @State private var newBranchName = ""
     @State private var newWorktreeBranch = ""
     @State private var prTitle = ""
@@ -66,6 +68,8 @@ struct WorkspaceInspectorView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         switch selectedTab {
+                        case .files:
+                            filesTab(snap)
                         case .diff:
                             diffTab(snap)
                         case .branches:
@@ -125,6 +129,7 @@ struct WorkspaceInspectorView: View {
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundStyle(OATheme.textPrimary)
                     .lineLimit(1)
+                    .accessibilityIdentifier("workspace.branchHeader")
                 if let repo = store.workspaceSnapshot?.repository, !repo.isEmpty {
                     Text(repo)
                         .font(.system(size: 11))
@@ -168,6 +173,69 @@ struct WorkspaceInspectorView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(OATheme.background)
+    }
+
+    // MARK: - Files tab (per-file inspection)
+
+    @ViewBuilder
+    private func filesTab(_ snap: WorkspaceSnapshot) -> some View {
+        let files = snap.changedFiles
+        if files.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(OATheme.statusReady)
+                Text("No modified files in \(snap.branch.isEmpty ? "workspace" : snap.branch).")
+                    .font(.system(size: 13))
+                    .foregroundStyle(OATheme.textSecondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        } else {
+            VStack(spacing: 8) {
+                ForEach(files) { file in
+                    let isOpen = selectedFilePath == file.path || files.count == 1
+                    VStack(alignment: .leading, spacing: 6) {
+                        Button {
+                            selectedFilePath = isOpen ? nil : file.path
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(file.code)
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(file.code.contains("?") || file.code.contains("A") ? OATheme.statusReady : OATheme.statusWarn)
+                                    .frame(width: 22)
+                                Text(file.path)
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(OATheme.textPrimary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(OATheme.textMuted)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 9)
+                            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
+                        if isOpen {
+                            if !file.diff.isEmpty {
+                                DiffBlockView(path: file.path, diff: file.diff, truncated: snap.diffCut)
+                            } else {
+                                Text("Untracked or binary file change.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(OATheme.textMuted)
+                                    .padding(.horizontal, 10)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Diff tab
@@ -267,6 +335,7 @@ struct WorkspaceInspectorView: View {
                         .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
                         .buttonStyle(.plain)
                         .disabled(store.workspaceActionBusy)
+                        .accessibilityIdentifier("workspace.switchBranch.\(branch)")
                     }
                 }
                 .padding(.horizontal, 12)

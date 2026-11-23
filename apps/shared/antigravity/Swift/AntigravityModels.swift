@@ -210,8 +210,65 @@ struct ChatSessionSummary: Identifiable, Equatable, Codable {
         id.hasPrefix("agy-")
     }
 
+    var isObserveOnly: Bool {
+        control == "observe-only" && !isNativeAntigravity
+    }
+
     var canSteerOrSend: Bool {
-        managed || desktopSurface || isNativeAntigravity
+        (managed && !isObserveOnly) || isNativeAntigravity
+    }
+}
+
+/// Maps every raw wire/host refusal token into plain, actionable English so users never see naked wire codes.
+enum HostErrorFormatter {
+    static func describe(_ rawCode: String, method: String = "") -> String {
+        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else { return "" }
+        switch code {
+        case "unsupported":
+            return "Your Mac is running an older OpenAgents host daemon that doesn't support this option yet. Update OpenAgents on your Mac to enable all features."
+        case "forbidden":
+            if method.hasPrefix("ReadWorkspace") || method.hasSuffix("Branch") || method.hasSuffix("Worktree") || method.hasSuffix("PullRequest") {
+                return "Workspace Git controls aren't enabled for this pairing yet. Re-pair over Tailscale or run `coder host workspace-enable` on your Mac."
+            }
+            return "This device's grant was not accepted by your Mac. Open Computers and tap Pair over Tailscale to refresh it."
+        case "expired":
+            return "This pairing grant or request expired. Open Computers and tap Pair over Tailscale to renew."
+        case "revoked":
+            return "This device's access was revoked on your Mac. Pair again from Computers."
+        case "conflict":
+            return "This chat is read-only or changed on another device. Start a new chat or refresh to continue."
+        case "no_agent":
+            return "Antigravity (`agy`) isn't available or signed in on your Mac. Open OpenAgents macOS to sign in."
+        case "model_unavailable":
+            return "The selected Antigravity model isn't enabled on your Mac. Pick another model from the composer."
+        case "capacity":
+            return "Your Mac has reached its active chat limit. Stop an active turn or wait for a task to finish."
+        case "not_found":
+            return "That chat or subagent is no longer active on your Mac."
+        case "unsupported_profile":
+            return "This action isn't supported for this chat type on your Mac."
+        case "folder_refused":
+            return "That workspace subfolder isn't allowed on your Mac."
+        case "workspace_refused":
+            return "Workspace access isn't configured on your Mac."
+        case "storage_unavailable", "source_unavailable":
+            return "Your Mac host couldn't read or write session storage. Check disk space and host daemon logs."
+        case "interaction_expired":
+            return "That approval prompt has already been answered or expired."
+        case "malformed":
+            return "The request couldn't be validated by the host. Try sending again."
+        case "rate_limited":
+            return "Too many requests right now. Wait a moment and try again."
+        case "too_large", "bounds", "output_limit":
+            return "The message or response exceeded the Tailscale message size limit."
+        case "idempotency_conflict":
+            return "A duplicate request conflicted with an earlier command. Try sending again."
+        case "unavailable":
+            return "The host daemon on your Mac is temporarily unavailable."
+        default:
+            return code
+        }
     }
 }
 
@@ -405,6 +462,13 @@ struct WorkspacePR: Identifiable, Equatable {
     var id: Int { number }
 }
 
+struct WorkspaceFileChange: Identifiable, Equatable {
+    let id: String
+    let code: String
+    let path: String
+    let diff: String
+}
+
 struct WorkspaceSnapshot: Equatable {
     let host: String
     let workspace: String
@@ -420,6 +484,58 @@ struct WorkspaceSnapshot: Equatable {
     let worktrees: [WorkspaceWorktree]
     let branches: [String]
     let pullRequests: [WorkspacePR]
+
+    /// Parses `status` lines and splits the unified `diff` into per-file sections for the Files inspector tab.
+    var changedFiles: [WorkspaceFileChange] {
+        var diffsByPath: [String: String] = [:]
+        var currentPath: String?
+        var currentLines: [String] = []
+
+        func flush() {
+            if let p = currentPath, !currentLines.isEmpty {
+                diffsByPath[p] = currentLines.joined(separator: "\n")
+            }
+            currentLines.removeAll()
+        }
+
+        for rawLine in diff.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+            if line.hasPrefix("diff --git ") {
+                flush()
+                let parts = line.split(separator: " ")
+                if let last = parts.last {
+                    let s = String(last)
+                    currentPath = s.hasPrefix("b/") ? String(s.dropFirst(2)) : s
+                } else {
+                    currentPath = nil
+                }
+                currentLines = [line]
+            } else if currentPath != nil {
+                currentLines.append(line)
+            }
+        }
+        flush()
+
+        var out: [WorkspaceFileChange] = []
+        var seen = Set<String>()
+        for rawLine in status.split(separator: "\n") {
+            let line = String(rawLine)
+            guard line.count >= 4 else { continue }
+            let code = String(line.prefix(2)).trimmingCharacters(in: .whitespaces)
+            let path = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            guard !path.isEmpty, seen.insert(path).inserted else { continue }
+            out.append(WorkspaceFileChange(
+                id: path,
+                code: code.isEmpty ? "M" : code,
+                path: path,
+                diff: diffsByPath[path] ?? ""
+            ))
+        }
+        for (path, fileDiff) in diffsByPath.sorted(by: { $0.key < $1.key }) where seen.insert(path).inserted {
+            out.append(WorkspaceFileChange(id: path, code: "M", path: path, diff: fileDiff))
+        }
+        return out
+    }
 
     static func parse(_ data: Data) -> WorkspaceSnapshot? {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

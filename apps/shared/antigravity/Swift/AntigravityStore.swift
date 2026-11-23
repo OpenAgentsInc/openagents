@@ -32,6 +32,7 @@ final class AntigravityStore: ObservableObject {
     @Published var isLoadingSessions: Bool = false
     @Published var isLoadingTranscript: Bool = false
     @Published var isSending: Bool = false
+    @Published var isAwaitingTurnStart: Bool = false
     @Published var isPairingHostID: String?
     @Published var bannerError: String?
     @Published var statusToast: String?
@@ -54,17 +55,29 @@ final class AntigravityStore: ObservableObject {
     // Real-time stream state
     @Published var livePushConnected: Bool = false
 
+    /// Test-only switch enabled strictly via `-OAE2ELoopbackAllowed` launch argument for local Simulator E2E harnesses.
+    var allowLoopbackForTests: Bool = false
+
     private var pollTask: Task<Void, Never>?
     private var pushDebounceTask: Task<Void, Never>?
     private var lastPushReceivedAt: Date = .distantPast
+    private var fastPollUntil: Date = .distantPast
     private var reachabilityByID: [String: ReachabilityState] = [:]
+    private var legacyNoModeHosts: Set<String> = []
     private var wasActiveSessionBusy = false
 
     init(store: MobileDeviceStore = MobileDeviceStore()) {
         self.store = store
         self.client = TailscaleClient(book: store.tailnetBook)
-        if ProcessInfo.processInfo.arguments.contains("-OANoLocalNetworkBrowse") {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-OAResetStateForTests") {
+            store.resetForTests()
+        }
+        if args.contains("-OANoLocalNetworkBrowse") {
             self.client.browsesLocalNetwork = false
+        }
+        if args.contains("-OAE2ELoopbackAllowed") {
+            self.allowLoopbackForTests = true
         }
         self.client.onDiscoveredChange = { [weak self] in
             self?.reloadComputers()
@@ -140,6 +153,27 @@ final class AntigravityStore: ObservableObject {
         let query = trimmed.lowercased()
         if query == "/" { return SlashCommandItem.defaults }
         return SlashCommandItem.defaults.filter { $0.command.lowercased().hasPrefix(query) }
+    }
+
+    /// `@` workspace folder mention autocomplete using host-reported `folders`.
+    var matchingFolders: [String] {
+        guard !folders.isEmpty, let lastWord = draftText.split(separator: " ").last, lastWord.hasPrefix("@") else {
+            return []
+        }
+        let q = String(lastWord.dropFirst()).lowercased()
+        if q.isEmpty { return Array(folders.prefix(6)) }
+        return Array(folders.filter { $0.lowercased().contains(q) }.prefix(6))
+    }
+
+    func applyFolderMention(_ folder: String) {
+        if let range = draftText.range(of: "@[^\\s]*$", options: .regularExpression) {
+            draftText.replaceSubrange(range, with: "@\(folder) ")
+        } else {
+            draftText += "@\(folder) "
+        }
+        if activeSessionID == nil && MobileCore.isValidFolder(folder) {
+            selectedFolder = folder
+        }
     }
 
     // MARK: - Lifecycle
@@ -359,7 +393,8 @@ final class AntigravityStore: ObservableObject {
     /// probes reachability, and optionally requests a relay-free direct Tailscale grant immediately.
     func addManualComputer(address: String, name: String, port: UInt16 = AppTailnet.port, autoPair: Bool = true) async -> String? {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isIP = AppTailnet.isTailnet(trimmed)
+        let isLoopbackTest = allowLoopbackForTests && (trimmed == "127.0.0.1" || trimmed == "localhost")
+        let isIP = AppTailnet.isTailnet(trimmed) || isLoopbackTest
         let dns = isIP ? "" : (AppTailnet.dnsName(trimmed) ?? "")
         guard isIP || !dns.isEmpty else {
             return "Enter a Tailscale IP (100.64.0.0/10) or MagicDNS name (for example, mac.tailnet.ts.net)."
@@ -552,7 +587,12 @@ final class AntigravityStore: ObservableObject {
                     sessions.insert(updated, at: 0)
                 }
             }
-            items = view.items
+            if !view.items.isEmpty {
+                items = view.items
+                isAwaitingTurnStart = false
+            } else if !nowBusy && Date() > fastPollUntil {
+                isAwaitingTurnStart = false
+            }
             persistOfflineCache(for: computer.id)
 
             // Auto-dispatch queued follow-up the moment the active turn finishes
@@ -579,62 +619,130 @@ final class AntigravityStore: ObservableObject {
         for att in pendingAttachments {
             composed += att.renderedPromptBlock()
         }
+
+        // If viewing a read-only ended desktop chat, smoothly continue in a fresh interactive session
+        // seeded with a compact context header instead of hitting a host "conflict" refusal.
+        let continueFromReadOnly = activeSession?.isObserveOnly == true
+        if continueFromReadOnly, let oldTitle = activeSession?.displayTitle {
+            let lastReply = items.last(where: { $0.role == .assistant })?.text.prefix(1200) ?? ""
+            var seed = "[Continuing from earlier session \"\(oldTitle)\"]\n"
+            if !lastReply.isEmpty {
+                seed += "[Last reply summary]: \(lastReply)\n\n"
+            }
+            composed = seed + composed
+        }
+
+        // Legacy 16-key openagents-environment hosts reject EaRequest.mode with "unsupported".
+        // Always omit "mode" for the default (.auto) and for hosts known to be v1-only.
+        let hostSupportsMode = !legacyNoModeHosts.contains(computer.id)
+        var modeWire = (reviewMode == .auto || !hostSupportsMode) ? "" : reviewMode.wireValue
+        if reviewMode == .plan && modeWire.isEmpty && !composed.hasPrefix("/plan") && !composed.hasPrefix("[Plan mode") {
+            composed = "[Plan mode — outline a plan before editing files]\n\n" + composed
+        }
         let payloadText = String(composed.prefix(15_500))
 
+        // Optimistically display the user's message immediately so the chat never appears stuck while agy boots.
+        let commandID = MobileCore.randomHex(bytes: 16)
+        let optimisticID = "pending-\(commandID)"
+        let previousItems = items
+        if continueFromReadOnly {
+            activeSessionID = nil
+            items = []
+        }
+        items.append(TranscriptItem(
+            id: optimisticID,
+            role: .user,
+            text: baseText.isEmpty ? composed : baseText,
+            toolName: "",
+            complete: true,
+            startedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+            subagentCalls: 0,
+            subagentNow: "",
+            path: "",
+            diff: "",
+            diffCut: false,
+            noticeKind: ""
+        ))
+
         isSending = true
+        isAwaitingTurnStart = true
         bannerError = nil
+        statusToast = nil
         defer { isSending = false }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let expiresMs = nowMs + 300_000
-        let commandID = MobileCore.randomHex(bytes: 16)
         let model = MobileCore.normalizeAntigravityModel(selectedModelID)
         let effort = MobileCore.normalizeAntigravityEffort(model: model, want: selectedEffort.rawValue)
-        let modeWire = reviewMode.wireValue
 
-        let view: ParsedEnvironmentView?
-        if let current = activeSession {
-            view = await performEnvironmentRPC(
-                computer: computer,
-                method: "SendMessage",
-                session: current.id,
-                command: commandID,
-                generation: max(1, current.generation),
-                revision: current.revision,
-                text: payloadText,
-                issuedMs: nowMs,
-                expiresMs: expiresMs,
-                model: model,
-                effort: effort,
-                mode: modeWire
-            )
-        } else {
-            // Host `es_dispatch` requires a 32-char lowercase hex session_id on OpenSession!
-            let newSessionID = MobileCore.randomHex(bytes: 16)
-            let folder = selectedFolder.isEmpty || !MobileCore.isValidFolder(selectedFolder) ? "" : selectedFolder
-            view = await performEnvironmentRPC(
-                computer: computer,
-                method: "OpenSession",
-                session: newSessionID,
-                command: commandID,
-                generation: 1,
-                revision: 0,
-                text: payloadText,
-                issuedMs: nowMs,
-                expiresMs: expiresMs,
-                model: model,
-                effort: effort,
-                folder: folder,
-                mode: modeWire
-            )
+        func dispatchSend(modeArg: String, textArg: String, cmdArg: String) async -> ParsedEnvironmentView? {
+            if let current = activeSession, !continueFromReadOnly {
+                return await performEnvironmentRPC(
+                    computer: computer,
+                    method: "SendMessage",
+                    session: current.id,
+                    command: cmdArg,
+                    generation: max(1, current.generation),
+                    revision: current.revision,
+                    text: textArg,
+                    issuedMs: nowMs,
+                    expiresMs: expiresMs,
+                    model: model,
+                    effort: effort,
+                    mode: modeArg,
+                    quietErrors: !modeArg.isEmpty
+                )
+            } else {
+                // Host `es_dispatch` requires a 32-char lowercase hex session_id on OpenSession.
+                let newSessionID = MobileCore.randomHex(bytes: 16)
+                let folder = selectedFolder.isEmpty || !MobileCore.isValidFolder(selectedFolder) ? "" : selectedFolder
+                return await performEnvironmentRPC(
+                    computer: computer,
+                    method: "OpenSession",
+                    session: newSessionID,
+                    command: cmdArg,
+                    generation: 1,
+                    revision: 0,
+                    text: textArg,
+                    issuedMs: nowMs,
+                    expiresMs: expiresMs,
+                    model: model,
+                    effort: effort,
+                    folder: folder,
+                    mode: modeArg,
+                    quietErrors: !modeArg.isEmpty
+                )
+            }
         }
 
-        guard let view else { return }
+        var view = await dispatchSend(modeArg: modeWire, textArg: payloadText, cmdArg: commandID)
+
+        // Automatic transparent downgrade if an older Mac host rejects optional "mode" with "unsupported".
+        if let v = view, v.error == "unsupported", !modeWire.isEmpty {
+            legacyNoModeHosts.insert(computer.id)
+            modeWire = ""
+            var fallbackText = payloadText
+            if reviewMode == .plan && !fallbackText.hasPrefix("/plan") && !fallbackText.hasPrefix("[Plan mode") {
+                fallbackText = String(("[Plan mode — outline a plan before editing files]\n\n" + fallbackText).prefix(15_500))
+            }
+            view = await dispatchSend(modeArg: "", textArg: fallbackText, cmdArg: MobileCore.randomHex(bytes: 16))
+        }
+
+        guard let finalView = view, finalView.error.isEmpty else {
+            if let err = view?.error, !err.isEmpty {
+                bannerError = HostErrorFormatter.describe(err, method: activeSession == nil ? "OpenSession" : "SendMessage")
+            }
+            items = previousItems
+            isAwaitingTurnStart = false
+            return
+        }
+
         draftText = ""
         pendingAttachments = []
-        if let opened = view.sessions.first {
+        fastPollUntil = Date().addingTimeInterval(15.0)
+        if let opened = finalView.sessions.first {
             activeSessionID = opened.id
-            wasActiveSessionBusy = opened.busy
+            wasActiveSessionBusy = opened.busy || true
             if let idx = sessions.firstIndex(where: { $0.id == opened.id }) {
                 sessions[idx] = opened
             } else {
@@ -642,8 +750,9 @@ final class AntigravityStore: ObservableObject {
             }
             subscribeActiveHost()
         }
-        if !view.items.isEmpty {
-            items = view.items
+        if !finalView.items.isEmpty {
+            items = finalView.items
+            isAwaitingTurnStart = false
         }
         persistOfflineCache(for: computer.id)
         await refreshActiveTranscript()
@@ -758,7 +867,7 @@ final class AntigravityStore: ObservableObject {
         if let snap = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace") {
             workspaceSnapshot = snap
             if !snap.error.isEmpty {
-                workspaceError = snap.error
+                workspaceError = HostErrorFormatter.describe(snap.error, method: "ReadWorkspace")
             }
         }
     }
@@ -835,7 +944,7 @@ final class AntigravityStore: ObservableObject {
         ) {
             workspaceSnapshot = snap
             if !snap.error.isEmpty {
-                workspaceError = snap.error
+                workspaceError = HostErrorFormatter.describe(snap.error, method: method)
             } else if !snap.githubError.isEmpty {
                 workspaceError = snap.githubError
             }
@@ -878,11 +987,12 @@ final class AntigravityStore: ObservableObject {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3.5))
+                let fast = await MainActor.run { self?.isAwaitingTurnStart == true || (self.map { Date() < $0.fastPollUntil } ?? false) }
+                try? await Task.sleep(for: .milliseconds(fast ? 800 : 2500))
                 guard !Task.isCancelled, let self else { break }
                 guard let computer = self.activeComputer, computer.canSendRPC else { continue }
-                let recentPush = Date().timeIntervalSince(self.lastPushReceivedAt) < 3.0
-                if self.activeSession?.busy == true && !recentPush {
+                let recentPush = Date().timeIntervalSince(self.lastPushReceivedAt) < 2.0
+                if (self.activeSession?.busy == true || self.isAwaitingTurnStart) && !recentPush {
                     await self.refreshActiveTranscript()
                 }
             }
@@ -1020,7 +1130,7 @@ final class AntigravityStore: ObservableObject {
                 return nil
             }
             if !parsed.error.isEmpty {
-                if !quietErrors { bannerError = parsed.error }
+                if !quietErrors { bannerError = HostErrorFormatter.describe(parsed.error, method: method) }
             } else if !quietErrors {
                 bannerError = nil
             }

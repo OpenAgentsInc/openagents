@@ -128,6 +128,10 @@ int oa_mobile_mode_ok(const char *mode) {
     return mc_mode_ok(oa_mc_cstr(mode)) ? 1 : 0;
 }
 
+int oa_mobile_v1_ea_compat(const uint8_t *raw, int64_t n) {
+    return mc_v1_ea_compat(oa_mc_bytes(raw, n)) ? 1 : 0;
+}
+
 int64_t oa_mobile_env_request(
     void *work,
     const char *method,

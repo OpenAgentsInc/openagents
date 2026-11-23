@@ -80,6 +80,13 @@ enum MobileCore {
         oa_mobile_mode_ok(mode) != 0
     }
 
+    static func isV1WireCompatible(_ raw: Data) -> Bool {
+        raw.withUnsafeBytes { buf in
+            guard let ptr = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return false }
+            return oa_mobile_v1_ea_compat(ptr, Int64(raw.count)) != 0
+        }
+    }
+
     /// Encodes a bounded, policy-verified `EaRequest` JSON payload via Coax `mc_env_request`.
     /// Non-Antigravity models and invalid review modes are refused at the wire boundary by Coax.
     static func encodeEnvironmentRequest(

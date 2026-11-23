@@ -196,6 +196,14 @@ final class MobileDeviceStore {
         pairedComputers = pairedComputers.filter { $0.host != host }
     }
 
+    /// Resets saved pairings, discovered endpoints, and offline cache for isolated UI test launches.
+    func resetForTests() {
+        pairedItem.clear()
+        tailnetBook.computers = []
+        lastActiveHost = nil
+        try? FileManager.default.removeItem(at: cacheURL)
+    }
+
     // MARK: - Per-computer Antigravity preferences
 
     func selectedModel(for host: String) -> String {

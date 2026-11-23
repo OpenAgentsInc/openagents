@@ -150,7 +150,7 @@ final class TailscaleHostServer: ObservableObject {
             return
         }
         guard let bin = coderHostPath else {
-            statusNote = "coder-host binary not found. Run `coax build coder/tui/host.coax` or put coder-host on PATH."
+            statusNote = "coder-host binary not found. Run `apps/openagents-macos/install.sh` or put coder-host on PATH."
             return
         }
         let proc = Process()
@@ -168,6 +168,32 @@ final class TailscaleHostServer: ObservableObject {
         } catch {
             statusNote = "Failed to launch coder-host: \(error.localizedDescription)"
         }
+    }
+
+    /// Launches `agyworker --connect` (or `agy auth login`) to sign this Mac into Antigravity OAuth.
+    func connectAntigravityAuth() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let worker = Self.findExecutable(names: ["agyworker"], extraPaths: [
+            "\(home)/.openagents/bin/agyworker",
+            "/Applications/OpenAgents.app/Contents/Resources/agyworker",
+        ])
+        if let worker {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: worker)
+            proc.arguments = ["--connect"]
+            try? proc.run()
+            statusNote = "Opening Antigravity sign-in via agyworker --connect…"
+            return
+        }
+        if let agy = agyPath {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: agy)
+            proc.arguments = ["auth", "login"]
+            try? proc.run()
+            statusNote = "Opening Antigravity CLI login…"
+            return
+        }
+        statusNote = "Install the Antigravity CLI (`agy`) first."
     }
 
     func installLaunchAgent() {
