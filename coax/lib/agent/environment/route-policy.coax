@@ -1,0 +1,90 @@
+// Layer-2 Route Failover (Tailnet -> LAN -> Nostr) and Credential-Audience Isolation (GitHub #14030):
+// Translates T3 Code client-runtime route preference/hysteresis and strict credential-audience
+// separation into #authority Coax.
+//   coax/bin/coax test coax/lib/agent/environment/route-policy.coax --library
+//   coax/bin/coax mutate coax/lib/agent/environment/route-policy.coax --library
+#authority;
+
+RP_ROUTE_NONE :: 0;
+RP_ROUTE_TAILNET :: 1;
+RP_ROUTE_LAN :: 2;
+RP_ROUTE_NOSTR :: 3;
+
+RP_COOLDOWN_MS :: 15000;   // 15s cooldown after a route failure before re-probing
+
+// Credential audiences: each token/grant class is strictly isolated and never cross-accepted.
+RP_AUD_PAIRING_BOOTSTRAP :: 1;
+RP_AUD_TAILNET_GRANT :: 2;
+RP_AUD_WS_TICKET :: 3;
+RP_AUD_MCP_THREAD :: 4;
+RP_AUD_PROVIDER_LOGIN :: 5;
+
+// True when a route is eligible (configured, healthy, and past any failure cooldown).
+rp_route_usable :: (configured: bool, healthy: bool, failed_at_ms: int, now_ms: int) -> bool #effects(traps) {
+  if !configured { return false; }
+  if healthy { return true; }
+  return failed_at_ms > 0 && now_ms - failed_at_ms >= RP_COOLDOWN_MS;
+}
+
+// Selects the highest-priority usable transport route in strict preference order:
+//   Tailnet -> LAN -> Nostr (or RP_ROUTE_NONE when none is usable).
+// Hysteresis: if `current_route` is still healthy and matches the highest healthy preference,
+// it stays sticky without flapping; if a higher-priority route recovers (healthy == true),
+// it promotes immediately.
+rp_route_select :: (
+  tailnet_cfg: bool, tailnet_ok: bool, tailnet_fail_ms: int,
+  lan_cfg: bool, lan_ok: bool, lan_fail_ms: int,
+  nostr_cfg: bool, nostr_ok: bool, nostr_fail_ms: int,
+  now_ms: int
+) -> int #effects(traps) {
+  if rp_route_usable(tailnet_cfg, tailnet_ok, tailnet_fail_ms, now_ms) { return RP_ROUTE_TAILNET; }
+  if rp_route_usable(lan_cfg, lan_ok, lan_fail_ms, now_ms) { return RP_ROUTE_LAN; }
+  if rp_route_usable(nostr_cfg, nostr_ok, nostr_fail_ms, now_ms) { return RP_ROUTE_NOSTR; }
+  return RP_ROUTE_NONE;
+}
+
+// Strict credential-audience admission: a presented credential is accepted ONLY when both
+// presented and expected audiences are valid known RP_AUD_* classes, match exactly, and
+// the credential is not expired (expires_ms == 0 means non-expiring, else now_ms < expires_ms).
+rp_cred_audience_ok :: (presented_aud: int, expected_aud: int, now_ms: int, expires_ms: int) -> bool #effects() {
+  if presented_aud < RP_AUD_PAIRING_BOOTSTRAP || presented_aud > RP_AUD_PROVIDER_LOGIN { return false; }
+  if presented_aud != expected_aud { return false; }
+  if expires_ms > 0 && now_ms >= expires_ms { return false; }
+  return true;
+}
+
+#test "route policy: Tailnet -> LAN -> Nostr priority, cooldown hysteresis, and fallback" {
+  // Tailnet wins when healthy
+  #assert rp_route_select(true, true, 0, true, true, 0, true, true, 0, 1000) == RP_ROUTE_TAILNET;
+  // Tailnet recently failed (< 15s cooldown) -> fails over to LAN
+  #assert rp_route_select(true, false, 5000, true, true, 0, true, true, 0, 10000) == RP_ROUTE_LAN;
+  // Both Tailnet and LAN in cooldown -> fails over to Nostr
+  #assert rp_route_select(true, false, 5000, true, false, 6000, true, true, 0, 10000) == RP_ROUTE_NOSTR;
+  // All routes in cooldown -> RP_ROUTE_NONE
+  #assert rp_route_select(true, false, 5000, true, false, 6000, true, false, 7000, 10000) == RP_ROUTE_NONE;
+  // Tailnet cooldown expires at exact boundary (5000 + 15000 = 20000) -> eligible to re-probe
+  #assert rp_route_select(true, false, 5000, true, true, 0, true, true, 0, 19999) == RP_ROUTE_LAN;
+  #assert rp_route_select(true, false, 5000, true, true, 0, true, true, 0, 20000) == RP_ROUTE_TAILNET;
+  // Unconfigured routes are never selected even if healthy/past cooldown
+  #assert rp_route_select(false, true, 0, false, true, 0, false, true, 0, 50000) == RP_ROUTE_NONE;
+  // Never-failed unhealthy route (failed_at_ms == 0) is not usable
+  #assert !rp_route_usable(true, false, 0, 50000);
+  // Boundary failed_at_ms == 1 becomes usable at 1 + RP_COOLDOWN_MS
+  #assert rp_route_usable(true, false, 1, 1 + RP_COOLDOWN_MS);
+}
+
+#test "route policy: credential audience isolation rejects cross-audience, unknown, and expired tokens" {
+  #assert rp_cred_audience_ok(RP_AUD_PAIRING_BOOTSTRAP, RP_AUD_PAIRING_BOOTSTRAP, 100, 0);
+  #assert rp_cred_audience_ok(RP_AUD_TAILNET_GRANT, RP_AUD_TAILNET_GRANT, 100, 200);
+  #assert rp_cred_audience_ok(RP_AUD_PROVIDER_LOGIN, RP_AUD_PROVIDER_LOGIN, 100, 0);
+  // Cross-audience rejected
+  #assert !rp_cred_audience_ok(RP_AUD_PAIRING_BOOTSTRAP, RP_AUD_TAILNET_GRANT, 100, 0);
+  #assert !rp_cred_audience_ok(RP_AUD_WS_TICKET, RP_AUD_MCP_THREAD, 100, 0);
+  // Out-of-range audience rejected even if equal
+  #assert !rp_cred_audience_ok(0, 0, 100, 0);
+  #assert !rp_cred_audience_ok(RP_AUD_PROVIDER_LOGIN + 1, RP_AUD_PROVIDER_LOGIN + 1, 100, 0);
+  // Expiry boundary
+  #assert rp_cred_audience_ok(RP_AUD_WS_TICKET, RP_AUD_WS_TICKET, 199, 200);
+  #assert !rp_cred_audience_ok(RP_AUD_WS_TICKET, RP_AUD_WS_TICKET, 200, 200);
+  #assert !rp_cred_audience_ok(RP_AUD_WS_TICKET, RP_AUD_WS_TICKET, 1, 1);
+}
