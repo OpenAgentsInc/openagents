@@ -66,10 +66,10 @@ ik_guard_find :: (g: [] IkGuard, kind: int, sig: u64) -> int #effects(all) {
   return -1;
 }
 
-// Checks a read-only tool call (read_file, grep, list_dir).
+// Checks a read-only tool call (read_file, grep, list_dir, outline).
 // Allows 1st and 2nd identical calls; short-circuits 3rd+ call with prior step > 0.
 ik_guard_check_read :: (g: [] IkGuard, kind: int, canon: string, step: int) -> int #effects(all) {
-  if kind != IK_TK_READ && kind != IK_TK_GREP && kind != IK_TK_LIST { return 0; }
+  if kind != IK_TK_READ && kind != IK_TK_GREP && kind != IK_TK_LIST && kind != IK_TK_OUTLINE { return 0; }
   sig := ik_guard_sig(kind, canon);
   idx := ik_guard_find(g, kind, sig);
   if idx >= 0 {
@@ -262,6 +262,9 @@ ik_guard_tools_exhausted :: (step: int, max_steps: int, dup_blocks: int) -> bool
   // Different kind or different args are distinct:
   #assert ik_guard_check_read(g[..], IK_TK_GREP, "a.coax:1-200", 4) == 0 && g[0].n == 2;
   #assert ik_guard_check_read(g[..], IK_TK_LIST, ".", 5) == 0 && g[0].n == 3;
+  #assert ik_guard_check_read(g[..], IK_TK_OUTLINE, "a.coax|", 5) == 0 && g[0].n == 4;
+  #assert ik_guard_check_read(g[..], IK_TK_OUTLINE, "a.coax|", 6) == 0 && g[0].entries[3].count == 2;
+  #assert ik_guard_check_read(g[..], IK_TK_OUTLINE, "a.coax|", 7) == 5;
   #assert ik_guard_sig(IK_TK_READ, "x") != ik_guard_sig(IK_TK_GREP, "x");
   #assert ik_guard_sig(IK_TK_READ, "x") != ik_guard_sig(IK_TK_READ, "y");
   // Mutation resets cache and increments files_edited when is_file_edit=true:

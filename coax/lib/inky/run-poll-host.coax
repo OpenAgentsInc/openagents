@@ -19,7 +19,9 @@ ik_run_poll :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEven
   // 2. Active streaming model call?
   if r[0].calling {
     gevs: [16] GwEvent;
-    ng := gw_call_poll(r[0].call[..], gevs[..]);
+    ng := ifx r[0].using_local
+      then ik_lhttp_poll(r[0].lcall[..], r[0].g, cast(string) b[0].req_body[0..<r[0].req_len], gevs[..])
+      else gw_call_poll(r[0].call[..], gevs[..]);
     now := proc_now_ms();
     for i: 0..<ng {
       ev := gevs[i];
@@ -31,9 +33,10 @@ ik_run_poll :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEven
       fr := ik_loop_event(r[0].l[..], ev);
       ne = ik_emit_feed(out, ne, fr);
     }
-    if r[0].call[0].finished {
+    call_fin := ifx r[0].using_local then r[0].lcall[0].finished else r[0].call[0].finished;
+    if call_fin {
       r[0].calling = false;
-      clean := r[0].call[0].complete;
+      clean := ifx r[0].using_local then r[0].lcall[0].complete else r[0].call[0].complete;
       total_ms := proc_now_ms() - r[0].req_start_ms;
       ttft := ifx r[0].first_ms >= 0 then r[0].first_ms else -1;
       dec := ifx r[0].first_ms >= 0 && total_ms > r[0].first_ms then total_ms - r[0].first_ms else total_ms;

@@ -1,0 +1,332 @@
+// Inky static-prefix-safe Step-0 likely-file & symbol seeding (docs/coder/inky-self-improvement.md §9.3 #1).
+// Extracts explicit file paths and distinctive code identifiers from the user's task,
+// resolves workspace matches deterministically (<150 ms), and formats a compact <=1.2 KB
+// hint block appended to the USER message — NEVER mutating <|message_system|> so the
+// 8-slot SWA KV prefix cache stays 100% shared across tasks and sessions.
+// Strictly emits 0 bytes for plain greetings and conversational questions.
+//
+// Checks: coax/bin/coax test coax/lib/inky/seed.coax --library
+
+#load "format.coax";
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+
+IK_SEED_MAX_PATHS :: 4;
+IK_SEED_MAX_SYMS :: 4;
+IK_SEED_OUT_CAP :: 1200;
+
+IkSeedPlan :: struct {
+  paths: [IK_SEED_MAX_PATHS] string;
+  np: int;
+  syms: [IK_SEED_MAX_SYMS] string;
+  ns: int;
+}
+
+ik_seed_is_sep :: (c: u8) -> bool {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == ';' ||
+         c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' ||
+         c == '<' || c == '>' || c == '"' || c == '\'' || c == '`';
+}
+
+ik_seed_trim_tok :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ':' || s[a] == '.' || s[a] == '*' || s[a] == '!' || s[a] == '?') {
+    // Keep leading "./" for relative paths
+    if s[a] == '.' && a + 1 < b && s[a + 1] == '/' { break; }
+    a += 1;
+  }
+  while b > a && (s[b - 1] == ':' || s[b - 1] == '.' || s[b - 1] == '*' || s[b - 1] == '!' || s[b - 1] == '?') {
+    b -= 1;
+  }
+  return cast(string) s[a..<b];
+}
+
+ik_seed_has_ext :: (s: string) -> bool {
+  exts := [21] string.[
+    ".coax", ".c", ".h", ".m", ".mm", ".cc", ".cpp", ".hpp",
+    ".swift", ".py", ".rs", ".go", ".ts", ".tsx", ".js", ".jsx",
+    ".sh", ".md", ".json", ".toml", ".metal"
+  ];
+  for i: 0..<21 {
+    e := exts[i];
+    if s.count > e.count && ik_fmt_ends_with(s, e) { return true; }
+  }
+  return false;
+}
+
+ik_seed_looks_path :: (s: string) -> bool {
+  if s.count < 3 || s.count > 160 { return false; }
+  if ik_fmt_starts(s, "http://") || ik_fmt_starts(s, "https://") || ik_fmt_starts(s, "file://") { return false; }
+  if s[0] == '-' || s[0] == '/' { return false; }
+  if ik_fmt_has_ci(s, "..") { return false; }
+  if ik_seed_has_ext(s) {
+    for c: s {
+      if !(ik_fmt_ident_ch(c) || c == '/' || c == '.' || c == '-') { return false; }
+    }
+    return true;
+  }
+  // Path with slash like `coax/lib/inky` (at least one slash and valid path chars)
+  has_slash := false;
+  for c: s {
+    if c == '/' { has_slash = true; continue; }
+    if !(ik_fmt_ident_ch(c) || c == '.' || c == '-') { return false; }
+  }
+  return has_slash && s[s.count - 1] != '/';
+}
+
+ik_seed_looks_sym :: (s: string) -> bool {
+  if s.count < 4 || s.count > 64 { return false; }
+  c0 := s[0];
+  if !((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_') { return false; }
+  has_under := false;
+  has_lower := false;
+  has_upper_after_lower := false;
+  has_upper_init := c0 >= 'A' && c0 <= 'Z';
+  for i: 0..<s.count {
+    c := s[i];
+    if !ik_fmt_ident_ch(c) { return false; }
+    if c == '_' { has_under = true; }
+    else if c >= 'a' && c <= 'z' { has_lower = true; }
+    else if c >= 'A' && c <= 'Z' && has_lower { has_upper_after_lower = true; }
+  }
+  // Require snake_case, ALL_CAPS_WITH_UNDER, or CamelCase (prevents plain English words!)
+  if has_under {
+    // Reject trivial leading/trailing underscore only
+    return s[0] != '_' || s.count >= 5;
+  }
+  if has_upper_after_lower && (has_upper_init || s.count >= 6) { return true; }
+  return false;
+}
+
+ik_seed_add_path :: (p: [] IkSeedPlan, s: string) {
+  if p[0].np >= IK_SEED_MAX_PATHS { return; }
+  for i: 0..<p[0].np { if p[0].paths[i] == s { return; } }
+  p[0].paths[p[0].np] = s;
+  p[0].np += 1;
+}
+
+ik_seed_add_sym :: (p: [] IkSeedPlan, s: string) {
+  if p[0].ns >= IK_SEED_MAX_SYMS { return; }
+  for i: 0..<p[0].ns { if p[0].syms[i] == s { return; } }
+  p[0].syms[p[0].ns] = s;
+  p[0].ns += 1;
+}
+
+// Extracts explicit file paths and distinctive code symbols from task text.
+// Returns np == 0 && ns == 0 on plain greetings / non-codebase prompts.
+ik_seed_extract :: (task: string, out: [] IkSeedPlan) {
+  out[0] = IkSeedPlan.{};
+  if task.count == 0 { return; }
+  i := 0;
+  while i < task.count {
+    while i < task.count && ik_seed_is_sep(task[i]) { i += 1; }
+    s := i;
+    while i < task.count && !ik_seed_is_sep(task[i]) { i += 1; }
+    raw := cast(string) task[s..<i];
+    tok := ik_seed_trim_tok(raw);
+    if tok.count == 0 { continue; }
+    // Strip optional `:line` suffix (e.g., `loop.coax:142`)
+    colon := -1;
+    for k: 0..<tok.count { if tok[k] == ':' { colon = k; break; } }
+    if colon > 0 { tok = cast(string) tok[0..<colon]; }
+    if ik_seed_looks_path(tok) {
+      ik_seed_add_path(out, tok);
+    } else if ik_seed_looks_sym(tok) {
+      ik_seed_add_sym(out, tok);
+    }
+  }
+}
+
+ik_seed_is_git :: (cwd: string) -> bool {
+  cur := cwd;
+  gb: [4096] u8;
+  for step: 0..<16 {
+    gp := fs_join(cur, ".git", gb[..]);
+    if gp.count > 0 && fs_exists(gp) { return true; }
+    up := fs_dir(cur);
+    if up.count == 0 || up == cur || up == "." { break; }
+    cur = up;
+  }
+  return false;
+}
+
+// Runs a short bounded git grep or ls-files query, appending up to max_lines hits into out.
+ik_seed_git_grep :: (cwd: string, sym: string, max_lines: int, out: [] u8, at: int, cap: int, hits: [] int) -> int {
+  h := proc_new();
+  if h < 0 { return at; }
+  ok := proc_arg(h, "git") && proc_arg(h, "grep") && proc_arg(h, "-n") && proc_arg(h, "-I") &&
+        proc_arg(h, "-F") && proc_arg(h, "--no-color") && proc_arg(h, "-e") && proc_arg(h, sym) &&
+        proc_cwd(h, cwd);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return at; }
+  _ = proc_close_stdin(h);
+  n := at;
+  lb: [512] u8;
+  deadline := proc_now_ms() + 1500;
+  got := 0;
+  while got < max_lines && n + 40 < cap {
+    left := deadline - proc_now_ms();
+    if left <= 0 { _ = proc_kill(h, PROC_SIGKILL); break; }
+    ln := proc_line(h, left, lb[..]);
+    if ln <= 0 { break; }
+    s := cast(string) lb[0..<ln];
+    if s.count > 110 { s = cast(string) s[0..<110]; }
+    if n + s.count + 4 >= cap { break; }
+    n = ik_fmt_put(out, n, "  ");
+    n = ik_fmt_put(out, n, s);
+    n = ik_fmt_byte(out, n, '\n');
+    got += 1;
+    hits[0] += 1;
+  }
+  _ = proc_kill(h, PROC_SIGKILL);
+  _ = proc_wait(h, 500);
+  _ = proc_release(h);
+  return n;
+}
+
+ik_seed_git_find_file :: (cwd: string, name: string, out: [] u8, at: int, cap: int, hits: [] int) -> int {
+  pb: [256] u8;
+  pn := ik_fmt_put(pb[..], 0, "*");
+  pn = ik_fmt_put(pb[..], pn, name);
+  h := proc_new();
+  if h < 0 { return at; }
+  ok := proc_arg(h, "git") && proc_arg(h, "ls-files") && proc_arg(h, "--") &&
+        proc_arg(h, cast(string) pb[0..<pn]) && proc_cwd(h, cwd);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return at; }
+  _ = proc_close_stdin(h);
+  n := at;
+  lb: [512] u8;
+  deadline := proc_now_ms() + 1000;
+  got := 0;
+  while got < 4 && n + 32 < cap {
+    left := deadline - proc_now_ms();
+    if left <= 0 { _ = proc_kill(h, PROC_SIGKILL); break; }
+    ln := proc_line(h, left, lb[..]);
+    if ln <= 0 { break; }
+    s := cast(string) lb[0..<ln];
+    if n + s.count + 12 >= cap { break; }
+    n = ik_fmt_put(out, n, "- file: ");
+    n = ik_fmt_put(out, n, s);
+    n = ik_fmt_byte(out, n, '\n');
+    got += 1;
+    hits[0] += 1;
+  }
+  _ = proc_kill(h, PROC_SIGKILL);
+  _ = proc_wait(h, 500);
+  _ = proc_release(h);
+  return n;
+}
+
+// Builds compact Step-0 workspace hints into out (returns 0 on greetings or when nothing matched).
+// Appended to the user turn by run.coax — NEVER touches <|message_system|>.
+ik_seed_build :: (cwd: string, real_cwd: string, task: string, scratch: [] u8, out: [] u8) -> int {
+  plan: [1] IkSeedPlan;
+  ik_seed_extract(task, plan[..]);
+  if plan[0].np == 0 && plan[0].ns == 0 { return 0; }
+
+  cap := ifx out.count < IK_SEED_OUT_CAP then out.count else IK_SEED_OUT_CAP;
+  if cap < 200 { return 0; }
+  body: [IK_SEED_OUT_CAP] u8;
+  bcap := cap - 120;
+  bn := 0;
+  hits := [1] int.[0];
+  is_git := ik_seed_is_git(cwd);
+  files_outlined := 0;
+
+  // 1. Resolve explicitly referenced workspace paths (exact file outline preview, or git ls-files).
+  for i: 0..<plan[0].np {
+    if bn >= bcap - 48 { break; }
+    p := plan[0].paths[i];
+    pbuf: [4096] u8;
+    pn := ik_path_resolve(real_cwd, "", p, false, pbuf[..]);
+    if pn < 0 { pn = ik_path_resolve(cwd, "", p, false, pbuf[..]); }
+    matched := false;
+    if pn > 0 {
+      rbuf: [4096] u8;
+      rp := fs_realpath(cast(string) pbuf[0..<pn], rbuf[..]);
+      if rp.count > 0 && ik_path_under(real_cwd, rp) && fs_kind(rp) == FS_FILE {
+        matched = true;
+        hits[0] += 1;
+        bn = ik_fmt_put(body[..], bn, "- file: ");
+        bn = ik_fmt_put(body[..], bn, p);
+        rn := fs_read_at(rp, 0, scratch);
+        if rn > 0 && files_outlined < 2 && bn + 96 < bcap {
+          tot_l := ik_fmt_count_lines(cast(string) scratch[0..<rn]);
+          bn = ik_fmt_put(body[..], bn, " (");
+          bn = ik_fmt_int(body[..], bn, tot_l);
+          bn = ik_fmt_put(body[..], bn, " lines)\n");
+          ob: [1024] u8;
+          on := ik_fmt_outline(cast(string) scratch[0..<rn], p, "", ob[..]);
+          // Include only the first 4 symbol lines (skip header/footer) for ultra-lean seeding.
+          os := cast(string) ob[0..<on];
+          op := 0;
+          shown := 0;
+          while op < os.count && shown < 4 && bn + 40 < bcap {
+            oe := op;
+            while oe < os.count && os[oe] != '\n' { oe += 1; }
+            ln := cast(string) os[op..<oe];
+            if ln.count > 0 && (ln[0] == 'L' || ik_fmt_starts(ln, "Deps:")) {
+              if ln.count > 96 { ln = cast(string) ln[0..<96]; }
+              if bn + ln.count + 4 < bcap {
+                bn = ik_fmt_put(body[..], bn, "  ");
+                bn = ik_fmt_put(body[..], bn, ln);
+                bn = ik_fmt_byte(body[..], bn, '\n');
+                shown += 1;
+              }
+            }
+            if oe < os.count { op = oe + 1; } else { break; }
+          }
+          files_outlined += 1;
+        } else {
+          bn = ik_fmt_byte(body[..], bn, '\n');
+        }
+      }
+    }
+    if !matched && is_git {
+      bn = ik_seed_git_find_file(cwd, p, body[..], bn, bcap, hits[..]);
+    }
+  }
+
+  // 2. Locate top distinctive code identifiers via bounded git grep (at most 2 queries).
+  if is_git && plan[0].ns > 0 && bn + 80 < bcap {
+    lim := ifx plan[0].ns < 2 then plan[0].ns else 2;
+    for i: 0..<lim {
+      if bn + 64 >= bcap { break; }
+      sym := plan[0].syms[i];
+      prev_hits := hits[0];
+      hdr_at := bn;
+      bn = ik_fmt_put(body[..], bn, "- symbol ");
+      bn = ik_fmt_put(body[..], bn, sym);
+      bn = ik_fmt_put(body[..], bn, ":\n");
+      bn = ik_seed_git_grep(cwd, sym, 3, body[..], bn, bcap, hits[..]);
+      if hits[0] == prev_hits { bn = hdr_at; } // Drop empty header cleanly
+    }
+  }
+
+  if hits[0] == 0 || bn == 0 { return 0; }
+  n := ik_fmt_put(out, 0, "\n\n[Workspace hints (auto-detected before step 1 — verify with outline/read_file as needed):\n");
+  n = ik_fmt_put(out, n, cast(string) body[0..<bn]);
+  n = ik_fmt_put(out, n, "]");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky seed: plain greetings produce zero candidates while coding prompts extract paths and code symbols" {
+  p: [1] IkSeedPlan;
+  // Plain conversation / greetings MUST produce 0 paths and 0 symbols!
+  ik_seed_extract("Hello! How are you doing today?", p[..]);
+  #assert p[0].np == 0 && p[0].ns == 0;
+  ik_seed_extract("What is 2 + 2? Explain quicksort briefly.", p[..]);
+  #assert p[0].np == 0 && p[0].ns == 0;
+  ik_seed_extract("Check https://example.com/foo.py and --verbose flag", p[..]);
+  #assert p[0].np == 0 && p[0].ns == 0;
+
+  // Coding prompt extracts explicit paths (stripping :line and backticks) and distinctive symbols:
+  ik_seed_extract("Fix `ik_loop_prepare_req` in coax/lib/inky/loop.coax:142 and check DiskPromptCache plus IK_CMD_INLINE.", p[..]);
+  #assert p[0].np == 1 && p[0].paths[0] == "coax/lib/inky/loop.coax";
+  #assert p[0].ns == 3 && p[0].syms[0] == "ik_loop_prepare_req" && p[0].syms[1] == "DiskPromptCache" && p[0].syms[2] == "IK_CMD_INLINE";
+
+  // Traversal path is rejected:
+  ik_seed_extract("Read ../../etc/passwd please", p[..]);
+  #assert p[0].np == 0;
+}

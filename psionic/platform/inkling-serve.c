@@ -366,35 +366,59 @@ static int send_http_json(int fd, int status, const char *reason, const char *or
     return send_http_json_ex(fd, status, reason, origin, body, body_len, 0);
 }
 
-static int send_sse_headers(int fd, const char *origin) {
+static int send_sse_raw(int fd, int chunked, const char *buf, size_t len) {
+    if (len == 0) return 0;
+    if (!chunked) return send_all(fd, buf, len);
+    if (len <= 4000) {
+        char frame[4096];
+        int h = snprintf(frame, sizeof frame, "%zx\r\n", len);
+        if (h > 0 && (size_t)h + len + 2 <= sizeof frame) {
+            memcpy(frame + h, buf, len);
+            frame[h + len] = '\r';
+            frame[h + len + 1] = '\n';
+            return send_all(fd, frame, (size_t)h + len + 2);
+        }
+    }
+    char hdr[32];
+    int h = snprintf(hdr, sizeof hdr, "%zx\r\n", len);
+    if (h <= 0 || send_all(fd, hdr, (size_t)h) != 0) return 1;
+    if (send_all(fd, buf, len) != 0) return 1;
+    return send_all(fd, "\r\n", 2);
+}
+
+static int send_sse_headers_ex(int fd, const char *origin, int chunked) {
     char hdr[1024];
     int n;
+    const char *mode_hdr = chunked
+        ? "Transfer-Encoding: chunked\r\nConnection: keep-alive\r\nKeep-Alive: timeout=15, max=64\r\n"
+        : "Connection: close\r\n";
     if (origin && origin[0]) {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 200 OK\r\n"
                      "Content-Type: text/event-stream\r\n"
                      "Cache-Control: no-cache\r\n"
-                     "Connection: close\r\n"
+                     "%s"
                      "Access-Control-Allow-Origin: %s\r\n"
                      "Vary: Origin\r\n"
                      "\r\n",
-                     origin);
+                     mode_hdr, origin);
     } else {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 200 OK\r\n"
                      "Content-Type: text/event-stream\r\n"
                      "Cache-Control: no-cache\r\n"
-                     "Connection: close\r\n"
-                     "\r\n");
+                     "%s"
+                     "\r\n",
+                     mode_hdr);
     }
     if (n <= 0 || (size_t)n >= sizeof hdr) return 1;
     return send_all(fd, hdr, (size_t)n);
 }
 
-static int send_sse_event(int fd, const char *event_name, const char *data, size_t data_len) {
+static int send_sse_event_ex(int fd, int chunked, const char *event_name, const char *data, size_t data_len) {
     size_t elen = (event_name && event_name[0]) ? strlen(event_name) : 0;
     size_t need = (elen ? 7 + elen + 1 : 0) + 6 + data_len + 2;
-    if (need <= 4096) {
+    if (need <= 4000) {
         char stack[4096];
         size_t pos = 0;
         if (elen) {
@@ -406,7 +430,7 @@ static int send_sse_event(int fd, const char *event_name, const char *data, size
         if (data_len) { memcpy(stack + pos, data, data_len); pos += data_len; }
         stack[pos++] = '\n';
         stack[pos++] = '\n';
-        return send_all(fd, stack, pos);
+        return send_sse_raw(fd, chunked, stack, pos);
     }
     Buf out = {0};
     if (elen) {
@@ -417,7 +441,7 @@ static int send_sse_event(int fd, const char *event_name, const char *data, size
     buf_adds(&out, "data: ");
     buf_append(&out, data, data_len);
     buf_adds(&out, "\n\n");
-    int rc = send_all(fd, out.data, out.len);
+    int rc = send_sse_raw(fd, chunked, out.data, out.len);
     buf_free(&out);
     return rc;
 }
@@ -623,6 +647,11 @@ typedef struct {
     int      resp_fmt;          /* 0=none, 1=json_object, 2=json_schema */
     Buf      resp_schema_json;  /* raw JSON schema object when resp_fmt==2 */
     Buf      prediction;        /* optional OpenAI Predicted Outputs content string */
+    int      tool_choice_mode;  /* 0=auto, 1=none, 2=required, 3=function */
+    Buf      tool_choice_name;  /* function name when tool_choice_mode==3 */
+    Buf      stops[4];          /* up to 4 OpenAI stop sequences */
+    int      n_stops;
+    size_t   max_stop_len;
 } Req;
 
 static void tc_free(ToolCall *tc) {
@@ -662,6 +691,8 @@ static void req_free(Req *r) {
     buf_free(&r->json_schema_raw);
     buf_free(&r->resp_schema_json);
     buf_free(&r->prediction);
+    buf_free(&r->tool_choice_name);
+    for (int i = 0; i < 4; i++) buf_free(&r->stops[i]);
 }
 
 static ChatMsg *req_add_msg(Req *r) {
@@ -1192,6 +1223,94 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
         } else if (!strcmp(ks, "tools")) {
             r->tools_json.len = 0;
             parse_tools_array(&j, &r->tools_json);
+        } else if (!strcmp(ks, "tool_choice")) {
+            j_ws(&j);
+            r->tool_choice_mode = 0;
+            r->tool_choice_name.len = 0;
+            if (j.pos < j.len && j.s[j.pos] == '"') {
+                Buf tc = {0};
+                if (!j_string(&j, &tc) && tc.data) {
+                    if (!strcmp(tc.data, "none")) r->tool_choice_mode = 1;
+                    else if (!strcmp(tc.data, "required")) r->tool_choice_mode = 2;
+                    else r->tool_choice_mode = 0;
+                }
+                buf_free(&tc);
+            } else if (j.pos < j.len && j.s[j.pos] == '{') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != '}') {
+                    Buf tk = {0};
+                    if (j_string(&j, &tk)) { buf_free(&tk); break; }
+                    j_ws(&j);
+                    if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&tk); break; }
+                    j.pos++;
+                    if (tk.data && !strcmp(tk.data, "name")) {
+                        r->tool_choice_name.len = 0;
+                        if (!j_string(&j, &r->tool_choice_name) && r->tool_choice_name.len > 0) r->tool_choice_mode = 3;
+                    } else if (tk.data && !strcmp(tk.data, "function")) {
+                        j_ws(&j);
+                        if (j.pos < j.len && j.s[j.pos] == '{') {
+                            j.pos++; j_ws(&j);
+                            while (j.pos < j.len && j.s[j.pos] != '}') {
+                                Buf fk = {0};
+                                if (j_string(&j, &fk)) { buf_free(&fk); break; }
+                                j_ws(&j);
+                                if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&fk); break; }
+                                j.pos++;
+                                if (fk.data && !strcmp(fk.data, "name")) {
+                                    r->tool_choice_name.len = 0;
+                                    if (!j_string(&j, &r->tool_choice_name) && r->tool_choice_name.len > 0) r->tool_choice_mode = 3;
+                                } else {
+                                    j_skip(&j);
+                                }
+                                buf_free(&fk);
+                                j_ws(&j);
+                                if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                            }
+                            if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+                        } else {
+                            j_skip(&j);
+                        }
+                    } else {
+                        j_skip(&j);
+                    }
+                    buf_free(&tk);
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
+        } else if (!strcmp(ks, "stop")) {
+            j_ws(&j);
+            for (int si = 0; si < 4; si++) r->stops[si].len = 0;
+            r->n_stops = 0; r->max_stop_len = 0;
+            if (j.pos < j.len && j.s[j.pos] == '"') {
+                if (!j_string(&j, &r->stops[0]) && r->stops[0].len > 0) {
+                    r->n_stops = 1;
+                    r->max_stop_len = r->stops[0].len;
+                }
+            } else if (j.pos < j.len && j.s[j.pos] == '[') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != ']') {
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == '"' && r->n_stops < 4) {
+                        Buf *sb = &r->stops[r->n_stops];
+                        sb->len = 0;
+                        if (!j_string(&j, sb) && sb->len > 0) {
+                            if (sb->len > r->max_stop_len) r->max_stop_len = sb->len;
+                            r->n_stops++;
+                        }
+                    } else {
+                        j_skip(&j);
+                    }
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == ']') j.pos++;
+            } else {
+                j_skip(&j);
+            }
         } else if (!strcmp(ks, "instructions")) {
             ChatMsg *m = req_add_msg(r);
             if (m) {
@@ -1697,7 +1816,7 @@ static int detect_output_loop(const int32_t *toks, int start, int end) {
     return 0;
 }
 
-static int emit_chat_tool_call(int fd, int64_t created, const char *model, int idx,
+static int emit_chat_tool_call(int fd, int chunked, int64_t created, const char *model, int idx,
                                const char *id, const char *name, size_t name_len,
                                const char *args, size_t args_len) {
     Buf ev = {0};
@@ -1716,7 +1835,7 @@ static int emit_chat_tool_call(int fd, int64_t created, const char *model, int i
     buf_adds(&ev, "\",\"arguments\":\"");
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\"}}]},\"finish_reason\":null}]}");
-    int rc = send_sse_event(fd, NULL, ev.data, ev.len);
+    int rc = send_sse_event_ex(fd, chunked, NULL, ev.data, ev.len);
     buf_free(&ev);
     return rc;
 }
@@ -1742,7 +1861,219 @@ static size_t json_escape_stack(char *dst, size_t cap, const char *s, size_t n) 
     return p;
 }
 
-static int emit_chat_delta(int fd, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
+/* Incremental OpenAI delta.tool_calls arguments chunk (zero-malloc stack fast path). */
+static int emit_chat_tool_call_args_delta(int fd, int chunked, int64_t created, const char *model,
+                                          int idx, const char *args_delta, size_t delta_len) {
+    if (delta_len == 0) return 0;
+    size_t mlen = strlen(model);
+    if (delta_len <= 256 && mlen <= 128) {
+        char stack[2048];
+        int h = snprintf(stack, sizeof stack,
+                         "data: {\"id\":\"chatcmpl-psionic\",\"object\":\"chat.completion.chunk\",\"created\":%lld,\"model\":\"",
+                         (long long)created);
+        if (h > 0 && (size_t)h < sizeof stack) {
+            size_t pos = (size_t)h;
+            size_t em = json_escape_stack(stack + pos, sizeof stack - pos, model, mlen);
+            if (em != (size_t)-1) {
+                pos += em;
+                int m = snprintf(stack + pos, sizeof stack - pos,
+                                 "\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":%d,\"function\":{\"arguments\":\"",
+                                 idx);
+                if (m > 0 && pos + (size_t)m + 64 < sizeof stack) {
+                    pos += (size_t)m;
+                    size_t es = json_escape_stack(stack + pos, sizeof stack - pos - 40, args_delta, delta_len);
+                    if (es != (size_t)-1) {
+                        pos += es;
+                        static const char tail[] = "\"}}]},\"finish_reason\":null}]}\n\n";
+                        memcpy(stack + pos, tail, sizeof tail - 1);
+                        pos += sizeof tail - 1;
+                        return send_sse_raw(fd, chunked, stack, pos);
+                    }
+                }
+            }
+        }
+    }
+    Buf ev = {0};
+    char head[256];
+    snprintf(head, sizeof head,
+             "{\"id\":\"chatcmpl-psionic\",\"object\":\"chat.completion.chunk\",\"created\":%lld,\"model\":\"",
+             (long long)created);
+    buf_adds(&ev, head);
+    buf_add_json_escaped(&ev, model, mlen);
+    char mid[128];
+    snprintf(mid, sizeof mid,
+             "\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":%d,\"function\":{\"arguments\":\"",
+             idx);
+    buf_adds(&ev, mid);
+    buf_add_json_escaped(&ev, args_delta, delta_len);
+    buf_adds(&ev, "\"}}]},\"finish_reason\":null}]}");
+    int rc = send_sse_event_ex(fd, chunked, NULL, ev.data, ev.len);
+    buf_free(&ev);
+    return rc;
+}
+
+/* Incremental streaming parser for Inkling channel-3 {"name":"<fn>","args":{...}} tool JSON.
+   Emits the tool call header immediately once name is known and streams UTF-8-complete argument
+   deltas live as tokens generate, instead of buffering the entire call until <|end_message|>. */
+typedef struct {
+    int    active;
+    int    header_sent;
+    int    in_args;
+    int    args_done;
+    int    args_is_obj;
+    int    depth;
+    int    in_str;
+    int    esc;
+    size_t scan_pos;
+    size_t args_sent_pos;
+    char   id[64];
+    Buf    name;
+} StreamTc;
+
+static void stream_tc_reset(StreamTc *st) {
+    buf_free(&st->name);
+    memset(st, 0, sizeof *st);
+}
+
+static int stream_tc_pump(StreamTc *st, const Buf *tj, const Buf *hdr_name,
+                          int fd, int chunked, int64_t created, const char *model,
+                          int idx, int req_seq, int flush_all) {
+    if (!st->active || !tj->data || tj->len == 0) return 0;
+    const char *s = tj->data;
+    size_t n = tj->len;
+
+    /* Walk top-level keys of the outer JSON object so nested string literals never false-match. */
+    if (!st->header_sent || (!st->in_args && !st->args_done)) {
+        JScan j = { s, n, 0 };
+        j_ws(&j);
+        if (j.pos >= j.len || j.s[j.pos] != '{') return 0;
+        j.pos++;
+        Buf parsed_name = {0};
+        size_t args_pos = (size_t)-1;
+        int saw_name_key = 0;
+        while (j.pos < j.len) {
+            j_ws(&j);
+            if (j.pos >= j.len || j.s[j.pos] == '}') break;
+            Buf k = {0};
+            if (j_string(&j, &k) != 0) { buf_free(&k); break; }
+            j_ws(&j);
+            if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&k); break; }
+            j.pos++;
+            j_ws(&j);
+            const char *ks = k.data ? k.data : "";
+            if (!strcmp(ks, "name")) {
+                saw_name_key = 1;
+                parsed_name.len = 0;
+                if (j_string(&j, &parsed_name) != 0) { parsed_name.len = 0; buf_free(&k); break; }
+            } else if (!strcmp(ks, "args") || !strcmp(ks, "arguments")) {
+                if (j.pos < j.len) args_pos = j.pos;
+                buf_free(&k);
+                /* Once args starts, stop top-level walk if we either have name or want to stream args. */
+                if (parsed_name.len > 0 || (hdr_name && hdr_name->len > 0 && !saw_name_key)) break;
+                if (j_skip(&j) != 0) break;
+                j_ws(&j);
+                if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                continue;
+            } else {
+                if (j_skip(&j) != 0) { buf_free(&k); break; }
+            }
+            buf_free(&k);
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+        }
+
+        if (!st->header_sent) {
+            const char *np = NULL;
+            size_t nl = 0;
+            if (parsed_name.len > 0) {
+                np = parsed_name.data;
+                nl = parsed_name.len;
+            } else if (!saw_name_key && hdr_name && hdr_name->len > 0 && (args_pos != (size_t)-1 || flush_all)) {
+                np = hdr_name->data;
+                nl = hdr_name->len;
+            }
+            if (np && nl > 0) {
+                snprintf(st->id, sizeof st->id, "call_psionic_%d_%d", req_seq, idx);
+                st->name.len = 0;
+                buf_append(&st->name, np, nl);
+                if (emit_chat_tool_call(fd, chunked, created, model, idx, st->id, st->name.data, st->name.len, "", 0) != 0) {
+                    buf_free(&parsed_name);
+                    return 1;
+                }
+                st->header_sent = 1;
+            }
+        }
+        buf_free(&parsed_name);
+
+        if (st->header_sent && !st->in_args && !st->args_done && args_pos != (size_t)-1 && args_pos < n) {
+            if (s[args_pos] == '{') {
+                st->in_args = 1;
+                st->args_is_obj = 1;
+                st->depth = 1;
+                st->in_str = 0;
+                st->esc = 0;
+                st->args_sent_pos = args_pos;
+                st->scan_pos = args_pos + 1;
+            } else {
+                return 0; /* non-object args: end-of-channel fallback sends parsed string */
+            }
+        }
+    }
+
+    if (!st->header_sent) return 0;
+
+    if (st->in_args && st->args_is_obj && !st->args_done) {
+        while (st->scan_pos < n) {
+            char c = s[st->scan_pos++];
+            if (st->in_str) {
+                if (st->esc) { st->esc = 0; continue; }
+                if (c == '\\') { st->esc = 1; continue; }
+                if (c == '"') { st->in_str = 0; continue; }
+            } else {
+                if (c == '"') { st->in_str = 1; continue; }
+                if (c == '{') { st->depth++; continue; }
+                if (c == '}') {
+                    st->depth--;
+                    if (st->depth == 0) {
+                        st->args_done = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        size_t avail = st->scan_pos - st->args_sent_pos;
+        if (avail > 0 && (flush_all || st->args_done || avail >= 48)) {
+            size_t send_n = st->args_done ? avail : utf8_complete_prefix((const unsigned char *)(s + st->args_sent_pos), avail);
+            if (send_n > 0) {
+                if (emit_chat_tool_call_args_delta(fd, chunked, created, model, idx, s + st->args_sent_pos, send_n) != 0) {
+                    return 1;
+                }
+                st->args_sent_pos += send_n;
+            }
+        }
+    }
+    return 0;
+}
+
+static size_t find_stop_match(const char *s, size_t n, const Req *r, int *found) {
+    *found = 0;
+    size_t best = n;
+    for (int i = 0; i < r->n_stops; i++) {
+        size_t sl = r->stops[i].len;
+        if (sl == 0 || sl > n) continue;
+        const char *st = r->stops[i].data;
+        for (size_t p = 0; p + sl <= n && p < best; p++) {
+            if (s[p] == st[0] && memcmp(s + p, st, sl) == 0) {
+                best = p;
+                *found = 1;
+                break;
+            }
+        }
+    }
+    return best;
+}
+
+static int emit_chat_delta(int fd, int chunked, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
     if (n == 0) return 0;
     size_t mlen = strlen(model);
     // Zero-malloc stack fast path for normal streamed token deltas (1 send_all, 0 heap allocs).
@@ -1768,7 +2099,7 @@ static int emit_chat_delta(int fd, int64_t created, const char *model, int is_th
                         static const char tail[] = "\"},\"finish_reason\":null}]}\n\n";
                         memcpy(stack + pos, tail, sizeof tail - 1);
                         pos += sizeof tail - 1;
-                        return send_all(fd, stack, pos);
+                        return send_sse_raw(fd, chunked, stack, pos);
                     }
                 }
             }
@@ -1786,12 +2117,12 @@ static int emit_chat_delta(int fd, int64_t created, const char *model, int is_th
     buf_adds(&ev, "\":\"");
     buf_add_json_escaped(&ev, s, n);
     buf_adds(&ev, "\"},\"finish_reason\":null}]}");
-    int rc = send_sse_event(fd, NULL, ev.data, ev.len);
+    int rc = send_sse_event_ex(fd, chunked, NULL, ev.data, ev.len);
     buf_free(&ev);
     return rc;
 }
 
-static int emit_responses_delta(int fd, int is_thinking, const char *s, size_t n) {
+static int emit_responses_delta(int fd, int chunked, int is_thinking, const char *s, size_t n) {
     if (n == 0) return 0;
     Buf ev = {0};
     const char *etype = is_thinking ? "response.reasoning_summary_text.delta" : "response.output_text.delta";
@@ -1800,12 +2131,12 @@ static int emit_responses_delta(int fd, int is_thinking, const char *s, size_t n
     buf_adds(&ev, "\",\"delta\":\"");
     buf_add_json_escaped(&ev, s, n);
     buf_adds(&ev, "\"}");
-    int rc = send_sse_event(fd, etype, ev.data, ev.len);
+    int rc = send_sse_event_ex(fd, chunked, etype, ev.data, ev.len);
     buf_free(&ev);
     return rc;
 }
 
-static int emit_responses_tool_call(int fd, int idx, const char *id,
+static int emit_responses_tool_call(int fd, int chunked, int idx, const char *id,
                                     const char *name, size_t name_len,
                                     const char *args, size_t args_len) {
     Buf ev = {0};
@@ -1814,14 +2145,14 @@ static int emit_responses_tool_call(int fd, int idx, const char *id,
     buf_adds(&ev, head);
     buf_add_json_escaped(&ev, name, name_len);
     buf_adds(&ev, "\",\"arguments\":\"\",\"status\":\"in_progress\"}}");
-    if (send_sse_event(fd, "response.output_item.added", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
+    if (send_sse_event_ex(fd, chunked, "response.output_item.added", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
     ev.len = 0;
 
     snprintf(head, sizeof head, "{\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_%s\",\"output_index\":%d,\"delta\":\"", id, idx);
     buf_adds(&ev, head);
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\"}");
-    if (send_sse_event(fd, "response.function_call_arguments.delta", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
+    if (send_sse_event_ex(fd, chunked, "response.function_call_arguments.delta", ev.data, ev.len) != 0) { buf_free(&ev); return 1; }
     ev.len = 0;
 
     snprintf(head, sizeof head, "{\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"type\":\"function_call\",\"id\":\"fc_%s\",\"call_id\":\"%s\",\"name\":\"", idx, id, id);
@@ -1830,7 +2161,7 @@ static int emit_responses_tool_call(int fd, int idx, const char *id,
     buf_adds(&ev, "\",\"arguments\":\"");
     buf_add_json_escaped(&ev, args, args_len);
     buf_adds(&ev, "\",\"status\":\"completed\"}}");
-    int rc = send_sse_event(fd, "response.output_item.done", ev.data, ev.len);
+    int rc = send_sse_event_ex(fd, chunked, "response.output_item.done", ev.data, ev.len);
     buf_free(&ev);
     return rc;
 }
@@ -1865,7 +2196,7 @@ static int spec_lookup_draft(const int32_t *all_toks, int n_all, int32_t cur_tok
     return 0;
 }
 
-static int handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len, int keep_alive) {
+static int handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len, int keep_alive, int want_chunked_sse) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
         const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
@@ -1959,9 +2290,14 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream, r.resp_fmt, n_prompt);
     fflush(stderr);
 
+    int sse_chunked = 0;
     if (r.stream) {
-        keep_alive = 0; /* SSE closes cleanly at EOF */
-        if (send_sse_headers(fd, origin) != 0) {
+        if (keep_alive && want_chunked_sse) {
+            sse_chunked = 1;
+        } else {
+            keep_alive = 0; /* Legacy SSE closes cleanly at EOF */
+        }
+        if (send_sse_headers_ex(fd, origin, sse_chunked) != 0) {
             ink_mutex_unlock(&sv->sess_mu);
             ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
@@ -2040,7 +2376,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             }
         }
         if (r.stream && i < n_prompt) {
-            if (send_all(fd, ": prefilling\n\n", 14) != 0) {
+            if (send_sse_raw(fd, sse_chunked, ": prefilling\n\n", 14) != 0) {
                 client_gone = 1;
                 break;
             }
@@ -2088,7 +2424,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             buf_adds(&init, head);
             buf_add_json_escaped(&init, model, strlen(model));
             buf_adds(&init, "\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}");
-            if (send_sse_event(fd, NULL, init.data, init.len) != 0) client_gone = 1;
+            if (send_sse_event_ex(fd, sse_chunked, NULL, init.data, init.len) != 0) client_gone = 1;
             buf_free(&init);
         }
     }
@@ -2101,12 +2437,15 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     int chan_start = -1;
     int think_broken = 0;
     int out_loop_broken = 0;
+    int stop_hit = 0;
     int n_reason = 0;
     Buf header_buf = {0};
     Buf tool_json = {0};
     Buf pending = {0};
     Buf full_text = {0};
     Buf full_think = {0};
+    StreamTc stc;
+    memset(&stc, 0, sizeof stc);
     ToolCall *emitted_tcs = NULL;
     int n_emitted_tcs = 0, cap_emitted_tcs = 0;
     InkSampleParams sp = { .temperature = r.temperature, .top_p = r.top_p, .top_k = r.top_k };
@@ -2219,7 +2558,11 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             }
         }
         if (tok < 0) break;
-        if (r.tools_json.len == 0 &&
+        /* Sampler-level tool_choice enforcement (zero prompt mutation -> 100% KV cache preserved):
+           - tool_choice="none" (or empty tools): forbid invoke_tool tokens, redirect to tok_text.
+           - tool_choice="required" / named function: before 1st tool call, redirect premature
+             tok_text / tok_eog into tok_invoke_tool cleanly. */
+        if ((r.tools_json.len == 0 || r.tool_choice_mode == 1) &&
             ((sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) ||
              (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text))) {
             if (sv->tok_text >= 0) {
@@ -2228,6 +2571,14 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                 v_head = v_tail = 0;
                 has_prefetched = 0;
             }
+        } else if ((r.tool_choice_mode == 2 || r.tool_choice_mode == 3) &&
+                   r.tools_json.len > 0 && n_emitted_tcs == 0 && channel == 0 &&
+                   sv->tok_invoke_tool >= 0 &&
+                   (tok == sv->tok_text || tok == sv->tok_eog || ink_is_eog(sv->sess, tok))) {
+            tok = sv->tok_invoke_tool;
+            tok_already_stepped = 0;
+            v_head = v_tail = 0;
+            has_prefetched = 0;
         }
         n_gen++;
 
@@ -2242,6 +2593,11 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         if (tok == sv->tok_model || tok == sv->tok_end_msg) {
             int was_js_text = (use_js && channel == 2);
             if ((channel == 3 || channel == 4) && tool_json.len > 0) {
+                if (r.stream && !is_responses && channel == 3 && stc.active) {
+                    if (stream_tc_pump(&stc, &tool_json, &header_buf, fd, sse_chunked, created, model, n_emitted_tcs, sv->req_seq, 1) != 0) {
+                        client_gone = 1; break;
+                    }
+                }
                 if (n_emitted_tcs >= cap_emitted_tcs) {
                     int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
                     ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
@@ -2256,25 +2612,33 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                     if (channel == 4) parse_invoked_tool_text(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
                     else parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
                     if (r.stream) {
-                        int erc = is_responses
-                            ? emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
-                                                       tc->name.data ? tc->name.data : "", tc->name.len,
-                                                       tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len)
-                            : emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
-                                                  tc->name.data ? tc->name.data : "", tc->name.len,
-                                                  tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        int erc = 0;
+                        if (is_responses) {
+                            erc = emit_responses_tool_call(fd, sse_chunked, n_emitted_tcs, tc->id.data,
+                                                           tc->name.data ? tc->name.data : "", tc->name.len,
+                                                           tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        } else if (!stc.header_sent) {
+                            erc = emit_chat_tool_call(fd, sse_chunked, created, model, n_emitted_tcs, tc->id.data,
+                                                      tc->name.data ? tc->name.data : "", tc->name.len,
+                                                      tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        } else if (!stc.args_is_obj) {
+                            /* Header was streamed, args was non-object fallback: send parsed args delta now. */
+                            erc = emit_chat_tool_call_args_delta(fd, sse_chunked, created, model, n_emitted_tcs,
+                                                                 tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                        }
                         if (erc != 0) { client_gone = 1; break; }
                     }
                     n_emitted_tcs++;
                 }
+                stream_tc_reset(&stc);
                 tool_json.len = 0;
             } else if (pending.len > 0 && (channel == 1 || channel == 2)) {
                 if (channel == 1) buf_append(&full_think, pending.data, pending.len);
                 else buf_append(&full_text, pending.data, pending.len);
                 if (r.stream) {
                     int erc = is_responses
-                        ? emit_responses_delta(fd, channel == 1, pending.data, pending.len)
-                        : emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+                        ? emit_responses_delta(fd, sse_chunked, channel == 1, pending.data, pending.len)
+                        : emit_chat_delta(fd, sse_chunked, created, model, channel == 1, pending.data, pending.len);
                     if (erc != 0) { client_gone = 1; break; }
                 }
                 pending.len = 0;
@@ -2309,6 +2673,11 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             in_header = 0;
             pending.len = 0;
             tool_json.len = 0;
+            stream_tc_reset(&stc);
+            stc.active = (r.stream && !is_responses);
+            if (r.tool_choice_mode == 3 && n_emitted_tcs == 0 && r.tool_choice_name.len > 0 && header_buf.len == 0) {
+                buf_append(&header_buf, r.tool_choice_name.data, r.tool_choice_name.len);
+            }
             think_start = -1;
             chan_start = n_all + 1;
         } else if (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text) {
@@ -2316,6 +2685,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             in_header = 0;
             pending.len = 0;
             tool_json.len = 0;
+            stream_tc_reset(&stc);
             think_start = -1;
             chan_start = n_all + 1;
         } else if (tok >= 200000) {
@@ -2332,26 +2702,66 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                     buf_append(&header_buf, piece, (size_t)plen);
                 } else if (channel == 3 || channel == 4) {
                     buf_append(&tool_json, piece, (size_t)plen);
-                    if (r.stream && (i & 63) == 63) {
-                        if (send_all(fd, ": generating\n\n", 14) != 0) { client_gone = 1; break; }
+                    if (r.stream && !is_responses && channel == 3 && stc.active) {
+                        if (stream_tc_pump(&stc, &tool_json, &header_buf, fd, sse_chunked, created, model, n_emitted_tcs, sv->req_seq, 0) != 0) {
+                            client_gone = 1; break;
+                        }
+                    } else if (r.stream && (i & 63) == 63) {
+                        if (send_sse_raw(fd, sse_chunked, ": generating\n\n", 14) != 0) { client_gone = 1; break; }
                     }
                 } else {
                     if (channel == 0) { channel = 2; chan_start = n_all; }
                     buf_append(&pending, piece, (size_t)plen);
-                    size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, pending.len);
-                    if (ready > 0) {
-                        if (channel == 1) buf_append(&full_think, pending.data, ready);
-                        else buf_append(&full_text, pending.data, ready);
-                        if (r.stream) {
-                            int erc = is_responses
-                                ? emit_responses_delta(fd, channel == 1, pending.data, ready)
-                                : emit_chat_delta(fd, created, model, channel == 1, pending.data, ready);
-                            if (erc != 0) { client_gone = 1; break; }
+                    if (channel == 2 && r.n_stops > 0) {
+                        int hit = 0;
+                        size_t hpos = find_stop_match(pending.data, pending.len, &r, &hit);
+                        if (hit) {
+                            if (hpos > 0) {
+                                buf_append(&full_text, pending.data, hpos);
+                                if (r.stream) {
+                                    int erc = is_responses
+                                        ? emit_responses_delta(fd, sse_chunked, 0, pending.data, hpos)
+                                        : emit_chat_delta(fd, sse_chunked, created, model, 0, pending.data, hpos);
+                                    if (erc != 0) client_gone = 1;
+                                }
+                            }
+                            pending.len = 0;
+                            finish_reason = "stop";
+                            stop_hit = 1;
+                            break;
                         }
-                        if (ready < pending.len) {
-                            memmove(pending.data, pending.data + ready, pending.len - ready);
+                        size_t hold = r.max_stop_len > 1 ? r.max_stop_len - 1 : 0;
+                        if (pending.len > hold) {
+                            size_t safe_len = pending.len - hold;
+                            size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, safe_len);
+                            if (ready > 0) {
+                                buf_append(&full_text, pending.data, ready);
+                                if (r.stream) {
+                                    int erc = is_responses
+                                        ? emit_responses_delta(fd, sse_chunked, 0, pending.data, ready)
+                                        : emit_chat_delta(fd, sse_chunked, created, model, 0, pending.data, ready);
+                                    if (erc != 0) { client_gone = 1; break; }
+                                }
+                                memmove(pending.data, pending.data + ready, pending.len - ready);
+                                pending.len -= ready;
+                            }
                         }
-                        pending.len -= ready;
+                    } else {
+                        size_t ready = utf8_complete_prefix((const unsigned char *)pending.data, pending.len);
+                        if (ready > 0) {
+                            if (channel == 1) buf_append(&full_think, pending.data, ready);
+                            else buf_append(&full_text, pending.data, ready);
+                            if (r.stream) {
+                                int erc = is_responses
+                                    ? emit_responses_delta(fd, sse_chunked, channel == 1, pending.data, ready)
+                                    : emit_chat_delta(fd, sse_chunked, created, model, channel == 1, pending.data, ready);
+                                if (erc != 0) { client_gone = 1; break; }
+                            }
+                            if (ready < pending.len) {
+                                memmove(pending.data, pending.data + ready, pending.len - ready);
+                            }
+                            pending.len -= ready;
+                        }
                     }
                 }
             }
@@ -2360,8 +2770,8 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                     buf_append(&full_text, pending.data, pending.len);
                     if (r.stream) {
                         int erc = is_responses
-                            ? emit_responses_delta(fd, 0, pending.data, pending.len)
-                            : emit_chat_delta(fd, created, model, 0, pending.data, pending.len);
+                            ? emit_responses_delta(fd, sse_chunked, 0, pending.data, pending.len)
+                            : emit_chat_delta(fd, sse_chunked, created, model, 0, pending.data, pending.len);
                         if (erc != 0) client_gone = 1;
                     }
                     pending.len = 0;
@@ -2419,8 +2829,8 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                         buf_append(&full_think, pending.data, pending.len);
                         if (r.stream) {
                             int erc = is_responses
-                                ? emit_responses_delta(fd, 1, pending.data, pending.len)
-                                : emit_chat_delta(fd, created, model, 1, pending.data, pending.len);
+                                ? emit_responses_delta(fd, sse_chunked, 1, pending.data, pending.len)
+                                : emit_chat_delta(fd, sse_chunked, created, model, 1, pending.data, pending.len);
                             if (erc != 0) { client_gone = 1; break; }
                         }
                         pending.len = 0;
@@ -2461,7 +2871,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     }
     if (r.has_seed) sv->rng = saved_rng;
     ink_set_prediction(sv->sess, NULL, 0);
-    if (r.cache_prompt && !g_stop && !client_gone && !out_loop_broken && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
+    if (r.cache_prompt && !g_stop && !client_gone && !out_loop_broken && !stop_hit && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
         ink_prefix_save(sv->sess, all_toks, n_all, 3);
     }
     free(all_toks);
@@ -2473,12 +2883,17 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     }
 
     if (!client_gone && (channel == 3 || channel == 4) && tool_json.len > 0) {
+        if (r.stream && !is_responses && channel == 3 && stc.active) {
+            if (stream_tc_pump(&stc, &tool_json, &header_buf, fd, sse_chunked, created, model, n_emitted_tcs, sv->req_seq, 1) != 0) {
+                client_gone = 1;
+            }
+        }
         if (n_emitted_tcs >= cap_emitted_tcs) {
             int nc = cap_emitted_tcs ? cap_emitted_tcs * 2 : 4;
             ToolCall *np = (ToolCall *)realloc(emitted_tcs, (size_t)nc * sizeof *np);
             if (np) { emitted_tcs = np; cap_emitted_tcs = nc; }
         }
-        if (n_emitted_tcs < cap_emitted_tcs) {
+        if (!client_gone && n_emitted_tcs < cap_emitted_tcs) {
             ToolCall *tc = &emitted_tcs[n_emitted_tcs];
             memset(tc, 0, sizeof *tc);
             char idbuf[64];
@@ -2488,24 +2903,28 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             else parse_invoked_tool_json(tool_json.data, tool_json.len, &header_buf, &tc->name, &tc->args_json);
             if (r.stream) {
                 if (is_responses) {
-                    emit_responses_tool_call(fd, n_emitted_tcs, tc->id.data,
+                    emit_responses_tool_call(fd, sse_chunked, n_emitted_tcs, tc->id.data,
                                              tc->name.data ? tc->name.data : "", tc->name.len,
                                              tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
-                } else {
-                    emit_chat_tool_call(fd, created, model, n_emitted_tcs, tc->id.data,
+                } else if (!stc.header_sent) {
+                    emit_chat_tool_call(fd, sse_chunked, created, model, n_emitted_tcs, tc->id.data,
                                         tc->name.data ? tc->name.data : "", tc->name.len,
                                         tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
+                } else if (!stc.args_is_obj) {
+                    emit_chat_tool_call_args_delta(fd, sse_chunked, created, model, n_emitted_tcs,
+                                                   tc->args_json.data ? tc->args_json.data : "{}", tc->args_json.len);
                 }
             }
             n_emitted_tcs++;
         }
+        stream_tc_reset(&stc);
     } else if (!client_gone && pending.len > 0 && (channel == 1 || channel == 2)) {
         if (channel == 1) buf_append(&full_think, pending.data, pending.len);
         else buf_append(&full_text, pending.data, pending.len);
         if (r.stream) {
             int erc = is_responses
-                ? emit_responses_delta(fd, channel == 1, pending.data, pending.len)
-                : emit_chat_delta(fd, created, model, channel == 1, pending.data, pending.len);
+                ? emit_responses_delta(fd, sse_chunked, channel == 1, pending.data, pending.len)
+                : emit_chat_delta(fd, sse_chunked, created, model, channel == 1, pending.data, pending.len);
             if (erc != 0) client_gone = 1;
         }
     }
@@ -2533,7 +2952,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                      "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp-psionic-%d\",\"status\":\"completed\",\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d},\"loop_count\":%lld}}}",
                      sv->req_seq, n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks, lc);
             buf_adds(&done, u);
-            send_sse_event(fd, "response.completed", done.data, done.len);
+            if (send_sse_event_ex(fd, sse_chunked, "response.completed", done.data, done.len) != 0) client_gone = 1;
             buf_free(&done);
         } else {
             Buf fin = {0};
@@ -2546,7 +2965,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             buf_adds(&fin, "\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"");
             buf_adds(&fin, finish_reason);
             buf_adds(&fin, "\"}]}");
-            send_sse_event(fd, NULL, fin.data, fin.len);
+            if (send_sse_event_ex(fd, sse_chunked, NULL, fin.data, fin.len) != 0) client_gone = 1;
             buf_free(&fin);
 
             Buf usg = {0};
@@ -2560,10 +2979,13 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                      "\",\"choices\":[],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
                      n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks);
             buf_adds(&usg, utail);
-            send_sse_event(fd, NULL, usg.data, usg.len);
+            if (!client_gone && send_sse_event_ex(fd, sse_chunked, NULL, usg.data, usg.len) != 0) client_gone = 1;
             buf_free(&usg);
 
-            send_sse_event(fd, NULL, "[DONE]", 6);
+            if (!client_gone && send_sse_event_ex(fd, sse_chunked, NULL, "[DONE]", 6) != 0) client_gone = 1;
+        }
+        if (!client_gone && sse_chunked) {
+            if (send_all(fd, "0\r\n\r\n", 5) != 0) client_gone = 1;
         }
     } else if (is_responses) {
         Buf out = {0};
@@ -2655,6 +3077,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
 
     for (int t = 0; t < n_emitted_tcs; t++) tc_free(&emitted_tcs[t]);
     free(emitted_tcs);
+    stream_tc_reset(&stc);
     buf_free(&header_buf);
     buf_free(&tool_json);
     buf_free(&pending);
@@ -2680,16 +3103,18 @@ static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t
 }
 
 static int read_http_request(int fd, char *method, size_t mcap, char *path, size_t pcap,
-                             char *host, size_t hcap, char *origin, size_t ocap, Buf *body, int *want_keepalive) {
+                             char *host, size_t hcap, char *origin, size_t ocap, Buf *body, int *want_keepalive, int *want_chunked_sse) {
     Buf raw = {0};
     char tmp[8192];
     size_t hdr_end = 0;
     size_t content_len = 0;
     int have_hdr = 0;
     int ka = 1;
+    int csse = 0;
     if (host && hcap) host[0] = '\0';
     if (origin && ocap) origin[0] = '\0';
     if (want_keepalive) *want_keepalive = 0;
+    if (want_chunked_sse) *want_chunked_sse = 0;
 
     while (raw.len < 4 * 1024 * 1024) {
         ssize_t n = sock_recv(fd, tmp, sizeof tmp);
@@ -2707,7 +3132,7 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
                     const char *hv = strstr(raw.data, "HTTP/1.0");
                     if (hv && hv < eol0) ka = 0;
                 }
-                /* Parse Content-Length, Expect, Host, Origin, and Connection case-insensitively */
+                /* Parse Content-Length, Expect, Host, Origin, Connection, and X-Psionic-Chunked-SSE case-insensitively */
                 int expect_100 = 0;
                 const char *line = raw.data;
                 while (line < p) {
@@ -2724,6 +3149,10 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
                         copy_trimmed_hdr(line + 11, eol, cv, sizeof cv);
                         if (strncasecmp(cv, "close", 5) == 0) ka = 0;
                         else if (strncasecmp(cv, "keep-alive", 10) == 0) ka = 1;
+                    } else if ((size_t)(eol - line) >= 22 && strncasecmp(line, "X-Psionic-Chunked-SSE:", 22) == 0) {
+                        char cv[16];
+                        copy_trimmed_hdr(line + 22, eol, cv, sizeof cv);
+                        if (cv[0] == '1') csse = 1;
                     } else if ((size_t)(eol - line) >= 7 && strncasecmp(line, "Expect:", 7) == 0) {
                         const char *v = line + 7;
                         while (v < eol && (*v == ' ' || *v == '\t')) v++;
@@ -2761,6 +3190,7 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
     if (blen > content_len) { ka = 0; blen = content_len; }
     if (blen > 0) buf_append(body, raw.data + hdr_end, blen);
     if (want_keepalive) *want_keepalive = ka;
+    if (want_chunked_sse) *want_chunked_sse = csse;
     buf_free(&raw);
     return 0;
 }
@@ -2783,8 +3213,9 @@ static void conn_thread(void *arg) {
         char method[16] = {0}, path[256] = {0}, host[256] = {0}, origin[256] = {0};
         Buf body = {0};
         int ka = 0;
+        int csse = 0;
         if (read_http_request(cfd, method, sizeof method, path, sizeof path,
-                              host, sizeof host, origin, sizeof origin, &body, &ka) != 0) {
+                              host, sizeof host, origin, sizeof origin, &body, &ka, &csse) != 0) {
             buf_free(&body);
             break;
         }
@@ -2831,9 +3262,9 @@ static void conn_thread(void *arg) {
                      sv->engine);
             if (send_http_json_ex(cfd, 200, "OK", origin, ms, strlen(ms), ka) != 0) keep = 0;
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
-            keep = handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len, ka);
+            keep = handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len, ka, csse);
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
-            keep = handle_inference(sv, cfd, 1, origin, body.data ? body.data : "", body.len, ka);
+            keep = handle_inference(sv, cfd, 1, origin, body.data ? body.data : "", body.len, ka, csse);
         } else {
             const char *nf = "{\"error\":{\"message\":\"not found\"}}";
             if (send_http_json_ex(cfd, 404, "Not Found", origin, nf, strlen(nf), ka) != 0) keep = 0;

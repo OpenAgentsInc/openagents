@@ -935,6 +935,8 @@ struct InkSession {
     int max_pos_written;
     int swa_cap_min;
     int swa_valid_from;
+    int dspark_live_len;
+    int dspark_swa_valid_from;
     int64_t last_hidden_off;
     int32_t *live_tokens;
     int live_len;
@@ -957,6 +959,8 @@ struct InkSession {
         int swa_win;
         int dspark_pos;
         float   *dspark_last_taps;
+        uint16_t *dspark_swa_kv;
+        int dspark_swa_win;
     } snaps[INK_MAX_SNAPS];
     /* Ch 176 async background NVMe writer for DiskPromptCache (zero TTFT/decode stall) */
     pthread_t disk_thr;
@@ -3417,6 +3421,11 @@ static int ink_dspark_enqueue_absorb(InkSession *s, PmBatch batch, int stride_nb
         pm_barrier(batch);
     }
     d->pos = pos0 + n_tok;
+    s->dspark_live_len = d->pos;
+    int ds_cap = d->layers[0].kv_cap;
+    if (ds_cap > 0 && d->pos - ds_cap > s->dspark_swa_valid_from) {
+        s->dspark_swa_valid_from = d->pos - ds_cap;
+    }
     return 0;
 }
 
@@ -3959,6 +3968,8 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     s->pos = 0;
     s->live_len = 0;
     s->swa_valid_from = 0;
+    s->dspark_live_len = 0;
+    s->dspark_swa_valid_from = 0;
     *out = s;
     return 0;
 }
@@ -4015,6 +4026,7 @@ void ink_close(InkSession *s) {
         free(s->snaps[i].logits);
         free(s->snaps[i].swa_kv);
         free(s->snaps[i].dspark_last_taps);
+        free(s->snaps[i].dspark_swa_kv);
     }
     ink_dspark_close(s);
     for (int il = 0; il < INK_MAX_SLOTS; il++) {
@@ -4138,6 +4150,8 @@ void ink_reset(InkSession *s) {
     s->live_len = 0;
     s->max_pos_written = 0;
     s->swa_valid_from = 0;
+    s->dspark_live_len = 0;
+    s->dspark_swa_valid_from = 0;
     s->last_hidden_off = 0;
     s->active_out_slot = 0;
     s->hidden_is_prefill = 0;
@@ -4148,13 +4162,14 @@ void ink_reset(InkSession *s) {
         s->snaps[i].valid = 0;
         s->snaps[i].pinned = 0;
         s->snaps[i].swa_win = 0;
+        s->snaps[i].dspark_swa_win = 0;
     }
 }
 
 /* ---- Ch 176: Bounded NVMe Cold-Tier DiskPromptCache (~/.openagents/cache/psionic/prompts/) ---- */
 typedef struct {
     char     magic[4];       /* "INKP" */
-    uint32_t version;        /* 1 */
+    uint32_t version;        /* 2 (v2 persists DSpark last_taps + 3-layer KV) */
     uint64_t model_fp;
     uint64_t tok_hash;
     int32_t  n_tokens;
@@ -4167,6 +4182,8 @@ typedef struct {
     int32_t  conv_all_elems;
     int32_t  has_logits;
     int32_t  n_vocab;
+    int32_t  has_dspark;
+    int32_t  dspark_swa_win;
 } InkDiskSnapHdr;
 
 static uint64_t ink_fnv1a_tokens(const int32_t *tokens, int n) {
@@ -4299,10 +4316,12 @@ static void ink_disk_cache_save(InkSession *s, const int32_t *tokens, int n_toke
 
     const InkHParams *hp = &s->gguf.hp;
     int win = (hp->swa > 0) ? (n_tokens < (int)hp->swa ? n_tokens : (int)hp->swa) : 0;
+    int save_ds = (s->dspark.ready && s->dspark.pos == n_tokens);
+    int ds_win = save_ds ? (n_tokens < 1024 ? n_tokens : 1024) : 0;
     InkDiskSnapHdr hdr;
     memset(&hdr, 0, sizeof hdr);
     memcpy(hdr.magic, "INKP", 4);
-    hdr.version = 1;
+    hdr.version = 2;
     hdr.model_fp = s->model_fp;
     hdr.tok_hash = th;
     hdr.n_tokens = n_tokens;
@@ -4315,14 +4334,23 @@ static void ink_disk_cache_save(InkSession *s, const int32_t *tokens, int n_toke
     hdr.conv_all_elems = (int32_t)s->conv_all_elems;
     hdr.has_logits = (has_lg && lg_src) ? 1 : 0;
     hdr.n_vocab = (int32_t)hp->n_vocab;
+    hdr.has_dspark = save_ds;
+    hdr.dspark_swa_win = ds_win;
 
     size_t kv_row = (size_t)s->kv_row_u16;
+    size_t ds_bytes = 0;
+    if (save_ds) {
+        ds_bytes = (size_t)4 * 2304 * sizeof(float)
+                 + (size_t)2 * 2 * (size_t)ds_win * 1024 * sizeof(uint16_t)
+                 + (size_t)1 * 2 * (size_t)n_tokens * 1024 * sizeof(uint16_t);
+    }
     size_t total_bytes = sizeof hdr
                        + (size_t)n_tokens * sizeof(int32_t)
                        + (size_t)s->conv_all_elems * sizeof(float)
                        + (size_t)s->budget.full_slots * 2 * (size_t)n_tokens * kv_row * sizeof(uint16_t)
                        + (size_t)s->budget.swa_slots * 2 * (size_t)win * kv_row * sizeof(uint16_t)
-                       + (hdr.has_logits ? (size_t)hp->n_vocab * sizeof(float) : 0);
+                       + (hdr.has_logits ? (size_t)hp->n_vocab * sizeof(float) : 0)
+                       + ds_bytes;
     uint8_t *payload = (uint8_t *)malloc(total_bytes);
     if (!payload) return;
     uint8_t *dst = payload;
@@ -4354,6 +4382,32 @@ static void ink_disk_cache_save(InkSession *s, const int32_t *tokens, int n_toke
     if (hdr.has_logits) {
         size_t lb = (size_t)hp->n_vocab * sizeof(float);
         memcpy(dst, lg_src, lb); dst += lb;
+    }
+    if (save_ds) {
+        size_t tb = (size_t)4 * 2304 * sizeof(float);
+        memcpy(dst, pm_contents(s->dspark.last_taps), tb); dst += tb;
+        int ds_p0 = n_tokens - ds_win;
+        for (int li = 0; li < 3; li++) {
+            const DsparkLayer *L = &s->dspark.layers[li];
+            const uint16_t *kk = (const uint16_t *)pm_contents(L->kv_k);
+            const uint16_t *kv = (const uint16_t *)pm_contents(L->kv_v);
+            if (!L->is_swa) {
+                size_t nb_k = (size_t)n_tokens * 1024 * sizeof(uint16_t);
+                memcpy(dst, kk, nb_k); dst += nb_k;
+                memcpy(dst, kv, nb_k); dst += nb_k;
+            } else if (ds_win > 0) {
+                int cap = L->kv_cap;
+                int r0 = ds_p0 % cap;
+                int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                int second = ds_win - first;
+                size_t b1 = (size_t)first * 1024 * sizeof(uint16_t);
+                size_t b2 = (size_t)second * 1024 * sizeof(uint16_t);
+                memcpy(dst, kk + (size_t)r0 * 1024, b1); dst += b1;
+                if (b2 > 0) { memcpy(dst, kk, b2); dst += b2; }
+                memcpy(dst, kv + (size_t)r0 * 1024, b1); dst += b1;
+                if (b2 > 0) { memcpy(dst, kv, b2); dst += b2; }
+            }
+        }
     }
 
     if (!s->disk_thr_started) {
@@ -4427,11 +4481,13 @@ static int ink_disk_cache_restore(InkSession *s, const int32_t *tokens, int n_to
         if (fd < 0) continue;
         InkDiskSnapHdr hdr;
         if (ink_read_all(fd, &hdr, sizeof hdr) == 0 &&
-            memcmp(hdr.magic, "INKP", 4) == 0 && hdr.version == 1 &&
+            memcmp(hdr.magic, "INKP", 4) == 0 && hdr.version == 2 &&
             hdr.model_fp == s->model_fp && hdr.kv_q8 == s->kv_q8 &&
             hdr.kv_row_u16 == (int32_t)s->kv_row_u16 && hdr.n_slots == s->n_slots &&
             hdr.conv_all_elems == (int32_t)s->conv_all_elems && hdr.n_vocab == (int32_t)hp->n_vocab &&
             hdr.n_tokens > best_sp && hdr.n_tokens <= n_tokens && hdr.n_tokens <= s->max_ctx &&
+            hdr.swa_win >= 0 && hdr.swa_win <= hdr.n_tokens &&
+            (!hdr.has_dspark || (hdr.dspark_swa_win >= 0 && hdr.dspark_swa_win <= 1024 && hdr.dspark_swa_win <= hdr.n_tokens)) &&
             (hdr.n_tokens < n_tokens || hdr.has_logits)) {
             uint64_t want_h = ink_fnv1a_tokens(tokens, hdr.n_tokens);
             if (hdr.tok_hash == want_h) {
@@ -4478,8 +4534,39 @@ static int ink_disk_cache_restore(InkSession *s, const int32_t *tokens, int n_to
                    (second > 0 && ink_read_all(fd, kv, (size_t)second * kv_row * sizeof(uint16_t)));
         }
     }
-    if (!fail && best_sp == n_tokens && best_hdr.has_logits) {
-        fail = ink_read_all(fd, pm_contents(s->logits_buf[0]), (size_t)hp->n_vocab * sizeof(float));
+    if (!fail && best_hdr.has_logits) {
+        size_t lb = (size_t)hp->n_vocab * sizeof(float);
+        if (best_sp == n_tokens) {
+            fail = ink_read_all(fd, pm_contents(s->logits_buf[0]), lb);
+        } else if (best_hdr.has_dspark && s->dspark.ready) {
+            if (lseek(fd, (off_t)lb, SEEK_CUR) < 0) fail = 1;
+        }
+    }
+    int ds_restored = 0;
+    int ds_p0 = 0;
+    if (!fail && best_hdr.has_dspark && s->dspark.ready) {
+        int ds_win = best_hdr.dspark_swa_win;
+        ds_p0 = best_sp - ds_win;
+        fail = ink_read_all(fd, pm_contents(s->dspark.last_taps), (size_t)4 * 2304 * sizeof(float));
+        for (int li = 0; !fail && li < 3; li++) {
+            DsparkLayer *L = &s->dspark.layers[li];
+            uint16_t *kk = (uint16_t *)pm_contents(L->kv_k);
+            uint16_t *kv = (uint16_t *)pm_contents(L->kv_v);
+            if (!L->is_swa) {
+                fail = ink_read_all(fd, kk, (size_t)best_sp * 1024 * sizeof(uint16_t)) ||
+                       ink_read_all(fd, kv, (size_t)best_sp * 1024 * sizeof(uint16_t));
+            } else if (ds_win > 0) {
+                int cap = L->kv_cap;
+                int r0 = ds_p0 % cap;
+                int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                int second = ds_win - first;
+                fail = ink_read_all(fd, kk + (size_t)r0 * 1024, (size_t)first * 1024 * sizeof(uint16_t)) ||
+                       (second > 0 && ink_read_all(fd, kk, (size_t)second * 1024 * sizeof(uint16_t))) ||
+                       ink_read_all(fd, kv + (size_t)r0 * 1024, (size_t)first * 1024 * sizeof(uint16_t)) ||
+                       (second > 0 && ink_read_all(fd, kv, (size_t)second * 1024 * sizeof(uint16_t)));
+            }
+        }
+        if (!fail) ds_restored = 1;
     }
     close(fd);
     if (fail) { ink_reset(s); return 0; }
@@ -4499,7 +4586,10 @@ static int ink_disk_cache_restore(InkSession *s, const int32_t *tokens, int n_to
     s->has_prev_argmax = 0;
     s->greedy_streak = 0;
     s->pos = best_sp;
-    s->dspark.pos = 0;
+    s->dspark.pos = ds_restored ? best_sp : 0;
+    s->dspark_live_len = ds_restored ? best_sp : 0;
+    s->dspark_swa_valid_from = ds_restored ? ds_p0 : 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) s->snaps[i].valid = 0;
     s->dspark.pending_got = 0;
     s->dspark.pending_nb = 0;
     s->dspark.skip_countdown = 0;
@@ -4626,6 +4716,36 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
             s->snaps[slot].swa_win = win;
         }
     }
+    /* Back up DSpark's 2 SWA layers (0 & 2, <=8 MB) alongside main SWA backup so pinned/compaction
+       restores keep DSpark speculative decoding warm across arbitrary SWA ring wraps. */
+    s->snaps[slot].dspark_swa_win = 0;
+    if (s->snaps[slot].swa_kv && s->dspark.ready && s->dspark.pos == n_tokens) {
+        if (!s->snaps[slot].dspark_swa_kv) {
+            s->snaps[slot].dspark_swa_kv = (uint16_t *)malloc((size_t)2 * 2 * 1024 * 1024 * sizeof(uint16_t));
+        }
+        if (s->snaps[slot].dspark_swa_kv) {
+            int ds_win = (n_tokens < 1024) ? n_tokens : 1024;
+            int ds_p0 = n_tokens - ds_win;
+            uint16_t *sd = s->snaps[slot].dspark_swa_kv;
+            for (int li = 0; li < 3; li++) {
+                const DsparkLayer *L = &s->dspark.layers[li];
+                if (!L->is_swa) continue;
+                int cap = L->kv_cap;
+                const uint16_t *kk = (const uint16_t *)pm_contents(L->kv_k);
+                const uint16_t *kv = (const uint16_t *)pm_contents(L->kv_v);
+                int r0 = ds_p0 % cap;
+                int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                int second = ds_win - first;
+                memcpy(sd, kk + (size_t)r0 * 1024, (size_t)first * 1024 * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * 1024, kk, (size_t)second * 1024 * sizeof(uint16_t));
+                sd += (size_t)ds_win * 1024;
+                memcpy(sd, kv + (size_t)r0 * 1024, (size_t)first * 1024 * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * 1024, kv, (size_t)second * 1024 * sizeof(uint16_t));
+                sd += (size_t)ds_win * 1024;
+            }
+            s->snaps[slot].dspark_swa_win = ds_win;
+        }
+    }
     s->snaps[slot].pos = n_tokens;
     s->snaps[slot].has_logits = has_lg ? 1 : 0;
     s->snaps[slot].pinned = is_pinned ? 1 : 0;
@@ -4722,11 +4842,40 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     s->sampled_mode = 0;
     s->spec_round_open = 0;
     if (s->dspark.ready) {
-        if (!best_need_swa && s->snaps[best].dspark_last_taps && s->snaps[best].dspark_pos == sp) {
+        int ds_ok = (s->snaps[best].dspark_last_taps && s->snaps[best].dspark_pos == sp && sp <= s->dspark_live_len);
+        int ds_oldest = (sp > 1024) ? (sp - 1024) : 0;
+        int ds_need_win = (sp < 1024) ? sp : 1024;
+        int ds_swa_live = (ds_oldest >= s->dspark_swa_valid_from);
+        int ds_has_backup = (s->snaps[best].dspark_swa_kv != NULL && s->snaps[best].dspark_swa_win >= ds_need_win);
+        if (ds_ok && (ds_swa_live || ds_has_backup)) {
+            if (!ds_swa_live) {
+                int ds_win = s->snaps[best].dspark_swa_win;
+                int ds_p0 = sp - ds_win;
+                const uint16_t *ss = s->snaps[best].dspark_swa_kv;
+                for (int li = 0; li < 3; li++) {
+                    DsparkLayer *L = &s->dspark.layers[li];
+                    if (!L->is_swa) continue;
+                    int cap = L->kv_cap;
+                    uint16_t *kk = (uint16_t *)pm_contents(L->kv_k);
+                    uint16_t *kv = (uint16_t *)pm_contents(L->kv_v);
+                    int r0 = ds_p0 % cap;
+                    int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                    int second = ds_win - first;
+                    memcpy(kk + (size_t)r0 * 1024, ss, (size_t)first * 1024 * sizeof(uint16_t));
+                    if (second > 0) memcpy(kk, ss + (size_t)first * 1024, (size_t)second * 1024 * sizeof(uint16_t));
+                    ss += (size_t)ds_win * 1024;
+                    memcpy(kv + (size_t)r0 * 1024, ss, (size_t)first * 1024 * sizeof(uint16_t));
+                    if (second > 0) memcpy(kv, ss + (size_t)first * 1024, (size_t)second * 1024 * sizeof(uint16_t));
+                    ss += (size_t)ds_win * 1024;
+                }
+                s->dspark_swa_valid_from = ds_p0;
+            }
             memcpy(pm_contents(s->dspark.last_taps), s->snaps[best].dspark_last_taps, 4 * 2304 * sizeof(float));
             s->dspark.pos = sp;
+            s->dspark_live_len = sp;
         } else {
             s->dspark.pos = 0;
+            s->dspark_live_len = 0;
         }
     }
     for (int i = 0; i < INK_MAX_SNAPS; i++) {

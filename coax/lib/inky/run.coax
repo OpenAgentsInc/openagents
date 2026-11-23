@@ -9,6 +9,8 @@
 
 #load "loop.coax";
 #load "instructions.coax";
+#load "seed.coax";
+#load "local-http.coax";
 #load "run-poll-host.coax";
 #load "../sys/fs.coax";
 #load "../sys/proc.coax";
@@ -103,6 +105,9 @@ IkCmdState :: struct {
 IkRun :: struct {
   l: [1] IkLoop;
   call: [1] GwCall;
+  lcall: [1] IkLocalCall;
+  using_local: bool;
+  req_len: int;
   calling: bool;
   active: bool;
   ended: bool;
@@ -117,6 +122,10 @@ IkRun :: struct {
   det_mode: bool;
   hybrid_exec: bool;
   adaptive_effort: bool;
+  adaptive_think: bool;
+  no_seed: bool;
+  no_auto_check: bool;
+  auto_check_cmd: [512] u8; nauto_check: int;
   max_tokens_step: int;
   max_thinking_tokens: int;
   refuse_shell_edit: bool;
@@ -128,6 +137,7 @@ IkRun :: struct {
   ask_ticket: int;
   ask_kind: int;
   cmd: [1] IkCmdState;
+  cmd_git_before: u64;
   journal: [] JfWriter;
   steers: [] McSteers;
   runs: int;
@@ -240,18 +250,34 @@ ik_run_start :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, cwd: string, bas
   r[0].ceiling = ceiling;
 
   gw_call_init(r[0].call[..], b[0].call_bufs[..]);
+  ik_lhttp_init(r[0].lcall[..], b[0].call_bufs[..]);
   is_goal := ik_prompt_is_goal(task);
   steps_cap := max_steps;
   if steps_cap <= 0 { steps_cap = ifx is_goal then IK_MAX_STEPS_GOAL else IK_MAX_STEPS_INTERACTIVE; }
 
+  // Static-prefix-safe Step-0 seeding: appends compact workspace file/symbol hints ONLY to the
+  // user turn (never touches <|message_system|> so the 8-slot SWA KV prefix cache stays 100% shared),
+  // and emits 0 bytes on plain greetings / non-codebase prompts.
+  turn_task := task;
+  if !r[0].no_seed && task.count > 0 && task.count + IK_SEED_OUT_CAP <= b[0].ev_text.count {
+    sb_seed: [IK_SEED_OUT_CAP] u8;
+    sn_seed := ik_seed_build(ik_run_cwd(r), ik_run_real_cwd(r), task, b[0].file_buf[..], sb_seed[..]);
+    if sn_seed > 0 {
+      tn := ik_fmt_put(b[0].ev_text[..], 0, task);
+      tn = ik_fmt_put(b[0].ev_text[..], tn, cast(string) sb_seed[0..<sn_seed]);
+      turn_task = cast(string) b[0].ev_text[0..<tn];
+    }
+  }
+
   sys := ik_run_build_system(ik_run_cwd(r), os_name, is_goal, r[0].hybrid_exec, b);
-  if !ik_loop_begin(r[0].l[..], h, b[0].hist_tmp[..], sys, profile, steps_cap, max_ctx, task) {
+  if !ik_loop_begin(r[0].l[..], h, b[0].hist_tmp[..], sys, profile, steps_cap, max_ctx, turn_task) {
     r[0].active = false;
     r[0].ended = true;
     return ik_put_ev(out, 0, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
   }
   r[0].l[0].hybrid_exec = r[0].hybrid_exec;
   r[0].l[0].adaptive_effort = r[0].adaptive_effort;
+  r[0].l[0].adaptive_think = r[0].adaptive_think;
   r[0].l[0].max_tokens_step = r[0].max_tokens_step;
   r[0].l[0].max_thinking_tokens = r[0].max_thinking_tokens;
   r[0].l[0].require_exit_verify = r[0].require_exit_verify;
@@ -362,6 +388,13 @@ ik_cmd_begin :: (r: [] IkRun, b: [] IkRunBufs, command: string, timeout_s: int) 
     ik_cmd_say(c, b, refused);
     c[0].exit = 126;
     return;
+  }
+
+  // Snapshot tracked git diff state before non-readonly/non-check commands so ANY shell edit
+  // (echo >, tee, awk, python, sed, patch, etc.) gets automatic Class-E verification after exit.
+  r[0].cmd_git_before = 0;
+  if !c[0].is_check && !c[0].is_search {
+    r[0].cmd_git_before = ik_git_diff_sig(ik_run_cwd(r));
   }
 
   // Journal command_intent before spawning.
@@ -540,6 +573,152 @@ ik_exec_read :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
 }
 
+// Deterministic multi-language outline tool: returns #load/#include deps, #authority marker,
+// and top-level declarations with exact Lstart-Lend ranges so the model jumps directly to
+// target lines without 200-line paging spirals (docs/coder/inky-self-improvement.md §9.3 #2).
+ik_exec_outline :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
+  ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
+  a := ik_admit_outline(ar[..], args_json);
+  if !a.ok {
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, "", 1, "outline error: invalid arguments (expected path, optional filter).", true);
+    return ne;
+  }
+  cb: [512] u8; cn := ik_fmt_put(cb[..], 0, a.path); cn = ik_fmt_byte(cb[..], cn, '|'); cn = ik_fmt_put(cb[..], cn, a.filter);
+  dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_OUTLINE, cast(string) cb[0..<cn], r[0].l[0].step);
+  if dup > 0 {
+    _ = ik_guard_note_block(r[0].l[0].guard[..]);
+    eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same outline already succeeded at step ");
+    en = ik_fmt_int(eb[..], en, dup);
+    en = ik_fmt_put(eb[..], en, " with no changes since. Use the prior outline or call read_file on a specific line range.");
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, a.path, 1, cast(string) eb[0..<en], true);
+    return ne;
+  }
+  ik_guard_note_progress(r[0].l[0].guard[..]);
+  pbuf: [4096] u8;
+  pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
+  if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
+  if pn < 0 {
+    msg := "outline error: path is outside the workspace.";
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  rbuf: [4096] u8;
+  real_p := fs_realpath(cast(string) pbuf[0..<pn], rbuf[..]);
+  if real_p.count == 0 || fs_kind(real_p) != FS_FILE || !ik_path_under(ik_run_real_cwd(r), real_p) {
+    mb: [512] u8; mn := ik_fmt_put(mb[..], 0, "outline error: file not found inside workspace: "); mn = ik_fmt_put(mb[..], mn, a.path);
+    msg := cast(string) mb[0..<mn];
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  rn := fs_read_at(real_p, 0, b[0].file_buf[..]);
+  if rn < 0 {
+    msg := "outline error: unable to read file.";
+    ik_journal_view(r, a.path, msg, false);
+    _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, a.path, 1, msg, true);
+    tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = false});
+  }
+  fn := ik_fmt_outline(cast(string) b[0].file_buf[0..<rn], a.path, a.filter, b[0].tool_out[..]);
+  shown := cast(string) b[0].tool_out[0..<fn];
+  ik_journal_view(r, a.path, shown, true);
+  _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_OUTLINE, a.path, 0, shown, false);
+  tlen := ik_loop_copy(b[0].ev_text[..], a.path);
+  return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_VIEW, text = cast(string) b[0].ev_text[0..<tlen], found = true});
+}
+
+// Finds coax/bin/coax at cwd or any ancestor up to the git root.
+ik_find_coax_bin :: (cwd: string, out: [] u8) -> string {
+  cur := cwd;
+  for step: 0..<12 {
+    p := fs_join(cur, "coax/bin/coax", out);
+    if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+    gb: [4096] u8;
+    gp := fs_join(cur, ".git", gb[..]);
+    if gp.count > 0 && fs_exists(gp) { break; }
+    up := fs_dir(cur);
+    if up.count == 0 || up == cur || up == "." { break; }
+    cur = up;
+  }
+  return "";
+}
+
+// Hermes-pattern immediate post-edit compiler feedback (docs/coder/inky-avenues-from-other-projects.md):
+// Runs `coax check` (~0.5s) on standalone edited .coax files and optional INKY_AUTO_CHECK_CMD,
+// appending compact diagnostics directly to the edit_file/write_file tool output so mistakes are
+// caught without burning an extra LLM turn. Never blocks or reverts the write.
+ik_post_edit_checks :: (r: [] IkRun, path: string, real_p: string, new_src: string, out: [] u8, at: int, auto_ok: [] bool) -> int {
+  auto_ok[0] = false;
+  n := at;
+  if !r[0].no_auto_check && ik_fmt_ends_with(path, ".coax") {
+    // Only check standalone Coax files (skip pure #loaded fragments that have no #load/#import/#test/main).
+    standalone := ik_fmt_has_ci(new_src, "#load ") || ik_fmt_has_ci(new_src, "#import ") ||
+                  ik_fmt_has_ci(new_src, "#test ") || ik_fmt_has_ci(new_src, "tool_main") ||
+                  ik_fmt_has_ci(new_src, "main ::");
+    if standalone {
+      cb: [4096] u8;
+      cbin := ik_find_coax_bin(ik_run_real_cwd(r), cb[..]);
+      if cbin.count > 0 {
+        argv := [3] string.[cbin, "check", real_p];
+        co: [2048] u8; ce: [2048] u8;
+        pr := proc_run(argv[..], 4000, co[..], ce[..]);
+        if pr.started == 0 && !pr.timed_out {
+          if pr.status == 0 {
+            n = ik_fmt_put(out, n, "\n[coax check: ok]");
+          } else {
+            diag := ifx pr.err_n > 0 then cast(string) ce[0..<pr.err_n] else cast(string) co[0..<pr.out_n];
+            if diag.count > 900 { diag = cast(string) diag[0..<900]; }
+            n = ik_fmt_put(out, n, "\n[coax check errors (exit ");
+            n = ik_fmt_int(out, n, pr.status);
+            n = ik_fmt_put(out, n, ") — fix before running tests]:\n");
+            n = ik_fmt_put(out, n, diag);
+          }
+        }
+      }
+    }
+  }
+  if r[0].nauto_check > 0 {
+    cmd := cast(string) r[0].auto_check_cmd[0..<r[0].nauto_check];
+    h := proc_new();
+    if h >= 0 {
+      ok := proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd) &&
+            proc_cwd(h, ik_run_cwd(r)) && proc_err_to_out(h);
+      if ok && proc_start(h) == 0 {
+        _ = proc_close_stdin(h);
+        ab: [1536] u8; an := 0;
+        lb: [512] u8;
+        deadline := proc_now_ms() + 10000;
+        while true {
+          left := deadline - proc_now_ms();
+          if left <= 0 { _ = proc_kill(h, PROC_SIGKILL); break; }
+          ln := proc_line(h, left, lb[..]);
+          if ln < 0 { break; }
+          if an + ln + 2 < ab.count {
+            an = ik_fmt_put(ab[..], an, cast(string) lb[0..<ln]);
+            an = ik_fmt_byte(ab[..], an, '\n');
+          }
+        }
+        st := proc_wait(h, 1000);
+        if st == PROC_RUNNING { _ = proc_kill(h, PROC_SIGKILL); st = proc_wait(h, 500); }
+        n = ik_fmt_put(out, n, "\n[auto-check exit ");
+        n = ik_fmt_int(out, n, st);
+        n = ik_fmt_put(out, n, "]:\n");
+        if an > 0 { n = ik_fmt_put(out, n, cast(string) ab[0..<an]); }
+        else if st == 0 { n = ik_fmt_put(out, n, "(ok)\n"); }
+        if st == 0 {
+          ik_guard_record_cmd(r[0].l[0].guard[..], cmd, true, 0, r[0].l[0].step);
+          auto_ok[0] = true;
+        }
+      }
+      _ = proc_release(h);
+    }
+  }
+  return n;
+}
+
 ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: string, out: [] IkRunEvent, ne: int) -> int {
   ar := [1] ClArena.[ClArena.{buf = b[0].arg_arena[..]}];
   a := ik_admit_edit(ar[..], args_json);
@@ -676,12 +855,15 @@ ik_exec_edit :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   for hi: 0..<a.n_hunks {
     mn = ik_fmt_coax_lint(a.path, a.hunks[hi].new_str, b[0].tool_out[..], mn);
   }
+  auto_ok := [1] bool.[false];
+  mn = ik_post_edit_checks(r, a.path, real_p, cast(string) b[0].edit_buf[0..<cur_len], b[0].tool_out[..], mn, auto_ok[..]);
   msg := cast(string) b[0].tool_out[0..<mn];
   db: [4224] u8;
   dn := ik_fmt_unified_diff(first_line_any, a.old_str, a.new_str, pill, db[..]);
   ev_out := cast(string) db[0..<dn];
   ik_journal_cmd(r, label, msg, 0);
   _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_EDIT, a.path, 0, msg, false);
+  if auto_ok[0] { r[0].l[0].edited_since_check = false; }
   return ik_emit_edit_ev(b, out, ne, "edit ", a.path, true, ev_out);
 }
 
@@ -765,6 +947,8 @@ ik_exec_write :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: stri
   n = ik_fmt_put(b[0].tool_out[..], n, ")\n");
   n = ik_fmt_put(b[0].tool_out[..], n, pill);
   n = ik_fmt_coax_lint(a.path, a.content, b[0].tool_out[..], n);
+  auto_ok := [1] bool.[false];
+  n = ik_post_edit_checks(r, a.path, resolved, a.content, b[0].tool_out[..], n, auto_ok[..]);
   msg := cast(string) b[0].tool_out[0..<n];
   lb: [512] u8; ln := ik_fmt_put(lb[..], 0, "write "); ln = ik_fmt_put(lb[..], ln, a.path);
   db: [4224] u8;
@@ -772,6 +956,7 @@ ik_exec_write :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: stri
   ev_out := cast(string) db[0..<dn];
   ik_journal_cmd(r, cast(string) lb[0..<ln], msg, 0);
   _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_WRITE, a.path, 0, msg, false);
+  if auto_ok[0] { r[0].l[0].edited_since_check = false; }
   return ik_emit_edit_ev(b, out, ne, "write ", a.path, true, ev_out);
 }
 
@@ -1115,13 +1300,19 @@ ik_start_model_call :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] I
       return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
     }
   }
-  none: [1] string;
-  err := gw_call_start(r[0].call[..], r[0].g, body, none[0..<0]);
-  if err.count > 0 {
-    if r[0].journal.count > 0 { _ = jf_model_end(r[0].journal, "start_failed"); }
-    _ = ik_loop_end(r[0].l[..], IK_END_NO_CAPACITY, err);
-    r[0].active = false; r[0].ended = true;
-    return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+  r[0].req_len = body.count;
+  if ik_lhttp_start(r[0].lcall[..], r[0].g, body) {
+    r[0].using_local = true;
+  } else {
+    r[0].using_local = false;
+    none: [1] string;
+    err := gw_call_start(r[0].call[..], r[0].g, body, none[0..<0]);
+    if err.count > 0 {
+      if r[0].journal.count > 0 { _ = jf_model_end(r[0].journal, "start_failed"); }
+      _ = ik_loop_end(r[0].l[..], IK_END_NO_CAPACITY, err);
+      r[0].active = false; r[0].ended = true;
+      return ik_put_ev(out, ne, IkRunEvent.{kind = IK_EV_ENDED, ending = r[0].l[0].ending, text = ik_loop_final(r[0].l[..])});
+    }
   }
   r[0].calling = true;
   r[0].req_start_ms = proc_now_ms();
@@ -1130,12 +1321,47 @@ ik_start_model_call :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] I
   return ne;
 }
 
-// Post-command Class-E diff verification for shell-based edits (docs/coder/inky-avenues-from-other-projects.md Row 5).
-// Keeps Class-E receipts and edit tracking without refusing the model's trained shell interface.
-ik_verify_shell_edit_diff :: (cwd: string, out: [] u8) -> int {
+// Fast (<10 ms) overflow-safe dual 32-bit FNV-1a fingerprint of tracked workspace diff numstat so ANY shell edit
+// (echo >, tee, awk, python, sed, patch, etc.) is detected cleanly without regex blindspots.
+ik_git_diff_sig :: (cwd: string) -> u64 {
+  if !ik_cwd_is_git(cwd) { return 0; }
+  h := proc_new();
+  if h < 0 { return 0; }
+  h1: u64 = 2166136261;
+  h2: u64 = 3735928559;
+  any := false;
+  ok := proc_arg(h, "git") && proc_arg(h, "-C") && proc_arg(h, cwd) && proc_arg(h, "diff") && proc_arg(h, "--numstat");
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lb: [512] u8;
+    for step: 0..<64 {
+      ln := proc_line(h, 1000, lb[..]);
+      if ln <= 0 { break; }
+      any = true;
+      for i: 0..<ln {
+        b := cast(u64) lb[i];
+        h1 = ((h1 ^ b) * 16777619) & 0xFFFFFFFF;
+        h2 = ((h2 ^ (b + 31)) * 16777619) & 0xFFFFFFFF;
+      }
+      h1 = ((h1 ^ 10) * 16777619) & 0xFFFFFFFF;
+      h2 = ((h2 ^ 41) * 16777619) & 0xFFFFFFFF;
+    }
+    _ = proc_wait(h, 1000);
+  }
+  _ = proc_release(h);
+  sig := (h1 << 32) | h2;
+  return ifx any then (ifx sig == 0 then 1 else sig) else 1;
+}
+
+// Post-command Class-E diff verification + Coax lint for shell-based edits (docs/coder/inky-avenues-from-other-projects.md Row 5).
+// Keeps Class-E receipts, Coax diagnostics, and edit tracking without refusing the model's trained shell interface.
+ik_verify_shell_edit_diff :: (cwd: string, scratch: [] u8, out: [] u8) -> int {
   files := 0;
   added := 0;
   deleted := 0;
+  coax_pbuf: [4][256] u8;
+  coax_plen: [4] int;
+  ncoax := 0;
   if ik_cwd_is_git(cwd) {
     h := proc_new();
     if h >= 0 {
@@ -1152,6 +1378,15 @@ ik_verify_shell_edit_diff :: (cwd: string, out: [] u8) -> int {
           if i < ln && lb[i] == 9 {
             i += 1;
             while i < ln && lb[i] >= '0' && lb[i] <= '9' { d = d * 10 + cast(int)(lb[i] - '0'); i += 1; }
+            if i < ln && lb[i] == 9 {
+              i += 1;
+              rel := cast(string) lb[i..<ln];
+              if ncoax < 4 && ik_fmt_ends_with(rel, ".coax") && rel.count <= 256 {
+                for ci: 0..<rel.count { coax_pbuf[ncoax][ci] = rel[ci]; }
+                coax_plen[ncoax] = rel.count;
+                ncoax += 1;
+              }
+            }
           }
           files += 1;
           added += a;
@@ -1181,6 +1416,16 @@ ik_verify_shell_edit_diff :: (cwd: string, out: [] u8) -> int {
     n = ik_fmt_put(out, n, "workspace mutated]\n");
   }
   n = ik_fmt_put(out, n, pill);
+  // Lint any modified .coax files so shell edits get the same instant Coax hints as edit_file!
+  for ci: 0..<ncoax {
+    rel := cast(string) coax_pbuf[ci][0..<coax_plen[ci]];
+    fpb: [4096] u8;
+    full := fs_join(cwd, rel, fpb[..]);
+    if full.count > 0 {
+      rn := fs_read_at(full, 0, scratch);
+      if rn > 0 { n = ik_fmt_coax_lint(rel, cast(string) scratch[0..<rn], out, n); }
+    }
+  }
   return n;
 }
 
@@ -1202,10 +1447,15 @@ ik_finish_cmd :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: [] IkRunEv
   fn := ifx c[0].is_search && !c[0].is_check && !is_err
     then ik_fmt_cmd_output_cap(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, IK_CMD_SEARCH_INLINE, IK_CMD_SEARCH_HEAD, IK_CMD_SEARCH_TAIL, b[0].tool_out[..])
     else ik_fmt_cmd_output(head_s, tail_s, c[0].dropped, c[0].total_bytes, c[0].total_lines, c[0].exit, c[0].timed_out, sp_s, b[0].tool_out[..]);
-  is_shell_ed := !is_err && !c[0].is_check && !c[0].is_search && ik_guard_is_shell_edit(cmd_s);
+  git_mutated := false;
+  if !is_err && !c[0].is_check && !c[0].is_search && r[0].cmd_git_before != 0 {
+    after_sig := ik_git_diff_sig(ik_run_cwd(r));
+    git_mutated = after_sig != 0 && after_sig != r[0].cmd_git_before;
+  }
+  is_shell_ed := !is_err && !c[0].is_check && !c[0].is_search && (ik_guard_is_shell_edit(cmd_s) || git_mutated);
   if is_shell_ed {
-    vb: [256] u8;
-    vn := ik_verify_shell_edit_diff(ik_run_cwd(r), vb[..]);
+    vb: [1024] u8;
+    vn := ik_verify_shell_edit_diff(ik_run_cwd(r), b[0].file_buf[..], vb[..]);
     fn = ik_fmt_put(b[0].tool_out[..], fn, cast(string) vb[0..<vn]);
   }
   shown := cast(string) b[0].tool_out[0..<fn];
@@ -1258,6 +1508,7 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
     return ne;
   }
   if kind == IK_TK_READ { return ik_exec_read(r, h, b, tc.input_json, out, ne); }
+  if kind == IK_TK_OUTLINE { return ik_exec_outline(r, h, b, tc.input_json, out, ne); }
   if kind == IK_TK_GREP { return ik_exec_grep(r, h, b, tc.input_json, out, ne); }
   if kind == IK_TK_LIST { return ik_exec_list(r, h, b, tc.input_json, out, ne); }
   if kind == IK_TK_TODOS { return ik_exec_todos(r, h, b, tc.input_json, out, ne); }
@@ -1390,7 +1641,11 @@ ik_emit_feed :: (out: [] IkRunEvent, ne: int, fr: IkFeedRes) -> int {
 
 ik_run_stop :: (r: [] IkRun, out: [] IkRunEvent) -> int {
   if !r[0].active { return 0; }
-  if r[0].calling { gw_call_close(r[0].call[..]); r[0].calling = false; }
+  if r[0].calling {
+    if r[0].using_local { ik_lhttp_abort(r[0].lcall[..]); }
+    else { gw_call_close(r[0].call[..]); }
+    r[0].calling = false;
+  }
   if r[0].cmd[0].active { ik_cmd_abort(r[0].cmd[..]); }
   r[0].asking = false;
   r[0].active = false;

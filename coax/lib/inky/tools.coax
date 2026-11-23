@@ -29,11 +29,12 @@ ik_tool_kind :: (name: string) -> int #effects(all) {
   if name == "run_command" { return IK_TK_CMD; }
   if name == "update_todos" { return IK_TK_TODOS; }
   if name == "executor_verify" { return IK_TK_EXEC; }
+  if name == "outline" { return IK_TK_OUTLINE; }
   return IK_TK_NONE;
 }
 
 ik_tool_is_readonly :: (kind: int) -> bool #effects(all) {
-  return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC;
+  return kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC || kind == IK_TK_OUTLINE;
 }
 
 // Decides whether a tool call runs immediately, waits for MWW_ASK approval, or is denied.
@@ -152,6 +153,7 @@ IkGrepArgs :: struct { ok: bool; pattern: string; path: string; glob: string; fi
 IkListArgs :: struct { ok: bool; path: string; depth: int; }
 IkCmdArgs :: struct { ok: bool; command: string; timeout_s: int; }
 IkExecArgs :: struct { ok: bool; module_id: int; n_args: int; args: [8] int; }
+IkOutlineArgs :: struct { ok: bool; path: string; filter: string; }
 
 ik_exec_module_id :: (name: string) -> int #effects(all) {
   if name == "diff_verify" || name == "oa-exec-diff-verify" { return 1; }
@@ -307,6 +309,18 @@ ik_admit_exec :: (ar: [] ClArena, args_json: string) -> IkExecArgs #effects(all)
   return out;
 }
 
+ik_admit_outline :: (ar: [] ClArena, args_json: string) -> IkOutlineArgs #effects(all) {
+  if !json_valid(args_json) { return IkOutlineArgs.{}; }
+  p := cl_str(ar, args_json, "path");
+  if ar[0].full || p.count == 0 || ik_has_nul(p) { return IkOutlineArgs.{}; }
+  f := "";
+  if cl_at(args_json, "filter").tok == JSON_STRING {
+    f = cl_str(ar, args_json, "filter");
+    if ar[0].full || ik_has_nul(f) { return IkOutlineArgs.{}; }
+  }
+  return IkOutlineArgs.{ok = true, path = p, filter = f};
+}
+
 // 8-hex-digit FNV-1a 32-bit digest for read_file/edit_file/write_file version tracking.
 ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   if out.count < 8 { return -1; }
@@ -328,19 +342,19 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert ik_tool_kind("read_file") == IK_TK_READ && ik_tool_kind("edit_file") == IK_TK_EDIT;
   #assert ik_tool_kind("write_file") == IK_TK_WRITE && ik_tool_kind("grep") == IK_TK_GREP;
   #assert ik_tool_kind("list_dir") == IK_TK_LIST && ik_tool_kind("run_command") == IK_TK_CMD;
-  #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("executor_verify") == IK_TK_EXEC && ik_tool_kind("other") == IK_TK_NONE;
-  #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS) && ik_tool_is_readonly(IK_TK_EXEC);
+  #assert ik_tool_kind("update_todos") == IK_TK_TODOS && ik_tool_kind("executor_verify") == IK_TK_EXEC && ik_tool_kind("outline") == IK_TK_OUTLINE && ik_tool_kind("other") == IK_TK_NONE;
+  #assert ik_tool_is_readonly(IK_TK_READ) && ik_tool_is_readonly(IK_TK_GREP) && ik_tool_is_readonly(IK_TK_LIST) && ik_tool_is_readonly(IK_TK_TODOS) && ik_tool_is_readonly(IK_TK_EXEC) && ik_tool_is_readonly(IK_TK_OUTLINE);
   #assert !ik_tool_is_readonly(IK_TK_EDIT) && !ik_tool_is_readonly(IK_TK_WRITE) && !ik_tool_is_readonly(IK_TK_CMD) && !ik_tool_is_readonly(IK_TK_NONE);
 }
 
-#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<10, ceiling:-1..<5, gated:bool, edits_free:bool {
+#forall "inky tools: sandbox ceiling and gating admission matrix" kind:0..<11, ceiling:-1..<5, gated:bool, edits_free:bool {
   profiles := [4] string.["read-only", "workspace-write", "danger-full-access", "bogus"];
   for pi: 0..<4 {
     p := profiles[pi];
     got := ik_tool_admit(kind, p, ceiling, gated, edits_free);
     want := IK_ADMIT_DENY;
-    if kind >= 1 && kind <= 8 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
-      if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC {
+    if kind >= 1 && kind <= 9 && ceiling >= 0 && ceiling <= 3 && pi < 3 {
+      if kind == IK_TK_READ || kind == IK_TK_GREP || kind == IK_TK_LIST || kind == IK_TK_TODOS || kind == IK_TK_EXEC || kind == IK_TK_OUTLINE {
         want = IK_ADMIT_RUN;
       } else if p != "read-only" {
         if kind == IK_TK_EDIT || kind == IK_TK_WRITE {
@@ -599,6 +613,25 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert !ik_admit_exec(ar[..], "{\"module\":\"dep_sched\"}").ok && !ik_admit_exec(ar[..], "bad").ok;
   tar[0].at = 0; tar[0].full = false;
   #assert !ik_admit_exec(tar[..], "{\"module\":\"\\u0064ep_sched\",\"args\":[0,0,1,4,50,0]}").ok;
+
+  // outline (path required, optional filter, NUL/overflow/invalid rejections)
+  ar[0].at = 0; ar[0].full = false;
+  ol := ik_admit_outline(ar[..], "{\"path\":\"loop.coax\"}");
+  #assert ol.ok && ol.path == "loop.coax" && ol.filter == "";
+  ar[0].at = 0; ar[0].full = false;
+  ol = ik_admit_outline(ar[..], "{\"path\":\"loop.coax\",\"filter\":\"prepare\"}");
+  #assert ol.ok && ol.path == "loop.coax" && ol.filter == "prepare";
+  ar[0].at = 0; ar[0].full = false;
+  ol = ik_admit_outline(ar[..], "{\"path\":\"loop.coax\",\"filter\":123}");
+  #assert ol.ok && ol.path == "loop.coax" && ol.filter == "";
+  #assert !ik_admit_outline(ar[..], "{\"path\":\"\"}").ok && !ik_admit_outline(ar[..], "{}").ok;
+  #assert !ik_admit_outline(ar[..], "{\"path\":\"a.coax\" junk}").ok && !ik_admit_outline(ar[..], "bad").ok;
+  #assert !ik_admit_outline(ar[..], "{\"path\":\"a\\u0000b\"}").ok;
+  #assert !ik_admit_outline(ar[..], "{\"path\":\"a.coax\",\"filter\":\"x\\u0000y\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_outline(tar[..], "{\"path\":\"\\u0061\\u0062\"}").ok;
+  tar[0].at = 0; tar[0].full = false;
+  #assert !ik_admit_outline(tar[..], "{\"path\":\"a\",\"filter\":\"\\u0061\\u0062\"}").ok;
 
   // FNV-1a 8-hex digest
   hb: [8] u8;

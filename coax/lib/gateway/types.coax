@@ -70,6 +70,7 @@ GwRequest :: struct {
   max_thinking_tokens: int;      // > 0 to enforce sampler-level thinking cap (Psionic native)
   stream: bool = true;
   tools: string;                 // Chat Completions function tools, a JSON array sent as it is; "" for none
+  tool_choice: string;           // optional OpenAI tool_choice: "auto", "none", "required", or JSON object (Psionic native)
   has_temp: bool;                // emit temperature when true
   temperature: f64;
   top_p: f64;                    // > 0.0 to emit top_p

@@ -119,7 +119,7 @@ ikw_resolve_local :: (ep: [] IkEndpoint, req_model: string) -> bool {
       start := seed % np;
       for off: 0..<np {
         idx := (start + off) % np;
-        if replaying || gw_psionic_up(peers[idx].base) {
+        if replaying || ik_lhttp_up(peers[idx].base) {
           ep[0].nbase = ikw_keep(ep[0].base[..], peers[idx].base);
           base = cast(string) ep[0].base[0..<ep[0].nbase];
           if peers[idx].model.count > 0 { peer_model = peers[idx].model; }
@@ -139,7 +139,7 @@ ikw_resolve_local :: (ep: [] IkEndpoint, req_model: string) -> bool {
     b := gw_psionic_base(ub[..]);
     ep[0].nbase = ikw_keep(ep[0].base[..], b);
     base = cast(string) ep[0].base[0..<ep[0].nbase];
-    if !replaying && !gw_psionic_up(base) {
+    if !replaying && !ik_lhttp_up(base) {
       n := ik_fmt_put(ep[0].why[..], 0, "No local model server answers at ");
       n = ik_fmt_put(ep[0].why[..], n, base);
       ep[0].nwhy = ik_fmt_put(ep[0].why[..], n, "/v1/models. Start psionic-inkling-serve or set PSIONIC_BASE_URL.");
@@ -368,6 +368,14 @@ tool_main :: () -> int #export_c #effects(all) {
   env_refuse_shell_edit := gw_env("INKY_REFUSE_SHELL_EDIT", rse_b[..]) == "1";
   nev_b: [16] u8;
   env_exit_verify := gw_env("INKY_NO_EXIT_VERIFY", nev_b[..]) != "1";
+  at_b: [16] u8;
+  env_adaptive_think := gw_env("INKY_ADAPTIVE_THINK", at_b[..]) == "1";
+  ns_b: [16] u8;
+  env_no_seed := gw_env("INKY_NO_SEED", ns_b[..]) == "1";
+  nac_b: [16] u8;
+  env_no_auto_check := gw_env("INKY_NO_AUTO_CHECK", nac_b[..]) == "1";
+  acc_b: [512] u8;
+  env_auto_check_cmd := gw_env("INKY_AUTO_CHECK_CMD", acc_b[..]);
 
   while true {
     ended := "";
@@ -510,6 +518,10 @@ tool_main :: () -> int #export_c #effects(all) {
     ev: [8] IkRunEvent;
     run[0].hybrid_exec = env_hybrid;
     run[0].adaptive_effort = env_adaptive;
+    run[0].adaptive_think = env_adaptive_think;
+    run[0].no_seed = env_no_seed;
+    run[0].no_auto_check = env_no_auto_check;
+    run[0].nauto_check = ikw_keep(run[0].auto_check_cmd[..], env_auto_check_cmd);
     run[0].max_tokens_step = env_max_tok;
     run[0].max_thinking_tokens = env_max_think;
     run[0].refuse_shell_edit = env_refuse_shell_edit;

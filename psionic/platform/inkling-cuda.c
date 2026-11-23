@@ -37,6 +37,8 @@
 #define INK_D   8
 #define INK_MAX_BLOCKS 8
 #define INK_MAX_EXPERTS 256
+#define INK_MAX_SNAPS 8
+#define INK_MAX_SWA_SNAPS 4
 /* A layer's cache holds at least this many experts: two steps' worth, so the
    experts one step chose are never evicted while that step still needs them. */
 #define INK_MIN_EXPERT_SLOTS 16
@@ -507,16 +509,29 @@ struct InkSession {
 
     int pos;
     int max_pos_written;
+    int swa_cap_min;
+    int swa_valid_from;
+    int dspark_live_len;
+    int dspark_swa_valid_from;
+    int32_t *live_tokens;
+    int live_len;
+    uint64_t snap_clock;
     struct {
         int valid;
         int pos;
         int has_logits;
         int has_dspark;
+        int pinned;
+        uint64_t last_used;
         int32_t *tokens;
         float   *conv_state;
         float   *logits;
+        uint8_t *swa_kv;
+        int      swa_win;
         float   *dspark_last_taps;
-    } snaps[2];
+        uint8_t *dspark_swa_kv;
+        int      dspark_swa_win;
+    } snaps[INK_MAX_SNAPS];
     double total_gpu_seconds;
     int total_steps;
     int profile;
@@ -2284,6 +2299,11 @@ static int ink_dspark_enqueue_absorb(InkSession *s, int stride_nb, int n_tok, in
         if (enqueue_dspark_absorb_body(s, stride_nb, n_tok, (int64_t)pos0) != 0) return 1;
     }
     d->pos = pos0 + n_tok;
+    s->dspark_live_len = d->pos;
+    int ds_cap = d->layers[0].kv_cap;
+    if (ds_cap > 0 && d->pos - ds_cap > s->dspark_swa_valid_from) {
+        s->dspark_swa_valid_from = d->pos - ds_cap;
+    }
     return 0;
 }
 
@@ -3018,13 +3038,19 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
             }
         }
     }
+    s->swa_cap_min = s->max_ctx;
+    for (int il = 0; il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
+        if (hp->is_swa[ip] && s->kv_cap[il] < s->swa_cap_min) s->swa_cap_min = s->kv_cap[il];
+    }
     size_t zeros = (n_kv > d ? n_kv : d) * 3;
     s->logits_host = (float *)calloc((size_t)hp->n_vocab, sizeof(float));
     s->hidden_host = (float *)calloc(d, sizeof(float));
     s->zeros = (float *)calloc(zeros, sizeof(float));
     s->moe_tasks_host = (uint32_t *)calloc(s->moe_tasks_words, sizeof(uint32_t));
     s->tok_hist = (int32_t *)calloc((size_t)s->max_ctx, sizeof(int32_t));
-    if (!s->logits_host || !s->hidden_host || !s->zeros || !s->moe_tasks_host || !s->tok_hist) {
+    s->live_tokens = (int32_t *)calloc((size_t)s->max_ctx, sizeof(int32_t));
+    if (!s->logits_host || !s->hidden_host || !s->zeros || !s->moe_tasks_host || !s->tok_hist || !s->live_tokens) {
         snprintf(err, err_bytes, "out of memory");
         ink_close(s); return 1;
     }
@@ -3035,6 +3061,10 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     memset(s->prof_seconds, 0, sizeof s->prof_seconds);
     memset(s->prof_calls, 0, sizeof s->prof_calls);
     s->pos = 0;
+    s->live_len = 0;
+    s->swa_valid_from = 0;
+    s->dspark_live_len = 0;
+    s->dspark_swa_valid_from = 0;
     s->spec_active_idx = -1;
     s->pld_ema2 = 0.25f;
     s->pld_ema3 = 0.50f;
@@ -3107,17 +3137,25 @@ void ink_close(InkSession *s) {
         if (s->module) pc_unload(s->module);
         if (s->stream) pc_destroy_stream(s->stream);
     }
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         free(s->snaps[i].tokens); free(s->snaps[i].conv_state);
-        free(s->snaps[i].logits); free(s->snaps[i].dspark_last_taps);
+        free(s->snaps[i].logits); free(s->snaps[i].swa_kv);
+        free(s->snaps[i].dspark_last_taps); free(s->snaps[i].dspark_swa_kv);
     }
     free(s->logits_host); free(s->hidden_host); free(s->zeros); free(s->moe_tasks_host);
-    free(s->tok_hist); free(s->pred_toks); free(s->sess_hist);
+    free(s->tok_hist); free(s->live_tokens); free(s->pred_toks); free(s->sess_hist);
     ink_gguf_close(&s->gguf);
     free(s);
 }
 
 static int ink_flush_spec(InkSession *s);
+
+static inline void ink_mark_written_cuda(InkSession *s, int p_end) {
+    if (p_end > s->max_pos_written) s->max_pos_written = p_end;
+    if (s->swa_cap_min > 0 && p_end - s->swa_cap_min > s->swa_valid_from) {
+        s->swa_valid_from = p_end - s->swa_cap_min;
+    }
+}
 
 void ink_reset(InkSession *s) {
     if (!s) return;
@@ -3125,7 +3163,11 @@ void ink_reset(InkSession *s) {
         pc_fill(s->conv_all, 0, s->conv_all_elems, s->stream);
     }
     s->pos = 0;
+    s->live_len = 0;
     s->max_pos_written = 0;
+    s->swa_valid_from = 0;
+    s->dspark_live_len = 0;
+    s->dspark_swa_valid_from = 0;
     s->tok_hist_len = 0;
     s->spec_head = 0;
     s->spec_tail = 0;
@@ -3135,8 +3177,12 @@ void ink_reset(InkSession *s) {
     s->argmax_valid = 0;
     s->logits_host_valid = 0;
     s->hidden_host_valid = 0;
-    s->snaps[0].valid = 0;
-    s->snaps[1].valid = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        s->snaps[i].valid = 0;
+        s->snaps[i].pinned = 0;
+        s->snaps[i].swa_win = 0;
+        s->snaps[i].dspark_swa_win = 0;
+    }
     if (s->dspark.ready) {
         s->dspark.pos = 0;
         s->dspark.pending_pos0 = 0;
@@ -3172,7 +3218,30 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
     if (ink_flush_spec(s) != 0) return;
     if (s->dspark.ready && s->dspark.pending_got > 0) ink_dspark_flush_pending(s);
     const InkHParams *hp = &s->gguf.hp;
-    int slot = save_logits ? 0 : 1;
+    int is_pinned = (save_logits == 2);
+    int has_lg = (save_logits == 1);
+
+    /* Choose slot: reuse matching (pos, pinned), else free slot, else LRU non-pinned (or LRU pinned if is_pinned). */
+    int slot = -1;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        if (s->snaps[i].valid && s->snaps[i].pos == n_tokens && s->snaps[i].pinned == is_pinned) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < INK_MAX_SNAPS; i++) {
+            if (!s->snaps[i].valid) { slot = i; break; }
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < INK_MAX_SNAPS; i++) {
+            if (!is_pinned && s->snaps[i].pinned) continue;
+            if (slot < 0 || s->snaps[i].last_used < s->snaps[slot].last_used) slot = i;
+        }
+        if (slot < 0) slot = 0;
+    }
+
     if (!s->snaps[slot].tokens) {
         s->snaps[slot].tokens = (int32_t *)malloc((size_t)s->max_ctx * sizeof(int32_t));
         s->snaps[slot].conv_state = (float *)malloc(s->conv_all_elems * sizeof(float));
@@ -3183,7 +3252,7 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
             return;
         }
     }
-    if (save_logits) {
+    if (has_lg) {
         const float *lg = ink_logits(s);
         if (!lg) { s->snaps[slot].valid = 0; return; }
         memcpy(s->snaps[slot].logits, lg, (size_t)hp->n_vocab * sizeof(float));
@@ -3194,33 +3263,112 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
     if (st == PC_OK && save_ds) {
         st = pc_download(s->snaps[slot].dspark_last_taps, s->dspark.last_taps, 4 * 2304 * 4, s->stream);
     }
+
+    /* Optional host-RAM SWA KV window backup so pinned system/early checkpoints survive SWA ring wraps. */
+    s->snaps[slot].swa_win = 0;
+    s->snaps[slot].dspark_swa_win = 0;
+    int swa_slots = 0;
+    for (int il = 0; il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
+        if (hp->is_swa[ip]) swa_slots++;
+    }
+    int n_swa_alloc = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
+        if (s->snaps[i].swa_kv) n_swa_alloc++;
+    }
+    int want_swa = (st == PC_OK && swa_slots > 0 && hp->swa > 0 &&
+                    (is_pinned || s->snaps[slot].swa_kv != NULL || n_swa_alloc < INK_MAX_SWA_SNAPS));
+    if (want_swa) {
+        size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
+        size_t kv_b_per_tok = s->kv_fp8 ? n_kv : (n_kv * 2);
+        size_t swa_bytes = (size_t)swa_slots * (size_t)hp->swa * kv_b_per_tok * 2;
+        if (!s->snaps[slot].swa_kv && (is_pinned || n_swa_alloc < INK_MAX_SWA_SNAPS)) {
+            s->snaps[slot].swa_kv = (uint8_t *)malloc(swa_bytes);
+        }
+        if (s->snaps[slot].swa_kv) {
+            int win = (n_tokens < (int)hp->swa) ? n_tokens : (int)hp->swa;
+            int p0 = n_tokens - win;
+            uint8_t *sd = s->snaps[slot].swa_kv;
+            for (int il = 0; st == PC_OK && il < s->n_slots; il++) {
+                int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
+                if (!hp->is_swa[ip]) continue;
+                int cap = s->kv_cap[il];
+                int r0 = p0 % cap;
+                int first = (r0 + win <= cap) ? win : (cap - r0);
+                int second = win - first;
+                size_t b1 = (size_t)first * kv_b_per_tok;
+                size_t b2 = (size_t)second * kv_b_per_tok;
+                st = pc_download(sd, s->kv_k[il] + (uint64_t)((size_t)r0 * kv_b_per_tok), b1, s->stream);
+                if (st == PC_OK && b2 > 0) st = pc_download(sd + b1, s->kv_k[il], b2, s->stream);
+                sd += (size_t)win * kv_b_per_tok;
+                if (st == PC_OK) st = pc_download(sd, s->kv_v[il] + (uint64_t)((size_t)r0 * kv_b_per_tok), b1, s->stream);
+                if (st == PC_OK && b2 > 0) st = pc_download(sd + b1, s->kv_v[il], b2, s->stream);
+                sd += (size_t)win * kv_b_per_tok;
+            }
+            if (st == PC_OK) s->snaps[slot].swa_win = win;
+        }
+        if (st == PC_OK && save_ds && s->snaps[slot].swa_kv) {
+            size_t dkv_b = s->dspark.kv_fp8 ? 1024 : 2048;
+            if (!s->snaps[slot].dspark_swa_kv) {
+                s->snaps[slot].dspark_swa_kv = (uint8_t *)malloc((size_t)2 * 2 * 1024 * dkv_b);
+            }
+            if (s->snaps[slot].dspark_swa_kv) {
+                int ds_win = (n_tokens < 1024) ? n_tokens : 1024;
+                int ds_p0 = n_tokens - ds_win;
+                uint8_t *sd = s->snaps[slot].dspark_swa_kv;
+                for (int li = 0; st == PC_OK && li < 3; li++) {
+                    const CudaDsparkLayer *L = &s->dspark.layers[li];
+                    if (!L->is_swa) continue;
+                    int cap = L->kv_cap;
+                    int r0 = ds_p0 % cap;
+                    int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                    int second = ds_win - first;
+                    size_t b1 = (size_t)first * dkv_b;
+                    size_t b2 = (size_t)second * dkv_b;
+                    st = pc_download(sd, L->kv_k + (uint64_t)((size_t)r0 * dkv_b), b1, s->stream);
+                    if (st == PC_OK && b2 > 0) st = pc_download(sd + b1, L->kv_k, b2, s->stream);
+                    sd += (size_t)ds_win * dkv_b;
+                    if (st == PC_OK) st = pc_download(sd, L->kv_v + (uint64_t)((size_t)r0 * dkv_b), b1, s->stream);
+                    if (st == PC_OK && b2 > 0) st = pc_download(sd + b1, L->kv_v, b2, s->stream);
+                    sd += (size_t)ds_win * dkv_b;
+                }
+                if (st == PC_OK) s->snaps[slot].dspark_swa_win = ds_win;
+            }
+        }
+    }
+
     if (st == PC_OK) st = pc_sync_stream(s->stream);
     if (st != PC_OK) { s->snaps[slot].valid = 0; return; }
     s->snaps[slot].pos = n_tokens;
-    s->snaps[slot].has_logits = save_logits ? 1 : 0;
+    s->snaps[slot].has_logits = has_lg ? 1 : 0;
     s->snaps[slot].has_dspark = save_ds;
+    s->snaps[slot].pinned = is_pinned ? 1 : 0;
+    s->snaps[slot].last_used = ++s->snap_clock;
     s->snaps[slot].valid = 1;
 }
 
 int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     if (!s || !tokens || n_tokens <= 0) { ink_reset(s); return 0; }
     const InkHParams *hp = &s->gguf.hp;
-    int swa_cap = s->max_ctx;
-    for (int il = 0; il < s->n_slots; il++) {
-        int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
-        if (hp->is_swa[ip] && s->kv_cap[il] < swa_cap) swa_cap = s->kv_cap[il];
-    }
     int best = -1;
-    for (int i = 0; i < 2; i++) {
+    int best_need_swa = 0;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         if (!s->snaps[i].valid) continue;
         int sp = s->snaps[i].pos;
         if (sp <= 0 || sp > n_tokens) continue;
         if (sp == n_tokens && !s->snaps[i].has_logits) continue;
-        /* The window's keys [oldest_needed .. sp-1] must not have been overwritten by later writes. */
-        int oldest_needed = (sp >= hp->swa) ? (sp - (int)hp->swa + 1) : 0;
-        if (s->max_pos_written - oldest_needed > swa_cap) continue;
+        if (sp > s->live_len || !s->live_tokens) continue;
+        if (memcmp(s->live_tokens, s->snaps[i].tokens, (size_t)sp * sizeof(int32_t)) != 0) continue;
         if (memcmp(s->snaps[i].tokens, tokens, (size_t)sp * sizeof(int32_t)) != 0) continue;
-        if (best < 0 || sp > s->snaps[best].pos) best = i;
+        int oldest_needed = (sp >= (int)hp->swa) ? (sp - (int)hp->swa + 1) : 0;
+        int swa_still_live = (oldest_needed >= s->swa_valid_from);
+        int need_win = (sp < (int)hp->swa) ? sp : (int)hp->swa;
+        int has_swa_backup = (s->snaps[i].swa_kv != NULL && s->snaps[i].swa_win >= need_win);
+        if (!swa_still_live && !has_swa_backup) continue;
+        if (best < 0 || sp > s->snaps[best].pos) {
+            best = i;
+            best_need_swa = !swa_still_live;
+        }
     }
     if (best < 0) { ink_reset(s); return 0; }
     s->spec_head = 0;
@@ -3228,15 +3376,79 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     s->spec_active_idx = -1;
     s->conv_pending_nb = 0;
     s->conv_pending_n = 0;
+    int sp = s->snaps[best].pos;
     PcStatus st = pc_upload(s->conv_all, s->snaps[best].conv_state, s->conv_all_elems * 4, s->stream);
-    if (st == PC_OK && s->dspark.ready && s->snaps[best].has_dspark && s->snaps[best].dspark_last_taps) {
-        st = pc_upload(s->dspark.last_taps, s->snaps[best].dspark_last_taps, 4 * 2304 * 4, s->stream);
+    if (st == PC_OK && best_need_swa && s->snaps[best].swa_kv) {
+        size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
+        size_t kv_b_per_tok = s->kv_fp8 ? n_kv : (n_kv * 2);
+        int win = s->snaps[best].swa_win;
+        int p0 = sp - win;
+        const uint8_t *ss = s->snaps[best].swa_kv;
+        for (int il = 0; st == PC_OK && il < s->n_slots; il++) {
+            int ip = (il < hp->n_phys) ? il : (int)(hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start));
+            if (!hp->is_swa[ip]) continue;
+            int cap = s->kv_cap[il];
+            int r0 = p0 % cap;
+            int first = (r0 + win <= cap) ? win : (cap - r0);
+            int second = win - first;
+            size_t b1 = (size_t)first * kv_b_per_tok;
+            size_t b2 = (size_t)second * kv_b_per_tok;
+            st = pc_upload(s->kv_k[il] + (uint64_t)((size_t)r0 * kv_b_per_tok), ss, b1, s->stream);
+            if (st == PC_OK && b2 > 0) st = pc_upload(s->kv_k[il], ss + b1, b2, s->stream);
+            ss += (size_t)win * kv_b_per_tok;
+            if (st == PC_OK) st = pc_upload(s->kv_v[il] + (uint64_t)((size_t)r0 * kv_b_per_tok), ss, b1, s->stream);
+            if (st == PC_OK && b2 > 0) st = pc_upload(s->kv_v[il], ss + b1, b2, s->stream);
+            ss += (size_t)win * kv_b_per_tok;
+        }
+        if (st == PC_OK) {
+            s->swa_valid_from = p0;
+            s->max_pos_written = sp;
+        }
+    }
+    int ds_restored = 0;
+    int ds_new_swa_valid_from = s->dspark_swa_valid_from;
+    if (st == PC_OK && s->dspark.ready && s->snaps[best].has_dspark &&
+        s->snaps[best].dspark_last_taps && sp <= s->dspark_live_len) {
+        int ds_oldest = (sp > 1024) ? (sp - 1024) : 0;
+        int ds_need_win = (sp < 1024) ? sp : 1024;
+        int ds_swa_live = (ds_oldest >= s->dspark_swa_valid_from);
+        int ds_has_backup = (s->snaps[best].dspark_swa_kv != NULL && s->snaps[best].dspark_swa_win >= ds_need_win);
+        if (ds_swa_live || ds_has_backup) {
+            if (!ds_swa_live) {
+                size_t dkv_b = s->dspark.kv_fp8 ? 1024 : 2048;
+                int ds_win = s->snaps[best].dspark_swa_win;
+                int ds_p0 = sp - ds_win;
+                const uint8_t *ss = s->snaps[best].dspark_swa_kv;
+                for (int li = 0; st == PC_OK && li < 3; li++) {
+                    const CudaDsparkLayer *L = &s->dspark.layers[li];
+                    if (!L->is_swa) continue;
+                    int cap = L->kv_cap;
+                    int r0 = ds_p0 % cap;
+                    int first = (r0 + ds_win <= cap) ? ds_win : (cap - r0);
+                    int second = ds_win - first;
+                    size_t b1 = (size_t)first * dkv_b;
+                    size_t b2 = (size_t)second * dkv_b;
+                    st = pc_upload(L->kv_k + (uint64_t)((size_t)r0 * dkv_b), ss, b1, s->stream);
+                    if (st == PC_OK && b2 > 0) st = pc_upload(L->kv_k, ss + b1, b2, s->stream);
+                    ss += (size_t)ds_win * dkv_b;
+                    if (st == PC_OK) st = pc_upload(L->kv_v + (uint64_t)((size_t)r0 * dkv_b), ss, b1, s->stream);
+                    if (st == PC_OK && b2 > 0) st = pc_upload(L->kv_v, ss + b1, b2, s->stream);
+                    ss += (size_t)ds_win * dkv_b;
+                }
+                ds_new_swa_valid_from = ds_p0;
+            }
+            if (st == PC_OK) {
+                st = pc_upload(s->dspark.last_taps, s->snaps[best].dspark_last_taps, 4 * 2304 * 4, s->stream);
+                if (st == PC_OK) ds_restored = 1;
+            }
+        }
     }
     if (st == PC_OK) st = pc_sync_stream(s->stream);
     if (st != PC_OK) { ink_reset(s); return 0; }
-    int sp = s->snaps[best].pos;
     if (s->dspark.ready) {
-        s->dspark.pos = s->snaps[best].has_dspark ? sp : -1;
+        s->dspark.pos = ds_restored ? sp : -1;
+        s->dspark_live_len = ds_restored ? sp : 0;
+        s->dspark_swa_valid_from = ds_restored ? ds_new_swa_valid_from : 0;
         s->dspark.pending_pos0 = 0;
         s->dspark.pending_nb = 0;
         s->dspark.pending_got = 0;
@@ -3259,8 +3471,9 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
         s->tok_hist_len = sp;
     }
     s->pos = sp;
-    s->max_pos_written = sp;
-    for (int i = 0; i < 2; i++) {
+    s->live_len = sp;
+    s->snaps[best].last_used = ++s->snap_clock;
+    for (int i = 0; i < INK_MAX_SNAPS; i++) {
         if (i != best && s->snaps[i].valid && s->snaps[i].pos > sp) s->snaps[i].valid = 0;
     }
     return sp;
@@ -3704,7 +3917,7 @@ static int enqueue_batch(InkSession *s, const int32_t *tokens, int np_tokens, in
     }
 
     s->pos += np_tokens;
-    if (s->pos > s->max_pos_written) s->max_pos_written = s->pos;
+    ink_mark_written_cuda(s, s->pos);
     s->total_steps += np_tokens;
     return 0;
 }
@@ -3871,7 +4084,7 @@ static int ink_verify_batch_cuda(InkSession *s, const int32_t *tokens, int nb) {
     s->total_gpu_seconds += dt;
     s->queue_seconds += queued - began;
     s->dspark.last_verify_s = dt;
-    if (s->pos + nb > s->max_pos_written) s->max_pos_written = s->pos + nb;
+    ink_mark_written_cuda(s, s->pos + nb);
     return 0;
 }
 
@@ -3981,6 +4194,10 @@ int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_
         memcpy(s->tok_hist + s->pos, tokens, (size_t)n_tokens * sizeof(int32_t));
         if (s->pos + n_tokens > s->tok_hist_len) s->tok_hist_len = s->pos + n_tokens;
     }
+    if (s->live_tokens && s->pos + n_tokens <= s->max_ctx) {
+        memcpy(s->live_tokens + s->pos, tokens, (size_t)n_tokens * sizeof(int32_t));
+        s->live_len = s->pos + n_tokens;
+    }
     double began = pc_seconds();
     for (int at = 0; at < n_tokens; at += s->batch) {
         int np = n_tokens - at < s->batch ? n_tokens - at : s->batch;
@@ -4022,6 +4239,10 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
         if (s->tok_hist && s->pos < s->max_ctx) {
             s->tok_hist[s->pos] = token_id;
             if (s->pos + 1 > s->tok_hist_len) s->tok_hist_len = s->pos + 1;
+        }
+        if (s->live_tokens && s->pos < s->max_ctx) {
+            s->live_tokens[s->pos] = token_id;
+            s->live_len = s->pos + 1;
         }
         s->pos++;
         s->total_steps++;
@@ -4142,6 +4363,10 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
                 s->tok_hist[pos0] = token_id;
                 if (pos0 + 1 > s->tok_hist_len) s->tok_hist_len = pos0 + 1;
             }
+            if (s->live_tokens && pos0 < s->max_ctx) {
+                s->live_tokens[pos0] = token_id;
+                s->live_len = pos0 + 1;
+            }
             for (int t = 0; t < nb; t++) s->spec_q[t] = batch_toks[t];
             s->spec_head = 1;
             s->spec_tail = nb; /* Queue ALL verified drafts so temp>0 hits match seamlessly too! */
@@ -4173,6 +4398,10 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
     if (s->tok_hist && step_pos0 < s->max_ctx) {
         s->tok_hist[step_pos0] = token_id;
         if (step_pos0 + 1 > s->tok_hist_len) s->tok_hist_len = step_pos0 + 1;
+    }
+    if (s->live_tokens && step_pos0 < s->max_ctx) {
+        s->live_tokens[step_pos0] = token_id;
+        s->live_len = step_pos0 + 1;
     }
     double began = pc_seconds();
     if (enqueue_batch(s, &token_id, 1, compute_logits) != 0) {
@@ -4248,6 +4477,10 @@ int ink_verify_draft(InkSession *s, const int32_t *tokens, int n_tokens,
     if (s->tok_hist && pos0 + a <= s->max_ctx) {
         memcpy(s->tok_hist + pos0, tokens, (size_t)a * sizeof(int32_t));
         if (pos0 + a > s->tok_hist_len) s->tok_hist_len = pos0 + a;
+    }
+    if (s->live_tokens && pos0 + a <= s->max_ctx) {
+        memcpy(s->live_tokens + pos0, tokens, (size_t)a * sizeof(int32_t));
+        s->live_len = pos0 + a;
     }
     s->conv_pending_nb = n_tokens;
     s->conv_pending_n = a;

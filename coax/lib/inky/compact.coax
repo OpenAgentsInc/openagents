@@ -63,6 +63,15 @@ ik_compact_stub :: (h: [] IkHistory, m: IkMsg, out: [] u8) -> int {
   if m.tool_kind == IK_TK_READ {
     n = ik_fmt_put(out, n, "; call read_file again if needed");
   }
+  // Restorable compaction (Manus pattern): keep a concise error excerpt on failed
+  // calls so the agent remembers what failed and does not repeat the same broken fix.
+  if m.is_error || (m.tool_kind == IK_TK_CMD && m.tool_exit != 0) {
+    raw_err := ik_hist_str(h, m.text);
+    if raw_err.count > 0 {
+      n = ik_fmt_put(out, n, " | err: ");
+      n = ik_compact_line_snippet(raw_err, 220, out, n);
+    }
+  }
   return ik_fmt_put(out, n, "]");
 }
 
@@ -88,7 +97,7 @@ ik_compact_copy_msg :: (dst: [] IkHistory, src: [] IkHistory, idx: int, strip_re
     return ik_hist_assistant(dst, m.step, ik_hist_str(src, m.text), rsn, calls[0..<cc]);
   }
   // IK_ROLE_TOOL
-  stub: [384] u8;
+  stub: [640] u8;
   body := ik_hist_str(src, m.text);
   was_masked := m.masked;
   if mask_tool && !m.masked && m.text.len > IK_MASK_MIN_BYTES {
@@ -178,8 +187,43 @@ ik_compact_stage2 :: (h: [] IkHistory, tmp: [] IkHistory) -> bool {
   if cut >= h[0].n { return false; }
 
   // Build deterministic handover summary of msgs[0..<cut].
+  // Preserve latest update_todos checklist and edited files list so the active plan survives rollover.
+  last_todos := "";
+  edited_paths: [16] string;
+  nedited := 0;
+  for i: 0..<cut {
+    m := h[0].msgs[i];
+    if m.role == IK_ROLE_ASSISTANT {
+      for k: 0..<m.call_count {
+        c := h[0].calls[m.call_start + k];
+        if ik_hist_str(h, c.name) == "update_todos" {
+          last_todos = ik_hist_str(h, c.args);
+        }
+      }
+    } else if m.role == IK_ROLE_TOOL && !m.is_error && (m.tool_kind == IK_TK_EDIT || m.tool_kind == IK_TK_WRITE) {
+      tp := ik_hist_str(h, m.tool_path);
+      if tp.count > 0 && nedited < 16 {
+        dup := false;
+        for ei: 0..<nedited { if edited_paths[ei] == tp { dup = true; break; } }
+        if !dup { edited_paths[nedited] = tp; nedited += 1; }
+      }
+    }
+  }
   sum: [4096] u8;
   sn := ik_fmt_put(sum[..], 0, "[Earlier session summary]\n");
+  if nedited > 0 {
+    sn = ik_fmt_put(sum[..], sn, "Files modified earlier: ");
+    for ei: 0..<nedited {
+      if ei > 0 { sn = ik_fmt_put(sum[..], sn, ", "); }
+      sn = ik_compact_line_snippet(edited_paths[ei], 80, sum[..], sn);
+    }
+    sn = ik_fmt_byte(sum[..], sn, '\n');
+  }
+  if last_todos.count > 0 {
+    sn = ik_fmt_put(sum[..], sn, "Latest checklist: ");
+    sn = ik_compact_line_snippet(last_todos, 480, sum[..], sn);
+    sn = ik_fmt_byte(sum[..], sn, '\n');
+  }
   sn = ik_fmt_put(sum[..], sn, "Tasks & observations from earlier in this conversation:\n");
   for i: 0..<cut {
     if sn >= 3800 { sn = ik_fmt_put(sum[..], sn, "- [... earlier items truncated ...]\n"); break; }
@@ -207,6 +251,13 @@ ik_compact_stage2 :: (h: [] IkHistory, tmp: [] IkHistory) -> bool {
         sn = ik_fmt_byte(sum[..], sn, ')');
       } else if m.is_error {
         sn = ik_fmt_put(sum[..], sn, " (error)");
+      }
+      if m.is_error || (m.tool_kind == IK_TK_CMD && m.tool_exit != 0) {
+        err_s := ik_hist_str(h, m.text);
+        if err_s.count > 0 {
+          sn = ik_fmt_put(sum[..], sn, ": ");
+          sn = ik_compact_line_snippet(err_s, 120, sum[..], sn);
+        }
       }
       sn = ik_fmt_byte(sum[..], sn, '\n');
     }
@@ -288,4 +339,43 @@ ik_compact_stage2 :: (h: [] IkHistory, tmp: [] IkHistory) -> bool {
   n := ik_hist_messages(h[..], msgs[..], gcalls[..]);
   #assert n == h[0].n && gwt_history_valid(msgs[0..<n]);
   #assert msgs[0].role == "user" && cast(string) msgs[0].text[0..<25] == "[Earlier session summary]";
+}
+
+#test "inky compact: Stage 1 keeps error excerpt and Stage 2 carries edited files and latest checklist" {
+  h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  big_err: [900] u8;
+  p := ik_fmt_put(big_err[..], 0, "error[E0330]: type mismatch on line 42 ");
+  while p < big_err.count { big_err[p] = 'x'; p += 1; }
+  none: [1] GwToolCall;
+
+  // Turn 1: failing check, checklist update, and file edit
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Fix bug in foo.coax");
+  c1 := [1] GwToolCall.[GwToolCall.{call_id = "e1", name = "run_command", input_json = "{\"command\":\"coax test foo.coax\"}"}];
+  #assert ik_hist_assistant(h[..], 1, "", "run check", c1[..]);
+  #assert ik_hist_tool(h[..], 1, "e1", "run_command", IK_TK_CMD, "coax test foo.coax", 1, cast(string) big_err[..], true);
+  c2 := [1] GwToolCall.[GwToolCall.{call_id = "e2", name = "update_todos", input_json = "{\"todos\":[{\"id\":\"1\",\"content\":\"fix E0330\",\"status\":\"in_progress\"}]}"}];
+  #assert ik_hist_assistant(h[..], 2, "", "", c2[..]);
+  #assert ik_hist_tool(h[..], 2, "e2", "update_todos", IK_TK_TODOS, "", 0, "Updated 1 todos.", false);
+  c3 := [1] GwToolCall.[GwToolCall.{call_id = "e3", name = "edit_file", input_json = "{\"path\":\"foo.coax\"}"}];
+  #assert ik_hist_assistant(h[..], 3, "", "", c3[..]);
+  #assert ik_hist_tool(h[..], 3, "e3", "edit_file", IK_TK_EDIT, "foo.coax", 0, "Edited foo.coax", false);
+  #assert ik_hist_assistant(h[..], 4, "Done turn 1", "", none[0..<0]);
+
+  // Turn 2 + 3 so Turn 1 is masked by Stage 1:
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Turn 2");
+  #assert ik_hist_assistant(h[..], 1, "Reply 2", "", none[0..<0]);
+  _ = ik_hist_begin_turn(h[..]);
+  #assert ik_hist_user(h[..], "Turn 3");
+  #assert ik_hist_assistant(h[..], 1, "Reply 3", "", none[0..<0]);
+
+  #assert ik_compact_stage1(h[..], tmp[..]);
+  stub_s := ik_hist_str(h[..], h[0].msgs[2].text);
+  #assert ik_fmt_has_ci(stub_s, "err: error[E0330]: type mismatch on line 42");
+
+  #assert ik_compact_stage2(h[..], tmp[..]);
+  sum_s := ik_hist_str(h[..], h[0].msgs[0].text);
+  #assert ik_fmt_has_ci(sum_s, "Files modified earlier: foo.coax") && ik_fmt_has_ci(sum_s, "Latest checklist:") && ik_fmt_has_ci(sum_s, "fix E0330");
 }

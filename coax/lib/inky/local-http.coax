@@ -1,0 +1,667 @@
+// Inky zero-fork persistent loopback HTTP/1.1 Keep-Alive transport over cxsock_*
+// (docs/coder/inky-self-improvement.md §1.3 #4c, §9.4 #5).
+// Eliminates per-turn curl fork()/execve() and TCP handshakes when talking to a local
+// psionic-inkling-serve on http://127.0.0.1:<port> or http://localhost:<port>.
+// Transparently falls back to GwCall (curl) for HTTPS, remote hosts, GW_RECORD/GW_REPLAY,
+// oversized bodies, or INKY_USE_CURL=1.
+//
+// Checks: coax/bin/coax test coax/lib/inky/local-http.coax --library
+
+#load "../net/socket_foreign.coax";
+#load "../gateway/psionic.coax";
+
+IK_LHTTP_MAX_BODY :: 900000;     // stay comfortably below CXSOCK_MAX_OUT (1 MiB)
+IK_LHTTP_CONNECT_MS :: 3000;
+IK_LHTTP_FLUSH_MS :: 5000;
+IK_LHTTP_RBUF :: 8192;
+IK_LHTTP_SOCK_TIMEOUT :: -2;     // matches CXSOCK_TIMEOUT in coax/platform/socket-native.h
+
+IK_CS_SIZE :: 0;                 // reading chunk-size hex line
+IK_CS_DATA :: 1;                 // reading chunk payload bytes
+IK_CS_CRLF :: 2;                 // consuming trailing \r\n after chunk data
+IK_CS_TRAILER :: 3;              // consuming trailing headers after 0-length chunk
+IK_CS_DONE :: 4;                 // chunked stream complete
+
+IkLocalUrl :: struct {
+  ok: bool;
+  host: string;
+  port: int;
+  path: string;
+}
+
+// Parses a strict loopback plain-HTTP URL ("http://127.0.0.1:PORT/path" or "http://localhost:PORT/path").
+// Rejects HTTPS, non-loopback hosts, invalid ports, or control bytes.
+ik_lhttp_parse_url :: (url: string) -> IkLocalUrl {
+  res: IkLocalUrl;
+  if url.count < 16 || cast(string) url[0..<7] != "http://" { return res; }
+  for c: url { if c < 33 || c > 126 { return res; } }
+  rest := cast(string) url[7..<url.count];
+  host := "";
+  pos := 0;
+  if rest.count >= 9 && cast(string) rest[0..<9] == "127.0.0.1" {
+    host = "127.0.0.1"; pos = 9;
+  } else if rest.count >= 9 && cast(string) rest[0..<9] == "localhost" {
+    host = "localhost"; pos = 9;
+  } else {
+    return res;
+  }
+  port := 80;
+  if pos < rest.count && rest[pos] == ':' {
+    pos += 1;
+    p0 := pos;
+    pv := 0;
+    while pos < rest.count && rest[pos] >= '0' && rest[pos] <= '9' {
+      pv = pv * 10 + cast(int) (rest[pos] - '0');
+      if pv > 65535 { return res; }
+      pos += 1;
+    }
+    if pos == p0 || pv <= 0 { return res; }
+    port = pv;
+  }
+  path := "/";
+  if pos < rest.count {
+    if rest[pos] != '/' { return res; }
+    path = cast(string) rest[pos..<rest.count];
+  }
+  return IkLocalUrl.{ok = true, host = host, port = port, path = path};
+}
+
+ik_lhttp_push_host :: (host: string) -> bool {
+  for c: host {
+    if cxsock_host_push(cast(int) c) != 0 { return false; }
+  }
+  return true;
+}
+
+ik_lhttp_write_str :: (fd: int, s: string) -> bool {
+  for c: s {
+    if cxsock_write(fd, cast(int) c) != 0 { return false; }
+  }
+  return true;
+}
+
+ik_lhttp_ci_eq :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := a[i]; if ca >= 'A' && ca <= 'Z' { ca += 32; }
+    cb := b[i]; if cb >= 'A' && cb <= 'Z' { cb += 32; }
+    if ca != cb { return false; }
+  }
+  return true;
+}
+
+ik_lhttp_ci_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if ik_lhttp_ci_eq(cast(string) hay[i..<i + needle.count], needle) { return true; }
+  }
+  return false;
+}
+
+ik_lhttp_parse_dec :: (s: string) -> int {
+  if s.count == 0 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    if v > 100000000 { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+ik_lhttp_parse_hex :: (s: string) -> int {
+  i := 0;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  v := 0;
+  digits := 0;
+  while i < s.count {
+    c := s[i];
+    d := -1;
+    if c >= '0' && c <= '9' { d = cast(int) (c - '0'); }
+    else if c >= 'a' && c <= 'f' { d = cast(int) (c - 'a') + 10; }
+    else if c >= 'A' && c <= 'F' { d = cast(int) (c - 'A') + 10; }
+    else if c == ';' || c == ' ' || c == '\t' || c == '\r' { break; }
+    else { return -1; }
+    if v > 100000000 { return -1; }
+    v = v * 16 + d;
+    digits += 1;
+    i += 1;
+  }
+  return ifx digits > 0 then v else -1;
+}
+
+// Zero-fork loopback health probe: GET /v1/models over cxsock_* (<0.5 ms vs ~25 ms curl fork).
+// Falls back to gw_psionic_up for non-loopback peers.
+ik_lhttp_up :: (base: string) -> bool {
+  ub: [512] u8;
+  url := gw_psionic_url(base, "/v1/models", ub[..]);
+  if url.count == 0 { return false; }
+  u := ik_lhttp_parse_url(url);
+  if !u.ok { return gw_psionic_up(base); }
+  if !ik_lhttp_push_host(u.host) { return false; }
+  fd := cxsock_connect(u.port, 500);
+  if fd < 0 { return false; }
+  defer { _ = cxsock_close(fd); }
+  pb: [24] u8;
+  ok := ik_lhttp_write_str(fd, "GET /v1/models HTTP/1.1\r\nHost: ") &&
+        ik_lhttp_write_str(fd, u.host) && ik_lhttp_write_str(fd, ":") &&
+        ik_lhttp_write_str(fd, gw_digits(pb[..], u.port)) &&
+        ik_lhttp_write_str(fd, "\r\nConnection: close\r\n\r\n");
+  if !ok || cxsock_flush(fd, 500) != 0 { return false; }
+  got := cxsock_read(fd, 1000);
+  if got < 12 { return false; }
+  hdr: [64] u8;
+  n := ifx got < 64 then got else 64;
+  eol := n;
+  for i: 0..<n {
+    b := cast,trunc(u8) cxsock_byte(fd, i);
+    if b == '\r' || b == '\n' { eol = i; break; }
+    hdr[i] = b;
+  }
+  return gw_status_of(cast(string) hdr[0..<eol]) == 200;
+}
+
+// Persistent non-blocking streaming HTTP/1.1 Keep-Alive call over loopback TCP.
+IkLocalCall :: struct {
+  fd: int = -1;                  // persistent keep-alive loopback socket (-1 when disconnected)
+  conn_host: [32] u8; nconn_host: int;
+  conn_port: int;
+  active: bool;
+  wire: int;
+  status: int;
+  in_headers: bool;
+  chunked: bool;
+  keep_alive: bool;
+  has_clen: bool;
+  content_len: int;
+  body_read: int;
+  cstate: int;
+  crem: int;
+  cr_pending: bool;
+  reused_conn: bool;
+  got_any_byte: bool;
+  // Raw socket read buffer
+  rbuf: [IK_LHTTP_RBUF] u8;
+  rpos: int;
+  rlen: int;
+  // Line accumulator (borrows GwCallBuffers.line) + chunk-size line buffer
+  lbuf: [] u8;
+  nline: int;
+  line_over: bool;
+  cbuf: [64] u8;
+  ncbuf: int;
+  // Shared GwCall parser/completion state (borrows GwCallBuffers)
+  sse: [1] GwSse;
+  ar: [1] ClArena;
+  errbody: [] u8; nerr: int;
+  wbuf: [] u8; nw: int; wfull: bool;
+  ps: [1] GwParse;
+  completion: [1] GwCompletion;
+  seen: bool;
+  whole: bool;
+  first: bool;
+  finished: bool;
+  complete: bool;
+  net_err: bool;
+  unreachable: bool;
+}
+
+ik_lhttp_init :: (c: [] IkLocalCall, b: [] GwCallBuffers) {
+  saved_fd := c[0].fd;
+  saved_port := c[0].conn_port;
+  saved_nh := c[0].nconn_host;
+  saved_h: [32] u8;
+  for i: 0..<saved_nh { saved_h[i] = c[0].conn_host[i]; }
+  c[0] = IkLocalCall.{
+    fd = saved_fd,
+    conn_port = saved_port,
+    nconn_host = saved_nh,
+    lbuf = b[0].line[..],
+    errbody = b[0].errbody[..],
+    wbuf = b[0].data[..],
+  };
+  for i: 0..<saved_nh { c[0].conn_host[i] = saved_h[i]; }
+  c[0].ar[0] = ClArena.{buf = b[0].arena[..]};
+  gw_sse_init(c[0].sse[..], b[0].name[..], b[0].data[..]);
+}
+
+ik_lhttp_drop_conn :: (c: [] IkLocalCall) {
+  if c[0].fd >= 0 {
+    _ = cxsock_close(c[0].fd);
+    c[0].fd = -1;
+  }
+  c[0].nconn_host = 0;
+  c[0].conn_port = 0;
+  c[0].rpos = 0;
+  c[0].rlen = 0;
+}
+
+ik_lhttp_abort :: (c: [] IkLocalCall) {
+  ik_lhttp_drop_conn(c);
+  c[0].active = false;
+  c[0].finished = true;
+}
+
+ik_lhttp_send_req :: (fd: int, u: IkLocalUrl, body: string) -> bool {
+  pb: [24] u8; lb: [24] u8;
+  ok := ik_lhttp_write_str(fd, "POST ") &&
+        ik_lhttp_write_str(fd, u.path) &&
+        ik_lhttp_write_str(fd, " HTTP/1.1\r\nHost: ") &&
+        ik_lhttp_write_str(fd, u.host) && ik_lhttp_write_str(fd, ":") &&
+        ik_lhttp_write_str(fd, gw_digits(pb[..], u.port)) &&
+        ik_lhttp_write_str(fd, "\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\nX-Psionic-Chunked-SSE: 1\r\nContent-Length: ") &&
+        ik_lhttp_write_str(fd, gw_digits(lb[..], body.count)) &&
+        ik_lhttp_write_str(fd, "\r\n\r\n") &&
+        ik_lhttp_write_str(fd, body);
+  if !ok { return false; }
+  return cxsock_flush(fd, IK_LHTTP_FLUSH_MS) == 0;
+}
+
+// Attempts to start a direct zero-fork loopback request.
+// Returns true if taken over by IkLocalCall (either active or immediately refused);
+// returns false if caller should fall back to GwCall (curl).
+ik_lhttp_start :: (c: [] IkLocalCall, g: Gateway, body: string) -> bool {
+  if g.key_env.count > 0 || body.count == 0 || body.count > IK_LHTTP_MAX_BODY { return false; }
+  eb: [64] u8;
+  if gw_env("GW_REPLAY", eb[..]).count > 0 || gw_env("GW_RECORD", eb[..]).count > 0 || gw_env("INKY_USE_CURL", eb[..]) == "1" {
+    return false;
+  }
+  u := ik_lhttp_parse_url(g.url);
+  if !u.ok { return false; }
+
+  c[0].wire = g.wire;
+  c[0].status = 0;
+  c[0].in_headers = true;
+  c[0].chunked = false;
+  c[0].keep_alive = true;
+  c[0].has_clen = false;
+  c[0].content_len = 0;
+  c[0].body_read = 0;
+  c[0].cstate = IK_CS_SIZE;
+  c[0].crem = 0;
+  c[0].cr_pending = false;
+  c[0].got_any_byte = false;
+  c[0].nline = 0;
+  c[0].line_over = false;
+  c[0].ncbuf = 0;
+  c[0].nerr = 0;
+  c[0].nw = 0;
+  c[0].wfull = false;
+  c[0].seen = false;
+  c[0].whole = false;
+  c[0].first = false;
+  c[0].finished = false;
+  c[0].complete = false;
+  c[0].net_err = false;
+  c[0].unreachable = false;
+  c[0].ps[0] = GwParse.{};
+  gw_sse_clear(c[0].sse[..]);
+  gw_completion_begin(c[0].completion[..]);
+
+  // Reuse persistent socket if host:port matches and no stale bytes remain.
+  same := c[0].fd >= 0 && c[0].conn_port == u.port && c[0].nconn_host == u.host.count &&
+          cast(string) c[0].conn_host[0..<c[0].nconn_host] == u.host && c[0].rpos == c[0].rlen;
+  sent := false;
+  c[0].reused_conn = false;
+  if same {
+    if ik_lhttp_send_req(c[0].fd, u, body) {
+      sent = true;
+      c[0].reused_conn = true;
+    } else {
+      ik_lhttp_drop_conn(c);
+    }
+  } else if c[0].fd >= 0 {
+    ik_lhttp_drop_conn(c);
+  }
+
+  if !sent {
+    if !ik_lhttp_push_host(u.host) {
+      c[0].active = true; c[0].net_err = true; c[0].unreachable = true;
+      return true;
+    }
+    fd := cxsock_connect(u.port, IK_LHTTP_CONNECT_MS);
+    if fd < 0 {
+      c[0].active = true; c[0].net_err = true; c[0].unreachable = true;
+      return true;
+    }
+    c[0].fd = fd;
+    c[0].conn_port = u.port;
+    c[0].nconn_host = u.host.count;
+    for i: 0..<u.host.count { c[0].conn_host[i] = u.host[i]; }
+    if !ik_lhttp_send_req(fd, u, body) {
+      ik_lhttp_drop_conn(c);
+      c[0].active = true; c[0].net_err = true;
+      return true;
+    }
+  }
+  c[0].active = true;
+  return true;
+}
+
+// Re-sends on a fresh connection when a kept-alive socket was closed by the peer while idle.
+ik_lhttp_retry_stale :: (c: [] IkLocalCall, g: Gateway, body: string) -> bool {
+  if !c[0].reused_conn || c[0].got_any_byte { return false; }
+  ik_lhttp_drop_conn(c);
+  return ik_lhttp_start(c, g, body);
+}
+
+ik_lhttp_fill :: (c: [] IkLocalCall) -> int {
+  if c[0].rpos < c[0].rlen { return 1; }
+  if c[0].fd < 0 { return -1; }
+  n := cxsock_read(c[0].fd, 0);
+  if n == IK_LHTTP_SOCK_TIMEOUT { return 0; }
+  if n <= 0 { return -1; }
+  c[0].got_any_byte = true;
+  lim := ifx n < IK_LHTTP_RBUF then n else IK_LHTTP_RBUF;
+  for i: 0..<lim { c[0].rbuf[i] = cast,trunc(u8) cxsock_byte(c[0].fd, i); }
+  c[0].rpos = 0;
+  c[0].rlen = lim;
+  return 1;
+}
+
+ik_lhttp_finish :: (c: [] IkLocalCall, out: [] GwEvent, clean_eof: bool) -> int {
+  c[0].active = false;
+  c[0].finished = true;
+  if !clean_eof || !c[0].keep_alive || !(c[0].chunked || c[0].has_clen) {
+    ik_lhttp_drop_conn(c);
+  }
+  if c[0].status == 200 && clean_eof && !c[0].net_err && !c[0].line_over {
+    n := 0;
+    if c[0].whole {
+      if c[0].wfull {
+        ik_lhttp_drop_conn(c);
+        return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the response does not fit its buffer"});
+      }
+      n = gw_parse_whole(c[0].wire, c[0].ar[..], cast(string) c[0].wbuf[0..<c[0].nw], out);
+    } else if !c[0].completion[0].done && !(c[0].sse[0].has_data && !c[0].sse[0].spent) {
+      n = gw_parse_end(c[0].wire, c[0].ps[..], out);
+    }
+    k := 0;
+    for i: 0..<n {
+      ev := out[i];
+      act := gw_completion_feed(c[0].completion[..], ev);
+      if act == GW_COMPLETION_PASS {
+        if ev.kind == GW_EV_TEXT || ev.kind == GW_EV_REASONING || ev.kind == GW_EV_TOOL { c[0].first = true; }
+        out[k] = ev; k += 1;
+      } else if act == GW_COMPLETION_REFUSE {
+        ik_lhttp_drop_conn(c);
+        if ev.kind != GW_EV_REFUSED { ev = GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "an event followed the response finish"}; }
+        if ev.status == 0 { ev.status = 200; }
+        return gw_put(out, k, ev);
+      }
+    }
+    e := gw_completion_end(c[0].completion[..], !(c[0].sse[0].has_data && !c[0].sse[0].spent));
+    c[0].complete = e.kind == GW_EV_DONE;
+    if k >= out.count {
+      c[0].complete = false;
+      return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the response events did not fit their buffer"});
+    }
+    return gw_put(out, k, e);
+  }
+  ik_lhttp_drop_conn(c);
+  if c[0].status == 0 {
+    return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, reason = ifx c[0].unreachable then "the server is unreachable" else "the request failed before any response"});
+  }
+  if c[0].status != 200 {
+    return gw_put(out, 0, gw_refusal(c[0].ar[..], c[0].status, cast(string) c[0].errbody[0..<c[0].nerr]));
+  }
+  return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = ifx c[0].line_over then "a response line exceeded its buffer" else "the stream ended before the response finished"});
+}
+
+ik_lhttp_feed_body_line :: (c: [] IkLocalCall, line: string, out: [] GwEvent) -> int {
+  if c[0].status != 200 {
+    if c[0].nerr > 0 && c[0].nerr < c[0].errbody.count { c[0].errbody[c[0].nerr] = '\n'; c[0].nerr += 1; }
+    for ch: line { if c[0].nerr < c[0].errbody.count { c[0].errbody[c[0].nerr] = ch; c[0].nerr += 1; } }
+    return 0;
+  }
+  if !c[0].seen && !gw_blank(line) {
+    c[0].seen = true;
+    c[0].whole = line[0] == '{' || line[0] == '[';
+  }
+  if c[0].whole {
+    if c[0].nw > 0 && c[0].nw < c[0].wbuf.count { c[0].wbuf[c[0].nw] = '\n'; c[0].nw += 1; }
+    for ch: line {
+      if c[0].nw < c[0].wbuf.count { c[0].wbuf[c[0].nw] = ch; c[0].nw += 1; }
+      else { c[0].wfull = true; }
+    }
+    return 0;
+  }
+  ev := gw_sse_line(c[0].sse[..], line);
+  if !ev.ready { return 0; }
+  if ev.truncated {
+    c[0].active = false; c[0].finished = true; ik_lhttp_drop_conn(c);
+    return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "a stream event did not fit its buffer"});
+  }
+  n := gw_parse(c[0].wire, c[0].ps[..], c[0].ar[..], ev.name, ev.data, out);
+  if n == 0 { return 0; }
+  k := 0;
+  for i: 0..<n {
+    e := out[i];
+    act := gw_completion_feed(c[0].completion[..], e);
+    if act == GW_COMPLETION_PASS {
+      if e.kind == GW_EV_TEXT || e.kind == GW_EV_REASONING || e.kind == GW_EV_TOOL { c[0].first = true; }
+      out[k] = e; k += 1;
+    } else if act == GW_COMPLETION_REFUSE {
+      c[0].active = false; c[0].finished = true; ik_lhttp_drop_conn(c);
+      if e.kind != GW_EV_REFUSED { e = GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "an event followed the response finish"}; }
+      if e.status == 0 { e.status = 200; }
+      return gw_put(out, k, e);
+    }
+  }
+  return k;
+}
+
+ik_lhttp_push_body_byte :: (c: [] IkLocalCall, b: u8, out: [] GwEvent, emitted: [] int) {
+  if b == '\n' {
+    n := c[0].nline;
+    if n > 0 && c[0].lbuf[n - 1] == '\r' { n -= 1; }
+    c[0].nline = 0;
+    if c[0].line_over { return; }
+    emitted[0] = ik_lhttp_feed_body_line(c, cast(string) c[0].lbuf[0..<n], out);
+    return;
+  }
+  if c[0].nline < c[0].lbuf.count {
+    c[0].lbuf[c[0].nline] = b;
+    c[0].nline += 1;
+  } else {
+    c[0].line_over = true;
+  }
+}
+
+// Non-blocking poll of an active loopback HTTP/1.1 stream; returns count of GwEvents in out.
+ik_lhttp_poll :: (c: [] IkLocalCall, g: Gateway, body: string, out: [] GwEvent) -> int {
+  if !c[0].active || c[0].finished { return 0; }
+  if c[0].net_err { return ik_lhttp_finish(c, out, false); }
+  c[0].ar[0].at = 0; c[0].ar[0].full = false;
+
+  for steps: 0..<512 {
+    if c[0].rpos >= c[0].rlen {
+      f := ik_lhttp_fill(c);
+      if f == 0 { return 0; } // Would block (GW_IDLE)
+      if f < 0 {
+        // Stale keep-alive socket closed by peer before sending any byte? Retry once transparently!
+        if !c[0].got_any_byte && c[0].reused_conn {
+          if ik_lhttp_retry_stale(c, g, body) { return 0; }
+        }
+        // Flush any final body line without trailing newline on non-chunked EOF.
+        if !c[0].in_headers && !c[0].chunked && c[0].nline > 0 {
+          n := c[0].nline;
+          if n > 0 && c[0].lbuf[n - 1] == '\r' { n -= 1; }
+          c[0].nline = 0;
+          em := ik_lhttp_feed_body_line(c, cast(string) c[0].lbuf[0..<n], out);
+          if em > 0 || c[0].finished { return em; }
+        }
+        clean := !c[0].in_headers && !c[0].chunked && (!c[0].has_clen || c[0].body_read >= c[0].content_len);
+        return ik_lhttp_finish(c, out, clean);
+      }
+    }
+
+    if c[0].in_headers {
+      while c[0].rpos < c[0].rlen {
+        b := c[0].rbuf[c[0].rpos]; c[0].rpos += 1;
+        if b == '\n' {
+          n := c[0].nline;
+          if n > 0 && c[0].lbuf[n - 1] == '\r' { n -= 1; }
+          c[0].nline = 0;
+          line := cast(string) c[0].lbuf[0..<n];
+          if c[0].status == 0 {
+            s := gw_status_of(line);
+            if s > 0 { c[0].status = s; }
+          } else if n == 0 {
+            if c[0].status == 100 { c[0].status = 0; continue; }
+            c[0].in_headers = false;
+            if c[0].has_clen && c[0].content_len == 0 {
+              return ik_lhttp_finish(c, out, true);
+            }
+            break;
+          } else {
+            te := gw_header_value(line, "transfer-encoding");
+            if ik_lhttp_ci_has(te, "chunked") { c[0].chunked = true; }
+            cl := gw_header_value(line, "content-length");
+            if cl.count > 0 {
+              cv := ik_lhttp_parse_dec(cl);
+              if cv >= 0 { c[0].has_clen = true; c[0].content_len = cv; }
+            }
+            cn := gw_header_value(line, "connection");
+            if ik_lhttp_ci_has(cn, "close") { c[0].keep_alive = false; }
+          }
+        } else if c[0].nline < c[0].lbuf.count {
+          c[0].lbuf[c[0].nline] = b; c[0].nline += 1;
+        } else {
+          c[0].line_over = true;
+          return ik_lhttp_finish(c, out, false);
+        }
+      }
+      continue;
+    }
+
+    // Body framing: chunked vs Content-Length / EOF-delimited.
+    if c[0].chunked {
+      while c[0].rpos < c[0].rlen {
+        b := c[0].rbuf[c[0].rpos]; c[0].rpos += 1;
+        if c[0].cstate == IK_CS_SIZE {
+          if b == '\n' {
+            sz := ik_lhttp_parse_hex(cast(string) c[0].cbuf[0..<c[0].ncbuf]);
+            c[0].ncbuf = 0;
+            if sz < 0 { c[0].net_err = true; return ik_lhttp_finish(c, out, false); }
+            if sz == 0 { c[0].cstate = IK_CS_TRAILER; }
+            else { c[0].crem = sz; c[0].cstate = IK_CS_DATA; }
+          } else if b != '\r' && c[0].ncbuf < c[0].cbuf.count {
+            c[0].cbuf[c[0].ncbuf] = b; c[0].ncbuf += 1;
+          }
+        } else if c[0].cstate == IK_CS_DATA {
+          em := [1] int.[0];
+          ik_lhttp_push_body_byte(c, b, out, em[..]);
+          c[0].crem -= 1;
+          if c[0].crem == 0 { c[0].cstate = IK_CS_CRLF; }
+          if c[0].line_over { return ik_lhttp_finish(c, out, false); }
+          if em[0] > 0 || c[0].finished { return em[0]; }
+        } else if c[0].cstate == IK_CS_CRLF {
+          if b == '\n' { c[0].cstate = IK_CS_SIZE; }
+        } else if c[0].cstate == IK_CS_TRAILER {
+          if b == '\n' {
+            if c[0].ncbuf == 0 {
+              c[0].cstate = IK_CS_DONE;
+              if c[0].nline > 0 {
+                n := c[0].nline;
+                if n > 0 && c[0].lbuf[n - 1] == '\r' { n -= 1; }
+                c[0].nline = 0;
+                em := ik_lhttp_feed_body_line(c, cast(string) c[0].lbuf[0..<n], out);
+                if em > 0 || c[0].finished { return em; }
+              }
+              return ik_lhttp_finish(c, out, true);
+            }
+            c[0].ncbuf = 0;
+          } else if b != '\r' {
+            c[0].ncbuf += 1;
+          }
+        }
+      }
+    } else {
+      while c[0].rpos < c[0].rlen {
+        b := c[0].rbuf[c[0].rpos]; c[0].rpos += 1;
+        c[0].body_read += 1;
+        em := [1] int.[0];
+        ik_lhttp_push_body_byte(c, b, out, em[..]);
+        if c[0].line_over { return ik_lhttp_finish(c, out, false); }
+        if c[0].has_clen && c[0].body_read >= c[0].content_len {
+          if em[0] > 0 || c[0].finished { return em[0]; }
+          if c[0].nline > 0 {
+            n := c[0].nline;
+            if n > 0 && c[0].lbuf[n - 1] == '\r' { n -= 1; }
+            c[0].nline = 0;
+            em2 := ik_lhttp_feed_body_line(c, cast(string) c[0].lbuf[0..<n], out);
+            if em2 > 0 || c[0].finished { return em2; }
+          }
+          return ik_lhttp_finish(c, out, true);
+        }
+        if em[0] > 0 || c[0].finished { return em[0]; }
+      }
+    }
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "inky local-http: strict loopback URL parser and chunk/header helpers" {
+  u1 := ik_lhttp_parse_url("http://127.0.0.1:18795/v1/chat/completions");
+  #assert u1.ok && u1.host == "127.0.0.1" && u1.port == 18795 && u1.path == "/v1/chat/completions";
+  u2 := ik_lhttp_parse_url("http://localhost:8080");
+  #assert u2.ok && u2.host == "localhost" && u2.port == 8080 && u2.path == "/";
+  u3 := ik_lhttp_parse_url("http://127.0.0.1/v1/models");
+  #assert u3.ok && u3.port == 80 && u3.path == "/v1/models";
+  // Reject non-loopback, HTTPS, bad ports, and control chars:
+  #assert !ik_lhttp_parse_url("https://127.0.0.1:18795/v1/chat/completions").ok;
+  #assert !ik_lhttp_parse_url("http://100.74.238.61:18795/v1/chat/completions").ok;
+  #assert !ik_lhttp_parse_url("http://127.0.0.1:99999/v1").ok;
+  #assert !ik_lhttp_parse_url("http://127.0.0.1:0/v1").ok;
+  #assert !ik_lhttp_parse_url("http://127.0.0.1:8080/v1 bad").ok;
+  #assert !ik_lhttp_parse_url("http://localhost.evil.com:8080/v1").ok;
+
+  #assert ik_lhttp_parse_hex("1a") == 26 && ik_lhttp_parse_hex("0\r") == 0 && ik_lhttp_parse_hex("FF;ext=1") == 255;
+  #assert ik_lhttp_parse_hex("") == -1 && ik_lhttp_parse_hex("zz") == -1;
+  #assert ik_lhttp_parse_dec("1234") == 1234 && ik_lhttp_parse_dec("0") == 0 && ik_lhttp_parse_dec("12a") == -1;
+  #assert ik_lhttp_ci_has("Transfer-Encoding: Chunked", "chunked") && !ik_lhttp_ci_has("gzip", "chunked");
+}
+
+#test "inky local-http: chunked keep-alive SSE stream decodes deltas, usage, and preserves socket" {
+  cb: [1] GwCallBuffers;
+  c: [1] IkLocalCall;
+  ik_lhttp_init(c[..], cb[..]);
+  c[0].fd = 42;
+  c[0].active = true;
+  c[0].wire = GW_WIRE_CHAT;
+  c[0].in_headers = true;
+  c[0].keep_alive = true;
+  c[0].cstate = IK_CS_SIZE;
+  gw_completion_begin(c[0].completion[..]);
+
+  // Pre-load a complete chunked keep-alive Chat Completions SSE response into rbuf:
+  ch1 := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi!\"}}]}\n\n";
+  ch2 := "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n";
+  n := 0;
+  hdr := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
+  for ch: hdr { c[0].rbuf[n] = ch; n += 1; }
+  hex := "0123456789abcdef";
+  c[0].rbuf[n] = hex[(ch1.count >> 4) & 15]; n += 1;
+  c[0].rbuf[n] = hex[ch1.count & 15]; n += 1;
+  for ch: "\r\n" { c[0].rbuf[n] = ch; n += 1; }
+  for ch: ch1 { c[0].rbuf[n] = ch; n += 1; }
+  for ch: "\r\n" { c[0].rbuf[n] = ch; n += 1; }
+  c[0].rbuf[n] = hex[(ch2.count >> 4) & 15]; n += 1;
+  c[0].rbuf[n] = hex[ch2.count & 15]; n += 1;
+  for ch: "\r\n" { c[0].rbuf[n] = ch; n += 1; }
+  for ch: ch2 { c[0].rbuf[n] = ch; n += 1; }
+  for ch: "\r\n0\r\n\r\n" { c[0].rbuf[n] = ch; n += 1; }
+  c[0].rpos = 0;
+  c[0].rlen = n;
+
+  g := Gateway.{name = "psionic", wire = GW_WIRE_CHAT};
+  evs: [8] GwEvent;
+  k1 := ik_lhttp_poll(c[..], g, "", evs[..]);
+  #assert k1 == 1 && evs[0].kind == GW_EV_TEXT && evs[0].text == "Hi!" && !c[0].finished;
+  k2 := ik_lhttp_poll(c[..], g, "", evs[..]);
+  #assert k2 == 1 && evs[0].kind == GW_EV_DONE && evs[0].reason == "stop";
+  #assert c[0].finished && c[0].complete && c[0].keep_alive && c[0].fd == 42;
+}

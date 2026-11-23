@@ -57,6 +57,8 @@ IkLoop :: struct {
   obs_input_tokens: int;
   hybrid_exec: bool;
   adaptive_effort: bool;
+  adaptive_think: bool;
+  last_step_failed: bool;
   max_tokens_step: int;
   max_thinking_tokens: int;
   require_exit_verify: bool;
@@ -119,6 +121,23 @@ ik_loop_begin :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, system: stri
   return true;
 }
 
+// Computes the cache-safe sampler-level thinking token budget for the current step.
+// Unlike changing reasoning_effort (which mutates the system prompt and invalidates the KV cache),
+// max_thinking_tokens changes ZERO prompt bytes, preserving 100% of Psionic's KV prefix cache.
+ik_loop_step_think_budget :: (l: [] IkLoop) -> int {
+  base := l[0].max_thinking_tokens;
+  if !l[0].adaptive_think { return base; }
+  cap := ifx base > 0 then base else 1536;
+  tight := ifx cap < 512 then cap else 512;
+  // Tighter silent budget during early pure exploration or closing synthesis after a clean check;
+  // full budget during editing, debugging after a failure, or deeper multi-file synthesis.
+  if !l[0].last_step_failed {
+    if l[0].step <= 4 && l[0].guard[0].files_edited == 0 { return tight; }
+    if l[0].guard[0].has_check && l[0].guard[0].last_check_exit == 0 && !l[0].edited_since_check { return tight; }
+  }
+  return cap;
+}
+
 // Prepares the next Chat Completions request body into out_body; returns body slice or "" on error.
 ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gateway, model: string, effort: string, det_mode: bool, out_body: [] u8, out_why: [] string) -> string {
   if l[0].phase != IK_PH_MODEL { out_why[0] = "loop not ready for model request"; return ""; }
@@ -140,9 +159,15 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
   nm := ik_hist_messages(h, msgs[..], gcalls[..]);
   if nm <= 0 { out_why[0] = "empty conversation history"; return ""; }
 
-  disable_tools := ik_guard_disable_tools(l[0].step, l[0].guard[0].max_steps);
-  tbuf: [6144] u8;
-  tools := ik_prompt_tools_for_mode(ik_loop_profile(l), disable_tools, l[0].hybrid_exec, tbuf[..]);
+  disable_tools := ik_guard_tools_exhausted(l[0].step, l[0].guard[0].max_steps, l[0].guard[0].dup_blocks);
+  // KV-cache-preserving tool disable on Psionic native: keep the position-0 tool_declare block
+  // identical and enforce tool_choice="none" at the sampler instead of dropping `tools` (which
+  // would invalidate the entire multi-turn KV cache on the final summary turn!).
+  native_tc := (g.flags & GW_CHAT_TOOL_ERROR) != 0;
+  drop_tools := disable_tools && !native_tc;
+  tool_choice := ifx disable_tools && native_tc then "none" else "";
+  tbuf: [8192] u8;
+  tools := ik_prompt_tools_for_mode(ik_loop_profile(l), drop_tools, l[0].hybrid_exec, tbuf[..]);
 
   // Adaptive effort scheduling (Level 1): during pure early discovery (steps 1..3 before any edit)
   // or final summary after a passing check, trim thinking overhead when effort == "medium".
@@ -154,6 +179,7 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
     }
   }
   max_tok := ifx l[0].max_tokens_step > 0 then l[0].max_tokens_step else IK_MAX_TOKENS_STEP;
+  step_think := ik_loop_step_think_budget(l);
 
   req := GwRequest.{
     model = model,
@@ -161,9 +187,10 @@ ik_loop_prepare_req :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, g: Gat
     messages = msgs[0..<nm],
     effort = eff,
     max_tokens = max_tok,
-    max_thinking_tokens = l[0].max_thinking_tokens,
+    max_thinking_tokens = step_think,
     stream = true,
     tools = tools,
+    tool_choice = tool_choice,
     has_temp = true,
     temperature = ifx det_mode then 0.0 else 0.6,
     top_p = ifx det_mode then 1.0 else 0.95,
@@ -331,6 +358,7 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
       return ik_loop_end(l, IK_END_FAILED, "stopped repeated duplicate tool calls without progress");
     }
     l[0].tool_idx = 0;
+    l[0].last_step_failed = false;
     l[0].phase = IK_PH_TOOLS;
     return IK_PH_TOOLS;
   }
@@ -374,7 +402,7 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
     final_out = cast(string) wbuf[0..<n];
   } else if is_last && ik_guard_nudge_explore(l[0].step, l[0].guard[0].files_edited) {
     n := ik_fmt_put(wbuf[..], 0, output);
-    n = ik_fmt_put(wbuf[..], n, "\n[Note: you have spent several steps exploring without making edits. State a brief 2-line plan (1: exact file + symbol to edit; 2: single verification command) and apply your targeted edit_file change now; otherwise answer directly.]");
+    n = ik_fmt_put(wbuf[..], n, "\n[Note: you have spent several steps exploring without making edits. Use outline(path) if you still need exact symbol line ranges, state a brief 2-line plan (1: exact file + symbol to edit; 2: single verification command), and apply your targeted edit_file change now; otherwise answer directly.]");
     final_out = cast(string) wbuf[0..<n];
   } else if is_last && l[0].guard[0].max_steps >= 6 && l[0].step >= l[0].guard[0].max_steps / 2 {
     n := ik_fmt_put(wbuf[..], 0, output);
@@ -385,6 +413,7 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
     n = ik_fmt_byte(wbuf[..], n, ']');
     final_out = cast(string) wbuf[0..<n];
   }
+  if is_error { l[0].last_step_failed = true; }
   if !is_error && (tool_kind == IK_TK_EDIT || tool_kind == IK_TK_WRITE) {
     l[0].edited_since_check = true;
   }
@@ -472,13 +501,42 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
   #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_LIST, ".", 0, "b.coax\n", false) == IK_PH_MODEL;
 
-  // Step 3 (step == max_steps): tools MUST be disabled in request!
+  // Step 3 (step == max_steps): on Psionic native (GW_CHAT_TOOL_ERROR), tools stay declared to
+  // preserve 100% KV prefix cache while tool_choice="none" enforces zero tool calls at the sampler!
   b3 := ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]);
-  #assert b3.count > 0 && cl_raw(b3, "tools").count == 0;
+  ab3: [64] u8; ar3 := [1] ClArena.[ClArena.{buf = ab3[..]}];
+  #assert b3.count > 0 && cl_raw(b3, "tools").count > 10 && cl_str(ar3[..], b3, "tool_choice") == "none";
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "Summary: b.coax ok."});
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED;
   #assert l[0].ending == IK_END_FINISHED && ik_loop_final(l[..]) == "Summary: b.coax ok.";
+}
+
+#test "inky loop: cache-safe adaptive thinking budget scales silently by step phase and failures" {
+  l: [1] IkLoop;
+  ik_guard_init(l[0].guard[..], 30);
+  // Disabled: passes through fixed max_thinking_tokens verbatim.
+  l[0].max_thinking_tokens = 1024;
+  l[0].adaptive_think = false;
+  l[0].step = 1;
+  #assert ik_loop_step_think_budget(l[..]) == 1024;
+
+  // Enabled: early pure exploration uses 512, failure or edit expands to full cap (1536 default).
+  l[0].max_thinking_tokens = 0;
+  l[0].adaptive_think = true;
+  l[0].step = 2;
+  #assert ik_loop_step_think_budget(l[..]) == 512;
+  l[0].last_step_failed = true;
+  #assert ik_loop_step_think_budget(l[..]) == 1536;
+  l[0].last_step_failed = false;
+  l[0].guard[0].files_edited = 1;
+  l[0].edited_since_check = true;
+  #assert ik_loop_step_think_budget(l[..]) == 1536;
+  // After passing check with no edits since, drops back to 512 for crisp summary:
+  l[0].guard[0].has_check = true;
+  l[0].guard[0].last_check_exit = 0;
+  l[0].edited_since_check = false;
+  #assert ik_loop_step_think_budget(l[..]) == 512;
 }
 
 #test "inky loop: context_length_exceeded triggers Stage 2 compaction and automatic retry" {

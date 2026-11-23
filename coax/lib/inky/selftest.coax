@@ -204,18 +204,57 @@ tool_main :: () -> int #export_c #effects(all) {
   if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o16c, "2 atomic hunks") || !ik_st_has(o16c, "[E] replay verified") {
     tool_errln("FAIL: atomic multi-hunk apply"); return 1;
   }
-  // 9d. Default shell-edit post-command Class-E verification + opt-in strict refusal arm
+  // 9d. Default shell-edit post-command Class-E verification (both regex AND git-diff delta) + opt-in strict refusal arm
   ne = ik_st_run_tool(r[..], h[..], b[..], 21, "c17a", "run_command", "{\"command\":\"python3 -c 'open(\\\"src/app.txt\\\", \\\"a\\\").write(\\\"z\\\\n\\\")'\"}", evs[..]);
   o17a := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
   if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o17a, "shell-edit verified") || !ik_st_has(o17a, "[E] replay verified") {
     tool_errln("FAIL: shell-edit post-command Class-E verification"); return 1;
   }
+  // Arbitrary shell redirection (not matching sed/python regex!) caught automatically via git diff delta:
+  ne = ik_st_run_tool(r[..], h[..], b[..], 22, "c17c", "run_command", "{\"command\":\"echo extra_line >> src/app.txt\"}", evs[..]);
+  o17c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o17c, "shell-edit verified") || !ik_st_has(o17c, "[E] replay verified") {
+    tool_errln("FAIL: git-diff delta shell-edit verification"); return 1;
+  }
   r[0].refuse_shell_edit = true;
-  ne = ik_st_run_tool(r[..], h[..], b[..], 22, "c17b", "run_command", "{\"command\":\"sed -i '' 's/ALPHA_2/X/' src/app.txt\"}", evs[..]);
+  ne = ik_st_run_tool(r[..], h[..], b[..], 23, "c17b", "run_command", "{\"command\":\"sed -i '' 's/ALPHA_2/X/' src/app.txt\"}", evs[..]);
   o17b := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
   r[0].refuse_shell_edit = false;
   if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o17b, "detected shell-based file edit") {
     tool_errln("FAIL: opt-in shell-edit refusal"); return 1;
+  }
+
+  // 9e. Deterministic multi-language outline tool + duplicate-call guard + auto-check after edit
+  ne = ik_st_run_tool(r[..], h[..], b[..], 24, "c18a", "outline", "{\"path\":\"src/demo.coax\"}", evs[..]);
+  o18a := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o18a, "[outline src/demo.coax") || !ik_st_has(o18a, "L1-5\tf :: ()") {
+    tool_errln("FAIL: outline tool"); return 1;
+  }
+  ne = ik_st_run_tool(r[..], h[..], b[..], 25, "c18b", "outline", "{\"path\":\"src/demo.coax\"}", evs[..]);
+  ne = ik_st_run_tool(r[..], h[..], b[..], 26, "c18c", "outline", "{\"path\":\"src/demo.coax\"}", evs[..]);
+  o18c := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  if !h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o18c, "Duplicate call") {
+    tool_errln("FAIL: outline duplicate guard"); return 1;
+  }
+  // Auto-check command runs automatically after edit_file and clears edited_since_check on exit 0:
+  r[0].nauto_check = ik_loop_copy(r[0].auto_check_cmd[..], "echo AUTO_CHECK_GREEN");
+  ne = ik_st_run_tool(r[..], h[..], b[..], 27, "c19", "edit_file", "{\"path\":\"src/app.txt\",\"old_string\":\"DELTA_2\",\"new_string\":\"DELTA_3\"}", evs[..]);
+  o19 := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  r[0].nauto_check = 0;
+  if h[0].msgs[h[0].n - 1].is_error || !ik_st_has(o19, "[auto-check exit 0]") || !ik_st_has(o19, "AUTO_CHECK_GREEN") || r[0].l[0].edited_since_check {
+    tool_errln("FAIL: auto-check after edit_file"); return 1;
+  }
+
+  // 9f. Static-prefix-safe Step-0 seeding: silent on greetings, seeds outline on named workspace files
+  sb_plain: [IK_SEED_OUT_CAP] u8;
+  if ik_seed_build(ws, ik_run_real_cwd(r[..]), "Hello! How are you?", b[0].file_buf[..], sb_plain[..]) != 0 {
+    tool_errln("FAIL: Step-0 seed must stay empty on plain greetings"); return 1;
+  }
+  sb_code: [IK_SEED_OUT_CAP] u8;
+  sn_code := ik_seed_build(ws, ik_run_real_cwd(r[..]), "Inspect src/demo.coax and fix it", b[0].file_buf[..], sb_code[..]);
+  s_code := cast(string) sb_code[0..<sn_code];
+  if sn_code == 0 || !ik_st_has(s_code, "src/demo.coax") || !ik_st_has(s_code, "L1-5\tf :: ()") {
+    tool_errln("FAIL: Step-0 seed should include src/demo.coax outline"); return 1;
   }
 
   // 10. Verify entire accumulated history passes gateway gwt_history_valid
@@ -225,6 +264,6 @@ tool_main :: () -> int #export_c #effects(all) {
     tool_errln("FAIL: gwt_history_valid failed on selftest history"); return 1;
   }
 
-  print("inky selftest: ok (10 checks passed, % messages valid)\n", nm);
+  print("inky selftest: ok (13 checks passed, % messages valid)\n", nm);
   return 0;
 }

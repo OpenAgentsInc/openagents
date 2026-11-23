@@ -19,6 +19,8 @@ IK_CMD_TAIL :: 5120;
 IK_GREP_BYTES :: 12288;
 IK_LIST_BYTES :: 8192;
 IK_LIST_MAX :: 200;
+IK_OUTLINE_BYTES :: 8192;
+IK_OUTLINE_MAX :: 256;
 IK_EDIT_DIFF_CAP :: 2048;
 
 ik_fmt_put :: (out: [] u8, at: int, s: string) -> int {
@@ -297,12 +299,14 @@ ik_fmt_try_loose_edit :: (content: string, path: string, old_str: string, new_st
 }
 
 // Fast deterministic pre-edit Coax syntax lint (Level 0): flags common LLM Coax mistakes
-// (E0216 inclusive `..` in `for` loops, `let`/`const`/`fn` keywords) right in edit output
-// so Inkling fixes them in 1 step instead of waiting 15s for a full `coax test` failure.
+// (E0216 inclusive `..` in `for` loops, `let`/`const`/`fn` keywords, `++`/`--`, `===`/`null`)
+// right in edit output so the model fixes them in 1 step without waiting for a full test run.
 ik_fmt_coax_lint :: (path: string, code: string, out: [] u8, at: int) -> int {
   if path.count < 5 || cast(string) path[path.count - 5..<path.count] != ".coax" { return at; }
   has_for_dots := false;
   has_kw := false;
+  has_incdec := false;
+  has_jsop := false;
   p := 0;
   while p < code.count {
     e := p;
@@ -329,6 +333,27 @@ ik_fmt_coax_lint :: (path: string, code: string, out: [] u8, at: int) -> int {
          (ln.count >= 4 && cast(string) ln[0..<3] == "fn ") {
         has_kw = true;
       }
+      // Check non-Coax operators outside strings and comments: `++`, `--`, `===`, `!==`, `== null`, `!= null`
+      in_str := false;
+      in_chr := false;
+      for i: 0..<ln.count {
+        c := ln[i];
+        if !in_chr && c == '"' && (i == 0 || ln[i - 1] != '\\') { in_str = !in_str; continue; }
+        if !in_str && c == '\'' && (i == 0 || ln[i - 1] != '\\') { in_chr = !in_chr; continue; }
+        if in_str || in_chr { continue; }
+        if i + 1 < ln.count && c == '/' && ln[i + 1] == '/' { break; }
+        if i + 1 < ln.count && ((c == '+' && ln[i + 1] == '+') || (c == '-' && ln[i + 1] == '-')) {
+          prev_ok := i > 0 && ((ln[i - 1] >= 'a' && ln[i - 1] <= 'z') || (ln[i - 1] >= 'A' && ln[i - 1] <= 'Z') || (ln[i - 1] >= '0' && ln[i - 1] <= '9') || ln[i - 1] == '_' || ln[i - 1] == ']');
+          next_ok := i + 2 < ln.count && ((ln[i + 2] >= 'a' && ln[i + 2] <= 'z') || (ln[i + 2] >= 'A' && ln[i + 2] <= 'Z') || ln[i + 2] == '_');
+          if prev_ok || next_ok { has_incdec = true; }
+        }
+        if i + 2 < ln.count && ((c == '=' && ln[i + 1] == '=' && ln[i + 2] == '=') || (c == '!' && ln[i + 1] == '=' && ln[i + 2] == '=')) {
+          has_jsop = true;
+        }
+        if i + 6 < ln.count && (cast(string) ln[i..<i + 7] == "== null" || cast(string) ln[i..<i + 7] == "!= null") {
+          has_jsop = true;
+        }
+      }
     }
     if e < code.count { p = e + 1; } else { break; }
   }
@@ -339,6 +364,399 @@ ik_fmt_coax_lint :: (path: string, code: string, out: [] u8, at: int) -> int {
   if has_kw {
     n = ik_fmt_put(out, n, "\n[coax-lint hint: Coax has no `let`/`const`/`fn` keywords — use `x := val;`, `X :: val;`, and `name :: (args) -> T { ... }`.]");
   }
+  if has_incdec {
+    n = ik_fmt_put(out, n, "\n[coax-lint hint: Coax has no `++`/`--` operators — use `x += 1;` or `x -= 1;`.]");
+  }
+  if has_jsop {
+    n = ik_fmt_put(out, n, "\n[coax-lint hint: Coax uses `==`/`!=` (not `===`/`!==`) and has no `null` keyword.]");
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- multi-language outline extractor
+
+IK_LANG_MD :: 0;
+IK_LANG_COAX :: 1;
+IK_LANG_C :: 2;
+IK_LANG_SWIFT :: 3;
+IK_LANG_PY :: 4;
+IK_LANG_BRACE :: 5;
+
+ik_fmt_ends_with :: (s: string, sfx: string) -> bool {
+  if sfx.count > s.count { return false; }
+  return cast(string) s[s.count - sfx.count..<s.count] == sfx;
+}
+
+ik_fmt_starts :: (s: string, pfx: string) -> bool {
+  if pfx.count > s.count { return false; }
+  return cast(string) s[0..<pfx.count] == pfx;
+}
+
+ik_fmt_has_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count {
+      a := hay[i + k]; if a >= 'A' && a <= 'Z' { a += 32; }
+      b := needle[k]; if b >= 'A' && b <= 'Z' { b += 32; }
+      if a != b { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+ik_fmt_ident_ch :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+ik_fmt_detect_lang :: (path: string) -> int {
+  if ik_fmt_ends_with(path, ".coax") { return IK_LANG_COAX; }
+  if ik_fmt_ends_with(path, ".c") || ik_fmt_ends_with(path, ".h") || ik_fmt_ends_with(path, ".m") ||
+     ik_fmt_ends_with(path, ".mm") || ik_fmt_ends_with(path, ".cc") || ik_fmt_ends_with(path, ".cpp") ||
+     ik_fmt_ends_with(path, ".hpp") || ik_fmt_ends_with(path, ".metal") || ik_fmt_ends_with(path, ".cu") {
+    return IK_LANG_C;
+  }
+  if ik_fmt_ends_with(path, ".swift") { return IK_LANG_SWIFT; }
+  if ik_fmt_ends_with(path, ".py") { return IK_LANG_PY; }
+  if ik_fmt_ends_with(path, ".rs") || ik_fmt_ends_with(path, ".go") || ik_fmt_ends_with(path, ".ts") ||
+     ik_fmt_ends_with(path, ".tsx") || ik_fmt_ends_with(path, ".js") || ik_fmt_ends_with(path, ".jsx") {
+    return IK_LANG_BRACE;
+  }
+  return IK_LANG_MD;
+}
+
+// Counts net '{' - '}' delta on one source line, ignoring strings, char literals, // comments, and /* */ blocks.
+ik_fmt_brace_scan :: (line: string, in_block: [] bool) -> int {
+  delta := 0;
+  in_str := false;
+  in_chr := false;
+  i := 0;
+  while i < line.count {
+    c := line[i];
+    if in_block[0] {
+      if c == '*' && i + 1 < line.count && line[i + 1] == '/' { in_block[0] = false; i += 2; continue; }
+      i += 1; continue;
+    }
+    if !in_str && !in_chr && c == '/' && i + 1 < line.count {
+      if line[i + 1] == '/' { break; }
+      if line[i + 1] == '*' { in_block[0] = true; i += 2; continue; }
+    }
+    if !in_chr && c == '"' && (i == 0 || line[i - 1] != '\\') { in_str = !in_str; i += 1; continue; }
+    if !in_str && c == '\'' && (i == 0 || line[i - 1] != '\\') { in_chr = !in_chr; i += 1; continue; }
+    if !in_str && !in_chr {
+      if c == '{' { delta += 1; }
+      else if c == '}' { delta -= 1; }
+    }
+    i += 1;
+  }
+  return delta;
+}
+
+ik_fmt_strip_swift_mods :: (s: string) -> string {
+  cur := s;
+  for pass: 0..<6 {
+    moved := false;
+    mods := [13] string.["public ", "private ", "internal ", "fileprivate ", "open ", "static ", "class ", "override ", "final ", "mutating ", "nonmutating ", "async ", "@MainActor "];
+    for mi: 0..<13 {
+      m := mods[mi];
+      // Don't strip "class " if followed by uppercase type name (that's `class Foo`, not `class func`).
+      if mi == 6 && cur.count > 6 && !ik_fmt_starts(cast(string) cur[6..<cur.count], "func ") { continue; }
+      if ik_fmt_starts(cur, m) {
+        cur = ik_fmt_trim_ws(cast(string) cur[m.count..<cur.count]);
+        moved = true;
+        break;
+      }
+    }
+    if !moved { break; }
+  }
+  return cur;
+}
+
+ik_fmt_is_coax_decl :: (t: string) -> bool {
+  if t.count < 4 { return false; }
+  if ik_fmt_starts(t, "#test ") || ik_fmt_starts(t, "#forall ") { return true; }
+  if !((t[0] >= 'a' && t[0] <= 'z') || (t[0] >= 'A' && t[0] <= 'Z') || t[0] == '_') { return false; }
+  i := 0;
+  while i < t.count && ik_fmt_ident_ch(t[i]) { i += 1; }
+  while i < t.count && (t[i] == ' ' || t[i] == '\t') { i += 1; }
+  return i + 1 < t.count && t[i] == ':' && t[i + 1] == ':';
+}
+
+ik_fmt_is_c_decl :: (t: string, has_open_brace: bool) -> bool {
+  if t.count < 4 { return false; }
+  if ik_fmt_starts(t, "#define ") { return true; }
+  if t[0] == '#' || ik_fmt_starts(t, "//") || ik_fmt_starts(t, "/*") || ik_fmt_starts(t, "*") { return false; }
+  if ik_fmt_starts(t, "typedef struct") || ik_fmt_starts(t, "typedef enum") ||
+     ik_fmt_starts(t, "struct ") || ik_fmt_starts(t, "enum ") || ik_fmt_starts(t, "union ") {
+    return has_open_brace || ik_fmt_ends_with(t, ";");
+  }
+  if !has_open_brace { return false; }
+  if ik_fmt_starts(t, "if") || ik_fmt_starts(t, "for") || ik_fmt_starts(t, "while") ||
+     ik_fmt_starts(t, "switch") || ik_fmt_starts(t, "else") || ik_fmt_starts(t, "return") ||
+     ik_fmt_starts(t, "do") { return false; }
+  for c: t { if c == '(' { return true; } }
+  return false;
+}
+
+ik_fmt_is_swift_decl :: (t: string) -> bool {
+  if t.count < 4 || ik_fmt_starts(t, "//") { return false; }
+  c := ik_fmt_strip_swift_mods(t);
+  return ik_fmt_starts(c, "func ") || ik_fmt_starts(c, "struct ") || ik_fmt_starts(c, "class ") ||
+         ik_fmt_starts(c, "enum ") || ik_fmt_starts(c, "protocol ") || ik_fmt_starts(c, "actor ") ||
+         ik_fmt_starts(c, "extension ") || ik_fmt_starts(c, "init(") || ik_fmt_starts(c, "init?(");
+}
+
+ik_fmt_is_brace_decl :: (t: string) -> bool {
+  if t.count < 4 || ik_fmt_starts(t, "//") { return false; }
+  c := t;
+  if ik_fmt_starts(c, "pub ") { c = cast(string) c[4..<c.count]; }
+  else if ik_fmt_starts(c, "export ") { c = cast(string) c[7..<c.count]; }
+  if ik_fmt_starts(c, "default ") { c = cast(string) c[8..<c.count]; }
+  if ik_fmt_starts(c, "async ") { c = cast(string) c[6..<c.count]; }
+  return ik_fmt_starts(c, "fn ") || ik_fmt_starts(c, "func ") || ik_fmt_starts(c, "function ") ||
+         ik_fmt_starts(c, "struct ") || ik_fmt_starts(c, "enum ") || ik_fmt_starts(c, "trait ") ||
+         ik_fmt_starts(c, "impl ") || ik_fmt_starts(c, "impl<") || ik_fmt_starts(c, "class ") ||
+         ik_fmt_starts(c, "interface ") || ik_fmt_starts(c, "type ");
+}
+
+// Extracts a compact, deterministic symbol & dependency outline with exact Lstart-Lend line ranges.
+// Designed for fast navigation of large Coax, C/Metal/CUDA, Swift, Python, Rust/Go/TS, and Markdown files.
+ik_fmt_outline :: (content: string, path: string, filter: string, out: [] u8) -> int {
+  if ik_fmt_is_binary(content) {
+    n := ik_fmt_put(out, 0, "[binary file: ");
+    n = ik_fmt_put(out, n, path);
+    n = ik_fmt_put(out, n, ", ");
+    n = ik_fmt_int(out, n, content.count);
+    return ik_fmt_put(out, n, " bytes — no outline]");
+  }
+  hb: [8] u8;
+  _ = ik_hash8(content, hb[..]);
+  hash := cast(string) hb[..];
+  total := ik_fmt_count_lines(content);
+  lang := ik_fmt_detect_lang(path);
+
+  dep_off: [24] int; dep_len: [24] int; ndep := 0;
+  sym_s: [IK_OUTLINE_MAX] int;
+  sym_e: [IK_OUTLINE_MAX] int;
+  sym_off: [IK_OUTLINE_MAX] int;
+  sym_len: [IK_OUTLINE_MAX] int;
+  sym_ind: [IK_OUTLINE_MAX] int;
+  nsym := 0;
+  has_auth := false;
+
+  // Active open brace-delimited symbol stack (depth <= 2) for exact end-line tracking.
+  open_sym: [4] int;
+  open_dep: [4] int;
+  nopen := 0;
+  depth := 0;
+  in_blk := [1] bool.[false];
+
+  pos := 0;
+  lno := 1;
+  while pos < content.count {
+    e := pos;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    raw := cast(string) content[pos..<e];
+    if raw.count > 0 && raw[raw.count - 1] == '\r' { raw = cast(string) raw[0..<raw.count - 1]; }
+    t := ik_fmt_trim_ws(raw);
+    ind := ik_fmt_line_indent(raw).count;
+    next_pos := ifx e < content.count then e + 1 else e;
+
+    if lang == IK_LANG_PY {
+      // Close any open Python blocks when a real non-comment line dedents to <= open_dep.
+      if t.count > 0 && t[0] != '#' {
+        while nopen > 0 && ind <= open_dep[nopen - 1] {
+          si := open_sym[nopen - 1];
+          sym_e[si] = ifx lno > sym_s[si] then lno - 1 else sym_s[si];
+          nopen -= 1;
+        }
+        if (ik_fmt_starts(t, "import ") || ik_fmt_starts(t, "from ")) && ind == 0 && ndep < 24 {
+          dep_off[ndep] = pos + ind; dep_len[ndep] = t.count; ndep += 1;
+        } else if ind <= 4 && (ik_fmt_starts(t, "def ") || ik_fmt_starts(t, "async def ") || ik_fmt_starts(t, "class ")) {
+          if nsym < IK_OUTLINE_MAX {
+            sym_s[nsym] = lno; sym_e[nsym] = lno;
+            sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+            sym_ind[nsym] = ind;
+            if nopen < 4 { open_sym[nopen] = nsym; open_dep[nopen] = ind; nopen += 1; }
+            nsym += 1;
+          }
+        }
+      }
+    } else if lang == IK_LANG_MD {
+      if t.count >= 2 && (ik_fmt_starts(t, "# ") || ik_fmt_starts(t, "## ") || ik_fmt_starts(t, "### ")) {
+        if nsym < IK_OUTLINE_MAX {
+          sym_s[nsym] = lno; sym_e[nsym] = lno;
+          sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+          nsym += 1;
+        }
+      } else if depth == 0 && t.count >= 4 && ik_fmt_has_ci(t, "()") && ik_fmt_has_ci(t, "{") && !ik_fmt_starts(t, "#") {
+        if nsym < IK_OUTLINE_MAX {
+          sym_s[nsym] = lno; sym_e[nsym] = lno;
+          sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+          nsym += 1;
+        }
+      }
+    } else {
+      was_blk := in_blk[0];
+      d_before := depth;
+      delta := ik_fmt_brace_scan(raw, in_blk[..]);
+      depth += delta;
+      if depth < 0 { depth = 0; }
+      has_ob := delta > 0 || ik_fmt_has_ci(t, "{");
+
+      if !was_blk && t.count > 0 {
+        if lang == IK_LANG_COAX {
+          if d_before == 0 && (t == "#authority;" || ik_fmt_starts(t, "#authority")) { has_auth = true; }
+          if d_before == 0 && ik_fmt_starts(t, "#load ") && ndep < 24 {
+            // Extract quoted path inside #load "..."
+            q0 := 6;
+            while q0 < t.count && t[q0] != '"' { q0 += 1; }
+            q1 := q0 + 1;
+            while q1 < t.count && t[q1] != '"' { q1 += 1; }
+            if q1 > q0 + 1 && q1 < t.count {
+              dep_off[ndep] = pos + ind + q0 + 1;
+              dep_len[ndep] = q1 - (q0 + 1);
+              ndep += 1;
+            }
+          } else if d_before == 0 && ik_fmt_is_coax_decl(t) && nsym < IK_OUTLINE_MAX {
+            sym_s[nsym] = lno; sym_e[nsym] = lno;
+            sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+            if depth > d_before && nopen < 4 { open_sym[nopen] = nsym; open_dep[nopen] = d_before; nopen += 1; }
+            nsym += 1;
+          }
+        } else if lang == IK_LANG_C {
+          if d_before == 0 && ik_fmt_starts(t, "#include \"") && ndep < 24 {
+            q1 := 10;
+            while q1 < t.count && t[q1] != '"' { q1 += 1; }
+            if q1 > 10 && q1 < t.count {
+              dep_off[ndep] = pos + ind + 10; dep_len[ndep] = q1 - 10; ndep += 1;
+            }
+          } else if d_before == 0 && ik_fmt_is_c_decl(t, has_ob) && nsym < IK_OUTLINE_MAX {
+            sym_s[nsym] = lno; sym_e[nsym] = lno;
+            sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+            if depth > d_before && nopen < 4 { open_sym[nopen] = nsym; open_dep[nopen] = d_before; nopen += 1; }
+            nsym += 1;
+          }
+        } else if lang == IK_LANG_SWIFT {
+          if d_before == 0 && ik_fmt_starts(t, "import ") && ndep < 24 {
+            dep_off[ndep] = pos + ind + 7; dep_len[ndep] = t.count - 7; ndep += 1;
+          } else if d_before <= 1 && ik_fmt_is_swift_decl(t) && nsym < IK_OUTLINE_MAX {
+            sym_s[nsym] = lno; sym_e[nsym] = lno;
+            sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+            sym_ind[nsym] = d_before * 2;
+            if depth > d_before && nopen < 4 { open_sym[nopen] = nsym; open_dep[nopen] = d_before; nopen += 1; }
+            nsym += 1;
+          }
+        } else if lang == IK_LANG_BRACE {
+          if d_before == 0 && (ik_fmt_starts(t, "import ") || ik_fmt_starts(t, "use ")) && ndep < 24 {
+            dep_off[ndep] = pos + ind; dep_len[ndep] = t.count; ndep += 1;
+          } else if d_before <= 1 && ik_fmt_is_brace_decl(t) && nsym < IK_OUTLINE_MAX {
+            sym_s[nsym] = lno; sym_e[nsym] = lno;
+            sym_off[nsym] = pos + ind; sym_len[nsym] = t.count;
+            sym_ind[nsym] = d_before * 2;
+            if depth > d_before && nopen < 4 { open_sym[nopen] = nsym; open_dep[nopen] = d_before; nopen += 1; }
+            nsym += 1;
+          }
+        }
+      }
+      while nopen > 0 && depth <= open_dep[nopen - 1] {
+        si := open_sym[nopen - 1];
+        sym_e[si] = lno;
+        nopen -= 1;
+      }
+    }
+    lno += 1;
+    pos = next_pos;
+  }
+  while nopen > 0 {
+    si := open_sym[nopen - 1];
+    sym_e[si] = total;
+    nopen -= 1;
+  }
+
+  // Count matched symbols when filter is present.
+  matched := 0;
+  for i: 0..<nsym {
+    sig := cast(string) content[sym_off[i]..<sym_off[i] + sym_len[i]];
+    if filter.count == 0 || ik_fmt_has_ci(sig, filter) { matched += 1; }
+  }
+
+  cap := ifx out.count < IK_OUTLINE_BYTES then out.count else IK_OUTLINE_BYTES;
+  n := ik_fmt_put(out, 0, "[outline ");
+  n = ik_fmt_put(out, n, path);
+  n = ik_fmt_put(out, n, " | ");
+  n = ik_fmt_int(out, n, total);
+  n = ik_fmt_put(out, n, " lines");
+  if has_auth { n = ik_fmt_put(out, n, " | #authority"); }
+  n = ik_fmt_put(out, n, " | ");
+  n = ik_fmt_int(out, n, matched);
+  n = ik_fmt_put(out, n, " symbols");
+  if filter.count > 0 {
+    n = ik_fmt_put(out, n, " matching \"");
+    n = ik_fmt_put(out, n, filter);
+    n = ik_fmt_put(out, n, "\" (of ");
+    n = ik_fmt_int(out, n, nsym);
+    n = ik_fmt_byte(out, n, ')');
+  }
+  n = ik_fmt_put(out, n, " | hash=");
+  n = ik_fmt_put(out, n, hash);
+  n = ik_fmt_put(out, n, "]\n");
+
+  if ndep > 0 {
+    n = ik_fmt_put(out, n, "Deps: ");
+    for di: 0..<ndep {
+      if di > 0 { n = ik_fmt_put(out, n, ", "); }
+      d := cast(string) content[dep_off[di]..<dep_off[di] + dep_len[di]];
+      if d.count > 64 { d = cast(string) d[0..<64]; }
+      if n + d.count + 4 > cap - 256 { n = ik_fmt_put(out, n, "..."); break; }
+      n = ik_fmt_put(out, n, d);
+    }
+    n = ik_fmt_byte(out, n, '\n');
+  }
+
+  shown := 0;
+  omitted := 0;
+  for i: 0..<nsym {
+    sig := cast(string) content[sym_off[i]..<sym_off[i] + sym_len[i]];
+    if filter.count > 0 && !ik_fmt_has_ci(sig, filter) { continue; }
+    // Trim trailing `{` for cleaner signature lines when body spans multiple lines.
+    s_end := sig.count;
+    if s_end > 110 { s_end = 110; }
+    while s_end > 0 && (sig[s_end - 1] == ' ' || sig[s_end - 1] == '\t') { s_end -= 1; }
+    if sym_e[i] > sym_s[i] && s_end > 1 && sig[s_end - 1] == '{' {
+      s_end -= 1;
+      while s_end > 0 && (sig[s_end - 1] == ' ' || sig[s_end - 1] == '\t') { s_end -= 1; }
+    }
+    clean := cast(string) sig[0..<s_end];
+    if n + clean.count + 24 > cap - 160 {
+      omitted += 1;
+      continue;
+    }
+    n = ik_fmt_byte(out, n, 'L');
+    n = ik_fmt_int(out, n, sym_s[i]);
+    if sym_e[i] > sym_s[i] {
+      n = ik_fmt_byte(out, n, '-');
+      n = ik_fmt_int(out, n, sym_e[i]);
+    }
+    n = ik_fmt_byte(out, n, '\t');
+    if sym_ind[i] > 0 { n = ik_fmt_put(out, n, "  "); }
+    n = ik_fmt_put(out, n, clean);
+    n = ik_fmt_byte(out, n, '\n');
+    shown += 1;
+  }
+
+  if shown == 0 {
+    n = ik_fmt_put(out, n, "(no matching declarations; use read_file to inspect lines directly)\n");
+  } else if omitted > 0 {
+    n = ik_fmt_put(out, n, "[");
+    n = ik_fmt_int(out, n, omitted);
+    n = ik_fmt_put(out, n, " more symbols omitted; pass filter=\"...\" to narrow]\n");
+  }
+  n = ik_fmt_put(out, n, "[Use read_file(path=\"");
+  n = ik_fmt_put(out, n, path);
+  n = ik_fmt_put(out, n, "\", start_line=N, end_line=M) to read any symbol body.]");
   return n;
 }
 
@@ -741,12 +1159,52 @@ ik_fmt_size :: (bytes: int, out: [] u8) -> int {
   dup_ind := "  x := 1;\n    x := 1;\n";
   r6 := ik_fmt_edit(dup_ind, "a.coax", "x := 1;", "x := 2;", false, nb[..], mb[..]);
   #assert !r6.ok;
-  // Coax pre-edit lint detects E0216 `for ... ..` and `let ` keywords on .coax files only:
+  // Coax pre-edit lint detects E0216 `for ... ..`, `let `, `++`, `===`, `!= null` on .coax files only:
   lb: [512] u8;
-  ln1 := ik_fmt_coax_lint("a.coax", "  for i: 0..n { let x = 1; }\n", lb[..], 0);
-  #assert ln1 > 40;
-  #assert ik_fmt_coax_lint("a.coax", "  for i: 0..<n { x := a[..]; }\n", lb[..], 0) == 0;
+  ln1 := ik_fmt_coax_lint("a.coax", "  for i: 0..n {\n    let x = 1;\n    i++;\n    if x === 1 || x != null {}\n  }\n", lb[..], 0);
+  #assert ln1 > 120;
+  lmsg := cast(string) lb[0..<ln1];
+  #assert ik_fmt_has_ci(lmsg, "E0216") && ik_fmt_has_ci(lmsg, "let") && ik_fmt_has_ci(lmsg, "++") && ik_fmt_has_ci(lmsg, "===");
+  #assert ik_fmt_coax_lint("a.coax", "  for i: 0..<n { x := a[..]; x += 1; if x == 1 {} }\n", lb[..], 0) == 0;
+  #assert ik_fmt_coax_lint("a.coax", "  // comment i++ === null\n  s := \"i++ === null\";\n", lb[..], 0) == 0;
   #assert ik_fmt_coax_lint("a.rs", "for i in 0..n { let x = 1; }\n", lb[..], 0) == 0;
+}
+
+#test "inky format: multi-language outline extracts symbols, exact line ranges, deps, #authority, and filter" {
+  out: [8192] u8;
+  // Coax file with #load, #authority, constant, struct, proc, and #test:
+  coax_src := "#load \"protocol.coax\";\n#authority;\nMAX_N :: 8;\nFoo :: struct {\n  x: int;\n}\nbar :: (a: int) -> int {\n  if a > 0 { return a; }\n  return 0;\n}\n#test \"check bar\" {\n  #assert bar(1) == 1;\n}\n";
+  n := ik_fmt_outline(coax_src, "demo.coax", "", out[..]);
+  s := cast(string) out[0..<n];
+  #assert ik_fmt_has_ci(s, "#authority") && ik_fmt_has_ci(s, "Deps: protocol.coax");
+  #assert ik_fmt_has_ci(s, "L3\tMAX_N :: 8;") && ik_fmt_has_ci(s, "L4-6\tFoo :: struct") && ik_fmt_has_ci(s, "L7-10\tbar :: (a: int) -> int") && ik_fmt_has_ci(s, "L11-13\t#test \"check bar\"");
+  // Case-insensitive filter narrows to matching symbol only:
+  nf := ik_fmt_outline(coax_src, "demo.coax", "BAR", out[..]);
+  sf := cast(string) out[0..<nf];
+  #assert ik_fmt_has_ci(sf, "2 symbols matching \"BAR\"") && ik_fmt_has_ci(sf, "L7-10\tbar") && !ik_fmt_has_ci(sf, "MAX_N");
+
+  // C file with #include, struct, function:
+  c_src := "#include \"engine.h\"\n#define MAX_K 4\nstatic int compute(int x) {\n  return x + 1;\n}\n";
+  nc := ik_fmt_outline(c_src, "serve.c", "", out[..]);
+  sc := cast(string) out[0..<nc];
+  #assert ik_fmt_has_ci(sc, "Deps: engine.h") && ik_fmt_has_ci(sc, "L2\t#define MAX_K 4") && ik_fmt_has_ci(sc, "L3-5\tstatic int compute(int x)");
+
+  // Swift file with import, struct, nested func:
+  sw_src := "import Foundation\npublic struct Runner {\n  public func run() {\n    print(\"ok\")\n  }\n}\n";
+  nsw := ik_fmt_outline(sw_src, "Runner.swift", "", out[..]);
+  ssw := cast(string) out[0..<nsw];
+  #assert ik_fmt_has_ci(ssw, "Deps: Foundation") && ik_fmt_has_ci(ssw, "L2-6\tpublic struct Runner") && ik_fmt_has_ci(ssw, "L3-5\t  public func run()");
+
+  // Python file with indentation-based line ranges:
+  py_src := "import os\nclass Engine:\n    def step(self):\n        return 1\n\ndef main():\n    return 0\n";
+  npy := ik_fmt_outline(py_src, "eval.py", "", out[..]);
+  spy := cast(string) out[0..<npy];
+  #assert ik_fmt_has_ci(spy, "Deps: import os") && ik_fmt_has_ci(spy, "L2-5\tclass Engine:") && ik_fmt_has_ci(spy, "L3-5\t  def step(self):") && ik_fmt_has_ci(spy, "L6-7\tdef main():");
+
+  // Binary file refused cleanly:
+  bin := [3] u8.['x', 0, 'y'];
+  nb := ik_fmt_outline(cast(string) bin[..], "a.bin", "", out[..]);
+  #assert ik_fmt_starts(cast(string) out[0..<nb], "[binary file:");
 }
 
 #test "inky format: run_command keeps <= 16 KB verbatim and spills > 16 KB with head+tail+path" {
