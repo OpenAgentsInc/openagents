@@ -201,3 +201,61 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert surface_find(s[0].surface[..], "coder.working") < 0;
   #assert surface_find(s[0].surface[..], "coder.chats") >= 0 && surface_find(s[0].surface[..], "chat.c1") >= 0 && surface_find(s[0].surface[..], "chat.g1") >= 0;
 }
+
+#test "sidebar caps visible chats at 5 with Load more pagination and shows Command+N shortcut on New chat" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  lb: [2048] u8; ln := 0;
+  for i: 0..<12 {
+    ln = el_put(lb[..], ln, "c"); ln = el_put_i(lb[..], ln, i);
+    ln = el_put(lb[..], ln, "\tChat "); ln = el_put_i(lb[..], ln, i);
+    ln = el_put(lb[..], ln, "\t0\t0\t0\t0\t0\t0\t/tmp/repo\t");
+    ln = el_put_i(lb[..], ln, 1000 + i);
+    ln = el_put(lb[..], ln, "\n");
+  }
+  coder_page_chats(s, cast(string) lb[0..<ln]);
+  #assert s[0].nchats == 12;
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  // New chat row is present with CP_NEW action and renders the Command icon + "N" keycap.
+  new_idx := surface_find(s[0].surface[..], "coder.new");
+  #assert new_idx >= 0 && surface_action(s[0].surface[..], new_idx) == CP_NEW;
+  sh := surface_sheet(s[0].surface[..]);
+  has_cmd_icon := false;
+  has_n_key := false;
+  for i: 0..<sh.nu {
+    if sh.under[i].kind == PRIM_ICON && sh.under[i].id == ICON_SET_COMMAND { has_cmd_icon = true; }
+    if sh.under[i].kind == PRIM_TEXT && sh.under[i].text == "N" { has_n_key = true; }
+  }
+  for i: 0..<sh.no {
+    if sh.over[i].kind == PRIM_ICON && sh.over[i].id == ICON_SET_COMMAND { has_cmd_icon = true; }
+    if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == "N" { has_n_key = true; }
+  }
+  #assert has_cmd_icon && has_n_key;
+  // Initially only the 5 most recent chats (c11..c7) are shown, plus Load more ("7 more").
+  #assert s[0].sb[0].vis_n == 5;
+  #assert surface_find(s[0].surface[..], "chat.c11") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c7") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c6") < 0;
+  lm_idx := surface_find(s[0].surface[..], "coder.sb.load_more");
+  #assert lm_idx >= 0 && surface_action(s[0].surface[..], lm_idx) == CP_SB_LOAD_MORE_ACT;
+  // Click Load more -> shows 10 chats (c11..c2) and Load more ("2 more").
+  #assert cp_sb_click_id(s, "coder.sb.load_more", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.02f32);
+  #assert s[0].sb[0].vis_n == 10;
+  #assert surface_find(s[0].surface[..], "chat.c6") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c2") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c1") < 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.load_more") >= 0;
+  // Click Load more again -> shows all 12 chats and hides Load more.
+  #assert cp_sb_click_id(s, "coder.sb.load_more", 0);
+  #assert cp_sb_test_frame(s, f[..], 0.04f32);
+  #assert s[0].sb[0].vis_n == 12;
+  #assert surface_find(s[0].surface[..], "chat.c0") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.sb.load_more") < 0;
+  // Switching views resets chat_limit back to 5.
+  coder_page_sb_set_view(s, CP_SB_VIEW_ARCHIVED);
+  coder_page_sb_set_view(s, CP_SB_VIEW_ACTIVE);
+  #assert cp_sb_test_frame(s, f[..], 0.06f32);
+  #assert s[0].sb[0].vis_n == 5 && surface_find(s[0].surface[..], "coder.sb.load_more") >= 0;
+}

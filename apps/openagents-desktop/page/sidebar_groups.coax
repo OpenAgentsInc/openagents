@@ -10,6 +10,7 @@
 CP_CHAT_FOLDER :: 160;        // bytes of a chat's working folder path
 CP_SB_UNDO_TEXT :: 160;       // bytes of undo toast message
 CP_SB_UNDO_LIFE :: 6.0f32;    // default undo toast auto-dismiss seconds
+CP_SB_PAGE_SIZE :: 5;         // chats shown per sidebar page before "Load more"
 
 // Sidebar view modes.
 CP_SB_VIEW_ACTIVE :: 0;
@@ -31,7 +32,7 @@ CP_SB_OP_BULK_DELETE :: 5;    // bulk delete selected chats
 CP_SB_OP_BULK_PIN :: 6;       // bulk toggle pin on selected chats
 CP_SB_OP_UNDO :: 7;           // user pressed Undo on the undo toast
 
-// Sidebar widget action IDs (211..222; free of all other page action ranges).
+// Sidebar widget action IDs (211..223; free of all other page action ranges).
 CP_SB_VIEW_ACTIVE_ACT :: 211;
 CP_SB_VIEW_ARCHIVED_ACT :: 212;
 CP_SB_BULK_ARCHIVE_ACT :: 214;
@@ -42,6 +43,7 @@ CP_SB_BULK_CLEAR_ACT :: 218;
 CP_SB_UNDO_ACT :: 219;
 CP_SB_UNDO_CLOSE_ACT :: 220;
 CP_SB_WORKING_TOGGLE :: 222;
+CP_SB_LOAD_MORE_ACT :: 223;
 
 CpSbUndo :: struct {
   active: bool;
@@ -55,6 +57,7 @@ CpSidebar :: struct {
   view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
   now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
   working_collapsed: bool;    // Working shelf collapse state (false = expanded by default)
+  chat_limit: int;            // max chats rendered before "Load more" (defaults to CP_SB_PAGE_SIZE)
   sel: [CP_CHATS] bool;       // multi-select bitset indexed by s[0].chats[q]
   sel_count: int;
   sel_anchor: int;            // last clicked chat index q for Shift-click range (-1: none)
@@ -66,7 +69,12 @@ CpSidebar :: struct {
 }
 
 cp_sb_init :: (s: [] CoderPage) {
-  s[0].sb[0] = CpSidebar.{sel_anchor = -1};
+  s[0].sb[0] = CpSidebar.{sel_anchor = -1, chat_limit = CP_SB_PAGE_SIZE};
+}
+
+cp_sb_chat_limit :: (s: [] CoderPage) -> int {
+  lim := s[0].sb[0].chat_limit;
+  return ifx lim > 0 then lim else CP_SB_PAGE_SIZE;
 }
 
 // Parse a decimal integer from a string (e.g. snoozed_until_ms column). Returns 0 on invalid/empty.
@@ -365,14 +373,20 @@ cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     s[0].sb[0].working_collapsed = !s[0].sb[0].working_collapsed;
     return true;
   }
+  if act == CP_SB_LOAD_MORE_ACT {
+    s[0].sb[0].chat_limit = cp_sb_chat_limit(s) + CP_SB_PAGE_SIZE;
+    return true;
+  }
   if act == CP_SB_VIEW_ACTIVE_ACT {
     s[0].sb[0].view_mode = CP_SB_VIEW_ACTIVE;
+    s[0].sb[0].chat_limit = CP_SB_PAGE_SIZE;
     cp_sb_clear_sel(s);
     s[0].side_scroll = 0;
     return true;
   }
   if act == CP_SB_VIEW_ARCHIVED_ACT {
     s[0].sb[0].view_mode = CP_SB_VIEW_ARCHIVED;
+    s[0].sb[0].chat_limit = CP_SB_PAGE_SIZE;
     cp_sb_clear_sel(s);
     s[0].side_scroll = 0;
     return true;
@@ -471,6 +485,7 @@ coder_page_sb_undo_dismiss :: (s: [] CoderPage) #export_c #effects(all) {
 coder_page_sb_set_view :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].sb[0].view_mode = ifx mode == CP_SB_VIEW_ARCHIVED then CP_SB_VIEW_ARCHIVED else CP_SB_VIEW_ACTIVE;
+  s[0].sb[0].chat_limit = CP_SB_PAGE_SIZE;
   cp_sb_clear_sel(s);
   s[0].side_scroll = 0;
 }

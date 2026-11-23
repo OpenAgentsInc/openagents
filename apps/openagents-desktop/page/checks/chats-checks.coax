@@ -179,6 +179,8 @@
   s[0].ready = true;
   coder_page_chats(s, "p1\tPinned 1\t0\t1\t0\np2\tPinned 2\t0\t1\t0\nr1\tRecent 1\nr2\tRecent 2\nr3\tRecent 3\nr4\tRecent 4\nr5\tRecent 5\nr6\tRecent 6\nr7\tRecent 7\nr8\tRecent 8\n");
   coder_page_foreman(s, false, CP_FOREMAN_TIER_OBSERVE);
+  // Expand beyond the initial 5-chat page so all 10 chats are visible for the 1..9 badge check.
+  s[0].sb[0].chat_limit = 10;
   f: [1] UiFrame;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
   cp_layout(s, f[..], 1200.0f32, 1200.0f32);
