@@ -97,6 +97,7 @@ AgywState :: struct {
   turn_active: bool;
   turn: int;                              // the turns started, as the turn lines number them
   stopping: bool;
+  stop_deadline_ms: int;        // force-close hung agy child if session/cancel gets no reply within 3s
   respawned: bool;
   retried_sig: bool;
   reply: [AGYW_REPLY] u8; reply_n: int;
@@ -769,6 +770,7 @@ agyw_no_output :: (s: [] AgywState, id: string, status: string) -> string {
 agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) {
   s[0].turn_active = false;
   s[0].stopping = false;
+  s[0].stop_deadline_ms = 0;
   agyw_calls_clear(s);
   agyw_subs_clear(s);
   if emit { agyw_emit_ended(s, ending, text); }
@@ -1752,6 +1754,33 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
 
 // ---------------------------------------------------------------- main loop
 
+// Handle MWW_STOP / MWW_INTERRUPT. Returns true when an active live turn entered graceful stop
+// and tool_main should arm stop_deadline_ms; otherwise finalizes immediately so the UI never hangs
+// in "Stopping…" when the worker is already idle or receives a second stop click.
+agyw_handle_stop :: (s: [] AgywState, x: [] CuEngine, emit: bool) -> bool {
+  if s[0].pending_permit {
+    s[0].pending_permit = false;
+    cu_decline(x[0].c);
+    if x[0].live { _ = cu_flush(x[0].c, x[0].p); }
+  }
+  if !s[0].turn_active {
+    agyw_finish_turn(s, "stopped", "", emit);
+    return false;
+  }
+  if s[0].stopping {
+    if x[0].live { cue_close(x); agyw_lease_release(s); }
+    agyw_finish_turn(s, "stopped", "Stopped.", emit);
+    return false;
+  }
+  s[0].stopping = true;
+  if x[0].live {
+    cue_stop(x);
+    return true;
+  }
+  agyw_finish_turn(s, "stopped", "Stopped.", emit);
+  return false;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   sb: [1] AgywState; s := sb[..];
   agyw_load_env(s);
@@ -1791,15 +1820,8 @@ tool_main :: () -> int #export_c #effects(all) {
       } else if rk == MWW_ANSWER {
         _ = agyw_handle_answer(s, x, req[0]);
       } else if rk == MWW_STOP || rk == MWW_INTERRUPT {
-        if s[0].pending_permit {
-          s[0].pending_permit = false;
-          cu_decline(x[0].c);
-          if x[0].live { _ = cu_flush(x[0].c, x[0].p); }
-        }
-        if s[0].turn_active {
-          s[0].stopping = true;
-          if x[0].live { cue_stop(x); }
-          else { agyw_finish_turn(s, "stopped", "Stopped.", true); }
+        if agyw_handle_stop(s, x, true) {
+          s[0].stop_deadline_ms = cxproc_now_ms() + 3000;
         }
       } else if rk == MWW_STEER {
         if agyw_is_compact(req[0].text) && (!x[0].live || !cu_can_compact(x[0].c)) {
@@ -1816,6 +1838,7 @@ tool_main :: () -> int #export_c #effects(all) {
           s[0].turn += 1; agyw_write_line(s, mww_turn(s[0].out[..], s[0].turn, "message", "", ""));
           s[0].turn_active = true;
           s[0].stopping = false;
+          s[0].stop_deadline_ms = 0;
           s[0].respawned = false;
           s[0].retried_sig = false;
           s[0].reply_n = 0;
@@ -1890,15 +1913,21 @@ tool_main :: () -> int #export_c #effects(all) {
       }
       if x[0].live && s[0].turn_active && !s[0].pending_permit {
         now := cxproc_now_ms();
-        if now - s[0].last_sub_poll >= 250 {
-          s[0].last_sub_poll = now;
-          agyw_poll_subagents(s, x, true);
-        }
-        w := cue_watch(x, now);
-        if w == CUE_WATCH_BG_DONE {
-          agyw_turn_end(s, x[0].c[0].ar[..], "", true);
-        } else if w == CUE_WATCH_ENDED {
-          agyw_finish_turn(s, "failed", "Antigravity stopped responding and was closed.", true);
+        if s[0].stopping && s[0].stop_deadline_ms > 0 && now >= s[0].stop_deadline_ms {
+          cue_close(x);
+          agyw_lease_release(s);
+          agyw_finish_turn(s, "stopped", "Stopped.", true);
+        } else {
+          if now - s[0].last_sub_poll >= 250 {
+            s[0].last_sub_poll = now;
+            agyw_poll_subagents(s, x, true);
+          }
+          w := cue_watch(x, now);
+          if w == CUE_WATCH_BG_DONE {
+            agyw_turn_end(s, x[0].c[0].ar[..], "", true);
+          } else if w == CUE_WATCH_ENDED {
+            agyw_finish_turn(s, "failed", "Antigravity stopped responding and was closed.", true);
+          }
         }
       }
     }
@@ -2363,4 +2392,26 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   // Top-level text fallback in agent_thought_chunk also emits a thought line.
   agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"63a19ef3-e900-4141-912a-4f727455dd5b\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"text\":\"Fallback thought\"}}}");
   #assert agyw_logged(s, "{\"kind\":\"thought\",\"text\":\"Fallback thought\"}");
+}
+
+#test "agyworker: MWW_STOP acknowledges immediately when idle and force-stops on second stop" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true;
+  // 1. Idle worker receiving MWW_STOP immediately emits ended:stopped so UI never hangs in "Stopping…".
+  s[0].turn_active = false;
+  #assert !agyw_handle_stop(s, x, true);
+  #assert agyw_logged(s, "\"kind\":\"ended\",\"ending\":\"stopped\"");
+
+  // 2. Active live turn: first stop sends session/cancel and asks caller to arm deadline; second stop force-finishes.
+  s[0].log_n = 0; s[0].turn_active = true; s[0].stopping = false;
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  agyw_fx_feed(s, x, AGYW_FX_SESSION_NEW);
+  cu_outbox_clear(x[0].c);
+  #assert agyw_handle_stop(s, x, true) && s[0].stopping && s[0].turn_active;
+  #assert agy_out_has(x, "\"method\":\"session/cancel\"");
+  #assert !agyw_handle_stop(s, x, true) && !s[0].turn_active && !s[0].stopping && !x[0].live;
+  #assert agyw_logged(s, "\"kind\":\"ended\",\"ending\":\"stopped\"");
 }

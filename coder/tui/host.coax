@@ -732,7 +732,7 @@ hs_serve :: (args: [] Args) -> int {
     if !live[cur] && now_ms >= retry_at {
       live[cur] = hs_subscribe(h, subs[cur..<cur + 1]);
       since_ms[cur] = now_ms;
-      if !live[cur] { retry_at = now_ms + 3000; tool_err("coder host: the relay "); tool_err(relay); tool_errln(" did not answer; trying again"); }
+      if !live[cur] { retry_at = cxsock_now_ms() + 10000; tool_err("coder host: the relay "); tool_err(relay); tool_errln(" did not answer; trying again"); }
       else if !caught_up { hs_outln("Listening for browsers."); caught_up = true; }
     }
     if !live[cur] { x := cxproc_sleep_ms(ifx busy_ms < 200 then busy_ms else 200); continue; }

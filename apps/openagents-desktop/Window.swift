@@ -27,11 +27,14 @@ final class CoderRun {
     let simChat = "run-" + UUID().uuidString.lowercased()   // who asks the simulator helper while it has no chat id (OA_SIM_CHAT, #13811)
     var preparingWorktree = false, worktreeSkip = false, startingWorker = false
     var startGen: Int = 0
+    var stopRequestedAt: CFTimeInterval = 0
+    var stopGen: UInt64 = 0
     var lastPermitOpen = false
     var lastGoalStatus: Int32 = 0
     var lastProviderKind: Int32 = -1
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
+        stopRequestedAt = 0; stopGen &+= 1
         endTurn()
         worker.gone = nil; worker.line = nil; worker.stop()
         for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
@@ -39,6 +42,7 @@ final class CoderRun {
     }
     /// The message ended: nothing is left to attach to, and its sub-agents' runs go.
     func endTurn() {
+        stopRequestedAt = 0; stopGen &+= 1
         guard let t = turn else { return }
         turn = nil
         CoderTurn.remove(t.run)

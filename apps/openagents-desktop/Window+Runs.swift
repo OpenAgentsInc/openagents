@@ -16,11 +16,15 @@ extension CoderWindow {
                 ProviderInstancesStore.shared.refreshAll()
             }
             cd_line(r.page, text)
+            if cd_running(r.page) == 0 {
+                r.stopRequestedAt = 0
+                r.stopGen &+= 1
+            }
             self.followUpBegan(r)
             self.markUnread(r)
             self.pump(r)
         }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; let label = r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -34,25 +38,66 @@ extension CoderWindow {
         pump(r)
         wake()
     }
-    func stopRun(_ r: CoderRun) {
-        if r.startingWorker || r.preparingWorktree {
-            r.startGen &+= 1
-            r.startingWorker = false
-            r.preparingWorktree = false
-            cd_turn_loading_model(r.page, 0)
+    /// Immediately terminates an unresponsive/stuck worker and finalizes the running turn as stopped.
+    func forceStopRun(_ r: CoderRun) {
+        r.startGen &+= 1
+        r.startingWorker = false
+        r.preparingWorktree = false
+        r.stopRequestedAt = 0
+        r.stopGen &+= 1
+        r.worker.gone = nil
+        r.worker.line = nil
+        if r.worker.alive { r.worker.stop(forget: false) }
+        for (_, one) in r.agents {
+            one.gone = nil
+            one.line = nil
+            one.stop(forget: false)
+        }
+        r.agents = [:]
+        wire(r)
+        if r === run { recallDue = true }
+        cd_turn_loading_model(r.page, 0)
+        if cd_running(r.page) != 0 {
             cd_line(r.page, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}")
-            wake()
+        }
+        r.endTurn()
+        if r === run { keep() } else { keep(r) }
+        pump(r)
+        wake()
+    }
+    func stopRun(_ r: CoderRun) {
+        if r.startingWorker || r.preparingWorktree || !r.worker.alive {
+            forceStopRun(r)
             return
         }
+        // Second Stop click while already stopping (e.g. hung/idle worker) force-stops immediately.
+        if r.stopRequestedAt > 0 {
+            forceStopRun(r)
+            return
+        }
+        r.stopRequestedAt = CACurrentMediaTime()
+        r.stopGen &+= 1
+        let gen = r.stopGen
         var out = [CChar](repeating: 0, count: 4096)
         let n = cd_stop_line(&out, Int32(out.count))
         r.worker.write(out, count: Int(n))
         for (_, one) in r.agents { one.write(out, count: Int(n)) }
+        // Escalate automatically if the worker fails to acknowledge stop within 3.5s.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { [weak self, weak r] in
+            guard let self, let r, r.stopGen == gen, r.stopRequestedAt > 0, cd_running(r.page) != 0 else { return }
+            let stillActive = (r === self.run) || (r.chat != nil && self.runs[r.chat!] === r)
+            guard stillActive else { return }
+            self.forceStopRun(r)
+        }
     }
     func pump(_ r: CoderRun) {
         var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
         let page = r.page, cwd = (r === run ? folder : r.folder).path
-        if r !== run && cd_action(page) == 3 { stopRun(r) }
+        if r !== run {
+            let bgAct = cd_action(page)
+            if bgAct == 1 { sendTask(r) }
+            else if bgAct == 3 { stopRun(r) }
+        }
         if FeatureFlags.anyExtraModel && cd_budget_exceeded(page) == 0 {
             while true {
                 let j = cd_agent_next(page)
@@ -87,6 +132,8 @@ extension CoderWindow {
     /// recall/task lines and records the turn. Works whether `r` stays shown or is detached while starting.
     func sendTask(_ r: CoderRun) {
         guard !r.startingWorker else { return }
+        r.stopRequestedAt = 0
+        r.stopGen &+= 1
         let shown = r === run
         let needsRecall: Bool
         if shown {
@@ -95,8 +142,14 @@ extension CoderWindow {
             needsRecall = recallDue
             if needsRecall { recallDue = false }
         } else {
-            r.worker.folder = r.folder.path
-            needsRecall = false
+            if !r.worker.alive {
+                configureWorkerEnv(r, isForeman: false)
+                syncSkillsNote(for: r.page, isForeman: false)
+                needsRecall = true
+            } else {
+                r.worker.folder = r.folder.path
+                needsRecall = false
+            }
         }
         let useAgy = cd_model_agy(r.page) != 0
         #if OA_FULL
