@@ -92,7 +92,7 @@ ChatPage :: struct {
   thread_menu:bool;thread_details:bool;
   // a drawer row's own actions (Zeron's row swipe and long-press): the touch's start, and the row the menu acts on
   held:f32;row_menu:bool;backing:bool;back_dx:f32;row_y:f32;row_h:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
-  library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
+  library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;opening:bool;opening_at:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
   menu_content:f32;menu_viewport:f32;
   search:[128]u8;search_n:int;
   initials: [4] u8; initials_n: int;
@@ -153,6 +153,13 @@ ch_step :: (s: [] ChatPage) {
   es_bridge_sync(s[0].core, s[0].eb[..], s[0].env[..]);
   ch_apply_model_pref(s);
   if s[0].model_sheet != 0 && !ch_device_offer_on(s) { s[0].model_sheet = 0; }
+  // a chat picked from a list shows once its messages are read, its read failed, or after 8 s
+  if s[0].opening {
+    c:=s[0].core;e:=app_device_env(c);
+    read:=app_device_on(c) && e[0].ns>0 && eu_current(e)>=0 && cast(string)e[0].view[0].method[0..<e[0].view[0].nm]=="ReadSession";
+    if read || app_note(c).count>0 || (app_device_on(c) && e[0].uncertain) || ch_now(s)-s[0].opening_at>8000 {s[0].opening=false;ch_main(s);s[0].section=0;s[0].drawer=false;}
+    else {s[0].again=true;}
+  }
   query:=ifx s[0].section==2 && !s[0].drawer && s[0].library_filter==0 then cast(string)s[0].search[0..<s[0].search_n] else "";
   // the Antigravity screen (the Recents page's fourth filter) lists Antigravity's own chats on each computer
   dh_mode(s[0].sc[0].devices[..],s[0].core,ifx s[0].section==2 && !s[0].drawer && s[0].library_filter==3 then "antigravity" else "");
@@ -195,7 +202,7 @@ ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
     detail:="";project:=cast(string)n[0].rows[i].session.workspace[0..<r.session.nw];if project=="default" {project="";}
      db:[160]u8;dn:=el_put(db[..],0,project);if multi {if dn>0 {dn=el_put(db[..],dn," · ");}dn=el_put(db[..],dn,cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl]);}
      if dn>0 {detail=sheet_pool(f[0].sheet,cast(string)db[0..<dn]);}
-    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),detail=detail,action=343,status=ifx r.session.nr>0 then "Needs you" else ch_age(f,c[0].wall_ms,r.session.updated),attention=r.session.nr>0};count+=1;shown+=1;
+    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT | (ifx s[0].opening then EL_S_BUSY else 0) else 0) | (ifx r.session.busy then EL_S_BUSY else 0),detail=detail,action=343,status=ifx r.session.nr>0 then "Needs you" else ch_age(f,c[0].wall_ms,r.session.updated),attention=r.session.nr>0};count+=1;shown+=1;
    }
   }
   if shown==0 && pass==0 {count=head_at;}
@@ -262,6 +269,8 @@ ch_active_model_id :: (s: [] ChatPage) -> string {
 ch_active_model_label :: (s: [] ChatPage) -> string {
   if s[0].core.count < 1 || !app_device_on(s[0].core) { return ""; }
   e := app_device_env(s[0].core); m := eu_model(e);
+  // a chat the computer only shows (Antigravity's own) is named by its own model, not the composer's choice
+  cur := eu_current(e); if cur >= 0 && cast(string) e[0].view[0].sessions[cur].control[0..<e[0].view[0].sessions[cur].nc] == "observe-only" && e[0].view[0].sessions[cur].nmo > 0 { return view_model_label(cast(string) e[0].view[0].sessions[cur].model[0..<e[0].view[0].sessions[cur].nmo]); }
   if m >= 0 {
     mm := e[0].offer[0].models[m];
     return ifx mm.nl > 0 then cast(string) e[0].offer[0].models[m].label[0..<mm.nl] else view_model_label(cast(string) e[0].offer[0].models[m].id[0..<mm.ni]);
@@ -859,7 +868,8 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     for i:0..<h[0].nav[0].n {if dh_row_id(h,i,buf[..])!=id {continue;}r:=h[0].nav[0].rows[i];entry:=h[0].nav[0].browser[0].catalog[0].entries[r.host];key:[193]u8;
       for j:0..<64 {key[j]=entry.host[j];}key[64]='\t';for j:0..<r.session.ni {key[65+j]=r.session.id[j];}
       opened:=app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_DEVICE_REJOIN,text=cast(string)key[0..<65+r.session.ni],mono_ms=ch_now(s),wall_ms=c[0].wall_ms});if opened<1 {return false;}
-      ch_main(s);s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
+      // the list stays until the chat's messages are read (ch_step shows it), so no empty page flashes
+      s[0].opening=true;s[0].opening_at=ch_now(s);ch_set_focus(s,"");ch_step(s);return true;
     }return false;
   }
   if act==344 {

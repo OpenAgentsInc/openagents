@@ -222,10 +222,15 @@ dl_rejoin_now :: (c: [] AppCore) {
   d[0].rejoin_n = 0;
   if k < 0 { return; }
   _ := app_slot_set(c[0].environment[..], host, app_device_name(c, k));
+  same := d[0].on && cast(string) d[0].host[..] == host;
   dl_select(c, host);
   e := d[0].e[..];
   // the runtime is read first (eu_enter_local); the conversation then opens on its page
   e[0].ns = ea_copy(e[0].session[..], session); e[0].page = 2;
+  // already on this computer: read the conversation now, not at the lane's next poll
+  if same && d[0].op == 0 && !e[0].flight && !e[0].random && !e[0].uncertain && e[0].action == 0 && !d_reading(c) {
+    d[0].wake_at = 0; eu_press(e, "env.refresh"); app_mark(c, SURF_ALL);
+  }
 }
 // What is kept for the next launch: "host TAB session" while a conversation runs on a computer.
 app_device_keep :: (c: [] AppCore, out: [] u8) -> int {
