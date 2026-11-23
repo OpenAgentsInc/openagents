@@ -226,7 +226,7 @@ final class CoderDaemonClient {
     func forwardDirect(_ eventLine: Data) -> Data? {
         let path = socketPath
         guard FileManager.default.fileExists(atPath: path) else { return nil }
-        guard !eventLine.isEmpty, eventLine.count < 65536 else { return nil }
+        guard !eventLine.isEmpty, eventLine.count < 262_144 else { return nil }
         var line = eventLine
         line.append(0x0A)
 
@@ -270,8 +270,8 @@ final class CoderDaemonClient {
         guard sent else { return nil }
 
         var response = Data()
-        var buf = [UInt8](repeating: 0, count: 4096)
-        while response.count < 131_072 {
+        var buf = [UInt8](repeating: 0, count: 16_384)
+        while response.count < 524_288 {
             let r = Darwin.read(fd, &buf, buf.count)
             if r <= 0 { break }
             if let nl = buf[0..<r].firstIndex(of: 0x0A) {

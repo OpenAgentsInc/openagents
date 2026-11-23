@@ -27,24 +27,47 @@ final class CoderTailnet: NSObject {
     private let queue = DispatchQueue(label: "openagents.coder.tailnet", qos: .utility)
     private let workQueue = DispatchQueue(label: "openagents.coder.tailnet.work", qos: .userInitiated, attributes: .concurrent)
     private var timer: DispatchSourceTimer?
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSig: String?
     private var listener: NWListener?
     private var service: NetService?            // main thread only
     private var serving: (owner: AppTailnet.Owner, key: String, port: UInt16)?
     private var hostKey: String?
     private var pending = 0                     // pair processes waiting for a phone, at most two
     private var activeConnections = 0           // concurrent active client connections on queue
+    private var subscribers: [ObjectIdentifier: (conn: NWConnection, sessionFilter: String)] = [:]
+    private var pushSeq: Int64 = 0
+    private var runsWatcher: DispatchSourceFileSystemObject?
     private static let maxConcurrentConnections = 32
 
-    /// Starts watching for Tailscale (now, then every two minutes). Not in a scratch test launch.
+    /// Starts watching for Tailscale (now, then every two minutes, plus NWPathMonitor). Not in a scratch test launch.
     func start() {
         guard CoderTailnet.enabled, !TestLaunch.active else { return }
         queue.async { [self] in
+            startPathMonitorIfNeeded()
             guard timer == nil else { return }
             let t = DispatchSource.makeTimerSource(queue: queue)
-            t.schedule(deadline: .now() + 2, repeating: .seconds(120), leeway: .seconds(10))
+            t.schedule(deadline: .now(), repeating: .seconds(120), leeway: .seconds(5))
             t.setEventHandler { [weak self] in self?.check() }
             t.resume(); timer = t
         }
+    }
+
+    private func startPathMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let m = NWPathMonitor()
+        m.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            let ifaces = path.availableInterfaces.map(\.name).sorted().joined(separator: ",")
+            let sig = "\(path.status)|\(ifaces)"
+            let prev = self.lastPathSig
+            self.lastPathSig = sig
+            if let prev, prev != sig, CoderTailnet.enabled {
+                self.check()
+            }
+        }
+        m.start(queue: queue)
+        pathMonitor = m
     }
 
     /// Re-evaluates Tailscale listener state immediately after Settings -> Connections changes exposure mode.
@@ -156,6 +179,7 @@ final class CoderTailnet: NSObject {
             case .ready:
                 let got = l.port?.rawValue ?? port
                 self.serving = (owner, key, got)
+                self.startWatchingRunsForPush()
                 self.advertise(AppTailnetComputer(host: key, ip: owner.ip, dns: owner.dns, port: got, name: CoderTailnet.label(owner)))
             case .failed:
                 l.cancel()
@@ -175,7 +199,49 @@ final class CoderTailnet: NSObject {
 
     private func stop() {
         listener?.cancel(); listener = nil; serving = nil
+        runsWatcher?.cancel(); runsWatcher = nil
+        for (_, sub) in subscribers { sub.conn.cancel() }
+        subscribers.removeAll()
         unadvertise()
+    }
+
+    private func startWatchingRunsForPush() {
+        runsWatcher?.cancel()
+        let dir = CoderDaemonClient().runsDir
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fd = open(dir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .extend, .rename, .delete, .attrib],
+            queue: queue
+        )
+        src.setEventHandler { [weak self] in
+            self?.broadcastPush(kind: "sessions_changed", session: "")
+        }
+        src.setCancelHandler { close(fd) }
+        runsWatcher = src
+        src.resume()
+    }
+
+    private func broadcastPush(kind: String, session: String, revision: Int64 = 0, busy: Bool = false, hasInteraction: Bool = false) {
+        guard !subscribers.isEmpty else { return }
+        pushSeq += 1
+        let ev = AppTailnet.PushEvent(
+            seq: pushSeq,
+            kind: kind,
+            session: session,
+            revision: revision,
+            busy: busy,
+            hasInteraction: hasInteraction
+        )
+        let frame = AppTailnet.pushLine(ev)
+        guard !frame.isEmpty else { return }
+        for (_, sub) in subscribers {
+            if sub.sessionFilter.isEmpty || session.isEmpty || sub.sessionFilter == session {
+                sub.conn.send(content: frame, completion: .contentProcessed { _ in })
+            }
+        }
     }
 
     /// The name the phone shows: this Mac's name, as one DNS label at most.
@@ -213,7 +279,10 @@ final class CoderTailnet: NSObject {
             q.async {
                 guard !released else { return }
                 released = true
-                if let self, self.activeConnections > 0 { self.activeConnections -= 1 }
+                if let self {
+                    if self.activeConnections > 0 { self.activeConnections -= 1 }
+                    self.subscribers.removeValue(forKey: ObjectIdentifier(conn))
+                }
                 conn.cancel()
             }
         }
@@ -234,19 +303,28 @@ final class CoderTailnet: NSObject {
         CoderTailnet.readFrame(conn, Data(), maxBytes: AppTailnet.requestMax) { [weak self] line, rest in
             guard let self, !answered else { return }
             guard let line else { refuse(.malformed); return }
-            let isDirect = AppTailnet.isDirectHello(line)
-            if !isDirect && !AppTailnet.isRequest(line) { refuse(.malformed); return }
+            let grantReq = AppTailnet.parseDirectGrantRequest(line)
+            let isDirect = grantReq == nil && AppTailnet.isDirectHello(line)
+            if grantReq == nil && !isDirect && !AppTailnet.isRequest(line) { refuse(.malformed); return }
             answered = true
-            // Offload tailscale whois, ensureDaemon, and pairing subprocesses off the serial listener queue.
+            // Offload tailscale whois, ensureDaemon, direct-grant, and pairing subprocesses off the serial listener queue.
             self.workQueue.async { [weak self] in
                 guard let self else { closeConn(); return }
                 let whois = CoderTailnet.cli.flatMap { CoderTailnet.output($0, ["whois", "--json", remote]) }
                 if let why = AppTailnet.decide(remote: remote, whois: whois, owner: owner) {
-                    if isDirect {
+                    if grantReq != nil {
+                        let ans = AppTailnet.DirectGrantAnswer(host: "", label: label, grant: nil, epoch: 0, expires: 0, refused: why.rawValue)
+                        conn.send(content: AppTailnet.directGrantAnswerLine(ans), completion: .contentProcessed { _ in closeConn() })
+                    } else if isDirect {
                         conn.send(content: AppTailnet.directAckLine(refused: why.rawValue), completion: .contentProcessed { _ in closeConn() })
                     } else {
                         conn.send(content: AppTailnet.answerLine(.init(host: key, label: label, invitation: nil, refused: why.rawValue)), completion: .contentProcessed { _ in closeConn() })
                     }
+                    return
+                }
+                if let grantReq {
+                    let reply = self.mintDirectGrant(request: grantReq, label: label)
+                    conn.send(content: reply, completion: .contentProcessed { _ in closeConn() })
                     return
                 }
                 if isDirect {
@@ -272,22 +350,64 @@ final class CoderTailnet: NSObject {
         }
     }
 
-    /// Serves sealed NIP-SESS NDJSON request events over an admitted direct tailnet TCP connection (#13795).
+    /// Mints a relay-free signed grant via `coder-host direct-grant` for an admitted same-owner Tailscale device (#13993).
+    private func mintDirectGrant(request: AppTailnet.DirectGrantRequest, label: String) -> Data {
+        let unavailable = AppTailnet.directGrantAnswerLine(.init(host: "", label: label, grant: nil, epoch: 0, expires: 0, refused: AppTailnet.Refusal.unavailable.rawValue))
+        guard let host = Bundle.main.path(forResource: "coder-host", ofType: nil) else { return unavailable }
+        _ = CoderDaemonClient().ensureDaemon()
+        var isDir: ObjCBool = false
+        let kept = UserDefaults.standard.string(forKey: "folder") ?? ""
+        let folder = !kept.isEmpty && FileManager.default.fileExists(atPath: kept, isDirectory: &isDir) && isDir.boolValue
+            ? kept : FileManager.default.homeDirectoryForCurrentUser.path
+        let safeClientLabel = CoderTailnet.clampUTF8(request.label, maxBytes: 80)
+        guard var out = CoderTailnet.output(host, [
+            "direct-grant",
+            "--device", request.device,
+            "--workspace", folder,
+            "--label", label,
+            "--client-label", safeClientLabel.isEmpty ? "OpenAgents iOS" : safeClientLabel,
+        ], timeout: 10), !out.isEmpty else {
+            return unavailable
+        }
+        if let nl = out.firstIndex(of: 0x0A) { out = Data(out[out.startIndex..<nl]) }
+        guard AppTailnet.directGrantAnswer(out) != nil else { return unavailable }
+        out.append(0x0A)
+        return out
+    }
+
+    private static func clampUTF8(_ s: String, maxBytes: Int) -> String {
+        var out = ""
+        for ch in s {
+            let piece = String(ch)
+            if out.utf8.count + piece.utf8.count > maxBytes { break }
+            out.append(ch)
+        }
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Serves multiplexed NIP-SESS NDJSON RPCs and live push subscriptions over an admitted direct tailnet TCP connection (#13795, #13993).
     private func serveDirectLoop(_ conn: NWConnection, buffer: Data, close: @escaping () -> Void) {
-        CoderTailnet.readFrame(conn, buffer, maxBytes: 65536) { [weak self] line, rest in
+        CoderTailnet.readFrame(conn, buffer, maxBytes: 262_144) { [weak self] line, rest in
             guard let self, let line else { close(); return }
+            if let sessionFilter = AppTailnet.parseSubscribe(line) {
+                self.queue.async { [weak self] in
+                    self?.subscribers[ObjectIdentifier(conn)] = (conn, sessionFilter)
+                }
+                self.serveDirectLoop(conn, buffer: rest, close: close)
+                return
+            }
+            // Keep reading subsequent pipelined frames while forwarding this NIP-44 RPC concurrently.
+            self.serveDirectLoop(conn, buffer: rest, close: close)
             self.workQueue.async { [weak self] in
-                guard let self else { close(); return }
+                guard let self else { return }
                 let client = CoderDaemonClient()
                 if var reply = client.forwardDirect(line) {
                     reply.append(0x0A)
-                    conn.send(content: reply, completion: .contentProcessed { [weak self] err in
-                        if err != nil { close(); return }
-                        self?.serveDirectLoop(conn, buffer: rest, close: close)
-                    })
-                } else {
-                    // Expired or silent requests produce no reply; keep reading.
-                    self.serveDirectLoop(conn, buffer: rest, close: close)
+                    self.queue.async {
+                        conn.send(content: reply, completion: .contentProcessed { err in
+                            if err != nil { close() }
+                        })
+                    }
                 }
             }
         }
@@ -332,7 +452,12 @@ final class CoderTailnet: NSObject {
         let p = Process(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: host)
         p.arguments = ["pair", "--workspace", folder, "--label", label, "--wait", "300"]
-        var env = ProcessInfo.processInfo.environment; env["PATH"] = CoderWorker.path; env["BROWSER"] = "/usr/bin/true"; p.environment = env
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = CoderWorker.path
+        env["BROWSER"] = "/usr/bin/true"
+        env["TAILSCALE_BE_CLI"] = "1"
+        if env["TERM"]?.isEmpty != false { env["TERM"] = "dumb" }
+        p.environment = env
         p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
         let got = DispatchSemaphore(value: 0)
         let lock = NSLock()

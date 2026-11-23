@@ -135,6 +135,7 @@ extension CoderWindow {
     }
     /// File > New Chat (Command-N): what the New chat button does.
     func newChat() {
+        if settingsOpen { closeSettings() }
         if let prev = chat { chatDrafts[prev] = draft }
         if cd_new(page) != 0 { _ = cd_set_text(page, ""); focusComposer() }
         wake()

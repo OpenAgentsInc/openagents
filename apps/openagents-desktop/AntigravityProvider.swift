@@ -372,13 +372,19 @@ enum AntigravityProfileManager {
 
     /// Builds `agyworker` environment dictionary for an Antigravity instance (including secrets & custom vars).
     static func workerEnv(for inst: ProviderInstanceConfig, resolvedBinary: String?) -> [String: String] {
-        let profile = prepareProfile(for: inst)
         var env: [String: String] = [
-            "CODER_AGY_PROFILE_DIR": profile.path,
             "CODER_AGY_AUTH_METHOD": inst.authMethod.rawValue,
             "CODER_AGY_MODE": CoderAntigravity.mode,
             "CODER_AGY_INTERACTIVE": "1",
         ]
+        // Personal OAuth defaults to native ~/.gemini so chats sync with Google Antigravity and
+        // already-signed-in `agy` sessions work immediately; non-personal auth methods or explicit
+        // custom profile paths use an isolated profile (#13995).
+        let customProfile = (inst.id == "antigravity") ? CoderAntigravity.profile.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        if inst.authMethod != .oauthPersonal || !customProfile.isEmpty {
+            let profile = prepareProfile(for: inst)
+            env["CODER_AGY_PROFILE_DIR"] = profile.path
+        }
         if let bin = resolvedBinary, !bin.isEmpty {
             env["CODER_AGY_BIN"] = bin
         } else if !inst.binaryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

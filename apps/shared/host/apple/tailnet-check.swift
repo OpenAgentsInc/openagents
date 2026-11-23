@@ -106,10 +106,11 @@ book.remember(AppTailnetComputer(host: other, ip: "100.70.0.2", dns: "", port: 4
 book.remember(AppTailnetComputer(host: host, ip: "100.127.107.99", dns: mac.dns, port: 47110, name: "Mac", seen: 30))
 let reopened = AppTailnetBook(url: file).computers
 expect(reopened.map(\.host) == [host, other] && reopened[0].ip == "100.127.107.99" && reopened[0].port == 47110, "saved Macs survive a relaunch; a Mac seen again replaces its old address")
-for i in 0..<12 { book.remember(AppTailnetComputer(host: String(format: "%064x", i), ip: "100.64.0.\(i + 1)", dns: "", port: 1, name: "n", seen: Int64(100 + i))) }
-expect(book.computers.count == AppTailnetBook.limit && book.computers.first?.seen == 111, "at most eight, newest first")
-book.forget(String(format: "%064x", 11))
-expect(!book.computers.contains { $0.host == String(format: "%064x", 11) }, "a Mac can be forgotten")
+let overflowCount = AppTailnetBook.limit + 4
+for i in 0..<overflowCount { book.remember(AppTailnetComputer(host: String(format: "%064x", i), ip: "100.64.0.\((i % 200) + 1)", dns: "", port: 1, name: "n", seen: Int64(100 + i))) }
+expect(book.computers.count == AppTailnetBook.limit && book.computers.first?.seen == Int64(100 + overflowCount - 1), "at most AppTailnetBook.limit, newest first")
+book.forget(String(format: "%064x", overflowCount - 1))
+expect(!book.computers.contains { $0.host == String(format: "%064x", overflowCount - 1) }, "a Mac can be forgotten")
 expect(AppTailnetBook.wantsAdmission(expires: nil, lastAsked: nil, now: 1000), "no grant: ask")
 expect(!AppTailnetBook.wantsAdmission(expires: nil, lastAsked: 990, now: 1000), "asked a moment ago: wait")
 expect(!AppTailnetBook.wantsAdmission(expires: 1000 + 7 * 86400, lastAsked: nil, now: 1000), "a grant for days: no need")
