@@ -13,5 +13,8 @@ cxsock_byte :: (h: int, i: int) -> int #foreign #effects(all);
 cxsock_close :: (h: int) -> int #foreign #effects(all);
 cxsock_now_ms :: () -> int #foreign #effects(all);
 cxsock_listen :: (port: int) -> int #foreign #effects(all);
+cxsock_listen_ip :: (port: int) -> int #foreign #effects(all);
 cxsock_port :: (h: int) -> int #foreign #effects(all);
 cxsock_accept :: (h: int, timeout_ms: int) -> int #foreign #effects(all);
+cxsock_peer_ip :: (h: int) -> int #foreign #effects(all);
+cxsock_peer_byte :: (h: int, i: int) -> int #foreign #effects(all);

@@ -1,5 +1,8 @@
 // Firm reason: 6 (cross-Apple Swift view models and JSON parsers over Coax-validated EaView & WsView payloads, strictly filtered to Antigravity models).
+import CoreGraphics
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 enum ThinkingEffort: String, CaseIterable, Identifiable, Codable {
     case low
@@ -94,14 +97,30 @@ struct FileAttachment: Identifiable, Equatable {
     let name: String
     let mimeType: String
     let textPreview: String?
+    let imageData: Data?
+    let imageBase64: String?
     let byteCount: Int
 
-    init(id: UUID = UUID(), name: String, mimeType: String, textPreview: String?, byteCount: Int) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        mimeType: String,
+        textPreview: String?,
+        byteCount: Int,
+        imageData: Data? = nil,
+        imageBase64: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.mimeType = mimeType
         self.textPreview = textPreview
+        self.imageData = imageData
+        self.imageBase64 = imageBase64
         self.byteCount = byteCount
+    }
+
+    var isImage: Bool {
+        imageData != nil || imageBase64 != nil || mimeType.hasPrefix("image/")
     }
 
     var formattedSize: String {
@@ -109,13 +128,154 @@ struct FileAttachment: Identifiable, Equatable {
         return String(format: "%.1f KB", Double(byteCount) / 1024.0)
     }
 
+    /// Downscales and JPEG-compresses an image cleanly via ImageIO so it fits inside a single
+    /// 6,000-byte transcript chunk and 16 KB Tailscale EaRequest payload while staying sharp for Gemini Vision.
+    static func prepareImage(data: Data, name: String, maxRawBytes: Int = 3_400) -> FileAttachment {
+        let safeName = name
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "]", with: "")
+            .replacingOccurrences(of: "[", with: "")
+        let finalName = safeName.isEmpty ? "photo.jpg" : safeName
+
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            let trimmed = data.count <= maxRawBytes ? data : nil
+            return FileAttachment(
+                name: finalName,
+                mimeType: "image/jpeg",
+                textPreview: nil,
+                byteCount: data.count,
+                imageData: data,
+                imageBase64: trimmed?.base64EncodedString()
+            )
+        }
+
+        func encodeJPEG(maxPixel: Int, quality: CGFloat) -> Data? {
+            let opts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+            ]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary) else { return nil }
+            let out = NSMutableData()
+            guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+            let destOpts: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+            CGImageDestinationAddImage(dest, cg, destOpts as CFDictionary)
+            guard CGImageDestinationFinalize(dest) else { return nil }
+            return out as Data
+        }
+
+        var chosen: Data?
+        let ladder: [(Int, CGFloat)] = [
+            (512, 0.70), (512, 0.52), (448, 0.42), (384, 0.35), (320, 0.28), (256, 0.22),
+        ]
+        for (px, q) in ladder {
+            if let jpeg = encodeJPEG(maxPixel: px, quality: q) {
+                chosen = jpeg
+                if jpeg.count <= maxRawBytes { break }
+            }
+        }
+        let wireData = chosen ?? (data.count <= maxRawBytes ? data : nil)
+        let previewThumb = encodeJPEG(maxPixel: 480, quality: 0.78) ?? wireData ?? data
+        return FileAttachment(
+            name: finalName,
+            mimeType: "image/jpeg",
+            textPreview: nil,
+            byteCount: wireData?.count ?? data.count,
+            imageData: previewThumb,
+            imageBase64: wireData?.base64EncodedString()
+        )
+    }
+
     /// Formats the attachment cleanly for the Antigravity prompt payload within wire bounds.
+    /// Image attachments emit real `[oa-image name=... mime=... base64=...]` blocks decoded into ACP
+    /// `{"type":"image","mimeType":...,"data":...}` content blocks by `agyworker`.
     func renderedPromptBlock() -> String {
+        if let b64 = imageBase64, !b64.isEmpty {
+            let safeName = name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "]", with: "")
+            return "\n\n[oa-image name=\(safeName) mime=\(mimeType) base64=\(b64)]"
+        }
         if let text = textPreview, !text.isEmpty {
             let clipped = String(text.prefix(4000))
             return "\n\n[Attached file: \(name) (\(formattedSize))]\n```\n\(clipped)\n```"
         }
-        return "\n\n[Attached media: \(name) (\(mimeType), \(formattedSize))]"
+        return "\n\n[Attached file: \(name) (\(mimeType), \(formattedSize))]"
+    }
+}
+
+/// Parses `[oa-image name=... mime=... base64=...]` markers inside `.user` transcript bubbles
+/// so the UI renders actual image thumbnails instead of raw base64 text.
+struct ParsedUserMessage {
+    struct InlineImage: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let mime: String
+        let data: Data?
+    }
+
+    let text: String
+    let images: [InlineImage]
+
+    static func parse(_ raw: String) -> ParsedUserMessage {
+        guard raw.contains("[oa-image ") else {
+            return ParsedUserMessage(text: raw, images: [])
+        }
+        var textParts: [String] = []
+        var images: [InlineImage] = []
+        var idx = raw.startIndex
+        var seq = 0
+
+        while idx < raw.endIndex {
+            guard let start = raw[idx...].range(of: "[oa-image ") else {
+                textParts.append(String(raw[idx...]))
+                break
+            }
+            if start.lowerBound > idx {
+                textParts.append(String(raw[idx..<start.lowerBound]))
+            }
+            guard let close = raw[start.upperBound...].firstIndex(of: "]") else {
+                // Truncated/split tag across chunk boundary: show clean badge instead of raw base64.
+                images.append(InlineImage(id: "img-\(seq)", name: "photo.jpg", mime: "image/jpeg", data: nil))
+                break
+            }
+            let inner = String(raw[start.upperBound..<close])
+            var name = "photo.jpg"
+            var mime = "image/jpeg"
+            var b64 = ""
+            for token in inner.split(separator: " ") {
+                if token.hasPrefix("name=") { name = String(token.dropFirst(5)) }
+                else if token.hasPrefix("mime=") { mime = String(token.dropFirst(5)) }
+                else if token.hasPrefix("base64=") { b64 = String(token.dropFirst(7)) }
+            }
+            let decoded = b64.isEmpty ? nil : Data(base64Encoded: b64)
+            images.append(InlineImage(id: "img-\(seq)-\(name)", name: name, mime: mime, data: decoded))
+            seq += 1
+            idx = raw.index(after: close)
+        }
+
+        let cleaned = textParts
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return ParsedUserMessage(text: cleaned, images: images)
+    }
+}
+
+/// Extracts Desktop-style title headings from Gemini thought summaries (e.g. `**Confirming System Functionality**`).
+enum ThoughtSummaryParser {
+    static func extractHeading(_ raw: String) -> String {
+        for rawLine in raw.split(separator: "\n", omittingEmptySubsequences: true) {
+            var line = String(rawLine).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            while line.hasPrefix("#") || line.hasPrefix("*") || line.hasPrefix("-") || line.hasPrefix(" ") {
+                line.removeFirst()
+            }
+            while line.hasSuffix("*") || line.hasSuffix(":") || line.hasSuffix(" ") {
+                line.removeLast()
+            }
+            if !line.isEmpty {
+                return String(line.prefix(64))
+            }
+        }
+        return ""
     }
 }
 

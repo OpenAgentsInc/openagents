@@ -181,7 +181,11 @@ ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) #eff
   if !ph_meta(id, generation, pick, eff) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) lines[0..<at + wn]) {
     es_refuse(v, "storage_unavailable"); return;
   }
-  why := ph_spec_mode(h, id, PA_AGY, pick.model, eff, want_mode, cwd, 0);
+  // Pass the native ~/.gemini conversation UUID via CODER_AGY_RESUME_SESSION for true in-place ACP
+  // session/resume (#13993 Phase 2.5), while keeping ph_recall in .in as automatic fallback if refused.
+  orig_sid := cast(string) q[0].session[0..<q[0].ns];
+  native_uuid := ifx ag_is(orig_sid) then cast(string) orig_sid[AG_PREFIX.count..<orig_sid.count] else "";
+  why := ph_spec_mode_resume(h, id, PA_AGY, pick.model, eff, want_mode, cwd, 0, native_uuid);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
   v[0].ns = 0; dk_read_summary(h, id, v);

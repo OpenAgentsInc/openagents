@@ -51,6 +51,7 @@ CuEngine :: struct {
   replay: bool;                   // session/load is replaying history: show nothing, allow nothing
   hold: int;                      // setting answers still expected before the owed message goes
   owed: [CUE_OWED] u8; nowed: int; // the message that goes once the session is open
+  owed_blocks: bool;              // true when owed holds pre-encoded ACP prompt blocks JSON
   resume: [CU_ID] u8; nresume: int; // a session to load in place of a new one
   last_session: [CU_ID] u8; last_session_n: int; // last open session id for crash auto-respawn
   restart_required: bool;         // set on unexpected agent exit so the next turn respawns + resumes
@@ -165,6 +166,20 @@ cue_send :: (x: [] CuEngine, msg: string) -> bool {
     return true;
   }
   x[0].nowed = e_set(x[0].owed[..], 0, msg);
+  x[0].owed_blocks = false;
+  return false;
+}
+// A multipart ACP prompt (comma-separated JSON content blocks such as text + image): sends at once
+// when the session is open and unheld, else queues in owed so cue_owed dispatches cu_session_prompt_blocks.
+cue_send_blocks :: (x: [] CuEngine, blocks_json: string) -> bool {
+  x[0].notice_n = 0;
+  if x[0].live && x[0].ready && x[0].hold == 0 {
+    if x[0].held_bg { cue_bg_clear(x, false); }
+    r := cu_session_prompt_blocks(x[0].c, blocks_json);
+    return true;
+  }
+  x[0].nowed = e_set(x[0].owed[..], 0, blocks_json);
+  x[0].owed_blocks = true;
   return false;
 }
 // Mid-turn steer: when steers_with_prompt is true, send session/prompt directly without session/cancel
@@ -174,6 +189,7 @@ cue_steer :: (x: [] CuEngine, msg: string) -> bool {
   x[0].notice_n = 0;
   if !x[0].live || !x[0].ready || x[0].hold > 0 {
     x[0].nowed = e_set(x[0].owed[..], 0, msg);
+    x[0].owed_blocks = false;
     return false;
   }
   if cue_profile(x).steers_with_prompt {
@@ -183,13 +199,20 @@ cue_steer :: (x: [] CuEngine, msg: string) -> bool {
   }
   cue_cancel(x);
   x[0].nowed = e_set(x[0].owed[..], 0, msg);
+  x[0].owed_blocks = false;
   return false;
 }
 // The owed message, once nothing is held and the owner still wants it (its turn is running).
 cue_owed :: (x: [] CuEngine, running: bool) {
   if x[0].hold > 0 || x[0].nowed == 0 || !running { return; }
-  r := cu_session_prompt(x[0].c, e_str(x[0].owed[..], x[0].nowed));
+  payload := e_str(x[0].owed[..], x[0].nowed);
+  if x[0].owed_blocks {
+    r := cu_session_prompt_blocks(x[0].c, payload);
+  } else {
+    r := cu_session_prompt(x[0].c, payload);
+  }
   x[0].nowed = 0;
+  x[0].owed_blocks = false;
 }
 // One of the session's settings (a model, a thought level): the owed message waits for its answer.
 cue_set :: (x: [] CuEngine, id: string, value: string) { r := cu_set_config(x[0].c, id, value); x[0].hold += 1; }
@@ -897,4 +920,21 @@ CUE_T_USAGE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\
   ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"usage_update\"}}}");
   #assert cue_watch(x, 1000) == CUE_WATCH_NONE && cue_held_bg(x);
   #assert cue_watch(x, 1000 + CUE_BG_USAGE_SETTLE_MS) == CUE_WATCH_BG_DONE && !cue_held_bg(x) && !cue_turn_active(x);
+}
+
+#test "cue_send_blocks sends multipart ACP image+text blocks immediately and through held cue_owed" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; cue_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  blocks := "{\"type\":\"text\",\"text\":\"inspect\"},{\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"iVBORw==\"}";
+  // Before session is ready, cue_send_blocks queues with owed_blocks = true
+  #assert !cue_send_blocks(x, blocks) && x[0].nowed == blocks.count && x[0].owed_blocks;
+  cue_test_open(x);
+  cu_outbox_clear(x[0].c);
+  cue_owed(x, true);
+  #assert x[0].nowed == 0 && !x[0].owed_blocks;
+  #assert cue_out_has(x, "\"method\":\"session/prompt\"") && cue_out_has(x, "\"type\":\"image\"");
+  #assert cue_out_has(x, "\"mimetype\":\"image/png\"") && cue_out_has(x, "\"data\":\"ivborw==\"");
+  // Also works immediately on an already-ready session
+  cu_outbox_clear(x[0].c);
+  #assert cue_send_blocks(x, blocks) && cue_out_has(x, "\"type\":\"image\"");
 }

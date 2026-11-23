@@ -61,6 +61,7 @@
 #load "../../coax/lib/agent/desktop/os-windows.coax";   // dc_list_has: ph_worker_path
 #load "host-phone.coax";
 #load "host-agy.coax";
+#load "host-tailnet.coax";
 #load "host-scheduled.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -727,11 +728,15 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
   no_relay := args_has(args, "--no-relay");
+  tailnet_srv: [1] HtTailnetServer;
+  ht_srv_start(h, tailnet_srv[..], args);
+  defer { ht_srv_close(tailnet_srv[..]); }
   defer { sc_webhook_close(h[0].sched[..]); }
   while end_at == 0 || hs_now() < end_at {
     es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);sc_tick(h);
     handled_local := false;
     for lk: 0..<8 { if !es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]) { break; } handled_local = true; }
+    for tk: 0..<8 { if !ht_srv_tick(h, tailnet_srv[..], w_b[..], st_b[..], statebuf[..], file[..], out[..]) { break; } handled_local = true; }
     // Warm phone agent facts once on the first idle tick so a phone's first DescribeEnvironment answers immediately.
     if !handled_local && !h[0].phone[0].known { _ = ph_facts(h); }
     // while a worker run is going its lines reach Coder within a few tens of milliseconds

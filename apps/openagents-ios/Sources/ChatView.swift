@@ -6,10 +6,12 @@ import UniformTypeIdentifiers
 
 struct ChatView: View {
     @ObservedObject var store: AppStore
+    @StateObject private var dictation = VoiceDictationController()
     @FocusState private var composerFocused: Bool
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isLoadingAttachment = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -64,20 +66,29 @@ struct ChatView: View {
             composerBar
         }
         .background(OATheme.background)
+        .onChange(of: dictation.errorMessage) { _, msg in
+            if let msg, !msg.isEmpty {
+                store.bannerError = msg
+            }
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
         .onChange(of: selectedPhotoItem) { _, newItem in
             guard let newItem else { return }
+            isLoadingAttachment = true
             Task {
-                if let data = try? await newItem.loadTransferable(type: Data.self) {
-                    let att = FileAttachment(
-                        name: "photo-\(Int(Date().timeIntervalSince1970) % 10000).jpg",
-                        mimeType: "image/jpeg",
-                        textPreview: nil,
-                        byteCount: data.count
-                    )
-                    store.addAttachment(att)
+                defer {
+                    isLoadingAttachment = false
+                    selectedPhotoItem = nil
                 }
-                selectedPhotoItem = nil
+                guard let data = try? await newItem.loadTransferable(type: Data.self) else {
+                    store.bannerError = "Couldn't read the selected photo."
+                    return
+                }
+                let filename = "photo-\(Int(Date().timeIntervalSince1970) % 10000).jpg"
+                let att: FileAttachment = await Task.detached(priority: .userInitiated) {
+                    FileAttachment.prepareImage(data: data, name: filename)
+                }.value
+                store.addAttachment(att)
             }
         }
         .fileImporter(
@@ -89,7 +100,20 @@ struct ChatView: View {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             guard let data = try? Data(contentsOf: url) else { return }
+            let ext = url.pathExtension.lowercased()
+            let imageExts: Set<String> = ["png", "jpg", "jpeg", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff"]
+            if imageExts.contains(ext) {
+                store.addAttachment(FileAttachment.prepareImage(data: data, name: url.lastPathComponent))
+                return
+            }
             let preview = String(data: data.prefix(4000), encoding: .utf8)
+            if preview == nil {
+                let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
+                if maybeImg.isImage {
+                    store.addAttachment(maybeImg)
+                    return
+                }
+            }
             let mime = preview != nil ? "text/plain" : "application/octet-stream"
             store.addAttachment(FileAttachment(
                 name: url.lastPathComponent,
@@ -346,35 +370,30 @@ struct ChatView: View {
                         noticeCard(text: note, kind: "note")
                     }
                     ForEach(store.items) { item in
-                        TranscriptRowView(item: item) { sub in
-                            store.openSubagent(sub)
-                        }
+                        TranscriptRowView(
+                            item: item,
+                            localImageLookup: { store.localImageData(for: $0) },
+                            onOpenSubagent: { sub in
+                                store.openSubagent(sub)
+                            }
+                        )
                         .id(item.id)
                     }
-                    if store.activeSession?.busy == true || store.isAwaitingTurnStart {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(OATheme.textSecondary)
-                            Text(store.isAwaitingTurnStart && store.activeSession?.busy != true
-                                 ? "Starting Antigravity…"
-                                 : "Antigravity is working…")
-                                .font(.system(size: 13))
-                                .foregroundStyle(OATheme.textSecondary)
-                        }
-                        .padding(.top, 4)
-                        .id("working-indicator")
+                    if let statusLabel = store.streamingStatusLabel {
+                        StreamingStatusRowView(label: statusLabel)
+                            .id("working-indicator")
                     }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom-anchor")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.items.count) { _, _ in
-                if let last = store.items.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+            .onChange(of: store.streamingContentFingerprint) { _, _ in
+                withAnimation(.easeOut(duration: 0.16)) {
+                    proxy.scrollTo("bottom-anchor", anchor: .bottom)
                 }
             }
         }
@@ -399,13 +418,32 @@ struct ChatView: View {
 
     private var composerBar: some View {
         VStack(spacing: 8) {
-            if !store.pendingAttachments.isEmpty {
+            if !store.pendingAttachments.isEmpty || isLoadingAttachment {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
+                        if isLoadingAttachment {
+                            HStack(spacing: 6) {
+                                ProgressView().controlSize(.mini).tint(OATheme.textSecondary)
+                                Text("Preparing photo…")
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
+                            .foregroundStyle(OATheme.textSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(OATheme.elevated, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                        }
                         ForEach(store.pendingAttachments) { att in
-                            HStack(spacing: 5) {
-                                Image(systemName: att.textPreview != nil ? "doc.text" : "photo")
-                                    .font(.system(size: 10))
+                            HStack(spacing: 6) {
+                                if let imgData = att.imageData {
+                                    InlineCGImageView(data: imgData, maxHeight: 22)
+                                        .frame(width: 22, height: 22)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                } else {
+                                    Image(systemName: att.textPreview != nil ? "doc.text" : "photo")
+                                        .font(.system(size: 10))
+                                }
                                 Text(att.name)
                                     .font(.system(size: 11, design: .monospaced))
                                     .lineLimit(1)
@@ -473,61 +511,81 @@ struct ChatView: View {
                 }
                 .accessibilityIdentifier("chat.attachButton")
 
-                // Antigravity Model Picker
-                Menu {
-                    ForEach(store.availableModels) { model in
-                        Button {
-                            store.chooseModel(model.id)
-                        } label: {
-                            if model.id == store.selectedModelID {
-                                Label(model.label, systemImage: "checkmark")
-                            } else {
-                                Text(model.label)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        // Antigravity Model Picker
+                        Menu {
+                            ForEach(store.availableModels) { model in
+                                Button {
+                                    store.chooseModel(model.id)
+                                } label: {
+                                    if model.id == store.selectedModelID {
+                                        Label(model.label, systemImage: "checkmark")
+                                    } else {
+                                        Text(model.label)
+                                    }
+                                }
                             }
+                        } label: {
+                            chipLabel(icon: nil, text: store.selectedModelOption.label, showMark: true)
                         }
+                        .accessibilityIdentifier("chat.modelPicker")
+
+                        // Thinking Effort Picker
+                        Menu {
+                            ForEach(store.supportedEffortsForSelectedModel) { effort in
+                                Button {
+                                    store.chooseEffort(effort)
+                                } label: {
+                                    if effort == store.selectedEffort {
+                                        Label(effort.label, systemImage: "checkmark")
+                                    } else {
+                                        Text(effort.label)
+                                    }
+                                }
+                            }
+                        } label: {
+                            chipLabel(icon: "sparkles", text: store.selectedEffort.label, showMark: false)
+                        }
+                        .accessibilityIdentifier("chat.effortPicker")
+
+                        // Review Mode Chip (Auto / Ask / Plan)
+                        Menu {
+                            ForEach(ReviewMode.allCases) { mode in
+                                Button {
+                                    store.chooseReviewMode(mode)
+                                } label: {
+                                    if mode == store.reviewMode {
+                                        Label("\(mode.label) — \(mode.description)", systemImage: "checkmark")
+                                    } else {
+                                        Text("\(mode.label) — \(mode.description)")
+                                    }
+                                }
+                            }
+                        } label: {
+                            chipLabel(icon: store.reviewMode.icon, text: store.reviewMode.label, showMark: false)
+                        }
+                        .accessibilityIdentifier("chat.reviewMode")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Voice Dictation Toggle (Speech / AVFoundation)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dictation.toggle(existingText: store.draftText) { updated in
+                        store.draftText = updated
                     }
                 } label: {
-                    chipLabel(icon: nil, text: store.selectedModelOption.label, showMark: true)
+                    Image(systemName: dictation.isListening ? "waveform.circle.fill" : "mic")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(dictation.isListening ? Color.black : OATheme.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(dictation.isListening ? Color.white : OATheme.elevated, in: Circle())
+                        .overlay(Circle().stroke(OATheme.hairline, lineWidth: 1))
                 }
-                .accessibilityIdentifier("chat.modelPicker")
-
-                // Thinking Effort Picker
-                Menu {
-                    ForEach(store.supportedEffortsForSelectedModel) { effort in
-                        Button {
-                            store.chooseEffort(effort)
-                        } label: {
-                            if effort == store.selectedEffort {
-                                Label(effort.label, systemImage: "checkmark")
-                            } else {
-                                Text(effort.label)
-                            }
-                        }
-                    }
-                } label: {
-                    chipLabel(icon: "sparkles", text: store.selectedEffort.label, showMark: false)
-                }
-                .accessibilityIdentifier("chat.effortPicker")
-
-                // Review Mode Chip (Auto / Ask / Plan)
-                Menu {
-                    ForEach(ReviewMode.allCases) { mode in
-                        Button {
-                            store.chooseReviewMode(mode)
-                        } label: {
-                            if mode == store.reviewMode {
-                                Label("\(mode.label) — \(mode.description)", systemImage: "checkmark")
-                            } else {
-                                Text("\(mode.label) — \(mode.description)")
-                            }
-                        }
-                    }
-                } label: {
-                    chipLabel(icon: store.reviewMode.icon, text: store.reviewMode.label, showMark: false)
-                }
-                .accessibilityIdentifier("chat.reviewMode")
-
-                Spacer(minLength: 4)
+                .accessibilityIdentifier("chat.micButton")
+                .accessibilityLabel(dictation.isListening ? "Stop dictation" : "Voice dictation")
 
                 actionButton
             }
@@ -542,20 +600,20 @@ struct ChatView: View {
     }
 
     private func chipLabel(icon: String?, text: String, showMark: Bool) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3.5) {
             if showMark {
-                AntigravityMark(size: 10, color: OATheme.textSecondary)
+                AntigravityMark(size: 9.5, color: OATheme.textSecondary)
             } else if let icon {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(OATheme.textSecondary)
             }
             Text(text)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(OATheme.textSecondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 7)
         .padding(.vertical, 5)
         .background(OATheme.elevated, in: Capsule())
         .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
@@ -598,6 +656,7 @@ struct ChatView: View {
                 }
 
                 Button {
+                    if dictation.isListening { dictation.stop() }
                     composerFocused = false
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     Task { await store.sendMessage() }

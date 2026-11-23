@@ -54,9 +54,13 @@ final class AntigravityStore: ObservableObject {
 
     // Real-time stream state
     @Published var livePushConnected: Bool = false
+    @Published var dynamicSkills: [SlashCommandItem] = []
 
     /// Test-only switch enabled strictly via `-OAE2ELoopbackAllowed` launch argument for local Simulator E2E harnesses.
     var allowLoopbackForTests: Bool = false
+
+    /// Zero-secret notification callback (`kind`: "completed" | "approval", `title`: generic non-secret status).
+    var onTurnNotificationEvent: ((_ kind: String, _ title: String) -> Void)?
 
     private var pollTask: Task<Void, Never>?
     private var pushDebounceTask: Task<Void, Never>?
@@ -65,6 +69,10 @@ final class AntigravityStore: ObservableObject {
     private var reachabilityByID: [String: ReachabilityState] = [:]
     private var legacyNoModeHosts: Set<String> = []
     private var wasActiveSessionBusy = false
+    private var lastNotifiedInteractionID: String = ""
+    private var pendingOptimisticUserItem: TranscriptItem?
+    private var pendingOptimisticBaselineUserCount: Int = 0
+    private var sentImagesByName: [String: Data] = [:]
 
     init(store: MobileDeviceStore = MobileDeviceStore()) {
         self.store = store
@@ -151,18 +159,113 @@ final class AntigravityStore: ObservableObject {
         let trimmed = draftText.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("/") else { return [] }
         let query = trimmed.lowercased()
-        if query == "/" { return SlashCommandItem.defaults }
-        return SlashCommandItem.defaults.filter { $0.command.lowercased().hasPrefix(query) }
+        let catalog = SlashCommandItem.defaults + dynamicSkills
+        if query == "/" { return Array(catalog.prefix(10)) }
+        return Array(catalog.filter { $0.command.lowercased().hasPrefix(query) }.prefix(10))
     }
 
-    /// `@` workspace folder mention autocomplete using host-reported `folders`.
+    /// `@` workspace folder & changed-file mention autocomplete using host-reported `folders` and Workspace Git status.
     var matchingFolders: [String] {
-        guard !folders.isEmpty, let lastWord = draftText.split(separator: " ").last, lastWord.hasPrefix("@") else {
+        guard let lastWord = draftText.split(separator: " ").last, lastWord.hasPrefix("@") else {
             return []
         }
+        var pool = folders
+        if let changed = workspaceSnapshot?.changedFiles {
+            for f in changed where !pool.contains(f.path) {
+                pool.append(f.path)
+            }
+        }
+        guard !pool.isEmpty else { return [] }
         let q = String(lastWord.dropFirst()).lowercased()
-        if q.isEmpty { return Array(folders.prefix(6)) }
-        return Array(folders.filter { $0.lowercased().contains(q) }.prefix(6))
+        if q.isEmpty { return Array(pool.prefix(8)) }
+        return Array(pool.filter { $0.lowercased().contains(q) }.prefix(8))
+    }
+
+    /// Monotonic fingerprint that changes on every streamed thinking/assistant chunk so views auto-scroll smoothly.
+    var streamingContentFingerprint: String {
+        let last = items.last
+        return "\(items.count):\(last?.id ?? ""):\(last?.text.count ?? 0):\(last?.complete == true):\(activeSession?.busy == true):\(isAwaitingTurnStart)"
+    }
+
+    /// Desktop-parity live status word (`Sending…` -> `Thinking…` -> `Working…`).
+    var streamingStatusLabel: String? {
+        if isSending { return "Sending…" }
+        if isAwaitingTurnStart && activeSession?.busy != true { return "Thinking…" }
+        guard activeSession?.busy == true else { return nil }
+        if let last = items.last {
+            if last.role == .thought && !last.complete { return nil } // Thought row itself shows live Thinking header
+            if last.role == .tool && !last.complete { return "Working…" }
+        }
+        return "Thinking…"
+    }
+
+    func localImageData(for name: String) -> Data? {
+        sentImagesByName[name]
+    }
+
+    /// Handles `openagents://ask?prompt=...` and `openagents://computer?address=...&port=...` deep links.
+    func handleIncomingURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "openagents",
+              let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        let host = (url.host ?? "").lowercased()
+        let queryItems = comps.queryItems ?? []
+        if host == "ask" || host == "chat" {
+            if let prompt = queryItems.first(where: { $0.name == "prompt" || $0.name == "text" })?.value, !prompt.isEmpty {
+                draftText = draftText.isEmpty ? prompt : "\(draftText)\n\(prompt)"
+            }
+        } else if host == "computer" || host == "pair" {
+            if let address = queryItems.first(where: { $0.name == "address" || $0.name == "host" })?.value, !address.isEmpty {
+                let name = queryItems.first(where: { $0.name == "name" })?.value ?? ""
+                let portStr = queryItems.first(where: { $0.name == "port" })?.value ?? ""
+                let port = UInt16(portStr) ?? AppTailnet.port
+                isComputersPresented = true
+                Task { _ = await addManualComputer(address: address, name: name, port: port, autoPair: true) }
+            } else {
+                isComputersPresented = true
+            }
+        }
+    }
+
+    /// Discovers dynamic Antigravity skills (`SKILL.md`) from local workspace / ~/.gemini directories.
+    func refreshDynamicSkills(workspaceRoot: String? = nil) {
+        var roots: [URL] = []
+        if let ws = workspaceRoot, !ws.isEmpty {
+            let wsURL = URL(fileURLWithPath: ws)
+            roots.append(wsURL.appendingPathComponent(".gemini/skills", isDirectory: true))
+            roots.append(wsURL.appendingPathComponent(".agents/skills", isDirectory: true))
+        }
+        #if os(macOS)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        roots.append(home.appendingPathComponent(".gemini/antigravity/skills", isDirectory: true))
+        roots.append(home.appendingPathComponent(".gemini/skills", isDirectory: true))
+        #endif
+
+        var found: [SlashCommandItem] = []
+        var seen = Set(SlashCommandItem.defaults.map { $0.command.lowercased() })
+        let fm = FileManager.default
+        for root in roots {
+            guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { continue }
+            for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                let skillMD = entry.appendingPathComponent("SKILL.md")
+                guard fm.fileExists(atPath: skillMD.path) else { continue }
+                let slug = entry.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !slug.isEmpty else { continue }
+                let cmd = "/\(slug)"
+                guard seen.insert(cmd.lowercased()).inserted else { continue }
+                var desc = "Run \(slug) skill"
+                if let raw = try? String(contentsOf: skillMD, encoding: .utf8) {
+                    for line in raw.split(separator: "\n").prefix(20) {
+                        let s = line.trimmingCharacters(in: .whitespaces)
+                        if s.lowercased().hasPrefix("description:") {
+                            let val = s.dropFirst(12).trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+                            if !val.isEmpty { desc = String(val.prefix(80)); break }
+                        }
+                    }
+                }
+                found.append(SlashCommandItem(id: "skill-\(slug)", command: cmd, subtitle: desc, template: "\(cmd) "))
+            }
+        }
+        dynamicSkills = found
     }
 
     func applyFolderMention(_ folder: String) {
@@ -287,6 +390,13 @@ final class AntigravityStore: ObservableObject {
         activeSessionID = nil
         items = []
         sessions = []
+        workspaceName = ""
+        folders = []
+        selectedFolder = ""
+        pendingOptimisticUserItem = nil
+        isAwaitingTurnStart = false
+        fastPollUntil = .distantPast
+        wasActiveSessionBusy = false
         workspaceSnapshot = nil
         activeSubagentItem = nil
         subagentItems = []
@@ -511,6 +621,10 @@ final class AntigravityStore: ObservableObject {
     func startNewChat() {
         activeSessionID = nil
         items = []
+        pendingOptimisticUserItem = nil
+        isAwaitingTurnStart = false
+        fastPollUntil = .distantPast
+        wasActiveSessionBusy = false
         activeSubagentItem = nil
         subagentItems = []
         bannerError = nil
@@ -520,6 +634,9 @@ final class AntigravityStore: ObservableObject {
 
     func selectSession(_ session: ChatSessionSummary) {
         activeSessionID = session.id
+        pendingOptimisticUserItem = nil
+        isAwaitingTurnStart = false
+        fastPollUntil = .distantPast
         activeSubagentItem = nil
         subagentItems = []
         bannerError = nil
@@ -540,21 +657,25 @@ final class AntigravityStore: ObservableObject {
         defer { isLoadingSessions = false }
 
         if let descView = await performEnvironmentRPC(computer: computer, method: "DescribeEnvironment") {
+            guard activeComputerID == computer.id else { return }
             applyMetadata(from: descView)
         }
 
         var mergedByID: [String: ChatSessionSummary] = [:]
         if let listView = await performEnvironmentRPC(computer: computer, method: "ListSessions") {
+            guard activeComputerID == computer.id else { return }
             applyMetadata(from: listView)
             for s in listView.sessions { mergedByID[s.id] = s }
         }
         // Also fetch native ~/.gemini Antigravity sessions (`host-agy.coax`) and merge cleanly
         if let agyView = await performEnvironmentRPC(computer: computer, method: "ListSessions", model: "antigravity", quietErrors: true) {
+            guard activeComputerID == computer.id else { return }
             for s in agyView.sessions where mergedByID[s.id] == nil {
                 mergedByID[s.id] = s
             }
         }
 
+        guard activeComputerID == computer.id else { return }
         if !mergedByID.isEmpty || bannerError == nil {
             sessions = mergedByID.values.sorted { $0.updatedAtMs > $1.updatedAtMs }
             if let sid = activeSessionID, !sessions.contains(where: { $0.id == sid }) {
@@ -569,6 +690,31 @@ final class AntigravityStore: ObservableObject {
         }
     }
 
+    /// Applies server-projected transcript items while keeping any in-flight optimistic user message
+    /// pinned at the bottom until the host actually echoes the new turn (eliminating the 3-4s vanish gap).
+    private func applyServerItems(_ serverItems: [TranscriptItem], nowBusy: Bool) {
+        if let pending = pendingOptimisticUserItem {
+            let serverUsers = serverItems.filter { $0.role == .user }.count
+            let pendingNeedle = String(ParsedUserMessage.parse(pending.text).text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+            let lastServerUser = serverItems.last(where: { $0.role == .user })?.text ?? ""
+            let echoedByText = !pendingNeedle.isEmpty && lastServerUser.contains(pendingNeedle)
+            if serverUsers > pendingOptimisticBaselineUserCount || echoedByText {
+                pendingOptimisticUserItem = nil
+                items = serverItems
+                isAwaitingTurnStart = false
+            } else {
+                var merged = serverItems
+                merged.append(pending)
+                items = merged
+            }
+        } else if !serverItems.isEmpty {
+            items = serverItems
+            isAwaitingTurnStart = false
+        } else if !nowBusy && Date() > fastPollUntil {
+            isAwaitingTurnStart = false
+        }
+    }
+
     func refreshActiveTranscript() async {
         guard let sid = activeSessionID,
               let computer = activeComputer,
@@ -578,22 +724,31 @@ final class AntigravityStore: ObservableObject {
         defer { isLoadingTranscript = false }
 
         if let view = await performEnvironmentRPC(computer: computer, method: "ReadSession", session: sid) {
+            guard activeComputerID == computer.id, activeSessionID == sid else { return }
             var nowBusy = false
+            var currentInteraction = ""
             if let updated = view.sessions.first(where: { $0.id == sid }) {
                 nowBusy = updated.busy
+                currentInteraction = updated.interactionID
                 if let idx = sessions.firstIndex(where: { $0.id == sid }) {
                     sessions[idx] = updated
                 } else {
                     sessions.insert(updated, at: 0)
                 }
             }
-            if !view.items.isEmpty {
-                items = view.items
-                isAwaitingTurnStart = false
-            } else if !nowBusy && Date() > fastPollUntil {
-                isAwaitingTurnStart = false
-            }
+            applyServerItems(view.items, nowBusy: nowBusy)
             persistOfflineCache(for: computer.id)
+
+            // Fire zero-secret completion / approval notification hooks for backgrounded clients.
+            if !currentInteraction.isEmpty && currentInteraction != lastNotifiedInteractionID {
+                lastNotifiedInteractionID = currentInteraction
+                onTurnNotificationEvent?("approval", "Antigravity requested approval")
+            } else if currentInteraction.isEmpty {
+                lastNotifiedInteractionID = ""
+            }
+            if wasActiveSessionBusy && !nowBusy && pendingOptimisticUserItem == nil {
+                onTurnNotificationEvent?("completed", "Antigravity finished your turn")
+            }
 
             // Auto-dispatch queued follow-up the moment the active turn finishes
             if wasActiveSessionBusy && !nowBusy, let nextPrompt = queuedDraft, !nextPrompt.isEmpty {
@@ -615,8 +770,13 @@ final class AntigravityStore: ObservableObject {
             return
         }
 
+        let capturedDraft = draftText
+        let capturedAttachments = pendingAttachments
         var composed = baseText
-        for att in pendingAttachments {
+        for att in capturedAttachments {
+            if let img = att.imageData {
+                sentImagesByName[att.name] = img
+            }
             composed += att.renderedPromptBlock()
         }
 
@@ -641,7 +801,7 @@ final class AntigravityStore: ObservableObject {
         }
         let payloadText = String(composed.prefix(15_500))
 
-        // Optimistically display the user's message immediately so the chat never appears stuck while agy boots.
+        // Clear composer & display the optimistic user bubble (including real photo thumbnails!) at 0ms.
         let commandID = MobileCore.randomHex(bytes: 16)
         let optimisticID = "pending-\(commandID)"
         let previousItems = items
@@ -649,10 +809,12 @@ final class AntigravityStore: ObservableObject {
             activeSessionID = nil
             items = []
         }
-        items.append(TranscriptItem(
+        let baselineUsers = items.filter { $0.role == .user }.count
+        let optimisticBubbleText = capturedAttachments.contains(where: \.isImage) ? composed : (baseText.isEmpty ? composed : baseText)
+        let optimisticItem = TranscriptItem(
             id: optimisticID,
             role: .user,
-            text: baseText.isEmpty ? composed : baseText,
+            text: optimisticBubbleText,
             toolName: "",
             complete: true,
             startedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
@@ -662,7 +824,12 @@ final class AntigravityStore: ObservableObject {
             diff: "",
             diffCut: false,
             noticeKind: ""
-        ))
+        )
+        pendingOptimisticBaselineUserCount = baselineUsers
+        pendingOptimisticUserItem = optimisticItem
+        items.append(optimisticItem)
+        draftText = ""
+        pendingAttachments = []
 
         isSending = true
         isAwaitingTurnStart = true
@@ -732,14 +899,15 @@ final class AntigravityStore: ObservableObject {
             if let err = view?.error, !err.isEmpty {
                 bannerError = HostErrorFormatter.describe(err, method: activeSession == nil ? "OpenSession" : "SendMessage")
             }
+            pendingOptimisticUserItem = nil
             items = previousItems
+            draftText = capturedDraft
+            pendingAttachments = capturedAttachments
             isAwaitingTurnStart = false
             return
         }
 
-        draftText = ""
-        pendingAttachments = []
-        fastPollUntil = Date().addingTimeInterval(15.0)
+        fastPollUntil = Date().addingTimeInterval(30.0)
         if let opened = finalView.sessions.first {
             activeSessionID = opened.id
             wasActiveSessionBusy = opened.busy || true
@@ -751,8 +919,7 @@ final class AntigravityStore: ObservableObject {
             subscribeActiveHost()
         }
         if !finalView.items.isEmpty {
-            items = finalView.items
-            isAwaitingTurnStart = false
+            applyServerItems(finalView.items, nowBusy: finalView.sessions.first?.busy ?? true)
         }
         persistOfflineCache(for: computer.id)
         await refreshActiveTranscript()
@@ -866,6 +1033,9 @@ final class AntigravityStore: ObservableObject {
 
         if let snap = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace") {
             workspaceSnapshot = snap
+            if !snap.path.isEmpty {
+                refreshDynamicSkills(workspaceRoot: snap.path)
+            }
             if !snap.error.isEmpty {
                 workspaceError = HostErrorFormatter.describe(snap.error, method: "ReadWorkspace")
             }
@@ -970,13 +1140,15 @@ final class AntigravityStore: ObservableObject {
     private func schedulePushRefresh(sessionID: String) {
         pushDebounceTask?.cancel()
         pushDebounceTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(140))
+            try? await Task.sleep(for: .milliseconds(60))
             guard !Task.isCancelled, let self else { return }
             if !sessionID.isEmpty, sessionID == self.activeSessionID {
                 await self.refreshActiveTranscript()
                 if self.activeSubagentItem != nil {
                     await self.refreshSubagent()
                 }
+            } else if self.activeSessionID != nil {
+                await self.refreshActiveTranscript()
             } else {
                 await self.refreshActiveComputer()
             }
@@ -987,12 +1159,19 @@ final class AntigravityStore: ObservableObject {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                let fast = await MainActor.run { self?.isAwaitingTurnStart == true || (self.map { Date() < $0.fastPollUntil } ?? false) }
-                try? await Task.sleep(for: .milliseconds(fast ? 800 : 2500))
+                let isStreaming = await MainActor.run {
+                    guard let self else { return false }
+                    return self.activeSession?.busy == true
+                        || self.isAwaitingTurnStart
+                        || self.pendingOptimisticUserItem != nil
+                        || Date() < self.fastPollUntil
+                }
+                // Stream thinking & reply tokens smoothly at ~4.5 Hz during active turns when no push arrived.
+                try? await Task.sleep(for: .milliseconds(isStreaming ? 220 : 2500))
                 guard !Task.isCancelled, let self else { break }
                 guard let computer = self.activeComputer, computer.canSendRPC else { continue }
-                let recentPush = Date().timeIntervalSince(self.lastPushReceivedAt) < 2.0
-                if (self.activeSession?.busy == true || self.isAwaitingTurnStart) && !recentPush {
+                let recentPush = Date().timeIntervalSince(self.lastPushReceivedAt) < 1.2
+                if isStreaming && !recentPush && self.activeSessionID != nil {
                     await self.refreshActiveTranscript()
                 }
             }

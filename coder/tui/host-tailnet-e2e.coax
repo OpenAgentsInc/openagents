@@ -1,0 +1,178 @@
+// tool.sh: run-steps 250000000
+// Native TCP E2E client verifying a live compiled coder-host's built-in Tailscale TCP listener (#13993, 1.5).
+// Exercises direct-grant minting, direct-hello, push subscribe, and real NIP-44 encrypted
+// DescribeEnvironment, ListSessions, and ReadWorkspace RPCs over loopback TCP.
+//
+// Usage:
+//   coax/web/tool.sh coder/tui/host-tailnet-e2e.coax --port PORT
+#run_steps 250000000;
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/clock.coax";
+#load "../../coax/lib/crypto/rand_foreign.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+#load "../../apps/shared/antigravity/client-core.coax";
+
+HTE_MAX_LINE :: 262144;
+
+hte_atoi :: (s: string, fb: int) -> int {
+  if s.count == 0 { return fb; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return fb; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+hte_connect_loopback :: (port: int) -> int #effects(all) {
+  ip := "127.0.0.1";
+  for c: ip { _ = cxsock_host_push(cast(int) c); }
+  return cxsock_connect(port, 5000);
+}
+
+hte_write_line :: (c: int, line: string) -> bool #effects(all) {
+  for ch: line { if cxsock_write(c, cast(int) ch) != 0 { return false; } }
+  if cxsock_write(c, 10) != 0 { return false; }
+  return cxsock_flush(c, 5000) == 0;
+}
+
+hte_read_line :: (c: int, out: [] u8, timeout_ms: int) -> int #effects(all) {
+  n := 0;
+  deadline := cxsock_now_ms() + timeout_ms;
+  while cxsock_now_ms() < deadline {
+    got := cxsock_read(c, 50);
+    if got == -2 { continue; }
+    if got <= 0 { return -1; }
+    for i: 0..<got {
+      ch := cast(u8) cxsock_byte(c, i);
+      if ch == 10 { return n; }
+      if n < out.count { out[n] = ch; n += 1; }
+    }
+  }
+  return -1;
+}
+
+hte_rpc :: (
+  c: int,
+  sk: [] u8,
+  host_hex: string,
+  grant_hex: string,
+  epoch: int,
+  params: string,
+  dv: [] DvWork,
+  reply_out: [] u8
+) -> int #effects(all) {
+  rnd: [DV_RANDOM] u8;
+  if cxrand_draw(rnd[0..<64], 64) != 0 || cxrand_draw(rnd[64..<96], 32) != 0 { return -1; }
+  now := cxproc_wall_us() / 1000000;
+  sealed: [DV_EVENT_MAX] u8;
+  sn := dv_seal(dv, DV_RPC, sk, host_hex, "tailscale://direct", grant_hex, epoch, params, now, rnd[..], sealed[..]);
+  if sn < 1 { return -1; }
+  if !hte_write_line(c, cast(string) sealed[0..<sn]) { return -2; }
+
+  line: [HTE_MAX_LINE] u8;
+  for tries: 0..<16 {
+    ln := hte_read_line(c, line[..], 10000);
+    if ln < 1 { return -3; }
+    s := cast(string) line[0..<ln];
+    ev: [1] HtPushEvent;
+    if ht_push_read(s, ev[..]) { continue; }
+    rn := dv_open(dv, sk, host_hex, s, cxproc_wall_us() / 1000000, reply_out);
+    if rn > 0 { return rn; }
+    if rn < 0 { return -4; }
+  }
+  return -5;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args;
+  if !args_load(args[..]) { tool_errln("host-tailnet-e2e: bad args"); return 2; }
+  port := hte_atoi(args_value(args[..], "--port", "0"), 0);
+  if port <= 0 { tool_errln("host-tailnet-e2e: --port required"); return 2; }
+
+  sk: [32] u8;
+  if cxrand_draw(sk[..], 32) != 0 { return 1; }
+  pub: [32] u8; pub_hex: [64] u8;
+  if !hb_public(sk[..], pub[..]) || !hb_hex(pub[..], pub_hex[..]) { return 1; }
+
+  // 1. Direct-grant pairing (openagents.host-tailnet-grant-request.v1)
+  c1 := hte_connect_loopback(port);
+  if c1 < 0 { tool_errln("host-tailnet-e2e: connect for grant failed"); return 1; }
+  greq: [HT_LINE_MAX] u8;
+  gn := ht_grant_request_write(cast(string) pub_hex[..], "E2E Tailnet Client", greq[..]);
+  if gn < 1 || !hte_write_line(c1, cast(string) greq[0..<gn]) { _ = cxsock_close(c1); tool_errln("host-tailnet-e2e: write grant req failed"); return 1; }
+  gline: [HTE_MAX_LINE] u8;
+  gln := hte_read_line(c1, gline[..], 8000);
+  _ = cxsock_close(c1);
+  if gln < 1 { tool_errln("host-tailnet-e2e: grant answer timeout"); return 1; }
+
+  ans: [1] HtGrantAnswer;
+  if !ht_grant_answer_read(cast(string) gline[0..<gln], ans[..]) {
+    tool_errln("host-tailnet-e2e: bad grant answer");
+    return 1;
+  }
+  if ans[0].nref > 0 || ans[0].nhost != 64 || ans[0].ngrant != 64 {
+    tool_err("host-tailnet-e2e: grant refused=");
+    tool_errln(cast(string) ans[0].refused[0..<ans[0].nref]);
+    return 1;
+  }
+  host_hex := cast(string) ans[0].host[0..<ans[0].nhost];
+  grant_hex := cast(string) ans[0].grant[0..<ans[0].ngrant];
+  epoch := ans[0].epoch;
+  print("OK: direct-grant minted 30-day grant from live coder-host\n");
+
+  // 2. Direct hello + subscribe
+  c2 := hte_connect_loopback(port);
+  if c2 < 0 { tool_errln("host-tailnet-e2e: connect for rpc failed"); return 1; }
+  defer { _ = cxsock_close(c2); }
+
+  hbuf: [HT_LINE_MAX] u8;
+  hn := ht_direct_hello_write(hbuf[..]);
+  if hn < 1 || !hte_write_line(c2, cast(string) hbuf[0..<hn]) { tool_errln("host-tailnet-e2e: direct hello write failed"); return 1; }
+  aln := hte_read_line(c2, gline[..], 5000);
+  if aln < 1 { tool_errln("host-tailnet-e2e: direct ack timeout"); return 1; }
+  ack: [1] HtDirectAck;
+  if !ht_direct_ack_read(cast(string) gline[0..<aln], ack[..]) || ack[0].nref > 0 {
+    tool_errln("host-tailnet-e2e: direct ack refused");
+    return 1;
+  }
+  print("OK: direct-hello accepted by live coder-host\n");
+
+  sbuf: [HT_LINE_MAX] u8;
+  sn := ht_subscribe_write("", sbuf[..]);
+  if sn < 1 || !hte_write_line(c2, cast(string) sbuf[0..<sn]) { tool_errln("host-tailnet-e2e: subscribe write failed"); return 1; }
+  print("OK: subscribed to live coder-host push stream\n");
+
+  // 3. Real NIP-44 DescribeEnvironment RPC
+  dv: [1] DvWork;
+  eq: [1] EaRequest; ev: [1] EaView;
+  wq: [1] WsRequest; wv: [1] WsView;
+  pbuf: [24576] u8; rbuf: [HB_BODY_MAX] u8;
+
+  pn := mc_env_request(eq[..], "DescribeEnvironment", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", pbuf[..]);
+  if pn < 1 { tool_errln("host-tailnet-e2e: encode DescribeEnvironment failed"); return 1; }
+  rn := hte_rpc(c2, sk[..], host_hex, grant_hex, epoch, cast(string) pbuf[0..<pn], dv[..], rbuf[..]);
+  if rn < 1 { print("host-tailnet-e2e: DescribeEnvironment RPC failed rn=%\n", rn); return 1; }
+  if !mc_view_valid(ev[..], host_hex, "DescribeEnvironment", cast(string) rbuf[0..<rn]) {
+    tool_errln("host-tailnet-e2e: DescribeEnvironment EaView validation failed");
+    return 1;
+  }
+  print("OK: NIP-44 DescribeEnvironment verified against live coder-host\n");
+
+  // 4. Real NIP-44 ListSessions RPC
+  pn = mc_env_request(eq[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", pbuf[..]);
+  rn = hte_rpc(c2, sk[..], host_hex, grant_hex, epoch, cast(string) pbuf[0..<pn], dv[..], rbuf[..]);
+  if rn < 1 || !mc_view_valid(ev[..], host_hex, "ListSessions", cast(string) rbuf[0..<rn]) {
+    tool_errln("host-tailnet-e2e: ListSessions RPC failed");
+    return 1;
+  }
+  print("OK: NIP-44 ListSessions verified against live coder-host\n");
+
+  // 5. Real NIP-44 ReadWorkspace RPC
+  pn = mc_ws_request(wq[..], "ReadWorkspace", "default", "", "", "", "", 0, 0, 0, "", "", 0, 0, pbuf[..]);
+  rn = hte_rpc(c2, sk[..], host_hex, grant_hex, epoch, cast(string) pbuf[0..<pn], dv[..], rbuf[..]);
+  if rn < 1 || !mc_ws_view_valid(wv[..], host_hex, "ReadWorkspace", cast(string) rbuf[0..<rn]) {
+    tool_errln("host-tailnet-e2e: ReadWorkspace RPC failed");
+    return 1;
+  }
+  print("OK: NIP-44 ReadWorkspace verified against live coder-host\n");
+  return 0;
+}

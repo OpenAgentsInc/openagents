@@ -110,9 +110,16 @@ ph_tool :: (name: string, out: [] u8) -> string {
     p := fs_join(fs_dir(cast(string) exe[0..<n]), name, out);
     if fs_kind(p) == FS_FILE { return p; }
   }
-  p := fs_join("/Applications/OpenAgents.app/Contents/Resources", name, out);
-  if fs_kind(p) == FS_FILE { return p; }
   hb: [1024] u8; home := ph_home(hb[..]);
+  if home.count > 0 {
+    ob: [1400] u8; on := hs_cat(ob[..], 0, home); on = hs_cat(ob[..], on, "/.openagents/bin");
+    p := fs_join(cast(string) ob[0..<on], name, out);
+    if fs_kind(p) == FS_FILE { return p; }
+  }
+  p := fs_join("/Applications/OpenAgentsMac.app/Contents/Resources", name, out);
+  if fs_kind(p) == FS_FILE { return p; }
+  p = fs_join("/Applications/OpenAgents.app/Contents/Resources", name, out);
+  if fs_kind(p) == FS_FILE { return p; }
   if home.count > 0 {
     ab: [1400] u8; an := hs_cat(ab[..], 0, home); an = hs_cat(ab[..], an, "/Applications/OpenAgents.app/Contents/Resources");
     p = fs_join(cast(string) ab[0..<an], name, out);
@@ -278,16 +285,28 @@ ph_agy_probe_once :: (p: [] PhHost, worker: string, use_profile: bool) -> bool {
   return true;
 }
 
-// Probe Antigravity via `agyworker --probe-json`: tries Desktop's isolated profile first, then falls
-// back to the user's default `~/.gemini` CLI login if the isolated profile isn't signed in yet.
+// Probe Antigravity via `agyworker --probe-json`: prefers the user's native `~/.gemini/antigravity`
+// account FIRST so chats created on iPhone/Mac sync directly into Google's Antigravity app;
+// falls back to Desktop's isolated profile only if the native `~/.gemini` login isn't ready.
 ph_agy_ready :: (p: [] PhHost) -> bool {
   p[0].agy_nmodels = 0;
   wb: [1400] u8; worker := ph_worker("agyworker", wb[..]);
   if worker.count == 0 || !ph_load_agy_cfg(p) { return false; }
-  if p[0].agy_nprofile > 0 && ph_agy_probe_once(p, worker, true) { return true; }
+  saved_prof := p[0].agy_profile; saved_nprof := p[0].agy_nprofile;
+  saved_auth := p[0].agy_auth; saved_nauth := p[0].agy_nauth;
+  // 1. Try native ~/.gemini first so OpenAgents & Google Antigravity share the exact same store.
   p[0].agy_nprofile = 0;
   p[0].agy_nauth = 0;
-  return ph_agy_probe_once(p, worker, false);
+  if ph_agy_probe_once(p, worker, false) { return true; }
+  // 2. Fall back to isolated Desktop profile if configured.
+  if saved_nprof > 0 {
+    p[0].agy_profile = saved_prof; p[0].agy_nprofile = saved_nprof;
+    p[0].agy_auth = saved_auth; p[0].agy_nauth = saved_nauth;
+    if ph_agy_probe_once(p, worker, true) { return true; }
+  }
+  p[0].agy_nprofile = 0;
+  p[0].agy_nauth = 0;
+  return false;
 }
 
 // ---------------------------------------------------------------- local Inkling 2 Mini (inky + Psionic Metal)
@@ -596,9 +615,12 @@ ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, e
 }
 // What the worker starts with: bundled agyworker, inky, or mcworker with Desktop's PATH and engine env.
 ph_spec :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, cwd: string, skip: int) -> string {
-  return ph_spec_mode(h, id, engine, model, effort, "auto", cwd, skip);
+  return ph_spec_mode_resume(h, id, engine, model, effort, "auto", cwd, skip, "");
 }
 ph_spec_mode :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, mode: string, cwd: string, skip: int) -> string {
+  return ph_spec_mode_resume(h, id, engine, model, effort, mode, cwd, skip, "");
+}
+ph_spec_mode_resume :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, mode: string, cwd: string, skip: int, resume_id: string) -> string {
   wname := ifx engine == PA_AGY then "agyworker" else ifx engine == PA_INKLING then "inky" else "mcworker";
   wb: [1400] u8; program := ph_worker(wname, wb[..]);
   if program.count == 0 { return "invalid-program"; }
@@ -617,7 +639,12 @@ ph_spec_mode :: (h: [] HsHost, id: string, engine: int, model: string, effort: s
     p := h[0].phone[..];
     if p[0].agy_nbin == 0 { _ = ph_load_agy_cfg(p); }
     if p[0].agy_nbin > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_BIN="); en = hs_cat(eb[..], en, cast(string) p[0].agy_bin[0..<p[0].agy_nbin]); jo_str(o[..], cast(string) eb[0..<en]); }
-    if p[0].agy_nprofile > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_PROFILE="); en = hs_cat(eb[..], en, cast(string) p[0].agy_profile[0..<p[0].agy_nprofile]); jo_str(o[..], cast(string) eb[0..<en]); }
+    if p[0].agy_nprofile > 0 {
+      en = hs_cat(eb[..], 0, "CODER_AGY_PROFILE="); en = hs_cat(eb[..], en, cast(string) p[0].agy_profile[0..<p[0].agy_nprofile]); jo_str(o[..], cast(string) eb[0..<en]);
+    } else {
+      // Sync directly with native Google Antigravity (~/.gemini/antigravity) when not using an isolated profile.
+      jo_str(o[..], "CODER_AGY_APP_DATA_DIR=antigravity");
+    }
     if p[0].agy_nauth > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_AUTH_METHOD="); en = hs_cat(eb[..], en, cast(string) p[0].agy_auth[0..<p[0].agy_nauth]); jo_str(o[..], cast(string) eb[0..<en]); }
     if p[0].agy_nproject > 0 {
       en = hs_cat(eb[..], 0, "CODER_AGY_GCP_PROJECT="); en = hs_cat(eb[..], en, cast(string) p[0].agy_project[0..<p[0].agy_nproject]); jo_str(o[..], cast(string) eb[0..<en]);
@@ -632,6 +659,9 @@ ph_spec_mode :: (h: [] HsHost, id: string, engine: int, model: string, effort: s
     if eff.count > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_EFFORT="); en = hs_cat(eb[..], en, eff); jo_str(o[..], cast(string) eb[0..<en]); }
     agy_mode := ifx ea_mode_ok(mode) then mode else "auto";
     en = hs_cat(eb[..], 0, "CODER_AGY_MODE="); en = hs_cat(eb[..], en, agy_mode); jo_str(o[..], cast(string) eb[0..<en]);
+    if resume_id.count > 0 {
+      en = hs_cat(eb[..], 0, "CODER_AGY_RESUME_SESSION="); en = hs_cat(eb[..], en, resume_id); jo_str(o[..], cast(string) eb[0..<en]);
+    }
   }
   jo_end(o[..]);
   jo_key(o[..], "unset"); jo_arr(o[..]); jo_str(o[..], "CODER_CLAUDE_KEY"); jo_end(o[..]);

@@ -85,6 +85,8 @@ AgywConfig :: struct {
   mcp_url: [256] u8; mcp_url_n: int;
   mcp_token: [256] u8; mcp_token_n: int;
   mcp_stdio: [512] u8; mcp_stdio_n: int;
+  resume_session: [128] u8; resume_session_n: int;
+  app_data_dir: [64] u8; app_data_dir_n: int;
   interactive: bool;
 }
 
@@ -105,6 +107,9 @@ AgywState :: struct {
   last_prompt: [CUE_OWED] u8; last_prompt_n: int;
   recall: [AGYW_RECALL] u8; recall_n: int;
   has_recall: bool;
+  resuming_native: bool;
+  recall_fallback: [AGYW_RECALL] u8; recall_fallback_n: int;
+  raw_task: [CUE_OWED] u8; raw_task_n: int;
   cwd: [1024] u8; cwd_n: int;
   turn_model: [128] u8; turn_model_n: int;
   turn_effort: [32] u8; turn_effort_n: int;
@@ -253,6 +258,18 @@ agyw_load_env :: (s: [] AgywState) {
   mub: [256] u8; s[0].cfg.mcp_url_n = agyw_copy(s[0].cfg.mcp_url[..], agyw_trim(cl_getenv("CODER_MCP_URL", mub[..])));
   mtb: [256] u8; s[0].cfg.mcp_token_n = agyw_copy(s[0].cfg.mcp_token[..], agyw_trim(cl_getenv("CODER_MCP_TOKEN", mtb[..])));
   msb: [512] u8; s[0].cfg.mcp_stdio_n = agyw_copy(s[0].cfg.mcp_stdio[..], agyw_trim(cl_getenv("CODER_MCP_STDIO", msb[..])));
+  rsb: [128] u8; s[0].cfg.resume_session_n = agyw_copy(s[0].cfg.resume_session[..], agyw_trim(cl_getenv("CODER_AGY_RESUME_SESSION", rsb[..])));
+  adb: [64] u8; s[0].cfg.app_data_dir_n = agyw_copy(s[0].cfg.app_data_dir[..], agyw_trim(cl_getenv("CODER_AGY_APP_DATA_DIR", adb[..])));
+  // Sync chats with native Google Antigravity app (~/.gemini/antigravity) by default when not isolated.
+  if s[0].cfg.profile_n == 0 && s[0].cfg.app_data_dir_n == 0 {
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    if home.count > 0 {
+      nb: [1200] u8; nat := fs_join(home, ".gemini/antigravity", nb[..]);
+      if nat.count > 0 && fs_kind(nat) == FS_DIR {
+        s[0].cfg.app_data_dir_n = agyw_copy(s[0].cfg.app_data_dir[..], AGY_APP_DATA_NATIVE);
+      }
+    }
+  }
 }
 
 agyw_auth_config :: (s: [] AgywState) -> AgyAuthConfig {
@@ -263,18 +280,126 @@ agyw_auth_config :: (s: [] AgywState) -> AgyAuthConfig {
     gcp_project = agyw_str(s[0].cfg.gcp_project[..], s[0].cfg.gcp_project_n),
     gcp_location = agyw_str(s[0].cfg.gcp_location[..], s[0].cfg.gcp_location_n),
     skip_permissions = (mode == "auto"),
+    app_data_dir = agyw_str(s[0].cfg.app_data_dir[..], s[0].cfg.app_data_dir_n),
   };
 }
 
-// Launch agy using T3 auth config when CODER_AGY_AUTH_METHOD is configured, else legacy agy_launch_with.
+// Launch agy using T3 auth config when CODER_AGY_AUTH_METHOD is configured, else agy_launch_with_opts.
 agyw_launch_engine :: (s: [] AgywState, x: [] CuEngine, cwd: string) -> string {
   prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
   prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
+  app_data := agyw_str(s[0].cfg.app_data_dir[..], s[0].cfg.app_data_dir_n);
   if s[0].cfg.auth_method_n > 0 {
     return agy_launch_auth(x, prog, cwd, "openagents-agyworker", "1.0", prof, agyw_auth_config(s));
   }
   skip_perm := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n) == "auto";
-  return agy_launch_with_skip(x, prog, cwd, "openagents-agyworker", "1.0", prof, skip_perm);
+  return agy_launch_with_opts(x, prog, cwd, "openagents-agyworker", "1.0", prof, app_data, skip_perm);
+}
+
+// Multimodal image block parser (#13993 Phase 3.3): converts `[oa-image ... mime=M base64=B]`
+// markers inside a prompt into ACP `{"type":"text",...},{"type":"image","mimeType":M,"data":B}`
+// content blocks. Returns output byte count (>0) when at least one valid image block was parsed,
+// else 0 (caller sends plain text via cue_send).
+agyw_valid_img_mime :: (m: string) -> bool {
+  return m == "image/jpeg" || m == "image/png" || m == "image/webp" || m == "image/gif";
+}
+
+agyw_valid_b64 :: (b: string) -> bool {
+  if b.count < 4 || b.count > 65536 { return false; }
+  for c: b {
+    ok := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+agyw_find_sub :: (hay: string, from: int, needle: string) -> int {
+  if needle.count == 0 || from + needle.count > hay.count { return -1; }
+  for i: from..<(hay.count - needle.count + 1) {
+    ok := true;
+    for j: 0..<needle.count { if hay[i + j] != needle[j] { ok = false; break; } }
+    if ok { return i; }
+  }
+  return -1;
+}
+
+agyw_build_prompt_blocks :: (prompt: string, out: [] u8) -> int {
+  tag_prefix := "[oa-image ";
+  if agyw_find_sub(prompt, 0, tag_prefix) < 0 { return 0; }
+  o := [1] ClOut.[ClOut.{buf = out}];
+  wrote := false;
+  images := 0;
+  pos := 0;
+  while pos < prompt.count {
+    hit := agyw_find_sub(prompt, pos, tag_prefix);
+    if hit < 0 {
+      tail := agyw_trim(cast(string) prompt[pos..<prompt.count]);
+      if tail.count > 0 {
+        if wrote { cl_put(o[..], ","); }
+        cl_put(o[..], "{\"type\":\"text\",\"text\":"); cl_put_string(o[..], tail); cl_put(o[..], "}");
+        wrote = true;
+      }
+      break;
+    }
+    end_br := hit + tag_prefix.count;
+    while end_br < prompt.count && prompt[end_br] != ']' { end_br += 1; }
+    if end_br >= prompt.count {
+      // Unterminated tag: keep remaining text literal.
+      rem := agyw_trim(cast(string) prompt[pos..<prompt.count]);
+      if rem.count > 0 {
+        if wrote { cl_put(o[..], ","); }
+        cl_put(o[..], "{\"type\":\"text\",\"text\":"); cl_put_string(o[..], rem); cl_put(o[..], "}");
+        wrote = true;
+      }
+      break;
+    }
+    // Parse key=value tokens inside `[oa-image ...]`.
+    inner := cast(string) prompt[(hit + tag_prefix.count)..<end_br];
+    mime := ""; b64 := "";
+    p := 0;
+    while p < inner.count {
+      while p < inner.count && inner[p] <= 32 { p += 1; }
+      s0 := p;
+      while p < inner.count && inner[p] > 32 { p += 1; }
+      tok := cast(string) inner[s0..<p];
+      if tok.count > 5 && cast(string) tok[0..<5] == "mime=" { mime = cast(string) tok[5..<tok.count]; }
+      else if tok.count > 7 && cast(string) tok[0..<7] == "base64=" { b64 = cast(string) tok[7..<tok.count]; }
+    }
+    if agyw_valid_img_mime(mime) && agyw_valid_b64(b64) {
+      before := agyw_trim(cast(string) prompt[pos..<hit]);
+      if before.count > 0 {
+        if wrote { cl_put(o[..], ","); }
+        cl_put(o[..], "{\"type\":\"text\",\"text\":"); cl_put_string(o[..], before); cl_put(o[..], "}");
+        wrote = true;
+      }
+      if wrote { cl_put(o[..], ","); }
+      cl_put(o[..], "{\"type\":\"image\",\"mimeType\":"); cl_put_string(o[..], mime);
+      cl_put(o[..], ",\"data\":"); cl_put_string(o[..], b64); cl_put(o[..], "}");
+      wrote = true;
+      images += 1;
+      pos = end_br + 1;
+    } else {
+      // Invalid marker: advance past prefix as literal text.
+      seg := cast(string) prompt[pos..<(end_br + 1)];
+      if seg.count > 0 {
+        if wrote { cl_put(o[..], ","); }
+        cl_put(o[..], "{\"type\":\"text\",\"text\":"); cl_put_string(o[..], seg); cl_put(o[..], "}");
+        wrote = true;
+      }
+      pos = end_br + 1;
+    }
+  }
+  if images == 0 || o[0].failed { return 0; }
+  return o[0].len;
+}
+
+agyw_send_prompt :: (x: [] CuEngine, prompt: string) -> bool {
+  blocks: [CUE_OWED] u8;
+  bn := agyw_build_prompt_blocks(prompt, blocks[..]);
+  if bn > 0 {
+    return cue_send_blocks(x, cast(string) blocks[0..<bn]);
+  }
+  return cue_send(x, prompt);
 }
 
 agyw_is_logout :: (text: string) -> bool {
@@ -888,6 +1013,10 @@ agyw_open_once :: (s: [] AgywState, x: [] CuEngine, why_out: [] u8) -> string {
   hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
   if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
   if cwd.count == 0 { cwd = "."; }
+  // Probe on antigravity-cli when not isolated so temporary probe sessions never appear in Google Antigravity app.
+  if s[0].cfg.profile_n == 0 {
+    s[0].cfg.app_data_dir_n = agyw_copy(s[0].cfg.app_data_dir[..], "antigravity-cli");
+  }
   why := agyw_launch_engine(s, x, cwd);
   if why.count > 0 { return cast(string) why_out[0..<agyw_copy(why_out, why)]; }
   agyw_lease_acquire(s, x[0].p[0].pid);
@@ -1086,6 +1215,10 @@ agyw_probe_json :: (s: [] AgywState, x: [] CuEngine) -> int {
   hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
   if cwd.count == 0 { cwd = cl_getenv("USERPROFILE", hb[..]); }
   if cwd.count == 0 { cwd = "."; }
+  // Probe on antigravity-cli when not isolated so temporary probe sessions never appear in Google Antigravity app.
+  if s[0].cfg.profile_n == 0 {
+    s[0].cfg.app_data_dir_n = agyw_copy(s[0].cfg.app_data_dir[..], "antigravity-cli");
+  }
   why := agyw_launch_engine(s, x, cwd);
   if why.count > 0 {
     cl_put(o[..], "{\"installed\":true,\"binaryPath\":"); cl_put_string(o[..], prog);
@@ -1669,6 +1802,10 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
   }
   if ev.kind == CuEventKind.answered {
     if ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME {
+      if ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME {
+        s[0].resuming_native = false;
+        s[0].recall_fallback_n = 0;
+      }
       if ev.result.count > 0 && (agy_has(ev.result, "configOptions") || agy_has(ev.result, "models")) {
         s[0].sess_json_n = agyw_copy(s[0].sess_json[..], ev.result);
       }
@@ -1720,6 +1857,22 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       if s[0].turn_active { agyw_finish_turn(s, "failed", why, emit); }
       return;
     }
+    if ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME {
+      // cursor.coax automatically falls back to session/new; upgrade owed prompt with recall context so no history is lost.
+      if s[0].resuming_native && s[0].recall_fallback_n > 0 && s[0].raw_task_n > 0 {
+        fb_buf: [CUE_OWED] u8;
+        fb := agyw_compose_prompt(
+          agyw_str(s[0].recall_fallback[..], s[0].recall_fallback_n),
+          agyw_str(s[0].raw_task[..], s[0].raw_task_n),
+          fb_buf[..]
+        );
+        s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], fb);
+        _ = agyw_send_prompt(x, fb);
+      }
+      s[0].resuming_native = false;
+      s[0].recall_fallback_n = 0;
+      return;
+    }
     if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
       cue_owed(x, s[0].turn_active);
       return;
@@ -1731,7 +1884,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
         s[0].reply_n = 0;
         s[0].reply_break = false;
         cue_fresh_session(x);
-        _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
+        _ = agyw_send_prompt(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
         return;
       }
       raw_why := ifx ev.message.count > 0 then ev.message else "Antigravity refused the prompt.";
@@ -1761,7 +1914,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
         why := agyw_launch_engine(s, x, agyw_str(s[0].cwd[..], s[0].cwd_n));
         if why.count == 0 {
           agyw_lease_acquire(s, x[0].p[0].pid);
-          _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
+          _ = agyw_send_prompt(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
           return;
         }
       }
@@ -1891,14 +2044,23 @@ tool_main :: () -> int #export_c #effects(all) {
 
             prompt_buf: [CUE_OWED] u8;
             prompt := req[0].task;
-            if s[0].has_recall {
+            use_native_resume := !x[0].live && s[0].cfg.resume_session_n > 0 && !agyw_is_compact(req[0].task);
+            if use_native_resume {
+              s[0].resuming_native = true;
+              s[0].raw_task_n = agyw_copy(s[0].raw_task[..], req[0].task);
+              if s[0].has_recall {
+                s[0].recall_fallback_n = agyw_copy(s[0].recall_fallback[..], agyw_str(s[0].recall[..], s[0].recall_n));
+                s[0].has_recall = false;
+                s[0].recall_n = 0;
+              }
+            } else if s[0].has_recall {
               prompt = agyw_compose_prompt(agyw_str(s[0].recall[..], s[0].recall_n), req[0].task, prompt_buf[..]);
               s[0].has_recall = false;
               s[0].recall_n = 0;
             }
             // a new session's first prompt carries the user instructions, read again for each session
             ui_buf: [CUE_OWED] u8; uib: [UINSTR_BLOCK_BYTES] u8; uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
-            if !x[0].live && !agyw_is_compact(req[0].task) {
+            if !x[0].live && !use_native_resume && !agyw_is_compact(req[0].task) {
               prompt = agyw_with_instructions(uinstr_block("", uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]), prompt, ui_buf[..]);
             }
             s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], prompt);
@@ -1908,12 +2070,16 @@ tool_main :: () -> int #export_c #effects(all) {
               agyw_finish_turn(s, "finished", "Signed out of Antigravity.", true);
             } else if !x[0].live {
               agyw_apply_mcp(s, x[0].c);
+              if use_native_resume {
+                cue_resume(x, agyw_str(s[0].cfg.resume_session[..], s[0].cfg.resume_session_n));
+                s[0].cfg.resume_session_n = 0;
+              }
               why := agyw_launch_engine(s, x, cwd);
               if why.count > 0 {
                 agyw_finish_turn(s, "failed", why, true);
               } else {
                 agyw_lease_acquire(s, x[0].p[0].pid);
-                _ = cue_send(x, prompt);
+                _ = agyw_send_prompt(x, prompt);
               }
             } else {
               // Apply mid-chat model or thinking-level switch on an already-live session before sending prompt.
@@ -1921,7 +2087,7 @@ tool_main :: () -> int #export_c #effects(all) {
                 mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
                 _ = agyw_reconfigure(s, x, mod, eff, mode, true);
               }
-              _ = cue_send(x, prompt);
+              _ = agyw_send_prompt(x, prompt);
             }
           }
         }
@@ -2523,4 +2689,56 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   s[0].log_n = 0;
   agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_slow\",\"status\":\"cancelled\"}}}");
   #assert s[0].log_n == 0 && !cue_held_bg(x);
+}
+
+#test "multimodal [oa-image ...] markers encode into real ACP image+text blocks and reject bogus MIME types" {
+  out: [4096] u8;
+  // Valid text + image marker produces ACP multipart blocks
+  prompt := "What do you see here?\n\n[oa-image name=shot.jpg mime=image/jpeg base64=/9j/4AAQSkZJRg==]";
+  n := agyw_build_prompt_blocks(prompt, out[..]);
+  #assert n > 0;
+  res := cast(string) out[0..<n];
+  #assert agy_has(res, "\"type\":\"text\",\"text\":\"What do you see here?\"");
+  #assert agy_has(res, "\"type\":\"image\",\"mimeType\":\"image/jpeg\",\"data\":\"/9j/4AAQSkZJRg==\"");
+
+  // Plain text without image tags returns 0 (dispatched via cue_send)
+  #assert agyw_build_prompt_blocks("plain text only", out[..]) == 0;
+  // Unknown MIME type or invalid base64 is safely ignored (returns 0)
+  #assert agyw_build_prompt_blocks("[oa-image mime=text/html base64=AAAA]", out[..]) == 0;
+  #assert agyw_build_prompt_blocks("[oa-image mime=image/png base64=not!valid!]", out[..]) == 0;
+
+  // Dispatching via agyw_send_prompt emits real session/prompt with image content block
+  sb: [1] AgywState; xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess;
+  line: [2048] u8; arena: [4096] u8; cout: [8192] u8;
+  s := sb[..]; x := xb[..];
+  cue_test(x, cb[..], pb[..], line[..], arena[..], cout[..]);
+  cue_agent(x, agy_agent());
+  agyw_fx_turn(s, x);
+  cu_outbox_clear(x[0].c);
+  #assert agyw_send_prompt(x, prompt);
+  #assert agy_out_has(x, "\"method\":\"session/prompt\"") && agy_out_has(x, "\"type\":\"image\"") && agy_out_has(x, "\"mimeType\":\"image/jpeg\"");
+}
+
+#test "native ACP session/resume fallback upgrades owed prompt with recall when resume is refused" {
+  sb: [1] AgywState; xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess;
+  line: [2048] u8; arena: [4096] u8; cout: [8192] u8;
+  s := sb[..]; x := xb[..]; s[0].sink = true;
+  cue_test(x, cb[..], pb[..], line[..], arena[..], cout[..]);
+  cue_agent(x, agy_agent());
+  cue_resume(x, "old-native-uuid");
+  s[0].turn_active = true;
+  s[0].resuming_native = true;
+  s[0].recall_fallback_n = agyw_copy(s[0].recall_fallback[..], "Earlier turn context");
+  s[0].raw_task_n = agyw_copy(s[0].raw_task[..], "Continue now");
+  _ = agyw_send_prompt(x, "Continue now");
+  // Initialize -> sends session/resume with old-native-uuid
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"version\":\"1.5.14\"}}}");
+  #assert agy_out_has(x, "\"method\":\"session/resume\"") && agy_out_has(x, "old-native-uuid");
+  // Refuse session/resume -> cursor falls back to session/new AND agyworker injects recall_fallback!
+  cu_outbox_clear(x[0].c);
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"error\":{\"code\":-32001,\"message\":\"session not found\"}}");
+  #assert !s[0].resuming_native && agy_out_has(x, "\"method\":\"session/new\"");
+  cu_outbox_clear(x[0].c);
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"sessionId\":\"new-uuid\"}}");
+  #assert agy_out_has(x, "\"method\":\"session/prompt\"") && agy_out_has(x, "Earlier turn context") && agy_out_has(x, "Continue now");
 }

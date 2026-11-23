@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 
@@ -30,6 +31,8 @@ typedef struct {
   int64_t out_count;
   unsigned char *out;     /* CXSOCK_MAX_OUT bytes, allocated on connect */
   int port;               /* a listener's bound port; 0 for a connection */
+  char peer_ip[64];
+  int64_t peer_len;
 } cxsock_slot;
 
 static cxsock_slot cxsock_slots[CXSOCK_MAX];
@@ -164,7 +167,7 @@ static int64_t cxsock_take(int fd, int port) {
   cxsock_slot *s = &cxsock_slots[slot];
   if (port == 0 && s->out == NULL) s->out = (unsigned char *)malloc(CXSOCK_MAX_OUT);
   if (port == 0 && s->out == NULL) { pthread_mutex_unlock(&cxsock_mu); close(fd); return CXSOCK_ERROR; }
-  s->fd = fd; s->in_count = 0; s->out_count = 0; s->port = port;
+  s->fd = fd; s->in_count = 0; s->out_count = 0; s->port = port; s->peer_len = 0; s->peer_ip[0] = 0;
   pthread_mutex_unlock(&cxsock_mu);
   return slot;
 }
@@ -179,6 +182,27 @@ int64_t cxsock_listen(int64_t port) {
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
   struct sockaddr_in a; memset(&a, 0, sizeof a);
   a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || listen(fd, 16) != 0) { close(fd); return CXSOCK_REFUSED; }
+  socklen_t len = sizeof a;
+  if (getsockname(fd, (struct sockaddr *)&a, &len) != 0) { close(fd); return CXSOCK_ERROR; }
+  return cxsock_take(fd, ntohs(a.sin_port));
+}
+
+int64_t cxsock_listen_ip(int64_t port) {
+  cxsock_init();
+  int bad = cxsock_host_bad || cxsock_host_len == 0 || cxsock_host_len >= 64 || port < 0 || port > 65535;
+  char ip[64];
+  if (!bad) { memcpy(ip, cxsock_host, (size_t)cxsock_host_len); ip[cxsock_host_len] = 0; }
+  cxsock_host_len = 0; cxsock_host_bad = 0;
+  if (bad) return CXSOCK_ERROR;
+  struct sockaddr_in a; memset(&a, 0, sizeof a);
+  a.sin_family = AF_INET; a.sin_port = htons((unsigned short)port);
+  if (inet_pton(AF_INET, ip, &a.sin_addr) != 1) return CXSOCK_ERROR;
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) return CXSOCK_ERROR;
+  int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
   if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || listen(fd, 16) != 0) { close(fd); return CXSOCK_REFUSED; }
   socklen_t len = sizeof a;
   if (getsockname(fd, (struct sockaddr *)&a, &len) != 0) { close(fd); return CXSOCK_ERROR; }
@@ -224,7 +248,8 @@ int64_t cxsock_accept(int64_t h, int64_t timeout_ms) {
   if (s == NULL || s->port == 0) return CXSOCK_ERROR;
   int64_t deadline = timeout_ms < 0 ? -1 : cxsock_now_ms() + timeout_ms;
   for (;;) {
-    int fd = accept(s->fd, NULL, NULL);
+    struct sockaddr_storage sa; socklen_t salen = sizeof sa;
+    int fd = accept(s->fd, (struct sockaddr *)&sa, &salen);
     if (fd >= 0) {
       fcntl(fd, F_SETFD, FD_CLOEXEC);
       int flags = fcntl(fd, F_GETFL, 0);
@@ -232,13 +257,39 @@ int64_t cxsock_accept(int64_t h, int64_t timeout_ms) {
 #ifdef SO_NOSIGPIPE
       int one = 1; setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
 #endif
-      return cxsock_take(fd, 0);
+      int64_t slot = cxsock_take(fd, 0);
+      if (slot >= 0) {
+        cxsock_slot *cs = &cxsock_slots[slot];
+        char pbuf[64]; pbuf[0] = 0;
+        if (sa.ss_family == AF_INET) {
+          inet_ntop(AF_INET, &((struct sockaddr_in *)&sa)->sin_addr, pbuf, sizeof pbuf);
+        } else if (sa.ss_family == AF_INET6) {
+          inet_ntop(AF_INET6, &((struct sockaddr_in6 *)&sa)->sin6_addr, pbuf, sizeof pbuf);
+        }
+        size_t plen = strlen(pbuf);
+        if (plen < sizeof cs->peer_ip) {
+          memcpy(cs->peer_ip, pbuf, plen + 1);
+          cs->peer_len = (int64_t)plen;
+        }
+      }
+      return slot;
     }
     if (errno == EINTR) continue;
     if (errno != EAGAIN && errno != EWOULDBLOCK) return CXSOCK_ERROR;
     int w = cxsock_wait(s->fd, POLLIN, deadline);
     if (w != 0) return w;
   }
+}
+
+int64_t cxsock_peer_ip(int64_t h) {
+  cxsock_slot *s = cxsock_get(h);
+  return s == NULL ? 0 : s->peer_len;
+}
+
+int64_t cxsock_peer_byte(int64_t h, int64_t i) {
+  cxsock_slot *s = cxsock_get(h);
+  if (s == NULL || i < 0 || i >= s->peer_len) return 0;
+  return (unsigned char)s->peer_ip[i];
 }
 
 int64_t cxsock_write(int64_t h, int64_t byte) {

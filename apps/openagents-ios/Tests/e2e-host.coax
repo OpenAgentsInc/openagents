@@ -39,9 +39,9 @@ E2eState :: struct {
   sess_busy: bool;
   sess_inter: [64] u8;
   nsess_inter: int;
-  last_user: [2048] u8;
+  last_user: [8192] u8;
   nlast_user: int;
-  last_reply: [2048] u8;
+  last_reply: [8192] u8;
   nlast_reply: int;
   approved: bool;
   branch: [64] u8;
@@ -126,14 +126,14 @@ e2e_fill_offer :: (v: [] EaView) #effects(all) {
   v[0].offer = o;
 }
 
-e2e_add_item :: (v: [] EaView, id: string, role: string, text: string, tool: string, calls: int, now_s: string) #effects(all) {
+e2e_add_item :: (v: [] EaView, id: string, role: string, text: string, tool: string, calls: int, now_s: string, complete: bool) #effects(all) {
   if v[0].ni >= EA_ITEMS { return; }
   idx := v[0].ni;
   m := EaItem.{};
   m.ni = ea_copy(m.id[..], id);
   m.nr = ea_copy(m.role[..], role);
   m.nk = ea_copy(m.tool[..], tool);
-  m.complete = true;
+  m.complete = complete;
   m.calls = calls;
   m.nn = ea_copy(m.now[..], now_s);
   at := ea_text_put(v, text);
@@ -163,11 +163,12 @@ e2e_put_session :: (st: [] E2eState, v: [] EaView) #effects(all) {
 
 e2e_populate_items :: (st: [] E2eState, v: [] EaView) #effects(all) {
   if !st[0].has_session { return; }
-  e2e_add_item(v, "item-user-1", "user", cast(string) st[0].last_user[0..<st[0].nlast_user], "", 0, "");
-  e2e_add_item(v, "item-sub-1", "tool", "Audited Swift & Coax wire boundaries.", "task", 2, "Audited 12 files");
-  e2e_add_item(v, "item-asst-1", "assistant", cast(string) st[0].last_reply[0..<st[0].nlast_reply], "", 0, "");
+  e2e_add_item(v, "item-user-1", "user", cast(string) st[0].last_user[0..<st[0].nlast_user], "", 0, "", true);
+  e2e_add_item(v, "item-thought-1", "thought", "**Confirming System Functionality**\n\nInspecting Antigravity wire and verifying clean streaming parity.", "", 0, "", !st[0].sess_busy);
+  e2e_add_item(v, "item-sub-1", "tool", "Audited Swift & Coax wire boundaries.", "task", 2, "Audited 12 files", true);
+  e2e_add_item(v, "item-asst-1", "assistant", cast(string) st[0].last_reply[0..<st[0].nlast_reply], "", 0, "", true);
   if st[0].approved {
-    e2e_add_item(v, "item-asst-2", "assistant", "Approved and executed cleanly.", "", 0, "");
+    e2e_add_item(v, "item-asst-2", "assistant", "Approved and executed cleanly.", "", 0, "", true);
   }
 }
 
@@ -209,7 +210,7 @@ e2e_handle_ea :: (st: [] E2eState, q: [] EaRequest, v: [] EaView, push_needed: [
     return;
   }
   if method == "ReadSubagent" || method == "StopSubagent" {
-    e2e_add_item(v, "sub-1", "assistant", "Subagent inspected 12 files cleanly.", "", 0, "");
+    e2e_add_item(v, "sub-1", "assistant", "Subagent inspected 12 files cleanly.", "", 0, "", true);
     return;
   }
   if method == "OpenSession" || method == "SendMessage" {
@@ -226,7 +227,7 @@ e2e_handle_ea :: (st: [] E2eState, q: [] EaRequest, v: [] EaView, push_needed: [
     st[0].nlast_user = ea_copy(st[0].last_user[..], txt);
     tlen := ifx txt.count > 60 then 60 else txt.count;
     st[0].nsess_title = ea_copy(st[0].sess_title[..], cast(string) txt[0..<tlen]);
-    rb: [2048] u8;
+    rb: [8192] u8;
     rn := e2e_cat(rb[..], 0, "Antigravity verified reply: ");
     rn = e2e_cat(rb[..], rn, txt);
     st[0].nlast_reply = ea_copy(st[0].last_reply[..], cast(string) rb[0..<rn]);

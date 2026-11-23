@@ -1,0 +1,421 @@
+// Native Tailscale TCP listener + same-owner admission + relay-free direct grants + real-time
+// runs/ push broadcaster inside `coder host serve` (#13993 Phase 1.5).
+// Enables headless Linux hosts and Macs to stay reachable directly over Tailscale port 47109
+// even when OpenAgentsMac.app GUI is closed (zero public relays).
+
+HT_SRV_PEERS :: 8;
+HT_SRV_LINE :: 140000;
+HT_SRV_DEFAULT_PORT :: 47109;
+
+HtSrvPeer :: struct {
+  conn: int;
+  direct_ok: bool;
+  subscribed: bool;
+  sub_session: [128] u8; nsub_session: int;
+  peer_ip: [64] u8; npeer_ip: int;
+  buf: [HT_SRV_LINE] u8; blen: int;
+}
+
+HtTailnetServer :: struct {
+  listener: int;
+  port: int;
+  test_loopback: bool;
+  has_owner: bool;
+  owner_user: int;
+  owner_login: [128] u8; nowner_login: int;
+  owner_ip: [64] u8; nowner_ip: int;
+  push_seq: int;
+  last_sig: int;
+  last_check_ms: int;
+  peers: [HT_SRV_PEERS] HtSrvPeer;
+}
+
+// Parse an IPv4 string into 4 octets and check Tailscale CGNAT 100.64.0.0/10.
+ht_srv_is_tailnet_v4 :: (ip: string) -> bool {
+  if ip.count < 7 || ip.count > 15 { return false; }
+  oct: [4] int; idx := 0; cur := 0; digits := 0;
+  for c: ip {
+    if c == '.' {
+      if digits == 0 || cur > 255 || idx >= 3 { return false; }
+      oct[idx] = cur; idx += 1; cur = 0; digits = 0;
+    } else if c >= '0' && c <= '9' {
+      cur = cur * 10 + cast(int) (c - '0'); digits += 1;
+      if digits > 3 || cur > 255 { return false; }
+    } else { return false; }
+  }
+  if digits == 0 || cur > 255 || idx != 3 { return false; }
+  oct[3] = cur;
+  return oct[0] == 100 && oct[1] >= 64 && oct[1] <= 127;
+}
+
+ht_srv_write_line :: (conn: int, line: string) #effects(all) {
+  for c: line { _ = cxsock_write(conn, cast(int) c); }
+  _ = cxsock_write(conn, 10);
+  _ = cxsock_flush(conn, 2000);
+}
+
+// Run a short read-only `tailscale` CLI command and capture stdout into out.
+ht_srv_run_ts :: (arg1: string, arg2: string, arg3: string, out: [] u8) -> int #effects(all) {
+  p := proc_new();
+  if p < 0 { return -1; }
+  defer { _ = proc_release(p); }
+  bin := "tailscale";
+  if fs_kind("/Applications/Tailscale.app/Contents/MacOS/Tailscale") == FS_FILE {
+    bin = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+  } else if fs_kind("/usr/bin/tailscale") == FS_FILE {
+    bin = "/usr/bin/tailscale";
+  } else if fs_kind("/opt/homebrew/bin/tailscale") == FS_FILE {
+    bin = "/opt/homebrew/bin/tailscale";
+  }
+  ok := proc_arg(p, bin) && proc_arg(p, arg1);
+  if arg2.count > 0 { ok = ok && proc_arg(p, arg2); }
+  if arg3.count > 0 { ok = ok && proc_arg(p, arg3); }
+  if !ok || proc_start(p) != 0 { return -1; }
+  _ = proc_close_stdin(p);
+  n := 0; deadline := proc_now_ms() + 3000;
+  while proc_now_ms() < deadline {
+    left := proc_left(deadline, proc_now_ms());
+    ln := cxproc_read_line(p, ifx left > 200 then 200 else left);
+    if ln == PROC_TIMEOUT { continue; }
+    if ln < 0 { break; }
+    for i: 0..<ln { if n < out.count { out[n] = cast(u8) cxproc_line_byte(p, i); n += 1; } }
+    if n < out.count { out[n] = 10; n += 1; }
+  }
+  _ = proc_wait(p, 500);
+  return n;
+}
+
+ht_srv_load_owner :: (srv: [] HtTailnetServer) #effects(all) {
+  buf: [65536] u8;
+  n := ht_srv_run_ts("status", "--json", "", buf[..]);
+  if n < 2 { return; }
+  raw := cast(string) buf[0..<n];
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  self_obj := cl_raw(raw, "Self");
+  if self_obj.count < 2 { return; }
+  uid := cl_int(self_obj, "UserID");
+  if !uid.ok || uid.value <= 0 { return; }
+  // Extract first 100.64.0.0/10 Tailscale IPv4 from Self.TailscaleIPs
+  ips := cl_raw(self_obj, "TailscaleIPs");
+  for i: 0..<cl_count(ips) {
+    ar[0].at = 0; ar[0].full = false;
+    cand := cl_text(ar[..], ips, cl_item(ips, i));
+    if ht_srv_is_tailnet_v4(cand) {
+      srv[0].nowner_ip = ht_copy(srv[0].owner_ip[..], cand);
+      break;
+    }
+  }
+  srv[0].owner_user = uid.value;
+  srv[0].has_owner = srv[0].nowner_ip > 0;
+}
+
+// Same-owner, untagged Tailscale peer admission matching AppTailnet.decide().
+// Returns "" when admitted, else a closed refusal code ("not_tailnet", "tagged", "not_owner", "unavailable").
+ht_srv_admit_peer :: (srv: [] HtTailnetServer, peer_ip: string) -> string #effects(all) {
+  if srv[0].test_loopback && peer_ip == "127.0.0.1" { return ""; }
+  if !ht_srv_is_tailnet_v4(peer_ip) { return "not_tailnet"; }
+  if !srv[0].has_owner { ht_srv_load_owner(srv); }
+  if !srv[0].has_owner { return "unavailable"; }
+  wbuf: [32768] u8;
+  wn := ht_srv_run_ts("whois", "--json", peer_ip, wbuf[..]);
+  if wn < 2 { return "unavailable"; }
+  raw := cast(string) wbuf[0..<wn];
+  node := cl_raw(raw, "Node");
+  if node.count < 2 { return "unavailable"; }
+  tags := cl_raw(node, "Tags");
+  if cl_count(tags) > 0 { return "tagged"; }
+  nuser := cl_int(node, "User");
+  prof := cl_raw(raw, "UserProfile");
+  puser := cl_int(prof, "ID");
+  if !nuser.ok || !puser.ok || nuser.value != srv[0].owner_user || puser.value != srv[0].owner_user {
+    return "not_owner";
+  }
+  // Confirm peer_ip appears in Node.Addresses (stripping /32 prefix if present)
+  addrs := cl_raw(node, "Addresses");
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  matched := false;
+  for i: 0..<cl_count(addrs) {
+    ar[0].at = 0; ar[0].full = false;
+    entry := cl_text(ar[..], addrs, cl_item(addrs, i));
+    cut := entry.count;
+    for j: 0..<entry.count { if entry[j] == '/' { cut = j; break; } }
+    if cast(string) entry[0..<cut] == peer_ip { matched = true; break; }
+  }
+  if !matched { return "not_tailnet"; }
+  return "";
+}
+
+ht_srv_start :: (h: [] HsHost, srv: [] HtTailnetServer, args: [] Args) #effects(all) {
+  srv[0] = HtTailnetServer.{};
+  srv[0].listener = -1;
+  for i: 0..<HT_SRV_PEERS { srv[0].peers[i].conn = -1; }
+  if args_has(args, "--no-tailnet") { return; }
+
+  port_str := args_value(args, "--tailnet-port", "");
+  want_listen := port_str.count > 0 || args_has(args, "--no-relay") || args_has(args, "--tailnet-test-loopback");
+  if !want_listen { return; }
+
+  srv[0].test_loopback = args_has(args, "--tailnet-test-loopback");
+  port := ifx port_str.count > 0 then hs_atoi(port_str) else HT_SRV_DEFAULT_PORT;
+  if port < 0 || port > 65535 { port = HT_SRV_DEFAULT_PORT; }
+
+  bind_ip := args_value(args, "--tailnet-bind", "");
+  if bind_ip.count == 0 {
+    if srv[0].test_loopback {
+      bind_ip = "127.0.0.1";
+    } else {
+      ht_srv_load_owner(srv);
+      if srv[0].nowner_ip > 0 {
+        bind_ip = cast(string) srv[0].owner_ip[0..<srv[0].nowner_ip];
+      } else {
+        return;
+      }
+    }
+  }
+
+  for c: bind_ip { _ = cxsock_host_push(cast(int) c); }
+  fd := cxsock_listen_ip(port);
+  if fd < 0 {
+    // If port 47109 is already owned by OpenAgentsMac.app companion server, keep service.sock running cleanly.
+    return;
+  }
+  srv[0].listener = fd;
+  srv[0].port = cxsock_port(fd);
+
+  pfile := args_value(args, "--tailnet-port-file", "");
+  if pfile.count > 0 {
+    pb: [128] u8; dg: [32] u8;
+    pn := hs_cat(pb[..], 0, hs_itoa(srv[0].port, dg[..]));
+    pn = hs_cat(pb[..], pn, " ");
+    pn = hs_cat(pb[..], pn, cast(string) h[0].xhex[..]);
+    pn = hs_cat(pb[..], pn, "\n");
+    _ = fs_write(pfile, cast(string) pb[0..<pn]);
+  }
+}
+
+ht_srv_close :: (srv: [] HtTailnetServer) #effects(all) {
+  for i: 0..<HT_SRV_PEERS {
+    if srv[0].peers[i].conn >= 0 {
+      _ = cxsock_close(srv[0].peers[i].conn);
+      srv[0].peers[i].conn = -1;
+    }
+  }
+  if srv[0].listener >= 0 {
+    _ = cxsock_close(srv[0].listener);
+    srv[0].listener = -1;
+  }
+}
+
+// Issue a relay-free direct Tailscale grant in-process (identical rules to `coder host direct-grant`).
+ht_srv_issue_grant :: (h: [] HsHost, st: [] HsState, statebuf: [] u8, device: string, client_label: string, out: [] u8) -> int #effects(all) {
+  ans: [1] HtGrantAnswer;
+  ans[0].nhost = ht_copy(ans[0].host[..], cast(string) h[0].xhex[..]);
+
+  c := h[0].environment[0].configuration[..];
+  root := "";
+  label := "This Mac";
+  if es_load_configuration(h[0].environment[..]) && c[0].nw > 0 {
+    root = cast(string) c[0].workspace[0..<c[0].nw];
+    if c[0].nl > 0 { label = cast(string) c[0].label[0..<c[0].nl]; }
+  }
+  cwd_b: [1024] u8;
+  if root.count == 0 {
+    root = fs_cwd(cwd_b[..]);
+  }
+  ans[0].nlabel = ht_copy(ans[0].label[..], label);
+
+  if root.count == 0 || !ea_id(device, 64) {
+    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+    return ht_grant_answer_write(ans[..], out);
+  }
+
+  hs_load(st, statebuf);
+  now := hs_now();
+  rb: [64] u8; req_id := hs_random_hex(32, rb[..]);
+  pi := hs_pairing_add(st, req_id, device, client_label, now);
+  if pi < 0 {
+    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+    return ht_grant_answer_write(ans[..], out);
+  }
+  gb: [64] u8; g := hs_allow(st, pi, hs_random_hex(32, gb[..]), now);
+  if g < 0 {
+    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+    return ht_grant_answer_write(ans[..], out);
+  }
+  st[0].grants[g].expires = now + 30 * 86400;
+  if !hs_save(st, statebuf) {
+    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+    return ht_grant_answer_write(ans[..], out);
+  }
+
+  grant := cast(string) st[0].grants[g].grant[..];
+  cfg: [1] EaConfiguration; cfg[0].enabled = true;
+  _ = ea_copy(cfg[0].device[..], device);
+  _ = ea_copy(cfg[0].grant[..], grant);
+  cfg[0].nh = ea_copy(cfg[0].history[..], root);
+  cfg[0].nw = ea_copy(cfg[0].workspace[..], root);
+  cfg[0].nl = ea_copy(cfg[0].label[..], label);
+  cfg_out: [8192] u8; wn := ea_config_write(cfg[..], cfg_out[..]);
+  p1: [1400] u8; p2: [1400] u8;
+  if wn > 0 && hs_dir() {
+    _ = fs_replace_durable(es_device_file(grant, p1[..]), cast(string) cfg_out[0..<wn]);
+    _ = fs_replace_durable(ws_config_file(grant, p2[..]), cast(string) cfg_out[0..<wn]);
+    prior: [1] EsHost;
+    if !es_load_configuration(prior[..]) {
+      p0: [1400] u8;
+      _ = fs_replace_durable(es_path("environment.json", p0[..]), cast(string) cfg_out[0..<wn]);
+    }
+  }
+  ans[0].ngrant = ht_copy(ans[0].grant[..], grant);
+  ans[0].epoch = st[0].grants[g].epoch;
+  ans[0].expires = st[0].grants[g].expires;
+  return ht_grant_answer_write(ans[..], out);
+}
+
+// Compute a cheap monotonic change signature over active runs so subscribed Tailscale peers
+// get real-time `openagents.host-tailnet-push.v1` notifications the instant outputs grow.
+ht_srv_runs_signature :: (h: [] HsHost) -> int #effects(all) {
+  sig := dr_active(h) * 131;
+  r := h[0].runs[..];
+  op: [1400] u8;
+  for i: 0..<DR_MAX {
+    if !r[0].runs[i].used { continue; }
+    out_sz := fs_size(dr_file(cast(string) r[0].runs[i].id[..], ".out", op[..]));
+    if out_sz < 0 { out_sz = 0; }
+    sig = sig * 31 + r[0].runs[i].pid + out_sz + (ifx r[0].runs[i].idle then 1 else 0);
+  }
+  return sig;
+}
+
+ht_srv_broadcast_push :: (srv: [] HtTailnetServer, kind: string, session: string, busy: bool) #effects(all) {
+  any := false;
+  for i: 0..<HT_SRV_PEERS {
+    if srv[0].peers[i].conn >= 0 && srv[0].peers[i].direct_ok && srv[0].peers[i].subscribed { any = true; break; }
+  }
+  if !any { return; }
+  srv[0].push_seq += 1;
+  ev: [1] HtPushEvent;
+  ev[0].seq = srv[0].push_seq;
+  ev[0].nkind = ht_copy(ev[0].kind[..], kind);
+  ev[0].nsess = ht_copy(ev[0].session[..], session);
+  ev[0].busy = busy;
+  pbuf: [HT_LINE_MAX] u8; pn := ht_push_write(ev[..], pbuf[..]);
+  if pn < 1 { return; }
+  msg := cast(string) pbuf[0..<pn];
+  for i: 0..<HT_SRV_PEERS {
+    if srv[0].peers[i].conn >= 0 && srv[0].peers[i].direct_ok && srv[0].peers[i].subscribed {
+      ht_srv_write_line(srv[0].peers[i].conn, msg);
+    }
+  }
+}
+
+ht_srv_tick :: (h: [] HsHost, srv: [] HtTailnetServer, w: [] HbWork, st: [] HsState, statebuf: [] u8, file: [] u8, reply_out: [] u8) -> bool #effects(all) {
+  if srv[0].listener < 0 { return false; }
+  did := false;
+
+  // 1. Accept any waiting Tailscale TCP peers (non-blocking).
+  nc := cxsock_accept(srv[0].listener, 0);
+  if nc >= 0 {
+    did = true;
+    placed := false;
+    for i: 0..<HT_SRV_PEERS {
+      if srv[0].peers[i].conn < 0 {
+        srv[0].peers[i].conn = nc;
+        srv[0].peers[i].direct_ok = false;
+        srv[0].peers[i].subscribed = false;
+        srv[0].peers[i].nsub_session = 0;
+        srv[0].peers[i].blen = 0;
+        plen := cxsock_peer_ip(nc);
+        if plen > srv[0].peers[i].peer_ip.count { plen = srv[0].peers[i].peer_ip.count; }
+        for k: 0..<plen { srv[0].peers[i].peer_ip[k] = cast(u8) cxsock_peer_byte(nc, k); }
+        srv[0].peers[i].npeer_ip = plen;
+        placed = true;
+        break;
+      }
+    }
+    if !placed { _ = cxsock_close(nc); }
+  }
+
+  // 2. Service ready lines from each connected peer.
+  for i: 0..<HT_SRV_PEERS {
+    c := srv[0].peers[i].conn;
+    if c < 0 { continue; }
+    got := cxsock_read(c, 0);
+    if got == -2 { continue; }
+    if got <= 0 {
+      _ = cxsock_close(c);
+      srv[0].peers[i].conn = -1;
+      continue;
+    }
+    did = true;
+    for b: 0..<got {
+      ch := cast(u8) cxsock_byte(c, b);
+      if ch == 10 {
+        line := cast(string) srv[0].peers[i].buf[0..<srv[0].peers[i].blen];
+        srv[0].peers[i].blen = 0;
+        peer_ip := cast(string) srv[0].peers[i].peer_ip[0..<srv[0].peers[i].npeer_ip];
+        if !srv[0].peers[i].direct_ok {
+          gq: [1] HtGrantRequest;
+          if ht_grant_request_read(line, gq[..]) {
+            ref := ht_srv_admit_peer(srv, peer_ip);
+            ab: [HT_ANSWER_MAX] u8; an := 0;
+            if ref.count > 0 {
+              ans: [1] HtGrantAnswer;
+              ans[0].nhost = ht_copy(ans[0].host[..], cast(string) h[0].xhex[..]);
+              ans[0].nref = ht_copy(ans[0].refused[..], ref);
+              an = ht_grant_answer_write(ans[..], ab[..]);
+            } else {
+              an = ht_srv_issue_grant(h, st, statebuf, cast(string) gq[0].device[..], cast(string) gq[0].label[0..<gq[0].nlabel], ab[..]);
+            }
+            if an > 0 { ht_srv_write_line(c, cast(string) ab[0..<an]); }
+            _ = cxsock_close(c); srv[0].peers[i].conn = -1; break;
+          }
+          if ht_direct_hello_read(line) {
+            ref := ht_srv_admit_peer(srv, peer_ip);
+            ab: [HT_LINE_MAX] u8; an := ht_direct_ack_write(ref, ab[..]);
+            if an > 0 { ht_srv_write_line(c, cast(string) ab[0..<an]); }
+            if ref.count == 0 {
+              srv[0].peers[i].direct_ok = true;
+            } else {
+              _ = cxsock_close(c); srv[0].peers[i].conn = -1; break;
+            }
+          } else {
+            _ = cxsock_close(c); srv[0].peers[i].conn = -1; break;
+          }
+        } else {
+          sub_buf: [128] u8;
+          sn := ht_subscribe_read(line, sub_buf[..]);
+          if sn >= 0 {
+            srv[0].peers[i].subscribed = true;
+            srv[0].peers[i].nsub_session = ht_copy(srv[0].peers[i].sub_session[..], cast(string) sub_buf[0..<sn]);
+          } else {
+            dm := hs_handle(h, line, w, st, statebuf, file, reply_out);
+            if dm > 0 { ht_srv_write_line(c, cast(string) reply_out[0..<dm]); }
+          }
+        }
+      } else if srv[0].peers[i].blen < HT_SRV_LINE {
+        srv[0].peers[i].buf[srv[0].peers[i].blen] = ch;
+        srv[0].peers[i].blen += 1;
+      }
+    }
+  }
+
+  // 3. Emit real-time push frames whenever active runs change (max ~7 Hz).
+  now_ms := cxsock_now_ms();
+  if now_ms - srv[0].last_check_ms >= 150 {
+    srv[0].last_check_ms = now_ms;
+    sig := ht_srv_runs_signature(h);
+    if sig != srv[0].last_sig {
+      srv[0].last_sig = sig;
+      ht_srv_broadcast_push(srv, "sessions_changed", "", dr_active(h) > 0);
+    }
+  }
+
+  return did;
+}
+
+#test "native tailnet IPv4 CGNAT admission check admits only 100.64.0.0/10" {
+  #assert ht_srv_is_tailnet_v4("100.64.0.1") && ht_srv_is_tailnet_v4("100.127.255.254") && ht_srv_is_tailnet_v4("100.100.42.9");
+  #assert !ht_srv_is_tailnet_v4("100.63.255.255") && !ht_srv_is_tailnet_v4("100.128.0.0");
+  #assert !ht_srv_is_tailnet_v4("127.0.0.1") && !ht_srv_is_tailnet_v4("192.168.1.5") && !ht_srv_is_tailnet_v4("10.0.0.1") && !ht_srv_is_tailnet_v4("");
+}

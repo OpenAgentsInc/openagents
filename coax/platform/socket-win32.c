@@ -19,6 +19,8 @@ typedef struct {
   int64_t out_count;
   unsigned char *out;
   int port;
+  char peer_ip[64];
+  int64_t peer_len;
 } cxsock_slot;
 
 static cxsock_slot cxsock_slots[CXSOCK_MAX];
@@ -186,19 +188,52 @@ int64_t cxsock_listen(int64_t port) {
   getsockname(fd, (struct sockaddr *)&a, &len);
   return cxsock_take(fd, ntohs(a.sin_port));
 }
+int64_t cxsock_listen_ip(int64_t port) {
+  cxsock_init();
+  int bad = cxsock_host_bad || cxsock_host_len == 0 || cxsock_host_len >= 64 || port < 0 || port > 65535;
+  char ip[64];
+  if (!bad) { memcpy(ip, cxsock_host, (size_t)cxsock_host_len); ip[cxsock_host_len] = 0; }
+  cxsock_host_len = 0; cxsock_host_bad = 0;
+  if (bad) return CXSOCK_ERROR;
+  struct sockaddr_in a; memset(&a, 0, sizeof a);
+  a.sin_family = AF_INET; a.sin_port = htons((u_short)port);
+  if (InetPtonA(AF_INET, ip, &a.sin_addr) != 1) return CXSOCK_ERROR;
+  SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd == INVALID_SOCKET) return CXSOCK_ERROR;
+  int one = 1; setsockopt(fd, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&one, sizeof one);
+  if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || listen(fd, 16) != 0 || !cxsock_nonblocking(fd)) { closesocket(fd); return CXSOCK_REFUSED; }
+  int len = sizeof a;
+  getsockname(fd, (struct sockaddr *)&a, &len);
+  return cxsock_take(fd, ntohs(a.sin_port));
+}
 int64_t cxsock_port(int64_t h) { cxsock_slot *s = cxsock_get(h); return s ? s->port : CXSOCK_ERROR; }
 int64_t cxsock_accept(int64_t h, int64_t timeout_ms) {
   cxsock_slot *s = cxsock_get(h);
   if (!s || !s->port) return CXSOCK_ERROR;
   int64_t deadline = timeout_ms < 0 ? -1 : cxsock_now_ms() + timeout_ms;
   for (;;) {
-    SOCKET fd = accept(s->fd, NULL, NULL);
-    if (fd != INVALID_SOCKET) { if (!cxsock_nonblocking(fd)) { closesocket(fd); return CXSOCK_ERROR; } return cxsock_take(fd, 0); }
+    struct sockaddr_storage sa; int salen = sizeof sa;
+    SOCKET fd = accept(s->fd, (struct sockaddr *)&sa, &salen);
+    if (fd != INVALID_SOCKET) {
+      if (!cxsock_nonblocking(fd)) { closesocket(fd); return CXSOCK_ERROR; }
+      int64_t slot = cxsock_take(fd, 0);
+      if (slot >= 0) {
+        cxsock_slot *cs = &cxsock_slots[slot];
+        cs->peer_len = 0; cs->peer_ip[0] = 0;
+        if (sa.ss_family == AF_INET) {
+          InetNtopA(AF_INET, &((struct sockaddr_in *)&sa)->sin_addr, cs->peer_ip, sizeof cs->peer_ip);
+          cs->peer_len = (int64_t)strlen(cs->peer_ip);
+        }
+      }
+      return slot;
+    }
     if (WSAGetLastError() != WSAEWOULDBLOCK) return CXSOCK_ERROR;
     int w = cxsock_wait(s->fd, 0, deadline);
     if (w) return w;
   }
 }
+int64_t cxsock_peer_ip(int64_t h) { cxsock_slot *s = cxsock_get(h); return s ? s->peer_len : 0; }
+int64_t cxsock_peer_byte(int64_t h, int64_t i) { cxsock_slot *s = cxsock_get(h); return (!s || i < 0 || i >= s->peer_len) ? 0 : (unsigned char)s->peer_ip[i]; }
 int64_t cxsock_write(int64_t h, int64_t byte) {
   cxsock_slot *s = cxsock_get(h);
   if (!s || !s->out || byte < 0 || byte > 255) return CXSOCK_ERROR;

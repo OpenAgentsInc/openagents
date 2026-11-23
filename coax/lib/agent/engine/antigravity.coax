@@ -36,6 +36,7 @@ AGY_ENV_NAMES :: [4] string.["AGY_ADC_AUTH", "GOOGLE_APPLICATION_CREDENTIALS", "
 AGY_MODE :: "default";
 AGY_MODE_AUTO :: "auto";
 AGY_APP_DATA_DIR :: "antigravity-acp";
+AGY_APP_DATA_NATIVE :: "antigravity";
 AGY_VERSION_PREFIX :: "agy_acp_server_";
 AGY_MODEL_NOT_APPLIED :: 1; AGY_EFFORT_NOT_APPLIED :: 2;
 AGY_QUOTA_SUMMARY_URL :: "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary";
@@ -83,6 +84,7 @@ AgyAuthConfig :: struct {
   gcp_project: string;
   gcp_location: string;
   skip_permissions: bool;
+  app_data_dir: string;
 }
 
 agy_auth_normalize :: (raw: string) -> string {
@@ -181,11 +183,15 @@ agy_prepare_launch_auth :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: 
     l[0].args[0] = "--gemini-dir";
     l[0].args[1] = profile_dir;
     l[0].args[2] = "--app-data-dir";
-    l[0].args[3] = AGY_APP_DATA_DIR;
+    l[0].args[3] = ifx cfg.app_data_dir.count > 0 then cfg.app_data_dir else AGY_APP_DATA_DIR;
     l[0].args_n = 4;
     if !agy_env_has(e, "GEMINI_HOME") {
       agy_env_push_kv(e, "GEMINI_HOME", profile_dir);
     }
+  } else if cfg.app_data_dir.count > 0 && l[0].args_n + 2 <= l[0].args.count {
+    l[0].args[l[0].args_n] = "--app-data-dir";
+    l[0].args[l[0].args_n + 1] = cfg.app_data_dir;
+    l[0].args_n += 2;
   }
   if cfg.skip_permissions && l[0].args_n < l[0].args.count {
     l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
@@ -902,7 +908,7 @@ agy_check_version :: (version: string) -> string {
 }
 
 // agy started in cwd with the credentials file's variables and optional isolated profile dir.
-agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string, skip_permissions: bool) -> string {
+agy_launch_with_opts :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string, app_data_dir: string, skip_permissions: bool) -> string {
   cue_agent(x, agy_agent());
   e: [1] AgyEnv; r := agy_env_load(e[..]);
   ab: [8] u8; gb: [8] u8; sb: [8] u8;
@@ -911,6 +917,11 @@ agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: str
   has_sc := cl_getenv("SSH_CONNECTION", sb[..]).count > 0;
   l: [1] CuLaunch;
   agy_prepare_launch(l[..], e[..], program, cwd, profile_dir, has_au, has_gh, has_sc);
+  if profile_dir.count == 0 && app_data_dir.count > 0 && l[0].args_n + 2 <= l[0].args.count {
+    l[0].args[l[0].args_n] = "--app-data-dir";
+    l[0].args[l[0].args_n + 1] = app_data_dir;
+    l[0].args_n += 2;
+  }
   if skip_permissions && l[0].args_n < l[0].args.count {
     l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
     l[0].args_n += 1;
@@ -924,6 +935,11 @@ agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: str
     cue_watch_set(x, w.stall_ms, w.recoveries);
   }
   return why;
+}
+
+agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string, skip_permissions: bool) -> string {
+  adb: [64] u8; app_data := cl_getenv("CODER_AGY_APP_DATA_DIR", adb[..]);
+  return agy_launch_with_opts(x, program, cwd, name, version, profile_dir, app_data, skip_permissions);
 }
 
 agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string) -> string {

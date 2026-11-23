@@ -173,10 +173,16 @@ final class TailscaleHostServer: ObservableObject {
     /// Launches `agyworker --connect` (or `agy auth login`) to sign this Mac into Antigravity OAuth.
     func connectAntigravityAuth() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let worker = Self.findExecutable(names: ["agyworker"], extraPaths: [
+        var workerPaths: [String] = []
+        if let res = Bundle.main.resourceURL {
+            workerPaths.append(res.appendingPathComponent("agyworker").path)
+        }
+        workerPaths.append(contentsOf: [
             "\(home)/.openagents/bin/agyworker",
+            "/Applications/OpenAgentsMac.app/Contents/Resources/agyworker",
             "/Applications/OpenAgents.app/Contents/Resources/agyworker",
         ])
+        let worker = Self.findExecutable(names: ["agyworker"], extraPaths: workerPaths)
         if let worker {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: worker)
@@ -488,11 +494,17 @@ final class TailscaleHostServer: ObservableObject {
 
     nonisolated private static func findCoderHostBinary() -> String? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return findExecutable(names: ["coder-host"], extraPaths: [
+        var paths: [String] = []
+        if let res = Bundle.main.resourceURL {
+            paths.append(res.appendingPathComponent("coder-host").path)
+        }
+        paths.append(contentsOf: [
             "\(home)/.openagents/bin/coder-host",
+            "/Applications/OpenAgentsMac.app/Contents/Resources/coder-host",
             "/opt/homebrew/bin/coder-host",
             "/usr/local/bin/coder-host",
         ])
+        return findExecutable(names: ["coder-host"], extraPaths: paths)
     }
 
     nonisolated private static func findExecutable(names: [String], extraPaths: [String]) -> String? {

@@ -370,6 +370,10 @@ struct MacRootView: View {
                 macSlashMenu
                     .padding(.horizontal, 20)
                     .padding(.bottom, 6)
+            } else if !store.matchingFolders.isEmpty {
+                macFolderMenu
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 6)
             }
 
             if let queued = store.queuedDraft, !queued.isEmpty {
@@ -402,13 +406,7 @@ struct MacRootView: View {
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url, let data = try? Data(contentsOf: url) else { return }
-                    let preview = String(data: data.prefix(4000), encoding: .utf8)
-                    let att = FileAttachment(
-                        name: url.lastPathComponent,
-                        mimeType: preview != nil ? "text/plain" : "application/octet-stream",
-                        textPreview: preview,
-                        byteCount: data.count
-                    )
+                    let att = Self.makeAttachment(url: url, data: data)
                     DispatchQueue.main.async {
                         MainActor.assumeIsolated { store.addAttachment(att) }
                     }
@@ -570,36 +568,61 @@ struct MacRootView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(store.items) { item in
-                        TranscriptRowView(item: item) { sub in
-                            store.openSubagent(sub)
-                        }
+                        TranscriptRowView(
+                            item: item,
+                            localImageLookup: { store.localImageData(for: $0) },
+                            onOpenSubagent: { sub in
+                                store.openSubagent(sub)
+                            }
+                        )
                         .id(item.id)
                     }
-                    if store.activeSession?.busy == true || store.isAwaitingTurnStart {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text(store.isAwaitingTurnStart && store.activeSession?.busy != true
-                                 ? "Starting Antigravity…"
-                                 : "Antigravity is working…")
-                                .font(.system(size: 13))
-                                .foregroundStyle(OATheme.textSecondary)
-                        }
-                        .padding(.top, 4)
+                    if let statusLabel = store.streamingStatusLabel {
+                        StreamingStatusRowView(label: statusLabel)
+                            .id("working-indicator")
                     }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("bottom-anchor")
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 18)
                 .frame(maxWidth: 820, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            .onChange(of: store.items.count) { _, _ in
-                if let last = store.items.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
+            .onChange(of: store.streamingContentFingerprint) { _, _ in
+                withAnimation(.easeOut(duration: 0.16)) {
+                    proxy.scrollTo("bottom-anchor", anchor: .bottom)
                 }
             }
         }
+    }
+
+    private var macFolderMenu: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(store.matchingFolders, id: \.self) { folder in
+                Button {
+                    store.applyFolderMention(folder)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: folder.contains(".") ? "doc.text" : "folder")
+                            .font(.system(size: 11))
+                            .foregroundStyle(OATheme.textSecondary)
+                        Text("@\(folder)")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(OATheme.textPrimary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        .frame(maxWidth: 820)
     }
 
     private var macSlashMenu: some View {
@@ -635,8 +658,15 @@ struct MacRootView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(store.pendingAttachments) { att in
-                            HStack(spacing: 5) {
-                                Image(systemName: "doc.text").font(.system(size: 10))
+                            HStack(spacing: 6) {
+                                if let imgData = att.imageData {
+                                    InlineCGImageView(data: imgData, maxHeight: 20)
+                                        .frame(width: 20, height: 20)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                } else {
+                                    Image(systemName: att.textPreview != nil ? "doc.text" : "photo").font(.system(size: 10))
+                                }
                                 Text(att.name).font(.system(size: 11, design: .monospaced))
                                 Button { store.removeAttachment(att) } label: {
                                     Image(systemName: "xmark.circle.fill").font(.system(size: 11))
@@ -844,13 +874,28 @@ struct MacRootView: View {
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
             guard let data = try? Data(contentsOf: url) else { continue }
-            let preview = String(data: data.prefix(4000), encoding: .utf8)
-            store.addAttachment(FileAttachment(
-                name: url.lastPathComponent,
-                mimeType: preview != nil ? "text/plain" : "application/octet-stream",
-                textPreview: preview,
-                byteCount: data.count
-            ))
+            store.addAttachment(Self.makeAttachment(url: url, data: data))
         }
+    }
+
+    private static func makeAttachment(url: URL, data: Data) -> FileAttachment {
+        let ext = url.pathExtension.lowercased()
+        let imageExts: Set<String> = ["png", "jpg", "jpeg", "heic", "heif", "webp", "gif", "bmp", "tif", "tiff"]
+        if imageExts.contains(ext) {
+            return FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
+        }
+        let preview = String(data: data.prefix(4000), encoding: .utf8)
+        if preview == nil {
+            let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
+            if maybeImg.isImage {
+                return maybeImg
+            }
+        }
+        return FileAttachment(
+            name: url.lastPathComponent,
+            mimeType: preview != nil ? "text/plain" : "application/octet-stream",
+            textPreview: preview,
+            byteCount: data.count
+        )
     }
 }

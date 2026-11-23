@@ -109,11 +109,12 @@ final class AntigravityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["nav.newChat"].exists)
         XCTAssertTrue(app.buttons["chat.connectTailscale"].waitForExistence(timeout: 5))
 
-        // Composer exposes Attachment (+), Antigravity Model, Thinking Effort, and Review Mode controls.
+        // Composer exposes Attachment (+), Antigravity Model, Thinking Effort, Review Mode, and Voice Dictation controls.
         XCTAssertTrue(app.buttons["chat.attachButton"].exists)
         XCTAssertTrue(app.buttons["chat.modelPicker"].exists)
         XCTAssertTrue(app.buttons["chat.effortPicker"].exists)
         XCTAssertTrue(app.buttons["chat.reviewMode"].exists)
+        XCTAssertTrue(app.buttons["chat.micButton"].exists)
 
         // Open Workspace Diff / Branch / PR sheet and dismiss cleanly.
         app.buttons["nav.workspace"].tap()
@@ -182,6 +183,15 @@ final class AntigravityUITests: XCTestCase {
 
         let autoReply = app.staticTexts["Antigravity verified reply: Hello legacy auto"]
         XCTAssertTrue(autoReply.waitForExistence(timeout: 15), "Legacy v1 host must accept default Auto-mode message cleanly")
+        let thoughtHeader = app.buttons["transcript.thoughtHeader"].firstMatch
+        XCTAssertTrue(thoughtHeader.waitForExistence(timeout: 5), "Thought row must render clean Desktop-parity header")
+        XCTAssertTrue(thoughtHeader.label.contains("Confirming System Functionality"), "Expected extracted heading in thought header, got: \(thoughtHeader.label)")
+        // Expand thought row and verify Markdown rendering leaves zero raw ** markers!
+        thoughtHeader.tap()
+        let expandedThought = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Inspecting Antigravity wire")).firstMatch
+        XCTAssertTrue(expandedThought.waitForExistence(timeout: 5), "Expanded thought body should render cleanly")
+        XCTAssertFalse(expandedThought.label.contains("**"), "Raw markdown ** must never leak in thought rows, got: \(expandedThought.label)")
+        thoughtHeader.tap()
         assertNoErrorBanner(app, context: "legacy v1 Auto-mode OpenSession")
 
         // Switch Review Mode to Plan -> legacy host refuses "mode":"plan" with real NIP-44 "unsupported"
@@ -211,6 +221,8 @@ final class AntigravityUITests: XCTestCase {
 
         let allowBtn = app.buttons["interaction.allow"]
         XCTAssertTrue(allowBtn.waitForExistence(timeout: 15), "Expected Approval Requested Allow button from v2 host")
+        let liveThought = app.buttons["transcript.thoughtHeader"].firstMatch
+        XCTAssertTrue(liveThought.waitForExistence(timeout: 5) && liveThought.label.contains("Thinking") && liveThought.label.contains("Confirming System Functionality"), "Active streaming thought row must auto-expand with live Thinking header, got: \(liveThought.label)")
         assertNoErrorBanner(app, context: "v2 approval requested")
         saveScreenshot(name: "02-v2-approval-banner")
 
@@ -236,9 +248,11 @@ final class AntigravityUITests: XCTestCase {
         XCTAssertTrue(branchHeader.waitForExistence(timeout: 15))
         XCTAssertEqual(branchHeader.label, "main")
 
-        // Switch to Files tab and confirm changed file from git status renders.
+        // Switch to Files tab and confirm changed file from git status renders (and expands inline diff).
         app.buttons["Files"].tap()
-        XCTAssertTrue(app.staticTexts["apps/openagents-ios/Sources/ChatView.swift"].waitForExistence(timeout: 8))
+        let fileRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "apps/openagents-ios/Sources/ChatView.swift")).firstMatch
+        XCTAssertTrue(fileRow.waitForExistence(timeout: 8), "Expected changed file row in Files tab")
+        fileRow.tap()
         saveScreenshot(name: "04-v2-workspace-files")
 
         // Switch to Branches tab and tap Switch on feat/antigravity.

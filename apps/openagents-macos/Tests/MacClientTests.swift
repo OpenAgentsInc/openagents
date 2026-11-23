@@ -1,4 +1,7 @@
-// Firm reason: 6 (macOS XCTest unit suite verifying the shared Coax C core, Tailscale admission/direct-grant/push codecs, Workspace Git wire, and Antigravity-only policy inside OpenAgents macOS).
+// Firm reason: 6 (macOS XCTest unit + live dual-host E2E suite verifying shared Coax C core, multimodal images, thought rendering, Tailscale admission/direct-grant/push codecs, Workspace Git wire, and real NIP-44 TCP conversations inside OpenAgents macOS).
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 @testable import OpenAgentsMac
 
@@ -97,5 +100,104 @@ final class MacClientTests: XCTestCase {
         XCTAssertTrue(MobileCore.isV1WireCompatible(autoReq))
         XCTAssertNotEqual(HostErrorFormatter.describe("unsupported"), "unsupported")
         XCTAssertNotEqual(HostErrorFormatter.describe("no_agent"), "no_agent")
+    }
+
+    private func makeRedTestPNG(width: Int = 192, height: Int = 192) throws -> Data {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: cs,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        ctx.setFillColor(CGColor(red: 0.9, green: 0.1, blue: 0.1, alpha: 1.0))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let cg = try XCTUnwrap(ctx.makeImage())
+        let out = NSMutableData()
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, cg, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return out as Data
+    }
+
+    func testMultimodalImagePreparationAndThoughtParsingOnMacOS() throws {
+        let png = try makeRedTestPNG()
+        let att = FileAttachment.prepareImage(data: png, name: "mac-drop.png")
+        XCTAssertTrue(att.isImage)
+        XCTAssertLessThanOrEqual(att.imageData?.count ?? 99_999, 3_400)
+        let parsed = ParsedUserMessage.parse("Analyze screenshot" + att.renderedPromptBlock())
+        XCTAssertEqual(parsed.text, "Analyze screenshot")
+        XCTAssertEqual(parsed.images.count, 1)
+        XCTAssertNotNil(parsed.images[0].data)
+
+        let heading = ThoughtSummaryParser.extractHeading("**Auditing Workspace**\n\nScanning git diff.")
+        XCTAssertEqual(heading, "Auditing Workspace")
+        XCTAssertFalse(heading.contains("*"))
+    }
+
+    @MainActor
+    func testLiveEndToEndTailscaleClientAgainstE2EHosts() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let legacyPortStr = env["OA_MAC_E2E_LEGACY_PORT"], let legacyPort = UInt16(legacyPortStr),
+              let v2PortStr = env["OA_MAC_E2E_V2_PORT"], let v2Port = UInt16(v2PortStr) else {
+            throw XCTSkip("Run via apps/openagents-macos/e2e-mac-test.sh to execute live dual-host macOS E2E tests.")
+        }
+
+        let devStore = MobileDeviceStore()
+        devStore.resetForTests()
+        let store = AntigravityStore(store: devStore)
+        store.client.browsesLocalNetwork = false
+        store.allowLoopbackForTests = true
+
+        // 1. Strict 16-key legacy v1 host: pair, DescribeEnvironment, default Auto send, Plan auto-downgrade, and real image attachment!
+        let legacyErr = await store.addManualComputer(address: "127.0.0.1", name: "Legacy V1 Mac", port: legacyPort, autoPair: true)
+        XCTAssertNil(legacyErr, "Direct-grant pairing to legacy v1 host failed: \(legacyErr ?? "none")")
+        XCTAssertEqual(store.workspaceName, "openagents")
+        XCTAssertNil(store.bannerError)
+        XCTAssertTrue(store.availableModels.allSatisfy { MobileCore.isAntigravityModel($0.id) })
+
+        let imgAtt = FileAttachment.prepareImage(data: try makeRedTestPNG(width: 96, height: 96), name: "swatch.png")
+        store.addAttachment(imgAtt)
+        store.draftText = "Hello macOS image"
+        await store.sendMessage()
+        XCTAssertNil(store.bannerError, "Legacy v1 Auto send with image failed: \(store.bannerError ?? "")")
+        XCTAssertNotNil(store.localImageData(for: "swatch.png"))
+        XCTAssertTrue(store.items.contains(where: { $0.role == .thought && $0.text.contains("Confirming System Functionality") }))
+        XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text.contains("Hello macOS image") && $0.text.contains("[oa-image ") }))
+
+        // Plan mode on strict v1 host MUST transparently downgrade without leaking "unsupported"
+        store.chooseReviewMode(.plan)
+        store.draftText = "Plan macOS refactor"
+        await store.sendMessage()
+        XCTAssertNil(store.bannerError, "Legacy v1 Plan auto-downgrade leaked error: \(store.bannerError ?? "")")
+        XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text.contains("Plan macOS refactor") }))
+
+        // 2. Modern v2 host: pair, interactive approval, subagent inspection, and live Workspace Git SwitchBranch!
+        let v2Err = await store.addManualComputer(address: "127.0.0.1", name: "E2E Studio Mac", port: v2Port, autoPair: true)
+        XCTAssertNil(v2Err, "Direct-grant pairing to v2 host failed: \(v2Err ?? "none")")
+        store.chooseReviewMode(.auto)
+        store.draftText = "Run macOS build and approve"
+        await store.sendMessage()
+        XCTAssertNil(store.bannerError)
+        XCTAssertNotNil(store.pendingInteraction, "Expected interactive Approval banner from v2 host")
+        await store.respondToInteraction(allow: true, note: "Looks good")
+        XCTAssertNil(store.pendingInteraction)
+        XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text == "Approved and executed cleanly." }))
+
+        let subItem = try XCTUnwrap(store.items.first(where: { $0.isSubagent }))
+        store.openSubagent(subItem)
+        await store.refreshSubagent()
+        XCTAssertTrue(store.subagentItems.contains(where: { $0.text.contains("Subagent inspected 12 files cleanly.") }))
+
+        await store.refreshWorkspace()
+        XCTAssertEqual(store.workspaceSnapshot?.branch, "main")
+        await store.switchBranch("feat/antigravity")
+        XCTAssertEqual(store.workspaceSnapshot?.branch, "feat/antigravity")
+        XCTAssertNil(store.workspaceError)
+
+        store.onBackground()
     }
 }

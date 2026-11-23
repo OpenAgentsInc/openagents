@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0ACE2BBE3D3C6C261E063A77 /* VoiceDictationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA582415B707553CC69B42D0 /* VoiceDictationController.swift */; };
 		0E8316C98EEB5B73680E45C7 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C5D8BE9AB75E7FE3C04417 /* SidebarView.swift */; };
+		1310BBEABAF2BF245999C552 /* TurnNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF75972EB91F08AA7258E690 /* TurnNotifications.swift */; };
 		1CB465FA16809D46124EE8FB /* MobileCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A57A0784FAE75887DF978AA /* MobileCoreTests.swift */; };
 		2532B1492C46FB5FF5FC185B /* client-core-bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 4816780D18116F36BC64FAB4 /* client-core-bridge.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/native -I../shared/antigravity"; }; };
 		3E1BB32DBE1808DEB0DE0442 /* OpenAgentsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */; };
@@ -74,7 +76,9 @@
 		CE9AB74571A2D644A737D80A /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentSheetView.swift; sourceTree = "<group>"; };
 		E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputersView.swift; sourceTree = "<group>"; };
+		EA582415B707553CC69B42D0 /* VoiceDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictationController.swift; sourceTree = "<group>"; };
 		ECEDDF715E5F8E7716315D70 /* client_core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = client_core.c; sourceTree = "<group>"; };
+		EF75972EB91F08AA7258E690 /* TurnNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnNotifications.swift; sourceTree = "<group>"; };
 		F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAgentsApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -158,6 +162,8 @@
 				B2055820A908A3ED4ED7700E /* RootView.swift */,
 				52C5D8BE9AB75E7FE3C04417 /* SidebarView.swift */,
 				D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */,
+				EF75972EB91F08AA7258E690 /* TurnNotifications.swift */,
+				EA582415B707553CC69B42D0 /* VoiceDictationController.swift */,
 				CE9AB74571A2D644A737D80A /* WorkspaceView.swift */,
 			);
 			path = Sources;
@@ -320,6 +326,8 @@
 				7A8A2263317533EB39DA3239 /* TailscaleClient.swift in Sources */,
 				5C96DB10B6CD92128B9C2742 /* Theme.swift in Sources */,
 				9B0F2297177548B9AB906CAE /* TranscriptComponents.swift in Sources */,
+				1310BBEABAF2BF245999C552 /* TurnNotifications.swift in Sources */,
+				0ACE2BBE3D3C6C261E063A77 /* VoiceDictationController.swift in Sources */,
 				EB803950CFB8551A0C17A7B2 /* WorkspaceInspectorView.swift in Sources */,
 				D978BD4A07012F57FEB48628 /* WorkspaceView.swift in Sources */,
 				2532B1492C46FB5FF5FC185B /* client-core-bridge.c in Sources */,
@@ -378,6 +386,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -469,7 +479,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1420;
+				CURRENT_PROJECT_VERSION = 1421;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -515,6 +525,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -572,7 +584,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1420;
+				CURRENT_PROJECT_VERSION = 1421;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

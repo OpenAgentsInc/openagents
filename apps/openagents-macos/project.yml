@@ -29,10 +29,12 @@ targets:
         compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
       - path: ../shared/antigravity/client-core-bridge.c
         compilerFlags: "-IGenerated -I../shared/native -I../shared/antigravity"
+      - OpenAgentsMac/Assets.xcassets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(OA_MAC_BUNDLE_ID)"
         PRODUCT_NAME: OpenAgentsMac
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: OpenAgentsMac/Info.plist
         CODE_SIGN_ENTITLEMENTS: OpenAgentsMac/OpenAgentsMac.entitlements

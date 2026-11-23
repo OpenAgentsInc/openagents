@@ -41,7 +41,7 @@ extern "C" {
 #define CXSOCK_RESOLVE (-4)
 #define CXSOCK_REFUSED (-5)
 #define CXSOCK_FULL (-6)
-#define CXSOCK_MAX (16)
+#define CXSOCK_MAX (32)
 #define CXSOCK_MAX_HOST (253)
 #define CXSOCK_MAX_IN (65536)
 #define CXSOCK_MAX_OUT (1048576)
@@ -58,8 +58,13 @@ int64_t cxsock_read(int64_t h, int64_t timeout_ms);
 int64_t cxsock_byte(int64_t h, int64_t i);
 int64_t cxsock_close(int64_t h);
 int64_t cxsock_listen(int64_t port);
+/* Listen on the pushed IPv4 address (e.g. a Tailscale 100.x IP or 0.0.0.0) on port. */
+int64_t cxsock_listen_ip(int64_t port);
 int64_t cxsock_port(int64_t h);
 int64_t cxsock_accept(int64_t h, int64_t timeout_ms);
+/* Peer IPv4/IPv6 string length and byte readout for an accepted TCP socket. */
+int64_t cxsock_peer_ip(int64_t h);
+int64_t cxsock_peer_byte(int64_t h, int64_t i);
 int64_t cxsock_now_ms(void);
 /* UDP on the loopback (a test network's, coax/web/room/net-proxy.coax): cxudp_bind(port) binds
    127.0.0.1:port (0 picks one) and returns a handle (of CXUDP_MAX), or CXSOCK_REFUSED / CXSOCK_FULL;

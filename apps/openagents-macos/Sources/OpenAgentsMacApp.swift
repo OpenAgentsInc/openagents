@@ -23,6 +23,9 @@ struct OpenAgentsMacApp: App {
                 store.onForeground()
                 hostServer.start()
             }
+            .onOpenURL { url in
+                store.handleIncomingURL(url)
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {

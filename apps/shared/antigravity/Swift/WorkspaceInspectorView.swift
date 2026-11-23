@@ -15,6 +15,9 @@ struct WorkspaceInspectorView: View {
 
     @State private var selectedTab: Tab = .diff
     @State private var selectedFilePath: String?
+    @State private var fileFilter: String = ""
+    @State private var fileViewModeSource: Bool = false
+    @State private var copiedFilePath: String?
     @State private var newBranchName = ""
     @State private var newWorktreeBranch = ""
     @State private var prTitle = ""
@@ -175,16 +178,59 @@ struct WorkspaceInspectorView: View {
         .background(OATheme.background)
     }
 
-    // MARK: - Files tab (per-file inspection)
+    // MARK: - Files tab (per-file inspection & inline File Viewer)
+
+    private func readLocalSourcePreview(root: String, relativePath: String) -> String? {
+        #if os(macOS)
+        guard !root.isEmpty, !relativePath.contains("..") else { return nil }
+        let rootURL = URL(fileURLWithPath: root).standardizedFileURL
+        let fileURL = rootURL.appendingPathComponent(relativePath).standardizedFileURL
+        guard fileURL.path.hasPrefix(rootURL.path + "/"),
+              let data = try? Data(contentsOf: fileURL),
+              let text = String(data: data.prefix(24_000), encoding: .utf8) else { return nil }
+        return text
+        #else
+        return nil
+        #endif
+    }
 
     @ViewBuilder
     private func filesTab(_ snap: WorkspaceSnapshot) -> some View {
-        let files = snap.changedFiles
+        let allFiles = snap.changedFiles
+        let q = fileFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let files = q.isEmpty ? allFiles : allFiles.filter { $0.path.lowercased().contains(q) }
+
+        if !allFiles.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12))
+                    .foregroundStyle(OATheme.textMuted)
+                TextField("Filter files…", text: $fileFilter)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(OATheme.textPrimary)
+                if !fileFilter.isEmpty {
+                    Button { fileFilter = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(OATheme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        }
+
         if files.isEmpty {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle")
                     .foregroundStyle(OATheme.statusReady)
-                Text("No modified files in \(snap.branch.isEmpty ? "workspace" : snap.branch).")
+                Text(allFiles.isEmpty
+                     ? "No modified files in \(snap.branch.isEmpty ? "workspace" : snap.branch)."
+                     : "No files matching \"\(fileFilter)\".")
                     .font(.system(size: 13))
                     .foregroundStyle(OATheme.textSecondary)
             }
@@ -196,6 +242,7 @@ struct WorkspaceInspectorView: View {
             VStack(spacing: 8) {
                 ForEach(files) { file in
                     let isOpen = selectedFilePath == file.path || files.count == 1
+                    let localSource = isOpen ? readLocalSourcePreview(root: snap.path, relativePath: file.path) : nil
                     VStack(alignment: .leading, spacing: 6) {
                         Button {
                             selectedFilePath = isOpen ? nil : file.path
@@ -223,8 +270,46 @@ struct WorkspaceInspectorView: View {
                         .buttonStyle(.plain)
 
                         if isOpen {
-                            if !file.diff.isEmpty {
+                            HStack(spacing: 8) {
+                                Button {
+                                    OAClipboard.copy(file.path)
+                                    copiedFilePath = file.path
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        if copiedFilePath == file.path { copiedFilePath = nil }
+                                    }
+                                } label: {
+                                    Label(copiedFilePath == file.path ? "Copied Path" : "Copy Path", systemImage: copiedFilePath == file.path ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(OATheme.textSecondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(OATheme.elevated, in: Capsule())
+                                        .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+
+                                if localSource != nil {
+                                    Button(fileViewModeSource ? "Show Diff" : "View File") {
+                                        fileViewModeSource.toggle()
+                                    }
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(OATheme.textPrimary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(OATheme.elevated, in: Capsule())
+                                    .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                                    .buttonStyle(.plain)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 4)
+
+                            if fileViewModeSource, let src = localSource {
+                                CodeBlockView(language: URL(fileURLWithPath: file.path).pathExtension, code: src)
+                            } else if !file.diff.isEmpty {
                                 DiffBlockView(path: file.path, diff: file.diff, truncated: snap.diffCut)
+                            } else if let src = localSource {
+                                CodeBlockView(language: URL(fileURLWithPath: file.path).pathExtension, code: src)
                             } else {
                                 Text("Untracked or binary file change.")
                                     .font(.system(size: 12))

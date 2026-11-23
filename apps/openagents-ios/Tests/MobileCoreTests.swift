@@ -1,4 +1,7 @@
-// Firm reason: 6 (XCTest unit suite verifying the shared Coax C bridge, relay-free direct grants, push frames, review modes, Workspace Git/PR wire, NIP-44 sealing, and Antigravity-only policy inside OpenAgents iOS).
+// Firm reason: 6 (XCTest unit suite verifying the shared Coax C bridge, relay-free direct grants, push frames, review modes, multimodal image attachments, thought summary parsing, Workspace Git/PR wire, NIP-44 sealing, and Antigravity-only policy inside OpenAgents iOS).
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 @testable import OpenAgents
 
@@ -416,5 +419,85 @@ final class MobileCoreTests: XCTestCase {
             ), "Fuzz prompt #\(i) failed NIP-44 seal")
             XCTAssertEqual(sealed.eventID.count, 64)
         }
+    }
+
+    private func makeTestPNG(width: Int = 256, height: Int = 256) throws -> Data {
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: cs,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        ctx.setFillColor(CGColor(red: 0.9, green: 0.1, blue: 0.1, alpha: 1.0))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let cg = try XCTUnwrap(ctx.makeImage())
+        let out = NSMutableData()
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, cg, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return out as Data
+    }
+
+    func testMultimodalImageAttachmentCompressionRoundTripAndV1WireCompat() throws {
+        let png = try makeTestPNG(width: 320, height: 240)
+        let att = FileAttachment.prepareImage(data: png, name: "photo 3641.jpg")
+        XCTAssertTrue(att.isImage)
+        let b64 = try XCTUnwrap(att.imageBase64)
+        let wireBytes = try XCTUnwrap(Data(base64Encoded: b64))
+        XCTAssertLessThanOrEqual(wireBytes.count, 3_400, "Compressed wire image must fit cleanly inside one 6000-byte es_project_at item chunk")
+        XCTAssertNotNil(att.imageData, "High-res local preview thumbnail should also be populated")
+        let block = att.renderedPromptBlock()
+        XCTAssertTrue(block.contains("[oa-image "))
+        XCTAssertTrue(block.contains("mime=image/jpeg"))
+        XCTAssertTrue(block.contains("base64="))
+
+        let fullPrompt = "Tell me what you see here." + block
+        let parsed = ParsedUserMessage.parse(fullPrompt)
+        XCTAssertEqual(parsed.text, "Tell me what you see here.")
+        XCTAssertEqual(parsed.images.count, 1)
+        XCTAssertEqual(parsed.images[0].name, "photo_3641.jpg")
+        XCTAssertEqual(parsed.images[0].data, wireBytes)
+
+        // Must ALSO pass strict 16-key v1 wire compatibility!
+        let work = try XCTUnwrap(MobileCoreWork())
+        let req = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "OpenSession",
+            session: "0123456789abcdef0123456789abcdef",
+            command: "abcdef0123456789abcdef0123456789",
+            generation: 1,
+            revision: 0,
+            text: fullPrompt,
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            model: "gemini-4-neon",
+            effort: "medium",
+            mode: "auto"
+        ))
+        XCTAssertTrue(MobileCore.isV1WireCompatible(req))
+    }
+
+    func testThoughtSummaryParserExtractsDesktopHeadingWithoutRawAsterisks() {
+        let raw = "**Confirming System Functionality**\n\nI'm verifying the wire."
+        let heading = ThoughtSummaryParser.extractHeading(raw)
+        XCTAssertEqual(heading, "Confirming System Functionality")
+        XCTAssertFalse(heading.contains("*"))
+
+        let plain = "Checking the repository layout."
+        XCTAssertEqual(ThoughtSummaryParser.extractHeading(plain), "Checking the repository layout.")
+        XCTAssertEqual(ThoughtSummaryParser.extractHeading("   \n  "), "")
+    }
+
+    @MainActor
+    func testIncomingOpenAgentsURLDeepLinkPopulatesComposer() throws {
+        let store = AntigravityStore()
+        store.draftText = ""
+        let url = try XCTUnwrap(URL(string: "openagents://ask?prompt=Check%20Tailscale%20status"))
+        store.handleIncomingURL(url)
+        XCTAssertEqual(store.draftText, "Check Tailscale status")
     }
 }
