@@ -55,6 +55,12 @@ final class MusicStudioAppMain: NSObject, NSApplicationDelegate {
     }
 }
 
+private enum TrackInstrumentChoice {
+    case concertGrand
+    case orchestraGM(UInt8, String)
+    case audioUnit(HostedAUInfo)
+}
+
 final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
     let store = StudioStore()
     lazy var audio = StudioAudioEngine(store: store)
@@ -65,12 +71,14 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
     // UI Controls
     private let playBtn = NSButton()
     private let loopBtn = NSButton()
+    private let soloPianoBtn = NSButton()
+    private let sustainBtn = NSButton()
     private let viewSeg = NSSegmentedControl()
     private let toolBtn = NSButton()
     private let clockLabel = NSTextField(labelWithString: "001:01  00:00.0")
     private let bpmKeyLabel = NSTextField(labelWithString: "64 BPM · Db Maj")
     private let bankBtn = NSButton()
-    private let statusLabel = NSTextField(labelWithString: "Ready — Press Space to play the 4-Movement Symphonic Starter, click/drag notes, or import .mid")
+    private let statusLabel = NSTextField(labelWithString: "Ready — Salamander 16-Layer Concert Grand + Orchestra + AUv3/AUv2 Host · Space to play, Tab for sustain")
     private let mvt4ToggleBtn = NSButton()
     private let hotReloadBtn = NSButton()
     private let reverbSlider = NSSlider()
@@ -86,6 +94,7 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
     private var keyMonitorDown: Any?
     private var keyMonitorUp: Any?
     private var activeQwertyKeys: [UInt16: UInt8] = [:]
+    private var sustainHeldByTab: Bool = false
 
     // Mac virtual keyCode -> semitone offset from C
     private let qwertyMap: [UInt16: Int] = [
@@ -111,8 +120,8 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             backing: .buffered,
             defer: false
         )
-        win.title = "OpenAgents Music Studio (Coax Phase 1 MVP)"
-        win.minSize = NSSize(width: 1120, height: 680)
+        win.title = "OpenAgents Music Studio — Concert Grand & AUv3/AUv2 Host"
+        win.minSize = NSSize(width: 1160, height: 680)
         win.backgroundColor = StudioPalette.bgCanvas
         super.init(window: win)
 
@@ -195,7 +204,7 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             leftPane.topAnchor.constraint(equalTo: mvtBar.bottomAnchor),
             leftPane.bottomAnchor.constraint(equalTo: keyboard.topAnchor),
             leftPane.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            leftPane.widthAnchor.constraint(equalToConstant: 290),
+            leftPane.widthAnchor.constraint(equalToConstant: 326),
 
             rightPane.topAnchor.constraint(equalTo: mvtBar.bottomAnchor),
             rightPane.bottomAnchor.constraint(equalTo: keyboard.topAnchor),
@@ -300,11 +309,11 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         jumpLbl.textColor = StudioPalette.textMuted
 
         let labels = [
-            "1 · All I Ask (Db)",
-            "2 · Nocturne (Db)",
-            "3 · Phantom Organ (Dm)",
-            "4 · Pt of No Return (Fm)",
-            "5 · Grand Reprise",
+            "1·All I Ask",
+            "2·Nocturne",
+            "3·Phantom",
+            "4·No Return",
+            "5·Reprise",
         ]
         var views: [NSView] = [jumpLbl]
         movementButtons.removeAll()
@@ -319,7 +328,26 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         views.append(spacer)
 
-        toolBtn.title = "Mode: Select (Dbl-Click Adds)"
+        soloPianoBtn.title = "Solo Piano"
+        soloPianoBtn.setButtonType(.pushOnPushOff)
+        soloPianoBtn.bezelStyle = .rounded
+        soloPianoBtn.controlSize = .small
+        soloPianoBtn.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        soloPianoBtn.contentTintColor = StudioPalette.accentGold
+        soloPianoBtn.target = self
+        soloPianoBtn.action = #selector(onSoloPianoToggle)
+        views.append(soloPianoBtn)
+
+        sustainBtn.title = "Sustain (Tab)"
+        sustainBtn.setButtonType(.pushOnPushOff)
+        sustainBtn.bezelStyle = .rounded
+        sustainBtn.controlSize = .small
+        sustainBtn.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        sustainBtn.target = self
+        sustainBtn.action = #selector(onSustainButtonToggle)
+        views.append(sustainBtn)
+
+        toolBtn.title = "Mode: Select"
         toolBtn.bezelStyle = .rounded
         toolBtn.controlSize = .small
         toolBtn.target = self
@@ -373,9 +401,11 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         hdr.textColor = StudioPalette.textMuted
 
         let addBtn = styledButton("+ Track", target: self, action: #selector(onAddTrack))
+        let rescanAuBtn = styledButton("Rescan AUs", target: self, action: #selector(onRescanAUs))
+        rescanAuBtn.toolTip = "Rescan installed macOS Audio Unit (AUv3 / AUv2) instruments (Spitfire LABS, BBCSO, Decent Sampler, Pianoteq…)"
         let resetBtn = styledButton("Starter", target: self, action: #selector(onResetStarter))
 
-        let topRow = NSStackView(views: [hdr, NSView(), addBtn, resetBtn])
+        let topRow = NSStackView(views: [hdr, NSView(), addBtn, rescanAuBtn, resetBtn])
         topRow.orientation = .horizontal
         topRow.spacing = 6
         topRow.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 6, right: 10)
@@ -439,6 +469,9 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         mvt4ToggleBtn.target = self
         mvt4ToggleBtn.action = #selector(onToggleMvt4Dm)
 
+        let pianistBtn = styledButton("★ Pianist Touch + Sustain Pedal", target: self, action: #selector(onPianistTouch), primary: true)
+        pianistBtn.toolTip = "Apply concert pianist melody voicing (+14 vel top note), subtle chord roll, phrase shaping, and syncopated bar-by-bar CC64 sustain pedaling to selected track"
+
         let transRow = NSStackView(views: [
             styledButton("-12", target: self, action: #selector(onQuickTranspose(_:))),
             styledButton("-3", target: self, action: #selector(onQuickTranspose(_:))),
@@ -501,6 +534,7 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         Coax Remix Engine Ready.
         Tip: Drop any .mid file onto the Piano Roll!
         Commands:
+         pianist track=0
          transpose track=2 bars=25-32 semi=-3
          explode src=0 dst=2,3,4 bars=1-8
          double src=4 dst=1 semi=-12 bars=17-24
@@ -508,21 +542,21 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
          merge ~/song.mid bar=17
         """
         logScroll.documentView = remixLog
-        logScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
+        logScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 130).isActive = true
 
         let col = NSStackView(views: [
-            hdr, mvt4ToggleBtn, transRow, explodeBtn, dblDownBtn, dblUpBtn, swellBtn, hqRow, pitBtn,
+            hdr, mvt4ToggleBtn, pianistBtn, transRow, explodeBtn, dblDownBtn, dblUpBtn, swellBtn, hqRow, pitBtn,
             jsonHdr, saveJsonBtn, hotReloadBtn,
             cmdHdr, remixInput, logScroll,
         ])
         col.orientation = .vertical
         col.alignment = .leading
-        col.spacing = 7
+        col.spacing = 6
         col.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
         col.translatesAutoresizingMaskIntoConstraints = false
         panel.addSubview(col)
 
-        for v in [mvt4ToggleBtn, transRow, explodeBtn, dblDownBtn, dblUpBtn, swellBtn, hqRow, pitBtn, saveJsonBtn, remixInput, logScroll] {
+        for v in [mvt4ToggleBtn, pianistBtn, transRow, explodeBtn, dblDownBtn, dblUpBtn, swellBtn, hqRow, pitBtn, saveJsonBtn, remixInput, logScroll] {
             v.widthAnchor.constraint(equalTo: col.widthAnchor, constant: -20).isActive = true
         }
 
@@ -546,7 +580,7 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         bar.addSubview(statusLabel)
 
-        let hint = NSTextField(labelWithString: "QWERTY: A..K plays piano · Z/X octave · Space play · 1-5 jump · ⌘Scroll zoom · Drop .mid")
+        let hint = NSTextField(labelWithString: "QWERTY: A..K plays · Tab sustain · Z/X oct · Space play · 1-5 jump · ⌘Scroll zoom · Drop .mid")
         hint.font = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
         hint.textColor = StudioPalette.textMuted.withAlphaComponent(0.75)
         hint.translatesAutoresizingMaskIntoConstraints = false
@@ -616,24 +650,80 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             row1.orientation = .horizontal
             row1.spacing = 3
 
-            // Row 2: GM Instrument Picker + Volume + Transpose preview badge
+            // Row 2: Unified Instrument Picker (Salamander Concert Grand / Orchestra GM / macOS AUv3-AUv2) + AU UI + Vol + Transpose
             let patchPop = NSPopUpButton(frame: .zero, pullsDown: false)
             patchPop.controlSize = .mini
             patchPop.font = NSFont.systemFont(ofSize: 10)
             patchPop.tag = Int(tr.index)
-            var selIdx = 0
-            for (idx, preset) in StudioPalette.gmPresets.enumerated() {
-                patchPop.addItem(withTitle: preset.name)
-                if preset.program == tr.gmProgram { selIdx = idx }
+            patchPop.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+            let menu = NSMenu()
+            var selectedMenuItem: NSMenuItem?
+
+            // Section 1: Dedicated 16-Velocity-Layer Salamander Concert Grand
+            let grandTitle = audio.hasConcertGrandBank()
+                ? "★ Concert Grand — Salamander 16-Layer"
+                : "★ Concert Grand (Download 1.2GB SF2)"
+            let grandItem = NSMenuItem(title: grandTitle, action: nil, keyEquivalent: "")
+            grandItem.representedObject = TrackInstrumentChoice.concertGrand
+            menu.addItem(grandItem)
+            if tr.bankKind == 1 { selectedMenuItem = grandItem }
+
+            // Section 2: Orchestra GM SoundFont presets
+            menu.addItem(NSMenuItem.separator())
+            let gmHdr = NSMenuItem(title: "── Orchestra SoundFont (GM) ──", action: nil, keyEquivalent: "")
+            gmHdr.isEnabled = false
+            menu.addItem(gmHdr)
+            for preset in StudioPalette.gmPresets {
+                let item = NSMenuItem(title: preset.name, action: nil, keyEquivalent: "")
+                item.representedObject = TrackInstrumentChoice.orchestraGM(preset.program, preset.name)
+                menu.addItem(item)
+                if tr.bankKind == 0 && preset.program == tr.gmProgram {
+                    selectedMenuItem = item
+                }
             }
-            patchPop.selectItem(at: selIdx)
+
+            // Section 3: Native macOS Audio Units (AUv3 / AUv2)
+            menu.addItem(NSMenuItem.separator())
+            let auHdr = NSMenuItem(title: "── macOS Audio Units (AUv3 / AUv2) ──", action: nil, keyEquivalent: "")
+            auHdr.isEnabled = false
+            menu.addItem(auHdr)
+            if audio.availableAUs.isEmpty {
+                let emptyItem = NSMenuItem(title: "No third-party AUs found (install Spitfire LABS / Decent Sampler)", action: nil, keyEquivalent: "")
+                emptyItem.isEnabled = false
+                menu.addItem(emptyItem)
+            } else {
+                for au in audio.availableAUs {
+                    let item = NSMenuItem(title: "AU: \(au.displayName)", action: nil, keyEquivalent: "")
+                    item.representedObject = TrackInstrumentChoice.audioUnit(au)
+                    menu.addItem(item)
+                    if tr.bankKind == 2 && tr.auId == au.id {
+                        selectedMenuItem = item
+                    }
+                }
+            }
+
+            patchPop.menu = menu
+            if let sel = selectedMenuItem {
+                patchPop.select(sel)
+            } else {
+                patchPop.selectItem(at: 0)
+            }
             patchPop.target = self
             patchPop.action = #selector(onPatchChanged(_:))
+
+            let uiBtn = NSButton(title: "UI", target: self, action: #selector(onOpenTrackAUUI(_:)))
+            uiBtn.tag = Int(tr.index)
+            uiBtn.bezelStyle = .rounded
+            uiBtn.controlSize = .mini
+            uiBtn.isEnabled = (tr.bankKind == 2)
+            uiBtn.contentTintColor = (tr.bankKind == 2) ? StudioPalette.accentGold : StudioPalette.textMuted
+            uiBtn.toolTip = (tr.bankKind == 2) ? "Open Audio Unit plugin interface" : "Select an AU plugin to open its native UI"
 
             let vol = NSSlider(value: Double(tr.gain), minValue: 0, maxValue: 1.4, target: self, action: #selector(onVolumeChanged(_:)))
             vol.tag = Int(tr.index)
             vol.controlSize = .mini
-            vol.widthAnchor.constraint(equalToConstant: 62).isActive = true
+            vol.widthAnchor.constraint(equalToConstant: 56).isActive = true
 
             let trLbl = tr.transposePreview == 0 ? "0st" : (tr.transposePreview > 0 ? "+\(tr.transposePreview)st" : "\(tr.transposePreview)st")
             let trBtn = NSButton(title: trLbl, target: self, action: #selector(onCycleTrackTranspose(_:)))
@@ -642,7 +732,7 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             trBtn.controlSize = .mini
             trBtn.contentTintColor = tr.transposePreview == 0 ? StudioPalette.textMuted : StudioPalette.accentGold
 
-            let row2 = NSStackView(views: [patchPop, vol, trBtn])
+            let row2 = NSStackView(views: [patchPop, uiBtn, vol, trBtn])
             row2.orientation = .horizontal
             row2.spacing = 4
 
@@ -671,6 +761,10 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             trackStack.addArrangedSubview(card)
             card.widthAnchor.constraint(equalTo: trackStack.widthAnchor, constant: -16).isActive = true
         }
+        // Keep Solo Piano button synchronized with Track 0 solo state
+        let isPianoSoloOnly = (trs.first(where: { $0.index == 0 })?.solo == true)
+            && !trs.contains(where: { $0.index != 0 && $0.solo })
+        soloPianoBtn.state = isPianoSoloOnly ? .on : .off
     }
 
     // MARK: - Wiring, Timers & Keyboard
@@ -692,10 +786,18 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
                 self?.appendRemixLog(msg)
             }
         }
-        audio.onBankStatusChanged = { [weak self] label, downloading, _ in
+        audio.onBankStatusChanged = { [weak self] label, downloading in
             DispatchQueue.main.async {
                 self?.bankBtn.title = downloading ? "Downloading SF2…" : label
                 self?.bankBtn.isEnabled = !downloading
+                self?.rebuildTrackList()
+            }
+        }
+        audio.onAUsDiscovered = { [weak self] aus in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.rebuildTrackList()
+                self.statusLabel.stringValue = "Discovered \(aus.count) macOS Audio Unit instrument\(aus.count == 1 ? "" : "s") — select from any track dropdown"
             }
         }
         pianoRoll.onMidiFileDropped = { [weak self] url in
@@ -750,6 +852,14 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if mods.contains(.command) { return event }
 
+            // Tab -> Live concert damper sustain pedal (CC64)
+            if event.keyCode == 48 {
+                if !event.isARepeat {
+                    self.sustainHeldByTab = true
+                    self.setLiveSustainUI(true)
+                }
+                return nil
+            }
             // Space -> Play / Pause
             if event.keyCode == 49 {
                 self.onPlayToggle()
@@ -787,6 +897,11 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
 
         keyMonitorUp = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
             guard let self = self else { return event }
+            if event.keyCode == 48 && self.sustainHeldByTab {
+                self.sustainHeldByTab = false
+                self.setLiveSustainUI(false)
+                return nil
+            }
             if let p = self.activeQwertyKeys.removeValue(forKey: event.keyCode) {
                 self.store.liveInputPitches.remove(p)
                 self.audio.auditionNoteOff(track: self.store.selectedTrack, pitch: p)
@@ -796,6 +911,12 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
             }
             return event
         }
+    }
+
+    private func setLiveSustainUI(_ down: Bool) {
+        audio.setLiveSustain(down)
+        sustainBtn.state = down ? .on : .off
+        sustainBtn.contentTintColor = down ? StudioPalette.accentGold : nil
     }
 
     // MARK: - Actions
@@ -839,9 +960,39 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
         fallingNotes.needsDisplay = true
     }
 
+    @objc private func onSoloPianoToggle() {
+        let wantSolo = (soloPianoBtn.state == .on)
+        let trs = store.tracks()
+        store.withLock {
+            for tr in trs {
+                ms_set_track_solo(store.handle, tr.index, wantSolo && tr.index == 0)
+            }
+        }
+        if wantSolo {
+            store.selectedTrack = 0
+            statusLabel.stringValue = "Solo Piano ON — playing 16-layer Salamander Concert Grand (Track 0)"
+        } else {
+            statusLabel.stringValue = "Solo Piano OFF — full orchestra active"
+        }
+        audio.allNotesOff()
+        store.onChange?()
+    }
+
+    @objc private func onSustainButtonToggle() {
+        sustainHeldByTab = false
+        setLiveSustainUI(sustainBtn.state == .on)
+        statusLabel.stringValue = audio.liveSustainDown ? "Sustain Pedal ON (CC64=127)" : "Sustain Pedal OFF (CC64=0)"
+    }
+
+    @objc private func onRescanAUs() {
+        audio.scanInstalledAudioUnits()
+        statusLabel.stringValue = "Found \(audio.availableAUs.count) macOS Audio Unit instrument\(audio.availableAUs.count == 1 ? "" : "s")"
+        appendRemixLog("Rescanned macOS Audio Units: \(audio.availableAUs.count) found")
+    }
+
     @objc private func onTogglePencilMode() {
         pianoRoll.pencilMode.toggle()
-        toolBtn.title = pianoRoll.pencilMode ? "Mode: Pencil (Click Adds)" : "Mode: Select (Dbl-Click Adds)"
+        toolBtn.title = pianoRoll.pencilMode ? "Mode: Pencil" : "Mode: Select"
     }
 
     @objc private func onSnapChanged(_ sender: NSPopUpButton) {
@@ -854,12 +1005,12 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     @objc private func onSoundBankClicked() {
-        if audio.hasDownloadedMuseScoreBank() {
-            audio.selectBestAvailableBank()
+        if audio.hasConcertGrandBank() && audio.hasOrchestraBank() {
+            audio.selectBestAvailableBanks()
             audio.syncAllTrackPatches()
-            statusLabel.stringValue = "Active sound bank: \(audio.soundbankFileURL.path)"
+            statusLabel.stringValue = "Active sound banks: SalamanderGrandPiano.sf2 (1.2 GB) + MuseScore_General.sf2"
         } else {
-            audio.downloadMuseScoreSoundBank()
+            audio.downloadMissingSoundBanks()
         }
     }
 
@@ -899,12 +1050,27 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
 
     @objc private func onPatchChanged(_ sender: NSPopUpButton) {
         let idx = Int32(sender.tag)
-        let pi = sender.indexOfSelectedItem
-        guard pi >= 0 && pi < StudioPalette.gmPresets.count else { return }
-        let prog = StudioPalette.gmPresets[pi].program
-        store.withLock { ms_set_track_program(store.handle, idx, prog) }
-        audio.syncAllTrackPatches()
-        statusLabel.stringValue = "Track \(idx) -> \(StudioPalette.gmPresets[pi].name)"
+        guard let choice = sender.selectedItem?.representedObject as? TrackInstrumentChoice else { return }
+        switch choice {
+        case .concertGrand:
+            audio.switchTrackBackToSampler(trackIndex: idx, bankKind: 1)
+            if audio.hasConcertGrandBank() {
+                statusLabel.stringValue = "Track \(idx) -> Salamander Concert Grand (16-Layer Yamaha C5)"
+            } else {
+                statusLabel.stringValue = "Track \(idx) -> Concert Grand selected — downloading SalamanderGrandPiano.sf2…"
+                audio.downloadMissingSoundBanks()
+            }
+        case .orchestraGM(let prog, let name):
+            store.withLock { ms_set_track_program(store.handle, idx, prog) }
+            audio.switchTrackBackToSampler(trackIndex: idx, bankKind: 0)
+            statusLabel.stringValue = "Track \(idx) -> \(name)"
+        case .audioUnit(let au):
+            audio.loadAudioUnit(au, onTrack: idx)
+        }
+    }
+
+    @objc private func onOpenTrackAUUI(_ sender: NSButton) {
+        audio.openAudioUnitUI(forTrack: Int32(sender.tag))
     }
 
     @objc private func onVolumeChanged(_ sender: NSSlider) {
@@ -943,6 +1109,14 @@ final class StudioWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     // Remix Drawer actions
+    @objc private func onPianistTouch() {
+        let n = store.withLock { ms_remix_pianist_touch(store.handle, store.selectedTrack, 0, 0, UInt32.random(in: 1...99999)) }
+        store.onChange?()
+        let msg = "Applied Pianist Touch (melody voicing + chord roll + syncopated CC64 sustain) to \(n) notes on track \(store.selectedTrack)"
+        statusLabel.stringValue = msg
+        appendRemixLog(msg)
+    }
+
     @objc private func onToggleMvt4Dm() {
         let r = store.movementRange(slot: 4)
         let semi: Int32 = store.mvt4TransposedToDm ? 3 : -3

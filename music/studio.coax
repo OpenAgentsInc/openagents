@@ -108,6 +108,14 @@ oa_music_remix_pit_seating :: (p: [] MusicProject) #export_c #effects(all) {
   music_remix_apply_pit_seating(p);
 }
 
+oa_music_remix_pianist_touch :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, seed: u32) -> s32 #export_c #effects(all) {
+  return music_remix_pianist_touch(p, track, start_tick, end_tick, seed);
+}
+
+oa_music_add_cc :: (p: [] MusicProject, track: u8, cc_num: u8, value: u8, tick: s64) -> s32 #export_c #effects(all) {
+  return music_add_cc(p, track, cc_num, value, tick);
+}
+
 oa_music_transport_step :: (p: [] MusicProject, from_sample: s64, frame_count: s32, loop_on: bool, loop_start_tick: s64, loop_end_tick: s64, events: [] MusicSchedEvent) -> MusicStepResult #export_c #effects(all) {
   return music_transport_step(p, from_sample, frame_count, loop_on, loop_start_tick, loop_end_tick, events);
 }
@@ -126,8 +134,8 @@ oa_music_clear_active :: (p: [] MusicProject) #export_c #effects(all) {
   #assert oa_music_bpm_at_tick(p[..], 0) == 64000;
   #assert oa_music_marker_at_tick(p[..], 16 * 3840) == 2;
   ev: [128] MusicSchedEvent;
-  r := oa_music_transport_step(p[..], 0, 512, false, 0, 0, ev[..]);
-  #assert r.event_count >= 4 && r.next_sample == 512;
+  r := oa_music_transport_step(p[..], 0, 2048, false, 0, 0, ev[..]);
+  #assert r.event_count >= 4 && r.next_sample == 2048;
   #assert oa_music_remix_transpose(p[..], 2, 24 * 3840, 32 * 3840, -3) > 0;
   #assert oa_music_undo(p[..]);
 }

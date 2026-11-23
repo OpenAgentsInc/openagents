@@ -31,8 +31,8 @@ music_load_phantom_suite_starter :: (p: [] MusicProject) {
   if p.count != 1 { return; }
   music_project_init(p, "Gothic Opera 4-Movement Mashup Starter");
 
-  // 10-track pit orchestra (GM program numbers for MuseScore_General.sf2 & macOS DLS).
-  t_piano  := cast,trunc(u8) music_add_track(p, "Grand / Elec Piano", MSEC_KEYS,    0,  0, -0.08, 0.30);
+  // 10-track pit orchestra (Track 0 automatically uses 16-layer Salamander Concert Grand!).
+  t_piano  := cast,trunc(u8) music_add_track(p, "Concert Grand Piano", MSEC_KEYS,   0,  0, -0.05, 0.34);
   t_organ  := cast,trunc(u8) music_add_track(p, "Gothic Pipe Organ",  MSEC_ORGAN,  19,  1,  0.00, 0.52);
   t_vln1   := cast,trunc(u8) music_add_track(p, "Violins I (Lead)",   MSEC_STRINGS,48,  2, -0.55, 0.38);
   t_vln2   := cast,trunc(u8) music_add_track(p, "Violins II / Viola", MSEC_STRINGS,49,  3, -0.18, 0.38);
@@ -85,14 +85,20 @@ music_load_phantom_suite_starter :: (p: [] MusicProject) {
   m1_c2   := [8] u8.[56, 53, 61, 63, 56, 60, 61, 63];
   for b: 0..<8 {
     bt := cast(s64) b * B;
-    // Warm electric/grand piano broken chord bed
-    ms_chord(p, t_piano, bt, B - 60, 72, m1_c0[b], m1_c1[b], m1_c2[b], 0);
-    _ = music_add_note_raw(p, t_piano, m1_bass[b], 74, bt, B - 60);
-    // Solo cello lyrical pedal & sighing fifths
-    _ = music_add_note_raw(p, t_celli, m1_bass[b] + 12, 70, bt, B - 40);
-    // Concert harp shimmering upward arpeggio
-    arp := [8] u8.[m1_c0[b], m1_c1[b], m1_c2[b], m1_c0[b] + 12, m1_c1[b] + 12, m1_c2[b] + 12, m1_c1[b] + 12, m1_c0[b] + 12];
-    ms_arp(p, t_harp, bt, E, 62, arp[..]);
+    // Expressive flowing concert-piano left-hand arpeggio (1-5-8-10-8-5) instead of robotic block chords!
+    lh := [8] u8.[m1_bass[b], cast,trunc(u8) (m1_bass[b] + 7), m1_c0[b], m1_c1[b], m1_c2[b], m1_c1[b], m1_c0[b], cast,trunc(u8) (m1_bass[b] + 7)];
+    lh_vel := [8] u8.[68, 54, 60, 58, 64, 56, 54, 50];
+    for e: 0..<8 {
+      _ = music_add_note_raw(p, t_piano, lh[e], lh_vel[e], bt + cast(s64) e * E, E + 220);
+    }
+    // Warm right-hand upper voicing doubling the romance softly
+    _ = music_add_note_raw(p, t_piano, cast,trunc(u8) (m1_c2[b] + 12), 78, bt, Q * 2 + E);
+    _ = music_add_note_raw(p, t_piano, cast,trunc(u8) (m1_c1[b] + 12), 70, bt + Q * 2 + E, Q + E);
+    // Solo cello lyrical pedal
+    _ = music_add_note_raw(p, t_celli, m1_bass[b] + 12, 66, bt, B - 40);
+    // Concert harp delicate shimmer on beats 3-4
+    arp := [4] u8.[m1_c0[b] + 12, m1_c1[b] + 12, m1_c2[b] + 12, m1_c0[b] + 24];
+    ms_arp(p, t_harp, bt + Q * 2, E, 56, arp[..]);
   }
   // Original lyrical solo clarinet melody in Db Major (bars 0..7)
   _ = music_add_note_raw(p, t_clar, 65, 84, 0 * B + 0 * Q, Q * 2); // F4
@@ -252,6 +258,22 @@ music_load_phantom_suite_starter :: (p: [] MusicProject) {
       ms_chord(p, t_piano, bt, B - 40, 74, m5_c0[k], m5_c1[k], m5_c2[k], m5_lead[k]);
     }
   }
+
+  // Apply real pianist voicing, chord roll, and syncopated CC64 concert sustain pedaling to Concert Grand Piano!
+  _ = music_remix_pianist_touch(p, cast(s32) t_piano, 0, 40 * B, 1886);
+  // Add expressive CC11 swells to Strings & French Horns so they breathe organically.
+  for b: 8..<16 {
+    bt := cast(s64) b * B;
+    _ = music_add_cc(p, t_vln1, MCC_EXPR, 72, bt);
+    _ = music_add_cc(p, t_vln1, MCC_EXPR, 114, bt + Q * 2);
+    _ = music_add_cc(p, t_vln1, MCC_EXPR, 86, bt + Q * 3 + E);
+    _ = music_add_cc(p, t_vln2, MCC_EXPR, 68, bt);
+    _ = music_add_cc(p, t_vln2, MCC_EXPR, 104, bt + Q * 2);
+  }
+  // Reset undo history after starter generation so user edits start on a clean slate.
+  p[0].undo_op_count = 0;
+  p[0].undo_count = 0;
+  p[0].undo_cursor = 0;
 
   _ = music_tempo_bake(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate);
 }

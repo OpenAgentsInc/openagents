@@ -6,6 +6,7 @@ struct TrackViewItem {
     let index: Int32
     let name: String
     let section: UInt8
+    let bankKind: UInt8      // 0 = Orchestra SF2, 1 = Salamander Concert Grand SF2, 2 = macOS Audio Unit
     let midiChannel: UInt8
     let gmProgram: UInt8
     let transposePreview: Int8
@@ -15,6 +16,7 @@ struct TrackViewItem {
     let gain: Float
     let pan: Float
     let reverbSend: Float
+    let auId: String
 }
 
 struct NoteViewItem {
@@ -172,11 +174,14 @@ final class StudioStore {
                     let name = withUnsafePointer(to: &t.name) {
                         $0.withMemoryRebound(to: CChar.self, capacity: 49) { String(cString: $0) }
                     }
+                    let auId = withUnsafePointer(to: &t.au_id) {
+                        $0.withMemoryRebound(to: CChar.self, capacity: 65) { String(cString: $0) }
+                    }
                     out.append(TrackViewItem(
-                        index: i, name: name, section: t.section, midiChannel: t.midi_channel,
+                        index: i, name: name, section: t.section, bankKind: t.bank_kind, midiChannel: t.midi_channel,
                         gmProgram: t.gm_program, transposePreview: t.transpose_preview,
                         mute: t.mute != 0, solo: t.solo != 0, ghostVisible: t.ghost_visible != 0,
-                        gain: t.gain, pan: t.pan, reverbSend: t.reverb_send
+                        gain: t.gain, pan: t.pan, reverbSend: t.reverb_send, auId: auId
                     ))
                 }
             }
@@ -472,6 +477,13 @@ final class StudioStore {
             onChange?()
             return "Applied Broadway 29-piece pit-orchestra panning & hall reverb sends"
 
+        case "pianist":
+            let tr = Int32(argInt("track", default: Int(selectedTrack)))
+            let seed = UInt32(argInt("seed", default: 1886))
+            let n = withLock { ms_remix_pianist_touch(handle, tr, b0, b1, seed) }
+            onChange?()
+            return "Applied Pianist Touch (melody voicing + chord roll + syncopated CC64 sustain) to \(n) notes on track \(tr)"
+
         case "merge":
             guard parts.count >= 2 else { return "Usage: merge /path/to/file.mid bar=17" }
             let path = (parts[1] as NSString).expandingTildeInPath
@@ -490,7 +502,7 @@ final class StudioStore {
             return ok ? "Redid edit batch" : "Nothing to redo"
 
         default:
-            return "Commands: transpose | quantize | humanize | double | explode | swell | tempo | pit | merge <file.mid> bar=N | undo | redo"
+            return "Commands: transpose | quantize | humanize | pianist | double | explode | swell | tempo | pit | merge <file.mid> bar=N | undo | redo"
         }
     }
 }

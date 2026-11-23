@@ -36,7 +36,7 @@ xcrun -sdk macosx swiftc -O -swift-version 5 -parse-as-library -target arm64-app
   "$work/c/music_studio.o" \
   "$work/c/music-bridge.o" \
   -framework AppKit -framework AVFoundation -framework AudioToolbox -framework CoreAudio \
-  -framework CryptoKit -framework UniformTypeIdentifiers -framework QuartzCore \
+  -framework CoreAudioKit -framework CryptoKit -framework UniformTypeIdentifiers -framework QuartzCore \
   -o "$app/Contents/MacOS/OpenAgentsMusicStudio.new"
 
 mv "$app/Contents/MacOS/OpenAgentsMusicStudio.new" "$app/Contents/MacOS/OpenAgentsMusicStudio"

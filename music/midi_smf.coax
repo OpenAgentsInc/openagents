@@ -208,6 +208,19 @@ music_smf_import :: (p: [] MusicProject, data: [] u8, merge_offset_tick: s64, ti
       d2 := data[cur + 1];
       cur += 2;
 
+      if hi == 0xb0 {
+        cc_num := d1 & 0x7f;
+        cc_val := d2 & 0x7f;
+        if cc_num == MCC_SUSTAIN || cc_num == MCC_MOD || cc_num == MCC_EXPR {
+          dst_t := ifx fmt == 0 then ch_track[ch] else trk_slot;
+          if dst_t >= 0 {
+            tk := offset + smf_scale_tick(abs_raw, division);
+            _ = music_add_cc(p, cast,trunc(u8) dst_t, cc_num, cc_val, tk);
+          }
+        }
+        continue;
+      }
+
       if hi == 0x90 && d2 > 0 {
         pitch := d1 & 0x7f;
         vel := d2 & 0x7f;
@@ -414,6 +427,14 @@ music_smf_export :: (p: [] MusicProject, out: [] u8, scratch: [] SmfOutEv) -> s3
       scratch[ev_n] = SmfOutEv.{tick = n.start_tick, status = cast,trunc(u8) (0x90 | ch), d1 = pp, d2 = n.velocity};
       scratch[ev_n + 1] = SmfOutEv.{tick = n.start_tick + n.dur_tick, status = cast,trunc(u8) (0x80 | ch), d1 = pp, d2 = 0};
       ev_n += 2;
+    }
+    // Include Sustain Pedal (CC64), Mod (CC1), and Expression (CC11) events on this track.
+    for ci: 0..<p[0].cc_count {
+      c := p[0].cc[ci];
+      if !c.active || cast(s32) c.track != ti { continue; }
+      if ev_n + 1 > scratch.count { break; }
+      scratch[ev_n] = SmfOutEv.{tick = c.tick, status = cast,trunc(u8) (0xb0 | ch), d1 = c.cc, d2 = c.value};
+      ev_n += 1;
     }
     // Shell sort by tick (Note Off before Note On at identical ticks).
     gap := ev_n / 2;

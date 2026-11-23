@@ -61,6 +61,7 @@ bool ms_get_track(const OaMusicHandle *h, int32_t index, MsTrackInfo *out) {
   const coax_t_TrackState *t = &h->proj.tracks.e[index];
   out->active = t->active ? 1 : 0;
   out->section = t->section;
+  out->bank_kind = t->bank_kind;
   out->midi_channel = t->midi_channel;
   out->gm_program = t->gm_program;
   out->transpose_preview = t->transpose_preview;
@@ -73,6 +74,9 @@ bool ms_get_track(const OaMusicHandle *h, int32_t index, MsTrackInfo *out) {
   uint8_t n = t->name_n < 48 ? t->name_n : 48;
   memcpy(out->name, t->name.e, n);
   out->name[n] = '\0';
+  uint8_t an = t->au_id_n < 64 ? t->au_id_n : 64;
+  memcpy(out->au_id, t->au_id.e, an);
+  out->au_id[an] = '\0';
   return true;
 }
 
@@ -84,6 +88,19 @@ int32_t ms_add_track(OaMusicHandle *h, const char *name, uint8_t section, uint8_
 void ms_set_track_program(OaMusicHandle *h, int32_t index, uint8_t gm_program) {
   if (!h || index < 0 || index >= h->proj.track_count) return;
   h->proj.tracks.e[index].gm_program = gm_program & 127;
+  h->proj.revision += 1;
+}
+void ms_set_track_bank(OaMusicHandle *h, int32_t index, uint8_t bank_kind, const char *au_id) {
+  if (!h || index < 0 || index >= h->proj.track_count) return;
+  h->proj.tracks.e[index].bank_kind = bank_kind;
+  if (au_id) {
+    size_t len = strlen(au_id);
+    if (len > 64) len = 64;
+    memcpy(h->proj.tracks.e[index].au_id.e, au_id, len);
+    h->proj.tracks.e[index].au_id_n = (uint8_t)len;
+  } else {
+    h->proj.tracks.e[index].au_id_n = 0;
+  }
   h->proj.revision += 1;
 }
 void ms_set_track_mute(OaMusicHandle *h, int32_t index, bool mute) {
@@ -222,6 +239,12 @@ int32_t ms_remix_explode(OaMusicHandle *h, int32_t src_track, int64_t start_tick
 }
 int32_t ms_remix_swell(OaMusicHandle *h, int32_t track, int64_t start_tick, int64_t end_tick, int32_t v0, int32_t vpeak, int32_t v1) {
   return h ? oa_music_remix_swell(pv(h), track, start_tick, end_tick, v0, vpeak, v1) : 0;
+}
+int32_t ms_remix_pianist_touch(OaMusicHandle *h, int32_t track, int64_t start_tick, int64_t end_tick, uint32_t seed) {
+  return h ? oa_music_remix_pianist_touch(pv(h), track, start_tick, end_tick, seed) : 0;
+}
+int32_t ms_add_cc(OaMusicHandle *h, uint8_t track, uint8_t cc_num, uint8_t value, int64_t tick) {
+  return h ? oa_music_add_cc(pv(h), track, cc_num, value, tick) : -1;
 }
 void ms_remix_pit_seating(OaMusicHandle *h) {
   if (h) oa_music_remix_pit_seating(pv(h));

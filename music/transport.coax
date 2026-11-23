@@ -8,6 +8,7 @@
 MEV_NOTE_ON :: 1;
 MEV_NOTE_OFF :: 2;
 MEV_ALL_NOTES_OFF :: 3;
+MEV_CC :: 4;           // pitch = cc number (1=Mod, 11=Expr, 64=Sustain), velocity = value (0..127)
 
 MusicSchedEvent :: struct {
   sample_offset: s32;   // 0..<frame_count
@@ -125,6 +126,22 @@ music_emit_slice :: (p: [] MusicProject, s0: s64, s1: s64, base_offset: s32, eve
       }
     }
   }
+
+  // Emit exact sample-accurate Control Change events (CC64 Sustain Pedal, CC11 Expression, CC1 Mod).
+  for ci: 0..<p[0].cc_count {
+    c := p[0].cc[ci];
+    if !c.active || c.tick < t_lo || c.tick > t_hi { continue; }
+    if !music_track_audible(p, c.track, any_solo) { continue; }
+    cs := music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, c.tick);
+    if cs >= s0 && cs < s1 && cast(int) n_out < events.count {
+      events[n_out] = MusicSchedEvent.{
+        sample_offset = base_offset + cast(s32) (cs - s0),
+        track = c.track, channel = p[0].tracks[c.track].midi_channel,
+        kind = MEV_CC, pitch = c.cc, velocity = c.value
+      };
+      n_out += 1;
+    }
+  }
   return n_out;
 }
 
@@ -197,6 +214,16 @@ music_transport_step :: (p: [] MusicProject, from_sample: s64, frame_count: s32,
   r_off := music_transport_step(p[..], 23800, 512, false, 0, 0, ev[..]);
   #assert r_off.event_count == 2 && ev[0].kind == MEV_NOTE_OFF && ev[0].sample_offset == 200;
   #assert p[0].active_lo[0] == 0 && p[0].active_hi[1] == 0;
+
+  // Emit CC64 sustain pedal event at tick 0 -> sample 0.
+  _ = music_add_cc(p[..], 0, MCC_SUSTAIN, 127, 0);
+  ev_cc: [64] MusicSchedEvent;
+  r_cc := music_transport_step(p[..], 0, 512, false, 0, 0, ev_cc[..]);
+  found_cc := false;
+  for k: 0..<r_cc.event_count {
+    if ev_cc[k].kind == MEV_CC && ev_cc[k].pitch == MCC_SUSTAIN && ev_cc[k].velocity == 127 { found_cc = true; }
+  }
+  #assert found_cc;
 
   // Loop wrap emits ALL_NOTES_OFF and re-triggers beat 0 cleanly.
   r_wrap := music_transport_step(p[..], 23900, 256, true, 0, 960, ev[..]);

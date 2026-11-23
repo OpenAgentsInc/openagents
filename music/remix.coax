@@ -221,6 +221,103 @@ music_remix_apply_pit_seating :: (p: [] MusicProject) {
   p[0].revision += 1;
 }
 
+// "Make Piano Sound Real" transform:
+// 1. Melody-top voicing: highest note in each chord (+14 vel), inner accompaniment (-10 vel).
+// 2. Subtle natural hand roll: rolls multi-note chords upward by 8..16 ticks (~5..12 ms).
+// 3. Phrase breathing: softens weak beats slightly and lifts downbeats.
+// 4. Concert syncopated sustain pedaling (CC64): lifts damper briefly 40 ticks before each
+//    chord change and depresses 25 ticks after attack so strings bloom without muddying!
+music_remix_pianist_touch :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, seed: u32) -> s32 {
+  if p.count != 1 || track < 0 || track >= p[0].track_count { return 0; }
+  rng: u32 = ifx seed == 0 then 0x517cc1b7 else seed;
+  batch := music_undo_begin(p, "Pianist touch + Sustain");
+  changed: s32 = 0;
+
+  // Snapshot start/pitch ranks before mutating start_tick so chord grouping stays stable.
+  orig_n := p[0].note_count;
+  for i: 0..<orig_n {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, track, start_tick, end_tick) { continue; }
+
+    // Count simultaneous notes within 70 ticks (lower & higher) to find chord position.
+    lower := 0;
+    higher := 0;
+    for j: 0..<orig_n {
+      if j == i { continue; }
+      m := p[0].notes[j];
+      if !music_note_in_scope(m, track, start_tick, end_tick) { continue; }
+      dt := m.start_tick - n.start_tick;
+      if dt < 0 { dt = -dt; }
+      if dt <= 70 {
+        if m.pitch < n.pitch { lower += 1; }
+        else if m.pitch > n.pitch { higher += 1; }
+      }
+    }
+
+    after := n;
+    // Chord voicing: top melody sings out; inner chord tones sit warm and mellow; bass grounds.
+    v := cast(s32) n.velocity;
+    if higher == 0 && lower > 0 { v += 14; }           // top voice sings!
+    else if lower > 0 && higher > 0 { v -= 10; }       // inner chord warmth
+    else if lower == 0 && higher > 0 { v -= 3; }       // bass foundation
+
+    // Beat-level musical phrasing (downbeats gently stronger, off-beats softer).
+    beat_pos := n.start_tick % 3840;
+    if beat_pos < 120 { v += 5; }
+    else if beat_pos >= 900 && beat_pos < 1080 { v -= 6; }
+    else if beat_pos >= 2820 && beat_pos < 3000 { v -= 5; }
+
+    // Subtle seeded human velocity micro-nuance (+/- 4).
+    rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+    v += cast(s32) (rng % 9) - 4;
+    if v < 26 { v = 26; }
+    if v > 118 { v = 118; }
+    after.velocity = cast,trunc(u8) v;
+
+    // Gentle upward chord roll (10 ticks per voice above bass + +/- 5 tick human feel).
+    rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+    jitter := cast(s64) (rng % 11) - 5;
+    roll := cast(s64) lower * 12;
+    nt := n.start_tick + roll + jitter;
+    if nt < 0 { nt = 0; }
+    after.start_tick = nt;
+
+    if after.start_tick != n.start_tick || after.velocity != n.velocity {
+      p[0].notes[i] = after;
+      _ = music_undo_record(p, batch, MUNDO_UPDATE, cast(s32) i, n, after);
+      changed += 1;
+    }
+  }
+
+  // Generate clean bar-by-bar syncopated concert sustain pedaling (CC64).
+  music_clear_cc_range(p, track, MCC_SUSTAIN, start_tick, end_tick);
+  s_bar := ifx start_tick > 0 then start_tick / 3840 else cast(s64) 0;
+  e_tick := ifx end_tick > start_tick then end_tick else music_total_ticks(p);
+  e_bar := (e_tick + 3839) / 3840;
+  t_u8 := cast,trunc(u8) track;
+  for b: s_bar..<e_bar {
+    bt := b * 3840;
+    // Check if this bar actually has notes on this track.
+    has_note := false;
+    for i: 0..<p[0].note_count {
+      n := p[0].notes[i];
+      if n.active && cast(s32) n.track == track && n.start_tick >= bt && n.start_tick < bt + 3840 {
+        has_note = true; break;
+      }
+    }
+    if !has_note { continue; }
+    if bt >= 45 {
+      _ = music_add_cc(p, t_u8, MCC_SUSTAIN, 0, bt - 45);     // clean damper clear right before harmony change
+    }
+    _ = music_add_cc(p, t_u8, MCC_SUSTAIN, 127, bt + 30);     // catch chord resonantly
+  }
+  _ = music_add_cc(p, t_u8, MCC_SUSTAIN, 0, e_bar * 3840);    // release at end
+
+  music_undo_commit_if_empty(p, batch);
+  if changed > 0 { p[0].revision += 1; }
+  return changed;
+}
+
 // ---- Checks ----
 
 #test "programmatic transpose, explode chords, double octave, and undo all compose cleanly" {
@@ -259,4 +356,8 @@ music_remix_apply_pit_seating :: (p: [] MusicProject) {
   #assert music_remix_copy_layer(p[..], 3, 3, 0, 3840, 0, -12, 85) == 1 && p[0].notes[6].pitch == 50;
   music_remix_apply_pit_seating(p[..]);
   #assert p[0].tracks[1].pan < 0.0 && p[0].tracks[3].pan > 0.0;
+
+  // Pianist touch adds top-voice lift, subtle chord roll, and CC64 sustain pedaling.
+  pt := music_remix_pianist_touch(p[..], 0, 0, 3840, 1886);
+  #assert pt >= 1 && music_live_cc_count(p[..]) >= 2;
 }

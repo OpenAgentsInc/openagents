@@ -14,6 +14,7 @@ typedef struct OaMusicHandle OaMusicHandle;
 typedef struct {
   uint8_t active;
   uint8_t section;
+  uint8_t bank_kind;         // 0=Orchestra SF2, 1=Concert Grand SF2, 2=macOS Audio Unit
   uint8_t midi_channel;
   uint8_t gm_program;
   int8_t transpose_preview;
@@ -24,6 +25,7 @@ typedef struct {
   float pan;
   float reverb_send;
   char name[49];
+  char au_id[65];
 } MsTrackInfo;
 
 typedef struct {
@@ -78,6 +80,7 @@ int32_t ms_track_count(const OaMusicHandle *h);
 bool ms_get_track(const OaMusicHandle *h, int32_t index, MsTrackInfo *out);
 int32_t ms_add_track(OaMusicHandle *h, const char *name, uint8_t section, uint8_t gm_program, uint8_t midi_channel, float pan, float reverb_send);
 void ms_set_track_program(OaMusicHandle *h, int32_t index, uint8_t gm_program);
+void ms_set_track_bank(OaMusicHandle *h, int32_t index, uint8_t bank_kind, const char *au_id);
 void ms_set_track_mute(OaMusicHandle *h, int32_t index, bool mute);
 void ms_set_track_solo(OaMusicHandle *h, int32_t index, bool solo);
 void ms_set_track_ghost(OaMusicHandle *h, int32_t index, bool ghost);
@@ -116,6 +119,8 @@ int32_t ms_remix_humanize(OaMusicHandle *h, int32_t track, int64_t start_tick, i
 int32_t ms_remix_copy_layer(OaMusicHandle *h, int32_t src_track, int32_t dst_track, int64_t start_tick, int64_t end_tick, int64_t tick_delta, int32_t semitones, int32_t vel_pct);
 int32_t ms_remix_explode(OaMusicHandle *h, int32_t src_track, int64_t start_tick, int64_t end_tick, const uint8_t *dst_tracks, int32_t dst_count);
 int32_t ms_remix_swell(OaMusicHandle *h, int32_t track, int64_t start_tick, int64_t end_tick, int32_t v0, int32_t vpeak, int32_t v1);
+int32_t ms_remix_pianist_touch(OaMusicHandle *h, int32_t track, int64_t start_tick, int64_t end_tick, uint32_t seed);
+int32_t ms_add_cc(OaMusicHandle *h, uint8_t track, uint8_t cc_num, uint8_t value, int64_t tick);
 void ms_remix_pit_seating(OaMusicHandle *h);
 
 MsStepOut ms_transport_step(OaMusicHandle *h, int64_t from_sample, int32_t frame_count, bool loop_on, int64_t loop_start_tick, int64_t loop_end_tick, MsSchedEvent *out_events, int32_t max_events);
