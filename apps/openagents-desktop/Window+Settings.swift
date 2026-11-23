@@ -114,9 +114,9 @@ enum FeatureFlags {
         DesktopCore.onCoreStack { oa_dc_flags_any_extra_model(mask) } != 0
     }
     #else
-    // Minimal v1.0 release build: excluded features are stripped at compile time and stay permanently off.
-    static var mask: Int64 { 0 }
-    static func isOn(_ flag: DesktopFlag) -> Bool { false }
+    // Minimal release build: git diff + hidden-ref checkpoints promoted into core (#14026); other excluded features stay off.
+    static var mask: Int64 { Int64(1) << DesktopFlag.git.rawValue }
+    static func isOn(_ flag: DesktopFlag) -> Bool { flag == .git }
     static var anyExtraModel: Bool { false }
     #endif
 }

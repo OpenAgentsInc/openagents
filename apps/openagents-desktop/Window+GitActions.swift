@@ -492,7 +492,12 @@ extension CoderWindow {
 
     /// Calls Gemini API or OpenRouter API when a key is configured to generate commit/PR text.
     private static func callTextModel(prompt: String, done: @escaping (String?, String) -> Void) {
-        if let geminiKey = CoderGemini.saved ?? ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !geminiKey.isEmpty,
+        #if OA_FULL
+        let savedGemini = CoderGemini.saved
+        #else
+        let savedGemini: String? = nil
+        #endif
+        if let geminiKey = savedGemini ?? ProcessInfo.processInfo.environment["GEMINI_API_KEY"], !geminiKey.isEmpty,
            let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(geminiKey)") {
             var req = URLRequest(url: url, timeoutInterval: 15)
             req.httpMethod = "POST"
@@ -513,6 +518,7 @@ extension CoderWindow {
             }.resume()
             return
         }
+        #if OA_FULL
         if let orKey = CoderOpenRouter.saved, !orKey.isEmpty,
            let url = URL(string: "https://openrouter.ai/api/v1/chat/completions") {
             var req = URLRequest(url: url, timeoutInterval: 15)
@@ -535,6 +541,7 @@ extension CoderWindow {
             }.resume()
             return
         }
+        #endif
         done(nil, "")
     }
 

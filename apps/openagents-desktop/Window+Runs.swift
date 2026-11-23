@@ -320,9 +320,7 @@ extension CoderWindow {
             let n = cd_task(r.page, r.session, cwd, &out, Int32(out.count))
             r.worker.write(out, count: Int(n))
             self.beginTurn(r, from: from)
-            #if OA_FULL
             self.captureBaseCheckpointIfNeeded(for: r)
-            #endif
             self.bindQueue(r)
             self.wake()
         }
@@ -1110,9 +1108,9 @@ extension CoderWindow {
     /// A reply out of view ended: its chat is kept, its workers stop and its page goes.
     func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
+        captureTurnCheckpoint(for: back)
         #if OA_FULL
         let cost = Int(cd_cost_usd_micros(back.page))
-        captureTurnCheckpoint(for: back)
         #endif
         back.stop(); cd_close(back.page)
         #if OA_FULL

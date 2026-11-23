@@ -217,12 +217,45 @@ extension CoderWindow {
         }
     }
 
+    /// Counts other active background runs sharing the same working-tree checkout as `dir` (#14026).
+    private func sharedActiveCheckoutCount(for dir: String, excluding chatID: String) -> Int {
+        var count = 0
+        for (otherID, back) in runs {
+            if otherID == chatID { continue }
+            if cd_running(back.page) == 0 { continue }
+            if cd_ckpt_same_checkout(dir, back.folder.path) != 0 { count += 1 }
+        }
+        return count
+    }
+
+    /// Preflight #authority CheckpointRestoreSafety check before touching files (#14026).
+    private func verifyCheckpointRestoreSafety(chatID: String, turn: Int, in dir: String) -> Bool {
+        let shared = sharedActiveCheckoutCount(for: dir, excluding: chatID)
+        let canRollback = chatID != Foreman.chatID && store.text(chatID) != nil
+        let verdict = cd_ckpt_restore_safety(page, Int32(turn), Int32(shared), canRollback ? 1 : 0)
+        switch verdict {
+        case 0:
+            return true
+        case 1:
+            cd_toast(page, "Cannot revert while a turn is running.", 1)
+        case 3:
+            cd_toast(page, "Cannot revert: another active chat is using this checkout.", 1)
+        case 4:
+            cd_toast(page, "Cannot revert: conversation history cannot be rolled back.", 1)
+        default:
+            cd_toast(page, "Checkpoint for Turn \(turn + 1) cannot be restored.", 1)
+        }
+        wake()
+        return false
+    }
+
     /// Checks for uncommitted working-tree changes or later turns and confirms before rewinding.
     private func promptAndRewindToTurn(turn: Int) {
         guard cd_running(page) == 0, let chatID = chat, turn >= 0 else { return }
         let dir = folder.path
         let nturns = Int(cd_ckpt_nturns(page))
         guard turn < nturns else { return }
+        guard verifyCheckpointRestoreSafety(chatID: chatID, turn: turn, in: dir) else { return }
         let turnsDropped = max(0, nturns - 1 - turn)
 
         Self.checkpointQueue.async { [weak self] in
@@ -265,6 +298,7 @@ extension CoderWindow {
     /// GIT_INDEX_FILE, truncates conversation history to `turn`, cleans up orphaned refs for
     /// dropped turns, and resets worker recall so the next prompt sees the rewound history.
     private func performRewind(chatID: String, turn: Int, in dir: String) {
+        guard verifyCheckpointRestoreSafety(chatID: chatID, turn: turn, in: dir) else { return }
         let targetRef = checkpointRef(chatID, turn: turn)
         let prefix = checkpointPrefix(chatID)
         guard !targetRef.isEmpty else { return }

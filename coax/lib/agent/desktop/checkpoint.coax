@@ -7,6 +7,7 @@
 // are captured without mutating user branches, index, or reflogs.
 //   coax/bin/coax test coax/lib/agent/desktop/checkpoint.coax --library
 #load "paths.coax";
+#load "checkpoint-safety.coax";
 
 DC_CKPT_REF_PREFIX :: "refs/openagents/checkpoints/";
 DC_CKPT_REF_MAX :: 256;

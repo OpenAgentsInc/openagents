@@ -1,0 +1,74 @@
+// CheckpointRestoreSafety policy for OpenAgents Desktop (Layer 2 invariant; GitHub #14026):
+// refuses destructive working-tree rollback whenever the current chat is running, the target
+// turn/checkpoint is invalid, another active chat shares the same checkout, or conversation
+// history itself cannot be rolled back.
+//   coax/bin/coax test coax/lib/agent/desktop/checkpoint-safety.coax --library
+//   coax/bin/coax mutate coax/lib/agent/desktop/checkpoint-safety.coax --library
+#authority;
+
+DC_CKPT_SAFE_OK :: 0;
+DC_CKPT_SAFE_RUNNING :: 1;          // this chat is currently running a turn
+DC_CKPT_SAFE_INVALID_TURN :: 2;     // target turn out of range or missing checkpoint ref
+DC_CKPT_SAFE_SHARED_CHECKOUT :: 3;  // another active chat shares the same working tree
+DC_CKPT_SAFE_NO_ROLLBACK :: 4;      // conversation history cannot be rolled back
+
+// Normalizes trailing path separators (preserving root "/") and compares two checkout directories.
+dc_ckpt_same_checkout :: (dir_a: string, dir_b: string) -> bool #effects(reads, traps) {
+  if dir_a.count == 0 { return false; }
+  na := dir_a.count;
+  while na > 1 && dir_a[na - 1] == '/' { na -= 1; }
+  nb := dir_b.count;
+  while nb > 1 && dir_b[nb - 1] == '/' { nb -= 1; }
+  if na != nb { return false; }
+  for i: 0..<na {
+    if dir_a[i] != dir_b[i] { return false; }
+  }
+  return true;
+}
+
+// Preflight safety verdict before touching working-tree files on checkpoint rewind.
+dc_ckpt_restore_safety :: (
+  turn: int,
+  nturns: int,
+  running: bool,
+  has_ckpt: bool,
+  shared_active_chats: int,
+  can_rollback_conversation: bool
+) -> int #effects() {
+  if running { return DC_CKPT_SAFE_RUNNING; }
+  if turn < 0 || turn >= nturns || !has_ckpt { return DC_CKPT_SAFE_INVALID_TURN; }
+  if shared_active_chats > 0 { return DC_CKPT_SAFE_SHARED_CHECKOUT; }
+  if !can_rollback_conversation { return DC_CKPT_SAFE_NO_ROLLBACK; }
+  return DC_CKPT_SAFE_OK;
+}
+
+#test "checkpoint restore safety: enforces running, turn bounds, shared checkout, and conversation rollback" {
+  // Valid restore
+  #assert dc_ckpt_restore_safety(0, 1, false, true, 0, true) == DC_CKPT_SAFE_OK;
+  #assert dc_ckpt_restore_safety(2, 5, false, true, 0, true) == DC_CKPT_SAFE_OK;
+  #assert dc_ckpt_restore_safety(2, 5, false, true, -1, true) == DC_CKPT_SAFE_OK;
+
+  // Refusals in priority order
+  #assert dc_ckpt_restore_safety(0, 2, true, true, 0, true) == DC_CKPT_SAFE_RUNNING;
+  #assert dc_ckpt_restore_safety(-1, 2, false, true, 0, true) == DC_CKPT_SAFE_INVALID_TURN;
+  #assert dc_ckpt_restore_safety(2, 2, false, true, 0, true) == DC_CKPT_SAFE_INVALID_TURN;
+  #assert dc_ckpt_restore_safety(3, 2, false, true, 0, true) == DC_CKPT_SAFE_INVALID_TURN;
+  #assert dc_ckpt_restore_safety(0, 2, false, false, 0, true) == DC_CKPT_SAFE_INVALID_TURN;
+  #assert dc_ckpt_restore_safety(0, 2, false, true, 1, true) == DC_CKPT_SAFE_SHARED_CHECKOUT;
+  #assert dc_ckpt_restore_safety(0, 2, false, true, 3, true) == DC_CKPT_SAFE_SHARED_CHECKOUT;
+  #assert dc_ckpt_restore_safety(0, 2, false, true, 0, false) == DC_CKPT_SAFE_NO_ROLLBACK;
+
+  // Checkout equality with trailing slash normalization
+  #assert dc_ckpt_same_checkout("/repo", "/repo");
+  #assert dc_ckpt_same_checkout("/repo/", "/repo");
+  #assert dc_ckpt_same_checkout("/repo///", "/repo/");
+  #assert dc_ckpt_same_checkout("/", "/");
+  #assert dc_ckpt_same_checkout("/", "///");
+  #assert dc_ckpt_same_checkout("///", "/");
+  #assert !dc_ckpt_same_checkout("", "");
+  #assert !dc_ckpt_same_checkout("", "/repo");
+  #assert !dc_ckpt_same_checkout("/repo", "");
+  #assert !dc_ckpt_same_checkout("/repo", "/repo2");
+  #assert !dc_ckpt_same_checkout("/repo/a", "/repo/b");
+  #assert !dc_ckpt_same_checkout("a/repo", "b/repo");
+}

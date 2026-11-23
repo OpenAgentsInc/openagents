@@ -20,6 +20,7 @@
 #load "../../components/backend/gpu.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/gateway/card.coax";
+#load "../../coax/lib/agent/desktop/checkpoint.coax";
 #load "../../coax/lib/agent/desktop/flags.coax";
 #load "settings.coax";
 
@@ -41,6 +42,8 @@
 #load "page/layout/titlebar.coax";
 #load "page/layout/sidebar.coax";
 #load "page/layout/pane.coax";
+#load "page/gitdiff.coax";
+#load "page/layout/review.coax";
 #load "page/filepane.coax";
 #load "page/filetree.coax";
 #load "page/layout/conversation.coax";
@@ -53,6 +56,8 @@
 #load "page/attach.coax";
 #load "page/shows.coax";
 #load "page/mention.coax";
+#load "page/gitactions.coax";
+#load "page/checkpoint.coax";
 #load "page/notify.coax";
 #load "page/find.coax";
 

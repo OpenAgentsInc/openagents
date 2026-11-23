@@ -1186,6 +1186,14 @@ int cd_ckpt_diff_from(void *page, const char *chat, int turn, char *out, int cap
   return n;
 }
 int cd_ckpt_needs_confirm(int dirty_files, int turns_dropped) { return coder_page_ckpt_needs_confirm(dirty_files, turns_dropped) ? 1 : 0; }
+int cd_ckpt_restore_safety(void *page, int turn, int shared_active_chats, int can_rollback) {
+  CoderHost *c = page;
+  if (!c) return 2;
+  return (int)coder_page_ckpt_restore_safety(cd_state(c), turn, shared_active_chats, can_rollback != 0);
+}
+int cd_ckpt_same_checkout(const char *dir_a, const char *dir_b) {
+  return coder_page_ckpt_same_checkout(cd_string(dir_a), cd_string(dir_b)) ? 1 : 0;
+}
 // Interactive permission, sub-agent approval, Plan Mode, and Secret request cards (page/permit.coax, GitHub #13873).
 int cd_permit_open(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_open(cd_state(c)) : 0; }
 int cd_permit_kind(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_kind(cd_state(c)) : -1; }

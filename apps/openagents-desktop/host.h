@@ -498,6 +498,8 @@ int cd_ckpt_base_ref(const char *chat, char *out, int cap);
 int cd_ckpt_prefix(const char *chat, char *out, int cap);
 int cd_ckpt_diff_from(void *page, const char *chat, int turn, char *out, int cap);
 int cd_ckpt_needs_confirm(int dirty_files, int turns_dropped);
+int cd_ckpt_restore_safety(void *page, int turn, int shared_active_chats, int can_rollback);
+int cd_ckpt_same_checkout(const char *dir_a, const char *dir_b);
 // Interactive permission, sub-agent approval, Plan Mode, and Secret request cards (page/permit.coax, GitHub #13873).
 int cd_permit_open(void *page);
 int cd_permit_kind(void *page);

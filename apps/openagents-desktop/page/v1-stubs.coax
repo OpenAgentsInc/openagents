@@ -67,31 +67,7 @@ coder_page_model_provider :: (s: [] CoderPage) -> int #export_c #effects(all) {
 coder_page_set_codex :: (s: [] CoderPage, on: bool, status: string, auth: string) #export_c #effects(all) {}
 coder_page_set_cursor :: (s: [] CoderPage, on: bool, status: string, auth: string) #export_c #effects(all) {}
 
-// ---- gitdiff.coax & layout/review.coax stubs ----
-CP_ASK_GIT_DIFF :: 50;
-CP_REVIEW_REFRESH :: 150;
-CP_REVIEW_CLEAR :: 160;
-CpGitDiff :: struct { nfiles: int; }
-cp_gd_init :: (s: [] CoderPage) {}
-cp_gd_press :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
-cp_has_edits :: (s: [] CoderPage) -> bool { return false; }
-cp_review_shown :: (s: [] CoderPage) -> bool { return false; }
-cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {}
-cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f32, meta: string) -> f32 {
-  top := ifx py > 0 then py else ifx px > 0 then 0.0f32 else cp_bar(s);
-  agent := ifx s[0].pane_open then CP_LEVEL_NAME[s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].level] else "";
-  return app_pane_tab_shell(f, px, top, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, 1.0f32);
-}
-coder_page_git_diff_files :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_git_diff_max :: () -> int #export_c #effects(all) { return 0; }
-coder_page_git_diff_set :: (s: [] CoderPage, bytes: [] u8) #export_c #effects(all) {}
-coder_page_review_comment_add :: (s: [] CoderPage, path: string, start_line: int, end_line: int, side: int, snippet: string, body: string) -> int #export_c #effects(all) { return 0; }
-coder_page_review_comment_delete :: (s: [] CoderPage, id: int) -> bool #export_c #effects(all) { return false; }
-coder_page_review_comment_edit :: (s: [] CoderPage, id: int, body: string) -> bool #export_c #effects(all) { return false; }
-coder_page_review_comments_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_review_comments_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
-coder_page_review_pick :: (s: [] CoderPage, path: [] u8, snippet: [] u8, body: [] u8, meta: [] int) -> int #export_c #effects(all) { return 0; }
-
+// (gitdiff.coax, layout/review.coax, gitactions.coax, checkpoint.coax promoted into --minimal; #14026)
 // ---- simpane.coax stubs ----
 CP_SIM_CLOSE :: 90;
 CP_SIM_DEVICES :: 16;
@@ -167,54 +143,6 @@ coder_page_term_show :: (s: [] CoderPage, open: bool) #export_c #effects(all) {}
 coder_page_term_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
 coder_page_term_tab_cwd :: (s: [] CoderPage, tab_id: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
 coder_page_term_toggle :: (s: [] CoderPage) #export_c #effects(all) {}
-
-// ---- gitactions.coax stubs ----
-CP_GIT_BRANCH :: 130;
-CP_GIT_STOP :: 139;
-CpGit :: struct { tray_h: f32; }
-cp_git_init :: (s: [] CoderPage) {}
-cp_git_output_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, y_bottom: f32, cw: f32) -> f32 { return 0.0f32; }
-cp_git_press :: (s: [] CoderPage, act: int) -> bool { return false; }
-cp_git_toolbar :: (s: [] CoderPage, f: [] UiFrame, min_x: f32, right_x: f32, cy: f32) {}
-coder_page_git_anchor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) { return false; }
-coder_page_git_branches :: (s: [] CoderPage, lines: string) -> int #export_c #effects(all) { return 0; }
-coder_page_git_busy :: (s: [] CoderPage, busy: bool, label: string) #export_c #effects(all) {}
-coder_page_git_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_git_mode_set :: (s: [] CoderPage, mode: int) #export_c #effects(all) {}
-coder_page_git_needs_guard :: (branch: string, op: int) -> bool #export_c #effects(all) { return false; }
-coder_page_git_op :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_git_output_append :: (s: [] CoderPage, chunk: string) #export_c #effects(all) {}
-coder_page_git_output_clear :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_git_output_done :: (s: [] CoderPage, failed: bool) #export_c #effects(all) {}
-coder_page_git_status :: (s: [] CoderPage, in_repo: bool, in_worktree: bool, dirty: int, ahead: int, behind: int) #export_c #effects(all) {}
-coder_page_git_valid_branch :: (name: string) -> bool #export_c #effects(all) { return false; }
-coder_page_git_valid_commit :: (msg: string) -> bool #export_c #effects(all) { return false; }
-coder_page_git_wt_status :: (s: [] CoderPage, status: int, note: string) #export_c #effects(all) {}
-
-// ---- checkpoint.coax stubs ----
-CP_CKPT_DIFF :: 140;
-CP_CKPT_DIFF_ALL :: 142;
-CpCheckpoints :: struct { unused: int; }
-cp_ckpt_has :: (s: [] CoderPage, turn: int) -> bool { return false; }
-cp_ckpt_init :: (s: [] CoderPage) {}
-cp_ckpt_press :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
-cp_ckpt_reset :: (s: [] CoderPage) {}
-cp_ckpt_turn_actions :: (s: [] CoderPage, f: [] UiFrame, turn: int, right: f32, y: f32) -> f32 { return 0.0f32; }
-coder_page_ckpt_base_ref :: (chat: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_diff_clear :: (s: [] CoderPage) #export_c #effects(all) {}
-coder_page_ckpt_diff_from :: (s: [] CoderPage, chat: string, turn: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_diff_set :: (s: [] CoderPage, turn: int, bytes: [] u8, label: string) -> bool #export_c #effects(all) { return false; }
-coder_page_ckpt_has :: (s: [] CoderPage, turn: int) -> bool #export_c #effects(all) { return false; }
-coder_page_ckpt_mark :: (s: [] CoderPage, turn: int, present: bool) #export_c #effects(all) {}
-coder_page_ckpt_needs_confirm :: (dirty_files: int, turns_dropped: int) -> bool #export_c #effects(all) { return false; }
-coder_page_ckpt_nturns :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_op :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_prefix :: (chat: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_ref :: (chat: string, turn: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_rewind_to :: (s: [] CoderPage, turn: int) -> bool #export_c #effects(all) { return false; }
-coder_page_ckpt_set_base :: (s: [] CoderPage, present: bool) #export_c #effects(all) {}
-coder_page_ckpt_sync :: (s: [] CoderPage, chat: string, refs_list: string) -> int #export_c #effects(all) { return 0; }
-coder_page_ckpt_target :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
 
 // ---- usage.coax stubs ----
 CP_ASK_USAGE_REFRESH :: 66;

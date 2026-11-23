@@ -177,8 +177,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var simGen = 0
     var simStarting = false
     var simRetryAt: Date?
-    var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871)
     #endif
+    var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871, #14026)
     var sidebarUndo: SidebarUndoSnapshot? // last archive/delete for Undo toast restore (#13875)
     private var lastSnoozeCheckAt: CFTimeInterval = 0
     private var lastTimestampMinute: Int64 = 0
@@ -544,12 +544,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 98: if FeatureFlags.isOn(.modelsClaude) { claudeEffortChanged() }
         case 38: if FeatureFlags.isOn(.modelsGemini) { chooseGeminiKey() }
         case 46: if FeatureFlags.isOn(.simulator) { simAsked() }
+        case 52: if FeatureFlags.isOn(.terminal) { termAsked() }
+        #endif
         case 49: if FeatureFlags.isOn(.git) { gitAsked() }
         case 50: if FeatureFlags.isOn(.git) { refreshGitDiff() }
         case 51: if FeatureFlags.isOn(.git) { openReviewCommentDialog() }
-        case 52: if FeatureFlags.isOn(.terminal) { termAsked() }
         case 53: if FeatureFlags.isOn(.git) { checkpointAsked() }
-        #endif
         case 37: forkShown()
         case 44: editInstructions()
         case 45: resetInstructions()
@@ -685,9 +685,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             lastForegroundRunning = fgRunning
             if !fgRunning {
                 run.endTurn()
-                #if OA_FULL
                 if FeatureFlags.isOn(.git) { captureTurnCheckpoint(for: run); refreshBranch(); refreshGitDiff() }
-                #endif
                 notifyTurnCompleted(chatID: chat, isActiveChat: true)
             }
             #if OA_FULL
@@ -780,8 +778,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     func retire() {
         guard !retired else { return }
         retired = true
-        #if OA_FULL
         gitProcess?.terminate(); gitProcess = nil
+        #if OA_FULL
         voice.stop(cancel: true)
         saveRichPersistence()
         #endif

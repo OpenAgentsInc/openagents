@@ -20,16 +20,12 @@ extension CoderWindow {
         if keep { UserDefaults.standard.set(folder.path, forKey: "folder") }
         let home = FileManager.default.homeDirectoryForCurrentUser.path, path = folder.path
         cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
-        #if OA_FULL
         if FeatureFlags.isOn(.git) {
             refreshBranch()
             refreshGitDiff()
         } else {
             cd_branch(page, "")
         }
-        #else
-        cd_branch(page, "")
-        #endif
         prewarmWorktree(for: folder)
         if cd_filetree_shown(page) != 0 { refreshFileTree() }
         wake()
@@ -180,9 +176,7 @@ extension CoderWindow {
             chat = id; recallDue = false; cd_current(page, id)
             _ = cd_set_text(page, chatDrafts[id] ?? "")
             setFolder(back.folder, keep: false)
-            #if OA_FULL
             refreshCheckpoints(for: id, in: back.folder.path)
-            #endif
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             cd_chats(page, chatLines)
@@ -213,9 +207,7 @@ extension CoderWindow {
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         else { restoreWorktree(id) }
-        #if OA_FULL
         refreshCheckpoints(for: id, in: folder.path)
-        #endif
         showKeptQueue(id)
         focusComposer()
         wake()
@@ -317,10 +309,8 @@ extension CoderWindow {
             let snapText = self.store.text(id)
             self.unread.remove(id)
             self.needsAttention.remove(id)
-            #if OA_FULL
             let delFolder = self.store.folder(id) ?? self.store.worktree(id)?.source
             self.cleanupCheckpoints(for: id, in: delFolder)
-            #endif
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: title) }
             if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { self.store.markPhoneRunDeleted(runID, true) }
             self.store.remove(id)
@@ -490,10 +480,8 @@ extension CoderWindow {
                 }
                 if let m = store.meta(id), let t = store.text(id) { snaps.append((meta: m, text: t)) }
                 unread.remove(id)
-                #if OA_FULL
                 let delFolder = store.folder(id) ?? store.worktree(id)?.source
                 cleanupCheckpoints(for: id, in: delFolder)
-                #endif
                 if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "Chat") }
                 if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { store.markPhoneRunDeleted(runID, true) }
                 store.remove(id)

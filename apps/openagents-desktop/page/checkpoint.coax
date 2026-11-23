@@ -294,3 +294,12 @@ coder_page_ckpt_diff_from :: (s: [] CoderPage, chat: string, turn: int, out: [] 
 coder_page_ckpt_needs_confirm :: (dirty_files: int, turns_dropped: int) -> bool #export_c #effects(all) {
   return dc_ckpt_needs_confirm(dirty_files, turns_dropped);
 }
+
+coder_page_ckpt_restore_safety :: (s: [] CoderPage, turn: int, shared_active_chats: int, can_rollback: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return DC_CKPT_SAFE_INVALID_TURN; }
+  return dc_ckpt_restore_safety(turn, s[0].nturns, cp_running(s), cp_ckpt_has(s, turn), shared_active_chats, can_rollback);
+}
+
+coder_page_ckpt_same_checkout :: (dir_a: string, dir_b: string) -> bool #export_c #effects(all) {
+  return dc_ckpt_same_checkout(dir_a, dir_b);
+}

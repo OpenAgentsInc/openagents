@@ -125,6 +125,7 @@ core_swift=(
   "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift"
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
+  "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
 )
 swift_files=("${core_swift[@]}")
 
@@ -155,13 +156,12 @@ if [[ "$minimal" != "1" ]]; then
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
     "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
-    "$here/Window+McpSkills.swift" "$here/Window+Providers.swift" "$here/Window+GitDiff.swift"
+    "$here/Window+McpSkills.swift" "$here/Window+Providers.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift"
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
     "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
-    "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
     "$here/Window+Wallet.swift" "$here/Window+WalletRPC.swift"
     "$here/Window+Usage.swift" "$here/Window+Voice.swift" "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
