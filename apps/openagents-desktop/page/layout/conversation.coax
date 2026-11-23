@@ -1400,8 +1400,8 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     mid := sheet_pool(sh, cast(string) mb[0..<mn]);
     sel := mi == cp_model_index(s);
     hov := uiframe_hover(f, KEYED_LAZY, mid);   // the wash eases in and out (kit/frame.coax)
-    label := cp_model_label(s, mi);
-    desc := cp_model_desc(s, mi);
+    label := sheet_pool(sh, cp_model_label(s, mi));
+    desc := sheet_pool(sh, cp_model_desc(s, mi));
     mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
     elt_value(f[0].rows, mrow, desc);
     if hov > 0 || sel {

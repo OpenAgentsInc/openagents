@@ -1500,14 +1500,66 @@ final class ProviderInstancesStore {
         ]
     }
 
+    /// Only expose Gemini 4 models from Antigravity (hides Gemini 3.x / Orchestrator clutter).
+    static func isGemini4Model(slug: String, name: String) -> Bool {
+        let s = slug.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.hasPrefix("gemini-4-") || s.hasPrefix("gemini-4.") || s == "gemini-4" { return true }
+        if n.hasPrefix("gemini 4 ") || n == "gemini 4" { return true }
+        return false
+    }
+
+    static func isGemini4Neon(slug: String, name: String) -> Bool {
+        let s = slug.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return s == "gemini-4-neon" || s.hasPrefix("gemini-4-neon-") || n == "gemini 4 neon" || n.hasPrefix("gemini 4 neon ")
+    }
+
+    private static func gemini4OrderRank(slug: String, name: String) -> Int {
+        let s = slug.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s == "gemini-4-neon" || s.hasPrefix("gemini-4-neon-") || n.hasPrefix("gemini 4 neon") { return 0 }
+        if s == "gemini-4-carbon" || s.hasPrefix("gemini-4-carbon-") || n.hasPrefix("gemini 4 carbon") { return 1 }
+        if s == "gemini-4-hydrogen" || s.hasPrefix("gemini-4-hydrogen-") || n.hasPrefix("gemini 4 hydrogen") { return 2 }
+        if s == "gemini-4-argon" || s.hasPrefix("gemini-4-argon-") || n.hasPrefix("gemini 4 argon") { return 3 }
+        return 4
+    }
+
+    /// Filter Antigravity models to Gemini 4 only, order Neon first, and default to Gemini 4 Neon.
+    static func normalizeAntigravityModels(_ models: [ProviderModelConfig], fallbackDefaultSlug: String = "") -> [ProviderModelConfig] {
+        let filtered = models.filter { isGemini4Model(slug: $0.slug, name: $0.name) }
+        var kept = filtered.enumerated().sorted { lhs, rhs in
+            let ra = gemini4OrderRank(slug: lhs.element.slug, name: lhs.element.name)
+            let rb = gemini4OrderRank(slug: rhs.element.slug, name: rhs.element.name)
+            return ra != rb ? ra < rb : lhs.offset < rhs.offset
+        }.map { $0.element }
+        let hasNeon = kept.contains { isGemini4Neon(slug: $0.slug, name: $0.name) }
+        for i in kept.indices {
+            if hasNeon {
+                kept[i].isDefault = isGemini4Neon(slug: kept[i].slug, name: kept[i].name)
+            } else if !fallbackDefaultSlug.isEmpty {
+                kept[i].isDefault = (kept[i].slug == fallbackDefaultSlug)
+            }
+        }
+        return kept
+    }
+
     func load() {
         if let data = try? Data(contentsOf: storeURL),
            let decoded = try? JSONDecoder().decode([ProviderInstanceConfig].self, from: data),
            !decoded.isEmpty {
-            let filtered = decoded.filter { $0.driver == .antigravity }
+            var filtered = decoded.filter { $0.driver == .antigravity }
             if !filtered.isEmpty {
+                var changed = (filtered.count != decoded.count)
+                for i in filtered.indices {
+                    let norm = Self.normalizeAntigravityModels(filtered[i].models)
+                    if norm != filtered[i].models {
+                        filtered[i].models = norm
+                        changed = true
+                    }
+                }
                 instances = filtered
-                if filtered.count != decoded.count { save() }
+                if changed { save() }
             } else {
                 instances = Self.defaultInstances()
                 save()
@@ -1560,7 +1612,7 @@ final class ProviderInstancesStore {
         var rest: [(instId: String, instName: String, model: ProviderModelConfig)] = []
         for inst in instances where inst.driver == .antigravity && inst.enabled {
             if probes[inst.id]?.authStatus == "unauthenticated" { continue }
-            for m in inst.models where m.enabled && !m.slug.isEmpty {
+            for m in inst.models where m.enabled && !m.slug.isEmpty && Self.isGemini4Model(slug: m.slug, name: m.name) {
                 let item = (inst.id, inst.displayName, m)
                 if m.favorite { favs.append(item) } else { rest.append(item) }
             }
@@ -1944,15 +1996,19 @@ final class ProviderInstancesStore {
         let defModelName = (obj["defaultModelName"] as? String) ?? ""
 
         if ok, let rawModels = obj["models"] as? [[String: Any]] {
+            var loadedCount = 0
+            var chosenDefaultSlug = defModel
+            var chosenDefaultName = defModelName
             if let idx = instances.firstIndex(where: { $0.id == inst.id }) {
                 let existing = Dictionary(uniqueKeysWithValues: instances[idx].models.map { ($0.slug, $0) })
                 var merged: [ProviderModelConfig] = []
-                // Preserve user order for previously discovered models, append new ones.
+                // Keep only Gemini 4 models, preserve enabled/favorite state, order Neon first & default to Neon.
                 var seen = Set<String>()
                 var bySlug: [String: ProviderModelConfig] = [:]
                 for m in rawModels {
                     guard let slug = m["slug"] as? String, !slug.isEmpty else { continue }
                     let name = (m["name"] as? String) ?? slug
+                    guard Self.isGemini4Model(slug: slug, name: name) else { continue }
                     var levels = (m["thoughtLevels"] as? [String]) ?? []
                     if levels.isEmpty, let detailed = m["thinkingLevels"] as? [[String: Any]] {
                         levels = detailed.compactMap { $0["value"] as? String }
@@ -1974,7 +2030,7 @@ final class ProviderInstancesStore {
                 }
                 for old in instances[idx].models {
                     if let fresh = bySlug[old.slug] { merged.append(fresh); seen.insert(old.slug) }
-                    else if old.custom { merged.append(old); seen.insert(old.slug) }
+                    else if old.custom && Self.isGemini4Model(slug: old.slug, name: old.name) { merged.append(old); seen.insert(old.slug) }
                 }
                 for m in rawModels {
                     if let slug = m["slug"] as? String, !seen.contains(slug), let fresh = bySlug[slug] {
@@ -1982,19 +2038,24 @@ final class ProviderInstancesStore {
                         seen.insert(slug)
                     }
                 }
+                merged = Self.normalizeAntigravityModels(merged, fallbackDefaultSlug: defModel)
                 instances[idx].models = merged
+                loadedCount = merged.count
+                if let defM = merged.first(where: { $0.isDefault }) ?? merged.first {
+                    chosenDefaultSlug = defM.slug
+                    chosenDefaultName = defM.name
+                }
                 save()
             }
-            let count = rawModels.count
-            let summary = msg.isEmpty ? "Connected (\(count) \(count == 1 ? "model" : "models") loaded)." : msg
+            let summary = msg.isEmpty ? "Connected (\(loadedCount) \(loadedCount == 1 ? "model" : "models") loaded)." : msg
             probes[inst.id] = ProviderProbeSnapshot(
                 status: 1, headline: "Ready", summary: summary, version: ver,
-                authStatus: "authenticated", hasAutoMode: hasAuto, defaultModel: defModel, checkedAt: Date()
+                authStatus: "authenticated", hasAutoMode: hasAuto, defaultModel: chosenDefaultSlug, checkedAt: Date()
             )
             // Keep legacy CoderProbes cache aligned for the composer chip.
-            if inst.id == "antigravity" && !defModel.isEmpty {
-                let defName = !defModelName.isEmpty ? defModelName : (rawModels.first { ($0["slug"] as? String) == defModel }?["name"] as? String ?? defModel)
-                CoderProbes.recordAgySeen(id: defModel, name: defName)
+            if inst.id == "antigravity" && !chosenDefaultSlug.isEmpty {
+                let defName = !chosenDefaultName.isEmpty ? chosenDefaultName : chosenDefaultSlug
+                CoderProbes.recordAgySeen(id: chosenDefaultSlug, name: defName)
             }
         } else {
             let needsAuth = authSt == "unauthenticated"

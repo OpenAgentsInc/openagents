@@ -127,10 +127,42 @@ cp_claude_keep :: (s: [] CoderPage, slot: int) {
   idx := cp_model_idx_of(s, CP_MK_CLAUDE, slot);
   if slot >= 0 && idx >= 0 { s[0].model = idx; }
 }
+cp_agy_ascii_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := a[i]; if ca >= 'A' && ca <= 'Z' { ca += 32; }
+    cb := b[i]; if cb >= 'A' && cb <= 'Z' { cb += 32; }
+    if ca != cb { return false; }
+  }
+  return true;
+}
+cp_agy_ascii_pre_ci :: (s: string, pre: string) -> bool {
+  if s.count < pre.count { return false; }
+  return cp_agy_ascii_eq_ci(cast(string) s[0..<pre.count], pre);
+}
+cp_agy_is_gemini4 :: (slug: string, name: string) -> bool {
+  if cp_agy_ascii_pre_ci(slug, "gemini-4-") || cp_agy_ascii_pre_ci(slug, "gemini-4.") || cp_agy_ascii_eq_ci(slug, "gemini-4") { return true; }
+  if cp_agy_ascii_pre_ci(name, "gemini 4 ") || cp_agy_ascii_eq_ci(name, "gemini 4") { return true; }
+  return false;
+}
+cp_agy_is_neon :: (slug: string, name: string) -> bool {
+  if cp_agy_ascii_eq_ci(slug, "gemini-4-neon") || cp_agy_ascii_pre_ci(slug, "gemini-4-neon-") { return true; }
+  if cp_agy_ascii_eq_ci(name, "gemini 4 neon") || cp_agy_ascii_pre_ci(name, "gemini 4 neon ") { return true; }
+  return false;
+}
 cp_agy_idx :: (s: [] CoderPage) -> int { return cp_model_idx_of(s, CP_MK_AGY, 0); }
 cp_agy_default_idx :: (s: [] CoderPage) -> int {
   if s.count < 1 { return -1; }
   if s[0].agy_models_n > 0 {
+    // Always default Antigravity to Gemini 4 Neon whenever available.
+    for i: 0..<s[0].agy_models_n {
+      slug := cast(string) s[0].agy_models[i].slug[0..<s[0].agy_models[i].slug_n];
+      name := cast(string) s[0].agy_models[i].name[0..<s[0].agy_models[i].name_n];
+      if cp_agy_is_neon(slug, name) {
+        idx := cp_model_idx_of(s, CP_MK_AGY, i);
+        if idx >= 0 { return idx; }
+      }
+    }
     for i: 0..<s[0].agy_models_n {
       if s[0].agy_models[i].is_default {
         idx := cp_model_idx_of(s, CP_MK_AGY, i);
@@ -175,9 +207,10 @@ cp_model_restore_id :: (s: [] CoderPage, prev: string) {
 }
 
 // The entry a new chat starts on:
-// - Single-model release mode: Inkling 2 Mini.
-// - Multi-model mode: Claude when Settings picked it and Claude is enabled; else Inkling when
-//   installed; else Gemini 4 Neon when cloud is available; else the first enabled entry (-1 if none).
+// - Single-model release mode (no Antigravity / extra flags): Inkling 2 Mini.
+// - Multi-model mode: Claude when Settings picked it and Claude is enabled; else Antigravity
+//   (defaulting to Gemini 4 Neon) when Antigravity is installed; else Gemini 4 Neon when cloud
+//   is available; else Inkling when installed; else the first enabled entry (-1 if none).
 cp_model_start :: (s: [] CoderPage) -> int {
   if s.count < 1 { return -1; }
   if !cp_has_model_picker(s) { return cp_inkling_idx(s); }
@@ -186,11 +219,11 @@ cp_model_start :: (s: [] CoderPage) -> int {
     idx := cp_model_idx_of(s, CP_MK_CLAUDE, k);
     if idx >= 0 { return idx; }
   }
-  ink := cp_inkling_idx(s);
-  if ink >= 0 { return ink; }
-  if cp_cloud_ok(s) { return CP_MODEL_DEFAULT; }
   agy_def := cp_agy_default_idx(s);
   if agy_def >= 0 { return agy_def; }
+  if cp_cloud_ok(s) { return CP_MODEL_DEFAULT; }
+  ink := cp_inkling_idx(s);
+  if ink >= 0 { return ink; }
   return ifx cp_models(s) > 0 then 0 else -1;
 }
 
@@ -593,6 +626,7 @@ coder_page_agy_models_clear :: (s: [] CoderPage) #export_c #effects(all) {
 
 coder_page_agy_models_add :: (s: [] CoderPage, inst_id: string, inst_name: string, slug: string, name: string, efforts_mask: int, default_effort: int, is_default: bool) -> int #export_c #effects(all) {
   if s.count < 1 || slug.count == 0 || s[0].agy_models_n >= CP_AGY_MODELS_MAX { return -1; }
+  if !cp_agy_is_gemini4(slug, name) { return -1; }
   i := s[0].agy_models_n;
   s[0].agy_models[i] = CpAgyModel.{};
   s[0].agy_models[i].inst_id_n = cp_out(s[0].agy_models[i].inst_id[..], inst_id);
@@ -615,6 +649,7 @@ coder_page_model_inst_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effe
 
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was_agy := s[0].agy;
   pb: [128] u8;
   prev := "";
   if s[0].agy_prev_id_n > 0 {
@@ -624,6 +659,13 @@ coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
     prev = cp_model_save_id(s, pb[..]);
   }
   s[0].agy = on;
+  // When Antigravity becomes available on an empty new chat that was only on the Inkling
+  // or generic fallback, switch it to Antigravity's default (Gemini 4 Neon).
+  if !was_agy && on && s[0].nturns == 0 && !cp_running(s) && (prev.count == 0 || prev == "inkling-2-mini" || prev == "antigravity") {
+    s[0].model = cp_model_start(s);
+    s[0].model = cp_model_index(s);
+    return;
+  }
   cp_model_restore_id(s, prev);
 }
 

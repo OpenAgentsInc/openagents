@@ -102,7 +102,8 @@ cp_palette_fill :: (s: [] CoderPage) {
   if has_picker {
     for m: 0..<cp_models(s) {
       n := el_put(kb[..], 0, "model."); n = el_put_i(kb[..], n, m);
-      _ := app_palette_item(p, CP_PAL_PAGE_MODEL, APP_PAL_COMMANDS, "", cp_model_label(s, m), cp_model_desc(s, m), cp_model_desc(s, m), "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, m == cp_model_index(s), 0, CP_PAL_MODEL + m);
+      mdesc := app_palette_keep(p, cp_model_desc(s, m));
+      _ := app_palette_item(p, CP_PAL_PAGE_MODEL, APP_PAL_COMMANDS, "", cp_model_label(s, m), mdesc, mdesc, "", app_palette_keep(p, cast(string) kb[0..<n]), -1, false, m == cp_model_index(s), 0, CP_PAL_MODEL + m);
     }
   }
   if has_foreman {
