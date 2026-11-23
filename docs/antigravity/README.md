@@ -1,3 +1,26 @@
+# Antigravity — Reference Documentation, Wrapper Audit & Desktop Teardown
+
+## Directory Index
+
+### OpenAgents Wrapper Audit & Complete Antigravity Universe Reference
+| Document | Scope |
+|---|---|
+| **[`AUDIT.md`](./AUDIT.md)** | **Master forensic audit** of OpenAgents' iOS & macOS Antigravity wrapping stack against `#13993` & `#13992` — 7 live production breakages, 48 severity-ranked line-cited findings, buffer clash matrix, ToS compliance warning, Version Sync v2 blueprint, 7 strategic blind-spot registers, and phased remediation roadmap. |
+| **[`cli-and-headless.md`](./cli-and-headless.md)** | Exhaustive `agy` CLI reference (verified against live `v1.5.14`): every global flag, subcommand, `agy acp` flag, headless `json`/`stream-json` contracts, exit codes `0–3` & `AGY_ERROR`, all `settings.json` / `admin_settings.json` keys, `statusLine`/`title` schemas, env vars, 50+ slash commands, and installer/updater. |
+| **[`acp-and-endpoints.md`](./acp-and-endpoints.md)** | Live `agy acp` v1.5.14 JSON-RPC 2.0 wire reference (`initialize`, `session/list`, all methods & `session/update` variants, `_meta` extensions, `--process-per-session` router, `1.5.0–1.5.14` compatibility floor), every cloud/enterprise/local endpoint, and model/effort/Orchestrator/mode/auth matrices. |
+| **[`sdk-and-ides.md`](./sdk-and-ides.md)** | Complete `google-antigravity` Python SDK (`v0.1.24`) reference (clients, local models, tools, policies, hooks, triggers, workflows, errors, OTel), 9 IDE extensions & binary sync mechanics, and 226+ release changelog velocity/drift analysis. |
+| **[`platform-security-and-extensibility.md`](./platform-security-and-extensibility.md)** | Permissions & OS terminal sandbox, hooks (6 events + JSON contracts), MCP & MCP Apps (`ui://` SEP-1865), customization discovery hierarchy (skills/rules/agents/plugins/`AGY_ACCOUNT`/sidecars), orchestration (subagents/swarms/teamwork/boost/workflows/schedules/automations), Remote Control/Agents/SSH/Voice/Browser/Artifacts, and Enterprise/Quotas/ToS. |
+
+### Antigravity Desktop Electron Teardown & MicroCoder Parity Notes
+| Document | Scope |
+|---|---|
+| **[`README.md`](./README.md)** *(below)* | Structural teardown of `/Applications/Antigravity.app` (Electron 44.9.1 bundle, ASAR integrity, sidecars, IPC). |
+| **[`modules.md`](./modules.md)** | Module-by-module inventory of `app.asar/dist/`. |
+| **[`inference-and-agent-loop.md`](./inference-and-agent-loop.md)** | Language Server inference and agent execution loop analysis. |
+| **[`gap_analysis.md`](./gap_analysis.md)** | Earlier Electron App vs. MicroCoder parity gap analysis. |
+
+---
+
 # Antigravity — Electron application teardown
 
 A structural analysis of the Google **Antigravity** desktop application installed on this
