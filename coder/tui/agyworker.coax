@@ -442,8 +442,11 @@ agyw_sub_label :: (sub: AgrSubagent, out: [] u8) -> string {
 // worker ask/command lines for newly running or settled subagents. Killed subagents
 // (AGR_SUB_KILLED / SUBAGENT_STATE_KILLED) are terminal and never hold a parent turn open.
 agyw_sync_subagents :: (s: [] AgywState, x: [] CuEngine, subs: [] AgrSubagent, n: int, emit: bool) -> int {
+  prev_running := cue_bg_subagents(x);
   running := agr_subagents_running(subs, n);
   cue_bg_subagents_set(x, running);
+  any_killed := false;
+  any_completed := false;
   limit := ifx n < subs.count then n else subs.count;
   for i: 0..<limit {
     sub := subs[i];
@@ -472,6 +475,7 @@ agyw_sync_subagents :: (s: [] AgywState, x: [] CuEngine, subs: [] AgrSubagent, n
       s[0].next_ticket += 1;
       if emit { agyw_emit_ask(s, shown, s[0].next_ticket); }
     } else if sub.state == AGR_SUB_DONE || sub.state == AGR_SUB_FAILED || sub.state == AGR_SUB_KILLED {
+      if sub.state == AGR_SUB_KILLED { any_killed = true; } else { any_completed = true; }
       if prev == AGR_SUB_UNKNOWN {
         s[0].next_ticket += 1;
         if emit { agyw_emit_ask(s, shown, s[0].next_ticket); }
@@ -482,6 +486,11 @@ agyw_sync_subagents :: (s: [] AgywState, x: [] CuEngine, subs: [] AgrSubagent, n
                  else sub.summary;
       if emit { agyw_emit_command(s, shown, exit_code, out_txt); }
     }
+  }
+  if prev_running > 0 && running == 0 && any_killed && !any_completed {
+    cue_bg_expect_wake(x, false);
+  } else if any_completed {
+    cue_bg_expect_wake(x, true);
   }
   return running;
 }
@@ -700,6 +709,7 @@ agyw_reply_append :: (s: [] AgywState, text: string) {
 // ---------------------------------------------------------------- notification & event dispatch
 
 agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bool) {
+  if !s[0].turn_active { return; }
   update := cl_raw(params, "update");
   if update.count == 0 { return; }
   ar := x[0].c[0].ar[..];
@@ -745,10 +755,12 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
     if status == "completed" || status == "failed" || status == "cancelled" {
       if s[0].reply_n > 0 { s[0].reply_break = true; }
       at := existing;
-      cmd := label;
-      if at >= 0 {
-        if cmd.count == 0 { cmd = agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n); }
+      cmd := "";
+      if at >= 0 && s[0].calls[at].label_n > 0 {
+        // Match the exact label emitted on ask so the UI resolves the running spinner row in place.
+        cmd = agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n);
       }
+      if cmd.count == 0 { cmd = label; }
       if cmd.count == 0 { cmd = "tool"; }
       ob: [AGYW_OUTPUT] u8;
       out_txt := agyw_tool_output(ar, update, ob[..]);
@@ -758,7 +770,7 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
       agyw_call_close(s, at);
       return;
     }
-    if existing >= 0 && label.count > 0 {
+    if existing >= 0 && s[0].calls[existing].label_n == 0 && label.count > 0 {
       s[0].calls[existing].label_n = agyw_copy(s[0].calls[existing].label[..], label);
     }
   }
@@ -1783,7 +1795,13 @@ agyw_handle_stop :: (s: [] AgywState, x: [] CuEngine, emit: bool) -> bool {
   }
   s[0].stopping = true;
   if x[0].live {
+    was_held_only := cue_held_bg(x) && !cue_prompting(x);
     cue_stop(x);
+    if was_held_only {
+      if !s[0].sink { _ = cu_flush(x[0].c, x[0].p); }
+      agyw_finish_turn(s, "stopped", "Stopped.", emit);
+      return false;
+    }
     return true;
   }
   agyw_finish_turn(s, "stopped", "Stopped.", emit);
@@ -2446,4 +2464,63 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert agy_out_has(x, "\"method\":\"session/cancel\"");
   #assert !agyw_handle_stop(s, x, true) && !s[0].turn_active && !s[0].stopping && !x[0].live;
   #assert agyw_logged(s, "\"kind\":\"ended\",\"ending\":\"stopped\"");
+}
+
+#test "agyworker: background command holds turn across reactive wakeup and chained bg work, then ends once with final reply" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+
+  // 1. Background build.sh starts, model writes interim status, session/prompt answers end_turn.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_build\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"in_progress\",\"title\":\"apps/openagents-desktop/build.sh --minimal\",\"rawInput\":{\"CommandLine\":\"apps/openagents-desktop/build.sh --minimal\",\"WaitMsBeforeAsync\":500}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Building minimal — I'll push when done.\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":9680,\"size\":1048576}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert s[0].turn_active && cue_held_bg(x) && !agyw_logged(s, "\"kind\":\"ended\"");
+  #assert cue_watch(x, 1000) == CUE_WATCH_NONE;
+
+  // 2. build.sh finishes -> MUST NOT emit ended during the 7-12s reactive wakeup gap!
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_build\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"completed\",\"title\":\"apps/openagents-desktop/build.sh --minimal\",\"rawOutput\":{\"output\":\"built ok\",\"exit_code\":0}}}}");
+  #assert s[0].turn_active && cue_held_bg(x) && !agyw_logged(s, "\"kind\":\"ended\"");
+  #assert cue_watch(x, 1100) == CUE_WATCH_NONE && cue_watch(x, 13000) == CUE_WATCH_NONE;
+
+  // 3. Reactive wakeup thinks, emits intermediate usage_update 4ms before chained bg git push.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Build passed, pushing now.\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":10100,\"size\":1048576}}}");
+  #assert cue_watch(x, 13002) == CUE_WATCH_NONE;
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_push\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"in_progress\",\"title\":\"git push origin HEAD:main\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Waiting for pre-push checks.\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":10300,\"size\":1048576}}}");
+  // usage_update while call_push is running must NOT end the turn.
+  #assert cue_watch(x, 15000) == CUE_WATCH_NONE && cue_watch(x, 20000) == CUE_WATCH_NONE && cue_held_bg(x);
+
+  // 4. git push completes, model writes real final reply + final usage_update -> settles after CUE_BG_USAGE_SETTLE_MS.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_push\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"completed\",\"title\":\"git push origin HEAD:main\",\"rawOutput\":{\"output\":\"pushed\",\"exit_code\":0}}}}");
+  #assert cue_watch(x, 25000) == CUE_WATCH_NONE;
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Fixed and pushed to main.\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":10600,\"size\":1048576}}}");
+  #assert cue_watch(x, 30000) == CUE_WATCH_NONE && !agyw_logged(s, "\"kind\":\"ended\"");
+  #assert cue_watch(x, 30000 + CUE_BG_USAGE_SETTLE_MS) == CUE_WATCH_BG_DONE && !cue_held_bg(x);
+  agyw_turn_end(s, x[0].c[0].ar[..], "", true);
+  #assert !s[0].turn_active;
+  #assert agyw_logged(s, "\"kind\":\"thought\",\"text\":\"Build passed, pushing now.\"");
+  #assert agyw_logged(s, "\"kind\":\"command\",\"command\":\"git push origin HEAD:main\",\"exit\":0");
+  #assert agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Fixed and pushed to main.\"}");
+
+  // 5. Explicit stop during a held background turn sends session/cancel, keeps agy alive,
+  //    ends immediately, and ignores subsequent cancelled updates (no orphan post-ended lines).
+  s[0].log_n = 0; s[0].turn_active = true; s[0].stopping = false;
+  #assert cue_send(x, "run slow job");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_slow\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"in_progress\",\"title\":\"sleep 99\",\"rawInput\":{\"CommandLine\":\"sleep 99\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert s[0].turn_active && cue_held_bg(x) && !cue_prompting(x);
+  cu_outbox_clear(x[0].c); s[0].log_n = 0;
+  #assert !agyw_handle_stop(s, x, true) && !s[0].turn_active && x[0].live && !cue_held_bg(x);
+  #assert agy_out_has(x, "\"method\":\"session/cancel\"");
+  #assert agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"Stopped.\"}");
+  s[0].log_n = 0;
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_slow\",\"status\":\"cancelled\"}}}");
+  #assert s[0].log_n == 0 && !cue_held_bg(x);
 }

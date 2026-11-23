@@ -1047,6 +1047,10 @@ tr_cursor_watch :: (r: [] TrRun) -> bool {
   x := r[0].cue;
   w := cue_watch(x, tr_now());
   if w == CUE_WATCH_NONE { return false; }
+  if w == CUE_WATCH_BG_DONE {
+    if r[0].running { r[0].stopping = false; tr_finish(r, TR_FINISHED, ""); }
+    return true;
+  }
   nb: [300] u8; nn := tr_cat(nb[..], 0, "  "); wb: [256] u8; nn = tr_cat(nb[..], nn, cue_watch_notice(x, w, wb[..]));
   tr_note(r, cast(string) nb[0..<nn]);
   if w == CUE_WATCH_ENDED && r[0].running { r[0].stopping = false; tr_finish(r, TR_FAILED, cue_stall_why(x, wb[..])); }

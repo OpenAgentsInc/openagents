@@ -918,6 +918,7 @@ agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: str
   _ = agy_wrap_windows_cmd(l[..]);
   why := cue_start(x, l[0], name, version);
   if why.count == 0 {
+    cue_set_bg_hold_limit(x, AGY_BG_HOLD_MS);
     stb: [32] u8; rb: [32] u8;
     w := agy_watch_limits(cl_getenv("CODER_AGY_STALL_S", stb[..]), cl_getenv("CODER_AGY_RECOVER", rb[..]));
     cue_watch_set(x, w.stall_ms, w.recoveries);
@@ -1450,7 +1451,7 @@ agy_put_int :: (out: [] u8, n: int, v: int) -> int {
 }
 // What the stall watchdog just did (cue_watch's code), as one line for the owner's log and chat; "" for none.
 cue_watch_notice :: (x: [] CuEngine, code: int, out: [] u8) -> string {
-  if code == CUE_WATCH_NONE { return ""; }
+  if code == CUE_WATCH_NONE || code == CUE_WATCH_BG_DONE { return ""; }
   n := cl_copy(out, cue_title(x));
   s := (x[0].silent_ms + 500) / 1000;
   if code == CUE_WATCH_ENDED {

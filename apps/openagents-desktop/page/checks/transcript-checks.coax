@@ -449,9 +449,9 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   #assert cp_test_draw(s, f[..]);
   g := surface_find(s[0].surface[..], "t0.grp");
   #assert g >= 0 && surface_say(s[0].surface[..], g) == "Thought process · ran 2 commands";
-  // live: the thought and both commands show, the running one too; the working line counts its seconds
+  // live: the thought and both commands show, the running one too ("Running" while active); the working line counts its seconds
   #assert surface_find(s[0].surface[..], "t0.x0.words") >= 0 && surface_find(s[0].surface[..], "t0.x1") >= 0 && surface_find(s[0].surface[..], "t0.x2") >= 0;
-  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.x1")) == "Ran ls" && surface_find(s[0].surface[..], "t0.t") >= 0;
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.x1")) == "Ran ls" && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.x2")) == "Running sleep 9" && surface_find(s[0].surface[..], "t0.t") >= 0;
   // done: folded to its summary; a press opens it, another folds it
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   #assert cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.x1") < 0 && surface_find(s[0].surface[..], "t0.t") < 0;
