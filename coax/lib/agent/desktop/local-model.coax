@@ -30,8 +30,9 @@ LM_DEFAULT_IDLE_EXIT_S :: 300;
 LM_PORT_MIN :: 1024;
 LM_PORT_MAX :: 65535;
 
-// Hardware residency floors (docs/desktop/openagents-v1-spec.md §3, §5.4).
+// Hardware residency floors (docs/desktop/openagents-v1-spec.md §3, §5.4; #14028).
 LM_MAC_MIN_RAM_GB :: 32;
+LM_MAC_MIN_RAM_ANY_GB :: 12;    // smallest supported Inkling 2 Mini quant (AD-IQ2_M / custom)
 LM_CUDA_IQ4_MIN_VRAM_GB :: 8;   // psionic-cuda keeps the experts that do not fit in VRAM in host memory
 LM_CUDA_NVFP4_MIN_VRAM_GB :: 8;
 LM_VULKAN_MIN_MEM_GB :: 32;
@@ -47,9 +48,15 @@ LM_BACKEND_METAL :: 1;
 LM_BACKEND_CUDA :: 2;
 LM_BACKEND_VULKAN :: 3;
 
-// Checkpoint quantization profiles.
-LM_QUANT_IQ4_NL :: 0;
-LM_QUANT_NVFP4 :: 1;
+// Checkpoint quantization profiles (#14028 multi-variant support).
+LM_QUANT_IQ4_NL :: 0;           // Official IQ4_NL (17.63 GB; 32 GB Mac)
+LM_QUANT_NVFP4 :: 1;            // NVFP4 (CUDA >= 8 GB VRAM)
+LM_QUANT_AD_Q4_K :: 2;          // AtomicChat Uncensored AD-Q4_K (16.53 GB; 24 GB Mac)
+LM_QUANT_AD_IQ3_S :: 3;         // AtomicChat Uncensored AD-IQ3_S (13.34 GB; 16 GB Mac)
+LM_QUANT_AD_IQ2_M :: 4;         // AtomicChat Uncensored AD-IQ2_M (8.67 GB; 12 GB Mac)
+LM_QUANT_MIX_16G :: 5;          // OrcaRouter Abliterated Mix-16G (15.72 GB; 24 GB Mac)
+LM_QUANT_MIX_12G :: 6;          // OrcaRouter Abliterated Mix-12G (11.63 GB; 16 GB Mac)
+LM_QUANT_CUSTOM :: 7;           // User-imported custom Inkling 2 Mini GGUF (12 GB Mac)
 
 // Hardware admission verdicts.
 LM_HW_OK :: 0;
@@ -157,17 +164,29 @@ lm_backend_engine_name :: (backend: int) -> string #effects() {
   return "";
 }
 
+lm_mac_min_ram_for_quant :: (quant: int) -> int #effects() {
+  if quant == LM_QUANT_AD_IQ2_M || quant == LM_QUANT_CUSTOM { return 12; }
+  if quant == LM_QUANT_AD_IQ3_S || quant == LM_QUANT_MIX_12G { return 16; }
+  if quant == LM_QUANT_AD_Q4_K || quant == LM_QUANT_MIX_16G { return 24; }
+  return LM_MAC_MIN_RAM_GB;
+}
+
+lm_recommended_ctx :: (ram_gb: int) -> int #effects() {
+  if ram_gb >= 32 { return 32768; }
+  if ram_gb >= 24 { return 16384; }
+  return 8192;
+}
+
 lm_admit_hardware :: (caps: LmHostCaps) -> int #effects() {
   if caps.os == LM_OS_MAC {
     if !caps.is_apple_silicon { return LM_HW_INTEL_MAC; }
-    if caps.system_ram_gb < LM_MAC_MIN_RAM_GB { return LM_HW_LOW_RAM_MAC; }
+    if caps.system_ram_gb < lm_mac_min_ram_for_quant(caps.quant) { return LM_HW_LOW_RAM_MAC; }
     if caps.backend != LM_BACKEND_METAL { return LM_HW_NO_GPU; }
     return LM_HW_OK;
   }
   if caps.os == LM_OS_LINUX || caps.os == LM_OS_WINDOWS {
     if caps.backend == LM_BACKEND_CUDA {
-      min_vram := ifx caps.quant == LM_QUANT_NVFP4 then LM_CUDA_NVFP4_MIN_VRAM_GB else LM_CUDA_IQ4_MIN_VRAM_GB;
-      if caps.gpu_vram_gb < min_vram { return LM_HW_LOW_VRAM_CUDA; }
+      if caps.gpu_vram_gb < LM_CUDA_IQ4_MIN_VRAM_GB { return LM_HW_LOW_VRAM_CUDA; }
       return LM_HW_OK;
     }
     if caps.backend == LM_BACKEND_VULKAN {
@@ -302,6 +321,31 @@ lm_manifest_admits :: (
   if cast(string) ml.model_id[0..<ml.model_id_n] != expected_id { return false; }
   if cast(string) ml.weights[0..<ml.weights_n] != expected_weights { return false; }
   return lm_sha256_eq(cast(string) ml.sha256[0..<64], expected_sha256);
+}
+
+// Manifest admission for gated or user-imported checkpoints whose upstream SHA-256
+// is not pre-pinned in the catalog (e.g. gated Hugging Face or BYO .gguf files):
+// still enforces verified flag, exact byte size (when pinned > 0), exact mtime,
+// matching model_id/weights, and a valid 64-hex SHA-256 recorded at import/download.
+lm_manifest_admits_local :: (
+  m: LmManifest,
+  disk_bytes: int,
+  disk_mtime: int,
+  expected_id: string,
+  expected_weights: string,
+  expected_bytes: int
+) -> bool #effects(reads, traps) {
+  if !m.ok || !m.verified { return false; }
+  if disk_bytes <= 0 || disk_mtime <= 0 { return false; }
+  if expected_bytes > 0 && disk_bytes != expected_bytes { return false; }
+  if m.bytes != disk_bytes || m.mtime != disk_mtime { return false; }
+  if m.model_id_n <= 0 || m.model_id_n > 64 { return false; }
+  if m.weights_n <= 0 || m.weights_n > 128 { return false; }
+  if m.sha256_n != 64 { return false; }
+  ml := m;
+  if cast(string) ml.model_id[0..<ml.model_id_n] != expected_id { return false; }
+  if cast(string) ml.weights[0..<ml.weights_n] != expected_weights { return false; }
+  return lm_sha256_valid(cast(string) ml.sha256[0..<64]);
 }
 
 // ---- Lifecycle, action admission & server policy ----
@@ -637,4 +681,99 @@ lm_resolve_port :: (env_port: int) -> int #effects() {
   #assert lm_resolve_port(18894) == 18894;
   #assert lm_resolve_port(65535) == 65535;
   #assert lm_resolve_port(65536) == LM_DEFAULT_PORT;
+}
+
+#test "local-model: multi-variant quant RAM floors, adaptive ctx, and local/BYO manifest admission" {
+  // Per-quant macOS RAM floors
+  #assert LM_MAC_MIN_RAM_ANY_GB == 12;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_IQ4_NL) == 32;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_NVFP4) == 32;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_AD_Q4_K) == 24;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_MIX_16G) == 24;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_AD_IQ3_S) == 16;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_MIX_12G) == 16;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_AD_IQ2_M) == 12;
+  #assert lm_mac_min_ram_for_quant(LM_QUANT_CUSTOM) == 12;
+  #assert lm_mac_min_ram_for_quant(99) == 32;
+
+  // Hardware admission respects quant-specific Mac RAM floors
+  mac := LmHostCaps.{os = LM_OS_MAC, is_apple_silicon = true, system_ram_gb = 12, backend = LM_BACKEND_METAL, gpu_vram_gb = 12, quant = LM_QUANT_AD_IQ2_M};
+  #assert lm_admit_hardware(mac) == LM_HW_OK;
+  mac.system_ram_gb = 11;
+  #assert lm_admit_hardware(mac) == LM_HW_LOW_RAM_MAC;
+  mac.quant = LM_QUANT_CUSTOM; mac.system_ram_gb = 12;
+  #assert lm_admit_hardware(mac) == LM_HW_OK;
+  mac.quant = LM_QUANT_AD_IQ3_S; mac.system_ram_gb = 15;
+  #assert lm_admit_hardware(mac) == LM_HW_LOW_RAM_MAC;
+  mac.system_ram_gb = 16;
+  #assert lm_admit_hardware(mac) == LM_HW_OK;
+  mac.quant = LM_QUANT_AD_Q4_K; mac.system_ram_gb = 23;
+  #assert lm_admit_hardware(mac) == LM_HW_LOW_RAM_MAC;
+  mac.system_ram_gb = 24;
+  #assert lm_admit_hardware(mac) == LM_HW_OK;
+
+  // Adaptive context scaling by system RAM
+  #assert lm_recommended_ctx(12) == 8192;
+  #assert lm_recommended_ctx(16) == 8192;
+  #assert lm_recommended_ctx(23) == 8192;
+  #assert lm_recommended_ctx(24) == 16384;
+  #assert lm_recommended_ctx(31) == 16384;
+  #assert lm_recommended_ctx(32) == 32768;
+  #assert lm_recommended_ctx(64) == 32768;
+
+  // Local/BYO manifest admission (unpinned upstream SHA-256)
+  buf: [512] u8;
+  n := lm_manifest_write(
+    "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf",
+    15_721_831_424, LM_EXPECTED_SHA256, 1763700000, true, 3, 1763700005, buf[..]
+  );
+  #assert n > 0;
+  m: [1] LmManifest;
+  #assert lm_manifest_parse(cast(string) buf[0..<n], m[..]);
+  // Pinned expected_bytes (>0) and unpinned custom expected_bytes (==0)
+  #assert lm_manifest_admits_local(m[0], 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 15_721_831_424);
+  #assert lm_manifest_admits_local(m[0], 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  // Reject bad flags, zero/mismatched sizes, bad mtime, invalid lengths, wrong id/weights, invalid sha256
+  b := m[0]; b.ok = false;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.verified = false;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.bytes = 0;
+  #assert !lm_manifest_admits_local(b, 0, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.mtime = 0;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 0, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  #assert !lm_manifest_admits_local(m[0], 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 15_721_831_423);
+  #assert !lm_manifest_admits_local(m[0], 15_721_831_423, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  #assert !lm_manifest_admits_local(m[0], 15_721_831_424, 1763700001, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.model_id_n = 0;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.model_id_n = 65;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.weights_n = 0;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "", 0);
+  b = m[0]; b.weights_n = 129;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  b = m[0]; b.sha256_n = 63;
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  #assert !lm_manifest_admits_local(m[0], 15_721_831_424, 1763700000, "other", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  #assert !lm_manifest_admits_local(m[0], 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "other.gguf", 0);
+  b = m[0]; b.sha256[0] = 'z';
+  #assert !lm_manifest_admits_local(b, 15_721_831_424, 1763700000, "inkling-2-mini-abliterated-mix16g", "Inkling-2-Mini-abliterated-Mix-16G.gguf", 0);
+  // Boundary: max-length id (64) & weights (128) & min-length (1, 1) & disk_bytes == 1, disk_mtime == 1
+  id64 := "0123456789012345678901234567890123456789012345678901234567890123";
+  wt128 := "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567";
+  n_max := lm_manifest_write(id64, wt128, 1, LM_EXPECTED_SHA256, 1, true, 1, 0, buf[..]);
+  m_max: [1] LmManifest;
+  #assert n_max > 0 && lm_manifest_parse(cast(string) buf[0..<n_max], m_max[..]);
+  #assert lm_manifest_admits_local(m_max[0], 1, 1, id64, wt128, 0);
+  #assert lm_manifest_admits_local(m_max[0], 1, 1, id64, wt128, 1);
+  n_min := lm_manifest_write("a", "w", 1, LM_EXPECTED_SHA256, 1, true, 1, 0, buf[..]);
+  m_min: [1] LmManifest;
+  #assert n_min > 0 && lm_manifest_parse(cast(string) buf[0..<n_min], m_min[..]);
+  #assert lm_manifest_admits_local(m_min[0], 1, 1, "a", "w", 0);
+  // Boundary: expected_bytes == 1 must enforce exact size match against disk_bytes == 2
+  n_two := lm_manifest_write("a", "w", 2, LM_EXPECTED_SHA256, 1, true, 1, 0, buf[..]);
+  m_two: [1] LmManifest;
+  #assert n_two > 0 && lm_manifest_parse(cast(string) buf[0..<n_two], m_two[..]);
+  #assert !lm_manifest_admits_local(m_two[0], 2, 1, "a", "w", 1);
 }

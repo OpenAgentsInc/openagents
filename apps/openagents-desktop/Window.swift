@@ -400,8 +400,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let isInkling = ["inkling-2-mini", "inkling", "Inkling 2 Mini"].contains(requested)
             if isInkling || FeatureFlags.anyExtraModel {
                 if cd_pick_model(page, requested) == 0 && isInkling {
-                    if !LocalModelStore.hardwareSupported {
-                        present(.notice("Inkling 2 Mini requires 32 GB RAM", LocalModelStore.statusSummary()))
+                    if !LocalModelStore.anyVariantSupported {
+                        present(.notice("Inkling 2 Mini requires \(LocalModelStore.minSupportedRamGB) GB RAM", LocalModelStore.statusSummary()))
                     } else {
                         manageLocalModels()
                     }

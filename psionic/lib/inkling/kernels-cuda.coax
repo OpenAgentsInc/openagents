@@ -5171,6 +5171,43 @@ ink_dspark_logits_s2 :: (item:int,step_idx:int,in_m:[]f32,in_i:[]u32,in_s:[]f32,
     }
 }
 
+// ---- Direction-Ablation LoRA kernels (x -= d * dot(d, x)) ----
+
+// In-place direction ablation over np tokens: items = np, threads = INK_NT (256).
+ink_ablate_dir :: (item:int,dim:int,dir_off:int,dirs:[]f32,x:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    xb:=item*dim;
+    for thread:0..<INK_NT {
+        s:f32=0.0f32;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { s+=x[xb+i]*dirs[dir_off+i]; }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        along:f32=0.0f32;
+        for j:0..<INK_NT { along+=part[j]; }
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { x[xb+i]=x[xb+i]-along*dirs[dir_off+i]; }
+        }
+    }
+}
+
+// Sum MMA MoE down expert slots [nb, n_used, dim] -> [nb, dim] prior to LoRA ablation.
+// items = nb * dim, 1 thread per item.
+ink_moe_sum_down :: (item:int,dim:int,nb:int,n_used:int,down_out:[]f32,out:[]f32) #export_c #effects(all) {
+    tok:=item/dim;
+    ch:=item%dim;
+    if tok<nb {
+        acc:f32=0.0f32;
+        base:=tok*n_used*dim+ch;
+        for k:0..<n_used { acc+=down_out[base+k*dim]; }
+        out[item]=acc;
+    }
+}
+
 #test "IQ4_NL and Q8_0 BF16 tables are bit-exact and Q8 MMA kernels match scalar reference" {
     for q:0..<16 {
         #assert cu_bf16(ink_iq4_bf16(cast(u32)q),false)==ink_iq4_val(cast(u32)q);
@@ -5590,6 +5627,42 @@ ink_dspark_logits_s2 :: (item:int,step_idx:int,in_m:[]f32,in_i:[]u32,in_s:[]f32,
         for r:0..<8 {
             d1:=out3[48+t*8+r]-ref1[t*8+r]; if d1<0 {d1=-d1;}
             #assert d1<0.05f32;
+        }
+    }
+}
+
+#test "CUDA direction ablation and MoE slot sum match reference" {
+    dirs:[16]f32;
+    x:[32]f32;
+    norm2:f32=0.0f32;
+    for i:0..<16 { dirs[i]=f32((i%5)-2)*0.25f32; norm2+=dirs[i]*dirs[i]; }
+    inv:=1.0f32/sqrt(norm2);
+    for i:0..<16 { dirs[i]*=inv; }
+    ref:[32]f32;
+    for t:0..<2 {
+        dot:f32=0.0f32;
+        for i:0..<16 {
+            v:=f32(((t*11+i*3)%13)-6)*0.2f32;
+            x[t*16+i]=v;
+            dot+=v*dirs[i];
+        }
+        for i:0..<16 { ref[t*16+i]=x[t*16+i]-dot*dirs[i]; }
+    }
+    for t:0..<2 { ink_ablate_dir(t,16,0,dirs[..],x[..]); }
+    for i:0..<32 {
+        df:=x[i]-ref[i]; if df<0 {df=-df;}
+        #assert df<0.0001f32;
+    }
+    down:[2*4*8]f32;
+    out:[2*8]f32;
+    for i:0..<64 { down[i]=f32((i%9)-4)*0.5f32; }
+    for itm:0..<16 { ink_moe_sum_down(itm,8,2,4,down[..],out[..]); }
+    for t:0..<2 {
+        for ch:0..<8 {
+            s:f32=0.0f32;
+            for k:0..<4 { s+=down[(t*4+k)*8+ch]; }
+            df:=out[t*8+ch]-s; if df<0 {df=-df;}
+            #assert df<0.0001f32;
         }
     }
 }

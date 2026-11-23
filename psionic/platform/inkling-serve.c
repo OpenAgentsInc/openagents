@@ -1478,6 +1478,9 @@ typedef struct {
     double          last_active;
     int             idle_exit_s;
     int             max_ctx;
+    int             has_lora;
+    const char     *model_name;
+    const char     *lora_name;
     int32_t         tok_user;
     int32_t         tok_model;
     int32_t         tok_thinking;
@@ -3250,11 +3253,18 @@ static void conn_thread(void *arg) {
             ink_mutex_lock(&sv->state_mu);
             int busy = sv->in_flight > 0;
             ink_mutex_unlock(&sv->state_mu);
-            char ok[192];
-            snprintf(ok, sizeof ok,
-                     "{\"status\":\"ok\",\"engine\":\"%s\",\"ctx\":%d,\"busy\":%s}",
-                     sv->engine, sv->max_ctx, busy ? "true" : "false");
-            if (send_http_json_ex(cfd, 200, "OK", origin, ok, strlen(ok), ka) != 0) keep = 0;
+            Buf ok = {0};
+            char head[256];
+            snprintf(head, sizeof head,
+                     "{\"status\":\"ok\",\"engine\":\"%s\",\"ctx\":%d,\"lora\":%s,\"busy\":%s,\"model\":\"",
+                     sv->engine, sv->max_ctx, sv->has_lora ? "true" : "false", busy ? "true" : "false");
+            buf_adds(&ok, head);
+            if (sv->model_name && sv->model_name[0]) buf_add_json_escaped(&ok, sv->model_name, strlen(sv->model_name));
+            buf_adds(&ok, "\",\"lora_file\":\"");
+            if (sv->lora_name && sv->lora_name[0]) buf_add_json_escaped(&ok, sv->lora_name, strlen(sv->lora_name));
+            buf_adds(&ok, "\"}");
+            if (!ok.data || send_http_json_ex(cfd, 200, "OK", origin, ok.data, ok.len, ka) != 0) keep = 0;
+            buf_free(&ok);
         } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
             char ms[224];
             snprintf(ms, sizeof ms,
@@ -3302,9 +3312,18 @@ static const char *default_kernels(const char *argv0, char *out, size_t cap) {
     return out;
 }
 
+static const char *path_basename(const char *p) {
+    if (!p) return "";
+    const char *s = strrchr(p, '/');
+    const char *b = strrchr(p, '\\');
+    if (b && (!s || b > s)) s = b;
+    return s ? s + 1 : p;
+}
+
 int main(int argc, char **argv) {
     const char *gguf = NULL;
     const char *metal = NULL;
+    const char *lora = getenv("INK_LORA");
     const char *host = "127.0.0.1";
     int port = 18794;
     int max_ctx = 32768;
@@ -3313,6 +3332,7 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "--model") || !strcmp(argv[i], "-m")) && i + 1 < argc) gguf = argv[++i];
         else if ((!strcmp(argv[i], "--kernels") || !strcmp(argv[i], "--metal")) && i + 1 < argc) metal = argv[++i];
+        else if (!strcmp(argv[i], "--lora") && i + 1 < argc) lora = argv[++i];
         else if (!strcmp(argv[i], "--host") && i + 1 < argc) host = argv[++i];
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if ((!strcmp(argv[i], "--ctx") || !strcmp(argv[i], "--ctx-size")) && i + 1 < argc) max_ctx = atoi(argv[++i]);
@@ -3321,7 +3341,7 @@ int main(int argc, char **argv) {
     char kernels_beside[4200];
     if (!metal) metal = default_kernels(argv[0], kernels_beside, sizeof kernels_beside);
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf [--kernels PATH] [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
+        fprintf(stderr, "usage: %s --model PATH.gguf [--lora PATH.gguf] [--kernels PATH] [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
                         "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option).\n"
                         "             Default: that file in this program's directory.\n", argv[0]);
         return 2;
@@ -3337,9 +3357,12 @@ int main(int argc, char **argv) {
     sv.last_active = t0;
     sv.idle_exit_s = idle_exit_s;
     sv.max_ctx = max_ctx;
+    sv.has_lora = (lora && lora[0]) ? 1 : 0;
+    sv.model_name = path_basename(gguf);
+    sv.lora_name = sv.has_lora ? path_basename(lora) : "";
     sv.rng = (uint64_t)time(NULL) ^ 0x9E3779B97F4A7C15ULL;
     char err[512];
-    if (ink_open(gguf, metal, max_ctx, &sv.sess, err, sizeof err) != 0) {
+    if (ink_open_lora(gguf, metal, sv.has_lora ? lora : NULL, max_ctx, 0, &sv.sess, err, sizeof err) != 0) {
         fprintf(stderr, "[psionic-inkling-serve] ink_open failed: %s\n", err);
         ink_mutex_destroy(&sv.sess_mu);
         ink_mutex_destroy(&sv.state_mu);

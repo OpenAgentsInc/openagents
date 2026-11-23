@@ -806,7 +806,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
   y += sub_h + a.gap;
   if !s[0].local_os_ok {
     // The host says why in its own platform's terms; the fallback names every supported machine.
-    why: string = "Inkling 2 Mini needs an Apple Silicon Mac with 32 GB of memory, or an NVIDIA GPU with 8 GB of VRAM. No supported GPU was found.";
+    why: string = "Inkling 2 Mini needs an Apple Silicon Mac with 12 GB+ of memory, or an NVIDIA GPU with 8 GB of VRAM. No supported GPU was found.";
     if s[0].local_dl_err_n > 0 { why = sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n]); }
     y += app_notice(f, "coder.onboarding.unsupported", cx + pad, y, iw, why, APP_NOTICE_ERROR);
     // Not a dead end: Google Antigravity runs on any computer (#13782's onboarding follow-up).
@@ -819,7 +819,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     // The host's reason (unified memory on a Mac, VRAM on an NVIDIA GPU), then what this machine has.
     rb: [320] u8; rn := 0;
     if s[0].local_dl_err_n > 0 { rn = el_put(rb[..], 0, cast(string) s[0].local_dl_err[0..<(ifx s[0].local_dl_err_n < 240 then s[0].local_dl_err_n else 240)]); }
-    else { rn = el_put(rb[..], 0, "Inkling 2 Mini needs an Apple Silicon Mac with 32 GB of memory, or an NVIDIA GPU with 8 GB of VRAM."); }
+    else { rn = el_put(rb[..], 0, "Inkling 2 Mini needs an Apple Silicon Mac with 12 GB+ of memory, or an NVIDIA GPU with 8 GB of VRAM."); }
     if s[0].local_ram_gb > 0 {
       rn = el_put(rb[..], rn, " This computer has "); rn = el_put_i(rb[..], rn, s[0].local_ram_gb); rn = el_put(rb[..], rn, " GB.");
     }
@@ -830,7 +830,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
       if region >= 0 { f[0].rows[0].rows[region].h = y + pad - cy; }
     }
   } else if s[0].local_dl_state == CP_LOCAL_DOWNLOADING {
-    pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini (IQ4_NL) — ");
+    pb: [128] u8; pn := el_put(pb[..], 0, "Downloading Inkling 2 Mini — ");
     if s[0].local_dl_total_mb > 0 {
       pn = el_put_i(pb[..], pn, s[0].local_dl_mb); pn = el_put(pb[..], pn, " / ");
       pn = el_put_i(pb[..], pn, s[0].local_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
@@ -854,7 +854,7 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     s[0].anim = true;
     activity(sh, k, cx + pad, y, a.icon, f[0].clock, f[0].reduced_motion);
     _ := app_meta(f, "coder.onboarding.verifying", cx + pad + a.icon + a.gap_small, y, iw - a.icon - a.gap_small,
-                  "Verifying SHA-256 checksum of Inkling-2-Mini-IQ4_NL.gguf…", false);
+                  "Verifying SHA-256 checksum of local GGUF checkpoint…", false);
   } else if s[0].local_dl_state == CP_LOCAL_SERVER_ERROR {
     emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
             else "Inkling 2 Mini could not start. Click Retry to try again.";
@@ -865,13 +865,13 @@ cp_local_onboarding :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32)
     emsg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
             else "Download failed. Check your internet connection and free disk space, then try again.";
     y += app_notice(f, "coder.onboarding.error", cx + pad, y, iw, emsg, APP_NOTICE_ERROR) + a.gap_small;
-    bw := app_button_width(f, -1, "Retry download (17.6 GB)");
-    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry download (17.6 GB)", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+    bw := app_button_width(f, -1, "Retry download");
+    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Retry download", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
   } else {
     y += app_meta(f, "coder.onboarding.specs", cx + pad, y, iw,
-                  "17.6 GB GGUF · 32K context · Apple Silicon Metal · Free, no account required", false) + a.gap;
-    bw := app_button_width(f, -1, "Download Inkling 2 Mini (17.6 GB)");
-    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Download Inkling 2 Mini (17.6 GB)", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
+                  "GGUF local model · Apple Silicon Metal · Free, no account required (switch variants in Settings → Models)", false) + a.gap;
+    bw := app_button_width(f, -1, "Download Inkling 2 Mini");
+    _ := app_button(f, "coder.local.dl", cx + pad, y, bw, -1, "Download Inkling 2 Mini", APP_BUTTON_PRIMARY, 0, CP_LOCAL_DL);
   }
   s[0].bar_h = 0.0f32;
 }

@@ -183,39 +183,41 @@ extension CoderWindow {
                     return
                 }
             } else if !LocalModelStore.isSelectable {
+                let cur = LocalModelStore.entry
                 let why: String
                 if !LocalModelStore.isAppleSilicon {
                     why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
                 } else if !LocalModelStore.hardwareSupported {
-                    why = "Inkling 2 Mini requires at least 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
+                    why = "\(cur.name) requires at least \(cur.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected). Switch to a smaller quant in Settings → Models → Local Model."
                 } else if LocalModelStore.isVerifying {
-                    why = "Inkling 2 Mini is verifying its SHA-256 checksum. Please wait a moment."
+                    why = "\(cur.name) is verifying its SHA-256 checksum. Please wait a moment."
                 } else if LocalModelStore.isDownloading {
-                    why = "Inkling 2 Mini is still downloading (\(LocalModelStore.statusSummary()))."
+                    why = "\(cur.name) is still downloading (\(LocalModelStore.statusSummary()))."
                 } else {
-                    why = "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Download or verify it in Settings → Models → Local Model."
+                    why = "\(cur.name) is not ready (\(LocalModelStore.statusSummary())). Download, import, or verify it in Settings → Models → Local Model."
                 }
                 cd_failed(r.page, why)
-                if shown && LocalModelStore.hardwareSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
+                if shown && LocalModelStore.anyVariantSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
                 wake()
                 return
             }
             #else
             if !LocalModelStore.isSelectable {
+                let cur = LocalModelStore.entry
                 let why: String
                 if !LocalModelStore.isAppleSilicon {
                     why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
                 } else if !LocalModelStore.hardwareSupported {
-                    why = "Inkling 2 Mini requires at least 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected)."
+                    why = "\(cur.name) requires at least \(cur.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected). Switch to a smaller quant in Settings → Models → Local Model."
                 } else if LocalModelStore.isVerifying {
-                    why = "Inkling 2 Mini is verifying its SHA-256 checksum. Please wait a moment."
+                    why = "\(cur.name) is verifying its SHA-256 checksum. Please wait a moment."
                 } else if LocalModelStore.isDownloading {
-                    why = "Inkling 2 Mini is still downloading (\(LocalModelStore.statusSummary()))."
+                    why = "\(cur.name) is still downloading (\(LocalModelStore.statusSummary()))."
                 } else {
-                    why = "Inkling 2 Mini is not ready (\(LocalModelStore.statusSummary())). Download or verify it in Settings → Models → Local Model."
+                    why = "\(cur.name) is not ready (\(LocalModelStore.statusSummary())). Download, import, or verify it in Settings → Models → Local Model."
                 }
                 cd_failed(r.page, why)
-                if shown && LocalModelStore.hardwareSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
+                if shown && LocalModelStore.anyVariantSupported && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying { manageLocalModels() }
                 wake()
                 return
             }

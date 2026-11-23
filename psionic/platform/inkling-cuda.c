@@ -138,6 +138,8 @@ enum {
     K_DVR_F32_NB8,
     K_PROJ_IQ4_P,
     K_PROJ_IQ4_MMA_NB8_SK,
+    K_ABLATE_DIR,
+    K_MOE_SUM_DOWN,
     K_COUNT
 };
 
@@ -228,6 +230,8 @@ static const char *const k_names[K_COUNT] = {
     "ink_dvr_f32_nb8",
     "ink_proj_iq4_p",
     "ink_proj_iq4_mma_nb8_sk",
+    "ink_ablate_dir",
+    "ink_moe_sum_down",
 };
 
 /* Threads per work item: >1 for group kernels (`for thread: 0..<T`), -1 for
@@ -320,6 +324,8 @@ static const int k_threads[K_COUNT] = {
     INK_NT, /* K_DVR_F32_NB8 */
     1,      /* K_PROJ_IQ4_P */
     -1,     /* K_PROJ_IQ4_MMA_NB8_SK */
+    INK_NT, /* K_ABLATE_DIR */
+    1,      /* K_MOE_SUM_DOWN */
 };
 
 typedef struct {
@@ -376,6 +382,13 @@ typedef struct {
 
 struct InkSession {
     InkGGUF gguf;
+    InkLora lora;
+    int has_ablate;
+    int ablate_has_emb;
+    uint8_t ablate_has_layer[32];
+    float *ablate_emb_dir;
+    PcBuffer ablate_dirs;
+    int embd_is_f32;
     PcModule module;
     PcKernel kernels[K_COUNT];
     PcStream stream;
@@ -603,6 +616,169 @@ static int host_fail(InkSession *s, const char *what) {
 /* 32-bit words of codes in a 32-value block: Q8_0 has 32 bytes, IQ4_NL 16. */
 static int64_t quant_words(uint32_t type) { return type == INK_GGML_Q8_0 ? 8 : 4; }
 
+static uint16_t cuda_f32_to_f16(float x) {
+    uint32_t u; memcpy(&u, &x, 4);
+    uint32_t s = (u >> 16) & 0x8000u;
+    int32_t e = (int32_t)((u >> 23) & 0xFFu) - 127;
+    uint32_t m = u & 0x7FFFFFu;
+    if (e == 128) return (uint16_t)(s | 0x7C00u | (m ? 1u : 0u));
+    if (e > 15) return (uint16_t)(s | 0x7BFFu);
+    if (e < -24) return (uint16_t)s;
+    if (e < -14) {
+        m |= 0x800000u;
+        uint32_t sh = (uint32_t)(-14 - e);
+        return (uint16_t)(s | ((m >> (sh + 13)) & 0x3FFu));
+    }
+    uint32_t m10 = (m + 0x1000u) >> 13;
+    if (m10 == 0x400u) { m10 = 0; e++; if (e > 15) return (uint16_t)(s | 0x7BFFu); }
+    return (uint16_t)(s | ((uint32_t)(e + 15) << 10) | m10);
+}
+
+static float cuda_f16_to_f32(uint16_t h) {
+    uint32_t s = ((uint32_t)h & 0x8000u) << 16;
+    uint32_t e = (h >> 10) & 0x1Fu;
+    uint32_t m = h & 0x3FFu;
+    uint32_t u;
+    if (e == 0) {
+        if (m == 0) u = s;
+        else {
+            float v = (float)m * (1.0f / 16777216.0f);
+            return s ? -v : v;
+        }
+    } else if (e == 31) {
+        u = s | 0x7F800000u | (m << 13);
+    } else {
+        u = s | ((e + 112u) << 23) | (m << 13);
+    }
+    float out; memcpy(&out, &u, 4); return out;
+}
+
+static size_t cuda_ggml_row_bytes(uint32_t type, int64_t cols) {
+    int64_t be = ink_ggml_block_elems(type), bb = ink_ggml_block_bytes(type);
+    return (be > 0 && bb > 0) ? (size_t)((cols / be) * bb) : 0;
+}
+
+static uint8_t *ggml_repack_to_q8_0(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
+    size_t src_rb = cuda_ggml_row_bytes(src_type, cols);
+    int64_t nblk = cols / 32;
+    size_t dst_rb = (size_t)nblk * 34;
+    uint8_t *dst = (uint8_t *)malloc((size_t)rows * dst_rb);
+    float *tmp = (float *)malloc((size_t)cols * sizeof(float));
+    if (!dst || !tmp) { free(dst); free(tmp); return NULL; }
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(src_type, src + (size_t)r * src_rb, tmp, cols);
+        uint8_t *orow = dst + (size_t)r * dst_rb;
+        for (int64_t b = 0; b < nblk; b++) {
+            const float *fb = tmp + b * 32;
+            uint8_t *ob = orow + (size_t)b * 34;
+            float max_a = 0.0f;
+            for (int i = 0; i < 32; i++) { float a = fabsf(fb[i]); if (a > max_a) max_a = a; }
+            float d8 = (max_a > 0.0f) ? (max_a / 127.0f) : 0.0f;
+            uint16_t d8u = cuda_f32_to_f16(d8);
+            memcpy(ob, &d8u, 2);
+            float d8f = cuda_f16_to_f32(d8u);
+            float inv = (d8f != 0.0f) ? (1.0f / d8f) : 0.0f;
+            int8_t *qs = (int8_t *)(ob + 2);
+            for (int i = 0; i < 32; i++) {
+                int q = (int)lrintf(fb[i] * inv);
+                if (q < -127) q = -127; else if (q > 127) q = 127;
+                qs[i] = (int8_t)q;
+            }
+        }
+    }
+    free(tmp);
+    return dst;
+}
+
+static uint8_t *ggml_repack_to_iq4_nl(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
+    static const int8_t kvals[16] = {-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113};
+    size_t src_rb = cuda_ggml_row_bytes(src_type, cols);
+    int64_t nblk = cols / 32;
+    size_t dst_rb = (size_t)nblk * 18;
+    uint8_t *dst = (uint8_t *)malloc((size_t)rows * dst_rb);
+    float *tmp = (float *)malloc((size_t)cols * sizeof(float));
+    if (!dst || !tmp) { free(dst); free(tmp); return NULL; }
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(src_type, src + (size_t)r * src_rb, tmp, cols);
+        uint8_t *orow = dst + (size_t)r * dst_rb;
+        for (int64_t b = 0; b < nblk; b++) {
+            const float *fb = tmp + b * 32;
+            uint8_t *ob = orow + (size_t)b * 18;
+            float max_a = 0.0f, max_v = 0.0f;
+            for (int i = 0; i < 32; i++) { float a = fabsf(fb[i]); if (a > max_a) { max_a = a; max_v = fb[i]; } }
+            float d4 = (max_a > 0.0f) ? (max_v / -127.0f) : 0.0f;
+            uint16_t d4u = cuda_f32_to_f16(d4);
+            memcpy(ob, &d4u, 2);
+            float d4f = cuda_f16_to_f32(d4u);
+            float inv = (d4f != 0.0f) ? (1.0f / d4f) : 0.0f;
+            for (int j = 0; j < 16; j++) {
+                float v0 = fb[j] * inv, v1 = fb[j + 16] * inv;
+                int b0 = 0, b1 = 0;
+                float e0 = fabsf(v0 - (float)kvals[0]), e1 = fabsf(v1 - (float)kvals[0]);
+                for (int q = 1; q < 16; q++) {
+                    float d0 = fabsf(v0 - (float)kvals[q]); if (d0 < e0) { e0 = d0; b0 = q; }
+                    float d1 = fabsf(v1 - (float)kvals[q]); if (d1 < e1) { e1 = d1; b1 = q; }
+                }
+                ob[2 + j] = (uint8_t)(b0 | (b1 << 4));
+            }
+        }
+    }
+    free(tmp);
+    return dst;
+}
+
+static float *ggml_dequant_tensor_f32(const InkTensor *t, const uint8_t *src) {
+    int64_t cols = (int64_t)t->dims[0];
+    int64_t rows = (t->ndims >= 2) ? (int64_t)t->dims[1] : 1;
+    for (uint32_t d = 2; d < t->ndims; d++) rows *= (int64_t)t->dims[d];
+    size_t src_rb = cuda_ggml_row_bytes(t->type, cols);
+    float *out = (float *)malloc((size_t)(rows * cols) * sizeof(float));
+    if (!out) return NULL;
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(t->type, src + (size_t)r * src_rb, out + r * cols, cols);
+    }
+    return out;
+}
+
+static int upload_embd_row(InkSession *s, int slot, int32_t tok_id) {
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t d = hp->n_embd;
+    size_t src_rb = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+    const uint8_t *src = s->gguf.map + s->gguf.tok_embd.offset + (size_t)tok_id * src_rb;
+    if (!s->embd_is_f32) {
+        if (pc_upload(s->embd_row + (uint64_t)slot * src_rb, src, src_rb, s->stream) != PC_OK)
+            return host_fail(s, "upload embedding row");
+        return 0;
+    }
+    float row[2304];
+    ink_ggml_dequant_row(s->gguf.tok_embd.type, src, row, d);
+    if (s->ablate_has_emb && s->ablate_emb_dir) {
+        float dot = 0.0f;
+        for (int64_t i = 0; i < d; i++) dot += row[i] * s->ablate_emb_dir[i];
+        for (int64_t i = 0; i < d; i++) row[i] -= dot * s->ablate_emb_dir[i];
+    }
+    if (pc_upload(s->embd_row + (uint64_t)slot * (uint64_t)d * 4, row, (size_t)d * 4, s->stream) != PC_OK)
+        return host_fail(s, "upload f32 embedding row");
+    return 0;
+}
+
+static int enqueue_embed(InkSession *s, int64_t np, PcBuffer dst) {
+    const InkHParams *hp = &s->gguf.hp;
+    int64_t d = hp->n_embd;
+    if (!s->embd_is_f32) {
+        size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+        CALL(s, K_EMBED_Q8, np, a_int(0), a_int(d),
+             a_u16v(s->embd_row, 0, np * (int64_t)(row_bytes / 2)),
+             a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+             a_f32v(dst, 0, np * d));
+        return 0;
+    }
+    CALL(s, K_RMSNORM, np, a_int(d), a_int(1), a_f32(hp->rms_eps),
+         a_f32v(s->embd_row, 0, np * d), a_tensor_f32(s, &s->gguf.tok_norm),
+         a_f32v(dst, 0, np * d));
+    return 0;
+}
+
 /* Put a quantized matrix on the device in device order (see ink_relayout in
    kernels-cuda.coax): `rows` rows of `blocks` GGUF blocks at src become the
    block-major words and scales at dst, the same number of bytes. The rows go
@@ -652,15 +828,29 @@ static int load_expert(InkSession *s, int ip, int e, int slot) {
     ExpertCache *c = &s->experts[ip];
     const uint8_t *gu = s->gguf.map + L->ffn_gate_up_exps.offset + (size_t)e * c->src_gu_bytes;
     const uint8_t *dn = s->gguf.map + L->ffn_down_exps.offset + (size_t)e * c->src_dn_bytes;
-    int q_gu = (L->ffn_gate_up_exps.type == INK_GGML_Q8_0 && c->gu_type == INK_GGML_IQ4_NL);
-    int q_dn = (L->ffn_down_exps.type == INK_GGML_Q8_0 && c->dn_type == INK_GGML_IQ4_NL);
-    int rc_gu = q_gu
-        ? relayout_q8_to_iq4(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, hp->n_ff_exp)
-        : relayout(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, quant_words(c->gu_type), hp->n_ff_exp);
+    int rc_gu;
+    if (L->ffn_gate_up_exps.type == INK_GGML_Q8_0 && c->gu_type == INK_GGML_IQ4_NL) {
+        rc_gu = relayout_q8_to_iq4(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, hp->n_ff_exp);
+    } else if (L->ffn_gate_up_exps.type == c->gu_type) {
+        rc_gu = relayout(s, gu, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, quant_words(c->gu_type), hp->n_ff_exp);
+    } else {
+        uint8_t *rep = ggml_repack_to_iq4_nl(L->ffn_gate_up_exps.type, gu, 2 * hp->n_ff_exp, hp->n_embd);
+        if (!rep) { snprintf(s->error, sizeof s->error, "out of memory repacking expert gate_up"); return 1; }
+        rc_gu = relayout(s, rep, c->gu + (uint64_t)slot * c->gu_bytes, 2 * hp->n_ff_exp, hp->n_embd / 32, 4, hp->n_ff_exp);
+        free(rep);
+    }
     if (rc_gu) return rc_gu;
-    return q_dn
-        ? relayout_q8_to_iq4(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, 0)
-        : relayout(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, quant_words(c->dn_type), 0);
+    if (L->ffn_down_exps.type == INK_GGML_Q8_0 && c->dn_type == INK_GGML_IQ4_NL) {
+        return relayout_q8_to_iq4(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, 0);
+    } else if (L->ffn_down_exps.type == c->dn_type) {
+        return relayout(s, dn, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, quant_words(c->dn_type), 0);
+    } else {
+        uint8_t *rep = ggml_repack_to_iq4_nl(L->ffn_down_exps.type, dn, hp->n_embd, hp->n_ff_exp);
+        if (!rep) { snprintf(s->error, sizeof s->error, "out of memory repacking expert down"); return 1; }
+        int rc_dn = relayout(s, rep, c->dn + (uint64_t)slot * c->dn_bytes, hp->n_embd, hp->n_ff_exp / 32, 4, 0);
+        free(rep);
+        return rc_dn;
+    }
 }
 
 static int dispatch_mv_run(InkSession *s, const InkTensor *w, int64_t n, int64_t rows, int64_t cols, int add,
@@ -1032,7 +1222,25 @@ static int dispatch_moe_mma(InkSession *s, int il, int ip, int64_t np, int64_t g
              a_u32v(s->moe_hid_bf16, 0, n_entries * (n_ff / 2)),
              a_slot, a_base, a_cnt, a_pair,
              a_f32v(s->moe_down_out, 0, (int64_t)s->batch * n_used * d));
-        if (s->spec_recording) {
+        int ablate_ip = (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]);
+        if (ablate_ip) {
+            CALL(s, K_MOE_SUM_DOWN, np * d, a_int(d), a_int(np), a_int(n_used),
+                 a_f32v(s->moe_down_out, 0, np * n_used * d), a_f32v(s->o_raw, 0, np * d));
+            CALL(s, K_ABLATE_DIR, np, a_int(d), a_int((int64_t)(1 + ip) * d),
+                 a_f32v(s->ablate_dirs, 0, (1 + hp->n_phys) * d), a_f32v(s->o_raw, 0, np * d));
+            if (s->spec_recording) {
+                int64_t n_kv = hp->n_head_kv * hp->head_dim;
+                int64_t slot_ch = 2 * n_kv + 2 * d;
+                int64_t log_off = (int64_t)il * 8 * slot_ch + 16 * n_kv + 8 * d;
+                CALL(s, K_ATTN_POST_LOG, d, a_int(d), a_int(np), a_int(0),
+                     a_f32v(s->o_raw, 0, np * d), a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                     a_f32v(s->spec_raw_log, log_off, 8 * d), a_f32v(s->cur, 0, np * d), a_f32v(s->dummy_f32, 0, 64));
+            } else {
+                CALL(s, K_MOE_POST, d, a_int(d), a_int(np), a_f32v(s->o_raw, 0, np * d),
+                     a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+                     a_f32v(s->cur, 0, np * d), a_f32v(s->cur, 0, np * d));
+            }
+        } else if (s->spec_recording) {
             int64_t n_kv = hp->n_head_kv * hp->head_dim;
             int64_t slot_ch = 2 * n_kv + 2 * d;
             int64_t bak_off = ((int64_t)il * slot_ch + 2 * n_kv + d) * 3;
@@ -1137,10 +1345,20 @@ static int dispatch_moe_mma(InkSession *s, int il, int ip, int64_t np, int64_t g
         at += chunk;
     }
 
-    CALL(s, K_MOE_REDUCE_POST, d, a_int(d), a_int(np), a_int(n_used),
-         a_f32v(s->moe_down_out, 0, np * n_used * d),
-         a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
-         a_f32v(s->cur, 0, np * d));
+    if (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]) {
+        CALL(s, K_MOE_SUM_DOWN, np * d, a_int(d), a_int(np), a_int(n_used),
+             a_f32v(s->moe_down_out, 0, np * n_used * d), a_f32v(s->o_raw, 0, np * d));
+        CALL(s, K_ABLATE_DIR, np, a_int(d), a_int((int64_t)(1 + ip) * d),
+             a_f32v(s->ablate_dirs, 0, (1 + hp->n_phys) * d), a_f32v(s->o_raw, 0, np * d));
+        CALL(s, K_MOE_POST, d, a_int(d), a_int(np), a_f32v(s->o_raw, 0, np * d),
+             a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+             a_f32v(s->cur, 0, np * d), a_f32v(s->cur, 0, np * d));
+    } else {
+        CALL(s, K_MOE_REDUCE_POST, d, a_int(d), a_int(np), a_int(n_used),
+             a_f32v(s->moe_down_out, 0, np * n_used * d),
+             a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
+             a_f32v(s->cur, 0, np * d));
+    }
     return 0;
 }
 
@@ -1442,7 +1660,8 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
     }
     PcArg blk_arg = block_start ? a_f32v(s->blocks, (int64_t)(*n_blocks) * stack, nd) : a_f32v(s->dummy_f32, 0, 64);
     const InkTensor *wo = &L->attn_output;
-    if (np == 1 && wo->type == INK_GGML_Q8_0 && !s->no_tables && !s->oracle_q8 && d % 4 == 0 && n_q % 32 == 0 &&
+    int ablate_ip = (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]);
+    if (!ablate_ip && np == 1 && wo->type == INK_GGML_Q8_0 && !s->no_tables && !s->oracle_q8 && d % 4 == 0 && n_q % 32 == 0 &&
         (size_t)(d * (n_q / 32)) <= s->mv_part_floats) {
         int64_t blocks = n_q / 32, lrows = (int64_t)(wo->nbytes / (uint64_t)(blocks * 34));
         PcBuffer dev = tensor_dev(s, wo);
@@ -1460,6 +1679,10 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
         } else {
             if (dispatch_iq4_mma(s, wo, np, d, n_q, s->x_bf16, 0, s->o_raw, 0)) return 1;
         }
+        if (ablate_ip) {
+            CALL(s, K_ABLATE_DIR, np, a_int(d), a_int((int64_t)(1 + ip) * d),
+                 a_f32v(s->ablate_dirs, 0, (1 + hp->n_phys) * d), a_f32v(s->o_raw, 0, nd));
+        }
         if (s->spec_recording) {
             int64_t slot_ch = 2 * n_kv + 2 * d;
             CALL(s, K_ATTN_POST_LOG, d, a_int(d), a_int(np), a_int(block_start),
@@ -1473,6 +1696,10 @@ static int dispatch_layer_pre(InkSession *s, int il, int ip, int64_t np, int *n_
         }
     } else {
         if (dispatch_mv(s, wo, np, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
+        if (ablate_ip) {
+            CALL(s, K_ABLATE_DIR, np, a_int(d), a_int((int64_t)(1 + ip) * d),
+                 a_f32v(s->ablate_dirs, 0, (1 + hp->n_phys) * d), a_f32v(s->o_raw, 0, nd));
+        }
         if (s->spec_recording) {
             int64_t slot_ch = 2 * n_kv + 2 * d;
             CALL(s, K_ATTN_POST_LOG, d, a_int(d), a_int(np), a_int(block_start),
@@ -1543,7 +1770,7 @@ static int dispatch_layer_moe(InkSession *s, int il, int ip, int64_t np, PcBuffe
                  a_view(c->dn, 0, dn_words), a_view(c->dn, 0, dn_words * 2),
                  a_f32v(s->gu_part, 0, gu_n), a_u32v(ids, tok * n_used, n_used), a_f32v(s->moe_wts, tok * n_used, n_used),
                  a_f32v(s->dn_part, 0, n_parts * d));
-            if (np == 1) {
+            if (np == 1 && !(s->has_ablate && ip < 32 && s->ablate_has_layer[ip])) {
                 /* One token: the sum, the post shortconv and the residual add together. */
                 CALL(s, K_SUM_POST, (d + 31) / 32, a_int(d), a_int(n_parts), a_int(0),
                      a_f32v(s->dn_part, 0, n_parts * d), a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
@@ -1579,6 +1806,10 @@ static int dispatch_layer_moe(InkSession *s, int il, int ip, int64_t np, PcBuffe
              a_u32v(ids, 0, np * n_used),
              a_f32v(s->moe_wts, 0, np * n_used),
              a_f32v(s->moe_out, 0, nd));
+    }
+    if (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]) {
+        CALL(s, K_ABLATE_DIR, np, a_int(d), a_int((int64_t)(1 + ip) * d),
+             a_f32v(s->ablate_dirs, 0, (1 + hp->n_phys) * d), a_f32v(s->moe_out, 0, nd));
     }
     CALL(s, K_MOE_POST, d, a_int(d), a_int(np), a_f32v(s->moe_out, 0, nd),
          a_tensor_f32(s, &L->ffn_post_conv), a_f32v(s->conv_fo[il], 0, d * 3),
@@ -1654,6 +1885,26 @@ static int is_fast_q4_attn_tensor(const InkLayerTensors *L, const InkTensor *t) 
     return t == &L->attn_q || t == &L->attn_k || t == &L->attn_k_conv_proj ||
            t == &L->attn_v || t == &L->attn_v_conv_proj || t == &L->attn_rel ||
            t == &L->attn_sink_proj || t == &L->attn_gate || t == &L->attn_output;
+}
+
+static int is_loop_ctrl_tensor(const InkLayerTensors *L, const InkTensor *t) {
+    for (int c = 0; c < 4; c++) {
+        if (t == &L->loop_ctrl_down[c] || t == &L->loop_ctrl_gain[c] || t == &L->loop_ctrl_forget[c]) return 1;
+    }
+    return 0;
+}
+
+static uint64_t cuda_dev_tensor_bytes(const InkTensor *t, int force_f32) {
+    if (force_f32 || t->ndims == 1) {
+        uint64_t ne = 1;
+        for (uint32_t d = 0; d < t->ndims; d++) ne *= t->dims[d];
+        return ne * 4;
+    }
+    if (t->type == INK_GGML_F32 || t->type == INK_GGML_Q8_0 || t->type == INK_GGML_IQ4_NL) return t->nbytes;
+    if (t->ndims == 2 && (t->dims[0] % 32) == 0) return t->dims[1] * (t->dims[0] / 32) * 34;
+    uint64_t ne = 1;
+    for (uint32_t d = 0; d < t->ndims; d++) ne *= t->dims[d];
+    return ne * 4;
 }
 
 static int env_on(const char *name) {
@@ -2324,14 +2575,10 @@ static int enqueue_dspark_draft_body(InkSession *s, int count) {
     const InkHParams *hp = &s->gguf.hp;
     int64_t d_dim = 2304;
     int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     int64_t pos_arg = s->capturing ? -1 : (int64_t)d->pos;
 
     /* 1. Anchor embedding + MarkovHead f_rnn mix/norm */
-    CALL(s, K_EMBED_Q8, 1, a_int(0), a_int(d_dim),
-         a_u16v(s->embd_row, 0, (int64_t)(row_bytes / 2)),
-         a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
-         a_f32v(d->anchor_emb, 0, d_dim));
+    if (enqueue_embed(s, 1, d->anchor_emb) != 0) return 1;
     CALL(s, K_DSPARK_MIX_NORM, 1,
          a_int(1), a_int(d_dim),
          a_f32(d->fuse_alpha[3][0]), a_f32(d->fuse_alpha[3][1]),
@@ -2431,7 +2678,6 @@ static int enqueue_dspark_draft_body(InkSession *s, int count) {
 
 static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *out_toks, float *out_probs) {
     CudaDspark *d = &s->dspark;
-    const InkHParams *hp = &s->gguf.hp;
     if (!d->ready || count < 1 || count > 7) return 1;
     if (d->pos + d->pending_got != s->pos || s->pos < 1) return 1;
     double began = pc_seconds();
@@ -2440,10 +2686,9 @@ static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *o
     }
     if (d->pos != s->pos) return 1;
 
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     uint32_t anc_u32 = (uint32_t)anchor;
     d->pos_host = (uint32_t)d->pos;
-    if (pc_upload(s->embd_row, s->gguf.map + s->gguf.tok_embd.offset + (size_t)anchor * row_bytes, row_bytes, s->stream) != PC_OK ||
+    if (upload_embd_row(s, 0, anchor) != 0 ||
         pc_upload(d->draft_toks, &anc_u32, 4, s->stream) != PC_OK ||
         pc_upload(d->dev_pos, &d->pos_host, 4, s->stream) != PC_OK)
         return 1;
@@ -2485,17 +2730,53 @@ static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *o
 }
 
 int ink_open(const char *gguf_path, const char *kernel_path, int max_ctx, InkSession **out, char *err, size_t err_bytes) {
-    return ink_open_ex(gguf_path, kernel_path, max_ctx, 0, out, err, err_bytes);
+    return ink_open_lora(gguf_path, kernel_path, NULL, max_ctx, 0, out, err, err_bytes);
 }
 
 int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
                 int loop_count_override, InkSession **out, char *err, size_t err_bytes) {
+    return ink_open_lora(gguf_path, kernel_path, NULL, max_ctx, loop_count_override, out, err, err_bytes);
+}
+
+int ink_open_lora(const char *gguf_path, const char *kernel_path, const char *lora_path, int max_ctx,
+                  int loop_count_override, InkSession **out, char *err, size_t err_bytes) {
     *out = NULL;
     InkSession *s = (InkSession *)calloc(1, sizeof *s);
     if (!s) { snprintf(err, err_bytes, "out of memory"); return 1; }
 
     if (ink_gguf_open(gguf_path, &s->gguf, err, err_bytes) != 0) { free(s); return 1; }
     InkHParams *hp = &s->gguf.hp;
+    float *ablate_host = NULL;
+    if (lora_path && lora_path[0]) {
+        if (ink_lora_open(lora_path, &s->lora, err, err_bytes) != 0) {
+            ink_close(s); return 1;
+        }
+        size_t ab_elems = (size_t)(1 + hp->n_phys) * (size_t)hp->n_embd;
+        ablate_host = (float *)calloc(ab_elems, sizeof(float));
+        if (!ablate_host) {
+            snprintf(err, err_bytes, "out of memory allocating ablation directions");
+            ink_close(s); return 1;
+        }
+        if (ink_lora_extract_ablate(&s->lora, (int)hp->n_phys, (int)hp->n_embd, (int)hp->n_expert, ablate_host,
+                                    &s->ablate_has_emb, s->ablate_has_layer, err, err_bytes) != 0) {
+            free(ablate_host);
+            ink_close(s); return 1;
+        }
+        s->has_ablate = s->ablate_has_emb ? 1 : 0;
+        for (int ip = 0; ip < hp->n_phys && ip < 32; ip++) {
+            if (s->ablate_has_layer[ip]) s->has_ablate = 1;
+        }
+        if (s->ablate_has_emb) {
+            s->ablate_emb_dir = (float *)malloc((size_t)hp->n_embd * sizeof(float));
+            if (!s->ablate_emb_dir) {
+                snprintf(err, err_bytes, "out of memory allocating embedding ablation vector");
+                free(ablate_host);
+                ink_close(s); return 1;
+            }
+            memcpy(s->ablate_emb_dir, ablate_host, (size_t)hp->n_embd * sizeof(float));
+        }
+    }
+    s->embd_is_f32 = (s->gguf.tok_embd.type != INK_GGML_Q8_0 || s->ablate_has_emb) ? 1 : 0;
     if (loop_count_override < 0 || loop_count_override > 16) {
         snprintf(err, err_bytes, "invalid loop_count_override %d (expected 0 or 1..16)", loop_count_override);
         ink_close(s); return 1;
@@ -2556,8 +2837,9 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         const InkTensor *t = (const InkTensor *)L;
         for (int i = 0; i < INK_LAYER_TENSORS; i++) {
             if (!t[i].present || is_expert_tensor(L, &t[i])) continue;
-            uint64_t nb_dev = t[i].nbytes;
-            if (s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
+            int force_f32 = is_loop_ctrl_tensor(L, &t[i]);
+            uint64_t nb_dev = cuda_dev_tensor_bytes(&t[i], force_f32);
+            if (!force_f32 && s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
                 t[i].type == INK_GGML_Q8_0 && t[i].ndims == 2 &&
                 (t[i].dims[0] % 32) == 0 && (t[i].nbytes % 34) == 0) {
                 fast_q4_orig_attn += (size_t)t[i].nbytes;
@@ -2569,24 +2851,37 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         ExpertCache *c = &s->experts[ip];
         if (!L->ffn_gate_up_exps.present || !L->ffn_down_exps.present) {
             snprintf(err, err_bytes, "layer %d has no expert tensors", ip);
+            free(ablate_host);
             ink_close(s); return 1;
         }
-        c->gu_type = L->ffn_gate_up_exps.type;
-        c->dn_type = L->ffn_down_exps.type;
         c->src_gu_bytes = (size_t)(L->ffn_gate_up_exps.nbytes / (uint64_t)hp->n_expert);
         c->src_dn_bytes = (size_t)(L->ffn_down_exps.nbytes / (uint64_t)hp->n_expert);
-        c->gu_bytes = c->src_gu_bytes;
-        c->dn_bytes = c->src_dn_bytes;
+        if (L->ffn_gate_up_exps.type == INK_GGML_Q8_0 || L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) {
+            c->gu_type = L->ffn_gate_up_exps.type;
+            c->gu_bytes = c->src_gu_bytes;
+        } else {
+            c->gu_type = INK_GGML_IQ4_NL;
+            c->gu_bytes = (size_t)(2 * hp->n_ff_exp * (hp->n_embd / 32) * 18);
+        }
+        if (L->ffn_down_exps.type == INK_GGML_Q8_0 || L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
+            c->dn_type = L->ffn_down_exps.type;
+            c->dn_bytes = c->src_dn_bytes;
+        } else {
+            c->dn_type = INK_GGML_IQ4_NL;
+            c->dn_bytes = (size_t)(hp->n_embd * (hp->n_ff_exp / 32) * 18);
+        }
         expert_bytes += (c->gu_bytes + c->dn_bytes) * (size_t)hp->n_expert;
         smallest_cache += (c->gu_bytes + c->dn_bytes) * INK_MIN_EXPERT_SLOTS;
     }
-    size_t out_nbytes_dev = (size_t)s->gguf.output.nbytes;
+    size_t out_nbytes_dev = (size_t)cuda_dev_tensor_bytes(&s->gguf.output, 0);
     s->output_iq4 = (!s->oracle_q8 && s->gguf.output.type == INK_GGML_Q8_0 && (s->gguf.output.nbytes % 34) == 0 &&
                      (s->fast_q4 || env_on("INK_Q4_LM_HEAD") ||
                       (info.free_bytes < ((size_t)18432 << 20) && s->max_ctx > 8192 && !env_on("INK_EXACT_LM_HEAD"))));
     if (s->output_iq4) out_nbytes_dev = (size_t)(s->gguf.output.nbytes / 34) * 18;
-    resident_bytes += ((s->gguf.out_res_query.nbytes + 255) & ~(uint64_t)255) + ((s->gguf.out_norm.nbytes + 255) & ~(uint64_t)255) +
-                      ((out_nbytes_dev + 255) & ~(uint64_t)255) + ((s->gguf.tok_norm.nbytes + 255) & ~(uint64_t)255);
+    resident_bytes += ((cuda_dev_tensor_bytes(&s->gguf.out_res_query, 1) + 255) & ~(uint64_t)255) +
+                      ((cuda_dev_tensor_bytes(&s->gguf.out_norm, 1) + 255) & ~(uint64_t)255) +
+                      ((out_nbytes_dev + 255) & ~(uint64_t)255) +
+                      ((cuda_dev_tensor_bytes(&s->gguf.tok_norm, 1) + 255) & ~(uint64_t)255);
 
     size_t free_b = info.free_bytes, total_b = info.total_bytes;
     int64_t test_mb = env_mb("INK_VRAM_MB"); /* plan as if this much VRAM were free */
@@ -2808,53 +3103,102 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
         ink_close(s); return 1;
     }
     size_t at = 0;
-#define PLACE(tensor, dev) do { \
+#define PLACE_EX(tensor, dev, force_f32) do { \
         (dev) = s->weights + at; \
-        int quant_ = (tensor)->type == INK_GGML_Q8_0 || (tensor)->type == INK_GGML_IQ4_NL; \
-        int64_t blocks_ = (int64_t)(tensor)->dims[0] / 32, words_ = quant_words((tensor)->type); \
-        if (quant_ && ((tensor)->ndims != 2 || (tensor)->dims[0] % 32 != 0 || \
-                       (tensor)->nbytes != (tensor)->dims[1] * (uint64_t)(blocks_ * (4 * words_ + 2)))) { \
-            snprintf(err, err_bytes, "a quantized tensor is not a matrix of whole blocks"); ink_close(s); return 1; \
+        if (((force_f32) || (tensor)->ndims == 1) && (tensor)->type != INK_GGML_F32) { \
+            float *_f32 = ggml_dequant_tensor_f32((tensor), s->gguf.map + (tensor)->offset); \
+            if (!_f32) { snprintf(err, err_bytes, "out of memory dequantizing tensor to f32"); free(ablate_host); ink_close(s); return 1; } \
+            uint64_t _nb = cuda_dev_tensor_bytes((tensor), 1); \
+            int _rc = upload_big(s, (dev), (const uint8_t *)_f32, (size_t)_nb); \
+            free(_f32); \
+            if (_rc) { snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1; } \
+            (tensor)->type = INK_GGML_F32; \
+            (tensor)->nbytes = _nb; \
+            at += ((size_t)_nb + 255) & ~(size_t)255; \
+        } else if ((tensor)->type != INK_GGML_F32 && (tensor)->type != INK_GGML_Q8_0 && (tensor)->type != INK_GGML_IQ4_NL) { \
+            if ((tensor)->ndims == 2 && ((tensor)->dims[0] % 32) == 0) { \
+                uint8_t *_q8 = ggml_repack_to_q8_0((tensor)->type, s->gguf.map + (tensor)->offset, (int64_t)(tensor)->dims[1], (int64_t)(tensor)->dims[0]); \
+                if (!_q8) { snprintf(err, err_bytes, "out of memory repacking tensor to q8_0"); free(ablate_host); ink_close(s); return 1; } \
+                int64_t _blks = (int64_t)(tensor)->dims[0] / 32; \
+                int _rc = relayout(s, _q8, (dev), (int64_t)(tensor)->dims[1], _blks, 8, 0); \
+                free(_q8); \
+                if (_rc) { snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1; } \
+                (tensor)->type = INK_GGML_Q8_0; \
+                (tensor)->nbytes = (tensor)->dims[1] * (uint64_t)_blks * 34; \
+                at += ((size_t)(tensor)->nbytes + 255) & ~(size_t)255; \
+            } else { \
+                float *_f32 = ggml_dequant_tensor_f32((tensor), s->gguf.map + (tensor)->offset); \
+                if (!_f32) { snprintf(err, err_bytes, "out of memory dequantizing tensor"); free(ablate_host); ink_close(s); return 1; } \
+                uint64_t _nb = cuda_dev_tensor_bytes((tensor), 1); \
+                int _rc = upload_big(s, (dev), (const uint8_t *)_f32, (size_t)_nb); \
+                free(_f32); \
+                if (_rc) { snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1; } \
+                (tensor)->type = INK_GGML_F32; \
+                (tensor)->nbytes = _nb; \
+                at += ((size_t)_nb + 255) & ~(size_t)255; \
+            } \
+        } else { \
+            int quant_ = (tensor)->type == INK_GGML_Q8_0 || (tensor)->type == INK_GGML_IQ4_NL; \
+            int64_t blocks_ = (int64_t)(tensor)->dims[0] / 32, words_ = quant_words((tensor)->type); \
+            if (quant_ && ((tensor)->ndims != 2 || (tensor)->dims[0] % 32 != 0 || \
+                           (tensor)->nbytes != (tensor)->dims[1] * (uint64_t)(blocks_ * (4 * words_ + 2)))) { \
+                snprintf(err, err_bytes, "a quantized tensor is not a matrix of whole blocks"); free(ablate_host); ink_close(s); return 1; \
+            } \
+            if (quant_ ? relayout(s, s->gguf.map + (tensor)->offset, (dev), (int64_t)(tensor)->dims[1], blocks_, words_, 0) \
+                       : upload_big(s, (dev), s->gguf.map + (tensor)->offset, (size_t)(tensor)->nbytes)) { snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1; } \
+            at += ((size_t)(tensor)->nbytes + 255) & ~(size_t)255; \
         } \
-        if (quant_ ? relayout(s, s->gguf.map + (tensor)->offset, (dev), (int64_t)(tensor)->dims[1], blocks_, words_, 0) \
-                   : upload_big(s, (dev), s->gguf.map + (tensor)->offset, (size_t)(tensor)->nbytes)) { snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1; } \
-        at += ((size_t)(tensor)->nbytes + 255) & ~(size_t)255; \
     } while (0)
+#define PLACE(tensor, dev) PLACE_EX((tensor), (dev), 0)
     for (int ip = 0; ip < hp->n_phys; ip++) {
         InkLayerTensors *L = &s->gguf.layers[ip];
         InkTensor *t = (InkTensor *)L;
         for (int i = 0; i < INK_LAYER_TENSORS; i++) {
             if (!t[i].present || is_expert_tensor(L, &t[i])) continue;
-            if (s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
+            int force_f32 = is_loop_ctrl_tensor(L, &t[i]);
+            if (!force_f32 && s->fast_q4 && is_fast_q4_attn_tensor(L, &t[i]) &&
                 t[i].type == INK_GGML_Q8_0 && t[i].ndims == 2 &&
                 (t[i].dims[0] % 32) == 0 && (t[i].nbytes % 34) == 0) {
                 s->layer_dev[ip][i] = s->weights + at;
                 if (relayout_q8_to_iq4(s, s->gguf.map + t[i].offset, s->layer_dev[ip][i],
                                        (int64_t)t[i].dims[1], (int64_t)t[i].dims[0] / 32, 0)) {
-                    snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1;
+                    snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1;
                 }
                 t[i].type = INK_GGML_IQ4_NL;
                 t[i].nbytes = (t[i].nbytes / 34) * 18;
                 at += ((size_t)t[i].nbytes + 255) & ~(size_t)255;
             } else {
-                PLACE(&t[i], s->layer_dev[ip][i]);
+                PLACE_EX(&t[i], s->layer_dev[ip][i], force_f32);
             }
         }
     }
-    PLACE(&s->gguf.out_res_query, s->out_res_query_dev);
-    PLACE(&s->gguf.out_norm, s->out_norm_dev);
+    PLACE_EX(&s->gguf.out_res_query, s->out_res_query_dev, 1);
+    PLACE_EX(&s->gguf.out_norm, s->out_norm_dev, 1);
     if (s->output_iq4) {
         s->output_dev = s->weights + at;
         if (relayout_q8_to_iq4(s, s->gguf.map + s->gguf.output.offset, s->output_dev,
                                (int64_t)s->gguf.output.dims[1], (int64_t)s->gguf.output.dims[0] / 32, 0)) {
-            snprintf(err, err_bytes, "%s", s->error); ink_close(s); return 1;
+            snprintf(err, err_bytes, "%s", s->error); free(ablate_host); ink_close(s); return 1;
         }
         at += (out_nbytes_dev + 255) & ~(size_t)255;
     } else {
         PLACE(&s->gguf.output, s->output_dev);
     }
-    PLACE(&s->gguf.tok_norm, s->tok_norm_dev);
+    PLACE_EX(&s->gguf.tok_norm, s->tok_norm_dev, 1);
 #undef PLACE
+#undef PLACE_EX
+
+    if (s->has_ablate && ablate_host) {
+        size_t ab_bytes = (size_t)(1 + hp->n_phys) * d * sizeof(float);
+        if (pc_alloc(ab_bytes, &s->ablate_dirs) != PC_OK ||
+            pc_upload(s->ablate_dirs, ablate_host, ab_bytes, s->stream) != PC_OK) {
+            snprintf(err, err_bytes, "upload ablation directions: %s", pc_log());
+            free(ablate_host);
+            ink_close(s); return 1;
+        }
+    }
+    free(ablate_host);
+    ablate_host = NULL;
 
     /* ---- Expert caches. ---- */
     for (int ip = 0; ip < hp->n_phys; ip++) {
@@ -2877,7 +3221,7 @@ int ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
     }
 
     /* ---- Scratch. ---- */
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
+    size_t row_bytes = s->embd_is_f32 ? (d * 4) : (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     size_t nb = (size_t)s->batch;
     size_t n_used = (size_t)hp->n_expert_used;
     size_t widest = 2 * d > n_q ? 2 * d : n_q;
@@ -3130,7 +3474,7 @@ void ink_close(InkSession *s) {
             &s->conv_all, &s->spec_conv_bak, &s->spec_raw_log,
             &s->spec_logits, &s->spec_hidden, &s->spec_argmax_out,
             &s->spec_topk_cnt, &s->spec_topk_ids, &s->spec_topk_vals,
-            &s->dev_pos, &s->dummy_f32, &s->oracle_x,
+            &s->dev_pos, &s->dummy_f32, &s->oracle_x, &s->ablate_dirs,
         };
         ink_dspark_close(s);
         for (size_t i = 0; i < sizeof scratch / sizeof *scratch; i++) free_buf(scratch[i]);
@@ -3142,8 +3486,10 @@ void ink_close(InkSession *s) {
         free(s->snaps[i].logits); free(s->snaps[i].swa_kv);
         free(s->snaps[i].dspark_last_taps); free(s->snaps[i].dspark_swa_kv);
     }
+    free(s->ablate_emb_dir);
     free(s->logits_host); free(s->hidden_host); free(s->zeros); free(s->moe_tasks_host);
     free(s->tok_hist); free(s->live_tokens); free(s->pred_toks); free(s->sess_hist);
+    ink_lora_close(&s->lora);
     ink_gguf_close(&s->gguf);
     free(s);
 }
@@ -3575,7 +3921,6 @@ static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
     int64_t d = hp->n_embd;
     int64_t nd = np * d;
     int64_t stack = (int64_t)s->batch * d;
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
 
     if (s->spec_recording) {
         CALL(s, K_COPY, (int64_t)s->conv_all_elems, a_int((int64_t)s->conv_all_elems),
@@ -3583,11 +3928,7 @@ static int enqueue_body(InkSession *s, int64_t np, int compute_logits) {
              a_f32v(s->spec_conv_bak, 0, (int64_t)s->conv_all_elems));
     }
 
-    CALL(s, K_EMBED_Q8, np, a_int(0), a_int(d),
-         a_u16v(s->embd_row, 0, np * (int64_t)(row_bytes / 2)),
-         a_tensor_f32(s, &s->gguf.tok_norm),
-         a_f32(hp->rms_eps),
-         a_f32v(s->cur, 0, nd));
+    if (enqueue_embed(s, np, s->cur) != 0) return 1;
 
     int n_blocks = 0;
     int start = (int)hp->loop_start;
@@ -3715,7 +4056,6 @@ static int enqueue_streaming_graph(InkSession *s, int compute_logits) {
 
     int64_t d = hp->n_embd;
     int64_t stack = (int64_t)s->batch * d;
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     int n_blocks = 0;
     int start = (int)hp->loop_start;
     int end = (int)hp->loop_end;
@@ -3723,11 +4063,7 @@ static int enqueue_streaming_graph(InkSession *s, int compute_logits) {
 
     if (pc_capture_begin(s->stream) != PC_OK) return host_fail(s, "capture seg 0 begin");
     s->capturing = 1;
-    {
-        PcArg _args[] = { a_int(0), a_int(d), a_u16v(s->embd_row, 0, (int64_t)(row_bytes / 2)),
-                          a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps), a_f32v(s->cur, 0, d) };
-        if (call_k(s, K_EMBED_Q8, 1, 6, _args) != 0) goto fail;
-    }
+    if (enqueue_embed(s, 1, s->cur) != 0) goto fail;
 
 #define BEGIN_SEG_IF_PREV() do { \
         if (prev_il >= 0) { \
@@ -3864,15 +4200,12 @@ static int enqueue_batch(InkSession *s, const int32_t *tokens, int np_tokens, in
     }
 
     /* 1. Upload the batch's embedding rows from host memory. */
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     for (int b = 0; b < np_tokens; b++) {
         if (tokens[b] < 0 || tokens[b] >= hp->n_vocab) {
             snprintf(s->error, sizeof s->error, "token id %d out of range [0,%lld)", tokens[b], (long long)hp->n_vocab);
             return 1;
         }
-        if (pc_upload(s->embd_row + (uint64_t)b * row_bytes, s->gguf.map + s->gguf.tok_embd.offset + (size_t)tokens[b] * row_bytes,
-                      row_bytes, s->stream) != PC_OK)
-            return host_fail(s, "upload embedding rows");
+        if (upload_embd_row(s, b, tokens[b]) != 0) return 1;
     }
 
     if (np_tokens == 1 && !s->no_graph && !s->profile) {
@@ -4037,16 +4370,12 @@ static int ink_verify_batch_cuda(InkSession *s, const int32_t *tokens, int nb) {
     }
     double began = pc_seconds();
     if (ink_flush_spec(s) != 0) return 1;
-    size_t row_bytes = (size_t)(s->gguf.tok_embd.nbytes / (uint64_t)hp->n_vocab);
     for (int b = 0; b < nb; b++) {
         if (tokens[b] < 0 || tokens[b] >= hp->n_vocab) {
             snprintf(s->error, sizeof s->error, "token id %d out of range [0,%lld)", tokens[b], (long long)hp->n_vocab);
             return 1;
         }
-        if (pc_upload(s->embd_row + (uint64_t)b * row_bytes,
-                      s->gguf.map + s->gguf.tok_embd.offset + (size_t)tokens[b] * row_bytes,
-                      row_bytes, s->stream) != PC_OK)
-            return host_fail(s, "upload verify embedding rows");
+        if (upload_embd_row(s, b, tokens[b]) != 0) return 1;
     }
     s->pos_host = (uint32_t)s->pos;
     if (pc_upload(s->dev_pos, &s->pos_host, 4, s->stream) != PC_OK)

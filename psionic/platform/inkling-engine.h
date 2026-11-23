@@ -82,6 +82,10 @@ int  ink_open(const char *gguf_path, const char *kernel_path, int max_ctx,
               InkSession **out, char *err, size_t err_bytes);
 int  ink_open_ex(const char *gguf_path, const char *kernel_path, int max_ctx,
                  int loop_count_override, InkSession **out, char *err, size_t err_bytes);
+/* Open with an optional GGUF LoRA / direction-ablation adapter (lora_path may be NULL/empty). */
+int  ink_open_lora(const char *gguf_path, const char *kernel_path, const char *lora_path,
+                   int max_ctx, int loop_count_override, InkSession **out,
+                   char *err, size_t err_bytes);
 const InkMemoryBudget *ink_memory_budget(const InkSession *s);
 /* Compile kernel_path on the device and verify Coax-emitted ink_dv_nvfp4, ink_dv_mxfp8, and ink_dv_iq4
    against exact CPU reference dequantization (returns 0 on pass). */

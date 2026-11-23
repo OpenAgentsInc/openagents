@@ -39,6 +39,7 @@ static int parse_token_list(const char *text, int32_t *out, int max_out) {
 int main(int argc, char **argv) {
     const char *gguf = NULL;
     const char *metal = NULL;
+    const char *lora = getenv("INK_LORA");
     const char *prompt = "What is 17 * 23? Answer with just the number.";
     int max_tokens = 64;
     int max_ctx = 4096;
@@ -53,6 +54,7 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--model") && i + 1 < argc) gguf = argv[++i];
         else if ((!strcmp(argv[i], "--kernels") || !strcmp(argv[i], "--metal")) && i + 1 < argc) metal = argv[++i];
+        else if (!strcmp(argv[i], "--lora") && i + 1 < argc) lora = argv[++i];
         else if (!strcmp(argv[i], "--tokens") && i + 1 < argc) token_list = argv[++i];
         else if (!strcmp(argv[i], "--dump-logits") && i + 1 < argc) dump_logits = argv[++i];
         else if (!strcmp(argv[i], "--prompt") && i + 1 < argc) prompt = argv[++i];
@@ -74,7 +76,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf --kernels PATH [--prompt TEXT | --tokens 1,2,3] [--max-tokens N] [--ctx N] [--loops K] [--temp T] [--verify-prefill-decode] [--test-quant-kernels] [--dump-logits FILE] [--raw]\n"
+        fprintf(stderr, "usage: %s --model PATH.gguf --kernels PATH [--lora PATH.gguf] [--prompt TEXT | --tokens 1,2,3] [--max-tokens N] [--ctx N] [--loops K] [--temp T] [--verify-prefill-decode] [--test-quant-kernels] [--dump-logits FILE] [--raw]\n"
                         "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option)\n", argv[0]);
         return 2;
     }
@@ -82,7 +84,7 @@ int main(int argc, char **argv) {
     double t0 = now_sec();
     InkSession *s = NULL;
     char err[512];
-    if (ink_open_ex(gguf, metal, max_ctx, loops, &s, err, sizeof err) != 0) {
+    if (ink_open_lora(gguf, metal, (lora && lora[0]) ? lora : NULL, max_ctx, loops, &s, err, sizeof err) != 0) {
         fprintf(stderr, "ink_open failed: %s\n", err);
         return 1;
     }

@@ -424,7 +424,8 @@ extension CoderWindow {
                 on = 1
                 statusCode = 5 // CP_LOCAL_STARTING
                 err = ""
-                status = "Loading model…"
+                let tag = LocalModelStore.entry.id == LocalModelCatalogEntry.inkling2Mini.id ? "" : "\(LocalModelStore.entry.shortLabel) · "
+                status = "\(tag)Loading model…"
             case .failed(let msg):
                 on = singleModel ? 0 : 1
                 statusCode = 6 // CP_LOCAL_SERVER_ERROR

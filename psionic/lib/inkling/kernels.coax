@@ -5175,3 +5175,752 @@ ink_dv_mxfp8 :: (item:int,rows:int,cols:int,weights:[]u32,scales:[]u32,x:[]f32,o
     }
 }
 // book:end quant-metal-kernels
+
+// ---- Universal GGML quantization kernels + Direction-Ablation LoRA (#14028) ----
+// Supports F32/F16/BF16, Q4_0/Q4_1/Q5_0/Q5_1/Q8_0/IQ4_NL/Q2_0, Q2_K..Q6_K, IQ2_XXS/XS/S, IQ3_XXS/S, IQ4_XS.
+
+ink_g_u8 :: (w:[]u16,bo:int)->u32 #effects(all) {
+    wd:=cast(u32)w[bo>>1];
+    return ifx (bo&1)==0 then wd&255 else (wd>>8)&255;
+}
+ink_g_u16 :: (w:[]u16,bo:int)->u32 #effects(all) {
+    if (bo&1)==0 { return cast(u32)w[bo>>1]; }
+    return ink_g_u8(w,bo)|(ink_g_u8(w,bo+1)<<8);
+}
+ink_g_u32 :: (w:[]u16,bo:int)->u32 #effects(all) {
+    return ink_g_u16(w,bo)|(ink_g_u16(w,bo+2)<<16);
+}
+ink_g_row_bytes :: (wtype:int,cols:int)->int #effects(all) {
+    if wtype==0 { return cols*4; }
+    if wtype==1 || wtype==30 { return cols*2; }
+    if wtype==2 || wtype==20 { return (cols/32)*18; }
+    if wtype==3 { return (cols/32)*20; }
+    if wtype==6 { return (cols/32)*22; }
+    if wtype==7 { return (cols/32)*24; }
+    if wtype==8 { return (cols/32)*34; }
+    if wtype==42 { return (cols/64)*18; }
+    if wtype==10 { return (cols/256)*84; }
+    if wtype==11 || wtype==21 { return (cols/256)*110; }
+    if wtype==12 { return (cols/256)*144; }
+    if wtype==13 { return (cols/256)*176; }
+    if wtype==14 { return (cols/256)*210; }
+    if wtype==16 { return (cols/256)*66; }
+    if wtype==17 { return (cols/256)*74; }
+    if wtype==18 { return (cols/256)*98; }
+    if wtype==22 { return (cols/256)*82; }
+    if wtype==23 { return (cols/256)*136; }
+    return 0;
+}
+
+ink_ggml_val :: (wtype:int,w:[]u16,row_boff:int,col:int,grids:[]u32)->f32 #effects(all) {
+    if wtype==0 { return f32_from_bits(ink_g_u32(w,row_boff+col*4)); }
+    if wtype==1 { return am_f16(ink_g_u16(w,row_boff+col*2)); }
+    if wtype==30 { return f32_from_bits(ink_g_u16(w,row_boff+col*2)<<16); }
+    if wtype==8 {
+        b:=row_boff+(col/32)*34;
+        return am_f16(ink_g_u16(w,b))*ink_signed(ink_g_u8(w,b+2+(col&31)));
+    }
+    if wtype==2 {
+        b:=row_boff+(col/32)*18;j:=col&31;
+        qb:=ink_g_u8(w,b+2+(j&15));
+        q:=ifx j<16 then qb&15 else qb>>4;
+        return (f32(q)-8.0f32)*am_f16(ink_g_u16(w,b));
+    }
+    if wtype==3 {
+        b:=row_boff+(col/32)*20;j:=col&31;
+        qb:=ink_g_u8(w,b+4+(j&15));
+        q:=ifx j<16 then qb&15 else qb>>4;
+        return f32(q)*am_f16(ink_g_u16(w,b))+am_f16(ink_g_u16(w,b+2));
+    }
+    if wtype==6 {
+        b:=row_boff+(col/32)*22;j:=col&31;j1:=j&15;
+        qh:=ink_g_u32(w,b+2);
+        qb:=ink_g_u8(w,b+6+j1);
+        q:=ifx j<16 then (qb&15)|(((qh>>cast(u32)j1)<<4)&16) else (qb>>4)|((qh>>cast(u32)(j1+12))&16);
+        return (f32(q)-16.0f32)*am_f16(ink_g_u16(w,b));
+    }
+    if wtype==7 {
+        b:=row_boff+(col/32)*24;j:=col&31;j1:=j&15;
+        qh:=ink_g_u32(w,b+4);
+        qb:=ink_g_u8(w,b+8+j1);
+        q:=ifx j<16 then (qb&15)|(((qh>>cast(u32)j1)<<4)&16) else (qb>>4)|((qh>>cast(u32)(j1+12))&16);
+        return f32(q)*am_f16(ink_g_u16(w,b))+am_f16(ink_g_u16(w,b+2));
+    }
+    if wtype==20 {
+        b:=row_boff+(col/32)*18;j:=col&31;
+        qb:=ink_g_u8(w,b+2+(j&15));
+        q:=ifx j<16 then qb&15 else qb>>4;
+        return am_f16(ink_g_u16(w,b))*am_iq4_lut(q);
+    }
+    if wtype==42 {
+        b:=row_boff+(col/64)*18;j:=col&63;
+        q:=(ink_g_u8(w,b+2+(j>>2))>>cast(u32)((j&3)*2))&3;
+        return (f32(q)-1.0f32)*am_f16(ink_g_u16(w,b));
+    }
+    if wtype==10 {
+        b:=row_boff+(col/256)*84;j:=col&255;
+        half:=j>>7;r:=j&127;g:=r>>5;l:=r&31;is:=half*8+g*2+(l>>4);
+        sc:=ink_g_u8(w,b+is);
+        qv:=(ink_g_u8(w,b+16+half*32+l)>>cast(u32)(g*2))&3;
+        return am_f16(ink_g_u16(w,b+80))*f32(sc&15)*f32(qv)-am_f16(ink_g_u16(w,b+82))*f32(sc>>4);
+    }
+    if wtype==11 {
+        b:=row_boff+(col/256)*110;j:=col&255;
+        half:=j>>7;r:=j&127;g:=r>>5;l:=r&31;is:=half*8+g*2+(l>>4);
+        a0:=ink_g_u32(w,b+96);a1:=ink_g_u32(w,b+100);tmp:=ink_g_u32(w,b+104);
+        km1:u32=0x03030303;km2:u32=0x0f0f0f0f;
+        sw:=ifx is<4 then (a0&km2)|((tmp&km1)<<4)
+            else ifx is<8 then (a1&km2)|(((tmp>>2)&km1)<<4)
+            else ifx is<12 then ((a0>>4)&km2)|(((tmp>>4)&km1)<<4)
+            else ((a1>>4)&km2)|(((tmp>>6)&km1)<<4);
+        sc_b:=(sw>>cast(u32)((is&3)*8))&255;
+        mbit:=cast(u32)1<<cast(u32)(half*4+g);
+        hm:=ink_g_u8(w,b+l);
+        ql:=(ink_g_u8(w,b+32+half*32+l)>>cast(u32)(g*2))&3;
+        qv:=f32(ql)-(ifx (hm&mbit)!=0 then 0.0f32 else 4.0f32);
+        return am_f16(ink_g_u16(w,b+108))*(f32(sc_b)-32.0f32)*qv;
+    }
+    if wtype==12 {
+        b:=row_boff+(col/256)*144;j:=col&255;
+        g:=j>>6;r:=j&63;hi:=r>>5;l:=r&31;is:=g*2+hi;
+        sc:=ifx is<4 then ink_g_u8(w,b+4+is)&63 else (ink_g_u8(w,b+8+is)&15)|((ink_g_u8(w,b+is)>>6)<<4);
+        mn:=ifx is<4 then ink_g_u8(w,b+8+is)&63 else (ink_g_u8(w,b+8+is)>>4)|((ink_g_u8(w,b+4+is)>>6)<<4);
+        qb:=ink_g_u8(w,b+16+g*32+l);
+        qv:=ifx hi==0 then qb&15 else qb>>4;
+        return am_f16(ink_g_u16(w,b))*f32(sc)*f32(qv)-am_f16(ink_g_u16(w,b+2))*f32(mn);
+    }
+    if wtype==13 {
+        b:=row_boff+(col/256)*176;j:=col&255;
+        g:=j>>6;r:=j&63;hi:=r>>5;l:=r&31;is:=g*2+hi;
+        sc:=ifx is<4 then ink_g_u8(w,b+4+is)&63 else (ink_g_u8(w,b+8+is)&15)|((ink_g_u8(w,b+is)>>6)<<4);
+        mn:=ifx is<4 then ink_g_u8(w,b+8+is)&63 else (ink_g_u8(w,b+8+is)>>4)|((ink_g_u8(w,b+4+is)>>6)<<4);
+        qb:=ink_g_u8(w,b+48+g*32+l);
+        qhb:=ifx (ink_g_u8(w,b+16+l)&(cast(u32)1<<cast(u32)is))!=0 then cast(u32)16 else cast(u32)0;
+        qv:=(ifx hi==0 then qb&15 else qb>>4)+qhb;
+        return am_f16(ink_g_u16(w,b))*f32(sc)*f32(qv)-am_f16(ink_g_u16(w,b+2))*f32(mn);
+    }
+    if wtype==14 {
+        b:=row_boff+(col/256)*210;j:=col&255;
+        half:=j>>7;r:=j&127;qtr:=r>>5;l:=r&31;
+        ql_b:=ink_g_u8(w,b+half*64+(ifx (qtr&1)==0 then l else l+32));
+        ql_n:=ifx qtr<2 then ql_b&15 else ql_b>>4;
+        qh_n:=(ink_g_u8(w,b+128+half*32+l)>>cast(u32)(qtr*2))&3;
+        sc:=ink_signed(ink_g_u8(w,b+192+half*8+(l>>4)+qtr*2));
+        return am_f16(ink_g_u16(w,b+208))*sc*(f32(ql_n|(qh_n<<4))-32.0f32);
+    }
+    if wtype==16 {
+        b:=row_boff+(col/256)*66;j:=col&255;
+        ib32:=j>>5;r:=j&31;l:=r>>3;k:=r&7;
+        a0:=ink_g_u32(w,b+2+ib32*8);a1:=ink_g_u32(w,b+6+ib32*8);
+        db:=am_f16(ink_g_u16(w,b))*(0.5f32+f32(a1>>28))*0.25f32;
+        gidx:=(a0>>cast(u32)(l*8))&255;
+        sidx:=(a1>>cast(u32)(7*l))&127;
+        signs:=(grids[4352+cast(int)(sidx>>2)]>>((sidx&3)*8))&255;
+        gw:=grids[cast(int)gidx*2+(k>>2)];
+        gv:=f32((gw>>cast(u32)((k&3)*8))&255);
+        return db*gv*(ifx (signs&(cast(u32)1<<cast(u32)k))!=0 then -1.0f32 else 1.0f32);
+    }
+    if wtype==17 {
+        b:=row_boff+(col/256)*74;j:=col&255;
+        ib32:=j>>5;r:=j&31;l:=r>>3;k:=r&7;
+        scb:=ink_g_u8(w,b+66+ib32);
+        sn:=ifx l<2 then scb&15 else scb>>4;
+        db:=am_f16(ink_g_u16(w,b))*(0.5f32+f32(sn))*0.25f32;
+        qw:=ink_g_u16(w,b+2+(ib32*4+l)*2);
+        gidx:=qw&511;sidx:=qw>>9;
+        signs:=(grids[4352+cast(int)(sidx>>2)]>>((sidx&3)*8))&255;
+        gw:=grids[512+cast(int)gidx*2+(k>>2)];
+        gv:=f32((gw>>cast(u32)((k&3)*8))&255);
+        return db*gv*(ifx (signs&(cast(u32)1<<cast(u32)k))!=0 then -1.0f32 else 1.0f32);
+    }
+    if wtype==22 {
+        b:=row_boff+(col/256)*82;j:=col&255;
+        ib32:=j>>5;r:=j&31;l:=r>>3;k:=r&7;
+        scb:=ink_g_u8(w,b+74+ib32);
+        sn:=ifx l<2 then scb&15 else scb>>4;
+        db:=am_f16(ink_g_u16(w,b))*(0.5f32+f32(sn))*0.25f32;
+        gidx:=ink_g_u8(w,b+2+ib32*4+l)|((ink_g_u8(w,b+66+ib32)<<cast(u32)(8-2*l))&0x300);
+        signs:=ink_g_u8(w,b+34+ib32*4+l);
+        gw:=grids[1536+cast(int)gidx*2+(k>>2)];
+        gv:=f32((gw>>cast(u32)((k&3)*8))&255);
+        return db*gv*(ifx (signs&(cast(u32)1<<cast(u32)k))!=0 then -1.0f32 else 1.0f32);
+    }
+    if wtype==18 {
+        b:=row_boff+(col/256)*98;j:=col&255;
+        ib32:=j>>5;r:=j&31;l:=r>>3;k:=r&7;
+        aux32:=ink_g_u32(w,b+66+ib32*4);
+        db:=am_f16(ink_g_u16(w,b))*(0.5f32+f32(aux32>>28))*0.5f32;
+        sidx:=(aux32>>cast(u32)(7*l))&127;
+        signs:=(grids[4352+cast(int)(sidx>>2)]>>((sidx&3)*8))&255;
+        gidx:=ink_g_u8(w,b+2+ib32*8+l*2+(k>>2));
+        gw:=grids[3584+cast(int)gidx];
+        gv:=f32((gw>>cast(u32)((k&3)*8))&255);
+        return db*gv*(ifx (signs&(cast(u32)1<<cast(u32)k))!=0 then -1.0f32 else 1.0f32);
+    }
+    if wtype==21 {
+        b:=row_boff+(col/256)*110;j:=col&255;
+        ib32:=j>>5;r:=j&31;l:=r>>3;k:=r&7;
+        scb:=ink_g_u8(w,b+106+(ib32>>1));
+        sn:=ifx (ib32&1)!=0 then scb>>4 else scb&15;
+        db:=am_f16(ink_g_u16(w,b))*f32(1+2*cast(int)sn);
+        qhb:=ink_g_u8(w,b+66+ib32);
+        hb_base:int=ifx k<4 then 8 else 7;
+        hi_sh:=cast(u32)(hb_base-2*l);
+        gidx:=ink_g_u8(w,b+2+ib32*8+l*2+(k>>2))|((qhb<<hi_sh)&256);
+        signs:=ink_g_u8(w,b+74+ib32*4+l);
+        gw:=grids[3840+cast(int)gidx];
+        gv:=f32((gw>>cast(u32)((k&3)*8))&255);
+        return db*gv*(ifx (signs&(cast(u32)1<<cast(u32)k))!=0 then -1.0f32 else 1.0f32);
+    }
+    if wtype==23 {
+        b:=row_boff+(col/256)*136;j:=col&255;
+        ib:=j>>5;l:=j&31;
+        sh:=ink_g_u16(w,b+2);slb:=ink_g_u8(w,b+4+(ib>>1));
+        ls:=((slb>>cast(u32)(4*(ib&1)))&15)|(((sh>>cast(u32)(2*ib))&3)<<4);
+        dl:=am_f16(ink_g_u16(w,b))*(f32(ls)-32.0f32);
+        qb:=ink_g_u8(w,b+8+ib*16+(l&15));
+        qv:=ifx l<16 then qb&15 else qb>>4;
+        return dl*am_iq4_lut(qv);
+    }
+    return 0.0f32;
+}
+
+// Universal GGML embedding lookup + optional pre-norm direction ablation + RMSNorm.
+// 1 TG (256 threads) per token.
+ink_embed_ggml :: (item:int,tok:int,dim:int,wtype:int,w:[]u16,grids:[]u32,norm_w:[]f32,eps:f32,has_ablate:int,ablate_dir:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    part_a:[256]f32;
+    rb:=ink_g_row_bytes(wtype,dim);
+    row_boff:=tok*rb;
+    for thread:0..<INK_NT {
+        sa:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=ink_ggml_val(wtype,w,row_boff,i,grids);
+                out[i]=v;
+                if has_ablate!=0 { sa+=v*ablate_dir[i]; }
+            }
+        }
+        part_a[thread]=sa;
+    }
+    for thread:0..<INK_NT {
+        along:f32=0;
+        if has_ablate!=0 { for j:0..<INK_NT { along+=part_a[j]; } }
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=out[i];
+                if has_ablate!=0 { v-=along*ablate_dir[i]; out[i]=v; }
+                s+=v*v;
+            }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<INK_NT { tot+=part[j]; }
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { out[i]=out[i]*inv*norm_w[i]; }
+        }
+    }
+}
+
+ink_embed_ggml_indirect :: (item:int,dim:int,vocab:int,wtype:int,tok_buf:[]u32,w:[]u16,grids:[]u32,norm_w:[]f32,eps:f32,has_ablate:int,ablate_dir:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    part_a:[256]f32;
+    tok_raw:=cast(int)tok_buf[0];
+    tok:=ifx tok_raw>=0 && tok_raw<vocab then tok_raw else 0;
+    rb:=ink_g_row_bytes(wtype,dim);
+    row_boff:=tok*rb;
+    for thread:0..<INK_NT {
+        sa:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=ink_ggml_val(wtype,w,row_boff,i,grids);
+                out[i]=v;
+                if has_ablate!=0 { sa+=v*ablate_dir[i]; }
+            }
+        }
+        part_a[thread]=sa;
+    }
+    for thread:0..<INK_NT {
+        along:f32=0;
+        if has_ablate!=0 { for j:0..<INK_NT { along+=part_a[j]; } }
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=out[i];
+                if has_ablate!=0 { v-=along*ablate_dir[i]; out[i]=v; }
+                s+=v*v;
+            }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<INK_NT { tot+=part[j]; }
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { out[i]=out[i]*inv*norm_w[i]; }
+        }
+    }
+}
+
+ink_embed_ggml_batch :: (item:int,dim:int,wtype:int,toks:[]u32,w:[]u16,grids:[]u32,norm_w:[]f32,eps:f32,has_ablate:int,ablate_dir:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    part_a:[256]f32;
+    tok:=cast(int)toks[item];
+    rb:=ink_g_row_bytes(wtype,dim);
+    row_boff:=tok*rb;
+    ob:=item*dim;
+    for thread:0..<INK_NT {
+        sa:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=ink_ggml_val(wtype,w,row_boff,i,grids);
+                out[ob+i]=v;
+                if has_ablate!=0 { sa+=v*ablate_dir[i]; }
+            }
+        }
+        part_a[thread]=sa;
+    }
+    for thread:0..<INK_NT {
+        along:f32=0;
+        if has_ablate!=0 { for j:0..<INK_NT { along+=part_a[j]; } }
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim {
+                v:=out[ob+i];
+                if has_ablate!=0 { v-=along*ablate_dir[i]; out[ob+i]=v; }
+                s+=v*v;
+            }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        tot:f32=0;for j:0..<INK_NT { tot+=part[j]; }
+        inv:=1.0f32/sqrt(tot/f32(dim)+eps);
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { out[ob+i]=out[ob+i]*inv*norm_w[i]; }
+        }
+    }
+}
+
+// Universal GGML dense matvec: 128 threads = 4 warps, 1 row per warp; items = ceil(rows/4).
+ink_dv_ggml :: (item:int,rows:int,cols:int,add:int,wtype:int,w:[]u16,grids:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    rb:=ink_g_row_bytes(wtype,cols);
+    steps:=(cols+31)/32;
+    for thread:0..<128 {
+        sg:=thread>>5;lane:=thread&31;
+        row:=item*4+sg;
+        if row<rows {
+            rbo:=row*rb;
+            acc:f32=0;
+            for step:0..<steps {
+                col:=step*32+lane;
+                if col<cols { acc+=ink_ggml_val(wtype,w,rbo,col,grids)*x[col]; }
+            }
+            tot:=am_simd_sum(acc);
+            if lane==0 { out[row]=ifx add!=0 then out[row]+tot else tot; }
+        }
+    }
+}
+
+// Universal GGML dense batched matmul (for tiny nb < m4_min or non-BF16 fallback): items = nb * ceil(rows/4), 128 threads.
+ink_mm_ggml :: (item:int,rows:int,cols:int,nb:int,wtype:int,w:[]u16,grids:[]u32,x:[]f32,out:[]f32) #export_c #effects(all) {
+    rgrps:=(rows+3)/4;
+    tok:=item/rgrps;
+    r0:=(item%rgrps)*4;
+    rb:=ink_g_row_bytes(wtype,cols);
+    steps:=(cols+31)/32;
+    xb:=tok*cols;
+    ob:=tok*rows;
+    for thread:0..<128 {
+        sg:=thread>>5;lane:=thread&31;
+        row:=r0+sg;
+        if tok<nb && row<rows {
+            rbo:=row*rb;
+            acc:f32=0;
+            for step:0..<steps {
+                col:=step*32+lane;
+                if col<cols { acc+=ink_ggml_val(wtype,w,rbo,col,grids)*x[xb+col]; }
+            }
+            tot:=am_simd_sum(acc);
+            if lane==0 { out[ob+row]=tot; }
+        }
+    }
+}
+
+// Universal GGML dense dequant -> BF16 pairs [rows, cols/2] u32 for Metal 4 MMA; items = ceil(rows/4), 128 threads.
+ink_dequant_ggml_bf16 :: (item:int,rows:int,cols:int,wtype:int,w:[]u16,grids:[]u32,out_bf16:[]u32) #export_c #effects(all) {
+    rb:=ink_g_row_bytes(wtype,cols);
+    half_cols:=cols/2;
+    steps:=(half_cols+31)/32;
+    for thread:0..<128 {
+        sg:=thread>>5;lane:=thread&31;
+        row:=item*4+sg;
+        if row<rows {
+            rbo:=row*rb;
+            ob:=row*half_cols;
+            for step:0..<steps {
+                p:=step*32+lane;
+                if p<half_cols {
+                    f0:=ink_ggml_val(wtype,w,rbo,p*2,grids);
+                    f1:=ink_ggml_val(wtype,w,rbo,p*2+1,grids);
+                    b0:=(f32_bits(f0)+0x8000)>>16;
+                    b1:=(f32_bits(f1)+0x8000)>>16;
+                    out_bf16[ob+p]=b0|(b1<<16);
+                }
+            }
+        }
+    }
+}
+
+// Universal GGML expert chunk [e_lo..e_lo+e_cnt) -> BF16 pairs [e_cnt*rows, cols/2] u32; items = e_cnt * ceil(rows/4), 128 threads.
+ink_dequant_ggml_exp_bf16 :: (item:int,e_lo:int,rows:int,cols:int,wtype:int,w:[]u16,grids:[]u32,exp_cnt:[]u32,out_bf16:[]u32) #export_c #effects(all) {
+    r_grps:=(rows+3)/4;
+    local_e:=item/r_grps;
+    row0:=(item%r_grps)*4;
+    exp_id:=e_lo+local_e;
+    if exp_cnt[exp_id]>0 {
+        rb:=ink_g_row_bytes(wtype,cols);
+        half_cols:=cols/2;
+        steps:=(half_cols+31)/32;
+        for thread:0..<128 {
+            sg:=thread>>5;lane:=thread&31;
+            row:=row0+sg;
+            if row<rows {
+                rbo:=(exp_id*rows+row)*rb;
+                ob:=(local_e*rows+row)*half_cols;
+                for step:0..<steps {
+                    p:=step*32+lane;
+                    if p<half_cols {
+                        f0:=ink_ggml_val(wtype,w,rbo,p*2,grids);
+                        f1:=ink_ggml_val(wtype,w,rbo,p*2+1,grids);
+                        b0:=(f32_bits(f0)+0x8000)>>16;
+                        b1:=(f32_bits(f1)+0x8000)>>16;
+                        out_bf16[ob+p]=b0|(b1<<16);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Universal GGML MoE gate_up + SITU (decode, nb=1): 128 threads = 4 warps, 1 row-pair per warp; items = n_used * ceil(n_ff/4).
+ink_moe_gu_ggml :: (item:int,n_ff:int,cols:int,wtype:int,beta:f32,lb:f32,w:[]u16,grids:[]u32,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
+    rgrps:=(n_ff+3)/4;
+    slot:=item/rgrps;
+    r0:=(item%rgrps)*4;
+    eid:=cast(int)ids[slot];
+    rb:=ink_g_row_bytes(wtype,cols);
+    eb:=eid*2*n_ff*rb;
+    steps:=(cols+31)/32;
+    for thread:0..<128 {
+        sg:=thread>>5;lane:=thread&31;
+        row:=r0+sg;
+        if row<n_ff {
+            gbo:=eb+row*rb;
+            ubo:=eb+(n_ff+row)*rb;
+            ag:f32=0;au:f32=0;
+            for step:0..<steps {
+                col:=step*32+lane;
+                if col<cols {
+                    xv:=x[col];
+                    ag+=ink_ggml_val(wtype,w,gbo,col,grids)*xv;
+                    au+=ink_ggml_val(wtype,w,ubo,col,grids)*xv;
+                }
+            }
+            gtot:=am_simd_sum(ag);
+            utot:=am_simd_sum(au);
+            if lane==0 {
+                g:=gtot*ink_sigmoid(gtot);
+                g=beta*ink_tanh(g/beta);
+                u:=lb*ink_tanh(utot/lb);
+                out[slot*n_ff+row]=g*u;
+            }
+        }
+    }
+}
+
+// Universal GGML MoE down (decode, nb=1): writes raw weighted sum to moe_out (if do_conv==0) OR applies fused shortconv+res -> out.
+// 128 threads = 4 warps, 1 output row per warp; items = ceil(rows/4).
+ink_moe_down_ggml :: (item:int,rows:int,cols:int,n_used:int,wtype:int,do_conv:int,w:[]u16,grids:[]u32,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    rb:=ink_g_row_bytes(wtype,cols);
+    eb_stride:=rows*rb;
+    steps:=(cols+31)/32;
+    for thread:0..<128 {
+        sg:=thread>>5;lane:=thread&31;
+        row:=item*4+sg;
+        if row<rows {
+            tot:f32=0;
+            for k:0..<n_used {
+                eid:=cast(int)ids[k];
+                wt:=wts[k];
+                rbo:=eid*eb_stride+row*rb;
+                xb:=k*cols;
+                acc:f32=0;
+                for step:0..<steps {
+                    col:=step*32+lane;
+                    if col<cols { acc+=ink_ggml_val(wtype,w,rbo,col,grids)*x[xb+col]; }
+                }
+                tot+=wt*am_simd_sum(acc);
+            }
+            if lane==0 {
+                if do_conv==0 {
+                    out[row]=tot;
+                } else {
+                    hb:=row*3;cb:=row*4;
+                    h0:=hist[hb];h1:=hist[hb+1];h2:=hist[hb+2];
+                    hist[hb]=h1;hist[hb+1]=h2;hist[hb+2]=tot;
+                    y:=(tot+h0*conv_w[cb]+h1*conv_w[cb+1]+h2*conv_w[cb+2]+tot*conv_w[cb+3])*0.4472135954999579f32;
+                    out[row]=res[row]+y;
+                }
+            }
+        }
+    }
+}
+
+// Universal GGML MoE gate_up + SITU for batched/verify nb (1..8): items = max_u * ceil(n_ff/4), 128 threads.
+ink_moe_gu_ggml_nb :: (item:int,n_ff:int,cols:int,nb:int,n_used:int,wtype:int,beta:f32,lb:f32,w:[]u16,grids:[]u32,x:[]f32,u_eids:[]u32,u_mask:[]u32,u_slot:[]u32,u_cnt:[]u32,out:[]f32) #export_c #effects(all) {
+    rgrps:=(n_ff+3)/4;
+    u:=item/rgrps;
+    r0:=(item%rgrps)*4;
+    nu:=cast(int)u_cnt[0];
+    rb:=ink_g_row_bytes(wtype,cols);
+    steps:=(cols+31)/32;
+    for thread:0..<128 {
+        if u<nu {
+            sg:=thread>>5;lane:=thread&31;
+            row:=r0+sg;
+            if row<n_ff {
+                eid:=cast(int)u_eids[u];
+                mask:=u_mask[u];
+                gbo:=(eid*2*n_ff+row)*rb;
+                ubo:=(eid*2*n_ff+n_ff+row)*rb;
+                for t:0..<nb {
+                    if (mask&(cast(u32)1<<cast(u32)t))!=0 {
+                        xb:=t*cols;
+                        ag:f32=0;au:f32=0;
+                        for step:0..<steps {
+                            col:=step*32+lane;
+                            if col<cols {
+                                xv:=x[xb+col];
+                                ag+=ink_ggml_val(wtype,w,gbo,col,grids)*xv;
+                                au+=ink_ggml_val(wtype,w,ubo,col,grids)*xv;
+                            }
+                        }
+                        gtot:=am_simd_sum(ag);
+                        utot:=am_simd_sum(au);
+                        if lane==0 {
+                            g:=gtot*ink_sigmoid(gtot);
+                            g=beta*ink_tanh(g/beta);
+                            uv:=lb*ink_tanh(utot/lb);
+                            sl:=cast(int)u_slot[u*8+t];
+                            out[(t*n_used+sl)*n_ff+row]=g*uv;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Universal GGML MoE down P1 for batched/verify nb (1..8): writes unweighted slot_out[(t*n_used+sl)*rows+row].
+// items = max_u * ceil(rows/4), 128 threads.
+ink_moe_down_p1_ggml_nb :: (item:int,rows:int,cols:int,nb:int,n_used:int,wtype:int,w:[]u16,grids:[]u32,x:[]f32,u_eids:[]u32,u_mask:[]u32,u_slot:[]u32,u_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    rgrps:=(rows+3)/4;
+    u:=item/rgrps;
+    r0:=(item%rgrps)*4;
+    nu:=cast(int)u_cnt[0];
+    rb:=ink_g_row_bytes(wtype,cols);
+    steps:=(cols+31)/32;
+    for thread:0..<128 {
+        if u<nu {
+            sg:=thread>>5;lane:=thread&31;
+            row:=r0+sg;
+            if row<rows {
+                eid:=cast(int)u_eids[u];
+                mask:=u_mask[u];
+                rbo:=(eid*rows+row)*rb;
+                for t:0..<nb {
+                    if (mask&(cast(u32)1<<cast(u32)t))!=0 {
+                        sl:=cast(int)u_slot[u*8+t];
+                        xb:=(t*n_used+sl)*cols;
+                        acc:f32=0;
+                        for step:0..<steps {
+                            col:=step*32+lane;
+                            if col<cols { acc+=ink_ggml_val(wtype,w,rbo,col,grids)*x[xb+col]; }
+                        }
+                        tot:=am_simd_sum(acc);
+                        if lane==0 { slot_out[(t*n_used+sl)*rows+row]=tot; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Lossless Q8S MoE down P1 for batched/verify nb (1..8) (used when LoRA direction ablation is active on Q8S MoE layers).
+// items = max_u * ceil(rows/4), 128 threads.
+ink_moe_down_p1_q8s_nb :: (item:int,rows:int,cols:int,nb:int,n_used:int,qs:[]u32,ds:[]u16,x:[]f32,u_eids:[]u32,u_mask:[]u32,u_slot:[]u32,u_cnt:[]u32,slot_out:[]f32) #export_c #effects(all) {
+    rgrps:=(rows+3)/4;
+    u:=item/rgrps;
+    r0:=(item%rgrps)*4;
+    nu:=cast(int)u_cnt[0];
+    nblk:=cols/32;
+    for thread:0..<128 {
+        if u<nu {
+            sg:=thread>>5;lane:=thread&31;
+            row:=r0+sg;
+            if row<rows {
+                eid:=cast(int)u_eids[u];
+                mask:=u_mask[u];
+                blk_base:=(eid*rows+row)*nblk;
+                w_off:=lane>>2;
+                sh:=cast(u32)((lane&3)*8);
+                for t:0..<nb {
+                    if (mask&(cast(u32)1<<cast(u32)t))!=0 {
+                        sl:=cast(int)u_slot[u*8+t];
+                        xb:=(t*n_used+sl)*cols;
+                        acc:f32=0;
+                        for b:0..<nblk {
+                            bi:=blk_base+b;
+                            sc:=am_f16(cast(u32)ds[bi]);
+                            byte:=(qs[bi*8+w_off]>>sh)&255;
+                            q:=ifx byte>=128 then cast(f32)(cast(int)byte-256) else cast(f32)byte;
+                            acc+=(sc*q)*x[xb+b*32+lane];
+                        }
+                        tot:=am_simd_sum(acc);
+                        if lane==0 { slot_out[(t*n_used+sl)*rows+row]=tot; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---- Direction-Ablation LoRA kernels (x -= d * dot(d, x)) ----
+
+// In-place direction ablation over nb tokens: items = nb, 256 threads.
+ink_ablate_dir :: (item:int,dim:int,dir_off:int,dirs:[]f32,x:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    xb:=item*dim;
+    for thread:0..<INK_NT {
+        s:f32=0;
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { s+=x[xb+i]*dirs[dir_off+i]; }
+        }
+        part[thread]=s;
+    }
+    for thread:0..<INK_NT {
+        along:f32=0;
+        for j:0..<INK_NT { along+=part[j]; }
+        for k:0..<(dim+255)/256 {
+            i:=k*256+thread;
+            if i<dim { x[xb+i]=x[xb+i]-along*dirs[dir_off+i]; }
+        }
+    }
+}
+
+// Single-TG fused direction ablation + 4-tap post-shortconv + optional residual for nb=1..8 tokens (attn_output or moe_out).
+// items = 1, 256 threads. Preserves exact sequential conv state and raw_log for verify rewind.
+ink_post_conv_ablate_res_nb :: (item:int,dim:int,nb:int,add_res:int,update_hist:int,raw_in:[]f32,dir_off:int,dirs:[]f32,cw:[]f32,hist:[]f32,res:[]f32,raw_log:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    for t:0..<nb {
+        tb:=t*dim;
+        for thread:0..<INK_NT {
+            s:f32=0;
+            for k:0..<(dim+255)/256 {
+                r:=k*256+thread;
+                if r<dim { s+=raw_in[tb+r]*dirs[dir_off+r]; }
+            }
+            part[thread]=s;
+        }
+        for thread:0..<INK_NT {
+            along:f32=0;
+            for j:0..<INK_NT { along+=part[j]; }
+            for k:0..<(dim+255)/256 {
+                r:=k*256+thread;
+                if r<dim { raw_log[tb+r]=raw_in[tb+r]-along*dirs[dir_off+r]; }
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        for k:0..<(dim+255)/256 {
+            r:=k*256+thread;
+            if r<dim {
+                u0:=hist[r*3];u1:=hist[r*3+1];u2:=hist[r*3+2];
+                c0:=cw[r*4];c1:=cw[r*4+1];c2:=cw[r*4+2];c3:=cw[r*4+3];
+                for t:0..<nb {
+                    tr:=t*dim+r;
+                    d0:=raw_log[tr];
+                    y:=(d0+u0*c0+u1*c1+u2*c2+d0*c3)*0.4472135954999579f32;
+                    out[tr]=ifx add_res!=0 then res[tr]+y else y;
+                    u0=u1;u1=u2;u2=d0;
+                }
+                if update_hist!=0 {
+                    hist[r*3]=u0;hist[r*3+1]=u1;hist[r*3+2]=u2;
+                }
+            }
+        }
+    }
+}
+
+// Single-TG fused MoE slot-sum + direction ablation + 4-tap ffn_post_conv + residual for nb=1..8 tokens.
+// items = 1, 256 threads. Reads slot_out[(t*n_used+sl)*dim+r] and wts[t*n_used+sl].
+ink_moe_sum_ablate_conv_nb :: (item:int,dim:int,nb:int,n_used:int,update_hist:int,slot_out:[]f32,wts:[]f32,dir_off:int,dirs:[]f32,cw:[]f32,hist:[]f32,res:[]f32,raw_log:[]f32,out:[]f32) #export_c #effects(all) {
+    part:[256]f32;
+    for t:0..<nb {
+        tb:=t*dim;
+        for thread:0..<INK_NT {
+            s:f32=0;
+            for k:0..<(dim+255)/256 {
+                r:=k*256+thread;
+                if r<dim {
+                    v:f32=0;
+                    for sl:0..<n_used { v+=slot_out[(t*n_used+sl)*dim+r]*wts[t*n_used+sl]; }
+                    raw_log[tb+r]=v;
+                    s+=v*dirs[dir_off+r];
+                }
+            }
+            part[thread]=s;
+        }
+        for thread:0..<INK_NT {
+            along:f32=0;
+            for j:0..<INK_NT { along+=part[j]; }
+            for k:0..<(dim+255)/256 {
+                r:=k*256+thread;
+                if r<dim { raw_log[tb+r]=raw_log[tb+r]-along*dirs[dir_off+r]; }
+            }
+        }
+    }
+    for thread:0..<INK_NT {
+        for k:0..<(dim+255)/256 {
+            r:=k*256+thread;
+            if r<dim {
+                u0:=hist[r*3];u1:=hist[r*3+1];u2:=hist[r*3+2];
+                c0:=cw[r*4];c1:=cw[r*4+1];c2:=cw[r*4+2];c3:=cw[r*4+3];
+                for t:0..<nb {
+                    tr:=t*dim+r;
+                    d0:=raw_log[tr];
+                    y:=(d0+u0*c0+u1*c1+u2*c2+d0*c3)*0.4472135954999579f32;
+                    out[tr]=res[tr]+y;
+                    u0=u1;u1=u2;u2=d0;
+                }
+                if update_hist!=0 {
+                    hist[r*3]=u0;hist[r*3+1]=u1;hist[r*3+2]=u2;
+                }
+            }
+        }
+    }
+}

@@ -4,6 +4,7 @@
 // (page/editor.coax, GitHub #13742): a secure one shows dots and never copies.
 import AppKit
 import CryptoKit
+import UniformTypeIdentifiers
 
 /// A dialog the page draws: its words, its fields and its buttons in the foot's order. `confirm` is
 /// the button Return presses (a destructive dialog names Cancel), `cancel` the one Escape stands for.
@@ -357,11 +358,17 @@ final class LocalModelServer {
         return nil
     }
 
-    private enum PortProbe: Equatable { case psionicHealthy, occupied(String), free }
+    private enum PortProbe: Equatable { case psionicHealthy, psionicOtherVariant, occupied(String), free }
 
     private static func readRecordedPort() -> Int? {
         guard let raw = try? String(contentsOf: portURL, encoding: .utf8) else { return nil }
         guard let p = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)), p > 0, p < 65536 else { return nil }
+        return p
+    }
+
+    private static func readRecordedPID() -> pid_t? {
+        guard let raw = try? String(contentsOf: pidURL, encoding: .utf8) else { return nil }
+        guard let p = Int32(raw.trimmingCharacters(in: .whitespacesAndNewlines)), p > 1 else { return nil }
         return p
     }
 
@@ -410,12 +417,27 @@ final class LocalModelServer {
         req.timeoutInterval = 1.0
         let sem = DispatchSemaphore(value: 0)
         var result: PortProbe = .free
+        let wantModel = LocalModelStore.activeHealthModelName
+        let wantLora = LocalModelStore.activeHealthLoraName
         URLSession.shared.dataTask(with: req) { data, resp, _ in
             if let http = resp as? HTTPURLResponse {
                 if http.statusCode == 200,
                    let data, let body = String(data: data, encoding: .utf8),
                    body.contains("psionic-metal") {
-                    result = .psionicHealthy
+                    if let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                       let model = obj["model"] as? String {
+                        let loraFile = (obj["lora_file"] as? String) ?? ""
+                        if model == wantModel && loraFile == wantLora {
+                            result = .psionicHealthy
+                        } else {
+                            result = .psionicOtherVariant
+                        }
+                    } else if wantLora.isEmpty && wantModel == LocalModelCatalogEntry.inkling2Mini.fileName {
+                        // Legacy server without model/lora_file fields in /health matches default base only.
+                        result = .psionicHealthy
+                    } else {
+                        result = .psionicOtherVariant
+                    }
                 } else {
                     let who = Self.listenerDescription(port: port) ?? "another HTTP server"
                     result = .occupied(who)
@@ -450,8 +472,16 @@ final class LocalModelServer {
             }
         }
         for p in candidates {
-            if case .psionicHealthy = probePortHealth(port: p) {
+            switch probePortHealth(port: p) {
+            case .psionicHealthy:
                 return p
+            case .psionicOtherVariant:
+                // Free unified memory by cleanly terminating our previous detached server if recorded.
+                if let recPort = Self.readRecordedPort(), recPort == p {
+                    terminateOwnedAndRecordedSync()
+                }
+            case .occupied, .free:
+                break
             }
         }
         return nil
@@ -462,6 +492,10 @@ final class LocalModelServer {
             switch probePortHealth(port: p) {
             case .psionicHealthy, .free:
                 return ([p], nil)
+            case .psionicOtherVariant:
+                terminateOwnedAndRecordedSync()
+                if Self.isLocalPortFree(p) { return ([p], nil) }
+                return ([], "Configured port \(p) (OA_INKLING_PORT) is running a different local model variant.")
             case .occupied(let who):
                 return ([], "Configured port \(p) (OA_INKLING_PORT) is already in use by \(who).")
             }
@@ -496,7 +530,7 @@ final class LocalModelServer {
             case .failed:
                 return
             case .ready(let p):
-                if self.process?.isRunning == true || (self.probePortHealth(port: p) == .psionicHealthy) {
+                if self.probePortHealth(port: p) == .psionicHealthy {
                     return
                 }
             case .idle, .starting:
@@ -557,11 +591,11 @@ final class LocalModelServer {
             return
         }
         guard LocalModelStore.hardwareSupported else {
-            self.finishBootLocked(port: nil, error: "Inkling 2 Mini requires Apple Silicon and >= 32 GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).")
+            self.finishBootLocked(port: nil, error: "\(LocalModelStore.entry.name) requires Apple Silicon and >= \(LocalModelStore.entry.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected).")
             return
         }
         guard LocalModelStore.isInstalled else {
-            self.finishBootLocked(port: nil, error: "Inkling 2 Mini weights are not verified on disk (\(LocalModelStore.statusSummary())).")
+            self.finishBootLocked(port: nil, error: "\(LocalModelStore.entry.name) weights are not verified on disk (\(LocalModelStore.statusSummary())).")
             return
         }
         guard let server = Self.findPsionicServer() else {
@@ -573,6 +607,9 @@ final class LocalModelServer {
             self.finishBootLocked(port: nil, error: explicitError)
             return
         }
+        let ctxTokens = LocalModelStore.recommendedContextTokens
+        let modelPath = LocalModelStore.activeModelURL.path
+        let loraPath = LocalModelStore.activeLoraURL?.path
         var lastError = "Could not start Psionic Metal server."
         for targetPort in picked.ports {
             self.terminateOwnedSync()
@@ -583,14 +620,18 @@ final class LocalModelServer {
             try? logHandle?.truncate(atOffset: 0)
             let p = Process()
             p.executableURL = URL(fileURLWithPath: server.bin)
-            p.arguments = [
-                "--model", LocalModelStore.weightsURL.path,
+            var args = [
+                "--model", modelPath,
                 "--metal", server.metal,
                 "--host", Self.host,
                 "--port", String(targetPort),
-                "--ctx", String(Self.contextTokens),
+                "--ctx", String(ctxTokens),
                 "--idle-exit-s", "300",
             ]
+            if let loraPath, !loraPath.isEmpty {
+                args.append(contentsOf: ["--lora", loraPath])
+            }
+            p.arguments = args
             p.standardOutput = logHandle ?? FileHandle.nullDevice
             p.standardError = logHandle ?? FileHandle.nullDevice
             p.terminationHandler = { [weak self] proc in
@@ -659,9 +700,22 @@ final class LocalModelServer {
 
     func stop() {
         queue.async {
-            self.terminateOwnedSync()
+            self.terminateOwnedAndRecordedSync()
             if !self.bootInFlight {
                 self.setState(.idle)
+            }
+        }
+    }
+
+    /// Stops any active/detached server for the old variant and prewarms the newly selected variant if ready.
+    func restartForVariantChange() {
+        queue.async {
+            self.terminateOwnedAndRecordedSync()
+            if !self.bootInFlight {
+                self.setState(.idle)
+            }
+            if LocalModelStore.isSelectable && Self.findPsionicServer() != nil && !self.bootInFlight {
+                self.startBootLocked()
             }
         }
     }
@@ -672,6 +726,22 @@ final class LocalModelServer {
         if runsOutlive { return }
         queue.sync {
             self.terminateOwnedSync()
+        }
+    }
+
+    private func terminateOwnedAndRecordedSync() {
+        let hadOwned = self.process != nil
+        self.terminateOwnedSync()
+        if !hadOwned, let pid = Self.readRecordedPID(), let port = Self.readRecordedPort() {
+            if let who = Self.listenerDescription(port: port), who.contains("psionic") {
+                _ = Darwin.kill(pid, SIGTERM)
+                let deadline = Date().addingTimeInterval(2.0)
+                while !Self.isLocalPortFree(port) && Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+            }
+            try? FileManager.default.removeItem(at: Self.pidURL)
+            try? FileManager.default.removeItem(at: Self.portURL)
         }
     }
 
@@ -818,6 +888,10 @@ extension CoderWindow {
             syncLocalModels()
             return
         }
+        if LocalModelStore.entry.isCustom || (LocalModelStore.entry.requiresHFToken && LocalModelStore.effectiveHFToken == nil) {
+            manageLocalModels()
+            return
+        }
         LocalModelStore.startDownload { [weak self] in
             self?.syncLocalModels()
         }
@@ -851,6 +925,263 @@ extension CoderWindow {
         }
     }
 
+    private func openLocalModelHFRepo() {
+        let raw = LocalModelStore.entry.hfRepoURL ?? "https://huggingface.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF"
+        if let url = URL(string: raw) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Secure dialog to store/remove a Hugging Face read token (~/.openagents/hf-token, 0600) for gated checkpoints.
+    func chooseHFToken() {
+        let repo = LocalModelStore.entry.hfRepoURL ?? "https://huggingface.co/orcarouter/Inkling-2-Mini-abliterated-GGUF"
+        var about = "Some checkpoints (such as OrcaRouter Abliterated) are gated on Hugging Face. First click Open HF Repo to accept the repo terms, then paste a Hugging Face read token (hf_…). OpenAgents stores it locally (0600) and sends it only via curl stdin."
+        if let tok = LocalModelStore.effectiveHFToken, let src = LocalModelStore.hfTokenSource {
+            about += "\n\nCurrent token: \(LocalModelStore.hfTokenTail(tok)) (\(src))."
+        } else {
+            about += "\n\nNo Hugging Face token configured yet."
+        }
+        var d = CoderDialog(size: .md, title: "Hugging Face Token", body: about)
+        d.fields = [.init(hint: "hf_…", secure: true)]
+        let hadSaved = LocalModelStore.savedHFToken != nil
+        var removeIdx = -9
+        if hadSaved {
+            removeIdx = d.buttons.count
+            d.buttons.append(.init(title: "Remove", kind: .danger, aside: true))
+        }
+        let openRepoIdx = d.buttons.count
+        d.buttons.append(.init(title: "Open HF Repo", aside: !hadSaved))
+        let cancelIdx = d.buttons.count
+        d.buttons.append(.init(title: "Cancel"))
+        let saveIdx = d.buttons.count
+        d.buttons.append(.init(title: "Save", kind: .primary))
+        d.confirm = saveIdx
+        d.cancel = cancelIdx
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            if answer == openRepoIdx {
+                self.openLocalModelHFRepo()
+                self.chooseHFToken()
+                return
+            }
+            if answer == removeIdx {
+                _ = LocalModelStore.saveHFToken("")
+                LocalModelStore.lastError = nil
+                self.syncLocalModels()
+                self.manageLocalModels()
+                return
+            }
+            if answer == saveIdx {
+                let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if raw.isEmpty {
+                    self.manageLocalModels()
+                    return
+                }
+                if !LocalModelStore.saveHFToken(raw) {
+                    self.present(.notice("Invalid Hugging Face token", "Token must contain printable non-whitespace ASCII characters without quotes.")) { [weak self] _, _ in
+                        self?.chooseHFToken()
+                    }
+                    return
+                }
+                LocalModelStore.lastError = nil
+                self.syncLocalModels()
+                self.manageLocalModels()
+                return
+            }
+            self.manageLocalModels()
+        }
+    }
+
+    /// Native Finder picker to import any local Inkling 2 Mini `.gguf` (useful for gated HF downloads or BYO quants).
+    func importLocalGGUFDialog() {
+        guard !LocalModelStore.isDownloading, !LocalModelStore.isVerifying else {
+            manageLocalModels()
+            return
+        }
+        if isInklingReplyRunning() {
+            present(.notice("Inkling 2 Mini is in use", "Stop the active reply before importing a local checkpoint.")) { [weak self] _, _ in
+                self?.manageLocalModels()
+            }
+            return
+        }
+        guard !choosingFolder, window.attachedSheet == nil else {
+            manageLocalModels()
+            return
+        }
+        choosingFolder = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.window.attachedSheet == nil else { self.choosingFolder = false; self.manageLocalModels(); return }
+            guard self.canPresentOpenPanel() else { self.importLocalGGUFFallback(); return }
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            if let ggufType = UTType(filenameExtension: "gguf") {
+                panel.allowedContentTypes = [ggufType]
+            }
+            panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser
+            panel.prompt = "Import"
+            panel.message = "Choose a local Inkling 2 Mini .gguf file to import into \(LocalModelStore.entry.name)."
+            panel.beginSheetModal(for: self.window) { [weak self] answer in
+                guard let self else { return }
+                self.choosingFolder = false
+                if answer == .OK, let url = panel.url {
+                    LocalModelServer.shared.stop()
+                    LocalModelStore.importLocalGGUF(from: url) { [weak self] in
+                        self?.syncLocalModels()
+                    }
+                }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            }
+        }
+    }
+
+    private func importLocalGGUFFallback() {
+        var d = CoderDialog(
+            size: .md,
+            title: "Import Local .gguf",
+            body: "Enter the full path to a local Inkling 2 Mini .gguf file to import into \(LocalModelStore.entry.name)."
+        )
+        d.fields = [.init(value: "", hint: "~/Downloads/Inkling-2-Mini.gguf")]
+        d.buttons = [.init(title: "Cancel"), .init(title: "Import", kind: .primary)]
+        d.confirm = 1; d.cancel = 0
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            self.choosingFolder = false
+            if answer == 1 {
+                let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !raw.isEmpty {
+                    let expanded = (raw as NSString).expandingTildeInPath
+                    let url = URL(fileURLWithPath: expanded)
+                    LocalModelServer.shared.stop()
+                    LocalModelStore.importLocalGGUF(from: url) { [weak self] in
+                        self?.syncLocalModels()
+                    }
+                }
+            }
+            self.syncLocalModels()
+            self.manageLocalModels()
+        }
+    }
+
+    /// Native popup menu listing all Inkling 2 Mini variants (Official, AtomicChat Uncensored LoRA/quants,
+    /// OrcaRouter Abliterated, Custom BYO) plus quick actions (Import, HF Token, Repo, Finder, Verify, Delete).
+    private func presentLocalModelVariantMenu() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let activeId = LocalModelStore.activeVariantId
+
+        func addHeader(_ title: String) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        func addVariant(_ v: LocalModelCatalogEntry) {
+            let item = NSMenuItem(
+                title: LocalModelStore.variantMenuLabel(for: v),
+                action: #selector(CoderWindow.localVariantPicked(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = v.id
+            item.state = (v.id == activeId) ? .on : .off
+            item.isEnabled = true
+            menu.addItem(item)
+        }
+
+        addHeader("Official")
+        addVariant(.inkling2Mini)
+        menu.addItem(.separator())
+        addHeader("Uncensored — AtomicChat")
+        addVariant(.inkling2MiniUncensoredLora)
+        addVariant(.inkling2MiniUncensoredQ4K)
+        addVariant(.inkling2MiniUncensoredIQ3S)
+        addVariant(.inkling2MiniUncensoredIQ2M)
+        menu.addItem(.separator())
+        addHeader("Abliterated — OrcaRouter (HF Gated)")
+        addVariant(.inkling2MiniAbliteratedMix16G)
+        addVariant(.inkling2MiniAbliteratedMix12G)
+        menu.addItem(.separator())
+        addHeader("Bring Your Own")
+        addVariant(.inkling2MiniCustom)
+        menu.addItem(.separator())
+
+        func addTool(_ title: String, tag: Int, enabled: Bool = true) {
+            let item = NSMenuItem(title: title, action: #selector(CoderWindow.localModelToolPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = tag
+            item.isEnabled = enabled
+            menu.addItem(item)
+        }
+        addTool("Import Local .gguf…", tag: 1)
+        addTool("Set Hugging Face Token…", tag: 2)
+        if LocalModelStore.entry.hfRepoURL != nil {
+            addTool("Open Hugging Face Repo Page", tag: 3)
+        }
+        addTool("Reveal in Finder", tag: 4)
+        if LocalModelStore.weightsBytes > 0 {
+            addTool("Verify SHA-256", tag: 5)
+        }
+        if LocalModelStore.diskUsageBytes > 0 {
+            addTool("Delete Cached Variant…", tag: 6)
+        }
+
+        let at = canvas.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        let picked = menu.popUp(positioning: nil, at: at, in: canvas)
+        if !picked {
+            manageLocalModels()
+        }
+    }
+
+    @objc func localVariantPicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else {
+            manageLocalModels()
+            return
+        }
+        if id == LocalModelStore.activeVariantId {
+            manageLocalModels()
+            return
+        }
+        if isInklingReplyRunning() {
+            present(.notice(
+                "Inkling 2 Mini is in use",
+                "Stop the active Inkling 2 Mini reply before switching local model variants."
+            )) { [weak self] _, _ in
+                self?.manageLocalModels()
+            }
+            return
+        }
+        if LocalModelStore.setActiveVariant(id) {
+            LocalModelServer.shared.restartForVariantChange()
+        }
+        syncLocalModels()
+        manageLocalModels()
+    }
+
+    @objc func localModelToolPicked(_ sender: NSMenuItem) {
+        switch sender.tag {
+        case 1: importLocalGGUFDialog()
+        case 2: chooseHFToken()
+        case 3:
+            openLocalModelHFRepo()
+            manageLocalModels()
+        case 4:
+            revealLocalModelInFinder()
+            manageLocalModels()
+        case 5:
+            LocalModelStore.verifyInstalledNow { [weak self] in self?.syncLocalModels() }
+            syncLocalModels()
+            manageLocalModels()
+        case 6:
+            confirmDeleteLocalModel()
+        default:
+            manageLocalModels()
+        }
+    }
+
     private func confirmDeleteLocalModel() {
         if isInklingReplyRunning() {
             present(.notice(
@@ -864,8 +1195,8 @@ extension CoderWindow {
         let reclaim = LocalModelStore.formatBytes(LocalModelStore.diskUsageBytes)
         var d = CoderDialog(
             size: .sm,
-            title: "Delete Inkling 2 Mini?",
-            body: "This removes \(reclaim) from \(LocalModelStore.inklingDir.path) and stops the local Psionic Metal server. You can re-download it later."
+            title: "Delete \(LocalModelStore.entry.shortLabel)?",
+            body: "This removes \(reclaim) from \(LocalModelStore.inklingDir.path) and stops the local Psionic Metal server. Other downloaded variants are kept."
         )
         d.buttons = [
             .init(title: "Delete", kind: .danger, aside: true),
@@ -883,23 +1214,31 @@ extension CoderWindow {
                 LocalModelStore.removeInkling { LocalModelServer.shared.stop() }
                 self.syncLocalModels()
             }
-            self.refocus()
+            self.manageLocalModels()
         }
     }
 
-    /// Settings > Models > Local Models & composer model picker (#13826):
-    /// catalog metadata, RAM & disk compatibility, resumable download with Pause/Resume/Cancel,
-    /// live progress/speed/ETA, streaming SHA-256 verification, Reveal in Finder, and confirmed Delete.
+    /// Settings > Models > Local Models & composer model picker (#13826, #14028):
+    /// multi-variant catalog (Official IQ4_NL, AtomicChat Uncensored LoRA & AD quants, OrcaRouter Abliterated,
+    /// Custom .gguf import), RAM & disk compatibility, resumable download with Pause/Resume/Cancel,
+    /// HF token config, live progress/speed/ETA, streaming SHA-256 verification, Reveal in Finder, and Delete.
+    /// Keeps <= 4 buttons per dialog (APP_DLG_BUTTONS == 4).
     func manageLocalModels() {
         let st = LocalModelStore.state
+        let cur = LocalModelStore.entry
         localModelsDialogGen += 1
         let gen = localModelsDialogGen
         localModelsDialogState = st
-        var d = CoderDialog(size: .lg, title: "Local Models — Inkling 2 Mini", body: LocalModelStore.dialogBody())
+        let titleSuffix = cur.id == LocalModelCatalogEntry.inkling2Mini.id ? "Inkling 2 Mini" : cur.shortLabel
+        var d = CoderDialog(size: .lg, title: "Local Models — \(titleSuffix)", body: LocalModelStore.dialogBody())
+        var switchIdx = -9
         var deleteIdx = -9
         var revealIdx = -9
         var verifyIdx = -9
         var downloadIdx = -9
+        var downloadBaseIdx = -9
+        var importIdx = -9
+        var tokenIdx = -9
         var pauseIdx = -9
         var cancelDlIdx = -9
         var closeIdx = -9
@@ -907,7 +1246,7 @@ extension CoderWindow {
         switch st {
         case .installed:
             deleteIdx = d.buttons.count; d.buttons.append(.init(title: "Delete…", kind: .danger, aside: true))
-            revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+            switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…"))
             verifyIdx = d.buttons.count; d.buttons.append(.init(title: "Verify SHA-256"))
             closeIdx = d.buttons.count; d.buttons.append(.init(title: "Done", kind: .primary))
             d.confirm = closeIdx; d.cancel = closeIdx
@@ -922,28 +1261,54 @@ extension CoderWindow {
             d.confirm = closeIdx; d.cancel = closeIdx
         case .paused:
             cancelDlIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel Download", kind: .danger, aside: true))
-            revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+            switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…"))
             closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close"))
             downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Resume", kind: .primary))
             d.confirm = downloadIdx; d.cancel = closeIdx
         case .notInstalled:
-            if LocalModelStore.hasUnverifiedWeights {
+            if cur.isCustom {
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
+                closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+                importIdx = d.buttons.count; d.buttons.append(.init(title: "Import Local .gguf…", kind: .primary))
+                d.confirm = importIdx; d.cancel = closeIdx
+            } else if cur.isLoraOverlay && LocalModelStore.isFileInstalled && LocalModelStore.needsBaseModel {
                 deleteIdx = d.buttons.count; d.buttons.append(.init(title: "Delete…", kind: .danger, aside: true))
-                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Reveal in Finder"))
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…"))
+                closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+                downloadBaseIdx = d.buttons.count; d.buttons.append(.init(title: "Download Base (17.6 GB)", kind: .primary))
+                d.confirm = downloadBaseIdx; d.cancel = closeIdx
+            } else if LocalModelStore.hasUnverifiedWeights {
+                deleteIdx = d.buttons.count; d.buttons.append(.init(title: "Delete…", kind: .danger, aside: true))
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…"))
                 closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
                 verifyIdx = d.buttons.count; d.buttons.append(.init(title: "Verify SHA-256", kind: .primary))
                 d.confirm = verifyIdx; d.cancel = closeIdx
-            } else if LocalModelStore.hasEnoughDiskForDownload {
-                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Open Folder", aside: true))
+            } else if cur.requiresHFToken && LocalModelStore.effectiveHFToken == nil {
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
+                importIdx = d.buttons.count; d.buttons.append(.init(title: "Import .gguf…"))
                 closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
-                downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Download (17.6 GB)", kind: .primary))
-                d.confirm = downloadIdx; d.cancel = closeIdx
+                tokenIdx = d.buttons.count; d.buttons.append(.init(title: "HF Token…", kind: .primary))
+                d.confirm = tokenIdx; d.cancel = closeIdx
+            } else if LocalModelStore.hasEnoughDiskForDownload {
+                let szLabel = LocalModelStore.formatBytes(cur.expectedBytes)
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
+                if cur.requiresHFToken {
+                    importIdx = d.buttons.count; d.buttons.append(.init(title: "Import .gguf…"))
+                    tokenIdx = d.buttons.count; d.buttons.append(.init(title: "HF Token…"))
+                } else {
+                    importIdx = d.buttons.count; d.buttons.append(.init(title: "Import .gguf…"))
+                    closeIdx = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+                }
+                downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Download (\(szLabel))", kind: .primary))
+                d.confirm = downloadIdx; d.cancel = closeIdx >= 0 ? closeIdx : -1
             } else {
-                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Open Folder", aside: true))
+                switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
+                revealIdx = d.buttons.count; d.buttons.append(.init(title: "Open Folder"))
                 closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
                 d.confirm = closeIdx; d.cancel = closeIdx
             }
         case .unsupportedHardware:
+            switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
             closeIdx = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
             d.confirm = closeIdx; d.cancel = closeIdx
         }
@@ -951,10 +1316,22 @@ extension CoderWindow {
         present(d) { [weak self] answer, _ in
             guard let self, self.localModelsDialogGen == gen else { return }
             self.localModelsDialogState = nil
-            if answer == downloadIdx {
+            if answer == switchIdx {
+                self.presentLocalModelVariantMenu()
+            } else if answer == downloadIdx {
                 LocalModelStore.startDownload { [weak self] in self?.syncLocalModels() }
                 self.syncLocalModels()
                 self.manageLocalModels()
+            } else if answer == downloadBaseIdx {
+                if LocalModelStore.setActiveVariant(LocalModelCatalogEntry.inkling2Mini.id) {
+                    LocalModelStore.startDownload { [weak self] in self?.syncLocalModels() }
+                }
+                self.syncLocalModels()
+                self.manageLocalModels()
+            } else if answer == importIdx {
+                self.importLocalGGUFDialog()
+            } else if answer == tokenIdx {
+                self.chooseHFToken()
             } else if answer == pauseIdx {
                 LocalModelStore.pauseDownload { [weak self] in self?.syncLocalModels() }
                 self.syncLocalModels()

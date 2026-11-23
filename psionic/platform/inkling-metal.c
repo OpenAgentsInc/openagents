@@ -223,6 +223,21 @@ enum {
     K_MOE_GATHER_BF16_V2,
     K_MOE_SUM_GATHER_BATCH,
     K_DEQUANT_Q8S_BF16,
+    K_EMBED_GGML,
+    K_EMBED_GGML_INDIRECT,
+    K_EMBED_GGML_BATCH,
+    K_DV_GGML,
+    K_MM_GGML,
+    K_DEQUANT_GGML_BF16,
+    K_DEQUANT_GGML_EXP_BF16,
+    K_MOE_GU_GGML,
+    K_MOE_DOWN_GGML,
+    K_MOE_GU_GGML_NB,
+    K_MOE_DOWN_P1_GGML_NB,
+    K_MOE_DOWN_P1_Q8S_NB,
+    K_ABLATE_DIR,
+    K_POST_CONV_ABLATE_RES_NB,
+    K_MOE_SUM_ABLATE_CONV_NB,
     K_COUNT
 };
 
@@ -424,6 +439,21 @@ static const char *const k_names[K_COUNT] = {
     "ink_moe_gather_bf16_v2",
     "ink_moe_sum_gather_batch",
     "ink_dequant_q8s_bf16",
+    "ink_embed_ggml",
+    "ink_embed_ggml_indirect",
+    "ink_embed_ggml_batch",
+    "ink_dv_ggml",
+    "ink_mm_ggml",
+    "ink_dequant_ggml_bf16",
+    "ink_dequant_ggml_exp_bf16",
+    "ink_moe_gu_ggml",
+    "ink_moe_down_ggml",
+    "ink_moe_gu_ggml_nb",
+    "ink_moe_down_p1_ggml_nb",
+    "ink_moe_down_p1_q8s_nb",
+    "ink_ablate_dir",
+    "ink_post_conv_ablate_res_nb",
+    "ink_moe_sum_ablate_conv_nb",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -624,6 +654,21 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MOE_GATHER_BF16_V2 */
     128,    /* K_MOE_SUM_GATHER_BATCH */
     96,     /* K_DEQUANT_Q8S_BF16 */
+    INK_NT, /* K_EMBED_GGML */
+    INK_NT, /* K_EMBED_GGML_INDIRECT */
+    INK_NT, /* K_EMBED_GGML_BATCH */
+    128,    /* K_DV_GGML */
+    128,    /* K_MM_GGML */
+    128,    /* K_DEQUANT_GGML_BF16 */
+    128,    /* K_DEQUANT_GGML_EXP_BF16 */
+    128,    /* K_MOE_GU_GGML */
+    128,    /* K_MOE_DOWN_GGML */
+    128,    /* K_MOE_GU_GGML_NB */
+    128,    /* K_MOE_DOWN_P1_GGML_NB */
+    128,    /* K_MOE_DOWN_P1_Q8S_NB */
+    INK_NT, /* K_ABLATE_DIR */
+    INK_NT, /* K_POST_CONV_ABLATE_RES_NB */
+    INK_NT, /* K_MOE_SUM_ABLATE_CONV_NB */
 };
 
 typedef struct {
@@ -774,6 +819,12 @@ typedef struct {
 
 struct InkSession {
     InkGGUF gguf;
+    InkLora lora;
+    int has_ablate;
+    int ablate_has_emb;
+    uint8_t ablate_has_layer[32];
+    PmBuffer ablate_dirs;  /* [(1 + n_phys) * n_embd] f32: slot 0 = tok_embd, slot 1+ip = layer ip */
+    PmBuffer ggml_grids;   /* [INK_GRID_TOTAL_U32] u32 universal GGML IQ lookup tables */
     PmModule module;
     PmKernel kernels[K_COUNT];
     PmBuffer weights_buf;
@@ -1004,6 +1055,18 @@ static PmArg a_tensor_f32(InkSession *s, const InkTensor *t) {
 static PmArg a_tensor_u16(InkSession *s, const InkTensor *t) {
     return a_buf(s->weights_buf, (int64_t)t->offset, (int64_t)(t->nbytes / 2));
 }
+static PmArg a_tensor_ggml_u16(InkSession *s, const InkTensor *t) {
+    return a_buf(s->weights_buf, (int64_t)t->offset, (int64_t)((t->nbytes + 1) / 2));
+}
+static PmArg a_ggml_grids(const InkSession *s) {
+    return a_u32v(s->ggml_grids, 0, INK_GRID_TOTAL_U32);
+}
+static PmArg a_ablate_dirs(const InkSession *s) {
+    if (s->ablate_dirs) {
+        return a_f32v(s->ablate_dirs, 0, (int64_t)(1 + s->gguf.hp.n_phys) * s->gguf.hp.n_embd);
+    }
+    return a_f32v(s->dummy_f32, 0, 64);
+}
 static PmArg a_conv_k(const InkSession *s, int il) {
     int64_t n_kv = s->gguf.hp.n_head_kv * s->gguf.hp.head_dim;
     return a_f32v(s->conv_all, (int64_t)il * s->conv_slot_stride, n_kv * 4);
@@ -1071,8 +1134,11 @@ static int dispatch_mv(InkSession *s, PmBatch batch, const InkTensor *w, int64_t
             CALL(s, batch, K_DV_F32, items, a_int(rows), a_int(cols), a_int(add),
                  a_tensor_f32(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
         }
+    } else if (ink_ggml_type_supported(w->type)) {
+        CALL(s, batch, K_DV_GGML, (rows + 3) / 4, a_int(rows), a_int(cols), a_int(add), a_int((int64_t)w->type),
+             a_tensor_ggml_u16(s, w), a_ggml_grids(s), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
     } else {
-        snprintf(s->error, sizeof s->error, "unsupported weight type %u for matvec", w->type);
+        snprintf(s->error, sizeof s->error, "unsupported weight type %u (%s) for matvec", w->type, ink_ggml_type_name(w->type));
         return 1;
     }
     return 0;
@@ -1688,9 +1754,34 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     prof_mark(bp, 2); batch = *bp; /* 2: conv+clip+kv_store + GQA attn */
 
     /* Output projection + fused post shortconv + residual (Sprint 62/63/68: Q4_B32_SPLIT uint2 in-place cur!) */
+    int ablate_ip = (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]);
     if (attn_o_inplace) {
         if (is_blk) (*n_blocks)++;
-        if (use_mma_b1 && s->fast_buf && !s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+        if (ablate_ip) {
+            if (s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+                CALL(s, batch, K_DV_Q8S_NB, (d + 3) / 4, a_int(d), a_int(n_q), a_int(1),
+                     a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                     a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+                     a_f32v(s->attn_out, 0, n_q), a_f32v(s->o_raw, 0, d));
+            } else if (use_mma_b1 && s->fast_buf && !s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+                CALL(s, batch, K_DV_Q4S_MMA32_NB, (d + 31) / 32, a_int(d), a_int(n_q), a_int(1),
+                     a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                     a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+                     a_f32v(s->attn_out, 0, n_q), a_f32v(s->o_raw, 0, d));
+            } else if (s->fast_buf && !s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+                CALL(s, batch, K_DV_Q4S_NB, (d + 3) / 4, a_int(d), a_int(n_q), a_int(1),
+                     a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                     a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+                     a_f32v(s->attn_out, 0, n_q), a_f32v(s->o_raw, 0, d));
+            } else {
+                if (dispatch_mv(s, batch, &L->attn_output, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
+            }
+            pm_barrier(batch);
+            CALL(s, batch, K_POST_CONV_ABLATE_RES_NB, 1, a_int(d), a_int(1), a_int(is_blk ? 0 : 1), a_int(1),
+                 a_f32v(s->o_raw, 0, d), a_int((int64_t)(1 + ip) * d), a_ablate_dirs(s),
+                 a_tensor_f32(s, &L->attn_post_conv), a_conv_ao(s, il),
+                 a_f32v(s->cur, 0, d), a_raw_ao(s, il), a_f32v(s->cur, 0, d));
+        } else if (use_mma_b1 && s->fast_buf && !s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
             CALL(s, batch, K_DV_Q4S_MMA32_NB, (d + 31) / 32, a_int(d), a_int(n_q), a_int(1),
                  a_int(0), a_int(0), a_int(0), a_f32(0.0f),
                  a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
@@ -1728,6 +1819,11 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     } else {
         if (dispatch_mv(s, batch, &L->attn_output, d, n_q, 0, s->attn_out, 0, s->o_raw, 0)) return 1;
         pm_barrier(batch);
+        if (ablate_ip) {
+            CALL(s, batch, K_ABLATE_DIR, 1, a_int(d), a_int((int64_t)(1 + ip) * d),
+                 a_ablate_dirs(s), a_f32v(s->o_raw, 0, d));
+            pm_barrier(batch);
+        }
         if (ip % hp->block_size == 0) {
             if (*n_blocks >= INK_MAX_BLOCKS) {
                 snprintf(s->error, sizeof s->error, "block count overflow");
@@ -1769,7 +1865,8 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         pm_barrier(batch);
     } else {
         int64_t rank = hp->gate_rank;
-        if (L->loop_ctrl_gain[3].type == INK_GGML_F32 && L->loop_ctrl_forget[3].type == INK_GGML_F32 && rank <= 64) {
+        if (((s->fast_buf && FL->ctrl_gf3.off >= 0) ||
+             (L->loop_ctrl_gain[3].type == INK_GGML_F32 && L->loop_ctrl_forget[3].type == INK_GGML_F32)) && rank <= 64) {
             /* Sprint 29: Fused K_MIX + K_CTRL_PREP (-24 dispatches & barriers/tok)! */
             CALL(s, batch, K_MIX_CTRL_PREP, 1, a_int(d), a_int(*n_blocks),
                  a_f32v(s->blocks, 0, INK_MAX_BLOCKS * d),
@@ -1987,8 +2084,15 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
              a_f32v(s->norm_buf, 0, d),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff));
+    } else if (ink_ggml_type_supported(L->ffn_gate_up_exps.type)) {
+        CALL(s, batch, K_MOE_GU_GGML, gu_items_q8, a_int(n_ff), a_int(d), a_int((int64_t)L->ffn_gate_up_exps.type),
+             a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+             a_tensor_ggml_u16(s, &L->ffn_gate_up_exps), a_ggml_grids(s),
+             a_f32v(s->norm_buf, 0, d),
+             a_u32v(s->moe_ids, 0, hp->n_expert_used),
+             a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff));
     } else {
-        snprintf(s->error, sizeof s->error, "unsupported gate_up type %u", L->ffn_gate_up_exps.type);
+        snprintf(s->error, sizeof s->error, "unsupported gate_up type %u (%s)", L->ffn_gate_up_exps.type, ink_ggml_type_name(L->ffn_gate_up_exps.type));
         return 1;
     }
     pm_barrier(batch);
@@ -1996,7 +2100,70 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
 
     /* MoE down + weighted sum + fused post shortconv & residual add (Sprint 69/70: 288 TGs 8r/TG md_8r_nobar, Q4_B32_SPLIT for Q8_0 layers!) */
     int64_t dn_items = (d + INK_D - 1) / INK_D;
-    if (s->fast_buf && FL->moe_dn_q4s.qs.off >= 0) {
+    PmBuffer ffn_res = moe_dn_inplace ? s->cur : s->ffn_inp;
+    if (ablate_ip) {
+        int has_p1_fast = ((s->fast_buf && FL->moe_dn_q4s.qs.off >= 0) ||
+                           (s->iq4s_buf && FL->moe_dn_iq4s.qs.off >= 0));
+        if (has_p1_fast) {
+            int64_t dn_gpe = (d + 15) / 16;
+            CALL(s, batch, K_MOE_PLAN_NB, 1, a_int(hp->n_expert), a_int(hp->n_expert_used), a_int(1), a_int(dn_gpe),
+                 a_int(L->ffn_exp_probs_b.present ? 1 : 0), a_f32(hp->expert_weights_scale),
+                 a_f32v(s->router_logits, 0, hp->n_expert),
+                 L->ffn_exp_probs_b.present ? a_tensor_f32(s, &L->ffn_exp_probs_b) : a_f32v(s->dummy_f32, 0, 64),
+                 a_u32v(s->moe_ids, 0, hp->n_expert_used), a_f32v(s->moe_wts, 0, hp->n_expert_used),
+                 a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                 a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4));
+            pm_barrier(batch);
+            if (s->fast_buf && FL->moe_dn_q4s.qs.off >= 0 && s->fast_is_q8s) {
+                CALL(s, batch, K_MOE_DOWN_P1_Q8S_NB, hp->n_expert_used * ((d + 3) / 4), a_int(d), a_int(n_ff), a_int(1), a_int(hp->n_expert_used),
+                     a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
+                     a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
+                     a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                     a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                     a_f32v(s->moe_slot_out, 0, hp->n_expert_used * d));
+            } else if (s->fast_buf && FL->moe_dn_q4s.qs.off >= 0) {
+                CALL(s, batch, K_MOE_DOWN_P1_Q4S_NB, hp->n_expert_used * dn_gpe, a_int(d), a_int(n_ff), a_int(1), a_int(hp->n_expert_used),
+                     a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
+                     a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
+                     a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                     a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                     a_f32v(s->moe_slot_out, 0, hp->n_expert_used * d));
+            } else {
+                CALL(s, batch, K_MOE_DOWN_P1_IQ4S_NB, hp->n_expert_used * dn_gpe, a_int(d), a_int(n_ff), a_int(1), a_int(hp->n_expert_used),
+                     a_iq4s_u32(s, &FL->moe_dn_iq4s.qs), a_iq4s_u16(s, &FL->moe_dn_iq4s.ds),
+                     a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
+                     a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                     a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                     a_f32v(s->moe_slot_out, 0, hp->n_expert_used * d));
+            }
+            pm_barrier(batch);
+            CALL(s, batch, K_MOE_SUM_ABLATE_CONV_NB, 1, a_int(d), a_int(1), a_int(hp->n_expert_used), a_int(1),
+                 a_f32v(s->moe_slot_out, 0, hp->n_expert_used * d),
+                 a_f32v(s->moe_wts, 0, hp->n_expert_used),
+                 a_int((int64_t)(1 + ip) * d), a_ablate_dirs(s),
+                 a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+                 a_f32v(ffn_res, 0, d), a_raw_fo(s, il), a_f32v(s->cur, 0, d));
+        } else if (ink_ggml_type_supported(L->ffn_down_exps.type)) {
+            CALL(s, batch, K_MOE_DOWN_GGML, (d + 3) / 4, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
+                 a_int((int64_t)L->ffn_down_exps.type), a_int(0),
+                 a_tensor_ggml_u16(s, &L->ffn_down_exps), a_ggml_grids(s),
+                 a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
+                 a_u32v(s->moe_ids, 0, hp->n_expert_used),
+                 a_f32v(s->moe_wts, 0, hp->n_expert_used),
+                 a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+                 a_f32v(ffn_res, 0, d), a_f32v(s->moe_out, 0, d));
+            pm_barrier(batch);
+            CALL(s, batch, K_POST_CONV_ABLATE_RES_NB, 1, a_int(d), a_int(1), a_int(1), a_int(1),
+                 a_f32v(s->moe_out, 0, d), a_int((int64_t)(1 + ip) * d), a_ablate_dirs(s),
+                 a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+                 a_f32v(ffn_res, 0, d), a_raw_fo(s, il), a_f32v(s->cur, 0, d));
+        } else {
+            snprintf(s->error, sizeof s->error, "unsupported down type %u (%s)", L->ffn_down_exps.type, ink_ggml_type_name(L->ffn_down_exps.type));
+            return 1;
+        }
+        pm_barrier(batch);
+        prof_mark(bp, (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? 7 : 8); batch = *bp;
+    } else if (s->fast_buf && FL->moe_dn_q4s.qs.off >= 0) {
         CALL(s, batch, s->fast_is_q8s ? K_MOE_DOWN_Q8S : K_MOE_DOWN_Q4S, (d + 7) / 8, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
              a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
@@ -2073,8 +2240,21 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
              a_f32v(s->cur, 0, d));
         pm_barrier(batch);
         prof_mark(bp, 8); batch = *bp; /* 8: moe_down_q8 */
+    } else if (ink_ggml_type_supported(L->ffn_down_exps.type)) {
+        CALL(s, batch, K_MOE_DOWN_GGML, (d + 3) / 4, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
+             a_int((int64_t)L->ffn_down_exps.type), a_int(1),
+             a_tensor_ggml_u16(s, &L->ffn_down_exps), a_ggml_grids(s),
+             a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
+             a_u32v(s->moe_ids, 0, hp->n_expert_used),
+             a_f32v(s->moe_wts, 0, hp->n_expert_used),
+             a_tensor_f32(s, &L->ffn_post_conv),
+             a_conv_fo(s, il),
+             a_f32v(ffn_res, 0, d),
+             a_f32v(s->cur, 0, d));
+        pm_barrier(batch);
+        prof_mark(bp, 8); batch = *bp;
     } else {
-        snprintf(s->error, sizeof s->error, "unsupported down type %u", L->ffn_down_exps.type);
+        snprintf(s->error, sizeof s->error, "unsupported down type %u (%s)", L->ffn_down_exps.type, ink_ggml_type_name(L->ffn_down_exps.type));
         return 1;
     }
     return 0;
@@ -2299,9 +2479,10 @@ typedef struct {
     size_t src_bytes;
     uint8_t *dst;
     uint8_t *dst2; /* separate ds[] buffer for kind 7 (q8->q4s) and kind 8 (f32->q4s) */
-    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose, 3 = f32->q4, 4 = f32*norm->f16, 5 = q8->f16, 6 = gf, 7 = q8->q4s, 8 = f32->q4s */
+    int kind; /* 0 = f32->f16, 1 = q8->q4, 2 = f32->f16 transpose, 3 = f32->q4, 4 = f32*norm->f16, 5 = q8->f16, 6 = gf, 7 = q8->q4s, 8 = f32->q4s, 9 = gf_rm, 10 = iq4->iq4s, 11 = q8->q8s, 12 = f32->q8s, 13 = ggml_gf_T, 14 = ggml_gf_rm, 15 = ggml->f16 */
     int64_t rows, cols;
     const float *norm_w;
+    uint32_t wtype1, wtype2;
 } FastJob;
 
 static void convert_f32_norm_to_f16(const uint8_t *src, const float *nw, int64_t rows, int64_t cols, uint8_t *dst) {
@@ -2351,6 +2532,66 @@ static void convert_f32_gf_rowmaj(const uint8_t *g_src, const float *f_src, int6
         uint16_t hf = f32_to_f16_host(f_src[i]);
         o[i] = (uint32_t)hg | ((uint32_t)hf << 16);
     }
+}
+
+static size_t ggml_row_bytes_host(uint32_t wtype, int64_t cols) {
+    int64_t be = ink_ggml_block_elems(wtype);
+    int64_t bb = ink_ggml_block_bytes(wtype);
+    return (be > 0 && bb > 0) ? (size_t)((cols / be) * bb) : 0;
+}
+
+static void convert_ggml_gf_transpose(const uint8_t *g_src, uint32_t gt, const uint8_t *f_src, uint32_t ft, int64_t rows, int64_t cols, uint8_t *dst) {
+    uint32_t *o = (uint32_t *)dst;
+    size_t grb = ggml_row_bytes_host(gt, cols);
+    size_t frb = ggml_row_bytes_host(ft, cols);
+    float stack_g[256], stack_f[256];
+    float *gr = (cols <= 256) ? stack_g : (float *)malloc((size_t)cols * sizeof(float));
+    float *fr = (cols <= 256) ? stack_f : (float *)malloc((size_t)cols * sizeof(float));
+    if (!gr || !fr) { if (cols > 256) { free(gr); free(fr); } return; }
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(gt, g_src + (size_t)r * grb, gr, cols);
+        ink_ggml_dequant_row(ft, f_src + (size_t)r * frb, fr, cols);
+        for (int64_t c = 0; c < cols; c++) {
+            uint16_t hg = f32_to_f16_host(gr[c]);
+            uint16_t hf = f32_to_f16_host(fr[c]);
+            o[c * rows + r] = (uint32_t)hg | ((uint32_t)hf << 16);
+        }
+    }
+    if (cols > 256) { free(gr); free(fr); }
+}
+
+static void convert_ggml_gf_rowmaj(const uint8_t *g_src, uint32_t gt, const uint8_t *f_src, uint32_t ft, int64_t rows, int64_t cols, uint8_t *dst) {
+    uint32_t *o = (uint32_t *)dst;
+    size_t grb = ggml_row_bytes_host(gt, cols);
+    size_t frb = ggml_row_bytes_host(ft, cols);
+    float stack_g[256], stack_f[256];
+    float *gr = (cols <= 256) ? stack_g : (float *)malloc((size_t)cols * sizeof(float));
+    float *fr = (cols <= 256) ? stack_f : (float *)malloc((size_t)cols * sizeof(float));
+    if (!gr || !fr) { if (cols > 256) { free(gr); free(fr); } return; }
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(gt, g_src + (size_t)r * grb, gr, cols);
+        ink_ggml_dequant_row(ft, f_src + (size_t)r * frb, fr, cols);
+        uint32_t *orow = o + r * cols;
+        for (int64_t c = 0; c < cols; c++) {
+            uint16_t hg = f32_to_f16_host(gr[c]);
+            uint16_t hf = f32_to_f16_host(fr[c]);
+            orow[c] = (uint32_t)hg | ((uint32_t)hf << 16);
+        }
+    }
+    if (cols > 256) { free(gr); free(fr); }
+}
+
+static void convert_ggml_to_f16(const uint8_t *src, uint32_t wtype, int64_t rows, int64_t cols, uint8_t *dst) {
+    uint16_t *o = (uint16_t *)dst;
+    size_t rb = ggml_row_bytes_host(wtype, cols);
+    float *tmp = (float *)malloc((size_t)cols * sizeof(float));
+    if (!tmp) return;
+    for (int64_t r = 0; r < rows; r++) {
+        ink_ggml_dequant_row(wtype, src + (size_t)r * rb, tmp, cols);
+        uint16_t *orow = o + r * cols;
+        for (int64_t c = 0; c < cols; c++) orow[c] = f32_to_f16_host(tmp[c]);
+    }
+    free(tmp);
 }
 
 /* Sprint 71C: 100% lossless bit-exact split of 18B IQ4_NL (d:f16 + qs:16B) -> aligned 16B qs + 2B ds! */
@@ -2424,6 +2665,9 @@ static void *fast_worker(void *arg) {
         else if (j->kind == 10) convert_iq4_to_iq4s(j->src, j->src_bytes, j->dst, j->dst2);
         else if (j->kind == 11) convert_q8_to_q8s(j->src, j->src_bytes, j->dst, j->dst2);
         else if (j->kind == 12) convert_f32_to_q8s(j->src, j->src_bytes, j->dst, j->dst2);
+        else if (j->kind == 13) convert_ggml_gf_transpose(j->src, j->wtype1, (const uint8_t *)j->norm_w, j->wtype2, j->rows, j->cols, j->dst);
+        else if (j->kind == 14) convert_ggml_gf_rowmaj(j->src, j->wtype1, (const uint8_t *)j->norm_w, j->wtype2, j->rows, j->cols, j->dst);
+        else if (j->kind == 15) convert_ggml_to_f16(j->src, j->wtype1, j->rows, j->cols, j->dst);
         else convert_f32_to_f16(j->src, j->src_bytes, j->dst);
         /* Streamingly drop finished large repacked mmap pages so peak ru_maxrss stays ~18 GB instead of 32.7 GB! */
         if (j->src_bytes >= 262144 && (j->kind == 7 || j->kind == 10 || j->kind == 11)) {
@@ -2479,13 +2723,19 @@ static void build_fast_weights(InkSession *s) {
     if ((T).present && (T).type == INK_GGML_F32 && n_jobs < 2048) { \
         int64_t bytes = (int64_t)((T).nbytes / 2); \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 0, 0, 0, NULL }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 0, 0, 0, NULL, 0, 0 }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } else if ((T).present && (T).type == INK_GGML_Q8_0 && n_jobs < 2048) { \
         int64_t nb = (int64_t)((T).nbytes / 34); \
         int64_t bytes = nb * 32 * 2; \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 5, 0, 0, NULL }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 5, 0, 0, NULL, 0, 0 }; \
+        total_bytes = (total_bytes + bytes + 63) & ~63LL; \
+    } else if ((T).present && ink_ggml_type_supported((T).type) && (T).ndims >= 2 && n_jobs < 2048) { \
+        int64_t _cols = (int64_t)(T).dims[0], _rows = (int64_t)(T).dims[1]; \
+        int64_t bytes = _rows * _cols * 2; \
+        (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 15, _rows, _cols, NULL, (T).type, 0 }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -2494,7 +2744,7 @@ static void build_fast_weights(InkSession *s) {
     if ((T).present && (T).type == INK_GGML_F32 && n_jobs < 2048) { \
         int64_t bytes = (int64_t)((T).nbytes / 2); \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 2, (ROWS), (COLS), NULL }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 2, (ROWS), (COLS), NULL, 0, 0 }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -2504,7 +2754,7 @@ static void build_fast_weights(InkSession *s) {
         int64_t nb = (int64_t)((T).nbytes / 34); \
         int64_t bytes = nb * 18; \
         (SPAN).off = total_bytes; (SPAN).words = bytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 1, 0, 0, NULL }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)total_bytes, NULL, 1, 0, 0, NULL, 0, 0 }; \
         total_bytes = (total_bytes + bytes + 63) & ~63LL; \
     } \
 } while (0)
@@ -2523,7 +2773,7 @@ static void build_fast_weights(InkSession *s) {
         total_bytes = (total_bytes + dbytes + 63) & ~63LL; \
         (Q4S).qs.off = qoff; (Q4S).qs.words = qbytes / 2; \
         (Q4S).ds.off = doff; (Q4S).ds.words = dbytes / 2; \
-        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)qoff, (uint8_t *)(uintptr_t)doff, Q4S_KIND(T), 0, 0, NULL }; \
+        jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)qoff, (uint8_t *)(uintptr_t)doff, Q4S_KIND(T), 0, 0, NULL, 0, 0 }; \
     } \
 } while (0)
 
@@ -2545,11 +2795,11 @@ static void build_fast_weights(InkSession *s) {
             FL->ctrl_down_qkv_s.qs.off = qoff; FL->ctrl_down_qkv_s.qs.words = tot_nb * qblk_u16;
             FL->ctrl_down_qkv_s.ds.off = doff; FL->ctrl_down_qkv_s.ds.words = tot_nb;
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes,
-                                        (uint8_t *)(uintptr_t)(qoff), (uint8_t *)(uintptr_t)(doff), Q4S_KIND(L->loop_ctrl_down[0]), 0, 0, NULL };
+                                        (uint8_t *)(uintptr_t)(qoff), (uint8_t *)(uintptr_t)(doff), Q4S_KIND(L->loop_ctrl_down[0]), 0, 0, NULL, 0, 0 };
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes,
-                                        (uint8_t *)(uintptr_t)(qoff + nb0 * qblk_bytes), (uint8_t *)(uintptr_t)(doff + nb0 * 2), Q4S_KIND(L->loop_ctrl_down[1]), 0, 0, NULL };
+                                        (uint8_t *)(uintptr_t)(qoff + nb0 * qblk_bytes), (uint8_t *)(uintptr_t)(doff + nb0 * 2), Q4S_KIND(L->loop_ctrl_down[1]), 0, 0, NULL, 0, 0 };
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes,
-                                        (uint8_t *)(uintptr_t)(qoff + (nb0 + nb1) * qblk_bytes), (uint8_t *)(uintptr_t)(doff + (nb0 + nb1) * 2), Q4S_KIND(L->loop_ctrl_down[2]), 0, 0, NULL };
+                                        (uint8_t *)(uintptr_t)(qoff + (nb0 + nb1) * qblk_bytes), (uint8_t *)(uintptr_t)(doff + (nb0 + nb1) * 2), Q4S_KIND(L->loop_ctrl_down[2]), 0, 0, NULL, 0, 0 };
             ADD_FAST_Q4S(L->loop_ctrl_down[3], FL->ctrl_down3_s);
         } else if (L->loop_ctrl_down[0].present && L->loop_ctrl_down[0].type == INK_GGML_F32 &&
                    L->loop_ctrl_down[1].present && L->loop_ctrl_down[1].type == INK_GGML_F32 &&
@@ -2562,47 +2812,58 @@ static void build_fast_weights(InkSession *s) {
             FL->ctrl_down[0].off = total_bytes; FL->ctrl_down[0].words = b0 / 2;
             FL->ctrl_down[1].off = total_bytes + b0; FL->ctrl_down[1].words = b1 / 2;
             FL->ctrl_down[2].off = total_bytes + b0 + b1; FL->ctrl_down[2].words = b2 / 2;
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes, (uint8_t *)(uintptr_t)(total_bytes), NULL, 0, 0, 0, NULL };
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0), NULL, 0, 0, 0, NULL };
-            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0 + b1), NULL, 0, 0, 0, NULL };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes, (uint8_t *)(uintptr_t)(total_bytes), NULL, 0, 0, 0, NULL, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0), NULL, 0, 0, 0, NULL, 0, 0 };
+            jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes, (uint8_t *)(uintptr_t)(total_bytes + b0 + b1), NULL, 0, 0, 0, NULL, 0, 0 };
             total_bytes = (total_bytes + b0 + b1 + b2 + 63) & ~63LL;
             ADD_FAST_F16(L->loop_ctrl_down[3], FL->ctrl_down[3]);
         } else {
             for (int c = 0; c < 4; c++) ADD_FAST_F16(L->loop_ctrl_down[c], FL->ctrl_down[c]);
         }
-        if (L->loop_ctrl_gain[0].present && L->loop_ctrl_gain[0].type == INK_GGML_F32 &&
-            L->loop_ctrl_gain[1].present && L->loop_ctrl_gain[1].type == INK_GGML_F32 &&
-            L->loop_ctrl_gain[2].present && L->loop_ctrl_gain[2].type == INK_GGML_F32 &&
-            L->loop_ctrl_forget[0].present && L->loop_ctrl_forget[0].type == INK_GGML_F32 &&
-            L->loop_ctrl_forget[1].present && L->loop_ctrl_forget[1].type == INK_GGML_F32 &&
-            L->loop_ctrl_forget[2].present && L->loop_ctrl_forget[2].type == INK_GGML_F32 && n_jobs + 8 <= 2048) {
-            int64_t bgf = (int64_t)L->loop_ctrl_gain[0].nbytes; /* gain(f16)+forget(f16) = 4 bytes/elem = same as 1 f32 tensor! */
+        if (L->loop_ctrl_gain[0].present && ink_ggml_type_supported(L->loop_ctrl_gain[0].type) &&
+            L->loop_ctrl_gain[1].present && ink_ggml_type_supported(L->loop_ctrl_gain[1].type) &&
+            L->loop_ctrl_gain[2].present && ink_ggml_type_supported(L->loop_ctrl_gain[2].type) &&
+            L->loop_ctrl_forget[0].present && ink_ggml_type_supported(L->loop_ctrl_forget[0].type) &&
+            L->loop_ctrl_forget[1].present && ink_ggml_type_supported(L->loop_ctrl_forget[1].type) &&
+            L->loop_ctrl_forget[2].present && ink_ggml_type_supported(L->loop_ctrl_forget[2].type) && n_jobs + 8 <= 2048) {
+            int64_t bgf = hp->n_embd * hp->gate_rank * 4; /* gain(f16)+forget(f16) = 4 bytes/elem */
             FL->ctrl_gf_qkv.off = total_bytes; FL->ctrl_gf_qkv.words = (3 * bgf) / 2;
             for (int c = 0; c < 3; c++) {
+                int is_f32_pair = (L->loop_ctrl_gain[c].type == INK_GGML_F32 && L->loop_ctrl_forget[c].type == INK_GGML_F32);
                 jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[c].offset, (size_t)L->loop_ctrl_gain[c].nbytes,
-                                            (uint8_t *)(uintptr_t)(total_bytes + c * bgf), NULL, 6, hp->n_embd, hp->gate_rank,
-                                            (const float *)(base + L->loop_ctrl_forget[c].offset) };
+                                            (uint8_t *)(uintptr_t)(total_bytes + c * bgf), NULL,
+                                            is_f32_pair ? 6 : 13, hp->n_embd, hp->gate_rank,
+                                            (const float *)(base + L->loop_ctrl_forget[c].offset),
+                                            L->loop_ctrl_gain[c].type, L->loop_ctrl_forget[c].type };
             }
             total_bytes = (total_bytes + 3 * bgf + 63) & ~63LL;
             /* Sprint 70: Row-major [dim, rank] half2 copy for 256t decode (-33%, 28 MB total)! */
             FL->ctrl_gf_rm_qkv.off = total_bytes; FL->ctrl_gf_rm_qkv.words = (3 * bgf) / 2;
             for (int c = 0; c < 3; c++) {
+                int is_f32_pair = (L->loop_ctrl_gain[c].type == INK_GGML_F32 && L->loop_ctrl_forget[c].type == INK_GGML_F32);
                 jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[c].offset, (size_t)L->loop_ctrl_gain[c].nbytes,
-                                            (uint8_t *)(uintptr_t)(total_bytes + c * bgf), NULL, 9, hp->n_embd, hp->gate_rank,
-                                            (const float *)(base + L->loop_ctrl_forget[c].offset) };
+                                            (uint8_t *)(uintptr_t)(total_bytes + c * bgf), NULL,
+                                            is_f32_pair ? 9 : 14, hp->n_embd, hp->gate_rank,
+                                            (const float *)(base + L->loop_ctrl_forget[c].offset),
+                                            L->loop_ctrl_gain[c].type, L->loop_ctrl_forget[c].type };
             }
             total_bytes = (total_bytes + 3 * bgf + 63) & ~63LL;
-            if (L->loop_ctrl_gain[3].present && L->loop_ctrl_gain[3].type == INK_GGML_F32 &&
-                L->loop_ctrl_forget[3].present && L->loop_ctrl_forget[3].type == INK_GGML_F32) {
+            if (L->loop_ctrl_gain[3].present && ink_ggml_type_supported(L->loop_ctrl_gain[3].type) &&
+                L->loop_ctrl_forget[3].present && ink_ggml_type_supported(L->loop_ctrl_forget[3].type)) {
+                int is_f32_pair = (L->loop_ctrl_gain[3].type == INK_GGML_F32 && L->loop_ctrl_forget[3].type == INK_GGML_F32);
                 FL->ctrl_gf3.off = total_bytes; FL->ctrl_gf3.words = bgf / 2;
                 jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[3].offset, (size_t)L->loop_ctrl_gain[3].nbytes,
-                                            (uint8_t *)(uintptr_t)total_bytes, NULL, 6, hp->n_embd, hp->gate_rank,
-                                            (const float *)(base + L->loop_ctrl_forget[3].offset) };
+                                            (uint8_t *)(uintptr_t)total_bytes, NULL,
+                                            is_f32_pair ? 6 : 13, hp->n_embd, hp->gate_rank,
+                                            (const float *)(base + L->loop_ctrl_forget[3].offset),
+                                            L->loop_ctrl_gain[3].type, L->loop_ctrl_forget[3].type };
                 total_bytes = (total_bytes + bgf + 63) & ~63LL;
                 FL->ctrl_gf_rm3.off = total_bytes; FL->ctrl_gf_rm3.words = bgf / 2;
                 jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_gain[3].offset, (size_t)L->loop_ctrl_gain[3].nbytes,
-                                            (uint8_t *)(uintptr_t)total_bytes, NULL, 9, hp->n_embd, hp->gate_rank,
-                                            (const float *)(base + L->loop_ctrl_forget[3].offset) };
+                                            (uint8_t *)(uintptr_t)total_bytes, NULL,
+                                            is_f32_pair ? 9 : 14, hp->n_embd, hp->gate_rank,
+                                            (const float *)(base + L->loop_ctrl_forget[3].offset),
+                                            L->loop_ctrl_gain[3].type, L->loop_ctrl_forget[3].type };
                 total_bytes = (total_bytes + bgf + 63) & ~63LL;
             }
         } else {
@@ -2632,7 +2893,7 @@ static void build_fast_weights(InkSession *s) {
     (SUB).ds.off = doff + cur_nb * 2;  (SUB).ds.words = (NB); \
     jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, \
                                 (uint8_t *)(uintptr_t)(qoff + cur_nb * qblk_bytes), (uint8_t *)(uintptr_t)(doff + cur_nb * 2), \
-                                Q4S_KIND(T), 0, 0, NULL }; \
+                                Q4S_KIND(T), 0, 0, NULL, 0, 0 }; \
     cur_nb += (NB); \
 } while (0)
             PACK_Q4S_SUB(L->attn_q, nbq, FL->attn_q_s);
@@ -2748,7 +3009,7 @@ static void build_fast_weights(InkSession *s) {
             if (_b0 >= nb) break; \
             int64_t _bc = (_b0 + per <= nb) ? per : (nb - _b0); \
             iq_jobs[n_iq++] = (FastJob){ base + (T).offset + _b0 * 18, (size_t)(_bc * 18), \
-                                         (uint8_t *)(uintptr_t)(qoff + _b0 * 16), (uint8_t *)(uintptr_t)(doff + _b0 * 2), 10, 0, 0, NULL }; \
+                                         (uint8_t *)(uintptr_t)(qoff + _b0 * 16), (uint8_t *)(uintptr_t)(doff + _b0 * 2), 10, 0, 0, NULL, 0, 0 }; \
         } \
     } \
 } while (0)
@@ -2814,8 +3075,7 @@ static void build_fast_weights(InkSession *s) {
         if (has_k_dyn != has_v_dyn) ok_nb = 0;
         if (has_k_dyn && ((hp->n_head_kv * hp->conv_len) % 2 != 0)) ok_nb = 0;
         int moe_ok = (FL->moe_gu_q4s.qs.off >= 0 && FL->moe_dn_q4s.qs.off >= 0) ||
-                     (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL && L->ffn_down_exps.type == INK_GGML_IQ4_NL) ||
-                     (L->ffn_gate_up_exps.type == INK_GGML_Q8_0 && L->ffn_down_exps.type == INK_GGML_Q8_0);
+                     (ink_ggml_type_supported(L->ffn_gate_up_exps.type) && ink_ggml_type_supported(L->ffn_down_exps.type));
         if (!moe_ok) ok_nb = 0;
         if (ip >= hp->loop_start && ip < hp->loop_end && hp->loop_count > 1) {
             int ctrl_q4s_ok = (FL->ctrl_down_qkv_s.qs.off >= 0 && FL->ctrl_down3_s.qs.off >= 0);
@@ -3461,11 +3721,19 @@ static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *o
     if (d->pos != s->pos) { pm_abort(batch); return 1; }
 
     /* 1. Anchor embedding + MarkovHead f_rnn mix/norm (concurrent) */
-    CALL(s, batch, K_EMBED_Q8, 1, a_int(anchor), a_int(d_dim),
-         a_tensor_u16(s, &s->gguf.tok_embd),
-         a_tensor_f32(s, &s->gguf.tok_norm),
-         a_f32(hp->rms_eps),
-         a_f32v(d->anchor_emb, 0, d_dim));
+    if (s->gguf.tok_embd.type == INK_GGML_Q8_0 && !s->ablate_has_emb) {
+        CALL(s, batch, K_EMBED_Q8, 1, a_int(anchor), a_int(d_dim),
+             a_tensor_u16(s, &s->gguf.tok_embd),
+             a_tensor_f32(s, &s->gguf.tok_norm),
+             a_f32(hp->rms_eps),
+             a_f32v(d->anchor_emb, 0, d_dim));
+    } else {
+        CALL(s, batch, K_EMBED_GGML, 1, a_int(anchor), a_int(d_dim), a_int((int64_t)s->gguf.tok_embd.type),
+             a_tensor_ggml_u16(s, &s->gguf.tok_embd), a_ggml_grids(s),
+             a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+             a_int(s->ablate_has_emb ? 1 : 0), a_ablate_dirs(s),
+             a_f32v(d->anchor_emb, 0, d_dim));
+    }
     CALL(s, batch, K_DSPARK_MIX_NORM, 1,
          a_int(1), a_int(d_dim),
          a_f32(d->fuse_alpha[3][0]), a_f32(d->fuse_alpha[3][1]),
@@ -3669,11 +3937,16 @@ static int64_t ink_host_ram_mb(void) {
 }
 
 int ink_open(const char *gguf_path, const char *metal_path, int max_ctx, InkSession **out, char *err, size_t err_bytes) {
-    return ink_open_ex(gguf_path, metal_path, max_ctx, 0, out, err, err_bytes);
+    return ink_open_lora(gguf_path, metal_path, NULL, max_ctx, 0, out, err, err_bytes);
 }
 
 int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
                 int loop_count_override, InkSession **out, char *err, size_t err_bytes) {
+    return ink_open_lora(gguf_path, metal_path, NULL, max_ctx, loop_count_override, out, err, err_bytes);
+}
+
+int ink_open_lora(const char *gguf_path, const char *metal_path, const char *lora_path, int max_ctx,
+                  int loop_count_override, InkSession **out, char *err, size_t err_bytes) {
     *out = NULL;
     InkSession *s = (InkSession *)calloc(1, sizeof *s);
     if (!s) { snprintf(err, err_bytes, "out of memory"); return 1; }
@@ -3683,8 +3956,30 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         free(s); return 1;
     }
     InkHParams *hp = &s->gguf.hp;
+    float *ablate_host = NULL;
+    if (lora_path && lora_path[0]) {
+        if (ink_lora_open(lora_path, &s->lora, err, err_bytes) != 0) {
+            ink_close(s); return 1;
+        }
+        size_t ab_elems = (size_t)(1 + hp->n_phys) * (size_t)hp->n_embd;
+        ablate_host = (float *)calloc(ab_elems, sizeof(float));
+        if (!ablate_host) {
+            snprintf(err, err_bytes, "out of memory allocating ablation directions");
+            ink_close(s); return 1;
+        }
+        if (ink_lora_extract_ablate(&s->lora, (int)hp->n_phys, (int)hp->n_embd, (int)hp->n_expert, ablate_host,
+                                    &s->ablate_has_emb, s->ablate_has_layer, err, err_bytes) != 0) {
+            free(ablate_host);
+            ink_close(s); return 1;
+        }
+        s->has_ablate = s->ablate_has_emb ? 1 : 0;
+        for (int ip = 0; ip < hp->n_phys && ip < 32; ip++) {
+            if (s->ablate_has_layer[ip]) s->has_ablate = 1;
+        }
+    }
     if (loop_count_override < 0 || loop_count_override > 16) {
         snprintf(err, err_bytes, "invalid loop_count_override %d (expected 0 or 1..16)", loop_count_override);
+        free(ablate_host);
         ink_close(s); return 1;
     }
     if (loop_count_override > 0) {
@@ -3697,25 +3992,33 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     s->n_slots = (int)(hp->n_phys + (hp->loop_count - 1) * (hp->loop_end - hp->loop_start));
     if (s->n_slots > INK_MAX_SLOTS) {
         snprintf(err, err_bytes, "n_slots %d > %d", s->n_slots, INK_MAX_SLOTS);
+        free(ablate_host);
         ink_close(s); return 1;
     }
 
     PmDeviceInfo info;
     if (pm_open(&info) != PM_OK) {
         snprintf(err, err_bytes, "pm_open: %s", pm_log());
+        free(ablate_host);
         ink_close(s); return 1;
     }
 
-    /* Unified-memory residency guardrail (>= 32 GB Apple Silicon floor + exact KV & scratch budget). */
+    /* Unified-memory residency guardrail (dynamic >= 12 GB floor + exact weights/KV/scratch budget). */
     int64_t ram_mb = ink_host_ram_mb();
     if (ram_mb <= 0 && info.working_set_bytes > 0) {
         ram_mb = (int64_t)(info.working_set_bytes / (1024ULL * 1024ULL));
     }
     int use_flash_attn = (hp->head_dim == 128 && hp->rel_len == 16 && !getenv("INK_OLD_ATTN"));
-    s->prefill_b = (use_flash_attn && (ram_mb == 0 || ram_mb > 40960)) ? INK_PREFILL_B
-                 : (s->max_ctx <= 8192) ? INK_PREFILL_B
-                 : (s->max_ctx <= 16384) ? 2048
-                 : (ram_mb > 0 && ram_mb <= 40960) ? 512 : 1024;
+    if (ram_mb > 0 && ram_mb <= 18432) {
+        s->prefill_b = 256;
+    } else if (ram_mb > 0 && ram_mb <= 28672) {
+        s->prefill_b = 512;
+    } else {
+        s->prefill_b = (use_flash_attn && (ram_mb == 0 || ram_mb > 40960)) ? INK_PREFILL_B
+                     : (s->max_ctx <= 8192) ? INK_PREFILL_B
+                     : (s->max_ctx <= 16384) ? 2048
+                     : (ram_mb > 0 && ram_mb <= 40960) ? 512 : 1024;
+    }
 
     size_t B = (size_t)s->prefill_b;
     size_t d = (size_t)hp->n_embd;
@@ -3736,12 +4039,12 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     }
     {
         uint64_t fp = 14695981039346656037ULL;
-        uint64_t ks[10] = {
+        uint64_t ks[11] = {
             (uint64_t)hp->n_phys, (uint64_t)hp->n_embd, (uint64_t)hp->n_head, (uint64_t)hp->n_head_kv,
             (uint64_t)hp->n_ff_exp, (uint64_t)hp->n_expert, (uint64_t)hp->n_vocab, (uint64_t)hp->swa,
-            (uint64_t)s->gguf.file_size, (uint64_t)s->kv_q8
+            (uint64_t)s->gguf.file_size, (uint64_t)s->kv_q8, s->lora.fp
         };
-        for (int ki = 0; ki < 10; ki++) { fp ^= ks[ki]; fp *= 1099511628211ULL; }
+        for (int ki = 0; ki < 11; ki++) { fp ^= ks[ki]; fp *= 1099511628211ULL; }
         s->model_fp = fp;
     }
     size_t kv_row = (size_t)s->kv_row_u16;
@@ -3760,9 +4063,10 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     size_t attn_bytes = attn_prefill_bytes > attn_decode_bytes ? attn_prefill_bytes : attn_decode_bytes;
     if (attn_bytes < attn_split_min) attn_bytes = attn_split_min;
     s->attn_scores_bytes = attn_bytes;
-    size_t scratch_bytes = attn_bytes + (size_t)44 * 1024 * 1024 * 4 +
+    size_t w_bf16_u32 = (ram_mb > 0 && ram_mb <= 28672) ? (size_t)(24 * 1024 * 1024) : (size_t)(44 * 1024 * 1024);
+    size_t scratch_bytes = attn_bytes + w_bf16_u32 * 4 +
                            B * (size_t)(48 * d + 6 * n_q + 4 * n_kv + 3 * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp) * 4;
-    int64_t os_reserve_mb = 4096;
+    int64_t os_reserve_mb = (ram_mb > 0 && ram_mb <= 18432) ? 2048 : (ram_mb > 0 && ram_mb <= 28672) ? 3072 : 4096;
     int64_t weights_mb = (int64_t)((s->gguf.map_size + 1048575ULL) / 1048576ULL);
     int64_t kv_mb = (int64_t)((kv_bytes + 1048575ULL) / 1048576ULL);
     int64_t scratch_mb = (int64_t)((scratch_bytes + 1048575ULL) / 1048576ULL);
@@ -3786,16 +4090,18 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         .full_slots = full_slots,
         .swa_slots = swa_slots,
     };
-    if (ram_mb > 0 && ram_mb < 32768) {
+    if (ram_mb > 0 && ram_mb < 12288) {
         snprintf(err, err_bytes,
-                 "insufficient unified memory: %lld MB detected (requires >= 32768 MB for Inkling 2 Mini; weights=%lld MB)",
+                 "insufficient unified memory: %lld MB detected (requires >= 12288 MB for Inkling 2 Mini; weights=%lld MB)",
                  (long long)ram_mb, (long long)weights_mb);
+        free(ablate_host);
         ink_close(s); return 1;
     }
     if (ram_mb > 0 && total_mb > ram_mb) {
         snprintf(err, err_bytes,
-                 "context %d exceeds unified memory budget (%lld MB required > %lld MB RAM; max_ctx=%lld)",
-                 s->max_ctx, (long long)total_mb, (long long)ram_mb, (long long)max_ctx_fit);
+                 "context %d exceeds unified memory budget (%lld MB required > %lld MB RAM; weights=%lld MB, max_ctx=%lld)",
+                 s->max_ctx, (long long)total_mb, (long long)ram_mb, (long long)weights_mb, (long long)max_ctx_fit);
+        free(ablate_host);
         ink_close(s); return 1;
     }
 
@@ -3804,6 +4110,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     char *metal_src = read_entire_file(metal_path, &metal_len);
     if (!metal_src) {
         snprintf(err, err_bytes, "cannot read metal source %s", metal_path);
+        free(ablate_host);
         ink_close(s); return 1;
     }
     double compile_s = 0.0;
@@ -3811,15 +4118,38 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     free(metal_src);
     if (cs != PM_OK) {
         snprintf(err, err_bytes, "pm_compile(%s): %s", metal_path, pm_log());
+        free(ablate_host);
         ink_close(s); return 1;
     }
     double t_pso0 = open_now_s();
     if (pm_kernels_batch(s->module, k_names, K_COUNT, s->kernels) != PM_OK) {
         snprintf(err, err_bytes, "pm_kernels_batch: %s", pm_log());
+        free(ablate_host);
         ink_close(s); return 1;
     }
     double t_pso1 = open_now_s();
     madvise(s->gguf.map, s->gguf.map_size, MADV_SEQUENTIAL);
+
+    if (alloc_buf_unset(s, &s->ggml_grids, (size_t)INK_GRID_TOTAL_U32 * sizeof(uint32_t))) {
+        snprintf(err, err_bytes, "%s", s->error);
+        free(ablate_host);
+        ink_close(s); return 1;
+    }
+    memcpy(pm_contents(s->ggml_grids), ink_ggml_grid_table(NULL), (size_t)INK_GRID_TOTAL_U32 * sizeof(uint32_t));
+    pm_mark_readonly(s->ggml_grids);
+
+    if (s->has_ablate && ablate_host) {
+        size_t ab_bytes = (size_t)(1 + hp->n_phys) * d * sizeof(float);
+        if (alloc_buf_unset(s, &s->ablate_dirs, ab_bytes)) {
+            snprintf(err, err_bytes, "%s", s->error);
+            free(ablate_host);
+            ink_close(s); return 1;
+        }
+        memcpy(pm_contents(s->ablate_dirs), ablate_host, ab_bytes);
+        pm_mark_readonly(s->ablate_dirs);
+    }
+    free(ablate_host);
+    ablate_host = NULL;
 
     if (alloc_buf_unset(s, &s->cur, B * d * 4) ||
         alloc_buf_unset(s, &s->inp_sa, B * d * 4) ||
@@ -3868,7 +4198,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         alloc_buf_unset(s, &s->tile_exp, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf_unset(s, &s->tile_m0, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
-        alloc_buf_unset(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
+        alloc_buf_unset(s, &s->w_bf16, w_bf16_u32 * 4) ||
         alloc_buf_unset(s, &s->tok_ids_buf, B * 4) ||
         alloc_buf_unset(s, &s->tau_buf, B * 4) ||
         alloc_buf_unset(s, &s->logits_buf[0], (size_t)hp->n_vocab * 4) ||
@@ -4063,8 +4393,11 @@ void ink_close(InkSession *s) {
     pm_free(s->iq4s_buf);
     pm_free(s->fast_buf);
     pm_free(s->weights_buf);
+    pm_free(s->ablate_dirs);
+    pm_free(s->ggml_grids);
     for (int k = 0; k < K_COUNT; k++) pm_kernel_free(s->kernels[k]);
     pm_unload(s->module);
+    ink_lora_close(&s->lora);
     ink_gguf_close(&s->gguf);
     free(s);
 }
@@ -4925,18 +5258,35 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
                  a_f32v(s->conv_all, 0, s->conv_all_elems),
                  a_f32v(s->conv_backup, 0, s->conv_all_elems));
         }
-        CALL(s, batch, K_EMBED_Q8_INDIRECT, 1, a_int(d), a_int(hp->n_vocab),
-             a_u32v(indirect_tok_buf, 0, 1),
-             a_tensor_u16(s, &s->gguf.tok_embd),
-             a_tensor_f32(s, &s->gguf.tok_norm),
-             a_f32(hp->rms_eps),
-             a_f32v(s->cur, 0, d));
+        if (s->gguf.tok_embd.type == INK_GGML_Q8_0 && !s->ablate_has_emb) {
+            CALL(s, batch, K_EMBED_Q8_INDIRECT, 1, a_int(d), a_int(hp->n_vocab),
+                 a_u32v(indirect_tok_buf, 0, 1),
+                 a_tensor_u16(s, &s->gguf.tok_embd),
+                 a_tensor_f32(s, &s->gguf.tok_norm),
+                 a_f32(hp->rms_eps),
+                 a_f32v(s->cur, 0, d));
+        } else {
+            CALL(s, batch, K_EMBED_GGML_INDIRECT, 1, a_int(d), a_int(hp->n_vocab), a_int((int64_t)s->gguf.tok_embd.type),
+                 a_u32v(indirect_tok_buf, 0, 1),
+                 a_tensor_ggml_u16(s, &s->gguf.tok_embd), a_ggml_grids(s),
+                 a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+                 a_int(s->ablate_has_emb ? 1 : 0), a_ablate_dirs(s),
+                 a_f32v(s->cur, 0, d));
+        }
     } else {
-        CALL(s, batch, K_EMBED_Q8, 1, a_int(token_id), a_int(d),
-             a_tensor_u16(s, &s->gguf.tok_embd),
-             a_tensor_f32(s, &s->gguf.tok_norm),
-             a_f32(hp->rms_eps),
-             a_f32v(s->cur, 0, d));
+        if (s->gguf.tok_embd.type == INK_GGML_Q8_0 && !s->ablate_has_emb) {
+            CALL(s, batch, K_EMBED_Q8, 1, a_int(token_id), a_int(d),
+                 a_tensor_u16(s, &s->gguf.tok_embd),
+                 a_tensor_f32(s, &s->gguf.tok_norm),
+                 a_f32(hp->rms_eps),
+                 a_f32v(s->cur, 0, d));
+        } else {
+            CALL(s, batch, K_EMBED_GGML, 1, a_int(token_id), a_int(d), a_int((int64_t)s->gguf.tok_embd.type),
+                 a_tensor_ggml_u16(s, &s->gguf.tok_embd), a_ggml_grids(s),
+                 a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+                 a_int(s->ablate_has_emb ? 1 : 0), a_ablate_dirs(s),
+                 a_f32v(s->cur, 0, d));
+        }
     }
     pm_barrier(batch);
 
@@ -5164,17 +5514,30 @@ static int dispatch_mm(InkSession *s, PmBatch batch, const InkTensor *w, int64_t
             CALL(s, batch, K_MM_F32, items, a_int(rows), a_int(cols), a_int(nb),
                  a_tensor_f32(s, w), a_f32v(x_buf, x_off, nb * cols), a_f32v(out_buf, out_off, nb * rows));
         }
+    } else if (ink_ggml_type_supported(w->type)) {
+        CALL(s, batch, K_MM_GGML, nb * ((rows + 3) / 4), a_int(rows), a_int(cols), a_int(nb), a_int((int64_t)w->type),
+             a_tensor_ggml_u16(s, w), a_ggml_grids(s),
+             a_f32v(x_buf, x_off, nb * cols), a_f32v(out_buf, out_off, nb * rows));
     } else {
-        snprintf(s->error, sizeof s->error, "unsupported weight type %u for batched matmul", w->type);
+        snprintf(s->error, sizeof s->error, "unsupported weight type %u (%s) for batched matmul", w->type, ink_ggml_type_name(w->type));
         return 1;
     }
     return 0;
 }
 
 static int dispatch_dequant_q8_bf16(InkSession *s, PmBatch batch, const InkTensor *w, int64_t rows, int64_t cols, int64_t bf16_off) {
-    CALL(s, batch, K_DEQUANT_Q8_BF16, (rows + 3) / 4, a_int(rows), a_int(cols),
-         a_tensor_u16(s, w), a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)));
-    return 0;
+    if (w->type == INK_GGML_Q8_0) {
+        CALL(s, batch, K_DEQUANT_Q8_BF16, (rows + 3) / 4, a_int(rows), a_int(cols),
+             a_tensor_u16(s, w), a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)));
+        return 0;
+    }
+    if (ink_ggml_type_supported(w->type)) {
+        CALL(s, batch, K_DEQUANT_GGML_BF16, (rows + 3) / 4, a_int(rows), a_int(cols), a_int((int64_t)w->type),
+             a_tensor_ggml_u16(s, w), a_ggml_grids(s), a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)));
+        return 0;
+    }
+    snprintf(s->error, sizeof s->error, "unsupported weight type %u (%s) for dequant_bf16", w->type, ink_ggml_type_name(w->type));
+    return 1;
 }
 
 static int dispatch_dequant_q4_or_q8_bf16(InkSession *s, PmBatch batch, const InkTensor *w, const FastSpan *fs, const FastQ4S *q4s, int64_t rows, int64_t cols, int64_t bf16_off) {
@@ -5349,8 +5712,10 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     int qkv_q8s = (!force_fp32 && s->fast_buf && s->fast_is_q8s &&
                    FL->attn_q_s.qs.off >= 0 && FL->attn_k_s.qs.off >= 0 && FL->attn_v_s.qs.off >= 0 &&
                    FL->attn_rel_s.qs.off >= 0 && FL->attn_gate_s.qs.off >= 0);
-    int qkv_bf16 = (!qkv_q8s && nb >= m4_min && L->attn_q.type == INK_GGML_Q8_0 && L->attn_k.type == INK_GGML_Q8_0 &&
-                    L->attn_v.type == INK_GGML_Q8_0 && L->attn_rel.type == INK_GGML_Q8_0 && L->attn_gate.type == INK_GGML_Q8_0);
+    int qkv_bf16 = (!qkv_q8s && nb >= m4_min &&
+                    ink_ggml_type_supported(L->attn_q.type) && ink_ggml_type_supported(L->attn_k.type) &&
+                    ink_ggml_type_supported(L->attn_v.type) && ink_ggml_type_supported(L->attn_rel.type) &&
+                    ink_ggml_type_supported(L->attn_gate.type));
     int64_t off_q = 0;
     int64_t off_k = off_q + n_q * (d / 2);
     int64_t off_v = off_k + n_kv * (d / 2);
@@ -5528,7 +5893,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     uint32_t kv_info = (uint32_t)kv_cap | ((uint32_t)sc_stride << 16);
     int64_t q_tiles = (nb + 63) / 64;
     int o_q8s = (!force_fp32 && s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0);
-    int o_bf16 = (!o_q8s && nb >= m4_min && L->attn_output.type == INK_GGML_Q8_0);
+    int o_bf16 = (!o_q8s && nb >= m4_min && ink_ggml_type_supported(L->attn_output.type));
     if (hd == 128 && n_rel == 16 && !getenv("INK_OLD_ATTN")) {
         int64_t fq_tiles = (nb + 31) / 32;
         CALL(s, batch, K_FLASH_ATTN_M4, n_head * fq_tiles,
@@ -5601,6 +5966,11 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
         if (dispatch_mm(s, batch, &L->attn_output, d, n_q, nb, s->attn_out, 0, s->o_raw, 0)) return 1;
     }
     pm_barrier(batch);
+    if (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]) {
+        CALL(s, batch, K_ABLATE_DIR, nb, a_int(d), a_int((int64_t)(1 + ip) * d),
+             a_ablate_dirs(s), a_f32v(s->o_raw, 0, bd));
+        pm_barrier(batch);
+    }
     int64_t conv_d_items = ((nb + 31) / 32) * ((d + 63) / 64);
     if (save_spec_hist) {
         CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
@@ -5879,10 +6249,14 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
              a_f32v(s->moe_slot_out, 0, tot_rows * d));
         pm_barrier(batch);
         prof_mark(bp, 10); batch = *bp; /* 10: moe_dn_iq4+scatter */
-    } else if (nb >= 8 &&
-        (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL || L->ffn_gate_up_exps.type == INK_GGML_Q8_0) &&
-        (L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0)) {
-        /* Sprint 9B: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE (64-exp GU = 2 chunks, 128-exp Down = 1 chunk!) */
+    } else if (((nb >= 8 &&
+                 (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL || L->ffn_gate_up_exps.type == INK_GGML_Q8_0) &&
+                 (L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0)) ||
+                (!(L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL || L->ffn_gate_up_exps.type == INK_GGML_Q8_0) ||
+                 !(L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0))) &&
+               ink_ggml_type_supported(L->ffn_gate_up_exps.type) &&
+               ink_ggml_type_supported(L->ffn_down_exps.type)) {
+        /* Sprint 9B + Universal GGML: Metal 4 Neural Accelerator (am_matmul_bf16) Expert-Grouped MoE! */
         int64_t tot_rows = nb * hp->n_expert_used;
         int use_64 = (nb >= 384);
         int64_t tm = use_64 ? 64 : 16;
@@ -5908,8 +6282,9 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
         int64_t gu_rows = 2 * n_ff;
         int64_t gu_w_u32 = gu_rows * (d / 2);
         int64_t gu_r_tiles = (gu_rows + tn - 1) / tn;
-        int64_t gu_deq_rgrps = (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) ? ((gu_rows + 7) / 8) : ((gu_rows + 3) / 4);
-        int gu_deq_k = (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16;
+        int gu_is_iq4 = (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL);
+        int gu_is_q8 = (L->ffn_gate_up_exps.type == INK_GGML_Q8_0);
+        int64_t gu_deq_rgrps = gu_is_iq4 ? ((gu_rows + 7) / 8) : ((gu_rows + 3) / 4);
         for (int64_t e_lo = 0; e_lo < hp->n_expert; e_lo += e_chunk_gu) {
             int64_t e_hi = e_lo + e_chunk_gu;
             if (e_hi > hp->n_expert) e_hi = hp->n_expert;
@@ -5919,9 +6294,17 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
             CALL(s, batch, K_MOE_CHUNK_TILES, 1, a_int(e_lo), a_int(e_hi), a_int(tm), a_int(gu_r_tiles),
                  a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
-            CALL(s, batch, gu_deq_k, ec * gu_deq_rgrps, a_int(e_lo), a_int(gu_rows), a_int(d),
-                 a_tensor_u16(s, &L->ffn_gate_up_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
-                 a_u32v(s->w_bf16, 0, ec * gu_w_u32));
+            if (gu_is_iq4 || gu_is_q8) {
+                CALL(s, batch, gu_is_iq4 ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16,
+                     ec * gu_deq_rgrps, a_int(e_lo), a_int(gu_rows), a_int(d),
+                     a_tensor_u16(s, &L->ffn_gate_up_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
+                     a_u32v(s->w_bf16, 0, ec * gu_w_u32));
+            } else {
+                CALL(s, batch, K_DEQUANT_GGML_EXP_BF16,
+                     ec * gu_deq_rgrps, a_int(e_lo), a_int(gu_rows), a_int(d), a_int((int64_t)L->ffn_gate_up_exps.type),
+                     a_tensor_ggml_u16(s, &L->ffn_gate_up_exps), a_ggml_grids(s), a_u32v(s->exp_cnt, 0, hp->n_expert),
+                     a_u32v(s->w_bf16, 0, ec * gu_w_u32));
+            }
             pm_barrier(batch);
             CALL(s, batch, moe_mm_k, max_ct * gu_r_tiles, a_int(e_lo), a_int(gu_rows), a_int(d),
                  a_u32v(s->w_bf16, 0, ec * gu_w_u32),
@@ -5938,12 +6321,13 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
              a_f32v(s->moe_hid, 0, tot_rows * n_ff));
         pm_barrier(batch);
 
-        /* Down projection (32 experts/chunk fits in 44M u32 w_bf16!) */
+        /* Down projection (32 experts/chunk fits in 24M+ u32 w_bf16!) */
         int64_t e_chunk_dn = 32;
         int64_t dn_w_u32 = d * (n_ff / 2);
         int64_t dn_r_tiles = (d + tn - 1) / tn;
-        int64_t dn_deq_rgrps = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? ((d + 7) / 8) : ((d + 3) / 4);
-        int dn_deq_k = (L->ffn_down_exps.type == INK_GGML_IQ4_NL) ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16;
+        int dn_is_iq4 = (L->ffn_down_exps.type == INK_GGML_IQ4_NL);
+        int dn_is_q8 = (L->ffn_down_exps.type == INK_GGML_Q8_0);
+        int64_t dn_deq_rgrps = dn_is_iq4 ? ((d + 7) / 8) : ((d + 3) / 4);
         for (int64_t e_lo = 0; e_lo < hp->n_expert; e_lo += e_chunk_dn) {
             int64_t e_hi = e_lo + e_chunk_dn;
             if (e_hi > hp->n_expert) e_hi = hp->n_expert;
@@ -5953,9 +6337,17 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
             CALL(s, batch, K_MOE_CHUNK_TILES, 1, a_int(e_lo), a_int(e_hi), a_int(tm), a_int(dn_r_tiles),
                  a_u32v(s->exp_cnt, 0, hp->n_expert),
                  a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
-            CALL(s, batch, dn_deq_k, ec * dn_deq_rgrps, a_int(e_lo), a_int(d), a_int(n_ff),
-                 a_tensor_u16(s, &L->ffn_down_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
-                 a_u32v(s->w_bf16, 0, ec * dn_w_u32));
+            if (dn_is_iq4 || dn_is_q8) {
+                CALL(s, batch, dn_is_iq4 ? K_DEQUANT_IQ4_EXP_BF16 : K_DEQUANT_Q8_EXP_BF16,
+                     ec * dn_deq_rgrps, a_int(e_lo), a_int(d), a_int(n_ff),
+                     a_tensor_u16(s, &L->ffn_down_exps), a_u32v(s->exp_cnt, 0, hp->n_expert),
+                     a_u32v(s->w_bf16, 0, ec * dn_w_u32));
+            } else {
+                CALL(s, batch, K_DEQUANT_GGML_EXP_BF16,
+                     ec * dn_deq_rgrps, a_int(e_lo), a_int(d), a_int(n_ff), a_int((int64_t)L->ffn_down_exps.type),
+                     a_tensor_ggml_u16(s, &L->ffn_down_exps), a_ggml_grids(s), a_u32v(s->exp_cnt, 0, hp->n_expert),
+                     a_u32v(s->w_bf16, 0, ec * dn_w_u32));
+            }
             pm_barrier(batch);
             CALL(s, batch, moe_mm_k, max_ct * dn_r_tiles, a_int(e_lo), a_int(d), a_int(n_ff),
                  a_u32v(s->w_bf16, 0, ec * dn_w_u32),
@@ -6067,6 +6459,11 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
              a_f32v(s->moe_out, 0, bd));
     }
     pm_barrier(batch);
+    if (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]) {
+        CALL(s, batch, K_ABLATE_DIR, nb, a_int(d), a_int((int64_t)(1 + ip) * d),
+             a_ablate_dirs(s), a_f32v(s->moe_out, 0, bd));
+        pm_barrier(batch);
+    }
     if (save_spec_hist) {
         CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
              a_f32v(s->moe_out, 0, bd), a_f32v(s->spec_hist, spec_slot_base + (int64_t)INK_SPEC_MAX_NB * (2 * n_kv + d), bd));
@@ -6111,12 +6508,21 @@ static int run_chunk_ex(InkSession *s, const int32_t *tokens, int nb, int comput
     int64_t bd = (int64_t)nb * d;
 
     /* 1. Batched embedding lookup + token_embd_norm */
-    CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
-         a_u32v(s->tok_ids_buf, 0, nb),
-         a_tensor_u16(s, &s->gguf.tok_embd),
-         a_tensor_f32(s, &s->gguf.tok_norm),
-         a_f32(hp->rms_eps),
-         a_f32v(s->cur, 0, bd));
+    if (s->gguf.tok_embd.type == INK_GGML_Q8_0 && !s->ablate_has_emb) {
+        CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
+             a_u32v(s->tok_ids_buf, 0, nb),
+             a_tensor_u16(s, &s->gguf.tok_embd),
+             a_tensor_f32(s, &s->gguf.tok_norm),
+             a_f32(hp->rms_eps),
+             a_f32v(s->cur, 0, bd));
+    } else {
+        CALL(s, batch, K_EMBED_GGML_BATCH, nb, a_int(d), a_int((int64_t)s->gguf.tok_embd.type),
+             a_u32v(s->tok_ids_buf, 0, nb),
+             a_tensor_ggml_u16(s, &s->gguf.tok_embd), a_ggml_grids(s),
+             a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+             a_int(s->ablate_has_emb ? 1 : 0), a_ablate_dirs(s),
+             a_f32v(s->cur, 0, bd));
+    }
     pm_barrier(batch);
 
     int n_blocks = 0;
@@ -6564,7 +6970,30 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
     pm_barrier(batch);
 
     /* Wave 6: Attn output proj (Lossless Q8S, MMA32 Q4S, or Lossless Q8_0 MMA32) + post-conv + raw_log + residual! */
-    if (s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+    int ablate_ip = (s->has_ablate && ip < 32 && s->ablate_has_layer[ip]);
+    if (ablate_ip) {
+        if (s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+            CALL(s, batch, K_DV_Q8S_NB, (d + 3) / 4, a_int(d), a_int(n_q), a_int(nb),
+                 a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                 a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+                 a_f32v(s->attn_out, 0, nb * n_q), a_f32v(s->o_raw, 0, bd));
+        } else if (FL->attn_output_s.qs.off >= 0) {
+            CALL(s, batch, K_DV_Q4S_MMA32_NB, (d + 31) / 32, a_int(d), a_int(n_q), a_int(nb),
+                 a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                 a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+                 a_f32v(s->attn_out, 0, nb * n_q), a_f32v(s->o_raw, 0, bd));
+        } else {
+            CALL(s, batch, K_DV_Q8_MMA32_NB, (d + 31) / 32, a_int(d), a_int(n_q), a_int(nb),
+                 a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                 a_tensor_u16(s, &L->attn_output),
+                 a_f32v(s->attn_out, 0, nb * n_q), a_f32v(s->o_raw, 0, bd));
+        }
+        pm_barrier(batch);
+        CALL(s, batch, K_POST_CONV_ABLATE_RES_NB, 1, a_int(d), a_int(nb), a_int(is_blk ? 0 : 1), a_int(0),
+             a_f32v(s->o_raw, 0, bd), a_int((int64_t)(1 + ip) * d), a_ablate_dirs(s),
+             a_tensor_f32(s, &L->attn_post_conv), a_conv_ao(s, il),
+             a_f32v(s->cur, 0, bd), a_raw_ao(s, il), a_f32v(s->cur, 0, bd));
+    } else if (s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
         CALL(s, batch, K_DV_Q8S_CONV_NB, (d + 3) / 4, a_int(d), a_int(n_q), a_int(nb), a_int(is_blk ? 0 : 1),
              a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
              a_f32v(s->attn_out, 0, nb * n_q), a_tensor_f32(s, &L->attn_post_conv),
@@ -6630,7 +7059,8 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_tensor_f32(s, &L->ffn_norm), a_f32v(s->o_raw, 0, bd),
              a_f32v(s->rms_parts, 0, 8 * 3 * 128));
         pm_barrier(batch);
-        if (FL->ffn_gate_inp_s.qs.off < 0 || (FL->moe_gu_q4s.qs.off < 0 && L->ffn_gate_up_exps.type == INK_GGML_Q8_0)) {
+        if (FL->ffn_gate_inp_s.qs.off < 0 ||
+            (FL->moe_gu_q4s.qs.off < 0 && !(s->iq4s_buf && FL->moe_gu_iq4s.qs.off >= 0) && L->ffn_gate_up_exps.type != INK_GGML_IQ4_NL)) {
             CALL(s, batch, K_SCALE_RMS_PARTS_NB, nb, a_int(d), a_int(nb), a_int(citems), a_f32(hp->rms_eps),
                  a_f32v(s->rms_parts, 0, 8 * 3 * 128),
                  a_f32v(s->o_raw, 0, bd), a_f32v(s->o_raw, 0, bd), a_f32v(s->o_raw, 0, bd));
@@ -6710,7 +7140,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
             snprintf(s->error, sizeof s->error, "kernel %s: %s", k_names[K_MOE_GU_Q8_NB], pm_log());
             return 1;
         }
-    } else {
+    } else if (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL) {
         PmArg ga[] = {
             a_int(n_ff), a_int(d), a_int(nb), a_int(hp->n_expert_used),
             a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
@@ -6725,12 +7155,74 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
             snprintf(s->error, sizeof s->error, "kernel %s: %s", k_names[K_MOE_GU_IQ4_NB], pm_log());
             return 1;
         }
+    } else {
+        int64_t gu_rgrps = (n_ff + 3) / 4;
+        CALL(s, batch, K_MOE_GU_GGML_NB, max_u * gu_rgrps, a_int(n_ff), a_int(d), a_int(nb), a_int(hp->n_expert_used),
+             a_int((int64_t)L->ffn_gate_up_exps.type), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+             a_tensor_ggml_u16(s, &L->ffn_gate_up_exps), a_ggml_grids(s),
+             a_f32v(s->o_raw, 0, bd),
+             a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+             a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff));
     }
     pm_barrier(batch);
 
     /* Wave 10: 2-pass parallel-expert MoE Down (4.05x faster, 354+ GB/s, 100% bit-exact!) + L2 reduce/conv/residual! */
     int64_t dn_gpe = (d + 15) / 16;
-    if (FL->moe_dn_q4s.qs.off >= 0 && !s->fast_is_q8s) {
+    if (ablate_ip) {
+        if (FL->moe_dn_q4s.qs.off >= 0 && !s->fast_is_q8s) {
+            PmArg da[] = {
+                a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+                a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
+                a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+                a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d)
+            };
+            if (call_k(s, batch, K_MOE_DOWN_P1_Q4S_NB, max_u * dn_gpe, 12, da) != 0) return 1;
+        } else if (FL->moe_dn_q4s.qs.off >= 0 && s->fast_is_q8s) {
+            CALL(s, batch, K_MOE_DOWN_P1_Q8S_NB, max_u * ((d + 3) / 4), a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+                 a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
+                 a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+                 a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                 a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                 a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d));
+        } else if (s->iq4s_buf && FL->moe_dn_iq4s.qs.off >= 0) {
+            PmArg da[] = {
+                a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+                a_iq4s_u32(s, &FL->moe_dn_iq4s.qs), a_iq4s_u16(s, &FL->moe_dn_iq4s.ds),
+                a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+                a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d)
+            };
+            if (call_k(s, batch, K_MOE_DOWN_P1_IQ4S_NB, max_u * dn_gpe, 12, da) != 0) return 1;
+        } else if (L->ffn_down_exps.type == INK_GGML_Q8_0) {
+            PmArg da[] = {
+                a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+                a_tensor_u16(s, &L->ffn_down_exps),
+                a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+                a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d)
+            };
+            if (call_k(s, batch, K_MOE_DOWN_P1_Q8_NB, max_u * dn_gpe, 11, da) != 0) return 1;
+        } else {
+            CALL(s, batch, K_MOE_DOWN_P1_GGML_NB, max_u * ((d + 3) / 4), a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+                 a_int((int64_t)L->ffn_down_exps.type), a_tensor_ggml_u16(s, &L->ffn_down_exps), a_ggml_grids(s),
+                 a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+                 a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+                 a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+                 a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d));
+        }
+        pm_barrier(batch);
+        CALL(s, batch, K_MOE_SUM_ABLATE_CONV_NB, 1, a_int(d), a_int(nb), a_int(hp->n_expert_used), a_int(0),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
+             a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
+             a_int((int64_t)(1 + ip) * d), a_ablate_dirs(s),
+             a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+             a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
+    } else if (FL->moe_dn_q4s.qs.off >= 0 && !s->fast_is_q8s) {
         PmArg da[] = {
             a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
             a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
@@ -6811,13 +7303,27 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_u32v(s->spec_u_mask, 0, 64), a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
              a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
              a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
-    } else {
+    } else if (L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
         CALL(s, batch, K_MOE_DOWN_IQ4_NB, (d + 3) / 4, a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
              a_tensor_u16(s, &L->ffn_down_exps),
              a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
              a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
              a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
              a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
+             a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+             a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
+    } else {
+        CALL(s, batch, K_MOE_DOWN_P1_GGML_NB, max_u * ((d + 3) / 4), a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+             a_int((int64_t)L->ffn_down_exps.type), a_tensor_ggml_u16(s, &L->ffn_down_exps), a_ggml_grids(s),
+             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+             a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+             a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d));
+        pm_barrier(batch);
+        CALL(s, batch, K_MOE_DOWN_P2_NB, (d + 63) / 64, a_int(d), a_int(nb), a_int(hp->n_expert_used), a_int(0),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
+             a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
+             a_u32v(s->spec_u_mask, 0, 64), a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
              a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
              a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
     }
@@ -6855,12 +7361,21 @@ static int ink_verify_batch(InkSession *s, const int32_t *tokens, int nb) {
     }
 
     /* 1. Batched embedding lookup */
-    CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
-         a_u32v(s->tok_ids_buf, 0, nb),
-         a_tensor_u16(s, &s->gguf.tok_embd),
-         a_tensor_f32(s, &s->gguf.tok_norm),
-         a_f32(hp->rms_eps),
-         a_f32v(s->cur, 0, bd));
+    if (s->gguf.tok_embd.type == INK_GGML_Q8_0 && !s->ablate_has_emb) {
+        CALL(s, batch, K_EMBED_Q8_BATCH, nb, a_int(d),
+             a_u32v(s->tok_ids_buf, 0, nb),
+             a_tensor_u16(s, &s->gguf.tok_embd),
+             a_tensor_f32(s, &s->gguf.tok_norm),
+             a_f32(hp->rms_eps),
+             a_f32v(s->cur, 0, bd));
+    } else {
+        CALL(s, batch, K_EMBED_GGML_BATCH, nb, a_int(d), a_int((int64_t)s->gguf.tok_embd.type),
+             a_u32v(s->tok_ids_buf, 0, nb),
+             a_tensor_ggml_u16(s, &s->gguf.tok_embd), a_ggml_grids(s),
+             a_tensor_f32(s, &s->gguf.tok_norm), a_f32(hp->rms_eps),
+             a_int(s->ablate_has_emb ? 1 : 0), a_ablate_dirs(s),
+             a_f32v(s->cur, 0, bd));
+    }
     pm_barrier(batch);
 
     int n_blocks = 0;
@@ -8068,27 +8583,38 @@ int ink_test_quant_kernels(const char *metal_path, char *err, size_t err_bytes) 
     free(src);
     if (st != PM_OK) { snprintf(err, err_bytes, "pm_compile: %s", pm_log()); return 1; }
 
-    PmKernel k_nv = NULL, k_mx = NULL, k_iq = NULL;
+    PmKernel k_nv = NULL, k_mx = NULL, k_iq = NULL, k_ggml = NULL, k_ablate = NULL;
     if (pm_kernel(mod, "ink_dv_nvfp4", &k_nv) != PM_OK ||
         pm_kernel(mod, "ink_dv_mxfp8", &k_mx) != PM_OK ||
-        pm_kernel(mod, "ink_dv_iq4",   &k_iq) != PM_OK) {
+        pm_kernel(mod, "ink_dv_iq4",   &k_iq) != PM_OK ||
+        pm_kernel(mod, "ink_dv_ggml",  &k_ggml) != PM_OK ||
+        pm_kernel(mod, "ink_ablate_dir", &k_ablate) != PM_OK) {
         snprintf(err, err_bytes, "pm_kernel: %s", pm_log());
         if (k_nv) pm_kernel_free(k_nv);
         if (k_mx) pm_kernel_free(k_mx);
         if (k_iq) pm_kernel_free(k_iq);
+        if (k_ggml) pm_kernel_free(k_ggml);
+        if (k_ablate) pm_kernel_free(k_ablate);
         pm_unload(mod); return 1;
     }
 
     int rc = 1;
     const int rows = 8, cols = 64; /* 4 NVFP4 blocks/row, 2 MXFP8 blocks/row, 2 IQ4 blocks/row */
     PmBuffer b_x = NULL, b_out = NULL, b_nv_p = NULL, b_nv_s = NULL, b_mx_w = NULL, b_mx_s = NULL, b_iq_w = NULL;
+    PmBuffer b_g_grids = NULL, b_g_w = NULL, b_g_x = NULL, b_g_out = NULL, b_ab_d = NULL, b_ab_x = NULL;
     if (pm_alloc(cols * 4, &b_x) != PM_OK ||
         pm_alloc(rows * 4, &b_out) != PM_OK ||
         pm_alloc(rows * (cols / 16) * 8, &b_nv_p) != PM_OK ||
         pm_alloc(rows * (cols / 16), &b_nv_s) != PM_OK ||
         pm_alloc(rows * cols, &b_mx_w) != PM_OK ||
         pm_alloc(rows * (cols / 32), &b_mx_s) != PM_OK ||
-        pm_alloc(rows * (cols / 32) * 18, &b_iq_w) != PM_OK) {
+        pm_alloc(rows * (cols / 32) * 18, &b_iq_w) != PM_OK ||
+        pm_alloc((size_t)INK_GRID_TOTAL_U32 * 4, &b_g_grids) != PM_OK ||
+        pm_alloc(4 * 256 * 4, &b_g_w) != PM_OK ||
+        pm_alloc(256 * 4, &b_g_x) != PM_OK ||
+        pm_alloc(4 * 4, &b_g_out) != PM_OK ||
+        pm_alloc(256 * 4, &b_ab_d) != PM_OK ||
+        pm_alloc(2 * 256 * 4, &b_ab_x) != PM_OK) {
         snprintf(err, err_bytes, "pm_alloc failed");
         goto cleanup;
     }
@@ -8228,9 +8754,125 @@ int ink_test_quant_kernels(const char *metal_path, char *err, size_t err_bytes) 
     }
     if (max_iq > 1e-4f) { snprintf(err, err_bytes, "ink_dv_iq4 mismatch: max_abs=%g", max_iq); goto cleanup; }
 
+    /* 4. Verify Metal ink_dv_ggml across ALL 21 GGML quant types against CPU ink_ggml_dequant_row */
+    memcpy(pm_contents(b_g_grids), ink_ggml_grid_table(NULL), (size_t)INK_GRID_TOTAL_U32 * sizeof(uint32_t));
+    float *gx = (float *)pm_contents(b_g_x);
+    for (int c = 0; c < 256; c++) gx[c] = (float)(((c * 7) % 19) - 9) * 0.0625f;
+    static const uint32_t all_ggml_types[21] = {
+        INK_GGML_F32, INK_GGML_F16, INK_GGML_BF16,
+        INK_GGML_Q4_0, INK_GGML_Q4_1, INK_GGML_Q5_0, INK_GGML_Q5_1, INK_GGML_Q8_0,
+        INK_GGML_Q2_K, INK_GGML_Q3_K, INK_GGML_Q4_K, INK_GGML_Q5_K, INK_GGML_Q6_K,
+        INK_GGML_IQ2_XXS, INK_GGML_IQ2_XS, INK_GGML_IQ3_XXS, INK_GGML_IQ4_NL,
+        INK_GGML_IQ3_S, INK_GGML_IQ2_S, INK_GGML_IQ4_XS, INK_GGML_Q2_0
+    };
+    static const uint16_t test_f16[4] = {0x3800, 0x3C00, 0x3400, 0xBC00}; /* 0.5, 1.0, 0.25, -1.0 */
+    float max_ggml_all = 0.0f;
+    for (int ti = 0; ti < 21; ti++) {
+        uint32_t wt = all_ggml_types[ti];
+        int64_t be = ink_ggml_block_elems(wt);
+        int64_t bb = ink_ggml_block_bytes(wt);
+        int64_t nblk = 256 / be;
+        int64_t rb = nblk * bb;
+        uint8_t *wb = (uint8_t *)pm_contents(b_g_w);
+        memset(wb, 0, 4 * 256 * 4);
+        for (int r = 0; r < 4; r++) {
+            uint8_t *rowp = wb + (size_t)r * (size_t)rb;
+            if (wt == INK_GGML_F32) {
+                float *fp = (float *)rowp;
+                for (int c = 0; c < 256; c++) fp[c] = (float)(((r * 13 + c * 5) % 23) - 11) * 0.125f;
+            } else if (wt == INK_GGML_F16) {
+                uint16_t *hp = (uint16_t *)rowp;
+                for (int c = 0; c < 256; c++) hp[c] = f32_to_f16_host((float)(((r * 13 + c * 5) % 23) - 11) * 0.125f);
+            } else if (wt == INK_GGML_BF16) {
+                uint16_t *bp = (uint16_t *)rowp;
+                for (int c = 0; c < 256; c++) {
+                    float fv = (float)(((r * 13 + c * 5) % 23) - 11) * 0.125f;
+                    uint32_t u; memcpy(&u, &fv, 4);
+                    bp[c] = (uint16_t)(u >> 16);
+                }
+            } else {
+                for (int64_t b = 0; b < nblk; b++) {
+                    uint8_t *blk = rowp + (size_t)b * (size_t)bb;
+                    for (int64_t j = 0; j < bb; j++) {
+                        blk[j] = (uint8_t)((r * 37 + b * 53 + j * 17 + ti * 11 + 23) & 0xFF);
+                    }
+                    uint16_t d0 = test_f16[(r + b) & 3];
+                    uint16_t d1 = test_f16[(r + b + 1) & 3];
+                    if (wt == INK_GGML_Q2_K) {
+                        memcpy(blk + 80, &d0, 2); memcpy(blk + 82, &d1, 2);
+                    } else if (wt == INK_GGML_Q3_K) {
+                        memcpy(blk + 108, &d0, 2);
+                    } else if (wt == INK_GGML_Q4_K || wt == INK_GGML_Q5_K || wt == INK_GGML_Q4_1 || wt == INK_GGML_Q5_1) {
+                        memcpy(blk + 0, &d0, 2); memcpy(blk + 2, &d1, 2);
+                    } else if (wt == INK_GGML_Q6_K) {
+                        memcpy(blk + 208, &d0, 2);
+                    } else {
+                        memcpy(blk + 0, &d0, 2);
+                    }
+                }
+            }
+        }
+        if (pm_begin(&batch) != PM_OK) { snprintf(err, err_bytes, "pm_begin(%s): %s", ink_ggml_type_name(wt), pm_log()); goto cleanup; }
+        PmArg g_args[8] = {
+            a_int(4), a_int(256), a_int(0), a_int((int64_t)wt),
+            a_u16v(b_g_w, 0, (4 * rb + 1) / 2),
+            a_u32v(b_g_grids, 0, INK_GRID_TOTAL_U32),
+            a_f32v(b_g_x, 0, 256), a_f32v(b_g_out, 0, 4)
+        };
+        if (pm_launch(batch, k_ggml, 1, 128, 0, g_args, 8) != PM_OK || pm_wait(batch, NULL) != PM_OK) {
+            snprintf(err, err_bytes, "ink_dv_ggml(%s) launch: %s", ink_ggml_type_name(wt), pm_log()); goto cleanup;
+        }
+        const float *ggot = (const float *)pm_contents(b_g_out);
+        float max_t = 0.0f;
+        float dec[256];
+        for (int r = 0; r < 4; r++) {
+            if (ink_ggml_dequant_row(wt, wb + (size_t)r * (size_t)rb, dec, 256) != 0) {
+                snprintf(err, err_bytes, "cpu dequant failed for %s", ink_ggml_type_name(wt)); goto cleanup;
+            }
+            float ref = 0.0f;
+            for (int c = 0; c < 256; c++) ref += dec[c] * gx[c];
+            float diff = fabsf(ggot[r] - ref);
+            if (diff > max_t) max_t = diff;
+        }
+        if (max_t > max_ggml_all) max_ggml_all = max_t;
+        if (max_t > 1e-3f || isnan(max_t)) {
+            snprintf(err, err_bytes, "ink_dv_ggml(%s) mismatch: max_abs=%g", ink_ggml_type_name(wt), max_t);
+            goto cleanup;
+        }
+    }
+
+    /* 5. Verify Metal ink_ablate_dir against CPU x - d * dot(d, x) */
+    float *abd = (float *)pm_contents(b_ab_d);
+    float *abx = (float *)pm_contents(b_ab_x);
+    float norm2 = 0.0f;
+    for (int i = 0; i < 256; i++) { abd[i] = (float)((i % 7) - 3) * 0.1f; norm2 += abd[i] * abd[i]; }
+    float invn = 1.0f / sqrtf(norm2);
+    for (int i = 0; i < 256; i++) abd[i] *= invn;
+    float ab_ref[2 * 256];
+    for (int t = 0; t < 2; t++) {
+        float dot = 0.0f;
+        for (int i = 0; i < 256; i++) {
+            float v = (float)(((t * 17 + i * 3) % 15) - 7) * 0.25f;
+            abx[t * 256 + i] = v;
+            dot += v * abd[i];
+        }
+        for (int i = 0; i < 256; i++) ab_ref[t * 256 + i] = abx[t * 256 + i] - dot * abd[i];
+    }
+    if (pm_begin(&batch) != PM_OK) { snprintf(err, err_bytes, "pm_begin(ablate): %s", pm_log()); goto cleanup; }
+    PmArg ab_args[4] = { a_int(256), a_int(0), a_f32v(b_ab_d, 0, 256), a_f32v(b_ab_x, 0, 2 * 256) };
+    if (pm_launch(batch, k_ablate, 2, INK_NT, 0, ab_args, 4) != PM_OK || pm_wait(batch, NULL) != PM_OK) {
+        snprintf(err, err_bytes, "ink_ablate_dir launch: %s", pm_log()); goto cleanup;
+    }
+    float max_ab = 0.0f;
+    for (int i = 0; i < 2 * 256; i++) {
+        float diff = fabsf(abx[i] - ab_ref[i]);
+        if (diff > max_ab) max_ab = diff;
+    }
+    if (max_ab > 1e-5f) { snprintf(err, err_bytes, "ink_ablate_dir mismatch: max_abs=%g", max_ab); goto cleanup; }
+
     fprintf(stderr,
-            "metal-quant-kernels device='%s' compile=%.2fs nvfp4_max_abs=%.2e mxfp8_max_abs=%.2e iq4_max_abs=%.2e ok=true\n",
-            info.name, compile_s, max_nv, max_mx, max_iq);
+            "metal-quant-kernels device='%s' compile=%.2fs nvfp4_max_abs=%.2e mxfp8_max_abs=%.2e iq4_max_abs=%.2e ggml21_max_abs=%.2e ablate_max_abs=%.2e ok=true\n",
+            info.name, compile_s, max_nv, max_mx, max_iq, max_ggml_all, max_ab);
     rc = 0;
 
 cleanup:
@@ -8241,7 +8883,14 @@ cleanup:
     if (b_mx_w) pm_free(b_mx_w);
     if (b_mx_s) pm_free(b_mx_s);
     if (b_iq_w) pm_free(b_iq_w);
+    if (b_g_grids) pm_free(b_g_grids);
+    if (b_g_w) pm_free(b_g_w);
+    if (b_g_x) pm_free(b_g_x);
+    if (b_g_out) pm_free(b_g_out);
+    if (b_ab_d) pm_free(b_ab_d);
+    if (b_ab_x) pm_free(b_ab_x);
     pm_kernel_free(k_nv); pm_kernel_free(k_mx); pm_kernel_free(k_iq);
+    pm_kernel_free(k_ggml); pm_kernel_free(k_ablate);
     pm_unload(mod);
     return rc;
 }
