@@ -384,13 +384,14 @@ extension CoderWindow {
             pump(r)
         }
         if let live = daemon.listRuns() {
-            for one in live where !named.contains(one.run_id) {
+            for one in live where !named.contains(one.run_id) && !CoderWorker.isPhoneRun(one.run_id) {
                 let id = one.run_id
                 // a run mid-reply is never stopped here: a lost turn file must not cost the work (#13810)
                 if one.isLive && !CoderWorker.runIdle(id) { CoderWorker.logStop(id, "left running at launch: busy, though no kept message names it"); continue }
                 if one.isLive { CoderWorker.logStop(id, "stopped at launch: idle, no kept message names it"); daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
             }
         }
+        syncPhoneRuns()
         cd_chats(page, chatLines)
         #if OA_FULL
         syncForemanUI()
@@ -424,7 +425,7 @@ extension CoderWindow {
                 self.sweeping = false
                 guard let live else { return }
                 let held = self.heldRuns, now = Int(Date().timeIntervalSince1970)
-                for id in CoderWindow.orphans(live, held: held, now: now) where CoderWorker.runIdle(id) {
+                for id in CoderWindow.orphans(live, held: held, now: now) where !CoderWorker.isPhoneRun(id) && CoderWorker.runIdle(id) {
                     CoderWorker.logStop(id, "stopped by the sweep: idle, no chat holds it")
                     daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } }
                 }
@@ -435,6 +436,386 @@ extension CoderWindow {
     /// (sweepRuns also leaves any run mid-reply alone: only an idle one is stopped).
     static func orphans(_ live: [DaemonRun], held: Set<String>, now: Int) -> [String] {
         live.filter { $0.isLive && !held.contains($0.run_id) && now - ($0.started ?? now) >= sweepAge }.map { $0.run_id }
+    }
+
+    // ---- Phone chat sync (host-phone.coax -> CoderStore sidebar + live transcript) ----
+
+    private struct PhoneRunSnapshot {
+        let runID: String
+        let uuid: String
+        let stamp: PhoneRunStamp
+        let title: String
+        let cwd: String
+        let savedModel: String
+        let effort: String
+        let base: Int
+        let isBusy: Bool
+        let turns: [[String: Any]]
+    }
+
+    /// Scans `~/.openagents/coder/host/runs/*.phone` off the main thread and mirrors new or updated
+    /// phone-originated chats into `CoderStore` so they appear in Desktop's sidebar live and persist.
+    func syncPhoneRuns() {
+        phoneSyncedAt = CACurrentMediaTime()
+        guard let daemon = CoderWorker.daemon, !phoneSyncing else { return }
+        phoneSyncing = true
+        let runsDir = daemon.runsDir
+        let prevStamps = phoneRunStamps
+        let prevBusy = phoneBusyChats
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let fm = FileManager.default
+            let names = (try? fm.contentsOfDirectory(atPath: runsDir.path)) ?? []
+            var updates: [PhoneRunSnapshot] = []
+            var nextBusy = Set<String>()
+            var seenRunIDs = Set<String>()
+            for name in names where name.hasSuffix(".phone") && name.count == 38 {
+                let runID = String(name.prefix(32))
+                guard let uuid = CoderWorker.phoneChatUUID(from: runID) else { continue }
+                seenRunIDs.insert(runID)
+                let stateURL = runsDir.appendingPathComponent(runID + ".state")
+                guard let stateAttrs = try? fm.attributesOfItem(atPath: stateURL.path) else { continue }
+                let inURL = runsDir.appendingPathComponent(runID + ".in")
+                let outURL = runsDir.appendingPathComponent(runID + ".out")
+                let phoneURL = runsDir.appendingPathComponent(runID + ".phone")
+                let inAttrs = try? fm.attributesOfItem(atPath: inURL.path)
+                let outAttrs = try? fm.attributesOfItem(atPath: outURL.path)
+                let phoneAttrs = try? fm.attributesOfItem(atPath: phoneURL.path)
+                let stamp = PhoneRunStamp(
+                    stateMtime: (stateAttrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
+                    inSize: (inAttrs?[.size] as? NSNumber)?.uint64Value ?? 0,
+                    outSize: (outAttrs?[.size] as? NSNumber)?.uint64Value ?? 0,
+                    outMtime: (outAttrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
+                    phoneMtime: (phoneAttrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+                )
+                if prevStamps[runID] == stamp {
+                    if prevBusy.contains(uuid) { nextBusy.insert(uuid) }
+                    continue
+                }
+                if let snap = CoderWindow.parsePhoneRun(runID: runID, uuid: uuid, runsDir: runsDir, stamp: stamp) {
+                    if snap.isBusy { nextBusy.insert(uuid) }
+                    updates.append(snap)
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.phoneSyncing = false
+                for key in Array(self.phoneRunStamps.keys) where !seenRunIDs.contains(key) {
+                    self.phoneRunStamps.removeValue(forKey: key)
+                }
+                var sidebarChanged = (self.phoneBusyChats != nextBusy)
+                self.phoneBusyChats = nextBusy
+                for snap in updates {
+                    if self.store.isPhoneRunDeleted(snap.runID) {
+                        self.phoneRunStamps[snap.runID] = snap.stamp
+                        continue
+                    }
+                    // Never overwrite while Desktop itself is running a turn in this chat.
+                    if self.runs[snap.uuid] != nil || (self.chat == snap.uuid && cd_running(self.page) != 0) {
+                        continue
+                    }
+                    let existingMeta = self.store.meta(snap.uuid)
+                    var existingTurns: [[String: Any]] = []
+                    var existingCost = 0
+                    var existingBudget = 50_000_000
+                    if existingMeta != nil, let raw = self.store.text(snap.uuid),
+                       let data = raw.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        existingTurns = (obj["turns"] as? [[String: Any]]) ?? []
+                        existingCost = (obj["cost_usd_micros"] as? Int) ?? 0
+                        existingBudget = (obj["budget_usd_micros"] as? Int) ?? 50_000_000
+                    }
+                    // If Desktop already has more turns than this phone run, do not overwrite Desktop's newer turns.
+                    if snap.base + snap.turns.count < existingTurns.count {
+                        self.phoneRunStamps[snap.runID] = snap.stamp
+                        continue
+                    }
+                    // On initial launch scan, avoid bumping an already-synced idle phone chat to the top of the sidebar.
+                    let isFirstScan = prevStamps[snap.runID] == nil
+                    if isFirstScan, let meta = existingMeta, !snap.isBusy,
+                       snap.base + snap.turns.count <= existingTurns.count,
+                       snap.stamp.outMtime <= meta.updated + 1.0 {
+                        self.phoneRunStamps[snap.runID] = snap.stamp
+                        continue
+                    }
+                    let prefixCount = min(snap.base, existingTurns.count)
+                    let mergedTurns = Array(existingTurns.prefix(prefixCount)) + snap.turns
+                    guard !mergedTurns.isEmpty else {
+                        self.phoneRunStamps[snap.runID] = snap.stamp
+                        continue
+                    }
+                    var doc: [String: Any] = [
+                        "v": 1,
+                        "cost_usd_micros": existingCost,
+                        "budget_usd_micros": existingBudget,
+                        "model": snap.savedModel,
+                        "turns": mergedTurns
+                    ]
+                    if !snap.effort.isEmpty { doc["effort"] = snap.effort }
+                    guard let jsonData = try? JSONSerialization.data(withJSONObject: doc, options: []),
+                          let jsonText = String(data: jsonData, encoding: .utf8) else { continue }
+                    let isNewChat = (existingMeta == nil)
+                    let gainedTurn = mergedTurns.count > existingTurns.count
+                    self.store.keep(id: snap.uuid, title: snap.title, folder: snap.cwd, text: jsonText)
+                    self.phoneRunStamps[snap.runID] = snap.stamp
+                    sidebarChanged = true
+                    if self.chat == snap.uuid && cd_running(self.page) == 0 {
+                        if cd_load(self.page, jsonText) != 0 {
+                            self.recallDue = true
+                            self.wake()
+                        }
+                    } else if isNewChat || gainedTurn || !snap.isBusy {
+                        if self.chat != snap.uuid { self.unread.insert(snap.uuid) }
+                    }
+                }
+                if sidebarChanged {
+                    cd_chats(self.page, self.chatLines)
+                    self.updateDockBadge()
+                    self.wake()
+                }
+            }
+        }
+    }
+
+    /// Parses one phone run's `.phone`, `.state`, `.in`, and `.out` files into Desktop's saved chat turn schema.
+    private static func parsePhoneRun(runID: String, uuid: String, runsDir: URL, stamp: PhoneRunStamp) -> PhoneRunSnapshot? {
+        guard let phoneData = try? Data(contentsOf: runsDir.appendingPathComponent(runID + ".phone")),
+              let phoneObj = try? JSONSerialization.jsonObject(with: phoneData) as? [String: Any] else { return nil }
+        let engine = (phoneObj["engine"] as? String) ?? ""
+        let rawModel = (phoneObj["model"] as? String) ?? ""
+        let effort = (phoneObj["effort"] as? String) ?? ""
+        let base = max(0, (phoneObj["base"] as? Int) ?? 0)
+        let savedModel: String
+        if engine == "antigravity" {
+            let m = rawModel.isEmpty ? "gemini-4-neon" : rawModel
+            savedModel = m.hasPrefix("agy:") ? m : "agy:" + m
+        } else if engine == "inkling" {
+            savedModel = "inkling-2-mini"
+        } else {
+            savedModel = rawModel.isEmpty ? "gemini-4-neon" : rawModel
+        }
+
+        let stateData = try? Data(contentsOf: runsDir.appendingPathComponent(runID + ".state"))
+        let stateObj = stateData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let runState = (stateObj?["state"] as? String) ?? ""
+        let isRunning = (runState == "running")
+
+        // Parse task prompts and cwd from ID.in.
+        var tasks: [String] = []
+        var cwd = ""
+        if let inText = try? String(contentsOf: runsDir.appendingPathComponent(runID + ".in"), encoding: .utf8) {
+            for rawLine in inText.split(separator: "\n", omittingEmptySubsequences: true) {
+                guard let lineData = String(rawLine).data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      let task = obj["task"] as? String else { continue }
+                tasks.append(task)
+                if cwd.isEmpty, let c = obj["cwd"] as? String, !c.isEmpty { cwd = c }
+            }
+        }
+        if cwd.isEmpty { cwd = FileManager.default.homeDirectoryForCurrentUser.path }
+
+        // Parse mcworker-wire lines from ID.out (same semantics as host-desktop.coax dk_session).
+        let outText = (try? String(contentsOf: runsDir.appendingPathComponent(runID + ".out"), encoding: .utf8)) ?? ""
+        let outLines = outText.split(separator: "\n", omittingEmptySubsequences: true)
+        var parsedLines: [[String: Any]] = []
+        parsedLines.reserveCapacity(outLines.count)
+        var wordlessTurns = 0
+        for rawLine in outLines {
+            guard let lineData = String(rawLine).data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+            parsedLines.append(obj)
+            if (obj["kind"] as? String) == "turn",
+               (obj["source"] as? String) == "message",
+               ((obj["text"] as? String) ?? "").isEmpty {
+                wordlessTurns += 1
+            }
+        }
+
+        // Align wordless message turns 1-to-1 with tasks in ID.in (oldest-first since whole files are read;
+        // if more turns exist than tasks, skip the oldest unmatched turns).
+        var skipWordless = max(0, wordlessTurns - tasks.count)
+        var nextTaskIdx = 0
+
+        struct WorkingTurn {
+            var ask: String
+            var reply: String = ""
+            var state: Int = 0 // 0=running, 1=done, 2=failed, 3=stopped
+            var note: String = ""
+            var steers: [String] = []
+            var steerById: [String: String] = [:]
+            var cmds: [[String: Any]] = []
+            var openAskIdx: Int? = nil
+            var ended: Bool = false
+
+            mutating func flushInterleavedReply() {
+                let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    cmds.append(["text": "", "out": reply, "read": false, "failed": false, "said": true, "took": 0])
+                    reply = ""
+                }
+            }
+            func toDict(model: String) -> [String: Any] {
+                var d: [String: Any] = [
+                    "ask": ask,
+                    "reply": reply,
+                    "cut": false,
+                    // Persist running phone turns as state=1 so opening while streaming does not show "Stopped"
+                    "state": ended ? state : 1,
+                    "model": model,
+                    "note": note,
+                    "more": 0,
+                    "earlier": 0,
+                    "cmds": cmds,
+                    "agents": []
+                ]
+                if !steers.isEmpty { d["steers"] = steers }
+                return d
+            }
+        }
+
+        var working: [WorkingTurn] = []
+        var openTurn = false
+
+        for obj in parsedLines {
+            guard let kind = obj["kind"] as? String else { continue }
+            switch kind {
+            case "turn":
+                if !working.isEmpty && !working[working.count - 1].ended {
+                    working[working.count - 1].ended = true
+                    working[working.count - 1].state = 1
+                }
+                let rawText = (obj["text"] as? String) ?? ""
+                let source = (obj["source"] as? String) ?? ""
+                let ask: String
+                if rawText.isEmpty && source == "message" {
+                    if skipWordless > 0 {
+                        skipWordless -= 1
+                        ask = "(follow-up)"
+                    } else if nextTaskIdx < tasks.count {
+                        ask = tasks[nextTaskIdx]
+                        nextTaskIdx += 1
+                    } else {
+                        ask = "(follow-up)"
+                    }
+                } else {
+                    ask = rawText.isEmpty ? "(follow-up)" : rawText
+                }
+                working.append(WorkingTurn(ask: ask))
+                openTurn = true
+            case "thought":
+                guard !working.isEmpty, let t = obj["text"] as? String, !t.isEmpty else { continue }
+                let idx = working.count - 1
+                if let last = working[idx].cmds.last, (last["thought"] as? Bool) == true {
+                    let prevOut = (last["out"] as? String) ?? ""
+                    working[idx].cmds[working[idx].cmds.count - 1]["out"] = prevOut + t
+                } else {
+                    let head = CoderStore.cleanTitle(t.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? t)
+                    working[idx].cmds.append([
+                        "text": head.isEmpty ? "Thinking" : head,
+                        "out": t,
+                        "read": false,
+                        "failed": false,
+                        "thought": true,
+                        "took": 0
+                    ])
+                }
+            case "reply":
+                guard !working.isEmpty, let t = obj["text"] as? String else { continue }
+                working[working.count - 1].reply += t
+            case "ask":
+                guard !working.isEmpty, let cmd = obj["command"] as? String else { continue }
+                let idx = working.count - 1
+                working[idx].flushInterleavedReply()
+                working[idx].cmds.append(["text": cmd, "out": "", "read": false, "failed": false, "took": 0])
+                working[idx].openAskIdx = working[idx].cmds.count - 1
+            case "command":
+                guard !working.isEmpty, let cmd = obj["command"] as? String else { continue }
+                let idx = working.count - 1
+                let out = (obj["output"] as? String) ?? ""
+                let exitCode = (obj["exit"] as? Int) ?? 0
+                let timedOut = (obj["timed_out"] as? Bool) ?? false
+                let failed = (exitCode != 0) || timedOut
+                if let askIdx = working[idx].openAskIdx,
+                   askIdx < working[idx].cmds.count,
+                   (working[idx].cmds[askIdx]["text"] as? String) == cmd {
+                    working[idx].cmds[askIdx]["out"] = out
+                    working[idx].cmds[askIdx]["failed"] = failed
+                    working[idx].openAskIdx = nil
+                } else {
+                    working[idx].flushInterleavedReply()
+                    working[idx].cmds.append(["text": cmd, "out": out, "read": false, "failed": failed, "took": 0])
+                    working[idx].openAskIdx = nil
+                }
+            case "view":
+                guard !working.isEmpty, let path = obj["path"] as? String else { continue }
+                let idx = working.count - 1
+                let found = (obj["found"] as? Bool) ?? true
+                working[idx].flushInterleavedReply()
+                working[idx].cmds.append(["text": path, "out": found ? "" : "Not found", "read": true, "failed": !found, "took": 0])
+            case "steered":
+                guard !working.isEmpty else { continue }
+                let idx = working.count - 1
+                let status = (obj["status"] as? String) ?? ""
+                let sid = (obj["id"] as? String) ?? ""
+                if status == "accepted", let t = obj["text"] as? String, !sid.isEmpty, !t.isEmpty {
+                    working[idx].steerById[sid] = t
+                } else if status == "applied", !sid.isEmpty, let t = working[idx].steerById[sid] {
+                    working[idx].steers.append(t)
+                }
+            case "ended":
+                guard !working.isEmpty else { continue }
+                let idx = working.count - 1
+                let ending = (obj["ending"] as? String) ?? ""
+                let endText = (obj["text"] as? String) ?? ""
+                working[idx].ended = true
+                openTurn = false
+                if ending == "finished" || ending == "asked" {
+                    if working[idx].reply.isEmpty && !endText.isEmpty { working[idx].reply = endText }
+                    working[idx].state = 1
+                } else if ending == "stopped" {
+                    working[idx].state = 3
+                } else {
+                    working[idx].state = 2
+                    working[idx].note = endText.isEmpty ? "The turn ended early." : endText
+                }
+            default:
+                break
+            }
+        }
+
+        // If the phone just started or sent a follow-up and the worker has not emitted its turn line yet,
+        // synthesize the pending turn so the chat/follow-up appears in Desktop's sidebar immediately.
+        var isBusy = isRunning && openTurn
+        if isRunning && !openTurn && nextTaskIdx < tasks.count {
+            while nextTaskIdx < tasks.count {
+                let pendingTask = tasks[nextTaskIdx]
+                nextTaskIdx += 1
+                if !pendingTask.isEmpty {
+                    working.append(WorkingTurn(ask: pendingTask))
+                    isBusy = true
+                }
+            }
+        } else if !isRunning && !working.isEmpty && !working[working.count - 1].ended {
+            working[working.count - 1].ended = true
+            working[working.count - 1].state = 3
+        }
+
+        guard !working.isEmpty else { return nil }
+        let titleRaw = working.first?.ask ?? tasks.first ?? "New chat"
+        let cleanTitle = CoderStore.cleanTitle(titleRaw)
+        let title = cleanTitle.isEmpty ? "New chat" : cleanTitle
+        let turns = working.map { $0.toDict(model: savedModel) }
+        return PhoneRunSnapshot(
+            runID: runID,
+            uuid: uuid,
+            stamp: stamp,
+            title: title,
+            cwd: cwd,
+            savedModel: savedModel,
+            effort: effort,
+            base: base,
+            isBusy: isBusy,
+            turns: turns
+        )
     }
     /// The run's lines since the message was sent go to its page as they came. A line after one
     /// that owed the worker an answer means the answer was given, so it is not given again.
@@ -515,7 +896,7 @@ extension CoderWindow {
         cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
         var branchCache: [String: String] = [:]
         return store.orderedList.map { chat in
-            let isBusy = runs[chat.id] != nil
+            let isBusy = runs[chat.id] != nil || phoneBusyChats.contains(chat.id)
             let isPinned = chat.pinned != nil
             let isManaged = chat.managedBy == Foreman.managedTag
             let isUnread = unread.contains(chat.id)

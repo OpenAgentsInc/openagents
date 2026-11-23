@@ -167,6 +167,52 @@ dk_chat_of :: (chats: [] DkChat, nc: int, key: string) -> int {
   for i: 0..<nc { if key.count > 0 && cast(string) chats[i].id[0..<chats[i].ni] == key { return i; } }
   return -1;
 }
+dk_chat_by_hex :: (chats: [] DkChat, nc: int, hex: string) -> int {
+  if hex.count != 32 { return -1; }
+  for i: 0..<nc { if chats[i].has_hex && cast(string) chats[i].hex[..] == hex { return i; } }
+  return -1;
+}
+// Number of turns recorded in run id's output log.
+dk_run_turns :: (id: string, file: [] u8, ab: [] u8) -> int {
+  op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
+  next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine; turns := 0;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    if mww_read(ar[..], line, l[..]) == MWW_TURN { turns += 1; }
+  }
+  return turns;
+}
+// Number of turns saved in Coder's chat file (0 when missing, -1 when file exceeds buffer).
+dk_saved_turn_count :: (c: [] DkChat, file: [] u8) -> int {
+  nb: [128] u8; nn := hs_cat(nb[..], 0, cast(string) c[0].id[0..<c[0].ni]); nn = hs_cat(nb[..], nn, ".json");
+  pb: [1400] u8; path := dk_chat_path(cast(string) nb[0..<nn], pb[..]);
+  sz := fs_size(path);
+  if sz < 2 { return 0; }
+  if sz > file.count { return -1; }
+  n := fs_read(path, file[0..<sz]);
+  if n < 2 { return 0; }
+  return cl_count(cl_raw(cast(string) file[0..<n], "turns"));
+}
+// Saved chat index when Desktop persisted turns beyond what phone run r's .out holds, else -1.
+dk_desktop_ahead :: (r: [] DkInfo, chats: [] DkChat, nc: int, file: [] u8, ab: [] u8) -> int {
+  if !dk_phone(r) || r[0].busy { return -1; }
+  id := cast(string) r[0].id[..];
+  c := dk_chat_by_hex(chats, nc, id);
+  if c < 0 { return -1; }
+  saved_n := dk_saved_turn_count(chats[c..<c + 1], file);
+  if saved_n == 0 { return -1; }
+  ran_n := dk_run_turns(id, file, ab);
+  base := ph_base(id);
+  if saved_n > base + ran_n { return c; }
+  if saved_n < 0 && chats[c].updated * 1000 > r[0].updated { return c; }
+  return -1;
+}
+dk_is_desktop_ahead :: (r: [] DkInfo, chats: [] DkChat, nc: int) -> bool {
+  file: [DK_FILE] u8; ab: [DK_ARENA] u8;
+  return dk_desktop_ahead(r, chats, nc, file[..], ab[..]) >= 0;
+}
 
 // The whole lines of b, one at a time: next[0] is where the next starts. A line not ended by a
 // newline (still being written) is not one.
@@ -297,25 +343,33 @@ dk_worktree_source :: (gitfile: string) -> string {
 // read only after.
 dk_summary :: (r: [] DkInfo, chats: [] DkChat, nc: int, s: [] EaSession) {
   s[0] = EaSession.{};
-  // a phone's own chat goes by the id the phone gave it
-  hx: [32] u8; b: [64] u8; n := ifx dk_phone(r) then 0 else hs_cat(b[..], 0, DK_PREFIX); n = hs_cat(b[..], n, dk_hex(r, hx[..]));
+  // a phone's own chat keeps the 32-hex id the phone gave it, even while Desktop runs a turn in it
+  hx: [32] u8; hex := dk_hex(r, hx[..]);
+  is_ph := dk_phone(r) || ph_is(hex);
+  b: [64] u8; n := ifx is_ph then 0 else hs_cat(b[..], 0, DK_PREFIX); n = hs_cat(b[..], n, hex);
   s[0].ni = ea_copy(s[0].id[..], cast(string) b[0..<n]); s[0].nw = ea_copy(s[0].workspace[..], "default");
   title := cast(string) r[0].title[0..<r[0].nt];
   meta: [DM_META_MAX] DmSessionMeta; nm := dm_meta_load(meta[..]); key := cast(string) r[0].key[0..<r[0].nkey];
   for i: 0..<nm { if key.count > 0 && cast(string) meta[i].id[0..<meta[i].ni] == key && meta[i].nt > 0 { title = cast(string) meta[i].title[0..<meta[i].nt]; } }
-  c := dk_chat_of(chats, nc, key); if c >= 0 && chats[c].nt > 0 { title = cast(string) chats[c].title[0..<chats[c].nt]; }
+  c := dk_chat_of(chats, nc, key);
+  if c < 0 { c = dk_chat_by_hex(chats, nc, hex); }
+  if c >= 0 && chats[c].nt > 0 { title = cast(string) chats[c].title[0..<chats[c].nt]; }
   s[0].nt = ea_copy(s[0].title[..], hs_cut(title, 200)); if s[0].nt < 0 { s[0].nt = 0; }
   s[0].managed = true; s[0].desktop = true;
   s[0].nc = ea_copy(s[0].control[..], ifx dk_running(r) then "available" else "observe-only");
   s[0].generation = r[0].started * 1000; s[0].revision = r[0].out; s[0].busy = r[0].busy; s[0].updated = r[0].updated;
   // a phone's chat takes messages after its worker ended too (it starts again), under one generation
-  if dk_phone(r) { s[0].nc = ea_copy(s[0].control[..], "available"); g := ph_generation(cast(string) r[0].id[..]); if g > 0 { s[0].generation = g; } }
-  // and names the model and effort that run it, not what the phone asked for
-  if dk_phone(r) {
-    mb: [1024] u8; ob: [64] u8; eb: [16] u8; pm := ph_meta_read(cast(string) r[0].id[..], mb[..]);
-    m := ph_model_in(pm, ob[..]);
+  if is_ph {
+    s[0].nc = ea_copy(s[0].control[..], "available");
+    g := ph_generation(hex); if g > 0 { s[0].generation = g; }
+    if c >= 0 && chats[c].updated * 1000 > s[0].updated {
+      s[0].updated = chats[c].updated * 1000;
+      s[0].revision += chats[c].updated;
+    }
+    mb: [1024] u8; ob: [64] u8; eb: [16] u8; pm := ph_meta_read(hex, mb[..]);
+    m := ifx !dk_phone(r) && r[0].nmo > 0 then cast(string) r[0].model[0..<r[0].nmo] else ph_model_in(pm, ob[..]);
     if m.count > 0 { s[0].nmo = ea_copy(s[0].model[..], m); if s[0].nmo < 0 { s[0].nmo = 0; } }
-    ef := ph_effort_in(pm, eb[..]);
+    ef := ifx !dk_phone(r) && r[0].nef > 0 then cast(string) r[0].effort[0..<r[0].nef] else ph_effort_in(pm, eb[..]);
     if ef.count == 0 { ef = pa_effort(pa_engine_of(m), m, ""); }
     if ef.count > 0 { s[0].nef = ea_copy(s[0].effort[..], ef); if s[0].nef < 0 { s[0].nef = 0; } }
     // and, when it fell back, says so on the session (never as an item: TestFlight 1413 would draw it as the reply)
@@ -337,12 +391,23 @@ dk_read_summary :: (h: [] HsHost, id: string, v: [] EaView) {
 // A chat Coder saved, with no run left, as the phone's session: read only, nothing running.
 dk_saved_summary :: (c: [] DkChat, s: [] EaSession) {
   s[0] = EaSession.{};
-  b: [64] u8; n := hs_cat(b[..], 0, DK_PREFIX); n = hs_cat(b[..], n, cast(string) c[0].hex[..]);
+  hex := cast(string) c[0].hex[..];
+  is_ph := ph_is(hex);
+  b: [64] u8; n := ifx is_ph then 0 else hs_cat(b[..], 0, DK_PREFIX); n = hs_cat(b[..], n, hex);
   s[0].ni = ea_copy(s[0].id[..], cast(string) b[0..<n]); s[0].nw = ea_copy(s[0].workspace[..], "default");
   s[0].nt = ea_copy(s[0].title[..], hs_cut(cast(string) c[0].title[0..<c[0].nt], 200)); if s[0].nt < 0 { s[0].nt = 0; }
   s[0].managed = true; s[0].desktop = true;
-  s[0].nc = ea_copy(s[0].control[..], "observe-only");
+  s[0].nc = ea_copy(s[0].control[..], ifx is_ph then "available" else "observe-only");
   s[0].generation = c[0].updated * 1000; s[0].revision = c[0].updated; s[0].busy = false; s[0].updated = c[0].updated * 1000;
+  if is_ph {
+    g := ph_generation(hex); if g > 0 { s[0].generation = g; }
+    mb: [1024] u8; ob: [64] u8; eb: [16] u8; pm := ph_meta_read(hex, mb[..]);
+    m := ph_model_in(pm, ob[..]);
+    if m.count > 0 { s[0].nmo = ea_copy(s[0].model[..], m); if s[0].nmo < 0 { s[0].nmo = 0; } }
+    ef := ph_effort_in(pm, eb[..]);
+    if ef.count == 0 { ef = pa_effort(pa_engine_of(m), m, ""); }
+    if ef.count > 0 { s[0].nef = ea_copy(s[0].effort[..], ef); if s[0].nef < 0 { s[0].nef = 0; } }
+  }
 }
 
 // Whether run i is the one its chat goes by: of the grant's runs bound to the same chat, the
@@ -574,7 +639,11 @@ dk_phone_asks :: (id: string, t: string, asks: [] string, inb: [] u8, tab: [] u8
   }
   m := ifx turns < n then turns else n;
   m = ifx m > asks.count then asks.count else m;
-  for i: 0..<m { asks[asks.count - m + i] = tasks[n - m + i]; }
+  op: [1400] u8;
+  out_whole := fs_size(dr_file(id, ".out", op[..])) <= DK_FILE;
+  in_whole := fs_size(dr_file(id, ".in", ip[..])) <= inb.count;
+  base_idx := ifx out_whole && in_whole && turns <= n then 0 else n - m;
+  for i: 0..<m { asks[asks.count - m + i] = tasks[base_idx + i]; }
   skip[0] = turns - m;   // the oldest turns, whose tasks are no longer in the input's tail
   return m;
 }
@@ -585,9 +654,22 @@ dk_phone_asks :: (id: string, t: string, asks: [] string, inb: [] u8, tab: [] u8
 dk_earlier :: (r: [] DkInfo, s: [] Session, file: [] u8, ab: [] u8) {
   hx: [32] u8; hex := dk_hex(r, hx[..]);
   if hex.count == 0 { return; }
-  chats: [DK_CHATS] DkChat; nc := dk_chats(chats[..]); c := -1;
-  for i: 0..<nc { if chats[i].has_hex && cast(string) chats[i].hex[..] == hex { c = i; break; } }
+  chats: [DK_CHATS] DkChat; nc := dk_chats(chats[..]); c := dk_chat_by_hex(chats[..], nc, hex);
   if c < 0 { return; }
+  if dk_phone(r) {
+    // Phone runs record in ID.phone ("base") how many earlier saved turns precede ID.out.
+    base := ph_base(cast(string) r[0].id[..]);
+    if base <= 0 { return; }
+    cut := [1] bool.[false];
+    text := dk_saved_read(chats[c..<c + 1], file, DK_SAVED, cut[..]);
+    if text.count < 2 { return; }
+    turns := cl_raw(text, "turns"); count := cl_count(turns);
+    if count < 1 { return; }
+    drop := ifx count > base then count - base else 0;
+    if cut[0] { s_notice(s, N_META, DK_EARLIER); }
+    dk_saved_turns(text, s, ab, drop);
+    return;
+  }
   // the run's turns, and whether its last is still open
   op: [1400] u8; t := dk_read_tail(dr_file(cast(string) r[0].id[..], ".out", op[..]), file);
   next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine; ran := 0; open := false;
@@ -626,17 +708,27 @@ dk_run_for :: (h: [] HsHost, runs: [] DkInfo, n: int, hex: string) -> int {
 // The run `id` names for this grant, or -1 (refused not_found).
 dk_find :: (h: [] HsHost, id: string, runs: [] DkInfo, n: int) -> int {
   if ea_id(id, 32) {
-    for i: 0..<n { if cast(string) runs[i].id[..] == id && dk_phone(runs[i..<i + 1]) && dk_scoped(h, runs[i..<i + 1]) { return i; } }
-    return -1;
+    if !ph_is(id) { return -1; }
+    return dk_run_for(h, runs, n, id);
   }
   if !dk_is(id) { return -1; }
-  k := dk_run_for(h, runs, n, dk_run_of(id));
+  hex := dk_run_of(id);
+  if ph_is(hex) { return -1; }
+  k := dk_run_for(h, runs, n, hex);
   return ifx k >= 0 && dk_phone(runs[k..<k + 1]) then -1 else k;
 }
 // The saved chat `id` names for this grant, or -1.
 dk_saved_for :: (h: [] HsHost, id: string, chats: [] DkChat, nc: int) -> int {
-  if !dk_is(id) { return -1; }
-  hex := dk_run_of(id);
+  hex := "";
+  if ea_id(id, 32) {
+    if !ph_is(id) { return -1; }
+    hex = id;
+  } else if dk_is(id) {
+    hex = dk_run_of(id);
+    if ph_is(hex) { return -1; }
+  } else {
+    return -1;
+  }
   for c: 0..<nc { if cast(string) chats[c].hex[..] == hex && dk_inside(h, cast(string) chats[c].folder[0..<chats[c].nf]) { return c; } }
   return -1;
 }
@@ -781,6 +873,13 @@ dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
   }
   r := runs[k..<k + 1];
   if v[0].ns < 128 { dk_summary(r, chats[..], nc, v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1; }
+  ahead := dk_desktop_ahead(r, chats[..], nc, file[..], ab[..]);
+  if ahead >= 0 {
+    dk_saved_session(chats[ahead..<ahead + 1], ses[..], file[..], ab[..]);
+    if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
+    es_project_at(ses[..], stamps[0..<0], q, v);
+    return;
+  }
   none: [1] DkSub; have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
   if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
   es_project_at(ses[..], stamps[0..<have], q, v);
@@ -873,8 +972,16 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   }
   if !ea_fresh(q[0].issued, q[0].expires, cxproc_wall_us() / 1000) { es_refuse(v, "expired"); return; }
   text := cast(string) q[0].text[0..<q[0].nt];
+  hx: [32] u8; hex := dk_hex(r, hx[..]);
   if dk_phone(r) { ph_write(h, q, r, runs[..], n, chats[..], nc, method, command, text, file, cast(string) raw[0..<rn], v); return; }
-  if !dk_running(r) || q[0].generation != r[0].started * 1000 { es_refuse(v, "conflict"); return; }
+  is_ph := ph_is(hex);
+  if is_ph && !dk_running(r) {
+    pk := -1;
+    for i: 0..<n { if cast(string) runs[i].id[..] == hex && dk_phone(runs[i..<i + 1]) && dk_scoped(h, runs[i..<i + 1]) { pk = i; break; } }
+    if pk >= 0 { ph_write(h, q, runs[pk..<pk + 1], runs[..], n, chats[..], nc, method, command, text, file, cast(string) raw[0..<rn], v); return; }
+  }
+  want_gen := ifx is_ph then ph_generation(hex) else r[0].started * 1000;
+  if !dk_running(r) || q[0].generation != want_gen { es_refuse(v, "conflict"); return; }
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
   // one sub-agent of the running turn: its run, found before the intent is kept (#13776)
   one: [1] DkSub;
@@ -917,8 +1024,9 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
     p := pa_pick(ph_facts(h), want_model);
     if p.engine != PA_NONE && p.engine != PA_CLAUDE && p.engine != prev_engine { switch_engine = true; }
   }
-  if method == "SendMessage" && (!dk_running(r) || switch_engine) {
-    if switch_engine { dr_stop_sync(h[0].runs[..], id); }
+  desktop_ahead := method == "SendMessage" && dk_is_desktop_ahead(r, chats, nc);
+  if method == "SendMessage" && (!dk_running(r) || switch_engine || desktop_ahead) {
+    if dk_running(r) { dr_stop_sync(h[0].runs[..], id); }
     why := ph_restart(h, r, runs, n, command, text, want_model, want_effort);
     if why.count > 0 { es_refuse(v, why); return; }
   } else {
@@ -971,6 +1079,15 @@ dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   r[0].nkey = hs_set(r[0].key[..], "chat-smoke"); #assert dk_hex(r[..], hx[..]) == "0123456789abcdef0123456789abcdef";
   #assert !dk_hex_key("E83DD354-F4F4-4188-861E-FEF97556D871", hx[..]) && !dk_hex_key("e83dd354f4f44188861efef97556d871xxxx", hx[..]);
   #assert dk_seconds("1795136276.25") == 1795136276 && dk_seconds("") == 0;
+  chats: [2] DkChat;
+  chats[0].ni = hs_set(chats[0].id[..], "066a38a0-8277-2f3c-a4ad-f42451d17a54");
+  chats[0].has_hex = dk_hex_key(cast(string) chats[0].id[0..<chats[0].ni], chats[0].hex[..]);
+  chats[1].ni = hs_set(chats[1].id[..], "e83dd354-f4f4-4188-861e-fef97556d871");
+  chats[1].has_hex = dk_hex_key(cast(string) chats[1].id[0..<chats[1].ni], chats[1].hex[..]);
+  #assert dk_chat_by_hex(chats[..], 2, "066a38a082772f3ca4adf42451d17a54") == 0;
+  #assert dk_chat_by_hex(chats[..], 2, "e83dd354f4f44188861efef97556d871") == 1;
+  #assert dk_chat_by_hex(chats[..], 2, "00000000000000000000000000000000") == -1;
+  #assert dk_chat_by_hex(chats[..], 2, "short") == -1;
 }
 #test "a saved chat reads back as its turns, steers, rows, sub-agents and ending" {
   ses: [1] Session; pool: [65536] u8; s_init(ses[..], pool[..]); ab: [65536] u8;

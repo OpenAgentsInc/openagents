@@ -129,8 +129,19 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     #endif
     let daemonClient = CoderDaemonClient()
     private var lastForegroundRunning = false
+    struct PhoneRunStamp: Equatable {
+        let stateMtime: Double
+        let inSize: UInt64
+        let outSize: UInt64
+        let outMtime: Double
+        let phoneMtime: Double
+    }
     var sweptAt = CACurrentMediaTime()            // when runs no chat holds were last looked for (#13810)
     var sweeping = false
+    var phoneRunStamps: [String: PhoneRunStamp] = [:]
+    var phoneBusyChats: Set<String> = []
+    var phoneSyncing = false
+    var phoneSyncedAt: CFTimeInterval = 0
     #if OA_FULL
     var foremanTier: ForemanTier = ForemanTier.load()
     #endif
@@ -342,6 +353,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             guard let self else { return }
+            self.syncPhoneRuns()
             if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && (!FeatureFlags.anyExtraModel || cd_model_inkling(self.page) != 0) {
                 LocalModelServer.shared.prewarmIfReady()
             }
@@ -642,6 +654,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
         if now - sweptAt >= CoderWindow.sweepEvery { sweepRuns() }
+        if now - phoneSyncedAt >= 1.5 { syncPhoneRuns() }
         checkRunNotifications(run)
         if now - lastSnoozeCheckAt >= 1.0 {
             lastSnoozeCheckAt = now

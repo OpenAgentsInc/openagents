@@ -47,6 +47,8 @@ dr_file :: (id: string, ext: string, out: [] u8) -> string {
   nb: [64] u8; n := hs_cat(nb[..], 0, "runs/"); n = hs_cat(nb[..], n, id); n = hs_cat(nb[..], n, ext);
   return es_path(cast(string) nb[0..<n], out);
 }
+// True when id is a phone-originated chat run (host-phone.coax): its files are never erased by ForgetRun or launch recovery.
+dr_is_phone :: (id: string) -> bool { p: [1400] u8; return ea_id(id, 32) && fs_exists(dr_file(id, ".phone", p[..])); }
 dr_dir :: () -> bool {
   p: [1400] u8; d := es_path("runs", p[..]);
   if d.count == 0 { return false; }
@@ -114,7 +116,7 @@ dr_recover :: (d: [] DrHost) {
     if !dr_state_read(id, r[..]) { continue; }
     st := cast(string) r[0].state[0..<r[0].ns];
     if st == "running" || st == "stopping" { dr_state_write(id, "lost", r[0].pid, r[0].started, now, -1); continue; }
-    if r[0].ended > 0 && now - r[0].ended > DR_KEEP_S { dr_forget_files(id); }
+    if !dr_is_phone(id) && r[0].ended > 0 && now - r[0].ended > DR_KEEP_S { dr_forget_files(id); }
   }
 }
 dr_forget_files :: (id: string) {
@@ -199,8 +201,10 @@ dr_stop_sync :: (d: [] DrHost, id: string) {
 }
 
 // ForgetRun: a run that no longer runs loses its files.
+// Phone runs (ID.phone) keep their state and transcript files so ReadSession and follow-ups never vanish.
 dr_forget :: (d: [] DrHost, id: string) -> string {
   if dr_find(d, id) >= 0 { return "running"; }
+  if dr_is_phone(id) { return "phone-run"; }
   dr_forget_files(id);
   return "";
 }

@@ -39,11 +39,20 @@ struct CoderChat: Codable {
     }
 }
 
-/// Sidecar sidebar metadata (archived, snoozedUntilMs) persisted
+/// Sidecar sidebar metadata (archived, snoozedUntilMs, deletedPhoneRuns) persisted
 /// beside index.json so oa_dc_store_* rewrites never drop sidebar state (#13875).
 private struct SidebarMetaStore: Codable {
     var archived: Set<String> = []
     var snoozedUntilMs: [String: Int64] = [:]
+    var deletedPhoneRuns: Set<String> = []
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        archived = try c.decodeIfPresent(Set<String>.self, forKey: .archived) ?? []
+        snoozedUntilMs = try c.decodeIfPresent([String: Int64].self, forKey: .snoozedUntilMs) ?? [:]
+        deletedPhoneRuns = try c.decodeIfPresent(Set<String>.self, forKey: .deletedPhoneRuns) ?? []
+    }
 }
 
 /// One ranked full-text hit across stored chats (GitHub #13876).
@@ -473,7 +482,21 @@ final class CoderStore {
         return URL(fileURLWithPath: trimmed).standardizedFileURL.path
     }
 
+    func isPhoneRunDeleted(_ runID: String) -> Bool {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        return sidebarMeta.deletedPhoneRuns.contains(runID)
+    }
+
+    func markPhoneRunDeleted(_ runID: String, _ deleted: Bool) {
+        Self.lock.lock()
+        if deleted { sidebarMeta.deletedPhoneRuns.insert(runID) }
+        else { sidebarMeta.deletedPhoneRuns.remove(runID) }
+        Self.lock.unlock()
+        saveSidebarMeta()
+    }
+
     func restoreDeleted(meta: CoderChat, text: String) {
+        if let runID = CoderWorker.hexRunID(from: meta.id) { markPhoneRunDeleted(runID, false) }
         keep(id: meta.id, title: meta.title, folder: meta.folder, text: text, managedBy: meta.managedBy, worktree: meta.worktree)
         if meta.renamed == true { rename(meta.id, to: meta.title) }
         if meta.pinned != nil && !isPinned(meta.id) { togglePin(meta.id) }

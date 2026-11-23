@@ -320,6 +320,7 @@ extension CoderWindow {
             self.cleanupCheckpoints(for: id, in: delFolder)
             #endif
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: title) }
+            if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { self.store.markPhoneRunDeleted(runID, true) }
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
             if let snapMeta, let snapText {
@@ -492,6 +493,7 @@ extension CoderWindow {
                 cleanupCheckpoints(for: id, in: delFolder)
                 #endif
                 if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "Chat") }
+                if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { store.markPhoneRunDeleted(runID, true) }
                 store.remove(id)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
             }

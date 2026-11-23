@@ -526,13 +526,20 @@ ph_generation :: (id: string) -> int {
   if n < 1 { return -1; }
   return cl_int(cast(string) b[0..<n], "generation").value;
 }
+// How many earlier turns in Coder's saved chat precede ID.out (0 when ID.out starts at turn 0).
+ph_base :: (id: string) -> int {
+  p: [1400] u8; b: [1024] u8; n := fs_read(ph_file(id, p[..]), b[..]);
+  if n < 1 { return 0; }
+  v := cl_int(cast(string) b[0..<n], "base");
+  return ifx v.ok && v.value > 0 then v.value else 0;
+}
 ph_engine_name :: (engine: int) -> string {
   if engine == PA_AGY { return PA_AGY_ID; }
   if engine == PA_INKLING { return "inkling"; }
   return "micro";
 }
-// The run's ID.phone: its generation, engine, model, effort, and optional fallback note.
-ph_meta_text :: (generation: int, p: PaPick, effort: string, mo: [] Jo, mb: [] u8) -> string {
+// The run's ID.phone: its generation, engine, model, effort, optional fallback note, and optional base turn count.
+ph_meta_text_base :: (generation: int, p: PaPick, effort: string, base: int, mo: [] Jo, mb: [] u8) -> string {
   jo_start(mo, mb); jo_obj(mo);
   jo_key(mo, "generation"); jo_int(mo, generation);
   jo_key(mo, "engine"); jo_str(mo, ph_engine_name(p.engine));
@@ -541,12 +548,19 @@ ph_meta_text :: (generation: int, p: PaPick, effort: string, mo: [] Jo, mb: [] u
   if eff.count > 0 { jo_key(mo, "effort"); jo_str(mo, eff); }
   nb: [256] u8; note := pa_note(p, nb[..]);
   if note.count > 0 { jo_key(mo, "note"); jo_str(mo, note); }
+  if base > 0 { jo_key(mo, "base"); jo_int(mo, base); }
   jo_end(mo);
   return jo_text(mo);
 }
-ph_meta :: (id: string, generation: int, p: PaPick, effort: string) -> bool {
+ph_meta_text :: (generation: int, p: PaPick, effort: string, mo: [] Jo, mb: [] u8) -> string {
+  return ph_meta_text_base(generation, p, effort, 0, mo, mb);
+}
+ph_meta_with_base :: (id: string, generation: int, p: PaPick, effort: string, base: int) -> bool {
   pp: [1400] u8; mb: [1024] u8; mo: [1] Jo;
-  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text(generation, p, effort, mo[..], mb[..]));
+  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text_base(generation, p, effort, base, mo[..], mb[..]));
+}
+ph_meta :: (id: string, generation: int, p: PaPick, effort: string) -> bool {
+  return ph_meta_with_base(id, generation, p, effort, ph_base(id));
 }
 ph_meta_read :: (id: string, b: [] u8) -> string { p: [1400] u8; n := fs_read(ph_file(id, p[..]), b); return ifx n < 1 then "" else cast(string) b[0..<n]; }
 ph_model_in :: (text: string, out: [] u8) -> string {
@@ -696,19 +710,38 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
     engine = p.engine; model = p.model;
   }
   eff := pa_effort(engine, model, eff_in);
+  chats: [DK_CHATS] DkChat; nc := dk_chats(chats[..]);
+  ci := dk_chat_by_hex(chats[..], nc, id);
   ses: [1] Session; pool: [524288] u8; s_init(ses[..], pool[..]);
   stamps: [S_PARTS] int; file: [DK_FILE] u8; ab: [DK_ARENA] u8; none: [1] DkSub;
-  _ = dk_session(r, runs, n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
+  saved_n := ifx ci >= 0 then dk_saved_turn_count(chats[ci..<ci + 1], file[..]) else 0;
+  ran_n := dk_run_turns(id, file[..], ab[..]);
+  cur_base := ph_base(id);
+  rebase := ci >= 0 && saved_n > cur_base + ran_n;
+  if rebase {
+    dk_saved_session(chats[ci..<ci + 1], ses[..], file[..], ab[..]);
+  } else {
+    _ = dk_session(r, runs, n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
+  }
   lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 16384] u8;
   at := ph_recall(ses[..], lines[..]); if at < 0 { return "malformed"; }
   w := ph_task(text, id, cast(string) r[0].cwd[0..<r[0].ncwd], engine, model, eff, lines[at..<lines.count]);
   if w < 1 { return "malformed"; }
-  if !ph_meta(id, ph_generation(id), pick, eff) { return "storage_unavailable"; }
-  ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); skip := fs_size(inp); if skip < 0 { return "storage_unavailable"; }
-  why := ph_spec(h, id, engine, model, eff, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
-  if why.count > 0 { return why; }
-  if !fs_append(inp, cast(string) lines[0..<at + w]) { return "storage_unavailable"; }
-  why = dr_start(h[0].runs[..], id);
+  new_base := ifx rebase then saved_n else cur_base;
+  if !ph_meta_with_base(id, ph_generation(id), pick, eff, new_base) { return "storage_unavailable"; }
+  ip: [1400] u8; inp := dr_file(id, ".in", ip[..]);
+  op: [1400] u8; outp := dr_file(id, ".out", op[..]);
+  if rebase {
+    why := ph_spec(h, id, engine, model, eff, cast(string) r[0].cwd[0..<r[0].ncwd], 0);
+    if why.count > 0 { return why; }
+    if !fs_write(outp, "") || !fs_write(inp, cast(string) lines[0..<at + w]) { return "storage_unavailable"; }
+  } else {
+    skip := fs_size(inp); if skip < 0 { return "storage_unavailable"; }
+    why := ph_spec(h, id, engine, model, eff, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
+    if why.count > 0 { return why; }
+    if !fs_append(inp, cast(string) lines[0..<at + w]) { return "storage_unavailable"; }
+  }
+  why := dr_start(h[0].runs[..], id);
   return ifx why.count == 0 then "" else ifx why == "run-limit" then "capacity" else "storage_unavailable";
 }
 
@@ -776,4 +809,7 @@ ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all
   t = ph_meta_text(7, PaPick.{engine = PA_INKLING, model = "inkling-2-mini", fell_back = true, asked = PA_AGY}, "low", mo[..], mb[..]);
   #assert ph_note_in(t, nb[..]) == "Antigravity isn't set up on this computer, so this chat runs on Inkling 2 Mini.";
   #assert ph_model_in("{}", out[..]) == "" && ph_effort_in("{}", eb[..]) == "" && ph_note_in("{}", nb[..]) == "";
+  #assert !cl_int(t, "base").ok;
+  tb := ph_meta_text_base(99, PaPick.{engine = PA_AGY, model = "gemini-4-neon"}, "medium", 3, mo[..], mb[..]);
+  #assert cl_int(tb, "generation").value == 99 && cl_int(tb, "base").ok && cl_int(tb, "base").value == 3;
 }

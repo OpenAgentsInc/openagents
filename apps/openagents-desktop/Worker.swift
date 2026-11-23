@@ -282,6 +282,30 @@ final class CoderWorker {
         guard o["kind"] as? String == "queue" else { return false }
         return (o["active"] as? String ?? "x").isEmpty && ((o["items"] as? [Any])?.isEmpty ?? false)
     }
+    /// True when `id` is a phone-originated daemon run (runs/ID.phone exists; host-phone.coax).
+    /// Desktop's launch/sweep orphan cleanup must never stop or forget phone runs.
+    static func isPhoneRun(_ id: String) -> Bool {
+        guard let daemon, id.count == 32 else { return false }
+        return FileManager.default.fileExists(atPath: daemon.runsDir.appendingPathComponent(id + ".phone").path)
+    }
+    /// Canonical lowercase UUID ("8-4-4-4-12") for a 32-hex phone run id, so CoderStore and
+    /// host-desktop.coax share one chat identity with zero duplicates.
+    static func phoneChatUUID(from runID: String) -> String? {
+        guard runID.count == 32, runID.allSatisfy({ ($0 >= "0" && $0 <= "9") || ($0 >= "a" && $0 <= "f") }) else { return nil }
+        let a = runID.prefix(8)
+        let b = runID.dropFirst(8).prefix(4)
+        let c = runID.dropFirst(12).prefix(4)
+        let d = runID.dropFirst(16).prefix(4)
+        let e = runID.dropFirst(20).prefix(12)
+        return "\(a)-\(b)-\(c)-\(d)-\(e)"
+    }
+    /// Lowercase 32-hex run id for a canonical hyphenated UUID chat id, or nil.
+    static func hexRunID(from chatID: String) -> String? {
+        guard chatID.count == 36 else { return nil }
+        let stripped = chatID.replacingOccurrences(of: "-", with: "").lowercased()
+        guard stripped.count == 32, stripped.allSatisfy({ ($0 >= "0" && $0 <= "9") || ($0 >= "a" && $0 <= "f") }) else { return nil }
+        return stripped
+    }
     /// Every run Coder stops or leaves running when no chat holds it, one line each, so a lost reply
     /// can be traced (Application Support/Coder/run-stops.log).
     static func logStop(_ id: String, _ why: String) {
