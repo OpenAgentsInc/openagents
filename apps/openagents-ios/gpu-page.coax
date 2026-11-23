@@ -668,7 +668,9 @@ ios_draw_composer_dock :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, bottom: f3
   model_room := chips_right - lx - eff_need - mode_need - (ifx show_eff then 4.0f32 else 0.0f32) - (ifx show_mode then 4.0f32 else 0.0f32);
   if model_room < 64.0f32 { model_room = chips_right - lx; }
   if model_room > 36.0f32 {
-    mw := ios_draw_mini_chip(f, "chat.modelPicker", lx, chip_y, chip_h, model_room, ICON_ANTIGRAVITY, model_lbl, false, IOS_HIT_MODEL);
+    is_local := model_lbl.count >= 7 && model_lbl[0] == 'I' && model_lbl[1] == 'n' && model_lbl[2] == 'k' && model_lbl[3] == 'l' && model_lbl[4] == 'i' && model_lbl[5] == 'n' && model_lbl[6] == 'g';
+    model_icon := ifx is_local then ICON_PSIONIC else ICON_ANTIGRAVITY;
+    mw := ios_draw_mini_chip(f, "chat.modelPicker", lx, chip_y, chip_h, model_room, model_icon, model_lbl, false, IOS_HIT_MODEL);
     lx += mw + 3.5f32;
   }
   if show_eff && chips_right - lx >= 28.0f32 {
@@ -1096,7 +1098,7 @@ ios_draw_picker :: (s: [] IosPhonePage, f: [] UiFrame, w: f32, h: f32) {
   srow := uiframe_semantic(f, "picker.scrim", EL_BUTTON, "Close picker", 0, 0, w, h, 0, IOS_HIT_PICKER_CLOSE);
   sheet_hit(sh, UIFRAME_HIT, srow, 0, 0, 0, w, h);
 
-  title := ifx s[0].picker == 1 then "Antigravity Model" else ifx s[0].picker == 2 then "Thinking Effort" else "Review Mode";
+  title := ifx s[0].picker == 1 then "Model" else ifx s[0].picker == 2 then "Thinking Effort" else "Review Mode";
   count := ifx s[0].picker == 1 then s[0].models_n else ifx s[0].picker == 2 then s[0].efforts_n else s[0].modes_n;
   row_act := ifx s[0].picker == 1 then IOS_HIT_PICK_MODEL else ifx s[0].picker == 2 then IOS_HIT_PICK_EFFORT else IOS_HIT_PICK_MODE;
 

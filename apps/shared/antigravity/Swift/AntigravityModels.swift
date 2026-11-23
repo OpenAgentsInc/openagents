@@ -124,9 +124,11 @@ struct AntigravityModelOption: Identifiable, Equatable, Codable {
     let supportedEfforts: [ThinkingEffort]
 
     var supportsThinking: Bool { !supportedEfforts.isEmpty }
+    var isLocalInkling: Bool { id.lowercased().hasPrefix("inkling") }
 
     var family: String {
         let lower = id.lowercased()
+        if lower.hasPrefix("inkling") { return "Local · Psionic Metal" }
         if lower.contains("orchestrator") { return "Orchestrator" }
         if lower.hasPrefix("gemini-4") { return "Gemini 4" }
         if lower.hasPrefix("gemini-3") { return "Gemini 3.8" }

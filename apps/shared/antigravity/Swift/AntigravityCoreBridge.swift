@@ -21,7 +21,7 @@ enum MobileCoreError: Int32, Error, LocalizedError, Equatable {
         case .ok: return nil
         case .nullWork: return "Internal crypto/codec arena unavailable."
         case .textTooLong: return "Message exceeds the 16 KiB single-turn limit."
-        case .invalidModel: return "Selected model is not permitted for Antigravity."
+        case .invalidModel: return "Selected model is not permitted for mobile sessions."
         case .invalidFolder: return "Selected workspace folder path is invalid."
         case .invalidMode: return "Selected review mode is not recognized."
         case .cryptoFail: return "NIP-44 encryption or signature verification failed."
@@ -142,12 +142,12 @@ enum MobileCore {
         oa_mobile_host_key_ok(key) != 0
     }
 
-    /// Coax `#authority` Antigravity-only model predicate (`phone-agent-policy.coax`).
+    /// Coax `#authority` mobile model predicate (`phone-agent-policy.coax`: Antigravity ACP + local Inkling variants).
     static func isAntigravityModel(_ id: String) -> Bool {
         oa_mobile_is_agy_model(id) != 0
     }
 
-    /// Coax `#authority` normalization strictly within Antigravity (defaults to `gemini-4-neon`).
+    /// Coax `#authority` model normalization (Antigravity ACP + local Inkling variants; defaults to `gemini-4-neon`).
     static func normalizeAntigravityModel(_ want: String) -> String {
         var out = [UInt8](repeating: 0, count: 128)
         let n = oa_mobile_normalize_agy_model(want, &out, Int64(out.count))
@@ -155,7 +155,7 @@ enum MobileCore {
         return String(decoding: out[0..<Int(n)], as: UTF8.self)
     }
 
-    /// Coax `#authority` effort normalization for Antigravity (`none`..`max`, or `""` for non-thinking models like Orchestrator).
+    /// Coax `#authority` effort normalization (Antigravity `none`..`max`, Inkling `low`..`high`, or `""` for non-thinking models).
     static func normalizeAntigravityEffort(model: String, want: String) -> String {
         var out = [UInt8](repeating: 0, count: 32)
         let n = oa_mobile_normalize_agy_effort(model, want, &out, Int64(out.count))

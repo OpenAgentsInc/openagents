@@ -442,18 +442,48 @@ ph_agy_ready :: (p: [] PhHost) -> bool {
 
 // ---------------------------------------------------------------- local Inkling 2 Mini (inky + Psionic Metal)
 
-ph_inkling_weights :: (out: [] u8) -> string {
+ph_inkling_variant_weights :: (idx: int, out: [] u8) -> string {
+  if idx < 0 || idx >= PA_INKLING_VARIANTS { return ""; }
   hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return ""; }
-  n := hs_cat(out, 0, home); n = hs_cat(out, n, "/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf");
+  vids := PA_INKLING_VARIANT_ID; vfiles := PA_INKLING_VARIANT_FILE;
+  n := hs_cat(out, 0, home);
+  n = hs_cat(out, n, "/.openagents/models/");
+  n = hs_cat(out, n, vids[idx]);
+  n = hs_cat(out, n, "/");
+  n = hs_cat(out, n, vfiles[idx]);
   return cast(string) out[0..<n];
 }
-ph_inkling_manifest_ok :: () -> bool {
+ph_inkling_variant_file_ok :: (idx: int) -> bool {
+  if idx < 0 || idx >= PA_INKLING_VARIANTS { return false; }
   hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return false; }
-  wb: [1400] u8; w := ph_inkling_weights(wb[..]); if w.count == 0 || fs_kind(w) != FS_FILE { return false; }
-  mb: [1400] u8; mn := hs_cat(mb[..], 0, home); mn = hs_cat(mb[..], mn, "/.openagents/models/inkling-2-mini/manifest.json");
+  wb: [1400] u8; w := ph_inkling_variant_weights(idx, wb[..]); if w.count == 0 || fs_kind(w) != FS_FILE { return false; }
+  vids := PA_INKLING_VARIANT_ID;
+  mb: [1400] u8; mn := hs_cat(mb[..], 0, home);
+  mn = hs_cat(mb[..], mn, "/.openagents/models/");
+  mn = hs_cat(mb[..], mn, vids[idx]);
+  mn = hs_cat(mb[..], mn, "/manifest.json");
   raw: [4096] u8; rn := fs_read(cast(string) mb[0..<mn], raw[..]); if rn < 2 { return false; }
   ver := cl_bool(cast(string) raw[0..<rn], "verified");
   return ver.ok && ver.value;
+}
+ph_inkling_variant_installed :: (idx: int) -> bool {
+  if idx < 0 || idx >= PA_INKLING_VARIANTS { return false; }
+  if idx == PA_INKLING_VARIANT_LORA_IDX {
+    return ph_inkling_variant_file_ok(0) && ph_inkling_variant_file_ok(idx);
+  }
+  return ph_inkling_variant_file_ok(idx);
+}
+ph_inkling_first_installed :: () -> int {
+  for vi: 0..<PA_INKLING_VARIANTS {
+    if ph_inkling_variant_installed(vi) { return vi; }
+  }
+  return -1;
+}
+ph_inkling_weights :: (out: [] u8) -> string {
+  return ph_inkling_variant_weights(0, out);
+}
+ph_inkling_manifest_ok :: () -> bool {
+  return ph_inkling_first_installed() >= 0;
 }
 ph_inkling_server_files :: (bin_out: [] u8, bin_n: [] int, metal_out: [] u8, metal_n: [] int) -> bool {
   bin_n[0] = 0; metal_n[0] = 0;
@@ -484,6 +514,16 @@ ph_parse_port :: (raw: string) -> int {
   }
   return ifx digits > 0 && v > 0 && v < 65536 then v else 0;
 }
+ph_parse_pid :: (raw: string) -> int {
+  v := 0; digits := 0;
+  for c: raw {
+    if c == ' ' || c == '\t' || c == '\r' || c == '\n' { if digits > 0 { break; } continue; }
+    if c < '0' || c > '9' { return 0; }
+    v = v * 10 + cast(int) (c - '0'); digits += 1;
+    if v > 99999999 { return 0; }
+  }
+  return ifx digits > 0 && v > 1 then v else 0;
+}
 ph_inkling_saved_port :: () -> int {
   eb: [64] u8; p := ph_parse_port(proc_getenv("OA_INKLING_PORT", eb[..])); if p > 0 { return p; }
   hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return PH_INKLING_PORT_DEFAULT; }
@@ -499,15 +539,32 @@ ph_port_listening :: (port: int) -> bool {
   _ = cxsock_close(s);
   return true;
 }
-ph_inkling_health :: (port: int) -> bool {
-  if port < 1 || port > 65535 { return false; }
+// Classify a psionic-inkling-serve /health HTTP response against the requested weights + optional LoRA basename:
+//   0 = not healthy / not psionic, 1 = healthy & exact variant match, 2 = healthy psionic on another variant.
+ph_inkling_health_parse :: (resp: string, want_model: string, want_lora: string) -> int {
+  if !dk_has(resp, "psionic-") || !dk_has(resp, "200") { return 0; }
+  start := -1;
+  for i: 0..<resp.count { if resp[i] == '{' { start = i; break; } }
+  if start < 0 { return 0; }
+  body := cast(string) resp[start..<resp.count];
+  ab: [512] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  got_model := cl_str(ar[..], body, "model");
+  got_lora := cl_str(ar[..], body, "lora_file");
+  if got_model.count > 0 {
+    return ifx got_model == want_model && got_lora == want_lora then 1 else 2;
+  }
+  vfiles := PA_INKLING_VARIANT_FILE;
+  return ifx want_lora.count == 0 && want_model == vfiles[0] then 1 else 2;
+}
+ph_inkling_health_match :: (port: int, want_model: string, want_lora: string) -> int {
+  if port < 1 || port > 65535 { return 0; }
   for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
   s := cxsock_connect(port, 250);
-  if s < 0 { return false; }
+  if s < 0 { return 0; }
   defer { _ = cxsock_close(s); }
   req := "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
   for c: req { _ = cxsock_write(s, cast(int) c); }
-  if cxsock_flush(s, 300) != 0 { return false; }
+  if cxsock_flush(s, 300) != 0 { return 0; }
   buf: [1024] u8; n := 0; deadline := cxsock_now_ms() + 400;
   while cxsock_now_ms() < deadline && n < buf.count {
     got := cxsock_read(s, 100);
@@ -515,8 +572,29 @@ ph_inkling_health :: (port: int) -> bool {
     if got <= 0 { break; }
     for i: 0..<got { if n < buf.count { buf[n] = cast(u8) cxsock_byte(s, i); n += 1; } }
   }
-  resp := cast(string) buf[0..<n];
-  return dk_has(resp, "psionic-") && dk_has(resp, "200");
+  return ph_inkling_health_parse(cast(string) buf[0..<n], want_model, want_lora);
+}
+ph_inkling_health :: (port: int) -> bool {
+  vfiles := PA_INKLING_VARIANT_FILE;
+  return ph_inkling_health_match(port, vfiles[0], "") > 0;
+}
+ph_inkling_stop_recorded :: (port: int) {
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return; }
+  pf: [1400] u8; pn := hs_cat(pf[..], 0, home); pn = hs_cat(pf[..], pn, "/.openagents/run/inkling-serve.pid");
+  raw: [64] u8; rn := fs_read(cast(string) pf[0..<pn], raw[..]);
+  if rn > 0 {
+    pid := ph_parse_pid(cast(string) raw[0..<rn]);
+    if pid > 1 {
+      pb: [32] u8; pid_s := hs_itoa(pid, pb[..]);
+      argv := [3] string.["/bin/kill", "-TERM", pid_s];
+      out: [64] u8; err: [64] u8;
+      _ = proc_run(argv[..], 1000, out[..], err[..]);
+      deadline := proc_now_ms() + 2000;
+      while proc_now_ms() < deadline && ph_port_listening(port) {
+        proc_sleep(100);
+      }
+    }
+  }
 }
 ph_inkling_url :: (port: int, out: [] u8) -> string {
   dg: [32] u8;
@@ -524,17 +602,41 @@ ph_inkling_url :: (port: int, out: [] u8) -> string {
   n = hs_cat(out, n, hs_itoa(port, dg[..]));
   return cast(string) out[0..<n];
 }
-// Ensure a healthy local psionic-inkling-serve is reachable and return its base URL.
-ph_inkling_ensure :: (out: [] u8) -> string {
+// Ensure a healthy local psionic-inkling-serve serving the requested Inkling 2 Mini variant
+// (stopping and restarting the recorded server when swapping checkpoints or LoRA overlays)
+// and return its base URL.
+ph_inkling_ensure_model :: (want_model: string, out: [] u8) -> string {
   eb: [512] u8; env_url := proc_getenv("PSIONIC_BASE_URL", eb[..]);
   if env_url.count > 0 { k := hs_cat(out, 0, env_url); return cast(string) out[0..<k]; }
+  idx := pa_inkling_variant_index(want_model);
+  if idx < 0 || !ph_inkling_variant_installed(idx) {
+    first := ph_inkling_first_installed();
+    idx = ifx first >= 0 then first else 0;
+  }
+  is_lora := idx == PA_INKLING_VARIANT_LORA_IDX;
+  base_idx := ifx is_lora then 0 else idx;
+  vfiles := PA_INKLING_VARIANT_FILE;
+  vctx := PA_INKLING_VARIANT_CTX;
+  want_m := vfiles[base_idx];
+  want_l := ifx is_lora then vfiles[idx] else "";
+  ctx_s := vctx[idx];
+
   port := ph_inkling_saved_port();
-  if ph_inkling_health(port) { return ph_inkling_url(port, out); }
-  if port != PH_INKLING_PORT_DEFAULT && ph_inkling_health(PH_INKLING_PORT_DEFAULT) { return ph_inkling_url(PH_INKLING_PORT_DEFAULT, out); }
-  // Start psionic-inkling-serve detached if weights and server binary are installed.
-  bin: [1400] u8; met: [1400] u8; bn: [1] int; mn: [1] int; wb: [1400] u8;
-  if !ph_inkling_manifest_ok() || !ph_inkling_server_files(bin[..], bn[..], met[..], mn[..]) { return ph_inkling_url(port, out); }
-  weights := ph_inkling_weights(wb[..]);
+  st := ph_inkling_health_match(port, want_m, want_l);
+  if st == 1 { return ph_inkling_url(port, out); }
+  if st == 2 { ph_inkling_stop_recorded(port); }
+  if port != PH_INKLING_PORT_DEFAULT {
+    st2 := ph_inkling_health_match(PH_INKLING_PORT_DEFAULT, want_m, want_l);
+    if st2 == 1 { return ph_inkling_url(PH_INKLING_PORT_DEFAULT, out); }
+    if st2 == 2 { ph_inkling_stop_recorded(PH_INKLING_PORT_DEFAULT); }
+  }
+  // Start psionic-inkling-serve detached for the selected variant if weights and server binary are installed.
+  bin: [1400] u8; met: [1400] u8; bn: [1] int; mn: [1] int; wb: [1400] u8; lb: [1400] u8;
+  if !ph_inkling_variant_installed(idx) || !ph_inkling_server_files(bin[..], bn[..], met[..], mn[..]) {
+    return ph_inkling_url(port, out);
+  }
+  weights := ph_inkling_variant_weights(base_idx, wb[..]);
+  lora_path := ifx is_lora then ph_inkling_variant_weights(idx, lb[..]) else "";
   bin_s := cast(string) bin[0..<bn[0]];
   met_s := cast(string) met[0..<mn[0]];
   target := PH_INKLING_PORT_DEFAULT;
@@ -545,9 +647,11 @@ ph_inkling_ensure :: (out: [] u8) -> string {
   dg: [32] u8; port_s := hs_itoa(target, dg[..]);
   h := proc_new();
   if h >= 0 {
-    ok := proc_arg(h, bin_s) && proc_arg(h, "--model") && proc_arg(h, weights) && proc_arg(h, "--metal") && proc_arg(h, met_s)
+    ok := proc_arg(h, bin_s) && proc_arg(h, "--model") && proc_arg(h, weights);
+    if ok && lora_path.count > 0 { ok = proc_arg(h, "--lora") && proc_arg(h, lora_path); }
+    ok = ok && proc_arg(h, "--metal") && proc_arg(h, met_s)
        && proc_arg(h, "--host") && proc_arg(h, "127.0.0.1") && proc_arg(h, "--port") && proc_arg(h, port_s)
-       && proc_arg(h, "--ctx") && proc_arg(h, "32768") && proc_arg(h, "--idle-exit-s") && proc_arg(h, "300");
+       && proc_arg(h, "--ctx") && proc_arg(h, ctx_s) && proc_arg(h, "--idle-exit-s") && proc_arg(h, "300");
     _ = proc_quiet(h);
     _ = proc_detach(h);
     if ok && proc_start(h) == 0 {
@@ -558,15 +662,18 @@ ph_inkling_ensure :: (out: [] u8) -> string {
         pf: [1400] u8; pn := hs_cat(pf[..], 0, cast(string) rd[0..<rn]); pn = hs_cat(pf[..], pn, "/inkling-serve.port");
         _ = fs_replace_durable(cast(string) pf[0..<pn], port_s);
       }
-      deadline := proc_now_ms() + 12000;
+      deadline := proc_now_ms() + 20000;
       while proc_now_ms() < deadline {
-        if ph_inkling_health(target) { break; }
+        if ph_inkling_health_match(target, want_m, want_l) == 1 { break; }
         proc_sleep(150);
       }
     }
     _ = proc_release(h);
   }
   return ph_inkling_url(target, out);
+}
+ph_inkling_ensure :: (out: [] u8) -> string {
+  return ph_inkling_ensure_model(PA_INKLING_ID, out);
 }
 
 // Whether Microcoder has a Gemini sign-in here: `mcworker --auth` says vertex or key (legacy fallback).
@@ -693,9 +800,19 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
     }
     if !neon_added { ph_offer_add_model(o[..], PA_AGY_DEFAULT, "Gemini 4 Neon", 4 | 8 | 16 | 32); }
   }
-  // 2. Inkling 2 Mini (Local) right beside Neon so the Neon + Inkling pair are top choices.
+  // 2. Installed local Inkling 2 Mini variants (Official, AtomicChat Uncensored LoRA/AD, OrcaRouter Abliterated, Custom).
   if f.inkling {
-    ph_offer_add_model(o[..], PA_INKLING_ID, PA_INKLING_LABEL, 4 | 8 | 16);
+    vids := PA_INKLING_VARIANT_ID; vlabels := PA_INKLING_VARIANT_LABEL;
+    inkling_added := 0;
+    for vi: 0..<PA_INKLING_VARIANTS {
+      if ph_inkling_variant_installed(vi) {
+        ph_offer_add_model(o[..], vids[vi], vlabels[vi], 4 | 8 | 16);
+        inkling_added += 1;
+      }
+    }
+    if inkling_added == 0 {
+      ph_offer_add_model(o[..], PA_INKLING_ID, PA_INKLING_LABEL, 4 | 8 | 16);
+    }
   }
   // 3. Remaining authenticated Antigravity models (Carbon, Hydrogen, Argon, Flash, Orchestrator, Claude 5.5 via ACP, GPT-OSS, etc.).
   if f.agy {
@@ -923,7 +1040,7 @@ ph_spec_mode_resume :: (h: [] HsHost, id: string, engine: int, model: string, ef
   jo_key(o[..], "env"); jo_arr(o[..]);
   jo_str(o[..], cast(string) eb[0..<en]);
   if engine == PA_INKLING {
-    ub: [512] u8; base := ph_inkling_ensure(ub[..]);
+    ub: [512] u8; base := ph_inkling_ensure_model(model, ub[..]);
     en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, base); jo_str(o[..], cast(string) eb[0..<en]);
     jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
   } else if engine == PA_AGY && h.count > 0 {
@@ -1155,10 +1272,27 @@ ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all
   #assert ph_note_in(t, nb[..]) == "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon.";
   t = ph_meta_text(42, pa_pick(PaFacts.{agy = true, inkling = true}, "inkling-2-mini"), "", mo[..], mb[..]);
   #assert ph_model_in(t, out[..]) == "inkling-2-mini" && ph_effort_in(t, eb[..]) == "medium" && ph_note_in(t, nb[..]) == "";
+  t = ph_meta_text(42, pa_pick(PaFacts.{agy = true, inkling = true}, "inkling-2-mini-uncensored-lora"), "xhigh", mo[..], mb[..]);
+  #assert ph_model_in(t, out[..]) == "inkling-2-mini-uncensored-lora" && ph_effort_in(t, eb[..]) == "high" && ph_note_in(t, nb[..]) == "";
   t = ph_meta_text(7, PaPick.{engine = PA_INKLING, model = "inkling-2-mini", fell_back = true, asked = PA_AGY}, "low", mo[..], mb[..]);
   #assert ph_note_in(t, nb[..]) == "Antigravity isn't set up on this computer, so this chat runs on Inkling 2 Mini.";
   #assert ph_model_in("{}", out[..]) == "" && ph_effort_in("{}", eb[..]) == "" && ph_note_in("{}", nb[..]) == "";
   #assert !cl_int(t, "base").ok;
   tb := ph_meta_text_base(99, PaPick.{engine = PA_AGY, model = "gemini-4-neon"}, "medium", 3, mo[..], mb[..]);
   #assert cl_int(tb, "generation").value == 99 && cl_int(tb, "base").ok && cl_int(tb, "base").value == 3;
+}
+#test "psionic /health classifier distinguishes exact variant, LoRA overlay, mismatch, and legacy server" {
+  base_resp := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"engine\":\"psionic-metal\",\"ctx\":32768,\"lora\":false,\"busy\":false,\"model\":\"Inkling-2-Mini-IQ4_NL.gguf\",\"lora_file\":\"\"}";
+  lora_resp := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"engine\":\"psionic-metal\",\"ctx\":32768,\"lora\":true,\"busy\":false,\"model\":\"Inkling-2-Mini-IQ4_NL.gguf\",\"lora_file\":\"Inkling-2-Mini-Uncensored-LoRA.gguf\"}";
+  ablit_resp := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"engine\":\"psionic-metal\",\"ctx\":16384,\"lora\":false,\"busy\":false,\"model\":\"Inkling-2-Mini-abliterated-Mix-16G.gguf\",\"lora_file\":\"\"}";
+  legacy_resp := "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"engine\":\"psionic-metal\"}";
+  #assert ph_inkling_health_parse(base_resp, "Inkling-2-Mini-IQ4_NL.gguf", "") == 1;
+  #assert ph_inkling_health_parse(base_resp, "Inkling-2-Mini-IQ4_NL.gguf", "Inkling-2-Mini-Uncensored-LoRA.gguf") == 2;
+  #assert ph_inkling_health_parse(lora_resp, "Inkling-2-Mini-IQ4_NL.gguf", "Inkling-2-Mini-Uncensored-LoRA.gguf") == 1;
+  #assert ph_inkling_health_parse(lora_resp, "Inkling-2-Mini-IQ4_NL.gguf", "") == 2;
+  #assert ph_inkling_health_parse(ablit_resp, "Inkling-2-Mini-abliterated-Mix-16G.gguf", "") == 1;
+  #assert ph_inkling_health_parse(ablit_resp, "Inkling-2-Mini-IQ4_NL.gguf", "") == 2;
+  #assert ph_inkling_health_parse(legacy_resp, "Inkling-2-Mini-IQ4_NL.gguf", "") == 1;
+  #assert ph_inkling_health_parse(legacy_resp, "Inkling-2-Mini-IQ4_NL.gguf", "Inkling-2-Mini-Uncensored-LoRA.gguf") == 2;
+  #assert ph_inkling_health_parse("HTTP/1.1 503 Unavailable\r\n\r\n{}", "Inkling-2-Mini-IQ4_NL.gguf", "") == 0;
 }

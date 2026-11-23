@@ -1245,7 +1245,15 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
   switch_engine := false;
   if method == "SendMessage" && dk_running(r) && !r[0].busy && want_model.count > 0 {
     p := ph_pick(h, want_model);
-    if p.engine != PA_NONE && p.engine != PA_CLAUDE && p.engine != prev_engine { switch_engine = true; }
+    if p.engine != PA_NONE && p.engine != PA_CLAUDE {
+      if p.engine != prev_engine {
+        switch_engine = true;
+      } else if prev_engine == PA_INKLING {
+        pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
+        prev_mb: [128] u8; prev_m := ph_model_in(pm, prev_mb[..]);
+        if p.model.count > 0 && p.model != prev_m { switch_engine = true; }
+      }
+    }
   }
   desktop_ahead := method == "SendMessage" && dk_is_desktop_ahead(r, chats, nc);
   if method == "SendMessage" && (!dk_running(r) || switch_engine || desktop_ahead) {

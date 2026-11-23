@@ -15,7 +15,11 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(MobileCore.isAntigravityModel("gpt-oss-120b"))
         XCTAssertTrue(MobileCore.isAntigravityModel("antigravity"))
 
-        XCTAssertFalse(MobileCore.isAntigravityModel("inkling-2-mini"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("inkling-2-mini"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("inkling-2-mini-uncensored-lora"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("inkling-2-mini-uncensored-q4k"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("inkling-2-mini-abliterated-mix16g"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("inkling-2-mini-custom"))
         XCTAssertFalse(MobileCore.isAntigravityModel("inkling"))
         XCTAssertFalse(MobileCore.isAntigravityModel("default"))
         XCTAssertFalse(MobileCore.isAntigravityModel(""))
@@ -24,12 +28,17 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("gemini-4-hydrogen"), "gemini-4-hydrogen")
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("claude-opus-5-5"), "claude-opus-5-5")
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("antigravity"), "gemini-4-neon")
-        XCTAssertEqual(MobileCore.normalizeAntigravityModel("inkling-2-mini"), "gemini-4-neon")
+        XCTAssertEqual(MobileCore.normalizeAntigravityModel("inkling-2-mini"), "inkling-2-mini")
+        XCTAssertEqual(MobileCore.normalizeAntigravityModel("inkling-2-mini-uncensored-lora"), "inkling-2-mini-uncensored-lora")
+        XCTAssertEqual(MobileCore.normalizeAntigravityModel("default"), "gemini-4-neon")
 
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "xhigh"), "xhigh")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "low"), "low")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "claude-opus-5-5", want: "max"), "max")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-3.8-flash", want: "xhigh"), "high")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "inkling-2-mini-uncensored-lora", want: "xhigh"), "high")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "inkling-2-mini-uncensored-lora", want: "max"), "high")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "inkling-2-mini", want: ""), "medium")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-pro-orchestrator", want: "high"), "")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: ""), "high")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "bogus"), "high")
@@ -77,7 +86,25 @@ final class MobileCoreTests: XCTestCase {
         let nativeJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: nativeList) as? [String: Any])
         XCTAssertEqual(nativeJSON["model"] as? String, "antigravity")
 
-        // Local Inkling and invalid review modes must be rejected by Coax before sealing.
+        // Local Inkling variants encode cleanly with clamped effort; unknown models and invalid review modes are rejected.
+        let inklingReq = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "OpenSession",
+            session: "abcdef0123456789abcdef0123456789",
+            command: "0123456789abcdef0123456789abcdef",
+            generation: 1,
+            revision: 0,
+            text: "hi",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            model: "inkling-2-mini-uncensored-lora",
+            effort: "xhigh"
+        ))
+        let inklingJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: inklingReq) as? [String: Any])
+        XCTAssertEqual(inklingJSON["model"] as? String, "inkling-2-mini-uncensored-lora")
+        XCTAssertEqual(inklingJSON["effort"] as? String, "high")
+        XCTAssertTrue(MobileCore.isV1WireCompatible(inklingReq))
+
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
@@ -88,7 +115,7 @@ final class MobileCoreTests: XCTestCase {
             text: "hi",
             issuedMs: 1_700_000_000_000,
             expiresMs: 1_700_000_300_000,
-            model: "inkling-2-mini",
+            model: "default",
             effort: "high"
         ))
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
@@ -243,6 +270,8 @@ final class MobileCoreTests: XCTestCase {
           "models": [
             {"model_id": "gemini-4-neon", "display_name": "Gemini 4 Neon", "efforts": ["low", "medium", "high", "xhigh"]},
             {"model_id": "inkling-2-mini", "display_name": "Inkling 2 Mini", "efforts": ["low", "medium", "high"]},
+            {"model_id": "inkling-2-mini-uncensored-lora", "display_name": "Inkling 2 Mini Uncensored (LoRA)", "efforts": ["low", "medium", "high"]},
+            {"model_id": "default", "display_name": "Claude Default", "efforts": ["low", "medium", "high"]},
             {"model_id": "gemini-pro-orchestrator", "display_name": "Gemini Pro Orchestrator", "efforts": []},
             {"model_id": "claude-opus-5-5", "display_name": "Claude Opus 5.5", "efforts": ["high", "max"]},
             {"model_id": "gemini-3.8-flash", "display_name": "Gemini 3.8 Flash", "efforts": ["low", "medium", "high"]}
@@ -259,7 +288,17 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(MobileCore.validateView(work: work, host: host, method: "DescribeEnvironment", raw: cleanData))
 
         let parsed = try XCTUnwrap(ParsedEnvironmentView.parse(cleanData))
-        XCTAssertEqual(parsed.antigravityModels.map(\.id), ["gemini-4-neon", "gemini-pro-orchestrator", "claude-opus-5-5", "gemini-3.8-flash"])
+        XCTAssertEqual(parsed.antigravityModels.map(\.id), [
+            "gemini-4-neon",
+            "inkling-2-mini",
+            "inkling-2-mini-uncensored-lora",
+            "gemini-pro-orchestrator",
+            "claude-opus-5-5",
+            "gemini-3.8-flash"
+        ])
+        let uncensored = try XCTUnwrap(parsed.antigravityModels.first(where: { $0.id == "inkling-2-mini-uncensored-lora" }))
+        XCTAssertEqual(uncensored.family, "Local · Psionic Metal")
+        XCTAssertTrue(uncensored.isLocalInkling)
         let orch = try XCTUnwrap(parsed.antigravityModels.first(where: { $0.id == "gemini-pro-orchestrator" }))
         XCTAssertTrue(orch.supportedEfforts.isEmpty)
         XCTAssertFalse(orch.supportsThinking)
@@ -701,7 +740,7 @@ final class MobileCoreTests: XCTestCase {
         let w1 = try XCTUnwrap(pool.checkout())
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: String(repeating: "x", count: 16_385)))
         XCTAssertEqual(w1.lastError, .textTooLong)
-        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", model: "inkling-2-mini"))
+        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", model: "default"))
         XCTAssertEqual(w1.lastError, .invalidModel)
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", folder: "../etc"))
         XCTAssertEqual(w1.lastError, .invalidFolder)

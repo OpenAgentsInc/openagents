@@ -36,6 +36,44 @@ PA_INKLING_ID :: "inkling-2-mini";
 PA_INKLING_LABEL :: "Inkling 2 Mini";
 PA_INKLING_EFFORT :: "medium";
 
+// Multi-variant Inkling 2 Mini local catalog (#14028: Official IQ4_NL, AtomicChat Uncensored LoRA & AD quants,
+// OrcaRouter Abliterated Mix-16G/12G, and user-imported Custom .gguf). Mirrors apps/openagents-desktop/LocalModels.swift.
+PA_INKLING_VARIANTS :: 8;
+PA_INKLING_VARIANT_LORA_IDX :: 1;
+PA_INKLING_VARIANT_ID :: [PA_INKLING_VARIANTS] string.[
+  "inkling-2-mini",
+  "inkling-2-mini-uncensored-lora",
+  "inkling-2-mini-uncensored-q4k",
+  "inkling-2-mini-uncensored-iq3s",
+  "inkling-2-mini-uncensored-iq2m",
+  "inkling-2-mini-abliterated-mix16g",
+  "inkling-2-mini-abliterated-mix12g",
+  "inkling-2-mini-custom",
+];
+PA_INKLING_VARIANT_LABEL :: [PA_INKLING_VARIANTS] string.[
+  "Inkling 2 Mini",
+  "Inkling 2 Mini Uncensored (LoRA)",
+  "Inkling 2 Mini Uncensored (AD-Q4_K)",
+  "Inkling 2 Mini Uncensored (AD-IQ3_S)",
+  "Inkling 2 Mini Uncensored (AD-IQ2_M)",
+  "Inkling 2 Mini Abliterated (Mix-16G)",
+  "Inkling 2 Mini Abliterated (Mix-12G)",
+  "Inkling 2 Mini (Custom)",
+];
+PA_INKLING_VARIANT_FILE :: [PA_INKLING_VARIANTS] string.[
+  "Inkling-2-Mini-IQ4_NL.gguf",
+  "Inkling-2-Mini-Uncensored-LoRA.gguf",
+  "Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+  "Inkling-2-Mini-Uncensored-AD-IQ3_S.gguf",
+  "Inkling-2-Mini-Uncensored-AD-IQ2_M.gguf",
+  "Inkling-2-Mini-abliterated-Mix-16G.gguf",
+  "Inkling-2-Mini-abliterated-Mix-12G.gguf",
+  "Custom-Inkling-2-Mini.gguf",
+];
+PA_INKLING_VARIANT_CTX :: [PA_INKLING_VARIANTS] string.[
+  "32768", "32768", "16384", "8192", "8192", "16384", "8192", "8192",
+];
+
 // Legacy Microcoder models (fallback when agy is unavailable and mcworker is installed).
 PA_MICRO_MODELS :: 4;
 PA_MICRO_ID :: [PA_MICRO_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
@@ -159,12 +197,20 @@ PA_ENGINE_NAME :: [4] string.["Claude Code", "Microcoder on Gemini", "Antigravit
   #assert pa_effort(PA_INKLING, "inkling-2-mini", "") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "low") == "low" && pa_effort(PA_INKLING, "inkling-2-mini", "medium") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "high") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "xhigh") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "bogus") == "medium";
   #assert pa_effort(PA_MICRO, "gemini-4-neon", "high") == "low" && pa_effort(PA_CLAUDE, "default", "high") == "high" && pa_effort(PA_NONE, "", "high") == "";
 }
-#test "Antigravity mobile client supports dynamic ACP model slugs and rejects local Inkling or malformed ids" {
+#test "Antigravity mobile client supports dynamic ACP model slugs and local Inkling variants while rejecting malformed ids" {
   #assert pa_mobile_agy_allowed("gemini-4-neon") && pa_mobile_agy_allowed("gemini-4-carbon") && pa_mobile_agy_allowed("gemini-3.8-flash") && pa_mobile_agy_allowed("antigravity");
   #assert pa_mobile_agy_allowed("gemini-pro-orchestrator") && pa_mobile_agy_allowed("gemini-5-pro") && pa_mobile_agy_allowed("claude-opus-5-5") && pa_mobile_agy_allowed("gpt-oss-120b") && pa_mobile_agy_allowed("vertex/gemini_5:latest");
-  #assert !pa_mobile_agy_allowed("inkling-2-mini") && !pa_mobile_agy_allowed("inkling") && !pa_mobile_agy_allowed("default") && !pa_mobile_agy_allowed("") && !pa_mobile_agy_allowed("gemini-") && !pa_mobile_agy_allowed("claude-") && !pa_mobile_agy_allowed("--danger");
+  #assert pa_mobile_agy_allowed("inkling-2-mini") && pa_mobile_agy_allowed("inkling-2-mini-uncensored-lora") && pa_mobile_agy_allowed("inkling-2-mini-uncensored-q4k") && pa_mobile_agy_allowed("inkling-2-mini-abliterated-mix16g") && pa_mobile_agy_allowed("inkling-2-mini-custom");
+  #assert !pa_mobile_agy_allowed("inkling") && !pa_mobile_agy_allowed("default") && !pa_mobile_agy_allowed("") && !pa_mobile_agy_allowed("gemini-") && !pa_mobile_agy_allowed("claude-") && !pa_mobile_agy_allowed("--danger");
   #assert pa_mobile_agy_model("gemini-4-carbon") == "gemini-4-carbon" && pa_mobile_agy_model("gemini-3.8-flash") == "gemini-3.8-flash" && pa_mobile_agy_model("claude-opus-5-5") == "claude-opus-5-5" && pa_mobile_agy_model("gemini-pro-orchestrator") == "gemini-pro-orchestrator";
-  #assert pa_mobile_agy_model("antigravity") == PA_AGY_DEFAULT && pa_mobile_agy_model("inkling-2-mini") == PA_AGY_DEFAULT && pa_mobile_agy_model("default") == PA_AGY_DEFAULT && pa_mobile_agy_model("") == PA_AGY_DEFAULT;
+  #assert pa_mobile_agy_model("inkling-2-mini") == "inkling-2-mini" && pa_mobile_agy_model("inkling-2-mini-uncensored-lora") == "inkling-2-mini-uncensored-lora" && pa_mobile_agy_model("inkling-2-mini-abliterated-mix12g") == "inkling-2-mini-abliterated-mix12g";
+  #assert pa_mobile_agy_model("antigravity") == PA_AGY_DEFAULT && pa_mobile_agy_model("inkling") == PA_AGY_DEFAULT && pa_mobile_agy_model("default") == PA_AGY_DEFAULT && pa_mobile_agy_model("") == PA_AGY_DEFAULT;
+  // Multi-variant Inkling pick & labels preserve the requested variant slug.
+  mac := PaFacts.{agy = true, inkling = true};
+  pu := pa_pick(mac, "inkling-2-mini-uncensored-lora");
+  #assert pu.engine == PA_INKLING && pu.model == "inkling-2-mini-uncensored-lora" && !pu.fell_back && pa_label(pu) == "Inkling 2 Mini Uncensored (LoRA)";
+  pq := pa_pick(mac, "inkling-2-mini-abliterated-mix16g");
+  #assert pq.engine == PA_INKLING && pq.model == "inkling-2-mini-abliterated-mix16g" && !pq.fell_back && pa_label(pq) == "Inkling 2 Mini Abliterated (Mix-16G)";
 }
 
 pa_usable :: (f: PaFacts, engine: int) -> bool #effects(all) {
@@ -178,8 +224,19 @@ pa_micro_model :: (id: string) -> bool #effects(all) {
   for m: PA_MICRO_ID { if id == m { return true; } }
   return false;
 }
+pa_inkling_variant_index :: (id: string) -> int #effects(all) {
+  for i: 0..<PA_INKLING_VARIANTS {
+    if PA_INKLING_VARIANT_ID[i] == id { return i; }
+  }
+  return -1;
+}
 pa_inkling_model :: (id: string) -> bool #effects(all) {
-  return id == PA_INKLING_ID || id == "inkling";
+  return id == "inkling" || pa_inkling_variant_index(id) >= 0;
+}
+pa_inkling_label :: (id: string) -> string #effects(all) {
+  idx := pa_inkling_variant_index(id);
+  if idx >= 0 { return PA_INKLING_VARIANT_LABEL[idx]; }
+  return PA_INKLING_LABEL;
 }
 pa_agy_model :: (id: string) -> bool #effects(all) {
   return id == PA_AGY_ID || (id.count > 7 && cast(string) id[0..<7] == "gemini-");
@@ -198,7 +255,7 @@ pa_pick :: (f: PaFacts, want: string) -> PaPick #effects(all) {
   ids := PA_MICRO_ID;
   model := "";
   if engine == PA_AGY { model = ifx asked == PA_AGY && want != PA_AGY_ID then want else PA_AGY_DEFAULT; }
-  if engine == PA_INKLING { model = PA_INKLING_ID; }
+  if engine == PA_INKLING { model = ifx asked == PA_INKLING && pa_inkling_variant_index(want) >= 0 then want else PA_INKLING_ID; }
   if engine == PA_MICRO { model = ifx pa_micro_model(want) then want else ids[0]; }
   if engine == PA_CLAUDE { model = ifx asked == PA_CLAUDE then want else "default"; }
   return PaPick.{engine = engine, model = model, fell_back = asked != PA_NONE && engine != PA_NONE && engine != asked, asked = asked};
@@ -215,7 +272,7 @@ pa_effort :: (engine: int, model: string, want: string) -> string #effects(all) 
   }
   if engine == PA_INKLING {
     if want == "low" || want == "medium" || want == "high" { return want; }
-    if want == "xhigh" { return "high"; }
+    if want == "xhigh" || want == "max" { return "high"; }
     return PA_INKLING_EFFORT;
   }
   if engine == PA_MICRO { return PA_MICRO_EFFORT; }
@@ -229,7 +286,7 @@ pa_label :: (p: PaPick) -> string #effects(all) {
     for i: 0..<PA_NEON_MODELS { if PA_NEON_ID[i] == p.model { return PA_NEON_LABEL[i]; } }
     return PA_AGY_LABEL;
   }
-  if p.engine == PA_INKLING { return PA_INKLING_LABEL; }
+  if p.engine == PA_INKLING { return pa_inkling_label(p.model); }
   if p.engine == PA_MICRO {
     for i: 0..<PA_MICRO_MODELS { if PA_MICRO_ID[i] == p.model { return PA_MICRO_LABEL[i]; } }
     return PA_ENGINE_NAME[PA_MICRO];
@@ -251,12 +308,14 @@ pa_offer :: (f: PaFacts, out: [] int) -> int #effects(all) {
   for e: PA_ORDER { if n < out.count && pa_usable(f, e) { out[n] = e; n += 1; } }
   return n;
 }
-// Dynamic Antigravity ACP model catalog validation (#14005): accepts any safe ACP model slug
+// Dynamic mobile model catalog validation (#14005, #14028): accepts any safe ACP model slug
 // advertised by `agy` (Gemini 3.8/4/5, Orchestrator, Claude 5.5 via ACP, GPT-OSS, Enterprise Gateway,
-// local LiteRT) while excluding non-Antigravity local sentinels ("inkling", "default") and option flags.
+// local LiteRT) AND canonical local Inkling 2 Mini variants (Official, Uncensored LoRA/quants,
+// Abliterated, Custom), while excluding bare sentinels ("inkling", "default") and option flags.
 pa_agy_catalog_slug_ok :: (id: string) -> bool #effects(all) {
   if id.count < 1 || id.count > 128 { return false; }
-  if pa_inkling_model(id) || id == "default" || id == "gemini-" || id == "claude-" { return false; }
+  if pa_inkling_variant_index(id) >= 0 { return true; }
+  if id == "inkling" || id == "default" || id == "gemini-" || id == "claude-" { return false; }
   if id[0] == '-' || id[id.count - 1] == '-' { return false; }
   for c: id {
     ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == ':' || c == '/';
