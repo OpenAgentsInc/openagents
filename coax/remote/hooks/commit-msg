@@ -1,0 +1,25 @@
+#!/bin/sh
+# Firm reason: 5 (a thin git hook wrapper: catches missing Agent: trailers at commit time in <10ms
+# instead of letting agents discover it only after rebase and pre-push).
+# Installed once per clone with: git config core.hooksPath coax/remote/hooks.
+msg_file="${1:-}"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+# Humans and emergency bypass skip the Agent: trailer check (matching coax/web/prepush.coax).
+[ "${OA_PREPUSH_HUMAN:-}" = "1" ] && exit 0
+[ -n "${OA_PREPUSH_BYPASS:-}" ] && exit 0
+
+# Allow empty/comment-only messages so git itself aborts cleanly.
+non_comment="$(grep -v '^[[:space:]]*#' "$msg_file" | tr -d '[:space:]')"
+[ -n "$non_comment" ] || exit 0
+
+if grep -v '^[[:space:]]*#' "$msg_file" | grep -Eq '^[[:space:]]*Agent:[[:space:]]*[^[:space:]]'; then
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+commit-msg: REFUSED: commit message has no "Agent: <id>" trailer.
+  Fix: add a final line "Agent: <your agent ID>" (e.g. "Agent: antigravity", "Agent: inky",
+  or for a person: "Agent: human-NAME" / OA_PREPUSH_HUMAN=1).
+EOF
+exit 1

@@ -1,0 +1,31 @@
+#!/bin/sh
+# Firm reason: 5 (a thin git hook wrapper: auto-appends the required Agent: trailer at commit time
+# when an agent harness env var is set, avoiding wasted rebase/pre-push bounces).
+# Installed once per clone with: git config core.hooksPath coax/remote/hooks.
+msg_file="${1:-}"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+# Skip if the commit message already declares an Agent: trailer (ignoring comment lines).
+if grep -v '^[[:space:]]*#' "$msg_file" | grep -Eq '^[[:space:]]*Agent:[[:space:]]*[^[:space:]]'; then
+  exit 0
+fi
+
+# Resolve agent identity from explicit or harness environment variables.
+agent_id="${OA_AGENT_ID:-}"
+if [ -z "$agent_id" ]; then
+  if [ -n "${ANTIGRAVITY_AGENT:-}" ] || [ -n "${AGY_SESSION_ID:-}" ] || [ -n "${ANTIGRAVITY_CONVERSATION_ID:-}" ]; then
+    agent_id="antigravity"
+  elif [ -n "${CLAUDECODE:-}" ]; then
+    agent_id="claude"
+  elif [ -n "${CODEX_THREAD_ID:-}" ]; then
+    agent_id="codex"
+  fi
+fi
+
+[ -n "$agent_id" ] || exit 0
+
+# Only append when there is already a non-empty message (e.g. -m / -F / amend) or git interpret-trailers is available.
+if command -v git >/dev/null 2>&1; then
+  git interpret-trailers --in-place --trailer "Agent: $agent_id" "$msg_file" 2>/dev/null || true
+fi
+exit 0
