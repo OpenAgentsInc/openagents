@@ -671,6 +671,9 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if method=="DescribeEnvironment" {es_folders(h,v);return;}
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
   // Coder Desktop's chats, whose workers the daemon runs (host-desktop.coax, GitHub #13713)
+  // Antigravity's own chats, asked for by name (host-agy.coax)
+  if method=="ListSessions" && ag_asked(q) {ag_list(q,v);return;}
+  if method=="ReadSession" && ag_is(cast(string)q[0].session[0..<q[0].ns]) {ag_read(q,v);return;}
   if method=="ListSessions" {if q[0].before==0 {dk_list(h,v);es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
   // a phone's chat on Microcoder or Antigravity is a run of its own (host-phone.coax)
   id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) || (ph_is(id) && method!="OpenSession") {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);

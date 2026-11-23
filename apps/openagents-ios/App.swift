@@ -140,6 +140,9 @@ import UIKit
                 DispatchQueue.main.asyncAfter(deadline:.now()+1.0+0.6*Double(i)) { [weak self] in self?.edit(String(step)) }
             }
         }
+        // `-OAOpenLink LINK`: a pairing link opened as a scanned one is, without the system's
+        // "Open in OpenAgents?" prompt a simulator run cannot answer.
+        if let link=UserDefaults.standard.string(forKey:"OAOpenLink"),!pressedAtLaunch { AppDeviceLink.shared.opened(link) }
         if let ids=UserDefaults.standard.string(forKey:"OAPress"),!pressedAtLaunch {
             pressedAtLaunch=true
             for (i,id) in ids.split(separator:",").enumerated() {

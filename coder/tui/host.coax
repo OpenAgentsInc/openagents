@@ -59,6 +59,7 @@
 #load "../../coax/lib/agent/desktop/paths.coax";        // dc_join, dc_cat: ph_worker_path
 #load "../../coax/lib/agent/desktop/os-windows.coax";   // dc_list_has: ph_worker_path
 #load "host-phone.coax";
+#load "host-agy.coax";
 #load "host-scheduled.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);

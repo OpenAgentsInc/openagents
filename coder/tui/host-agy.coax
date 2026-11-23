@@ -1,0 +1,150 @@
+// Antigravity's own chats, for the phone (MVP, docs/audits/2026-11-22-mobile-antigravity-over-tailscale-audit.md
+// gap E1): the conversations agy and the Antigravity app keep under ~/.gemini (transcripts.coax
+// finds them, antigravity.coax reads a step), listed and read, never written.
+//
+//   ListSessions with "model":"antigravity"   these chats only, newest first, AG_PAGE a page
+//   ReadSession  with session_id "agy-ID"     the end of one chat: requests, replies and tool calls
+//
+// A chat is "observe-only": the phone shows it read-only. They are this computer's owner's chats,
+// outside any workspace folder, so only a paired device of the owner sees their titles.
+
+#load "../../coax/lib/agent/observe/transcripts.coax";
+#load "../../coax/lib/agent/observe/antigravity.coax";
+
+AG_PREFIX :: "agy-";
+AG_MODEL :: "antigravity";
+AG_MAX :: 256;                 // the newest chats kept
+AG_PAGE :: 16;                 // a list page (a sealed reply holds at most 1024 JSON keys)
+AG_ITEMS :: 40;                // a read's items at most
+AG_TEXT :: 40000;              // and their text, of the view's 49152
+AG_ITEM_TEXT :: 6000;          // one item's text at most
+AG_TAIL :: 262144;             // the end of a transcript a read looks at
+
+// A session id of one of these chats: the prefix, then a folder name of letters, digits and '-'.
+ag_is :: (id: string) -> bool {
+  if id.count <= AG_PREFIX.count || id.count > 84 || !hs_prefix(id, AG_PREFIX) { return false; }
+  for c: cast(string) id[AG_PREFIX.count..<id.count] { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// Whether a request asks for these chats only.
+ag_asked :: (q: [] EaRequest) -> bool { return cast(string) q[0].model[0..<q[0].nmo] == AG_MODEL; }
+
+// The newest chats, newest first: their count.
+ag_found :: (found: [] ObFound) -> int #effects(all) {
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return 0; }
+  w: [1] ObWalk; w[0].agy = true; ob_start(w[..], home); w[0].phase = OB_AGY;
+  n := 0;
+  while ob_next(w[..]) { if w[0].kind == OB_AGY { n = ob_keep(w[..], found, n); } }
+  for i: 1..<n { j := i; while j > 0 && found[j - 1].mtime < found[j].mtime { t := found[j]; found[j] = found[j - 1]; found[j - 1] = t; j -= 1; } }
+  return n;
+}
+// text cut to at most max bytes, on a character.
+ag_cut :: (text: string, max: int) -> string {
+  if text.count <= max { return text; }
+  n := max; while n > 0 && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  return cast(string) text[0..<n];
+}
+// A title from a request's words: one line, at most 120 bytes.
+ag_title_of :: (text: string, out: [] u8) -> int {
+  t := ag_cut(text, 120); m := 0;
+  for c: t { if m >= out.count { break; } out[m] = ifx c < 32 then cast(u8) ' ' else c; m += 1; }
+  while m > 0 && out[m - 1] == ' ' { m -= 1; }
+  return m;
+}
+// A chat's title: its first request's words. 0 when the file has none in its first 64 KiB.
+ag_title :: (path: string, out: [] u8) -> int #effects(all) {
+  data: [65536] u8; n := fs_read_at(path, 0, data[..]); if n <= 0 { return 0; }
+  text := cast(string) data[0..<n]; start := 0;
+  ab: [65536] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  while start < text.count {
+    end := start; while end < text.count && text[end] != '\n' { end += 1; }
+    if end >= text.count && n == data.count { break; }   // a line cut by the buffer
+    s := agr_step(cast(string) text[start..<end], ar[..]);
+    if s.kind == AGR_USER && s.text.count > 0 { return ag_title_of(s.text, out); }
+    start = end + 1;
+  }
+  return 0;
+}
+ag_summary :: (f_in: ObFound, s: [] EaSession) #effects(all) {
+  f := f_in; s[0] = EaSession.{};
+  ib: [128] u8; k := hs_cat(ib[..], 0, AG_PREFIX); k = hs_cat(ib[..], k, cast(string) f.parent[0..<f.parentn]);
+  s[0].ni = ea_copy(s[0].id[..], cast(string) ib[0..<k]); s[0].nw = ea_copy(s[0].workspace[..], "default");
+  s[0].nt = ag_title(cast(string) f.path[0..<f.n], s[0].title[..]);
+  if s[0].nt == 0 { s[0].nt = ea_copy(s[0].title[..], "Antigravity chat"); }
+  s[0].nc = ea_copy(s[0].control[..], "observe-only"); s[0].updated = f.mtime * 1000;
+  s[0].nmo = ea_copy(s[0].model[..], AG_MODEL);
+}
+
+// ListSessions for these chats: a page from q.before, and a cursor when there are more.
+ag_list :: (q: [] EaRequest, v: [] EaView) #effects(all) {
+  v[0].ns = 0;
+  found: [AG_MAX] ObFound; n := ag_found(found[..]);
+  start := ifx q[0].before < n then q[0].before else n;
+  for i: start..<n {
+    if v[0].ns >= AG_PAGE { v[0].complete = false; b: [64] u8; v[0].nc = ea_copy(v[0].cursor[..], hs_itoa(i, b[..])); break; }
+    ag_summary(found[i], v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1;
+  }
+}
+
+ag_item :: (v: [] EaView, line: int, part: string, role: string, tool: string, text: string) -> bool #effects(all) {
+  if v[0].ni >= EA_ITEMS { return false; }
+  m := EaItem.{}; ib: [64] u8; nb: [32] u8;
+  k := hs_cat(ib[..], 0, "agy."); k = hs_cat(ib[..], k, hs_itoa(line, nb[..])); k = hs_cat(ib[..], k, part);
+  m.ni = ea_copy(m.id[..], cast(string) ib[0..<k]); m.nr = ea_copy(m.role[..], role); m.nk = ea_copy(m.tool[..], ag_cut(tool, 120));
+  t := ag_cut(text, AG_ITEM_TEXT); at := ea_text_put(v, t); if at < 0 { return false; }
+  m.text_at = at; m.nt = t.count; m.complete = true;
+  v[0].items[v[0].ni] = m; v[0].ni += 1;
+  return true;
+}
+// How many items a step shows and their text's bytes.
+ag_weigh :: (s: AgrStep, bytes: [] int) -> int {
+  n := 0; bytes[0] = 0;
+  if (s.kind == AGR_USER || s.kind == AGR_MODEL) && s.text.count > 0 { n += 1; bytes[0] += ifx s.text.count < AG_ITEM_TEXT then s.text.count else AG_ITEM_TEXT; }
+  if s.kind == AGR_MODEL && s.tools > 0 { n += 1; bytes[0] += ifx s.arg.count < AG_ITEM_TEXT then s.arg.count else AG_ITEM_TEXT; }
+  return n;
+}
+// ReadSession for one of these chats: the newest items that fit, oldest first.
+ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
+  id := cast(string) q[0].session[0..<q[0].ns];
+  if !ag_is(id) { es_refuse(v, "not_found"); return; }
+  name := cast(string) id[AG_PREFIX.count..<id.count];
+  found: [AG_MAX] ObFound; n := ag_found(found[..]); at := -1;
+  for i: 0..<n { if cast(string) found[i].parent[0..<found[i].parentn] == name { at = i; break; } }
+  if at < 0 { es_refuse(v, "not_found"); return; }
+  path := cast(string) found[at].path[0..<found[at].n];
+  size := fs_size(path); if size < 0 { es_refuse(v, "source_unavailable"); return; }
+  data: [AG_TAIL] u8; off := ifx size > AG_TAIL then size - AG_TAIL else 0;
+  got := fs_read_at(path, off, data[..]); if got < 0 { es_refuse(v, "source_unavailable"); return; }
+  text := cast(string) data[0..<got]; first := 0;
+  if off > 0 { while first < text.count && text[first] != '\n' { first += 1; } first += 1; }   // the cut line
+  ab: [AG_TAIL] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  // the lines, then from the newest back while the items and their text fit
+  starts: [4096] int; ends: [4096] int; lines := 0; p := first;
+  while p < text.count && lines < starts.count {
+    e := p; while e < text.count && text[e] != '\n' { e += 1; }
+    if e > p { starts[lines] = p; ends[lines] = e; lines += 1; }
+    p = e + 1;
+  }
+  from := lines; items := 0; bytes := 0; wb: [1] int;
+  while from > 0 {
+    s := agr_step(cast(string) text[starts[from - 1]..<ends[from - 1]], ar[..]);
+    k := ag_weigh(s, wb[..]);
+    if items + k > AG_ITEMS || bytes + wb[0] > AG_TEXT { break; }
+    items += k; bytes += wb[0]; from -= 1;
+  }
+  v[0].ns = 1; ag_summary(found[at], v[0].sessions[0..<1]); v[0].ni = 0; v[0].text_n = 0;
+  for i: from..<lines {
+    s := agr_step(cast(string) text[starts[i]..<ends[i]], ar[..]);
+    if s.kind == AGR_USER && s.text.count > 0 { if !ag_item(v, i, "", "user", "", s.text) { break; } }
+    if s.kind == AGR_MODEL && s.text.count > 0 { if !ag_item(v, i, "", "assistant", "", s.text) { break; } }
+    if s.kind == AGR_MODEL && s.tools > 0 { if !ag_item(v, i, ".t", "tool", s.tool, s.arg) { break; } }
+  }
+  v[0].complete = from == 0 && off == 0;
+  eb: [64] u8; v[0].np = ea_copy(v[0].epoch[..], hs_itoa(found[at].mtime, eb[..]));
+}
+
+#test "an Antigravity chat's id is the prefix and a plain folder name" {
+  #assert ag_is("agy-c905b85e-8721-46eb-9a12-5af77a44916d") && !ag_is("agy-") && !ag_is("agy-../x") && !ag_is("agy-a/b") && !ag_is("desktop-1");
+  b: [256] u8; n := ag_title_of("Fix the\nbuild  ", b[..]); #assert cast(string) b[0..<n] == "Fix the build";
+  #assert ag_cut("abc", 2) == "ab" && ag_cut("abc", 8) == "abc";
+}
