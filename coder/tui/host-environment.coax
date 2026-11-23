@@ -38,33 +38,33 @@ es_agent :: (slot:[]EsSlot)->Agent #effects(all) {
 es_local_listen :: ()->int #effects(all) {
   path:[1400]u8;p:=es_path("service.sock",path[..]);for c:p {_ = cxsock_host_push(cast(int)c);}return cxsock_listen_unix();
 }
-es_local_tick :: (h:[]HsHost,listener:int,w:[]HbWork,st:[]HsState,statebuf:[]u8,file:[]u8,reply_out:[]u8) #effects(all) {
-  connection:=cxsock_accept(listener,0);if connection<0 {return;}defer {_ = cxsock_close(connection);}
-  if cxsock_peer_self(connection)!=1 {return;}
+es_local_tick :: (h:[]HsHost,listener:int,w:[]HbWork,st:[]HsState,statebuf:[]u8,file:[]u8,reply_out:[]u8)->bool #effects(all) {
+  connection:=cxsock_accept(listener,0);if connection<0 {return false;}defer {_ = cxsock_close(connection);}
+  if cxsock_peer_self(connection)!=1 {return true;}
   input:[65536]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
   while cxsock_now_ms()<deadline && !done {
     got:=cxsock_read(connection,50);if got== -2 {continue;}if got<0 {break;}
-    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return;}input[n]=cast(u8)c;n+=1;}
+    for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return true;}input[n]=cast(u8)c;n+=1;}
   }
   defer {for i:0..<input.count {input[i]=0;}}
-  if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);
+  if !done {return true;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);
   if kind==0 {
-    // NIP-SESS direct transport (#13795): a sealed kind-25004 Nostr event forwarded by the local tailnet listener.
+    // NIP-SESS direct transport (#13795): a sealed kind-3188 Nostr event forwarded by the local tailnet listener.
     dm := hs_handle(h, raw, w, st, statebuf, file, reply_out);
-    if dm < 1 { return; }
+    if dm < 1 { return true; }
     for i:0..<dm {_ = cxsock_write(connection, cast(int)reply_out[i]);}
     _ = cxsock_write(connection, 10);
     _ = cxsock_flush(connection, 2000);
-    return;
+    return true;
   }
   out:[HB_BODY_MAX]u8;made:= -1;
-  if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return;}v:[1]DmView;dm_fill_common(h,q[..],v[..]);if dm_is_run(cast(string)q[0].method[0..<q[0].nm]) {dr_execute(h,q[..],v[..]);} else {dm_execute(h,q[..],v[..]);}made=dm_view_write(v[..],out[..]);}
+  if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return true;}v:[1]DmView;dm_fill_common(h,q[..],v[..]);if dm_is_run(cast(string)q[0].method[0..<q[0].nm]) {dr_execute(h,q[..],v[..]);} else {dm_execute(h,q[..],v[..]);}made=dm_view_write(v[..],out[..]);}
   else {
-    c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
-    if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
-  else if kind==3 {q:[1]WsRequest;if !ws_read(raw,q[..]) {return;}v:[1]WsView;if !ws_enabled(c) {return;}ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],cast(string)c[0].grant[..],q[..],v[..]);made=ws_view_write(v[..],out[..]);}
+    c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return true;}
+    if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return true;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
+  else if kind==3 {q:[1]WsRequest;if !ws_read(raw,q[..]) {return true;}v:[1]WsView;if !ws_enabled(c) {return true;}ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],cast(string)c[0].grant[..],q[..],v[..]);made=ws_view_write(v[..],out[..]);}
   else {
-    q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return;}defer {for i:0..<q[0].code.count {q[0].code[i]=0;}}
+    q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return true;}defer {for i:0..<q[0].code.count {q[0].code[i]=0;}}
     enabled:=pa_load(h[0].providers[..]);s:=h[0].providers[0].native[0].store[..];v:[1]PaView;
     // The kernel authenticated this local user; explicit provider enablement
     // and the exact configured device/grant remain mandatory.
@@ -73,8 +73,9 @@ es_local_tick :: (h:[]HsHost,listener:int,w:[]HbWork,st:[]HsState,statebuf:[]u8,
     made=pa_view_write(v[..],out[..]);
     }
   }
-  if made<1 {return;}
+  if made<1 {return true;}
   for i:0..<made {_ = cxsock_write(connection,cast(int)out[i]);}_ = cxsock_write(connection,10);_ = cxsock_flush(connection,2000);
+  return true;
 }
 es_local_call :: (args:[]Args)->int #effects(all) {
   data:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),data[..]);

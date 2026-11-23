@@ -36,8 +36,18 @@ struct AppPaired: Codable, Equatable {
     private var sockets: [String: AppRelaySocket] = [:]
     #if os(iOS)
     /// Zero-config pairing with Coder on a Mac over Tailscale (AppTailnetLink.swift, #13778).
-    private lazy var tailnet = AppTailnetLink(expires: { [unowned self] host in self.paired.first(where: { $0.host == host })?.expires },
-                                              open: { [unowned self] link in self.opened(link) })
+    private lazy var tailnet: AppTailnetLink = {
+        let link = AppTailnetLink(expires: { [unowned self] host in self.paired.first(where: { $0.host == host })?.expires },
+                                  open: { [unowned self] link in self.opened(link) })
+        link.onDiscovered = { [weak self] host in
+            guard let self else { return }
+            let pending = self.waitingForDirect.removeValue(forKey: host) ?? []
+            for (_, trigger) in pending { trigger() }
+        }
+        return link
+    }()
+    private var waitingForDirect: [String: [(UInt64, () -> Void)]] = [:]
+    private var directWatchSerial: UInt64 = 0
     #endif
     private var suspended = false
     /// Pairing exchanges asked while the app was in the background, sent when it is back (#13713).
@@ -208,9 +218,19 @@ struct AppPaired: Codable, Equatable {
         startPathMonitorIfNeeded()
         if suspended { oa_device_work_close(work); done(nil, false); return }
         var finished = false
+        #if os(iOS)
+        var watchID: UInt64 = 0
+        #endif
         let finish = { (result: Data?, sent: Bool) in
             if finished { return }
-            finished = true; oa_device_work_close(work); done(result, sent)
+            finished = true
+            #if os(iOS)
+            if watchID != 0, var list = self.waitingForDirect[host] {
+                list.removeAll { $0.0 == watchID }
+                self.waitingForDirect[host] = list.isEmpty ? nil : list
+            }
+            #endif
+            oa_device_work_close(work); done(result, sent)
         }
         let openReply: (String) -> Bool = { [weak self] raw in
             guard self != nil, !finished, let sk = self?.secret() else { return false }
@@ -237,22 +257,53 @@ struct AppPaired: Codable, Equatable {
             self.sockets[relay] = socket
             socket.ask(filter: filterText, event: eventText, eventID: eventIDText, timeout: timeout,
                        reply: openReply, ended: { [weak self] sent in
-                           if hold, !sent, !finished, let self, self.suspended, self.held.count < 4 {
+                           guard let self, !finished else { return }
+                           if hold, !sent, self.suspended, self.held.count < 4 {
                                finished = true; oa_device_work_close(work); self.held.append(again); return
                            }
+                           #if os(iOS)
+                           // If the relay failed immediately before Bonjour finished on a fresh launch,
+                           // wait briefly for tailnet discovery so local direct transport still wins.
+                           if !sent, watchID != 0, !self.suspended {
+                               if self.tailnet.book.computers.contains(where: { $0.host == host }) {
+                                   self.tailnet.sendDirect(host: host, event: Data(event[0..<Int(n)]), timeout: min(timeout, 20),
+                                                           accept: { line in openReply(String(decoding: line, as: UTF8.self)) }) { replyLine in
+                                       if replyLine == nil { finish(nil, false) }
+                                   }
+                                   return
+                               }
+                               DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                   MainActor.assumeIsolated { if !finished { finish(nil, false) } }
+                               }
+                               return
+                           }
+                           #endif
                            finish(nil, sent)
                        })
         }
         #if os(iOS)
-        // NIP-SESS direct transport over the tailnet (#13795): try the paired Mac's listener first,
-        // and fall back to the relay seamlessly if direct is unavailable or times out.
+        // NIP-SESS direct transport over the tailnet (#13795): ensure the tailnet link is active
+        // even during cold launch (before UIApplication.didBecomeActive), try the paired Mac's
+        // listener first, and fall back to the relay seamlessly if direct is unavailable.
+        if !suspended && !tailnet.isActive { tailnet.resume() }
+        let eventData = Data(event[0..<Int(n)])
         if tailnet.book.computers.contains(where: { $0.host == host }) {
-            tailnet.sendDirect(host: host, event: Data(event[0..<Int(n)]), timeout: min(timeout, 5)) { replyLine in
-                if let replyLine, openReply(String(decoding: replyLine, as: UTF8.self)) { return }
+            tailnet.sendDirect(host: host, event: eventData, timeout: min(timeout, 20),
+                               accept: { line in openReply(String(decoding: line, as: UTF8.self)) }) { replyLine in
+                if replyLine != nil || finished { return }
                 askRelay()
             }
             return
         }
+        // Mac not in tailnet book yet (first launch before Bonjour finishes): start relay and
+        // also race direct transport the instant Bonjour discovers this Mac.
+        directWatchSerial += 1
+        watchID = directWatchSerial
+        waitingForDirect[host, default: []].append((watchID, { [weak self] in
+            guard let self, !finished, !self.suspended else { return }
+            self.tailnet.sendDirect(host: host, event: eventData, timeout: min(timeout, 20),
+                                    accept: { line in openReply(String(decoding: line, as: UTF8.self)) }) { _ in }
+        }))
         #endif
         askRelay()
     }

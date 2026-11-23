@@ -198,5 +198,112 @@ let parsedRef = AppTailnet.directAck(ackRef.dropLast())
 expect(parsedRef.ok == false && parsedRef.refused == "not_owner", "direct ack refusal reads back")
 expect(AppTailnet.directAck(Data("not-json".utf8)) == (false, nil), "malformed direct ack is rejected")
 
+// Live loopback check of direct transport: handshake, multiple frames, non-matching reply ignored
+// by `accept` (no waiter desync), and >4 sequential connections (no finite newConnectionLimit stall).
+@MainActor final class DirectStandIn {
+    var accepted = 0
+    let listener: NWListener
+    init() throws {
+        let params = NWParameters.tcp
+        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        listener = try NWListener(using: params)
+        listener.newConnectionHandler = { [weak self] conn in
+            MainActor.assumeIsolated {
+                self?.accepted += 1
+                conn.start(queue: .main)
+                self?.readHello(conn, Data())
+            }
+        }
+        listener.start(queue: .main)
+    }
+    var port: UInt16? { listener.port?.rawValue }
+    private func readHello(_ conn: NWConnection, _ have: Data) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, complete, error in
+            MainActor.assumeIsolated {
+                var got = have
+                if let data { got.append(data) }
+                if let nl = got.firstIndex(of: 0x0A) {
+                    let line = Data(got[got.startIndex..<nl])
+                    let rest = Data(got[got.index(after: nl)...])
+                    guard AppTailnet.isDirectHello(line) else { conn.cancel(); return }
+                    conn.send(content: AppTailnet.directAckLine(refused: nil), completion: .contentProcessed { _ in
+                        MainActor.assumeIsolated { self?.echoLoop(conn, rest) }
+                    })
+                    return
+                }
+                if complete || error != nil { conn.cancel(); return }
+                self?.readHello(conn, got)
+            }
+        }
+    }
+    private func echoLoop(_ conn: NWConnection, _ have: Data) {
+        if let nl = have.firstIndex(of: 0x0A) {
+            let line = Data(have[have.startIndex..<nl])
+            let rest = Data(have[have.index(after: nl)...])
+            let text = String(decoding: line, as: UTF8.self)
+            // Send an unrelated stale line first for req-2 to verify `accept` skips it without desyncing.
+            var out = Data()
+            if text == "req-2" { out.append(Data("stale-unrelated\n".utf8)) }
+            out.append(Data(("reply:" + text + "\n").utf8))
+            conn.send(content: out, completion: .contentProcessed { [weak self] err in
+                if err != nil { conn.cancel(); return }
+                MainActor.assumeIsolated { self?.echoLoop(conn, rest) }
+            })
+            return
+        }
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, complete, error in
+            MainActor.assumeIsolated {
+                var got = have
+                if let data { got.append(data) }
+                if got.contains(0x0A) { self?.echoLoop(conn, got); return }
+                if complete || error != nil { conn.cancel(); return }
+                self?.echoLoop(conn, got)
+            }
+        }
+    }
+}
+
+@MainActor func directTransportChecks() {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("tailnet-direct-\(getpid())")
+    try? FileManager.default.removeItem(at: dir)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    guard let srv = try? DirectStandIn(), spin(5, until: { (srv.port ?? 0) != 0 }), let port = srv.port else {
+        expect(false, "direct stand-in listens"); return
+    }
+    let saved = dir.appendingPathComponent("direct.json")
+    AppTailnetBook(url: saved).remember(AppTailnetComputer(host: host, ip: "127.0.0.1", dns: "", port: port, name: "Mac", seen: 1))
+    let link = AppTailnetLink(book: AppTailnetBook(url: saved), expires: { _ in Int64(Date().timeIntervalSince1970) + 86400 * 7 }, open: { _ in })
+    link.browses = false
+    link.resume()
+
+    var got1: String?
+    link.sendDirect(host: host, event: Data("req-1".utf8), timeout: 10, accept: { String(decoding: $0, as: UTF8.self) == "reply:req-1" }) { d in
+        got1 = d.map { String(decoding: $0, as: UTF8.self) }
+    }
+    expect(spin(5, until: { got1 != nil }) && got1 == "reply:req-1", "direct transport round-trips first request")
+
+    var got2: String?
+    link.sendDirect(host: host, event: Data("req-2".utf8), timeout: 10, accept: { String(decoding: $0, as: UTF8.self) == "reply:req-2" }) { d in
+        got2 = d.map { String(decoding: $0, as: UTF8.self) }
+    }
+    expect(spin(5, until: { got2 != nil }) && got2 == "reply:req-2", "direct transport skips non-matching stale line without desync")
+
+    // Reconnect across 6 suspend/resume cycles (>4 connections) to verify repeated direct reconnects.
+    for cycle in 1...6 {
+        link.suspend()
+        link.resume()
+        var reply: String?
+        let tag = "cycle-\(cycle)"
+        link.sendDirect(host: host, event: Data(tag.utf8), timeout: 10, accept: { String(decoding: $0, as: UTF8.self) == "reply:\(tag)" }) { d in
+            reply = d.map { String(decoding: $0, as: UTF8.self) }
+        }
+        expect(spin(5, until: { reply != nil }) && reply == "reply:\(tag)", "direct reconnect cycle \(cycle) succeeds")
+    }
+    expect(srv.accepted >= 7, "server accepted more than 4 sequential direct connections")
+    link.suspend()
+    srv.listener.cancel()
+}
+MainActor.assumeIsolated { directTransportChecks() }
+
 if failures > 0 { FileHandle.standardError.write(Data("tailnet-check: \(failures) failed\n".utf8)); exit(1) }
 print("tailnet-check: ok")

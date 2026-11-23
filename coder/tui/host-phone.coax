@@ -17,7 +17,7 @@
 // phone switches engines mid-chat, e.g. Neon <-> Inkling), the run starts again under the same id
 // with the conversation's turns recalled, so a phone chat never goes read-only.
 
-PH_FACTS_MS :: 60000;          // what this computer runs is asked again after a minute
+PH_FACTS_MS :: 300000;         // what this computer runs is refreshed every five minutes
 PH_SESSION :: "phone-";
 // where Claude Code's installer and package managers put it (the Claude engine's probe looks there too)
 PH_CLAUDE_PLACES :: [4] string.["/.local/bin/claude", "/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
@@ -208,6 +208,8 @@ ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
       slug := cl_str(ar[..], one, "slug");
       name := cl_str(ar[..], one, "name");
       if slug.count < 1 || !ea_choice(slug) { continue; }
+      // Match Desktop's Gemini 4-only Antigravity picker (b5b5dbf0ba): Gemini 4 Neon first, then other Gemini 4 models.
+      if slug.count < 10 || cast(string) slug[0..<9] != "gemini-4-" { continue; }
       is_neon := slug == PA_AGY_DEFAULT;
       if (pass == 0) != is_neon { continue; }
       dup := false;
@@ -284,6 +286,7 @@ ph_agy_ready :: (p: [] PhHost) -> bool {
   if worker.count == 0 || !ph_load_agy_cfg(p) { return false; }
   if p[0].agy_nprofile > 0 && ph_agy_probe_once(p, worker, true) { return true; }
   p[0].agy_nprofile = 0;
+  p[0].agy_nauth = 0;
   return ph_agy_probe_once(p, worker, false);
 }
 
@@ -427,10 +430,11 @@ ph_gemini_ready :: () -> bool {
 ph_facts :: (h: [] HsHost) -> PaFacts {
   p := h[0].phone[..]; now := cxproc_now_ms();
   if p[0].known && now - p[0].at < PH_FACTS_MS && now >= p[0].at { return p[0].facts; }
+  agy := ph_agy_ready(p);
   f := PaFacts.{
-    agy = ph_agy_ready(p),
+    agy = agy,
     inkling = ph_inkling_ready(),
-    gemini = ph_gemini_ready(),
+    gemini = ifx agy then false else ph_gemini_ready(),
     claude = ph_claude_found(),
   };
   p[0].facts = f; p[0].at = now; p[0].known = true;
@@ -726,8 +730,8 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
   n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", "high", out[..]);
   ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "gemini-4-neon" && t[0].effort == "low";
 }
-#test "agy probe json extracts authenticated models with Gemini 4 Neon first and rejects unauthenticated" {
-  raw := "{\"authStatus\":\"authenticated\",\"models\":[{\"slug\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";
+#test "agy probe json extracts authenticated Gemini 4 models with Gemini 4 Neon first and rejects unauthenticated" {
+  raw := "{\"authStatus\":\"authenticated\",\"models\":[{\"slug\":\"gemini-3.5-flash\",\"name\":\"Gemini 3.5 Flash\",\"thinking\":false},{\"slug\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";
   models: [EA_MODELS] EaModel; nm: [1] int;
   #assert ph_parse_agy_probe(raw, models[..], nm[..]) && nm[0] == 2;
   #assert cast(string) models[0].id[0..<models[0].ni] == "gemini-4-neon" && models[0].ladder == (1 | 2 | 4 | 8);

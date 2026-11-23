@@ -44,6 +44,9 @@ import UIKit
     func launch() {
         let rejoin = UserDefaults.standard.string(forKey: AppServices.rejoinKey) ?? ""
         kept = rejoin
+        // Arm Tailscale direct transport and Bonjour discovery before runtime.launch() fires its
+        // initial DescribeEnvironment call (which runs before UIApplication.didBecomeActive).
+        AppDeviceLink.shared.resumeFromBackground()
         runtime.launch(rejoin: rejoin)
         // a pairing link the system opened (now, or before the core was up): dispatch.coax ACT_DEVICE_PAIR
         AppDeviceLink.shared.onLink = { [weak self] link in self?.core.action(AppServices.actDevicePair, text: link); self?.bridge.heard() }

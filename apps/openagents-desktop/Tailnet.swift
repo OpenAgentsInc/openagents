@@ -25,12 +25,15 @@ final class CoderTailnet: NSObject {
     static var enabled: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
 
     private let queue = DispatchQueue(label: "openagents.coder.tailnet", qos: .utility)
+    private let workQueue = DispatchQueue(label: "openagents.coder.tailnet.work", qos: .userInitiated, attributes: .concurrent)
     private var timer: DispatchSourceTimer?
     private var listener: NWListener?
     private var service: NetService?            // main thread only
     private var serving: (owner: AppTailnet.Owner, key: String, port: UInt16)?
     private var hostKey: String?
     private var pending = 0                     // pair processes waiting for a phone, at most two
+    private var activeConnections = 0           // concurrent active client connections on queue
+    private static let maxConcurrentConnections = 32
 
     /// Starts watching for Tailscale (now, then every two minutes). Not in a scratch test launch.
     func start() {
@@ -139,7 +142,9 @@ final class CoderTailnet: NSObject {
         guard let p = NWEndpoint.Port(rawValue: port) else { return }
         params.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(owner.ip), port: p)
         guard let l = try? NWListener(using: params) else { if port != 0 { listen(owner: owner, key: key, port: 0) }; return }
-        l.newConnectionLimit = 4
+        // Keep newConnectionLimit at InfiniteConnectionLimit: NWListener decrements a finite limit
+        // permanently on every accept without replenishing it, suspending the inbox after N accepts.
+        // Concurrency is bounded instead by activeConnections in serve(_:owner:key:).
         l.newConnectionHandler = { [weak self] conn in self?.serve(conn, owner: owner, key: key) }
         l.stateUpdateHandler = { [weak self, weak l] state in
             guard let self, let l else { return }
@@ -193,6 +198,21 @@ final class CoderTailnet: NSObject {
     // ------------------------------------------------------------------ one phone's request
 
     private func serve(_ conn: NWConnection, owner: AppTailnet.Owner, key: String) {
+        if activeConnections >= Self.maxConcurrentConnections {
+            conn.cancel()
+            return
+        }
+        activeConnections += 1
+        let q = queue
+        var released = false
+        let closeConn: () -> Void = { [weak self] in
+            q.async {
+                guard !released else { return }
+                released = true
+                if let self, self.activeConnections > 0 { self.activeConnections -= 1 }
+                conn.cancel()
+            }
+        }
         let remote: String
         if case .hostPort(let host, _) = conn.endpoint { remote = AppTailnet.plain("\(host)") } else { remote = "" }
         let label = CoderTailnet.label(owner)
@@ -200,59 +220,71 @@ final class CoderTailnet: NSObject {
         let answer: (AppTailnet.Answer) -> Void = { a in
             guard !answered else { return }
             answered = true
-            conn.send(content: AppTailnet.answerLine(a), completion: .contentProcessed { _ in conn.cancel() })
+            conn.send(content: AppTailnet.answerLine(a), completion: .contentProcessed { _ in closeConn() })
         }
         let refuse: (AppTailnet.Refusal) -> Void = { answer(.init(host: key, label: label, invitation: nil, refused: $0.rawValue)) }
         conn.start(queue: queue)
         guard AppTailnet.isTailnet(remote) else { refuse(.notTailnet); return }
         // one line within ten seconds (NIP-HOST)
-        queue.asyncAfter(deadline: .now() + 10) { if !answered { answered = true; conn.cancel() } }
-        CoderTailnet.readLine(conn, Data(), maxBytes: AppTailnet.requestMax) { [weak self] line in
+        queue.asyncAfter(deadline: .now() + 10) { if !answered { answered = true; closeConn() } }
+        CoderTailnet.readFrame(conn, Data(), maxBytes: AppTailnet.requestMax) { [weak self] line, rest in
             guard let self, !answered else { return }
             guard let line else { refuse(.malformed); return }
             let isDirect = AppTailnet.isDirectHello(line)
             if !isDirect && !AppTailnet.isRequest(line) { refuse(.malformed); return }
-            let whois = CoderTailnet.cli.flatMap { CoderTailnet.output($0, ["whois", "--json", remote]) }
-            if let why = AppTailnet.decide(remote: remote, whois: whois, owner: owner) {
-                if isDirect {
-                    answered = true
-                    conn.send(content: AppTailnet.directAckLine(refused: why.rawValue), completion: .contentProcessed { _ in conn.cancel() })
-                } else {
-                    refuse(why)
-                }
-                return
-            }
-            if isDirect {
-                answered = true
-                guard CoderDaemonClient().ensureDaemon() else {
-                    conn.send(content: AppTailnet.directAckLine(refused: AppTailnet.Refusal.unavailable.rawValue), completion: .contentProcessed { _ in conn.cancel() })
+            answered = true
+            // Offload tailscale whois, ensureDaemon, and pairing subprocesses off the serial listener queue.
+            self.workQueue.async { [weak self] in
+                guard let self else { closeConn(); return }
+                let whois = CoderTailnet.cli.flatMap { CoderTailnet.output($0, ["whois", "--json", remote]) }
+                if let why = AppTailnet.decide(remote: remote, whois: whois, owner: owner) {
+                    if isDirect {
+                        conn.send(content: AppTailnet.directAckLine(refused: why.rawValue), completion: .contentProcessed { _ in closeConn() })
+                    } else {
+                        conn.send(content: AppTailnet.answerLine(.init(host: key, label: label, invitation: nil, refused: why.rawValue)), completion: .contentProcessed { _ in closeConn() })
+                    }
                     return
                 }
-                conn.send(content: AppTailnet.directAckLine(refused: nil), completion: .contentProcessed { [weak self] err in
-                    if err != nil { conn.cancel(); return }
-                    self?.serveDirectLoop(conn, buffer: Data())
-                })
-                return
+                if isDirect {
+                    guard CoderDaemonClient().ensureDaemon() else {
+                        conn.send(content: AppTailnet.directAckLine(refused: AppTailnet.Refusal.unavailable.rawValue), completion: .contentProcessed { _ in closeConn() })
+                        return
+                    }
+                    conn.send(content: AppTailnet.directAckLine(refused: nil), completion: .contentProcessed { [weak self] err in
+                        if err != nil { closeConn(); return }
+                        self?.serveDirectLoop(conn, buffer: rest, close: closeConn)
+                    })
+                    return
+                }
+                self.queue.async { [weak self] in
+                    guard let self else { closeConn(); return }
+                    guard let link = self.invitation(label: label) else {
+                        conn.send(content: AppTailnet.answerLine(.init(host: key, label: label, invitation: nil, refused: AppTailnet.Refusal.unavailable.rawValue)), completion: .contentProcessed { _ in closeConn() })
+                        return
+                    }
+                    conn.send(content: AppTailnet.answerLine(.init(host: key, label: label, invitation: link + AppTailnet.linkMark, refused: nil)), completion: .contentProcessed { _ in closeConn() })
+                }
             }
-            guard let link = self.invitation(label: label) else { refuse(.unavailable); return }
-            answer(.init(host: key, label: label, invitation: link + AppTailnet.linkMark, refused: nil))
         }
     }
 
     /// Serves sealed NIP-SESS NDJSON request events over an admitted direct tailnet TCP connection (#13795).
-    private func serveDirectLoop(_ conn: NWConnection, buffer: Data) {
+    private func serveDirectLoop(_ conn: NWConnection, buffer: Data, close: @escaping () -> Void) {
         CoderTailnet.readFrame(conn, buffer, maxBytes: 65536) { [weak self] line, rest in
-            guard let self, let line else { conn.cancel(); return }
-            let client = CoderDaemonClient()
-            if var reply = client.forwardDirect(line) {
-                reply.append(0x0A)
-                conn.send(content: reply, completion: .contentProcessed { [weak self] err in
-                    if err != nil { conn.cancel(); return }
-                    self?.serveDirectLoop(conn, buffer: rest)
-                })
-            } else {
-                // Expired or silent requests produce no reply; keep reading.
-                self.serveDirectLoop(conn, buffer: rest)
+            guard let self, let line else { close(); return }
+            self.workQueue.async { [weak self] in
+                guard let self else { close(); return }
+                let client = CoderDaemonClient()
+                if var reply = client.forwardDirect(line) {
+                    reply.append(0x0A)
+                    conn.send(content: reply, completion: .contentProcessed { [weak self] err in
+                        if err != nil { close(); return }
+                        self?.serveDirectLoop(conn, buffer: rest, close: close)
+                    })
+                } else {
+                    // Expired or silent requests produce no reply; keep reading.
+                    self.serveDirectLoop(conn, buffer: rest, close: close)
+                }
             }
         }
     }

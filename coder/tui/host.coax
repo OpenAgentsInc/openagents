@@ -725,7 +725,10 @@ hs_serve :: (args: [] Args) -> int {
   defer { sc_webhook_close(h[0].sched[..]); }
   while end_at == 0 || hs_now() < end_at {
     es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);sc_tick(h);
-    es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]);
+    handled_local := false;
+    for lk: 0..<8 { if !es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]) { break; } handled_local = true; }
+    // Warm phone agent facts once on the first idle tick so a phone's first DescribeEnvironment answers immediately.
+    if !handled_local && !h[0].phone[0].known { _ = ph_facts(h); }
     // while a worker run is going its lines reach Coder within a few tens of milliseconds
     busy_ms := ifx dr_active(h) > 0 then 20 else 250;
     now_ms := cxsock_now_ms();
@@ -735,7 +738,7 @@ hs_serve :: (args: [] Args) -> int {
       if !live[cur] { retry_at = cxsock_now_ms() + 10000; tool_err("coder host: the relay "); tool_err(relay); tool_errln(" did not answer; trying again"); }
       else if !caught_up { hs_outln("Listening for browsers."); caught_up = true; }
     }
-    if !live[cur] { x := cxproc_sleep_ms(ifx busy_ms < 200 then busy_ms else 200); continue; }
+    if !live[cur] { x := cxproc_sleep_ms(ifx busy_ms < 50 then busy_ms else 50); continue; }
     // before the relay's connection lifetime ends, the next connection subscribes; both are read until the old one closes
     other := 1 - cur;
     if now_ms - since_ms[cur] > HS_ROTATE_S * 1000 && !live[other] {
