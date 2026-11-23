@@ -354,8 +354,10 @@ es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:stri
   if vn<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
   body:[HB_BODY_MAX]u8;n:=hb_app_reply_write(rq.request,event,cast(string)h[0].xhex[..],hs_now(),rq.expires_at,cast(string)params[0].method[0..<params[0].nm],cast(string)data[0..<vn],body[..]);
   peer:[32]u8;nonce:[32]u8;aux:[32]u8;
-  if n<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}
-  return hb_seal(cast(string)body[0..<n],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],rq.request,nonce[..],aux[..],hs_now(),w,out);
+  if n<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  sealed:=hb_seal(cast(string)body[0..<n],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],rq.request,nonce[..],aux[..],hs_now(),w,out);
+  if sealed<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  return sealed;
 }
 
 es_rpc_call :: (args:[]Args)->int #effects(all) {

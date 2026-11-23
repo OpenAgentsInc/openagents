@@ -359,22 +359,31 @@ dk_lead :: (h: [] HsHost, runs: [] DkInfo, n: int, i: int) -> bool {
   return true;
 }
 
-// ListSessions: the grant's Coder Desktop chats, running ones first, then the chats Coder saved
-// that no run is left for.
+// Maximum Desktop sessions returned in one ListSessions reply: each EaSession emits up to
+// 14 JSON keys, and sealed NIP-HOST artifacts (coax/lib/nostr/jcs.coax) enforce JCS_MAX_KEYS = 1024.
+// Capping at 48 sessions (newest-updated first) keeps the full reply under ~780 keys with headroom
+// for offer models, efforts, folders, and envelope metadata so hb_seal never fails with JCS_LIMIT.
+DK_LIST_MAX :: 48;
+
+// ListSessions: the grant's Coder Desktop chats, running ones first, then the newest chats Coder
+// saved that no run is left for, bounded to DK_LIST_MAX so sealed replies stay within JCS_MAX_KEYS.
 dk_list :: (h: [] HsHost, v: [] EaView) {
   runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
   chats: [DK_CHATS] DkChat; nc := dk_chats(chats[..]);
+  // Sort runs and saved chats newest-updated first so the capped page always carries the latest chats.
+  for i: 1..<n { j := i; while j > 0 && runs[j - 1].updated < runs[j].updated { t := runs[j]; runs[j] = runs[j - 1]; runs[j - 1] = t; j -= 1; } }
+  for i: 1..<nc { j := i; while j > 0 && chats[j - 1].updated < chats[j].updated { t := chats[j]; chats[j] = chats[j - 1]; chats[j - 1] = t; j -= 1; } }
   for pass: 0..<2 {
     for i: 0..<n {
       r := runs[i..<i + 1];
       if !dk_top(r) || dk_running(r) != (pass == 0) || !dk_scoped(h, r) || !dk_lead(h, runs[..], n, i) { continue; }
-      if v[0].ns >= 96 { v[0].complete = false; return; }
+      if v[0].ns >= DK_LIST_MAX { v[0].complete = false; return; }
       dk_summary(r, chats[..], nc, v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1;
     }
   }
   for c: 0..<nc {
     if dk_run_for(h, runs[..], n, cast(string) chats[c].hex[..]) >= 0 || !dk_inside(h, cast(string) chats[c].folder[0..<chats[c].nf]) { continue; }
-    if v[0].ns >= 96 { v[0].complete = false; return; }
+    if v[0].ns >= DK_LIST_MAX { v[0].complete = false; return; }
     dk_saved_summary(chats[c..<c + 1], v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1;
   }
 }
@@ -1015,4 +1024,36 @@ dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   n = dk_lines(r[..], none[..], 0, "StopTurn", "0123456789abcdef0123456789abcdef", "", out[..]);
   #assert cast(string) out[0..<n] == "{\"interrupt\":true}\n";
   r[0].busy = false; #assert dk_lines(r[..], none[..], 0, "StopTurn", "0123456789abcdef0123456789abcdef", "", out[..]) == 0;
+}
+#test "a full DK_LIST_MAX ListSessions reply seals cleanly inside NIP-HOST JCS_MAX_KEYS" {
+  v: [1] EaView;
+  host := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  v[0].nh = ea_copy(v[0].host[..], host); v[0].nl = ea_copy(v[0].label[..], "Mac"); v[0].nm = ea_copy(v[0].method[..], "ListSessions");
+  v[0].offer.nv = 4; v[0].offer.default_level = 1;
+  eids := PA_EFFORT_ID; elbs := PA_EFFORT_LABEL;
+  for k: 0..<4 { v[0].offer.levels[k].ni = ea_copy(v[0].offer.levels[k].id[..], eids[k]); v[0].offer.levels[k].nl = ea_copy(v[0].offer.levels[k].label[..], elbs[k]); }
+  v[0].offer.n = 5;
+  mids := PA_NEON_ID; mlbs := PA_NEON_LABEL;
+  for k: 0..<5 { v[0].offer.models[k].ni = ea_copy(v[0].offer.models[k].id[..], mids[k]); v[0].offer.models[k].nl = ea_copy(v[0].offer.models[k].label[..], mlbs[k]); v[0].offer.models[k].ladder = 15; }
+  v[0].nroot = ea_copy(v[0].root[..], "openagents");
+  for i: 0..<DK_LIST_MAX {
+    s := EaSession.{};
+    s.ni = ea_copy(s.id[..], "desktop-0123456789abcdef0123456789abcdef");
+    s.nw = ea_copy(s.workspace[..], "default");
+    s.nt = ea_copy(s.title[..], "Sample conversation title");
+    s.managed = true; s.desktop = true;
+    s.nc = ea_copy(s.control[..], "available");
+    s.nmo = ea_copy(s.model[..], "gemini-4-neon");
+    s.nef = ea_copy(s.effort[..], "medium");
+    s.nno = ea_copy(s.note[..], "Fallback note");
+    v[0].sessions[i] = s;
+  }
+  v[0].ns = DK_LIST_MAX;
+  data: [HB_BODY_MAX] u8; vn := ea_view_write(v[..], data[..]);
+  #assert vn > 0;
+  body: [HB_BODY_MAX] u8; bn := hb_app_reply_write(host, host, host, 1000, 1060, "ListSessions", cast(string) data[0..<vn], body[..]);
+  #assert bn > 0;
+  scratch: [HB_REGION] u8; env_out: [HB_REGION] u8;
+  built := envelope_build_checked(cast(string) body[0..<bn], HB_REPLY_SCHEMA, 1000, 4600, scratch[..], env_out[..], false);
+  #assert built.error == AE_OK && built.written > 0;
 }
