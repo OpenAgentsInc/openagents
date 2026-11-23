@@ -85,7 +85,7 @@ static void usage(void) {
   fprintf(stderr,
           "usage: voice-client [--url ws://127.0.0.1:8787/] [--observe] [--out reply.wav] [--expect TEXT]\n"
           "                    [--barge FILE.wav] [--turns N] [--timeout SECONDS] [--rate-out HZ]\n"
-          "                    [--profile ID] [--speaker ID] [--decide-gain DB] [--quiet] [--exact TEXT]\n"
+          "                    [--route ID] [--profile ID] [--speaker ID] [--decide-gain DB] [--quiet] [--exact TEXT]\n"
           "                    [--hold [--then FILE.wav] [--after-end cancel|barge|realm]] [--engine] FILE.wav\n");
 }
 
@@ -113,7 +113,7 @@ static int nholds;
 
 int main(int argc, char **argv) {
   const char *url = "ws://127.0.0.1:8787/", *wav = NULL, *barge = NULL, *out_path = NULL, *expect = NULL;
-  const char *profile = "", *speaker = "dev";
+  const char *route = "foreman", *profile = "", *speaker = "dev";
   bool observe = false, have_gain = false, hold = false;
   const char *then_wav = NULL, *after_end = NULL, *exact = NULL;
   float gain_db = 0;
@@ -130,6 +130,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--turns") && v) { turns = atoi(v); i++; }
     else if (!strcmp(a, "--timeout") && v) { timeout_s = atoi(v); i++; }
     else if (!strcmp(a, "--rate-out") && v) { rate_out = (uint32_t)atoi(v); i++; }
+    else if (!strcmp(a, "--route") && v) { route = v; i++; }
     else if (!strcmp(a, "--profile") && v) { profile = v; i++; }
     else if (!strcmp(a, "--speaker") && v) { speaker = v; i++; }
     else if (!strcmp(a, "--decide-gain") && v) { have_gain = true; gain_db = (float)atof(v); i++; }
@@ -220,7 +221,7 @@ int main(int argc, char **argv) {
   hello.u.hello.has_speaker = true;
   hello.u.hello.speaker.id = B(speaker);
   hello.u.hello.speaker.role = OA_SPEAKER_ROLE_PLAYER;
-  hello.u.hello.route = B("foreman");
+  hello.u.hello.route = B(route);
   hello.u.hello.input_sample_rate = OA_VOICE_RATE;  // we send voice.coax's 16 kHz output
   hello.u.hello.output_sample_rate = rate_out;
   hello.u.hello.codec = OA_CODEC_PCM_S16LE;

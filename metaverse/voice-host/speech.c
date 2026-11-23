@@ -30,6 +30,7 @@ static void share_init(void);
 
 static const speech_profile PROFILES[] = {
     {"foreman", 2, "en-US-Chirp3-HD-Sulafat", "en-US"},
+    {"sarah", 1, "en-US-Chirp3-HD-Leda", "en-US"},
     {"kore", 1, "en-US-Chirp3-HD-Kore", "en-US"},
     {"puck", 1, "en-US-Chirp3-HD-Puck", "en-US"},
 };
@@ -609,6 +610,12 @@ static const struct { const char *route; const char *instruction; } ROUTES[] = {
      "or plans and no access to anyone's work, so never invent projects, products, people, numbers or "
      "facts. When you don't know something, say so plainly and ask what they'd like to do. Use what was "
      "said earlier in this conversation."},
+    {"sarah",
+     "You are Sarah, OpenAgents' disclosed AI agent speaking live by voice. Keep your register assured, "
+     "composed, direct, and plain professional English — no military allegory, filler, corporate hype, "
+     "lists, markdown, emoji, or code. Answer in one or two short spoken sentences (at most 30 words) "
+     "and ask at most one focused question at a time. Never invent facts, prices, or completed actions; "
+     "when you lack live tool access or current data, say so plainly and name the next step."},
     {"haunted-house",
      "You are the voice of the Haunted House, a Verse realm in OpenAgents: a house at night with nine "
      "haunts to set off, people to talk to, doors to open and a quest called Make it yours. A visitor "

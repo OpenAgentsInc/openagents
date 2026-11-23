@@ -75,6 +75,10 @@ run_case hello finals:eq:1 speeches:eq:1 speech_ends:eq:1 audio_in:gt:0 downlink
   --out "$tmp/hello-reply.wav" --expect "I heard" "$fx/hello-foreman.wav"
 if [[ -s "$tmp/hello-reply.wav" ]]; then echo "ok   hello reply WAV written"; else echo "FAIL hello reply WAV"; failures=$((failures + 1)); fi
 
+run_case sarah-offline finals:eq:1 speeches:eq:1 speech_ends:eq:1 audio_in:gt:0 downlink_samples:gt:0 errors:eq:0 -- \
+  --route sarah --profile sarah --out "$tmp/sarah-offline.wav" --expect "I heard" "$fx/hello-foreman.wav"
+if [[ -s "$tmp/sarah-offline.wav" ]]; then echo "ok   sarah-offline WAV written"; else echo "FAIL sarah-offline WAV"; failures=$((failures + 1)); fi
+
 # A 350 ms pause inside a sentence must not end the turn (end of turn waits
 # 700 ms by default), and a ~3 s turn gets PARTIALs from re-recognition.
 run_case pause-is-one-turn finals:eq:1 partials:ge:1 speech_ends:eq:1 -- --expect "heard" "$fx/garden-pause.wav"
@@ -139,6 +143,9 @@ if ! $offline_only; then
     run_case live-gemini finals:eq:1 speeches:eq:1 speech_ends:eq:1 errors:eq:0 -- \
       --expect "what are we building today" "$fx/hello-foreman.wav"
     latency_lines live-gemini live-gemini
+    run_case live-sarah finals:eq:1 speeches:eq:1 speech_ends:eq:1 downlink_samples:gt:0 errors:eq:0 -- \
+      --route sarah --profile sarah --out "$tmp/live-sarah.wav" --expect "what are we building today" "$fx/hello-foreman.wav"
+    latency_lines live-sarah live-gemini
     run_case live-gemini-barge finals:eq:2 interrupted:ge:1 errors:eq:0 -- \
       --barge "$fx/wait-stop.wav" "$fx/hello-foreman.wav"
   else

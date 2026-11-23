@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.sarah.mvp_profile.v1",
+  "owner": "toolchain",
+  "codec": "coax/web/sarah-lib.coax",
+  "note": "Stored JSON contracts for the Coax-native Sarah audio-first synthesis receipt (openagents.sarah.synth_receipt.v1) and SQ-1 playback-first lip-sync take scoreboard (sarah-take-scoreboard.v1).",
+  "goldens": [
+    {
+      "id": "openagents.sarah.synth_receipt.v1",
+      "json": "{\"schema\":\"openagents.sarah.synth_receipt.v1\",\"voice\":\"en-US-Chirp3-HD-Leda\",\"text\":\"Hello.\",\"ttsMs\":1200,\"sttMs\":900,\"judgeMs\":3000,\"audioMs\":2400,\"rawLufs\":-23.7,\"finalLufs\":-16.6,\"finalPeakDbfs\":-3.0,\"sttPass\":true,\"sttHeard\":\"Hello\",\"judgeOverall\":8,\"judgeNaturalness\":8,\"judgeWarmth\":7,\"judgeConfidence\":9,\"judgeNotes\":\"clear\"}"
+    },
+    {
+      "id": "sarah-take-scoreboard.v1",
+      "json": "{\"schemaVersion\":\"sarah-take-scoreboard.v1\",\"takeId\":\"mvp-01\",\"date\":\"2026-11-23\",\"model\":\"p-video-avatar\",\"voice\":\"en-US-Chirp3-HD-Leda\",\"script\":\"Hello.\",\"audioGates\":{\"sttStatus\":\"pass\",\"sttHeard\":\"Hello\",\"loudnessLufs\":-16.1,\"peakDbfs\":-3.1,\"llmJudgeOverall\":9,\"llmJudgeNotes\":\"clear and calm\"},\"videoGates\":{\"ownerPlaybackVerdict\":\"pending\",\"width\":1920,\"height\":1088,\"fps\":24.0,\"videoDurationMs\":3400,\"audioDurationMs\":3380,\"avDurationDeltaMs\":20},\"operationalGates\":{\"renderWallSeconds\":90,\"mp4Path\":\"/tmp/a.mp4\",\"qaStripPath\":\"/tmp/s.jpg\",\"noSecretsInArtifacts\":true},\"advance\":false}"
+    }
+  ]
+}

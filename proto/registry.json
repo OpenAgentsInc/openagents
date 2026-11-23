@@ -7178,6 +7178,32 @@
         "proto/psionic/author-royalty-v1.json"
       ],
       "note": "Append-only 3rd-leg module author royalty settlement receipt keyed by (receipt_digest, author) with Bitcoin-only networks and truthful real_bitcoin_moved reporting (#13961)."
+    },
+    {
+      "id": "openagents.sarah.synth_receipt.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/coder/sarah-mvp-v1.json",
+      "codec": "coax/web/sarah-lib.coax",
+      "check": "coax/bin/coax test coax/web/sarah-lib.coax --library",
+      "step": "new",
+      "tests": [
+        "proto/coder/sarah-mvp-v1.json"
+      ],
+      "note": "Audio-first synthesis, EBU R128 loudness normalization, Google STT V2 verbatim gate, and Vertex Gemini audio judge receipt emitted by coax/web/sarah.coax."
+    },
+    {
+      "id": "sarah-take-scoreboard.v1",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/coder/sarah-mvp-v1.json",
+      "codec": "coax/web/sarah-lib.coax",
+      "check": "coax/bin/coax test coax/web/sarah-lib.coax --library",
+      "step": "new",
+      "tests": [
+        "proto/coder/sarah-mvp-v1.json"
+      ],
+      "note": "SQ-1 playback-first media take scoreboard emitted by coax/web/sarah.coax; advance stays false until owner playback, prosody, and verbatim STT all pass."
     }
   ]
 }

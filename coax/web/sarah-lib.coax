@@ -1,0 +1,632 @@
+// Pure logic for the Sarah media, audio-first QA, GCS V4 URL signing, and
+// lip-sync MVP CLI (coax/web/sarah.coax).
+//   coax/bin/coax test coax/web/sarah-lib.coax --library
+//
+// Everything here is deterministic and tested without network or disk I/O:
+//   - British uppercase "Zed" paste lint (ported from scripts/sarah-avatar/segmind-paste-lint-lib.mjs)
+//   - Voice gender-anchor enforcement (sarah-direction.json voice_anchor law)
+//   - Case/punctuation-normalized verbatim STT word gate
+//   - GCS V4 Signed URL canonical request + SHA-256 string-to-sign (via coax/lib/crypto/sha256-kernel.coax)
+//   - Segmind Async V2 payload builder (p-video-avatar, kling-v2-*-avatar, veed-fabric-1.0)
+//   - SQ-1 playback-first scoreboard advancement gate + JSON/Markdown emitter
+
+#load "../lib/crypto/sha256-kernel.coax";
+#load "../lib/json/json.coax";
+
+SR_HEX_LOWER :: "0123456789abcdef";
+SR_HEX_UPPER :: "0123456789ABCDEF";
+
+SrBuf :: struct { data: [] u8; n: int; bad: bool; }
+
+sr_put :: (b: [] SrBuf, s: string) {
+  for i: 0..<s.count {
+    if b[0].n < b[0].data.count { b[0].data[b[0].n] = s[i]; b[0].n += 1; }
+    else { b[0].bad = true; }
+  }
+}
+
+sr_put_byte :: (b: [] SrBuf, c: u8) {
+  if b[0].n < b[0].data.count { b[0].data[b[0].n] = c; b[0].n += 1; }
+  else { b[0].bad = true; }
+}
+
+sr_put_int :: (b: [] SrBuf, v: int) {
+  if v < 0 { sr_put_byte(b, '-'); sr_put_int(b, -v); return; }
+  if v >= 10 { sr_put_int(b, v / 10); }
+  sr_put_byte(b, cast,trunc(u8) ('0' + (v % 10)));
+}
+
+// Writes tenths of a unit ("-16.2", "3.4") without floating-point formatting.
+sr_put_tenths :: (b: [] SrBuf, tenths: int) {
+  v := tenths;
+  if v < 0 { sr_put_byte(b, '-'); v = -v; }
+  sr_put_int(b, v / 10);
+  sr_put_byte(b, '.');
+  sr_put_int(b, v % 10);
+}
+
+sr_text :: (b: [] SrBuf) -> string { return cast(string) b[0].data[0..<b[0].n]; }
+
+sr_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then cast,trunc(u8) (c + 32) else c; }
+sr_is_alpha :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+sr_is_alnum :: (c: u8) -> bool { return sr_is_alpha(c) || (c >= '0' && c <= '9'); }
+
+sr_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<(hay.count - needle.count + 1) {
+    match := true;
+    for j: 0..<needle.count {
+      if sr_lower(hay[i + j]) != sr_lower(needle[j]) { match = false; break; }
+    }
+    if match { return true; }
+  }
+  return false;
+}
+
+sr_starts_with :: (s: string, p: string) -> bool {
+  if p.count > s.count { return false; }
+  for i: 0..<p.count { if s[i] != p[i] { return false; } }
+  return true;
+}
+
+// ---- Paste lint & gender-anchor enforcement
+
+sr_is_british_voice :: (voice: string, lang: string) -> bool {
+  return sr_contains_ci(lang, "en-gb") || sr_contains_ci(lang, "english (uk)") ||
+         sr_contains_ci(lang, "british") || sr_contains_ci(voice, "british") ||
+         sr_contains_ci(voice, "en-gb");
+}
+
+// Counts standalone uppercase "Zed" occurrences that British TTS can mispronounce as "Zeed".
+sr_british_zed_risks :: (script: string, voice: string, lang: string) -> int {
+  if !sr_is_british_voice(voice, lang) || script.count < 3 { return 0; }
+  risks := 0;
+  for i: 0..<(script.count - 2) {
+    if script[i] == 'Z' && script[i + 1] == 'e' && script[i + 2] == 'd' {
+      left_ok := i == 0 || !sr_is_alnum(script[i - 1]);
+      right_ok := i + 3 == script.count || !sr_is_alnum(script[i + 3]);
+      if left_ok && right_ok { risks += 1; }
+    }
+  }
+  return risks;
+}
+
+// Prepends voice_anchor to raw_prompt unless already present, locking feminine voice identity.
+sr_anchor_voice_prompt :: (anchor: string, raw_prompt: string, out: [] u8) -> string {
+  b: [1] SrBuf; b[0].data = out;
+  if !sr_starts_with(raw_prompt, anchor) {
+    sr_put(b[..], anchor);
+    if raw_prompt.count > 0 { sr_put_byte(b[..], ' '); }
+  }
+  sr_put(b[..], raw_prompt);
+  return sr_text(b[..]);
+}
+
+// ---- Verbatim STT word normalization & matching
+
+// Normalizes text into lowercase single-space-separated alphanumeric words with
+// common contractions expanded so "I'm" matches "I am" and punctuation is ignored.
+sr_norm_word :: (w: string, out: [] SrBuf) {
+  if w == "im" { sr_put(out, "i am"); return; }
+  if w == "dont" { sr_put(out, "do not"); return; }
+  if w == "cant" { sr_put(out, "can not"); return; }
+  if w == "wont" { sr_put(out, "will not"); return; }
+  if w == "its" { sr_put(out, "it is"); return; }
+  if w == "thats" { sr_put(out, "that is"); return; }
+  if w == "whats" { sr_put(out, "what is"); return; }
+  if w == "lets" { sr_put(out, "let us"); return; }
+  if w == "youre" { sr_put(out, "you are"); return; }
+  if w == "theyre" { sr_put(out, "they are"); return; }
+  if w == "ive" { sr_put(out, "i have"); return; }
+  if w == "isnt" { sr_put(out, "is not"); return; }
+  sr_put(out, w);
+}
+
+sr_flush_word :: (word: [] u8, wn: int, has_apos: bool, b: [] SrBuf) {
+  if b[0].n > 0 { sr_put_byte(b, ' '); }
+  w := cast(string) word[0..<wn];
+  if has_apos && w == "were" { sr_put(b, "we are"); }
+  else if has_apos { sr_norm_word(w, b); }
+  else { sr_put(b, w); }
+}
+
+sr_normalize_words :: (text: string, out: [] u8) -> string {
+  b: [1] SrBuf; b[0].data = out;
+  word: [64] u8; wn := 0;
+  has_apos := false;
+  for i: 0..<text.count {
+    c := text[i];
+    if sr_is_alnum(c) {
+      if wn < 64 { word[wn] = sr_lower(c); wn += 1; }
+    } else if c == '\'' && wn > 0 && i + 1 < text.count && sr_is_alpha(text[i + 1]) {
+      has_apos = true;
+    } else if wn > 0 {
+      sr_flush_word(word[..], wn, has_apos, b[..]);
+      wn = 0; has_apos = false;
+    }
+  }
+  if wn > 0 { sr_flush_word(word[..], wn, has_apos, b[..]); }
+  return sr_text(b[..]);
+}
+
+sr_verbatim_match :: (expected: string, heard: string) -> bool {
+  a: [4096] u8; b: [4096] u8;
+  na := sr_normalize_words(expected, a[..]);
+  nb := sr_normalize_words(heard, b[..]);
+  return na.count > 0 && na == nb;
+}
+
+// ---- GCS V4 Signed URL canonical request & string-to-sign
+
+sr_uri_unreserved :: (c: u8, keep_slash: bool) -> bool {
+  if sr_is_alnum(c) || c == '-' || c == '_' || c == '.' || c == '~' { return true; }
+  return keep_slash && c == '/';
+}
+
+sr_uri_encode :: (s: string, keep_slash: bool, out: [] SrBuf) {
+  for i: 0..<s.count {
+    c := s[i];
+    if sr_uri_unreserved(c, keep_slash) { sr_put_byte(out, c); }
+    else {
+      sr_put_byte(out, '%');
+      sr_put_byte(out, SR_HEX_UPPER[cast(int) ((c >> 4) & 15)]);
+      sr_put_byte(out, SR_HEX_UPPER[cast(int) (c & 15)]);
+    }
+  }
+}
+
+// Builds GCS V4 canonical query string (in query_out) and string-to-sign (in sts_out).
+// iso_date is YYYYMMDD (8 chars), iso_ts is YYYYMMDDTHHMMSSZ (16 chars).
+// Returns true on success.
+sr_gcs_v4_prepare :: (
+  bucket: string, object: string, client_email: string,
+  iso_date: string, iso_ts: string, expires_sec: int,
+  query_out: [] u8, query_len: [] int,
+  sts_out: [] u8, sts_len: [] int
+) -> bool {
+  if bucket.count == 0 || object.count == 0 || client_email.count == 0 { return false; }
+  if iso_date.count != 8 || iso_ts.count != 16 || expires_sec < 1 || expires_sec > 604800 { return false; }
+  // Credential scope: YYYYMMDD/auto/storage/goog4_request
+  scope_buf: [128] u8; sc: [1] SrBuf; sc[0].data = scope_buf[..];
+  sr_put(sc[..], iso_date); sr_put(sc[..], "/auto/storage/goog4_request");
+  scope := sr_text(sc[..]);
+
+  cred_buf: [384] u8; cr: [1] SrBuf; cr[0].data = cred_buf[..];
+  sr_put(cr[..], client_email); sr_put_byte(cr[..], '/'); sr_put(cr[..], scope);
+  cred := sr_text(cr[..]);
+
+  // Canonical query string (lexicographically sorted parameter names per GCS V4 spec)
+  qb: [1] SrBuf; qb[0].data = query_out;
+  sr_put(qb[..], "X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=");
+  sr_uri_encode(cred, false, qb[..]);
+  sr_put(qb[..], "&X-Goog-Date="); sr_put(qb[..], iso_ts);
+  sr_put(qb[..], "&X-Goog-Expires="); sr_put_int(qb[..], expires_sec);
+  sr_put(qb[..], "&X-Goog-SignedHeaders=host");
+  if qb[0].bad { return false; }
+  query := sr_text(qb[..]);
+  query_len[0] = qb[0].n;
+
+  // Canonical URI: /<bucket>/<encoded-object>
+  // Canonical request:
+  //   GET\n<canonical_uri>\n<canonical_query>\nhost:storage.googleapis.com\n\nhost\nUNSIGNED-PAYLOAD
+  req_buf: [4096] u8; rb: [1] SrBuf; rb[0].data = req_buf[..];
+  sr_put(rb[..], "GET\n/");
+  sr_uri_encode(bucket, false, rb[..]);
+  sr_put_byte(rb[..], '/');
+  sr_uri_encode(object, true, rb[..]);
+  sr_put_byte(rb[..], '\n');
+  sr_put(rb[..], query);
+  sr_put(rb[..], "\nhost:storage.googleapis.com\n\nhost\nUNSIGNED-PAYLOAD");
+  if rb[0].bad { return false; }
+
+  hash_hex: [64] u8;
+  if !S_hex(S_hash(sr_text(rb[..])), hash_hex[..]) { return false; } // mutant: equivalent (hash_hex is a fixed [64] u8 and S_hash never sets error, so S_hex cannot fail)
+
+  // String to sign
+  sb: [1] SrBuf; sb[0].data = sts_out;
+  sr_put(sb[..], "GOOG4-RSA-SHA256\n");
+  sr_put(sb[..], iso_ts);
+  sr_put_byte(sb[..], '\n');
+  sr_put(sb[..], scope);
+  sr_put_byte(sb[..], '\n');
+  sr_put(sb[..], cast(string) hash_hex[..]);
+  if sb[0].bad { return false; }
+  sts_len[0] = sb[0].n;
+  return true;
+}
+
+// ---- Segmind Async V2 payload builder
+
+sr_segmind_body :: (
+  model: string, image_url: string, audio_url: string, script: string,
+  voice: string, voice_lang: string, anchor: string, voice_prompt: string,
+  video_prompt: string, negative_prompt: string, resolution: string, seed: int,
+  out: [] u8
+) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  if model == "kling-v2-standard-avatar" || model == "kling-v2-pro-avatar" {
+    jo_key(o[..], "image_url"); jo_str(o[..], image_url);
+    jo_key(o[..], "audio_url"); jo_str(o[..], audio_url);
+    if video_prompt.count > 0 { jo_key(o[..], "prompt"); jo_str(o[..], video_prompt); }
+  } else if model == "veed-fabric-1.0" {
+    jo_key(o[..], "image"); jo_str(o[..], image_url);
+    jo_key(o[..], "audio"); jo_str(o[..], audio_url);
+    jo_key(o[..], "resolution"); jo_str(o[..], ifx resolution.count > 0 then resolution else "720p");
+  } else {
+    // p-video-avatar (Pruna) and compatible models.
+    anchored_buf: [2048] u8;
+    anchored := sr_anchor_voice_prompt(anchor, voice_prompt, anchored_buf[..]);
+    jo_key(o[..], "image"); jo_str(o[..], image_url);
+    if audio_url.count > 0 {
+      jo_key(o[..], "audio"); jo_str(o[..], audio_url);
+    } else {
+      jo_key(o[..], "voice"); jo_str(o[..], voice);
+      jo_key(o[..], "voice_language"); jo_str(o[..], voice_lang);
+      jo_key(o[..], "voice_prompt"); jo_str(o[..], anchored);
+      jo_key(o[..], "voice_script"); jo_str(o[..], script);
+    }
+    jo_key(o[..], "video_prompt"); jo_str(o[..], video_prompt);
+    jo_key(o[..], "negative_prompt"); jo_str(o[..], negative_prompt);
+    jo_key(o[..], "resolution"); jo_str(o[..], ifx resolution.count > 0 then resolution else "1080p");
+    jo_key(o[..], "seed"); jo_int(o[..], seed);
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// ---- SQ-1 playback-first scoreboard law & emitter
+
+// Law: no take advances on stills or automated metrics alone.
+// Owner playback PASS + prosody PASS + verbatim STT PASS + zero failing gates are all required.
+sr_scoreboard_can_advance :: (owner_playback_pass: bool, human_prosody_pass: bool, stt_pass: bool, any_gate_fail: bool) -> bool {
+  return owner_playback_pass && human_prosody_pass && stt_pass && !any_gate_fail;
+}
+
+SrScoreboard :: struct {
+  take_id: string;
+  date: string;
+  model: string;
+  voice: string;
+  script: string;
+  stt_heard: string;
+  stt_pass: bool;
+  lufs_tenths: int;         // e.g. -161 for -16.1 LUFS
+  peak_tenths: int;         // e.g. -31 for -3.1 dBTP
+  judge_overall: int;       // 0..10, or -1 if skipped
+  judge_notes: string;
+  width: int;
+  height: int;
+  fps_tenths: int;          // e.g. 240 for 24.0 fps
+  video_ms: int;
+  audio_ms: int;
+  render_wall_s: int;
+  mp4_path: string;
+  qa_strip_path: string;
+}
+
+sr_abs_diff :: (a: int, b: int) -> int {
+  d := a - b;
+  return ifx d < 0 then -d else d; // mutant: equivalent (for d == 0, -0 == 0, so < 0, <= 0, and < 1 agree)
+}
+
+sr_scoreboard_json :: (s: SrScoreboard, out: [] u8) -> string {
+  av_delta := sr_abs_diff(s.video_ms, s.audio_ms);
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schemaVersion"); jo_str(o[..], "sarah-take-scoreboard.v1");
+  jo_key(o[..], "takeId"); jo_str(o[..], s.take_id);
+  jo_key(o[..], "date"); jo_str(o[..], s.date);
+  jo_key(o[..], "model"); jo_str(o[..], s.model);
+  jo_key(o[..], "voice"); jo_str(o[..], s.voice);
+  jo_key(o[..], "script"); jo_str(o[..], s.script);
+  jo_key(o[..], "audioGates"); jo_obj(o[..]);
+    jo_key(o[..], "sttStatus"); jo_str(o[..], ifx s.stt_pass then "pass" else "fail");
+    jo_key(o[..], "sttHeard"); jo_str(o[..], s.stt_heard);
+    lb: [32] u8; lbf: [1] SrBuf; lbf[0].data = lb[..]; sr_put_tenths(lbf[..], s.lufs_tenths);
+    jo_key(o[..], "loudnessLufs"); jo_raw(o[..], sr_text(lbf[..]));
+    pb: [32] u8; pbf: [1] SrBuf; pbf[0].data = pb[..]; sr_put_tenths(pbf[..], s.peak_tenths);
+    jo_key(o[..], "peakDbfs"); jo_raw(o[..], sr_text(pbf[..]));
+    jo_key(o[..], "llmJudgeOverall"); jo_int(o[..], s.judge_overall);
+    jo_key(o[..], "llmJudgeNotes"); jo_str(o[..], s.judge_notes);
+  jo_end(o[..]);
+  jo_key(o[..], "videoGates"); jo_obj(o[..]);
+    jo_key(o[..], "ownerPlaybackVerdict"); jo_str(o[..], "pending");
+    jo_key(o[..], "width"); jo_int(o[..], s.width);
+    jo_key(o[..], "height"); jo_int(o[..], s.height);
+    fb: [32] u8; fbf: [1] SrBuf; fbf[0].data = fb[..]; sr_put_tenths(fbf[..], s.fps_tenths);
+    jo_key(o[..], "fps"); jo_raw(o[..], sr_text(fbf[..]));
+    jo_key(o[..], "videoDurationMs"); jo_int(o[..], s.video_ms);
+    jo_key(o[..], "audioDurationMs"); jo_int(o[..], s.audio_ms);
+    jo_key(o[..], "avDurationDeltaMs"); jo_int(o[..], av_delta);
+  jo_end(o[..]);
+  jo_key(o[..], "operationalGates"); jo_obj(o[..]);
+    jo_key(o[..], "renderWallSeconds"); jo_int(o[..], s.render_wall_s);
+    jo_key(o[..], "mp4Path"); jo_str(o[..], s.mp4_path);
+    jo_key(o[..], "qaStripPath"); jo_str(o[..], s.qa_strip_path);
+    jo_key(o[..], "noSecretsInArtifacts"); jo_bool(o[..], true);
+  jo_end(o[..]);
+  // SQ-1: newly generated takes have ownerPlaybackVerdict="pending", so advance is always false.
+  jo_key(o[..], "advance"); jo_bool(o[..], false);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+sr_scoreboard_md :: (s: SrScoreboard, out: [] u8) -> string {
+  av_delta := sr_abs_diff(s.video_ms, s.audio_ms);
+  b: [1] SrBuf; b[0].data = out;
+  sr_put(b[..], "# Take scoreboard — "); sr_put(b[..], s.take_id); sr_put(b[..], "\n\n");
+  sr_put(b[..], "- Schema: `sarah-take-scoreboard.v1`\n");
+  sr_put(b[..], "- Date: `"); sr_put(b[..], s.date); sr_put(b[..], "`\n");
+  sr_put(b[..], "- Model: `"); sr_put(b[..], s.model); sr_put(b[..], "`\n");
+  sr_put(b[..], "- Voice: `"); sr_put(b[..], s.voice); sr_put(b[..], "`\n");
+  sr_put(b[..], "- **Advance: NO** — owner playback verdict is `pending` (SQ-1 law: no take advances on stills or metrics alone).\n\n");
+  sr_put(b[..], "| Gate | Value |\n| --- | --- |\n");
+  sr_put(b[..], "| Script | "); sr_put(b[..], s.script); sr_put(b[..], " |\n");
+  sr_put(b[..], "| STT round-trip | "); sr_put(b[..], ifx s.stt_pass then "PASS" else "FAIL");
+  sr_put(b[..], " (`"); sr_put(b[..], s.stt_heard); sr_put(b[..], "`) |\n");
+  sr_put(b[..], "| Loudness / peak | "); sr_put_tenths(b[..], s.lufs_tenths); sr_put(b[..], " LUFS / ");
+  sr_put_tenths(b[..], s.peak_tenths); sr_put(b[..], " dBFS |\n");
+  sr_put(b[..], "| Gemini audio judge | ");
+  if s.judge_overall >= 0 { sr_put_int(b[..], s.judge_overall); sr_put(b[..], "/10 — "); sr_put(b[..], s.judge_notes); }
+  else { sr_put(b[..], "skipped"); }
+  sr_put(b[..], " |\n| Video geometry | "); sr_put_int(b[..], s.width); sr_put(b[..], "x");
+  sr_put_int(b[..], s.height); sr_put(b[..], " @ "); sr_put_tenths(b[..], s.fps_tenths); sr_put(b[..], " fps |\n");
+  sr_put(b[..], "| A/V duration | video "); sr_put_int(b[..], s.video_ms); sr_put(b[..], " ms / audio ");
+  sr_put_int(b[..], s.audio_ms); sr_put(b[..], " ms (delta "); sr_put_int(b[..], av_delta); sr_put(b[..], " ms) |\n");
+  sr_put(b[..], "| Render wall | "); sr_put_int(b[..], s.render_wall_s); sr_put(b[..], " s |\n");
+  sr_put(b[..], "| Owner playback | **PENDING** |\n");
+  return ifx b[0].bad then "" else sr_text(b[..]);
+}
+
+SrSynthReceipt :: struct {
+  voice: string;
+  text: string;
+  tts_ms: int;
+  stt_ms: int;
+  judge_ms: int;
+  audio_ms: int;
+  raw_lufs_tenths: int;
+  final_lufs_tenths: int;
+  final_peak_tenths: int;
+  stt_pass: bool;
+  stt_heard: string;
+  judge_overall: int;
+  judge_naturalness: int;
+  judge_warmth: int;
+  judge_confidence: int;
+  judge_notes: string;
+}
+
+sr_synth_receipt_json :: (r: SrSynthReceipt, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "openagents.sarah.synth_receipt.v1");
+  jo_key(o[..], "voice"); jo_str(o[..], r.voice);
+  jo_key(o[..], "text"); jo_str(o[..], r.text);
+  jo_key(o[..], "ttsMs"); jo_int(o[..], r.tts_ms);
+  jo_key(o[..], "sttMs"); jo_int(o[..], r.stt_ms);
+  jo_key(o[..], "judgeMs"); jo_int(o[..], r.judge_ms);
+  jo_key(o[..], "audioMs"); jo_int(o[..], r.audio_ms);
+  lb1: [32] u8; l1: [1] SrBuf; l1[0].data = lb1[..]; sr_put_tenths(l1[..], r.raw_lufs_tenths);
+  jo_key(o[..], "rawLufs"); jo_raw(o[..], sr_text(l1[..]));
+  lb2: [32] u8; l2: [1] SrBuf; l2[0].data = lb2[..]; sr_put_tenths(l2[..], r.final_lufs_tenths);
+  jo_key(o[..], "finalLufs"); jo_raw(o[..], sr_text(l2[..]));
+  pb2: [32] u8; p2: [1] SrBuf; p2[0].data = pb2[..]; sr_put_tenths(p2[..], r.final_peak_tenths);
+  jo_key(o[..], "finalPeakDbfs"); jo_raw(o[..], sr_text(p2[..]));
+  jo_key(o[..], "sttPass"); jo_bool(o[..], r.stt_pass);
+  jo_key(o[..], "sttHeard"); jo_str(o[..], r.stt_heard);
+  jo_key(o[..], "judgeOverall"); jo_int(o[..], r.judge_overall);
+  jo_key(o[..], "judgeNaturalness"); jo_int(o[..], r.judge_naturalness);
+  jo_key(o[..], "judgeWarmth"); jo_int(o[..], r.judge_warmth);
+  jo_key(o[..], "judgeConfidence"); jo_int(o[..], r.judge_confidence);
+  jo_key(o[..], "judgeNotes"); jo_str(o[..], r.judge_notes);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// ---- Checks ----
+
+#test "buffer writer tracks exact capacity, overflow, ints, and tenths" {
+  buf: [4] u8; b: [1] SrBuf; b[0].data = buf[..];
+  sr_put(b[..], "ab"); sr_put_byte(b[..], 'c'); sr_put_byte(b[..], 'd');
+  #assert !b[0].bad && sr_text(b[..]) == "abcd";
+  sr_put_byte(b[..], 'e');
+  #assert b[0].bad && sr_text(b[..]) == "abcd";
+  buf2: [2] u8; b2: [1] SrBuf; b2[0].data = buf2[..];
+  sr_put(b2[..], "xyz");
+  #assert b2[0].bad && sr_text(b2[..]) == "xy";
+
+  nb: [32] u8; ni: [1] SrBuf; ni[0].data = nb[..];
+  sr_put_int(ni[..], -10); sr_put_byte(ni[..], ','); sr_put_int(ni[..], 0);
+  sr_put_byte(ni[..], ','); sr_put_int(ni[..], 9); sr_put_byte(ni[..], ','); sr_put_int(ni[..], 10);
+  #assert !ni[0].bad && sr_text(ni[..]) == "-10,0,9,10";
+
+  tb: [32] u8; ti: [1] SrBuf; ti[0].data = tb[..];
+  sr_put_tenths(ti[..], -1); sr_put_byte(ti[..], ','); sr_put_tenths(ti[..], 0);
+  sr_put_byte(ti[..], ','); sr_put_tenths(ti[..], 15);
+  #assert !ti[0].bad && sr_text(ti[..]) == "-0.1,0.0,1.5";
+}
+
+#forall "ASCII classification and URI unreserved boundaries hold for all 0..127" i: 0..<128 {
+  c := cast,trunc(u8) i;
+  up := i >= 65 && i <= 90;
+  lo := i >= 97 && i <= 122;
+  dig := i >= 48 && i <= 57;
+  #assert sr_lower(c) == (ifx up then cast,trunc(u8) (i + 32) else c);
+  #assert sr_is_alpha(c) == (up || lo);
+  #assert sr_is_alnum(c) == (up || lo || dig);
+  unres := up || lo || dig || i == 45 || i == 95 || i == 46 || i == 126;
+  #assert sr_uri_unreserved(c, false) == unres;
+  #assert sr_uri_unreserved(c, true) == (unres || i == 47);
+}
+
+#test "substring and prefix helpers handle empty, exact-end, single-char, and overflow lengths" {
+  #assert sr_contains_ci("abc", "") && !sr_contains_ci("abc", "z") && !sr_contains_ci("ab", "abc");
+  #assert sr_contains_ci("abC", "Bc") && !sr_contains_ci("abc", "bd") && !sr_contains_ci("ab", "bc") && !sr_contains_ci("abc", "xc");
+  #assert sr_starts_with("abc", "ab") && sr_starts_with("ab", "ab") && !sr_starts_with("a", "ab") && !sr_starts_with("abc", "ax") && !sr_starts_with("abc", "xb");
+}
+
+#test "British Zed paste lint catches standalone uppercase Zed only on UK voices" {
+  #assert sr_british_zed_risks("We forked Zed today.", "Leda (Female)", "English (US)") == 0;
+  #assert sr_british_zed_risks("Ze", "Alice", "en-GB") == 0;
+  #assert sr_british_zed_risks("Zed", "Alice", "en-GB") == 1;
+  #assert sr_british_zed_risks("We forked Zed today.", "Alice", "English (UK)") == 1;
+  #assert sr_british_zed_risks("Zed and Zed.", "British Female", "en-US") == 2;
+  #assert sr_british_zed_risks("Zed", "Voice", "British") == 1;
+  #assert sr_british_zed_risks("Zed", "en-GB-A", "en-US") == 1;
+  #assert sr_british_zed_risks("We forked zed today.", "Alice", "en-GB") == 0;
+  #assert sr_british_zed_risks("ZedEditor stays safe.", "Alice", "en-GB") == 0;
+  #assert sr_british_zed_risks("MyZed stays safe.", "Alice", "en-GB") == 0;
+  #assert sr_british_zed_risks("Zed1 stays safe.", "Alice", "en-GB") == 0;
+}
+
+#test "voice anchor prepends once, handles empties and 1-char prompts, and never duplicates" {
+  out: [256] u8;
+  a := "A woman's voice, distinctly feminine and never masculine.";
+  r1 := sr_anchor_voice_prompt(a, "Low and direct.", out[..]);
+  #assert r1 == "A woman's voice, distinctly feminine and never masculine. Low and direct.";
+  out2: [256] u8;
+  r2 := sr_anchor_voice_prompt(a, r1, out2[..]);
+  #assert r2 == r1;
+  out3: [64] u8;
+  #assert sr_anchor_voice_prompt("", "Calm.", out3[..]) == "Calm.";
+  out4: [64] u8;
+  #assert sr_anchor_voice_prompt("Fem.", "", out4[..]) == "Fem.";
+  out5: [64] u8;
+  #assert sr_anchor_voice_prompt("A", "B", out5[..]) == "A B";
+}
+
+#test "verbatim STT matcher normalizes case, punctuation, apostrophe boundaries, all contractions, and long words" {
+  #assert sr_verbatim_match("Hello! I'm Sarah. Shall we begin?", "hello i am sarah shall we begin");
+  #assert sr_verbatim_match("We're ready, don't wait!", "We are ready do not wait");
+  #assert sr_verbatim_match("Can't won't it's that's what's let's you're they're I've isn't",
+    "can not will not it is that is what is let us you are they are i have is not");
+  #assert sr_verbatim_match("were bob's foo'", "were bobs foo");
+  #assert sr_verbatim_match("a", "A");
+  #assert !sr_verbatim_match("Hello! I'm Sarah.", "Hello I am Sara");
+  #assert !sr_verbatim_match("", "") && !sr_verbatim_match("a", "");
+  nb: [128] u8;
+  #assert sr_normalize_words("im", nb[..]) == "im";
+  #assert sr_normalize_words("'im", nb[..]) == "im";
+  #assert sr_normalize_words("im' ", nb[..]) == "im";
+  #assert sr_normalize_words("a b", nb[..]) == "a b";
+  #assert sr_normalize_words("i'm im", nb[..]) == "i am im";
+  // Word exceeding 64-byte token buffer truncates cleanly without crashing.
+  long_w := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaBB";
+  out_l: [128] u8;
+  nl := sr_normalize_words(long_w, out_l[..]);
+  #assert nl.count == 64 && nl[0] == 'a' && nl[63] == 'a';
+}
+
+#test "GCS V4 string-to-sign matches exact canonical SHA-256 vector and refuses bad inputs" {
+  q: [1024] u8; ql: [1] int;
+  s: [1024] u8; sl: [1] int;
+  ok := sr_gcs_v4_prepare(
+    "openagentsgemini-sarah-export", "sarah-mvp/a b.png",
+    "oa-mvp@openagentsgemini.iam.gserviceaccount.com",
+    "20261123", "20261123T200000Z", 21600,
+    q[..], ql[..], s[..], sl[..]
+  );
+  #assert ok;
+  qs := cast(string) q[0..<ql[0]];
+  ss := cast(string) s[0..<sl[0]];
+  #assert qs == "X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=oa-mvp%40openagentsgemini.iam.gserviceaccount.com%2F20261123%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261123T200000Z&X-Goog-Expires=21600&X-Goog-SignedHeaders=host";
+  // Independently compute expected SHA-256 of canonical request.
+  exp_creq := "GET\n/openagentsgemini-sarah-export/sarah-mvp/a%20b.png\nX-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=oa-mvp%40openagentsgemini.iam.gserviceaccount.com%2F20261123%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261123T200000Z&X-Goog-Expires=21600&X-Goog-SignedHeaders=host\nhost:storage.googleapis.com\n\nhost\nUNSIGNED-PAYLOAD";
+  eh: [64] u8; #assert S_hex(S_hash(exp_creq), eh[..]);
+  eb: [256] u8; eb1: [1] SrBuf; eb1[0].data = eb[..];
+  sr_put(eb1[..], "GOOG4-RSA-SHA256\n20261123T200000Z\n20261123/auto/storage/goog4_request\n");
+  sr_put(eb1[..], cast(string) eh[..]);
+  #assert ss == sr_text(eb1[..]);
+  // Bucket encodes slashes as %2F while object preserves them (distinct canonical URI hashes).
+  s_a: [1024] u8; sl_a: [1] int;
+  s_b: [1024] u8; sl_b: [1] int;
+  #assert sr_gcs_v4_prepare("a/b", "o", "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s_a[..], sl_a[..]);
+  #assert sr_gcs_v4_prepare("a", "b/o", "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s_b[..], sl_b[..]);
+  #assert cast(string) s_a[0..<sl_a[0]] != cast(string) s_b[0..<sl_b[0]];
+  // Boundary acceptances (1s and 604800s) and all refusals including canonical-request overflow.
+  #assert sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 1, q[..], ql[..], s[..], sl[..]);
+  #assert sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 604800, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("", "o", "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "", "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "", "20261123", "20261123T200000Z", 60, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "2026", "20261123T200000Z", 60, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123", 60, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 0, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 604801, q[..], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 60, q[0..<10], ql[..], s[..], sl[..]);
+  #assert !sr_gcs_v4_prepare("b", "o", "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s[0..<10], sl[..]);
+  big_obj: [4096] u8;
+  for bi: 0..<4096 { big_obj[bi] = 'a'; }
+  #assert !sr_gcs_v4_prepare("b", cast(string) big_obj[..], "e@x", "20261123", "20261123T200000Z", 60, q[..], ql[..], s[..], sl[..]);
+}
+
+#test "Segmind payload adapts exactly per model, handles 1-char fields, defaults resolution, and refuses tiny buffers" {
+  out: [2048] u8;
+  j1 := sr_segmind_body("kling-v2-standard-avatar", "https://img", "https://aud", "", "", "", "", "", "x", "", "1080p", 4242, out[..]);
+  #assert j1 == "{\"image_url\":\"https://img\",\"audio_url\":\"https://aud\",\"prompt\":\"x\"}";
+  j1b := sr_segmind_body("kling-v2-pro-avatar", "https://img", "https://aud", "", "", "", "", "", "", "", "1080p", 4242, out[..]);
+  #assert j1b == "{\"image_url\":\"https://img\",\"audio_url\":\"https://aud\"}";
+  jv1 := sr_segmind_body("veed-fabric-1.0", "https://img", "https://aud", "", "", "", "", "", "", "", "x", 1, out[..]);
+  #assert jv1 == "{\"image\":\"https://img\",\"audio\":\"https://aud\",\"resolution\":\"x\"}";
+  jv2 := sr_segmind_body("veed-fabric-1.0", "https://img", "https://aud", "", "", "", "", "", "", "", "", 1, out[..]);
+  #assert jv2 == "{\"image\":\"https://img\",\"audio\":\"https://aud\",\"resolution\":\"720p\"}";
+  j2 := sr_segmind_body("p-video-avatar", "https://img", "a", "ignored", "Leda (Female)", "English (US)", "Fem.", "Calm.", "Still.", "Grin.", "", 4242, out[..]);
+  #assert j2 == "{\"image\":\"https://img\",\"audio\":\"a\",\"video_prompt\":\"Still.\",\"negative_prompt\":\"Grin.\",\"resolution\":\"1080p\",\"seed\":4242}";
+  j3 := sr_segmind_body("p-video-avatar", "https://img", "", "Hello.", "Leda (Female)", "English (US)", "Fem.", "Calm.", "Still.", "Grin.", "x", 7, out[..]);
+  #assert j3 == "{\"image\":\"https://img\",\"voice\":\"Leda (Female)\",\"voice_language\":\"English (US)\",\"voice_prompt\":\"Fem. Calm.\",\"voice_script\":\"Hello.\",\"video_prompt\":\"Still.\",\"negative_prompt\":\"Grin.\",\"resolution\":\"x\",\"seed\":7}";
+  tiny: [8] u8;
+  #assert sr_segmind_body("kling-v2-standard-avatar", "https://img", "https://aud", "", "", "", "", "", "", "", "", 1, tiny[..]) == "";
+}
+
+#test "SQ-1 scoreboard law and exact JSON/Markdown codecs enforce every field" {
+  #assert !sr_scoreboard_can_advance(false, true, true, false);
+  #assert !sr_scoreboard_can_advance(true, false, true, false);
+  #assert !sr_scoreboard_can_advance(true, true, false, false);
+  #assert !sr_scoreboard_can_advance(true, true, true, true);
+  #assert sr_scoreboard_can_advance(true, true, true, false);
+
+  sc := SrScoreboard.{
+    take_id = "mvp-01", date = "2026-11-23", model = "p-video-avatar", voice = "en-US-Chirp3-HD-Leda",
+    script = "Hello.", stt_heard = "Hello", stt_pass = true, lufs_tenths = -161, peak_tenths = -31,
+    judge_overall = 9, judge_notes = "clear and calm", width = 1920, height = 1088, fps_tenths = 240,
+    video_ms = 3400, audio_ms = 3380, render_wall_s = 90, mp4_path = "/tmp/a.mp4", qa_strip_path = "/tmp/s.jpg"
+  };
+  jb: [4096] u8; j := sr_scoreboard_json(sc, jb[..]);
+  #assert j == "{\"schemaVersion\":\"sarah-take-scoreboard.v1\",\"takeId\":\"mvp-01\",\"date\":\"2026-11-23\",\"model\":\"p-video-avatar\",\"voice\":\"en-US-Chirp3-HD-Leda\",\"script\":\"Hello.\",\"audioGates\":{\"sttStatus\":\"pass\",\"sttHeard\":\"Hello\",\"loudnessLufs\":-16.1,\"peakDbfs\":-3.1,\"llmJudgeOverall\":9,\"llmJudgeNotes\":\"clear and calm\"},\"videoGates\":{\"ownerPlaybackVerdict\":\"pending\",\"width\":1920,\"height\":1088,\"fps\":24.0,\"videoDurationMs\":3400,\"audioDurationMs\":3380,\"avDurationDeltaMs\":20},\"operationalGates\":{\"renderWallSeconds\":90,\"mp4Path\":\"/tmp/a.mp4\",\"qaStripPath\":\"/tmp/s.jpg\",\"noSecretsInArtifacts\":true},\"advance\":false}";
+
+  mb: [4096] u8; m := sr_scoreboard_md(sc, mb[..]);
+  #assert m == "# Take scoreboard — mvp-01\n\n- Schema: `sarah-take-scoreboard.v1`\n- Date: `2026-11-23`\n- Model: `p-video-avatar`\n- Voice: `en-US-Chirp3-HD-Leda`\n- **Advance: NO** — owner playback verdict is `pending` (SQ-1 law: no take advances on stills or metrics alone).\n\n| Gate | Value |\n| --- | --- |\n| Script | Hello. |\n| STT round-trip | PASS (`Hello`) |\n| Loudness / peak | -16.1 LUFS / -3.1 dBFS |\n| Gemini audio judge | 9/10 — clear and calm |\n| Video geometry | 1920x1088 @ 24.0 fps |\n| A/V duration | video 3400 ms / audio 3380 ms (delta 20 ms) |\n| Render wall | 90 s |\n| Owner playback | **PENDING** |\n";
+
+  // Exercise negative delta (video < audio), stt fail, skipped judge (-1), judge 0, and tiny buffer refusal.
+  sc2 := SrScoreboard.{
+    take_id = "mvp-02", date = "2026-11-23", model = "kling", voice = "Leda",
+    script = "Hi", stt_heard = "Bye", stt_pass = false, lufs_tenths = -190, peak_tenths = -60,
+    judge_overall = -1, judge_notes = "", width = 1280, height = 720, fps_tenths = 300,
+    video_ms = 3000, audio_ms = 3100, render_wall_s = 12, mp4_path = "a", qa_strip_path = "b"
+  };
+  j2 := sr_scoreboard_json(sc2, jb[..]);
+  #assert sr_contains_ci(j2, "\"sttStatus\":\"fail\"") && sr_contains_ci(j2, "\"avDurationDeltaMs\":100");
+  m2 := sr_scoreboard_md(sc2, mb[..]);
+  #assert sr_contains_ci(m2, "| STT round-trip | FAIL (`Bye`) |") && sr_contains_ci(m2, "| Gemini audio judge | skipped |") && sr_contains_ci(m2, "(delta 100 ms)");
+  sc3 := sc2; sc3.judge_overall = 0; sc3.judge_notes = "bad";
+  m3 := sr_scoreboard_md(sc3, mb[..]);
+  #assert sr_contains_ci(m3, "| Gemini audio judge | 0/10 — bad |");
+  tiny: [8] u8;
+  #assert sr_scoreboard_json(sc, tiny[..]) == "" && sr_scoreboard_md(sc, tiny[..]) == "";
+}
+
+#test "synth receipt codec writes exact canonical JSON and refuses tiny buffers" {
+  r := SrSynthReceipt.{
+    voice = "en-US-Chirp3-HD-Leda", text = "Hello.", tts_ms = 1200, stt_ms = 900, judge_ms = 3000,
+    audio_ms = 2400, raw_lufs_tenths = -237, final_lufs_tenths = -166, final_peak_tenths = -30,
+    stt_pass = true, stt_heard = "Hello", judge_overall = 8, judge_naturalness = 8,
+    judge_warmth = 7, judge_confidence = 9, judge_notes = "clear"
+  };
+  jb: [4096] u8; j := sr_synth_receipt_json(r, jb[..]);
+  #assert j == "{\"schema\":\"openagents.sarah.synth_receipt.v1\",\"voice\":\"en-US-Chirp3-HD-Leda\",\"text\":\"Hello.\",\"ttsMs\":1200,\"sttMs\":900,\"judgeMs\":3000,\"audioMs\":2400,\"rawLufs\":-23.7,\"finalLufs\":-16.6,\"finalPeakDbfs\":-3.0,\"sttPass\":true,\"sttHeard\":\"Hello\",\"judgeOverall\":8,\"judgeNaturalness\":8,\"judgeWarmth\":7,\"judgeConfidence\":9,\"judgeNotes\":\"clear\"}";
+  tiny: [8] u8;
+  #assert sr_synth_receipt_json(r, tiny[..]) == "";
+}

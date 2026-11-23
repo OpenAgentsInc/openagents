@@ -50,7 +50,7 @@ engine=()
 shopt -s nullglob
 # The engine, plus the host's own reply-path decisions (voice-host/voice-reply.coax);
 # voice-host/parakeet-check.coax is a check tool, not part of the host.
-for src in metaverse/voice*.coax metaverse-engine/net/voice-wire.coax metaverse/voice-host/voice-*.coax; do
+for src in metaverse/voice*.coax metaverse-engine/net/voice-wire.coax pay/voice-meter.coax metaverse/voice-host/voice-*.coax; do
   name="$(basename "$src" .coax)"                                    # voice-wire
   base="$(printf '%s' "$name" | awk -F- '{for(i=1;i<=NF;i++) printf toupper(substr($i,1,1)) substr($i,2)}')"  # VoiceWire
   # voice.coax -> VoiceEngine.h: "Voice.h" would be voice.h on a case-insensitive disk.
@@ -83,7 +83,11 @@ if [[ "$(uname)" == Darwin ]]; then
   SDKROOT="$sdk" COAX_CC="$cc" psionic/platform/parakeet-build.sh "$parakeet" > /dev/null
   psionic="$out/psionic"
   SDKROOT="$sdk" COAX_CC="$cc" psionic/platform/whisper-build.sh "$psionic" > /dev/null
-  speechlibs=("$parakeet/libpsionic-parakeet.a" "$psionic/libpsionic-whisper.a")
+  # Both Coax archives export shared psionic/lib/{ops,tensor}.coax helpers; scope Whisper to its C API.
+  "$cc" "${sysflags[@]}" -r -nostdlib -o "$psionic/whisper-scoped.o" \
+    -Wl,-exported_symbol,_psionic_stt_open -Wl,-exported_symbol,_psionic_stt_text -Wl,-exported_symbol,_psionic_stt_gpu \
+    -Wl,-force_load,"$psionic/libpsionic-whisper.a"
+  speechlibs=("$parakeet/libpsionic-parakeet.a" "$psionic/whisper-scoped.o")
 else
   COAX_CC="$cc" psionic/platform/parakeet-build.sh "$parakeet" > /dev/null
   speechlibs=("$parakeet/libpsionic-parakeet.a")

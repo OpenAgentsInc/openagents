@@ -1,0 +1,1006 @@
+// Sarah media, audio-first QA, GCS V4 URL signing, and lip-sync MVP CLI.
+//   coax/web/tool.sh sarah portrait --out portrait.png [--prompt "..."] [--model imagen-4.0-generate-001]
+//   coax/web/tool.sh sarah synth --text "..." --out DIR [--voice en-US-Chirp3-HD-Leda] [--rate 0.98] [--skip-judge]
+//   coax/web/tool.sh sarah lipsync --image PATH --audio PATH --out MP4 [--model p-video-avatar]
+//       [--bucket openagentsgemini-sarah-export] [--script "..."] [--voice-judge N] [--judge-notes "..."]
+//   coax/web/tool.sh sarah mvp --text "..." --out DIR [--image PATH]
+//       [--models p-video-avatar,kling-v2-standard-avatar] [--bucket openagentsgemini-sarah-export]
+//
+// Pipeline (audio-first, Google-first, SQ-1 playback-first):
+//   1. Portrait  — Google Vertex AI Imagen (imagen-4.0-generate-001) or owner-supplied --image
+//   2. Synth     — Google Cloud TTS Chirp 3 HD (en-US-Chirp3-HD-Leda, 48 kHz LINEAR16)
+//                  -> Coax measure.coax EBU R128 LUFS/peak -> ffmpeg -16 LUFS / -3 dBTP master + 24 kHz copy
+//                  -> Google Cloud STT V2 (chirp_3) verbatim word check
+//                  -> Vertex AI Gemini (gemini-2.5-flash) multimodal audio judge (1..10)
+//   3. Lip-sync  — gcloud storage cp -> pure-Coax GCS V4 canonical request + OpenSSL RSA-SHA256 signing
+//                  -> Segmind Async Inference V2 (submit -> poll -> download MP4)
+//                  -> ffprobe A/V check + final MP4 STT round-trip + Coax LUFS + QA stills + 6-frame strip
+//                  -> sarah-take-scoreboard.v1 JSON + Markdown (advance: false until owner playback PASS)
+//
+// Secrets stay local (never printed, never passed in argv):
+//   ~/work/.secrets/gcloud-sa-config, ~/work/.secrets/gcp-mvp-automation.json, ~/work/.secrets/segmind.env
+// Generated media stays local (e.g. ~/.openagents/sarah-mvp/); never commit MP4/WAV/PNG outputs.
+// tool.sh: stack-gib 2
+
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/text/base64.coax";
+#load "../../metaverse-engine/audio/measure.coax";
+#load "sarah-lib.coax";
+
+SR_GCP_PROJECT :: "openagentsgemini";
+SR_TTS_URL :: "https://texttospeech.googleapis.com/v1/text:synthesize";
+SR_STT_V2_URL :: "https://us-speech.googleapis.com/v2/projects/openagentsgemini/locations/us/recognizers/_:recognize";
+SR_GEMINI_URL :: "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent";
+SR_IMAGEN_PREFIX :: "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/";
+SR_DEFAULT_BUCKET :: "openagentsgemini-sarah-export";
+SR_DEFAULT_VOICE :: "en-US-Chirp3-HD-Leda";
+SR_DEFAULT_IMAGEN :: "gemini-2.5-flash-image";
+SR_VOICE_ANCHOR :: "A woman's voice, distinctly feminine and never masculine.";
+SR_DEFAULT_VOICE_PROMPT :: "A calm, certain, direct register. Grounded and unhurried. Precise consonants, short declarative phrasing, plain professional English with dry warmth; no cheer or sales cadence.";
+SR_DEFAULT_PORTRAIT_PROMPT :: "Close-up studio portrait of a poised young woman in her late twenties with intense bright blue eyes, long dark-brown hair framing her face, subtle natural skin texture, composed neutral closed-lip expression with steady direct eye contact into the camera. Wearing a dark matte navy-black sci-fi jacket collar with subtle thin glowing cyan accent piping. Cinematic split lighting with warm amber key light on the left cheek and cool cyan rim light on the right cheek, softly blurred dark moody background, fixed camera, photorealistic 85mm portrait lens, clean unobstructed frame.";
+SR_DEFAULT_VIDEO_PROMPT :: "Composed, still, and direct to camera. Neutral closed-lip expression at rest; no persistent toothy smile. Steady eye contact, restrained natural head movement and blinking synchronized to the spoken audio. Cinematic warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.";
+SR_DEFAULT_NEG_PROMPT :: "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face";
+
+SR_BIG :: 16 * 1024 * 1024;
+SR_AUDIO_MAX_FRAMES :: 48000 * 65;   // up to 65 seconds at 48 kHz
+
+sr_trim :: (t: string) -> string {
+  a := 0; b := t.count;
+  while a < b && (t[a] == ' ' || t[a] == '\t' || t[a] == '\r' || t[a] == '\n') { a += 1; }
+  while b > a && (t[b - 1] == ' ' || t[b - 1] == '\t' || t[b - 1] == '\r' || t[b - 1] == '\n') { b -= 1; }
+  return t[a..<b];
+}
+
+sr_mkdir_p :: (dir: string) -> bool {
+  if dir.count == 0 { return false; }
+  o: [256] u8; e: [1024] u8;
+  argv := [3] string.["mkdir", "-p", dir];
+  r := proc_run(argv[..], 15000, o[..], e[..]);
+  return r.started == 0 && r.status == 0;
+}
+
+sr_home_path :: (rel: string, out: [] u8) -> string {
+  hb: [512] u8;
+  h := proc_getenv("HOME", hb[..]);
+  return fs_join(h, rel, out);
+}
+
+sr_gcloud_config :: (out: [] u8) -> string {
+  e := proc_getenv("OA_SARAH_GCLOUD_CONFIG", out);
+  if e.count > 0 { return e; }
+  return sr_home_path("work/.secrets/gcloud-sa-config", out);
+}
+
+sr_sa_json_path :: (out: [] u8) -> string {
+  e := proc_getenv("OA_SARAH_SA_JSON", out);
+  if e.count > 0 { return e; }
+  return sr_home_path("work/.secrets/gcp-mvp-automation.json", out);
+}
+
+sr_gcp_token :: (out: [] u8) -> string {
+  cfg_buf: [1024] u8;
+  cfg := sr_gcloud_config(cfg_buf[..]);
+  env_buf: [1200] u8; eb: [1] SrBuf; eb[0].data = env_buf[..];
+  sr_put(eb[..], "CLOUDSDK_CONFIG="); sr_put(eb[..], cfg);
+  h := proc_new();
+  ok := proc_arg(h, "gcloud") && proc_arg(h, "auth") && proc_arg(h, "print-access-token") && proc_env(h, sr_text(eb[..]));
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return ""; }
+  n := proc_line(h, 60000, out);
+  st := proc_wait(h, 60000);
+  done := proc_release(h);
+  if n <= 0 || st != 0 { return ""; }
+  return sr_trim(cast(string) out[0..<n]);
+}
+
+sr_segmind_key :: (out: [] u8) -> string {
+  e := proc_getenv("SEGMIND_API_KEY", out);
+  if e.count > 0 { return sr_trim(e); }
+  pb: [1024] u8;
+  p := proc_getenv("SEGMIND_ENV_FILE", pb[..]);
+  if p.count == 0 { p = sr_home_path("work/.secrets/segmind.env", pb[..]); }
+  raw: [8192] u8;
+  n := fs_read(p, raw[..]);
+  if n <= 0 { return ""; }
+  t := cast(string) raw[0..<n];
+  key := "SEGMIND_API_KEY=";
+  i := 0;
+  while i < t.count {
+    e2 := i; while e2 < t.count && t[e2] != '\n' { e2 += 1; }
+    line := sr_trim(t[i..<e2]); i = e2 + 1;
+    if sr_starts_with(line, key) {
+      val := sr_trim(line[key.count..<line.count]);
+      b: [1] SrBuf; b[0].data = out; sr_put(b[..], val);
+      return sr_text(b[..]);
+    }
+  }
+  return "";
+}
+
+// Writes headers to a private temp file, calls curl, and deletes the header file immediately.
+sr_curl_http :: (method: string, url: string, headers: string, body_path: string, resp_path: string, work_dir: string, timeout_s: string) -> int {
+  hp: [2048] u8; head := fs_join(work_dir, ".curl-headers.tmp", hp[..]);
+  if !fs_write(head, headers) { return -1; }
+  hh: [2100] u8; hb: [1] SrBuf; hb[0].data = hh[..]; sr_put(hb[..], "@"); sr_put(hb[..], head);
+  code_buf: [64] u8; err_buf: [4096] u8;
+  if body_path.count > 0 {
+    bb: [2100] u8; bf: [1] SrBuf; bf[0].data = bb[..]; sr_put(bf[..], "@"); sr_put(bf[..], body_path);
+    argv := [15] string.["curl", "-sS", "-L", "-X", method, "--max-time", timeout_s, "-H", sr_text(hb[..]), "--data-binary", sr_text(bf[..]), "-o", resp_path, "-w", "%{http_code}"];
+    // pass url via proc_new so we can add the 16th arg cleanly
+    h := proc_new();
+    ok := true;
+    for a: argv { ok = ok && proc_arg(h, a); }
+    ok = ok && proc_arg(h, url);
+    if !ok || proc_start(h) != 0 { done := proc_release(h); gone := fs_remove(head); return -1; }
+    cn := proc_line(h, 600000, code_buf[..]);
+    st := proc_wait(h, 600000);
+    done := proc_release(h);
+    gone := fs_remove(head);
+    if st != 0 || cn <= 0 { return -1; }
+    return args_whole(sr_trim(cast(string) code_buf[0..<cn]));
+  }
+  argv := [14] string.["curl", "-sS", "-L", "-X", method, "--max-time", timeout_s, "-H", sr_text(hb[..]), "-o", resp_path, "-w", "%{http_code}", url];
+  r := proc_run(argv[..], 600000, code_buf[..], err_buf[..]);
+  gone := fs_remove(head);
+  if r.started != 0 || r.status != 0 { return -1; }
+  return args_whole(sr_trim(cast(string) code_buf[0..<r.out_n]));
+}
+
+sr_gcp_headers :: (token: string, out: [] u8) -> string {
+  b: [1] SrBuf; b[0].data = out;
+  sr_put(b[..], "Authorization: Bearer "); sr_put(b[..], token);
+  sr_put(b[..], "\nx-goog-user-project: "); sr_put(b[..], SR_GCP_PROJECT);
+  sr_put(b[..], "\nContent-Type: application/json\n");
+  return sr_text(b[..]);
+}
+
+// Finds `"field":"<base64>"` (with optional space after colon) inside a large JSON buffer
+// without blowing a JvNode table, and base64-decodes it directly to out_path.
+sr_extract_b64_to_file :: (json_path: string, field: string, out_path: string) -> int {
+  raw: [SR_BIG] u8;
+  n := fs_read(json_path, raw[..]);
+  if n <= 0 { return -1; }
+  txt := cast(string) raw[0..<n];
+  pat_buf: [128] u8; pb: [1] SrBuf; pb[0].data = pat_buf[..];
+  sr_put_byte(pb[..], '"'); sr_put(pb[..], field); sr_put_byte(pb[..], '"');
+  pat := sr_text(pb[..]);
+  at := -1;
+  i := 0;
+  while i + pat.count < txt.count {
+    match := true;
+    for j: 0..<pat.count { if txt[i + j] != pat[j] { match = false; break; } }
+    if match {
+      q := i + pat.count;
+      while q < txt.count && (txt[q] == ' ' || txt[q] == '\t' || txt[q] == '\n' || txt[q] == '\r') { q += 1; }
+      if q < txt.count && txt[q] == ':' {
+        q += 1;
+        while q < txt.count && (txt[q] == ' ' || txt[q] == '\t' || txt[q] == '\n' || txt[q] == '\r') { q += 1; }
+        if q < txt.count && txt[q] == '"' { at = q + 1; break; }
+      }
+    }
+    i += 1;
+  }
+  if at < 0 { return -1; }
+  end := at;
+  while end < txt.count && txt[end] != '"' { end += 1; }
+  if end <= at { return -1; }
+  dec: [SR_BIG] u8;
+  m := b64_decode(txt[at..<end], dec[..]);
+  if m <= 0 || !fs_write(out_path, cast(string) dec[0..<m]) { return -1; }
+  return m;
+}
+
+// ---- WAV reading + Coax EBU R128 loudness measurement
+
+SrWav :: struct { ok: bool; rate: int; channels: int; data_off: int; frames: int; }
+
+sr_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+sr_u32 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24); }
+
+sr_parse_wav :: (b: [] u8, n: int) -> SrWav {
+  w: SrWav;
+  if n < 44 || b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F' { return w; }
+  at := 12;
+  while at + 8 <= n {
+    sz := sr_u32(b, at + 4);
+    if b[at] == 'f' && b[at + 1] == 'm' && b[at + 2] == 't' { w.channels = sr_u16(b, at + 10); w.rate = sr_u32(b, at + 12); }
+    if b[at] == 'd' && b[at + 1] == 'a' && b[at + 2] == 't' && b[at + 3] == 'a' {
+      w.data_off = at + 8;
+      avail := n - w.data_off;
+      if sz < avail { avail = sz; }
+      ch := ifx w.channels > 0 then w.channels else 1;
+      w.frames = avail / (2 * ch);
+      w.ok = w.rate > 0 && w.channels > 0 && w.frames > 0;
+      return w;
+    }
+    at += 8 + sz + (sz & 1);
+  }
+  return w;
+}
+
+SrAudioStats :: struct { ok: bool; lufs_tenths: int; peak_tenths: int; ms: int; rate: int; }
+
+sr_measure_wav_48k :: (wav_path: string) -> SrAudioStats {
+  st: SrAudioStats;
+  raw: [SR_BIG] u8;
+  n := fs_read(wav_path, raw[..]);
+  if n < 44 { return st; }
+  w := sr_parse_wav(raw[..], n);
+  if !w.ok || w.rate != 48000 || w.channels < 1 || w.channels > 2 { return st; }
+  frames := w.frames;
+  if frames > SR_AUDIO_MAX_FRAMES { frames = SR_AUDIO_MAX_FRAMES; }
+  xs: [SR_AUDIO_MAX_FRAMES * 2] f32;
+  sq: [SR_AUDIO_MAX_FRAMES] f64;
+  for i: 0..<(frames * w.channels) {
+    v := sr_u16(raw[..], w.data_off + i * 2);
+    if v >= 32768 { v -= 65536; }
+    xs[i] = f32(v) / 32768.0f32;
+  }
+  m := meas_measure(xs[..], frames, w.channels, -48.0, sq[..]);
+  st.ok = true;
+  st.lufs_tenths = cast(int) floor(m.lufs * 10.0 + 0.5);
+  st.peak_tenths = cast(int) floor(m.peak_db * 10.0 + 0.5);
+  st.ms = frames * 1000 / w.rate;
+  st.rate = w.rate;
+  return st;
+}
+
+// ---- Google Cloud STT V2 (chirp_3) helper
+
+sr_stt_v2 :: (token: string, wav_16k_path: string, work_dir: string, heard_out: [] u8) -> string {
+  raw: [SR_BIG] u8;
+  n := fs_read(wav_16k_path, raw[..]);
+  if n < 44 { return ""; }
+  w := sr_parse_wav(raw[..], n);
+  if !w.ok { return ""; }
+  pcm_bytes := w.frames * 2 * w.channels;
+  if w.data_off + pcm_bytes > n { pcm_bytes = n - w.data_off; }
+  b64: [SR_BIG] u8;
+  bn := b64_encode(cast(string) raw[w.data_off..<w.data_off + pcm_bytes], b64[..]);
+  req: [SR_BIG] u8; rb: [1] SrBuf; rb[0].data = req[..];
+  sr_put(rb[..], "{\"config\":{\"explicitDecodingConfig\":{\"encoding\":\"LINEAR16\",\"sampleRateHertz\":");
+  sr_put_int(rb[..], w.rate);
+  sr_put(rb[..], ",\"audioChannelCount\":1},\"languageCodes\":[\"en-US\"],\"model\":\"chirp_3\"},\"content\":\"");
+  sr_put(rb[..], cast(string) b64[0..<bn]);
+  sr_put(rb[..], "\"}");
+  if rb[0].bad { return ""; }
+  bp: [2048] u8; bodyp := fs_join(work_dir, "stt-req.json", bp[..]);
+  rp: [2048] u8; respp := fs_join(work_dir, "stt-resp.json", rp[..]);
+  if !fs_write(bodyp, sr_text(rb[..])) { return ""; }
+  hb: [4096] u8; hdr := sr_gcp_headers(token, hb[..]);
+  code := sr_curl_http("POST", SR_STT_V2_URL, hdr, bodyp, respp, work_dir, "120");
+  gone := fs_remove(bodyp);
+  if code != 200 { tool_err("sarah: STT V2 HTTP "); print("%\n", code); return ""; }
+  js: [262144] u8;
+  jn := fs_read(respp, js[..]);
+  if jn <= 0 { return ""; }
+  nodes: [8192] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) js[0..<jn], nodes[..]) { return ""; }
+  out: [1] SrBuf; out[0].data = heard_out;
+  res := jv_get(d[0], 0, "results");
+  for i: 0..<jv_len(d[0], res) {
+    tr := jv_path(d[0], jv_at(d[0], res, i), "alternatives[0].transcript");
+    tb: [1024] u8; tn := jv_str(d[0], tr, tb[..]);
+    if tn <= 0 { continue; }
+    seg := sr_trim(cast(string) tb[0..<tn]);
+    if seg.count == 0 || seg == "[BACKGROUND]" { continue; }
+    if out[0].n > 0 { sr_put_byte(out[..], ' '); }
+    sr_put(out[..], seg);
+  }
+  return sr_text(out[..]);
+}
+
+// ---- Vertex AI Gemini multimodal audio judge (naturalness / warmth / confidence / overall 1..10)
+
+SrJudge :: struct { ok: bool; naturalness: int; warmth: int; confidence: int; overall: int; notes: [512] u8; notes_n: int; }
+
+sr_gemini_judge_audio :: (token: string, wav_path: string, expected_script: string, work_dir: string) -> SrJudge {
+  j: SrJudge; j.overall = -1;
+  raw: [SR_BIG] u8;
+  n := fs_read(wav_path, raw[..]);
+  if n <= 44 { return j; }
+  b64: [SR_BIG] u8;
+  bn := b64_encode(cast(string) raw[0..<n], b64[..]);
+  req: [SR_BIG] u8; rb: [1] SrBuf; rb[0].data = req[..];
+  sr_put(rb[..], "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/wav\",\"data\":\"");
+  sr_put(rb[..], cast(string) b64[0..<bn]);
+  sr_put(rb[..], "\"}},{\"text\":");
+  pb: [2048] u8; po: [1] Jo; jo_start(po[..], pb[..]);
+  prompt_buf: [1536] u8; pf: [1] SrBuf; pf[0].data = prompt_buf[..];
+  sr_put(pf[..], "You are an audio director evaluating Sarah, a composed, direct, professional female AI speaker. Expected script: ");
+  sr_put(pf[..], expected_script);
+  sr_put(pf[..], " — Listen carefully to prosody, pacing, pronunciation, and naturalness. Score integers 1-10 for naturalness, warmth, confidence, and overall, plus concise defect notes (<=20 words). Reply ONLY as JSON: {\"naturalness\":N,\"warmth\":N,\"confidence\":N,\"overall\":N,\"notes\":\"...\"}");
+  jo_str(po[..], sr_text(pf[..]));
+  sr_put(rb[..], jo_text(po[..]));
+  sr_put(rb[..], "}]}],\"generationConfig\":{\"responseMimeType\":\"application/json\",\"temperature\":0}}");
+  if rb[0].bad { return j; }
+  bp: [2048] u8; bodyp := fs_join(work_dir, "judge-req.json", bp[..]);
+  rp: [2048] u8; respp := fs_join(work_dir, "judge-resp.json", rp[..]);
+  if !fs_write(bodyp, sr_text(rb[..])) { return j; }
+  hb: [4096] u8; hdr := sr_gcp_headers(token, hb[..]);
+  code := sr_curl_http("POST", SR_GEMINI_URL, hdr, bodyp, respp, work_dir, "120");
+  gone := fs_remove(bodyp);
+  if code != 200 { tool_err("sarah: Gemini judge HTTP "); print("%\n", code); return j; }
+  js: [262144] u8;
+  jn := fs_read(respp, js[..]);
+  if jn <= 0 { return j; }
+  nodes: [4096] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) js[0..<jn], nodes[..]) { return j; }
+  at := jv_path(d[0], 0, "candidates[0].content.parts[0].text");
+  tb: [4096] u8; tn := jv_str(d[0], at, tb[..]);
+  if tn <= 0 { return j; }
+  n2: [256] JvNode; d2: [1] Jv;
+  if !jv_parse(d2[..], cast(string) tb[0..<tn], n2[..]) { return j; }
+  j.naturalness = jv_int(d2[0], jv_get(d2[0], 0, "naturalness"), -1);
+  j.warmth = jv_int(d2[0], jv_get(d2[0], 0, "warmth"), -1);
+  j.confidence = jv_int(d2[0], jv_get(d2[0], 0, "confidence"), -1);
+  j.overall = jv_int(d2[0], jv_get(d2[0], 0, "overall"), -1);
+  nn := jv_str(d2[0], jv_get(d2[0], 0, "notes"), j.notes[..]);
+  if nn > 0 { j.notes_n = nn; }
+  j.ok = j.overall >= 0 && j.overall <= 10;
+  return j;
+}
+
+// ---- Command 1: portrait (Google Vertex AI Gemini Image — gemini-2.5-flash-image)
+
+cmd_portrait :: (out_path: string, prompt: string, model: string, aspect: string) -> int {
+  if out_path.count == 0 { tool_errln("sarah portrait: --out PATH is required"); return 2; }
+  dir := fs_dir(out_path);
+  if dir.count > 0 { ok := sr_mkdir_p(dir); }
+  t0 := proc_now_ms();
+  tok_buf: [4096] u8; token := sr_gcp_token(tok_buf[..]);
+  if token.count == 0 { tool_errln("sarah portrait: failed to mint Google access token"); return 1; }
+  url_buf: [512] u8; ub: [1] SrBuf; ub[0].data = url_buf[..];
+  sr_put(ub[..], SR_IMAGEN_PREFIX); sr_put(ub[..], model); sr_put(ub[..], ":generateContent");
+  req_buf: [8192] u8; o: [1] Jo; jo_start(o[..], req_buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "contents"); jo_arr(o[..]);
+    jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "user");
+      jo_key(o[..], "parts"); jo_arr(o[..]);
+        jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], prompt); jo_end(o[..]);
+      jo_end(o[..]);
+    jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "generationConfig"); jo_obj(o[..]);
+    jo_key(o[..], "responseModalities"); jo_arr(o[..]); jo_str(o[..], "IMAGE"); jo_end(o[..]);
+    jo_key(o[..], "imageConfig"); jo_obj(o[..]); jo_key(o[..], "aspectRatio"); jo_str(o[..], aspect); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  work := ifx dir.count > 0 then dir else "/tmp";
+  bp: [2048] u8; bodyp := fs_join(work, "portrait-req.json", bp[..]);
+  rp: [2048] u8; respp := fs_join(work, "portrait-resp.json", rp[..]);
+  if !fs_write(bodyp, jo_text(o[..])) { return 1; }
+  hb: [4096] u8; hdr := sr_gcp_headers(token, hb[..]);
+  code := sr_curl_http("POST", sr_text(ub[..]), hdr, bodyp, respp, work, "120");
+  gone := fs_remove(bodyp);
+  if code != 200 {
+    tool_err("sarah portrait: Vertex Gemini Image HTTP "); print("% (see %)\n", code, respp);
+    return 1;
+  }
+  bytes := sr_extract_b64_to_file(respp, "data", out_path);
+  if bytes <= 0 { tool_err("sarah portrait: no inlineData.data in Vertex image response (see "); tool_err(respp); tool_errln(")"); return 1; }
+  gone2 := fs_remove(respp);
+  dt := proc_now_ms() - t0;
+  print("sarah portrait: OK model=% bytes=% wall_ms=% out=%\n", model, bytes, dt, out_path);
+  return 0;
+}
+
+// ---- Command 2: synth (Google Chirp 3 HD -> Coax LUFS -> -16 LUFS norm -> Google STT V2 -> Gemini Judge)
+
+SrSynthOut :: struct {
+  ok: bool;
+  wav_48k: [2048] u8; wav_48k_n: int;
+  wav_24k: [2048] u8; wav_24k_n: int;
+  stt_heard: [2048] u8; stt_heard_n: int;
+  stt_pass: bool;
+  raw_lufs_tenths: int;
+  final_lufs_tenths: int;
+  final_peak_tenths: int;
+  tts_ms: int;
+  stt_ms: int;
+  judge_ms: int;
+  audio_ms: int;
+  judge: SrJudge;
+}
+
+sr_run_synth :: (text: string, out_dir: string, voice: string, rate_str: string, skip_judge: bool, res: [] SrSynthOut) -> int {
+  if !sr_mkdir_p(out_dir) { tool_errln("sarah synth: failed to create output directory"); return 1; }
+  tok_buf: [4096] u8; token := sr_gcp_token(tok_buf[..]);
+  if token.count == 0 { tool_errln("sarah synth: failed to mint Google access token"); return 1; }
+
+  // 1. Google Cloud TTS Chirp 3 HD (LINEAR16 48 kHz)
+  t_tts := proc_now_ms();
+  req_buf: [8192] u8; o: [1] Jo; jo_start(o[..], req_buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "input"); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
+  jo_key(o[..], "voice"); jo_obj(o[..]); jo_key(o[..], "languageCode"); jo_str(o[..], "en-US"); jo_key(o[..], "name"); jo_str(o[..], voice); jo_end(o[..]);
+  jo_key(o[..], "audioConfig"); jo_obj(o[..]);
+    jo_key(o[..], "audioEncoding"); jo_str(o[..], "LINEAR16");
+    jo_key(o[..], "sampleRateHertz"); jo_int(o[..], 48000);
+    jo_key(o[..], "speakingRate"); jo_raw(o[..], rate_str);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  bp: [2048] u8; bodyp := fs_join(out_dir, "tts-req.json", bp[..]);
+  rp: [2048] u8; respp := fs_join(out_dir, "tts-resp.json", rp[..]);
+  rawp_buf: [2048] u8; rawp := fs_join(out_dir, "raw-48k.wav", rawp_buf[..]);
+  if !fs_write(bodyp, jo_text(o[..])) { return 1; }
+  hb: [4096] u8; hdr := sr_gcp_headers(token, hb[..]);
+  code := sr_curl_http("POST", SR_TTS_URL, hdr, bodyp, respp, out_dir, "120");
+  gone := fs_remove(bodyp);
+  if code != 200 { tool_err("sarah synth: Google TTS HTTP "); print("%\n", code); return 1; }
+  wav_bytes := sr_extract_b64_to_file(respp, "audioContent", rawp);
+  gone2 := fs_remove(respp);
+  if wav_bytes <= 44 { tool_errln("sarah synth: Google TTS returned empty audioContent"); return 1; }
+  res[0].tts_ms = proc_now_ms() - t_tts;
+
+  // 2. Measure raw loudness in Coax (measure.coax), then normalize to -16 LUFS / -3 dBTP
+  raw_st := sr_measure_wav_48k(rawp);
+  if !raw_st.ok { tool_errln("sarah synth: failed to measure raw 48 kHz WAV"); return 1; }
+  res[0].raw_lufs_tenths = raw_st.lufs_tenths;
+
+  w48 := fs_join(out_dir, "take-48k.wav", res[0].wav_48k[..]); res[0].wav_48k_n = w48.count;
+  w24 := fs_join(out_dir, "take-24k.wav", res[0].wav_24k[..]); res[0].wav_24k_n = w24.count;
+  w16_buf: [2048] u8; w16 := fs_join(out_dir, "take-16k.wav", w16_buf[..]);
+
+  // Compute exact gain toward -16.0 LUFS, then clamp with alimiter at -3.0 dBTP (0.707 linear).
+  gain_tenths := -160 - raw_st.lufs_tenths;
+  if gain_tenths > 180 { gain_tenths = 180; }
+  if gain_tenths < -180 { gain_tenths = -180; }
+  af_buf: [256] u8; af: [1] SrBuf; af[0].data = af_buf[..];
+  sr_put(af[..], "volume="); sr_put_tenths(af[..], gain_tenths); sr_put(af[..], "dB,alimiter=limit=0.707:level=false");
+  fo: [512] u8; fe: [2048] u8;
+  ff48 := [14] string.["ffmpeg", "-v", "error", "-y", "-i", rawp, "-af", sr_text(af[..]), "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le"];
+  h48 := proc_new(); ok48 := true;
+  for a: ff48 { ok48 = ok48 && proc_arg(h48, a); }
+  ok48 = ok48 && proc_arg(h48, w48);
+  if !ok48 || proc_start(h48) != 0 || proc_wait(h48, 60000) != 0 { done := proc_release(h48); tool_errln("sarah synth: ffmpeg 48k normalize failed"); return 1; }
+  done48 := proc_release(h48);
+
+  ff24 := [13] string.["ffmpeg", "-v", "error", "-y", "-i", w48, "-ar", "24000", "-ac", "1", "-c:a", "pcm_s16le", w24];
+  r24 := proc_run(ff24[..], 60000, fo[..], fe[..]);
+  if r24.started != 0 || r24.status != 0 { tool_errln("sarah synth: ffmpeg 24k resample failed"); return 1; }
+
+  ff16 := [13] string.["ffmpeg", "-v", "error", "-y", "-i", w48, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", w16];
+  r16 := proc_run(ff16[..], 60000, fo[..], fe[..]);
+  if r16.started != 0 || r16.status != 0 { tool_errln("sarah synth: ffmpeg 16k resample failed"); return 1; }
+
+  fin_st := sr_measure_wav_48k(w48);
+  res[0].final_lufs_tenths = fin_st.lufs_tenths;
+  res[0].final_peak_tenths = fin_st.peak_tenths;
+  res[0].audio_ms = fin_st.ms;
+
+  // 3. Google Cloud STT V2 (chirp_3) verbatim round-trip check
+  t_stt := proc_now_ms();
+  heard := sr_stt_v2(token, w16, out_dir, res[0].stt_heard[..]);
+  res[0].stt_heard_n = heard.count;
+  res[0].stt_ms = proc_now_ms() - t_stt;
+  res[0].stt_pass = sr_verbatim_match(text, heard);
+
+  // 4. Vertex AI Gemini multimodal audio judge
+  if !skip_judge {
+    t_j := proc_now_ms();
+    res[0].judge = sr_gemini_judge_audio(token, w24, text, out_dir);
+    res[0].judge_ms = proc_now_ms() - t_j;
+  } else {
+    res[0].judge.overall = -1;
+  }
+
+  // Write synth-receipt.json via the single codec in sarah-lib.coax
+  rec := SrSynthReceipt.{
+    voice = voice,
+    text = text,
+    tts_ms = res[0].tts_ms,
+    stt_ms = res[0].stt_ms,
+    judge_ms = res[0].judge_ms,
+    audio_ms = res[0].audio_ms,
+    raw_lufs_tenths = res[0].raw_lufs_tenths,
+    final_lufs_tenths = res[0].final_lufs_tenths,
+    final_peak_tenths = res[0].final_peak_tenths,
+    stt_pass = res[0].stt_pass,
+    stt_heard = heard,
+    judge_overall = res[0].judge.overall,
+    judge_naturalness = res[0].judge.naturalness,
+    judge_warmth = res[0].judge.warmth,
+    judge_confidence = res[0].judge.confidence,
+    judge_notes = cast(string) res[0].judge.notes[0..<res[0].judge.notes_n]
+  };
+  rb2: [8192] u8; rec_json := sr_synth_receipt_json(rec, rb2[..]);
+  rcp_buf: [2048] u8; rcp := fs_join(out_dir, "synth-receipt.json", rcp_buf[..]);
+  wrote := fs_write(rcp, rec_json);
+  res[0].ok = true;
+
+  lb1: [32] u8; l1: [1] SrBuf; l1[0].data = lb1[..]; sr_put_tenths(l1[..], res[0].raw_lufs_tenths);
+  lb2: [32] u8; l2: [1] SrBuf; l2[0].data = lb2[..]; sr_put_tenths(l2[..], res[0].final_lufs_tenths);
+  pb2: [32] u8; p2: [1] SrBuf; p2[0].data = pb2[..]; sr_put_tenths(p2[..], res[0].final_peak_tenths);
+  print("sarah synth: voice=% tts=%ms stt=%ms(pass=%) lufs=%->% peak=%dBFS audio=%ms judge=%/10 (%)\n",
+    voice, res[0].tts_ms, res[0].stt_ms, ifx res[0].stt_pass then "PASS" else "FAIL",
+    sr_text(l1[..]), sr_text(l2[..]), sr_text(p2[..]), res[0].audio_ms,
+    res[0].judge.overall, cast(string) res[0].judge.notes[0..<res[0].judge.notes_n]);
+  return 0;
+}
+
+// ---- GCS upload + pure-Coax V4 Signed URL (using OpenSSL RSA-SHA256 on local SA key)
+
+sr_gcs_upload_and_sign :: (local_path: string, bucket: string, object: string, work_dir: string, url_out: [] u8) -> string {
+  // 1. Upload via gcloud storage cp
+  cfg_buf: [1024] u8; cfg := sr_gcloud_config(cfg_buf[..]);
+  env_buf: [1200] u8; eb: [1] SrBuf; eb[0].data = env_buf[..];
+  sr_put(eb[..], "CLOUDSDK_CONFIG="); sr_put(eb[..], cfg);
+  dst_buf: [1024] u8; db: [1] SrBuf; db[0].data = dst_buf[..];
+  sr_put(db[..], "gs://"); sr_put(db[..], bucket); sr_put_byte(db[..], '/'); sr_put(db[..], object);
+  h := proc_new();
+  ok := proc_arg(h, "gcloud") && proc_arg(h, "storage") && proc_arg(h, "cp") &&
+        proc_arg(h, local_path) && proc_arg(h, sr_text(db[..])) && proc_env(h, sr_text(eb[..]));
+  if !ok || proc_start(h) != 0 || proc_wait(h, 120000) != 0 {
+    done := proc_release(h); tool_errln("sarah: gcloud storage cp failed"); return "";
+  }
+  done := proc_release(h);
+
+  // 2. Read client_email and private_key from local SA JSON
+  sap_buf: [1024] u8; sap := sr_sa_json_path(sap_buf[..]);
+  sa_raw: [16384] u8; san := fs_read(sap, sa_raw[..]);
+  if san <= 0 { tool_errln("sarah: cannot read GCP service account JSON"); return ""; }
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) sa_raw[0..<san], nodes[..]) { tool_errln("sarah: invalid SA JSON"); return ""; }
+  email_buf: [256] u8; en := jv_str(d[0], jv_get(d[0], 0, "client_email"), email_buf[..]);
+  pkey_buf: [8192] u8; pn := jv_str(d[0], jv_get(d[0], 0, "private_key"), pkey_buf[..]);
+  if en <= 0 || pn <= 0 { tool_errln("sarah: SA JSON missing client_email or private_key"); return ""; }
+  email := cast(string) email_buf[0..<en];
+
+  // 3. UTC timestamp via `date -u +%Y%m%dT%H%M%SZ`
+  ts_buf: [64] u8; te_buf: [256] u8;
+  da := [3] string.["date", "-u", "+%Y%m%dT%H%M%SZ"];
+  dr := proc_run(da[..], 5000, ts_buf[..], te_buf[..]);
+  if dr.started != 0 || dr.status != 0 { return ""; }
+  iso_ts := sr_trim(cast(string) ts_buf[0..<dr.out_n]);
+  if iso_ts.count != 16 { return ""; }
+  iso_date := iso_ts[0..<8];
+
+  // 4. Pure-Coax GCS V4 canonical request + SHA-256 string-to-sign
+  q_buf: [2048] u8; ql: [1] int;
+  s_buf: [2048] u8; sl: [1] int;
+  if !sr_gcs_v4_prepare(bucket, object, email, iso_date, iso_ts, 21600, q_buf[..], ql[..], s_buf[..], sl[..]) {
+    tool_errln("sarah: V4 canonical request failed"); return "";
+  }
+  query := cast(string) q_buf[0..<ql[0]];
+  sts := cast(string) s_buf[0..<sl[0]];
+
+  // 5. Sign string-to-sign with OpenSSL RSA-SHA256, immediately deleting key & scratch files
+  kp: [2048] u8; keyp := fs_join(work_dir, ".sa-key.pem", kp[..]);
+  sp: [2048] u8; stsp := fs_join(work_dir, ".sts.txt", sp[..]);
+  sgp: [2048] u8; sigp := fs_join(work_dir, ".sig.bin", sgp[..]);
+  if !fs_write(keyp, cast(string) pkey_buf[0..<pn]) || !fs_write(stsp, sts) {
+    g1 := fs_remove(keyp); g2 := fs_remove(stsp); return "";
+  }
+  chm := [3] string.["chmod", "600", keyp];
+  cr := proc_run(chm[..], 5000, ts_buf[..], te_buf[..]);
+  osa := [7] string.["openssl", "dgst", "-sha256", "-sign", keyp, "-out", sigp];
+  oh := proc_new(); ook := true;
+  for a: osa { ook = ook && proc_arg(oh, a); }
+  ook = ook && proc_arg(oh, stsp);
+  ost := -1;
+  if ook && proc_start(oh) == 0 { ost = proc_wait(oh, 15000); }
+  odone := proc_release(oh);
+  g1 := fs_remove(keyp); g2 := fs_remove(stsp);
+  if ost != 0 { g3 := fs_remove(sigp); tool_errln("sarah: openssl RSA-SHA256 sign failed"); return ""; }
+  sig_raw: [1024] u8; sgn := fs_read(sigp, sig_raw[..]);
+  g3 := fs_remove(sigp);
+  if sgn <= 0 { return ""; }
+
+  // 6. Assemble final V4 signed HTTPS URL
+  ub: [1] SrBuf; ub[0].data = url_out;
+  sr_put(ub[..], "https://storage.googleapis.com/");
+  sr_uri_encode(bucket, false, ub[..]);
+  sr_put_byte(ub[..], '/');
+  sr_uri_encode(object, true, ub[..]);
+  sr_put_byte(ub[..], '?');
+  sr_put(ub[..], query);
+  sr_put(ub[..], "&X-Goog-Signature=");
+  for i: 0..<sgn {
+    c := sig_raw[i];
+    sr_put_byte(ub[..], SR_HEX_LOWER[cast(int) ((c >> 4) & 15)]);
+    sr_put_byte(ub[..], SR_HEX_LOWER[cast(int) (c & 15)]);
+  }
+  if ub[0].bad { return ""; }
+  return sr_text(ub[..]);
+}
+
+// ---- Command 3: lipsync (GCS V4 sign -> Segmind Async V2 -> Post-render FFmpeg/STT/Frame QA + Scoreboard)
+
+sr_parse_decimal_tenths :: (s: string) -> int {
+  t := sr_trim(s);
+  if t.count == 0 { return 0; }
+  neg := false; i := 0;
+  if t[0] == '-' { neg = true; i = 1; }
+  whole := 0; frac := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { whole = whole * 10 + cast(int) (t[i] - '0'); i += 1; }
+  if i < t.count && t[i] == '.' && i + 1 < t.count && t[i + 1] >= '0' && t[i + 1] <= '9' {
+    frac = cast(int) (t[i + 1] - '0');
+  }
+  v := whole * 10 + frac;
+  return ifx neg then -v else v;
+}
+
+sr_parse_decimal_ms :: (s: string) -> int {
+  t := sr_trim(s);
+  if t.count == 0 { return 0; }
+  i := 0; whole := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { whole = whole * 10 + cast(int) (t[i] - '0'); i += 1; }
+  ms := whole * 1000;
+  if i < t.count && t[i] == '.' {
+    i += 1; scale := 100;
+    while i < t.count && t[i] >= '0' && t[i] <= '9' && scale >= 1 {
+      ms += cast(int) (t[i] - '0') * scale;
+      scale /= 10; i += 1;
+    }
+  }
+  return ms;
+}
+
+sr_parse_fps_tenths :: (s: string) -> int {
+  t := sr_trim(s);
+  slash := -1;
+  for i: 0..<t.count { if t[i] == '/' { slash = i; break; } }
+  if slash < 0 { return sr_parse_decimal_tenths(t); }
+  num := args_whole(t[0..<slash]);
+  den := args_whole(t[slash + 1..<t.count]);
+  if den <= 0 { return 0; }
+  return (num * 10 + den / 2) / den;
+}
+
+cmd_lipsync :: (
+  image_path: string, audio_path: string, out_mp4: string, model: string, bucket: string,
+  script: string, resolution: string, seed: int, judge_overall: int, judge_notes: string
+) -> int {
+  if image_path.count == 0 || out_mp4.count == 0 { tool_errln("sarah lipsync: --image and --out are required"); return 2; }
+  if audio_path.count == 0 && script.count == 0 { tool_errln("sarah lipsync: pass --audio PATH (recommended) or --script TEXT"); return 2; }
+  if audio_path.count == 0 && (model == "kling-v2-standard-avatar" || model == "kling-v2-pro-avatar" || model == "veed-fabric-1.0") {
+    tool_errln("sarah lipsync: selected model requires --audio PATH"); return 2;
+  }
+  if audio_path.count == 0 && sr_british_zed_risks(script, "Leda (Female)", "English (US)") > 0 {
+    tool_errln("sarah lipsync: blocked uppercase 'Zed' pronunciation risk"); return 2;
+  }
+  dir := fs_dir(out_mp4);
+  work := ifx dir.count > 0 then dir else "/tmp";
+  okd := sr_mkdir_p(work);
+  qa_buf: [2048] u8; qa_dir := fs_join(work, "qa", qa_buf[..]);
+  okq := sr_mkdir_p(qa_dir);
+
+  skey_buf: [512] u8; skey := sr_segmind_key(skey_buf[..]);
+  if skey.count == 0 { tool_errln("sarah lipsync: no SEGMIND_API_KEY in env or ~/work/.secrets/segmind.env"); return 1; }
+
+  // Run ID from monotonic/epoch timestamp
+  rid_buf: [64] u8; rerr: [256] u8;
+  dcmd := [3] string.["date", "-u", "+%Y%m%d-%H%M%S"];
+  dr := proc_run(dcmd[..], 5000, rid_buf[..], rerr[..]);
+  run_id := ifx dr.status == 0 then sr_trim(cast(string) rid_buf[0..<dr.out_n]) else "mvp";
+  date_str := ifx run_id.count >= 8 then run_id[0..<8] else "20261123";
+
+  // 1. Upload & V4-sign portrait image (+ audio WAV when provided)
+  img_obj_buf: [512] u8; iob: [1] SrBuf; iob[0].data = img_obj_buf[..];
+  sr_put(iob[..], "sarah-mvp/"); sr_put(iob[..], run_id); sr_put(iob[..], "/"); sr_put(iob[..], model); sr_put(iob[..], "-portrait.png");
+  img_url_buf: [4096] u8;
+  img_url := sr_gcs_upload_and_sign(image_path, bucket, sr_text(iob[..]), work, img_url_buf[..]);
+  if img_url.count == 0 { tool_errln("sarah lipsync: failed to upload/sign portrait"); return 1; }
+
+  aud_url_buf: [4096] u8; aud_url := "";
+  if audio_path.count > 0 {
+    aud_obj_buf: [512] u8; aob: [1] SrBuf; aob[0].data = aud_obj_buf[..];
+    sr_put(aob[..], "sarah-mvp/"); sr_put(aob[..], run_id); sr_put(aob[..], "/"); sr_put(aob[..], model); sr_put(aob[..], "-audio.wav");
+    aud_url = sr_gcs_upload_and_sign(audio_path, bucket, sr_text(aob[..]), work, aud_url_buf[..]);
+    if aud_url.count == 0 { tool_errln("sarah lipsync: failed to upload/sign audio"); return 1; }
+  }
+  print("sarah lipsync: signed GCS V4 URLs ready for model=% (audio_driven=%)\n", model, ifx aud_url.count > 0 then "yes" else "no");
+
+  // 2. Submit Segmind Async Inference V2
+  t_start := proc_now_ms();
+  body_buf: [16384] u8;
+  body := sr_segmind_body(
+    model, img_url, aud_url, script, "Leda (Female)", "English (US)",
+    SR_VOICE_ANCHOR, SR_DEFAULT_VOICE_PROMPT, SR_DEFAULT_VIDEO_PROMPT, SR_DEFAULT_NEG_PROMPT,
+    resolution, seed, body_buf[..]
+  );
+  if body.count == 0 { tool_errln("sarah lipsync: failed to encode Segmind payload"); return 1; }
+  sub_url_buf: [256] u8; sub: [1] SrBuf; sub[0].data = sub_url_buf[..];
+  sr_put(sub[..], "https://api.segmind.com/v2/"); sr_put(sub[..], model);
+  shdr_buf: [1024] u8; sh: [1] SrBuf; sh[0].data = shdr_buf[..];
+  sr_put(sh[..], "x-api-key: "); sr_put(sh[..], skey); sr_put(sh[..], "\nContent-Type: application/json\n");
+  sg_hdr := sr_text(sh[..]);
+  sg_get_buf: [1024] u8; sgh: [1] SrBuf; sgh[0].data = sg_get_buf[..];
+  sr_put(sgh[..], "x-api-key: "); sr_put(sgh[..], skey); sr_put(sgh[..], "\n");
+  sg_get_hdr := sr_text(sgh[..]);
+
+  bp: [2048] u8; bodyp := fs_join(work, "segmind-req.json", bp[..]);
+  rp: [2048] u8; respp := fs_join(work, "segmind-submit.json", rp[..]);
+  if !fs_write(bodyp, body) { return 1; }
+  scode := sr_curl_http("POST", sr_text(sub[..]), sg_hdr, bodyp, respp, work, "120");
+  g_req := fs_remove(bodyp);
+  sub_raw: [32768] u8; sub_n := fs_read(respp, sub_raw[..]);
+  if scode < 200 || scode >= 300 || sub_n <= 0 {
+    tool_err("sarah lipsync: Segmind submit HTTP "); print("% body=%\n", scode, ifx sub_n > 0 then cast(string) sub_raw[0..<ifx sub_n > 300 then 300 else sub_n] else "");
+    return 1;
+  }
+  snodes: [512] JvNode; sd: [1] Jv;
+  if !jv_parse(sd[..], cast(string) sub_raw[0..<sub_n], snodes[..]) { tool_errln("sarah lipsync: invalid Segmind submit JSON"); return 1; }
+  req_id_buf: [128] u8; rqn := jv_str(sd[0], jv_get(sd[0], 0, "request_id"), req_id_buf[..]);
+  stat_url_buf: [512] u8; stn := jv_str(sd[0], jv_get(sd[0], 0, "status_url"), stat_url_buf[..]);
+  resp_url_buf: [512] u8; rpn := jv_str(sd[0], jv_get(sd[0], 0, "response_url"), resp_url_buf[..]);
+  if rqn <= 0 { tool_errln("sarah lipsync: Segmind response missing request_id"); return 1; }
+  req_id := cast(string) req_id_buf[0..<rqn];
+  stat_url := ifx stn > 0 then cast(string) stat_url_buf[0..<stn] else "";
+  resp_url := ifx rpn > 0 then cast(string) resp_url_buf[0..<rpn] else "";
+  if stat_url.count == 0 {
+    sb2: [1] SrBuf; sb2[0].data = stat_url_buf[..];
+    sr_put(sb2[..], "https://api.segmind.com/v2/requests/"); sr_put(sb2[..], req_id); sr_put(sb2[..], "/status");
+    stat_url = sr_text(sb2[..]);
+  }
+  if resp_url.count == 0 {
+    rb2: [1] SrBuf; rb2[0].data = resp_url_buf[..];
+    sr_put(rb2[..], "https://api.segmind.com/v2/requests/"); sr_put(rb2[..], req_id);
+    resp_url = sr_text(rb2[..]);
+  }
+  print("sarah lipsync: submitted model=% request_id=%\n", model, req_id);
+
+  // 3. Poll status_url every 5 s (max 10 min)
+  pollp_buf: [2048] u8; pollp := fs_join(work, "segmind-poll.json", pollp_buf[..]);
+  done_ok := false;
+  deadline := proc_now_ms() + 600000;
+  while proc_now_ms() < deadline {
+    pc := sr_curl_http("GET", stat_url, sg_get_hdr, "", pollp, work, "60");
+    pr: [16384] u8; pn2 := fs_read(pollp, pr[..]);
+    if pc >= 200 && pc < 300 && pn2 > 0 {
+      pnodes: [256] JvNode; pd: [1] Jv;
+      if jv_parse(pd[..], cast(string) pr[0..<pn2], pnodes[..]) {
+        sb3: [64] u8; sn3 := jv_str(pd[0], jv_get(pd[0], 0, "status"), sb3[..]);
+        if sn3 <= 0 { sn3 = jv_str(pd[0], jv_get(pd[0], 0, "state"), sb3[..]); }
+        st_str := ifx sn3 > 0 then cast(string) sb3[0..<sn3] else "UNKNOWN";
+        elapsed_s := (proc_now_ms() - t_start) / 1000;
+        print("sarah lipsync: [%s] model=% status=%\n", elapsed_s, model, st_str);
+        if sr_contains_ci(st_str, "COMPLET") || sr_contains_ci(st_str, "SUCCE") || sr_contains_ci(st_str, "DONE") {
+          done_ok = true; break;
+        }
+        if sr_contains_ci(st_str, "FAIL") || sr_contains_ci(st_str, "ERROR") || sr_contains_ci(st_str, "CANCEL") {
+          tool_err("sarah lipsync: generation failed: "); print("%\n", cast(string) pr[0..<ifx pn2 > 300 then 300 else pn2]);
+          return 1;
+        }
+      }
+    }
+    proc_sleep(5000);
+  }
+  if !done_ok { tool_errln("sarah lipsync: timed out waiting for Segmind"); return 1; }
+
+  // 4. Fetch response_url — either direct video bytes or JSON with output URL
+  dl_buf: [2048] u8; dlp := fs_join(work, "segmind-result.bin", dl_buf[..]);
+  rc := sr_curl_http("GET", resp_url, sg_get_hdr, "", dlp, work, "180");
+  if rc < 200 || rc >= 300 { tool_err("sarah lipsync: response download HTTP "); print("%\n", rc); return 1; }
+  head_bytes: [4096] u8; hn := fs_read(dlp, head_bytes[..]);
+  if hn <= 0 { tool_errln("sarah lipsync: empty result"); return 1; }
+  // Check if JSON envelope (`{`) vs raw MP4
+  if head_bytes[0] == '{' {
+    jnodes: [512] JvNode; jd: [1] Jv;
+    if !jv_parse(jd[..], cast(string) head_bytes[0..<hn], jnodes[..]) { tool_errln("sarah lipsync: invalid result JSON"); return 1; }
+    vurl_buf: [2048] u8;
+    vn := jv_str(jd[0], jv_get(jd[0], 0, "output"), vurl_buf[..]);
+    if vn <= 0 { vn = jv_str(jd[0], jv_get(jd[0], 0, "video"), vurl_buf[..]); }
+    if vn <= 0 { vn = jv_str(jd[0], jv_get(jd[0], 0, "url"), vurl_buf[..]); }
+    if vn <= 0 { vn = jv_str(jd[0], jv_path(jd[0], 0, "data.output"), vurl_buf[..]); }
+    if vn <= 0 { vn = jv_str(jd[0], jv_path(jd[0], 0, "output[0]"), vurl_buf[..]); }
+    if vn <= 0 { tool_err("sarah lipsync: no video URL in result JSON: "); print("%\n", cast(string) head_bytes[0..<ifx hn > 300 then 300 else hn]); return 1; }
+    vurl := cast(string) vurl_buf[0..<vn];
+    dc := sr_curl_http("GET", vurl, sg_get_hdr, "", out_mp4, work, "180");
+    if dc < 200 || dc >= 300 { tool_err("sarah lipsync: MP4 fetch HTTP "); print("%\n", dc); return 1; }
+  } else {
+    cp_out: [256] u8; cp_err: [512] u8;
+    cpa := [3] string.["mv", dlp, out_mp4];
+    cpr := proc_run(cpa[..], 15000, cp_out[..], cp_err[..]);
+    if cpr.status != 0 { return 1; }
+  }
+  render_wall_s := (proc_now_ms() - t_start) / 1000;
+  print("sarah lipsync: downloaded % in %s\n", out_mp4, render_wall_s);
+
+  // 5. Post-render QA: ffprobe geometry & durations, extract MP4 audio -> LUFS + Google STT V2, extract QA stills + 6-frame strip
+  fo: [4096] u8; fe: [4096] u8;
+  // Video stream probe: width,height,r_frame_rate,duration
+  fpv := [10] string.["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,duration", "-of", "csv=p=0", out_mp4];
+  pv := proc_run(fpv[..], 30000, fo[..], fe[..]);
+  vw := 0; vh := 0; fps_t := 0; v_ms := 0;
+  if pv.status == 0 && pv.out_n > 0 {
+    line := sr_trim(cast(string) fo[0..<pv.out_n]);
+    // parse 4 comma-separated fields
+    c1 := -1; c2 := -1; c3 := -1;
+    for i: 0..<line.count {
+      if line[i] == ',' {
+        if c1 < 0 { c1 = i; } else if c2 < 0 { c2 = i; } else if c3 < 0 { c3 = i; break; }
+      }
+    }
+    if c1 > 0 && c2 > c1 && c3 > c2 {
+      vw = args_whole(line[0..<c1]);
+      vh = args_whole(line[c1 + 1..<c2]);
+      fps_t = sr_parse_fps_tenths(line[c2 + 1..<c3]);
+      v_ms = sr_parse_decimal_ms(line[c3 + 1..<line.count]);
+    }
+  }
+  // Audio stream duration
+  fpa := [10] string.["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "csv=p=0", out_mp4];
+  pa := proc_run(fpa[..], 30000, fo[..], fe[..]);
+  a_ms := ifx pa.status == 0 && pa.out_n > 0 then sr_parse_decimal_ms(cast(string) fo[0..<pa.out_n]) else 0;
+
+  // Extract final MP4 audio at 48 kHz (for measure.coax) and 16 kHz (for Google STT V2 round-trip)
+  m48_buf: [2048] u8; m48 := fs_join(qa_dir, "final-48k.wav", m48_buf[..]);
+  m16_buf: [2048] u8; m16 := fs_join(qa_dir, "final-16k.wav", m16_buf[..]);
+  ex48 := [14] string.["ffmpeg", "-v", "error", "-y", "-i", out_mp4, "-vn", "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", m48];
+  r48 := proc_run(ex48[..], 60000, fo[..], fe[..]);
+  ex16 := [14] string.["ffmpeg", "-v", "error", "-y", "-i", out_mp4, "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", m16];
+  r16 := proc_run(ex16[..], 60000, fo[..], fe[..]);
+  fin_aud := sr_measure_wav_48k(m48);
+
+  tok_buf: [4096] u8; token := sr_gcp_token(tok_buf[..]);
+  heard_buf: [2048] u8;
+  heard := ifx token.count > 0 && r16.status == 0 then sr_stt_v2(token, m16, qa_dir, heard_buf[..]) else "";
+  stt_pass := ifx script.count > 0 then sr_verbatim_match(script, heard) else heard.count > 0;
+
+  // Extract midpoint still + 6-consecutive-frame contact strip for temporal-boil inspection
+  mid_ms := ifx v_ms > 1000 then v_ms / 2 else 500;
+  ss_buf: [32] u8; ssb: [1] SrBuf; ssb[0].data = ss_buf[..]; sr_put_tenths(ssb[..], mid_ms / 100);
+  mid_jpg_buf: [2048] u8; mb_p: [1] SrBuf; mb_p[0].data = mid_jpg_buf[..];
+  sr_put(mb_p[..], qa_dir); sr_put(mb_p[..], "/"); sr_put(mb_p[..], model); sr_put(mb_p[..], "-mid.jpg");
+  mid_jpg := sr_text(mb_p[..]);
+  strip_jpg_buf: [2048] u8; st_p: [1] SrBuf; st_p[0].data = strip_jpg_buf[..];
+  sr_put(st_p[..], qa_dir); sr_put(st_p[..], "/"); sr_put(st_p[..], model); sr_put(st_p[..], "-consec6.jpg");
+  strip_jpg := sr_text(st_p[..]);
+
+  em := [12] string.["ffmpeg", "-v", "error", "-y", "-ss", sr_text(ssb[..]), "-i", out_mp4, "-frames:v", "1", "-q:v", "2"];
+  hm := proc_new(); okm := true;
+  for a: em { okm = okm && proc_arg(hm, a); }
+  okm = okm && proc_arg(hm, mid_jpg);
+  if okm && proc_start(hm) == 0 { wm := proc_wait(hm, 30000); }
+  dm := proc_release(hm);
+
+  // 6 consecutive frames tiled horizontally (320px wide each) for motion/temporal-boil check
+  es := [14] string.["ffmpeg", "-v", "error", "-y", "-ss", sr_text(ssb[..]), "-i", out_mp4, "-vf", "scale=320:-2,tile=6x1", "-frames:v", "1", "-q:v", "2"];
+  hs := proc_new(); oks := true;
+  for a: es { oks = oks && proc_arg(hs, a); }
+  oks = oks && proc_arg(hs, strip_jpg);
+  if oks && proc_start(hs) == 0 { ws := proc_wait(hs, 30000); }
+  ds := proc_release(hs);
+
+  // 6. Emit sarah-take-scoreboard.v1 JSON + Markdown beside MP4
+  tid_buf: [256] u8; tid: [1] SrBuf; tid[0].data = tid_buf[..];
+  sr_put(tid[..], "mvp-"); sr_put(tid[..], model); sr_put(tid[..], "-"); sr_put(tid[..], run_id);
+  sc := SrScoreboard.{
+    take_id = sr_text(tid[..]),
+    date = date_str,
+    model = model,
+    voice = ifx audio_path.count > 0 then SR_DEFAULT_VOICE else "Segmind built-in Leda",
+    script = script,
+    stt_heard = heard,
+    stt_pass = stt_pass,
+    lufs_tenths = fin_aud.lufs_tenths,
+    peak_tenths = fin_aud.peak_tenths,
+    judge_overall = judge_overall,
+    judge_notes = judge_notes,
+    width = vw,
+    height = vh,
+    fps_tenths = fps_t,
+    video_ms = v_ms,
+    audio_ms = a_ms,
+    render_wall_s = render_wall_s,
+    mp4_path = out_mp4,
+    qa_strip_path = strip_jpg
+  };
+  scj_buf: [8192] u8; scj := sr_scoreboard_json(sc, scj_buf[..]);
+  scm_buf: [8192] u8; scm := sr_scoreboard_md(sc, scm_buf[..]);
+  jp_buf: [2048] u8; jpb: [1] SrBuf; jpb[0].data = jp_buf[..]; sr_put(jpb[..], out_mp4); sr_put(jpb[..], ".scoreboard.json");
+  mp_buf: [2048] u8; mpb: [1] SrBuf; mpb[0].data = mp_buf[..]; sr_put(mpb[..], out_mp4); sr_put(mpb[..], ".scoreboard.md");
+  wj := fs_write(sr_text(jpb[..]), scj);
+  wm2 := fs_write(sr_text(mpb[..]), scm);
+  print("sarah lipsync: QA model=% %x%@%fps v=%ms a=%ms stt=% ('%') strip=%\n",
+    model, vw, vh, fps_t / 10, v_ms, a_ms, ifx stt_pass then "PASS" else "FAIL", heard, strip_jpg);
+  return 0;
+}
+
+// ---- Command 4: mvp (end-to-end Portrait -> Google Chirp 3 HD Synth+QA -> Segmind Audio-Driven Lip-Sync A/B)
+
+cmd_mvp :: (text: string, out_dir: string, image_arg: string, models_csv: string, bucket: string, imagen_model: string, skip_judge: bool) -> int {
+  if text.count == 0 || out_dir.count == 0 { tool_errln("sarah mvp: --text and --out DIR are required"); return 2; }
+  if !sr_mkdir_p(out_dir) { tool_errln("sarah mvp: cannot create --out DIR"); return 1; }
+
+  // 1. Portrait (reuse --image or generate via Vertex AI Imagen)
+  img_buf: [2048] u8;
+  img_path := image_arg;
+  if img_path.count == 0 {
+    img_path = fs_join(out_dir, "sarah-portrait.png", img_buf[..]);
+    if !fs_exists(img_path) {
+      rc := cmd_portrait(img_path, SR_DEFAULT_PORTRAIT_PROMPT, imagen_model, "16:9");
+      if rc != 0 { return rc; }
+    } else {
+      print("sarah mvp: reusing existing portrait %\n", img_path);
+    }
+  }
+
+  // 2. Audio-first synthesis + Coax LUFS + Google STT V2 + Vertex Gemini Judge
+  sdir_buf: [2048] u8; sdir := fs_join(out_dir, "audio", sdir_buf[..]);
+  sout: [1] SrSynthOut;
+  src := sr_run_synth(text, sdir, SR_DEFAULT_VOICE, "0.98", skip_judge, sout[..]);
+  if src != 0 { return src; }
+  wav24 := cast(string) sout[0].wav_24k[0..<sout[0].wav_24k_n];
+  jnotes := cast(string) sout[0].judge.notes[0..<sout[0].judge.notes_n];
+
+  // 3. Lip-sync across comma-separated models
+  i := 0; fails := 0;
+  while i < models_csv.count {
+    e := i; while e < models_csv.count && models_csv[e] != ',' { e += 1; }
+    m := sr_trim(models_csv[i..<e]); i = e + 1;
+    if m.count == 0 { continue; }
+    mp4_buf: [2048] u8; mb: [1] SrBuf; mb[0].data = mp4_buf[..];
+    sr_put(mb[..], out_dir); sr_put(mb[..], "/sarah-"); sr_put(mb[..], m); sr_put(mb[..], ".mp4");
+    lrc := cmd_lipsync(img_path, wav24, sr_text(mb[..]), m, bucket, text, "1080p", 4242, sout[0].judge.overall, jnotes);
+    if lrc != 0 { fails += 1; }
+  }
+  return ifx fails > 0 then 1 else 0;
+}
+
+usage :: () -> int {
+  tool_errln("usage: coax/web/tool.sh sarah portrait --out PNG [--prompt ...] [--model gemini-2.5-flash-image] [--aspect 16:9]");
+  tool_errln("       coax/web/tool.sh sarah synth --text \"...\" --out DIR [--voice en-US-Chirp3-HD-Leda] [--rate 0.98] [--skip-judge]");
+  tool_errln("       coax/web/tool.sh sarah lipsync --image PNG --audio WAV --out MP4 [--model p-video-avatar] [--bucket BUCKET] [--script \"...\"]");
+  tool_errln("       coax/web/tool.sh sarah mvp --text \"...\" --out DIR [--image PNG] [--models p-video-avatar,kling-v2-standard-avatar] [--bucket BUCKET]");
+  return 2;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { return usage(); }
+  cmd := args_at(a[..], 0);
+  if cmd == "--help" || cmd == "-h" || cmd == "help" { return usage(); }
+  if cmd == "portrait" {
+    return cmd_portrait(
+      args_value(a[..], "--out", ""),
+      args_value(a[..], "--prompt", SR_DEFAULT_PORTRAIT_PROMPT),
+      args_value(a[..], "--model", SR_DEFAULT_IMAGEN),
+      args_value(a[..], "--aspect", "16:9")
+    );
+  }
+  if cmd == "synth" {
+    out_dir := args_value(a[..], "--out", "");
+    text := args_value(a[..], "--text", "");
+    if out_dir.count == 0 || text.count == 0 { return usage(); }
+    sout: [1] SrSynthOut;
+    return sr_run_synth(
+      text, out_dir,
+      args_value(a[..], "--voice", SR_DEFAULT_VOICE),
+      args_value(a[..], "--rate", "0.98"),
+      args_has(a[..], "--skip-judge"),
+      sout[..]
+    );
+  }
+  if cmd == "lipsync" {
+    seed := args_whole(args_value(a[..], "--seed", "4242"));
+    return cmd_lipsync(
+      args_value(a[..], "--image", ""),
+      args_value(a[..], "--audio", ""),
+      args_value(a[..], "--out", ""),
+      args_value(a[..], "--model", "p-video-avatar"),
+      args_value(a[..], "--bucket", SR_DEFAULT_BUCKET),
+      args_value(a[..], "--script", ""),
+      args_value(a[..], "--resolution", "1080p"),
+      seed, -1, ""
+    );
+  }
+  if cmd == "mvp" {
+    return cmd_mvp(
+      args_value(a[..], "--text", ""),
+      args_value(a[..], "--out", ""),
+      args_value(a[..], "--image", ""),
+      args_value(a[..], "--models", "p-video-avatar,kling-v2-standard-avatar"),
+      args_value(a[..], "--bucket", SR_DEFAULT_BUCKET),
+      args_value(a[..], "--imagen-model", SR_DEFAULT_IMAGEN),
+      args_has(a[..], "--skip-judge")
+    );
+  }
+  return usage();
+}
