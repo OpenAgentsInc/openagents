@@ -1,0 +1,8 @@
+// Unified Coax root for OpenAgents iOS (GitHub #14023): compiles the shared
+// Antigravity-over-Tailscale client core, the component atlas tables, and the
+// GPU iOS page into one C library (Generated/gallery.c + Generated/gallery.h).
+//   coax/bin/coax test apps/openagents-ios/ios-app.coax
+#run_steps 250000000;
+#load "../../components/raster/host-tables.coax";
+#load "../shared/antigravity/client-core.coax";
+#load "gpu-page.coax";

@@ -1,0 +1,1849 @@
+// OpenAgents iOS GPU surface (GitHub #14023): pure-black Coder Noir GPU chat,
+// slide-out sidebar, activity trees, Markdown replies, composer & floating pickers
+// rendered by the shared Coax/Metal component engine over our Antigravity-over-Tailscale store.
+//   coax/bin/coax test apps/openagents-ios/gpu-page.coax
+
+#load "../../components/skin/noir-phone.coax";
+#load "../../components/app/conversation.coax";
+#load "../../components/app/sidebar.coax";
+#load "../../components/app/activity.coax";
+#load "../../components/backend/gpu.coax";
+
+IOS_MAX_VERTICES :: 160000;
+IOS_P_UNDER :: 2048; IOS_P_OVER :: 8192; IOS_P_LINES :: 4096; IOS_P_HITS :: 256; IOS_P_POOL :: 262144; IOS_P_ROWS :: 512; IOS_P_KEYED :: 256;
+IOS_C_UNDER :: 1024; IOS_C_OVER :: 4096; IOS_C_LINES :: 512;  IOS_C_HITS :: 128; IOS_C_POOL :: 32768;  IOS_C_ROWS :: 128; IOS_C_KEYED :: 96;
+
+IOS_MAX_SESSIONS :: 64;
+IOS_MAX_ITEMS :: 128;
+IOS_MAX_MODELS :: 24;
+IOS_MAX_EFFORTS :: 8;
+IOS_MAX_MODES :: 6;
+IOS_ITEM_POOL :: 196608;
+IOS_DRAFT_CAP :: 16384;
+IOS_COPY_CAP :: 16384;
+IOS_FOLDS :: 16;
+IOS_ACT_MAX :: 48;
+
+IOS_MOVE :: 8.0f32;
+IOS_SWIPE :: 30.0f32;
+IOS_EDGE :: 20.0f32;
+IOS_ZOOM_MAX :: 2.5f32;
+IOS_WIDE_BREAKPOINT :: 700.0f32;
+
+// Transcript item roles pushed from Swift AntigravityStore.
+IOS_ROLE_USER :: 0;
+IOS_ROLE_ASSISTANT :: 1;
+IOS_ROLE_THOUGHT :: 2;
+IOS_ROLE_TOOL :: 3;
+IOS_ROLE_NOTICE :: 4;
+
+// Reachability states for header & sidebar status dots.
+IOS_REACH_UNKNOWN :: 0;
+IOS_REACH_CHECKING :: 1;
+IOS_REACH_OK :: 2;
+IOS_REACH_BAD :: 3;
+
+// Internal surface hit actions (routing taps inside Coax).
+IOS_HIT_NONE :: 0;
+IOS_HIT_SIDEBAR :: 1;
+IOS_HIT_SCRIM :: 2;
+IOS_HIT_COMPUTERS :: 3;
+IOS_HIT_WORKSPACE :: 4;
+IOS_HIT_NEW_CHAT :: 5;
+IOS_HIT_HUB :: 6;
+IOS_HIT_COMPOSER :: 7;
+IOS_HIT_SEND :: 8;
+IOS_HIT_ATTACH :: 9;
+IOS_HIT_CLEAR_ATTACH :: 10;
+IOS_HIT_MODEL :: 11;
+IOS_HIT_EFFORT :: 12;
+IOS_HIT_MODE :: 13;
+IOS_HIT_MIC :: 14;
+IOS_HIT_PICKER_CLOSE :: 15;
+IOS_HIT_PICK_MODEL :: 16;
+IOS_HIT_PICK_EFFORT :: 17;
+IOS_HIT_PICK_MODE :: 18;
+IOS_HIT_SELECT_SESSION :: 19;
+IOS_HIT_APPROVE :: 20;
+IOS_HIT_DENY :: 21;
+IOS_HIT_DISMISS_ERROR :: 22;
+IOS_HIT_RETRY_OUTBOX :: 23;
+IOS_HIT_JUMP_BOTTOM :: 24;
+IOS_HIT_ACT_HEAD :: 25;
+IOS_HIT_ACT_ROW :: 26;
+IOS_HIT_COPY_CODE :: 27;
+IOS_HIT_COPY_MSG :: 28;
+IOS_HIT_FOLD_USER :: 29;
+IOS_HIT_LOAD_OLDER :: 30;
+IOS_HIT_LOAD_MORE_SESSIONS :: 31;
+
+// Actions emitted to the Swift host (polled via ios_take_action / ios_action_arg).
+IOS_ACT_NONE :: 0;
+IOS_ACT_FOCUS_COMPOSER :: 1;
+IOS_ACT_SEND :: 2;
+IOS_ACT_STOP :: 3;
+IOS_ACT_NEW_CHAT :: 4;
+IOS_ACT_SELECT_SESSION :: 5;
+IOS_ACT_OPEN_COMPUTERS :: 6;
+IOS_ACT_OPEN_WORKSPACE :: 7;
+IOS_ACT_OPEN_SUBAGENT :: 8;
+IOS_ACT_OPEN_HUB :: 9;
+IOS_ACT_OPEN_ATTACH :: 10;
+IOS_ACT_CLEAR_ATTACH :: 11;
+IOS_ACT_CHOSE_MODEL :: 12;
+IOS_ACT_CHOSE_EFFORT :: 13;
+IOS_ACT_CHOSE_MODE :: 14;
+IOS_ACT_TOGGLE_MIC :: 15;
+IOS_ACT_APPROVE :: 16;
+IOS_ACT_DENY :: 17;
+IOS_ACT_DISMISS_ERROR :: 18;
+IOS_ACT_RETRY_OUTBOX :: 19;
+IOS_ACT_COPY_TEXT :: 20;
+IOS_ACT_OPEN_FILE :: 21;
+IOS_ACT_LOAD_OLDER :: 22;
+IOS_ACT_LOAD_MORE_SESSIONS :: 23;
+
+IosPageGen :: struct {
+  under: [IOS_P_UNDER] Prim; over: [IOS_P_OVER] Prim;
+  lines: [IOS_P_LINES] SheetLine; hits: [IOS_P_HITS] SheetHit;
+  pool: [IOS_P_POOL] u8; rows: [IOS_P_ROWS] El;
+}
+IosCoverGen :: struct {
+  under: [IOS_C_UNDER] Prim; over: [IOS_C_OVER] Prim;
+  lines: [IOS_C_LINES] SheetLine; hits: [IOS_C_HITS] SheetHit;
+  pool: [IOS_C_POOL] u8; rows: [IOS_C_ROWS] El;
+}
+
+IosSession :: struct {
+  id: [96] u8; id_n: int;
+  title: [128] u8; title_n: int;
+  repo: [64] u8; repo_n: int;
+  branch: [64] u8; branch_n: int;
+  status: [32] u8; status_n: int;
+  busy: bool; current: bool; attention: bool; unread: bool;
+}
+
+IosItem :: struct {
+  role: int;
+  id_at: int; id_n: int;
+  text_at: int; text_n: int;
+  tool_at: int; tool_n: int;
+  path_at: int; path_n: int;
+  diff_at: int; diff_n: int;
+  complete: bool; failed: bool; is_subagent: bool; diff_cut: bool;
+  subagent_calls: int; elapsed_secs: int;
+}
+
+IosOption :: struct {
+  id: [64] u8; id_n: int;
+  label: [64] u8; label_n: int;
+  detail: [96] u8; detail_n: int;
+  selected: bool;
+}
+
+IosPhonePage :: struct {
+  ready: bool; time: f32; d: f32;
+  atlas: [1] Atlas;
+  page: [2] IosPageGen; cover: [2] IosCoverGen; surface: [2] UiSurface;
+  page_keys: [IOS_P_KEYED] Keyed; cover_keys: [IOS_C_KEYED] Keyed; keyed: [2] KeyedStore;
+  md: [1] MdDoc;
+
+  // Scratch buffers kept on the heap inside IosPhonePage (#13747 frame budget).
+  side_rows: [IOS_MAX_SESSIONS + 8] AppSideRow;
+  side_ids: [IOS_MAX_SESSIONS + 8][EL_ID] u8;
+  side_id_ns: [IOS_MAX_SESSIONS + 8] int;
+  act_rows: [IOS_ACT_MAX] AppActRow;
+  act_ids: [IOS_ACT_MAX][EL_ID] u8;
+  act_id_ns: [IOS_ACT_MAX] int;
+  act_item_idx: [IOS_ACT_MAX] int;
+
+  // Host viewport & input state.
+  safe_top: f32; safe_bottom: f32; keyboard: f32;
+  focused: bool; editor_h: f32; reduced: bool; reduced_transparency: bool;
+  zoom: f32; page_w: f32; page_h: f32;
+  native_scroll: bool;
+
+  px: f32; py: f32; touching: bool;
+  down_x: f32; down_y: f32; last_y: f32;
+  swiped: bool; scrolling: bool;
+  pressed: [EL_ID] u8; pressed_n: int;
+  focus: [EL_ID] u8; focus_n: int;
+
+  // Sidebar & picker cover state.
+  drawer: bool; share: f32;
+  picker: int; // 0 none, 1 model, 2 effort, 3 mode
+  picker_content: f32; picker_viewport: f32;
+  side_content: f32; side_viewport: f32;
+
+  // Transcript scroll state.
+  chat_scroll: f32; chat_content: f32; chat_viewport: f32;
+  stick_bottom: bool;
+  last_items_n: int;
+
+  // Composer box exported to UIKit ComposerEditor.
+  ed_x: f32; ed_y: f32; ed_w: f32; ed_h: f32; ed_inset: f32; ed_line: f32; ed_ok: bool;
+  draft: [IOS_DRAFT_CAP] u8; draft_n: int;
+
+  // Pending action emitted to Swift host.
+  out_action: int;
+  out_arg: [256] u8; out_arg_n: int;
+  copy_buf: [IOS_COPY_CAP] u8; copy_n: int;
+  copied_id: [EL_ID] u8; copied_id_n: int; copied_block: int;
+
+  // Unfolded long user messages ring.
+  unfolded: [IOS_FOLDS][EL_ID] u8; unfolded_n: [IOS_FOLDS] int; unfolded_next: int;
+
+  // Snapshot state pushed from Swift AntigravityStore.
+  computer_name: [96] u8; computer_name_n: int;
+  session_title: [128] u8; session_title_n: int;
+  workspace_name: [96] u8; workspace_name_n: int;
+  reachability: int;
+  paired_count: int;
+  has_active_session: bool;
+  has_older_messages: bool;
+  has_more_sessions: bool;
+
+  session_busy: bool; awaiting_turn: bool;
+  working_secs: int;
+  working_label: [64] u8; working_label_n: int;
+
+  error_text: [256] u8; error_n: int;
+  outbox_count: int;
+  toast_text: [160] u8; toast_n: int;
+
+  approval_active: bool;
+  approval_prompt: [256] u8; approval_prompt_n: int;
+  approval_warning: [160] u8; approval_warning_n: int;
+
+  model_label: [64] u8; model_label_n: int;
+  effort_label: [32] u8; effort_label_n: int;
+  mode_label: [32] u8; mode_label_n: int;
+  attachment_count: int;
+  mic_active: bool;
+
+  sessions: [IOS_MAX_SESSIONS] IosSession; sessions_n: int;
+  items: [IOS_MAX_ITEMS] IosItem; items_n: int;
+  item_pool: [IOS_ITEM_POOL] u8; item_pool_n: int;
+
+  models: [IOS_MAX_MODELS] IosOption; models_n: int;
+  efforts: [IOS_MAX_EFFORTS] IosOption; efforts_n: int;
+  modes: [IOS_MAX_MODES] IosOption; modes_n: int;
+
+  stamp: int; moving: bool; again: bool; refused: int;
+}
+
+// ---------------------------------------------------------------- helpers
+
+ios_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count > dst.count then dst.count else src.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+ios_out :: (dst: [] u8, src: string) -> int { return ios_copy(dst, src); }
+ios_pool_put :: (s: [] IosPhonePage, src: string, out_at: [] int, out_n: [] int) {
+  if src.count == 0 { out_at[0] = 0; out_n[0] = 0; return; }
+  avail := IOS_ITEM_POOL - s[0].item_pool_n;
+  if avail <= 0 { out_at[0] = 0; out_n[0] = 0; return; }
+  n := ifx src.count > avail then avail else src.count;
+  at := s[0].item_pool_n;
+  for i: 0..<n { s[0].item_pool[at + i] = src[i]; }
+  s[0].item_pool_n = at + n;
+  out_at[0] = at; out_n[0] = n;
+}
+ios_item_str :: (s: [] IosPhonePage, at: int, n: int) -> string {
+  if n <= 0 || at < 0 || at + n > IOS_ITEM_POOL { return ""; }
+  return cast(string) s[0].item_pool[at..<at + n];
+}
+ios_u :: (s: [] IosPhonePage) -> f32 { return ARCADE_PHONE_SCALE * (ifx s[0].zoom > 1.0f32 then s[0].zoom else 1.0f32); }
+ios_focus_str :: (s: [] IosPhonePage) -> string { return cast(string) s[0].focus[0..<s[0].focus_n]; }
+ios_draft_str :: (s: [] IosPhonePage) -> string { return cast(string) s[0].draft[0..<s[0].draft_n]; }
+ios_sf :: (s: [] IosPhonePage, layer: int) -> [] UiSurface { return s[0].surface[layer..<layer + 1]; }
+ios_wide :: (s: [] IosPhonePage) -> bool { return s[0].page_w >= IOS_WIDE_BREAKPOINT; }
+ios_layer_idx :: (s: [] IosPhonePage) -> int {
+  if s[0].picker != 0 { return 1; }
+  if !ios_wide(s) && (s[0].drawer || s[0].share > 0.01f32) { return 1; }
+  return 0;
+}
+ios_live :: (s: [] IosPhonePage) -> [] UiSurface { return ios_sf(s, ios_layer_idx(s)); }
+ios_emit :: (s: [] IosPhonePage, act: int, arg: string) {
+  s[0].out_action = act;
+  s[0].out_arg_n = ios_copy(s[0].out_arg[..], arg);
+}
+ios_init :: (s: [] IosPhonePage) {
+  s[0].ready = true;
+  s[0].stick_bottom = true;
+  s[0].copied_block = -1;
+  p := s[0].page[..]; c := s[0].cover[..];
+  s[0].surface[0] = surface_over(
+    Sheet.{under = p[0].under[..], over = p[0].over[..], lines = p[0].lines[..], hits = p[0].hits[..], pool = p[0].pool[..]}, p[0].rows[..],
+    Sheet.{under = p[1].under[..], over = p[1].over[..], lines = p[1].lines[..], hits = p[1].hits[..], pool = p[1].pool[..]}, p[1].rows[..]);
+  s[0].surface[1] = surface_over(
+    Sheet.{under = c[0].under[..], over = c[0].over[..], lines = c[0].lines[..], hits = c[0].hits[..], pool = c[0].pool[..]}, c[0].rows[..],
+    Sheet.{under = c[1].under[..], over = c[1].over[..], lines = c[1].lines[..], hits = c[1].hits[..], pool = c[1].pool[..]}, c[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].page_keys[..]};
+  s[0].keyed[1] = KeyedStore.{rows = s[0].cover_keys[..]};
+}
+
+ios_keep_text :: (sh: [] Sheet, from: int) {
+  for i: from..<sh[0].no { if sh[0].over[i].kind == PRIM_TEXT { sh[0].over[i].text = sheet_pool(sh, sh[0].over[i].text); } }
+}
+ios_parse_md :: (s: [] IosPhonePage, src: string) -> int {
+  doc := s[0].md[..];
+  doc[0].n = 0; doc[0].nb = 0; doc[0].nr = 0; doc[0].ni = 0; doc[0].nlink = 0; doc[0].keep_rules = true;
+  return md_parse(doc, src, 0);
+}
+ios_unfolded :: (s: [] IosPhonePage, id: string) -> bool {
+  for i: 0..<IOS_FOLDS { if s[0].unfolded_n[i] == id.count && id.count > 0 && cast(string) s[0].unfolded[i][0..<id.count] == id { return true; } }
+  return false;
+}
+ios_fold_toggle :: (s: [] IosPhonePage, id: string) {
+  for i: 0..<IOS_FOLDS { if s[0].unfolded_n[i] == id.count && id.count > 0 && cast(string) s[0].unfolded[i][0..<id.count] == id { s[0].unfolded_n[i] = 0; return; } }
+  if id.count == 0 || id.count > EL_ID { return; }
+  k := s[0].unfolded_next % IOS_FOLDS;
+  s[0].unfolded_n[k] = el_copy(s[0].unfolded[k][..], id);
+  s[0].unfolded_next = k + 1;
+}
+
+ios_status_color :: (s: UiSkin, reach: int) -> Rgba {
+  if reach == IOS_REACH_OK { return s.success; }
+  if reach == IOS_REACH_CHECKING { return s.warning; }
+  if reach == IOS_REACH_BAD { return s.danger; }
+  return s.muted;
+}
+ios_first_line :: (text: string) -> string {
+  for c, i: text { if c == '\n' { return cast(string) text[0..<i]; } }
+  return text;
+}
+ios_str_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := a[i]; cb := b[i];
+    if ca >= 'A' && ca <= 'Z' { ca += 32; }
+    if cb >= 'A' && cb <= 'Z' { cb += 32; }
+    if ca != cb { return false; }
+  }
+  return true;
+}
+ios_str_has_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count {
+      ca := hay[i + j]; cb := needle[j];
+      if ca >= 'A' && ca <= 'Z' { ca += 32; }
+      if cb >= 'A' && cb <= 'Z' { cb += 32; }
+      if ca != cb { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+ios_tool_kind :: (name: string, is_sub: bool) -> int {
+  if is_sub { return APP_ACT_AGENT; }
+  if ios_str_has_ci(name, "bash") || ios_str_has_ci(name, "shell") || ios_str_has_ci(name, "command") || ios_str_has_ci(name, "exec") || ios_str_has_ci(name, "terminal") { return APP_ACT_EXEC; }
+  if ios_str_has_ci(name, "read") || ios_str_has_ci(name, "view") || ios_str_has_ci(name, "cat") { return APP_ACT_READ; }
+  if ios_str_has_ci(name, "edit") || ios_str_has_ci(name, "replace") || ios_str_has_ci(name, "patch") { return APP_ACT_EDIT; }
+  if ios_str_has_ci(name, "write") || ios_str_has_ci(name, "create") { return APP_ACT_WRITE; }
+  if ios_str_has_ci(name, "grep") || ios_str_has_ci(name, "search") || ios_str_has_ci(name, "find") { return APP_ACT_SEARCH; }
+  if ios_str_has_ci(name, "glob") || ios_str_has_ci(name, "list") || ios_str_has_ci(name, "dir") { return APP_ACT_GLOB; }
+  if ios_str_has_ci(name, "web") || ios_str_has_ci(name, "fetch") || ios_str_has_ci(name, "url") { return APP_ACT_WEB; }
+  if ios_str_has_ci(name, "todo") || ios_str_has_ci(name, "plan") { return APP_ACT_TODO; }
+  if ios_str_has_ci(name, "agent") || ios_str_eq_ci(name, "task") { return APP_ACT_AGENT; }
+  return APP_ACT_EXEC;
+}
+ios_tool_verb :: (kind: int, name: string) -> string {
+  if kind == APP_ACT_EXEC { return "Ran"; }
+  if kind == APP_ACT_READ { return "Read"; }
+  if kind == APP_ACT_EDIT { return "Edited"; }
+  if kind == APP_ACT_WRITE { return "Wrote"; }
+  if kind == APP_ACT_SEARCH { return "Searched"; }
+  if kind == APP_ACT_GLOB { return "Listed"; }
+  if kind == APP_ACT_WEB { return "Fetched"; }
+  if kind == APP_ACT_TODO { return "Updated todos"; }
+  if kind == APP_ACT_AGENT { return "Subagent"; }
+  return ifx name.count > 0 then name else "Tool";
+}
+
+// ---------------------------------------------------------------- top bar & banners
+
+ios_draw_topbar :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: f32, show_nav: bool) -> f32 {
+  sk := f[0].skin; a := sk.app; sh := f[0].sheet; m := f[0].m;
+  pad: f32 = 10.0f32;
+  side := a.nav;
+  ny := y + 4.0f32;
+  left_x := x + pad;
+  if show_nav {
+    _ := app_nav_button(f, "nav.sidebar", left_x, ny, s[0].drawer, 0, IOS_HIT_SIDEBAR);
+    left_x += side + 6.0f32;
+  }
+
+  // Right glass buttons: New Chat & Workspace
+  new_x := x + w - pad - side;
+  app_glass_button(f, "nav.newChat", new_x, ny, side, "New chat", IOS_HIT_NEW_CHAT);
+  sheet_icon(sh, ICON_COMPOSE, new_x + (side - a.nav_icon) / 2.0f32, ny + (side - a.nav_icon) / 2.0f32, a.nav_icon, sk.ink);
+
+  ws_x := new_x - 6.0f32 - side;
+  app_glass_button(f, "nav.workspace", ws_x, ny, side, "Workspace", IOS_HIT_WORKSPACE);
+  sheet_icon(sh, ICON_FOLDER, ws_x + (side - a.icon) / 2.0f32, ny + (side - a.icon) / 2.0f32, a.icon, sk.muted);
+
+  // Center computer / session pill
+  title := ifx s[0].has_active_session && s[0].session_title_n > 0 then cast(string) s[0].session_title[0..<s[0].session_title_n]
+    else ifx s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n]
+    else "Antigravity";
+  avail := ws_x - left_x - 10.0f32;
+  if avail > 44.0f32 {
+    ph: f32 = 28.0f32;
+    py := ny + (side - ph) / 2.0f32;
+    dot_d: f32 = 6.0f32;
+    chev: f32 = 10.0f32;
+    inner_max := avail - 20.0f32 - dot_d - 6.0f32 - chev - 4.0f32;
+    if inner_max < 24.0f32 { inner_max = 24.0f32; }
+    shown := app_fit(f, sk.label.face, title, inner_max);
+    tw := measure_width(m, sk.label.face, shown);
+    pw := ceil(10.0f32 + dot_d + 6.0f32 + tw + 4.0f32 + chev + 10.0f32);
+    if pw > avail { pw = avail; }
+    px := left_x + (ws_x - left_x - pw) / 2.0f32;
+    k := uiframe_key(f, "nav.computerPill");
+    pr := uiframe_press(f, k, "nav.computerPill");
+    _ := sheet_box(sh, px, py, pw, ph, ph / 2.0f32, sk.border, ifx pr > 0 then sk.raised else sk.surface, sk.hairline);
+    dot_col := ios_status_color(sk, s[0].reachability);
+    sheet_fill(sh, px + 10.0f32, py + (ph - dot_d) / 2.0f32, dot_d, dot_d, dot_d / 2.0f32, dot_col);
+    tx := px + 10.0f32 + dot_d + 6.0f32;
+    _ := sheet_text(sh, m, -1, tx, py + (ph - sk.label.line) / 2.0f32, sk.label.line, sk.label.face, sk.ink, shown);
+    sheet_icon(sh, ICON_CHEVRON, px + pw - 10.0f32 - chev, py + (ph - chev) / 2.0f32, chev, sk.muted);
+    row := uiframe_semantic(f, "nav.computerPill", EL_BUTTON, title, px, py, pw, ph, 0, IOS_HIT_COMPUTERS);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, px, py, pw, ph);
+  }
+
+  bar_h := 4.0f32 + side + 6.0f32;
+  _ := app_divider(f, x, y + bar_h - sk.border, w);
+  return bar_h;
+}
+
+ios_draw_banners :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
+  sk := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  cur := y;
+  if s[0].error_n > 0 {
+    err := cast(string) s[0].error_text[0..<s[0].error_n];
+    pad_x: f32 = 12.0f32; pad_y: f32 = 8.0f32; icon_s: f32 = 14.0f32; close_s: f32 = 24.0f32;
+    tx := x + pad_x + icon_s + 8.0f32;
+    tw := w - (pad_x + icon_s + 8.0f32) - (close_s + pad_x);
+    if tw < 40.0f32 { tw = 40.0f32; }
+    rows: [8] TextLine;
+    n := text_wrap_lines(m, TextFaces.{plain = sk.small.face, bold = sk.small.face, code = sk.small.face}, err, tw, rows[..]);
+    if n > 2 { n = 2; }
+    if n < 1 { n = 1; }
+    bh := cast(f32) n * sk.small.line + 2.0f32 * pad_y;
+    if bh < 34.0f32 { bh = 34.0f32; }
+    sheet_fill(sh, x, cur, w, bh, 0, sk.surface);
+    sheet_icon(sh, ICON_DANGER, x + pad_x, cur + (bh - icon_s) / 2.0f32, icon_s, sk.warning);
+    ty := cur + (bh - cast(f32) n * sk.small.line) / 2.0f32;
+    for i: 0..<n {
+      _ := sheet_text(sh, m, -1, tx, ty + cast(f32) i * sk.small.line, sk.small.line, sk.small.face, sk.ink, cast(string) err[rows[i].from..<rows[i].to]);
+    }
+    cx := x + w - pad_x - close_s;
+    cy := cur + (bh - close_s) / 2.0f32;
+    sheet_icon(sh, ICON_CLOSE, cx + (close_s - 12.0f32) / 2.0f32, cy + (close_s - 12.0f32) / 2.0f32, 12.0f32, sk.muted);
+    crow := uiframe_semantic(f, "banner.error.dismiss", EL_BUTTON, "Dismiss error", cx, cy, close_s, close_s, 0, IOS_HIT_DISMISS_ERROR);
+    sheet_hit(sh, UIFRAME_HIT, crow, 0, cx, cy, close_s, close_s);
+    _ := uiframe_semantic(f, "chat.errorBanner", EL_NOTICE, err, tx, cur, tw, bh, EL_S_LIVE, 0);
+    _ := app_divider(f, x, cur + bh - sk.border, w);
+    cur += bh;
+  }
+  if s[0].outbox_count > 0 {
+    bh: f32 = 34.0f32; pad_x: f32 = 12.0f32;
+    sheet_fill(sh, x, cur, w, bh, 0, sk.surface);
+    sheet_fill(sh, x + pad_x, cur + (bh - 7.0f32) / 2.0f32, 7.0f32, 7.0f32, 3.5f32, sk.warning);
+    ob: [80] u8; on := el_put_i(ob[..], 0, s[0].outbox_count);
+    on = el_put(ob[..], on, ifx s[0].outbox_count == 1 then " offline message waiting" else " offline messages waiting");
+    msg := sheet_pool(sh, cast(string) ob[0..<on]);
+    rb_w: f32 = 52.0f32; rb_h: f32 = 22.0f32;
+    rx := x + w - pad_x - rb_w; ry := cur + (bh - rb_h) / 2.0f32;
+    tx := x + pad_x + 14.0f32;
+    _ := sheet_text(sh, m, -1, tx, cur + (bh - sk.small.line) / 2.0f32, sk.small.line, sk.small.face, sk.ink, app_fit(f, sk.small.face, msg, rx - tx - 8.0f32));
+    k := uiframe_key(f, "banner.outbox.retry");
+    pr := uiframe_press(f, k, "banner.outbox.retry");
+    sheet_fill(sh, rx, ry, rb_w, rb_h, rb_h / 2.0f32, opacity(sk.accent, 0.92f32 + 0.08f32 * pr));
+    rw := measure_width(m, sk.small.face, "Retry");
+    _ := sheet_text(sh, m, -1, rx + (rb_w - rw) / 2.0f32, ry + (rb_h - sk.small.line) / 2.0f32, sk.small.line, sk.small.face, sk.on_accent, "Retry");
+    rrow := uiframe_semantic(f, "banner.outbox.retry", EL_BUTTON, "Retry offline messages", rx, ry, rb_w, rb_h, 0, IOS_HIT_RETRY_OUTBOX);
+    sheet_hit(sh, UIFRAME_HIT, rrow, 0, rx, ry, rb_w, rb_h);
+    _ := app_divider(f, x, cur + bh - sk.border, w);
+    cur += bh;
+  }
+  return cur - y;
+}
+
+// ---------------------------------------------------------------- composer & approval bar
+
+// Minimal 3-bar GPU voice/mic glyph that pulses gently while active.
+ios_draw_mic_bars :: (sh: [] Sheet, cx: f32, cy: f32, active: bool, clock: f32, reduced: bool, ink: Rgba) {
+  bw: f32 = 2.0f32; gap: f32 = 2.2f32;
+  hs := [3] f32.[6.0f32, 11.0f32, 6.0f32];
+  if active && !reduced {
+    hs[0] = 5.0f32 + 5.0f32 * abs(sin(clock * 6.5f32));
+    hs[1] = 7.0f32 + 6.0f32 * abs(sin(clock * 6.5f32 + 1.1f32));
+    hs[2] = 5.0f32 + 5.0f32 * abs(sin(clock * 6.5f32 + 2.2f32));
+  }
+  start_x := cx - (3.0f32 * bw + 2.0f32 * gap) / 2.0f32;
+  for i: 0..<3 {
+    hh := hs[i];
+    sheet_fill(sh, start_x + cast(f32) i * (bw + gap), cy - hh / 2.0f32, bw, hh, bw / 2.0f32, ink);
+  }
+}
+
+ios_draw_mini_chip :: (f: [] UiFrame, id: string, x: f32, y: f32, h: f32, max_w: f32, icon: int, label: string, chevron: bool, action: int) -> f32 {
+  sk := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  pad: f32 = 6.0f32; ic_s: f32 = 10.5f32; chev_s: f32 = 8.0f32; gap: f32 = 3.5f32;
+  lead := ifx icon >= 0 then ic_s + gap else 0.0f32;
+  trail := ifx chevron then gap + chev_s else 0.0f32;
+  text_max := max_w - 2.0f32 * pad - lead - trail;
+  if text_max < 16.0f32 { text_max = 16.0f32; }
+  shown := app_fit(f, sk.small.face, label, text_max);
+  tw := measure_width(m, sk.small.face, shown);
+  w := ceil(2.0f32 * pad + lead + tw + trail);
+  if w > max_w { w = max_w; }
+  k := uiframe_key(f, id);
+  pr := uiframe_press(f, k, id);
+  bg := ifx pr > 0 then sk.hover else sk.raised;
+  _ := sheet_box(sh, x, y, w, h, h / 2.0f32, sk.border, bg, sk.hairline);
+  tx := x + pad;
+  ink := rgba_mix(sk.muted, sk.ink, 0.72f32 + 0.28f32 * pr);
+  if icon >= 0 {
+    sheet_icon(sh, icon, tx, y + (h - ic_s) / 2.0f32, ic_s, sk.ink);
+    tx += lead;
+  }
+  _ := sheet_text(sh, m, -1, tx, y + (h - sk.small.line) / 2.0f32, sk.small.line, sk.small.face, ink, shown);
+  if chevron {
+    sheet_icon(sh, ICON_CHEVRON, x + w - pad - chev_s, y + (h - chev_s) / 2.0f32, chev_s, sk.faint);
+  }
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, action);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  return w;
+}
+
+// Draws approval card (if active) + toast (if active) + docked composer card anchored at `bottom`.
+// Returns the top Y coordinate of the whole bottom dock.
+ios_draw_composer_dock :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, bottom: f32, w: f32) -> f32 {
+  sk := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  pad_x: f32 = 10.0f32;
+  cx := x + pad_x; cw := w - 2.0f32 * pad_x;
+  if cw < 120.0f32 { cw = 120.0f32; }
+
+  // Composer geometry: multiline text area + 1 action row with +, Model, Effort, Mode, Mic, Send/Stop.
+  in_pad: f32 = 12.0f32;
+  line := sk.cmp.line;
+  inset := sk.cmp.text_inset;
+  text_w := cw - 2.0f32 * in_pad;
+  if text_w < 60.0f32 { text_w = 60.0f32; }
+  draft := ios_draft_str(s);
+  editing := s[0].focused && ios_focus_str(s) == "chat.composer";
+  rows: [COMPOSER_WRAP_LINES] TextLine;
+  lines := ifx draft.count == 0 then 1 else composer_rows(m, sk.body.face, draft, text_w, rows[..]);
+  raw_th := cast(f32) lines * line;
+  if editing && s[0].editor_h > 0 { raw_th = s[0].editor_h; }
+  max_th := 4.0f32 * line;
+  if raw_th < line { raw_th = line; }
+  if raw_th > max_th { raw_th = max_th; }
+
+  att_h: f32 = ifx s[0].attachment_count > 0 then 26.0f32 else 0.0f32;
+  row_h: f32 = 30.0f32;
+  top_pad: f32 = 6.0f32;
+  mid_gap: f32 = 4.0f32;
+  bot_pad: f32 = 8.0f32;
+  target_h := top_pad + att_h + (raw_th + 2.0f32 * inset) + mid_gap + row_h + bot_pad;
+
+  ckey := uiframe_key(f, "chat.composer");
+  ch := uiframe_spring(f, ckey, target_h);
+  min_ch := top_pad + att_h + (line + 2.0f32 * inset) + mid_gap + row_h + bot_pad;
+  if ch < min_ch { ch = min_ch; }
+  cy := bottom - ch;
+  radius: f32 = 18.0f32;
+
+  lit := keyed_press(f[0].keyed, ckey, uiframe_focused(f, "chat.composer"), sk.motion.focus, AM_IN_OUT_QUAD);
+  _ := sheet_box(sh, cx, cy, cw, ch, radius, sk.border, sk.surface, sk.field_edge);
+  if lit > 0 {
+    _ := sheet_box(sh, cx, cy, cw, ch, radius, sk.border, sk.clear, opacity(sk.accent, lit * 0.28f32));
+  }
+
+  cur_y := cy + top_pad;
+  // Optional attachment summary pill inside the top of composer
+  if s[0].attachment_count > 0 {
+    ab: [48] u8; an := el_put_i(ab[..], 0, s[0].attachment_count);
+    an = el_put(ab[..], an, ifx s[0].attachment_count == 1 then " attachment · Clear" else " attachments · Clear");
+    albl := sheet_pool(sh, cast(string) ab[0..<an]);
+    _ := ios_draw_mini_chip(f, "composer.clear_attach", cx + in_pad, cur_y, 22.0f32, text_w, ICON_PAPERCLIP, albl, false, IOS_HIT_CLEAR_ATTACH);
+    cur_y += att_h;
+  }
+
+  // Text input area
+  text_x := cx + in_pad;
+  text_y := cur_y;
+  text_box_h := ch - (cur_y - cy) - mid_gap - row_h - bot_pad;
+  if text_box_h < line + 2.0f32 * inset { text_box_h = line + 2.0f32 * inset; }
+  s[0].ed_x = text_x; s[0].ed_y = text_y; s[0].ed_w = text_w; s[0].ed_h = text_box_h;
+  s[0].ed_inset = inset; s[0].ed_line = line; s[0].ed_ok = true;
+
+  placeholder := "Ask Antigravity or type /...";
+  field := uiframe_semantic(f, "chat.composer", EL_FIELD, placeholder, cx, cur_y, cw, text_box_h, 0, IOS_HIT_COMPOSER);
+  elt_value(f[0].rows, field, draft);
+  sheet_hit(sh, UIFRAME_HIT, field, 0, cx, cur_y, cw, text_box_h);
+
+  if !editing {
+    first_y := text_y + inset;
+    if draft.count == 0 {
+      _ := sheet_text(sh, m, -1, text_x, first_y, line, sk.body.face, sk.faint, app_fit(f, sk.body.face, placeholder, text_w));
+    } else {
+      uiframe_clip(f, text_x, text_y, text_x + text_w, text_y + text_box_h);
+      for i: 0..<lines {
+        ly := first_y + cast(f32) i * line;
+        if ly > text_y + text_box_h { break; }
+        _ := sheet_text(sh, m, -1, text_x, ly, line, sk.body.face, sk.ink, cast(string) draft[rows[i].from..<rows[i].to]);
+      }
+      uiframe_unclip(f);
+    }
+  }
+
+  // Bottom action row inside composer card
+  ay := cy + ch - bot_pad - row_h;
+  mid := ay + row_h / 2.0f32;
+  lx := cx + 8.0f32;
+
+  // 1. Plus / attach button
+  plus_d: f32 = 25.0f32;
+  pk := uiframe_key(f, "chat.attachButton");
+  pp := uiframe_press(f, pk, "chat.attachButton");
+  _ := sheet_box(sh, lx, mid - plus_d / 2.0f32, plus_d, plus_d, plus_d / 2.0f32, sk.border, ifx pp > 0 then sk.hover else sk.raised, sk.hairline);
+  sheet_icon(sh, ICON_PLUS, lx + (plus_d - 12.0f32) / 2.0f32, mid - 6.0f32, 12.0f32, sk.ink);
+  prow := uiframe_semantic(f, "chat.attachButton", EL_BUTTON, "Add attachment or tool", lx, ay, plus_d, row_h, 0, IOS_HIT_ATTACH);
+  sheet_hit(sh, UIFRAME_HIT, prow, 0, lx, ay, plus_d, row_h);
+  lx += plus_d + 5.0f32;
+
+  // Right side: Send/Stop button + Mic button
+  send_d: f32 = 27.0f32;
+  send_x := cx + cw - 8.0f32 - send_d;
+  mic_d: f32 = 25.0f32;
+  mic_x := send_x - 5.0f32 - mic_d;
+
+  // Send / Stop circular action
+  busy := s[0].session_busy || s[0].awaiting_turn;
+  can_send := busy || draft.count > 0 || s[0].attachment_count > 0;
+  skey := uiframe_key(f, "chat.send");
+  turn := uiframe_spring(f, skey, ifx busy then 1.0f32 else 0.0f32);
+  held := uiframe_press(f, skey, "chat.send");
+  circle := send_d * (1.0f32 - held * 0.08f32);
+  sax := send_x + send_d / 2.0f32;
+  if can_send {
+    sheet_fill(sh, sax - circle / 2.0f32, mid - circle / 2.0f32, circle, circle, circle / 2.0f32, sk.accent);
+  } else {
+    _ := sheet_box(sh, sax - circle / 2.0f32, mid - circle / 2.0f32, circle, circle, circle / 2.0f32, sk.border, sk.raised, sk.hairline);
+  }
+  composer_action_mark(sh, sk, sax, mid, turn, ifx can_send then sk.on_accent else sk.faint);
+  srow := uiframe_semantic(f, "chat.send", EL_BUTTON, ifx busy then "Stop generating" else "Send message", send_x, ay, send_d, row_h, ifx can_send then 0 else EL_S_DISABLED, ifx can_send then IOS_HIT_SEND else 0);
+  if can_send { sheet_hit(sh, UIFRAME_HIT, srow, 0, send_x, ay, send_d, row_h); }
+
+  // Mic / dictation button
+  mk := uiframe_key(f, "chat.micButton");
+  mp := uiframe_press(f, mk, "chat.micButton");
+  mfill := ifx s[0].mic_active then sk.danger else ifx mp > 0 then sk.hover else sk.raised;
+  medge := ifx s[0].mic_active then sk.danger else sk.hairline;
+  _ := sheet_box(sh, mic_x, mid - mic_d / 2.0f32, mic_d, mic_d, mic_d / 2.0f32, sk.border, mfill, medge);
+  ios_draw_mic_bars(sh, mic_x + mic_d / 2.0f32, mid, s[0].mic_active, f[0].clock, f[0].reduced_motion, ifx s[0].mic_active then sk.ink else sk.muted);
+  if s[0].mic_active && !f[0].reduced_motion { uiframe_tick(f); }
+  mrow := uiframe_semantic(f, "chat.micButton", EL_BUTTON, ifx s[0].mic_active then "Stop voice dictation" else "Voice dictation", mic_x, ay, mic_d, row_h, ifx s[0].mic_active then EL_S_PRESSED else 0, IOS_HIT_MIC);
+  sheet_hit(sh, UIFRAME_HIT, mrow, 0, mic_x, ay, mic_d, row_h);
+
+  // Middle chips: Model, Effort, Mode — measure exact Effort/Mode widths so Model gets full room
+  chips_right := mic_x - 4.0f32;
+  chip_h: f32 = 24.0f32;
+  chip_y := mid - chip_h / 2.0f32;
+  show_eff := s[0].efforts_n > 0 && s[0].effort_label_n > 0;
+  show_mode := s[0].mode_label_n > 0;
+  eff_lbl := ifx show_eff then cast(string) s[0].effort_label[0..<s[0].effort_label_n] else "";
+  mode_lbl := ifx show_mode then cast(string) s[0].mode_label[0..<s[0].mode_label_n] else "";
+  eff_need := ifx show_eff then ceil(measure_width(m, sk.small.face, eff_lbl) + 12.0f32) else 0.0f32;
+  mode_need := ifx show_mode then ceil(measure_width(m, sk.small.face, mode_lbl) + 12.0f32) else 0.0f32;
+  model_lbl := ifx s[0].model_label_n > 0 then cast(string) s[0].model_label[0..<s[0].model_label_n] else "Gemini 4 Neon";
+  model_room := chips_right - lx - eff_need - mode_need - (ifx show_eff then 4.0f32 else 0.0f32) - (ifx show_mode then 4.0f32 else 0.0f32);
+  if model_room < 64.0f32 { model_room = chips_right - lx; }
+  if model_room > 36.0f32 {
+    mw := ios_draw_mini_chip(f, "chat.modelPicker", lx, chip_y, chip_h, model_room, ICON_ANTIGRAVITY, model_lbl, false, IOS_HIT_MODEL);
+    lx += mw + 3.5f32;
+  }
+  if show_eff && chips_right - lx >= 28.0f32 {
+    eff_room := chips_right - lx - (ifx show_mode then mode_need + 4.0f32 else 0.0f32);
+    if eff_room < 28.0f32 { eff_room = chips_right - lx; }
+    ew := ios_draw_mini_chip(f, "chat.effortPicker", lx, chip_y, chip_h, eff_room, -1, eff_lbl, false, IOS_HIT_EFFORT);
+    lx += ew + 4.0f32;
+  }
+  if show_mode && chips_right - lx >= 26.0f32 {
+    _ := ios_draw_mini_chip(f, "chat.reviewMode", lx, chip_y, chip_h, chips_right - lx, -1, mode_lbl, false, IOS_HIT_MODE);
+  }
+
+  dock_top := cy;
+
+  // Approval card above composer when an interaction is pending
+  if s[0].approval_active {
+    ap_gap: f32 = 8.0f32;
+    ap_pad: f32 = 12.0f32;
+    prompt := ifx s[0].approval_prompt_n > 0 then cast(string) s[0].approval_prompt[0..<s[0].approval_prompt_n] else "Antigravity needs your approval to continue.";
+    warn := ifx s[0].approval_warning_n > 0 then cast(string) s[0].approval_warning[0..<s[0].approval_warning_n] else "";
+    tw := cw - 2.0f32 * ap_pad;
+    pr_rows: [6] TextLine;
+    pn := text_wrap_lines(m, TextFaces.{plain = sk.body.face, bold = sk.body.face, code = sk.body.face}, prompt, tw, pr_rows[..]);
+    if pn > 3 { pn = 3; }
+    wn := 0;
+    wr_rows: [4] TextLine;
+    if warn.count > 0 {
+      wn = text_wrap_lines(m, TextFaces.{plain = sk.small.face, bold = sk.small.face, code = sk.small.face}, warn, tw, wr_rows[..]);
+      if wn > 2 { wn = 2; }
+    }
+    btn_h: f32 = 34.0f32;
+    ap_h := ap_pad + sk.small.line + 4.0f32 + cast(f32) pn * sk.body.line + (ifx wn > 0 then 4.0f32 + cast(f32) wn * sk.small.line else 0.0f32) + 10.0f32 + btn_h + ap_pad;
+    ap_y := dock_top - ap_gap - ap_h;
+    _ := sheet_box(sh, cx, ap_y, cw, ap_h, 14.0f32, sk.border, sk.surface, opacity(sk.warning, 0.55f32));
+    iy := ap_y + ap_pad;
+    sheet_icon(sh, ICON_DANGER, cx + ap_pad, iy + (sk.small.line - 12.0f32) / 2.0f32, 12.0f32, sk.warning);
+    _ := sheet_text(sh, m, -1, cx + ap_pad + 17.0f32, iy, sk.small.line, sk.small.face, sk.warning, "Approval required");
+    iy += sk.small.line + 4.0f32;
+    for i: 0..<pn {
+      _ := sheet_text(sh, m, -1, cx + ap_pad, iy + cast(f32) i * sk.body.line, sk.body.line, sk.body.face, sk.ink, cast(string) prompt[pr_rows[i].from..<pr_rows[i].to]);
+    }
+    iy += cast(f32) pn * sk.body.line;
+    if wn > 0 {
+      iy += 4.0f32;
+      for i: 0..<wn {
+        _ := sheet_text(sh, m, -1, cx + ap_pad, iy + cast(f32) i * sk.small.line, sk.small.line, sk.small.face, sk.muted, cast(string) warn[wr_rows[i].from..<wr_rows[i].to]);
+      }
+      iy += cast(f32) wn * sk.small.line;
+    }
+    iy += 10.0f32;
+    bw := (tw - 8.0f32) / 2.0f32;
+    // Deny button
+    dk := uiframe_key(f, "approval.deny"); dp := uiframe_press(f, dk, "approval.deny");
+    _ := sheet_box(sh, cx + ap_pad, iy, bw, btn_h, btn_h / 2.0f32, sk.border, ifx dp > 0 then sk.hover else sk.raised, sk.hairline);
+    dw := measure_width(m, sk.label.face, "Deny");
+    _ := sheet_text(sh, m, -1, cx + ap_pad + (bw - dw) / 2.0f32, iy + (btn_h - sk.label.line) / 2.0f32, sk.label.line, sk.label.face, sk.ink, "Deny");
+    drow := uiframe_semantic(f, "approval.deny", EL_BUTTON, "Deny", cx + ap_pad, iy, bw, btn_h, 0, IOS_HIT_DENY);
+    sheet_hit(sh, UIFRAME_HIT, drow, 0, cx + ap_pad, iy, bw, btn_h);
+    // Allow button
+    ax := cx + ap_pad + bw + 8.0f32;
+    ak := uiframe_key(f, "approval.allow"); ap := uiframe_press(f, ak, "approval.allow");
+    sheet_fill(sh, ax, iy, bw, btn_h, btn_h / 2.0f32, opacity(sk.accent, 0.92f32 + 0.08f32 * ap));
+    aw := measure_width(m, sk.label.face, "Allow");
+    _ := sheet_text(sh, m, -1, ax + (bw - aw) / 2.0f32, iy + (btn_h - sk.label.line) / 2.0f32, sk.label.line, sk.label.face, sk.on_accent, "Allow");
+    arow := uiframe_semantic(f, "approval.allow", EL_BUTTON, "Allow", ax, iy, bw, btn_h, 0, IOS_HIT_APPROVE);
+    sheet_hit(sh, UIFRAME_HIT, arow, 0, ax, iy, bw, btn_h);
+    dock_top = ap_y;
+  }
+
+  // Toast pill floating subtly above the dock
+  if s[0].toast_n > 0 {
+    toast := cast(string) s[0].toast_text[0..<s[0].toast_n];
+    th: f32 = 24.0f32;
+    shown := app_fit(f, sk.small.face, toast, cw - 32.0f32);
+    tw := ceil(measure_width(m, sk.small.face, shown) + 22.0f32);
+    tx := cx + (cw - tw) / 2.0f32;
+    ty := dock_top - 8.0f32 - th;
+    _ := sheet_box(sh, tx, ty, tw, th, th / 2.0f32, sk.border, sk.raised, sk.hairline);
+    _ := sheet_text(sh, m, -1, tx + 11.0f32, ty + (th - sk.small.line) / 2.0f32, sk.small.line, sk.small.face, sk.ink, shown);
+    _ := uiframe_semantic(f, "chat.toast", EL_NOTICE, toast, tx, ty, tw, th, EL_S_LIVE, 0);
+    dock_top = ty;
+  }
+
+  return dock_top;
+}
+
+// ---------------------------------------------------------------- transcript
+
+ios_draw_empty_state :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w: f32, h: f32) {
+  sk := f[0].skin; sh := f[0].sheet;
+  col_x := x + 20.0f32; col_w := w - 40.0f32;
+  if col_w < 80.0f32 { col_w = 80.0f32; }
+  mark: f32 = 34.0f32;
+  title := ifx s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n] else "OpenAgents";
+  sub_buf: [140] u8; sub := "";
+  if s[0].workspace_name_n > 0 {
+    sn := el_put(sub_buf[..], 0, "Workspace: ");
+    sn = el_put(sub_buf[..], sn, cast(string) s[0].workspace_name[0..<s[0].workspace_name_n]);
+    sub = sheet_pool(sh, cast(string) sub_buf[0..<sn]);
+  } else if s[0].paired_count == 0 {
+    sub = "Connect your Mac over Tailscale";
+  } else {
+    sub = "Ask Antigravity anything";
+  }
+  need_btn := s[0].paired_count == 0;
+  est_h := mark + 16.0f32 + sk.title.line + 8.0f32 + sk.small.line + (ifx need_btn then 18.0f32 + sk.control_h else 0.0f32);
+  cy := top + (h - est_h) * 0.44f32;
+  if cy < top + 16.0f32 { cy = top + 16.0f32; }
+  sheet_icon(sh, ICON_ANTIGRAVITY, x + (w - mark) / 2.0f32, cy, mark, sk.ink);
+  cy += mark + 16.0f32;
+  th := app_centred(f, sk.title, sk.ink, col_x, cy, col_w, title);
+  _ := uiframe_semantic(f, "chat.empty.title", EL_HEADING, title, col_x, cy, col_w, th, 0, 0);
+  cy += th + 6.0f32;
+  if sub.count > 0 {
+    dh := app_centred(f, sk.small, sk.muted, col_x, cy, col_w, sub);
+    _ := uiframe_semantic(f, "chat.empty.sub", EL_TEXT, sub, col_x, cy, col_w, dh, 0, 0);
+    cy += dh;
+  }
+  if need_btn {
+    cy += 18.0f32;
+    bw := app_button_width(f, -1, "Connect Mac");
+    if bw > col_w { bw = col_w; }
+    _ := app_button(f, "chat.connectTailscale", x + (w - bw) / 2.0f32, cy, bw, -1, "Connect Mac", APP_BUTTON_PRIMARY, 0, IOS_HIT_COMPUTERS);
+  }
+}
+
+// Builds & paints one consecutive activity group (thoughts + tools + subagents) from item `from` to `to`.
+ios_draw_activity_group :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: f32, from: int, to: int) -> f32 {
+  sk := f[0].skin; sh := f[0].sheet;
+  n := 0; live := false;
+  c: [1] AppActCount;
+  for idx: from..<to {
+    if n >= IOS_ACT_MAX { break; }
+    item := s[0].items[idx];
+    iid := ios_item_str(s, item.id_at, item.id_n);
+    txt := ios_item_str(s, item.text_at, item.text_n);
+    tool := ios_item_str(s, item.tool_at, item.tool_n);
+    path := ios_item_str(s, item.path_at, item.path_n);
+    diff := ios_item_str(s, item.diff_at, item.diff_n);
+    rid_n := el_put(s[0].act_ids[n][..], 0, "actr.");
+    rid_n = el_put(s[0].act_ids[n][..], rid_n, iid);
+    s[0].act_id_ns[n] = rid_n;
+    s[0].act_item_idx[n] = idx;
+    if item.role == IOS_ROLE_THOUGHT {
+      s[0].act_rows[n] = AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = txt};
+      app_act_count(c[..], APP_ACT_THOUGHT, false);
+      if !item.complete { live = true; }
+    } else {
+      kind := ios_tool_kind(tool, item.is_subagent);
+      r := AppActRow.{
+        kind = kind,
+        verb = ios_tool_verb(kind, tool),
+        target = ifx path.count > 0 then path else ios_first_line(txt),
+        failed = item.failed,
+        running = !item.complete,
+        opens = item.is_subagent,
+        calls = item.subagent_calls,
+        path = path,
+        diff = diff,
+        diff_cut = item.diff_cut,
+      };
+      if item.complete {
+        r.output = txt;
+      } else {
+        live = true;
+        if r.target != txt { r.call = txt; }
+      }
+      if item.elapsed_secs > 0 { r.timed = true; r.secs = item.elapsed_secs; }
+      s[0].act_rows[n] = r;
+      app_act_count(c[..], kind, item.failed);
+    }
+    n += 1;
+  }
+  if n == 0 { return 0; }
+  first_id := ios_item_str(s, s[0].items[from].id_at, s[0].items[from].id_n);
+  hb: [EL_ID] u8; hn := el_put(hb[..], 0, "act."); hn = el_put(hb[..], hn, first_id);
+  head_id := sheet_pool(sh, cast(string) hb[0..<hn]);
+  sb: [256] u8; sn := app_act_summary(sb[..], c[0]);
+  summary := sheet_pool(sh, cast(string) sb[0..<sn]);
+  k := uiframe_key(f, head_id);
+  open := app_act_open(cast(int) keyed_slot(f[0].keyed, k, APP_TOOL_OPEN), live);
+  h := app_act_head(f, head_id, x, y, w, summary, live, open, IOS_HIT_ACT_HEAD);
+  if live && !f[0].reduced_motion { uiframe_tick(f); }
+  if !open { return h; }
+  h += sk.app.gap_small;
+  for q: 0..<n {
+    row_id := sheet_pool(sh, cast(string) s[0].act_ids[q][0..<s[0].act_id_ns[q]]);
+    from_o := sh[0].no;
+    r := s[0].act_rows[q];
+    if r.kind == APP_ACT_THOUGHT && r.output.count > 0 {
+      r.blocks = ios_parse_md(s, r.output);
+      r.doc = s[0].md[..];
+      r.block0 = 0;
+    }
+    h += app_act_row(f, row_id, x, y + h, w, r, q < n - 1, IOS_HIT_ACT_ROW);
+    ios_keep_text(sh, from_o);
+  }
+  return h;
+}
+
+ios_draw_transcript :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, top: f32, w: f32, bottom: f32) {
+  sk := f[0].skin; sh := f[0].sheet;
+  vh := bottom - top;
+  if vh < 10.0f32 { vh = 10.0f32; }
+  s[0].chat_viewport = vh;
+  if s[0].items_n == 0 && !s[0].session_busy && !s[0].awaiting_turn {
+    s[0].chat_content = 0;
+    s[0].chat_scroll = 0;
+    ios_draw_empty_state(s, f, x, top, w, vh);
+    return;
+  }
+
+  col_pad: f32 = 14.0f32;
+  max_col: f32 = 640.0f32;
+  col_w := w - 2.0f32 * col_pad;
+  if col_w > max_col { col_w = max_col; }
+  if col_w < 80.0f32 { col_w = 80.0f32; }
+  col_x := x + (w - col_w) / 2.0f32;
+
+  // Clamp previous scroll & follow bottom when sticky
+  max_s := scroll_max(s[0].chat_content, vh);
+  if s[0].stick_bottom {
+    s[0].chat_scroll = max_s;
+  } else {
+    s[0].chat_scroll = scroll_clamp(s[0].chat_scroll, s[0].chat_content, vh);
+  }
+
+  uiframe_fade_edge(f, top, 18.0f32);
+  uiframe_clip(f, x, top, x + w, bottom);
+
+  cur: f32 = 12.0f32;
+  // Optional "Load earlier messages" pill at top when paginated
+  if s[0].has_older_messages {
+    bw := app_button_width(f, -1, "Load earlier messages");
+    if bw > col_w { bw = col_w; }
+    by := top + cur - s[0].chat_scroll;
+    cur += app_button(f, "chat.load_older", col_x + (col_w - bw) / 2.0f32, by, bw, -1, "Load earlier messages", APP_BUTTON_QUIET, 0, IOS_HIT_LOAD_OLDER) + 10.0f32;
+  }
+
+  i := 0;
+  gap := sk.app.gap * 1.8f32;
+  while i < s[0].items_n {
+    item := s[0].items[i];
+    iy := top + cur - s[0].chat_scroll;
+    if item.role == IOS_ROLE_THOUGHT || item.role == IOS_ROLE_TOOL {
+      j := i + 1;
+      while j < s[0].items_n && (s[0].items[j].role == IOS_ROLE_THOUGHT || s[0].items[j].role == IOS_ROLE_TOOL) { j += 1; }
+      cur += ios_draw_activity_group(s, f, col_x, iy, col_w, i, j) + sk.app.gap;
+      i = j;
+      continue;
+    }
+    iid := ios_item_str(s, item.id_at, item.id_n);
+    txt := ios_item_str(s, item.text_at, item.text_n);
+    mb: [EL_ID] u8; mn := el_put(mb[..], 0, "m."); mn = el_put(mb[..], mn, iid);
+    mid := sheet_pool(sh, cast(string) mb[0..<mn]);
+    from_o := sh[0].no;
+    if item.role == IOS_ROLE_USER {
+      cur += app_message_user_fold(f, mid, col_x, iy, col_w, txt, ios_unfolded(s, mid), IOS_HIT_FOLD_USER) + gap;
+    } else if item.role == IOS_ROLE_ASSISTANT {
+      blocks := ios_parse_md(s, txt);
+      copied := ifx s[0].copied_id_n > 0 && cast(string) s[0].copied_id[0..<s[0].copied_id_n] == mid then s[0].copied_block else -1;
+      mh := app_message_agent(f, mid, col_x, iy, col_w, s[0].md[..], blocks, copied, IOS_HIT_COPY_CODE);
+      if txt.count > 0 && item.complete {
+        cb: [EL_ID] u8;
+        mh += sk.app.gap_small;
+        mh += app_message_actions(f, app_id(cb[..], mid, ".msgcopy"), col_x, iy + mh,
+          s[0].copied_id_n > 0 && cast(string) s[0].copied_id[0..<s[0].copied_id_n] == mid && s[0].copied_block == -2, IOS_HIT_COPY_MSG);
+      }
+      cur += mh + gap;
+    } else {
+      cur += app_notice(f, mid, col_x, iy, col_w, txt, ifx item.failed then APP_NOTICE_ERROR else APP_NOTICE_INFO) + sk.app.gap;
+    }
+    ios_keep_text(sh, from_o);
+    i += 1;
+  }
+
+  // Live working indicator while Antigravity is streaming or starting a turn
+  if s[0].session_busy || s[0].awaiting_turn {
+    wlbl := ifx s[0].working_label_n > 0 then cast(string) s[0].working_label[0..<s[0].working_label_n]
+      else ifx s[0].awaiting_turn then "Sending…" else "Working";
+    secs := ifx s[0].awaiting_turn && !s[0].session_busy then -1 else s[0].working_secs;
+    cur += app_working(f, "chat.working", col_x, top + cur - s[0].chat_scroll, secs, wlbl) + 8.0f32;
+    if !f[0].reduced_motion { uiframe_tick(f); }
+  }
+
+  cur += 14.0f32;
+  uiframe_unclip(f);
+  uiframe_fade_end(f);
+
+  old_content := s[0].chat_content;
+  s[0].chat_content = cur;
+  new_max := scroll_max(cur, vh);
+  if s[0].stick_bottom {
+    if abs(new_max - s[0].chat_scroll) > 0.5f32 {
+      s[0].chat_scroll = new_max;
+      s[0].again = true;
+    }
+  } else if abs(cur - old_content) > 0.5f32 {
+    s[0].chat_scroll = scroll_clamp(s[0].chat_scroll, cur, vh);
+  }
+
+  // Floating Jump-to-Latest pill when scrolled up
+  away := !s[0].stick_bottom && (new_max - s[0].chat_scroll) > 36.0f32;
+  busy := s[0].session_busy || s[0].awaiting_turn;
+  _ := app_jump_pill(f, "chat.jump", x + w / 2.0f32, bottom - 10.0f32,
+    ifx busy then "New reply" else "Jump to latest", busy, away, IOS_HIT_JUMP_BOTTOM);
+}
+
+// ---------------------------------------------------------------- sidebar content
+
+ios_draw_sidebar_body :: (s: [] IosPhonePage, f: [] UiFrame, x: f32, y: f32, w: f32, bottom: f32, keyed_layer: int) {
+  sk := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  cur := y + 6.0f32;
+
+  // Brand header: Antigravity mark + OpenAgents title + live connection dot
+  mark: f32 = 18.0f32;
+  sheet_icon(sh, ICON_ANTIGRAVITY, x + 4.0f32, cur + (sk.title.line - mark) / 2.0f32, mark, sk.ink);
+  _ := sheet_text(sh, m, -1, x + 4.0f32 + mark + 8.0f32, cur, sk.title.line, sk.title.face, sk.ink, "OpenAgents");
+  _ := uiframe_semantic(f, "drawer.brand", EL_HEADING, "OpenAgents", x, cur, w, sk.title.line, 0, 0);
+  dot_d: f32 = 7.0f32;
+  sheet_fill(sh, x + w - 4.0f32 - dot_d, cur + (sk.title.line - dot_d) / 2.0f32, dot_d, dot_d, dot_d / 2.0f32, ios_status_color(sk, s[0].reachability));
+  cur += sk.title.line + 10.0f32;
+
+  // Primary "New chat" action row
+  cur += app_side_action(f, "sidebar.newChat", x - 4.0f32, cur, w + 8.0f32, ICON_COMPOSE, "New chat", 0, IOS_HIT_NEW_CHAT) + 6.0f32;
+  cur += app_divider(f, x, cur, w) + 4.0f32;
+
+  // Footer reserved height (Antigravity Hub + Computers & Tailscale)
+  foot_h := 2.0f32 * sk.app.side_row + 16.0f32;
+  list_bottom := bottom - foot_h;
+  if list_bottom < cur + 40.0f32 { list_bottom = cur + 40.0f32; }
+
+  // Build Working + Recents rows inside heap-owned scratch arrays
+  n := 0;
+  working := 0;
+  for i: 0..<s[0].sessions_n { if s[0].sessions[i].busy { working += 1; } }
+  if working > 0 {
+    s[0].side_rows[n] = AppSideRow.{id = "side.head.working", title = "WORKING", heading = true, action = 0};
+    n += 1;
+    for i: 0..<s[0].sessions_n {
+      if !s[0].sessions[i].busy || n >= IOS_MAX_SESSIONS + 4 { continue; }
+      ss := s[0].sessions[i];
+      id_n := el_put(s[0].side_ids[n][..], 0, "ses.");
+      id_n = el_put(s[0].side_ids[n][..], id_n, cast(string) s[0].sessions[i].id[0..<ss.id_n]);
+      s[0].side_id_ns[n] = id_n;
+      s[0].side_rows[n] = AppSideRow.{
+        id = sheet_pool(sh, cast(string) s[0].side_ids[n][0..<id_n]),
+        title = sheet_pool(sh, ifx ss.title_n > 0 then cast(string) s[0].sessions[i].title[0..<ss.title_n] else "Untitled chat"),
+        status = sheet_pool(sh, cast(string) s[0].sessions[i].status[0..<ss.status_n]),
+        repo = sheet_pool(sh, cast(string) s[0].sessions[i].repo[0..<ss.repo_n]),
+        branch = sheet_pool(sh, cast(string) s[0].sessions[i].branch[0..<ss.branch_n]),
+        state = (ifx ss.current then EL_S_CURRENT else 0) | EL_S_BUSY,
+        attention = ss.attention,
+        unread = ss.unread,
+        card = true,
+        icon = ICON_FOLDER_11,
+        harness_icon = ICON_ANTIGRAVITY,
+        action = IOS_HIT_SELECT_SESSION,
+      };
+      n += 1;
+    }
+  }
+  s[0].side_rows[n] = AppSideRow.{id = "side.head.recents", title = "RECENTS", heading = true, action = 0};
+  n += 1;
+  recents := 0;
+  for i: 0..<s[0].sessions_n {
+    if s[0].sessions[i].busy || n >= IOS_MAX_SESSIONS + 6 { continue; }
+    ss := s[0].sessions[i];
+    id_n := el_put(s[0].side_ids[n][..], 0, "ses.");
+    id_n = el_put(s[0].side_ids[n][..], id_n, cast(string) s[0].sessions[i].id[0..<ss.id_n]);
+    s[0].side_id_ns[n] = id_n;
+    s[0].side_rows[n] = AppSideRow.{
+      id = sheet_pool(sh, cast(string) s[0].side_ids[n][0..<id_n]),
+      title = sheet_pool(sh, ifx ss.title_n > 0 then cast(string) s[0].sessions[i].title[0..<ss.title_n] else "Untitled chat"),
+      status = sheet_pool(sh, cast(string) s[0].sessions[i].status[0..<ss.status_n]),
+      repo = sheet_pool(sh, cast(string) s[0].sessions[i].repo[0..<ss.repo_n]),
+      branch = sheet_pool(sh, cast(string) s[0].sessions[i].branch[0..<ss.branch_n]),
+      state = ifx ss.current then EL_S_CURRENT else 0,
+      attention = ss.attention,
+      unread = ss.unread,
+      card = true,
+      icon = ICON_FOLDER_11,
+      harness_icon = ICON_ANTIGRAVITY,
+      action = IOS_HIT_SELECT_SESSION,
+    };
+    n += 1; recents += 1;
+  }
+  if recents == 0 && working == 0 {
+    s[0].side_rows[n] = AppSideRow.{
+      id = "side.empty",
+      title = ifx s[0].paired_count == 0 then "Pair a Mac to see chats" else "No chats yet",
+      state = EL_S_DISABLED, action = 0,
+    };
+    n += 1;
+  }
+  if s[0].has_more_sessions && n < IOS_MAX_SESSIONS + 8 {
+    s[0].side_rows[n] = AppSideRow.{id = "side.more", title = "Load more chats", action = IOS_HIT_LOAD_MORE_SESSIONS};
+    n += 1;
+  }
+
+  s[0].side_viewport = list_bottom - cur;
+  s[0].side_content = app_side_content(f, s[0].side_rows[0..<n]);
+  sk_key := uiframe_key(f, "side.viewport");
+  soff := scroll_clamp(keyed_scroll(f[0].keyed, sk_key), s[0].side_content, s[0].side_viewport);
+  keyed_scroll_set(f[0].keyed, sk_key, soff);
+  _ := app_side_window(f, x - 4.0f32, cur, w + 8.0f32, s[0].side_viewport, s[0].side_rows[0..<n], soff, 0, IOS_HIT_SELECT_SESSION);
+  if working > 0 && !f[0].reduced_motion { uiframe_tick(f); }
+
+  // Pinned footer: divider + Antigravity Hub + Computers & Tailscale
+  fy := list_bottom + 4.0f32;
+  fy += app_divider(f, x, fy, w) + 4.0f32;
+  fy += app_side_action(f, "sidebar.hub", x - 4.0f32, fy, w + 8.0f32, ICON_WIDGET, "Antigravity Hub", 0, IOS_HIT_HUB);
+  comp_lbl := ifx s[0].computer_name_n > 0 then cast(string) s[0].computer_name[0..<s[0].computer_name_n] else "Computers & Tailscale";
+  _ := app_side_action(f, "sidebar.computers", x - 4.0f32, fy, w + 8.0f32, ICON_SETTINGS, comp_lbl, 0, IOS_HIT_COMPUTERS);
+  _ := keyed_layer;
+}
+
+// ---------------------------------------------------------------- floating picker cover
+
+ios_draw_picker :: (s: [] IosPhonePage, f: [] UiFrame, w: f32, h: f32) {
+  sk := f[0].skin; sh := f[0].sheet;
+  // Dimmed full-screen scrim
+  scrim_col := Rgba.{r = 0, g = 0, b = 0, a = 0.62f32};
+  sheet_fill(sh, 0, 0, w, h, 0, scrim_col);
+  srow := uiframe_semantic(f, "picker.scrim", EL_BUTTON, "Close picker", 0, 0, w, h, 0, IOS_HIT_PICKER_CLOSE);
+  sheet_hit(sh, UIFRAME_HIT, srow, 0, 0, 0, w, h);
+
+  title := ifx s[0].picker == 1 then "Antigravity Model" else ifx s[0].picker == 2 then "Thinking Effort" else "Review Mode";
+  count := ifx s[0].picker == 1 then s[0].models_n else ifx s[0].picker == 2 then s[0].efforts_n else s[0].modes_n;
+  row_act := ifx s[0].picker == 1 then IOS_HIT_PICK_MODEL else ifx s[0].picker == 2 then IOS_HIT_PICK_EFFORT else IOS_HIT_PICK_MODE;
+
+  u := ios_u(s);
+  bot_safe := s[0].safe_bottom / u;
+  top_safe := s[0].safe_top / u;
+  sw := w - 20.0f32;
+  if sw > 420.0f32 { sw = 420.0f32; }
+  sx := (w - sw) / 2.0f32;
+
+  row_h: f32 = 46.0f32;
+  head_h := sk.title.line + 10.0f32;
+  list_need := cast(f32) (ifx count > 0 then count else 1) * (row_h + 4.0f32);
+  max_sh := h - top_safe - bot_safe - 56.0f32;
+  if max_sh < 140.0f32 { max_sh = 140.0f32; }
+  sheet_h := 24.0f32 + head_h + list_need + 14.0f32;
+  if sheet_h > max_sh { sheet_h = max_sh; }
+  sy := h - bot_safe - 10.0f32 - sheet_h;
+
+  inside := app_sheet(f, "picker.sheet", sx, sy, sw, sheet_h, title);
+  cur := inside.y + 2.0f32;
+  _ := sheet_text(sh, f[0].m, -1, inside.x, cur, sk.title.line, sk.title.face, sk.ink, title);
+  _ := uiframe_semantic(f, "picker.title", EL_HEADING, title, inside.x, cur, inside.w, sk.title.line, 0, 0);
+  cur += head_h;
+
+  vp := (sy + sheet_h - 12.0f32) - cur;
+  if vp < 44.0f32 { vp = 44.0f32; }
+  s[0].picker_viewport = vp;
+
+  pk := uiframe_key(f, "picker.viewport");
+  poff := scroll_clamp(keyed_scroll(f[0].keyed, pk), s[0].picker_content, vp);
+  keyed_scroll_set(f[0].keyed, pk, poff);
+
+  uiframe_clip(f, inside.x - 4.0f32, cur, inside.x + inside.w + 4.0f32, cur + vp);
+  cy: f32 = 0;
+  for i: 0..<count {
+    opt := ifx s[0].picker == 1 then s[0].models[i] else ifx s[0].picker == 2 then s[0].efforts[i] else s[0].modes[i];
+    lbl := ifx s[0].picker == 1 then cast(string) s[0].models[i].label[0..<opt.label_n]
+      else ifx s[0].picker == 2 then cast(string) s[0].efforts[i].label[0..<opt.label_n]
+      else cast(string) s[0].modes[i].label[0..<opt.label_n];
+    det := ifx s[0].picker == 1 then cast(string) s[0].models[i].detail[0..<opt.detail_n]
+      else ifx s[0].picker == 2 then cast(string) s[0].efforts[i].detail[0..<opt.detail_n]
+      else cast(string) s[0].modes[i].detail[0..<opt.detail_n];
+    rb: [EL_ID] u8; rn := el_put(rb[..], 0, "pick."); rn = el_put_i(rb[..], rn, i);
+    rid := sheet_pool(sh, cast(string) rb[0..<rn]);
+    ry := cur + cy - poff;
+    rk := uiframe_key(f, rid);
+    pr := uiframe_press(f, rk, rid);
+    bg := ifx opt.selected then sk.surface else ifx pr > 0 then sk.hover else sk.clear;
+    if opt.selected {
+      _ := sheet_box(sh, inside.x, ry, inside.w, row_h, 11.0f32, sk.border, bg, sk.hairline);
+    } else if pr > 0 {
+      sheet_fill(sh, inside.x, ry, inside.w, row_h, 11.0f32, bg);
+    }
+    pad_r: f32 = 11.0f32;
+    check_w := ifx opt.selected then 14.0f32 + 8.0f32 else 0.0f32;
+    troom := inside.w - 2.0f32 * pad_r - check_w;
+    if det.count > 0 {
+      lines_h := sk.label.line + 2.0f32 + sk.small.line;
+      ty := ry + (row_h - lines_h) / 2.0f32;
+      _ := sheet_text(sh, f[0].m, -1, inside.x + pad_r, ty, sk.label.line, sk.label.face, sk.ink, app_fit(f, sk.label.face, lbl, troom));
+      _ := sheet_text(sh, f[0].m, -1, inside.x + pad_r, ty + sk.label.line + 2.0f32, sk.small.line, sk.small.face, sk.muted, app_fit(f, sk.small.face, det, troom));
+    } else {
+      _ := sheet_text(sh, f[0].m, -1, inside.x + pad_r, ry + (row_h - sk.label.line) / 2.0f32, sk.label.line, sk.label.face, sk.ink, app_fit(f, sk.label.face, lbl, troom));
+    }
+    if opt.selected {
+      sheet_icon(sh, sk.icon_check, inside.x + inside.w - pad_r - 14.0f32, ry + (row_h - 14.0f32) / 2.0f32, 14.0f32, sk.accent);
+    }
+    st := ifx opt.selected then EL_S_CURRENT | EL_S_CHECKS | EL_S_CHECKED else 0;
+    row := uiframe_semantic(f, rid, EL_ROW, lbl, inside.x, ry, inside.w, row_h, st, row_act);
+    if det.count > 0 { elt_value(f[0].rows, row, det); }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, inside.x, ry, inside.w, row_h);
+    cy += row_h + 4.0f32;
+  }
+  uiframe_unclip(f);
+  s[0].picker_content = cy;
+  app_card_end(f);
+}
+
+// ---------------------------------------------------------------- layout & frame
+
+ios_layout_page :: (s: [] IosPhonePage, f: [] UiFrame, w: f32, h: f32) {
+  u := ios_u(s);
+  top_safe := s[0].safe_top / u;
+  bot_safe := s[0].safe_bottom / u;
+  kbd := s[0].keyboard / u;
+  bottom_pad := ifx kbd > bot_safe then kbd + 6.0f32 else bot_safe + 6.0f32;
+
+  main_x: f32 = 0; main_w := w;
+  show_nav := true;
+  if ios_wide(s) {
+    // Persistent left column on iPad / wide landscape
+    sw: f32 = 246.0f32;
+    _ := app_sidebar_surface(f, 0, 0, sw, h);
+    ios_draw_sidebar_body(s, f, 12.0f32, top_safe, sw - 24.0f32, h - bot_safe - 6.0f32, 0);
+    main_x = sw; main_w = w - sw; show_nav = false;
+  }
+
+  bar_h := ios_draw_topbar(s, f, main_x, top_safe, main_w, show_nav);
+  ban_h := ios_draw_banners(s, f, main_x, top_safe + bar_h, main_w);
+  content_top := top_safe + bar_h + ban_h;
+  dock_top := ios_draw_composer_dock(s, f, main_x, h - bottom_pad, main_w);
+  ios_draw_transcript(s, f, main_x, content_top, main_w, dock_top - 4.0f32);
+}
+
+ios_layout_cover :: (s: [] IosPhonePage, f: [] UiFrame, w: f32, h: f32) {
+  if s[0].picker != 0 {
+    ios_draw_picker(s, f, w, h);
+    return;
+  }
+  if ios_wide(s) || !(s[0].share > 0.0f32) { return; }
+  u := ios_u(s);
+  top_safe := s[0].safe_top / u;
+  bot_safe := s[0].safe_bottom / u;
+  inside := app_sidebar(f, "drawer", "drawer.scrim", 0, 0, w, h, top_safe, s[0].share, "Chats", IOS_HIT_SCRIM);
+  if inside.w > 0 {
+    ios_draw_sidebar_body(s, f, inside.x, inside.y, inside.w, h - bot_safe - 6.0f32, 1);
+  }
+  app_sidebar_end(f, inside);
+}
+
+// ---------------------------------------------------------------- press routing
+
+ios_parse_uint_after :: (s: string, prefix_len: int) -> int {
+  if prefix_len >= s.count { return -1; }
+  v := 0; digits := 0;
+  for i: prefix_len..<s.count {
+    c := s[i];
+    if c < '0' || c > '9' { break; }
+    v = v * 10 + cast(int) (c - '0');
+    digits += 1;
+  }
+  return ifx digits > 0 then v else -1;
+}
+
+ios_find_item_by_id :: (s: [] IosPhonePage, target: string) -> int {
+  for i: 0..<s[0].items_n {
+    if ios_item_str(s, s[0].items[i].id_at, s[0].items[i].id_n) == target { return i; }
+  }
+  return -1;
+}
+
+ios_press :: (s: [] IosPhonePage, row: int) -> bool {
+  if row < 0 { return false; }
+  sf := ios_live(s);
+  act := surface_action(sf, row);
+  id := surface_id(sf, row);
+  if act == IOS_HIT_NONE { return false; }
+
+  if act == IOS_HIT_SIDEBAR {
+    s[0].drawer = !s[0].drawer;
+    s[0].picker = 0;
+    s[0].focus_n = 0;
+    return true;
+  }
+  if act == IOS_HIT_SCRIM { s[0].drawer = false; return true; }
+  if act == IOS_HIT_PICKER_CLOSE { s[0].picker = 0; return true; }
+  if act == IOS_HIT_COMPUTERS { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_COMPUTERS, ""); return true; }
+  if act == IOS_HIT_WORKSPACE { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_WORKSPACE, ""); return true; }
+  if act == IOS_HIT_HUB { s[0].drawer = false; s[0].picker = 0; s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_HUB, ""); return true; }
+  if act == IOS_HIT_NEW_CHAT {
+    s[0].drawer = false; s[0].picker = 0; s[0].stick_bottom = true; s[0].chat_scroll = 0;
+    s[0].focus_n = el_copy(s[0].focus[..], "chat.composer");
+    ios_emit(s, IOS_ACT_NEW_CHAT, "");
+    return true;
+  }
+  if act == IOS_HIT_COMPOSER {
+    s[0].focus_n = el_copy(s[0].focus[..], "chat.composer");
+    ios_emit(s, IOS_ACT_FOCUS_COMPOSER, "");
+    return true;
+  }
+  if act == IOS_HIT_SEND {
+    if s[0].session_busy || s[0].awaiting_turn {
+      ios_emit(s, IOS_ACT_STOP, "");
+    } else {
+      s[0].stick_bottom = true;
+      ios_emit(s, IOS_ACT_SEND, "");
+    }
+    return true;
+  }
+  if act == IOS_HIT_ATTACH { s[0].focus_n = 0; ios_emit(s, IOS_ACT_OPEN_ATTACH, ""); return true; }
+  if act == IOS_HIT_CLEAR_ATTACH { ios_emit(s, IOS_ACT_CLEAR_ATTACH, ""); return true; }
+  if act == IOS_HIT_MODEL {
+    s[0].focus_n = 0; s[0].picker = 1;
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "picker.viewport"), 0);
+    return true;
+  }
+  if act == IOS_HIT_EFFORT {
+    s[0].focus_n = 0; s[0].picker = 2;
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "picker.viewport"), 0);
+    return true;
+  }
+  if act == IOS_HIT_MODE {
+    s[0].focus_n = 0; s[0].picker = 3;
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "picker.viewport"), 0);
+    return true;
+  }
+  if act == IOS_HIT_MIC { ios_emit(s, IOS_ACT_TOGGLE_MIC, ""); return true; }
+  if act == IOS_HIT_PICK_MODEL {
+    idx := ios_parse_uint_after(id, 5);
+    s[0].picker = 0;
+    if idx >= 0 && idx < s[0].models_n {
+      ios_emit(s, IOS_ACT_CHOSE_MODEL, cast(string) s[0].models[idx].id[0..<s[0].models[idx].id_n]);
+    }
+    return true;
+  }
+  if act == IOS_HIT_PICK_EFFORT {
+    idx := ios_parse_uint_after(id, 5);
+    s[0].picker = 0;
+    if idx >= 0 && idx < s[0].efforts_n {
+      ios_emit(s, IOS_ACT_CHOSE_EFFORT, cast(string) s[0].efforts[idx].id[0..<s[0].efforts[idx].id_n]);
+    }
+    return true;
+  }
+  if act == IOS_HIT_PICK_MODE {
+    idx := ios_parse_uint_after(id, 5);
+    s[0].picker = 0;
+    if idx >= 0 && idx < s[0].modes_n {
+      ios_emit(s, IOS_ACT_CHOSE_MODE, cast(string) s[0].modes[idx].id[0..<s[0].modes[idx].id_n]);
+    }
+    return true;
+  }
+  if act == IOS_HIT_SELECT_SESSION {
+    if id.count > 4 && cast(string) id[0..<4] == "ses." {
+      s[0].drawer = false; s[0].stick_bottom = true;
+      ios_emit(s, IOS_ACT_SELECT_SESSION, cast(string) id[4..<id.count]);
+      return true;
+    }
+    return false;
+  }
+  if act == IOS_HIT_APPROVE { ios_emit(s, IOS_ACT_APPROVE, ""); return true; }
+  if act == IOS_HIT_DENY { ios_emit(s, IOS_ACT_DENY, ""); return true; }
+  if act == IOS_HIT_DISMISS_ERROR { s[0].error_n = 0; ios_emit(s, IOS_ACT_DISMISS_ERROR, ""); return true; }
+  if act == IOS_HIT_RETRY_OUTBOX { ios_emit(s, IOS_ACT_RETRY_OUTBOX, ""); return true; }
+  if act == IOS_HIT_JUMP_BOTTOM {
+    s[0].stick_bottom = true;
+    s[0].chat_scroll = scroll_max(s[0].chat_content, s[0].chat_viewport);
+    s[0].again = true;
+    return true;
+  }
+  if act == IOS_HIT_LOAD_OLDER { ios_emit(s, IOS_ACT_LOAD_OLDER, ""); return true; }
+  if act == IOS_HIT_LOAD_MORE_SESSIONS { ios_emit(s, IOS_ACT_LOAD_MORE_SESSIONS, ""); return true; }
+  if act == IOS_HIT_ACT_HEAD {
+    k := keyed_find(s[0].keyed[0..<1], id);
+    if k >= 0 {
+      // Determine whether this group is currently live
+      live := false;
+      if id.count > 4 && cast(string) id[0..<4] == "act." {
+        idx := ios_find_item_by_id(s, cast(string) id[4..<id.count]);
+        if idx >= 0 {
+          j := idx;
+          while j < s[0].items_n && (s[0].items[j].role == IOS_ROLE_THOUGHT || s[0].items[j].role == IOS_ROLE_TOOL) {
+            if !s[0].items[j].complete { live = true; }
+            j += 1;
+          }
+        }
+      }
+      cur_choice := cast(int) keyed_slot(s[0].keyed[0..<1], k, APP_TOOL_OPEN);
+      keyed_slot_set(s[0].keyed[0..<1], k, APP_TOOL_OPEN, cast(f32) app_act_choose(cur_choice, live));
+      s[0].again = true;
+      return true;
+    }
+    return false;
+  }
+  if act == IOS_HIT_ACT_ROW {
+    // Strip "actr." prefix and optional suffix (.out / .path)
+    if id.count > 5 && cast(string) id[0..<5] == "actr." {
+      // Find matching item by checking all items whose "actr.<id>" prefixes `id`
+      for idx: 0..<s[0].items_n {
+        item := s[0].items[idx];
+        if item.role != IOS_ROLE_THOUGHT && item.role != IOS_ROLE_TOOL { continue; }
+        iid := ios_item_str(s, item.id_at, item.id_n);
+        rb: [EL_ID] u8; rn := el_put(rb[..], 0, "actr."); rn = el_put(rb[..], rn, iid);
+        base := cast(string) rb[0..<rn];
+        if id.count >= base.count && cast(string) id[0..<base.count] == base {
+          if app_act_path_pressed(base, id) {
+            p := ios_item_str(s, item.path_at, item.path_n);
+            if p.count > 0 { ios_emit(s, IOS_ACT_OPEN_FILE, p); return true; }
+          }
+          if item.is_subagent {
+            ios_emit(s, IOS_ACT_OPEN_SUBAGENT, iid);
+            return true;
+          }
+          if app_act_press(s[0].keyed[0..<1], base, id) {
+            s[0].again = true;
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+  if act == IOS_HIT_FOLD_USER {
+    // id is "m.<item_id>.more"
+    if id.count > 5 && cast(string) id[id.count - 5..<id.count] == ".more" {
+      ios_fold_toggle(s, cast(string) id[0..<id.count - 5]);
+      s[0].again = true;
+      return true;
+    }
+    return false;
+  }
+  if act == IOS_HIT_COPY_MSG {
+    // id is "m.<item_id>.msgcopy"
+    if id.count > 10 && cast(string) id[0..<2] == "m." && cast(string) id[id.count - 8..<id.count] == ".msgcopy" {
+      mid := cast(string) id[0..<id.count - 8];
+      iid := cast(string) id[2..<id.count - 8];
+      idx := ios_find_item_by_id(s, iid);
+      if idx >= 0 {
+        txt := ios_item_str(s, s[0].items[idx].text_at, s[0].items[idx].text_n);
+        s[0].copy_n = ios_copy(s[0].copy_buf[..], txt);
+        s[0].copied_id_n = el_copy(s[0].copied_id[..], mid);
+        s[0].copied_block = -2;
+        ios_emit(s, IOS_ACT_COPY_TEXT, "");
+        return true;
+      }
+    }
+    return false;
+  }
+  if act == IOS_HIT_COPY_CODE {
+    // id is "m.<item_id>.code.<N>.copy"
+    marker := ".code.";
+    pos := -1;
+    for q: 2..<id.count {
+      if q + marker.count <= id.count && cast(string) id[q..<q + marker.count] == marker { pos = q; break; }
+    }
+    if pos > 2 {
+      mid := cast(string) id[0..<pos];
+      iid := cast(string) id[2..<pos];
+      blk := ios_parse_uint_after(id, pos + marker.count);
+      idx := ios_find_item_by_id(s, iid);
+      if idx >= 0 && blk >= 0 {
+        txt := ios_item_str(s, s[0].items[idx].text_at, s[0].items[idx].text_n);
+        nb := ios_parse_md(s, txt);
+        if blk < nb {
+          code := md_block_text(s[0].md[..], blk);
+          s[0].copy_n = ios_copy(s[0].copy_buf[..], code);
+          s[0].copied_id_n = el_copy(s[0].copied_id[..], mid);
+          s[0].copied_block = blk;
+          ios_emit(s, IOS_ACT_COPY_TEXT, "");
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- scroll helpers
+
+ios_cur_scroll :: (s: [] IosPhonePage) -> f32 {
+  if s[0].picker != 0 { return keyed_scroll(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "picker.viewport")); }
+  if !ios_wide(s) && s[0].drawer { return keyed_scroll(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "side.viewport")); }
+  return s[0].chat_scroll;
+}
+ios_cur_max :: (s: [] IosPhonePage) -> f32 {
+  if s[0].picker != 0 { return scroll_max(s[0].picker_content, s[0].picker_viewport); }
+  if !ios_wide(s) && s[0].drawer { return scroll_max(s[0].side_content, s[0].side_viewport); }
+  return scroll_max(s[0].chat_content, s[0].chat_viewport);
+}
+ios_set_scroll :: (s: [] IosPhonePage, offset: f32) {
+  mx := ios_cur_max(s);
+  v := ifx offset < 0.0f32 then 0.0f32 else ifx offset > mx then mx else offset;
+  if s[0].picker != 0 {
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "picker.viewport"), v);
+  } else if !ios_wide(s) && s[0].drawer {
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "side.viewport"), v);
+  } else {
+    s[0].chat_scroll = v;
+    s[0].stick_bottom = (mx - v) <= 20.0f32;
+  }
+}
+
+// ---------------------------------------------------------------- C exports
+
+ios_env :: (s: [] IosPhonePage, safe_top: f32, safe_bottom: f32, keyboard: f32, focused: bool, editor_height: f32, reduced: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].safe_top = ifx safe_top > 0 then safe_top else 0.0f32;
+  s[0].safe_bottom = ifx safe_bottom > 0 then safe_bottom else 0.0f32;
+  s[0].keyboard = ifx keyboard > 0 then keyboard else 0.0f32;
+  s[0].focused = focused;
+  u := ios_u(s);
+  s[0].editor_h = ifx focused && editor_height > 0 then editor_height / u else 0.0f32;
+  s[0].reduced = reduced;
+}
+ios_transparency :: (s: [] IosPhonePage, reduced: bool) #export_c #effects(all) { if s.count > 0 { s[0].reduced_transparency = reduced; } }
+
+ios_frame :: (s: [] IosPhonePage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { ios_init(s); }
+  s[0].again = false;
+  a := s[0].atlas[..];
+  d := (ifx dpr < 1.0f32 then 1.0f32 else dpr) * ios_u(s);
+  w := width / d; h := height / d;
+  s[0].page_w = w; s[0].page_h = h; s[0].d = d;
+  t := ifx dt < 0.0f32 then 0.0f32 else ifx dt > 0.1f32 then 0.1f32 else dt;
+  if !s[0].reduced { s[0].time += t; }
+  a[0].frame += 1;
+  sk := noir_phone_skin();
+
+  if ios_wide(s) {
+    s[0].share = 0;
+  } else {
+    s[0].share = app_sidebar_ease(s[0].share, s[0].drawer, t, s[0].reduced);
+  }
+  ground := app_sidebar_ground(sk.canvas, s[0].share);
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, ground, ground);
+  if !a[0].ready { return v; }
+
+  live := ios_layer_idx(s);
+  shift := ifx ios_wide(s) then 0.0f32 else app_sidebar_shift(w, s[0].share);
+  moving := !ios_wide(s) && s[0].share != (ifx s[0].drawer then 1.0f32 else 0.0f32);
+
+  for layer: 0..<2 {
+    f: [1] UiFrame;
+    mine := layer == live;
+    input := uiinput(s[0].px, s[0].py, mine && s[0].touching, mine && s[0].touching,
+      ifx mine then cast(string) s[0].pressed[0..<s[0].pressed_n] else "", ios_focus_str(s));
+    uiframe_begin(f[..], ios_sf(s, layer), s[0].keyed[layer..<layer + 1], measure_font(a), sk, input, s[0].time, t, s[0].reduced, s[0].reduced_transparency);
+    if mine && uiframe_focus(f[..]) != ios_focus_str(s) {
+      s[0].focus_n = el_copy(s[0].focus[..], uiframe_focus(f[..]));
+    }
+    if layer == 0 { ios_layout_page(s, f[..], w, h); } else { ios_layout_cover(s, f[..], w, h); }
+    moving = moving || uiframe_moving(f[..]);
+    if !uiframe_end(f[..], ios_sf(s, layer)) { s[0].refused += 1; }
+    sh := surface_sheet(ios_sf(s, layer));
+    ox := ifx layer == 0 then shift else 0.0f32;
+    v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], ox, 0, -8, h + 8);
+    v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], ox, 0, -8, h + 8);
+  }
+  s[0].moving = moving || s[0].again;
+  s[0].stamp = surface_stamp(ios_sf(s, 0)) + surface_stamp(ios_sf(s, 1)) + live;
+  return v;
+}
+
+ios_pointer :: (s: [] IosPhonePage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  sf := ios_live(s);
+  row := surface_hit(sf, ux, uy);
+  id := surface_id(sf, row);
+  was := cast(string) s[0].pressed[0..<s[0].pressed_n];
+  s[0].px = ux; s[0].py = uy;
+  if phase == 0 {
+    s[0].touching = true; s[0].down_x = ux; s[0].down_y = uy; s[0].last_y = uy;
+    s[0].swiped = false; s[0].scrolling = false;
+    s[0].pressed_n = ifx surface_action(sf, row) != 0 then el_copy(s[0].pressed[..], id) else 0;
+    ins := [1] UiInput.[uiinput(ux, uy, true, true, cast(string) s[0].pressed[0..<s[0].pressed_n], ios_focus_str(s))];
+    if uiframe_press_focus(sf, ins[..]) { s[0].focus_n = el_copy(s[0].focus[..], cast(string) ins[0].focused[0..<ins[0].focused_n]); }
+    return true;
+  }
+  if phase == 1 {
+    if was != id && !uiframe_field_capture(sf, was, ios_focus_str(s), ux - s[0].down_x, uy - s[0].down_y, IOS_MOVE) {
+      s[0].pressed_n = 0;
+    }
+    if !s[0].swiped && !ios_wide(s) && s[0].drawer && s[0].picker == 0 && ux - s[0].down_x < -IOS_SWIPE {
+      s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;
+    }
+    if !s[0].swiped && !ios_wide(s) && !s[0].drawer && s[0].picker == 0 && s[0].down_x < IOS_EDGE && ux - s[0].down_x > IOS_SWIPE {
+      s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0; s[0].focus_n = 0;
+    }
+    if !s[0].swiped && (s[0].scrolling || abs(uy - s[0].down_y) > IOS_MOVE) {
+      s[0].scrolling = true; s[0].pressed_n = 0;
+      if !s[0].native_scroll { ios_set_scroll(s, ios_cur_scroll(s) + s[0].last_y - uy); }
+    }
+    s[0].last_y = uy;
+    return true;
+  }
+  captured := uiframe_field_capture(sf, was, ios_focus_str(s), ux - s[0].down_x, uy - s[0].down_y, IOS_MOVE);
+  held := s[0].pressed_n > 0 && (was == id || captured);
+  if captured { row = surface_find(sf, was); }
+  s[0].touching = false; s[0].pressed_n = 0;
+  return phase == 2 && held && ios_press(s, row);
+}
+
+ios_scroll_info :: (s: [] IosPhonePage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 3 { return false; }
+  u := ios_u(s);
+  out[0] = 1.0f32;
+  out[1] = ios_cur_scroll(s) * u;
+  out[2] = ios_cur_max(s) * u;
+  return true;
+}
+ios_scroll_to :: (s: [] IosPhonePage, points: f32) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  ios_set_scroll(s, points / ios_u(s));
+}
+ios_scroll_page :: (s: [] IosPhonePage, dir: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  vp := ifx s[0].picker != 0 then s[0].picker_viewport else ifx !ios_wide(s) && s[0].drawer then s[0].side_viewport else s[0].chat_viewport;
+  if !(vp > 0) { return false; }
+  before := ios_cur_scroll(s);
+  ios_set_scroll(s, before + cast(f32) dir * vp * 0.8f32);
+  return ios_cur_scroll(s) != before;
+}
+ios_native_scroll :: (s: [] IosPhonePage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].native_scroll = on; } }
+
+ios_editor :: (s: [] IosPhonePage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 || !s[0].ed_ok { return false; }
+  u := ios_u(s);
+  out[0] = s[0].ed_x * u; out[1] = s[0].ed_y * u; out[2] = s[0].ed_w * u; out[3] = s[0].ed_h * u;
+  out[4] = s[0].ed_inset * u; out[5] = s[0].ed_line * u;
+  return true;
+}
+ios_style :: (out: [] f32) -> bool #export_c #effects(all) {
+  if out.count < 14 { return false; }
+  sk := noir_phone_skin();
+  out[0] = sk.body.size * ARCADE_PHONE_SCALE; out[1] = 23.0f32;
+  out[2] = sk.ink.r; out[3] = sk.ink.g; out[4] = sk.ink.b; out[5] = sk.ink.a;
+  out[6] = sk.faint.r; out[7] = sk.faint.g; out[8] = sk.faint.b; out[9] = sk.faint.a;
+  out[10] = sk.accent.r; out[11] = sk.accent.g; out[12] = sk.accent.b; out[13] = sk.accent.a;
+  return true;
+}
+ios_focus :: (s: [] IosPhonePage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ios_out(out, ios_focus_str(s)); }
+ios_set_focus :: (s: [] IosPhonePage, id: string) #export_c #effects(all) { if s.count > 0 { s[0].focus_n = el_copy(s[0].focus[..], id); } }
+ios_blur :: (s: [] IosPhonePage) #export_c #effects(all) { if s.count > 0 { s[0].focus_n = 0; } }
+ios_draft_set :: (s: [] IosPhonePage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  s[0].draft_n = ios_copy(s[0].draft[..], text);
+  return true;
+}
+ios_draft_get :: (s: [] IosPhonePage, out: [] u8) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return ios_out(out, ios_draft_str(s)); }
+
+ios_moving :: (s: [] IosPhonePage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].again || (!s[0].reduced && s[0].moving)); }
+ios_scale :: () -> f32 #export_c #effects(all) { return ARCADE_PHONE_SCALE; }
+ios_ui_scale :: (s: [] IosPhonePage) -> f32 #export_c #effects(all) { return ifx s.count > 0 then ios_u(s) else ARCADE_PHONE_SCALE; }
+ios_max_vertices :: () -> int #export_c #effects(all) { return IOS_MAX_VERTICES; }
+ios_access_capacity :: () -> int #export_c #effects(all) { return IOS_P_ROWS; }
+ios_text_zoom :: (s: [] IosPhonePage, zoom: f32) -> f32 #export_c #effects(all) {
+  if s.count < 1 { return 1.0f32; }
+  s[0].zoom = ifx !(zoom > 1.0f32) then 1.0f32 else ifx zoom > IOS_ZOOM_MAX then IOS_ZOOM_MAX else zoom;
+  return s[0].zoom;
+}
+
+// VoiceOver & accessibility exports
+ios_rows :: (s: [] IosPhonePage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return surface_rows(ios_live(s)).n; }
+ios_rows_stamp :: (s: [] IosPhonePage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].stamp; }
+ios_layer :: (s: [] IosPhonePage) -> int #export_c #effects(all) { if s.count < 1 || !s[0].ready { return 0; } return ios_layer_idx(s); }
+ios_row :: (s: [] IosPhonePage, i: int, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return surface_access_row(ios_live(s), i, ios_u(s), out);
+}
+ios_row_id :: (s: [] IosPhonePage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[surface_rows(ios_live(s))];
+  return ios_out(out, elt_id(t[..], i));
+}
+ios_row_label :: (s: [] IosPhonePage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return ios_out(out, surface_say(ios_live(s), i));
+}
+ios_row_value :: (s: [] IosPhonePage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[surface_rows(ios_live(s))];
+  return ios_out(out, elt_value_of(t[..], i));
+}
+ios_activate :: (s: [] IosPhonePage, id: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return ios_press(s, surface_find(ios_live(s), id));
+}
+
+// Action poll & copy buffer
+ios_take_action :: (s: [] IosPhonePage) -> int #export_c #effects(all) {
+  if s.count < 1 { return IOS_ACT_NONE; }
+  a := s[0].out_action; s[0].out_action = IOS_ACT_NONE;
+  return a;
+}
+ios_action_arg :: (s: [] IosPhonePage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return ios_out(out, cast(string) s[0].out_arg[0..<s[0].out_arg_n]);
+}
+ios_copy_get :: (s: [] IosPhonePage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return ios_out(out, cast(string) s[0].copy_buf[0..<s[0].copy_n]);
+}
+ios_drawer_set :: (s: [] IosPhonePage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].drawer = open;
+  if open { s[0].picker = 0; s[0].focus_n = 0; }
+}
+ios_drawer_open :: (s: [] IosPhonePage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].drawer; }
+
+// State pushers called from Swift AntigravityStore
+ios_set_header :: (s: [] IosPhonePage, computer: string, session_title: string, workspace: string, reachability: int, paired_count: int, has_active: bool, has_older: bool, has_more_sessions: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].computer_name_n = ios_copy(s[0].computer_name[..], computer);
+  s[0].session_title_n = ios_copy(s[0].session_title[..], session_title);
+  s[0].workspace_name_n = ios_copy(s[0].workspace_name[..], workspace);
+  s[0].reachability = reachability;
+  s[0].paired_count = paired_count;
+  s[0].has_active_session = has_active;
+  s[0].has_older_messages = has_older;
+  s[0].has_more_sessions = has_more_sessions;
+}
+ios_set_banners :: (s: [] IosPhonePage, error: string, outbox_count: int, toast: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].error_n = ios_copy(s[0].error_text[..], error);
+  s[0].outbox_count = outbox_count;
+  s[0].toast_n = ios_copy(s[0].toast_text[..], toast);
+}
+ios_set_approval :: (s: [] IosPhonePage, active: bool, prompt: string, warning: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].approval_active = active;
+  s[0].approval_prompt_n = ios_copy(s[0].approval_prompt[..], prompt);
+  s[0].approval_warning_n = ios_copy(s[0].approval_warning[..], warning);
+}
+ios_set_composer :: (s: [] IosPhonePage, model_label: string, effort_label: string, mode_label: string, attachments: int, mic_active: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].model_label_n = ios_copy(s[0].model_label[..], model_label);
+  s[0].effort_label_n = ios_copy(s[0].effort_label[..], effort_label);
+  s[0].mode_label_n = ios_copy(s[0].mode_label[..], mode_label);
+  s[0].attachment_count = attachments;
+  s[0].mic_active = mic_active;
+}
+ios_set_working :: (s: [] IosPhonePage, busy: bool, awaiting: bool, secs: int, label: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].session_busy = busy;
+  s[0].awaiting_turn = awaiting;
+  s[0].working_secs = secs;
+  s[0].working_label_n = ios_copy(s[0].working_label[..], label);
+}
+ios_sessions_clear :: (s: [] IosPhonePage) #export_c #effects(all) { if s.count > 0 { s[0].sessions_n = 0; } }
+ios_sessions_push :: (s: [] IosPhonePage, id: string, title: string, repo: string, branch: string, status: string, busy: bool, current: bool, attention: bool, unread: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].sessions_n >= IOS_MAX_SESSIONS { return; }
+  i := s[0].sessions_n;
+  s[0].sessions[i].id_n = ios_copy(s[0].sessions[i].id[..], id);
+  s[0].sessions[i].title_n = ios_copy(s[0].sessions[i].title[..], title);
+  s[0].sessions[i].repo_n = ios_copy(s[0].sessions[i].repo[..], repo);
+  s[0].sessions[i].branch_n = ios_copy(s[0].sessions[i].branch[..], branch);
+  s[0].sessions[i].status_n = ios_copy(s[0].sessions[i].status[..], status);
+  s[0].sessions[i].busy = busy;
+  s[0].sessions[i].current = current;
+  s[0].sessions[i].attention = attention;
+  s[0].sessions[i].unread = unread;
+  s[0].sessions_n = i + 1;
+}
+ios_items_clear :: (s: [] IosPhonePage, reset_scroll: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].items_n = 0;
+  s[0].item_pool_n = 0;
+  if reset_scroll { s[0].stick_bottom = true; s[0].chat_scroll = 0; s[0].chat_content = 0; }
+}
+ios_items_push :: (s: [] IosPhonePage, role: int, id: string, text: string, tool: string, path: string, diff: string, complete: bool, failed: bool, is_subagent: bool, diff_cut: bool, subagent_calls: int, elapsed_secs: int) #export_c #effects(all) {
+  if s.count < 1 || s[0].items_n >= IOS_MAX_ITEMS { return; }
+  i := s[0].items_n;
+  at: [1] int; nn: [1] int;
+  ios_pool_put(s, id, at[..], nn[..]); s[0].items[i].id_at = at[0]; s[0].items[i].id_n = nn[0];
+  ios_pool_put(s, text, at[..], nn[..]); s[0].items[i].text_at = at[0]; s[0].items[i].text_n = nn[0];
+  ios_pool_put(s, tool, at[..], nn[..]); s[0].items[i].tool_at = at[0]; s[0].items[i].tool_n = nn[0];
+  ios_pool_put(s, path, at[..], nn[..]); s[0].items[i].path_at = at[0]; s[0].items[i].path_n = nn[0];
+  ios_pool_put(s, diff, at[..], nn[..]); s[0].items[i].diff_at = at[0]; s[0].items[i].diff_n = nn[0];
+  s[0].items[i].role = role;
+  s[0].items[i].complete = complete;
+  s[0].items[i].failed = failed;
+  s[0].items[i].is_subagent = is_subagent;
+  s[0].items[i].diff_cut = diff_cut;
+  s[0].items[i].subagent_calls = subagent_calls;
+  s[0].items[i].elapsed_secs = elapsed_secs;
+  s[0].items_n = i + 1;
+}
+ios_models_clear :: (s: [] IosPhonePage) #export_c #effects(all) { if s.count > 0 { s[0].models_n = 0; } }
+ios_models_push :: (s: [] IosPhonePage, id: string, label: string, detail: string, selected: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].models_n >= IOS_MAX_MODELS { return; }
+  i := s[0].models_n;
+  s[0].models[i].id_n = ios_copy(s[0].models[i].id[..], id);
+  s[0].models[i].label_n = ios_copy(s[0].models[i].label[..], label);
+  s[0].models[i].detail_n = ios_copy(s[0].models[i].detail[..], detail);
+  s[0].models[i].selected = selected;
+  s[0].models_n = i + 1;
+}
+ios_efforts_clear :: (s: [] IosPhonePage) #export_c #effects(all) { if s.count > 0 { s[0].efforts_n = 0; } }
+ios_efforts_push :: (s: [] IosPhonePage, id: string, label: string, detail: string, selected: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].efforts_n >= IOS_MAX_EFFORTS { return; }
+  i := s[0].efforts_n;
+  s[0].efforts[i].id_n = ios_copy(s[0].efforts[i].id[..], id);
+  s[0].efforts[i].label_n = ios_copy(s[0].efforts[i].label[..], label);
+  s[0].efforts[i].detail_n = ios_copy(s[0].efforts[i].detail[..], detail);
+  s[0].efforts[i].selected = selected;
+  s[0].efforts_n = i + 1;
+}
+ios_modes_clear :: (s: [] IosPhonePage) #export_c #effects(all) { if s.count > 0 { s[0].modes_n = 0; } }
+ios_modes_push :: (s: [] IosPhonePage, id: string, label: string, detail: string, selected: bool) #export_c #effects(all) {
+  if s.count < 1 || s[0].modes_n >= IOS_MAX_MODES { return; }
+  i := s[0].modes_n;
+  s[0].modes[i].id_n = ios_copy(s[0].modes[i].id[..], id);
+  s[0].modes[i].label_n = ios_copy(s[0].modes[i].label[..], label);
+  s[0].modes[i].detail_n = ios_copy(s[0].modes[i].detail[..], detail);
+  s[0].modes[i].selected = selected;
+  s[0].modes_n = i + 1;
+}
+
+// ---------------------------------------------------------------- unit checks
+
+IOS_TEST_VERTS :: 40000;
+IosTestOut :: struct { v: [IOS_TEST_VERTS * GP_VERTEX_FLOATS] f32; }
+ios_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); }
+ios_test_frame :: (s: [] IosPhonePage, o: [] IosTestOut) -> int {
+  ios_env(s, 59, 34, 0, false, 0, true);
+  return ios_frame(s, o[0].v[..], 1206, 2622, 3, 0.5f32);
+}
+ios_test_has :: (s: [] IosPhonePage, id: string) -> bool {
+  return surface_find(ios_sf(s, 0), id) >= 0 || surface_find(ios_sf(s, 1), id) >= 0;
+}
+
+#test "GPU iOS page renders pure-black empty state, drawer cards, picker, and transcript activity" #steps 2000000000 {
+  s: [1] IosPhonePage; o: [1] IosTestOut;
+  ios_test_atlas(s[0].atlas[..]);
+  ios_set_header(s[..], "Christopher's MacBook Pro", "", "openagents", IOS_REACH_OK, 1, false, false, false);
+  ios_set_composer(s[..], "Gemini 4 Neon", "Medium", "Auto", 0, false);
+  ios_models_push(s[..], "gemini-4-neon", "Gemini 4 Neon", "Gemini 4 · Default", true);
+  ios_models_push(s[..], "gemini-4-carbon", "Gemini 4 Carbon", "Gemini 4 · Coding", false);
+  ios_efforts_push(s[..], "medium", "Medium", "Balanced", true);
+  ios_modes_push(s[..], "auto", "Auto", "Approve workspace tools automatically", true);
+  ios_sessions_push(s[..], "s1", "Fix Metal shader", "openagents", "main", "2m", false, true, false, false);
+
+  v := ios_test_frame(s[..], o[..]);
+  #assert v > 0 && s[0].refused == 0;
+  #assert ios_test_has(s[..], "nav.sidebar") && ios_test_has(s[..], "nav.computerPill") && ios_test_has(s[..], "chat.composer") && ios_test_has(s[..], "chat.modelPicker");
+
+  // Open drawer via sidebar button and select session card
+  #assert ios_activate(s[..], "nav.sidebar") && s[0].drawer;
+  _ = ios_test_frame(s[..], o[..]);
+  #assert ios_test_has(s[..], "drawer") && ios_test_has(s[..], "ses.s1") && ios_test_has(s[..], "sidebar.hub");
+  #assert ios_activate(s[..], "ses.s1") && !s[0].drawer;
+  #assert ios_take_action(s[..]) == IOS_ACT_SELECT_SESSION;
+  arg: [64] u8; #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "s1";
+
+  // Open model picker and select second model
+  _ = ios_test_frame(s[..], o[..]);
+  #assert ios_activate(s[..], "chat.modelPicker") && s[0].picker == 1;
+  _ = ios_test_frame(s[..], o[..]);
+  #assert ios_test_has(s[..], "pick.1");
+  #assert ios_activate(s[..], "pick.1") && s[0].picker == 0;
+  #assert ios_take_action(s[..]) == IOS_ACT_CHOSE_MODEL;
+  #assert cast(string) arg[0..<ios_action_arg(s[..], arg[..])] == "gemini-4-carbon";
+
+  // Push conversation items (user, thought, tool, assistant markdown with code block)
+  ios_items_clear(s[..], true);
+  ios_items_push(s[..], IOS_ROLE_USER, "u1", "Check the shader", "", "", "", true, false, false, false, 0, 0);
+  ios_items_push(s[..], IOS_ROLE_THOUGHT, "t1", "Inspecting gpu-shader.coax", "", "", "", true, false, false, false, 0, 0);
+  ios_items_push(s[..], IOS_ROLE_TOOL, "tl1", "rg chat_fx_fs components/", "Bash", "", "", true, false, false, false, 0, 2);
+  ios_items_push(s[..], IOS_ROLE_ASSISTANT, "a1", "Here is the code:\n```swift\nlet x = 1\n```", "", "", "", true, false, false, false, 0, 0);
+  _ = ios_test_frame(s[..], o[..]);
+  #assert ios_test_has(s[..], "m.u1") && ios_test_has(s[..], "act.t1") && ios_test_has(s[..], "m.a1");
+  #assert s[0].refused == 0;
+
+  // Copy code block from Markdown reply
+  #assert ios_activate(s[..], "m.a1.code.1.copy") && ios_take_action(s[..]) == IOS_ACT_COPY_TEXT;
+  cb: [64] u8; #assert cast(string) cb[0..<ios_copy_get(s[..], cb[..])] == "let x = 1";
+}
