@@ -473,7 +473,7 @@ fr_format_json :: (st_in: FrictionStats, now_s: int, out: [] u8) -> int {
   fr_sort_coax_errors(st[..]);
   o: [1] Jo; jo_start(o[..], out);
   jo_obj(o[..]);
-  jo_key(o[..], "schema"); jo_str(o[..], "openagents.friction-scorecard.v1");
+  jo_key(o[..], "format"); jo_str(o[..], "friction-scorecard-v1");
   jo_key(o[..], "generated_at_s"); jo_int(o[..], now_s);
   jo_key(o[..], "antigravity"); jo_obj(o[..]);
   jo_key(o[..], "sessions"); jo_int(o[..], st[0].agy_sessions);
