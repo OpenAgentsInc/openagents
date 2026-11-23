@@ -1,0 +1,59 @@
+// Layer-2 Cloud Prompt-Cache Expiry & Idle Compaction Policy (GitHub #14031):
+// Models prompt-cache TTL expiry (default 5 min) for cached cloud turns (e.g. Antigravity)
+// so long idle gaps surface an honest cache-expiry notice and compaction eligibility signal
+// without adding LLM summarization calls (docs/coder/compaction-theory.md).
+//   coax/bin/coax test coax/lib/agent/engine/cache-policy.coax --library
+//   coax/bin/coax mutate coax/lib/agent/engine/cache-policy.coax --library
+#authority;
+
+CP_CACHE_TTL_DEFAULT_MS :: 300000;   // 5 minutes default cloud prompt-cache TTL
+CP_IDLE_COMPACT_MIN_TOKENS :: 16000; // minimum cached/context tokens before recommending idle compaction
+
+CP_CACHE_WARM :: 0;                  // cache likely still warm (within TTL) or no prior cached turn
+CP_CACHE_EXPIRED :: 1;               // idle gap >= TTL: prompt cache likely expired
+CP_CACHE_EXPIRED_COMPACT :: 2;       // cache expired AND context is large enough to benefit from /compact
+
+// Classifies prompt-cache state before sending the next cloud turn:
+// - Returns CP_CACHE_WARM when there is no prior turn (last_turn_ms <= 0), no cached tokens
+//   were used (cached_tokens <= 0), or idle_ms < effective_ttl_ms.
+// - Returns CP_CACHE_EXPIRED_COMPACT when expired, compaction is supported by the engine, and
+//   context_tokens >= CP_IDLE_COMPACT_MIN_TOKENS.
+// - Otherwise returns CP_CACHE_EXPIRED.
+cp_cache_status :: (
+  last_turn_ms: int,
+  now_ms: int,
+  ttl_ms: int,
+  cached_tokens: int,
+  context_tokens: int,
+  can_compact: bool
+) -> int #effects(traps) {
+  if last_turn_ms <= 0 || cached_tokens <= 0 { return CP_CACHE_WARM; }
+  eff_ttl := ifx ttl_ms > 0 then ttl_ms else CP_CACHE_TTL_DEFAULT_MS;
+  idle := now_ms - last_turn_ms;
+  if idle < eff_ttl { return CP_CACHE_WARM; }
+  if can_compact && context_tokens >= CP_IDLE_COMPACT_MIN_TOKENS {
+    return CP_CACHE_EXPIRED_COMPACT;
+  }
+  return CP_CACHE_EXPIRED;
+}
+
+#test "cache policy: warm, TTL expiry boundary, custom TTL, and idle compaction recommendation" {
+  // No prior turn or no cached tokens -> warm
+  #assert cp_cache_status(0, 500000, 0, 5000, 20000, true) == CP_CACHE_WARM;
+  #assert cp_cache_status(1000, 500000, 0, 0, 20000, true) == CP_CACHE_WARM;
+  #assert cp_cache_status(1, 300001, 0, 1, 100, false) == CP_CACHE_EXPIRED;
+
+  // Default 5-minute TTL boundary (300000 ms)
+  #assert cp_cache_status(1000, 300999, 0, 500, 1000, false) == CP_CACHE_WARM;
+  #assert cp_cache_status(1000, 301000, 0, 500, 1000, false) == CP_CACHE_EXPIRED;
+
+  // Custom TTL boundary
+  #assert cp_cache_status(1000, 1099, 100, 500, 1000, false) == CP_CACHE_WARM;
+  #assert cp_cache_status(1000, 1100, 100, 500, 1000, false) == CP_CACHE_EXPIRED;
+  #assert cp_cache_status(1000, 1001, 1, 500, 1000, false) == CP_CACHE_EXPIRED;
+
+  // Idle compaction recommendation requires can_compact AND context_tokens >= 16000
+  #assert cp_cache_status(1000, 301000, 0, 500, 15999, true) == CP_CACHE_EXPIRED;
+  #assert cp_cache_status(1000, 301000, 0, 500, 16000, true) == CP_CACHE_EXPIRED_COMPACT;
+  #assert cp_cache_status(1000, 301000, 0, 500, 24000, false) == CP_CACHE_EXPIRED;
+}

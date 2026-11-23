@@ -40,6 +40,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/proc.coax";        // proc_sleep: --probe waits on agy
 #load "../../coax/lib/agent/engine/antigravity.coax";
+#load "../../coax/lib/agent/engine/cache-policy.coax";
 #load "../../coax/lib/agent/engine/agy-install-lib.coax";   // --connect installs agy when it is missing
 #load "../../coax/lib/agent/observe/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
@@ -3582,4 +3583,11 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert s[0].pending_permit;
   agyw_finish_turn(s, "failed", "Antigravity exited unexpectedly.", true);
   #assert !s[0].turn_active && !s[0].pending_permit && s[0].pending_ticket == 0;
+}
+
+#test "agyworker: #authority cloud prompt-cache expiry & idle compaction policy (#14031)" {
+  #assert cp_cache_status(1000, 200000, 0, 8000, 24000, true) == CP_CACHE_WARM;
+  #assert cp_cache_status(1000, 301000, 0, 8000, 12000, true) == CP_CACHE_EXPIRED;
+  #assert cp_cache_status(1000, 301000, 0, 8000, 24000, true) == CP_CACHE_EXPIRED_COMPACT;
+  #assert cp_cache_status(1000, 301000, 0, 8000, 24000, false) == CP_CACHE_EXPIRED;
 }
