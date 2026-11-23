@@ -3,6 +3,54 @@
 OpenAgents builds open agents that people can own, inspect, improve and
 earn from, on open protocols and Bitcoin.
 
+## Desktop & Mobile Apps
+
+Native **macOS, Linux, Windows, and iOS** apps for Antigravity and local coding agents, paired directly over Tailscale with zero public relays.
+
+- **macOS:** [Download for Mac at openagents.com](https://openagents.com/) (signed universal `OpenAgents.dmg`)
+- **iOS:** [Join the TestFlight](https://testflight.apple.com/join/dvQdns5B) ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
+- **Desktop source:** [`apps/openagents-desktop/`](apps/openagents-desktop/README.md) (GPU-accelerated Metal/Vulkan Coax UI) · [`apps/openagents-macos/`](apps/openagents-macos/README.md) (SwiftUI macOS client)
+
+### Build the Desktop App from Source
+
+Clone **one level deep** (`--depth 1`) so you don't download years of repository history, then build the `coax` compiler:
+
+```sh
+git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git
+cd openagents
+coax/build.sh
+```
+
+**macOS:**
+
+```sh
+# Build and launch OpenAgents.app (Coax/Metal desktop app; pass --full for all dev surfaces)
+apps/openagents-desktop/build.sh --open
+
+# Or build and install directly to /Applications/OpenAgents.app
+apps/openagents-desktop/install.sh
+```
+
+**Linux (Wayland + Vulkan):**
+
+```sh
+apps/openagents-desktop/linux/build.sh --open
+```
+
+**Windows (x64 & ARM64 cross-build via `zig` + Vulkan headers):**
+
+```sh
+apps/openagents-desktop/windows/build.sh
+```
+
+**iOS (Xcode Simulator):**
+
+```sh
+apps/openagents-ios/build.sh
+```
+
+---
+
 Since November 2023, in public and on video
 ([290 episodes](docs/transcripts/README.md)), we have built and tested the
 pieces this needs:
@@ -158,11 +206,11 @@ small model or sign and verify a Nostr event), see
     again (briefly by default, the full walk with `--thorough`),
     with automatic rollback.
 - **The iOS app** ([`apps/openagents-ios/`](apps/openagents-ios/README.md))
-  is the [Coax Native starter](coax/native/README.md): Coax/Wasm and shared
-  components in a UIKit/WebKit shell, with optional signed Updates. Build
-  1068 replaces the earlier world/wallet interface and is in the Owner
-  TestFlight group as `com.openagents.app`. Native account and chat services
-  are installed so their Coax screens can arrive over the air.
+  is a native SwiftUI client backed by the shared Coax C core
+  ([`apps/shared/antigravity/`](apps/shared/antigravity/)), pairing directly
+  with your Mac over Tailscale (`com.openagents.app` on
+  [TestFlight](https://testflight.apple.com/join/dvQdns5B)) with zero WebKit,
+  JavaScript, or public relays.
 
 - **Pylons** sell spare compute on gaming computers for Bitcoin. A Pylon
   runs GPT-OSS for small tool use and the Elephant and Mammoth decision
