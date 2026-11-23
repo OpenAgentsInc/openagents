@@ -494,6 +494,7 @@ CoderPage :: struct {
   open_show: int;             // the picture of open_turn a press asked to open (shows.coax), -1 none
   mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int; mn_skills: int;
   files: [] u8; nfiles: int; files_gen: int; files_got: bool; files_due: bool;   // one path a line, in the host's buffer (it keeps it until it lists again)
+  fp_color_u0: int; fp_color_u1: int; fp_color_o0: int; fp_color_o1: int;   // sheet.under/over primitive ranges for File Viewer color exemption (#13992)
   arena: [] u8;               // CP_ARENA bytes in the page's store
 }
 

@@ -141,6 +141,31 @@ md_url_http :: (s: string) -> bool {
   if s.count > 7 && cast(string) s[0..<7] == "http://" { return true; }
   return false;
 }
+// True when s is a file:// URL or a local file path link (rejecting #anchors and unsafe schemes like javascript:/data:).
+md_url_file :: (s: string) -> bool {
+  if s.count > 7 && cast(string) s[0..<7] == "file://" { return true; }
+  if s.count == 0 || s[0] == '#' { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '/' || c == '#' { break; }
+    if c == ':' {
+      if i + 1 < s.count && s[i + 1] >= '0' && s[i + 1] <= '9' { break; }
+      return false;
+    }
+  }
+  has_slash := false; has_dot := false;
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '#' { break; }
+    if c <= 32 { return false; }
+    if c == '/' { has_slash = true; }
+    if c == '.' && i > 0 && i + 1 < s.count { has_dot = true; }
+  }
+  return has_slash || has_dot;
+}
+md_url_openable :: (s: string) -> bool {
+  return md_url_http(s) || md_url_file(s);
+}
 // Where a bare http:// or https:// URL starting at src[at] ends, or at for none.
 md_bare_url_end :: (src: string, at: int) -> int {
   plen := 0;

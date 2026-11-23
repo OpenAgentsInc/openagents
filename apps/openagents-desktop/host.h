@@ -129,6 +129,9 @@ int cd_file_mode(void *page);
 int cd_file_dirty(void *page);
 int cd_file_shown(void *page);
 int cd_file_name(void *page, char *out, int cap);
+int cd_file_path(void *page, char *out, int cap);
+int cd_file_expanded(void *page);
+int cd_file_hidden(void *page);
 int cd_file_open_scene(void *page, const char *path);
 int cd_file_scene_rect(void *page, float out[4]);
 // File Explorer directory tree, multi-tab open files, and Open-in-Editor picker (page/filetree.coax, #13881).

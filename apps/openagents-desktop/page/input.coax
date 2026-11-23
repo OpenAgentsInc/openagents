@@ -3,7 +3,6 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
-  if !cp_flag(s, DC_FLAG_FILES) { return false; }
   s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false; s[0].find[0].open_file_path_n = 0;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
@@ -44,8 +43,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
   if act >= CP_PS_FIRST && act <= CP_PS_LAST { return cp_ps_press(s, act, surface_id(s[0].surface[..], row)); }
-  if act >= CP_FP_CLOSE && act <= CP_FP_LEAN_GOAL { return (cp_flag(s, DC_FLAG_FILES) || cp_flag(s, DC_FLAG_SCENES)) && cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
-  if act >= CP_FT_TOGGLE && act <= CP_FT_PREVIEW_RAW { return cp_flag(s, DC_FLAG_FILES) && cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881)
+  if act >= CP_FP_CLOSE && act <= CP_FP_COPY_PATH { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
+  if act >= CP_FT_TOGGLE && act <= CP_FT_CRUMB_DIR { return cp_ft_press(s, act, surface_id(s[0].surface[..], row)); }   // File Explorer tree, tabs & Open-in-Editor (filetree.coax; #13881, #13992)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_flag(s, DC_FLAG_GIT) && cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
@@ -349,7 +348,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].ft[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].forge[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  fp_edge_vis := !s[0].fp[0].hidden && !s[0].fp[0].expanded && (s[0].fp[0].open || s[0].ft[0].open);
+  if (s[0].pane_open || s[0].review || fp_edge_vis || s[0].sim[0].open || s[0].term[0].open || s[0].rich[0].side_open || s[0].forge[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -422,7 +422,7 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
   }
   if phase == 0 && s[0].ft[0].editor_menu {
     act := surface_action(s[0].surface[..], row);
-    if act != CP_FT_EDITOR_MENU && act != CP_FT_EDITOR_PICK && id != "coder.ft.edmenu" {
+    if act != CP_FT_EDITOR_MENU && act != CP_FT_EDITOR_PICK && act != CP_FT_TOGGLE && act != CP_FT_TREE_TOGGLE && act != CP_FP_COPY_PATH && act != CP_FP_EXTERNAL && id != "coder.ft.edmenu" {
       s[0].ft[0].editor_menu = false;
       return true;
     }

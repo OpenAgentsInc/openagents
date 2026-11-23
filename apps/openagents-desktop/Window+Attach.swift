@@ -82,14 +82,15 @@ extension CoderWindow {
     static func folderFiles(_ root: URL, most: Int) -> String {
         if FileManager.default.fileExists(atPath: root.appendingPathComponent(".git").path), let listed = gitFiles(root, most: most) { return listed }
         var out = "", n = 0
-        let skip: Set<String> = [".git", "node_modules", "target"]
+        let skip: Set<String> = [".git", "node_modules", "target", "build", "dist", ".build", ".next", "DerivedData"]
         let began = Date()
         guard let walk = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsPackageDescendants]) else { return "" }
         let base = root.standardizedFileURL.path.count + 1
         for case let url as URL in walk {
             if n >= most || Date().timeIntervalSince(began) > 2 { break }
             let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            if skip.contains(url.lastPathComponent) { if isDir { walk.skipDescendants() }; continue }
+            let name = url.lastPathComponent
+            if skip.contains(name) || name.hasSuffix(".app") { if isDir { walk.skipDescendants() }; continue }
             if isDir { continue }
             let path = url.standardizedFileURL.path
             guard path.count > base else { continue }
@@ -106,11 +107,14 @@ extension CoderWindow {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         guard p.terminationStatus == 0, let text = String(data: data, encoding: .utf8) else { return nil }
+        let skipSegs: Set<String> = ["node_modules", "target", "build", "dist", ".build", ".next", "DerivedData"]
         var out = "", n = 0
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: true) {
             if n >= most { break }
-            let first = line.split(separator: "/").first.map(String.init) ?? ""
-            if first == "node_modules" || first == "target" { continue }
+            let line = rawLine.hasSuffix("\r") ? rawLine.dropLast() : rawLine
+            if line.isEmpty || line.hasSuffix("/") { continue }
+            let segs = line.split(separator: "/")
+            if segs.contains(where: { skipSegs.contains(String($0)) || $0.hasSuffix(".app") }) { continue }
             out += line + "\n"; n += 1
         }
         return out

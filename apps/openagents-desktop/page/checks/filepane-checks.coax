@@ -27,7 +27,12 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
   #assert cp_fp_test_label(s, "coder.file.close.tab") == "main.coax";
   #assert cp_fp_test_label(s, "coder.file.path") == "~/work/app/main.coax";
-  #assert cp_fp_test_find(s, "coder.file.body") >= 0 && cp_fp_test_find(s, "coder.file.external") >= 0;
+  #assert cp_fp_test_find(s, "coder.file.body") >= 0 && cp_fp_test_find(s, "coder.ft.editors") >= 0;
+  #assert cp_fp_test_find(s, "coder.file.expand") >= 0 && cp_fp_test_find(s, "coder.file.hide") >= 0 && cp_fp_test_find(s, "coder.file.add") >= 0;
+  #assert cp_fp_test_find(s, "coder.file.reload") >= 0 && cp_fp_test_find(s, "coder.file.wrap") >= 0;
+  // Open in Default App is inside the ⋮ More menu
+  #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.external") >= 0;
+  #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]);
   // nothing to save yet, so no Save; the tab says nothing after the name
   #assert cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.file.state") < 0;
   // the editor holds the file, wrapped into its four lines (the last one empty)
@@ -85,7 +90,9 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert coder_page_file_mode(s) == CP_FP_FAILED && coder_page_file_shown(s);
   #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.close.tab") == "pic.bin";
   #assert cp_find(cp_fp_test_label(s, "coder.file.error"), "isn't text") >= 0;
-  #assert cp_fp_test_find(s, "coder.file.body") < 0 && cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.file.external") >= 0;
+  #assert cp_fp_test_find(s, "coder.file.body") < 0 && cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.ft.editors") >= 0;
+  #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.external") >= 0;
+  #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]);
   out: [16] u8; #assert coder_page_file_text(s, out[..]) == -1;
   // a press where its text would be gives it no keyboard
   #assert !cp_test_press_field(s, CP_ED_FILE) && cp_ed_which(s) == CP_ED_COMPOSER;
@@ -129,4 +136,65 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert coder_page_file_scene_rect(s, r[..]) && r[2] > 100 && r[3] > 100;
   coder_page_file_close(s);
   #assert !coder_page_file_scene_rect(s, r[..]) && coder_page_file_mode(s) == CP_FP_NONE;
+}
+
+#test "right-pane file viewer: unified tabs, breadcrumbs, Expand/Restore, Hide preserving tabs, Reload, Wrap, and Copy Path (#13992)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  b: [512] u8;
+  src := "#include <stdint.h>\nstatic uint64_t fnv1a(const char *s, size_t n) {\n  uint64_t h = 14695981039346656037ull;\n  return h ? h : 1;\n}\n";
+  path := "/Users/christopherdavid/work/openagents/psionic/platform/inkling-gguf.c";
+  #assert coder_page_file_open(s, path, b[0..<cp_out(b[..], src)], src.count);
+  #assert cp_test_draw_side(s, f[..]);
+
+  // Full path export + breadcrumb directory segments + final filename path element
+  pout: [256] u8;
+  #assert cast(string) pout[0..<coder_page_file_path(s, pout[..])] == path;
+  #assert cp_find(cp_fp_test_label(s, "coder.file.path"), "/Users/christopherdavid/work/openagents/psionic/platform") >= 0;
+  #assert cp_fp_test_find(s, "coder.ft.crumb.5") >= 0;   // "platform" breadcrumb segment
+
+  // Expand (⛶) widens right pane to full main area beside sidebar, then restores split width
+  split_w := s[0].pane_w;
+  #assert !coder_page_file_expanded(s) && split_w > 300.0f32 && split_w < 700.0f32;
+  #assert cp_fp_test_press(s, "coder.file.expand") && coder_page_file_expanded(s);
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > split_w + 150.0f32 && s[0].col_w == 0;
+  #assert cp_fp_test_press(s, "coder.file.expand") && !coder_page_file_expanded(s);
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w == split_w && s[0].col_w > 0;
+
+  // Hide (◫) hides the pane without losing open file or tab; center toggle restores it intact
+  #assert cp_fp_test_press(s, "coder.file.hide") && coder_page_file_hidden(s) && !coder_page_file_shown(s);
+  #assert s[0].fp[0].open && s[0].ft[0].ntabs == 1;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.body") < 0;
+  #assert cp_fp_test_press(s, "coder.ft.toggle") && !coder_page_file_hidden(s) && coder_page_file_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.body") >= 0;
+
+  // Word wrap toggle (≡), Reload (↻), Copy Path, and '+' Quick Open palette in Files mode
+  was_wrap := s[0].fp[0].wrap;
+  #assert cp_fp_test_press(s, "coder.file.wrap") && s[0].fp[0].wrap != was_wrap;
+  #assert cp_fp_test_press(s, "coder.file.reload") && coder_page_action(s) == CP_ASK_FILE_RELOAD;
+  #assert cp_fp_test_press(s, "coder.file.path") && coder_page_action(s) == CP_ASK_FILE_COPY_PATH;
+  #assert cp_fp_test_press(s, "coder.file.add") && coder_page_action(s) == CP_ASK_PALETTE;
+  #assert coder_page_palette_open(s) && coder_page_palette_mode(s) == CP_PAL_MODE_FILES && coder_page_palette_command(s) == 19;
+}
+
+#test "right-pane file viewer preserves RGB syntax & language badge colors under monochrome GPU pass (#13992)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  // Default T3 Dark is monochrome
+  #assert cp_cust_is_monochrome(s);
+  b: [256] u8;
+  src := "static uint64_t fnv1a(const char *s, size_t n) {\n  return 14695981039346656037ull;\n}\n";
+  #assert coder_page_file_open(s, "/Users/dev/openagents/psionic/platform/inkling-gguf.c", b[0..<cp_out(b[..], src)], src.count);
+
+  // File viewer primitives preserve RGB syntax & badge colors while monochrome applies outside
+  vbuf: [524288] f32;
+  nv := coder_page_frame(s, vbuf[..], 1280.0f32, 800.0f32, 1.0f32, 0.016f32);
+  #assert nv > 0;
+  v_colored := 0;
+  for i: 0..<nv {
+    o := i * GP_VERTEX_FLOATS;
+    r := vbuf[o + 12]; g := vbuf[o + 13]; bl := vbuf[o + 14]; a := vbuf[o + 15];
+    if a > 0.1f32 && (abs(r - g) > 0.05f32 || abs(g - bl) > 0.05f32) { v_colored += 1; }
+  }
+  #assert v_colored >= 60;
 }

@@ -65,7 +65,10 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
     k.doc_tint = src.muted;
     k.menu_divider = hex(0x262626, 1);
     k.field_edge = hex(0x2a2a2a, 1);
-    palette := NOIR_SYNTAX;
+    // Crisp dark code syntax palette for the right-pane File Viewer (#13992):
+    // comment, keyword, string, number, type, function, property, variable, punctuation, tag, attribute, invalid.
+    palette := [12] int.[0x737b86, 0x63b3ed, 0x8fd48a, 0xb794f4, 0xe5c07b, 0x79c0ff,
+                         0x9cdcfe, 0xededed, 0xb0b8c4, 0xf472b6, 0xd2a8ff, 0xfb414a];
     for i: 0..<UISKIN_SYNTAX { k.syntax[i] = hex(palette[i], 1); }
     k.spinner[0] = src.info; k.spinner[1] = hex(0x93c5fd, 1); k.spinner[2] = src.muted;
   }

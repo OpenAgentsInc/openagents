@@ -38,9 +38,8 @@ DC_FLAG_CAPABILITIES :: 24;
 DC_FLAG_AGENTS :: 25;
 DC_FLAG_SCENES :: 26;
 DC_FLAG_RICH :: 27;
-DC_FLAG_FILES :: 28;
 
-DC_FLAG_COUNT :: 29;
+DC_FLAG_COUNT :: 28;
 DC_FLAGS_ALL :: (1 << DC_FLAG_COUNT) - 1;
 DC_FLAGS_MODELS_MASK :: (1 << 7) - 1;
 
@@ -81,7 +80,6 @@ dc_flags_table :: () -> [DC_FLAG_COUNT] DcFlagDef #effects() {
     DcFlagDef.{bit = DC_FLAG_AGENTS, name = "agents", default_on = false, desc = "Agents page (Coder, Tester, Game Builder)."},
     DcFlagDef.{bit = DC_FLAG_SCENES, name = "scenes", default_on = false, desc = "Open 3D Scene and 3D scene side panel."},
     DcFlagDef.{bit = DC_FLAG_RICH, name = "rich", default_on = false, desc = "Prompt stash, history, side chat, and composer upgrades."},
-    DcFlagDef.{bit = DC_FLAG_FILES, name = "files", default_on = false, desc = "File Explorer tree, inline file viewer/editor pane, @file mentions, and repository file palette."},
   ];
 }
 
@@ -226,10 +224,9 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
 
 // ---------------------------------------------------------------- checks
 
-#test "flag registry: all 29 flags have unique sequential bits, names, descriptions, and default off" {
+#test "flag registry: all 28 flags have unique sequential bits, names, descriptions, and default off" {
   tbl := dc_flags_table();
-  #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 29;
-  #assert dc_flag_find("files") == DC_FLAG_FILES && dc_flag_name(DC_FLAG_FILES) == "files";
+  #assert tbl.count == DC_FLAG_COUNT && DC_FLAG_COUNT == 28;
   #assert dc_flags_defaults() == 0;
   for i: 0..<DC_FLAG_COUNT {
     #assert tbl[i].bit == i;
@@ -297,8 +294,8 @@ dc_flags_resolve :: (experimental: bool, defaults_mask: int, env_flags: string, 
   #assert dc_flags_parse_args(1 << 30, "") == 0;
 }
 
-#test "flag resolution: release default is 0; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
-  // Release default: every flag off, Inkling-only
+#test "flag resolution: release default is all off; defaults, OA_FLAGS, --flag, and experimentalFeatures compose cleanly" {
+  // Release default: every flag off (Inkling-only)
   r0 := dc_flags_resolve(false, 0, "", "", "");
   #assert r0 == 0 && !dc_flags_any_extra_model(r0);
 

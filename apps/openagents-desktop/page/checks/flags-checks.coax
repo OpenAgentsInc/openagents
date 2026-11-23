@@ -10,7 +10,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   return uiframe_end(f[..], s[0].surface[..]);
 }
 
-#test "flags release mode: single-model Inkling hides model selector and all 29 gated surfaces" {
+#test "flags release mode: single-model Inkling hides model selector and all 28 gated surfaces while keeping core File Viewer" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_flags_set(s, 0);
@@ -20,7 +20,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_branch(s, "main");
   #assert !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
 
-  // Main chat view: composer shows Inkling 2 Mini menu chip left of effort, without empty heading, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage, files, or copy on empty chat.
+  // Main chat view: composer shows Inkling 2 Mini menu chip left of effort, core File Viewer toggle is present, without empty heading, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage, or copy on empty chat.
   #assert cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
   #assert surface_find(s[0].surface[..], "coder.empty") < 0;
@@ -32,7 +32,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   wt_row := surface_find(s[0].surface[..], "coder.worktree");
   #assert wt_row >= 0 && !coder_page_worktree(s);
   #assert surface_find(s[0].surface[..], "coder.copy") < 0;
-  #assert surface_find(s[0].surface[..], "coder.ft.toggle") < 0;
+  #assert surface_find(s[0].surface[..], "coder.ft.toggle") >= 0;
   #assert surface_find(s[0].surface[..], "coder.foreman") < 0;
   #assert surface_find(s[0].surface[..], "coder.gym") < 0;
   #assert surface_find(s[0].surface[..], "coder.forge") < 0;
@@ -44,13 +44,16 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.fresh") < 0;
   #assert surface_find(s[0].surface[..], "coder.fanout") < 0;
 
-  // File pane, file explorer, @file mentions, and palette Files mode are disabled when DC_FLAG_FILES is off.
+  // File Viewer, File Explorer, and palette Files mode are core (unflagged) even with flags == 0.
   fb: [32] u8; fn := cp_out(fb[..], "hello\n");
-  #assert !coder_page_file_open(s, "~/demo.txt", fb[0..<fn], fn) && !coder_page_file_shown(s);
+  #assert coder_page_file_open(s, "~/demo.txt", fb[0..<fn], fn) && coder_page_file_shown(s);
+  coder_page_file_close(s);
   coder_page_filetree_open(s, true);
-  #assert !coder_page_filetree_shown(s);
+  #assert coder_page_filetree_shown(s);
+  coder_page_filetree_open(s, false);
   coder_page_palette_set_mode(s, CP_PAL_MODE_FILES);
-  #assert coder_page_palette_mode(s) != CP_PAL_MODE_FILES;
+  #assert coder_page_palette_mode(s) == CP_PAL_MODE_FILES;
+  coder_page_palette_set_mode(s, CP_PAL_MODE_COMMANDS);
 
   // Model menu opens with Inkling 2 Mini as the sole option in single-model release mode.
   coder_page_toggle_models(s);
@@ -297,9 +300,6 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_CUSTOMIZE));
   #assert cp_set_page_ok_flags(s[0].flags, CP_PG_APPEARANCE) && cp_set_page_ok_flags(s[0].flags, CP_PG_KEYBINDINGS);
-
-  coder_page_flags_set(s, dc_flag_bit(DC_FLAG_FILES));
-  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.ft.toggle") >= 0 && surface_find(s[0].surface[..], "coder.term.toggle") < 0;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_SCENES));
   #assert coder_page_file_open_scene(s, "/tmp/demo.ple-scene.json");

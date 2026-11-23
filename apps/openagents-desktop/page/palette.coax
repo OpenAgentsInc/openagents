@@ -167,7 +167,6 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     return true;
   }
   if c >= CP_PAL_FILE && c < CP_PAL_CONTENT {
-    if !cp_flag(s, DC_FLAG_FILES) { return false; }
     off := c - CP_PAL_FILE;
     path := cp_file(s, off);
     if path.count == 0 { return false; }

@@ -60,25 +60,83 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
   s[0].over_n = cp_over_rects(sh.over[0..<sh.no], cp_scale(s), s[0].over_r[..]);
+  mono := cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN);
+  fp_u0 := s[0].fp_color_u0; fp_u1 := s[0].fp_color_u1;
+  fp_o0 := s[0].fp_color_o0; fp_o1 := s[0].fp_color_o1;
+  fp_has_color := mono && ((fp_u1 > fp_u0 && fp_u1 <= sh.nu) || (fp_o1 > fp_o0 && fp_o1 <= sh.no));
   // a flat frame's pictures, where the host draws them (compose.coax)
   ids: [CP_IMAGES] int;
   s[0].cmp_gpu[0].flat_used = false;
   ni := ifx cp_composes(s) then 0 else cp_flat_images(s, sh.under[0..<sh.nu], sh.over[0..<sh.no], ids[..]);
-  v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
-  v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
+  fp_vu0 := 0; fp_vu1 := 0; fp_vo0 := 0; fp_vo1 := 0;
+  if fp_has_color {
+    if fp_u1 > fp_u0 && fp_u1 <= sh.nu {
+      if fp_u0 > 0 { v = gpu_draw_with(out, v, a, d, sh.under[0..<fp_u0], 0, 0, -8, h + 8, ids[0..<ni]); }
+      fp_vu0 = v;
+      v = gpu_draw_with(out, v, a, d, sh.under[fp_u0..<fp_u1], 0, 0, -8, h + 8, ids[0..<ni]);
+      fp_vu1 = v;
+      if fp_u1 < sh.nu { v = gpu_draw_with(out, v, a, d, sh.under[fp_u1..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]); }
+    } else {
+      v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
+    }
+    if fp_o1 > fp_o0 && fp_o1 <= sh.no {
+      if fp_o0 > 0 { v = gpu_draw_with(out, v, a, d, sh.over[0..<fp_o0], 0, 0, -8, h + 8, ids[0..<ni]); }
+      fp_vo0 = v;
+      v = gpu_draw_with(out, v, a, d, sh.over[fp_o0..<fp_o1], 0, 0, -8, h + 8, ids[0..<ni]);
+      fp_vo1 = v;
+      if fp_o1 < sh.no { v = gpu_draw_with(out, v, a, d, sh.over[fp_o1..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]); }
+    } else {
+      v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
+    }
+  } else {
+    v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
+    v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
+  }
   // a frosted surface on screen: the same frame as composition-v1's plan (compose.coax), else flat
   composed := cp_compose(s, out, a, d, w, h, k.canvas, sh.under[0..<sh.nu], sh.over[0..<sh.no], v);
-  if composed >= 0 { v = composed; }
+  if composed >= 0 { v = composed; fp_vu0 = 0; fp_vu1 = 0; fp_vo0 = 0; fp_vo1 = 0; }
   else if cp_needs_compose(s, sh.under[0..<sh.nu], sh.over[0..<sh.no]) {
     // a refused plan wrote over the flat frame: draw it again, with its pictures where the host draws them
     ni = cp_flat_images(s, sh.under[0..<sh.nu], sh.over[0..<sh.no], ids[..]);
     v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
-    v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
-    v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
+    fp_vu0 = 0; fp_vu1 = 0; fp_vo0 = 0; fp_vo1 = 0;
+    if fp_has_color && fp_u1 > fp_u0 && fp_u1 <= sh.nu {
+      if fp_u0 > 0 { v = gpu_draw_with(out, v, a, d, sh.under[0..<fp_u0], 0, 0, -8, h + 8, ids[0..<ni]); }
+      fp_vu0 = v;
+      v = gpu_draw_with(out, v, a, d, sh.under[fp_u0..<fp_u1], 0, 0, -8, h + 8, ids[0..<ni]);
+      fp_vu1 = v;
+      if fp_u1 < sh.nu { v = gpu_draw_with(out, v, a, d, sh.under[fp_u1..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]); }
+    } else {
+      v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
+    }
+    if fp_has_color && fp_o1 > fp_o0 && fp_o1 <= sh.no {
+      if fp_o0 > 0 { v = gpu_draw_with(out, v, a, d, sh.over[0..<fp_o0], 0, 0, -8, h + 8, ids[0..<ni]); }
+      fp_vo0 = v;
+      v = gpu_draw_with(out, v, a, d, sh.over[fp_o0..<fp_o1], 0, 0, -8, h + 8, ids[0..<ni]);
+      fp_vo1 = v;
+      if fp_o1 < sh.no { v = gpu_draw_with(out, v, a, d, sh.over[fp_o1..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]); }
+    } else {
+      v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
+    }
   }
-  // Preserve semantic scientific color roles inside Lean 4 & RH Proof Workbench (#13946)
-  // and provider brand/status/accent colors on Settings -> Providers.
-  if cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN) { gpu_monochrome(out, v); }
+  // Preserve semantic scientific color roles inside Lean 4 & RH Proof Workbench (#13946),
+  // provider brand/status/accent colors on Settings -> Providers, and syntax/badge colors inside the File Viewer (#13992).
+  if mono {
+    if fp_vu1 > fp_vu0 || fp_vo1 > fp_vo0 {
+      cur := 0;
+      if fp_vu1 > fp_vu0 {
+        gpu_monochrome_range(out, cur, fp_vu0);
+        cur = fp_vu1;
+      }
+      if fp_vo1 > fp_vo0 && fp_vo0 >= cur {
+        gpu_monochrome_range(out, cur, fp_vo0);
+        cur = fp_vo1;
+      }
+      gpu_monochrome_range(out, cur, v);
+    } else {
+      gpu_monochrome(out, v);
+    }
+  }
   return v;
 }
 // An icon's size in the atlas, in points. An icon draws at this size wherever it is, so the ones that
@@ -86,7 +144,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
 // one size; the rest keep the component library's (Zeron's, in points).
 CP_ICON :: 18;
 coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
-  if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
+  if i == ICON_FOLDER || i == ICON_SIDEBAR_RIGHT || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
   sizes := ICON_SIZES;
   return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
 }
@@ -156,7 +214,10 @@ coder_page_skills :: (s: [] CoderPage, note: string) #export_c #effects(all) {
 // whole path as the task's cwd. At most 512 bytes are kept.
 coder_page_folder :: (s: [] CoderPage, shown: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  if cast(string) s[0].folder[0..<s[0].folder_n] != shown { cp_files_forget(s); }   // the @ list was the old folder's
+  if cast(string) s[0].folder[0..<s[0].folder_n] != shown {
+    cp_files_forget(s);   // the @ list was the old folder's
+    s[0].ft[0].loaded = false; s[0].ft[0].nentries = 0; s[0].ft[0].pool_n = 0; s[0].ft[0].scroll = 0;
+  }
   s[0].folder_n = cp_out(s[0].folder[..], shown);
 }
 // The working folder's Git branch, as the host read it ("" for none): the composer's foot shows it
@@ -400,10 +461,7 @@ coder_page_flags_set :: (s: [] CoderPage, mask: int) #export_c #effects(all) {
   if !cp_flag(s, DC_FLAG_SIMULATOR) { s[0].sim[0].open = false; }
   if !cp_flag(s, DC_FLAG_PREVIEW) { s[0].preview[0].open = false; }
   if !cp_flag(s, DC_FLAG_GIT) { s[0].review = false; }
-  if !cp_flag(s, DC_FLAG_FILES) {
-    if !(cp_flag(s, DC_FLAG_SCENES) && s[0].fp[0].mode == CP_FP_SCENE) { s[0].fp[0].open = false; }
-    s[0].ft[0].open = false;
-  }
+  if !cp_flag(s, DC_FLAG_SCENES) && s[0].fp[0].mode == CP_FP_SCENE { s[0].fp[0].open = false; }
   if !cp_flag(s, DC_FLAG_RICH) { s[0].rich[0].side_open = false; }
   if !cp_flag(s, DC_FLAG_USAGE) { s[0].usage[0].popover_open = false; }
   if !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }

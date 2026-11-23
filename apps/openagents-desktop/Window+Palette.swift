@@ -21,6 +21,9 @@ extension CoderWindow {
         case 16: renameShown()
         case 17: if canDelete { deleteShown() }
         case 18: stopAllChats()
+        case 19:
+            overlay.watchPalette()
+            listFiles()
         default: break
         }
     }
@@ -97,6 +100,16 @@ extension CoderWindow {
                 if ch == "1" { cd_palette_set_mode(self.page, 0); self.wake(); return nil }
                 if ch == "2" { cd_palette_set_mode(self.page, 1); self.wake(); return nil }
                 if ch == "3" { cd_palette_set_mode(self.page, 2); self.wake(); return nil }
+            }
+            // Cmd+P: Quick Open file into the right-pane File Viewer (#13992).
+            if flags == .command && event.charactersIgnoringModifiers?.lowercased() == "p" && (!self.overlay.dialogOpen || self.overlay.paletteUp) {
+                if cd_palette_open(self.page) == 0 {
+                    if cd_palette_toggle(self.page, 0) != 0 { self.overlay.watchPalette() }
+                }
+                cd_palette_set_mode(self.page, 1)
+                self.listFiles()
+                self.wake()
+                return nil
             }
             guard event.keyCode == 48 else { return event }
             guard flags.contains(.control), !flags.contains(.command), !flags.contains(.option) else { return event }

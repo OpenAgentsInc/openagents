@@ -62,7 +62,11 @@ GP_NO_CLIP :: 1000000.0;
  #assert one[12]==0.9 && one[28+12]==0.1 && one[28+14]==0.7;
 }
 gpu_monochrome :: (out:[]f32,vertices:int) {
- for i:0..<vertices {at:=i*GP_VERTEX_FLOATS;if at+GP_VERTEX_FLOATS>out.count {return;}
+ gpu_monochrome_range(out, 0, vertices);
+}
+gpu_monochrome_range :: (out:[]f32,from:int,to:int) {
+ start := ifx from > 0 then from else 0;
+ for i:start..<to {at:=i*GP_VERTEX_FLOATS;if at+GP_VERTEX_FLOATS>out.count {return;}
   for k:0..<2 {p:=at+12+k*4;v:=out[p];if out[p+1]>v {v=out[p+1];}if out[p+2]>v {v=out[p+2];}out[p]=v;out[p+1]=v;out[p+2]=v;}
  }
 }

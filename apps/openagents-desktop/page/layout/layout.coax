@@ -33,6 +33,7 @@ cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
   s[0].live_on = false;   // a live 3D card the conversation draws this frame sets it (shows.coax)
+  s[0].fp_color_u0 = 0; s[0].fp_color_u1 = 0; s[0].fp_color_o0 = 0; s[0].fp_color_o1 = 0;
   cp_sel_begin_layout(s);
   if s[0].set_open { cp_settings(s, f, window_w, h); return; }
   s[0].todos[0].docked = false;   // cp_side_pane sets it when it draws the task list
@@ -41,8 +42,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   todos_side := s[0].todos[0].n > 0 && app_pane_layout(window_w, s[0].pane_user, true, cp_pane_spec()).mode == APP_PANE_SIDE;
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
-  // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || (cp_flag(s, DC_FLAG_FILES) && (s[0].fp[0].open || s[0].ft[0].open)) || (cp_flag(s, DC_FLAG_SCENES) && s[0].fp[0].open && s[0].fp[0].mode == CP_FP_SCENE) || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
+  // wide viewports, centered conversation column, and right sub-agent transcript / file viewer pane.
+  fp_vis := !s[0].fp[0].hidden && ((s[0].fp[0].open && (s[0].fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES))) || s[0].ft[0].open);
+  pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
   shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
@@ -77,6 +79,15 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         }
       }
     }
+    if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
+    cp_title_bar(s, f, left, toggle);
+    return;
+  }
+  // User-expanded file viewer pane (#13992): takes the full main area beside the sidebar (or full window if collapsed).
+  if cp_fp_shown(s) && s[0].fp[0].expanded {
+    running := cp_running(s);
+    s[0].pane_x = left; s[0].pane_w = window_w - left; s[0].col_w = 0;
+    cp_side_pane(s, f, left, window_w - left, h);
     if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
     cp_title_bar(s, f, left, toggle);
     return;

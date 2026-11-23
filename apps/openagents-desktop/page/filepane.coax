@@ -1,18 +1,30 @@
-// Coder Desktop page (../page.coax): a file in the pane on the window's right (GitHub #13760, #13881),
-// with collapsible File Explorer directory tree, multi-tab open files, syntax-highlighted editing
-// up to 128 KB / 4,096 lines, rich read-only previews (CSV/TSV, Jupyter .ipynb, binary hex,
-// image/PDF metadata), and Open-in-Editor picker.
+// OpenAgents Desktop page (../page.coax): Antigravity-style right-pane File Viewer & Editor
+// (GitHub #13760, #13881, #13992): unified top tab bar with colored language badges, '+' quick-open,
+// Expand/Restore (⛶) and Hide-preserving-tabs (◫), interactive path breadcrumbs + inline toolbar
+// (⋮ More/Editors, ↻ Reload, ≡ Word Wrap), full-color multi-language syntax highlighting, collapsible
+// File Explorer tree, inline editing up to 128 KB / 4,096 lines, and rich read-only previews.
 
-CP_FP_MOST :: 524288;        // bytes the pane shows (512 KB); a longer file is not read
+CP_FP_MOST :: 524288;        // bytes the pane shows (512 KB; lifted to 4 MB in Phase 2)
 CP_FP_EDIT_MOST :: 131072;   // bytes a file may have to be edited inline (128 KB, lifted from 16 KB in #13881)
 CP_FP_EDIT_LINES :: 4096;    // lines a file may have to be edited inline (4,096 lines, lifted from 512 in #13881)
 CP_FP_SMALL_LINES :: 512;    // lines fitting in the shared UiEditor; larger files use large_edit mode
 CP_FP_PATH :: 1024;          // bytes of the path it shows
+CP_FP_BAR1_H :: 38.0f32;     // Row 1: unified top tab bar height (level with window titlebar)
+CP_FP_BAR2_H :: 30.0f32;     // Row 2: breadcrumb trail & inline action bar height
 CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3; CP_FP_SCENE :: 4;   // what the pane holds
-// what its controls dispatch, and what it asks of the host (coder_page_action)
+// UI actions dispatched by filepane controls (80..89 reserved for filepane.coax)
 CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82; CP_FP_LEAN_GOAL :: 83;
+CP_FP_EXPAND :: 84;          // ⛶ toggle full-width expanded file viewer
+CP_FP_HIDE :: 85;            // ◫ hide right pane while preserving open tabs & active file
+CP_FP_ADD_TAB :: 86;         // + open Command Palette in Files mode to add another tab
+CP_FP_RELOAD :: 87;          // ↻ reload active file from disk preserving scroll
+CP_FP_WRAP :: 88;            // ≡ toggle word wrap in code viewer
+CP_FP_COPY_PATH :: 89;       // copy active file path to clipboard
+// Host asks (coder_page_action)
 CP_ASK_FILE_SAVE :: 40; CP_ASK_FILE_EXTERNAL :: 41; CP_ASK_FILE_CLOSE :: 42; CP_ASK_FILE_FOCUS :: 43;
 CP_ASK_FILE_LEAN_GOAL :: 157;
+CP_ASK_FILE_RELOAD :: 164;   // host re-reads active file from disk and calls coder_page_file_reload
+CP_ASK_FILE_COPY_PATH :: 165;// host copies coder_page_file_path to the OS clipboard
 CP_FP_LEAN_STRIP_H :: 54.0f32;
 CP_KB_FILE :: 3;             // the file's editor has the keyboard (editor.coax's CP_KB_*)
 CP_SCR_FILE :: 5;            // the wheel over the pane (input.coax's CP_SCR_*)
@@ -20,9 +32,12 @@ CP_SCR_FILE :: 5;            // the wheel over the pane (input.coax's CP_SCR_*)
 CpFilePane :: struct {
   open: bool;
   front: bool;                // in front of a sub-agent's transcript or the review
+  hidden: bool;               // collapsed via ◫ while preserving open tabs, active file & scroll (#13992)
+  expanded: bool;             // expanded via ⛶ across the main area beside the left sidebar (#13992)
+  wrap: bool;                 // soft-wrap long lines in viewer mode (toggled via ≡, #13992)
   mode: int;                  // CP_FP_*
   large_edit: bool;           // true when editing a file > EB_TEXT or > CP_FP_SMALL_LINES (up to 128 KB / 4,096 lines)
-  path: [CP_FP_PATH] u8; path_n: int;   // as the host shows it (~/work/app/a.coax)
+  path: [CP_FP_PATH] u8; path_n: int;   // full or tilde path shown in breadcrumbs
   src: [] u8;                 // the file as last read or saved, in the host's buffer (it keeps it until the next)
   size: int;                  // its bytes on disk
   why: [512] u8; why_n: int;  // why it could not be read, or why the last save failed
@@ -50,14 +65,13 @@ cp_fp_is_lean :: (s: [] CoderPage) -> bool {
 
 // ---------------------------------------------------------------- what the rest of the page asks
 
-// Whether the pane draws the file or file explorer: open, in front, or nothing else wants the pane.
+// Whether the pane draws the file or file explorer: open, not hidden, in front, or nothing else wants the pane.
 cp_fp_shown :: (s: [] CoderPage) -> bool {
   fp := s[0].fp[..]; ft := s[0].ft[..];
-  has_files := cp_flag(s, DC_FLAG_FILES);
-  scene_ok := cp_flag(s, DC_FLAG_SCENES) && fp[0].open && fp[0].mode == CP_FP_SCENE;
-  if !has_files && !scene_ok { return false; }
-  any_open := (has_files && (fp[0].open || ft[0].open)) || scene_ok;
-  any_front := (has_files && (fp[0].front || ft[0].front)) || (scene_ok && fp[0].front);
+  if fp[0].hidden { return false; }
+  fp_open := fp[0].open && (fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES));
+  any_open := fp_open || ft[0].open;
+  any_front := (fp_open && fp[0].front) || (ft[0].open && ft[0].front);
   return any_open && !cp_sim_front(s) && !cp_term_front(s) && (any_front || !(s[0].pane_open || s[0].review));
 }
 // Whether the file's editor is on screen: the keyboard can go to it.
@@ -70,7 +84,7 @@ cp_fp_name :: (s: [] CoderPage) -> string {
   while at > 0 && p[at - 1] != '/' { at -= 1; }
   return cast(string) p[at..<p.count];
 }
-// What the tab says after the name: Edited, Saved, Read-only, Preview, or nothing.
+// What the status badge says: Edited, Saved, Read-only, Preview, or nothing.
 cp_fp_state :: (s: [] CoderPage) -> string {
   fp := s[0].fp[..];
   if fp[0].mode == CP_FP_SCENE { return "3D Scene"; }
@@ -122,17 +136,48 @@ cp_fp_skin :: (k: UiSkin) -> UiSkin {
 cp_fp_yield :: (s: [] CoderPage, act: int, id: string) -> bool {
   fp := s[0].fp[..]; ft := s[0].ft[..];
   if (!fp[0].open && !ft[0].open) || (!fp[0].front && !ft[0].front) || act != CP_REVIEW && act != CP_AGENT { return false; }
-  fp[0].front = false; ft[0].front = false; ft[0].editor_menu = false;
+  fp[0].front = false; fp[0].expanded = false; ft[0].front = false; ft[0].editor_menu = false;
   if act == CP_REVIEW && s[0].review { s[0].pane_tab = CP_TAB_CHANGES; return true; }
   if act == CP_AGENT && s[0].pane_open && s[0].pane_turn == cp_number(id, "t") && s[0].pane_agent == cp_number(id, ".g") { s[0].pane_tab = CP_TAB_AGENT; return true; }
   return false;
 }
 cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
-  if !s[0].fp[0].open { return false; }
-  if act == CP_FP_CLOSE { s[0].ask = CP_ASK_FILE_CLOSE; return true; }
-  if act == CP_FP_SAVE { if !s[0].fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
-  if act == CP_FP_EXTERNAL { s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
-  if act == CP_FP_LEAN_GOAL { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
+  fp := s[0].fp[..];
+  if act == CP_FP_EXPAND {
+    if !cp_fp_shown(s) { return false; }
+    fp[0].expanded = !fp[0].expanded;
+    s[0].ft[0].editor_menu = false;
+    return true;
+  }
+  if act == CP_FP_HIDE {
+    if !fp[0].open && !s[0].ft[0].open { return false; }
+    fp[0].hidden = true;
+    fp[0].expanded = false;
+    s[0].ft[0].editor_menu = false;
+    if s[0].fld[0].kb == CP_KB_FILE || s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
+    return true;
+  }
+  if act == CP_FP_ADD_TAB {
+    s[0].ft[0].editor_menu = false;
+    cp_palette_show(s, APP_PAL_ALL);
+    cp_palette_set_mode(s, CP_PAL_MODE_FILES);
+    s[0].ov[0].pal_cmd = 19;   // host watches palette AND lists workspace files if needed
+    s[0].ask = CP_ASK_PALETTE;
+    return true;
+  }
+  if !fp[0].open { return false; }
+  if act == CP_FP_CLOSE { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_CLOSE; return true; }
+  if act == CP_FP_SAVE { if !fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
+  if act == CP_FP_EXTERNAL { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
+  if act == CP_FP_RELOAD { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_RELOAD; return true; }
+  if act == CP_FP_WRAP { fp[0].wrap = !fp[0].wrap; return true; }
+  if act == CP_FP_COPY_PATH {
+    s[0].ft[0].editor_menu = false;
+    s[0].ask = CP_ASK_FILE_COPY_PATH;
+    _ := app_toast_push(s[0].toasts[..], "Copied path", APP_TOAST_PLAIN);
+    return true;
+  }
+  if act == CP_FP_LEAN_GOAL { if !cp_flag(s, DC_FLAG_GYM) { return false; } fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
   return false;
 }
 // The wheel over the pane: the editor's rows move, or the read-only / large-edit view does.
@@ -226,7 +271,6 @@ cp_fp_large_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
     fp[0].caret = pos; return true;
   }
   if key == KEY_UP || key == KEY_DOWN {
-    // find start of current line and column
     ls := pos; while ls > 0 && fp[0].text[ls - 1] != '\n' { ls -= 1; }
     col := pos - ls;
     if key == KEY_UP {
@@ -278,7 +322,51 @@ cp_fp_large_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool {
   return true;
 }
 
-// ---------------------------------------------------------------- syntax-highlighted drawing
+// ---------------------------------------------------------------- language badge & multi-language syntax
+
+// Draws a compact colored language monogram or file icon (16pt wide) for tabs & breadcrumbs (#13992).
+cp_fp_lang_badge :: (f: [] UiFrame, path: string, x: f32, y: f32, box_h: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  slot := 16.0f32;
+  tag := "";
+  col := k.muted;
+  if cp_ft_ends_ci(path, ".rs") {
+    ic := 13.0f32;
+    sheet_icon(sh, ICON_RUST, x + (slot - ic) / 2.0f32, y + (box_h - ic) / 2.0f32, ic, hex(0xdea584, 1));
+    return slot;
+  }
+  if cp_ft_ends_ci(path, ".png") || cp_ft_ends_ci(path, ".jpg") || cp_ft_ends_ci(path, ".jpeg") ||
+     cp_ft_ends_ci(path, ".webp") || cp_ft_ends_ci(path, ".gif") {
+    ic := 13.0f32;
+    sheet_icon(sh, ICON_GALLERY, x + (slot - ic) / 2.0f32, y + (box_h - ic) / 2.0f32, ic, hex(0xc586c0, 1));
+    return slot;
+  }
+  if cp_ft_ends_ci(path, ".c") { tag = "c"; col = hex(0x569cd6, 1); }
+  else if cp_ft_ends_ci(path, ".h") || cp_ft_ends_ci(path, ".hpp") || cp_ft_ends_ci(path, ".hh") { tag = "h"; col = hex(0xc586c0, 1); }
+  else if cp_ft_ends_ci(path, ".cpp") || cp_ft_ends_ci(path, ".cc") || cp_ft_ends_ci(path, ".cxx") { tag = "c+"; col = hex(0x569cd6, 1); }
+  else if cp_ft_ends_ci(path, ".m") || cp_ft_ends_ci(path, ".mm") { tag = "m"; col = hex(0x569cd6, 1); }
+  else if cp_ft_ends_ci(path, ".metal") || cp_ft_ends_ci(path, ".cu") || cp_ft_ends_ci(path, ".cuh") { tag = "mt"; col = hex(0xe37933, 1); }
+  else if cp_ft_ends_ci(path, ".coax") { tag = "cx"; col = hex(0x74cfd1, 1); }
+  else if cp_ft_ends_ci(path, ".swift") { tag = "sw"; col = hex(0xf05138, 1); }
+  else if cp_ft_ends_ci(path, ".py") || cp_ft_ends_ci(path, ".pyi") { tag = "py"; col = hex(0xffd43b, 1); }
+  else if cp_ft_ends_ci(path, ".ts") || cp_ft_ends_ci(path, ".tsx") { tag = "ts"; col = hex(0x3178c6, 1); }
+  else if cp_ft_ends_ci(path, ".js") || cp_ft_ends_ci(path, ".jsx") || cp_ft_ends_ci(path, ".mjs") || cp_ft_ends_ci(path, ".cjs") { tag = "js"; col = hex(0xf7df1e, 1); }
+  else if cp_ft_ends_ci(path, ".json") || cp_ft_ends_ci(path, ".jsonc") { tag = "{}"; col = hex(0xcbcb41, 1); }
+  else if cp_ft_ends_ci(path, ".md") || cp_ft_ends_ci(path, ".markdown") { tag = "md"; col = hex(0x569cd6, 1); }
+  else if cp_ft_ends_ci(path, ".sh") || cp_ft_ends_ci(path, ".bash") || cp_ft_ends_ci(path, ".zsh") { tag = "$"; col = hex(0x89e051, 1); }
+  else if cp_ft_ends_ci(path, ".lean") { tag = "ln"; col = hex(0x74cfd1, 1); }
+  else if cp_ft_ends_ci(path, ".csv") || cp_ft_ends_ci(path, ".tsv") { tag = "tb"; col = hex(0x89e051, 1); }
+  else if cp_ft_ends_ci(path, ".ipynb") { tag = "nb"; col = hex(0xf37626, 1); }
+
+  if tag.count > 0 {
+    tw := measure_width(m, k.mono_tiny.face, tag);
+    _ := sheet_text(sh, m, -1, x + (slot - tw) / 2.0f32, y + (box_h - k.mono_tiny.line) / 2.0f32, k.mono_tiny.line, k.mono_tiny.face, col, tag);
+    return slot;
+  }
+  ic := 13.0f32;
+  sheet_icon(sh, ICON_FILE_TEXT, x + (slot - ic) / 2.0f32, y + (box_h - ic) / 2.0f32, ic, k.muted);
+  return slot;
+}
 
 // How many lines text has (one more than its newlines).
 cp_fp_lines :: (text: string) -> int { n := 1; for c: text { if c == '\n' { n += 1; } } return n; }
@@ -291,13 +379,39 @@ cp_fp_number :: (f: [] UiFrame, n: int, right: f32, y: f32, line: f32, lit: bool
   _ := sheet_text(sh, f[0].m, -1, right - w, y, line, k.mono_tiny.face, ifx lit then k.muted else k.faint, t);
 }
 
-// Paints one line of source code using components/core/syntax.coax roles + uiskin_syntax palette
-// (same shared pattern as page/gitdiff.coax). Returns number of syntax runs painted.
-cp_fp_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
+// Advances multi-line block comment state across an off-screen line without emitting runs.
+cp_fp_scan_block :: (lang: int, code: string, in_block: [] bool) {
+  if in_block.count < 1 || code.count < 2 { return; }
+  c_like := (lang == SYN_LANG_C || lang == SYN_LANG_COAX || lang == SYN_LANG_RUST || lang == SYN_LANG_SWIFT || lang == SYN_LANG_JS || lang == SYN_LANG_JSON);
+  lean := (lang == SYN_LANG_LEAN);
+  if !c_like && !lean { return; }
+  i := 0;
+  while i + 1 < code.count {
+    if in_block[0] {
+      if lean && code[i] == '-' && code[i + 1] == '/' { in_block[0] = false; i += 2; continue; }
+      if c_like && code[i] == '*' && code[i + 1] == '/' { in_block[0] = false; i += 2; continue; }
+      i += 1; continue;
+    }
+    if code[i] == '"' {
+      i += 1;
+      while i < code.count && code[i] != '"' { if code[i] == '\\' { i += 1; } i += 1; }
+      i += 1; continue;
+    }
+    if c_like && code[i] == '/' && code[i + 1] == '/' { return; }
+    if lean && code[i] == '-' && code[i + 1] == '-' { return; }
+    if c_like && code[i] == '/' && code[i + 1] == '*' { in_block[0] = true; i += 2; continue; }
+    if lean && code[i] == '/' && code[i + 1] == '-' { in_block[0] = true; i += 2; continue; }
+    i += 1;
+  }
+}
+
+// Paints one line of source code using multi-language components/core/syntax.coax roles + uiskin_syntax palette.
+// Returns the number of syntax runs painted.
+cp_fp_syntax_line_lang :: (f: [] UiFrame, lang: int, in_block: [] bool, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
   if code.count == 0 { return 0; }
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
   runs: [96] MdRun;
-  nr := syn_rust(code, runs[..]);
+  nr := syn_tokenize_line(lang, code, in_block, runs[..]);
   ln := sheet_line(sh, x, y, lh, true);
   pen := x; i := 0;
   for r: 0..<nr {
@@ -309,51 +423,259 @@ cp_fp_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: 
   return nr;
 }
 
-// Whether a file path should receive syntax highlighting (false for plain text / rich previews).
-cp_fp_is_code :: (path: string, preview_kind: int) -> bool {
-  if preview_kind != CP_FT_PREV_NONE { return false; }
-  if cp_ft_ends_ci(path, ".txt") || cp_ft_ends_ci(path, ".log") { return false; }
-  return true;
+// Backward-compatible wrapper (defaults to Rust tokenizer) for callers/checks without path context.
+cp_fp_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
+  blk: [1] bool;
+  return cp_fp_syntax_line_lang(f, SYN_LANG_RUST, blk[..], x, y, lh, face, plain, code);
 }
 
-// The pane: multi-tab bar, optional collapsible File Explorer directory tree, Open-in-Editor picker,
-// Save while dirty, Open in Default App, path, rich preview / syntax-highlighted editor / read-only view.
-cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  k := f[0].skin; a := k.app; fp := s[0].fp[..]; ft := s[0].ft[..];
-  top := ifx px > 0 then 0.0f32 else cp_bar(s);
-  side := a.icon_button; mid := top + CP_CORNER + side / 2;
+// Language for a file path in the viewer (SYN_LANG_PLAIN disables highlighting for previews / .txt / .log).
+cp_fp_lang :: (path: string, preview_kind: int) -> int {
+  if preview_kind != CP_FT_PREV_NONE { return SYN_LANG_PLAIN; }
+  return syn_lang_for_path(path);
+}
 
-  // When only the File Explorer tree is open (no file loaded yet): draw tree full-width
+// ---------------------------------------------------------------- unified Row 1 tab bar & Row 2 breadcrumb bar (#13992)
+
+// Draws one tab pill in Row 1 (rounded capsule, colored language badge, filename, dirty dot, × close). Returns width consumed.
+cp_fp_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, path: string, label: string, dirty: bool, active: bool, tab_id: string, tab_act: int, close_id: string, close_act: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  nb: [128] u8;
+  nn := el_put(nb[..], 0, label);
+  if dirty { nn = el_put(nb[..], nn, " •"); }
+  shown := sheet_pool(sh, cast(string) nb[0..<nn]);
+  badge_w := 16.0f32;
+  close_slot := 18.0f32;
+  tw := measure_width(m, k.tool.face, shown);
+  if tw > 148.0f32 { tw = 148.0f32; }
+  w := 8.0f32 + badge_w + 5.0f32 + tw + 4.0f32 + close_slot + 4.0f32;
+  if w > max_w { w = max_w; }
+  if w < 52.0f32 { return 0.0f32; }
+
+  hov_tab := uiframe_hovered(f, tab_id);
+  hov_x := uiframe_hovered(f, close_id);
+  if active {
+    sheet_fill(sh, x, y, w, h, 8.0f32, ifx k.set.selected.a > 0 then k.set.selected else k.hover);
+  } else if hov_tab || hov_x {
+    sheet_fill(sh, x, y, w, h, 8.0f32, k.hover);
+  }
+
+  _ := cp_fp_lang_badge(f, path, x + 7.0f32, y, h);
+  lx := x + 7.0f32 + badge_w + 5.0f32;
+  text_max := x + w - close_slot - 6.0f32 - lx;
+  if text_max > 8.0f32 {
+    fit := app_fit(f, k.tool.face, shown, text_max);
+    _ := sheet_text(sh, m, -1, lx, y + (h - k.tool.line) / 2.0f32, k.tool.line, k.tool.face, ifx active || hov_tab then k.ink else k.muted, fit);
+  }
+  tab_row := uiframe_semantic(f, tab_id, EL_TAB, label, x, y, w - close_slot - 2.0f32, h, ifx active then EL_S_CURRENT else 0, ifx active then 0 else tab_act);
+  sheet_hit(sh, UIFRAME_HIT, tab_row, 0, x, y, w - close_slot - 2.0f32, h);
+
+  // Close × slot (always drawn on active tab, or on hover for inactive tabs; hit target always active)
+  cx := x + w - close_slot - 4.0f32;
+  cy := y + (h - close_slot) / 2.0f32;
+  if active || hov_tab || hov_x {
+    if hov_x { sheet_fill(sh, cx, cy, close_slot, close_slot, 4.0f32, k.hover); }
+    ic := 11.0f32;
+    sheet_icon(sh, ICON_CLOSE, cx + (close_slot - ic) / 2.0f32, cy + (close_slot - ic) / 2.0f32, ic, ifx hov_x then k.ink else k.muted);
+  }
+  xrow := uiframe_semantic(f, close_id, EL_BUTTON, "Close", cx, cy, close_slot, close_slot, 0, close_act);
+  sheet_hit(sh, UIFRAME_HIT, xrow, 0, cx, cy, close_slot, close_slot);
+  return w;
+}
+
+// Row 1 (38pt): Unified horizontal tab strip + '+' quick-open + right-aligned Expand (⛶) and Hide (◫).
+cp_fp_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..]; ft := s[0].ft[..];
+  bh := CP_FP_BAR1_H;
+  // Bottom 1px divider
+  sheet_fill(sh, px, top + bh - k.border, pw, k.border, 0, k.menu_divider);
+
+  side := k.app.icon_button;
+  by := top + (bh - side) / 2.0f32;
+  hide_x := px + pw - CP_CORNER - side;
+  exp_x := hide_x - 4.0f32 - side;
+
+  _ := app_icon_button(f, "coder.file.expand", exp_x, by, ifx fp[0].expanded then ICON_COLLAPSE else ICON_SIM_FIT,
+                       ifx fp[0].expanded then "Restore split view" else "Expand file pane", APP_BUTTON_QUIET,
+                       ifx fp[0].expanded then EL_S_CURRENT else 0, CP_FP_EXPAND);
+  _ := app_icon_button(f, "coder.file.hide", hide_x, by, ICON_SIDEBAR_RIGHT, "Hide file pane", APP_BUTTON_QUIET, 0, CP_FP_HIDE);
+
+  cx := px + 8.0f32;
+  tabs_end := exp_x - 8.0f32;
+  add_w := 26.0f32;
+  tab_h := 28.0f32;
+  ty := top + (bh - tab_h) / 2.0f32;
+
   if !fp[0].open {
-    if px > 0 { cp_side_border_left(s, f[0].sheet, px, 0, h, k.menu_divider); }
-    ex := px + pw - CP_CORNER - side;
-    ft[0].editor_btn_x = ex; ft[0].editor_btn_y = top + CP_CORNER;
-    _ := app_icon_button(f, "coder.ft.editors", ex, top + CP_CORNER, ICON_SHARE, "Open in Editor", APP_BUTTON_QUIET, 0, CP_FT_EDITOR_MENU);
-    stop := app_pane_tab_shell(f, px, top, ex - px, h, ICON_FOLDER, "Files", "coder.ft.state", "", "coder.ft.close", CP_FT_CLOSE, CP_CORNER, 1.0f32);
-    stop += cp_ft_draw_tabs(s, f, px, stop, pw);
+    // Explorer-only mode: single Files tab pill
+    w := app_pane_tab(f, cx, ty, ICON_FOLDER, "Files", "coder.ft.close", CP_FT_CLOSE, 1.0f32);
+    cx += w + 4.0f32;
+  } else if ft[0].ntabs <= 1 {
+    p := cast(string) fp[0].path[0..<fp[0].path_n];
+    avail := tabs_end - cx - add_w - 4.0f32;
+    if avail < 64.0f32 { avail = tabs_end - cx; }
+    w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, avail, p, cp_fp_name(s), fp[0].dirty, true,
+                             "coder.file.close.tab", 0, "coder.file.close", CP_FP_CLOSE);
+    cx += w + 4.0f32;
+  } else {
+    for i: 0..<ft[0].ntabs {
+      rem := tabs_end - cx - add_w - 4.0f32;
+      if rem < 56.0f32 { break; }
+      tp := cp_ft_tab_path(s, i);
+      tn := cp_ft_tab_name(s, i);
+      ib: [32] u8;
+      tid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.ft.tab."), i)]);
+      xb: [32] u8;
+      xid := sheet_pool(sh, cast(string) xb[0..<el_put_i(xb[..], el_put(xb[..], 0, "coder.ft.tabx."), i)]);
+      active := i == ft[0].active_tab;
+      w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, rem, tp, tn, ft[0].tabs[i].dirty, active,
+                               tid, CP_FT_TAB, xid, CP_FT_TAB_CLOSE);
+      if w <= 0 { break; }
+      cx += w + 4.0f32;
+    }
+  }
+
+  // '+' Quick-Open button immediately right of the last tab pill
+  if cx + add_w <= tabs_end {
+    keep := f[0].skin;
+    f[0].skin.app.icon_button = add_w; f[0].skin.app.icon_well = add_w;
+    _ := app_icon_button(f, "coder.file.add", cx, top + (bh - add_w) / 2.0f32, ICON_PLUS, "Open file…", APP_BUTTON_QUIET, 0, CP_FP_ADD_TAB);
+    f[0].skin = keep;
+  }
+
+  return top + bh;
+}
+
+// Row 2 (30pt): Interactive path breadcrumbs (Users › ... › [icon] file) + inline Save, ⋮ More, ↻ Reload, ≡ Wrap.
+cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; fp := s[0].fp[..]; ft := s[0].ft[..];
+  bh := CP_FP_BAR2_H;
+  sheet_fill(sh, fx, y2 + bh - k.border, fw, k.border, 0, k.menu_divider);
+
+  // Compact 24pt action buttons on the right: ≡ Wrap, ↻ Reload, ⋮ More/Editors, plus Save & state when active
+  bside := 24.0f32;
+  by := y2 + (bh - bside) / 2.0f32;
+  wrap_x := fx + fw - CP_CORNER - bside;
+  reload_x := wrap_x - 2.0f32 - bside;
+  more_x := reload_x - 2.0f32 - bside;
+  right := more_x - 6.0f32;
+
+  keep := f[0].skin;
+  f[0].skin.app.icon_button = bside; f[0].skin.app.icon_well = bside;
+  ft[0].editor_btn_x = more_x; ft[0].editor_btn_y = by;
+  _ := app_icon_button(f, "coder.ft.editors", more_x, by, ICON_MORE_V, "File actions", APP_BUTTON_QUIET, ifx ft[0].editor_menu then EL_S_CURRENT else 0, CP_FT_EDITOR_MENU);
+  _ := app_icon_button(f, "coder.file.reload", reload_x, by, ICON_RELOAD, "Reload from disk", APP_BUTTON_QUIET, 0, CP_FP_RELOAD);
+  _ := app_icon_button(f, "coder.file.wrap", wrap_x, by, ICON_WRAP, ifx fp[0].wrap then "Disable word wrap" else "Enable word wrap", APP_BUTTON_QUIET, ifx fp[0].wrap then EL_S_CURRENT else 0, CP_FP_WRAP);
+  f[0].skin = keep;
+
+  if fp[0].mode == CP_FP_EDIT && fp[0].dirty {
+    bw := app_button_width(f, -1, "Save");
+    right -= bw;
+    _ := app_button(f, "coder.file.save", right, y2 + (bh - k.control_h) / 2.0f32, bw, -1, "Save", APP_BUTTON_PRIMARY, 0, CP_FP_SAVE);
+    right -= 6.0f32;
+  }
+  st := cp_fp_state(s);
+  if st.count > 0 {
+    sw := measure_width(m, k.small.face, st) + 4.0f32;
+    if right - sw > fx + 80.0f32 {
+      right -= sw;
+      _ := app_meta(f, "coder.file.state", right, y2 + (bh - k.small.line) / 2.0f32, sw, st, false);
+      right -= 6.0f32;
+    }
+  }
+
+  // Left side: segmented path breadcrumbs (eliding leftmost directories when narrow)
+  full := cast(string) fp[0].path[0..<fp[0].path_n];
+  bx := fx + 12.0f32;
+  avail := right - bx;
+  if avail <= 24.0f32 || full.count == 0 { return y2 + bh; }
+
+  seg_at: [32] int; seg_len: [32] int; nseg := 0;
+  p_i := 0;
+  while p_i < full.count && nseg < 32 {
+    while p_i < full.count && full[p_i] == '/' { p_i += 1; }
+    end := p_i;
+    while end < full.count && full[end] != '/' { end += 1; }
+    if end > p_i {
+      seg_at[nseg] = p_i; seg_len[nseg] = end - p_i; nseg += 1;
+    }
+    p_i = end;
+  }
+  if nseg == 0 { return y2 + bh; }
+
+  sep_w := measure_width(m, k.tool.face, " > ");
+  ell_w := measure_width(m, k.tool.face, "… > ");
+  badge_w := 16.0f32 + 4.0f32;
+  // Choose the earliest segment index that fits cleanly within avail
+  first := nseg - 1;
+  need := badge_w + measure_width(m, k.tool.face, cast(string) full[seg_at[first]..<seg_at[first] + seg_len[first]]);
+  while first > 0 {
+    prev := first - 1;
+    pw_seg := measure_width(m, k.tool.face, cast(string) full[seg_at[prev]..<seg_at[prev] + seg_len[prev]]) + sep_w;
+    prefix_w := ifx prev > 0 then ell_w else 0.0f32;
+    if need + pw_seg + prefix_w <= avail {
+      need += pw_seg;
+      first = prev;
+    } else {
+      break;
+    }
+  }
+
+  cx := bx;
+  ty := y2 + (bh - k.tool.line) / 2.0f32;
+  if first > 0 {
+    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, "…");
+    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " > ");
+  }
+  for si: first..<(nseg - 1) {
+    seg := cast(string) full[seg_at[si]..<seg_at[si] + seg_len[si]];
+    cb: [32] u8;
+    cid := sheet_pool(sh, cast(string) cb[0..<el_put_i(cb[..], el_put(cb[..], 0, "coder.ft.crumb."), si)]);
+    sw := measure_width(m, k.tool.face, seg);
+    hov := uiframe_hovered(f, cid);
+    _ := sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, ifx hov then k.ink else k.muted, seg);
+    row := uiframe_semantic(f, cid, EL_BUTTON, seg, cx, y2 + 2, sw, bh - 4, 0, CP_FT_CRUMB_DIR);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, cx, y2 + 2, sw, bh - 4);
+    cx += sw;
+    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " > ");
+  }
+  // Final segment: colored language badge + filename (carries full path under "coder.file.path" & copies on click)
+  fname := cast(string) full[seg_at[nseg - 1]..<seg_at[nseg - 1] + seg_len[nseg - 1]];
+  _ := cp_fp_lang_badge(f, full, cx, y2, bh);
+  fx_name := cx + 16.0f32 + 4.0f32;
+  rem_name := right - fx_name;
+  if rem_name > 8.0f32 {
+    fit := app_fit(f, k.tool.face, fname, rem_name);
+    nw := measure_width(m, k.tool.face, fit);
+    _ := sheet_text(sh, m, -1, fx_name, ty, k.tool.line, k.tool.face, k.ink, fit);
+    prow := uiframe_semantic(f, "coder.file.path", EL_BUTTON, full, cx, y2 + 2, (fx_name - cx) + nw, bh - 4, 0, CP_FP_COPY_PATH);
+    sheet_hit(sh, UIFRAME_HIT, prow, 0, cx, y2 + 2, (fx_name - cx) + nw, bh - 4);
+  }
+  return y2 + bh;
+}
+
+// ---------------------------------------------------------------- main pane draw
+
+cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; fp := s[0].fp[..]; ft := s[0].ft[..];
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+
+  // Record color-exempt primitive range so monochrome GPU pass keeps syntax & language badge colors (#13992).
+  s[0].fp_color_u0 = sh[0].nu;
+  s[0].fp_color_o0 = sh[0].no;
+
+  if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
+
+  // Row 1: unified top tab bar (+ quick-open, Expand ⛶, Hide ◫)
+  stop := cp_fp_draw_bar1(s, f, px, top, pw);
+
+  // When only the File Explorer tree is open (no file loaded yet): draw tree full-width below Row 1
+  if !fp[0].open {
     cp_ft_draw_tree(s, f, px, stop, pw, h - stop);
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
     cp_ft_draw_editor_menu(s, f);
     return;
-  }
-
-  // Right-side header controls: Open in Default App, Open in Editor picker, Tree toggle, Save (when dirty)
-  ex := px + pw - CP_CORNER - side;
-  ed_x := ex - a.gap_small - side;
-  tree_x := ed_x - a.gap_small - side;
-  right := tree_x;
-  if fp[0].mode == CP_FP_EDIT && fp[0].dirty {
-    bw := app_button_width(f, -1, "Save"); right = tree_x - a.gap_small - bw;
-    _ := app_button(f, "coder.file.save", right, mid - k.control_h / 2, bw, -1, "Save", APP_BUTTON_PRIMARY, 0, CP_FP_SAVE);
-  }
-  ft[0].editor_btn_x = ed_x; ft[0].editor_btn_y = top + CP_CORNER;
-  _ := app_icon_button(f, "coder.ft.tree_toggle", tree_x, top + CP_CORNER, ICON_FOLDER, ifx ft[0].tree_visible then "Hide File Tree" else "Show File Tree", APP_BUTTON_QUIET, ifx ft[0].tree_visible then EL_S_CURRENT else 0, CP_FT_TREE_TOGGLE);
-  _ := app_icon_button(f, "coder.ft.editors", ed_x, top + CP_CORNER, ICON_CHEVRON, "Open in Editor", APP_BUTTON_QUIET, ifx ft[0].editor_menu then EL_S_CURRENT else 0, CP_FT_EDITOR_MENU);
-  _ := app_icon_button(f, "coder.file.external", ex, top + CP_CORNER, ICON_SHARE, "Open in Default App", APP_BUTTON_QUIET, 0, CP_FP_EXTERNAL);
-  stop := app_pane_tab_shell(f, px, top, right - px, h, ICON_FILE_TEXT, cp_fp_name(s), "coder.file.state", cp_fp_state(s), "coder.file.close", CP_FP_CLOSE, CP_CORNER, 1.0f32);
-
-  // Multi-tab strip when more than one tab (or any tab) is open
-  if ft[0].ntabs > 1 {
-    stop += cp_ft_draw_tabs(s, f, px, stop, pw);
   }
 
   // Optional collapsible File Explorer directory tree column on the left side of the file pane
@@ -366,11 +688,14 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     fw = pw - tw_col;
   }
 
-  x := fx + a.gap; cw := fw - 2 * a.gap; y := stop;
-  y += app_meta(f, "coder.file.path", x, y, cw, cast(string) fp[0].path[0..<fp[0].path_n], false) + a.gap_small;
+  // Row 2: interactive path breadcrumbs + Save / ⋮ / ↻ / ≡
+  y := cp_fp_draw_bar2(s, f, fx, stop, fw) + 6.0f32;
+  x := fx + a.gap; cw := fw - 2 * a.gap;
   why := cast(string) fp[0].why[0..<fp[0].why_n];
   if fp[0].mode == CP_FP_FAILED {
     y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap;
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
     cp_ft_draw_editor_menu(s, f);
     return;
   }
@@ -380,6 +705,8 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     if fp[0].body_w > 0 && fp[0].body_h > 0 {
       _ := uiframe_semantic(f, "coder.file.scene", EL_REGION, cp_fp_name(s), sx, y, fp[0].body_w, fp[0].body_h, 0, 0);
     }
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
     cp_ft_draw_editor_menu(s, f);
     return;
   }
@@ -397,20 +724,25 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 128 KB and 4096 lines here; this one is ");
       n = el_put_i(b[..], n, (fp[0].size + 1023) / 1024); n = el_put(b[..], n, " KB with ");
       n = el_put_i(b[..], n, cp_fp_lines(cast(string) fp[0].src)); n = el_put(b[..], n, " lines.");
-      y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(f[0].sheet, cast(string) b[0..<n]), false) + a.gap_small;
+      y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(sh, cast(string) b[0..<n]), false) + a.gap_small;
     }
   }
-  // source text to display
+  // Source text to display
   src := ifx fp[0].mode == CP_FP_EDIT then cp_fp_text(s)
          else ifx pk != CP_FT_PREV_NONE && !ft[0].preview_raw && ft[0].preview_n > 0 then cast(string) ft[0].preview_buf[0..<ft[0].preview_n]
          else cast(string) fp[0].src;
-  digits := 2; d := cp_fp_lines(src); while d >= 100 { digits += 1; d /= 10; }
+  digits := 3; d := cp_fp_lines(src); while d >= 1000 { digits += 1; d /= 10; }
   gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
-  gx := x + gw; tx := gx + a.gap; tw := fx + fw - a.gap - tx;
+  gx := x + gw; tx := gx + a.gap + 4.0f32; tw := fx + fw - a.gap - tx;
   body := y;
   show_lean_strip := cp_flag(s, DC_FLAG_GYM) && cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
   bh := h - a.gap_small - body - (ifx show_lean_strip then CP_FP_LEAN_STRIP_H + 6.0f32 else 0.0f32);
-  if !(bh > 0) || !(tw > 0) { cp_ft_draw_editor_menu(s, f); return; }
+  if !(bh > 0) || !(tw > 0) {
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
+    cp_ft_draw_editor_menu(s, f);
+    return;
+  }
   fp[0].body_x = tx; fp[0].body_y = body; fp[0].body_w = tw; fp[0].body_h = bh;
   _ := uiframe_semantic(f, "coder.file.body", EL_TEXT, cp_fp_name(s), tx, body, tw, bh, 0, 0);
   if fp[0].mode == CP_FP_EDIT {
@@ -422,6 +754,8 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if show_lean_strip {
     cp_fp_draw_lean_strip(s, f, fx + a.gap, body + bh + 4.0f32, fw - 2 * a.gap, CP_FP_LEAN_STRIP_H);
   }
+  s[0].fp_color_u1 = sh[0].nu;
+  s[0].fp_color_o1 = sh[0].no;
   cp_ft_draw_editor_menu(s, f);
 }
 
@@ -453,7 +787,7 @@ cp_fp_draw_lean_strip :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32
 }
 
 // The file in its shared UiEditor (<= 16 KB, <= 512 lines): selection & caret from UiEditor,
-// line numbers in the gutter, and syntax-highlighted runs painted per visible line.
+// line numbers in the gutter, and multi-language syntax-highlighted runs painted per visible line.
 cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   cp_ed_draw(s, f, CP_ED_FILE, tx, body, tw, bh, "");
   c := s[0].fld[0].ed[CP_ED_FILE].body[..];
@@ -461,7 +795,8 @@ cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, b
   k := f[0].skin;
   t := typed(c); lh := composer_line(c); top := c[0].text_y - c[0].scroll;
   path := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
-  syn := cp_fp_is_code(path, CP_FT_PREV_NONE);
+  lang := cp_fp_lang(path, CP_FT_PREV_NONE);
+  in_block: [1] bool;
   // the caret's line, lit while the editor has the keyboard
   lit := -1;
   if c[0].focused { lit = 1; for i: 0..<(ifx c[0].ed[0].caret < t.count then c[0].ed[0].caret else t.count) { if t[i] == '\n' { lit += 1; } } }
@@ -472,11 +807,15 @@ cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, b
     starts := r == 0 || at > 0 && t[at - 1] == '\n';
     if starts { ln += 1; }
     ry := top + cast(f32) r * lh;
-    if ry + lh < body || ry > body + bh { continue; }
+    seg := ifx end > at then cast(string) t[at..<end] else "";
+    if ry + lh < body {
+      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
+      continue;
+    }
+    if ry > body + bh { break; }
     if starts { cp_fp_number(f, ln, gx, ry, lh, ln == lit); }
-    if end > at {
-      seg := cast(string) t[at..<end];
-      if syn { _ = cp_fp_syntax_line(f, tx, ry, lh, k.mono.face, k.ink, seg); }
+    if seg.count > 0 {
+      if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, ry, lh, k.mono.face, k.ink, seg); }
       else { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, ry, lh, k.mono.face, k.ink, seg); }
     }
   }
@@ -490,7 +829,8 @@ cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, 
   fp[0].cell_w = measure_width(f[0].m, face, "0");
   focused := s[0].fld[0].active && cp_ed_which(s) == CP_ED_FILE;
   path := cast(string) fp[0].path[0..<fp[0].path_n];
-  syn := cp_fp_is_code(path, CP_FT_PREV_NONE);
+  lang := cp_fp_lang(path, CP_FT_PREV_NONE);
+  in_block: [1] bool;
   lit := ifx focused then cp_fp_caret_line(s) else -1;
   fp[0].view = bh;
   fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
@@ -499,11 +839,13 @@ cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, 
   while true {
     end := at; while end < src.count && src[end] != '\n' { end += 1; }
     stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
-    if y + lh > body && y < body + bh {
+    seg := ifx stop > at then cast(string) src[at..<stop] else "";
+    if y + lh <= body {
+      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
+    } else if y < body + bh {
       cp_fp_number(f, ln, gx, y, lh, ln == lit);
-      if stop > at {
-        seg := cast(string) src[at..<stop];
-        if syn { _ = cp_fp_syntax_line(f, tx, y, lh, face, k.ink, seg); }
+      if seg.count > 0 {
+        if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, y, lh, face, k.ink, seg); }
         else { _ := sheet_text(sh, f[0].m, -1, tx, y, lh, face, k.ink, seg); }
       }
       if focused && fp[0].caret >= at && fp[0].caret <= stop {
@@ -519,17 +861,19 @@ cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, 
   fp[0].content = y + fp[0].scroll - body;
 }
 
-// A read-only file or rich preview: its lines from body, each wrapped at tw on the code face's cells,
-// syntax-highlighted for code files, with its line number on its first row.
+// A read-only file or rich preview: unwrapped by default for code (wrap toggleable via ≡),
+// multi-language syntax-highlighted, with right-aligned line numbers.
 cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
   face := k.mono.face; lh := k.mono.line;
-  fp[0].cell_w = measure_width(f[0].m, face, "0");
   cell := measure_width(f[0].m, face, "0");
+  fp[0].cell_w = cell;
   cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
   if cols < 1 { cols = 1; }
   path := cast(string) fp[0].path[0..<fp[0].path_n];
-  syn := cp_fp_is_code(path, s[0].ft[0].preview_kind);
+  lang := cp_fp_lang(path, s[0].ft[0].preview_kind);
+  in_block: [1] bool;
+  wrap_on := fp[0].wrap;
   fp[0].view = bh;
   fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
   uiframe_clip(f, px, body, tx + tw, body + bh);
@@ -537,23 +881,40 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
   while true {
     end := at; while end < src.count && src[end] != '\n' { end += 1; }
     stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
-    n := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { n += 1; } }
-    rows := ifx n == 0 then 1 else (n + cols - 1) / cols;
-    if y + cast(f32) rows * lh > body && y < body + bh {
-      cp_fp_number(f, ln, gx, y, lh, false);
-      i := at;
-      for r: 0..<rows {
-        j := i; m := 0; while j < stop && m < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } m += 1; }
-        ry := y + cast(f32) r * lh;
-        if ry + lh > body && ry < body + bh && j > i {
-          seg := cast(string) src[i..<j];
-          if syn { _ = cp_fp_syntax_line(f, tx, ry, lh, face, k.ink, seg); }
-          else { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, seg); }
+    seg := ifx stop > at then cast(string) src[at..<stop] else "";
+    if !wrap_on {
+      if y + lh <= body {
+        if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
+      } else if y < body + bh {
+        cp_fp_number(f, ln, gx, y, lh, false);
+        if seg.count > 0 {
+          if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, y, lh, face, k.ink, seg); }
+          else { _ := sheet_text(sh, f[0].m, -1, tx, y, lh, face, k.ink, seg); }
         }
-        i = j;
       }
+      y += lh;
+    } else {
+      n := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { n += 1; } }
+      rows := ifx n == 0 then 1 else (n + cols - 1) / cols;
+      if y + cast(f32) rows * lh <= body {
+        if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
+      } else if y < body + bh {
+        cp_fp_number(f, ln, gx, y, lh, false);
+        i := at;
+        for r: 0..<rows {
+          j := i; m := 0; while j < stop && m < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } m += 1; }
+          ry := y + cast(f32) r * lh;
+          if ry + lh > body && ry < body + bh && j > i {
+            part := cast(string) src[i..<j];
+            if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, ry, lh, face, k.ink, part); }
+            else { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, part); }
+          }
+          i = j;
+        }
+      }
+      y += cast(f32) rows * lh;
     }
-    y += cast(f32) rows * lh; ln += 1;
+    ln += 1;
     if end >= src.count { break; }
     at = end + 1;
   }
@@ -569,6 +930,9 @@ coder_page_file_most :: () -> int #export_c #effects(all) { return CP_FP_MOST; }
 coder_page_file_edit_most :: () -> int #export_c #effects(all) { return CP_FP_EDIT_MOST; }
 // Current 1-based caret line in the open file.
 coder_page_file_line :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_fp_caret_line(s) else 1; }
+// Whether the file viewer pane is currently expanded (⛶) or hidden (◫).
+coder_page_file_expanded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].expanded; }
+coder_page_file_hidden :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].hidden; }
 
 // A file the host read: path as it shows it, its bytes (the host keeps them until the next file
 // or save), its size on disk. Opens rich read-only preview for CSV/TSV, .ipynb, binary, image/PDF;
@@ -576,14 +940,17 @@ coder_page_file_line :: (s: [] CoderPage) -> int #export_c #effects(all) { retur
 coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
   if s.count < 1 || bytes.count > CP_FP_MOST { return false; }
   if !s[0].ready { cp_init(s); }
-  if !cp_flag(s, DC_FLAG_FILES) { return false; }
+  same_path := s[0].fp[0].open && cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n] == path;
+  keep_scroll := ifx same_path then s[0].fp[0].scroll else 0.0f32;
   cp_fp_begin(s, path);
   fp := s[0].fp[..];
   fp[0].src = bytes; fp[0].size = size;
+  fp[0].scroll = keep_scroll;
   _ = cp_ft_tab_open(s, path);
   pk := cp_ft_prepare_preview(s, path, bytes, size);
   if pk != CP_FT_PREV_NONE {
     fp[0].mode = CP_FP_READ;
+    fp[0].wrap = true;
     return true;
   }
   text := cast(string) bytes;
@@ -596,6 +963,7 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
     s[0].fld[0].kb = CP_KB_FILE;
   } else {
     fp[0].mode = CP_FP_READ;
+    fp[0].wrap = (syn_lang_for_path(path) == SYN_LANG_PLAIN);
   }
   return true;
 }
@@ -621,16 +989,19 @@ coder_page_file_scene_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #
 coder_page_file_failed :: (s: [] CoderPage, path: string, why: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   if !s[0].ready { cp_init(s); }
-  if !cp_flag(s, DC_FLAG_FILES) { return; }
   cp_fp_begin(s, path);
   s[0].fp[0].mode = CP_FP_FAILED; s[0].fp[0].why_n = cp_out(s[0].fp[0].why[..], why);
 }
 cp_fp_begin :: (s: [] CoderPage, path: string) {
   fp := s[0].fp[..];
+  was_expanded := fp[0].expanded;
+  was_wrap := fp[0].wrap;
   if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
   ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);   // a new file is a new field: no undo into the last one
   fp[0] = CpFilePane.{};
-  fp[0].open = true; fp[0].front = true;
+  fp[0].open = true; fp[0].front = true; fp[0].hidden = false;
+  fp[0].expanded = was_expanded;
+  fp[0].wrap = was_wrap;
   s[0].ft[0].editor_menu = false;
   s[0].ft[0].preview_kind = CP_FT_PREV_NONE;
   s[0].ft[0].preview_n = 0;
@@ -669,10 +1040,10 @@ coder_page_file_close :: (s: [] CoderPage) #export_c #effects(all) {
   if tidx >= 0 { _ = cp_ft_tab_remove(s, tidx); }
   s[0].fp[0] = CpFilePane.{};
 }
-// The open file comes forward in the pane (it was open behind another). False when none is open.
+// The open file comes forward in the pane (it was open behind another or hidden). False when none is open.
 coder_page_file_front :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].fp[0].open { return false; }
-  s[0].fp[0].front = true; s[0].sim[0].front = false; s[0].term[0].front = false; return true;
+  s[0].fp[0].front = true; s[0].fp[0].hidden = false; s[0].sim[0].front = false; s[0].term[0].front = false; return true;
 }
 // What the pane holds (CP_FP_*: 0 none, 1 edited here, 2 read-only, 3 could not be read).
 coder_page_file_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then s[0].fp[0].mode else CP_FP_NONE; }
@@ -680,8 +1051,10 @@ coder_page_file_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { retur
 coder_page_file_dirty :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].open && s[0].fp[0].dirty; }
 // Whether the pane shows the file now (File > Save works then).
 coder_page_file_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_fp_shown(s); }
-// The open file's name, its length in out.
+// The open file's basename, its length in out.
 coder_page_file_name :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then cp_out(out, cp_fp_name(s)) else 0; }
+// The open file's full displayed path, its length in out (#13992).
+coder_page_file_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then cp_out(out, cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n]) else 0; }
 // Updates the File Pane's live Lean 4 Goal Strip from oa-leanhost (#13947).
 coder_page_file_lean_goal :: (s: [] CoderPage, line: int, ok: bool, accomplished: bool, summary: string) #export_c #effects(all) {
   if s.count < 1 || !s[0].fp[0].open { return; }

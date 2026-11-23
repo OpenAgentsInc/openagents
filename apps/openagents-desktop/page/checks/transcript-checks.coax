@@ -498,6 +498,38 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   #assert cast(string) out[0..<n] == "https://huggingface.co/datasets/google/physical-engineerings-last-exam";
 }
 
+#test "a reply bullet list of file:// markdown links opens each file via real pointer click without toggling info (#13992)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
+  #assert coder_page_set_text(s, "list files") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Here are 2 Markdown files and 3 `.coax` files in this repository:\\n\\n- [evals/session-history/README.md](file:///Users/dev/openagents/evals/session-history/README.md)\\n- [tools/coax-nostr/vectors/fingerprint.coax](file:///Users/dev/openagents/tools/coax-nostr/vectors/fingerprint.coax#L10-L20)\\n- [bad](javascript:alert(1))\"}") == MWW_ENDED;
+  f: [1] UiFrame; #assert cp_test_draw(s, f[..]);
+  r0 := surface_find(s[0].surface[..], "t0.a.url.0");
+  r1 := surface_find(s[0].surface[..], "t0.a.url.1");
+  #assert r0 >= 0 && r1 >= 0 && surface_find(s[0].surface[..], "t0.a.url.2") < 0;
+  // Simulate an actual pointer click (phase 0 down + phase 2 up) on the first link's center pixel
+  b0 := el_box(surface_rows(s[0].surface[..]).rows[r0]);
+  #assert b0.visible && b0.w > 10 && b0.h > 8;
+  cx0 := b0.x + b0.w / 2.0f32; cy0 := b0.y + b0.h / 2.0f32;
+  #assert coder_page_pointer(s, cx0, cy0, 0);
+  #assert coder_page_pointer(s, cx0, cy0, 2);
+  #assert !s[0].turns[0].info;
+  #assert coder_page_action(s) == CP_ASK_OPEN_URL;
+  out: [256] u8;
+  n := coder_page_open_url(s, out[..]);
+  #assert cast(string) out[0..<n] == "file:///Users/dev/openagents/evals/session-history/README.md";
+  // Simulate an actual pointer click on the second link (with #L10-L20 fragment)
+  b1 := el_box(surface_rows(s[0].surface[..]).rows[r1]);
+  #assert b1.visible && b1.w > 10 && b1.h > 8;
+  cx1 := b1.x + b1.w / 2.0f32; cy1 := b1.y + b1.h / 2.0f32;
+  #assert coder_page_pointer(s, cx1, cy1, 0);
+  #assert coder_page_pointer(s, cx1, cy1, 2);
+  #assert !s[0].turns[0].info;
+  #assert coder_page_action(s) == CP_ASK_OPEN_URL;
+  n = coder_page_open_url(s, out[..]);
+  #assert cast(string) out[0..<n] == "file:///Users/dev/openagents/tools/coax-nostr/vectors/fingerprint.coax#L10-L20";
+}
+
 #test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   coder_page_set_claude(s, true);

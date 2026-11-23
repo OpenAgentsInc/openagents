@@ -33,7 +33,6 @@ cp_mn_sync :: (s: [] CoderPage) {
   s[0].mn_owner = ue_owner(e); s[0].mn_gen = b[0].gen; s[0].mn_files = s[0].files_gen; s[0].mn_skills = s[0].mcp_skills[0].skills_gen;
   tok := AppMnToken.{};
   if !b[0].marked && b[0].anchor == b[0].caret { tok = app_mn_token(ue_value(e), b[0].caret); }
-  if tok.trigger == '@' && !cp_flag(s, DC_FLAG_FILES) { tok = AppMnToken.{}; }
   was := mn[0].open && mn[0].trigger == tok.trigger && mn[0].from == tok.from;
   if !app_mn_follow(mn, tok) { return; }
   app_mn_begin(mn, tok);
@@ -74,7 +73,6 @@ cp_mn_sync :: (s: [] CoderPage) {
 }
 // The folder's files are owed to the open @ popover: asked of the host once nothing else is asked.
 cp_mn_due :: (s: [] CoderPage) {
-  if !cp_flag(s, DC_FLAG_FILES) { s[0].files_due = false; return; }
   if s[0].files_due && s[0].ask == CP_ASK_NONE { s[0].files_due = false; s[0].ask = CP_ASK_FILES; }
 }
 // The popover over the composer's token, kept in the column (x, cw).

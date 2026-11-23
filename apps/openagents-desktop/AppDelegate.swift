@@ -57,7 +57,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         for url in early {
             if url.scheme?.lowercased() == "openagents" {
                 _ = DesktopActivation.shared.handleURL(url)
-            } else if url.isFileURL && (FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes)) {
+            } else if url.isFileURL {
                 main.openFileInPane(url)
             }
         }
@@ -78,9 +78,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         guard let main else { opened += files; return }
         NSApp.activate(ignoringOtherApps: true)
         main.show()
-        if FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes) {
-            for url in files { main.openFileInPane(url) }
-        }
+        for url in files { main.openFileInPane(url) }
     }
     func openNewWindow(folderPath: String? = nil) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path,

@@ -70,11 +70,10 @@ enum DesktopFlag: Int64, CaseIterable {
     case agents = 25
     case scenes = 26
     case rich = 27
-    case files = 28
 }
 
 /// Resolved desktop feature flag mask backed by #authority coax/lib/agent/desktop/flags.coax.
-/// All 29 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
+/// All 28 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
 enum FeatureFlags {
     #if OA_FULL
     private static let flagNames: [String] = {
@@ -309,9 +308,6 @@ extension CoderWindow {
         }
         if !FeatureFlags.isOn(.voice) {
             voice.stop(cancel: true)
-        }
-        if FeatureFlags.isOn(.files) {
-            detectInstalledEditors()
         }
         (NSApp.delegate as? CoderDelegate)?.applyFlags()
         syncSettingsInfo()

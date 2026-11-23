@@ -91,7 +91,7 @@ markdown_links_in :: (doc: [] MdDoc, runs: [] MdRun, out: [] MdLink, n0: int) ->
     r := runs[k];
     if (r.marks & MD_LINK) == 0 || r.link_n <= 0 || r.link_at + r.link_n > doc[0].nlink || n >= out.count { continue; }
     url := cast(string) doc[0].links[r.link_at..<r.link_at + r.link_n];
-    if md_url_http(url) { out[n] = MdLink.{at = r.link_at, n = r.link_n}; n += 1; }
+    if md_url_openable(url) { out[n] = MdLink.{at = r.link_at, n = r.link_n}; n += 1; }
   }
   return n;
 }

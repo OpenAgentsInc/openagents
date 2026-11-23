@@ -109,4 +109,12 @@
   #assert s[0].nturns == 1;
   #assert cp_rich_run_cmd(s[..], CP_CMD_FORK);
   #assert coder_page_action(s[..]) == CP_ASK_FORK;
+
+  // Core right-pane File Viewer works unconditionally in the minimal v1.0 app with flags == 0 (#13992).
+  fb: [64] u8; src := "static int main(void) { return 0; }\n";
+  #assert coder_page_file_open(s[..], "/Users/me/work/inkling-gguf.c", fb[0..<cp_out(fb[..], src)], src.count);
+  #assert coder_page_file_shown(s[..]);
+  #assert coder_page_file_mode(s[..]) == CP_FP_EDIT;
+  coder_page_palette_set_mode(s[..], CP_PAL_MODE_FILES);
+  #assert coder_page_palette_mode(s[..]) == CP_PAL_MODE_FILES;
 }

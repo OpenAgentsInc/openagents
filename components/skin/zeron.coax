@@ -64,8 +64,9 @@ ICON_SET_COMMAND :: 52;   // the Command key's sign on a key cap (a display face
 ICON_SIM_HOME :: 53; ICON_SIM_ROTATE :: 54; ICON_SIM_CAMERA :: 55; ICON_SIM_ZOOM_OUT :: 56; ICON_SIM_ZOOM_IN :: 57;
 ICON_SIM_FIT :: 58; ICON_SIM_MORE :: 59; ICON_SIM_RECORD :: 60;
 ICON_FOLDER_ADD :: 61; ICON_BRAIN :: 62; ICON_FOLDER_11 :: 63; ICON_ANTIGRAVITY :: 64;
-ICON_COUNT :: 65;
-ICON_NAMES :: [65] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+ICON_RELOAD :: 65; ICON_MORE_V :: 66; ICON_SIDEBAR_RIGHT :: 67; ICON_PLUS :: 68; ICON_COLLAPSE :: 69;
+ICON_COUNT :: 70;
+ICON_NAMES :: [70] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
@@ -74,12 +75,14 @@ ICON_NAMES :: [65] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-do
                            "settings-minimalistic", "widget", "bot", "user-rounded", "info-square",
                            "arrow-left", "magnifer", "settings", "alt-arrow-right", "tag", "smartphone", "command",
                            "sim-home", "sim-rotate", "sim-camera", "sim-zoom-out", "sim-zoom-in", "sim-fit", "sim-more", "sim-record",
-                           "folder-add", "brain", "folder-with-files", "antigravity-mark"];
-ICON_SIZES :: [65] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                           "folder-add", "brain", "folder-with-files", "antigravity-mark",
+                           "reload", "dots-vertical", "sidebar-right", "plus", "collapse-pane"];
+ICON_SIZES :: [70] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
                         14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
                         16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11,
                         16, 16, 16, 16, 16, 16, 16, 16,
-                        16, 16, 11, 16];
+                        16, 16, 11, 16,
+                        14, 14, 18, 14, 15];
 
 // Zeron Dark: zgx's themes/zeron-dark.json (Zeron e393c4a8), the one source of its colours. A
 // skin reads its roles from here, and so does a page that draws a part the skin has no role for

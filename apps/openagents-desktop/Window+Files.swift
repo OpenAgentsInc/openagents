@@ -19,15 +19,58 @@ extension CoderWindow {
         openFileInPane(url)
     }
 
+    /// Resolves a `file://` URL, absolute path, tilde path, or repo-relative path (optionally carrying `#L10-L20` or `:10`)
+    /// and opens it in the right-pane File Viewer (#13992).
+    func openFileLink(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let noFrag = trimmed.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? trimmed
+        var pathStr: String
+        if noFrag.lowercased().hasPrefix("file://") {
+            if let u = URL(string: noFrag), u.isFileURL {
+                pathStr = u.path
+            } else {
+                let dropped = String(noFrag.dropFirst(7))
+                pathStr = dropped.removingPercentEncoding ?? dropped
+            }
+        } else {
+            pathStr = noFrag
+            // Strip trailing :line or :line:col when the full string is not an existing file.
+            if !FileManager.default.fileExists(atPath: (pathStr as NSString).expandingTildeInPath) {
+                if let colon = pathStr.lastIndex(of: ":"),
+                   colon > pathStr.startIndex,
+                   pathStr[pathStr.index(after: colon)...].allSatisfy({ $0.isNumber }) {
+                    var base = String(pathStr[..<colon])
+                    if let colon2 = base.lastIndex(of: ":"),
+                       colon2 > base.startIndex,
+                       base[base.index(after: colon2)...].allSatisfy({ $0.isNumber }) {
+                        base = String(base[..<colon2])
+                    }
+                    pathStr = base
+                }
+            }
+        }
+        let expanded = (pathStr as NSString).expandingTildeInPath
+        let url: URL
+        if expanded.hasPrefix("/") {
+            url = URL(fileURLWithPath: expanded)
+        } else {
+            let candidate = folder.appendingPathComponent(expanded)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                url = candidate
+            } else if let src = worktreeSource(folder.path) {
+                let fallback = URL(fileURLWithPath: src).appendingPathComponent(expanded)
+                url = FileManager.default.fileExists(atPath: fallback.path) ? fallback : candidate
+            } else {
+                url = candidate
+            }
+        }
+        openNamedFile(url)
+    }
+
     /// A file into the pane. The open one, if it has changes, is asked about first; the same file
     /// opened again comes forward with its changes, or is read again when it has none.
     func openFileInPane(_ url: URL) {
-        #if OA_FULL
-        let sceneOk = FeatureFlags.isOn(.scenes) && (PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url))
-        #else
-        let sceneOk = false
-        #endif
-        guard FeatureFlags.isOn(.files) || sceneOk else { return }
         let url = url.standardizedFileURL
         if let open = fileURL, cd_file_mode(page) != 0, cd_file_dirty(page) != 0 {
             if open == url { _ = cd_file_front(page); return }
@@ -40,7 +83,8 @@ extension CoderWindow {
     /// Reads url and hands it to the page: its bytes, or why it can't be shown.
     private func readIntoPane(_ url: URL) {
         fileURL = url
-        let shown = (url.path as NSString).abbreviatingWithTildeInPath
+        // Pass full path so Row 2 breadcrumbs render Users › ... › dir › filename (#13992).
+        let shown = url.path
         let name = url.lastPathComponent
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) else {
@@ -56,7 +100,7 @@ extension CoderWindow {
             cd_file_failed(page, shown, "\(name) is a folder, not a file."); wake(); return
         }
         #if OA_FULL
-        if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
+        if FeatureFlags.isOn(.scenes) && (PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url)) {
             openSceneInPane(url, shown: shown)
             return
         }
@@ -108,15 +152,42 @@ extension CoderWindow {
     }
     #endif
 
-    /// What the pane asked (cd_action 40 to 43).
+    /// What the pane asked (cd_action 40..43, 164 reload, 165 copy path).
     func fileAsked(_ what: Int32) {
         switch what {
         case 40: _ = saveOpenFile()
         case 41: openFileExternally()
         case 42: closeFilePane()
         case 43: window.makeFirstResponder(canvas); wake()
+        case 164: reloadOpenFile()
+        case 165: copyOpenFilePath()
         default: break
         }
+    }
+
+    /// Re-reads the currently open file from disk, preserving scroll offset (asks first if dirty).
+    func reloadOpenFile() {
+        guard let url = fileURL else { return }
+        if cd_file_dirty(page) != 0 {
+            askToSave { [weak self] in self?.readIntoPane(url) }
+            return
+        }
+        readIntoPane(url)
+    }
+
+    /// Copies the active file's full path to the system clipboard.
+    func copyOpenFilePath() {
+        let path: String
+        if let url = fileURL {
+            path = url.path
+        } else {
+            var out = [CChar](repeating: 0, count: 1024)
+            guard cd_file_path(page, &out, Int32(out.count)) > 0 else { return }
+            path = String(cString: out)
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(path, forType: .string)
     }
 
     /// File > Save works while the pane shows a file with changes.
@@ -215,7 +286,7 @@ extension CoderWindow {
         detectInstalledEditors()
         let root = folder
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let lines = CoderWindow.folderFiles(root, most: 512)
+            let lines = CoderWindow.folderFiles(root, most: 1024)
             DispatchQueue.main.async {
                 guard let self, self.folder == root else { return }
                 _ = cd_filetree_set(self.page, lines)
@@ -251,16 +322,7 @@ extension CoderWindow {
         var buf = [CChar](repeating: 0, count: 1024)
         let n = cd_filetree_req_path(page, &buf, Int32(buf.count))
         guard n > 0 else { return }
-        let raw = String(cString: buf)
-        let url: URL
-        if raw.hasPrefix("~") {
-            url = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
-        } else if raw.hasPrefix("/") {
-            url = URL(fileURLWithPath: raw)
-        } else {
-            url = folder.appendingPathComponent(raw)
-        }
-        openFileInPane(url)
+        openFileLink(String(cString: buf))
     }
 
     /// Closes a tab from the multi-tab bar, asking to save if it is the currently open dirty file.
@@ -270,11 +332,13 @@ extension CoderWindow {
         var pbuf = [CChar](repeating: 0, count: 1024)
         let pn = cd_filetree_tab_path(page, idx, &pbuf, Int32(pbuf.count))
         let tabPath = pn > 0 ? String(cString: pbuf) : ""
-        let activePath = fileURL.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
+        let activePath = fileURL?.path ?? ""
+        let activeTilde = fileURL.map { ($0.path as NSString).abbreviatingWithTildeInPath } ?? ""
+        let isActiveTab = (tabPath == activePath || tabPath == activeTilde)
         let finishDrop: () -> Void = { [weak self] in
             guard let self else { return }
             let nextIdx = cd_filetree_tab_drop(self.page, idx)
-            if tabPath == activePath {
+            if isActiveTab {
                 if nextIdx >= 0 {
                     var nbuf = [CChar](repeating: 0, count: 1024)
                     if cd_filetree_tab_path(self.page, nextIdx, &nbuf, Int32(nbuf.count)) > 0 {
@@ -291,7 +355,7 @@ extension CoderWindow {
                 self.wake()
             }
         }
-        if tabPath == activePath && cd_file_dirty(page) != 0 {
+        if isActiveTab && cd_file_dirty(page) != 0 {
             askToSave(then: finishDrop)
         } else {
             finishDrop()

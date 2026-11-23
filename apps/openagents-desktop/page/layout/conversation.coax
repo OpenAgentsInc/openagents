@@ -675,7 +675,6 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   // the code review (#13696): its button shows once an edit changed a file, or while it is open (git flag)
   review := cp_flag(s, DC_FLAG_GIT) && (s[0].review || cp_has_edits(s));
   has_term := cp_flag(s, DC_FLAG_TERMINAL);
-  has_files := cp_flag(s, DC_FLAG_FILES);
   // Pack visible corner buttons right-to-left with no dead gaps.
   rx := w - CP_CORNER;
   new_x: f32 = 0; copy_x: f32 = 0; rev_x: f32 = 0; term_x: f32 = 0; ft_x: f32 = 0;
@@ -683,7 +682,7 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   if has_copy  { rx -= side; copy_x = rx; }
   if review    { rx -= side; rev_x = rx; }
   if has_term  { rx -= side; term_x = rx; }
-  if has_files { rx -= side; ft_x = rx; }
+  rx -= side; ft_x = rx;
   // Reserve space for visible corner buttons so Git toolbar chips never overlap them.
   if cp_flag(s, DC_FLAG_GIT) {
     cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), rx - a.gap_small, cy);
@@ -696,10 +695,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
     term_shown := cp_term_shown(s);
     _ := app_icon_button(f, "coder.term.toggle", term_x, cy, ICON_TERMINAL, ifx term_shown then "Hide terminal" else "Show terminal", APP_BUTTON_QUIET, ifx term_shown then EL_S_CURRENT else 0, CP_TERM_TOGGLE);
   }
-  if has_files {
-    ft_shown := cp_ft_shown(s);
-    _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_FOLDER, ifx ft_shown then "Hide files" else "Show files", APP_BUTTON_QUIET, ifx ft_shown then EL_S_CURRENT else 0, CP_FT_TOGGLE);
-  }
+  ft_shown := cp_fp_shown(s);
+  _ := app_icon_button(f, "coder.ft.toggle", ft_x, cy, ICON_SIDEBAR_RIGHT, ifx ft_shown then "Hide file viewer" else "Show file viewer", APP_BUTTON_QUIET, 0, CP_FT_TOGGLE);
   if has_copy {
     _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                          0, CP_COPY_ALL);

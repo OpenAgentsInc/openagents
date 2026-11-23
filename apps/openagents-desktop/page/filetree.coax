@@ -2,11 +2,11 @@
 // rich read-only previewers (CSV/TSV tables, Jupyter .ipynb cells, binary hex dump, image/PDF
 // metadata notices), and Open-in-Editor picker catalog (GitHub #13881).
 
-CP_FT_ENTRIES :: 512;          // max directory + file rows in the tree
+CP_FT_ENTRIES :: 1024;         // max directory + file rows in the tree
 CP_FT_PATH :: 256;             // max bytes of a single tab/request path
-CP_FT_POOL :: 65536;           // flat byte pool for tree entry paths
+CP_FT_POOL :: 131072;          // flat byte pool for tree entry paths
 CP_FT_COLLAPSED :: 64;         // max collapsed folder hashes tracked
-CP_FT_TABS :: 8;               // max simultaneous open file tabs
+CP_FT_TABS :: 16;              // max simultaneous open file tabs (#13992)
 CP_FT_FILTER_CAP :: 128;       // quick filter query buffer
 CP_FT_EDITORS :: 7;            // Cursor, VS Code, Zed, Xcode, Ghostty, Finder, Custom
 CP_FT_PREVIEW_CAP :: 32768;    // formatted rich read-only preview buffer
@@ -48,6 +48,7 @@ CP_FT_EDITOR_MENU :: 278;     // toggle Open-in-Editor dropdown
 CP_FT_EDITOR_PICK :: 279;     // pick an editor from dropdown (id: coder.ft.ed.<id>)
 CP_FT_TREE_TOGGLE :: 280;     // collapse/expand tree column inside file pane
 CP_FT_PREVIEW_RAW :: 281;     // toggle rich preview vs raw text
+CP_FT_CRUMB_DIR :: 282;       // click a directory segment in the breadcrumb bar (id: coder.ft.crumb.<idx>)
 
 CP_KB_FT_FILTER :: 6;         // keyboard focus on quick filter (editor.coax CP_KB_*)
 CP_ED_FT_FILTER :: 6;         // editor slot for quick filter (editor.coax CP_EDS :: 7)
@@ -749,7 +750,7 @@ cp_ft_editor_cmd :: (editor_id: int, path: string, line: int, ssh_host: string, 
 // ---------------------------------------------------------------- pane visibility, press & scroll
 
 cp_ft_shown :: (s: [] CoderPage) -> bool {
-  if !cp_flag(s, DC_FLAG_FILES) { return false; }
+  if s[0].fp[0].hidden { return false; }
   ft := s[0].ft[..];
   return ft[0].open && !cp_sim_front(s) && !cp_term_front(s) && (ft[0].front || !(s[0].pane_open || s[0].review));
 }
@@ -759,6 +760,7 @@ cp_ft_yield :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_REVIEW || act == CP_AGENT || act == CP_TERM_TOGGLE {
     s[0].ft[0].front = false;
     s[0].ft[0].editor_menu = false;
+    s[0].fp[0].expanded = false;
   }
   return false;
 }
@@ -772,25 +774,62 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   ft := s[0].ft[..];
   cp_ft_init_editors(s);
   if act == CP_FT_TOGGLE {
-    if ft[0].open && (ft[0].front || cp_fp_shown(s)) {
-      ft[0].open = false; ft[0].front = false; ft[0].editor_menu = false;
-      if s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
+    // Unhide right pane preserving open tabs & active file when collapsed via ◫ (#13992)
+    if (s[0].fp[0].open || ft[0].open) && s[0].fp[0].hidden {
+      s[0].fp[0].hidden = false;
+      s[0].fp[0].front = true;
+      ft[0].front = true;
+      s[0].sim[0].front = false; s[0].term[0].front = false;
+      return true;
+    }
+    if cp_fp_shown(s) {
+      s[0].fp[0].hidden = true;
+      s[0].fp[0].expanded = false;
+      ft[0].editor_menu = false;
+      if s[0].fld[0].kb == CP_KB_FILE || s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
       return true;
     }
     ft[0].open = true; ft[0].front = true; ft[0].tree_visible = true;
+    s[0].fp[0].hidden = false;
     s[0].sim[0].front = false; s[0].term[0].front = false;
     if !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
     return true;
   }
   if act == CP_FT_CLOSE {
     ft[0].open = false; ft[0].front = false; ft[0].editor_menu = false;
+    s[0].fp[0].expanded = false;
     if s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
     return true;
   }
   if act == CP_FT_TREE_TOGGLE {
+    ft[0].editor_menu = false;
     ft[0].tree_visible = !ft[0].tree_visible;
     if ft[0].tree_visible && !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
     return true;
+  }
+  if act == CP_FT_CRUMB_DIR {
+    seg_idx := cp_number(id, "coder.ft.crumb.");
+    p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+    // Find segment seg_idx in p (skipping leading '/')
+    at := 0; cur := 0;
+    while at < p.count {
+      while at < p.count && p[at] == '/' { at += 1; }
+      end := at;
+      while end < p.count && p[end] != '/' { end += 1; }
+      if end > at {
+        if cur == seg_idx {
+          seg := cast(string) p[at..<end];
+          ft[0].open = true; ft[0].front = true; ft[0].tree_visible = true;
+          s[0].fp[0].hidden = false;
+          cp_ft_filter_set(s, seg);
+          if !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
+          return true;
+        }
+        cur += 1;
+      }
+      at = end;
+    }
+    return false;
   }
   if act == CP_FT_FILTER_FIELD {
     cp_ed_focus(s, CP_KB_FT_FILTER);
@@ -950,34 +989,61 @@ cp_ft_draw_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f
   ft[0].content = cast(f32) shown_rows * rh + pad;
 }
 
-// Draws the Open-in-Editor dropdown menu when open.
+// Draws the unified More & Open-in-Editor dropdown menu (⋮ in Row 2, #13992).
 cp_ft_draw_editor_menu :: (s: [] CoderPage, f: [] UiFrame) {
   ft := s[0].ft[..];
   if !ft[0].editor_menu { return; }
   cp_ft_init_editors(s);
-  k := f[0].skin; a := k.app; sh := f[0].sheet;
-  mw := 172.0f32;
+  k := f[0].skin; sh := f[0].sheet;
+  mw := 196.0f32;
   rh := k.control_h;
-  count := 0;
+  has_file := s[0].fp[0].open;
+  ed_count := 0;
   for i: 0..<CP_FT_EDITORS {
-    if ft[0].editors[i].installed { count += 1; }
+    if ft[0].editors[i].installed { ed_count += 1; }
   }
-  if count == 0 { return; }
-  mh := cast(f32) count * rh + 8.0f32;
-  mx := ft[0].editor_btn_x - mw + a.icon_button;
+  top_rows := ifx has_file then 3 else 0;
+  div_h := ifx has_file && ed_count > 0 then 9.0f32 else 0.0f32;
+  if top_rows + ed_count == 0 { return; }
+  mh := cast(f32) (top_rows + ed_count) * rh + div_h + 8.0f32;
+  mx := ft[0].editor_btn_x - mw + 24.0f32;
+  if s[0].win_w > 0 && mx + mw > s[0].win_w - 8.0f32 { mx = s[0].win_w - mw - 8.0f32; }
   if mx < 8.0f32 { mx = 8.0f32; }
-  my := ft[0].editor_btn_y + a.icon_button + 4.0f32;
+  my := ft[0].editor_btn_y + 28.0f32;
   th := cp_theme();
   sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, k.radius_control, k.shadows.sm));
   sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, k.radius_control, 1.0f32, th.menu, th.line));
-  _ := uiframe_semantic(f, "coder.ft.edmenu", EL_REGION, "Open in Editor", mx, my, mw, mh, 0, 0);
+  _ := uiframe_semantic(f, "coder.ft.edmenu", EL_REGION, "File actions", mx, my, mw, mh, 0, 0);
   ry := my + 4.0f32;
+  if has_file {
+    tlbl := ifx ft[0].tree_visible then "Hide File Tree" else "Show File Tree";
+    _ := uiframe_semantic(f, "coder.ft.tree_toggle", EL_BUTTON, tlbl, mx + 4, ry, mw - 8, rh, 0, CP_FT_TREE_TOGGLE);
+    if uiframe_hovered(f, "coder.ft.tree_toggle") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
+    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, tlbl);
+    ry += rh;
+
+    _ := uiframe_semantic(f, "coder.file.copy_path", EL_BUTTON, "Copy Path", mx + 4, ry, mw - 8, rh, 0, CP_FP_COPY_PATH);
+    if uiframe_hovered(f, "coder.file.copy_path") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
+    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, "Copy Path");
+    ry += rh;
+
+    _ := uiframe_semantic(f, "coder.file.external", EL_BUTTON, "Open in Default App", mx + 4, ry, mw - 8, rh, 0, CP_FP_EXTERNAL);
+    if uiframe_hovered(f, "coder.file.external") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
+    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, "Open in Default App");
+    ry += rh;
+
+    if ed_count > 0 {
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 8, ry + 4, mw - 16, k.border, 0, 0, k.menu_divider, Rgba.{}));
+      ry += div_h;
+    }
+  }
   for i: 0..<CP_FT_EDITORS {
     if !ft[0].editors[i].installed { continue; }
     lbl := sheet_pool(sh, cast(string) ft[0].editors[i].label[0..<ft[0].editors[i].label_n]);
     eb: [32] u8;
     eid := sheet_pool(sh, cast(string) eb[0..<el_put_i(eb[..], el_put(eb[..], 0, "coder.ft.ed."), i)]);
     _ := uiframe_semantic(f, eid, EL_BUTTON, lbl, mx + 4, ry, mw - 8, rh, 0, CP_FT_EDITOR_PICK);
+    if uiframe_hovered(f, eid) { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
     _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, lbl);
     ry += rh;
   }
@@ -994,10 +1060,10 @@ coder_page_filetree_set :: (s: [] CoderPage, lines: string) -> int #export_c #ef
 coder_page_filetree_open :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   if !s[0].ready { cp_init(s); }
-  if on && !cp_flag(s, DC_FLAG_FILES) { return; }
   s[0].ft[0].open = on;
   s[0].ft[0].front = on;
   if on {
+    s[0].fp[0].hidden = false;
     s[0].ft[0].tree_visible = true;
     s[0].sim[0].front = false; s[0].term[0].front = false;
   }

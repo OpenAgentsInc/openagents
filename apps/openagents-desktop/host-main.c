@@ -1077,7 +1077,6 @@ static void on_portal_chosen(void *user, int request, const char *path) {
 
 static void handle_file_open(DesktopApp *a, const char *path) {
   if (!path || !path[0]) return;
-  if (!(a->flags & (1LL << 28))) return; // DC_FLAG_FILES
   char full[OA_PATH];
   if (oa_absolute(path)) snprintf(full, sizeof(full), "%s", path);
   else snprintf(full, sizeof(full), "%s/%s", effective_cwd(a), path);
@@ -1100,7 +1099,7 @@ static void handle_file_open(DesktopApp *a, const char *path) {
 
 static void handle_file_save(DesktopApp *a) {
   char name[OA_PATH] = {0};
-  if (cd_file_name(a->page, name, (int)sizeof(name)) <= 0) return;
+  if (cd_file_path(a->page, name, (int)sizeof(name)) <= 0) return;
   int n = cd_file_text(a->page, a->save_buf, OA_SAVE_CAP);
   if (n < 0) { cd_file_save_failed(a->page, "file too large"); return; }
   char full[OA_PATH];
@@ -1792,9 +1791,18 @@ static void handle_action(DesktopApp *a, int act) {
     case 28: list_files(a); break;
     case 29: cd_zoom_set(a->page, 2); break;
     case 30: break;   // a sub-agent stopped: pump_subagents reads cd_stop_agent each pass
-    case 31: { // an http(s) link: the system browser
+    case 31: { // an http(s) link opens in the browser; file:// opens in the File Viewer (#13992)
       char url[2048] = {0};
-      if (cd_open_url(a->page, url, (int)sizeof(url)) > 0 && (strncmp(url, "https://", 8) == 0 || strncmp(url, "http://", 7) == 0)) oa_open_external(url);
+      if (cd_open_url(a->page, url, (int)sizeof(url)) > 0) {
+        if (strncmp(url, "https://", 8) == 0 || strncmp(url, "http://", 7) == 0) {
+          oa_open_external(url);
+        } else {
+          char *hash = strchr(url, '#');
+          if (hash) *hash = '\0';
+          const char *path = strncmp(url, "file://", 7) == 0 ? url + 7 : url;
+          if (path[0]) handle_file_open(a, path);
+        }
+      }
       break;
     }
     case 32: {
@@ -1875,10 +1883,20 @@ static void handle_action(DesktopApp *a, int act) {
     case 40: handle_file_save(a); break;
     case 41: {
       char name[OA_PATH] = {0}, full[OA_PATH];
-      if (cd_file_name(a->page, name, (int)sizeof(name)) > 0) { full_path(a, name, full, sizeof full); oa_open_external(full); }
+      if (cd_file_path(a->page, name, (int)sizeof(name)) > 0) { full_path(a, name, full, sizeof full); oa_open_external(full); }
       break;
     }
     case 42: cd_file_close(a->page); break;
+    case 164: {
+      char path[OA_PATH] = {0};
+      if (cd_file_path(a->page, path, (int)sizeof(path)) > 0) handle_file_open(a, path);
+      break;
+    }
+    case 165: {
+      char path[OA_PATH] = {0};
+      if (cd_file_path(a->page, path, (int)sizeof(path)) > 0) oa_clipboard_write(path);
+      break;
+    }
     case 47: ask_local_models(a); break;
     case 160: local_start_download(a); break;
     case 161: local_cancel_download(a); break;

@@ -295,7 +295,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif
-        if FeatureFlags.isOn(.files) { detectInstalledEditors() }
+        detectInstalledEditors()
         #if OA_FULL
         if FeatureFlags.isOn(.rich) { setupRichComposer() }
         #endif
@@ -386,6 +386,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
            let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
+        // Coder --file PATH opens a file directly in the right-pane File Viewer at launch (#13992).
+        if let at = CommandLine.arguments.firstIndex(of: "--file"), at + 1 < CommandLine.arguments.count {
+            let raw = (CommandLine.arguments[at + 1] as NSString).expandingTildeInPath
+            let url = raw.hasPrefix("/") ? URL(fileURLWithPath: raw) : folder.appendingPathComponent(raw)
+            openFileInPane(url)
+        }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
             let requested = CommandLine.arguments[at + 1]
@@ -506,25 +512,25 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 22: checkForUpdates()
         case 23: focusSearch()
         case 24:
-            guard FeatureFlags.isOn(.files) else { return }
             // a file a row or a reply names: opened in the right-side file pane (from the working folder unless whole)
             guard cd_open_path(page, &out, Int32(out.count)) > 0 else { return }
-            let named = (String(cString: out) as NSString).expandingTildeInPath
-            let url = named.hasPrefix("/") ? URL(fileURLWithPath: named) : folder.appendingPathComponent(named)
-            openNamedFile(url)
+            openFileLink(String(cString: out))
         case 25: followUp()
         case 26: paletteAsked()
         case 27: attachMenu()
-        case 28: if FeatureFlags.isOn(.files) { listFiles() }
+        case 28: listFiles()
         case 29: zoom(nil)
         case 30: let j = Int(cd_stop_agent(run.page)); if j >= 0 { cancelAgent(run, j) }
         case 31:
-            // an http(s) link in a reply or sub-agent message: opened in the system browser
+            // an http(s) link opens in the system browser; file:// and relative file links open in the File Viewer (#13992)
             guard cd_open_url(page, &out, Int32(out.count)) > 0 else { return }
-            if let url = URL(string: String(cString: out)),
+            let raw = String(cString: out)
+            if let url = URL(string: raw),
                let scheme = url.scheme?.lowercased(),
                scheme == "http" || scheme == "https" {
                 NSWorkspace.shared.open(url)
+            } else {
+                openFileLink(raw)
             }
         #if OA_FULL
         case 32: if FeatureFlags.isOn(.gym) { openGym() }
@@ -561,7 +567,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 63: focusFind()
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
-        case 86...89: if FeatureFlags.isOn(.files) { fileTreeAsked(what) }
+        case 86...89: fileTreeAsked(what)
         #if OA_FULL
         case 66: if FeatureFlags.isOn(.usage) { refreshUsageDashboard() }
         case 67: if FeatureFlags.isOn(.usage) { editUsagePriceOverrides() }
@@ -623,7 +629,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             for r in runs.values where r.page != page { cd_worktree_set(r.page, on ? 1 : 0) }
             if on { prewarmWorktree(for: folder) }
             wake()
-        case 40...43: if FeatureFlags.isOn(.files) || FeatureFlags.isOn(.scenes) { fileAsked(what) }
+        case 40...43, 164, 165: fileAsked(what)
         default: break
         }
     }
