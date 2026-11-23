@@ -34,7 +34,7 @@ xcrun -sdk macosx swiftc -swift-version 5 -suppress-warnings -parse-as-library -
 
 app="${CODER_BUILD:-$here/build}/OpenAgents.app"
 app="$(cd "$(dirname "$app")" 2>/dev/null && pwd)/OpenAgents.app"
-[[ -x "$app/Contents/MacOS/OpenAgents" ]] || { echo "no $app: build it with apps/openagents-desktop/build.sh"; exit 1; }
+[[ -x "$app/Contents/MacOS/OpenAgents" ]] || { echo "no $app: build it with apps/openagents-desktop/build.sh --full"; exit 1; }
 export CODER_FOREMAN_CONTROL_FILE="$tmp/foreman-control.json"
 unset CODER_FOREMAN_URL CODER_FOREMAN_TOKEN
 mkdir -p "$tmp/home"

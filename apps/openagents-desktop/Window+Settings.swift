@@ -356,7 +356,9 @@ extension CoderWindow {
     func syncSettingsInfo() {
         let info = Bundle.main.infoDictionary
         var version = info?["CFBundleShortVersionString"] as? String ?? ""
-        if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
+        if let build = info?["CFBundleVersion"] as? String, !build.isEmpty { version += " (" + build + ")" }
+        if let commit = info?["OACommit"] as? String, !commit.isEmpty { version += " " + String(commit.prefix(8)) }
+        if let profile = info?["OAProfile"] as? String, !profile.isEmpty { version += " " + profile }
         #if OA_FULL
         func ends(_ key: String) -> String { "Ends " + String(key.suffix(4)) }
         var claude = ""

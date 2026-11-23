@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around git, build.sh, PlistBuddy, codesign and launchctl; holds no logic)
 # Keeps /Applications/OpenAgents.app at the newest origin/main.
-#   apps/openagents-desktop/install.sh [--minimal]                 build origin/main and install it now; an OpenAgents (or legacy
-#                                                                  Coder) open from /Applications is quit first and opened again after
-#   apps/openagents-desktop/install.sh [--minimal] --agent         also check every 15 minutes (a LaunchAgent), and run once now
+#   apps/openagents-desktop/install.sh [--minimal|--full]          build origin/main and install it now (defaults to --minimal); an OpenAgents
+#                                                                  (or legacy Coder) open from /Applications is quit first and opened again after.
+#                                                                  Exits 4 when deferred (active reply, inside app, or lock held).
+#   apps/openagents-desktop/install.sh [--minimal|--full] --agent  also check every 15 minutes (a LaunchAgent), and run once now
 #   apps/openagents-desktop/install.sh --remove-agent              stop the checks
-#   apps/openagents-desktop/install.sh [--minimal] --check         what the LaunchAgent runs: build when main moved, install
+#   apps/openagents-desktop/install.sh [--minimal|--full] --check  what the LaunchAgent runs: build when main moved, install
 #                                                                  only while OpenAgents is closed (the build waits beside it until then)
-#   apps/openagents-desktop/install.sh [--minimal] --status        what is installed, what waits, what main is at
-# --minimal (or OA_RELEASE_MINIMAL=1) builds the v1.0 minimal release profile, watches only v1.0
-# Coax roots, and verifies the bundle with apps/openagents-desktop/v1-bundle-check.coax before
-# promoting it to /Applications/OpenAgents.app. --full overrides OA_RELEASE_MINIMAL=1.
+#   apps/openagents-desktop/install.sh [--minimal|--full] --status what is installed, what waits, what main is at
+# --minimal (default; OA_RELEASE_MINIMAL=0 or --full selects the full developer build) builds the v1.0
+# minimal release profile, watches only v1.0 Coax roots, and verifies the bundle with
+# apps/openagents-desktop/v1-bundle-check.coax before promoting it to /Applications/OpenAgents.app.
 # It builds in a checkout of its own under ~/.cache/openagents/coder-release, never in yours.
 # Each build records what it read: the Coax sources of the page, the shader and the workers
 # (coax deps), and the folders of the compiler, the C, Swift and Objective-C hosts and the
@@ -34,8 +35,8 @@ label="com.openagents.desktop-update"
 legacy_label="com.openagents.coder-update"
 agent_plist="$HOME/Library/LaunchAgents/$label.plist"
 legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
-minimal=0
-if [[ "${OA_RELEASE_MINIMAL:-0}" == "1" ]]; then minimal=1; fi
+minimal=1
+if [[ "${OA_RELEASE_MINIMAL:-1}" == "0" ]]; then minimal=0; fi
 mode="now"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -104,22 +105,37 @@ sock_pid() {
 }
 # The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
 daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
-# True while a worker run is mid-reply: a running run whose last line is neither its empty queue
-# line nor its turn's ended line (host-runs.coax dr_idle_line). Quitting OpenAgents then could cost that reply, so an install waits (#13810).
+# True while a worker run is mid-reply: a running run whose last line is neither an idle line
+# (ready, journal, aware, ended, empty queue) nor an empty .out file (host-runs.coax dr_idle_line).
+# Quitting OpenAgents then could cost that reply, so an install waits (#13810).
 replies_running() {
   python3 -I - "$HOME/.openagents/coder/host/runs" <<'PY'
 import json, os, sys
 d = sys.argv[1]
+IDLE_KINDS = ("ready", "journal", "aware", "ended")
 for f in (os.listdir(d) if os.path.isdir(d) else []):
     if not f.endswith(".state"): continue
     try:
         st = json.load(open(os.path.join(d, f)))
         if not isinstance(st, dict) or st.get("state") != "running": continue
-        with open(os.path.join(d, f[:-6] + ".out"), "rb") as h:
-            h.seek(0, 2); n = h.tell(); h.seek(max(0, n - 65536))
+        outp = os.path.join(d, f[:-6] + ".out")
+        with open(outp, "rb") as h:
+            h.seek(0, 2); n = h.tell()
+            if n == 0: continue
+            win = 65536
+            h.seek(max(0, n - win))
             lines = [l for l in h.read().decode("utf-8", "replace").split("\n") if l.strip()]
-        q = json.loads(lines[-1]) if lines else {}
-        if isinstance(q, dict) and q.get("kind") == "ended": continue
+            if not lines: continue
+            try:
+                q = json.loads(lines[-1])
+            except ValueError:
+                if n > win:
+                    h.seek(max(0, n - 1048576))
+                    lines = [l for l in h.read().decode("utf-8", "replace").split("\n") if l.strip()]
+                    q = json.loads(lines[-1]) if lines else {}
+                else:
+                    raise
+        if isinstance(q, dict) and q.get("kind") in IDLE_KINDS: continue
         if not isinstance(q, dict) or not (q.get("kind") == "queue" and q.get("active") == "" and q.get("items") == []): sys.exit(0)
     except (OSError, ValueError): continue
 sys.exit(1)
@@ -182,7 +198,7 @@ fi
 
 write_agent_plist() {
   mkdir -p "$HOME/Library/LaunchAgents"
-  local extra_arg="" extra_env=""
+  local extra_arg="<string>--full</string>" extra_env=$'\n    <key>OA_RELEASE_MINIMAL</key><string>0</string>'
   if [[ "$minimal" == 1 ]]; then
     extra_arg="<string>--minimal</string>"
     extra_env=$'\n    <key>OA_RELEASE_MINIMAL</key><string>1</string>'
@@ -264,9 +280,20 @@ if [[ "$mode" == --agent ]]; then
   exit 0
 fi
 
-# One run at a time.
-if ! mkdir "$state/lock" 2>/dev/null; then say "another run is going"; exit 0; fi
-trap 'rmdir "$state/lock"' EXIT
+# One run at a time, with dead-PID stale lock recovery.
+if ! mkdir "$state/lock" 2>/dev/null; then
+  lock_pid="$(cat "$state/lock/pid" 2>/dev/null || true)"
+  if [[ -n "$lock_pid" && "$lock_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+    say "clearing stale lock from dead pid $lock_pid"
+    rm -rf "$state/lock"
+  fi
+  if ! mkdir "$state/lock" 2>/dev/null; then
+    say "another run is going (pid ${lock_pid:-unknown})"
+    [[ "$mode" == --check ]] && exit 0 || exit 4
+  fi
+fi
+printf '%s\n' "$$" > "$state/lock/pid"
+trap 'rm -rf "$state/lock"' EXIT
 
 if [[ "$mode" == --check ]]; then
   # A background check gives way to a busy Mac (a build is heavy) and to a nearly full disk.
@@ -324,16 +351,22 @@ if [[ "$need_build" == 1 ]]; then
     if grep -q -- '--minimal' "$src/$appdir/build.sh" 2>/dev/null; then
       build_args+=(--minimal)
     fi
+  else
+    build_env+=(OA_RELEASE_MINIMAL=0)
+    if grep -q -- '--full' "$src/$appdir/build.sh" 2>/dev/null; then
+      build_args+=(--full)
+    fi
   fi
   env "${build_env[@]}" "$src/$appdir/build.sh" ${build_args[@]+"${build_args[@]}"} >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
   plist="$stage/OpenAgents.app/Contents/Info.plist"
-  rev_count="$(git -C "$src" rev-list --count HEAD)"
-  (( rev_count < 28830 )) && rev_count=28830
+  rev_count="$((28830 + $(git -C "$src" rev-list --count HEAD)))"
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $rev_count" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OACommit" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OACommit string $target" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OAProfile" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OAProfile string $want_profile" "$plist"
+  /usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$plist"
   codesign --force --sign - "$stage/OpenAgents.app" 2> /dev/null
   if [[ "$minimal" == 1 ]]; then
     if ! verify_minimal_bundle "$stage/OpenAgents.app"; then
@@ -364,8 +397,8 @@ fi
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
   if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
-  if inside_app $pids; then say "${target:0:10} is built; this run is inside OpenAgents, so it installs when you quit OpenAgents (the next check)"; retire_legacy_agent; exit 0; fi
-  if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "${target:0:10} is built; a reply is running in OpenAgents, so it installs when you quit OpenAgents (the next check). OA_INSTALL_FORCE=1 quits it now"; retire_legacy_agent; exit 0; fi
+  if inside_app $pids; then say "DEFERRED: ${target:0:10} is built, but this run is inside OpenAgents; quit OpenAgents and re-run install.sh (or wait for the next check)"; retire_legacy_agent; exit 4; fi
+  if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "DEFERRED: ${target:0:10} is built, but a reply is running in OpenAgents; re-run with OA_INSTALL_FORCE=1 to quit and install now"; retire_legacy_agent; exit 4; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
   if [[ -n "$(coder_pids)" ]]; then
@@ -389,7 +422,12 @@ if [[ -e "$legacy_app" ]]; then
   rm -rf "$dest/.Coder.app.old"
 fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" 2>/dev/null || true
-say "installed ${target:0:10} ($want_profile) at $app"
+installed_now="$(commit_of "$app")"
+if [[ "$installed_now" != "$target" ]]; then
+  say "ERROR: post-install OACommit mismatch (got ${installed_now:-none}, expected $target)"
+  exit 1
+fi
+say "installed ${target:0:10} ($want_profile, build $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo ?)) at $app"
 sync_resident
 [[ -n "$pids" || "$mode" == now ]] && open "$app"
 retire_legacy_agent

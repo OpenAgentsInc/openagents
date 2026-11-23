@@ -3,27 +3,39 @@
 # Builds OpenAgents.app for this Mac: the page (app.coax / app-v1.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
 # component shader emitted as Metal, the Inky local worker (coder/tui/inky.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
-#   apps/openagents-desktop/build.sh [--full|--minimal] [--open]
-#   OA_RELEASE_MINIMAL=1 apps/openagents-desktop/build.sh          builds the v1.0 minimal release app
+#   apps/openagents-desktop/build.sh [--minimal|--full] [--fast] [--open]
+#   OA_RELEASE_MINIMAL=0 apps/openagents-desktop/build.sh          builds the full developer app
 #   CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh        builds into another folder
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
-minimal="${OA_RELEASE_MINIMAL:-0}"
+minimal="${OA_RELEASE_MINIMAL:-1}"
+swift_opt="-O"
 open_app=0
 for arg in "$@"; do
   case "$arg" in
     --minimal) minimal=1 ;;
     --full) minimal=0 ;;
+    --fast) swift_opt="-Onone" ;;
     --open) open_app=1 ;;
-    *) echo "build.sh: unknown argument: $arg (usage: build.sh [--full|--minimal] [--open])" >&2; exit 2 ;;
+    *) echo "build.sh: unknown argument: $arg (usage: build.sh [--minimal|--full] [--fast] [--open])" >&2; exit 2 ;;
   esac
 done
 work="${CODER_BUILD:-$here/build}"   # CODER_BUILD=DIR builds a second copy and leaves a running OpenAgents's files alone
 app="$work/OpenAgents.app"
 res="$app/Contents/Resources"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$res/Components"
+update_if_changed() {
+  if [[ -f "$2" ]] && cmp -s "$1" "$2"; then rm -f "$1"; else mv -f "$1" "$2"; fi
+}
+obj_stale() {
+  local obj="$1"; shift
+  [[ -f "$obj" ]] || return 0
+  local dep
+  for dep in "$@"; do [[ -e "$dep" && "$dep" -nt "$obj" ]] && return 0; done
+  return 1
+}
 if [[ "$minimal" == "1" ]]; then
   rm -rf "$app/Contents/Frameworks" \
     "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/oasim" \
@@ -43,22 +55,60 @@ app_coax="$here/app.coax"
 if [[ "$minimal" == "1" && -f "$here/app-v1.coax" ]]; then
   app_coax="$here/app-v1.coax"
 fi
-"$coax" c "$app_coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
-"$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$res/Components/components.metal" 2> "$work/c/components.metal.bind"
-"$coax" metal "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$res/Components/composition.metal" 2> "$work/c/composition.metal.bind"
+# Build independent Coax workers & Psionic Metal runtime in parallel with page C/Swift compiles.
+# COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
+worker_pids=()
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null & worker_pids+=($!)
+
+gen_pids=()
+"$coax" c "$app_coax" --library --header "$work/c/gallery.h.tmp" > "$work/c/gallery.c.tmp" & gen_pids+=($!)
+"$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$res/Components/components.metal" 2> "$work/c/components.metal.bind" & gen_pids+=($!)
+"$coax" metal "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$res/Components/composition.metal" 2> "$work/c/composition.metal.bind" & gen_pids+=($!)
+"$coax" c "$here/desktop-core.coax" --library --header "$work/c/desktop-core.h.tmp" > "$work/c/desktop-core.generated.c.tmp" & gen_pids+=($!)
+"$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h.tmp" > "$work/c/entropy-policy.c.tmp" & gen_pids+=($!)
+for p in "${gen_pids[@]}"; do wait "$p"; done
+update_if_changed "$work/c/gallery.h.tmp" "$work/c/gallery.h"
+update_if_changed "$work/c/gallery.c.tmp" "$work/c/gallery.c"
+update_if_changed "$work/c/desktop-core.h.tmp" "$work/c/desktop-core.h"
+update_if_changed "$work/c/desktop-core.generated.c.tmp" "$work/c/desktop-core.generated.c"
+update_if_changed "$work/c/entropy-policy.h.tmp" "$work/c/entropy-policy.h"
+update_if_changed "$work/c/entropy-policy.c.tmp" "$work/c/entropy-policy.c"
+if [[ ! -f "$work/c/desktop-core-unit.c" ]] || ! cmp -s "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"; then
+  cp "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"
+fi
+
 cflags=(-mmacosx-version-min=14.0 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c" -I"$repo/apps/shared/host/linux")
-/usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$here/carrier.c" -o "$work/c/carrier.o"
-/usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gallery.c" -o "$work/c/gallery.o"
-/usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
-"$coax" c "$here/desktop-core.coax" --library --header "$work/c/desktop-core.h" > "$work/c/desktop-core.generated.c"
-"$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy-policy.c"
-cp "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"
-/usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/desktop-core-unit.c" -o "$work/c/desktop-core-all.o"
-/usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/entropy-policy.c" -o "$work/c/entropy-policy.o"
+cc_pids=()
+if obj_stale "$work/c/carrier.o" "$here/carrier.c" "$here/host.c" "$here/host.h" "$repo/components/gallery/linux/main.c" "$work/c/gallery.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$here/carrier.c" -o "$work/c/carrier.o" & cc_pids+=($!)
+fi
+if obj_stale "$work/c/gallery.o" "$work/c/gallery.c" "$work/c/gallery.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gallery.c" -o "$work/c/gallery.o" & cc_pids+=($!)
+fi
+if obj_stale "$work/c/ui-host.o" "$repo/apps/shared/host/apple/ui-host.m" "$repo/apps/shared/host/linux/ui-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h"; then
+  /usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o" & cc_pids+=($!)
+fi
+if obj_stale "$work/c/desktop-core-all.o" "$work/c/desktop-core-unit.c" "$work/c/desktop-core.generated.c" "$work/c/desktop-core.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/desktop-core-unit.c" -o "$work/c/desktop-core-all.o" & cc_pids+=($!)
+fi
+if obj_stale "$work/c/entropy-policy.o" "$work/c/entropy-policy.c" "$work/c/entropy-policy.h"; then
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/entropy-policy.c" -o "$work/c/entropy-policy.o" & cc_pids+=($!)
+fi
+dc_platform_hdrs=("$repo/coax/platform"/*.h)
 for _dc_f in process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c; do
-  /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$repo/coax/platform/$_dc_f" -o "$work/c/$_dc_f.o"
+  if obj_stale "$work/c/$_dc_f.o" "$repo/coax/platform/$_dc_f" "${dc_platform_hdrs[@]}"; then
+    /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$repo/coax/platform/$_dc_f" -o "$work/c/$_dc_f.o" & cc_pids+=($!)
+  fi
 done
-ld -r "$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/process-native.c.o" "$work/c/store-file-native.c.o" "$work/c/read-file-native.c.o" "$work/c/socket-native.c.o" "$work/c/entropy-native.c.o" "$work/c/entropy-foreign.c.o" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
+for p in ${cc_pids[@]+"${cc_pids[@]}"}; do wait "$p"; done
+dc_inputs=("$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/process-native.c.o" "$work/c/store-file-native.c.o" "$work/c/read-file-native.c.o" "$work/c/socket-native.c.o" "$work/c/entropy-native.c.o" "$work/c/entropy-foreign.c.o")
+if obj_stale "$work/c/desktop-core.o" "${dc_inputs[@]}"; then
+  ld -r "${dc_inputs[@]}" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
+fi
 
 c_objs=("$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/desktop-core.o")
 link_flags=(
@@ -129,30 +179,31 @@ if [[ "$minimal" != "1" ]]; then
   )
 fi
 
-xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
+xcrun -sdk macosx swiftc "$swift_opt" -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
   "${swift_files[@]}" \
   "${c_objs[@]}" \
   "${link_flags[@]}" \
   -o "$app/Contents/MacOS/OpenAgents.new"
 mv "$app/Contents/MacOS/OpenAgents.new" "$app/Contents/MacOS/OpenAgents"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
+build_profile="full"; [[ "$minimal" == "1" ]] && build_profile="minimal"
+/usr/libexec/PlistBuddy -c "Delete :OAProfile" "$app/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :OAProfile string $build_profile" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :OABuildDate" "$app/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :OABuildDate string $(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$app/Contents/Info.plist"
+if build_sha="$(git -C "$repo" rev-parse HEAD 2>/dev/null)"; then
+  build_rev="$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 0)"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((28830 + build_rev))" "$app/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :OACommit" "$app/Contents/Info.plist" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :OACommit string $build_sha" "$app/Contents/Info.plist"
+fi
 cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
-# The native Inkling 2.0 worker (coder/tui/inky.coax): local Inkling worker in both --minimal and --full.
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null
+for p in "${worker_pids[@]}"; do wait "$p"; done
 cp "$repo/coax/web/build/tools/inky-$coax_hash" "$res/inky"
-# The Antigravity worker (coder/tui/agyworker.coax), for core Settings -> Providers & Antigravity ACP runs (GitHub #13802).
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
-# Its git guard (coder/tui/gitguard.coax), the PreToolUse hook workers find beside them (GitHub #13771).
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"
-# The unified daemon (coder/tui/host.coax, `coder host serve`): Coder starts it when none answers, and it
-# owns the worker runs so they go on after Coder quits (GitHub #13694). An unknown verb only builds it.
-COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/host-$coax_hash" "$res/coder-host"
-# Native Psionic Metal runtime for Inkling 2 Mini (psionic/lib/inkling/kernels.coax + psionic/platform/inkling-serve.c).
-COAX="$coax" "$repo/psionic/platform/inkling-build.sh" "$work/psionic-inkling" > /dev/null
 cp "$work/psionic-inkling/psionic-inkling-serve" "$res/psionic-inkling-serve"
 chmod +x "$res/psionic-inkling-serve"
 cp "$work/psionic-inkling/inkling-kernels.metal" "$res/inkling-kernels.metal"
@@ -164,15 +215,17 @@ cp "$repo/components/NOTICE" "$res/Components/NOTICE"
 
 if [[ "$minimal" != "1" ]]; then
   cp "$repo/metaverse/stage-resources/bip39-english.txt" "$res/bip39-english.txt"
-  # The legacy Microcoder worker (coder/tui/mcworker.coax), for cloud models in --full developer builds.
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null
-  cp "$repo/coax/web/build/tools/mcworker-$coax_hash" "$res/mcworker"
-  # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
-  cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"
-  # oasim, the iOS Simulator's command and its helper (coder/tui/oasim.coax, GitHub #13811).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" help < /dev/null > /dev/null 2>&1 || true
-  cp "$repo/coax/web/build/tools/oasim-$coax_hash" "$res/oasim"
+  full_pids=()
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/apps/shared/tester/cli.coax" < /dev/null > /dev/null & full_pids+=($!)
   # Bundle Tier 2 + Tier 4 coding eval specs and fixtures for Gym Benchmarks so it runs from any workspace.
   if [[ -d "$repo/evals/openagents-desktop/tier2/tasks" && -d "$repo/evals/openagents-desktop/tier4/tasks" ]]; then
     rm -rf "$res/gym-evals"
@@ -185,15 +238,6 @@ if [[ "$minimal" != "1" ]]; then
       cp -R "$repo/evals/openagents-desktop/lean/lean-algebra-logic/tasks" "$repo/evals/openagents-desktop/lean/lean-algebra-logic/fixtures" "$res/gym-evals/lean/lean-algebra-logic/"
     fi
   fi
-  # ple-run (ple-run.coax): a PLE run a chat starts and the pictures it shows inline (docs/desktop/steer-ple-from-chat.md).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null 2>&1 || true
-  cp "$repo/coax/web/build/tools/ple-run-$coax_hash" "$res/ple-run"
-  # lean-run (coder/tui/lean-run.coax): Lean 4 verifier, Gym steering & RH Workbench CLI (#13944, #13945).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" help < /dev/null > /dev/null 2>&1 || true
-  cp "$repo/coax/web/build/tools/lean-run-$coax_hash" "$res/lean-run"
-  # tbench-run (coder/tui/tbench-run.coax): Terminal-Bench Coax Runner & Microcoder Hillclimber (#13951, #13952, #13953).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/tbench-run.coax" help < /dev/null > /dev/null 2>&1 || true
-  cp "$repo/coax/web/build/tools/tbench-run-$coax_hash" "$res/tbench-run"
   if [[ -d "$repo/evals/terminal-bench/harbor_adapter" ]]; then
     rm -rf "$res/tbench-harbor" "$res/tbench-policies"
     mkdir -p "$res/tbench-harbor" "$res/tbench-policies"
@@ -203,16 +247,16 @@ if [[ "$minimal" != "1" ]]; then
   mkdir -p "$res/lean-checker" "$res/fixtures/lean-samples"
   [[ -f "$repo/resources/lean-checker/OpenAgentsVerify.lean" ]] && cp "$repo/resources/lean-checker/OpenAgentsVerify.lean" "$res/lean-checker/OpenAgentsVerify.lean"
   [[ -d "$repo/evals/openagents-desktop/lean/samples/add_zero_right" ]] && cp -R "$repo/evals/openagents-desktop/lean/samples/add_zero_right" "$res/fixtures/lean-samples/"
-  # proof-export (coax/lib/agent/desktop/proof-export.coax): canonical ATIF-v1.8 trace exporter & verifier (#13895).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" help < /dev/null > /dev/null 2>&1 || true
+  for p in "${full_pids[@]}"; do wait "$p"; done
+  cp "$repo/coax/web/build/tools/mcworker-$coax_hash" "$res/mcworker"
+  cp "$repo/coax/web/build/tools/claudeworker-$coax_hash" "$res/claudeworker"
+  cp "$repo/coax/web/build/tools/oasim-$coax_hash" "$res/oasim"
+  cp "$repo/coax/web/build/tools/ple-run-$coax_hash" "$res/ple-run"
+  cp "$repo/coax/web/build/tools/lean-run-$coax_hash" "$res/lean-run"
+  cp "$repo/coax/web/build/tools/tbench-run-$coax_hash" "$res/tbench-run"
   cp "$repo/coax/web/build/tools/proof-export-$coax_hash" "$res/proof-export"
-  # capability-eval (coax/lib/agent/desktop/capability-eval.coax): two-arm local capability eval & #authority gate (#13896).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" help < /dev/null > /dev/null 2>&1 || true
   cp "$repo/coax/web/build/tools/capability-eval-$coax_hash" "$res/capability-eval"
-  # agents-catalog & tester-cli (coax/lib/agent/desktop/agents-catalog.coax, apps/shared/tester/cli.coax; #13894).
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" help < /dev/null > /dev/null 2>&1 || true
   cp "$repo/coax/web/build/tools/agents-catalog-$coax_hash" "$res/agents-catalog"
-  COAX="$coax" "$repo/coax/web/tool.sh" "$repo/apps/shared/tester/cli.coax" --help < /dev/null > /dev/null 2>&1 || true
   cp "$repo/coax/web/build/tools/cli-$coax_hash" "$res/tester-cli"
   cp "$here/foreman-ctl" "$res/foreman-ctl"
   chmod +x "$res/foreman-ctl"
