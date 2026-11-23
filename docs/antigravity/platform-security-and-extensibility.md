@@ -503,11 +503,11 @@ Evaluated after `enabledTools` / `disabledTools`:
     - Exit `0`: `SUCCESS`. Exit `1`: general/validation error (e.g., unknown `--model`). Exit `2`: feature unavailable under `GEMINI_API_KEY` (`--remote-control`, `--remote-agent`). Exit `3`: agent/model API failure or `--print-timeout` exceeded — prints structured **`AGY_ERROR: {...}`** JSON on `stderr` (canonical status, HTTP/gRPC code, retryability, error ID) + `[agy] print timeout after ...` on timeout.
     - Terminal `status` enum in `json`/`stream-json`: `SUCCESS`, `ERROR`, `CANCELED`, `INTERRUPTED`, `INVALID`, `WAITING`, `RUNNING`.
 
-> [!CAUTION]
-> **Critical Terms of Service / Wrapper Compliance Constraint (`antigravity.google/docs/faq`, lines 346–352):**
-> - **Third-party software using Antigravity consumer logins** (Google explicitly names third-party harnesses such as Claude Code, OpenClaw, and OpenCode) **violates Antigravity Terms of Service** and risks account suspension or termination.
-> - **Wrapping `agy -p` headless mode inside third-party coding agents or applications, or automating account rotation, is explicitly NOT supported under consumer plans.**
-> - Google directs third-party agent integrations to use **Gemini Enterprise**, **Google Cloud Vertex AI / Agent Platform PAYG (`oauth-business` / `agent-platform` ADC)**, a **Google AI Studio API key (`gemini-api-key`)**, or the official **`google-antigravity` Python SDK**.
+> [!IMPORTANT]
+> **Terms of Service / Wrapper Compliance Distinction (`antigravity.google/docs/faq`, lines 346–352, plus Google's T3 Code clarification):**
+> - **Permitted (`Client App → official unmodified agy acp binary → Google API`):** Interactive single-user apps (such as T3 Code and OpenAgents) driving the official unmodified `agy acp` binary over ACP JSON-RPC and authenticating through `agy`'s own native login flow (`agy acp --login` / ACP `authenticate`, including `oauth-personal`) are permitted by Google.
+> - **Prohibited / Triggers Automated Account Bans (`Fake Antigravity shim / extracted OAuth token → cloudcode-pa.googleapis.com`):** Third-party harnesses that extract or replay Antigravity OAuth Bearer tokens to call `cloudcode-pa.googleapis.com` / `daily-cloudcode-pa.googleapis.com` directly outside the official `agy` binary (e.g., `pi-antigravity`, OpenCode OAuth shims, OpenClaw) violate Antigravity Terms of Service and trigger automated `TOS_VIOLATION` account bans.
+> - **Headless `-p` & Automation Restriction (`faq.md` L350–352):** Wrapping `agy -p` headless mode inside third-party coding agents or applications, or automating multi-account rotation, is explicitly NOT supported under consumer plans (use **Gemini Enterprise**, **Google Cloud Vertex AI / Agent Platform PAYG**, a **Google AI Studio API key**, or the official **`google-antigravity` Python SDK** for headless/API-key third-party agents).
 
 ### 7.4 Ecosystem: Build with Google Bundles
 
