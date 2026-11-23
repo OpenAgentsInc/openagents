@@ -821,13 +821,19 @@ struct MacRootView: View {
                         Color.clear
                             .frame(height: 1)
                             .id("bottom-anchor")
-                            .onAppear { isPinnedToBottom = true }
-                            .onDisappear { isPinnedToBottom = false }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 18)
                     .frame(maxWidth: 820, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .onScrollGeometryChange(for: Bool.self) { geo in
+                    geo.contentSize.height <= geo.visibleRect.height + 24
+                        || geo.visibleRect.maxY >= geo.contentSize.height - 60
+                } action: { _, nearBottom in
+                    if isPinnedToBottom != nearBottom {
+                        isPinnedToBottom = nearBottom
+                    }
                 }
                 .onChange(of: store.streamingContentFingerprint) { _, _ in
                     guard isPinnedToBottom else { return }
@@ -839,24 +845,25 @@ struct MacRootView: View {
                     isPinnedToBottom = true
                 }
 
-                if !isPinnedToBottom {
-                    Button {
-                        isPinnedToBottom = true
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(OATheme.textPrimary)
-                            .frame(width: 30, height: 30)
-                            .background(OATheme.elevated, in: Circle())
-                            .overlay(Circle().stroke(OATheme.hairlineStrong, lineWidth: 1))
+                Button {
+                    isPinnedToBottom = true
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
                     }
-                    .buttonStyle(.plain)
-                    .padding(16)
-                    .help("Jump to bottom")
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(OATheme.textPrimary)
+                        .frame(width: 30, height: 30)
+                        .background(OATheme.elevated, in: Circle())
+                        .overlay(Circle().stroke(OATheme.hairlineStrong, lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                .padding(16)
+                .opacity(isPinnedToBottom ? 0 : 1)
+                .allowsHitTesting(!isPinnedToBottom)
+                .accessibilityHidden(isPinnedToBottom)
+                .help("Jump to bottom")
             }
         }
     }
