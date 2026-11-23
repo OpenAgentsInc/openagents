@@ -29,6 +29,16 @@
   #assert coder_page_set_text(s, "c") && coder_page_submit(s);
   coder_page_failed(s, "Microcoder stopped running.");
   #assert s[0].turns[2].state == CP_FAILED && !cp_running(s);
+  // Silent empty finished turn (no text, no prior streamed reply, no said row) becomes CP_FAILED with an explicit note.
+  #assert coder_page_set_text(s, "d") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"\"}") == MWW_ENDED;
+  #assert s[0].turns[3].state == CP_FAILED && s[0].turns[3].note_n > 0;
+  // Turn that streamed interim prose before a command (moved into a said row) still finishes CP_DONE cleanly.
+  #assert coder_page_set_text(s, "e") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Checking files now.\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"\"}") == MWW_ENDED;
+  #assert s[0].turns[4].state == CP_DONE && s[0].turns[4].note_n == 0;
 }
 
 #test "a turn stopped from elsewhere is saved stopped: after a reply it keeps the reply, before one it has none, never a failure note" {

@@ -302,11 +302,26 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   else if kind == MWW_VIEW { cp_reply_to_said(s, i); cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
     if l[0].ending == "finished" || l[0].ending == "asked" {
-      // Transition to CP_DONE before updating final text so cp_reply_set clears the streaming
-      // veil instead of restarting a full-reply fade-in from alpha 0.
-      s[0].turns[i].state = CP_DONE;
-      if l[0].text.count > 0 { cp_reply_set(s, i, l[0].text, false); }
-      else if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+      // Never save a silent empty CP_DONE when the model produced neither reply text nor interim prose.
+      has_said := false;
+      if l[0].text.count == 0 && s[0].turns[i].reply_n == 0 {
+        for ci: 0..<s[0].turns[i].ncmds {
+          slot := cp_nth(s, i, -1, ci);
+          if slot >= 0 && s[0].calls[slot].said { has_said = true; break; }
+        }
+      }
+      if l[0].text.count == 0 && s[0].turns[i].reply_n == 0 && !has_said {
+        s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], "The model ended the turn without a reply.");
+        s[0].turns[i].state = CP_FAILED;
+        s[0].live_reply = i;
+        if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+      } else {
+        // Transition to CP_DONE before updating final text so cp_reply_set clears the streaming
+        // veil instead of restarting a full-reply fade-in from alpha 0.
+        s[0].turns[i].state = CP_DONE;
+        if l[0].text.count > 0 { cp_reply_set(s, i, l[0].text, false); }
+        else if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+      }
     } else if s[0].turns[i].stopping || l[0].ending == "stopped" {
       s[0].turns[i].state = CP_STOPPED;
       if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }

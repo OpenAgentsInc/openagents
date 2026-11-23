@@ -48,6 +48,10 @@
   #assert cast(string) out[0..<on] == "c3" && cast(string) s[0].current[0..<s[0].current_n] == "chat.a1";
   coder_page_current(s, "");
   #assert s[0].current_n == 0;
+  // A chat saved mid-turn (state 0, CP_RUNNING) loads as CP_STOPPED with an explicit interruption note
+  // so crashes are not silently disguised as user-initiated stops.
+  #assert coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"work\",\"reply\":\"\",\"cut\":false,\"state\":0,\"note\":\"\",\"more\":0,\"earlier\":0,\"cmds\":[],\"agents\":[]}]}") && s[0].nturns == 1;
+  #assert s[0].turns[0].state == CP_STOPPED && cast(string) s[0].turns[0].note[0..<s[0].turns[0].note_n] == "Interrupted before the reply finished.";
 }
 
 #test "a running chat moves out of view and back with its run; a new chat and another chat open while it runs; the list marks it" {
