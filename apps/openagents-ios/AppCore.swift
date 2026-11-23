@@ -90,6 +90,12 @@ import UIKit
     static func keepEnvironment(_ text: String) {
         if text.isEmpty { UserDefaults.standard.removeObject(forKey: environmentKey) } else { UserDefaults.standard.set(text, forKey: environmentKey) }
     }
+    /// Preferred Neon/Inkling model and thinking effort ("model\teffort"), kept across launches.
+    private static let modelChoiceKey = "openagents.model-choice"
+    static var keptModelChoice: String { UserDefaults.standard.string(forKey: modelChoiceKey) ?? "" }
+    static func keepModelChoice(_ text: String) {
+        if text.isEmpty { UserDefaults.standard.removeObject(forKey: modelChoiceKey) } else { UserDefaults.standard.set(text, forKey: modelChoiceKey) }
+    }
     /// Private-by-default trace sync opt-in (strictly false unless explicitly enabled; #13895).
     static let traceSyncOptInKey = "openagents.traceSyncOptIn"
     static var traceSyncOptIn: Bool {

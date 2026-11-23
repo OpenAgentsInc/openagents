@@ -99,7 +99,12 @@ that open onto their call and output. A turn that is working shows the working
 line with its seconds. Calls on a connected computer take their kind from the
 tool's own name (`tk_of_name`). Replies expose Copy alongside the existing fenced-code Copy.
 Observed native sessions have a fixed read-only notice instead of a composer.
-Model/effort, attachments and microphone controls remain hidden by owner choice.
+On a paired Mac that offers Neon + Inkling models, the composer footer exposes Model
+(`Gemini 4 Neon`, local `Inkling 2 Mini`, and authenticated Antigravity models) and
+Thinking (`Low`, `Medium`, `High`, and `X-High` where supported) chips with native GPU
+picker sheets, pure-black OLED surfaces matching Desktop (`#000000`), and persistent
+model/effort preferences across relaunches. Attachments and microphone controls remain
+hidden.
 
 `apps/shared/app/preview/conversation-fixture.coax` is a synthetic visual
 qualification root, absent from the installed app. Its optional carrier macro

@@ -34,7 +34,7 @@ es_chips :: (s: [] EnvSelect) -> EsChips #effects(all) {
   return EsChips.{environment = es_env_value(s), environment_on = true,
                   repository = es_repo_value(s), repository_on = (!s[0].in || s[0].repo_ready)};
 }
-ES_V_PAIR_HINT :: "To use your own computer, run openagents-environment pair --workspace FOLDER on it, then open the link it shows on this phone.";
+ES_V_PAIR_HINT :: "Open OpenAgents on your Mac while both devices are on Tailscale, or open a pairing link on this phone.";
 
 // How tall the picker's list is, and how much of it shows: the page passes
 // them to es_scroll with a drag.

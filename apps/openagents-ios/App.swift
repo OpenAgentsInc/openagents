@@ -30,6 +30,7 @@ import UIKit
     private var draftRev:Int32 = -1
     private var lastComposerDraft=""
     private var lastSavedEnv=""
+    private var lastSavedModel=""
     private var editorFieldID=""
     private let scrollDriver=GPUScrollDriver()
     private var syncingScroll=false
@@ -45,7 +46,7 @@ import UIKit
     private lazy var editor:ComposerEditor=ComposerEditor(style:style())
 
     override func viewDidLoad() {
-        super.viewDidLoad();view.backgroundColor = UIColor(white:10.0/255.0,alpha:1);view.accessibilityIdentifier="chat.screen"   // Coder Noir's background, #0a0a0a (components/skin/noir.coax), under the page before its first frame
+        super.viewDidLoad();view.backgroundColor = .black;view.accessibilityIdentifier="chat.screen"   // Pure-black OLED canvas matching OpenAgents Desktop (#000000), under the page before its first frame
         guard let resources=Bundle.main.path(forResource:"Components",ofType:nil),let owner=resources.withCString({oc_open($0)}),let raw=oc_view(owner) else {
             let label=UILabel();label.text="OpenAgents could not start. Restart the app.";label.numberOfLines=0;label.textAlignment = .center;label.textColor = .label
             label.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(label)
@@ -67,6 +68,9 @@ import UIKit
             let savedEnv=AppServices.keptEnvironment
             lastSavedEnv=savedEnv
             oc_env_restore(owner,savedEnv)
+            let savedModel=AppServices.keptModelChoice
+            lastSavedModel=savedModel
+            if !savedModel.isEmpty {oc_model_restore(owner,savedModel)}
             oc_experimental_set(owner,AppServices.experimental ? 1:0)
             // after every call into the core: the login flow follows it, and the page draws what changed
             services.core.after={[weak self] in oc_step(owner);self?.wake()}
@@ -194,9 +198,10 @@ import UIKit
         library?.background()
         display?.invalidate();display=nil
         if field.kind == .secret {field.isHidden=true;field.text="";services?.identity.hideBackup();if let owner {oc_secret_ready(owner,0)}}
-        // Unsent composer draft and chip choices, kept for the next launch (#13906).
+        // Unsent composer draft, chip choices, and Neon/Inkling model preference, kept for the next launch (#13906).
         keepComposerDraft()
         keepEnvironment()
+        keepModelChoice()
     }
     @objc private func clearPrivate() {services?.identity.clear();services?.provider.clear();field.text="";if let owner {oc_secret_ready(owner,0);if oc_field_kind(owner)==3 {oc_blur(owner)}};wake()}
     @objc private func captureChanged() {if UIScreen.main.isCaptured {clearPrivate()};wake()}
@@ -213,7 +218,7 @@ import UIKit
         syncScroll()
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}
-        followFocus();placeEditor();access?.refresh();keepDraft();keepComposerDraft();keepEnvironment();keepLibrary()
+        followFocus();placeEditor();access?.refresh();keepDraft();keepComposerDraft();keepEnvironment();keepModelChoice();keepLibrary()
         #if DEBUG
         dumpAccess()
         #endif
@@ -347,6 +352,14 @@ import UIKit
         lastSavedEnv=now
         AppServices.keepEnvironment(now)
     }
+    private func keepModelChoice() {
+        guard let owner else {return}
+        var bytes=[CChar](repeating:0,count:128);_ = oc_model_save(owner,&bytes,Int32(bytes.count))
+        let now=String(cString:bytes)
+        guard now != lastSavedModel else {return}
+        lastSavedModel=now
+        AppServices.keepModelChoice(now)
+    }
     @objc private func fieldChanged() {
         // an input method's provisional text stays the platform's until it is committed (one editing authority)
         guard let owner,field.markedTextRange==nil,field.accessibilityIdentifier==focusID() else {return}
@@ -431,7 +444,7 @@ import UIKit
         // VoiceOver's escape: the open picker, the login card or the sidebar closes, as their own close does
         access.escape={ [weak self] in
             guard let self,let owner=self.owner else {return false}
-            for id in ["thread.scrim","settings.back","env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
+            for id in ["model.close","effort.close","thread.scrim","settings.back","env.close","login.back","drawer.scrim"] where oc_activate(owner,id) != 0 {self.wake();return true}
             return false
         }
         #if DEBUG

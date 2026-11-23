@@ -155,12 +155,16 @@ sc_launch_run :: (h: [] HsHost, prompt: string, folder: string, out_id: [] u8) -
   hb: [1024] u8;
   cwd := ifx folder.count > 0 then folder else ph_home(hb[..]);
   if !dr_dir() { return ""; }
+  pick := pa_pick(ph_facts(h), "");
+  engine := ifx pick.engine == PA_AGY || pick.engine == PA_INKLING || pick.engine == PA_MICRO then pick.engine else PA_MICRO;
+  model := ifx pick.engine == engine then pick.model else "";
+  eff := pa_effort(engine, model, "");
   line: [EX_INPUT_MAX + 4096] u8;
-  ln := ph_task(prompt, id, cwd, PA_MICRO, "", line[..]);
+  ln := ph_task(prompt, id, cwd, engine, model, eff, line[..]);
   if ln < 2 { return ""; }
   ip: [1400] u8;
   if !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { return ""; }
-  why := ph_spec(id, PA_MICRO, cwd, 0);
+  why := ph_spec(h, id, engine, model, eff, cwd, 0);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   return ifx why.count == 0 then id else "";
 }

@@ -84,6 +84,8 @@ int oc_library_revision(void *chat);
 int oc_library_restore(void *chat, const char *text);
 int oc_env_save(void *chat, char *out, int cap);
 void oc_env_restore(void *chat, const char *text);
+int oc_model_save(void *chat, char *out, int cap);
+void oc_model_restore(void *chat, const char *text);
 void oc_step(void *chat);
 // The login draft to keep: a number that changes when it does, and its bytes (0: forget it).
 int oc_draft_rev(void *chat);

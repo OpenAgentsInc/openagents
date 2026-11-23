@@ -69,7 +69,7 @@ link_flags=(
 core_swift=(
   "$here/Activation.swift" "$here/AntigravityProvider.swift" "$here/AppDelegate.swift" "$here/DaemonClient.swift"
   "$here/DefaultsMigration.swift" "$here/DesktopCore.swift" "$here/LocalModels.swift"
-  "$here/Notifications.swift" "$here/Store.swift" "$here/Updater.swift"
+  "$here/Notifications.swift" "$here/Store.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" "$here/Updater.swift"
   "$here/Window.swift" "$here/Window+Attach.swift" "$here/Window+Chats.swift"
   "$here/Window+Dialogs.swift" "$here/Window+Files.swift" "$here/Window+FollowUps.swift"
   "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift"
@@ -116,7 +116,6 @@ if [[ "$minimal" != "1" ]]; then
     "$here/Window+Usage.swift" "$here/Window+Voice.swift" "$here/Window+Rich.swift"
     "$here/Window+Scheduled.swift" "$here/Window+Preview.swift" "$here/Window+Forge.swift"
     "$here/Foreman.swift" "$here/ForemanOperator.swift"
-    "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift"
     "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift"
     "$repo/apps/shared/host/apple/BreezKey.swift" "$repo/apps/shared/host/apple/BIP39.swift" "$repo/apps/shared/host/apple/WalletKeychain.swift" "$repo/apps/shared/host/apple/SparkWallet.swift"
   )

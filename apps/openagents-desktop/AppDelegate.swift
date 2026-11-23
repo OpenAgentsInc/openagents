@@ -36,6 +36,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { self?.refreshAccountMenu() }
         }
         applyFlags()
+        #else
+        CoderTailnet.shared.start()   // zero-config mobile pairing over Tailscale in minimal Neon+Inkling build
         #endif
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {

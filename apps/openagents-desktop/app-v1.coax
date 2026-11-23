@@ -5,6 +5,7 @@
 #load "../../components/raster/host-tables.coax";
 #load "page-v1.coax";
 #load "../../coax/lib/image/image.coax";
+#load "../../coax/lib/nostr/host/tailnet.coax";
 
 coder_img_info :: (src: [] u8, out_w: [] int, out_h: [] int, out_work: [] int) -> int #export_c #effects(all) {
   r := img_info(src);
@@ -21,13 +22,3 @@ coder_img_decode :: (src: [] u8, work: [] u8, out: [] u8) -> int #export_c #effe
 coder_img_half :: (src: [] u8, w: int, h: int, dst: [] u8) #export_c #effects(all) {
   img_half(src, w, h, dst);
 }
-
-// Tailnet host codec stubs (pairing is excluded in v1.0; host.c includes tailnet-codec.c).
-oa_ht_request_write :: (chats: bool, out: [] u8) -> int #export_c #effects(all) { return 0; }
-oa_ht_request_read :: (raw: string) -> int #export_c #effects(all) { return 0; }
-oa_ht_answer_write :: (host: string, label: string, invitation: string, refused: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
-oa_ht_answer_read :: (raw: string, expected_host: string, out: [] u8, label_out: [] u8, label_n: [] int) -> int #export_c #effects(all) { return 0; }
-oa_ht_direct_hello_write :: (out: [] u8) -> int #export_c #effects(all) { return 0; }
-oa_ht_direct_hello_read :: (raw: string) -> bool #export_c #effects(all) { return false; }
-oa_ht_direct_ack_write :: (refused: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
-oa_ht_direct_ack_read :: (raw: string, out: [] u8) -> int #export_c #effects(all) { return 0; }

@@ -185,6 +185,18 @@ dr_stop :: (d: [] DrHost, id: string) -> string {
   dr_state_write(id, "stopping", r[0].pid, r[0].started, 0, 0);
   return "";
 }
+// Stop and immediately release a run's worker slot (used when a phone chat switches engines mid-chat).
+dr_stop_sync :: (d: [] DrHost, id: string) {
+  k := dr_find(d, id);
+  if k < 0 { return; }
+  r := d[0].runs[k..<k + 1];
+  dr_forward(r);
+  _ = cxproc_close_stdin(r[0].handle);
+  r[0].stopping = true; r[0].reclaimed = true;
+  _ = cxproc_wait(r[0].handle, 500);
+  r[0].stop_at = 0;
+  dr_finish(r);
+}
 
 // ForgetRun: a run that no longer runs loses its files.
 dr_forget :: (d: [] DrHost, id: string) -> string {

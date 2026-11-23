@@ -35,6 +35,15 @@ noir_colours :: (skin: UiSkin) -> UiSkin {
 noir_phone_skin :: () -> UiSkin {
   s := noir_colours(conversation_skin());
   s.name = "Coder Noir phone";
+  // Match OpenAgents Desktop's pure-black OLED canvas & sidebar with crisp #262626 hairlines.
+  s.canvas = hex(0x000000, 1);
+  s.sidebar = hex(0x000000, 1);
+  s.menu_divider = hex(0x262626, 1);
+  s.hairline = hex(0x262626, 1);
+  s.set.subtle = hex(0x262626, 1);
+  s.field_edge = hex(0x262626, 1);
+  s.surface = hex(0x161616, 1);
+  s.raised = hex(0x191919, 1);
   // as the conversation skin does: inline code on the raised ground, a code block's header on the surface
   s.code_wash = s.raised; s.header_wash = s.surface;
   // the accent is the ink here: a focused field's edge lights softly, as Zeron's glass card does, not in full white
@@ -47,9 +56,12 @@ noir_phone_skin :: () -> UiSkin {
   #assert s.ink.r == hex(0xededed, 1).r && s.canvas.r == hex(0x0a0a0a, 1).r && s.accent.r == s.ink.r;
   #assert s.cmp.line == a.cmp.line && s.control_h == a.control_h && s.name == a.name && s.set.row == a.set.row && s.set.text.r == s.ink.r;
 }
-#test "the phone wears Coder Noir's colours on the conversation skin's measures" {
+#test "the phone wears pure-black Coder Noir colours on the conversation skin's measures" {
   s := noir_phone_skin(); c := conversation_skin(); th := coder_noir();
-  #assert s.canvas.r == hex(0x0a0a0a, 1).r && s.surface.r == hex(0x1e1e1e, 1).r && s.sidebar.r == hex(0x050505, 1).r;
+  #assert s.canvas.r == 0 && s.canvas.g == 0 && s.canvas.b == 0 && s.canvas.a == 1;
+  #assert s.sidebar.r == 0 && s.sidebar.g == 0 && s.sidebar.b == 0 && s.sidebar.a == 1;
+  #assert abs(s.hairline.r - hex(0x262626, 1).r) < 0.001f32 && abs(s.menu_divider.r - hex(0x262626, 1).r) < 0.001f32;
+  #assert s.surface.r == hex(0x161616, 1).r && s.raised.r == hex(0x191919, 1).r;
   #assert s.ink.r == hex(0xededed, 1).r && s.muted.r == hex(0x818181, 1).r && s.faint.r == hex(0x656565, 1).r;
   #assert s.accent.r == s.ink.r && s.on_accent.r == th.bg.r && s.selection.a == 0.35 && s.syntax[1].r == hex(0xd093d0, 1).r;
   #assert s.code_wash.r == s.raised.r && s.header_wash.r == s.surface.r && s.canvas.r < s.surface.r;

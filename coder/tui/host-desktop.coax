@@ -48,6 +48,8 @@ DkInfo :: struct {
   title: [256] u8; nt: int;              // its first message, cut
   tail: [DK_TAIL] u8; ntail: int;        // the end of its first task's text
   key: [128] u8; nkey: int;              // the chat's id, from the queue's open line
+  model: [64] u8; nmo: int;              // the task line's model slug (e.g. "gemini-4-neon" / "inkling-2-mini")
+  effort: [16] u8; nef: int;             // the task line's thinking effort ("low" / "medium" / "high" / "xhigh")
   busy: bool;                            // a turn of it runs: its newest turn line is after its newest ended line
 }
 
@@ -206,13 +208,20 @@ dk_info :: (id: string, r: [] DkInfo) -> bool {
     if line.count == 0 { if next[0] >= b.count { break; } continue; }
     ar[0].at = 0; ar[0].full = false;
     k := mww_request(ar[..], line, q[..]);
-    if k == MWW_TASK && r[0].nsession == 0 {
-      r[0].nsession = hs_set(r[0].session[..], q[0].session);
-      r[0].ncwd = hs_set(r[0].cwd[..], q[0].cwd);
-      r[0].nt = hs_set(r[0].title[..], hs_cut(q[0].task, 200));
-      t := q[0].task; from := ifx t.count > DK_TAIL then t.count - DK_TAIL else 0;
-      while from < t.count && (t[from] & 0xc0) == 0x80 { from += 1; }
-      r[0].ntail = hs_set(r[0].tail[..], cast(string) t[from..<t.count]);
+    if k == MWW_TASK {
+      if r[0].nsession == 0 {
+        r[0].nsession = hs_set(r[0].session[..], q[0].session);
+        r[0].ncwd = hs_set(r[0].cwd[..], q[0].cwd);
+        r[0].nt = hs_set(r[0].title[..], hs_cut(q[0].task, 200));
+        t := q[0].task; from := ifx t.count > DK_TAIL then t.count - DK_TAIL else 0;
+        while from < t.count && (t[from] & 0xc0) == 0x80 { from += 1; }
+        r[0].ntail = hs_set(r[0].tail[..], cast(string) t[from..<t.count]);
+      }
+      m := q[0].model;
+      if hs_prefix(m, "agy:") { m = cast(string) m[4..<m.count]; }
+      if q[0].local && m.count == 0 { m = PA_INKLING_ID; }
+      if m.count > 0 && ea_choice(m) { r[0].nmo = hs_set(r[0].model[..], m); }
+      if q[0].effort.count > 0 && ea_choice(q[0].effort) { r[0].nef = hs_set(r[0].effort[..], q[0].effort); }
     }
     if k == MWW_QUEUE && q[0].op == "open" && q[0].key.count > 0 && q[0].key.count <= 128 { r[0].nkey = hs_set(r[0].key[..], q[0].key); }
   }
@@ -301,14 +310,20 @@ dk_summary :: (r: [] DkInfo, chats: [] DkChat, nc: int, s: [] EaSession) {
   s[0].generation = r[0].started * 1000; s[0].revision = r[0].out; s[0].busy = r[0].busy; s[0].updated = r[0].updated;
   // a phone's chat takes messages after its worker ended too (it starts again), under one generation
   if dk_phone(r) { s[0].nc = ea_copy(s[0].control[..], "available"); g := ph_generation(cast(string) r[0].id[..]); if g > 0 { s[0].generation = g; } }
-  // and names the model that runs it (Microcoder's at its low effort), not the one the phone asked for
+  // and names the model and effort that run it, not what the phone asked for
   if dk_phone(r) {
-    mb: [1024] u8; ob: [64] u8; pm := ph_meta_read(cast(string) r[0].id[..], mb[..]); m := ph_model_in(pm, ob[..]);
+    mb: [1024] u8; ob: [64] u8; eb: [16] u8; pm := ph_meta_read(cast(string) r[0].id[..], mb[..]);
+    m := ph_model_in(pm, ob[..]);
     if m.count > 0 { s[0].nmo = ea_copy(s[0].model[..], m); if s[0].nmo < 0 { s[0].nmo = 0; } }
-    if pa_engine_of(m) == PA_MICRO { s[0].nef = ea_copy(s[0].effort[..], PA_MICRO_EFFORT); }
+    ef := ph_effort_in(pm, eb[..]);
+    if ef.count == 0 { ef = pa_effort(pa_engine_of(m), m, ""); }
+    if ef.count > 0 { s[0].nef = ea_copy(s[0].effort[..], ef); if s[0].nef < 0 { s[0].nef = 0; } }
     // and, when it fell back, says so on the session (never as an item: TestFlight 1413 would draw it as the reply)
     nb: [EA_NOTE] u8; note := ph_note_in(pm, nb[..]);
     if note.count > 0 { s[0].nno = ea_copy(s[0].note[..], note); if s[0].nno < 0 { s[0].nno = 0; } }
+  } else {
+    if r[0].nmo > 0 { s[0].nmo = ea_copy(s[0].model[..], cast(string) r[0].model[0..<r[0].nmo]); if s[0].nmo < 0 { s[0].nmo = 0; } }
+    if r[0].nef > 0 { s[0].nef = ea_copy(s[0].effort[..], cast(string) r[0].effort[0..<r[0].nef]); if s[0].nef < 0 { s[0].nef = 0; } }
   }
 }
 // The session `id` names (a Coder Desktop chat, or a phone's run) into v's sessions, when it is the grant's.
@@ -876,21 +891,47 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
 }
 
 // SendMessage and StopTurn on a phone's own chat (host-phone.coax): a steer or a task line while its
-// worker runs, else the worker starts again; StopSubagent has nothing to stop (no sub-agents).
+// worker runs, else the worker starts again (or switches engines when switching Neon <-> Inkling);
+// StopSubagent has nothing to stop (no sub-agents).
 ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: int, chats: [] DkChat, nc: int, method: string, command: string, text: string, file: string, raw: string, v: [] EaView) {
   if method == "StopSubagent" { es_refuse(v, "not_found"); return; }
-  if q[0].generation != ph_generation(cast(string) r[0].id[..]) { es_refuse(v, "conflict"); return; }
+  id := cast(string) r[0].id[..];
+  if q[0].generation != ph_generation(id) { es_refuse(v, "conflict"); return; }
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
   if method == "StopTurn" && !r[0].busy { es_refuse(v, "conflict"); return; }
   if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
-  if method == "SendMessage" && !dk_running(r) {
-    why := ph_restart(h, r, runs, n, command, text);
+  want_model := cast(string) q[0].model[0..<q[0].nmo];
+  want_effort := cast(string) q[0].effort[0..<q[0].nef];
+  prev_engine := ph_engine(id);
+  switch_engine := false;
+  if method == "SendMessage" && dk_running(r) && !r[0].busy && want_model.count > 0 {
+    p := pa_pick(ph_facts(h), want_model);
+    if p.engine != PA_NONE && p.engine != PA_CLAUDE && p.engine != prev_engine { switch_engine = true; }
+  }
+  if method == "SendMessage" && (!dk_running(r) || switch_engine) {
+    if switch_engine { dr_stop_sync(h[0].runs[..], id); }
+    why := ph_restart(h, r, runs, n, command, text, want_model, want_effort);
     if why.count > 0 { es_refuse(v, why); return; }
   } else {
-    lines: [EX_INPUT_MAX + 8192] u8; ln := ph_lines(r, method, command, text, lines[..]);
+    eff := want_effort;
+    model := want_model;
+    if method == "SendMessage" && !r[0].busy && (want_model.count > 0 || want_effort.count > 0) {
+      pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
+      prev_mb: [64] u8; prev_m := ph_model_in(pm, prev_mb[..]);
+      prev_eb: [16] u8; prev_e := ph_effort_in(pm, prev_eb[..]);
+      if model.count == 0 {
+        model = prev_m;
+      } else {
+        p := pa_pick(ph_facts(h), model);
+        model = ifx p.engine == prev_engine && p.model.count > 0 then p.model else prev_m;
+      }
+      eff = pa_effort(prev_engine, model, ifx want_effort.count > 0 then want_effort else prev_e);
+      if prev_engine != PA_NONE { _ = ph_meta(id, ph_generation(id), PaPick.{engine = prev_engine, model = model}, eff); }
+    }
+    lines: [EX_INPUT_MAX + 8192] u8; ln := ph_lines(r, method, command, text, model, eff, lines[..]);
     if ln < 0 { es_refuse(v, "conflict"); return; }
     ip: [1400] u8;
-    if ln > 0 && !fs_append(dr_file(cast(string) r[0].id[..], ".in", ip[..]), cast(string) lines[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
+    if ln > 0 && !fs_append(dr_file(id, ".in", ip[..]), cast(string) lines[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
   }
   dk_summary(r, chats, nc, v[0].sessions[0..<1]); v[0].ns = 1;
   if method == "SendMessage" { v[0].sessions[0].busy = true; }

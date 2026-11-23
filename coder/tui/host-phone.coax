@@ -1,47 +1,89 @@
-// A chat a paired phone starts runs on an agent this computer can run (owner, 2026-11-20): the
-// model the phone picked when this computer runs it, else its working default, never an engine
-// whose CLI is missing (the rule is coax/lib/agent/environment/phone-agent-policy.coax). Before,
-// every phone chat ran on the host's own Claude engine (host-environment.coax's slot), so on a
-// Mac without Claude Code the only reply was the "install it" line.
+// A chat a paired phone starts runs on an agent this computer can run (owner, 2026-11-22, Neon +
+// Inkling flow): the model and thinking effort the phone picked when this computer runs it, else
+// its working default, never an engine whose runtime or sign-in is missing (the rule is
+// coax/lib/agent/environment/phone-agent-policy.coax).
 //
-// Claude Code keeps the slot it always had. Microcoder on Gemini and Antigravity run as the
-// workers Coder Desktop runs (mcworker, agyworker), as daemon runs (host-runs.coax) that this
-// host starts itself: the run's id is the phone's session id, and its task lines name the
-// session "phone-ID". host-desktop.coax reads and writes such a run as it does a Coder Desktop
-// chat, under the phone's own id (no "desktop-" in front), so the phone keeps the session it
-// opened:
-//   ID.phone   {"generation":G,"engine":"micro"|"antigravity","model":M[,"note":N]}: written when
-//              the phone opens it, and again when a restart moves it to another engine; model is
-//              what runs (the session summary's model), note the plain-words line of a chat that
-//              fell back (the summary's note)
+// Antigravity (Gemini 4 Neon and the user's authenticated Antigravity catalog via agyworker) and
+// local Inkling 2 Mini (via inky + Psionic Metal psionic-inkling-serve) are the primary engines,
+// matching OpenAgents Desktop's core minimal flow. Legacy Microcoder (mcworker) and Claude Code
+// remain fallbacks when neither Neon nor Inkling is available.
+//
+// Phone chats run as daemon runs (host-runs.coax) that this host starts itself: the run's id is
+// the phone's session id, and its task lines name the session "phone-ID". host-desktop.coax reads
+// and writes such a run as it does a Coder Desktop chat, under the phone's own id:
+//   ID.phone   {"generation":G,"engine":"antigravity"|"inkling"|"micro","model":M,"effort":E[,"note":N]}
 //   ID.in      the worker's task lines (one per message), steers and stops
-// A follow-up while the worker runs is a task line; after the worker ended (Coder Desktop's sweep
-// stops an idle run no chat of its own holds, a daemon restart loses it) the run starts again
-// under the same id with the conversation's turns recalled, so a phone chat never goes read-only.
-// The worker's asks are answered by the daemon, as for any run no Coder watches.
+// A follow-up while the worker runs is a task line (or steer); after the worker ended (or when the
+// phone switches engines mid-chat, e.g. Neon <-> Inkling), the run starts again under the same id
+// with the conversation's turns recalled, so a phone chat never goes read-only.
 
 PH_FACTS_MS :: 60000;          // what this computer runs is asked again after a minute
 PH_SESSION :: "phone-";
 // where Claude Code's installer and package managers put it (the Claude engine's probe looks there too)
 PH_CLAUDE_PLACES :: [4] string.["/.local/bin/claude", "/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
-PH_RECALL_TURNS :: 6;          // earlier turns a restarted worker is told (mcworker keeps as many)
+PH_RECALL_TURNS :: 6;          // earlier turns a restarted worker is told
 PH_RECALL_TEXT :: 8000;        // bytes of each
+PH_INKLING_PORT_DEFAULT :: 18794;
+PH_INKLING_PORT_SPAN :: 64;
 
-PhHost :: struct { facts: PaFacts; at: int; known: bool; }
+PhHost :: struct {
+  facts: PaFacts; at: int; known: bool;
+  // Resolved Antigravity provider config (from ~/.openagents/desktop/provider-instances.json or env/PATH)
+  agy_bin: [512] u8; agy_nbin: int;
+  agy_profile: [1024] u8; agy_nprofile: int;
+  agy_auth: [32] u8; agy_nauth: int;
+  agy_project: [128] u8; agy_nproject: int;
+  agy_location: [64] u8; agy_nlocation: int;
+  agy_models: [EA_MODELS] EaModel; agy_nmodels: int;
+}
+
+// ---------------------------------------------------------------- helpers
+
+// SHA-256 hex digest of `s` (64 lowercase hex chars), matching Desktop's ProviderSecretStore.sha256Hex.
+ph_sha256_hex :: (s: string, out: [] u8) -> string {
+  if out.count < 64 { return ""; }
+  st: [112] u8; digest: [32] u8;
+  if sha256_init(st[..]) != SHA_OK { return ""; }
+  at := 0;
+  chunk: [256] u8;
+  while at < s.count {
+    n := ifx s.count - at > chunk.count then chunk.count else s.count - at;
+    for i: 0..<n { chunk[i] = s[at + i]; }
+    if sha256_update_checked(st[..], chunk[0..<n], false) != SHA_OK { return ""; }
+    at += n;
+  }
+  if sha256_final_checked(st[..], digest[..], false) != SHA_OK { return ""; }
+  if !hb_hex(digest[..], out[0..<64]) { return ""; }
+  return cast(string) out[0..<64];
+}
+
+// Effort bitmask for the 4 standard Neon + Inkling levels: 0=low, 1=medium, 2=high, 3=xhigh.
+ph_effort_bit :: (id: string) -> int {
+  if id == "low" { return 1; }
+  if id == "medium" { return 2; }
+  if id == "high" { return 4; }
+  if id == "xhigh" { return 8; }
+  return 0;
+}
 
 // ---------------------------------------------------------------- what this computer runs
 
-// name on PATH (as the daemon's PATH has it), or at one of the home-relative or absolute places.
-ph_on_path :: (name: string) -> bool {
+// name on PATH (as the daemon's PATH has it), into out ("" when absent).
+ph_find_on_path :: (name: string, out: [] u8) -> string {
   pb: [8192] u8; path := proc_getenv("PATH", pb[..]); at := 0;
   while at < path.count {
     e := at; while e < path.count && path[e] != ':' { e += 1; }
-    if e > at { fb: [4200] u8; n := hs_cat(fb[..], 0, cast(string) path[at..<e]); n = hs_cat(fb[..], n, "/"); n = hs_cat(fb[..], n, name); if fs_kind(cast(string) fb[0..<n]) == FS_FILE { return true; } }
+    if e > at {
+      fb: [4200] u8; n := hs_cat(fb[..], 0, cast(string) path[at..<e]); n = hs_cat(fb[..], n, "/"); n = hs_cat(fb[..], n, name);
+      cand := cast(string) fb[0..<n];
+      if fs_kind(cand) == FS_FILE { k := hs_cat(out, 0, cand); return cast(string) out[0..<k]; }
+    }
     at = e + 1;
   }
-  return false;
+  return "";
 }
-// The person's own home, never $CODER_HOME (which moves only the host's files): where CLIs are installed.
+ph_on_path :: (name: string) -> bool { b: [1024] u8; return ph_find_on_path(name, b[..]).count > 0; }
+// The person's own home, never $CODER_HOME (which moves only the host's files): where CLIs and models live.
 ph_home :: (out: [] u8) -> string { return proc_getenv("HOME", out); }
 ph_claude_found :: () -> bool {
   if ph_on_path("claude") { return true; }
@@ -53,23 +95,311 @@ ph_claude_found :: () -> bool {
   }
   return false;
 }
-ph_agy_found :: () -> bool {
-  b: [1024] u8; set := proc_getenv("CODER_AGY_BIN", b[..]);
-  if set.count > 0 { return fs_kind(set) == FS_FILE; }
-  if ph_on_path("agy") { return true; }
-  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return false; }
-  p: [1400] u8; n := hs_cat(p[..], 0, home); n = hs_cat(p[..], n, "/.local/bin/agy");
-  return fs_kind(cast(string) p[0..<n]) == FS_FILE;
-}
-// A bundled worker beside this program (the app's Resources), or in $CODER_WORKER_DIR: its path, "" when absent.
-ph_worker :: (name: string, out: [] u8) -> string {
+
+// A bundled worker or tool beside this program (the app's Resources), or in $CODER_WORKER_DIR.
+ph_tool :: (name: string, out: [] u8) -> string {
   db: [1024] u8; dir := proc_getenv("CODER_WORKER_DIR", db[..]);
   exe: [4096] u8;
   if dir.count == 0 { n := cxproc_self_path(exe[..]); if n < 1 || n > exe.count { return ""; } dir = fs_dir(cast(string) exe[0..<n]); }
   p := fs_join(dir, name, out);
-  return ifx dr_program_ok(p) && fs_kind(p) == FS_FILE then p else "";
+  return ifx fs_kind(p) == FS_FILE then p else "";
 }
-// Whether Microcoder has a Gemini sign-in here: `mcworker --auth` says vertex or key (as Coder Desktop asks).
+ph_worker :: (name: string, out: [] u8) -> string {
+  p := ph_tool(name, out);
+  return ifx p.count > 0 && dr_program_ok(p) then p else "";
+}
+
+// Resolve Antigravity binary and profile config from Desktop's ~/.openagents/desktop/provider-instances.json,
+// falling back to CODER_AGY_BIN, PATH, and ~/.local/bin/agy. Returns false if disabled or absent.
+ph_load_agy_cfg :: (p: [] PhHost) -> bool {
+  p[0].agy_nbin = 0; p[0].agy_nprofile = 0; p[0].agy_nauth = 0; p[0].agy_nproject = 0; p[0].agy_nlocation = 0;
+  hb: [1024] u8; home := ph_home(hb[..]);
+  saw_agy_inst := false; enabled_agy_inst := false;
+  if home.count > 0 {
+    pb: [1400] u8; n := hs_cat(pb[..], 0, home); n = hs_cat(pb[..], n, "/.openagents/desktop/provider-instances.json");
+    raw: [65536] u8; rn := fs_read(cast(string) pb[0..<n], raw[..]);
+    if rn > 2 {
+      text := cast(string) raw[0..<rn];
+      ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+      chosen := -1;
+      for i: 0..<cl_count(text) {
+        item := cl_json(text, cl_item(text, i));
+        ar[0].at = 0; ar[0].full = false;
+        drv := cl_str(ar[..], item, "driver");
+        if drv != "antigravity" { continue; }
+        saw_agy_inst = true;
+        en := cl_bool(item, "enabled");
+        if en.ok && !en.value { continue; }
+        enabled_agy_inst = true;
+        is_def := cl_bool(item, "isDefault");
+        if chosen < 0 || (is_def.ok && is_def.value) { chosen = i; }
+      }
+      if saw_agy_inst && !enabled_agy_inst { return false; }
+      if chosen >= 0 {
+        item := cl_json(text, cl_item(text, chosen));
+        ar[0].at = 0; ar[0].full = false;
+        id := cl_str(ar[..], item, "id");
+        bin := cl_str(ar[..], item, "binaryPath");
+        am := cl_str(ar[..], item, "authMethod");
+        gp := cl_str(ar[..], item, "gcpProject");
+        gl := cl_str(ar[..], item, "gcpLocation");
+        if bin.count > 0 && fs_kind(bin) == FS_FILE { p[0].agy_nbin = hs_cat(p[0].agy_bin[..], 0, bin); }
+        if am.count > 0 { p[0].agy_nauth = hs_cat(p[0].agy_auth[..], 0, am); }
+        if gp.count > 0 { p[0].agy_nproject = hs_cat(p[0].agy_project[..], 0, gp); }
+        if gl.count > 0 { p[0].agy_nlocation = hs_cat(p[0].agy_location[..], 0, gl); }
+        if id.count > 0 {
+          hex: [64] u8; dig := ph_sha256_hex(id, hex[..]);
+          if dig.count == 64 {
+            db: [1400] u8; dn := hs_cat(db[..], 0, home); dn = hs_cat(db[..], dn, "/.openagents/providers/antigravity/"); dn = hs_cat(db[..], dn, dig);
+            dir := cast(string) db[0..<dn];
+            if fs_kind(dir) == FS_DIR { p[0].agy_nprofile = hs_cat(p[0].agy_profile[..], 0, dir); }
+          }
+        }
+      }
+    }
+  }
+  if p[0].agy_nbin == 0 {
+    eb: [1024] u8; set := proc_getenv("CODER_AGY_BIN", eb[..]);
+    if set.count > 0 && fs_kind(set) == FS_FILE { p[0].agy_nbin = hs_cat(p[0].agy_bin[..], 0, set); }
+  }
+  if p[0].agy_nbin == 0 {
+    fb: [1024] u8; found := ph_find_on_path("agy", fb[..]);
+    if found.count > 0 { p[0].agy_nbin = hs_cat(p[0].agy_bin[..], 0, found); }
+  }
+  if p[0].agy_nbin == 0 && home.count > 0 {
+    lb: [1400] u8; ln := hs_cat(lb[..], 0, home); ln = hs_cat(lb[..], ln, "/.local/bin/agy");
+    if fs_kind(cast(string) lb[0..<ln]) == FS_FILE { p[0].agy_nbin = hs_cat(p[0].agy_bin[..], 0, cast(string) lb[0..<ln]); }
+  }
+  return p[0].agy_nbin > 0;
+}
+
+// Parse `agyworker --probe-json` output into `models` (Gemini 4 Neon first). Returns true if authenticated.
+ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
+  nout[0] = 0;
+  if raw.count < 2 { return false; }
+  ab: [16384] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  auth := cl_str(ar[..], raw, "authStatus");
+  if auth != "authenticated" { return false; }
+  list := cl_raw(raw, "models");
+  total := cl_count(list);
+  // Two passes: Gemini 4 Neon first, then all remaining authenticated models up to EA_MODELS.
+  for pass: 0..<2 {
+    for i: 0..<total {
+      if nout[0] >= models.count { break; }
+      one := cl_json(list, cl_item(list, i));
+      ar[0].at = 0; ar[0].full = false;
+      slug := cl_str(ar[..], one, "slug");
+      name := cl_str(ar[..], one, "name");
+      if slug.count < 1 || !ea_choice(slug) { continue; }
+      is_neon := slug == PA_AGY_DEFAULT;
+      if (pass == 0) != is_neon { continue; }
+      dup := false;
+      for k: 0..<nout[0] { if cast(string) models[k].id[0..<models[k].ni] == slug { dup = true; break; } }
+      if dup { continue; }
+      m := EaModel.{};
+      m.ni = ea_copy(m.id[..], slug);
+      m.nl = ea_copy(m.label[..], ifx name.count > 0 then hs_cut(name, 48) else hs_cut(slug, 48));
+      if m.ni < 1 || m.nl < 1 { continue; }
+      tl := cl_raw(one, "thoughtLevels");
+      ladder := 0;
+      for j: 0..<cl_count(tl) {
+        ar[0].at = 0; ar[0].full = false;
+        lv := cl_text(ar[..], tl, cl_item(tl, j));
+        ladder |= ph_effort_bit(lv);
+      }
+      th := cl_bool(one, "thinking");
+      if ladder == 0 && th.ok && th.value { ladder = 1 | 2 | 4; }
+      m.ladder = ladder;
+      models[nout[0]] = m; nout[0] += 1;
+    }
+  }
+  return true;
+}
+
+// Run `agyworker --probe-json` once (with or without the isolated Desktop profile) and parse its catalog.
+ph_agy_probe_once :: (p: [] PhHost, worker: string, use_profile: bool) -> bool {
+  h := proc_new();
+  if h < 0 { return false; }
+  defer { _ = proc_release(h); }
+  ok := proc_arg(h, worker) && proc_arg(h, "--probe-json");
+  hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
+  path := ph_worker_path(home, proc_getenv("PATH", had[..]), pb[..]);
+  eb: [9000] u8;
+  en := hs_cat(eb[..], 0, "PATH="); en = hs_cat(eb[..], en, path); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  en = hs_cat(eb[..], 0, "CODER_AGY_BIN="); en = hs_cat(eb[..], en, cast(string) p[0].agy_bin[0..<p[0].agy_nbin]); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  if use_profile && p[0].agy_nprofile > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_PROFILE="); en = hs_cat(eb[..], en, cast(string) p[0].agy_profile[0..<p[0].agy_nprofile]); ok = ok && proc_env(h, cast(string) eb[0..<en]); }
+  if p[0].agy_nauth > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_AUTH_METHOD="); en = hs_cat(eb[..], en, cast(string) p[0].agy_auth[0..<p[0].agy_nauth]); ok = ok && proc_env(h, cast(string) eb[0..<en]); }
+  if p[0].agy_nproject > 0 {
+    en = hs_cat(eb[..], 0, "CODER_AGY_GCP_PROJECT="); en = hs_cat(eb[..], en, cast(string) p[0].agy_project[0..<p[0].agy_nproject]); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+    en = hs_cat(eb[..], 0, "GOOGLE_CLOUD_PROJECT="); en = hs_cat(eb[..], en, cast(string) p[0].agy_project[0..<p[0].agy_nproject]); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  }
+  if p[0].agy_nlocation > 0 {
+    en = hs_cat(eb[..], 0, "CODER_AGY_GCP_LOCATION="); en = hs_cat(eb[..], en, cast(string) p[0].agy_location[0..<p[0].agy_nlocation]); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+    en = hs_cat(eb[..], 0, "GOOGLE_CLOUD_LOCATION="); en = hs_cat(eb[..], en, cast(string) p[0].agy_location[0..<p[0].agy_nlocation]); ok = ok && proc_env(h, cast(string) eb[0..<en]);
+  }
+  if !ok || proc_start(h) != 0 { return false; }
+  _ = proc_close_stdin(h);
+  out: [65536] u8; on := 0; deadline := proc_now_ms() + 15000;
+  while proc_now_ms() < deadline {
+    left := proc_left(deadline, proc_now_ms());
+    line_n := cxproc_read_line(h, ifx left > 500 then 500 else left);
+    if line_n == PROC_TIMEOUT { continue; }
+    if line_n == PROC_TOO_LONG { continue; }
+    if line_n < 0 { break; }
+    if on == 0 && line_n > 2 && line_n < out.count {
+      for i: 0..<line_n { out[i] = cast(u8) cxproc_line_byte(h, i); }
+      on = line_n;
+    }
+  }
+  _ = proc_wait(h, 500);
+  if on < 2 { return false; }
+  nm: [1] int;
+  if !ph_parse_agy_probe(cast(string) out[0..<on], p[0].agy_models[..], nm[..]) { return false; }
+  p[0].agy_nmodels = nm[0];
+  return true;
+}
+
+// Probe Antigravity via `agyworker --probe-json`: tries Desktop's isolated profile first, then falls
+// back to the user's default `~/.gemini` CLI login if the isolated profile isn't signed in yet.
+ph_agy_ready :: (p: [] PhHost) -> bool {
+  p[0].agy_nmodels = 0;
+  wb: [1400] u8; worker := ph_worker("agyworker", wb[..]);
+  if worker.count == 0 || !ph_load_agy_cfg(p) { return false; }
+  if p[0].agy_nprofile > 0 && ph_agy_probe_once(p, worker, true) { return true; }
+  p[0].agy_nprofile = 0;
+  return ph_agy_probe_once(p, worker, false);
+}
+
+// ---------------------------------------------------------------- local Inkling 2 Mini (inky + Psionic Metal)
+
+ph_inkling_weights :: (out: [] u8) -> string {
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return ""; }
+  n := hs_cat(out, 0, home); n = hs_cat(out, n, "/.openagents/models/inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf");
+  return cast(string) out[0..<n];
+}
+ph_inkling_manifest_ok :: () -> bool {
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return false; }
+  wb: [1400] u8; w := ph_inkling_weights(wb[..]); if w.count == 0 || fs_kind(w) != FS_FILE { return false; }
+  mb: [1400] u8; mn := hs_cat(mb[..], 0, home); mn = hs_cat(mb[..], mn, "/.openagents/models/inkling-2-mini/manifest.json");
+  raw: [4096] u8; rn := fs_read(cast(string) mb[0..<mn], raw[..]); if rn < 2 { return false; }
+  ver := cl_bool(cast(string) raw[0..<rn], "verified");
+  return ver.ok && ver.value;
+}
+ph_inkling_server_files :: (bin_out: [] u8, bin_n: [] int, metal_out: [] u8, metal_n: [] int) -> bool {
+  bin_n[0] = 0; metal_n[0] = 0;
+  b := ph_tool("psionic-inkling-serve", bin_out);
+  m := ph_tool("inkling-kernels.metal", metal_out);
+  if b.count > 0 && m.count > 0 { bin_n[0] = b.count; metal_n[0] = m.count; return true; }
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return false; }
+  nb := hs_cat(bin_out, 0, home); nb = hs_cat(bin_out, nb, "/.openagents/bin/psionic-inkling-serve");
+  nm := hs_cat(metal_out, 0, home); nm = hs_cat(metal_out, nm, "/.openagents/bin/inkling-kernels.metal");
+  if fs_kind(cast(string) bin_out[0..<nb]) == FS_FILE && fs_kind(cast(string) metal_out[0..<nm]) == FS_FILE {
+    bin_n[0] = nb; metal_n[0] = nm; return true;
+  }
+  return false;
+}
+ph_inkling_ready :: () -> bool {
+  wb: [1400] u8; if ph_worker("inky", wb[..]).count == 0 { return false; }
+  ub: [512] u8; if proc_getenv("PSIONIC_BASE_URL", ub[..]).count > 0 { return true; }
+  bin: [1400] u8; met: [1400] u8; bn: [1] int; mn: [1] int;
+  return ph_inkling_manifest_ok() && ph_inkling_server_files(bin[..], bn[..], met[..], mn[..]);
+}
+ph_parse_port :: (raw: string) -> int {
+  v := 0; digits := 0;
+  for c: raw {
+    if c == ' ' || c == '\t' || c == '\r' || c == '\n' { if digits > 0 { break; } continue; }
+    if c < '0' || c > '9' { return 0; }
+    v = v * 10 + cast(int) (c - '0'); digits += 1;
+    if v > 65535 { return 0; }
+  }
+  return ifx digits > 0 && v > 0 && v < 65536 then v else 0;
+}
+ph_inkling_saved_port :: () -> int {
+  eb: [64] u8; p := ph_parse_port(proc_getenv("OA_INKLING_PORT", eb[..])); if p > 0 { return p; }
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return PH_INKLING_PORT_DEFAULT; }
+  pb: [1400] u8; pn := hs_cat(pb[..], 0, home); pn = hs_cat(pb[..], pn, "/.openagents/run/inkling-serve.port");
+  raw: [64] u8; rn := fs_read(cast(string) pb[0..<pn], raw[..]);
+  if rn > 0 { p = ph_parse_port(cast(string) raw[0..<rn]); if p > 0 { return p; } }
+  return PH_INKLING_PORT_DEFAULT;
+}
+ph_port_listening :: (port: int) -> bool {
+  for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
+  s := cxsock_connect(port, 150);
+  if s < 0 { return false; }
+  _ = cxsock_close(s);
+  return true;
+}
+ph_inkling_health :: (port: int) -> bool {
+  if port < 1 || port > 65535 { return false; }
+  for c: "127.0.0.1" { _ = cxsock_host_push(cast(int) c); }
+  s := cxsock_connect(port, 250);
+  if s < 0 { return false; }
+  defer { _ = cxsock_close(s); }
+  req := "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+  for c: req { _ = cxsock_write(s, cast(int) c); }
+  if cxsock_flush(s, 300) != 0 { return false; }
+  buf: [1024] u8; n := 0; deadline := cxsock_now_ms() + 400;
+  while cxsock_now_ms() < deadline && n < buf.count {
+    got := cxsock_read(s, 100);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    for i: 0..<got { if n < buf.count { buf[n] = cast(u8) cxsock_byte(s, i); n += 1; } }
+  }
+  resp := cast(string) buf[0..<n];
+  return dk_has(resp, "psionic-") && dk_has(resp, "200");
+}
+ph_inkling_url :: (port: int, out: [] u8) -> string {
+  dg: [32] u8;
+  n := hs_cat(out, 0, "http://127.0.0.1:");
+  n = hs_cat(out, n, hs_itoa(port, dg[..]));
+  return cast(string) out[0..<n];
+}
+// Ensure a healthy local psionic-inkling-serve is reachable and return its base URL.
+ph_inkling_ensure :: (out: [] u8) -> string {
+  eb: [512] u8; env_url := proc_getenv("PSIONIC_BASE_URL", eb[..]);
+  if env_url.count > 0 { k := hs_cat(out, 0, env_url); return cast(string) out[0..<k]; }
+  port := ph_inkling_saved_port();
+  if ph_inkling_health(port) { return ph_inkling_url(port, out); }
+  if port != PH_INKLING_PORT_DEFAULT && ph_inkling_health(PH_INKLING_PORT_DEFAULT) { return ph_inkling_url(PH_INKLING_PORT_DEFAULT, out); }
+  // Start psionic-inkling-serve detached if weights and server binary are installed.
+  bin: [1400] u8; met: [1400] u8; bn: [1] int; mn: [1] int; wb: [1400] u8;
+  if !ph_inkling_manifest_ok() || !ph_inkling_server_files(bin[..], bn[..], met[..], mn[..]) { return ph_inkling_url(port, out); }
+  weights := ph_inkling_weights(wb[..]);
+  bin_s := cast(string) bin[0..<bn[0]];
+  met_s := cast(string) met[0..<mn[0]];
+  target := PH_INKLING_PORT_DEFAULT;
+  for off: 0..<PH_INKLING_PORT_SPAN {
+    cand := PH_INKLING_PORT_DEFAULT + off;
+    if !ph_port_listening(cand) { target = cand; break; }
+  }
+  dg: [32] u8; port_s := hs_itoa(target, dg[..]);
+  h := proc_new();
+  if h >= 0 {
+    ok := proc_arg(h, bin_s) && proc_arg(h, "--model") && proc_arg(h, weights) && proc_arg(h, "--metal") && proc_arg(h, met_s)
+       && proc_arg(h, "--host") && proc_arg(h, "127.0.0.1") && proc_arg(h, "--port") && proc_arg(h, port_s)
+       && proc_arg(h, "--ctx") && proc_arg(h, "32768") && proc_arg(h, "--idle-exit-s") && proc_arg(h, "300");
+    _ = proc_quiet(h);
+    _ = proc_detach(h);
+    if ok && proc_start(h) == 0 {
+      hb: [1024] u8; home := ph_home(hb[..]);
+      if home.count > 0 {
+        rd: [1400] u8; rn := hs_cat(rd[..], 0, home); rn = hs_cat(rd[..], rn, "/.openagents/run");
+        _ = fs_mkdir_private(cast(string) rd[0..<rn]);
+        pf: [1400] u8; pn := hs_cat(pf[..], 0, cast(string) rd[0..<rn]); pn = hs_cat(pf[..], pn, "/inkling-serve.port");
+        _ = fs_replace_durable(cast(string) pf[0..<pn], port_s);
+      }
+      deadline := proc_now_ms() + 12000;
+      while proc_now_ms() < deadline {
+        if ph_inkling_health(target) { break; }
+        proc_sleep(150);
+      }
+    }
+    _ = proc_release(h);
+  }
+  return ph_inkling_url(target, out);
+}
+
+// Whether Microcoder has a Gemini sign-in here: `mcworker --auth` says vertex or key (legacy fallback).
 ph_gemini_ready :: () -> bool {
   wb: [1400] u8; mc := ph_worker("mcworker", wb[..]); if mc.count == 0 { return false; }
   argv := [2] string.[mc, "--auth"]; out: [1024] u8; err: [1024] u8;
@@ -80,65 +410,134 @@ ph_gemini_ready :: () -> bool {
 ph_facts :: (h: [] HsHost) -> PaFacts {
   p := h[0].phone[..]; now := cxproc_now_ms();
   if p[0].known && now - p[0].at < PH_FACTS_MS && now >= p[0].at { return p[0].facts; }
-  wb: [1400] u8;
-  f := PaFacts.{claude = ph_claude_found(), gemini = ph_gemini_ready(), agy = ph_agy_found() && ph_worker("agyworker", wb[..]).count > 0};
+  f := PaFacts.{
+    agy = ph_agy_ready(p),
+    inkling = ph_inkling_ready(),
+    gemini = ph_gemini_ready(),
+    claude = ph_claude_found(),
+  };
   p[0].facts = f; p[0].at = now; p[0].known = true;
   return f;
 }
 
-// ---------------------------------------------------------------- the offer
+// ---------------------------------------------------------------- the offer (Neon + Inkling first)
 
-// What a new conversation can start on: the engines this computer runs, its working default first
-// (Microcoder's models at low effort, as Coder Desktop runs them; Antigravity at its own; Claude
-// Code's catalog with its levels). The levels are Claude's list; each model's ladder picks from it.
+ph_offer_add_model :: (o: [] EaOffer, id: string, label: string, ladder: int) {
+  if o[0].n >= EA_MODELS || id.count < 1 || label.count < 1 { return; }
+  for k: 0..<o[0].n { if cast(string) o[0].models[k].id[0..<o[0].models[k].ni] == id { return; } }
+  m := EaModel.{}; m.ni = ea_copy(m.id[..], id); m.nl = ea_copy(m.label[..], label); m.ladder = ladder;
+  if m.ni > 0 && m.nl > 0 { o[0].models[o[0].n] = m; o[0].n += 1; }
+}
+
+// What a new conversation can start on: Gemini 4 Neon (Antigravity) and Inkling 2 Mini (Local)
+// first, then any remaining authenticated Antigravity models, then legacy fallbacks.
 ph_offer :: (h: [] HsHost, v: [] EaView) {
   es_offer(v);
-  claude := v[0].offer; o := EaOffer.{}; o.nv = claude.nv; o.default_level = claude.default_level; o.levels = claude.levels;
-  low := 0; for k: 0..<o.nv { if cast(string) o.levels[k].id[0..<o.levels[k].ni] == PA_MICRO_EFFORT { low = 1 << k; } }
-  engines: [3] int; n := pa_offer(ph_facts(h), engines[..]);
-  ids := PA_MICRO_ID; labels := PA_MICRO_LABEL;
-  for i: 0..<n {
-    e := engines[i];
-    if e == PA_MICRO { for k: 0..<PA_MICRO_MODELS { if o.n >= EA_MODELS { break; } m := EaModel.{}; m.ni = ea_copy(m.id[..], ids[k]); m.nl = ea_copy(m.label[..], labels[k]); m.ladder = low; o.models[o.n] = m; o.n += 1; } }
-    if e == PA_AGY && o.n < EA_MODELS { m := EaModel.{}; m.ni = ea_copy(m.id[..], PA_AGY_ID); m.nl = ea_copy(m.label[..], PA_AGY_LABEL); o.models[o.n] = m; o.n += 1; }
-    if e == PA_CLAUDE { for k: 0..<claude.n { if o.n >= EA_MODELS { break; } o.models[o.n] = claude.models[k]; o.n += 1; } }
+  claude := v[0].offer;
+  o: [1] EaOffer;
+  eff_ids := PA_EFFORT_ID; eff_labels := PA_EFFORT_LABEL;
+  for k: 0..<PA_EFFORTS {
+    o[0].levels[k].ni = ea_copy(o[0].levels[k].id[..], eff_ids[k]);
+    o[0].levels[k].nl = ea_copy(o[0].levels[k].label[..], eff_labels[k]);
   }
-  v[0].offer = o;
+  o[0].nv = PA_EFFORTS;
+  o[0].default_level = 1; // "medium" (default for both Gemini 4 Neon and Inkling 2 Mini)
+  f := ph_facts(h);
+  p := h[0].phone[..];
+  // 1. Gemini 4 Neon first when Antigravity is ready.
+  if f.agy {
+    neon_added := false;
+    for i: 0..<p[0].agy_nmodels {
+      m := p[0].agy_models[i];
+      if cast(string) m.id[0..<m.ni] == PA_AGY_DEFAULT {
+        ph_offer_add_model(o[..], cast(string) m.id[0..<m.ni], cast(string) m.label[0..<m.nl], m.ladder);
+        neon_added = true;
+        break;
+      }
+    }
+    if !neon_added { ph_offer_add_model(o[..], PA_AGY_DEFAULT, "Gemini 4 Neon", 1 | 2 | 4 | 8); }
+  }
+  // 2. Inkling 2 Mini (Local) right beside Neon so the Neon + Inkling pair are top choices.
+  if f.inkling {
+    ph_offer_add_model(o[..], PA_INKLING_ID, PA_INKLING_LABEL, 1 | 2 | 4);
+  }
+  // 3. Remaining authenticated Antigravity models (Carbon, Hydrogen, Argon, Flash, etc.).
+  if f.agy {
+    if p[0].agy_nmodels > 0 {
+      for i: 0..<p[0].agy_nmodels {
+        m := p[0].agy_models[i];
+        ph_offer_add_model(o[..], cast(string) m.id[0..<m.ni], cast(string) m.label[0..<m.nl], m.ladder);
+      }
+    } else {
+      nids := PA_NEON_ID; nlabels := PA_NEON_LABEL;
+      for k: 0..<PA_NEON_MODELS {
+        ph_offer_add_model(o[..], nids[k], nlabels[k], ifx k == 0 then (1 | 2 | 4 | 8) else (1 | 2 | 4));
+      }
+    }
+  }
+  // 4. Legacy fallbacks (only when neither Neon/Antigravity nor Inkling covers them).
+  if f.gemini && !f.agy {
+    mids := PA_MICRO_ID; mlabels := PA_MICRO_LABEL;
+    for k: 0..<PA_MICRO_MODELS { ph_offer_add_model(o[..], mids[k], mlabels[k], 1); }
+  }
+  if f.claude && !f.agy && !f.inkling {
+    for k: 0..<claude.n {
+      if o[0].n >= EA_MODELS { break; }
+      m := claude.models[k];
+      // Remap Claude ladder bits onto o's levels (low/medium/high).
+      ladder := 0;
+      for lv: 0..<claude.nv {
+        if (m.ladder & (1 << lv)) == 0 { continue; }
+        ladder |= ph_effort_bit(cast(string) claude.levels[lv].id[0..<claude.levels[lv].ni]);
+      }
+      ph_offer_add_model(o[..], cast(string) m.id[0..<m.ni], cast(string) m.label[0..<m.nl], ladder);
+    }
+  }
+  v[0].offer = o[0];
 }
 
 // ---------------------------------------------------------------- the phone's runs
 
 ph_file :: (id: string, out: [] u8) -> string { return dr_file(id, ".phone", out); }
-// The session id names a run this host started for a phone.
 ph_is :: (id: string) -> bool { p: [1400] u8; return ea_id(id, 32) && fs_exists(ph_file(id, p[..])); }
-// The run's generation as the phone was told it when it opened it (it stays across restarts), -1 when none.
 ph_generation :: (id: string) -> int {
   p: [1400] u8; b: [1024] u8; n := fs_read(ph_file(id, p[..]), b[..]);
   if n < 1 { return -1; }
   return cl_int(cast(string) b[0..<n], "generation").value;
 }
-// The run's ID.phone: its generation, the engine and model that run, and the note a fallback shows.
-ph_meta_text :: (generation: int, p: PaPick, mo: [] Jo, mb: [] u8) -> string {
+ph_engine_name :: (engine: int) -> string {
+  if engine == PA_AGY { return PA_AGY_ID; }
+  if engine == PA_INKLING { return "inkling"; }
+  return "micro";
+}
+// The run's ID.phone: its generation, engine, model, effort, and optional fallback note.
+ph_meta_text :: (generation: int, p: PaPick, effort: string, mo: [] Jo, mb: [] u8) -> string {
   jo_start(mo, mb); jo_obj(mo);
-  jo_key(mo, "generation"); jo_int(mo, generation); jo_key(mo, "engine"); jo_str(mo, ifx p.engine == PA_AGY then PA_AGY_ID else "micro");
-  jo_key(mo, "model"); jo_str(mo, ifx p.engine == PA_AGY then PA_AGY_ID else p.model);
+  jo_key(mo, "generation"); jo_int(mo, generation);
+  jo_key(mo, "engine"); jo_str(mo, ph_engine_name(p.engine));
+  jo_key(mo, "model"); jo_str(mo, ifx p.model.count > 0 then p.model else ph_engine_name(p.engine));
+  eff := pa_effort(p.engine, p.model, effort);
+  if eff.count > 0 { jo_key(mo, "effort"); jo_str(mo, eff); }
   nb: [256] u8; note := pa_note(p, nb[..]);
   if note.count > 0 { jo_key(mo, "note"); jo_str(mo, note); }
   jo_end(mo);
   return jo_text(mo);
 }
-ph_meta :: (id: string, generation: int, p: PaPick) -> bool {
+ph_meta :: (id: string, generation: int, p: PaPick, effort: string) -> bool {
   pp: [1400] u8; mb: [1024] u8; mo: [1] Jo;
-  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text(generation, p, mo[..], mb[..]));
+  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text(generation, p, effort, mo[..], mb[..]));
 }
 ph_meta_read :: (id: string, b: [] u8) -> string { p: [1400] u8; n := fs_read(ph_file(id, p[..]), b); return ifx n < 1 then "" else cast(string) b[0..<n]; }
-// The model ID.phone's text says runs, into out; "" when none is kept.
 ph_model_in :: (text: string, out: [] u8) -> string {
   ar_b: [256] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
   k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "model"), 64));
   return cast(string) out[0..<k];
 }
-// The note ID.phone's text says a fallback shows, into out; "" when none.
+ph_effort_in :: (text: string, out: [] u8) -> string {
+  ar_b: [256] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
+  k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "effort"), 16));
+  return cast(string) out[0..<k];
+}
 ph_note_in :: (text: string, out: [] u8) -> string {
   ar_b: [512] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
   k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "note"), out.count));
@@ -149,51 +548,77 @@ ph_engine :: (id: string) -> int {
   if n < 1 { return PA_NONE; }
   ar_b: [256] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
   e := cl_str(ar[..], cast(string) b[0..<n], "engine");
-  return ifx e == "micro" then PA_MICRO else ifx e == PA_AGY_ID then PA_AGY else PA_NONE;
+  return ifx e == "micro" then PA_MICRO else ifx e == PA_AGY_ID then PA_AGY else ifx e == "inkling" then PA_INKLING else PA_NONE;
 }
-// The task line of a phone's message: Coder Desktop's settings for a chat of its own (host-api.coax
-// cp_task_message), with no sub-agents (a run this host starts has no owner to run them).
-ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, out: [] u8) -> int {
+// The task line of a phone's message: Desktop's settings for a chat of its own, with no sub-agents.
+ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, effort: string, out: [] u8) -> int {
   sb: [64] u8; sn := hs_cat(sb[..], 0, PH_SESSION); sn = hs_cat(sb[..], sn, id);
-  t := McTask.{task = text, session = cast(string) sb[0..<sn], cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true,
-               model = ifx engine == PA_MICRO then model else "", effort = ifx engine == PA_MICRO then PA_MICRO_EFFORT else ""};
+  eff := pa_effort(engine, model, effort);
+  t := McTask.{task = text, session = cast(string) sb[0..<sn], cwd = cwd, sandbox = "danger-full-access", ceiling = 3,
+               local = engine == PA_INKLING, gated = true, edits = true, unlimited = true, no_ask = true,
+               model = ifx engine == PA_INKLING then PA_INKLING_ID else model, effort = eff};
   return mww_task(out, t);
 }
-// What the worker starts with: the bundled program, the folder, and Coder Desktop's PATH for its
-// workers (coax/lib/agent/desktop/worker.coax), with no Claude key. "" when it was written, else why not.
-ph_spec :: (id: string, engine: int, cwd: string, skip: int) -> string {
-  wb: [1400] u8; program := ph_worker(ifx engine == PA_AGY then "agyworker" else "mcworker", wb[..]);
+// What the worker starts with: bundled agyworker, inky, or mcworker with Desktop's PATH and engine env.
+ph_spec :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, cwd: string, skip: int) -> string {
+  wname := ifx engine == PA_AGY then "agyworker" else ifx engine == PA_INKLING then "inky" else "mcworker";
+  wb: [1400] u8; program := ph_worker(wname, wb[..]);
   if program.count == 0 { return "invalid-program"; }
   hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
   path := ph_worker_path(home, proc_getenv("PATH", had[..]), pb[..]);
   eb: [9000] u8; en := hs_cat(eb[..], 0, "PATH="); en = hs_cat(eb[..], en, path);
-  b: [16384] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  b: [24576] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
   jo_key(o[..], "program"); jo_str(o[..], program); jo_key(o[..], "cwd"); jo_str(o[..], cwd);
-  jo_key(o[..], "env"); jo_arr(o[..]); jo_str(o[..], cast(string) eb[0..<en]); jo_end(o[..]);
+  jo_key(o[..], "env"); jo_arr(o[..]);
+  jo_str(o[..], cast(string) eb[0..<en]);
+  if engine == PA_INKLING {
+    ub: [512] u8; base := ph_inkling_ensure(ub[..]);
+    en = hs_cat(eb[..], 0, "PSIONIC_BASE_URL="); en = hs_cat(eb[..], en, base); jo_str(o[..], cast(string) eb[0..<en]);
+    jo_str(o[..], "PSIONIC_MODEL=inkling-2-mini");
+  } else if engine == PA_AGY && h.count > 0 {
+    p := h[0].phone[..];
+    if p[0].agy_nbin == 0 { _ = ph_load_agy_cfg(p); }
+    if p[0].agy_nbin > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_BIN="); en = hs_cat(eb[..], en, cast(string) p[0].agy_bin[0..<p[0].agy_nbin]); jo_str(o[..], cast(string) eb[0..<en]); }
+    if p[0].agy_nprofile > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_PROFILE="); en = hs_cat(eb[..], en, cast(string) p[0].agy_profile[0..<p[0].agy_nprofile]); jo_str(o[..], cast(string) eb[0..<en]); }
+    if p[0].agy_nauth > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_AUTH_METHOD="); en = hs_cat(eb[..], en, cast(string) p[0].agy_auth[0..<p[0].agy_nauth]); jo_str(o[..], cast(string) eb[0..<en]); }
+    if p[0].agy_nproject > 0 {
+      en = hs_cat(eb[..], 0, "CODER_AGY_GCP_PROJECT="); en = hs_cat(eb[..], en, cast(string) p[0].agy_project[0..<p[0].agy_nproject]); jo_str(o[..], cast(string) eb[0..<en]);
+      en = hs_cat(eb[..], 0, "GOOGLE_CLOUD_PROJECT="); en = hs_cat(eb[..], en, cast(string) p[0].agy_project[0..<p[0].agy_nproject]); jo_str(o[..], cast(string) eb[0..<en]);
+    }
+    if p[0].agy_nlocation > 0 {
+      en = hs_cat(eb[..], 0, "CODER_AGY_GCP_LOCATION="); en = hs_cat(eb[..], en, cast(string) p[0].agy_location[0..<p[0].agy_nlocation]); jo_str(o[..], cast(string) eb[0..<en]);
+      en = hs_cat(eb[..], 0, "GOOGLE_CLOUD_LOCATION="); en = hs_cat(eb[..], en, cast(string) p[0].agy_location[0..<p[0].agy_nlocation]); jo_str(o[..], cast(string) eb[0..<en]);
+    }
+    if model.count > 0 && model != PA_AGY_ID { en = hs_cat(eb[..], 0, "CODER_AGY_MODEL="); en = hs_cat(eb[..], en, model); jo_str(o[..], cast(string) eb[0..<en]); }
+    eff := pa_effort(PA_AGY, model, effort);
+    if eff.count > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_EFFORT="); en = hs_cat(eb[..], en, eff); jo_str(o[..], cast(string) eb[0..<en]); }
+    jo_str(o[..], "CODER_AGY_MODE=auto");
+  }
+  jo_end(o[..]);
   jo_key(o[..], "unset"); jo_arr(o[..]); jo_str(o[..], "CODER_CLAUDE_KEY"); jo_end(o[..]);
   if skip > 0 { jo_key(o[..], "skip"); jo_int(o[..], skip); }
   jo_end(o[..]);
   sp: [1400] u8; return ifx dr_dir() && fs_write(dr_file(id, ".spec", sp[..]), jo_text(o[..])) then "" else "storage_unavailable";
 }
 
-// OpenSession on Microcoder or Antigravity: the run is the session. Its intent (file, the command's
-// bytes) is kept first, as for any command (es_dispatch), and the view says it was accepted.
+// OpenSession on Antigravity (Neon), Inkling 2 Mini, or Microcoder: the run is the session.
 ph_open :: (h: [] HsHost, q: [] EaRequest, grant: string, id: string, pick: PaPick, cwd: string, file: string, command: string, v: [] EaView) {
   if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
   generation := cxproc_wall_us() / 1000;
-  line: [EX_INPUT_MAX + 8192] u8; ln := ph_task(cast(string) q[0].text[0..<q[0].nt], id, cwd, pick.engine, pick.model, line[..]);
+  want_eff := cast(string) q[0].effort[0..<q[0].nef];
+  eff := pa_effort(pick.engine, pick.model, want_eff);
+  line: [EX_INPUT_MAX + 8192] u8; ln := ph_task(cast(string) q[0].text[0..<q[0].nt], id, cwd, pick.engine, pick.model, eff, line[..]);
   if ln < 2 { es_refuse(v, "malformed"); return; }
   ip: [1400] u8;
-  if !fs_replace_durable(file, command) || !ph_meta(id, generation, pick) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
-  why := ph_spec(id, pick.engine, cwd, 0);
+  if !fs_replace_durable(file, command) || !ph_meta(id, generation, pick, eff) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
+  why := ph_spec(h, id, pick.engine, pick.model, eff, cwd, 0);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
   v[0].ns = 0; dk_read_summary(h, id, v);
   v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[..]); v[0].nt = ea_copy(v[0].status[..], "accepted");
 }
 
-// The conversation's turns from the run's own lines, as the worker's recall line takes them
-// ([{"task":T,"reply":R}], the newest PH_RECALL_TURNS): its length in out, 0 for none.
+// The conversation's turns from the run's own lines, as the worker's recall line takes them.
 ph_recall :: (s: [] Session, out: [] u8) -> int {
   users: [64] int; nu := 0;
   for k: 0..<s[0].n { if s[0].parts[k].kind == P_USER && nu < users.count { users[nu] = k; nu += 1; } }
@@ -210,9 +635,8 @@ ph_recall :: (s: [] Session, out: [] u8) -> int {
 }
 
 // The lines a phone's SendMessage or StopTurn writes into its run: a steer while a turn runs, else
-// the message as a task line with the run's own settings (both workers take one; agyworker keeps no
-// queue). -1 when they don't fit.
-ph_lines :: (r: [] DkInfo, method: string, command: string, text: string, out: [] u8) -> int {
+// the message as a task line with the run's settings (updating model/effort if changed).
+ph_lines :: (r: [] DkInfo, method: string, command: string, text: string, model: string, effort: string, out: [] u8) -> int {
   if method == "StopTurn" { return ifx r[0].busy then mww_interrupt(out, false) else 0; }
   if r[0].busy { return mww_steer(out, command, text, 0); }
   id := cast(string) r[0].id[..];
@@ -223,38 +647,44 @@ ph_lines :: (r: [] DkInfo, method: string, command: string, text: string, out: [
   ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; t: [1] McTask;
   if !mww_task_read(ar[..], cast(string) tb[0..<tn[0]], t[..]) { return -1; }
   t[0].task = text;
+  if model.count > 0 { t[0].model = model; }
+  if effort.count > 0 { t[0].effort = effort; }
   return mww_task(out, t[0]);
 }
-// A message to a phone's run whose worker ended: the worker starts again under the same id, told
-// the conversation so far, with only the new lines (the earlier input is kept, not sent again).
-ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: string, text: string) -> string {
+// A message to a phone's run whose worker ended (or switched engines mid-chat, e.g. Neon <-> Inkling):
+// starts the chosen worker under the same id, told the conversation so far, with only the new lines.
+ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: string, text: string, want_model: string, want_effort: string) -> string {
   id := cast(string) r[0].id[..];
-  engine := ph_engine(id); if engine == PA_NONE { return "not_found"; }
-  // the engine it ran on is gone (agy removed, the Gemini sign-in lost): the chat goes on where it
-  // can, on that engine's default model, and says so
-  moved := PaPick.{engine = PA_NONE};
-  if !pa_usable(ph_facts(h), engine) {
-    pick := pa_pick(ph_facts(h), "");
-    if pick.engine != PA_MICRO && pick.engine != PA_AGY { return "no_agent"; }
-    moved = PaPick.{engine = pick.engine, model = pick.model, fell_back = true, asked = engine};
-    engine = pick.engine;
+  prev_engine := ph_engine(id); if prev_engine == PA_NONE { return "not_found"; }
+  facts := ph_facts(h);
+  engine := prev_engine;
+  pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
+  prev_mb: [64] u8; prev_model := ph_model_in(pm, prev_mb[..]);
+  prev_eb: [16] u8; prev_effort := ph_effort_in(pm, prev_eb[..]);
+  model := ifx want_model.count > 0 then want_model else prev_model;
+  eff_in := ifx want_effort.count > 0 then want_effort else prev_effort;
+  pick := PaPick.{engine = engine, model = model};
+  if want_model.count > 0 {
+    p := pa_pick(facts, want_model);
+    if p.engine == PA_NONE || p.engine == PA_CLAUDE { return "no_agent"; }
+    pick = p; engine = p.engine; model = p.model;
+  } else if !pa_usable(facts, engine) {
+    p := pa_pick(facts, "");
+    if p.engine == PA_NONE || p.engine == PA_CLAUDE { return "no_agent"; }
+    pick = PaPick.{engine = p.engine, model = p.model, fell_back = true, asked = prev_engine};
+    engine = p.engine; model = p.model;
   }
+  eff := pa_effort(engine, model, eff_in);
   ses: [1] Session; pool: [524288] u8; s_init(ses[..], pool[..]);
   stamps: [S_PARTS] int; file: [DK_FILE] u8; ab: [DK_ARENA] u8; none: [1] DkSub;
   _ = dk_session(r, runs, n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
   lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 16384] u8;
   at := ph_recall(ses[..], lines[..]); if at < 0 { return "malformed"; }
-  w := ph_lines(r, "SendMessage", command, text, lines[at..<lines.count]); if w < 1 { return "malformed"; }
-  // a recovered engine runs its own default model
-  if engine != ph_engine(id) {
-    ab2: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab2[..]}]; t: [1] McTask;
-    if !mww_task_read(ar[..], cast(string) lines[at..<at + w - 1], t[..]) { return "malformed"; }
-    ids := PA_MICRO_ID; t[0].model = ifx engine == PA_MICRO then ids[0] else ""; t[0].effort = ifx engine == PA_MICRO then PA_MICRO_EFFORT else "";
-    w = mww_task(lines[at..<lines.count], t[0]); if w < 1 { return "malformed"; }
-  }
-  if moved.engine != PA_NONE && !ph_meta(id, ph_generation(id), moved) { return "storage_unavailable"; }
+  w := ph_task(text, id, cast(string) r[0].cwd[0..<r[0].ncwd], engine, model, eff, lines[at..<lines.count]);
+  if w < 1 { return "malformed"; }
+  if !ph_meta(id, ph_generation(id), pick, eff) { return "storage_unavailable"; }
   ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); skip := fs_size(inp); if skip < 0 { return "storage_unavailable"; }
-  why := ph_spec(id, engine, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
+  why := ph_spec(h, id, engine, model, eff, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
   if why.count > 0 { return why; }
   if !fs_append(inp, cast(string) lines[0..<at + w]) { return "storage_unavailable"; }
   why = dr_start(h[0].runs[..], id);
@@ -269,18 +699,31 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
   #assert cast(string) out[0..<n] == "{\"recall\":[{\"task\":\"first\",\"reply\":\"one\"},{\"task\":\"second\",\"reply\":\"two\"}]}\n";
   e: [1] Session; epool: [1024] u8; s_init(e[..], epool[..]); #assert ph_recall(e[..], out[..]) == 0;
 }
-#test "a phone's message is Coder Desktop's task line, its folder and model, with no sub-agents" {
-  out: [8192] u8; n := ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", out[..]);
+#test "a phone's message is Desktop's task line for Neon, Inkling and Microcoder, with effort and no sub-agents" {
+  out: [8192] u8; n := ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_AGY, "gemini-4-neon", "xhigh", out[..]);
   ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; t: [1] McTask;
   #assert n > 1 && out[n - 1] == 10 && mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]);
-  #assert t[0].task == "hi" && t[0].session == "phone-0123456789abcdef0123456789abcdef" && t[0].cwd == "/w/repo" && t[0].model == "gemini-4-neon" && t[0].effort == "low" && !t[0].agents && t[0].gated && t[0].no_ask;
-  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_AGY, "", out[..]);
-  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].model == "" && t[0].effort == "";
+  #assert t[0].task == "hi" && t[0].session == "phone-0123456789abcdef0123456789abcdef" && t[0].cwd == "/w/repo" && t[0].model == "gemini-4-neon" && t[0].effort == "xhigh" && !t[0].local && !t[0].agents && t[0].gated && t[0].no_ask;
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_INKLING, "inkling-2-mini", "", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].local && t[0].model == "inkling-2-mini" && t[0].effort == "medium";
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", "high", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "gemini-4-neon" && t[0].effort == "low";
+}
+#test "agy probe json extracts authenticated models with Gemini 4 Neon first and rejects unauthenticated" {
+  raw := "{\"authStatus\":\"authenticated\",\"models\":[{\"slug\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";
+  models: [EA_MODELS] EaModel; nm: [1] int;
+  #assert ph_parse_agy_probe(raw, models[..], nm[..]) && nm[0] == 2;
+  #assert cast(string) models[0].id[0..<models[0].ni] == "gemini-4-neon" && models[0].ladder == (1 | 2 | 4 | 8);
+  #assert cast(string) models[1].id[0..<models[1].ni] == "gemini-4-carbon" && models[1].ladder == (1 | 2 | 4);
+  unauth := "{\"authStatus\":\"unauthenticated\",\"models\":[{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\"}]}";
+  #assert !ph_parse_agy_probe(unauth, models[..], nm[..]) && nm[0] == 0;
+}
+#test "SHA-256 profile digest matches Desktop AntigravityProvider for antigravity" {
+  h: [64] u8;
+  #assert ph_sha256_hex("antigravity", h[..]) == "ac0a3dfd6dddb20962cecff6ee5fe65e19d3923be20e52c5ab52ff877f7e4c32";
 }
 
-// The PATH Coder Desktop gives the workers it starts (dc_worker_path in
-// coax/lib/agent/desktop/worker.coax, CoderWorker.path), which this host can't load beside
-// desktop-store: the folders a program opened from the desktop lacks put in front, each once.
+// The PATH Coder Desktop gives the workers it starts.
 ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all) {
   given := ifx had.count > 0 then had else "/usr/bin:/bin:/usr/sbin:/sbin";
   more: [3] string; mb0: [DC_PATH] u8;
@@ -302,14 +745,14 @@ ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all
   #assert ph_worker_path("/Users/a", "", b[..]) == "/Users/a/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 }
 
-#test "a phone's run keeps what runs it and the note a fallback shows" {
-  mo: [1] Jo; mb: [1024] u8; out: [64] u8; nb: [256] u8;
-  t := ph_meta_text(42, pa_pick(PaFacts.{gemini = true}, "default"), mo[..], mb[..]);
-  #assert cl_int(t, "generation").value == 42 && ph_model_in(t, out[..]) == "gemini-4-neon";
+#test "a phone's run keeps its model, effort and fallback note" {
+  mo: [1] Jo; mb: [1024] u8; out: [64] u8; eb: [16] u8; nb: [256] u8;
+  t := ph_meta_text(42, pa_pick(PaFacts.{agy = true, inkling = true}, "default"), "high", mo[..], mb[..]);
+  #assert cl_int(t, "generation").value == 42 && ph_model_in(t, out[..]) == "gemini-4-neon" && ph_effort_in(t, eb[..]) == "high";
   #assert ph_note_in(t, nb[..]) == "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon.";
-  t = ph_meta_text(42, pa_pick(PaFacts.{gemini = true, agy = true}, "antigravity"), mo[..], mb[..]);
-  #assert ph_model_in(t, out[..]) == "antigravity" && ph_note_in(t, nb[..]) == "";
-  t = ph_meta_text(7, PaPick.{engine = PA_AGY, fell_back = true, asked = PA_MICRO}, mo[..], mb[..]);
-  #assert ph_note_in(t, nb[..]) == "Microcoder on Gemini isn't set up on this computer, so this chat runs on Antigravity.";
-  #assert ph_model_in("{}", out[..]) == "" && ph_note_in("{}", nb[..]) == "";
+  t = ph_meta_text(42, pa_pick(PaFacts.{agy = true, inkling = true}, "inkling-2-mini"), "", mo[..], mb[..]);
+  #assert ph_model_in(t, out[..]) == "inkling-2-mini" && ph_effort_in(t, eb[..]) == "medium" && ph_note_in(t, nb[..]) == "";
+  t = ph_meta_text(7, PaPick.{engine = PA_INKLING, model = "inkling-2-mini", fell_back = true, asked = PA_AGY}, "low", mo[..], mb[..]);
+  #assert ph_note_in(t, nb[..]) == "Antigravity isn't set up on this computer, so this chat runs on Inkling 2 Mini.";
+  #assert ph_model_in("{}", out[..]) == "" && ph_effort_in("{}", eb[..]) == "" && ph_note_in("{}", nb[..]) == "";
 }

@@ -1,140 +1,183 @@
 // Which agent answers a chat that a paired phone starts on this computer, and what the phone is
-// offered to pick from (owner, 2026-11-20). The rule: the model the phone picked when this computer
-// can run it, else this computer's working default, and never an engine whose CLI is missing. A
-// phone chat never dead-ends on "install Claude Code" while another agent here works.
+// offered to pick from (owner, 2026-11-22: Neon + Inkling flow). The rule: the model the phone
+// picked when this computer can run it, else this computer's working default, and never an engine
+// whose runtime or sign-in is missing. A phone chat never dead-ends on "install Claude Code" while
+// another agent here works.
 //
-// The engines, in the order the computer falls back through (Coder Desktop's own order,
-// apps/openagents-desktop/page/models.coax cp_model_index: Microcoder on Gemini first, then
-// Antigravity), with Claude Code last, since Coder Desktop itself never runs a chat on it:
-//   PA_MICRO   Microcoder (mcworker) on Gemini: needs a Gemini sign-in (mcworker --auth)
-//   PA_AGY     the Antigravity CLI (agyworker): needs agy installed
-//   PA_CLAUDE  Claude Code, the host's own engine: needs the claude CLI
-// A model id names its engine: Microcoder's Gemini models (PA_MICRO_ID), "antigravity", and
-// "default" or "claude-*" (the Claude catalog's ids). Anything else names none: no preference.
+// The engines, in the order the computer offers and falls back through (OpenAgents Desktop's
+// Neon + Inkling core flow first, legacy Microcoder and Claude Code after):
+//   PA_AGY      Antigravity (agyworker) on Gemini 4 Neon and the user's Antigravity catalog
+//   PA_INKLING  Inkling 2 Mini (Local) via inky + Psionic Metal 4 (psionic-inkling-serve)
+//   PA_MICRO    Legacy Microcoder (mcworker) on Gemini: needs a Gemini sign-in (mcworker --auth)
+//   PA_CLAUDE   Claude Code, the host's own engine: needs the claude CLI
 //
-// The phone's offer lists only the engines this computer can run, the default first, so a phone
-// that sends the offer's first model (the iOS app with its model picker hidden) asks for the
-// working default.
+// A model id names its engine: "inkling-2-mini" (or "inkling") is PA_INKLING; "antigravity" or
+// "gemini-*" (e.g. "gemini-4-neon") is PA_AGY (falling back to PA_MICRO if only mcworker is
+// available); "default" or "claude-*" is PA_CLAUDE. Anything else names none: no preference.
+//
+// The phone's offer lists only the engines this computer can run, the working default first, so a
+// phone that sends the offer's first model starts on the working default.
 //   coax/bin/coax test coax/lib/agent/environment/phone-agent-policy.coax
 #authority;
 
-PA_NONE :: -1; PA_CLAUDE :: 0; PA_MICRO :: 1; PA_AGY :: 2;
-PA_ORDER :: [3] int.[PA_MICRO, PA_AGY, PA_CLAUDE];
-// Microcoder's main models, Neon the default (the same list as Coder Desktop's composer picker,
-// apps/openagents-desktop/page/state.coax CP_MODEL_ID, which names these).
+PA_NONE :: -1; PA_CLAUDE :: 0; PA_MICRO :: 1; PA_AGY :: 2; PA_INKLING :: 3;
+PA_ORDER :: [4] int.[PA_AGY, PA_INKLING, PA_MICRO, PA_CLAUDE];
+
+// Primary Neon + Antigravity models (Gemini 4 Neon first) and local Inkling 2 Mini.
+PA_NEON_MODELS :: 5;
+PA_NEON_ID :: [PA_NEON_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"];
+PA_NEON_LABEL :: [PA_NEON_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon", "Gemini 3.8 Flash"];
+PA_AGY_ID :: "antigravity";
+PA_AGY_DEFAULT :: "gemini-4-neon";
+PA_AGY_LABEL :: "Antigravity";
+PA_AGY_EFFORT :: "medium";
+
+PA_INKLING_ID :: "inkling-2-mini";
+PA_INKLING_LABEL :: "Inkling 2 Mini";
+PA_INKLING_EFFORT :: "medium";
+
+// Legacy Microcoder models (fallback when agy is unavailable and mcworker is installed).
 PA_MICRO_MODELS :: 4;
 PA_MICRO_ID :: [PA_MICRO_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
 PA_MICRO_LABEL :: [PA_MICRO_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
-PA_AGY_ID :: "antigravity";
-PA_AGY_LABEL :: "Antigravity";
-// Coder Desktop runs Microcoder at low effort; the phone's offer gives its models that level only.
 PA_MICRO_EFFORT :: "low";
 
+// Thinking / effort levels offered for Neon + Inkling.
+PA_EFFORTS :: 4;
+PA_EFFORT_ID :: [PA_EFFORTS] string.["low", "medium", "high", "xhigh"];
+PA_EFFORT_LABEL :: [PA_EFFORTS] string.["Low", "Medium", "High", "X-High"];
+
 // What this computer can run now.
-PaFacts :: struct { claude: bool; gemini: bool; agy: bool; }
-// A chat's agent: the engine, its model ("" for the engine's own default), the engine the phone
-// asked for (PA_NONE: no preference) and whether it is not that one.
+PaFacts :: struct { claude: bool; gemini: bool; agy: bool; inkling: bool; }
+// A chat's agent: the engine, its model, the engine the phone asked for (PA_NONE: no preference)
+// and whether it is not that one.
 PaPick :: struct { engine: int; model: string; fell_back: bool; asked: int; }
 // What the chat's own transcript says when it fell back: the engine asked for, then what runs.
-PA_ENGINE_NAME :: [3] string.["Claude Code", "Microcoder on Gemini", "Antigravity"];
+PA_ENGINE_NAME :: [4] string.["Claude Code", "Microcoder on Gemini", "Antigravity", "Inkling 2 Mini"];
 
 #test "a model id names its engine, and an unknown one names none" {
-  #assert pa_engine_of("gemini-4-neon") == PA_MICRO && pa_engine_of("gemini-4-argon") == PA_MICRO;
-  #assert pa_engine_of("antigravity") == PA_AGY;
+  #assert pa_engine_of("gemini-4-neon") == PA_AGY && pa_engine_of("gemini-4-argon") == PA_AGY && pa_engine_of("gemini-3.8-flash") == PA_AGY;
+  #assert pa_engine_of("antigravity") == PA_AGY && pa_engine_of("gemini-pro-orchestrator") == PA_AGY && pa_engine_of("gemini-x") == PA_AGY;
+  #assert pa_engine_of("inkling-2-mini") == PA_INKLING && pa_engine_of("inkling") == PA_INKLING;
   #assert pa_engine_of("default") == PA_CLAUDE && pa_engine_of("claude-opus-5-5") == PA_CLAUDE && pa_engine_of("claude-") == PA_NONE && pa_engine_of("claude-x") == PA_CLAUDE;
-  #assert pa_engine_of("") == PA_NONE && pa_engine_of("gemini-4-xenon") == PA_NONE && pa_engine_of("gpt-5") == PA_NONE && pa_engine_of("Claude-opus") == PA_NONE;
+  #assert pa_engine_of("") == PA_NONE && pa_engine_of("gemini-") == PA_NONE && pa_engine_of("gpt-5") == PA_NONE && pa_engine_of("Claude-opus") == PA_NONE;
+  #assert pa_micro_model("gemini-4-neon") && pa_micro_model("gemini-4-argon") && !pa_micro_model("gemini-9") && !pa_micro_model("inkling-2-mini");
 }
 #test "an engine is usable only when what it needs is here" {
-  none := PaFacts.{}; all := PaFacts.{claude = true, gemini = true, agy = true};
-  for e: [3] int.[PA_CLAUDE, PA_MICRO, PA_AGY] { #assert !pa_usable(none, e) && pa_usable(all, e); }
-  #assert pa_usable(PaFacts.{claude = true}, PA_CLAUDE) && !pa_usable(PaFacts.{claude = true}, PA_MICRO) && !pa_usable(PaFacts.{claude = true}, PA_AGY);
-  #assert pa_usable(PaFacts.{gemini = true}, PA_MICRO) && !pa_usable(PaFacts.{gemini = true}, PA_CLAUDE);
-  #assert pa_usable(PaFacts.{agy = true}, PA_AGY) && !pa_usable(PaFacts.{agy = true}, PA_MICRO);
-  #assert !pa_usable(all, PA_NONE) && !pa_usable(all, 3);
+  none := PaFacts.{}; all := PaFacts.{claude = true, gemini = true, agy = true, inkling = true};
+  for e: [4] int.[PA_CLAUDE, PA_MICRO, PA_AGY, PA_INKLING] { #assert !pa_usable(none, e) && pa_usable(all, e); }
+  #assert pa_usable(PaFacts.{claude = true}, PA_CLAUDE) && !pa_usable(PaFacts.{claude = true}, PA_MICRO) && !pa_usable(PaFacts.{claude = true}, PA_AGY) && !pa_usable(PaFacts.{claude = true}, PA_INKLING);
+  #assert pa_usable(PaFacts.{gemini = true}, PA_MICRO) && !pa_usable(PaFacts.{gemini = true}, PA_CLAUDE) && !pa_usable(PaFacts.{gemini = true}, PA_INKLING);
+  #assert pa_usable(PaFacts.{agy = true}, PA_AGY) && !pa_usable(PaFacts.{agy = true}, PA_MICRO) && !pa_usable(PaFacts.{agy = true}, PA_INKLING);
+  #assert pa_usable(PaFacts.{inkling = true}, PA_INKLING) && !pa_usable(PaFacts.{inkling = true}, PA_AGY) && !pa_usable(PaFacts.{inkling = true}, PA_MICRO);
+  #assert !pa_usable(all, PA_NONE) && !pa_usable(all, 4);
 }
-#test "the owner's Mac: Claude Code removed, Gemini and Antigravity working; the phone's Claude default runs on Gemini" {
-  mac := PaFacts.{claude = false, gemini = true, agy = true};
+#test "the Neon + Inkling Mac runs Gemini 4 Neon on Antigravity and Inkling 2 Mini locally" {
+  mac := PaFacts.{agy = true, inkling = true};
   p := pa_pick(mac, "default");
-  #assert p.engine == PA_MICRO && p.model == "gemini-4-neon" && p.fell_back;
-  p = pa_pick(mac, "claude-opus-5-5"); #assert p.engine == PA_MICRO && p.fell_back;
-  // what the phone picked, when the Mac runs it
-  p = pa_pick(mac, "gemini-4-carbon"); #assert p.engine == PA_MICRO && p.model == "gemini-4-carbon" && !p.fell_back;
-  p = pa_pick(mac, "antigravity"); #assert p.engine == PA_AGY && p.model == "" && !p.fell_back;
-  // no preference: the working default, not a fallback
-  p = pa_pick(mac, ""); #assert p.engine == PA_MICRO && p.model == "gemini-4-neon" && !p.fell_back;
-  p = pa_pick(mac, "gpt-5"); #assert p.engine == PA_MICRO && !p.fell_back;
+  #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && p.fell_back;
+  p = pa_pick(mac, "claude-opus-5-5"); #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && p.fell_back;
+  // explicit Neon, Antigravity models, and Inkling choices never fall back
+  p = pa_pick(mac, "gemini-4-neon"); #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && !p.fell_back;
+  p = pa_pick(mac, "gemini-4-carbon"); #assert p.engine == PA_AGY && p.model == "gemini-4-carbon" && !p.fell_back;
+  p = pa_pick(mac, "antigravity"); #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && !p.fell_back;
+  p = pa_pick(mac, "inkling-2-mini"); #assert p.engine == PA_INKLING && p.model == "inkling-2-mini" && !p.fell_back;
+  p = pa_pick(mac, "inkling"); #assert p.engine == PA_INKLING && p.model == "inkling-2-mini" && !p.fell_back;
+  // no preference: Gemini 4 Neon via Antigravity, not a fallback
+  p = pa_pick(mac, ""); #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && !p.fell_back;
+  p = pa_pick(mac, "gpt-5"); #assert p.engine == PA_AGY && p.model == "gemini-4-neon" && !p.fell_back;
+  // Inkling-only Mac: defaults cleanly to Inkling 2 Mini
+  local_only := PaFacts.{inkling = true};
+  p = pa_pick(local_only, ""); #assert p.engine == PA_INKLING && p.model == "inkling-2-mini" && !p.fell_back;
+  p = pa_pick(local_only, "gemini-4-neon"); #assert p.engine == PA_INKLING && p.model == "inkling-2-mini" && p.fell_back && p.asked == PA_AGY;
 }
 #test "a missing engine is never picked, whatever was asked" {
-  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 {
-    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1};
-    for want: [9] string.["", "default", "claude-opus-5-5", "gemini-4-neon", "gemini-4-hydrogen", "antigravity", "gpt-5", "gemini-4-xenon", "claude-"] {
+  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 { for k: 0..<2 {
+    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1, inkling = k == 1};
+    for want: [10] string.["", "default", "claude-opus-5-5", "gemini-4-neon", "gemini-4-hydrogen", "antigravity", "inkling-2-mini", "gpt-5", "gemini-", "claude-"] {
       p := pa_pick(f, want);
-      #assert (p.engine == PA_NONE) == (!f.claude && !f.gemini && !f.agy);
+      #assert (p.engine == PA_NONE) == (!f.claude && !f.gemini && !f.agy && !f.inkling);
       if p.engine != PA_NONE { #assert pa_usable(f, p.engine); }
       w := pa_engine_of(want);
       if w != PA_NONE && pa_usable(f, w) { #assert p.engine == w && !p.fell_back; }
       if w != PA_NONE && !pa_usable(f, w) { #assert p.fell_back == (p.engine != PA_NONE); }
       if w == PA_NONE { #assert !p.fell_back; }
-      if p.engine == PA_MICRO { #assert pa_engine_of(p.model) == PA_MICRO; }
-      if p.engine == PA_AGY { #assert p.model == ""; }
+      if p.engine == PA_MICRO { #assert pa_micro_model(p.model); }
+      if p.engine == PA_AGY { #assert pa_engine_of(p.model) == PA_AGY; }
+      if p.engine == PA_INKLING { #assert p.model == PA_INKLING_ID; }
       if p.engine == PA_CLAUDE { #assert pa_engine_of(p.model) == PA_CLAUDE; }
     }
-  } } }
+  } } } }
 }
 #test "a chat that fell back says so once, in plain words: what was asked for and what runs" {
-  b: [160] u8; mac := PaFacts.{gemini = true, agy = true};
+  b: [160] u8; mac := PaFacts.{agy = true, inkling = true};
   #assert pa_note(pa_pick(mac, "default"), b[..]) == "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon.";
-  #assert pa_note(pa_pick(PaFacts.{agy = true}, "gemini-4-carbon"), b[..]) == "Microcoder on Gemini isn't set up on this computer, so this chat runs on Antigravity.";
+  #assert pa_note(pa_pick(PaFacts.{inkling = true}, "gemini-4-neon"), b[..]) == "Antigravity isn't set up on this computer, so this chat runs on Inkling 2 Mini.";
+  #assert pa_note(pa_pick(PaFacts.{agy = true}, "inkling-2-mini"), b[..]) == "Inkling 2 Mini isn't set up on this computer, so this chat runs on Gemini 4 Neon.";
   #assert pa_note(pa_pick(PaFacts.{claude = true}, "antigravity"), b[..]) == "Antigravity isn't set up on this computer, so this chat runs on Claude Code.";
-  #assert pa_note(pa_pick(PaFacts.{claude = true}, "gemini-4-argon"), b[..]) == "Microcoder on Gemini isn't set up on this computer, so this chat runs on Claude Code.";
+  #assert pa_note(pa_pick(PaFacts.{gemini = true}, "gemini-4-argon"), b[..]) == "Antigravity isn't set up on this computer, so this chat runs on Gemini 4 Argon.";
   // no fallback, no note: what was asked runs, or nothing was asked
-  #assert pa_note(pa_pick(mac, "gemini-4-carbon"), b[..]) == "" && pa_note(pa_pick(mac, ""), b[..]) == "" && pa_note(pa_pick(PaFacts.{}, "default"), b[..]) == "";
-  #assert pa_note(PaPick.{engine = PA_MICRO, model = "gemini-4-neon", fell_back = true, asked = 3}, b[..]) == "" && pa_note(PaPick.{engine = PA_MICRO, model = "gemini-4-neon", fell_back = true, asked = PA_NONE}, b[..]) == "";
+  #assert pa_note(pa_pick(mac, "gemini-4-carbon"), b[..]) == "" && pa_note(pa_pick(mac, "inkling-2-mini"), b[..]) == "" && pa_note(pa_pick(mac, ""), b[..]) == "" && pa_note(pa_pick(PaFacts.{}, "default"), b[..]) == "";
+  #assert pa_note(PaPick.{engine = PA_AGY, model = "gemini-4-neon", fell_back = true, asked = 4}, b[..]) == "" && pa_note(PaPick.{engine = PA_AGY, model = "gemini-4-neon", fell_back = true, asked = PA_NONE}, b[..]) == "";
   small: [20] u8; #assert pa_note(pa_pick(mac, "default"), small[..]) == "";
   exact: [78] u8; #assert pa_note(pa_pick(mac, "default"), exact[..]).count == 78 && pa_note(pa_pick(mac, "default"), exact[0..<77]) == "";
-  #assert pa_pick(mac, "default").asked == PA_CLAUDE && pa_pick(mac, "").asked == PA_NONE && pa_pick(mac, "antigravity").asked == PA_AGY;
+  #assert pa_pick(mac, "default").asked == PA_CLAUDE && pa_pick(mac, "").asked == PA_NONE && pa_pick(mac, "antigravity").asked == PA_AGY && pa_pick(mac, "inkling-2-mini").asked == PA_INKLING;
   // the name of what runs
-  #assert pa_label(pa_pick(mac, "gemini-4-hydrogen")) == "Gemini 4 Hydrogen" && pa_label(pa_pick(mac, "gemini-4-argon")) == "Gemini 4 Argon" && pa_label(pa_pick(mac, "antigravity")) == "Antigravity";
+  #assert pa_label(pa_pick(mac, "gemini-4-hydrogen")) == "Gemini 4 Hydrogen" && pa_label(pa_pick(mac, "gemini-4-argon")) == "Gemini 4 Argon" && pa_label(pa_pick(mac, "gemini-3.8-flash")) == "Gemini 3.8 Flash";
+  #assert pa_label(pa_pick(mac, "inkling-2-mini")) == "Inkling 2 Mini" && pa_label(PaPick.{engine = PA_AGY, model = "gemini-9"}) == "Antigravity";
+  #assert pa_label(pa_pick(PaFacts.{gemini = true}, "")) == "Gemini 4 Neon" && pa_pick(PaFacts.{gemini = true}, "").model == "gemini-4-neon";
   #assert pa_label(pa_pick(PaFacts.{claude = true}, "")) == "Claude Code" && pa_label(PaPick.{engine = PA_MICRO, model = "gemini-9"}) == "Microcoder on Gemini" && pa_label(PaPick.{engine = PA_NONE}) == "";
 }
-#test "the fallback order is Gemini, then Antigravity, then Claude Code" {
-  #assert pa_pick(PaFacts.{claude = true, gemini = true, agy = true}, "").engine == PA_MICRO;
-  #assert pa_pick(PaFacts.{claude = true, agy = true}, "").engine == PA_AGY;
+#test "the fallback order is Antigravity, then Inkling 2 Mini, then Microcoder, then Claude Code" {
+  #assert pa_pick(PaFacts.{claude = true, gemini = true, agy = true, inkling = true}, "").engine == PA_AGY;
+  #assert pa_pick(PaFacts.{claude = true, gemini = true, inkling = true}, "").engine == PA_INKLING;
+  #assert pa_pick(PaFacts.{claude = true, gemini = true}, "").engine == PA_MICRO;
   #assert pa_pick(PaFacts.{claude = true}, "gemini-4-neon").engine == PA_CLAUDE && pa_pick(PaFacts.{claude = true}, "gemini-4-neon").model == "default";
   #assert pa_pick(PaFacts.{agy = true}, "default").engine == PA_AGY && pa_pick(PaFacts.{agy = true}, "default").fell_back;
   #assert pa_pick(PaFacts.{}, "default").engine == PA_NONE && !pa_pick(PaFacts.{}, "default").fell_back;
   // Claude Code here and asked for: its own model
-  p := pa_pick(PaFacts.{claude = true, gemini = true}, "claude-opus-5-5"); #assert p.engine == PA_CLAUDE && p.model == "claude-opus-5-5" && !p.fell_back;
+  p := pa_pick(PaFacts.{claude = true, agy = true, inkling = true}, "claude-opus-5-5"); #assert p.engine == PA_CLAUDE && p.model == "claude-opus-5-5" && !p.fell_back;
 }
 #test "the offer lists only the engines this computer runs, the working default first" {
-  o: [3] int;
-  #assert pa_offer(PaFacts.{claude = false, gemini = true, agy = true}, o[..]) == 2 && o[0] == PA_MICRO && o[1] == PA_AGY;
-  #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true}, o[..]) == 3 && o[0] == PA_MICRO && o[2] == PA_CLAUDE;
+  o: [4] int;
+  #assert pa_offer(PaFacts.{agy = true, inkling = true}, o[..]) == 2 && o[0] == PA_AGY && o[1] == PA_INKLING;
+  #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true, inkling = true}, o[..]) == 4 && o[0] == PA_AGY && o[1] == PA_INKLING && o[2] == PA_MICRO && o[3] == PA_CLAUDE;
   #assert pa_offer(PaFacts.{claude = true}, o[..]) == 1 && o[0] == PA_CLAUDE;
-  #assert pa_offer(PaFacts.{agy = true}, o[..]) == 1 && o[0] == PA_AGY;
+  #assert pa_offer(PaFacts.{inkling = true}, o[..]) == 1 && o[0] == PA_INKLING;
   #assert pa_offer(PaFacts.{}, o[..]) == 0;
-  small: [1] int; #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true}, small[..]) == 1 && small[0] == PA_MICRO;
-  // the first model offered is the one a phone with no choice of its own runs on, unchanged
-  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 {
-    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1};
+  small: [1] int; #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true, inkling = true}, small[..]) == 1 && small[0] == PA_AGY;
+  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 { for k: 0..<2 {
+    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1, inkling = k == 1};
     n := pa_offer(f, o[..]);
     if n > 0 { #assert o[0] == pa_pick(f, "").engine; for i: 0..<n { #assert pa_usable(f, o[i]); } }
-  } } }
+  } } } }
+}
+#test "effort resolution clamps to each engine's supported levels and defaults cleanly" {
+  #assert pa_effort(PA_AGY, "gemini-4-neon", "") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "xhigh") == "xhigh" && pa_effort(PA_AGY, "gemini-4-neon", "low") == "low" && pa_effort(PA_AGY, "gemini-4-neon", "high") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "medium") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "bogus") == "medium";
+  #assert pa_effort(PA_INKLING, "inkling-2-mini", "") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "low") == "low" && pa_effort(PA_INKLING, "inkling-2-mini", "medium") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "high") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "xhigh") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "bogus") == "medium";
+  #assert pa_effort(PA_MICRO, "gemini-4-neon", "high") == "low" && pa_effort(PA_CLAUDE, "default", "high") == "high" && pa_effort(PA_NONE, "", "high") == "";
 }
 
 pa_usable :: (f: PaFacts, engine: int) -> bool #effects(all) {
   if engine == PA_CLAUDE { return f.claude; }
   if engine == PA_MICRO { return f.gemini; }
   if engine == PA_AGY { return f.agy; }
+  if engine == PA_INKLING { return f.inkling; }
   return false;
 }
 pa_micro_model :: (id: string) -> bool #effects(all) {
   for m: PA_MICRO_ID { if id == m { return true; } }
   return false;
 }
+pa_inkling_model :: (id: string) -> bool #effects(all) {
+  return id == PA_INKLING_ID || id == "inkling";
+}
+pa_agy_model :: (id: string) -> bool #effects(all) {
+  return id == PA_AGY_ID || (id.count > 7 && cast(string) id[0..<7] == "gemini-");
+}
 pa_engine_of :: (id: string) -> int #effects(all) {
-  if pa_micro_model(id) { return PA_MICRO; }
-  if id == PA_AGY_ID { return PA_AGY; }
+  if pa_inkling_model(id) { return PA_INKLING; }
+  if pa_agy_model(id) { return PA_AGY; }
   if id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") { return PA_CLAUDE; }
   return PA_NONE;
 }
@@ -145,20 +188,45 @@ pa_pick :: (f: PaFacts, want: string) -> PaPick #effects(all) {
   else { for e: PA_ORDER { if pa_usable(f, e) { engine = e; break; } } }
   ids := PA_MICRO_ID;
   model := "";
-  if engine == PA_MICRO { model = ifx asked == PA_MICRO then want else ids[0]; }
+  if engine == PA_AGY { model = ifx asked == PA_AGY && want != PA_AGY_ID then want else PA_AGY_DEFAULT; }
+  if engine == PA_INKLING { model = PA_INKLING_ID; }
+  if engine == PA_MICRO { model = ifx pa_micro_model(want) then want else ids[0]; }
   if engine == PA_CLAUDE { model = ifx asked == PA_CLAUDE then want else "default"; }
   return PaPick.{engine = engine, model = model, fell_back = asked != PA_NONE && engine != PA_NONE && engine != asked, asked = asked};
 }
-// What a person calls the agent a pick runs: its model's name for Microcoder, else the engine's.
+// The effort level a turn runs at for `engine` and `model` ("" for none).
+pa_effort :: (engine: int, model: string, want: string) -> string #effects(all) {
+  if engine == PA_AGY {
+    if want == "low" || want == "medium" || want == "high" || want == "xhigh" { return want; }
+    return PA_AGY_EFFORT;
+  }
+  if engine == PA_INKLING {
+    if want == "low" || want == "medium" || want == "high" { return want; }
+    if want == "xhigh" { return "high"; }
+    return PA_INKLING_EFFORT;
+  }
+  if engine == PA_MICRO { return PA_MICRO_EFFORT; }
+  if engine == PA_CLAUDE { return want; }
+  return "";
+}
+// What a person calls the agent a pick runs: its model's name for Neon/Antigravity, Inkling or
+// Microcoder, else the engine's.
 pa_label :: (p: PaPick) -> string #effects(all) {
-  if p.engine == PA_MICRO { for i: 0..<PA_MICRO_MODELS { if PA_MICRO_ID[i] == p.model { return PA_MICRO_LABEL[i]; } } }
-  if p.engine == PA_AGY { return PA_AGY_LABEL; }
-  if p.engine == PA_CLAUDE || p.engine == PA_MICRO { return PA_ENGINE_NAME[p.engine]; }
+  if p.engine == PA_AGY {
+    for i: 0..<PA_NEON_MODELS { if PA_NEON_ID[i] == p.model { return PA_NEON_LABEL[i]; } }
+    return PA_AGY_LABEL;
+  }
+  if p.engine == PA_INKLING { return PA_INKLING_LABEL; }
+  if p.engine == PA_MICRO {
+    for i: 0..<PA_MICRO_MODELS { if PA_MICRO_ID[i] == p.model { return PA_MICRO_LABEL[i]; } }
+    return PA_ENGINE_NAME[PA_MICRO];
+  }
+  if p.engine == PA_CLAUDE { return PA_ENGINE_NAME[PA_CLAUDE]; }
   return "";
 }
 // The line a chat that fell back shows once, in plain words, into out; "" when it did not fall back.
 pa_note :: (p: PaPick, out: [] u8) -> string #effects(all) {
-  if !p.fell_back || p.asked < 0 || p.asked >= 3 { return ""; }
+  if !p.fell_back || p.asked < 0 || p.asked >= 4 { return ""; }
   parts := [4] string.[PA_ENGINE_NAME[p.asked], " isn't set up on this computer, so this chat runs on ", pa_label(p), "."];
   n := 0;
   for t: parts { for c: t { if n >= out.count { return ""; } out[n] = c; n += 1; } }

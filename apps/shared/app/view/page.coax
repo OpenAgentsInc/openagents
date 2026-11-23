@@ -69,7 +69,8 @@ VIEW_M_UNDER :: 2048; VIEW_M_OVER :: 8192; VIEW_M_LINES :: 4096; VIEW_M_HITS :: 
 ViewLayout :: struct {
   x: f32; top: f32; w: f32;   // the page's column, and the top of the transcript (under the safe area)
   bottom: f32;                // where the composer's bottom edge docks (over the keyboard or the safe area)
-  chips_h: f32;               // the chip row's height over the composer (0: no chips)
+  chips_h: f32;               // the chip row's height in the composer action row (0: no chips)
+  top_chips_h: f32;           // optional context chip row above the composer card (0: none)
   editing: bool;              // the platform editor holds the keyboard over the composer's text
   editor_h: f32;              // its text height, layout units
   archived:bool;restore_action:int; // local library presentation; never execution authority
@@ -79,7 +80,8 @@ ViewLayout :: struct {
 ViewOut :: struct {
   readonly:bool;
   composer: ComposerBox; composer_y: f32;   // the composer as drawn, and its top
-  chips_x: f32; chips_y: f32; chips_w: f32; // the slot the environment chips draw in
+  chips_x: f32; chips_y: f32; chips_w: f32; // the slot inside the composer action row
+  top_chips_x: f32; top_chips_y: f32; top_chips_w: f32; // the optional context chip slot above the composer
   again: bool;                              // a row's height changed as it was painted: draw again
 }
 ViewPress :: struct { kind: int; what: int; text: string; }
@@ -142,10 +144,24 @@ view_parse :: (v: [] ChatView, source: string) -> int {
 view_engine :: (engine: string) -> string {
   return ifx engine == "codex" then "Codex" else ifx engine == "claude" || engine == "claude_code" || engine == "claude-code" then "Claude Code" else engine;
 }
+// Human-readable model label for known Neon, Inkling and fallback IDs when the computer hasn't sent a label.
+view_model_label :: (id: string) -> string {
+  if id.count == 0 { return ""; }
+  if id == "inkling-2-mini" || id == "inkling" { return "Inkling 2 Mini"; }
+  if id == "gemini-4-neon" { return "Gemini 4 Neon"; }
+  if id == "gemini-4-carbon" { return "Gemini 4 Carbon"; }
+  if id == "gemini-4-hydrogen" { return "Gemini 4 Hydrogen"; }
+  if id == "gemini-4-argon" { return "Gemini 4 Argon"; }
+  if id == "gemini-3.8-flash" { return "Gemini 3.8 Flash"; }
+  if id == "gemini-3.7-flash" { return "Gemini 3.7 Flash"; }
+  if id == "gemini-3.6-flash" { return "Gemini 3.6 Flash"; }
+  if id == "antigravity" { return "Antigravity"; }
+  if id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") { return "Claude Code"; }
+  return id;
+}
 // What a computer's chat runs on, as the computer reports it: the offered model's label for the
-// conversation's model (Gemini 4 Neon, Antigravity, a Claude model), else the engine its model id
-// names; "" when the computer said nothing. Never a name the computer did not give (a phone's chat
-// runs on whatever agent that computer has, coax/lib/agent/environment/phone-agent-policy.coax).
+// conversation's model (Gemini 4 Neon, Inkling 2 Mini, Antigravity, a Claude model), else the engine
+// its model id names; "" when the computer said nothing. Never a name the computer did not give.
 view_device_engine :: (e: [] EnvironmentApp) -> string {
   if e.count != 1 { return ""; }
   c := eu_current(e); if c < 0 { return ""; }
@@ -153,7 +169,10 @@ view_device_engine :: (e: [] EnvironmentApp) -> string {
   if id.count == 0 { return ""; }
   o := e[0].offer[..];
   for i: 0..<o[0].n { m := o[0].models[i]; if cast(string) o[0].models[i].id[0..<m.ni] == id && m.nl > 0 { return cast(string) o[0].models[i].label[0..<m.nl]; } }
-  return ifx id == "antigravity" then "Antigravity" else ifx id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") then "Claude Code" else id;
+  return ifx id == "inkling-2-mini" || id == "inkling" then "Inkling 2 Mini"
+    else ifx id == "antigravity" then "Antigravity"
+    else ifx id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") then "Claude Code"
+    else id;
 }
 view_app_task :: (d: [] DurableChat, f: ViewFacts) -> AppTask {
   n := d[0].native[..]; st := n[0].status[0]; b := n[0].b[0];
@@ -483,6 +502,11 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     out.chips_x = lay.x + pad + inset; out.chips_w = ifx compact || lay.chips_h <= 0 then 0.0f32 else b.send_x - inset - s.app.gap;
     if look.deliver.count > 0 && out.chips_w > 0 { pw := ceil(measure_width(f[0].m, s.label.face, look.deliver)) + 2 * s.cmp.chip_pad - b.send; if pw > 0 { out.chips_w -= pw; } if out.chips_w < 0 { out.chips_w = 0; } }
     out.chips_y = out.composer_y + b.row_y + (b.send - lay.chips_h) / 2; above = out.composer_y;
+    if lay.top_chips_h > 0 && !compact {
+      out.top_chips_x = lay.x + pad; out.top_chips_w = lay.w - 2 * pad;
+      out.top_chips_y = above - lay.top_chips_h - a.gap_small;
+      above = out.top_chips_y;
+    }
   }
   // Zeron's queue panel: the message that waits for the running turn, over the composer, with × to take it back
   if s.chat.enabled && !out.readonly && facts.queued.count > 0 { above -= view_queue_panel(f, lay.x + pad, above - a.gap, lay.w - 2 * pad, facts.queued) + a.gap; }

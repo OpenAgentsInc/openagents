@@ -19,6 +19,7 @@
 		4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA188800B3779561759002D1 /* AppTailnet.swift */; };
 		4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6814741495C5632686563D9 /* KitAccess.swift */; };
 		5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9738192D7078650DA6AC16FA /* DevGallery.swift */; };
+		658765FA66012028B8687E7A /* catalog.coax in Resources */ = {isa = PBXBuildFile; fileRef = C770A4CB8F910A034CFF1C06 /* catalog.coax */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
 		7113DF6985BD789F6BF1BDE7 /* KitEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0368202C3F17310FAA5C61 /* KitEditor.swift */; };
 		773A6AF7C732E03BA2FCC8C4 /* AppDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97F8922AB2F3371989FB21C4 /* AppDevice.swift */; };
@@ -87,6 +88,7 @@
 		BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitPasskey.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
+		C770A4CB8F910A034CFF1C06 /* catalog.coax */ = {isa = PBXFileReference; path = catalog.coax; sourceTree = "<group>"; };
 		CA188800B3779561759002D1 /* AppTailnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTailnet.swift; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
 		D5407582BAF7BC2C3A6DCCB2 /* IdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityTests.swift; sourceTree = "<group>"; };
@@ -122,10 +124,19 @@
 			path = ../shared/host/apple;
 			sourceTree = "<group>";
 		};
+		7A2B4BDB79A6146716225C85 /* tester */ = {
+			isa = PBXGroup;
+			children = (
+				C770A4CB8F910A034CFF1C06 /* catalog.coax */,
+			);
+			path = tester;
+			sourceTree = "<group>";
+		};
 		956B19516518C8B6A6AB7CBA /* Tests */ = {
 			isa = PBXGroup;
 			children = (
 				D5407582BAF7BC2C3A6DCCB2 /* IdentityTests.swift */,
+				7A2B4BDB79A6146716225C85 /* tester */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -246,6 +257,7 @@
 			buildConfigurationList = EFF273158165C0BE8B01BAC8 /* Build configuration list for PBXNativeTarget "OpenAgentsIdentityTests" */;
 			buildPhases = (
 				DF9DEB693F650B90EBD11DBB /* Sources */,
+				E969E6E0220DB3FA094CE489 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -311,6 +323,14 @@
 			files = (
 				43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */,
 				C789B2E23521F07A4F8AA6D8 /* Components in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E969E6E0220DB3FA094CE489 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				658765FA66012028B8687E7A /* catalog.coax in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -415,7 +435,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds Coder on your Mac nearby, so you can pair with it without a code.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds OpenAgents on your Mac nearby, so you can pair with it without a code.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -494,7 +514,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1415;
+				CURRENT_PROJECT_VERSION = 1416;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -536,7 +556,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds Coder on your Mac nearby, so you can pair with it without a code.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds OpenAgents on your Mac nearby, so you can pair with it without a code.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -598,7 +618,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1415;
+				CURRENT_PROJECT_VERSION = 1416;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = HQWSG26L43;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

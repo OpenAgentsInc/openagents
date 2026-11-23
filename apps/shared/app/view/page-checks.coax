@@ -308,6 +308,7 @@ VIEW_PT_PAGE :: "{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"
  v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"gemini-4-neon");#assert view_device_engine(e)=="gemini-4-neon";
  o:=e[0].offer[..];o[0].n=1;o[0].models[0].ni=el_copy(o[0].models[0].id[..],"gemini-4-neon");o[0].models[0].nl=el_copy(o[0].models[0].label[..],"Gemini 4 Neon");
  #assert view_device_engine(e)=="Gemini 4 Neon";
+ v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"inkling-2-mini");#assert view_device_engine(e)=="Inkling 2 Mini";
  v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"antigravity");#assert view_device_engine(e)=="Antigravity";
  v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"claude-opus-5-5");#assert view_device_engine(e)=="Claude Code";
  #assert view_device_engine(e[0..<0])=="";

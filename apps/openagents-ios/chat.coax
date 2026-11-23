@@ -60,7 +60,7 @@ CH_HOLD :: 0.45;    // seconds a still touch on a drawer row holds before its ac
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111; CH_HIT_FOREMAN :: 412; CH_HIT_FOREMAN_BACK :: 413; CH_HIT_SUBAGENT_BACK :: 414; CH_HIT_EXPERIMENTAL :: 415;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111; CH_HIT_MODEL :: 112; CH_HIT_EFFORT :: 113; CH_HIT_MODEL_CLOSE :: 114; CH_HIT_MODEL_PICK :: 115; CH_HIT_EFFORT_PICK :: 116; CH_HIT_FOREMAN :: 412; CH_HIT_FOREMAN_BACK :: 413; CH_HIT_SUBAGENT_BACK :: 414; CH_HIT_EXPERIMENTAL :: 415;
 CH_ZOOM_MAX :: 2.5;  // the largest text size the page draws, against the default (the host's Dynamic Type)
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
@@ -98,6 +98,9 @@ ChatPage :: struct {
   initials: [4] u8; initials_n: int;
   // the environment and repository chips over the composer, and their picker (apps/shared/app/environment/)
   env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
+  // Neon + Inkling model & thinking picker sheet (0 none, 1 model, 2 thinking) and persisted default choice
+  model_sheet: int; model_content: f32; model_viewport: f32;
+  model_pref: [64] u8; model_pref_n: int; effort_pref: [16] u8; effort_pref_n: int;
   // the shared app core the host attaches, and the login flow over it
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
   sc:[1]AppScreens;   // the pages beside the chat (apps/shared/app/view/screens.coax)
@@ -148,6 +151,8 @@ ch_step :: (s: [] ChatPage) {
   s[0].core[0].local_only = !s[0].experimental; s[0].env[0].local = !s[0].experimental;
   lfc_step(s[0].lb[..], s[0].lf[..], s[0].core);
   es_bridge_sync(s[0].core, s[0].eb[..], s[0].env[..]);
+  ch_apply_model_pref(s);
+  if s[0].model_sheet != 0 && !ch_device_offer_on(s) { s[0].model_sheet = 0; }
   query:=ifx s[0].section==2 && !s[0].drawer && s[0].library_filter==0 then cast(string)s[0].search[0..<s[0].search_n] else "";
   app_screens_sync(s[0].sc[..],s[0].core,AppScreensShown.{covered=s[0].drawer || s[0].lf[0].open,lists=s[0].drawer || s[0].section==2,projects=s[0].section==1,query=query},s[0].library[..]);
 }
@@ -219,6 +224,97 @@ ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
 }
 // The picker is open.
 ch_picking :: (s: [] ChatPage) -> bool { return s[0].env[0].sheet != ES_SHEET_NONE; }
+ch_model_picking :: (s: [] ChatPage) -> bool { return s[0].model_sheet != 0; }
+ch_device_offer_on :: (s: [] ChatPage) -> bool {
+  return s[0].core.count > 0 && app_device_on(s[0].core) && app_device_env(s[0].core)[0].offer[0].n > 0;
+}
+ch_model_is_inkling :: (id: string) -> bool {
+  return id == "inkling-2-mini" || (id.count >= 7 && cast(string) id[0..<7] == "inkling");
+}
+ch_model_icon :: (id: string) -> int { return ifx ch_model_is_inkling(id) then ICON_PSIONIC else ICON_BOT; }
+ch_model_subtitle :: (id: string) -> string {
+  if ch_model_is_inkling(id) { return "Local · Psionic Metal"; }
+  if id == "gemini-4-neon" { return "Antigravity · Default cloud model"; }
+  if id == "antigravity" || (id.count >= 7 && cast(string) id[0..<7] == "gemini-") { return "Antigravity · Cloud"; }
+  if id == "default" || (id.count >= 7 && cast(string) id[0..<7] == "claude-") { return "Claude Code"; }
+  return "Connected computer";
+}
+ch_effort_subtitle :: (id: string) -> string {
+  if id == "low" { return "Fastest replies"; }
+  if id == "medium" { return "Balanced speed and reasoning"; }
+  if id == "high" { return "Deeper multi-step reasoning"; }
+  if id == "xhigh" { return "Maximum thinking depth"; }
+  return "";
+}
+ch_active_model_id :: (s: [] ChatPage) -> string {
+  if s[0].core.count < 1 || !app_device_on(s[0].core) { return ""; }
+  e := app_device_env(s[0].core); m := eu_model(e);
+  if m >= 0 { return cast(string) e[0].offer[0].models[m].id[0..<e[0].offer[0].models[m].ni]; }
+  c := eu_current(e);
+  if c >= 0 { return cast(string) e[0].view[0].sessions[c].model[0..<e[0].view[0].sessions[c].nmo]; }
+  return "";
+}
+ch_active_model_label :: (s: [] ChatPage) -> string {
+  if s[0].core.count < 1 || !app_device_on(s[0].core) { return ""; }
+  e := app_device_env(s[0].core); m := eu_model(e);
+  if m >= 0 {
+    mm := e[0].offer[0].models[m];
+    return ifx mm.nl > 0 then cast(string) e[0].offer[0].models[m].label[0..<mm.nl] else view_model_label(cast(string) e[0].offer[0].models[m].id[0..<mm.ni]);
+  }
+  return view_device_engine(e);
+}
+ch_active_effort_label :: (s: [] ChatPage) -> string {
+  if s[0].core.count < 1 || !app_device_on(s[0].core) { return ""; }
+  e := app_device_env(s[0].core); m := eu_model(e); lv := eu_level(e, m);
+  if lv < 0 { return ""; }
+  ll := e[0].offer[0].levels[lv];
+  return ifx ll.nl > 0 then cast(string) e[0].offer[0].levels[lv].label[0..<ll.nl] else cast(string) e[0].offer[0].levels[lv].id[0..<ll.ni];
+}
+// Apply persisted Neon/Inkling model & effort preference on a brand-new chat when offered by the Mac.
+ch_apply_model_pref :: (s: [] ChatPage) {
+  if s[0].core.count < 1 || !app_device_on(s[0].core) || s[0].model_pref_n < 1 { return; }
+  e := app_device_env(s[0].core); o := e[0].offer[..];
+  if e[0].ns > 0 || e[0].nmo > 0 || o[0].n < 1 { return; }
+  pref := cast(string) s[0].model_pref[0..<s[0].model_pref_n];
+  mi := -1;
+  for i: 0..<o[0].n { if cast(string) o[0].models[i].id[0..<o[0].models[i].ni] == pref { mi = i; break; } }
+  if mi < 0 { return; }
+  e[0].nmo = ea_copy(e[0].model[..], pref);
+  if s[0].effort_pref_n > 0 && e[0].nef == 0 {
+    epref := cast(string) s[0].effort_pref[0..<s[0].effort_pref_n];
+    ladder := o[0].models[mi].ladder;
+    for j: 0..<o[0].nv {
+      if (ladder & (1 << j)) != 0 && cast(string) o[0].levels[j].id[0..<o[0].levels[j].ni] == epref {
+        e[0].nef = ea_copy(e[0].effort[..], epref); break;
+      }
+    }
+  }
+}
+ch_save_model_pref :: (s: [] ChatPage) {
+  if s[0].core.count < 1 || !app_device_on(s[0].core) { return; }
+  e := app_device_env(s[0].core); o := e[0].offer[..];
+  m := eu_model(e);
+  if m >= 0 {
+    mid := cast(string) o[0].models[m].id[0..<o[0].models[m].ni];
+    s[0].model_pref_n = ea_copy(s[0].model_pref[..], mid);
+    if s[0].model_pref_n < 0 { s[0].model_pref_n = 0; }
+    lv := eu_level(e, m);
+    if lv >= 0 {
+      lid := cast(string) o[0].levels[lv].id[0..<o[0].levels[lv].ni];
+      s[0].effort_pref_n = ea_copy(s[0].effort_pref[..], lid);
+      if s[0].effort_pref_n < 0 { s[0].effort_pref_n = 0; }
+    } else { s[0].effort_pref_n = 0; }
+  }
+}
+ch_choice_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, selected: bool, action: int) -> f32 {
+  k := f[0].skin; h := es_v_row_h(k);
+  if k.chat.enabled { sheet_fill(f[0].sheet, x, y, w, h, k.app.card_radius, k.raised); }
+  state := ifx selected then EL_S_CURRENT | EL_S_CHECKS | EL_S_CHECKED else 0;
+  row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, action);
+  if detail.count > 0 { elt_value(f[0].rows, row, detail); }
+  look := k; if k.chat.enabled { look.control_pad = k.app.gap_small; }
+  return choice_row(f[0].sheet, f[0].m, look, x, y, w, title, detail, selected, ICON_CHECK, UIFRAME_HIT, row, 0);
+}
 ch_now :: (s: [] ChatPage) -> int { return ifx s[0].core.count > 0 then s[0].core[0].mono_ms else 0; }
 // The page's focus moved: the flow's field follows it.
 ch_set_focus :: (s: [] ChatPage, id: string) {
@@ -248,8 +344,8 @@ ch_dispatch :: (s: [] ChatPage, what: int, text: string) -> bool {
   _ := view_dispatch(c, what, text, c[0].mono_ms, c[0].wall_ms); ch_step(s);
   return true;
 }
-// The layer that takes presses and is read out: the cover while the drawer or the card shows, else the page.
-ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].thread_menu || s[0].thread_details || s[0].filter_menu || s[0].lf[0].open || ch_picking(s) then 1 else 0; }
+// The layer that takes presses and is read out: the cover while the drawer, picker, or card shows, else the page.
+ch_layer :: (s: [] ChatPage) -> int { return ifx s[0].share > 0 || s[0].drawer || s[0].thread_menu || s[0].thread_details || s[0].filter_menu || s[0].lf[0].open || ch_picking(s) || ch_model_picking(s) then 1 else 0; }
 
 // Prefer the catalog's real title; a newly started conversation uses its
 // first user message until the next automatic catalog read supplies it.
@@ -326,6 +422,18 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       _:=app_icon_button(f,"settings.back",16/u,nav_y,ICON_BACK,"Back",APP_BUTTON_DEFAULT,0,IKS_BACK);
       yy:=nav_y-offset+k.app.icon_button+k.app.gap;
       yy+=app_text(f,"settings.title",16/u,yy,w-32/u,APP_TEXT_TITLE,"Settings")+k.app.gap;
+      if s[0].core.count>0 && app_device_on(s[0].core) {
+        dn:=view_device_name(s[0].core); ml:=ch_active_model_label(s); el:=ch_active_effort_label(s);
+        sb:[192]u8; sn:=el_put(sb[..],0,"Mac: "); sn=el_put(sb[..],sn,ifx dn.count>0 then dn else "Connected");
+        yy+=app_text(f,"settings.mac",16/u,yy,w-32/u,APP_TEXT_BODY,sheet_pool(f[0].sheet,cast(string)sb[0..<sn]))+k.app.gap_small;
+        if ml.count>0 {
+          mb:[192]u8; mn:=el_put(mb[..],0,ml);
+          if el.count>0 { mn=el_put(mb[..],mn," · "); mn=el_put(mb[..],mn,el); mn=el_put(mb[..],mn," thinking"); }
+          yy+=app_button(f,"settings.model",16/u,yy,w-32/u,ch_model_icon(ch_active_model_id(s)),sheet_pool(f[0].sheet,cast(string)mb[0..<mn]),APP_BUTTON_DEFAULT,ifx ch_device_offer_on(s) then 0 else EL_S_DISABLED,CH_HIT_MODEL)+k.app.gap;
+        }
+      } else {
+        yy+=app_text(f,"settings.mac.note",16/u,yy,w-32/u,APP_TEXT_CAPTION,"Open OpenAgents on your Mac over Tailscale to use Gemini 4 Neon and local Inkling 2 Mini.")+k.app.gap;
+      }
       if s[0].experimental {yy+=app_button(f,"settings.login",16/u,yy,w-32/u,-1,"Log in",APP_BUTTON_PRIMARY,0,CH_HIT_LOGIN)+k.app.gap;}
       s[0].settings_content=yy-k.app.gap-(nav_y-offset);
     }
@@ -369,21 +477,51 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     // the chips show once logged in, or whenever this phone can run on its own computer (a paired
     // one, or one it can pair with): that needs no account. Logged out, only Default asks for a login.
     chips := s[0].core[0].auth == AUTH_IN || app_device_pairable(s[0].core) || app_device_count(s[0].core) > 0;
+    has_model := ch_device_offer_on(s);
     keybuf:[CHLIB_KEY]u8;target_key:=ch_library_key(s,keybuf[..]);
-    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, fade_top = nav_y + a.icon_button, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
+    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, fade_top = nav_y + a.icon_button, w = w, bottom = bottom,
+      chips_h = ifx chips || has_model then k.cmp.chip_h else 0.0f32,
+      top_chips_h = ifx chips && has_model then k.cmp.chip_h else 0.0f32,
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);
     s[0].box = out.composer; s[0].again = out.again;
-    if chips && !out.readonly && out.chips_w > 0 {
-      e := es_chips(s[0].env[..]);
-      _ := app_composer_chips(f, "composer.environment", "composer.repo", out.chips_x, out.chips_y, out.chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
-        0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
+    if !out.readonly {
+      if has_model {
+        if chips && out.top_chips_w > 0 {
+          e := es_chips(s[0].env[..]);
+          _ := app_composer_chips(f, "composer.environment", "composer.repo", out.top_chips_x, out.top_chips_y, out.top_chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
+            0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
+        }
+        if out.chips_w > 0 {
+          mid := ch_active_model_id(s);
+          mlabel := sheet_pool(f[0].sheet, ch_active_model_label(s));
+          elabel := sheet_pool(f[0].sheet, ch_active_effort_label(s));
+          gap := k.app.gap_small;
+          max_m := ifx elabel.count > 0 then (out.chips_w - gap) * 0.64f32 else out.chips_w;
+          mw := app_chip(f, "composer.model", out.chips_x, out.chips_y, max_m, ch_model_icon(mid), "Model", mlabel, 0, CH_HIT_MODEL);
+          if elabel.count > 0 && out.chips_w - mw - gap > 32 {
+            _ := app_chip(f, "composer.effort", out.chips_x + mw + gap, out.chips_y, out.chips_w - mw - gap, ICON_BRAIN, "Thinking", elabel, 0, CH_HIT_EFFORT);
+          }
+        }
+      } else if chips && out.chips_w > 0 {
+        e := es_chips(s[0].env[..]);
+        _ := app_composer_chips(f, "composer.environment", "composer.repo", out.chips_x, out.chips_y, out.chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
+          0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
+      }
     }
   }
   // the navigation button at the top left opens the drawer
   s[0].menu_x = k.chat.header_pad; s[0].menu_y = nav_y; s[0].menu_side = k.app.nav;
   bar := f[0].sheet[0].nu;
-  if s[0].core.count>0 {c:=s[0].core;title:=sheet_pool(f[0].sheet,ch_conversation_title(s));subtitle:=sheet_pool(f[0].sheet,ifx app_device_on(c) then view_device_name(c) else ifx app_conversation(c).count>0 then "Account chat" else "");
+  if s[0].core.count>0 {c:=s[0].core;title:=sheet_pool(f[0].sheet,ch_conversation_title(s));
+    subtitle := "";
+    if app_device_on(c) {
+      dn := view_device_name(c); ml := ch_active_model_label(s);
+      if ml.count > 0 && dn.count > 0 {
+        sb: [160] u8; sn := el_put(sb[..], 0, ml); sn = el_put(sb[..], sn, " · "); sn = el_put(sb[..], sn, dn);
+        subtitle = sheet_pool(f[0].sheet, cast(string) sb[0..<sn]);
+      } else { subtitle = sheet_pool(f[0].sheet, ifx ml.count > 0 then ml else dn); }
+    } else if app_conversation(c).count > 0 { subtitle = "Account chat"; }
     app_conversation_header(f,0,nav_y,w,title,subtitle,s[0].view[0].model[0].rejoining,450,451);}
   if s[0].native { ch_menu_row(s, f, s[0].menu_x, nav_y); } else { _ := app_nav_button(f, "nav.menu", s[0].menu_x, nav_y, s[0].drawer, 0, CH_HIT_MENU); }
   ch_lift(f, bar);
@@ -432,9 +570,17 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
        yy+=app_field(f,"thread.rename",in.x,yy,in.w,"Name",cast(string)s[0].rename_text[0..<s[0].rename_n],"Conversation name",false,s[0].focused && ch_focus(s)=="thread.rename","",0,461)+k.app.gap;
        yy+=app_text(f,"thread.local",in.x,yy,in.w,APP_TEXT_CAPTION,"Saved on this device");if s[0].library_note {yy+=k.app.gap;yy+=app_notice(f,"thread.save.error",in.x,yy,in.w,"Saved-chat preferences are full",APP_NOTICE_ERROR);}
       }else if s[0].core.count>0 {c:=s[0].core;e:=es_chips(s[0].env[..]);
+       if app_device_on(c) {
+         mid := ch_active_model_id(s); ml := ch_active_model_label(s); el := ch_active_effort_label(s);
+         if ml.count > 0 {
+           mb: [192] u8; mn := el_put(mb[..], 0, ml);
+           if el.count > 0 { mn = el_put(mb[..], mn, " · "); mn = el_put(mb[..], mn, el); }
+           yy += app_button(f, "thread.model", in.x, yy, in.w, ch_model_icon(mid), sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), APP_BUTTON_DEFAULT, ifx ch_device_offer_on(s) then 0 else EL_S_DISABLED, CH_HIT_MODEL) + k.app.gap;
+         }
+       }
        yy+=app_text(f,"thread.computer",in.x,yy,in.w,APP_TEXT_BODY,e.environment)+k.app.gap;
        if e.repository.count>0 {yy+=app_text(f,"thread.repository",in.x,yy,in.w,APP_TEXT_CAPTION,e.repository)+k.app.gap;}
-       if app_device_on(c) {yy+=app_text(f,"thread.control",in.x,yy,in.w,APP_TEXT_CAPTION,"Connected computer")+k.app.gap;}
+       if app_device_on(c) {yy+=app_text(f,"thread.control",in.x,yy,in.w,APP_TEXT_CAPTION,ifx ch_active_model_id(s).count>0 then ch_model_subtitle(ch_active_model_id(s)) else "Connected computer")+k.app.gap;}
        yy+=app_button(f,"thread.usage",in.x,yy,in.w,ICON_CHECKLIST,"Usage",APP_BUTTON_DEFAULT,0,457);
       }
       uiframe_unclip(f);s[0].menu_content=yy-body_top+offset;ch_reveal(s,f,key,body_top,body_top+s[0].menu_viewport,s[0].menu_content,offset);
@@ -472,6 +618,54 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     s[0].picker = es_picker(f, s[0].env[..], 12 / u, py, w - 24 / u, ph, ICON_CHECK);
     // the host's popover shows these rows (chat_row, chat_row_value): the picker keeps them and paints nothing
     if s[0].native { sh[0].nu = nu; sh[0].no = no; sh[0].nl = nl; }
+  }
+  if ch_model_picking(s) && ch_device_offer_on(s) {
+    is_model := s[0].model_sheet == 1;
+    sheet_fill(f[0].sheet, 0, 0, w, h, 0, opacity(Rgba.{r = 0, g = 0, b = 0, a = 1}, APP_SIDEBAR_DIM));
+    scrim := uiframe_semantic(f, ifx is_model then "model.scrim" else "effort.scrim", EL_BUTTON, "Close", 0, 0, w, h, 0, CH_HIT_MODEL_CLOSE);
+    sheet_hit(f[0].sheet, UIFRAME_HIT, scrim, 0, 0, 0, w, h);
+    py := top + (h - top) * 0.30f32; ph := h - s[0].safe_bottom / u - 12 / u - py;
+    heading := ifx is_model then "Model" else "Thinking";
+    inside := app_sheet(f, ifx is_model then "model.panel" else "effort.panel", 12 / u, py, w - 24 / u, ph, heading);
+    _ := app_icon_button(f, ifx is_model then "model.close" else "effort.close", inside.x, inside.y, ICON_BACK, "Done", APP_BUTTON_DEFAULT, 0, CH_HIT_MODEL_CLOSE);
+    tw := measure_width(f[0].m, k.title.face, heading);
+    _ := app_text(f, ifx is_model then "model.title" else "effort.title", 12 / u + (w - 24 / u - tw) / 2, inside.y + (k.app.icon_button - k.title.line) / 2, tw, APP_TEXT_TITLE, heading);
+    list_top := inside.y + k.control_h + k.space;
+    list_bottom := py + ph - k.pad;
+    s[0].model_viewport = ifx list_bottom > list_top then list_bottom - list_top else 0.0f32;
+    vkey := uiframe_key(f, "model.viewport");
+    offset := keyed_scroll(f[0].keyed, vkey);
+    uiframe_clip(f, inside.x, list_top, inside.x + inside.w, list_bottom);
+    cy := list_top - offset;
+    e := app_device_env(s[0].core); o := e[0].offer[..];
+    idb: [64] u8;
+    if is_model {
+      cur := eu_model(e);
+      for i: 0..<o[0].n {
+        mm := o[0].models[i];
+        mid := cast(string) o[0].models[i].id[0..<mm.ni];
+        label := ifx mm.nl > 0 then cast(string) o[0].models[i].label[0..<mm.nl] else view_model_label(mid);
+        rid := tr_join(idb[..], "env.model.", i);
+        cy += ch_choice_row(f, rid, inside.x, cy, inside.w, label, ch_model_subtitle(mid), i == cur, CH_HIT_MODEL_PICK) + k.app.gap_small;
+      }
+    } else {
+      m := eu_model(e);
+      ladder := ifx m >= 0 && m < o[0].n then o[0].models[m].ladder else 0;
+      cur := eu_level(e, m);
+      for i: 0..<o[0].nv {
+        if (ladder & (1 << i)) == 0 { continue; }
+        ll := o[0].levels[i];
+        lid := cast(string) o[0].levels[i].id[0..<ll.ni];
+        label := ifx ll.nl > 0 then cast(string) o[0].levels[i].label[0..<ll.nl] else lid;
+        rid := tr_join(idb[..], "env.effort.", i);
+        cy += ch_choice_row(f, rid, inside.x, cy, inside.w, label, ch_effort_subtitle(lid), i == cur, CH_HIT_EFFORT_PICK) + k.app.gap_small;
+      }
+    }
+    s[0].model_content = cy + offset - list_top;
+    clamped := scroll_clamp(offset, s[0].model_content, s[0].model_viewport);
+    if clamped != offset { keyed_scroll_set(f[0].keyed, vkey, clamped); s[0].again = true; }
+    uiframe_unclip(f);
+    ctx_panel_end(f);
   }
   l := s[0].lf[..];
   if l[0].open { ch_login_page(s, f, w, h); }
@@ -536,7 +730,7 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
-ch_main :: (s:[]ChatPage) {app_screens_close(s[0].sc[..]);s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;}
+ch_main :: (s:[]ChatPage) {app_screens_close(s[0].sc[..]);s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].model_sheet=0;s[0].renderer=false;}
 // A file a computer session changed: that computer's workspace opens on its changes (the Diff tab).
 ch_open_changes :: (s:[]ChatPage)->bool {
  if s[0].core.count<1 || !app_device_on(s[0].core) {return false;}host:=app_environment(s[0].core);
@@ -689,6 +883,20 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
   }
   // the chips and the picker's rows go by their ids (environment/select.coax es_press)
   id := surface_id(sf, row);
+  if act == CH_HIT_MODEL || act == CH_HIT_EFFORT {
+    if !ch_device_offer_on(s) { return false; }
+    s[0].thread_menu = false; s[0].thread_details = false; s[0].filter_menu = false;
+    s[0].model_sheet = ifx act == CH_HIT_MODEL then 1 else 2;
+    keyed_scroll_set(s[0].keyed[1..<2], keyed_find(s[0].keyed[1..<2], "model.viewport"), 0);
+    ch_set_focus(s, ""); ch_step(s); return true;
+  }
+  if act == CH_HIT_MODEL_CLOSE { s[0].model_sheet = 0; ch_set_focus(s, ""); ch_step(s); return true; }
+  if act == CH_HIT_MODEL_PICK || act == CH_HIT_EFFORT_PICK {
+    if !ch_device_offer_on(s) { s[0].model_sheet = 0; return false; }
+    eu_press(app_device_env(s[0].core), id);
+    ch_save_model_pref(s);
+    s[0].model_sheet = 0; ch_set_focus(s, ""); ch_step(s); return true;
+  }
   if act == CH_HIT_ENV || act == CH_HIT_REPO || (ch_picking(s) && ch_env_row(id)) {
     if !es_press(s[0].env[..], id, ch_now(s)) { return false; }
     ch_step(s); return true;
@@ -841,14 +1049,14 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on a pushed page (Workspace, a sub-agent, Foreman, Usage, Settings, Projects) it goes back, as a navigation stack's edge swipe does
     // the page follows the finger; the release decides (ch_back_release)
-    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_MOVE && (s[0].backing || ch_can_back(s)) {
+    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && !ch_model_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_MOVE && (s[0].backing || ch_can_back(s)) {
       s[0].backing = true; s[0].back_dx = ux - s[0].down_x; s[0].pressed_n = 0; s[0].scrolling = false;
     }
-    if !s[0].swiped && !s[0].backing && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
+    if !s[0].swiped && !s[0].backing && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && !ch_model_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the login page the same swipe goes back to the chat
     if !s[0].swiped && s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { _ := ch_login_close(s); s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
-    if !s[0].swiped && !s[0].backing && (ch_layer(s) == 0 || s[0].thread_menu || s[0].thread_details || s[0].filter_menu) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
+    if !s[0].swiped && !s[0].backing && (ch_layer(s) == 0 || s[0].thread_menu || s[0].thread_details || s[0].filter_menu || ch_model_picking(s)) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
       s[0].scrolling = true; s[0].pressed_n = 0;
       if !s[0].native_scroll {chat_scroll_to(s,ch_scroll_offset(s)+s[0].last_y-uy);}
     }
@@ -892,10 +1100,29 @@ chat_env_restore :: (s: [] ChatPage, text: string) #export_c #effects(all) {
   if !s[0].ready { ch_init(s); }
   _ := es_restore(s[0].env[..], text); ch_step(s);
 }
+// Persisted Neon + Inkling model & thinking effort choice ("model\teffort"), kept across launches.
+chat_model_save :: (s: [] ChatPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || s[0].model_pref_n < 1 { return 0; }
+  n := el_put(out, 0, cast(string) s[0].model_pref[0..<s[0].model_pref_n]);
+  if s[0].effort_pref_n > 0 { n = el_put(out, n, "\t"); n = el_put(out, n, cast(string) s[0].effort_pref[0..<s[0].effort_pref_n]); }
+  return n;
+}
+chat_model_restore :: (s: [] ChatPage, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { ch_init(s); }
+  s[0].model_pref_n = 0; s[0].effort_pref_n = 0;
+  tab := -1;
+  for c, i: text { if c == '\t' { tab = i; break; } }
+  m := ifx tab >= 0 then cast(string) text[0..<tab] else text;
+  ef := ifx tab >= 0 && tab + 1 < text.count then cast(string) text[tab + 1..<text.count] else "";
+  if m.count > 0 && ea_choice(m) { s[0].model_pref_n = ea_copy(s[0].model_pref[..], m); if s[0].model_pref_n < 0 { s[0].model_pref_n = 0; } }
+  if ef.count > 0 && ea_choice(ef) { s[0].effort_pref_n = ea_copy(s[0].effort_pref[..], ef); if s[0].effort_pref_n < 0 { s[0].effort_pref_n = 0; } }
+  ch_step(s);
+}
 chat_library_restore :: (s:[]ChatPage,raw:string)->bool #export_c #effects(all) {
  if s.count<1 {return false;}if !s[0].ready {ch_init(s);}
  // Partition changes clear the previous account's overlays even if the new file is corrupt.
- s[0].library[0]=ChatLibrary.{};s[0].sc[0].workspaces[0]=WorkspaceScreen.{};s[0].rename=false;s[0].workspace=false;s[0].target_n=0;s[0].rename_n=0;s[0].search_n=0;s[0].library_filter=0;s[0].thread_menu=false;s[0].thread_details=false;s[0].filter_menu=false;ch_set_focus(s,"");
+ s[0].library[0]=ChatLibrary.{};s[0].sc[0].workspaces[0]=WorkspaceScreen.{};s[0].rename=false;s[0].workspace=false;s[0].target_n=0;s[0].rename_n=0;s[0].search_n=0;s[0].library_filter=0;s[0].thread_menu=false;s[0].thread_details=false;s[0].filter_menu=false;s[0].model_sheet=0;ch_set_focus(s,"");
  return chlib_read(s[0].library[..],raw);
 }
 chat_library_save :: (s:[]ChatPage,out:[]u8)->int #export_c #effects(all) {if s.count<1 {return -1;}return chlib_write(s[0].library[..],out);}
@@ -966,6 +1193,7 @@ chat_private_mode :: (s:[]ChatPage)->int #export_c #effects(all) {
  v:=s[0].sc[0].identity[0];return ifx v.backup then 2 else ifx v.confirm==IKS_RESTORE then 1 else 0;
 }
 ch_scroll_offset :: (s:[]ChatPage)->f32 {
+ if ch_model_picking(s) {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"model.viewport"));}
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"));}
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
@@ -976,6 +1204,7 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
  return s[0].view[0].list[0].top;
 }
 ch_scroll_max :: (s:[]ChatPage)->f32 {
+ if ch_model_picking(s) {return scroll_max(s[0].model_content,s[0].model_viewport);}
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return scroll_max(s[0].menu_content,s[0].menu_viewport);}
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
@@ -986,9 +1215,10 @@ ch_scroll_max :: (s:[]ChatPage)->f32 {
  l:=s[0].view[0].list[0];return scroll_max(l.content,l.viewport);
 }
 chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
- if s.count<1 || (ch_layer(s)!=0 && !s[0].lf[0].open && !s[0].drawer && !s[0].thread_menu && !s[0].thread_details) {return;}
+ if s.count<1 || (ch_layer(s)!=0 && !s[0].lf[0].open && !s[0].drawer && !s[0].thread_menu && !s[0].thread_details && !ch_model_picking(s)) {return;}
  value:=ifx offset<0 then 0.0f32 else ifx offset>ch_scroll_max(s) then ch_scroll_max(s) else offset;
- if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),value);}
+ if ch_model_picking(s) {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"model.viewport"),value);}
+ else if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),value);}
  else if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
  else if app_screens_nested(s[0].sc[..]) || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
@@ -999,7 +1229,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
 }
 chat_scroll_info :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
  if s.count<1 || out.count<3 {return false;}
- out[0]=ifx ch_layer(s)==0 || s[0].lf[0].open || s[0].drawer || s[0].thread_menu || s[0].thread_details || s[0].filter_menu then 1.0f32 else 0.0f32;out[1]=ch_scroll_offset(s)*ch_u(s);out[2]=ch_scroll_max(s)*ch_u(s);return true;
+ out[0]=ifx ch_layer(s)==0 || s[0].lf[0].open || s[0].drawer || s[0].thread_menu || s[0].thread_details || s[0].filter_menu || ch_model_picking(s) then 1.0f32 else 0.0f32;out[1]=ch_scroll_offset(s)*ch_u(s);out[2]=ch_scroll_max(s)*ch_u(s);return true;
 }
 chat_native_scroll :: (s:[]ChatPage,on:bool) #export_c #effects(all) {if s.count>0 {s[0].native_scroll=on;}}
 chat_action :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } act := s[0].action; s[0].action = CH_ACT_NONE; return act; }
@@ -1104,6 +1334,7 @@ chat_layer :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 |
 // VoiceOver's scroll: the transcript a page up (dir 1, toward the latest) or down (-1). True when it moved.
 chat_scroll_page :: (s: [] ChatPage, dir: int) -> bool #export_c #effects(all) {
   if s.count<1 || !s[0].ready {return false;}
+  if ch_model_picking(s) {before:=ch_scroll_offset(s);chat_scroll_to(s,before+cast(f32)dir*s[0].model_viewport*0.8);return before!=ch_scroll_offset(s);}
   if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {before:=ch_scroll_offset(s);chat_scroll_to(s,before+cast(f32)dir*s[0].menu_viewport*0.8);return before!=ch_scroll_offset(s);}
   if s[0].sc[0].identity[0].open || s[0].lf[0].open || s[0].drawer || s[0].section>0 {before:=ch_scroll_offset(s);height:=ifx s[0].drawer then s[0].history_viewport else ifx s[0].lf[0].open then s[0].login_viewport else ifx s[0].sc[0].identity[0].open then s[0].settings_viewport else s[0].section_viewport;chat_scroll_to(s,before+cast(f32)dir*height*0.8);return before!=ch_scroll_offset(s);}
   if ch_layer(s)!=0 || s[0].view[0].viewport<=0 {return false;}
@@ -1392,6 +1623,64 @@ chat_experimental_set :: (s:[]ChatPage,on:bool) #export_c #effects(all) {
  ch_step(s);s[0].again=true;
 }
 chat_experimental :: (s:[]ChatPage)->bool #export_c #effects(all) {return s.count>0 && s[0].experimental;}
+
+#test "Neon + Inkling flow: paired Mac shows Model & Thinking chips, switches Neon <-> Inkling, filters effort ladders, persists choice, and fits at max text zoom" #steps 4000000000 {
+  s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
+  core: [1] AppCore; lane: [1] DeviceLane; app_init(core[..]);
+  #assert app_device_attach(core[..], lane[..]);
+  chat_attach(s[..], core[..], "");
+  // Pair a Mac and attach an offer with Gemini 4 Neon (4 levels) + Inkling 2 Mini (3 levels) + Gemini 4 Carbon
+  host := "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a";
+  lane[0].np = 1; lane[0].listed = true; lane[0].list_rev = 1;
+  _ = ea_copy(lane[0].paired[0].host[..], host);
+  lane[0].paired[0].nn = ea_copy(lane[0].paired[0].name[..], "Studio Mac");
+  #assert app_dispatch(core[..], AppEvent.{kind = EV_ACTION, code = ACT_ENVIRONMENT, text = host, more = "Studio Mac", mono_ms = 10, wall_ms = 10}) == APP_OK;
+  e := app_device_env(core[..]);
+  e[0].active = true; e[0].page = 2; e[0].selected = 0; e[0].catalog[0].n = 1;
+  _ = ea_copy(e[0].catalog[0].entries[0].host[..], host);
+  e[0].catalog[0].entries[0].nl = ea_copy(e[0].catalog[0].entries[0].label[..], "Studio Mac");
+  of := e[0].offer[..];
+  of[0].nv = 4; of[0].default_level = 1;
+  of[0].levels[0].ni = ea_copy(of[0].levels[0].id[..], "low"); of[0].levels[0].nl = ea_copy(of[0].levels[0].label[..], "Low");
+  of[0].levels[1].ni = ea_copy(of[0].levels[1].id[..], "medium"); of[0].levels[1].nl = ea_copy(of[0].levels[1].label[..], "Medium");
+  of[0].levels[2].ni = ea_copy(of[0].levels[2].id[..], "high"); of[0].levels[2].nl = ea_copy(of[0].levels[2].label[..], "High");
+  of[0].levels[3].ni = ea_copy(of[0].levels[3].id[..], "xhigh"); of[0].levels[3].nl = ea_copy(of[0].levels[3].label[..], "X-High");
+  of[0].n = 3;
+  of[0].models[0].ni = ea_copy(of[0].models[0].id[..], "gemini-4-neon"); of[0].models[0].nl = ea_copy(of[0].models[0].label[..], "Gemini 4 Neon"); of[0].models[0].ladder = 1 | 2 | 4 | 8;
+  of[0].models[1].ni = ea_copy(of[0].models[1].id[..], "inkling-2-mini"); of[0].models[1].nl = ea_copy(of[0].models[1].label[..], "Inkling 2 Mini"); of[0].models[1].ladder = 1 | 2 | 4;
+  of[0].models[2].ni = ea_copy(of[0].models[2].id[..], "gemini-4-carbon"); of[0].models[2].nl = ea_copy(of[0].models[2].label[..], "Gemini 4 Carbon"); of[0].models[2].ladder = 1 | 2 | 4;
+  chat_step(s[..]); _ = ch_test_frame(s[..], o[..]);
+  // Both chip rows show cleanly: Computer+Project above composer, Model+Thinking inside composer footer
+  #assert ch_test_has(s[..], "composer.environment") && ch_test_has(s[..], "composer.model") && ch_test_has(s[..], "composer.effort");
+  #assert ch_test_text(s[..], "Gemini 4 Neon · Studio Mac") == 1 && chat_refused(s[..]) == 0;
+  // Open Thinking picker on Gemini 4 Neon: all 4 levels appear including X-High
+  #assert ch_test_tap(s[..], "composer.effort") && s[0].model_sheet == 2; _ = ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "effort.panel") && ch_test_has(s[..], "env.effort.0") && ch_test_has(s[..], "env.effort.3");
+  #assert ch_test_tap(s[..], "env.effort.3") && s[0].model_sheet == 0; _ = ch_test_frame(s[..], o[..]);
+  #assert ch_active_effort_label(s[..]) == "X-High";
+  // Open Model picker and switch to local Inkling 2 Mini
+  #assert ch_test_tap(s[..], "composer.model") && s[0].model_sheet == 1; _ = ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "model.panel") && ch_test_has(s[..], "env.model.0") && ch_test_has(s[..], "env.model.1") && ch_test_has(s[..], "env.model.2");
+  #assert ch_test_tap(s[..], "env.model.1") && s[0].model_sheet == 0; _ = ch_test_frame(s[..], o[..]);
+  // Effort clamps cleanly off xhigh to Inkling's default (Medium), header updates to Inkling 2 Mini
+  #assert ch_active_model_id(s[..]) == "inkling-2-mini" && ch_active_effort_label(s[..]) == "Medium";
+  #assert ch_test_text(s[..], "Inkling 2 Mini · Studio Mac") == 1;
+  // Thinking picker for Inkling 2 Mini omits X-High
+  #assert ch_test_tap(s[..], "composer.effort") && s[0].model_sheet == 2; _ = ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "env.effort.0") && ch_test_has(s[..], "env.effort.2") && !ch_test_has(s[..], "env.effort.3");
+  #assert ch_test_tap(s[..], "env.effort.2") && s[0].model_sheet == 0;
+  // Persistence save/restore round-trips "inkling-2-mini\thigh" onto a fresh chat page
+  saved: [128] u8; sn := chat_model_save(s[..], saved[..]);
+  #assert cast(string) saved[0..<sn] == "inkling-2-mini\thigh";
+  s2: [1] ChatPage; ch_test_atlas(s2[0].atlas[..]);
+  e[0].nmo = 0; e[0].nef = 0;
+  chat_attach(s2[..], core[..], ""); chat_model_restore(s2[..], cast(string) saved[0..<sn]);
+  #assert ch_active_model_id(s2[..]) == "inkling-2-mini" && ch_active_effort_label(s2[..]) == "High";
+  // Max text zoom renders without refusing any frame
+  _ = chat_text_zoom(s2[..], CH_ZOOM_MAX); _ = ch_test_frame(s2[..], o[..]);
+  #assert chat_activate(s2[..], "composer.model"); _ = ch_test_frame(s2[..], o[..]);
+  #assert chat_refused(s2[..]) == 0;
+}
 
 #load "chat-library-checks.coax" #test;
 
