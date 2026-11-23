@@ -202,3 +202,38 @@ chooser headlessly; the desktop goldens `focus-button`, `focus-composer` and
 `proc_pid_rusage` Mach ticks to nanoseconds and is checked against the independent
 POSIX process CPU clock before any numbers are recorded.
 
+## Linux & Vulkan Host Contract (2026-11-05)
+
+Linux and Metal admit action outboxes with the same `hap_span` authority
+before publishing a nonempty view. Empty packets need no pointer/capacity
+read; native missing capacity refuses. Linux copies before acknowledgement,
+then executes the effect or reports 604 on a later poll. Actual normal and
+ASan/UBSan/LSan Linux runs pass all 110 common hostile-span/acknowledgement/
+continued-frame words. The Metal runtime gate is separate. See `docs/verification/host-contract-2026-11-05/linux-action-packets.md`.
+
+The typed Vulkan loop dispatches real input through the realm gesture/audio
+boundary and consumes the checked Wayland Unicode/modifier companion. Its
+next-completed-frame HTTP32 stage retains concrete asynchronous ownership
+before the JPEG capture and helper start. Coax owns JPEG/base64 and the
+Unicode JSON/authorization composition. Actual normal and fully instrumented
+producer/SDK physical requests preserve all 13 peer facts under the unchanged
+five-second deadline; codec/observer root gates kill 100/44 mutants. Scaling,
+ordinary window/input/room/audio composition and final default remain
+separate exits. See `docs/verification/host-contract-2026-11-05/linux-frame-services.md`.
+
+The ordinary Vulkan v1 adapter prepares the checked graph targets and actual
+UNORM display before advancing its producer. Device replacement preserves
+the producer, immutable original package identity, retained CPU buffers and
+bounded decoded image cache; GPU resources retire before their physical
+device closes. The replacement uploads complete retained buffer spans and
+does not acknowledge a producer update merely to recover rendering. Actual
+90-frame world recovery compares every FP16 graph and UNORM display byte
+without an intervening producer call, retires a measured old handle and
+closes all GPU/CPU owners. Its observer kills 30 root mutants. The complete
+current producer and SDK also pass ASan/UBSan/LSan on a two-worker Lavapipe
+device with Vulkan validation, within the existing 810-second qualifier
+budget; earlier software submission/total-runtime failures remain retained.
+The product's submission fence is unchanged. See
+`docs/verification/host-contract-2026-11-05/linux-world-recovery.md`.
+
+
