@@ -709,8 +709,8 @@ hs_serve :: (args: [] Args) -> int {
   defer {dm_write_discovery(h,false);}
   gb: [64] u8; engine := args_value(args, "--engine", proc_getenv("CODER_HOST_ENGINE", gb[..]));
   if engine.count == 0 { engine = "claude"; }
-  engines := [6] string.["claude", "codex", "cursor", "micro", "psionic", "echo"];
-  if hb_index(engines[..], engine) < 0 { tool_errln("coder host: --engine is claude, codex, cursor, micro, psionic or echo"); return 2; }
+  engines := [7] string.["claude", "codex", "cursor", "micro", "psionic", "echo", "antigravity"];
+  if hb_index(engines[..], engine) < 0 { tool_errln("coder host: --engine is claude, codex, cursor, micro, psionic, echo or antigravity"); return 2; }
   h[0].nengine = hs_set(h[0].engine[..], engine);
   for_s := hs_atoi(args_value(args, "--for", "0"));
   if for_s < 0 { tool_errln("coder host: --for takes whole seconds"); return 2; }
@@ -733,7 +733,7 @@ hs_serve :: (args: [] Args) -> int {
   defer { ht_srv_close(tailnet_srv[..]); }
   defer { sc_webhook_close(h[0].sched[..]); }
   while end_at == 0 || hs_now() < end_at {
-    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);sc_tick(h);
+    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);ph_tick(h);sc_tick(h);
     handled_local := false;
     for lk: 0..<8 { if !es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]) { break; } handled_local = true; }
     for tk: 0..<8 { if !ht_srv_tick(h, tailnet_srv[..], w_b[..], st_b[..], statebuf[..], file[..], out[..]) { break; } handled_local = true; }

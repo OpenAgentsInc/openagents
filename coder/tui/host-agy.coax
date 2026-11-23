@@ -144,8 +144,8 @@ ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
 }
 
 // Continues a native ~/.gemini Antigravity chat interactively by launching a managed agyworker run
-// seeded with the chat's recent turns via ph_recall (#13993 Phase 2.1).
-ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) #effects(all) {
+// seeded with the chat's recent turns via ph_recall and true ACP session/resume (#13993, #14000).
+ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, file: string, command: string, v: [] EaView) #effects(all) {
   if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
   text := cast(string) q[0].text[0..<q[0].nt];
   if !ea_text(text) { es_refuse(v, "malformed"); return; }
@@ -171,14 +171,16 @@ ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) #eff
   generation := cxproc_wall_us() / 1000;
   eff := pa_effort(PA_AGY, pick.model, cast(string) q[0].effort[0..<q[0].nef]);
   want_mode := ifx q[0].nmd > 0 then cast(string) q[0].mode[0..<q[0].nmd] else "auto";
+  attachments := cast(string) q[0].attachments[0..<q[0].nat];
 
-  lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 16384] u8;
+  lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 49152] u8;
   at := ph_recall(ses[..], lines[..]);
   if at < 0 { es_refuse(v, "malformed"); return; }
-  wn := ph_task(text, id, cwd, PA_AGY, pick.model, eff, lines[at..<lines.count]);
+  wn := ph_task_full(text, id, cwd, PA_AGY, pick.model, eff, want_mode, attachments, lines[at..<lines.count]);
   if wn < 1 { es_refuse(v, "malformed"); return; }
   ip: [1400] u8;
-  if !ph_meta(id, generation, pick, eff) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) lines[0..<at + wn]) {
+  sid_p: [1400] u8; sn := hs_cat(sid_p[..], 0, file); sn = hs_cat(sid_p[..], sn, ".sid");
+  if !fs_replace_durable(file, command) || !fs_replace_durable(cast(string) sid_p[0..<sn], id) || !ph_meta_full(id, generation, pick, eff, want_mode, 0) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) lines[0..<at + wn]) {
     es_refuse(v, "storage_unavailable"); return;
   }
   // Pass the native ~/.gemini conversation UUID via CODER_AGY_RESUME_SESSION for true in-place ACP

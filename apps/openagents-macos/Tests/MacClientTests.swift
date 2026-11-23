@@ -175,15 +175,30 @@ final class MacClientTests: XCTestCase {
         XCTAssertNil(store.bannerError, "Legacy v1 Plan auto-downgrade leaked error: \(store.bannerError ?? "")")
         XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text.contains("Plan macOS refactor") }))
 
-        // 2. Modern v2 host: pair, interactive approval, subagent inspection, and live Workspace Git SwitchBranch!
+        // Ask mode on strict v1 host MUST NOT silently downgrade to Auto — surfaces clear error & keeps draft (#13996)!
+        store.chooseReviewMode(.ask)
+        store.draftText = "Do not auto-run this"
+        await store.sendMessage()
+        XCTAssertNotNil(store.bannerError, "Ask mode on legacy v1 host must refuse silent downgrade to Auto")
+        XCTAssertEqual(store.draftText, "Do not auto-run this")
+        store.draftText = ""
+        store.bannerError = nil
+
+        // 2. Modern v2 host: pair, interactive approval with options/warning, structured attachments, subagent, paginated Workspace + RemoveWorktree!
         let v2Err = await store.addManualComputer(address: "127.0.0.1", name: "E2E Studio Mac", port: v2Port, autoPair: true)
         XCTAssertNil(v2Err, "Direct-grant pairing to v2 host failed: \(v2Err ?? "none")")
         store.chooseReviewMode(.auto)
+        let v2Img = FileAttachment.prepareImage(data: try makeRedTestPNG(width: 128, height: 128), name: "v2-shot.png")
+        store.addAttachment(v2Img)
         store.draftText = "Run macOS build and approve"
         await store.sendMessage()
         XCTAssertNil(store.bannerError)
-        XCTAssertNotNil(store.pendingInteraction, "Expected interactive Approval banner from v2 host")
-        await store.respondToInteraction(allow: true, note: "Looks good")
+        let pending = try XCTUnwrap(store.pendingInteraction, "Expected interactive Approval banner from v2 host")
+        XCTAssertTrue(pending.prompt.contains("cargo test"))
+        XCTAssertFalse(pending.warning.isEmpty)
+        XCTAssertEqual(pending.options.count, 3)
+        XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text.contains("[structured-attachments]") }))
+        await store.respondToInteraction(allow: true, note: "Looks good", optionID: "allow_once")
         XCTAssertNil(store.pendingInteraction)
         XCTAssertTrue(store.items.contains(where: { $0.role == .assistant && $0.text == "Approved and executed cleanly." }))
 
@@ -192,12 +207,38 @@ final class MacClientTests: XCTestCase {
         await store.refreshSubagent()
         XCTAssertTrue(store.subagentItems.contains(where: { $0.text.contains("Subagent inspected 12 files cleanly.") }))
 
+        // Paginated ReadWorkspace (page=0..3) populates status/diff, 2 worktrees, 2 branches, 1 PR (#13999)
         await store.refreshWorkspace()
         XCTAssertEqual(store.workspaceSnapshot?.branch, "main")
+        XCTAssertEqual(store.workspaceSnapshot?.branches, ["main", "feat/antigravity"])
+        XCTAssertEqual(store.workspaceSnapshot?.worktrees.count, 2)
+        XCTAssertEqual(store.workspaceSnapshot?.pullRequests.count, 1)
+
+        // Remove secondary worktree by 64-hex tree.id (#13999)
+        let secondary = try XCTUnwrap(store.workspaceSnapshot?.worktrees.first(where: { $0.path.contains("openagents-wt") }))
+        await store.removeWorktree(id: secondary.id)
+        XCTAssertNil(store.workspaceError)
+        XCTAssertEqual(store.workspaceSnapshot?.worktrees.count, 1)
+
         await store.switchBranch("feat/antigravity")
         XCTAssertEqual(store.workspaceSnapshot?.branch, "feat/antigravity")
         XCTAssertNil(store.workspaceError)
 
         store.onBackground()
+    }
+
+    func testAntigravityAuthProbeJSONParser() throws {
+        let sample = """
+        {"installed":true,"binaryPath":"/opt/homebrew/bin/agy","version":"1.5.14","authStatus":"authenticated","authMethod":"oauth-personal","authLabel":"Personal Google Account","status":"ready","models":[{"slug":"gemini-4-neon","name":"Gemini 4 Neon"}]}
+        """
+        let parsed = try XCTUnwrap(AntigravityProbeResult.parse(Data(sample.utf8)))
+        XCTAssertTrue(parsed.installed)
+        XCTAssertTrue(parsed.isAuthenticated)
+        XCTAssertEqual(parsed.version, "1.5.14")
+        XCTAssertEqual(parsed.modelCount, 1)
+        XCTAssertFalse(AntigravityAuthMethod.oauthPersonal.usesIsolatedProfile)
+        XCTAssertTrue(AntigravityAuthMethod.geminiAPIKey.usesIsolatedProfile)
+        XCTAssertTrue(AntigravityAuthMethod.oauthBusiness.usesIsolatedProfile)
+        XCTAssertTrue(AntigravityAuthMethod.agentPlatform.usesIsolatedProfile)
     }
 }

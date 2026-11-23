@@ -39,9 +39,11 @@ final class LocalSocketClient: @unchecked Sendable {
         hostDirectory.appendingPathComponent("runs", isDirectory: true)
     }
 
+    /// Probes live listener reachability via non-blocking `AF_UNIX` `connect()` instead of `fileExists`
+    /// so stale `service.sock` files left after a crash never falsely show the daemon as running (#14001).
     var isSocketAvailable: Bool {
         #if os(macOS)
-        return FileManager.default.fileExists(atPath: socketURL.path)
+        return Self.probeSocket(path: socketURL.path)
         #else
         return false
         #endif
@@ -97,6 +99,34 @@ final class LocalSocketClient: @unchecked Sendable {
     }
 
     #if os(macOS)
+    private static func probeSocket(path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+
+        var tv = timeval(tv_sec: 0, tv_usec: 250_000)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        let maxLen = MemoryLayout.size(ofValue: addr.sun_path)
+        let bytes = Array(path.utf8)
+        guard bytes.count < maxLen else { return false }
+        withUnsafeMutableBytes(of: &addr.sun_path) { raw in
+            raw.initializeMemory(as: UInt8.self, repeating: 0)
+            for (i, b) in bytes.enumerated() {
+                raw[i] = b
+            }
+        }
+        let rc = withUnsafePointer(to: &addr) { ptr -> Int32 in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                connect(fd, sa, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        return rc == 0
+    }
+
     private static func syncExchange(path: String, payload: Data, timeoutSeconds: Int) -> Result<Data, TailscaleRPCError> {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { return .failure(.unreachable("Could not open local socket")) }

@@ -343,11 +343,6 @@ us_url :: (out: [] u8) -> string {
   return ifx u.count > 0 then u else US_CODEX_URL;
 }
 
-us_agy_url :: (out: [] u8) -> string {
-  u := us_env("CODER_USAGE_AGY_URL", out);
-  return ifx u.count > 0 then u else AGY_QUOTA_SUMMARY_URL;
-}
-
 // ---------------------------------------------------------------- the probe
 
 us_why :: (a: [] UsAcct, s: string) { a[0].nwhy = cd_cat(a[0].why[..], 0, s); }
@@ -408,22 +403,9 @@ us_fetch :: (a: [] UsAcct) {
   a[0].stage = US_FETCH;
 }
 
-// Starts curl with Antigravity's OAuth token on stdin only (curl -K -); never logs or mutates it (#13838).
-us_agy_fetch :: (a: [] UsAcct) {
-  ub: [1024] u8; url := us_agy_url(ub[..]);
-  argv := [15] string.["curl", "-sS", "-m", US_HTTP_S, "-D", "-", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{}", "-K", "-", url];
-  if !us_spawn(a, argv[..]) { us_fail(a, 0, 0, "unavailable: curl did not start"); return; }
-  cb: [9000] u8; n := 0;
-  n = cd_cat(cb[..], n, "header = \"Authorization: Bearer "); n = cd_cat(cb[..], n, cast(string) a[0].tok[0..<a[0].ntok]); n = cd_cat(cb[..], n, "\"\n");
-  for i: 0..<n { x := cxproc_write(a[0].h, cast(int) cb[i]); }
-  y := cxproc_flush(a[0].h); z := cxproc_close_stdin(a[0].h);
-  for i: 0..<cb.count { cb[i] = 0; }
-  us_wipe(a);
-  a[0].stage = US_FETCH;
-}
-
-// Starts a probe: Claude's through the shared adapter's child; Codex's or Antigravity's reads
-// its login, then fetches. Nothing when one is running.
+// Starts a probe: Claude's through the shared adapter's child; Codex's reads its login, then fetches.
+// Antigravity quota probing via direct OAuth token extraction is intentionally disabled (#13995).
+// Nothing when one is running.
 us_probe :: (a: [] UsAcct) {
   if a[0].stage != US_IDLE { return; }
   a[0].tried_ms = cxproc_now_ms();
@@ -434,17 +416,8 @@ us_probe :: (a: [] UsAcct) {
     return;
   }
   if a[0].provider == US_PROV_AGY {
-    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
-    prb: [1024] u8; prof := cl_getenv("CODER_AGY_PROFILE_DIR", prb[..]);
-    pb: [1400] u8; path := agy_token_path(home, prof, pb[..]);
-    fb: [32768] u8; m := ifx path.count > 0 then fs_read(path, fb[..]) else 0;
-    if m > 0 {
-      tok := agy_read_cli_token(cast(string) fb[0..<m], a[0].tok[..]);
-      for i: 0..<m { fb[i] = 0; }
-      if tok.count > 0 { a[0].ntok = tok.count; us_agy_fetch(a); return; }
-      us_fail(a, -1, 0, "unavailable: the Antigravity login has no token"); return;
-    }
-    us_fail(a, -1, 0, "signed_out: Antigravity isn't signed in here"); return;
+    us_fail(a, -1, 0, "unavailable: Antigravity quota requires official agy CLI support");
+    return;
   }
   pb: [1400] u8; pn := 0;
   d := us_env("CODEX_HOME", db[..]);

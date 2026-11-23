@@ -67,7 +67,7 @@ dv_seal :: (x: [] DvWork, op: int, secret: [] u8, host: string, relay: string, a
   } else if op == DV_RPC {
     if !dv_hex(arg) || epoch < 0 { return -1; }
     if ea_read(params,x[0].params[..]) {
-      p:=x[0].params[0];x[0].nm=ea_copy(x[0].method[..],cast(string)p.method[0..<p.nm]);
+      x[0].nm=ea_copy(x[0].method[..],cast(string)x[0].params[0].method[0..<x[0].params[0].nm]);
     } else {
       workspace:[1]WsRequest;
       if ws_read(params,workspace[..]) {x[0].ws_scope=workspace[0].workspace;x[0].nws=workspace[0].nw;x[0].workspace=true;x[0].nm=js_copy(x[0].method[..],cast(string)workspace[0].method[0..<workspace[0].nm]);x[0].nc=js_copy(x[0].command[..],cast(string)workspace[0].command[0..<workspace[0].nc]);}
@@ -173,7 +173,7 @@ dv_open :: (x: [] DvWork, secret: [] u8, host: string, event: string, now: int, 
   // a signed, correlated refusal is a result, not a lost reply
   refusal: [1] HbReply; arena: [4096] u8; text := [1] HbText.[HbText.{buf = arena[..]}];
   if hb_reply_read(body, refusal[..], text[..]) != HB_OK || refusal[0].ok || refusal[0].host != host || refusal[0].request != request || refusal[0].request_event != eid || refusal[0].expires_at < now { return 0; }
-  if x[0].workspace {v:[1]WsView;_=js_copy(v[0].host[..],host);v[0].method=x[0].method;v[0].nm=x[0].nm;v[0].command=x[0].command;v[0].nc=x[0].nc;v[0].workspace=x[0].ws_scope;v[0].nw=x[0].nws;ws_fail(v[..],"forbidden");return ws_view_write(v[..],out);}
+  if x[0].workspace {v:[1]WsView;_=js_copy(v[0].host[..],host);v[0].method=x[0].method;v[0].nm=x[0].nm;v[0].command=x[0].command;v[0].nc=x[0].nc;v[0].workspace=x[0].ws_scope;v[0].nw=x[0].nws;ws_fail(v[..],ifx refusal[0].code.count>0 && refusal[0].code.count<=40 then refusal[0].code else "refused");return ws_view_write(v[..],out);}
   if x[0].provider {
     v:[1]PaView;_=pa_copy(v[0].host[..],host);v[0].nm=pa_copy(v[0].method[..],method);v[0].nc=pa_copy(v[0].command[..],cast(string)x[0].command[0..<x[0].nc]);v[0].ne=pa_copy(v[0].error[..],ifx refusal[0].code.count<=40 then refusal[0].code else "refused");return pa_view_write(v[..],out);
   }

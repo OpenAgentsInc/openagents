@@ -106,9 +106,11 @@ enum MobileCore {
         effort: String = "",
         folder: String = "",
         item: String = "",
-        mode: String = ""
+        mode: String = "",
+        optionID: String = "",
+        attachmentsJSON: String = ""
     ) -> Data? {
-        var out = [UInt8](repeating: 0, count: 24_576)
+        var out = [UInt8](repeating: 0, count: 65_536)
         let n = oa_mobile_env_request(
             work.raw,
             method,
@@ -127,6 +129,8 @@ enum MobileCore {
             folder,
             item,
             mode,
+            optionID,
+            attachmentsJSON,
             &out,
             Int64(out.count)
         )

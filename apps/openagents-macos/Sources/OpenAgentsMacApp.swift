@@ -21,7 +21,7 @@ struct OpenAgentsMacApp: App {
             .frame(minWidth: 880, minHeight: 580)
             .onAppear {
                 store.onForeground()
-                hostServer.start()
+                hostServer.start(devicePubkey: store.devicePublicKeyHex)
             }
             .onOpenURL { url in
                 store.handleIncomingURL(url)
@@ -61,6 +61,7 @@ struct OpenAgentsMacApp: App {
         }
 
         MenuBarExtra {
+            let totalBusyCount = store.sessions.filter(\.busy).count
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Circle()
@@ -74,7 +75,7 @@ struct OpenAgentsMacApp: App {
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                Text("Connected clients: \(hostServer.activeClients) · Working chats: \(store.workingSessions.count)")
+                Text("Connected clients: \(hostServer.activeClients) · Working chats: \(totalBusyCount)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
@@ -91,7 +92,7 @@ struct OpenAgentsMacApp: App {
                 }
                 if !hostServer.daemonRunning {
                     Button("Start Local Host Daemon") {
-                        hostServer.startLocalDaemon()
+                        hostServer.startLocalDaemon(devicePubkey: store.devicePublicKeyHex)
                     }
                 }
                 Divider()
@@ -103,7 +104,7 @@ struct OpenAgentsMacApp: App {
             .padding(10)
             .frame(width: 260)
         } label: {
-            Label("OpenAgents", systemImage: store.workingSessions.isEmpty ? "sparkles" : "bolt.circle.fill")
+            Label("OpenAgents", systemImage: store.sessions.contains(where: \.busy) ? "bolt.circle.fill" : "sparkles")
         }
         .menuBarExtraStyle(.window)
     }

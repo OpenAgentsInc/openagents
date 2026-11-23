@@ -36,7 +36,7 @@
 #load "claude.coax";
 #load "../cursor/cursor.coax";
 
-CUE_OWED :: 16384;        // a message owed until the session is open, as Coder kept it
+CUE_OWED :: 98304;        // a message (or multipart prompt blocks) owed until the session is open (#13998, #14002)
 CUE_TOOLS :: 16;          // tool calls the watchdog follows at once
 CUE_BG_HOLD_LIMIT_MS :: 120000; // safety ceiling for a held detached background turn (Antigravity overrides to 30m)
 CUE_BG_USAGE_SETTLE_MS :: 1500; // quiet window after usage_update (with no active bg work) to confirm no tool_call follows (agy emits tool_call 2-5ms after usage_update)
@@ -51,7 +51,7 @@ CuEngine :: struct {
   replay: bool;                   // session/load is replaying history: show nothing, allow nothing
   hold: int;                      // setting answers still expected before the owed message goes
   owed: [CUE_OWED] u8; nowed: int; // the message that goes once the session is open
-  owed_blocks: bool;              // true when owed holds pre-encoded ACP prompt blocks JSON
+  owed_blocks: bool;              // true when owed holds pre-encoded ACP prompt blocks JSON (#14002)
   resume: [CU_ID] u8; nresume: int; // a session to load in place of a new one
   last_session: [CU_ID] u8; last_session_n: int; // last open session id for crash auto-respawn
   restart_required: bool;         // set on unexpected agent exit so the next turn respawns + resumes
@@ -70,7 +70,7 @@ CuEngine :: struct {
   bg_usage_since: int;            // owner's clock (ms) when bg_usage_settled was first observed (-1 until first cue_watch)
   bg_idle_since: int;             // owner's clock (ms) when held_bg became idle awaiting reactive wakeup (-1 while active)
   bg_no_wake: bool;               // true when held work ended with no reactive wakeup expected (e.g. SUBAGENT_STATE_KILLED)
-  system_append: [2048] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
+  system_append: [4608] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
   // the stall watchdog (cue_watch): off while stall_ms is 0, as for Cursor; agy_launch turns it on
   stall_ms: int; recover_max: int;
   heard: bool;                    // the agent sent something since the last cue_watch
@@ -153,7 +153,7 @@ cue_fresh_session :: (x: [] CuEngine) {
   x[0].ntools = 0; x[0].recovering = 0;
   if x[0].live {
     x[0].ready = false; x[0].replay = false;
-    r := cu_session_new(x[0].c, e_str(x[0].cwd[..], x[0].ncwd));
+    r := cu_session_new_meta(x[0].c, e_str(x[0].cwd[..], x[0].ncwd), e_str(x[0].system_append[..], x[0].system_append_n));
   }
 }
 
@@ -169,8 +169,8 @@ cue_send :: (x: [] CuEngine, msg: string) -> bool {
   x[0].owed_blocks = false;
   return false;
 }
-// A multipart ACP prompt (comma-separated JSON content blocks such as text + image): sends at once
-// when the session is open and unheld, else queues in owed so cue_owed dispatches cu_session_prompt_blocks.
+// A multipart ACP prompt (comma-separated JSON content blocks such as text + image/resource; #14002):
+// sends at once when the session is open and unheld, else queues in owed for cu_session_prompt_blocks.
 cue_send_blocks :: (x: [] CuEngine, blocks_json: string) -> bool {
   x[0].notice_n = 0;
   if x[0].live && x[0].ready && x[0].hold == 0 {

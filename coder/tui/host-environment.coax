@@ -41,7 +41,7 @@ es_local_listen :: ()->int #effects(all) {
 es_local_tick :: (h:[]HsHost,listener:int,w:[]HbWork,st:[]HsState,statebuf:[]u8,file:[]u8,reply_out:[]u8)->bool #effects(all) {
   connection:=cxsock_accept(listener,0);if connection<0 {return false;}defer {_ = cxsock_close(connection);}
   if cxsock_peer_self(connection)!=1 {return true;}
-  input:[65536]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
+  input:[262144]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
   while cxsock_now_ms()<deadline && !done {
     got:=cxsock_read(connection,50);if got== -2 {continue;}if got<0 {break;}
     for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return true;}input[n]=cast(u8)c;n+=1;}
@@ -351,12 +351,12 @@ es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:stri
   if verdict==HA_SILENT {return 0;}
   if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"forbidden",""),signer,w,out);}
   v:[1]EaView;es_dispatch(h,params[..],signer,rq.grant,v[..]);data:[HB_BODY_MAX]u8;vn:=ea_view_write(v[..],data[..]);
-  if vn<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  if vn<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"bounds",""),signer,w,out);}
   body:[HB_BODY_MAX]u8;n:=hb_app_reply_write(rq.request,event,cast(string)h[0].xhex[..],hs_now(),rq.expires_at,cast(string)params[0].method[0..<params[0].nm],cast(string)data[0..<vn],body[..]);
   peer:[32]u8;nonce:[32]u8;aux:[32]u8;
-  if n<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  if n<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"bounds",""),signer,w,out);}
   sealed:=hb_seal(cast(string)body[0..<n],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],rq.request,nonce[..],aux[..],hs_now(),w,out);
-  if sealed<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"too_large",""),signer,w,out);}
+  if sealed<1 {return hs_seal_reply(h,hs_refused(h,rq.request,event,rq.expires_at,"bounds",""),signer,w,out);}
   return sealed;
 }
 
@@ -644,10 +644,17 @@ es_native_list :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
   csr_discover_tree(scan[..],projects,cast(string)c[0].history[0..<c[0].nh],0);
   v[0].complete=v[0].complete && !scan[0].incomplete;
   start:=ifx q[0].before<scan[0].n then q[0].before else scan[0].n;
+  added:=0;
   for i:start..<scan[0].n {
-    if v[0].ns>=16 {v[0].complete=false;b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(i,b[..]));break;}row:=scan[0].rows[i];s:=v[0].sessions[v[0].ns];
+    if added>=16 || v[0].ns>=DK_LIST_MAX {
+      v[0].complete=false;
+      // Only emit next_cursor when strictly advancing past start so before=0 never loops infinitely (#14000).
+      if i>start { b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(i,b[..])); }
+      break;
+    }
+    row:=scan[0].rows[i];s:=v[0].sessions[v[0].ns];
     s.ni=ea_copy(s.id[..],cast(string)row.id[0..<row.nid]);s.nw=ea_copy(s.workspace[..],"default");s.nt=ea_copy(s.title[..],cast(string)row.title[0..<row.ntitle]);
-    s.nc=ea_copy(s.control[..],"observe-only");s.updated=row.modified/1000000;v[0].sessions[v[0].ns]=s;v[0].ns+=1;
+    s.nc=ea_copy(s.control[..],"observe-only");s.updated=row.modified/1000000;v[0].sessions[v[0].ns]=s;v[0].ns+=1;added+=1;
   }
 }
 es_native_read :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
@@ -674,7 +681,6 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   // Antigravity's own chats, asked for by name or continued interactively (host-agy.coax)
   if method=="ListSessions" && ag_asked(q) {ag_list(q,v);return;}
   if method=="ReadSession" && ag_is(cast(string)q[0].session[0..<q[0].ns]) {ag_read(q,v);return;}
-  if method=="SendMessage" && ag_is(cast(string)q[0].session[0..<q[0].ns]) {ag_continue(h,q,grant,v);return;}
   if method=="ListSessions" {if q[0].before==0 {dk_list(h,v);es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
   // a phone's chat on Microcoder or Antigravity is a run of its own (host-phone.coax)
   id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) || (ph_is(id) && method!="OpenSession") {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);
@@ -684,16 +690,24 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if method=="ReadSubagent" {if k<0 {es_refuse(v,"not_found");return;}slot:=e[0].slots[k..<k+1];es_project_sub(slot[0].s[..],q,v);return;}
   // one sub-agent stops only in a Coder Desktop chat (host-desktop.coax, GitHub #13776)
   if method=="StopSubagent" {es_refuse(v,"unsupported_profile");return;}
-  if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(id,32) {es_refuse(v,"malformed");return;}
-  command:[24576]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
+  is_ag_cont := method=="SendMessage" && ag_is(id);
+  if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || (!is_ag_cont && !ea_id(id,32)) {es_refuse(v,"malformed");return;}
+  command:[49152]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
   name:[256]u8;name_n:=hs_cat(name[..],0,"command-");name_n=hs_cat(name[..],name_n,grant);name_n=hs_cat(name[..],name_n,"-");name_n=hs_cat(name[..],name_n,cast(string)q[0].command[..]);name_n=hs_cat(name[..],name_n,".json");
   path:[1400]u8;file:=es_path(cast(string)name[0..<name_n],path[..]);
   if fs_exists(file) {
-    previous:[24576]u8;got:=fs_read(file,previous[..]);if got!=n || cast(string)previous[0..<ifx got>0 then got else 0]!=cast(string)command[0..<n] {es_refuse(v,"idempotency_conflict");return;}
+    previous:[49152]u8;got:=fs_read(file,previous[..]);if got!=n || cast(string)previous[0..<ifx got>0 then got else 0]!=cast(string)command[0..<n] {es_refuse(v,"idempotency_conflict");return;}
+    if is_ag_cont {
+      sid_p:[1400]u8;sn:=hs_cat(sid_p[..],0,file);sn=hs_cat(sid_p[..],sn,".sid");
+      sidb:[64]u8;sgn:=fs_read(cast(string)sid_p[0..<sn],sidb[..]);
+      if sgn==32 {v[0].ns=0;dk_read_summary(h,cast(string)sidb[0..<32],v);}
+      v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],"accepted");return;
+    }
     if k<0 && ph_is(id) {v[0].ns=0;dk_read_summary(h,id,v);}
     v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],ifx k>=0 || ph_is(id) then "accepted" else "unknown");return;
   }
   if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
+  if is_ag_cont {ag_continue(h,q,grant,file,cast(string)command[0..<n],v);return;}
   if method=="OpenSession" {
     if xt_claimed_session(grant,id) {es_refuse(v,"conflict");return;}
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
@@ -830,13 +844,25 @@ es_direct_grant :: (args:[]Args)->int #effects(all) {
   sk:[32]u8;x:[32]u8;xh:[64]u8;
   if !hs_key(sk[..],x[..],xh[..]) {tool_errln("coder host: could not read or make the host key");return 1;}
   wipe(sk[..]);
+  // Serialize state.json mutations with state.lock and reuse existing active grant for the same device (#14001).
+  if !hs_dir() {tool_errln("coder host direct-grant: could not open host directory");return 1;}
+  lock:[1400]u8;locked:=false;
+  for i:0..<50 {if fs_try_lock(hs_path("state.lock",lock[..])) {locked=true;break;}_ = cxproc_sleep_ms(100);}
+  if !locked {tool_errln("coder host direct-grant: state lock busy");return 1;}
+  defer {_ = fs_unlock();}
   st:[1]HsState;buf:[HS_STATE_MAX]u8;hs_load(st[..],buf[..]);
   now:=hs_now();
-  rb:[64]u8;req_id:=hs_random_hex(32,rb[..]);
-  pi:=hs_pairing_add(st[..],req_id,device,client_label,now);
-  if pi<0 {tool_errln("coder host direct-grant: pairing table full");return 1;}
-  gb:[64]u8;g:=hs_allow(st[..],pi,hs_random_hex(32,gb[..]),now);
-  if g<0 {tool_errln("coder host direct-grant: could not allocate grant");return 1;}
+  g:= -1;
+  for i:0..<st[0].ng {
+    if !st[0].grants[i].revoked && cast(string)st[0].grants[i].device[..]==device { g = i; break; }
+  }
+  if g < 0 {
+    rb:[64]u8;req_id:=hs_random_hex(32,rb[..]);
+    pi:=hs_pairing_add(st[..],req_id,device,client_label,now);
+    if pi<0 {tool_errln("coder host direct-grant: pairing table full");return 1;}
+    gb:[64]u8;g=hs_allow(st[..],pi,hs_random_hex(32,gb[..]),now);
+    if g<0 {tool_errln("coder host direct-grant: could not allocate grant");return 1;}
+  }
   st[0].grants[g].expires=now+days*86400;
   if !hs_save(st[..],buf[..]) {tool_errln("coder host direct-grant: could not save state");return 1;}
   grant:=cast(string)st[0].grants[g].grant[..];
@@ -850,9 +876,9 @@ es_direct_grant :: (args:[]Args)->int #effects(all) {
   if wn<1 || !hs_dir() || !fs_replace_durable(es_device_file(grant,p1[..]),cast(string)cfg_out[0..<wn]) {
     tool_errln("coder host direct-grant: could not save device enrollment");return 1;
   }
-  // Also bootstrap primary environment.json on a fresh Mac so local service.sock works immediately.
+  // Also bootstrap primary environment.json on a fresh Mac (or when local macOS UI explicitly updates it).
   prior:[1]EsHost;
-  if !es_load_configuration(prior[..]) {
+  if !es_load_configuration(prior[..]) || args_has(args,"--update-primary") {
     p0:[1400]u8;
     _ = fs_replace_durable(es_path("environment.json",p0[..]),cast(string)cfg_out[0..<wn]);
   }

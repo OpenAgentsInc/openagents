@@ -28,11 +28,34 @@ ca_engine :: (pick: int) -> int {
   #assert ca_engine(4) == 6 && ca_engine(5) == -1;
 }
 
-// agy on PATH, or where its installer puts it (~/.local/bin/agy).
+// agy via $CODER_AGY_BIN, PATH, managed ~/.openagents/runtimes/agy/active.json, or ~/.local/bin/agy.
 ca_agy_installed :: () -> bool {
+  eb: [1024] u8; env_bin := cl_getenv("CODER_AGY_BIN", eb[..]);
+  if env_bin.count > 0 && fs_exists(env_bin) { return true; }
   if agr_on_path("agy") { return true; }
   hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { home = cl_getenv("USERPROFILE", hb[..]); }
   if home.count == 0 { return false; }
+  // Managed versioned installation under ~/.openagents/runtimes/agy/active.json (#13995)
+  apb: [1200] u8; apn := agr_cat(apb[..], 0, home); apn = agr_cat(apb[..], apn, "/.openagents/runtimes/agy/active.json");
+  fb: [512] u8; fn := fs_read(cast(string) apb[0..<apn], fb[..]);
+  if fn > 0 {
+    ab: [256] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+    rid := cl_str(ar[..], cast(string) fb[0..<fn], "releaseId");
+    if rid.count == 64 {
+      ok_hex := true;
+      for c: rid { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { ok_hex = false; break; } }
+      if ok_hex {
+        mb: [1400] u8; mn := agr_cat(mb[..], 0, home);
+        mn = agr_cat(mb[..], mn, "/.openagents/runtimes/agy/releases/");
+        mn = agr_cat(mb[..], mn, rid);
+        mn_mac := agr_cat(mb[..], mn, "/antigravity");
+        if fs_exists(cast(string) mb[0..<mn_mac]) { return true; }
+        mn_win := agr_cat(mb[..], mn, "/agy.exe");
+        if fs_exists(cast(string) mb[0..<mn_win]) { return true; }
+      }
+    }
+  }
   pb: [1100] u8; n := agr_cat(pb[..], 0, home); n = agr_cat(pb[..], n, "/.local/bin/agy");
   return fs_exists(cast(string) pb[0..<n]);
 }

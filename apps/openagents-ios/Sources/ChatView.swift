@@ -38,9 +38,9 @@ struct ChatView: View {
             }
 
             if let interaction = store.pendingInteraction {
-                ApprovalBannerView(interaction: interaction) { allow, note in
+                ApprovalBannerView(interaction: interaction) { allow, note, optionID in
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    Task { await store.respondToInteraction(allow: allow, note: note) }
+                    await store.respondToInteraction(allow: allow, note: note, optionID: optionID)
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
@@ -106,20 +106,32 @@ struct ChatView: View {
                 store.addAttachment(FileAttachment.prepareImage(data: data, name: url.lastPathComponent))
                 return
             }
-            let preview = String(data: data.prefix(4000), encoding: .utf8)
-            if preview == nil {
-                let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
-                if maybeImg.isImage {
-                    store.addAttachment(maybeImg)
-                    return
-                }
+            // Decode full UTF-8 (bounded to 128 KB read) before UTF-8-safe byte truncation so multi-byte characters
+            // at byte 4000 never corrupt into nil and misclassify text files as binary (#14002).
+            let textSlice: String? = (data.count <= 131_072 ? String(data: data, encoding: .utf8) : nil)
+                ?? String(decoding: data.prefix(8_192), as: UTF8.self).nilIfContainsBinaryNUL()
+            if let text = textSlice {
+                store.addAttachment(FileAttachment(
+                    name: url.lastPathComponent,
+                    mimeType: ext == "json" ? "application/json" : "text/plain",
+                    textPreview: text.truncatedToUTF8Bytes(4_000),
+                    byteCount: data.count
+                ))
+                return
             }
-            let mime = preview != nil ? "text/plain" : "application/octet-stream"
+            let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
+            if maybeImg.isImage && maybeImg.imageBase64 != nil {
+                store.addAttachment(maybeImg)
+                return
+            }
+            let mime = ext == "pdf" ? "application/pdf" : "application/octet-stream"
+            let binB64 = data.count <= 20_000 ? data.base64EncodedString() : nil
             store.addAttachment(FileAttachment(
                 name: url.lastPathComponent,
                 mimeType: mime,
-                textPreview: preview,
-                byteCount: data.count
+                textPreview: nil,
+                byteCount: data.count,
+                binaryBase64: binB64
             ))
         }
     }

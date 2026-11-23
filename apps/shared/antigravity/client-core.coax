@@ -48,8 +48,9 @@ mc_mode_ok :: (mode: string) -> bool #export_c #effects(all) {
 
 // Builds a bounded, policy-checked EaRequest JSON payload using caller-owned scratch q.
 // Enforces at the wire boundary that any specified model is an Antigravity model (never Claude
-// or Inkling), effort is valid for Antigravity, review mode is auto/default/plan, folder is
-// only passed on OpenSession, and item_id is only passed on ReadSubagent / StopSubagent.
+// or Inkling), effort is valid for Antigravity, review mode is auto/default/plan/accept-edits/turbo,
+// folder is only passed on OpenSession, item_id only on ReadSubagent/StopSubagent, option_id only
+// on RespondInteraction, and attachments only on OpenSession/SendMessage.
 mc_env_request :: (
   q: [] EaRequest,
   method: string,
@@ -68,6 +69,8 @@ mc_env_request :: (
   folder: string,
   item: string,
   mode: string,
+  option_id: string,
+  attachments: string,
   out: [] u8
 ) -> int #export_c #effects(all) {
   if q.count < 1 || ea_right(method) < 0 { return -1; }
@@ -125,6 +128,16 @@ mc_env_request :: (
       q[0].nmd = ea_copy(q[0].mode[..], mode);
       if q[0].nmd < 1 { return -1; }
     }
+  }
+  if option_id.count > 0 {
+    if method != "RespondInteraction" { return -1; }
+    q[0].nop = ea_copy(q[0].option[..], option_id);
+    if q[0].nop < 1 { return -1; }
+  }
+  if attachments.count > 0 {
+    if method != "OpenSession" && method != "SendMessage" { return -1; }
+    q[0].nat = ea_copy(q[0].attachments[..], attachments);
+    if q[0].nat < 1 { return -1; }
   }
   return ea_write(q, out);
 }
@@ -200,21 +213,34 @@ mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) ->
 #test "shared Antigravity client core enforces Antigravity-only models, review modes, and workspace RPCs" {
   #assert mc_is_agy_model("gemini-4-neon") && mc_is_agy_model("antigravity");
   #assert !mc_is_agy_model("inkling-2-mini") && !mc_is_agy_model("claude-opus-5-5") && !mc_is_agy_model("default");
-  #assert mc_mode_ok("auto") && mc_mode_ok("default") && mc_mode_ok("plan") && !mc_mode_ok("invalid");
+  #assert mc_mode_ok("auto") && mc_mode_ok("default") && mc_mode_ok("plan") && mc_mode_ok("accept-edits") && mc_mode_ok("turbo") && !mc_mode_ok("invalid");
 
   q: [1] EaRequest;
-  out: [24576] u8;
+  out: [65536] u8;
   r: [1] EaRequest;
-  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Review diff", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "apps/openagents-ios", "", "plan", out[..]);
+  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Review diff", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "apps/openagents-ios", "", "plan", "", "", out[..]);
   #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]);
   #assert cast(string) r[0].mode[0..<r[0].nmd] == "plan" && cast(string) r[0].model[0..<r[0].nmo] == "gemini-4-neon";
+  // accept-edits & turbo modes round-trip cleanly (#13996)
+  n = mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Edit files", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "", "", "accept-edits", "", "", out[..]);
+  #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]) && cast(string) r[0].mode[0..<r[0].nmd] == "accept-edits";
+  // RespondInteraction option_id round-trips and is rejected on non-interaction methods (#13997)
+  n = mc_env_request(q[..], "RespondInteraction", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "", "int-1", false, 0, 1700000000000, 1700000300000, "", "", "", "", "", "reject_always", "", out[..]);
+  #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]) && cast(string) r[0].option[0..<r[0].nop] == "reject_always";
+  #assert mc_env_request(q[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", "reject_always", "", out[..]) < 0;
+  // Structured attachments round-trip on OpenSession/SendMessage and are rejected on reads (#14002)
+  att := "[{\"name\":\"shot.jpg\",\"mime_type\":\"image/jpeg\",\"data\":\"/9j/4AAQ\"}]";
+  n = mc_env_request(q[..], "SendMessage", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 1, "Inspect this", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "auto", "", att, out[..]);
+  #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]) && r[0].nat == att.count;
+  #assert mc_env_request(q[..], "ReadSession", "0123456789abcdef0123456789abcdef", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", "", att, out[..]) < 0;
+
   // ListSessions with "antigravity" preserves the native ~/.gemini query sentinel
-  n = mc_env_request(q[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "antigravity", "", "", "", "", out[..]);
+  n = mc_env_request(q[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "antigravity", "", "", "", "", "", "", out[..]);
   #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]) && cast(string) r[0].model[0..<r[0].nmo] == "antigravity";
 
   // Invalid mode or non-Antigravity model rejected at wire boundary
-  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "", "", "bogus", out[..]) < 0;
-  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "claude-opus-5-5", "high", "", "", "auto", out[..]) < 0;
+  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "", "", "bogus", "", "", out[..]) < 0;
+  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "claude-opus-5-5", "high", "", "", "auto", "", "", out[..]) < 0;
 
   // Workspace ReadWorkspace & SwitchBranch encoding
   wq: [1] WsRequest; wr: [1] WsRequest;
@@ -228,44 +254,44 @@ mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) ->
 
 #test "default OpenSession and SendMessage requests strictly obey v1 16-key legacy host wire compatibility" {
   q: [1] EaRequest;
-  out: [24576] u8;
+  out: [65536] u8;
   r: [1] EaRequest;
   sid := "0123456789abcdef0123456789abcdef";
   cmd := "abcdef0123456789abcdef0123456789";
 
-  // Default mode ("auto" or "") MUST omit "mode" and pass mc_v1_ea_compat
+  // Default mode ("auto" or "") MUST omit "mode", "option_id", "attachments" and pass mc_v1_ea_compat
   models := [5] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon", "gemini-3.8-flash"];
   efforts := [4] string.["low", "medium", "high", "xhigh"];
   for m: models {
     for e: efforts {
-      n := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "hello world", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "auto", out[..]);
+      n := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "hello world", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "auto", "", "", out[..]);
       #assert n > 0;
       raw := cast(string) out[0..<n];
-      #assert mc_v1_ea_compat(raw) && ea_read(raw, r[..]) && r[0].nmd == 0;
+      #assert mc_v1_ea_compat(raw) && ea_read(raw, r[..]) && r[0].nmd == 0 && r[0].nop == 0 && r[0].nat == 0;
 
-      n2 := mc_env_request(q[..], "SendMessage", sid, cmd, 1, 2, "follow up", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "", out[..]);
+      n2 := mc_env_request(q[..], "SendMessage", sid, cmd, 1, 2, "follow up", "", false, 0, 1700000000000, 1700000300000, m, e, "", "", "", "", "", out[..]);
       #assert n2 > 0;
       raw2 := cast(string) out[0..<n2];
-      #assert mc_v1_ea_compat(raw2) && ea_read(raw2, r[..]) && r[0].nmd == 0;
+      #assert mc_v1_ea_compat(raw2) && ea_read(raw2, r[..]) && r[0].nmd == 0 && r[0].nop == 0 && r[0].nat == 0;
     }
   }
 
   // Explicit non-default mode ("plan" / "default") emits "mode" (v2 host) and fails strict v1 allowlist as expected
-  np := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "plan it", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "plan", out[..]);
+  np := mc_env_request(q[..], "OpenSession", sid, cmd, 1, 0, "plan it", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "plan", "", "", out[..]);
   #assert np > 0 && !mc_v1_ea_compat(cast(string) out[0..<np]) && ea_read(cast(string) out[0..<np], r[..]) && cast(string) r[0].mode[0..<r[0].nmd] == "plan";
 
-  // Every read/control method stays strictly v1 compatible
+  // Every read/control method stays strictly v1 compatible when option_id/attachments omitted
   methods := [6] string.["DescribeEnvironment", "ListSessions", "ReadSession", "StopTurn", "RespondInteraction", "ReadSubagent"];
   for meth: methods {
     item_arg := ifx meth == "ReadSubagent" then "0:0" else "";
-    nr := mc_env_request(q[..], meth, sid, cmd, 1, 0, "", "int-1", true, 0, 1700000000000, 1700000300000, "", "", "", item_arg, "", out[..]);
+    nr := mc_env_request(q[..], meth, sid, cmd, 1, 0, "", "int-1", true, 0, 1700000000000, 1700000300000, "", "", "", item_arg, "", "", "", out[..]);
     #assert nr > 0 && mc_v1_ea_compat(cast(string) out[0..<nr]) && ea_read(cast(string) out[0..<nr], r[..]);
   }
 }
 
 #forall "fuzz: arbitrary ASCII bytes in message text round-trip safely through mc_env_request and mc_v1_ea_compat" b: u8 {
   q: [1] EaRequest;
-  out: [24576] u8;
+  out: [65536] u8;
   r: [1] EaRequest;
   tb: [4] u8;
   tb[0] = 'x';
@@ -273,7 +299,7 @@ mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) ->
   tb[1] = ifx b < 128 && (b >= 32 || b == 10 || b == 9) then b else 'a';
   tb[2] = '"';
   tb[3] = '\\';
-  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "abcdef0123456789abcdef0123456789", 1, 0, cast(string) tb[..], "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "auto", out[..]);
+  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "abcdef0123456789abcdef0123456789", 1, 0, cast(string) tb[..], "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "auto", "", "", out[..]);
   #assert n > 0 && mc_v1_ea_compat(cast(string) out[0..<n]) && ea_read(cast(string) out[0..<n], r[..]);
   #assert cast(string) r[0].text[0..<r[0].nt] == cast(string) tb[..];
 }

@@ -83,7 +83,7 @@ pa_tick :: (h:[]HsHost) {
  for i:0..<s[0].n {id:=cast(string)s[0].profiles[i].id[0..<s[0].profiles[i].ni];pa_probe_tick(m[0].native[0].probes[i..<i+1],m[0].native[0].accounts[i..<i+1],pa_directory(pa_root(root[..]),id,directory[..]),id=="system",now);}
 }
 pa_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]PaRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int {
- if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
+ if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || !hs_relay_matches(h,r[0].relay) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
  configured:=es_load_configuration(h[0].environment[..]);enabled:=pa_load(h[0].providers[..]);c:=h[0].environment[0].configuration[..];s:=h[0].providers[0].native[0].store[..];hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);right:=pa_right(r[0].method);
  req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());
  if verdict==HA_SILENT {return 0;}

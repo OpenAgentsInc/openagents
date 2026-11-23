@@ -63,6 +63,8 @@ int64_t oa_mobile_env_request(
     const char *folder,
     const char *item,
     const char *mode,
+    const char *option_id,
+    const char *attachments,
     uint8_t *out,
     int64_t cap);
 

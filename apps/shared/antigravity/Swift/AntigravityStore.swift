@@ -73,6 +73,7 @@ final class AntigravityStore: ObservableObject {
     private var pendingOptimisticUserItem: TranscriptItem?
     private var pendingOptimisticBaselineUserCount: Int = 0
     private var sentImagesByName: [String: Data] = [:]
+    private var interactionMeta: (sessionID: String, interactionID: String, prompt: String, warning: String, isQuestion: Bool, options: [InteractionOption])?
 
     init(store: MobileDeviceStore = MobileDeviceStore()) {
         self.store = store
@@ -123,6 +124,21 @@ final class AntigravityStore: ObservableObject {
 
     var pendingInteraction: PendingInteraction? {
         guard let session = activeSession, !session.interactionID.isEmpty else { return nil }
+        if let meta = interactionMeta,
+           meta.sessionID == session.id,
+           meta.interactionID == session.interactionID {
+            let prompt = meta.prompt.isEmpty
+                ? (items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "Antigravity is waiting for your approval to continue.")
+                : meta.prompt
+            return PendingInteraction(
+                id: session.interactionID,
+                sessionID: session.id,
+                prompt: prompt,
+                warning: meta.warning,
+                isQuestion: meta.isQuestion,
+                options: meta.options
+            )
+        }
         let hint = items.last(where: { $0.role == .notice || $0.role == .tool })?.text ?? "Antigravity is waiting for your approval to continue."
         return PendingInteraction(id: session.interactionID, sessionID: session.id, prompt: hint)
     }
@@ -400,6 +416,7 @@ final class AntigravityStore: ObservableObject {
         workspaceSnapshot = nil
         activeSubagentItem = nil
         subagentItems = []
+        interactionMeta = nil
         bannerError = nil
         loadPreferences(for: computer.id)
         restoreOfflineCache(for: computer.id)
@@ -627,6 +644,7 @@ final class AntigravityStore: ObservableObject {
         wasActiveSessionBusy = false
         activeSubagentItem = nil
         subagentItems = []
+        interactionMeta = nil
         bannerError = nil
         isSidebarOpen = false
         subscribeActiveHost()
@@ -639,6 +657,10 @@ final class AntigravityStore: ObservableObject {
         fastPollUntil = .distantPast
         activeSubagentItem = nil
         subagentItems = []
+        interactionMeta = nil
+        if let wireMode = ReviewMode.fromWire(session.mode) {
+            reviewMode = wireMode
+        }
         bannerError = nil
         isSidebarOpen = false
         subscribeActiveHost()
@@ -735,6 +757,20 @@ final class AntigravityStore: ObservableObject {
                 } else {
                     sessions.insert(updated, at: 0)
                 }
+                if !currentInteraction.isEmpty {
+                    if !view.interactionPrompt.isEmpty || !view.interactionWarning.isEmpty || !view.interactionOptions.isEmpty || view.interactionQuestion {
+                        interactionMeta = (
+                            sessionID: sid,
+                            interactionID: currentInteraction,
+                            prompt: view.interactionPrompt,
+                            warning: view.interactionWarning,
+                            isQuestion: view.interactionQuestion,
+                            options: view.interactionOptions
+                        )
+                    }
+                } else if interactionMeta?.sessionID == sid {
+                    interactionMeta = nil
+                }
             }
             applyServerItems(view.items, nowBusy: nowBusy)
             persistOfflineCache(for: computer.id)
@@ -772,34 +808,53 @@ final class AntigravityStore: ObservableObject {
 
         let capturedDraft = draftText
         let capturedAttachments = pendingAttachments
-        var composed = baseText
         for att in capturedAttachments {
             if let img = att.imageData {
                 sentImagesByName[att.name] = img
             }
-            composed += att.renderedPromptBlock()
         }
 
         // If viewing a read-only ended desktop chat, smoothly continue in a fresh interactive session
         // seeded with a compact context header instead of hitting a host "conflict" refusal.
         let continueFromReadOnly = activeSession?.isObserveOnly == true
+        var seedPrefix = ""
         if continueFromReadOnly, let oldTitle = activeSession?.displayTitle {
-            let lastReply = items.last(where: { $0.role == .assistant })?.text.prefix(1200) ?? ""
-            var seed = "[Continuing from earlier session \"\(oldTitle)\"]\n"
+            let lastReply = (items.last(where: { $0.role == .assistant })?.text ?? "").truncatedToUTF8Bytes(1_200)
+            seedPrefix = "[Continuing from earlier session \"\(oldTitle)\"]\n"
             if !lastReply.isEmpty {
-                seed += "[Last reply summary]: \(lastReply)\n\n"
+                seedPrefix += "[Last reply summary]: \(lastReply)\n\n"
             }
-            composed = seed + composed
         }
 
-        // Legacy 16-key openagents-environment hosts reject EaRequest.mode with "unsupported".
-        // Always omit "mode" for the default (.auto) and for hosts known to be v1-only.
-        let hostSupportsMode = !legacyNoModeHosts.contains(computer.id)
-        var modeWire = (reviewMode == .auto || !hostSupportsMode) ? "" : reviewMode.wireValue
-        if reviewMode == .plan && modeWire.isEmpty && !composed.hasPrefix("/plan") && !composed.hasPrefix("[Plan mode") {
-            composed = "[Plan mode — outline a plan before editing files]\n\n" + composed
+        // Legacy 16-key openagents-environment hosts reject EaRequest.mode / attachments with "unsupported".
+        // Always omit "mode" for the default (.auto) and refuse silent downgrade of interactive approval
+        // modes (.ask / .acceptEdits / .turbo) on legacy hosts so safety guarantees are never silently bypassed (#13996).
+        let hostSupportsV2 = !legacyNoModeHosts.contains(computer.id)
+        if !hostSupportsV2 && (reviewMode == .ask || reviewMode == .acceptEdits || reviewMode == .turbo) {
+            bannerError = "Your Mac is running an older OpenAgents host daemon that doesn't support \(reviewMode.label) mode yet. Update OpenAgents on your Mac, or switch Review Mode to Auto or Plan."
+            return
         }
-        let payloadText = String(composed.prefix(15_500))
+
+        func composePayload(useStructuredAttachments: Bool, modeWire: String) -> (text: String, attachmentsJSON: String) {
+            var body = seedPrefix + baseText
+            let attJSON = useStructuredAttachments ? FileAttachment.encodeWireAttachmentsJSON(capturedAttachments) : ""
+            for att in capturedAttachments {
+                if !attJSON.isEmpty && att.hasStructuredWireData {
+                    body += att.renderedV2Placeholder()
+                } else {
+                    body += att.renderedPromptBlock()
+                }
+            }
+            if reviewMode == .plan && modeWire.isEmpty && !body.hasPrefix("/plan") && !body.hasPrefix("[Plan mode") {
+                body = "[Plan mode — outline a plan before editing files]\n\n" + body
+            }
+            return (body.truncatedToUTF8Bytes(15_500), attJSON)
+        }
+
+        var modeWire = (reviewMode == .auto || !hostSupportsV2) ? "" : reviewMode.wireValue
+        let initial = composePayload(useStructuredAttachments: hostSupportsV2, modeWire: modeWire)
+        let payloadText = initial.text
+        var attachmentsJSON = initial.attachmentsJSON
 
         // Clear composer & display the optimistic user bubble (including real photo thumbnails!) at 0ms.
         let commandID = MobileCore.randomHex(bytes: 16)
@@ -810,7 +865,7 @@ final class AntigravityStore: ObservableObject {
             items = []
         }
         let baselineUsers = items.filter { $0.role == .user }.count
-        let optimisticBubbleText = capturedAttachments.contains(where: \.isImage) ? composed : (baseText.isEmpty ? composed : baseText)
+        let optimisticBubbleText = capturedAttachments.contains(where: \.isImage) ? payloadText : (baseText.isEmpty ? payloadText : baseText)
         let optimisticItem = TranscriptItem(
             id: optimisticID,
             role: .user,
@@ -842,7 +897,8 @@ final class AntigravityStore: ObservableObject {
         let model = MobileCore.normalizeAntigravityModel(selectedModelID)
         let effort = MobileCore.normalizeAntigravityEffort(model: model, want: selectedEffort.rawValue)
 
-        func dispatchSend(modeArg: String, textArg: String, cmdArg: String) async -> ParsedEnvironmentView? {
+        func dispatchSend(modeArg: String, textArg: String, attArg: String, cmdArg: String) async -> ParsedEnvironmentView? {
+            let quiet = !modeArg.isEmpty || !attArg.isEmpty
             if let current = activeSession, !continueFromReadOnly {
                 return await performEnvironmentRPC(
                     computer: computer,
@@ -857,7 +913,8 @@ final class AntigravityStore: ObservableObject {
                     model: model,
                     effort: effort,
                     mode: modeArg,
-                    quietErrors: !modeArg.isEmpty
+                    attachmentsJSON: attArg,
+                    quietErrors: quiet
                 )
             } else {
                 // Host `es_dispatch` requires a 32-char lowercase hex session_id on OpenSession.
@@ -877,22 +934,31 @@ final class AntigravityStore: ObservableObject {
                     effort: effort,
                     folder: folder,
                     mode: modeArg,
-                    quietErrors: !modeArg.isEmpty
+                    attachmentsJSON: attArg,
+                    quietErrors: quiet
                 )
             }
         }
 
-        var view = await dispatchSend(modeArg: modeWire, textArg: payloadText, cmdArg: commandID)
+        var view = await dispatchSend(modeArg: modeWire, textArg: payloadText, attArg: attachmentsJSON, cmdArg: commandID)
 
-        // Automatic transparent downgrade if an older Mac host rejects optional "mode" with "unsupported".
-        if let v = view, v.error == "unsupported", !modeWire.isEmpty {
+        // Transparent v1 downgrade ONLY when safe (.auto or .plan with instruction prefix, or structured attachments -> inline [oa-image ...]).
+        // NEVER silently downgrade .ask / .acceptEdits / .turbo to unconstrained auto (#13996)!
+        if let v = view, v.error == "unsupported", (!modeWire.isEmpty || !attachmentsJSON.isEmpty) {
             legacyNoModeHosts.insert(computer.id)
-            modeWire = ""
-            var fallbackText = payloadText
-            if reviewMode == .plan && !fallbackText.hasPrefix("/plan") && !fallbackText.hasPrefix("[Plan mode") {
-                fallbackText = String(("[Plan mode — outline a plan before editing files]\n\n" + fallbackText).prefix(15_500))
+            if reviewMode == .ask || reviewMode == .acceptEdits || reviewMode == .turbo {
+                bannerError = "Your Mac is running an older OpenAgents host daemon that doesn't support \(reviewMode.label) mode yet. Update OpenAgents on your Mac, or switch Review Mode to Auto or Plan."
+                pendingOptimisticUserItem = nil
+                items = previousItems
+                draftText = capturedDraft
+                pendingAttachments = capturedAttachments
+                isAwaitingTurnStart = false
+                return
             }
-            view = await dispatchSend(modeArg: "", textArg: fallbackText, cmdArg: MobileCore.randomHex(bytes: 16))
+            modeWire = ""
+            attachmentsJSON = ""
+            let fallback = composePayload(useStructuredAttachments: false, modeWire: "")
+            view = await dispatchSend(modeArg: "", textArg: fallback.text, attArg: "", cmdArg: MobileCore.randomHex(bytes: 16))
         }
 
         guard let finalView = view, finalView.error.isEmpty else {
@@ -946,26 +1012,49 @@ final class AntigravityStore: ObservableObject {
 
     // MARK: - Interactive Approvals & Questions (`RespondInteraction`)
 
-    func respondToInteraction(allow: Bool, note: String = "") async {
+    func respondToInteraction(allow: Bool, note: String = "", optionID: String = "") async {
         guard let current = activeSession,
               !current.interactionID.isEmpty,
               let computer = activeComputer,
               computer.canSendRPC else { return }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        _ = await performEnvironmentRPC(
+        let hostSupportsV2 = !legacyNoModeHosts.contains(computer.id)
+        let optWire = hostSupportsV2 ? optionID : ""
+        var view = await performEnvironmentRPC(
             computer: computer,
             method: "RespondInteraction",
             session: current.id,
             command: MobileCore.randomHex(bytes: 16),
             generation: max(1, current.generation),
             revision: current.revision,
-            text: note,
+            text: note.truncatedToUTF8Bytes(4_000),
             interaction: current.interactionID,
             allow: allow,
             issuedMs: nowMs,
-            expiresMs: nowMs + 300_000
+            expiresMs: nowMs + 300_000,
+            optionID: optWire,
+            quietErrors: !optWire.isEmpty
         )
+        if let v = view, v.error == "unsupported", !optWire.isEmpty {
+            legacyNoModeHosts.insert(computer.id)
+            view = await performEnvironmentRPC(
+                computer: computer,
+                method: "RespondInteraction",
+                session: current.id,
+                command: MobileCore.randomHex(bytes: 16),
+                generation: max(1, current.generation),
+                revision: current.revision,
+                text: note.truncatedToUTF8Bytes(4_000),
+                interaction: current.interactionID,
+                allow: allow,
+                issuedMs: nowMs,
+                expiresMs: nowMs + 300_000
+            )
+        }
+        if let v = view, v.error.isEmpty {
+            interactionMeta = nil
+        }
         await refreshActiveTranscript()
     }
 
@@ -1025,21 +1114,39 @@ final class AntigravityStore: ObservableObject {
 
     // MARK: - Workspace Git / Diff / Branch / Worktree / PR Controls (`WsRequest`)
 
+    /// Fetches all 4 paginated views of `ReadWorkspace` (`page=0` status/diff, `page=1` worktrees,
+    /// `page=2` branches, `page=3` PRs) and merges them cleanly so real `coder-host` tabs are never empty (#13999).
     func refreshWorkspace() async {
         guard let computer = activeComputer, computer.canSendRPC else { return }
         isLoadingWorkspace = true
         workspaceError = nil
         defer { isLoadingWorkspace = false }
 
-        if let snap = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace") {
-            workspaceSnapshot = snap
-            if !snap.path.isEmpty {
-                refreshDynamicSkills(workspaceRoot: snap.path)
-            }
-            if !snap.error.isEmpty {
-                workspaceError = HostErrorFormatter.describe(snap.error, method: "ReadWorkspace")
-            }
+        guard var merged = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 0) else { return }
+        if !merged.path.isEmpty {
+            refreshDynamicSkills(workspaceRoot: merged.path)
         }
+        if !merged.error.isEmpty {
+            workspaceSnapshot = merged
+            workspaceError = HostErrorFormatter.describe(merged.error, method: "ReadWorkspace")
+            return
+        }
+
+        if let p1 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 1, quietErrors: true),
+           p1.error.isEmpty {
+            merged = merged.merging(worktrees: p1.worktrees)
+        }
+        if let p2 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 2, quietErrors: true),
+           p2.error.isEmpty {
+            merged = merged.merging(branches: p2.branches)
+        }
+        if let p3 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 3, quietErrors: true),
+           p3.error.isEmpty {
+            merged = merged.merging(pullRequests: p3.pullRequests, githubError: p3.githubError)
+        }
+
+        guard activeComputerID == computer.id else { return }
+        workspaceSnapshot = merged
     }
 
     func switchBranch(_ branch: String) async {
@@ -1060,10 +1167,11 @@ final class AntigravityStore: ObservableObject {
         await runWorkspaceMutation(computer: computer, method: "CreateWorktree", branch: branch, base: base, expectedRevision: rev)
     }
 
-    func removeWorktree(branch: String) async {
+    /// Removes a secondary worktree by its 64-char hex `tree.id` in `WsRequest.workspace` (#13999).
+    func removeWorktree(id: String) async {
         guard let computer = activeComputer, computer.canSendRPC,
               let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
-        await runWorkspaceMutation(computer: computer, method: "RemoveWorktree", branch: branch, expectedRevision: rev)
+        await runWorkspaceMutation(computer: computer, method: "RemoveWorktree", workspace: id, expectedRevision: rev)
     }
 
     func pushCurrentBranch() async {
@@ -1089,6 +1197,7 @@ final class AntigravityStore: ObservableObject {
     private func runWorkspaceMutation(
         computer: ComputerEntry,
         method: String,
+        workspace: String = "default",
         branch: String = "",
         base: String = "",
         title: String = "",
@@ -1100,9 +1209,10 @@ final class AntigravityStore: ObservableObject {
         defer { workspaceActionBusy = false }
 
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        if let snap = await performWorkspaceRPC(
+        if var snap = await performWorkspaceRPC(
             computer: computer,
             method: method,
+            workspace: workspace,
             branch: branch,
             base: base,
             title: title,
@@ -1112,12 +1222,28 @@ final class AntigravityStore: ObservableObject {
             issuedMs: nowMs,
             expiresMs: nowMs + 120_000
         ) {
-            workspaceSnapshot = snap
             if !snap.error.isEmpty {
+                workspaceSnapshot = snap
                 workspaceError = HostErrorFormatter.describe(snap.error, method: method)
-            } else if !snap.githubError.isEmpty {
+                return
+            }
+            if !snap.githubError.isEmpty {
                 workspaceError = snap.githubError
             }
+            // Refresh paginated collections after mutation so Branches/Worktrees/PRs reflect the change.
+            if let p1 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 1, quietErrors: true),
+               p1.error.isEmpty {
+                snap = snap.merging(worktrees: p1.worktrees)
+            }
+            if let p2 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 2, quietErrors: true),
+               p2.error.isEmpty {
+                snap = snap.merging(branches: p2.branches)
+            }
+            if let p3 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 3, quietErrors: true),
+               p3.error.isEmpty {
+                snap = snap.merging(pullRequests: p3.pullRequests, githubError: p3.githubError)
+            }
+            workspaceSnapshot = snap
         }
     }
 
@@ -1253,6 +1379,8 @@ final class AntigravityStore: ObservableObject {
         folder: String = "",
         item: String = "",
         mode: String = "",
+        optionID: String = "",
+        attachmentsJSON: String = "",
         quietErrors: Bool = false
     ) async -> ParsedEnvironmentView? {
         guard let work = MobileCoreWork(),
@@ -1273,7 +1401,9 @@ final class AntigravityStore: ObservableObject {
                 effort: effort,
                 folder: folder,
                 item: item,
-                mode: mode
+                mode: mode,
+                optionID: optionID,
+                attachmentsJSON: attachmentsJSON
               ) else {
             if !quietErrors { bannerError = "Could not build Antigravity request." }
             return nil
@@ -1320,30 +1450,34 @@ final class AntigravityStore: ObservableObject {
     private func performWorkspaceRPC(
         computer: ComputerEntry,
         method: String,
+        workspace: String = "default",
         branch: String = "",
         base: String = "",
         title: String = "",
         body: String = "",
+        page: Int64 = 0,
         expectedRevision: String = "",
         command: String = "",
         issuedMs: Int64 = 0,
-        expiresMs: Int64 = 0
+        expiresMs: Int64 = 0,
+        quietErrors: Bool = false
     ) async -> WorkspaceSnapshot? {
         guard let work = MobileCoreWork(),
               let params = MobileCore.encodeWorkspaceRequest(
                 work: work,
                 method: method,
-                workspace: "default",
+                workspace: workspace,
                 branch: branch,
                 base: base,
                 title: title,
                 body: body,
+                page: page,
                 expectedRevision: expectedRevision,
                 command: command,
                 issuedMs: issuedMs,
                 expiresMs: expiresMs
               ) else {
-            workspaceError = "Could not encode workspace request."
+            if !quietErrors { workspaceError = "Could not encode workspace request." }
             return nil
         }
 
@@ -1354,7 +1488,7 @@ final class AntigravityStore: ObservableObject {
             guard let paired = computer.paired, !paired.isExpired,
                   let endpoint = endpointFor(computer),
                   let secret = store.loadOrCreateDeviceSecret() else {
-                workspaceError = "Computer is not paired over Tailscale."
+                if !quietErrors { workspaceError = "Computer is not paired over Tailscale." }
                 return nil
             }
             result = await client.sendRPC(
@@ -1369,11 +1503,11 @@ final class AntigravityStore: ObservableObject {
 
         switch result {
         case .failure(let error):
-            workspaceError = error.localizedDescription
+            if !quietErrors { workspaceError = error.localizedDescription }
             return nil
         case .success(let data):
             guard let parsed = WorkspaceSnapshot.parse(data) else {
-                workspaceError = "Malformed workspace response."
+                if !quietErrors { workspaceError = "Malformed workspace response." }
                 return nil
             }
             return parsed

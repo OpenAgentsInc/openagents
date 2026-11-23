@@ -272,19 +272,6 @@ extension CoderWindow {
                 _ = cd_usage_tick(self.page, nowS)
                 cd_usage_refreshing_set(self.page, 0)
                 self.wake()
-                // Live Antigravity CloudCode quota probe for enabled Google-account instances.
-                for inst in ProviderInstancesStore.shared.instances where inst.driver == .antigravity && inst.enabled && inst.authMethod == .oauthPersonal {
-                    AntigravityUsageLimitsProber.probeQuotaWindows(for: inst) { [weak self] snap in
-                        guard let self, !self.retired, let a = snap else { return }
-                        let idx = cd_usage_set_account(self.page, a.provider, a.profile, a.plan, a.status, a.why, a.gotMs, a.limited ? 1 : 0, a.limitResetS)
-                        if idx >= 0 {
-                            for w in a.windows {
-                                _ = cd_usage_add_window(self.page, idx, w.label, w.usedBp, w.resetS)
-                            }
-                        }
-                        self.wake()
-                    }
-                }
             }
         }
     }

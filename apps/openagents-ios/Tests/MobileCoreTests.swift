@@ -500,4 +500,152 @@ final class MobileCoreTests: XCTestCase {
         store.handleIncomingURL(url)
         XCTAssertEqual(store.draftText, "Check Tailscale status")
     }
+
+    func testAcceptEditsTurboOptionIDAndAttachmentsWireEncoding() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        XCTAssertTrue(MobileCore.isValidReviewMode("accept-edits"))
+        XCTAssertTrue(MobileCore.isValidReviewMode("turbo"))
+        XCTAssertEqual(ReviewMode.acceptEdits.wireValue, "accept-edits")
+        XCTAssertEqual(ReviewMode.turbo.wireValue, "turbo")
+        XCTAssertEqual(ReviewMode.fromWire("accept-edits"), .acceptEdits)
+        XCTAssertEqual(ReviewMode.fromWire("default"), .ask)
+
+        let resp = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "RespondInteraction",
+            session: "0123456789abcdef0123456789abcdef",
+            command: "abcdef0123456789abcdef0123456789",
+            generation: 1,
+            revision: 1,
+            interaction: "permit-7",
+            allow: false,
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            optionID: "reject_always"
+        ))
+        let respJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: resp) as? [String: Any])
+        XCTAssertEqual(respJSON["option_id"] as? String, "reject_always")
+
+        // Structured attachment JSON round-trips on OpenSession/SendMessage and omits key when empty
+        let png = try makeTestPNG(width: 480, height: 320)
+        let att = FileAttachment.prepareImage(data: png, name: "dense ui.png")
+        let wireJSON = FileAttachment.encodeWireAttachmentsJSON([att])
+        XCTAssertFalse(wireJSON.isEmpty)
+        let sendWithAtt = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "SendMessage",
+            session: "0123456789abcdef0123456789abcdef",
+            command: "abcdef0123456789abcdef0123456789",
+            generation: 1,
+            revision: 1,
+            text: "Inspect screenshot",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_300_000,
+            model: "gemini-4-neon",
+            effort: "medium",
+            mode: "auto",
+            attachmentsJSON: wireJSON
+        ))
+        let attReqJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: sendWithAtt) as? [String: Any])
+        let attArr = try XCTUnwrap(attReqJSON["attachments"] as? [[String: Any]])
+        XCTAssertEqual(attArr.count, 1)
+        XCTAssertEqual(attArr[0]["mime_type"] as? String, "image/jpeg")
+    }
+
+    func testParsedEnvironmentViewDecodesInteractionWarningOptionsAndSessionMode() throws {
+        let host = String(repeating: "a", count: 64)
+        let rawJSON = """
+        {
+          "schema": "openagents.environment.runtime.v1alpha1",
+          "host_pubkey": "\(host)",
+          "display_name": "Studio Mac",
+          "method": "ReadSession",
+          "sessions": [
+            {
+              "session_id": "0123456789abcdef0123456789abcdef",
+              "workspace_id": "default",
+              "title": "Interactive Approval",
+              "origin": "managed",
+              "control": "available",
+              "generation": 1,
+              "revision": 2,
+              "busy": true,
+              "interaction_id": "permit-3",
+              "updated_at_ms": 1700000000000,
+              "model": "gemini-4-neon",
+              "effort": "high",
+              "mode": "default"
+            }
+          ],
+          "items": [],
+          "error": "",
+          "complete": true,
+          "next_cursor": "",
+          "command_id": "",
+          "command_status": "",
+          "source_epoch": "",
+          "interaction_prompt": "Run rm -rf /tmp/scratch",
+          "interaction_warning": "Destructive command detected",
+          "interaction_question": false,
+          "interaction_options": [
+            {"optionId": "allow_once", "name": "Allow Once", "kind": "allow_once"},
+            {"optionId": "reject_always", "name": "Always Deny", "kind": "reject_always"}
+          ]
+        }
+        """
+        let data = Data(rawJSON.utf8)
+        let work = try XCTUnwrap(MobileCoreWork())
+        XCTAssertTrue(MobileCore.validateView(work: work, host: host, method: "ReadSession", raw: data))
+        let parsed = try XCTUnwrap(ParsedEnvironmentView.parse(data))
+        XCTAssertEqual(parsed.sessions.first?.mode, "default")
+        XCTAssertEqual(parsed.interactionPrompt, "Run rm -rf /tmp/scratch")
+        XCTAssertEqual(parsed.interactionWarning, "Destructive command detected")
+        XCTAssertEqual(parsed.interactionOptions.count, 2)
+        XCTAssertEqual(parsed.interactionOptions[0].id, "allow_once")
+        XCTAssertTrue(parsed.interactionOptions[0].isAllow)
+        XCTAssertEqual(parsed.interactionOptions[1].id, "reject_always")
+        XCTAssertFalse(parsed.interactionOptions[1].isAllow)
+    }
+
+    func testWorkspaceChangedFilesHandlesSpacesQuotesRenamesAndPaginationMerge() {
+        let base = WorkspaceSnapshot(
+            host: String(repeating: "a", count: 64),
+            workspace: "default",
+            revision: String(repeating: "1", count: 64),
+            path: "/Users/dev/openagents",
+            repository: "OpenAgentsInc/openagents",
+            branch: "main",
+            status: " M \"dir with spaces/file name.swift\"\nR  old/path.swift -> new/renamed path.swift",
+            diff: """
+            diff --git "a/dir with spaces/file name.swift" "b/dir with spaces/file name.swift"
+            @@ -1 +1 @@
+            -old
+            +new
+            """,
+            diffCut: false,
+            error: "",
+            githubError: "",
+            worktrees: [],
+            branches: [],
+            pullRequests: []
+        )
+        let files = base.changedFiles
+        XCTAssertEqual(files.count, 2)
+        XCTAssertEqual(files[0].path, "dir with spaces/file name.swift")
+        XCTAssertTrue(files[0].diff.contains("+new"))
+        XCTAssertEqual(files[1].path, "new/renamed path.swift")
+
+        let tree = WorkspaceWorktree(id: String(repeating: "b", count: 64), path: "/tmp/wt", branch: "feat/x", locked: false)
+        let pr = WorkspacePR(number: 42, title: "Fix P0s", url: "", head: "feat/x", base: "main", body: "", state: "open")
+        let merged = base.merging(worktrees: [tree], branches: ["main", "feat/x"], pullRequests: [pr], githubError: "")
+        XCTAssertEqual(merged.worktrees, [tree])
+        XCTAssertEqual(merged.branches, ["main", "feat/x"])
+        XCTAssertEqual(merged.pullRequests, [pr])
+
+        // UTF-8 byte-safe truncation never exceeds byte budget on multi-byte emoji
+        let emoji = String(repeating: "🚀", count: 10) // 40 UTF-8 bytes
+        let cut = emoji.truncatedToUTF8Bytes(10)
+        XCTAssertLessThanOrEqual(cut.utf8.count, 10)
+        XCTAssertEqual(cut, "🚀🚀")
+    }
 }

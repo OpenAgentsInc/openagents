@@ -150,6 +150,8 @@ int64_t oa_mobile_env_request(
     const char *folder,
     const char *item,
     const char *mode,
+    const char *option_id,
+    const char *attachments,
     uint8_t *out,
     int64_t cap
 ) {
@@ -173,6 +175,8 @@ int64_t oa_mobile_env_request(
         oa_mc_cstr(folder),
         oa_mc_cstr(item),
         oa_mc_cstr(mode),
+        oa_mc_cstr(option_id),
+        oa_mc_cstr(attachments),
         oa_mc_out(out, cap)
     );
 }

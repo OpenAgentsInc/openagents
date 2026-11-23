@@ -102,6 +102,8 @@ McTask :: struct {
   openrouter: string;            // with agents: the OpenRouter model a task's level openrouter runs on ("" for none)
   no_steer: bool;                // the turn takes no steers ("steerable":false): a sub-agent's, which no person watches (GitHub #13715)
   device: bool;                  // the iOS Simulator is there: a step may hold device ops (coax/lib/microcoder/device.coax, GitHub #13811)
+  mode: string;                  // optional review mode ("auto"|"default"|"plan"|"accept-edits"|"turbo", #13996)
+  attachments: string;           // optional JSON array of attachment objects ([{"name":...,"mime_type":...,"data":...}], #14002)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -124,6 +126,8 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.openrouter.count > 0 { n = json_raw(o, n, ",\"openrouter\":"); n = json_write_string(o, n, t.openrouter); }
   if t.no_steer { n = json_raw(o, n, ",\"steerable\":false"); }
   if t.device { n = json_raw(o, n, ",\"device\":true"); }
+  if t.mode.count > 0 { n = json_raw(o, n, ",\"mode\":"); n = json_write_string(o, n, t.mode); }
+  if t.attachments.count > 0 { n = json_raw(o, n, ",\"attachments\":"); n = json_raw(o, n, t.attachments); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -135,11 +139,11 @@ mww_answer :: (o: [] u8, allow: bool, ticket: int, why: string) -> int {
   n = json_raw(o, n, "}\n");
   return n;
 }
-// The answer for an interactive permission or question, carrying the chosen native optionId when allowed (GitHub #13831).
+// The answer for an interactive permission or question, carrying the chosen native optionId whether allowed or denied (GitHub #13831, #13997).
 mww_answer_option :: (o: [] u8, allow: bool, ticket: int, option: string, why: string) -> int {
   n := json_raw(o, 0, ifx allow then "{\"answer\":true" else "{\"answer\":false");
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
-  if allow && option.count > 0 { n = json_raw(o, n, ",\"option\":"); n = json_write_string(o, n, option); }
+  if option.count > 0 { n = json_raw(o, n, ",\"option\":"); n = json_write_string(o, n, option); }
   if !allow { n = json_raw(o, n, ",\"why\":"); n = json_write_string(o, n, ifx why.count > 0 then why else "refused"); }
   n = json_raw(o, n, "}\n");
   return n;
@@ -208,6 +212,7 @@ MwwRequest :: struct {
   query: bool;                   // embed: a query's embedding
   allow: bool; ticket: JsonInt; why: string; option: string;       // answer
   task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
+  mode: string; attachments: string;
   openrouter: string;            // the OpenRouter model offered to sub-agents as level openrouter
   local: bool; gated: bool; agents: bool; edits: bool; claude: bool; unlimited: bool; no_ask: bool; device: bool;
   results: string;               // results: the list's JSON text
@@ -289,6 +294,8 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   r[0].policy = cl_raw(msg, "policy");
   r[0].effort = cl_str(ar, msg, "effort");
   r[0].openrouter = cl_str(ar, msg, "openrouter");
+  r[0].mode = cl_str(ar, msg, "mode");
+  if cl_at(msg, "attachments").tok == JSON_ARRAY { r[0].attachments = cl_raw(msg, "attachments"); }
   r[0].kind = MWW_TASK; return MWW_TASK;
 }
 
@@ -312,6 +319,8 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   t[0].openrouter = cl_str(ar, msg, "openrouter");
   steerable := cl_bool(msg, "steerable"); t[0].no_steer = steerable.ok && !steerable.value;
   device := cl_bool(msg, "device"); t[0].device = device.ok && device.value;
+  t[0].mode = cl_str(ar, msg, "mode");
+  if cl_at(msg, "attachments").tok == JSON_ARRAY { t[0].attachments = cl_raw(msg, "attachments"); }
   return !ar[0].full;
 }
 
@@ -389,15 +398,20 @@ mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
-// Interactive permission escalation or structured user-input question (GitHub #13831).
+// Interactive permission escalation or structured user-input question (GitHub #13831, #13997).
 // options_json is a JSON array of {"optionId":I,"name":L,"kind":K} objects (or "[]").
-mww_permit :: (o: [] u8, ticket: int, question: bool, title: string, command: string, options_json: string) -> int {
+// warning is an optional security warning from _meta.agy.security.warning (omitted when empty).
+mww_permit_warn :: (o: [] u8, ticket: int, question: bool, title: string, command: string, warning: string, options_json: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"permit\",\"ticket\":"); n = json_write_int(o, n, ticket);
   n = json_raw(o, n, ifx question then ",\"question\":true" else ",\"question\":false");
   n = json_raw(o, n, ",\"title\":"); n = json_write_string(o, n, title);
   n = json_raw(o, n, ",\"command\":"); n = json_write_string(o, n, command);
+  if warning.count > 0 { n = json_raw(o, n, ",\"warning\":"); n = json_write_string(o, n, warning); }
   n = json_raw(o, n, ",\"options\":"); n = json_raw(o, n, ifx options_json.count > 0 then options_json else "[]");
   return json_raw(o, n, "}");
+}
+mww_permit :: (o: [] u8, ticket: int, question: bool, title: string, command: string, options_json: string) -> int {
+  return mww_permit_warn(o, ticket, question, title, command, "", options_json);
 }
 // tasks: the delegated tasks' JSON list, [{"level":L,"task":T}]; L is hydrogen, carbon or neon, or a Claude model (haiku, sonnet, opus, fable).
 mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
@@ -508,7 +522,7 @@ MwwLine :: struct {
   todos: string;                 // todos: the todo list's JSON array ([{"id","content","status"}]); read each with cl_item
   op: string;                    // queue_refused; device: the oasim verb
   ok: ClBool; shot: string;      // device: whether it went, the screenshot it took ("" for none)
-  question: ClBool; title: string; options: string;   // permit: interactive permission or user-input question
+  question: ClBool; title: string; options: string; warning: string; // permit: interactive permission or user-input question
   ttft_ms: JsonInt; decode_ms: JsonInt;               // stats: time-to-first-token and decode duration in ms
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
@@ -548,6 +562,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].question = cl_bool(line, "question");
     l[0].title = cl_str(ar, line, "title");
     l[0].command = cl_str(ar, line, "command");
+    l[0].warning = cl_str(ar, line, "warning");
     l[0].options = cl_raw(line, "options");
   }
   else if kind == "ended" { k = MWW_ENDED; l[0].ending = cl_str(ar, line, "ending"); l[0].text = cl_str(ar, line, "text"); }
@@ -843,12 +858,14 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":1}\n";
   n = mww_answer_option(o[..], true, 1, "x", "");
   #assert cast(string) o[0..<n] == "{\"answer\":true,\"ticket\":1,\"option\":\"x\"}\n";
-  n = mww_answer_option(o[..], false, 1, "x", "");
-  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"why\":\"refused\"}\n";
+  n = mww_answer_option(o[..], false, 1, "reject_always", "");
+  #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"option\":\"reject_always\",\"why\":\"refused\"}\n";
   n = mww_answer_option(o[..], false, 1, "", "n");
   #assert cast(string) o[0..<n] == "{\"answer\":false,\"ticket\":1,\"why\":\"n\"}\n";
   n = mww_permit(o[..], 11, false, "T", "", "");
-  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_PERMIT && l[0].options == "[]";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_PERMIT && l[0].options == "[]" && l[0].warning == "";
+  n = mww_permit_warn(o[..], 13, false, "Run", "rm -rf /", "Destructive command", "[{\"optionId\":\"allow\",\"name\":\"Allow\",\"kind\":\"allow_once\"}]");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_PERMIT && l[0].warning == "Destructive command";
   n = mww_permit(o[..], 12, false, "T", "", "0");
   #assert cast(string) o[0..<n] == "{\"kind\":\"permit\",\"ticket\":12,\"question\":false,\"title\":\"T\",\"command\":\"\",\"options\":0}";
   n = mww_stats(o[..], 340, 2100, 88);

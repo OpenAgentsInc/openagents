@@ -845,7 +845,7 @@ final class AntigravityRuntimeManager: NSObject, URLSessionDownloadDelegate {
         do { try p.run() } catch { return "Could not start downloaded agy: \(error.localizedDescription)" }
         defer { if p.isRunning { p.terminate() } }
 
-        let req = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{},\"clientInfo\":{\"name\":\"OpenAgents\",\"version\":\"1.0.0\"}}}\n"
+        let req = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{},\"clientInfo\":{\"name\":\"openagents\",\"version\":\"1.0.0\"}}}\n"
         into.fileHandleForWriting.write(Data(req.utf8))
         try? into.fileHandleForWriting.close()
 
@@ -1185,164 +1185,16 @@ final class AntigravityAuthManager {
     }
 }
 
-// MARK: - Usage Limits Prober (100% Port of antigravityUsageLimits.ts)
+// MARK: - Usage Limits Prober (Disabled for Google ToS Compliance — #13995)
 
 enum AntigravityUsageLimitsProber {
-    private static let quotaEndpoints = [
-        "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
-    ]
-    private static let modelsFallbackEndpoint = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels"
-
-    /// Reads OAuth access token from isolated profile files or macOS Keychain (`gemini:antigravity`),
-    /// decoding Go keyring prefixes (`go-keyring-base64:`, `go-keyring-encoded:`). Never logs the token.
-    static func readAccessToken(for instanceId: String) -> String? {
-        let acpDir = AntigravityProfileManager.acpDataDir(for: instanceId)
-        let candidates = [
-            acpDir.appendingPathComponent("acp_token.json"),
-            acpDir.appendingPathComponent("antigravity-oauth-token"),
-            acpDir.appendingPathComponent("oauth_creds.json"),
-        ]
-        for file in candidates {
-            if let data = try? Data(contentsOf: file), let tok = extractAccessToken(from: data) {
-                return tok
-            }
-        }
-        // Fallback: macOS Keychain entry written by agy CLI (`gemini:antigravity`).
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "gemini:antigravity",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-           let data = result as? Data,
-           let tok = extractAccessToken(from: data) {
-            return tok
-        }
-        return nil
-    }
-
-    private static func extractAccessToken(from raw: Data) -> String? {
-        var text = String(decoding: raw, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.hasPrefix("go-keyring-base64:") {
-            let b64 = String(text.dropFirst("go-keyring-base64:".count))
-            if let dec = Data(base64Encoded: b64) { text = String(decoding: dec, as: UTF8.self) }
-        } else if text.hasPrefix("go-keyring-encoded:") {
-            let b64 = String(text.dropFirst("go-keyring-encoded:".count))
-            if let dec = Data(base64Encoded: b64) { text = String(decoding: dec, as: UTF8.self) }
-        }
-        if let json = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] {
-            if let t = json["access_token"] as? String, !t.isEmpty { return t }
-            if let t = json["accessToken"] as? String, !t.isEmpty { return t }
-            if let nested = json["token"] as? [String: Any],
-               let t = (nested["access_token"] as? String) ?? (nested["accessToken"] as? String), !t.isEmpty {
-                return t
-            }
-        }
-        return nil
-    }
-
     #if OA_FULL
-    static func probeQuotaWindows(for inst: ProviderInstanceConfig, completion: @escaping (UsageAccountSnapshot?) -> Void) {
-        guard inst.driver == .antigravity, inst.enabled, inst.authMethod == .oauthPersonal else {
-            completion(nil)
-            return
-        }
-        DispatchQueue.global(qos: .utility).async {
-            guard let token = readAccessToken(for: inst.id) else {
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-            for ep in quotaEndpoints {
-                if let snap = fetchQuotaSummary(endpoint: ep, token: token, profile: inst.displayName, nowMs: nowMs) {
-                    DispatchQueue.main.async { completion(snap) }
-                    return
-                }
-            }
-            let fallback = fetchModelsFallback(token: token, profile: inst.displayName, nowMs: nowMs)
-            DispatchQueue.main.async { completion(fallback) }
-        }
-    }
-
-    private static func fetchQuotaSummary(endpoint: String, token: String, profile: String, nowMs: Int64) -> UsageAccountSnapshot? {
-        guard let url = URL(string: endpoint) else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 12
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = Data("{}".utf8)
-        let sem = DispatchSemaphore(value: 0)
-        var outData: Data?
-        URLSession.shared.dataTask(with: req) { data, resp, _ in
-            if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) { outData = data }
-            sem.signal()
-        }.resume()
-        guard sem.wait(timeout: .now() + 13) == .success, let data = outData,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let buckets = json["buckets"] as? [[String: Any]], !buckets.isEmpty else { return nil }
-        var wins: [UsageWindowSnapshot] = []
-        var limited = false
-        var limitReset: Int64 = 0
-        let iso = ISO8601DateFormatter()
-        for b in buckets {
-            let modelId = (b["modelId"] as? String) ?? (b["bucketId"] as? String) ?? "Quota"
-            let rem = (b["remainingFraction"] as? Double) ?? 1.0
-            let usedBp = Int32(max(0, min(10000, Int(((1.0 - rem) * 10000.0).rounded()))))
-            var resetS: Int64 = 0
-            if let rt = b["resetTime"] as? String, let dt = iso.date(from: rt) {
-                resetS = max(0, Int64(dt.timeIntervalSinceNow))
-            }
-            wins.append(UsageWindowSnapshot(label: modelId, usedBp: usedBp, resetS: resetS))
-            if usedBp >= 10000 {
-                limited = true
-                if resetS > 0 && (limitReset == 0 || resetS < limitReset) { limitReset = resetS }
-            }
-        }
-        guard !wins.isEmpty else { return nil }
-        return UsageAccountSnapshot(
-            provider: 2, profile: profile, plan: "Google Account",
-            status: 1, why: "", gotMs: nowMs, limited: limited, limitResetS: limitReset, windows: wins
-        )
-    }
-
-    private static func fetchModelsFallback(token: String, profile: String, nowMs: Int64) -> UsageAccountSnapshot? {
-        guard let url = URL(string: modelsFallbackEndpoint) else { return nil }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 12
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = Data("{}".utf8)
-        let sem = DispatchSemaphore(value: 0)
-        var outData: Data?
-        URLSession.shared.dataTask(with: req) { data, resp, _ in
-            if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) { outData = data }
-            sem.signal()
-        }.resume()
-        guard sem.wait(timeout: .now() + 13) == .success, let data = outData,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = json["models"] as? [String: Any] else { return nil }
-        var wins: [UsageWindowSnapshot] = []
-        let iso = ISO8601DateFormatter()
-        for (k, v) in models.sorted(by: { $0.key < $1.key }) {
-            guard let info = v as? [String: Any], let qi = info["quotaInfo"] as? [String: Any] else { continue }
-            let rem = (qi["remainingFraction"] as? Double) ?? 1.0
-            let usedBp = Int32(max(0, min(10000, Int(((1.0 - rem) * 10000.0).rounded()))))
-            var resetS: Int64 = 0
-            if let rt = qi["resetTime"] as? String, let dt = iso.date(from: rt) {
-                resetS = max(0, Int64(dt.timeIntervalSinceNow))
-            }
-            wins.append(UsageWindowSnapshot(label: k, usedBp: usedBp, resetS: resetS))
-        }
-        guard !wins.isEmpty else { return nil }
-        return UsageAccountSnapshot(
-            provider: 2, profile: profile, plan: "Google Account",
-            status: 1, why: "", gotMs: nowMs, limited: wins.contains { $0.usedBp >= 10000 }, limitResetS: 0, windows: wins
-        )
+    /// Compliance (#13995): OpenAgents follows Google's approved T3 Code architecture
+    /// (app -> official unmodified `agy acp` binary -> Google API) and NEVER extracts
+    /// Antigravity OAuth tokens from profile files or macOS Keychain to call private
+    /// Google endpoints directly. Quota display awaits official `agy` ACP support.
+    static func probeQuotaWindows(for _: ProviderInstanceConfig, completion: @escaping (UsageAccountSnapshot?) -> Void) {
+        completion(nil)
     }
     #endif
 }

@@ -5,7 +5,18 @@
 ws_receipt :: (grant:string,command:string,suffix:string,out:[]u8)->string {b:[256]u8;n:=hs_cat(b[..],0,"workspace-");n=hs_cat(b[..],n,grant);n=hs_cat(b[..],n,"-");n=hs_cat(b[..],n,command);n=hs_cat(b[..],n,suffix);return es_path(cast(string)b[0..<n],out);}
 ws_managed_root :: (out:[]u8)->string {b:[1024]u8;home:=hs_home(b[..]);n:=hs_cat(out,0,home);n=hs_cat(out,n,"/.openagents/worktrees");return cast(string)out[0..<n];}
 ws_owned :: (path:string)->bool {b:[1400]u8;root:=ws_managed_root(b[..]);if path.count!=root.count+33 || path[0..<root.count]!=root || path[root.count]!='/' {return false;}return ea_id(path[root.count+1..<path.count],32);}
-ws_busy :: (h:[]HsHost,path:string)->bool {for i:0..<ES_SLOTS {slot:=h[0].environment[0].slots[i..<i+1];if slot[0].occupied && (slot[0].s[0].live || slot[0].summary.busy || slot[0].probing || slot[0].execution[0].active) && cast(string)slot[0].engine[0].cwd[0..<slot[0].engine[0].cwd_n]==path {return true;}}return false;}
+ws_busy :: (h:[]HsHost,path:string)->bool {
+  for i:0..<ES_SLOTS {slot:=h[0].environment[0].slots[i..<i+1];if slot[0].occupied && (slot[0].s[0].live || slot[0].summary.busy || slot[0].probing || slot[0].execution[0].active) && cast(string)slot[0].engine[0].cwd[0..<slot[0].engine[0].cwd_n]==path {return true;}}
+  // Also guard against active Antigravity/Desktop/phone DrHost runs operating inside this worktree (#13999).
+  runs:[DK_RUNS]DkInfo;n:=dk_all(runs[..]);
+  for i:0..<n {
+    r:=runs[i..<i+1];
+    if !dk_running(r) || (!r[0].busy && r[0].permit_ticket==0) {continue;}
+    real:[1024]u8;rcwd:=fs_realpath(cast(string)r[0].cwd[0..<r[0].ncwd],real[..]);
+    if rcwd.count>0 && (rcwd==path || es_folder_inside(path,rcwd)) {return true;}
+  }
+  return false;
+}
 ws_execute :: (h:[]HsHost,root:string,grant:string,q:[]WsRequest,v:[]WsView) {
  v[0]=WsView.{};method:=cast(string)q[0].method[0..<q[0].nm];v[0].host=h[0].xhex;v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;
  command:=cast(string)q[0].command[0..<q[0].nc];request:[24576]u8;n:=ws_write(q,request[..]);if n<1 {ws_fail(v,"malformed");return;}
@@ -43,7 +54,7 @@ ws_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]WsRequest,signer:string,event:stri
  hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);if scoped {for i:0..<st[0].ng {if ga[i].grant==r[0].grant && ga[i].device==signer {ga[i].rights|=1<<HA_REVIEW;}}}
  right:=ws_right(r[0].method);req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};none:[1]HostRetained;verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());if verdict==HA_SILENT {return 0;}
  if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
- v:[1]WsView;ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],r[0].grant,q,v[..]);raw:[HB_BODY_MAX]u8;n:=ws_view_write(v[..],raw[..]);body:[HB_BODY_MAX]u8;made:=ifx n>0 then hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)raw[0..<n],body[..]) else -1;peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+ v:[1]WsView;ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],r[0].grant,q,v[..]);raw:[HB_BODY_MAX]u8;n:=ws_view_write(v[..],raw[..]);if n<1 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"bounds",""),signer,w,out);}body:[HB_BODY_MAX]u8;made:=hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)raw[0..<n],body[..]);peer:[32]u8;nonce:[32]u8;aux:[32]u8;if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"bounds",""),signer,w,out);}sealed:=hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);if sealed<1 {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"bounds",""),signer,w,out);}return sealed;
 }
 ws_rpc_call :: (args:[]Args)->int {input:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);q:[1]WsRequest;if n<1 || !ws_read(cast(string)input[0..<n],q[..]) {return 2;}out:[HB_BODY_MAX]u8;r:=es_rpc_exchange(args,cast(string)q[0].method[0..<q[0].nm],cast(string)input[0..<n],out[..]);v:[1]WsView;if r.n<1 || !ws_view_read(cast(string)out[0..<r.n],v[..]) {return 3;}hs_outln(cast(string)out[0..<r.n]);return 0;}
 // Additive local opt-in uses the existing private environment configuration

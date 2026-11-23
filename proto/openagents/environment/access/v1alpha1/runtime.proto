@@ -34,6 +34,17 @@ message RuntimeRequest {
   // transcript refuses not_found. StopSubagent (#13776) stops that one sub-agent of a Coder
   // Desktop chat's running turn; an older computer refuses the method.
   optional string item_id = 16 [json_name = "item_id"];
+  // Optional review/permission mode on OpenSession/SendMessage: auto, default, plan, accept-edits, turbo.
+  optional string mode = 17 [json_name = "mode"];
+  // RespondInteraction only: optional native ACP optionId (e.g. allow_once, allow_always, reject_once, reject_always).
+  optional string option_id = 18 [json_name = "option_id"];
+  // OpenSession/SendMessage only: optional multimodal attachments (up to 8 base64 items).
+  repeated RuntimeAttachment attachments = 19 [json_name = "attachments"];
+}
+message RuntimeAttachment {
+  optional string name = 1 [json_name = "name"];
+  string mime_type = 2 [json_name = "mime_type"];
+  string data = 3 [json_name = "data"];
 }
 message RuntimeItem {
   string item_id = 1 [json_name = "item_id"];
@@ -89,6 +100,8 @@ message RuntimeSession {
   // for ("Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon."). It is on
   // the session, never an item, so a reader that predates it skips it; absent otherwise.
   optional string note = 14 [json_name = "note"];
+  // Optional active review mode on the session (auto, default, plan, accept-edits, turbo).
+  optional string mode = 15 [json_name = "mode"];
 }
 // One effort level the computer's Claude takes.
 message RuntimeEffort {
@@ -123,6 +136,17 @@ message RuntimeView {
   // DescribeEnvironment and ListSessions: the workspace's visible folders a session may open in, at
   // most 24; absent from an older computer.
   repeated string folders = 17 [json_name = "folders"];
+  optional string workspace_name = 18 [json_name = "workspace_name"];
+  // ReadSession: optional metadata for the currently pending interactive permission/question.
+  optional string interaction_prompt = 19 [json_name = "interaction_prompt"];
+  optional string interaction_warning = 20 [json_name = "interaction_warning"];
+  repeated RuntimeInteractionOption interaction_options = 21 [json_name = "interaction_options"];
+  optional bool interaction_question = 22 [json_name = "interaction_question"];
+}
+message RuntimeInteractionOption {
+  string option_id = 1 [json_name = "optionId"];
+  string name = 2 [json_name = "name"];
+  optional string kind = 3 [json_name = "kind"];
 }
 // Private local configuration; never returned in a RuntimeView.
 message RuntimeConfiguration {

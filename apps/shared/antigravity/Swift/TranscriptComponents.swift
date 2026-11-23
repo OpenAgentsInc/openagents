@@ -267,18 +267,28 @@ struct TranscriptRowView: View {
 
 struct ApprovalBannerView: View {
     let interaction: PendingInteraction
-    let onRespond: (Bool, String) -> Void
+    let onRespond: (_ allow: Bool, _ note: String, _ optionID: String) async -> Void
 
     @State private var note = ""
     @State private var busy = false
 
+    private func triggerResponse(allow: Bool, optionID: String) {
+        guard !busy else { return }
+        busy = true
+        let currentNote = note
+        Task {
+            await onRespond(allow, currentNote, optionID)
+            busy = false
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: "hand.raised.fill")
+                Image(systemName: interaction.isQuestion ? "questionmark.circle.fill" : "hand.raised.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(OATheme.statusWarn)
-                Text("Approval Requested")
+                Text(interaction.isQuestion ? "Input Requested" : "Approval Requested")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(OATheme.textPrimary)
                 Spacer()
@@ -287,12 +297,29 @@ struct ApprovalBannerView: View {
                     .foregroundStyle(OATheme.textMuted)
             }
 
+            if !interaction.warning.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(OATheme.statusError)
+                    Text(interaction.warning)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(OATheme.statusError)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(OATheme.statusError.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.statusError.opacity(0.4), lineWidth: 1))
+                .accessibilityIdentifier("interaction.warning")
+            }
+
             Text(interaction.prompt)
                 .font(.system(size: 13))
                 .foregroundStyle(OATheme.textSecondary)
-                .lineLimit(4)
+                .lineLimit(6)
 
-            TextField("Optional note or answer…", text: $note)
+            TextField(interaction.isQuestion ? "Type your answer…" : "Optional note or answer…", text: $note)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .foregroundStyle(OATheme.textPrimary)
@@ -301,44 +328,76 @@ struct ApprovalBannerView: View {
                 .background(OATheme.elevated, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
 
-            HStack(spacing: 10) {
-                Button {
-                    busy = true
-                    onRespond(true, note)
-                } label: {
-                    Label("Allow", systemImage: "checkmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(Color.white, in: Capsule())
+            if !interaction.options.isEmpty {
+                let firstAllowID = interaction.options.first(where: \.isAllow)?.id
+                let firstDenyID = interaction.options.first(where: { !$0.isAllow })?.id
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(interaction.options) { opt in
+                            let isPrimary = opt.id == firstAllowID
+                            Button {
+                                triggerResponse(allow: opt.isAllow, optionID: opt.id)
+                            } label: {
+                                Label(opt.label, systemImage: opt.isAllow ? "checkmark" : "xmark")
+                                    .font(.system(size: 13, weight: isPrimary ? .semibold : .medium))
+                                    .foregroundStyle(isPrimary ? Color.black : OATheme.textPrimary)
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 7)
+                                    .background(isPrimary ? Color.white : OATheme.elevated, in: Capsule())
+                                    .overlay(Capsule().stroke(isPrimary ? Color.clear : OATheme.hairline, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(busy)
+                            .accessibilityIdentifier(
+                                opt.id == firstAllowID
+                                    ? "interaction.allow"
+                                    : (opt.id == firstDenyID ? "interaction.deny" : "interaction.option.\(opt.id)")
+                            )
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(busy)
-                .accessibilityIdentifier("interaction.allow")
+            } else {
+                HStack(spacing: 10) {
+                    Button {
+                        triggerResponse(allow: true, optionID: "")
+                    } label: {
+                        Label(interaction.isQuestion ? "Submit" : "Allow", systemImage: "checkmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                    .accessibilityIdentifier("interaction.allow")
 
-                Button {
-                    busy = true
-                    onRespond(false, note)
-                } label: {
-                    Label("Deny", systemImage: "xmark")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(OATheme.textPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(OATheme.elevated, in: Capsule())
-                        .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                    Button {
+                        triggerResponse(allow: false, optionID: "")
+                    } label: {
+                        Label(interaction.isQuestion ? "Cancel" : "Deny", systemImage: "xmark")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(OATheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(OATheme.elevated, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                    .accessibilityIdentifier("interaction.deny")
+
+                    Spacer()
                 }
-                .buttonStyle(.plain)
-                .disabled(busy)
-                .accessibilityIdentifier("interaction.deny")
-
-                Spacer()
             }
         }
         .padding(12)
         .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.statusWarn.opacity(0.45), lineWidth: 1))
+        .onChange(of: interaction.id) { _, _ in
+            busy = false
+            note = ""
+        }
     }
 }
 

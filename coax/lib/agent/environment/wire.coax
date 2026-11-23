@@ -49,8 +49,26 @@ EaRequest :: struct {
   folder:[EA_FOLDER]u8;nf:int;
   item:[128]u8;nit:int;
   mode:[16]u8;nmd:int;
+  option:[64]u8;nop:int;
+  attachments:[32768]u8;nat:int;
 }
-ea_mode_ok :: (m:string)->bool #effects(all) {return m=="auto" || m=="default" || m=="plan";}
+ea_mode_ok :: (m:string)->bool #effects(all) {return m=="auto" || m=="default" || m=="plan" || m=="accept-edits" || m=="turbo";}
+ea_option_ok :: (s:string)->bool #effects(all) {
+  if s.count<1 || s.count>64 {return false;}
+  for c:s {if c<=32 || c>=127 {return false;}}
+  return true;
+}
+ea_attachments_ok :: (v:Jv,att:int)->bool #effects(all) {
+  if jv_kind(v,att)!=JV_ARRAY {return false;}
+  n:=jv_len(v,att);if n<1 || n>8 {return false;}
+  for i:0..<n {
+    item:=jv_at(v,att,i);if jv_kind(v,item)!=JV_OBJECT {return false;}
+    mt:=jv_get(v,item,"mime_type");dt:=jv_get(v,item,"data");
+    if jv_kind(v,mt)!=JV_STRING || jv_kind(v,dt)!=JV_STRING {return false;}
+    if jv_raw(v,mt).count<1 || jv_raw(v,dt).count<1 {return false;}
+  }
+  return true;
+}
 // ReadSubagent (GitHub #13713): one sub-agent's own transcript, the agent a ReadSession item
 // started ("item_id", required there and refused anywhere else). Its view's items are the
 // agent's calls (role "tool") and words ("assistant"), newest page first; "next_cursor" names
@@ -85,7 +103,7 @@ EA_SURFACE_DESKTOP :: "coder-desktop";
 // so this chat runs on Gemini 4 Neon."). It rides on the session, never as an item, so a reader that
 // predates it (TestFlight 1413, which draws every non-user item as the agent's reply) skips it.
 EA_NOTE :: 256;
-EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;note:[EA_NOTE]u8;nno:int;}
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;note:[EA_NOTE]u8;nno:int;mode:[16]u8;nmd:int;}
 // What the computer's Claude offers a turn: its models and effort levels.
 // Bit k of a model's ladder is level k; a model with no ladder takes no effort.
 // The default model's id is "default" (the CLI's own choice, no --model).
@@ -133,7 +151,7 @@ ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(a
 ea_item_diff :: (v:[]EaView,i:int)->string #effects(all) {
   if i<0 || i>=v[0].ni || v[0].items[i].ndiff<1 {return "";}m:=v[0].items[i];return cast(string)v[0].text[m.diff_at..<m.diff_at+m.ndiff];
 }
-EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
+EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;inter_prompt:[512]u8;nip:int;inter_warn:[256]u8;niw:int;inter_opts:[1024]u8;nio:int;inter_q:bool;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
   at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;
@@ -155,9 +173,9 @@ ea_optional :: (d:Jv,at:int,key:string,out:[]u8)->int #effects(all) {
   if n<1 || !ea_choice(cast(string)out[0..<n]) {return -1;}return n;
 }
 ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
-  q[0]=EaRequest.{};nodes:[64]JvNode;d:[1]Jv;
-  if raw.count>24576 || !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return false;}
-  v:=d[0];fields:=[17]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms","model","effort","folder","item_id","mode"];seen:[17]bool;
+  q[0]=EaRequest.{};nodes:[128]JvNode;d:[1]Jv;
+  if raw.count>49152 || !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return false;}
+  v:=d[0];fields:=[19]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms","model","effort","folder","item_id","mode","option_id","attachments"];seen:[19]bool;
   for i:0..<jv_len(v,0) {known:=false;k:=jv_key(v,jv_at(v,0,i));for key,j:fields {if k==key {if seen[j] {return false;}seen[j]=true;known=true;}}if !known {return false;}}
   q[0].nm=ea_field(v,"method",q[0].method[..]);q[0].nw=ea_field(v,"workspace_id",q[0].workspace[..]);
   q[0].ns=ea_field(v,"session_id",q[0].session[..]);q[0].nc=ea_field(v,"command_id",q[0].command[..]);
@@ -169,6 +187,8 @@ ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
   if seen[14] {q[0].nf=ea_field(v,"folder",q[0].folder[..]);if q[0].nf<1 || !ea_folder_ok(cast(string)q[0].folder[0..<q[0].nf]) || cast(string)q[0].method[0..<q[0].nm]!="OpenSession" {return false;}}
   sub:=cast(string)q[0].method[0..<q[0].nm]=="ReadSubagent" || cast(string)q[0].method[0..<q[0].nm]=="StopSubagent";
   if seen[15] {q[0].nit=ea_field(v,"item_id",q[0].item[..]);if q[0].nit<1 || !sub {return false;}}else if sub {return false;}
+  if seen[17] {q[0].nop=ea_field(v,"option_id",q[0].option[..]);if q[0].nop<1 || !ea_option_ok(cast(string)q[0].option[0..<q[0].nop]) || cast(string)q[0].method[0..<q[0].nm]!="RespondInteraction" {return false;}}
+  if seen[18] {att:=jv_get(v,0,"attachments");m:=cast(string)q[0].method[0..<q[0].nm];if (m!="OpenSession" && m!="SendMessage") || !ea_attachments_ok(v,att) {return false;}q[0].nat=ea_copy(q[0].attachments[..],jv_raw(v,att));if q[0].nat<1 {return false;}}
   q[0].generation=jv_int(v,jv_get(v,0,"generation"),-1);q[0].revision=jv_int(v,jv_get(v,0,"expected_revision"),-1);
   q[0].before=jv_int(v,jv_get(v,0,"before"),-1);b:=jv_kind(v,jv_get(v,0,"allow"));
   q[0].expires=jv_int(v,jv_get(v,0,"expires_at_ms"),-1);q[0].issued=jv_int(v,jv_get(v,0,"issued_at_ms"),-1);
@@ -189,7 +209,9 @@ ea_write :: (q:[]EaRequest,out:[]u8)->int #effects(all) {
   if q[0].nef>0 {jo_key(o[..],"effort");jo_str(o[..],cast(string)q[0].effort[0..<q[0].nef]);}
   if q[0].nf>0 {jo_key(o[..],"folder");jo_str(o[..],cast(string)q[0].folder[0..<q[0].nf]);}
   if q[0].nit>0 {jo_key(o[..],"item_id");jo_str(o[..],cast(string)q[0].item[0..<q[0].nit]);}
-  if q[0].nmd>0 {jo_key(o[..],"mode");jo_str(o[..],cast(string)q[0].mode[0..<q[0].nmd]);}jo_end(o[..]);
+  if q[0].nmd>0 {jo_key(o[..],"mode");jo_str(o[..],cast(string)q[0].mode[0..<q[0].nmd]);}
+  if q[0].nop>0 {jo_key(o[..],"option_id");jo_str(o[..],cast(string)q[0].option[0..<q[0].nop]);}
+  if q[0].nat>0 {jo_key(o[..],"attachments");jo_raw(o[..],cast(string)q[0].attachments[0..<q[0].nat]);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_read_body :: (method:string,id:string,before:string,out:[]u8)->int #export_c #effects(all) {
@@ -206,7 +228,8 @@ ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
   jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);
   if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}
   if s.desktop {jo_key(o,"surface");jo_str(o,EA_SURFACE_DESKTOP);}
-  if s.nno>0 {jo_key(o,"note");jo_str(o,cast(string)s.note[0..<s.nno]);}jo_end(o);
+  if s.nno>0 {jo_key(o,"note");jo_str(o,cast(string)s.note[0..<s.nno]);}
+  if s.nmd>0 {jo_key(o,"mode");jo_str(o,cast(string)s.mode[0..<s.nmd]);}jo_end(o);
 }
 ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   m:=m_in;
@@ -250,7 +273,11 @@ ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);
   ea_thoughts_write(o[..],v);if v[0].offer.n>0 {ea_offer_write(o[..],v[..]);}
   if v[0].nroot>0 {jo_key(o[..],"workspace_name");jo_str(o[..],cast(string)v[0].root[0..<v[0].nroot]);}
-  if v[0].nfolders>0 {jo_key(o[..],"folders");jo_arr(o[..]);for i:0..<v[0].nfolders {jo_str(o[..],cast(string)v[0].folders[i].path[0..<v[0].folders[i].np]);}jo_end(o[..]);}jo_end(o[..]);
+  if v[0].nfolders>0 {jo_key(o[..],"folders");jo_arr(o[..]);for i:0..<v[0].nfolders {jo_str(o[..],cast(string)v[0].folders[i].path[0..<v[0].folders[i].np]);}jo_end(o[..]);}
+  if v[0].nip>0 {jo_key(o[..],"interaction_prompt");jo_str(o[..],cast(string)v[0].inter_prompt[0..<v[0].nip]);}
+  if v[0].niw>0 {jo_key(o[..],"interaction_warning");jo_str(o[..],cast(string)v[0].inter_warn[0..<v[0].niw]);}
+  if v[0].nio>0 {jo_key(o[..],"interaction_options");jo_raw(o[..],cast(string)v[0].inter_opts[0..<v[0].nio]);}
+  if v[0].inter_q {jo_key(o[..],"interaction_question");jo_bool(o[..],true);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_offer_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -290,6 +317,13 @@ ea_folders_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
   for i:0..<jv_len(j,list) {f:=v[0].folders[i..<i+1];f[0].np=jv_str(j,jv_at(j,list,i),f[0].path[..]);if f[0].np<1 || !ea_folder_ok(cast(string)f[0].path[0..<f[0].np]) {return false;}}
   v[0].nfolders=jv_len(j,list);return true;
 }
+ea_interaction_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
+  pk:=jv_get(j,0,"interaction_prompt");if pk>=0 {v[0].nip=jv_str(j,pk,v[0].inter_prompt[..]);if v[0].nip<1 {return false;}}
+  wk:=jv_get(j,0,"interaction_warning");if wk>=0 {v[0].niw=jv_str(j,wk,v[0].inter_warn[..]);if v[0].niw<1 {return false;}}
+  ok:=jv_get(j,0,"interaction_options");if ok>=0 {if jv_kind(j,ok)!=JV_ARRAY {return false;}v[0].nio=ea_copy(v[0].inter_opts[..],jv_raw(j,ok));if v[0].nio<2 {return false;}}
+  qk:=jv_get(j,0,"interaction_question");if qk>=0 {k:=jv_kind(j,qk);if k!=JV_TRUE && k!=JV_FALSE {return false;}v[0].inter_q=k==JV_TRUE;}
+  return true;
+}
 ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   v[0]=EaView.{};nodes:[4096]JvNode;d:[1]Jv;if raw.count>1048576 || !jv_parse(d[..],raw,nodes[..]) {return false;}j:=d[0];
   if jv_raw(j,jv_get(j,0,"schema"))!=EA_SCHEMA {return false;}
@@ -308,6 +342,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
     s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);s.desktop=jv_raw(j,jv_get(j,row,"surface"))==EA_SURFACE_DESKTOP;
     nn:=jv_get(j,row,"note");s.nno=ifx nn<0 then 0 else jv_str(j,nn,s.note[..]);if nn>=0 && (s.nno<1 || !ea_text(cast(string)s.note[0..<s.nno])) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    md:=jv_get(j,row,"mode");s.nmd=ifx md<0 then 0 else jv_str(j,md,s.mode[..]);if md>=0 && (s.nmd<1 || !ea_mode_ok(cast(string)s.mode[0..<s.nmd])) {return false;}
     if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
@@ -325,7 +360,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_ok(cast(string)m.notice[0..<m.nnk]))) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     v[0].items[i]=m;
   }
-  if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) {return false;}
+  if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) || !ea_interaction_read(j,v) {return false;}
   v[0].ok=true;return true;
 }
 
@@ -496,12 +531,31 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   // a read without an item is unchanged on the wire
   q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"ReadSession");q[0].nw=ea_copy(q[0].workspace[..],"default");n=ea_write(q[..],out[..]);found:=false;for i:0..<(ifx n>7 then n-7 else 0) {if cast(string)out[i..<i+7]=="item_id" {found=true;}}#assert n>0 && !found;
 }
-#test "Antigravity review mode travels optionally as auto, default, or plan and rejects unknown modes" {
-  #assert ea_mode_ok("auto") && ea_mode_ok("default") && ea_mode_ok("plan") && !ea_mode_ok("") && !ea_mode_ok("yolo");
-  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"OpenSession");q[0].nw=ea_copy(q[0].workspace[..],"default");q[0].nmd=ea_copy(q[0].mode[..],"plan");
-  out:[2048]u8;n:=ea_write(q[..],out[..]);r:[1]EaRequest;
-  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].mode[0..<r[0].nmd]=="plan";
-  q[0].nmd=0;n=ea_write(q[..],out[..]);#assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && r[0].nmd==0;
+#test "Antigravity review mode, option_id, attachments, session mode, and interaction metadata round-trip optionally" {
+  #assert ea_mode_ok("auto") && ea_mode_ok("default") && ea_mode_ok("plan") && ea_mode_ok("accept-edits") && ea_mode_ok("turbo") && !ea_mode_ok("") && !ea_mode_ok("yolo");
+  #assert ea_option_ok("allow_once") && ea_option_ok("reject_always") && !ea_option_ok("") && !ea_option_ok("has space");
+  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"OpenSession");q[0].nw=ea_copy(q[0].workspace[..],"default");q[0].nmd=ea_copy(q[0].mode[..],"accept-edits");
+  att:="[{\"name\":\"shot.png\",\"mime_type\":\"image/png\",\"data\":\"iVBORw0=\"}]";
+  q[0].nat=ea_copy(q[0].attachments[..],att);
+  out:[4096]u8;n:=ea_write(q[..],out[..]);r:[1]EaRequest;
+  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].mode[0..<r[0].nmd]=="accept-edits" && cast(string)r[0].attachments[0..<r[0].nat]==att;
+  q[0].nmd=0;q[0].nat=0;n=ea_write(q[..],out[..]);#assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && r[0].nmd==0 && r[0].nat==0;
+  // RespondInteraction carries optional option_id; refused on other methods
+  q[0].nm=ea_copy(q[0].method[..],"RespondInteraction");q[0].ni=ea_copy(q[0].interaction[..],"permit-7");q[0].nop=ea_copy(q[0].option[..],"allow_always");
+  n=ea_write(q[..],out[..]);#assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].option[0..<r[0].nop]=="allow_always";
+  q[0].nm=ea_copy(q[0].method[..],"SendMessage");n=ea_write(q[..],out[..]);#assert !ea_read(cast(string)out[0..<n],r[..]);
+  // Malformed attachments or wrong method refused
+  #assert !ea_read("{\"method\":\"ReadSession\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"attachments\":[{\"mime_type\":\"image/png\",\"data\":\"AA==\"}]}",r[..]);
+  #assert !ea_read("{\"method\":\"SendMessage\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"hi\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"attachments\":[]}",r[..]);
   #assert !ea_read("{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"hi\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"mode\":\"yolo\"}",r[..]);
+  // View carries optional session.mode + top-level interaction metadata
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ns=1;
+  v[0].sessions[0].ni=ea_copy(v[0].sessions[0].id[..],"s1");v[0].sessions[0].nc=ea_copy(v[0].sessions[0].control[..],"available");v[0].sessions[0].nmd=ea_copy(v[0].sessions[0].mode[..],"plan");
+  v[0].nip=ea_copy(v[0].inter_prompt[..],"Run rm -rf build?");v[0].niw=ea_copy(v[0].inter_warn[..],"Deletes files");
+  opts:="[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"}]";
+  v[0].nio=ea_copy(v[0].inter_opts[..],opts);v[0].inter_q=true;
+  vout:[8192]u8;vn:=ea_view_write(v[..],vout[..]);rv:[1]EaView;
+  #assert vn>0 && ea_view_read(cast(string)vout[0..<vn],rv[..]) && cast(string)rv[0].sessions[0].mode[0..<rv[0].sessions[0].nmd]=="plan";
+  #assert cast(string)rv[0].inter_prompt[0..<rv[0].nip]=="Run rm -rf build?" && cast(string)rv[0].inter_warn[0..<rv[0].niw]=="Deletes files" && cast(string)rv[0].inter_opts[0..<rv[0].nio]==opts && rv[0].inter_q;
 }
 #load "wire-view-checks.coax" #test;   // the view's optional tail at its bounds (#13610)

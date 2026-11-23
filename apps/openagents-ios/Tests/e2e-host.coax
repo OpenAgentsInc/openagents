@@ -39,6 +39,8 @@ E2eState :: struct {
   sess_busy: bool;
   sess_inter: [64] u8;
   nsess_inter: int;
+  sess_mode: [16] u8;
+  nsess_mode: int;
   last_user: [8192] u8;
   nlast_user: int;
   last_reply: [8192] u8;
@@ -46,6 +48,7 @@ E2eState :: struct {
   approved: bool;
   branch: [64] u8;
   nbranch: int;
+  has_extra_tree: bool;
   push_seq: int;
   w: [1] HbWork;
 }
@@ -157,8 +160,16 @@ e2e_put_session :: (st: [] E2eState, v: [] EaView) #effects(all) {
   s.updated = cxproc_wall_us() / 1000;
   s.nmo = ea_copy(s.model[..], "gemini-4-neon");
   s.nef = ea_copy(s.effort[..], "medium");
+  if !st[0].legacy_v1 && st[0].nsess_mode > 0 {
+    s.nmd = ea_copy(s.mode[..], cast(string) st[0].sess_mode[0..<st[0].nsess_mode]);
+  }
   v[0].sessions[0] = s;
   v[0].ns = 1;
+  if !st[0].legacy_v1 && st[0].nsess_inter > 0 {
+    v[0].nip = ea_copy(v[0].inter_prompt[..], "Run shell command: cargo test --workspace");
+    v[0].niw = ea_copy(v[0].inter_warn[..], "Command will execute tests inside workspace");
+    v[0].nio = ea_copy(v[0].inter_opts[..], "[{\"optionId\":\"allow_once\",\"name\":\"Allow Once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_always\",\"name\":\"Allow Always\",\"kind\":\"allow_always\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]");
+  }
 }
 
 e2e_populate_items :: (st: [] E2eState, v: [] EaView) #effects(all) {
@@ -223,6 +234,9 @@ e2e_handle_ea :: (st: [] E2eState, q: [] EaRequest, v: [] EaView, push_needed: [
     } else {
       st[0].sess_rev += 1;
     }
+    if q[0].nmd > 0 {
+      st[0].nsess_mode = ea_copy(st[0].sess_mode[..], cast(string) q[0].mode[0..<q[0].nmd]);
+    }
     txt := cast(string) q[0].text[0..<q[0].nt];
     st[0].nlast_user = ea_copy(st[0].last_user[..], txt);
     tlen := ifx txt.count > 60 then 60 else txt.count;
@@ -230,6 +244,9 @@ e2e_handle_ea :: (st: [] E2eState, q: [] EaRequest, v: [] EaView, push_needed: [
     rb: [8192] u8;
     rn := e2e_cat(rb[..], 0, "Antigravity verified reply: ");
     rn = e2e_cat(rb[..], rn, txt);
+    if q[0].nat > 0 {
+      rn = e2e_cat(rb[..], rn, " [structured-attachments]");
+    }
     st[0].nlast_reply = ea_copy(st[0].last_reply[..], cast(string) rb[0..<rn]);
     if e2e_has(txt, "approve") {
       st[0].nsess_inter = ea_copy(st[0].sess_inter[..], "int-allow-1");
@@ -277,25 +294,47 @@ e2e_handle_ws :: (st: [] E2eState, q: [] WsRequest, v: [] WsView) #effects(all) 
   if method == "SwitchBranch" && q[0].nb > 0 {
     st[0].nbranch = js_copy(st[0].branch[..], cast(string) q[0].branch[0..<q[0].nb]);
   }
+  if method == "RemoveWorktree" {
+    ws_id := cast(string) q[0].workspace[0..<q[0].nw];
+    if ws_id == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && st[0].has_extra_tree {
+      st[0].has_extra_tree = false;
+    } else {
+      v[0].ne = js_copy(v[0].error[..], "conflict");
+      return;
+    }
+  }
   v[0].nx = js_copy(v[0].revision[..], "1111111111111111111111111111111111111111111111111111111111111111");
   v[0].npath = js_copy(v[0].path[..], "/Users/test/openagents");
   v[0].nr = js_copy(v[0].repository[..], "OpenAgentsInc/openagents");
   v[0].nb = js_copy(v[0].branch[..], cast(string) st[0].branch[0..<st[0].nbranch]);
-  v[0].ns = js_copy(v[0].status[..], " M apps/openagents-ios/Sources/ChatView.swift\n M apps/shared/antigravity/Swift/AntigravityStore.swift");
-  v[0].nd = js_copy(v[0].diff[..], "diff --git a/apps/openagents-ios/Sources/ChatView.swift b/apps/openagents-ios/Sources/ChatView.swift\n@@ -10,2 +10,3 @@\n-let old = true\n+let fixed = true\n+let verified = true");
-  v[0].nbra = 2;
-  v[0].branches[0].n = js_copy(v[0].branches[0].name[..], "main");
-  v[0].branches[1].n = js_copy(v[0].branches[1].name[..], "feat/antigravity");
-  v[0].nt = 1;
-  _ = js_copy(v[0].trees[0].id[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-  v[0].trees[0].np = js_copy(v[0].trees[0].path[..], "/Users/test/openagents");
-  v[0].trees[0].nb = js_copy(v[0].trees[0].branch[..], cast(string) st[0].branch[0..<st[0].nbranch]);
-  v[0].np = 1;
-  v[0].prs[0].number = 13993;
-  v[0].prs[0].nt = js_copy(v[0].prs[0].title[..], "Antigravity over Tailscale");
-  v[0].prs[0].nh = js_copy(v[0].prs[0].head[..], "feat/antigravity");
-  v[0].prs[0].nb = js_copy(v[0].prs[0].base[..], "main");
-  v[0].prs[0].ns = js_copy(v[0].prs[0].state[..], "open");
+  v[0].page = q[0].page;
+  // Mirror real coder-host ws_snapshot pagination (#13999):
+  // page 0 = status+diff, page 1 = worktrees, page 2 = branches, page 3 = pull requests.
+  if q[0].page == 0 {
+    v[0].ns = js_copy(v[0].status[..], " M apps/openagents-ios/Sources/ChatView.swift\n M apps/shared/antigravity/Swift/AntigravityStore.swift");
+    v[0].nd = js_copy(v[0].diff[..], "diff --git a/apps/openagents-ios/Sources/ChatView.swift b/apps/openagents-ios/Sources/ChatView.swift\n@@ -10,2 +10,3 @@\n-let old = true\n+let fixed = true\n+let verified = true");
+  } else if q[0].page == 1 {
+    v[0].nt = ifx st[0].has_extra_tree then 2 else 1;
+    _ = js_copy(v[0].trees[0].id[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    v[0].trees[0].np = js_copy(v[0].trees[0].path[..], "/Users/test/openagents");
+    v[0].trees[0].nb = js_copy(v[0].trees[0].branch[..], cast(string) st[0].branch[0..<st[0].nbranch]);
+    if st[0].has_extra_tree {
+      _ = js_copy(v[0].trees[1].id[..], "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+      v[0].trees[1].np = js_copy(v[0].trees[1].path[..], "/Users/test/openagents-wt");
+      v[0].trees[1].nb = js_copy(v[0].trees[1].branch[..], "feat/antigravity");
+    }
+  } else if q[0].page == 2 {
+    v[0].nbra = 2;
+    v[0].branches[0].n = js_copy(v[0].branches[0].name[..], "main");
+    v[0].branches[1].n = js_copy(v[0].branches[1].name[..], "feat/antigravity");
+  } else if q[0].page == 3 {
+    v[0].np = 1;
+    v[0].prs[0].number = 13993;
+    v[0].prs[0].nt = js_copy(v[0].prs[0].title[..], "Antigravity over Tailscale");
+    v[0].prs[0].nh = js_copy(v[0].prs[0].head[..], "feat/antigravity");
+    v[0].prs[0].nb = js_copy(v[0].prs[0].base[..], "main");
+    v[0].prs[0].ns = js_copy(v[0].prs[0].state[..], "open");
+  }
 }
 
 e2e_handle_rpc :: (st: [] E2eState, conn: int, line: string, subscribed: bool) #effects(all) {
@@ -307,7 +346,7 @@ e2e_handle_rpc :: (st: [] E2eState, conn: int, line: string, subscribed: bool) #
   mb := cast(string) o.mailbox[..];
   now := cxproc_wall_us() / 1000000;
 
-  rpc: [1] HbRpcRequest; space: [49152] u8; arena := [1] HbText.[HbText.{buf = space[..]}];
+  rpc: [1] HbRpcRequest; space: [65536] u8; arena := [1] HbText.[HbText.{buf = space[..]}];
   if !hb_rpc_read(cast(string) body[0..<o.body_n], rpc[..], arena[..]) { return; }
 
   sealed_out: [131072] u8;
@@ -375,6 +414,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if !hb_public(st[0].sk[..], st[0].x[..]) || !hb_hex(st[0].x[..], st[0].xhex[..]) { return 1; }
   _ = ht_copy(st[0].grant[..], ifx st[0].legacy_v1 then "4444444444444444444444444444444444444444444444444444444444444444" else "5555555555555555555555555555555555555555555555555555555555555555");
   st[0].nbranch = js_copy(st[0].branch[..], "main");
+  st[0].has_extra_tree = true;
 
   srv := cxsock_listen(port_want);
   if srv < 0 { tool_errln("e2e-host: listen failed"); return 1; }

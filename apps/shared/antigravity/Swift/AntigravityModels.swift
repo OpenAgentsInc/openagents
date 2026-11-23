@@ -22,19 +22,60 @@ enum ThinkingEffort: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+extension String {
+    /// Truncates a string cleanly on a UTF-8 scalar boundary so its UTF-8 encoding never exceeds `maxBytes` (#14002).
+    func truncatedToUTF8Bytes(_ maxBytes: Int) -> String {
+        guard maxBytes > 0 else { return "" }
+        if utf8.count <= maxBytes { return self }
+        var bytes = 0
+        var end = startIndex
+        for idx in indices {
+            let next = index(after: idx)
+            let len = self[idx..<next].utf8.count
+            if bytes + len > maxBytes { break }
+            bytes += len
+            end = next
+        }
+        return String(self[startIndex..<end])
+    }
+
+    /// Returns `nil` when the string contains NUL bytes or excessive replacement characters (binary file heuristic).
+    func nilIfContainsBinaryNUL() -> String? {
+        guard !utf8.contains(0) else { return nil }
+        let bad = unicodeScalars.filter { $0 == "\u{FFFD}" }.count
+        if bad > 4 { return nil }
+        return self
+    }
+}
+
 enum ReviewMode: String, CaseIterable, Identifiable, Codable {
     case auto
     case ask
+    case acceptEdits
     case plan
+    case turbo
 
     var id: String { rawValue }
 
-    /// Wire value expected by `EaRequest.mode` and `CODER_AGY_MODE` (`auto` | `default` | `plan`).
+    /// Wire value expected by `EaRequest.mode` and `CODER_AGY_MODE`.
     var wireValue: String {
         switch self {
         case .auto: return "auto"
         case .ask: return "default"
+        case .acceptEdits: return "accept-edits"
         case .plan: return "plan"
+        case .turbo: return "turbo"
+        }
+    }
+
+    static func fromWire(_ wire: String) -> ReviewMode? {
+        switch wire.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "auto": return .auto
+        case "default", "ask": return .ask
+        case "accept-edits", "acceptedits": return .acceptEdits
+        case "plan": return .plan
+        case "turbo": return .turbo
+        default: return nil
         }
     }
 
@@ -42,7 +83,9 @@ enum ReviewMode: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .auto: return "Auto"
         case .ask: return "Ask"
+        case .acceptEdits: return "Accept Edits"
         case .plan: return "Plan"
+        case .turbo: return "Turbo"
         }
     }
 
@@ -50,15 +93,19 @@ enum ReviewMode: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .auto: return "bolt.fill"
         case .ask: return "hand.raised.fill"
+        case .acceptEdits: return "pencil.and.outline"
         case .plan: return "list.bullet.rectangle"
+        case .turbo: return "flame.fill"
         }
     }
 
     var description: String {
         switch self {
-        case .auto: return "Full access — run tools automatically"
-        case .ask: return "Ask before running risky commands"
+        case .auto: return "Approve workspace tools automatically; guard external paths"
+        case .ask: return "Ask before editing files or running commands"
+        case .acceptEdits: return "Auto-approve file edits; ask before running commands"
         case .plan: return "Plan first before editing files"
+        case .turbo: return "Unrestricted — skip all permission checks"
         }
     }
 }
@@ -99,6 +146,8 @@ struct FileAttachment: Identifiable, Equatable {
     let textPreview: String?
     let imageData: Data?
     let imageBase64: String?
+    let highResBase64: String?
+    let binaryBase64: String?
     let byteCount: Int
 
     init(
@@ -108,7 +157,9 @@ struct FileAttachment: Identifiable, Equatable {
         textPreview: String?,
         byteCount: Int,
         imageData: Data? = nil,
-        imageBase64: String? = nil
+        imageBase64: String? = nil,
+        highResBase64: String? = nil,
+        binaryBase64: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -116,11 +167,20 @@ struct FileAttachment: Identifiable, Equatable {
         self.textPreview = textPreview
         self.imageData = imageData
         self.imageBase64 = imageBase64
+        self.highResBase64 = highResBase64
+        self.binaryBase64 = binaryBase64
         self.byteCount = byteCount
     }
 
     var isImage: Bool {
-        imageData != nil || imageBase64 != nil || mimeType.hasPrefix("image/")
+        imageData != nil || imageBase64 != nil || highResBase64 != nil || mimeType.hasPrefix("image/")
+    }
+
+    var hasStructuredWireData: Bool {
+        if let hr = highResBase64, !hr.isEmpty { return true }
+        if let img = imageBase64, !img.isEmpty { return true }
+        if let bin = binaryBase64, !bin.isEmpty { return true }
+        return false
     }
 
     var formattedSize: String {
@@ -128,9 +188,10 @@ struct FileAttachment: Identifiable, Equatable {
         return String(format: "%.1f KB", Double(byteCount) / 1024.0)
     }
 
-    /// Downscales and JPEG-compresses an image cleanly via ImageIO so it fits inside a single
-    /// 6,000-byte transcript chunk and 16 KB Tailscale EaRequest payload while staying sharp for Gemini Vision.
-    static func prepareImage(data: Data, name: String, maxRawBytes: Int = 3_400) -> FileAttachment {
+    /// Downscales and JPEG-compresses an image cleanly via ImageIO:
+    /// - `imageBase64`: compact <= `maxRawBytes` (3.4 KB) JPEG for strict v1 legacy hosts and single-chunk transcripts.
+    /// - `highResBase64`: crisp <= `maxHighResBytes` (22 KB) JPEG for v2 `EaRequest.attachments` Vision analysis (#14002).
+    static func prepareImage(data: Data, name: String, maxRawBytes: Int = 3_400, maxHighResBytes: Int = 22_000) -> FileAttachment {
         let safeName = name
             .replacingOccurrences(of: " ", with: "_")
             .replacingOccurrences(of: "]", with: "")
@@ -139,13 +200,15 @@ struct FileAttachment: Identifiable, Equatable {
 
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             let trimmed = data.count <= maxRawBytes ? data : nil
+            let highRes = data.count <= maxHighResBytes ? data : trimmed
             return FileAttachment(
                 name: finalName,
                 mimeType: "image/jpeg",
                 textPreview: nil,
                 byteCount: data.count,
                 imageData: data,
-                imageBase64: trimmed?.base64EncodedString()
+                imageBase64: trimmed?.base64EncodedString(),
+                highResBase64: highRes?.base64EncodedString()
             )
         }
 
@@ -174,7 +237,18 @@ struct FileAttachment: Identifiable, Equatable {
                 if jpeg.count <= maxRawBytes { break }
             }
         }
+        var chosenHighRes: Data?
+        let highResLadder: [(Int, CGFloat)] = [
+            (1280, 0.78), (1024, 0.72), (896, 0.65), (768, 0.58), (640, 0.50), (512, 0.42),
+        ]
+        for (px, q) in highResLadder {
+            if let jpeg = encodeJPEG(maxPixel: px, quality: q) {
+                chosenHighRes = jpeg
+                if jpeg.count <= maxHighResBytes { break }
+            }
+        }
         let wireData = chosen ?? (data.count <= maxRawBytes ? data : nil)
+        let highResData = (chosenHighRes.flatMap { $0.count <= maxHighResBytes ? $0 : nil }) ?? wireData
         let previewThumb = encodeJPEG(maxPixel: 480, quality: 0.78) ?? wireData ?? data
         return FileAttachment(
             name: finalName,
@@ -182,11 +256,53 @@ struct FileAttachment: Identifiable, Equatable {
             textPreview: nil,
             byteCount: wireData?.count ?? data.count,
             imageData: previewThumb,
-            imageBase64: wireData?.base64EncodedString()
+            imageBase64: wireData?.base64EncodedString(),
+            highResBase64: highResData?.base64EncodedString()
         )
     }
 
-    /// Formats the attachment cleanly for the Antigravity prompt payload within wire bounds.
+    /// Builds a bounded `EaRequest.attachments` JSON array for v2 hosts (`[{"name":...,"mime_type":...,"data":...}]`).
+    /// Returns `""` when no binary/image attachments need structured carriage so v1 compat is preserved.
+    static func encodeWireAttachmentsJSON(_ attachments: [FileAttachment], maxTotalBytes: Int = 31_000) -> String {
+        var entries: [[String: String]] = []
+        var usedBytes = 2 // "[]"
+        for att in attachments {
+            guard let b64 = att.highResBase64 ?? att.imageBase64 ?? att.binaryBase64, !b64.isEmpty else { continue }
+            let est = b64.utf8.count + att.name.utf8.count + att.mimeType.utf8.count + 48
+            if usedBytes + est <= maxTotalBytes {
+                entries.append(["name": att.name, "mime_type": att.mimeType, "data": b64])
+                usedBytes += est
+            } else if let compact = att.imageBase64, !compact.isEmpty {
+                let compactEst = compact.utf8.count + att.name.utf8.count + att.mimeType.utf8.count + 48
+                if usedBytes + compactEst <= maxTotalBytes {
+                    entries.append(["name": att.name, "mime_type": att.mimeType, "data": compact])
+                    usedBytes += compactEst
+                }
+            }
+        }
+        guard !entries.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: entries, options: []),
+              data.count <= maxTotalBytes,
+              let json = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return json
+    }
+
+    /// Formats the attachment for v2 prompts when structured `EaRequest.attachments` carries the media bytes.
+    func renderedV2Placeholder() -> String {
+        if hasStructuredWireData && isImage {
+            let safeName = name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "]", with: "")
+            return "\n\n[oa-image name=\(safeName) mime=\(mimeType)]"
+        }
+        if let text = textPreview, !text.isEmpty {
+            let clipped = text.truncatedToUTF8Bytes(4_000)
+            return "\n\n[Attached file: \(name) (\(formattedSize))]\n```\n\(clipped)\n```"
+        }
+        return "\n\n[Attached file: \(name) (\(mimeType), \(formattedSize))]"
+    }
+
+    /// Formats the attachment cleanly for legacy v1 prompt payloads within wire bounds.
     /// Image attachments emit real `[oa-image name=... mime=... base64=...]` blocks decoded into ACP
     /// `{"type":"image","mimeType":...,"data":...}` content blocks by `agyworker`.
     func renderedPromptBlock() -> String {
@@ -195,7 +311,7 @@ struct FileAttachment: Identifiable, Equatable {
             return "\n\n[oa-image name=\(safeName) mime=\(mimeType) base64=\(b64)]"
         }
         if let text = textPreview, !text.isEmpty {
-            let clipped = String(text.prefix(4000))
+            let clipped = text.truncatedToUTF8Bytes(4_000)
             return "\n\n[Attached file: \(name) (\(formattedSize))]\n```\n\(clipped)\n```"
         }
         return "\n\n[Attached file: \(name) (\(mimeType), \(formattedSize))]"
@@ -358,8 +474,62 @@ struct ChatSessionSummary: Identifiable, Equatable, Codable {
     let updatedAtMs: Int64
     let model: String
     let effort: String
+    let mode: String
     let desktopSurface: Bool
     let note: String
+
+    init(
+        id: String,
+        workspaceID: String,
+        title: String,
+        managed: Bool,
+        control: String,
+        generation: Int64,
+        revision: Int64,
+        busy: Bool,
+        interactionID: String,
+        updatedAtMs: Int64,
+        model: String,
+        effort: String,
+        mode: String = "",
+        desktopSurface: Bool,
+        note: String
+    ) {
+        self.id = id
+        self.workspaceID = workspaceID
+        self.title = title
+        self.managed = managed
+        self.control = control
+        self.generation = generation
+        self.revision = revision
+        self.busy = busy
+        self.interactionID = interactionID
+        self.updatedAtMs = updatedAtMs
+        self.model = model
+        self.effort = effort
+        self.mode = mode
+        self.desktopSurface = desktopSurface
+        self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        workspaceID = try c.decode(String.self, forKey: .workspaceID)
+        title = try c.decode(String.self, forKey: .title)
+        managed = try c.decode(Bool.self, forKey: .managed)
+        control = try c.decode(String.self, forKey: .control)
+        generation = try c.decode(Int64.self, forKey: .generation)
+        revision = try c.decode(Int64.self, forKey: .revision)
+        busy = try c.decode(Bool.self, forKey: .busy)
+        interactionID = try c.decode(String.self, forKey: .interactionID)
+        updatedAtMs = try c.decode(Int64.self, forKey: .updatedAtMs)
+        model = try c.decode(String.self, forKey: .model)
+        effort = try c.decode(String.self, forKey: .effort)
+        mode = try c.decodeIfPresent(String.self, forKey: .mode) ?? ""
+        desktopSurface = try c.decode(Bool.self, forKey: .desktopSurface)
+        note = try c.decode(String.self, forKey: .note)
+    }
 
     var displayTitle: String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -432,10 +602,43 @@ enum HostErrorFormatter {
     }
 }
 
+struct InteractionOption: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let kind: String
+
+    var isAllow: Bool {
+        let lower = kind.lowercased()
+        if lower.contains("reject") || lower.contains("deny") || lower.contains("cancel") { return false }
+        if lower.contains("allow") || lower.contains("accept") { return true }
+        let lid = id.lowercased()
+        return !(lid.contains("reject") || lid.contains("deny"))
+    }
+}
+
 struct PendingInteraction: Equatable, Identifiable {
     let id: String
     let sessionID: String
     let prompt: String
+    let warning: String
+    let isQuestion: Bool
+    let options: [InteractionOption]
+
+    init(
+        id: String,
+        sessionID: String,
+        prompt: String,
+        warning: String = "",
+        isQuestion: Bool = false,
+        options: [InteractionOption] = []
+    ) {
+        self.id = id
+        self.sessionID = sessionID
+        self.prompt = prompt
+        self.warning = warning
+        self.isQuestion = isQuestion
+        self.options = options
+    }
 }
 
 struct TranscriptItem: Identifiable, Equatable, Codable {
@@ -479,6 +682,10 @@ struct ParsedEnvironmentView {
     let items: [TranscriptItem]
     let antigravityModels: [AntigravityModelOption]
     let defaultEffort: ThinkingEffort
+    let interactionPrompt: String
+    let interactionWarning: String
+    let interactionQuestion: Bool
+    let interactionOptions: [InteractionOption]
 
     /// Parses a Coax-validated `EaView` JSON payload and filters its model catalog
     /// exclusively through Coax `MobileCore.isAntigravityModel` (never Claude or Inkling).
@@ -512,6 +719,7 @@ struct ParsedEnvironmentView {
                 updatedAtMs: (row["updated_at_ms"] as? NSNumber)?.int64Value ?? 0,
                 model: row["model"] as? String ?? "",
                 effort: row["effort"] as? String ?? "",
+                mode: row["mode"] as? String ?? "",
                 desktopSurface: (row["surface"] as? String) == "coder-desktop",
                 note: row["note"] as? String ?? ""
             )
@@ -584,6 +792,23 @@ struct ParsedEnvironmentView {
         let defaultEffortStr = obj["default_effort"] as? String ?? "medium"
         let defaultEffort = ThinkingEffort(rawValue: defaultEffortStr) ?? .medium
 
+        let interactionPrompt = obj["interaction_prompt"] as? String ?? ""
+        let interactionWarning = obj["interaction_warning"] as? String ?? ""
+        let interactionQuestion = obj["interaction_question"] as? Bool ?? false
+        let rawOptions = obj["interaction_options"] as? [[String: Any]] ?? []
+        let interactionOptions: [InteractionOption] = rawOptions.compactMap { row in
+            let oid = (row["optionId"] as? String)
+                ?? (row["option_id"] as? String)
+                ?? (row["id"] as? String)
+                ?? ""
+            guard !oid.isEmpty else { return nil }
+            let label = (row["name"] as? String)
+                ?? (row["label"] as? String)
+                ?? oid
+            let kind = row["kind"] as? String ?? ""
+            return InteractionOption(id: oid, label: label, kind: kind)
+        }
+
         return ParsedEnvironmentView(
             hostPubkey: host,
             displayName: displayName,
@@ -596,7 +821,11 @@ struct ParsedEnvironmentView {
             sessions: sessions,
             items: items,
             antigravityModels: uniqueModels,
-            defaultEffort: defaultEffort
+            defaultEffort: defaultEffort,
+            interactionPrompt: interactionPrompt,
+            interactionWarning: interactionWarning,
+            interactionQuestion: interactionQuestion,
+            interactionOptions: interactionOptions
         )
     }
 }
@@ -645,7 +874,57 @@ struct WorkspaceSnapshot: Equatable {
     let branches: [String]
     let pullRequests: [WorkspacePR]
 
+    /// Unquotes C-escaped git status/diff paths (e.g. `"dir/file with space.swift"` -> `dir/file with space.swift`).
+    private static func unquoteGitPath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2, trimmed.first == "\"", trimmed.last == "\"" else { return trimmed }
+        let inner = trimmed.dropFirst().dropLast()
+        var out = ""
+        out.reserveCapacity(inner.count)
+        var i = inner.startIndex
+        while i < inner.endIndex {
+            let ch = inner[i]
+            if ch == "\\" {
+                let next = inner.index(after: i)
+                if next < inner.endIndex {
+                    let esc = inner[next]
+                    switch esc {
+                    case "\"": out.append("\"")
+                    case "\\": out.append("\\")
+                    case "t": out.append("\t")
+                    case "n": out.append("\n")
+                    default: out.append(esc)
+                    }
+                    i = inner.index(after: next)
+                    continue
+                }
+            }
+            out.append(ch)
+            i = inner.index(after: i)
+        }
+        return out
+    }
+
+    /// Parses `diff --git a/... b/...` safely even when filenames contain spaces or quotes (#13999).
+    private static func parseDiffGitPath(_ line: String) -> String? {
+        guard line.hasPrefix("diff --git ") else { return nil }
+        let rest = String(line.dropFirst("diff --git ".count))
+        if let r = rest.range(of: " \"b/") {
+            let bPart = "\"" + String(rest[r.upperBound...])
+            return unquoteGitPath(bPart)
+        }
+        if let r = rest.range(of: " b/") {
+            return unquoteGitPath(String(rest[r.upperBound...]))
+        }
+        if let last = rest.split(separator: " ").last {
+            let s = unquoteGitPath(String(last))
+            return s.hasPrefix("b/") ? String(s.dropFirst(2)) : s
+        }
+        return nil
+    }
+
     /// Parses `status` lines and splits the unified `diff` into per-file sections for the Files inspector tab.
+    /// Handles filenames with spaces, git-quoted paths, and renames (`old -> new`) (#13999).
     var changedFiles: [WorkspaceFileChange] {
         var diffsByPath: [String: String] = [:]
         var currentPath: String?
@@ -662,13 +941,7 @@ struct WorkspaceSnapshot: Equatable {
             let line = String(rawLine)
             if line.hasPrefix("diff --git ") {
                 flush()
-                let parts = line.split(separator: " ")
-                if let last = parts.last {
-                    let s = String(last)
-                    currentPath = s.hasPrefix("b/") ? String(s.dropFirst(2)) : s
-                } else {
-                    currentPath = nil
-                }
+                currentPath = Self.parseDiffGitPath(line)
                 currentLines = [line]
             } else if currentPath != nil {
                 currentLines.append(line)
@@ -682,7 +955,11 @@ struct WorkspaceSnapshot: Equatable {
             let line = String(rawLine)
             guard line.count >= 4 else { continue }
             let code = String(line.prefix(2)).trimmingCharacters(in: .whitespaces)
-            let path = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            var rawPath = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            if (code.contains("R") || code.contains("C")), let arrow = rawPath.range(of: " -> ") {
+                rawPath = String(rawPath[arrow.upperBound...])
+            }
+            let path = Self.unquoteGitPath(rawPath)
             guard !path.isEmpty, seen.insert(path).inserted else { continue }
             out.append(WorkspaceFileChange(
                 id: path,
@@ -695,6 +972,31 @@ struct WorkspaceSnapshot: Equatable {
             out.append(WorkspaceFileChange(id: path, code: "M", path: path, diff: fileDiff))
         }
         return out
+    }
+
+    /// Merges paginated `ReadWorkspace` pages (`page=0` diff/status + `page=1` trees + `page=2` branches + `page=3` PRs) (#13999).
+    func merging(
+        worktrees newTrees: [WorkspaceWorktree]? = nil,
+        branches newBranches: [String]? = nil,
+        pullRequests newPRs: [WorkspacePR]? = nil,
+        githubError newGithubError: String? = nil
+    ) -> WorkspaceSnapshot {
+        WorkspaceSnapshot(
+            host: host,
+            workspace: workspace,
+            revision: revision,
+            path: path,
+            repository: repository,
+            branch: branch,
+            status: status,
+            diff: diff,
+            diffCut: diffCut,
+            error: error,
+            githubError: (newGithubError.flatMap { $0.isEmpty ? nil : $0 }) ?? githubError,
+            worktrees: (newTrees.flatMap { $0.isEmpty ? nil : $0 }) ?? worktrees,
+            branches: (newBranches.flatMap { $0.isEmpty ? nil : $0 }) ?? branches,
+            pullRequests: (newPRs.flatMap { $0.isEmpty ? nil : $0 }) ?? pullRequests
+        )
     }
 
     static func parse(_ data: Data) -> WorkspaceSnapshot? {

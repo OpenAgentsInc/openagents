@@ -359,8 +359,8 @@ struct MacRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if let interaction = store.pendingInteraction {
-                ApprovalBannerView(interaction: interaction) { allow, note in
-                    Task { await store.respondToInteraction(allow: allow, note: note) }
+                ApprovalBannerView(interaction: interaction) { allow, note, optionID in
+                    await store.respondToInteraction(allow: allow, note: note, optionID: optionID)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
@@ -495,7 +495,7 @@ struct MacRootView: View {
 
             HStack(spacing: 10) {
                 Button("Start Local Host Daemon") {
-                    hostServer.startLocalDaemon()
+                    hostServer.startLocalDaemon(devicePubkey: store.devicePublicKeyHex)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         store.reloadComputers()
                         Task { await store.refreshActiveComputer() }
@@ -567,6 +567,20 @@ struct MacRootView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if let note = store.activeSession?.note, !note.isEmpty {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 13))
+                                .foregroundStyle(OATheme.textSecondary)
+                            Text(note)
+                                .font(.system(size: 13))
+                                .foregroundStyle(OATheme.textSecondary)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                    }
                     ForEach(store.items) { item in
                         TranscriptRowView(
                             item: item,
@@ -693,6 +707,7 @@ struct MacRootView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, store.pendingAttachments.isEmpty ? 10 : 2)
                 .onSubmit {
+                    guard !store.isSending else { return }
                     Task { await store.sendMessage() }
                 }
 
@@ -884,18 +899,28 @@ struct MacRootView: View {
         if imageExts.contains(ext) {
             return FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
         }
-        let preview = String(data: data.prefix(4000), encoding: .utf8)
-        if preview == nil {
-            let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
-            if maybeImg.isImage {
-                return maybeImg
-            }
+        let textSlice: String? = (data.count <= 131_072 ? String(data: data, encoding: .utf8) : nil)
+            ?? String(decoding: data.prefix(8_192), as: UTF8.self).nilIfContainsBinaryNUL()
+        if let text = textSlice {
+            return FileAttachment(
+                name: url.lastPathComponent,
+                mimeType: ext == "json" ? "application/json" : "text/plain",
+                textPreview: text.truncatedToUTF8Bytes(4_000),
+                byteCount: data.count
+            )
         }
+        let maybeImg = FileAttachment.prepareImage(data: data, name: url.lastPathComponent)
+        if maybeImg.isImage && maybeImg.imageBase64 != nil {
+            return maybeImg
+        }
+        let mime = ext == "pdf" ? "application/pdf" : "application/octet-stream"
+        let binB64 = data.count <= 20_000 ? data.base64EncodedString() : nil
         return FileAttachment(
             name: url.lastPathComponent,
-            mimeType: preview != nil ? "text/plain" : "application/octet-stream",
-            textPreview: preview,
-            byteCount: data.count
+            mimeType: mime,
+            textPreview: nil,
+            byteCount: data.count,
+            binaryBase64: binB64
         )
     }
 }

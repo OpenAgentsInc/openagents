@@ -147,7 +147,7 @@ tool_main :: () -> int #export_c #effects(all) {
   wq: [1] WsRequest; wv: [1] WsView;
   pbuf: [24576] u8; rbuf: [HB_BODY_MAX] u8;
 
-  pn := mc_env_request(eq[..], "DescribeEnvironment", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", pbuf[..]);
+  pn := mc_env_request(eq[..], "DescribeEnvironment", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", "", "", pbuf[..]);
   if pn < 1 { tool_errln("host-tailnet-e2e: encode DescribeEnvironment failed"); return 1; }
   rn := hte_rpc(c2, sk[..], host_hex, grant_hex, epoch, cast(string) pbuf[0..<pn], dv[..], rbuf[..]);
   if rn < 1 { print("host-tailnet-e2e: DescribeEnvironment RPC failed rn=%\n", rn); return 1; }
@@ -158,7 +158,7 @@ tool_main :: () -> int #export_c #effects(all) {
   print("OK: NIP-44 DescribeEnvironment verified against live coder-host\n");
 
   // 4. Real NIP-44 ListSessions RPC
-  pn = mc_env_request(eq[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", pbuf[..]);
+  pn = mc_env_request(eq[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "", "", "", "", "", "", "", pbuf[..]);
   rn = hte_rpc(c2, sk[..], host_hex, grant_hex, epoch, cast(string) pbuf[0..<pn], dv[..], rbuf[..]);
   if rn < 1 || !mc_view_valid(ev[..], host_hex, "ListSessions", cast(string) rbuf[0..<rn]) {
     tool_errln("host-tailnet-e2e: ListSessions RPC failed");

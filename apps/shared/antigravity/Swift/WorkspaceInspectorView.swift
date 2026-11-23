@@ -479,14 +479,15 @@ struct WorkspaceInspectorView: View {
                                 .truncationMode(.middle)
                         }
                         Spacer()
-                        if !tree.locked && tree.path != snap.path && !tree.branch.isEmpty {
+                        if !tree.locked && tree.path != snap.path && !tree.id.isEmpty {
                             Button("Remove") {
-                                Task { await store.removeWorktree(branch: tree.branch) }
+                                Task { await store.removeWorktree(id: tree.id) }
                             }
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(OATheme.statusError)
                             .buttonStyle(.plain)
                             .disabled(store.workspaceActionBusy)
+                            .accessibilityIdentifier("workspace.removeWorktree.\(tree.id.prefix(8))")
                         }
                     }
                     .padding(10)

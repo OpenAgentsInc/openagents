@@ -201,7 +201,7 @@ dm_execute :: (h:[]HsHost,q:[]DmRequest,v:[]DmView) #effects(all) {
 }
 
 dm_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]DmRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
-  if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
+  if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || !hs_relay_matches(h,r[0].relay) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
   // worker runs are Coder Desktop's, on this computer's local socket only
   if dm_is_run(r[0].method) {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
   configured:=es_load_for(h[0].environment[..],signer,r[0].grant);

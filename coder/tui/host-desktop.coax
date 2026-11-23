@@ -50,7 +50,14 @@ DkInfo :: struct {
   key: [128] u8; nkey: int;              // the chat's id, from the queue's open line
   model: [64] u8; nmo: int;              // the task line's model slug (e.g. "gemini-4-neon" / "inkling-2-mini")
   effort: [16] u8; nef: int;             // the task line's thinking effort ("low" / "medium" / "high" / "xhigh")
+  mode: [16] u8; nmd: int;               // the task line's review mode ("auto" / "default" / "plan" / "accept-edits" / "turbo")
   busy: bool;                            // a turn of it runs: its newest turn line is after its newest ended line
+  permit_ticket: int;                    // >0 when awaiting MWW_ANSWER to an unresolved MWW_PERMIT (#13997)
+  permit_question: bool;
+  permit_title: [256] u8; npt: int;
+  permit_cmd: [256] u8; npc: int;
+  permit_warn: [256] u8; npw: int;
+  permit_opts: [1024] u8; npo: int;
 }
 
 dk_is :: (id: string) -> bool { return id.count == DK_PREFIX.count + 32 && hs_prefix(id, DK_PREFIX) && ea_id(cast(string) id[DK_PREFIX.count..<id.count], 32); }
@@ -244,11 +251,12 @@ dk_info :: (id: string, r: [] DkInfo) -> bool {
   _ = hs_set(r[0].id[..], id);
   r[0].ns = ea_copy(r[0].state[..], cast(string) st[0].state[0..<st[0].ns]);
   r[0].started = st[0].started; r[0].ended = st[0].ended; r[0].out = st[0].out;
-  ip: [1400] u8; head: [DK_HEAD] u8; n := fs_read(dr_file(id, ".in", ip[..]), head[..]);
+  ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); head: [DK_HEAD] u8; n := fs_read(inp, head[..]);
   defer { for i: 0..<head.count { head[i] = 0; } }
   if n < 1 { return false; }
   b := cast(string) head[0..<n]; next := [1] int.[0];
   ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; q: [1] MwwRequest;
+  answered_ticket := 0;
   while true {
     line := dk_line(b, next[..]);
     if line.count == 0 { if next[0] >= b.count { break; } continue; }
@@ -268,22 +276,51 @@ dk_info :: (id: string, r: [] DkInfo) -> bool {
       if q[0].local && m.count == 0 { m = PA_INKLING_ID; }
       if m.count > 0 && ea_choice(m) { r[0].nmo = hs_set(r[0].model[..], m); }
       if q[0].effort.count > 0 && ea_choice(q[0].effort) { r[0].nef = hs_set(r[0].effort[..], q[0].effort); }
+      if q[0].mode.count > 0 && ea_mode_ok(q[0].mode) { r[0].nmd = hs_set(r[0].mode[..], q[0].mode); }
     }
+    if k == MWW_ANSWER && q[0].ticket.ok && q[0].ticket.value > answered_ticket { answered_ticket = q[0].ticket.value; }
     if k == MWW_QUEUE && q[0].op == "open" && q[0].key.count > 0 && q[0].key.count <= 128 { r[0].nkey = hs_set(r[0].key[..], q[0].key); }
   }
   if r[0].nsession == 0 { return false; }
-  // a turn runs while the newest turn line is after the newest ended line
+  // Also scan tail of .in when .in grew beyond DK_HEAD so recent MWW_ANSWER tickets are never missed (#13997).
+  if fs_size(inp) > head.count {
+    intail: [65536] u8; in_tail := dk_read_tail(inp, intail[..]); itn := [1] int.[0];
+    while true {
+      line := dk_line(in_tail, itn[..]);
+      if line.count == 0 { if itn[0] >= in_tail.count { break; } continue; }
+      ar[0].at = 0; ar[0].full = false;
+      if mww_request(ar[..], line, q[..]) == MWW_ANSWER && q[0].ticket.ok && q[0].ticket.value > answered_ticket {
+        answered_ticket = q[0].ticket.value;
+      }
+    }
+  }
+  // a turn runs while the newest turn line is after the newest ended line; also track newest unresolved MWW_PERMIT (#13997).
   op: [1400] u8; out := dr_file(id, ".out", op[..]);
   tail: [65536] u8; t := dk_read_tail(out, tail[..]); tn := [1] int.[0];
-  turn := -1; ended := -1; k := 0;
+  turn := -1; ended := -1; permit_k := -1; permit_line := ""; k := 0;
   while true {
     line := dk_line(t, tn[..]);
     if line.count == 0 { if tn[0] >= t.count { break; } continue; }
     if hs_prefix(line, "{\"kind\":\"turn\"") { turn = k; }
     if hs_prefix(line, "{\"kind\":\"ended\"") { ended = k; }
+    if hs_prefix(line, "{\"kind\":\"permit\"") { permit_k = k; permit_line = line; }
     k += 1;
   }
   r[0].busy = dk_running(r) && turn > ended;
+  if dk_running(r) && permit_k > ended && permit_line.count > 0 {
+    ar[0].at = 0; ar[0].full = false;
+    pl: [1] MwwLine;
+    if mww_read(ar[..], permit_line, pl[..]) == MWW_PERMIT && pl[0].ticket.ok && pl[0].ticket.value > answered_ticket {
+      r[0].permit_ticket = pl[0].ticket.value;
+      r[0].permit_question = pl[0].question.ok && pl[0].question.value;
+      r[0].npt = hs_set(r[0].permit_title[..], hs_cut(pl[0].title, 250));
+      r[0].npc = hs_set(r[0].permit_cmd[..], hs_cut(pl[0].command, 250));
+      r[0].npw = hs_set(r[0].permit_warn[..], hs_cut(pl[0].warning, 250));
+      if pl[0].options.count >= 2 && pl[0].options.count <= r[0].permit_opts.count {
+        r[0].npo = hs_set(r[0].permit_opts[..], pl[0].options);
+      }
+    }
+  }
   mt := fs_mtime_ns(out); r[0].updated = ifx mt > 0 then mt / 1000000 else r[0].started * 1000;
   return true;
 }
@@ -358,6 +395,11 @@ dk_summary :: (r: [] DkInfo, chats: [] DkChat, nc: int, s: [] EaSession) {
   s[0].managed = true; s[0].desktop = true;
   s[0].nc = ea_copy(s[0].control[..], ifx dk_running(r) then "available" else "observe-only");
   s[0].generation = r[0].started * 1000; s[0].revision = r[0].out; s[0].busy = r[0].busy; s[0].updated = r[0].updated;
+  if r[0].permit_ticket > 0 {
+    tb: [32] u8;
+    s[0].nr = ea_copy(s[0].interaction[..], hs_itoa(r[0].permit_ticket, tb[..]));
+    if s[0].nr < 0 { s[0].nr = 0; }
+  }
   // a phone's chat takes messages after its worker ended too (it starts again), under one generation
   if is_ph {
     s[0].nc = ea_copy(s[0].control[..], "available");
@@ -366,18 +408,21 @@ dk_summary :: (r: [] DkInfo, chats: [] DkChat, nc: int, s: [] EaSession) {
       s[0].updated = chats[c].updated * 1000;
       s[0].revision += chats[c].updated;
     }
-    mb: [1024] u8; ob: [64] u8; eb: [16] u8; pm := ph_meta_read(hex, mb[..]);
+    mb: [1024] u8; ob: [64] u8; eb: [16] u8; mdb: [16] u8; pm := ph_meta_read(hex, mb[..]);
     m := ifx !dk_phone(r) && r[0].nmo > 0 then cast(string) r[0].model[0..<r[0].nmo] else ph_model_in(pm, ob[..]);
     if m.count > 0 { s[0].nmo = ea_copy(s[0].model[..], m); if s[0].nmo < 0 { s[0].nmo = 0; } }
     ef := ifx !dk_phone(r) && r[0].nef > 0 then cast(string) r[0].effort[0..<r[0].nef] else ph_effort_in(pm, eb[..]);
     if ef.count == 0 { ef = pa_effort(pa_engine_of(m), m, ""); }
     if ef.count > 0 { s[0].nef = ea_copy(s[0].effort[..], ef); if s[0].nef < 0 { s[0].nef = 0; } }
+    md := ifx r[0].nmd > 0 then cast(string) r[0].mode[0..<r[0].nmd] else ph_mode_in(pm, mdb[..]);
+    if md.count > 0 && ea_mode_ok(md) { s[0].nmd = ea_copy(s[0].mode[..], md); if s[0].nmd < 0 { s[0].nmd = 0; } }
     // and, when it fell back, says so on the session (never as an item: TestFlight 1413 would draw it as the reply)
     nb: [EA_NOTE] u8; note := ph_note_in(pm, nb[..]);
     if note.count > 0 { s[0].nno = ea_copy(s[0].note[..], note); if s[0].nno < 0 { s[0].nno = 0; } }
   } else {
     if r[0].nmo > 0 { s[0].nmo = ea_copy(s[0].model[..], cast(string) r[0].model[0..<r[0].nmo]); if s[0].nmo < 0 { s[0].nmo = 0; } }
     if r[0].nef > 0 { s[0].nef = ea_copy(s[0].effort[..], cast(string) r[0].effort[0..<r[0].nef]); if s[0].nef < 0 { s[0].nef = 0; } }
+    if r[0].nmd > 0 { s[0].nmd = ea_copy(s[0].mode[..], cast(string) r[0].mode[0..<r[0].nmd]); if s[0].nmd < 0 { s[0].nmd = 0; } }
   }
 }
 // The session `id` names (a Coder Desktop chat, or a phone's run) into v's sessions, when it is the grant's.
@@ -595,7 +640,16 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
         steer_n[nsteer] = hs_set(steer_ids[nsteer * 64..<nsteer * 64 + 64], hs_cut(l[0].id, 64)); steer_tn[nsteer] = hs_set(steer_text[nsteer * 2000..<nsteer * 2000 + 2000], hs_cut(l[0].text, 2000)); nsteer += 1;
       }
       if l[0].steer_status == "applied" {
-        for q: 0..<nsteer { if cast(string) steer_ids[q * 64..<q * 64 + steer_n[q]] == hs_cut(l[0].id, 64) { k := s_part(s, P_USER); if k >= 0 { s_append(s, k, cast(string) steer_text[q * 2000..<q * 2000 + steer_tn[q]]); } } }
+        matched := false;
+        for q: 0..<nsteer {
+          if cast(string) steer_ids[q * 64..<q * 64 + steer_n[q]] == hs_cut(l[0].id, 64) {
+            matched = true;
+            k := s_part(s, P_USER); if k >= 0 { s_append(s, k, cast(string) steer_text[q * 2000..<q * 2000 + steer_tn[q]]); }
+          }
+        }
+        if !matched && l[0].text.count > 0 {
+          k := s_part(s, P_USER); if k >= 0 { s_append(s, k, hs_cut(l[0].text, 2000)); }
+        }
       }
     }
     else if kind == MWW_ENDED {
@@ -883,6 +937,19 @@ dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
   none: [1] DkSub; have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
   if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
   es_project_at(ses[..], stamps[0..<have], q, v);
+  // Populate pending interaction details (prompt, security warning, options, question flag) when awaiting approval (#13997).
+  if r[0].permit_ticket > 0 {
+    pb: [512] u8; pn := 0;
+    if r[0].npt > 0 { pn = hs_cat(pb[..], pn, cast(string) r[0].permit_title[0..<r[0].npt]); }
+    if r[0].npc > 0 {
+      if pn > 0 { pn = hs_cat(pb[..], pn, "\n"); }
+      pn = hs_cat(pb[..], pn, cast(string) r[0].permit_cmd[0..<r[0].npc]);
+    }
+    if pn > 0 { v[0].nip = ea_copy(v[0].inter_prompt[..], cast(string) pb[0..<pn]); if v[0].nip < 0 { v[0].nip = 0; } }
+    if r[0].npw > 0 { v[0].niw = ea_copy(v[0].inter_warn[..], cast(string) r[0].permit_warn[0..<r[0].npw]); if v[0].niw < 0 { v[0].niw = 0; } }
+    if r[0].npo >= 2 { v[0].nio = ea_copy(v[0].inter_opts[..], cast(string) r[0].permit_opts[0..<r[0].npo]); if v[0].nio < 0 { v[0].nio = 0; } }
+    v[0].inter_q = r[0].permit_question;
+  }
 }
 
 // ---------------------------------------------------------------- the phone's writes
@@ -950,7 +1017,7 @@ dk_sub_of :: (r: [] DkInfo, runs: [] DkInfo, n: int, item: string, found: [] DkS
 // writing again.
 dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   method := cast(string) q[0].method[0..<q[0].nm];
-  if method != "SendMessage" && method != "StopTurn" && method != "StopSubagent" { es_refuse(v, "unsupported_profile"); return; }
+  if method != "SendMessage" && method != "StopTurn" && method != "StopSubagent" && method != "RespondInteraction" { es_refuse(v, "unsupported_profile"); return; }
   command := cast(string) q[0].command[0..<q[0].nc];
   if !ea_id(command, 32) { es_refuse(v, "malformed"); return; }
   runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
@@ -961,11 +1028,11 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
     es_refuse(v, ifx dk_saved_for(h, cast(string) q[0].session[0..<q[0].ns], chats[..], nc) >= 0 then "conflict" else "not_found"); return;
   }
   r := runs[k..<k + 1];
-  raw: [24576] u8; rn := ea_write(q, raw[..]); if rn < 0 { es_refuse(v, "malformed"); return; }
+  raw: [49152] u8; rn := ea_write(q, raw[..]); if rn < 0 { es_refuse(v, "malformed"); return; }
   name: [256] u8; nn := hs_cat(name[..], 0, "command-"); nn = hs_cat(name[..], nn, grant); nn = hs_cat(name[..], nn, "-"); nn = hs_cat(name[..], nn, command); nn = hs_cat(name[..], nn, ".json");
   path: [1400] u8; file := es_path(cast(string) name[0..<nn], path[..]);
   if fs_exists(file) {
-    previous: [24576] u8; got := fs_read(file, previous[..]);
+    previous: [49152] u8; got := fs_read(file, previous[..]);
     if got != rn || cast(string) previous[0..<ifx got > 0 then got else 0] != cast(string) raw[0..<rn] { es_refuse(v, "idempotency_conflict"); return; }
     dk_summary(r, chats[..], nc, v[0].sessions[0..<1]); v[0].ns = 1;
     v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted"); return;
@@ -982,6 +1049,17 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   }
   want_gen := ifx is_ph then ph_generation(hex) else r[0].started * 1000;
   if !dk_running(r) || q[0].generation != want_gen { es_refuse(v, "conflict"); return; }
+  if method == "RespondInteraction" {
+    ticket := hs_atoi(cast(string) q[0].interaction[0..<q[0].ni]);
+    if ticket < 1 { es_refuse(v, "interaction_expired"); return; }
+    if !fs_replace_durable(file, cast(string) raw[0..<rn]) { es_refuse(v, "storage_unavailable"); return; }
+    ans_buf: [4096] u8;
+    an := mww_answer_option(ans_buf[..], q[0].allow, ticket, cast(string) q[0].option[0..<q[0].nop], text);
+    ip: [1400] u8;
+    if an < 1 || !fs_append(dr_file(cast(string) r[0].id[..], ".in", ip[..]), cast(string) ans_buf[0..<an]) { es_refuse(v, "storage_unavailable"); return; }
+    dk_summary(r, chats[..], nc, v[0].sessions[0..<1]); v[0].ns = 1;
+    v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted"); return;
+  }
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
   // one sub-agent of the running turn: its run, found before the intent is kept (#13776)
   one: [1] DkSub;
@@ -1018,7 +1096,7 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
     if ticket < 1 || !dk_running(r) { es_refuse(v, "interaction_expired"); return; }
     if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
     ans_buf: [4096] u8;
-    an := mww_answer(ans_buf[..], q[0].allow, ticket, cast(string) q[0].text[0..<q[0].nt]);
+    an := mww_answer_option(ans_buf[..], q[0].allow, ticket, cast(string) q[0].option[0..<q[0].nop], cast(string) q[0].text[0..<q[0].nt]);
     ip: [1400] u8;
     if an < 1 || !fs_append(dr_file(id, ".in", ip[..]), cast(string) ans_buf[0..<an]) { es_refuse(v, "storage_unavailable"); return; }
     dk_summary(r, chats, nc, v[0].sessions[0..<1]); v[0].ns = 1;
@@ -1026,10 +1104,13 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
     return;
   }
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
-  if method == "StopTurn" && !r[0].busy { es_refuse(v, "conflict"); return; }
+  // Allow StopTurn whenever the worker is running (covers startup/waiting-on-permit window before turn line flushes; #14000).
+  if method == "StopTurn" && !r[0].busy && !dk_running(r) { es_refuse(v, "conflict"); return; }
   if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
   want_model := cast(string) q[0].model[0..<q[0].nmo];
   want_effort := cast(string) q[0].effort[0..<q[0].nef];
+  want_mode := cast(string) q[0].mode[0..<q[0].nmd];
+  attachments := cast(string) q[0].attachments[0..<q[0].nat];
   prev_engine := ph_engine(id);
   switch_engine := false;
   if method == "SendMessage" && dk_running(r) && !r[0].busy && want_model.count > 0 {
@@ -1039,15 +1120,17 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
   desktop_ahead := method == "SendMessage" && dk_is_desktop_ahead(r, chats, nc);
   if method == "SendMessage" && (!dk_running(r) || switch_engine || desktop_ahead) {
     if dk_running(r) { dr_stop_sync(h[0].runs[..], id); }
-    why := ph_restart(h, r, runs, n, command, text, want_model, want_effort);
+    why := ph_restart_full(h, r, runs, n, command, text, want_model, want_effort, want_mode, attachments);
     if why.count > 0 { es_refuse(v, why); return; }
   } else {
     eff := want_effort;
     model := want_model;
-    if method == "SendMessage" && !r[0].busy && (want_model.count > 0 || want_effort.count > 0) {
+    mode := want_mode;
+    if method == "SendMessage" && !r[0].busy && (want_model.count > 0 || want_effort.count > 0 || want_mode.count > 0) {
       pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
       prev_mb: [64] u8; prev_m := ph_model_in(pm, prev_mb[..]);
       prev_eb: [16] u8; prev_e := ph_effort_in(pm, prev_eb[..]);
+      prev_mdb: [16] u8; prev_md := ph_mode_in(pm, prev_mdb[..]);
       if model.count == 0 {
         model = prev_m;
       } else {
@@ -1055,9 +1138,10 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
         model = ifx p.engine == prev_engine && p.model.count > 0 then p.model else prev_m;
       }
       eff = pa_effort(prev_engine, model, ifx want_effort.count > 0 then want_effort else prev_e);
-      if prev_engine != PA_NONE { _ = ph_meta(id, ph_generation(id), PaPick.{engine = prev_engine, model = model}, eff); }
+      if mode.count == 0 { mode = prev_md; }
+      if prev_engine != PA_NONE { _ = ph_meta_full(id, ph_generation(id), PaPick.{engine = prev_engine, model = model}, eff, mode, ph_base(id)); }
     }
-    lines: [EX_INPUT_MAX + 8192] u8; ln := ph_lines(r, method, command, text, model, eff, lines[..]);
+    lines: [EX_INPUT_MAX + 40960] u8; ln := ph_lines_full(r, method, command, text, model, eff, mode, attachments, lines[..]);
     if ln < 0 { es_refuse(v, "conflict"); return; }
     ip: [1400] u8;
     if ln > 0 && !fs_append(dr_file(id, ".in", ip[..]), cast(string) lines[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }

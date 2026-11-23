@@ -1,10 +1,11 @@
-// Firm reason: 6 (macOS Host & Tailscale Computers modal for managing local coder-host daemon, LaunchAgent, Tailscale port 47109 listener, and remote Tailscale host pairing).
+// Firm reason: 6 (macOS Host & Tailscale Computers modal for managing local coder-host daemon, LaunchAgent, T3-faithful Antigravity CLI/ACP authentication, Tailscale port 47109 listener, and remote Tailscale host pairing).
 import AppKit
 import SwiftUI
 
 struct MacHostSettingsView: View {
     @ObservedObject var store: AntigravityStore
     @ObservedObject var hostServer: TailscaleHostServer
+    @ObservedObject var authController: AntigravityAuthController
     @Environment(\.dismiss) private var dismiss
 
     @State private var remoteAddress = ""
@@ -13,6 +14,14 @@ struct MacHostSettingsView: View {
     @State private var remoteError: String?
     @State private var isAdding = false
     @State private var copiedKey = false
+    @State private var apiKeyDraft = ""
+    @State private var manualCodeDraft = ""
+
+    init(store: AntigravityStore, hostServer: TailscaleHostServer) {
+        self.store = store
+        self.hostServer = hostServer
+        self.authController = hostServer.authController
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,15 +45,18 @@ struct MacHostSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     localHostSection
+                    antigravityAuthSection
                     remoteHostsSection
                     identitySection
                 }
                 .padding(18)
             }
         }
-        .frame(width: 580, height: 620)
+        .frame(width: 600, height: 680)
         .background(OATheme.background)
-        .onAppear { hostServer.refreshEnvironment() }
+        .onAppear {
+            hostServer.refreshEnvironment(probeAuth: true)
+        }
     }
 
     // MARK: - This Mac Host Server
@@ -73,9 +85,9 @@ struct MacHostSettingsView: View {
                     ok: hostServer.daemonRunning
                 )
                 statusRow(
-                    title: "Antigravity CLI (agy)",
-                    value: hostServer.agyPath ?? "Not found on PATH",
-                    ok: hostServer.agyPath != nil
+                    title: "Antigravity Sign-In",
+                    value: authController.summaryLabel,
+                    ok: authController.isAuthenticated
                 )
 
                 Divider().overlay(OATheme.hairline)
@@ -97,7 +109,7 @@ struct MacHostSettingsView: View {
                         panel.canChooseDirectories = true
                         panel.canChooseFiles = false
                         if panel.runModal() == .OK, let url = panel.url {
-                            hostServer.setWorkspacePath(url.path)
+                            hostServer.setWorkspacePath(url.path, devicePubkey: store.devicePublicKeyHex)
                         }
                     }
                     .font(.system(size: 12, weight: .medium))
@@ -112,7 +124,7 @@ struct MacHostSettingsView: View {
                 HStack(spacing: 8) {
                     if !hostServer.daemonRunning {
                         Button("Start Daemon Now") {
-                            hostServer.startLocalDaemon()
+                            hostServer.startLocalDaemon(devicePubkey: store.devicePublicKeyHex)
                         }
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.black)
@@ -126,19 +138,8 @@ struct MacHostSettingsView: View {
                         if hostServer.launchAgentInstalled {
                             hostServer.removeLaunchAgent()
                         } else {
-                            hostServer.installLaunchAgent()
+                            hostServer.installLaunchAgent(devicePubkey: store.devicePublicKeyHex)
                         }
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(OATheme.textPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(OATheme.elevated, in: Capsule())
-                    .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
-                    .buttonStyle(.plain)
-
-                    Button("Sign in Antigravity") {
-                        hostServer.connectAntigravityAuth()
                     }
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(OATheme.textPrimary)
@@ -151,7 +152,7 @@ struct MacHostSettingsView: View {
                     Spacer()
 
                     Button("Refresh") {
-                        hostServer.refreshEnvironment()
+                        hostServer.refreshEnvironment(probeAuth: true)
                         store.reloadComputers()
                     }
                     .font(.system(size: 12))
@@ -162,6 +163,154 @@ struct MacHostSettingsView: View {
                 Text(hostServer.statusNote)
                     .font(.system(size: 11))
                     .foregroundStyle(OATheme.textMuted)
+            }
+            .padding(14)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        }
+    }
+
+    // MARK: - Antigravity CLI / ACP Authentication (#13995)
+
+    private var antigravityAuthSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("ANTIGRAVITY AUTHENTICATION (VIA OFFICIAL AGY CLI)")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(OATheme.textMuted)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Account Mode")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(OATheme.textPrimary)
+                    Spacer()
+                    Picker("Account Mode", selection: Binding(
+                        get: { authController.selectedMethod },
+                        set: { authController.selectMethod($0) }
+                    )) {
+                        ForEach(AntigravityAuthMethod.allCases) { m in
+                            Text(m.label).tag(m)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 240)
+                }
+
+                Text(authController.selectedMethod.subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(OATheme.textSecondary)
+
+                if authController.selectedMethod == .geminiAPIKey {
+                    HStack(spacing: 8) {
+                        SecureField("AIza… Gemini API Key", text: $apiKeyDraft)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(OATheme.textPrimary)
+                            .padding(8)
+                            .background(OATheme.elevated, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                        Button("Save & Verify") {
+                            let key = apiKeyDraft
+                            apiKeyDraft = ""
+                            Task { await authController.saveAPIKeyAndProbe(key) }
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(Color.white, in: Capsule())
+                        .buttonStyle(.plain)
+                        .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || authController.isProbing)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Button(authController.isAuthenticating ? "Signing in…" : (authController.isAuthenticated ? "Re-authenticate" : "Sign in with Google")) {
+                            authController.startOAuthConnect()
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.white, in: Capsule())
+                        .buttonStyle(.plain)
+                        .disabled(authController.isAuthenticating)
+
+                        if authController.isAuthenticated {
+                            Button("Sign out") {
+                                Task { await authController.signOut() }
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(OATheme.statusError)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(OATheme.elevated, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                            .buttonStyle(.plain)
+                        }
+
+                        Spacer()
+
+                        Button(authController.isProbing ? "Checking…" : "Check Status") {
+                            Task { await authController.probe() }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(OATheme.textSecondary)
+                        .buttonStyle(.plain)
+                        .disabled(authController.isProbing)
+                    }
+                }
+
+                if authController.awaitingManualCode || authController.pendingAuthURL != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let authURL = authController.pendingAuthURL {
+                            HStack(spacing: 8) {
+                                Text(authURL)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(OATheme.textMuted)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Button("Open Browser") {
+                                    if let u = URL(string: authURL) { NSWorkspace.shared.open(u) }
+                                }
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(OATheme.textPrimary)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            TextField("Paste callback URL or authorization code…", text: $manualCodeDraft)
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(OATheme.textPrimary)
+                                .padding(7)
+                                .background(OATheme.elevated, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                            Button("Submit Code") {
+                                let code = manualCodeDraft
+                                manualCodeDraft = ""
+                                Task { await authController.submitManualAuthCode(code) }
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white, in: Capsule())
+                            .buttonStyle(.plain)
+                            .disabled(manualCodeDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+
+                if let err = authController.errorMessage, !err.isEmpty {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(OATheme.statusError)
+                } else if !authController.statusMessage.isEmpty {
+                    Text(authController.statusMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(OATheme.textMuted)
+                }
             }
             .padding(14)
             .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

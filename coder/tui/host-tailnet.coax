@@ -231,16 +231,23 @@ ht_srv_issue_grant :: (h: [] HsHost, st: [] HsState, statebuf: [] u8, device: st
 
   hs_load(st, statebuf);
   now := hs_now();
-  rb: [64] u8; req_id := hs_random_hex(32, rb[..]);
-  pi := hs_pairing_add(st, req_id, device, client_label, now);
-  if pi < 0 {
-    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
-    return ht_grant_answer_write(ans[..], out);
+  // Reuse/refresh an existing active non-revoked grant for this device instead of exhausting HS_GRANTS (#14001).
+  g := -1;
+  for i: 0..<st[0].ng {
+    if !st[0].grants[i].revoked && cast(string) st[0].grants[i].device[..] == device { g = i; break; }
   }
-  gb: [64] u8; g := hs_allow(st, pi, hs_random_hex(32, gb[..]), now);
   if g < 0 {
-    ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
-    return ht_grant_answer_write(ans[..], out);
+    rb: [64] u8; req_id := hs_random_hex(32, rb[..]);
+    pi := hs_pairing_add(st, req_id, device, client_label, now);
+    if pi < 0 {
+      ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+      return ht_grant_answer_write(ans[..], out);
+    }
+    gb: [64] u8; g = hs_allow(st, pi, hs_random_hex(32, gb[..]), now);
+    if g < 0 {
+      ans[0].nref = ht_copy(ans[0].refused[..], "unavailable");
+      return ht_grant_answer_write(ans[..], out);
+    }
   }
   st[0].grants[g].expires = now + 30 * 86400;
   if !hs_save(st, statebuf) {

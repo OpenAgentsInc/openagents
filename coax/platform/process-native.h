@@ -27,7 +27,7 @@ extern "C" {
 #define CXPROC_ERROR (-3)
 #define CXPROC_TOO_LONG (-4)
 #define CXPROC_RUNNING (-2)
-#define CXPROC_MAX (16)
+#define CXPROC_MAX (64)
 #define CXPROC_MAX_LINE (64 * 1024 * 1024)
 #define CXPROC_STDERR_KEEP (64 * 1024)
 int64_t cxproc_platform(void); /* 3 Linux x86-64, 1 macOS, 5 Windows x86-64 and 6 Windows ARM64 (process-win32.c), 0 otherwise */

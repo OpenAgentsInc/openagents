@@ -1,9 +1,12 @@
-// Firm reason: 6 (macOS Tailscale host listener on port 47109 + Bonjour advertiser + tailscale whois enforcement + relay-free direct-grant minter + NIP-44 Unix-socket forwarder + live push broadcaster + LaunchAgent manager).
+// Firm reason: 6 (macOS Tailscale host listener on port 47109 + Bonjour advertiser + NWPathMonitor + tailscale whois enforcement + relay-free direct-grant minter + NIP-44 Unix-socket forwarder + live push broadcaster + LaunchAgent manager + AntigravityAuthController).
+import Darwin
 import Foundation
 import Network
 
 @MainActor
 final class TailscaleHostServer: ObservableObject {
+    let authController = AntigravityAuthController()
+
     @Published var isListening = false
     @Published var listenPort: UInt16 = AppTailnet.port
     @Published var owner: AppTailnet.Owner?
@@ -17,6 +20,8 @@ final class TailscaleHostServer: ObservableObject {
     @Published var statusNote: String = "Checking Tailscale & local host daemon…"
 
     private var listener: NWListener?
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSig: String?
     private var subscribers: [ObjectIdentifier: (conn: NWConnection, sessionFilter: String)] = [:]
     private var pushSeq: Int64 = 0
     private var daemonProcess: Process?
@@ -41,29 +46,37 @@ final class TailscaleHostServer: ObservableObject {
             .appendingPathComponent("Library/LaunchAgents/\(Self.launchAgentLabel).plist")
     }
 
-    func setWorkspacePath(_ path: String) {
+    private var currentHostLabel: String {
+        let raw = owner?.name.isEmpty == false ? (owner?.name ?? "Mac") : (Host.current().localizedName ?? "Mac")
+        let clamped = raw.truncatedToUTF8Bytes(80).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clamped.isEmpty ? "Mac" : clamped
+    }
+
+    func setWorkspacePath(_ path: String, devicePubkey: String = "") {
         let clean = (path as NSString).expandingTildeInPath
         guard FileManager.default.fileExists(atPath: clean) else { return }
         workspacePath = clean
         UserDefaults.standard.set(clean, forKey: Self.workspaceDefaultsKey)
+        bootstrapEnvironmentIfPossible(devicePubkey: devicePubkey, updatePrimary: true)
     }
 
-    func refreshEnvironment() {
+    func refreshEnvironment(probeAuth: Bool = false) {
         daemonRunning = LocalSocketClient.shared.isSocketAvailable
         launchAgentInstalled = FileManager.default.fileExists(atPath: launchAgentURL.path)
-        agyPath = Self.findExecutable(names: ["agy", "antigravity"], extraPaths: [
-            "/opt/homebrew/bin/agy",
-            "/usr/local/bin/agy",
-            "\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin/agy",
-        ])
+        agyPath = AntigravityAuthController.findAgyBinary()
         coderHostPath = Self.findCoderHostBinary()
-        hostKeyHex = Self.readLocalHostPublicKey() ?? ""
 
+        let hostBin = coderHostPath
         Task.detached { [weak self] in
             let owner = Self.queryTailscaleOwner()
+            let key = Self.readLocalHostPublicKey(coderHostBin: hostBin) ?? ""
             await MainActor.run {
                 guard let self else { return }
                 self.owner = owner
+                if !key.isEmpty {
+                    self.hostKeyHex = key
+                }
+                self.updateBonjourAdvertisement()
                 if let owner {
                     self.statusNote = self.daemonRunning
                         ? "Tailscale ready (\(owner.dns.isEmpty ? owner.ip : owner.dns))"
@@ -73,10 +86,17 @@ final class TailscaleHostServer: ObservableObject {
                 }
             }
         }
+        if probeAuth {
+            Task { await authController.probe() }
+        }
     }
 
-    func start() {
-        refreshEnvironment()
+    func start(devicePubkey: String = "") {
+        refreshEnvironment(probeAuth: authController.probeResult == nil)
+        startPathMonitorIfNeeded()
+        if !devicePubkey.isEmpty {
+            bootstrapEnvironmentIfPossible(devicePubkey: devicePubkey, updatePrimary: false)
+        }
         guard listener == nil else { return }
         do {
             let port = NWEndpoint.Port(rawValue: AppTailnet.port) ?? .any
@@ -121,12 +141,35 @@ final class TailscaleHostServer: ObservableObject {
     func stop() {
         listener?.cancel()
         listener = nil
+        pathMonitor?.cancel()
+        pathMonitor = nil
         isListening = false
         for (_, sub) in subscribers { sub.conn.cancel() }
         subscribers.removeAll()
         activeClients = 0
         runsWatcher?.cancel()
         runsWatcher = nil
+    }
+
+    private func startPathMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let ifaces = path.availableInterfaces.map(\.name).sorted().joined(separator: ",")
+            let sig = "\(path.status)|\(ifaces)"
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let prev = self.lastPathSig
+                    self.lastPathSig = sig
+                    if let prev, prev != sig {
+                        self.refreshEnvironment()
+                    }
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.openagents.macos.hostpath", qos: .utility))
+        pathMonitor = monitor
     }
 
     private func updateBonjourAdvertisement() {
@@ -136,7 +179,7 @@ final class TailscaleHostServer: ObservableObject {
             ip: owner.ip,
             dns: owner.dns,
             port: listenPort,
-            name: owner.name.isEmpty ? (Host.current().localizedName ?? "Mac") : owner.name
+            name: currentHostLabel
         )
         let txt = NWTXTRecord(record.txt)
         listener.service = NWListener.Service(name: record.name, type: AppTailnet.service, domain: nil, txtRecord: txt)
@@ -144,7 +187,43 @@ final class TailscaleHostServer: ObservableObject {
 
     // MARK: - Local coder-host daemon & LaunchAgent management
 
-    func startLocalDaemon() {
+    /// Bootstraps `~/.openagents/coder/host/environment.json` on a fresh Mac (or updates it when the
+    /// user chooses a new workspace root) via Coax `coder-host direct-grant` (#14001).
+    func bootstrapEnvironmentIfPossible(devicePubkey: String, updatePrimary: Bool) {
+        let envJSON = LocalSocketClient.shared.hostDirectory.appendingPathComponent("environment.json")
+        if !updatePrimary && FileManager.default.fileExists(atPath: envJSON.path) {
+            return
+        }
+        guard let hostBin = coderHostPath,
+              MobileCore.isValidHostKey(devicePubkey) else { return }
+        let ws = workspacePath
+        let label = currentHostLabel
+        bgQueue.async { [weak self] in
+            var args = [
+                "direct-grant",
+                "--device", devicePubkey,
+                "--workspace", ws,
+                "--label", label,
+                "--client-label", "OpenAgents macOS",
+            ]
+            if updatePrimary {
+                args.append("--update-primary")
+            }
+            _ = Self.runCommand(hostBin, args, timeoutSeconds: 10)
+            let key = Self.readLocalHostPublicKey(coderHostBin: hostBin) ?? ""
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if !key.isEmpty {
+                        self.hostKeyHex = key
+                        self.updateBonjourAdvertisement()
+                    }
+                }
+            }
+        }
+    }
+
+    func startLocalDaemon(devicePubkey: String = "") {
         guard !LocalSocketClient.shared.isSocketAvailable else {
             daemonRunning = true
             return
@@ -153,9 +232,13 @@ final class TailscaleHostServer: ObservableObject {
             statusNote = "coder-host binary not found. Run `apps/openagents-macos/install.sh` or put coder-host on PATH."
             return
         }
+        if !devicePubkey.isEmpty {
+            bootstrapEnvironmentIfPossible(devicePubkey: devicePubkey, updatePrimary: false)
+        }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bin)
         proc.arguments = ["serve", "--no-relay"]
+        proc.environment = Self.daemonEnvironment()
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
         do {
@@ -170,46 +253,38 @@ final class TailscaleHostServer: ObservableObject {
         }
     }
 
-    /// Launches `agyworker --connect` (or `agy auth login`) to sign this Mac into Antigravity OAuth.
-    func connectAntigravityAuth() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        var workerPaths: [String] = []
-        if let res = Bundle.main.resourceURL {
-            workerPaths.append(res.appendingPathComponent("agyworker").path)
+    func stopInAppDaemonIfRunning() {
+        guard let proc = daemonProcess else { return }
+        if proc.isRunning {
+            proc.terminate()
+            let deadline = Date().addingTimeInterval(2.0)
+            while proc.isRunning && Date() < deadline {
+                usleep(50_000)
+            }
         }
-        workerPaths.append(contentsOf: [
-            "\(home)/.openagents/bin/agyworker",
-            "/Applications/OpenAgentsMac.app/Contents/Resources/agyworker",
-            "/Applications/OpenAgents.app/Contents/Resources/agyworker",
-        ])
-        let worker = Self.findExecutable(names: ["agyworker"], extraPaths: workerPaths)
-        if let worker {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: worker)
-            proc.arguments = ["--connect"]
-            try? proc.run()
-            statusNote = "Opening Antigravity sign-in via agyworker --connect…"
-            return
-        }
-        if let agy = agyPath {
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: agy)
-            proc.arguments = ["auth", "login"]
-            try? proc.run()
-            statusNote = "Opening Antigravity CLI login…"
-            return
-        }
-        statusNote = "Install the Antigravity CLI (`agy`) first."
+        daemonProcess = nil
     }
 
-    func installLaunchAgent() {
+    func installLaunchAgent(devicePubkey: String = "") {
         guard let bin = coderHostPath else {
             statusNote = "Build or install coder-host first to register LaunchAgent."
             return
         }
+        if !devicePubkey.isEmpty {
+            bootstrapEnvironmentIfPossible(devicePubkey: devicePubkey, updatePrimary: false)
+        }
+        // Stop in-app daemon first so launchd owns service.sock cleanly without a bind collision (#14001).
+        stopInAppDaemonIfRunning()
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let envPath = "/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin:\(home)/.openagents/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         let plist: [String: Any] = [
             "Label": Self.launchAgentLabel,
             "ProgramArguments": [bin, "serve", "--no-relay"],
+            "EnvironmentVariables": [
+                "PATH": envPath,
+                "HOME": home,
+            ],
             "RunAtLoad": true,
             "KeepAlive": true,
             "StandardOutPath": LocalSocketClient.shared.hostDirectory.appendingPathComponent("launchd.out.log").path,
@@ -220,8 +295,13 @@ final class TailscaleHostServer: ObservableObject {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             try data.write(to: launchAgentURL, options: .atomic)
-            _ = Self.runCommand("/bin/launchctl", ["unload", launchAgentURL.path])
-            _ = Self.runCommand("/bin/launchctl", ["load", launchAgentURL.path])
+            let domain = "gui/\(getuid())"
+            _ = Self.runCommand("/bin/launchctl", ["bootout", "\(domain)/\(Self.launchAgentLabel)"], timeoutSeconds: 8)
+            let boot = Self.runCommand("/bin/launchctl", ["bootstrap", domain, launchAgentURL.path], timeoutSeconds: 8)
+            if boot == nil {
+                _ = Self.runCommand("/bin/launchctl", ["unload", launchAgentURL.path], timeoutSeconds: 8)
+                _ = Self.runCommand("/bin/launchctl", ["load", launchAgentURL.path], timeoutSeconds: 8)
+            }
             launchAgentInstalled = true
             statusNote = "Installed LaunchAgent (\(Self.launchAgentLabel)) — serves Antigravity in background."
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
@@ -233,10 +313,17 @@ final class TailscaleHostServer: ObservableObject {
     }
 
     func removeLaunchAgent() {
-        _ = Self.runCommand("/bin/launchctl", ["unload", launchAgentURL.path])
+        let domain = "gui/\(getuid())"
+        let bootout = Self.runCommand("/bin/launchctl", ["bootout", "\(domain)/\(Self.launchAgentLabel)"], timeoutSeconds: 8)
+        if bootout == nil {
+            _ = Self.runCommand("/bin/launchctl", ["unload", launchAgentURL.path], timeoutSeconds: 8)
+        }
         try? FileManager.default.removeItem(at: launchAgentURL)
         launchAgentInstalled = false
         statusNote = "Removed background LaunchAgent."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.refreshEnvironment()
+        }
     }
 
     // MARK: - Incoming Tailscale connection handling
@@ -294,7 +381,7 @@ final class TailscaleHostServer: ObservableObject {
         let ownerSnapshot = owner
         let workspace = workspacePath
         let hostBin = coderHostPath
-        let hostLabel = owner?.name.isEmpty == false ? (owner?.name ?? "Mac") : (Host.current().localizedName ?? "Mac")
+        let hostLabel = currentHostLabel
 
         // 1. Relay-free Direct Tailscale Grant request (`openagents.host-tailnet-grant-request.v1`)
         if let req = AppTailnet.parseDirectGrantRequest(line) {
@@ -311,13 +398,14 @@ final class TailscaleHostServer: ObservableObject {
                     conn.send(content: AppTailnet.directGrantAnswerLine(ans), completion: .contentProcessed { _ in conn.cancel() })
                     return
                 }
+                let safeClientLabel = req.label.truncatedToUTF8Bytes(80)
                 let out = Self.runCommand(hostBin, [
                     "direct-grant",
                     "--device", req.device,
                     "--workspace", workspace,
                     "--label", hostLabel,
-                    "--client-label", req.label,
-                ])
+                    "--client-label", safeClientLabel,
+                ], timeoutSeconds: 10)
                 if var data = out?.data(using: .utf8), !data.isEmpty {
                     if let nl = data.firstIndex(of: 0x0A) { data = Data(data[data.startIndex..<nl]) }
                     if AppTailnet.directGrantAnswer(data) != nil {
@@ -380,6 +468,12 @@ final class TailscaleHostServer: ObservableObject {
                     guard let self else { return }
                     var next = carry
                     if let data, !data.isEmpty { next.append(data) }
+                    // Drain any complete buffered lines BEFORE closing on EOF (#14001).
+                    while let nl = next.firstIndex(of: 0x0A) {
+                        let line = Data(next[next.startIndex..<nl])
+                        next.removeSubrange(next.startIndex...nl)
+                        self.handleMultiplexedLine(conn: conn, line: line)
+                    }
                     if error != nil || complete {
                         self.removeSubscriber(conn)
                         conn.cancel()
@@ -400,11 +494,16 @@ final class TailscaleHostServer: ObservableObject {
             return
         }
         // Sealed NIP-44 kind-3188 RPC event -> forward to local `service.sock` and write sealed reply back
-        Task {
+        Task { [weak self] in
             let result = await LocalSocketClient.shared.exchangeLine(line)
-            if case .success(var reply) = result, !reply.isEmpty {
+            switch result {
+            case .success(var reply) where !reply.isEmpty:
                 if reply.last != 0x0A { reply.append(0x0A) }
                 conn.send(content: reply, completion: .contentProcessed { _ in })
+            default:
+                // Close connection promptly on local daemon failure so remote clients don't hang 18s (#14001).
+                self?.removeSubscriber(conn)
+                conn.cancel()
             }
         }
     }
@@ -461,7 +560,15 @@ final class TailscaleHostServer: ObservableObject {
         }
     }
 
-    // MARK: - Helpers (tailscale CLI, host pubkey, executable discovery)
+    // MARK: - Helpers (tailscale CLI, host pubkey from daemon.json, bounded command runner)
+
+    nonisolated private static func daemonEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let cur = env["PATH"] ?? "/usr/bin:/bin"
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin:\(home)/.openagents/bin:\(cur)"
+        return env
+    }
 
     nonisolated private static func extractIP(from endpoint: NWEndpoint) -> String {
         if case .hostPort(let host, _) = endpoint {
@@ -472,7 +579,7 @@ final class TailscaleHostServer: ObservableObject {
 
     nonisolated private static func queryTailscaleOwner() -> AppTailnet.Owner? {
         guard let bin = findTailscaleBinary(),
-              let out = runCommand(bin, ["status", "--json"]),
+              let out = runCommand(bin, ["status", "--json"], timeoutSeconds: 8),
               let data = out.data(using: .utf8) else { return nil }
         return AppTailnet.owner(status: data)
     }
@@ -480,7 +587,7 @@ final class TailscaleHostServer: ObservableObject {
     nonisolated private static func queryTailscaleWhois(remoteIP: String) -> Data? {
         guard !remoteIP.isEmpty,
               let bin = findTailscaleBinary(),
-              let out = runCommand(bin, ["whois", "--json", remoteIP]) else { return nil }
+              let out = runCommand(bin, ["whois", "--json", remoteIP], timeoutSeconds: 8) else { return nil }
         return out.data(using: .utf8)
     }
 
@@ -522,30 +629,75 @@ final class TailscaleHostServer: ObservableObject {
         return nil
     }
 
-    nonisolated private static func readLocalHostPublicKey() -> String? {
-        let pubURL = LocalSocketClient.shared.hostDirectory.appendingPathComponent("host.pub")
+    /// Reads the host's 64-hex public key from `daemon.json` (`"host"`), falling back to `host.pub`
+    /// or `coder-host key` so Bonjour advertising works reliably on macOS (#14001).
+    nonisolated static func readLocalHostPublicKey(coderHostBin: String? = nil) -> String? {
+        let hostDir = LocalSocketClient.shared.hostDirectory
+        let daemonJSON = hostDir.appendingPathComponent("daemon.json")
+        if let data = try? Data(contentsOf: daemonJSON),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for keyName in ["host", "host_pubkey", "pubkey", "public_key"] {
+                if let val = obj[keyName] as? String {
+                    let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if AppTailnet.isHostKey(trimmed) { return trimmed }
+                }
+            }
+        }
+        let pubURL = hostDir.appendingPathComponent("host.pub")
         if let raw = try? String(contentsOf: pubURL, encoding: .utf8) {
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if AppTailnet.isHostKey(trimmed) { return trimmed }
         }
+        if let bin = coderHostBin,
+           let out = runCommand(bin, ["key"], timeoutSeconds: 5) {
+            for token in out.split(whereSeparator: \.isWhitespace) {
+                let candidate = String(token).trimmingCharacters(in: .whitespacesAndNewlines)
+                if AppTailnet.isHostKey(candidate) { return candidate }
+            }
+        }
         return nil
     }
 
-    nonisolated private static func runCommand(_ executable: String, _ args: [String]) -> String? {
+    /// Bounded subprocess runner with non-blocking stdout drain + strict timeout (#14001).
+    nonisolated static func runCommand(_ executable: String, _ args: [String], timeoutSeconds: Int = 10) -> String? {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: executable)
         proc.arguments = args
+        proc.environment = daemonEnvironment()
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
+
+        let outLock = NSLock()
+        var outData = Data()
+        let readGroup = DispatchGroup()
+        readGroup.enter()
+        DispatchQueue.global(qos: .utility).async {
+            let d = pipe.fileHandleForReading.readDataToEndOfFile()
+            outLock.lock()
+            outData = d
+            outLock.unlock()
+            readGroup.leave()
+        }
+
+        let done = DispatchSemaphore(value: 0)
+        proc.terminationHandler = { _ in done.signal() }
         do {
             try proc.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            proc.waitUntilExit()
-            guard proc.terminationStatus == 0 else { return nil }
-            return String(data: data, encoding: .utf8)
         } catch {
             return nil
         }
+
+        if done.wait(timeout: .now() + .seconds(max(1, timeoutSeconds))) == .timedOut {
+            proc.terminate()
+            _ = done.wait(timeout: .now() + .seconds(1))
+            return nil
+        }
+        _ = readGroup.wait(timeout: .now() + .seconds(2))
+        guard proc.terminationStatus == 0 else { return nil }
+        outLock.lock()
+        let result = String(data: outData, encoding: .utf8)
+        outLock.unlock()
+        return result
     }
 }
