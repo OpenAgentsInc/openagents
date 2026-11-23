@@ -1,0 +1,133 @@
+// Exported C ABI for OpenAgents Music Studio (compiled via `coax c music/studio.coax --library --header ...`).
+// Exposes the entire pure-Coax score model, drift-free tempo map, SMF .mid codec,
+// programmatic remix engine, real-time scheduler, and 4-movement starter to native hosts.
+//   coax/bin/coax test music/studio.coax --library
+#load "starter.coax";
+
+oa_music_init :: (p: [] MusicProject, title: string) #export_c #effects(all) {
+  music_project_init(p, title);
+}
+
+oa_music_load_starter :: (p: [] MusicProject) #export_c #effects(all) {
+  music_load_phantom_suite_starter(p);
+}
+
+oa_music_smf_import :: (p: [] MusicProject, data: [] u8, merge_offset_tick: s64, title: string) -> s32 #export_c #effects(all) {
+  return music_smf_import(p, data, merge_offset_tick, title);
+}
+
+oa_music_smf_export :: (p: [] MusicProject, out: [] u8, scratch: [] SmfOutEv) -> s32 #export_c #effects(all) {
+  return music_smf_export(p, out, scratch);
+}
+
+oa_music_tempo_bake :: (p: [] MusicProject) -> bool #export_c #effects(all) {
+  if p.count != 1 { return false; }
+  return music_tempo_bake(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate);
+}
+
+oa_music_tick_to_sample :: (p: [] MusicProject, tick: s64) -> s64 #export_c #effects(all) {
+  if p.count != 1 { return 0; }
+  return music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, tick);
+}
+
+oa_music_sample_to_tick :: (p: [] MusicProject, sample: s64) -> s64 #export_c #effects(all) {
+  if p.count != 1 { return 0; }
+  return music_sample_to_tick(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, sample);
+}
+
+oa_music_bpm_at_tick :: (p: [] MusicProject, tick: s64) -> s32 #export_c #effects(all) {
+  if p.count != 1 { return 120000; }
+  return music_bpm_at_tick(p[0].tempos[..], p[0].tempo_count, tick);
+}
+
+oa_music_set_tempo :: (p: [] MusicProject, tick: s64, bpm_milli: s32, ramp: bool) -> bool #export_c #effects(all) {
+  return music_set_tempo_point(p, tick, bpm_milli, ramp);
+}
+
+oa_music_pitch_in_scale :: (pitch: s32, tonic: s32, minor: bool) -> bool #export_c #effects(all) {
+  return music_pitch_in_scale(cast(int) pitch, cast(int) tonic, minor);
+}
+
+oa_music_marker_at_tick :: (p: [] MusicProject, tick: s64) -> s32 #export_c #effects(all) {
+  return music_marker_at_tick(p, tick);
+}
+
+oa_music_total_ticks :: (p: [] MusicProject) -> s64 #export_c #effects(all) {
+  return music_total_ticks(p);
+}
+
+oa_music_add_track :: (p: [] MusicProject, name: string, section: u8, gm_program: u8, midi_channel: u8, pan: f32, reverb_send: f32) -> s32 #export_c #effects(all) {
+  return music_add_track(p, name, section, gm_program, midi_channel, pan, reverb_send);
+}
+
+oa_music_add_note :: (p: [] MusicProject, track: u8, pitch: u8, velocity: u8, start_tick: s64, dur_tick: s64) -> s32 #export_c #effects(all) {
+  return music_edit_add_note(p, track, pitch, velocity, start_tick, dur_tick);
+}
+
+oa_music_update_note :: (p: [] MusicProject, slot: s32, pitch: u8, velocity: u8, start_tick: s64, dur_tick: s64) -> bool #export_c #effects(all) {
+  return music_edit_update_note(p, slot, pitch, velocity, start_tick, dur_tick);
+}
+
+oa_music_remove_note :: (p: [] MusicProject, slot: s32) -> bool #export_c #effects(all) {
+  return music_edit_remove_note(p, slot);
+}
+
+oa_music_undo :: (p: [] MusicProject) -> bool #export_c #effects(all) {
+  return music_undo(p);
+}
+
+oa_music_redo :: (p: [] MusicProject) -> bool #export_c #effects(all) {
+  return music_redo(p);
+}
+
+oa_music_remix_transpose :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, semitones: s32) -> s32 #export_c #effects(all) {
+  return music_remix_transpose(p, track, start_tick, end_tick, semitones);
+}
+
+oa_music_remix_quantize :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, grid_ticks: s64, strength_pct: s32) -> s32 #export_c #effects(all) {
+  return music_remix_quantize(p, track, start_tick, end_tick, grid_ticks, strength_pct);
+}
+
+oa_music_remix_humanize :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, max_tick: s32, max_vel: s32, seed: u32) -> s32 #export_c #effects(all) {
+  return music_remix_humanize(p, track, start_tick, end_tick, max_tick, max_vel, seed);
+}
+
+oa_music_remix_copy_layer :: (p: [] MusicProject, src_track: s32, dst_track: s32, start_tick: s64, end_tick: s64, tick_delta: s64, semitones: s32, vel_pct: s32) -> s32 #export_c #effects(all) {
+  return music_remix_copy_layer(p, src_track, dst_track, start_tick, end_tick, tick_delta, semitones, vel_pct);
+}
+
+oa_music_remix_explode :: (p: [] MusicProject, src_track: s32, start_tick: s64, end_tick: s64, dst_tracks: [] u8) -> s32 #export_c #effects(all) {
+  return music_remix_explode_chords(p, src_track, start_tick, end_tick, dst_tracks);
+}
+
+oa_music_remix_swell :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, v0: s32, vpeak: s32, v1: s32) -> s32 #export_c #effects(all) {
+  return music_remix_velocity_swell(p, track, start_tick, end_tick, v0, vpeak, v1);
+}
+
+oa_music_remix_pit_seating :: (p: [] MusicProject) #export_c #effects(all) {
+  music_remix_apply_pit_seating(p);
+}
+
+oa_music_transport_step :: (p: [] MusicProject, from_sample: s64, frame_count: s32, loop_on: bool, loop_start_tick: s64, loop_end_tick: s64, events: [] MusicSchedEvent) -> MusicStepResult #export_c #effects(all) {
+  return music_transport_step(p, from_sample, frame_count, loop_on, loop_start_tick, loop_end_tick, events);
+}
+
+oa_music_update_active :: (p: [] MusicProject, tick: s64) #export_c #effects(all) {
+  music_update_active_at_tick(p, tick);
+}
+
+oa_music_clear_active :: (p: [] MusicProject) #export_c #effects(all) {
+  music_clear_active_masks(p);
+}
+
+#test "studio C ABI surface loads starter, exports SMF, and steps transport cleanly" {
+  p: [1] MusicProject;
+  oa_music_load_starter(p[..]);
+  #assert oa_music_bpm_at_tick(p[..], 0) == 64000;
+  #assert oa_music_marker_at_tick(p[..], 16 * 3840) == 2;
+  ev: [128] MusicSchedEvent;
+  r := oa_music_transport_step(p[..], 0, 512, false, 0, 0, ev[..]);
+  #assert r.event_count >= 4 && r.next_sample == 512;
+  #assert oa_music_remix_transpose(p[..], 2, 24 * 3840, 32 * 3840, -3) > 0;
+  #assert oa_music_undo(p[..]);
+}

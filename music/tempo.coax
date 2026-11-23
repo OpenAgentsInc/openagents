@@ -1,0 +1,274 @@
+// Drift-free piecewise tempo map (constant & linear accelerando/ritardando ramps).
+// Extends metaverse-engine/audio/score.coax single-BPM grid to multi-movement mashups
+// (64 -> 72 -> 122 -> 132 -> 68 BPM) with zero cumulative rounding drift.
+//   coax/bin/coax test music/tempo.coax --library
+//   coax/bin/coax mutate music/tempo.coax --root-only
+#authority;
+#load "model.coax";
+
+MUSIC_BPM_MIN :: 20000;     // 20.000 BPM
+MUSIC_BPM_MAX :: 400000;    // 400.000 BPM
+
+// Exact sample delta for a segment spanning `dticks` from `b0` to `b1` (milli-BPM).
+music_seg_samples_f64 :: (dticks: s64, b0_milli: s32, b1_milli: s32, ramp: bool, rate: s32) -> f64 #effects(all) {
+  if dticks < 1 || b0_milli < 1 || rate < 1 { return 0.0; }
+  b0 := f64(b0_milli) / 1000.0;
+  b1 := f64(b1_milli) / 1000.0;
+  scale := 60.0 * f64(rate) * f64(dticks) / f64(MUSIC_PPQ);
+  if !ramp || b0_milli == b1_milli || b1_milli < 1 {
+    return scale / b0;
+  }
+  return scale * log(b1 / b0) / (b1 - b0);
+}
+
+// Validates and precomputes exact cumulative `start_sample` for every TempoPoint.
+music_tempo_bake :: (pts: [] TempoPoint, n: s32, rate: s32) -> bool #effects(all) {
+  if n < 1 || cast(int) n > pts.count || rate < 1 { return false; }
+  if pts[0].tick != 0 { return false; }
+  for i: 0..<n {
+    if pts[i].bpm_milli < MUSIC_BPM_MIN || pts[i].bpm_milli > MUSIC_BPM_MAX { return false; }
+    if i > 0 && pts[i].tick <= pts[i - 1].tick { return false; }
+  }
+  acc := 0.0;
+  pts[0].start_sample = 0;
+  for i: 1..<n {
+    dt := pts[i].tick - pts[i - 1].tick;
+    acc += music_seg_samples_f64(dt, pts[i - 1].bpm_milli, pts[i].bpm_milli, pts[i - 1].ramp, rate);
+    pts[i].start_sample = cast(s64) floor(acc + 0.5);
+  }
+  return true;
+}
+
+// Monotonic tick -> sample conversion over baked TempoPoints.
+music_tick_to_sample :: (pts: [] TempoPoint, n: s32, rate: s32, tick: s64) -> s64 #effects(all) {
+  if n < 1 || cast(int) n > pts.count || rate < 1 || tick < 1 { return 0; }
+  lo: s32 = 0;
+  for i: 1..<n {
+    if pts[i].tick <= tick { lo = i; } else { break; }   // mutant: equivalent (continuous at knot tick == pts[i].tick)
+  }
+  a := pts[lo];
+  dt := tick - a.tick;
+  if lo + 1 < n && a.ramp && pts[lo + 1].bpm_milli != a.bpm_milli && dt > 0 {
+    b := pts[lo + 1];
+    b0 := f64(a.bpm_milli) / 1000.0;
+    b1 := f64(b.bpm_milli) / 1000.0;
+    b_now := b0 + (b1 - b0) * (f64(dt) / f64(b.tick - a.tick));
+    ds := 60.0 * f64(rate) * f64(dt) * log(b_now / b0) / (f64(MUSIC_PPQ) * (b_now - b0));
+    return a.start_sample + cast(s64) floor(ds + 0.5);
+  }
+  ds := 60.0 * f64(rate) * f64(dt) / (f64(MUSIC_PPQ) * (f64(a.bpm_milli) / 1000.0));
+  return a.start_sample + cast(s64) floor(ds + 0.5);
+}
+
+// Monotonic sample -> tick conversion (exact inverse of music_tick_to_sample).
+music_sample_to_tick :: (pts: [] TempoPoint, n: s32, rate: s32, sample: s64) -> s64 #effects(all) {
+  if n < 1 || cast(int) n > pts.count || rate < 1 || sample < 1 { return 0; }
+  lo: s32 = 0;
+  for i: 1..<n {
+    if pts[i].start_sample <= sample { lo = i; } else { break; }   // mutant: equivalent (continuous at knot sample == pts[i].start_sample)
+  }
+  a := pts[lo];
+  ds := sample - a.start_sample;
+  b0 := f64(a.bpm_milli) / 1000.0;
+  if lo + 1 < n && a.ramp && pts[lo + 1].bpm_milli != a.bpm_milli && ds > 0 {   // mutant: equivalent (at ds == 0 both formulas give a.tick)
+    b := pts[lo + 1];
+    slope := (f64(b.bpm_milli) / 1000.0 - b0) / f64(b.tick - a.tick);
+    ex := exp((f64(ds) / f64(rate)) * f64(MUSIC_PPQ) * slope / 60.0);
+    dt := (b0 * (ex - 1.0)) / slope;
+    return a.tick + cast(s64) floor(dt + 0.5);
+  }
+  dt := f64(ds) * b0 * f64(MUSIC_PPQ) / (60.0 * f64(rate));
+  return a.tick + cast(s64) floor(dt + 0.5);
+}
+
+music_bpm_at_tick :: (pts: [] TempoPoint, n: s32, tick: s64) -> s32 #effects(all) {
+  if n < 1 || cast(int) n > pts.count { return 120000; }
+  if tick < 1 { return pts[0].bpm_milli; }
+  lo: s32 = 0;
+  for i: 1..<n {
+    if pts[i].tick <= tick { lo = i; } else { break; }
+  }
+  a := pts[lo];
+  if lo + 1 < n && a.ramp {
+    b := pts[lo + 1];
+    return a.bpm_milli + cast(s32) (cast(s64) (b.bpm_milli - a.bpm_milli) * (tick - a.tick) / (b.tick - a.tick));
+  }
+  return a.bpm_milli;
+}
+
+// Insert or update a tempo point on a MusicProject and re-bake.
+music_set_tempo_point :: (p: [] MusicProject, tick: s64, bpm_milli: s32, ramp: bool) -> bool #effects(all) {
+  if p.count != 1 || tick < 0 || bpm_milli < MUSIC_BPM_MIN || bpm_milli > MUSIC_BPM_MAX { return false; }
+  for i: 0..<p[0].tempo_count {
+    if p[0].tempos[i].tick == tick {
+      p[0].tempos[i].bpm_milli = bpm_milli;
+      p[0].tempos[i].ramp = ramp;
+      if !music_tempo_bake(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate) { return false; }
+      p[0].revision += 1;
+      return true;
+    }
+  }
+  if p[0].tempo_count == MUSIC_MAX_TEMPO_PTS { return false; }
+  at := p[0].tempo_count;
+  while at > 1 && p[0].tempos[at - 1].tick > tick {   // mutant: equivalent (tick > 0 == tempos[0].tick and duplicates updated above)
+    p[0].tempos[at] = p[0].tempos[at - 1];
+    at -= 1;
+  }
+  p[0].tempos[at] = TempoPoint.{tick = tick, bpm_milli = bpm_milli, ramp = ramp};
+  p[0].tempo_count += 1;
+  if !music_tempo_bake(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate) { return false; }
+  p[0].revision += 1;
+  return true;
+}
+
+// ---- Checks ----
+
+#test "constant tempo hits exact boundaries, rounding, and rate=1/tick=1 edge cases" {
+  // Rounding half-up check: at rate=1, bpm=120, dt=16 ticks => 60*1*16 / (960*120) = 1/120; at dt=960 => 0.5 -> rounds to 1!
+  pts: [4] TempoPoint;
+  pts[0] = TempoPoint.{tick = 0, bpm_milli = 120000, ramp = false, start_sample = 99};
+  pts[1] = TempoPoint.{tick = 960, bpm_milli = MUSIC_BPM_MIN, ramp = false};
+  pts[2] = TempoPoint.{tick = 1920, bpm_milli = MUSIC_BPM_MAX, ramp = true};
+  #assert music_tempo_bake(pts[..], 3, 1);
+  #assert pts[0].start_sample == 0 && pts[1].start_sample == 1; // floor(0.5 + 0.5) == 1 (kills + -> -)
+
+  // Exact 1-Hz rate, sample==1, n==1 non-default BPM, and 2-point ramp boundary checks.
+  pts[0] = TempoPoint.{tick = 0, bpm_milli = 60000, ramp = false};
+  #assert music_tempo_bake(pts[..], 1, 1);
+  #assert music_tick_to_sample(pts[..], 1, 1, 960) == 1;
+  #assert music_sample_to_tick(pts[..], 1, 1, 1) == 960;
+  #assert music_bpm_at_tick(pts[..], 1, 0) == 60000 && music_bpm_at_tick(pts[..], 1, 1) == 60000;
+
+  // 2-point ramp (lo == 0, n == 2) with dt == 1 and ds == 1 kills lo+1 -> lo+2 and 0 -> 1.
+  r2: [2] TempoPoint;
+  r2[0] = TempoPoint.{tick = 0, bpm_milli = 60000, ramp = true};
+  r2[1] = TempoPoint.{tick = 2, bpm_milli = 180000, ramp = false};
+  #assert music_tempo_bake(r2[..], 2, 48000);
+  #assert music_bpm_at_tick(r2[..], 2, 0) == 60000 && music_bpm_at_tick(r2[..], 2, 1) == 120000;
+  #assert music_tick_to_sample(r2[..], 2, 48000, 1) == 35; // ramp 35 vs constant 50
+  #assert music_sample_to_tick(r2[..], 2, 1000, 1) == 2;   // ramp 2 vs constant 1 at ds == 1
+
+  // Exact 48 kHz constant boundaries.
+  pts[0] = TempoPoint.{tick = 0, bpm_milli = 120000, ramp = false};
+  #assert music_tempo_bake(pts[..], 1, 48000);
+  #assert music_tick_to_sample(pts[..], 1, 48000, 0) == 0;
+  #assert music_tick_to_sample(pts[..], 1, 48000, 1) == 25;
+  #assert music_tick_to_sample(pts[..], 1, 48000, 960) == 24000;
+  #assert music_tick_to_sample(pts[..], 1, 48000, 3840) == 96000;
+  #assert music_sample_to_tick(pts[..], 1, 48000, 1) == 0;
+  #assert music_sample_to_tick(pts[..], 1, 48000, 13) == 1; // 13 * 120 * 960 / (60 * 48000) = 0.52 -> rounds to 1
+  #assert music_sample_to_tick(pts[..], 1, 48000, 24000) == 960;
+  #assert music_bpm_at_tick(pts[..], 1, 0) == 120000;
+  #assert music_bpm_at_tick(pts[..], 1, 1) == 120000;
+  // Equal-BPM ramp collapses to constant formula; invalid b1_milli collapses too.
+  #assert music_seg_samples_f64(1, 1, 1, false, 1) > 0.0;
+  #assert music_seg_samples_f64(960, 120000, 120000, true, 48000) == 24000.0;
+  #assert music_seg_samples_f64(960, 120000, 0, true, 48000) == 24000.0;
+  #assert music_seg_samples_f64(960, 120000, 1, true, 48000) > 24000.0;
+  #assert music_seg_samples_f64(0, 120000, 120000, false, 48000) == 0.0;
+  #assert music_seg_samples_f64(960, 0, 120000, false, 48000) == 0.0;
+  #assert music_seg_samples_f64(960, 120000, 120000, false, 0) == 0.0;
+}
+
+#test "piecewise tempo ramp matches numerical Riemann integral, exact edges, and inverts cleanly" {
+  pts: [4] TempoPoint;
+  // 4-song Phantom mashup curve: 64 -> ramp 72 -> ramp 122 -> step 132 (ramp=true on final point ignored!)
+  pts[0] = TempoPoint.{tick = 0, bpm_milli = 64000, ramp = false};
+  pts[1] = TempoPoint.{tick = 3840, bpm_milli = 72000, ramp = true};
+  pts[2] = TempoPoint.{tick = 7680, bpm_milli = 122000, ramp = false};
+  pts[3] = TempoPoint.{tick = 11520, bpm_milli = 132000, ramp = true};
+  #assert music_tempo_bake(pts[..], 4, 48000);
+
+  // Numerical Riemann oracle for the linear ramp 72 -> 122 BPM over 3840 ticks.
+  steps := 1000;
+  riemann := 0.0;
+  for i: 0..<steps {
+    u := (f64(i) + 0.5) / f64(steps);
+    bpm := 72.0 + 50.0 * u;
+    riemann += (60.0 * 48000.0 * (3840.0 / f64(steps))) / (f64(MUSIC_PPQ) * bpm);
+  }
+  got_seg := pts[2].start_sample - pts[1].start_sample;
+  #assert abs(f64(got_seg) - riemann) < 2.0;
+
+  // Exact knot hits (dt == 0 and ds == 0) + inside ramp + past final point (lo + 1 == n).
+  #assert music_tick_to_sample(pts[..], 4, 48000, 3840) == pts[1].start_sample;
+  #assert music_tick_to_sample(pts[..], 4, 48000, 7680) == pts[2].start_sample;
+  #assert music_tick_to_sample(pts[..], 4, 48000, 11520) == pts[3].start_sample;
+  #assert music_sample_to_tick(pts[..], 4, 48000, pts[1].start_sample) == 3840;
+  #assert music_sample_to_tick(pts[..], 4, 48000, pts[2].start_sample) == 7680;
+  #assert music_sample_to_tick(pts[..], 4, 48000, pts[3].start_sample) == 11520;
+  #assert music_bpm_at_tick(pts[..], 4, 0) == 64000;
+  #assert music_bpm_at_tick(pts[..], 4, 1) == 64000;
+  #assert music_bpm_at_tick(pts[..], 4, 3840) == 72000;
+  #assert music_bpm_at_tick(pts[..], 4, 5760) == 97000;
+  #assert music_bpm_at_tick(pts[..], 4, 7680) == 122000;
+  #assert music_bpm_at_tick(pts[..], 4, 12000) == 132000;
+
+  // Monotonicity and exact round-trip inside ramp (exact rounding check on midpoint).
+  mid_s := music_tick_to_sample(pts[..], 4, 48000, 5760);
+  #assert music_sample_to_tick(pts[..], 4, 48000, mid_s) == 5760;
+  // Exact rounding check inside ramp: tick 3841 at 48 kHz gives fractional sample where +0.5 matters.
+  s_a := music_tick_to_sample(pts[..], 4, 48000, 3841);
+  #assert s_a == pts[1].start_sample + 42; // 60*48000/(960*72.0065) = 41.66 -> rounds to 42!
+  #assert music_sample_to_tick(pts[..], 4, 48000, pts[1].start_sample + 22) == 3841; // 0.528 ticks -> rounds to 1!
+
+  // Past final point (ramp=true on last knot must use constant segment).
+  after_last := music_tick_to_sample(pts[..], 4, 48000, 11520 + 960);
+  #assert after_last == pts[3].start_sample + 21818; // 60*48000/132 = 21818.18
+  #assert music_sample_to_tick(pts[..], 4, 48000, after_last) == 11520 + 960;
+
+  // Equal-BPM ramp segment (lo + 1 < n && ramp && b1 == b0) uses constant path.
+  eq: [2] TempoPoint;
+  eq[0] = TempoPoint.{tick = 0, bpm_milli = 120000, ramp = true};
+  eq[1] = TempoPoint.{tick = 3840, bpm_milli = 120000, ramp = false};
+  #assert music_tempo_bake(eq[..], 2, 48000);
+  #assert music_tick_to_sample(eq[..], 2, 48000, 960) == 24000;
+  #assert music_sample_to_tick(eq[..], 2, 48000, 24000) == 960;
+}
+
+#test "tempo map refuses invalid inputs and music_set_tempo_point enforces caps, sorting, and revision" {
+  pts: [3] TempoPoint;
+  pts[0] = TempoPoint.{tick = 10, bpm_milli = 120000};
+  #assert !music_tempo_bake(pts[..], 1, 48000);
+  pts[0].tick = 0;
+  #assert !music_tempo_bake(pts[..], 0, 48000) && !music_tempo_bake(pts[..], 4, 48000) && !music_tempo_bake(pts[..], 1, 0);
+  pts[0].bpm_milli = MUSIC_BPM_MIN - 1;
+  #assert !music_tempo_bake(pts[..], 1, 48000);
+  pts[0].bpm_milli = MUSIC_BPM_MAX + 1;
+  #assert !music_tempo_bake(pts[..], 1, 48000);
+  pts[0].bpm_milli = 120000;
+  pts[1] = TempoPoint.{tick = 0, bpm_milli = 100000};
+  #assert !music_tempo_bake(pts[..], 2, 48000);
+  #assert music_tick_to_sample(pts[..], 0, 48000, 960) == 0 && music_tick_to_sample(pts[..], 4, 48000, 960) == 0;
+  #assert music_tick_to_sample(pts[..], 1, 0, 960) == 0 && music_tick_to_sample(pts[..], 1, 48000, -5) == 0;
+  #assert music_sample_to_tick(pts[..], 0, 48000, 24000) == 0 && music_sample_to_tick(pts[..], 4, 48000, 24000) == 0;
+  #assert music_sample_to_tick(pts[..], 1, 0, 24000) == 0 && music_sample_to_tick(pts[..], 1, 48000, -5) == 0;
+  #assert music_bpm_at_tick(pts[..], 0, 100) == 120000 && music_bpm_at_tick(pts[..], 4, 100) == 120000;
+
+  p: [1] MusicProject;
+  music_project_init(p[..], "TempoTest");
+  #assert !music_set_tempo_point(p[0..<0], 0, 120000, false);
+  #assert !music_set_tempo_point(p[..], -1, 120000, false);
+  #assert !music_set_tempo_point(p[..], 0, MUSIC_BPM_MIN - 1, false);
+  #assert !music_set_tempo_point(p[..], 0, MUSIC_BPM_MAX + 1, false) && p[0].tempos[0].bpm_milli == 120000;
+
+  rev0 := p[0].revision;
+  #assert music_set_tempo_point(p[..], 0, MUSIC_BPM_MIN, true) && p[0].tempos[0].bpm_milli == MUSIC_BPM_MIN && p[0].tempos[0].ramp && p[0].revision == rev0 + 1;
+  #assert music_set_tempo_point(p[..], 7680, MUSIC_BPM_MAX, false) && p[0].tempo_count == 2 && p[0].revision == rev0 + 2;
+  #assert music_set_tempo_point(p[..], 3840, 72000, true) && p[0].tempo_count == 3 && p[0].tempos[1].tick == 3840 && p[0].revision == rev0 + 3;
+  // Update existing knot changes ramp flag and increments revision.
+  #assert music_set_tempo_point(p[..], 3840, 76000, false) && p[0].tempo_count == 3 && !p[0].tempos[1].ramp && p[0].revision == rev0 + 4;
+  // Invalid sample_rate causes bake refusal in both update and insert paths without incrementing revision.
+  p[0].sample_rate = 0;
+  rev_bad := p[0].revision;
+  #assert !music_set_tempo_point(p[..], 3840, 80000, false) && p[0].revision == rev_bad;
+  #assert !music_set_tempo_point(p[..], 9000, 80000, false) && p[0].revision == rev_bad;
+  p[0].sample_rate = 48000;
+  // Fill to MUSIC_MAX_TEMPO_PTS cap and verify refusal at exact capacity.
+  music_project_init(p[..], "CapTest");
+  for k: 1..<MUSIC_MAX_TEMPO_PTS {
+    #assert music_set_tempo_point(p[..], cast(s64) k * 100, 120000, false);
+  }
+  #assert p[0].tempo_count == MUSIC_MAX_TEMPO_PTS;
+  #assert !music_set_tempo_point(p[..], 999999, 120000, false);
+}

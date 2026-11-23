@@ -1,0 +1,6 @@
+# Music Context Invariants
+
+1. **Drift-free piecewise tempo map (`music/tempo.coax`, `#authority`).** Tempo maps must start at tick `0`, have strictly increasing ticks, and enforce `bpm_milli` within `[20000, 400000]`. `music_tick_to_sample` and `music_sample_to_tick` are monotonic and invert within `<= 1` sample across constant and linear-ramp segments (`coax mutate music/tempo.coax --root-only`: zero surviving mutants).
+2. **Zero stuck notes on transport wrap (`music/transport.coax`).** Wrapping across a loop boundary emits `MEV_ALL_NOTES_OFF` at the exact wrap sample offset before scheduling post-wrap `MEV_NOTE_ON` events.
+3. **Reversible programmatic & visual edits (`music/model.coax`, `music/remix.coax`).** Every GUI note edit and every programmatic remix transform (`transpose`, `quantize`, `humanize`, `copy_layer`, `explode_chords`, `velocity_swell`) records into the bounded op-delta undo ring so `music_undo` / `music_redo` restores exact note state.
+4. **Copyright & asset hygiene.** No copyrighted third-party MIDI files, sheet music, recordings, or vocal stems are committed into `music/` or `apps/music-studio/`. User song projects and downloaded SoundFonts live under `~/.openagents/music/`.

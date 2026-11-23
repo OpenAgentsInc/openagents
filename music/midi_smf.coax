@@ -1,0 +1,495 @@
+// Standard MIDI File (SMF Format 0 and Format 1) importer and exporter in pure Coax.
+// Supports both full project replacement (merge_offset_tick < 0) and mashup merge mode
+// (merge_offset_tick >= 0) so multiple .mid songs can be pulled into one timeline.
+//   coax/bin/coax test music/midi_smf.coax --library
+#load "tempo.coax";
+
+SMF_MAX_OPEN :: 128;      // active note-on slots tracked per channel during parse
+
+SmfOpenNote :: struct {
+  on: bool;
+  pitch: u8;
+  velocity: u8;
+  channel: u8;
+  track: u8;
+  start_tick: s64;
+}
+
+SmfVlq :: struct { ok: bool; value: s64; next: int; }
+
+smf_u16 :: (b: [] u8, at: int) -> int {
+  if at < 0 || at + 2 > b.count { return -1; }
+  return (cast(int) b[at] << 8) | cast(int) b[at + 1];
+}
+
+smf_u32 :: (b: [] u8, at: int) -> s64 {
+  if at < 0 || at + 4 > b.count { return -1; }
+  return (cast(s64) b[at] << 24) | (cast(s64) b[at + 1] << 16) | (cast(s64) b[at + 2] << 8) | cast(s64) b[at + 3];
+}
+
+smf_vlq_read :: (b: [] u8, at: int, end: int) -> SmfVlq {
+  v: s64 = 0;
+  pos := at;
+  for k: 0..<4 {
+    if pos >= end || pos >= b.count { return SmfVlq.{}; }
+    c := b[pos];
+    pos += 1;
+    v = (v << 7) | cast(s64) (c & 0x7f);
+    if (c & 0x80) == 0 {
+      return SmfVlq.{ok = true, value = v, next = pos};
+    }
+  }
+  return SmfVlq.{};
+}
+
+smf_section_for_gm :: (program: u8, channel: u8) -> u8 {
+  if channel == 9 { return MSEC_PERC; }
+  p := cast(int) program;
+  if p >= 16 && p <= 23 { return MSEC_ORGAN; }
+  if p >= 40 && p <= 45 { return MSEC_STRINGS; }
+  if p == 46 { return MSEC_HARP; }
+  if p == 47 || p >= 112 { return MSEC_PERC; }
+  if p >= 48 && p <= 51 { return MSEC_STRINGS; }
+  if p >= 52 && p <= 55 { return MSEC_CHOIR; }
+  if p >= 56 && p <= 63 { return MSEC_BRASS; }
+  if p >= 64 && p <= 79 { return MSEC_WINDS; }
+  return MSEC_KEYS;
+}
+
+smf_pan_for_section :: (section: u8) -> f32 {
+  if section == MSEC_STRINGS { return -0.35; }
+  if section == MSEC_BRASS { return 0.30; }
+  if section == MSEC_HARP { return -0.45; }
+  if section == MSEC_WINDS { return -0.10; }
+  if section == MSEC_PERC { return 0.15; }
+  return 0.0;
+}
+
+smf_scale_tick :: (raw_tick: s64, division: int) -> s64 {
+  if division <= 0 { return raw_tick; }
+  return (raw_tick * cast(s64) MUSIC_PPQ + cast(s64) (division / 2)) / cast(s64) division;
+}
+
+// Imports a Standard MIDI File into `p`.
+// If `merge_offset_tick < 0`, replaces the project contents first.
+// If `merge_offset_tick >= 0`, appends tracks/notes shifted by `merge_offset_tick`.
+// Returns number of notes imported, or -1 on malformed input.
+music_smf_import :: (p: [] MusicProject, data: [] u8, merge_offset_tick: s64, title: string) -> s32 {
+  if p.count != 1 || data.count < 14 { return -1; }
+  if data[0] != 'M' || data[1] != 'T' || data[2] != 'h' || data[3] != 'd' { return -1; }
+  hdr_len := smf_u32(data, 4);
+  if hdr_len < 6 || 8 + cast(int) hdr_len > data.count { return -1; }
+  fmt := smf_u16(data, 8);
+  ntrks := smf_u16(data, 10);
+  division := smf_u16(data, 12);
+  if (fmt != 0 && fmt != 1) || ntrks < 1 || division <= 0 || (division & 0x8000) != 0 { return -1; }
+
+  merging := merge_offset_tick >= 0;
+  offset: s64 = ifx merging then merge_offset_tick else 0;
+  if !merging {
+    music_project_init(p, title);
+  }
+  batch := ifx merging then music_undo_begin(p, "Import MIDI") else cast(s32) -1;
+
+  pos := 8 + cast(int) hdr_len;
+  imported: s32 = 0;
+  open: [SMF_MAX_OPEN] SmfOpenNote;
+  trk_name_buf: [48] u8;
+
+  for ti: 0..<ntrks {
+    if pos + 8 > data.count { break; }
+    if data[pos] != 'M' || data[pos + 1] != 'T' || data[pos + 2] != 'r' || data[pos + 3] != 'k' { return -1; }
+    trk_len := smf_u32(data, pos + 4);
+    if trk_len < 0 || pos + 8 + cast(int) trk_len > data.count { return -1; }
+    trk_start := pos + 8;
+    trk_end := trk_start + cast(int) trk_len;
+    pos = trk_end;
+
+    for oi: 0..<SMF_MAX_OPEN { open[oi] = SmfOpenNote.{}; }
+    trk_name_n: u8 = 0;
+    trk_prog: u8 = 0;
+    trk_chan: u8 = 0;
+    trk_slot: s32 = -1;
+    // For Format 0 files, map each MIDI channel to its own track lazily.
+    ch_track: [16] s32;
+    for c: 0..<16 { ch_track[c] = -1; }
+
+    cur := trk_start;
+    abs_raw: s64 = 0;
+    running: u8 = 0;
+
+    while cur < trk_end {
+      dq := smf_vlq_read(data, cur, trk_end);
+      if !dq.ok { break; }
+      abs_raw += dq.value;
+      cur = dq.next;
+      if cur >= trk_end { break; }
+
+      status := data[cur];
+      if (status & 0x80) != 0 {
+        cur += 1;
+        if status < 0xf0 { running = status; }
+      } else {
+        if running == 0 { break; }
+        status = running;
+      }
+
+      if status == 0xff {
+        // Meta event.
+        if cur >= trk_end { break; }
+        meta := data[cur]; cur += 1;
+        lq := smf_vlq_read(data, cur, trk_end);
+        if !lq.ok { break; }
+        mlen := cast(int) lq.value;
+        cur = lq.next;
+        if mlen < 0 || cur + mlen > trk_end { break; }
+
+        if meta == 0x03 && trk_name_n == 0 {
+          n := ifx mlen < 48 then mlen else 48;
+          for k: 0..<n { trk_name_buf[k] = data[cur + k]; }
+          trk_name_n = cast,trunc(u8) n;
+          if trk_slot >= 0 {
+            for k: 0..<n { p[0].tracks[trk_slot].name[k] = trk_name_buf[k]; }
+            p[0].tracks[trk_slot].name_n = trk_name_n;
+          }
+        } else if meta == 0x51 && mlen == 3 {
+          usec := (cast(s64) data[cur] << 16) | (cast(s64) data[cur + 1] << 8) | cast(s64) data[cur + 2];
+          if usec > 0 {
+            bpm_milli := cast(s32) (60000000000 / usec);
+            if bpm_milli < MUSIC_BPM_MIN { bpm_milli = MUSIC_BPM_MIN; }
+            if bpm_milli > MUSIC_BPM_MAX { bpm_milli = MUSIC_BPM_MAX; }
+            tk := offset + smf_scale_tick(abs_raw, division);
+            _ = music_set_tempo_point(p, tk, bpm_milli, false);
+          }
+        } else if meta == 0x59 && mlen == 2 {
+          sf := cast(s8) cast,trunc(u8) data[cur];
+          mi := data[cur + 1] != 0;
+          // Circle of fifths: tonic = (sf * 7) mod 12 (+9 for minor).
+          raw_t := cast(int) sf * 7 + (ifx mi then 9 else 0);
+          tonic := cast,trunc(u8) (((raw_t % 12) + 12) % 12);
+          tk := offset + smf_scale_tick(abs_raw, division);
+          _ = music_add_marker(p, tk, tonic, mi, 4, 4, 0, ifx mi then "Key (Minor)" else "Key (Major)");
+        } else if meta == 0x2f {
+          break;
+        }
+        cur += mlen;
+        continue;
+      }
+
+      if status == 0xf0 || status == 0xf7 {
+        lq := smf_vlq_read(data, cur, trk_end);
+        if !lq.ok { break; }
+        cur = lq.next + cast(int) lq.value;
+        continue;
+      }
+
+      hi := status & 0xf0;
+      ch := status & 0x0f;
+
+      if hi == 0xc0 || hi == 0xd0 {
+        if cur >= trk_end { break; }
+        d1 := data[cur]; cur += 1;
+        if hi == 0xc0 {
+          trk_prog = d1 & 0x7f;
+          trk_chan = ch;
+          target := ifx fmt == 0 then ch_track[ch] else trk_slot;
+          if target >= 0 {
+            p[0].tracks[target].gm_program = trk_prog;
+            p[0].tracks[target].section = smf_section_for_gm(trk_prog, ch);
+            p[0].tracks[target].pan = smf_pan_for_section(p[0].tracks[target].section);
+          }
+        }
+        continue;
+      }
+
+      // 2-byte channel messages (8x, 9x, Ax, Bx, Ex).
+      if cur + 2 > trk_end { break; }
+      d1 := data[cur];
+      d2 := data[cur + 1];
+      cur += 2;
+
+      if hi == 0x90 && d2 > 0 {
+        pitch := d1 & 0x7f;
+        vel := d2 & 0x7f;
+        // Allocate destination track lazily on first note.
+        dst_t := ifx fmt == 0 then ch_track[ch] else trk_slot;
+        if dst_t < 0 {
+          sec := smf_section_for_gm(trk_prog, ch);
+          tname := ifx trk_name_n > 0 then cast(string) trk_name_buf[0..<trk_name_n]
+                   else ifx ch == 9 then "Percussion" else "Imported Track";
+          dst_t = music_add_track(p, tname, sec, trk_prog, ch, smf_pan_for_section(sec), 0.30);
+          if dst_t < 0 { continue; }
+          if fmt == 0 { ch_track[ch] = dst_t; } else { trk_slot = dst_t; }
+        }
+        tk := offset + smf_scale_tick(abs_raw, division);
+        // Record open note-on.
+        for oi: 0..<SMF_MAX_OPEN {
+          if !open[oi].on {
+            open[oi] = SmfOpenNote.{
+              on = true, pitch = pitch, velocity = vel,
+              channel = ch, track = cast,trunc(u8) dst_t, start_tick = tk
+            };
+            break;
+          }
+        }
+      } else if hi == 0x80 || (hi == 0x90 && d2 == 0) {
+        pitch := d1 & 0x7f;
+        end_tk := offset + smf_scale_tick(abs_raw, division);
+        for oi: 0..<SMF_MAX_OPEN {
+          if open[oi].on && open[oi].pitch == pitch && open[oi].channel == ch {
+            dur := end_tk - open[oi].start_tick;
+            if dur < 30 { dur = 30; }
+            slot := music_add_note_raw(p, open[oi].track, open[oi].pitch, open[oi].velocity, open[oi].start_tick, dur);
+            if slot >= 0 {
+              if batch >= 0 {
+                _ = music_undo_record(p, batch, MUNDO_ADD, slot, MidiNote.{}, p[0].notes[slot]);
+              }
+              imported += 1;
+            }
+            open[oi].on = false;
+            break;
+          }
+        }
+      }
+    }
+
+    // Close any dangling notes cleanly.
+    end_fallback := offset + smf_scale_tick(abs_raw, division) + 480;
+    for oi: 0..<SMF_MAX_OPEN {
+      if open[oi].on {
+        dur := end_fallback - open[oi].start_tick;
+        if dur < 120 { dur = 480; }
+        slot := music_add_note_raw(p, open[oi].track, open[oi].pitch, open[oi].velocity, open[oi].start_tick, dur);
+        if slot >= 0 {
+          if batch >= 0 {
+            _ = music_undo_record(p, batch, MUNDO_ADD, slot, MidiNote.{}, p[0].notes[slot]);
+          }
+          imported += 1;
+        }
+        open[oi].on = false;
+      }
+    }
+  }
+
+  if batch >= 0 { music_undo_commit_if_empty(p, batch); }
+  _ = music_tempo_bake(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate);
+  return imported;
+}
+
+// ---- SMF Type 1 Exporter ----
+
+SmfOutEv :: struct { tick: s64; status: u8; d1: u8; d2: u8; }
+
+smf_put_u16 :: (out: [] u8, at: int, v: int) -> int {
+  if at + 2 > out.count { return -1; }
+  out[at] = cast,trunc(u8) ((v >> 8) & 0xff);
+  out[at + 1] = cast,trunc(u8) (v & 0xff);
+  return at + 2;
+}
+
+smf_put_u32 :: (out: [] u8, at: int, v: s64) -> int {
+  if at + 4 > out.count { return -1; }
+  out[at] = cast,trunc(u8) ((v >> 24) & 0xff);
+  out[at + 1] = cast,trunc(u8) ((v >> 16) & 0xff);
+  out[at + 2] = cast,trunc(u8) ((v >> 8) & 0xff);
+  out[at + 3] = cast,trunc(u8) (v & 0xff);
+  return at + 4;
+}
+
+smf_put_vlq :: (out: [] u8, at: int, val: s64) -> int {
+  v := ifx val < 0 then cast(s64) 0 else val;
+  tmp: [5] u8;
+  n := 0;
+  tmp[n] = cast,trunc(u8) (v & 0x7f); n += 1;
+  v >>= 7;
+  while v > 0 && n < 5 {
+    tmp[n] = cast,trunc(u8) ((v & 0x7f) | 0x80);
+    n += 1;
+    v >>= 7;
+  }
+  if at + n > out.count { return -1; }
+  pos := at;
+  i := n - 1;
+  while i >= 0 {
+    out[pos] = tmp[i];
+    pos += 1;
+    i -= 1;
+  }
+  return pos;
+}
+
+smf_put_bytes :: (out: [] u8, at: int, s: string) -> int {
+  if at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+// Writes a complete Standard MIDI File (Type 1) into `out`.
+// `scratch` holds sorted Note On / Note Off events for one track at a time (e.g. 65536 entries).
+// Returns total bytes written, or -1 if `out` is too small.
+music_smf_export :: (p: [] MusicProject, out: [] u8, scratch: [] SmfOutEv) -> s32 {
+  if p.count != 1 || out.count < 64 { return -1; }
+  active_tracks := 0;
+  for ti: 0..<p[0].track_count {
+    if p[0].tracks[ti].active { active_tracks += 1; }
+  }
+  total_tracks := 1 + active_tracks; // Track 0 = tempo/meta track
+
+  pos := smf_put_bytes(out, 0, "MThd");
+  if pos < 0 { return -1; }
+  pos = smf_put_u32(out, pos, 6);
+  pos = smf_put_u16(out, pos, 1);            // Format 1
+  pos = smf_put_u16(out, pos, total_tracks);
+  pos = smf_put_u16(out, pos, MUSIC_PPQ);
+  if pos < 0 { return -1; }
+
+  // Track 0: tempo map + end of track.
+  pos = smf_put_bytes(out, pos, "MTrk");
+  if pos < 0 { return -1; }
+  len_pos := pos;
+  pos = smf_put_u32(out, pos, 0);
+  if pos < 0 { return -1; }
+  body_start := pos;
+  last_tick: s64 = 0;
+
+  for i: 0..<p[0].tempo_count {
+    tp := p[0].tempos[i];
+    dt := tp.tick - last_tick;
+    if dt < 0 { dt = 0; }
+    last_tick = tp.tick;
+    pos = smf_put_vlq(out, pos, dt);
+    if pos < 0 || pos + 6 > out.count { return -1; }
+    usec := 60000000000 / cast(s64) tp.bpm_milli;
+    out[pos] = 0xff; out[pos + 1] = 0x51; out[pos + 2] = 0x03;
+    out[pos + 3] = cast,trunc(u8) ((usec >> 16) & 0xff);
+    out[pos + 4] = cast,trunc(u8) ((usec >> 8) & 0xff);
+    out[pos + 5] = cast,trunc(u8) (usec & 0xff);
+    pos += 6;
+  }
+  // End of Track 0.
+  if pos + 4 > out.count { return -1; }
+  out[pos] = 0x00; out[pos + 1] = 0xff; out[pos + 2] = 0x2f; out[pos + 3] = 0x00;
+  pos += 4;
+  _ = smf_put_u32(out, len_pos, cast(s64) (pos - body_start));
+
+  // One MTrk per active musical track.
+  for ti: 0..<p[0].track_count {
+    tr := p[0].tracks[ti];
+    if !tr.active { continue; }
+    pos = smf_put_bytes(out, pos, "MTrk");
+    if pos < 0 { return -1; }
+    tlen_pos := pos;
+    pos = smf_put_u32(out, pos, 0);
+    if pos < 0 { return -1; }
+    tbody := pos;
+
+    // Meta 0x03 Track Name.
+    if tr.name_n > 0 {
+      pos = smf_put_vlq(out, pos, 0);
+      if pos < 0 || pos + 3 + cast(int) tr.name_n > out.count { return -1; }
+      out[pos] = 0xff; out[pos + 1] = 0x03; out[pos + 2] = tr.name_n;
+      pos += 3;
+      for k: 0..<tr.name_n { out[pos + cast(int) k] = tr.name[k]; }
+      pos += cast(int) tr.name_n;
+    }
+
+    // Program change at tick 0.
+    ch := tr.midi_channel & 0x0f;
+    if pos + 3 > out.count { return -1; }
+    out[pos] = 0x00;
+    out[pos + 1] = cast,trunc(u8) (0xc0 | ch);
+    out[pos + 2] = tr.gm_program & 0x7f;
+    pos += 3;
+
+    // Gather and sort Note On / Note Off events for this track.
+    ev_n := 0;
+    for ni: 0..<p[0].note_count {
+      n := p[0].notes[ni];
+      if !n.active || cast(s32) n.track != ti { continue; }
+      if ev_n + 2 > scratch.count { break; }
+      pitch_i := cast(int) n.pitch + cast(int) tr.transpose_preview;
+      if pitch_i < 0 { pitch_i = 0; }
+      if pitch_i > 127 { pitch_i = 127; }
+      pp := cast,trunc(u8) pitch_i;
+      scratch[ev_n] = SmfOutEv.{tick = n.start_tick, status = cast,trunc(u8) (0x90 | ch), d1 = pp, d2 = n.velocity};
+      scratch[ev_n + 1] = SmfOutEv.{tick = n.start_tick + n.dur_tick, status = cast,trunc(u8) (0x80 | ch), d1 = pp, d2 = 0};
+      ev_n += 2;
+    }
+    // Shell sort by tick (Note Off before Note On at identical ticks).
+    gap := ev_n / 2;
+    while gap > 0 {
+      for i: gap..<ev_n {
+        e := scratch[i];
+        j := i;
+        while j >= gap {
+          prev := scratch[j - gap];
+          swap := prev.tick > e.tick || (prev.tick == e.tick && (prev.status & 0xf0) == 0x90 && (e.status & 0xf0) == 0x80);
+          if !swap { break; }
+          scratch[j] = prev;
+          j -= gap;
+        }
+        scratch[j] = e;
+      }
+      gap /= 2;
+    }
+
+    last_t: s64 = 0;
+    for ei: 0..<ev_n {
+      e := scratch[ei];
+      dt := e.tick - last_t;
+      if dt < 0 { dt = 0; }
+      last_t = e.tick;
+      pos = smf_put_vlq(out, pos, dt);
+      if pos < 0 || pos + 3 > out.count { return -1; }
+      out[pos] = e.status; out[pos + 1] = e.d1; out[pos + 2] = e.d2;
+      pos += 3;
+    }
+
+    if pos + 4 > out.count { return -1; }
+    out[pos] = 0x00; out[pos + 1] = 0xff; out[pos + 2] = 0x2f; out[pos + 3] = 0x00;
+    pos += 4;
+    _ = smf_put_u32(out, tlen_pos, cast(s64) (pos - tbody));
+  }
+
+  return cast(s32) pos;
+}
+
+// ---- Checks ----
+
+#test "SMF Type 1 export and import round-trip notes, tracks, program, and tempo" {
+  p: [1] MusicProject;
+  music_project_init(p[..], "Phantom Test");
+  _ = music_set_tempo_point(p[..], 0, 72000, false);
+  _ = music_set_tempo_point(p[..], 3840, 122000, false);
+  t0 := music_add_track(p[..], "Pipe Organ", MSEC_ORGAN, 19, 0, 0.0, 0.45);
+  #assert t0 == 0;
+  _ = music_add_note_raw(p[..], 0, 62, 110, 0, 960);
+  _ = music_add_note_raw(p[..], 0, 61, 105, 960, 480);
+  _ = music_add_note_raw(p[..], 0, 60, 100, 1440, 480);
+  _ = music_add_note_raw(p[..], 0, 58, 115, 3840, 1920);
+
+  buf: [4096] u8;
+  scr: [64] SmfOutEv;
+  nbytes := music_smf_export(p[..], buf[..], scr[..]);
+  #assert nbytes > 40;
+
+  q: [1] MusicProject;
+  got := music_smf_import(q[..], buf[0..<nbytes], -1, "Reloaded");
+  #assert got == 4 && q[0].track_count == 1 && q[0].tracks[0].gm_program == 19;
+  #assert q[0].tracks[0].section == MSEC_ORGAN;
+  #assert q[0].tempo_count == 2 && q[0].tempos[0].bpm_milli == 72000 && q[0].tempos[1].bpm_milli == 122000;
+  #assert q[0].notes[0].pitch == 62 && q[0].notes[0].start_tick == 0 && q[0].notes[0].dur_tick == 960;
+  #assert q[0].notes[3].pitch == 58 && q[0].notes[3].start_tick == 3840 && q[0].notes[3].dur_tick == 1920;
+
+  // Mashup merge mode shifts imported notes by merge_offset_tick without wiping existing tracks.
+  merged := music_smf_import(q[..], buf[0..<nbytes], 7680, "Merged");
+  #assert merged == 4 && q[0].track_count == 2 && music_live_note_count(q[..]) == 8;
+  #assert q[0].notes[4].start_tick == 7680 && q[0].notes[4].track == 1;
+}
+
+#test "SMF parser refuses truncated headers and bad magic cleanly" {
+  p: [1] MusicProject;
+  bad := [14] u8.['X','T','h','d', 0,0,0,6, 0,1, 0,1, 1,224];
+  #assert music_smf_import(p[..], bad[..], -1, "Bad") == -1;
+  #assert music_smf_import(p[..], bad[0..<10], -1, "Short") == -1;
+}

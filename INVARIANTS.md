@@ -49,6 +49,7 @@ The repository's 313 invariants were partitioned by context (#13845) so agents a
 | [apps/INVARIANTS.md](apps/INVARIANTS.md) | 3 | Desktop, iOS, web, CLI, Coder, Zeron, components, Metaverse OS |
 | [coax/INVARIANTS.md](coax/INVARIANTS.md) | 100 | Coax language, compiler, runtime, #authority, stdlib, coax/web host |
 | [gamebuilder/INVARIANTS.md](gamebuilder/INVARIANTS.md) | 4 | GameBuilder 3D creation core, command table, CLI/MCP, play loop, sync, publish |
+| [music/INVARIANTS.md](music/INVARIANTS.md) | 4 | Music Studio core, drift-free tempo map, SMF codec, programmatic remix, real-time transport |
 | [docs/INVARIANTS-CROSS-CUTTING.md](docs/INVARIANTS-CROSS-CUTTING.md) | 8 | Cross-cutting & general repository invariants |
 
 Add new invariants to the matching context file above (or create a new `<context>/INVARIANTS.md` and link it here).

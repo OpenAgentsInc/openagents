@@ -1,0 +1,129 @@
+// Programmatic MIDI & Orchestral Remix CLI in pure Coax.
+// Usage:
+//   coax/web/tool.sh music/tools/remix-cli.coax starter OUT.mid
+//   coax/web/tool.sh music/tools/remix-cli.coax inspect FILE.mid
+//   coax/web/tool.sh music/tools/remix-cli.coax transpose IN.mid OUT.mid SEMITONES [TRACK]
+//   coax/web/tool.sh music/tools/remix-cli.coax merge A.mid B.mid BAR OUT.mid
+//   coax/bin/coax test music/tools/remix-cli.coax
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../starter.coax";
+
+MR_IO_CAP :: 2097152;
+MR_SCRATCH_CAP :: 65536;
+
+MrWork :: struct {
+  proj: [1] MusicProject;
+  io: [MR_IO_CAP] u8;
+  scratch: [MR_SCRATCH_CAP] SmfOutEv;
+}
+
+mr_parse_int :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  neg := false;
+  i := 0;
+  if s[0] == '-' { neg = true; i = 1; } else if s[0] == '+' { i = 1; }
+  v := 0;
+  while i < s.count {
+    c := s[i];
+    if c < '0' || c > '9' { break; }
+    v = v * 10 + cast(int) (c - '0');
+    i += 1;
+  }
+  return ifx neg then -v else v;
+}
+
+mr_usage :: () {
+  print("usage:\n");
+  print("  music/tools/remix-cli.coax starter OUT.mid\n");
+  print("  music/tools/remix-cli.coax inspect FILE.mid\n");
+  print("  music/tools/remix-cli.coax transpose IN.mid OUT.mid SEMITONES [TRACK=-1]\n");
+  print("  music/tools/remix-cli.coax merge A.mid B.mid BAR OUT.mid\n");
+}
+
+mr_dump_summary :: (p: [] MusicProject) {
+  print("tracks: %  notes: %  tempos: %  markers: %  bars: %\n",
+        p[0].track_count, music_live_note_count(p), p[0].tempo_count,
+        p[0].marker_count, (music_total_ticks(p) + 3839) / 3840);
+  for i: 0..<p[0].track_count {
+    tr := p[0].tracks[i];
+    if !tr.active { continue; }
+    name := cast(string) tr.name[0..<tr.name_n];
+    print("  [%] % (gm=% ch=% sec=%)\n", i, name, tr.gm_program, tr.midi_channel, tr.section);
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("remix-cli: arguments did not fit"); return 2; }
+  if a[0].n < 1 { mr_usage(); return 0; }
+  cmd := args_at(a[..], 0);
+  if cmd == "-h" || cmd == "--help" || cmd == "help" { mr_usage(); return 0; }
+
+  w: [1] MrWork;
+  p := w[0].proj[..];
+
+  if cmd == "starter" {
+    if a[0].n < 2 { mr_usage(); return 2; }
+    out_path := args_at(a[..], 1);
+    music_load_phantom_suite_starter(p);
+    nb := music_smf_export(p, w[0].io[..], w[0].scratch[..]);
+    if nb <= 0 { tool_errln("remix-cli: export failed"); return 1; }
+    if !fs_write(out_path, cast(string) w[0].io[0..<nb]) { tool_errln("remix-cli: write failed"); return 1; }
+    print("wrote % bytes to %\n", nb, out_path);
+    mr_dump_summary(p);
+    return 0;
+  }
+
+  if cmd == "inspect" {
+    if a[0].n < 2 { mr_usage(); return 2; }
+    in_path := args_at(a[..], 1);
+    nr := fs_read(in_path, w[0].io[..]);
+    if nr <= 0 { tool_errln("remix-cli: could not read input MIDI"); return 1; }
+    got := music_smf_import(p, w[0].io[0..<nr], -1, in_path);
+    if got < 0 { tool_errln("remix-cli: invalid MIDI file"); return 1; }
+    mr_dump_summary(p);
+    return 0;
+  }
+
+  if cmd == "transpose" {
+    if a[0].n < 4 { mr_usage(); return 2; }
+    in_path := args_at(a[..], 1);
+    out_path := args_at(a[..], 2);
+    semi := cast(s32) mr_parse_int(args_at(a[..], 3));
+    tr: s32 = ifx a[0].n >= 5 then cast(s32) mr_parse_int(args_at(a[..], 4)) else -1;
+    nr := fs_read(in_path, w[0].io[..]);
+    if nr <= 0 || music_smf_import(p, w[0].io[0..<nr], -1, in_path) < 0 { tool_errln("remix-cli: invalid input MIDI"); return 1; }
+    changed := music_remix_transpose(p, tr, 0, 0, semi);
+    nb := music_smf_export(p, w[0].io[..], w[0].scratch[..]);
+    if nb <= 0 || !fs_write(out_path, cast(string) w[0].io[0..<nb]) { tool_errln("remix-cli: export failed"); return 1; }
+    print("transposed % notes by % semitones -> % (% bytes)\n", changed, semi, out_path, nb);
+    return 0;
+  }
+
+  if cmd == "merge" {
+    if a[0].n < 5 { mr_usage(); return 2; }
+    a_path := args_at(a[..], 1);
+    b_path := args_at(a[..], 2);
+    bar := mr_parse_int(args_at(a[..], 3));
+    out_path := args_at(a[..], 4);
+    if bar < 1 { bar = 1; }
+    n1 := fs_read(a_path, w[0].io[..]);
+    if n1 <= 0 || music_smf_import(p, w[0].io[0..<n1], -1, a_path) < 0 { tool_errln("remix-cli: invalid first MIDI"); return 1; }
+    n2 := fs_read(b_path, w[0].io[..]);
+    if n2 <= 0 || music_smf_import(p, w[0].io[0..<n2], cast(s64) (bar - 1) * 3840, b_path) < 0 { tool_errln("remix-cli: invalid second MIDI"); return 1; }
+    nb := music_smf_export(p, w[0].io[..], w[0].scratch[..]);
+    if nb <= 0 || !fs_write(out_path, cast(string) w[0].io[0..<nb]) { tool_errln("remix-cli: export failed"); return 1; }
+    print("merged % + % at bar % -> % (% bytes)\n", a_path, b_path, bar, out_path, nb);
+    mr_dump_summary(p);
+    return 0;
+  }
+
+  mr_usage();
+  return 2;
+}
+
+#test "remix CLI integer parser handles positive, negative, and zero values" {
+  #assert mr_parse_int("0") == 0 && mr_parse_int("17") == 17 && mr_parse_int("-3") == -3 && mr_parse_int("+12") == 12 && mr_parse_int("") == 0;
+}

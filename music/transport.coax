@@ -1,0 +1,209 @@
+// Real-time sample-accurate transport & MIDI event scheduler in pure Coax.
+// Zero allocation, zero locks: fills caller-owned `events[]` for a window
+// [from_sample, from_sample + frame_count) and updates per-track 128-bit
+// active-note bitmasks so UI piano roll & 88-key keyboard light up in sync.
+//   coax/bin/coax test music/transport.coax --library
+#load "remix.coax";
+
+MEV_NOTE_ON :: 1;
+MEV_NOTE_OFF :: 2;
+MEV_ALL_NOTES_OFF :: 3;
+
+MusicSchedEvent :: struct {
+  sample_offset: s32;   // 0..<frame_count
+  track: u8;
+  channel: u8;
+  kind: u8;             // MEV_*
+  pitch: u8;            // 0..127 (already includes track.transpose_preview)
+  velocity: u8;         // 0..127
+}
+
+MusicStepResult :: struct {
+  next_sample: s64;
+  event_count: s32;
+  wrapped: bool;
+}
+
+music_has_any_solo :: (p: [] MusicProject) -> bool {
+  for i: 0..<p[0].track_count {
+    if p[0].tracks[i].active && p[0].tracks[i].solo { return true; }
+  }
+  return false;
+}
+
+music_track_audible :: (p: [] MusicProject, track: u8, any_solo: bool) -> bool {
+  ti := cast(s32) track;
+  if ti < 0 || ti >= p[0].track_count { return false; }
+  tr := p[0].tracks[ti];
+  if !tr.active || tr.mute { return false; }
+  if any_solo && !tr.solo { return false; }
+  return true;
+}
+
+music_effective_pitch :: (p: [] MusicProject, n: MidiNote) -> u8 {
+  ti := cast(s32) n.track;
+  shift := ifx ti >= 0 && ti < p[0].track_count then cast(s32) p[0].tracks[ti].transpose_preview else cast(s32) 0;
+  v := cast(s32) n.pitch + shift;
+  if v < 0 { v = 0; }
+  if v > 127 { v = 127; }
+  return cast,trunc(u8) v;
+}
+
+music_set_active_bit :: (p: [] MusicProject, track: u8, pitch: u8) {
+  ti := cast(s32) track;
+  if ti < 0 || ti >= MUSIC_MAX_TRACKS || pitch > 127 { return; }
+  if pitch < 64 {
+    p[0].active_lo[ti] |= (cast(u64) 1 << cast(u64) pitch);
+  } else {
+    p[0].active_hi[ti] |= (cast(u64) 1 << cast(u64) (pitch - 64));
+  }
+}
+
+music_clear_active_masks :: (p: [] MusicProject) {
+  if p.count != 1 { return; }
+  for i: 0..<MUSIC_MAX_TRACKS {
+    p[0].active_lo[i] = 0;
+    p[0].active_hi[i] = 0;
+  }
+}
+
+// Recomputes live active-note bitmasks at exact `tick` (useful during scrub & playback).
+music_update_active_at_tick :: (p: [] MusicProject, tick: s64) {
+  if p.count != 1 { return; }
+  music_clear_active_masks(p);
+  any_solo := music_has_any_solo(p);
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !n.active || (n.flags & MNOTE_MUTED) != 0 { continue; }
+    if !music_track_audible(p, n.track, any_solo) { continue; }
+    if tick >= n.start_tick && tick < n.start_tick + n.dur_tick {
+      music_set_active_bit(p, n.track, music_effective_pitch(p, n));
+    }
+  }
+}
+
+music_emit_slice :: (p: [] MusicProject, s0: s64, s1: s64, base_offset: s32, events: [] MusicSchedEvent, ev_n: s32) -> s32 {
+  if s1 <= s0 { return ev_n; }
+  t0 := music_sample_to_tick(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, s0);
+  t1 := music_sample_to_tick(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, s1);
+  // Generous tick window for fast pre-filter before exact sample check.
+  t_lo := ifx t0 > 64 then t0 - 64 else cast(s64) 0;
+  t_hi := t1 + 64;
+  any_solo := music_has_any_solo(p);
+  n_out := ev_n;
+
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !n.active || (n.flags & MNOTE_MUTED) != 0 { continue; }
+    if !music_track_audible(p, n.track, any_solo) { continue; }
+    n_end := n.start_tick + n.dur_tick;
+    if n_end < t_lo || n.start_tick > t_hi { continue; }
+
+    pitch := music_effective_pitch(p, n);
+    ch := p[0].tracks[n.track].midi_channel;
+
+    // Exact note-off check first so re-triggered notes release cleanly before re-attack.
+    if n_end >= t_lo && n_end <= t_hi {
+      off_s := music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, n_end);
+      if off_s >= s0 && off_s < s1 && cast(int) n_out < events.count {
+        events[n_out] = MusicSchedEvent.{
+          sample_offset = base_offset + cast(s32) (off_s - s0),
+          track = n.track, channel = ch, kind = MEV_NOTE_OFF, pitch = pitch, velocity = 0
+        };
+        n_out += 1;
+      }
+    }
+
+    if n.start_tick >= t_lo && n.start_tick <= t_hi {
+      on_s := music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, n.start_tick);
+      if on_s >= s0 && on_s < s1 && cast(int) n_out < events.count {
+        events[n_out] = MusicSchedEvent.{
+          sample_offset = base_offset + cast(s32) (on_s - s0),
+          track = n.track, channel = ch, kind = MEV_NOTE_ON, pitch = pitch, velocity = n.velocity
+        };
+        n_out += 1;
+      }
+    }
+  }
+  return n_out;
+}
+
+// Advances transport by `frame_count` samples, emitting all Note On/Off events into `events[]`
+// and updating live active-note masks at `next_sample`.
+music_transport_step :: (p: [] MusicProject, from_sample: s64, frame_count: s32, loop_on: bool, loop_start_tick: s64, loop_end_tick: s64, events: [] MusicSchedEvent) -> MusicStepResult {
+  res := MusicStepResult.{next_sample = from_sample, event_count = 0, wrapped = false};
+  if p.count != 1 || frame_count <= 0 { return res; }
+
+  s0 := ifx from_sample < 0 then cast(s64) 0 else from_sample;
+  s1 := s0 + cast(s64) frame_count;
+  ev_n: s32 = 0;
+
+  if loop_on && loop_end_tick > loop_start_tick {
+    ls := music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, loop_start_tick);
+    le := music_tick_to_sample(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, loop_end_tick);
+    if le > ls && s0 < le && s1 >= le {
+      // Emit tail before loop wrap.
+      ev_n = music_emit_slice(p, s0, le, 0, events, ev_n);
+      cut_off := cast(s32) (le - s0);
+      // Emit ALL_NOTES_OFF so wrapped notes never hang.
+      if cast(int) ev_n < events.count {
+        events[ev_n] = MusicSchedEvent.{sample_offset = cut_off, track = 0, channel = 0, kind = MEV_ALL_NOTES_OFF, pitch = 0, velocity = 0};
+        ev_n += 1;
+      }
+      rem := cast(s32) (s1 - le);
+      ev_n = music_emit_slice(p, ls, ls + cast(s64) rem, cut_off, events, ev_n);
+      res.next_sample = ls + cast(s64) rem;
+      res.event_count = ev_n;
+      res.wrapped = true;
+      now_tick := music_sample_to_tick(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, res.next_sample);
+      music_update_active_at_tick(p, now_tick);
+      return res;
+    }
+  }
+
+  ev_n = music_emit_slice(p, s0, s1, 0, events, ev_n);
+  res.next_sample = s1;
+  res.event_count = ev_n;
+  now_tick := music_sample_to_tick(p[0].tempos[..], p[0].tempo_count, p[0].sample_rate, res.next_sample);
+  music_update_active_at_tick(p, now_tick);
+  return res;
+}
+
+// ---- Checks ----
+
+#test "transport emits exact note on, active mask, note off, solo filtering, and clean loop wrap" {
+  p: [1] MusicProject;
+  music_project_init(p[..], "TransTest");
+  _ = music_set_tempo_point(p[..], 0, 120000, false); // 960 ticks = 24000 samples @ 48kHz
+  _ = music_add_track(p[..], "Organ", MSEC_ORGAN, 19, 0, 0.0, 0.4);
+  _ = music_add_track(p[..], "Strings", MSEC_STRINGS, 48, 1, -0.4, 0.3);
+  _ = music_add_note_raw(p[..], 0, 62, 100, 0, 960);    // 0 .. 24000 samples
+  _ = music_add_note_raw(p[..], 1, 69, 90, 0, 960);
+
+  ev: [64] MusicSchedEvent;
+  r0 := music_transport_step(p[..], 0, 512, false, 0, 0, ev[..]);
+  #assert r0.event_count == 2 && r0.next_sample == 512;
+  #assert ev[0].kind == MEV_NOTE_ON && ev[0].pitch == 62 && ev[0].sample_offset == 0;
+  #assert (p[0].active_lo[0] & (cast(u64) 1 << 62)) != 0;
+  #assert (p[0].active_hi[1] & (cast(u64) 1 << 5)) != 0; // 69 - 64 = 5
+
+  // Solo track 0 suppresses track 1.
+  p[0].tracks[0].solo = true;
+  r_solo := music_transport_step(p[..], 0, 512, false, 0, 0, ev[..]);
+  #assert r_solo.event_count == 1 && ev[0].track == 0 && p[0].active_hi[1] == 0;
+  p[0].tracks[0].solo = false;
+
+  // Step across note off at sample 24000.
+  r_off := music_transport_step(p[..], 23800, 512, false, 0, 0, ev[..]);
+  #assert r_off.event_count == 2 && ev[0].kind == MEV_NOTE_OFF && ev[0].sample_offset == 200;
+  #assert p[0].active_lo[0] == 0 && p[0].active_hi[1] == 0;
+
+  // Loop wrap emits ALL_NOTES_OFF and re-triggers beat 0 cleanly.
+  r_wrap := music_transport_step(p[..], 23900, 256, true, 0, 960, ev[..]);
+  #assert r_wrap.wrapped && r_wrap.next_sample == 156;
+  found_all_off := false;
+  for k: 0..<r_wrap.event_count {
+    if ev[k].kind == MEV_ALL_NOTES_OFF { found_all_off = true; }
+  }
+  #assert found_all_off;
+}

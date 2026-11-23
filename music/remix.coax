@@ -1,0 +1,262 @@
+// Programmatic remix and orchestral arranging transforms (Phase 1 MVP).
+// Every transform emits one atomic UndoBatch so GUI buttons, CLI scripts, and
+// AI Arranger prompts all share exact 1-click Undo/Redo.
+//   coax/bin/coax test music/remix.coax --library
+#load "midi_smf.coax";
+
+music_note_in_scope :: (n: MidiNote, track: s32, start_tick: s64, end_tick: s64) -> bool {
+  if !n.active { return false; }
+  if track >= 0 && cast(s32) n.track != track { return false; }
+  if start_tick >= 0 && n.start_tick < start_tick { return false; }
+  if end_tick > 0 && n.start_tick >= end_tick { return false; }
+  return true;
+}
+
+// Transposes notes in scope by `semitones` (clamped safely to MIDI 0..127).
+music_remix_transpose :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, semitones: s32) -> s32 {
+  if p.count != 1 || semitones == 0 { return 0; }
+  batch := music_undo_begin(p, "Transpose");
+  changed: s32 = 0;
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, track, start_tick, end_tick) { continue; }
+    np := cast(s32) n.pitch + semitones;
+    if np < 0 { np = 0; }
+    if np > 127 { np = 127; }
+    if cast(u8) np == n.pitch { continue; }
+    after := n;
+    after.pitch = cast,trunc(u8) np;
+    p[0].notes[i] = after;
+    _ = music_undo_record(p, batch, MUNDO_UPDATE, cast(s32) i, n, after);
+    changed += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  if changed > 0 { p[0].revision += 1; }
+  return changed;
+}
+
+// Quantizes note start ticks toward `grid_ticks` by `strength_pct` (1..100).
+music_remix_quantize :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, grid_ticks: s64, strength_pct: s32) -> s32 {
+  if p.count != 1 || grid_ticks < 1 || strength_pct <= 0 { return 0; }
+  pct := ifx strength_pct > 100 then cast(s64) 100 else cast(s64) strength_pct;
+  batch := music_undo_begin(p, "Quantize");
+  changed: s32 = 0;
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, track, start_tick, end_tick) { continue; }
+    snapped := ((n.start_tick + grid_ticks / 2) / grid_ticks) * grid_ticks;
+    moved := n.start_tick + (snapped - n.start_tick) * pct / 100;
+    if moved < 0 { moved = 0; }
+    if moved == n.start_tick { continue; }
+    after := n;
+    after.start_tick = moved;
+    p[0].notes[i] = after;
+    _ = music_undo_record(p, batch, MUNDO_UPDATE, cast(s32) i, n, after);
+    changed += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  if changed > 0 { p[0].revision += 1; }
+  return changed;
+}
+
+// Deterministic seeded humanizer: micro-timing & velocity variation.
+music_remix_humanize :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, max_tick: s32, max_vel: s32, seed: u32) -> s32 {
+  if p.count != 1 || (max_tick <= 0 && max_vel <= 0) { return 0; }
+  rng: u32 = ifx seed == 0 then 0x9e3779b9 else seed;
+  batch := music_undo_begin(p, "Humanize");
+  changed: s32 = 0;
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, track, start_tick, end_tick) { continue; }
+    after := n;
+    if max_tick > 0 {
+      rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+      span := cast(u32) (max_tick * 2 + 1);
+      dt := cast(s64) (rng % span) - cast(s64) max_tick;
+      nt := after.start_tick + dt;
+      if nt < 0 { nt = 0; }
+      after.start_tick = nt;
+    }
+    if max_vel > 0 {
+      rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5;
+      span := cast(u32) (max_vel * 2 + 1);
+      dv := cast(s32) (rng % span) - max_vel;
+      nv := cast(s32) after.velocity + dv;
+      if nv < 16 { nv = 16; }
+      if nv > 127 { nv = 127; }
+      after.velocity = cast,trunc(u8) nv;
+    }
+    if after.start_tick == n.start_tick && after.velocity == n.velocity { continue; }
+    p[0].notes[i] = after;
+    _ = music_undo_record(p, batch, MUNDO_UPDATE, cast(s32) i, n, after);
+    changed += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  if changed > 0 { p[0].revision += 1; }
+  return changed;
+}
+
+// Copies notes from `src_track` onto `dst_track`, shifted by `tick_delta` and `semitones`,
+// with velocity scaled by `vel_pct` (1..200).
+music_remix_copy_layer :: (p: [] MusicProject, src_track: s32, dst_track: s32, start_tick: s64, end_tick: s64, tick_delta: s64, semitones: s32, vel_pct: s32) -> s32 {
+  if p.count != 1 || src_track < 0 || dst_track < 0 || src_track >= p[0].track_count || dst_track >= p[0].track_count { return 0; }
+  pct := ifx vel_pct < 10 then cast(s32) 10 else ifx vel_pct > 200 then cast(s32) 200 else vel_pct;
+  orig_n := p[0].note_count;
+  batch := music_undo_begin(p, "Layer / Double");
+  added: s32 = 0;
+  for i: 0..<orig_n {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, src_track, start_tick, end_tick) { continue; }
+    np := cast(s32) n.pitch + semitones;
+    if np < 0 || np > 127 { continue; }
+    nt := n.start_tick + tick_delta;
+    if nt < 0 { nt = 0; }
+    nv := cast(s32) n.velocity * pct / 100;
+    if nv < 1 { nv = 1; }
+    if nv > 127 { nv = 127; }
+    slot := music_add_note_raw(p, cast,trunc(u8) dst_track, cast,trunc(u8) np, cast,trunc(u8) nv, nt, n.dur_tick);
+    if slot < 0 { break; }
+    _ = music_undo_record(p, batch, MUNDO_ADD, slot, MidiNote.{}, p[0].notes[slot]);
+    added += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  return added;
+}
+
+// Explodes chords on `src_track` into `dst_tracks` ordered highest voice -> lowest voice
+// (e.g. [Violins I, Violins II, Violas, Celli]). Groups notes starting within 60 ticks.
+music_remix_explode_chords :: (p: [] MusicProject, src_track: s32, start_tick: s64, end_tick: s64, dst_tracks: [] u8) -> s32 {
+  if p.count != 1 || src_track < 0 || src_track >= p[0].track_count || dst_tracks.count < 1 { return 0; }
+  orig_n := p[0].note_count;
+  batch := music_undo_begin(p, "Explode chords");
+  added: s32 = 0;
+
+  // For each note on src_track, rank its pitch among all simultaneous notes (within 60 ticks).
+  for i: 0..<orig_n {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, src_track, start_tick, end_tick) { continue; }
+    higher := 0;
+    for j: 0..<orig_n {
+      if j == i { continue; }
+      m := p[0].notes[j];
+      if !music_note_in_scope(m, src_track, start_tick, end_tick) { continue; }
+      dt := m.start_tick - n.start_tick;
+      if dt < 0 { dt = -dt; }
+      if dt <= 60 && (m.pitch > n.pitch || (m.pitch == n.pitch && j < i)) {
+        higher += 1;
+      }
+    }
+    vi := ifx higher < dst_tracks.count then higher else dst_tracks.count - 1;
+    dt_track := dst_tracks[vi];
+    if cast(s32) dt_track >= p[0].track_count { continue; }
+    slot := music_add_note_raw(p, dt_track, n.pitch, n.velocity, n.start_tick, n.dur_tick);
+    if slot < 0 { break; }
+    _ = music_undo_record(p, batch, MUNDO_ADD, slot, MidiNote.{}, p[0].notes[slot]);
+    added += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  return added;
+}
+
+// Applies a smooth crescendo / hairpin velocity contour across [start_tick, end_tick).
+music_remix_velocity_swell :: (p: [] MusicProject, track: s32, start_tick: s64, end_tick: s64, vel_start: s32, vel_peak: s32, vel_end: s32) -> s32 {
+  if p.count != 1 || end_tick <= start_tick { return 0; }
+  batch := music_undo_begin(p, "Velocity swell");
+  changed: s32 = 0;
+  span := end_tick - start_tick;
+  mid := span / 2;
+  for i: 0..<p[0].note_count {
+    n := p[0].notes[i];
+    if !music_note_in_scope(n, track, start_tick, end_tick) { continue; }
+    rel := n.start_tick - start_tick;
+    nv := ifx mid <= 0 then vel_peak
+          else ifx rel <= mid then vel_start + cast(s32) (cast(s64) (vel_peak - vel_start) * rel / mid)
+          else vel_peak + cast(s32) (cast(s64) (vel_end - vel_peak) * (rel - mid) / (span - mid));
+    if nv < 16 { nv = 16; }
+    if nv > 127 { nv = 127; }
+    if cast(u8) nv == n.velocity { continue; }
+    after := n;
+    after.velocity = cast,trunc(u8) nv;
+    p[0].notes[i] = after;
+    _ = music_undo_record(p, batch, MUNDO_UPDATE, cast(s32) i, n, after);
+    changed += 1;
+  }
+  music_undo_commit_if_empty(p, batch);
+  if changed > 0 { p[0].revision += 1; }
+  return changed;
+}
+
+// Configures classic Broadway pit-orchestra stereo seating & hall reverb sends.
+music_remix_apply_pit_seating :: (p: [] MusicProject) {
+  if p.count != 1 { return; }
+  str_n := 0;
+  for i: 0..<p[0].track_count {
+    if !p[0].tracks[i].active { continue; }
+    sec := p[0].tracks[i].section;
+    if sec == MSEC_KEYS {
+      p[0].tracks[i].pan = -0.08; p[0].tracks[i].reverb_send = 0.28;
+    } else if sec == MSEC_ORGAN {
+      p[0].tracks[i].pan = 0.0; p[0].tracks[i].reverb_send = 0.50;
+    } else if sec == MSEC_STRINGS {
+      // Spread Violins I (-0.55), Violins II (-0.25), Violas (+0.10), Celli (+0.30), Bass (+0.45)
+      if str_n == 0 { p[0].tracks[i].pan = -0.55; }
+      else if str_n == 1 { p[0].tracks[i].pan = -0.25; }
+      else if str_n == 2 { p[0].tracks[i].pan = 0.10; }
+      else if str_n == 3 { p[0].tracks[i].pan = 0.30; }
+      else { p[0].tracks[i].pan = 0.45; }
+      p[0].tracks[i].reverb_send = 0.36;
+      str_n += 1;
+    } else if sec == MSEC_WINDS {
+      p[0].tracks[i].pan = -0.15; p[0].tracks[i].reverb_send = 0.32;
+    } else if sec == MSEC_BRASS {
+      p[0].tracks[i].pan = 0.32; p[0].tracks[i].reverb_send = 0.44;
+    } else if sec == MSEC_HARP {
+      p[0].tracks[i].pan = -0.45; p[0].tracks[i].reverb_send = 0.35;
+    } else if sec == MSEC_PERC {
+      p[0].tracks[i].pan = -0.10; p[0].tracks[i].reverb_send = 0.42;
+    } else if sec == MSEC_CHOIR {
+      p[0].tracks[i].pan = 0.0; p[0].tracks[i].reverb_send = 0.55;
+    }
+  }
+  p[0].revision += 1;
+}
+
+// ---- Checks ----
+
+#test "programmatic transpose, explode chords, double octave, and undo all compose cleanly" {
+  p: [1] MusicProject;
+  music_project_init(p[..], "RemixTest");
+  t_piano := music_add_track(p[..], "Piano", MSEC_KEYS, 0, 0, 0.0, 0.25);
+  t_vln := music_add_track(p[..], "Violins", MSEC_STRINGS, 48, 1, -0.5, 0.35);
+  t_vla := music_add_track(p[..], "Violas", MSEC_STRINGS, 41, 2, 0.1, 0.35);
+  t_cel := music_add_track(p[..], "Celli", MSEC_STRINGS, 42, 3, 0.3, 0.35);
+  #assert t_piano == 0 && t_cel == 3;
+
+  // D minor triad on Piano at tick 0: D4(62), F4(65), A4(69)
+  _ = music_add_note_raw(p[..], 0, 62, 90, 0, 1920);
+  _ = music_add_note_raw(p[..], 0, 65, 90, 0, 1920);
+  _ = music_add_note_raw(p[..], 0, 69, 90, 0, 1920);
+
+  // Explode Piano triad to [Violins(1), Violas(2), Celli(3)].
+  dst := [3] u8.[1, 2, 3];
+  ex := music_remix_explode_chords(p[..], 0, 0, 3840, dst[..]);
+  #assert ex == 3 && music_live_note_count(p[..]) == 6;
+  // Highest note A4(69) -> Violins(1), middle F4(65) -> Violas(2), lowest D4(62) -> Celli(3).
+  #assert p[0].notes[3].track == 3 && p[0].notes[3].pitch == 62;
+  #assert p[0].notes[4].track == 2 && p[0].notes[4].pitch == 65;
+  #assert p[0].notes[5].track == 1 && p[0].notes[5].pitch == 69;
+
+  // Transpose Violins up +3 semitones (Dm -> Fm mediant), then undo cleanly.
+  #assert music_remix_transpose(p[..], 1, 0, 3840, 3) == 1 && p[0].notes[5].pitch == 72;
+  #assert music_undo(p[..]) && p[0].notes[5].pitch == 69;
+  #assert music_undo(p[..]) && music_live_note_count(p[..]) == 3;
+  #assert music_redo(p[..]) && music_live_note_count(p[..]) == 6;
+
+  // Humanize & quantize (move piano notes off tick 0 or verify >= 1 changed).
+  #assert music_remix_humanize(p[..], 0, 0, 3840, 20, 8, 42) >= 1;
+  #assert music_remix_quantize(p[..], 0, 0, 3840, 480, 100) >= 0;
+  // Double Celli an octave down.
+  #assert music_remix_copy_layer(p[..], 3, 3, 0, 3840, 0, -12, 85) == 1 && p[0].notes[6].pitch == 50;
+  music_remix_apply_pit_seating(p[..]);
+  #assert p[0].tracks[1].pan < 0.0 && p[0].tracks[3].pan > 0.0;
+}

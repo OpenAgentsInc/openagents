@@ -1,0 +1,444 @@
+// Core data model for OpenAgents Music Production Studio (Phase 1 MVP).
+// Pure Coax, caller-owned bounded storage, zero hidden allocation or globals.
+// Matches metaverse-engine/audio/score.coax AU_PPQ (960) and host-pcm.coax 48 kHz.
+//   coax/bin/coax test music/model.coax --library
+
+MUSIC_PPQ :: 960;
+MUSIC_SAMPLE_RATE :: 48000;
+MUSIC_MAX_TRACKS :: 32;
+MUSIC_MAX_NOTES :: 32768;
+MUSIC_MAX_TEMPO_PTS :: 256;
+MUSIC_MAX_MARKERS :: 64;
+MUSIC_MAX_UNDO_OPS :: 8192;
+MUSIC_MAX_UNDO_BATCHES :: 128;
+
+// Track section tags (matches orchestral seating & UI color roles).
+MSEC_KEYS :: 0;
+MSEC_ORGAN :: 1;
+MSEC_STRINGS :: 2;
+MSEC_WINDS :: 3;
+MSEC_BRASS :: 4;
+MSEC_HARP :: 5;
+MSEC_PERC :: 6;
+MSEC_CHOIR :: 7;
+MSEC_VOCAL :: 8;
+
+// Note bit flags.
+MNOTE_SELECTED :: 1;
+MNOTE_MUTED :: 2;
+
+// Undo op kinds.
+MUNDO_ADD :: 1;
+MUNDO_REMOVE :: 2;
+MUNDO_UPDATE :: 3;
+
+MidiNote :: struct {
+  id: u32;
+  track: u8;
+  pitch: u8;            // MIDI 0..127 (A0=21, C4=60, A4=69, C8=108)
+  velocity: u8 = 96;    // 1..127
+  channel: u8;          // 0..15
+  flags: u8;            // MNOTE_*
+  active: bool;         // true when live in notes pool
+  start_tick: s64;      // >= 0 in MUSIC_PPQ ticks
+  dur_tick: s64 = 480;  // >= 1
+}
+
+TempoPoint :: struct {
+  tick: s64;            // strictly increasing; index 0 is always 0
+  bpm_milli: s32 = 120000;  // 120.000 BPM in milli-BPM
+  ramp: bool;           // false = step, true = linear BPM ramp to next point
+  start_sample: s64;    // precomputed cumulative sample at `tick`
+}
+
+KeyMarker :: struct {
+  tick: s64;
+  tonic: u8;            // 0=C, 1=C#/Db, 2=D, ..., 5=F, ..., 11=B
+  minor: bool;
+  num: u8 = 4;
+  den: u8 = 4;
+  section_slot: u8;     // 0=none, 1..5=toolbar movement jump button
+  label: [48] u8;
+  label_n: u8;
+}
+
+TrackState :: struct {
+  active: bool;
+  section: u8;          // MSEC_*
+  midi_channel: u8;     // 0..15 (9 = percussion)
+  gm_program: u8;       // 0..127 GM instrument patch
+  transpose_preview: s8; // non-destructive playback transpose (-24..+24)
+  mute: bool;
+  solo: bool;
+  ghost_visible: bool = true;
+  gain: f32 = 0.8;      // 0.0..1.5 linear track volume
+  pan: f32 = 0.0;       // -1.0..1.0
+  reverb_send: f32 = 0.3; // 0.0..1.0
+  name: [48] u8;
+  name_n: u8;
+}
+
+UndoOp :: struct {
+  kind: u8;             // MUNDO_ADD / REMOVE / UPDATE
+  slot: s32;            // index into notes[]
+  before: MidiNote;
+  after: MidiNote;
+}
+
+UndoBatch :: struct {
+  op_start: s32;
+  op_count: s32;
+  label: [48] u8;
+  label_n: u8;
+}
+
+MusicProject :: struct {
+  sample_rate: s32 = MUSIC_SAMPLE_RATE;
+  ppq: s32 = MUSIC_PPQ;
+  next_note_id: u32 = 1;
+  revision: u64 = 1;
+  track_count: s32;
+  note_count: s32;      // high-water count in notes[]
+  tempo_count: s32;
+  marker_count: s32;
+  tracks: [MUSIC_MAX_TRACKS] TrackState;
+  notes: [MUSIC_MAX_NOTES] MidiNote;
+  tempos: [MUSIC_MAX_TEMPO_PTS] TempoPoint;
+  markers: [MUSIC_MAX_MARKERS] KeyMarker;
+  undo_ops: [MUSIC_MAX_UNDO_OPS] UndoOp;
+  undo_op_count: s32;
+  undo_batches: [MUSIC_MAX_UNDO_BATCHES] UndoBatch;
+  undo_count: s32;
+  undo_cursor: s32;     // number of applied batches (0..undo_count)
+  active_lo: [MUSIC_MAX_TRACKS] u64;  // live notes 0..63 sounding per track
+  active_hi: [MUSIC_MAX_TRACKS] u64;  // live notes 64..127 sounding per track
+  title: [64] u8;
+  title_n: u8;
+}
+
+music_copy_str :: (dst: [] u8, src: string) -> u8 {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return cast,trunc(u8) n;
+}
+
+music_project_init :: (p: [] MusicProject, title: string) {
+  if p.count != 1 { return; }
+  p[0].sample_rate = MUSIC_SAMPLE_RATE;
+  p[0].ppq = MUSIC_PPQ;
+  p[0].next_note_id = 1;
+  p[0].revision = 1;
+  p[0].track_count = 0;
+  p[0].note_count = 0;
+  p[0].tempo_count = 1;
+  p[0].marker_count = 0;
+  p[0].undo_op_count = 0;
+  p[0].undo_count = 0;
+  p[0].undo_cursor = 0;
+  for i: 0..<MUSIC_MAX_TRACKS {
+    p[0].tracks[i] = TrackState.{};
+    p[0].active_lo[i] = 0;
+    p[0].active_hi[i] = 0;
+  }
+  p[0].tempos[0] = TempoPoint.{tick = 0, bpm_milli = 120000, ramp = false, start_sample = 0};
+  p[0].title_n = music_copy_str(p[0].title[..], title);
+}
+
+music_add_track :: (p: [] MusicProject, name: string, section: u8, gm_program: u8, midi_channel: u8, pan: f32, reverb_send: f32) -> s32 {
+  if p.count != 1 || p[0].track_count >= MUSIC_MAX_TRACKS { return -1; }
+  idx := p[0].track_count;
+  p[0].tracks[idx] = TrackState.{
+    active = true,
+    section = section,
+    midi_channel = cast,trunc(u8) (midi_channel & 15),
+    gm_program = cast,trunc(u8) (gm_program & 127),
+    transpose_preview = 0,
+    mute = false,
+    solo = false,
+    ghost_visible = true,
+    gain = 0.82,
+    pan = ifx pan < -1.0 then -1.0f32 else ifx pan > 1.0 then 1.0f32 else pan,
+    reverb_send = ifx reverb_send < 0.0 then 0.0f32 else ifx reverb_send > 1.0 then 1.0f32 else reverb_send
+  };
+  p[0].tracks[idx].name_n = music_copy_str(p[0].tracks[idx].name[..], name);
+  p[0].track_count += 1;
+  p[0].revision += 1;
+  return idx;
+}
+
+music_add_marker :: (p: [] MusicProject, tick: s64, tonic: u8, minor: bool, num: u8, den: u8, slot: u8, label: string) -> s32 {
+  if p.count != 1 || tick < 0 || p[0].marker_count >= MUSIC_MAX_MARKERS { return -1; }
+  idx := p[0].marker_count;
+  // Insert sorted by tick.
+  at := idx;
+  while at > 0 && p[0].markers[at - 1].tick > tick {
+    p[0].markers[at] = p[0].markers[at - 1];
+    at -= 1;
+  }
+  m := KeyMarker.{
+    tick = tick,
+    tonic = cast,trunc(u8) (tonic % 12),
+    minor = minor,
+    num = ifx num < 1 then cast(u8) 4 else num,
+    den = ifx den < 1 then cast(u8) 4 else den,
+    section_slot = slot
+  };
+  m.label_n = music_copy_str(m.label[..], label);
+  p[0].markers[at] = m;
+  p[0].marker_count += 1;
+  p[0].revision += 1;
+  return at;
+}
+
+music_alloc_note_slot :: (p: [] MusicProject) -> s32 {
+  if p.count != 1 { return -1; }
+  // Reuse any inactive slot first.
+  for i: 0..<p[0].note_count {
+    if !p[0].notes[i].active { return cast(s32) i; }
+  }
+  if p[0].note_count >= MUSIC_MAX_NOTES { return -1; }
+  slot := p[0].note_count;
+  p[0].note_count += 1;
+  return slot;
+}
+
+music_add_note_raw :: (p: [] MusicProject, track: u8, pitch: u8, velocity: u8, start_tick: s64, dur_tick: s64) -> s32 {
+  if p.count != 1 || cast(int) track >= cast(int) p[0].track_count || pitch > 127 || start_tick < 0 || dur_tick < 1 { return -1; }
+  slot := music_alloc_note_slot(p);
+  if slot < 0 { return -1; }
+  vel := ifx velocity < 1 then cast(u8) 1 else ifx velocity > 127 then cast(u8) 127 else velocity;
+  id := p[0].next_note_id;
+  p[0].next_note_id += 1;
+  p[0].notes[slot] = MidiNote.{
+    id = id,
+    track = track,
+    pitch = pitch,
+    velocity = vel,
+    channel = p[0].tracks[track].midi_channel,
+    flags = 0,
+    active = true,
+    start_tick = start_tick,
+    dur_tick = dur_tick
+  };
+  p[0].revision += 1;
+  return slot;
+}
+
+music_find_note_by_id :: (p: [] MusicProject, id: u32) -> s32 {
+  if p.count != 1 || id == 0 { return -1; }
+  for i: 0..<p[0].note_count {
+    if p[0].notes[i].active && p[0].notes[i].id == id { return cast(s32) i; }
+  }
+  return -1;
+}
+
+music_live_note_count :: (p: [] MusicProject) -> s32 {
+  if p.count != 1 { return 0; }
+  n: s32 = 0;
+  for i: 0..<p[0].note_count {
+    if p[0].notes[i].active { n += 1; }
+  }
+  return n;
+}
+
+music_total_ticks :: (p: [] MusicProject) -> s64 {
+  if p.count != 1 { return 0; }
+  hi: s64 = cast(s64) (MUSIC_PPQ * 16);
+  for i: 0..<p[0].note_count {
+    if !p[0].notes[i].active { continue; }
+    e := p[0].notes[i].start_tick + p[0].notes[i].dur_tick;
+    if e > hi { hi = e; }
+  }
+  return hi;
+}
+
+// Scale membership check for Piano Roll scale highlighting (matches score.coax AU_MAJOR/AU_MINOR).
+MUSIC_MAJOR_MASK :: 0xAB5;   // bits 0,2,4,5,7,9,11
+MUSIC_MINOR_MASK :: 0x5AD;   // bits 0,2,3,5,7,8,10
+
+music_pitch_in_scale :: (pitch: int, tonic: int, minor: bool) -> bool {
+  if pitch < 0 || pitch > 127 { return false; }
+  rel := ((pitch - (tonic % 12)) % 12 + 12) % 12;
+  mask := ifx minor then MUSIC_MINOR_MASK else MUSIC_MAJOR_MASK;
+  return ((mask >> rel) & 1) != 0;
+}
+
+music_marker_at_tick :: (p: [] MusicProject, tick: s64) -> s32 {
+  if p.count != 1 || p[0].marker_count <= 0 { return -1; }
+  best: s32 = 0;
+  for i: 0..<p[0].marker_count {
+    if p[0].markers[i].tick <= tick { best = cast(s32) i; } else { break; }
+  }
+  return best;
+}
+
+// ---- Undo / Redo batch recording ----
+
+music_undo_begin :: (p: [] MusicProject, label: string) -> s32 {
+  if p.count != 1 { return -1; }
+  // Drop any redo tail when starting a new edit.
+  if p[0].undo_cursor < p[0].undo_count {
+    if p[0].undo_cursor == 0 {
+      p[0].undo_op_count = 0;
+    } else {
+      prev := p[0].undo_batches[p[0].undo_cursor - 1];
+      p[0].undo_op_count = prev.op_start + prev.op_count;
+    }
+    p[0].undo_count = p[0].undo_cursor;
+  }
+  // If batch ring full, drop oldest batch by shifting.
+  if p[0].undo_count >= MUSIC_MAX_UNDO_BATCHES {
+    drop_ops := p[0].undo_batches[0].op_count;
+    for i: 1..<p[0].undo_count {
+      b := p[0].undo_batches[i];
+      b.op_start -= drop_ops;
+      p[0].undo_batches[i - 1] = b;
+    }
+    for i: drop_ops..<p[0].undo_op_count {
+      p[0].undo_ops[i - drop_ops] = p[0].undo_ops[i];
+    }
+    p[0].undo_op_count -= drop_ops;
+    p[0].undo_count -= 1;
+    p[0].undo_cursor = p[0].undo_count;
+  }
+  idx := p[0].undo_count;
+  b := UndoBatch.{op_start = p[0].undo_op_count, op_count = 0};
+  b.label_n = music_copy_str(b.label[..], label);
+  p[0].undo_batches[idx] = b;
+  p[0].undo_count += 1;
+  p[0].undo_cursor = p[0].undo_count;
+  return idx;
+}
+
+music_undo_record :: (p: [] MusicProject, batch_idx: s32, kind: u8, slot: s32, before: MidiNote, after: MidiNote) -> bool {
+  if p.count != 1 || batch_idx < 0 || batch_idx >= p[0].undo_count { return false; }
+  if p[0].undo_op_count >= MUSIC_MAX_UNDO_OPS { return false; }
+  p[0].undo_ops[p[0].undo_op_count] = UndoOp.{kind = kind, slot = slot, before = before, after = after};
+  p[0].undo_op_count += 1;
+  p[0].undo_batches[batch_idx].op_count += 1;
+  return true;
+}
+
+music_undo_commit_if_empty :: (p: [] MusicProject, batch_idx: s32) {
+  if p.count != 1 || batch_idx < 0 || batch_idx >= p[0].undo_count { return; }
+  if p[0].undo_batches[batch_idx].op_count == 0 && batch_idx == p[0].undo_count - 1 {
+    p[0].undo_count -= 1;
+    p[0].undo_cursor = p[0].undo_count;
+  }
+}
+
+music_undo :: (p: [] MusicProject) -> bool {
+  if p.count != 1 || p[0].undo_cursor <= 0 { return false; }
+  p[0].undo_cursor -= 1;
+  b := p[0].undo_batches[p[0].undo_cursor];
+  i := b.op_count - 1;
+  while i >= 0 {
+    op := p[0].undo_ops[b.op_start + i];
+    if op.slot >= 0 && op.slot < MUSIC_MAX_NOTES {
+      p[0].notes[op.slot] = op.before;
+    }
+    i -= 1;
+  }
+  p[0].revision += 1;
+  return true;
+}
+
+music_redo :: (p: [] MusicProject) -> bool {
+  if p.count != 1 || p[0].undo_cursor >= p[0].undo_count { return false; }
+  b := p[0].undo_batches[p[0].undo_cursor];
+  for i: 0..<b.op_count {
+    op := p[0].undo_ops[b.op_start + i];
+    if op.slot >= 0 && op.slot < MUSIC_MAX_NOTES {
+      p[0].notes[op.slot] = op.after;
+      if op.slot >= p[0].note_count { p[0].note_count = op.slot + 1; }
+    }
+  }
+  p[0].undo_cursor += 1;
+  p[0].revision += 1;
+  return true;
+}
+
+// Tracked note editing helpers (automatically record into undo stack).
+music_edit_add_note :: (p: [] MusicProject, track: u8, pitch: u8, velocity: u8, start_tick: s64, dur_tick: s64) -> s32 {
+  if p.count != 1 || cast(int) track >= cast(int) p[0].track_count || pitch > 127 || start_tick < 0 || dur_tick < 1 { return -1; }
+  slot := music_alloc_note_slot(p);
+  if slot < 0 { return -1; }
+  before := p[0].notes[slot];
+  vel := ifx velocity < 1 then cast(u8) 1 else ifx velocity > 127 then cast(u8) 127 else velocity;
+  id := p[0].next_note_id;
+  p[0].next_note_id += 1;
+  after := MidiNote.{
+    id = id, track = track, pitch = pitch, velocity = vel,
+    channel = p[0].tracks[track].midi_channel, flags = 0, active = true,
+    start_tick = start_tick, dur_tick = dur_tick
+  };
+  p[0].notes[slot] = after;
+  batch := music_undo_begin(p, "Add note");
+  _ = music_undo_record(p, batch, MUNDO_ADD, slot, before, after);
+  p[0].revision += 1;
+  return slot;
+}
+
+music_edit_update_note :: (p: [] MusicProject, slot: s32, pitch: u8, velocity: u8, start_tick: s64, dur_tick: s64) -> bool {
+  if p.count != 1 || slot < 0 || slot >= p[0].note_count || !p[0].notes[slot].active { return false; }
+  if pitch > 127 || start_tick < 0 || dur_tick < 1 { return false; }
+  before := p[0].notes[slot];
+  after := before;
+  after.pitch = pitch;
+  after.velocity = ifx velocity < 1 then cast(u8) 1 else ifx velocity > 127 then cast(u8) 127 else velocity;
+  after.start_tick = start_tick;
+  after.dur_tick = dur_tick;
+  if before.pitch == after.pitch && before.velocity == after.velocity && before.start_tick == after.start_tick && before.dur_tick == after.dur_tick {
+    return true;
+  }
+  p[0].notes[slot] = after;
+  batch := music_undo_begin(p, "Edit note");
+  _ = music_undo_record(p, batch, MUNDO_UPDATE, slot, before, after);
+  p[0].revision += 1;
+  return true;
+}
+
+music_edit_remove_note :: (p: [] MusicProject, slot: s32) -> bool {
+  if p.count != 1 || slot < 0 || slot >= p[0].note_count || !p[0].notes[slot].active { return false; }
+  before := p[0].notes[slot];
+  after := before;
+  after.active = false;
+  p[0].notes[slot] = after;
+  batch := music_undo_begin(p, "Delete note");
+  _ = music_undo_record(p, batch, MUNDO_REMOVE, slot, before, after);
+  p[0].revision += 1;
+  return true;
+}
+
+// ---- Checks ----
+
+#test "scale membership matches D flat major, D minor, and F minor" {
+  // Db major (tonic=1, minor=false): Db(1), Eb(3), F(5), Gb(6), Ab(8), Bb(10), C(0)
+  #assert music_pitch_in_scale(61, 1, false) && music_pitch_in_scale(63, 1, false) && music_pitch_in_scale(65, 1, false);
+  #assert music_pitch_in_scale(66, 1, false) && music_pitch_in_scale(68, 1, false) && music_pitch_in_scale(70, 1, false) && music_pitch_in_scale(72, 1, false);
+  #assert !music_pitch_in_scale(62, 1, false) && !music_pitch_in_scale(64, 1, false);
+  // D minor (tonic=2, minor=true): D(2), E(4), F(5), G(7), A(9), Bb(10), C(0)
+  #assert music_pitch_in_scale(62, 2, true) && music_pitch_in_scale(65, 2, true) && music_pitch_in_scale(70, 2, true);
+  #assert !music_pitch_in_scale(63, 2, true) && !music_pitch_in_scale(66, 2, true);
+  // F minor (tonic=5, minor=true): F(5), G(7), Ab(8), Bb(10), C(0), Db(1), Eb(3)
+  #assert music_pitch_in_scale(65, 5, true) && music_pitch_in_scale(68, 5, true) && music_pitch_in_scale(61, 5, true);
+  #assert !music_pitch_in_scale(66, 5, true) && !music_pitch_in_scale(-1, 5, true) && !music_pitch_in_scale(128, 5, true);
+}
+
+#test "project note CRUD and undo/redo restore exact state" {
+  p: [1] MusicProject;
+  music_project_init(p[..], "Test");
+  t := music_add_track(p[..], "Piano", MSEC_KEYS, 0, 0, 0.0, 0.25);
+  #assert t == 0 && p[0].track_count == 1;
+  s0 := music_edit_add_note(p[..], 0, 62, 100, 0, 960);
+  #assert s0 == 0 && music_live_note_count(p[..]) == 1 && p[0].notes[0].pitch == 62;
+  #assert music_edit_update_note(p[..], s0, 65, 110, 480, 960);
+  #assert p[0].notes[0].pitch == 65 && p[0].notes[0].start_tick == 480;
+  #assert music_undo(p[..]) && p[0].notes[0].pitch == 62 && p[0].notes[0].start_tick == 0;
+  #assert music_undo(p[..]) && music_live_note_count(p[..]) == 0;
+  #assert !music_undo(p[..]);
+  #assert music_redo(p[..]) && music_live_note_count(p[..]) == 1 && p[0].notes[0].pitch == 62;
+  #assert music_redo(p[..]) && p[0].notes[0].pitch == 65;
+  #assert music_edit_remove_note(p[..], s0) && music_live_note_count(p[..]) == 0;
+  #assert music_undo(p[..]) && music_live_note_count(p[..]) == 1;
+}
