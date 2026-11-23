@@ -306,9 +306,10 @@ dr_answer :: (r: [] DrRun) {
   f := cxproc_flush_timeout(r[0].handle, 10);
   r[0].pending = f == CXPROC_TIMEOUT_V;
 }
-// A worker's line saying it has nothing to do: its queue line with no active item and no items,
-// or its turn's ended line (agyworker writes no queue line after it).
+// A worker's line saying it has nothing to do: startup/ready lines before any task,
+// its queue line with no active item and no items, or its turn's ended line.
 dr_idle_line :: (line: string) -> bool {
+  if hs_prefix(line, "{\"kind\":\"ready\"") || hs_prefix(line, "{\"kind\":\"journal\"") || hs_prefix(line, "{\"kind\":\"aware\"") { return true; }
   if !hs_prefix(line, "{\"kind\":\"queue\"") && !hs_prefix(line, "{\"kind\":\"ended\"") { return false; }
   ab: [DR_CHUNK] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
   l: [1] MwwLine;
@@ -419,6 +420,9 @@ dr_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
 }
 
 #test "only an empty queue line says a worker is idle" {
+  #assert dr_idle_line("{\"kind\":\"ready\"}");
+  #assert dr_idle_line("{\"kind\":\"journal\",\"path\":\"/tmp/a.ajr\"}");
+  #assert dr_idle_line("{\"kind\":\"aware\",\"ok\":true}");
   #assert dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}");
   #assert dr_idle_line("{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}");
   #assert !dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"q-1\",\"items\":[]}");

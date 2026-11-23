@@ -194,7 +194,6 @@ extension CoderWindow {
         keep(moved)
         _ = foremanEvents.emit(type: "chat.created", chatID: id, data: ["title": store.title(id) ?? title, "folder": folderURL.path])
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? title])
-        foremanAudit.record(action: "create_chat", tier: foremanTier, chatID: id, details: ["title": title, "folder": folderURL.path])
         if (payload["open"] as? Bool) == true { open(id) }
         cd_chats(page, chatLines); syncForemanUI(); wake()
         return ForemanResponse(status: 200, body: [
@@ -252,7 +251,6 @@ extension CoderWindow {
             guard cd_set_text(page, attributed) != 0, cd_submit(page) != 0 else {
                 return ForemanResponse(status: 500, body: ["error": "failed to submit message to shown chat"])
             }
-            foremanAudit.record(action: "send_chat", tier: foremanTier, chatID: id, details: ["steer": steer])
             wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
         }
@@ -296,7 +294,6 @@ extension CoderWindow {
         runs[id] = moved
         keep(moved)
         _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? "Chat"])
-        foremanAudit.record(action: "send_chat", tier: foremanTier, chatID: id, details: ["steer": steer])
         cd_chats(page, chatLines); syncForemanUI(); wake()
         return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
     }
@@ -323,17 +320,14 @@ extension CoderWindow {
                 return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "already_idle"])
             }
             _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
-            foremanAudit.record(action: "control_stop", tier: foremanTier, chatID: id)
             cd_chats(page, chatLines); syncForemanUI(); wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": "stop", "status": "stopped"])
         case "pin":
             if !store.isPinned(id) { store.togglePin(id) }
-            foremanAudit.record(action: "control_pin", tier: foremanTier, chatID: id)
             cd_chats(page, chatLines); wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "pinned": true])
         case "unpin":
             if store.isPinned(id) { store.togglePin(id) }
-            foremanAudit.record(action: "control_unpin", tier: foremanTier, chatID: id)
             cd_chats(page, chatLines); wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "pinned": false])
         case "rename":
@@ -342,7 +336,6 @@ extension CoderWindow {
             }
             let cleaned = CoderStore.cleanTitle(title)
             store.rename(id, to: cleaned)
-            foremanAudit.record(action: "control_rename", tier: foremanTier, chatID: id, details: ["title": cleaned])
             cd_chats(page, chatLines); wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "title": store.title(id) ?? cleaned])
         case "delete":
@@ -353,7 +346,6 @@ extension CoderWindow {
             if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "New chat") }
             store.remove(id)
             _ = foremanEvents.emit(type: "chat.deleted", chatID: id)
-            foremanAudit.record(action: "control_delete", tier: foremanTier, chatID: id)
             cd_chats(page, chatLines); wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "deleted": true])
         case "set_budget", "budget":
@@ -378,7 +370,6 @@ extension CoderWindow {
             } else {
                 return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
             }
-            foremanAudit.record(action: "control_set_budget", tier: foremanTier, chatID: id, details: ["budget_usd": budgetUSD])
             wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "budget_usd": budgetUSD])
         case "set_goal", "goal", "pause_goal", "resume_goal", "resume", "clear_goal":
@@ -419,7 +410,6 @@ extension CoderWindow {
                 return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
             }
             if !ok { return ForemanResponse(status: 400, body: ["error": "failed to apply \(action)"]) }
-            foremanAudit.record(action: "control_\(action)", tier: foremanTier, chatID: id)
             wake()
             return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": action])
         default:

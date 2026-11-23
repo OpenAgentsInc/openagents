@@ -170,7 +170,11 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     dms := cl_int(t, "done_ms"); s[0].turns[i].done_ms = ifx dms.ok && dms.value > 0 then dms.value else 0;
     s[0].turns[i].stat_tokens = 0; s[0].turns[i].stat_decode_ms = 0; s[0].turns[i].attempt_tokens = 0; s[0].turns[i].first_tok = -1;
     state := cl_int(t, "state"); more := cl_int(t, "more");
+    was_running := state.ok && state.value == CP_RUNNING;
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
+    if was_running && s[0].turns[i].note_n == 0 && s[0].turns[i].reply_n == 0 {
+      s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], "Interrupted before the reply finished.");
+    }
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
     te := cl_int(t, "earlier"); s[0].turns[i].early_cmds = ifx te.ok && te.value > 0 then te.value else 0;
     s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].thought_open = false; s[0].turns[i].info = false; s[0].turns[i].h = 0; s[0].turns[i].ah = 0;

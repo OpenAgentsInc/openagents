@@ -192,13 +192,14 @@ extension CoderWindow {
                     r.folder = URL(fileURLWithPath: w.path, isDirectory: true)
                     if r === self.run { self.setFolder(r.folder, keep: false) }
                     StandbyWorktreePool.shared.warm(repo: repo)
-                case .failure:
+                    self.wake()
+                    self.sendTask(r)
+                case .failure(let err):
+                    // Never silently fall back to editing the shared main checkout when a worktree was requested.
                     r.pendingChat = nil
-                    r.worktreeSkip = true
-                    cd_toast(r.page, "Couldn’t make this chat’s worktree", 1)
+                    cd_failed(r.page, "Couldn’t create this chat’s git worktree (\(err.localizedDescription)). Stopped so the main checkout isn’t modified.")
+                    self.wake()
                 }
-                self.wake()
-                self.sendTask(r)
             }
         }
         return true
@@ -214,8 +215,8 @@ extension CoderWindow {
         setFolder(URL(fileURLWithPath: source, isDirectory: true), keep: false)
     }
 
-    /// Non-blocking worktree claim for background chats (e.g. Foreman): uses a ready standby worktree
-    /// if available, otherwise proceeds immediately in the requested folder while warming one in the background.
+    /// Worktree claim for background chats (e.g. Foreman): uses a ready standby worktree immediately,
+    /// or creates one asynchronously instead of silently falling back to the shared main checkout.
     func holdRunForWorktree(_ r: CoderRun, then: @escaping () -> Void) -> Bool {
         guard ChatWorktree.enabled, let id = r.chat, id != Foreman.chatID, r.worktree == nil,
               let repo = ChatWorktree.mainCheckout(of: worktreeSource(r.folder.path) ?? r.folder.path) else { return false }
@@ -227,8 +228,28 @@ extension CoderWindow {
             StandbyWorktreePool.shared.warm(repo: repo)
             return false
         }
-        StandbyWorktreePool.shared.warm(repo: repo)
-        return false
+        r.preparingWorktree = true
+        let gen = r.startGen
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak r] in
+            let made = ChatWorktree.create(repo: repo, chat: id)
+            DispatchQueue.main.async {
+                guard let self, let r, r.startGen == gen else { return }
+                r.preparingWorktree = false
+                switch made {
+                case .success(let w):
+                    r.worktree = w
+                    r.folder = URL(fileURLWithPath: w.path, isDirectory: true)
+                    if r === self.run { self.setFolder(r.folder, keep: false) }
+                    StandbyWorktreePool.shared.warm(repo: repo)
+                    self.wake()
+                    then()
+                case .failure(let err):
+                    cd_failed(r.page, "Couldn’t create this chat’s git worktree (\(err.localizedDescription)). Stopped so the main checkout isn’t modified.")
+                    self.wake()
+                }
+            }
+        }
+        return true
     }
 
     /// The worktree a kept chat's run made, for keep(): only the one made for this chat id.

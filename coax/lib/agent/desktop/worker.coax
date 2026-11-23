@@ -160,14 +160,15 @@ dc_worker_start_run :: (w: [] DcWorker, d: [] DcDaemon, program: string, home: s
   ib: [32] u8; id := dc_new_id(ib[..]);
   if id.count != 32 { return false; }
   spec: [32768] u8; n := dc_run_spec(program, home, e, spec[..]);
-  sb: [DC_PATH] u8; inb: [DC_PATH] u8; specf := dc_run_file(d, id, ".spec", sb[..]);
-  if n < 1 || !dcos_write_private(specf, cast(string) spec[0..<n]) || !dcos_write_private(dc_run_file(d, id, ".in", inb[..]), "") { return false; }
+  sb: [DC_PATH] u8; inb: [DC_PATH] u8; specf := dc_run_file(d, id, ".spec", sb[..]); inf := dc_run_file(d, id, ".in", inb[..]);
+  if n < 1 || !dcos_write_private(specf, cast(string) spec[0..<n]) || !dcos_write_private(inf, "") { _ := dcos_remove(specf); _ := dcos_remove(inf); return false; }
   dc_worker_attach(w, id, 0);
   dc_worker_touch(w, d, true);
   why: [128] u8; r := dc_daemon_start_run(d, id, why[..]);
   if r.count > 0 {
     if r == "run-limit" { w[0].failure_n = dc_copy(w[0].failure[..], DC_RUN_LIMIT_NOTE); }
     _ := dcos_remove(specf);
+    _ := dcos_remove(inf);
     dc_worker_detach(w, d);
     return false;
   }

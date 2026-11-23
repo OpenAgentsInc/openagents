@@ -291,7 +291,10 @@ extension CoderWindow {
                 if ok { r.worker.stop() }
                 return
             }
-            guard cd_running(r.page) != 0 else { return }
+            guard cd_running(r.page) != 0 else {
+                if ok { r.worker.stop() }
+                return
+            }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
                 let fallbackErr = r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
@@ -344,7 +347,18 @@ extension CoderWindow {
         guard let daemon = CoderWorker.daemon, daemon.ownsRuns else { return }
         var named = Set<String>()
         for t in CoderTurn.all() {
-            guard CoderWorker.runState(t.run) != nil, store.meta(t.chat) != nil, runs[t.chat] == nil,
+            guard CoderWorker.runState(t.run) != nil else {
+                CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
+            }
+            if store.meta(t.chat) == nil {
+                // Chat was deleted: stop and forget its orphaned daemon run instead of leaking a busy slot.
+                CoderWorker.logStop(t.run, "stopped at launch: chat deleted")
+                daemon.stopRun(t.run) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(t.run) } }
+                CoderTurn.remove(t.run)
+                for id in t.agents { daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } }
+                continue
+            }
+            guard runs[t.chat] == nil,
                   let kept = t.chatText, let sent = CoderTurn.withoutLast(kept), let back = cd_headless() else {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
@@ -386,9 +400,14 @@ extension CoderWindow {
         if let live = daemon.listRuns() {
             for one in live where !named.contains(one.run_id) && !CoderWorker.isPhoneRun(one.run_id) {
                 let id = one.run_id
-                // a run mid-reply is never stopped here: a lost turn file must not cost the work (#13810)
-                if one.isLive && !CoderWorker.runIdle(id) { CoderWorker.logStop(id, "left running at launch: busy, though no kept message names it"); continue }
-                if one.isLive { CoderWorker.logStop(id, "stopped at launch: idle, no kept message names it"); daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
+                let stale = CoderWorker.runOutStale(id, olderThan: Self.staleOrphanAge)
+                // a run actively writing a reply is never stopped here: a lost turn file must not cost live work (#13810),
+                // but a zombie unnamed run with zero output activity for >= 30m is reaped so DR_MAX slots never leak forever.
+                if one.isLive && !CoderWorker.runIdle(id) && !stale { CoderWorker.logStop(id, "left running at launch: busy, though no kept message names it"); continue }
+                if one.isLive {
+                    CoderWorker.logStop(id, stale && !CoderWorker.runIdle(id) ? "stopped at launch: stale orphan (no output >= 30m)" : "stopped at launch: idle, no kept message names it")
+                    daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } }
+                } else { daemon.forgetRun(id) }
             }
         }
         syncPhoneRuns()
@@ -411,6 +430,7 @@ extension CoderWindow {
     }
     static let sweepEvery: CFTimeInterval = 60
     static let sweepAge = 60   // seconds a run is left alone after it starts: one still starting is not yet held
+    static let staleOrphanAge: TimeInterval = 1800   // 30m with zero .out writes on an unnamed detached run => zombie
     /// A live run no chat holds is stopped and forgotten while Coder runs, not only at launch
     /// (reattach): a worker waits on stdin after its turn, so a run whose StopRun was lost would
     /// otherwise keep one of the daemon's slots until every send is refused (#13810).
@@ -425,8 +445,11 @@ extension CoderWindow {
                 self.sweeping = false
                 guard let live else { return }
                 let held = self.heldRuns, now = Int(Date().timeIntervalSince1970)
-                for id in CoderWindow.orphans(live, held: held, now: now) where !CoderWorker.isPhoneRun(id) && CoderWorker.runIdle(id) {
-                    CoderWorker.logStop(id, "stopped by the sweep: idle, no chat holds it")
+                for id in CoderWindow.orphans(live, held: held, now: now) where !CoderWorker.isPhoneRun(id) {
+                    let idle = CoderWorker.runIdle(id)
+                    let stale = !idle && CoderWorker.runOutStale(id, olderThan: Self.staleOrphanAge)
+                    guard idle || stale else { continue }
+                    CoderWorker.logStop(id, idle ? "stopped by the sweep: idle, no chat holds it" : "stopped by the sweep: stale orphan (no output >= 30m)")
                     daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } }
                 }
             }

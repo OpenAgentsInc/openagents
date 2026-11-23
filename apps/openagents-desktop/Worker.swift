@@ -47,12 +47,23 @@ final class CoderWorker {
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
     static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
 
+    private var defaultAgentID: String {
+        switch program {
+        case "agyworker": return "antigravity"
+        case "inky": return "inky"
+        case "claudeworker": return "claude"
+        default: return "microcoder"
+        }
+    }
+
     private func extraEnvLines() -> String {
-        extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
+        var merged = extraEnv
+        if merged["OA_AGENT_ID"] == nil { merged["OA_AGENT_ID"] = defaultAgentID }
+        return merged.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
     }
 
     private func environment() -> (set: [String: String], unset: [String]) {
-        var env: [String: String] = ["PATH": CoderWorker.path]
+        var env: [String: String] = ["PATH": CoderWorker.path, "OA_AGENT_ID": defaultAgentID]
         for (k, v) in extraEnv { env[k] = v }
         #if OA_FULL
         // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
@@ -256,8 +267,8 @@ final class CoderWorker {
         return lines
     }
 
-    /// The run's worker has nothing to do: the last line it wrote is its queue with no active item
-    /// and no items, or its turn's ended line (as host-runs.coax dr_idle_line reads it). False when that can't be read.
+    /// The run's worker has nothing to do: empty/startup output, its queue with no active item
+    /// and no items, or its turn's ended line (as host-runs.coax dr_idle_line reads it).
     static func runIdle(_ id: String) -> Bool {
         guard let daemon else { return false }
         let path = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
@@ -270,17 +281,35 @@ final class CoderWorker {
         guard !path.isEmpty, let h = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? h.close() }
         let size = (try? h.seekToEnd()) ?? 0
-        try? h.seek(toOffset: size > 65536 ? size - 65536 : 0)
-        guard let data = try? h.readToEnd(), let text = String(data: data, encoding: .utf8),
-              let last = text.split(separator: "\n").last.map(String.init) else { return false }
-        return isIdleLine(last)
+        if size == 0 { return true }
+        // Try a 64 KiB tail first; if an ended line exceeds 64 KiB (up to MW_LINE = 1 MiB), widen once.
+        for window: UInt64 in [65_536, 1_048_576] {
+            let offset = size > window ? size - window : 0
+            try? h.seek(toOffset: offset)
+            guard let data = try? h.readToEnd(), let text = String(data: data, encoding: .utf8),
+                  let last = text.split(separator: "\n").last.map(String.init) else { continue }
+            if offset == 0 || last.hasPrefix("{\"kind\":") {
+                return isIdleLine(last)
+            }
+        }
+        return false
     }
     static func isIdleLine(_ line: String) -> Bool {
         guard line.hasPrefix("{\"kind\":"), let data = line.data(using: .utf8),
               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        if o["kind"] as? String == "ended" { return true }   // agyworker writes no queue line after its turn
-        guard o["kind"] as? String == "queue" else { return false }
+        let kind = o["kind"] as? String ?? ""
+        if kind == "ended" || kind == "ready" || kind == "journal" || kind == "aware" { return true }
+        guard kind == "queue" else { return false }
         return (o["active"] as? String ?? "x").isEmpty && ((o["items"] as? [Any])?.isEmpty ?? false)
+    }
+    /// True when a detached unnamed run's `.out` file has had zero writes for at least `seconds`.
+    static func runOutStale(_ id: String, olderThan seconds: TimeInterval) -> Bool {
+        guard let daemon, id.count == 32 else { return false }
+        let outURL = daemon.runsDir.appendingPathComponent(id + ".out")
+        let target = FileManager.default.fileExists(atPath: outURL.path) ? outURL : daemon.runsDir.appendingPathComponent(id + ".state")
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: target.path),
+              let mtime = attrs[.modificationDate] as? Date else { return false }
+        return Date().timeIntervalSince(mtime) >= seconds
     }
     /// True when `id` is a phone-originated daemon run (runs/ID.phone exists; host-phone.coax).
     /// Desktop's launch/sweep orphan cleanup must never stop or forget phone runs.
