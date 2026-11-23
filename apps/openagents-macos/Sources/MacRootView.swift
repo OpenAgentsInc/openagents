@@ -60,6 +60,9 @@ struct MacRootView: View {
             SideQuestionSheetView(store: store)
                 .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $store.isHubPresented) {
+            AntigravityHubView(store: store)
+        }
         .alert("Rename Chat", isPresented: Binding(
             get: { renamingSession != nil },
             set: { if !$0 { renamingSession = nil } }
@@ -577,6 +580,24 @@ struct MacRootView: View {
             }
 
             Spacer()
+
+            Button {
+                store.isHubPresented = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 10))
+                    Text("Hub")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(OATheme.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Antigravity Hub: Artifacts, Swarms, Automations, Security/MCP & Voice")
 
             Button {
                 store.isSideQuestionPresented = true

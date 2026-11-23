@@ -14,6 +14,7 @@
 		2532B1492C46FB5FF5FC185B /* client-core-bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 4816780D18116F36BC64FAB4 /* client-core-bridge.c */; settings = {COMPILER_FLAGS = "-IGenerated -I../shared/native -I../shared/antigravity"; }; };
 		3E1BB32DBE1808DEB0DE0442 /* OpenAgentsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */; };
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
+		49C5FB7F0DD3F81A8340206B /* AntigravityMicBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE61A35811EA0DECDCCC3B68 /* AntigravityMicBridge.swift */; };
 		4A4C87C34B5D31FC95B08E22 /* AntigravityUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4302BB64CF0054147A815C77 /* AntigravityUITests.swift */; };
 		4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA188800B3779561759002D1 /* AppTailnet.swift */; };
 		5C21B7DFF80CB41747AF722E /* AntigravityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20226403F7BAEDD42024016 /* AntigravityStore.swift */; };
@@ -30,6 +31,8 @@
 		A6CFF05173A013861C0E2E22 /* client_core.c in Sources */ = {isa = PBXBuildFile; fileRef = ECEDDF715E5F8E7716315D70 /* client_core.c */; settings = {COMPILER_FLAGS = "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"; }; };
 		B0CEB25BD90B8113A7F51348 /* LocalSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2086FFF800C089354F9D2A16 /* LocalSocketClient.swift */; };
 		B13262169DAC791C7B35D1DC /* AntigravityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05D634FD7CBC7EF5C7288D42 /* AntigravityModels.swift */; };
+		B28B53A86E4D0AE06A310EAB /* QRPairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1BE8E51A3C87E0B2C7064E /* QRPairingView.swift */; };
+		B49F2E2FC541077DACD298F1 /* AntigravityHubViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C1651B48AF360A149787DF /* AntigravityHubViews.swift */; };
 		D978BD4A07012F57FEB48628 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9AB74571A2D644A737D80A /* WorkspaceView.swift */; };
 		DF7430FD2D7DB0CBD92F8716 /* DeviceIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E68397D481DF6327425CD56 /* DeviceIdentityStore.swift */; };
 		EB803950CFB8551A0C17A7B2 /* WorkspaceInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9BFD9DD305E80C186761C6 /* WorkspaceInspectorView.swift */; };
@@ -72,15 +75,18 @@
 		8229C5D27BC40A99010E48D9 /* OpenAgents.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenAgents.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8E9BFD9DD305E80C186761C6 /* WorkspaceInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceInspectorView.swift; sourceTree = "<group>"; };
 		910026A6E3B72DD866AF23FD /* OpenAgentsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE1BE8E51A3C87E0B2C7064E /* QRPairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRPairingView.swift; sourceTree = "<group>"; };
 		B2055820A908A3ED4ED7700E /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C20226403F7BAEDD42024016 /* AntigravityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityStore.swift; sourceTree = "<group>"; };
 		CA188800B3779561759002D1 /* AppTailnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTailnet.swift; sourceTree = "<group>"; };
+		CE61A35811EA0DECDCCC3B68 /* AntigravityMicBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityMicBridge.swift; sourceTree = "<group>"; };
 		CE9AB74571A2D644A737D80A /* WorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceView.swift; sourceTree = "<group>"; };
 		D03EC037264A73F6485FB7E0 /* SubagentSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentSheetView.swift; sourceTree = "<group>"; };
 		E6B44D6D148FD2FE7114EDA7 /* ComputersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputersView.swift; sourceTree = "<group>"; };
 		EA582415B707553CC69B42D0 /* VoiceDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceDictationController.swift; sourceTree = "<group>"; };
 		ECEDDF715E5F8E7716315D70 /* client_core.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = client_core.c; sourceTree = "<group>"; };
 		EF75972EB91F08AA7258E690 /* TurnNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnNotifications.swift; sourceTree = "<group>"; };
+		F2C1651B48AF360A149787DF /* AntigravityHubViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityHubViews.swift; sourceTree = "<group>"; };
 		F5684048ECE9B6A5A07A1A32 /* OpenAgentsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAgentsApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -142,10 +148,13 @@
 			children = (
 				3518305F3A8357FA6408C662 /* AntigravityAuthController.swift */,
 				57FBE70263670522E72EA62B /* AntigravityCoreBridge.swift */,
+				F2C1651B48AF360A149787DF /* AntigravityHubViews.swift */,
+				CE61A35811EA0DECDCCC3B68 /* AntigravityMicBridge.swift */,
 				05D634FD7CBC7EF5C7288D42 /* AntigravityModels.swift */,
 				C20226403F7BAEDD42024016 /* AntigravityStore.swift */,
 				5E68397D481DF6327425CD56 /* DeviceIdentityStore.swift */,
 				2086FFF800C089354F9D2A16 /* LocalSocketClient.swift */,
+				AE1BE8E51A3C87E0B2C7064E /* QRPairingView.swift */,
 				0D728B0A86567364624E6281 /* SubagentInspectorView.swift */,
 				726690D9A677800DC6CF816E /* TailscaleClient.swift */,
 				5538DB00D5A68418CBB22FB6 /* Theme.swift */,
@@ -315,6 +324,8 @@
 			files = (
 				9E1ABF34D99A2E76EADBD26E /* AntigravityAuthController.swift in Sources */,
 				648E3A615EE750839E3C3E37 /* AntigravityCoreBridge.swift in Sources */,
+				B49F2E2FC541077DACD298F1 /* AntigravityHubViews.swift in Sources */,
+				49C5FB7F0DD3F81A8340206B /* AntigravityMicBridge.swift in Sources */,
 				B13262169DAC791C7B35D1DC /* AntigravityModels.swift in Sources */,
 				5C21B7DFF80CB41747AF722E /* AntigravityStore.swift in Sources */,
 				4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */,
@@ -323,6 +334,7 @@
 				DF7430FD2D7DB0CBD92F8716 /* DeviceIdentityStore.swift in Sources */,
 				B0CEB25BD90B8113A7F51348 /* LocalSocketClient.swift in Sources */,
 				3E1BB32DBE1808DEB0DE0442 /* OpenAgentsApp.swift in Sources */,
+				B28B53A86E4D0AE06A310EAB /* QRPairingView.swift in Sources */,
 				9ACF93FBF39B83D0E6C83A4E /* RootView.swift in Sources */,
 				0E8316C98EEB5B73680E45C7 /* SidebarView.swift in Sources */,
 				63D5565E7BCE75C15F6DB147 /* SubagentInspectorView.swift in Sources */,
@@ -389,6 +401,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";
@@ -528,6 +541,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation.";

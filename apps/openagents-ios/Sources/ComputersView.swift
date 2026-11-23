@@ -13,6 +13,7 @@ struct ComputersView: View {
     @State private var manualError: String?
     @State private var isAdding = false
     @State private var copiedKey = false
+    @State private var showQRScanner = false
 
     var body: some View {
         NavigationStack {
@@ -111,6 +112,19 @@ struct ComputersView: View {
                     .disabled(manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAdding)
                     .accessibilityIdentifier("computers.addButton")
                     .listRowBackground(OATheme.elevated)
+                    Button {
+                        showQRScanner = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "qrcode.viewfinder")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Scan Mac QR Code")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .accessibilityIdentifier("computers.scanQR")
+                    .listRowBackground(OATheme.elevated)
                 } header: {
                     Text("Add by MagicDNS or Tailscale IP")
                 } footer: {
@@ -156,6 +170,12 @@ struct ComputersView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showQRScanner) {
+            QRScannerSheetView { url in
+                store.handleIncomingURL(url)
+                dismiss()
+            }
+        }
     }
 
     private var shortDeviceKey: String {

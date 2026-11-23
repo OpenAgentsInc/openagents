@@ -45,6 +45,7 @@ targets:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale."
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "OpenAgents uses the microphone when you tap Voice Dictation to speak prompts to Antigravity."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "OpenAgents transcribes spoken prompts into the Antigravity composer when you use Voice Dictation."
+        INFOPLIST_KEY_NSCameraUsageDescription: "OpenAgents uses the camera to scan Tailscale pairing QR codes from your Mac."
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark

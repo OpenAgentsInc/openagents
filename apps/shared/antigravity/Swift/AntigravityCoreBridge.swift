@@ -284,7 +284,7 @@ enum MobileCore {
         }
     }
 
-    /// Encodes a typed `DmRequest` (`ListSessionMeta`, `UpdateSessionMeta`, `DaemonHealth`) via Coax `mc_dm_request` (#14013).
+    /// Encodes a typed `DmRequest` (SessionMeta, Artifacts, Swarms, Automations, AntigravityConfig) via Coax `mc_dm_request`.
     static func encodeDaemonRequest(
         work: MobileCoreWork,
         method: String,
@@ -292,6 +292,7 @@ enum MobileCore {
         command: String = "",
         title: String = "",
         folder: String = "",
+        text: String = "",
         pinned: Bool? = nil,
         archived: Bool? = nil,
         issuedMs: Int64 = 0,
@@ -307,6 +308,7 @@ enum MobileCore {
             command,
             title,
             folder,
+            text,
             pinFlag,
             archFlag,
             issuedMs,

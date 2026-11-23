@@ -750,8 +750,8 @@ ph_pick :: (h: [] HsHost, want: string) -> PaPick {
 }
 
 // Populate remote host & Antigravity version/capability handshake on DescribeEnvironment (#14004).
-PH_HOST_VERSION :: "2.0.0";
-PH_CAPABILITIES :: "[\"wire.v2\",\"agy.dynamic_models\",\"agy.interactive_permit\",\"agy.attachments\",\"agy.modes\",\"agy.update\",\"tailnet.push.v2\",\"ws.files.v1\"]";
+PH_HOST_VERSION :: "2.1.0";
+PH_CAPABILITIES :: "[\"wire.v2\",\"agy.dynamic_models\",\"agy.interactive_permit\",\"agy.attachments\",\"agy.modes\",\"agy.update\",\"tailnet.push.v2\",\"ws.files.v1\",\"env.artifacts.v1\",\"env.swarms.v1\",\"env.automations.v1\",\"env.extensibility.v1\",\"env.voice.v1\"]";
 
 ph_describe_meta :: (h: [] HsHost, v: [] EaView) {
   f := ph_facts(h);

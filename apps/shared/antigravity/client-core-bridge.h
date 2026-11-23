@@ -112,6 +112,7 @@ int64_t oa_mobile_dm_request(
     const char *command,
     const char *title,
     const char *folder,
+    const char *text,
     int64_t pinned_flag,
     int64_t archived_flag,
     int64_t issued,

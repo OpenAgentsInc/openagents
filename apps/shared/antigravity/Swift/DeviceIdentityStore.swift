@@ -335,4 +335,24 @@ final class MobileDeviceStore {
             try? encoded.write(to: url, options: .atomic)
         }
     }
+
+    // MARK: - Durable Disk-Backed Offline Prompt Outbox (#14019)
+
+    private var outboxURL: URL {
+        cacheURL.deletingLastPathComponent().appendingPathComponent("offline-outbox-v1.json")
+    }
+
+    func loadPendingOutbox() -> [PendingOutboxMessage] {
+        guard let data = try? Data(contentsOf: outboxURL),
+              let decoded = try? JSONDecoder().decode([PendingOutboxMessage].self, from: data) else {
+            return []
+        }
+        return decoded
+    }
+
+    func savePendingOutbox(_ items: [PendingOutboxMessage]) {
+        guard let encoded = try? JSONEncoder().encode(items) else { return }
+        try? FileManager.default.createDirectory(at: outboxURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? encoded.write(to: outboxURL, options: .atomic)
+    }
 }

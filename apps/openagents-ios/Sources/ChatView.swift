@@ -24,6 +24,18 @@ struct ChatView: View {
             if let error = store.bannerError, !error.isEmpty {
                 errorBanner(error)
             }
+            if let rl = store.rateLimitBanner {
+                rateLimitBannerView(rl)
+            }
+            if let handoff = store.browserHandoffWarning, !handoff.isEmpty {
+                browserHandoffBanner(handoff)
+            }
+            if !store.pendingOutbox.isEmpty {
+                outboxBanner
+            }
+            if let live = store.activeTurnLiveStatus {
+                liveActivityStatusStrip(live)
+            }
 
             Group {
                 if store.activeComputer?.canSendRPC != true && store.items.isEmpty {
@@ -84,6 +96,9 @@ struct ChatView: View {
         .sheet(isPresented: $store.isSideQuestionPresented) {
             SideQuestionSheetView(store: store)
                 .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $store.isHubPresented) {
+            AntigravityHubView(store: store)
         }
         .alert("Edit & Resend Message", isPresented: Binding(
             get: { editingMessageItem != nil },
@@ -242,6 +257,98 @@ struct ChatView: View {
         .padding(.vertical, 8)
         .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+    }
+
+    private func rateLimitBannerView(_ rl: RateLimitBannerState) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: rl.isHardExhaustion ? "gauge.with.dots.needle.100percent" : "clock.badge.exclamationmark")
+                .font(.system(size: 12))
+                .foregroundStyle(rl.isHardExhaustion ? OATheme.statusError : OATheme.statusWarn)
+            Text(rl.message)
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.textPrimary)
+                .lineLimit(2)
+            Spacer()
+            if rl.isHardExhaustion, let alt = store.availableModels.first(where: { $0.id != store.selectedModelID }) {
+                Button("Switch") {
+                    store.chooseModel(alt.id)
+                    store.rateLimitBanner = nil
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(OATheme.surface)
+        .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
+    }
+
+    private func browserHandoffBanner(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hand.raised.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.statusWarn)
+            Text("Browser Handoff: \(text)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OATheme.textPrimary)
+                .lineLimit(2)
+            Spacer()
+            Button("Hub") { store.isHubPresented = true }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(OATheme.statusWarn)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(OATheme.statusWarn.opacity(0.12))
+        .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
+    }
+
+    private var outboxBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "tray.and.arrow.up.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.statusWarn)
+            Text("\(store.pendingOutbox.count) offline message\(store.pendingOutbox.count == 1 ? "" : "s") waiting for reconnect")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OATheme.textPrimary)
+            Spacer()
+            Button("Retry") {
+                Task { await store.flushPendingOutbox() }
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Color.white, in: Capsule())
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(OATheme.surface)
+        .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
+    }
+
+    private func liveActivityStatusStrip(_ live: ActiveTurnLiveStatus) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(live.needsApproval ? OATheme.statusWarn : OATheme.statusReady)
+                .frame(width: 6, height: 6)
+            Text("\(live.hostName) · \(live.phaseLabel)")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(OATheme.textSecondary)
+                .lineLimit(1)
+            Spacer()
+            Text(live.startedAt, style: .timer)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(OATheme.textMuted)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background(OATheme.surface.opacity(0.85))
+        .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
     }
 
     private var slashCommandMenu: some View {
@@ -639,6 +746,11 @@ struct ChatView: View {
                         store.isSideQuestionPresented = true
                     } label: {
                         Label("/btw Side Question", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+                    }
+                    Button {
+                        store.isHubPresented = true
+                    } label: {
+                        Label("Antigravity Hub (Artifacts, Swarms, MCP)", systemImage: "square.grid.2x2")
                     }
                     if store.activeSession != nil {
                         Button {

@@ -85,6 +85,23 @@ final class AntigravityStore: ObservableObject {
     @Published var isSideQuestionPresented: Bool = false
     @Published var sideQuestions: [SideQuestionEntry] = []
 
+    // Wave 4: Artifacts, Swarms, Automations, Extensibility, Voice/Browser/Quotas, Durable Outbox & Live Status (#14014-#14019)
+    @Published var isHubPresented: Bool = false
+    @Published var artifacts: [ArtifactSummary] = []
+    @Published var activeArtifact: ArtifactDocument?
+    @Published var isLoadingArtifacts: Bool = false
+    @Published var swarmSnapshot: SwarmSnapshot?
+    @Published var isLoadingSwarm: Bool = false
+    @Published var automations: [AutomationRecord] = []
+    @Published var isLoadingAutomations: Bool = false
+    @Published var agyConfig: AntigravityConfigSnapshot?
+    @Published var isLoadingAgyConfig: Bool = false
+    @Published var selectedCustomAgent: String = ""
+    @Published var rateLimitBanner: RateLimitBannerState?
+    @Published var browserHandoffWarning: String?
+    @Published var pendingOutbox: [PendingOutboxMessage] = []
+    @Published var activeTurnLiveStatus: ActiveTurnLiveStatus?
+
     /// Test-only switch enabled strictly via `-OAE2ELoopbackAllowed` launch argument for local Simulator E2E harnesses.
     var allowLoopbackForTests: Bool = false
 
@@ -131,6 +148,11 @@ final class AntigravityStore: ObservableObject {
                 self?.livePushConnected = false
             }
             self?.reloadComputers()
+            if state == .reachable {
+                Task { @MainActor [weak self] in
+                    await self?.flushPendingOutbox()
+                }
+            }
         }
         self.client.onLivePushStateChange = { [weak self] host, connected in
             guard let self, self.activeComputerID == host else { return }
@@ -139,6 +161,7 @@ final class AntigravityStore: ObservableObject {
         self.client.onPushEvent = { [weak self] host, event in
             self?.handlePushEvent(host: host, event: event)
         }
+        pendingOutbox = store.loadPendingOutbox()
         reloadComputers()
         if let warn = store.lastPersistenceWarning {
             statusToast = warn
@@ -519,7 +542,10 @@ final class AntigravityStore: ObservableObject {
         }
         #endif
         startFallbackPolling()
-        Task { await refreshActiveComputer() }
+        Task {
+            await refreshActiveComputer()
+            await flushPendingOutbox()
+        }
     }
 
     func onBackground() {
@@ -1072,6 +1098,8 @@ final class AntigravityStore: ObservableObject {
             if let usage = view.usage {
                 activeUsage = usage
             }
+            detectRateLimitAndBrowserHandoff(from: view.items, error: view.error)
+            updateLiveTurnStatus(nowBusy: nowBusy, needsApproval: !currentInteraction.isEmpty)
             persistOfflineCache(for: computer.id)
 
             // Fire zero-secret completion / approval notification hooks for backgrounded clients.
@@ -1309,8 +1337,29 @@ final class AntigravityStore: ObservableObject {
         }
 
         guard let finalView = view, finalView.error.isEmpty else {
-            if let err = view?.error, !err.isEmpty {
-                bannerError = HostErrorFormatter.describe(err, method: activeSession == nil ? "OpenSession" : "SendMessage")
+            let errCode = view?.error ?? ""
+            if errCode.isEmpty && !computer.isLocalMac && !isOverride {
+                // Network / offline transport failure: enqueue into durable disk-backed offline outbox with the exact commandID (#14019).
+                enqueueOfflineOutbox(
+                    commandID: commandID,
+                    hostID: computer.id,
+                    sessionID: continueFromReadOnly ? nil : previousSessionID,
+                    text: payloadText,
+                    model: model,
+                    effort: effort,
+                    reviewMode: modeWire,
+                    folder: selectedFolder
+                )
+                pendingOptimisticUserItem = nil
+                activeSessionID = previousSessionID
+                items = previousItems
+                isAwaitingTurnStart = false
+                statusToast = "Saved to offline outbox — will send automatically on reconnect."
+                return
+            }
+            if !errCode.isEmpty {
+                bannerError = HostErrorFormatter.describe(errCode, method: activeSession == nil ? "OpenSession" : "SendMessage")
+                detectRateLimitAndBrowserHandoff(from: items, error: errCode)
             }
             pendingOptimisticUserItem = nil
             activeSessionID = previousSessionID
@@ -2448,6 +2497,7 @@ final class AntigravityStore: ObservableObject {
         session: String = "",
         title: String = "",
         folder: String = "",
+        text: String = "",
         pinned: Bool? = nil,
         archived: Bool? = nil,
         quietErrors: Bool = false
@@ -2458,7 +2508,8 @@ final class AntigravityStore: ObservableObject {
         }
         defer { MobileCorePool.shared.checkin(work) }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let isWrite = method == "UpdateSessionMeta" || method == "UpdateForeman"
+        let writeMethods: Set<String> = ["UpdateSessionMeta", "UpdateForeman", "ToggleAutomation", "RunAutomation", "UpdateAntigravityConfig"]
+        let isWrite = writeMethods.contains(method)
         guard let params = MobileCore.encodeDaemonRequest(
             work: work,
             method: method,
@@ -2466,6 +2517,7 @@ final class AntigravityStore: ObservableObject {
             command: isWrite ? MobileCore.randomHex(bytes: 16) : "",
             title: title,
             folder: folder,
+            text: text,
             pinned: pinned,
             archived: archived,
             issuedMs: isWrite ? nowMs : 0,
@@ -2513,6 +2565,284 @@ final class AntigravityStore: ObservableObject {
                 bannerError = HostErrorFormatter.describe(parsed.error, method: method)
             }
             return parsed
+        }
+    }
+
+    // MARK: - Wave 4 Control-Plane Methods: Artifacts, Swarms, Automations, Extensibility, Quotas & Offline Outbox (#14014-#14019)
+
+    func refreshArtifacts() async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let sid = activeSessionID, !sid.isEmpty else {
+            artifacts = []
+            return
+        }
+        isLoadingArtifacts = true
+        defer { isLoadingArtifacts = false }
+        if let view = await performDaemonRPC(computer: computer, method: "ListArtifacts", session: sid, quietErrors: true), view.ok {
+            artifacts = view.sessions.map(ArtifactSummary.fromDaemonMeta)
+        }
+    }
+
+    func readArtifact(_ name: String) async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let sid = activeSessionID, !sid.isEmpty else { return }
+        isLoadingArtifacts = true
+        defer { isLoadingArtifacts = false }
+        if let view = await performDaemonRPC(computer: computer, method: "ReadArtifact", session: sid, title: name, quietErrors: false), view.ok {
+            let header = view.sessions.first
+            let extraChunks = view.sessions.dropFirst().map(\.folder).joined()
+            let fullContent = view.foremanPrompt + extraChunks
+            activeArtifact = ArtifactDocument(
+                name: header?.id ?? name,
+                mimeType: header?.title ?? "text/markdown",
+                localPath: header?.folder ?? "",
+                isImage: header?.archived ?? false,
+                content: fullContent,
+                byteCount: header?.updatedAt ?? Int64(fullContent.utf8.count)
+            )
+        }
+    }
+
+    func proceedArtifactPlan(_ name: String) async {
+        isHubPresented = false
+        await sendMessage(overrideText: "Proceed with the implementation plan in `\(name)`.", overrideAttachments: [])
+    }
+
+    func updateArtifactReviewPolicy(_ policy: ArtifactReviewPolicy) async {
+        await updateAntigravityConfig(patch: ["artifactReviewPolicy": policy.rawValue])
+    }
+
+    func refreshSwarm() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingSwarm = true
+        defer { isLoadingSwarm = false }
+        let sid = activeSessionID ?? ""
+        if let view = await performDaemonRPC(computer: computer, method: "ReadSwarm", session: sid, quietErrors: true), view.ok {
+            var activeCount = 0
+            if let data = view.foremanPrompt.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                activeCount = obj["active_subagents"] as? Int ?? 0
+            }
+            var members: [SwarmMemberEntry] = []
+            var posts: [SwarmBoardPost] = []
+            for row in view.sessions {
+                if row.id.hasPrefix("subagent:") || row.id.hasPrefix("member:") {
+                    let parts = row.title.split(separator: "|", maxSplits: 1).map(String.init)
+                    let model = parts.first ?? "antigravity"
+                    let state = parts.count > 1 ? parts[1] : (row.pinned ? "active" : "stopped")
+                    let rawName = String(row.id.drop(while: { $0 != ":" }).dropFirst())
+                    members.append(SwarmMemberEntry(
+                        id: row.id,
+                        name: rawName.isEmpty ? row.id : rawName,
+                        model: model,
+                        state: state,
+                        cwd: row.folder,
+                        isActive: row.pinned,
+                        startedAt: row.updatedAt
+                    ))
+                } else if row.id.hasPrefix("post:") {
+                    posts.append(SwarmBoardPost(id: row.id, author: row.title, message: row.folder, index: row.updatedAt))
+                }
+            }
+            swarmSnapshot = SwarmSnapshot(sessionID: sid, activeSubagents: activeCount, members: members, posts: posts)
+        }
+    }
+
+    func sendSwarmMention(to member: String, message: String) async {
+        let clean = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let target = member.hasPrefix("@") ? member : "@\(member)"
+        isHubPresented = false
+        await sendMessage(overrideText: "\(target) \(clean)", overrideAttachments: [])
+    }
+
+    func switchSwarmMemberModel(member: String, model: String) async {
+        isHubPresented = false
+        await sendMessage(overrideText: "Switch swarm worker `\(member)` to model `\(model)` and resume its work.", overrideAttachments: [])
+    }
+
+    func refreshAutomations() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingAutomations = true
+        defer { isLoadingAutomations = false }
+        if let view = await performDaemonRPC(computer: computer, method: "ListAutomations", quietErrors: true), view.ok {
+            automations = view.sessions.map(AutomationRecord.fromDaemonMeta)
+        }
+    }
+
+    func toggleAutomation(_ item: AutomationRecord) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "ToggleAutomation",
+            session: item.id,
+            pinned: !item.enabled,
+            quietErrors: false
+        ), view.ok {
+            automations = view.sessions.map(AutomationRecord.fromDaemonMeta)
+            statusToast = item.enabled ? "Paused \(item.name)" : "Resumed \(item.name)"
+        }
+    }
+
+    func runAutomationNow(_ item: AutomationRecord) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "RunAutomation",
+            session: item.id,
+            quietErrors: false
+        ), view.ok {
+            automations = view.sessions.map(AutomationRecord.fromDaemonMeta)
+            statusToast = view.foremanWorkspace.isEmpty ? "Triggered \(item.name)" : "Started run \(view.foremanWorkspace.prefix(8))"
+            await refreshActiveComputer()
+        }
+    }
+
+    func refreshAntigravityConfig() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingAgyConfig = true
+        defer { isLoadingAgyConfig = false }
+        if let view = await performDaemonRPC(computer: computer, method: "ReadAntigravityConfig", quietErrors: true), view.ok {
+            agyConfig = AntigravityConfigSnapshot.fromDaemonView(view)
+        }
+    }
+
+    func updateAntigravityConfig(patch: [String: Any]) async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let data = try? JSONSerialization.data(withJSONObject: patch),
+              let json = String(data: data, encoding: .utf8) else { return }
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "UpdateAntigravityConfig",
+            text: json,
+            quietErrors: false
+        ), view.ok {
+            agyConfig = AntigravityConfigSnapshot.fromDaemonView(view)
+            statusToast = "Saved Antigravity settings"
+        }
+    }
+
+    func detectRateLimitAndBrowserHandoff(from transcript: [TranscriptItem], error: String) {
+        let lowerErr = error.lowercased()
+        if lowerErr == "rate_limited" || lowerErr.contains("429") {
+            rateLimitBanner = RateLimitBannerState(
+                isHardExhaustion: false,
+                message: "Temporary rate limit (429) — retrying automatically via official agy runtime.",
+                retryUntil: Date().addingTimeInterval(60)
+            )
+        } else if let limitItem = transcript.last(where: { $0.typedNoticeKind == .limit }) {
+            let txt = limitItem.text.lowercased()
+            let hard = txt.contains("weekly") || txt.contains("exhausted") || txt.contains("spend cap") || txt.contains("5-hour") || txt.contains("quota")
+            rateLimitBanner = RateLimitBannerState(
+                isHardExhaustion: hard,
+                message: limitItem.text,
+                retryUntil: hard ? nil : Date().addingTimeInterval(120)
+            )
+        } else if error.isEmpty {
+            rateLimitBanner = nil
+        }
+
+        // Detect browser subagent SSO / MFA / CAPTCHA handoff pauses (#14018)
+        if let handoff = transcript.suffix(6).last(where: { row in
+            let t = row.text.lowercased()
+            return t.contains("captcha") || t.contains("verify you are human") || t.contains("mfa") || t.contains("two-factor") || (t.contains("sign in") && t.contains("browser"))
+        }) {
+            if browserHandoffWarning != handoff.text {
+                browserHandoffWarning = handoff.text
+                onTurnNotificationEvent?("handoff", "Browser agent paused for human sign-in or CAPTCHA")
+            }
+        } else if activeSession?.busy == false {
+            browserHandoffWarning = nil
+        }
+    }
+
+    private func updateLiveTurnStatus(nowBusy: Bool, needsApproval: Bool) {
+        if nowBusy || needsApproval || isAwaitingTurnStart {
+            let host = activeComputer?.name ?? "Mac"
+            let title = activeSession.map { displayTitle(for: $0) } ?? "Antigravity"
+            let phase = needsApproval ? "Waiting for approval" : (streamingStatusLabel ?? "Working")
+            let started = activeTurnLiveStatus?.startedAt ?? Date()
+            activeTurnLiveStatus = ActiveTurnLiveStatus(
+                hostName: host,
+                sessionTitle: title,
+                phaseLabel: phase,
+                startedAt: started,
+                needsApproval: needsApproval
+            )
+        } else {
+            activeTurnLiveStatus = nil
+        }
+    }
+
+    // MARK: - Durable Offline Prompt Outbox (#14019)
+
+    func enqueueOfflineOutbox(
+        commandID: String,
+        hostID: String,
+        sessionID: String?,
+        text: String,
+        model: String,
+        effort: String,
+        reviewMode: String,
+        folder: String
+    ) {
+        let entry = PendingOutboxMessage(
+            id: commandID,
+            hostID: hostID,
+            sessionID: sessionID,
+            text: text,
+            model: model,
+            effort: effort,
+            reviewMode: reviewMode,
+            folder: folder,
+            createdAt: Int64(Date().timeIntervalSince1970)
+        )
+        if !pendingOutbox.contains(where: { $0.id == commandID }) {
+            pendingOutbox.append(entry)
+            store.savePendingOutbox(pendingOutbox)
+        }
+    }
+
+    func removeOutboxItem(_ id: String) {
+        pendingOutbox.removeAll { $0.id == id }
+        store.savePendingOutbox(pendingOutbox)
+    }
+
+    func flushPendingOutbox() async {
+        guard !pendingOutbox.isEmpty else { return }
+        let snapshot = pendingOutbox
+        var flushed = 0
+        for item in snapshot {
+            guard let computer = computers.first(where: { $0.id == item.hostID }), computer.canSendRPC else { continue }
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let method = item.sessionID == nil ? "OpenSession" : "SendMessage"
+            let sid = item.sessionID ?? MobileCore.randomHex(bytes: 16)
+            let currentRev = sessions.first(where: { $0.id == sid })?.revision ?? 0
+            let currentGen = max(1, sessions.first(where: { $0.id == sid })?.generation ?? 1)
+            if let view = await performEnvironmentRPC(
+                computer: computer,
+                method: method,
+                session: sid,
+                command: item.id,
+                generation: currentGen,
+                revision: currentRev,
+                text: item.text,
+                issuedMs: nowMs,
+                expiresMs: nowMs + 300_000,
+                model: item.model,
+                effort: item.effort,
+                folder: item.folder,
+                mode: item.reviewMode,
+                quietErrors: true
+            ), view.error.isEmpty {
+                pendingOutbox.removeAll { $0.id == item.id }
+                store.savePendingOutbox(pendingOutbox)
+                flushed += 1
+            }
+        }
+        if flushed > 0 {
+            statusToast = "Sent \(flushed) offline message\(flushed == 1 ? "" : "s")"
+            await refreshActiveComputer()
         }
     }
 }

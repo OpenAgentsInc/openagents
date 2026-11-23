@@ -1196,8 +1196,30 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
 // worker runs, else the worker starts again (or switches engines when switching Neon <-> Inkling);
 // StopSubagent has nothing to stop (no sub-agents).
 ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: int, chats: [] DkChat, nc: int, method: string, command: string, text: string, file: string, raw: string, v: [] EaView) {
-  if method == "StopSubagent" { es_refuse(v, "not_found"); return; }
   id := cast(string) r[0].id[..];
+  if method == "StopSubagent" {
+    one: [1] DkSub;
+    got := dk_sub_of(r, runs, n, cast(string) q[0].item[0..<q[0].nit], one[..]);
+    if got == 1 {
+      if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
+      sp: [1400] u8;
+      if !fs_append(dr_file(cast(string) one[0].id[..], ".in", sp[..]), MWW_STOP_LINE) { es_refuse(v, "storage_unavailable"); return; }
+      dk_summary(r, chats, nc, v[0].sessions[0..<1]); v[0].ns = 1;
+      v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted");
+      return;
+    }
+    if dk_running(r) {
+      if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
+      sb: [512] u8; sn := hs_cat(sb[..], 0, "[Stop subagent "); sn = hs_cat(sb[..], sn, cast(string) q[0].item[0..<q[0].nit]); sn = hs_cat(sb[..], sn, "]");
+      sl: [1024] u8; sln := mww_steer(sl[..], command, cast(string) sb[0..<sn], 0);
+      ip: [1400] u8;
+      if sln > 0 { _ = fs_append(dr_file(id, ".in", ip[..]), cast(string) sl[0..<sln]); }
+      dk_summary(r, chats, nc, v[0].sessions[0..<1]); v[0].ns = 1;
+      v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted");
+      return;
+    }
+    es_refuse(v, "not_found"); return;
+  }
   if q[0].generation != ph_generation(id) { es_refuse(v, "conflict"); return; }
   if method == "RespondInteraction" {
     ticket := hs_atoi(cast(string) q[0].interaction[0..<q[0].ni]);

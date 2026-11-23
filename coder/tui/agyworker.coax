@@ -1334,14 +1334,18 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
         if rp.count > 0 { s[0].calls[at].path_n = agyw_copy(s[0].calls[at].path[..], rp); }
         s[0].next_ticket += 1;
         if emit {
-          agyw_emit_ask_tool(
-            s,
-            agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n),
-            s[0].next_ticket,
-            agyw_str(s[0].calls[at].tool_kind[..], s[0].calls[at].tool_kind_n),
-            id,
-            agyw_str(s[0].calls[at].path[..], s[0].calls[at].path_n)
-          );
+          if tk == "subagent" {
+            agyw_write_line(s, mww_delegate(s[0].out[..], agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n), s[0].next_ticket));
+          } else {
+            agyw_emit_ask_tool(
+              s,
+              agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n),
+              s[0].next_ticket,
+              agyw_str(s[0].calls[at].tool_kind[..], s[0].calls[at].tool_kind_n),
+              id,
+              agyw_str(s[0].calls[at].path[..], s[0].calls[at].path_n)
+            );
+          }
         }
       }
       return;

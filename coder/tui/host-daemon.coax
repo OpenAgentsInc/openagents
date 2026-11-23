@@ -197,6 +197,7 @@ dm_execute :: (h:[]HsHost,q:[]DmRequest,v:[]DmView) #effects(all) {
     v[0].nst=ea_copy(v[0].status[..],"updated");
     return;
   }
+  if dm_agy_execute(h,q,v) {return;}
   dm_fail(v,"unknown-method");
 }
 

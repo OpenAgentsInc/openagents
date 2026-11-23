@@ -70,11 +70,15 @@ DmView :: struct {
 }
 
 dm_method_valid :: (m:string)->bool #effects(all) {
-  return m=="DaemonHealth" || m=="ReadForeman" || m=="UpdateForeman" || m=="ListSessionMeta" || m=="UpdateSessionMeta" || dm_is_run(m);
+  return m=="DaemonHealth" || m=="ReadForeman" || m=="UpdateForeman" || m=="ListSessionMeta" || m=="UpdateSessionMeta"
+    || m=="ListArtifacts" || m=="ReadArtifact" || m=="ReadSwarm"
+    || m=="ListAutomations" || m=="ToggleAutomation" || m=="RunAutomation"
+    || m=="ReadAntigravityConfig" || m=="UpdateAntigravityConfig"
+    || dm_is_run(m);
 }
 
 dm_is_write :: (m:string)->bool #effects(all) {
-  return m=="UpdateForeman" || m=="UpdateSessionMeta" || m=="StartRun" || m=="StopRun" || m=="ForgetRun";
+  return m=="UpdateForeman" || m=="UpdateSessionMeta" || m=="ToggleAutomation" || m=="RunAutomation" || m=="UpdateAntigravityConfig" || m=="StartRun" || m=="StopRun" || m=="ForgetRun";
 }
 
 // The run methods: served on the local socket only, never over the relay.
@@ -352,4 +356,17 @@ dm_view_read :: (raw:string,v:[]DmView)->bool #effects(all) {
   out:[32768]u8;vn:=dm_view_write(v[..],out[..]);#assert vn>0;
   rv:[1]DmView;#assert dm_view_read(cast(string)out[0..<vn],rv[..]);
   #assert rv[0].nruns==2 && rv[0].runs[0].pid==77 && rv[0].runs[0].out==1234 && cast(string)rv[0].runs[1].state[0..<rv[0].runs[1].ns]=="exited" && rv[0].runs[1].ended==99;
+}
+
+#test "antigravity control-plane read and write methods are explicitly classified (#14014-#14018)" {
+  for m:[10]string.["DaemonHealth","ReadForeman","ListSessionMeta","ListRuns","ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig","StartRun"] {
+    #assert dm_method_valid(m);
+  }
+  for m:[5]string.["ListArtifacts","ReadArtifact","ReadSwarm","ListAutomations","ReadAntigravityConfig"] {
+    #assert !dm_is_write(m);
+  }
+  for m:[3]string.["ToggleAutomation","RunAutomation","UpdateAntigravityConfig"] {
+    #assert dm_method_valid(m) && dm_is_write(m);
+  }
+  #assert !dm_method_valid("NoSuchMethod") && !dm_is_write("NoSuchMethod");
 }

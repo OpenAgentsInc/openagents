@@ -814,4 +814,89 @@ final class MobileCoreTests: XCTestCase {
         let comment = InlineReviewComment(filePath: "apps/openagents-ios/Sources/ChatView.swift", lineRange: "L42-L55", comment: "Extract helper")
         XCTAssertEqual(comment.renderedMarkdown, "- `apps/openagents-ios/Sources/ChatView.swift #L42-L55`: Extract helper")
     }
+
+    func testWave4ArtifactsSwarmsAutomationsConfigAndDurableOfflineOutbox() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let cmd = String(repeating: "e", count: 32)
+        let nowMs: Int64 = 1_790_000_000_000
+
+        // 1. All Wave 4 daemon control-plane RPCs encode cleanly via Coax (#14014-#14018)
+        for method in ["ListArtifacts", "ReadArtifact", "ReadSwarm", "ListAutomations", "ReadAntigravityConfig"] {
+            let encoded = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+                work: work, method: method, session: "0123456789abcdef0123456789abcdef", title: "implementation_plan.md"
+            ), "Failed to encode read daemon method \(method)")
+            XCTAssertTrue(String(decoding: encoded, as: UTF8.self).contains("\"\(method)\""))
+        }
+        let updateCfg = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+            work: work,
+            method: "UpdateAntigravityConfig",
+            command: cmd,
+            text: "{\"artifactReviewPolicy\":\"asks-for-review\",\"useG1Credits\":true}",
+            issuedMs: nowMs,
+            expiresMs: nowMs + 60_000
+        ))
+        let cfgStr = String(decoding: updateCfg, as: UTF8.self)
+        XCTAssertTrue(cfgStr.contains("\"UpdateAntigravityConfig\""))
+        XCTAssertTrue(cfgStr.contains("useG1Credits"))
+
+        let toggleAuto = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+            work: work, method: "ToggleAutomation", session: "sched:daily", command: cmd, pinned: false, issuedMs: nowMs, expiresMs: nowMs + 60_000
+        ))
+        XCTAssertTrue(String(decoding: toggleAuto, as: UTF8.self).contains("\"ToggleAutomation\""))
+
+        // 2. ArtifactSummary, AutomationRecord & AntigravityConfigSnapshot decoding (#14014, #14016, #14017)
+        let art = ArtifactSummary.fromDaemonMeta(SessionMetadataRecord(
+            id: "implementation_plan.md",
+            title: "plan|Implementation Plan",
+            folder: "Step-by-step architecture plan",
+            pinned: true,
+            archived: false,
+            updatedAt: 1_790_000_123
+        ))
+        XCTAssertEqual(art.kind, "plan")
+        XCTAssertTrue(art.requestFeedback)
+        XCTAssertEqual(art.displayName, "Implementation Plan")
+
+        let auto = AutomationRecord.fromDaemonMeta(SessionMetadataRecord(
+            id: "sched:morning",
+            title: "Morning Digest|0 9 * * *|antigravity",
+            folder: "/repo|Summarize open PRs|0123456789abcdef0123456789abcdef",
+            pinned: true,
+            archived: false,
+            updatedAt: 1_790_000_500_000
+        ))
+        XCTAssertEqual(auto.name, "Morning Digest")
+        XCTAssertEqual(auto.cron, "0 9 * * *")
+        XCTAssertTrue(auto.enabled)
+        XCTAssertEqual(auto.lastChatID, "0123456789abcdef0123456789abcdef")
+
+        // 3. QR pairing URL & durable disk-backed offline outbox (#14019)
+        let qr = PairingQRCodeView(address: "studio.tailnet.ts.net", port: 47109, name: "Studio")
+        XCTAssertTrue(qr.pairingURLString.hasPrefix("openagents://pair?"))
+        XCTAssertTrue(qr.pairingURLString.contains("address=studio.tailnet.ts.net"))
+        XCTAssertTrue(qr.pairingURLString.contains("port=47109"))
+
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("oa-outbox-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let devStore = MobileDeviceStore(
+            tailnetBookURL: tmpDir.appendingPathComponent("book.json"),
+            cacheURL: tmpDir.appendingPathComponent("cache.json"),
+            pairedFileURL: tmpDir.appendingPathComponent("paired.json")
+        )
+        let msg = PendingOutboxMessage(
+            id: cmd,
+            hostID: String(repeating: "a", count: 64),
+            sessionID: nil,
+            text: "Queued in airplane mode",
+            model: "gemini-4-neon",
+            effort: "medium",
+            reviewMode: "",
+            folder: "",
+            createdAt: 1_790_000_000
+        )
+        devStore.savePendingOutbox([msg])
+        let reloaded = devStore.loadPendingOutbox()
+        XCTAssertEqual(reloaded, [msg])
+    }
 }

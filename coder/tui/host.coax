@@ -63,6 +63,7 @@
 #load "host-agy.coax";
 #load "host-tailnet.coax";
 #load "host-scheduled.coax";
+#load "host-antigravity-ext.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -975,6 +976,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "call" { return hs_cmd_call(args, arg); }
   if verb == "environment-enable" {return es_configure(args);}
   if verb == "pair" {return es_pair(args);}
+  if verb == "pair-url" {return dm_cmd_pair_url(args);}
   if verb == "direct-grant" {return es_direct_grant(args);}
   if verb == "local-rpc" {return es_local_call(args);}
   if verb == "daemon-status" {return dm_cmd_status(args);}

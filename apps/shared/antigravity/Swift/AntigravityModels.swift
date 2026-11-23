@@ -1435,6 +1435,12 @@ struct SessionMetadataRecord: Identifiable, Equatable, Codable {
 
 struct ParsedDaemonView {
     private struct WireDaemonDTO: Decodable {
+        struct WireForeman: Decodable {
+            let tier: Int?
+            let workspace: String?
+            let prompt: String?
+            let updated: Int64?
+        }
         struct WireSessionMeta: Decodable {
             let session_id: String?
             let id: String?
@@ -1450,6 +1456,7 @@ struct ParsedDaemonView {
         let method: String?
         let error: String?
         let status: String?
+        let foreman: WireForeman?
         let sessions_meta: [WireSessionMeta]?
         let sessions: [WireSessionMeta]?
         let meta: [WireSessionMeta]?
@@ -1460,6 +1467,8 @@ struct ParsedDaemonView {
     let method: String
     let error: String
     let status: String
+    let foremanPrompt: String
+    let foremanWorkspace: String
     let sessions: [SessionMetadataRecord]
 
     static func parse(_ data: Data) -> ParsedDaemonView? {
@@ -1483,6 +1492,8 @@ struct ParsedDaemonView {
             method: dto.method ?? "",
             error: dto.error ?? "",
             status: dto.status ?? "",
+            foremanPrompt: dto.foreman?.prompt ?? "",
+            foremanWorkspace: dto.foreman?.workspace ?? "",
             sessions: mapped
         )
     }
@@ -1552,4 +1563,236 @@ struct SideQuestionEntry: Identifiable, Equatable {
         self.answer = answer
         self.isLoading = isLoading
     }
+}
+
+// MARK: - Wave 4 Models: Artifacts, Swarms, Automations, Extensibility, Voice/Browser/Quotas, Offline Outbox (#14014-#14019)
+
+enum ArtifactReviewPolicy: String, CaseIterable, Identifiable, Codable {
+    case asksForReview = "asks-for-review"
+    case agentDecides = "agent-decides"
+    case alwaysProceed = "always-proceed"
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .asksForReview: return "Ask for Review"
+        case .agentDecides: return "Agent Decides"
+        case .alwaysProceed: return "Always Proceed"
+        }
+    }
+}
+
+struct ArtifactSummary: Identifiable, Equatable {
+    let id: String // relative filename inside <brain>/<sessionId>
+    let kind: String // plan, walkthrough, task, html, image, video, learning, markdown
+    let displayName: String
+    let summary: String
+    let requestFeedback: Bool
+    let updatedAt: Int64
+
+    var icon: String {
+        switch kind {
+        case "plan": return "list.bullet.clipboard"
+        case "walkthrough": return "checkmark.seal"
+        case "task": return "checklist"
+        case "html": return "rectangle.3.group"
+        case "image": return "photo"
+        case "video": return "video"
+        case "learning": return "brain"
+        default: return "doc.richtext"
+        }
+    }
+
+    static func fromDaemonMeta(_ row: SessionMetadataRecord) -> ArtifactSummary {
+        let parts = row.title.split(separator: "|", maxSplits: 1)
+        let kind = parts.first.map(String.init) ?? "markdown"
+        let display = parts.count > 1 ? String(parts[1]) : row.id
+        return ArtifactSummary(
+            id: row.id,
+            kind: kind,
+            displayName: display,
+            summary: row.folder,
+            requestFeedback: row.pinned,
+            updatedAt: row.updatedAt
+        )
+    }
+}
+
+struct ArtifactDocument: Equatable {
+    let name: String
+    let mimeType: String
+    let localPath: String
+    let isImage: Bool
+    let content: String // text/markdown/html OR base64 for image
+    let byteCount: Int64
+
+    var imageData: Data? {
+        guard isImage else { return nil }
+        return Data(base64Encoded: content)
+    }
+}
+
+struct SwarmMemberEntry: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let model: String
+    let state: String // active, waiting, stopped, retired, quota_paused
+    let cwd: String
+    let isActive: Bool
+    let startedAt: Int64
+}
+
+struct SwarmBoardPost: Identifiable, Equatable {
+    let id: String
+    let author: String
+    let message: String
+    let index: Int64
+}
+
+struct SwarmSnapshot: Equatable {
+    let sessionID: String
+    let activeSubagents: Int
+    let members: [SwarmMemberEntry]
+    let posts: [SwarmBoardPost]
+}
+
+struct AutomationRecord: Identifiable, Equatable {
+    let id: String // sched:<id> or sidecar:<id>
+    let name: String
+    let cron: String
+    let model: String
+    let folder: String
+    let prompt: String
+    let lastChatID: String
+    let enabled: Bool
+    let isSidecar: Bool
+    let lastRunMs: Int64
+
+    static func fromDaemonMeta(_ row: SessionMetadataRecord) -> AutomationRecord {
+        let tParts = row.title.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        let fParts = row.folder.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        return AutomationRecord(
+            id: row.id,
+            name: tParts.first.flatMap { $0.isEmpty ? nil : $0 } ?? row.id,
+            cron: tParts.count > 1 ? tParts[1] : "",
+            model: tParts.count > 2 ? tParts[2] : "antigravity",
+            folder: fParts.first ?? "",
+            prompt: fParts.count > 1 ? fParts[1] : "",
+            lastChatID: fParts.count > 2 ? fParts[2] : "",
+            enabled: row.pinned,
+            isSidecar: row.archived,
+            lastRunMs: row.updatedAt
+        )
+    }
+}
+
+struct PermissionRuleEntry: Identifiable, Equatable {
+    let id: String
+    let bucket: String // allow, ask, deny
+    let rule: String
+}
+
+struct MCPServerRecord: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let endpointOrCommand: String
+    let enabled: Bool
+}
+
+struct CustomizationItem: Identifiable, Equatable {
+    let id: String
+    let kind: String // skill, rule, agent, plugin, hook
+    let name: String
+    let sourcePath: String
+}
+
+struct AntigravityConfigSnapshot: Equatable {
+    let toolPermission: String
+    let artifactReviewPolicy: ArtifactReviewPolicy
+    let enableTerminalSandbox: Bool
+    let sandboxProxy: Bool
+    let useG1Credits: Bool
+    let adminSettingsPresent: Bool
+    let agyVersion: String
+    let authMode: String
+    let permissionRules: [PermissionRuleEntry]
+    let mcpServers: [MCPServerRecord]
+    let customizations: [CustomizationItem]
+
+    static func fromDaemonView(_ view: ParsedDaemonView) -> AntigravityConfigSnapshot {
+        var toolPermission = "request-review"
+        var policy = ArtifactReviewPolicy.asksForReview
+        var sandbox = false
+        var proxy = false
+        var useG1 = false
+        var admin = false
+        var agyVer = ""
+        var authMode = ""
+
+        if let data = view.foremanPrompt.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let tp = obj["toolPermission"] as? String, !tp.isEmpty { toolPermission = tp }
+            if let ap = obj["artifactReviewPolicy"] as? String, let parsed = ArtifactReviewPolicy(rawValue: ap) { policy = parsed }
+            sandbox = obj["enableTerminalSandbox"] as? Bool ?? false
+            proxy = obj["sandboxProxy"] as? Bool ?? false
+            useG1 = obj["useG1Credits"] as? Bool ?? false
+            admin = obj["adminSettingsPresent"] as? Bool ?? false
+            agyVer = obj["agyVersion"] as? String ?? ""
+            authMode = obj["authMode"] as? String ?? ""
+        }
+
+        var perms: [PermissionRuleEntry] = []
+        var mcps: [MCPServerRecord] = []
+        var customs: [CustomizationItem] = []
+
+        for row in view.sessions {
+            if row.id.hasPrefix("perm:") {
+                perms.append(PermissionRuleEntry(id: row.id, bucket: row.title, rule: row.folder))
+            } else if row.id.hasPrefix("mcp:") {
+                mcps.append(MCPServerRecord(id: row.id, name: row.title, endpointOrCommand: row.folder, enabled: row.pinned))
+            } else if let colon = row.id.firstIndex(of: ":") {
+                let kind = String(row.id[..<colon])
+                customs.append(CustomizationItem(id: row.id, kind: kind, name: row.title, sourcePath: row.folder))
+            }
+        }
+        return AntigravityConfigSnapshot(
+            toolPermission: toolPermission,
+            artifactReviewPolicy: policy,
+            enableTerminalSandbox: sandbox,
+            sandboxProxy: proxy,
+            useG1Credits: useG1,
+            adminSettingsPresent: admin,
+            agyVersion: agyVer,
+            authMode: authMode,
+            permissionRules: perms,
+            mcpServers: mcps,
+            customizations: customs
+        )
+    }
+}
+
+struct RateLimitBannerState: Equatable {
+    let isHardExhaustion: Bool
+    let message: String
+    let retryUntil: Date?
+}
+
+struct PendingOutboxMessage: Identifiable, Equatable, Codable {
+    let id: String // stable 32-hex command_id for duplicate-free replay
+    let hostID: String
+    let sessionID: String?
+    let text: String
+    let model: String
+    let effort: String
+    let reviewMode: String
+    let folder: String
+    let createdAt: Int64
+}
+
+struct ActiveTurnLiveStatus: Equatable {
+    let hostName: String
+    let sessionTitle: String
+    let phaseLabel: String
+    let startedAt: Date
+    let needsApproval: Bool
 }

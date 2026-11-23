@@ -191,6 +191,17 @@ struct MacHostSettingsView: View {
                 Text(hostServer.statusNote)
                     .font(.system(size: 11))
                     .foregroundStyle(OATheme.textMuted)
+
+                if let owner = hostServer.owner {
+                    let addr = owner.dns.isEmpty ? owner.ip : owner.dns
+                    if !addr.isEmpty {
+                        PairingQRCodeView(
+                            address: addr,
+                            port: hostServer.listenPort,
+                            name: owner.name.isEmpty ? (Host.current().localizedName ?? "Mac") : owner.name
+                        )
+                    }
+                }
             }
             .padding(14)
             .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

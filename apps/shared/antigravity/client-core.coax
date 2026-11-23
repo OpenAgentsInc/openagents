@@ -212,7 +212,8 @@ mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) ->
   return cast(string) v[0].host[..] == host && cast(string) v[0].method[0..<v[0].nm] == method;
 }
 
-// Encodes a typed DmRequest (ListSessionMeta, UpdateSessionMeta, DaemonHealth) using caller-owned scratch q (#14013).
+// Encodes a typed DmRequest (ListSessionMeta, UpdateSessionMeta, ListArtifacts, ReadArtifact,
+// ReadSwarm, ListAutomations, ToggleAutomation, RunAutomation, ReadAntigravityConfig, UpdateAntigravityConfig) (#14013-#14018).
 // pinned_flag / archived_flag: -1 omit, 0 false, 1 true.
 mc_dm_request :: (
   q: [] DmRequest,
@@ -221,6 +222,7 @@ mc_dm_request :: (
   command: string,
   title: string,
   folder: string,
+  text: string,
   pinned_flag: int,
   archived_flag: int,
   issued: int,
@@ -235,7 +237,8 @@ mc_dm_request :: (
   q[0].nc = ea_copy(q[0].command[..], command);
   q[0].ntl = ea_copy(q[0].title[..], title);
   q[0].nf = ea_copy(q[0].folder[..], folder);
-  if q[0].nm < 1 || q[0].ns < 0 || q[0].nc < 0 || q[0].ntl < 0 || q[0].nf < 0 { return -1; }
+  q[0].nt = ea_copy(q[0].text[..], text);
+  if q[0].nm < 1 || q[0].ns < 0 || q[0].nc < 0 || q[0].ntl < 0 || q[0].nf < 0 || q[0].nt < 0 { return -1; }
   if pinned_flag == 0 || pinned_flag == 1 { q[0].has_pinned = true; q[0].pinned = pinned_flag == 1; }
   if archived_flag == 0 || archived_flag == 1 { q[0].has_archived = true; q[0].archived = archived_flag == 1; }
   q[0].issued = issued;
