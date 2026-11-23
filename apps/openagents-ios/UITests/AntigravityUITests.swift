@@ -136,6 +136,7 @@ final class AntigravityUITests: XCTestCase {
         XCTAssertTrue(addressField.waitForExistence(timeout: 5))
         XCTAssertTrue(app.textFields["computers.addPort"].exists)
         XCTAssertTrue(app.buttons["computers.addButton"].exists)
+        XCTAssertTrue(app.buttons["computers.scanQR"].exists)
 
         // Dismiss Computers sheet cleanly back to main Antigravity chat surface.
         app.buttons["computers.done"].tap()
@@ -202,10 +203,13 @@ final class AntigravityUITests: XCTestCase {
         planOption.tap()
 
         sendPrompt(app, text: "Plan legacy refactor")
-        let planVerified = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Antigravity verified reply:", "Plan legacy refactor")
+        let planHeader = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Antigravity verified reply:", "Plan mode")
         ).firstMatch
-        XCTAssertTrue(planVerified.waitForExistence(timeout: 15), "Legacy v1 host Plan-mode auto-downgrade must succeed cleanly")
+        let planBody = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Plan legacy refactor")
+        ).firstMatch
+        XCTAssertTrue(planHeader.waitForExistence(timeout: 15) && planBody.waitForExistence(timeout: 5), "Legacy v1 host Plan-mode auto-downgrade must succeed cleanly")
         assertNoErrorBanner(app, context: "legacy v1 Plan-mode transparent downgrade")
         saveScreenshot(name: "01-legacy-v1-chat")
 

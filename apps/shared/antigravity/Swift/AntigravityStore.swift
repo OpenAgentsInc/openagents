@@ -763,6 +763,26 @@ final class AntigravityStore: ObservableObject {
             )
             store.tailnetBook.remember(updatedEndpoint)
             reachabilityByID[answer.host] = .reachable
+            let switchedHost = activeComputerID != answer.host
+            if switchedHost {
+                hostSelectionGen &+= 1
+                sessionSelectionGen &+= 1
+                activeComputerRefreshTask?.cancel()
+                activeTranscriptRefreshTask?.cancel()
+                activeSessionID = nil
+                items = []
+                sessions = []
+                workspaceSnapshot = nil
+                workspaceFiles = []
+                sessionMetaByID = [:]
+                activeTodos = []
+                activeUsage = nil
+                activeTurnLiveStatus = nil
+                interactionMeta = nil
+                pendingOptimisticUserItem = nil
+                isAwaitingTurnStart = false
+                loadPreferences(for: answer.host)
+            }
             activeComputerID = answer.host
             store.lastActiveHost = answer.host
             bannerError = nil
@@ -1000,8 +1020,10 @@ final class AntigravityStore: ObservableObject {
             }
         }
 
-        // Sync pin/rename/archive session metadata from daemon (#14013)
-        await refreshSessionMetadata()
+        // Sync pin/rename/archive session metadata in background so legacy/minimal hosts never stall pairing (#14013)
+        Task { [weak self] in
+            await self?.refreshSessionMetadata()
+        }
 
         guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
         if !mergedByID.isEmpty || bannerError == nil {
@@ -1637,7 +1659,9 @@ final class AntigravityStore: ObservableObject {
         guard activeComputerID == computer.id else { return }
         workspaceSnapshot = merged
         if workspaceFiles.isEmpty {
-            await loadWorkspaceTree(prefix: "", reset: true)
+            Task { [weak self] in
+                await self?.loadWorkspaceTree(prefix: "", reset: true)
+            }
         }
     }
 

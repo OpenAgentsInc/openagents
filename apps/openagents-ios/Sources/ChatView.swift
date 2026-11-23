@@ -406,10 +406,12 @@ struct ChatView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(candidate.label)
             }
         }
         .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chat.folderMenu")
     }
 

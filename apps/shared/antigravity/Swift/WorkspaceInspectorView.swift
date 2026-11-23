@@ -57,14 +57,32 @@ struct WorkspaceInspectorView: View {
             headerBar
             Divider().overlay(OATheme.hairline)
 
-            Picker("Workspace tab", selection: $selectedTab) {
+            HStack(spacing: 4) {
                 ForEach(Tab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    let isSelected = selectedTab == tab
+                    Button {
+                        selectedTab = tab
+                    } label: {
+                        Text(tab.rawValue)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? Color.black : OATheme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected ? Color.white : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tab.rawValue)
                 }
             }
-            .pickerStyle(.segmented)
+            .padding(3)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("workspace.tabs")
 
             if let err = store.workspaceError, !err.isEmpty {
