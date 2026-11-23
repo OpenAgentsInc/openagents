@@ -490,21 +490,112 @@ agy_signout_drain :: (x: [] CuEngine) {
   x[0].ready = false;
 }
 
-// Parse skill names from a skills.json file ({"skills":[{"name":"..."}]} or [{"name":"..."}]) (#13837).
+// True when a path starts with "~/" (agy does not tilde-expand skills.json entries; #14024).
+agy_is_tilde_path :: (p: string) -> bool {
+  return p.count >= 2 && p[0] == '~' && (p[1] == '/' || p[1] == '\\');
+}
+
+// Extract a skill name from a file-listed skill entry (e.g. "/path/to/my-skill/SKILL.md" -> "my-skill",
+// "/path/to/review.md" -> "review"), skipping "~/" entries (#14024).
+agy_skill_name_from_path :: (p: string) -> string {
+  if p.count == 0 || agy_is_tilde_path(p) { return ""; }
+  end := p.count;
+  while end > 0 && (p[end - 1] == '/' || p[end - 1] == '\\') { end -= 1; }
+  if end == 0 { return ""; }
+  slash := -1;
+  for i: 0..<end { if p[i] == '/' || p[i] == '\\' { slash = i; } }
+  base := cast(string) p[(slash + 1)..<end];
+  if base == "SKILL.md" || base == "skill.md" {
+    if slash <= 0 { return ""; }
+    p_end := slash;
+    while p_end > 0 && (p[p_end - 1] == '/' || p[p_end - 1] == '\\') { p_end -= 1; }
+    p_slash := -1;
+    for i: 0..<p_end { if p[i] == '/' || p[i] == '\\' { p_slash = i; } }
+    return cast(string) p[(p_slash + 1)..<p_end];
+  }
+  if base.count > 3 && cast(string) base[(base.count - 3)..<base.count] == ".md" {
+    return cast(string) base[0..<(base.count - 3)];
+  }
+  return base;
+}
+
+// Literal filter check for skills.json include_only / exclude lists (#14024):
+// - null / absent include_only allows all; explicit [] allows none
+// - null / absent exclude excludes none
+// - matching is strictly literal (exact string equality, no glob/regex)
+agy_skill_allowed :: (name: string, include_only_json: string, exclude_json: string, ar: [] ClArena) -> bool {
+  if name.count == 0 { return false; }
+  if exclude_json.count > 0 && exclude_json != "null" && exclude_json[0] == '[' {
+    ne := cl_count(exclude_json);
+    for i: 0..<ne {
+      v := cl_text(ar, exclude_json, cl_item(exclude_json, i));
+      if v == name { return false; }
+    }
+  }
+  if include_only_json.count > 0 && include_only_json != "null" && include_only_json[0] == '[' {
+    ni := cl_count(include_only_json);
+    for i: 0..<ni {
+      v := cl_text(ar, include_only_json, cl_item(include_only_json, i));
+      if v == name { return true; }
+    }
+    return false;
+  }
+  return true;
+}
+
+// Parse skill names from a skills.json file ({"skills":[...], "files":[...], "include_only":..., "exclude":...}
+// or top-level array). Handles null lists, skips "~/" entries, supports file-listed skills, and applies
+// literal include_only/exclude filters (#13837, #14024).
 agy_parse_skills_json :: (json: string, ar: [] ClArena, out_names: [] u8) -> int {
-  arr := cl_raw(json, "skills");
-  if arr.count == 0 { arr = json; }
-  n := cl_count(arr);
-  if n <= 0 { return 0; }
+  inc_raw := cl_raw(json, "include_only");
+  exc_raw := cl_raw(json, "exclude");
   used := 0;
-  for i: 0..<n {
-    item := cl_json(arr, cl_item(arr, i));
-    name := cl_str(ar, item, "name");
-    if name.count == 0 { continue; }
-    need := name.count + (ifx used > 0 then 1 else 0);
-    if used + need > out_names.count { break; }
-    if used > 0 { out_names[used] = '\n'; used += 1; }
-    used += cl_copy(out_names[used..<out_names.count], name);
+  skills_raw := cl_raw(json, "skills");
+  files_raw := cl_raw(json, "files");
+  // If top-level is an array (no "skills"/"files" key), treat json itself as the list.
+  i0 := 0;
+  while i0 < json.count && json[i0] <= 32 { i0 += 1; }
+  top_is_arr := i0 < json.count && json[i0] == '[';
+  arr := ifx skills_raw.count > 0 then skills_raw else ifx top_is_arr then json else "";
+  if arr.count > 0 && arr != "null" && arr[0] == '[' {
+    n := cl_count(arr);
+    for i: 0..<n {
+      sl := cl_item(arr, i);
+      item := cl_json(arr, sl);
+      name := "";
+      if item.count > 0 && item[0] == '"' {
+        raw_s := cl_text(ar, arr, sl);
+        if agy_is_tilde_path(raw_s) { continue; }
+        name = agy_skill_name_from_path(raw_s);
+      } else {
+        raw_path := cl_str(ar, item, "path");
+        if raw_path.count == 0 { raw_path = cl_str(ar, item, "file"); }
+        if raw_path.count > 0 && agy_is_tilde_path(raw_path) { continue; }
+        name = cl_str(ar, item, "name");
+        if name.count == 0 && raw_path.count > 0 { name = agy_skill_name_from_path(raw_path); }
+        if agy_is_tilde_path(name) { continue; }
+      }
+      if name.count == 0 || !agy_skill_allowed(name, inc_raw, exc_raw, ar) { continue; }
+      need := name.count + (ifx used > 0 then 1 else 0);
+      if used + need > out_names.count { break; }
+      if used > 0 { out_names[used] = '\n'; used += 1; }
+      used += cl_copy(out_names[used..<out_names.count], name);
+    }
+  }
+  if files_raw.count > 0 && files_raw != "null" && files_raw[0] == '[' {
+    nf := cl_count(files_raw);
+    for i: 0..<nf {
+      sl := cl_item(files_raw, i);
+      item := cl_json(files_raw, sl);
+      raw_s := ifx item.count > 0 && item[0] == '"' then cl_text(ar, files_raw, sl) else cl_str(ar, item, "path");
+      if raw_s.count == 0 || agy_is_tilde_path(raw_s) { continue; }
+      name := agy_skill_name_from_path(raw_s);
+      if name.count == 0 || !agy_skill_allowed(name, inc_raw, exc_raw, ar) { continue; }
+      need := name.count + (ifx used > 0 then 1 else 0);
+      if used + need > out_names.count { break; }
+      if used > 0 { out_names[used] = '\n'; used += 1; }
+      used += cl_copy(out_names[used..<out_names.count], name);
+    }
   }
   return used;
 }
@@ -1687,11 +1778,24 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   agy_signout_drain(x);
   #assert x[0].nresume == 0 && x[0].last_session_n == 0 && !x[0].restart_required && !x[0].ready;
 
-  // skills.json discovery
+  // skills.json discovery & Layer-1 edge cases (#13837, #14024)
   ab: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
   sb: [256] u8;
   sn := agy_parse_skills_json("{\"skills\":[{\"name\":\"coax-review\"},{\"name\":\"git-hygiene\"}]}", ar[..], sb[..]);
   #assert cast(string) sb[0..<sn] == "coax-review\ngit-hygiene";
+  // null lists must not fail or treat outer object as array
+  ar[0].at = 0;
+  #assert agy_parse_skills_json("{\"skills\":null,\"files\":null,\"include_only\":null,\"exclude\":null}", ar[..], sb[..]) == 0;
+  // ~/ entries skipped, file-listed skills parsed, literal filter matching (no glob)
+  ar[0].at = 0;
+  sn2 := agy_parse_skills_json("{\"skills\":[{\"name\":\"a*\",\"path\":\"/ok/a*\"},{\"name\":\"skip-tilde\",\"path\":\"~/never/SKILL.md\"}],\"files\":[\"/repo/skills/deploy/SKILL.md\",\"~/bad/SKILL.md\",\"/repo/docs/lint.md\"],\"include_only\":[\"a*\",\"deploy\"],\"exclude\":[\"lint\"]}", ar[..], sb[..]);
+  #assert cast(string) sb[0..<sn2] == "a*\ndeploy";
+  // include_only: [] allows none; include_only: null allows all except excluded
+  ar[0].at = 0;
+  #assert agy_parse_skills_json("{\"skills\":[{\"name\":\"x\"}],\"include_only\":[]}", ar[..], sb[..]) == 0;
+  ar[0].at = 0;
+  sn3 := agy_parse_skills_json("{\"skills\":[{\"name\":\"x\"},{\"name\":\"y\"}],\"include_only\":null,\"exclude\":[\"y\"]}", ar[..], sb[..]);
+  #assert cast(string) sb[0..<sn3] == "x";
 }
 
 #test "antigravity: index DB filtering and read-only CLI token extraction (#13838)" {

@@ -189,6 +189,16 @@ cu_test_client :: (c: [] CuClient, b: [] CuTest) { cu_init(c[..], b[0].line[..],
   #assert cu_tool_display_name("{\"title\":\"call_mcp_tool\",\"rawInput\":{\"ServerName\":\"github\",\"ToolName\":\"list_issues\"}}", c[0].ar[..], nb[..]) == "github/list_issues";
   #assert cu_tool_display_name("{\"title\":\"call_mcp_tool\",\"rawInput\":{\"tool_name\":\"search_docs\"}}", c[0].ar[..], nb[..]) == "search_docs";
   #assert cu_tool_display_name("{\"title\":\"Read file\",\"rawInput\":{\"Path\":\"/w/a.coax\"}}", c[0].ar[..], nb[..]) == "Read file";
+
+  // UTF-8-safe and head-preserving truncation (#14024, T3 #39478/#39697/#40702)
+  tb: [12] u8;
+  #assert cu_truncate_command_head("cargo test --workspace --all-targets", tb[..]) == "cargo tes...";
+  ub: [5] u8;
+  raw_u8 := [5] u8.['a', 0xE2, 0x82, 0xAC, 'b'];
+  euro := cast(string) raw_u8[..];
+  // "a" (1) + "€" (3 bytes: E2 82 AC) + "b" (1) = 5 bytes; cutting to 3 bytes must back up before "€" -> "a"
+  #assert cu_copy_utf8(ub[0..<3], euro) == 1 && cast(string) ub[0..<1] == "a";
+  #assert cu_copy_utf8(ub[0..<4], euro) == 4 && cast(string) ub[0..<4] == cast(string) raw_u8[0..<4];
 }
 
 #test "cursor client: mcpServers injection (HTTP with/without bearer + stdio + bounds + capability)" {

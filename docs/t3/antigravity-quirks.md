@@ -40,17 +40,17 @@ Only a **small set of recent post-`v0.1.11` edge-case fixes** from `t3code` (`d1
 
 Every one of the 22 Antigravity commits merged into `t3code` after our Nov 20 `v0.1.11` audit, triaged for OpenAgents:
 
-### Worth Harvesting (Small, Concrete Layer-1 Bug Fixes)
+### Harvested in OpenAgents (`#14024`)
 
-| T3 Commit / PR | Bug Fixed in `t3code` | OpenAgents Action |
+| T3 Commit / PR | Bug Fixed in `t3code` | OpenAgents Implementation |
 | --- | --- | --- |
-| `27ab8d49eb` (`#39478`), `df09ced768` (`#39697`) | Truncating question text or shell command text can split a multi-byte UTF-8 character/surrogate pair. | Audit truncation helpers in `agyworker.coax` / `antigravity.coax` to ensure all slices use `text_byte_floor`. |
-| `29a33f8827` (`#39097`) | Attachments whose MIME type includes parameters (e.g., `text/plain; charset=utf-8`) failed attachment type checks. | Strip `;…` MIME parameters before matching in attachment dispatch (`agyworker.coax` / `client.coax`). |
-| `df67c4f7f9` (`#40702`) | Long shell commands truncated from the front kept only the last 8,000 chars, hiding the actual command name/head. | Ensure long command previews preserve the command head (head + tail or head-first) in `client.coax` / `agyworker.coax`. |
-| `ad1b1f9ca4` (`#40154`) | After server/app restart, `Auto` could disappear from the mode picker until a fresh session advertised `availableModes`. | Persist/assume `Auto` capability for verified `agy >= 1.5.0` across Desktop restarts in `AntigravityProvider.swift`. |
-| `ad4d0f0659` (`#39855`) | Transcript tail reads could drop/split steps at the chunk boundary. | Verify `coax/lib/agent/observe/antigravity.coax` handles partial JSONL lines at buffer/tail boundaries without losing the final complete step. |
-| `6edb53026b` (`#39806`), `e24f0c7154` (`#39767`) | Scheduled/reactive wake runs could appear finished prematurely or reject mid-wake steers. | Double-check `agyworker.coax` accepts mid-turn steers while `cue_held_bg` is active after `a159b463e7`. |
-| `ece4964b8e` (`#40287`), `367f9d3759` (`#40194`), `26b48d2da8` (`#40020`), `f0ceeefc08` (`#40488`) | `skills.json` edge cases: `null` lists, `~/` entries `agy` never loads, file-listed skills, and literal filter matching. | Port these 4 parser edge cases into `antigravity.coax` / `AntigravityProvider.swift` skill discovery when touching skills. |
+| `27ab8d49eb` (`#39478`), `df09ced768` (`#39697`) | Truncating question text or shell command text can split a multi-byte UTF-8 character/surrogate pair. | `cu_copy_utf8` and `cu_truncate_command_head` in `coax/lib/agent/cursor/client.coax`, wired into `cu_tool_display_name` and `agyw_on_permission`. |
+| `29a33f8827` (`#39097`) | Attachments whose MIME type includes parameters (e.g., `text/plain; charset=utf-8`) failed attachment type checks. | `agyw_strip_mime_params` in `coder/tui/agyworker.coax`, applied in `agyw_valid_img_mime`, `agyw_build_prompt_blocks`, and `agyw_build_attachment_blocks`. |
+| `df67c4f7f9` (`#40702`) | Long shell commands truncated from the front kept only the last 8,000 chars, hiding the actual command name/head. | `cu_truncate_command_head` preserves the command head + `...` in `client.coax` / `agyworker.coax`. |
+| `ad1b1f9ca4` (`#40154`) | After server/app restart, `Auto` could disappear from the mode picker until a fresh session advertised `availableModes`. | `ProviderInstancesStore.isVersionAtLeast15` in `apps/openagents-desktop/AntigravityProvider.swift` preserves `Auto` capability across restarts for verified `agy >= 1.5.0`. |
+| `ad4d0f0659` (`#39855`) | Transcript tail reads could drop/split steps at the chunk boundary. | `agr_tail_steps` in `coax/lib/agent/observe/antigravity.coax` safely skips partial leading/trailing lines at chunk boundaries without losing the final complete step. |
+| `6edb53026b` (`#39806`), `e24f0c7154` (`#39767`) | Scheduled/reactive wake runs could appear finished prematurely or reject mid-wake steers. | Verified `cue_steer` + `agyworker.coax` accept mid-turn steers while `cue_held_bg` is active while preserving active `nbg_tools`. |
+| `ece4964b8e` (`#40287`), `367f9d3759` (`#40194`), `26b48d2da8` (`#40020`), `f0ceeefc08` (`#40488`) | `skills.json` edge cases: `null` lists, `~/` entries `agy` never loads, file-listed skills, and literal filter matching. | Ported into `agy_parse_skills_json` / `agy_skill_allowed` (`coax/lib/agent/engine/antigravity.coax`) and `AntigravitySkillsDiscovery` (`apps/openagents-desktop/AntigravityProvider.swift`). |
 
 ### Already Covered or T3-Specific (No Action Needed)
 

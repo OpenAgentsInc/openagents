@@ -1219,6 +1219,23 @@ enum AntigravitySkillsDiscovery {
         let inherits: Bool?
         let include_only: [String]?
         let exclude: [String]?
+        let files: [String]?
+    }
+
+    private static func isTildePath(_ path: String) -> Bool {
+        path.hasPrefix("~/") || path.hasPrefix("~\\")
+    }
+
+    private static func skillName(fromFilePath path: String) -> String {
+        let url = URL(fileURLWithPath: path)
+        let base = url.lastPathComponent
+        if base.lowercased() == "skill.md" {
+            return url.deletingLastPathComponent().lastPathComponent
+        }
+        if base.lowercased().hasSuffix(".md") {
+            return String(base.dropLast(3))
+        }
+        return base
     }
 
     static func discover(workspace: URL?) -> [AntigravityDiscoveredSkill] {
@@ -1237,13 +1254,15 @@ enum AntigravitySkillsDiscovery {
             roots.append((home.appendingPathComponent(".gemini/antigravity-cli/skills"), "user"))
         }
 
-        let includeOnly = cfg?.include_only.map { Set($0) }
+        // Literal filter matching (#14024): null/absent include_only allows all; explicit [] allows none.
+        let includeOnly: Set<String>? = cfg?.include_only.map { Set($0) }
         let exclude = Set(cfg?.exclude ?? [])
         var seen = Set<String>()
         var out: [AntigravityDiscoveredSkill] = []
         for (dir, src) in roots {
             guard let items = try? fm.contentsOfDirectory(atPath: dir.path) else { continue }
             for name in items.sorted() {
+                if isTildePath(name) { continue }
                 if exclude.contains(name) { continue }
                 if let inc = includeOnly, !inc.contains(name) { continue }
                 if seen.contains(name) { continue }
@@ -1254,6 +1273,27 @@ enum AntigravitySkillsDiscovery {
                 let desc = parseDescription(from: text)
                 out.append(AntigravityDiscoveredSkill(name: name, description: desc, path: skillFile.path, source: src))
             }
+        }
+        // File-listed skills in skills.json (skipping "~/" entries agy never loads; #14024).
+        for rawPath in cfg?.files ?? [] {
+            let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !isTildePath(trimmed) else { continue }
+            let fileURL: URL
+            if trimmed.hasPrefix("/") {
+                fileURL = URL(fileURLWithPath: trimmed)
+            } else if let ws = workspace {
+                fileURL = ws.appendingPathComponent(trimmed)
+            } else {
+                continue
+            }
+            let name = skillName(fromFilePath: fileURL.path)
+            guard !name.isEmpty, !exclude.contains(name), !seen.contains(name) else { continue }
+            if let inc = includeOnly, !inc.contains(name) { continue }
+            guard fm.fileExists(atPath: fileURL.path),
+                  let text = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            seen.insert(name)
+            let desc = parseDescription(from: text)
+            out.append(AntigravityDiscoveredSkill(name: name, description: desc, path: fileURL.path, source: "config"))
         }
         return out
     }
@@ -1303,6 +1343,17 @@ final class ProviderInstancesStore {
             guard let self else { return }
             self.probeInstance(id: id)
         }
+    }
+
+    /// True when a version string is >= 1.5.0 (supports Antigravity Auto review mode across restarts; #14024).
+    static func isVersionAtLeast15(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = trimmed.hasPrefix("v") || trimmed.hasPrefix("V") ? String(trimmed.dropFirst()) : trimmed
+        let parts = clean.split(separator: ".")
+        guard parts.count >= 2, let major = Int(parts[0]), let minor = Int(parts[1].prefix { $0.isNumber }) else {
+            return false
+        }
+        return major > 1 || (major == 1 && minor >= 5)
     }
 
     private static func findCliExecutable(_ names: [String]) -> String? {
@@ -1711,6 +1762,8 @@ final class ProviderInstancesStore {
             )
         case .antigravity:
             let res = AntigravityRuntimeManager.shared.resolveBinary(for: inst)
+            let detectedVer = CoderAntigravity.detectedVersion() ?? ""
+            let assumesAuto = Self.isVersionAtLeast15(detectedVer)
             if res.path == nil {
                 probes[inst.id] = ProviderProbeSnapshot(
                     status: 2, headline: "Needs attention",
@@ -1720,22 +1773,22 @@ final class ProviderInstancesStore {
             } else if let issue = AntigravityProfileManager.authConfigIssue(for: inst) {
                 probes[inst.id] = ProviderProbeSnapshot(
                     status: 2, headline: "Needs attention", summary: issue,
-                    version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
-                    authStatus: "unauthenticated", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+                    version: detectedVer.isEmpty ? "" : "v\(detectedVer)",
+                    authStatus: "unauthenticated", hasAutoMode: assumesAuto, defaultModel: "", checkedAt: Date()
                 )
             } else if inst.models.contains(where: { !$0.custom }) {
                 probes[inst.id] = ProviderProbeSnapshot(
                     status: 1, headline: "Ready",
                     summary: "Checking Antigravity access…",
-                    version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
-                    authStatus: "unknown", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+                    version: detectedVer.isEmpty ? "" : "v\(detectedVer)",
+                    authStatus: "unknown", hasAutoMode: assumesAuto, defaultModel: "", checkedAt: Date()
                 )
             } else {
                 probes[inst.id] = ProviderProbeSnapshot(
                     status: 2, headline: "Needs attention",
                     summary: "Antigravity is installed. Connect with \(inst.authMethod.label) to load models.",
-                    version: CoderAntigravity.detectedVersion().map { "v\($0)" } ?? "",
-                    authStatus: "unknown", hasAutoMode: false, defaultModel: "", checkedAt: Date()
+                    version: detectedVer.isEmpty ? "" : "v\(detectedVer)",
+                    authStatus: "unknown", hasAutoMode: assumesAuto, defaultModel: "", checkedAt: Date()
                 )
             }
         }
@@ -1853,7 +1906,7 @@ final class ProviderInstancesStore {
         let verRaw = (obj["version"] as? String) ?? ""
         let ver = verRaw.isEmpty ? "" : (verRaw.hasPrefix("v") ? verRaw : "v\(verRaw)")
         let msg = (obj["message"] as? String) ?? ""
-        let hasAuto = (obj["hasAutoMode"] as? Bool) ?? false
+        let hasAuto = (obj["hasAutoMode"] as? Bool) ?? Self.isVersionAtLeast15(verRaw.isEmpty ? (CoderAntigravity.detectedVersion() ?? "") : verRaw)
         let defModel = (obj["defaultModel"] as? String) ?? ""
         let defModelName = (obj["defaultModelName"] as? String) ?? ""
 

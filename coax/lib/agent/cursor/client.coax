@@ -361,6 +361,34 @@ cu_perm_has_option :: (c: [] CuClient, option_id: string) -> bool {
   return false;
 }
 
+// Copy src into dst, backing up to a valid UTF-8 codepoint boundary when truncating (#14024).
+cu_copy_utf8 :: (dst: [] u8, src: string) -> int {
+  if dst.count <= 0 || src.count <= 0 { return 0; }
+  n := ifx src.count < dst.count then src.count else dst.count;
+  if n < src.count && n > 0 && (src[n] & 0xC0) == 0x80 {
+    while n > 0 && (src[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > 0 { n -= 1; }
+  }
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+// Truncate a long command/question preview while preserving its head and UTF-8 boundaries (#14024).
+cu_truncate_command_head :: (cmd: string, out: [] u8) -> string {
+  if out.count <= 0 || cmd.count <= 0 { return ""; }
+  if cmd.count <= out.count {
+    n := cu_copy_utf8(out, cmd);
+    return cast(string) out[0..<n];
+  }
+  if out.count <= 3 {
+    n := cu_copy_utf8(out, cmd);
+    return cast(string) out[0..<n];
+  }
+  n := cu_copy_utf8(out[0..<out.count - 3], cmd);
+  out[n] = '.'; out[n + 1] = '.'; out[n + 2] = '.';
+  return cast(string) out[0..<n + 3];
+}
+
 // Unwrap call_mcp_tool display names to the underlying MCP server/tool name when
 // present in rawInput, else return the tool's title.
 cu_tool_display_name :: (tool: string, ar: [] ClArena, out: [] u8) -> string {
@@ -381,15 +409,14 @@ cu_tool_display_name :: (tool: string, ar: [] ClArena, out: [] u8) -> string {
       if server.count == 0 { server = cl_str(ar, raw, "server"); }
       n := 0;
       if server.count > 0 {
-        n = cl_copy(out, server);
-        n += cl_copy(out[n..<out.count], "/");
+        n = cu_copy_utf8(out, server);
+        if n < out.count { out[n] = '/'; n += 1; }
       }
-      n += cl_copy(out[n..<out.count], mcp_tool);
+      n += cu_copy_utf8(out[n..<out.count], mcp_tool);
       return cast(string) out[0..<n];
     }
   }
-  n := cl_copy(out, title);
-  return cast(string) out[0..<n];
+  return cu_truncate_command_head(title, out);
 }
 
 // ---------------------------------------------------------------- requests

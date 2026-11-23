@@ -142,6 +142,39 @@ agr_turn :: (turn: int, s: AgrStep) -> int {
   return ifx s.done then AGR_ENDED else AGR_OPEN;
 }
 
+// Parse complete JSONL steps from a tail chunk without losing the final complete step at
+// chunk boundaries (#14024, T3 #39855):
+// - When from_middle is true, discards any partial leading line up to the first '\n'.
+// - Skips any truncated/unclosed trailing line at EOF (must start with '{' and end with '}').
+// - Stores the last recognized step in last_step[0] and returns the count of parsed steps.
+agr_tail_steps :: (chunk: string, from_middle: bool, ar: [] ClArena, last_step: [] AgrStep) -> int {
+  pos := 0;
+  if from_middle {
+    nl := -1;
+    for i: 0..<chunk.count { if chunk[i] == '\n' { nl = i; break; } }
+    if nl < 0 { return 0; }
+    pos = nl + 1;
+  }
+  parsed := 0;
+  while pos < chunk.count {
+    end := pos;
+    while end < chunk.count && chunk[end] != '\n' { end += 1; }
+    s := pos; e := end;
+    while s < e && (chunk[s] == ' ' || chunk[s] == '\t' || chunk[s] == '\r') { s += 1; }
+    while e > s && (chunk[e - 1] == ' ' || chunk[e - 1] == '\t' || chunk[e - 1] == '\r') { e -= 1; }
+    if e > s && chunk[s] == '{' && chunk[e - 1] == '}' {
+      st := agr_step(cast(string) chunk[s..<e], ar);
+      if st.kind != AGR_OTHER {
+        if last_step.count > 0 { last_step[0] = st; }
+        parsed += 1;
+      }
+    }
+    if end >= chunk.count { break; }
+    pos = end + 1;
+  }
+  return parsed;
+}
+
 #test "antigravity transcript: a request, a tool call, its result and the words that end the turn" {
   ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
   u := agr_step("{\"step_index\":0,\"source\":\"USER_EXPLICIT\",\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"created_at\":\"2026-11-11T20:40:26Z\",\"content\":\"<USER_REQUEST>\\nRun ls, then edit notes.txt.\\n</USER_REQUEST>\\n<USER_SETTINGS_CHANGE>\\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (Low). No need to comment.\\n</USER_SETTINGS_CHANGE>\"}", ar[..]);
@@ -327,4 +360,16 @@ agr_subagents_read :: (brain_dir: string, root_id: string, out: [] AgrSubagent, 
   subs[2] = agr_subagent_parse("{\"name\":\"worker-c\",\"state\":\"SUBAGENT_STATE_COMPLETED\"}", "child-c", ar[..]);
   #assert agr_subagents_running(subs[..], 3) == 1;
   #assert subs[0].id == "child-a" && subs[1].state == AGR_SUB_KILLED && subs[2].state == AGR_SUB_DONE;
+}
+
+#test "antigravity transcript: tail chunk-boundary reads preserve final complete step" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  last: [1] AgrStep;
+  chunk := "truncated-leading-line\"}\n{\"type\":\"USER_INPUT\",\"status\":\"DONE\",\"content\":\"hi\"}\n{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"final ok\"}\n{\"type\":\"PLANNER_RESPONSE\",\"status\":\"RUN";
+  n := agr_tail_steps(chunk, true, ar[..], last[..]);
+  #assert n == 2 && last[0].kind == AGR_MODEL && last[0].done && last[0].text == "final ok";
+  // When reading from byte 0 (from_middle == false), the first complete line is kept too.
+  last2: [1] AgrStep;
+  chunk2 := "{\"type\":\"PLANNER_RESPONSE\",\"status\":\"DONE\",\"content\":\"only one\"}";
+  #assert agr_tail_steps(chunk2, false, ar[..], last2[..]) == 1 && last2[0].text == "only one";
 }
