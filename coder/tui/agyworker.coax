@@ -56,6 +56,7 @@ AGYW_SUBS :: 16;
 AGYW_ID :: 96;
 AGYW_RECALL :: 65536;
 AGYW_REPLY :: 65536;
+AGYW_CAPS :: 16384;
 
 AgywCall :: struct {
   id: [AGYW_ID] u8; id_n: int;
@@ -107,7 +108,7 @@ AgywState :: struct {
   turn_effort: [32] u8; turn_effort_n: int;
   active_model: [128] u8; active_model_n: int;
   active_effort: [32] u8; active_effort_n: int;
-  sess_json: [16384] u8; sess_json_n: int;
+  sess_json: [AGYW_CAPS] u8; sess_json_n: int;   // cached session/new result for mid-session model/effort updates
   ran: [128] u8; ran_n: int;              // the model agy runs the open session on (agy_effective_model)
   ran_name: [128] u8; ran_name_n: int;    // and agy's name for it
   compact: bool;                                // the turn is a /compact, which may end with no words
@@ -703,6 +704,7 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
   kind := cl_str(ar, update, "sessionUpdate");
   if kind == "agent_thought_chunk" {
     txt := cl_str(ar, update, "content.text");
+    if txt.count == 0 { txt = cl_str(ar, update, "text"); }
     if txt.count > 0 && emit { agyw_emit_thought(s, txt); }
     return;
   }
@@ -1602,6 +1604,35 @@ agyw_connected :: (s: [] AgywState) -> int {
   return 0;
 }
 
+// Re-apply model or thought_level on an already-open session when a later turn changes either,
+// e.g. switching from low (which emits no thoughts on Carbon/Flash) to medium or high mid-chat.
+// Returns true when a setting change was sent (holding cue_send until acknowledged).
+agyw_reconfigure :: (s: [] AgywState, x: [] CuEngine, mod: string, eff: string, mode: string, emit: bool) -> bool {
+  if !x[0].live || !x[0].ready { return false; }
+  prev_mod := agyw_str(s[0].active_model[..], s[0].active_model_n);
+  prev_eff := agyw_str(s[0].active_effort[..], s[0].active_effort_n);
+  if mod == prev_mod && eff == prev_eff { return false; }
+  x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false;
+  caps := agyw_str(s[0].sess_json[..], s[0].sess_json_n);
+  if caps.count > 0 {
+    missed := agy_configure_at(x, caps, mod, eff, mode, AGYW_EFFORT);
+    if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
+      cue_set(x, "thought_level", eff);
+    }
+    agyw_ran(s, x, caps, mod, eff, emit);
+  } else {
+    x[0].hold = 0;
+    if mod != prev_mod && mod.count > 0 { cue_set_model(x, mod); }
+    if eff != prev_eff {
+      level := ifx eff.count > 0 then eff else AGYW_EFFORT;
+      cue_set(x, "thought_level", level);
+    }
+  }
+  s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
+  s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
+  return x[0].hold > 0;
+}
+
 agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) {
   if ev.kind == CuEventKind.none || ev.kind == CuEventKind.idle { return; }
   if ev.kind == CuEventKind.initialized {
@@ -1616,10 +1647,12 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
   }
   if ev.kind == CuEventKind.answered {
     if ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME {
+      if ev.result.count > 0 && (agy_has(ev.result, "configOptions") || agy_has(ev.result, "models")) {
+        s[0].sess_json_n = agyw_copy(s[0].sess_json[..], ev.result);
+      }
       mod := agyw_str(s[0].turn_model[..], s[0].turn_model_n);
       eff := agyw_str(s[0].turn_effort[..], s[0].turn_effort_n);
       mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-      s[0].sess_json_n = agyw_copy(s[0].sess_json[..], ev.result);
       s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
       s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
       missed := agy_configure_at(x, ev.result, mod, eff, mode, AGYW_EFFORT);
@@ -1833,16 +1866,9 @@ tool_main :: () -> int #export_c #effects(all) {
               }
             } else {
               // Apply mid-chat model or thinking-level switch on an already-live session before sending prompt.
-              if x[0].ready && (mod != agyw_str(s[0].active_model[..], s[0].active_model_n) || eff != agyw_str(s[0].active_effort[..], s[0].active_effort_n)) {
-                sj := agyw_str(s[0].sess_json[..], s[0].sess_json_n);
+              if !s[0].compact {
                 mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-                missed := agy_configure_at(x, sj, mod, eff, mode, AGYW_EFFORT);
-                if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
-                  cue_set(x, "thought_level", eff);
-                }
-                s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
-                s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
-                agyw_ran(s, x, sj, mod, eff, true);
+                _ = agyw_reconfigure(s, x, mod, eff, mode, true);
               }
               _ = cue_send(x, prompt);
             }
@@ -2306,4 +2332,35 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   ev := CuEvent.{kind = CuEventKind.refused, of = CU_AUTHENTICATE, message = "No browser is available here (this is a remote (SSH) session, so the browser's sign-in redirect can't reach this machine). Run 'agy acp --login'"};
   agyw_handle_event(s, x, ev, true);
   #assert !s[0].turn_active && agyw_logged(s, AGY_SIGNIN_REQUIRED) && !agyw_logged(s, "remote (SSH)");
+}
+
+#test "agyworker: mid-session effort change reconfigures thought_level and holds prompt until applied" {
+  #assert agyw_resolve_effort("xhigh", "") == "xhigh";
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], "low");
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  cu_outbox_clear(x[0].c);
+  agyw_fx_feed(s, x, AGYW_FX_SESSION_NEW);
+  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"low\"");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":3}");
+  // Turn 2: unchanged effort sends no extra set_config_option.
+  cu_outbox_clear(x[0].c);
+  #assert !agyw_reconfigure(s, x, "", "low", "auto", true);
+  #assert !agy_out_has(x, "set_config_option");
+  // Turn 2: switching from low to high sends set_config_option, holds prompt until answered, then streams thoughts.
+  s[0].log_n = 0;
+  #assert agyw_reconfigure(s, x, "", "high", "auto", true);
+  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"high\"");
+  #assert agyw_logged(s, "\"model\":\"gemini-4-carbon-high\"");
+  #assert !cue_send(x, "Think carefully.");
+  #assert !agy_out_has(x, "session/prompt");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":4}");
+  #assert agy_out_has(x, "\"method\":\"session/prompt\"") && agy_out_has(x, "Think carefully.");
+  // Top-level text fallback in agent_thought_chunk also emits a thought line.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"63a19ef3-e900-4141-912a-4f727455dd5b\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"text\":\"Fallback thought\"}}}");
+  #assert agyw_logged(s, "{\"kind\":\"thought\",\"text\":\"Fallback thought\"}");
 }
