@@ -2,7 +2,7 @@
 import SwiftUI
 
 @main
-struct OpenAgentsMacApp: App {
+struct OpenAgentsApp: App {
     @StateObject private var store = AntigravityStore()
     @StateObject private var hostServer = TailscaleHostServer()
     @State private var showCommandPalette = false

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin wrapper: builds Release OpenAgentsMac.app + coder-host + agyworker, runs check.sh, and installs locally; holds no logic).
-# Builds and installs clean-sheet OpenAgents macOS (/Applications/OpenAgentsMac.app),
-# ~/.openagents/bin/coder-host, and ~/.openagents/bin/agyworker (GitHub #13993).
-# Never overwrites legacy /Applications/OpenAgents.app.
+# Firm reason: 5 (thin wrapper: builds Release OpenAgents.app + coder-host + agyworker, runs check.sh, and installs over /Applications/OpenAgents.app; holds no logic).
+# Builds and installs OpenAgents (/Applications/OpenAgents.app), overwriting the existing binary with the same name and icon,
+# plus ~/.openagents/bin/coder-host and ~/.openagents/bin/agyworker (GitHub #13993).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 repo="$(pwd -P)"
@@ -32,14 +31,14 @@ cp -f "$agy_built" "$HOME/.openagents/bin/agyworker.tmp"
 chmod 755 "$HOME/.openagents/bin/agyworker.tmp"
 mv -f "$HOME/.openagents/bin/agyworker.tmp" "$HOME/.openagents/bin/agyworker"
 
-echo "==> Building OpenAgentsMac.app (Release)"
+echo "==> Building OpenAgents.app (Release)"
 cd "$repo/apps/openagents-macos"
 ./generate.sh
 xcodegen generate
-xcodebuild -project OpenAgentsMac.xcodeproj -scheme OpenAgentsMac -configuration Release -sdk macosx \
+xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release -sdk macosx \
   -derivedDataPath build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 
-app="$repo/apps/openagents-macos/build/Build/Products/Release/OpenAgentsMac.app"
+app="$repo/apps/openagents-macos/build/Build/Products/Release/OpenAgents.app"
 mkdir -p "$app/Contents/Resources"
 cp -f "$HOME/.openagents/bin/coder-host" "$app/Contents/Resources/coder-host"
 cp -f "$HOME/.openagents/bin/agyworker" "$app/Contents/Resources/agyworker"
@@ -48,8 +47,48 @@ codesign --force --deep --sign - "$app"
 
 ./check.sh "$app"
 
-dest="/Applications/OpenAgentsMac.app"
-echo "==> Installing $dest"
-rm -rf "$dest"
-ditto "$app" "$dest"
+# Disable legacy desktop auto-updater so it does not overwrite /Applications/OpenAgents.app back.
+legacy_plist="$HOME/Library/LaunchAgents/com.openagents.desktop-update.plist"
+if [[ -f "$legacy_plist" ]]; then
+  launchctl bootout "gui/$(id -u)" "$legacy_plist" 2>/dev/null || true
+  rm -f "$legacy_plist"
+fi
+
+# Remove any separate /Applications/OpenAgentsMac.app from earlier installs.
+if [[ -d "/Applications/OpenAgentsMac.app" ]]; then
+  rm -rf "/Applications/OpenAgentsMac.app"
+fi
+
+dest="/Applications/OpenAgents.app"
+echo "==> Installing $dest (overwriting existing binary)"
+# Gracefully quit running OpenAgents.app unless this script is running inside it.
+running_pids="$(pgrep -f "^$dest/Contents/MacOS/OpenAgents$" || true)"
+if [[ -n "$running_pids" ]]; then
+  in_app=0
+  p=$$
+  while [[ -n "$p" && "$p" -gt 1 ]]; do
+    if [[ " $running_pids " == *" $p "* ]]; then in_app=1; break; fi
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
+  done
+  if [[ "$in_app" == 0 ]]; then
+    osascript -e 'tell application id "com.openagents.desktop" to quit' 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      pgrep -f "^$dest/Contents/MacOS/OpenAgents$" >/dev/null 2>&1 || break
+      sleep 0.2
+    done
+    pkill -TERM -f "^$dest/Contents/MacOS/OpenAgents$" 2>/dev/null || true
+  fi
+fi
+
+stage="$dest.new.$$"
+old="$dest.old.$$"
+rm -rf "$stage" "$old"
+ditto "$app" "$stage"
+if [[ -e "$dest" ]]; then
+  mv "$dest" "$old"
+fi
+mv "$stage" "$dest"
+rm -rf "$old"
+touch "$dest"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest" 2>/dev/null || true
 echo "Installed $dest, $HOME/.openagents/bin/coder-host, and $HOME/.openagents/bin/agyworker"

@@ -16,5 +16,6 @@ Clean-sheet native SwiftUI macOS client and Tailscale Host companion for **Antig
 ```bash
 apps/openagents-macos/build.sh
 apps/openagents-macos/check.sh
-xcodebuild test -project apps/openagents-macos/OpenAgentsMac.xcodeproj -scheme OpenAgentsMacTests -sdk macosx -derivedDataPath apps/openagents-macos/build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
+apps/openagents-macos/install.sh
+xcodebuild test -project apps/openagents-macos/OpenAgents.xcodeproj -scheme OpenAgentsTests -sdk macosx -derivedDataPath apps/openagents-macos/build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 ```

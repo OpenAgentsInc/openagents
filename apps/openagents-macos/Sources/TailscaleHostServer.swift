@@ -618,7 +618,7 @@ final class TailscaleHostServer: ObservableObject {
         }
         paths.append(contentsOf: [
             "\(home)/.openagents/bin/coder-host",
-            "/Applications/OpenAgentsMac.app/Contents/Resources/coder-host",
+            "/Applications/OpenAgents.app/Contents/Resources/coder-host",
             "/opt/homebrew/bin/coder-host",
             "/usr/local/bin/coder-host",
         ])

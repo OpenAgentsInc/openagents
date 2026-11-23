@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around otool, nm, strings and find: fails if OpenAgents macOS links disallowed web/JS/GPU/relay/account symbols or URLs).
 # Enforces clean-sheet Antigravity-over-Tailscale invariants for OpenAgents macOS (GitHub #13993):
-#   apps/openagents-macos/check.sh [PATH/OpenAgentsMac.app]
+#   apps/openagents-macos/check.sh [PATH/OpenAgents.app]
 set -euo pipefail
-app="${1:-$(dirname "$0")/build/Build/Products/Debug/OpenAgentsMac.app}"
+app="${1:-$(dirname "$0")/build/Build/Products/Debug/OpenAgents.app}"
 [ -d "$app" ] || { echo "check: no app at $app"; exit 2; }
 bad=0
 while IFS= read -r b; do

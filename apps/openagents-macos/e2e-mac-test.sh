@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin macOS E2E harness wrapping coax build, xcodebuild, check.sh, live dual-host NIP-44 tests, and package-dmg.sh verification; holds no app logic).
 # Comprehensive OpenAgents macOS End-to-End Test Harness (GitHub #13993, 4.3 & 4.5):
-#   1. Generates Coax C bridge + XcodeGen project, builds OpenAgentsMac.app, and runs check.sh
+#   1. Generates Coax C bridge + XcodeGen project, builds OpenAgents.app, and runs check.sh
 #   2. Spins up live dual Coax NIP-44 TCP hosts (--legacy-v1 strict 16-key + v2 push/approval/workspace)
-#   3. Runs OpenAgentsMacTests (unit + live dual-host NIP-44 E2E including multimodal image + Plan downgrade + approvals + subagent + branch switch)
-#   4. Packages OpenAgentsMac.dmg via package-dmg.sh, mounts it read-only, and verifies bundled coder-host, agyworker, and AppIcon.icns
+#   3. Runs OpenAgentsTests (unit + live dual-host NIP-44 E2E including multimodal image + Plan downgrade + approvals + subagent + branch switch)
+#   4. Packages OpenAgents.dmg via package-dmg.sh, mounts it read-only, and verifies bundled coder-host, agyworker, and AppIcon.icns
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -33,13 +33,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> [1/4] Generating Coax C bridge, building OpenAgentsMac.app, and checking invariants"
+echo "==> [1/4] Generating Coax C bridge, building OpenAgents.app, and checking invariants"
 cd "$repo/apps/openagents-macos"
 ./generate.sh
 xcodegen generate
-xcodebuild -project OpenAgentsMac.xcodeproj -scheme OpenAgentsMac -configuration Debug -sdk macosx \
+xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Debug -sdk macosx \
   -derivedDataPath "$tmp/derived" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
-./check.sh "$tmp/derived/Build/Products/Debug/OpenAgentsMac.app"
+./check.sh "$tmp/derived/Build/Products/Debug/OpenAgents.app"
 
 echo "==> [2/4] Starting live dual Coax NIP-44 TCP hosts (legacy v1 + modern v2)"
 cd "$repo"
@@ -58,15 +58,15 @@ legacy_port="$(awk '{print $1}' "$tmp/legacy.port")"
 v2_port="$(awk '{print $1}' "$tmp/v2.port")"
 echo "Live E2E hosts ready: legacy-v1=127.0.0.1:$legacy_port, v2=127.0.0.1:$v2_port"
 
-echo "==> [3/4] Running OpenAgentsMacTests (unit + live dual-host NIP-44 E2E)"
+echo "==> [3/4] Running OpenAgentsTests (unit + live dual-host NIP-44 E2E)"
 cd "$repo/apps/openagents-macos"
 OA_MAC_E2E_LEGACY_PORT="$legacy_port" OA_MAC_E2E_V2_PORT="$v2_port" \
-  xcodebuild -project OpenAgentsMac.xcodeproj -scheme OpenAgentsMacTests -configuration Debug -sdk macosx \
+  xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgentsTests -configuration Debug -sdk macosx \
   -derivedDataPath "$tmp/derived" CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 
-echo "==> [4/4] Packaging & verifying OpenAgentsMac.dmg (bundled coder-host + agyworker + AppIcon)"
+echo "==> [4/4] Packaging & verifying OpenAgents.dmg (bundled coder-host + agyworker + AppIcon)"
 ./package-dmg.sh "$tmp/dist"
-dmg="$tmp/dist/OpenAgentsMac.dmg"
+dmg="$tmp/dist/OpenAgents.dmg"
 test -s "$dmg"
 
 mount_pt="$tmp/mnt"
@@ -74,12 +74,12 @@ mkdir -p "$mount_pt"
 hdiutil attach "$dmg" -mountpoint "$mount_pt" -nobrowse -readonly -quiet
 mounted_vol="$mount_pt"
 
-test -d "$mount_pt/OpenAgentsMac.app"
+test -d "$mount_pt/OpenAgents.app"
 test -L "$mount_pt/Applications"
-test -x "$mount_pt/OpenAgentsMac.app/Contents/Resources/coder-host"
-test -x "$mount_pt/OpenAgentsMac.app/Contents/Resources/agyworker"
-test -s "$mount_pt/OpenAgentsMac.app/Contents/Resources/AppIcon.icns"
-./check.sh "$mount_pt/OpenAgentsMac.app"
+test -x "$mount_pt/OpenAgents.app/Contents/Resources/coder-host"
+test -x "$mount_pt/OpenAgents.app/Contents/Resources/agyworker"
+test -s "$mount_pt/OpenAgents.app/Contents/Resources/AppIcon.icns"
+./check.sh "$mount_pt/OpenAgents.app"
 
 hdiutil detach "$mount_pt" -quiet
 mounted_vol=""

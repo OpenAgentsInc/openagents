@@ -3,7 +3,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest
-@testable import OpenAgentsMac
+@testable import OpenAgents
 
 final class MacClientTests: XCTestCase {
     func testSharedCoaxAntigravityPolicyAndReviewModes() throws {

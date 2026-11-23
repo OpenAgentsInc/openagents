@@ -1,7 +1,7 @@
 // Native Tailscale TCP listener + same-owner admission + relay-free direct grants + real-time
 // runs/ push broadcaster inside `coder host serve` (#13993 Phase 1.5).
 // Enables headless Linux hosts and Macs to stay reachable directly over Tailscale port 47109
-// even when OpenAgentsMac.app GUI is closed (zero public relays).
+// even when OpenAgents.app GUI is closed (zero public relays).
 
 HT_SRV_PEERS :: 8;
 HT_SRV_LINE :: 140000;
@@ -186,7 +186,7 @@ ht_srv_start :: (h: [] HsHost, srv: [] HtTailnetServer, args: [] Args) #effects(
   for c: bind_ip { _ = cxsock_host_push(cast(int) c); }
   fd := cxsock_listen_ip(port);
   if fd < 0 {
-    // If port 47109 is already owned by OpenAgentsMac.app companion server, keep service.sock running cleanly.
+    // If port 47109 is already owned by OpenAgents.app companion server, keep service.sock running cleanly.
     return;
   }
   srv[0].listener = fd;

@@ -130,9 +130,7 @@ ph_tool :: (name: string, out: [] u8) -> string {
     p := fs_join(cast(string) ob[0..<on], name, out);
     if fs_kind(p) == FS_FILE { return p; }
   }
-  p := fs_join("/Applications/OpenAgentsMac.app/Contents/Resources", name, out);
-  if fs_kind(p) == FS_FILE { return p; }
-  p = fs_join("/Applications/OpenAgents.app/Contents/Resources", name, out);
+  p := fs_join("/Applications/OpenAgents.app/Contents/Resources", name, out);
   if fs_kind(p) == FS_FILE { return p; }
   if home.count > 0 {
     ab: [1400] u8; an := hs_cat(ab[..], 0, home); an = hs_cat(ab[..], an, "/Applications/OpenAgents.app/Contents/Resources");

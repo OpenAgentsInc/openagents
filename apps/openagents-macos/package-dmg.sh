@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin release packaging wrapper around coax build, xcodebuild, codesign, notarytool, and hdiutil; holds no application logic).
-# Packages a self-contained OpenAgentsMac.dmg bundling OpenAgentsMac.app + coder-host + agyworker (GitHub #13993).
+# Packages a self-contained OpenAgents.dmg bundling OpenAgents.app + coder-host + agyworker (GitHub #13993).
 # Optional signing & notarization:
 #   MACOS_CODESIGN_IDENTITY="Developer ID Application: ..." NOTARY_PROFILE="openagents-notary" ./package-dmg.sh [OUT_DIR]
 set -euo pipefail
@@ -28,17 +28,17 @@ cp -f "$repo/coax/web/build/tools/host-$compiler_hash" "$stage/coder-host"
 cp -f "$repo/coax/web/build/tools/agyworker-$compiler_hash" "$stage/agyworker"
 chmod 755 "$stage/coder-host" "$stage/agyworker"
 
-echo "==> [2/4] Building OpenAgentsMac.app (Release)"
+echo "==> [2/4] Building OpenAgents.app (Release)"
 cd "$repo/apps/openagents-macos"
 ./generate.sh
 xcodegen generate
 sign_id="${MACOS_CODESIGN_IDENTITY:--}"
-xcodebuild -project OpenAgentsMac.xcodeproj -scheme OpenAgentsMac -configuration Release -sdk macosx \
+xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release -sdk macosx \
   -derivedDataPath "$stage/derived" \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="$sign_id" build
 
-app="$stage/OpenAgentsMac.app"
-ditto "$stage/derived/Build/Products/Release/OpenAgentsMac.app" "$app"
+app="$stage/OpenAgents.app"
+ditto "$stage/derived/Build/Products/Release/OpenAgents.app" "$app"
 mkdir -p "$app/Contents/Resources"
 cp -f "$stage/coder-host" "$app/Contents/Resources/coder-host"
 cp -f "$stage/agyworker" "$app/Contents/Resources/agyworker"
@@ -54,15 +54,15 @@ else
 fi
 ./check.sh "$app"
 
-echo "==> [4/4] Creating OpenAgentsMac.dmg"
+echo "==> [4/4] Creating OpenAgents.dmg"
 dmg_root="$stage/dmg-root"
 mkdir -p "$dmg_root"
-ditto "$app" "$dmg_root/OpenAgentsMac.app"
+ditto "$app" "$dmg_root/OpenAgents.app"
 ln -s /Applications "$dmg_root/Applications"
 
-dmg_path="$out_dir/OpenAgentsMac.dmg"
+dmg_path="$out_dir/OpenAgents.dmg"
 rm -f "$dmg_path"
-hdiutil create -volname "OpenAgents macOS" -srcfolder "$dmg_root" -ov -format UDZO "$dmg_path" >/dev/null
+hdiutil create -volname "OpenAgents" -srcfolder "$dmg_root" -ov -format UDZO "$dmg_path" >/dev/null
 
 if [[ "$sign_id" != "-" ]]; then
   codesign --force --timestamp --sign "$sign_id" "$dmg_path"

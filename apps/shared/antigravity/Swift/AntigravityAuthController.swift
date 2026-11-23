@@ -400,7 +400,6 @@ final class AntigravityAuthController: ObservableObject {
         }
         extra.append(contentsOf: [
             "\(home)/.openagents/bin/agyworker",
-            "/Applications/OpenAgentsMac.app/Contents/Resources/agyworker",
             "/Applications/OpenAgents.app/Contents/Resources/agyworker",
             "/opt/homebrew/bin/agyworker",
             "/usr/local/bin/agyworker",
