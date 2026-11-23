@@ -13,7 +13,7 @@ match.
 
 ```shell
 $ coax run psionic/examples/inkling-cpu.coax
-Inkling 2 Mini checkpoint admitted: 24 layers (2 prelude + 18x3 loop + 4 postlude)
+Inkling 2 Mini checkpoint admitted: 24 layers (6 prelude + 12x3 loop + 6 postlude)
 chat template formatted: 109 bytes
 CPU greedy next token: 1
 ```
@@ -56,7 +56,7 @@ InklingDecodeStep :: struct {
 ```jai
 main :: () {
     spec := InklingCheckpointSpec.{
-        total_layers=24, prelude_layers=2, loop_layers=18, postlude_layers=4,
+        total_layers=24, prelude_layers=6, loop_layers=12, postlude_layers=6,
         loop_count=3, dim=4, vocab_size=4, experts=4, top_k=2,
         shard_bytes=20480, min_shard_bytes=20000
     };

@@ -14,9 +14,9 @@
 ### Target Model: Inkling 2 Mini (`inkling2_loop`)
 - **Checkpoint:** `Inkling-2-Mini-IQ4_NL.gguf` (16.4 GB on disk)
 - **Architecture:** Looped Mixture-of-Experts (`inkling2_loop`), 26.4B total / 3.4B active parameters:
-  - **Looped depth:** 15 unique transformer blocks executed across 2 loop iterations (30 logical layers), with per-loop control projections (`ctrl_down`, `ctrl_up`), 4-state residual mixing (`mix`), and attention sinks.
-  - **Hybrid attention:** Sliding-window attention (SWA) and global Grouped-Query Attention (GQA, 3:1 Q:KV head ratio) with per-head RMSNorm and QK clipping.
-  - **Sparse MoE:** 64 experts, top-6 active per token, `IQ4_NL` 4-bit quantized expert gate/up and down weights.
+  - **Looped depth:** 24 physical transformer blocks (`6` prelude + `12` looped × `3` passes + `6` postlude = **48 logical slots**), with per-loop control projections (`ctrl_down`, `ctrl_up`), 4-state residual mixing (`mix`), and attention sinks.
+  - **Hybrid attention:** 5:1 Sliding-Window Attention (`SWA-1024`, 40 logical slots) and global Grouped-Query Attention (GQA, 8 logical slots, 3:1 Q:KV head ratio, `head_dim=128`) with per-head RMSNorm and QK clipping.
+  - **Sparse MoE:** 128 experts, top-8 active per token, `IQ4_NL` 4-bit quantized expert gate/up and down weights (`d=2304`, `n_ff_exp=1152`).
   - **Mixed quantization:** `IQ4_NL` for MoE experts, `Q8_0` for dense QKV/O projections and LM head, `F32` for router, loop-control, and sink projections.
 
 ### Runtime Architecture
@@ -223,6 +223,35 @@ To break past the pure single-token bandwidth wall (`~130 tok/s` idle `INK_FAST_
 
 ---
 
+### Sprints A–G — Metal 4 FlashAttention, Lossless `Q8S` + `Q8_0` KV, GPU Top-64, Adaptive DSpark, & Async `DiskPromptCache`
+
+Following Sprint 72, we redesigned seven core layers of the Psionic Metal 4 engine (100% Coax-native `#authority` primitives in `coax/lib/compute/apple.coax` lowered through `coax/src/{compute,emit_c}.cpp`, zero hand-written `.metal` kernels):
+
+1. **Metal 4 Runtime & Binary Archive (`metal-host.{h,m}`):** On-disk `MTLBinaryArchive` cache (`~/.openagents/cache/psionic/metal-*.binarchive`, `--test-quant-kernels` compile `0.01 s`), parallel PSO compilation, zero-allocation Metal 4 batch slots, and fixed `PM_PASS_PROF` timing.
+2. **100% Lossless Aligned `Q8S` + `IQ4S` + Block-32 `Q8_0` KV (`apple.coax`, `kernels.coax`, `inkling-metal.c`):** Repacked `Q8_0` weights into aligned `Q8S` (`qs[] u32` + `ds[] u16`), `IQ4_NL` MoE into zero-tail-waste `IQ4S`, and default KV cache into block-32 `Q8_0` (`INK_KV_Q8=1`) with 3-head GQA Split-K decode (`KV RAM -47%`: `772 → 412 MiB` at `ctx=4096`, `max_ctx 3.44M → 6.49M` on 128 GB M5 Max; `--verify-prefill-decode cos=0.999968, top1_diff=0.07926, ok=true`).
+3. **GPU Exact Top-64 Sampling & Fused Adaptive DSpark (`ink_topk64_s1/s2`, `ink_dspark_fold_logits_s1`, `ink_dspark_markov_step`):** Eliminated the 200K-vocab CPU sampling bottleneck for `temp > 0` (`short_q8_t06` decode `74.2 → 88.4 tok/s`, matching greedy `89.6 tok/s`), collapsed DSpark logit folding into 1 dispatch + 32-TG warp-parallel Markov steps, and added Ch 102 online-timed `E(k)/c(k)` adaptive draft-length control (`12K ctx` `Q4S+DSpark` decode `39.1 → 78.1 tok/s`, **`2.00×`**, `itl_p95` `61.7 → 15.2 ms`, **`4.07×`** lower tail latency).
+4. **1-Pass Metal 4 FlashAttention + Aligned In-Tile `IQ4S`/`Q8S` Neural Accelerator GEMMs + Zero-Scatter MoE (`am_flash_attn_m4`, `am_matmul_{iq4s,q8s}_bf16`, `am_moe_sum_gather`):** Replaced materialized attention score buffers (`2.3 GB → 3.2 MB`) with `BM=32, BN=32` 26 KB TGEM reverse-causal FlashAttention (native FP16 KV decode, `half4` `fma` RelBias, conditional rescale skip), eliminated `w_bf16` staging for all dense QKV/R/G/O and MoE projections (`TM=128` beat `TM=256` by 13% due to 64- vs 128-register pressure), and deleted `K_MOE_SCATTER_WT` (`-7` to `-21 GB` DRAM writes per chunk). Combined with `compact_or_wrap_weights()` + streaming `madvise(MADV_DONTNEED)`, peak footprint stays at `19.75 GiB` while cold 2K–4K prefill jumps **`2.38×–2.69×`** (`857 → 2,038–2,315 tok/s`).
+5. **Serving Tier: Pre-`<|end_message|>` Prefix Checkpoints, Async NVMe `DiskPromptCache`, & HTTP/1.1 Keep-Alive (`inkling-serve.c`, `inkling-metal.c`):** Checkpointing at `n_prompt - 1` right before `<|end_message|>` gives follow-up prompts **~99.7% RAM prefix cache hits** (`ctx_4096_cached` `4,651` tok TTFT **`3.50 s → 0.15 s`**, **`22.7×`**), while a dedicated background pthread writes atomic `.inkp` snapshots (`~/.openagents/cache/psionic/prompts/`, max 8 LRU, opt-out `INK_NO_DISK_CACHE=1`) with **zero TTFT/decode stall** — restoring a `5,065`-token prompt across a full server restart in **`39–48 ms`** (**`46×–67×` faster than cold**, 100% bit-exact output parity).
+
+| Workload (Apple M5 Max, 128 GB, Metal 4) | Pre-Hillclimb (`iter0`) | **Optimized (`iter4` idle / `final`)** | Gain |
+| --- | ---: | ---: | ---: |
+| **CLI `short_q8_t0` (`24` tok) prefill / decode** | `1.729 s` (`13.9 tok/s`) / `84.91 tok/s` | **`0.258 s` (`93.2 tok/s`) / `89.61 tok/s`** | **`6.70×` prefill / `+5.5%` decode** |
+| **CLI `short_q8_t06` (`temp=0.6`) decode** | `74.19 tok/s` | **`88.38 tok/s`** | **`+19.1%` (GPU exact Top-64)** |
+| **CLI `med2k_q8_t0` (`2,238` tok) prefill / decode** | `857.1 tok/s` / `60.14 tok/s` | **`2,037.6 tok/s` / `82.88 tok/s`** | **`2.38×` prefill / `+37.8%` decode** |
+| **Server `q8_t0` `ctx_32_cold` TTFT** | `1.790 s` | **`0.102–0.112 s`** | **`16.0×–17.5×` faster** |
+| **Server `q8_t0` `ctx_4096_cold` (`4,638` tok) TTFT / decode** | `2.891 s` / `40.25 tok/s` | **`2.004 s` (`2,315 tok/s`) / `80.59 tok/s`** *(idle)* | **`1.44×` TTFT / `2.00×` decode** |
+| **Server `q8_t0` `ctx_4096_cached` (`4,651` tok) RAM TTFT** | `3.495 s` | **`0.154 s`** | **`22.7×` faster** |
+| **Server `q8_t06` `ctx_4096_cached` (`4,651` tok) TTFT / decode** | `3.089 s` / `49.67 tok/s` | **`0.147 s` / `77.85 tok/s`** | **`21.0×` TTFT / `+56.7%` decode** |
+| **Server `q8_t0` `ctx_12000` (`13,638` tok) TTFT / decode** | `10.48 s` / `52.90 tok/s` | **`9.04–9.09 s` / `72.70 tok/s`** *(idle)* | **`-13.7%` TTFT / `+37.4%` decode** |
+| **Server `q4_dspark_t0` `ctx_32_cold` decode / `itl_p95`** | `99.99 tok/s` / `30.28 ms` | **`106.28 tok/s` / `10.57 ms`** | **`+6.3%` decode / `2.86×` lower p95** |
+| **Server `q4_dspark_t0` `ctx_12000` decode / `itl_p95`** | `39.09 tok/s` / `61.74 ms` | **`78.11 tok/s` / `15.16 ms`** | **`2.00×` decode / `4.07×` lower p95** |
+| **Cross-restart SSD `DiskPromptCache` (`5,065` tok) TTFT** | `2.224 s` (cold) | **`0.039–0.048 s`** *(bit-exact parity)* | **`46×–67×` faster across restarts** |
+| **KV cache RAM (`ctx=4096`) / `attn_scores` scratch** | `772 MiB` / `2.3 GB` | **`412 MiB` (`max_ctx 6.49M`) / `3.2 MB`** | **`-46.6%` KV / `-99.9%` score scratch** |
+
+- **Sprints A–G Verification Gates:** `coax test coax/lib/compute/apple.coax --library` (`20/20`), `coax mutate coax/lib/compute/apple.coax --library --changed origin/main` (**2,128 mutants, 2,077 killed, 0 survived, 51 marked equivalent**), `run_metal_host.sh`, `run_metal_kernels.sh`, `metal-parity.coax` (`8/8`), `metal_compute.py` (`13/13`), `--test-quant-kernels` (`0.00e+00`), `--verify-prefill-decode` (`cos=0.999968` Q8 KV / `0.999967` FP16 KV / `0.999716` `INK_FAST_Q4=1` / `0.999968` `INK_Q4_LM_HEAD=1`), `psionic/tests/book.py --book psionic` (`369` programs, `1,894` source-linked listings), `book_inventory_test.py` (`6/6`).
+
+---
+
 ## 4. What Didn't Work (M5 Max Hardware Lessons)
 
 Not every hypothesis won. We benchmarked and reverted the following regressions so future work does not repeat them:
@@ -277,9 +306,11 @@ psionic-inkling-serve \
 - **`#authority` & regression gates:** `coax/lib/compute/apple.coax` mutation check **`3,556` mutants, `3,525` killed, `0` survived, `31` equivalent**; `run_metal_host.sh`, `run_metal_kernels.sh`, `metal-parity.coax` (`8/8`), `metal_compute.py` (`13/13`), `kernels.coax` (`17/17`), `--test-quant-kernels` (`0.00e+00`) all passed; `host_clean.py` extended with `ioreg IOAccelerator` GPU-utilization gating (`8/8` tests).
 
 ### Next Levers
-1. **Clean-host (`0%` `IOAccelerator`) 128..24K curve & global KV quantization:** Re-measure the full 128..24K curve once external Mac GPU load clears, and evaluate Q8_0/FP8 quantization on the 8 global attention KV caches (mirroring our CUDA FP8 E4M3 KV win).
-2. **SSD cold-tier prompt cache (`DiskPromptCache`):** Persist the 8-slot SWA-backed prefix snapshots to disk so chat switches and Desktop restarts avoid cold 16K–32K prefill.
-3. **Native NVFP4/MXFP8 safetensors loader:** Cut weight bandwidth further without 4-bit attention degradation and unlock 24 GB Apple Silicon Macs.
+*(Block-32 `Q8_0` KV quantization and async NVMe `DiskPromptCache` landed in Sprints A–G above.)*
+
+1. **Native NVFP4/MXFP8 safetensors loader (`inkling-metal.c`):** Directly execute Inkling 2 Mini's native NVFP4/MXFP8 weights using our already-verified `ink_dv_nvfp4` / `ink_dv_mxfp8` kernels to cut decode bytes/token without GGUF re-quantization and unlock 24 GB Apple Silicon Macs.
+2. **Continuous multi-request batching & PagedAttention (Chapters 175–176):** Schedule concurrent agent requests in the same decode step and share prefix pages across sessions without copying KV slices.
+3. **Sub-4-bit / FP8 KV tiers at 64K–256K context:** Pair block-32 `Q8_0` KV with quantized long-tail blocks for 100K+ agent transcripts on 32 GB Macs.
 
 ---
 

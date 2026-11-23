@@ -2,6 +2,7 @@
 #include "inkling-gguf.h"
 #include "metal-host.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
@@ -188,6 +189,40 @@ enum {
     K_DSPARK_LOGITS_S1,
     K_DSPARK_FOLD_LOGITS_S1,
     K_DSPARK_LOGITS_S2,
+    K_DV_Q8S_QRGKV_SDYN,
+    K_DV_Q8S_CONV,
+    K_DV_Q8S_RMS,
+    K_DV_Q8S_SMALL_RMS,
+    K_DV_Q8S_CTRL_DOWN_3,
+    K_MOE_GU_Q8S,
+    K_MOE_DOWN_Q8S,
+    K_DV_Q8S_NB,
+    K_DV_Q8S_QRGKV_SDYN_NB,
+    K_DV_Q8S_CONV_NB,
+    K_DV_Q8S_SMALL_NB,
+    K_MOE_GU_Q8S_NB,
+    K_MOE_DOWN_Q8S_NB,
+    K_KV_ATTN_GQA3_SPLIT,
+    K_KV_ATTN_GQA3_SPLIT_NB,
+    K_ATTN_GQA3_REDUCE_NB,
+    K_KV_STORE_BATCH_Q8,
+    K_TOPK64_S1,
+    K_TOPK64_S2,
+    K_FLASH_ATTN_M4,
+    K_MM_Q8S_BF16_16,
+    K_MM_Q8S_BF16_64,
+    K_MM_Q8S_BF16_128,
+    K_MOE_MM_IQ4S_16,
+    K_MOE_MM_IQ4S_64,
+    K_MOE_MM_IQ4S_128,
+    K_MOE_MM_IQ4S_256,
+    K_MOE_MM_Q8S_16,
+    K_MOE_MM_Q8S_64,
+    K_MOE_MM_Q8S_128,
+    K_SITU_BATCH_BF16_V2,
+    K_MOE_GATHER_BF16_V2,
+    K_MOE_SUM_GATHER_BATCH,
+    K_DEQUANT_Q8S_BF16,
     K_COUNT
 };
 
@@ -355,6 +390,40 @@ static const char *const k_names[K_COUNT] = {
     "ink_dspark_logits_s1",
     "ink_dspark_fold_logits_s1",
     "ink_dspark_logits_s2",
+    "ink_dv_q8s_qrgkv_sdyn",
+    "ink_dv_q8s_conv",
+    "ink_dv_q8s_rms",
+    "ink_dv_q8s_small_rms",
+    "ink_dv_q8s_ctrl_down_3",
+    "ink_moe_gu_q8s",
+    "ink_moe_down_q8s",
+    "ink_dv_q8s_nb",
+    "ink_dv_q8s_qrgkv_sdyn_nb",
+    "ink_dv_q8s_conv_nb",
+    "ink_dv_q8s_small_nb",
+    "ink_moe_gu_q8s_nb",
+    "ink_moe_down_q8s_nb",
+    "ink_kv_attn_gqa3_split",
+    "ink_kv_attn_gqa3_split_nb",
+    "ink_attn_gqa3_reduce_nb",
+    "ink_kv_store_batch_q8",
+    "ink_topk64_s1",
+    "ink_topk64_s2",
+    "ink_flash_attn_m4",
+    "ink_mm_q8s_bf16_16",
+    "ink_mm_q8s_bf16_64",
+    "ink_mm_q8s_bf16_128",
+    "ink_moe_mm_iq4s_16",
+    "ink_moe_mm_iq4s_64",
+    "ink_moe_mm_iq4s_128",
+    "ink_moe_mm_iq4s_256",
+    "ink_moe_mm_q8s_16",
+    "ink_moe_mm_q8s_64",
+    "ink_moe_mm_q8s_128",
+    "ink_situ_batch_bf16_v2",
+    "ink_moe_gather_bf16_v2",
+    "ink_moe_sum_gather_batch",
+    "ink_dequant_q8s_bf16",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
@@ -521,6 +590,40 @@ static const int64_t k_lanes[K_COUNT] = {
     256,    /* K_DSPARK_LOGITS_S1 */
     256,    /* K_DSPARK_FOLD_LOGITS_S1 */
     64,     /* K_DSPARK_LOGITS_S2 */
+    128,    /* K_DV_Q8S_QRGKV_SDYN */
+    128,    /* K_DV_Q8S_CONV */
+    128,    /* K_DV_Q8S_RMS */
+    128,    /* K_DV_Q8S_SMALL_RMS */
+    128,    /* K_DV_Q8S_CTRL_DOWN_3 */
+    128,    /* K_MOE_GU_Q8S */
+    128,    /* K_MOE_DOWN_Q8S */
+    128,    /* K_DV_Q8S_NB */
+    128,    /* K_DV_Q8S_QRGKV_SDYN_NB */
+    128,    /* K_DV_Q8S_CONV_NB */
+    128,    /* K_DV_Q8S_SMALL_NB */
+    128,    /* K_MOE_GU_Q8S_NB */
+    128,    /* K_MOE_DOWN_Q8S_NB */
+    256,    /* K_KV_ATTN_GQA3_SPLIT */
+    256,    /* K_KV_ATTN_GQA3_SPLIT_NB */
+    128,    /* K_ATTN_GQA3_REDUCE_NB */
+    128,    /* K_KV_STORE_BATCH_Q8 */
+    256,    /* K_TOPK64_S1 */
+    256,    /* K_TOPK64_S2 */
+    128,    /* K_FLASH_ATTN_M4 */
+    128,    /* K_MM_Q8S_BF16_16 */
+    128,    /* K_MM_Q8S_BF16_64 */
+    128,    /* K_MM_Q8S_BF16_128 */
+    128,    /* K_MOE_MM_IQ4S_16 */
+    128,    /* K_MOE_MM_IQ4S_64 */
+    128,    /* K_MOE_MM_IQ4S_128 */
+    128,    /* K_MOE_MM_IQ4S_256 */
+    128,    /* K_MOE_MM_Q8S_16 */
+    128,    /* K_MOE_MM_Q8S_64 */
+    128,    /* K_MOE_MM_Q8S_128 */
+    128,    /* K_SITU_BATCH_BF16_V2 */
+    128,    /* K_MOE_GATHER_BF16_V2 */
+    128,    /* K_MOE_SUM_GATHER_BATCH */
+    96,     /* K_DEQUANT_Q8S_BF16 */
 };
 
 typedef struct {
@@ -653,11 +756,16 @@ typedef struct {
     int req_disabled;
     int req_rounds;
     int skip_mult;
+    int consec_unprof;
     float ema_acc;
     float util_ema;
     double b1_ema_s;
     double last_draft_s;
     double last_verify_s;
+    float ema_draft_ms;
+    float ema_cal;
+    float ema_net_speedup;
+    float last_draft_ms;
     int rounds;
     int drafted;
     int accepted;
@@ -674,6 +782,8 @@ struct InkSession {
     FastLayer fast_layers[INK_MAX_SLOTS];
     FastSpan fast_output;
     FastQ4S fast_output_s;
+    int fast_is_q8s;       /* 1 when *_s spans store lossless 32B/block Q8S instead of 16B/block Q4S */
+    int fast_output_is_q4s;/* 1 when fast_output_s stores 16B/block Q4S (INK_FAST_Q4=1 or INK_Q4_LM_HEAD=1) */
 
     /* Scratch activation buffers (all f32 except moe_ids u32 and kv_k/kv_v u16) */
     PmBuffer cur;
@@ -731,12 +841,23 @@ struct InkSession {
     PmBuffer argmax_vals;       /* [64] f32 */
     PmBuffer argmax_ids;        /* [64] u32 */
     PmBuffer argmax_out_buf[2]; /* [1] u32 double-buffered GPU argmax */
-    PmBuffer topk_cnt[2];       /* [256] u32 GPU top-k filter per-TG counts */
-    PmBuffer topk_ids[2];       /* [256 * 16] u32 GPU top-k filter token ids */
-    PmBuffer topk_vals[2];      /* [256 * 16] f32 GPU top-k filter logits */
-    PmBuffer spec_topk_cnt;     /* [8 * 256] u32 spec verify top-k filter counts */
-    PmBuffer spec_topk_ids;     /* [8 * 256 * 16] u32 */
-    PmBuffer spec_topk_vals;    /* [8 * 256 * 16] f32 */
+    PmBuffer topk_s1_vals;      /* [8 * 32 * 64] f32 Sprint D GPU exact Top-64 stage 1 */
+    PmBuffer topk_s1_ids;       /* [8 * 32 * 64] u32 */
+    PmBuffer topk_vals[2];      /* [64] f32 sorted top-64 values per decode slot */
+    PmBuffer topk_ids[2];       /* [64] u32 sorted top-64 token ids per decode slot */
+    PmBuffer spec_topk_vals;    /* [8 * 64] f32 sorted top-64 for B=2..8 verify slots */
+    PmBuffer spec_topk_ids;     /* [8 * 64] u32 */
+    int sampled_mode;           /* 1 when ink_sample called with temp > 1e-6f */
+    float ema_base_ms;          /* Ch 102 online EMA of B=1 decode step GPU time (ms) */
+    float ema_vratio[9];        /* Ch 102 online EMA of t_verify(nb) / ema_base_ms for nb=2..8 */
+    float last_verify_ms;
+    int spec_round_open;        /* sampled-mode deferred telemetry for open spec_q */
+    int spec_round_dspark;
+    int spec_round_m;
+    int spec_round_match_n;
+    int spec_round_hits;
+    float spec_round_pred;
+    float spec_round_cost_ms;
     int active_out_slot;
     int hidden_is_prefill;
     int argmax_valid;
@@ -797,6 +918,10 @@ struct InkSession {
     int n_slots;
     int max_ctx;
     int prefill_b;
+    int kv_q8;
+    int64_t kv_row_u16;
+    uint64_t model_fp;            /* Ch 176 DiskPromptCache model + KV-format fingerprint */
+    size_t attn_scores_bytes;
     InkMemoryBudget budget;
     int kv_cap[INK_MAX_SLOTS];
     PmBuffer kv_k[INK_MAX_SLOTS]; /* [kv_cap * n_kv_elem] u16 */
@@ -833,6 +958,22 @@ struct InkSession {
         int dspark_pos;
         float   *dspark_last_taps;
     } snaps[INK_MAX_SNAPS];
+    /* Ch 176 async background NVMe writer for DiskPromptCache (zero TTFT/decode stall) */
+    pthread_t disk_thr;
+    pthread_mutex_t disk_mu;
+    pthread_cond_t disk_cv;
+    int disk_thr_started;
+    int disk_stop;
+    struct {
+        char dir[512];
+        char final_path[640];
+        char tmp_path[680];
+        uint8_t *payload;
+        size_t payload_bytes;
+    } disk_q[4];
+    int disk_q_head;
+    int disk_q_tail;
+    int disk_q_len;
     double total_gpu_seconds;
     int total_steps;
     char error[512];
@@ -1009,6 +1150,16 @@ static void prof_mark(PmBatch *bp, int slot) {
     pm_begin_concurrent(bp);
 }
 
+static int64_t ink_choose_attn_splits(const InkSession *s, int64_t n_keys, int64_t nb) {
+    int64_t n_head = s->gguf.hp.n_head;
+    int64_t sp = (n_keys <= 384) ? 1 : (n_keys <= 1024) ? 8 : (n_keys <= 4096) ? 16 : 32;
+    int64_t max_sp = (int64_t)(s->attn_scores_bytes / (size_t)(nb * n_head * 132 * 4));
+    if (max_sp > 32) max_sp = 32;
+    if (sp > max_sp) sp = max_sp;
+    if (sp < 1) sp = 1;
+    return sp;
+}
+
 static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, int bank_n_blocks, float tau) {
     PmBatch batch = *bp;
     const InkHParams *hp = &s->gguf.hp;
@@ -1113,7 +1264,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         }
         int use_mma_b1 = (s->can_verify_nb && getenv("INK_NO_MMA32") == NULL);
         if (s->fast_buf && FL->ctrl_down_qkv_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_CTRL_DOWN_3, 3 * rank, a_int(rank), a_int(2 * d),
+            CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_CTRL_DOWN_3 : K_DV_Q4S_CTRL_DOWN_3, 3 * rank, a_int(rank), a_int(2 * d),
                  a_fast_u32(s, &FL->ctrl_down_qkv_s.qs), a_fast_u16(s, &FL->ctrl_down_qkv_s.ds),
                  a_f32v(s->ctrl_cat, 0, 6 * d), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->ctrl_gate, 0, 3 * rank));
         } else if (use_mma_b1 && s->fast_buf && FL->ctrl_down_qkv_q4.off >= 0) {
@@ -1245,7 +1396,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     int use_mma_b1 = (s->can_verify_nb && getenv("INK_NO_MMA32") == NULL);
     int use_1pass = (n_head == n_head_kv * 3 && hd == 128 && n_keys_attn >= 1 && (is_swa || n_keys_attn <= 4096 || s->can_verify_nb));
     int64_t dyn_sz = n_head_kv * hp->conv_len;
-    if (use_mma_b1 && s->fast_buf && FL->attn_q_s.qs.off >= 0 && FL->attn_sink_s.qs.off >= 0 && has_k_dyn == has_v_dyn) {
+    if (use_mma_b1 && s->fast_buf && !s->fast_is_q8s && FL->attn_q_s.qs.off >= 0 && FL->attn_sink_s.qs.off >= 0 && has_k_dyn == has_v_dyn) {
         if (deferred_rms) {
             CALL(s, batch, K_SCALE_RMS_PARTS_NB, 3, a_int(d), a_int(1), a_int(qkv_rms_parts), a_f32(hp->rms_eps),
                  a_f32v(s->rms_parts, 0, 3 * 128),
@@ -1324,7 +1475,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
         uint32_t sd0 = (uint32_t)n_q | ((uint32_t)(n_head * n_rel) << 16);
         uint32_t sd1 = (uint32_t)n_kv | ((uint32_t)n_head << 16);
         uint32_t sd2 = (uint32_t)n_dyn_use | ((uint32_t)(deferred_rms ? qkv_rms_parts : 0) << 16);
-        CALL(s, batch, K_DV_Q4S_QRGKV_SDYN, (tot_rows + 7) / 8,
+        CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_QRGKV_SDYN : K_DV_Q4S_QRGKV_SDYN, (tot_rows + 7) / 8,
              a_u32(sd0), a_u32(sd1), a_u32(sd2), a_int(d), a_f32(hp->rms_eps),
              a_fast_u32(s, &FL->attn_qrgkv_s.qs), a_fast_u16(s, &FL->attn_qrgkv_s.ds),
              a_f32v(q_in, 0, d), a_f32v(k_in, 0, d), a_f32v(v_in, 0, d),
@@ -1387,11 +1538,46 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     pm_barrier(batch);
     prof_mark(bp, 1); batch = *bp; /* 1: attn input projs (Q/K/V/R/Gate/Sinks/Dyn) */
 
-    /* Wave 4+5 (Sprint 62): Fused 1-dispatch K+V conv+clip/norm+KV-store + 3-head GQA Flash-Decoding (-48 dispatches & -48 barriers, 3x less KV reads!) */
+    /* Wave 4+5 (Sprint C): Fused 3-head GQA Split-K + Q8_0 KV cache (5.65x fewer KV DRAM bytes + 40-core saturation!) */
     float q_tau = is_swa ? 1.0f : tau;
     uint32_t dims0 = (uint32_t)n_head | ((uint32_t)n_head_kv << 8) | ((uint32_t)hd << 16) | ((uint32_t)n_rel << 24);
     uint32_t dims1 = (uint32_t)hp->rel_extent | ((uint32_t)(is_swa ? 1 : 0) << 16) | ((uint32_t)hp->swa << 17);
-    if (use_1pass && has_k_dyn == has_v_dyn) {
+    if (n_head == n_head_kv * 3 && hd == 128 && has_k_dyn == has_v_dyn && n_keys_attn >= 1) {
+        int64_t n_splits = ink_choose_attn_splits(s, n_keys_attn, 1);
+        int64_t split_elems = n_head * n_splits * 132;
+        uint32_t kv_info = (uint32_t)kv_cap
+                         | ((uint32_t)(L->attn_q_clip.present ? 1 : 0) << 16)
+                         | ((uint32_t)(L->attn_rel_clip.present ? 1 : 0) << 17)
+                         | ((uint32_t)(has_k_dyn ? 1 : 0) << 18)
+                         | ((uint32_t)(s->kv_q8 ? 1 : 0) << 19)
+                         | ((uint32_t)n_splits << 20);
+        CALL(s, batch, K_KV_ATTN_GQA3_SPLIT, n_head_kv * n_splits,
+             a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(slot_pos),
+             a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(q_tau), a_f32(hp->rms_eps),
+             a_f32v(s->k_raw, 0, n_kv), a_f32v(s->v_raw, 0, n_kv),
+             a_tensor_f32(s, &L->attn_k_conv), a_tensor_f32(s, &L->attn_v_conv),
+             has_k_dyn ? a_f32v(s->dyn_buf, 0, 2 * dyn_sz) : a_f32v(s->dummy_f32, 0, 64),
+             a_conv_k(s, il), a_conv_v(s, il),
+             a_f32v(s->q_buf, 0, n_q),
+             L->attn_q_clip.present ? a_tensor_f32(s, &L->attn_q_clip) : a_f32v(s->dummy_f32, 0, 64),
+             a_f32v(s->r_buf, 0, n_head * n_rel),
+             L->attn_rel_clip.present ? a_tensor_f32(s, &L->attn_rel_clip) : a_f32v(s->dummy_f32, 0, 64),
+             a_tensor_f32(s, &L->attn_rel_bias),
+             a_f32v(s->sinks_buf, 0, n_head),
+             a_f32v(s->gate_buf, 0, n_q),
+             a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16),
+             a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16),
+             a_f32v(s->attn_scores, 0, split_elems),
+             a_f32v(s->attn_out, 0, n_q));
+        if (n_splits > 1) {
+            pm_barrier(batch);
+            CALL(s, batch, K_ATTN_GQA3_REDUCE_NB, n_head,
+                 a_int(n_splits),
+                 a_f32v(s->attn_scores, 0, split_elems),
+                 a_f32v(s->gate_buf, 0, n_q),
+                 a_f32v(s->attn_out, 0, n_q));
+        }
+    } else if (use_1pass && has_k_dyn == has_v_dyn) {
         uint32_t kv_info = (uint32_t)kv_cap | ((uint32_t)(L->attn_q_clip.present ? 1 : 0) << 16)
                          | ((uint32_t)(L->attn_rel_clip.present ? 1 : 0) << 17)
                          | ((uint32_t)(has_k_dyn ? 1 : 0) << 18);
@@ -1500,7 +1686,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     /* Output projection + fused post shortconv + residual (Sprint 62/63/68: Q4_B32_SPLIT uint2 in-place cur!) */
     if (attn_o_inplace) {
         if (is_blk) (*n_blocks)++;
-        if (use_mma_b1 && s->fast_buf && FL->attn_output_s.qs.off >= 0) {
+        if (use_mma_b1 && s->fast_buf && !s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
             CALL(s, batch, K_DV_Q4S_MMA32_NB, (d + 31) / 32, a_int(d), a_int(n_q), a_int(1),
                  a_int(0), a_int(0), a_int(0), a_f32(0.0f),
                  a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
@@ -1519,7 +1705,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
                  a_f32v(s->o_raw, 0, d), a_tensor_f32(s, &L->attn_post_conv),
                  a_conv_ao(s, il), a_f32v(s->cur, 0, d), a_raw_ao(s, il), a_f32v(s->cur, 0, d));
         } else if (s->fast_buf && FL->attn_output_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_CONV, (d + 7) / 8, a_int(d), a_int(n_q), a_int(is_blk ? 0 : 1),
+            CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_CONV : K_DV_Q4S_CONV, (d + 7) / 8, a_int(d), a_int(n_q), a_int(is_blk ? 0 : 1),
                  a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
                  a_f32v(s->attn_out, 0, n_q),
                  a_tensor_f32(s, &L->attn_post_conv), a_conv_ao(s, il),
@@ -1590,7 +1776,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
                  a_f32v(s->ctrl_cat, 0, 2 * d));
             pm_barrier(batch);
             if (s->fast_buf && FL->ctrl_down3_s.qs.off >= 0) {
-                CALL(s, batch, K_DV_Q4S_SMALL_RMS, rank, a_int(rank), a_int(2 * d),
+                CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_RMS : K_DV_Q4S_SMALL_RMS, rank, a_int(rank), a_int(2 * d),
                      a_int(0), a_int(0), a_f32(hp->rms_eps),
                      a_fast_u32(s, &FL->ctrl_down3_s.qs), a_fast_u16(s, &FL->ctrl_down3_s.ds),
                      a_f32v(s->ctrl_cat, 0, 2 * d), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->ctrl_gate, 0, rank));
@@ -1624,7 +1810,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
                 pm_barrier(batch);
                 ffn_deferred_rms = (int)ffn_rms_parts;
                 if (FL->ffn_gate_inp_s.qs.off >= 0) {
-                    CALL(s, batch, K_DV_Q4S_SMALL_RMS, hp->n_expert, a_int(hp->n_expert), a_int(d),
+                    CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_RMS : K_DV_Q4S_SMALL_RMS, hp->n_expert, a_int(hp->n_expert), a_int(d),
                          a_int(0), a_int(ffn_rms_parts), a_f32(hp->rms_eps),
                          a_fast_u32(s, &FL->ffn_gate_inp_s.qs), a_fast_u16(s, &FL->ffn_gate_inp_s.ds),
                          a_f32v(s->o_raw, 0, d), a_f32v(s->rms_parts, 0, 3 * 128), a_f32v(s->router_logits, 0, hp->n_expert));
@@ -1690,7 +1876,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     /* MoE router + gate_up + SITU (Sprint 67/68: 1-warp noinline fused Router top-8 + Warp-1 deferred rms_parts!) */
     if (!router_done) {
         if (s->fast_buf && FL->ffn_gate_inp_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_SMALL_RMS, hp->n_expert, a_int(hp->n_expert), a_int(d),
+            CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_RMS : K_DV_Q4S_SMALL_RMS, hp->n_expert, a_int(hp->n_expert), a_int(d),
                  a_int(0), a_int(0), a_f32(hp->rms_eps),
                  a_fast_u32(s, &FL->ffn_gate_inp_s.qs), a_fast_u16(s, &FL->ffn_gate_inp_s.ds),
                  a_f32v(s->norm_buf, 0, d), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->router_logits, 0, hp->n_expert));
@@ -1719,7 +1905,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     PmBuffer moe_x_in = (ffn_deferred_rms != 0) ? s->o_raw : s->norm_buf;
     int64_t ffn_n_parts = (ffn_deferred_rms > 0) ? (int64_t)ffn_deferred_rms : 0;
     if (s->fast_buf && FL->moe_gu_q4s.qs.off >= 0) {
-        CALL(s, batch, K_MOE_GU_Q4S, gu_items_2r, a_int(n_ff), a_int(d),
+        CALL(s, batch, s->fast_is_q8s ? K_MOE_GU_Q8S : K_MOE_GU_Q4S, gu_items_2r, a_int(n_ff), a_int(d),
              a_int(hp->n_expert), a_int(hp->n_expert_used),
              a_int(L->ffn_exp_probs_b.present ? 1 : 0), a_f32(hp->expert_weights_scale),
              a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
@@ -1807,7 +1993,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     /* MoE down + weighted sum + fused post shortconv & residual add (Sprint 69/70: 288 TGs 8r/TG md_8r_nobar, Q4_B32_SPLIT for Q8_0 layers!) */
     int64_t dn_items = (d + INK_D - 1) / INK_D;
     if (s->fast_buf && FL->moe_dn_q4s.qs.off >= 0) {
-        CALL(s, batch, K_MOE_DOWN_Q4S, (d + 7) / 8, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
+        CALL(s, batch, s->fast_is_q8s ? K_MOE_DOWN_Q8S : K_MOE_DOWN_Q4S, (d + 7) / 8, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
              a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
@@ -1896,6 +2082,28 @@ static int alloc_buf(InkSession *s, PmBuffer *b, size_t bytes) {
         return 1;
     }
     return 0;
+}
+
+static int alloc_buf_unset(InkSession *s, PmBuffer *b, size_t bytes) {
+    if (pm_alloc_unset(bytes ? bytes : 64, b) != PM_OK) {
+        snprintf(s->error, sizeof s->error, "pm_alloc_unset(%zu): %s", bytes, pm_log());
+        return 1;
+    }
+    return 0;
+}
+
+static double open_now_s(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static int fast_worker_threads(void) {
+    int ncpu = 8;
+    size_t sz = sizeof(ncpu);
+    if (sysctlbyname("hw.ncpu", &ncpu, &sz, NULL, 0) != 0 || ncpu < 1) ncpu = 8;
+    if (ncpu > 8) ncpu = 8;
+    return ncpu;
 }
 
 static char *read_entire_file(const char *path, size_t *out_len) {
@@ -2152,6 +2360,43 @@ static void convert_iq4_to_iq4s(const uint8_t *src, size_t nbytes, uint8_t *dst_
     }
 }
 
+/* Sprint 73: 100% lossless bit-exact split of 34B Q8_0 (d:f16 + qs:32B) -> aligned 32B qs + 2B ds! */
+static void convert_q8_to_q8s(const uint8_t *src, size_t nbytes, uint8_t *dst_qs, uint8_t *dst_ds) {
+    size_t nb = nbytes / 34;
+    uint16_t *ds = (uint16_t *)dst_ds;
+    for (size_t b = 0; b < nb; b++) {
+        const uint8_t *sb = src + b * 34;
+        memcpy(&ds[b], sb, 2);
+        memcpy(dst_qs + b * 32, sb + 2, 32);
+    }
+}
+
+/* High-precision F32 -> Q8S (block-32 int8 + f16 scale) for tiny F32 control/router/sink/dyn projs. */
+static void convert_f32_to_q8s(const uint8_t *src, size_t nbytes, uint8_t *dst_qs, uint8_t *dst_ds) {
+    const float *f = (const float *)src;
+    size_t nb = (nbytes / 4) / 32;
+    uint16_t *ds = (uint16_t *)dst_ds;
+    for (size_t b = 0; b < nb; b++) {
+        const float *fb = f + b * 32;
+        int8_t *db = (int8_t *)(dst_qs + b * 32);
+        float max_a = 0.0f;
+        for (int i = 0; i < 32; i++) {
+            float a = fb[i] < 0.0f ? -fb[i] : fb[i];
+            if (a > max_a) max_a = a;
+        }
+        float d8 = (max_a > 0.0f) ? (max_a / 127.0f) : 0.0f;
+        uint16_t d8u = f32_to_f16_host(d8);
+        ds[b] = d8u;
+        float d8_f16 = f16_to_f32_host(d8u);
+        float inv = (d8_f16 != 0.0f) ? (1.0f / d8_f16) : 0.0f;
+        for (int i = 0; i < 32; i++) {
+            int q = (int)lrintf(fb[i] * inv);
+            if (q < -127) q = -127; else if (q > 127) q = 127;
+            db[i] = (int8_t)q;
+        }
+    }
+}
+
 typedef struct {
     const FastJob *jobs;
     int n_jobs;
@@ -2173,7 +2418,16 @@ static void *fast_worker(void *arg) {
         else if (j->kind == 8) convert_f32_to_q4s(j->src, j->src_bytes, j->dst, j->dst2);
         else if (j->kind == 9) convert_f32_gf_rowmaj(j->src, j->norm_w, j->rows, j->cols, j->dst);
         else if (j->kind == 10) convert_iq4_to_iq4s(j->src, j->src_bytes, j->dst, j->dst2);
+        else if (j->kind == 11) convert_q8_to_q8s(j->src, j->src_bytes, j->dst, j->dst2);
+        else if (j->kind == 12) convert_f32_to_q8s(j->src, j->src_bytes, j->dst, j->dst2);
         else convert_f32_to_f16(j->src, j->src_bytes, j->dst);
+        /* Streamingly drop finished large repacked mmap pages so peak ru_maxrss stays ~18 GB instead of 32.7 GB! */
+        if (j->src_bytes >= 262144 && (j->kind == 7 || j->kind == 10 || j->kind == 11)) {
+            size_t ps = (size_t)getpagesize();
+            uintptr_t lo = ((uintptr_t)j->src + ps - 1) & ~(uintptr_t)(ps - 1);
+            uintptr_t hi = ((uintptr_t)j->src + j->src_bytes) & ~(uintptr_t)(ps - 1);
+            if (hi > lo) madvise((void *)lo, hi - lo, MADV_DONTNEED);
+        }
     }
     return NULL;
 }
@@ -2184,6 +2438,12 @@ static void build_fast_weights(InkSession *s) {
     const InkHParams *hp = &s->gguf.hp;
     const char *q4_env = getenv("INK_FAST_Q4");
     int do_q4 = (q4_env != NULL && q4_env[0] != '0');
+    const char *q8s_env = getenv("INK_FAST_Q8S");
+    int do_q8s = (!do_q4) && (q8s_env ? (q8s_env[0] != '0') : (s->budget.headroom_mb >= 8192));
+    int do_fast_s = (do_q4 || do_q8s);
+    int64_t qblk_bytes = do_q8s ? 32 : 16;
+    int64_t qblk_u16 = qblk_bytes / 2;
+    s->fast_is_q8s = do_q8s ? 1 : 0;
     const char *iq4s_env = getenv("INK_FAST_IQ4S");
     int do_iq4s = iq4s_env ? (iq4s_env[0] != '0') : (s->budget.headroom_mb >= 16384);
     for (int ip = 0; ip < INK_MAX_SLOTS; ip++) {
@@ -2247,12 +2507,12 @@ static void build_fast_weights(InkSession *s) {
 
 #define Q4S_OK(T) ((T).present && ((T).type == INK_GGML_Q8_0 || (T).type == INK_GGML_F32))
 #define Q4S_NB(T) ((T).type == INK_GGML_Q8_0 ? (int64_t)((T).nbytes / 34) : (int64_t)((T).nbytes / 128))
-#define Q4S_KIND(T) ((T).type == INK_GGML_Q8_0 ? 7 : 8)
+#define Q4S_KIND(T) (do_q8s ? ((T).type == INK_GGML_Q8_0 ? 11 : 12) : ((T).type == INK_GGML_Q8_0 ? 7 : 8))
 
 #define ADD_FAST_Q4S(T, Q4S) do { \
-    if (do_q4 && Q4S_OK(T) && n_jobs < 2048) { \
+    if (do_fast_s && Q4S_OK(T) && n_jobs < 2048) { \
         int64_t nb = Q4S_NB(T); \
-        int64_t qbytes = nb * 16, dbytes = nb * 2; \
+        int64_t qbytes = nb * qblk_bytes, dbytes = nb * 2; \
         int64_t qoff = total_bytes; \
         total_bytes = (total_bytes + qbytes + 63) & ~63LL; \
         int64_t doff = total_bytes; \
@@ -2266,26 +2526,26 @@ static void build_fast_weights(InkSession *s) {
     for (int ip = 0; ip < (int)hp->n_phys; ip++) {
         const InkLayerTensors *L = &s->gguf.layers[ip];
         FastLayer *FL = &s->fast_layers[ip];
-        if (do_q4 && Q4S_OK(L->ffn_gate_inp)) {
+        if (do_fast_s && Q4S_OK(L->ffn_gate_inp)) {
             ADD_FAST_Q4S(L->ffn_gate_inp, FL->ffn_gate_inp_s);
         } else {
             ADD_FAST_F16(L->ffn_gate_inp, FL->ffn_gate_inp);
         }
-        if (do_q4 && Q4S_OK(L->loop_ctrl_down[0]) && Q4S_OK(L->loop_ctrl_down[1]) && Q4S_OK(L->loop_ctrl_down[2]) && n_jobs + 4 <= 2048) {
+        if (do_fast_s && Q4S_OK(L->loop_ctrl_down[0]) && Q4S_OK(L->loop_ctrl_down[1]) && Q4S_OK(L->loop_ctrl_down[2]) && n_jobs + 4 <= 2048) {
             int64_t nb0 = Q4S_NB(L->loop_ctrl_down[0]), nb1 = Q4S_NB(L->loop_ctrl_down[1]), nb2 = Q4S_NB(L->loop_ctrl_down[2]);
             int64_t tot_nb = nb0 + nb1 + nb2;
             int64_t qoff = total_bytes;
-            total_bytes = (total_bytes + tot_nb * 16 + 63) & ~63LL;
+            total_bytes = (total_bytes + tot_nb * qblk_bytes + 63) & ~63LL;
             int64_t doff = total_bytes;
             total_bytes = (total_bytes + tot_nb * 2 + 63) & ~63LL;
-            FL->ctrl_down_qkv_s.qs.off = qoff; FL->ctrl_down_qkv_s.qs.words = tot_nb * 8;
+            FL->ctrl_down_qkv_s.qs.off = qoff; FL->ctrl_down_qkv_s.qs.words = tot_nb * qblk_u16;
             FL->ctrl_down_qkv_s.ds.off = doff; FL->ctrl_down_qkv_s.ds.words = tot_nb;
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[0].offset, (size_t)L->loop_ctrl_down[0].nbytes,
                                         (uint8_t *)(uintptr_t)(qoff), (uint8_t *)(uintptr_t)(doff), Q4S_KIND(L->loop_ctrl_down[0]), 0, 0, NULL };
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[1].offset, (size_t)L->loop_ctrl_down[1].nbytes,
-                                        (uint8_t *)(uintptr_t)(qoff + nb0 * 16), (uint8_t *)(uintptr_t)(doff + nb0 * 2), Q4S_KIND(L->loop_ctrl_down[1]), 0, 0, NULL };
+                                        (uint8_t *)(uintptr_t)(qoff + nb0 * qblk_bytes), (uint8_t *)(uintptr_t)(doff + nb0 * 2), Q4S_KIND(L->loop_ctrl_down[1]), 0, 0, NULL };
             jobs[n_jobs++] = (FastJob){ base + L->loop_ctrl_down[2].offset, (size_t)L->loop_ctrl_down[2].nbytes,
-                                        (uint8_t *)(uintptr_t)(qoff + (nb0 + nb1) * 16), (uint8_t *)(uintptr_t)(doff + (nb0 + nb1) * 2), Q4S_KIND(L->loop_ctrl_down[2]), 0, 0, NULL };
+                                        (uint8_t *)(uintptr_t)(qoff + (nb0 + nb1) * qblk_bytes), (uint8_t *)(uintptr_t)(doff + (nb0 + nb1) * 2), Q4S_KIND(L->loop_ctrl_down[2]), 0, 0, NULL };
             ADD_FAST_Q4S(L->loop_ctrl_down[3], FL->ctrl_down3_s);
         } else if (L->loop_ctrl_down[0].present && L->loop_ctrl_down[0].type == INK_GGML_F32 &&
                    L->loop_ctrl_down[1].present && L->loop_ctrl_down[1].type == INK_GGML_F32 &&
@@ -2349,7 +2609,7 @@ static void build_fast_weights(InkSession *s) {
         }
         int has_dyn_pair = (!hp->is_swa[ip] && Q4S_OK(L->attn_k_conv_proj) && Q4S_OK(L->attn_v_conv_proj));
         int dyn_ok = (hp->is_swa[ip] || has_dyn_pair);
-        if (do_q4 && Q4S_OK(L->attn_q) && Q4S_OK(L->attn_rel) && Q4S_OK(L->attn_gate) &&
+        if (do_fast_s && Q4S_OK(L->attn_q) && Q4S_OK(L->attn_rel) && Q4S_OK(L->attn_gate) &&
             Q4S_OK(L->attn_k) && Q4S_OK(L->attn_v) && Q4S_OK(L->attn_sink_proj) && dyn_ok && n_jobs + 8 <= 2048) {
             int64_t nbq = Q4S_NB(L->attn_q), nbr = Q4S_NB(L->attn_rel), nbg = Q4S_NB(L->attn_gate);
             int64_t nbk = Q4S_NB(L->attn_k), nbv = Q4S_NB(L->attn_v), nbs = Q4S_NB(L->attn_sink_proj);
@@ -2357,17 +2617,17 @@ static void build_fast_weights(InkSession *s) {
             int64_t nbvd = has_dyn_pair ? Q4S_NB(L->attn_v_conv_proj) : 0;
             int64_t tot_nb = nbq + nbr + nbg + nbk + nbv + nbs + nbkd + nbvd;
             int64_t qoff = total_bytes;
-            total_bytes = (total_bytes + tot_nb * 16 + 63) & ~63LL;
+            total_bytes = (total_bytes + tot_nb * qblk_bytes + 63) & ~63LL;
             int64_t doff = total_bytes;
             total_bytes = (total_bytes + tot_nb * 2 + 63) & ~63LL;
-            FL->attn_qrgkv_s.qs.off = qoff; FL->attn_qrgkv_s.qs.words = tot_nb * 8;
+            FL->attn_qrgkv_s.qs.off = qoff; FL->attn_qrgkv_s.qs.words = tot_nb * qblk_u16;
             FL->attn_qrgkv_s.ds.off = doff; FL->attn_qrgkv_s.ds.words = tot_nb;
             int64_t cur_nb = 0;
 #define PACK_Q4S_SUB(T, NB, SUB) do { \
-    (SUB).qs.off = qoff + cur_nb * 16; (SUB).qs.words = (NB) * 8; \
+    (SUB).qs.off = qoff + cur_nb * qblk_bytes; (SUB).qs.words = (NB) * qblk_u16; \
     (SUB).ds.off = doff + cur_nb * 2;  (SUB).ds.words = (NB); \
     jobs[n_jobs++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, \
-                                (uint8_t *)(uintptr_t)(qoff + cur_nb * 16), (uint8_t *)(uintptr_t)(doff + cur_nb * 2), \
+                                (uint8_t *)(uintptr_t)(qoff + cur_nb * qblk_bytes), (uint8_t *)(uintptr_t)(doff + cur_nb * 2), \
                                 Q4S_KIND(T), 0, 0, NULL }; \
     cur_nb += (NB); \
 } while (0)
@@ -2399,10 +2659,16 @@ static void build_fast_weights(InkSession *s) {
     {
         const char *qlm_env = getenv("INK_Q4_LM_HEAD");
         int do_q4_lm = do_q4 || (qlm_env != NULL && qlm_env[0] != '0');
-        int _dq = do_q4;
-        do_q4 = do_q4_lm;
+        int _dq = do_q4, _dq8 = do_q8s, _dfs = do_fast_s;
+        int64_t _qbb = qblk_bytes, _qbu = qblk_u16;
+        if (do_q4_lm) {
+            do_q4 = 1; do_q8s = 0; do_fast_s = 1; qblk_bytes = 16; qblk_u16 = 8;
+            s->fast_output_is_q4s = 1;
+        } else {
+            s->fast_output_is_q4s = 0;
+        }
         ADD_FAST_Q4S(s->gguf.output, s->fast_output_s);
-        do_q4 = _dq;
+        do_q4 = _dq; do_q8s = _dq8; do_fast_s = _dfs; qblk_bytes = _qbb; qblk_u16 = _qbu;
     }
 #undef ADD_FAST_F16
 #undef ADD_FAST_F16_T
@@ -2417,36 +2683,69 @@ static void build_fast_weights(InkSession *s) {
             s->fast_buf = NULL;
         } else {
             uint8_t *dst_base = (uint8_t *)pm_contents(s->fast_buf);
+            /* Chunk large Q4S/Q8S jobs (> 16 MB) so all worker threads finish with zero tail stragglers. */
+            FastJob exp_jobs[4096];
+            int n_exp = 0;
             for (int i = 0; i < n_jobs; i++) {
-                jobs[i].dst = dst_base + (uintptr_t)jobs[i].dst;
-                if (jobs[i].kind == 7 || jobs[i].kind == 8) jobs[i].dst2 = dst_base + (uintptr_t)jobs[i].dst2;
+                FastJob j = jobs[i];
+                j.dst = dst_base + (uintptr_t)j.dst;
+                int is_split = (j.kind == 7 || j.kind == 8 || j.kind == 11 || j.kind == 12);
+                if (is_split) j.dst2 = dst_base + (uintptr_t)j.dst2;
+                if (is_split && j.src_bytes > 16ULL * 1024 * 1024 && n_exp + 8 <= 4096) {
+                    size_t bsz = (j.kind == 7 || j.kind == 11) ? 34 : 128;
+                    size_t qstep = (j.kind == 11 || j.kind == 12) ? 32 : 16;
+                    size_t nb = j.src_bytes / bsz;
+                    int chunks = 8;
+                    size_t per = (nb + (size_t)chunks - 1) / (size_t)chunks;
+                    for (int c = 0; c < chunks; c++) {
+                        size_t b0 = (size_t)c * per;
+                        if (b0 >= nb) break;
+                        size_t bc = (b0 + per <= nb) ? per : (nb - b0);
+                        FastJob sub = j;
+                        sub.src = j.src + b0 * bsz;
+                        sub.src_bytes = bc * bsz;
+                        sub.dst = j.dst + b0 * qstep;
+                        sub.dst2 = j.dst2 + b0 * 2;
+                        exp_jobs[n_exp++] = sub;
+                    }
+                } else if (n_exp < 4096) {
+                    exp_jobs[n_exp++] = j;
+                }
             }
-            const int NT = 8;
-            pthread_t th[8];
-            FastWorkerArg args[8];
-            for (int i = 0; i < NT; i++) {
-                args[i] = (FastWorkerArg){ jobs, n_jobs, i, NT };
+            int nt = fast_worker_threads();
+            pthread_t th[16];
+            FastWorkerArg args[16];
+            for (int i = 0; i < nt; i++) {
+                args[i] = (FastWorkerArg){ exp_jobs, n_exp, i, nt };
                 pthread_create(&th[i], NULL, fast_worker, &args[i]);
             }
-            for (int i = 0; i < NT; i++) pthread_join(th[i], NULL);
+            for (int i = 0; i < nt; i++) pthread_join(th[i], NULL);
             pm_mark_readonly(s->fast_buf);
         }
     }
 
     /* Sprint 71C: 100% lossless aligned IQ4S MoE repack into dedicated iq4s_buf (2.21x SLC hit BW, +11-21% DRAM BW!). */
     if (do_iq4s) {
-        FastJob iq_jobs[256];
+        FastJob iq_jobs[512];
         int n_iq = 0;
         int64_t iq_bytes = 0;
 #define ADD_IQ4S(T, Q4S) do { \
-    if ((T).present && (T).type == INK_GGML_IQ4_NL && ((T).nbytes % 18) == 0 && n_iq < 256) { \
+    if ((T).present && (T).type == INK_GGML_IQ4_NL && ((T).nbytes % 18) == 0 && n_iq + 8 <= 512) { \
         int64_t nb = (int64_t)((T).nbytes / 18); \
         int64_t qbytes = nb * 16, dbytes = nb * 2; \
         int64_t qoff = iq_bytes; iq_bytes = (iq_bytes + qbytes + 63) & ~63LL; \
         int64_t doff = iq_bytes; iq_bytes = (iq_bytes + dbytes + 63) & ~63LL; \
         (Q4S).qs.off = qoff; (Q4S).qs.words = qbytes / 2; \
         (Q4S).ds.off = doff; (Q4S).ds.words = dbytes / 2; \
-        iq_jobs[n_iq++] = (FastJob){ base + (T).offset, (size_t)(T).nbytes, (uint8_t *)(uintptr_t)qoff, (uint8_t *)(uintptr_t)doff, 10, 0, 0, NULL }; \
+        int chunks = (nb >= 65536) ? 8 : 1; \
+        int64_t per = (nb + chunks - 1) / chunks; \
+        for (int _c = 0; _c < chunks; _c++) { \
+            int64_t _b0 = (int64_t)_c * per; \
+            if (_b0 >= nb) break; \
+            int64_t _bc = (_b0 + per <= nb) ? per : (nb - _b0); \
+            iq_jobs[n_iq++] = (FastJob){ base + (T).offset + _b0 * 18, (size_t)(_bc * 18), \
+                                         (uint8_t *)(uintptr_t)(qoff + _b0 * 16), (uint8_t *)(uintptr_t)(doff + _b0 * 2), 10, 0, 0, NULL }; \
+        } \
     } \
 } while (0)
         for (int ip = 0; ip < (int)hp->n_phys; ip++) {
@@ -2463,14 +2762,14 @@ static void build_fast_weights(InkSession *s) {
                     iq_jobs[i].dst = iq_base + (uintptr_t)iq_jobs[i].dst;
                     iq_jobs[i].dst2 = iq_base + (uintptr_t)iq_jobs[i].dst2;
                 }
-                const int NT = 8;
-                pthread_t th[8];
-                FastWorkerArg args[8];
-                for (int i = 0; i < NT; i++) {
-                    args[i] = (FastWorkerArg){ iq_jobs, n_iq, i, NT };
+                int nt = fast_worker_threads();
+                pthread_t th[16];
+                FastWorkerArg args[16];
+                for (int i = 0; i < nt; i++) {
+                    args[i] = (FastWorkerArg){ iq_jobs, n_iq, i, nt };
                     pthread_create(&th[i], NULL, fast_worker, &args[i]);
                 }
-                for (int i = 0; i < NT; i++) pthread_join(th[i], NULL);
+                for (int i = 0; i < nt; i++) pthread_join(th[i], NULL);
                 pm_mark_readonly(s->iq4s_buf);
             } else {
                 s->iq4s_buf = NULL;
@@ -2522,6 +2821,98 @@ static void build_fast_weights(InkSession *s) {
         }
     }
     s->can_verify_nb = ok_nb;
+}
+
+/* Compact only the non-repacked tensors (~560 MB: tok_embd + small F32 norms/convs/projs) into
+ * s->weights_buf and unmap the 16.4 GiB GGUF file when 100% of large Q8_0/IQ4_NL tensors live in
+ * fast_buf + iq4s_buf. Cuts peak RSS & Metal 4 residency footprint by ~15.4 GB! */
+static int compact_or_wrap_weights(InkSession *s, char *err, size_t err_bytes) {
+    const InkHParams *hp = &s->gguf.hp;
+    int can_compact = (s->fast_buf != NULL && s->fast_is_q8s && s->iq4s_buf != NULL &&
+                       s->fast_output_s.qs.off >= 0 && hp->head_dim == 128 && hp->rel_len == 16 &&
+                       !getenv("INK_KEEP_GGUF") && !getenv("INK_SPEC_FP32") && !getenv("INK_VERIFY") &&
+                       !getenv("INK_M4_BATCH_MIN") && !getenv("INK_DIRECT_THRESH") && !getenv("INK_OLD_ATTN"));
+    for (int ip = 0; can_compact && ip < hp->n_phys; ip++) {
+        const FastLayer *FL = &s->fast_layers[ip];
+        if (FL->attn_q_s.qs.off < 0 || FL->attn_k_s.qs.off < 0 || FL->attn_v_s.qs.off < 0 ||
+            FL->attn_rel_s.qs.off < 0 || FL->attn_gate_s.qs.off < 0 || FL->attn_output_s.qs.off < 0) {
+            can_compact = 0;
+        }
+        int moe_ok = (FL->moe_gu_iq4s.qs.off >= 0 && FL->moe_dn_iq4s.qs.off >= 0) ||
+                     (FL->moe_gu_q4s.qs.off >= 0 && FL->moe_dn_q4s.qs.off >= 0);
+        if (!moe_ok) can_compact = 0;
+    }
+    if (!can_compact) {
+        if (pm_wrap(s->gguf.map, s->gguf.map_size, &s->weights_buf) != PM_OK) {
+            snprintf(err, err_bytes, "pm_wrap(%zu): %s", s->gguf.map_size, pm_log());
+            return 1;
+        }
+        return 0;
+    }
+
+    InkTensor *keep[1024];
+    int n_keep = 0;
+    size_t total_bytes = 0;
+#define KEEP_T(T) do { \
+    if ((T).present && (T).nbytes > 0 && n_keep < 1024) { \
+        keep[n_keep++] = &(T); \
+        total_bytes = (total_bytes + (size_t)(T).nbytes + 63ULL) & ~63ULL; \
+    } \
+} while (0)
+    KEEP_T(s->gguf.tok_embd);
+    KEEP_T(s->gguf.tok_norm);
+    KEEP_T(s->gguf.out_norm);
+    KEEP_T(s->gguf.out_res_query);
+    for (int ip = 0; ip < hp->n_phys; ip++) {
+        InkLayerTensors *L = &s->gguf.layers[ip];
+        KEEP_T(L->attn_norm);
+        KEEP_T(L->attn_q_inp_norm);
+        KEEP_T(L->attn_k_inp_norm);
+        KEEP_T(L->attn_v_inp_norm);
+        KEEP_T(L->attn_q_clip);
+        KEEP_T(L->attn_rel_clip);
+        KEEP_T(L->attn_rel_bias);
+        KEEP_T(L->attn_k_conv);
+        KEEP_T(L->attn_v_conv);
+        KEEP_T(L->attn_post_conv);
+        KEEP_T(L->attn_res_query);
+        KEEP_T(L->attn_sink_proj);
+        KEEP_T(L->attn_k_conv_proj);
+        KEEP_T(L->attn_v_conv_proj);
+        KEEP_T(L->ffn_norm);
+        KEEP_T(L->ffn_post_conv);
+        KEEP_T(L->ffn_res_query);
+        KEEP_T(L->ffn_exp_probs_b);
+        KEEP_T(L->ffn_gate_inp);
+        KEEP_T(L->loop_msg_query);
+        for (int c = 0; c < 4; c++) {
+            KEEP_T(L->loop_ctrl_down[c]);
+            KEEP_T(L->loop_ctrl_gain[c]);
+            KEEP_T(L->loop_ctrl_forget[c]);
+        }
+    }
+#undef KEEP_T
+
+    if (total_bytes == 0 || pm_alloc_unset(total_bytes, &s->weights_buf) != PM_OK) {
+        if (pm_wrap(s->gguf.map, s->gguf.map_size, &s->weights_buf) != PM_OK) {
+            snprintf(err, err_bytes, "pm_wrap(%zu): %s", s->gguf.map_size, pm_log());
+            return 1;
+        }
+        return 0;
+    }
+    uint8_t *dst = (uint8_t *)pm_contents(s->weights_buf);
+    const uint8_t *src = s->gguf.map;
+    size_t cur = 0;
+    for (int i = 0; i < n_keep; i++) {
+        memcpy(dst + cur, src + keep[i]->offset, (size_t)keep[i]->nbytes);
+        keep[i]->offset = (uint64_t)cur;
+        cur = (cur + (size_t)keep[i]->nbytes + 63ULL) & ~63ULL;
+    }
+    pm_mark_readonly(s->weights_buf);
+    munmap(s->gguf.map, s->gguf.map_size);
+    s->gguf.map = NULL;
+    s->gguf.map_size = 0;
+    return 0;
 }
 
 /* ---- Sprint 72: Native Coax + Metal 4 DSpark (mtp.safetensors) speculative drafter ---- */
@@ -2758,49 +3149,49 @@ static void ink_dspark_open(InkSession *s, const char *gguf_path) {
         int swa_cap = 1024 + (int)pb;
         int cap = d->layers[i].is_swa ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
         d->layers[i].kv_cap = cap;
-        if (alloc_buf(s, &d->layers[i].kv_k, (size_t)cap * 1024 * 2) ||
-            alloc_buf(s, &d->layers[i].kv_v, (size_t)cap * 1024 * 2)) {
+        if (alloc_buf_unset(s, &d->layers[i].kv_k, (size_t)cap * 1024 * 2) ||
+            alloc_buf_unset(s, &d->layers[i].kv_v, (size_t)cap * 1024 * 2)) {
             ink_dspark_close(s); return;
         }
     }
-    if (alloc_buf(s, &d->inv_freq, 64 * 4) ||
-        alloc_buf(s, &d->rnn_w_step, 768 * 512 * 2) ||
-        alloc_buf(s, &d->rnn_w_ctx, 768 * 4608 * 2) ||
-        alloc_buf(s, &d->fold_w_qs, (size_t)nv * 8 * 16) ||
-        alloc_buf(s, &d->fold_w_ds, (size_t)nv * 8 * 2) ||
-        alloc_buf(s, &d->fold_b, (size_t)nv * 4) ||
-        alloc_buf(s, &d->taps, (size_t)4 * (size_t)pb * (size_t)d_dim * 4) ||
+    if (alloc_buf_unset(s, &d->inv_freq, 64 * 4) ||
+        alloc_buf_unset(s, &d->rnn_w_step, 768 * 512 * 2) ||
+        alloc_buf_unset(s, &d->rnn_w_ctx, 768 * 4608 * 2) ||
+        alloc_buf_unset(s, &d->fold_w_qs, (size_t)nv * 8 * 16) ||
+        alloc_buf_unset(s, &d->fold_w_ds, (size_t)nv * 8 * 2) ||
+        alloc_buf_unset(s, &d->fold_b, (size_t)nv * 4) ||
+        alloc_buf_unset(s, &d->taps, (size_t)4 * (size_t)pb * (size_t)d_dim * 4) ||
         alloc_buf(s, &d->last_taps, (size_t)4 * (size_t)d_dim * 4) ||
-        alloc_buf(s, &d->ctx_bf16, (size_t)pb * (size_t)d_dim * 2) ||
-        alloc_buf(s, &d->ctx_k_f32, (size_t)pb * 1024 * 4) ||
-        alloc_buf(s, &d->ctx_v_f32, (size_t)pb * 1024 * 4) ||
-        alloc_buf(s, &d->anchor_emb, (size_t)d_dim * 4) ||
-        alloc_buf(s, &d->f_rnn_bf16, (size_t)d_dim * 2) ||
-        alloc_buf(s, &d->res, 8 * (size_t)d_dim * 4) ||
-        alloc_buf(s, &d->x_bf16, 8 * (size_t)d_dim * 2) ||
-        alloc_buf(s, &d->x_f32, 8 * (size_t)d_dim * 4) ||
-        alloc_buf(s, &d->q_f32, 8 * 3072 * 4) ||
-        alloc_buf(s, &d->k_f32, 8 * 1024 * 4) ||
-        alloc_buf(s, &d->v_f32, 8 * 1024 * 4) ||
-        alloc_buf(s, &d->qkv_f32, 8 * 5120 * 4) ||
-        alloc_buf(s, &d->attn_bf16, 8 * 3072 * 2) ||
-        alloc_buf(s, &d->attn_f32, 8 * 3072 * 4) ||
-        alloc_buf(s, &d->tmp_f32, 8 * (size_t)d_dim * 4) ||
-        alloc_buf(s, &d->gate_f32, 8 * 9216 * 4) ||
-        alloc_buf(s, &d->up_f32, 8 * 9216 * 4) ||
-        alloc_buf(s, &d->gu_f32, 8 * 18432 * 4) ||
-        alloc_buf(s, &d->mlp_bf16, 8 * 9216 * 2) ||
-        alloc_buf(s, &d->mlp_f32, 8 * 9216 * 4) ||
-        alloc_buf(s, &d->markov_in_bf16, 7 * 4608 * 2) ||
-        alloc_buf(s, &d->rnn_ctx, 7 * 768 * 4) ||
+        alloc_buf_unset(s, &d->ctx_bf16, (size_t)pb * (size_t)d_dim * 2) ||
+        alloc_buf_unset(s, &d->ctx_k_f32, (size_t)pb * 1024 * 4) ||
+        alloc_buf_unset(s, &d->ctx_v_f32, (size_t)pb * 1024 * 4) ||
+        alloc_buf_unset(s, &d->anchor_emb, (size_t)d_dim * 4) ||
+        alloc_buf_unset(s, &d->f_rnn_bf16, (size_t)d_dim * 2) ||
+        alloc_buf_unset(s, &d->res, 8 * (size_t)d_dim * 4) ||
+        alloc_buf_unset(s, &d->x_bf16, 8 * (size_t)d_dim * 2) ||
+        alloc_buf_unset(s, &d->x_f32, 8 * (size_t)d_dim * 4) ||
+        alloc_buf_unset(s, &d->q_f32, 8 * 3072 * 4) ||
+        alloc_buf_unset(s, &d->k_f32, 8 * 1024 * 4) ||
+        alloc_buf_unset(s, &d->v_f32, 8 * 1024 * 4) ||
+        alloc_buf_unset(s, &d->qkv_f32, 8 * 5120 * 4) ||
+        alloc_buf_unset(s, &d->attn_bf16, 8 * 3072 * 2) ||
+        alloc_buf_unset(s, &d->attn_f32, 8 * 3072 * 4) ||
+        alloc_buf_unset(s, &d->tmp_f32, 8 * (size_t)d_dim * 4) ||
+        alloc_buf_unset(s, &d->gate_f32, 8 * 9216 * 4) ||
+        alloc_buf_unset(s, &d->up_f32, 8 * 9216 * 4) ||
+        alloc_buf_unset(s, &d->gu_f32, 8 * 18432 * 4) ||
+        alloc_buf_unset(s, &d->mlp_bf16, 8 * 9216 * 2) ||
+        alloc_buf_unset(s, &d->mlp_f32, 8 * 9216 * 4) ||
+        alloc_buf_unset(s, &d->markov_in_bf16, 7 * 4608 * 2) ||
+        alloc_buf_unset(s, &d->rnn_ctx, 7 * 768 * 4) ||
         alloc_buf(s, &d->rnn_state, 256 * 4) ||
         alloc_buf(s, &d->rnn_state2, 256 * 4) ||
-        alloc_buf(s, &d->rnn_latent, 256 * 4) ||
-        alloc_buf(s, &d->base_logits, (size_t)7 * (size_t)nv * 4) ||
-        alloc_buf(s, &d->delta_logits, (size_t)nv * 4) ||
-        alloc_buf(s, &d->s1_m, 64 * 4) ||
-        alloc_buf(s, &d->s1_i, 64 * 4) ||
-        alloc_buf(s, &d->s1_s, 64 * 4) ||
+        alloc_buf_unset(s, &d->rnn_latent, 256 * 4) ||
+        alloc_buf_unset(s, &d->base_logits, (size_t)7 * (size_t)nv * 4) ||
+        alloc_buf_unset(s, &d->delta_logits, (size_t)nv * 4) ||
+        alloc_buf_unset(s, &d->s1_m, 64 * 4) ||
+        alloc_buf_unset(s, &d->s1_i, 64 * 4) ||
+        alloc_buf_unset(s, &d->s1_s, 64 * 4) ||
         alloc_buf(s, &d->draft_toks, 8 * 4) ||
         alloc_buf(s, &d->draft_probs, 8 * 4)) {
         ink_dspark_close(s); return;
@@ -2836,13 +3227,22 @@ static void ink_dspark_open(InkSession *s, const char *gguf_path) {
     {
         PmBatch b = NULL;
         if (pm_begin_concurrent(&b) != PM_OK) { ink_dspark_close(s); return; }
-        if (s->fast_output_s.qs.off >= 0) {
+        if (s->fast_output_s.qs.off >= 0 && s->fast_output_is_q4s) {
             PmArg args[] = {
                 a_int(nv), a_int(d_dim), a_int(1), a_int(0), a_int(0), a_int(0), a_f32(0.0f),
                 a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
                 a_f32v(d->anchor_emb, 0, d_dim), a_f32v(d->fold_b, 0, nv)
             };
             if (call_k(s, b, K_DV_Q4S_MMA32_NB, (nv + 31) / 32, 11, args) != 0 || pm_wait(b, NULL) != PM_OK) {
+                ink_dspark_close(s); return;
+            }
+        } else if (s->fast_output_s.qs.off >= 0) {
+            PmArg args[] = {
+                a_int(nv), a_int(d_dim), a_int(1), a_int(0), a_int(0), a_int(0), a_f32(0.0f),
+                a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
+                a_f32v(d->anchor_emb, 0, d_dim), a_f32v(d->fold_b, 0, nv)
+            };
+            if (call_k(s, b, K_DV_Q8S_NB, (nv + 3) / 4, 11, args) != 0 || pm_wait(b, NULL) != PM_OK) {
                 ink_dspark_close(s); return;
             }
         } else {
@@ -2913,7 +3313,17 @@ static void ink_dspark_open(InkSession *s, const char *gguf_path) {
         int64_t vc = (nv - row0 < 4096) ? (nv - row0) : 4096;
         PmBatch b = NULL;
         if (pm_begin_concurrent(&b) != PM_OK) { ink_dspark_close(s); return; }
-        if (s->fast_output_s.qs.off >= 0) {
+        if (s->fast_output_s.qs.off >= 0 && !s->fast_output_is_q4s) {
+            PmArg dq_args[] = {
+                a_int(vc), a_int(d_dim),
+                a_buf(s->fast_buf, s->fast_output_s.qs.off + row0 * blk_per_row * 32, vc * blk_per_row * 8),
+                a_buf(s->fast_buf, s->fast_output_s.ds.off + row0 * blk_per_row * 2, vc * blk_per_row),
+                a_u32v(s->w_bf16, w_off, vc * (d_dim / 2))
+            };
+            if (call_k(s, b, K_DEQUANT_Q8S_BF16, (vc + 7) / 8, 5, dq_args) != 0) {
+                pm_abort(b); ink_dspark_close(s); return;
+            }
+        } else if (s->fast_output_s.qs.off >= 0) {
             PmArg dq_args[] = {
                 a_int(vc), a_int(d_dim),
                 a_buf(s->fast_buf, s->fast_output_s.qs.off + row0 * blk_per_row * 16, vc * blk_per_row * 4),
@@ -2960,7 +3370,12 @@ static void ink_dspark_open(InkSession *s, const char *gguf_path) {
     d->pending_nb = 0;
     d->pending_got = 0;
     d->skip_countdown = 0;
+    d->consec_unprof = 0;
     d->ema_acc = 3.0f;
+    d->ema_draft_ms = 4.2f;
+    d->ema_cal = 0.90f;
+    d->ema_net_speedup = 1.15f;
+    d->last_draft_ms = 4.2f;
     d->ready = 1;
 }
 
@@ -3163,8 +3578,13 @@ static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *o
     CALL(s, batch, K_DSPARK_MARKOV_CTX_PREP, count, a_int(d_dim),
          a_u16v(d->x_bf16, 0, 8 * d_dim), a_u16v(d->f_rnn_bf16, 0, d_dim),
          a_u16v(d->markov_in_bf16, 0, (int64_t)count * 4608));
-    if (s->fast_output_s.qs.off >= 0) {
+    if (s->fast_output_s.qs.off >= 0 && s->fast_output_is_q4s) {
         CALL(s, batch, K_DV_Q4S_MMA32_NB, (nv + 31) / 32, a_int(nv), a_int(d_dim), a_int(count),
+             a_int(0), a_int(d_dim), a_int(0), a_f32(0.0f),
+             a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
+             a_f32v(d->x_f32, 0, 8 * d_dim), a_f32v(d->base_logits, 0, (int64_t)count * nv));
+    } else if (s->fast_output_s.qs.off >= 0) {
+        CALL(s, batch, K_DV_Q8S_NB, (nv + 3) / 4, a_int(nv), a_int(d_dim), a_int(count),
              a_int(0), a_int(d_dim), a_int(0), a_f32(0.0f),
              a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
              a_f32v(d->x_f32, 0, 8 * d_dim), a_f32v(d->base_logits, 0, (int64_t)count * nv));
@@ -3211,6 +3631,10 @@ static int ink_dspark_draft(InkSession *s, int32_t anchor, int count, int32_t *o
     s->total_gpu_seconds += gpu_s;
     d->draft_gpu_s += gpu_s;
     d->last_draft_s = gpu_s;
+    d->last_draft_ms = (float)(gpu_s * 1000.0);
+    if (d->last_draft_ms > 0.1f && d->last_draft_ms < 200.0f) {
+        d->ema_draft_ms = 0.75f * d->ema_draft_ms + 0.25f * d->last_draft_ms;
+    }
 
     const uint32_t *dt = (const uint32_t *)pm_contents(d->draft_toks);
     const float *dp = (const float *)pm_contents(d->draft_probs);
@@ -3278,7 +3702,9 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     if (ram_mb <= 0 && info.working_set_bytes > 0) {
         ram_mb = (int64_t)(info.working_set_bytes / (1024ULL * 1024ULL));
     }
-    s->prefill_b = (s->max_ctx <= 8192) ? INK_PREFILL_B
+    int use_flash_attn = (hp->head_dim == 128 && hp->rel_len == 16 && !getenv("INK_OLD_ATTN"));
+    s->prefill_b = (use_flash_attn && (ram_mb == 0 || ram_mb > 40960)) ? INK_PREFILL_B
+                 : (s->max_ctx <= 8192) ? INK_PREFILL_B
                  : (s->max_ctx <= 16384) ? 2048
                  : (ram_mb > 0 && ram_mb <= 40960) ? 512 : 1024;
 
@@ -3286,6 +3712,30 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     size_t d = (size_t)hp->n_embd;
     size_t n_q = (size_t)hp->n_head * (size_t)hp->head_dim;
     size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
+    /* Sprint C: Block-32 Q8_0 KV cache (68 u16/head = 1.882x smaller KV RAM & DRAM; toggle INK_KV_Q8=0 for FP16). */
+    {
+        const char *env_kv8 = getenv("INK_KV_Q8");
+        int can_q8 = (hp->head_dim == 128 && hp->rel_len == 16 && hp->n_head == hp->n_head_kv * 3 &&
+                      s->max_ctx <= 65535 && (!env_kv8 || strcmp(env_kv8, "0") != 0));
+        for (int ip = 0; can_q8 && ip < hp->n_phys; ip++) {
+            int kd = (!hp->is_swa[ip] && s->gguf.layers[ip].attn_k_conv_proj.present);
+            int vd = (!hp->is_swa[ip] && s->gguf.layers[ip].attn_v_conv_proj.present);
+            if (kd != vd) can_q8 = 0;
+        }
+        s->kv_q8 = can_q8;
+        s->kv_row_u16 = can_q8 ? ((int64_t)hp->n_head_kv * 68) : (int64_t)n_kv;
+    }
+    {
+        uint64_t fp = 14695981039346656037ULL;
+        uint64_t ks[10] = {
+            (uint64_t)hp->n_phys, (uint64_t)hp->n_embd, (uint64_t)hp->n_head, (uint64_t)hp->n_head_kv,
+            (uint64_t)hp->n_ff_exp, (uint64_t)hp->n_expert, (uint64_t)hp->n_vocab, (uint64_t)hp->swa,
+            (uint64_t)s->gguf.file_size, (uint64_t)s->kv_q8
+        };
+        for (int ki = 0; ki < 10; ki++) { fp ^= ks[ki]; fp *= 1099511628211ULL; }
+        s->model_fp = fp;
+    }
+    size_t kv_row = (size_t)s->kv_row_u16;
     int full_slots = 0, swa_slots = 0;
     size_t kv_bytes = 0;
     for (int il = 0; il < s->n_slots; il++) {
@@ -3293,11 +3743,14 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         int swa_cap = hp->swa + s->prefill_b;
         int cap = hp->is_swa[ip] ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
         if (hp->is_swa[ip]) swa_slots++; else full_slots++;
-        kv_bytes += (size_t)cap * n_kv * 4 + (2 * n_kv + 2 * d) * 3 * 4;
+        kv_bytes += (size_t)cap * kv_row * 4 + (2 * n_kv + 2 * d) * 3 * 4;
     }
-    size_t attn_prefill_bytes = B * (size_t)hp->n_head * (size_t)s->max_ctx * 2;
+    size_t attn_prefill_bytes = use_flash_attn ? 0 : (B * (size_t)hp->n_head * (size_t)s->max_ctx * 2);
     size_t attn_decode_bytes = (size_t)hp->n_head * (size_t)s->max_ctx * 4;
+    size_t attn_split_min = (size_t)8 * (size_t)hp->n_head * 32 * 132 * 4;
     size_t attn_bytes = attn_prefill_bytes > attn_decode_bytes ? attn_prefill_bytes : attn_decode_bytes;
+    if (attn_bytes < attn_split_min) attn_bytes = attn_split_min;
+    s->attn_scores_bytes = attn_bytes;
     size_t scratch_bytes = attn_bytes + (size_t)44 * 1024 * 1024 * 4 +
                            B * (size_t)(48 * d + 6 * n_q + 4 * n_kv + 3 * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp) * 4;
     int64_t os_reserve_mb = 4096;
@@ -3308,9 +3761,9 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     int64_t fixed_mb = os_reserve_mb + weights_mb + scratch_mb;
     int64_t max_ctx_fit = 0;
     if (ram_mb > fixed_mb && full_slots > 0) {
-        int64_t swa_ring_bytes = (int64_t)swa_slots * (int64_t)(hp->swa + s->prefill_b) * (int64_t)(n_kv * 4);
+        int64_t swa_ring_bytes = (int64_t)swa_slots * (int64_t)(hp->swa + s->prefill_b) * (int64_t)(kv_row * 4);
         int64_t avail_full = (ram_mb - fixed_mb) * 1048576LL - swa_ring_bytes;
-        if (avail_full > 0) max_ctx_fit = avail_full / ((int64_t)full_slots * (int64_t)(n_kv * 4));
+        if (avail_full > 0) max_ctx_fit = avail_full / ((int64_t)full_slots * (int64_t)(kv_row * 4));
     }
     s->budget = (InkMemoryBudget){
         .device_ram_mb = ram_mb,
@@ -3337,6 +3790,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         ink_close(s); return 1;
     }
 
+    double t_open0 = open_now_s();
     size_t metal_len = 0;
     char *metal_src = read_entire_file(metal_path, &metal_len);
     if (!metal_src) {
@@ -3350,94 +3804,89 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         snprintf(err, err_bytes, "pm_compile(%s): %s", metal_path, pm_log());
         ink_close(s); return 1;
     }
-    for (int k = 0; k < K_COUNT; k++) {
-        if (pm_kernel(s->module, k_names[k], &s->kernels[k]) != PM_OK) {
-            snprintf(err, err_bytes, "pm_kernel(%s): %s", k_names[k], pm_log());
-            ink_close(s); return 1;
-        }
-    }
-
-    if (pm_wrap(s->gguf.map, s->gguf.map_size, &s->weights_buf) != PM_OK) {
-        snprintf(err, err_bytes, "pm_wrap(%zu): %s", s->gguf.map_size, pm_log());
+    double t_pso0 = open_now_s();
+    if (pm_kernels_batch(s->module, k_names, K_COUNT, s->kernels) != PM_OK) {
+        snprintf(err, err_bytes, "pm_kernels_batch: %s", pm_log());
         ink_close(s); return 1;
     }
+    double t_pso1 = open_now_s();
+    madvise(s->gguf.map, s->gguf.map_size, MADV_SEQUENTIAL);
 
-    if (alloc_buf(s, &s->cur, B * d * 4) ||
-        alloc_buf(s, &s->inp_sa, B * d * 4) ||
-        alloc_buf(s, &s->ffn_inp, B * d * 4) ||
-        alloc_buf(s, &s->prelude, B * d * 4) ||
-        alloc_buf(s, &s->bank_out, B * d * 4) ||
-        alloc_buf(s, &s->blocks, INK_MAX_BLOCKS * B * d * 4) ||
-        alloc_buf(s, &s->prelude_blk, INK_MAX_BLOCKS * B * d * 4) ||
-        alloc_buf(s, &s->bank_blk, INK_MAX_BLOCKS * B * d * 4) ||
-        alloc_buf(s, &s->mix_out, 4 * B * d * 4) ||
-        alloc_buf(s, &s->messages, ((4 * B > (size_t)(hp->loop_end - hp->loop_start) * 4 * 8) ? (4 * B) : ((size_t)(hp->loop_end - hp->loop_start) * 4 * 8)) * d * 4) ||
-        alloc_buf(s, &s->inp_q, B * d * 4) ||
-        alloc_buf(s, &s->inp_k, B * d * 4) ||
-        alloc_buf(s, &s->inp_v, B * d * 4) ||
-        alloc_buf(s, &s->ctrl_cat, 3 * 2 * B * d * 4) ||
-        alloc_buf(s, &s->ctrl_gate, 3 * B * (size_t)hp->gate_rank * 4) ||
-        alloc_buf(s, &s->ctrl_gain, d * 4) ||
-        alloc_buf(s, &s->ctrl_forget, d * 4) ||
-        alloc_buf(s, &s->q_buf, B * n_q * 4) ||
-        alloc_buf(s, &s->k_raw, B * n_kv * 4) ||
-        alloc_buf(s, &s->k_buf, B * n_kv * 4) ||
-        alloc_buf(s, &s->v_raw, B * n_kv * 4) ||
-        alloc_buf(s, &s->v_buf, B * n_kv * 4) ||
-        alloc_buf(s, &s->r_buf, B * (size_t)hp->n_head * (size_t)hp->rel_len * 4) ||
-        alloc_buf(s, &s->dyn_buf, 2 * B * (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
-        alloc_buf(s, &s->sinks_buf, B * (size_t)hp->n_head * 4) ||
-        alloc_buf(s, &s->gate_buf, B * n_q * 4) ||
-        alloc_buf(s, &s->attn_scores, attn_bytes) ||
-        alloc_buf(s, &s->attn_out, B * n_q * 4) ||
-        alloc_buf(s, &s->o_raw, B * d * 4) ||
-        alloc_buf(s, &s->norm_buf, B * d * 4) ||
-        alloc_buf(s, &s->router_logits, B * (size_t)hp->n_expert * 4) ||
-        alloc_buf(s, &s->moe_ids, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->moe_wts, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->moe_hid, B * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp * 4) ||
-        alloc_buf(s, &s->moe_gu, B * (size_t)hp->n_expert_used * 2 * (size_t)hp->n_ff_exp * 4) ||
-        alloc_buf(s, &s->moe_out, B * d * 4) ||
-        alloc_buf(s, &s->moe_slot_out, B * (size_t)hp->n_expert_used * d * 4) ||
-        alloc_buf(s, &s->exp_toks, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
-        alloc_buf(s, &s->exp_slots, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
-        alloc_buf(s, &s->exp_wts, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
+    if (alloc_buf_unset(s, &s->cur, B * d * 4) ||
+        alloc_buf_unset(s, &s->inp_sa, B * d * 4) ||
+        alloc_buf_unset(s, &s->ffn_inp, B * d * 4) ||
+        alloc_buf_unset(s, &s->prelude, B * d * 4) ||
+        alloc_buf_unset(s, &s->bank_out, B * d * 4) ||
+        alloc_buf_unset(s, &s->blocks, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf_unset(s, &s->prelude_blk, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf_unset(s, &s->bank_blk, INK_MAX_BLOCKS * B * d * 4) ||
+        alloc_buf_unset(s, &s->mix_out, 4 * B * d * 4) ||
+        alloc_buf_unset(s, &s->messages, ((4 * B > (size_t)(hp->loop_end - hp->loop_start) * 4 * 8) ? (4 * B) : ((size_t)(hp->loop_end - hp->loop_start) * 4 * 8)) * d * 4) ||
+        alloc_buf_unset(s, &s->inp_q, B * d * 4) ||
+        alloc_buf_unset(s, &s->inp_k, B * d * 4) ||
+        alloc_buf_unset(s, &s->inp_v, B * d * 4) ||
+        alloc_buf_unset(s, &s->ctrl_cat, 3 * 2 * B * d * 4) ||
+        alloc_buf_unset(s, &s->ctrl_gate, 3 * B * (size_t)hp->gate_rank * 4) ||
+        alloc_buf_unset(s, &s->ctrl_gain, d * 4) ||
+        alloc_buf_unset(s, &s->ctrl_forget, d * 4) ||
+        alloc_buf_unset(s, &s->q_buf, B * n_q * 4) ||
+        alloc_buf_unset(s, &s->k_raw, B * n_kv * 4) ||
+        alloc_buf_unset(s, &s->k_buf, B * n_kv * 4) ||
+        alloc_buf_unset(s, &s->v_raw, B * n_kv * 4) ||
+        alloc_buf_unset(s, &s->v_buf, B * n_kv * 4) ||
+        alloc_buf_unset(s, &s->r_buf, B * (size_t)hp->n_head * (size_t)hp->rel_len * 4) ||
+        alloc_buf_unset(s, &s->dyn_buf, 2 * B * (size_t)hp->n_head_kv * (size_t)hp->conv_len * 4) ||
+        alloc_buf_unset(s, &s->sinks_buf, B * (size_t)hp->n_head * 4) ||
+        alloc_buf_unset(s, &s->gate_buf, B * n_q * 4) ||
+        alloc_buf_unset(s, &s->attn_scores, attn_bytes) ||
+        alloc_buf_unset(s, &s->attn_out, B * n_q * 4) ||
+        alloc_buf_unset(s, &s->o_raw, B * d * 4) ||
+        alloc_buf_unset(s, &s->norm_buf, B * d * 4) ||
+        alloc_buf_unset(s, &s->router_logits, B * (size_t)hp->n_expert * 4) ||
+        alloc_buf_unset(s, &s->moe_ids, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf_unset(s, &s->moe_wts, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf_unset(s, &s->moe_hid, B * (size_t)hp->n_expert_used * (size_t)hp->n_ff_exp * 4) ||
+        alloc_buf_unset(s, &s->moe_gu, B * (size_t)hp->n_expert_used * 2 * (size_t)hp->n_ff_exp * 4) ||
+        alloc_buf_unset(s, &s->moe_out, B * d * 4) ||
+        alloc_buf_unset(s, &s->moe_slot_out, B * (size_t)hp->n_expert_used * d * 4) ||
+        alloc_buf_unset(s, &s->exp_toks, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
+        alloc_buf_unset(s, &s->exp_slots, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
+        alloc_buf_unset(s, &s->exp_wts, (size_t)hp->n_expert * INK_PREFILL_B * 4) ||
         alloc_buf(s, &s->exp_cnt, (size_t)hp->n_expert * 4) ||
-        alloc_buf(s, &s->exp_off, (size_t)hp->n_expert * 4) ||
-        alloc_buf(s, &s->row_dst, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->row_wt, B * (size_t)hp->n_expert_used * 4) ||
-        alloc_buf(s, &s->tile_exp, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
-        alloc_buf(s, &s->tile_m0, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
+        alloc_buf_unset(s, &s->exp_off, (size_t)hp->n_expert * 4) ||
+        alloc_buf_unset(s, &s->row_dst, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf_unset(s, &s->row_wt, B * (size_t)hp->n_expert_used * 4) ||
+        alloc_buf_unset(s, &s->tile_exp, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
+        alloc_buf_unset(s, &s->tile_m0, ((size_t)hp->n_expert + INK_PREFILL_B / 2 + 16) * 4) ||
         alloc_buf(s, &s->tile_cnt, 16 * 4) ||
-        alloc_buf(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
-        alloc_buf(s, &s->tok_ids_buf, B * 4) ||
-        alloc_buf(s, &s->tau_buf, B * 4) ||
-        alloc_buf(s, &s->logits_buf[0], (size_t)hp->n_vocab * 4) ||
-        alloc_buf(s, &s->logits_buf[1], (size_t)hp->n_vocab * 4) ||
-        alloc_buf(s, &s->hidden_out[0], d * 4) ||
-        alloc_buf(s, &s->hidden_out[1], d * 4) ||
-        alloc_buf(s, &s->argmax_vals, 8 * 64 * 4) ||
-        alloc_buf(s, &s->argmax_ids, 8 * 64 * 4) ||
+        alloc_buf_unset(s, &s->w_bf16, (size_t)44 * 1024 * 1024 * 4) ||
+        alloc_buf_unset(s, &s->tok_ids_buf, B * 4) ||
+        alloc_buf_unset(s, &s->tau_buf, B * 4) ||
+        alloc_buf_unset(s, &s->logits_buf[0], (size_t)hp->n_vocab * 4) ||
+        alloc_buf_unset(s, &s->logits_buf[1], (size_t)hp->n_vocab * 4) ||
+        alloc_buf_unset(s, &s->hidden_out[0], d * 4) ||
+        alloc_buf_unset(s, &s->hidden_out[1], d * 4) ||
+        alloc_buf_unset(s, &s->argmax_vals, 8 * 64 * 4) ||
+        alloc_buf_unset(s, &s->argmax_ids, 8 * 64 * 4) ||
         alloc_buf(s, &s->argmax_out_buf[0], 4) ||
         alloc_buf(s, &s->argmax_out_buf[1], 4) ||
-        alloc_buf(s, &s->topk_cnt[0], 256 * 4) ||
-        alloc_buf(s, &s->topk_cnt[1], 256 * 4) ||
-        alloc_buf(s, &s->topk_ids[0], 256 * 16 * 4) ||
-        alloc_buf(s, &s->topk_ids[1], 256 * 16 * 4) ||
-        alloc_buf(s, &s->topk_vals[0], 256 * 16 * 4) ||
-        alloc_buf(s, &s->topk_vals[1], 256 * 16 * 4) ||
-        alloc_buf(s, &s->spec_topk_cnt, 8 * 256 * 4) ||
-        alloc_buf(s, &s->spec_topk_ids, 8 * 256 * 16 * 4) ||
-        alloc_buf(s, &s->spec_topk_vals, 8 * 256 * 16 * 4) ||
+        alloc_buf_unset(s, &s->topk_s1_vals, 8 * 32 * 64 * 4) ||
+        alloc_buf_unset(s, &s->topk_s1_ids, 8 * 32 * 64 * 4) ||
+        alloc_buf_unset(s, &s->topk_vals[0], 64 * 4) ||
+        alloc_buf_unset(s, &s->topk_vals[1], 64 * 4) ||
+        alloc_buf_unset(s, &s->topk_ids[0], 64 * 4) ||
+        alloc_buf_unset(s, &s->topk_ids[1], 64 * 4) ||
+        alloc_buf_unset(s, &s->spec_topk_vals, 8 * 64 * 4) ||
+        alloc_buf_unset(s, &s->spec_topk_ids, 8 * 64 * 4) ||
         alloc_buf(s, &s->dummy_f32, 64 * 4) ||
         alloc_buf(s, &s->dummy_ones, 8 * 4) ||
         alloc_buf(s, &s->rms_parts, 8 * 3 * 128 * 4) ||
-        alloc_buf(s, &s->spec_u_eids, 64 * 4) ||
-        alloc_buf(s, &s->spec_u_mask, 64 * 4) ||
-        alloc_buf(s, &s->spec_u_slot, 64 * 8 * 4) ||
+        alloc_buf_unset(s, &s->spec_u_eids, 64 * 4) ||
+        alloc_buf_unset(s, &s->spec_u_mask, 64 * 4) ||
+        alloc_buf_unset(s, &s->spec_u_slot, 64 * 8 * 4) ||
         alloc_buf(s, &s->spec_u_cnt, 4 * 4) ||
-        alloc_buf(s, &s->spec_logits, (size_t)8 * (size_t)hp->n_vocab * 4) ||
-        alloc_buf(s, &s->spec_hidden, (size_t)8 * d * 4) ||
+        alloc_buf_unset(s, &s->spec_logits, (size_t)8 * (size_t)hp->n_vocab * 4) ||
+        alloc_buf_unset(s, &s->spec_hidden, (size_t)8 * d * 4) ||
         alloc_buf(s, &s->spec_argmax_out, 8 * 4)) {
         snprintf(err, err_bytes, "%s", s->error);
         ink_close(s); return 1;
@@ -3460,7 +3909,7 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
     s->raw_slot_stride = (int64_t)8 * ((int64_t)2 * n_kv + (int64_t)2 * d);
     if (alloc_buf(s, &s->conv_all, (size_t)s->conv_all_elems * 4) ||
         alloc_buf(s, &s->conv_backup, (size_t)s->conv_all_elems * 4) ||
-        alloc_buf(s, &s->conv_raw_log, (size_t)s->n_slots * (size_t)s->raw_slot_stride * 4)) {
+        alloc_buf_unset(s, &s->conv_raw_log, (size_t)s->n_slots * (size_t)s->raw_slot_stride * 4)) {
         snprintf(err, err_bytes, "%s", s->error);
         ink_close(s); return 1;
     }
@@ -3474,8 +3923,8 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         int cap = hp->is_swa[ip] ? (swa_cap < s->max_ctx ? swa_cap : s->max_ctx) : s->max_ctx;
         s->kv_cap[il] = cap;
         if (hp->is_swa[ip] && cap < s->swa_cap_min) s->swa_cap_min = cap;
-        if (alloc_buf(s, &s->kv_k[il], (size_t)cap * n_kv * 2) ||
-            alloc_buf(s, &s->kv_v[il], (size_t)cap * n_kv * 2)) {
+        if (alloc_buf_unset(s, &s->kv_k[il], (size_t)cap * kv_row * 2) ||
+            alloc_buf_unset(s, &s->kv_v[il], (size_t)cap * kv_row * 2)) {
             snprintf(err, err_bytes, "%s", s->error);
             ink_close(s); return 1;
         }
@@ -3487,8 +3936,25 @@ int ink_open_ex(const char *gguf_path, const char *metal_path, int max_ctx,
         ink_close(s); return 1;
     }
 
+    double t_fw0 = open_now_s();
     build_fast_weights(s);
+    if (compact_or_wrap_weights(s, err, err_bytes) != 0) {
+        ink_close(s); return 1;
+    }
+    s->ema_base_ms = s->fast_is_q8s ? 10.5f : 9.2f;
+    {
+        static const float init_vr[9] = {1.0f, 1.0f, 1.55f, 1.95f, 2.30f, 2.60f, 2.90f, 3.18f, 3.45f};
+        for (int i = 0; i < 9; i++) s->ema_vratio[i] = init_vr[i];
+    }
+    double t_fw1 = open_now_s();
     ink_dspark_open(s, gguf_path);
+    double t_ds1 = open_now_s();
+    pm_commit_residency();
+    double t_res1 = open_now_s();
+    if (getenv("INK_OPEN_TIMING") != NULL) {
+        fprintf(stderr, "[INK_OPEN_TIMING compile=%.3fs pso=%.3fs alloc=%.3fs fast_w=%.3fs dspark=%.3fs residency=%.3fs total=%.3fs]\n",
+                compile_s, t_pso1 - t_pso0, t_fw0 - t_pso1, t_fw1 - t_fw0, t_ds1 - t_fw1, t_res1 - t_ds1, t_res1 - t_open0);
+    }
 
     s->pos = 0;
     s->live_len = 0;
@@ -3527,6 +3993,16 @@ static void ink_cancel_inflight(InkSession *s) {
 void ink_close(InkSession *s) {
     if (!s) return;
     ink_cancel_inflight(s);
+    if (s->disk_thr_started) {
+        pthread_mutex_lock(&s->disk_mu);
+        s->disk_stop = 1;
+        pthread_cond_signal(&s->disk_cv);
+        pthread_mutex_unlock(&s->disk_mu);
+        pthread_join(s->disk_thr, NULL);
+        pthread_mutex_destroy(&s->disk_mu);
+        pthread_cond_destroy(&s->disk_cv);
+        s->disk_thr_started = 0;
+    }
     free(s->live_tokens);
     free(s->spec_old_conv);
     free(s->pred_toks);
@@ -3566,10 +4042,10 @@ void ink_close(InkSession *s) {
     pm_free(s->hidden_out[0]); pm_free(s->hidden_out[1]);
     pm_free(s->argmax_vals); pm_free(s->argmax_ids);
     pm_free(s->argmax_out_buf[0]); pm_free(s->argmax_out_buf[1]);
-    pm_free(s->topk_cnt[0]); pm_free(s->topk_cnt[1]);
-    pm_free(s->topk_ids[0]); pm_free(s->topk_ids[1]);
+    pm_free(s->topk_s1_vals); pm_free(s->topk_s1_ids);
     pm_free(s->topk_vals[0]); pm_free(s->topk_vals[1]);
-    pm_free(s->spec_topk_cnt); pm_free(s->spec_topk_ids); pm_free(s->spec_topk_vals);
+    pm_free(s->topk_ids[0]); pm_free(s->topk_ids[1]);
+    pm_free(s->spec_topk_vals); pm_free(s->spec_topk_ids);
     pm_free(s->dummy_f32);
     pm_free(s->rms_parts);
     pm_free(s->iq4s_buf);
@@ -3638,13 +4114,23 @@ void ink_reset(InkSession *s) {
     s->dspark.req_disabled = 0;
     s->dspark.req_rounds = 0;
     s->dspark.skip_mult = 1;
+    s->dspark.consec_unprof = 0;
     s->dspark.ema_acc = 3.0f;
     s->dspark.util_ema = 1.15f;
-    if (s->dspark.b1_ema_s <= 1e-4) s->dspark.b1_ema_s = (s->fast_output_s.qs.off >= 0) ? 0.012 : 0.016;
+    s->dspark.ema_cal = 0.90f;
+    s->dspark.ema_net_speedup = 1.15f;
+    if (s->dspark.b1_ema_s <= 1e-4) s->dspark.b1_ema_s = (s->fast_output_s.qs.off >= 0 && s->fast_output_is_q4s) ? 0.012 : 0.016;
     s->dspark.rounds = 0;
     s->dspark.drafted = 0;
     s->dspark.accepted = 0;
     s->dspark.draft_gpu_s = 0.0;
+    s->sampled_mode = 0;
+    s->spec_round_open = 0;
+    s->ema_base_ms = s->fast_is_q8s ? 10.5f : 9.2f;
+    {
+        static const float init_vr[9] = {1.0f, 1.0f, 1.55f, 1.95f, 2.30f, 2.60f, 2.90f, 3.18f, 3.45f};
+        for (int i = 0; i < 9; i++) s->ema_vratio[i] = init_vr[i];
+    }
     if (s->conv_all && s->conv_all_elems > 0) {
         memset(pm_contents(s->conv_all), 0, (size_t)s->conv_all_elems * sizeof(float));
     }
@@ -3665,6 +4151,369 @@ void ink_reset(InkSession *s) {
     }
 }
 
+/* ---- Ch 176: Bounded NVMe Cold-Tier DiskPromptCache (~/.openagents/cache/psionic/prompts/) ---- */
+typedef struct {
+    char     magic[4];       /* "INKP" */
+    uint32_t version;        /* 1 */
+    uint64_t model_fp;
+    uint64_t tok_hash;
+    int32_t  n_tokens;
+    int32_t  kv_q8;
+    int32_t  kv_row_u16;
+    int32_t  n_slots;
+    int32_t  full_slots;
+    int32_t  swa_slots;
+    int32_t  swa_win;
+    int32_t  conv_all_elems;
+    int32_t  has_logits;
+    int32_t  n_vocab;
+} InkDiskSnapHdr;
+
+static uint64_t ink_fnv1a_tokens(const int32_t *tokens, int n) {
+    uint64_t h = 14695981039346656037ULL;
+    for (int i = 0; i < n; i++) {
+        h ^= (uint32_t)tokens[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static int ink_disk_cache_dir(char *out, size_t cap) {
+    const char *home = getenv("HOME");
+    if (!home || !home[0]) return 1;
+    char d1[512], d2[512], d3[512];
+    if (snprintf(d1, sizeof d1, "%s/.openagents", home) >= (int)sizeof d1) return 1;
+    if (snprintf(d2, sizeof d2, "%s/.openagents/cache", home) >= (int)sizeof d2) return 1;
+    if (snprintf(d3, sizeof d3, "%s/.openagents/cache/psionic", home) >= (int)sizeof d3) return 1;
+    if (snprintf(out, cap, "%s/.openagents/cache/psionic/prompts", home) >= (int)cap) return 1;
+    mkdir(d1, 0755); mkdir(d2, 0755); mkdir(d3, 0755); mkdir(out, 0755);
+    return 0;
+}
+
+static int ink_write_all(int fd, const void *buf, size_t n) {
+    const uint8_t *p = (const uint8_t *)buf;
+    while (n > 0) {
+        size_t chunk = n > (16ULL << 20) ? (16ULL << 20) : n;
+        ssize_t w = write(fd, p, chunk);
+        if (w <= 0) return 1;
+        p += (size_t)w;
+        n -= (size_t)w;
+    }
+    return 0;
+}
+
+static int ink_read_all(int fd, void *buf, size_t n) {
+    uint8_t *p = (uint8_t *)buf;
+    while (n > 0) {
+        size_t chunk = n > (16ULL << 20) ? (16ULL << 20) : n;
+        ssize_t r = read(fd, p, chunk);
+        if (r <= 0) return 1;
+        p += (size_t)r;
+        n -= (size_t)r;
+    }
+    return 0;
+}
+
+static void ink_disk_cache_prune(const char *dir, int max_files) {
+    DIR *dp = opendir(dir);
+    if (!dp) return;
+    typedef struct { char path[640]; time_t mt; } Ent;
+    Ent ents[64];
+    int n = 0;
+    struct dirent *de;
+    while ((de = readdir(dp)) != NULL && n < 64) {
+        size_t nl = strlen(de->d_name);
+        if (nl < 6 || strcmp(de->d_name + nl - 5, ".inkp") != 0) continue;
+        char full[640];
+        if (snprintf(full, sizeof full, "%s/%s", dir, de->d_name) >= (int)sizeof full) continue;
+        struct stat st;
+        if (stat(full, &st) == 0) {
+            memcpy(ents[n].path, full, sizeof full);
+            ents[n].mt = st.st_mtime;
+            n++;
+        }
+    }
+    closedir(dp);
+    while (n > max_files) {
+        int oldest = 0;
+        for (int i = 1; i < n; i++) if (ents[i].mt < ents[oldest].mt) oldest = i;
+        unlink(ents[oldest].path);
+        ents[oldest] = ents[--n];
+    }
+}
+
+static void *ink_disk_worker(void *arg) {
+    InkSession *s = (InkSession *)arg;
+    for (;;) {
+        pthread_mutex_lock(&s->disk_mu);
+        while (s->disk_q_len == 0 && !s->disk_stop) {
+            pthread_cond_wait(&s->disk_cv, &s->disk_mu);
+        }
+        if (s->disk_q_len == 0 && s->disk_stop) {
+            pthread_mutex_unlock(&s->disk_mu);
+            break;
+        }
+        char dir[512], final_path[640], tmp_path[680];
+        memcpy(dir, s->disk_q[s->disk_q_head].dir, sizeof dir);
+        memcpy(final_path, s->disk_q[s->disk_q_head].final_path, sizeof final_path);
+        memcpy(tmp_path, s->disk_q[s->disk_q_head].tmp_path, sizeof tmp_path);
+        uint8_t *payload = s->disk_q[s->disk_q_head].payload;
+        size_t payload_bytes = s->disk_q[s->disk_q_head].payload_bytes;
+        s->disk_q[s->disk_q_head].payload = NULL;
+        s->disk_q_head = (s->disk_q_head + 1) & 3;
+        s->disk_q_len--;
+        pthread_mutex_unlock(&s->disk_mu);
+
+        if (payload) {
+            struct stat st;
+            if (stat(final_path, &st) != 0) {
+                int fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                if (fd >= 0) {
+                    int fail = ink_write_all(fd, payload, payload_bytes);
+                    close(fd);
+                    if (fail || rename(tmp_path, final_path) != 0) {
+                        unlink(tmp_path);
+                    } else {
+                        ink_disk_cache_prune(dir, 8);
+                    }
+                }
+            }
+            free(payload);
+        }
+    }
+    return NULL;
+}
+
+static void ink_disk_cache_save(InkSession *s, const int32_t *tokens, int n_tokens, int has_lg, const float *lg_src) {
+    const char *noc = getenv("INK_NO_DISK_CACHE");
+    if ((noc && noc[0] != '0' && noc[0] != '\0') || n_tokens < 1024 || n_tokens > s->max_ctx) return;
+    char dir[512];
+    if (ink_disk_cache_dir(dir, sizeof dir) != 0) return;
+    uint64_t th = ink_fnv1a_tokens(tokens, n_tokens);
+    char final_path[640], tmp_path[680];
+    if (snprintf(final_path, sizeof final_path, "%s/%016llx_%016llx_%d.inkp",
+                 dir, (unsigned long long)s->model_fp, (unsigned long long)th, n_tokens) >= (int)sizeof final_path) return;
+    struct stat st;
+    if (stat(final_path, &st) == 0) return; /* already cached on SSD */
+    if (snprintf(tmp_path, sizeof tmp_path, "%s.tmp.%d", final_path, (int)getpid()) >= (int)sizeof tmp_path) return;
+
+    const InkHParams *hp = &s->gguf.hp;
+    int win = (hp->swa > 0) ? (n_tokens < (int)hp->swa ? n_tokens : (int)hp->swa) : 0;
+    InkDiskSnapHdr hdr;
+    memset(&hdr, 0, sizeof hdr);
+    memcpy(hdr.magic, "INKP", 4);
+    hdr.version = 1;
+    hdr.model_fp = s->model_fp;
+    hdr.tok_hash = th;
+    hdr.n_tokens = n_tokens;
+    hdr.kv_q8 = s->kv_q8;
+    hdr.kv_row_u16 = (int32_t)s->kv_row_u16;
+    hdr.n_slots = s->n_slots;
+    hdr.full_slots = s->budget.full_slots;
+    hdr.swa_slots = s->budget.swa_slots;
+    hdr.swa_win = win;
+    hdr.conv_all_elems = (int32_t)s->conv_all_elems;
+    hdr.has_logits = (has_lg && lg_src) ? 1 : 0;
+    hdr.n_vocab = (int32_t)hp->n_vocab;
+
+    size_t kv_row = (size_t)s->kv_row_u16;
+    size_t total_bytes = sizeof hdr
+                       + (size_t)n_tokens * sizeof(int32_t)
+                       + (size_t)s->conv_all_elems * sizeof(float)
+                       + (size_t)s->budget.full_slots * 2 * (size_t)n_tokens * kv_row * sizeof(uint16_t)
+                       + (size_t)s->budget.swa_slots * 2 * (size_t)win * kv_row * sizeof(uint16_t)
+                       + (hdr.has_logits ? (size_t)hp->n_vocab * sizeof(float) : 0);
+    uint8_t *payload = (uint8_t *)malloc(total_bytes);
+    if (!payload) return;
+    uint8_t *dst = payload;
+    memcpy(dst, &hdr, sizeof hdr); dst += sizeof hdr;
+    memcpy(dst, tokens, (size_t)n_tokens * sizeof(int32_t)); dst += (size_t)n_tokens * sizeof(int32_t);
+    memcpy(dst, pm_contents(s->conv_all), (size_t)s->conv_all_elems * sizeof(float)); dst += (size_t)s->conv_all_elems * sizeof(float);
+    int p0 = n_tokens - win;
+    for (int il = 0; il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
+        const uint16_t *kk = (const uint16_t *)pm_contents(s->kv_k[il]);
+        const uint16_t *kv = (const uint16_t *)pm_contents(s->kv_v[il]);
+        if (!hp->is_swa[ip]) {
+            size_t nb_k = (size_t)n_tokens * kv_row * sizeof(uint16_t);
+            memcpy(dst, kk, nb_k); dst += nb_k;
+            memcpy(dst, kv, nb_k); dst += nb_k;
+        } else if (win > 0) {
+            int cap = s->kv_cap[il];
+            int r0 = p0 % cap;
+            int first = (r0 + win <= cap) ? win : (cap - r0);
+            int second = win - first;
+            size_t b1 = (size_t)first * kv_row * sizeof(uint16_t);
+            size_t b2 = (size_t)second * kv_row * sizeof(uint16_t);
+            memcpy(dst, kk + (size_t)r0 * kv_row, b1); dst += b1;
+            if (b2 > 0) { memcpy(dst, kk, b2); dst += b2; }
+            memcpy(dst, kv + (size_t)r0 * kv_row, b1); dst += b1;
+            if (b2 > 0) { memcpy(dst, kv, b2); dst += b2; }
+        }
+    }
+    if (hdr.has_logits) {
+        size_t lb = (size_t)hp->n_vocab * sizeof(float);
+        memcpy(dst, lg_src, lb); dst += lb;
+    }
+
+    if (!s->disk_thr_started) {
+        pthread_mutex_init(&s->disk_mu, NULL);
+        pthread_cond_init(&s->disk_cv, NULL);
+        s->disk_stop = 0;
+        s->disk_q_head = s->disk_q_tail = s->disk_q_len = 0;
+        if (pthread_create(&s->disk_thr, NULL, ink_disk_worker, s) != 0) {
+            pthread_mutex_destroy(&s->disk_mu);
+            pthread_cond_destroy(&s->disk_cv);
+            free(payload);
+            return;
+        }
+        s->disk_thr_started = 1;
+    }
+    pthread_mutex_lock(&s->disk_mu);
+    /* Skip if identical path is already queued. */
+    for (int qi = 0; qi < s->disk_q_len; qi++) {
+        int idx = (s->disk_q_head + qi) & 3;
+        if (strcmp(s->disk_q[idx].final_path, final_path) == 0) {
+            pthread_mutex_unlock(&s->disk_mu);
+            free(payload);
+            return;
+        }
+    }
+    if (s->disk_q_len == 4) {
+        /* Drop oldest queued job so memory stays strictly bounded. */
+        free(s->disk_q[s->disk_q_head].payload);
+        s->disk_q[s->disk_q_head].payload = NULL;
+        s->disk_q_head = (s->disk_q_head + 1) & 3;
+        s->disk_q_len--;
+    }
+    int slot = s->disk_q_tail;
+    memcpy(s->disk_q[slot].dir, dir, sizeof dir);
+    memcpy(s->disk_q[slot].final_path, final_path, sizeof final_path);
+    memcpy(s->disk_q[slot].tmp_path, tmp_path, sizeof tmp_path);
+    s->disk_q[slot].payload = payload;
+    s->disk_q[slot].payload_bytes = (size_t)(dst - payload);
+    s->disk_q_tail = (s->disk_q_tail + 1) & 3;
+    s->disk_q_len++;
+    pthread_cond_signal(&s->disk_cv);
+    pthread_mutex_unlock(&s->disk_mu);
+}
+
+static int ink_disk_cache_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
+    const char *noc = getenv("INK_NO_DISK_CACHE");
+    if ((noc && noc[0] != '0' && noc[0] != '\0') || n_tokens < 1024) return 0;
+    char dir[512];
+    if (ink_disk_cache_dir(dir, sizeof dir) != 0) return 0;
+    DIR *dp = opendir(dir);
+    if (!dp) return 0;
+
+    char prefix[32];
+    snprintf(prefix, sizeof prefix, "%016llx_", (unsigned long long)s->model_fp);
+    size_t plen = strlen(prefix);
+    const InkHParams *hp = &s->gguf.hp;
+
+    char best_path[640] = "";
+    InkDiskSnapHdr best_hdr;
+    memset(&best_hdr, 0, sizeof best_hdr);
+    int best_sp = 0;
+
+    struct dirent *de;
+    while ((de = readdir(dp)) != NULL) {
+        size_t nl = strlen(de->d_name);
+        if (nl < plen + 6 || strncmp(de->d_name, prefix, plen) != 0 ||
+            strcmp(de->d_name + nl - 5, ".inkp") != 0) continue;
+        char full[640];
+        if (snprintf(full, sizeof full, "%s/%s", dir, de->d_name) >= (int)sizeof full) continue;
+        int fd = open(full, O_RDONLY);
+        if (fd < 0) continue;
+        InkDiskSnapHdr hdr;
+        if (ink_read_all(fd, &hdr, sizeof hdr) == 0 &&
+            memcmp(hdr.magic, "INKP", 4) == 0 && hdr.version == 1 &&
+            hdr.model_fp == s->model_fp && hdr.kv_q8 == s->kv_q8 &&
+            hdr.kv_row_u16 == (int32_t)s->kv_row_u16 && hdr.n_slots == s->n_slots &&
+            hdr.conv_all_elems == (int32_t)s->conv_all_elems && hdr.n_vocab == (int32_t)hp->n_vocab &&
+            hdr.n_tokens > best_sp && hdr.n_tokens <= n_tokens && hdr.n_tokens <= s->max_ctx &&
+            (hdr.n_tokens < n_tokens || hdr.has_logits)) {
+            uint64_t want_h = ink_fnv1a_tokens(tokens, hdr.n_tokens);
+            if (hdr.tok_hash == want_h) {
+                int32_t *ftoks = (int32_t *)malloc((size_t)hdr.n_tokens * sizeof(int32_t));
+                if (ftoks) {
+                    if (ink_read_all(fd, ftoks, (size_t)hdr.n_tokens * sizeof(int32_t)) == 0 &&
+                        memcmp(ftoks, tokens, (size_t)hdr.n_tokens * sizeof(int32_t)) == 0) {
+                        best_sp = hdr.n_tokens;
+                        best_hdr = hdr;
+                        memcpy(best_path, full, sizeof full);
+                    }
+                    free(ftoks);
+                }
+            }
+        }
+        close(fd);
+    }
+    closedir(dp);
+    if (best_sp <= 0) return 0;
+
+    int fd = open(best_path, O_RDONLY);
+    if (fd < 0) return 0;
+    off_t skip = (off_t)(sizeof(InkDiskSnapHdr) + (size_t)best_sp * sizeof(int32_t));
+    if (lseek(fd, skip, SEEK_SET) != skip) { close(fd); return 0; }
+    int fail = ink_read_all(fd, pm_contents(s->conv_all), (size_t)s->conv_all_elems * sizeof(float));
+    size_t kv_row = (size_t)s->kv_row_u16;
+    int win = best_hdr.swa_win;
+    int p0 = best_sp - win;
+    for (int il = 0; !fail && il < s->n_slots; il++) {
+        int ip = (il < hp->n_phys) ? il : hp->loop_start + (il - hp->n_phys) % (hp->loop_end - hp->loop_start);
+        uint16_t *kk = (uint16_t *)pm_contents(s->kv_k[il]);
+        uint16_t *kv = (uint16_t *)pm_contents(s->kv_v[il]);
+        if (!hp->is_swa[ip]) {
+            fail = ink_read_all(fd, kk, (size_t)best_sp * kv_row * sizeof(uint16_t)) ||
+                   ink_read_all(fd, kv, (size_t)best_sp * kv_row * sizeof(uint16_t));
+        } else if (win > 0) {
+            int cap = s->kv_cap[il];
+            int r0 = p0 % cap;
+            int first = (r0 + win <= cap) ? win : (cap - r0);
+            int second = win - first;
+            fail = ink_read_all(fd, kk + (size_t)r0 * kv_row, (size_t)first * kv_row * sizeof(uint16_t)) ||
+                   (second > 0 && ink_read_all(fd, kk, (size_t)second * kv_row * sizeof(uint16_t))) ||
+                   ink_read_all(fd, kv + (size_t)r0 * kv_row, (size_t)first * kv_row * sizeof(uint16_t)) ||
+                   (second > 0 && ink_read_all(fd, kv, (size_t)second * kv_row * sizeof(uint16_t)));
+        }
+    }
+    if (!fail && best_sp == n_tokens && best_hdr.has_logits) {
+        fail = ink_read_all(fd, pm_contents(s->logits_buf[0]), (size_t)hp->n_vocab * sizeof(float));
+    }
+    close(fd);
+    if (fail) { ink_reset(s); return 0; }
+
+    if (s->live_tokens && best_sp <= s->max_ctx) {
+        memcpy(s->live_tokens, tokens, (size_t)best_sp * sizeof(int32_t));
+        s->live_len = best_sp;
+    }
+    if (s->tok_hist && best_sp <= s->max_ctx) {
+        memcpy(s->tok_hist, tokens, (size_t)best_sp * sizeof(int32_t));
+        s->tok_hist_len = best_sp;
+    }
+    s->swa_valid_from = p0;
+    s->max_pos_written = best_sp;
+    s->active_out_slot = 0;
+    s->argmax_valid = 0;
+    s->has_prev_argmax = 0;
+    s->greedy_streak = 0;
+    s->pos = best_sp;
+    s->dspark.pos = 0;
+    s->dspark.pending_got = 0;
+    s->dspark.pending_nb = 0;
+    s->dspark.skip_countdown = 0;
+    s->dspark.req_disabled = 0;
+    s->dspark.req_rounds = 0;
+    s->dspark.skip_mult = 1;
+    s->dspark.consec_unprof = 0;
+    s->dspark.util_ema = 1.15f;
+    s->dspark.ema_net_speedup = 1.15f;
+    s->sampled_mode = 0;
+    s->spec_round_open = 0;
+    return best_sp;
+}
+
 void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int save_logits) {
     if (!s || !tokens || n_tokens <= 0 || n_tokens != s->pos || n_tokens > s->max_ctx) return;
     ink_cancel_inflight(s);
@@ -3683,7 +4532,6 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
         s->dspark.pending_nb = 0;
     }
     const InkHParams *hp = &s->gguf.hp;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
     size_t conv_elems = (size_t)s->conv_all_elems;
     int is_pinned = (save_logits == 2);
     int has_lg = (save_logits == 1);
@@ -3746,11 +4594,13 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
     for (int i = 0; i < INK_MAX_SNAPS; i++) {
         if (s->snaps[i].swa_kv) n_swa_alloc++;
     }
+    int max_swa_snaps = (s->budget.headroom_mb >= 16384) ? 6 : INK_MAX_SWA_SNAPS;
     int want_swa = (s->budget.swa_slots > 0 && hp->swa > 0 && s->budget.headroom_mb >= 4096 &&
-                    (is_pinned || (n_tokens <= 4096 && (s->snaps[slot].swa_kv != NULL || n_swa_alloc < INK_MAX_SWA_SNAPS))));
+                    (is_pinned || (n_tokens <= s->max_ctx && (s->snaps[slot].swa_kv != NULL || n_swa_alloc < max_swa_snaps))));
     if (want_swa) {
-        size_t swa_elems = (size_t)s->budget.swa_slots * (size_t)hp->swa * n_kv * 2;
-        if (!s->snaps[slot].swa_kv && n_swa_alloc < INK_MAX_SWA_SNAPS) {
+        size_t kv_row = (size_t)s->kv_row_u16;
+        size_t swa_elems = (size_t)s->budget.swa_slots * (size_t)hp->swa * kv_row * 2;
+        if (!s->snaps[slot].swa_kv && n_swa_alloc < max_swa_snaps) {
             s->snaps[slot].swa_kv = (uint16_t *)malloc(swa_elems * sizeof(uint16_t));
         }
         if (s->snaps[slot].swa_kv) {
@@ -3766,12 +4616,12 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
                 int r0 = p0 % cap;
                 int first = (r0 + win <= cap) ? win : (cap - r0);
                 int second = win - first;
-                memcpy(sd, kk + (size_t)r0 * n_kv, (size_t)first * n_kv * sizeof(uint16_t));
-                if (second > 0) memcpy(sd + (size_t)first * n_kv, kk, (size_t)second * n_kv * sizeof(uint16_t));
-                sd += (size_t)win * n_kv;
-                memcpy(sd, kv + (size_t)r0 * n_kv, (size_t)first * n_kv * sizeof(uint16_t));
-                if (second > 0) memcpy(sd + (size_t)first * n_kv, kv, (size_t)second * n_kv * sizeof(uint16_t));
-                sd += (size_t)win * n_kv;
+                memcpy(sd, kk + (size_t)r0 * kv_row, (size_t)first * kv_row * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * kv_row, kk, (size_t)second * kv_row * sizeof(uint16_t));
+                sd += (size_t)win * kv_row;
+                memcpy(sd, kv + (size_t)r0 * kv_row, (size_t)first * kv_row * sizeof(uint16_t));
+                if (second > 0) memcpy(sd + (size_t)first * kv_row, kv, (size_t)second * kv_row * sizeof(uint16_t));
+                sd += (size_t)win * kv_row;
             }
             s->snaps[slot].swa_win = win;
         }
@@ -3781,6 +4631,9 @@ void ink_prefix_save(InkSession *s, const int32_t *tokens, int n_tokens, int sav
     s->snaps[slot].pinned = is_pinned ? 1 : 0;
     s->snaps[slot].last_used = ++s->snap_clock;
     s->snaps[slot].valid = 1;
+    if (save_logits != 0 && (is_pinned || n_tokens >= 1024)) {
+        ink_disk_cache_save(s, tokens, n_tokens, has_lg, has_lg ? s->snaps[slot].logits : NULL);
+    }
 }
 
 int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
@@ -3791,7 +4644,6 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     s->spec_tail = 0;
     s->spec_active_idx = -1;
     const InkHParams *hp = &s->gguf.hp;
-    size_t n_kv = (size_t)hp->n_head_kv * (size_t)hp->head_dim;
     int best = -1;
     int best_need_swa = 0;
     for (int i = 0; i < INK_MAX_SNAPS; i++) {
@@ -3813,12 +4665,15 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
         }
     }
     if (best < 0) {
+        int disk_sp = ink_disk_cache_restore(s, tokens, n_tokens);
+        if (disk_sp > 0) return disk_sp;
         ink_reset(s);
         return 0;
     }
     memcpy(pm_contents(s->conv_all), s->snaps[best].conv_state, (size_t)s->conv_all_elems * sizeof(float));
     int sp = s->snaps[best].pos;
     if (best_need_swa && s->snaps[best].swa_kv) {
+        size_t kv_row = (size_t)s->kv_row_u16;
         int win = s->snaps[best].swa_win;
         int p0 = sp - win;
         const uint16_t *ss = s->snaps[best].swa_kv;
@@ -3831,12 +4686,12 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
             int r0 = p0 % cap;
             int first = (r0 + win <= cap) ? win : (cap - r0);
             int second = win - first;
-            memcpy(kk + (size_t)r0 * n_kv, ss, (size_t)first * n_kv * sizeof(uint16_t));
-            if (second > 0) memcpy(kk, ss + (size_t)first * n_kv, (size_t)second * n_kv * sizeof(uint16_t));
-            ss += (size_t)win * n_kv;
-            memcpy(kv + (size_t)r0 * n_kv, ss, (size_t)first * n_kv * sizeof(uint16_t));
-            if (second > 0) memcpy(kv, ss + (size_t)first * n_kv, (size_t)second * n_kv * sizeof(uint16_t));
-            ss += (size_t)win * n_kv;
+            memcpy(kk + (size_t)r0 * kv_row, ss, (size_t)first * kv_row * sizeof(uint16_t));
+            if (second > 0) memcpy(kk, ss + (size_t)first * kv_row, (size_t)second * kv_row * sizeof(uint16_t));
+            ss += (size_t)win * kv_row;
+            memcpy(kv + (size_t)r0 * kv_row, ss, (size_t)first * kv_row * sizeof(uint16_t));
+            if (second > 0) memcpy(kv, ss + (size_t)first * kv_row, (size_t)second * kv_row * sizeof(uint16_t));
+            ss += (size_t)win * kv_row;
         }
         s->swa_valid_from = p0;
         s->max_pos_written = sp;
@@ -3862,6 +4717,10 @@ int ink_prefix_restore(InkSession *s, const int32_t *tokens, int n_tokens) {
     s->dspark.req_rounds = 0;
     s->dspark.skip_mult = 1;
     s->dspark.util_ema = 1.15f;
+    s->dspark.consec_unprof = 0;
+    s->dspark.ema_net_speedup = 1.15f;
+    s->sampled_mode = 0;
+    s->spec_round_open = 0;
     if (s->dspark.ready) {
         if (!best_need_swa && s->snaps[best].dspark_last_taps && s->snaps[best].dspark_pos == sp) {
             memcpy(pm_contents(s->dspark.last_taps), s->snaps[best].dspark_last_taps, 4 * 2304 * sizeof(float));
@@ -3902,9 +4761,12 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
     }
     int cap_taps = (advance_state && s->dspark.ready && !s->dspark.req_disabled && getenv("INK_NO_SPEC") == NULL &&
                     s->dspark.pos + s->dspark.pending_got == s->pos);
-    if (cap_taps && s->dspark.pending_got > 0) {
+    const int64_t tap_stride = 64;
+    if (cap_taps && s->dspark.pending_got > 0 &&
+        (s->dspark.pending_nb != (int)tap_stride || s->dspark.pending_got >= (int)tap_stride)) {
         if (ink_dspark_flush_pending(s, batch) != 0) return 1;
     }
+    int64_t tap_slot = (cap_taps && s->dspark.pending_got > 0) ? (int64_t)s->dspark.pending_got : 0;
 
     int64_t d = hp->n_embd;
     /* 1. Embedding lookup + token_embd_norm (+ concurrent conv_all backup when GPU-chained speculatively) */
@@ -3937,7 +4799,7 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
     for (int il = 0; il < start; il++) {
         if (cap_taps && il == 5) {
             CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d),
-                 a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, 0, d));
+                 a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, (0 * tap_stride + tap_slot) * d, d));
             pm_barrier(batch);
         }
         if (dispatch_layer(s, bp, il, il, &n_blocks, 0, -1, tau) != 0) return 1;
@@ -3994,11 +4856,11 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
         for (int ip = start; ip < end; ip++) {
             if (cap_taps && pass == 1 && ip == 11) {
                 CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d),
-                     a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, 1 * d, d));
+                     a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, (1 * tap_stride + tap_slot) * d, d));
                 pm_barrier(batch);
             } else if (cap_taps && pass == 2 && ip == 17) {
                 CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d),
-                     a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, 2 * d, d));
+                     a_f32v(s->cur, 0, d), a_f32v(s->dspark.taps, (2 * tap_stride + tap_slot) * d, d));
                 pm_barrier(batch);
             }
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
@@ -4033,10 +4895,10 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
         pm_barrier(batch);
         if (cap_taps) {
             CALL(s, batch, K_COPY, (d + INK_NT - 1) / INK_NT, a_int(d),
-                 a_f32v(h_dst, 0, d), a_f32v(s->dspark.taps, 3 * d, d));
+                 a_f32v(h_dst, 0, d), a_f32v(s->dspark.taps, (3 * tap_stride + tap_slot) * d, d));
         }
         int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
-        if (s->can_verify_nb && getenv("INK_NO_MMA32") == NULL && s->fast_buf && s->fast_output_s.qs.off >= 0) {
+        if (s->can_verify_nb && getenv("INK_NO_MMA32") == NULL && s->fast_buf && s->fast_output_s.qs.off >= 0 && s->fast_output_is_q4s) {
             CALL(s, batch, K_DV_Q4S_MMA32_NB, (nv + 31) / 32, a_int(nv), a_int(d), a_int(1),
                  a_int(0), a_int(0), a_int(0), a_f32(hp->logit_softcap),
                  a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
@@ -4047,7 +4909,7 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
                  a_tensor_u16(s, &s->gguf.output),
                  a_f32v(h_dst, 0, d), a_f32v(l_dst, 0, nv));
         } else if (s->fast_buf && s->fast_output_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_RMS, (nv + 7) / 8, a_int(nv), a_int(d),
+            CALL(s, batch, s->fast_output_is_q4s ? K_DV_Q4S_RMS : K_DV_Q8S_RMS, (nv + 7) / 8, a_int(nv), a_int(d),
                  a_int(0), a_int(0), a_f32(hp->rms_eps), a_f32(hp->logit_softcap),
                  a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
                  a_f32v(h_dst, 0, d), a_f32v(s->rms_parts, 0, 3 * 64), a_f32v(l_dst, 0, nv));
@@ -4065,15 +4927,12 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
             }
         }
         pm_barrier(batch);
-        CALL(s, batch, K_ARGMAX_S1, 64, a_int(nv),
-             a_f32v(l_dst, 0, nv), a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64));
+        CALL(s, batch, K_TOPK64_S1, 32, a_int(32), a_int(nv),
+             a_f32v(l_dst, 0, nv), a_f32v(s->topk_s1_vals, 0, 32 * 64), a_u32v(s->topk_s1_ids, 0, 32 * 64));
         pm_barrier(batch);
-        CALL(s, batch, K_ARGMAX_S2, 1, a_int(64),
-             a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64), a_u32v(a_dst, 0, 1));
-        CALL(s, batch, K_TOPK_FILTER, 256, a_int(nv), a_f32(18.0f),
-             a_f32v(s->argmax_vals, 0, 64), a_f32v(l_dst, 0, nv),
-             a_u32v(s->topk_cnt[os], 0, 256), a_u32v(s->topk_ids[os], 0, 256 * 16),
-             a_f32v(s->topk_vals[os], 0, 256 * 16));
+        CALL(s, batch, K_TOPK64_S2, 1, a_int(32 * 64),
+             a_f32v(s->topk_s1_vals, 0, 32 * 64), a_u32v(s->topk_s1_ids, 0, 32 * 64),
+             a_f32v(s->topk_vals[os], 0, 64), a_u32v(s->topk_ids[os], 0, 64), a_u32v(a_dst, 0, 1));
         if (advance_state) {
             s->active_out_slot = os;
             s->hidden_is_prefill = 0;
@@ -4088,7 +4947,7 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
                  a_f32v(s->cur, 0, d),
                  a_tensor_f32(s, &s->gguf.out_res_query),
                  a_tensor_f32(s, &s->gguf.out_norm),
-                 a_f32v(s->dspark.taps, 3 * d, d));
+                 a_f32v(s->dspark.taps, (3 * tap_stride + tap_slot) * d, d));
             pm_barrier(batch);
         }
         if (advance_state) s->argmax_valid = 0;
@@ -4119,10 +4978,14 @@ static int enqueue_step(InkSession *s, PmBatch *bp, int32_t token_id, PmBuffer i
     }
 
     if (advance_state) {
-        if (cap_taps && s->dspark.pos == s->pos) {
-            s->dspark.pending_pos0 = s->pos;
-            s->dspark.pending_nb = 1;
-            s->dspark.pending_got = 1;
+        if (cap_taps && s->dspark.pos + s->dspark.pending_got == s->pos) {
+            if (s->dspark.pending_got == 0) {
+                s->dspark.pending_pos0 = s->pos;
+                s->dspark.pending_nb = (int)tap_stride;
+                s->dspark.pending_got = 1;
+            } else {
+                s->dspark.pending_got++;
+            }
         }
         if (s->live_tokens && s->pos < s->max_ctx && !indirect_tok_buf) {
             s->live_tokens[s->pos] = token_id;
@@ -4166,7 +5029,7 @@ static int dispatch_dequant_q8_bf16(InkSession *s, PmBatch batch, const InkTenso
 }
 
 static int dispatch_dequant_q4_or_q8_bf16(InkSession *s, PmBatch batch, const InkTensor *w, const FastSpan *fs, const FastQ4S *q4s, int64_t rows, int64_t cols, int64_t bf16_off) {
-    if (s->fast_buf && q4s && q4s->qs.off >= 0) {
+    if (!s->fast_is_q8s && s->fast_buf && q4s && q4s->qs.off >= 0) {
         CALL(s, batch, K_DEQUANT_Q4S_BF16, (rows + 7) / 8, a_int(rows), a_int(cols),
              a_fast_u32(s, &q4s->qs), a_fast_u16(s, &q4s->ds), a_u32v(s->w_bf16, bf16_off, rows * (cols / 2)));
         return 0;
@@ -4215,6 +5078,19 @@ static int dispatch_mm_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t 
              a_u16v(x_bf16, x_off, nb * cols),
              a_f32v(out_buf, out_off, nb * rows));
     }
+    return 0;
+}
+
+static int dispatch_mm_q8s_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t cols, int64_t nb,
+                                const FastQ4S *q8s, PmBuffer x_bf16, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
+    int64_t r_tiles = (rows + 63) / 64;
+    int k = (nb >= 128) ? K_MM_Q8S_BF16_128 : (nb >= 33) ? K_MM_Q8S_BF16_64 : K_MM_Q8S_BF16_16;
+    int64_t tm = (nb >= 128) ? 128 : (nb >= 33) ? 64 : 16;
+    int64_t t_tiles = (nb + tm - 1) / tm;
+    CALL(s, batch, k, t_tiles * r_tiles, a_int(rows), a_int(cols), a_int(nb),
+         a_fast_u32(s, &q8s->qs), a_fast_u16(s, &q8s->ds),
+         a_u16v(x_bf16, x_off, nb * cols),
+         a_f32v(out_buf, out_off, nb * rows));
     return 0;
 }
 
@@ -4321,17 +5197,20 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
     /* Wave 2: Input RMSNorms + overlapped Q8/F32 -> BF16 weight dequantization (-48 barriers/prefill!). */
     int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
     int has_v_dyn = (!is_swa && L->attn_v_conv_proj.present);
-    int qkv_bf16 = (nb >= m4_min && L->attn_q.type == INK_GGML_Q8_0 && L->attn_k.type == INK_GGML_Q8_0 &&
+    int qkv_q8s = (!force_fp32 && s->fast_buf && s->fast_is_q8s &&
+                   FL->attn_q_s.qs.off >= 0 && FL->attn_k_s.qs.off >= 0 && FL->attn_v_s.qs.off >= 0 &&
+                   FL->attn_rel_s.qs.off >= 0 && FL->attn_gate_s.qs.off >= 0);
+    int qkv_bf16 = (!qkv_q8s && nb >= m4_min && L->attn_q.type == INK_GGML_Q8_0 && L->attn_k.type == INK_GGML_Q8_0 &&
                     L->attn_v.type == INK_GGML_Q8_0 && L->attn_rel.type == INK_GGML_Q8_0 && L->attn_gate.type == INK_GGML_Q8_0);
     int64_t off_q = 0;
     int64_t off_k = off_q + n_q * (d / 2);
     int64_t off_v = off_k + n_kv * (d / 2);
     int64_t off_r = off_v + n_kv * (d / 2);
     int64_t off_g = off_r + (n_head * n_rel) * (d / 2);
-    int64_t off_s = off_g + n_q * (d / 2);
+    int64_t off_s = qkv_q8s ? 0 : (off_g + n_q * (d / 2));
     int64_t off_kd = off_s + n_head * (d / 2);
-    int sink_bf16 = (qkv_bf16 && nb >= 64 && L->attn_sink_proj.type == INK_GGML_F32);
-    int kdyn_bf16 = (qkv_bf16 && has_k_dyn && nb >= 64 && L->attn_k_conv_proj.type == INK_GGML_F32);
+    int sink_bf16 = ((qkv_q8s || qkv_bf16) && nb >= 64 && L->attn_sink_proj.type == INK_GGML_F32);
+    int kdyn_bf16 = ((qkv_q8s || qkv_bf16) && has_k_dyn && nb >= 64 && L->attn_k_conv_proj.type == INK_GGML_F32);
 
     PmBuffer q_in = s->inp_q, k_in = s->inp_k, v_in = s->inp_v;
     if (is_swa && has_messages) {
@@ -4360,18 +5239,18 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
         if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_v, &FL->attn_v, &FL->attn_v_s, n_kv, d, off_v)) return 1;
         if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_rel, &FL->attn_rel, &FL->attn_rel_s, n_head * n_rel, d, off_r)) return 1;
         if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_gate, &FL->attn_gate, &FL->attn_gate_s, n_q, d, off_g)) return 1;
-        if (sink_bf16) {
-            if (dispatch_dequant_f32_bf16(s, batch, &L->attn_sink_proj, n_head, d, off_s)) return 1;
-        }
-        if (kdyn_bf16) {
-            if (dispatch_dequant_f32_bf16(s, batch, &L->attn_k_conv_proj, n_head_kv * hp->conv_len, d, off_kd)) return 1;
-        }
+    }
+    if (sink_bf16) {
+        if (dispatch_dequant_f32_bf16(s, batch, &L->attn_sink_proj, n_head, d, off_s)) return 1;
+    }
+    if (kdyn_bf16) {
+        if (dispatch_dequant_f32_bf16(s, batch, &L->attn_k_conv_proj, n_head_kv * hp->conv_len, d, off_kd)) return 1;
     }
     pm_barrier(batch);
     prof_mark(bp, 0); batch = *bp; /* 0: mix+ctrl+norm+qkv_deq */
 
-    /* Wave 3: ALL independent attention projections concurrently — Metal 4 Neural Accelerators (native bfloat x bfloat)! */
-    if (qkv_bf16) {
+    /* Wave 3: ALL independent attention projections concurrently — Metal 4 Neural Accelerators (in-tile Q8S or BF16)! */
+    if (qkv_q8s || qkv_bf16) {
         int64_t qx_off = 0, kx_off = 0, vx_off = 0;
         if (dispatch_f32_to_bf16(s, batch, bd, q_in, 0, 0)) return 1;
         if (k_in != q_in) {
@@ -4383,11 +5262,19 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
             if (v_in != k_in && dispatch_f32_to_bf16(s, batch, bd, v_in, 0, vx_off)) return 1;
         }
         pm_barrier(batch);
-        if (dispatch_mm_bf16(s, batch, n_q, d, nb, off_q, s->moe_slot_out, qx_off, s->q_buf, 0)) return 1;
-        if (dispatch_mm_bf16(s, batch, n_kv, d, nb, off_k, s->moe_slot_out, kx_off, s->k_raw, 0)) return 1;
-        if (dispatch_mm_bf16(s, batch, n_kv, d, nb, off_v, s->moe_slot_out, vx_off, s->v_raw, 0)) return 1;
-        if (dispatch_mm_bf16(s, batch, n_head * n_rel, d, nb, off_r, s->moe_slot_out, qx_off, s->r_buf, 0)) return 1;
-        if (dispatch_mm_bf16(s, batch, n_q, d, nb, off_g, s->moe_slot_out, qx_off, s->gate_buf, 0)) return 1;
+        if (qkv_q8s) {
+            if (dispatch_mm_q8s_bf16(s, batch, n_q, d, nb, &FL->attn_q_s, s->moe_slot_out, qx_off, s->q_buf, 0)) return 1;
+            if (dispatch_mm_q8s_bf16(s, batch, n_kv, d, nb, &FL->attn_k_s, s->moe_slot_out, kx_off, s->k_raw, 0)) return 1;
+            if (dispatch_mm_q8s_bf16(s, batch, n_kv, d, nb, &FL->attn_v_s, s->moe_slot_out, vx_off, s->v_raw, 0)) return 1;
+            if (dispatch_mm_q8s_bf16(s, batch, n_head * n_rel, d, nb, &FL->attn_rel_s, s->moe_slot_out, qx_off, s->r_buf, 0)) return 1;
+            if (dispatch_mm_q8s_bf16(s, batch, n_q, d, nb, &FL->attn_gate_s, s->moe_slot_out, qx_off, s->gate_buf, 0)) return 1;
+        } else {
+            if (dispatch_mm_bf16(s, batch, n_q, d, nb, off_q, s->moe_slot_out, qx_off, s->q_buf, 0)) return 1;
+            if (dispatch_mm_bf16(s, batch, n_kv, d, nb, off_k, s->moe_slot_out, kx_off, s->k_raw, 0)) return 1;
+            if (dispatch_mm_bf16(s, batch, n_kv, d, nb, off_v, s->moe_slot_out, vx_off, s->v_raw, 0)) return 1;
+            if (dispatch_mm_bf16(s, batch, n_head * n_rel, d, nb, off_r, s->moe_slot_out, qx_off, s->r_buf, 0)) return 1;
+            if (dispatch_mm_bf16(s, batch, n_q, d, nb, off_g, s->moe_slot_out, qx_off, s->gate_buf, 0)) return 1;
+        }
         if (sink_bf16) {
             if (dispatch_mm_bf16(s, batch, n_head, d, nb, off_s, s->moe_slot_out, qx_off, s->sinks_buf, 0)) return 1;
         } else {
@@ -4469,68 +5356,98 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
          a_f32v(s->v_buf, 0, nb * n_kv));
     pm_barrier(batch);
 
-    /* Store K, V for all nb tokens into KV cache */
+    /* Store K, V for all nb tokens into KV cache (Q8_0 block-32 or FP16) */
     int64_t kv_cap = s->kv_cap[il];
-    CALL(s, batch, K_KV_STORE_BATCH, nb, a_int(n_kv), a_int(s->pos), a_int(kv_cap), a_int(is_swa),
-         a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->v_buf, 0, nb * n_kv),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv));
+    if (s->kv_q8) {
+        CALL(s, batch, K_KV_STORE_BATCH_Q8, nb * n_head_kv, a_int(n_head_kv), a_int(s->pos), a_int(kv_cap), a_int(is_swa),
+             a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->v_buf, 0, nb * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16), a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16));
+    } else {
+        CALL(s, batch, K_KV_STORE_BATCH, nb, a_int(n_kv), a_int(s->pos), a_int(kv_cap), a_int(is_swa),
+             a_f32v(s->k_buf, 0, nb * n_kv), a_f32v(s->v_buf, 0, nb * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16), a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16));
+    }
     pm_barrier(batch);
 
-    /* 3-stage MMA Flash-Prefill Attention (packed score_stride = span for 9x smaller SLC-resident scores!) */
+    /* 1-Pass Metal 4 FlashAttention (zero score DRAM buffer, 96 fewer barriers/chunk!) */
     prof_mark(bp, 2); batch = *bp; /* 2: conv+clip+hnorm+kv */
     uint32_t dims0 = (uint32_t)n_head | ((uint32_t)n_head_kv << 8) | ((uint32_t)hd << 16) | ((uint32_t)n_rel << 24);
-    uint32_t dims1 = (uint32_t)hp->rel_extent | ((uint32_t)(is_swa ? 1 : 0) << 16) | ((uint32_t)hp->swa << 17);
+    uint32_t dims1 = (uint32_t)hp->rel_extent | ((uint32_t)(is_swa ? 1 : 0) << 16) | ((uint32_t)hp->swa << 17) | ((uint32_t)(s->kv_q8 ? 1 : 0) << 31);
     int64_t k_start = (is_swa && s->pos >= hp->swa) ? (s->pos - hp->swa + 1) : 0;
     int64_t span = (s->pos + nb) - k_start;
     int64_t sc_stride = span;
     uint32_t kv_info = (uint32_t)kv_cap | ((uint32_t)sc_stride << 16);
     int64_t q_tiles = (nb + 63) / 64;
-    CALL(s, batch, (hd == 128 && n_rel == 16) ? K_ATTN_SCORES_M4 : K_ATTN_SCORES_MMA, n_head * q_tiles * 4,
-         a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
-         a_f32v(s->q_buf, 0, nb * n_q),
-         a_f32v(s->r_buf, 0, nb * n_head * n_rel),
-         a_tensor_f32(s, &L->attn_rel_bias),
-         a_f32v(s->sinks_buf, 0, nb * n_head),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv),
-         a_u16v(s->attn_scores, 0, nb * n_head * sc_stride));
-    pm_barrier(batch);
-    prof_mark(bp, 3); batch = *bp; /* 3: attn_scores_m4 */
-    CALL(s, batch, K_ATTN_SOFTMAX_MMA, nb * n_head,
-         a_u32(dims0), a_u32(dims1), a_int(sc_stride), a_int(s->pos), a_int(nb), a_int(k_start),
-         a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
-         a_f32v(s->sinks_buf, 0, nb * n_head));
-    pm_barrier(batch);
-    prof_mark(bp, 4); batch = *bp; /* 4: attn_softmax_mma */
-    int o_bf16 = (nb >= m4_min && L->attn_output.type == INK_GGML_Q8_0);
-    if (hd == 128) {
-        CALL(s, batch, K_ATTN_VALUES_M4, n_head * q_tiles * 2,
+    int o_q8s = (!force_fp32 && s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0);
+    int o_bf16 = (!o_q8s && nb >= m4_min && L->attn_output.type == INK_GGML_Q8_0);
+    if (hd == 128 && n_rel == 16 && !getenv("INK_OLD_ATTN")) {
+        int64_t fq_tiles = (nb + 31) / 32;
+        CALL(s, batch, K_FLASH_ATTN_M4, n_head * fq_tiles,
              a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
-             a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
+             a_f32v(s->q_buf, 0, nb * n_q),
+             a_f32v(s->r_buf, 0, nb * n_head * n_rel),
+             a_tensor_f32(s, &L->attn_rel_bias),
              a_f32v(s->sinks_buf, 0, nb * n_head),
-             a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+             a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16),
+             a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16),
              a_f32v(s->gate_buf, 0, nb * n_q),
              a_f32v(s->attn_out, 0, nb * n_q));
+        if (o_bf16) {
+            if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_output, &FL->attn_output, &FL->attn_output_s, d, n_q, 0)) return 1;
+        }
+        pm_barrier(batch);
+        prof_mark(bp, 3); batch = *bp; /* 3: flash_attn_m4 */
     } else {
-        CALL(s, batch, K_ATTN_VALUES_MMA, n_head * q_tiles * 4,
+        CALL(s, batch, (hd == 128 && n_rel == 16) ? K_ATTN_SCORES_M4 : K_ATTN_SCORES_MMA, n_head * q_tiles * 4,
              a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
-             a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
+             a_f32v(s->q_buf, 0, nb * n_q),
+             a_f32v(s->r_buf, 0, nb * n_head * n_rel),
+             a_tensor_f32(s, &L->attn_rel_bias),
              a_f32v(s->sinks_buf, 0, nb * n_head),
-             a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
-             a_f32v(s->gate_buf, 0, nb * n_q),
-             a_f32v(s->attn_out, 0, nb * n_q));
+             a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16),
+             a_u16v(s->attn_scores, 0, nb * n_head * sc_stride));
+        pm_barrier(batch);
+        prof_mark(bp, 3); batch = *bp; /* 3: attn_scores_m4 */
+        CALL(s, batch, K_ATTN_SOFTMAX_MMA, nb * n_head,
+             a_u32(dims0), a_u32(dims1), a_int(sc_stride), a_int(s->pos), a_int(nb), a_int(k_start),
+             a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
+             a_f32v(s->sinks_buf, 0, nb * n_head));
+        pm_barrier(batch);
+        prof_mark(bp, 4); batch = *bp; /* 4: attn_softmax_mma */
+        if (hd == 128) {
+            CALL(s, batch, K_ATTN_VALUES_M4, n_head * q_tiles * 2,
+                 a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
+                 a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
+                 a_f32v(s->sinks_buf, 0, nb * n_head),
+                 a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16),
+                 a_f32v(s->gate_buf, 0, nb * n_q),
+                 a_f32v(s->attn_out, 0, nb * n_q));
+        } else {
+            CALL(s, batch, K_ATTN_VALUES_MMA, n_head * q_tiles * 4,
+                 a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos), a_int(nb), a_int(k_start),
+                 a_u16v(s->attn_scores, 0, nb * n_head * sc_stride),
+                 a_f32v(s->sinks_buf, 0, nb * n_head),
+                 a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16),
+                 a_f32v(s->gate_buf, 0, nb * n_q),
+                 a_f32v(s->attn_out, 0, nb * n_q));
+        }
+        if (o_bf16) {
+            /* Overlapped with K_ATTN_VALUES_MMA (-48 barriers/prefill!). */
+            if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_output, &FL->attn_output, &FL->attn_output_s, d, n_q, 0)) return 1;
+        }
+        pm_barrier(batch);
+        prof_mark(bp, 5); batch = *bp; /* 5: attn_values_mma+o_deq */
     }
-    if (o_bf16) {
-        /* Overlapped with K_ATTN_VALUES_MMA (-48 barriers/prefill!). */
-        if (dispatch_dequant_q4_or_q8_bf16(s, batch, &L->attn_output, &FL->attn_output, &FL->attn_output_s, d, n_q, 0)) return 1;
-    }
-    pm_barrier(batch);
-    prof_mark(bp, 5); batch = *bp; /* 5: attn_values_mma+o_deq */
 
     /* Output projection + post shortconv + residual (fused when non-block-boundary!) */
-    if (o_bf16) {
+    if (o_q8s || o_bf16) {
         if (dispatch_f32_to_bf16(s, batch, nb * n_q, s->attn_out, 0, 0)) return 1;
         pm_barrier(batch);
-        if (dispatch_mm_bf16(s, batch, d, n_q, nb, 0, s->moe_slot_out, 0, s->o_raw, 0)) return 1;
+        if (o_q8s) {
+            if (dispatch_mm_q8s_bf16(s, batch, d, n_q, nb, &FL->attn_output_s, s->moe_slot_out, 0, s->o_raw, 0)) return 1;
+        } else {
+            if (dispatch_mm_bf16(s, batch, d, n_q, nb, 0, s->moe_slot_out, 0, s->o_raw, 0)) return 1;
+        }
     } else {
         if (dispatch_mm(s, batch, &L->attn_output, d, n_q, nb, s->attn_out, 0, s->o_raw, 0)) return 1;
     }
@@ -4638,7 +5555,70 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
         const char *env_t = getenv("INK_DIRECT_THRESH");
         if (!force_fp32 && env_t && env_t[0]) direct_thresh = strtoll(env_t, NULL, 10);
     }
-    if (nb <= direct_thresh &&
+    int used_sum_gather = 0;
+    int use_iq4s_moe = (!force_fp32 && s->iq4s_buf && FL->moe_gu_iq4s.qs.off >= 0 && FL->moe_dn_iq4s.qs.off >= 0);
+    int use_q8s_moe = (!force_fp32 && !use_iq4s_moe && s->fast_buf && s->fast_is_q8s && FL->moe_gu_q4s.qs.off >= 0 && FL->moe_dn_q4s.qs.off >= 0);
+    if (use_iq4s_moe || use_q8s_moe) {
+        /* Sprint F: Aligned in-tile IQ4S/Q8S Metal 4 MoE + vectorized gather/SITU + zero-scatter direct sum-gather! */
+        int64_t tot_rows = nb * hp->n_expert_used;
+        int use_256 = 0; /* TM=128 (64 regs/thread) beats TM=256 (128 regs, spills) by 13% on M5 Max! */
+        int use_128 = (nb >= 768 && !use_256);
+        int use_64 = (nb >= 384 && !use_128 && !use_256);
+        int64_t tm = use_256 ? 256 : (use_128 ? 128 : (use_64 ? 64 : 16));
+        int64_t tn = 64;
+        int moe_mm_k = use_iq4s_moe
+            ? (use_256 ? K_MOE_MM_IQ4S_256 : (use_128 ? K_MOE_MM_IQ4S_128 : (use_64 ? K_MOE_MM_IQ4S_64 : K_MOE_MM_IQ4S_16)))
+            : (use_128 ? K_MOE_MM_Q8S_128 : (use_64 ? K_MOE_MM_Q8S_64 : K_MOE_MM_Q8S_16));
+        int64_t gu_rows = 2 * n_ff;
+        int64_t gu_r_tiles = (gu_rows + tn - 1) / tn;
+        int64_t dn_r_tiles = (d + tn - 1) / tn;
+        int64_t max_tiles = (tot_rows + (tm - 1) * hp->n_expert) / tm;
+        if (max_tiles > tot_rows) max_tiles = tot_rows;
+        if (max_tiles > tile_cap) max_tiles = tile_cap;
+        CALL(s, batch, K_MOE_EXP_OFF, 1, a_int(hp->n_expert),
+             a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert));
+        CALL(s, batch, K_MOE_BUILD_TILES, 1, a_int(hp->n_expert), a_int(tm), a_int(gu_r_tiles), a_int(dn_r_tiles),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16));
+        pm_barrier(batch);
+        CALL(s, batch, K_MOE_GATHER_BF16_V2, hp->n_expert * 8, a_int(d), a_int(hp->n_expert_used), a_int(INK_PREFILL_B),
+             a_f32v(s->norm_buf, 0, bd),
+             a_u32v(s->exp_toks, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_slots, 0, hp->n_expert * INK_PREFILL_B),
+             a_u32v(s->exp_cnt, 0, hp->n_expert),
+             a_u32v(s->exp_off, 0, hp->n_expert),
+             a_u16v(s->moe_slot_out, 0, tot_rows * d),
+             a_u32v(s->row_dst, 0, tot_rows));
+        pm_barrier(batch);
+        prof_mark(bp, 7); batch = *bp; /* 7: moe_gather_bf16_v2+tiles */
+        PmArg gu_qs = use_iq4s_moe ? a_iq4s_u32(s, &FL->moe_gu_iq4s.qs) : a_fast_u32(s, &FL->moe_gu_q4s.qs);
+        PmArg gu_ds = use_iq4s_moe ? a_iq4s_u16(s, &FL->moe_gu_iq4s.ds) : a_fast_u16(s, &FL->moe_gu_q4s.ds);
+        CALL(s, batch, moe_mm_k, max_tiles * gu_r_tiles, a_int(gu_rows), a_int(d),
+             gu_qs, gu_ds,
+             a_u16v(s->moe_slot_out, 0, tot_rows * d),
+             a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
+             a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16),
+             a_f32v(s->moe_gu, 0, tot_rows * gu_rows));
+        pm_barrier(batch);
+        prof_mark(bp, 8); batch = *bp; /* 8: moe_gu_iq4s */
+        CALL(s, batch, K_SITU_BATCH_BF16_V2, tot_rows,
+             a_int(n_ff), a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
+             a_f32v(s->moe_gu, 0, tot_rows * gu_rows),
+             a_u16v(s->moe_hid, 0, tot_rows * n_ff));
+        pm_barrier(batch);
+        prof_mark(bp, 9); batch = *bp; /* 9: situ_batch_bf16_v2 */
+        PmArg dn_qs = use_iq4s_moe ? a_iq4s_u32(s, &FL->moe_dn_iq4s.qs) : a_fast_u32(s, &FL->moe_dn_q4s.qs);
+        PmArg dn_ds = use_iq4s_moe ? a_iq4s_u16(s, &FL->moe_dn_iq4s.ds) : a_fast_u16(s, &FL->moe_dn_q4s.ds);
+        CALL(s, batch, moe_mm_k, max_tiles * dn_r_tiles, a_int(d), a_int(n_ff),
+             dn_qs, dn_ds,
+             a_u16v(s->moe_hid, 0, tot_rows * n_ff),
+             a_u32v(s->exp_cnt, 0, hp->n_expert), a_u32v(s->exp_off, 0, hp->n_expert),
+             a_u32v(s->tile_exp, 0, tile_cap), a_u32v(s->tile_m0, 0, tile_cap), a_u32v(s->tile_cnt, 0, 16),
+             a_f32v(s->moe_gu, 0, tot_rows * d));
+        pm_barrier(batch);
+        prof_mark(bp, 10); batch = *bp; /* 10: moe_dn_iq4s (0 scatter!) */
+        used_sum_gather = 1;
+    } else if (nb <= direct_thresh &&
         L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL &&
         L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
         /* Direct IQ4_NL tiny-batch MoE (tile_m=4, zero BF16 staging!) */
@@ -4925,10 +5905,18 @@ static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int 
         }
         pm_barrier(batch);
     }
-    /* Sprint 30: Parallel coalesced MoE slot sum + coalesced post shortconv & residual add (446ms -> ~30ms on 2.4K prefill!) */
-    CALL(s, batch, K_MOE_SUM_BATCH, nb * ((d + 127) / 128), a_int(d), a_int(hp->n_expert_used),
-         a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
-         a_f32v(s->moe_out, 0, bd));
+    if (used_sum_gather) {
+        CALL(s, batch, K_MOE_SUM_GATHER_BATCH, nb * ((d + 511) / 512), a_int(d), a_int(hp->n_expert_used),
+             a_f32v(s->moe_gu, 0, nb * hp->n_expert_used * d),
+             a_u32v(s->row_dst, 0, nb * hp->n_expert_used),
+             a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
+             a_f32v(s->moe_out, 0, bd));
+    } else {
+        /* Sprint 30: Parallel coalesced MoE slot sum + coalesced post shortconv & residual add (446ms -> ~30ms on 2.4K prefill!) */
+        CALL(s, batch, K_MOE_SUM_BATCH, nb * ((d + 127) / 128), a_int(d), a_int(hp->n_expert_used),
+             a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
+             a_f32v(s->moe_out, 0, bd));
+    }
     pm_barrier(batch);
     if (save_spec_hist) {
         CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
@@ -5109,22 +6097,26 @@ static int run_chunk_ex(InkSession *s, const int32_t *tokens, int nb, int comput
         }
         if (compute_logits_mode == 1) {
             int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
-            if (dispatch_mv(s, batch, &s->gguf.output, nv, d, 0, s->norm_buf, last_off, s->logits_buf[0], 0) != 0) { pm_wait(batch, NULL); return 1; }
-            if (hp->logit_softcap > 0.0f) {
-                pm_barrier(batch);
-                CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
-                     a_f32(hp->logit_softcap), a_f32v(s->logits_buf[0], 0, nv));
+            if (s->fast_buf && s->fast_output_s.qs.off >= 0 && !force_fp32) {
+                CALL(s, batch, s->fast_output_is_q4s ? K_DV_Q4S_RMS : K_DV_Q8S_RMS, (nv + 7) / 8, a_int(nv), a_int(d),
+                     a_int(0), a_int(0), a_f32(hp->rms_eps), a_f32(hp->logit_softcap),
+                     a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
+                     a_f32v(s->norm_buf, last_off, d), a_f32v(s->rms_parts, 0, 3 * 64), a_f32v(s->logits_buf[0], 0, nv));
+            } else {
+                if (dispatch_mv(s, batch, &s->gguf.output, nv, d, 0, s->norm_buf, last_off, s->logits_buf[0], 0) != 0) { pm_wait(batch, NULL); return 1; }
+                if (hp->logit_softcap > 0.0f) {
+                    pm_barrier(batch);
+                    CALL(s, batch, K_SOFTCAP, (nv + INK_NT - 1) / INK_NT, a_int(nv),
+                         a_f32(hp->logit_softcap), a_f32v(s->logits_buf[0], 0, nv));
+                }
             }
             pm_barrier(batch);
-            CALL(s, batch, K_ARGMAX_S1, 64, a_int(nv),
-                 a_f32v(s->logits_buf[0], 0, nv), a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64));
+            CALL(s, batch, K_TOPK64_S1, 32, a_int(32), a_int(nv),
+                 a_f32v(s->logits_buf[0], 0, nv), a_f32v(s->topk_s1_vals, 0, 32 * 64), a_u32v(s->topk_s1_ids, 0, 32 * 64));
             pm_barrier(batch);
-            CALL(s, batch, K_ARGMAX_S2, 1, a_int(64),
-                 a_f32v(s->argmax_vals, 0, 64), a_u32v(s->argmax_ids, 0, 64), a_u32v(s->argmax_out_buf[0], 0, 1));
-            CALL(s, batch, K_TOPK_FILTER, 256, a_int(nv), a_f32(18.0f),
-                 a_f32v(s->argmax_vals, 0, 64), a_f32v(s->logits_buf[0], 0, nv),
-                 a_u32v(s->topk_cnt[0], 0, 256), a_u32v(s->topk_ids[0], 0, 256 * 16),
-                 a_f32v(s->topk_vals[0], 0, 256 * 16));
+            CALL(s, batch, K_TOPK64_S2, 1, a_int(32 * 64),
+                 a_f32v(s->topk_s1_vals, 0, 32 * 64), a_u32v(s->topk_s1_ids, 0, 32 * 64),
+                 a_f32v(s->topk_vals[0], 0, 64), a_u32v(s->topk_ids[0], 0, 64), a_u32v(s->argmax_out_buf[0], 0, 1));
             s->active_out_slot = 0;
             s->hidden_is_prefill = 1;
             s->last_hidden_off = last_off;
@@ -5142,15 +6134,25 @@ static int run_chunk_ex(InkSession *s, const int32_t *tokens, int nb, int comput
              a_f32v(s->norm_buf, 0, bd), a_tensor_f32(s, &s->gguf.out_norm), a_f32v(s->norm_buf, 0, bd));
         pm_barrier(batch);
         int64_t nv = hp->n_vocab_unpadded > 0 ? hp->n_vocab_unpadded : hp->n_vocab;
-        for (int t = 0; t < nb; t++) {
-            if (dispatch_mv_q4(s, batch, &s->gguf.output, &s->fast_output, nv, d, 0,
-                               s->norm_buf, (int64_t)t * d, s->verify_logits, (int64_t)t * nv) != 0) { pm_wait(batch, NULL); return 1; }
-        }
-        if (hp->logit_softcap > 0.0f) {
-            pm_barrier(batch);
-            int64_t tot_l = (int64_t)nb * nv;
-            CALL(s, batch, K_SOFTCAP, (tot_l + INK_NT - 1) / INK_NT, a_int(tot_l),
-                 a_f32(hp->logit_softcap), a_f32v(s->verify_logits, 0, tot_l));
+        if (s->fast_buf && s->fast_output_s.qs.off >= 0 && !force_fp32) {
+            for (int t = 0; t < nb; t++) {
+                CALL(s, batch, s->fast_output_is_q4s ? K_DV_Q4S_RMS : K_DV_Q8S_RMS, (nv + 7) / 8, a_int(nv), a_int(d),
+                     a_int(0), a_int(0), a_f32(hp->rms_eps), a_f32(hp->logit_softcap),
+                     a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
+                     a_f32v(s->norm_buf, (int64_t)t * d, d), a_f32v(s->rms_parts, 0, 3 * 64),
+                     a_f32v(s->verify_logits, (int64_t)t * nv, nv));
+            }
+        } else {
+            for (int t = 0; t < nb; t++) {
+                if (dispatch_mv_q4(s, batch, &s->gguf.output, &s->fast_output, nv, d, 0,
+                                   s->norm_buf, (int64_t)t * d, s->verify_logits, (int64_t)t * nv) != 0) { pm_wait(batch, NULL); return 1; }
+            }
+            if (hp->logit_softcap > 0.0f) {
+                pm_barrier(batch);
+                int64_t tot_l = (int64_t)nb * nv;
+                CALL(s, batch, K_SOFTCAP, (tot_l + INK_NT - 1) / INK_NT, a_int(tot_l),
+                     a_f32(hp->logit_softcap), a_f32v(s->verify_logits, 0, tot_l));
+            }
         }
         s->active_out_slot = 0;
         s->hidden_is_prefill = 1;
@@ -5217,7 +6219,8 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_f32v(s->blocks, (int64_t)(*n_blocks) * bd, bd));
     }
     int use_mma = (getenv("INK_NO_MMA32") == NULL);
-    int use_q4s_attn = (FL->attn_qrgkv_s.qs.off >= 0 && FL->attn_q_s.qs.off >= 0 && FL->attn_sink_s.qs.off >= 0);
+    int use_q8s_attn = (s->fast_buf && s->fast_is_q8s && FL->attn_qrgkv_s.qs.off >= 0);
+    int use_q4s_attn = (s->fast_buf && !s->fast_is_q8s && FL->attn_qrgkv_s.qs.off >= 0 && FL->attn_q_s.qs.off >= 0 && FL->attn_sink_s.qs.off >= 0);
     PmBuffer q_in = s->inp_q, k_in = s->inp_k, v_in = s->inp_v;
     int64_t qkv_n_parts = 0;
     if (!has_messages) {
@@ -5260,7 +6263,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_f32v(s->mix_out, 0, 3 * bd), a_f32v(s->ctrl_cat, 0, 6 * bd));
         pm_barrier(batch);
         if (FL->ctrl_down_qkv_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_SMALL_NB, 3 * rank, a_int(3 * rank), a_int(rank), a_int(2 * d), a_int(nb),
+            CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_NB : K_DV_Q4S_SMALL_NB, 3 * rank, a_int(3 * rank), a_int(rank), a_int(2 * d), a_int(nb),
                  a_int(0), a_f32(hp->rms_eps),
                  a_fast_u32(s, &FL->ctrl_down_qkv_s.qs), a_fast_u16(s, &FL->ctrl_down_qkv_s.ds),
                  a_f32v(s->ctrl_cat, 0, 6 * bd), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->ctrl_gate, 0, 3 * nb * rank));
@@ -5279,7 +6282,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_f32v(s->inp_q, 0, bd), a_f32v(s->inp_k, 0, bd), a_f32v(s->inp_v, 0, bd),
              a_f32v(s->rms_parts, 0, 8 * 3 * 128));
         pm_barrier(batch);
-        if (use_mma || !use_q4s_attn) {
+        if (!use_q8s_attn && (use_mma || !use_q4s_attn)) {
             CALL(s, batch, K_SCALE_RMS_PARTS_NB, 3 * nb, a_int(d), a_int(nb), a_int(citems), a_f32(hp->rms_eps),
                  a_f32v(s->rms_parts, 0, 8 * 3 * 128),
                  a_f32v(s->inp_q, 0, bd), a_f32v(s->inp_k, 0, bd), a_f32v(s->inp_v, 0, bd));
@@ -5288,16 +6291,16 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
         }
     }
 
-    /* Wave 3: MMA32 Q4S / Lossless Q8_0 concurrent Q/R/G/K/V + sinks/dyn (or legacy scalar QRGKV when INK_NO_MMA32=1)! */
+    /* Wave 3: Lossless Q8S fused QRGKV, MMA32 Q4S, or Lossless Q8_0 MMA32! */
     int has_k_dyn = (!is_swa && L->attn_k_conv_proj.present);
     int64_t dyn_sz = n_head_kv * hp->conv_len;
     int64_t n_dyn_use = has_k_dyn ? dyn_sz : 0;
-    if (use_q4s_attn && !use_mma) {
+    if (use_q8s_attn || (use_q4s_attn && !use_mma)) {
         int64_t tot_rows = n_q + n_head * n_rel + n_q + 2 * n_kv + n_head + 2 * n_dyn_use;
         uint32_t sd0 = (uint32_t)n_q | ((uint32_t)(n_head * n_rel) << 16);
         uint32_t sd1 = (uint32_t)n_kv | ((uint32_t)n_head << 16);
         uint32_t sd2 = (uint32_t)n_dyn_use | ((uint32_t)qkv_n_parts << 16);
-        CALL(s, batch, K_DV_Q4S_QRGKV_SDYN_NB, (tot_rows + 3) / 4,
+        CALL(s, batch, use_q8s_attn ? K_DV_Q8S_QRGKV_SDYN_NB : K_DV_Q4S_QRGKV_SDYN_NB, (tot_rows + 3) / 4,
              a_u32(sd0), a_u32(sd1), a_u32(sd2), a_int(d), a_int(nb), a_f32(hp->rms_eps),
              a_fast_u32(s, &FL->attn_qrgkv_s.qs), a_fast_u16(s, &FL->attn_qrgkv_s.ds),
              a_f32v(q_in, 0, bd), a_f32v(k_in, 0, bd), a_f32v(v_in, 0, bd),
@@ -5369,15 +6372,20 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
     }
     pm_barrier(batch);
 
-    /* Wave 4+5: Fused 1-pass causal K/V conv+clip/norm+KV-store+raw_log + GQA attention (reads KV cache ONCE!) */
+    /* Wave 4+5 (Sprint C): Fused 3-head GQA Split-K + Q8_0 KV cache (5.65x fewer KV DRAM bytes + 40-core saturation for B=2..8!) */
     int64_t kv_cap = s->kv_cap[il];
+    int64_t n_keys_nb = (is_swa && s->pos >= hp->swa) ? hp->swa : (s->pos + nb);
+    int64_t n_splits = ink_choose_attn_splits(s, n_keys_nb, nb);
+    int64_t split_elems = nb * n_head * n_splits * 132;
     uint32_t dims0 = (uint32_t)n_head | ((uint32_t)n_head_kv << 8) | ((uint32_t)hd << 16) | ((uint32_t)n_rel << 24);
     uint32_t dims1 = (uint32_t)hp->rel_extent | ((uint32_t)(is_swa ? 1 : 0) << 16) | ((uint32_t)hp->swa << 17);
     uint32_t kv_info = (uint32_t)kv_cap | ((uint32_t)(L->attn_q_clip.present ? 1 : 0) << 16)
                      | ((uint32_t)(L->attn_rel_clip.present ? 1 : 0) << 17)
                      | ((uint32_t)(has_k_dyn ? 1 : 0) << 18)
-                     | ((uint32_t)nb << 19);
-    CALL(s, batch, K_KV_ATTN_GQA_1PASS_NB, n_head,
+                     | ((uint32_t)(s->kv_q8 ? 1 : 0) << 19)
+                     | ((uint32_t)nb << 20)
+                     | ((uint32_t)n_splits << 24);
+    CALL(s, batch, K_KV_ATTN_GQA3_SPLIT_NB, n_head_kv * n_splits,
          a_u32(dims0), a_u32(dims1), a_u32(kv_info), a_int(s->pos),
          a_f32(hp->qk_clip), a_f32(hp->rel_clip), a_f32(hp->rms_eps),
          is_swa ? a_f32v(s->dummy_ones, 0, 8) : a_f32v(s->tau_buf, 0, nb),
@@ -5392,13 +6400,27 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
          a_tensor_f32(s, &L->attn_rel_bias),
          a_f32v(s->sinks_buf, 0, nb * n_head),
          a_f32v(s->gate_buf, 0, nb * n_q),
-         a_u16v(s->kv_k[il], 0, kv_cap * n_kv), a_u16v(s->kv_v[il], 0, kv_cap * n_kv),
+         a_u16v(s->kv_k[il], 0, kv_cap * s->kv_row_u16), a_u16v(s->kv_v[il], 0, kv_cap * s->kv_row_u16),
          a_raw_k(s, il), a_raw_v(s, il),
+         a_f32v(s->attn_scores, 0, split_elems),
          a_f32v(s->attn_out, 0, nb * n_q));
+    if (n_splits > 1) {
+        pm_barrier(batch);
+        CALL(s, batch, K_ATTN_GQA3_REDUCE_NB, nb * n_head,
+             a_int(n_splits),
+             a_f32v(s->attn_scores, 0, split_elems),
+             a_f32v(s->gate_buf, 0, nb * n_q),
+             a_f32v(s->attn_out, 0, nb * n_q));
+    }
     pm_barrier(batch);
 
-    /* Wave 6: Attn output proj (MMA32 Q4S or Lossless Q8_0) + post-conv + raw_log + in-place residual on cur! */
-    if (FL->attn_output_s.qs.off >= 0 && !use_mma) {
+    /* Wave 6: Attn output proj (Lossless Q8S, MMA32 Q4S, or Lossless Q8_0 MMA32) + post-conv + raw_log + residual! */
+    if (s->fast_buf && s->fast_is_q8s && FL->attn_output_s.qs.off >= 0) {
+        CALL(s, batch, K_DV_Q8S_CONV_NB, (d + 3) / 4, a_int(d), a_int(n_q), a_int(nb), a_int(is_blk ? 0 : 1),
+             a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
+             a_f32v(s->attn_out, 0, nb * n_q), a_tensor_f32(s, &L->attn_post_conv),
+             a_conv_ao(s, il), a_f32v(s->cur, 0, bd), a_raw_ao(s, il), a_f32v(s->cur, 0, bd));
+    } else if (FL->attn_output_s.qs.off >= 0 && !use_mma) {
         CALL(s, batch, K_DV_Q4S_CONV_NB, (d + 7) / 8, a_int(d), a_int(n_q), a_int(nb), a_int(is_blk ? 0 : 1),
              a_fast_u32(s, &FL->attn_output_s.qs), a_fast_u16(s, &FL->attn_output_s.ds),
              a_f32v(s->attn_out, 0, nb * n_q), a_tensor_f32(s, &L->attn_post_conv),
@@ -5443,7 +6465,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_f32v(s->mix_out, 0, bd), a_f32v(s->ctrl_cat, 0, 2 * bd));
         pm_barrier(batch);
         if (FL->ctrl_down3_s.qs.off >= 0) {
-            CALL(s, batch, K_DV_Q4S_SMALL_NB, rank, a_int(rank), a_int(rank), a_int(2 * d), a_int(nb),
+            CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_NB : K_DV_Q4S_SMALL_NB, rank, a_int(rank), a_int(rank), a_int(2 * d), a_int(nb),
                  a_int(0), a_f32(hp->rms_eps),
                  a_fast_u32(s, &FL->ctrl_down3_s.qs), a_fast_u16(s, &FL->ctrl_down3_s.ds),
                  a_f32v(s->ctrl_cat, 0, 2 * bd), a_f32v(s->dummy_f32, 0, 64), a_f32v(s->ctrl_gate, 0, nb * rank));
@@ -5472,7 +6494,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
     int64_t n_ff = hp->n_ff_exp;
     int64_t gpe = (n_ff + 7) / 8;
     if (FL->ffn_gate_inp_s.qs.off >= 0) {
-        CALL(s, batch, K_DV_Q4S_SMALL_NB, hp->n_expert, a_int(hp->n_expert), a_int(hp->n_expert), a_int(d), a_int(nb),
+        CALL(s, batch, s->fast_is_q8s ? K_DV_Q8S_SMALL_NB : K_DV_Q4S_SMALL_NB, hp->n_expert, a_int(hp->n_expert), a_int(hp->n_expert), a_int(d), a_int(nb),
              a_int(ffn_n_parts), a_f32(hp->rms_eps),
              a_fast_u32(s, &FL->ffn_gate_inp_s.qs), a_fast_u16(s, &FL->ffn_gate_inp_s.ds),
              a_f32v(s->o_raw, 0, bd), a_f32v(s->rms_parts, 0, 8 * 3 * 128), a_f32v(s->router_logits, 0, nb * hp->n_expert));
@@ -5491,10 +6513,11 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
          a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4));
     pm_barrier(batch);
 
-    /* Wave 9: Indirect grouped unique-expert MoE GU (dequant-ONCE + aligned IQ4S + deferred rms_parts!) */
+    /* Wave 9: Indirect grouped unique-expert MoE GU (dequant-ONCE + aligned Q8S/Q4S/IQ4S + deferred rms_parts!) */
     int64_t max_u = nb * hp->n_expert_used;
     int64_t gu_max = max_u * gpe;
     if (FL->moe_gu_q4s.qs.off >= 0) {
+        int k_gu = s->fast_is_q8s ? K_MOE_GU_Q8S_NB : K_MOE_GU_Q4S_NB;
         PmArg ga[] = {
             a_int(n_ff), a_int(d), a_int(nb), a_int(hp->n_expert_used),
             a_f32(hp->situ_beta), a_f32(hp->situ_linear_beta),
@@ -5505,8 +6528,8 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
             a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff)
         };
-        if (pm_launch_indirect(batch, s->kernels[K_MOE_GU_Q4S_NB], gu_max, s->spec_u_cnt, 4, 128, ga, 17) != PM_OK) {
-            snprintf(s->error, sizeof s->error, "kernel %s: %s", k_names[K_MOE_GU_Q4S_NB], pm_log());
+        if (pm_launch_indirect(batch, s->kernels[k_gu], gu_max, s->spec_u_cnt, 4, 128, ga, 17) != PM_OK) {
+            snprintf(s->error, sizeof s->error, "kernel %s: %s", k_names[k_gu], pm_log());
             return 1;
         }
     } else if (s->iq4s_buf && FL->moe_gu_iq4s.qs.off >= 0) {
@@ -5558,7 +6581,7 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
 
     /* Wave 10: 2-pass parallel-expert MoE Down (4.05x faster, 354+ GB/s, 100% bit-exact!) + L2 reduce/conv/residual! */
     int64_t dn_gpe = (d + 15) / 16;
-    if (FL->moe_dn_q4s.qs.off >= 0) {
+    if (FL->moe_dn_q4s.qs.off >= 0 && !s->fast_is_q8s) {
         PmArg da[] = {
             a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
             a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
@@ -5580,6 +6603,15 @@ static int dispatch_layer_nb(InkSession *s, PmBatch batch, int il, int ip, int *
              a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
              a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
              a_u32v(s->spec_u_mask, 0, 64), a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+             a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
+             a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
+    } else if (FL->moe_dn_q4s.qs.off >= 0 && s->fast_is_q8s) {
+        CALL(s, batch, K_MOE_DOWN_Q8S_NB, (d + 3) / 4, a_int(d), a_int(n_ff), a_int(nb), a_int(hp->n_expert_used),
+             a_fast_u32(s, &FL->moe_dn_q4s.qs), a_fast_u16(s, &FL->moe_dn_q4s.ds),
+             a_f32v(s->moe_hid, 0, nb * hp->n_expert_used * n_ff),
+             a_u32v(s->spec_u_eids, 0, 64), a_u32v(s->spec_u_mask, 0, 64),
+             a_u32v(s->spec_u_slot, 0, 64 * 8), a_u32v(s->spec_u_cnt, 0, 4),
+             a_f32v(s->moe_wts, 0, nb * hp->n_expert_used),
              a_tensor_f32(s, &L->ffn_post_conv), a_conv_fo(s, il),
              a_f32v(s->cur, 0, bd), a_raw_fo(s, il), a_f32v(s->cur, 0, bd));
     } else if (s->iq4s_buf && FL->moe_dn_iq4s.qs.off >= 0) {
@@ -5769,13 +6801,13 @@ static int ink_verify_batch(InkSession *s, const int32_t *tokens, int nb) {
         CALL(s, batch, K_COPY, (bd + INK_NT - 1) / INK_NT, a_int(bd),
              a_f32v(s->spec_hidden, 0, bd), a_f32v(s->dspark.taps, 3 * bd, bd));
     }
-    if (s->fast_output_s.qs.off >= 0 && getenv("INK_NO_MMA32") == NULL) {
+    if (s->fast_output_s.qs.off >= 0 && s->fast_output_is_q4s && getenv("INK_NO_MMA32") == NULL) {
         CALL(s, batch, K_DV_Q4S_MMA32_NB, (nv + 31) / 32, a_int(nv), a_int(d), a_int(nb),
              a_int(0), a_int(0), a_int(0), a_f32(hp->logit_softcap),
              a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
              a_f32v(s->spec_hidden, 0, bd), a_f32v(s->spec_logits, 0, nb * nv));
     } else if (s->fast_output_s.qs.off >= 0) {
-        CALL(s, batch, K_DV_Q4S_NB, (nv + 7) / 8, a_int(nv), a_int(d), a_int(nb),
+        CALL(s, batch, s->fast_output_is_q4s ? K_DV_Q4S_NB : K_DV_Q8S_NB, (nv + 3) / 4, a_int(nv), a_int(d), a_int(nb),
              a_int(0), a_int(0), a_int(0), a_f32(hp->logit_softcap),
              a_fast_u32(s, &s->fast_output_s.qs), a_fast_u16(s, &s->fast_output_s.ds),
              a_f32v(s->spec_hidden, 0, bd), a_f32v(s->spec_logits, 0, nb * nv));
@@ -5787,23 +6819,19 @@ static int ink_verify_batch(InkSession *s, const int32_t *tokens, int nb) {
     }
     pm_barrier(batch);
     for (int t = 0; t < nb; t++) {
-        CALL(s, batch, K_ARGMAX_S1, 64, a_int(nv),
+        CALL(s, batch, K_TOPK64_S1, 32, a_int(32), a_int(nv),
              a_f32v(s->spec_logits, (int64_t)t * nv, nv),
-             a_f32v(s->argmax_vals, (int64_t)t * 64, 64),
-             a_u32v(s->argmax_ids, (int64_t)t * 64, 64));
+             a_f32v(s->topk_s1_vals, (int64_t)t * 32 * 64, 32 * 64),
+             a_u32v(s->topk_s1_ids, (int64_t)t * 32 * 64, 32 * 64));
     }
     pm_barrier(batch);
     for (int t = 0; t < nb; t++) {
-        CALL(s, batch, K_ARGMAX_S2, 1, a_int(64),
-             a_f32v(s->argmax_vals, (int64_t)t * 64, 64),
-             a_u32v(s->argmax_ids, (int64_t)t * 64, 64),
+        CALL(s, batch, K_TOPK64_S2, 1, a_int(32 * 64),
+             a_f32v(s->topk_s1_vals, (int64_t)t * 32 * 64, 32 * 64),
+             a_u32v(s->topk_s1_ids, (int64_t)t * 32 * 64, 32 * 64),
+             a_f32v(s->spec_topk_vals, (int64_t)t * 64, 64),
+             a_u32v(s->spec_topk_ids, (int64_t)t * 64, 64),
              a_u32v(s->spec_argmax_out, t, 1));
-        CALL(s, batch, K_TOPK_FILTER, 256, a_int(nv), a_f32(18.0f),
-             a_f32v(s->argmax_vals, (int64_t)t * 64, 64),
-             a_f32v(s->spec_logits, (int64_t)t * nv, nv),
-             a_u32v(s->spec_topk_cnt, (int64_t)t * 256, 256),
-             a_u32v(s->spec_topk_ids, (int64_t)t * 256 * 16, 256 * 16),
-             a_f32v(s->spec_topk_vals, (int64_t)t * 256 * 16, 256 * 16));
     }
 
     double gpu_s = 0.0;
@@ -5813,6 +6841,13 @@ static int ink_verify_batch(InkSession *s, const int32_t *tokens, int nb) {
     }
     s->total_gpu_seconds += gpu_s;
     s->dspark.last_verify_s = gpu_s;
+    s->last_verify_ms = (float)(gpu_s * 1000.0);
+    if (nb >= 2 && nb <= 8 && s->last_verify_ms > 0.5f && s->last_verify_ms < 500.0f && s->ema_base_ms > 1.0f) {
+        float vr = s->last_verify_ms / s->ema_base_ms;
+        if (vr < 1.0f) vr = 1.0f;
+        if (vr > 6.0f) vr = 6.0f;
+        s->ema_vratio[nb] = 0.70f * s->ema_vratio[nb] + 0.30f * vr;
+    }
     ink_mark_written(s, s->pos + nb);
     return 0;
 }
@@ -5992,6 +7027,57 @@ int ink_prefill(InkSession *s, const int32_t *tokens, int n_tokens, int compute_
     return 0;
 }
 
+static void ink_record_spec_outcome(InkSession *s, int used_dspark, int m, int match_n, int n_acc, float pred_e, float cost_ms, int pos0) {
+    float t_base = s->ema_base_ms > 1.0f ? s->ema_base_ms : 10.5f;
+    if (used_dspark) {
+        s->dspark.rounds++;
+        s->dspark.drafted += m;
+        s->dspark.accepted += n_acc;
+        s->dspark.ema_acc = 0.75f * s->dspark.ema_acc + 0.25f * (float)n_acc;
+        if (pred_e > 0.20f) {
+            float obs_cal = (float)n_acc / pred_e;
+            if (obs_cal < 0.30f) obs_cal = 0.30f;
+            if (obs_cal > 1.05f) obs_cal = 1.05f;
+            s->dspark.ema_cal = 0.75f * s->dspark.ema_cal + 0.25f * obs_cal;
+            if (s->dspark.ema_cal < 0.35f) s->dspark.ema_cal = 0.35f;
+            if (s->dspark.ema_cal > 1.00f) s->dspark.ema_cal = 1.00f;
+        }
+        float net = (cost_ms > 0.5f) ? ((1.0f + (float)n_acc) * t_base / cost_ms) : 1.0f;
+        s->dspark.ema_net_speedup = 0.65f * s->dspark.ema_net_speedup + 0.35f * net;
+        if (net >= 1.03f) {
+            s->dspark.consec_unprof = 0;
+            s->dspark.skip_countdown = 0;
+        } else {
+            s->dspark.consec_unprof++;
+            if (s->dspark.consec_unprof >= 2 || (s->dspark.rounds >= 2 && s->dspark.ema_net_speedup < 1.00f)) {
+                int sh = s->dspark.consec_unprof - 1;
+                if (sh > 2) sh = 2;
+                s->dspark.skip_countdown = 12 << sh;
+            }
+        }
+        if (getenv("INK_DSPARK_TRACE") != NULL) {
+            fprintf(stderr, "[DSPARK pos=%d m=%d acc=%d pred=%.2f cal=%.2f cost=%.1fms base=%.1fms net=%.2fx skip=%d dr=%.2fms]\n",
+                    pos0, m, n_acc, (double)pred_e, (double)s->dspark.ema_cal, (double)cost_ms, (double)t_base,
+                    (double)net, s->dspark.skip_countdown,
+                    s->dspark.draft_gpu_s * 1000.0 / (double)s->dspark.rounds);
+        }
+    } else if (m > 0) {
+        float rate = (float)n_acc / (float)m;
+        if (match_n == 2) s->pld_ema2 = 0.80f * s->pld_ema2 + 0.20f * rate;
+        else if (match_n == 3) s->pld_ema3 = 0.80f * s->pld_ema3 + 0.20f * rate;
+    }
+    s->spec_rounds++;
+    s->spec_drafted += m;
+    s->spec_accepted += n_acc;
+}
+
+static void ink_finish_spec_round(InkSession *s) {
+    if (!s || !s->spec_round_open) return;
+    s->spec_round_open = 0;
+    ink_record_spec_outcome(s, s->spec_round_dspark, s->spec_round_m, s->spec_round_match_n,
+                            s->spec_round_hits, s->spec_round_pred, s->spec_round_cost_ms, s->pos);
+}
+
 int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
     const InkHParams *hp = &s->gguf.hp;
     if (s->pos >= s->max_ctx) {
@@ -6002,10 +7088,11 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
         snprintf(s->error, sizeof s->error, "token id %d out of range [0,%lld)", token_id, (long long)hp->n_vocab);
         return 1;
     }
-    /* Sprint 71: 100% lossless bit-exact speculative queue HIT (0.000 ms!) */
+    /* Sprint 71 + Sprint D/E: 100% exact speculative queue HIT (0.000 ms, greedy AND sampled!) */
     if (s->spec_head < s->spec_tail && compute_logits && token_id == s->spec_q[s->spec_head]) {
         int idx = s->spec_head++;
         ink_sess_hist_push(s, token_id);
+        if (s->spec_round_open) s->spec_round_hits++;
         if (s->tok_hist && s->pos < s->max_ctx) {
             s->tok_hist[s->pos] = token_id;
             if (s->pos + 1 > s->tok_hist_len) s->tok_hist_len = s->pos + 1;
@@ -6023,10 +7110,12 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
         s->argmax_valid = 1;
         s->prev_argmax = s->spec_argmax[idx];
         s->has_prev_argmax = 1;
-        s->greedy_streak++;
+        if (!s->sampled_mode) s->greedy_streak++;
+        if (s->spec_head == s->spec_tail && s->spec_round_open) ink_finish_spec_round(s);
         return 0;
     }
-    /* Spec queue empty or non-greedy divergence: drop remaining unconsumed speculative tokens (conv_pending_n tracks ONLY consumed tokens!). */
+    /* Spec queue empty or divergence: settle sampled telemetry & drop unconsumed slots. */
+    if (s->spec_round_open) ink_finish_spec_round(s);
     s->spec_head = 0;
     s->spec_tail = 0;
     s->spec_active_idx = -1;
@@ -6035,13 +7124,42 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
     int allow_chain = (use_pipe && getenv("INK_NO_CHAIN") == NULL);
     int allow_spec = (use_pipe && s->can_verify_nb && compute_logits && getenv("INK_NO_SPEC") == NULL);
 
-    /* Sprint 71B + Sprint 72: Hybrid Zero-Cost PLD + Official DSpark (mtp.safetensors) + Bit-Exact B=2..8 Verifier! */
+    /* Sprint E (Ch 102): Online-timed E(k)/c(k) Hybrid PLD + DSpark + Bit-Exact B=2..8 Verifier! */
     if (allow_spec && !s->inflight_active) {
         int32_t draft[7];
         float ds_probs[7] = {0};
         int match_n = 0;
         int m = ink_pld_draft(s, token_id, draft, &match_n);
         int used_dspark = 0;
+        float pred_e = 0.0f;
+        float t_base = s->ema_base_ms > 1.0f ? s->ema_base_ms : 10.5f;
+
+        /* Filter low-confidence PLD matches via Ch 102 E(k)/vratio(k+1) > 1.05 */
+        if (m >= 1 && match_n < 4) {
+            float p_pld = (match_n == 2) ? s->pld_ema2 : s->pld_ema3;
+            if (s->sampled_mode) p_pld *= 0.80f;
+            int best_k = 0;
+            float best_gain = 1.05f, cum = 1.0f, ek = 0.0f;
+            for (int k = 1; k <= m; k++) {
+                cum *= p_pld;
+                ek += cum;
+                float g = (1.0f + ek) / s->ema_vratio[k + 1];
+                if (g > best_gain) { best_gain = g; best_k = k; pred_e = ek; }
+            }
+            m = best_k;
+        } else if (m >= 1) {
+            float p_hi = s->sampled_mode ? 0.72f : 0.85f;
+            float cum = 1.0f, ek = 0.0f;
+            int best_k = 0;
+            float best_gain = 1.03f;
+            for (int k = 1; k <= m; k++) {
+                cum *= p_hi;
+                ek += cum;
+                float g = (1.0f + ek) / s->ema_vratio[k + 1];
+                if (g > best_gain) { best_gain = g; best_k = k; pred_e = ek; }
+            }
+            m = best_k;
+        }
 
         /* Prefer PLD only on high-confidence >=4-gram verbatim matches (0.0 ms draft); otherwise run DSpark! */
         if (!(m >= 1 && match_n >= 4) &&
@@ -6051,42 +7169,48 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             int max_c = s->max_ctx - s->pos - 1;
             const char *k_env = getenv("INK_DSPARK_K");
             int k_cap = (k_env && atoi(k_env) >= 1 && atoi(k_env) <= 7) ? atoi(k_env)
-                      : (s->dspark.ema_acc >= 2.5f ? 7 : 5);
+                      : (s->dspark.ema_acc >= 3.0f ? 7 : 5);
             if (max_c > k_cap) max_c = k_cap;
             int32_t ds_toks[7];
             if (ink_dspark_draft(s, token_id, max_c, ds_toks, ds_probs) == 0) {
-                const char *mp_env = getenv("INK_DSPARK_MIN_P");
-                float min_cum = mp_env ? strtof(mp_env, NULL) : 0.25f;
-                float min_p0 = mp_env ? min_cum : 0.35f;
-                int dm = 0;
-                if (ds_probs[0] >= min_p0) {
-                    float cum = ds_probs[0];
-                    dm = 1;
-                    while (dm < max_c) {
-                        cum *= ds_probs[dm];
-                        if (cum < min_cum) break;
-                        dm++;
+                /* Ch 102 exact optimal k* = argmax_{k in 0..max_c} (1 + E(k)) / t_verify_est(k + 1) */
+                float cal = s->dspark.ema_cal * (s->sampled_mode ? 0.82f : 1.0f);
+                if (cal < 0.30f) cal = 0.30f;
+                if (cal > 1.00f) cal = 1.00f;
+                int best_k = 0;
+                float best_rate = (1.0f / t_base) * 1.03f;
+                float best_e = 0.0f;
+                float cum = 1.0f, ek = 0.0f;
+                for (int k = 1; k <= max_c; k++) {
+                    float pk = cal * ds_probs[k - 1];
+                    if (pk > 0.98f) pk = 0.98f;
+                    cum *= pk;
+                    ek += cum;
+                    float t_ver = t_base * s->ema_vratio[k + 1];
+                    float rate = (1.0f + ek) / t_ver;
+                    if (rate > best_rate) {
+                        best_rate = rate;
+                        best_k = k;
+                        best_e = ek;
                     }
                 }
-                if (dm >= 1) {
-                    for (int k = 0; k < dm; k++) draft[k] = ds_toks[k];
-                    m = dm;
+                if (best_k >= 1) {
+                    for (int k = 0; k < best_k; k++) draft[k] = ds_toks[k];
+                    m = best_k;
+                    pred_e = best_e;
                     used_dspark = 1;
                 } else {
-                    /* Cascade utility gate: aborted draft paid draft_s without gain */
-                    s->dspark.rounds++;
+                    /* Unprofitable draft: skip verify completely (save ~25-45 ms!) and update Cascade + Ch 102 gates */
                     s->dspark.req_rounds++;
-                    s->dspark.ema_acc = 0.75f * s->dspark.ema_acc;
                     double b1 = s->dspark.b1_ema_s > 1e-4 ? s->dspark.b1_ema_s : 0.015;
                     double denom = s->dspark.last_draft_s + b1;
                     float util = (denom > 1e-6) ? (float)(b1 / denom) : 0.8f;
                     s->dspark.util_ema = 0.65f * s->dspark.util_ema + 0.35f * util;
                     if (s->dspark.req_rounds >= 3 && s->dspark.util_ema < 0.96f) {
                         s->dspark.req_disabled = 1;
-                    } else if (s->dspark.req_rounds >= 2 && s->dspark.util_ema < 1.00f) {
-                        s->dspark.skip_countdown = 12 * s->dspark.skip_mult;
-                        if (s->dspark.skip_mult < 4) s->dspark.skip_mult *= 2;
                     }
+                    ink_record_spec_outcome(s, 1, 0, 0, 0, 0.0f, s->dspark.last_draft_ms + t_base, s->pos);
+                    m = 0;
                 }
             }
         }
@@ -6100,46 +7224,41 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             int pos0 = s->pos;
             if (ink_verify_batch(s, batch_toks, nb) != 0) return 1;
             const uint32_t *am = (const uint32_t *)pm_contents(s->spec_argmax_out);
-            int n_acc = 0;
-            for (int k = 0; k < m; k++) {
-                if ((int32_t)am[k] == draft[k]) n_acc++;
-                else break;
-            }
-            if (used_dspark) {
-                s->dspark.rounds++;
-                s->dspark.req_rounds++;
-                s->dspark.drafted += m;
-                s->dspark.accepted += n_acc;
-                s->dspark.ema_acc = 0.75f * s->dspark.ema_acc + 0.25f * (float)n_acc;
-                /* Cascade per-request measured-time utility gate (arXiv:2506.20675) */
-                double b1 = s->dspark.b1_ema_s > 1e-4 ? s->dspark.b1_ema_s : 0.015;
-                double round_s = s->dspark.last_draft_s + s->dspark.last_verify_s;
-                float util = (round_s > 1e-6) ? (float)((double)(1 + n_acc) * b1 / round_s) : 1.0f;
-                s->dspark.util_ema = 0.65f * s->dspark.util_ema + 0.35f * util;
-                if (util >= 1.05f) {
-                    s->dspark.skip_mult = 1;
-                } else if (s->dspark.req_rounds >= 3 && s->dspark.util_ema < 0.96f) {
-                    s->dspark.req_disabled = 1;
-                } else if (s->dspark.req_rounds >= 2 && s->dspark.util_ema < 1.00f) {
-                    s->dspark.skip_countdown = 12 * s->dspark.skip_mult;
-                    if (s->dspark.skip_mult < 4) s->dspark.skip_mult *= 2;
-                }
-                if (getenv("INK_DSPARK_TRACE") != NULL) {
-                    fprintf(stderr, "[DSPARK pos=%d m=%d acc=%d avg=%.2f ema=%.2f util=%.2f(ema=%.2f) dis=%d dr=%.2fms vf=%.2fms b1=%.2fms]\n",
-                            pos0, m, n_acc, (double)s->dspark.accepted / (double)s->dspark.rounds,
-                            (double)s->dspark.ema_acc, util, s->dspark.util_ema, s->dspark.req_disabled,
-                            s->dspark.last_draft_s * 1000.0, s->dspark.last_verify_s * 1000.0, b1 * 1000.0);
-                }
-            } else {
-                float rate = (float)n_acc / (float)m;
-                if (match_n == 2) s->pld_ema2 = 0.80f * s->pld_ema2 + 0.20f * rate;
-                else if (match_n == 3) s->pld_ema3 = 0.80f * s->pld_ema3 + 0.20f * rate;
-            }
-            s->spec_rounds++;
-            s->spec_drafted += m;
-            s->spec_accepted += n_acc;
+            float round_cost_ms = (used_dspark ? s->dspark.last_draft_ms : 0.0f) + s->last_verify_ms;
 
-            /* Record token 0 in history & advance pos by 1; queue verified slots 1..n_acc for instant 0.000ms hits! */
+            int q_end = m;
+            if (!s->sampled_mode) {
+                int n_acc = 0;
+                for (int k = 0; k < m; k++) {
+                    if ((int32_t)am[k] == draft[k]) n_acc++;
+                    else break;
+                }
+                q_end = n_acc;
+                if (used_dspark) {
+                    s->dspark.req_rounds++;
+                    double b1 = s->dspark.b1_ema_s > 1e-4 ? s->dspark.b1_ema_s : 0.015;
+                    double round_s = s->dspark.last_draft_s + s->dspark.last_verify_s;
+                    float util = (round_s > 1e-6) ? (float)((double)(1 + n_acc) * b1 / round_s) : 1.0f;
+                    s->dspark.util_ema = 0.65f * s->dspark.util_ema + 0.35f * util;
+                    if (util >= 1.05f) {
+                        s->dspark.skip_mult = 1;
+                    } else if (s->dspark.req_rounds >= 3 && s->dspark.util_ema < 0.96f) {
+                        s->dspark.req_disabled = 1;
+                    }
+                }
+                ink_record_spec_outcome(s, used_dspark, m, match_n, n_acc, pred_e, round_cost_ms, pos0);
+            } else {
+                /* Sampled mode: keep all nb verified target Top-64 slots; settle telemetry on miss/drain! */
+                s->spec_round_open = 1;
+                s->spec_round_dspark = used_dspark;
+                s->spec_round_m = m;
+                s->spec_round_match_n = match_n;
+                s->spec_round_hits = 0;
+                s->spec_round_pred = pred_e;
+                s->spec_round_cost_ms = round_cost_ms;
+            }
+
+            /* Record token 0 in history & advance pos by 1; queue verified slots 1..q_end for instant 0.000ms hits! */
             ink_sess_hist_push(s, token_id);
             if (s->tok_hist && pos0 < s->max_ctx) {
                 s->tok_hist[pos0] = token_id;
@@ -6149,12 +7268,12 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
                 s->live_tokens[pos0] = token_id;
                 s->live_len = pos0 + 1;
             }
-            for (int t = 0; t <= n_acc; t++) {
+            for (int t = 0; t <= q_end; t++) {
                 s->spec_q[t] = batch_toks[t];
                 s->spec_argmax[t] = (int32_t)am[t];
             }
             s->spec_head = 1;
-            s->spec_tail = 1 + n_acc;
+            s->spec_tail = 1 + q_end;
             s->spec_active_idx = 0;
             s->conv_pending_pos0 = pos0;
             s->conv_pending_n = 1;
@@ -6169,7 +7288,7 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             s->argmax_valid = 1;
             s->prev_argmax = (int32_t)am[0];
             s->has_prev_argmax = 1;
-            s->greedy_streak++;
+            if (!s->sampled_mode) s->greedy_streak++;
             return 0;
         }
     }
@@ -6182,9 +7301,9 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
         if (s->pos + 1 > s->tok_hist_len) s->tok_hist_len = s->pos + 1;
     }
 
-    /* Sprint 69: 2-in-flight GPU-to-GPU chained greedy execution on Metal 4! */
+    /* Sprint 69 + Sprint D: 2-in-flight GPU-to-GPU chained greedy execution (or zero-jitter prep_batch in sampled_mode!) */
     if (use_pipe) {
-        int is_greedy_tok = (s->has_prev_argmax && token_id == s->prev_argmax);
+        int is_greedy_tok = (!s->sampled_mode && s->has_prev_argmax && token_id == s->prev_argmax);
         uint64_t cur_ticket = 0;
         int cur_slot = 0;
         if (s->inflight_active && s->inflight_pos == s->pos &&
@@ -6193,7 +7312,7 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             cur_ticket = s->inflight_ticket;
             cur_slot = s->inflight_slot;
             s->inflight_active = 0;
-            s->greedy_streak++;
+            if (!s->sampled_mode) s->greedy_streak++;
             if (s->live_tokens && s->pos < s->max_ctx) {
                 s->live_tokens[s->pos] = token_id;
                 s->live_len = s->pos + 1;
@@ -6240,7 +7359,7 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
         }
 
         /* While GPU executes cur_slot, prepare or GPU-chain next_slot = cur_slot ^ 1!
-         * Sprint 71/72: hold chaining whenever PLD or DSpark wants to draft the next step! */
+         * Sprint D: NEVER speculatively chain argmax when sampled_mode != 0 (eliminates 2x ITL P95/P99 spikes!). */
         uint64_t next_ticket = 0;
         int next_slot = cur_slot ^ 1;
         int chained_next = 0;
@@ -6251,7 +7370,7 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             s->next_m4_slot = cur_slot;
             PmBatch next_batch = NULL;
             if (pm_begin_concurrent_slot(&next_batch, next_slot) == PM_OK) {
-                if (allow_chain && s->greedy_streak >= 1 && !hold_for_spec) {
+                if (allow_chain && !s->sampled_mode && s->greedy_streak >= 1 && !hold_for_spec) {
                     if (enqueue_step(s, &next_batch, 0, s->argmax_out_buf[cur_slot], 1, next_slot, compute_logits, 0) != 0) {
                         pm_abort(next_batch);
                     } else if (pm_submit_async_after(next_batch, cur_ticket, &next_ticket, &next_slot) == PM_OK) {
@@ -6279,8 +7398,9 @@ int ink_step(InkSession *s, int32_t token_id, int compute_logits) {
             return 1;
         }
         s->total_gpu_seconds += gpu_s;
-        if (gpu_s > 0.002 && gpu_s < 0.25) {
+        if (gpu_s > 0.001 && gpu_s < 0.25) {
             s->dspark.b1_ema_s = (s->dspark.b1_ema_s > 1e-4) ? (0.8 * s->dspark.b1_ema_s + 0.2 * gpu_s) : gpu_s;
+            s->ema_base_ms = 0.80f * s->ema_base_ms + 0.20f * (float)(gpu_s * 1000.0);
         }
         if (compute_logits) {
             int32_t next_tok = (int32_t)((const uint32_t *)pm_contents(s->argmax_out_buf[cur_slot]))[0];
@@ -6470,53 +7590,31 @@ static int32_t sample_logits_ex(const float *logits, int n, const InkSampleParam
     return (int32_t)chosen;
 }
 
-static int32_t sample_topk_sparse(const uint32_t *cnts, const uint32_t *ids, const float *vals,
-                                  int n, const InkSampleParams *p, uint64_t *rng_state, int *used_fast) {
-    *used_fast = 0;
+static int32_t sample_from_topk64(const float *tv, const uint32_t *ti, int n_avail,
+                                  const InkSampleParams *p, uint64_t *rng_state,
+                                  int32_t verify_draft, int *out_accepted) {
+    if (!tv || !ti || n_avail <= 0) return -1;
     float temp = p ? p->temperature : 0.0f;
-    if (temp <= 1e-6f) return -1;
-    int top_k = (p && p->top_k > 0 && p->top_k < n) ? p->top_k : 40;
+    if (temp <= 1e-6f) {
+        int32_t best = (int32_t)ti[0];
+        if (out_accepted) *out_accepted = (verify_draft >= 0 && best == verify_draft) ? 1 : 0;
+        return best;
+    }
+    int top_k = (p && p->top_k > 0) ? p->top_k : 40;
+    if (top_k > n_avail) top_k = n_avail;
+    if (top_k > 64) top_k = 64;
     float top_p = (p && p->top_p > 0.0f && p->top_p < 1.0f) ? p->top_p : 0.95f;
-    int total = 0;
-    for (int g = 0; g < 256; g++) {
-        uint32_t c = cnts[g];
-        if (c > 16u) return -1; /* overflow -> exact full scan fallback */
-        total += (int)c;
-    }
-    if (total <= 0 || (total < top_k && temp > 0.8f)) return -1;
-
-    int idx_stack[64];
-    float val_stack[64];
-    int *idx = (top_k <= 64) ? idx_stack : (int *)malloc((size_t)top_k * sizeof(int));
-    float *val = (top_k <= 64) ? val_stack : (float *)malloc((size_t)top_k * sizeof(float));
-    if (!idx || !val) {
-        if (top_k > 64) { free(idx); free(val); }
-        return -1;
-    }
+    float val[64];
+    int idx[64];
     int k = 0;
     float inv_t = 1.0f / temp;
-    for (int g = 0; g < 256; g++) {
-        uint32_t c = cnts[g];
-        if (c == 0u) continue;
-        int base = g * 16;
-        for (uint32_t j0 = 0; j0 < c; j0++) {
-            int id = (int)ids[base + (int)j0];
-            float v = vals[base + (int)j0] * inv_t;
-            if (k < top_k) {
-                int j = k++;
-                while (j > 0 && (val[j - 1] < v || (val[j - 1] == v && idx[j - 1] > id))) {
-                    val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--;
-                }
-                val[j] = v; idx[j] = id;
-            } else if (v > val[top_k - 1] || (v == val[top_k - 1] && id < idx[top_k - 1])) {
-                int j = top_k - 1;
-                while (j > 0 && (val[j - 1] < v || (val[j - 1] == v && idx[j - 1] > id))) {
-                    val[j] = val[j - 1]; idx[j] = idx[j - 1]; j--;
-                }
-                val[j] = v; idx[j] = id;
-            }
-        }
+    for (int i = 0; i < top_k; i++) {
+        if (ti[i] == 0xffffffffu) break;
+        val[k] = tv[i] * inv_t;
+        idx[k] = (int)ti[i];
+        k++;
     }
+    if (k == 0) return 0;
     float mx = val[0], sum = 0.0f;
     for (int i = 0; i < k; i++) { val[i] = expf(val[i] - mx); sum += val[i]; }
     float cum = 0.0f;
@@ -6531,23 +7629,50 @@ static int32_t sample_topk_sparse(const uint32_t *cnts, const uint32_t *ids, con
     for (int i = 0; i < cut; i++) val[i] /= norm;
 
     int chosen = idx[0];
-    float r = next_u01(rng_state);
-    float acc = 0.0f;
-    for (int i = 0; i < cut; i++) {
-        acc += val[i];
-        if (r <= acc) { chosen = idx[i]; break; }
+    if (verify_draft >= 0) {
+        float p_draft = 0.0f;
+        int draft_pos = -1;
+        for (int i = 0; i < cut; i++) {
+            if (idx[i] == verify_draft) { p_draft = val[i]; draft_pos = i; break; }
+        }
+        float u = next_u01(rng_state);
+        if (u < p_draft) {
+            if (out_accepted) *out_accepted = 1;
+            chosen = verify_draft;
+        } else {
+            if (out_accepted) *out_accepted = 0;
+            float rem = 1.0f - p_draft;
+            if (rem <= 1e-7f) {
+                chosen = idx[0];
+            } else {
+                float r = next_u01(rng_state);
+                float acc = 0.0f;
+                chosen = (draft_pos == 0 && cut > 1) ? idx[1] : idx[0];
+                for (int i = 0; i < cut; i++) {
+                    if (i == draft_pos) continue;
+                    acc += val[i] / rem;
+                    if (r <= acc) { chosen = idx[i]; break; }
+                }
+            }
+        }
+    } else {
+        float r = next_u01(rng_state);
+        float acc = 0.0f;
+        for (int i = 0; i < cut; i++) {
+            acc += val[i];
+            if (r <= acc) { chosen = idx[i]; break; }
+        }
     }
-    if (top_k > 64) { free(idx); free(val); }
-    *used_fast = 1;
     return (int32_t)chosen;
 }
 
 int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_state) {
-    const float *logits = ink_logits(s);
+    if (!s) return -1;
     int n = ink_vocab_unpadded(s);
-    if (!logits || n <= 0) return -1;
+    if (n <= 0) return -1;
 
     float temp = p ? p->temperature : 0.0f;
+    ((InkSession *)s)->sampled_mode = (temp > 1e-6f) ? 1 : 0;
     if (temp <= 1e-6f) {
         if (s->spec_active_idx >= 0) {
             return s->spec_argmax[s->spec_active_idx];
@@ -6555,27 +7680,22 @@ int32_t ink_sample(const InkSession *s, const InkSampleParams *p, uint64_t *rng_
         if (s->argmax_valid) {
             return (int32_t)((const uint32_t *)pm_contents(s->argmax_out_buf[s->active_out_slot]))[0];
         }
-    } else if (s->argmax_valid) {
-        int used_fast = 0;
-        const uint32_t *cnts = NULL;
-        const uint32_t *ids = NULL;
-        const float *vals = NULL;
-        if (s->spec_active_idx >= 0) {
-            int si = s->spec_active_idx;
-            cnts = (const uint32_t *)pm_contents(s->spec_topk_cnt) + (size_t)si * 256;
-            ids  = (const uint32_t *)pm_contents(s->spec_topk_ids) + (size_t)si * 256 * 16;
-            vals = (const float *)pm_contents(s->spec_topk_vals) + (size_t)si * 256 * 16;
-        } else {
-            int os = s->active_out_slot;
-            cnts = (const uint32_t *)pm_contents(s->topk_cnt[os]);
-            ids  = (const uint32_t *)pm_contents(s->topk_ids[os]);
-            vals = (const float *)pm_contents(s->topk_vals[os]);
-        }
-        if (cnts && ids && vals) {
-            int32_t tok = sample_topk_sparse(cnts, ids, vals, n, p, rng_state, &used_fast);
-            if (used_fast) return tok;
+    } else {
+        int top_k = (p && p->top_k > 0 && p->top_k < n) ? p->top_k : 40;
+        if (top_k <= 64 && s->argmax_valid && getenv("INK_CPU_SAMPLE") == NULL) {
+            if (s->spec_active_idx >= 0) {
+                const float *tv = (const float *)pm_contents(s->spec_topk_vals) + (size_t)s->spec_active_idx * 64;
+                const uint32_t *ti = (const uint32_t *)pm_contents(s->spec_topk_ids) + (size_t)s->spec_active_idx * 64;
+                return sample_from_topk64(tv, ti, 64, p, rng_state, -1, NULL);
+            } else {
+                const float *tv = (const float *)pm_contents(s->topk_vals[s->active_out_slot]);
+                const uint32_t *ti = (const uint32_t *)pm_contents(s->topk_ids[s->active_out_slot]);
+                return sample_from_topk64(tv, ti, 64, p, rng_state, -1, NULL);
+            }
         }
     }
+    const float *logits = ink_logits(s);
+    if (!logits) return -1;
     return sample_logits_ex(logits, n, p, rng_state, -1, NULL);
 }
 
@@ -6636,24 +7756,35 @@ int ink_verify_draft(InkSession *s, const int32_t *tokens, int nb,
     if (s->can_verify_nb && pm_is_m4()) {
         if (ink_verify_batch(s, tokens, nb) != 0) return -1;
         const float *vlog = (const float *)pm_contents(s->spec_logits);
+        const float *stv = (const float *)pm_contents(s->spec_topk_vals);
+        const uint32_t *sti = (const uint32_t *)pm_contents(s->spec_topk_ids);
+        int top_k_v = (p && p->top_k > 0 && p->top_k < (int)nv) ? p->top_k : 40;
+        int use_gpu_topk = (top_k_v <= 64 && getenv("INK_CPU_SAMPLE") == NULL);
         int accepted = 0;
         int32_t next_tok = -1;
         for (int j = 0; j < nb - 1; j++) {
             int ok = 0;
-            int32_t sampled = sample_logits_ex(vlog + (int64_t)j * nv, (int)nv, p, rng_state, tokens[j + 1], &ok);
+            int32_t sampled = use_gpu_topk
+                ? sample_from_topk64(stv + (int64_t)j * 64, sti + (int64_t)j * 64, 64, p, rng_state, tokens[j + 1], &ok)
+                : sample_logits_ex(vlog + (int64_t)j * nv, (int)nv, p, rng_state, tokens[j + 1], &ok);
             if (ok) accepted++;
             else { next_tok = sampled; break; }
         }
         if (accepted == nb - 1) {
-            next_tok = sample_logits_ex(vlog + (int64_t)(nb - 1) * nv, (int)nv, p, rng_state, -1, NULL);
+            next_tok = use_gpu_topk
+                ? sample_from_topk64(stv + (int64_t)(nb - 1) * 64, sti + (int64_t)(nb - 1) * 64, 64, p, rng_state, -1, NULL)
+                : sample_logits_ex(vlog + (int64_t)(nb - 1) * nv, (int)nv, p, rng_state, -1, NULL);
         }
         int a = accepted + 1;
         memcpy(pm_contents(s->logits_buf[0]), vlog + (int64_t)(a - 1) * nv, (size_t)nv * sizeof(float));
         memcpy(pm_contents(s->hidden_out[0]), (const float *)pm_contents(s->spec_hidden) + (int64_t)(a - 1) * d, (size_t)d * sizeof(float));
+        memcpy(pm_contents(s->topk_vals[0]), stv + (int64_t)(a - 1) * 64, 64 * sizeof(float));
+        memcpy(pm_contents(s->topk_ids[0]), sti + (int64_t)(a - 1) * 64, 64 * sizeof(uint32_t));
+        ((uint32_t *)pm_contents(s->argmax_out_buf[0]))[0] = sti[(a - 1) * 64];
         s->active_out_slot = 0;
         s->hidden_is_prefill = 0;
         s->last_hidden_off = 0;
-        s->argmax_valid = 0;
+        s->argmax_valid = 1;
         s->conv_pending_pos0 = pos0;
         s->conv_pending_n = a;
         if (s->dspark.ready && s->dspark.pos == pos0) {
@@ -6677,11 +7808,11 @@ int ink_verify_draft(InkSession *s, const int32_t *tokens, int nb,
     }
 
     if (!s->verify_logits) {
-        if (alloc_buf(s, &s->verify_logits, (size_t)INK_SPEC_MAX_NB * (size_t)hp->n_vocab * sizeof(float)) != 0) return -1;
+        if (alloc_buf_unset(s, &s->verify_logits, (size_t)INK_SPEC_MAX_NB * (size_t)hp->n_vocab * sizeof(float)) != 0) return -1;
     }
     if (!s->spec_hist) {
         size_t sh_elems = (size_t)s->n_slots * (size_t)INK_SPEC_MAX_NB * (size_t)(2 * n_kv + 2 * d);
-        if (alloc_buf(s, &s->spec_hist, sh_elems * sizeof(float)) != 0) return -1;
+        if (alloc_buf_unset(s, &s->spec_hist, sh_elems * sizeof(float)) != 0) return -1;
     }
     if (!s->spec_old_conv) {
         s->spec_old_conv = (float *)malloc((size_t)s->conv_all_elems * sizeof(float));

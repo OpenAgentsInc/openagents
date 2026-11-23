@@ -52,7 +52,7 @@ any execution claim is recorded. The target contract covers:
    floating-point tolerances.
 3. **MoE routing.** Top-k expert routing per token at each pass through the
    looped middle layers, reusing Psionic's MoE router foundation from
-   [chapter 61](../../book/ch061-a-mixture-of-experts-layer.md).
+   [chapter 61](../../book/ch061-a-few-experts-then-a-router.md).
 4. **Chat template, thinking and tool calls.** Exact tokenization of system,
    user, assistant, reasoning/CoT and tool-call / tool-result turns, wired into
    Psionic's `/v1/responses` contract.

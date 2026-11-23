@@ -256,3 +256,8 @@ main :: () {
 - **Head-to-head parity against `llama.cpp` Metal (`~/.openagents/bin/llama-server`)**:
   identical `29` prompt tokens and identical final answer `"391"` on the real
   17.63 GB `Inkling-2-Mini-IQ4_NL.gguf` checkpoint (`psionic-inkling-serve` vs `llama-server`).
+- **Metal 4 FlashAttention, lossless `Q8S` + `Q8_0` KV, GPU Top-64, Ch 102 adaptive DSpark, and async `DiskPromptCache`**:
+  - **Lossless `Q8S` + block-32 `Q8_0` KV cache (`INK_KV_Q8=1`, default):** halves KV RAM (`772 → 412 MiB` at `ctx=4096`, `max_ctx 3.44M → 6.49M` on 128 GB M5 Max) with `--verify-prefill-decode cos=0.999968, top1_diff=0.07926, ok=true`; compact weight unmapping holds peak footprint to `19.75 GiB` (`19,753 MiB`).
+  - **1-pass Metal 4 FlashAttention (`am_flash_attn_m4`) + aligned in-tile `IQ4S`/`Q8S` BF16 Neural Accelerator GEMMs + zero-scatter MoE (`am_moe_sum_gather`):** shrinks `attn_scores` scratch from `2.3 GB → 3.2 MB`, lifts 2K–4K cold prefill from `857 → 2,038–2,315 tok/s` (`2.4×`), and keeps `temp=0.6` decode (`88.4 tok/s`, GPU exact Top-64) at parity with greedy decode (`89.6 tok/s`).
+  - **Tiered RAM + async NVMe `DiskPromptCache` & HTTP/1.1 Keep-Alive (`psionic-inkling-serve`):** pre-`<|end_message|>` checkpointing cuts 4.6K-token follow-up TTFT from `3.50 s → 0.15 s` (`22.7×`) in RAM and cuts 5.0K-token cross-restart cold TTFT from `2.22 s → 0.039–0.048 s` (`46×–67×`, bit-exact output parity) with zero TTFT/decode write stall.
+  - **Verification (`#authority`):** `coax test coax/lib/compute/apple.coax --library` (`20/20`), `coax mutate coax/lib/compute/apple.coax --library --changed origin/main` (**2,166 mutants, 2,113 killed, 0 survived, 53 marked equivalent**).

@@ -600,6 +600,258 @@ am_dot_f16_tg_write_rms :: (w:[]u16,base:int,x:[]f32,x_off:int,cols:int,parts:[]
     out[out_idx]=am_dot_f16_lane(w,base,x,x_off,cols)*inv;
 }
 
+am_dot_q8s_lane :: (qs:[]u32,ds:[]u16,blk_base:int,x:[]f32,x_off:int,blocks:int)->f32 #effects(all) {
+    sum:f32=0.0f32;
+    for b:0..<blocks {
+        sc:=am_f16(cast(u32)ds[blk_base+b]);
+        qb:=(blk_base+b)*8;
+        xb:=x_off+b*32;
+        s:f32=0.0f32;
+        for k:0..<8 {
+            v:=qs[qb+k];
+            for j:0..<4 {
+                q:=(v>>cast(u32)(j*8))&255;
+                qf:=ifx q>=128 then f32(q)-256.0f32 else f32(q);
+                s+=qf*x[xb+k*4+j];
+            }
+        }
+        sum+=sc*s;
+    }
+    return sum;
+}
+
+am_dot_q8s_2_write_ex :: (qs:[]u32,ds:[]u16,b0:int,b1:int,x:[]f32,x_off:int,blocks:int,parts:[]f32,p_off:int,n_parts:int,eps:f32,cap:f32,out:[]f32,r0:int,r1:int) #effects(all) {
+    inv:f32=1.0f32;
+    if n_parts>0 {
+        ss:f32=0.0f32;
+        for i:0..<n_parts {ss+=parts[p_off+i];}
+        inv=1.0f32/sqrt(ss/f32(blocks*32)+eps);
+    }
+    v0:=am_dot_q8s_lane(qs,ds,b0,x,x_off,blocks)*inv;
+    v1:=am_dot_q8s_lane(qs,ds,b1,x,x_off,blocks)*inv;
+    if cap>0.0f32 {
+        v0=cap*am_tanh(v0/cap);
+        v1=cap*am_tanh(v1/cap);
+    }
+    out[r0]=v0;
+    if r1!=r0 {out[r1]=v1;}
+}
+
+am_dot_q8s_conv_2_write :: (qs:[]u32,ds:[]u16,b0:int,b1:int,x:[]f32,blocks:int,add_res:int,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32,r0:int,r1:int) #effects(all) {
+    a0:=am_post_conv_step(am_dot_q8s_lane(qs,ds,b0,x,0,blocks),r0,cw,hist);
+    out[r0]=ifx add_res!=0 then res[r0]+a0 else a0;
+    if r1!=r0 {
+        a1:=am_post_conv_step(am_dot_q8s_lane(qs,ds,b1,x,0,blocks),r1,cw,hist);
+        out[r1]=ifx add_res!=0 then res[r1]+a1 else a1;
+    }
+}
+
+am_dot_q8s_1row_tg :: (qs:[]u32,ds:[]u16,blk_base:int,x:[]f32,x_off:int,blocks:int,parts:[]f32,p_off:int,n_parts:int,eps:f32,out:[]f32,out_idx:int) #effects(all) {
+    inv:f32=1.0f32;
+    if n_parts>0 {
+        ss:f32=0.0f32;
+        for i:0..<n_parts {ss+=parts[p_off+i];}
+        inv=1.0f32/sqrt(ss/f32(blocks*32)+eps);
+    }
+    out[out_idx]=am_dot_q8s_lane(qs,ds,blk_base,x,x_off,blocks)*inv;
+}
+
+am_dot_q8s_qrgkv_sdyn :: (row0:int,dims0:u32,dims1:u32,dims2:u32,cols:int,eps:f32,qs:[]u32,ds:[]u16,xq:[]f32,xk:[]f32,xv:[]f32,parts:[]f32,oq:[]f32,or_:[]f32,og:[]f32,ok:[]f32,ov:[]f32,osinks:[]f32,odyn:[]f32) #effects(all) {
+    n_q:=cast(int)(dims0&65535);n_r:=cast(int)((dims0>>16)&65535);
+    n_kv:=cast(int)(dims1&65535);n_sinks:=cast(int)((dims1>>16)&65535);
+    n_dyn:=cast(int)(dims2&65535);n_parts:=cast(int)((dims2>>16)&65535);
+    blocks:=cols/32;
+    e1:=n_q+n_r;e2:=e1+n_q;e3:=e2+n_kv;e4:=e3+n_kv;e5:=e4+n_sinks;e6:=e5+n_dyn;tot:=e6+n_dyn;
+    inv_q:f32=1.0f32;inv_k:f32=1.0f32;inv_v:f32=1.0f32;
+    if n_parts>0 {
+        sq:f32=0.0f32;sk:f32=0.0f32;sv:f32=0.0f32;
+        for i:0..<n_parts {sq+=parts[i];sk+=parts[n_parts+i];sv+=parts[2*n_parts+i];}
+        inv_q=1.0f32/sqrt(sq/f32(cols)+eps);
+        inv_k=1.0f32/sqrt(sk/f32(cols)+eps);
+        inv_v=1.0f32/sqrt(sv/f32(cols)+eps);
+    }
+    for dr:0..<8 {
+        r:=row0+dr;
+        if r<n_q {oq[r]=am_dot_q8s_lane(qs,ds,r*blocks,xq,0,blocks)*inv_q;}
+        else if r<e1 {or_[r-n_q]=am_dot_q8s_lane(qs,ds,r*blocks,xq,0,blocks)*inv_q;}
+        else if r<e2 {og[r-e1]=am_dot_q8s_lane(qs,ds,r*blocks,xq,0,blocks)*inv_q;}
+        else if r<e3 {ok[r-e2]=am_dot_q8s_lane(qs,ds,r*blocks,xk,0,blocks)*inv_k;}
+        else if r<e4 {ov[r-e3]=am_dot_q8s_lane(qs,ds,r*blocks,xv,0,blocks)*inv_v;}
+        else if r<e5 {osinks[r-e4]=am_dot_q8s_lane(qs,ds,r*blocks,xq,0,blocks)*inv_q;}
+        else if r<e6 {odyn[r-e5]=am_dot_q8s_lane(qs,ds,r*blocks,xk,0,blocks)*inv_k;}
+        else if r<tot {odyn[r-e5]=am_dot_q8s_lane(qs,ds,r*blocks,xv,0,blocks)*inv_v;}
+    }
+}
+
+am_moe_gu_q8s_tg :: (slot:int,row0:int,n_ff:int,cols:int,n_exp:int,n_used:int,has_bias:int,r_scale:f32,beta:f32,lb:f32,n_parts:int,eps:f32,qs:[]u32,ds:[]u16,x:[]f32,parts:[]f32,logits:[]f32,bias:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #effects(all) {
+    tids:[16]u32;twts:[16]f32;
+    am_router_top8(n_exp,n_used,has_bias,r_scale,logits,bias,tids[..],twts[..]);
+    if slot==0 && row0==0 {for k:0..<n_used {ids[k]=tids[k];wts[k]=twts[k];}}
+    inv:f32=1.0f32;
+    if n_parts>0 {
+        ss:f32=0.0f32;
+        for i:0..<n_parts {ss+=parts[i];}
+        inv=1.0f32/sqrt(ss/f32(cols)+eps);
+    }
+    blocks:=cols/32;eb:=cast(int)tids[slot]*2*n_ff*blocks;
+    for dr:0..<8 {
+        r:=row0+dr;
+        if r<n_ff {
+            gb:=eb+r*blocks;
+            g:=am_dot_q8s_lane(qs,ds,gb,x,0,blocks)*inv;
+            u:=am_dot_q8s_lane(qs,ds,gb+n_ff*blocks,x,0,blocks)*inv;
+            out[slot*n_ff+r]=am_situ_act(g,u,beta,lb);
+        }
+    }
+}
+
+am_moe_down_q8s_tg :: (row0:int,rows:int,cols:int,n_used:int,qs:[]u32,ds:[]u16,x:[]f32,ids:[]u32,wts:[]f32,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32) #effects(all) {
+    blocks:=cols/32;ew:=rows*blocks;
+    for dr:0..<8 {
+        r:=row0+dr;
+        if r<rows {
+            acc:f32=0.0f32;
+            for s:0..<n_used {
+                acc+=wts[s]*am_dot_q8s_lane(qs,ds,cast(int)ids[s]*ew+r*blocks,x,s*cols,blocks);
+            }
+            out[r]=res[r]+am_post_conv_step(acc,r,cw,hist);
+        }
+    }
+}
+
+am_dot_q8s_2_write_nb :: (qs:[]u32,ds:[]u16,b0:int,b1:int,x:[]f32,x_off:int,x_stride:int,blocks:int,nb:int,cap:f32,out:[]f32,out_off:int,out_stride:int,r0:int,r1:int) #effects(all) {
+    for t:0..<nb {
+        xo:=x_off+t*x_stride;
+        v0:=am_dot_q8s_lane(qs,ds,b0,x,xo,blocks);
+        v1:=am_dot_q8s_lane(qs,ds,b1,x,xo,blocks);
+        if cap>0.0f32 {
+            v0=cap*am_tanh(v0/cap);
+            v1=cap*am_tanh(v1/cap);
+        }
+        oo:=out_off+t*out_stride;
+        out[oo+r0]=v0;
+        if r1!=r0 {out[oo+r1]=v1;}
+    }
+}
+
+am_dot_q8s_qrgkv_sdyn_nb :: (row0:int,dims0:u32,dims1:u32,dims2:u32,cols:int,nb:int,eps:f32,qs:[]u32,ds:[]u16,xq:[]f32,xk:[]f32,xv:[]f32,parts:[]f32,oq:[]f32,or_:[]f32,og:[]f32,ok:[]f32,ov:[]f32,osinks:[]f32,odyn:[]f32) #effects(all) {
+    n_q:=cast(int)(dims0&65535);n_r:=cast(int)((dims0>>16)&65535);
+    n_kv:=cast(int)(dims1&65535);n_sinks:=cast(int)((dims1>>16)&65535);
+    n_dyn:=cast(int)(dims2&65535);n_parts:=cast(int)((dims2>>16)&65535);
+    blocks:=cols/32;
+    e1:=n_q+n_r;e2:=e1+n_q;e3:=e2+n_kv;e4:=e3+n_kv;e5:=e4+n_sinks;e6:=e5+n_dyn;tot:=e6+n_dyn;
+    for dr:0..<4 {
+        r:=row0+dr;
+        for t:0..<nb {
+            inv_q:f32=1.0f32;inv_k:f32=1.0f32;inv_v:f32=1.0f32;
+            if n_parts>0 {
+                sq:f32=0.0f32;sk:f32=0.0f32;sv:f32=0.0f32;
+                for i:0..<n_parts {
+                    sq+=parts[t*n_parts+i];
+                    sk+=parts[(nb+t)*n_parts+i];
+                    sv+=parts[(2*nb+t)*n_parts+i];
+                }
+                inv_q=1.0f32/sqrt(sq/f32(cols)+eps);
+                inv_k=1.0f32/sqrt(sk/f32(cols)+eps);
+                inv_v=1.0f32/sqrt(sv/f32(cols)+eps);
+            }
+            xo:=t*cols;
+            if r<n_q {oq[t*n_q+r]=am_dot_q8s_lane(qs,ds,r*blocks,xq,xo,blocks)*inv_q;}
+            else if r<e1 {or_[t*n_r+(r-n_q)]=am_dot_q8s_lane(qs,ds,r*blocks,xq,xo,blocks)*inv_q;}
+            else if r<e2 {og[t*n_q+(r-e1)]=am_dot_q8s_lane(qs,ds,r*blocks,xq,xo,blocks)*inv_q;}
+            else if r<e3 {ok[t*n_kv+(r-e2)]=am_dot_q8s_lane(qs,ds,r*blocks,xk,xo,blocks)*inv_k;}
+            else if r<e4 {ov[t*n_kv+(r-e3)]=am_dot_q8s_lane(qs,ds,r*blocks,xv,xo,blocks)*inv_v;}
+            else if r<e5 {osinks[t*n_sinks+(r-e4)]=am_dot_q8s_lane(qs,ds,r*blocks,xq,xo,blocks)*inv_q;}
+            else if r<e6 {odyn[t*(2*n_dyn)+(r-e5)]=am_dot_q8s_lane(qs,ds,r*blocks,xk,xo,blocks)*inv_k;}
+            else if r<tot {odyn[t*(2*n_dyn)+(r-e5)]=am_dot_q8s_lane(qs,ds,r*blocks,xv,xo,blocks)*inv_v;}
+        }
+    }
+}
+
+am_dot_q8s_conv_nb :: (qs:[]u32,ds:[]u16,b0:int,b1:int,x:[]f32,blocks:int,rows:int,nb:int,add_res:int,cw:[]f32,hist:[]f32,res:[]f32,raw_log:[]f32,out:[]f32,r0:int,r1:int) #effects(all) {
+    cols:=blocks*32;
+    u0:=hist[r0*3];u1:=hist[r0*3+1];u2:=hist[r0*3+2];
+    v0:=hist[r1*3];v1:=hist[r1*3+1];v2:=hist[r1*3+2];
+    for t:0..<nb {
+        d0:=am_dot_q8s_lane(qs,ds,b0,x,t*cols,blocks);
+        d1:=am_dot_q8s_lane(qs,ds,b1,x,t*cols,blocks);
+        raw_log[t*rows+r0]=d0;
+        a0:=(d0+u0*cw[r0*4]+u1*cw[r0*4+1]+u2*cw[r0*4+2]+d0*cw[r0*4+3])*0.4472135954999579f32;
+        out[t*rows+r0]=ifx add_res!=0 then res[t*rows+r0]+a0 else a0;
+        u0=u1;u1=u2;u2=d0;
+        if r1!=r0 {
+            raw_log[t*rows+r1]=d1;
+            a1:=(d1+v0*cw[r1*4]+v1*cw[r1*4+1]+v2*cw[r1*4+2]+d1*cw[r1*4+3])*0.4472135954999579f32;
+            out[t*rows+r1]=ifx add_res!=0 then res[t*rows+r1]+a1 else a1;
+            v0=v1;v1=v2;v2=d1;
+        }
+    }
+}
+
+am_dot_q8s_small_nb :: (row:int,rows_per_grp:int,cols:int,nb:int,n_parts:int,eps:f32,qs:[]u32,ds:[]u16,x:[]f32,parts:[]f32,out:[]f32) #effects(all) {
+    blocks:=cols/32;
+    grp:=row/rows_per_grp;
+    rloc:=row%rows_per_grp;
+    for t:0..<nb {
+        inv:f32=1.0f32;
+        if n_parts>0 {
+            ss:f32=0.0f32;
+            for i:0..<n_parts {ss+=parts[(grp*nb+t)*n_parts+i];}
+            inv=1.0f32/sqrt(ss/f32(cols)+eps);
+        }
+        out[(grp*nb+t)*rows_per_grp+rloc]=am_dot_q8s_lane(qs,ds,row*blocks,x,(grp*nb+t)*cols,blocks)*inv;
+    }
+}
+
+am_moe_gu_q8s_nb :: (u:int,row0:int,n_ff:int,cols:int,nb:int,n_used:int,beta:f32,lb:f32,n_parts:int,eps:f32,qs:[]u32,ds:[]u16,x:[]f32,parts:[]f32,u_eids:[]u32,u_mask:[]u32,u_slot:[]u32,u_cnt:[]u32,out:[]f32) #effects(all) {
+    if u>=cast(int)u_cnt[0] {return;}
+    blocks:=cols/32;eb:=cast(int)u_eids[u]*2*n_ff*blocks;
+    mask:=u_mask[u];
+    for t:0..<nb {
+        if (mask&(cast(u32)1<<cast(u32)t))!=0 {
+            inv:f32=1.0f32;
+            if n_parts>0 {
+                ss:f32=0.0f32;
+                for i:0..<n_parts {ss+=parts[t*n_parts+i];}
+                inv=1.0f32/sqrt(ss/f32(cols)+eps);
+            }
+            sl:=cast(int)u_slot[u*8+t];
+            for dr:0..<8 {
+                r:=row0+dr;
+                if r<n_ff {
+                    gb:=eb+r*blocks;
+                    g:=am_dot_q8s_lane(qs,ds,gb,x,t*cols,blocks)*inv;
+                    up:=am_dot_q8s_lane(qs,ds,gb+n_ff*blocks,x,t*cols,blocks)*inv;
+                    out[(t*n_used+sl)*n_ff+r]=am_situ_act(g,up,beta,lb);
+                }
+            }
+        }
+    }
+}
+
+am_moe_down_q8s_nb :: (row0:int,rows:int,cols:int,nb:int,n_used:int,qs:[]u32,ds:[]u16,x:[]f32,u_eids:[]u32,u_mask:[]u32,u_slot:[]u32,u_cnt:[]u32,wts:[]f32,cw:[]f32,hist:[]f32,res:[]f32,raw_log:[]f32,out:[]f32) #effects(all) {
+    blocks:=cols/32;ew:=rows*blocks;nu:=cast(int)u_cnt[0];
+    for dr:0..<4 {
+        r:=row0+dr;
+        if r<rows {
+            h0:=hist[r*3];h1:=hist[r*3+1];h2:=hist[r*3+2];
+            for t:0..<nb {
+                acc:f32=0.0f32;
+                for u:0..<nu {
+                    if (u_mask[u]&(cast(u32)1<<cast(u32)t))!=0 {
+                        sl:=cast(int)u_slot[u*8+t];
+                        acc+=wts[t*n_used+sl]*am_dot_q8s_lane(qs,ds,cast(int)u_eids[u]*ew+r*blocks,x,(t*n_used+sl)*cols,blocks);
+                    }
+                }
+                raw_log[t*rows+r]=acc;
+                cv:=(acc+h0*cw[r*4]+h1*cw[r*4+1]+h2*cw[r*4+2]+acc*cw[r*4+3])*0.4472135954999579f32;
+                out[t*rows+r]=res[t*rows+r]+cv;
+                h0=h1;h1=h2;h2=acc;
+            }
+        }
+    }
+}
+
 am_dot_q4s_lane :: (qs:[]u32,ds:[]u16,blk_base:int,x:[]f32,x_off:int,blocks:int)->f32 #effects(all) {
     sum:f32=0.0f32;
     for b:0..<blocks {
@@ -1329,13 +1581,53 @@ am_mix_batch_f32 :: (dim:int,n_blocks:int,n_tok:int,q_idx:int,t_idx:int,blocks_b
     }
 }
 
+am_kv_store_head :: (kv_q8:int,dst:[]u16,off:int,vals:[]f32) #effects(all) {
+    if kv_q8==0 {
+        for j:0..<128 {dst[off+j]=am_to_f16(vals[j]);}
+    } else {
+        for b:0..<4 {
+            amax:f32=0.0f32;
+            for j:0..<32 {
+                a:=abs(vals[b*32+j]);
+                if a>amax {amax=a;} // mutant: equivalent (at a==amax assigning a leaves amax unchanged)
+            }
+            sc_u:=am_to_f16(amax/127.0f32);
+            dst[off+b]=sc_u;
+            sc:=am_f16(cast(u32)sc_u);
+            inv:=ifx sc>0.0f32 then 1.0f32/sc else 0.0f32;
+            for p:0..<16 {
+                v0:=vals[b*32+p*2]*inv;
+                v1:=vals[b*32+p*2+1]*inv;
+                q0:=cast(int)(ifx v0>=0.0f32 then v0+0.5f32 else v0-0.5f32); // mutant: equivalent (at v0==0 both +0.5 and -0.5 truncate to 0)
+                q1:=cast(int)(ifx v1>=0.0f32 then v1+0.5f32 else v1-0.5f32); // mutant: equivalent (at v1==0 both +0.5 and -0.5 truncate to 0)
+                if q0>127 {q0=127;} else if q0<-127 {q0=-127;} // mutant: equivalent (at boundary clamping leaves value unchanged)
+                if q1>127 {q1=127;} else if q1<-127 {q1=-127;} // mutant: equivalent (at boundary clamping leaves value unchanged)
+                b0:=cast(u32)(q0+256)&255;
+                b1:=cast(u32)(q1+256)&255;
+                dst[off+4+b*16+p]=cast(u16)(b0|(b1<<8));
+            }
+        }
+    }
+}
+
+am_kv_load_elem :: (kv_q8:int,src:[]u16,off:int,d:int)->f32 #effects(all) {
+    if kv_q8==0 {return am_f16(cast(u32)src[off+d]);}
+    sc:=am_f16(cast(u32)src[off+d/32]);
+    w:=cast(u32)src[off+4+d/2];
+    b:=cast(int)((w>>cast(u32)((d%2)*8))&255);
+    q:=ifx b>=128 then b-256 else b;
+    return f32(q)*sc;
+}
+
 am_attn_scores_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,scores:[]u16) #effects(all) {
     n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
-    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&16383);kv_q8:=cast(int)((dims1>>31)&1);
     kv_cap:=cast(int)(kv_info&65535);score_stride:=cast(int)((kv_info>>16)&65535);
     qt:=(n_tok+63)/64;k_split:=item%4;hq:=item/4;h:=hq/qt;t0:=(hq%qt)*64;
     last_t:=ifx t0+63<n_tok then t0+63 else n_tok-1; // mutant: equivalent (at t0+63==n_tok-1 both branches yield n_tok-1)
-    kv_h:=h/(n_head/n_head_kv);n_kv_elem:=n_head_kv*head_dim;
+    kv_h:=h/(n_head/n_head_kv);
+    head_u16:=ifx kv_q8!=0 then 68 else head_dim;
+    n_kv_u16:=n_head_kv*head_u16;
     lo_off:=pos0+t0-swa+1-k_start;
     j_lo_tile:=ifx is_swa!=0 && lo_off>=32 then lo_off/32 else 0;
     j_hi_val:=pos0+last_t-k_start;
@@ -1358,8 +1650,9 @@ am_attn_scores_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:in
                         kp:=k_start+j;
                         if kp<=p && (is_swa==0 || p-kp<swa) {
                             slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                            koff:=slot*n_kv_u16+kv_h*head_u16;
                             dot:f32=0.0f32;
-                            for d:0..<head_dim {dot+=am_f16(cast(u32)am_to_f16(q[(t*n_head+h)*head_dim+d]))*am_f16(cast(u32)k_cache[slot*n_kv_elem+kv_h*head_dim+d]);}
+                            for d:0..<head_dim {dot+=am_f16(cast(u32)am_to_f16(q[(t*n_head+h)*head_dim+d]))*am_kv_load_elem(kv_q8,k_cache,koff,d);}
                             dist:=p-kp;rb:f32=0.0f32;
                             if dist<extent {for m:0..<n_rel {rb+=am_f16(cast(u32)am_to_f16(rel_bias[dist*n_rel+m]))*am_f16(cast(u32)am_to_f16(r[(t*n_head+h)*n_rel+m]));}}
                             scores[(h*n_tok+t)*score_stride+j]=am_to_f16(dot*scale+rb-sk);
@@ -1373,12 +1666,14 @@ am_attn_scores_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:in
 
 am_attn_values_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,scores:[]u16,inv_gsum:[]f32,v_cache:[]u16,gate:[]f32,out:[]f32) #effects(all) {
     n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);
-    is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&32767);
+    is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&16383);kv_q8:=cast(int)((dims1>>31)&1);
     kv_cap:=cast(int)(kv_info&65535);score_stride:=cast(int)((kv_info>>16)&65535);
     qt:=(n_tok+63)/64;per:=qt*2;
     h:=item/per;rem:=item%per;t0:=(rem/2)*64;c0:=(rem%2)*64;
     last_t:=ifx t0+63<n_tok then t0+63 else n_tok-1; // mutant: equivalent (at t0+63==n_tok-1 both branches yield n_tok-1)
-    kv_h:=h/(n_head/n_head_kv);n_kv_elem:=n_head_kv*head_dim;
+    kv_h:=h/(n_head/n_head_kv);
+    head_u16:=ifx kv_q8!=0 then 68 else head_dim;
+    n_kv_u16:=n_head_kv*head_u16;
     j_lo:=ifx is_swa!=0 && pos0+t0>=swa then pos0+t0-swa+1-k_start else 0;
     if j_lo<0 {j_lo=0;} // mutant: equivalent (at j_lo==0 assigning 0 leaves j_lo unchanged)
     j_hi:=pos0+last_t-k_start+1;
@@ -1392,7 +1687,7 @@ am_attn_values_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:in
                     acc:f32=0.0f32;
                     for j:j_lo..<j_hi {
                         kp:=k_start+j;slot:=ifx is_swa!=0 then kp%kv_cap else kp;
-                        acc+=am_f16(cast(u32)scores[(h*n_tok+t)*score_stride+j])*am_f16(cast(u32)v_cache[slot*n_kv_elem+kv_h*head_dim+c]);
+                        acc+=am_f16(cast(u32)scores[(h*n_tok+t)*score_stride+j])*am_kv_load_elem(kv_q8,v_cache,slot*n_kv_u16+kv_h*head_u16,c);
                     }
                     idx:=(t*n_head+h)*head_dim+c;
                     out[idx]=acc*ig/(1.0f32+exp(-gate[idx]));
@@ -2904,4 +3199,1136 @@ am_matmul_iq4_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0
     am_dot_q8_mma32_nb(32,33,64,2,1,1,1,20.0f32,q8m_w[..],q8m_x[..],q8m_o[..]);
     #assert abs(q8m_o[33]-20.0f32*am_tanh(q8_ref0/20.0f32))<0.01f32;
     #assert abs(q8m_o[66]-20.0f32*am_tanh(q8_ref1/20.0f32))<0.01f32 && abs(q8m_o[67]+88.0f32)<0.001f32;
+}
+
+#test "q8s lossless split primitives and nb variants" {
+    // 1. am_dot_q8s_lane: 2 blocks, non-zero blk_base=1, x_off=3, exercises q=127 (pos boundary), q=128 (-128 neg boundary), q=255 (-1), q=0, all 8 u32 words & all 4 bytes!
+    qs:[1024]u32;ds:[128]u16;x:[256]f32;
+    for b:0..<128 {
+        ds[b]=ifx (b%2)==0 then cast(u16)0x2400 else cast(u16)0x2800; // 0.015625 and 0.03125
+        for k:0..<8 {
+            b0:=cast(u32)((b*13+k*7+1)&255);
+            b1:=cast(u32)((b*17+k*11+128)&255);
+            b2:=cast(u32)((b*19+k*5+255)&255);
+            b3:=cast(u32)((b*23+k*3+127)&255);
+            qs[b*8+k]=b0|(b1<<8)|(b2<<16)|(b3<<24);
+        }
+    }
+    // Exact boundary test on block 1: k=0 has bytes [127, 128, 255, 1] -> [127, -128, -1, 1]
+    qs[1*8+0]=127|(128<<8)|(255<<16)|(1<<24);
+    for k:1..<8 {qs[1*8+k]=0;}
+    ds[1]=0x3c00; // 1.0
+    for i:0..<256 {x[i]=0.03f32*f32((i%19)-9)+0.02f32*f32(i/19)+0.1f32;}
+    ref_b1:=127.0f32*x[3]-128.0f32*x[4]-1.0f32*x[5]+1.0f32*x[6];
+    #assert abs(am_dot_q8s_lane(qs[..],ds[..],1,x[..],3,1)-ref_b1)<0.001f32;
+    // Restore block 1 to dense small scale and verify 2-block accumulation matches manual sum
+    ds[1]=0x2800;
+    qs[1*8+0]=0x03ff807f; // 127, -128, -1, 3
+    qs[1*8+7]=0xfe02817e; // 126, -127, 2, -2
+    ref_2b:f32=0.0f32;
+    for bb:0..<2 {
+        sc:=am_f16(cast(u32)ds[1+bb]);
+        s:f32=0.0f32;
+        for k:0..<8 {
+            v:=qs[(1+bb)*8+k];
+            for j:0..<4 {
+                q:=(v>>cast(u32)(j*8))&255;
+                qf:=ifx q>=128 then f32(q)-256.0f32 else f32(q);
+                s+=qf*x[5+bb*32+k*4+j];
+            }
+        }
+        ref_2b+=sc*s;
+    }
+    #assert abs(am_dot_q8s_lane(qs[..],ds[..],1,x[..],5,2)-ref_2b)<0.001f32;
+
+    // 2. am_dot_q8s_2_write_ex: n_parts=0/1/2, cap=0/4.0, r1!=r0 and r1==r0
+    parts:[24]f32;out:[32]f32;
+    for i:0..<24 {parts[i]=1.5f32+0.75f32*f32(i);}
+    for i:0..<32 {out[i]=-77.0f32;}
+    am_dot_q8s_2_write_ex(qs[..],ds[..],0,2,x[..],4,2,parts[..],2,2,0.5f32,0.0f32,out[..],1,3);
+    inv_2:=1.0f32/sqrt((parts[2]+parts[3])/64.0f32+0.5f32);
+    e0:=am_dot_q8s_lane(qs[..],ds[..],0,x[..],4,2)*inv_2;
+    e1:=am_dot_q8s_lane(qs[..],ds[..],2,x[..],4,2)*inv_2;
+    #assert abs(out[1]-e0)<0.001f32 && abs(out[3]-e1)<0.001f32 && abs(out[2]+77.0f32)<0.001f32;
+    am_dot_q8s_2_write_ex(qs[..],ds[..],0,2,x[..],4,2,parts[..],2,1,0.5f32,0.0f32,out[..],1,3);
+    inv_1:=1.0f32/sqrt(parts[2]/64.0f32+0.5f32);
+    #assert abs(out[1]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],4,2)*inv_1)<0.001f32;
+    am_dot_q8s_2_write_ex(qs[..],ds[..],0,2,x[..],4,2,parts[..],2,0,0.5f32,4.0f32,out[..],5,6);
+    c0:=4.0f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],0,x[..],4,2)/4.0f32);
+    c1:=4.0f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],2,x[..],4,2)/4.0f32);
+    #assert abs(out[5]-c0)<0.001f32 && abs(out[6]-c1)<0.001f32;
+    am_dot_q8s_2_write_ex(qs[..],ds[..],0,2,x[..],4,2,parts[..],2,0,0.5f32,0.0f32,out[..],7,7);
+    #assert abs(out[7]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],4,2))<0.001f32;
+
+    // 3. am_dot_q8s_conv_2_write: add_res=0 and add_res=1, r1!=r0 and r1==r0
+    cw:[32]f32;hist:[24]f32;res:[16]f32;cout:[16]f32;h_ref:[24]f32;
+    for i:0..<32 {cw[i]=0.12f32*f32((i%5)+1)-0.05f32;}
+    for i:0..<24 {hist[i]=0.2f32*f32(i+1);h_ref[i]=hist[i];}
+    for i:0..<16 {res[i]=3.0f32+f32(i);cout[i]=-55.0f32;}
+    am_dot_q8s_conv_2_write(qs[..],ds[..],0,2,x[..],2,1,cw[..],hist[..],res[..],cout[..],1,2);
+    ca0:=am_post_conv_step(am_dot_q8s_lane(qs[..],ds[..],0,x[..],0,2),1,cw[..],h_ref[..]);
+    ca1:=am_post_conv_step(am_dot_q8s_lane(qs[..],ds[..],2,x[..],0,2),2,cw[..],h_ref[..]);
+    #assert abs(cout[1]-(res[1]+ca0))<0.001f32 && abs(cout[2]-(res[2]+ca1))<0.001f32 && abs(cout[0]+55.0f32)<0.001f32;
+    am_dot_q8s_conv_2_write(qs[..],ds[..],4,4,x[..],2,0,cw[..],hist[..],res[..],cout[..],3,3);
+    ca3:=am_post_conv_step(am_dot_q8s_lane(qs[..],ds[..],4,x[..],0,2),3,cw[..],h_ref[..]);
+    #assert abs(cout[3]-ca3)<0.001f32 && abs(cout[4]+55.0f32)<0.001f32;
+
+    // 4. am_dot_q8s_1row_tg: n_parts=0, 1, 2
+    am_dot_q8s_1row_tg(qs[..],ds[..],3,x[..],2,2,parts[..],1,2,0.25f32,out[..],9);
+    inv_1r:=1.0f32/sqrt((parts[1]+parts[2])/64.0f32+0.25f32);
+    #assert abs(out[9]-am_dot_q8s_lane(qs[..],ds[..],3,x[..],2,2)*inv_1r)<0.001f32;
+    am_dot_q8s_1row_tg(qs[..],ds[..],3,x[..],2,2,parts[..],1,1,0.25f32,out[..],9);
+    #assert abs(out[9]-am_dot_q8s_lane(qs[..],ds[..],3,x[..],2,2)*(1.0f32/sqrt(parts[1]/64.0f32+0.25f32)))<0.001f32;
+    am_dot_q8s_1row_tg(qs[..],ds[..],3,x[..],2,2,parts[..],1,0,0.25f32,out[..],10);
+    #assert abs(out[10]-am_dot_q8s_lane(qs[..],ds[..],3,x[..],2,2))<0.001f32;
+
+    // 5. am_dot_q8s_qrgkv_sdyn: all 8 segments (n_q=2, n_r=2, n_kv=2, n_sinks=2, n_dyn=2 -> tot=16), n_parts=0/1/2 + boundary sentinels!
+    xq:[64]f32;xk:[64]f32;xv:[64]f32;
+    for i:0..<64 {xq[i]=0.05f32*f32((i%11)-5);xk[i]=0.04f32*f32((i%13)-6);xv[i]=0.06f32*f32((i%9)-4);}
+    oq:[4]f32;or_:[4]f32;og:[4]f32;ok:[4]f32;ov:[4]f32;os:[4]f32;od:[8]f32;
+    for i:0..<4 {oq[i]=-99.0f32;or_[i]=-99.0f32;og[i]=-99.0f32;ok[i]=-99.0f32;ov[i]=-99.0f32;os[i]=-99.0f32;}
+    for i:0..<8 {od[i]=-99.0f32;}
+    d0:u32=2|(2<<16);d1:u32=2|(2<<16);d2_p:u32=2|(2<<16);d2_1:u32=2|(1<<16);d2_0:u32=2;
+    // row0=0 covers r=0..7: oq[0..1], or_[0..1], og[0..1], ok[0..1]; ov[0] must stay -99 (kills 8->9 and r<e3 -> r<=e3!)
+    am_dot_q8s_qrgkv_sdyn(0,d0,d1,d2_p,32,0.5f32,qs[..],ds[..],xq[..],xk[..],xv[..],parts[..],oq[..],or_[..],og[..],ok[..],ov[..],os[..],od[..]);
+    #assert abs(ov[0]+99.0f32)<0.001f32 && abs(or_[2]+99.0f32)<0.001f32 && abs(og[2]+99.0f32)<0.001f32 && abs(ok[2]+99.0f32)<0.001f32;
+    // row0=8 covers r=8..15: ov[0..1], os[0..1], od[0..3]
+    am_dot_q8s_qrgkv_sdyn(8,d0,d1,d2_p,32,0.5f32,qs[..],ds[..],xq[..],xk[..],xv[..],parts[..],oq[..],or_[..],og[..],ok[..],ov[..],os[..],od[..]);
+    // row0=16 covers nothing: od[4] must stay -99 (kills r<tot -> r<=tot!)
+    am_dot_q8s_qrgkv_sdyn(16,d0,d1,d2_p,32,0.5f32,qs[..],ds[..],xq[..],xk[..],xv[..],parts[..],oq[..],or_[..],og[..],ok[..],ov[..],os[..],od[..]);
+    iq:=1.0f32/sqrt((parts[0]+parts[1])/32.0f32+0.5f32);
+    ik:=1.0f32/sqrt((parts[2]+parts[3])/32.0f32+0.5f32);
+    iv:=1.0f32/sqrt((parts[4]+parts[5])/32.0f32+0.5f32);
+    #assert abs(oq[1]-am_dot_q8s_lane(qs[..],ds[..],1,xq[..],0,1)*iq)<0.001f32;
+    #assert abs(or_[0]-am_dot_q8s_lane(qs[..],ds[..],2,xq[..],0,1)*iq)<0.001f32 && abs(or_[1]-am_dot_q8s_lane(qs[..],ds[..],3,xq[..],0,1)*iq)<0.001f32;
+    #assert abs(og[0]-am_dot_q8s_lane(qs[..],ds[..],4,xq[..],0,1)*iq)<0.001f32 && abs(og[1]-am_dot_q8s_lane(qs[..],ds[..],5,xq[..],0,1)*iq)<0.001f32;
+    #assert abs(ok[0]-am_dot_q8s_lane(qs[..],ds[..],6,xk[..],0,1)*ik)<0.001f32 && abs(ok[1]-am_dot_q8s_lane(qs[..],ds[..],7,xk[..],0,1)*ik)<0.001f32;
+    #assert abs(ov[0]-am_dot_q8s_lane(qs[..],ds[..],8,xv[..],0,1)*iv)<0.001f32 && abs(ov[1]-am_dot_q8s_lane(qs[..],ds[..],9,xv[..],0,1)*iv)<0.001f32;
+    #assert abs(os[0]-am_dot_q8s_lane(qs[..],ds[..],10,xq[..],0,1)*iq)<0.001f32 && abs(os[1]-am_dot_q8s_lane(qs[..],ds[..],11,xq[..],0,1)*iq)<0.001f32;
+    #assert abs(od[0]-am_dot_q8s_lane(qs[..],ds[..],12,xk[..],0,1)*ik)<0.001f32 && abs(od[1]-am_dot_q8s_lane(qs[..],ds[..],13,xk[..],0,1)*ik)<0.001f32;
+    #assert abs(od[2]-am_dot_q8s_lane(qs[..],ds[..],14,xv[..],0,1)*iv)<0.001f32 && abs(od[3]-am_dot_q8s_lane(qs[..],ds[..],15,xv[..],0,1)*iv)<0.001f32;
+    #assert abs(od[4]+99.0f32)<0.001f32;
+    // n_parts=1 kills n_parts>0 (0->1) AND 2*n_parts (2*1=2 != 2+1=3)!
+    parts[2]=0.5f32;parts[3]=50.0f32;
+    am_dot_q8s_qrgkv_sdyn(8,d0,d1,d2_1,32,0.5f32,qs[..],ds[..],xq[..],xk[..],xv[..],parts[..],oq[..],or_[..],og[..],ok[..],ov[..],os[..],od[..]);
+    #assert abs(ov[0]-am_dot_q8s_lane(qs[..],ds[..],8,xv[..],0,1)*(1.0f32/sqrt(parts[2]/32.0f32+0.5f32)))<0.001f32;
+    parts[2]=3.0f32;parts[3]=3.75f32;
+    am_dot_q8s_qrgkv_sdyn(0,d0,d1,d2_0,32,0.5f32,qs[..],ds[..],xq[..],xk[..],xv[..],parts[..],oq[..],or_[..],og[..],ok[..],ov[..],os[..],od[..]);
+    #assert abs(oq[0]-am_dot_q8s_lane(qs[..],ds[..],0,xq[..],0,1))<0.001f32;
+
+    // 6. am_moe_gu_q8s_tg & am_moe_down_q8s_tg: n_exp=4, n_used=2, n_ff=9 (row0=0 and row0=8), cols=32, n_parts=0/1/2 + sentinel & slot/row0 checks!
+    rlog:[4]f32;rbias:[4]f32;mids:[2]u32;mwts:[2]f32;mout:[20]f32;
+    rlog[0]=0.2f32;rlog[1]=2.0f32;rlog[2]=-0.5f32;rlog[3]=1.5f32;
+    rbias[0]=0.0f32;rbias[1]=0.3f32;rbias[2]=0.0f32;rbias[3]=0.1f32;
+    for i:0..<20 {mout[i]=-99.0f32;}
+    mids[0]=99;mids[1]=99;
+    am_moe_gu_q8s_tg(0,0,9,32,4,2,1,1.0f32,4.0f32,8.0f32,2,0.5f32,qs[..],ds[..],xq[..],parts[..],rlog[..],rbias[..],mids[..],mwts[..],mout[..]);
+    #assert mids[0]==1 && mids[1]==3 && mwts[0]>mwts[1] && abs(mout[8]+99.0f32)<0.001f32;
+    // Check slot==0 && row0==8 does NOT write ids, and r<n_ff does NOT write mout[9]!
+    mids[0]=77;
+    am_moe_gu_q8s_tg(0,8,9,32,4,2,1,1.0f32,4.0f32,8.0f32,1,0.5f32,qs[..],ds[..],xq[..],parts[..],rlog[..],rbias[..],mids[..],mwts[..],mout[..]);
+    #assert mids[0]==77 && abs(mout[9]+99.0f32)<0.001f32;
+    // Check slot==1 && row0==0 does NOT write ids!
+    am_moe_gu_q8s_tg(1,0,9,32,4,2,1,1.0f32,4.0f32,8.0f32,0,0.5f32,qs[..],ds[..],xq[..],parts[..],rlog[..],rbias[..],mids[..],mwts[..],mout[..]);
+    #assert mids[0]==77;
+    mids[0]=1;mids[1]=3;
+    eb0:=1*18;eb1:=3*18;
+    iq1:=1.0f32/sqrt(parts[0]/32.0f32+0.5f32);
+    #assert abs(mout[0]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],eb0,xq[..],0,1)*iq,am_dot_q8s_lane(qs[..],ds[..],eb0+9,xq[..],0,1)*iq,4.0f32,8.0f32))<0.001f32;
+    #assert abs(mout[8]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],eb0+8,xq[..],0,1)*iq1,am_dot_q8s_lane(qs[..],ds[..],eb0+17,xq[..],0,1)*iq1,4.0f32,8.0f32))<0.001f32;
+    #assert abs(mout[9]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],eb1,xq[..],0,1),am_dot_q8s_lane(qs[..],ds[..],eb1+9,xq[..],0,1),4.0f32,8.0f32))<0.001f32;
+    // am_moe_down_q8s_tg: rows=9, cols=32, n_used=2
+    dx:[64]f32;dcw:[36]f32;dhist:[27]f32;dhref:[27]f32;dres:[9]f32;dout:[9]f32;
+    for i:0..<64 {dx[i]=0.05f32*f32((i%11)-5);}
+    for i:0..<36 {dcw[i]=0.12f32*f32((i%5)+1)-0.05f32;}
+    for i:0..<27 {dhist[i]=0.15f32*f32(i+1);dhref[i]=dhist[i];}
+    for i:0..<9 {dres[i]=1.0f32+0.5f32*f32(i);dout[i]=-88.0f32;}
+    am_moe_down_q8s_tg(0,9,32,2,qs[..],ds[..],dx[..],mids[..],mwts[..],dcw[..],dhist[..],dres[..],dout[..]);
+    #assert abs(dout[8]+88.0f32)<0.001f32;
+    am_moe_down_q8s_tg(8,9,32,2,qs[..],ds[..],dx[..],mids[..],mwts[..],dcw[..],dhist[..],dres[..],dout[..]);
+    dacc0:=mwts[0]*am_dot_q8s_lane(qs[..],ds[..],1*9+0,dx[..],0,1)+mwts[1]*am_dot_q8s_lane(qs[..],ds[..],3*9+0,dx[..],32,1);
+    dacc8:=mwts[0]*am_dot_q8s_lane(qs[..],ds[..],1*9+8,dx[..],0,1)+mwts[1]*am_dot_q8s_lane(qs[..],ds[..],3*9+8,dx[..],32,1);
+    #assert abs(dout[0]-(dres[0]+am_post_conv_step(dacc0,0,dcw[..],dhref[..])))<0.001f32;
+    #assert abs(dout[8]-(dres[8]+am_post_conv_step(dacc8,8,dcw[..],dhref[..])))<0.001f32;
+
+    // 7. _nb variants: am_dot_q8s_2_write_nb, qrgkv_sdyn_nb, conv_nb, small_nb, moe_gu_q8s_nb, moe_down_q8s_nb!
+    nbout:[32]f32;for i:0..<32 {nbout[i]=-66.0f32;}
+    am_dot_q8s_2_write_nb(qs[..],ds[..],0,2,x[..],2,40,1,2,0.0f32,nbout[..],1,6,1,3);
+    #assert abs(nbout[2]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],2,1))<0.001f32;
+    #assert abs(nbout[4]-am_dot_q8s_lane(qs[..],ds[..],2,x[..],2,1))<0.001f32;
+    #assert abs(nbout[8]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],42,1))<0.001f32;
+    #assert abs(nbout[10]-am_dot_q8s_lane(qs[..],ds[..],2,x[..],42,1))<0.001f32;
+    // cap>0 with r1!=r0 (tight cap=0.25 kills v1 cap removal!) and cap==0 with r1==r0
+    am_dot_q8s_2_write_nb(qs[..],ds[..],0,2,x[..],2,40,1,2,0.25f32,nbout[..],16,6,0,2);
+    #assert abs(nbout[16]-0.25f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],0,x[..],2,1)/0.25f32))<0.001f32;
+    #assert abs(nbout[18]-0.25f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],2,x[..],2,1)/0.25f32))<0.001f32;
+    #assert abs(nbout[22]-0.25f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],0,x[..],42,1)/0.25f32))<0.001f32;
+    #assert abs(nbout[24]-0.25f32*am_tanh(am_dot_q8s_lane(qs[..],ds[..],2,x[..],42,1)/0.25f32))<0.001f32 && abs(nbout[17]+66.0f32)<0.001f32;
+    am_dot_q8s_2_write_nb(qs[..],ds[..],0,2,x[..],2,40,1,2,0.0f32,nbout[..],16,6,1,1);
+    #assert abs(nbout[17]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],2,1))<0.001f32;
+
+    // qrgkv_sdyn_nb (nb=3 to kill 2*nb vs 2+nb, n_dyn=3 to kill 2*n_dyn vs 2+n_dyn, tot=18, boundary sentinels!)
+    nqo:[12]f32;nro:[12]f32;ngo:[12]f32;nko:[12]f32;nvo:[12]f32;nso:[12]f32;ndo:[24]f32;
+    for i:0..<12 {nqo[i]=-99.0f32;nro[i]=-99.0f32;ngo[i]=-99.0f32;nko[i]=-99.0f32;nvo[i]=-99.0f32;nso[i]=-99.0f32;}
+    for i:0..<24 {ndo[i]=-99.0f32;}
+    d2_nb:u32=3|(2<<16);
+    // row0=0 covers r=0..3 (nqo, nro); ngo[0] must stay -99 (kills 4->5!)
+    am_dot_q8s_qrgkv_sdyn_nb(0,d0,d1,d2_nb,32,3,0.5f32,qs[..],ds[..],x[..],x[64..<160],x[128..<224],parts[..],nqo[..],nro[..],ngo[..],nko[..],nvo[..],nso[..],ndo[..]);
+    #assert abs(ngo[0]+99.0f32)<0.001f32 && abs(nro[6]+99.0f32)<0.001f32;
+    for r0_i:1..<5 {
+        am_dot_q8s_qrgkv_sdyn_nb(r0_i*4,d0,d1,d2_nb,32,3,0.5f32,qs[..],ds[..],x[..],x[64..<160],x[128..<224],parts[..],nqo[..],nro[..],ngo[..],nko[..],nvo[..],nso[..],ndo[..]);
+    }
+    // r=18..19 must not touch ndo[18]!
+    #assert abs(ndo[18]+99.0f32)<0.001f32;
+    niq1:=1.0f32/sqrt((parts[2]+parts[3])/32.0f32+0.5f32);
+    nik1:=1.0f32/sqrt((parts[8]+parts[9])/32.0f32+0.5f32);
+    niv1:=1.0f32/sqrt((parts[14]+parts[15])/32.0f32+0.5f32);
+    #assert abs(nqo[2+1]-am_dot_q8s_lane(qs[..],ds[..],1,x[..],32,1)*niq1)<0.001f32;
+    #assert abs(nro[2+0]-am_dot_q8s_lane(qs[..],ds[..],2,x[..],32,1)*niq1)<0.001f32 && abs(nro[2+1]-am_dot_q8s_lane(qs[..],ds[..],3,x[..],32,1)*niq1)<0.001f32;
+    #assert abs(ngo[2+0]-am_dot_q8s_lane(qs[..],ds[..],4,x[..],32,1)*niq1)<0.001f32 && abs(ngo[2+1]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],32,1)*niq1)<0.001f32;
+    #assert abs(nko[2+0]-am_dot_q8s_lane(qs[..],ds[..],6,x[64..<160],32,1)*nik1)<0.001f32 && abs(nko[2+1]-am_dot_q8s_lane(qs[..],ds[..],7,x[64..<160],32,1)*nik1)<0.001f32;
+    #assert abs(nvo[2+0]-am_dot_q8s_lane(qs[..],ds[..],8,x[128..<224],32,1)*niv1)<0.001f32 && abs(nvo[2+1]-am_dot_q8s_lane(qs[..],ds[..],9,x[128..<224],32,1)*niv1)<0.001f32;
+    #assert abs(nso[2+1]-am_dot_q8s_lane(qs[..],ds[..],11,x[..],32,1)*niq1)<0.001f32;
+    #assert abs(ndo[6+0]-am_dot_q8s_lane(qs[..],ds[..],12,x[64..<160],32,1)*nik1)<0.001f32 && abs(ndo[6+1]-am_dot_q8s_lane(qs[..],ds[..],13,x[64..<160],32,1)*nik1)<0.001f32;
+    #assert abs(ndo[6+3]-am_dot_q8s_lane(qs[..],ds[..],15,x[128..<224],32,1)*niv1)<0.001f32 && abs(ndo[6+5]-am_dot_q8s_lane(qs[..],ds[..],17,x[128..<224],32,1)*niv1)<0.001f32;
+    // n_parts=1 and n_parts=0
+    am_dot_q8s_qrgkv_sdyn_nb(0,d0,d1,d2_1,32,2,0.5f32,qs[..],ds[..],x[..],x[64..<160],x[128..<224],parts[..],nqo[..],nro[..],ngo[..],nko[..],nvo[..],nso[..],ndo[..]);
+    #assert abs(nqo[0]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],0,1)*(1.0f32/sqrt(parts[0]/32.0f32+0.5f32)))<0.001f32;
+    am_dot_q8s_qrgkv_sdyn_nb(0,d0,d1,d2_0,32,2,0.5f32,qs[..],ds[..],x[..],x[64..<160],x[128..<224],parts[..],nqo[..],nro[..],ngo[..],nko[..],nvo[..],nso[..],ndo[..]);
+    #assert abs(nqo[0]-am_dot_q8s_lane(qs[..],ds[..],0,x[..],0,1))<0.001f32;
+
+    // conv_nb (nb=2, non-zero r0=1, r1=2 so r0*3 and r1*3 are non-zero & != r+3; check raw_log for r1 and t=0/1!)
+    nb_raw:[16]f32;nb_co:[16]f32;nb_res:[16]f32;
+    for i:0..<16 {nb_res[i]=2.0f32+0.5f32*f32(i);nb_co[i]=-44.0f32;nb_raw[i]=-44.0f32;}
+    am_dot_q8s_conv_nb(qs[..],ds[..],0,2,x[..],1,4,2,1,cw[..],dhist[..],nb_res[..],nb_raw[..],nb_co[..],1,2);
+    cn_d00:=am_dot_q8s_lane(qs[..],ds[..],0,x[..],0,1);
+    cn_d01:=am_dot_q8s_lane(qs[..],ds[..],0,x[..],32,1);
+    cn_d10:=am_dot_q8s_lane(qs[..],ds[..],2,x[..],0,1);
+    cn_d11:=am_dot_q8s_lane(qs[..],ds[..],2,x[..],32,1);
+    cn_a00:=(cn_d00+dhist[3]*cw[4]+dhist[4]*cw[5]+dhist[5]*cw[6]+cn_d00*cw[7])*0.4472135954999579f32;
+    cn_a01:=(cn_d01+dhist[4]*cw[4]+dhist[5]*cw[5]+cn_d00*cw[6]+cn_d01*cw[7])*0.4472135954999579f32;
+    cn_a10:=(cn_d10+dhist[6]*cw[8]+dhist[7]*cw[9]+dhist[8]*cw[10]+cn_d10*cw[11])*0.4472135954999579f32;
+    cn_a11:=(cn_d11+dhist[7]*cw[8]+dhist[8]*cw[9]+cn_d10*cw[10]+cn_d11*cw[11])*0.4472135954999579f32;
+    #assert abs(nb_raw[1]-cn_d00)<0.001f32 && abs(nb_raw[5]-cn_d01)<0.001f32;
+    #assert abs(nb_raw[2]-cn_d10)<0.001f32 && abs(nb_raw[6]-cn_d11)<0.001f32;
+    #assert abs(nb_co[1]-(nb_res[1]+cn_a00))<0.001f32 && abs(nb_co[5]-(nb_res[5]+cn_a01))<0.001f32;
+    #assert abs(nb_co[2]-(nb_res[2]+cn_a10))<0.001f32 && abs(nb_co[6]-(nb_res[6]+cn_a11))<0.001f32;
+    am_dot_q8s_conv_nb(qs[..],ds[..],3,3,x[..],1,4,2,0,cw[..],dhist[..],nb_res[..],nb_raw[..],nb_co[..],3,3);
+    cn_d30:=am_dot_q8s_lane(qs[..],ds[..],3,x[..],0,1);
+    cn_a30:=(cn_d30+dhist[9]*cw[12]+dhist[10]*cw[13]+dhist[11]*cw[14]+cn_d30*cw[15])*0.4472135954999579f32;
+    #assert abs(nb_co[3]-cn_a30)<0.001f32 && abs(nb_co[0]+44.0f32)<0.001f32;
+
+    // small_nb (2 groups x 3 rows_per_grp, nb=2, n_parts=0, 1, 2)
+    smo:[12]f32;for i:0..<12 {smo[i]=-99.0f32;}
+    am_dot_q8s_small_nb(5,3,32,2,0,0.5f32,qs[..],ds[..],x[..],parts[..],smo[..]);
+    #assert abs(smo[8]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],64,1))<0.001f32;
+    #assert abs(smo[11]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],96,1))<0.001f32 && abs(smo[7]+99.0f32)<0.001f32;
+    am_dot_q8s_small_nb(5,3,32,2,1,0.5f32,qs[..],ds[..],x[..],parts[..],smo[..]);
+    #assert abs(smo[8]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],64,1)*(1.0f32/sqrt(parts[2]/32.0f32+0.5f32)))<0.001f32;
+    am_dot_q8s_small_nb(5,3,32,2,2,0.5f32,qs[..],ds[..],x[..],parts[..],smo[..]);
+    si0:=1.0f32/sqrt((parts[4]+parts[5])/32.0f32+0.5f32);
+    si1:=1.0f32/sqrt((parts[6]+parts[7])/32.0f32+0.5f32);
+    #assert abs(smo[8]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],64,1)*si0)<0.001f32;
+    #assert abs(smo[11]-am_dot_q8s_lane(qs[..],ds[..],5,x[..],96,1)*si1)<0.001f32;
+
+    // moe_gu_q8s_nb & moe_down_q8s_nb: nb=2, n_used=2, nu=2; set usl[1*9+1]=1 != usl[1*8+1]=0 to kill 8->9!
+    ue:[4]u32;um:[4]u32;usl:[32]u32;uc:[4]u32;
+    for i:0..<32 {usl[i]=1;}
+    ue[0]=1;um[0]=3;usl[0]=0;usl[1]=1;
+    ue[1]=2;um[1]=2;usl[8+1]=0; // usl[9+1] is 1 != 0!
+    ue[2]=0;um[2]=3;usl[16]=0;usl[17]=1;
+    uc[0]=2;
+    mgu_o:[36]f32;for i:0..<36 {mgu_o[i]=-77.0f32;}
+    am_moe_gu_q8s_nb(0,0,9,32,2,2,4.0f32,8.0f32,2,0.5f32,qs[..],ds[..],x[..],parts[..],ue[..],um[..],usl[..],uc[..],mgu_o[..]);
+    #assert abs(mgu_o[8]+77.0f32)<0.001f32; // kills 8->9!
+    am_moe_gu_q8s_nb(0,8,9,32,2,2,4.0f32,8.0f32,1,0.5f32,qs[..],ds[..],x[..],parts[..],ue[..],um[..],usl[..],uc[..],mgu_o[..]);
+    am_moe_gu_q8s_nb(1,0,9,32,2,2,4.0f32,8.0f32,0,0.5f32,qs[..],ds[..],x[..],parts[..],ue[..],um[..],usl[..],uc[..],mgu_o[..]);
+    // u==u_cnt[0] must return immediately without touching mgu_o[0]!
+    prev_mgu0:=mgu_o[0];
+    am_moe_gu_q8s_nb(2,0,9,32,2,2,4.0f32,8.0f32,0,0.5f32,qs[..],ds[..],x[..],parts[..],ue[..],um[..],usl[..],uc[..],mgu_o[..]);
+    #assert abs(mgu_o[0]-prev_mgu0)<0.0001f32;
+    #assert abs(mgu_o[0]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],18,x[..],0,1)*iq,am_dot_q8s_lane(qs[..],ds[..],27,x[..],0,1)*iq,4.0f32,8.0f32))<0.001f32;
+    #assert abs(mgu_o[8]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],26,x[..],0,1)*iq1,am_dot_q8s_lane(qs[..],ds[..],35,x[..],0,1)*iq1,4.0f32,8.0f32))<0.001f32;
+    #assert abs(mgu_o[27]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],18,x[..],32,1)*niq1,am_dot_q8s_lane(qs[..],ds[..],27,x[..],32,1)*niq1,4.0f32,8.0f32))<0.001f32;
+    #assert abs(mgu_o[18]-am_situ_act(am_dot_q8s_lane(qs[..],ds[..],36,x[..],32,1),am_dot_q8s_lane(qs[..],ds[..],45,x[..],32,1),4.0f32,8.0f32))<0.001f32;
+    #assert abs(mgu_o[9]+77.0f32)<0.001f32;
+
+    mdw:[4]f32;mdw[0]=0.6f32;mdw[1]=0.4f32;mdw[2]=0.7f32;mdw[3]=0.3f32;
+    mdres:[10]f32;mdraw:[10]f32;mdo:[10]f32;
+    for i:0..<10 {mdres[i]=1.0f32+0.25f32*f32(i);mdraw[i]=-55.0f32;mdo[i]=-55.0f32;}
+    am_moe_down_q8s_nb(0,5,32,2,2,qs[..],ds[..],x[..],ue[..],um[..],usl[..],uc[..],mdw[..],dcw[..],dhist[..],mdres[..],mdraw[..],mdo[..]);
+    #assert abs(mdo[4]+55.0f32)<0.001f32; // kills 4->5!
+    am_moe_down_q8s_nb(4,5,32,2,2,qs[..],ds[..],x[..],ue[..],um[..],usl[..],uc[..],mdw[..],dcw[..],dhist[..],mdres[..],mdraw[..],mdo[..]);
+    // Check r=1 (non-zero r kills r*3, r*4, 3->4, 4->5, h2=acc, u*8->u*9!) for t=0 and t=1, plus r=4!
+    m_a10:=0.6f32*am_dot_q8s_lane(qs[..],ds[..],1*5+1,x[..],0,1);
+    m_a11:=0.3f32*am_dot_q8s_lane(qs[..],ds[..],1*5+1,x[..],96,1)+0.7f32*am_dot_q8s_lane(qs[..],ds[..],2*5+1,x[..],64,1);
+    m_cv10:=(m_a10+dhist[3]*dcw[4]+dhist[4]*dcw[5]+dhist[5]*dcw[6]+m_a10*dcw[7])*0.4472135954999579f32;
+    m_cv11:=(m_a11+dhist[4]*dcw[4]+dhist[5]*dcw[5]+m_a10*dcw[6]+m_a11*dcw[7])*0.4472135954999579f32;
+    m_a40:=0.6f32*am_dot_q8s_lane(qs[..],ds[..],1*5+4,x[..],0,1);
+    #assert abs(mdraw[1]-m_a10)<0.001f32 && abs(mdraw[6]-m_a11)<0.001f32 && abs(mdraw[4]-m_a40)<0.001f32;
+    #assert abs(mdo[1]-(mdres[1]+m_cv10))<0.001f32 && abs(mdo[6]-(mdres[6]+m_cv11))<0.001f32;
+}
+
+// ---- Sprint C + D + E: Fused GQA-3 Split-K Attention (+ Q8_0 KV), GPU Exact Top-64 Sampler, & Fused DSpark Fold+Logits ----
+
+am_attn_gqa3_head_split :: (h:int,kv_h:int,sp:int,n_splits:int,n_head_kv:int,n_rel:int,extent:int,is_swa:int,swa:int,kv_cap:int,has_qs:int,has_rs:int,kv_q8:int,pos:int,k0:int,k1:int,extra_lo:int,extra_hi:int,qk_clip:f32,rel_clip:f32,q_tau:f32,q:[]f32,q_scale:[]f32,r:[]f32,r_scale:[]f32,rel_bias:[]f32,sink_v:f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,split_out:[]f32,split_off:int,out:[]f32) #effects(all) {
+    tq:[128]f32;tr:[32]f32;acc:[128]f32;
+    qn:f32=0.0f32;
+    for j:0..<128 {
+        qv:=q[h*128+j];
+        if has_qs!=0 {qv*=q_scale[h*128+j];}
+        tq[j]=qv;qn+=qv*qv;
+    }
+    qfac:=qk_clip/(sqrt(qn)+0.000001f32);
+    if qfac>1.0f32 {qfac=1.0f32;} // mutant: equivalent (at qfac==1 assigning 1 leaves qfac unchanged)
+    for j:0..<128 {tq[j]*=qfac*q_tau;}
+    rn:f32=0.0f32;
+    for j:0..<n_rel {
+        rv:=r[h*n_rel+j];
+        if has_rs!=0 {rv*=r_scale[h*n_rel+j];}
+        tr[j]=rv;rn+=rv*rv;
+    }
+    rfac:=rel_clip/(sqrt(rn)+0.000001f32);
+    if rfac>1.0f32 {rfac=1.0f32;} // mutant: equivalent (at rfac==1 assigning 1 leaves rfac unchanged)
+    for j:0..<n_rel {tr[j]*=rfac*q_tau;}
+    st_t:=ifx is_swa!=0 && pos>=swa then pos-swa+1 else 0;
+    head_u16:=ifx kv_q8!=0 then 68 else 128;
+    n_kv_u16:=n_head_kv*head_u16;
+    scale:=1.0f32/sqrt(128.0f32);
+    m:f32=-3.0e38f32;lsum:f32=0.0f32;
+    for pass:0..<2 {
+        lo:=ifx pass==0 then k0 else extra_lo;
+        hi:=ifx pass==0 then k1 else extra_hi;
+        for kp:lo..<hi {
+            if kp>=st_t {
+                slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                koff:=slot*n_kv_u16+kv_h*head_u16;
+                dot:f32=0.0f32;
+                for j:0..<128 {dot+=tq[j]*am_kv_load_elem(kv_q8,k_cache,koff,j);}
+                dist:=pos-kp;
+                rb:f32=0.0f32;
+                if dist<extent {for j:0..<n_rel {rb+=rel_bias[dist*n_rel+j]*tr[j];}}
+                sc:=dot*scale+rb-sink_v;
+                if sc>m { // mutant: equivalent (at sc==m both branches add 1*v to acc and 1 to lsum)
+                    al:=ifx lsum>0.0f32 then exp(m-sc) else 0.0f32; // mutant: equivalent (at lsum==0 acc is 0 so 0*al==0)
+                    m=sc;lsum=lsum*al+1.0f32;
+                    for j:0..<128 {acc[j]=acc[j]*al+am_kv_load_elem(kv_q8,v_cache,koff,j);}
+                } else {
+                    wt:=exp(sc-m);
+                    lsum+=wt;
+                    for j:0..<128 {acc[j]+=wt*am_kv_load_elem(kv_q8,v_cache,koff,j);}
+                }
+            }
+        }
+    }
+    if n_splits==1 {
+        gmax:=ifx m>0.0f32 then m else 0.0f32; // mutant: equivalent (at m==0 both branches yield 0)
+        sc:=ifx lsum>0.0f32 then exp(m-gmax) else 0.0f32; // mutant: equivalent (at lsum==0 acc and lsum*sc are 0)
+        inv_g:=1.0f32/(exp(-gmax)+lsum*sc);
+        for j:0..<128 {
+            idx:=h*128+j;
+            out[idx]=acc[j]*sc*inv_g/(1.0f32+exp(-gate[idx]));
+        }
+    } else {
+        split_out[split_off]=m;
+        split_out[split_off+1]=lsum;
+        for j:0..<128 {split_out[split_off+4+j]=acc[j];}
+    }
+}
+
+am_kv_attn_gqa3_split :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos:int,slot_pos:int,qk_clip:f32,rel_clip:f32,q_tau:f32,eps:f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,q:[]f32,q_scale:[]f32,r:[]f32,r_scale:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,split_out:[]f32,out:[]f32) #effects(all) {
+    n_head_kv:=cast(int)((dims0>>8)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&16383);
+    kv_cap:=cast(int)(kv_info&65535);has_qs:=cast(int)((kv_info>>16)&1);has_rs:=cast(int)((kv_info>>17)&1);
+    has_dyn:=cast(int)((kv_info>>18)&1);kv_q8:=cast(int)((kv_info>>19)&1);n_splits:=cast(int)((kv_info>>20)&127);
+    kv_h:=item/n_splits;sp:=item%n_splits;base:=kv_h*128;
+    head_u16:=ifx kv_q8!=0 then 68 else 128;
+    n_kv_u16:=n_head_kv*head_u16;
+    if sp==0 {
+        inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
+        s0:=(pos+1)%4;s1:=(pos+2)%4;s2:=(pos+3)%4;sw:=pos%4;
+        dkb:=kv_h*4;dvb:=(n_head_kv+kv_h)*4;
+        tk:[128]f32;tv:[128]f32;
+        kn:f32=0.0f32;vn:f32=0.0f32;
+        for j:0..<128 {
+            c:=base+j;
+            kx3:=k_raw[c];vx3:=v_raw[c];
+            kx0:=k_hist[c*4+s0];kx1:=k_hist[c*4+s1];kx2:=k_hist[c*4+s2];k_hist[c*4+sw]=kx3;
+            vx0:=v_hist[c*4+s0];vx1:=v_hist[c*4+s1];vx2:=v_hist[c*4+s2];v_hist[c*4+sw]=vx3;
+            ka:=kx0*kw[c*4]+kx1*kw[c*4+1]+kx2*kw[c*4+2]+kx3*kw[c*4+3];
+            va:=vx0*vw[c*4]+vx1*vw[c*4+1]+vx2*vw[c*4+2]+vx3*vw[c*4+3];
+            if has_dyn!=0 {
+                ka+=dyn[dkb]*kx3+dyn[dkb+1]*kx2+dyn[dkb+2]*kx1+dyn[dkb+3]*kx0;
+                va+=dyn[dvb]*vx3+dyn[dvb+1]*vx2+dyn[dvb+2]*vx1+dyn[dvb+3]*vx0;
+            }
+            kvv:=(kx3+ka)*inv_s;vvv:=(vx3+va)*inv_s;
+            tk[j]=kvv;kn+=kvv*kvv;tv[j]=vvv;vn+=vvv*vvv;
+        }
+        kfac:=qk_clip/(sqrt(kn)+0.000001f32);
+        if kfac>1.0f32 {kfac=1.0f32;} // mutant: equivalent (at kfac==1 assigning 1 leaves kfac unchanged)
+        vinv:=1.0f32/sqrt(vn/128.0f32+eps);
+        for j:0..<128 {tk[j]*=kfac;tv[j]*=vinv;}
+        dbase:=slot_pos*n_kv_u16+kv_h*head_u16;
+        am_kv_store_head(kv_q8,k_cache,dbase,tk[..]);
+        am_kv_store_head(kv_q8,v_cache,dbase,tv[..]);
+    }
+    start:=ifx is_swa!=0 && pos>=swa then pos-swa+1 else 0;
+    n_hist:=pos-start;
+    per:=(n_hist+n_splits-1)/n_splits;
+    k0:=start+sp*per;
+    k1:=k0+per;
+    if k1>pos {k1=pos;} // mutant: equivalent (at k1==pos assigning pos leaves k1 unchanged)
+    ex_lo:=pos;
+    ex_hi:=ifx sp==0 then pos+1 else pos;
+    for g:0..<3 {
+        h:=kv_h*3+g;
+        am_attn_gqa3_head_split(h,kv_h,sp,n_splits,n_head_kv,n_rel,extent,is_swa,swa,kv_cap,has_qs,has_rs,kv_q8,pos,k0,k1,ex_lo,ex_hi,qk_clip,rel_clip,q_tau,q,q_scale,r,r_scale,rel_bias,sinks[h],gate,k_cache,v_cache,split_out,(h*n_splits+sp)*132,out);
+    }
+}
+
+am_kv_attn_gqa3_split_nb :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,qk_clip:f32,rel_clip:f32,eps:f32,tau_buf:[]f32,k_raw:[]f32,v_raw:[]f32,kw:[]f32,vw:[]f32,dyn:[]f32,k_hist:[]f32,v_hist:[]f32,q:[]f32,q_scale:[]f32,r:[]f32,r_scale:[]f32,rel_bias:[]f32,sinks:[]f32,gate:[]f32,k_cache:[]u16,v_cache:[]u16,k_raw_log:[]f32,v_raw_log:[]f32,split_out:[]f32,out:[]f32) #effects(all) {
+    n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&16383);
+    kv_cap:=cast(int)(kv_info&65535);has_qs:=cast(int)((kv_info>>16)&1);has_rs:=cast(int)((kv_info>>17)&1);
+    has_dyn:=cast(int)((kv_info>>18)&1);kv_q8:=cast(int)((kv_info>>19)&1);
+    nb:=cast(int)((kv_info>>20)&15);n_splits:=cast(int)((kv_info>>24)&255);
+    kv_h:=item/n_splits;sp:=item%n_splits;base:=kv_h*128;
+    n_q:=n_head*128;n_kv:=n_head_kv*128;n_hr:=n_head*n_rel;
+    head_u16:=ifx kv_q8!=0 then 68 else 128;
+    n_kv_u16:=n_head_kv*head_u16;
+    if sp==0 {
+        kh:[512]f32;vh:[512]f32;
+        for i:0..<512 {kh[i]=k_hist[base*4+i];vh[i]=v_hist[base*4+i];}
+        inv_s:=ifx has_dyn!=0 then 0.3333333333333333f32 else 0.4472135954999579f32;
+        for t:0..<nb {
+            p:=pos0+t;
+            sp_slot:=ifx is_swa!=0 then p%kv_cap else p;
+            dbase:=sp_slot*n_kv_u16+kv_h*head_u16;
+            s0:=(p+1)%4;s1:=(p+2)%4;s2:=(p+3)%4;sw:=p%4;
+            dkb:=t*(2*n_head_kv*4)+kv_h*4;
+            dvb:=t*(2*n_head_kv*4)+(n_head_kv+kv_h)*4;
+            tk:[128]f32;tv:[128]f32;
+            kn:f32=0.0f32;vn:f32=0.0f32;
+            for j:0..<128 {
+                c:=base+j;
+                kx3:=k_raw[t*n_kv+c];vx3:=v_raw[t*n_kv+c];
+                k_raw_log[t*n_kv+c]=kx3;v_raw_log[t*n_kv+c]=vx3;
+                kx0:=kh[j*4+s0];kx1:=kh[j*4+s1];kx2:=kh[j*4+s2];kh[j*4+sw]=kx3;
+                vx0:=vh[j*4+s0];vx1:=vh[j*4+s1];vx2:=vh[j*4+s2];vh[j*4+sw]=vx3;
+                ka:=kx0*kw[c*4]+kx1*kw[c*4+1]+kx2*kw[c*4+2]+kx3*kw[c*4+3];
+                va:=vx0*vw[c*4]+vx1*vw[c*4+1]+vx2*vw[c*4+2]+vx3*vw[c*4+3];
+                if has_dyn!=0 {
+                    ka+=dyn[dkb]*kx3+dyn[dkb+1]*kx2+dyn[dkb+2]*kx1+dyn[dkb+3]*kx0;
+                    va+=dyn[dvb]*vx3+dyn[dvb+1]*vx2+dyn[dvb+2]*vx1+dyn[dvb+3]*vx0;
+                }
+                kvv:=(kx3+ka)*inv_s;vvv:=(vx3+va)*inv_s;
+                tk[j]=kvv;kn+=kvv*kvv;tv[j]=vvv;vn+=vvv*vvv;
+            }
+            kfac:=qk_clip/(sqrt(kn)+0.000001f32);
+            if kfac>1.0f32 {kfac=1.0f32;} // mutant: equivalent (at kfac==1 assigning 1 leaves kfac unchanged)
+            vinv:=1.0f32/sqrt(vn/128.0f32+eps);
+            for j:0..<128 {tk[j]*=kfac;tv[j]*=vinv;}
+            am_kv_store_head(kv_q8,k_cache,dbase,tk[..]);
+            am_kv_store_head(kv_q8,v_cache,dbase,tv[..]);
+        }
+    }
+    st0:=ifx is_swa!=0 && pos0>=swa then pos0-swa+1 else 0;
+    n_hist:=pos0-st0;
+    per:=(n_hist+n_splits-1)/n_splits;
+    k0:=st0+sp*per;
+    k1:=k0+per;
+    if k1>pos0 {k1=pos0;} // mutant: equivalent (at k1==pos0 assigning pos0 leaves k1 unchanged)
+    for t:0..<nb {
+        ex_lo:=pos0;
+        ex_hi:=ifx sp==0 then pos0+t+1 else pos0;
+        for g:0..<3 {
+            h:=kv_h*3+g;
+            am_attn_gqa3_head_split(h,kv_h,sp,n_splits,n_head_kv,n_rel,extent,is_swa,swa,kv_cap,has_qs,has_rs,kv_q8,pos0+t,k0,k1,ex_lo,ex_hi,qk_clip,rel_clip,tau_buf[t],q[t*n_q..<(t+1)*n_q],q_scale,r[t*n_hr..<(t+1)*n_hr],r_scale,rel_bias,sinks[t*n_head+h],gate[t*n_q..<(t+1)*n_q],k_cache,v_cache,split_out,((t*n_head+h)*n_splits+sp)*132,out[t*n_q..<(t+1)*n_q]);
+        }
+    }
+}
+
+am_topk64_insert :: (v:f32,id:u32,vals:[]f32,ids:[]u32,off:int) #effects(all) {
+    if v>vals[off+63] || (v==vals[off+63] && id<ids[off+63]) { // mutant: equivalent (at v==vals && id==ids writing the identical pair leaves vals and ids unchanged)
+        j:=63;
+        while j>0 && (v>vals[off+j-1] || (v==vals[off+j-1] && id<ids[off+j-1])) { // mutant: equivalent (at v==vals && id==ids shifting the identical pair leaves vals and ids unchanged)
+            vals[off+j]=vals[off+j-1];
+            ids[off+j]=ids[off+j-1];
+            j-=1;
+        }
+        vals[off+j]=v;
+        ids[off+j]=id;
+    }
+}
+
+am_topk64_s1 :: (chunk:int,n_chunks:int,nv:int,logits:[]f32,out_vals:[]f32,out_ids:[]u32) #effects(all) {
+    off:=chunk*64;
+    for i:0..<64 {out_vals[off+i]=-3.4e38f32;out_ids[off+i]=0xffffffff;}
+    per:=(nv+n_chunks-1)/n_chunks;
+    lo:=chunk*per;
+    hi:=lo+per;
+    if hi>nv {hi=nv;} // mutant: equivalent (at hi==nv assigning nv leaves hi unchanged)
+    for i:lo..<hi {
+        am_topk64_insert(logits[i],cast(u32)i,out_vals,out_ids,off);
+    }
+}
+
+am_topk64_s2 :: (n_cand:int,in_vals:[]f32,in_ids:[]u32,out_vals:[]f32,out_ids:[]u32,out_argmax:[]u32) #effects(all) {
+    for i:0..<64 {out_vals[i]=-3.4e38f32;out_ids[i]=0xffffffff;}
+    for i:0..<n_cand {
+        if in_ids[i]!=0xffffffff {
+            am_topk64_insert(in_vals[i],in_ids[i],out_vals,out_ids,0);
+        }
+    }
+    out_argmax[0]=out_ids[0];
+}
+
+am_flash_attn_m4 :: (item:int,dims0:u32,dims1:u32,kv_info:u32,pos0:int,n_tok:int,k_start:int,q:[]f32,r:[]f32,rel_bias:[]f32,sinks:[]f32,k_cache:[]u16,v_cache:[]u16,gate:[]f32,out:[]f32) #effects(all) {
+    n_head:=cast(int)(dims0&255);n_head_kv:=cast(int)((dims0>>8)&255);head_dim:=cast(int)((dims0>>16)&255);n_rel:=cast(int)((dims0>>24)&255);
+    extent:=cast(int)(dims1&65535);is_swa:=cast(int)((dims1>>16)&1);swa:=cast(int)((dims1>>17)&16383);kv_q8:=cast(int)((dims1>>31)&1);
+    kv_cap:=cast(int)(kv_info&65535);
+    qt:=(n_tok+31)/32;
+    h:=item%n_head;
+    t0:=(qt-1-item/n_head)*32;
+    kv_h:=h/(n_head/n_head_kv);
+    head_u16:=ifx kv_q8!=0 then 68 else head_dim;
+    n_kv_u16:=n_head_kv*head_u16;
+    scale:=1.0f32/sqrt(f32(head_dim));
+    for dt:0..<32 {
+        t:=t0+dt;
+        if t<n_tok {
+            p:=pos0+t;
+            sk:=sinks[t*n_head+h];
+            kp_lo:=ifx is_swa!=0 && p>=swa then p-swa+1 else k_start;
+            if kp_lo<k_start {kp_lo=k_start;} // mutant: equivalent (at kp_lo==k_start assigning k_start leaves kp_lo unchanged)
+            m:f32=0.0f32;
+            l:f32=1.0f32;
+            acc:[128]f32;
+            for kp:kp_lo..<p+1 {
+                slot:=ifx is_swa!=0 then kp%kv_cap else kp;
+                koff:=slot*n_kv_u16+kv_h*head_u16;
+                dot:f32=0.0f32;
+                for d:0..<head_dim {dot+=am_f16(cast(u32)am_to_f16(q[(t*n_head+h)*head_dim+d]))*am_kv_load_elem(kv_q8,k_cache,koff,d);}
+                dist:=p-kp;rb:f32=0.0f32;
+                if dist<extent {for m_i:0..<n_rel {rb+=am_f16(cast(u32)am_to_f16(rel_bias[dist*n_rel+m_i]))*am_f16(cast(u32)am_to_f16(r[(t*n_head+h)*n_rel+m_i]));}}
+                s:=dot*scale+rb-sk;
+                if s>m { // mutant: equivalent (at s==m both branches give exp(0)=1 and m unchanged)
+                    a:=exp(m-s);
+                    l=l*a+1.0f32;
+                    for d:0..<head_dim {acc[d]=acc[d]*a+am_kv_load_elem(kv_q8,v_cache,koff,d);}
+                    m=s;
+                } else {
+                    w:=exp(s-m);
+                    l+=w;
+                    for d:0..<head_dim {acc[d]+=w*am_kv_load_elem(kv_q8,v_cache,koff,d);}
+                }
+            }
+            ig:=1.0f32/l;
+            for d:0..<head_dim {
+                idx:=(t*n_head+h)*head_dim+d;
+                out[idx]=acc[d]*ig/(1.0f32+exp(-gate[idx]));
+            }
+        }
+    }
+}
+
+am_matmul_qs_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,tn:int,q_wpb:int,qs:int,ds:int,x:int,out:int,tg:int)->bool #effects(all) {
+    if cols<64 || cols%64!=0 || r0<0 || r0>=rows || t0<0 || t0>=tokens || tg<tn*64 {return false;}
+    nblk:=rows*(cols/32);
+    return qs>=nblk*q_wpb && ds>=nblk && x>=tokens*cols && out>=tokens*rows;
+}
+
+am_matmul_iq4s_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,qs:[]u32,ds:[]u16,x:[]u16,out:[]f32,tg:[]u16) #effects(all) {
+    #assert am_matmul_qs_valid(rows,cols,tokens,r0,t0,tn,4,qs.count,ds.count,x.count,out.count,tg.count);
+    #assert am_iq4_tile_valid(threads,tm,tn);
+    blocks:=cols/32;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for b:0..<blocks {
+                blk:=ar*blocks+b;
+                sc:=f64(am_f16(cast(u32)ds[blk]));
+                qb:=blk*4;
+                xb:=at*cols+b*32;
+                for k:0..<4 {
+                    v:=qs[qb+k];
+                    for j:0..<4 {
+                        sh:=cast(u32)(j*8);
+                        sum+=sc*f64(am_iq4_lut((v>>sh)&15))*f64(am_bf16_u16(x[xb+k*4+j]));
+                        sum+=sc*f64(am_iq4_lut((v>>(sh+4))&15))*f64(am_bf16_u16(x[xb+16+k*4+j]));
+                    }
+                }
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
+
+am_matmul_q8s_bf16 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,t0:int,qs:[]u32,ds:[]u16,x:[]u16,out:[]f32,tg:[]u16) #effects(all) {
+    #assert am_matmul_qs_valid(rows,cols,tokens,r0,t0,tn,8,qs.count,ds.count,x.count,out.count,tg.count);
+    #assert am_iq4_tile_valid(threads,tm,tn);
+    blocks:=cols/32;
+    for at:t0..<t0+tm {
+        if at>=tokens {break;}
+        for ar:r0..<r0+tn {
+            if ar>=rows {break;}
+            sum:f64=0;
+            for b:0..<blocks {
+                blk:=ar*blocks+b;
+                sc:=f64(am_f16(cast(u32)ds[blk]));
+                qb:=blk*8;
+                xb:=at*cols+b*32;
+                for k:0..<8 {
+                    v:=qs[qb+k];
+                    for j:0..<4 {
+                        q:=(v>>cast(u32)(j*8))&255;
+                        qf:=ifx q>=128 then f64(q)-256.0 else f64(q);
+                        sum+=sc*qf*f64(am_bf16_u16(x[xb+k*4+j]));
+                    }
+                }
+            }
+            out[at*rows+ar]=f32(sum);
+        }
+    }
+}
+
+am_situ_batch_bf16 :: (row:int,n_ff:int,beta:f32,lb:f32,gu_out:[]f32,hid:[]u16) #effects(all) {
+    base:=row*2*n_ff;
+    hbase:=row*n_ff;
+    for i:0..<n_ff {
+        v:=am_situ_act(gu_out[base+i],gu_out[base+n_ff+i],beta,lb);
+        hid[hbase+i]=cast(u16)(f32_bits(v)>>16);
+    }
+}
+
+am_moe_gather_bf16 :: (item:int,dim:int,n_used:int,exp_stride:int,x:[]f32,exp_toks:[]u32,exp_slots:[]u32,exp_cnt:[]u32,exp_off:[]u32,x_exp:[]u16,slot_row:[]u32) #effects(all) {
+    exp_id:=item/8;sub:=item%8;
+    cnt:=cast(int)exp_cnt[exp_id];
+    if sub<cnt { // mutant: equivalent (at sub==cnt iters=(0+7)/8==0 runs zero iterations)
+        ebase:=exp_id*exp_stride;off:=cast(int)exp_off[exp_id];
+        iters:=(cnt-sub+7)/8;
+        for k:0..<iters {
+            c:=sub+k*8;
+            tok:=cast(int)exp_toks[ebase+c];
+            dst_row:=off+c;
+            sl:=cast(int)exp_slots[ebase+c];
+            slot_row[tok*n_used+sl]=cast(u32)dst_row;
+            for i:0..<dim {x_exp[dst_row*dim+i]=cast(u16)(f32_bits(x[tok*dim+i])>>16);}
+        }
+    }
+}
+
+am_moe_sum_gather :: (item:int,dim:int,n_used:int,out_exp:[]f32,slot_row:[]u32,moe_wts:[]f32,out:[]f32) #effects(all) {
+    d_tiles:=(dim+511)/512;
+    t:=item/d_tiles;
+    c0:=(item%d_tiles)*512;
+    base:=t*n_used;
+    for dc:0..<512 {
+        c:=c0+dc;
+        if c<dim {
+            sum:f32=0.0f32;
+            for k:0..<n_used {
+                r:=cast(int)slot_row[base+k];
+                sum+=moe_wts[base+k]*out_exp[r*dim+c];
+            }
+            out[t*dim+c]=sum;
+        }
+    }
+}
+
+#test "sprint cde gqa3 split kv_q8 topk64 and dspark fold logits" {
+    // 1. am_kv_store_head + am_kv_load_elem: FP16 and Q8_0 (max at j=0, rounding at +/-0.7, b=128, zero block, d=32)
+    hv:[128]f32;
+    for j:0..<128 {hv[j]=ifx j<32 then 0.0f32 else f32(((j*7)%29)-14)*0.125f32;}
+    hv[32]=2.0f32;hv[33]=-2.0f32;hv[64]=127.0f32;hv[65]=12.7f32;hv[66]=-12.7f32;hv[67]=-12.6f32;hv[96]=127.0f32;hv[97]=-0.75f32;
+    kv16:[256]u16;kv8:[256]u16;
+    am_kv_store_head(0,kv16[..],128,hv[..]);
+    am_kv_store_head(1,kv8[..],68,hv[..]);
+    #assert kv8[68]==0 && abs(am_kv_load_elem(1,kv8[..],68,5))<0.0001f32;
+    #assert abs(am_kv_load_elem(0,kv16[..],128,32)-2.0f32)<0.002f32 && abs(am_kv_load_elem(0,kv16[..],128,97)+0.75f32)<0.002f32;
+    #assert abs(am_kv_load_elem(1,kv8[..],68,32)-2.0f32)<0.02f32 && abs(am_kv_load_elem(1,kv8[..],68,33)+2.0f32)<0.02f32;
+    // Block 2 (d=64..95) has amax=127 -> sc=1.0 exactly: 12.7->13, -12.7->-13, -12.6->-13 (kills +0.5/-0.5 and b+256!)
+    #assert abs(am_kv_load_elem(1,kv8[..],68,64)-127.0f32)<0.01f32 && abs(am_kv_load_elem(1,kv8[..],68,65)-13.0f32)<0.01f32;
+    #assert abs(am_kv_load_elem(1,kv8[..],68,66)+13.0f32)<0.01f32 && abs(am_kv_load_elem(1,kv8[..],68,67)+13.0f32)<0.01f32;
+    // Direct test of raw byte b==128 (-128) in am_kv_load_elem (kills >=128 -> >128 and 128->129 and 256->257!)
+    raw8:[68]u16;raw8[0]=0x3c00;raw8[4]=0x807f; // low=127, high=128 (-128)
+    #assert abs(am_kv_load_elem(1,raw8[..],0,0)-127.0f32)<0.001f32 && abs(am_kv_load_elem(1,raw8[..],0,1)+128.0f32)<0.001f32;
+
+    // 2. am_attn_scores_m4 + am_attn_values_m4 with kv_q8=1 (bit 31 of dims1)
+    q_m4:[512]f32;r_m4:[64]f32;rb_m4:[64]f32;sk_m4:[4]f32;gt_m4:[512]f32;ig_m4:[4]f32;
+    for i:0..<512 {q_m4[i]=0.05f32*f32((i%9)-4);gt_m4[i]=0.2f32*f32((i%5)-2);}
+    for i:0..<64 {r_m4[i]=0.1f32*f32((i%5)-2);rb_m4[i]=0.03f32*f32((i%7)-3);}
+    sk_m4[0]=0.2f32;sk_m4[1]=0.3f32;sk_m4[2]=0.1f32;sk_m4[3]=0.4f32;
+    ig_m4[0]=0.5f32;ig_m4[1]=0.4f32;ig_m4[2]=0.6f32;ig_m4[3]=0.35f32;
+    kc_q8:[272]u16;vc_q8:[272]u16;sc_m4:[16]u16;vo_m4:[512]f32;
+    for s:0..<2 {
+        tk:[128]f32;tv:[128]f32;
+        for j:0..<128 {tk[j]=0.05f32*f32(((s*3+j)%13)-6);tv[j]=0.04f32*f32(((s*5+j)%11)-5);}
+        am_kv_store_head(1,kc_q8[..],s*136+68,tk[..]);
+        am_kv_store_head(1,vc_q8[..],s*136+68,tv[..]);
+    }
+    md0:u32=2|(2<<8)|(128<<16)|(16<<24);
+    md1_q8:u32=4|(0<<16)|(4<<17)|(cast(u32)1<<31);
+    mki:u32=4|(4<<16);
+    for ksp:0..<4 {am_attn_scores_m4(4+ksp,md0,md1_q8,mki,0,2,0,q_m4[..],r_m4[..],rb_m4[..],sk_m4[..],kc_q8[..],sc_m4[..]);}
+    am_attn_values_m4(2,md0,md1_q8,mki,0,2,0,sc_m4[..],ig_m4[..],vc_q8[..],gt_m4[..],vo_m4[..]);
+    am_attn_values_m4(3,md0,md1_q8,mki,0,2,0,sc_m4[..],ig_m4[..],vc_q8[..],gt_m4[..],vo_m4[..]);
+    exp_dot:f32=0.0f32;
+    for j:0..<128 {exp_dot+=am_f16(cast(u32)am_to_f16(q_m4[128+j]))*am_kv_load_elem(1,kc_q8[..],68,j);}
+    exp_rb:f32=0.0f32;
+    for m:0..<16 {exp_rb+=am_f16(cast(u32)am_to_f16(rb_m4[m]))*am_f16(cast(u32)am_to_f16(r_m4[16+m]));}
+    #assert abs(am_f16(cast(u32)sc_m4[8])-am_f16(cast(u32)am_to_f16(exp_dot/sqrt(128.0f32)+exp_rb-sk_m4[1])))<0.01f32;
+    v_ref:=(am_f16(cast(u32)sc_m4[8])*am_kv_load_elem(1,vc_q8[..],68,70)+am_f16(cast(u32)sc_m4[9])*am_kv_load_elem(1,vc_q8[..],204,70))*ig_m4[1]/(1.0f32+exp(-gt_m4[128+70]));
+    #assert abs(vo_m4[128+70]-v_ref)<0.005f32;
+
+    // 3. am_kv_attn_gqa3_split: strong distinct Q/K/V/R/scale/bias so every single bit/term moves output!
+    ad0:u32=6|(2<<8)|(128<<16)|(2<<24);
+    ad1_swa:u32=2|(1<<16)|(3<<17); // extent=2, is_swa=1, swa=3 (dist=2 == extent kills < vs <=!)
+    ad1_full:u32=2|(0<<16)|(3<<17);
+    kr:[512]f32;vr:[512]f32;kw:[1024]f32;vw:[1024]f32;dy:[32]f32;
+    kh1:[1024]f32;vh1:[1024]f32;kh2:[1024]f32;vh2:[1024]f32;kh3:[1024]f32;vh3:[1024]f32;
+    fq:[1536]f32;fqs:[768]f32;fr:[24]f32;frs:[12]f32;frb:[8]f32;fsk:[12]f32;fgt:[1536]f32;
+    for i:0..<512 {kr[i]=0.35f32*f32(((i*3+1)%11)-5);vr[i]=0.3f32*f32(((i*5+2)%13)-6);}
+    for i:0..<1024 {kw[i]=0.15f32*f32(((i*7+1)%9)-4);vw[i]=0.12f32*f32(((i*11+3)%7)-3);kh1[i]=0.2f32*f32(((i+1)%7)-3);vh1[i]=0.18f32*f32(((i+2)%9)-4);kh2[i]=kh1[i];vh2[i]=vh1[i];kh3[i]=kh1[i];vh3[i]=vh1[i];}
+    for i:0..<32 {dy[i]=0.2f32*f32(((i*3+1)%7)-3);}
+    for i:0..<1536 {fq[i]=0.4f32*f32(((i*5+1)%11)-5);fgt[i]=0.4f32*f32(((i*3+1)%7)-3);}
+    for i:0..<768 {fqs[i]=0.4f32+0.5f32*f32(i%3);}
+    for i:0..<24 {fr[i]=0.6f32*f32(((i*5+1)%7)-3);}
+    for i:0..<12 {frs[i]=0.5f32+0.6f32*f32(i%2);}
+    for i:0..<8 {frb[i]=0.7f32*f32(((i*3+1)%5)-2);}
+    for i:0..<12 {fsk[i]=0.2f32*f32(i%4);}
+    kc1:[1280]u16;vc1:[1280]u16;kc2:[1280]u16;vc2:[1280]u16;kc3:[1280]u16;vc3:[1280]u16;
+    for i:0..<1280 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    for sl:0..<5 {
+        for kh:0..<2 {
+            tk:[128]f32;tv:[128]f32;
+            for j:0..<128 {tk[j]=am_f16(cast(u32)kc1[sl*256+kh*128+j]);tv[j]=am_f16(cast(u32)vc1[sl*256+kh*128+j]);}
+            am_kv_store_head(1,kc3[..],sl*136+kh*68,tk[..]);
+            am_kv_store_head(1,vc3[..],sl*136+kh*68,tv[..]);
+        }
+    }
+    fo_ref:[768]f32;fo_sp1:[768]f32;fo_sp2:[768]f32;fo_q8:[768]f32;sp_buf:[4096]f32;
+    // Test pos=3, swa=3 (pos>=swa true -> start=1, n_hist=2), has_qs=1, has_rs=1, has_dyn=1, tight qk_clip/rel_clip
+    ki_ref:u32=4|(1<<16)|(1<<17)|(1<<18);
+    ki_sp1:u32=4|(1<<16)|(1<<17)|(1<<18)|(0<<19)|(1<<20);
+    ki_sp2:u32=4|(1<<16)|(1<<17)|(1<<18)|(0<<19)|(2<<20);
+    ki_q8:u32=4|(1<<16)|(1<<17)|(1<<18)|(1<<19)|(2<<20);
+    for h:0..<6 {am_kv_attn_gqa_1pass(h,ad0,ad1_swa,ki_ref,3,3,1.5f32,0.5f32,1.2f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],fo_ref[..]);}
+    for kh:0..<2 {am_kv_attn_gqa3_split(kh,ad0,ad1_swa,ki_sp1,3,3,1.5f32,0.5f32,1.2f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh2[..],vh2[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_sp1[..]);}
+    for i:0..<768 {#assert abs(fo_sp1[i]-fo_ref[i])<0.0005f32;}
+    for i:0..<1024 {#assert abs(kh2[i]-kh1[i])<0.0001f32 && abs(vh2[i]-vh1[i])<0.0001f32 && kc2[i]==kc1[i] && vc2[i]==vc1[i];}
+    // n_splits=2 reduction matches fo_ref, and check n_hist=3 with n_splits=2 (pos=3, is_swa=0 -> per=2 vs 3)!
+    for i:0..<1024 {kh2[i]=kh3[i];vh2[i]=vh3[i];v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc2[i]=v;vc2[i]=v;}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split(idx_it,ad0,ad1_swa,ki_sp2,3,3,1.5f32,0.5f32,1.2f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh2[..],vh2[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_sp2[..]);}
+    for h:0..<6 {
+        m0:=sp_buf[(h*2)*132];l0:=sp_buf[(h*2)*132+1];
+        m1:=sp_buf[(h*2+1)*132];l1:=sp_buf[(h*2+1)*132+1];
+        gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+        s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+        s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+        ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+        for j:0..<128 {
+            v:=(sp_buf[(h*2)*132+4+j]*s0+sp_buf[(h*2+1)*132+4+j]*s1)*ig/(1.0f32+exp(-fgt[h*128+j]));
+            #assert abs(v-fo_ref[h*128+j])<0.0005f32;
+        }
+    }
+    // Check Q8_0 KV split=2 matches FP16 within quant tolerance
+    for idx_it:0..<4 {am_kv_attn_gqa3_split(idx_it,ad0,ad1_swa,ki_q8,3,3,1.5f32,0.5f32,1.2f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh3[..],vh3[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc3[..],vc3[..],sp_buf[..],fo_q8[..]);}
+    for h:0..<6 {
+        m0:=sp_buf[(h*2)*132];l0:=sp_buf[(h*2)*132+1];
+        m1:=sp_buf[(h*2+1)*132];l1:=sp_buf[(h*2+1)*132+1];
+        gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+        s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+        s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+        ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+        #assert abs((sp_buf[(h*2)*132+4+10]*s0+sp_buf[(h*2+1)*132+4+10]*s1)*ig/(1.0f32+exp(-fgt[h*128+10]))-fo_ref[h*128+10])<0.03f32;
+    }
+    // Test pos==4 (wraps kv_cap=4, s0/sw non-trivial!), has_qs-only, has_rs-only, n_splits=2 per-split m/l checks, and tiny Q/R/K (1e-7 kills +1e-6 -> -1e-6!)
+    for i:0..<1024 {kh1[i]=0.2f32*f32(((i+1)%7)-3);vh1[i]=0.18f32*f32(((i+2)%9)-4);kh2[i]=kh1[i];vh2[i]=vh1[i];v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    ki_qs_only:u32=4|(1<<16)|(2<<20);
+    ki_qs_ref:u32=4|(1<<16);
+    for h:0..<6 {am_kv_attn_gqa_1pass(h,ad0,ad1_swa,ki_qs_ref,4,0,50.0f32,50.0f32,1.0f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],fo_ref[..]);}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split(idx_it,ad0,ad1_swa,ki_qs_only,4,0,50.0f32,50.0f32,1.0f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh2[..],vh2[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_q8[..]);}
+    // At pos=4, swa=3 -> start=2, n_hist=2, n_splits=2 -> per=1: sp=0 gets kp={2,4} (l>1), sp=1 gets kp={3} (l==1 exactly)!
+    #assert abs(sp_buf[133]-1.0f32)<0.001f32 && sp_buf[1]>1.001f32;
+    for i:0..<1024 {#assert kc2[i]==kc1[i] && vc2[i]==vc1[i];}
+    for h:0..<6 {
+        m0:=sp_buf[(h*2)*132];l0:=sp_buf[(h*2)*132+1];
+        m1:=sp_buf[(h*2+1)*132];l1:=sp_buf[(h*2+1)*132+1];
+        gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+        s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+        s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+        ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+        #assert abs((sp_buf[(h*2)*132+4+0]*s0+sp_buf[(h*2+1)*132+4+0]*s1)*ig/(1.0f32+exp(-fgt[h*128]))-fo_ref[h*128])<0.0005f32;
+    }
+    // has_rs-only + is_swa=0, pos=3 (n_hist=3, n_splits=2 -> sp=0 gets {0,1,3}, sp=1 gets {2} l==1!)
+    for i:0..<1024 {kh1[i]=0.2f32*f32(((i+1)%7)-3);vh1[i]=0.18f32*f32(((i+2)%9)-4);kh2[i]=kh1[i];vh2[i]=vh1[i];v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    ki_rs_ref:u32=4|(1<<17);
+    ki_rs_sp2:u32=4|(1<<17)|(2<<20);
+    for h:0..<6 {am_kv_attn_gqa_1pass(h,ad0,ad1_full,ki_rs_ref,3,3,50.0f32,50.0f32,1.0f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],fo_ref[..]);}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split(idx_it,ad0,ad1_full,ki_rs_sp2,3,3,50.0f32,50.0f32,1.0f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh2[..],vh2[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_q8[..]);}
+    #assert abs(sp_buf[133]-1.0f32)<0.001f32 && sp_buf[1]>1.001f32;
+    for h:0..<6 {
+        m0:=sp_buf[(h*2)*132];l0:=sp_buf[(h*2)*132+1];
+        m1:=sp_buf[(h*2+1)*132];l1:=sp_buf[(h*2+1)*132+1];
+        gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+        s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+        s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+        ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+        #assert abs((sp_buf[(h*2)*132+4+0]*s0+sp_buf[(h*2+1)*132+4+0]*s1)*ig/(1.0f32+exp(-fgt[h*128]))-fo_ref[h*128])<0.0005f32;
+    }
+    // Tiny Q/R/K (1e-7 -> sqrt(n) < 1e-6: +1e-6 stays positive -> clamped to 1, -1e-6 becomes huge negative!)
+    zq:[768]f32;zr:[12]f32;zk:[256]f32;zkh:[1024]f32;
+    for i:0..<768 {zq[i]=0.0f32;} zq[0]=0.0000001f32;
+    for i:0..<12 {zr[i]=0.0f32;} zr[0]=0.0000001f32;
+    for i:0..<256 {zk[i]=0.0f32;} zk[0]=0.0000001f32;
+    for i:0..<1024 {zkh[i]=0.0f32;}
+    am_kv_attn_gqa3_split(0,ad0,ad1_swa,ki_sp1,2,2,0.5f32,0.5f32,1.0f32,0.5f32,zk[..],vr[..],kw[..],vw[..],dy[..],zkh[..],vh2[..],zq[..],fqs[..],zr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_q8[..]);
+    #assert abs(am_f16(cast(u32)kc2[2*256]))<0.001f32;
+    am_kv_attn_gqa_1pass(0,ad0,ad1_swa,ki_ref,2,2,0.5f32,0.5f32,1.0f32,0.5f32,zk[..],vr[..],kw[..],vw[..],dy[..],zkh[..],vh2[..],zq[..],fqs[..],zr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],fo_ref[..]);
+    #assert abs(fo_q8[0]-fo_ref[0])<0.0005f32;
+    // Test pos==0 (kills (pos+2)%4 '+'->'-'!) and pos==swa==3 with n_splits=3 (sp=2 must be empty, kills pos>=swa -> pos>swa!)
+    am_kv_attn_gqa3_split(0,ad0,ad1_swa,ki_sp1,0,0,0.5f32,0.5f32,1.0f32,0.5f32,zk[..],vr[..],kw[..],vw[..],dy[..],zkh[..],vh2[..],zq[..],fqs[..],zr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_q8[..]);
+    ki_sp3:u32=4|(1<<16)|(1<<17)|(1<<18)|(0<<19)|(3<<20);
+    am_kv_attn_gqa3_split(2,ad0,ad1_swa,ki_sp3,3,3,1.5f32,0.5f32,1.2f32,0.5f32,kr[..],vr[..],kw[..],vw[..],dy[..],kh2[..],vh2[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],sp_buf[..],fo_q8[..]);
+    #assert sp_buf[2*132+1]==0.0f32;
+
+    // 4. am_kv_attn_gqa3_split_nb: nb=2, n_splits=1 and n_splits=2 vs am_kv_attn_gqa_1pass_nb (checking kc2==kc1, vc2==vc1, klog, vlog, out!)
+    tau:[2]f32;tau[0]=1.0f32;tau[1]=1.15f32;
+    klog1:[512]f32;vlog1:[512]f32;klog2:[512]f32;vlog2:[512]f32;
+    fo_nb_ref:[1536]f32;fo_nb_sp1:[1536]f32;fo_nb_sp2:[1536]f32;
+    for i:0..<1024 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    ki_nb_ref:u32=4|(1<<16)|(1<<17)|(1<<18)|(2<<19);
+    ki_nb_sp1:u32=4|(1<<16)|(1<<17)|(1<<18)|(0<<19)|(2<<20)|(1<<24);
+    ki_nb_sp2:u32=4|(1<<16)|(1<<17)|(1<<18)|(0<<19)|(2<<20)|(2<<24);
+    for h:0..<6 {am_kv_attn_gqa_1pass_nb(h,ad0,ad1_swa,ki_nb_ref,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],klog1[..],vlog1[..],fo_nb_ref[..]);}
+    for kh:0..<2 {am_kv_attn_gqa3_split_nb(kh,ad0,ad1_swa,ki_nb_sp1,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp1[..]);}
+    for i:0..<1536 {#assert abs(fo_nb_sp1[i]-fo_nb_ref[i])<0.0005f32;}
+    for i:0..<1024 {#assert kc2[i]==kc1[i] && vc2[i]==vc1[i];}
+    for i:0..<512 {#assert abs(klog2[i]-klog1[i])<0.0001f32 && abs(vlog2[i]-vlog1[i])<0.0001f32;}
+    for i:0..<1024 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc2[i]=v;vc2[i]=v;}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split_nb(idx_it,ad0,ad1_swa,ki_nb_sp2,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);}
+    // pos0=3, swa=3 -> st0=1, n_hist=2, n_splits=2 -> per=1: sp=1 gets ONLY kp=2 (l==1.0 exact for t=0 and t=1)!
+    #assert abs(sp_buf[133]-1.0f32)<0.001f32 && sp_buf[1]>1.001f32;
+    for i:0..<1024 {#assert kc2[i]==kc1[i] && vc2[i]==vc1[i];}
+    for t:0..<2 {
+        for h:0..<6 {
+            sb:=((t*6+h)*2)*132;
+            m0:=sp_buf[sb];l0:=sp_buf[sb+1];m1:=sp_buf[sb+132];l1:=sp_buf[sb+133];
+            gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+            s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+            s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+            ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+            for j:0..<128 {
+                idx:=t*768+h*128+j;
+                v:=(sp_buf[sb+4+j]*s0+sp_buf[sb+136+j]*s1)*ig/(1.0f32+exp(-fgt[idx]));
+                #assert abs(v-fo_nb_ref[idx])<0.0005f32;
+            }
+        }
+    }
+    // nb has_qs-only + has_rs-only + pos0=2, swa=3 (t=0 pos=2<3 st_t=0, t=1 pos=3==3 st_t=1!) + n_splits=2 (st0=0, n_hist=2 -> per=1)!
+    for i:0..<1024 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    ki_nb_qs_ref:u32=4|(1<<16)|(2<<19);
+    ki_nb_qs_sp2:u32=4|(1<<16)|(2<<20)|(2<<24);
+    for h:0..<6 {am_kv_attn_gqa_1pass_nb(h,ad0,ad1_swa,ki_nb_qs_ref,2,50.0f32,50.0f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],klog1[..],vlog1[..],fo_nb_ref[..]);}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split_nb(idx_it,ad0,ad1_swa,ki_nb_qs_sp2,2,50.0f32,50.0f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);}
+    // For t=1, pos=3==swa -> st_t=1 so kp=0 in sp=0 is excluded (sp=0 only gets {2,3}, sp=1 gets {1} l==1)!
+    #assert abs(sp_buf[133]-1.0f32)<0.001f32 && sp_buf[1]>1.001f32;
+    for t:0..<2 {
+        for h:0..<6 {
+            sb:=((t*6+h)*2)*132;
+            m0:=sp_buf[sb];l0:=sp_buf[sb+1];m1:=sp_buf[sb+132];l1:=sp_buf[sb+133];
+            gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+            s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+            s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+            ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+            #assert abs((sp_buf[sb+4+5]*s0+sp_buf[sb+136+5]*s1)*ig/(1.0f32+exp(-fgt[t*768+h*128+5]))-fo_nb_ref[t*768+h*128+5])<0.0005f32;
+        }
+    }
+    // nb has_rs-only + is_swa=0, pos0=3 (n_hist=3, n_splits=2 -> per=2: sp=0 gets {0,1,3}, sp=1 gets {2} l==1)!
+    for i:0..<1024 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    ki_nb_rs_ref:u32=4|(1<<17)|(2<<19);
+    ki_nb_rs_sp2:u32=4|(1<<17)|(2<<20)|(2<<24);
+    for h:0..<6 {am_kv_attn_gqa_1pass_nb(h,ad0,ad1_full,ki_nb_rs_ref,3,50.0f32,50.0f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],klog1[..],vlog1[..],fo_nb_ref[..]);}
+    for idx_it:0..<4 {am_kv_attn_gqa3_split_nb(idx_it,ad0,ad1_full,ki_nb_rs_sp2,3,50.0f32,50.0f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);}
+    #assert abs(sp_buf[133]-1.0f32)<0.001f32;
+    for t:0..<2 {
+        sb:=((t*6+0)*2)*132;
+        m0:=sp_buf[sb];l0:=sp_buf[sb+1];m1:=sp_buf[sb+132];l1:=sp_buf[sb+133];
+        gm:=ifx m0>m1 then m0 else m1;if gm<0.0f32 {gm=0.0f32;}
+        s0:=ifx l0>0.0f32 then exp(m0-gm) else 0.0f32;
+        s1:=ifx l1>0.0f32 then exp(m1-gm) else 0.0f32;
+        ig:=1.0f32/(exp(-gm)+l0*s0+l1*s1);
+        #assert abs((sp_buf[sb+4+5]*s0+sp_buf[sb+136+5]*s1)*ig/(1.0f32+exp(-fgt[t*768+5]))-fo_nb_ref[t*768+5])<0.0005f32;
+    }
+    // nb kv_q8=1 vs FP16 ref (both kh=0 and kh=1 -> kills kv_q8 unpack & 68->69!), plus n_head_kv=1 has_dyn=1 (kills 2*n_head_kv * -> +!), plus tiny K (1e-7)!
+    for sl:0..<4 {
+        for kh:0..<2 {
+            tk:[128]f32;tv:[128]f32;
+            for j:0..<128 {tk[j]=am_f16(cast(u32)kc1[sl*256+kh*128+j]);tv[j]=am_f16(cast(u32)vc1[sl*256+kh*128+j]);}
+            am_kv_store_head(1,kc3[..],sl*136+kh*68,tk[..]);
+            am_kv_store_head(1,vc3[..],sl*136+kh*68,tv[..]);
+        }
+    }
+    ki_nb_q8:u32=4|(1<<17)|(1<<19)|(2<<20)|(1<<24);
+    for kh:0..<2 {am_kv_attn_gqa3_split_nb(kh,ad0,ad1_full,ki_nb_q8,3,50.0f32,50.0f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc3[..],vc3[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);}
+    for t:0..<2 {
+        #assert abs(fo_nb_sp2[t*768+10]-fo_nb_ref[t*768+10])<0.03f32;
+        #assert abs(fo_nb_sp2[t*768+3*128+10]-fo_nb_ref[t*768+3*128+10])<0.03f32;
+    }
+    ad0_1:u32=3|(1<<8)|(128<<16)|(2<<24);
+    for i:0..<1024 {v:=am_to_f16(0.35f32*f32(((i*7+1)%13)-6));kc1[i]=v;kc2[i]=v;vc1[i]=v;vc2[i]=v;}
+    for h:0..<3 {am_kv_attn_gqa_1pass_nb(h,ad0_1,ad1_swa,ki_nb_ref,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc1[..],vc1[..],klog1[..],vlog1[..],fo_nb_ref[..]);}
+    am_kv_attn_gqa3_split_nb(0,ad0_1,ad1_swa,ki_nb_sp1,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);
+    for i:0..<512 {#assert kc2[i]==kc1[i] && vc2[i]==vc1[i];}
+    zk2:[512]f32;for i:0..<512 {zk2[i]=0.0f32;} zk2[0]=0.0000001f32;
+    am_kv_attn_gqa3_split_nb(0,ad0,ad1_full,ki_nb_rs_sp2,0,0.5f32,0.5f32,0.5f32,tau[..],zk2[..],vr[..],kw[..],vw[..],dy[..],zkh[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);
+    #assert abs(am_f16(cast(u32)kc2[0]))<0.001f32;
+    // nb pos0==swa==3 with n_splits=3 -> st0=1, n_hist=2, per=1: sp=2 MUST be empty (kills pos0>=swa -> pos0>swa!)
+    ki_nb_sp3:u32=4|(2<<20)|(3<<24);
+    am_kv_attn_gqa3_split_nb(2,ad0,ad1_swa,ki_nb_sp3,3,1.5f32,0.5f32,0.5f32,tau[..],kr[..],vr[..],kw[..],vw[..],dy[..],kh1[..],vh1[..],fq[..],fqs[..],fr[..],frs[..],frb[..],fsk[..],fgt[..],kc2[..],vc2[..],klog2[..],vlog2[..],sp_buf[..],fo_nb_sp2[..]);
+    #assert sp_buf[2*132+1]==0.0f32;
+
+    // 5. am_topk64_s1 + am_topk64_s2 (pre-filled garbage, tie at slot 63 AFTER slot 63 finalized, equal id, id=0xfffffffe, exact multiple nv=6/n_chunks=3!)
+    lg:[140]f32;
+    for i:0..<140 {lg[i]=f32(i)*0.01f32;}
+    lg[5]=9.5f32;lg[70]=9.5f32;lg[139]=12.0f32;lg[2]=10.0f32;lg[138]=9.5f32;
+    s1v:[192]f32;s1i:[192]u32;s2v:[64]f32;s2i:[64]u32;am0:[1]u32;
+    for i:0..<192 {s1v[i]=999.0f32;s1i[i]=123;}
+    for i:0..<64 {s2v[i]=999.0f32;s2i[i]=123;}
+    for c:0..<3 {am_topk64_s1(c,3,140,lg[..],s1v[..],s1i[..]);}
+    #assert s1i[0]==2 && s1i[1]==5 && s1i[63]==0xffffffff && s1v[63]<-1.0e30f32;
+    am_topk64_s2(192,s1v[..],s1i[..],s2v[..],s2i[..],am0[..]);
+    #assert am0[0]==139 && s2i[0]==139 && abs(s2v[0]-12.0f32)<0.0001f32;
+    #assert s2i[1]==2 && abs(s2v[1]-10.0f32)<0.0001f32;
+    #assert s2i[2]==5 && s2i[3]==70 && s2i[4]==138 && abs(s2v[2]-9.5f32)<0.0001f32;
+    #assert s2i[5]==137 && s2i[63]==79;
+    // Tie at slot 63 as LAST elements (id=200 > 161 and id=161 == 161 must NOT overwrite slot 63!)
+    eqv:[72]f32;eqi:[72]u32;
+    for i:0..<64 {eqv[i]=5.0f32;eqi[i]=cast(u32)(100+i);}
+    eqv[64]=5.0f32;eqi[64]=50;
+    eqv[65]=6.0f32;eqi[65]=0xfffffffe;
+    eqv[66]=99.0f32;eqi[66]=0xffffffff;
+    eqv[67]=5.0f32;eqi[67]=200; // larger id at exact tie with slot 63 (161) -> kills '>' -> '>=' and '&&' -> '||' on L3359!
+    eqv[68]=5.0f32;eqi[68]=161; // equal id at exact tie with slot 63 (161) -> kills '<' -> '<=' on L3359!
+    eqv[69]=5.0f32;eqi[69]=100; // equal id to internal slot 2 (100) -> kills '<' -> '<=' on L3361!
+    for i:0..<64 {s2v[i]=999.0f32;s2i[i]=123;}
+    am_topk64_s2(70,eqv[..],eqi[..],s2v[..],s2i[..],am0[..]);
+    #assert am0[0]==0xfffffffe && s2i[0]==0xfffffffe && s2i[1]==50 && s2i[2]==100 && s2i[3]==100 && s2i[63]==160;
+    // Exact slot-63 equal-id no-op (after final state, slot 63 is 160; inserting (5.0, 160) must leave s2i[63]==160 and s2i[62]==159)!
+    am_topk64_insert(5.0f32,160,s2v[..],s2i[..],0);
+    #assert s2i[63]==160 && s2i[62]==159;
+    am_topk64_insert(5.0f32,200,s2v[..],s2i[..],0);
+    #assert s2i[63]==160;
+    // nv=6, n_chunks=3 -> per=2 (kills '-'->'+') AND nv=4, n_chunks=3 -> per=2 (kills 1->2!)
+    for i:0..<192 {s1v[i]=999.0f32;s1i[i]=123;}
+    am_topk64_s1(0,3,6,lg[..],s1v[..],s1i[..]);
+    #assert s1i[0]==1 && s1i[1]==0 && s1i[2]==0xffffffff && s1v[2]<-1.0e30f32;
+    am_topk64_s1(0,3,4,lg[..],s1v[..],s1i[..]);
+    #assert s1i[0]==1 && s1i[1]==0 && s1i[2]==0xffffffff;
+    am_topk64_s2(2,s1v[..],s1i[..],s2v[..],s2i[..],am0[..]);
+    #assert am0[0]==1 && s2i[0]==1 && s2i[1]==0 && s2i[2]==0xffffffff && s2v[2]<-1.0e30f32;
+    // Exact slot-63 tie displacement on non-zero off=64!
+    for i:0..<192 {s1v[i]=5.0f32;s1i[i]=cast(u32)(100+i);}
+    am_topk64_insert(5.0f32,226,s1v[..],s1i[..],64);
+    #assert s1i[64+63]==226 && s1i[64+62]==226;
+    am_topk64_insert(5.0f32,10,s1v[..],s1i[..],64);
+    #assert s1i[64]==10 && s1i[64+63]==226;
+}
+
+#test "sprint f flash attn iq4s q8s matmul and moe fused" {
+    // 1. am_flash_attn_m4: FP16 global (pos0=2, k_start=1, n_tok=2, extent=2, dist==extent, s>0 and s<0) + Q8_0 SWA wrap + n_tok=65 (qt=2)!
+    fq:[512]f32;fr:[64]f32;frb:[48]f32;fsk:[18]f32;fgt:[512]f32;fo:[512]f32;
+    for i:0..<512 {fq[i]=0.15f32*f32(((i*5)%11)-5);fgt[i]=0.25f32*f32(((i*3)%7)-3);}
+    for i:0..<64 {fr[i]=0.2f32*f32(((i*3)%5)-2);}
+    for i:0..<48 {frb[i]=0.1f32*f32(((i*7)%9)-4);}
+    for i:0..<18 {fsk[i]=0.3f32*f32(i%4)-0.4f32;}
+    kc16:[2048]u16;vc16:[2048]u16;
+    for s:0..<4 {
+        for kh:0..<2 {
+            for d:0..<128 {
+                kc16[(s*2+kh)*128+d]=am_to_f16(0.18f32*f32(((s*13+kh*7+d)%11)-5));
+                vc16[(s*2+kh)*128+d]=am_to_f16(0.12f32*f32(((s*5+kh*11+d)%9)-4));
+            }
+        }
+    }
+    // Check item=4 (h=4, kv_h=1, t0=0) in n_head=6, n_head_kv=2, head_dim=128, n_rel=2, extent=2, is_swa=0, kv_q8=0, pos0=2, n_tok=2, k_start=1
+    // Note: t=0 has p=2 (kp=1,2), t=1 has p=3 (kp=1,2,3 -> dist=2==extent kills < -> <=!)
+    // Use head_dim=4 with n_head=6, n_head_kv=2, n_rel=2 so test is super fast AND kills every bit shift!
+    fd0:u32=6|(2<<8)|(4<<16)|(2<<24);
+    fd1_g:u32=2|(0<<16)|(2<<17);
+    fki:u32=3;
+    // Set frb[dist=2] huge so dist<=extent would blow up; make kp=1,2,3 all have comparable weights so else branch & d=0 are strongly exercised!
+    frb[2*2+0]=8.0f32;frb[2*2+1]=8.0f32;
+    fq[(1*6+4)*4+0]=1.0f32;fq[(1*6+4)*4+1]=1.0f32;fq[(1*6+4)*4+2]=1.0f32;fq[(1*6+4)*4+3]=1.0f32;
+    fr[(1*6+4)*2+0]=1.0f32;fr[(1*6+4)*2+1]=1.0f32;
+    fsk[1*6+4]=0.2f32;
+    kc16[(1*2+1)*4+0]=am_to_f16(-0.1f32);kc16[(1*2+1)*4+1]=am_to_f16(-0.1f32);kc16[(1*2+1)*4+2]=am_to_f16(-0.1f32);kc16[(1*2+1)*4+3]=am_to_f16(-0.1f32);
+    kc16[(2*2+1)*4+0]=am_to_f16(0.4f32);kc16[(2*2+1)*4+1]=am_to_f16(0.4f32);kc16[(2*2+1)*4+2]=am_to_f16(0.4f32);kc16[(2*2+1)*4+3]=am_to_f16(0.4f32);
+    kc16[(3*2+1)*4+0]=am_to_f16(0.15f32);kc16[(3*2+1)*4+1]=am_to_f16(0.15f32);kc16[(3*2+1)*4+2]=am_to_f16(0.15f32);kc16[(3*2+1)*4+3]=am_to_f16(0.15f32);
+    for d:0..<4 {vc16[(1*2+1)*4+d]=am_to_f16(0.5f32+0.1f32*f32(d));vc16[(2*2+1)*4+d]=am_to_f16(-0.3f32+0.2f32*f32(d));vc16[(3*2+1)*4+d]=am_to_f16(0.7f32-0.1f32*f32(d));}
+    for h:0..<6 {am_flash_attn_m4(h,fd0,fd1_g,fki,2,2,1,fq[..],fr[..],frb[..],fsk[..],kc16[..],vc16[..],fgt[..],fo[..]);}
+    // Verify exact formula for t=1, h=4 (kv_h=1, p=3, kp in {1,2,3}, dist={2,1,0}, extent=2 -> dist=2 gets rb=0!)
+    s_ref:[3]f32;
+    for idx_k:0..<3 {
+        kp:=1+idx_k;
+        koff:=(kp*2+1)*4;
+        dt_v:f32=0.0f32;
+        for d:0..<4 {dt_v+=am_f16(cast(u32)am_to_f16(fq[(1*6+4)*4+d]))*am_f16(cast(u32)kc16[koff+d]);}
+        dist:=3-kp;rb_v:f32=0.0f32;
+        if dist<2 {for mi:0..<2 {rb_v+=am_f16(cast(u32)am_to_f16(frb[dist*2+mi]))*am_f16(cast(u32)am_to_f16(fr[(1*6+4)*2+mi]));}}
+        s_ref[idx_k]=dt_v*0.5f32+rb_v-fsk[1*6+4];
+    }
+    gm_f:=0.0f32;for idx_k:0..<3 {if s_ref[idx_k]>gm_f {gm_f=s_ref[idx_k];}}
+    gl_f:=exp(-gm_f);for idx_k:0..<3 {gl_f+=exp(s_ref[idx_k]-gm_f);}
+    for d:0..<4 {
+        num:f32=0.0f32;
+        for idx_k:0..<3 {num+=exp(s_ref[idx_k]-gm_f)*am_f16(cast(u32)vc16[((1+idx_k)*2+1)*4+d]);}
+        oidx:=(1*6+4)*4+d;
+        exp_o:=num/gl_f/(1.0f32+exp(-fgt[oidx]));
+        #assert abs(fo[oidx]-exp_o)<0.0005f32;
+    }
+    // SWA + Q8_0 KV + kv_cap=3 wrap + exact p==swa boundary (pos0=1, n_tok=3, k_start=0, swa=2 -> t=1 has p=2==swa -> kp_lo=1 excluding kp=0!)
+    kcq8:[512]u16;vcq8:[512]u16;
+    for sl:0..<3 {
+        for kh:0..<2 {
+            tk:[128]f32;tv:[128]f32;
+            for d:0..<128 {tk[d]=0.1f32*f32(((sl*7+kh*3+d)%9)-4);tv[d]=0.1f32*f32(((sl*5+kh*11+d)%7)-3);}
+            if sl==0 && kh==1 {for d:0..<4 {tk[d]=3.0f32;tv[d]=5.0f32;}} // distinctive slot 0 so including/excluding kp=0 is obvious!
+            am_kv_store_head(1,kcq8[..],sl*136+kh*68,tk[..]);
+            am_kv_store_head(1,vcq8[..],sl*136+kh*68,tv[..]);
+        }
+    }
+    fd1_sq8:u32=2|(1<<16)|(2<<17)|(cast(u32)1<<31);
+    for h:0..<6 {am_flash_attn_m4(h,fd0,fd1_sq8,fki,1,3,0,fq[..],fr[..],frb[..],fsk[..],kcq8[..],vcq8[..],fgt[..],fo[..]);}
+    // t=1 has p=2==swa=2 -> kp in {1,2} ONLY (excludes kp=0 which has huge v=5.0 -> kills >= -> >, swa shift, && -> ||, +1 -> -1!)
+    s1_0:f32=0.0f32;s1_1:f32=0.0f32;
+    for d:0..<4 {
+        s1_0+=am_f16(cast(u32)am_to_f16(fq[(1*6+4)*4+d]))*am_kv_load_elem(1,kcq8[..],1*136+68,d);
+        s1_1+=am_f16(cast(u32)am_to_f16(fq[(1*6+4)*4+d]))*am_kv_load_elem(1,kcq8[..],2*136+68,d);
+    }
+    rb1_0:f32=0.0f32;rb1_1:f32=0.0f32;
+    for mi:0..<2 {
+        rb1_0+=am_f16(cast(u32)am_to_f16(frb[1*2+mi]))*am_f16(cast(u32)am_to_f16(fr[(1*6+4)*2+mi]));
+        rb1_1+=am_f16(cast(u32)am_to_f16(frb[0*2+mi]))*am_f16(cast(u32)am_to_f16(fr[(1*6+4)*2+mi]));
+    }
+    sc1_0:=s1_0*0.5f32+rb1_0-fsk[1*6+4];sc1_1:=s1_1*0.5f32+rb1_1-fsk[1*6+4];
+    gm1:=0.0f32;if sc1_0>gm1 {gm1=sc1_0;} if sc1_1>gm1 {gm1=sc1_1;}
+    gl1:=exp(-gm1)+exp(sc1_0-gm1)+exp(sc1_1-gm1);
+    num1:=exp(sc1_0-gm1)*am_kv_load_elem(1,vcq8[..],1*136+68,0)+exp(sc1_1-gm1)*am_kv_load_elem(1,vcq8[..],2*136+68,0);
+    #assert abs(fo[(1*6+4)*4+0]-num1/gl1/(1.0f32+exp(-fgt[(1*6+4)*4+0])))<0.0005f32;
+    // t=2 has p=3, swa=2 -> kp in {2,3}, slot={2,0} (wraps around kv_cap=3!)
+    s2_0:f32=0.0f32;s2_1:f32=0.0f32;
+    for d:0..<4 {
+        s2_0+=am_f16(cast(u32)am_to_f16(fq[(2*6+4)*4+d]))*am_kv_load_elem(1,kcq8[..],2*136+68,d);
+        s2_1+=am_f16(cast(u32)am_to_f16(fq[(2*6+4)*4+d]))*am_kv_load_elem(1,kcq8[..],0*136+68,d);
+    }
+    rb2_0:f32=0.0f32;rb2_1:f32=0.0f32;
+    for mi:0..<2 {
+        rb2_0+=am_f16(cast(u32)am_to_f16(frb[1*2+mi]))*am_f16(cast(u32)am_to_f16(fr[(2*6+4)*2+mi]));
+        rb2_1+=am_f16(cast(u32)am_to_f16(frb[0*2+mi]))*am_f16(cast(u32)am_to_f16(fr[(2*6+4)*2+mi]));
+    }
+    sc2_0:=s2_0*0.5f32+rb2_0-fsk[2*6+4];sc2_1:=s2_1*0.5f32+rb2_1-fsk[2*6+4];
+    gm2:=0.0f32;if sc2_0>gm2 {gm2=sc2_0;} if sc2_1>gm2 {gm2=sc2_1;}
+    gl2:=exp(-gm2)+exp(sc2_0-gm2)+exp(sc2_1-gm2);
+    num2:=exp(sc2_0-gm2)*am_kv_load_elem(1,vcq8[..],2*136+68,2)+exp(sc2_1-gm2)*am_kv_load_elem(1,vcq8[..],0*136+68,2);
+    #assert abs(fo[(2*6+4)*4+2]-num2/gl2/(1.0f32+exp(-fgt[(2*6+4)*4+2])))<0.0005f32;
+    // Empty loop check (k_start=2 > p=1 for t=0) -> fo[(0*6+4)*4+0]==0.0!
+    am_flash_attn_m4(4,fd0,fd1_sq8,fki,1,3,2,fq[..],fr[..],frb[..],fsk[..],kcq8[..],vcq8[..],fgt[..],fo[..]);
+    #assert fo[(0*6+4)*4+0]==0.0f32;
+    // Multi-qtile test: n_tok=33 (qt=2) and n_tok=32 (qt=1) -> kills (n_tok+31)/32, qt-1-item/n_head, and dt<32!
+    fd0_1:u32=1|(1<<8)|(4<<16)|(2<<24);
+    fd1_1:u32=1|(1<<16)|(1<<17);
+    fki_1:u32=2;
+    fq33:[132]f32;fr33:[66]f32;fsk33:[33]f32;fgt33:[132]f32;fo33:[132]f32;
+    for i:0..<132 {fq33[i]=0.25f32;fgt33[i]=0.0f32;fo33[i]=-99.0f32;}
+    for i:0..<66 {fr33[i]=0.0f32;}
+    for i:0..<33 {fsk33[i]=0.0f32;}
+    // item=0 on n_tok=33 -> qt=2 -> t0=(2-1-0)*32=32 -> writes ONLY t=32 (leaves t=0 untouched as -99.0)!
+    am_flash_attn_m4(0,fd0_1,fd1_1,fki_1,0,33,0,fq33[..],fr33[..],frb[..],fsk33[..],kc16[..],vc16[..],fgt33[..],fo33[..]);
+    #assert fo33[0]==-99.0f32 && fo33[32*4]!=-99.0f32;
+    // item=1 on n_tok=33 -> t0=0 -> writes ONLY t=0..31 (must NOT overwrite t=32 -> kills 32 -> 33!)
+    fo33[32*4]=-99.0f32;
+    am_flash_attn_m4(1,fd0_1,fd1_1,fki_1,0,33,0,fq33[..],fr33[..],frb[..],fsk33[..],kc16[..],vc16[..],fgt33[..],fo33[..]);
+    #assert fo33[0]!=-99.0f32 && fo33[32*4]==-99.0f32;
+    // n_tok=32 -> qt=1 -> item=0 writes t=0..31 (kills (n_tok+31)/32 -> (n_tok+32)/32)!
+    fo33[0]=-99.0f32;
+    am_flash_attn_m4(0,fd0_1,fd1_1,fki_1,0,32,0,fq33[..],fr33[..],frb[..],fsk33[..],kc16[..],vc16[..],fgt33[..],fo33[..]);
+    #assert fo33[0]!=-99.0f32;
+
+    // 2. am_matmul_qs_valid + am_matmul_iq4s_bf16 + am_matmul_q8s_bf16
+    #assert am_matmul_qs_valid(3,64,3,0,0,64,4,24,6,192,9,4096);
+    #assert !am_matmul_qs_valid(3,64,3,0,0,64,4,23,6,192,9,4096) && !am_matmul_qs_valid(3,64,3,0,0,64,4,24,5,192,9,4096);
+    #assert !am_matmul_qs_valid(3,64,3,0,0,64,4,24,6,191,9,4096) && !am_matmul_qs_valid(3,64,3,0,0,64,4,24,6,192,8,4096);
+    #assert !am_matmul_qs_valid(2,32,2,0,0,64,4,16,4,128,4,4096) && !am_matmul_qs_valid(2,96,2,0,0,64,4,24,6,192,4,4096);
+    #assert !am_matmul_qs_valid(2,64,2,-1,0,64,4,16,4,128,4,4096) && !am_matmul_qs_valid(2,64,2,2,0,64,4,16,4,128,4,4096);
+    #assert !am_matmul_qs_valid(2,64,2,0,-1,64,4,16,4,128,4,4096) && !am_matmul_qs_valid(2,64,2,0,2,64,4,16,4,128,4,4096);
+    #assert !am_matmul_qs_valid(2,64,2,0,0,64,4,16,4,128,4,4095);
+    qs_i4:[24]u32;ds_i4:[6]u16;qs_q8:[48]u32;ds_q8:[6]u16;xb_m:[192]u16;xf_m:[192]f32;om_i4:[9]f32;om_q8:[9]f32;tg_m:[4096]u16;
+    for i:0..<24 {qs_i4[i]=0x9786a594+cast(u32)(i*17);}
+    for i:0..<48 {qs_q8[i]=0x807f05fe-cast(u32)(i*0x01010101);}
+    qs_q8[0]=0x807f0001; // byte 0=1, byte 1=0, byte 2=127, byte 3=128 (-128 -> kills >=128 and -256!)
+    for i:0..<6 {ds_i4[i]=ifx i%2==0 then 0x3c00 else 0x4000;ds_q8[i]=ifx i%2==0 then 0x3800 else 0x3c00;}
+    for i:0..<192 {v:=0.05f32*f32((i%13)-6);xb_m[i]=cast(u16)(f32_bits(v)>>16);xf_m[i]=am_bf16_u16(xb_m[i]);}
+    for i:0..<9 {om_i4[i]=0.0f32;om_q8[i]=0.0f32;}
+    am_matmul_iq4s_bf16(128,16,64,3,64,3,1,1,qs_i4[..],ds_i4[..],xb_m[..],om_i4[..],tg_m[..]);
+    am_matmul_q8s_bf16(128,16,64,3,64,3,1,1,qs_q8[..],ds_q8[..],xb_m[..],om_q8[..],tg_m[..]);
+    #assert om_i4[0]==0.0f32 && om_q8[0]==0.0f32;
+    for t:1..<3 {
+        for r:1..<3 {
+            #assert abs(om_i4[t*3+r]-am_dot_iq4s_lane(qs_i4[..],ds_i4[..],r*2,xf_m[..],t*64,2))<0.001f32;
+            #assert abs(om_q8[t*3+r]-am_dot_q8s_lane(qs_q8[..],ds_q8[..],r*2,xf_m[..],t*64,2))<0.001f32;
+        }
+    }
+    // Also test r0=0, t0=0 for qs_q8[0] containing exact 0x80 (-128) and 0x7f (+127)!
+    am_matmul_q8s_bf16(128,16,64,3,64,3,0,0,qs_q8[..],ds_q8[..],xb_m[..],om_q8[..],tg_m[..]);
+    #assert abs(om_q8[0]-am_dot_q8s_lane(qs_q8[..],ds_q8[..],0,xf_m[..],0,2))<0.001f32;
+
+    // 3. am_situ_batch_bf16
+    sgu:[16]f32;shid:[8]u16;
+    for i:0..<16 {sgu[i]=0.4f32*f32((i%7)-3);}
+    am_situ_batch_bf16(1,4,4.0f32,25.0f32,sgu[..],shid[..]);
+    for i:0..<4 {
+        exp_s:=am_situ_act(sgu[8+i],sgu[12+i],4.0f32,25.0f32);
+        #assert shid[4+i]==cast(u16)(f32_bits(exp_s)>>16);
+    }
+
+    // 4. am_moe_gather_bf16 (item=4 sub==cnt no-op, item=8 exp_id=1 sub=0 kills 8->9, item=9 exp_id=1 sub=1 cnt=10 -> c=1,9, i=0 check!)
+    gx:[16]f32;etoks:[24]u32;eslots:[24]u32;ecnt:[2]u32;eoff:[2]u32;gx_exp:[48]u16;srow:[8]u32;
+    for i:0..<16 {gx[i]=f32(i+1)*0.5f32;}
+    for i:0..<24 {etoks[i]=0;eslots[i]=0;}
+    ecnt[0]=4;ecnt[1]=10;eoff[0]=0;eoff[1]=2;
+    etoks[12+0]=1;eslots[12+0]=0;
+    etoks[12+1]=2;eslots[12+1]=1;
+    etoks[12+9]=3;eslots[12+9]=0;
+    for i:0..<8 {srow[i]=999;}
+    am_moe_gather_bf16(4,4,2,12,gx[..],etoks[..],eslots[..],ecnt[..],eoff[..],gx_exp[..],srow[..]); // exp=0, sub=4==cnt -> no-op (kills < -> <=!)
+    #assert srow[0]==999;
+    am_moe_gather_bf16(8,4,2,12,gx[..],etoks[..],eslots[..],ecnt[..],eoff[..],gx_exp[..],srow[..]); // exp=1, sub=0 -> dst=2 (kills 8 -> 9!)
+    #assert srow[1*2+0]==2 && gx_exp[2*4+0]==cast(u16)(f32_bits(gx[1*4+0])>>16);
+    am_moe_gather_bf16(9,4,2,12,gx[..],etoks[..],eslots[..],ecnt[..],eoff[..],gx_exp[..],srow[..]); // exp=1, sub=1 -> c=1 (dst=3), c=9 (dst=11)
+    #assert srow[2*2+1]==3 && srow[3*2+0]==11;
+    #assert gx_exp[3*4+0]==cast(u16)(f32_bits(gx[2*4+0])>>16) && gx_exp[3*4+2]==cast(u16)(f32_bits(gx[2*4+2])>>16) && gx_exp[11*4+3]==cast(u16)(f32_bits(gx[3*4+3])>>16);
+    // cnt=9, sub=1 -> iters=(9-1+7)/8=1 (kills +7 -> +8!)
+    ecnt[1]=9;srow[3*2+0]=999;
+    am_moe_gather_bf16(9,4,2,12,gx[..],etoks[..],eslots[..],ecnt[..],eoff[..],gx_exp[..],srow[..]);
+    #assert srow[3*2+0]==999 && srow[2*2+1]==3;
+
+    // 5. am_moe_sum_gather (dim=513 -> d_tiles=2, item=0 writes 0..511 leaving 512 untouched, item=1 writes 512 -> kills all three 512->513!)
+    oe:[1560]f32;sr:[4]u32;mw:[4]f32;sout:[1040]f32;
+    for i:0..<1560 {oe[i]=0.01f32*f32((i%17)+1);}
+    sr[0]=2;sr[1]=0;sr[2]=1;sr[3]=2;
+    mw[0]=0.25f32;mw[1]=0.75f32;mw[2]=0.4f32;mw[3]=0.6f32;
+    for i:0..<1040 {sout[i]=-1.0f32;}
+    am_moe_sum_gather(0,513,2,oe[..],sr[..],mw[..],sout[..]);
+    #assert abs(sout[0]-(0.25f32*oe[2*513+0]+0.75f32*oe[0*513+0]))<0.0001f32 && sout[512]==-1.0f32;
+    am_moe_sum_gather(1,513,2,oe[..],sr[..],mw[..],sout[..]);
+    #assert abs(sout[512]-(0.25f32*oe[2*513+512]+0.75f32*oe[0*513+512]))<0.0001f32 && sout[513]==-1.0f32;
+    am_moe_sum_gather(3,513,2,oe[..],sr[..],mw[..],sout[..]);
+    #assert abs(sout[513+512]-(0.4f32*oe[1*513+512]+0.6f32*oe[2*513+512]))<0.0001f32;
+    sout[512]=-1.0f32;
+    am_moe_sum_gather(1,512,2,oe[..],sr[..],mw[..],sout[..]); // d_tiles=1 -> item=1 is t=1, c0=0 -> writes sout[512]!
+    #assert abs(sout[512]-(0.4f32*oe[1*512+0]+0.6f32*oe[2*512+0]))<0.0001f32;
 }

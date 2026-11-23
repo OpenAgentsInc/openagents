@@ -2,6 +2,8 @@
    Build with -fobjc-arc -framework Metal -framework Foundation. */
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <dispatch/dispatch.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "metal-host.h"
 #include <stdarg.h>
@@ -27,6 +29,11 @@ static __unsafe_unretained id<MTLResource> *live_ro_cache;
 static NSUInteger live_ro_cache_cap;
 static int live_dirty = 1;
 
+typedef void (*ImpSetPSO)(id, SEL, id<MTLComputePipelineState>);
+typedef void (*ImpSetBytes)(id, SEL, const void *, NSUInteger, NSUInteger);
+typedef void (*ImpDispatchTG)(id, SEL, MTLSize, MTLSize);
+typedef void (*ImpBarrier)(id, SEL, MTLBarrierScope);
+
 /* Metal 4 fast path (macOS 26+): persistent residency set, double-buffered zero-copy
    argument rings and command allocators/buffers/argument tables (bypassed if PM_METAL3=1 or PM_PASS_PROF). */
 static int m4_enabled = 0;
@@ -50,6 +57,10 @@ static int m4_res_dirty = 1;
 typedef void (*ImpM4SetAddr)(id, SEL, MTLGPUAddress, NSUInteger);
 typedef void (*ImpM4Barrier)(id, SEL, uint64_t, uint64_t, uint64_t);
 static ImpM4SetAddr m4_fn_set_addr;
+static ImpSetPSO m4_fn_set_pso;
+static ImpDispatchTG m4_fn_dispatch_tg;
+static ImpDispatchTG m4_fn_dispatch_threads;
+static ImpM4Barrier m4_fn_barrier;
 #endif
 
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec; }
@@ -122,6 +133,51 @@ PmStatus pm_open(PmDeviceInfo *info) {
     }
 }
 
+typedef struct {
+    void *lib;         /* __bridge_retained id<MTLLibrary> */
+    void *archive;     /* __bridge_retained id<MTLBinaryArchive> (optional) */
+    char cache_path[512];
+    int cache_hit;
+} PmModuleImpl;
+
+static void hash128_mix(uint64_t *h0, uint64_t *h1, const void *data, size_t len) {
+    const uint8_t *p = (const uint8_t *)data;
+    uint64_t a = *h0, b = *h1;
+    for (size_t i = 0; i < len; i++) {
+        a ^= (uint64_t)p[i];
+        a *= 1099511628211ULL;
+        b ^= (uint64_t)p[i] + 0x9e3779b97f4a7c15ULL;
+        b = (b << 13) | (b >> 51);
+        b *= 0xbf58476d1ce4e5b9ULL;
+    }
+    *h0 = a;
+    *h1 = b;
+}
+
+static void metal_cache_path(const char *source, size_t length, int fast_math, int lang_ver, char *out, size_t out_cap) {
+    out[0] = '\0';
+    const char *no_cache = getenv("PSIONIC_NO_SHADER_CACHE");
+    if (no_cache && no_cache[0] != '0') return;
+    const char *dir = getenv("PSIONIC_METAL_CACHE_DIR");
+    char dir_buf[384];
+    if (!dir || !dir[0]) {
+        const char *home = getenv("HOME");
+        if (!home || !home[0]) return;
+        snprintf(dir_buf, sizeof dir_buf, "%s/.openagents/cache/psionic", home);
+        dir = dir_buf;
+    }
+    uint64_t h0 = 14695981039346656037ULL, h1 = 0x517cc1b727220a95ULL;
+    const char *dname = device.name ? device.name.UTF8String : "metal";
+    NSString *osver = [NSProcessInfo processInfo].operatingSystemVersionString;
+    const char *osstr = osver ? osver.UTF8String : "macos";
+    hash128_mix(&h0, &h1, dname, strlen(dname));
+    hash128_mix(&h0, &h1, osstr, strlen(osstr));
+    uint32_t flags[2] = { (uint32_t)fast_math, (uint32_t)lang_ver };
+    hash128_mix(&h0, &h1, flags, sizeof flags);
+    hash128_mix(&h0, &h1, source, length);
+    snprintf(out, out_cap, "%s/metal-%016llx%016llx.binarchive", dir, (unsigned long long)h0, (unsigned long long)h1);
+}
+
 static PmStatus compile_impl(const char *source, size_t length, const char *name, int fast_math, PmModule *module, double *seconds) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
@@ -142,12 +198,32 @@ static PmStatus compile_impl(const char *source, size_t length, const char *name
             }
         }
         /* Metal 4 (macOS 26) for the tensor ops of am_matmul_bf16; 3.1 otherwise. */
-        if (@available(macOS 26.0, *)) options.languageVersion = MTLLanguageVersion4_0;
+        int lang_ver = 31;
+        if (@available(macOS 26.0, *)) { options.languageVersion = MTLLanguageVersion4_0; lang_ver = 40; }
         else options.languageVersion = MTLLanguageVersion3_1;
         NSError *error = nil;
         id<MTLLibrary> library = [device newLibraryWithSource:text options:options error:&error];
         if (!library) { note("%s: %s", name, error.localizedDescription.UTF8String); return PM_COMPILE; }
-        *module = (__bridge_retained void *)library;
+        PmModuleImpl *m = (PmModuleImpl *)calloc(1, sizeof *m);
+        if (!m) return PM_MEMORY;
+        m->lib = (__bridge_retained void *)library;
+        metal_cache_path(source, length, fast_math, lang_ver, m->cache_path, sizeof m->cache_path);
+        if (m->cache_path[0]) {
+            MTLBinaryArchiveDescriptor *bad = [MTLBinaryArchiveDescriptor new];
+            NSError *aerr = nil;
+            id<MTLBinaryArchive> arch = nil;
+            if (access(m->cache_path, R_OK) == 0) {
+                bad.url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:m->cache_path]];
+                arch = [device newBinaryArchiveWithDescriptor:bad error:&aerr];
+                if (arch) m->cache_hit = 1;
+            }
+            if (!arch) {
+                bad.url = nil;
+                arch = [device newBinaryArchiveWithDescriptor:bad error:&aerr];
+            }
+            if (arch) m->archive = (__bridge_retained void *)arch;
+        }
+        *module = m;
         if (seconds) *seconds = now() - t0;
         return PM_OK;
     }
@@ -174,11 +250,6 @@ typedef struct {
     char name[64];
 } PmKernelImpl;
 
-typedef void (*ImpSetPSO)(id, SEL, id<MTLComputePipelineState>);
-typedef void (*ImpSetBytes)(id, SEL, const void *, NSUInteger, NSUInteger);
-typedef void (*ImpDispatchTG)(id, SEL, MTLSize, MTLSize);
-typedef void (*ImpBarrier)(id, SEL, MTLBarrierScope);
-
 typedef struct {
     const char *name;
     int64_t items;
@@ -199,7 +270,8 @@ typedef struct {
     int prof_mode;
     int prof_count;
     int prof_cap;
-    void *prof_csb; /* __bridge_retained id<MTLCounterSampleBuffer> */
+    void *prof_csb;   /* __bridge_retained id<MTLCounterSampleBuffer> */
+    void *prof_fence; /* __bridge_retained id<MTLFence> */
     PmProfRec *prof_recs;
     MTLDispatchType dtype;
     int is_m4;
@@ -209,21 +281,100 @@ typedef struct {
 #endif
 } PmBatchImpl;
 
+static PmBatchImpl m4_batch_slots[2];
+
+static PmStatus build_one_kernel(PmModuleImpl *m, const char *name, PmKernel *kernel, MTLComputePipelineDescriptor *__autoreleasing *out_desc) {
+    id<MTLLibrary> library = (__bridge id<MTLLibrary>)m->lib;
+    id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:name]];
+    if (!function) { note("no kernel %s", name); return PM_ARGUMENT; }
+    MTLComputePipelineDescriptor *desc = [MTLComputePipelineDescriptor new];
+    desc.computeFunction = function;
+    if (m->archive && m->cache_hit) {
+        id<MTLBinaryArchive> arch = (__bridge id<MTLBinaryArchive>)m->archive;
+        desc.binaryArchives = @[ arch ];
+    }
+    NSError *error = nil;
+    id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:desc options:MTLPipelineOptionNone reflection:nil error:&error];
+    if (!pipeline) { note("%s: %s", name, error.localizedDescription.UTF8String); return PM_COMPILE; }
+    if (getenv("PM_VERBOSE")) fprintf(stderr, "kernel %s: %lu threads per group, simd width %lu\n", name, (unsigned long)pipeline.maxTotalThreadsPerThreadgroup, (unsigned long)pipeline.threadExecutionWidth);
+    PmKernelImpl *k = (PmKernelImpl *)malloc(sizeof *k);
+    if (!k) return PM_MEMORY;
+    k->max_threads = pipeline.maxTotalThreadsPerThreadgroup;
+    k->pso = (__bridge_retained void *)pipeline;
+    snprintf(k->name, sizeof k->name, "%s", name);
+    *kernel = k;
+    if (out_desc) *out_desc = desc;
+    return PM_OK;
+}
+
 PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel) {
     @autoreleasepool {
-        id<MTLLibrary> library = (__bridge id<MTLLibrary>)module;
-        id<MTLFunction> function = [library newFunctionWithName:[NSString stringWithUTF8String:name]];
-        if (!function) { note("no kernel %s", name); return PM_ARGUMENT; }
-        NSError *error = nil;
-        id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
-        if (!pipeline) { note("%s: %s", name, error.localizedDescription.UTF8String); return PM_COMPILE; }
-        if (getenv("PM_VERBOSE")) fprintf(stderr, "kernel %s: %lu threads per group, simd width %lu\n", name, (unsigned long)pipeline.maxTotalThreadsPerThreadgroup, (unsigned long)pipeline.threadExecutionWidth);
-        PmKernelImpl *k = (PmKernelImpl *)malloc(sizeof *k);
-        if (!k) return PM_MEMORY;
-        k->max_threads = pipeline.maxTotalThreadsPerThreadgroup;
-        k->pso = (__bridge_retained void *)pipeline;
-        snprintf(k->name, sizeof k->name, "%s", name);
-        *kernel = k;
+        if (!module || !name || !kernel) return PM_ARGUMENT;
+        return build_one_kernel((PmModuleImpl *)module, name, kernel, NULL);
+    }
+}
+
+PmStatus pm_kernels_batch(PmModule module, const char *const *names, int count, PmKernel *out_kernels) {
+    @autoreleasepool {
+        if (!module || !names || !out_kernels || count < 0) return PM_ARGUMENT;
+        if (count == 0) return PM_OK;
+        PmModuleImpl *m = (PmModuleImpl *)module;
+        memset(out_kernels, 0, (size_t)count * sizeof(PmKernel));
+        __block PmStatus first_err = PM_OK;
+        __block int first_idx = -1;
+        id<MTLBinaryArchive> arch = m->archive ? (__bridge id<MTLBinaryArchive>)m->archive : nil;
+        int want_save = (arch != nil && !m->cache_hit && m->cache_path[0] != '\0');
+        NSMutableArray *descs = want_save ? [NSMutableArray arrayWithCapacity:(NSUInteger)count] : nil;
+        if (descs) {
+            for (int i = 0; i < count; i++) [descs addObject:[NSNull null]];
+        }
+        dispatch_queue_t q = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
+        dispatch_apply((size_t)count, q, ^(size_t idx) {
+            @autoreleasepool {
+                MTLComputePipelineDescriptor *d = nil;
+                PmKernel k = NULL;
+                PmStatus st = build_one_kernel(m, names[idx], &k, want_save ? &d : NULL);
+                if (st == PM_OK) {
+                    out_kernels[idx] = k;
+                    if (want_save && d) {
+                        @synchronized(descs) {
+                            descs[idx] = d;
+                        }
+                    }
+                } else {
+                    @synchronized(q) {
+                        if (first_err == PM_OK) { first_err = st; first_idx = (int)idx; }
+                    }
+                }
+            }
+        });
+        if (first_err != PM_OK) {
+            for (int i = 0; i < count; i++) { pm_kernel_free(out_kernels[i]); out_kernels[i] = NULL; }
+            if (first_idx >= 0) note("pm_kernels_batch failed at %s", names[first_idx]);
+            return first_err;
+        }
+        if (want_save) {
+            NSString *fullPath = [NSString stringWithUTF8String:m->cache_path];
+            NSString *dirPath = [fullPath stringByDeletingLastPathComponent];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dirPath withIntermediateDirectories:YES attributes:nil error:nil];
+            for (int i = 0; i < count; i++) {
+                id item = descs[i];
+                if ([item isKindOfClass:[MTLComputePipelineDescriptor class]]) {
+                    NSError *aerr = nil;
+                    [arch addComputePipelineFunctionsWithDescriptor:(MTLComputePipelineDescriptor *)item error:&aerr];
+                }
+            }
+            char tmp_path[560];
+            snprintf(tmp_path, sizeof tmp_path, "%s.tmp.%d", m->cache_path, (int)getpid());
+            NSURL *tmpUrl = [NSURL fileURLWithPath:[NSString stringWithUTF8String:tmp_path]];
+            NSError *serr = nil;
+            if ([arch serializeToURL:tmpUrl error:&serr]) {
+                if (rename(tmp_path, m->cache_path) != 0) unlink(tmp_path);
+                m->cache_hit = 1;
+            } else {
+                unlink(tmp_path);
+            }
+        }
         return PM_OK;
     }
 }
@@ -238,8 +389,11 @@ PmStatus pm_kernel_free(PmKernel kernel) {
 }
 PmStatus pm_unload(PmModule module) {
     if (!module) return PM_OK;
-    id<MTLLibrary> object = (__bridge_transfer id<MTLLibrary>)module;
-    (void)object;
+    PmModuleImpl *m = (PmModuleImpl *)module;
+    id<MTLLibrary> lib = (__bridge_transfer id<MTLLibrary>)m->lib;
+    id<MTLBinaryArchive> arch = m->archive ? (__bridge_transfer id<MTLBinaryArchive>)m->archive : nil;
+    (void)lib; (void)arch;
+    free(m);
     return PM_OK;
 }
 
@@ -321,6 +475,9 @@ static id<MTLComputeCommandEncoder> prof_open_pass(PmBatchImpl *b, id<MTLCommand
         desc.sampleBufferAttachments[0].endOfEncoderSampleIndex = (NSUInteger)(idx * 2 + 1);
     }
     id<MTLComputeCommandEncoder> enc = [cmds computeCommandEncoderWithDescriptor:desc];
+    if (idx > 0 && b->prof_fence) {
+        [enc waitForFence:(__bridge id<MTLFence>)b->prof_fence];
+    }
     NSUInteger n = live.count;
     NSUInteger n_ro = live_ro.count;
     if (n) [enc useResources:live_cache count:n usage:MTLResourceUsageRead | MTLResourceUsageWrite];
@@ -336,13 +493,32 @@ static id<MTLComputeCommandEncoder> prof_open_pass(PmBatchImpl *b, id<MTLCommand
     return enc;
 }
 
+static void prof_close_pass(PmBatchImpl *b) {
+    if (!b->encoder) return;
+    id<MTLComputeCommandEncoder> old_enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
+    if (b->prof_fence) {
+        [old_enc updateFence:(__bridge id<MTLFence>)b->prof_fence];
+    }
+    [old_enc endEncoding];
+    b->encoder = NULL;
+}
+
+void pm_commit_residency(void) {
+#if defined(__MAC_26_0)
+    @autoreleasepool {
+        if (m4_enabled && m4_res_dirty) {
+            if (@available(macOS 26.0, *)) {
+                [m4_res commit];
+                m4_res_dirty = 0;
+            }
+        }
+    }
+#endif
+}
+
 static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype, int slot) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
-        PmBatchImpl *b = (PmBatchImpl *)calloc(1, sizeof *b);
-        if (!b) return PM_MEMORY;
-        b->dtype = dtype;
-        b->m4_slot = (slot & 1);
         int pmode = 0;
         const char *penv = getenv("PM_PASS_PROF");
         if (penv && penv[0] != '0') {
@@ -356,7 +532,11 @@ static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype, int slot) {
 #if defined(__MAC_26_0)
         if (m4_enabled && !pmode && dtype == MTLDispatchTypeConcurrent) {
             if (@available(macOS 26.0, *)) {
-                int sl = b->m4_slot;
+                int sl = slot & 1;
+                PmBatchImpl *b = &m4_batch_slots[sl];
+                memset(b, 0, sizeof *b);
+                b->dtype = dtype;
+                b->m4_slot = sl;
                 memset(m4_errors[sl].contents, 0, 8);
                 if (m4_res_dirty) {
                     [m4_res commit];
@@ -368,11 +548,17 @@ static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype, int slot) {
                 id<MTL4ComputeCommandEncoder> enc4 = [m4_cb[sl] computeCommandEncoder];
                 m4_fn_set_addr(m4_at[sl], @selector(setAddress:atIndex:), m4_errors[sl].gpuAddress, 1);
                 [enc4 setArgumentTable:m4_at[sl]];
-                NSObject *enc_obj = (NSObject *)enc4;
-                b->fn_set_pso = (ImpSetPSO)[enc_obj methodForSelector:@selector(setComputePipelineState:)];
-                b->fn_dispatch_tg = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreadgroups:threadsPerThreadgroup:)];
-                b->fn_dispatch_threads = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreads:threadsPerThreadgroup:)];
-                b->fn_m4_barrier = (ImpM4Barrier)[enc_obj methodForSelector:@selector(barrierAfterEncoderStages:beforeEncoderStages:visibilityOptions:)];
+                if (!m4_fn_set_pso) {
+                    NSObject *enc_obj = (NSObject *)enc4;
+                    m4_fn_set_pso = (ImpSetPSO)[enc_obj methodForSelector:@selector(setComputePipelineState:)];
+                    m4_fn_dispatch_tg = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreadgroups:threadsPerThreadgroup:)];
+                    m4_fn_dispatch_threads = (ImpDispatchTG)[enc_obj methodForSelector:@selector(dispatchThreads:threadsPerThreadgroup:)];
+                    m4_fn_barrier = (ImpM4Barrier)[enc_obj methodForSelector:@selector(barrierAfterEncoderStages:beforeEncoderStages:visibilityOptions:)];
+                }
+                b->fn_set_pso = m4_fn_set_pso;
+                b->fn_dispatch_tg = m4_fn_dispatch_tg;
+                b->fn_dispatch_threads = m4_fn_dispatch_threads;
+                b->fn_m4_barrier = m4_fn_barrier;
                 b->is_m4 = 1;
                 b->encoder = (__bridge_retained void *)enc4;
                 b->errors = (__bridge void *)m4_errors[sl];
@@ -381,6 +567,10 @@ static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype, int slot) {
             }
         }
 #endif
+        PmBatchImpl *b = (PmBatchImpl *)calloc(1, sizeof *b);
+        if (!b) return PM_MEMORY;
+        b->dtype = dtype;
+        b->m4_slot = (slot & 1);
         memset(shared_errors.contents, 0, 8);
         id<MTLCommandBuffer> cmds = [queue commandBufferWithUnretainedReferences];
         NSUInteger n = live.count;
@@ -405,6 +595,8 @@ static PmStatus begin_impl(PmBatch *batch, MTLDispatchType dtype, int slot) {
             b->prof_mode = pmode;
             b->prof_cap = 2048;
             b->prof_recs = (PmProfRec *)calloc((size_t)b->prof_cap, sizeof(PmProfRec));
+            id<MTLFence> fence = [device newFence];
+            if (fence) b->prof_fence = (__bridge_retained void *)fence;
             id<MTLCounterSet> tsSet = nil;
             for (id<MTLCounterSet> cs in device.counterSets) {
                 if ([cs.name isEqualToString:MTLCommonCounterSetTimestamp]) { tsSet = cs; break; }
@@ -471,11 +663,11 @@ void pm_abort(PmBatch batch) {
             if (@available(macOS 26.0, *)) {
                 int sl = b->m4_slot;
                 id<MTL4ComputeCommandEncoder> enc4 = (__bridge_transfer id<MTL4ComputeCommandEncoder>)b->encoder;
+                b->encoder = NULL;
                 [enc4 endEncoding];
                 [m4_cb[sl] endCommandBuffer];
                 /* Detach uncommitted command buffer from m4_alloc[sl] before next begin_impl resets the allocator. */
                 m4_cb[sl] = [device newCommandBuffer];
-                free(b);
                 return;
             }
         }
@@ -483,8 +675,9 @@ void pm_abort(PmBatch batch) {
         id<MTLComputeCommandEncoder> enc = b->encoder ? (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder : nil;
         id<MTLCommandBuffer> cmds = (__bridge_transfer id<MTLCommandBuffer>)b->commands;
         id<MTLCounterSampleBuffer> prof_csb = b->prof_csb ? (__bridge_transfer id<MTLCounterSampleBuffer>)b->prof_csb : nil;
+        id<MTLFence> prof_fence = b->prof_fence ? (__bridge_transfer id<MTLFence>)b->prof_fence : nil;
         if (enc) [enc endEncoding];
-        (void)cmds; (void)prof_csb;
+        (void)cmds; (void)prof_csb; (void)prof_fence;
         free(b->prof_recs);
         free(b);
     }
@@ -500,13 +693,9 @@ void pm_barrier(PmBatch batch) {
         return;
     }
 #endif
-    if (b->prof_mode == 1) return;
+    if (b->prof_mode == 1 && b->prof_count < b->prof_cap) return;
     if (b->prof_mode == 2 && b->prof_count < b->prof_cap) {
-        if (b->encoder) {
-            id<MTLComputeCommandEncoder> old_enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
-            [old_enc endEncoding];
-            b->encoder = NULL;
-        }
+        prof_close_pass(b);
         id<MTLCommandBuffer> cmds = (__bridge id<MTLCommandBuffer>)b->commands;
         int idx = b->prof_count++;
         id<MTLComputeCommandEncoder> new_enc = prof_open_pass(b, cmds, idx);
@@ -579,11 +768,7 @@ PmStatus pm_launch(PmBatch batch, PmKernel kernel, int64_t items, int lanes, int
         }
     }
     if (b->prof_mode == 1 && b->prof_count < b->prof_cap) {
-        if (b->encoder) {
-            id<MTLComputeCommandEncoder> old_enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
-            [old_enc endEncoding];
-            b->encoder = NULL;
-        }
+        prof_close_pass(b);
         id<MTLCommandBuffer> cmds = (__bridge id<MTLCommandBuffer>)b->commands;
         int idx = b->prof_count++;
         b->prof_recs[idx].name = k->name;
@@ -680,11 +865,7 @@ PmStatus pm_launch_indirect(PmBatch batch, PmKernel kernel, int64_t max_items,
         }
     }
     if (b->prof_mode == 1 && b->prof_count < b->prof_cap) {
-        if (b->encoder) {
-            id<MTLComputeCommandEncoder> old_enc = (__bridge_transfer id<MTLComputeCommandEncoder>)b->encoder;
-            [old_enc endEncoding];
-            b->encoder = NULL;
-        }
+        prof_close_pass(b);
         id<MTLCommandBuffer> cmds = (__bridge id<MTLCommandBuffer>)b->commands;
         int idx = b->prof_count++;
         b->prof_recs[idx].name = k->name;
@@ -733,7 +914,7 @@ PmStatus pm_submit_async_after(PmBatch batch, uint64_t wait_ticket, uint64_t *ti
             if (@available(macOS 26.0, *)) {
                 int sl = b->m4_slot;
                 id<MTL4ComputeCommandEncoder> enc4 = (__bridge_transfer id<MTL4ComputeCommandEncoder>)b->encoder;
-                free(b);
+                b->encoder = NULL;
                 [enc4 endEncoding];
                 [m4_cb[sl] endCommandBuffer];
                 m4_t_submit[sl] = now();
@@ -806,9 +987,11 @@ PmStatus pm_wait(PmBatch batch, double *gpu_seconds) {
         int prof_mode = b->prof_mode;
         int prof_count = b->prof_count;
         id<MTLCounterSampleBuffer> prof_csb = b->prof_csb ? (__bridge_transfer id<MTLCounterSampleBuffer>)b->prof_csb : nil;
+        id<MTLFence> prof_fence = b->prof_fence ? (__bridge_transfer id<MTLFence>)b->prof_fence : nil;
         PmProfRec *prof_recs = b->prof_recs;
         free(b);
         if (enc) [enc endEncoding];
+        (void)prof_fence;
         [cmds commit];
         [cmds waitUntilCompleted];
         double total_gpu = cmds.GPUEndTime - cmds.GPUStartTime;

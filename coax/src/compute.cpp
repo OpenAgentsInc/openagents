@@ -342,6 +342,8 @@ struct GroupAdmission {
     if (str_eq(p->name, "am_sg_mma_f16_64x32x32")) return 6;
     if (str_eq(p->name, "am_matmul_iq4_bf16")) return 7;
     if (str_eq(p->name, "am_matmul_bf16_x16")) return 8;
+    if (str_eq(p->name, "am_matmul_iq4s_bf16")) return 9;
+    if (str_eq(p->name, "am_matmul_q8s_bf16")) return 10;
     return 0;
   }
   // Pass 1: arrays, their uses and the group size.
@@ -353,12 +355,12 @@ struct GroupAdmission {
     if (!e) return;
     if (e->kind == ExprKind::call && apple_kind(e->proc)) {
       int kind = apple_kind(e->proc);
-      if (kind == 3 || kind == 4 || kind == 7 || kind == 8) { int64_t t = e->args.count ? value_of(e->args[0]) : -1; if (t > 0) name_size(e->loc, t); }
+      if (kind == 3 || kind == 4 || kind == 7 || kind == 8 || kind == 9 || kind == 10) { int64_t t = e->args.count ? value_of(e->args[0]) : -1; if (t > 0) name_size(e->loc, t); }
       else name_size(e->loc, 128);
       for (int32_t i = 0; i < e->args.count; i++) {
         const Expr *a = e->args[i];
         ArrayUse *u = a->kind == ExprKind::slice && !a->rhs ? array_of(a->lhs) : nullptr;
-        if (u && kind != 3 && kind != 4 && kind != 7 && kind != 8 && i == 0) { u->accumulator = true; continue; }
+        if (u && kind != 3 && kind != 4 && kind != 7 && kind != 8 && kind != 9 && kind != 10 && i == 0) { u->accumulator = true; continue; }
         if (u) { u->elsewhere = true; continue; }
         scan_expr(a, in_thread, loop);
       }
@@ -496,21 +498,32 @@ struct GroupAdmission {
       int kind = apple_kind(e->proc);
       bool shaped = true;
       int64_t len[3] = {0, 0, 0}; bool tg[3] = {false, false, false};
-      if (kind == 3 || kind == 4 || kind == 7 || kind == 8) {
+      if (kind == 3 || kind == 4 || kind == 7 || kind == 8 || kind == 9 || kind == 10) {
         bool is_iq4 = (kind == 4 || kind == 7);
-        shaped = e->args.count == (is_iq4 ? 12 : 11);
+        bool is_qs = (kind == 9 || kind == 10);
+        shaped = e->args.count == (is_qs ? 13 : is_iq4 ? 12 : 11);
         int64_t tm = shaped ? value_of(e->args[1]) : -1, tn = shaped ? value_of(e->args[2]) : -1;
-        int64_t tm_chk = (is_iq4 && (tm == 128 || tm == 256)) ? 64 : tm;
+        int64_t tm_chk = ((is_iq4 || is_qs) && (tm == 128 || tm == 256)) ? 64 : tm;
         uint32_t r = CU_apple_tile(tm_chk, tn, shaped && constant_of(e->args[1]) && constant_of(e->args[2]));
         if (r) { refuse(e->loc, r); return; }
-        for (int i = 8; shaped && i < 11; i++) if (e->args[i]->type->kind != TypeKind::view) shaped = false;
-        uint32_t wcode = is_iq4 ? 9u : 10u;
-        uint32_t xcode = (kind == 7 || kind == 8) ? 9u : 2u;
-        if (shaped && (compute_code(e->args[8]->type->elem) != wcode || compute_code(e->args[9]->type->elem) != xcode || compute_code(e->args[10]->type->elem) != 2)) shaped = false;
-        if (shaped && is_iq4) {
-          const Expr *a = e->args[11];
-          ArrayUse *u = a->kind == ExprKind::slice && !a->rhs ? array_of(a->lhs) : nullptr;
-          if (!u || compute_code(u->decl->type->elem) != 9 || u->decl->type->length < tn * 64 || !shared.count(to_std(a->lhs->text))) shaped = false;
+        if (is_qs) {
+          for (int i = 8; shaped && i < 12; i++) if (e->args[i]->type->kind != TypeKind::view) shaped = false;
+          if (shaped && (compute_code(e->args[8]->type->elem) != 10u || compute_code(e->args[9]->type->elem) != 9u || compute_code(e->args[10]->type->elem) != 9u || compute_code(e->args[11]->type->elem) != 2u)) shaped = false;
+          if (shaped) {
+            const Expr *a = e->args[12];
+            ArrayUse *u = a->kind == ExprKind::slice && !a->rhs ? array_of(a->lhs) : nullptr;
+            if (!u || compute_code(u->decl->type->elem) != 9 || u->decl->type->length < tn * 64 || !shared.count(to_std(a->lhs->text))) shaped = false;
+          }
+        } else {
+          for (int i = 8; shaped && i < 11; i++) if (e->args[i]->type->kind != TypeKind::view) shaped = false;
+          uint32_t wcode = is_iq4 ? 9u : 10u;
+          uint32_t xcode = (kind == 7 || kind == 8) ? 9u : 2u;
+          if (shaped && (compute_code(e->args[8]->type->elem) != wcode || compute_code(e->args[9]->type->elem) != xcode || compute_code(e->args[10]->type->elem) != 2)) shaped = false;
+          if (shaped && is_iq4) {
+            const Expr *a = e->args[11];
+            ArrayUse *u = a->kind == ExprKind::slice && !a->rhs ? array_of(a->lhs) : nullptr;
+            if (!u || compute_code(u->decl->type->elem) != 9 || u->decl->type->length < tn * 64 || !shared.count(to_std(a->lhs->text))) shaped = false;
+          }
         }
       } else {
         shaped = e->args.count == ((kind == 1 || kind == 6) ? 3 : kind == 5 ? 1 : 2);
@@ -523,10 +536,10 @@ struct GroupAdmission {
           tg[i] = shared.count(to_std(a->lhs->text)) > 0;
         }
       }
-      uint32_t r = shaped ? CU_apple_primitive((uint32_t)((kind == 4 || kind == 7 || kind == 8) ? 3 : kind == 5 ? 2 : kind == 6 ? 1 : kind), metal, true, size, len[0], kind == 5 ? 2048 : len[1], len[2], kind == 5 ? true : tg[1], tg[2]) : (metal ? 41u : 42u);
+      uint32_t r = shaped ? CU_apple_primitive((uint32_t)((kind == 4 || kind == 7 || kind == 8 || kind == 9 || kind == 10) ? 3 : kind == 5 ? 2 : kind == 6 ? 1 : kind), metal, true, size, len[0], kind == 5 ? 2048 : len[1], len[2], kind == 5 ? true : tg[1], tg[2]) : (metal ? 41u : 42u);
       if (r) { refuse(e->loc, r); return; }
       g_warp.apple_calls[e] = kind;
-      if (kind == 3 || kind == 4 || kind == 7 || kind == 8) { int32_t n = (kind == 4 || kind == 7) ? 11 : e->args.count; for (int32_t i = 0; i < n; i++) shared_expr(e->args[i]); }
+      if (kind == 3 || kind == 4 || kind == 7 || kind == 8 || kind == 9 || kind == 10) { int32_t n = (kind == 9 || kind == 10) ? 12 : (kind == 4 || kind == 7) ? 11 : e->args.count; for (int32_t i = 0; i < n; i++) shared_expr(e->args[i]); }
       return;
     }
     if (e->kind == ExprKind::call && e->proc && !is_device_primitive(e->proc)) {

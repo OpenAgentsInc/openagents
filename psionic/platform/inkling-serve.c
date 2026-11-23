@@ -334,31 +334,36 @@ static int http_origin_ok(const char *origin) {
     return http_loopback_host(host);
 }
 
-static int send_http_json(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len) {
+static int send_http_json_ex(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len, int keep_alive) {
     char hdr[1024];
     int n;
+    const char *conn_hdr = keep_alive ? "Connection: keep-alive\r\nKeep-Alive: timeout=15, max=64\r\n" : "Connection: close\r\n";
     if (origin && origin[0]) {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 %d %s\r\n"
                      "Content-Type: application/json\r\n"
                      "Content-Length: %zu\r\n"
-                     "Connection: close\r\n"
+                     "%s"
                      "Access-Control-Allow-Origin: %s\r\n"
                      "Vary: Origin\r\n"
                      "\r\n",
-                     status, reason, body_len, origin);
+                     status, reason, body_len, conn_hdr, origin);
     } else {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 %d %s\r\n"
                      "Content-Type: application/json\r\n"
                      "Content-Length: %zu\r\n"
-                     "Connection: close\r\n"
+                     "%s"
                      "\r\n",
-                     status, reason, body_len);
+                     status, reason, body_len, conn_hdr);
     }
     if (n <= 0 || (size_t)n >= sizeof hdr) return 1;
     if (send_all(fd, hdr, (size_t)n)) return 1;
     return body_len ? send_all(fd, body, body_len) : 0;
+}
+
+static int send_http_json(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len) {
+    return send_http_json_ex(fd, status, reason, origin, body, body_len, 0);
 }
 
 static int send_sse_headers(int fd, const char *origin) {
@@ -387,10 +392,26 @@ static int send_sse_headers(int fd, const char *origin) {
 }
 
 static int send_sse_event(int fd, const char *event_name, const char *data, size_t data_len) {
+    size_t elen = (event_name && event_name[0]) ? strlen(event_name) : 0;
+    size_t need = (elen ? 7 + elen + 1 : 0) + 6 + data_len + 2;
+    if (need <= 4096) {
+        char stack[4096];
+        size_t pos = 0;
+        if (elen) {
+            memcpy(stack + pos, "event: ", 7); pos += 7;
+            memcpy(stack + pos, event_name, elen); pos += elen;
+            stack[pos++] = '\n';
+        }
+        memcpy(stack + pos, "data: ", 6); pos += 6;
+        if (data_len) { memcpy(stack + pos, data, data_len); pos += data_len; }
+        stack[pos++] = '\n';
+        stack[pos++] = '\n';
+        return send_all(fd, stack, pos);
+    }
     Buf out = {0};
-    if (event_name && event_name[0]) {
+    if (elen) {
         buf_adds(&out, "event: ");
-        buf_adds(&out, event_name);
+        buf_append(&out, event_name, elen);
         buf_adds(&out, "\n");
     }
     buf_adds(&out, "data: ");
@@ -1700,15 +1721,66 @@ static int emit_chat_tool_call(int fd, int64_t created, const char *model, int i
     return rc;
 }
 
+static size_t json_escape_stack(char *dst, size_t cap, const char *s, size_t n) {
+    size_t p = 0;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t') {
+            if (p + 2 > cap) return (size_t)-1;
+            dst[p++] = '\\';
+            dst[p++] = (c == '\n') ? 'n' : (c == '\r') ? 'r' : (c == '\t') ? 't' : (char)c;
+        } else if (c < 0x20) {
+            if (p + 6 > cap) return (size_t)-1;
+            static const char hex[] = "0123456789abcdef";
+            dst[p++] = '\\'; dst[p++] = 'u'; dst[p++] = '0'; dst[p++] = '0';
+            dst[p++] = hex[(c >> 4) & 0xf]; dst[p++] = hex[c & 0xf];
+        } else {
+            if (p + 1 > cap) return (size_t)-1;
+            dst[p++] = (char)c;
+        }
+    }
+    return p;
+}
+
 static int emit_chat_delta(int fd, int64_t created, const char *model, int is_thinking, const char *s, size_t n) {
     if (n == 0) return 0;
+    size_t mlen = strlen(model);
+    // Zero-malloc stack fast path for normal streamed token deltas (1 send_all, 0 heap allocs).
+    if (n <= 256 && mlen <= 128) {
+        char stack[2048];
+        int h = snprintf(stack, sizeof stack,
+                         "data: {\"id\":\"chatcmpl-psionic\",\"object\":\"chat.completion.chunk\",\"created\":%lld,\"model\":\"",
+                         (long long)created);
+        if (h > 0 && (size_t)h < sizeof stack) {
+            size_t pos = (size_t)h;
+            size_t em = json_escape_stack(stack + pos, sizeof stack - pos, model, mlen);
+            if (em != (size_t)-1) {
+                pos += em;
+                const char *mid = is_thinking
+                    ? "\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\""
+                    : "\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"";
+                size_t midlen = strlen(mid);
+                if (pos + midlen + 64 < sizeof stack) {
+                    memcpy(stack + pos, mid, midlen); pos += midlen;
+                    size_t es = json_escape_stack(stack + pos, sizeof stack - pos - 32, s, n);
+                    if (es != (size_t)-1) {
+                        pos += es;
+                        static const char tail[] = "\"},\"finish_reason\":null}]}\n\n";
+                        memcpy(stack + pos, tail, sizeof tail - 1);
+                        pos += sizeof tail - 1;
+                        return send_all(fd, stack, pos);
+                    }
+                }
+            }
+        }
+    }
     Buf ev = {0};
     char head[256];
     snprintf(head, sizeof head,
              "{\"id\":\"chatcmpl-psionic\",\"object\":\"chat.completion.chunk\",\"created\":%lld,\"model\":\"",
              (long long)created);
     buf_adds(&ev, head);
-    buf_add_json_escaped(&ev, model, strlen(model));
+    buf_add_json_escaped(&ev, model, mlen);
     buf_adds(&ev, "\",\"choices\":[{\"index\":0,\"delta\":{\"");
     buf_adds(&ev, is_thinking ? "reasoning_content" : "content");
     buf_adds(&ev, "\":\"");
@@ -1793,13 +1865,13 @@ static int spec_lookup_draft(const int32_t *all_toks, int n_all, int32_t cur_tok
     return 0;
 }
 
-static void handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len) {
+static int handle_inference(Server *sv, int fd, int is_responses, const char *origin, const char *body, size_t body_len, int keep_alive) {
     Req r;
     if (parse_request_json(body, body_len, &r) != 0) {
         const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
-        send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
         req_free(&r);
-        return;
+        return keep_alive;
     }
 
     int use_js = 0;
@@ -1812,7 +1884,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
             send_http_json(fd, 500, "Internal Server Error", origin, e, strlen(e));
             req_free(&r);
-            return;
+            return 0;
         }
         coax_v_t_JsSchema scv = { js_sc, 1 };
         int64_t ok = 0;
@@ -1824,10 +1896,10 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         }
         if (ok != 1 || ink_js_reset(scv, (coax_v_t_JsState){ &js_st, 1 }) != 1) {
             const char *e = "{\"error\":{\"message\":\"invalid or unsupported response_format json_schema\",\"type\":\"invalid_request_error\"}}";
-            send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
+            send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
             free(js_sc);
             req_free(&r);
-            return;
+            return keep_alive;
         }
         use_js = 1;
     }
@@ -1846,7 +1918,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
-        return;
+        return 0;
     }
 
     int max_ctx = ink_max_ctx(sv->sess);
@@ -1857,27 +1929,27 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
-        return;
+        return 0;
     }
     int n_prompt = ink_encode(sv->sess, prompt.data ? prompt.data : "", prompt.len, toks, max_ctx, 1);
     if (n_prompt <= 0) {
         const char *e = "{\"error\":{\"message\":\"empty prompt\",\"type\":\"invalid_request_error\"}}";
-        send_http_json(fd, 400, "Bad Request", origin, e, strlen(e));
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-        return;
+        return keep_alive;
     }
     if (n_prompt >= max_ctx - 1) {
         char ebuf[320];
         snprintf(ebuf, sizeof ebuf,
                  "{\"error\":{\"message\":\"This model's maximum context length is %d tokens. However, your messages exceeded the context length.\",\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\"}}",
                  max_ctx);
-        send_http_json(fd, 400, "Bad Request", origin, ebuf, strlen(ebuf));
+        send_http_json_ex(fd, 400, "Bad Request", origin, ebuf, strlen(ebuf), keep_alive);
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-        return;
+        return keep_alive;
     }
 
     int64_t created = (int64_t)time(NULL);
@@ -1888,11 +1960,12 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     fflush(stderr);
 
     if (r.stream) {
+        keep_alive = 0; /* SSE closes cleanly at EOF */
         if (send_sse_headers(fd, origin) != 0) {
             ink_mutex_unlock(&sv->sess_mu);
             ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-            return;
+            return 0;
         }
     }
 
@@ -1906,7 +1979,8 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     }
     /* Pin SWA-backed checkpoints at (1) tool_declare end (shared across all tasks even with
      * different repo AGENTS.md/cwd) and (2) first <|message_user|> (shared across compaction
-     * and identical-system tasks). */
+     * and identical-system tasks). Also checkpoint right before final <|end_message|> so
+     * follow-up prompts appending text to the last user message get ~99%+ prefix cache hits! */
     int tool_end = 0;
     int sys_end = 0;
     if (r.cache_prompt && sv->tok_user >= 0) {
@@ -1922,13 +1996,18 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
         if (sys_end < 64 || sys_end >= n_prompt || sys_end <= cached) sys_end = 0;
         if (tool_end >= sys_end) tool_end = 0;
     }
-    int next_ckpt = (cached / 4096 + 1) * 4096;
-    for (int i = cached; i < n_prompt && !g_stop; ) {
+    int pre_end = n_prompt;
+    if (r.cache_prompt && n_prompt >= 16 && sv->tok_end_msg >= 0 &&
+        toks[n_prompt - 1] == sv->tok_end_msg && cached < n_prompt) {
+        pre_end = n_prompt - 1;
+    }
+    int last_ckpt = cached;
+    for (int i = cached; i < pre_end && !g_stop; ) {
         if (sock_disconnected(fd)) {
             client_gone = 1;
             break;
         }
-        int chunk = n_prompt - i;
+        int chunk = pre_end - i;
         if (tool_end > 0 && i < tool_end && i + chunk > tool_end) {
             chunk = tool_end - i;
         } else if (sys_end > 0 && i < sys_end && i + chunk > sys_end) {
@@ -1945,15 +2024,19 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             ink_mutex_unlock(&sv->sess_mu);
             ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-            return;
+            return 0;
         }
         i += chunk;
         if (r.cache_prompt && !g_stop && i < n_prompt) {
             if ((tool_end > 0 && i == tool_end) || (sys_end > 0 && i == sys_end)) {
                 ink_prefix_save(sv->sess, toks, i, 2);
-            } else if (i >= next_ckpt) {
+                last_ckpt = i;
+            } else if (i == pre_end) {
+                ink_prefix_save(sv->sess, toks, i, 3);
+                last_ckpt = i;
+            } else if (i - last_ckpt >= 1024) {
                 ink_prefix_save(sv->sess, toks, i, 0);
-                next_ckpt = (i / 4096 + 1) * 4096;
+                last_ckpt = i;
             }
         }
         if (r.stream && i < n_prompt) {
@@ -1963,13 +2046,26 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             }
         }
     }
+    if (!client_gone && !g_stop && pre_end < n_prompt) {
+        if (ink_step(sv->sess, toks[n_prompt - 1], 1) != 0) {
+            if (!r.stream) {
+                char ebuf[512];
+                snprintf(ebuf, sizeof ebuf, "{\"error\":{\"message\":\"prefill step failed: %s\"}}", ink_error(sv->sess));
+                send_http_json(fd, 500, "Internal Server Error", origin, ebuf, strlen(ebuf));
+            }
+            ink_mutex_unlock(&sv->sess_mu);
+            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+            free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
+            return 0;
+        }
+    }
     if (client_gone) {
         fprintf(stderr, "[psionic-inkling-serve] req#%d aborted during prefill (client disconnected)\n", sv->req_seq);
         fflush(stderr);
         ink_mutex_unlock(&sv->sess_mu);
         ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
-        return;
+        return 0;
     }
     if (r.cache_prompt && !g_stop && cached < n_prompt) {
         ink_prefix_save(sv->sess, toks, n_prompt, 1);
@@ -2123,6 +2219,16 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
             }
         }
         if (tok < 0) break;
+        if (r.tools_json.len == 0 &&
+            ((sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) ||
+             (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text))) {
+            if (sv->tok_text >= 0) {
+                tok = sv->tok_text;
+                tok_already_stepped = 0;
+                v_head = v_tail = 0;
+                has_prefetched = 0;
+            }
+        }
         n_gen++;
 
         if (tok == sv->tok_eog || ink_is_eog(sv->sess, tok)) {
@@ -2356,7 +2462,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     if (r.has_seed) sv->rng = saved_rng;
     ink_set_prediction(sv->sess, NULL, 0);
     if (r.cache_prompt && !g_stop && !client_gone && !out_loop_broken && n_all > n_prompt && n_all == ink_pos(sv->sess)) {
-        ink_prefix_save(sv->sess, all_toks, n_all, 0);
+        ink_prefix_save(sv->sess, all_toks, n_all, 3);
     }
     free(all_toks);
 
@@ -2503,7 +2609,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
                  "],\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d,\"total_tokens\":%d,\"input_tokens_details\":{\"cached_tokens\":%d},\"output_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d},\"loop_count\":%lld}}",
                  n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks, lc);
         buf_adds(&out, utail);
-        send_http_json(fd, 200, "OK", origin, out.data, out.len);
+        if (send_http_json_ex(fd, 200, "OK", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
         buf_free(&out);
     } else {
         Buf out = {0};
@@ -2543,7 +2649,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
                  "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
                  n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks);
         buf_adds(&out, utail);
-        send_http_json(fd, 200, "OK", origin, out.data, out.len);
+        if (send_http_json_ex(fd, 200, "OK", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
         buf_free(&out);
     }
 
@@ -2561,6 +2667,7 @@ static void handle_inference(Server *sv, int fd, int is_responses, const char *o
     ink_mutex_unlock(&sv->state_mu);
     free(js_sc);
     req_free(&r);
+    return (client_gone || g_stop) ? 0 : keep_alive;
 }
 
 static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t cap) {
@@ -2573,14 +2680,16 @@ static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t
 }
 
 static int read_http_request(int fd, char *method, size_t mcap, char *path, size_t pcap,
-                             char *host, size_t hcap, char *origin, size_t ocap, Buf *body) {
+                             char *host, size_t hcap, char *origin, size_t ocap, Buf *body, int *want_keepalive) {
     Buf raw = {0};
     char tmp[8192];
     size_t hdr_end = 0;
     size_t content_len = 0;
     int have_hdr = 0;
+    int ka = 1;
     if (host && hcap) host[0] = '\0';
     if (origin && ocap) origin[0] = '\0';
+    if (want_keepalive) *want_keepalive = 0;
 
     while (raw.len < 4 * 1024 * 1024) {
         ssize_t n = sock_recv(fd, tmp, sizeof tmp);
@@ -2592,7 +2701,13 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
             if (p) {
                 have_hdr = 1;
                 hdr_end = (size_t)(p - raw.data) + 4;
-                /* Parse Content-Length, Expect, Host, and Origin case-insensitively */
+                /* HTTP/1.0 defaults to close unless Connection: keep-alive; HTTP/1.1 defaults to keep-alive unless close. */
+                const char *eol0 = strstr(raw.data, "\r\n");
+                if (eol0 && eol0 <= p) {
+                    const char *hv = strstr(raw.data, "HTTP/1.0");
+                    if (hv && hv < eol0) ka = 0;
+                }
+                /* Parse Content-Length, Expect, Host, Origin, and Connection case-insensitively */
                 int expect_100 = 0;
                 const char *line = raw.data;
                 while (line < p) {
@@ -2604,6 +2719,11 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
                         if (host && hcap) copy_trimmed_hdr(line + 5, eol, host, hcap);
                     } else if ((size_t)(eol - line) >= 7 && strncasecmp(line, "Origin:", 7) == 0) {
                         if (origin && ocap) copy_trimmed_hdr(line + 7, eol, origin, ocap);
+                    } else if ((size_t)(eol - line) >= 11 && strncasecmp(line, "Connection:", 11) == 0) {
+                        char cv[64];
+                        copy_trimmed_hdr(line + 11, eol, cv, sizeof cv);
+                        if (strncasecmp(cv, "close", 5) == 0) ka = 0;
+                        else if (strncasecmp(cv, "keep-alive", 10) == 0) ka = 1;
                     } else if ((size_t)(eol - line) >= 7 && strncasecmp(line, "Expect:", 7) == 0) {
                         const char *v = line + 7;
                         while (v < eol && (*v == ' ' || *v == '\t')) v++;
@@ -2638,8 +2758,9 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
     if (q) *q = '\0';
 
     size_t blen = raw.len > hdr_end ? raw.len - hdr_end : 0;
-    if (content_len > 0 && blen > content_len) blen = content_len;
+    if (blen > content_len) { ka = 0; blen = content_len; }
     if (blen > 0) buf_append(body, raw.data + hdr_end, blen);
+    if (want_keepalive) *want_keepalive = ka;
     buf_free(&raw);
     return 0;
 }
@@ -2655,16 +2776,27 @@ static void conn_thread(void *arg) {
     int cfd = ca->cfd;
     free(ca);
 
-    char method[16] = {0}, path[256] = {0}, host[256] = {0}, origin[256] = {0};
-    Buf body = {0};
-    if (read_http_request(cfd, method, sizeof method, path, sizeof path,
-                          host, sizeof host, origin, sizeof origin, &body) == 0) {
+    for (int req_i = 0; req_i < 64 && !g_stop; req_i++) {
+        if (req_i > 0) {
+            if (sock_poll_read(cfd, 15000) <= 0) break;
+        }
+        char method[16] = {0}, path[256] = {0}, host[256] = {0}, origin[256] = {0};
+        Buf body = {0};
+        int ka = 0;
+        if (read_http_request(cfd, method, sizeof method, path, sizeof path,
+                              host, sizeof host, origin, sizeof origin, &body, &ka) != 0) {
+            buf_free(&body);
+            break;
+        }
+        int keep = ka;
         if (!http_loopback_host(host) || !http_origin_ok(origin)) {
             const char *fb = "{\"error\":{\"message\":\"forbidden host or origin\",\"type\":\"permission_error\"}}";
             send_http_json(cfd, 403, "Forbidden", NULL, fb, strlen(fb));
+            keep = 0;
         } else if (!strcmp(method, "OPTIONS")) {
             char cors[768];
             int n;
+            const char *ch = ka ? "Connection: keep-alive\r\n" : "Connection: close\r\n";
             if (origin[0]) {
                 n = snprintf(cors, sizeof cors,
                              "HTTP/1.1 204 No Content\r\n"
@@ -2672,16 +2804,17 @@ static void conn_thread(void *arg) {
                              "Vary: Origin\r\n"
                              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
                              "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-                             "Connection: close\r\n\r\n",
-                             origin);
+                             "%s\r\n",
+                             origin, ch);
             } else {
                 n = snprintf(cors, sizeof cors,
                              "HTTP/1.1 204 No Content\r\n"
                              "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
                              "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-                             "Connection: close\r\n\r\n");
+                             "%s\r\n",
+                             ch);
             }
-            if (n > 0 && (size_t)n < sizeof cors) send_all(cfd, cors, (size_t)n);
+            if (n <= 0 || (size_t)n >= sizeof cors || send_all(cfd, cors, (size_t)n) != 0) keep = 0;
         } else if (!strcmp(method, "GET") && !strcmp(path, "/health")) {
             ink_mutex_lock(&sv->state_mu);
             int busy = sv->in_flight > 0;
@@ -2690,23 +2823,24 @@ static void conn_thread(void *arg) {
             snprintf(ok, sizeof ok,
                      "{\"status\":\"ok\",\"engine\":\"%s\",\"ctx\":%d,\"busy\":%s}",
                      sv->engine, sv->max_ctx, busy ? "true" : "false");
-            send_http_json(cfd, 200, "OK", origin, ok, strlen(ok));
+            if (send_http_json_ex(cfd, 200, "OK", origin, ok, strlen(ok), ka) != 0) keep = 0;
         } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
             char ms[224];
             snprintf(ms, sizeof ms,
                      "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"%s\"}]}",
                      sv->engine);
-            send_http_json(cfd, 200, "OK", origin, ms, strlen(ms));
+            if (send_http_json_ex(cfd, 200, "OK", origin, ms, strlen(ms), ka) != 0) keep = 0;
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
-            handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len);
+            keep = handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len, ka);
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
-            handle_inference(sv, cfd, 1, origin, body.data ? body.data : "", body.len);
+            keep = handle_inference(sv, cfd, 1, origin, body.data ? body.data : "", body.len, ka);
         } else {
             const char *nf = "{\"error\":{\"message\":\"not found\"}}";
-            send_http_json(cfd, 404, "Not Found", origin, nf, strlen(nf));
+            if (send_http_json_ex(cfd, 404, "Not Found", origin, nf, strlen(nf), ka) != 0) keep = 0;
         }
+        buf_free(&body);
+        if (!keep) break;
     }
-    buf_free(&body);
     sock_close(cfd);
 }
 

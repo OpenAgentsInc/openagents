@@ -59,6 +59,8 @@ PmStatus pm_compile(const char *source, size_t length, const char *name, PmModul
 /* Compile generated Metal with fast math enabled (FMA contraction, fast transcendentals). */
 PmStatus pm_compile_fast(const char *source, size_t length, const char *name, PmModule *module, double *seconds);
 PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel);
+/* Build `count` compute pipelines in parallel, backed by the module's disk binary archive cache. */
+PmStatus pm_kernels_batch(PmModule module, const char *const *names, int count, PmKernel *out_kernels);
 /* Release only after every batch using these objects has completed. */
 PmStatus pm_kernel_free(PmKernel kernel);
 PmStatus pm_unload(PmModule module);
@@ -99,6 +101,7 @@ PmStatus pm_wait(PmBatch batch, double *gpu_seconds);
 
 /* Metal 4 double-buffered async submission (overlap CPU encoding of step t+1 with GPU execution of step t). */
 int pm_is_m4(void);
+void pm_commit_residency(void);
 PmStatus pm_begin_concurrent_slot(PmBatch *batch, int slot);
 void pm_patch_first_arg_int(PmBatch batch, int64_t value);
 PmStatus pm_submit_async(PmBatch batch, uint64_t *ticket, int *slot_out);

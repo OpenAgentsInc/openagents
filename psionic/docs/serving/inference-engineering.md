@@ -17,21 +17,21 @@ process and device effects only.
 
 | Book section | Practice | Psionic chapter |
 | --- | --- | --- |
-| 1.4 Latency and throughput | Time to first token, inter-token latency, per-user versus total tokens per second, P50–P99 percentiles, and end-to-end versus inference-only time | 170 |
+| 1.4 Latency and throughput | Time to first token, inter-token latency, per-user versus total tokens per second, P50–P99 percentiles, and end-to-end versus inference-only time | 172 |
 | 1.3.3 Distillation | A smaller model trained on a larger one's outputs for cost | 141 (Mammoth into Elephant) |
 | 2.4 Bottlenecks | Ops:byte ratio and arithmetic intensity: prefill is compute-bound, decode is memory-bound | 33 (measured roofline on our host) |
-| 2.5, 5.3.4 Attention and long context | Tiled attention that avoids materializing scores; paged KV storage; chunked prefill | 41, 173, 174 |
-| 4.5 Benchmarking | Realistic input/output lengths, traffic patterns, request contents and parameters; shadow traffic; a baseline; one change at a time; profiling explains a benchmark | 170 |
+| 2.5, 5.3.4 Attention and long context | Tiled attention that avoids materializing scores; paged KV storage; chunked prefill | 41, 175, 176 |
+| 4.5 Benchmarking | Realistic input/output lengths, traffic patterns, request contents and parameters; shadow traffic; a baseline; one change at a time; profiling explains a benchmark | 172 |
 | 5.1.3 Quantization quality | Perplexity, standard benchmarks and product evaluations against the original weights, differing by no more than noise | 50 |
 | 5.2 Speculative decoding | Draft-target, multi-head and n-gram drafts; gains depend on draft cost, length and acceptance, and shrink at large batch sizes | 75 |
-| 5.3 Caching | Prefix reuse across requests, cache tiers from device to networked storage, cache-aware routing | 36, 174, 175 |
-| 5.4 Parallelism | Tensor parallelism for latency, expert parallelism for MoE throughput | 181 |
-| 5.5 Disaggregation | Separate prefill and decode workers with state transfer, conditional local prefill, xPyD ratios; worth it only at high volume, large models and long inputs | 180 |
-| 6.3–6.4 Speech | Chunked transcription latency, long-file parallelism, streaming speech synthesis | 154, 155, 182 |
-| 7.2 Autoscaling | Traffic and utilization signals; minimum/maximum replicas, window, scale-down delay, concurrency target; continuous batching; cold-start components; routers versus load balancers; queues; scale to zero; scaling each stage of a compound pipeline separately | 173, 175, 176, 182 |
-| 7.3 Capacity and reliability | Control and workload planes, geo-aware balancing, hardware failure as the normal case, active-active and active-passive failover, data residency, not retaining user data | 179 |
-| 7.4 Testing and deployment | Load and shadow testing; canary rollouts rather than blue-green at GPU scale; cost as a total rather than a reverse-engineered token price; observability metrics and audit logs | 177, 178 |
-| 7.5 Client code | Session reuse, asynchronous jobs with later delivery, bidirectional streaming for voice | 172 |
+| 5.3 Caching | Prefix reuse across requests, cache tiers from device to networked storage, cache-aware routing | 36, 176, 177 |
+| 5.4 Parallelism | Tensor parallelism for latency, expert parallelism for MoE throughput | 183 |
+| 5.5 Disaggregation | Separate prefill and decode workers with state transfer, conditional local prefill, xPyD ratios; worth it only at high volume, large models and long inputs | 182 |
+| 6.3–6.4 Speech | Chunked transcription latency, long-file parallelism, streaming speech synthesis | 154, 155, 184 |
+| 7.2 Autoscaling | Traffic and utilization signals; minimum/maximum replicas, window, scale-down delay, concurrency target; continuous batching; cold-start components; routers versus load balancers; queues; scale to zero; scaling each stage of a compound pipeline separately | 175, 177, 178, 184 |
+| 7.3 Capacity and reliability | Control and workload planes, geo-aware balancing, hardware failure as the normal case, active-active and active-passive failover, data residency, not retaining user data | 181 |
+| 7.4 Testing and deployment | Load and shadow testing; canary rollouts rather than blue-green at GPU scale; cost as a total rather than a reverse-engineered token price; observability metrics and audit logs | 179, 180 |
+| 7.5 Client code | Session reuse, asynchronous jobs with later delivery, bidirectional streaming for voice | 174 |
 
 ## Where Psionic goes further or differs
 
