@@ -259,3 +259,25 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert cp_sb_test_frame(s, f[..], 0.06f32);
   #assert s[0].sb[0].vis_n == 5 && surface_find(s[0].surface[..], "coder.sb.load_more") >= 0;
 }
+
+#test "sidebar polish: Cmd+Z triggers active undo toast when composer is empty, and multi-select stays distinct from current (#14029)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_chats(s, "c1\tActive\nc2\tOther\n");
+  coder_page_current(s, "c1");
+  s[0].sb[0].sel[1] = true; s[0].sb[0].sel_count = 1;
+  f: [1] UiFrame;
+  #assert cp_sb_test_frame(s, f[..], 0.0f32);
+  // Multi-selected c2 does NOT carry EL_S_CURRENT (distinct fill from active c1).
+  r1 := surface_find(s[0].surface[..], "chat.c1");
+  r2 := surface_find(s[0].surface[..], "chat.c2");
+  #assert r1 >= 0 && r2 >= 0;
+  #assert (surface_rows(s[0].surface[..]).rows[r1].state & EL_S_CURRENT) != 0;
+  #assert (surface_rows(s[0].surface[..]).rows[r2].state & EL_S_CURRENT) == 0;
+
+  // Cmd+Z dispatches CP_SB_OP_UNDO when undo toast is active and composer is empty.
+  coder_page_sb_undo_show(s, "Archived 1 chat", CP_SB_UNDO_ARCHIVE, 6.0f32);
+  #assert s[0].sb[0].undo[0].active;
+  #assert coder_page_key(s, 'z', MOD_CMD);
+  #assert !s[0].sb[0].undo[0].active && s[0].sb[0].op == CP_SB_OP_UNDO && s[0].ask == CP_ASK_SIDEBAR;
+}

@@ -32,7 +32,7 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
   }
   if s[0].sb[0].vis_n < CP_CHATS { s[0].sb[0].vis_order[s[0].sb[0].vis_n] = q; s[0].sb[0].vis_n += 1; }
   return AppSideRow.{id = id, title = t_str,
-                     state = (ifx is || sel then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0),
+                     state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0),
                      unread = s[0].chats[q].unread && !is,
                      status = st_str,
                      attention = sel,
@@ -41,7 +41,8 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      repo = repo_str,
                      branch = br_str,
                      harness_icon = h_icon,
-                     status_kind = skind};
+                     status_kind = skind,
+                     selected = sel};
 }
 
 // One physical device pixel in page units (1pt fallback when s[0].d is unset in headless checks).

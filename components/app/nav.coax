@@ -163,6 +163,7 @@ AppSideRow :: struct {
   branch: string;             // Line 2 git branch name (appended after repo)
   harness_icon: int = -1;     // Line 2 trailing harness/provider icon
   status_kind: int;           // APP_SIDE_STATUS_* subtle semantic cue on 2-line card (#14025)
+  selected: bool;             // multi-selected row (distinct fill from EL_S_CURRENT; #14029)
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
@@ -193,9 +194,17 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   pill_y := y + 2.0f32;
   pill_h := h - 4.0f32;
   if pill_w > 0 {
-    if current { sheet_fill(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, s.raised); }
-    else if hv > 0 { sheet_fill(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, opacity(s.raised, 0.72f32 * hv)); }
+    if r.selected {
+      _ := sheet_box(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, 1.0f32, opacity(s.accent, 0.14f32), opacity(s.accent, 0.45f32));
+    } else if current {
+      sheet_fill(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, s.raised);
+    } else if hv > 0 {
+      sheet_fill(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, opacity(s.raised, 0.72f32 * hv));
+    }
     if p > 0 { sheet_fill(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, opacity(s.hover, p)); }
+    if (r.state & EL_S_FOCUSED) != 0 {
+      _ := sheet_box(sh, pill_x, pill_y, pill_w, pill_h, a.row_radius, 1.5f32, rgba(0, 0, 0, 0.0f32), opacity(s.accent, 0.85f32));
+    }
   }
   row := uiframe_semantic(f, r.id, EL_ROW, title, x, y, w, h, r.state, ifx off then 0 else act);
   if r.status.count > 0 { elt_value(f[0].rows, row, r.status); }
@@ -241,7 +250,8 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
     }
   }
   title_room := r1_right - ix0;
-  t_ink := ifx off then s.faint else ifx current || mark_unread || busy then s.ink else rgba_mix(opacity(s.ink, 0.88f32), s.ink, hv);
+  quiet := !current && !r.selected && !mark_unread && !busy && r.status_kind == APP_SIDE_STATUS_NONE;
+  t_ink := ifx off then s.faint else ifx !quiet then s.ink else rgba_mix(opacity(s.ink, 0.72f32), s.ink, hv);
   if title_room > 0 {
     _ := sheet_text(sh, m, -1, ix0, y1, tf.line, tf.face, t_ink, app_fit(f, tf.face, title, title_room));
   }

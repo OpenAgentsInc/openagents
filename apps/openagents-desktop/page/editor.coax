@@ -245,6 +245,9 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     cp_effort_cycle(s);
     return true;
   }
+  if !cp_overlay_open(s) && !s[0].set_open && (key == 'z' || key == 'Z') && mods == MOD_CMD && s[0].sb[0].undo[0].active && (which < 0 || (which == CP_ED_COMPOSER && eb_text(s[0].draft[..]).count == 0)) {
+    return cp_sb_press(s, CP_SB_UNDO_ACT, "");
+  }
   if !cp_overlay_open(s) && !s[0].set_open && key == 97 && mods == MOD_CMD && (which < 0 || (which == CP_ED_COMPOSER && eb_text(s[0].draft[..]).count == 0)) {
     if cp_sel_select_all(s) { return true; }
   }
