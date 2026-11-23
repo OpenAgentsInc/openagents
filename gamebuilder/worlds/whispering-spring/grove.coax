@@ -23,6 +23,23 @@ WS_LIP_X :: 0.1;    WS_LIP_Z :: 0.0;    WS_LIP_YAW :: 0.0;   // the kit's spillw
 // the creek stones, near the camera at the front left, clear of the quail's strip and its sight lines
 WS_PILE_X :: -2.6;  WS_PILE_Z :: 4.5;
 WS_CAIRN_X :: -3.75; WS_CAIRN_Z :: 3.9; WS_CAIRN_TOP :: 0.19; WS_CAIRN_HW :: 0.52;
+// More cairns along the grove, each a slab with its own pile of five creek stones beside it:
+// the spring's (the first), the woodland's, the meadow's, the golden field's, and the mandala's edge.
+WS_CAIRNS :: 5;
+WS_CAIRN_AT :: [WS_CAIRNS * 2] f32.[-3.75, 3.9,  -15.5, 3.6,  14.5, 3.4,  30.5, 3.8,  -24.0, 4.6];
+WS_PILE_DX :: 1.15; WS_PILE_DZ :: 0.6;   // each pile sits this far from its slab (the first: WS_PILE_X, WS_PILE_Z)
+ws_cairn_top_at :: (k: int) -> f32 {
+  if k <= 0 { return WS_CAIRN_TOP; }
+  return ws_ground_y(WS_CAIRN_AT[k * 2], WS_CAIRN_AT[k * 2 + 1]) + 0.11;
+}
+ws_near_cairn :: (x: f32, z: f32, r: f32) -> bool {
+  for k: 0..<WS_CAIRNS {
+    cx: f32 = WS_CAIRN_AT[k * 2]; cz: f32 = WS_CAIRN_AT[k * 2 + 1];
+    dx := x - cx; dz := z - cz; px := x - cx - f32(WS_PILE_DX); pz := z - cz - f32(WS_PILE_DZ);
+    if dx * dx + dz * dz < r * r || px * px + pz * pz < r * r { return true; }
+  }
+  return false;
+}
 // The quail's range: the near bank left of the stream, with nothing in it or between it and the camera.
 WS_RANGE :: [4] f32.[-3.5, 0.4, -1.95, 2.7];   // x0, z0, x1, z1
 // Where the quail goes to give each clue (inside its range): stones, ribbon, pool.
@@ -40,28 +57,30 @@ WS_AIM :: [3] f32.[0.0, 1.35, -0.8];   // a low camera, looking a little up
 WS_SAFE :: [6] f32.[-4.95, 0.0, -3.7, 3.4, 3.1, 3.05];
 
 // ---- the palette (display colours; the shaders decode them)
-WS_OLIVE :: [3] f32.[0.45, 0.47, 0.25];
-WS_OLIVE_DARK :: [3] f32.[0.32, 0.36, 0.19];
-WS_DRY :: [3] f32.[0.58, 0.52, 0.32];
-WS_WALNUT :: [3] f32.[0.4, 0.27, 0.16];
-WS_UMBER :: [3] f32.[0.3, 0.19, 0.11];
-WS_UMBER_LIGHT :: [3] f32.[0.42, 0.28, 0.16];
-WS_LIMESTONE :: [3] f32.[0.8, 0.74, 0.62];
+WS_OLIVE :: [3] f32.[0.34, 0.38, 0.13];
+WS_OLIVE_DARK :: [3] f32.[0.2, 0.25, 0.08];
+WS_DRY :: [3] f32.[0.52, 0.38, 0.18];
+WS_WALNUT :: [3] f32.[0.4, 0.22, 0.11];
+WS_UMBER :: [3] f32.[0.36, 0.2, 0.09];
+WS_UMBER_LIGHT :: [3] f32.[0.5, 0.3, 0.14];
+WS_LIMESTONE :: [3] f32.[0.82, 0.72, 0.58];
 WS_LIME_SHADE :: [3] f32.[0.66, 0.6, 0.5];
-WS_BOULDER :: [3] f32.[0.62, 0.57, 0.5];
+WS_BOULDER :: [3] f32.[0.74, 0.65, 0.54];
 WS_WATER :: [3] f32.[0.22, 0.42, 0.48];
 WS_BROOK :: [3] f32.[0.26, 0.46, 0.52];   // the kit stream's teal, so it reads as water in the warm light
 WS_SPILL :: [3] f32.[0.7, 0.8, 0.74];
-WS_BARK :: [3] f32.[0.34, 0.22, 0.14];
-WS_BARK_DARK :: [3] f32.[0.25, 0.16, 0.1];
+WS_BARK :: [3] f32.[0.36, 0.22, 0.12];
+WS_BARK_DARK :: [3] f32.[0.22, 0.13, 0.07];
 WS_ROOT :: [3] f32.[0.4, 0.28, 0.18];
-WS_LEAF :: [3] f32.[0.36, 0.42, 0.2];
-WS_LEAF_DARK :: [3] f32.[0.24, 0.3, 0.14];
-WS_LEAF_SUN :: [3] f32.[0.52, 0.55, 0.26];
-WS_AGAVE :: [3] f32.[0.42, 0.5, 0.26];
+WS_LEAF :: [3] f32.[0.22, 0.31, 0.09];
+WS_LEAF_DARK :: [3] f32.[0.1, 0.16, 0.05];
+WS_LEAF_SUN :: [3] f32.[0.44, 0.5, 0.16];
+WS_AGAVE :: [3] f32.[0.3, 0.46, 0.14];
+WS_BANK_SEAM :: [3] f32.[0.24, 0.12, 0.05];
+WS_BANK_BED :: [3] f32.[0.58, 0.36, 0.17];
 
 // ---- trees: x, z, base y, height, crown radius, seed, lean x, lean z (twisted live oaks and cedars)
-WS_TREES :: 14;
+WS_TREES :: 19;
 WS_TREE_FLOATS :: 8;
 WS_TREE_AT :: [WS_TREES * WS_TREE_FLOATS] f32.[
   -4.5, -2.7, 0.0, 5.8, 1.6, 3,   0.3, 0.2,    // the ribbon cedar, back left (limbs 0 and 4)
@@ -77,11 +96,17 @@ WS_TREE_AT :: [WS_TREES * WS_TREE_FLOATS] f32.[
   -7.2, -1.2, 0.0, 5.4, 1.8, 37,  0.5, 0.1,    // more trees at the edges
    7.0, -1.0, 0.0, 5.2, 1.8, 41, -0.5, 0.1,
   -8.6,  6.2, 0.0, 6.8, 2.2, 43,  0.6, -0.4,   // foreground framing, left and right
-   8.4,  6.0, 0.0, 6.6, 2.2, 47, -0.6, -0.4];
+   8.4,  6.0, 0.0, 6.6, 2.2, 47, -0.6, -0.4,
+  -12.0, 0.6, 0.0, 6.2, 1.8, 51,  0.2, 0.1,    // prayer trees along the grove: the woodland's,
+   11.5, 0.2, 0.0, 6.0, 1.8, 53, -0.2, 0.1,    // the meadow's,
+   27.0, 0.4, 0.0, 6.0, 1.9, 57,  0.1, 0.1,    // the golden field's,
+  -37.0, 1.0, 0.0, 6.4, 1.9, 59,  0.2, 0.0,    // the one past the mandala,
+   40.0, 0.6, 0.0, 6.2, 1.8, 61, -0.1, 0.1];   // and the open field's
 WS_TREE_CLUMPS :: 7;
 
 // ---- the prayer limbs: three points each (from the trunk, its middle, its tip), the tree they grow from
-WS_LIMBS :: 6;
+WS_LIMBS :: 16;
+WS_GROVE_LIMBS :: 6;         // the first six are the spring's, all in its composed shot
 WS_LIMB_SLOTS :: 6;          // tie points along each limb
 WS_TIE_SLOTS :: WS_LIMBS * WS_LIMB_SLOTS;
 WS_LIMB_AT :: [WS_LIMBS * 9] f32.[
@@ -90,8 +115,13 @@ WS_LIMB_AT :: [WS_LIMBS * 9] f32.[
   -4.2,  3.2,   0.85,   -3.25, 3.42,  0.3,    -2.35, 3.35, -0.3,    // 2 the high limb
    4.3,  2.4,   0.15,    3.3,  2.65, -0.55,    2.35, 2.5,  -1.15,   // 3 the right limb
   -4.1,  2.95, -2.55,   -2.8,  3.3,  -2.4,    -1.6,  3.35, -2.5,    // 4 the far limb, before the bank
-   4.3,  3.1,   0.2,     3.4,  3.35, -0.45,    2.5,  3.4,  -0.95];  // 5 the right high limb
-WS_LIMB_TRUNK :: [WS_LIMBS] int.[0, 1, 1, 2, 0, 2];
+   4.3,  3.1,   0.2,     3.4,  3.35, -0.45,    2.5,  3.4,  -0.95,   // 5 the right high limb
+  -11.75, 2.5, 0.75,   -10.7, 2.8, 1.2,   -9.6, 2.7, 1.6,      -12.25, 3.0, 0.7,   -13.2, 3.3, 1.15,   -14.2, 3.25, 1.5,
+   11.75, 2.5, 0.35,    12.8, 2.8, 0.8,    13.9, 2.7, 1.2,      11.25, 3.0, 0.3,    10.3, 3.3, 0.75,    9.3, 3.25, 1.1,
+   27.25, 2.5, 0.55,    28.3, 2.8, 1.0,    29.4, 2.7, 1.4,      26.75, 3.0, 0.5,    25.8, 3.3, 0.95,    24.8, 3.25, 1.3,
+  -36.75, 2.5, 1.15,   -35.7, 2.8, 1.6,   -34.6, 2.7, 2.0,     -37.25, 3.0, 1.1,   -38.2, 3.3, 1.55,   -39.2, 3.25, 1.9,
+   40.25, 2.5, 0.75,    41.3, 2.8, 1.2,    42.4, 2.7, 1.6,      39.75, 3.0, 0.7,    38.8, 3.3, 1.15,    37.8, 3.25, 1.5];
+WS_LIMB_TRUNK :: [WS_LIMBS] int.[0, 1, 1, 2, 0, 2, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18];
 
 // ---- bare limbs reaching in from the edge trees, framing the top of the shot (three points each)
 WS_FRAME_LIMBS :: 6;
@@ -253,8 +283,48 @@ ws_basin_in :: (x: f32, z: f32) -> f32 {
 }
 WS_STREAM_HALF :: 1.6;   // the stream's half width
 
-ws_ground_y :: (x: f32, z: f32) -> f32 {
-  y := 0.08 + 0.04 * sin(x * 1.3 + 0.5) + 0.05 * cos(z * 1.1 - x * 0.4);
+// ---- the wide grove: the camera slides along x through five zones (metres of x)
+//   (round the loop) open field -68..-54 · old woods -54..-38 · mandala clearing -38..-23 · woodland -23..-8 ·
+//   the spring -8..8 · meadow 8..22 · golden field 22..44 · open field 44..68, which runs on into -68
+WS_WORLD_HALF :: 68.0;
+// The land is a loop 136 m round: x and x + WS_LOOP are the same place. Everything that shapes it
+// repeats a whole number of times round the loop, and the mesh near each end is copied past the
+// other (ws_band_copy), so the view slides on round it with no seam.
+WS_LOOP :: 136.0;
+WS_BAND :: 24.0;   // how far past each end the land is copied
+ws_wrapx :: (x: f32) -> f32 { h: f32 = WS_LOOP * 0.5; return x - f32(WS_LOOP) * floor((x + h) / f32(WS_LOOP)); }
+WS_ZONE_MANDALA :: 0; WS_ZONE_WOOD :: 1; WS_ZONE_GROVE :: 2; WS_ZONE_MEADOW :: 3; WS_ZONE_FIELD :: 4;
+WS_MANDALA :: [3] f32.[-30.0, 0.12, 2.4];   // the clearing's middle (its floor's height)
+WS_MANDALA_R :: 4.0;                        // the design's reach
+ws_zone :: (x_in: f32, z: f32) -> int {
+  x := ws_wrapx(x_in);
+  w := x + 1.2 * sin(z * 0.9 + x * 0.1386);   // the edges wander
+  if w < -54 { return WS_ZONE_MEADOW; }
+  if w < -38 { return WS_ZONE_WOOD; }
+  if w < -23 { return WS_ZONE_MANDALA; }
+  if w < -8 { return WS_ZONE_WOOD; }
+  if w < 8 { return WS_ZONE_GROVE; }
+  if w < 22 { return WS_ZONE_MEADOW; }
+  if w < 44 { return WS_ZONE_FIELD; }
+  return WS_ZONE_MEADOW;
+}
+ws_mandala_d :: (x: f32, z: f32) -> f32 { dx := x - f32(WS_MANDALA[0]); dz := z - f32(WS_MANDALA[2]); return sqrt(dx * dx + dz * dz); }
+// The cut bank's height: full behind the grove, sinking to a low rise past it.
+ws_bank_h :: (x_in: f32) -> f32 {
+  x := ws_wrapx(x_in);
+  ax := abs(x);
+  t := clamp((ax - 9.5) / 14, 0, 1); t = t * t * (3 - 2 * t);
+  return ws_bank_top(x) * (1 - t) + 0.4 * t;
+}
+
+ws_ground_y :: (x_in: f32, z: f32) -> f32 {
+  x := ws_wrapx(x_in);
+  y := 0.08 + 0.04 * sin(x * 1.2936 + 0.5) + 0.05 * cos(z * 1.1 - x * 0.4158);
+  // past the grove the bank's top is the land itself: a raised shelf behind its face
+  if abs(x) > 9.0 && z < ws_bank_z(x) - 0.25 { return ws_bank_h(x) - 0.02 + 0.04 * sin(x * 0.693 + z); }
+  // the mandala's clearing is level
+  md := ws_mandala_d(x, z);
+  if md < 5.2 { y = y + (f32(WS_MANDALA[1]) - y) * clamp((5.2 - md) / 0.8, 0, 1); }
   // a low rim round the pool and the stream
   e := ws_basin_in(x, z);
   b := ws_brook_dist(x, z) - f32(WS_STREAM_HALF);
@@ -266,20 +336,27 @@ ws_ground_y :: (x: f32, z: f32) -> f32 {
   return y;
 }
 
-ws_bank_z :: (x: f32) -> f32 { return -3.9 + 0.35 * sin(x * 0.7) + 0.15 * cos(x * 1.9 + 0.4); }
-ws_bank_top :: (x: f32) -> f32 { return 3.2 + 0.22 * sin(x * 2.3) + 0.12 * cos(x * 0.9); }
+// The land's height anywhere, the grove's bank-top land included (for things that stand on it).
+ws_land_y :: (x_in: f32, z: f32) -> f32 {
+  x := ws_wrapx(x_in);
+  if abs(x) < 9.5 && z < ws_bank_z(x) - 0.25 { return 2.75; }
+  return ws_ground_y(x, z);
+}
+ws_bank_z :: (x: f32) -> f32 { return -3.9 + 0.35 * sin(x * 0.693) + 0.15 * cos(x * 1.894 + 0.4); }
+ws_bank_top :: (x: f32) -> f32 { return 3.2 + 0.22 * sin(x * 2.31) + 0.12 * cos(x * 0.878); }
 WS_BANK_OVER :: 0.3;   // the cut bank's top leans out over its foot
 WS_BANK_BANDS :: 6;    // strata up its face
 
 ws_bank_point :: (i: int, k: int) -> WsV {
-  x: f32 = -11 + 0.55 * cast(f32) i;
+  x: f32 = -f32(WS_WORLD_HALF) + f32(WS_LOOP) / 248.0 * cast(f32) i;
+  ij := i % 248;
   f: f32 = cast(f32) k / f32(WS_BANK_BANDS);
   over: f32 = WS_BANK_OVER;
   edge := k == 0 || k == WS_BANK_BANDS;
-  j := ifx edge then 0.0f32 else (ws_rand(41, i * 7 + k) - 0.5) * 0.1;
+  j := ifx edge then 0.0f32 else (ws_rand(41, ij * 7 + k) - 0.5) * 0.1;
   z := ws_bank_z(x) + over * f * f + j;
   foot := ws_ground_y(x, ws_bank_z(x)) - 0.05;
-  y := foot + (ws_bank_top(x) - foot) * f + (ifx edge then 0.0f32 else (ws_rand(43, i * 7 + k) - 0.5) * 0.12);
+  y := foot + (ws_bank_h(x) - foot) * f + (ifx edge then 0.0f32 else (ws_rand(43, ij * 7 + k) - 0.5) * 0.12);
   return ws_v(x, y, z);
 }
 
@@ -405,9 +482,9 @@ ws_m_corner :: (m: WsModels, at: int, c: int, q: [] const f32) -> WsV {
 }
 
 // One placed piece, each triangle flat-shaded in its own colour; the GLB winds them outward.
-ws_pen_place :: (p: [] ArchPen, m: WsModels, k: int) {
+ws_pen_place :: (p: [] ArchPen, m: WsModels, k: int, wet: bool) {
   q: [] const f32 = WS_PLACE_AT[k * WS_PLACE_FLOATS..<(k + 1) * WS_PLACE_FLOATS];
-  ws_pen_piece(p, m, q, false);
+  ws_pen_piece(p, m, q, false, wet);
 }
 
 // The kit cedar's crowns alone, set on a hand-built trunk's top (the prayer limbs grow from that trunk).
@@ -416,10 +493,29 @@ ws_pen_crowns :: (p: [] ArchPen, m: WsModels, t: int) {
   top := ws_trunk_at(t, 1);
   k: f32 = 1.25 + 0.25 * ws_rand(cast(int) q[5], 7);
   place := [8] f32.[1, top.x, top.y - 2.25 * k, top.z, k, k, k, ws_rand(cast(int) q[5], 11) * 6];
-  ws_pen_piece(p, m, place[..], true);
+  ws_pen_piece(p, m, place[..], true, false);
 }
 
-ws_pen_piece :: (p: [] ArchPen, m: WsModels, q: [] const f32, crowns_only: bool) {
+// The water: the Metaverse Engine's water pass draws it (stylized_water_*), so its triangles are the
+// mesh's last and carry the pass's own coordinates. Open water (ARCH_M_RIVER): u metres downstream
+// (toward the camera, +z), v metres across. A falling sheet (ARCH_M_FALLS): u 0..1 across the
+// spill, v metres down from the pool's surface.
+ws_pen_wet :: (p: [] ArchPen, a: WsV, b: WsV, c: WsV, tint: [] const f32) {
+  n := ws_face(a, b, c);
+  if abs(n.y) > 0.6 {
+    arch_material(p, ARCH_M_RIVER, tint[0], tint[1], tint[2]);
+    arch_tri(p, arch_at(a.x, a.y, a.z, 0, 1, 0, a.z, a.x), arch_at(b.x, b.y, b.z, 0, 1, 0, b.z, b.x), arch_at(c.x, c.y, c.z, 0, 1, 0, c.z, c.x));
+    return;
+  }
+  if n.z < 0 { n = ws_scale(n, -1); }
+  arch_material(p, ARCH_M_FALLS, WS_SPILL[0], WS_SPILL[1], WS_SPILL[2]);
+  top: f32 = WS_WATER_Y;
+  arch_tri(p, arch_at(a.x, a.y, a.z, n.x, n.y, n.z, clamp((a.x + 1.5) / 3.1, 0, 1), top - a.y),
+              arch_at(b.x, b.y, b.z, n.x, n.y, n.z, clamp((b.x + 1.5) / 3.1, 0, 1), top - b.y),
+              arch_at(c.x, c.y, c.z, n.x, n.y, n.z, clamp((c.x + 1.5) / 3.1, 0, 1), top - c.y));
+}
+
+ws_pen_piece :: (p: [] ArchPen, m: WsModels, q: [] const f32, crowns_only: bool, wet: bool) {
   mod := cast(int) q[0];
   if mod >= m.count { return; }
   for t: 0..<m.tris[mod] {
@@ -427,11 +523,22 @@ ws_pen_piece :: (p: [] ArchPen, m: WsModels, q: [] const f32, crowns_only: bool)
     r: f32 = cast(f32) m.data[at + 18] / 255; gg: f32 = cast(f32) m.data[at + 19] / 255; bl: f32 = cast(f32) m.data[at + 20] / 255;
     if crowns_only && !(gg > r) { continue; }
     a := ws_m_corner(m, at, 0, q); b := ws_m_corner(m, at, 1, q); c := ws_m_corner(m, at, 2, q);
+    water := mod == WS_MODEL_POOL && bl > r * 1.15;
+    if water != wet { continue; }
+    if water { ws_pen_wet(p, a, b, c, WS_WATER[..]); continue; }
     material := ARCH_M_SMOOTH;
-    if mod == WS_MODEL_BANK { material = ARCH_M_PLASTER; }
+    if mod == WS_MODEL_BANK {
+      material = ARCH_M_PLASTER;
+      cy3 := (a.y + b.y + c.y) / 3; cx3 := (a.x + b.x + c.x) / 3;
+      shade := clamp((r * 0.3 + gg * 0.59 + bl * 0.11) * 2.2, 0.6, 1.25);
+      bed := cy3 * 1.6 + 0.25 * sin(cx3 * 0.7) + 0.1 * sin(cx3 * 2.3);
+      fr := bed - floor(bed);
+      band := clamp((fr - 0.12) * 4, 0, 1) * (0.75 + 0.25 * ws_rand(cast(int) floor(bed) + 400, 1));
+      col := ws_mix3(WS_BANK_SEAM[..], WS_BANK_BED[..], band);
+      r = col[0] * shade; gg = col[1] * shade; bl = col[2] * shade;
+    }
     else if mod == WS_MODEL_ROOTS { material = ARCH_M_BARK; }
     else if mod == WS_MODEL_CEDAR { material = ifx gg > r then ARCH_M_LEAF else ARCH_M_BARK; }
-    else if mod == WS_MODEL_POOL { material = ifx bl > r * 1.15 then ARCH_M_WATER else ARCH_M_SMOOTH; }
     arch_material(p, material, r, gg, bl);
     n := ws_face(a, b, c);
     arch_tri(p, arch_at(a.x, a.y, a.z, n.x, n.y, n.z, a.x, a.y + a.z), arch_at(b.x, b.y, b.z, n.x, n.y, n.z, b.x, b.y + b.z), arch_at(c.x, c.y, c.z, n.x, n.y, n.z, c.x, c.y + c.z));
@@ -441,7 +548,7 @@ ws_place_module :: (k: int) -> int { return cast(int) WS_PLACE_AT[k * WS_PLACE_F
 
 // ---- the grove's mesh, once
 WS_FAR :: 220.0;
-WS_MESH_VERTICES :: 80000;
+WS_MESH_VERTICES :: 470000;
 
 ws_pen_tree :: (p: [] ArchPen, t: int, crowns: bool) {
   q: [] const f32 = WS_TREE_AT[t * WS_TREE_FLOATS..<(t + 1) * WS_TREE_FLOATS];
@@ -469,11 +576,57 @@ ws_pen_tree :: (p: [] ArchPen, t: int, crowns: bool) {
     arch_limb(p, top.x, top.y - 0.2, top.z, (top.x + c.x) * 0.5, c.y - 0.1, (top.z + c.z) * 0.5, 0.1, 0.06, 5);
   }
   for m: 0..<(ifx crowns then WS_TREE_CLUMPS else 0) {
-    n := ws_rand(seed, m + 40);
-    sunny := ws_tree_clump(t, m).y > top.y + q[4] * 0.45;
-    if sunny { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF[..], WS_LEAF_SUN[..], n)); }
-    else { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF[..], n)); }
-    ws_pen_blob(p, ws_tree_clump(t, m));
+    c := ws_tree_clump(t, m);
+    ws_pen_leaves(p, c.x, c.y, c.z, c.rx, c.ry, c.rz, top.y - q[4] * 0.2, q[4] * 2.0, seed * 37 + m, 5);
+  }
+}
+
+// A cluster of leaves: a dark core and `n` smaller clumps over it, each lighter the higher it sits
+// in its crown (`base` its bottom, `tall` its height) and on the side toward the low sun (-x, +z).
+ws_pen_leaves :: (p: [] ArchPen, x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, base: f32, tall: f32, seed: int, n: int) {
+  core: WsBlob; core.x = x; core.y = y - ry * 0.1; core.z = z; core.rx = rx * 0.82; core.ry = ry * 0.78; core.rz = rz * 0.82;
+  core.seg = 6; core.rings = 3; core.jag = 0.3; core.seed = seed;
+  ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF[..], 0.25 * ws_rand(seed, 1)));
+  ws_pen_blob(p, core);
+  for k: 0..<n {
+    a := f32(WS_TAU) * (cast(f32) k + ws_rand(seed, k + 3) * 0.6) / cast(f32) n;
+    up := ws_rand(seed, k + 11);
+    b: WsBlob;
+    b.x = x + cos(a) * rx * 0.62; b.z = z + sin(a) * rz * 0.62; b.y = y + (up - 0.25) * ry * 0.9;
+    b.rx = rx * (0.42 + 0.18 * ws_rand(seed, k + 17)); b.ry = b.rx * 0.72; b.rz = b.rx * 0.9;
+    b.seg = 5; b.rings = 3; b.jag = 0.38; b.seed = seed * 7 + k; b.yaw = a;
+    hh := clamp((b.y - base) / tall, 0, 1);
+    sun := clamp(0.5 - 0.5 * cos(a + 2.4), 0, 1);   // the side toward -x, +z
+    light := clamp(hh * 0.75 + sun * 0.45 + (ws_rand(seed, k + 23) - 0.5) * 0.3, 0, 1);
+    if light < 0.5 { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF[..], light * 2)); }
+    else { ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF[..], WS_LEAF_SUN[..], (light - 0.5) * 2)); }
+    ws_pen_blob(p, b);
+  }
+}
+
+// The forest past the bank: two rows of tall crowns on the land behind it, close enough together
+// that no sky shows over the grove but the odd gap, as in the painting. Haze turns the far row gold.
+ws_pen_canopy :: (p: [] ArchPen) {
+  for row: 0..<3 {
+    count := ifx row == 0 then 76 else (ifx row == 1 then 56 else 38);
+    span: f32 = WS_WORLD_HALF;
+    for i: 0..<count {
+      seed := 2000 + row * 100 + i;
+      x := -span + 2 * span * (cast(f32) i + 0.2 + 0.6 * ws_rand(seed, 1)) / cast(f32) count;
+      z: f32 = ifx row == 0 then -6.6 - 1.6 * ws_rand(seed, 2) else (ifx row == 1 then -10.0 - 2.0 * ws_rand(seed, 2) else -15.0 - 3.0 * ws_rand(seed, 2));
+      r: f32 = ifx row == 0 then 1.8 + 0.6 * ws_rand(seed, 3) else (ifx row == 1 then 2.2 + 0.8 * ws_rand(seed, 3) else 3.0 + 1.0 * ws_rand(seed, 3));
+      cy: f32 = ifx row == 0 then 4.3 + 1.0 * ws_rand(seed, 4) else (ifx row == 1 then 6.6 + 1.6 * ws_rand(seed, 4) else 8.5 + 2.0 * ws_rand(seed, 4));
+      if x > 21.0 || x < -54.0 { continue; }   // the fields: open sky and the hills
+      // a trunk up from the land to the crown, a little crooked
+      lean := (ws_rand(seed, 5) - 0.5) * 0.9;
+      ws_paint(p, ARCH_M_BARK, WS_BARK_DARK[..]);
+      land := ws_land_y(x, z);
+      if land < 2.0 { cy = cy - 2.3; }   // past the grove the land is low: so are the crowns
+      foot: f32 = ifx row == 0 || land < 2.0 then land - 0.05 else cy - r * 1.4;
+      arch_limb(p, x, foot, z, x + lean * 0.5, (foot + cy) * 0.5, z, 0.2 + 0.08 * cast(f32) row, 0.15, 5);
+      arch_limb(p, x + lean * 0.5, (foot + cy) * 0.5, z, x + lean, cy - r * 0.3, z, 0.15, 0.09, 5);
+      ws_pen_leaves(p, x + lean, cy, z, r, r * 0.62, r * 0.8, cy - r, r * 1.6, seed, ifx row == 0 then 7 else 6);
+    }
   }
 }
 
@@ -492,6 +645,185 @@ ws_pen_agave :: (p: [] ArchPen, x: f32, z: f32, size: f32, seed: int) {
   }
 }
 
+// The ground's colour in the zones past the grove.
+WS_LITTER :: [3] f32.[0.3, 0.19, 0.09];
+WS_MOSS :: [3] f32.[0.2, 0.27, 0.09];
+WS_MEADOW :: [3] f32.[0.27, 0.4, 0.11];
+WS_MEADOW_HI :: [3] f32.[0.38, 0.48, 0.15];
+WS_STRAW :: [3] f32.[0.64, 0.5, 0.22];
+WS_SAND :: [3] f32.[0.8, 0.7, 0.52];
+ws_patch :: (x: f32, z: f32) -> f32 { return 0.5 + 0.5 * sin(x * 0.3696 + 1.3 * sin(z * 0.5)) * cos(z * 0.61 - x * 0.231); }
+ws_zone_ground :: (x: f32, z: f32, zone: int, n: f32, broad: f32) -> [3] f32 {
+  pt := ws_patch(x, z);
+  if zone == WS_ZONE_WOOD { return ifx pt > 0.55 then ws_mix3(WS_LITTER[..], WS_WALNUT[..], n * 0.6) else ws_mix3(WS_MOSS[..], WS_LITTER[..], n * 0.5); }
+  if zone == WS_ZONE_MEADOW { return ws_mix3(WS_MEADOW[..], WS_MEADOW_HI[..], clamp(broad * 0.7 + n * 0.3, 0, 1)); }
+  if zone == WS_ZONE_FIELD { return ifx pt > 0.78 then ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n) else ws_mix3(WS_STRAW[..], WS_DRY[..], n * 0.6); }
+  // the mandala's clearing: pale sand, meadow round it
+  if ws_mandala_d(x, z) < f32(WS_MANDALA_R) + 0.6 { return ws_mix3(WS_SAND[..], WS_LIMESTONE[..], n * 0.4); }
+  return ws_mix3(WS_MEADOW[..], WS_STRAW[..], pt * 0.5);
+}
+
+// How much grass grows at a place (the engine's grass pass reads it from the ground table): none
+// in the water, on the soil round it, on the quail's strip or in the mandala's clearing.
+ws_grass_cover :: (x_in: f32, z: f32) -> f32 {
+  x := ws_wrapx(x_in);
+  if ws_basin_in(x, z) > -1.4 || ws_brook_dist(x, z) < f32(WS_STREAM_HALF) + 1.2 { return 0; }
+  if z < ws_bank_z(x) + 0.25 { return ifx abs(x) > 9.5 then 0.7f32 else 0.0f32; }
+  if ws_near_cairn(x, z, 1.3) { return 0; }
+  zone := ws_zone(x, z);
+  pt := ws_patch(x, z);
+  if zone == WS_ZONE_GROVE {
+    if x > -6.0 && x < 5.5 && z > -3.0 && z < 6.0 { return 0; }   // the soil round the water and the quail's strip
+    return 0.55;
+  }
+  if zone == WS_ZONE_WOOD { return ifx pt > 0.55 then 0.0f32 else 0.4f32; }
+  if zone == WS_ZONE_MEADOW { return 1.0; }
+  if zone == WS_ZONE_FIELD { return ifx pt > 0.78 then 0.0f32 else 1.5f32; }
+  return ifx ws_mandala_d(x, z) < f32(WS_MANDALA_R) + 0.8 then 0.0f32 else 0.8f32;
+}
+
+// A free-standing tree for the zones: a crooked trunk and a few clustered crowns.
+ws_pen_free_tree :: (p: [] ArchPen, x: f32, z: f32, h: f32, r: f32, seed: int) {
+  gy := ws_land_y(x, z);
+  lx := (ws_rand(seed, 1) - 0.5) * 0.8; lz := (ws_rand(seed, 2) - 0.5) * 0.5;
+  top := ws_v(x + lx, gy + h * 0.6, z + lz);
+  ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+  mid := ws_v(x + lx * 0.3 + (ws_rand(seed, 3) - 0.5) * 0.4, gy + h * 0.3, z + lz * 0.3);
+  rad: f32 = 0.16 + h * 0.03;
+  arch_limb(p, x, gy - 0.05, z, mid.x, mid.y, mid.z, rad, rad * 0.8, 6);
+  arch_limb(p, mid.x, mid.y, mid.z, top.x, top.y, top.z, rad * 0.8, rad * 0.55, 6);
+  clumps := 3 + cast(int) (ws_rand(seed, 4) * 2.5);
+  for m: 0..<clumps {
+    a := f32(WS_TAU) * cast(f32) m / cast(f32) clumps + ws_rand(seed, m + 5);
+    cx := top.x + cos(a) * r * 0.55; cz := top.z + sin(a) * r * 0.45; cy := top.y + r * (0.25 + 0.35 * ws_rand(seed, m + 9));
+    ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
+    arch_limb(p, top.x, top.y - 0.1, top.z, cx, cy - r * 0.2, cz, rad * 0.5, rad * 0.3, 5);
+    ws_pen_leaves(p, cx, cy, cz, r * 0.62, r * 0.42, r * 0.55, top.y - r * 0.2, r * 1.6, seed * 13 + m, 4);
+  }
+  ws_pen_leaves(p, top.x, top.y + r * 0.62, top.z, r * 0.6, r * 0.42, r * 0.52, top.y - r * 0.2, r * 1.6, seed * 13 + 9, 4);
+}
+
+// The zones' own scenery: a woodland thick with trees, a meadow with room to decorate, a golden
+// field, a ring of trees round the mandala's clearing, and clumps near the camera all along (they
+// slide past faster than the land behind, for depth as the view moves).
+// The hill range past the open field: three ridges, near to far, each a jagged line of low-poly
+// peaks, greener close and blue-violet far off (the haze does the rest).
+// The land near each end, copied past the other, so the loop has no seam: every triangle whose
+// middle lies within WS_BAND of an end is written again a loop over.
+ws_band_copy :: (p: [] ArchPen) {
+  n0 := p[0].n;
+  half: f32 = WS_WORLD_HALF; band: f32 = WS_BAND; loop: f32 = WS_LOOP;
+  for t: 0..<n0 / 3 {
+    o := t * 3 * ARCH_VERTEX_FLOATS;
+    cx := (p[0].out[o] + p[0].out[o + ARCH_VERTEX_FLOATS] + p[0].out[o + 2 * ARCH_VERTEX_FLOATS]) / 3;
+    shift: f32 = 0;
+    if cx > half - band && cx < half + 1 { shift = -loop; }
+    if cx < -half + band && cx > -half - 1 { shift = loop; }
+    if shift == 0 { continue; }
+    if (p[0].n + 3) * ARCH_VERTEX_FLOATS > p[0].out.count { p[0].full = true; return; }
+    d := p[0].n * ARCH_VERTEX_FLOATS;
+    for e: 0..<3 * ARCH_VERTEX_FLOATS { p[0].out[d + e] = p[0].out[o + e]; }
+    for v: 0..<3 { p[0].out[d + v * ARCH_VERTEX_FLOATS] += shift; }
+    p[0].n += 3;
+  }
+}
+
+ws_pen_hills :: (p: [] ArchPen) {
+  below := ws_v(0, -100, 0);
+  for ridge: 0..<3 {
+    z: f32 = ifx ridge == 0 then -24.0f32 else (ifx ridge == 1 then -42.0f32 else -70.0f32);
+    tall: f32 = ifx ridge == 0 then 4.0f32 else (ifx ridge == 1 then 9.0f32 else 18.0f32);
+    col := ifx ridge == 0 then [3] f32.[0.34, 0.4, 0.2] else (ifx ridge == 1 then [3] f32.[0.36, 0.36, 0.34] else [3] f32.[0.42, 0.38, 0.52]);
+    step: f32 = f32(WS_LOOP) / cast(f32) (ifx ridge == 0 then 54 else (ifx ridge == 1 then 34 else 24));
+    x0: f32 = -f32(WS_LOOP); n := cast(int) (2 * f32(WS_LOOP) / step + 0.5);
+    for i: 0..<n {
+      xa := x0 + step * cast(f32) i; xb := xa + step;
+      per := cast(int) (f32(WS_LOOP) / step + 0.5);
+      ha := tall * (0.55 + 0.3 * sin(xa * 0.0924 + cast(f32) ridge) + 0.18 * sin(xa * 0.3696 + 1.7 * cast(f32) ridge)) + 0.6 * ws_rand(5100 + ridge, i % per);
+      hb := tall * (0.55 + 0.3 * sin(xb * 0.0924 + cast(f32) ridge) + 0.18 * sin(xb * 0.3696 + 1.7 * cast(f32) ridge)) + 0.6 * ws_rand(5100 + ridge, (i + 1) % per);
+      za := z + 3.0 * sin(xa * 0.0924 + cast(f32) ridge); zb := z + 3.0 * sin(xb * 0.0924 + cast(f32) ridge);
+      shade := 0.88 + 0.24 * ws_rand(5200 + ridge, i % per);
+      ws_paint3(p, ARCH_M_PLASTER, [3] f32.[col[0] * shade, col[1] * shade, col[2] * shade]);
+      mid := ws_v((xa + xb) * 0.5, (ha + hb) * 0.5 * 0.6 - 1.0, (za + zb) * 0.5 + 2.0);
+      ws_pen_tri(p, ws_v(xa, -1.2, za + 4), ws_v(xb, -1.2, zb + 4), ws_v(xb, hb, zb), below);
+      ws_pen_tri(p, ws_v(xa, -1.2, za + 4), ws_v(xb, hb, zb), ws_v(xa, ha, za), below);
+      ws_pen_tri(p, ws_v(xa, ha, za), ws_v(xb, hb, zb), mid, below);
+    }
+  }
+}
+
+ws_build_zones :: (p: [] ArchPen) {
+  // the woodland
+  for i: 0..<20 {
+    seed := 4000 + i;
+    x := -22.5 + 14.0 * (cast(f32) i + ws_rand(seed, 1)) / 20;
+    z := -2.6 + 8.6 * ws_rand(seed, 2);
+    ws_pen_free_tree(p, x, z, 4.6 + 2.2 * ws_rand(seed, 3), 1.3 + 0.6 * ws_rand(seed, 4), seed);
+  }
+  // the old woods past the mandala: thick again
+  for i: 0..<14 {
+    seed := 4050 + i;
+    x := -54.5 + 15.0 * (cast(f32) i + ws_rand(seed, 1)) / 14;
+    z := -2.6 + 8.6 * ws_rand(seed, 2);
+    ws_pen_free_tree(p, x, z, 5.0 + 2.4 * ws_rand(seed, 3), 1.4 + 0.6 * ws_rand(seed, 4), seed);
+  }
+  // the far meadow is the open field now: nothing but its prayer oak in front of the hills
+  for i: 0..<0 {
+    seed := 4250 + i;
+    x := 41.0 + 14.0 * (cast(f32) i + ws_rand(seed, 1)) / 4;
+    z := -2.8 + 2.0 * ws_rand(seed, 2);
+    ws_pen_free_tree(p, x, z, 5.2 + 1.6 * ws_rand(seed, 3), 1.6 + 0.5 * ws_rand(seed, 4), seed);
+  }
+  // the meadow: a few trees at its back and edges, open grass in front
+  for i: 0..<5 {
+    seed := 4100 + i;
+    x := 9.5 + 12.0 * (cast(f32) i + ws_rand(seed, 1)) / 5;
+    z := ifx (i % 2) == 0 then -2.8 + ws_rand(seed, 2) else -1.6 + ws_rand(seed, 2);
+    ws_pen_free_tree(p, x, z, 5.0 + 1.6 * ws_rand(seed, 3), 1.5 + 0.5 * ws_rand(seed, 4), seed);
+  }
+  // the golden field: open under the sky, just two lone trees far back
+  for i: 0..<2 {
+    seed := 4200 + i;
+    x := 24.0 + 13.0 * cast(f32) i + 2.0 * ws_rand(seed, 1);
+    z := -3.2 + 0.6 * ws_rand(seed, 2);
+    ws_pen_free_tree(p, x, z, 4.2 + 2.0 * ws_rand(seed, 3), 1.6 + 0.6 * ws_rand(seed, 4), seed);
+  }
+  // round the mandala: trees in a ring behind the clearing, stones marking its edge
+  for i: 0..<9 {
+    seed := 4300 + i;
+    a := f32(WS_PI) * (1.05 + 0.9 * cast(f32) i / 8);
+    x := f32(WS_MANDALA[0]) + cos(a) * 7.2; z := f32(WS_MANDALA[2]) + sin(a) * 6.0;
+    ws_pen_free_tree(p, x, z, 5.0 + 1.5 * ws_rand(seed, 3), 1.5 + 0.5 * ws_rand(seed, 4), seed);
+  }
+  for i: 0..<20 {
+    a := f32(WS_TAU) * cast(f32) i / 20;
+    sx := f32(WS_MANDALA[0]) + cos(a) * (f32(WS_MANDALA_R) + 0.45); sz := f32(WS_MANDALA[2]) + sin(a) * (f32(WS_MANDALA_R) + 0.45);
+    b: WsBlob; b.x = sx; b.z = sz; b.y = f32(WS_MANDALA[1]) + 0.05; b.rx = 0.2; b.ry = 0.1; b.rz = 0.16; b.seg = 6; b.rings = 3; b.jag = 0.3; b.seed = 4400 + i; b.yaw = a;
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_LIMESTONE[..], WS_LIME_SHADE[..], ws_rand(4400, i)));
+    ws_pen_blob(p, b);
+  }
+  // boulders here and there
+  for i: 0..<26 {
+    seed := 4500 + i;
+    x := -66.0 + 132.0 * ws_rand(seed, 1);
+    if abs(x) < 8.5 || ws_mandala_d(x, 2.4) < 5.5 { continue; }
+    z := -2.5 + 7.0 * ws_rand(seed, 2);
+    sz: f32 = 0.3 + 0.5 * ws_rand(seed, 3);
+    b: WsBlob; b.x = x; b.z = z; b.y = ws_ground_y(x, z) + sz * 0.3; b.rx = sz; b.ry = sz * 0.6; b.rz = sz * 0.8; b.seg = 6; b.rings = 3; b.jag = 0.35; b.seed = seed; b.yaw = ws_rand(seed, 4) * 3;
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_BOULDER[..], WS_LIME_SHADE[..], ws_rand(seed, 5)));
+    ws_pen_blob(p, b);
+  }
+  // near the camera all along: ferns and agave, and the odd rock, outside the grove's own shot
+  for i: 0..<68 {
+    seed := 4600 + i;
+    x := -67.0 + 134.0 * (cast(f32) i + ws_rand(seed, 1)) / 68;
+    if abs(x) < 7.0 { continue; }
+    z := 5.6 + 1.6 * ws_rand(seed, 2);
+    ws_pen_agave(p, x, z, 0.5 + 0.4 * ws_rand(seed, 3), seed);
+    if ws_rand(seed, 4) > 0.6 { ws_pen_agave(p, x + 0.5, z - 0.3, 0.35 + 0.3 * ws_rand(seed, 5), seed + 50); }
+  }
+}
+
 ws_build_grove :: (p: [] ArchPen, models: WsModels) {
   mk := models.ok;
   // The far land under and past everything (its own draw; record 0).
@@ -501,8 +833,8 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
   ws_pen_tri(p, ws_v(-g, -1.4, g), ws_v(g, -1.4, g), ws_v(g, -1.4, -g), below);
   ws_pen_tri(p, ws_v(-g, -1.4, g), ws_v(g, -1.4, -g), ws_v(-g, -1.4, -g), below);
   // The grove's ground: a coarse grid of irregular facets, walnut soil by the water, olive elsewhere.
-  cols := 30; rows := 19;
-  x0: f32 = -12; z0: f32 = -4.7; cell: f32 = 0.8;
+  cols := 136; rows := 22;
+  x0: f32 = -f32(WS_WORLD_HALF); z0: f32 = -12.0; cell: f32 = 1.0;
   for r: 0..<rows {
     for c: 0..<cols {
       xa := x0 + cell * cast(f32) c; xb := xa + cell;
@@ -518,12 +850,14 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
       for e: 0..<4 {
         u := corners[e]; w := corners[e + 1];
         tx := (u.x + w.x + m.x) / 3; tz := (u.z + w.z + m.z) / 3;
-        wet := ws_basin_in(tx, tz) > -0.9 || ws_brook_dist(tx, tz) < f32(WS_STREAM_HALF) + 0.9;
+        wet := ws_basin_in(tx, tz) > -1.8 || ws_brook_dist(tx, tz) < f32(WS_STREAM_HALF) + 1.6 || (tx > -6 && tx < 5.5 && tz > -3 && tz < 5.5 && ws_rand(13, r * 41 + c) > 0.3);
         // a soil path along the quail's strip and round to the stones
         path := tz > 0.2 && tz < 3.2 && tx > -5.0 && tx < -1.6 && (ws_rand(11, r * 31 + c) > 0.35 || (tx > -3.6 && tx < -2.0 && tz > 0.5 && tz < 2.6));
         n := ws_rand(9, r * 251 + c * 7 + e);
-        broad := 0.5 + 0.5 * sin(tx * 0.45 + tz * 0.3) * cos(tz * 0.5 - tx * 0.2);
-        if wet || path { ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n * 0.5)); }
+        broad := 0.5 + 0.5 * sin(tx * 0.462 + tz * 0.3) * cos(tz * 0.5 - tx * 0.1848);
+        zone := ws_zone(tx, tz);
+        if zone != WS_ZONE_GROVE && !(abs(tx) < 9.5 && tz < -3.0) { ws_paint3(p, ARCH_M_PLASTER, ws_zone_ground(tx, tz, zone, n, broad)); }
+        else if wet || path { ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_WALNUT[..], WS_UMBER_LIGHT[..], n * 0.5)); }
         else {
           grass := ws_mix3(WS_OLIVE_DARK[..], WS_OLIVE[..], clamp(broad + (n - 0.5) * 0.3, 0, 1));
           ws_paint3(p, ARCH_M_PLASTER, ws_mix3v(grass, WS_DRY[..], clamp((1 - broad) * 0.35 + (n - 0.5) * 0.12, 0, 0.5)));
@@ -533,7 +867,7 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
     }
   }
   // The cut bank: strata up its face, alternating umber and walnut, the top leaning out.
-  bank_cols := 40;
+  bank_cols := 248;
   for i: 0..<bank_cols {
     for k: 0..<WS_BANK_BANDS {
       a := ws_bank_point(i, k); b := ws_bank_point(i + 1, k);
@@ -542,10 +876,11 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
       band: f32 = ifx (k % 2) == 0 then 0.15f32 else 0.75f32;
       ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_UMBER[..], WS_UMBER_LIGHT[..], clamp(band + (n - 0.5) * 0.25, 0, 1)));
       facing := ws_v((a.x + c.x) * 0.5, (a.y + c.y) * 0.5, -40);
-      if !mk { ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing); }
+      if !mk || abs(a.x) > 9.0 { ws_pen_tri(p, a, b, c, facing); ws_pen_tri(p, a, c, d, facing); }
     }
-    // the land above it, back toward the far trees
+    // the land above it, back toward the far trees (past the grove the ground grid is that land)
     t0 := ws_bank_point(i, WS_BANK_BANDS); t1 := ws_bank_point(i + 1, WS_BANK_BANDS);
+    if abs(t0.x) > 9.5 && abs(t1.x) > 9.5 { continue; }
     back0 := ws_v(t0.x, t0.y + 0.1, -9.5); back1 := ws_v(t1.x, t1.y + 0.1, -9.5);
     far0 := ws_v(t0.x, t0.y + 0.4, -18); far1 := ws_v(t1.x, t1.y + 0.4, -18);
     ws_paint3(p, ARCH_M_PLASTER, ws_mix3(WS_OLIVE_DARK[..], WS_DRY[..], ws_rand(49, i) * 0.5));
@@ -592,52 +927,36 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
   }
   // the cairn's slab
   ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
-  ws_pen_box(p, WS_CAIRN_X, f32(WS_CAIRN_TOP) - 0.07, WS_CAIRN_Z, 0.62, 0.08, 0.52, 0.2);
-  // water: the pool's surface as a fan, the brook as a strip, the spill falls between them
-  ws_paint(p, ARCH_M_WATER, WS_WATER[..]);
-  segs := ifx mk then 0 else 20;
-  centre := ws_v(WS_POOL_X, WS_WATER_Y, WS_POOL_Z);
-  for i: 0..<segs {
-    a0 := f32(WS_TAU) * cast(f32) i / cast(f32) segs; a1 := f32(WS_TAU) * cast(f32) (i + 1) / cast(f32) segs;
-    rx: f32 = WS_POOL_RX; rz: f32 = WS_POOL_RZ;
-    r0 := ws_v(f32(WS_POOL_X) + rx * cos(a0), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a0));
-    r1 := ws_v(f32(WS_POOL_X) + rx * cos(a1), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a1));
-    ws_pen_tri(p, centre, r0, r1, below);
-  }
-  ws_paint(p, ARCH_M_WATER, WS_BROOK[..]);
-  // the stream: the kit's runs to z 2.2; this carries it on to the frame's bottom (all of it until the kit arrives)
-  for i: (ifx mk then 2 else 0)..<WS_BROOK_N - 1 {
-    ax: f32 = WS_BROOK_AT[i * 2]; az: f32 = WS_BROOK_AT[i * 2 + 1];
-    bx: f32 = WS_BROOK_AT[i * 2 + 2]; bz: f32 = WS_BROOK_AT[i * 2 + 3];
-    dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz);
-    nx := -dz / l; nz := dx / l;
-    wa := f32(WS_STREAM_HALF) - 0.08 + 0.1 * cast(f32) i; wb := wa + 0.1;
-    ya: f32 = WS_STREAM_Y; yb: f32 = WS_STREAM_Y;
-    ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx + nx * wb, yb, bz + nz * wb), ws_v(bx - nx * wb, yb, bz - nz * wb), below);
-    ws_pen_tri(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx - nx * wb, yb, bz - nz * wb), ws_v(ax - nx * wa, ya, az - nz * wa), below);
-  }
-  // the spill sheet from the sill down to the stream (the kit's sheet takes its place)
-  if !mk {
-    ws_paint(p, ARCH_M_WATER, WS_SPILL[..]);
-    front := ws_v(0, -3, 6);
-    ws_pen_tri(p, ws_v(-1.45, WS_WATER_Y, 0.06), ws_v(1.55, WS_WATER_Y, 0.06), ws_v(1.55, WS_STREAM_Y, 0.4), front);
-    ws_pen_tri(p, ws_v(-1.45, WS_WATER_Y, 0.06), ws_v(1.55, WS_STREAM_Y, 0.4), ws_v(-1.45, WS_STREAM_Y, 0.4), front);
-  }
-  // The spout: a dark mouth in the bank, framed in carved limestone, a lip jutting out under it.
+  for k: 0..<WS_CAIRNS { ws_pen_box(p, WS_CAIRN_AT[k * 2], ws_cairn_top_at(k) - 0.07, WS_CAIRN_AT[k * 2 + 1], 0.62, 0.08, 0.52, 0.2 + 0.5 * cast(f32) k); }
+  // The spring's mouth: a dark cleft in the bank, a limestone ledge jutting out under it, moss on its
+  // top and ferns at its sides; the water pours over the ledge (the water pass draws it).
   sx: f32 = WS_SPOUT[0]; sy: f32 = WS_SPOUT[1]; szz: f32 = WS_SPOUT[2];
-  ws_paint3(p, ARCH_M_PLASTER, [3] f32.[0.08, 0.05, 0.04]);
-  mouth := ws_v(sx, sy, szz + 0.04);
-  for i: 0..<10 {
-    a0 := f32(WS_TAU) * cast(f32) i / 10; a1 := f32(WS_TAU) * cast(f32) (i + 1) / 10;
-    ws_pen_tri(p, mouth, ws_v(sx + cos(a0) * 0.2, sy + sin(a0) * 0.2, szz + 0.04), ws_v(sx + cos(a1) * 0.2, sy + sin(a1) * 0.2, szz + 0.04), ws_v(sx, sy, szz - 3));
+  cleft: WsBlob; cleft.x = sx; cleft.y = sy + 0.08; cleft.z = szz + 0.02; cleft.rx = 0.26; cleft.ry = 0.36; cleft.rz = 0.05; cleft.seg = 7; cleft.rings = 4; cleft.seed = 1701; cleft.jag = 0.35;
+  ws_paint3(p, ARCH_M_PLASTER, [3] f32.[0.06, 0.04, 0.03]);
+  ws_pen_blob(p, cleft);
+  ledges := [15] f32.[0.0, -0.16, 0.24, 0.27, 0.075,   -0.24, -0.1, 0.12, 0.17, 0.13,   0.25, -0.12, 0.1, 0.16, 0.12];
+  for i: 0..<3 {
+    lb: WsBlob; lb.x = sx + ledges[i * 5]; lb.y = sy + ledges[i * 5 + 1]; lb.z = szz + ledges[i * 5 + 2]; lb.rx = ledges[i * 5 + 3]; lb.ry = ledges[i * 5 + 4]; lb.rz = 0.17;
+    lb.seg = 7; lb.rings = 3; lb.seed = 1703 + i; lb.jag = 0.3; lb.yaw = 0.3 * cast(f32) i;
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_LIMESTONE[..], WS_LIME_SHADE[..], 0.3 * cast(f32) i));
+    ws_pen_blob(p, lb);
   }
-  ws_paint(p, ARCH_M_SMOOTH, WS_LIMESTONE[..]);
-  for i: 0..<8 {
-    a := f32(WS_TAU) * (cast(f32) i + 0.5) / 8;
-    ws_pen_box(p, sx + cos(a) * 0.28, sy + sin(a) * 0.28, szz + 0.06, 0.1, 0.09, 0.08, -a * 0.3);
+  for i: 0..<3 {
+    mb: WsBlob; mb.x = sx - 0.2 + 0.2 * cast(f32) i; mb.y = sy - 0.06 + 0.05 * cast(f32) (i % 2); mb.z = szz + 0.16; mb.rx = 0.13; mb.ry = 0.035; mb.rz = 0.11;
+    mb.seg = 6; mb.rings = 2; mb.seed = 1711 + i; mb.jag = 0.4;
+    ws_paint3(p, ARCH_M_LEAF, ws_mix3(WS_LEAF_DARK[..], WS_LEAF[..], 0.4 + 0.2 * cast(f32) i));
+    ws_pen_blob(p, mb);
   }
-  ws_paint(p, ARCH_M_SMOOTH, WS_LIME_SHADE[..]);
-  ws_pen_box(p, WS_SPOUT_LIP[0], WS_SPOUT_LIP[1] - 0.05, (szz + f32(WS_SPOUT_LIP[2])) * 0.5, 0.16, 0.05, 0.2, 0);
+  // rocks at its foot, where the falling water meets the pool
+  for i: 0..<4 {
+    fb: WsBlob; fb.x = sx - 0.55 + 0.37 * cast(f32) i; fb.z = szz + 0.55 + 0.12 * cast(f32) (i % 2); fb.y = ws_ground_y(fb.x, fb.z) + 0.12; fb.rx = 0.22; fb.ry = 0.16; fb.rz = 0.18;
+    if i == 1 || i == 2 { fb.y = 0.02; fb.rx = 0.14; fb.ry = 0.08; fb.z = szz + 0.72; fb.x = sx - 0.32 + 0.64 * cast(f32) (i - 1); }
+    fb.seg = 6; fb.rings = 3; fb.seed = 1721 + i; fb.jag = 0.35;
+    ws_paint3(p, ARCH_M_SMOOTH, ws_mix3(WS_BOULDER[..], WS_LIME_SHADE[..], ws_rand(1721, i)));
+    ws_pen_blob(p, fb);
+  }
+  ws_pen_agave(p, sx - 0.5, szz + 0.35, 0.35, 1731);
+  ws_pen_agave(p, sx + 0.55, szz + 0.3, 0.3, 1733);
   // Bare limbs reaching in from the edges.
   ws_paint(p, ARCH_M_BARK, WS_BARK_DARK[..]);
   for l: 0..<WS_FRAME_LIMBS {
@@ -668,9 +987,30 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
   for i: 0..<WS_AGAVES { ws_pen_agave(p, WS_AGAVE_AT[i * 3], WS_AGAVE_AT[i * 3 + 1], WS_AGAVE_AT[i * 3 + 2], 900 + i); }
   // Trees.
   // the three trees that hold the prayer limbs are always hand-built; the rest become modelled cedars
-  for t: 0..<WS_TREES { if !mk || t < 3 { ws_pen_tree(p, t, !mk); } }
-  if mk { for t: 0..<3 { ws_pen_crowns(p, models, t); } }
-  if mk { for k: 0..<WS_PLACES { ws_pen_place(p, models, k); } }
+  // every tree hand-built, with clustered crowns (the kit's umbrella cedars read as flat discs)
+  for t: 0..<WS_TREES { ws_pen_tree(p, t, true); }
+  ws_pen_canopy(p);
+  ws_build_zones(p);
+  // shrubs along the bank's top, hiding where the far trunks meet the land
+  for i: 0..<100 {
+    seed := 3000 + i;
+    x: f32 = -68 + 136 * (cast(f32) i + ws_rand(seed, 1)) / 100;
+    z: f32 = -5.0 - 1.6 * ws_rand(seed, 2);
+    rr: f32 = 0.7 + 0.5 * ws_rand(seed, 3);
+    if x > 22.0 || x < -54.0 { continue; }
+    shy := ws_land_y(x, z);
+    ws_pen_leaves(p, x, shy + 0.25 + 0.3 * ws_rand(seed, 4), z, rr * 1.3, rr * 0.7, rr, shy - 0.1, 1.6, seed, 4);
+  }
+  // ferns and agave round the edges, clear of the quail's strip, the water and the stones
+  for i: 0..<26 {
+    seed := 3100 + i;
+    side: f32 = ifx (i % 2) == 0 then -1.0f32 else 1.0f32;
+    x := ifx side < 0 then -4.4 - 4.0 * ws_rand(seed, 1) else 3.3 + 4.5 * ws_rand(seed, 1);
+    z := -3.2 + 9.0 * ws_rand(seed, 2);
+    if side < 0 && x > -5.0 && z > 3.0 && z < 5.2 { continue; }   // the cairn's slab
+    ws_pen_agave(p, x, z, 0.45 + 0.35 * ws_rand(seed, 3), 950 + i);
+  }
+  if mk { for k: 0..<WS_PLACES { if ws_place_module(k) != WS_MODEL_CEDAR { ws_pen_place(p, models, k, false); } } }
   // The prayer limbs: bark from the trunk out to a bare tip, a few leaves near the trunk.
   for l: 0..<WS_LIMBS {
     ws_paint(p, ARCH_M_BARK, WS_BARK[..]);
@@ -688,6 +1028,72 @@ ws_build_grove :: (p: [] ArchPen, models: WsModels) {
     b.x = near.x; b.y = near.y + 0.3; b.z = near.z - 0.05; b.rx = 0.5; b.ry = 0.3; b.rz = 0.42; b.seed = 500 + l; b.seg = 6; b.rings = 3; b.jag = 0.3;
     ws_paint(p, ARCH_M_LEAF, WS_LEAF[..]);
     ws_pen_blob(p, b);
+  }
+}
+
+// The grove's water, after everything else (the host draws these last triangles in the water pass).
+ws_build_wet :: (p: [] ArchPen, models: WsModels) {
+  mk := models.ok;
+  if mk { for k: 0..<WS_PLACES { if ws_place_module(k) == WS_MODEL_POOL { ws_pen_place(p, models, k, true); } } }
+  segs := ifx mk then 0 else 20;
+  centre := ws_v(WS_POOL_X, WS_WATER_Y, WS_POOL_Z);
+  for i: 0..<segs {
+    a0 := f32(WS_TAU) * cast(f32) i / cast(f32) segs; a1 := f32(WS_TAU) * cast(f32) (i + 1) / cast(f32) segs;
+    rx: f32 = WS_POOL_RX; rz: f32 = WS_POOL_RZ;
+    r0 := ws_v(f32(WS_POOL_X) + rx * cos(a0), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a0));
+    r1 := ws_v(f32(WS_POOL_X) + rx * cos(a1), WS_WATER_Y, f32(WS_POOL_Z) + rz * sin(a1));
+    ws_pen_wet(p, centre, r0, r1, WS_WATER[..]);
+  }
+  // the spring's fall: a sheet pouring off the ledge in an arc down into the pool's back
+  lip := ws_v(WS_SPOUT[0], WS_SPOUT[1] - 0.1, WS_SPOUT[2] + 0.36);
+  fall := ws_v(WS_SPOUT_FALL[0], WS_WATER_Y, WS_SPOUT_FALL[2]);
+  steps := 7;
+  for i: 0..<steps {
+    f0 := cast(f32) i / cast(f32) steps; f1 := cast(f32) (i + 1) / cast(f32) steps;
+    y0 := lip.y + (fall.y - lip.y) * f0 * f0; y1 := lip.y + (fall.y - lip.y) * f1 * f1;
+    z0 := lip.z + (fall.z - lip.z) * (1 - (1 - f0) * (1 - f0)); z1 := lip.z + (fall.z - lip.z) * (1 - (1 - f1) * (1 - f1));
+    w0 := 0.17 + 0.05 * f0; w1 := 0.17 + 0.05 * f1;
+    nz: f32 = 1.0; ny: f32 = 0.3;
+    arch_material(p, ARCH_M_FALLS, WS_SPILL[0], WS_SPILL[1], WS_SPILL[2]);
+    a0 := arch_at(lip.x - w0, y0, z0, 0, ny, nz, 0, lip.y - y0); b0 := arch_at(lip.x + w0, y0, z0, 0, ny, nz, 1, lip.y - y0);
+    a1 := arch_at(lip.x - w1, y1, z1, 0, ny, nz, 0, lip.y - y1); b1 := arch_at(lip.x + w1, y1, z1, 0, ny, nz, 1, lip.y - y1);
+    arch_tri(p, a0, b0, b1); arch_tri(p, a0, b1, a1);
+  }
+  // the stream: the kit's runs to z 2.2; this carries it on to the frame's bottom (all of it until the kit arrives)
+  for i: (ifx mk then 2 else 0)..<WS_BROOK_N - 1 {
+    ax: f32 = WS_BROOK_AT[i * 2]; az: f32 = WS_BROOK_AT[i * 2 + 1];
+    bx: f32 = WS_BROOK_AT[i * 2 + 2]; bz: f32 = WS_BROOK_AT[i * 2 + 3];
+    dx := bx - ax; dz := bz - az; l := sqrt(dx * dx + dz * dz);
+    nx := -dz / l; nz := dx / l;
+    wa := f32(WS_STREAM_HALF) - 0.08 + 0.1 * cast(f32) i; wb := wa + 0.1;
+    ya: f32 = WS_STREAM_Y; yb: f32 = WS_STREAM_Y;
+    ws_pen_wet(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx + nx * wb, yb, bz + nz * wb), ws_v(bx - nx * wb, yb, bz - nz * wb), WS_BROOK[..]);
+    ws_pen_wet(p, ws_v(ax + nx * wa, ya, az + nz * wa), ws_v(bx - nx * wb, yb, bz - nz * wb), ws_v(ax - nx * wa, ya, az - nz * wa), WS_BROOK[..]);
+  }
+  // the spill sheet from the sill down to the stream (the kit's sheet takes its place)
+  if !mk {
+    ws_pen_wet(p, ws_v(-1.45, WS_WATER_Y, 0.06), ws_v(1.55, WS_WATER_Y, 0.06), ws_v(1.55, WS_STREAM_Y, 0.4), WS_SPILL[..]);
+    ws_pen_wet(p, ws_v(-1.45, WS_WATER_Y, 0.06), ws_v(1.55, WS_STREAM_Y, 0.4), ws_v(-1.45, WS_STREAM_Y, 0.4), WS_SPILL[..]);
+  }
+}
+
+// The ground table the water pass reads (stylized.coax sty_table): a square of cells, four floats
+// a corner: [0] the ground's height under the water, [1] grass cover, [2] spare, [3] how white the
+// water runs there (under the spill and the spout's fall).
+WS_HT_X0 :: -92.0; WS_HT_Z0 :: -8.0; WS_HT_CELL :: 0.5; WS_HT_N :: 368;
+WS_HT_FLOATS :: (WS_HT_N + 1) * (WS_HT_N + 1) * 4;
+ws_build_heights :: (out: [] f32) {
+  for j: 0..<WS_HT_N + 1 {
+    for i: 0..<WS_HT_N + 1 {
+      x: f32 = WS_HT_X0 + f32(WS_HT_CELL) * cast(f32) i; z: f32 = WS_HT_Z0 + f32(WS_HT_CELL) * cast(f32) j;
+      o := (j * (WS_HT_N + 1) + i) * 4;
+      out[o] = ws_ground_y(x, z); out[o + 1] = ws_grass_cover(x, z); out[o + 2] = 0;
+      // white water: below the spill step, and where the spout's water lands in the pool
+      spill := clamp(1 - (z - 0.1) / 0.9, 0, 1) * clamp((1.7 - abs(x - 0.05)) / 0.3, 0, 1) * (ifx z > 0.0 then 1.0f32 else 0.0f32);
+      fx := x - f32(WS_SPOUT_FALL[0]); fz := z - f32(WS_SPOUT_FALL[2]);
+      fall := clamp(1 - sqrt(fx * fx + fz * fz) / 0.55, 0, 1);
+      out[o + 3] = clamp(spill + fall * 0.9, 0, 1);
+    }
   }
 }
 

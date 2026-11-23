@@ -1,7 +1,7 @@
 // The Whispering Spring's frame block: what follows the Metaverse Engine's stylized frame
 // (metaverse-engine/render/shade/stylized-layout.coax, STY_UNIFORM_FLOATS floats), shared by
 // world-spring.coax and gpu/whispering-spring.coax.
-//   WS_U_EXTRA: [0] dpr, [1] shown (0..1), [2] spare, [3] spare
+//   WS_U_EXTRA: [0] dpr, [1] shown (0..1), [2] spare, [3] night (1: the leaves and grass go dark under the moon)
 #load "../../../metaverse-engine/render/shade/stylized-layout.coax";
 WS_U_EXTRA :: STY_UNIFORM_FLOATS;
 WS_UNIFORMS :: STY_UNIFORM_FLOATS + 4;

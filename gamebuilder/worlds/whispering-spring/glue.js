@@ -4,7 +4,7 @@ import { SpringAudio } from "./audio.js";
 import { GroveRoom, placeRibbons } from "./room.js";
 
 const $ = (id) => document.getElementById(id);
-const MSG = { pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129, shared: 131, speak: 132, decor: 133 };
+const MSG = { mandala: 135, look: 134, pick: 120, stones: 121, ribbon: 122, pause: 123, settings: 124, save: 125, extra: 127, forget: 128, close: 129, shared: 131, speak: 132, decor: 133 };
 const HIDDEN_KEY = "whispering-spring.hidden.v1", MUTED_KEY = "whispering-spring.muted.v1";
 const readSet = (k) => { try { return new Set(JSON.parse(localStorage.getItem(k) || "[]")); } catch { return new Set(); } };
 const keepSet = (k, s) => { try { localStorage.setItem(k, JSON.stringify([...s].slice(-500))); } catch {} };
@@ -13,7 +13,7 @@ const SETTINGS_KEY = "whispering-spring.settings.v1";
 
 // ---- per-viewer settings (this browser only)
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const settings = { sound: true, music: 80, ambience: 60, captions: true, motion: reduce, bloom: false, text: false, voice: true, chat: false };
+const settings = { sound: true, music: 80, ambience: 60, captions: true, motion: reduce, bloom: false, text: false, voice: true, chat: false, night: false, toon: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch {}
 const keepSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} };
 
@@ -34,15 +34,20 @@ const STONES = [
   ["flat", "Flat stone", "wide and thin"], ["long", "Long stone", "narrow and long"], ["round", "Round stone", "rolls unless level"],
   ["wedge", "Wedge", "sits best tipped 15°"], ["pebble", "Pebble", "small; sits anywhere"],
 ];
-const BALANCE = ["Steady: it will hold.", "It will hold, with a wobble.", "It would slide off."];
-const DECOR = [["Lantern", "\u{1F3EE}"], ["Candles", "\u{1F56F}\uFE0F"], ["Bluebonnets", "\u{1F33C}"], ["Crystal", "\u{1F48E}"], ["Sage bundle", "\u{1F33F}"], ["Offering bowl", "\u{1F963}"]];
-let decor = { n: 0, k: -1, ok: 0, m: -1, l: "" };
-const WHY = ["", " Turned a little far.", " Wider than the stone below.", " The round stone below rocks a little."];
-const SLIP = ["", "It slid off at that angle. Turn it back toward level.", "", "", "Too far off the middle: it tumbled back to the pile. Let go nearer the centre."];
+const DECOR = [["Lantern", "\u{1F3EE}"], ["Candles", "\u{1F56F}\uFE0F"], ["Bluebonnets", "\u{1F33C}"], ["Crystal", "\u{1F48E}"], ["Sage bundle", "\u{1F33F}"], ["Offering bowl", "\u{1F963}"],
+  ["Mother Mary", "\u{1F64F}"], ["Fountain", "\u26F2"], ["Buddha", "\u{1FAB7}"], ["Archangel Michael", "\u{1F47C}"], ["Serpent dragon", "\u{1F409}"], ["Bell (for the trees)", "\u{1F514}"], ["Lantern (for the trees)", "\u{1F3EE}"]];
+const HANGS = new Set([11, 12]);
+// the basket's shelves
+const CATS = [["Items", [0, 1, 2, 3, 4, 5]], ["Statues", [6, 8, 9, 10, 7]], ["For the trees", [11, 12]], ["Terrain", []]];
+const TOOLS = [["Tall grass", "\u{1F33E}"], ["Low grass", "\u{1F331}"], ["Bare earth", "\u{1F7EB}"]];
+let decorCat = 0;
+let decor = { n: 0, k: -1, ok: 0, m: -1, l: "", t: -1, g: 0, s: 0, i: [] };
 const FABRICS = ["Cotton", "Silk", "Linen"];
 const COLOURS = [["Prickly-pear rose", "#bc546b"], ["Bluebonnet", "#4d61b3"], ["Limestone cream", "#e0d6b8"], ["Sage", "#8c9e7a"], ["Persimmon", "#d97338"], ["Indigo", "#383873"]];
 const CHARMS = ["None", "Bell", "Bead", "Feather"];
-const BRANCHES = ["The low limb over the pool", "The long limb", "The high limb", "The right limb", "The far limb, by the bank", "The right high limb"];
+const BRANCHES = ["The low limb over the pool", "The long limb", "The high limb", "The right limb", "The far limb, by the bank", "The right high limb",
+  "The woodland oak, low limb", "The woodland oak, high limb", "The meadow oak, low limb", "The meadow oak, high limb", "The golden field's oak, low limb", "The golden field's oak, high limb",
+  "The oak past the mandala, low limb", "The oak past the mandala, high limb", "The far meadow's oak, low limb", "The far meadow's oak, high limb"];
 const SLOT_AUTO = 7;
 const QUAIL_TEXT = ["The quail forages, picking its way across the leaf litter.", "The quail scurries a few quick steps.", "The quail stops and scans the grove, head high.", "The quail pecks at the ground.", "The quail gives a soft call."];
 
@@ -59,7 +64,10 @@ function flush() {
   while (waiting.length) { const [k, t] = waiting.shift(); send(k, t); }
 }
 requestAnimationFrame(flush);
-const tellSettings = () => send(MSG.settings, `${settings.motion ? 1 : 0} ${settings.bloom ? 1 : 0}`);
+// a phone (a touch screen that is small) gets light graphics unless the visitor turns them off
+const phone = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
+if (settings.lite === undefined) settings.lite = phone;
+const tellSettings = () => send(MSG.settings, `${settings.motion ? 1 : 0} ${settings.bloom ? 1 : 0} ${settings.night ? 1 : 0} ${settings.toon ? 1 : 0} ${settings.lite ? 1 : 0}`);
 
 // ---- sound
 let manifest = { tracks: [], extras: [], fragments: {}, stems: {}, ambience: {} };
@@ -98,26 +106,36 @@ addEventListener("coaxial", (e) => {
   }
   else if (kind === "state") { const before = state; state = parseState(rest); onState(before); }
   else if (kind === "cue") { const bar2 = rest.indexOf("|"); const id = bar2 < 0 ? rest : rest.slice(0, bar2); audio.cue(id, bar2 < 0 ? "" : rest.slice(bar2 + 1)); if (id === "quail.call") quailSays(4); }
-  else if (kind === "clue") { lastClue = rest; announce(CLUE_TEXT[rest] || ""); quailSays(-1, CLUE_TEXT[rest]); renderDiscoveries(); }
+  else if (kind === "clue") { lastClue = rest; quailSays(-1, CLUE_TEXT[rest]); renderDiscoveries(); }
   else if (kind === "found") showFound(rest);
   else if (kind === "replayed") announce(`${titleOf(rest)} again.`);
-  else if (kind === "mode") { if (rest === "stones") open("stones"); else if (rest === "ribbon") openRibbon(); }
-  else if (kind === "hold") { const s = STONES.find((x) => x[0] === rest); announce(`${s ? s[1] : "A stone"} in your hand. Click over the cairn to let it go.`); }
+  else if (kind === "mode") { if (rest === "ribbon") openRibbon(); else if (rest === "mandala") openMandala(); }
+  else if (kind === "mandala") { const [k, r, a] = rest.split(",").map(Number); room.placePiece(k, r, a).then((x) => { if (!x.ok) announce(x.status === 429 ? "A little slower: the mandala needs a breath between pieces." : "That piece stays on your screen; the shared mandala couldn't be reached."); refreshMandala(); }).catch(() => {}); announce(`You set ${M_KINDS[k][0].toLowerCase()} on ring ${r}; it blooms eight times around.`); }
+  else if (kind === "pan") { zoneFor(Number(rest)); }
+  else if (kind === "picked") { const nm = DECOR[Number(rest)]?.[0] || "It"; toast(`${DECOR[Number(rest)]?.[1] || ""} ${nm} → inventory`); announce(`${nm} is in your inventory.`); }
+  else if (kind === "wrap") { const f = $("fade"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go"); }
+  else if (kind === "ribbonat") { ribbonAt = Number(rest); }
+  else if (kind === "hold") { const s = STONES.find((x) => x[0] === rest); announce(`${s ? s[1] : "A stone"} in your hand. ${touchy ? "Tap" : "Click"} anywhere to set it on the cairn.`); }
   else if (kind === "decor") {
     if (rest === "blocked") { announce("It can't stand there. Try the grass."); $("decor-status").textContent = "It can't stand there. Try the grass."; }
-    else if (rest === "full") announce("The grove holds sixteen things at most. Move or remove one.");
-    else { const d = {}; for (const p of rest.split(";")) { const i = p.indexOf("="); if (i > 0) d[p.slice(0, i)] = p.slice(i + 1); } decor = { n: Number(d.n) || 0, k: Number(d.k), ok: Number(d.ok), m: Number(d.m), l: d.l || "" }; renderDecor(); renderHint(); }
+    else if (rest === "full") announce("The grove holds thirty-six things at most. Pick one up first.");
+    else if (rest === "none") announce("None of those in your inventory. Find one in the grove and pick it up.");
+    else { const d = {}; for (const p of rest.split(";")) { const i = p.indexOf("="); if (i > 0) d[p.slice(0, i)] = p.slice(i + 1); } decor = { n: Number(d.n) || 0, k: Number(d.k), ok: Number(d.ok), m: Number(d.m), l: d.l || "", t: Number(d.t ?? -1), g: Number(d.g) || 0, s: Number(d.s) || 0, i: (d.i || "").split(",").map(Number) };
+      renderInventory(); renderDecor(); renderHint(); }
   }
-  else if (kind === "slip") { const w = Number(rest) || 1; announce(SLIP[w]); $("balance").textContent = SLIP[w]; $("balance").dataset.b = "2"; }
+  else if (kind === "ribbon") { const [l, s, mine] = rest.split(",").map(Number); showRibbon(l, s, mine === 1); }
   else if (kind === "speak") quailSpeak("prayers");
   else if (kind === "cpos") { const [sp, x, y] = rest.split(",").map(Number); placeCallout(sp, x, y); }
   else if (kind === "qpos") { const [x, y] = rest.split(",").map(Number); placeBubble(x, y); }
 });
 
+let stockAsked = false;
 function onState(before) {
-  if (!$("stones").hidden && state.m !== 1 && before.m === 1) close("stones");
-  renderStones(); renderDiscoveries(); renderJournal(); renderText(); renderMini(); renderHint();
+  if (!stockAsked) { stockAsked = true; send(MSG.decor, "S"); }
+  if (freshVisit) { freshVisit = false; setTimeout(startOver, 1200); }
+  renderDiscoveries(); renderJournal(); renderText(); renderMini(); renderHint();
   if (!$("decor").hidden && state.m !== 3 && before.m === 3 && decor.k < 0) close("decor", false);
+  if (decor.k < 0 && decor.t < 0 && state.m === 3 && $("inventory").hidden && $("decor").hidden) send(MSG.decor, "q");
   const any = state.f || state.c || state.r;
   $("enter").textContent = any ? "Return to the Grove" : "Enter the Grove";
   // a ribbon just tied: hang it on the shared tree at the tie point the world chose, and the quail blesses it
@@ -131,27 +149,11 @@ function onState(before) {
   if ((state.f & 7) === 7 && (before.f & 7) !== 7 && before.f !== undefined) setTimeout(() => quailSpeak("found_all"), 4000);
 }
 
-// ---- the in-grove frame: the quest card, the small journal, the callout on the next spot
-const GOAL = ["Listen to the spring", "Stack the creek stones", "Hang a prayer ribbon"];
-const CALLOUT = ["Listen to the Spring", "Stack the Creek Stones", "Hang a Prayer Ribbon"];
+// ---- the in-grove frame: the small inventory card
 const SHORT = { spring: "Spring", cairn: "Stones", ribbon: "Wind" };
-let calloutSpot = -1;
-function placeCallout(sp, x, y) {
-  const c = $("callout");
-  calloutSpot = sp;
-  const n = ["spring", "cairn", "ribbon"].filter(found).length;
-  $("quest-goal").textContent = sp < 0 ? "Every song found. Stay as long as you like." : GOAL[sp];
-  $("quest-count").textContent = `${n} of 3 lore pages found`;
-  const busy = state.m !== 0 || state.s === 1 || !$("found").hidden || settings.text || bubbleShown;
-  if (sp < 0 || busy || !inGrove) { c.hidden = true; return; }
-  // a spot off the side of the screen (a phone looks at part of the grove): an arrow says which way; a tap glides there
-  const label = x < 8 ? `‹ ${CALLOUT[sp]}` : x > innerWidth - 8 ? `${CALLOUT[sp]} ›` : CALLOUT[sp];
-  if (c.textContent !== label) c.textContent = label;
-  c.hidden = false;
-  c.style.left = `${Math.min(innerWidth - c.offsetWidth - 40, Math.max(12, x))}px`;
-  c.style.top = `${Math.max(120, y - 20)}px`;
-}
-$("callout").addEventListener("click", () => { if (calloutSpot >= 0) { audio.start(); send(MSG.pick, String(calloutSpot)); } });
+// No quest card and no callout: the grove is found, not instructed. (The world still says where the
+// next spot is; nothing shows it.)
+function placeCallout() {}
 function renderMini() {
   const ul = $("mini-list"); if (!ul) return; ul.textContent = "";
   for (const id of ["spring", "cairn", "ribbon"]) {
@@ -161,7 +163,7 @@ function renderMini() {
     ul.append(li);
   }
 }
-$("minijournal").addEventListener("click", () => open("journal"));
+$("minijournal").addEventListener("click", () => open("inventory"));
 function setMenu(openIt) { $("menu").hidden = !openIt; $("t-menu").setAttribute("aria-expanded", String(openIt)); if (openIt) $("menu").querySelector("button")?.focus(); }
 $("t-menu").addEventListener("click", () => setMenu($("menu").hidden));
 for (const b of $("menu").querySelectorAll("button")) b.addEventListener("click", () => setMenu(false));
@@ -220,13 +222,152 @@ function renderPrayers(offline = false) {
     const p = document.createElement("p");
     const cw = COLOURS[r.colour][0].toLowerCase();
     p.textContent = `${r.name || "A visitor"} tied ${/^[aeiou]/.test(cw) ? "an" : "a"} ${cw} ${FABRICS[r.fabric].toLowerCase()} ribbon on ${BRANCHES[r.limb].toLowerCase()}${r.charm ? `, with a ${CHARMS[r.charm].toLowerCase()}` : ""}.`;
-    li.append(p);
-    if (r.word && !mutedNames.has(r.name)) { const w = document.createElement("p"); w.className = "lyric"; w.textContent = r.word; li.append(w); }
+    const mini = document.createElement("div"); mini.className = "pr-mini"; mini.setAttribute("aria-hidden", "true");
+    mini.innerHTML = `<svg viewBox="0 0 240 420" width="70" height="122">${ribbonSvg(r, `p${r.n}`)}</svg>`;
+    li.classList.add("pr-item"); li.append(mini);
+    const body = document.createElement("div"); li.append(body);
+    body.append(p);
+    if (r.word && !mutedNames.has(r.name)) { const w = document.createElement("p"); w.className = "lyric"; w.textContent = r.word; body.append(w); }
     const hide = document.createElement("button"); hide.type = "button"; hide.className = "btn small"; hide.textContent = "Hide this ribbon";
     hide.addEventListener("click", () => { hiddenRibbons.add(r.n); keepSet(HIDDEN_KEY, hiddenRibbons); refreshRibbons(); announce("Hidden."); });
-    li.append(hide); ul.append(li);
+    const look = document.createElement("button"); look.type = "button"; look.className = "btn small"; look.textContent = "See it up close";
+    look.addEventListener("click", () => showRibbon(r.limb, r.slot, false));
+    const row = document.createElement("div"); row.className = "row"; row.append(look, hide);
+    body.append(row); ul.append(li);
   }
 }
+// ---- a ribbon up close: drawn big as it was tied (its fabric, colour and charm), its words and who tied it
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function ribbonSvg(r, uid = "c") {
+  const hex = COLOURS[r.colour]?.[1] || "#bc546b";
+  const weave = r.fabric === 1
+    ? `<linearGradient id="rcf${uid}" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".25"/><stop offset=".35" stop-color="#fff" stop-opacity=".35"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".3"/></linearGradient>`
+    : r.fabric === 2
+      ? `<pattern id="rcf${uid}" width="9" height="7" patternUnits="userSpaceOnUse"><path d="M0 2h9M0 5.5h9" stroke="#fff" stroke-opacity=".13" stroke-width="1.2"/><path d="M3 0v7M7 0v7" stroke="#000" stroke-opacity=".12" stroke-width="1"/></pattern>`
+      : `<pattern id="rcf${uid}" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 0h5v1H0zM0 0h1v5H0z" fill="#000" fill-opacity=".14"/></pattern>`;
+  const charm = r.charm === 1 ? `<g transform="translate(120 368)"><path d="M-16 0q0-24 16-26 16 2 16 26z" fill="#e7b75a" stroke="#7a5420" stroke-width="2"/><rect x="-19" y="-1" width="38" height="6" rx="3" fill="#c9952f"/><circle cy="10" r="5" fill="#7a5420"/></g>`
+    : r.charm === 2 ? `<g transform="translate(120 366)"><circle r="15" fill="#3f6fa8"/><circle r="15" fill="url(#rcb${uid})"/><circle cx="-5" cy="-5" r="4" fill="#fff" fill-opacity=".6"/></g>`
+    : r.charm === 3 ? `<g transform="translate(120 356) rotate(8)"><path d="M0-6C14 10 12 40 0 58C-12 40-14 10 0-6z" fill="#efe5d0" stroke="#a89878" stroke-width="1.5"/><path d="M0-4V60" stroke="#8d7d5d" stroke-width="1.5"/></g>` : "";
+  const word = esc(r.word || "");
+  // the ribbon's script: little glyphs drawn from its words (each letter picks one), down its middle.
+  // Up close they lift off as sparks, fly out into a ring, and the ring becomes the words, turning
+  // slowly round the ribbon like a halo.
+  const raw = String(r.word || "");
+  const n = Math.max(5, Math.min(10, Math.ceil(raw.length / 2) || 5));
+  const centre = (y) => 126 + 12 * Math.sin(((y - 90) / 210) * Math.PI);
+  const HX = 120, HY = 190, HR = 104;
+  let glyphs = "", sparks = "";
+  for (let i = 0; i < n; i++) {
+    const code = raw ? raw.charCodeAt((i * 7) % raw.length) + i : 37 + i * 13;
+    const y = 84 + i * (230 / (n - 1 || 1)), x = centre(y);
+    const rot = ((code * 37) % 30) - 15;
+    glyphs += `<g class="rc-g" style="--i:${i}" transform="translate(${(x - 8).toFixed(1)} ${(y - 8).toFixed(1)}) rotate(${rot} 8 8)"><path d="${GLYPHS[code % GLYPHS.length]}"/></g>`;
+    if (raw) for (let p = 0; p < 6; p++) {
+      const a = ((i * 6 + p) / (n * 6)) * Math.PI * 2 - Math.PI / 2;
+      const tx = HX + Math.cos(a) * HR - x, ty = HY + Math.sin(a) * HR - y;
+      sparks += `<circle class="rc-p" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(1.6 + (p % 3) * 0.6).toFixed(1)}" style="--i:${i};--tx:${tx.toFixed(1)}px;--ty:${ty.toFixed(1)}px"/>`;
+    }
+  }
+  let ring = raw ? `${raw}  ✦  ` : "✦  ·  ";
+  while (ring.length < 84) ring += raw ? `${raw}  ✦  ` : "✦  ·  ";
+  const halo = `<g class="rc-halo${raw ? "" : " quiet"}"><text font-family="Georgia,serif" font-style="italic" font-size="15" fill="#ffe6b0"><textPath href="#rchalo${uid}">${esc(ring.slice(0, 96))}</textPath></text></g>`;
+  return `<defs>${weave}<radialGradient id="rcb${uid}"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>
+    <path id="rchalo${uid}" d="M${HX} ${HY} m-${HR} 0 a${HR} ${HR} 0 1 1 ${HR * 2} 0 a${HR} ${HR} 0 1 1 -${HR * 2} 0"/></defs>
+    ${halo}
+    <rect x="20" y="22" width="200" height="16" rx="8" fill="#5a3a24"/><path d="M30 30h180" stroke="#3a2416" stroke-width="2"/>
+    <path d="M104 30 C 92 60, 130 70, 116 92 L 110 330 C 150 300, 150 250, 160 200 C 168 150, 132 110, 136 30 Z" fill="${hex}"/>
+    <path d="M104 30 C 92 60, 130 70, 116 92 L 110 330 C 150 300, 150 250, 160 200 C 168 150, 132 110, 136 30 Z" fill="url(#rcf${uid})"/>
+    <path d="M110 330 l-10 22 18-10 4 20 8-30" fill="${hex}"/>
+    <circle cx="120" cy="32" r="10" fill="${hex}" stroke="#00000033" stroke-width="2"/>
+    <g class="rc-script" fill="none" stroke="#fff8ec" stroke-opacity=".9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${glyphs}</g>
+    <g class="rc-sparks" fill="#ffe6b0">${sparks}</g>
+    ${charm}`;
+}
+// the ribbon script's glyphs, each in a 16-unit box: spiral, eye, quail, wave, sun, drop, star, feather
+const GLYPHS = [
+  "M8 8m-1 0a1 1 0 1 1 2 0a3 3 0 1 1-6 0a5 5 0 1 1 10 0",
+  "M1 8q7-7 14 0q-7 7-14 0zM6 8a2 2 0 1 0 4 0a2 2 0 1 0-4 0",
+  "M2 11q4-6 9-3l3-2-1 3q-2 4-8 3zM9 6q0-3 2-4",
+  "M1 10q2-4 4 0t4 0t4 0t3-1",
+  "M5 8a3 3 0 1 0 6 0a3 3 0 1 0-6 0M8 1v2M8 13v2M1 8h2M13 8h2",
+  "M8 2q5 6 0 12q-5-6 0-12z",
+  "M8 1l2 5h5l-4 3 2 5-5-3-5 3 2-5-4-3h5z",
+  "M3 13q0-10 10-10q0 10-10 10zM3 13l7-7",
+];
+let shownRibbon = null;
+function showRibbon(limb, slot, mine) {
+  const r = mine
+    ? (() => { const [fabric, colour, charm] = (state.rb || "0,0,0").split(",").map(Number); return { fabric, colour, charm, limb, slot, word: state.rw || "", name: $("s-name").value || "You", mine: true }; })()
+    : sharedRibbons.find((x) => !x.mine && x.limb === limb && x.slot === slot);
+  if (!r) return;
+  shownRibbon = r;
+  const colour = COLOURS[r.colour][0], fabric = FABRICS[r.fabric];
+  $("rc-svg").innerHTML = ribbonSvg(r);
+  $("rc-limb").textContent = BRANCHES[r.limb] || "On the prayer tree";
+  $("rc-title").textContent = `${colour} ${fabric.toLowerCase()}${r.charm ? `, with a ${CHARMS[r.charm].toLowerCase()}` : ""}`;
+  const muted = r.name && mutedNames.has(r.name);
+  $("rc-word").textContent = muted ? "" : r.word ? `“${r.word}”` : "";
+  $("rc-word").hidden = muted || !r.word;
+  const when = r.at ? new Date(r.at < 1e12 ? r.at * 1000 : r.at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
+  $("rc-meta").textContent = `${mine ? "Tied by you" : `Tied by ${r.name || "a visitor"}`}${when ? ` · ${when}` : ""}${!r.word ? " · no words, or kept private" : ""}`;
+  $("rc-hide").hidden = !!mine;
+  $("ribbon-card").hidden = false;
+  announce(`${mine ? "Your" : `${r.name || "A visitor"}'s`} ribbon: ${colour} ${fabric}${r.word && !muted ? `. It says: ${r.word}` : ""}.`);
+  $("rc-close").focus();
+}
+const closeRibbonCard = () => { $("ribbon-card").hidden = true; shownRibbon = null; };
+$("rc-close").addEventListener("click", closeRibbonCard);
+$("ribbon-card").addEventListener("click", (e) => { if (e.target === $("ribbon-card")) closeRibbonCard(); });
+$("rc-hide").addEventListener("click", () => { if (!shownRibbon) return; hiddenRibbons.add(shownRibbon.n); keepSet(HIDDEN_KEY, hiddenRibbons); closeRibbonCard(); refreshRibbons(); announce("Hidden."); });
+
+// ---- the mandala clearing: an overhead view where everyone builds one design together
+const M_KINDS = [["Rose petals", "#e05a73"], ["Marigold petals", "#f6ae2d"], ["Bluebonnets", "#4d61e0"], ["Crystals", "#b48cf0"], ["Candles", "#ffe0a0"], ["River stones", "#9a968f"], ["Leaves", "#5a8a33"], ["Pearls", "#fff6ea"]];
+let mandalaKind = 0, mandalaPieces = [];
+async function refreshMandala() {
+  try {
+    mandalaPieces = await room.mandala();
+    send(MSG.mandala, "s" + mandalaPieces.map((p) => `${p.kind},${p.ring},${p.a}`).join(";"));
+    const people = new Set(mandalaPieces.map((p) => p.name)).size;
+    $("m-count").textContent = mandalaPieces.length ? `${mandalaPieces.length} pieces from ${people} ${people === 1 ? "person" : "people"}, each blooming eightfold.` : "The clearing is bare. Set the first piece.";
+  } catch { $("m-count").textContent = "The shared mandala can't be reached right now; what you set stays on your screen."; }
+}
+function renderMandalaTray() {
+  const box = $("m-kinds");
+  if (!box.children.length) M_KINDS.forEach(([name, hex], k) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn m-kind"; b.dataset.k = k;
+    b.innerHTML = `<span class="dot" style="background:${hex}" aria-hidden="true"></span>${name}`;
+    b.addEventListener("click", () => { mandalaKind = k; send(MSG.mandala, `k ${k}`); renderMandalaTray(); });
+    box.append(b);
+  });
+  for (const b of box.children) b.setAttribute("aria-pressed", String(Number(b.dataset.k) === mandalaKind));
+}
+function openMandala() { renderMandalaTray(); send(MSG.mandala, `k ${mandalaKind}`); $("mandala").hidden = false; $("m-join").hidden = true; refreshMandala(); $("mandala").focus(); }
+function closeMandala() { if ($("mandala").hidden) return; $("mandala").hidden = true; send(MSG.mandala, "x"); }
+$("m-leave").addEventListener("click", closeMandala);
+$("m-clear").addEventListener("click", async () => {
+  if (!confirm("Clear the mandala for everyone and start a fresh design?")) return;
+  try { const r = await room.clearMandala(); if (!r.ok) announce("The mandala couldn't be cleared just now."); } catch { announce("The shared mandala can't be reached right now."); }
+  refreshMandala(); announce("The clearing is bare again.");
+});
+$("m-place").addEventListener("click", () => send(MSG.mandala, `p ${$("m-ring").value} ${Math.round(Number($("m-angle").value) / 360 * 64) % 64}`));
+$("m-ring").addEventListener("input", () => { $("m-ring-out").textContent = $("m-ring").value; });
+$("m-angle").addEventListener("input", () => { $("m-angle-out").textContent = `${$("m-angle").value}°`; });
+
+// ---- where along the grove the view is: a quiet name for the place, and a way into the mandala
+const ZONES = [[-54, "The Open Field"], [-38, "The Old Woods"], [-23, "The Mandala Clearing"], [-8, "The Woodland"], [8, "The Spring"], [22, "The Meadow"], [44, "The Golden Field"], [999, "The Open Field"]];
+let zoneShown = "";
+function zoneFor(x) {
+  const name = ZONES.find(([edge]) => x < edge)[1];
+  $("m-join").hidden = !(x < -23 && x > -38) || !$("mandala").hidden;
+  if (name === zoneShown) return;
+  zoneShown = name;
+  const z = $("zone"); z.textContent = name; z.classList.remove("gone"); void z.offsetWidth; z.classList.add("show");
+  clearTimeout(zoneFor.t); zoneFor.t = setTimeout(() => z.classList.remove("show"), 2600);
+}
+$("m-join").addEventListener("click", () => { audio.start(); send(MSG.mandala, "e"); });
+$("look-l").addEventListener("click", () => send(MSG.look, "p -60"));
+$("look-r").addEventListener("click", () => send(MSG.look, "p 60"));
+
 function chatLine(m) {
   if (mutedNames.has(m.name)) return;
   const li = document.createElement("li"); if (m.mine) li.className = "mine";
@@ -282,6 +423,7 @@ setInterval(() => {
   pollChat();
   if (tick % 3 === 1) refreshRibbons();
   if (tick % 3 === 2) pollPresence();
+  if (!$("mandala").hidden) refreshMandala();
 }, 3500);
 
 // ---- telling the visitor
@@ -307,8 +449,8 @@ function quailSays(i, text) {
 }
 
 // ---- panels
-const PANELS = ["discoveries", "stones", "decor", "ribbon", "journal", "prayers", "album", "settings"];
-const toolFor = { decor: "t-decor", discoveries: "t-disc", journal: "t-journal", prayers: "t-prayers", settings: "t-settings" };
+const PANELS = ["decor", "ribbon", "journal", "prayers", "album", "settings", "inventory", "account", "mandala"];
+const toolFor = { decor: "t-decor", inventory: "t-inv", journal: "t-journal", prayers: "t-prayers", settings: "t-settings" };
 let returnFocus = null;
 function open(id) {
   for (const p of PANELS) if (p !== id && !$(p).hidden) close(p, false);
@@ -316,9 +458,8 @@ function open(id) {
   $(id).hidden = false;
   if (toolFor[id]) $(toolFor[id]).setAttribute("aria-expanded", "true");
   if (id === "journal") renderJournal();
-  if (id === "discoveries") renderDiscoveries();
+  if (id === "inventory") { send(MSG.decor, "o"); renderInventory(); }
   if (id === "album") renderAlbum();
-  if (id === "stones") renderStones();
   if (id === "decor") { send(MSG.decor, "o"); renderDecor(); }
   $(id).focus();
 }
@@ -326,8 +467,8 @@ function close(id, refocus = true) {
   if ($(id).hidden) return;
   $(id).hidden = true;
   if (toolFor[id]) $(toolFor[id]).setAttribute("aria-expanded", "false");
-  if ((id === "stones" || id === "ribbon") && state.m !== 0) send(MSG.close, "0");
-  if (id === "decor") send(MSG.decor, "q");
+  if (id === "ribbon" && state.m !== 0) send(MSG.close, "0");
+  if (id === "decor" || id === "inventory") send(MSG.decor, "q");
   if (refocus && returnFocus?.isConnected) returnFocus.focus();
 }
 const toggle = (id) => ($(id).hidden ? open(id) : close(id));
@@ -342,7 +483,7 @@ function syncSoundInputs() {
   $("l-music").value = $("s-music").value = settings.music;
   $("l-amb").value = $("s-amb").value = settings.ambience;
   $("l-captions").checked = $("s-captions").checked = settings.captions;
-  $("s-motion").checked = settings.motion; $("s-bloom").checked = settings.bloom; $("s-text").checked = settings.text;
+  $("s-motion").checked = settings.motion; $("s-bloom").checked = settings.bloom; $("s-lite").checked = !!settings.lite; $("s-text").checked = settings.text;
   $("s-voice").checked = settings.voice;
   $("g-sound").setAttribute("aria-pressed", String(settings.sound)); $("g-sound-label").textContent = settings.sound ? "Sound on" : "Sound off";
   $("g-sound").querySelector(".icon").textContent = settings.sound ? "♪" : "✕";
@@ -350,7 +491,8 @@ function syncSoundInputs() {
   $("textmode").hidden = !(settings.text && inGrove);
   applySound();
 }
-const setSetting = (k, v) => { settings[k] = v; keepSettings(); syncSoundInputs(); if (k === "motion" || k === "bloom") tellSettings(); };
+const setSetting = (k, v) => { settings[k] = v; keepSettings(); syncSoundInputs(); if (k === "motion" || k === "bloom" || k === "night" || k === "toon" || k === "lite") tellSettings(); document.body.classList.toggle("night", !!settings.night); document.body.classList.toggle("calm", !!settings.motion); };
+document.body.classList.toggle("calm", !!settings.motion);
 $("l-sound").addEventListener("click", () => setSetting("sound", !settings.sound));
 $("s-sound").addEventListener("change", (e) => setSetting("sound", e.target.checked));
 for (const [a, b, k] of [["l-music", "s-music", "music"], ["l-amb", "s-amb", "ambience"]]) {
@@ -359,20 +501,45 @@ for (const [a, b, k] of [["l-music", "s-music", "music"], ["l-amb", "s-amb", "am
 for (const id of ["l-captions", "s-captions"]) $(id).addEventListener("change", (e) => setSetting("captions", e.target.checked));
 $("s-motion").addEventListener("change", (e) => setSetting("motion", e.target.checked));
 $("s-bloom").addEventListener("change", (e) => setSetting("bloom", e.target.checked));
+$("s-lite").addEventListener("change", (e) => setSetting("lite", e.target.checked));
+for (const r of document.querySelectorAll("input[name=s-time]")) r.addEventListener("change", () => setSetting("night", r.value === "night" && r.checked));
+for (const r of document.querySelectorAll("input[name=s-shade]")) r.addEventListener("change", () => setSetting("toon", r.value === "toon" && r.checked));
+$("t-night").addEventListener("click", () => { setSetting("night", !settings.night); syncLook(); announce(settings.night ? "Night falls over the grove." : "Dusk again."); });
+function syncLook() {
+  for (const r of document.querySelectorAll("input[name=s-time]")) r.checked = (r.value === "night") === !!settings.night;
+  for (const r of document.querySelectorAll("input[name=s-shade]")) r.checked = (r.value === "toon") === !!settings.toon;
+  $("t-night").setAttribute("aria-pressed", String(!!settings.night));
+  document.body.classList.toggle("night", !!settings.night);
+}
+syncLook();
 $("s-text").addEventListener("change", (e) => { setSetting("text", e.target.checked); renderText(); });
+// Start over as a new visitor: the world forgets its save (found tracks, cairn, decorations, ribbon),
+// the page forgets its own (settings, hints already shown, hidden ribbons, muted names), and the
+// visit begins again at the title page with the quail's greeting. Your guest name in the shared
+// grove (verse.player, shared with other GameBuilder worlds) is kept. ?new on the URL does the same.
+function startOver() {
+  send(MSG.forget, "1"); send(MSG.save, "1");
+  setTimeout(() => {
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith("whispering-spring")) localStorage.removeItem(k); } catch {}
+    const u = new URL(location.href); u.searchParams.delete("new");
+    location.replace(u.href);
+  }, 700);
+}
 $("s-forget").addEventListener("click", () => {
-  if (confirm("Start over? This forgets the tracks you found, your cairn and your ribbon on this device.")) { send(MSG.forget, "1"); announce("Started over."); }
+  if (confirm("Start over as a new visitor? This forgets the tracks you found, your cairn, decorations and ribbon, and your settings, on this device.")) { announce("Starting over."); startOver(); }
 });
+// ?new: once last visit's save has had time to come back, forget it the same way
+let freshVisit = new URLSearchParams(location.search).has("new");
 $("l-settings").addEventListener("click", () => open("settings"));
 
 function enterGrove() {
   audio.start(); audio.startAmbience();
-  inGrove = true; paused = false; setTimeout(swipeHintOnce, 2500);
+  inGrove = true; paused = false;
   $("landing").hidden = true; $("hud").hidden = false;
   close("album", false); close("settings", false);
   syncSoundInputs(); renderText();
   send(MSG.pause, "0");
-  announce("You are in the grove. A black quail is foraging in front of you. Use the buttons at the bottom to touch the water, the creek stones, the prayer tree, or greet the quail.");
+  announce("You are in the grove. A black quail is foraging in front of you, by a spring under a tall earthen bank.");
   (settings.text ? document.querySelector("#textmode [data-spot]") : $("spots").querySelector("button"))?.focus();
   setChat(!!settings.chat);
   refreshRibbons(); pollChat(); pollPresence();
@@ -383,7 +550,7 @@ function leaveGrove() {
   audio.stopTrack();
   inGrove = false; paused = false;
   for (const p of PANELS) close(p, false);
-  $("paused").hidden = true; $("found").hidden = true;
+  $("found").hidden = true;
   $("chat").hidden = true; $("bubble").classList.add("gone"); bubbleShown = false;
   $("hud").hidden = true; $("landing").hidden = false;
   syncSoundInputs();
@@ -394,67 +561,21 @@ $("listen").addEventListener("click", () => { audio.start(); open("album"); });
 
 // ---- in the grove
 for (const b of document.querySelectorAll("[data-spot]")) b.addEventListener("click", () => { audio.start(); send(MSG.pick, b.dataset.spot); });
-$("t-disc").addEventListener("click", () => toggle("discoveries"));
+$("t-inv").addEventListener("click", () => toggle("inventory"));
 $("t-journal").addEventListener("click", () => toggle("journal"));
 $("t-settings").addEventListener("click", () => toggle("settings"));
-function setPaused(p) {
-  paused = p; send(MSG.pause, p ? "1" : "0"); audio.pause(p);
-  $("paused").hidden = !p; $("t-pause").textContent = p ? "Resume" : "Pause";
-  if (p) $("resume").focus();
-}
-$("t-pause").addEventListener("click", () => setPaused(!paused));
-$("resume").addEventListener("click", () => setPaused(false));
+const setPaused = () => {};
 $("t-leave").addEventListener("click", leaveGrove);
-$("paused-leave").addEventListener("click", leaveGrove);
 
-// ---- discoveries
+// ---- the spots' named buttons (for the keyboard and screen readers): a glint on the one the quail favours
 function renderDiscoveries() {
-  const ul = $("disc-list"); ul.textContent = "";
-  let n = 0;
-  for (const id of ["spring", "cairn", "ribbon"]) {
-    const li = document.createElement("li"); const got = found(id); if (got) n++;
-    const s = document.createElement("p"); s.className = "status" + (got ? " found" : ""); s.textContent = got ? "Found" : "Not yet found";
-    const t = document.createElement("p"); t.textContent = got ? titleOf(id) : HINT[id];
-    li.append(s, t); ul.append(li);
-  }
-  $("disc-count").textContent = `${n} of 3 found.`;
-  $("disc-clue").textContent = lastClue && n < 3 ? `Lately: ${CLUE_TEXT[lastClue]}` : n === 3 ? "You have found every page of the quail's story." : "Watch the quail: where it lingers matters.";
   for (const b of $("spots").querySelectorAll("button")) {
     const id = ["spring", "cairn", "ribbon"][Number(b.dataset.spot)];
     const clue = { pool: 0, stones: 1, ribbon: 2 }[lastClue];
-    b.classList.toggle("clue", !found(id) && clue === Number(b.dataset.spot));
+    b.classList.toggle("clue", !!id && !found(id) && clue === Number(b.dataset.spot));
   }
+  renderInventory();
 }
-
-// ---- stones
-function renderStones() {
-  const box = $("stone-choices"); box.textContent = "";
-  for (let k = 0; k < 5; k++) {
-    if ((state.p & (1 << k)) === 0) continue;
-    const [, name, note] = STONES[k];
-    const l = document.createElement("label"); l.className = "choice";
-    const r = document.createElement("input"); r.type = "radio"; r.name = "stone"; r.value = k; r.checked = state.h === k;
-    r.addEventListener("change", () => send(MSG.stones, `c ${k}`));
-    l.append(r, document.createTextNode(`${name} (${note})`)); box.append(l);
-  }
-  if (!box.children.length) box.textContent = "Every stone is on the cairn.";
-  $("turn-at").textContent = state.h >= 0 ? `${state.o}°` : "—";
-  $("turn-l").disabled = $("turn-r").disabled = state.h < 0 || !!state.a;
-  const b = $("balance");
-  if (state.h < 0) { b.dataset.b = "0"; b.textContent = "Pick a stone to hold."; }
-  else { b.dataset.b = String(state.b); b.textContent = BALANCE[state.b] + (state.b ? WHY[state.w] : ""); }
-  $("assist").checked = !!state.a;
-  const placed = state.c ? state.c.split(",").filter(Boolean) : [];
-  $("cairn-desc").textContent = placed.length
-    ? `On the cairn, bottom to top: ${placed.map((s) => { const [n, r] = s.split(":"); return `${STONES.find((x) => x[0] === n)?.[1] || n}${Number(r) ? ` at ${r}°` : ""}`; }).join(", ")}. ${placed.length >= 4 ? "Complete." : `${4 - placed.length} more to finish.`}`
-    : "The cairn is empty. Four stones finish it.";
-  $("place").disabled = placed.length >= 4;
-}
-$("turn-l").addEventListener("click", () => send(MSG.stones, "t -1"));
-$("turn-r").addEventListener("click", () => send(MSG.stones, "t 1"));
-$("place").addEventListener("click", () => send(MSG.stones, "p"));
-$("assist").addEventListener("change", (e) => send(MSG.stones, `a ${e.target.checked ? 1 : 0}`));
-$("rebuild").addEventListener("click", () => send(MSG.stones, "r"));
 
 // ---- the hint while something is in hand
 const touchy = matchMedia("(pointer: coarse)").matches;
@@ -468,51 +589,67 @@ function swipeHintOnce() {
 function renderHint() {
   const el = $("hint");
   let html = "";
-  if (state.h >= 0 && state.y === 1) {
-    html = (state.g ? "<b>It will hold here.</b> " : "<b>It would fall here.</b> Move it over the middle. ") +
-      "Click to let go · <kbd>Q</kbd>/<kbd>E</kbd> or the wheel turns it · <kbd>Esc</kbd> puts it back";
-    el.dataset.ok = state.g ? "1" : "0";
-  } else if (decor.k >= 0) {
-    html = (decor.ok ? "<b>It can stand here.</b> " : "<b>Not here.</b> ") + `Click the ground to set the ${DECOR[decor.k][0].toLowerCase()} · <kbd>Esc</kbd> puts it back`;
+  if (decor.t >= 0) { html = `<b>${TOOLS[decor.t][0]}</b> · <kbd>Esc</kbd> puts it away`; el.dataset.ok = "1"; }
+  else if (decor.k >= 0) {
+    html = HANGS.has(decor.k)
+      ? (decor.ok ? "<b>It can hang here.</b>" : "<b>Bring it to a branch: the gold points.</b>")
+      : (decor.ok ? "<b>It can stand here.</b>" : "<b>Not here.</b>");
     el.dataset.ok = decor.ok ? "1" : "0";
-  } else if (state.m === 1 && $("stones").hidden && state.c.split(",").filter(Boolean).length < 4) {
-    html = `${touchy ? "Tap" : "Click"} a creek stone in the pile to pick it up`; el.dataset.ok = "1";
   } else if (Date.now() < swipeHintUntil) {
     html = "Swipe sideways to look around the grove"; el.dataset.ok = "1";
   }
-  if (touchy) html = html.replace("Click to let go", "Tap where it should go").replace("Click the ground", "Tap the ground").replace(/ · <kbd>Q<\/kbd>\/<kbd>E<\/kbd> or the wheel turns it · <kbd>Esc<\/kbd> puts it back| · <kbd>Esc<\/kbd> puts it back/, "");
+  if (touchy) html = html.replace("Click the ground", "Tap the ground").replace(" · <kbd>Esc</kbd> puts it back", "");
   el.hidden = !html || !inGrove;
   if (html && el.innerHTML !== html) el.innerHTML = html;
 }
 
 // ---- decorating
 function renderDecor() {
+  const tabs = $("decor-tabs");
+  if (!tabs.children.length) CATS.forEach(([name], c) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "tab"; b.setAttribute("role", "tab"); b.textContent = name; b.dataset.c = c;
+    b.addEventListener("click", () => { decorCat = c; if (c !== 3 && decor.t >= 0) send(MSG.decor, "t -1"); renderDecor(); });
+    tabs.append(b);
+  });
+  for (const b of tabs.children) b.setAttribute("aria-selected", String(Number(b.dataset.c) === decorCat));
   const box = $("decor-items");
-  if (!box.children.length) {
-    DECOR.forEach(([name, ico], k) => {
+  box.textContent = "";
+  if (decorCat === 3) {
+    TOOLS.forEach(([name, ico], t) => {
+      const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.dataset.t = t;
+      b.innerHTML = `<span class="ico" aria-hidden="true">${ico}</span>${name}`;
+      b.setAttribute("aria-pressed", String(decor.t === t));
+      b.addEventListener("click", () => { audio.start(); send(MSG.decor, `t ${decor.t === t ? -1 : t}`); });
+      box.append(b);
+    });
+  } else {
+    for (const k of CATS[decorCat][1]) {
+      const [name, ico] = DECOR[k];
       const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.dataset.k = k;
       b.innerHTML = `<span class="ico" aria-hidden="true">${ico}</span>${name}`;
       b.addEventListener("click", () => { audio.start(); send(MSG.decor, `k ${k}`); });
       box.append(b);
-    });
+    }
   }
-  for (const b of box.children) b.setAttribute("aria-pressed", String(Number(b.dataset.k) === decor.k));
+  for (const b of box.children) if (b.dataset.k !== undefined) b.setAttribute("aria-pressed", String(Number(b.dataset.k) === decor.k));
+  $("decor-wipe").hidden = decorCat !== 3 || !decor.g;
   const carrying = decor.k >= 0;
   $("decor-keys").hidden = !carrying;
   $("decor-remove").hidden = !(carrying && decor.m >= 0);
   $("decor-set").disabled = !decor.ok;
   const counts = {}; for (const k of decor.l.split(",").filter((s) => s !== "")) counts[k] = (counts[k] || 0) + 1;
   const list = Object.entries(counts).map(([k, n]) => `${n} ${DECOR[k][0].toLowerCase()}`).join(", ");
-  $("decor-status").textContent = carrying
+  $("decor-status").textContent = decor.t >= 0 ? `Brush: ${TOOLS[decor.t][0].toLowerCase()}.` : carrying
     ? `Carrying the ${DECOR[decor.k][0].toLowerCase()}. ${decor.ok ? "It can stand here." : "Not here: find some grass."}`
-    : decor.n ? `In the grove: ${list}. (${16 - decor.n} more can go.)` : "Nothing set out yet.";
+    : decor.n ? `In the grove: ${list}. (${24 - decor.n} more can go.)` : "Nothing set out yet.";
   $("decor-clear").disabled = !decor.n;
 }
-$("t-decor").addEventListener("click", () => toggle("decor"));
+$("t-bag").addEventListener("click", () => toggle("inventory"));
 for (const b of document.querySelectorAll("[data-move]")) b.addEventListener("click", () => send(MSG.decor, `m ${b.dataset.move}`));
 $("decor-set").addEventListener("click", () => send(MSG.decor, "p"));
 $("decor-back").addEventListener("click", () => send(MSG.decor, "x"));
 $("decor-remove").addEventListener("click", () => send(MSG.decor, "d"));
+$("decor-wipe").addEventListener("click", () => { if (confirm("Put all the terrain you painted back as it was?")) send(MSG.decor, "w"); });
 $("decor-clear").addEventListener("click", () => { if (confirm("Take every decoration out of the grove?")) send(MSG.decor, "c"); });
 
 // ---- ribbon
@@ -530,12 +667,15 @@ radios($("r-fabric"), "fabric", FABRICS);
 radios($("r-colour"), "colour", COLOURS, ([name, hex]) => { const f = document.createDocumentFragment(); const s = document.createElement("span"); s.className = "swatch"; s.style.background = hex; s.setAttribute("aria-hidden", "true"); f.append(s, document.createTextNode(name)); return f; });
 radios($("r-charm"), "charm", CHARMS);
 radios($("r-branch"), "branch", BRANCHES);
+let ribbonAt = -1;
 function openRibbon() {
   if (state.r && state.rb) {
     const [f, c, ch, b] = state.rb.split(",").map(Number);
     for (const [name, v] of [["fabric", f], ["colour", c], ["charm", ch], ["branch", Math.floor(b / 8)]]) { const r = document.querySelector(`input[name=${name}][value="${v}"]`); if (r) r.checked = true; }
     $("r-word").value = state.rw || "";
   }
+  // a ribbon begun at one of the zones' prayer trees goes on that tree's limb
+  if (ribbonAt >= 0) { const r = document.querySelector(`input[name=branch][value="${ribbonAt}"]`); if (r) r.checked = true; ribbonAt = -1; }
   open("ribbon");
 }
 $("ribbon-form").addEventListener("submit", (e) => {
@@ -619,6 +759,119 @@ function renderAlbum() {
   }
 }
 
+// ---- the inventory: the album as a bag, like an adventurer's. Relics (the lore pages) are sealed
+// until found; songs play; the album itself sits in the bag once owned (a preview for now).
+const RARITY_NAME = { legend: "Legendary", epic: "Epic", rare: "Rare", common: "Keepsake", poor: "Sealed" };
+const acct = { in: false, owns: false };
+try { Object.assign(acct, JSON.parse(localStorage.getItem("whispering-spring.preview.v1") || "{}")); } catch {}
+const keepAcct = () => { try { localStorage.setItem("whispering-spring.preview.v1", JSON.stringify(acct)); } catch {} };
+let selected = 0;
+function bagItems() {
+  const items = [];
+  const pages = manifest.lore?.pages || [];
+  const relicIcon = { spring: "\u{1F4A7}", cairn: "\u{1FAA8}", ribbon: "\u{1F38F}" };
+  for (const pg of pages) {
+    const got = found(pg.id);
+    items.push(got
+      ? { icon: relicIcon[pg.id] || "\u{1F4DC}", r: "epic", name: pg.title, kind: "Lore relic · Soulbound", flavor: (pg.text || "").split(/(?<=[.!?])\s/)[0], use: "Use: read this page of the quail's story.", act: () => { close("inventory", false); open("journal"); document.getElementById(`lore-${pg.id}`)?.scrollIntoView({ block: "start" }); } }
+      : { icon: "?", r: "poor", locked: true, name: "A sealed relic", kind: "Undiscovered", flavor: "Something in the grove is keeping it.", use: "" });
+  }
+  for (const t of manifest.tracks || []) {
+    items.push({ icon: "\u{1F3B5}", r: "rare", name: t.title.replace(/\s*\(placeholder title\)/, ""), kind: `Song · track ${t.n}`, flavor: "Placeholder audio until the artist's recording arrives.", use: playing === t.id ? "Use: stop." : "Use: play it.", act: () => { playTrack(t.id); renderInventory(); } });
+  }
+  items.push(acct.owns
+    ? { icon: "\u{1F4BF}", r: "legend", name: "The Whispering Spring", kind: "Digital album · Obsidian Quail", flavor: "Every song, to keep.", use: "Use: download (MP3, FLAC or WAV).", act: () => soon("Downloads aren't ready yet. When they are, this is where you'll pick MP3, FLAC or lossless WAV and save the whole album, artwork and liner notes included.") }
+    : { icon: "\u{1F4BF}", r: "poor", locked: true, name: "The Whispering Spring (album)", kind: "Not owned", flavor: "The whole album, to keep and download.", use: "Use: see how buying it will work.", act: () => { close("inventory", false); open("account"); } });
+  // keepsakes: what can be set out in the grove (picked up from it), and the terrain brushes
+  DECOR.forEach(([name, ico], k) => {
+    const have = decor.s ? (decor.i[k] || 0) : 1;
+    if (!have) return;
+    items.push({ icon: ico, r: k >= 6 && k <= 10 ? "epic" : HANGS.has(k) ? "rare" : "common", qty: decor.s ? have : 0, name, kind: HANGS.has(k) ? "Keepsake · hangs in a tree" : k >= 6 && k <= 10 ? "Monument · one of a kind" : "Keepsake", flavor: "Found in the grove. It can go anywhere.", use: HANGS.has(k) ? "Use: hang it on a branch." : "Use: set it down in the grove.", act: () => { close("inventory", false); send(MSG.decor, "o"); send(MSG.decor, `k ${k}`); } });
+  });
+  TOOLS.forEach(([name, ico], t) => items.push({ icon: ico, r: "common", name: `${name} brush`, kind: "Terrain", flavor: "Paint the land where you point.", use: decor.g ? "Use: paint with it. (Undo my terrain is in the brush's hint.)" : "Use: paint with it.", act: () => { close("inventory", false); send(MSG.decor, "o"); send(MSG.decor, `t ${t}`); } }));
+  const placed = 0;
+  if (placed) items.push({ icon: "\u{1F3EE}", r: "common", qty: placed, name: "Things you've set out", kind: "Keepsakes in the grove", flavor: "The grove remembers where you put them.", use: "Use: open the basket.", act: () => { close("inventory", false); open("decor"); } });
+  return items;
+}
+let toastTimer = 0;
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.remove("show"); void t.offsetWidth; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
+function renderInventory() {
+  const bag = $("bag"); if (!bag) return;
+  const items = bagItems();
+  bag.textContent = "";
+  const n = ["spring", "cairn", "ribbon"].filter(found).length;
+  $("inv-gold").textContent = `${n} of 3 relics found`;
+  // a phone shows just the rows it needs; a wider screen a fuller bag
+  const SLOTS = Math.max(innerWidth <= 640 ? 10 : 25, Math.ceil(items.length / 5) * 5);
+  for (let i = 0; i < SLOTS; i++) {
+    const it = items[i];
+    const b = document.createElement("button"); b.type = "button"; b.className = "slot" + (it ? (it.locked ? " locked" : "") : " empty");
+    b.setAttribute("role", "option");
+    if (it) {
+      b.dataset.r = it.r; b.textContent = it.icon; b.setAttribute("aria-label", `${it.name}, ${RARITY_NAME[it.r]}`);
+      if (it.qty) { const q = document.createElement("span"); q.className = "qty"; q.textContent = it.qty; b.append(q); }
+      b.setAttribute("aria-selected", String(i === selected));
+      b.addEventListener("click", () => { if (selected === i && it.act) { it.act(); return; } selected = i; renderInventory(); });
+      b.addEventListener("dblclick", () => it.act && it.act());
+      b.addEventListener("focus", () => { if (selected !== i) { selected = i; showTip(it); for (const s of bag.children) s.setAttribute("aria-selected", String(s === b)); } });
+    } else { b.disabled = true; b.setAttribute("aria-label", "Empty slot"); }
+    bag.append(b);
+  }
+  showTip(items[selected] || items[0]);
+}
+function showTip(it) {
+  const tip = $("tip"); tip.textContent = "";
+  if (!it) return;
+  const name = document.createElement("p"); name.className = "name"; name.dataset.r = it.r; name.textContent = it.name;
+  const kind = document.createElement("p"); kind.className = "kind"; kind.textContent = `${RARITY_NAME[it.r]} · ${it.kind}`;
+  const fl = document.createElement("p"); fl.className = "flavor"; fl.textContent = it.flavor ? `“${it.flavor}”` : "";
+  tip.append(name, kind, fl);
+  if (it.use) { const u = document.createElement("p"); u.className = "use"; u.textContent = it.use; tip.append(u); }
+  if (it.act) { const b = document.createElement("button"); b.type = "button"; b.className = "btn primary"; b.style.marginTop = "10px"; b.textContent = it.locked ? "Find out more" : "Use"; b.addEventListener("click", it.act); tip.append(b); }
+}
+// ---- the account: a preview of signing in, owning the album and downloading it. Nothing is sent
+// anywhere and nothing is charged: each live action says it isn't ready yet.
+function soon(text) { $("soon-text").textContent = text; $("soon").hidden = false; $("soon-ok").focus(); announce(`Not ready yet. ${text}`); }
+const closeSoon = () => { $("soon").hidden = true; };
+$("soon-ok").addEventListener("click", closeSoon);
+function renderAccount() {
+  $("acct-out").hidden = acct.in; $("acct-in").hidden = !acct.in;
+  $("t-account-label").textContent = acct.in ? "Quail Friend" : "Sign in";
+  $("own-state").textContent = acct.owns ? "In your inventory. (A preview.)" : "Not in your inventory yet.";
+  $("own-preview").setAttribute("aria-pressed", String(acct.owns));
+  $("buy").hidden = acct.owns;
+  renderInventory();
+}
+$("t-account").addEventListener("click", () => toggle("account"));
+$("signin").addEventListener("submit", (e) => { e.preventDefault(); $("si-email").value = ""; soon("Signing in isn't ready yet. You'll get a six-digit code by email, type it here, and your relics, ribbon and keepsakes will follow you to any device. Nothing was sent."); });
+$("si-oa").addEventListener("click", () => soon("Signing in with your OpenAgents account isn't ready yet. It will be one click, and the grove will know you."));
+$("si-preview").addEventListener("click", () => { acct.in = true; keepAcct(); renderAccount(); announce("Previewing a signed-in account."); });
+$("si-out").addEventListener("click", () => { acct.in = false; acct.owns = false; keepAcct(); renderAccount(); });
+$("buy").addEventListener("click", () => soon("Buying the album isn't ready yet: the artist hasn't chosen a price or a way to pay. When it is, it will be one checkout, and the album will appear in your inventory to stream or download."));
+$("own-preview").addEventListener("click", () => { acct.owns = !acct.owns; keepAcct(); renderAccount(); announce(acct.owns ? "Previewing the album in your inventory." : "Album preview removed."); });
+renderAccount();
+
+// ---- the chat pane: drag it by its header, or move it with the arrow keys on its grip
+const CHAT_POS = "whispering-spring.chatpos.v1";
+function placeChat(x, y) {
+  const c = $("chat"); const w = c.offsetWidth || 340, hgt = c.offsetHeight || 200;
+  x = Math.max(8, Math.min(innerWidth - w - 8, x)); y = Math.max(8, Math.min(innerHeight - hgt - 8, y));
+  c.style.left = `${x}px`; c.style.top = `${y}px`; c.style.bottom = "auto";
+  try { localStorage.setItem(CHAT_POS, JSON.stringify([x, y])); } catch {}
+}
+try { const p = JSON.parse(localStorage.getItem(CHAT_POS) || "null"); if (p) requestAnimationFrame(() => placeChat(p[0], p[1])); } catch {}
+{
+  let drag = null;
+  $("chat-head").addEventListener("pointerdown", (e) => { if (e.target.closest("#chat-close")) return; const r = $("chat").getBoundingClientRect(); drag = [e.clientX - r.left, e.clientY - r.top]; $("chat-head").setPointerCapture(e.pointerId); e.preventDefault(); });
+  $("chat-head").addEventListener("pointermove", (e) => { if (drag) placeChat(e.clientX - drag[0], e.clientY - drag[1]); });
+  $("chat-head").addEventListener("pointerup", () => { drag = null; });
+  $("chat-grip").addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[e.key];
+    if (!d) return; e.preventDefault(); e.stopPropagation();
+    const r = $("chat").getBoundingClientRect(); placeChat(r.left + d[0], r.top + d[1]);
+  });
+}
+
 // ---- the text-first grove
 function renderText() {
   document.body.classList.toggle("text-mode", settings.text && inGrove);
@@ -633,16 +886,31 @@ function renderText() {
 }
 
 // ---- keys
+// held movement keys glide the view each frame: A/D or ←/→ along the grove, W/S or ↑/↓ in and out
+const MOVE_KEYS = { a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0], w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1] };
+const held = new Set(); let moving = false;
+function moveLoop() {
+  if (!held.size || !inGrove) { moving = false; return; }
+  let dx = 0, dz = 0; for (const k of held) { dx += MOVE_KEYS[k][0]; dz += MOVE_KEYS[k][1]; }
+  if (dx) send(MSG.look, `p ${dx > 0 ? 2 : -2}`);
+  if (dz) send(MSG.look, `z ${dz > 0 ? 1 : -1}`);
+  requestAnimationFrame(moveLoop);
+}
+addEventListener("keyup", (e) => held.delete(e.key.toLowerCase()));
+addEventListener("blur", () => held.clear());
 addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const typing = e.target instanceof HTMLInputElement && (e.target.type === "text" || e.target.type === "range");
   if (e.key === "Escape") {
     if (inGrove && state.h >= 0 && state.y === 1) { send(MSG.stones, "b"); e.preventDefault(); return; }
-    if (inGrove && decor.k >= 0) { send(MSG.decor, "x"); e.preventDefault(); return; }
+    if (inGrove && decor.k >= 0) { send(MSG.decor, "x"); send(MSG.decor, "q"); e.preventDefault(); return; }
+    if (inGrove && decor.t >= 0) { send(MSG.decor, "q"); e.preventDefault(); return; }
+    if (!$("soon").hidden) { closeSoon(); e.preventDefault(); return; }
+    if (!$("ribbon-card").hidden) { closeRibbonCard(); e.preventDefault(); return; }
+    if (!$("mandala").hidden) { closeMandala(); e.preventDefault(); return; }
     if (!$("menu").hidden) { setMenu(false); $("t-menu").focus(); e.preventDefault(); return; }
     if (!$("found").hidden) { closeFound(); e.preventDefault(); return; }
     const p = topPanel(); if (p) { close(p); e.preventDefault(); return; }
-    if (paused) { setPaused(false); e.preventDefault(); }
     return;
   }
   if (typing || !inGrove || paused || !$("found").hidden) return;
@@ -652,16 +920,11 @@ addEventListener("keydown", (e) => {
     if (mv) { send(MSG.decor, `m ${mv}`); e.preventDefault(); return; }
     if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement)) { send(MSG.decor, "p"); e.preventDefault(); return; }
   }
-  if (!$("stones").hidden || (state.h >= 0 && state.y === 1)) {
-    if (k === "q") { send(MSG.stones, "t -1"); e.preventDefault(); return; }
-    if (k === "e") { send(MSG.stones, "t 1"); e.preventDefault(); return; }
-    if (e.key === "Enter" && e.target === $("stones")) { send(MSG.stones, "p"); e.preventDefault(); return; }
-  }
+  if (MOVE_KEYS[k] && !(e.target instanceof HTMLInputElement)) { held.add(k); if (!moving) { moving = true; requestAnimationFrame(moveLoop); } e.preventDefault(); return; }
   if (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement) { if (e.key === "Enter" || e.key === " ") return; }
   if (k === "1" || k === "2" || k === "3") { audio.start(); send(MSG.pick, String(Number(k) - 1)); e.preventDefault(); }
-  else if (k === "d") { toggle("discoveries"); e.preventDefault(); }
+  else if (k === "i") { toggle("inventory"); e.preventDefault(); }
   else if (k === "j") { toggle("journal"); e.preventDefault(); }
-  else if (k === "p") { setPaused(true); e.preventDefault(); }
 });
 
 // ---- leaving the page keeps what was found; a hidden page goes quiet
@@ -675,5 +938,5 @@ for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"])
 }
 
 syncSoundInputs();
-renderDiscoveries(); renderStones(); renderMini();
+renderDiscoveries(); renderMini(); renderInventory();
 $("enter").focus();

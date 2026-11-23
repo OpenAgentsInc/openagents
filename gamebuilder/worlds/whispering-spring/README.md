@@ -8,16 +8,36 @@ in a live grove chat. "Listen to the Album" plays the music on its own.
 
 - **Listen to the water**: touch the pool; it answers in three phrases, the last with a curling plume
   of champagne gold. A lore page opens.
-- **Stack creek stones**: click a stone in the pile to pick it up, carry it over the cairn and click to
-  let it go. It falls, and settles with a wobble, or tips off and rolls back to the pile (faux physics).
-  It is meant to be easy: a stone comes up the right way round and is drawn to the stack's middle.
-  The wheel or Q / E turns it. Four stones sound a chord; assisted placement always holds. A lore page opens.
-- **Decorate**: a basket of six things (lantern, candles, bluebonnets, crystal, sage bundle, offering
-  bowl) to set about the grove, move or clear; up to sixteen, kept in the save.
-- **Hang a prayer ribbon** on one of six limbs: fabric, colour, charm, an intention (shared only if
-  the visitor chooses). It joins everyone's ribbons on the tree. A lore page opens.
-- **Greet the quail**: she turns to you and says a prayer in a cozy-game babble voice.
-- **Album journal**: the lore pages found, to read, keep or download.
+- **Stack creek stones** at five cairns along the loop: click a stone in a pile, then click
+  anywhere: it drifts to the middle of the stack as it falls and always stays. No wrong answers.
+  Four stones sound a chord; tap a finished cairn and it tumbles apart to build again.
+- **A loop of land** 136 m round with no seam: drag, the wheel, A/D or ←/→ (W/S or ↑/↓ lean in and
+  out) carry the view on round it through an open field, old woods, the mandala clearing, a
+  woodland, the spring, a meadow and a golden field. The fields lie under open sky before three
+  hill ranges, with clouds to tap (they puff, blush gold and sprinkle light) and fireflies bobbing
+  over the grass. The engine's lush grass grows in a patch round the view; foreground clumps and a
+  slight drift with the pointer give depth.
+- **One inventory**: the world starts stocked with thirty things (one of each statue: Mother Mary,
+  a fountain, the Buddha, Archangel Michael, a serpent dragon; several lanterns, candles,
+  bluebonnets, crystals, sage bundles and offering bowls; bells and lanterns hanging in the prayer
+  trees). Tap one and it goes into the inventory; set it down again anywhere from there. A tapped
+  bell rings. The inventory also holds the terrain brushes (tall grass, low grass, bare earth, with a
+  ring under the pointer), the lore relics (sealed until found), the songs and the album.
+- **Hang a prayer ribbon** on any of sixteen limbs on six prayer trees: fabric, colour, charm, an
+  intention (shared only if the visitor chooses). Tap anyone's ribbon: in the grove its glyphs
+  spiral off into a ring of light; up close it is drawn as it was tied, its glyph script unfurls
+  into its words in a turning halo, with who tied it and when. A lore page opens.
+- **The mandala**: in the clearing, the view goes overhead and everyone builds one design together
+  from eight materials, each piece set in eight-fold symmetry (room `whispering-spring-mandala`),
+  with a button to clear it for a fresh start.
+- **The quail** wanders her strip side-on and now and then walks right up to the camera to look
+  left and right. Greet her and she says a prayer in a cozy-game babble voice.
+- **Dusk, night and toon**: dusk by default; the bar's Night button gives a moonlit night where
+  lanterns, candles and crystals glow; Settings also has toon shading and light graphics (on by
+  default on a phone: plainer, nearer grass, fewer fireflies, a smaller shadow).
+- **Account**, **buy** and **download** are previews only: each says it isn't ready yet, and nothing
+  is sent or charged until the artist chooses a price and a way to pay.
+- Nothing tells the visitor what to do: no quest card, no callouts, no discoveries list.
 
 Plan, layout, timeline, rooms and save format: [PLAN.md](PLAN.md).
 

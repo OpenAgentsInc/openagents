@@ -4,6 +4,7 @@
 // take a line out: POST /api/playtest/chat/<room>/remove):
 //   whispering-spring          the grove's chat: the last 50 lines, 500 characters, 5 lines in 10 s
 //   whispering-spring-ribbons  one line per ribbon tied: "ribbon1|fabric,colour,charm,limb,slot|word"
+//   whispering-spring-mandala  one line per piece of the shared mandala: "m1|kind,ring,angle" (the room keeps the last 50)
 // A visitor is a playtest guest (POST /api/playtest/player), its key kept where the host keeps it
 // (localStorage verse.player), sent as X-Verse-Player. Nothing here decides what the grove shows:
 // the ribbons go to world-spring.coax as rows, which draws them.
@@ -11,7 +12,8 @@
 const API = "/api/playtest";
 export const CHAT_ROOM = "whispering-spring";
 export const RIBBON_ROOM = "whispering-spring-ribbons";
-const LIMBS = 6, SLOTS = 6, SHOWN = 36;
+export const MANDALA_ROOM = "whispering-spring-mandala";
+const LIMBS = 16, SLOTS = 6, SHOWN = 96;
 const ORDER = [2, 3, 1, 4, 0, 5];
 
 function stored() { try { const p = JSON.parse(localStorage.getItem("verse.player") || "null"); return p && typeof p.key === "string" ? p : null; } catch { return null; } }
@@ -29,10 +31,15 @@ export class GroveRoom {
     try { localStorage.setItem("verse.player", JSON.stringify(this.player)); } catch {}
     return this.player;
   }
-  async post(path, body) {
+  async post(path, body, again = true) {
     const p = await this.ensurePlayer();
     const r = await fetch(`${API}/${path}`, { method: "POST", headers: { "content-type": "application/json", "x-verse-player": p.key }, body: JSON.stringify(body) });
     let json = {}; try { json = await r.json(); } catch {}
+    // a guest key the platform no longer knows: get a new one and try once more
+    if (r.status === 403 && again && /player key/i.test(String(json.error || ""))) {
+      this.player = null; try { localStorage.removeItem("verse.player"); } catch {}
+      return this.post(path, body, false);
+    }
     return { ok: r.ok, status: r.status, json };
   }
   async get(path) {
@@ -66,6 +73,22 @@ export class GroveRoom {
     this.online = true;
     return placeRibbons(j.messages || []);
   }
+  // ---- the mandala: everyone's pieces, oldest first, and who set the newest
+  async mandala() {
+    const j = await this.get(`chat/${MANDALA_ROOM}?after=0`);
+    const out = [];
+    for (const m of [...(j.messages || [])].sort((a, b) => a.n - b.n)) {
+      const parts = String(m.text || "").split("|");
+      if (parts[0] === "m1clear") { out.length = 0; continue; }   // a fresh start: only what comes after counts
+      if (parts[0] !== "m1" || parts.length < 2) continue;
+      const v = parts[1].split(",").map(Number);
+      if (v.length !== 3 || v.some((x) => !Number.isInteger(x))) continue;
+      out.push({ kind: v[0], ring: v[1], a: v[2], name: m.name, mine: !!m.mine });
+    }
+    return out;
+  }
+  clearMandala() { return this.post(`chat/${MANDALA_ROOM}`, { text: "m1clear" }); }
+  placePiece(kind, ring, a) { return this.post(`chat/${MANDALA_ROOM}`, { text: `m1|${kind},${ring},${a}` }); }
   tie(r) {
     const word = r.share ? String(r.word || "").replace(/[|\n\r\t]/g, " ").slice(0, 40) : "";
     return this.post(`chat/${RIBBON_ROOM}`, { text: `ribbon1|${r.fabric},${r.colour},${r.charm},${r.limb},${r.slot}|${word}` });
