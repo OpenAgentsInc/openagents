@@ -29,9 +29,9 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F7AF3A2684E8BEE2B21853FD"
-               BuildableName = "OpenAgentsIdentityTests.xctest"
-               BlueprintName = "OpenAgentsIdentityTests"
+               BlueprintIdentifier = "FAB980B9658225CB7383114B"
+               BuildableName = "OpenAgentsTests.xctest"
+               BlueprintName = "OpenAgentsTests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -58,9 +58,9 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F7AF3A2684E8BEE2B21853FD"
-               BuildableName = "OpenAgentsIdentityTests.xctest"
-               BlueprintName = "OpenAgentsIdentityTests"
+               BlueprintIdentifier = "FAB980B9658225CB7383114B"
+               BuildableName = "OpenAgentsTests.xctest"
+               BlueprintName = "OpenAgentsTests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
          </TestableReference>

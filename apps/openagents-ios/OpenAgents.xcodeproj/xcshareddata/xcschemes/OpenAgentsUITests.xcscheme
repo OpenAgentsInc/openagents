@@ -29,9 +29,9 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "AD2B1A689DAC28BB854319A5"
-               BuildableName = "OpenAgentsSidebarUITests.xctest"
-               BlueprintName = "OpenAgentsSidebarUITests"
+               BlueprintIdentifier = "D6306D13CC52B0771CBD18E6"
+               BuildableName = "OpenAgentsUITests.xctest"
+               BlueprintName = "OpenAgentsUITests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -58,9 +58,9 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "AD2B1A689DAC28BB854319A5"
-               BuildableName = "OpenAgentsSidebarUITests.xctest"
-               BlueprintName = "OpenAgentsSidebarUITests"
+               BlueprintIdentifier = "D6306D13CC52B0771CBD18E6"
+               BuildableName = "OpenAgentsUITests.xctest"
+               BlueprintName = "OpenAgentsUITests"
                ReferencedContainer = "container:OpenAgents.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -1,5 +1,3 @@
-// Firm reason: 6 (the C boundary Swift sees: the compiled page's opaque host).
-#include "host.h"
-#include "core-host.h"
+// Firm reason: 6 (opaque C boundary Swift sees: mobile-core.coax + tailnet.coax).
+#include "mobile-core-bridge.h"
 #include "../shared/native/tailnet-codec.h"
-#include "../../components/app/gallery/host.h"

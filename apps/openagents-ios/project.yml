@@ -7,7 +7,7 @@ settings:
   base:
     DEVELOPMENT_TEAM: HQWSG26L43
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1417"
+    CURRENT_PROJECT_VERSION: "1418"
     OA_IOS_BUNDLE_ID: com.openagents.app
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
@@ -19,46 +19,15 @@ targets:
     type: application
     platform: iOS
     sources:
-      - App.swift
-      # The shared app core's host loop: its C entry points are in host.c (core-host.c).
-      - AppCore.swift
-      - ../shared/native/AppCoreC.swift
-      - ../shared/native/AppRuntime.swift
-      # The dev menu: the app set's gallery, debug builds only.
-      - DevGallery.swift
-      # The shared component carrier with the app's pages: the chat page, no gallery page.
-      - path: ../../components/gallery/linux/main.c
-        compilerFlags: "-DCOMPONENTS_EMBEDDED=1 -DCOMPONENTS_NO_GALLERY=1 -DCOMPONENTS_CHAT=1 -DOPENAGENTS_PHONE_DRIVE=1 -IGenerated -I../shared/host/linux"
-      - ComponentsHost.m
-      # coax drive on the real app (debug builds start it on -OADrive; apps/shared/app/cases/INTEGRATION.md).
-      - ../shared/host/apple/phone-drive.c
-      - path: Generated/gallery.c
-        compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
-      - path: Generated/Components
-        type: folder
-        buildPhase: resources
-      - ../shared/native/KitEditor.swift
-      # VoiceOver over the GPU surfaces: one bridge from the committed semantic rows.
-      - ../shared/native/KitAccess.swift
-      # Native services for the compiled app: HTTP, the account, wakes, the device and the effect bridge.
-      - ../shared/native/AppHTTP.swift
-      - ../shared/native/AppAccount.swift
-      - ../shared/native/AppIdentity.swift
-      - ../shared/native/AppProvider.swift
-      - ../shared/native/AppWorkspace.swift
-      - ../shared/native/AppLibrary.swift
-      - ../shared/native/KitPasskey.swift
-      - ../shared/native/AppWake.swift
-      - ../shared/native/AppEffects.swift
-      - ../shared/native/AppDevice.swift
-      - ../shared/native/AppCoreBridge.swift
-      # The phone's own computers, with no account: the device key, pairing and the relay.
-      - ../shared/native/AppDeviceLink.swift
-      # Zero-config pairing with Coder Desktop over Tailscale: Bonjour, then the Mac's tailnet address (#13778).
+      # Clean-sheet native SwiftUI/UIKit shell for Antigravity over Tailscale (#13993, Option 2).
+      - Sources
+      # Shared Tailscale IP/MagicDNS/TXT/admission/direct wire rules (Foundation-only).
       - ../shared/native/AppTailnet.swift
-      - ../shared/native/AppTailnetLink.swift
-      - ../shared/host/apple/AppAuth.swift
-      - ../shared/host/apple/DeviceKey.swift
+      # Lean compiled Coax C bridge (mobile-core.coax -> Generated/mobile_core.c) + opaque C ABI shim.
+      - path: Generated/mobile_core.c
+        compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
+      - path: mobile-core-bridge.c
+        compilerFlags: "-IGenerated -I../shared/native"
       - OpenAgents/Assets.xcassets
     settings:
       base:
@@ -71,62 +40,60 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenAgents/OpenAgents.entitlements
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
-        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents finds OpenAgents on your Mac nearby, so you can pair with it without a code."
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: NO
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents discovers your Mac nearby so it can connect to Antigravity over Tailscale."
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_OBJC_BRIDGING_HEADER: Bridge.h
-        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Generated", "$(SRCROOT)/../shared/native"]
         GCC_OPTIMIZATION_LEVEL: "2"
         # Frame budget (#13747): no C function in the app may hold a stack frame over 512 KB.
-        # Large state lives in caller-owned structs passed as views, never in locals; generate.sh
-        # checks the generated C the same way at -Os, with and without inlining.
+        # Large Coax records live in heap-allocated MobileCoreWork; no 64 MB stack hack needed.
         OTHER_CFLAGS: ["$(inherited)", "-Wframe-larger-than=524288", "-Werror=frame-larger-than"]
-        # The 64 MB main-thread stack began as the fix for a launch overflow (builds 1404-1408:
-        # Coax frames over 1 MB against iOS's 1 MB main-thread default). With the budget above
-        # passing (largest frame 468 KB), it stays as headroom: the budget bounds one frame, not
-        # a call chain, and two frames near the budget nested on the main thread would pass 1 MB.
-        OTHER_LDFLAGS: ["$(inherited)", "-Wl,-stack_size,0x4000000"]
-        # Xcode's debug dylib (the app as a thin stub over OpenAgents.debug.dylib) cannot carry a
-        # stack size, so Debug links one binary like Release.
+        DEAD_CODE_STRIPPING: YES
         ENABLE_DEBUG_DYLIB: NO
-  OpenAgentsIdentityTests:
+  OpenAgentsTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Tests]
+    sources:
+      - Tests/MobileCoreTests.swift
     dependencies:
       - target: OpenAgents
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.identity-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.tests
         GENERATE_INFOPLIST_FILE: YES
-  OpenAgentsSidebarUITests:
+  OpenAgentsUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [UITests]
+    sources:
+      - UITests/AntigravityUITests.swift
     dependencies:
       - target: OpenAgents
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.sidebar-ui-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.app.ui-tests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   OpenAgents:
     build:
       targets:
         OpenAgents: all
-  OpenAgentsIdentity:
+    test:
+      targets:
+        - OpenAgentsTests
+  OpenAgentsTests:
     build:
       targets:
         OpenAgents: all
-        OpenAgentsIdentityTests: [test]
+        OpenAgentsTests: [test]
     test:
-      targets: [OpenAgentsIdentityTests]
-  OpenAgentsSidebar:
+      targets: [OpenAgentsTests]
+  OpenAgentsUITests:
     build:
       targets:
         OpenAgents: all
-        OpenAgentsSidebarUITests: [test]
+        OpenAgentsUITests: [test]
     test:
-      targets: [OpenAgentsSidebarUITests]
+      targets: [OpenAgentsUITests]

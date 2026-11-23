@@ -157,6 +157,12 @@ PA_ENGINE_NAME :: [4] string.["Claude Code", "Microcoder on Gemini", "Antigravit
   #assert pa_effort(PA_INKLING, "inkling-2-mini", "") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "low") == "low" && pa_effort(PA_INKLING, "inkling-2-mini", "medium") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "high") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "xhigh") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "bogus") == "medium";
   #assert pa_effort(PA_MICRO, "gemini-4-neon", "high") == "low" && pa_effort(PA_CLAUDE, "default", "high") == "high" && pa_effort(PA_NONE, "", "high") == "";
 }
+#test "Antigravity-only mobile client allows only Antigravity models and normalizes others to Gemini 4 Neon" {
+  #assert pa_mobile_agy_allowed("gemini-4-neon") && pa_mobile_agy_allowed("gemini-4-carbon") && pa_mobile_agy_allowed("gemini-3.8-flash") && pa_mobile_agy_allowed("antigravity");
+  #assert !pa_mobile_agy_allowed("inkling-2-mini") && !pa_mobile_agy_allowed("inkling") && !pa_mobile_agy_allowed("claude-opus-5-5") && !pa_mobile_agy_allowed("default") && !pa_mobile_agy_allowed("") && !pa_mobile_agy_allowed("gemini-");
+  #assert pa_mobile_agy_model("gemini-4-carbon") == "gemini-4-carbon" && pa_mobile_agy_model("gemini-3.8-flash") == "gemini-3.8-flash";
+  #assert pa_mobile_agy_model("antigravity") == PA_AGY_DEFAULT && pa_mobile_agy_model("inkling-2-mini") == PA_AGY_DEFAULT && pa_mobile_agy_model("claude-opus-5-5") == PA_AGY_DEFAULT && pa_mobile_agy_model("") == PA_AGY_DEFAULT;
+}
 
 pa_usable :: (f: PaFacts, engine: int) -> bool #effects(all) {
   if engine == PA_CLAUDE { return f.claude; }
@@ -237,4 +243,13 @@ pa_offer :: (f: PaFacts, out: [] int) -> int #effects(all) {
   n := 0;
   for e: PA_ORDER { if n < out.count && pa_usable(f, e) { out[n] = e; n += 1; } }
   return n;
+}
+// Antigravity-only mobile client policy (#13993): only Antigravity/Gemini model ids are allowed,
+// and any generic or non-Antigravity selection resolves to PA_AGY_DEFAULT ("gemini-4-neon").
+pa_mobile_agy_allowed :: (id: string) -> bool #effects(all) {
+  return pa_agy_model(id);
+}
+pa_mobile_agy_model :: (want: string) -> string #effects(all) {
+  if pa_agy_model(want) && want != PA_AGY_ID { return want; }
+  return PA_AGY_DEFAULT;
 }
