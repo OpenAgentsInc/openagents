@@ -55,8 +55,8 @@ WtKind :: struct { head: string; spec: string; who: int; ex: string; note: strin
 
 // The kinds a writer or reader names in code. A kind's number is its row and never changes; a kind
 // that goes keeps its row.
-WT_ANY :: 0; WT_D :: 1; WT_ROWS :: 2; WT_ROW :: 3; WT_X :: 4; WT_W :: 5; WT_REFUSED :: 6; WT_N :: 10; WT_WANTED :: 11;
-WT_LINK :: 14; WT_OUTCOMES :: 15; WT_P :: 47; WT_H :: 48; WT_I :: 49; WT_J1 :: 50; WT_C :: 51; WT_E :: 52;
+WT_ANY :: 0; WT_D :: 1; WT_ROWS :: 2; WT_ROW :: 3; WT_X :: 4; WT_W :: 5; WT_REFUSED :: 6; WT_REST_STATE :: 8; WT_BAR :: 9; WT_N :: 10; WT_WANTED :: 11;
+WT_LINK :: 14; WT_OUTCOMES :: 15; WT_SHOT :: 45; WT_SHOT_END :: 46; WT_P :: 47; WT_H :: 48; WT_I :: 49; WT_J1 :: 50; WT_C :: 51; WT_E :: 52;
 WT_R :: 53; WT_L :: 54; WT_Z :: 55; WT_V :: 56; WT_ADMIN :: 57; WT_K :: 58; WT_T :: 59; WT_O :: 60; WT_A :: 61; WT_F :: 62;
 WT_KINDS :: 63;
 WT :: [WT_KINDS] WtKind.[
@@ -702,7 +702,7 @@ wt_test_round :: (t: string, bytes: int) -> bool {
 #test "wire table: every kind's opcode is its row, its example is written as its row says and comes back byte for byte" {
   #assert WT[WT_R].head == "R" && WT[WT_L].head == "L" && WT[WT_Z].head == "Z" && WT[WT_V].head == "V" && WT[WT_ADMIN].head == "X" && WT[WT_K].head == "K" && WT[WT_T].head == "T" && WT[WT_O].head == "O" && WT[WT_A].head == "A" && WT[WT_F].head == "F";
   #assert WT.count == WT_KINDS && WT[WT_I].head == "I" && WT[WT_J1].head == "J1" && WT[WT_H].head == "H" && WT[WT_P].head == "P" && WT[WT_C].head == "C" && WT[WT_E].head == "E";
-  #assert WT[WT_X].head == "x" && WT[WT_W].head == "W" && WT[WT_REFUSED].head == "r" && WT[WT_N].head == "n" && WT[WT_WANTED].head == "w" && WT[WT_LINK].head == "k" && WT[WT_OUTCOMES].head == "o";
+  #assert WT[WT_X].head == "x" && WT[WT_W].head == "W" && WT[WT_REFUSED].head == "r" && WT[WT_REST_STATE].head == "z" && WT[WT_BAR].head == "b" && WT[WT_N].head == "n" && WT[WT_WANTED].head == "w" && WT[WT_LINK].head == "k" && WT[WT_OUTCOMES].head == "o" && WT[WT_SHOT].head == "a" && WT[WT_SHOT_END].head == "d";
   for k: 0..<WT_KINDS {
     b: [512] u8; tabled: [1] bool;
     n := wt_bin_told(WT[k].ex, b[..], tabled[..]);

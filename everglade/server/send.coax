@@ -11,7 +11,24 @@ EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int;
 eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int, entry: string) { s := s_id.value;
   if entry.count > 2 && entry[0] == 'e' && wire_outcome(entry) { v[0].eg[k].seat[s].out_n = add_sat(v[0].eg[k].seat[s].out_n, 1); }
   if o[0].dg && eg_dg_state(entry) {
-    if o[0].gn + entry.count + (ifx o[0].gany then 1 else 0) <= EG_DG_ROWS {
+    if o[0].bin {
+      eb: [384] u8; raw := entry;
+      if !wt_is_bin(entry) {
+        tabled: [1] bool; tabled[0] = true;
+        em := wt_bin_entry(entry, eb[..], 0, tabled[..]);
+        if em > 0 {
+          if !tabled[0] { v[0].st.wire_any += 1; }
+          raw = cast(string) eb[0..<em];
+        } else { raw = ""; }
+      }
+      if raw.count > 0 {
+        lsz := ifx raw.count < 128 then 1 else 2;
+        if o[0].gn + lsz + raw.count <= EG_DG_ROWS {
+          at := wt_len_put(o[0].g[..], o[0].gn, raw.count);
+          if at >= 0 { o[0].gn = put(o[0].g[..], at, raw); o[0].gany = true; return; }
+        }
+      }
+    } else if o[0].gn + entry.count + (ifx o[0].gany then 1 else 0) <= EG_DG_ROWS {
       if o[0].gany { o[0].g[o[0].gn] = ';'; o[0].gn += 1; }
       o[0].gn = put(o[0].g[..], o[0].gn, entry); o[0].gany = true;
       return;
@@ -219,8 +236,8 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   }
   o: [1] EgOut;
   o[0].dg = rm_wt_on(v, c);   // a WebTransport seat: its state one datagram a tick (room-wt.coax)
-  // a page that reads binary frames (#13278): its frame is written as the table's bytes, rows and all
-  o[0].bin = !o[0].dg && c >= 0 && c < CONNS && v[0].conns[c].bin;
+  // a page that reads binary frames (#13278): its frame is written as the table's bytes, on WebSocket and WebTransport alike
+  o[0].bin = c >= 0 && c < CONNS && v[0].conns[c].bin;
   st[0].rep[0].bin = o[0].bin;
   me := st[0].pose;
   e: [320] u8;

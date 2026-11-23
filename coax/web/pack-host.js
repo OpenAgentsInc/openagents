@@ -2,7 +2,7 @@
 import {rememberAsset} from './loader.js';
 const wasmURL=new URL('../build/host-packs.wasm',import.meta.url);
 let compiled,opened,moduleBytes=0,moduleSourceCleared=false;
-async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL,{cache:'no-store'});if(!r.ok)throw Error(`pack reactor:${r.status}`);const bytes=await r.arrayBuffer();moduleBytes=bytes.byteLength;try{await rememberAsset(r.url,bytes);return await WebAssembly.compile(bytes);}finally{new Uint8Array(bytes).fill(0);moduleSourceCleared=true;}})().catch(e=>{compiled=null;throw e;});return compiled;}
+async function packModule(){compiled??=(async()=>{const r=await fetch(wasmURL);if(!r.ok)throw Error(`pack reactor:${r.status}`);const bytes=await r.arrayBuffer();moduleBytes=bytes.byteLength;try{await rememberAsset(r.url,bytes);return await WebAssembly.compile(bytes);}finally{new Uint8Array(bytes).fill(0);moduleSourceCleared=true;}})().catch(e=>{compiled=null;throw e;});return compiled;}
 function instance(module,onMemory){
  const memory=new WebAssembly.Memory({initial:128,maximum:1024});
  try{
@@ -153,26 +153,102 @@ export async function openPackHost(){
     if(total&&total!==fileBytes)throw Error('VPK3 file is not the size its header says');
     const info=[];for(let k=0;k<pages;k++){const f=[0,1,2,3,4,5].map(i=>Number(x.pack_page_info(k,i)));info.push({at:f[0],stored:f[1],image:f[2],decoded:f[3],codec:f[4],root:f[5]===1});}
     const address=arena(op,imageBytes),held=new Uint8Array(pages);let loaded=need;op.progress?.(loaded,fileBytes);
+    // Content-addressed warm cache (keyed by VPK3 header's 32-byte image_id SHA-256).
+    // Cached bytes are never trusted: Coax still admits every page by SHA-256 before use.
+    const imageIdHex=Array.from(head.subarray(64,96),b=>b.toString(16).padStart(2,'0')).join('');
+    const useCache=!pack.quiet&&!pack.broker&&typeof globalThis.caches!=='undefined';
+    const cacheOpen=useCache?globalThis.caches.open('coaxial-vpk3-v1').catch(()=>null):Promise.resolve(null);
+    const cacheKey=part=>`https://coaxial.vpk3.cache/${imageIdHex}/${part}`;
     // Runs: consecutive pages of one kind (root or not), up to 2 MiB of stored bytes each.
-    const runs=root=>{const out=[];let run=null;for(let k=0;k<pages;k++){if(info[k].root!==root){run=null;continue;}
+    const runs=root=>{const out=[];let run=null;for(let k=0;k<pages;k++){if(info[k].root!==root||held[k]){run=null;continue;}
      if(run&&k===run.at(-1)+1&&info[k].at+info[k].stored-info[run[0]].at<=2097152)run.push(k);else out.push(run=[k]);}return out;};
     const inflate=async bytes=>new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    const unt32s=(src,dst)=>{const n=src.length>>>5;for(let b=0;b<32;b++){let acc=0;const row=b*n;for(let k=0,p=b;k<n;k++,p+=32){acc=(acc+src[row+k])&255;dst[p]=acc;}}for(let j=n<<5;j<src.length;j++)dst[j]=src[j];};
+    const unidx32=(src,dst)=>{const m=src.length>>>2;let prev=0;for(let k=0;k<m;k++){const zz=(src[k]|(src[m+k]<<8)|(src[2*m+k]<<16)|(src[3*m+k]<<24))>>>0;const d=((zz>>>1)^-(zz&1))>>>0;prev=(prev+d)>>>0;const p=k<<2;dst[p]=prev&255;dst[p+1]=(prev>>>8)&255;dst[p+2]=(prev>>>16)&255;dst[p+3]=(prev>>>24)&255;}};
+    const decodePage=async(g,stored)=>{
+     if(g.codec===0)return stored;
+     const raw=await inflate(stored);
+     if(raw.length!==g.decoded)return raw;
+     if(g.codec===1)return raw;
+     const out=new Uint8Array(raw.length);
+     if(g.codec===2){unt32s(raw,out);return out;}
+     if(g.codec===3){unidx32(raw,out);return out;}
+     throw Error(`unknown VPK3 codec ${g.codec}`);
+    };
     const fetchRun=async run=>{
      const first=info[run[0]],last=info[run.at(-1)];
+     // Check per-page cache for non-root demand pages before hitting network.
+     if(useCache&&!first.root){
+      const cache=await cacheOpen;
+      if(cache){
+       let allCached=true;
+       const hits=await Promise.all(run.map(async k=>{if(held[k])return null;const res=await cache.match(cacheKey(`p/${k}`)).catch(()=>null);return res?new Uint8Array(await res.arrayBuffer()):null;}));
+       op.check();
+       for(let i=0;i<run.length;i++){
+        const k=run[i];if(held[k])continue;const g=info[k],buf=hits[i];
+        if(!buf||buf.length!==g.decoded){allCached=false;break;}
+        new Uint8Array(op.context.memory.buffer,address+g.image,g.decoded).set(buf);
+        if(!x.pack_page_admit(k)){allCached=false;break;}
+        held[k]=1;loaded+=g.stored;op.copied+=g.decoded;op.progress?.(loaded,fileBytes);
+       }
+       if(allCached)return;
+      }
+     }
      for(let attempt=0;;attempt++){
       const bytes=await range(first.at,last.at+last.stored);let ok=bytes.length===last.at+last.stored-first.at;
-      for(const k of run){
-       if(!ok)break;if(held[k])continue;const g=info[k],stored=bytes.subarray(g.at-first.at,g.at-first.at+g.stored);
-       let decoded;op.sdkPending++;try{decoded=g.codec===1?await inflate(stored):stored;}catch{ok=false;break;}finally{op.sdkPending--;}
-       op.check();if(decoded.length!==g.decoded){ok=false;break;}
-       new Uint8Array(op.context.memory.buffer,address+g.image,g.decoded).set(decoded);
-       if(!x.pack_page_admit(k)){ok=false;break;}held[k]=1;loaded+=g.stored;op.copied+=g.decoded;op.progress?.(loaded,fileBytes);
+      const todo=ok?run.filter(k=>!held[k]):[];
+      if(ok&&todo.length){
+       let decodedList;op.sdkPending+=todo.length;
+       try{decodedList=await Promise.all(todo.map(k=>{const g=info[k];return decodePage(g,bytes.subarray(g.at-first.at,g.at-first.at+g.stored));}));}
+       catch{ok=false;}finally{op.sdkPending-=todo.length;}
+       op.check();
+       if(ok){
+        for(let i=0;i<todo.length;i++){
+         const k=todo[i],g=info[k],decoded=decodedList[i];
+         if(decoded.length!==g.decoded){ok=false;break;}
+         new Uint8Array(op.context.memory.buffer,address+g.image,g.decoded).set(decoded);
+         if(!x.pack_page_admit(k)){ok=false;break;}
+         held[k]=1;loaded+=g.stored;op.copied+=g.decoded;op.progress?.(loaded,fileBytes);
+         if(useCache&&!g.root){const copy=decoded.slice();cacheOpen.then(c=>c?.put(cacheKey(`p/${k}`),new Response(copy)).catch(()=>{})).catch(()=>{});}
+        }
+       }
       }
       if(ok)return;if(attempt>=2)throw Error('Coax refused a VPK3 page');await sleep(250*2**attempt);
      }
     };
-    const workers=async list=>{const queue=[...list],width=Math.max(1,Math.min(16,pack.ranges||4));await Promise.all(Array.from({length:Math.min(width,queue.length)},async()=>{while(queue.length)await fetchRun(queue.shift());}));};
-    await workers(runs(true));op.check();
+    const workers=async list=>{const queue=[...list],width=Math.max(1,Math.min(16,pack.ranges||6));await Promise.all(Array.from({length:Math.min(width,queue.length)},async()=>{while(queue.length)await fetchRun(queue.shift());}));};
+    // Warm-cache fast path for root pages: restore into arena and verify every page through Coax SHA-256.
+    let rootsFromCache=false;
+    if(useCache){
+     try{
+      const cache=await cacheOpen,res=cache&&await cache.match(cacheKey('roots'));
+      op.check();
+      if(res){
+       const buf=new Uint8Array(await res.arrayBuffer());op.check();
+       let rootTotal=0;for(let k=0;k<pages;k++)if(info[k].root)rootTotal+=info[k].decoded;
+       if(buf.length===rootTotal){
+        let pos=0,allOk=true;const mem=new Uint8Array(op.context.memory.buffer);
+        for(let k=0;k<pages;k++){
+         if(!info[k].root)continue;
+         const g=info[k];mem.set(buf.subarray(pos,pos+g.decoded),address+g.image);pos+=g.decoded;
+         if(!x.pack_page_admit(k)){allOk=false;break;}
+         held[k]=1;loaded+=g.stored;op.copied+=g.decoded;
+        }
+        if(allOk){rootsFromCache=true;op.progress?.(loaded,fileBytes);}
+       }
+      }
+     }catch{}
+    }
+    const rootRuns=runs(true);
+    if(rootRuns.length)await workers(rootRuns);
+    op.check();
+    if(useCache&&!rootsFromCache){
+     // Persist decoded root pages asynchronously in the worker after returning roots to caller.
+     const blobParts=[];const mem=new Uint8Array(op.context.memory.buffer);
+     for(let k=0;k<pages;k++)if(info[k].root)blobParts.push(mem.subarray(address+info[k].image,address+info[k].image+info[k].decoded));
+     const blob=new Blob(blobParts);
+     cacheOpen.then(c=>c?.put(cacheKey('roots'),new Response(blob)).catch(()=>{})).catch(()=>{});
+    }
     if(!x.pack_paged_finish()||(!image&&!x.pack_admit(0)))throw Error('Coax refused complete pack identity, layout or catalog');
     const memory=op.context.memory,source=new Uint8Array(memory.buffer,address,imageBytes);
     const entries=[];if(!image)for(let i=0;i<x.pack_entry_count();i++){const fields=[0,1,2,3,4,5].map(f=>Number(x.pack_entry(i,f)));entries.push(Object.freeze({kind:fields[0],licence:fields[1],name:new TextDecoder().decode(new Uint8Array(memory.buffer,fields[4],fields[5])),bytes:source.subarray(fields[2],fields[2]+fields[3]),at:fields[2]}));}

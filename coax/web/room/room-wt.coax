@@ -40,6 +40,17 @@ rm_wt_on :: (v: [] RmServer, conn: int) -> bool { return conn >= 0 && conn < CON
 // The channel a frame goes on to a WebTransport session (metaverse-engine/net/transport.coax NET_*).
 rm_wt_channel :: (v: [] RmServer, text: string) -> int #export_c #effects(all) { return rm_wt_channel_of(text); }
 rm_wt_channel_of :: (text: string) -> int {
+  if wt_is_bin(text) {
+    k := wt_kind(text);
+    if k == WT_D {
+      d := wt_d_get(text);
+      if d.ok && (d.f & WIRE_F_OOB) != 0 { return NET_COMBAT; }
+      return NET_DATAGRAM;
+    }
+    if k == WT_SHOT || k == WT_SHOT_END || k == WT_REFUSED { return NET_COMBAT; }
+    if k == WT_BAR || k == WT_REST_STATE { return NET_LOOT; }
+    return NET_SESSION;
+  }
   if text.count > 1 && text[0] == 'D' && text[1] == ' ' {
     r: [1] WireRd; r[0] = wire_rd(text, 1);
     d := wire_read_d(text, r[..]);
@@ -51,17 +62,42 @@ rm_wt_channel_of :: (text: string) -> int {
 // Whether a frame on a reliable stream goes as a datagram too, now and again next tick (room-wt.c
 // wt_out): an arrow loosed (a) or ended (d), which the page draws from the moment it names and takes
 // once by its id (everglade/client/net.coax e2n_shot_word). A resend's wait on the stream would show late.
-rm_wt_hasten :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) { return wire_is(text, "a") || wire_is(text, "d"); }
-// A datagram from session conn: its frames, '\n' apart, each one heard (NET_SAME made whole); an input
-// (I or J1) only the first time its number comes (each datagram repeats the ones the room hasn't
-// acknowledged), and a cast or a launch only the first time either way brings it.
+rm_wt_hasten :: (v: [] RmServer, text: string) -> bool #export_c #effects(all) {
+  if wt_is_bin(text) { k := wt_kind(text); return k == WT_SHOT || k == WT_SHOT_END; }
+  return wire_is(text, "a") || wire_is(text, "d");
+}
+// A datagram from session conn: its frames (binary NET_BIN_BUNDLE, single binary, or text '\n' apart),
+// each one heard (NET_SAME made whole); an input (I or J1) only the first time its number comes (each
+// datagram repeats the ones the room hasn't acknowledged), and a cast or a launch only the first time
+// either way brings it.
 rm_wt_heard :: (v: [] RmServer, conn: int, text: string) #export_c #effects(all) {
   if !rm_wt_on(v, conn) { return; }
   b: [RELAY_FRAME] u8;
   for q: 0..<net_bundle_count(text) {
-    f := net_bundle_expand(text, q, b[..]);
+    f := net_bundle_frame(text, q);
+    if f == NET_SAME {
+      j := q + 1;
+      while net_bundle_frame(text, j) == NET_SAME { j += 1; }
+      g := net_bundle_frame(text, j);
+      if wt_is_bin(g) {
+        k := wt_kind(g);
+        if k != WT_I && k != WT_J1 { continue; }
+        i := wt_in_get(g); i.seq -= (j - q);
+        if !i.ok || i.seq <= 0 || !net_gate_fresh(v[0].wt[conn].gate[..], i.seq) { continue; }
+        mn := wt_in_put(b[..], 0, k, i);
+        if mn > 0 { rm_heard(v, conn, cast(string) b[0..<mn]); }
+        continue;
+      }
+      f = net_bundle_expand(text, q, b[..]);
+    }
     if f.count == 0 { continue; }
-    if wire_is(f, "I") || wire_is(f, "J1") {
+    if wt_is_bin(f) {
+      k := wt_kind(f);
+      if k == WT_I || k == WT_J1 {
+        i := wt_in_get(f);
+        if !i.ok || !net_gate_fresh(v[0].wt[conn].gate[..], i.seq) { continue; }
+      }
+    } else if wire_is(f, "I") || wire_is(f, "J1") {
       r: [1] WireRd; r[0] = wire_rd(f, ifx f[0] == 'J' then 2 else 1);
       seq := wire_num(f, r[..]);
       if !r[0].ok || !net_gate_fresh(v[0].wt[conn].gate[..], seq) { continue; }
@@ -77,6 +113,14 @@ rm_wt_reliable :: (v: [] RmServer, conn: int, text: string) #export_c #effects(a
 }
 // Whether f is to be heard: false for a cast (C SEQ) or launch (F SEQ) whose number came before.
 rm_wt_once :: (v: [] RmServer, conn: int, f: string) -> bool {
+  if wt_is_bin(f) {
+    k := wt_kind(f);
+    if k != WT_C && k != WT_F { return true; }
+    r: [1] WtR; r[0] = wt_r(f, 1);
+    seq := wt_get_u(r[..], f, 7);
+    if !r[0].ok { return true; }
+    return net_seen_fresh(ifx k == WT_C then v[0].wt[conn].casts[..] else v[0].wt[conn].looses[..], seq);
+  }
   if !wire_is(f, "C") && !wire_is(f, "F") { return true; }
   r: [1] WireRd; r[0] = wire_rd(f, 1);
   seq := wire_num(f, r[..]);
@@ -91,6 +135,10 @@ rm_wt_stat :: (v: [] RmServer, conn: int, what: int) -> int #export_c #effects(a
 // Whether entry goes in a WebTransport seat's state datagram: a row (s, packed S), one gone (x), who a
 // seat is (n) and a WANTED level (w); everything else is an outcome or a cue, the combat stream's.
 eg_dg_state :: (entry: string) -> bool {
+  if wt_is_bin(entry) {
+    k := wt_kind(entry);
+    return k == WT_ROWS || k == WT_ROW || k == WT_X || k == WT_N || k == WT_WANTED;
+  }
   if entry.count > 1 && entry[0] == 'S' { return true; }
   return entry.count > 1 && entry[1] == ' ' && (entry[0] == 's' || entry[0] == 'x' || entry[0] == 'n' || entry[0] == 'w');
 }
@@ -123,6 +171,41 @@ eg_dg_state :: (entry: string) -> bool {
   rm_wt_reliable(v[..], 0, "C 1000007 128 0 1 -40 -1");
   #assert v[0].wt[0].looses[0].dups == 1 && v[0].wt[0].casts[0].dups == 1 && v[0].eg[k].seat[0].q_n == 7;
   rm_wt_reliable(v[..], 0, "C 1000040 128 0 1 -40 -1"); rm_wt_reliable(v[..], 0, "C x"); #assert v[0].wt[0].casts[0].dups == 1;
+  // binary frames on WebTransport: channel routing, hasten, state entries, binary input bundles and binary C/F dedup
+  bb: [256] u8;
+  bn := wt_bin("D 40 3 0 0 s 1 0 7 1", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_DATAGRAM;
+  bn = wt_bin("D 40 3 4 0 e hit 1 2 3 0", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_COMBAT;
+  bn = wt_bin("a 1302 1 0 1001325 0 0 0 0 0 0 1000 250", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_COMBAT && rm_wt_hasten(v[..], cast(string) bb[0..<bn]);
+  bn = wt_bin("d 1302 1 1 0 0 0 0 0 0 -1", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_COMBAT && rm_wt_hasten(v[..], cast(string) bb[0..<bn]);
+  bn = wt_bin("r 12 range", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_COMBAT && !rm_wt_hasten(v[..], cast(string) bb[0..<bn]);
+  bn = wt_bin("b 3 0 7 200", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_LOOT;
+  bn = wt_bin("z 0 3 3", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_LOOT;
+  bn = wt_bin("W 900 30 12345 600000 2 1000", bb[..]); #assert rm_wt_channel(v[..], cast(string) bb[0..<bn]) == NET_SESSION;
+  bn = wt_bin("x 4", bb[..]); #assert eg_dg_state(cast(string) bb[0..<bn]);
+  bn = wt_bin("n 1 p-1 a b 0 -", bb[..]); #assert eg_dg_state(cast(string) bb[0..<bn]);
+  bn = wt_bin("e hit 1 2 3 0", bb[..]); #assert !eg_dg_state(cast(string) bb[0..<bn]);
+  cl: [1] NetConn; _ := net_conn_opened(cl[..], 0, "wt"); dg: [NET_DATAGRAM_MAX] u8;
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 8, kx = 100}); d1 := net_conn_input(cl[..], 8, cast(string) bb[0..<bn], dg[..]);
+  rm_wt_heard(v[..], 0, d1[1..<d1.count]);
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 9, kx = 100}); d2 := net_conn_input_same(cl[..], 9, cast(string) bb[0..<bn], true, dg[..]);
+  #assert d2[1] == NET_BIN_BUNDLE && d2[2] == NET_BIN_SAME;
+  rm_wt_heard(v[..], 0, d2[1..<d2.count]);
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 12, kx = 100}); d2b := net_conn_input_same(cl[..], 10, cast(string) bb[0..<bn], true, dg[..]);
+  // binary NET_BIN_SAME expands seq 10 and 11 from seq 12
+  cl2: [1] NetConn; _2 := net_conn_opened(cl2[..], 0, "wt");
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 10, kx = 100}); _3 := net_conn_input_same(cl2[..], 10, cast(string) bb[0..<bn], false, dg[..]);
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 11, kx = 100}); _4 := net_conn_input_same(cl2[..], 11, cast(string) bb[0..<bn], true, dg[..]);
+  bn = wt_in_put(bb[..], 0, WT_I, WtIn.{seq = 12, kx = 100}); ds := net_conn_input_same(cl2[..], 12, cast(string) bb[0..<bn], true, dg[..]);
+  #assert ds[1] == NET_BIN_BUNDLE && ds[2] == NET_BIN_SAME && ds[3] == NET_BIN_SAME;
+  rm_wt_heard(v[..], 0, ds[1..<ds.count]);
+  #assert v[0].eg[k].seat[0].q_n == 12 && v[0].eg[k].seat[0].q[9].seq == 10 && v[0].eg[k].seat[0].q[11].seq == 12 && rm_wt_stat(v[..], 0, 3) == 4 && d2b.count > 0;
+  bc: [128] u8; bcn := wt_bin("C 1000099 128 0 1 -40 -1", bc[..]);
+  bf: [128] u8; bfn := wt_bin("F 1000099 0 1450 -30000 0 0 -60000 1000 0", bf[..]);
+  rm_wt_reliable(v[..], 0, cast(string) bf[0..<bfn]);
+  d3 := net_conn_owe(cl[..], 10, cast(string) bf[0..<bfn], dg[..]); rm_wt_heard(v[..], 0, d3[1..<d3.count]);
+  d4 := net_conn_owe(cl[..], 10, cast(string) bc[0..<bcn], dg[..]); rm_wt_heard(v[..], 0, d4[1..<d4.count]);
+  rm_wt_reliable(v[..], 0, cast(string) bc[0..<bcn]);
+  #assert v[0].wt[0].looses[0].dups == 3 && v[0].wt[0].casts[0].dups == 2;
   rm_wt_conn(v[..], 0, false); #assert rm_wt_stat(v[..], 0, 3) == 0 && rm_wt_stat(v[..], 0, 9) == -1 && rm_wt_stat(v[..], -1, 0) == -1;
 }
 // Each frame of what conn c heard since the last drain ('|' apart) that is a D: the datagrams' bytes
@@ -182,6 +265,45 @@ wt_test_live :: (m: [] WireMirror) -> int { n := 0; for e: 0..<WIRE_MIRROR { if 
   for t: 91..<94 { for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, heard = box[0].m[c].heard}); rm_heard(v[..], c, cast(string) b[0..<n]); } eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); wt_test_seen(box[..], 0, seen[0..<1]); }
   #assert seen[0].oob >= 1 && rm_wt_stat(v[..], 0, 2) == seen[0].oob && rm_wt_stat(v[..], 0, 0) == seen[0].dgrams;
   #assert v[0].eg[k].seat[0].town_end == false && v[0].eg[k].seat[1].town_end == false;
+}
+#test "webtransport binary: room sends binary D datagrams and OOB, smaller than text, matching WebSocket state" #steps 8000000000 {
+  bv: [1] RmServer; bbox: [1] EgInbox; b: [96] u8;
+  rm_init(bv[..]); rm_clock(bv[..], 0, 1762190000000);
+  rm_wt_conn(bv[..], 0, true);
+  #assert rm_join(bv[..], 0, "GET /api/room/relay/everglade/pair-e2-wt-bin HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(bv[..], 1, "GET /api/room/relay/everglade/pair-e2-wt-bin HTTP/1.1\r\n\r\n") == 1;
+  bk := eg_room_at(bv[..], bv[0].conns[0].relay); #assert bk >= 0;
+  hb: [96] u8; hbn := wire_put_hello(hb[..], 0, WireHello.{look = "ranger.0.0.0", kind = "druid", flags = WIRE_HELLO_PACKED | WIRE_HELLO_BINARY, name = "-"});
+  rm_heard(bv[..], 0, cast(string) hb[0..<hbn]);
+  hbn = wire_put_hello(hb[..], 0, WireHello.{look = "ranger.0.0.0", kind = "druid", flags = WIRE_HELLO_PACKED, name = "-"});
+  rm_heard(bv[..], 1, cast(string) hb[0..<hbn]);
+  #assert bv[0].conns[0].bin && !bv[0].conns[1].bin;
+  wt_test_crowd(bv[..], "pair-e2-wt-bin");
+  while rm_relay_next(bv[..]) > 0 {}   // drain pre-hello join frames (y, W)
+  bin_dgrams := 0; bin_bytes := 0; txt_bytes := 0;
+  for t: 1..<31 {
+    wt_test_walk(bv[..], t);
+    for c: 0..<2 { n := wire_put_in(b[..], 0, WireIn.{seq = t, px = 40, heard = bbox[0].m[c].heard}); rm_heard(bv[..], c, cast(string) b[0..<n]); }
+    eg_test_tick(bv[..], bk);
+    while true {
+      got := rm_relay_next(bv[..]); if got == 0 { break; }
+      if bv[0].rto[0] && got > 0 {
+        f0 := cast(string) bv[0].rout[0..<got];
+        if !wt_stays_text(f0) {
+          #assert wt_is_bin(f0);
+          if wt_kind(f0) == WT_D && (wt_d_get(f0).f & WIRE_F_OOB) == 0 { #assert got <= NET_DATAGRAM_MAX; bin_dgrams += 1; bin_bytes += got; }
+          tb: [4096] u8; m := wt_text(f0, tb[..]); #assert m > 0;
+          tx := cast(string) tb[0..<m];
+          if wire_is(tx, "D") { _ := wire_mirror_frame(bbox[0].m[0..<1], tx); }
+        }
+      } else if bv[0].rto[1] && got > 0 {
+        f1 := cast(string) bv[0].rout[0..<got];
+        txt_bytes += got;
+        if wire_is(f1, "D") { _ := wire_mirror_frame(bbox[0].m[1..<2], f1); }
+      }
+    }
+  }
+  #assert bin_dgrams == 30 && bin_bytes > 0 && bin_bytes < txt_bytes && wt_test_live(bbox[0].m[0..<1]) == wt_test_live(bbox[0].m[1..<2]) && wt_test_live(bbox[0].m[0..<1]) > 2;
 }
 
 // ---- the pipeline's loss check (#13177): the room's own frames through a seeded bad network

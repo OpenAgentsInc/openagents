@@ -1531,15 +1531,29 @@ e2_cast_reach :: (s: [] E2) -> f32 {
 }
 // Whether a piece standing at p, up to h tall, can throw its shadow into the tile drawn this frame:
 // its span up the light's view (base to top) crosses the tile's square, with room for its crown.
-e2_casts_into :: (s: [] E2, x: f32, y: f32, z: f32, h: f32) -> bool {
-  c := s[0].casc[0];
-  if !c.on || c.draw < 0 { return false; }
-  q := c.slot[c.draw]; a := cascade_axes(q.lx, q.ly, q.lz); r := c.tier.reach[c.draw] + h * 0.35 + 1;
+e2_casts_into_axes :: (a: LightSpace, q: CascadeSlot, reach: f32, x: f32, y: f32, z: f32, h: f32) -> bool {
+  r := reach + h * 0.35 + 1;
   across := x * a.axx + z * a.axz - q.cx;
   if across < -r || across > r { return false; }
   up0 := x * a.ayx + y * a.ayy + z * a.ayz - q.cy; up1 := up0 + a.ayy * h;
   lo := ifx up0 < up1 then up0 else up1; hi := ifx up0 < up1 then up1 else up0;
   return hi >= -r && lo <= r;
+}
+e2_casts_into :: (s: [] E2, x: f32, y: f32, z: f32, h: f32) -> bool {
+  c := s[0].casc[0];
+  if !c.on || c.draw < 0 { return false; }
+  q := c.slot[c.draw];
+  return e2_casts_into_axes(cascade_axes(q.lx, q.ly, q.lz), q, c.tier.reach[c.draw], x, y, z, h);
+}
+// Whether a ground tile centred at (x, y, z) with bounding sphere radius `rad` overlaps the active shadow tile.
+e2_tile_casts_into :: (s: [] E2, x: f32, y: f32, z: f32, rad: f32) -> bool {
+  c := s[0].casc[0];
+  if !c.on || c.draw < 0 { return false; }
+  q := c.slot[c.draw]; a := cascade_axes(q.lx, q.ly, q.lz); r := c.tier.reach[c.draw] + rad;
+  across := x * a.axx + z * a.axz - q.cx;
+  if across < -r || across > r { return false; }
+  up := x * a.ayx + y * a.ayy + z * a.ayz - q.cy;
+  return up >= -r && up <= r;
 }
 // The host's side (the face's coaxial_shadow_*_v1, coax/web/host.js), as Everglade's
 // (everglade.coax everglade_shadow_field): the atlas in texels (`which` 0 across, 1 down; a phone's
@@ -1654,52 +1668,65 @@ e2_pieces :: (s: [] E2, d: [] u32, n0: int, casting: bool) -> int {
   cast_far := ifx casting then e2_cast_reach(s) else 0.0f32;
   if casting && cast_far <= 0 { return n; }
   sc := s[0].kn.scenery; reach0 := E2_KIT_FAR[0] * sc;
-  for pass: 0..<2 {
-    if pass == 1 {
-      at := s[0].inst_n;
-      for b: 0..<E2_BUCKETS { start[b] = at; at += counts[b]; counts[b] = 0; }
-      if at > E2_VISIBLE { return n; }
-    }
-    for c: 0..<E2_CELLS_X * E2_CELLS_Z {
-      i := c % E2_CELLS_X; j := c / E2_CELLS_X;
-      mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
-      if !e2cv_plant_draws(s[0].cl[..], c) { continue; }   // its world cell isn't drawn (everglade/client/cells.coax)
-      far := ifx casting then (ifx cast_far < reach0 then cast_far else reach0) else reach0;
-      dx := mx - ex; dz := mz - ez;
-      if dx * dx + dz * dz > (far + 12) * (far + 12) { continue; }
-      if !casting && !e2_in_view(s, mx, e2_height(mx, mz) + 6, mz, 20) { continue; }
-      for q: s[0].first[c]..<s[0].first[c + 1] {
-        kit := cast(int) s[0].kinds[q]; o := q * E2_ITEM_FLOATS;
-        px := s[0].items[o]; py := s[0].items[o + 1]; pz := s[0].items[o + 2];
-        qx := px - ex; qz := pz - ez; dd := sqrt(qx * qx + qz * qz);
-        looks: E2Looks;
-        if casting {
-          // what the view draws, at its levels, but all round the eye (a shadow falls from behind
-          // you too); a piece more than half faded out casts nothing. The near tile, drawn every
-          // frame, takes every tree at level 1 (the same cards, two in three) so it never changes
-          // level as you walk and stays cheap.
-          if kit >= 25 || dd > cast_far || dd >= E2_KIT_FAR[kit] * sc { continue; }
-          if !e2_casts_into(s, px, py, pz, ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 3.0f32) { continue; }
-          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
-          if looks.n == 1 && looks.code[0] >= 32 { continue; }
-          if s[0].casc[0].draw == 0 && kit < E2_TREES { looks.n = 1; looks.lod[0] = 1; looks.code[0] = 0; }
-          // the far tiles (past 60 m) take the trees at their sparsest level, as the view draws
-          // them out there, and the big rocks; a bush's shadow that far is under a texel
-          if s[0].casc[0].draw >= 2 { if kit >= 15 && kit < 23 { continue; } if kit < E2_TREES { looks.n = 1; looks.lod[0] = 2; looks.code[0] = 0; } }
-        } else {
-          if dd >= E2_KIT_FAR[kit] * sc { continue; }
-          reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
-          if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
-          looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
-        }
-        for e: 0..<looks.n {
-          b := kit * E2_LODS + looks.lod[e];
-          if s[0].kit_count[b] <= 0 { continue; }
-          if pass == 1 { s[0].inst[start[b] + counts[b]] = e2_vis_word(q, looks.code[e]); }
-          counts[b] += 1;
-        }
+  far := ifx casting then (ifx cast_far < reach0 then cast_far else reach0) else reach0;
+  cell_far2 := (far + 12) * (far + 12);
+  // Hoist active shadow cascade axes once per frame instead of recomputing sqrt() per piece.
+  c_draw := -1; c_reach := 0.0f32; c_slot: CascadeSlot; c_axes: LightSpace;
+  if casting && s[0].casc[0].on && s[0].casc[0].draw >= 0 {
+    c_draw = s[0].casc[0].draw; c_reach = s[0].casc[0].tier.reach[c_draw];
+    c_slot = s[0].casc[0].slot[c_draw]; c_axes = cascade_axes(c_slot.lx, c_slot.ly, c_slot.lz);
+  }
+  // Single cull pass collects visible (word, bucket), followed by one linear scatter into inst[].
+  vis_w: [E2_VISIBLE] u32; vis_b: [E2_VISIBLE] u8; vis_n := 0;
+  max_vis := E2_VISIBLE - s[0].inst_n;
+  for c: 0..<E2_CELLS_X * E2_CELLS_Z {
+    if !e2cv_plant_draws(s[0].cl[..], c) { continue; }   // its world cell isn't drawn (everglade/client/cells.coax)
+    i := c % E2_CELLS_X; j := c / E2_CELLS_X;
+    mx := e2_cell_x(i) + f32(E2_CELL) * 0.5; mz := e2_cell_z(j) - f32(E2_CELL) * 0.5;
+    dx := mx - ex; dz := mz - ez;
+    if dx * dx + dz * dz > cell_far2 { continue; }
+    if !casting && !e2_in_view(s, mx, e2_height(mx, mz) + 6, mz, 20) { continue; }
+    for q: s[0].first[c]..<s[0].first[c + 1] {
+      kit := cast(int) s[0].kinds[q];
+      if casting && kit >= 25 { continue; }
+      if casting && c_draw >= 2 && kit >= 15 && kit < 23 { continue; }
+      kfar := E2_KIT_FAR[kit] * sc;
+      limit := ifx casting && cast_far < kfar then cast_far else kfar;
+      o := q * E2_ITEM_FLOATS;
+      px := s[0].items[o]; py := s[0].items[o + 1]; pz := s[0].items[o + 2];
+      qx := px - ex; qz := pz - ez; d2 := qx * qx + qz * qz;
+      if d2 >= limit * limit { continue; }
+      looks: E2Looks;
+      if casting {
+        if c_draw < 0 || !e2_casts_into_axes(c_axes, c_slot, c_reach, px, py, pz, ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 3.0f32) { continue; }
+        dd := sqrt(d2);
+        looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
+        if looks.n == 1 && looks.code[0] >= 32 { continue; }
+        if c_draw <= 1 && kit < E2_TREES { looks.n = 1; looks.lod[0] = 1; looks.code[0] = 0; }
+        if c_draw >= 2 && kit < E2_TREES { looks.n = 1; looks.lod[0] = 2; looks.code[0] = 0; }
+      } else {
+        reach := ifx kit < E2_TREES then 9.0f32 * s[0].items[o + 4] else 2.5f32;
+        if !e2_in_view(s, px, py + reach * 0.5, pz, reach) { continue; }
+        dd := sqrt(d2);
+        looks = e2_piece_looks(kit, dd, e2_piece_rank(px, pz), sc);
+      }
+      for e: 0..<looks.n {
+        b := kit * E2_LODS + looks.lod[e];
+        if s[0].kit_count[b] <= 0 { continue; }
+        if vis_n >= max_vis { return n; }
+        vis_w[vis_n] = e2_vis_word(q, looks.code[e]);
+        vis_b[vis_n] = cast,trunc(u8) b;
+        vis_n += 1;
+        counts[b] += 1;
       }
     }
+  }
+  at := s[0].inst_n;
+  for b: 0..<E2_BUCKETS { start[b] = at; at += counts[b]; counts[b] = 0; }
+  for k: 0..<vis_n {
+    b := cast(int) vis_b[k];
+    s[0].inst[start[b] + counts[b]] = vis_w[k];
+    counts[b] += 1;
   }
   for b: 0..<E2_BUCKETS { if counts[b] > 0 { n = e2_draw(d, n, s[0].kit_first[b], s[0].kit_count[b], E2_KIT_BASE + start[b], counts[b]); } }
   s[0].inst_n = start[E2_BUCKETS - 1] + counts[E2_BUCKETS - 1];
@@ -1807,7 +1834,7 @@ e2_ground_draws :: (s: [] E2, n0: int, sn0: int, shadows: bool) -> [2] int {
   for t: 0..<g[0].slot_n {
     count := e2g_tile_vertices(g, t, levels[t]); word := 0x80000000 | (E2G_TILE_BASE + e2g_tile_code(g, levels[..], t));
     mx := e2g_at(f32(E2G_WEST), e2g_x0(g[0].slot_m[t])) + span * 0.5; mz := e2g_at(f32(E2G_SOUTH), e2g_z0(g[0].slot_k[t])) + span * 0.5;
-    if shadows { sn = e2_draw(s[0].shadow[..], sn, 0, count, word, 1); }
+    if shadows && e2_tile_casts_into(s, mx, g[0].slot_y[t], mz, span * 0.75 + 20) { sn = e2_draw(s[0].shadow[..], sn, 0, count, word, 1); }
     if !e2_in_view(s, mx, g[0].slot_y[t], mz, span * 0.75 + 20) { continue; }
     was := n; n = e2_draw(s[0].draws[..], n, 0, count, word, 1);
     if n > was { s[0].tile_draws += 1; s[0].tile_level[levels[t]] += 1; }

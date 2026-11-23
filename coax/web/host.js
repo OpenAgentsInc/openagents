@@ -272,39 +272,57 @@
 //                             At most 8. Message 607 says how each one came in, a line each: "URL W H" (0 0: it failed).
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
-import { makeByteStorage } from "./byte-storage.js";
-import { fastEditBoundary } from "./fast-edit.js";
-import { stateTable, planState, applyState, stateNote } from "./state-keep.js";
-import { startDrops } from "./drop.js";
-import { startUploads } from "./uploads.js";
-import { startDocs } from "./docs.js";
-import { startCard } from "./card.js";
-import { startVoice, VOICE_KIND, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
-import { localRoomSocket } from "./room-worker.js";
-import { wtSocket } from "./room-wt.js";
-import { startGpui } from "./gpui.js";
 import { startLoading, readBytes, rememberAsset } from "./loader.js";
-import { layerFeatures, layerPolicy, warmLayerPolicy, layerBuild, blockLayout, layerTier } from "./layers-host.js";
 import { makeHttpRequests } from "./http-requests.js";
-import { makeHostTransport } from "./host-transport.js";
-import {openSocketRetention,makeSocketQueues,socketBinary} from "./socket-queue-host.js";
-import {openPackHost,openPackTable} from "./pack-host.js";
-import { layerBitmap, layerPoolWidth, poolLayerLevels, warmLayerPool } from "./layer-pool.js";
-import { fetchPackInWorker, fetchPagedDemand, fetchPagedImage, fetchWholePack } from "./pack-fetch.js";
-import { characterPass } from "./character-host.js";
-import { instanceCull } from "./instance-cull.js";
 import { makeHostLifecycle } from "./host-lifecycle.js";
-import { openFramePlan } from "./frame-plan-host.js";
-import { openHostServices, openPcmMemory } from "./services-host.js";
-import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js";
-import { openClipTimeline } from "./audio-timeline.js";
-import { RenderHost } from "./render.js";
-import {mediaSource} from "./media-source.js";
-import {actionSource} from "./action-source.js";
-import {warmPage, enterPage} from "./zone-host.js";
 import { shellTakes, shellHeld, shellGo, shellDrawn, shellWatch } from "./shell.js";
 import { importedMemoryPages, createWasiStub, align } from "./host-wasm.js";
 import { randomId, kept, styleFacts, buildPageFacts, sendLifeBeacon } from "./host-page.js";
+
+// Lazy module loaders: keep cold-start HTTP waterfalls tiny by importing optional subsystems only when a page uses them.
+const utf8Decoder = new TextDecoder();
+const VOICE_KIND = 50, ACT_VOICE = 7, ACT_VOICE_TO = 8, ACT_VOICE_SAY = 9;
+const socketBinary = (ws, bytes) => { const k = bytes[ws?.__wt && bytes[0] >= 1 && bytes[0] <= 5 ? 1 : 0]; return k >= 0x80 && k <= 0xBF; };
+const lazyMod = (spec) => { let p; return () => (p ??= import(spec)); };
+const modLayersHost = lazyMod("./layers-host.js");
+const modLayerPool = lazyMod("./layer-pool.js");
+const modPackHost = lazyMod("./pack-host.js");
+const modPackFetch = lazyMod("./pack-fetch.js");
+const modServicesHost = lazyMod("./services-host.js");
+const modAudioHost = lazyMod("./audio-host.js");
+const modZoneHost = lazyMod("./zone-host.js");
+const modMediaSource = lazyMod("./media-source.js");
+const modActionSource = lazyMod("./action-source.js");
+let zoneHostMod = null, mediaSourceFn = null, actionSourceFn = null, pcmMemFn = null;
+const openPackHost = () => modPackHost().then((m) => m.openPackHost());
+const openPackTable = () => modPackHost().then((m) => m.openPackTable());
+const layerBitmap = (bytes, options) => modLayerPool().then((m) => m.layerBitmap(bytes, options));
+const warmLayerPool = () => modLayerPool().then((m) => m.warmLayerPool()).catch(() => {});
+const warmLayerPolicy = () => modLayersHost().then((m) => m.warmLayerPolicy()).catch(() => {});
+// Synchronous WebSocket-compatible proxy for lazily loaded local:/wt+ sockets so coaxial_socket_open stays synchronous.
+function lazySocket(openFn) {
+  let real = null, closed = false;
+  const queued = [];
+  const proxy = {
+    readyState: 0, binaryType: "arraybuffer", __wt: false,
+    onopen: null, onmessage: null, onerror: null, onclose: null,
+    send(data) { if (real) real.send(data); else if (!closed) queued.push(data); },
+    close() { if (closed) return; closed = true; proxy.readyState = 3; if (real) real.close(); else setTimeout(() => proxy.onclose?.()); },
+  };
+  Promise.resolve().then(openFn).then((ws) => {
+    if (closed) { ws.close(); return; }
+    real = ws; ws.binaryType = proxy.binaryType;
+    proxy.__wt = !!ws.__wt;
+    const sync = () => { proxy.readyState = ws.readyState; proxy.__wt = !!ws.__wt; };
+    ws.onopen = (e) => { sync(); while (queued.length && !closed) ws.send(queued.shift()); proxy.onopen?.(e); };
+    ws.onmessage = (e) => proxy.onmessage?.(e);
+    ws.onerror = (e) => { sync(); proxy.onerror?.(e); };
+    ws.onclose = (e) => { sync(); proxy.onclose?.(e); };
+    sync();
+    if (ws.readyState === 1) ws.onopen?.();
+  }, () => { if (!closed) { closed = true; proxy.readyState = 3; proxy.onerror?.(); proxy.onclose?.(); } });
+  return proxy;
+}
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 // The app shell (docs/app-shell.md, shell.js): a page of the shell's (data-shell) opened at the top of the window becomes
@@ -451,9 +469,25 @@ let last = 0;
 let sceneEpoch = 0, pendingSceneEpoch = -1, installedGeneration = 0, shaderLoads = 0;
 let renderReload = Promise.resolve();
 let packHost=null,packRetirement=Promise.resolve();
-// The character pass: only a world that places a character (coaxial_character_v1) loads anything.
-const characters = characterPass({ gpu: () => gpu, dev, golden, site: /(^|\.)openagents\.com$/.test(location.hostname),
-  privatePack: (session, cipher) => privatePack(session, cipher), unpack: (bytes) => unpack(bytes), decode: (bytes, options) => layerBitmap(bytes, options) });
+// The character pass: only a world that places a character (coaxial_character_v1) loads character-host.js.
+let characterImpl = null, characterLoading = false;
+const characters = {
+  want(x, state, mem, now) {
+    if (!x.coaxial_character_v1) return false;
+    if (characterImpl) return characterImpl.want(x, state, mem, now);
+    if (!characterLoading) {
+      characterLoading = true;
+      import("./character-host.js").then(({ characterPass }) => {
+        characterImpl = characterPass({ gpu: () => gpu, dev, golden, site: /(^|\.)openagents\.com$/.test(location.hostname),
+          privatePack: (session, cipher) => privatePack(session, cipher), unpack: (bytes) => unpack(bytes), decode: (bytes, options) => layerBitmap(bytes, options) });
+      }).catch(() => {});
+    }
+    return false;
+  },
+  cast(pass) { characterImpl?.cast(pass); },
+  draw(pass) { characterImpl?.draw(pass); },
+  info() { return characterImpl ? characterImpl.info() : { active: false }; },
+};
 // A pack's rig entry (kind 7) goes to the page that asks for it (coaxial_pack_rig), before the pack's
 // catalog is delivered: the page's bake reads it. A page that does not ask is told nothing.
 function deliverRig(rigs){
@@ -527,18 +561,29 @@ async function loadEngine(bytes, generation) {
   const pages = importedMemoryPages(bytes), have = memory.buffer.byteLength / 65536;
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
-  const fast = fastEditBoundary(message => say(message, true));
+  const modImports = WebAssembly.Module.imports(module);
+  const needsFastEdit = modImports.some((imp) => imp.name === "coax_dev_dispatch");
+  const needsByteStorage = modImports.some((imp) => imp.name.startsWith("coaxial_storage_"));
+  const needsStateKeep = dev && WebAssembly.Module.customSections(module, "coax.state").length > 0;
+  const [fastMod, bsMod, skMod] = await Promise.all([
+    needsFastEdit ? import("./fast-edit.js") : null,
+    needsByteStorage && !byteStorage ? import("./byte-storage.js") : null,
+    needsStateKeep ? import("./state-keep.js") : null,
+  ]);
+  if (generation !== wanted) return false;
+  if (bsMod && !byteStorage) { _makeByteStorage = bsMod.makeByteStorage; initByteStorage(_makeByteStorage); }
+  const fast = fastMod ? fastMod.fastEditBoundary(message => say(message, true)) : { dispatch() {}, bind() {}, stop() {} };
   const imports = Object.create(null);
   imports.env = Object.assign(Object.create(null), { memory, coaxial_measure_ms: () => performance.now(), coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
-    coaxial_now_ms: () => BigInt(Math.floor(clipRoom ? clipStart + clipNow : performance.now())), coax_dev_dispatch: value => fast.dispatch(value), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
-  for (const imp of WebAssembly.Module.imports(module)) {
+    coaxial_now_ms: () => BigInt(Math.floor(clipRoom ? clipStart + clipNow : performance.now())), coax_dev_dispatch: value => fast.dispatch(value), ...socketImports, ...httpImports, ...random.imports, ...(byteStorage ? byteStorage.imports : {}), ...nip07Imports });
+  for (const imp of modImports) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
   }
   // The state's field table (a development module carries it: state-keep.js). When this module and
   // the running one both have one, the running state's bytes are copied out now: instantiating
   // writes the new module's data into the shared memory, and a larger module's can reach the state.
-  const table = stateTable(module);
+  const table = skMod ? skMod.stateTable(module) : null;
   stateSaid = "";
   const carried = previousEngine?.table && table && arena?.stateSize ? new Uint8Array(memory.buffer, arena.state, arena.stateSize).slice() : null;
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-instantiate";
@@ -551,23 +596,29 @@ async function loadEngine(bytes, generation) {
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
   const rescue = await rescueRead, rescueId = rescue ? await rescueIdentity(bytes) : "";
   if (generation !== wanted) { stopEngine();return false; }
-  byteStorage.reset(); // pending effects belong to the old engine, even if its state layout survives
+  byteStorage?.reset(); // pending effects belong to the old engine, even if its state layout survives
   httpRequests.reset();
   const x = instance.exports;
   random.bind(x);
   x._initialize?.();
-  hostTransport=makeHostTransport(x,memory);
+  const hasContract = x.coaxial_host_contract_version?.() > 0;
+  hostTransport = hasContract ? (await import("./host-transport.js")).makeHostTransport(x, memory) : null;
+  if (generation !== wanted) return false;
   hostLifecycle=makeHostLifecycle(x);
+  // Preload tiny source readers only if this module actually uses media or actions.
+  if (x.coaxial_media && !mediaSourceFn) modMediaSource().then((m) => { mediaSourceFn = m.mediaSource; }).catch(() => {});
+  if (x.coaxial_action && !actionSourceFn) modActionSource().then((m) => { actionSourceFn = m.actionSource; }).catch(() => {});
   // a page with no plan of its own is drawn by the engine's (frame-plan-host.js, #13451)
   // (a reactor that won't load refuses every frame: each is cleared, and coaxial.framePlan().refused counts them)
-  if(!x.coaxial_frame_plan_v1){planHost??=await openFramePlan().catch((e)=>{console.warn(`coaxial: ${e.message}`);return null;});if(generation!==wanted)return false;}
-  if(hostTransport){const services=await openHostServices();if(generation!==wanted)return false;hostServices=services;
+  if(!x.coaxial_frame_plan_v1){planHost??=await import("./frame-plan-host.js").then((m)=>m.openFramePlan()).catch((e)=>{console.warn(`coaxial: ${e.message}`);return null;});if(generation!==wanted)return false;}
+  if(hostTransport){const sm=await modServicesHost();pcmMemFn=sm.openPcmMemory;const services=await sm.openHostServices();if(generation!==wanted)return false;hostServices=services;
     if(firstPacks.size){packHost??=await openPackHost();if(generation!==wanted)return false;}
-    if(clipping&&globalThis.coaxialClipAudio){const timeline=await openClipTimeline();if(generation!==wanted){await timeline.retire();return false;}clipTimeline=timeline;}}
+    if(clipping&&globalThis.coaxialClipAudio){const timeline=await (await import("./audio-timeline.js")).openClipTimeline();if(generation!==wanted){await timeline.retire();return false;}clipTimeline=timeline;}}
   if(hostTransport && sockets.some(Boolean)){reconnectAfterEngine=true;resetSockets();}
   if(hostTransport){
-    const retention=await openSocketRetention(x.coaxial_inbox_cap());if(generation!==wanted)return false;
-    socketQueues=makeSocketQueues(retention,{
+    const sqMod=await import("./socket-queue-host.js");
+    const retention=await sqMod.openSocketRetention(x.coaxial_inbox_cap());if(generation!==wanted)return false;
+    socketQueues=sqMod.makeSocketQueues(retention,{
       current:(ws,id)=>ws.__coaxialEngine===generation&&wanted===generation&&(sockets[id]===ws||sockets[id]===null&&ws.__coaxialLocallyClosed),
       closed:(ws,id)=>{if(sockets[id]===ws)sockets[id]=null;},
       deliver:(ws,id,event,bytes)=>socketEvent(id,event,"",ws,bytes,retention),
@@ -595,14 +646,14 @@ async function loadEngine(bytes, generation) {
   // by name (state-keep.js has the rules), and the dev note names what was added and dropped.
   // Without them (a release module), the layout fingerprint decides: the same keeps, another starts over.
   let keep = null;
-  try { if (carried && !(table === previousEngine.table && arena.layout === layout)) keep = planState(previousEngine.table, carried.length, table, stateSize); }
+  try { if (skMod && carried && !(table === previousEngine.table && arena.layout === layout)) keep = skMod.planState(previousEngine.table, carried.length, table, stateSize); }
   catch (error) { console.error(`coaxial: ${app}: the state's field tables don't read (${error.message})`); }
   if (keep && !(keep.same && arena.layout === layout)) {
     new Uint8Array(memory.buffer, arena.state, arena.stateCap).fill(0);
     x.coaxial_state_init(arena.state);
-    applyState(keep, carried, memory.buffer, arena.state);
+    skMod.applyState(keep, carried, memory.buffer, arena.state);
     arena.layout = layout;
-    stateSaid = stateNote(keep);
+    stateSaid = skMod.stateNote(keep);
     globalThis.coaxial.stateKept = { note: stateSaid, root: keep.root, kept: keep.kept, added: keep.added, dropped: keep.dropped, reset: keep.reset, resized: keep.resized, pointers: keep.pointers };
     say(`${app}: ${stateSaid}`);
   } else if (arena.layout !== layout) {
@@ -755,7 +806,11 @@ const socketImports = {
     try {
       url=policy ? new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(memory.buffer,ptr,len)) : utf8(ptr,len);
       if(policy && url.startsWith("local:") && !policy.localUri(url))throw Error("local route refused");
-      ws = url.startsWith("local:") ? localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm") : url.startsWith("wt+") ? wtSocket(url) : new WebSocket(url);   // wt+: WebTransport first (room-wt.js, #13176)
+      ws = url.startsWith("local:")
+        ? lazySocket(() => import("./room-worker.js").then((m) => m.localRoomSocket(url, script?.dataset.roomWasm || "/build/everglade-room.wasm")))
+        : url.startsWith("wt+")
+          ? lazySocket(() => import("./room-wt.js").then((m) => m.wtSocket(url)))
+          : new WebSocket(url);   // wt+: WebTransport first (room-wt.js, #13176)
     } catch { if(owner)policy.socketClose(owner);return -1; }
     ws.__coaxialPolicy=policy;ws.__coaxialOwner=owner;ws.__coaxialEngine=wanted;
     sockets[id] = ws;
@@ -817,22 +872,25 @@ const httpImports = {
 };
 
 // ---- IndexedDB: bounded opaque bytes (byte-storage.js); namespaces and versions are chosen by Coax
-const byteStorage = makeByteStorage({
-  memory: () => memory,
-  indexedDB: () => globalThis.indexedDB,
-  capacity: () => engine?.exports.coaxial_message && engine.exports.coaxial_inbox && arena ? engine.exports.coaxial_inbox_cap?.() || 0 : 0,
-  emit: function emit(slot, bytes) {
-    if (waiting) { waiting.push(() => emit(slot, bytes));return; }
-    const x = engine?.exports;
-    if (!x?.coaxial_message || !x.coaxial_inbox || !arena) return;
-    const dest = x.coaxial_inbox(arena.state);
-    if (dest < 0 || dest > memory.buffer.byteLength || bytes.length > memory.buffer.byteLength - dest) return;
-    new Uint8Array(memory.buffer, dest, bytes.length).set(bytes);
-    x.coaxial_message(arena.state, 768 + slot, bytes.length);
-    after(false);
-  },
-});
-const storageImports = byteStorage.imports;
+let byteStorage = null, _makeByteStorage = null;
+function makeByteStorage(opts) { return _makeByteStorage(opts); }
+function initByteStorage(make) {
+  byteStorage = make({
+    memory: () => memory,
+    indexedDB: () => globalThis.indexedDB,
+    capacity: () => engine?.exports.coaxial_message && engine.exports.coaxial_inbox && arena ? engine.exports.coaxial_inbox_cap?.() || 0 : 0,
+    emit: function emit(slot, bytes) {
+      if (waiting) { waiting.push(() => emit(slot, bytes));return; }
+      const x = engine?.exports;
+      if (!x?.coaxial_message || !x.coaxial_inbox || !arena) return;
+      const dest = x.coaxial_inbox(arena.state);
+      if (dest < 0 || dest > memory.buffer.byteLength || bytes.length > memory.buffer.byteLength - dest) return;
+      new Uint8Array(memory.buffer, dest, bytes.length).set(bytes);
+      x.coaxial_message(arena.state, 768 + slot, bytes.length);
+      after(false);
+    },
+  });
+}
 
 // ---- NIP-07: the browser's Nostr signer, for coax/lib/nostr/keys.coax's signer requests.
 // The page calls this only for a request the person approved, with signer_template's JSON
@@ -889,6 +947,10 @@ addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reaso
 // page name (data-realm, else the app). The message only, no page data.
 const lifeBeacon = (ev, msg, more = null) => sendLifeBeacon(realmId, app, ev, msg, more);
 
+// Early startup prefetches kicked off from main() in parallel with WASM download/compile.
+let earlyAdapterPromise = null, earlyWgslPromise = null, earlyCullPromise = null, earlyParticlesPromise = null, fontReadyPromise = null;
+const pageHasLayers = () => !!renderUrl || firstPacks.size > 0 || assets.some((a) => a.kind === "layers");
+
 // ---- GPU: device, the two pipelines from the app's WGSL, buffers
 async function startGpu() {
   const opened = await openDevice((device) => { loading.watch(device);loading.step("shaders"); });
@@ -901,7 +963,8 @@ async function startGpu() {
 // lost device's replacement both take theirs here.
 async function openDevice(made = () => {}) {
   if (!navigator.gpu) return null;
-  let adapter = await navigator.gpu.requestAdapter();
+  let adapter = earlyAdapterPromise ? await earlyAdapterPromise : await navigator.gpu.requestAdapter();
+  earlyAdapterPromise = null;
   if (!adapter) return null;
   // the GPU's facts for the graphics quality's device class (metaverse-engine/core/quality.coax quality_gpu):
   // in every later pageFacts, and told to the app now (message 613)
@@ -923,7 +986,7 @@ async function openDevice(made = () => {}) {
   const culling = assets.some((a) => a.kind === "cull") && adapter.features.has("indirect-first-instance");
   const features = [...(timing || passTiming ? ["timestamp-query"] : []), ...(culling ? ["indirect-first-instance"] : []),
     ...["texture-compression-bc", "texture-compression-astc", "texture-compression-etc2"].filter((f) => adapter.features.has(f))];
-  warmLayerPolicy();
+  if (pageHasLayers()) warmLayerPolicy();
   // Some drivers (Linux Vulkan) list a feature but refuse a device that asks for it, with
   // VK_ERROR_INITIALIZATION_FAILED. Ask again with less: first without the block-compression
   // formats (the layers read device.features, so they fall back to plain textures), then without
@@ -1120,23 +1183,23 @@ let pageFontFamily = null, pageTitleFont = null;
 async function loadPageFont() {
   const source = script?.dataset.uiFontSrc, family = script?.dataset.uiFontFamily;
   if (!source || !family) return;
-  const response = await fetch(new URL(source, location.href));
-  if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
-  const font = new FontFace(family, await response.arrayBuffer());
-  await font.load();document.fonts.add(font);pageFontFamily = JSON.stringify(family);
-  // A HUD style's title face (metaverse-engine/ui/hud-style.coax, docs/metaverse/hud-styles.md): data-ui-title-font-src,
-  // -family and -weight. The atlas then holds two faces in one set of cells: the reading face in red, the
-  // title face in green; only a realm whose strokes ask for a channel (everglade/scene/gpu/fivelab.coax fivelab_hud_fs) has one.
   const titleSource = script?.dataset.uiTitleFontSrc, titleFamily = script?.dataset.uiTitleFontFamily;
-  if (!titleSource || !titleFamily) return;
-  const titleResponse = await fetch(new URL(titleSource, location.href));
-  if (!titleResponse.ok) throw Error(`UI title font HTTP ${titleResponse.status}`);
-  const title = new FontFace(titleFamily, await titleResponse.arrayBuffer(), { weight: "100 900" });
-  await title.load();document.fonts.add(title);
-  // data-ui-title-font-scale (0.4 to 1): a wide title face is drawn that much smaller so its widest
-  // glyphs fit their cells; the realm's layout scales its quads back up (metaverse/splice-bots/splice-game.coax).
-  const titleScale = Math.min(1, Math.max(0.4, Number(script?.dataset.uiTitleFontScale) || 1));
-  pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400", scale: titleScale };
+  const loadOne = async (src, fam, desc) => {
+    const response = await fetch(new URL(src, location.href));
+    if (!response.ok) throw Error(`UI font HTTP ${response.status}`);
+    const font = new FontFace(fam, await response.arrayBuffer(), desc);
+    await font.load();
+    document.fonts.add(font);
+  };
+  await Promise.all([
+    loadOne(source, family),
+    titleSource && titleFamily ? loadOne(titleSource, titleFamily, { weight: "100 900" }) : null,
+  ]);
+  pageFontFamily = JSON.stringify(family);
+  if (titleSource && titleFamily) {
+    const titleScale = Math.min(1, Math.max(0.4, Number(script?.dataset.uiTitleFontScale) || 1));
+    pageTitleFont = { family: JSON.stringify(titleFamily), weight: script?.dataset.uiTitleFontWeight || "400", scale: titleScale };
+  }
 }
 function sansAtlas(device) {
   const codes = [...Array.from({ length: 95 }, (_, i) => 32 + i), ...SANS_EXTRA];
@@ -1212,10 +1275,10 @@ function fxSceneOptions(x, scene, gpui) {
     alpha: !!gpui || x?.coaxial_fx_alpha_v1?.() === 1 };
 }
 
-function useGpui() {
+async function useGpui() {
   const { device } = gpu;
   gpu.gpuiOn = true;
-  gpu.gpui ||= startGpui({ device, memory, assets, say });
+  if (!gpu.gpui) { const { startGpui } = await import("./gpui.js"); gpu.gpui ||= startGpui({ device, memory, assets, say }); }
   const both = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, f = GPUShaderStage.FRAGMENT;
   gpu.layout = device.createBindGroupLayout({ entries: [
     { binding: 0, visibility: both, buffer: {} },
@@ -1254,6 +1317,7 @@ async function loadShadersOnce() {
   const { device, format } = gpu;
   if (renderUrl) {
     const previous = gpu.renderer;
+    const { RenderHost } = await import("./render.js");
     const candidate = new RenderHost({ device, context: gpu.context, format, memory, exports: engine.exports, arena,
       url: renderUrl, profile: Number(script.dataset.renderProfile), coarse: matchMedia("(pointer: coarse)").matches, capture: captureRequested,
       presentation: hostServices?.presentation(engine.exports.coaxial_host_contract_version?.()??0,Number(script.dataset.renderProfile)) ? "unorm8-v1" :
@@ -1280,10 +1344,12 @@ async function loadShadersOnce() {
     if(hostTransport&&firstPacks.size)packHost??=await openPackHost();
     return true;
   }
-  const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
-  await rememberAsset(wgslUrl, code);
-  if (/var\s+sans_atlas\b/.test(code)) useSans();
-  if (/var\s+gpui_atlas\b/.test(code)) useGpui();
+  let code = null;
+  if (earlyWgslPromise) { code = await earlyWgslPromise; earlyWgslPromise = null; }
+  if (code === null) code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
+  const wgslReceipt = rememberAsset(wgslUrl, code);
+  if (/var\s+sans_atlas\b/.test(code)) { if (fontReadyPromise) await fontReadyPromise; useSans(); }
+  if (/var\s+gpui_atlas\b/.test(code)) await useGpui();
   if (/var<storage,\s*read>\s+mesh\b/.test(code)) useMesh();
   if (/var<storage,\s*read>\s+frame\b/.test(code)) useFrame();
   const module = device.createShaderModule({ code });
@@ -1313,7 +1379,9 @@ async function loadShadersOnce() {
   // Grass (docs/metaverse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
   // blades of one triangle each, instanced from their cells' hashes (no buffer), drawn after bg_fs with bg's groups.
   const grassy = scene && /fn\s+grass_vs\b/.test(code) && !!engine?.exports.coaxial_grass_instances;
-  const [bg, fx, sc, sh, bl, po, ca, gr, su, sa, st] = await Promise.all([
+  gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
+  const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
+  const [bg, fx, sc, sh, sho, bl, po, ca, gr, su, sa, st, particles, cull, water] = await Promise.all([
     device.createRenderPipelineAsync({ layout: bgLayout, ...bgDepth, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
       layout: fxLayout, ...(post ? {} : flat),
@@ -1334,6 +1402,12 @@ async function loadShadersOnce() {
     shadows ? device.createRenderPipelineAsync({
       layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }),
       vertex: { module, entryPoint: "shadow_vs" }, fragment: { module, entryPoint: "shadow_fs", targets: [] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
+    }) : null,
+    shadows ? device.createRenderPipelineAsync({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, sceneLayout()] }),
+      vertex: { module, entryPoint: "shadow_vs" },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less", depthBias: 2, depthBiasSlopeScale: 2 },
     }) : null,
@@ -1378,18 +1452,20 @@ async function loadShadersOnce() {
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
     }) : null,
+    particlePipeline(post, scene ? true : !!surfaced),
+    scene ? cullPipelines() : null,
+    scene && /fn\s+water_vs\b/.test(code) ? waterPipelines(module, waterGroups, post) : [null, null],
+    wgslReceipt,
   ]);
   gpu.sceneAdditive = sa;gpu.sceneAlpha = st;
   gpu.surface = su;
-  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
+  gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.shadowOpaque = sho; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
   // A procedural scene may have stores and no fetched assets. Asset delivery
   // also calls this; pending assets still defer binding until they are ready.
   if (sc) bindScene();
-  gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
-  gpu.particles = sc ? await particlePipeline(post, true) : await particlePipeline(post, !!surfaced);
-  gpu.cull = sc ? await cullPipelines() : null;
-  const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
-  [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, waterGroups, post) : [null, null];
+  gpu.particles = particles;
+  gpu.cull = sc ? cull : null;
+  [gpu.waterTransmit, gpu.waterEmit] = sc ? water : [null, null];
   return true;
   } finally {
     shaderLoads -= 1;loadMark("shaders-done");
@@ -1435,8 +1511,13 @@ async function cullPipelines() {
   const a = assets.find((s) => s.kind === "cull");
   if (!a || !wantsCull()) return null;
   try {
-    const code = await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text();
-    const cull = await instanceCull(gpu.device, code, (text) => say(text, true));
+    let code = null;
+    if (earlyCullPromise) { code = await earlyCullPromise; earlyCullPromise = null; }
+    const [text, { instanceCull }] = await Promise.all([
+      code !== null ? code : fetch(a.url, { cache: dev ? "no-store" : "default" }).then((r) => r.text()),
+      import("./instance-cull.js"),
+    ]);
+    const cull = await instanceCull(gpu.device, text, (t) => say(t, true));
     if (cull) cull.off = new URLSearchParams(location.search).get("cull") === "0";
     return cull;
   } catch (e) { say(`${app}: cull: ${e.message}`, true); return null; }
@@ -1448,7 +1529,9 @@ async function particlePipeline(post, depth) {
   if (!a || !x?.coaxial_particles) return null;
   const { device, format } = gpu;
   try {
-    const code = await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text();
+    let code = null;
+    if (earlyParticlesPromise) { code = await earlyParticlesPromise; earlyParticlesPromise = null; }
+    if (code === null) code = await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text();
     const module = device.createShaderModule({ code });
     const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === "error");
     if (errors.length) { say(errors.map((m) => `particles.wgsl:${m.lineNum}:${m.linePos}: ${m.message}`).join("\n"), true); return null; }
@@ -1619,13 +1702,21 @@ function packBytes(pack) {
   // A page that takes its world by cell (coaxial_cell_asks_v1, GitHub #13280) gets a paged pack's
   // roots now and each cell's pages when its cell controller asks (pumpCells): got.cells.
   const demand = paged && !!engine?.exports.coaxial_cell_asks_v1;
-  const here = async () => demand ? fetchPagedDemand(packHost ??= await openPackHost(), pack, { owner: pack, progress })
-    : paged ? fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : fetchWholePack(liveUrl(pack.url), { gzip, progress });
-  const job = fetchPackInWorker({ url: new URL(liveUrl(pack.url), location.href).href, gzip, paged, demand, ranges: pack.ranges }, progress);
+  const here = async () => {
+    const pf = await modPackFetch();
+    return demand ? pf.fetchPagedDemand(packHost ??= await openPackHost(), pack, { owner: pack, progress })
+      : paged ? pf.fetchPagedImage(packHost ??= await openPackHost(), pack, { owner: pack, progress }) : pf.fetchWholePack(liveUrl(pack.url), { gzip, progress });
+  };
+  let cancelFn = null, cancelled = false;
   loadMark("pack-asked");
-  const promise = job.promise.catch((error) => { if (!error.worker) throw error; return here(); }).then((got) => { loadMark("pack-bytes");return got; });
+  const promise = modPackFetch().then((pf) => {
+    if (cancelled) throw new DOMException("pack load cancelled", "AbortError");
+    const job = pf.fetchPackInWorker({ url: new URL(liveUrl(pack.url), location.href).href, gzip, paged, demand, ranges: pack.ranges }, progress);
+    cancelFn = job.cancel;
+    return job.promise.catch((error) => { if (!error.worker) throw error; return here(); });
+  }).then((got) => { loadMark("pack-bytes");return got; });
   promise.catch(() => {});   // a page that stops before loadPack never asks
-  return { promise, cancel: job.cancel };
+  return { promise, cancel() { cancelled = true; cancelFn?.(); } };
 }
 // The world by cell (GitHub #13280; docs/metaverse/one-world.md, "Paged by cell"). A page whose pack is
 // paged by cell exports coaxial_cell_asks_v1: once a frame the host reads the cells its controller
@@ -1792,11 +1883,20 @@ async function loadPack(pack) {
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     const images = !gpu.renderer || gpu.renderer.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
       : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
+    const dataImages = !pack.catalogOnly && layers && wantsDataLayers() ? of(PACK_DATA_LAYER).map((e) => e.bytes) : [];
+    if (dataImages.length) loading.textures(0, 2 * dataImages.length);
     if (pack.catalogOnly) {}
-    else if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
+    else if (images.length) {
+      const [tex, dataTex] = await Promise.all([
+        layerTexture(images),
+        dataImages.length ? layerTexture(dataImages, "rgba8unorm") : null,
+      ]);
+      if (renderUrl) await renderReload;if (!parts.every(currentAsset)) { tex?.destroy(); dataTex?.destroy(); return; }
+      layers.texture = tex; layers.dataTexture = dataTex;
+      if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length;
+    }
     else layers.failed = true;
-    loadMark("pack-layers");if (wantsDataLayers()) loading.textures(0, 2 * of(PACK_DATA_LAYER).length);
-    if (layers) layers.dataTexture = wantsDataLayers() && of(PACK_DATA_LAYER).length ? await layerTexture(of(PACK_DATA_LAYER).map((e) => e.bytes), "rgba8unorm") : null;
+    loadMark("pack-layers");
     if (!parts.every(currentAsset)) return;
     if (pack.cells) {
       // by cell: the sounds' pages were not fetched with the roots; they follow the first image
@@ -1838,7 +1938,7 @@ async function loadPackV1(pack){
     let build=null;
     if(packBlocks.length&&!pack.broker&&!gpu.renderer&&/\.pack$/.test(pack.url)){
       pack.fetching=true;
-      try{build=await layerBuild(layerFeatures(gpu.device.features),packBlocks,matchMedia("(pointer: coarse)").matches);}catch(error){if(dev)console.warn("layer build unavailable",error);}
+      try{const lh=await modLayersHost();build=await lh.layerBuild(lh.layerFeatures(gpu.device.features),packBlocks,matchMedia("(pointer: coarse)").matches);}catch(error){if(dev)console.warn("layer build unavailable",error);}
       check();
     }
     const options={owner:group,current,progress:(loaded,total)=>{
@@ -1856,17 +1956,19 @@ async function loadPackV1(pack){
       const [catalog,vertices,indices,layers]=parts;
       loading.textures(0,2*of(PACK_LAYER).length);
       const images=!gpu.renderer||gpu.renderer.canonicalLayers?of(PACK_LAYER).map(entry=>entry.bytes):await Promise.all(of(PACK_LAYER).map(entry=>createImageBitmap(new Blob([entry.bytes])).then(image=>(loading.textures(1,0),image))));
+      const dataImages = wantsDataLayers() ? of(PACK_DATA_LAYER).map(entry => entry.bytes) : [];
+      if (dataImages.length) loading.textures(0, 2 * dataImages.length);
       await rendererReady();
-      const texture=images.length?await layerTexture(images):null;
+      const [texture, dataTexture] = await Promise.all([
+        images.length ? layerTexture(images) : null,
+        dataImages.length ? layerTexture(dataImages, "rgba8unorm") : null,
+      ]);
       await rendererReady();loadMark("pack-layers");
-      if(wantsDataLayers())loading.textures(0,2*of(PACK_DATA_LAYER).length);
-      const dataTexture=wantsDataLayers()&&of(PACK_DATA_LAYER).length?await layerTexture(of(PACK_DATA_LAYER).map(entry=>entry.bytes),"rgba8unorm"):null;
-      await rendererReady();
       deliverRig(of(PACK_RIG)[0]);
       catalog.bytes=of(PACK_CATALOG)[0].bytes;catalog.size=catalog.bytes.length;mesh=[of(PACK_VERTICES)[0]?.bytes,of(PACK_INDICES)[0]?.bytes];
       for(const [row,entry]of pack.catalogOnly?[]:[[vertices,of(PACK_VERTICES)[0]],[indices,of(PACK_INDICES)[0]]]){
         if(gpu.renderer){row.bytes=entry.bytes;row.size=entry.bytes.length;gpu.renderer.acceptAsset(row);}
-        else{const whole=new Uint8Array(align(Math.max(entry.bytes.length,4),4));whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX|(wantsCull()?GPUBufferUsage.STORAGE:0):GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
+        else{const whole=entry.bytes.length>0&&entry.bytes.length%4===0?entry.bytes:new Uint8Array(align(Math.max(entry.bytes.length,4),4));if(whole!==entry.bytes)whole.set(entry.bytes);row.buffer=gpu.device.createBuffer({size:whole.length,usage:(row.kind==="index"?GPUBufferUsage.INDEX|(wantsCull()?GPUBufferUsage.STORAGE:0):GPUBufferUsage.STORAGE)|GPUBufferUsage.COPY_DST});gpu.device.queue.writeBuffer(row.buffer,0,whole);row.size=entry.bytes.length;}
       }
       if(layers){layers.texture=texture;layers.dataTexture=dataTexture;layers.size=images.length;layers.failed=!texture;if(gpu.renderer&&texture)gpu.renderer.layerTexture=texture;}
       for(const entry of of(PACK_SOUND))if((!result.ready||result.ready(entry))&&!assets.some(row=>row.kind==="sound"&&row.name===entry.name)){
@@ -2021,18 +2123,63 @@ function fetchedOnce(url) {
   })());
   return fetches.get(url);
 }
+const mipCache = new WeakMap();
+function mipBlitter(device, format) {
+  let entry = mipCache.get(device);
+  if (!entry) {
+    const code = `struct V{@builtin(position) p:vec4f,@location(0) uv:vec2f}
+@vertex fn vs(@builtin(vertex_index) i:u32)->V{let x=f32((i&1u)<<2u)-1.0;let y=f32((i&2u)<<1u)-1.0;return V(vec4f(x,y,0.0,1.0),vec2f((x+1.0)*0.5,(1.0-y)*0.5));}
+@group(0) @binding(0) var s:sampler;@group(0) @binding(1) var t:texture_2d<f32>;
+@fragment fn fs(v:V)->@location(0) vec4f{return textureSample(t,s,v.uv);}`;
+    const module = device.createShaderModule({ code });
+    const sampler = device.createSampler({ minFilter: "linear", magFilter: "linear", addressModeU: "clamp-to-edge", addressModeV: "clamp-to-edge" });
+    entry = { module, sampler, pipes: new Map() };
+    mipCache.set(device, entry);
+  }
+  let pipe = entry.pipes.get(format);
+  if (!pipe) {
+    pipe = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module: entry.module, entryPoint: "vs" },
+      fragment: { module: entry.module, entryPoint: "fs", targets: [{ format }] },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+    });
+    entry.pipes.set(format, pipe);
+  }
+  return { pipe, sampler: entry.sampler };
+}
+function generateGpuMips(device, texture, format, layers, levels) {
+  if (levels <= 1 || !layers.length) return;
+  const { pipe, sampler } = mipBlitter(device, format);
+  const layout = pipe.getBindGroupLayout(0);
+  const enc = device.createCommandEncoder();
+  for (const layer of layers) {
+    let srcView = texture.createView({ dimension: "2d", baseMipLevel: 0, mipLevelCount: 1, baseArrayLayer: layer, arrayLayerCount: 1 });
+    for (let level = 1; level < levels; level++) {
+      const dstView = texture.createView({ dimension: "2d", baseMipLevel: level, mipLevelCount: 1, baseArrayLayer: layer, arrayLayerCount: 1 });
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: dstView, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+      pass.setPipeline(pipe);
+      pass.setBindGroup(0, device.createBindGroup({ layout, entries: [{ binding: 0, resource: sampler }, { binding: 1, resource: srcView }] }));
+      pass.draw(3);
+      pass.end();
+      srcView = dstView;
+    }
+  }
+  device.queue.submit([enc.finish()]);
+}
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size). Data
 // layers (format "rgba8unorm") are linear and keep their own size, under the same phone policy.
 async function layerTexture(images, dataFormat = "") {   // the loading screen counts each layer as it goes up
   if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
-  // Pipeline two original atlases at most, overlapping decode with upload/mips.
+  // Pipeline original atlases across workers; generate mip chains on the GPU when available.
   // Never retain the complete decoded array or all resized mipmaps.
+  const [lh, lp] = await Promise.all([modLayersHost(), modLayerPool()]);
   const encoded = images[0] instanceof Uint8Array;
   // A block build's layers go up as they are (GitHub #13305).
-  const blocks = encoded && !dataFormat ? await blockLayout(images[0]).catch(() => null) : null;
+  const blocks = encoded && !dataFormat ? await lh.blockLayout(images[0]).catch(() => null) : null;
   if (blocks) return blockTexture(images, blocks);
   const raw = dataFormat ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {};
-  const first = encoded ? await layerBitmap(images[0], dataFormat ? raw : undefined) : images[0];
+  const first = encoded ? await lp.layerBitmap(images[0], dataFormat ? raw : undefined) : images[0];
   if (encoded) loading.textures(1, 0);
   const { device } = gpu, declaredSide = dataFormat ? 0 : engine?.exports.coaxial_layers_side_v1?.(arena.state) || 0,
     [dw, dh] = declaredSide ? [declaredSide, declaredSide] : [first.width, first.height];
@@ -2041,7 +2188,7 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   // Without the reactor the layers go up as they always have.
   const format = dataFormat || "rgba8unorm-srgb"; let w = dw, h = dh;
   try {
-    const policy = await layerPolicy(layerFeatures(device.features), 0, matchMedia("(pointer: coarse)").matches, 0, Math.max(dw, dh));
+    const policy = await lh.layerPolicy(lh.layerFeatures(device.features), 0, matchMedia("(pointer: coarse)").matches, 0, Math.max(dw, dh));
     if (policy.block === 1 && policy.name === "rgba8unorm-srgb" && policy.side > 0 && policy.side < Math.max(dw, dh)) {
       const scale = policy.side / Math.max(dw, dh); w = Math.max(1, Math.round(dw * scale)); h = Math.max(1, Math.round(dh * scale));
     }
@@ -2049,12 +2196,11 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format, mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-  // Every level is resized from the layer's own image. The first layer's image is already here; the
-  // rest are decoded and resized in workers (layer-pool.js), several at once.
-  const sizes = Array.from({ length: levels }, (_, level) => [Math.max(1, w >> level), Math.max(1, h >> level)]);
-  const width = layerPoolWidth(w, h, images.length);
+  const gpuMips = levels > 1 && typeof device.createShaderModule === "function" && typeof device.createCommandEncoder === "function";
+  const sizes = gpuMips ? [[w, h]] : Array.from({ length: levels }, (_, level) => [Math.max(1, w >> level), Math.max(1, h >> level)]);
+  const width = lp.layerPoolWidth(w, h, images.length);
   async function levelsOf(layer) {
-    if (encoded && layer !== 0) return poolLayerLevels(images[layer], !!dataFormat, sizes, width);
+    if (encoded && layer !== 0) return lp.poolLayerLevels(images[layer], !!dataFormat, sizes, width);
     const image = layer === 0 ? first : images[layer], made = [];
     const rest = await Promise.allSettled(sizes.map(([lw, lh], level) => level === 0 && image.width === w && image.height === h ? image
       : createImageBitmap(image, { ...raw, resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" })));
@@ -2065,6 +2211,7 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
   }
   try {
     let nextLayer = 0, failure = null;
+    const pendingMips = [];
     async function uploadLayers() {
       while (nextLayer < images.length && !failure) {
         const layer = nextLayer++;
@@ -2075,13 +2222,18 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
         try {
           if (!failure) made.forEach((source, level) => device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, sizes[level]));
         } catch (error) { failure ||= error; } finally { for (const bitmap of made) bitmap.close(); }
-        // Each maker waits for its own layer to reach the GPU before it takes the next.
-        if (!failure) await device.queue.onSubmittedWorkDone().catch((error) => { failure ||= error; });
+        if (!failure && gpuMips) {
+          pendingMips.push(layer);
+          if (pendingMips.length >= 16) generateGpuMips(device, texture, format, pendingMips.splice(0), levels);
+        } else if (!failure) {
+          await device.queue.onSubmittedWorkDone().catch((error) => { failure ||= error; });
+        }
         loading.textures(1, 0);
       }
     }
     // Join every maker even on refusal, before destroying their shared texture.
     await Promise.all(Array.from({ length: width }, uploadLayers));
+    if (!failure && gpuMips && pendingMips.length) generateGpuMips(device, texture, format, pendingMips.splice(0), levels);
     if (failure) throw failure;
   } catch (error) { texture.destroy();throw error; }
   return texture;
@@ -2090,11 +2242,12 @@ async function layerTexture(images, dataFormat = "") {   // the loading screen c
 // has them, no decode and no resize. Each layer has the first's shape. A phone's tier for the format
 // (texture-format.coax tf_side) drops the levels above it.
 async function blockTexture(images, first) {
+  const lh = await modLayersHost();
   const { device } = gpu, layouts = [first];
-  for (let k = 1; k < images.length; k++) layouts.push(await blockLayout(images[k]));
+  for (let k = 1; k < images.length; k++) layouts.push(await lh.blockLayout(images[k]));
   if (layouts.some((l) => !l || l.code !== first.code || l.width !== first.width || l.height !== first.height || l.levels.length !== first.levels.length))
     throw new Error("block layers of different shapes");
-  const side = await layerTier(Math.max(first.width, first.height), matchMedia("(pointer: coarse)").matches, first.code);
+  const side = await lh.layerTier(Math.max(first.width, first.height), matchMedia("(pointer: coarse)").matches, first.code);
   let skip = 0;
   while (skip + 1 < first.levels.length && Math.max(first.width, first.height) >> skip > side) skip++;
   const levels = first.levels.slice(skip);
@@ -2212,7 +2365,10 @@ function postTargets(w, h) {
   const e0 = make(Math.ceil(w / 8), Math.ceil(h / 8), "rgba16float"), e1 = make(e0.width, e0.height, "rgba16float");
   gpu.depth?.destroy();
   gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: use | copied });
+  gpu.depthView = gpu.depth.createView();
   gpu.postTextures = [light, aux, q0, q1, e0, e1];
+  gpu.postViews = gpu.postTextures.map((t) => t.createView());
+  gpu.lightView = gpu.postViews[0]; gpu.auxView = gpu.postViews[1];
   gpu.waterCopyGroup = null;
   if (gpu.waterCopy) {
     const into = (format) => device.createTexture({ size: [w, h], format, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
@@ -2222,12 +2378,12 @@ function postTargets(w, h) {
       { binding: 0, resource: gpu.waterLight.createView() }, { binding: 1, resource: gpu.waterDepth.createView() }] });
   }
   const { bloom, post } = postLayouts();
-  const group = (src, k) => device.createBindGroup({ layout: bloom, entries: [
-    { binding: 0, resource: src.createView() }, { binding: 1, resource: gpu.linear }, { binding: 2, resource: { buffer: gpu.steps[k] } }] });
+  const group = (view, k) => device.createBindGroup({ layout: bloom, entries: [
+    { binding: 0, resource: view }, { binding: 1, resource: gpu.linear }, { binding: 2, resource: { buffer: gpu.steps[k] } }] });
   gpu.light = light; gpu.aux = aux;
-  gpu.blooms = [[q0, group(light, 0)], [q1, group(q0, 1)], [q0, group(q1, 2)], [e1, group(q0, 3)], [e0, group(e1, 4)]];
-  gpu.postGroup = device.createBindGroup({ layout: post, entries: [light, q0, e0, aux, gpu.depth]
-    .map((t, binding) => ({ binding, resource: t.createView() })).concat([{ binding: 5, resource: gpu.linear }]) });
+  gpu.blooms = [[q0, group(gpu.postViews[0], 0)], [q1, group(gpu.postViews[2], 1)], [q0, group(gpu.postViews[3], 2)], [e1, group(gpu.postViews[2], 3)], [e0, group(gpu.postViews[5], 4)]];
+  gpu.postGroup = device.createBindGroup({ layout: post, entries: [gpu.postViews[0], gpu.postViews[2], gpu.postViews[4], gpu.postViews[1], gpu.depthView]
+    .map((resource, binding) => ({ binding, resource })).concat([{ binding: 5, resource: gpu.linear }]) });
 }
 // Group 1, once every GPU asset is in: the storage assets, the stores, the texture, its sampler.
 function bindScene() {
@@ -2255,6 +2411,7 @@ function bindScene() {
     if (wantsDataLayers()) resources.push((layers.dataTexture || flatDataTexture(device)).createView({ dimension: "2d-array" }));
   }
   gpu.index = assets.find((a) => a.kind === "index")?.buffer;
+  gpu.storageVertexBuffer = assets.find((a) => a.kind === "storage")?.buffer;
   gpu.sceneHeld = gpuAssets.filter((a) => !a.done);
   gpu.sceneGroup = device.createBindGroup({ layout: sceneLayout(), entries: resources.map((resource, binding) => ({ binding, resource })) });
 }
@@ -2342,11 +2499,12 @@ function mediaClose(key, m) {
 // The media this frame wants, opened as they're first named; the ready ones drawn into pass: the
 // pictures and videos under the strokes, or (over) the ones drawn over them.
 function drawMedia(x, pass, w, h, depth, over = false) {
-  const source = mediaSource(x, arena.state, memory, hostTransport ? hostServices.mediaSpan : null);
+  if (!mediaSourceFn) { if (x.coaxial_media) modMediaSource().then((m) => { mediaSourceFn = m.mediaSource; }).catch(() => {}); return; }
+  const source = mediaSourceFn(x, arena.state, memory, hostTransport ? hostServices.mediaSpan : null);
   const n = source?.bytes ?? 0;
   const wanted = new Set();
   if (n > 0) {
-    const text = new TextDecoder().decode(source.view.slice());
+    const text = utf8Decoder.decode(source.view.slice());
     for (const line of text.split("\n").slice(0, MEDIA_MAX)) {
       const [named, url, ...b] = line.split(" ");
       const nums = b.map(Number), box = nums.slice(0, 4);
@@ -2399,13 +2557,13 @@ function retireContractAudio() {
 }
 function prepareContractAudio() {
   if(contractAudioReady || !audio)return;
-  const owner=audioOwner,context=audio,services=hostServices;contractAudioMemory=openPcmMemory(services);
-  contractAudioReady=openCoaxAudio(context,audioOut,async(name,canonical)=>{
+  const owner=audioOwner,context=audio,services=hostServices;contractAudioMemory=pcmMemFn(services);
+  contractAudioReady=modAudioHost().then((m)=>m.openCoaxAudio(context,audioOut,async(name,canonical)=>{
     const asset=soundAsset(name);if(!asset)return null;
     if(asset.sourcePack)return packSoundSource(asset);
     if(asset.canonical)return canonical(asset.bytes);
     return asset.bytes?{opus:asset.bytes}:{url:asset.url};
-  },{services,memory:contractAudioMemory}).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
+  },{services,memory:contractAudioMemory})).then(adapter=>{if(owner===audioOwner)contractAudio=adapter;return adapter;}).catch(error=>{if(owner===audioOwner){audioFailure=String(error.message);say(`Audio: ${audioFailure}`);}return null;});
 }
 const sounds = new Map();   // name -> a decoding or decoded buffer
 // A realm that renders its own sounds (metaverse-engine/audio/sfx.coax) lists them once, when audio
@@ -2439,10 +2597,25 @@ function soundBank() {
     if(hostTransport)bankSounds.set(name,{...asset,canonical:true});else assets.push(asset);
   }
 }
+let audioLoopStarted = false;
 function startAudio(gesture = true) {
   if(clipping&&hostTransport){soundBank();return;}
   if(gesture)audioStarted=true;
-  if (audio) {if(hostTransport){prepareContractAudio();if(gesture&&!worldPaused)audio.resume().catch(()=>{});}return;}
+  if (audio) {
+    if(hostTransport){prepareContractAudio();if(gesture&&!worldPaused)audio.resume().catch(()=>{});}
+    else if (gesture) {
+      if (audio.state === "suspended") audio.resume().catch(() => {});
+      if (!audioLoopStarted) {
+        audioLoopStarted = true;
+        const loop = assets.find((a) => a.kind === "loop");
+        if (loop) decoded(loop).then((b) => {
+          const s = audio.createBufferSource(), g = audio.createGain();
+          s.buffer = b; s.loop = true; g.gain.value = 0.35; s.connect(g).connect(audioOut); s.start();
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
   if (clipping && !globalThis.coaxialClipAudio) return;   // a clip is silent unless it records its sound
   soundBank();
   if (!soundDir && !bankSounds.size && !assets.some((a) => a.kind === "sound" || a.kind === "loop")) return;
@@ -2451,6 +2624,8 @@ function startAudio(gesture = true) {
   // records the samples on the audio thread and passes them on to the (muted) speakers
   audioOut = dev && typeof globalThis.coaxialAudioTap === "function" ? globalThis.coaxialAudioTap(audio) : audio.destination;
   if(hostTransport){if(!audioStarted||worldPaused)audio.suspend().catch(()=>{});prepareContractAudio();return;}
+  if (!gesture) { audio.suspend().catch(() => {}); return; }
+  audioLoopStarted = true;
   const loop = assets.find((a) => a.kind === "loop");
   if (loop) decoded(loop).then((b) => {
     const s = audio.createBufferSource(), g = audio.createGain();
@@ -2670,7 +2845,7 @@ if (globalThis.coaxialClip === true) {
     const zero = clipMark + 1000 / fps;
     const plan=contract?timeline?.seal(zero,seconds):null;
     if(contract&&!plan)throw Error('clip owner unavailable');
-    capture=contract?await renderClipAudio(timeline,plan,async(name,canonical)=>{const asset=soundAsset(name);if(!asset)return null;return asset.canonical?canonical(asset.bytes):asset.bytes?{opus:asset.bytes}:{url:asset.url};},services):null;
+    capture=contract?await (await modAudioHost()).renderClipAudio(timeline,plan,async(name,canonical)=>{const asset=soundAsset(name);if(!asset)return null;return asset.canonical?canonical(asset.bytes):asset.bytes?{opus:asset.bytes}:{url:asset.url};},services):null;
     const n = contract?plan.frames:Math.round(seconds * rate);
     const r = capture?capture.buffer:await renderSoundLines(clipHeard, seconds, zero, rate), l = r.getChannelData(0), ri = r.getChannelData(1);
     let peak = 0, sum = 0;
@@ -2880,7 +3055,9 @@ let padLive = false;
 function padPoll() {
   const x = engine?.exports;
   if (!x?.coaxial_pad || !navigator.getGamepads) return;
-  const pad = [...navigator.getGamepads()].find((g) => g && g.connected);
+  const pads = navigator.getGamepads();
+  let pad = null;
+  for (let i = 0; i < pads.length; i++) if (pads[i]?.connected) { pad = pads[i]; break; }
   if (!pad && !padLive) return;
   padLive = !!pad;
   let bits = 0;
@@ -2899,7 +3076,7 @@ function a11yMirror(now) {
   if (!x?.coaxial_a11y || now - a11y.at < 150) return;
   a11y.at = now;
   const n = x.coaxial_a11y(arena.state);
-  const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_a11y_buf(), Math.max(0, n)).slice());
+  const text = utf8Decoder.decode(new Uint8Array(memory.buffer, x.coaxial_a11y_buf(), Math.max(0, n)).slice());
   if (text === a11y.text) return;
   a11y.text = text;
   if (!a11y.root) {
@@ -3021,33 +3198,38 @@ function draw(now) {
   const legacyEncodeStart = traceRow ? performance.now() : 0;
   const { device, context } = gpu;
   const x = engine.exports;
-  device.queue.writeBuffer(gpu.uniformBuffer, 0, new Float32Array(memory.buffer, arena.uniforms, arena.uniformFloats));
+  device.queue.writeBuffer(gpu.uniformBuffer, 0, memory.buffer, arena.uniforms, arena.uniformFloats * 4);
   frameUpload(x);
-  if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, new Float32Array(memory.buffer, arena.vertices, n * arena.floats));
+  if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, memory.buffer, arena.vertices, n * arena.floats * 4);
   const draws = gpu.scene && gpu.sceneGroup ? x.coaxial_draw_count(arena.state) : 0;
   // Optional shadow-list v1: Coax selects each pass; older producers retain their shared list.
   const separateShadow = !!(x.coaxial_shadow_draws_v1 && x.coaxial_shadow_draw_count_v1);
   const shadowDraws = gpu.scene && gpu.sceneGroup && separateShadow ? x.coaxial_shadow_draw_count_v1(arena.state) : draws;
   // what this frame sends the scene's stores (coaxial.storeUploads(): the retained scene's measure, #13303)
   storeUploads.frames++; storeUploads.last.fill(0);
-  if (draws || shadowDraws) gpu.stores.forEach((buffer, k) => {
-    const version = x.coaxial_store_version?.(arena.state, k);
-    if (version !== undefined && gpu.storeVersions[k] === version) return;
-    let at = 0, bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
-    // a store with a span (coaxial_store_span_v1, metaverse-engine/render/graph/retained-rows.coax) sends only
-    // the rows that changed, once this buffer has been sent whole; taking the span empties it
-    if (x.coaxial_store_span_v1) {
-      const from = x.coaxial_store_span_v1(arena.state, k, 0) >>> 0, length = x.coaxial_store_span_v1(arena.state, k, 1) >>> 0;
-      if (length !== 0xFFFFFFFF && gpu.storeSent[k]) { at = Math.min(from & ~3, buffer.size); bytes = Math.min(length, buffer.size - at) & ~3; }
+  if (draws || shadowDraws) {
+    const stores = gpu.stores;
+    for (let k = 0; k < stores.length; k++) {
+      const buffer = stores[k];
+      const version = x.coaxial_store_version?.(arena.state, k);
+      if (version !== undefined && gpu.storeVersions[k] === version) continue;
+      let at = 0, bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
+      // a store with a span (coaxial_store_span_v1, metaverse-engine/render/graph/retained-rows.coax) sends only
+      // the rows that changed, once this buffer has been sent whole; taking the span empties it
+      if (x.coaxial_store_span_v1) {
+        const from = x.coaxial_store_span_v1(arena.state, k, 0) >>> 0, length = x.coaxial_store_span_v1(arena.state, k, 1) >>> 0;
+        if (length !== 0xFFFFFFFF && gpu.storeSent[k]) { at = Math.min(from & ~3, buffer.size); bytes = Math.min(length, buffer.size - at) & ~3; }
+      }
+      if (bytes) { device.queue.writeBuffer(buffer, at, memory.buffer, x.coaxial_store(arena.state, k) + at, bytes); gpu.storeVersions[k] = version; gpu.storeSent[k] = true; storeUploads.last[k] = bytes; storeUploads.total += bytes; }
     }
-    if (bytes) { device.queue.writeBuffer(buffer, at, memory.buffer, x.coaxial_store(arena.state, k) + at, bytes); gpu.storeVersions[k] = version; gpu.storeSent[k] = true; storeUploads.last[k] = bytes; storeUploads.total += bytes; }
-  });
+  }
   if ((gpu.scene || gpu.surface) && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
       || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {
     if (gpu.post) postTargets(w, h);
     else {
       gpu.depth?.destroy(); gpu.postGroup = null;
       gpu.depth = device.createTexture({ size: [w, h], format: "depth32float", usage: GPUTextureUsage.RENDER_ATTACHMENT | (gpu.cull ? GPUTextureUsage.TEXTURE_BINDING : 0) });
+      gpu.depthView = gpu.depth.createView();
     }
   }
   const post = gpu.post && gpu.postGroup;
@@ -3055,25 +3237,32 @@ function draw(now) {
   const passTimer = passTimerFor(device);
   // the instance cull's first phase (instance-cull.js), staged here and encoded before every pass; null when it culls nothing
   const culled = gpu.cull && draws && gpu.depth && x.coaxial_cull_v1 ? gpu.cull.want(x, arena.state, memory,
-    { index: gpu.index, vertices: assets.find((a) => a.kind === "storage")?.buffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)], items: gpu.stores?.[x.coaxial_cull_v1(arena.state, 8)] }, gpu.depth, w, h) : null;
+    { index: gpu.index, vertices: gpu.storageVertexBuffer, store: gpu.stores?.[x.coaxial_cull_v1(arena.state, 5)], items: gpu.stores?.[x.coaxial_cull_v1(arena.state, 8)] }, gpu.depth, w, h) : null;
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
   // a draw whose base instance has its top bit set draws its vertices in order, with no index buffer
   let observedWorldDraws = 0;
   const drawOne = (pass, i, source = list, shadow = false) => {
-    const [first, count, base, instances] = [source[i * 4], source[i * 4 + 1], source[i * 4 + 2], source[i * 4 + 3]];
+    const o = i * 4, first = source[o], count = source[o + 1], base = source[o + 2], instances = source[o + 3];
     if (!count || !instances) return;
     if (!shadow) observedWorldDraws++;
     if (culled && !shadow && source === list && gpu.cull.draw(pass, i)) return;
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
     else pass.drawIndexed(count, instances, x.coaxial_draw_index_v1 ? x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 1) : first, 0, base);
   };
-  const drawScene = (pass, colours = false, source = list, count = draws - wet, shadow = false) => {
+  const drawScene = (pass, colours = false, source = list, count = draws - wet, shadow = false, useOpaqueShadow = false) => {
     pass.setBindGroup(1, gpu.sceneGroup); if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");   // none: in-order draws only
-    let indexBank = -1;
+    let indexBank = -1, shadowPipe = 0;
     for (let i = 0; i < count; i++) {
-      if (x.coaxial_draw_index_v1 && !(source[i * 4 + 2] & 0x80000000)) {
+      const base = source[i * 4 + 2];
+      if (useOpaqueShadow && gpu.shadowOpaque) {
+        // Tiled shadow passes clip via hardware setScissorRect, so unindexed opaque casters
+        // (ground tiles & streamed dragon, top bit set) use hardware depth-only Z-rasterization.
+        const wantOpaque = (base & 0x80000000) !== 0 ? 1 : 0;
+        if (wantOpaque !== shadowPipe) { pass.setPipeline(wantOpaque ? gpu.shadowOpaque : gpu.shadow); shadowPipe = wantOpaque; }
+      }
+      if (x.coaxial_draw_index_v1 && !(base & 0x80000000)) {
         const bank = x.coaxial_draw_index_v1(arena.state, i, shadow ? 1 : 0, 0);
         if (bank !== -1 && (bank < 0 || bank >= assets.length || !assets[bank].buffer || !x.coaxial_asset_index_v1?.(bank))) throw Error(`invalid Coax index asset v1: ${bank}`);
         if (bank !== indexBank) {pass.setIndexBuffer(bank === -1 ? gpu.index : assets[bank].buffer, "uint32");indexBank = bank;}
@@ -3101,9 +3290,12 @@ function draw(now) {
     tile = x.coaxial_shadow_v1(st, 0);
     if (tile >= 0 && !shadowDraws) { x.coaxial_shadow_event_v1(st, 2, 0); tile = -1; }   // nothing to draw it with: empty again
   }
-  const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
+  const CLEAR_BLACK = { r: 0, g: 0, b: 0, a: 1 };
+  const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: CLEAR_BLACK });
   const texture = context.getCurrentTexture();
-  const screen = () => target(texture.createView());
+  let screenView = null;
+  const getScreenView = () => (screenView ||= texture.createView());
+  const screen = () => target(getScreenView());
   const blades = gpu.grass && (gpu.caster || gpu.sceneGroup) ? x.coaxial_grass_instances(arena.state) : 0;
   // a blade is one triangle unless the module says how many vertices its blades have (3 to 48, in threes)
   const asked = blades && x.coaxial_grass_vertices_v1 ? x.coaxial_grass_vertices_v1(arena.state) >>> 0 : 3;
@@ -3131,13 +3323,12 @@ function draw(now) {
   // ---- the frame's plan (metaverse-engine/render/graph/passes.coax, #13303). A page whose engine exports
   // coaxial_frame_plan_v1 is drawn by walking the engine's operations: this host maps a pass to its
   // pipeline, bind groups and targets and decides no order. `real` false is a recording only.
+  const viewOf = (t) => t === FP.target.screen ? getScreenView() : t === FP.target.light ? gpu.lightView : t === FP.target.aux ? gpu.auxView
+    : t === FP.target.q0 ? gpu.postViews[2] : t === FP.target.q1 ? gpu.postViews[3] : t === FP.target.e0 ? gpu.postViews[4] : gpu.postViews[5];
+  const texOf = (t) => t === FP.target.light ? gpu.light : t === FP.target.scene_depth ? gpu.depth : t === FP.target.water_light ? gpu.waterLight : gpu.waterDepth;
+  const plainOf = (p) => p === FP.pass.background ? gpu.bg : p === FP.pass.surface ? gpu.surface : p === FP.pass.caster ? gpu.caster
+    : p === FP.pass.water_transmit ? gpu.waterTransmit : gpu.waterEmit;
   const walk = (encoder, passTimer, words, count, real) => {
-    const views = { [FP.target.screen]: () => texture.createView(), [FP.target.light]: () => gpu.light.createView(), [FP.target.aux]: () => gpu.aux.createView(),
-      [FP.target.q0]: () => gpu.postTextures[2].createView(), [FP.target.q1]: () => gpu.postTextures[3].createView(),
-      [FP.target.e0]: () => gpu.postTextures[4].createView(), [FP.target.e1]: () => gpu.postTextures[5].createView() };
-    const textures = { [FP.target.light]: () => gpu.light, [FP.target.scene_depth]: () => gpu.depth, [FP.target.water_light]: () => gpu.waterLight, [FP.target.water_depth]: () => gpu.waterDepth };
-    const plain = { [FP.pass.background]: () => gpu.bg, [FP.pass.surface]: () => gpu.surface, [FP.pass.caster]: () => gpu.caster,
-      [FP.pass.water_transmit]: () => gpu.waterTransmit, [FP.pass.water_emit]: () => gpu.waterEmit };
     let pass = null, sorted = false, timed = false, mains = 0, blooms = 0, before = -1, bound0 = false, sparkGroup = undefined, tiled = false;
     for (let i = 0; i < count; i++) {
       const at = (i + 1) * 8, kind = words[at] & 255, id = (words[at] >> 8) & 255, source = (words[at] >> 16) & 255;
@@ -3146,22 +3337,25 @@ function draw(now) {
       if (kind === FP.op.cull_early) gpu.cull.early(encoder, real);
       else if (kind === FP.op.cull_late) gpu.cull.late(encoder, real);
       else if (kind === FP.op.particle_sort) { sorted = sortFrame(encoder, x); timed = sorted && gpu.timing && !gpu.timer.busy; }
-      else if (kind === FP.op.copy) encoder.copyTextureToTexture({ texture: textures[from]() }, { texture: textures[words[at + 2] & 255]() }, [w, h]);
+      else if (kind === FP.op.copy) encoder.copyTextureToTexture({ texture: texOf(from) }, { texture: texOf(words[at + 2] & 255) }, [w, h]);
       else if (kind === FP.op.begin) {
-        const colours = [colour0, colour1].filter((t) => t !== FP.target.none).map((t) => keep ? { view: views[t](), loadOp: "load", storeOp: "store" } : target(views[t]()));
+        const colours = [];
+        if (colour0 !== FP.target.none) colours.push(keep ? { view: viewOf(colour0), loadOp: "load", storeOp: "store" } : target(viewOf(colour0)));
+        if (colour1 !== FP.target.none) colours.push(keep ? { view: viewOf(colour1), loadOp: "load", storeOp: "store" } : target(viewOf(colour1)));
         bound0 = false; sparkGroup = undefined;
         if (depth === FP.target.shadow_map) {
           // the key light's map: a tile's pass keeps the atlas (its clear pipeline first), the whole map is cleared
           tiled = keep;
           pass = timedPass(encoder, passTimer, { colorAttachments: [], depthStencilAttachment: keep ? { view: gpu.shadowView, depthLoadOp: "load", depthStoreOp: "store" }
-            : { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
+            : { view: gpu.shadowView, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
           if (keep) pass.setPipeline(shadowClear()); else { pass.setBindGroup(0, gpu.bindGroup); bound0 = true; }
         } else if (depth === FP.target.scene_depth || !mains) {
           // the scene's pass, and the passes that go on from it keeping the light and depth
-          const stamps = !mains && timed ? { timestampWrites: { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 } } : {};
-          pass = timedPass(encoder, passTimer, { colorAttachments: colours,
-            ...(depth === FP.target.scene_depth ? { depthStencilAttachment: keep ? { view: gpu.depth.createView(), depthLoadOp: "load", depthStoreOp: store ? "store" : "discard" }
-              : { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: store ? "store" : "discard" } } : {}), ...stamps });
+          const desc = { colorAttachments: colours };
+          if (depth === FP.target.scene_depth) desc.depthStencilAttachment = keep ? { view: gpu.depthView, depthLoadOp: "load", depthStoreOp: store ? "store" : "discard" }
+            : { view: gpu.depthView, depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: store ? "store" : "discard" };
+          if (!mains && timed) desc.timestampWrites = { querySet: gpu.timer.set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: 3 };
+          pass = timedPass(encoder, passTimer, desc);
           pass.setBindGroup(0, gpu.bindGroup);
           if (!keep) { if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); } }
           else if (before === FP.op.cull_late) {
@@ -3189,13 +3383,13 @@ function draw(now) {
       else if (kind === FP.op.each_begin) {
         // each wet draw in turn through the operations up to each_end
         let end = i + 1; while (end < count && (words[(end + 1) * 8] & 255) !== FP.op.each_end) end++;
-        for (let d = first; d < first + n; d++) for (let k = i + 1; k < end; k++) { pass.setPipeline(plain[(words[(k + 1) * 8] >> 8) & 255]()); drawOne(pass, d); }
+        for (let d = first; d < first + n; d++) for (let k = i + 1; k < end; k++) { pass.setPipeline(plainOf((words[(k + 1) * 8] >> 8) & 255)); drawOne(pass, d); }
         i = end;
       } else if (kind === FP.op.draw) {
         if (id === FP.pass.shadow_clear) pass.draw(n);
         else if (id === FP.pass.shadow) {
           if (!bound0) { pass.setBindGroup(0, gpu.bindGroup); bound0 = true; }
-          pass.setPipeline(gpu.shadow); drawScene(pass, false, source === FP.source.shadow_records ? shadowList : list, n, true);
+          pass.setPipeline(gpu.shadow); drawScene(pass, false, source === FP.source.shadow_records ? shadowList : list, n, true, tiled);
         } else if (id === FP.pass.character_cast) characters.cast(pass);
         else if (id === FP.pass.scene) {
           pass.setPipeline(gpu.scene);
@@ -3221,7 +3415,7 @@ function draw(now) {
           const most = Math.min(n, hudVertices);
           if (most && (!gpu.fxScene || gpu.sceneGroup)) { if (gpu.fxScene) pass.setBindGroup(1, gpu.sceneGroup); pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(most); }
         } else if (id === FP.pass.caster) { pass.setPipeline(gpu.caster); pass.draw(n, instances); }
-        else { pass.setPipeline(plain[id]()); pass.draw(n); }   // the background's triangle, a traced page's surface
+        else { pass.setPipeline(plainOf(id)); pass.draw(n); }   // the background's triangle, a traced page's surface
       }
       before = kind;
     }
@@ -3297,7 +3491,11 @@ function draw(now) {
       const epoch = sceneEpoch, generation = installedGeneration, frameEngine = engine, frameGpu = gpu, frameScene = gpu.scene;
       pendingSceneEpoch = epoch;loadMark("scene-first-draw");
       device.queue.onSubmittedWorkDone().then(() => {
-        if (epoch === sceneEpoch && generation === wanted && shaderLoads === 0 && engine === frameEngine && gpu === frameGpu && gpu.scene === frameScene) { globalThis.coaxial.sceneReady = true;loadMark("scene-ready"); }
+        if (epoch === sceneEpoch && generation === wanted && shaderLoads === 0 && engine === frameEngine && gpu === frameGpu && gpu.scene === frameScene) {
+          globalThis.coaxial.sceneReady = true; loadMark("scene-ready");
+          // Pre-warm suspended AudioContext off the load path so the first keypress resumes asynchronously with 0 ms freeze.
+          if (!audio && !clipping) setTimeout(() => { if (!audio && !clipping && engine === frameEngine) startAudio(false); }, 150);
+        }
       }, (error) => { if (epoch === sceneEpoch) say(`scene frame: ${error?.message || error}`, true); });
     }
   }
@@ -4039,7 +4237,7 @@ if (dev) {
     clip:()=>({timeline:clipTimeline?.info()??null,memory:hostServices?.words()??0}),
     fixtureMode: mode => engine?.exports.coaxial_audio_fixture_mode?.(mode),fixtureProbe: field => Number(engine?.exports.coaxial_audio_fixture_probe?.(field)??-1n),
     bus: soundBus, busVoice, busLine,
-    offlineCoax: renderCoaxAudio,
+    offlineCoax: (...a) => modAudioHost().then((m) => m.renderCoaxAudio(...a)),
     offline: (lines, frames, buffers) => renderSoundLines(lines.map(([frame,line])=>[frame*1000/48000,line]), frames / 48000, 0, 48000, name => ({name}), a => Promise.resolve(buffers[a.name])) };
   globalThis.coaxial.hostLifecycle = {event:(kind,nowUs,arg)=>hostLifeEvent(kind,nowUs,arg),offer:(nowUs,pending)=>hostLifecycle?.offer(nowUs,pending),info:()=>hostLifecycle?.info(),reset:()=>hostLifecycle?.reset()};
   globalThis.coaxial.hostFrameAt = async nowUs => {draw(nowUs/1000);await gpu?.device.queue.onSubmittedWorkDone();};
@@ -4115,11 +4313,17 @@ function gyroSync(ended) {
 }
 canvas?.addEventListener("touchend", () => gyroSync(true));
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
-if (script?.dataset.drops) startDrops({ send });
+if (script?.dataset.drops) import("./drop.js").then(({ startDrops }) => startDrops({ send })).catch(() => {});
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
-if (script?.dataset.uploads) startUploads({ send, accept: script.dataset.uploads });
-// A design document for a realm's feature list or the builder (docs.js), on the app's action 31.
-startDocs({ send });
+if (script?.dataset.uploads) import("./uploads.js").then(({ startUploads }) => startUploads({ send, accept: script.dataset.uploads })).catch(() => {});
+// A design document for a realm's feature list or the builder (docs.js), lazily started only if action 31 fires.
+let docsStarted = false;
+addEventListener("coaxial", (e) => {
+  if (docsStarted || e.detail?.code !== 31) return;
+  docsStarted = true;
+  const detail = e.detail;
+  import("./docs.js").then(({ startDocs }) => { startDocs({ send }); dispatchEvent(new CustomEvent("coaxial", { detail })); }).catch(() => {});
+});
 // A request with flag 32 (http-requests.js): the next frame drawn, at most 1024 wide, as base64 JPEG.
 async function frameJpeg() {
   try {
@@ -4148,18 +4352,23 @@ function snapshot() {
     };
   });
 }
-if (script?.dataset.card) startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady });
+if (script?.dataset.card) import("./card.js").then(({ startCard }) => startCard({ url: script.dataset.card, key: () => player()?.key || "", snapshot, ready: () => !!globalThis.coaxial.sceneReady })).catch(() => {});
 // A page that talks (data-voice: the route its voice host answers as): voice.js, on the app's VOICE.
 // While the editor's agent strip holds it (agentVoice), what it shows goes to the strip; once it is off, the page's
 // own conversation faces are its again.
-const voice = script?.dataset.voice
-  ? startVoice({ send: (kind, text) => {
+let voice = null;
+if (script?.dataset.voice) {
+  import("./voice.js").then(({ startVoice }) => {
+    voice = startVoice({ send: (kind, text) => {
       if (kind === VOICE_KIND && agentVoice) {
         if (text.startsWith("off|") || text.startsWith("notice|")) { agentVoice = false; globalThis.coaxial?.voice?.face(""); }
         if (agentEvent(16, text)) return;
       }
       send(kind, text);
-    }, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" }) : null;
+    }, route: script.dataset.voice, wasmUrl: script.dataset.voiceWasm || "/build/voice.wasm" });
+    globalThis.coaxial.voice = voice;
+  }).catch(() => {});
+}
 globalThis.coaxial.voice = voice;
 
 // The location's hash, for an app that opens something by it (a link straight to it).
@@ -4172,7 +4381,7 @@ function navigateTo(path) {
   const to = new URL(path, location.href);
   const samePage = to.origin === location.origin && to.pathname === location.pathname && to.search === location.search;
   // A page warmed with action 18 is handed over in place (zone-host.js) rather than loaded again.
-  if (!(samePage && to.hash) && to.origin === location.origin && enterPage(to.pathname + to.search + to.hash, zoneOut)) return;
+  if (!(samePage && to.hash) && to.origin === location.origin && zoneHostMod?.enterPage(to.pathname + to.search + to.hash, zoneOut)) return;
   // held in the app shell's frame: the shell keeps the address beside its side, or lets the window go there (shell.js)
   if (!(samePage && to.hash) && to.origin === location.origin && shellGo(to.pathname + to.search + to.hash)) return;
   tabLocation.assign(to.href);
@@ -4287,9 +4496,16 @@ function after(gesture, tap = false) {
   if (field) placeField(want);
   const code = call("coaxial_action");
   if (code) {
-    const packet=actionSource(x,arena.state,memory,hostTransport?hostServices.actionSpan:null);
+    const readAction = (x, state, mem, span) => {
+      if (actionSourceFn) return actionSourceFn(x, state, mem, span);
+      const len = x.coaxial_outbox_len?.(state) >>> 0, ptr = x.coaxial_outbox?.(state) >>> 0;
+      if (span && !span(ptr, len, mem.buffer.byteLength)) return null;
+      if (ptr + len > mem.buffer.byteLength) return null;
+      return { view: new Uint8Array(mem.buffer, ptr, len) };
+    };
+    const packet=readAction(x,arena.state,memory,hostTransport?hostServices.actionSpan:null);
     if(!packet){call("coaxial_action_done");send(604,"Action output unavailable");return;}
-    const text = new TextDecoder().decode(packet.view.slice());
+    const text = utf8Decoder.decode(packet.view.slice());
     call("coaxial_action_done");
     // A Lightning invoice goes to a wallet. One in this browser (WebLN: the app's own wallet, an
     // extension) pays it here and reports the preimage, which the page hears as message 615 and
@@ -4312,7 +4528,7 @@ function after(gesture, tap = false) {
       catch {send(17,"");}
     }
     // Open another page in place, out of sight until action 1 goes to it (zone-host.js); progress back as message 18.
-    else if (code === 18 && text.startsWith("/")) warmPage(root && !text.startsWith(root + "/") ? root + text : text, (t) => send(18, t));
+    else if (code === 18 && text.startsWith("/")) { const p = root && !text.startsWith(root + "/") ? root + text : text; modZoneHost().then((m) => { zoneHostMod = m; m.warmPage(p, (t) => send(18, t)); }).catch(() => {}); }
     // Fetch a same-origin page and what its engine loads first into the HTTP cache, so going there
     // next (action 1) loads from it: Everglade's portal on the homepage asks while its camera flies.
     else if (code === 21 && text.startsWith("/") && !text.startsWith("//")) warmCache(root && !text.startsWith(root + "/") ? root + text : text);
@@ -4571,14 +4787,14 @@ async function fetchEngine(generation) {
   const response = await fetch(wasmUrl, { cache: dev ? "no-store" : "default" });
   if (!response.ok) throw new Error(`engine: ${response.status}`);
   const bytes = await readBytes(response, (l, t) => loading.engine(l, t));
-  await rememberAsset(response.url, bytes);
+  const receiptP = rememberAsset(response.url, bytes);
   loading.step("compile");
   // One queue owns destructive engine and shader installation. Asset effects
   // await this same queue, so none can publish through a retired facade.
   const install = renderReload.then(async () => {
     if (generation !== wanted) return false;
     engineInstalling = true;
-    try { return await loadEngine(bytes, generation); }
+    try { const ok = await loadEngine(bytes, generation); await receiptP; return ok; }
     catch (error) { stopEngine();throw error; }
     finally { engineInstalling = false; }
   });
@@ -4751,14 +4967,28 @@ function noGpuNotice() {
 async function main() {
   try {
     loadMark("main");
+    // Kick off independent startup work at t=0 concurrently with WASM download/compile:
+    // GPU adapter acquisition, WGSL/cull/particles fetches, UI font loading, and worker pool warmup.
+    if (navigator.gpu) earlyAdapterPromise = navigator.gpu.requestAdapter().catch(() => null);
+    if (!renderUrl) {
+      const fetchOpts = { cache: dev ? "no-store" : "default" };
+      earlyWgslPromise = fetch(wgslUrl, fetchOpts).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+      const cullA = assets.find((a) => a.kind === "cull");
+      if (cullA?.url) earlyCullPromise = fetch(cullA.url, fetchOpts).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+      const partA = assets.find((a) => a.kind === "particles");
+      if (partA?.url) earlyParticlesPromise = fetch(partA.url, fetchOpts).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+    }
+    fontReadyPromise = loadPageFont();
+    fontReadyPromise.catch(() => {});
+    if (firstPacks.size) modPackFetch().catch(() => {});
     await fetchEngine(beginEngine());
     loadMark("engine-installed");
-    // The world's public packs start coming in now, beside the font, the GPU and the shaders.
+    // Start public packs immediately beside GPU/shader setup (don't compete with pack bandwidth for non-pack assets).
     if (!hostTransport && navigator.gpu && !packWaits()) for (const pack of firstPacks) if (!pack.broker && !pack.urls && !pack.away && !packIncoming.has(pack.url)) packIncoming.set(pack.url, packBytes(pack));
-    await loadPageFont();
     // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
     loading.step("gpu");
     const started = await startGpu();
+    await fontReadyPromise;
     loadMark("gpu-started");
     if (!started) {
       for (const incoming of packIncoming.values()) incoming.cancel();packIncoming.clear();

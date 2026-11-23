@@ -74,7 +74,8 @@ E2nFamiliar :: struct { live:bool; form:int; x:f32; z:f32; hp:int; max:int; }
 E2Net :: struct {
   want: bool;                   // a room: the page facts named a host and this is not a staged shot
   state: int; sock: int = -1; tries: int; retry: int;
-  bin: bool;                    // this socket's frames go binary (wire-table.coax, #13278): set by its hello's flag, on a WebSocket or the local room
+  bin: bool;                    // this socket's frames go binary (wire-table.coax, #13278): set by its hello's flag, on WebSocket, WebTransport and local room
+  last_in: WtIn;                // last binary input sent: consecutive identical motion collapses to 1-byte NET_BIN_SAME in WT bundles
   url: [NET_URL] u8; url_n: int; host: [NET_URL] u8; host_n: int;   // (the page's host, kept apart: a shard's endpoint overwrites url)
   code: [NET_CODE] u8; code_n: int;   // the instance: the directory's, a check's (?room=) or none (the realm asks)
   local_relay: bool;            // ?relay=ws://localhost:PORT: a room server on this machine
@@ -183,14 +184,19 @@ e2n_now :: (n: [] E2Net) -> int { return n[0].mono + n[0].offset; }
 e2n_send :: (n: [] E2Net, count: int) {
   if n[0].state != E2N_OPEN || n[0].sock < 0 || count <= 0 { return; }
   f := cast(string) n[0].out[0..<count];
-  if (f[0] == 'C' || f[0] == 'F') && n[0].link[0].kind == NET_WT { e2n_pipe(n, net_conn_owe(n[0].link[..], n[0].pred[0].seq + 1, f, n[0].wout[..])); }
   channel := ifx f[0] == 'C' || f[0] == 'F' || f[0] == 'E' then NET_COMBAT else NET_SESSION;
+  owe := (f[0] == 'C' || f[0] == 'F') && n[0].link[0].kind == NET_WT;
   // a socket that speaks binary (#13278): the frame as the table's bytes; the relay's own (the clock ping) stays text
   if n[0].bin && !wt_stays_text(f) {
     b: [WIRE_FRAME + 64] u8; m := wt_bin(f, b[..]);
-    if m > 0 { e2n_pipe(n, net_conn_frame(n[0].link[..], channel, cast(string) b[0..<m], n[0].wout[..])); }
+    if m > 0 {
+      bf := cast(string) b[0..<m];
+      if owe { n[0].last_in = WtIn.{}; e2n_pipe(n, net_conn_owe(n[0].link[..], n[0].pred[0].seq + 1, bf, n[0].wout[..])); }
+      e2n_pipe(n, net_conn_frame(n[0].link[..], channel, bf, n[0].wout[..]));
+    }
     return;
   }
+  if owe { n[0].last_in = WtIn.{}; e2n_pipe(n, net_conn_owe(n[0].link[..], n[0].pred[0].seq + 1, f, n[0].wout[..])); }
   e2n_pipe(n, net_conn_frame(n[0].link[..], channel, f, n[0].wout[..]));
 }
 e2n_pipe :: (n: [] E2Net, d: string) {
@@ -557,7 +563,7 @@ e2n_down :: (n: [] E2Net) {
   if n[0].seat >= 0 && n[0].lost_at == 0 { n[0].lost_at = ifx n[0].mono > 0 then n[0].mono else 1; }
   _ := net_action_rejoin(n[0].acts[..], n[0].mono);   // what waited on this socket's room will never be answered
   e2o_forget(n[0].own[..]);   // your record is the room's to say: none while it isn't saying it
-  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].bin = false; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
+  n[0].state = E2N_DOWN; n[0].sock = -1; n[0].bin = false; n[0].last_in = WtIn.{}; n[0].seat = -1; n[0].rest_known = false; n[0].kit_known = false; n[0].aid_left = -1; n[0].aid_at = -100000; n[0].familiar_at=-100000;
   n[0].tries += 1;
   wait := 1000;
   for q: 0..<nc_lo(n[0].tries - 1, 6) { wait *= 2; }
@@ -870,9 +876,17 @@ e2n_input :: (n: [] E2Net, input: EgMoveIn) -> int {
   words: [NET_MOVE_WORDS] int; net_move_words(input, words[..]);
   seq := net_predict_input(n[0].pred[..], words[..]);
   b := (ifx input.run then WB_RUN else 0) | (ifx input.jump then WB_JUMP else 0);
-  m := wire_put_in(n[0].out[..], 0, WireIn.{seq = seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
+  m := 0; same := false;
+  if n[0].bin {
+    wi := WtIn.{ok = true, seq = seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = wire_fine(input.theta), b = b, heard = n[0].mir[0].heard};
+    same = n[0].last_in.ok && wi.seq == n[0].last_in.seq + 1 && wi.kx == n[0].last_in.kx && wi.ky == n[0].last_in.ky && wi.px == n[0].last_in.px && wi.py == n[0].last_in.py && wi.theta == n[0].last_in.theta && wi.b == n[0].last_in.b;
+    n[0].last_in = wi;
+    m = wt_in_put(n[0].out[..], 0, WT_I, wi);
+  } else {
+    m = wire_put_in(n[0].out[..], 0, WireIn.{seq = seq, kx = wire_axis(input.key_x), ky = wire_axis(input.key_y), px = wire_axis(input.pad_x), py = wire_axis(input.pad_y), theta = input.theta, b = b, heard = n[0].mir[0].heard});
+  }
   // a datagram that repeats what the room hasn't acknowledged (on a WebSocket, the frame alone)
-  if n[0].state == E2N_OPEN && n[0].sock >= 0 { e2n_pipe(n, net_conn_input(n[0].link[..], seq, cast(string) n[0].out[0..<m], n[0].wout[..])); }
+  if n[0].state == E2N_OPEN && n[0].sock >= 0 && m > 0 { e2n_pipe(n, net_conn_input_same(n[0].link[..], seq, cast(string) n[0].out[0..<m], same, n[0].wout[..])); }
   return seq;
 }
 e2n_fix_due :: (n: [] E2Net) -> bool { return e2n_open(n) && net_predict_due(n[0].pred[..]) && n[0].fix.ok; }
@@ -947,6 +961,22 @@ e2n_fixed :: (n: [] E2Net, dx: f32, dy: f32, dz: f32) {
   #assert e2n_event(p[..], SOCKET_KIND + 3 * 4 + SOCKET_CLOSED, "") && p[0].direct_blocked && p[0].state == E2N_DOWN;
   e2n_ticket(p[..], "200\n{\"ticket\":\"abc.def\",\"room\":\"everglade2-3\",\"shard\":2,\"endpoint\":\"wss://room.openagents.com:4432/api/room/s2/\"}");
   #assert !p[0].direct && cast(string) p[0].url[0..<p[0].url_n] == "wss://openagents.com/api/room/s2/relay/everglade/everglade2-3";
+  // binary hello enables compact binary inputs & casts on WebTransport (and WebSocket)
+  bn: [1] E2Net; bn[0].state = E2N_OPEN; bn[0].sock = 1; bn[0].mono = 1000;
+  #assert e2n_event(bn[..], SOCKET_KIND + 4 + SOCKET_OPENED, "wt") && bn[0].link[0].kind == NET_WT;
+  e2n_record(bn[..], "y 2 0 1000"); e2n_step(bn[..], 1000);
+  #assert bn[0].bin;
+  pipe_drained(bn[0].pipe[..]);
+  _6 := e2n_input(bn[..], EgMoveIn.{key_y = 1});
+  b1 := pipe_bytes(bn[0].pipe[..], 0);
+  #assert b1[0] == NET_MARK + NET_DATAGRAM && wt_kind(b1[1..<b1.count]) == WT_I && wt_in_get(b1[1..<b1.count]).seq == 1 && b1.count < 16;
+  _7 := e2n_input(bn[..], EgMoveIn.{key_y = 1});
+  b2 := pipe_bytes(bn[0].pipe[..], 1);
+  #assert b2[0] == NET_MARK + NET_DATAGRAM && b2[1] == NET_BIN_BUNDLE && b2[2] == NET_BIN_SAME && net_bundle_count(b2[1..<b2.count]) == 2 && net_bundle_frame(b2[1..<b2.count], 0) == NET_SAME && wt_in_get(net_bundle_frame(b2[1..<b2.count], 1)).seq == 2;
+  #assert e2n_cast(bn[..], 128, 0, 1, -40);
+  bc_dg := pipe_bytes(bn[0].pipe[..], 2); bc_st := pipe_bytes(bn[0].pipe[..], 3);
+  #assert bc_dg[0] == NET_MARK + NET_DATAGRAM && bc_dg[1] == NET_BIN_BUNDLE && wt_kind(net_bundle_frame(bc_dg[1..<bc_dg.count], 2)) == WT_C;
+  #assert bc_st[0] == NET_MARK + NET_COMBAT && wt_kind(bc_st[1..<bc_st.count]) == WT_C;
 }
 
 // ---- each frame
@@ -994,9 +1024,8 @@ e2n_hello :: (n: [] E2Net) {
   if n[0].again && n[0].at_known { e2n_send(n, wire_put_at(n[0].out[..], 0, WireAt.{x = n[0].at_x, z = n[0].at_z, yaw = n[0].at_yaw})); n[0].agains += 1; }
   n[0].again = false;
   kind: [24] u8; kn := fb_cl_kind_at(e2n_class(n), n[0].level, kind[..]);
-  // binary frames from here on, on a WebSocket or the local room (wire-table.coax, #13278); a WebTransport
-  // link's input datagrams are text records still, so it keeps text
-  bin := n[0].link[0].kind != NET_WT;
+  // binary frames from here on, on WebSocket, WebTransport, and the local room alike (wire-table.coax, #13278)
+  bin := true;
   n[0].bin = false;   // the hello itself goes as text: a room of any build reads it
   e2n_send(n, wire_put_hello_value(n[0].out[..], 0, wire_hello_value(WireHello.{look = look, kind = cast(string) kind[0..<kn], flags = (ifx n[0].account then 2 else 0) | WIRE_HELLO_PACKED | (ifx bin then WIRE_HELLO_BINARY else 0), name = ""})));
   n[0].bin = bin;

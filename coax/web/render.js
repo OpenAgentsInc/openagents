@@ -96,27 +96,32 @@ export class RenderHost {
     this.prepareBuffers();
     if (this.previous) this.retainEffects(this.previous);
     }
-    for (const item of this.package.modules) {
-      if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-fetch-module";
-      const shaderResponse = await fetch(new URL(item.wgsl_file, new URL(this.url, location.href)));
-      if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-module-response";
+    const baseUrl = new URL(this.url, location.href);
+    const fetchedModules = await Promise.all(this.package.modules.map(async (item) => {
+      const shaderResponse = await fetch(new URL(item.wgsl_file, baseUrl));
       if (!shaderResponse.ok) throw Error(`renderer module: ${shaderResponse.status}`);
-      const shaderBytes = new Uint8Array(await shaderResponse.arrayBuffer());
+      return { item, shaderBytes: new Uint8Array(await shaderResponse.arrayBuffer()) };
+    }));
+    const decoder = new TextDecoder();
+    const createdModules = [];
+    for (const { item, shaderBytes } of fetchedModules) {
       if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-module-bytes";
       if (!x.coaxial_render_shader_admit(shaderBytes.length)) throw new RenderRefusal("Coax refused shader extent");
       new Uint8Array(memory.buffer, x.coaxial_render_shader_ptr(), shaderBytes.length).set(shaderBytes);
       if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-module-admit";
       if (x.coaxial_render_candidate_module(item.binding_set, shaderBytes.length) !== 0) throw new RenderRefusal("Coax refused shader digest");
-      const module = device.createShaderModule({ code: new TextDecoder().decode(shaderBytes) });
-      if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-module-info";
-      const diagnostics = await module.getCompilationInfo();
+      const module = device.createShaderModule({ code: decoder.decode(shaderBytes) });
+      this.modules.set(item.binding_set, module);
+      createdModules.push(module);
+    }
+    const diagList = await Promise.all(createdModules.map((m) => m.getCompilationInfo()));
+    for (const diagnostics of diagList) {
       this.shaderMessages.push(...diagnostics.messages.map((m) => ({ type: m.type, message: m.message, line: m.lineNum, column: m.linePos })));
       if (diagnostics.messages.some((m) => m.type === "error")) throw Error(diagnostics.messages.map((m) => m.message).join("\n"));
-      this.modules.set(item.binding_set, module);
     }
+    await Promise.all(this.package.entries.map((entry) => this.makePipeline(entry)));
     for (const entry of this.package.entries) {
       if(this.capture)globalThis.coaxial.renderLifecyclePhase=`renderer-pipeline-${entry.entry_index}`;
-      await this.makePipeline(entry);
       if (x.coaxial_render_candidate_pipeline(entry.entry_index, 1) !== 0) throw new RenderRefusal("Coax refused pipeline readiness");
     }
     if(this.canonicalMedia&&this.pipelines.has(13))await prepareCanonicalMedia();

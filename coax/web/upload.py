@@ -18,6 +18,7 @@ types = {".wasm": "application/wasm", ".wgsl": "text/plain; charset=utf-8", ".md
          ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg",
          ".json": "application/json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml; charset=utf-8",
          ".sh": "text/plain; charset=utf-8", ".ps1": "text/plain; charset=utf-8",
+         ".ttf": "font/ttf", ".frames": "application/octet-stream",
          ".syms": "text/plain; charset=utf-8"}   # a module's function names (wasm.sh, #13298)
 
 def call(url, method="GET", body=None, headers={}):
@@ -59,7 +60,7 @@ def object_name(name, site=False):
 # bucket for a client that doesn't: the homepage's seed parts (deploy.sh, mostly JSON text) and the
 # engines, shaders and host script (Everglade's page: 2.03 MB, 0.82 MB gzipped). Their names still
 # name their content, uncompressed, and they stay cached for good.
-def zipped(name): return (name.startswith("build/home-seed/") and name.endswith(".txt")) or name.endswith((".wasm", ".wgsl", ".js", ".syms"))
+def zipped(name): return (name.startswith("build/home-seed/") and name.endswith(".txt")) or name.endswith((".wasm", ".wgsl", ".js", ".syms", ".frames", ".ttf", ".json", ".svg", ".md", ".html", ".page", ".wellknown", ".css"))
 
 def put(name, path, cache, site=False):
     data = open(path, "rb").read()

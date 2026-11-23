@@ -1,0 +1,55 @@
+// RFC 1952 gzip encoding for coax serve (serve.c, serve-parts.sh): wraps coax/lib/image/deflate.coax's
+// fast raw DEFLATE with the 10-byte gzip header and 8-byte IEEE CRC-32 + ISIZE trailer. Zero external
+// libraries, so the dev server and production Dockerfile stay self-contained.
+//   coax/bin/coax test coax/web/http-gzip.coax --library
+#load "../lib/image/deflate.coax";
+
+// IEEE 802.3 CRC-32 (polynomial 0xedb88320, reflected) over src.
+hg_crc32 :: (src: string) -> u32 #effects(all) {
+  crc: u32 = 0xffffffff;
+  for b: src {
+    crc ^= cast(u32) b;
+    for k: 0..<8 {
+      mask := cast,trunc(u32) (0 - cast(s64) (crc & 1));
+      crc = (crc >> 1) ^ (0xedb88320 & mask);
+    }
+  }
+  return crc ^ 0xffffffff;
+}
+
+hg_put32 :: (out: []u8, at: int, v: u32) #effects(all) {
+  out[at] = cast,trunc(u8) (v & 255);
+  out[at + 1] = cast,trunc(u8) ((v >> 8) & 255);
+  out[at + 2] = cast,trunc(u8) ((v >> 16) & 255);
+  out[at + 3] = cast,trunc(u8) ((v >> 24) & 255);
+}
+
+// Compress src into out as a valid RFC 1952 gzip member using caller-supplied workspace w.
+// Returns total gzip byte length, or -1 if out is too small.
+http_gzip :: (src: string, out: []u8, w: []DeflateWork) -> int #export_c #effects(all) {
+  if out.count < 18 || w.count < 1 { return -1; }
+  out[0] = 0x1f; out[1] = 0x8b; out[2] = 0x08; out[3] = 0x00;
+  out[4] = 0x00; out[5] = 0x00; out[6] = 0x00; out[7] = 0x00;
+  out[8] = 0x04; out[9] = 0x03;   // XFL=4 (fastest), OS=3 (Unix)
+  z := deflate_raw_fast(src, out[10..<out.count - 8], w);
+  if z < 0 { return -1; }
+  crc := hg_crc32(src);
+  hg_put32(out, 10 + z, crc);
+  hg_put32(out, 14 + z, cast,trunc(u32) src.count);
+  return 18 + z;
+}
+
+#test "RFC 1952 gzip header, CRC-32 vector and inflate round-trip" {
+  #assert hg_crc32("") == 0 && hg_crc32("123456789") == 0xcbf43926;
+  w: [1] DeflateWork; out: [4096] u8; back: [4096] u8;
+  msg := "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.";
+  n := http_gzip(msg, out[..], w[..]);
+  #assert n > 18 && n < msg.count && out[0] == 0x1f && out[1] == 0x8b && out[2] == 0x08;
+  // Inflate the raw deflate body and check CRC32 + ISIZE trailer.
+  m := inflate(out[10..<n - 8], back[..]);
+  #assert m == msg.count && cast(string) back[0..<m] == msg;
+  crc := cast(u32) out[n - 8] | (cast(u32) out[n - 7] << 8) | (cast(u32) out[n - 6] << 16) | (cast(u32) out[n - 5] << 24);
+  isize := cast(u32) out[n - 4] | (cast(u32) out[n - 3] << 8) | (cast(u32) out[n - 2] << 16) | (cast(u32) out[n - 1] << 24);
+  #assert crc == hg_crc32(msg) && isize == cast(u32) msg.count;
+  #assert http_gzip(msg, out[0..<17], w[..]) == -1;
+}

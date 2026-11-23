@@ -130,25 +130,26 @@ net_combat_gain :: (combat: int) -> f32 #effects(all) {
   if (combat & NET_COMBAT_NEAR) != 0 { g += 0.5; }
   return g;
 }
+NET_PRIO_DIV :: NET_SPEED_REF * NET_AGE_REF / NET_NEAR;
+NET_ORDER_CACHE :: 512;
+
 // The priority a waiting row gains this tick.
 net_priority :: (p: NetPrio) -> f32 #effects(all) {
   d := ifx p.d2 > 0 then sqrt(p.d2) else 0.0f32;   // mutant: equivalent (sqrt(0) is 0)
-  near := p.weight / (1 + d / NET_NEAR);
   view := ifx p.view then 1.0f32 else NET_VIEW_OUT;
+  gain := ifx p.combat != 0 then net_combat_gain(p.combat) else 1.0f32;   // mutant: equivalent (combat 0 is 1)
   s := ifx p.speed > NET_SPEED_MOST then NET_SPEED_MOST else ifx p.speed > 0 then p.speed else 0.0f32;   // mutant: equivalent (each bound is itself)
   a := ifx p.age > 0 then f32(p.age) else 0.0f32;   // mutant: equivalent (0 either way)
-  return near * view * net_combat_gain(p.combat) * (1 + s / NET_SPEED_REF) * (1 + a / NET_AGE_REF);
+  return (p.weight * gain * (NET_SPEED_REF + s) * (NET_AGE_REF + a)) / ((NET_NEAR + d) * NET_PRIO_DIV) * view;
 }
 // A priority's order class: its power of two (0 below 1/32, 31 at most); higher goes first.
-// (floor of log2 of 64 a, by halves of its bits: five comparisons, every candidate twice a tick)
+// (IEEE-754 biased exponent of a: floor(log2(a)) + 6, clamped to 0..31)
 net_prio_class :: (a: f32) -> int #effects(all) {
-  b := 0; v := a * 64;
-  if v >= 65536 { v = v / 65536; b += 16; }
-  if v >= 256 { v = v / 256; b += 8; }
-  if v >= 16 { v = v / 16; b += 4; }
-  if v >= 4 { v = v / 4; b += 2; }
-  if v >= 2 { b += 1; }
-  return b;
+  if !(a > 0) { return 0; }   // mutant: equivalent (0 is class 0 either way)
+  c := cast(int)(f32_bits(a) >> 23) - 121;
+  if c < 0 { return 0; }   // mutant: equivalent (0 is 0)
+  if c > 31 { return 31; }   // mutant: equivalent (31 is 31)
+  return c;
 }
 // The order rows go in: those of cand[0..<n] that have waited max_age ticks (now - since, since > 0)
 // first, the oldest first; then the rest by priority class, highest first, each class in cand's
@@ -157,20 +158,31 @@ net_order :: (prio: [] f32, since: [] int, cand: [] int, n: int, now: int, max_a
   m := ifx n < cand.count then n else cand.count;   // mutant: equivalent (equal, either)
   if m > out.count { m = out.count; }   // mutant: equivalent (equal, either)
   aged := 0;
+  count: [32] int; start: [32] int; cls: [NET_ORDER_CACHE] u8;
   for c: 0..<m {
-    q := cand[c];
-    if since[q] <= 0 || now - since[q] < max_age { continue; }
-    j := aged;
-    while j > 0 && since[out[j - 1]] > since[q] { out[j] = out[j - 1]; j -= 1; }
-    out[j] = q; aged += 1;
+    q := cand[c]; sq := since[q];
+    if sq > 0 && now - sq >= max_age {
+      j := aged;
+      while j > 0 && since[out[j - 1]] > sq { out[j] = out[j - 1]; j -= 1; }
+      out[j] = q; aged += 1;
+      if c < NET_ORDER_CACHE { cls[c] = 32; }
+    } else {
+      k := net_prio_class(prio[q]);
+      count[k] += 1;
+      if c < NET_ORDER_CACHE { cls[c] = u8(k); }
+    }
   }
-  count: [32] int; start: [32] int;
-  for c: 0..<m { q := cand[c]; if since[q] > 0 && now - since[q] >= max_age { continue; } count[net_prio_class(prio[q])] += 1; }
   at := aged;
   for b: 0..<32 { k := 31 - b; start[k] = at; at += count[k]; }
-  for c: 0..<m {
-    q := cand[c];
-    if since[q] > 0 && now - since[q] >= max_age { continue; }
+  cached := ifx m < NET_ORDER_CACHE then m else NET_ORDER_CACHE;   // mutant: equivalent (equal, either)
+  for c: 0..<cached {
+    k := cast(int) cls[c];
+    if k == 32 { continue; }
+    out[start[k]] = cand[c]; start[k] += 1;
+  }
+  for c: cached..<m {
+    q := cand[c]; sq := since[q];
+    if sq > 0 && now - sq >= max_age { continue; }
     k := net_prio_class(prio[q]); out[start[k]] = q; start[k] += 1;
   }
   return aged;
@@ -304,7 +316,20 @@ net_order :: (prio: [] f32, since: [] int, cand: [] int, n: int, now: int, max_a
     #assert net_prio_class(p / 64) == k && net_prio_class(p * 0.999 / 64) == k - 1 && net_prio_class(p * 1.999 / 64) == k;
   }
   zero := 0.0f32;
-  #assert net_prio_class(zero / zero) == 0 && net_prio_class(-5) == 0 && net_prio_class(1.0f32 / zero) == 31;
+  #assert net_prio_class(zero / zero) == 0 && net_prio_class(-5) == 0 && net_prio_class(0.001) == 0 && net_prio_class(1.0f32 / zero) == 31;
+  // past NET_ORDER_CACHE: aged and priority-ordered tail both place in the same order
+  bp: [NET_ORDER_CACHE + 5] f32; bs: [NET_ORDER_CACHE + 5] int; bc: [NET_ORDER_CACHE + 5] int; bo: [NET_ORDER_CACHE + 5] int;
+  for i: 0..<NET_ORDER_CACHE + 5 { bc[i] = i; bp[i] = 1; bs[i] = 95; }
+  bs[NET_ORDER_CACHE + 0] = 1; bp[NET_ORDER_CACHE + 0] = 64;    // aged right at NET_ORDER_CACHE (since == 1, high prio so Pass 2 skip matters)
+  bs[NET_ORDER_CACHE + 1] = 70; bp[NET_ORDER_CACHE + 1] = 64;   // aged right at now - sq == max_age
+  bs[NET_ORDER_CACHE + 2] = 0; bp[NET_ORDER_CACHE + 2] = 64;    // not aged (since == 0), class 12
+  bp[NET_ORDER_CACHE + 3] = 64;   // second entry in class 12 in tail
+  bp[NET_ORDER_CACHE + 4] = 0.01; // lowest priority in tail
+  ba := net_order(bp[..], bs[..], bc[..], NET_ORDER_CACHE + 5, 100, 30, bo[..]);
+  #assert ba == 2 && bo[0] == NET_ORDER_CACHE && bo[1] == NET_ORDER_CACHE + 1 && bo[2] == NET_ORDER_CACHE + 2 && bo[3] == NET_ORDER_CACHE + 3 && bo[NET_ORDER_CACHE + 4] == NET_ORDER_CACHE + 4;
+  bs[NET_ORDER_CACHE + 0] = 95;   // non-aged right at NET_ORDER_CACHE
+  ba = net_order(bp[..], bs[..], bc[..], NET_ORDER_CACHE + 5, 100, 30, bo[..]);
+  #assert ba == 1 && bo[0] == NET_ORDER_CACHE + 1 && bo[1] == NET_ORDER_CACHE && bo[2] == NET_ORDER_CACHE + 2 && bo[3] == NET_ORDER_CACHE + 3;
 }
 
 NET_FAIR_N :: 240;

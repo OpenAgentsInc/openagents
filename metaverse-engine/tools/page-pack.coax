@@ -58,7 +58,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if same { same = fs_read(paths[1], back[..]) == wrote && cast(string) back[0..<wrote] == cast(string) file[0..<wrote]; }
     if !same && !fs_write(paths[1], cast(string) file[0..<wrote]) { print("FAIL %: can't write it\n", paths[1]); return 1; }
   }
-  m := l[0].m; deflated := 0; for k: 0..<m.pages { if m.page[k].codec == PPK_DEFLATE { deflated += 1; } }
+  m := l[0].m; deflated := 0; for k: 0..<m.pages { if m.page[k].codec >= PPK_DEFLATE { deflated += 1; } }
   print("%: % pages (% roots, % deflated), % bytes for a %-byte image (% per mille)\n", paths[1], m.pages, m.roots, deflated, wrote, size, wrote * 1000 / size);
   return 0;
 }

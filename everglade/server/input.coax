@@ -207,9 +207,8 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   eg_hello_class(v, k, seat_id, tk, kind);
   st[0].flags = eg_clamp(h.flags, 0, 255);
   st[0].rep[0].packed = (st[0].flags & (WIRE_HELLO_PACKED | WIRE_HELLO_BINARY)) != 0;   // its rows go bit-packed (everglade-wire.coax, #13165); a binary page's always do
-  // its frames go binary from here on (wire-table.coax, #13278): the out buffer writes them so (room-relay.coax ob_put)
-  // (a WebTransport seat's frames stay text: its datagrams are text records still, room-wt.coax)
-  if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].bin = (st[0].flags & WIRE_HELLO_BINARY) != 0 && !rm_wt_on(v, st[0].conn); }
+  // its frames go binary from here on (wire-table.coax, #13278): on WebSocket and WebTransport alike
+  if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].bin = (st[0].flags & WIRE_HELLO_BINARY) != 0; }
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
   ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
   // Character Create's hello (RM_GLADE_FLAG) can come after the seat's first tick put it at the

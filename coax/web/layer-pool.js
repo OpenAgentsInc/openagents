@@ -12,7 +12,11 @@ export async function layerBitmap(bytes, options) {
     const decoder = new ImageDecoder({ data: bytes, type: "image/png", ...(options?.colorSpaceConversion === "none" ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : {}) });
     try {
       const { image } = await decoder.decode({ frameIndex: 0 });
-      try { return await createImageBitmap(image, options); }
+      try {
+        const same = options?.resizeWidth === image.displayWidth && options?.resizeHeight === image.displayHeight;
+        const opts = same ? (options.colorSpaceConversion === "none" ? { colorSpaceConversion: "none", premultiplyAlpha: "none" } : undefined) : options;
+        return await createImageBitmap(image, opts);
+      }
       finally { image.close(); }
     } finally { decoder.close(); }
   }
@@ -25,6 +29,7 @@ export async function layerLevels(bytes, raw, sizes) {
   try {
     const image = await layerBitmap(bytes, { ...options, resizeWidth: sizes[0][0], resizeHeight: sizes[0][1], resizeQuality: "high" });
     made.push(image);
+    if (sizes.length === 1) return made;
     const rest = await Promise.allSettled(sizes.slice(1).map(([w, h]) => createImageBitmap(image, { ...options, resizeWidth: w, resizeHeight: h, resizeQuality: "high" })));
     for (const row of rest) if (row.status === "fulfilled") made.push(row.value);
     for (const row of rest) if (row.status === "rejected") throw row.reason;

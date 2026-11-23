@@ -70,6 +70,7 @@
 #include <limits.h>
 #include <math.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -89,17 +90,22 @@
 
 #include "../../metaverse/voice-host/ws.h"
 #include "http-range.h"
+#include "http-gzip.h"
 #include "sha256-kernel.h"
 #include "site-routes.h"
 #include "world-alias.h"
 #include "code-wire.h"
 #include "realm-origin.h"
 
-#define MAX_CLIENTS 64
+#define MAX_CLIENTS 128
+#define KEEP_ALIVE_IDLE_MS 15000.0
+#define GZ_CACHE_SLOTS 64
+#define GZ_MIN_BYTES 256
+#define GZ_MAX_BYTES (4 * 1024 * 1024)
 #define REQ_MAX 16384
 #define HTTP_REQUEST_MAX 262144 // a saved source file (code_local: 192 KB and its first line); live/build messages keep REQ_MAX
 
-typedef struct { int fd; bool ws; size_t n; char buf[HTTP_REQUEST_MAX]; } client;
+typedef struct { int fd; bool ws; size_t n; double last_ms; char buf[HTTP_REQUEST_MAX]; } client;
 
 static client clients[MAX_CLIENTS];
 // realpath's buffers are PATH_MAX: glibc's _FORTIFY_SOURCE (on by default under Nix) aborts a smaller one.
@@ -186,7 +192,8 @@ static bool ends_with(const char *s, const char *suffix) {
 
 static const char *content_type(const char *path) {
   if (ends_with(path, ".html")) return "text/html; charset=utf-8";
-  if (ends_with(path, ".js")) return "text/javascript; charset=utf-8";
+  if (ends_with(path, ".js") || ends_with(path, ".mjs")) return "text/javascript; charset=utf-8";
+  if (ends_with(path, ".css")) return "text/css; charset=utf-8";
   if (ends_with(path, ".wasm")) return "application/wasm";
   if (ends_with(path, ".wgsl")) return "text/plain; charset=utf-8";
   if (ends_with(path, ".md")) return "text/markdown; charset=utf-8";
@@ -194,9 +201,111 @@ static const char *content_type(const char *path) {
   if (ends_with(path, ".json")) return "application/json";
   if (ends_with(path, ".png")) return "image/png";
   if (ends_with(path, ".jpg")) return "image/jpeg";
-  if (ends_with(path, ".bin")) return "application/octet-stream";
+  if (ends_with(path, ".ttf")) return "font/ttf";
+  if (ends_with(path, ".bin") || ends_with(path, ".frames") || ends_with(path, ".vpk3") || ends_with(path, ".pack")) return "application/octet-stream";
   if (ends_with(path, ".ogg")) return "audio/ogg";
   return "text/plain; charset=utf-8";
+}
+
+static bool compressible_path(const char *path) {
+  return ends_with(path, ".js") || ends_with(path, ".mjs") || ends_with(path, ".wasm") || ends_with(path, ".wgsl") ||
+         ends_with(path, ".html") || ends_with(path, ".css") || ends_with(path, ".svg") || ends_with(path, ".json") ||
+         ends_with(path, ".md") || ends_with(path, ".txt") || ends_with(path, ".frames") || ends_with(path, ".ttf") ||
+         ends_with(path, ".syms") || ends_with(path, ".xml");
+}
+
+static bool ci_contains_token(const char *start, const char *end, const char *tok) {
+  size_t tl = strlen(tok);
+  for (const char *p = start; p + tl <= end; p++) {
+    if (!strncasecmp(p, tok, tl)) {
+      bool left_ok = (p == start) || (p[-1] == ' ' || p[-1] == '\t' || p[-1] == ',' || p[-1] == ':');
+      bool right_ok = (p + tl == end) || (p[tl] == ' ' || p[tl] == '\t' || p[tl] == ',' || p[tl] == ';' || p[tl] == '\r');
+      if (left_ok && right_ok) {
+        if (p + tl < end && p[tl] == ';' && !strncasecmp(p + tl, ";q=0", 4) &&
+            (p + tl + 4 == end || p[tl + 4] == ',' || p[tl + 4] == ' ' || p[tl + 4] == '\r')) return false;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static bool wants_keep_alive(const char *request) {
+  const char *line_end = strstr(request, "\r\n");
+  if (!line_end) return false;
+  bool http11 = (line_end - request >= 8) && !memcmp(line_end - 8, "HTTP/1.1", 8);
+  bool saw_close = false, saw_ka = false;
+  const char *p = line_end;
+  while (p && p[2] && p[2] != '\r') {
+    p += 2; const char *end = strstr(p, "\r\n"); if (!end) break;
+    if (!strncasecmp(p, "Connection:", 11)) {
+      if (ci_contains_token(p + 11, end, "close")) saw_close = true;
+      if (ci_contains_token(p + 11, end, "keep-alive")) saw_ka = true;
+    }
+    p = end;
+  }
+  return http11 ? !saw_close : saw_ka;
+}
+
+static bool accepts_gzip(const char *request) {
+  const char *p = strstr(request, "\r\n");
+  while (p && p[2] && p[2] != '\r') {
+    p += 2; const char *end = strstr(p, "\r\n"); if (!end) return false;
+    if (!strncasecmp(p, "Accept-Encoding:", 16) && ci_contains_token(p + 16, end, "gzip")) return true;
+    p = end;
+  }
+  return false;
+}
+
+typedef struct {
+  char path[PATH_MAX];
+  off_t size;
+  struct timespec mtime;
+  uint8_t *gz;
+  size_t gz_len;
+  uint64_t used;
+} gz_entry;
+
+static gz_entry gz_cache[GZ_CACHE_SLOTS];
+static uint64_t gz_clock;
+static coax_t_DeflateWork gz_work;
+
+static const gz_entry *gz_get(const char *path, const struct stat *st, FILE *f) {
+  struct timespec mt = MTIME(*st);
+  for (int i = 0; i < GZ_CACHE_SLOTS; i++) {
+    if (gz_cache[i].gz && gz_cache[i].size == st->st_size &&
+        gz_cache[i].mtime.tv_sec == mt.tv_sec && gz_cache[i].mtime.tv_nsec == mt.tv_nsec &&
+        !strcmp(gz_cache[i].path, path)) {
+      gz_cache[i].used = ++gz_clock;
+      return &gz_cache[i];
+    }
+  }
+  size_t raw_len = (size_t)st->st_size;
+  uint8_t *raw = malloc(raw_len);
+  size_t out_cap = raw_len + 64 + raw_len / 512;
+  uint8_t *out = raw ? malloc(out_cap) : NULL;
+  if (!raw || !out) { free(raw); free(out); return NULL; }
+  if (fseeko(f, 0, SEEK_SET) || fread(raw, 1, raw_len, f) != raw_len) { free(raw); free(out); return NULL; }
+  int64_t gz_len = http_gzip((coax_string){(const char *)raw, (int64_t)raw_len},
+                             (coax_v_u8){out, (int64_t)out_cap},
+                             (coax_v_t_DeflateWork){&gz_work, 1});
+  free(raw);
+  if (gz_len <= 0 || (size_t)gz_len >= raw_len) { free(out); return NULL; }
+  uint8_t *shrunk = realloc(out, (size_t)gz_len);
+  if (shrunk) out = shrunk;
+  int slot = 0;
+  for (int i = 0; i < GZ_CACHE_SLOTS; i++) {
+    if (!gz_cache[i].gz) { slot = i; break; }
+    if (gz_cache[i].used < gz_cache[slot].used) slot = i;
+  }
+  free(gz_cache[slot].gz);
+  snprintf(gz_cache[slot].path, sizeof gz_cache[slot].path, "%s", path);
+  gz_cache[slot].size = st->st_size;
+  gz_cache[slot].mtime = mt;
+  gz_cache[slot].gz = out;
+  gz_cache[slot].gz_len = (size_t)gz_len;
+  gz_cache[slot].used = ++gz_clock;
+  return &gz_cache[slot];
 }
 
 static bool send_all(int fd, const void *data, size_t n) {
@@ -214,15 +323,20 @@ static bool send_all(int fd, const void *data, size_t n) {
   return true;
 }
 
-static void respond(int fd, int status, const char *reason, const char *type, const void *body, size_t n) {
+static bool respond_conn(int fd, int status, const char *reason, const char *type, const void *body, size_t n, bool keep_alive) {
   char head[1024];
   int h = snprintf(head, sizeof head,
                    "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: %s\r\n"
                    "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n%s"
-                   "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
-                   status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store", realm_headers());
-  if (!send_all(fd, head, (size_t)h)) return;
-  if (n) send_all(fd, body, n);
+                   "X-Content-Type-Options: nosniff\r\nConnection: %s\r\n\r\n",
+                   status, reason, type, n, static_mode && status == 200 ? cache_control : "no-store", realm_headers(),
+                   keep_alive ? "keep-alive" : "close");
+  if (!send_all(fd, head, (size_t)h)) return false;
+  if (n && !send_all(fd, body, n)) return false;
+  return keep_alive;
+}
+static void respond(int fd, int status, const char *reason, const char *type, const void *body, size_t n) {
+  respond_conn(fd, status, reason, type, body, n, false);
 }
 
 // Maps a URL path to a file: /coaxial/* from the host directory, anything
@@ -264,15 +378,15 @@ static bool resolve(const char *url, char *out, size_t cap) {
 }
 
 // An unknown path gets the app's 404.html, if it has one, with a 404 status.
-static void not_found(int fd) {
+static bool not_found(int fd, bool keep_alive) {
   char path[PATH_MAX + 1024];
   static char page[1 << 16];
   snprintf(path, sizeof path, "%s/404.html", app_dir);
   FILE *f = fopen(path, "rb");
   size_t n = f ? fread(page, 1, sizeof page, f) : 0;
   if (f) fclose(f);
-  if (n > 0 && n < sizeof page) respond(fd, 404, "Not Found", "text/html; charset=utf-8", page, n);
-  else respond(fd, 404, "Not Found", "text/plain", "not found\n", 10);
+  if (n > 0 && n < sizeof page) return respond_conn(fd, 404, "Not Found", "text/html; charset=utf-8", page, n, keep_alive);
+  return respond_conn(fd, 404, "Not Found", "text/plain", "not found\n", 10, keep_alive);
 }
 
 // Header transport only; the Coax policy selects the range. Duplicate Range
@@ -311,65 +425,86 @@ static void range_header(const char *request, char *out, size_t cap) {
 #define BIG_BODY (4 * 1024 * 1024)   // bytes: a body longer than this is sent by a child (serve_file)
 // An address that moved for good (site-routes.coax, as the load balancer answers it: coax/web/api/lb.sh):
 // 301 to the new one, with the request's query when the route keeps it. Whether it answered.
-static bool moved(int fd, const char *url) {
+static bool moved(int fd, const char *url, bool keep_alive, bool *sent_ok) {
   size_t n = strcspn(url, "?#");
   coax_t_SiteRoute route = site_route((coax_string){url, (int64_t)n});
   if (route.status != 301) return false;
   const char *query = route.query && url[n] == '?' ? url + n : "";
   char head[2600];
   int h = snprintf(head, sizeof head,
-                   "HTTP/1.1 301 Moved Permanently\r\nLocation: %.*s%.*s%.*s\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-                   (int)route.to.count, route.to.data, (int)(n - (size_t)route.skip), url + route.skip, (int)strcspn(query, "#"), query);
-  if (h > 0 && h < (int)sizeof head) send_all(fd, head, (size_t)h);
+                   "HTTP/1.1 301 Moved Permanently\r\nLocation: %.*s%.*s%.*s\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: %s\r\n\r\n",
+                   (int)route.to.count, route.to.data, (int)(n - (size_t)route.skip), url + route.skip, (int)strcspn(query, "#"), query,
+                   keep_alive ? "keep-alive" : "close");
+  *sent_ok = (h > 0 && h < (int)sizeof head) && send_all(fd, head, (size_t)h);
   return true;
 }
 
-static void serve_file(int fd, const char *url, const char *request) {
+static bool serve_file(int fd, const char *url, const char *request, bool keep_alive) {
   char path[PATH_MAX + 1024];
-  if (moved(fd, url)) return;
-  if (!resolve(url, path, sizeof path)) { not_found(fd); return; }
+  bool sent_ok = false;
+  if (moved(fd, url, keep_alive, &sent_ok)) return keep_alive && sent_ok;
+  if (!resolve(url, path, sizeof path)) return not_found(fd, keep_alive);
   FILE *f = fopen(path, "rb");
   struct stat st;
   if (!f || fstat(fileno(f), &st) || !S_ISREG(st.st_mode)) {
     if (f) fclose(f);
-    not_found(fd);
-    return;
+    return not_found(fd, keep_alive);
   }
   char value[HTTP_REQUEST_MAX]; range_header(request, value, sizeof value);
   coax_t_HttpRange r = http_range((coax_string){value, (int64_t)strlen(value)}, st.st_size);
+  if (r.status == 200 && !value[0] && st.st_size >= GZ_MIN_BYTES && st.st_size <= GZ_MAX_BYTES &&
+      compressible_path(path) && accepts_gzip(request)) {
+    const gz_entry *ge = gz_get(path, &st, f);
+    if (ge) {
+      fclose(f);
+      char head[1536];
+      int h = snprintf(head, sizeof head,
+        "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Encoding: gzip\r\nVary: Accept-Encoding\r\n"
+        "Content-Length: %zu\r\nx-goog-meta-length: %lld\r\nAccept-Ranges: bytes\r\n"
+        "Cache-Control: %s\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n%s"
+        "X-Content-Type-Options: nosniff\r\nConnection: %s\r\n\r\n",
+        content_type(path), ge->gz_len, (long long)st.st_size,
+        static_mode ? cache_control : "no-store", realm_headers(), keep_alive ? "keep-alive" : "close");
+      return send_all(fd, head, (size_t)h) && send_all(fd, ge->gz, ge->gz_len) && keep_alive;
+    }
+  }
   char extra[160] = "";
   if (r.status == 206) snprintf(extra, sizeof extra, "Content-Range: bytes %lld-%lld/%lld\r\n", (long long)r.first, (long long)(r.first + r.length - 1), (long long)st.st_size);
   if (r.status == 416) snprintf(extra, sizeof extra, "Content-Range: bytes */%lld\r\n", (long long)st.st_size);
+  // A large body (a realm's pack, 90 MB) goes out from a child of its own. Sent here, it held every
+  // other request (the page's shaders, fonts and sounds) until the browser had read all of it (#13141).
+  bool will_fork = !shaping_send && r.length > BIG_BODY;
+  bool ka_out = keep_alive && !will_fork;
   char head[1536];
   int h = snprintf(head, sizeof head,
     "HTTP/1.1 %lld %s\r\nContent-Type: %s\r\nContent-Length: %lld\r\nAccept-Ranges: bytes\r\n%s"
     "Cache-Control: %s\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n%s"
-    "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n",
+    "X-Content-Type-Options: nosniff\r\nConnection: %s\r\n\r\n",
     (long long)r.status, r.status == 206 ? "Partial Content" : r.status == 416 ? "Range Not Satisfiable" : "OK",
-    content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store", realm_headers());
-  if (fseeko(f, (off_t)r.first, SEEK_SET)) { fclose(f); respond(fd,500,"Read Failed","text/plain","",0); return; }
-  // A large body (a realm's pack, 90 MB) goes out from a child of its own. Sent here, it held every
-  // other request (the page's shaders, fonts and sounds) until the browser had read all of it (#13141).
+    content_type(path), (long long)r.length, extra, static_mode && r.status != 416 ? cache_control : "no-store", realm_headers(),
+    ka_out ? "keep-alive" : "close");
+  if (fseeko(f, (off_t)r.first, SEEK_SET)) { fclose(f); respond(fd,500,"Read Failed","text/plain","",0); return false; }
   bool child = false;
-  if (!shaping_send && r.length > BIG_BODY) {
+  if (will_fork) {
     pid_t pid = fork();
-    if (pid > 0) { fclose(f); return; }   // the caller drops this process's copy of the socket
+    if (pid > 0) { fclose(f); return false; }   // the caller drops this process's copy of the socket
     if (pid == 0) {
       child = true; close(listen_fd);
       if (build_fd >= 0) close(build_fd);
       for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd >= 0 && clients[i].fd != fd) close(clients[i].fd);
     }
   }
-  if (!send_all(fd, head, (size_t)h)) {fclose(f);if (child) _exit(0);return;}
-  char body[16384]; int64_t left = r.length;
-  while (left > 0) {
+  bool ok = send_all(fd, head, (size_t)h);
+  char body[65536]; int64_t left = r.length;
+  while (ok && left > 0) {
     size_t want = left < (int64_t)sizeof body ? (size_t)left : sizeof body;
     size_t n = fread(body, 1, want, f); if (!n) break;
-    if (!send_all(fd, body, n)) break;
+    if (!send_all(fd, body, n)) { ok = false; break; }
     left -= (int64_t)n;
   }
   fclose(f);
   if (child) _exit(0);
+  return ka_out && ok && left == 0;
 }
 
 static void drop(client *c) { close(c->fd); c->fd = -1; c->ws = false; c->n = 0; }
@@ -485,13 +620,29 @@ static void proxy_local(client *c, const char *url) {
 // /api/worlds/OLD... is /api/worlds/NEW...: a renamed world's old ID names it (site_world,
 // world-alias-host.coax, #13486), as the API reads it (coax/web/api/worlds.c).
 #include "serve-routes.h"
-static bool body_in(const client *c) {
+static size_t request_length(const client *c) {
   const char *end = strstr(c->buf, "\r\n\r\n");
-  if (!end) return false;
+  if (!end) return 0;
   size_t head = (size_t)(end - c->buf) + 4, want = 0;
   for (const char *p = c->buf; p < end; p++)
     if ((p == c->buf || p[-1] == '\n') && !strncasecmp(p, "Content-Length:", 15)) want = (size_t)strtoul(p + 15, NULL, 10);
-  return c->n >= head + want || head + want >= sizeof c->buf - 1;
+  return head + want;
+}
+static bool body_in(const client *c) {
+  size_t need = request_length(c);
+  return need > 0 && (c->n >= need || need >= sizeof c->buf - 1);
+}
+static void consume_request(client *c) {
+  size_t need = request_length(c);
+  if (need > 0 && need < c->n) {
+    memmove(c->buf, c->buf + need, c->n - need);
+    c->n -= need;
+    c->buf[c->n] = 0;
+  } else {
+    c->n = 0;
+    c->buf[0] = 0;
+  }
+  c->last_ms = now_ms();
 }
 
 // A request is complete: a WebSocket upgrade to /coaxial/live, an /api/ request (--api), or a file.
@@ -503,10 +654,24 @@ static void handle_request(client *c) {
       close(listen_fd);
       if (build_fd >= 0) close(build_fd);
       for (int i=0;i<MAX_CLIENTS;i++) if (clients[i].fd>=0 && clients[i].fd!=c->fd) close(clients[i].fd);
-      sleep_until(monotonic_ms()+latency_ms);
       shaping_send = true; shaping_fd = c->fd;
-      next_send_ms = monotonic_ms();
-      handle_request(c);_exit(0);
+      for (;;) {
+        sleep_until(monotonic_ms() + latency_ms);
+        next_send_ms = monotonic_ms();
+        handle_request(c);
+        if (c->fd < 0 || c->ws) break;
+        while (c->fd >= 0 && (!strstr(c->buf, "\r\n\r\n") || !body_in(c))) {
+          if (c->n >= sizeof c->buf - 1) { drop(c); break; }
+          struct pollfd pfd = {.fd = c->fd, .events = POLLIN};
+          int pr = poll(&pfd, 1, 5000);
+          if (pr <= 0) { drop(c); break; }
+          ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
+          if (k <= 0) { drop(c); break; }
+          c->n += (size_t)k; c->buf[c->n] = 0;
+        }
+        if (c->fd < 0) break;
+      }
+      _exit(0);
     }
     drop(c);return;
   }
@@ -550,11 +715,13 @@ static void handle_request(client *c) {
     c->ws = true; c->n = 0;
     return;
   }
-  serve_file(c->fd, url, c->buf);
-  drop(c);
+  bool ka = wants_keep_alive(c->buf);
+  if (serve_file(c->fd, url, c->buf, ka)) consume_request(c);
+  else drop(c);
 }
 
 static void on_readable(client *c) {
+  c->last_ms = now_ms();
   if (c->ws) {
     // A tab says only which files it loaded ("watch URL..."); a close frame or EOF drops it.
     ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - c->n, 0);
@@ -573,8 +740,8 @@ static void on_readable(client *c) {
   ssize_t k = recv(c->fd, c->buf + c->n, sizeof c->buf - 1 - c->n, 0);
   if (k <= 0) { drop(c); return; }
   c->n += (size_t)k; c->buf[c->n] = 0;
-  if (strstr(c->buf, "\r\n\r\n") && body_in(c)) handle_request(c);   // a request with no body is in at its blank line
-  else if (c->n >= sizeof c->buf - 1) drop(c);
+  while (c->fd >= 0 && !c->ws && strstr(c->buf, "\r\n\r\n") && body_in(c)) handle_request(c);
+  if (c->fd >= 0 && !c->ws && c->n >= sizeof c->buf - 1) drop(c);
 }
 
 #include "serve-watch.h"
@@ -734,14 +901,18 @@ int main(int argc, char **argv) {
       else if (map[k] == -1) {
         int fd = private_fd(accept(lfd, NULL, NULL));
         if (fd < 0) continue;
+        int nodelay = 1; setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
         int slot = -1;
         for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].fd < 0) { slot = i; break; }
         if (slot < 0) { close(fd); continue; }
-        clients[slot].fd = fd; clients[slot].ws = false; clients[slot].n = 0;
+        clients[slot].fd = fd; clients[slot].ws = false; clients[slot].n = 0; clients[slot].last_ms = now_ms();
       } else {
         on_readable(&clients[map[k]]);
       }
     }
+    double tnow = now_ms();
+    for (int i = 0; i < MAX_CLIENTS; i++)
+      if (clients[i].fd >= 0 && !clients[i].ws && tnow - clients[i].last_ms >= KEEP_ALIVE_IDLE_MS) drop(&clients[i]);
     reap_children();
     if (!static_mode && now_ms() - last_scan >= 50) {
       last_scan = now_ms();

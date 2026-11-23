@@ -43,6 +43,11 @@ class InstanceCull {
     this.boxes = null; this.boundsDone = false;
     this.read = { buffer: null, busy: false, stats: null }; this.frames = 0;
     this.active = null;
+    this._u = new Float32Array(U_FLOATS);
+    this._zero4 = new Uint32Array(4);
+    this._args = new Uint32Array(64 * ARGS);
+    this._run = new Int32Array(256);
+    this._runLen = 0;
   }
   group(pipeline, entries) {
     return this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0),
@@ -58,14 +63,34 @@ class InstanceCull {
     this.hiz = this.device.createBuffer({ size: Math.max(16, at * 4), usage: GPUBufferUsage.STORAGE });
     this.groups = null;
   }
-  // The pyramid's words of the uniforms (cull.coax CL_*): the planes from the page's matrix.
+  // The pyramid's words of the uniforms (cull.coax CL_*): the planes from the page's matrix (zero-alloc).
   fill(u, hiz) {
-    const M = u.subarray(0, 16), row = (r) => [M[r], M[4 + r], M[8 + r], M[12 + r]];
-    const add = (a, b, s) => a.map((x, i) => x + s * b[i]);
-    const planes = [add(row(3), row(0), 1), add(row(3), row(0), -1), add(row(3), row(1), 1), add(row(3), row(1), -1), row(2), add(row(3), row(2), -1)];
-    planes.forEach((p, k) => { const l = Math.hypot(p[0], p[1], p[2]) || 1; u.set(p.map((x) => x / l), 28 + k * 4); });
-    u[22] = hiz ? 1 : 0; u[23] = this.levels.length; u[24] = this.size[0]; u[25] = this.size[1]; u[26] = this.levels[0].w; u[27] = this.levels[0].h;
-    this.levels.forEach((l, k) => { u[52 + k] = l.at; u[64 + k] = l.w; u[76 + k] = l.h; });
+    const m0 = u[0], m1 = u[1], m2 = u[2], m3 = u[3];
+    const m4 = u[4], m5 = u[5], m6 = u[6], m7 = u[7];
+    const m8 = u[8], m9 = u[9], m10 = u[10], m11 = u[11];
+    const m12 = u[12], m13 = u[13], m14 = u[14], m15 = u[15];
+    let x, y, z, w, inv;
+    // plane 0: row3 + row0
+    x = m3 + m0; y = m7 + m4; z = m11 + m8; w = m15 + m12; inv = 1 / (Math.hypot(x, y, z) || 1);
+    u[28] = x * inv; u[29] = y * inv; u[30] = z * inv; u[31] = w * inv;
+    // plane 1: row3 - row0
+    x = m3 - m0; y = m7 - m4; z = m11 - m8; w = m15 - m12; inv = 1 / (Math.hypot(x, y, z) || 1);
+    u[32] = x * inv; u[33] = y * inv; u[34] = z * inv; u[35] = w * inv;
+    // plane 2: row3 + row1
+    x = m3 + m1; y = m7 + m5; z = m11 + m9; w = m15 + m13; inv = 1 / (Math.hypot(x, y, z) || 1);
+    u[36] = x * inv; u[37] = y * inv; u[38] = z * inv; u[39] = w * inv;
+    // plane 3: row3 - row1
+    x = m3 - m1; y = m7 - m5; z = m11 - m9; w = m15 - m13; inv = 1 / (Math.hypot(x, y, z) || 1);
+    u[40] = x * inv; u[41] = y * inv; u[42] = z * inv; u[43] = w * inv;
+    // plane 4: row2
+    inv = 1 / (Math.hypot(m2, m6, m10) || 1);
+    u[44] = m2 * inv; u[45] = m6 * inv; u[46] = m10 * inv; u[47] = m14 * inv;
+    // plane 5: row3 - row2
+    x = m3 - m2; y = m7 - m6; z = m11 - m10; w = m15 - m14; inv = 1 / (Math.hypot(x, y, z) || 1);
+    u[48] = x * inv; u[49] = y * inv; u[50] = z * inv; u[51] = w * inv;
+    const lv = this.levels, nlv = lv.length;
+    u[22] = hiz ? 1 : 0; u[23] = nlv; u[24] = this.size[0]; u[25] = this.size[1]; u[26] = lv[0].w; u[27] = lv[0].h;
+    for (let k = 0; k < nlv; k++) { const l = lv[k]; u[52 + k] = l.at; u[64 + k] = l.w; u[76 + k] = l.h; }
   }
   // Before the frame's passes: phase 1. want() decides and stages it (each draw's run, -1: drawn as
   // the page drew it; null when nothing is culled this frame); early() encodes it into its own
@@ -81,12 +106,20 @@ class InstanceCull {
     const runs = x.coaxial_cull_v1(state, 0);
     if (runs <= 0) return null;
     const d = this.device, q = d.queue, S = GPUBufferUsage;
-    const u = new Float32Array(memory.buffer, x.coaxial_cull_v1(state, 1), U_FLOATS).slice();
-    const words = new Uint32Array(memory.buffer, x.coaxial_cull_v1(state, 2), runs * 4).slice();
-    const at = new Uint32Array(memory.buffer, x.coaxial_cull_v1(state, 7), runs).slice();
-    const kits = x.coaxial_cull_v1(state, 4), table = new Uint32Array(memory.buffer, x.coaxial_cull_v1(state, 3), kits * 2).slice();
-    const base = x.coaxial_cull_v1(state, 6), total = u[93];
+    const buf = memory.buffer;
+    const uPtr = x.coaxial_cull_v1(state, 1);
+    const wordsPtr = x.coaxial_cull_v1(state, 2);
+    const tablePtr = x.coaxial_cull_v1(state, 3);
+    const kits = x.coaxial_cull_v1(state, 4);
+    const base = x.coaxial_cull_v1(state, 6);
+    const atPtr = x.coaxial_cull_v1(state, 7);
+    const u = this._u;
+    u.set(new Float32Array(buf, uPtr, U_FLOATS));
+    const total = u[93];
     if (!(total > 0) || kits <= 0) return null;
+    const words = new Uint32Array(buf, wordsPtr, runs * 4);
+    const at = new Uint32Array(buf, atPtr, runs);
+    const table = new Uint32Array(buf, tablePtr, kits * 2);
     this.resize(w, h);
     if (this.depthView?.texture !== depth) { this.depthView = depth.createView(); this.depthView.texture = depth; this.groups = null; }
     if (runs > this.cap || total > this.flagCap) {
@@ -105,15 +138,22 @@ class InstanceCull {
     }
     this.fill(u, this.ready);
     q.writeBuffer(this.u, 0, u);
-    q.writeBuffer(this.runsBuf, 0, words);
+    q.writeBuffer(this.runsBuf, 0, buf, wordsPtr, runs * 16);
     // each run's two indirect draws: its kit piece's indices, no pieces yet, from its regions
-    const args = new Uint32Array(runs * ARGS);
+    const needArgs = runs * ARGS;
+    if (this._args.length < needArgs) this._args = new Uint32Array(Math.max(needArgs, this.cap * ARGS));
+    const args = this._args, base0 = base + u[94], base1 = base + u[95];
+    let picked = 0, maxAt = 0;
     for (let r = 0; r < runs; r++) {
-      const b = words[r * 4 + 3], first = table[b * 2], count = table[b * 2 + 1], start = words[r * 4];
-      args.set([count, 0, first, 0, base + u[94] + start, count, 0, first, 0, base + u[95] + start], r * ARGS);
+      const ro = r * 4, b = words[ro + 3], first = table[b * 2], count = table[b * 2 + 1], start = words[ro];
+      picked += words[ro + 1];
+      const idx = at[r]; if (idx > maxAt) maxAt = idx;
+      const ao = r * ARGS;
+      args[ao] = count; args[ao + 1] = 0; args[ao + 2] = first; args[ao + 3] = 0; args[ao + 4] = base0 + start;
+      args[ao + 5] = count; args[ao + 6] = 0; args[ao + 7] = first; args[ao + 8] = 0; args[ao + 9] = base1 + start;
     }
-    q.writeBuffer(this.args, 0, args);
-    q.writeBuffer(this.tally, 0, new Uint32Array(4));
+    q.writeBuffer(this.args, 0, args.buffer, 0, needArgs * 4);
+    q.writeBuffer(this.tally, 0, this._zero4);
     if (!this.groups) {
       const set = [[0, this.u], [1, scene.store], [2, this.runsBuf], [3, this.boxes], [4, this.args], [5, this.flags], [6, this.tally], [7, this.hiz], [14, scene.items]];
       this.groups = { store: scene.store, items: scene.items, one: this.group(this.pipes.one, set), two: this.group(this.pipes.two, set),
@@ -122,15 +162,17 @@ class InstanceCull {
     }
     if (!this.boundsDone && !this.boundsGroup) {
       // once: each kit piece's box from the pack's own vertices
-      q.writeBuffer(this.buckets, 0, table);
+      q.writeBuffer(this.buckets, 0, buf, tablePtr, kits * 8);
       const start = new Uint32Array(kits * 4); for (let b = 0; b < kits; b++) start[b * 4] = 0xffffffff;
       q.writeBuffer(this.bounds, 0, start);
       this.boundsGroup = this.group(this.pipes.bounds, [[0, this.u], [10, this.buckets], [11, scene.index], [12, scene.vertices], [13, this.bounds]]);
     }
-    const run = new Int32Array(Math.max(...at) + 1).fill(-1);
-    for (let r = 0; r < runs; r++) run[at[r]] = r;
-    let picked = 0; for (let r = 0; r < runs; r++) picked += words[r * 4 + 1];
-    this.active = { runs, total, run, picked };
+    const runLen = maxAt + 1;
+    if (this._run.length < runLen) this._run = new Int32Array(Math.max(runLen, 256));
+    this._run.fill(-1, 0, runLen);
+    for (let r = 0; r < runs; r++) this._run[at[r]] = r;
+    this._runLen = runLen;
+    this.active = { runs, total, run: this._run, runLen, picked };
     this.staged = { kits, total };
     return this.active;
   }
@@ -152,7 +194,7 @@ class InstanceCull {
   }
   // Draw i of the list: its run's first indirect draw, or false to draw it as the page did.
   draw(pass, i) {
-    const r = this.active && i < this.active.run.length ? this.active.run[i] : -1;
+    const r = this.active && i < this.active.runLen ? this.active.run[i] : -1;
     if (r < 0) return false;
     pass.drawIndexedIndirect(this.args, r * ARGS * 4);
     return true;
@@ -162,7 +204,10 @@ class InstanceCull {
     if (!this.active) return;
     const p = encoder.beginComputePass();
     p.setPipeline(this.pipes.hizDepth); p.setBindGroup(0, this.groups.depth); p.dispatchWorkgroups(groupsOf(this.levels[0].w * this.levels[0].h));
-    for (let l = 1; l < this.levels.length; l++) { p.setPipeline(this.pipes.hizDown); p.setBindGroup(0, this.groups.down[l]); p.dispatchWorkgroups(groupsOf(this.levels[l].w * this.levels[l].h)); }
+    if (this.levels.length > 1) {
+      p.setPipeline(this.pipes.hizDown);
+      for (let l = 1; l < this.levels.length; l++) { p.setBindGroup(0, this.groups.down[l]); p.dispatchWorkgroups(groupsOf(this.levels[l].w * this.levels[l].h)); }
+    }
     p.setPipeline(this.pipes.two); p.setBindGroup(0, this.groups.two); p.dispatchWorkgroups(groupsOf(this.active.total)); p.end();
     if (!real) return;
     this.ready = true;

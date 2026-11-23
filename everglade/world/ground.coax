@@ -748,11 +748,31 @@ e2g_crowns :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) {
 e2g_occluded :: (crowns: [] f32, count: int, px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32) -> f32 {
   sum := 0.0f32;
   for c: 0..<count {
-    dx := crowns[c * 4] - px; dy := crowns[c * 4 + 1] - py; dz := crowns[c * 4 + 2] - pz; r := crowns[c * 4 + 3];
+    o := c * 4;
+    dx := crowns[o] - px; dy := crowns[o + 1] - py; dz := crowns[o + 2] - pz; r := crowns[o + 3];
+    rr := r * r;
     dd := dx * dx + dy * dy + dz * dz;
-    if dd <= r * r { return 1; }
-    cosine := (dx * nx + dy * ny + dz * nz) / sqrt(dd);
-    if cosine > 0 { sum += r * r / dd * cosine; }
+    if dd <= rr { return 1; }
+    dot := dx * nx + dy * ny + dz * nz;
+    if dot > 0 { sum += rr / dd * (dot / sqrt(dd)); }
+  }
+  return sum;
+}
+// Same cosine-weighted occlusion capped at the AO floor threshold: stops summing once e2g_ao_of would clamp.
+e2g_occluded_ao :: (crowns: [] f32, count: int, px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32) -> f32 {
+  sum := 0.0f32;
+  cap := 1.0f32 - f32(E2G_AO_FLOOR);
+  for c: 0..<count {
+    o := c * 4;
+    dx := crowns[o] - px; dy := crowns[o + 1] - py; dz := crowns[o + 2] - pz; r := crowns[o + 3];
+    rr := r * r;
+    dd := dx * dx + dy * dy + dz * dz;
+    if dd <= rr { return 1; }
+    dot := dx * nx + dy * ny + dz * nz;
+    if dot > 0 {
+      sum += rr / dd * (dot / sqrt(dd));
+      if sum >= cap { return sum; }
+    }
   }
   return sum;
 }
@@ -785,7 +805,7 @@ e2g_bake :: (g: [] E2Ground, items: [] f32, kinds: [] u8, planted: int) -> int {
     k := j * n + i; x := f.west + f32(i) * f.cell; z := f.south + f32(j) * f.cell;
     q := e2tt.terrain_tile_sample(f, hs, hl, x, z);
     nl := sqrt(q.gx * q.gx + 1 + q.gz * q.gz);
-    g[0].ao[k] = e2g_ao_of(e2g_occluded(g[0].crowns[..], g[0].crown_n, x, hs[k], z, -q.gx / nl, 1 / nl, -q.gz / nl));
+    g[0].ao[k] = e2g_ao_of(e2g_occluded_ao(g[0].crowns[..], g[0].crown_n, x, hs[k], z, -q.gx / nl, 1 / nl, -q.gz / nl));
     for c: 0..<3 { g[0].bounce[k * 3 + c] = 0; }
   } }
   grid := e2g_grid(g); grid.key = e2g_now(g, E2G_VARIANT);

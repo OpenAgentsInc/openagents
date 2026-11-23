@@ -9,9 +9,11 @@
 
 DFL_WINDOW :: 32768;
 DFL_HASH :: 32768;
-DFL_CHAIN :: 48;       // candidates a position tries at most
+DFL_CHAIN :: 96;       // candidates a position tries at most
+DFL_FAST_CHAIN :: 8;   // fast-mode candidates (HTTP on-the-fly gzip)
 DFL_BLOCK :: 32768;    // symbols a block holds at most
 DFL_NICE :: 128;       // a match this long ends the search
+DFL_FAST_NICE :: 32;   // fast-mode match early-out
 
 DeflateWork :: struct {
   head: [DFL_HASH] int;    // the last position + 1 with this hash, else 0
@@ -66,8 +68,16 @@ dfl_codes :: (c: []DflCode, n: int) #effects(all) {
     if l > 0 { v := next[l]; next[l] += 1; r := 0; for j: 0..<l { r = (r << 1) | ((v >> j) & 1); } c[0].code[k] = r; } else { c[0].code[k] = 0; }
   }
 }
-dfl_len_code :: (ln: int) -> int #effects(all) { i := 28; while INF_LBASE[i] > ln { i -= 1; } return i; }
-dfl_dist_code :: (dist: int) -> int #effects(all) { i := 29; while INF_DBASE[i] > dist { i -= 1; } return i; }
+dfl_len_code :: (ln: int) -> int #effects(all) {
+  lo := 0; hi := 28;
+  while lo < hi { mid := (lo + hi + 1) >> 1; if INF_LBASE[mid] <= ln { lo = mid; } else { hi = mid - 1; } }
+  return lo;
+}
+dfl_dist_code :: (dist: int) -> int #effects(all) {
+  lo := 0; hi := 29;
+  while lo < hi { mid := (lo + hi + 1) >> 1; if INF_DBASE[mid] <= dist { lo = mid; } else { hi = mid - 1; } }
+  return lo;
+}
 
 // The code-length symbols for lens (16: repeat the last 3-6, 17: 3-10 zeros, 18: 11-138 zeros), as
 // symbol + extra * 32. Their count.
@@ -153,33 +163,77 @@ dfl_insert :: (w: []DeflateWork, src: string, i: int) #effects(all) {
   h := dfl_hash(src, i); w[0].prev[i & (DFL_WINDOW - 1)] = w[0].head[h]; w[0].head[h] = i + 1;
 }
 
+DflMatch :: struct { len: int; dist: int; }
+dfl_match :: (w: []DeflateWork, src: string, i: int, chain: int, nice: int, min_len: int) -> DflMatch #effects(all) {
+  best := min_len; bestd := 0;
+  if i + 2 >= src.count { return DflMatch.{}; }
+  cand := w[0].head[dfl_hash(src, i)]; tries := 0;
+  limit := ifx src.count - i > 258 then 258 else src.count - i;
+  if best >= limit { return DflMatch.{}; }
+  while cand > 0 && tries < chain {
+    c := cand - 1; d := i - c;
+    if d > DFL_WINDOW { break; }
+    if src[c + best] == src[i + best] && src[c] == src[i] {
+      l := 1; while l < limit && src[c + l] == src[i + l] { l += 1; }
+      if l > best { best = l; bestd = d; if l >= nice || l == limit { break; } }
+    }
+    next := w[0].prev[c & (DFL_WINDOW - 1)];
+    if next >= cand { break; }
+    cand = next; tries += 1;
+  }
+  if bestd == 0 { return DflMatch.{}; }
+  return DflMatch.{len = best, dist = bestd};
+}
+
 // src as one raw DEFLATE stream in out: its length, or -1 when out is too small.
+// Uses lazy matching (zlib-style): if position i+1 has a strictly longer match than i, emit literal i first.
 deflate_raw :: (src: string, out: []u8, w: []DeflateWork) -> int #effects(all) {
   for k: 0..<DFL_HASH { w[0].head[k] = 0; }
   w[0].count = 0;
   ob: [1] DflOut; ob[0] = DflOut.{out = out}; o := ob[..];
   i := 0; from := 0;
   while i < src.count {
-    best := 0; bestd := 0;
-    if i + 2 < src.count {
-      cand := w[0].head[dfl_hash(src, i)]; tries := 0;
-      limit := ifx src.count - i > 258 then 258 else src.count - i;
-      while cand > 0 && tries < DFL_CHAIN {
-        c := cand - 1; d := i - c;
-        if d > DFL_WINDOW { break; }
-        if src[c + best] == src[i + best] {
-          l := 0; while l < limit && src[c + l] == src[i + l] { l += 1; }
-          if l > best { best = l; bestd = d; if l >= DFL_NICE || l == limit { break; } }
+    m := dfl_match(w, src, i, DFL_CHAIN, DFL_NICE, 2);
+    if m.len >= 3 {
+      dfl_insert(w, src, i);
+      // Lazy match check at i + 1 when current match is not already nice.
+      if m.len < DFL_NICE && i + 3 < src.count {
+        m2 := dfl_match(w, src, i + 1, DFL_CHAIN / 2, DFL_NICE, m.len);
+        if m2.len > m.len {
+          w[0].sym[w[0].count] = cast(int) src[i]; w[0].dist[w[0].count] = 0;
+          i += 1;
+          w[0].count += 1;
+          if w[0].count == DFL_BLOCK && i < src.count { dfl_block(o, w, src, from, i, false); from = i; w[0].count = 0; if o[0].bad { return -1; } }
+          continue;
         }
-        next := w[0].prev[c & (DFL_WINDOW - 1)];
-        if next >= cand { break; }
-        cand = next; tries += 1;
       }
+      w[0].sym[w[0].count] = 256 + m.len; w[0].dist[w[0].count] = m.dist;
+      for k: 1..<m.len { dfl_insert(w, src, i + k); }
+      i += m.len;
+    } else {
+      w[0].sym[w[0].count] = cast(int) src[i]; w[0].dist[w[0].count] = 0; dfl_insert(w, src, i); i += 1;
     }
-    if best >= 3 {
-      w[0].sym[w[0].count] = 256 + best; w[0].dist[w[0].count] = bestd;
-      for k: 0..<best { dfl_insert(w, src, i + k); }
-      i += best;
+    w[0].count += 1;
+    if w[0].count == DFL_BLOCK && i < src.count { dfl_block(o, w, src, from, i, false); from = i; w[0].count = 0; if o[0].bad { return -1; } }
+  }
+  dfl_block(o, w, src, from, src.count, true); dfl_align(o);
+  if o[0].bad { return -1; }
+  return o[0].at;
+}
+
+// Fast raw DEFLATE for low-latency HTTP response compression: shallow chain, no lazy step, sparse long-match insert.
+deflate_raw_fast :: (src: string, out: []u8, w: []DeflateWork) -> int #effects(all) {
+  for k: 0..<DFL_HASH { w[0].head[k] = 0; }
+  w[0].count = 0;
+  ob: [1] DflOut; ob[0] = DflOut.{out = out}; o := ob[..];
+  i := 0; from := 0;
+  while i < src.count {
+    m := dfl_match(w, src, i, DFL_FAST_CHAIN, DFL_FAST_NICE, 2);
+    if m.len >= 3 {
+      w[0].sym[w[0].count] = 256 + m.len; w[0].dist[w[0].count] = m.dist;
+      if m.len <= 16 { for k: 0..<m.len { dfl_insert(w, src, i + k); } }
+      else { dfl_insert(w, src, i); dfl_insert(w, src, i + m.len - 1); }
+      i += m.len;
     } else {
       w[0].sym[w[0].count] = cast(int) src[i]; w[0].dist[w[0].count] = 0; dfl_insert(w, src, i); i += 1;
     }

@@ -80,8 +80,8 @@ cs_arrive :: (s: [] CullStream, page: int, n: int, track: bool) -> bool #export_
   if ok && s[0].l[0].arrived[page] { s[0].l[0].arrived[page] = false; s[0].l[0].held -= 1; if g.root { s[0].l[0].roots_held -= 1; } }
   dst := s[0].store[page * CS_PAGE_BYTES..<page * CS_PAGE_BYTES + g.decoded];
   if ok {
-    if g.codec == PPK_DEFLATE { ok = inflate(s[0].io[0..<n], dst) == g.decoded; }
-    else { for j: 0..<n { dst[j] = s[0].io[j]; } }
+    tmp: [CS_PAGE_BYTES] u8;
+    ok = ppk_decode_page(g.codec, s[0].io[0..<n], dst, tmp[..]);
   }
   ok = ok && ppk_admit(s[0].l[..], page, cast(string) dst) && cs_block_ok(cast(string) dst, page);
   if !ok { s[0].refused += 1; if live { f := res_failed(s[0].c[..], page); } return false; }

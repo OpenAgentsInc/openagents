@@ -22,6 +22,8 @@ SPATIAL_FAR :: 1000000;      // cells: a coordinate this many cells out or more 
 SPATIAL_COUNT :: 0;          // n: slots in the grid
 SPATIAL_VISITS :: 1;         // n: slots queries have looked at (the cost), since init
 SPATIAL_COUNTERS :: 2;
+SPATIAL_HX :: 73856093;
+SPATIAL_HZ :: 19349663;
 
 SpatialGrid :: struct {
   head: [] int;                 // each list's first slot, plus one (0 empty); a power of two of them
@@ -56,7 +58,7 @@ spatial_coord :: (g: SpatialGrid, v: f32) -> int #effects(all) {
   return cast(int) floor(q);
 }
 spatial_bucket :: (g: SpatialGrid, cx: int, cz: int) -> int #effects(all) {
-  return (cx * 73856093 + cz * 19349663) & (g.head.count - 1);
+  return (cx * SPATIAL_HX + cz * SPATIAL_HZ) & (g.head.count - 1);
 }
 spatial_has :: (g: SpatialGrid, i: int) -> bool #effects(all) { return i >= 0 && i < g.at.count && g.at[i] != 0; }
 spatial_count :: (g: SpatialGrid) -> int #effects(all) { return g.n[SPATIAL_COUNT]; }
@@ -78,7 +80,7 @@ spatial_put :: (g: SpatialGrid, i: int, x: f32, z: f32) -> bool #effects(all) {
     if g.cx[i] == cx && g.cz[i] == cz { return true; }
     spatial_unlink(g, i);
   }
-  b := spatial_bucket(g, cx, cz);
+  b := (cx * SPATIAL_HX + cz * SPATIAL_HZ) & (g.head.count - 1);
   first := g.head[b];
   g.cx[i] = cx; g.cz[i] = cz; g.at[i] = b + 1; g.prev[i] = 0; g.next[i] = first;
   if first > 0 { g.prev[first - 1] = i + 1; }
@@ -95,20 +97,24 @@ spatial_drop :: (g: SpatialGrid, i: int) #effects(all) {
 spatial_query :: (g: SpatialGrid, x: f32, z: f32, r: f32, out: [] int) -> int #effects(all) {
   x0 := spatial_coord(g, x - r); x1 := spatial_coord(g, x + r);
   z0 := spatial_coord(g, z - r); z1 := spatial_coord(g, z + r);
-  n := 0;
+  head := g.head; next := g.next; gcx := g.cx; gcz := g.cz; gx := g.x; gz := g.z;
+  mask := head.count - 1; r2 := r * r; out_n := out.count;
+  n := 0; visits := 0;
   for cx: x0..<x1 + 1 {
+    hx := cx * SPATIAL_HX;
     for cz: z0..<z1 + 1 {
-      i := g.head[spatial_bucket(g, cx, cz)] - 1;
+      i := head[(hx + cz * SPATIAL_HZ) & mask] - 1;
       while i >= 0 {
-        if g.cx[i] == cx && g.cz[i] == cz {
-          g.n[SPATIAL_VISITS] += 1;
-          dx := g.x[i] - x; dz := g.z[i] - z;
-          if dx * dx + dz * dz <= r * r { if n < out.count { out[n] = i; } n += 1; }
+        if gcx[i] == cx && gcz[i] == cz {
+          visits += 1;
+          dx := gx[i] - x; dz := gz[i] - z;
+          if dx * dx + dz * dz <= r2 { if n < out_n { out[n] = i; } n += 1; }
         }
-        i = g.next[i] - 1;
+        i = next[i] - 1;
       }
     }
   }
+  g.n[SPATIAL_VISITS] += visits;
   return n;
 }
 // book:end grid
