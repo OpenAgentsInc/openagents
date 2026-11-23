@@ -12,6 +12,9 @@ struct ChatView: View {
     @State private var showPhotoPicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var isLoadingAttachment = false
+    @State private var isPinnedToBottom = true
+    @State private var editingMessageItem: TranscriptItem?
+    @State private var editingMessageDraft: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,8 +53,14 @@ struct ChatView: View {
                 slashCommandMenu
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
-            } else if !store.matchingFolders.isEmpty {
-                folderMentionMenu
+            } else if !store.matchingMentions.isEmpty {
+                mentionMenu
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
+
+            if !store.inlineReviewComments.isEmpty {
+                inlineCommentsChip
                     .padding(.horizontal, 12)
                     .padding(.bottom, 6)
             }
@@ -62,10 +71,34 @@ struct ChatView: View {
                     .padding(.bottom, 6)
             }
 
+            SessionTodosAndUsageStrip(
+                todos: store.activeTodos,
+                usage: store.activeUsage,
+                onCompact: { Task { await store.triggerCompact() } }
+            )
+
             Divider().overlay(OATheme.hairline)
             composerBar
         }
         .background(OATheme.background)
+        .sheet(isPresented: $store.isSideQuestionPresented) {
+            SideQuestionSheetView(store: store)
+                .preferredColorScheme(.dark)
+        }
+        .alert("Edit & Resend Message", isPresented: Binding(
+            get: { editingMessageItem != nil },
+            set: { if !$0 { editingMessageItem = nil } }
+        )) {
+            TextField("Message", text: $editingMessageDraft)
+            Button("Send Edited") {
+                if let target = editingMessageItem {
+                    let updated = editingMessageDraft
+                    editingMessageItem = nil
+                    Task { await store.editAndResendMessage(target, editedText: updated) }
+                }
+            }
+            Button("Cancel", role: .cancel) { editingMessageItem = nil }
+        }
         .onChange(of: dictation.errorMessage) { _, msg in
             if let msg, !msg.isEmpty {
                 store.bannerError = msg
@@ -239,20 +272,27 @@ struct ChatView: View {
         .accessibilityIdentifier("chat.slashMenu")
     }
 
-    private var folderMentionMenu: some View {
+    private var mentionMenu: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(store.matchingFolders, id: \.self) { folder in
+            ForEach(store.matchingMentions) { candidate in
                 Button {
-                    store.applyFolderMention(folder)
+                    store.applyMention(candidate)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "folder")
+                        Image(systemName: candidate.icon)
                             .font(.system(size: 11))
                             .foregroundStyle(OATheme.textSecondary)
-                        Text("@\(folder)")
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        Text(candidate.label)
+                            .font(.system(size: 12.5, weight: .medium, design: .monospaced))
                             .foregroundStyle(OATheme.textPrimary)
+                            .lineLimit(1)
                         Spacer()
+                        if !candidate.subtitle.isEmpty {
+                            Text(candidate.subtitle)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(OATheme.textMuted)
+                                .lineLimit(1)
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -264,6 +304,34 @@ struct ChatView: View {
         .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
         .accessibilityIdentifier("chat.folderMenu")
+    }
+
+    private var inlineCommentsChip: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.bubble.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(OATheme.statusWarn)
+            Text("\(store.inlineReviewComments.count) review comment\(store.inlineReviewComments.count == 1 ? "" : "s") attached")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OATheme.textPrimary)
+            Spacer()
+            Button("Inspect") {
+                store.isWorkspacePresented = true
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(OATheme.textSecondary)
+            Button {
+                store.inlineReviewComments = []
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(OATheme.textMuted)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
     }
 
     // MARK: - Empty states
@@ -376,36 +444,90 @@ struct ChatView: View {
 
     private var transcriptScrollView: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    if let note = store.activeSession?.note, !note.isEmpty {
-                        noticeCard(text: note, kind: "note")
-                    }
-                    ForEach(store.items) { item in
-                        TranscriptRowView(
-                            item: item,
-                            localImageLookup: { store.localImageData(for: $0) },
-                            onOpenSubagent: { sub in
-                                store.openSubagent(sub)
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        if store.hasOlderMessages {
+                            Button {
+                                Task { await store.loadOlderMessages() }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if store.isLoadingOlderMessages {
+                                        ProgressView().controlSize(.mini).tint(OATheme.textSecondary)
+                                    }
+                                    Text("Load earlier messages")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundStyle(OATheme.textSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
                             }
-                        )
-                        .id(item.id)
+                            .buttonStyle(.plain)
+                            .disabled(store.isLoadingOlderMessages)
+                        }
+                        if let note = store.activeSession?.note, !note.isEmpty {
+                            noticeCard(text: note, kind: "note")
+                        }
+                        ForEach(store.items) { item in
+                            TranscriptRowView(
+                                item: item,
+                                localImageLookup: { store.localImageData(for: $0) },
+                                onOpenSubagent: { sub in
+                                    store.openSubagent(sub)
+                                },
+                                onOpenFileLink: { path, line in
+                                    store.openFileFromLink(line.map { "\(path)#L\($0)" } ?? path)
+                                },
+                                onEditAndResend: { msg in
+                                    editingMessageDraft = ParsedUserMessage.parse(msg.text).text
+                                    editingMessageItem = msg
+                                }
+                            )
+                            .id(item.id)
+                        }
+                        if let statusLabel = store.streamingStatusLabel {
+                            StreamingStatusRowView(label: statusLabel)
+                                .id("working-indicator")
+                        }
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom-anchor")
+                            .onAppear { isPinnedToBottom = true }
+                            .onDisappear { isPinnedToBottom = false }
                     }
-                    if let statusLabel = store.streamingStatusLabel {
-                        StreamingStatusRowView(label: statusLabel)
-                            .id("working-indicator")
-                    }
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom-anchor")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.streamingContentFingerprint) { _, _ in
-                withAnimation(.easeOut(duration: 0.16)) {
-                    proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: store.streamingContentFingerprint) { _, _ in
+                    guard isPinnedToBottom else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                    }
+                }
+                .onChange(of: store.activeSessionID) { _, _ in
+                    isPinnedToBottom = true
+                }
+
+                if !isPinnedToBottom {
+                    Button {
+                        isPinnedToBottom = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(OATheme.textPrimary)
+                            .frame(width: 32, height: 32)
+                            .background(OATheme.elevated, in: Circle())
+                            .overlay(Circle().stroke(OATheme.hairlineStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(14)
+                    .accessibilityLabel("Jump to bottom")
                 }
             }
         }
@@ -512,6 +634,18 @@ struct ChatView: View {
                         composerFocused = true
                     } label: {
                         Label("Slash Commands", systemImage: "slash.circle")
+                    }
+                    Button {
+                        store.isSideQuestionPresented = true
+                    } label: {
+                        Label("/btw Side Question", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+                    }
+                    if store.activeSession != nil {
+                        Button {
+                            Task { await store.forkActiveSession() }
+                        } label: {
+                            Label("Fork Session", systemImage: "arrow.triangle.branch")
+                        }
                     }
                 } label: {
                     Image(systemName: "plus")

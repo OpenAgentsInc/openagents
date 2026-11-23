@@ -11,6 +11,11 @@ struct MacRootView: View {
 
     @State private var workingExpanded = true
     @State private var isDropTargeted = false
+    @State private var isPinnedToBottom = true
+    @State private var renamingSession: ChatSessionSummary?
+    @State private var renameDraft: String = ""
+    @State private var editingMessageItem: TranscriptItem?
+    @State private var editingMessageDraft: String = ""
 
     var body: some View {
         ZStack {
@@ -51,9 +56,47 @@ struct MacRootView: View {
             MacHostSettingsView(store: store, hostServer: hostServer)
                 .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $store.isSideQuestionPresented) {
+            SideQuestionSheetView(store: store)
+                .preferredColorScheme(.dark)
+        }
+        .alert("Rename Chat", isPresented: Binding(
+            get: { renamingSession != nil },
+            set: { if !$0 { renamingSession = nil } }
+        )) {
+            TextField("Chat title", text: $renameDraft)
+            Button("Save") {
+                if let target = renamingSession {
+                    let title = renameDraft
+                    renamingSession = nil
+                    Task { await store.renameSession(target, title: title) }
+                }
+            }
+            Button("Cancel", role: .cancel) { renamingSession = nil }
+        }
+        .alert("Edit & Resend Message", isPresented: Binding(
+            get: { editingMessageItem != nil },
+            set: { if !$0 { editingMessageItem = nil } }
+        )) {
+            TextField("Message", text: $editingMessageDraft)
+            Button("Send Edited") {
+                if let target = editingMessageItem {
+                    let updated = editingMessageDraft
+                    editingMessageItem = nil
+                    Task { await store.editAndResendMessage(target, editedText: updated) }
+                }
+            }
+            Button("Cancel", role: .cancel) { editingMessageItem = nil }
+        }
         .onChange(of: store.activeSubagentItem) { _, newVal in
             if newVal != nil {
                 showInspector = true
+            }
+        }
+        .onChange(of: store.isWorkspacePresented) { _, presented in
+            if presented {
+                showInspector = true
+                store.isWorkspacePresented = false
             }
         }
     }
@@ -195,11 +238,22 @@ struct MacRootView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("RECENTS")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(0.6)
-                            .foregroundStyle(OATheme.textMuted)
-                            .padding(.horizontal, 6)
+                        HStack {
+                            Text("RECENTS")
+                                .font(.system(size: 10, weight: .semibold))
+                                .tracking(0.6)
+                                .foregroundStyle(OATheme.textMuted)
+                            Spacer()
+                            Button {
+                                store.showArchivedSessions.toggle()
+                            } label: {
+                                Text(store.showArchivedSessions ? "Hide Archived" : "Archived")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(OATheme.textMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 6)
 
                         if store.recentSessions.isEmpty && store.workingSessions.isEmpty {
                             Text(store.activeComputer?.canSendRPC == true
@@ -212,6 +266,27 @@ struct MacRootView: View {
                         } else {
                             ForEach(store.recentSessions) { session in
                                 sidebarRow(session)
+                            }
+                            if store.hasMoreSessions {
+                                Button {
+                                    Task { await store.loadMoreSessions() }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if store.isLoadingMoreSessions {
+                                            ProgressView().controlSize(.mini)
+                                        }
+                                        Text("Load more chats")
+                                            .font(.system(size: 11.5, weight: .medium))
+                                    }
+                                    .foregroundStyle(OATheme.textSecondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(store.isLoadingMoreSessions)
+                                .padding(.top, 4)
                             }
                         }
                     }
@@ -253,6 +328,8 @@ struct MacRootView: View {
 
     private func sidebarRow(_ session: ChatSessionSummary) -> some View {
         let isSelected = store.activeSessionID == session.id
+        let pinned = store.isPinned(session)
+        let archived = store.isArchived(session)
         return Button {
             store.selectSession(session)
         } label: {
@@ -262,10 +339,14 @@ struct MacRootView: View {
                         ProgressView().controlSize(.mini).scaleEffect(0.75)
                     } else if !session.interactionID.isEmpty {
                         Circle().fill(OATheme.statusWarn).frame(width: 6, height: 6)
+                    } else if pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(OATheme.textSecondary)
                     }
-                    Text(session.displayTitle)
+                    Text(store.displayTitle(for: session))
                         .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(OATheme.textPrimary)
+                        .foregroundStyle(archived ? OATheme.textMuted : OATheme.textPrimary)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Text(OATimeFormat.shortAge(updatedAtMs: session.updatedAtMs))
@@ -278,7 +359,14 @@ struct MacRootView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(OATheme.textSecondary)
                         .lineLimit(1)
-                    if session.isNativeAntigravity {
+                    if archived {
+                        Text("archived")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(OATheme.surface, in: Capsule())
+                    } else if session.isNativeAntigravity {
                         Text("local")
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundStyle(OATheme.textMuted)
@@ -297,6 +385,23 @@ struct MacRootView: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(pinned ? "Unpin" : "Pin") {
+                Task { await store.togglePinSession(session) }
+            }
+            Button("Rename…") {
+                renameDraft = store.displayTitle(for: session)
+                renamingSession = session
+            }
+            Button("Fork Session") {
+                store.selectSession(session)
+                Task { await store.forkActiveSession() }
+            }
+            Divider()
+            Button(archived ? "Restore" : "Archive") {
+                Task { await store.toggleArchiveSession(session) }
+            }
+        }
     }
 
     // MARK: - Center Chat Column
@@ -370,10 +475,37 @@ struct MacRootView: View {
                 macSlashMenu
                     .padding(.horizontal, 20)
                     .padding(.bottom, 6)
-            } else if !store.matchingFolders.isEmpty {
-                macFolderMenu
+            } else if !store.matchingMentions.isEmpty {
+                macMentionMenu
                     .padding(.horizontal, 20)
                     .padding(.bottom, 6)
+            }
+
+            if !store.inlineReviewComments.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(OATheme.statusWarn)
+                    Text("\(store.inlineReviewComments.count) review comment\(store.inlineReviewComments.count == 1 ? "" : "s") attached")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(OATheme.textPrimary)
+                    Spacer()
+                    Button("Inspect") { showInspector = true }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(OATheme.textSecondary)
+                        .buttonStyle(.plain)
+                    Button { store.inlineReviewComments = [] } label: {
+                        Image(systemName: "xmark").font(.system(size: 10)).foregroundStyle(OATheme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                .frame(maxWidth: 820)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 6)
             }
 
             if let queued = store.queuedDraft, !queued.isEmpty {
@@ -398,6 +530,13 @@ struct MacRootView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 6)
             }
+
+            SessionTodosAndUsageStrip(
+                todos: store.activeTodos,
+                usage: store.activeUsage,
+                onCompact: { Task { await store.triggerCompact() } }
+            )
+            .frame(maxWidth: 820)
 
             Divider().overlay(OATheme.hairline)
             macComposer
@@ -426,7 +565,7 @@ struct MacRootView: View {
     private var centerTopBar: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(store.activeSession?.displayTitle ?? (store.activeComputer?.name ?? "Antigravity"))
+                Text(store.activeSession.map { store.displayTitle(for: $0) } ?? (store.activeComputer?.name ?? "Antigravity"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(OATheme.textPrimary)
                     .lineLimit(1)
@@ -438,6 +577,40 @@ struct MacRootView: View {
             }
 
             Spacer()
+
+            Button {
+                store.isSideQuestionPresented = true
+            } label: {
+                Text("/btw")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(OATheme.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Ask read-only side question (/btw)")
+
+            if store.activeSession != nil {
+                Button {
+                    Task { await store.forkActiveSession() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 10))
+                        Text("Fork")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(OATheme.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("Fork conversation")
+            }
 
             Button {
                 showCommandPalette.toggle()
@@ -565,67 +738,129 @@ struct MacRootView: View {
 
     private var transcriptScroll: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    if let note = store.activeSession?.note, !note.isEmpty {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 13))
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        if store.hasOlderMessages {
+                            Button {
+                                Task { await store.loadOlderMessages() }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if store.isLoadingOlderMessages {
+                                        ProgressView().controlSize(.mini)
+                                    }
+                                    Text("Load earlier messages")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
                                 .foregroundStyle(OATheme.textSecondary)
-                            Text(note)
-                                .font(.system(size: 13))
-                                .foregroundStyle(OATheme.textSecondary)
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-                    }
-                    ForEach(store.items) { item in
-                        TranscriptRowView(
-                            item: item,
-                            localImageLookup: { store.localImageData(for: $0) },
-                            onOpenSubagent: { sub in
-                                store.openSubagent(sub)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
                             }
-                        )
-                        .id(item.id)
+                            .buttonStyle(.plain)
+                            .disabled(store.isLoadingOlderMessages)
+                        }
+                        if let note = store.activeSession?.note, !note.isEmpty {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(OATheme.textSecondary)
+                                Text(note)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(OATheme.textSecondary)
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                        }
+                        ForEach(store.items) { item in
+                            TranscriptRowView(
+                                item: item,
+                                localImageLookup: { store.localImageData(for: $0) },
+                                onOpenSubagent: { sub in
+                                    store.openSubagent(sub)
+                                },
+                                onOpenFileLink: { path, line in
+                                    showInspector = true
+                                    store.openFileFromLink(line.map { "\(path)#L\($0)" } ?? path)
+                                },
+                                onEditAndResend: { msg in
+                                    editingMessageDraft = ParsedUserMessage.parse(msg.text).text
+                                    editingMessageItem = msg
+                                }
+                            )
+                            .id(item.id)
+                        }
+                        if let statusLabel = store.streamingStatusLabel {
+                            StreamingStatusRowView(label: statusLabel)
+                                .id("working-indicator")
+                        }
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom-anchor")
+                            .onAppear { isPinnedToBottom = true }
+                            .onDisappear { isPinnedToBottom = false }
                     }
-                    if let statusLabel = store.streamingStatusLabel {
-                        StreamingStatusRowView(label: statusLabel)
-                            .id("working-indicator")
-                    }
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom-anchor")
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: 820, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 18)
-                .frame(maxWidth: 820, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .onChange(of: store.streamingContentFingerprint) { _, _ in
-                withAnimation(.easeOut(duration: 0.16)) {
-                    proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                .onChange(of: store.streamingContentFingerprint) { _, _ in
+                    guard isPinnedToBottom else { return }
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                    }
+                }
+                .onChange(of: store.activeSessionID) { _, _ in
+                    isPinnedToBottom = true
+                }
+
+                if !isPinnedToBottom {
+                    Button {
+                        isPinnedToBottom = true
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(OATheme.textPrimary)
+                            .frame(width: 30, height: 30)
+                            .background(OATheme.elevated, in: Circle())
+                            .overlay(Circle().stroke(OATheme.hairlineStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(16)
+                    .help("Jump to bottom")
                 }
             }
         }
     }
 
-    private var macFolderMenu: some View {
+    private var macMentionMenu: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(store.matchingFolders, id: \.self) { folder in
+            ForEach(store.matchingMentions) { candidate in
                 Button {
-                    store.applyFolderMention(folder)
+                    store.applyMention(candidate)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: folder.contains(".") ? "doc.text" : "folder")
+                        Image(systemName: candidate.icon)
                             .font(.system(size: 11))
                             .foregroundStyle(OATheme.textSecondary)
-                        Text("@\(folder)")
+                        Text(candidate.label)
                             .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundStyle(OATheme.textPrimary)
+                            .lineLimit(1)
                         Spacer()
+                        if !candidate.subtitle.isEmpty {
+                            Text(candidate.subtitle)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(OATheme.textMuted)
+                                .lineLimit(1)
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)

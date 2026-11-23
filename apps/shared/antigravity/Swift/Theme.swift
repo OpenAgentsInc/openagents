@@ -11,6 +11,7 @@ enum OATheme {
     static let surface = Color(red: 0.051, green: 0.051, blue: 0.051) // #0D0D0D
     static let elevated = Color(red: 0.086, green: 0.086, blue: 0.086) // #161616
     static let hairline = Color(red: 0.149, green: 0.149, blue: 0.149) // #262626
+    static let hairlineStrong = Color(red: 0.25, green: 0.25, blue: 0.25) // #404040
     static let textPrimary = Color.white
     static let textSecondary = Color(red: 0.639, green: 0.639, blue: 0.639) // #A3A3A3
     static let textMuted = Color(red: 0.451, green: 0.451, blue: 0.451) // #737373

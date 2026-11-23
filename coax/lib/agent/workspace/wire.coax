@@ -16,18 +16,32 @@ WsView :: struct {host:[64]u8;method:[32]u8;nm:int;command:[32]u8;nc:int;workspa
  for b:[7]string.["main","feature/chat","a-b","A_B","release/v1.2","a","0"] {#assert ws_branch(b);}
  for b:[15]string.["","-x","a..b","a@{b","a:b","a b","a\nb","a~","a^","a?","a*","a[","a\\b","/main","main/"] {#assert !ws_branch(b);}
 }
-ws_right :: (method:string)->int #effects(all) {if method=="ReadWorkspace" {return 0;}for m:[7]string.["CreateBranch","SwitchBranch","CreateWorktree","RemoveWorktree","PushBranch","CreatePullRequest","EditPullRequest"] {if method==m {return 1;}}return -1;}
+ws_right :: (method:string)->int #effects(all) {
+  if method=="ReadWorkspace" || method=="ReadWorkspaceTree" || method=="ReadWorkspaceFile" || method=="ReadBranchDiff" {return 0;}
+  for m:[11]string.["CreateBranch","SwitchBranch","CreateWorktree","RemoveWorktree","PushBranch","CreatePullRequest","EditPullRequest","StageFile","UnstageFile","DiscardFile","CommitChanges"] {if method==m {return 1;}}
+  return -1;
+}
 ws_branch :: (b:string)->bool #effects(all) {return b.count<=160 && rp_ref_ok(b); }
 ws_text :: (s:string,multi:bool)->bool #effects(all) {if !js_utf8(s) {return false;}for c:s {if c==127 || c<32 && !(multi && (c==10 || c==9)) {return false;}}return true;}
+ws_rel_path_ok :: (p:string)->bool #effects(all) {return p.count<=256 && rp_path_ok(p,false);}
 ws_valid :: (q:[]WsRequest)->bool #effects(all) {
  m:=cast(string)q[0].method[0..<q[0].nm];right:=ws_right(m);workspace:=cast(string)q[0].workspace[0..<q[0].nw];if right<0 || !(workspace=="default" || ea_id(workspace,64)) {return false;}
  if q[0].page<0 || q[0].page>3 || q[0].cursor<0 || q[0].cursor>10000 {return false;}
  if q[0].number<0 || q[0].number>2147483647 || !ws_text(cast(string)q[0].title[0..<q[0].nt],false) || !ws_text(cast(string)q[0].body[0..<q[0].nd],true) {return false;}
- if right==0 {return q[0].nc==0 && q[0].nx==0 && q[0].nb==0 && q[0].na==0 && q[0].nt==0 && q[0].nd==0 && q[0].number==0 && q[0].issued==0 && q[0].expires==0;}
+ if right==0 {
+   if q[0].nc!=0 || q[0].nx!=0 || q[0].nb!=0 || q[0].nd!=0 || q[0].number!=0 || q[0].issued!=0 || q[0].expires!=0 {return false;}
+   if m=="ReadWorkspace" {return q[0].na==0 && q[0].nt==0;}
+   if m=="ReadWorkspaceTree" {return q[0].na==0;}
+   if m=="ReadWorkspaceFile" {return q[0].na==0 && ws_rel_path_ok(cast(string)q[0].title[0..<q[0].nt]);}
+   return q[0].nt==0 && (q[0].na==0 || ws_branch(cast(string)q[0].base[0..<q[0].na]));
+ }
  if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(cast(string)q[0].expected[0..<q[0].nx],64) || q[0].issued<=0 || q[0].expires<=q[0].issued || q[0].expires-q[0].issued>120000 {return false;}
  if m=="CreateBranch" || m=="SwitchBranch" || m=="CreateWorktree" {if !ws_branch(cast(string)q[0].branch[0..<q[0].nb]) {return false;}}
  if m=="CreateBranch" || m=="CreateWorktree" || m=="CreatePullRequest" {if !ws_branch(cast(string)q[0].base[0..<q[0].na]) {return false;}}
- if m=="CreatePullRequest" || m=="EditPullRequest" {if q[0].nt==0 {return false;}if m=="EditPullRequest" && q[0].number==0 {return false;}}return true;
+ if m=="CreatePullRequest" || m=="EditPullRequest" {if q[0].nt==0 {return false;}if m=="EditPullRequest" && q[0].number==0 {return false;}}
+ if m=="StageFile" || m=="UnstageFile" || m=="DiscardFile" {if !ws_rel_path_ok(cast(string)q[0].title[0..<q[0].nt]) {return false;}}
+ if m=="CommitChanges" {if q[0].nt==0 || q[0].number>1 {return false;}}
+ return true;
 }
 ws_read :: (raw:string,q:[]WsRequest)->bool #export_c #effects(all) {
  nodes:[32]JvNode;d:[1]Jv;if raw.count>24576 || !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];f:=[14]string.["schema","method","workspace","branch","base","title","body","number","expected","command","issued_at","expires_at","page","cursor"];
@@ -72,6 +86,40 @@ for i:0..<next[0].np {r:=next[0].prs[i..<i+1];node:=jv_at(j,prs,i);if jv_kind(j,
  q:[1]WsRequest;q[0].nm=js_copy(q[0].method[..],"ReadWorkspace");q[0].nw=js_copy(q[0].workspace[..],"default");raw:[24576]u8;n:=ws_write(q[..],raw[..]);r:[1]WsRequest;#assert n>0 && ws_read(cast(string)raw[0..<n],r[..]) && r[0].nw==7;for i:0..<n {#assert !ws_read(cast(string)raw[0..<i],r[..]);}
  v:[1]WsView;ws_fail(v[..],"stale_state");#assert v[0].ne==11;v[0].ne=0;_=js_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;v[0].nt=1;v[0].trees[0].id=v[0].host;v[0].trees[0].np=js_copy(v[0].trees[0].path[..],"/tmp/repo");v[0].trees[0].locked=true;v[0].nbra=1;v[0].branches[0].n=js_copy(v[0].branches[0].name[..],"main");v[0].np=1;v[0].prs[0].number=12;v[0].prs[0].nt=js_copy(v[0].prs[0].title[..],"Fix chat");b:[1048576]u8;size:=ws_view_write(v[..],b[..]);read:[1]WsView;#assert size>0 && ws_view_read(cast(string)b[0..<size],read[..]) && read[0].nt==1 && read[0].trees[0].locked && read[0].prs[0].number==12;
  #assert !ws_view_read("{}",read[..]) && !ws_read("{}",r[..]) && ws_write(q[..],raw[0..<2])<0;
+}
+
+#test "workspace file viewer and staging/commit methods enforce relative path safety (#14012)" {
+ ok256:[256]u8;for i:0..<256 {ok256[i]=cast(u8)'a';}
+ bad257:[257]u8;for i:0..<257 {bad257[i]=cast(u8)'a';}
+ #assert ws_rel_path_ok("a") && ws_rel_path_ok("src/main.swift") && ws_rel_path_ok(cast(string)ok256[..]);
+ #assert !ws_rel_path_ok("") && !ws_rel_path_ok(".") && !ws_rel_path_ok("../secret") && !ws_rel_path_ok("/etc/passwd") && !ws_rel_path_ok(cast(string)bad257[..]);
+ #assert ws_right("ReadWorkspaceTree")==0 && ws_right("ReadWorkspaceFile")==0 && ws_right("ReadBranchDiff")==0;
+ #assert ws_right("StageFile")==1 && ws_right("UnstageFile")==1 && ws_right("DiscardFile")==1 && ws_right("CommitChanges")==1;
+ q:[1]WsRequest;q[0].nw=js_copy(q[0].workspace[..],"default");
+ q[0].nm=js_copy(q[0].method[..],"ReadWorkspaceTree");#assert ws_valid(q[..]);
+ q[0].na=js_copy(q[0].base[..],"main");#assert !ws_valid(q[..]);q[0].na=0;
+ q[0].nm=js_copy(q[0].method[..],"ReadWorkspaceFile");q[0].nt=js_copy(q[0].title[..],"README.md");#assert ws_valid(q[..]);
+ q[0].na=js_copy(q[0].base[..],"main");#assert !ws_valid(q[..]);q[0].na=0;
+ q[0].nt=js_copy(q[0].title[..],"/abs");#assert !ws_valid(q[..]);
+ q[0].nt=js_copy(q[0].title[..],"../outside");#assert !ws_valid(q[..]);
+ q[0].nt=0;q[0].nm=js_copy(q[0].method[..],"ReadBranchDiff");#assert ws_valid(q[..]);
+ q[0].nt=js_copy(q[0].title[..],"x");#assert !ws_valid(q[..]);q[0].nt=0;
+ q[0].na=js_copy(q[0].base[..],"m");#assert ws_valid(q[..]);
+ q[0].na=js_copy(q[0].base[..],"-bad");#assert !ws_valid(q[..]);
+ q[0].na=0;
+ q[0].nc=js_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");
+ q[0].nx=js_copy(q[0].expected[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+ q[0].issued=1700000000000;q[0].expires=1700000060000;
+ for m:[3]string.["StageFile","UnstageFile","DiscardFile"] {
+   q[0].nm=js_copy(q[0].method[..],m);
+   q[0].nt=js_copy(q[0].title[..],"README.md");#assert ws_valid(q[..]);
+   q[0].nt=js_copy(q[0].title[..],"/abs");#assert !ws_valid(q[..]);
+   q[0].nt=js_copy(q[0].title[..],"../outside");#assert !ws_valid(q[..]);
+ }
+ q[0].nm=js_copy(q[0].method[..],"CommitChanges");q[0].nt=js_copy(q[0].title[..],"a");q[0].number=0;#assert ws_valid(q[..]);
+ q[0].number=1;#assert ws_valid(q[..]);
+ q[0].number=2;#assert !ws_valid(q[..]);
+ q[0].number=0;q[0].nt=0;#assert !ws_valid(q[..]);
 }
 
 #load "wire-checks.coax" #test;

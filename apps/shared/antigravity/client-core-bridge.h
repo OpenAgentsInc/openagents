@@ -105,6 +105,22 @@ int64_t oa_mobile_ws_request(
 
 int oa_mobile_ws_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n);
 
+int64_t oa_mobile_dm_request(
+    void *work,
+    const char *method,
+    const char *session,
+    const char *command,
+    const char *title,
+    const char *folder,
+    int64_t pinned_flag,
+    int64_t archived_flag,
+    int64_t issued,
+    int64_t expires,
+    uint8_t *out,
+    int64_t cap);
+
+int oa_mobile_dm_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n);
+
 #ifdef __cplusplus
 }
 #endif

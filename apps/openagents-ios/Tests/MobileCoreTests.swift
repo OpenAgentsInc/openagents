@@ -745,4 +745,73 @@ final class MobileCoreTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(atPath: tmpDir.path)
         XCTAssertTrue(files.contains(where: { $0.hasPrefix("own-computer-paired-v1.json.corrupt.") }))
     }
+
+    func testWave3BWorkspaceFileViewerGitStagingAndDaemonSessionMeta() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let host = String(repeating: "a", count: 64)
+        let rev = String(repeating: "1", count: 64)
+        let cmd = String(repeating: "f", count: 32)
+        let nowMs: Int64 = 1_790_000_000_000
+
+        // 1. New Workspace file-viewer & git staging/commit requests encode cleanly via Coax (#14012)
+        let treeReq = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(
+            work: work, method: "ReadWorkspaceTree", title: "apps/", cursor: 0
+        ))
+        XCTAssertTrue(String(decoding: treeReq, as: UTF8.self).contains("\"ReadWorkspaceTree\""))
+
+        let fileReq = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(
+            work: work, method: "ReadWorkspaceFile", title: "README.md", cursor: 1
+        ))
+        XCTAssertTrue(String(decoding: fileReq, as: UTF8.self).contains("\"ReadWorkspaceFile\""))
+
+        // Traversal paths MUST be refused by Coax ws_rel_path_ok!
+        XCTAssertNil(MobileCore.encodeWorkspaceRequest(
+            work: work, method: "ReadWorkspaceFile", title: "../etc/passwd", cursor: 1
+        ))
+
+        let stageReq = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(
+            work: work, method: "StageFile", title: "README.md", expectedRevision: rev, command: cmd, issuedMs: nowMs, expiresMs: nowMs + 60_000
+        ))
+        XCTAssertTrue(String(decoding: stageReq, as: UTF8.self).contains("\"StageFile\""))
+
+        let commitReq = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(
+            work: work, method: "CommitChanges", title: "feat: update", body: "details", number: 1, expectedRevision: rev, command: cmd, issuedMs: nowMs, expiresMs: nowMs + 60_000
+        ))
+        XCTAssertTrue(String(decoding: commitReq, as: UTF8.self).contains("\"CommitChanges\""))
+
+        // 2. Daemon ListSessionMeta & UpdateSessionMeta encode & validate via Coax (#14013)
+        let listMeta = try XCTUnwrap(MobileCore.encodeDaemonRequest(work: work, method: "ListSessionMeta"))
+        XCTAssertTrue(String(decoding: listMeta, as: UTF8.self).contains("\"ListSessionMeta\""))
+
+        let updateMeta = try XCTUnwrap(MobileCore.encodeDaemonRequest(
+            work: work,
+            method: "UpdateSessionMeta",
+            session: "0123456789abcdef0123456789abcdef",
+            command: cmd,
+            title: "My Pinned Chat",
+            pinned: true,
+            archived: false,
+            issuedMs: nowMs,
+            expiresMs: nowMs + 60_000
+        ))
+        let updateStr = String(decoding: updateMeta, as: UTF8.self)
+        XCTAssertTrue(updateStr.contains("\"UpdateSessionMeta\""))
+        XCTAssertTrue(updateStr.contains("\"pinned\":true"))
+        XCTAssertTrue(updateStr.contains("\"My Pinned Chat\""))
+
+        let rawDaemonResp = """
+        {"schema":"openagents.environment.daemon.v1alpha1","ok":true,"host":"\(host)","label":"Studio","method":"ListSessionMeta","pid":123,"started_at":1790000000,"paired_devices":1,"active_slots":0,"max_slots":4,"relay":"","workspace":"/repo","foreman":{"tier":1,"active_runs":0,"total_sessions":1,"workspace":"/repo","prompt":"","updated":0},"sessions_meta":[{"id":"0123456789abcdef0123456789abcdef","title":"Pinned Thread","folder":"apps","pinned":true,"archived":false,"updated":1790000001}]}
+        """
+        let rawData = Data(rawDaemonResp.utf8)
+        XCTAssertTrue(MobileCore.validateDaemonView(work: work, host: host, method: "ListSessionMeta", raw: rawData))
+        let parsed = try XCTUnwrap(ParsedDaemonView.parse(rawData))
+        XCTAssertTrue(parsed.ok)
+        XCTAssertEqual(parsed.sessions.count, 1)
+        XCTAssertEqual(parsed.sessions[0].title, "Pinned Thread")
+        XCTAssertTrue(parsed.sessions[0].pinned)
+
+        // 3. Inline review comment formatting (#14012)
+        let comment = InlineReviewComment(filePath: "apps/openagents-ios/Sources/ChatView.swift", lineRange: "L42-L55", comment: "Extract helper")
+        XCTAssertEqual(comment.renderedMarkdown, "- `apps/openagents-ios/Sources/ChatView.swift #L42-L55`: Extract helper")
+    }
 }

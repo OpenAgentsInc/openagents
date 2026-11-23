@@ -81,6 +81,26 @@ struct SubagentInspectorView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
+                        if store.hasOlderSubagentItems {
+                            Button {
+                                Task { await store.loadOlderSubagentItems() }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if store.isLoadingOlderSubagentItems {
+                                        ProgressView().controlSize(.small).tint(OATheme.textSecondary)
+                                    }
+                                    Text("Load earlier steps")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundStyle(OATheme.textSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(store.isLoadingOlderSubagentItems)
+                        }
                         ForEach(store.subagentItems) { child in
                             TranscriptRowView(item: child)
                         }

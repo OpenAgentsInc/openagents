@@ -1215,6 +1215,7 @@ struct WorkspaceSnapshot: Equatable {
     let worktrees: [WorkspaceWorktree]
     let branches: [String]
     let pullRequests: [WorkspacePR]
+    var nextCursor: Int = 0
 
     /// Unquotes C-escaped git status/diff paths (e.g. `"dir/file with space.swift"` -> `dir/file with space.swift`).
     private static func unquoteGitPath(_ raw: String) -> String {
@@ -1337,7 +1338,8 @@ struct WorkspaceSnapshot: Equatable {
             githubError: (newGithubError.flatMap { $0.isEmpty ? nil : $0 }) ?? githubError,
             worktrees: (newTrees.flatMap { $0.isEmpty ? nil : $0 }) ?? worktrees,
             branches: (newBranches.flatMap { $0.isEmpty ? nil : $0 }) ?? branches,
-            pullRequests: (newPRs.flatMap { $0.isEmpty ? nil : $0 }) ?? pullRequests
+            pullRequests: (newPRs.flatMap { $0.isEmpty ? nil : $0 }) ?? pullRequests,
+            nextCursor: nextCursor
         )
     }
 
@@ -1372,6 +1374,7 @@ struct WorkspaceSnapshot: Equatable {
         let worktrees: [WireWorktree]?
         let branches: [String]?
         let pull_requests: [WirePR]?
+        let next: Int?
     }
 
     static func parse(_ data: Data) -> WorkspaceSnapshot? {
@@ -1413,7 +1416,140 @@ struct WorkspaceSnapshot: Equatable {
             githubError: dto.github_error ?? "",
             worktrees: trees,
             branches: dto.branches ?? [],
-            pullRequests: prs
+            pullRequests: prs,
+            nextCursor: dto.next ?? 0
         )
+    }
+}
+
+// MARK: - Daemon Session Meta, Inline Review Comments, File Viewer, Mentions & Side Questions (#14012, #14013)
+
+struct SessionMetadataRecord: Identifiable, Equatable, Codable {
+    let id: String
+    var title: String
+    var folder: String
+    var pinned: Bool
+    var archived: Bool
+    var updatedAt: Int64
+}
+
+struct ParsedDaemonView {
+    private struct WireDaemonDTO: Decodable {
+        struct WireSessionMeta: Decodable {
+            let session_id: String?
+            let id: String?
+            let title: String?
+            let folder: String?
+            let pinned: Bool?
+            let archived: Bool?
+            let updated: Int64?
+            let updated_at: Int64?
+        }
+        let ok: Bool?
+        let host: String?
+        let method: String?
+        let error: String?
+        let status: String?
+        let sessions_meta: [WireSessionMeta]?
+        let sessions: [WireSessionMeta]?
+        let meta: [WireSessionMeta]?
+    }
+
+    let ok: Bool
+    let host: String
+    let method: String
+    let error: String
+    let status: String
+    let sessions: [SessionMetadataRecord]
+
+    static func parse(_ data: Data) -> ParsedDaemonView? {
+        guard let dto = try? JSONDecoder().decode(WireDaemonDTO.self, from: data) else { return nil }
+        let rows = dto.sessions_meta ?? dto.sessions ?? dto.meta ?? []
+        let mapped: [SessionMetadataRecord] = rows.compactMap { row in
+            let sid = row.session_id ?? row.id ?? ""
+            guard !sid.isEmpty else { return nil }
+            return SessionMetadataRecord(
+                id: sid,
+                title: row.title ?? "",
+                folder: row.folder ?? "",
+                pinned: row.pinned ?? false,
+                archived: row.archived ?? false,
+                updatedAt: row.updated ?? row.updated_at ?? 0
+            )
+        }
+        return ParsedDaemonView(
+            ok: dto.ok ?? false,
+            host: dto.host ?? "",
+            method: dto.method ?? "",
+            error: dto.error ?? "",
+            status: dto.status ?? "",
+            sessions: mapped
+        )
+    }
+}
+
+struct InlineReviewComment: Identifiable, Equatable, Codable {
+    let id: UUID
+    let filePath: String
+    let lineRange: String
+    let comment: String
+
+    init(id: UUID = UUID(), filePath: String, lineRange: String, comment: String) {
+        self.id = id
+        self.filePath = filePath
+        self.lineRange = lineRange
+        self.comment = comment
+    }
+
+    var renderedMarkdown: String {
+        let loc = lineRange.isEmpty ? filePath : "\(filePath) #\(lineRange)"
+        return "- `\(loc)`: \(comment)"
+    }
+}
+
+struct WorkspaceFileContent: Equatable {
+    let path: String
+    let content: String
+    let startLine: Int
+    let nextLine: Int
+    let truncated: Bool
+    let isBinary: Bool
+}
+
+struct MentionCandidate: Identifiable, Equatable {
+    enum Kind: String {
+        case file
+        case folder
+        case rule
+        case conversation
+    }
+
+    let id: String
+    let kind: Kind
+    let label: String
+    let insertion: String
+    let subtitle: String
+
+    var icon: String {
+        switch kind {
+        case .file: return "doc.text"
+        case .folder: return "folder"
+        case .rule: return "checklist"
+        case .conversation: return "bubble.left.and.bubble.right"
+        }
+    }
+}
+
+struct SideQuestionEntry: Identifiable, Equatable {
+    let id: UUID
+    let question: String
+    var answer: String
+    var isLoading: Bool
+
+    init(id: UUID = UUID(), question: String, answer: String = "", isLoading: Bool = true) {
+        self.id = id
+        self.question = question
+        self.answer = answer
+        self.isLoading = isLoading
     }
 }

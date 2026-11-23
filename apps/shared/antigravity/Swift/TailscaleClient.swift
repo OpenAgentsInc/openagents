@@ -322,7 +322,7 @@ final class TailscaleClient {
     }
 
     private func scheduleReconnect(for host: String) {
-        guard active, let endpoint = subscribedEndpoints[host], subscribedSessions[host] != nil else { return }
+        guard active, subscribedEndpoints[host] != nil, subscribedSessions[host] != nil else { return }
         guard directConns[host] == nil, reconnectTasks[host] == nil else { return }
         let attempt = reconnectAttempts[host] ?? 0
         reconnectAttempts[host] = attempt + 1
@@ -347,6 +347,7 @@ final class TailscaleClient {
         method: String,
         params: Data,
         isWorkspace: Bool = false,
+        isDaemon: Bool = false,
         timeout: TimeInterval = 18.0
     ) async -> Result<Data, TailscaleRPCError> {
         guard let work = MobileCorePool.shared.checkout() else { return .failure(.encodingFailed) }
@@ -382,9 +383,14 @@ final class TailscaleClient {
                         continuation.resume(returning: .failure(.invalidResponse))
                         return
                     }
-                    let valid = isWorkspace
-                        ? MobileCore.validateWorkspaceView(work: work, host: host, method: method, raw: payload)
-                        : MobileCore.validateView(work: work, host: host, method: method, raw: payload)
+                    let valid: Bool
+                    if isDaemon {
+                        valid = MobileCore.validateDaemonView(work: work, host: host, method: method, raw: payload)
+                    } else if isWorkspace {
+                        valid = MobileCore.validateWorkspaceView(work: work, host: host, method: method, raw: payload)
+                    } else {
+                        valid = MobileCore.validateView(work: work, host: host, method: method, raw: payload)
+                    }
                     guard valid else {
                         continuation.resume(returning: .failure(.invalidResponse))
                         return

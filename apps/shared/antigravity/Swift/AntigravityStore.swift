@@ -61,6 +61,30 @@ final class AntigravityStore: ObservableObject {
     @Published var activeTodos: [SessionTodoItem] = []
     @Published var activeUsage: SessionUsageStats?
 
+    // Cursor pagination state (#14011)
+    @Published var sessionsNextCursor: String = ""
+    @Published var agySessionsNextCursor: String = ""
+    @Published var transcriptNextCursor: String = ""
+    @Published var subagentNextCursor: String = ""
+    @Published var isLoadingMoreSessions: Bool = false
+    @Published var isLoadingOlderMessages: Bool = false
+    @Published var isLoadingOlderSubagentItems: Bool = false
+
+    // Workspace File Viewer, Branch Diff & Inline Review Comments (#14012)
+    @Published var workspaceFiles: [String] = []
+    @Published var workspaceFilesNextCursor: Int = 0
+    @Published var isLoadingWorkspaceFiles: Bool = false
+    @Published var activeFileContent: WorkspaceFileContent?
+    @Published var isLoadingFileContent: Bool = false
+    @Published var branchDiffText: String = ""
+    @Published var inlineReviewComments: [InlineReviewComment] = []
+
+    // Rich Session Operations: metadata (pin/rename/archive) & /btw side questions (#14013)
+    @Published var sessionMetaByID: [String: SessionMetadataRecord] = [:]
+    @Published var showArchivedSessions: Bool = false
+    @Published var isSideQuestionPresented: Bool = false
+    @Published var sideQuestions: [SideQuestionEntry] = []
+
     /// Test-only switch enabled strictly via `-OAE2ELoopbackAllowed` launch argument for local Simulator E2E harnesses.
     var allowLoopbackForTests: Bool = false
 
@@ -161,6 +185,33 @@ final class AntigravityStore: ObservableObject {
         return PendingInteraction(id: session.interactionID, sessionID: session.id, prompt: hint)
     }
 
+    var hasMoreSessions: Bool {
+        !sessionsNextCursor.isEmpty || !agySessionsNextCursor.isEmpty
+    }
+
+    var hasOlderMessages: Bool {
+        !transcriptNextCursor.isEmpty
+    }
+
+    var hasOlderSubagentItems: Bool {
+        !subagentNextCursor.isEmpty
+    }
+
+    func displayTitle(for session: ChatSessionSummary) -> String {
+        if let meta = sessionMetaByID[session.id], !meta.title.isEmpty {
+            return meta.title
+        }
+        return session.displayTitle
+    }
+
+    func isPinned(_ session: ChatSessionSummary) -> Bool {
+        sessionMetaByID[session.id]?.pinned == true
+    }
+
+    func isArchived(_ session: ChatSessionSummary) -> Bool {
+        sessionMetaByID[session.id]?.archived == true
+    }
+
     var workingSessions: [ChatSessionSummary] {
         filteredSessions.filter(\.busy)
     }
@@ -171,11 +222,22 @@ final class AntigravityStore: ObservableObject {
 
     private var filteredSessions: [ChatSessionSummary] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return sessions }
-        return sessions.filter {
-            $0.displayTitle.lowercased().contains(q)
-                || $0.model.lowercased().contains(q)
-                || $0.id.lowercased().contains(q)
+        let visible = sessions.filter { session in
+            let archived = isArchived(session)
+            if !showArchivedSessions && archived { return false }
+            if q.isEmpty { return true }
+            let title = displayTitle(for: session).lowercased()
+            let folder = (sessionMetaByID[session.id]?.folder ?? "").lowercased()
+            return title.contains(q)
+                || session.model.lowercased().contains(q)
+                || session.id.lowercased().contains(q)
+                || folder.contains(q)
+        }
+        return visible.sorted { a, b in
+            let pa = isPinned(a)
+            let pb = isPinned(b)
+            if pa != pb { return pa }
+            return a.updatedAtMs > b.updatedAtMs
         }
     }
 
@@ -221,21 +283,127 @@ final class AntigravityStore: ObservableObject {
         return Array(catalog.filter { $0.command.lowercased().hasPrefix(query) }.prefix(10))
     }
 
-    /// `@` workspace folder & changed-file mention autocomplete using host-reported `folders` and Workspace Git status.
-    var matchingFolders: [String] {
+    /// Fuzzy `@` mention autocomplete supporting workspace files, folders, `@rules:`, and `@conversation:` (#14012).
+    var matchingMentions: [MentionCandidate] {
         guard let lastWord = draftText.split(separator: " ").last, lastWord.hasPrefix("@") else {
             return []
         }
-        var pool = folders
-        if let changed = workspaceSnapshot?.changedFiles {
-            for f in changed where !pool.contains(f.path) {
-                pool.append(f.path)
+        let rawQuery = String(lastWord.dropFirst()).lowercased()
+        var candidates: [MentionCandidate] = []
+
+        if rawQuery.hasPrefix("rules:") || "rules:".hasPrefix(rawQuery) {
+            let sub = rawQuery.hasPrefix("rules:") ? String(rawQuery.dropFirst(6)) : ""
+            let ruleFiles = workspaceFiles.filter { path in
+                let lower = path.lowercased()
+                return lower.hasSuffix("agents.md") || lower.hasSuffix("gemini.md")
+                    || lower.contains("/rules/") || lower.hasPrefix(".gemini/rules/")
+            }
+            for rf in ruleFiles {
+                if sub.isEmpty || Self.fuzzyMatches(rf.lowercased(), query: sub) {
+                    candidates.append(MentionCandidate(
+                        id: "rule-\(rf)",
+                        kind: .rule,
+                        label: "@rules:\(rf)",
+                        insertion: "@rules:\(rf)",
+                        subtitle: "Workspace rule"
+                    ))
+                }
+            }
+            if candidates.isEmpty {
+                candidates.append(MentionCandidate(
+                    id: "rule-hint",
+                    kind: .rule,
+                    label: "@rules:AGENTS.md",
+                    insertion: "@rules:AGENTS.md",
+                    subtitle: "Project instructions & rules"
+                ))
             }
         }
-        guard !pool.isEmpty else { return [] }
-        let q = String(lastWord.dropFirst()).lowercased()
-        if q.isEmpty { return Array(pool.prefix(8)) }
-        return Array(pool.filter { $0.lowercased().contains(q) }.prefix(8))
+
+        if rawQuery.hasPrefix("conversation:") || "conversation:".hasPrefix(rawQuery) {
+            let sub = rawQuery.hasPrefix("conversation:") ? String(rawQuery.dropFirst(13)) : ""
+            for s in sessions.prefix(12) {
+                let t = displayTitle(for: s)
+                if sub.isEmpty || Self.fuzzyMatches(t.lowercased(), query: sub) || s.id.lowercased().contains(sub) {
+                    candidates.append(MentionCandidate(
+                        id: "conv-\(s.id)",
+                        kind: .conversation,
+                        label: "@conversation:\(t)",
+                        insertion: "@conversation:\(s.id)",
+                        subtitle: "Reference earlier chat"
+                    ))
+                }
+            }
+        }
+
+        if !rawQuery.hasPrefix("rules:") && !rawQuery.hasPrefix("conversation:") {
+            var seen = Set<String>()
+            // Prioritize changed files, then full workspace tree files, then top-level folders.
+            if let changed = workspaceSnapshot?.changedFiles {
+                for f in changed where seen.insert(f.path).inserted {
+                    if rawQuery.isEmpty || Self.fuzzyMatches(f.path.lowercased(), query: rawQuery) {
+                        candidates.append(MentionCandidate(
+                            id: "file-\(f.path)",
+                            kind: .file,
+                            label: "@\(f.path)",
+                            insertion: "@\(f.path)",
+                            subtitle: "Modified (\(f.code))"
+                        ))
+                    }
+                }
+            }
+            for path in workspaceFiles where seen.insert(path).inserted {
+                if rawQuery.isEmpty || Self.fuzzyMatches(path.lowercased(), query: rawQuery) {
+                    candidates.append(MentionCandidate(
+                        id: "tree-\(path)",
+                        kind: .file,
+                        label: "@\(path)",
+                        insertion: "@\(path)",
+                        subtitle: "Workspace file"
+                    ))
+                }
+                if candidates.count >= 16 { break }
+            }
+            for folder in folders where seen.insert(folder).inserted {
+                if rawQuery.isEmpty || Self.fuzzyMatches(folder.lowercased(), query: rawQuery) {
+                    candidates.append(MentionCandidate(
+                        id: "dir-\(folder)",
+                        kind: .folder,
+                        label: "@\(folder)",
+                        insertion: "@\(folder)",
+                        subtitle: "Folder"
+                    ))
+                }
+            }
+        }
+        return Array(candidates.prefix(10))
+    }
+
+    /// Subsequence + substring fuzzy matcher for `@` file and mention autocomplete.
+    static func fuzzyMatches(_ haystack: String, query: String) -> Bool {
+        if query.isEmpty { return true }
+        if haystack.contains(query) { return true }
+        var qi = query.startIndex
+        for ch in haystack {
+            if ch == query[qi] {
+                qi = query.index(after: qi)
+                if qi == query.endIndex { return true }
+            }
+        }
+        return false
+    }
+
+    var matchingFolders: [String] {
+        matchingMentions.map { $0.insertion.hasPrefix("@") ? String($0.insertion.dropFirst()) : $0.insertion }
+    }
+
+    func applyMention(_ candidate: MentionCandidate) {
+        let token = candidate.insertion.hasPrefix("@") ? candidate.insertion : "@\(candidate.insertion)"
+        if let range = draftText.range(of: "@[^\\s]*$", options: .regularExpression) {
+            draftText.replaceSubrange(range, with: "\(token) ")
+        } else {
+            draftText += (draftText.isEmpty || draftText.hasSuffix(" ") ? "" : " ") + "\(token) "
+        }
     }
 
     /// Monotonic fingerprint that changes on every streamed thinking/assistant chunk so views auto-scroll smoothly.
@@ -468,6 +636,10 @@ final class AntigravityStore: ObservableObject {
         workspaceSnapshot = nil
         activeSubagentItem = nil
         subagentItems = []
+        activeTodos = []
+        activeUsage = nil
+        transcriptNextCursor = ""
+        subagentNextCursor = ""
         interactionMeta = nil
         bannerError = nil
         loadPreferences(for: computer.id)
@@ -704,6 +876,10 @@ final class AntigravityStore: ObservableObject {
         wasActiveSessionBusy = false
         activeSubagentItem = nil
         subagentItems = []
+        activeTodos = []
+        activeUsage = nil
+        transcriptNextCursor = ""
+        subagentNextCursor = ""
         interactionMeta = nil
         bannerError = nil
         isSidebarOpen = false
@@ -719,6 +895,10 @@ final class AntigravityStore: ObservableObject {
         fastPollUntil = .distantPast
         activeSubagentItem = nil
         subagentItems = []
+        activeTodos = []
+        activeUsage = nil
+        transcriptNextCursor = ""
+        subagentNextCursor = ""
         interactionMeta = nil
         if let wireMode = ReviewMode.fromWire(session.mode) {
             reviewMode = wireMode
@@ -782,15 +962,20 @@ final class AntigravityStore: ObservableObject {
         if let listView = await performEnvironmentRPC(computer: currentComputer, method: "ListSessions") {
             guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
             applyMetadata(from: listView, computerID: computer.id)
+            sessionsNextCursor = listView.nextCursor
             for s in listView.sessions { mergedByID[s.id] = s }
         }
         // Also fetch native ~/.gemini Antigravity sessions (`host-agy.coax`) and merge cleanly
         if let agyView = await performEnvironmentRPC(computer: currentComputer, method: "ListSessions", model: "antigravity", quietErrors: true) {
             guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
+            agySessionsNextCursor = agyView.nextCursor
             for s in agyView.sessions where mergedByID[s.id] == nil {
                 mergedByID[s.id] = s
             }
         }
+
+        // Sync pin/rename/archive session metadata from daemon (#14013)
+        await refreshSessionMetadata()
 
         guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
         if !mergedByID.isEmpty || bannerError == nil {
@@ -874,6 +1059,10 @@ final class AntigravityStore: ObservableObject {
                 }
             }
             applyServerItems(view.items, nowBusy: nowBusy)
+            // Keep pagination cursor pointing at the oldest loaded page when older messages haven't been prepended yet (#14011).
+            if transcriptNextCursor.isEmpty || items.count <= view.items.count + 1 {
+                transcriptNextCursor = view.nextCursor
+            }
             if !view.todos.isEmpty || !nowBusy {
                 activeTodos = view.todos
             }
@@ -911,8 +1100,44 @@ final class AntigravityStore: ObservableObject {
         let isOverride = overrideText != nil
         let rawInput = overrideText ?? draftText
         let baseText = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Intercept client-handled rich session slash commands (/btw, /fork, /rewind; #14013).
+        if !isOverride {
+            if baseText.lowercased().hasPrefix("/btw ") {
+                let q = String(baseText.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+                draftText = ""
+                isSideQuestionPresented = true
+                if !q.isEmpty { await askSideQuestion(q) }
+                return
+            } else if baseText.lowercased() == "/btw" {
+                draftText = ""
+                isSideQuestionPresented = true
+                return
+            } else if baseText.lowercased() == "/fork" {
+                draftText = ""
+                await forkActiveSession()
+                return
+            } else if baseText.lowercased() == "/rewind" {
+                draftText = ""
+                if let lastUser = items.last(where: { $0.role == .user }) {
+                    await rewindToMessage(lastUser)
+                } else {
+                    statusToast = "No earlier user turn to rewind to."
+                }
+                return
+            }
+        }
+        // Attach batched inline Workspace review comments when present (#14012).
+        let pendingComments = inlineReviewComments
+        let effectiveBaseText: String
+        if !pendingComments.isEmpty {
+            let block = "Inline code review comments:\n" + pendingComments.map(\.renderedMarkdown).joined(separator: "\n")
+            effectiveBaseText = baseText.isEmpty ? block : "\(block)\n\n\(baseText)"
+            inlineReviewComments = []
+        } else {
+            effectiveBaseText = baseText
+        }
         let attachmentsToSend = overrideAttachments ?? pendingAttachments
-        guard !baseText.isEmpty || !attachmentsToSend.isEmpty else { return }
+        guard !effectiveBaseText.isEmpty || !attachmentsToSend.isEmpty else { return }
         guard let computer = activeComputer, computer.canSendRPC else {
             isComputersPresented = true
             return
@@ -949,7 +1174,7 @@ final class AntigravityStore: ObservableObject {
         }
 
         func composePayload(useStructuredAttachments: Bool, modeWire: String) -> (text: String, attachmentsJSON: String) {
-            var body = seedPrefix + baseText
+            var body = seedPrefix + effectiveBaseText
             let attJSON = useStructuredAttachments ? FileAttachment.encodeWireAttachmentsJSON(attachmentsToSend) : ""
             for att in attachmentsToSend {
                 if !attJSON.isEmpty && att.hasStructuredWireData {
@@ -978,7 +1203,7 @@ final class AntigravityStore: ObservableObject {
             items = []
         }
         let baselineUsers = items.filter { $0.role == .user }.count
-        let optimisticBubbleText = attachmentsToSend.contains(where: \.isImage) ? payloadText : (baseText.isEmpty ? payloadText : baseText)
+        let optimisticBubbleText = attachmentsToSend.contains(where: \.isImage) ? payloadText : (effectiveBaseText.isEmpty ? payloadText : effectiveBaseText)
         let optimisticItem = TranscriptItem(
             id: optimisticID,
             role: .user,
@@ -1185,17 +1410,19 @@ final class AntigravityStore: ObservableObject {
         await refreshActiveTranscript()
     }
 
-    // MARK: - Subagent Inspector (`ReadSubagent` & `StopSubagent`)
+    // MARK: - Subagent Inspector (`ReadSubagent` & `StopSubagent`) & Cursor Pagination (#14011)
 
     func openSubagent(_ item: TranscriptItem) {
         activeSubagentItem = item
         subagentItems = []
+        subagentNextCursor = ""
         Task { await refreshSubagent() }
     }
 
     func closeSubagent() {
         activeSubagentItem = nil
         subagentItems = []
+        subagentNextCursor = ""
     }
 
     func refreshSubagent() async {
@@ -1214,7 +1441,93 @@ final class AntigravityStore: ObservableObject {
             item: sub.id,
             quietErrors: true
         ) {
-            subagentItems = view.items
+            if subagentItems.count <= view.items.count || subagentNextCursor.isEmpty {
+                subagentNextCursor = view.nextCursor
+            }
+            if subagentItems.count > view.items.count {
+                let freshIDs = Set(view.items.map(\.id))
+                let olderPrefix = subagentItems.filter { !freshIDs.contains($0.id) }
+                subagentItems = olderPrefix + view.items
+            } else {
+                subagentItems = view.items
+            }
+        }
+    }
+
+    func loadMoreSessions() async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              !isLoadingMoreSessions, hasMoreSessions else { return }
+        isLoadingMoreSessions = true
+        defer { isLoadingMoreSessions = false }
+
+        var byID: [String: ChatSessionSummary] = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        if let cursor = Int64(sessionsNextCursor), cursor > 0 {
+            if let view = await performEnvironmentRPC(computer: computer, method: "ListSessions", before: cursor, quietErrors: true) {
+                sessionsNextCursor = view.nextCursor
+                for s in view.sessions { byID[s.id] = s }
+            } else {
+                sessionsNextCursor = ""
+            }
+        }
+        if let cursor = Int64(agySessionsNextCursor), cursor > 0 {
+            if let view = await performEnvironmentRPC(computer: computer, method: "ListSessions", before: cursor, model: "antigravity", quietErrors: true) {
+                agySessionsNextCursor = view.nextCursor
+                for s in view.sessions where byID[s.id] == nil { byID[s.id] = s }
+            } else {
+                agySessionsNextCursor = ""
+            }
+        }
+        sessions = byID.values.sorted { $0.updatedAtMs > $1.updatedAtMs }
+    }
+
+    func loadOlderMessages() async {
+        guard let sid = activeSessionID,
+              let computer = activeComputer, computer.canSendRPC,
+              !isLoadingOlderMessages,
+              let cursor = Int64(transcriptNextCursor), cursor > 0 else { return }
+        isLoadingOlderMessages = true
+        defer { isLoadingOlderMessages = false }
+
+        if let view = await performEnvironmentRPC(
+            computer: computer,
+            method: "ReadSession",
+            session: sid,
+            before: cursor,
+            quietErrors: true
+        ) {
+            guard activeSessionID == sid else { return }
+            let existingIDs = Set(items.map(\.id))
+            let prepended = view.items.filter { !existingIDs.contains($0.id) }
+            if !prepended.isEmpty {
+                items = prepended + items
+            }
+            transcriptNextCursor = view.nextCursor == transcriptNextCursor ? "" : view.nextCursor
+        }
+    }
+
+    func loadOlderSubagentItems() async {
+        guard let sub = activeSubagentItem,
+              let sid = activeSessionID,
+              let computer = activeComputer, computer.canSendRPC,
+              !isLoadingOlderSubagentItems,
+              let cursor = Int64(subagentNextCursor), cursor > 0 else { return }
+        isLoadingOlderSubagentItems = true
+        defer { isLoadingOlderSubagentItems = false }
+
+        if let view = await performEnvironmentRPC(
+            computer: computer,
+            method: "ReadSubagent",
+            session: sid,
+            before: cursor,
+            item: sub.id,
+            quietErrors: true
+        ) {
+            let existingIDs = Set(subagentItems.map(\.id))
+            let prepended = view.items.filter { !existingIDs.contains($0.id) }
+            if !prepended.isEmpty {
+                subagentItems = prepended + subagentItems
+            }
+            subagentNextCursor = view.nextCursor == subagentNextCursor ? "" : view.nextCursor
         }
     }
 
@@ -1239,10 +1552,10 @@ final class AntigravityStore: ObservableObject {
         await refreshActiveTranscript()
     }
 
-    // MARK: - Workspace Git / Diff / Branch / Worktree / PR Controls (`WsRequest`)
+    // MARK: - Workspace Git / Diff / Files / Branch / Worktree / PR Controls (`WsRequest`)
 
-    /// Fetches all 4 paginated views of `ReadWorkspace` (`page=0` status/diff, `page=1` worktrees,
-    /// `page=2` branches, `page=3` PRs) and merges them cleanly so real `coder-host` tabs are never empty (#13999).
+    /// Fetches all 4 paginated views of `ReadWorkspace` (`page=0` status/diff, `page=1` branches,
+    /// `page=2` worktrees, `page=3` PRs) and merges both worktrees & branches safely (#13999, #14012).
     func refreshWorkspace() async {
         guard let computer = activeComputer, computer.canSendRPC else { return }
         isLoadingWorkspace = true
@@ -1261,11 +1574,11 @@ final class AntigravityStore: ObservableObject {
 
         if let p1 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 1, quietErrors: true),
            p1.error.isEmpty {
-            merged = merged.merging(worktrees: p1.worktrees)
+            merged = merged.merging(worktrees: p1.worktrees, branches: p1.branches)
         }
         if let p2 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 2, quietErrors: true),
            p2.error.isEmpty {
-            merged = merged.merging(branches: p2.branches)
+            merged = merged.merging(worktrees: p2.worktrees, branches: p2.branches)
         }
         if let p3 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 3, quietErrors: true),
            p3.error.isEmpty {
@@ -1274,6 +1587,197 @@ final class AntigravityStore: ObservableObject {
 
         guard activeComputerID == computer.id else { return }
         workspaceSnapshot = merged
+        if workspaceFiles.isEmpty {
+            await loadWorkspaceTree(prefix: "", reset: true)
+        }
+    }
+
+    func loadWorkspaceTree(prefix: String = "", reset: Bool = true) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingWorkspaceFiles = true
+        defer { isLoadingWorkspaceFiles = false }
+
+        let startCursor: Int64 = reset ? 0 : Int64(workspaceFilesNextCursor)
+        guard let snap = await performWorkspaceRPC(
+            computer: computer,
+            method: "ReadWorkspaceTree",
+            title: prefix,
+            cursor: startCursor,
+            quietErrors: true
+        ), snap.error.isEmpty else { return }
+
+        let paths = snap.status
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if reset {
+            workspaceFiles = paths
+        } else {
+            var seen = Set(workspaceFiles)
+            for p in paths where seen.insert(p).inserted {
+                workspaceFiles.append(p)
+            }
+        }
+        workspaceFilesNextCursor = snap.nextCursor
+    }
+
+    func readWorkspaceFile(path: String, startLine: Int = 1, append: Bool = false) async {
+        guard let computer = activeComputer, computer.canSendRPC, !path.isEmpty else { return }
+        isLoadingFileContent = true
+        defer { isLoadingFileContent = false }
+
+        guard let snap = await performWorkspaceRPC(
+            computer: computer,
+            method: "ReadWorkspaceFile",
+            title: path,
+            cursor: Int64(max(1, startLine)),
+            quietErrors: false
+        ) else { return }
+
+        if !snap.error.isEmpty {
+            workspaceError = HostErrorFormatter.describe(snap.error, method: "ReadWorkspaceFile")
+            return
+        }
+        let isBinary = snap.status == "binary"
+        let chunk = snap.diff
+        if append, let existing = activeFileContent, existing.path == path, !isBinary {
+            let combined = existing.content.isEmpty ? chunk : (existing.content + "\n" + chunk)
+            activeFileContent = WorkspaceFileContent(
+                path: path,
+                content: combined,
+                startLine: existing.startLine,
+                nextLine: snap.nextCursor,
+                truncated: snap.diffCut,
+                isBinary: false
+            )
+        } else {
+            activeFileContent = WorkspaceFileContent(
+                path: path,
+                content: chunk,
+                startLine: max(1, startLine),
+                nextLine: snap.nextCursor,
+                truncated: snap.diffCut,
+                isBinary: isBinary
+            )
+        }
+    }
+
+    func loadBranchDiff(base: String = "") async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        isLoadingWorkspace = true
+        defer { isLoadingWorkspace = false }
+
+        if let snap = await performWorkspaceRPC(
+            computer: computer,
+            method: "ReadBranchDiff",
+            base: base,
+            quietErrors: true
+        ), snap.error.isEmpty {
+            branchDiffText = snap.diff
+        }
+    }
+
+    func stageFile(_ path: String) async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
+        await runWorkspaceMutation(computer: computer, method: "StageFile", title: path, expectedRevision: rev)
+    }
+
+    func unstageFile(_ path: String) async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
+        await runWorkspaceMutation(computer: computer, method: "UnstageFile", title: path, expectedRevision: rev)
+    }
+
+    func discardFile(_ path: String) async {
+        guard let computer = activeComputer, computer.canSendRPC,
+              let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
+        await runWorkspaceMutation(computer: computer, method: "DiscardFile", title: path, expectedRevision: rev)
+    }
+
+    func commitChanges(subject: String, body: String = "", amend: Bool = false) async {
+        let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let computer = activeComputer, computer.canSendRPC,
+              let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
+        await runWorkspaceMutation(
+            computer: computer,
+            method: "CommitChanges",
+            title: trimmed,
+            body: body,
+            number: amend ? 1 : 0,
+            expectedRevision: rev
+        )
+        if workspaceError == nil {
+            statusToast = amend ? "Amended commit" : "Committed changes"
+        }
+    }
+
+    func editPullRequest(number: Int, title: String, body: String) async {
+        guard number > 0,
+              let computer = activeComputer, computer.canSendRPC,
+              let rev = workspaceSnapshot?.revision, !rev.isEmpty else { return }
+        await runWorkspaceMutation(
+            computer: computer,
+            method: "EditPullRequest",
+            title: title,
+            body: body,
+            number: Int64(number),
+            expectedRevision: rev
+        )
+        if workspaceError == nil {
+            statusToast = "Updated PR #\(number)"
+        }
+    }
+
+    func addInlineComment(filePath: String, lineRange: String, comment: String) {
+        let cleanComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !filePath.isEmpty, !cleanComment.isEmpty else { return }
+        inlineReviewComments.append(InlineReviewComment(filePath: filePath, lineRange: lineRange, comment: cleanComment))
+        statusToast = "Added review comment (\(inlineReviewComments.count) queued)"
+    }
+
+    func removeInlineComment(_ id: UUID) {
+        inlineReviewComments.removeAll { $0.id == id }
+    }
+
+    func quoteFileRange(path: String, lineRange: String = "") {
+        let ref = lineRange.isEmpty ? "@\(path)" : "@\(path) #\(lineRange)"
+        if draftText.isEmpty {
+            draftText = "\(ref) "
+        } else if draftText.hasSuffix(" ") || draftText.hasSuffix("\n") {
+            draftText += "\(ref) "
+        } else {
+            draftText += " \(ref) "
+        }
+        isWorkspacePresented = false
+        statusToast = "Quoted \(ref) in composer"
+    }
+
+    func openFileFromLink(_ rawURL: String) {
+        let cleaned = rawURL.replacingOccurrences(of: "file://", with: "")
+        let parts = cleaned.split(separator: "#", maxSplits: 1)
+        var path = String(parts.first ?? "")
+        if let root = workspaceSnapshot?.path, !root.isEmpty, path.hasPrefix(root + "/") {
+            path = String(path.dropFirst(root.count + 1))
+        }
+        if path.hasPrefix("/") {
+            // Try matching suffix against known workspace files
+            if let match = workspaceFiles.first(where: { path.hasSuffix("/" + $0) || path == $0 }) {
+                path = match
+            } else {
+                path = URL(fileURLWithPath: path).lastPathComponent
+            }
+        }
+        var startLine = 1
+        if parts.count > 1 {
+            let frag = String(parts[1]).replacingOccurrences(of: "L", with: "")
+            if let firstNum = frag.split(separator: "-").first, let parsed = Int(firstNum), parsed > 0 {
+                startLine = parsed
+            }
+        }
+        isWorkspacePresented = true
+        Task { await readWorkspaceFile(path: path, startLine: startLine, append: false) }
     }
 
     func switchBranch(_ branch: String) async {
@@ -1329,6 +1833,7 @@ final class AntigravityStore: ObservableObject {
         base: String = "",
         title: String = "",
         body: String = "",
+        number: Int64 = 0,
         expectedRevision: String
     ) async {
         workspaceActionBusy = true
@@ -1344,6 +1849,7 @@ final class AntigravityStore: ObservableObject {
             base: base,
             title: title,
             body: body,
+            number: number,
             expectedRevision: expectedRevision,
             command: MobileCore.randomHex(bytes: 16),
             issuedMs: nowMs,
@@ -1360,11 +1866,11 @@ final class AntigravityStore: ObservableObject {
             // Refresh paginated collections after mutation so Branches/Worktrees/PRs reflect the change.
             if let p1 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 1, quietErrors: true),
                p1.error.isEmpty {
-                snap = snap.merging(worktrees: p1.worktrees)
+                snap = snap.merging(worktrees: p1.worktrees, branches: p1.branches)
             }
             if let p2 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 2, quietErrors: true),
                p2.error.isEmpty {
-                snap = snap.merging(branches: p2.branches)
+                snap = snap.merging(worktrees: p2.worktrees, branches: p2.branches)
             }
             if let p3 = await performWorkspaceRPC(computer: computer, method: "ReadWorkspace", page: 3, quietErrors: true),
                p3.error.isEmpty {
@@ -1372,6 +1878,248 @@ final class AntigravityStore: ObservableObject {
             }
             workspaceSnapshot = snap
         }
+    }
+
+    // MARK: - Rich Session Operations: Pin / Rename / Archive / Compact / Fork / Rewind / Side Questions (#14013)
+
+    func refreshSessionMetadata() async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        if let view = await performDaemonRPC(computer: computer, method: "ListSessionMeta", quietErrors: true), view.ok {
+            var next: [String: SessionMetadataRecord] = [:]
+            for row in view.sessions { next[row.id] = row }
+            sessionMetaByID = next
+        }
+    }
+
+    func togglePinSession(_ session: ChatSessionSummary) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        let nextPinned = !isPinned(session)
+        let current = sessionMetaByID[session.id]
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "UpdateSessionMeta",
+            session: session.id,
+            title: current?.title ?? "",
+            folder: current?.folder ?? "",
+            pinned: nextPinned,
+            archived: current?.archived,
+            quietErrors: false
+        ), view.ok {
+            var updated: [String: SessionMetadataRecord] = sessionMetaByID
+            for row in view.sessions { updated[row.id] = row }
+            if updated[session.id] == nil {
+                updated[session.id] = SessionMetadataRecord(
+                    id: session.id,
+                    title: current?.title ?? "",
+                    folder: current?.folder ?? "",
+                    pinned: nextPinned,
+                    archived: current?.archived ?? false,
+                    updatedAt: Int64(Date().timeIntervalSince1970)
+                )
+            }
+            sessionMetaByID = updated
+            statusToast = nextPinned ? "Pinned chat" : "Unpinned chat"
+        }
+    }
+
+    func renameSession(_ session: ChatSessionSummary, title: String) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else { return }
+        let current = sessionMetaByID[session.id]
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "UpdateSessionMeta",
+            session: session.id,
+            title: cleanTitle,
+            folder: current?.folder ?? "",
+            pinned: current?.pinned,
+            archived: current?.archived,
+            quietErrors: false
+        ), view.ok {
+            var updated = sessionMetaByID
+            for row in view.sessions { updated[row.id] = row }
+            if updated[session.id] == nil {
+                updated[session.id] = SessionMetadataRecord(
+                    id: session.id,
+                    title: cleanTitle,
+                    folder: current?.folder ?? "",
+                    pinned: current?.pinned ?? false,
+                    archived: current?.archived ?? false,
+                    updatedAt: Int64(Date().timeIntervalSince1970)
+                )
+            }
+            sessionMetaByID = updated
+            statusToast = "Renamed chat"
+        }
+    }
+
+    func toggleArchiveSession(_ session: ChatSessionSummary) async {
+        guard let computer = activeComputer, computer.canSendRPC else { return }
+        let nextArchived = !isArchived(session)
+        let current = sessionMetaByID[session.id]
+        if let view = await performDaemonRPC(
+            computer: computer,
+            method: "UpdateSessionMeta",
+            session: session.id,
+            title: current?.title ?? "",
+            folder: current?.folder ?? "",
+            pinned: current?.pinned,
+            archived: nextArchived,
+            quietErrors: false
+        ), view.ok {
+            var updated = sessionMetaByID
+            for row in view.sessions { updated[row.id] = row }
+            if updated[session.id] == nil {
+                updated[session.id] = SessionMetadataRecord(
+                    id: session.id,
+                    title: current?.title ?? "",
+                    folder: current?.folder ?? "",
+                    pinned: current?.pinned ?? false,
+                    archived: nextArchived,
+                    updatedAt: Int64(Date().timeIntervalSince1970)
+                )
+            }
+            sessionMetaByID = updated
+            if nextArchived && activeSessionID == session.id && !showArchivedSessions {
+                startNewChat()
+            }
+            statusToast = nextArchived ? "Archived chat" : "Restored chat"
+        }
+    }
+
+    func triggerCompact() async {
+        await sendMessage(overrideText: "/compact", overrideAttachments: [])
+    }
+
+    private func buildSeedContext(upToExclusive targetID: String? = nil) -> String {
+        var slice: [TranscriptItem] = []
+        for item in items {
+            if let targetID, item.id == targetID { break }
+            if item.role == .user || item.role == .assistant {
+                slice.append(item)
+            }
+        }
+        let recent = slice.suffix(8)
+        let lines: [String] = recent.map { row in
+            let speaker = row.role == .user ? "User" : "Assistant"
+            let clean = row.role == .user ? ParsedUserMessage.parse(row.text).text : row.text
+            return "\(speaker): \(clean.truncatedToUTF8Bytes(500))"
+        }
+        return lines.joined(separator: "\n\n")
+    }
+
+    func forkActiveSession() async {
+        guard let current = activeSession else {
+            statusToast = "Open a chat first to fork it."
+            return
+        }
+        let seed = buildSeedContext()
+        let title = displayTitle(for: current)
+        startNewChat()
+        let forkPrompt = seed.isEmpty
+            ? "[Forked from \"\(title)\"] Ready to branch off — briefly confirm context and await my next instruction."
+            : "[Forked from \"\(title)\"]\nRecent context:\n\(seed)\n\nAcknowledge this forked branch briefly and wait for my next instruction."
+        await sendMessage(overrideText: forkPrompt, overrideAttachments: [])
+        statusToast = "Forked session"
+    }
+
+    func rewindToMessage(_ targetItem: TranscriptItem) async {
+        let original = ParsedUserMessage.parse(targetItem.text).text
+        let seed = buildSeedContext(upToExclusive: targetItem.id)
+        startNewChat()
+        draftText = original
+        if !seed.isEmpty {
+            statusToast = "Rewound draft — edit and send to continue from that turn"
+        } else {
+            statusToast = "Restored message to composer"
+        }
+    }
+
+    func editAndResendMessage(_ targetItem: TranscriptItem, editedText: String) async {
+        let clean = editedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let seed = buildSeedContext(upToExclusive: targetItem.id)
+        let oldTitle = activeSession.map { displayTitle(for: $0) } ?? "previous chat"
+        startNewChat()
+        let prompt: String
+        if seed.isEmpty {
+            prompt = clean
+        } else {
+            prompt = "[Edited earlier turn from \"\(oldTitle)\"]\nContext before edited turn:\n\(seed)\n\nNew user message:\n\(clean)"
+        }
+        await sendMessage(overrideText: prompt, overrideAttachments: [])
+    }
+
+    func askSideQuestion(_ question: String) async {
+        let clean = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let computer = activeComputer, computer.canSendRPC else { return }
+        let entry = SideQuestionEntry(question: clean, answer: "", isLoading: true)
+        sideQuestions.append(entry)
+
+        let context = buildSeedContext()
+        let prompt = """
+        [Read-only /btw side question — DO NOT edit files or run mutating commands. Answer concisely.]
+        \(context.isEmpty ? "" : "Current conversation context:\n\(context)\n\n")Question: \(clean)
+        """
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sideSessionID = MobileCore.randomHex(bytes: 16)
+        let model = MobileCore.normalizeAntigravityModel(selectedModelID)
+        let folder = selectedFolder.isEmpty || !MobileCore.isValidFolder(selectedFolder) ? "" : selectedFolder
+
+        guard let openView = await performEnvironmentRPC(
+            computer: computer,
+            method: "OpenSession",
+            session: sideSessionID,
+            command: MobileCore.randomHex(bytes: 16),
+            generation: 1,
+            revision: 0,
+            text: prompt.truncatedToUTF8Bytes(12_000),
+            issuedMs: nowMs,
+            expiresMs: nowMs + 120_000,
+            model: model,
+            folder: folder,
+            quietErrors: true
+        ), openView.error.isEmpty else {
+            if let idx = sideQuestions.firstIndex(where: { $0.id == entry.id }) {
+                sideQuestions[idx].answer = "Could not start side question on host."
+                sideQuestions[idx].isLoading = false
+            }
+            return
+        }
+
+        // Poll briefly for side-question reply without disturbing the main active session
+        for _ in 0..<40 {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let readView = await performEnvironmentRPC(
+                computer: computer,
+                method: "ReadSession",
+                session: sideSessionID,
+                quietErrors: true
+            ) else { continue }
+            let reply = readView.items.last(where: { $0.role == .assistant })?.text ?? ""
+            let stillBusy = readView.sessions.first(where: { $0.id == sideSessionID })?.busy ?? false
+            if !reply.isEmpty {
+                if let idx = sideQuestions.firstIndex(where: { $0.id == entry.id }) {
+                    sideQuestions[idx].answer = reply
+                    sideQuestions[idx].isLoading = stillBusy
+                }
+            }
+            if !stillBusy && !reply.isEmpty { break }
+        }
+        if let idx = sideQuestions.firstIndex(where: { $0.id == entry.id }) {
+            sideQuestions[idx].isLoading = false
+            if sideQuestions[idx].answer.isEmpty {
+                sideQuestions[idx].answer = "No response received yet."
+            }
+        }
+    }
+
+    func promoteSideQuestionToConversation(_ entry: SideQuestionEntry) {
+        let block = "Regarding my side question (\(entry.question)):\n\(entry.answer)\n\n"
+        draftText = draftText.isEmpty ? block : "\(draftText)\n\(block)"
+        isSideQuestionPresented = false
+        statusToast = "Promoted side question to composer"
     }
 
     // MARK: - Real-time push & fallback polling
@@ -1622,7 +2370,9 @@ final class AntigravityStore: ObservableObject {
         base: String = "",
         title: String = "",
         body: String = "",
+        number: Int64 = 0,
         page: Int64 = 0,
+        cursor: Int64 = 0,
         expectedRevision: String = "",
         command: String = "",
         issuedMs: Int64 = 0,
@@ -1642,7 +2392,9 @@ final class AntigravityStore: ObservableObject {
                 base: base,
                 title: title,
                 body: body,
+                number: number,
                 page: page,
+                cursor: cursor,
                 expectedRevision: expectedRevision,
                 command: command,
                 issuedMs: issuedMs,
@@ -1685,6 +2437,80 @@ final class AntigravityStore: ObservableObject {
             if computer.isLocalMac, !MobileCore.validateWorkspaceView(work: work, host: parsed.host, method: method, raw: data) {
                 if !quietErrors { workspaceError = work.lastError.errorDescription ?? "Workspace response failed schema validation." }
                 return nil
+            }
+            return parsed
+        }
+    }
+
+    func performDaemonRPC(
+        computer: ComputerEntry,
+        method: String,
+        session: String = "",
+        title: String = "",
+        folder: String = "",
+        pinned: Bool? = nil,
+        archived: Bool? = nil,
+        quietErrors: Bool = false
+    ) async -> ParsedDaemonView? {
+        guard let work = MobileCorePool.shared.checkout() else {
+            if !quietErrors { bannerError = "Internal crypto/codec arena unavailable." }
+            return nil
+        }
+        defer { MobileCorePool.shared.checkin(work) }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let isWrite = method == "UpdateSessionMeta" || method == "UpdateForeman"
+        guard let params = MobileCore.encodeDaemonRequest(
+            work: work,
+            method: method,
+            session: session,
+            command: isWrite ? MobileCore.randomHex(bytes: 16) : "",
+            title: title,
+            folder: folder,
+            pinned: pinned,
+            archived: archived,
+            issuedMs: isWrite ? nowMs : 0,
+            expiresMs: isWrite ? (nowMs + 120_000) : 0
+        ) else {
+            if !quietErrors { bannerError = work.lastError.errorDescription ?? "Could not encode daemon request." }
+            return nil
+        }
+
+        let result: Result<Data, TailscaleRPCError>
+        if computer.isLocalMac {
+            result = await LocalSocketClient.shared.exchangeLine(params)
+        } else {
+            guard let paired = computer.paired, !paired.isExpired,
+                  let endpoint = endpointFor(computer),
+                  let secret = store.loadOrCreateDeviceSecret() else {
+                if !quietErrors { bannerError = "Computer is not paired over Tailscale." }
+                return nil
+            }
+            result = await client.sendRPC(
+                paired: paired,
+                endpoint: endpoint,
+                secret: secret,
+                method: method,
+                params: params,
+                isWorkspace: false,
+                isDaemon: true
+            )
+        }
+
+        switch result {
+        case .failure(let error):
+            if !quietErrors { bannerError = error.localizedDescription }
+            return nil
+        case .success(let data):
+            guard let parsed = ParsedDaemonView.parse(data) else {
+                if !quietErrors { bannerError = "Malformed daemon response." }
+                return nil
+            }
+            if computer.isLocalMac, !MobileCore.validateDaemonView(work: work, host: parsed.host, method: method, raw: data) {
+                if !quietErrors { bannerError = work.lastError.errorDescription ?? "Daemon response failed schema validation." }
+                return nil
+            }
+            if !parsed.error.isEmpty, !quietErrors {
+                bannerError = HostErrorFormatter.describe(parsed.error, method: method)
             }
             return parsed
         }

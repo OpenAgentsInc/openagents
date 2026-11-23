@@ -284,6 +284,47 @@ enum MobileCore {
         }
     }
 
+    /// Encodes a typed `DmRequest` (`ListSessionMeta`, `UpdateSessionMeta`, `DaemonHealth`) via Coax `mc_dm_request` (#14013).
+    static func encodeDaemonRequest(
+        work: MobileCoreWork,
+        method: String,
+        session: String = "",
+        command: String = "",
+        title: String = "",
+        folder: String = "",
+        pinned: Bool? = nil,
+        archived: Bool? = nil,
+        issuedMs: Int64 = 0,
+        expiresMs: Int64 = 0
+    ) -> Data? {
+        var out = [UInt8](repeating: 0, count: 16_384)
+        let pinFlag: Int64 = pinned.map { $0 ? 1 : 0 } ?? -1
+        let archFlag: Int64 = archived.map { $0 ? 1 : 0 } ?? -1
+        let n = oa_mobile_dm_request(
+            work.raw,
+            method,
+            session,
+            command,
+            title,
+            folder,
+            pinFlag,
+            archFlag,
+            issuedMs,
+            expiresMs,
+            &out,
+            Int64(out.count)
+        )
+        guard n > 0 else { return nil }
+        return Data(out[0..<Int(n)])
+    }
+
+    static func validateDaemonView(work: MobileCoreWork, host: String, method: String, raw: Data) -> Bool {
+        raw.withUnsafeBytes { buf in
+            guard let ptr = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return false }
+            return oa_mobile_dm_view_valid(work.raw, host, method, ptr, Int64(raw.count)) != 0
+        }
+    }
+
     /// Seals one NIP-44 `app.rpc` event via Coax `dv_seal` (works for both Environment and Workspace RPCs).
     static func sealRPC(
         work: MobileCoreWork,

@@ -4,6 +4,8 @@ import SwiftUI
 struct SidebarView: View {
     @ObservedObject var store: AppStore
     @State private var workingExpanded = true
+    @State private var renamingSession: ChatSessionSummary?
+    @State private var renameDraft: String = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,11 +99,22 @@ struct SidebarView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("RECENTS")
-                            .font(.system(size: 11, weight: .semibold))
-                            .tracking(0.6)
-                            .foregroundStyle(OATheme.textMuted)
-                            .padding(.horizontal, 6)
+                        HStack {
+                            Text("RECENTS")
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(0.6)
+                                .foregroundStyle(OATheme.textMuted)
+                            Spacer()
+                            Button {
+                                store.showArchivedSessions.toggle()
+                            } label: {
+                                Text(store.showArchivedSessions ? "Hide Archived" : "Show Archived")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundStyle(OATheme.textMuted)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 6)
 
                         if store.recentSessions.isEmpty && store.workingSessions.isEmpty {
                             Text(store.activeComputer?.canSendRPC == true
@@ -114,6 +127,27 @@ struct SidebarView: View {
                         } else {
                             ForEach(store.recentSessions) { session in
                                 sessionRow(session)
+                            }
+                            if store.hasMoreSessions {
+                                Button {
+                                    Task { await store.loadMoreSessions() }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if store.isLoadingMoreSessions {
+                                            ProgressView().controlSize(.mini).tint(OATheme.textSecondary)
+                                        }
+                                        Text("Load more chats")
+                                            .font(.system(size: 12, weight: .medium))
+                                    }
+                                    .foregroundStyle(OATheme.textSecondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(store.isLoadingMoreSessions)
+                                .padding(.top, 4)
                             }
                         }
                     }
@@ -154,10 +188,26 @@ struct SidebarView: View {
             .accessibilityIdentifier("sidebar.computers")
         }
         .background(OATheme.background)
+        .alert("Rename Chat", isPresented: Binding(
+            get: { renamingSession != nil },
+            set: { if !$0 { renamingSession = nil } }
+        )) {
+            TextField("Chat title", text: $renameDraft)
+            Button("Save") {
+                if let target = renamingSession {
+                    let title = renameDraft
+                    renamingSession = nil
+                    Task { await store.renameSession(target, title: title) }
+                }
+            }
+            Button("Cancel", role: .cancel) { renamingSession = nil }
+        }
     }
 
     private func sessionRow(_ session: ChatSessionSummary) -> some View {
         let isSelected = store.activeSessionID == session.id
+        let pinned = store.isPinned(session)
+        let archived = store.isArchived(session)
         return Button {
             store.selectSession(session)
         } label: {
@@ -171,10 +221,14 @@ struct SidebarView: View {
                         Circle()
                             .fill(OATheme.statusWarn)
                             .frame(width: 6, height: 6)
+                    } else if pinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(OATheme.textSecondary)
                     }
-                    Text(session.displayTitle)
+                    Text(store.displayTitle(for: session))
                         .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
-                        .foregroundStyle(OATheme.textPrimary)
+                        .foregroundStyle(archived ? OATheme.textMuted : OATheme.textPrimary)
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     Text(OATimeFormat.shortAge(updatedAtMs: session.updatedAtMs))
@@ -187,7 +241,15 @@ struct SidebarView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(OATheme.textSecondary)
                         .lineLimit(1)
-                    if session.isNativeAntigravity {
+                    if archived {
+                        Text("archived")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(OATheme.surface, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                    } else if session.isNativeAntigravity {
                         Text("local")
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
                             .foregroundStyle(OATheme.textMuted)
@@ -207,6 +269,31 @@ struct SidebarView: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { await store.togglePinSession(session) }
+            } label: {
+                Label(pinned ? "Unpin" : "Pin", systemImage: pinned ? "pin.slash" : "pin")
+            }
+            Button {
+                renameDraft = store.displayTitle(for: session)
+                renamingSession = session
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+            Button {
+                store.selectSession(session)
+                Task { await store.forkActiveSession() }
+            } label: {
+                Label("Fork Session", systemImage: "arrow.triangle.branch")
+            }
+            Divider()
+            Button {
+                Task { await store.toggleArchiveSession(session) }
+            } label: {
+                Label(archived ? "Restore" : "Archive", systemImage: archived ? "tray.and.arrow.up" : "archivebox")
+            }
+        }
     }
 
     private func subtitleFor(_ session: ChatSessionSummary) -> String {

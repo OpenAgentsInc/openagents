@@ -12,6 +12,8 @@ typedef struct {
     coax_t_EaView view;
     coax_t_WsRequest ws_req;
     coax_t_WsView ws_view;
+    coax_t_DmRequest dm_req;
+    coax_t_DmView dm_view;
     int last_error;
 } oa_mobile_work_t;
 
@@ -265,6 +267,52 @@ int oa_mobile_ws_view_valid(void *work, const char *host, const char *method, co
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
     int ok = mc_ws_view_valid(
         (coax_v_t_WsView){ &w->ws_view, 1 },
+        oa_mc_cstr(host),
+        oa_mc_cstr(method),
+        oa_mc_bytes(raw, raw_n)
+    ) ? 1 : 0;
+    w->last_error = ok ? OA_ERR_OK : ((raw && raw_n > 0 && raw[0] == '{') ? OA_ERR_SCHEMA_MISMATCH : OA_ERR_JSON_SYNTAX);
+    return ok;
+}
+
+int64_t oa_mobile_dm_request(
+    void *work,
+    const char *method,
+    const char *session,
+    const char *command,
+    const char *title,
+    const char *folder,
+    int64_t pinned_flag,
+    int64_t archived_flag,
+    int64_t issued,
+    int64_t expires,
+    uint8_t *out,
+    int64_t cap
+) {
+    if (!work) return OA_ERR_NULL_WORK;
+    oa_mobile_work_t *w = (oa_mobile_work_t *)work;
+    int64_t n = mc_dm_request(
+        (coax_v_t_DmRequest){ &w->dm_req, 1 },
+        oa_mc_cstr(method),
+        oa_mc_cstr(session),
+        oa_mc_cstr(command),
+        oa_mc_cstr(title),
+        oa_mc_cstr(folder),
+        pinned_flag,
+        archived_flag,
+        issued,
+        expires,
+        oa_mc_out(out, cap)
+    );
+    w->last_error = n > 0 ? OA_ERR_OK : OA_ERR_ENCODE_FAIL;
+    return n;
+}
+
+int oa_mobile_dm_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n) {
+    if (!work) return 0;
+    oa_mobile_work_t *w = (oa_mobile_work_t *)work;
+    int ok = mc_dm_view_valid(
+        (coax_v_t_DmView){ &w->dm_view, 1 },
         oa_mc_cstr(host),
         oa_mc_cstr(method),
         oa_mc_bytes(raw, raw_n)
