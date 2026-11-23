@@ -74,6 +74,18 @@ tool_main :: () -> int #export_c #effects(all) {
     for k: 0..<p[0].n { print("%\n", cc_command(p[..], k, cmd[..])); }
     return 0;
   }
+  crit_bad := false;
+  crit_buf: [2048] u8;
+  for i: 0..<CC_CRITICAL_FILES.count {
+    cf := CC_CRITICAL_FILES[i];
+    fl := CC_CRITICAL_FLOORS[i];
+    rn := fs_read(cf, crit_buf[..]);
+    if !cc_critical_ok(rn, fl) {
+      print("contributor-check: FAILED: critical root file % is missing or truncated (% B < floor % B)\n", cf, rn, fl);
+      crit_bad = true;
+    }
+  }
+  if crit_bad { return 1; }
   failed: [CC_MAX] bool;
   for k: 0..<p[0].n {
     print("contributor-check: % (%)\n", p[0].name[k], cc_command(p[..], k, cmd[..]));

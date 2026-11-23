@@ -108,6 +108,40 @@ pp_blob_size :: (blob: string) -> int {
   if !g.ok { return 0; }
   return pp_atoi(pp_line(g.text, 0));
 }
+// Critical root control/instruction files that must never be accidentally wiped or truncated
+// (e.g. commit cca95dcf9c emptied AGENTS.md to 0 bytes). Intentional >80% cuts require an
+// "Allow-Truncate: PATH: why" trailer in the commit message.
+pp_critical_floor :: (path: string) -> int {
+  if path == "AGENTS.md" { return 1024; }
+  if path == "INVARIANTS.md" { return 512; }
+  if path == "contexts.txt" { return 256; }
+  return 0;
+}
+pp_allow_truncate :: (msg: string, path: string) -> bool {
+  tag := "Allow-Truncate:";
+  i := 0;
+  while i < msg.count {
+    j := i;
+    while j < msg.count && msg[j] != '\n' { j += 1; }
+    line := pp_trim(cast(string) msg[i..<j]);
+    if pp_starts(line, tag) {
+      rest := pp_trim(cast(string) line[tag.count..<line.count]);
+      if pp_starts(rest, path) && rest.count > path.count && rest[path.count] == ':' {
+        why := pp_trim(cast(string) rest[path.count + 1..<rest.count]);
+        if why.count > 0 { return true; }
+      }
+    }
+    i = j + 1;
+  }
+  return false;
+}
+pp_critical_wipe :: (path: string, was_sz: int, now_sz: int, deleted: bool, msg: string) -> bool {
+  min_bytes := pp_critical_floor(path);
+  if min_bytes == 0 || pp_allow_truncate(msg, path) { return false; }
+  if deleted || now_sz < min_bytes { return true; }
+  if was_sz > min_bytes && now_sz * 5 < was_sz { return true; }
+  return false;
+}
 pp_has :: (s: string, p: string) -> bool {
   if p.count == 0 || p.count > s.count { return false; }
   for k: 0..<s.count - p.count + 1 { if s[k] == p[0] && cast(string) s[k..<k + p.count] == p { return true; } }
@@ -366,7 +400,7 @@ pp_is_commit :: (rev: string) -> bool {
 }
 
 // The verdict of rules 1 and 2 on one commit.
-PpVerdict :: struct { ok: bool; clobbers: int; no_agent: bool; merge: bool; verif_bloat: int; }
+PpVerdict :: struct { ok: bool; clobbers: int; no_agent: bool; merge: bool; verif_bloat: int; critical_wipes: int; }
 
 // Rules 1 and 2 for commit c on its first parent. push lists the commits of this push, one a line.
 // Prints what it refuses unless quiet.
@@ -405,6 +439,18 @@ pp_judge :: (c: string, push: string, st: [] PpState, bufs: [] PpBufs, quiet: bo
   d := pp_git(dargv[..], bufs[0].diff[..]);
   if !d.ok || !pp_load(st, d.text) { v.ok = false; return v; }
   for k: 0..<st[0].n {
+    if pp_critical_floor(st[0].path[k]) > 0 {
+      was_sz := pp_blob_size(st[0].was[k]);
+      deleted := st[0].now[k] == PP_ZERO;
+      now_sz := ifx deleted then 0 else pp_blob_size(st[0].now[k]);
+      if pp_critical_wipe(st[0].path[k], was_sz, now_sz, deleted, msg) {
+        if !quiet {
+          print("  % wipes or truncates critical file % (% B -> % B, floor % B). Restore it or add trailer \"Allow-Truncate: %: <why>\"\n",
+                cast(string) c[0..<10], st[0].path[k], was_sz, now_sz, pp_critical_floor(st[0].path[k]), st[0].path[k]);
+        }
+        v.critical_wipes += 1;
+      }
+    }
     if st[0].now[k] != PP_ZERO && pp_verif_bloat(st[0].path[k]) {
       if v.verif_bloat < PP_SHOW && !quiet { print("  % adds/modifies raw verification artifact % (store in ~/.openagents/verification/ and commit only .md + .sha256, #13840)\n", cast(string) c[0..<10], st[0].path[k]); }
       v.verif_bloat += 1;
@@ -1033,7 +1079,7 @@ tool_main :: () -> int #export_c #effects(all) {
     v := pp_judge(replay, "", st[..], bufs[..], false, human);
     if !v.ok { print("prepush: % could not be judged\n", replay); return 2; }
     if v.merge { print("prepush: % is a merge; the stale-snapshot rule reads one parent\n", replay); }
-    refused := v.clobbers > 0 || v.no_agent;
+    refused := v.clobbers > 0 || v.no_agent || v.critical_wipes > 0;
     print("prepush --replay %: %\n", replay, ifx refused then "refused" else "passes");
     return ifx refused then 1 else 0;
   }
@@ -1082,7 +1128,7 @@ tool_main :: () -> int #export_c #effects(all) {
     for c: push { if c == '\n' { count += 1; } }
     if push.count > 0 && push[push.count - 1] != '\n' { count += 1; }
     if count > PP_PUSH { print("prepush: % commits in one push (more than %); the rules read the newest %\n", count, PP_PUSH, PP_PUSH); }
-    clobbered := 0; unsigned := 0; verif_bloat := 0;
+    clobbered := 0; unsigned := 0; verif_bloat := 0; critical_wipes := 0;
     for k: 0..<count {
       c := pp_line(push, k);
       if c.count == 0 { continue; }
@@ -1092,6 +1138,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if v.clobbers > 0 { clobbered += 1; }
       if v.no_agent { unsigned += 1; }
       if v.verif_bloat > 0 { verif_bloat += 1; }
+      if v.critical_wipes > 0 { critical_wipes += 1; }
     }
     if clobbered > 0 {
       print("prepush: REFUSED: % commit% newer work on main. Fix: git fetch origin && git rebase origin/main, then check `git show --stat` lists only your files (restore others with git checkout origin/main -- PATH). If you mean it, name each file, its folder/ or the commit it undoes in the message (git commit --amend) and push again (%).\n", clobbered, ifx clobbered == 1 then " undoes" else "s undo", PP_HOW);
@@ -1099,6 +1146,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     if unsigned > 0 { print("prepush: REFUSED: % commit% with no \"Agent:\" line (%)\n", unsigned, ifx unsigned == 1 then "" else "s", PP_HOW); refused += 1; }
     if verif_bloat > 0 { print("prepush: REFUSED: % commit% raw verification artifacts under docs/verification/ or psionic/docs/verification/ (#13840)\n", verif_bloat, ifx verif_bloat == 1 then " adds" else "s add"); refused += 1; }
+    if critical_wipes > 0 { print("prepush: REFUSED: % commit% critical root file(s) (AGENTS.md / INVARIANTS.md / contexts.txt). Restore or add \"Allow-Truncate: PATH: why\"\n", critical_wipes, ifx critical_wipes == 1 then " wipes/truncates" else "s wipe/truncate"); refused += 1; }
     if refused > 0 { continue; }
     print("prepush: % commit% to main: stale-snapshot and Agent rules passed (% ms)\n", count, ifx count == 1 then "" else "s", proc_now_ms() - t0);
     // the checks run on the checkout, so only for a push of its HEAD
@@ -1245,4 +1293,21 @@ PP_T_HIST :: "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other-agent\n\n:000000 1
   #assert pp_binary_ext("apps/openagents-web/realms/everglade2/assets/everglade2.pack");
   #assert pp_binary_ext("gamebuilder/assets/scrappers.gbm") && pp_binary_ext("a/b.pack.gz") && pp_binary_ext("a/b.ttf");
   #assert !pp_binary_ext("assets/registry/collections/realms.lock.json") && !pp_binary_ext("coax/web/assets-sync.coax");
+}
+#test "critical root file wipe guard catches cca95dcf9c-style empty/truncated AGENTS.md" {
+  #assert pp_critical_floor("AGENTS.md") == 1024 && pp_critical_floor("INVARIANTS.md") == 512 && pp_critical_floor("contexts.txt") == 256;
+  #assert pp_critical_floor("README.md") == 0 && pp_critical_floor("docs/AGENTS.md") == 0;
+  // Empty 0-byte wipe (cca95dcf9c) and deletion are refused even when commit mentions AGENTS.md.
+  #assert pp_critical_wipe("AGENTS.md", 37000, 0, false, "Update AGENTS.md\n\nAgent: antigravity\n");
+  #assert pp_critical_wipe("AGENTS.md", 37000, 0, true, "Remove AGENTS.md\n\nAgent: antigravity\n");
+  // Below floor or >80% single-commit shrinkage is refused.
+  #assert pp_critical_wipe("AGENTS.md", 37000, 900, false, "Trim\n");
+  #assert pp_critical_wipe("AGENTS.md", 37000, 5000, false, "Trim\n");
+  // Normal restructuring (37 KB -> 13.7 KB, ~63% cut, well above floor and >20% remaining) passes.
+  #assert !pp_critical_wipe("AGENTS.md", 37425, 13748, false, "Restructure AGENTS.md\n");
+  // Explicit Allow-Truncate trailer excuses intentional shrinkage/replacement.
+  #assert !pp_critical_wipe("AGENTS.md", 37000, 1200, false, "Slim\n\nAllow-Truncate: AGENTS.md: split into docs/REPO-MAP.md\nAgent: antigravity\n");
+  #assert pp_critical_wipe("AGENTS.md", 37000, 1200, false, "Slim\n\nAllow-Truncate: AGENTS.md:\n");
+  #assert pp_critical_wipe("INVARIANTS.md", 3981, 200, false, "Oops\n");
+  #assert !pp_critical_wipe("INVARIANTS.md", 3981, 1781, false, "Move orphaned paragraphs to apps/INVARIANTS.md\n");
 }

@@ -18,8 +18,14 @@
 // passed, 1 when one failed, 2 when it couldn't start.
 #import "Basic";
 #load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
 #load "../lib/sys/proc.coax";
 #load "contributor-check-host.coax";
+
+CC_CRITICAL_FILES :: [3] string.["AGENTS.md", "INVARIANTS.md", "contexts.txt"];
+CC_CRITICAL_FLOORS :: [3] int.[1024, 512, 256];
+
+cc_critical_ok :: (size: int, min_bytes: int) -> bool { return size >= min_bytes; }
 
 CC_MAX :: 10;              // checks in a plan
 CC_ARGS :: 6;              // words in one check's command
@@ -126,4 +132,5 @@ cc_verdict :: (names: [] string, failed: [] bool, out: [] u8) -> string {
   o: [256] u8;
   #assert cc_verdict(names[..], ok[..], o[..]) == "contributor-check: every check passed. Paste this output into your pull request.";
   #assert cc_verdict(names[..], bad[..], o[..]) == "contributor-check: FAILED: b c. Fix them and run scripts/check.sh again.";
+  #assert cc_critical_ok(1024, 1024) && !cc_critical_ok(0, 1024) && !cc_critical_ok(511, 512);
 }
