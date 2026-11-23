@@ -10,18 +10,23 @@
 #   apps/openagents-desktop/release.sh VERSION DOWNLOAD_URL [OUT_DIR]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
 version="${1:?usage: release.sh VERSION DOWNLOAD_URL [OUT_DIR]}"
 download_url="${2:?usage: release.sh VERSION DOWNLOAD_URL [OUT_DIR]}"
 out_dir="${3:-$here/build/release}"
 mkdir -p "$out_dir"
 
 export OA_MAC_NOTARIZE=1
+export OA_RELEASE_MINIMAL="${OA_RELEASE_MINIMAL:-1}"
 "$here/build.sh"
 
 app="$here/build/OpenAgents.app"
 archive="$out_dir/OpenAgents-$version.zip"
 rm -f "$archive"
 ditto -c -k --keepParent "$app" "$archive"
+if [[ "$OA_RELEASE_MINIMAL" == "1" ]]; then
+  "$repo/coax/web/tool.sh" "$here/v1-bundle-check.coax" --platform macos --stage "${OA_V1_STAGE:-1}" --archive "$archive" "$app"
+fi
 
 build_num="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || echo 1)"
 feed="$out_dir/openagents-desktop-update.json"

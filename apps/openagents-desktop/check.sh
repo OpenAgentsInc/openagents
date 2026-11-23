@@ -4,8 +4,10 @@
 # and the Windows command-line rules hold (#13782).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
 export BROWSER=/usr/bin/true
 "$here/build.sh"
+"$repo/coax/web/tool.sh" "$here/v1-bundle-check.coax" --platform macos --stage "${OA_V1_STAGE:-1}" "${CODER_BUILD:-$here/build}/OpenAgents.app"
 "$here/tests/account-check.sh"
 "$here/tests/sign-check.sh"
 args_bin="$(mktemp -t oa-win-args)"
