@@ -96,12 +96,29 @@ ph_claude_found :: () -> bool {
   return false;
 }
 
-// A bundled worker or tool beside this program (the app's Resources), or in $CODER_WORKER_DIR.
+// A bundled worker or tool: $CODER_WORKER_DIR, else beside this program (the app's Resources),
+// else the installed OpenAgents.app bundle (when launched as ~/.openagents/environment/bin/<commit>/openagents-environment).
 ph_tool :: (name: string, out: [] u8) -> string {
   db: [1024] u8; dir := proc_getenv("CODER_WORKER_DIR", db[..]);
+  if dir.count > 0 {
+    p := fs_join(dir, name, out);
+    return ifx fs_kind(p) == FS_FILE then p else "";
+  }
   exe: [4096] u8;
-  if dir.count == 0 { n := cxproc_self_path(exe[..]); if n < 1 || n > exe.count { return ""; } dir = fs_dir(cast(string) exe[0..<n]); }
-  p := fs_join(dir, name, out);
+  n := cxproc_self_path(exe[..]);
+  if n > 0 && n <= exe.count {
+    p := fs_join(fs_dir(cast(string) exe[0..<n]), name, out);
+    if fs_kind(p) == FS_FILE { return p; }
+  }
+  p := fs_join("/Applications/OpenAgents.app/Contents/Resources", name, out);
+  if fs_kind(p) == FS_FILE { return p; }
+  hb: [1024] u8; home := ph_home(hb[..]);
+  if home.count > 0 {
+    ab: [1400] u8; an := hs_cat(ab[..], 0, home); an = hs_cat(ab[..], an, "/Applications/OpenAgents.app/Contents/Resources");
+    p = fs_join(cast(string) ab[0..<an], name, out);
+    if fs_kind(p) == FS_FILE { return p; }
+  }
+  p = fs_join("/Applications/Coder.app/Contents/Resources", name, out);
   return ifx fs_kind(p) == FS_FILE then p else "";
 }
 ph_worker :: (name: string, out: [] u8) -> string {
