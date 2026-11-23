@@ -1,0 +1,5 @@
+/Generated/
+/build*/
+/OpenAgentsMac.xcodeproj/
+*.xcuserstate
+xcuserdata/

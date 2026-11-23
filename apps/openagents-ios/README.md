@@ -2,13 +2,13 @@
 
 OpenAgents for iOS is a dedicated, first-class mobile client exclusively for **Antigravity over Tailscale** (GitHub `#13993`).
 
-- **Architecture (Option 2 — Clean-Sheet SwiftUI over Lean Coax `#authority` Core):**
-  - **Native iOS UI (`Sources/`):** Pure-black OLED (`#000000`, `#262626` hairlines) SwiftUI shell with native keyboard docking, text selection, scrolling, accessibility, Keychain secp256k1 identity, Bonjour `_openagents-coder._tcp` discovery, and direct Tailscale TCP over port `47109`.
-  - **Compiled Coax Core (`mobile-core.coax` → `Generated/mobile_core.c`):** Owns all protocol, cryptography, framing, and policy rules:
+- **Architecture (Shared Cross-Apple SwiftUI + Lean Coax `#authority` Core with OpenAgents macOS):**
+  - **Shared Engine (`apps/shared/antigravity/`):** Compiled Coax C core (`client-core.coax` → `Generated/client_core.c` + `client-core-bridge.{h,c}`) and cross-Apple Swift engine (`AntigravityStore`, `TailscaleClient`, `DeviceIdentityStore`, `AntigravityModels`, `TranscriptComponents`, `WorkspaceInspectorView`, `SubagentInspectorView`) shared 1:1 with `apps/openagents-macos/`.
     - NIP-44 sealing/opening & secp256k1 identity (`apps/shared/app/device/seal.coax`)
-    - Tailscale admission & direct transport wire framing (`coax/lib/nostr/host/tailnet.coax`)
-    - Environment runtime & workspace wire codecs (`coax/lib/agent/environment/wire.coax`, `coax/lib/agent/workspace/wire.coax`)
+    - Tailscale admission, relay-free direct grants, direct transport & real-time push frames (`coax/lib/nostr/host/tailnet.coax`)
+    - Environment runtime wire with Review Mode (`auto`/`default`/`plan`) & Workspace Git/PR wire (`coax/lib/agent/environment/wire.coax`, `coax/lib/agent/workspace/wire.coax`)
     - `#authority` Antigravity-only model & effort policy (`coax/lib/agent/environment/phone-agent-policy.coax`) — non-Antigravity models are refused at the wire boundary before sealing.
+  - **Native iOS/iPadOS UI (`Sources/`):** Pure-black OLED (`#000000`, `#262626` hairlines) SwiftUI shell with adaptive iPad split sidebar, native keyboard docking, `+` Attachments (`PhotosPicker` & `fileImporter`), `/` Slash Commands, interactive Approval/Question cards, Subagent Inspector sheet, Workspace Diff/Branches/Worktrees/PRs sheet, and one-tap Pair over Tailscale.
   - **Zero bloat:** No JavaScript, WebKit, Metal GPU canvas, cloud accounts, Passkeys, public relays (`relay.openagents.com`), Claude Code, Inkling, Foreman, or Projects in `OpenAgents.app`. Enforced mechanically by `apps/openagents-ios/check.sh`.
 
 Bundle ID `com.openagents.app`, team `HQWSG26L43`, version `1.0.0`.
