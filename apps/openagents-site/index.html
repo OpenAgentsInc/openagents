@@ -7,19 +7,21 @@
 <meta name="description" content="OpenAgents — native macOS & iOS workspace for Antigravity, paired directly over Tailscale. Download for Mac, join the iOS TestFlight, or build from source for Windows and Linux.">
 <meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://openagents.com/">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/index.md">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
 <meta property="og:title" content="OpenAgents">
 <meta property="og:description" content="Native macOS & iOS workspace for Antigravity, paired directly over Tailscale.">
-<meta property="og:image" content="https://staging.openagents.com/og/home.jpg">
+<meta property="og:url" content="https://openagents.com/">
+<meta property="og:image" content="https://openagents.com/og/home.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="OpenAgents">
 <meta name="twitter:description" content="Native macOS & iOS workspace for Antigravity, paired directly over Tailscale.">
-<meta name="twitter:image" content="https://staging.openagents.com/og/home.jpg">
+<meta name="twitter:image" content="https://openagents.com/og/home.jpg">
 <style>
   :root {
     --bg: #000000;
@@ -246,6 +248,13 @@
     height: auto;
     border-radius: 14px;
   }
+  footer {
+    margin-top: clamp(28px, 4.5vh, 48px);
+    font-size: 12.5px;
+    color: var(--dim);
+    letter-spacing: -0.01em;
+    text-align: center;
+  }
   @media (max-width: 600px) {
     .brand img { width: 34px; height: 34px; }
     .actions { width: 100%; flex-direction: column; }
@@ -284,14 +293,14 @@
         <div class="cmd-row">
           <span class="cmd-label">Linux</span>
           <div class="cmd-box">
-            <code id="cmd-linux">git clone https://github.com/OpenAgentsInc/openagents.git &amp;&amp; cd openagents &amp;&amp; apps/openagents-desktop/linux/build.sh</code>
+            <code id="cmd-linux">git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git &amp;&amp; cd openagents &amp;&amp; apps/openagents-desktop/linux/build.sh</code>
             <button class="copy-btn" type="button" data-copy="cmd-linux">Copy</button>
           </div>
         </div>
         <div class="cmd-row">
           <span class="cmd-label">Windows</span>
           <div class="cmd-box">
-            <code id="cmd-windows">git clone https://github.com/OpenAgentsInc/openagents.git &amp;&amp; cd openagents &amp;&amp; apps/openagents-desktop/windows/build.sh</code>
+            <code id="cmd-windows">git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git &amp;&amp; cd openagents &amp;&amp; apps/openagents-desktop/windows/build.sh</code>
             <button class="copy-btn" type="button" data-copy="cmd-windows">Copy</button>
           </div>
         </div>
@@ -307,6 +316,7 @@
     </picture>
   </div>
 </main>
+<footer>&copy; 2026 OpenAgents, Inc.</footer>
 <script>
 document.querySelectorAll('[data-copy]').forEach((btn) => {
   btn.addEventListener('click', () => {

@@ -39,4 +39,8 @@ gcloud storage cp "$dir/index.md" "gs://${bucket}/index.md" \
 gcloud storage cp "$dir/index.html" "gs://${bucket}/index.html" \
   --content-type="text/html; charset=utf-8" --cache-control="no-cache"
 
-echo "==> Deployed to gs://${bucket}/ (https://staging.openagents.com/)"
+url="https://staging.openagents.com/"
+if [[ "$bucket" == "openagentsgemini-openagents-web" ]]; then
+  url="https://openagents.com/"
+fi
+echo "==> Deployed to gs://${bucket}/ (${url})"
