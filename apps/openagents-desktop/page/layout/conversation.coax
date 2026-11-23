@@ -409,22 +409,40 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
-          a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
           ck_w := ifx cp_flag(s, DC_FLAG_GIT) then cp_ckpt_turn_actions(s, f, i, x + cw, y) else 0.0f32;
-          q_vis := a_hov || did || s[0].turns[i].info;
+          q_vis := true;
           has_quote := cp_flag(s, DC_FLAG_RICH);
-          q_off := ifx has_quote && q_vis then lane_btn + a.gap_small else 0.0f32;
+          q_off := ifx has_quote then lane_btn + a.gap_small else 0.0f32;
           info_x := x + lane_btn + q_off + a.gap_small;
           info_ib: [EL_ID] u8; info_id := cp_id(info_ib[..], i, ".ai");
-          info_hov := q_vis && (uiframe_hovered(f, info_id) || (in_view && s[0].px >= info_x && s[0].px < info_x + lane_btn && s[0].py >= y + lane_top && s[0].py < y + lane_top + lane_btn));
-          show_meta := q_vis && (info_hov || s[0].turns[i].info);
+          info_hov := uiframe_hovered(f, info_id) || (in_view && s[0].px >= info_x && s[0].px < info_x + lane_btn && s[0].py >= y + lane_top && s[0].py < y + lane_top + lane_btn);
+          show_meta := info_hov || s[0].turns[i].info;
           meta_x := info_x + lane_btn + a.gap_small;
-          meta_w := x + cw - meta_x - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
-          // Model/harness metadata (with tok/s and TTFT) stays hidden behind the hover-lane info icon until hovered or toggled.
-          if show_meta && meta_w > 24 {
-            mb: [160] u8;
-            info_txt := sheet_pool(f[0].sheet, cp_turn_info_text(s, i, mb[..]));
-            _ := app_meta(f, cp_id(ib[..], i, ".m"), meta_x, y + lane_top + (lane_btn - k.small.line) / 2, meta_w, info_txt, false);
+          meta_y := y + lane_top + (lane_btn - k.small.line) / 2;
+          meta_right := x + cw - (ifx ck_w > 0 then ck_w + a.gap_small else 0.0f32);
+          cur_x := meta_x;
+          ts_b: [24] u8;
+          ts_raw := cp_turn_age(s[0].sb[0].now_ms, cp_turn_done_ms(s, i), ts_b[..]);
+          if ts_raw.count > 0 && meta_right - cur_x > 16 {
+            ts_txt := sheet_pool(f[0].sheet, ts_raw);
+            ts_w := measure_width(f[0].m, k.small.face, ts_txt);
+            draw_w := ifx ts_w + 0.5f32 < meta_right - cur_x then ts_w + 0.5f32 else meta_right - cur_x;
+            _ := app_meta(f, cp_id(ib[..], i, ".ts"), cur_x, meta_y, draw_w, ts_txt, false);
+            cur_x += ifx ts_w < meta_right - cur_x then ts_w else meta_right - cur_x;
+          }
+          // Model/harness metadata (with tok/s and TTFT) stays hidden behind the info icon until hovered or toggled.
+          if show_meta {
+            sep := " · ";
+            sep_w := ifx ts_raw.count > 0 then measure_width(f[0].m, k.small.face, sep) else 0.0f32;
+            if meta_right - cur_x > sep_w + 24 {
+              if ts_raw.count > 0 {
+                _ := sheet_text(f[0].sheet, f[0].m, -1, cur_x, meta_y, k.small.line, k.small.face, k.faint, sep);
+                cur_x += sep_w;
+              }
+              mb: [160] u8;
+              info_txt := sheet_pool(f[0].sheet, cp_turn_info_text(s, i, mb[..]));
+              _ := app_meta(f, cp_id(ib[..], i, ".m"), cur_x, meta_y, meta_right - cur_x, info_txt, false);
+            }
           }
           cp_info_button(f, info_id, info_x, y, q_vis, s[0].turns[i].info, CP_TURN_INFO);
           if has_quote { cp_quote_button(f, cp_id(ib[..], i, ".aq"), x + lane_btn + a.gap_small, y, q_vis); }

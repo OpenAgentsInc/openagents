@@ -166,6 +166,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     #endif
     var sidebarUndo: SidebarUndoSnapshot? // last archive/delete for Undo toast restore (#13875)
     private var lastSnoozeCheckAt: CFTimeInterval = 0
+    private var lastTimestampMinute: Int64 = 0
     #if OA_FULL
     // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
     var termSessions: [Int32: TerminalSession] = [:]
@@ -646,8 +647,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             lastSnoozeCheckAt = now
             let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
             cd_sb_now_ms(page, nowMs)
+            for back in runs.values { cd_sb_now_ms(back.page, nowMs) }
+            let minuteBucket = nowMs / 60_000
+            let minuteChanged = lastTimestampMinute != 0 && minuteBucket != lastTimestampMinute
+            lastTimestampMinute = minuteBucket
             if store.wakeExpiredSnoozes(nowMs: nowMs) {
                 cd_chats(page, chatLines)
+                wake()
+            } else if minuteChanged {
                 wake()
             }
         }

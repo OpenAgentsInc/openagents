@@ -71,6 +71,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     if s[0].turns[i].ran_n > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ran[0..<s[0].turns[i].ran_n]); }
     if s[0].turns[i].tok_s_x10 > 0 { n = json_raw(out, n, ",\"tok_s_x10\":"); n = json_write_int(out, n, s[0].turns[i].tok_s_x10); }
     if s[0].turns[i].ttft_ms > 0 { n = json_raw(out, n, ",\"ttft_ms\":"); n = json_write_int(out, n, s[0].turns[i].ttft_ms); }
+    if s[0].turns[i].done_ms > 0 { n = json_raw(out, n, ",\"done_ms\":"); n = json_write_int(out, n, s[0].turns[i].done_ms); }
     if s[0].turns[i].state != CP_RUNNING && s[0].turns[i].took >= 0 { n = json_raw(out, n, ",\"worked\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].took)); }
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
     if s[0].turns[i].refs_n > 0 { n = json_raw(out, n, ",\"refs\":"); n = json_write_string(out, n, cp_refs(s, i)); }
@@ -166,6 +167,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], cl_str(ar[..], t, "ran"));
     tps := cl_int(t, "tok_s_x10"); s[0].turns[i].tok_s_x10 = ifx tps.ok && tps.value > 0 then tps.value else 0;
     ttft := cl_int(t, "ttft_ms"); s[0].turns[i].ttft_ms = ifx ttft.ok && ttft.value > 0 then ttft.value else 0;
+    dms := cl_int(t, "done_ms"); s[0].turns[i].done_ms = ifx dms.ok && dms.value > 0 then dms.value else 0;
     s[0].turns[i].stat_tokens = 0; s[0].turns[i].stat_decode_ms = 0; s[0].turns[i].attempt_tokens = 0; s[0].turns[i].first_tok = -1;
     state := cl_int(t, "state"); more := cl_int(t, "more");
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
@@ -338,6 +340,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   for k: 0..<ka { to[0].agent_buf[k] = from[0].agent_buf[k]; }
   to[0].agent_n = ka;   // a reply past a smaller pool (a check's) is dropped by cp_agent_reply
   to[0].nturns = from[0].nturns; to[0].chat_gen += 1; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
+  if from[0].sb[0].now_ms > to[0].sb[0].now_ms { to[0].sb[0].now_ms = from[0].sb[0].now_ms; }
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model; to[0].kept_effort = from[0].kept_effort;

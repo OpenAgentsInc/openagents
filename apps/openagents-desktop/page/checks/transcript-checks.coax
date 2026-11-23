@@ -515,28 +515,28 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   }
 }
 
-#test "message copy buttons follow Zeron's hover lane: hidden until hovered, flush to edge, and reset Copied after 1.2s" {
+#test "message copy buttons: user copy hides until hovered, reply action bar stays visible flush left, and Copied resets after 1.2s" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "hello") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"world\"}") == MWW_ENDED;
-  // pointer outside the conversation column: neither message copy button is shown
+  // pointer outside the conversation column: user copy button is hidden; reply copy button is visible flush left
   s[0].px = 0; s[0].py = 0;
   #assert cp_test_draw(s, f[..]);
-  #assert surface_find(s[0].surface[..], "t0.uc") < 0 && surface_find(s[0].surface[..], "t0.ac") < 0;
-  // hover over the user message: t0.uc appears at the right edge (24x24pt), t0.ac stays hidden
+  #assert surface_find(s[0].surface[..], "t0.uc") < 0 && surface_find(s[0].surface[..], "t0.ac") >= 0;
+  // hover over the user message: t0.uc appears at the right edge (24x24pt)
   ur := surface_find(s[0].surface[..], "t0.u");
   #assert ur >= 0;
   ub := surface_rows(s[0].surface[..]).rows[ur];
   s[0].px = ub.x + 10; s[0].py = ub.y + 4;
   #assert cp_test_draw(s, f[..]);
   uc := surface_find(s[0].surface[..], "t0.uc");
-  #assert uc >= 0 && surface_find(s[0].surface[..], "t0.ac") < 0;
+  #assert uc >= 0;
   uc_row := surface_rows(s[0].surface[..]).rows[uc];
   btn := 24.0f32 / ARCADE_PHONE_SCALE;
   #assert uc_row.w > btn - 0.1f32 && uc_row.w < btn + 0.1f32 && uc_row.h > btn - 0.1f32 && uc_row.h < btn + 0.1f32;
   #assert uc_row.x + uc_row.w > s[0].col_x + s[0].col_w - 0.5f32 && uc_row.x + uc_row.w < s[0].col_x + s[0].col_w + 0.5f32;
-  // hover over the assistant reply: t0.ac appears flush left, t0.uc hides
+  // hover over the assistant reply: t0.ac is flush left, t0.uc hides
   s[0].px = s[0].col_x + 10; s[0].py = s[0].turns[0].ay + 4;
   #assert cp_test_draw(s, f[..]);
   ac := surface_find(s[0].surface[..], "t0.ac");
@@ -746,18 +746,14 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   #assert !uiframe_moving(f[..]) && surface_find(s[0].surface[..], "t0.x1") < 0;
 }
 
-#test "reply model metadata stays hidden at rest and reveals only when hovering or clicking the hover-lane info icon" {
+#test "reply model metadata stays hidden at rest and reveals only when hovering or clicking the info icon" {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   s[0].flags = 0; s[0].inkling = true;
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "who are you") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"I am Inkling.\"}") == MWW_ENDED;
-  // At rest (pointer outside reply): copy button, info button, and model byline are all hidden.
+  // At rest (pointer outside reply): copy and info buttons show, model byline stays hidden.
   s[0].px = 0; s[0].py = 0;
-  #assert cp_test_frame(s, f[..], 1200, 800, true);
-  #assert surface_find(s[0].surface[..], "t0.ac") < 0 && surface_find(s[0].surface[..], "t0.ai") < 0 && surface_find(s[0].surface[..], "t0.m") < 0;
-  // Hovering the reply reveals Copy and Info icons while keeping the model byline hidden.
-  s[0].px = s[0].col_x + 120.0f32; s[0].py = s[0].turns[0].ay + 4.0f32;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   #assert surface_find(s[0].surface[..], "t0.ac") >= 0 && surface_find(s[0].surface[..], "t0.ai") >= 0 && surface_find(s[0].surface[..], "t0.m") < 0;
   // Hovering the Info icon reveals the model/harness text.
@@ -771,10 +767,10 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   s[0].px = 0; s[0].py = 0;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   #assert surface_find(s[0].surface[..], "t0.m") >= 0 && surface_find(s[0].surface[..], "t0.ai") >= 0;
-  // Clicking Info again hides it cleanly.
+  // Clicking Info again hides the model byline cleanly while keeping the action buttons visible.
   #assert cp_press(s, surface_find(s[0].surface[..], "t0.ai")) && !s[0].turns[0].info;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
-  #assert surface_find(s[0].surface[..], "t0.m") < 0 && surface_find(s[0].surface[..], "t0.ai") < 0;
+  #assert surface_find(s[0].surface[..], "t0.m") < 0 && surface_find(s[0].surface[..], "t0.ai") >= 0;
 }
 
 #test "streaming finish clears veil without flashing or re-parsing and keeps scroll bottom-locked during activity collapse" {
@@ -992,4 +988,60 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hi!\"}") == MWW_ENDED;
   #assert abs(s[0].turns[0].took - 2.4f32) < 0.05f32;
   #assert s[0].turns[0].ttft_ms == 400;
+}
+
+#test "reply footer shows concise relative timestamp next to buttons, updates live, persists done_ms, and falls back for legacy chats" {
+  b: [24] u8;
+  base: int = 1795400000000;
+  #assert cp_turn_age(0, base, b[..]) == "" && cp_turn_age(base, 0, b[..]) == "";
+  #assert cp_turn_age(base, base, b[..]) == "just now" && cp_turn_age(base + 59000, base, b[..]) == "just now";
+  #assert cp_turn_age(base + 120000, base, b[..]) == "2m ago";
+  #assert cp_turn_age(base + 5 * 3600000, base, b[..]) == "5h ago";
+  #assert cp_turn_age(base + 3 * 86400000, base, b[..]) == "3d ago";
+  #assert cp_turn_age(base + 14 * 86400000, base, b[..]) == "2w ago";
+  #assert cp_turn_age(base + 400 * 86400000, base, b[..]) == "1y ago";
+
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  s[0].flags = 0; s[0].inkling = true;
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  coder_page_sb_now_ms(s, base);
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hello!\"}") == MWW_ENDED;
+  #assert s[0].turns[0].done_ms == base;
+  // Visible at rest right next to the Copy and Info buttons.
+  s[0].px = 0; s[0].py = 0;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  ts0 := surface_find(s[0].surface[..], "t0.ts");
+  ai0 := surface_find(s[0].surface[..], "t0.ai");
+  #assert ts0 >= 0 && ai0 >= 0 && surface_say(s[0].surface[..], ts0) == "just now";
+  #assert cp_test_row(s, "t0.ts").x > cp_test_row(s, "t0.ai").x + cp_test_row(s, "t0.ai").w;
+  // Advances to 2m ago and 5h ago as wall clock advances, and Info text renders to the right without overlapping.
+  coder_page_sb_now_ms(s, base + 2 * 60000);
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.ts")) == "2m ago";
+  coder_page_sb_now_ms(s, base + 5 * 3600000);
+  s[0].turns[0].info = true;
+  #assert cp_test_frame(s, f[..], 1200, 800, true);
+  ts5 := surface_find(s[0].surface[..], "t0.ts");
+  m5 := surface_find(s[0].surface[..], "t0.m");
+  #assert ts5 >= 0 && m5 >= 0 && surface_say(s[0].surface[..], ts5) == "5h ago";
+  #assert cp_test_row(s, "t0.m").x > cp_test_row(s, "t0.ts").x + cp_test_row(s, "t0.ts").w;
+
+  // Save & load round-trip preserves done_ms.
+  sb: [32768] u8; sn := coder_page_save(s, sb[..]);
+  #assert sn > 0;
+  p2: [1] CoderPage; st2: [1] CpCheckStore; r := cp_check_page(p2[..], st2[..]);
+  r[0].flags = 0; r[0].inkling = true; cp_init(r); r[0].d = 1.0f32; r[0].ready = true;
+  #assert coder_page_load(r, cast(string) sb[0..<sn]) && r[0].turns[0].done_ms == base;
+
+  // Legacy saved chat without done_ms falls back to the active chat's updated_ms on its latest finished turn.
+  #assert coder_page_load(r, "{\"v\":1,\"turns\":[{\"ask\":\"old1\",\"reply\":\"rep1\",\"state\":2},{\"ask\":\"old2\",\"reply\":\"rep2\",\"state\":2}]}");
+  coder_page_chats(r, "chat.legacy\tLegacy\t0\t0\t0\t0\t0\t0\t/tmp\t1795400000000\tmain\t0");
+  coder_page_current(r, "chat.legacy");
+  coder_page_sb_now_ms(r, base + 3 * 3600000);
+  #assert cp_turn_done_ms(r, 0) == 0 && cp_turn_done_ms(r, 1) == base;
+  #assert cp_test_frame(r, f[..], 1200, 800, true);
+  #assert surface_find(r[0].surface[..], "t0.ts") < 0;
+  lts := surface_find(r[0].surface[..], "t1.ts");
+  #assert lts >= 0 && surface_say(r[0].surface[..], lts) == "3h ago";
 }

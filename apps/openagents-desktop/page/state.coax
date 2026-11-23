@@ -276,6 +276,7 @@ CpTurn :: struct {
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy
   ttft_ms: int;               // time-to-first-token in milliseconds (0: not measured)
   tok_s_x10: int;             // decode speed in tenths of tokens/sec (0: not measured; e.g. 423 -> 42.3 tok/s)
+  done_ms: int;               // epoch ms when this turn finished (0: unknown / legacy chat)
   stat_tokens: int; stat_decode_ms: int; attempt_tokens: int; first_tok: f32;   // per-turn timing accumulators
   ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
   fresh: bool;                // a model request ended: the next reply text starts the reply again

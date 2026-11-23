@@ -259,6 +259,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
     cp_todos_reset(s);
     cp_permit_reset(s);
     s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
+    if s[0].sb[0].now_ms > 0 { s[0].turns[i].done_ms = s[0].sb[0].now_ms; }
     if s[0].turns[i].ttft_ms <= 0 && s[0].turns[i].first_tok >= s[0].turns[i].began {
       fms := cast(int) ((s[0].turns[i].first_tok - s[0].turns[i].began) * 1000.0f32 + 0.5f32);
       if fms > 0 { s[0].turns[i].ttft_ms = fms; }
@@ -300,6 +301,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
   if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
   s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
+  if s[0].sb[0].now_ms > 0 { s[0].turns[i].done_ms = s[0].sb[0].now_ms; }
   cp_cmds_end(s, i);
   cp_todos_reset(s);
   cp_permit_reset(s);

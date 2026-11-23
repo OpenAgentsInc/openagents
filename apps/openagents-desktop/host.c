@@ -527,8 +527,8 @@ int cd_steer_id(void *page, int i, char *out, int cap) { CoderHost *c = page; re
 void cd_steer_dismiss(void *page, int i) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_steer_dismiss(cd_state(c), i); } }
 int cd_steer_reason(void *page, int i, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_steer_reason(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_worker_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_worker_turn(cd_state(c)) : 0; }
-void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
-void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
+void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_sb_now_ms(cd_state(c), (int64_t)time(NULL) * 1000); coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
+void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_sb_now_ms(cd_state(c), (int64_t)time(NULL) * 1000); coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
 void cd_turn_loading_model(void *page, int loading) { CoderHost *c = page; if (!c) return; coder_page_turn_loading_model(cd_state(c), loading != 0); cd_woke(c); }
 int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }
 int64_t cd_cost_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_cost_usd_micros(cd_state(c)) : 0; }
@@ -564,6 +564,7 @@ void *cd_headless(void) {
   if (!cd_alloc(c)) { free(c); return NULL; }
   c->headless = 1;
   coder_page_init(cd_state(c));
+  coder_page_sb_now_ms(cd_state(c), (int64_t)time(NULL) * 1000);
   return c;
 }
 // The chat in from moves to to, run and all; from is left a new chat. 0 when to holds a running chat.
