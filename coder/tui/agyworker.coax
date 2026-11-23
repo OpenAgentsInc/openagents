@@ -101,6 +101,7 @@ AgywState :: struct {
   respawned: bool;
   retried_sig: bool;
   reply: [AGYW_REPLY] u8; reply_n: int;
+  reply_break: bool;            // true after thought/tool so final reply starts fresh without duplicating interim prose
   last_prompt: [CUE_OWED] u8; last_prompt_n: int;
   recall: [AGYW_RECALL] u8; recall_n: int;
   has_recall: bool;
@@ -706,12 +707,16 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
   if kind == "agent_thought_chunk" {
     txt := cl_str(ar, update, "content.text");
     if txt.count == 0 { txt = cl_str(ar, update, "text"); }
-    if txt.count > 0 && emit { agyw_emit_thought(s, txt); }
+    if txt.count > 0 {
+      if s[0].reply_n > 0 { s[0].reply_break = true; }
+      if emit { agyw_emit_thought(s, txt); }
+    }
     return;
   }
   if kind == "agent_message_chunk" {
     txt := cl_str(ar, update, "content.text");
     if txt.count > 0 {
+      if s[0].reply_break { s[0].reply_n = 0; s[0].reply_break = false; }
       agy_chunk(x, txt);
       agyw_reply_append(s, txt);
       if emit { agyw_emit_reply(s, txt); }
@@ -725,6 +730,7 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
     label := cu_tool_display_name(update, ar, nb[..]);
     existing := agyw_call_find(s, id);
     if existing < 0 && (status.count == 0 || status == "pending" || status == "in_progress") {
+      if s[0].reply_n > 0 { s[0].reply_break = true; }
       at := agyw_call_open(s, id, label);
       if at >= 0 {
         rp := cl_str(ar, update, "rawInput.Path");
@@ -737,6 +743,7 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
       return;
     }
     if status == "completed" || status == "failed" || status == "cancelled" {
+      if s[0].reply_n > 0 { s[0].reply_break = true; }
       at := existing;
       cmd := label;
       if at >= 0 {
@@ -775,6 +782,7 @@ agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) 
   agyw_subs_clear(s);
   if emit { agyw_emit_ended(s, ending, text); }
   s[0].reply_n = 0;
+  s[0].reply_break = false;
   s[0].denied_n = 0; s[0].denied_id_n = 0;
   s[0].pending_permit = false; s[0].pending_ticket = 0; s[0].pending_is_question = false;
   s[0].pending_id_n = 0; s[0].pending_label_n = 0;
@@ -1709,6 +1717,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       if agy_lost_thinking_signature(ev.message) && !s[0].retried_sig && s[0].last_prompt_n > 0 {
         s[0].retried_sig = true;
         s[0].reply_n = 0;
+        s[0].reply_break = false;
         cue_fresh_session(x);
         _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
         return;
@@ -1842,6 +1851,7 @@ tool_main :: () -> int #export_c #effects(all) {
           s[0].respawned = false;
           s[0].retried_sig = false;
           s[0].reply_n = 0;
+          s[0].reply_break = false;
           s[0].denied_n = 0; s[0].denied_id_n = 0;
           s[0].compact = agyw_is_compact(req[0].task);
           agyw_calls_clear(s);
@@ -1991,6 +2001,28 @@ tool_main :: () -> int #export_c #effects(all) {
   u_msg := "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Hello from agy\"}}}";
   agyw_handle_update(s, x, u_msg, false);
   #assert agyw_str(s[0].reply[..], s[0].reply_n) == "Hello from agy";
+}
+
+#test "agyworker: interim prose before tools starts a fresh final reply instead of concatenating" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].turn_active = true;
+
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Checking \"}}}", false);
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"files.\"}}}", false);
+  #assert agyw_str(s[0].reply[..], s[0].reply_n) == "Checking files.";
+
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"status\":\"in_progress\",\"title\":\"Read file\"}}", false);
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t1\",\"status\":\"completed\"}}", false);
+  // If no post-tool text arrives, interim prose is still preserved so turn_end won't report empty reply.
+  #assert agyw_str(s[0].reply[..], s[0].reply_n) == "Checking files." && s[0].reply_break;
+
+  // Once post-tool text arrives, reply starts fresh instead of gluing "Checking files.All done.".
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"All \"}}}", false);
+  agyw_handle_update(s, x, "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"done.\"}}}", false);
+  #assert agyw_str(s[0].reply[..], s[0].reply_n) == "All done." && !s[0].reply_break;
 }
 
 #test "agyworker: a new session's first prompt carries the user instructions" {

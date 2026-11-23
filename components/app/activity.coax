@@ -51,6 +51,7 @@ AppActRow :: struct {
   path: string;               // the file it names, when its target is one: the target is a link that dispatches the row's action under id + ".path"
   badge: string; badge_bad: bool; // optional compact right-aligned verification pill (e.g. "[E] replay verified · sha256:...")
   diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones, or a unified diff's hunks (diff.coax) with its lines added and removed at the row's end; diff_cut: it was longer
+  said: bool;                 // interim agent message (not internal reasoning): foreground ink and chat icon
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
 
@@ -411,9 +412,10 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   t := uiframe_spring(f, k, ifx open then 1.0f32 else 0.0f32);
   if t < 0 { t = 0; } else if t > 1 { t = 1; }
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
-  ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
-  ns.accent = rgba_mix(s.muted, s.ink, 0.30f32);
-  ns.code_wash = opacity(s.code_wash, 0.70f32);
+  text_ink := ifx r.said then s.ink else s.muted;
+  ns := s; ns.ink = text_ink; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
+  ns.accent = rgba_mix(text_ink, s.ink, 0.30f32);
+  ns.code_wash = opacity(s.code_wash, ifx r.said then 0.90f32 else 0.70f32);
   ns.md.action = 0;
   // a step smaller where the skin has the faces (Zeron's prose.small): its plain, bold and code text
   if a.thought_face >= 0 { ns.body.face = a.thought_face; ns.strong.face = ifx a.thought_bold >= 0 then a.thought_bold else a.thought_face; }
@@ -449,7 +451,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   } else {
     for q: 0..<lines {
       if clipped && cast(f32) q * line >= shown { break; }
-      _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, ns.body.face, s.muted, app_line(r.output, q), true);
+      _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, ns.body.face, text_ink, app_line(r.output, q), true);
     }
   }
   if clipped {
@@ -459,7 +461,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
     }
   }
   wb: [EL_ID] u8;
-  said := uiframe_semantic(f, app_id(wb[..], id, ".words"), EL_TEXT, "Thought process", tx, ty, tw, shown, 0, 0);
+  said := uiframe_semantic(f, app_id(wb[..], id, ".words"), EL_TEXT, ifx r.said then "Agent message" else "Thought process", tx, ty, tw, shown, 0, 0);
   elt_value(f[0].rows, said, r.output);
   h := 2 * pad + shown;
   if long {
@@ -472,7 +474,9 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   mid := a.row / 2; bend_y := y + mid - a.bend;
   if below { app_act_trunk(f, x, y, h); } else { app_act_trunk(f, x, y, mid - a.bend); }
   sheet_elbow(sh, x + a.trunk, bend_y, a.bend, x + a.branch_end, below, tree);
-  sheet_icon(sh, ICON_BRAIN, x + a.glyph_left, y + (a.row - a.glyph) / 2, a.glyph, opacity(s.muted, 0.85f32));
+  glyph := ifx r.said then ICON_CHATS else ICON_BRAIN;
+  glyph_ink := ifx r.said then opacity(s.ink, 0.72f32) else opacity(s.muted, 0.85f32);
+  sheet_icon(sh, glyph, x + a.glyph_left, y + (a.row - a.glyph) / 2, a.glyph, glyph_ink);
   return h;
 }
 

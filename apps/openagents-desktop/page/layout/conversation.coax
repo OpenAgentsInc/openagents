@@ -38,7 +38,7 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
   sh := f[0].sheet;
   text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cp_call_text(s, q);
   if s[0].calls[q].thought || s[0].calls[q].said {
-    r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = output};
+    r := AppActRow.{kind = APP_ACT_THOUGHT, verb = ifx s[0].calls[q].said then "Agent message" else "Thought process", output = output, said = s[0].calls[q].said};
     // its words read as a reply does: its Markdown, parsed into this frame's document
     at := s[0].think_at; b0 := s[0].think[at].nb;
     r.blocks = md_parse(s[0].think[at..<at + 1], output, 0);
@@ -165,8 +165,9 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   c := [1] AppActCount.[AppActCount.{}];
   q := head - 1;
   while q >= 0 {
+    if s[0].calls[q].said { q = s[0].calls[q].next - 1; continue; }
     edit := cp_edit_at(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]);
-    kind := ifx s[0].calls[q].thought || s[0].calls[q].said then APP_ACT_THOUGHT else ifx s[0].calls[q].read then APP_ACT_READ
+    kind := ifx s[0].calls[q].thought then APP_ACT_THOUGHT else ifx s[0].calls[q].read then APP_ACT_READ
             else ifx edit == 5 then APP_ACT_EDIT else ifx edit == 6 then APP_ACT_WRITE else APP_ACT_EXEC;
     app_act_count(c[..], kind, s[0].calls[q].failed);
     q = s[0].calls[q].next - 1;

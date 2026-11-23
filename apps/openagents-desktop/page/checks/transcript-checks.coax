@@ -1045,3 +1045,55 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   lts := surface_find(r[0].surface[..], "t1.ts");
   #assert lts >= 0 && surface_say(r[0].surface[..], lts) == "3h ago";
 }
+
+#test "interim prose streamed before tool calls moves into chronological timeline instead of staying below later thoughts and tools" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "go") && coder_page_submit(s);
+  // Step 1: Thought #1, then interim prose before tool calls, then attempt + tool calls.
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Need to inspect my tools.\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"I'll check what's in the workspace.\"}") == MWW_REPLY;
+  #assert s[0].turns[0].reply_n > 0 && s[0].turns[0].ncmds == 1;
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"psionic\",\"outcome\":\"done\",\"status\":200,\"output_tokens\":20}") == MWW_ATTEMPT;
+  // Tool call arrives: interim prose must move into the timeline BEFORE the tool call, clearing reply_n.
+  #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\".\",\"found\":true}") == MWW_VIEW;
+  #assert s[0].turns[0].reply_n == 0 && s[0].turns[0].ncmds == 3;
+  #assert s[0].calls[cp_nth(s, 0, -1, 0)].thought && cp_call_text(s, cp_nth(s, 0, -1, 0)) == "Need to inspect my tools.";
+  #assert s[0].calls[cp_nth(s, 0, -1, 1)].said && !s[0].calls[cp_nth(s, 0, -1, 1)].thought && cp_call_text(s, cp_nth(s, 0, -1, 1)) == "I'll check what's in the workspace.";
+  #assert s[0].calls[cp_nth(s, 0, -1, 2)].read;
+  // Step 2: Command, Thought #2, another interim prose, then Command #2 and Thought #3.
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"git status\",\"ticket\":1}") == MWW_ASK;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"git status\",\"exit\":0,\"timed_out\":false,\"output\":\"ok\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Saw the spec commit.\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Checking git log next.\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"git log -1\",\"ticket\":2}") == MWW_ASK;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"git log -1\",\"exit\":0,\"timed_out\":false,\"output\":\"abc\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Ready to answer.\"}") == MWW_THOUGHT;
+  #assert s[0].turns[0].reply_n == 0 && s[0].turns[0].ncmds == 8;
+  // Draw live frame: verify strict chronological top-to-bottom y ordering and accurate summary count (3 thoughts, not 5).
+  #assert cp_test_frame(s, f[..], 1200, 1200, false);
+  g := surface_find(s[0].surface[..], "t0.grp");
+  #assert g >= 0 && surface_say(s[0].surface[..], g) == "Thought 3 times · ran 2 commands · read 1 file";
+  r0 := surface_find(s[0].surface[..], "t0.x0.words");   // Thought #1
+  r1 := surface_find(s[0].surface[..], "t0.x1.words");   // Said #1 ("I'll check...")
+  r2 := surface_find(s[0].surface[..], "t0.x2");         // Read .
+  r3 := surface_find(s[0].surface[..], "t0.x3");         // Ran git status
+  r4 := surface_find(s[0].surface[..], "t0.x4.words");   // Thought #2
+  r5 := surface_find(s[0].surface[..], "t0.x5.words");   // Said #2 ("Checking git log next.")
+  r6 := surface_find(s[0].surface[..], "t0.x6");         // Ran git log -1
+  r7 := surface_find(s[0].surface[..], "t0.x7.words");   // Thought #3
+  #assert r0 >= 0 && r1 >= 0 && r2 >= 0 && r3 >= 0 && r4 >= 0 && r5 >= 0 && r6 >= 0 && r7 >= 0;
+  #assert surface_say(s[0].surface[..], r1) == "Agent message" && surface_say(s[0].surface[..], r5) == "Agent message";
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert tb[0].rows[r0].y < tb[0].rows[r1].y && tb[0].rows[r1].y < tb[0].rows[r2].y && tb[0].rows[r2].y < tb[0].rows[r3].y;
+  #assert tb[0].rows[r3].y < tb[0].rows[r4].y && tb[0].rows[r4].y < tb[0].rows[r5].y && tb[0].rows[r5].y < tb[0].rows[r6].y && tb[0].rows[r6].y < tb[0].rows[r7].y;
+  // No stale bottom reply block while still working.
+  #assert surface_find(s[0].surface[..], "t0.a") < 0;
+  // Final answer arrives and persists cleanly across save/load.
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"All done.\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All done.\"}") == MWW_ENDED;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "All done.";
+  kept: [65536] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].turns[0].ncmds == 8 && s[0].calls[cp_nth(s, 0, -1, 1)].said && cp_call_text(s, cp_nth(s, 0, -1, 1)) == "I'll check what's in the workspace.";
+}

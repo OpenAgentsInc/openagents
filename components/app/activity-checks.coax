@@ -246,3 +246,20 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   }
   for i: 0..<sh2.nh { #assert sh2.hits[i].kind != MARKDOWN_HIT_WRAP && sh2.hits[i].kind != MARKDOWN_HIT_COPY; }
 }
+
+#test "app activity: interim agent message row renders ICON_CHATS and Agent message label" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; a := arcade_phone_skin().act;
+  r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Agent message", output = "I'll check what's in the workspace.", said = true};
+  app_test_begin(t[..], "", "", true);
+  h := app_act_row(f, "sd.0", 0, 0, 400, r, true, 9);
+  #assert app_test_end(t[..]) && h > 0;
+  #assert app_test_label(t[..], "sd.0.words") == "Agent message";
+  sh := surface_sheet(t[0].sf[..]);
+  chat_icon := false; brain_icon := false;
+  for i: 0..<sh.nu {
+    p := sh.under[i];
+    if p.kind == PRIM_ICON && p.id == ICON_CHATS && p.x == a.glyph_left { chat_icon = true; }
+    if p.kind == PRIM_ICON && p.id == ICON_BRAIN { brain_icon = true; }
+  }
+  #assert chat_icon && !brain_icon;
+}

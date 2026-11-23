@@ -54,6 +54,24 @@ cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
     s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
   }
 }
+// When the agent streams interim prose into turns[i].reply before calling tools or starting
+// another reasoning step (e.g. Inkling 2 Mini writing "I'll check..." before tool calls),
+// move that prose into the chronological activity timeline right before the new tool/thought
+// so subsequent thoughts and tools render BELOW it instead of piling up above it.
+cp_reply_to_said :: (s: [] CoderPage, i: int) {
+  if s[0].turns[i].reply_n <= 0 { return; }
+  trimmed := cp_trimmed(cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
+  if trimmed.count > 0 { cp_thought_add(s, i, -1, trimmed, true); }
+  s[0].turns[i].reply_n = 0;
+  s[0].turns[i].blocks = 0;
+  s[0].turns[i].cut = false;
+  s[0].turns[i].fresh = false;
+  s[0].turns[i].h = 0;
+  s[0].turns[i].ah = 0;
+  s[0].rev_n += 1;
+  s[0].turns[i].rev = s[0].rev_n;
+  if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+}
 // A command or a file read joins the running turn.
 cp_cmd_add :: (s: [] CoderPage, i: int, text: string, output: string, read: bool, failed: bool) { _ = cp_call_add(s, i, -1, text, output, read, failed, false); }
 // The worker asks before it runs a command: the command shows at once as running. When approval

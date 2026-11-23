@@ -227,17 +227,18 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       if s[0].turns[i].tok_s_x10 < 1 { s[0].turns[i].tok_s_x10 = 1; }
     }
   }
-  else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
+  else if kind == MWW_ASK { cp_reply_to_said(s, i); cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_PERMIT { cp_permit_take_line(s, -1, "", l[0], line); }
-  else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
+  else if kind == MWW_DELEGATE { cp_reply_to_said(s, i); cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_STOP_AGENT { if l[0].agent.ok { cp_agent_stopped_by_run(s, i, l[0].agent.value); } }
-  else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
+  else if kind == MWW_COMMAND { cp_reply_to_said(s, i); cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
   else if kind == MWW_THOUGHT {
+    cp_reply_to_said(s, i);
     if s[0].turns[i].first_tok < 0 { s[0].turns[i].first_tok = s[0].clock; }
     cp_thought_stream(s, i, -1, l[0].text);
   }
   else if kind == MWW_TODOS { cp_todos_take(s, l[0].todos); }
-  else if kind == MWW_VIEW { cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
+  else if kind == MWW_VIEW { cp_reply_to_said(s, i); cp_cmd_add(s, i, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value); }
   else if kind == MWW_ENDED {
     if l[0].ending == "finished" || l[0].ending == "asked" {
       // Transition to CP_DONE before updating final text so cp_reply_set clears the streaming
