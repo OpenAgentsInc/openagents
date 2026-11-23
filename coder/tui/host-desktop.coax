@@ -1013,6 +1013,18 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
   if method == "StopSubagent" { es_refuse(v, "not_found"); return; }
   id := cast(string) r[0].id[..];
   if q[0].generation != ph_generation(id) { es_refuse(v, "conflict"); return; }
+  if method == "RespondInteraction" {
+    ticket := hs_atoi(cast(string) q[0].interaction[0..<q[0].ni]);
+    if ticket < 1 || !dk_running(r) { es_refuse(v, "interaction_expired"); return; }
+    if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }
+    ans_buf: [4096] u8;
+    an := mww_answer(ans_buf[..], q[0].allow, ticket, cast(string) q[0].text[0..<q[0].nt]);
+    ip: [1400] u8;
+    if an < 1 || !fs_append(dr_file(id, ".in", ip[..]), cast(string) ans_buf[0..<an]) { es_refuse(v, "storage_unavailable"); return; }
+    dk_summary(r, chats, nc, v[0].sessions[0..<1]); v[0].ns = 1;
+    v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted");
+    return;
+  }
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
   if method == "StopTurn" && !r[0].busy { es_refuse(v, "conflict"); return; }
   if !fs_replace_durable(file, raw) { es_refuse(v, "storage_unavailable"); return; }

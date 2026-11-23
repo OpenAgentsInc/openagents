@@ -1,0 +1,202 @@
+// Shared compiled Coax C core for OpenAgents iOS & OpenAgents macOS (GitHub #13993).
+// Compiles to Generated/client_core.c + Generated/client_core.h with ZERO GPU
+// renderer, ZERO AppCore/durable-chat/account-view-wire, and ZERO public relay code.
+//
+// Owns all protocol, cryptography, Tailscale framing, workspace Git/PR wire,
+// and Antigravity-only policy rules:
+//   - NIP-44 device identity & request/reply sealing/opening (apps/shared/app/device/seal.coax)
+//   - Tailscale admission, direct grants, direct transport & push frames (coax/lib/nostr/host/tailnet.coax)
+//   - Environment runtime wire with Review Mode (coax/lib/agent/environment/wire.coax)
+//   - Workspace Git/Diff/Branch/Worktree/PR wire (coax/lib/agent/workspace/wire.coax)
+//   - #authority Antigravity-only model & effort policy (coax/lib/agent/environment/phone-agent-policy.coax)
+//
+//   coax/bin/coax test apps/shared/antigravity/client-core.coax
+#run_steps 250000000;
+#load "../app/device/seal.coax";
+#load "../../../coax/lib/nostr/host/tailnet.coax";
+#load "../../../coax/lib/agent/environment/phone-agent-policy.coax";
+
+mc_copy :: (out: [] u8, s: string) -> int #effects(all) {
+  if s.count > out.count { return -1; }
+  for c, i: s { out[i] = c; }
+  return s.count;
+}
+
+mc_host_key_ok :: (key: string) -> bool #export_c #effects(all) {
+  return hb_hex64(key);
+}
+
+mc_is_agy_model :: (id: string) -> bool #export_c #effects(all) {
+  return pa_mobile_agy_allowed(id);
+}
+
+mc_normalize_agy_model :: (want: string, out: [] u8) -> int #export_c #effects(all) {
+  return mc_copy(out, pa_mobile_agy_model(want));
+}
+
+mc_normalize_agy_effort :: (model: string, want: string, out: [] u8) -> int #export_c #effects(all) {
+  return mc_copy(out, pa_effort(PA_AGY, model, want));
+}
+
+mc_folder_ok :: (folder: string) -> bool #export_c #effects(all) {
+  return ea_folder_ok(folder);
+}
+
+mc_mode_ok :: (mode: string) -> bool #export_c #effects(all) {
+  return ea_mode_ok(mode);
+}
+
+// Builds a bounded, policy-checked EaRequest JSON payload using caller-owned scratch q.
+// Enforces at the wire boundary that any specified model is an Antigravity model (never Claude
+// or Inkling), effort is valid for Antigravity, review mode is auto/default/plan, folder is
+// only passed on OpenSession, and item_id is only passed on ReadSubagent / StopSubagent.
+mc_env_request :: (
+  q: [] EaRequest,
+  method: string,
+  session: string,
+  command: string,
+  generation: int,
+  revision: int,
+  text: string,
+  interaction: string,
+  allow: bool,
+  before: int,
+  issued: int,
+  expires: int,
+  model: string,
+  effort: string,
+  folder: string,
+  item: string,
+  mode: string,
+  out: [] u8
+) -> int #export_c #effects(all) {
+  if q.count < 1 || ea_right(method) < 0 { return -1; }
+  if generation < 0 || revision < 0 || before < 0 || issued < 0 || expires < 0 { return -1; }
+  q[0] = EaRequest.{};
+  q[0].nm = ea_copy(q[0].method[..], method);
+  q[0].nw = ea_copy(q[0].workspace[..], "default");
+  q[0].ns = ea_copy(q[0].session[..], session);
+  q[0].nc = ea_copy(q[0].command[..], command);
+  q[0].nt = ea_copy(q[0].text[..], text);
+  q[0].ni = ea_copy(q[0].interaction[..], interaction);
+  if q[0].nm < 1 || q[0].nw < 1 || q[0].ns < 0 || q[0].nc < 0 || q[0].nt < 0 || q[0].ni < 0 { return -1; }
+  q[0].generation = generation;
+  q[0].revision = revision;
+  q[0].allow = allow;
+  q[0].before = before;
+  q[0].issued = issued;
+  q[0].expires = expires;
+  if model.count > 0 {
+    if method == "ListSessions" && model == "antigravity" {
+      q[0].nmo = ea_copy(q[0].model[..], "antigravity");
+      if q[0].nmo < 1 { return -1; }
+    } else {
+      if !pa_mobile_agy_allowed(model) { return -1; }
+      resolved := pa_mobile_agy_model(model);
+      if !ea_choice(resolved) { return -1; }
+      q[0].nmo = ea_copy(q[0].model[..], resolved);
+      if q[0].nmo < 1 { return -1; }
+    }
+  }
+  if effort.count > 0 {
+    resolved_effort := pa_effort(PA_AGY, ifx model.count > 0 then pa_mobile_agy_model(model) else PA_AGY_DEFAULT, effort);
+    if !ea_choice(resolved_effort) { return -1; }
+    q[0].nef = ea_copy(q[0].effort[..], resolved_effort);
+    if q[0].nef < 1 { return -1; }
+  }
+  if folder.count > 0 {
+    if method != "OpenSession" || !ea_folder_ok(folder) { return -1; }
+    q[0].nf = ea_copy(q[0].folder[..], folder);
+    if q[0].nf < 1 { return -1; }
+  }
+  sub := method == "ReadSubagent" || method == "StopSubagent";
+  if sub {
+    if item.count < 1 { return -1; }
+    q[0].nit = ea_copy(q[0].item[..], item);
+    if q[0].nit < 1 { return -1; }
+  } else if item.count > 0 {
+    return -1;
+  }
+  if mode.count > 0 {
+    if !ea_mode_ok(mode) { return -1; }
+    q[0].nmd = ea_copy(q[0].mode[..], mode);
+    if q[0].nmd < 1 { return -1; }
+  }
+  return ea_write(q, out);
+}
+
+mc_view_valid :: (v: [] EaView, host: string, method: string, raw: string) -> bool #export_c #effects(all) {
+  if v.count < 1 || !hb_hex64(host) || !ea_view_read(raw, v) { return false; }
+  return cast(string) v[0].host[0..<v[0].nh] == host && cast(string) v[0].method[0..<v[0].nm] == method;
+}
+
+// Encodes a typed WsRequest (Git diff, branches, worktrees, push, PRs) using caller-owned scratch q.
+mc_ws_request :: (
+  q: [] WsRequest,
+  method: string,
+  workspace: string,
+  branch: string,
+  base: string,
+  title: string,
+  body: string,
+  number: int,
+  page: int,
+  cursor: int,
+  expected: string,
+  command: string,
+  issued: int,
+  expires: int,
+  out: [] u8
+) -> int #export_c #effects(all) {
+  if q.count < 1 || ws_right(method) < 0 { return -1; }
+  q[0] = WsRequest.{};
+  q[0].nm = js_copy(q[0].method[..], method);
+  q[0].nw = js_copy(q[0].workspace[..], ifx workspace.count > 0 then workspace else "default");
+  q[0].nb = js_copy(q[0].branch[..], branch);
+  q[0].na = js_copy(q[0].base[..], base);
+  q[0].nt = js_copy(q[0].title[..], title);
+  q[0].nd = js_copy(q[0].body[..], body);
+  q[0].nx = js_copy(q[0].expected[..], expected);
+  q[0].nc = js_copy(q[0].command[..], command);
+  if q[0].nm < 1 || q[0].nw < 1 || q[0].nb < 0 || q[0].na < 0 || q[0].nt < 0 || q[0].nd < 0 || q[0].nx < 0 || q[0].nc < 0 { return -1; }
+  q[0].number = number;
+  q[0].page = page;
+  q[0].cursor = cursor;
+  q[0].issued = issued;
+  q[0].expires = expires;
+  return ws_write(q, out);
+}
+
+mc_ws_view_valid :: (v: [] WsView, host: string, method: string, raw: string) -> bool #export_c #effects(all) {
+  if v.count < 1 || !hb_hex64(host) || !ws_view_read(raw, v) { return false; }
+  return cast(string) v[0].host[..] == host && cast(string) v[0].method[0..<v[0].nm] == method;
+}
+
+#test "shared Antigravity client core enforces Antigravity-only models, review modes, and workspace RPCs" {
+  #assert mc_is_agy_model("gemini-4-neon") && mc_is_agy_model("antigravity");
+  #assert !mc_is_agy_model("inkling-2-mini") && !mc_is_agy_model("claude-opus-5-5") && !mc_is_agy_model("default");
+  #assert mc_mode_ok("auto") && mc_mode_ok("default") && mc_mode_ok("plan") && !mc_mode_ok("invalid");
+
+  q: [1] EaRequest;
+  out: [24576] u8;
+  r: [1] EaRequest;
+  n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "Review diff", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "apps/openagents-ios", "", "plan", out[..]);
+  #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]);
+  #assert cast(string) r[0].mode[0..<r[0].nmd] == "plan" && cast(string) r[0].model[0..<r[0].nmo] == "gemini-4-neon";
+  // ListSessions with "antigravity" preserves the native ~/.gemini query sentinel
+  n = mc_env_request(q[..], "ListSessions", "", "", 0, 0, "", "", false, 0, 0, 0, "antigravity", "", "", "", "", out[..]);
+  #assert n > 0 && ea_read(cast(string) out[0..<n], r[..]) && cast(string) r[0].model[0..<r[0].nmo] == "antigravity";
+
+  // Invalid mode or non-Antigravity model rejected at wire boundary
+  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "high", "", "", "bogus", out[..]) < 0;
+  #assert mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcdef", 1, 0, "hi", "", false, 0, 1700000000000, 1700000300000, "claude-opus-5-5", "high", "", "", "auto", out[..]) < 0;
+
+  // Workspace ReadWorkspace & SwitchBranch encoding
+  wq: [1] WsRequest; wr: [1] WsRequest;
+  wn := mc_ws_request(wq[..], "ReadWorkspace", "default", "", "", "", "", 0, 0, 0, "", "", 0, 0, out[..]);
+  #assert wn > 0 && ws_read(cast(string) out[0..<wn], wr[..]) && cast(string) wr[0].method[0..<wr[0].nm] == "ReadWorkspace";
+  rev := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  wn = mc_ws_request(wq[..], "SwitchBranch", "default", "feat/antigravity", "", "", "", 0, 0, 0, rev, "0123456789abcdef0123456789abcdef", 1700000000000, 1700000060000, out[..]);
+  #assert wn > 0 && ws_read(cast(string) out[0..<wn], wr[..]) && cast(string) wr[0].branch[0..<wr[0].nb] == "feat/antigravity";
+  #assert mc_ws_request(wq[..], "SwitchBranch", "default", "-rf", "", "", "", 0, 0, 0, rev, "0123456789abcdef0123456789abcdef", 1700000000000, 1700000060000, out[..]) < 0;
+}

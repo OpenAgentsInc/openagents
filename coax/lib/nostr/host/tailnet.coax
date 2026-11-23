@@ -12,9 +12,13 @@
 
 #load "../../json/json.coax";
 
-HT_REQUEST_SCHEMA :: "openagents.host-tailnet-admission-request.v1";
-HT_ANSWER_SCHEMA  :: "openagents.host-tailnet-admission.v1";
-HT_DIRECT_SCHEMA  :: "openagents.history-observer-direct.v1";
+HT_REQUEST_SCHEMA       :: "openagents.host-tailnet-admission-request.v1";
+HT_ANSWER_SCHEMA        :: "openagents.host-tailnet-admission.v1";
+HT_DIRECT_SCHEMA        :: "openagents.history-observer-direct.v1";
+HT_GRANT_REQUEST_SCHEMA :: "openagents.host-tailnet-grant-request.v1";
+HT_GRANT_ANSWER_SCHEMA  :: "openagents.host-tailnet-grant.v1";
+HT_SUBSCRIBE_SCHEMA     :: "openagents.host-tailnet-subscribe.v1";
+HT_PUSH_SCHEMA          :: "openagents.host-tailnet-push.v1";
 
 HT_LINE_MAX   :: 1024;
 HT_ANSWER_MAX :: 2048;
@@ -33,6 +37,29 @@ HtAdmissionAnswer :: struct {
 
 HtDirectAck :: struct {
   refused: [32] u8; nref: int;
+}
+
+HtGrantRequest :: struct {
+  device: [64] u8; ndev: int;
+  label: [80] u8;  nlabel: int;
+}
+
+HtGrantAnswer :: struct {
+  host: [64] u8;    nhost: int;
+  label: [128] u8;  nlabel: int;
+  grant: [64] u8;   ngrant: int;
+  epoch: int;
+  expires: int;
+  refused: [32] u8; nref: int;
+}
+
+HtPushEvent :: struct {
+  seq: int;
+  kind: [32] u8;     nkind: int;
+  session: [128] u8; nsess: int;
+  revision: int;
+  busy: bool;
+  has_interaction: bool;
 }
 
 ht_copy :: (dst: [] u8, src: string) -> int {
@@ -278,6 +305,247 @@ oa_ht_direct_ack_read :: (raw: string, out: [] u8) -> int #export_c #effects(all
   return ht_copy(out, cast(string) a[0].refused[0..<a[0].nref]);
 }
 
+// ------------------------------------------------------------------ relay-free direct Tailscale grants (#13993)
+
+ht_push_kind_ok :: (s: string) -> bool {
+  return s == "sessions_changed" || s == "session_updated" || s == "interaction_pending" || s == "turn_ended";
+}
+
+ht_grant_request_write :: (device: string, label: string, out: [] u8) -> int {
+  if !ht_hex64(device) || label.count < 1 || label.count > 80 { return -1; }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_GRANT_REQUEST_SCHEMA);
+  jo_key(o[..], "requires"); jo_open(o[..], '['); jo_end(o[..]);
+  jo_key(o[..], "device"); jo_str(o[..], device);
+  jo_key(o[..], "label"); jo_str(o[..], label);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_grant_request_read :: (raw: string, out: [] HtGrantRequest) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_LINE_MAX { return false; }
+  out[0].ndev = 0; out[0].nlabel = 0;
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  for i: 0..<jv_len(d[0], 0) {
+    k := jv_key(d[0], jv_at(d[0], 0, i));
+    if k != "v" && k != "requires" && k != "device" && k != "label" { return false; }
+  }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_GRANT_REQUEST_SCHEMA { return false; }
+  if !ht_requires_empty(d[0], 0) { return false; }
+  dn := jv_str(d[0], jv_get(d[0], 0, "device"), out[0].device[..]);
+  ln := jv_str(d[0], jv_get(d[0], 0, "label"), out[0].label[..]);
+  if dn != 64 || !ht_hex64(cast(string) out[0].device[0..<64]) || ln < 1 || ln > 80 { return false; }
+  out[0].ndev = dn; out[0].nlabel = ln;
+  return true;
+}
+
+ht_grant_answer_write :: (ap: [] HtGrantAnswer, out: [] u8) -> int {
+  if ap.count < 1 { return -1; }
+  has_grant := ap[0].ngrant > 0;
+  has_ref := ap[0].nref > 0;
+  if has_grant == has_ref { return -1; }
+  if has_grant {
+    if ap[0].nhost != 64 || !ht_hex64(cast(string) ap[0].host[0..<64]) { return -1; }
+    if ap[0].ngrant != 64 || !ht_hex64(cast(string) ap[0].grant[0..<64]) { return -1; }
+    if ap[0].nlabel < 1 || ap[0].nlabel > 128 || ap[0].epoch < 0 || ap[0].expires <= 0 { return -1; }
+  } else {
+    if !ht_refusal_ok(cast(string) ap[0].refused[0..<ap[0].nref]) { return -1; }
+    if ap[0].nhost != 0 && (ap[0].nhost != 64 || !ht_hex64(cast(string) ap[0].host[0..<64])) { return -1; }
+  }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_GRANT_ANSWER_SCHEMA);
+  jo_key(o[..], "host"); jo_str(o[..], cast(string) ap[0].host[0..<ap[0].nhost]);
+  jo_key(o[..], "label"); jo_str(o[..], cast(string) ap[0].label[0..<ap[0].nlabel]);
+  if has_grant {
+    jo_key(o[..], "grant"); jo_str(o[..], cast(string) ap[0].grant[0..<64]);
+    jo_key(o[..], "epoch"); jo_int(o[..], ap[0].epoch);
+    jo_key(o[..], "expires"); jo_int(o[..], ap[0].expires);
+    jo_key(o[..], "refused"); jo_null(o[..]);
+  } else {
+    jo_key(o[..], "grant"); jo_null(o[..]);
+    jo_key(o[..], "epoch"); jo_int(o[..], 0);
+    jo_key(o[..], "expires"); jo_int(o[..], 0);
+    jo_key(o[..], "refused"); jo_str(o[..], cast(string) ap[0].refused[0..<ap[0].nref]);
+  }
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_ANSWER_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_grant_answer_read :: (raw: string, out: [] HtGrantAnswer) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_ANSWER_MAX { return false; }
+  out[0] = HtGrantAnswer.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_GRANT_ANSWER_SCHEMA { return false; }
+  hn := jv_str(d[0], jv_get(d[0], 0, "host"), out[0].host[..]);
+  if hn < 0 { return false; }
+  out[0].nhost = hn;
+  l_at := jv_get(d[0], 0, "label");
+  if l_at >= 0 && jv_kind(d[0], l_at) == JV_STRING {
+    ln := jv_str(d[0], l_at, out[0].label[..]);
+    if ln < 0 { return false; }
+    out[0].nlabel = ln;
+  }
+  g_at := jv_get(d[0], 0, "grant");
+  r_at := jv_get(d[0], 0, "refused");
+  has_grant := g_at >= 0 && jv_kind(d[0], g_at) == JV_STRING;
+  has_ref := r_at >= 0 && jv_kind(d[0], r_at) == JV_STRING;
+  if has_grant == has_ref { return false; }
+  if has_grant {
+    if hn != 64 || !ht_hex64(cast(string) out[0].host[0..<64]) { return false; }
+    gn := jv_str(d[0], g_at, out[0].grant[..]);
+    if gn != 64 || !ht_hex64(cast(string) out[0].grant[0..<64]) { return false; }
+    ep := jv_int(d[0], jv_get(d[0], 0, "epoch"), -1);
+    ex := jv_int(d[0], jv_get(d[0], 0, "expires"), -1);
+    if ep < 0 || ex <= 0 { return false; }
+    out[0].ngrant = gn; out[0].epoch = ep; out[0].expires = ex;
+    return true;
+  }
+  rn := jv_str(d[0], r_at, out[0].refused[..]);
+  if rn < 1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  out[0].nref = rn;
+  return true;
+}
+
+// ------------------------------------------------------------------ real-time push subscription & change frames (#13993)
+
+ht_subscribe_write :: (session: string, out: [] u8) -> int {
+  if session.count > 128 { return -1; }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_SUBSCRIBE_SCHEMA);
+  jo_key(o[..], "requires"); jo_open(o[..], '['); jo_end(o[..]);
+  jo_key(o[..], "session"); jo_str(o[..], session);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_subscribe_read :: (raw: string, session_out: [] u8) -> int {
+  if raw.count < 2 || raw.count > HT_LINE_MAX { return -1; }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_SUBSCRIBE_SCHEMA || !ht_requires_empty(d[0], 0) { return -1; }
+  s_at := jv_get(d[0], 0, "session");
+  if s_at < 0 || jv_kind(d[0], s_at) == JV_NULL { return 0; }
+  sn := jv_str(d[0], s_at, session_out);
+  if sn < 0 || sn > 128 { return -1; }
+  return sn;
+}
+
+ht_push_write :: (ev: [] HtPushEvent, out: [] u8) -> int {
+  if ev.count < 1 || ev[0].seq < 0 || ev[0].revision < 0 { return -1; }
+  kind := cast(string) ev[0].kind[0..<ev[0].nkind];
+  if !ht_push_kind_ok(kind) { return -1; }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_PUSH_SCHEMA);
+  jo_key(o[..], "seq"); jo_int(o[..], ev[0].seq);
+  jo_key(o[..], "kind"); jo_str(o[..], kind);
+  jo_key(o[..], "session"); jo_str(o[..], cast(string) ev[0].session[0..<ev[0].nsess]);
+  jo_key(o[..], "revision"); jo_int(o[..], ev[0].revision);
+  jo_key(o[..], "busy"); jo_bool(o[..], ev[0].busy);
+  jo_key(o[..], "interaction"); jo_bool(o[..], ev[0].has_interaction);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_push_read :: (raw: string, out: [] HtPushEvent) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_LINE_MAX { return false; }
+  out[0] = HtPushEvent.{};
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_PUSH_SCHEMA { return false; }
+  seq := jv_int(d[0], jv_get(d[0], 0, "seq"), -1);
+  rev := jv_int(d[0], jv_get(d[0], 0, "revision"), -1);
+  kn := jv_str(d[0], jv_get(d[0], 0, "kind"), out[0].kind[..]);
+  sn := jv_str(d[0], jv_get(d[0], 0, "session"), out[0].session[..]);
+  if seq < 0 || rev < 0 || kn < 1 || sn < 0 || !ht_push_kind_ok(cast(string) out[0].kind[0..<kn]) { return false; }
+  out[0].seq = seq; out[0].revision = rev; out[0].nkind = kn; out[0].nsess = sn;
+  out[0].busy = jv_bool(d[0], jv_get(d[0], 0, "busy"));
+  out[0].has_interaction = jv_bool(d[0], jv_get(d[0], 0, "interaction"));
+  return true;
+}
+
+oa_ht_grant_request_write :: (device: string, label: string, out: [] u8) -> int #export_c #effects(all) {
+  return ht_grant_request_write(device, label, out);
+}
+oa_ht_grant_request_read :: (raw: string, device_out: [] u8, label_out: [] u8, label_n: [] int) -> int #export_c #effects(all) {
+  q: [1] HtGrantRequest;
+  if !ht_grant_request_read(raw, q[..]) { return -1; }
+  dn := ht_copy(device_out, cast(string) q[0].device[0..<q[0].ndev]);
+  if dn != 64 { return -1; }
+  ln := ht_copy(label_out, cast(string) q[0].label[0..<q[0].nlabel]);
+  if ln < 1 { return -1; }
+  if label_n.count > 0 { label_n[0] = ln; }
+  return 64;
+}
+oa_ht_grant_answer_write :: (host: string, label: string, grant: string, epoch: int, expires: int, refused: string, out: [] u8) -> int #export_c #effects(all) {
+  a: [1] HtGrantAnswer;
+  if host.count > 0 { nh := ht_copy(a[0].host[..], host); if nh < 0 { return -1; } a[0].nhost = nh; }
+  if label.count > 0 { nl := ht_copy(a[0].label[..], label); if nl < 0 { return -1; } a[0].nlabel = nl; }
+  if grant.count > 0 { ng := ht_copy(a[0].grant[..], grant); if ng < 0 { return -1; } a[0].ngrant = ng; }
+  if refused.count > 0 { nr := ht_copy(a[0].refused[..], refused); if nr < 0 { return -1; } a[0].nref = nr; }
+  a[0].epoch = epoch; a[0].expires = expires;
+  return ht_grant_answer_write(a[..], out);
+}
+// Returns 64 (grant written to grant_out, host to host_out, label to label_out, epoch/expires in meta[0..1]),
+// or -2 - refused_len (refused written to grant_out), or -1 if invalid.
+oa_ht_grant_answer_read :: (raw: string, host_out: [] u8, label_out: [] u8, grant_out: [] u8, meta: [] int) -> int #export_c #effects(all) {
+  a: [1] HtGrantAnswer;
+  if !ht_grant_answer_read(raw, a[..]) { return -1; }
+  if a[0].ngrant == 64 {
+    if ht_copy(host_out, cast(string) a[0].host[0..<64]) != 64 { return -1; }
+    if ht_copy(grant_out, cast(string) a[0].grant[0..<64]) != 64 { return -1; }
+    ln := ifx a[0].nlabel > 0 then ht_copy(label_out, cast(string) a[0].label[0..<a[0].nlabel]) else 0;
+    if meta.count >= 3 { meta[0] = a[0].epoch; meta[1] = a[0].expires; meta[2] = ifx ln >= 0 then ln else 0; }
+    return 64;
+  }
+  rn := ht_copy(grant_out, cast(string) a[0].refused[0..<a[0].nref]);
+  if rn < 1 { return -1; }
+  if meta.count >= 3 { meta[0] = 0; meta[1] = 0; meta[2] = 0; }
+  return -2 - rn;
+}
+oa_ht_subscribe_write :: (session: string, out: [] u8) -> int #export_c #effects(all) {
+  return ht_subscribe_write(session, out);
+}
+oa_ht_subscribe_read :: (raw: string, session_out: [] u8) -> int #export_c #effects(all) {
+  return ht_subscribe_read(raw, session_out);
+}
+oa_ht_push_write :: (seq: int, kind: string, session: string, revision: int, busy: bool, has_interaction: bool, out: [] u8) -> int #export_c #effects(all) {
+  ev: [1] HtPushEvent;
+  ev[0].seq = seq; ev[0].revision = revision; ev[0].busy = busy; ev[0].has_interaction = has_interaction;
+  kn := ht_copy(ev[0].kind[..], kind); if kn < 1 { return -1; } ev[0].nkind = kn;
+  sn := ht_copy(ev[0].session[..], session); if sn < 0 { return -1; } ev[0].nsess = sn;
+  return ht_push_write(ev[..], out);
+}
+// Returns kind length (>0) on valid push frame; writes kind/session and fills meta=[seq, revision, busy?1:0, interaction?1:0, session_len].
+oa_ht_push_read :: (raw: string, kind_out: [] u8, session_out: [] u8, meta: [] int) -> int #export_c #effects(all) {
+  ev: [1] HtPushEvent;
+  if !ht_push_read(raw, ev[..]) { return -1; }
+  kn := ht_copy(kind_out, cast(string) ev[0].kind[0..<ev[0].nkind]);
+  sn := ht_copy(session_out, cast(string) ev[0].session[0..<ev[0].nsess]);
+  if kn < 1 || sn < 0 { return -1; }
+  if meta.count >= 5 {
+    meta[0] = ev[0].seq;
+    meta[1] = ev[0].revision;
+    meta[2] = ifx ev[0].busy then 1 else 0;
+    meta[3] = ifx ev[0].has_interaction then 1 else 0;
+    meta[4] = sn;
+  }
+  return kn;
+}
+
 // ------------------------------------------------------------------ tests
 
 #test "tailnet admission request round-trips and enforces requires and bounds" {
@@ -348,4 +616,55 @@ oa_ht_direct_ack_read :: (raw: string, out: [] u8) -> int #export_c #effects(all
   #assert m2 > 0;
   #assert ht_direct_ack_read(cast(string) buf[0..<m2], ack[..]) && cast(string) ack[0].refused[0..<ack[0].nref] == "not_owner";
   #assert ht_direct_ack_write("bogus", buf[..]) < 0;
+}
+
+#test "relay-free direct Tailscale grant request and answer round-trip cleanly" {
+  dev := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  host := "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+  grant := "2222222222222222222222222222222222222222222222222222222222222222";
+  buf: [HT_ANSWER_MAX] u8;
+  n := ht_grant_request_write(dev, "Chris iPhone", buf[..]);
+  #assert n > 0;
+  q: [1] HtGrantRequest;
+  #assert ht_grant_request_read(cast(string) buf[0..<n], q[..]);
+  #assert cast(string) q[0].device[0..<64] == dev && cast(string) q[0].label[0..<q[0].nlabel] == "Chris iPhone";
+  #assert ht_grant_request_write("bad", "iPhone", buf[..]) < 0;
+
+  a: [1] HtGrantAnswer;
+  a[0].nhost = ht_copy(a[0].host[..], host);
+  a[0].nlabel = ht_copy(a[0].label[..], "Studio Mac");
+  a[0].ngrant = ht_copy(a[0].grant[..], grant);
+  a[0].epoch = 3; a[0].expires = 1800000000;
+  gn := ht_grant_answer_write(a[..], buf[..]);
+  #assert gn > 0;
+  got: [1] HtGrantAnswer;
+  #assert ht_grant_answer_read(cast(string) buf[0..<gn], got[..]);
+  #assert cast(string) got[0].host[0..<64] == host && cast(string) got[0].grant[0..<64] == grant && got[0].epoch == 3 && got[0].expires == 1800000000;
+
+  ref: [1] HtGrantAnswer;
+  ref[0].nref = ht_copy(ref[0].refused[..], "tagged");
+  rn := ht_grant_answer_write(ref[..], buf[..]);
+  #assert rn > 0 && ht_grant_answer_read(cast(string) buf[0..<rn], got[..]) && got[0].ngrant == 0 && cast(string) got[0].refused[0..<got[0].nref] == "tagged";
+}
+
+#test "real-time push subscribe and change notification frames round-trip and reject unknown kinds" {
+  buf: [HT_LINE_MAX] u8;
+  sn := ht_subscribe_write("sess-abc", buf[..]);
+  #assert sn > 0;
+  sout: [128] u8;
+  got_s := ht_subscribe_read(cast(string) buf[0..<sn], sout[..]);
+  #assert got_s == 8 && cast(string) sout[0..<8] == "sess-abc";
+
+  ev: [1] HtPushEvent;
+  ev[0].seq = 7; ev[0].revision = 4; ev[0].busy = true; ev[0].has_interaction = true;
+  ev[0].nkind = ht_copy(ev[0].kind[..], "interaction_pending");
+  ev[0].nsess = ht_copy(ev[0].session[..], "sess-abc");
+  pn := ht_push_write(ev[..], buf[..]);
+  #assert pn > 0;
+  out_ev: [1] HtPushEvent;
+  #assert ht_push_read(cast(string) buf[0..<pn], out_ev[..]);
+  #assert out_ev[0].seq == 7 && out_ev[0].revision == 4 && out_ev[0].busy && out_ev[0].has_interaction;
+  #assert cast(string) out_ev[0].kind[0..<out_ev[0].nkind] == "interaction_pending";
+  #assert cast(string) out_ev[0].session[0..<out_ev[0].nsess] == "sess-abc";
+  #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":1,\"kind\":\"bogus\",\"session\":\"\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
 }

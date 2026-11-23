@@ -38,6 +38,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/nostr/host/browser.coax";
+#load "../../coax/lib/nostr/host/tailnet.coax";
 #load "host_grants.coax";
 #load "../../apps/openagents-cli/relay.coax";
 #load "../../coax/lib/nostr/nip19-core.coax";
@@ -67,6 +68,7 @@ cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 cxproc_pid_alive :: (pid: int) -> int #foreign #effects(all);
 
 HS_RELAY :: "wss://relay.openagents.com";
+HS_DIRECT_RELAY :: "tailscale://direct";
 HS_RETAINED :: 16; HS_REPLY_MAX :: 16384;
 HS_STATE_MAX :: 262144;
 HS_SESSION_MAX :: 4194304;
@@ -487,6 +489,7 @@ HsHost :: struct {
   sched:[1]ScHost;  // headless scheduled tasks & signed HMAC-SHA256 webhook listener (#13885)
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
+hs_relay_matches :: (h: [] HsHost, relay: string) -> bool { return relay == hs_relay_of(h) || relay == HS_DIRECT_RELAY; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
   for i: 0..<(ifx h[0].nseen < 256 then h[0].nseen else 256) { if cast(string) h[0].seen[i][..] == id { return true; } }
   k := h[0].nseen % 256; x := hs_set(h[0].seen[k][..], id); h[0].nseen += 1;
@@ -723,6 +726,7 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln(cast(string) lb[0..<ln]);
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
+  no_relay := args_has(args, "--no-relay");
   defer { sc_webhook_close(h[0].sched[..]); }
   while end_at == 0 || hs_now() < end_at {
     es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);sc_tick(h);
@@ -732,6 +736,10 @@ hs_serve :: (args: [] Args) -> int {
     if !handled_local && !h[0].phone[0].known { _ = ph_facts(h); }
     // while a worker run is going its lines reach Coder within a few tens of milliseconds
     busy_ms := ifx dr_active(h) > 0 then 20 else 250;
+    if no_relay {
+      _ = cxproc_sleep_ms(ifx busy_ms < 50 then busy_ms else 50);
+      continue;
+    }
     now_ms := cxsock_now_ms();
     if !live[cur] && now_ms >= retry_at {
       live[cur] = hs_subscribe(h, subs[cur..<cur + 1]);
@@ -962,6 +970,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "call" { return hs_cmd_call(args, arg); }
   if verb == "environment-enable" {return es_configure(args);}
   if verb == "pair" {return es_pair(args);}
+  if verb == "direct-grant" {return es_direct_grant(args);}
   if verb == "local-rpc" {return es_local_call(args);}
   if verb == "daemon-status" {return dm_cmd_status(args);}
   if verb == "daemon-rpc" {return dm_rpc_call(args);}

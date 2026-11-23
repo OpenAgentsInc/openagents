@@ -208,6 +208,160 @@ enum AppTailnet {
         if rc > 0 { return (false, String(decoding: buf[0..<Int(rc)], as: UTF8.self)) }
         return (false, nil)
     }
+
+    // ------------------------------------------------------------------ relay-free direct Tailscale grants (#13993)
+
+    struct DirectGrantRequest: Equatable { var device: String; var label: String }
+    struct DirectGrantAnswer: Equatable {
+        var host: String
+        var label: String
+        var grant: String?
+        var epoch: Int64
+        var expires: Int64
+        var refused: String?
+    }
+
+    static func directGrantRequestLine(device: String, label: String) -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_grant_request_write(device, label, &buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+
+    static func parseDirectGrantRequest(_ line: Data) -> DirectGrantRequest? {
+        guard line.count <= requestMax else { return nil }
+        var dev = [UInt8](repeating: 0, count: 64)
+        var lbl = [UInt8](repeating: 0, count: 128)
+        var ln: Int64 = 0
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_grant_request_read(p, Int64(line.count), &dev, Int64(dev.count), &lbl, Int64(lbl.count), &ln)
+        }
+        guard rc == 64, ln > 0 else { return nil }
+        return DirectGrantRequest(
+            device: String(decoding: dev, as: UTF8.self),
+            label: String(decoding: lbl[0..<Int(ln)], as: UTF8.self)
+        )
+    }
+
+    static func directGrantAnswerLine(_ answer: DirectGrantAnswer) -> Data {
+        var buf = [UInt8](repeating: 0, count: answerMax)
+        let n = oa_tailnet_grant_answer_write(
+            answer.host,
+            answer.label,
+            answer.grant ?? "",
+            answer.epoch,
+            answer.expires,
+            answer.refused ?? "",
+            &buf,
+            Int64(buf.count)
+        )
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+
+    static func directGrantAnswer(_ line: Data) -> DirectGrantAnswer? {
+        guard line.count <= answerMax else { return nil }
+        var host = [UInt8](repeating: 0, count: 64)
+        var lbl = [UInt8](repeating: 0, count: 128)
+        var val = [UInt8](repeating: 0, count: 64)
+        var meta: [Int64] = [0, 0, 0]
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_grant_answer_read(p, Int64(line.count), &host, Int64(host.count), &lbl, Int64(lbl.count), &val, Int64(val.count), &meta)
+        }
+        guard rc != -1 else { return nil }
+        let label = meta[2] > 0 ? String(decoding: lbl[0..<Int(meta[2])], as: UTF8.self) : ""
+        if rc == 64 {
+            return DirectGrantAnswer(
+                host: String(decoding: host, as: UTF8.self),
+                label: label,
+                grant: String(decoding: val, as: UTF8.self),
+                epoch: meta[0],
+                expires: meta[1],
+                refused: nil
+            )
+        }
+        if rc <= -2 {
+            let rn = Int(-rc - 2)
+            let refused = String(decoding: val[0..<rn], as: UTF8.self)
+            return DirectGrantAnswer(host: "", label: label, grant: nil, epoch: 0, expires: 0, refused: refused)
+        }
+        return nil
+    }
+
+    // ------------------------------------------------------------------ real-time push frames (#13993)
+
+    struct PushEvent: Equatable {
+        var seq: Int64
+        var kind: String
+        var session: String
+        var revision: Int64
+        var busy: Bool
+        var hasInteraction: Bool
+    }
+
+    static func subscribeLine(session: String = "") -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_subscribe_write(session, &buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+
+    static func parseSubscribe(_ line: Data) -> String? {
+        guard line.count <= requestMax else { return nil }
+        var buf = [UInt8](repeating: 0, count: 128)
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_subscribe_read(p, Int64(line.count), &buf, Int64(buf.count))
+        }
+        guard rc >= 0 else { return nil }
+        return String(decoding: buf[0..<Int(rc)], as: UTF8.self)
+    }
+
+    static func pushLine(_ ev: PushEvent) -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_push_write(
+            ev.seq,
+            ev.kind,
+            ev.session,
+            ev.revision,
+            ev.busy ? 1 : 0,
+            ev.hasInteraction ? 1 : 0,
+            &buf,
+            Int64(buf.count)
+        )
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+
+    static func parsePush(_ line: Data) -> PushEvent? {
+        guard line.count <= requestMax else { return nil }
+        var kind = [UInt8](repeating: 0, count: 32)
+        var sess = [UInt8](repeating: 0, count: 128)
+        var meta: [Int64] = [0, 0, 0, 0, 0]
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_push_read(p, Int64(line.count), &kind, Int64(kind.count), &sess, Int64(sess.count), &meta)
+        }
+        guard rc > 0 else { return nil }
+        return PushEvent(
+            seq: meta[0],
+            kind: String(decoding: kind[0..<Int(rc)], as: UTF8.self),
+            session: meta[4] > 0 ? String(decoding: sess[0..<Int(meta[4])], as: UTF8.self) : "",
+            revision: meta[1],
+            busy: meta[2] != 0,
+            hasInteraction: meta[3] != 0
+        )
+    }
 }
 
 /// One Mac the phone found: what its TXT record said, and when it was last seen or reached.

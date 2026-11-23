@@ -1,0 +1,254 @@
+// Firm reason: 6 (cross-Apple secret persistence: iOS Keychain com.openagents.app.auth vs macOS 0600 file ~/.openagents/macos/, plus offline transcript cache).
+import Foundation
+import Security
+
+/// One computer this device holds a signed NIP-HOST grant for.
+/// Matches the existing Keychain JSON schema (`own-computer-paired-v1`) so existing iOS installs keep their pairings.
+struct PairedComputer: Codable, Equatable, Identifiable {
+    var host: String
+    var relay: String
+    var grant: String
+    var epoch: Int64
+    var expires: Int64
+    var name: String
+
+    var id: String { host }
+
+    var isExpired: Bool {
+        expires <= Int64(Date().timeIntervalSince1970)
+    }
+}
+
+protocol SecretBlobStore {
+    func load() -> Data?
+    @discardableResult func save(_ data: Data) -> Bool
+    func clear()
+}
+
+#if os(iOS)
+struct MobileKeychainItem: SecretBlobStore {
+    let service: String
+    let account: String
+
+    init(service: String = "com.openagents.app.auth", account: String) {
+        self.service = service
+        self.account = account
+    }
+
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrSynchronizable as String: false,
+        ]
+    }
+
+    func load() -> Data? {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    @discardableResult
+    func save(_ data: Data) -> Bool {
+        let update = [kSecValueData as String: data]
+        let status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
+        if status == errSecSuccess { return true }
+        if status == errSecItemNotFound {
+            var item = baseQuery
+            item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        }
+        return false
+    }
+
+    func clear() {
+        SecItemDelete(baseQuery as CFDictionary)
+    }
+}
+#endif
+
+/// Owner-only 0600 file store used on macOS (avoids login Keychain prompts across ad-hoc rebuilds).
+struct PrivateFileSecretStore: SecretBlobStore {
+    let url: URL
+
+    func load() -> Data? {
+        try? Data(contentsOf: url)
+    }
+
+    @discardableResult
+    func save(_ data: Data) -> Bool {
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let tmp = url.appendingPathExtension("tmp")
+        try? fm.removeItem(at: tmp)
+        guard fm.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return false }
+        if rename(tmp.path, url.path) != 0 {
+            try? fm.removeItem(at: tmp)
+            return false
+        }
+        return true
+    }
+
+    func clear() {
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+/// Offline snapshot cache for instant launch rendering before the Tailscale link finishes syncing.
+struct CachedHostSnapshot: Codable {
+    var hostID: String
+    var workspaceName: String
+    var sessions: [ChatSessionSummary]
+    var lastSessionID: String?
+    var lastItems: [TranscriptItem]
+    var savedAt: Int64
+}
+
+/// Holds the device's persistent secp256k1 identity, paired computers, Tailscale book, preferences, and offline cache.
+final class MobileDeviceStore {
+    private let keyItem: SecretBlobStore
+    private let pairedItem: SecretBlobStore
+    private let defaults: UserDefaults
+    let tailnetBook: AppTailnetBook
+    private let cacheURL: URL
+
+    init(
+        service: String = "com.openagents.app.auth",
+        defaults: UserDefaults = .standard,
+        tailnetBookURL: URL? = nil,
+        cacheURL: URL? = nil
+    ) {
+        self.defaults = defaults
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+
+        #if os(iOS)
+        self.keyItem = MobileKeychainItem(service: service, account: "own-computer-key-v1")
+        self.pairedItem = MobileKeychainItem(service: service, account: "own-computer-paired-v1")
+        self.tailnetBook = AppTailnetBook(url: tailnetBookURL ?? support.appendingPathComponent("OpenAgents/tailnet-computers-v1.json"))
+        self.cacheURL = cacheURL ?? support.appendingPathComponent("OpenAgents/transcript-cache-v1.json")
+        #else
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent(".openagents/macos", isDirectory: true)
+        self.keyItem = PrivateFileSecretStore(url: dir.appendingPathComponent("own-computer-key-v1"))
+        self.pairedItem = PrivateFileSecretStore(url: dir.appendingPathComponent("own-computer-paired-v1.json"))
+        self.tailnetBook = AppTailnetBook(url: tailnetBookURL ?? dir.appendingPathComponent("tailnet-computers-v1.json"))
+        self.cacheURL = cacheURL ?? dir.appendingPathComponent("transcript-cache-v1.json")
+        #endif
+    }
+
+    func loadOrCreateDeviceSecret() -> Data? {
+        if let existing = keyItem.load(), existing.count == 32, MobileCore.publicKeyHex(secret: existing) != nil {
+            return existing
+        }
+        for _ in 0..<4 {
+            guard let candidate = MobileCore.randomBytes(32), MobileCore.publicKeyHex(secret: candidate) != nil else {
+                continue
+            }
+            if keyItem.save(candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    func devicePublicKeyHex() -> String? {
+        guard let secret = loadOrCreateDeviceSecret() else { return nil }
+        return MobileCore.publicKeyHex(secret: secret)
+    }
+
+    var localClientLabel: String {
+        #if os(iOS)
+        return "OpenAgents iOS"
+        #else
+        return Host.current().localizedName ?? "OpenAgents macOS"
+        #endif
+    }
+
+    var pairedComputers: [PairedComputer] {
+        get {
+            guard let data = pairedItem.load(),
+                  let decoded = try? JSONDecoder().decode([PairedComputer].self, from: data) else {
+                return []
+            }
+            return decoded
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            _ = pairedItem.save(data)
+        }
+    }
+
+    func upsertPaired(_ computer: PairedComputer) {
+        var list = pairedComputers.filter { $0.host != computer.host }
+        list.insert(computer, at: 0)
+        pairedComputers = list
+    }
+
+    func removePaired(host: String) {
+        pairedComputers = pairedComputers.filter { $0.host != host }
+    }
+
+    // MARK: - Per-computer Antigravity preferences
+
+    func selectedModel(for host: String) -> String {
+        let saved = defaults.string(forKey: "oa.agy.model.\(host)") ?? ""
+        return MobileCore.normalizeAntigravityModel(saved)
+    }
+
+    func setSelectedModel(_ model: String, for host: String) {
+        defaults.set(MobileCore.normalizeAntigravityModel(model), forKey: "oa.agy.model.\(host)")
+    }
+
+    func selectedEffort(for host: String, model: String) -> String {
+        let saved = defaults.string(forKey: "oa.agy.effort.\(host)") ?? ""
+        return MobileCore.normalizeAntigravityEffort(model: model, want: saved)
+    }
+
+    func setSelectedEffort(_ effort: String, for host: String, model: String) {
+        defaults.set(MobileCore.normalizeAntigravityEffort(model: model, want: effort), forKey: "oa.agy.effort.\(host)")
+    }
+
+    func selectedReviewMode(for host: String) -> ReviewMode {
+        let raw = defaults.string(forKey: "oa.agy.review.\(host)") ?? ReviewMode.auto.rawValue
+        return ReviewMode(rawValue: raw) ?? .auto
+    }
+
+    func setSelectedReviewMode(_ mode: ReviewMode, for host: String) {
+        defaults.set(mode.rawValue, forKey: "oa.agy.review.\(host)")
+    }
+
+    var lastActiveHost: String? {
+        get { defaults.string(forKey: "oa.agy.activeHost") }
+        set { defaults.set(newValue, forKey: "oa.agy.activeHost") }
+    }
+
+    // MARK: - Offline transcript cache
+
+    func loadCache(for hostID: String) -> CachedHostSnapshot? {
+        guard let data = try? Data(contentsOf: cacheURL),
+              let all = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data) else {
+            return nil
+        }
+        return all[hostID]
+    }
+
+    func saveCache(_ snapshot: CachedHostSnapshot) {
+        var all: [String: CachedHostSnapshot] = [:]
+        if let data = try? Data(contentsOf: cacheURL),
+           let decoded = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data) {
+            all = decoded
+        }
+        all[snapshot.hostID] = snapshot
+        guard let encoded = try? JSONEncoder().encode(all) else { return }
+        try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? encoded.write(to: cacheURL, options: .atomic)
+    }
+}

@@ -143,6 +143,52 @@ ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
   eb: [64] u8; v[0].np = ea_copy(v[0].epoch[..], hs_itoa(found[at].mtime, eb[..]));
 }
 
+// Continues a native ~/.gemini Antigravity chat interactively by launching a managed agyworker run
+// seeded with the chat's recent turns via ph_recall (#13993 Phase 2.1).
+ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) #effects(all) {
+  if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
+  text := cast(string) q[0].text[0..<q[0].nt];
+  if !ea_text(text) { es_refuse(v, "malformed"); return; }
+  pick := pa_pick(ph_facts(h), ifx q[0].nmo > 0 then cast(string) q[0].model[0..<q[0].nmo] else PA_AGY_DEFAULT);
+  if pick.engine != PA_AGY { es_refuse(v, "no_agent"); return; }
+
+  // Read existing turns from the native ~/.gemini transcript into a Session for recall.
+  prior: [1] EaView;
+  ag_read(q, prior[..]);
+  if prior[0].ne > 0 { es_refuse(v, cast(string) prior[0].error[0..<prior[0].ne]); return; }
+  ses: [1] Session; pool: [131072] u8; s_init(ses[..], pool[..]);
+  for i: 0..<prior[0].ni {
+    role := cast(string) prior[0].items[i].role[0..<prior[0].items[i].nr];
+    body := ea_item_text(prior[..], i);
+    if role == "user" { s_user(ses[..], body); }
+    else if role == "assistant" { s_delta(ses[..], P_TEXT, body); }
+  }
+
+  c := h[0].environment[0].configuration[..];
+  cwd := cast(string) c[0].workspace[0..<c[0].nw];
+  idb: [32] u8; id := hs_random_hex(16, idb[..]);
+  if id.count != 32 { es_refuse(v, "storage_unavailable"); return; }
+  generation := cxproc_wall_us() / 1000;
+  eff := pa_effort(PA_AGY, pick.model, cast(string) q[0].effort[0..<q[0].nef]);
+  want_mode := ifx q[0].nmd > 0 then cast(string) q[0].mode[0..<q[0].nmd] else "auto";
+
+  lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 16384] u8;
+  at := ph_recall(ses[..], lines[..]);
+  if at < 0 { es_refuse(v, "malformed"); return; }
+  wn := ph_task(text, id, cwd, PA_AGY, pick.model, eff, lines[at..<lines.count]);
+  if wn < 1 { es_refuse(v, "malformed"); return; }
+  ip: [1400] u8;
+  if !ph_meta(id, generation, pick, eff) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) lines[0..<at + wn]) {
+    es_refuse(v, "storage_unavailable"); return;
+  }
+  why := ph_spec_mode(h, id, PA_AGY, pick.model, eff, want_mode, cwd, 0);
+  if why.count == 0 { why = dr_start(h[0].runs[..], id); }
+  if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
+  v[0].ns = 0; dk_read_summary(h, id, v);
+  v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]);
+  v[0].nt = ea_copy(v[0].status[..], "accepted");
+}
+
 #test "an Antigravity chat's id is the prefix and a plain folder name" {
   #assert ag_is("agy-c905b85e-8721-46eb-9a12-5af77a44916d") && !ag_is("agy-") && !ag_is("agy-../x") && !ag_is("agy-a/b") && !ag_is("desktop-1");
   b: [256] u8; n := ag_title_of("Fix the\nbuild  ", b[..]); #assert cast(string) b[0..<n] == "Fix the build";

@@ -48,7 +48,9 @@ EaRequest :: struct {
   model:[64]u8;nmo:int;effort:[16]u8;nef:int;
   folder:[EA_FOLDER]u8;nf:int;
   item:[128]u8;nit:int;
+  mode:[16]u8;nmd:int;
 }
+ea_mode_ok :: (m:string)->bool #effects(all) {return m=="auto" || m=="default" || m=="plan";}
 // ReadSubagent (GitHub #13713): one sub-agent's own transcript, the agent a ReadSession item
 // started ("item_id", required there and refused anywhere else). Its view's items are the
 // agent's calls (role "tool") and words ("assistant"), newest page first; "next_cursor" names
@@ -155,12 +157,13 @@ ea_optional :: (d:Jv,at:int,key:string,out:[]u8)->int #effects(all) {
 ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
   q[0]=EaRequest.{};nodes:[64]JvNode;d:[1]Jv;
   if raw.count>24576 || !jv_parse(d[..],raw,nodes[..]) || jv_kind(d[0],0)!=JV_OBJECT {return false;}
-  v:=d[0];fields:=[16]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms","model","effort","folder","item_id"];seen:[16]bool;
+  v:=d[0];fields:=[17]string.["method","workspace_id","session_id","command_id","generation","expected_revision","text","interaction_id","allow","before","expires_at_ms","issued_at_ms","model","effort","folder","item_id","mode"];seen:[17]bool;
   for i:0..<jv_len(v,0) {known:=false;k:=jv_key(v,jv_at(v,0,i));for key,j:fields {if k==key {if seen[j] {return false;}seen[j]=true;known=true;}}if !known {return false;}}
   q[0].nm=ea_field(v,"method",q[0].method[..]);q[0].nw=ea_field(v,"workspace_id",q[0].workspace[..]);
   q[0].ns=ea_field(v,"session_id",q[0].session[..]);q[0].nc=ea_field(v,"command_id",q[0].command[..]);
   q[0].nt=ea_field(v,"text",q[0].text[..]);q[0].ni=ea_field(v,"interaction_id",q[0].interaction[..]);
   q[0].nmo=ea_optional(v,0,"model",q[0].model[..]);q[0].nef=ea_optional(v,0,"effort",q[0].effort[..]);
+  if seen[16] {q[0].nmd=ea_field(v,"mode",q[0].mode[..]);if q[0].nmd<1 || !ea_mode_ok(cast(string)q[0].mode[0..<q[0].nmd]) {return false;}}
   if q[0].nm<1 || q[0].nw<0 || q[0].ns<0 || q[0].nc<0 || q[0].nt<0 || q[0].ni<0 || q[0].nmo<0 || q[0].nef<0 {return false;}
   // a folder only opens a session, and only one spelled as a plain relative path
   if seen[14] {q[0].nf=ea_field(v,"folder",q[0].folder[..]);if q[0].nf<1 || !ea_folder_ok(cast(string)q[0].folder[0..<q[0].nf]) || cast(string)q[0].method[0..<q[0].nm]!="OpenSession" {return false;}}
@@ -185,7 +188,8 @@ ea_write :: (q:[]EaRequest,out:[]u8)->int #effects(all) {
   if q[0].nmo>0 {jo_key(o[..],"model");jo_str(o[..],cast(string)q[0].model[0..<q[0].nmo]);}
   if q[0].nef>0 {jo_key(o[..],"effort");jo_str(o[..],cast(string)q[0].effort[0..<q[0].nef]);}
   if q[0].nf>0 {jo_key(o[..],"folder");jo_str(o[..],cast(string)q[0].folder[0..<q[0].nf]);}
-  if q[0].nit>0 {jo_key(o[..],"item_id");jo_str(o[..],cast(string)q[0].item[0..<q[0].nit]);}jo_end(o[..]);
+  if q[0].nit>0 {jo_key(o[..],"item_id");jo_str(o[..],cast(string)q[0].item[0..<q[0].nit]);}
+  if q[0].nmd>0 {jo_key(o[..],"mode");jo_str(o[..],cast(string)q[0].mode[0..<q[0].nmd]);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_read_body :: (method:string,id:string,before:string,out:[]u8)->int #export_c #effects(all) {
@@ -491,5 +495,13 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert !ea_read("{\"method\":\"StopSubagent\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"0123456789abcdef0123456789abcdef\",\"generation\":7,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":2,\"issued_at_ms\":1}",r[..]);
   // a read without an item is unchanged on the wire
   q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"ReadSession");q[0].nw=ea_copy(q[0].workspace[..],"default");n=ea_write(q[..],out[..]);found:=false;for i:0..<(ifx n>7 then n-7 else 0) {if cast(string)out[i..<i+7]=="item_id" {found=true;}}#assert n>0 && !found;
+}
+#test "Antigravity review mode travels optionally as auto, default, or plan and rejects unknown modes" {
+  #assert ea_mode_ok("auto") && ea_mode_ok("default") && ea_mode_ok("plan") && !ea_mode_ok("") && !ea_mode_ok("yolo");
+  q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"OpenSession");q[0].nw=ea_copy(q[0].workspace[..],"default");q[0].nmd=ea_copy(q[0].mode[..],"plan");
+  out:[2048]u8;n:=ea_write(q[..],out[..]);r:[1]EaRequest;
+  #assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].mode[0..<r[0].nmd]=="plan";
+  q[0].nmd=0;n=ea_write(q[..],out[..]);#assert n>0 && ea_read(cast(string)out[0..<n],r[..]) && r[0].nmd==0;
+  #assert !ea_read("{\"method\":\"OpenSession\",\"workspace_id\":\"default\",\"session_id\":\"\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"hi\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"mode\":\"yolo\"}",r[..]);
 }
 #load "wire-view-checks.coax" #test;   // the view's optional tail at its bounds (#13610)

@@ -338,7 +338,7 @@ es_resume :: (h:[]HsHost,id:string,grant:string,device:string)->int #effects(all
 }
 
 es_handle :: (h:[]HsHost,rq:HbAppRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
-  if rq.request!=mailbox || rq.host!=cast(string)h[0].xhex[..] || rq.relay!=hs_relay_of(h) {return 0;}
+  if rq.request!=mailbox || rq.host!=cast(string)h[0].xhex[..] || !hs_relay_matches(h,rq.relay) {return 0;}
   configured:=es_load_for(h[0].environment[..],signer,rq.grant);c:=h[0].environment[0].configuration[..];
   hs_load(st,statebuf);ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;hs_records(st,ga[..],epochs[..]);
   scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==rq.grant);
@@ -671,9 +671,10 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if method=="DescribeEnvironment" {es_folders(h,v);return;}
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
   // Coder Desktop's chats, whose workers the daemon runs (host-desktop.coax, GitHub #13713)
-  // Antigravity's own chats, asked for by name (host-agy.coax)
+  // Antigravity's own chats, asked for by name or continued interactively (host-agy.coax)
   if method=="ListSessions" && ag_asked(q) {ag_list(q,v);return;}
   if method=="ReadSession" && ag_is(cast(string)q[0].session[0..<q[0].ns]) {ag_read(q,v);return;}
+  if method=="SendMessage" && ag_is(cast(string)q[0].session[0..<q[0].ns]) {ag_continue(h,q,grant,v);return;}
   if method=="ListSessions" {if q[0].before==0 {dk_list(h,v);es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
   // a phone's chat on Microcoder or Antigravity is a run of its own (host-phone.coax)
   id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) || (ph_is(id) && method!="OpenSession") {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);
@@ -809,6 +810,63 @@ es_pair :: (args:[]Args)->int #effects(all) {
     _ = cxproc_sleep_ms(1000);
   }
   tool_errln("coder host pair: no phone asked with that code; run it again");return 3;
+}
+// Relay-free Tailscale direct grant issuance (#13993): invoked by the host's Tailscale listener
+// after `tailscale whois --json` confirms an untagged device belonging to the same Tailscale owner.
+// Mints a signed NIP-HOST grant directly into state.json, enrolls the workspace + workspace controls,
+// and writes the canonical openagents.host-tailnet-grant.v1 JSON answer to stdout.
+es_direct_grant :: (args:[]Args)->int #effects(all) {
+  device:=args_value(args,"--device","");
+  workspace:=args_value(args,"--workspace","");
+  label:=args_value(args,"--label","This Mac");
+  client_label:=args_value(args,"--client-label","Tailscale client");
+  days:=hs_atoi(args_value(args,"--days","30"));
+  if days<1 || days>30 {days=30;}
+  canonical:[1024]u8;root:=fs_realpath(workspace,canonical[..]);
+  if !ea_id(device,64) || root.count==0 || fs_kind(root)!=FS_DIR || label.count==0 || label.count>80 {
+    tool_errln("direct-grant needs --device 64HEX --workspace EXISTING_ROOT [--label NAME] [--client-label NAME] [--days 1..30]");
+    return 2;
+  }
+  sk:[32]u8;x:[32]u8;xh:[64]u8;
+  if !hs_key(sk[..],x[..],xh[..]) {tool_errln("coder host: could not read or make the host key");return 1;}
+  wipe(sk[..]);
+  st:[1]HsState;buf:[HS_STATE_MAX]u8;hs_load(st[..],buf[..]);
+  now:=hs_now();
+  rb:[64]u8;req_id:=hs_random_hex(32,rb[..]);
+  pi:=hs_pairing_add(st[..],req_id,device,client_label,now);
+  if pi<0 {tool_errln("coder host direct-grant: pairing table full");return 1;}
+  gb:[64]u8;g:=hs_allow(st[..],pi,hs_random_hex(32,gb[..]),now);
+  if g<0 {tool_errln("coder host direct-grant: could not allocate grant");return 1;}
+  st[0].grants[g].expires=now+days*86400;
+  if !hs_save(st[..],buf[..]) {tool_errln("coder host direct-grant: could not save state");return 1;}
+  grant:=cast(string)st[0].grants[g].grant[..];
+  epoch:=st[0].grants[g].epoch;
+  expires:=st[0].grants[g].expires;
+  c:[1]EaConfiguration;c[0].enabled=true;
+  _ = ea_copy(c[0].device[..],device);_ = ea_copy(c[0].grant[..],grant);
+  c[0].nh=ea_copy(c[0].history[..],root);c[0].nw=ea_copy(c[0].workspace[..],root);c[0].nl=ea_copy(c[0].label[..],label);
+  cfg_out:[8192]u8;wn:=ea_config_write(c[..],cfg_out[..]);
+  p1:[1400]u8;p2:[1400]u8;
+  if wn<1 || !hs_dir() || !fs_replace_durable(es_device_file(grant,p1[..]),cast(string)cfg_out[0..<wn]) {
+    tool_errln("coder host direct-grant: could not save device enrollment");return 1;
+  }
+  // Also bootstrap primary environment.json on a fresh Mac so local service.sock works immediately.
+  prior:[1]EsHost;
+  if !es_load_configuration(prior[..]) {
+    p0:[1400]u8;
+    _ = fs_replace_durable(es_path("environment.json",p0[..]),cast(string)cfg_out[0..<wn]);
+  }
+  // Automatically enable workspace controls (Git diff/branch/worktree/PR) for this Tailscale grant.
+  _ = fs_replace_durable(ws_config_file(grant,p2[..]),cast(string)cfg_out[0..<wn]);
+  ans:[1]HtGrantAnswer;
+  ans[0].nhost=ht_copy(ans[0].host[..],cast(string)xh[..]);
+  ans[0].nlabel=ht_copy(ans[0].label[..],label);
+  ans[0].ngrant=ht_copy(ans[0].grant[..],grant);
+  ans[0].epoch=epoch;ans[0].expires=expires;
+  out:[HT_ANSWER_MAX]u8;an:=ht_grant_answer_write(ans[..],out[..]);
+  if an<1 {tool_errln("coder host direct-grant: could not encode grant answer");return 1;}
+  hs_outln(cast(string)out[0..<an]);
+  return 0;
 }
 #test "a phone may open a session only in a folder inside the bound workspace" {
   #assert es_folder_inside("/w/repo","/w/repo/apps") && es_folder_inside("/w/repo","/w/repo/apps/web");

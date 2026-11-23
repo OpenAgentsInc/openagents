@@ -596,6 +596,9 @@ ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, e
 }
 // What the worker starts with: bundled agyworker, inky, or mcworker with Desktop's PATH and engine env.
 ph_spec :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, cwd: string, skip: int) -> string {
+  return ph_spec_mode(h, id, engine, model, effort, "auto", cwd, skip);
+}
+ph_spec_mode :: (h: [] HsHost, id: string, engine: int, model: string, effort: string, mode: string, cwd: string, skip: int) -> string {
   wname := ifx engine == PA_AGY then "agyworker" else ifx engine == PA_INKLING then "inky" else "mcworker";
   wb: [1400] u8; program := ph_worker(wname, wb[..]);
   if program.count == 0 { return "invalid-program"; }
@@ -627,7 +630,8 @@ ph_spec :: (h: [] HsHost, id: string, engine: int, model: string, effort: string
     if model.count > 0 && model != PA_AGY_ID { en = hs_cat(eb[..], 0, "CODER_AGY_MODEL="); en = hs_cat(eb[..], en, model); jo_str(o[..], cast(string) eb[0..<en]); }
     eff := pa_effort(PA_AGY, model, effort);
     if eff.count > 0 { en = hs_cat(eb[..], 0, "CODER_AGY_EFFORT="); en = hs_cat(eb[..], en, eff); jo_str(o[..], cast(string) eb[0..<en]); }
-    jo_str(o[..], "CODER_AGY_MODE=auto");
+    agy_mode := ifx ea_mode_ok(mode) then mode else "auto";
+    en = hs_cat(eb[..], 0, "CODER_AGY_MODE="); en = hs_cat(eb[..], en, agy_mode); jo_str(o[..], cast(string) eb[0..<en]);
   }
   jo_end(o[..]);
   jo_key(o[..], "unset"); jo_arr(o[..]); jo_str(o[..], "CODER_CLAUDE_KEY"); jo_end(o[..]);
@@ -641,12 +645,13 @@ ph_open :: (h: [] HsHost, q: [] EaRequest, grant: string, id: string, pick: PaPi
   if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
   generation := cxproc_wall_us() / 1000;
   want_eff := cast(string) q[0].effort[0..<q[0].nef];
+  want_mode := ifx q[0].nmd > 0 then cast(string) q[0].mode[0..<q[0].nmd] else "auto";
   eff := pa_effort(pick.engine, pick.model, want_eff);
   line: [EX_INPUT_MAX + 8192] u8; ln := ph_task(cast(string) q[0].text[0..<q[0].nt], id, cwd, pick.engine, pick.model, eff, line[..]);
   if ln < 2 { es_refuse(v, "malformed"); return; }
   ip: [1400] u8;
   if !fs_replace_durable(file, command) || !ph_meta(id, generation, pick, eff) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
-  why := ph_spec(h, id, pick.engine, pick.model, eff, cwd, 0);
+  why := ph_spec_mode(h, id, pick.engine, pick.model, eff, want_mode, cwd, 0);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
   v[0].ns = 0; dk_read_summary(h, id, v);
