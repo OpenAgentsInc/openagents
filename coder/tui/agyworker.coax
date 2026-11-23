@@ -253,11 +253,13 @@ agyw_load_env :: (s: [] AgywState) {
 }
 
 agyw_auth_config :: (s: [] AgywState) -> AgyAuthConfig {
+  mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
   return AgyAuthConfig.{
     method = agyw_str(s[0].cfg.auth_method[..], s[0].cfg.auth_method_n),
     api_key = agyw_str(s[0].cfg.api_key[..], s[0].cfg.api_key_n),
     gcp_project = agyw_str(s[0].cfg.gcp_project[..], s[0].cfg.gcp_project_n),
     gcp_location = agyw_str(s[0].cfg.gcp_location[..], s[0].cfg.gcp_location_n),
+    skip_permissions = (mode == "auto"),
   };
 }
 
@@ -268,7 +270,8 @@ agyw_launch_engine :: (s: [] AgywState, x: [] CuEngine, cwd: string) -> string {
   if s[0].cfg.auth_method_n > 0 {
     return agy_launch_auth(x, prog, cwd, "openagents-agyworker", "1.0", prof, agyw_auth_config(s));
   }
-  return agy_launch_with(x, prog, cwd, "openagents-agyworker", "1.0", prof);
+  skip_perm := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n) == "auto";
+  return agy_launch_with_skip(x, prog, cwd, "openagents-agyworker", "1.0", prof, skip_perm);
 }
 
 agyw_is_logout :: (text: string) -> bool {
@@ -585,23 +588,25 @@ agyw_answer_permission :: (s: [] AgywState, c: [] CuClient, params: string, mode
   return CU_DISP_DENY;
 }
 
-// Handle a session/request_permission event: hard-denied calls decline immediately; when
-// interactive mode is enabled and the request is a user-input question ("interaction_*") or
-// an escalated approval (auto mode or supervised default mode), emit MWW_PERMIT and pause
-// waiting for the owner's MWW_ANSWER (#13831).
+// Handle a session/request_permission event: hard-denied calls decline immediately; in auto mode
+// all tool/command permission requests (including git push & unsandboxed commands) auto-approve
+// without prompting, while native user questions ("interaction_*") or explicit supervised
+// "default" mode emit MWW_PERMIT and pause waiting for the owner's MWW_ANSWER (#13831).
 agyw_on_permission :: (s: [] AgywState, c: [] CuClient, params: string, mode: string, emit: bool) -> int {
   why := agyw_deny_reason(c, params, mode);
   if why.count > 0 { return agyw_answer_permission(s, c, params, mode); }
   is_q := cu_perm_is_question(params, c[0].ar[..]);
-  ask_user := s[0].cfg.interactive && (is_q || cu_permission_disposition(c, CU_DISP_ALLOW) == CU_DISP_ASK || mode == "default");
+  ask_user := s[0].cfg.interactive && (is_q || mode == "default");
   if !ask_user { return agyw_answer_permission(s, c, params, mode); }
   tool := cl_raw(params, "toolCall");
   nb: [AGYW_LABEL] u8;
   label := cu_tool_display_name(tool, c[0].ar[..], nb[..]);
   if label.count == 0 { label = ifx is_q then "Choose an option." else "Approve tool call"; }
   cmd := cl_str(c[0].ar[..], tool, "rawInput.CommandLine");
+  if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.commandLine"); }
   if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.command"); }
   if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.Path"); }
+  if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.AbsolutePath"); }
   if cmd.count == 0 { cmd = cl_str(c[0].ar[..], tool, "rawInput.TargetFile"); }
   opts := cl_raw(params, "options");
   s[0].next_ticket += 1;
@@ -622,6 +627,9 @@ agyw_handle_answer :: (s: [] AgywState, x: [] CuEngine, req: MwwRequest) -> bool
   c := x[0].c;
   if req.allow {
     opt := req.option;
+    if opt == "allow_session" && !cu_perm_has_option(c, opt) && cu_perm_has_option(c, "allow_always") {
+      opt = "allow_always";
+    }
     if opt.count == 0 || !cu_perm_has_option(c, opt) { opt = cu_allow_option(c); }
     if opt.count > 0 { cu_permit(c, opt); } else { cu_decline(c); }
   } else {
@@ -642,6 +650,8 @@ agyw_handle_answer :: (s: [] AgywState, x: [] CuEngine, req: MwwRequest) -> bool
   s[0].pending_id_n = 0;
   s[0].pending_label_n = 0;
   if x[0].live && !s[0].sink { _ = cu_flush(x[0].c, x[0].p); }
+  // Reset stall watchdog after human approval wait so a long prompt pause never triggers a stall timeout.
+  x[0].heard = true;
   return true;
 }
 
@@ -1691,7 +1701,8 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     if s[0].turn_active {
       if x[0].restart_required && !s[0].respawned && s[0].last_prompt_n > 0 {
         s[0].respawned = true;
-        why := agy_respawn_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), agyw_str(s[0].cwd[..], s[0].cwd_n), "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+        _ = cue_prepare_restart(x);
+        why := agyw_launch_engine(s, x, agyw_str(s[0].cwd[..], s[0].cwd_n));
         if why.count == 0 {
           agyw_lease_acquire(s, x[0].p[0].pid);
           _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
@@ -1841,15 +1852,17 @@ tool_main :: () -> int #export_c #effects(all) {
     }
 
     // 2. Poll the ACP engine and watchdog (paused while awaiting an interactive permit/question answer).
+    // Must also break immediately inside the batch loop when pending_permit is raised so the next
+    // cue_poll -> cu_settle does not auto-decline the open permission request before the UI answers.
     if x[0].live && !s[0].pending_permit {
       for step: 0..<64 {
         ev: [1] CuEvent;
         cue_poll(x, ev[..]);
         if ev[0].kind == CuEventKind.idle { break; }
         agyw_handle_event(s, x, ev[0], true);
-        if !x[0].live { break; }
+        if !x[0].live || s[0].pending_permit { break; }
       }
-      if x[0].live && s[0].turn_active {
+      if x[0].live && s[0].turn_active && !s[0].pending_permit {
         now := cxproc_now_ms();
         if now - s[0].last_sub_poll >= 250 {
           s[0].last_sub_poll = now;
@@ -2121,7 +2134,7 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert agyw_logged(s, "\"kind\":\"thought\"") && agyw_logged(s, "\"ending\":\"finished\"");
 }
 
-#test "agyworker: interactive auto-mode escalations and interaction_ questions wait for MWW_ANSWER" {
+#test "agyworker: auto mode auto-approves git push & tools immediately while default mode and interaction_ questions wait for MWW_ANSWER" {
   sb: [1] AgywState; s := sb[..];
   xb: [1] CuEngine; x := xb[..];
   cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
@@ -2134,33 +2147,40 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   _ = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-1\",\"modes\":{\"currentModeId\":\"auto\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]}}}");
   cu_outbox_clear(x[0].c);
 
-  // 1. Escalated permission in auto mode emits MWW_PERMIT and does not answer agy yet.
-  perm := "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"tc-1\",\"title\":\"Run shell command\",\"kind\":\"execute\",\"rawInput\":{\"CommandLine\":\"rm -rf build\"}},\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}";
-  agyw_fx_feed(s, x, perm);
-  #assert s[0].pending_permit && !s[0].pending_is_question && s[0].pending_ticket == 1;
-  #assert agyw_logged(s, "\"kind\":\"permit\",\"ticket\":1,\"question\":false,\"title\":\"Run shell command\",\"command\":\"rm -rf build\"");
-  #assert cu_outbox(x[0].c).count == 0;   // agy has not been answered yet
+  // 1. In auto mode, escalated tool/command permission (e.g. git push) auto-approves immediately with NO prompt.
+  perm_push := "{\"jsonrpc\":\"2.0\",\"id\":50,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"tc-1\",\"title\":\"git push\",\"kind\":\"execute\",\"rawInput\":{\"CommandLine\":\"git push\"}},\"options\":[{\"optionId\":\"allow\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}";
+  agyw_fx_feed(s, x, perm_push);
+  #assert !s[0].pending_permit && x[0].c[0].asking == 0;
+  #assert !agyw_logged(s, "\"kind\":\"permit\"");
+  #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"allow\"");
 
-  // Owner approves with native optionId allow_once -> cu_permit sends selected optionId.
+  // 2. Native Antigravity question (toolCallId starts with interaction_) still prompts and sends chosen optionId.
+  cu_outbox_clear(x[0].c); s[0].log_n = 0;
   ar_buf: [2048] u8; ar := [1] ClArena.[ClArena.{buf = ar_buf[..]}];
   req: [1] MwwRequest;
-  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":1,\"option\":\"allow_once\"}", req[..]) == MWW_ANSWER;
-  #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
-  #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"allow_once\"");
-
-  // 2. Native Antigravity question (toolCallId starts with interaction_) emits question:true and sends chosen optionId.
-  cu_outbox_clear(x[0].c); s[0].log_n = 0;
   q := "{\"jsonrpc\":\"2.0\",\"id\":51,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"interaction_9\",\"title\":\"Which backend?\",\"kind\":\"other\"},\"options\":[{\"optionId\":\"opt_1\",\"name\":\"Metal\"},{\"optionId\":\"opt_2\",\"name\":\"Vulkan\"}]}}";
   agyw_fx_feed(s, x, q);
-  #assert s[0].pending_permit && s[0].pending_is_question && s[0].pending_ticket == 2;
-  #assert agyw_logged(s, "\"kind\":\"permit\",\"ticket\":2,\"question\":true,\"title\":\"Which backend?\"");
-  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":2,\"option\":\"opt_2\"}", req[..]) == MWW_ANSWER;
+  #assert s[0].pending_permit && s[0].pending_is_question && s[0].pending_ticket == 1;
+  #assert agyw_logged(s, "\"kind\":\"permit\",\"ticket\":1,\"question\":true,\"title\":\"Which backend?\"");
+  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":1,\"option\":\"opt_2\"}", req[..]) == MWW_ANSWER;
   #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;
   #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"opt_2\"");
 
-  // 3. Denying an escalated permission declines agy and records the denial reason.
+  // 3. In supervised "default" mode, permissions wait for MWW_ANSWER, ignore stale tickets, and map allow_session -> allow_always.
+  s[0].cfg.mode_n = agyw_copy(s[0].cfg.mode[..], "default");
   cu_outbox_clear(x[0].c); s[0].log_n = 0;
-  agyw_fx_feed(s, x, perm);
+  perm_always := "{\"jsonrpc\":\"2.0\",\"id\":52,\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"tc-2\",\"title\":\"Run shell command\",\"kind\":\"execute\",\"rawInput\":{\"CommandLine\":\"git push\"}},\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_always\",\"name\":\"Allow always\",\"kind\":\"allow_always\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}";
+  agyw_fx_feed(s, x, perm_always);
+  #assert s[0].pending_permit && s[0].pending_ticket == 2 && x[0].c[0].asking != 0;
+  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":99}", req[..]) == MWW_ANSWER;
+  #assert !agyw_handle_answer(s, x, req[0]) && s[0].pending_permit && cu_outbox(x[0].c).count == 0;
+  #assert mww_request(ar[..], "{\"answer\":true,\"ticket\":2,\"option\":\"allow_session\"}", req[..]) == MWW_ANSWER;
+  #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit && x[0].c[0].asking == 0;
+  #assert agy_out_has(x, "\"outcome\":\"selected\",\"optionId\":\"allow_always\"");
+
+  // 4. Denying a supervised permission declines agy and records the denial reason.
+  cu_outbox_clear(x[0].c); s[0].log_n = 0;
+  agyw_fx_feed(s, x, perm_always);
   #assert s[0].pending_permit && s[0].pending_ticket == 3;
   #assert mww_request(ar[..], "{\"answer\":false,\"ticket\":3,\"why\":\"too risky\"}", req[..]) == MWW_ANSWER;
   #assert agyw_handle_answer(s, x, req[0]) && !s[0].pending_permit;

@@ -82,6 +82,7 @@ AgyAuthConfig :: struct {
   api_key: string;
   gcp_project: string;
   gcp_location: string;
+  skip_permissions: bool;
 }
 
 agy_auth_normalize :: (raw: string) -> string {
@@ -185,6 +186,10 @@ agy_prepare_launch_auth :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: 
     if !agy_env_has(e, "GEMINI_HOME") {
       agy_env_push_kv(e, "GEMINI_HOME", profile_dir);
     }
+  }
+  if cfg.skip_permissions && l[0].args_n < l[0].args.count {
+    l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
+    l[0].args_n += 1;
   }
   // Strip all 19 ambient Google/GCP/Gemini/XDG/SSH variables (T3 removedEnvironmentKeys).
   rem := AGY_REMOVED_ENV_KEYS;
@@ -897,7 +902,7 @@ agy_check_version :: (version: string) -> string {
 }
 
 // agy started in cwd with the credentials file's variables and optional isolated profile dir.
-agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string) -> string {
+agy_launch_with_skip :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string, skip_permissions: bool) -> string {
   cue_agent(x, agy_agent());
   e: [1] AgyEnv; r := agy_env_load(e[..]);
   ab: [8] u8; gb: [8] u8; sb: [8] u8;
@@ -906,6 +911,10 @@ agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, 
   has_sc := cl_getenv("SSH_CONNECTION", sb[..]).count > 0;
   l: [1] CuLaunch;
   agy_prepare_launch(l[..], e[..], program, cwd, profile_dir, has_au, has_gh, has_sc);
+  if skip_permissions && l[0].args_n < l[0].args.count {
+    l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
+    l[0].args_n += 1;
+  }
   _ = agy_wrap_windows_cmd(l[..]);
   why := cue_start(x, l[0], name, version);
   if why.count == 0 {
@@ -914,6 +923,10 @@ agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, 
     cue_watch_set(x, w.stall_ms, w.recoveries);
   }
   return why;
+}
+
+agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string) -> string {
+  return agy_launch_with_skip(x, program, cwd, name, version, profile_dir, false);
 }
 
 // agy started in cwd with the credentials file's variables, initialize sent: "" or why it did not start.
@@ -1958,8 +1971,9 @@ agy_parse_go_duration_ms :: (dur: string) -> int {
   agy_prepare_launch_auth(l2[..], e2[..], "agy", "/w", "/tmp/p2", AgyAuthConfig.{method = "agent-platform", api_key = "express-k"});
   #assert l2[0].unset_n == 20 && !agy_env_has(e2[..], "SSH_CONNECTION") && agy_env_has(e2[..], "GOOGLE_API_KEY");
   e3: [1] AgyEnv; l3: [1] CuLaunch;
-  agy_prepare_launch_auth(l3[..], e3[..], "agy", "/w", "/tmp/p3", AgyAuthConfig.{method = "gemini-api-key", api_key = "gem-k"});
+  agy_prepare_launch_auth(l3[..], e3[..], "agy", "/w", "/tmp/p3", AgyAuthConfig.{method = "gemini-api-key", api_key = "gem-k", skip_permissions = true});
   #assert l3[0].unset_n == 20 && agy_env_has(e3[..], "GEMINI_API_KEY") && !agy_env_has(e3[..], "GOOGLE_API_KEY");
+  #assert l3[0].args_n == 5 && l3[0].args[4] == "--dangerously-skip-permissions";
 
   // 4. OAuth URL detail & login response parsing
   ub: [512] u8; sb: [128] u8;

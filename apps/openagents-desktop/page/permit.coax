@@ -152,6 +152,10 @@ cp_permit_load_item :: (p: [] CpPermit, entry: CpPermitItem) {
 cp_permit_push_item :: (s: [] CoderPage, entry: CpPermitItem) {
   if s.count < 1 { return; }
   p := s[0].permit[..];
+  if entry.kind == CP_PERMIT_KIND_APPROVAL && p[0].session_allow {
+    cp_permit_record_answer(s, entry.agent_idx, entry.ticket, true, "allow_session", "");
+    return;
+  }
   if !p[0].open {
     cp_permit_load_item(p, entry);
     return;
