@@ -16,6 +16,7 @@ struct MacRootView: View {
     @State private var renameDraft: String = ""
     @State private var editingMessageItem: TranscriptItem?
     @State private var editingMessageDraft: String = ""
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         ZStack {
@@ -100,6 +101,18 @@ struct MacRootView: View {
             if presented {
                 showInspector = true
                 store.isWorkspacePresented = false
+            }
+        }
+        .onChange(of: store.composerFocusNonce) { _, _ in
+            DispatchQueue.main.async {
+                composerFocused = true
+            }
+        }
+        .onAppear {
+            if store.activeSessionID == nil {
+                DispatchQueue.main.async {
+                    composerFocused = true
+                }
             }
         }
     }
@@ -964,6 +977,7 @@ struct MacRootView: View {
 
             TextField("Ask Antigravity, drop files, or type /…", text: $store.draftText, axis: .vertical)
                 .textFieldStyle(.plain)
+                .focused($composerFocused)
                 .lineLimit(1...8)
                 .font(.system(size: 14))
                 .foregroundStyle(OATheme.textPrimary)

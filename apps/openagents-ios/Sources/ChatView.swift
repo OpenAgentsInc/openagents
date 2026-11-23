@@ -114,6 +114,11 @@ struct ChatView: View {
             }
             Button("Cancel", role: .cancel) { editingMessageItem = nil }
         }
+        .onChange(of: store.composerFocusNonce) { _, _ in
+            DispatchQueue.main.async {
+                composerFocused = true
+            }
+        }
         .onChange(of: dictation.errorMessage) { _, msg in
             if let msg, !msg.isEmpty {
                 store.bannerError = msg
@@ -317,7 +322,7 @@ struct ChatView: View {
                 .foregroundStyle(OATheme.textPrimary)
             Spacer()
             Button("Retry") {
-                Task { await store.flushPendingOutbox() }
+                Task { await store.flushPendingOutbox(interactive: true) }
             }
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.black)

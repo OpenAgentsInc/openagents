@@ -29,7 +29,8 @@ targets:
         compilerFlags: "-Wno-unused-function -Wno-unused-variable -Wno-unknown-attributes -ffp-contract=off -fno-fast-math"
       - path: ../shared/antigravity/client-core-bridge.c
         compilerFlags: "-IGenerated -I../shared/native -I../shared/antigravity"
-      - OpenAgents/Assets.xcassets
+      - path: OpenAgents/AppIcon.icon
+        type: file
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(OA_MAC_BUNDLE_ID)"

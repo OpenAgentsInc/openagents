@@ -1,5 +1,6 @@
 // Firm reason: 6 (iOS SwiftUI @main application entry point for OpenAgents Antigravity-over-Tailscale mobile client).
 import SwiftUI
+import UIKit
 
 @main
 struct OpenAgentsApp: App {
@@ -15,6 +16,17 @@ struct OpenAgentsApp: App {
                     store.onTurnNotificationEvent = { kind, title in
                         TurnNotifications.shared.notifyBackgroundEvent(kind: kind, title: title)
                     }
+                    if scenePhase != .background {
+                        store.onForeground()
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    TurnNotifications.shared.endBackgroundGracePeriod()
+                    store.onForeground()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    TurnNotifications.shared.endBackgroundGracePeriod()
+                    store.onForeground()
                 }
                 .onOpenURL { url in
                     store.handleIncomingURL(url)

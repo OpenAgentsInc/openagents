@@ -295,6 +295,9 @@ final class TailscaleHostServer: ObservableObject {
             "EnvironmentVariables": [
                 "PATH": envPath,
                 "HOME": home,
+                "TAILSCALE_BE_CLI": "1",
+                "TERM": "dumb",
+                "BROWSER": "/usr/bin/true",
             ],
             "RunAtLoad": true,
             "KeepAlive": true,
@@ -396,21 +399,30 @@ final class TailscaleHostServer: ObservableObject {
 
         // 1. Relay-free Direct Tailscale Grant request (`openagents.host-tailnet-grant-request.v1`)
         if let req = AppTailnet.parseDirectGrantRequest(line) {
-            bgQueue.async {
+            bgQueue.async { [weak self] in
+                var effectiveOwner = ownerSnapshot
+                if effectiveOwner == nil, let refreshed = Self.queryTailscaleOwner() {
+                    effectiveOwner = refreshed
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            self?.applyRefreshedOwner(refreshed)
+                        }
+                    }
+                }
                 let whois = Self.queryTailscaleWhois(remoteIP: remoteIP)
-                if let refusal = AppTailnet.decide(remote: remoteIP, whois: whois, owner: ownerSnapshot) {
+                if let refusal = AppTailnet.decide(remote: remoteIP, whois: whois, owner: effectiveOwner) {
                     let ans = AppTailnet.DirectGrantAnswer(host: "", label: hostLabel, grant: nil, epoch: 0, expires: 0, refused: refusal.rawValue)
                     let reply = AppTailnet.directGrantAnswerLine(ans)
                     conn.send(content: reply, completion: .contentProcessed { _ in conn.cancel() })
                     return
                 }
-                guard let hostBin else {
+                guard let effectiveHostBin = hostBin ?? Self.findCoderHostBinary() else {
                     let ans = AppTailnet.DirectGrantAnswer(host: "", label: hostLabel, grant: nil, epoch: 0, expires: 0, refused: AppTailnet.Refusal.unavailable.rawValue)
                     conn.send(content: AppTailnet.directGrantAnswerLine(ans), completion: .contentProcessed { _ in conn.cancel() })
                     return
                 }
                 let safeClientLabel = req.label.truncatedToUTF8Bytes(80)
-                let out = Self.runCommand(hostBin, [
+                let out = Self.runCommand(effectiveHostBin, [
                     "direct-grant",
                     "--device", req.device,
                     "--workspace", workspace,
@@ -435,8 +447,17 @@ final class TailscaleHostServer: ObservableObject {
         // 2. Direct Tailscale multiplexed transport (`openagents.history-observer-direct.v1`)
         if AppTailnet.isDirectHello(line) {
             bgQueue.async { [weak self] in
+                var effectiveOwner = ownerSnapshot
+                if effectiveOwner == nil, let refreshed = Self.queryTailscaleOwner() {
+                    effectiveOwner = refreshed
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            self?.applyRefreshedOwner(refreshed)
+                        }
+                    }
+                }
                 let whois = Self.queryTailscaleWhois(remoteIP: remoteIP)
-                let refusal = AppTailnet.decide(remote: remoteIP, whois: whois, owner: ownerSnapshot)
+                let refusal = AppTailnet.decide(remote: remoteIP, whois: whois, owner: effectiveOwner)
                 let ack = AppTailnet.directAckLine(refused: refusal?.rawValue)
                 if refusal != nil {
                     conn.send(content: ack, completion: .contentProcessed { _ in conn.cancel() })
@@ -458,6 +479,16 @@ final class TailscaleHostServer: ObservableObject {
         }
 
         conn.cancel()
+    }
+
+    private func applyRefreshedOwner(_ refreshed: AppTailnet.Owner) {
+        owner = refreshed
+        updateBonjourAdvertisement()
+        if !headlessOwnsTailnet {
+            statusNote = daemonRunning
+                ? "Tailscale ready (\(refreshed.dns.isEmpty ? refreshed.ip : refreshed.dns))"
+                : "Tailscale ready — start local host daemon to serve Antigravity"
+        }
     }
 
     private func receiveMultiplexedFrames(conn: NWConnection, buffer: Data) {
@@ -573,11 +604,18 @@ final class TailscaleHostServer: ObservableObject {
 
     // MARK: - Helpers (tailscale CLI, host pubkey from daemon.json, bounded command runner)
 
-    nonisolated private static func daemonEnvironment() -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+    nonisolated static func daemonEnvironment(base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var env = base
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let cur = env["PATH"] ?? "/usr/bin:/bin"
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin:\(home)/.openagents/bin:\(cur)"
+        // macOS Tailscale.app's bundled binary enters GUI mode and hangs when launched under
+        // LaunchServices (no TERM) unless TAILSCALE_BE_CLI=1 is set.
+        env["TAILSCALE_BE_CLI"] = "1"
+        if env["TERM"]?.isEmpty != false {
+            env["TERM"] = "dumb"
+        }
+        env["BROWSER"] = "/usr/bin/true"
         return env
     }
 
@@ -676,6 +714,7 @@ final class TailscaleHostServer: ObservableObject {
         proc.arguments = args
         proc.environment = daemonEnvironment()
         let pipe = Pipe()
+        proc.standardInput = FileHandle.nullDevice
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
 

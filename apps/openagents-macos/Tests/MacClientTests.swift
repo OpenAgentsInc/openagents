@@ -244,4 +244,23 @@ final class MacClientTests: XCTestCase {
         XCTAssertTrue(AntigravityAuthMethod.oauthBusiness.usesIsolatedProfile)
         XCTAssertTrue(AntigravityAuthMethod.agentPlatform.usesIsolatedProfile)
     }
+
+    @MainActor
+    func testTailscaleCLIEnvironmentAndNewChatComposerFocus() throws {
+        let env = TailscaleHostServer.daemonEnvironment(base: ["PATH": "/usr/bin:/bin"])
+        XCTAssertEqual(env["TAILSCALE_BE_CLI"], "1")
+        XCTAssertEqual(env["TERM"], "dumb")
+        XCTAssertEqual(env["BROWSER"], "/usr/bin/true")
+
+        let preserved = TailscaleHostServer.daemonEnvironment(base: ["PATH": "/usr/bin:/bin", "TERM": "xterm-256color"])
+        XCTAssertEqual(preserved["TAILSCALE_BE_CLI"], "1")
+        XCTAssertEqual(preserved["TERM"], "xterm-256color")
+
+        let devStore = MobileDeviceStore()
+        devStore.resetForTests()
+        let store = AntigravityStore(store: devStore)
+        let before = store.composerFocusNonce
+        store.startNewChat()
+        XCTAssertEqual(store.composerFocusNonce, before + 1)
+    }
 }

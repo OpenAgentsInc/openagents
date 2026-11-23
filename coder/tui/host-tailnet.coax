@@ -80,6 +80,7 @@ ht_srv_run_ts :: (arg1: string, arg2: string, arg3: string, out: [] u8) -> int #
   ok := proc_arg(p, bin) && proc_arg(p, arg1);
   if arg2.count > 0 { ok = ok && proc_arg(p, arg2); }
   if arg3.count > 0 { ok = ok && proc_arg(p, arg3); }
+  ok = ok && proc_env(p, "TAILSCALE_BE_CLI=1") && proc_env(p, "TERM=dumb") && proc_env(p, "BROWSER=/usr/bin/true");
   if !ok || proc_start(p) != 0 { return -1; }
   _ = proc_close_stdin(p);
   n := 0; deadline := proc_now_ms() + 3000;

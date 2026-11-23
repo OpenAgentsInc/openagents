@@ -105,7 +105,11 @@ final class CoderTailnet: NSObject {
         let p = Process(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path); p.arguments = args
         p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
-        var env = ProcessInfo.processInfo.environment; env["BROWSER"] = "/usr/bin/true"; p.environment = env
+        var env = ProcessInfo.processInfo.environment
+        env["BROWSER"] = "/usr/bin/true"
+        env["TAILSCALE_BE_CLI"] = "1"
+        if env["TERM"]?.isEmpty != false { env["TERM"] = "dumb" }
+        p.environment = env
         do { try p.run() } catch { return nil }
         let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout, execute: killer)

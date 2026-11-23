@@ -45,6 +45,7 @@ final class TailscaleClient {
     }
 
     private var active = false
+    var isActive: Bool { active }
     private var browser: NWBrowser?
     private var pathMonitor: NWPathMonitor?
     private var lastPathSignature: String?
@@ -167,6 +168,7 @@ final class TailscaleClient {
         return await withCheckedContinuation { continuation in
             let conn = NWConnection(host: NWEndpoint.Host(trimmed), port: nwPort, using: .tcp)
             var settled = false
+            var reachedReady = false
             let finish: (ReachabilityState) -> Void = { state in
                 guard !settled else { return }
                 settled = true
@@ -176,6 +178,7 @@ final class TailscaleClient {
             conn.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
+                    reachedReady = true
                     conn.send(content: AppTailnet.directHelloLine(), completion: .contentProcessed { err in
                         if let err {
                             DispatchQueue.main.async { MainActor.assumeIsolated { finish(.unreachable(err.localizedDescription)) } }
@@ -202,7 +205,13 @@ final class TailscaleClient {
                 case .failed(let err):
                     DispatchQueue.main.async { MainActor.assumeIsolated { finish(.unreachable(err.localizedDescription)) } }
                 case .waiting:
-                    DispatchQueue.main.async { MainActor.assumeIsolated { finish(.unreachable("No route over Tailscale")) } }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        MainActor.assumeIsolated {
+                            if !settled && !reachedReady {
+                                finish(.unreachable("No route over Tailscale"))
+                            }
+                        }
+                    }
                 case .cancelled:
                     DispatchQueue.main.async { MainActor.assumeIsolated { finish(.unreachable("Connection cancelled")) } }
                 default:
@@ -210,7 +219,7 @@ final class TailscaleClient {
                 }
             }
             conn.start(queue: .main)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
                 MainActor.assumeIsolated { finish(.unreachable("Timed out reaching \(trimmed):\(port) over Tailscale")) }
             }
         }
@@ -483,6 +492,7 @@ final class TailscaleClient {
         let conn = NWConnection(host: NWEndpoint.Host(first), port: port, using: .tcp)
         directConns[c.host] = conn
         var settled = false
+        var reachedReady = false
         let fail: (TailscaleRPCError) -> Void = { [weak self] err in
             guard let self, !settled else { return }
             settled = true
@@ -505,6 +515,7 @@ final class TailscaleClient {
         conn.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
+                reachedReady = true
                 conn.send(content: AppTailnet.directHelloLine(), completion: .contentProcessed { _ in })
                 Self.readFrame(conn, Data()) { line, restData in
                     DispatchQueue.main.async {
@@ -549,7 +560,13 @@ final class TailscaleClient {
             case .failed(let err):
                 DispatchQueue.main.async { MainActor.assumeIsolated { fail(.unreachable(err.localizedDescription)) } }
             case .waiting:
-                DispatchQueue.main.async { MainActor.assumeIsolated { fail(.unreachable("No route over Tailscale")) } }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    MainActor.assumeIsolated {
+                        if !settled && !reachedReady {
+                            fail(.unreachable("No route over Tailscale"))
+                        }
+                    }
+                }
             case .cancelled:
                 DispatchQueue.main.async { MainActor.assumeIsolated { fail(.unreachable("Connection cancelled")) } }
             default:
@@ -557,7 +574,7 @@ final class TailscaleClient {
             }
         }
         conn.start(queue: .main)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
             MainActor.assumeIsolated {
                 if !settled { fail(.unreachable("Timed out reaching \(first):\(c.port) over Tailscale")) }
             }

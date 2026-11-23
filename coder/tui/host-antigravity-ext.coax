@@ -571,11 +571,29 @@ dm_cmd_pair_url :: (args: [] Args) -> int {
   addr: [256] u8; an := ea_copy(addr[..], args_value(args, "--address", ""));
   name: [128] u8; nn := ea_copy(name[..], args_value(args, "--name", ""));
   if an == 0 || nn == 0 {
-    out: [16384] u8; err: [1024] u8;
-    argv := [4] string.[dm_ext_tailscale_bin(), "status", "--peers=false", "--json"];
-    r := proc_run(argv[..], 4000, out[..], err[..]);
-    if r.started == 0 && r.status == 0 && r.out_n > 2 {
-      raw := cast(string) out[0..<r.out_n];
+    out: [16384] u8;
+    p := proc_new();
+    out_n := 0;
+    if p >= 0 {
+      defer { _ = proc_release(p); }
+      ok := proc_arg(p, dm_ext_tailscale_bin()) && proc_arg(p, "status") && proc_arg(p, "--peers=false") && proc_arg(p, "--json");
+      ok = ok && proc_env(p, "TAILSCALE_BE_CLI=1") && proc_env(p, "TERM=dumb") && proc_env(p, "BROWSER=/usr/bin/true");
+      if ok && proc_start(p) == 0 {
+        _ = proc_close_stdin(p);
+        deadline := proc_now_ms() + 4000;
+        while proc_now_ms() < deadline {
+          left := proc_left(deadline, proc_now_ms());
+          ln := cxproc_read_line(p, ifx left > 200 then 200 else left);
+          if ln == PROC_TIMEOUT { continue; }
+          if ln < 0 { break; }
+          for i: 0..<ln { if out_n < out.count { out[out_n] = cast(u8) cxproc_line_byte(p, i); out_n += 1; } }
+          if out_n < out.count { out[out_n] = 10; out_n += 1; }
+        }
+        if proc_wait(p, 500) != 0 { out_n = 0; }
+      }
+    }
+    if out_n > 2 {
+      raw := cast(string) out[0..<out_n];
       nodes: [2048] JvNode; d: [1] Jv;
       if jv_parse(d[..], raw, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
         self_n := jv_get(d[0], 0, "Self");

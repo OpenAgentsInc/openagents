@@ -87,6 +87,7 @@ final class AntigravityStore: ObservableObject {
 
     // Wave 4: Artifacts, Swarms, Automations, Extensibility, Voice/Browser/Quotas, Durable Outbox & Live Status (#14014-#14019)
     @Published var isHubPresented: Bool = false
+    @Published var composerFocusNonce: UInt64 = 0
     @Published var artifacts: [ArtifactSummary] = []
     @Published var activeArtifact: ArtifactDocument?
     @Published var isLoadingArtifacts: Bool = false
@@ -117,6 +118,8 @@ final class AntigravityStore: ObservableObject {
     private var lastGrantRenewAttemptByHost: [String: Int64] = [:]
     private var lastPushReceivedAt: Date = .distantPast
     private var fastPollUntil: Date = .distantPast
+    private var isBackgrounded = false
+    private var lastForegroundRefreshAt: Date = .distantPast
     private var reachabilityByID: [String: ReachabilityState] = [:]
     private var legacyNoModeHosts: Set<String> = []
     private var wasActiveSessionBusy = false
@@ -529,7 +532,16 @@ final class AntigravityStore: ObservableObject {
 
     // MARK: - Lifecycle
 
+    private func ensureTransportActive(force: Bool = false) {
+        if force { isBackgrounded = false }
+        guard !isBackgrounded, !client.isActive else { return }
+        client.resume()
+        subscribeActiveHost()
+    }
+
     func onForeground() {
+        let wasInactive = !client.isActive || isBackgrounded
+        isBackgrounded = false
         client.resume()
         reloadComputers()
         subscribeActiveHost()
@@ -542,13 +554,18 @@ final class AntigravityStore: ObservableObject {
         }
         #endif
         startFallbackPolling()
-        Task {
-            await refreshActiveComputer()
-            await flushPendingOutbox()
+        let now = Date()
+        if wasInactive || now.timeIntervalSince(lastForegroundRefreshAt) > 1.0 {
+            lastForegroundRefreshAt = now
+            Task {
+                await refreshActiveComputer()
+                await flushPendingOutbox()
+            }
         }
     }
 
     func onBackground() {
+        isBackgrounded = true
         pollTask?.cancel()
         pollTask = nil
         pushDebounceTask?.cancel()
@@ -704,6 +721,7 @@ final class AntigravityStore: ObservableObject {
     @discardableResult
     func pairOverTailscale(_ computer: ComputerEntry) async -> String? {
         guard !computer.isLocalMac else { return nil }
+        ensureTransportActive(force: true)
         let target = computer.ip.isEmpty ? computer.dns : computer.ip
         guard !target.isEmpty else {
             return "No Tailscale IP or MagicDNS address available for this computer."
@@ -838,6 +856,7 @@ final class AntigravityStore: ObservableObject {
             reloadComputers()
             return
         }
+        ensureTransportActive(force: true)
         let target = computer.ip.isEmpty ? computer.dns : computer.ip
         guard !target.isEmpty else { return }
         reachabilityByID[computer.id] = .checking
@@ -929,6 +948,7 @@ final class AntigravityStore: ObservableObject {
         interactionMeta = nil
         bannerError = nil
         isSidebarOpen = false
+        composerFocusNonce &+= 1
         subscribeActiveHost()
     }
 
@@ -1191,6 +1211,9 @@ final class AntigravityStore: ObservableObject {
         guard let computer = activeComputer, computer.canSendRPC else {
             isComputersPresented = true
             return
+        }
+        if !computer.isLocalMac {
+            ensureTransportActive(force: true)
         }
 
         let capturedDraft = draftText
@@ -2402,6 +2425,7 @@ final class AntigravityStore: ObservableObject {
                 if !quietErrors { bannerError = "Computer is not paired over Tailscale." }
                 return nil
             }
+            ensureTransportActive()
             result = await client.sendRPC(
                 paired: paired,
                 endpoint: endpoint,
@@ -2487,6 +2511,7 @@ final class AntigravityStore: ObservableObject {
                 if !quietErrors { workspaceError = "Computer is not paired over Tailscale." }
                 return nil
             }
+            ensureTransportActive()
             result = await client.sendRPC(
                 paired: paired,
                 endpoint: endpoint,
@@ -2561,6 +2586,7 @@ final class AntigravityStore: ObservableObject {
                 if !quietErrors { bannerError = "Computer is not paired over Tailscale." }
                 return nil
             }
+            ensureTransportActive()
             result = await client.sendRPC(
                 paired: paired,
                 endpoint: endpoint,
@@ -2832,8 +2858,9 @@ final class AntigravityStore: ObservableObject {
         store.savePendingOutbox(pendingOutbox)
     }
 
-    func flushPendingOutbox() async {
+    func flushPendingOutbox(interactive: Bool = false) async {
         guard !pendingOutbox.isEmpty else { return }
+        ensureTransportActive(force: interactive)
         let snapshot = pendingOutbox
         var flushed = 0
         for item in snapshot {
@@ -2857,7 +2884,7 @@ final class AntigravityStore: ObservableObject {
                 effort: item.effort,
                 folder: item.folder,
                 mode: item.reviewMode,
-                quietErrors: true
+                quietErrors: !interactive
             ), view.error.isEmpty {
                 pendingOutbox.removeAll { $0.id == item.id }
                 store.savePendingOutbox(pendingOutbox)
@@ -2865,6 +2892,7 @@ final class AntigravityStore: ObservableObject {
             }
         }
         if flushed > 0 {
+            bannerError = nil
             statusToast = "Sent \(flushed) offline message\(flushed == 1 ? "" : "s")"
             await refreshActiveComputer()
         }
