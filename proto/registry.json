@@ -5190,6 +5190,66 @@
       "note": "NIP-SESS direct transport handshake over a tailnet (nostr/nips/openagents/NIP-SESS.md, #13795)."
     },
     {
+      "id": "openagents.host-tailnet-grant-request.v1",
+      "kind": "external",
+      "owner": "nostr",
+      "step": "codec",
+      "schema": "",
+      "codec": "coax/lib/nostr/host/tailnet.coax",
+      "check": "coax/bin/coax test coax/lib/nostr/host/tailnet.coax",
+      "tests": [
+        "coax/lib/nostr/host/tailnet.coax",
+        "apps/openagents-ios/Tests/MobileCoreTests.swift",
+        "apps/openagents-macos/Tests/MacClientTests.swift"
+      ],
+      "note": "Relay-free direct Tailscale grant request from OpenAgents iOS/macOS to host port 47109 (#13993)."
+    },
+    {
+      "id": "openagents.host-tailnet-grant.v1",
+      "kind": "external",
+      "owner": "nostr",
+      "step": "codec",
+      "schema": "",
+      "codec": "coax/lib/nostr/host/tailnet.coax",
+      "check": "coax/bin/coax test coax/lib/nostr/host/tailnet.coax",
+      "tests": [
+        "coax/lib/nostr/host/tailnet.coax",
+        "apps/openagents-ios/Tests/MobileCoreTests.swift",
+        "apps/openagents-macos/Tests/MacClientTests.swift"
+      ],
+      "note": "Relay-free direct Tailscale grant issuance or refusal answer from coder-host (#13993)."
+    },
+    {
+      "id": "openagents.host-tailnet-subscribe.v1",
+      "kind": "external",
+      "owner": "nostr",
+      "step": "codec",
+      "schema": "",
+      "codec": "coax/lib/nostr/host/tailnet.coax",
+      "check": "coax/bin/coax test coax/lib/nostr/host/tailnet.coax",
+      "tests": [
+        "coax/lib/nostr/host/tailnet.coax",
+        "apps/openagents-ios/Tests/MobileCoreTests.swift",
+        "apps/openagents-macos/Tests/MacClientTests.swift"
+      ],
+      "note": "Real-time Tailscale direct-stream push subscription request (#13993)."
+    },
+    {
+      "id": "openagents.host-tailnet-push.v1",
+      "kind": "external",
+      "owner": "nostr",
+      "step": "codec",
+      "schema": "",
+      "codec": "coax/lib/nostr/host/tailnet.coax",
+      "check": "coax/bin/coax test coax/lib/nostr/host/tailnet.coax",
+      "tests": [
+        "coax/lib/nostr/host/tailnet.coax",
+        "apps/openagents-ios/Tests/MobileCoreTests.swift",
+        "apps/openagents-macos/Tests/MacClientTests.swift"
+      ],
+      "note": "Real-time Tailscale direct-stream change notification frame carrying zero transcript secrets (#13993)."
+    },
+    {
       "id": "nostr.relay-key.v1",
       "kind": "profile",
       "owner": "nostr",
