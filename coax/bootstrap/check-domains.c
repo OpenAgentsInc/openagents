@@ -17,8 +17,17 @@ static const char *coax_source_path = "lib/compiler/check-domains.coax";
 
 typedef struct { const char *data; int64_t count; } coax_string;
 #define COAX_STR(lit, n) ((coax_string){(lit), (n)})
+#if defined(__cplusplus)
+#define COAX_NORETURN [[noreturn]]
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define COAX_NORETURN _Noreturn
+#elif defined(__GNUC__)
+#define COAX_NORETURN __attribute__((noreturn))
+#else
+#define COAX_NORETURN
+#endif
 
-static void coax_trap(const char *what, int32_t line) {
+COAX_NORETURN static void coax_trap(const char *what, int32_t line) {
   fflush(stdout);
   fprintf(stderr, "%s:%d: %s\n", coax_source_path, line, what);
   abort();
@@ -29,30 +38,30 @@ static void coax_trap(const char *what, int32_t line) {
    overflow builtins so no C undefined behavior remains). Division by zero,
    bad shifts, bounds and casts trap in every build. */
 #define COAX_INT_OPS(T, N, SIGNED, MIN)                                                                  \
-  static T coax_add_##N(T a, T b, int32_t l) { T r; if (__builtin_add_overflow(a, b, &r)) coax_trap("integer overflow in '+'", l); return r; } \
-  static T coax_sub_##N(T a, T b, int32_t l) { T r; if (__builtin_sub_overflow(a, b, &r)) coax_trap("integer overflow in '-'", l); return r; } \
-  static T coax_mul_##N(T a, T b, int32_t l) { T r; if (__builtin_mul_overflow(a, b, &r)) coax_trap("integer overflow in '*'", l); return r; } \
-  static T coax_neg_##N(T a, int32_t l) { T r; if (__builtin_sub_overflow((T)0, a, &r)) coax_trap("integer overflow in unary '-'", l); return r; } \
-  static T coax_wadd_##N(T a, T b) { T r; __builtin_add_overflow(a, b, &r); return r; }                \
-  static T coax_wsub_##N(T a, T b) { T r; __builtin_sub_overflow(a, b, &r); return r; }                \
-  static T coax_wmul_##N(T a, T b) { T r; __builtin_mul_overflow(a, b, &r); return r; }                \
-  static T coax_wneg_##N(T a) { T r; __builtin_sub_overflow((T)0, a, &r); return r; }                  \
-  static T coax_div_##N(T a, T b, int32_t l) {                                                          \
+  static inline T coax_add_##N(T a, T b, int32_t l) { T r; if (__builtin_add_overflow(a, b, &r)) coax_trap("integer overflow in '+'", l); return r; } \
+  static inline T coax_sub_##N(T a, T b, int32_t l) { T r; if (__builtin_sub_overflow(a, b, &r)) coax_trap("integer overflow in '-'", l); return r; } \
+  static inline T coax_mul_##N(T a, T b, int32_t l) { T r; if (__builtin_mul_overflow(a, b, &r)) coax_trap("integer overflow in '*'", l); return r; } \
+  static inline T coax_neg_##N(T a, int32_t l) { T r; if (__builtin_sub_overflow((T)0, a, &r)) coax_trap("integer overflow in unary '-'", l); return r; } \
+  static inline T coax_wadd_##N(T a, T b) { T r; __builtin_add_overflow(a, b, &r); return r; }         \
+  static inline T coax_wsub_##N(T a, T b) { T r; __builtin_sub_overflow(a, b, &r); return r; }         \
+  static inline T coax_wmul_##N(T a, T b) { T r; __builtin_mul_overflow(a, b, &r); return r; }         \
+  static inline T coax_wneg_##N(T a) { T r; __builtin_sub_overflow((T)0, a, &r); return r; }           \
+  static inline T coax_div_##N(T a, T b, int32_t l) {                                                   \
     if (b == 0) coax_trap("division by zero", l);                                                       \
     if (SIGNED && a == MIN && b == (T)-1) coax_trap("integer overflow in '/'", l);                      \
     return (T)(a / b);                                                                                  \
   }                                                                                                     \
-  static T coax_mod_##N(T a, T b, int32_t l) {                                                          \
+  static inline T coax_mod_##N(T a, T b, int32_t l) {                                                   \
     if (b == 0) coax_trap("division by zero in '%'", l);                                                \
     if (SIGNED && b == (T)-1) return 0;                                                                 \
     return (T)(a % b);                                                                                  \
   }                                                                                                     \
-  static T coax_shl_##N(T a, int64_t b, int32_t l) {                                                    \
-    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+  static inline T coax_shl_##N(T a, int64_t b, int32_t l) {                                             \
+    if ((uint64_t)b >= (uint64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);            \
     return (T)((uint64_t)a << b);                                                                       \
   }                                                                                                     \
-  static T coax_shr_##N(T a, int64_t b, int32_t l) {                                                    \
-    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+  static inline T coax_shr_##N(T a, int64_t b, int32_t l) {                                             \
+    if ((uint64_t)b >= (uint64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);            \
     return (T)(a >> b);                                                                                 \
   }
 COAX_INT_OPS(int8_t, s8, 1, INT8_MIN)
@@ -64,61 +73,61 @@ COAX_INT_OPS(uint16_t, u16, 0, 0)
 COAX_INT_OPS(uint32_t, u32, 0, 0)
 COAX_INT_OPS(uint64_t, u64, 0, 0)
 
-static int64_t coax_index(int64_t i, int64_t n, int32_t l) {
+static inline int64_t coax_index(int64_t i, int64_t n, int32_t l) {
   if (i < 0 || i >= n) coax_trap("index out of bounds", l);
   return i;
 }
-static void coax_slice_check(int64_t lo, int64_t hi, int64_t n, int32_t l) {
+static inline void coax_slice_check(int64_t lo, int64_t hi, int64_t n, int32_t l) {
   if (lo < 0 || hi < lo || hi > n) coax_trap("slice out of bounds", l);
 }
-static uint8_t coax_byte(coax_string s, int64_t i, int32_t l) { return (uint8_t)s.data[coax_index(i, s.count, l)]; }
-static coax_string coax_substr(coax_string s, int64_t lo, int64_t hi, int32_t l) {
+static inline uint8_t coax_byte(coax_string s, int64_t i, int32_t l) { return (uint8_t)s.data[coax_index(i, s.count, l)]; }
+static inline coax_string coax_substr(coax_string s, int64_t lo, int64_t hi, int32_t l) {
   coax_slice_check(lo, hi, s.count, l);
   coax_string r = {s.data + lo, hi - lo};
   return r;
 }
-static _Bool coax_string_eq(coax_string a, coax_string b) {
+static inline _Bool coax_string_eq(coax_string a, coax_string b) {
   return a.count == b.count && (a.count == 0 || memcmp(a.data, b.data, (size_t)a.count) == 0);
 }
 
 /* Checked casts: the value must fit the target, in every build. */
-static int64_t coax_cast_ss(int64_t v, int64_t lo, int64_t hi, int32_t l) {
+static inline int64_t coax_cast_ss(int64_t v, int64_t lo, int64_t hi, int32_t l) {
   if (v < lo || v > hi) coax_trap("cast out of range", l);
   return v;
 }
-static uint64_t coax_cast_su(int64_t v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_cast_su(int64_t v, uint64_t hi, int32_t l) {
   if (v < 0 || (uint64_t)v > hi) coax_trap("cast out of range", l);
   return (uint64_t)v;
 }
-static int64_t coax_cast_us(uint64_t v, int64_t hi, int32_t l) {
+static inline int64_t coax_cast_us(uint64_t v, int64_t hi, int32_t l) {
   if (v > (uint64_t)hi) coax_trap("cast out of range", l);
   return (int64_t)v;
 }
-static uint64_t coax_cast_uu(uint64_t v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_cast_uu(uint64_t v, uint64_t hi, int32_t l) {
   if (v > hi) coax_trap("cast out of range", l);
   return v;
 }
-static int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
+static inline int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
   if (!(v >= -9223372036854775808.0 && v < 9223372036854775808.0)) coax_trap("cast out of range", l);
   int64_t i = (int64_t)v;
   if (i < lo || i > hi) coax_trap("cast out of range", l);
   return i;
 }
-static _Bool coax_bytes_overlap(const void *a, int64_t n, const void *b, int64_t m) {
+static inline _Bool coax_bytes_overlap(const void *a, int64_t n, const void *b, int64_t m) {
   if(n<=0 || m<=0) return 0;
   uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;
   return x<=y ? y-x<(uint64_t)n : x-y<(uint64_t)m;
 }
-static float coax_f32_from_bits(uint32_t x){float f;memcpy(&f,&x,4);return f;}
-static double coax_f64_from_bits(uint64_t x){double f;memcpy(&f,&x,8);return f;}
-static uint32_t coax_f32_bits(float f){uint32_t x;memcpy(&x,&f,4);return x;}
-static uint64_t coax_f64_bits(double f){uint64_t x;memcpy(&x,&f,8);return x;}
-static float coax_to_f32(double v, int32_t l) {
+static inline float coax_f32_from_bits(uint32_t x){float f;memcpy(&f,&x,4);return f;}
+static inline double coax_f64_from_bits(uint64_t x){double f;memcpy(&f,&x,8);return f;}
+static inline uint32_t coax_f32_bits(float f){uint32_t x;memcpy(&x,&f,4);return x;}
+static inline uint64_t coax_f64_bits(double f){uint64_t x;memcpy(&x,&f,8);return x;}
+static inline float coax_to_f32(double v, int32_t l) {
   /* Finite values that would round to infinity do not fit; inf and nan stay. */
   if (isfinite(v) && fabs(v) >= 3.4028235677973366e38) coax_trap("cast out of range", l);
   return (float)v;
 }
-static uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
   if (!(v > -1.0 && v < 18446744073709551616.0)) coax_trap("cast out of range", l);
   uint64_t u = (uint64_t)v;
   if (u > hi) coax_trap("cast out of range", l);
@@ -211,28 +220,8 @@ COAX_LAYOUT(offsetof(coax_t_FD_Cursor, reason) == 0, "offset of FD_Cursor.reason
 COAX_LAYOUT(offsetof(coax_t_FD_Cursor, index) == 8, "offset of FD_Cursor.index");
 COAX_LAYOUT(offsetof(coax_t_FD_Cursor, total) == 16, "offset of FD_Cursor.total");
 COAX_LAYOUT(offsetof(coax_t_FD_Cursor, ready) == 24, "offset of FD_Cursor.ready");
-static uint64_t *coax_elem_v_u64(coax_v_u64 v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
-static coax_v_u64 coax_mkview_v_u64(uint64_t *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {
-  coax_slice_check(lo, hi, n, l);
-  coax_v_u64 r = {data + lo, hi - lo};
-  return r;
-}
-static coax_v_u64 coax_reslice_v_u64(coax_v_u64 v, int64_t lo, int64_t hi, int32_t l) {
-  coax_slice_check(lo, hi, v.count, l);
-  coax_v_u64 r = {v.data + lo, hi - lo};
-  return r;
-}
-static coax_t_FD_Domain *coax_elem_v_t_FD_Domain(coax_v_t_FD_Domain v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
-static coax_v_t_FD_Domain coax_mkview_v_t_FD_Domain(coax_t_FD_Domain *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {
-  coax_slice_check(lo, hi, n, l);
-  coax_v_t_FD_Domain r = {data + lo, hi - lo};
-  return r;
-}
-static coax_v_t_FD_Domain coax_reslice_v_t_FD_Domain(coax_v_t_FD_Domain v, int64_t lo, int64_t hi, int32_t l) {
-  coax_slice_check(lo, hi, v.count, l);
-  coax_v_t_FD_Domain r = {v.data + lo, hi - lo};
-  return r;
-}
+static inline uint64_t *coax_elem_v_u64(coax_v_u64 v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
+static inline coax_t_FD_Domain *coax_elem_v_t_FD_Domain(coax_v_t_FD_Domain v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }
 
 
 uint64_t FD_limit(void);
@@ -244,8 +233,8 @@ coax_t_FD_Cursor FD_advance(coax_t_FD_Cursor l_cursor);
 static _Bool coax_p_fd_width(uint32_t l_bits);
 static _Bool coax_p_fd_total(uint64_t l_count);
 static uint64_t coax_p_fd_rank(int64_t l_value);
-static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d);
-static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at);
+static _Bool coax_pr_fd_shape(const coax_t_FD_Domain * const l_d);
+static uint64_t coax_pr_fd_word(const coax_t_FD_Domain * const l_d, uint64_t l_at);
 static _Bool coax_p_fd_canonical(uint64_t l_word, uint32_t l_bits, _Bool l_is_signed);
 
 uint64_t FD_limit(void) {
@@ -269,10 +258,10 @@ coax_t_FD_Result FD_domain(uint32_t l_kind, uint32_t l_bits, _Bool l_is_signed, 
     {
       return ((coax_t_FD_Result){.reason = ((uint32_t)UINT64_C(1))});
     }
-    (l_d).count = coax_shl_u64(UINT64_C(1), (int64_t)(((int64_t)coax_cast_us((uint64_t)(l_bits), INT64_C(9223372036854775807), 138))), 138);
+    (l_d).count = coax_shl_u64(UINT64_C(1), (int64_t)(((int64_t)(l_bits))), 138);
     if (l_is_signed)
     {
-      (l_d).first = coax_neg_s64(coax_shl_s64(INT64_C(1), (int64_t)(coax_sub_s64(((int64_t)coax_cast_us((uint64_t)(l_bits), INT64_C(9223372036854775807), 139)), INT64_C(1), 139)), 139), 139);
+      (l_d).first = coax_neg_s64(coax_shl_s64(INT64_C(1), (int64_t)(coax_sub_s64(((int64_t)(l_bits)), INT64_C(1), 139)), 139), 139);
     }
     return ((coax_t_FD_Result){.domain = l_d});
   }
@@ -338,7 +327,7 @@ uint32_t FD_tuple(coax_v_t_FD_Domain l_domains, uint64_t l_ordinal, coax_v_u64 l
       {
         return (l_p).reason;
       }
-      if (!coax_p_fd_shape(l_d))
+      if (!coax_pr_fd_shape((&l_d)))
       {
         return ((uint32_t)UINT64_C(6));
       }
@@ -376,7 +365,7 @@ uint32_t FD_tuple(coax_v_t_FD_Domain l_domains, uint64_t l_ordinal, coax_v_u64 l
       uint64_t l_at = coax_mod_u64(l_rest, (l_d).count, 171);
       l_rest = coax_div_u64(l_rest, (l_d).count, 171);
       coax_t5 = &((*coax_elem_v_u64(l_out, l_i, 171)));
-      *coax_t5 = coax_p_fd_word(l_d, l_at);
+      *coax_t5 = coax_pr_fd_word((&l_d), l_at);
     }
   }
   return ((uint32_t)UINT64_C(0));
@@ -411,43 +400,45 @@ static uint64_t coax_p_fd_rank(int64_t l_value) {
   return ((uint64_t)(((uint64_t)(l_value)) ^ UINT64_C(9223372036854775808)));
 }
 
-static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d) {
-  if ((l_d).kind == ((uint32_t)UINT64_C(4)))
+static _Bool coax_pr_fd_shape(const coax_t_FD_Domain * const l_d) {
+  if (l_d->kind == ((uint32_t)UINT64_C(4)))
   {
-    return ((coax_p_fd_width((l_d).bits) && ((l_d).first == INT64_C(0))) && (((uint64_t)coax_cast_su((int64_t)(((l_d).values).count), UINT64_C(18446744073709551615), 187)) == (l_d).count));
+    return ((coax_p_fd_width(l_d->bits) && (l_d->first == INT64_C(0))) && (((uint64_t)coax_cast_su((int64_t)((l_d->values).count), UINT64_C(18446744073709551615), 187)) == l_d->count));
   }
-  if (((l_d).values).count != INT64_C(0))
+  if ((l_d->values).count != INT64_C(0))
   {
     return 0;
   }
-  if ((l_d).kind == ((uint32_t)UINT64_C(5)))
+  if (l_d->kind == ((uint32_t)UINT64_C(5)))
   {
-    return ((((l_d).bits == ((uint32_t)UINT64_C(64))) && (l_d).is_signed) && ((l_d).count <= coax_sub_u64(UINT64_C(18446744073709551615), coax_p_fd_rank((l_d).first), 189)));
+    return (((l_d->bits == ((uint32_t)UINT64_C(64))) && l_d->is_signed) && (l_d->count <= coax_sub_u64(UINT64_C(18446744073709551615), coax_p_fd_rank(l_d->first), 189)));
   }
-  coax_t_FD_Result l_normal = FD_domain((l_d).kind, (l_d).bits, (l_d).is_signed, (l_d).first, (l_d).first, ((int64_t)coax_cast_us((uint64_t)((l_d).count), INT64_C(9223372036854775807), 190)));
-  return ((((((l_normal).reason == ((uint32_t)UINT64_C(0))) && (((l_normal).domain).first == (l_d).first)) && (((l_normal).domain).count == (l_d).count)) && (((l_normal).domain).bits == (l_d).bits)) && (((l_normal).domain).is_signed == (l_d).is_signed));
+  coax_t_FD_Result l_normal = FD_domain(l_d->kind, l_d->bits, l_d->is_signed, l_d->first, l_d->first, ((int64_t)coax_cast_us((uint64_t)(l_d->count), INT64_C(9223372036854775807), 190)));
+  return ((((((l_normal).reason == ((uint32_t)UINT64_C(0))) && (((l_normal).domain).first == l_d->first)) && (((l_normal).domain).count == l_d->count)) && (((l_normal).domain).bits == l_d->bits)) && (((l_normal).domain).is_signed == l_d->is_signed));
 }
+static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d) { return coax_pr_fd_shape(&l_d); }
 
-static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at) {
-  if ((l_d).kind == ((uint32_t)UINT64_C(4)))
+static uint64_t coax_pr_fd_word(const coax_t_FD_Domain * const l_d, uint64_t l_at) {
+  if (l_d->kind == ((uint32_t)UINT64_C(4)))
   {
-    return (*coax_elem_v_u64((l_d).values, ((int64_t)coax_cast_us((uint64_t)(l_at), INT64_C(9223372036854775807), 194)), 194));
+    return (*coax_elem_v_u64(l_d->values, ((int64_t)coax_cast_us((uint64_t)(l_at), INT64_C(9223372036854775807), 194)), 194));
   }
-  if (((l_d).kind == ((uint32_t)UINT64_C(2))) || ((l_d).kind == ((uint32_t)UINT64_C(5))))
+  if ((l_d->kind == ((uint32_t)UINT64_C(2))) || (l_d->kind == ((uint32_t)UINT64_C(5))))
   {
-    return ((uint64_t)(coax_add_u64(coax_p_fd_rank((l_d).first), l_at, 195) ^ UINT64_C(9223372036854775808)));
+    return ((uint64_t)(coax_add_u64(coax_p_fd_rank(l_d->first), l_at, 195) ^ UINT64_C(9223372036854775808)));
   }
   return l_at;
 }
+static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at) { return coax_pr_fd_word(&l_d, l_at); }
 
 static _Bool coax_p_fd_canonical(uint64_t l_word, uint32_t l_bits, _Bool l_is_signed) {
   if (l_bits == ((uint32_t)UINT64_C(64)))
   {
     return 1;
   }
-  uint64_t l_mask = coax_sub_u64(coax_shl_u64(UINT64_C(1), (int64_t)(((int64_t)coax_cast_us((uint64_t)(l_bits), INT64_C(9223372036854775807), 200))), 200), UINT64_C(1), 200);
+  uint64_t l_mask = coax_sub_u64(coax_shl_u64(UINT64_C(1), (int64_t)(((int64_t)(l_bits))), 200), UINT64_C(1), 200);
   uint64_t l_expected = ((uint64_t)(l_word & l_mask));
-  if (l_is_signed && (((uint64_t)(l_expected & coax_shl_u64(UINT64_C(1), (int64_t)(coax_sub_s64(((int64_t)coax_cast_us((uint64_t)(l_bits), INT64_C(9223372036854775807), 201)), INT64_C(1), 201)), 201))) != UINT64_C(0)))
+  if (l_is_signed && (((uint64_t)(l_expected & coax_shl_u64(UINT64_C(1), (int64_t)(coax_sub_s64(((int64_t)(l_bits)), INT64_C(1), 201)), 201))) != UINT64_C(0)))
   {
     l_expected = ((uint64_t)(l_expected | ((uint64_t)(UINT64_C(18446744073709551615) ^ l_mask))));
   }

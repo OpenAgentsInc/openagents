@@ -8,10 +8,13 @@
 
 #include <cmath>
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 // The same generated Coax kernels are compiled here and embedded in C output.
 // Keep their rounding explicit even in test harnesses that include main.cpp.
@@ -29,6 +32,7 @@ namespace coax_strict_math {
 #undef _Bool
 #undef COAX_LAYOUT
 #undef COAX_STR
+#undef COAX_NORETURN
 #undef COAX_INT_OPS
 }
 #if defined(__GNUC__) && !defined(__clang__)
@@ -321,6 +325,8 @@ struct Evaluator {
   static constexpr uint32_t MAX_DEPTH = 64;
   size_t peak_calls = 0;
   uint32_t peak_dependencies = 0;
+  uint64_t nested_const_steps = 0;
+  uint64_t nested_const_trav = 0;
   // --profile steps: the procedures being evaluated, innermost last, and each
   // one's own steps, total steps and calls.
   bool profile = false;
@@ -333,7 +339,7 @@ struct Evaluator {
   // body). Kept at call boundaries, so an ordinary step costs nothing more.
   struct CostRow { std::string what; Loc loc; uint64_t steps = 0, traversal = 0, calls = 0; bool copies = false; };
   std::vector<CostRow> costs;
-  std::map<const void *, uint32_t> cost_index;  // call sites and top-level sites
+  std::unordered_map<const void *, uint32_t> cost_index;  // call sites and top-level sites
   struct Open { uint64_t steps = 0, traversal = 0; };  // the active call's callees, inclusive
   std::vector<Open> open;
   std::vector<const ProcDecl *> active;  // procedures being evaluated, innermost last
@@ -1178,50 +1184,233 @@ struct Evaluator {
       bool finished = false;
       ~Guard() { if (!finished) constant->evaluated = previous; --depth; }
     } guard{c, dependency_depth, c->evaluated};
+    const bool track_nested = !done && dependency_depth == 2;
+    const uint64_t nested_s0 = steps, nested_t0 = traversal_work;
     c->evaluated = 1;
     Value result = expr(c->expr, empty, false);
     if (!failed && !done) freeze(c->expr, result, c->loc);
     c->evaluated = 2;
     guard.finished = true;
+    if (track_nested && !failed) {
+      const uint64_t ds = steps - nested_s0;
+      if (ds > 1) nested_const_steps += ds - 1;
+      nested_const_trav += traversal_work - nested_t0;
+    }
     return result;
+  }
+
+  // Pre-resolve local variable stack slots once per procedure so variable
+  // lookups are O(1) array indexing instead of backward string scans.
+  static void resolve_slots_expr(Expr *e, const std::vector<Str> &env, bool in_defer) {
+    if (!e || e->kind == ExprKind::run) return;
+    if (e->kind == ExprKind::ident && !e->constant) {
+      if (in_defer) e->ct_slot = -1;
+      else {
+        int32_t found = -1;
+        for (size_t i = env.size(); i-- > 0;)
+          if (CtFrame::same_name(env[i], e->text)) { found = (int32_t)i; break; }
+        e->ct_slot = found;
+      }
+    }
+    resolve_slots_expr(e->lhs, env, in_defer);
+    resolve_slots_expr(e->rhs, env, in_defer);
+    resolve_slots_expr(e->third, env, in_defer);
+    for (Expr *a : e->args) resolve_slots_expr(a, env, in_defer);
+    for (FieldInit &f : e->fields) resolve_slots_expr(f.value, env, in_defer);
+  }
+  static void resolve_slots_stmt(Stmt *s, std::vector<Str> &env, bool in_defer) {
+    if (!s) return;
+    switch (s->kind) {
+      case StmtKind::block: {
+        const size_t mark = env.size();
+        for (Stmt *child : s->body) {
+          if (child->kind == StmtKind::defer) resolve_slots_stmt(child->then_, env, true);
+          else resolve_slots_stmt(child, env, in_defer);
+        }
+        env.resize(mark);
+        break;
+      }
+      case StmtKind::var:
+        resolve_slots_expr(s->expr, env, in_defer);
+        env.push_back(s->name);
+        break;
+      case StmtKind::for_range: {
+        resolve_slots_expr(s->expr, env, in_defer);
+        resolve_slots_expr(s->expr2, env, in_defer);
+        const size_t mark = env.size();
+        env.push_back(s->name);
+        resolve_slots_stmt(s->then_, env, in_defer);
+        env.resize(mark);
+        break;
+      }
+      case StmtKind::for_each: {
+        resolve_slots_expr(s->expr, env, in_defer);
+        const size_t mark = env.size();
+        env.push_back(s->name);
+        if (s->name2.count) env.push_back(s->name2);
+        resolve_slots_stmt(s->then_, env, in_defer);
+        env.resize(mark);
+        break;
+      }
+      case StmtKind::switch_: {
+        resolve_slots_expr(s->expr, env, in_defer);
+        for (SwitchCase *arm : s->cases) {
+          const size_t mark = env.size();
+          if (arm->binding) env.push_back(arm->binding->name);
+          resolve_slots_stmt(arm->body, env, in_defer);
+          env.resize(mark);
+        }
+        break;
+      }
+      case StmtKind::defer:
+        resolve_slots_stmt(s->then_, env, true);
+        break;
+      default:
+        resolve_slots_expr(s->target, env, in_defer);
+        resolve_slots_expr(s->expr, env, in_defer);
+        resolve_slots_expr(s->expr2, env, in_defer);
+        resolve_slots_stmt(s->then_, env, in_defer);
+        resolve_slots_stmt(s->else_, env, in_defer);
+        break;
+    }
+  }
+  static void ensure_slots(ProcDecl *p) {
+    if (!p || p->ct_slot_mark || !p->body) return;
+    p->ct_slot_mark = 1;
+    std::vector<Str> env;
+    env.reserve((size_t)p->params.count + 16);
+    for (int32_t i = 0; i < p->params.count; i++) env.push_back(p->params[i].name);
+    resolve_slots_stmt(p->body, env, false);
+  }
+  static __attribute__((always_inline)) CtLocal *find_local(CtFrame &frame, const Expr *e) {
+    const int32_t slot = e->ct_slot;
+    if (__builtin_expect(slot >= 0 && (size_t)slot < frame.locals.size(), 1)) {
+      CtLocal &cand = frame.locals[(size_t)slot];
+      if (__builtin_expect(CtFrame::same_name(cand.name, e->text), 1)) return &cand;
+    }
+    return frame.find(e->text);
   }
 
   // ---- arithmetic: the same rules as the C runtime, checked in every mode ----
 
   // The bits of an integer operation, or false after reporting its error.
   bool int_bits(Tok op, Type t, uint64_t a_bits, uint64_t b_bits, Type bt, Loc loc, uint64_t *out) {
-    __int128 a = as_int128(t, a_bits), b = as_int128(bt ? bt : t, b_bits), r = 0;
-    switch (op) {
-      case Tok::plus: r = a + b; break;
-      case Tok::minus: r = a - b; break;
-      case Tok::star: r = a * b; break;
-      case Tok::slash:
-      case Tok::percent:
-        if (b == 0) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
-        r = op == Tok::slash ? a / b : a % b;
-        break;
-      case Tok::amp: *out = canon_bits(t, a_bits & b_bits); return true;
-      case Tok::pipe: *out = canon_bits(t, a_bits | b_bits); return true;
-      case Tok::caret: *out = canon_bits(t, a_bits ^ b_bits); return true;
-      case Tok::shl: case Tok::shr: {
-        if (b < 0 || b >= t->bits) {
-          err(loc, "E0411", "shift by " + std::to_string((long long)b) + " is out of range for " + type_name(t));
+    const int bits = t->bits;
+    const bool is_signed = t->is_signed;
+    // Fast native 64-bit path avoids __int128 on the common s64/u64 and narrow ops.
+    if (op == Tok::amp) { *out = canon_bits(t, a_bits & b_bits); return true; }
+    if (op == Tok::pipe) { *out = canon_bits(t, a_bits | b_bits); return true; }
+    if (op == Tok::caret) { *out = canon_bits(t, a_bits ^ b_bits); return true; }
+    if (op == Tok::shl || op == Tok::shr) {
+      const Type st = bt ? bt : t;
+      const bool bad_shift = st->is_signed ? ((int64_t)b_bits < 0 || (int64_t)b_bits >= bits) : (b_bits >= (uint64_t)bits);
+      if (__builtin_expect(bad_shift, 0)) {
+        const long long shown = st->is_signed ? (long long)(int64_t)b_bits : (long long)b_bits;
+        err(loc, "E0411", "shift by " + std::to_string(shown) + " is out of range for " + type_name(t));
+        return false;
+      }
+      const int shift = (int)b_bits;
+      if (op == Tok::shl) { *out = canon_bits(t, a_bits << shift); return true; }
+      if (is_signed) { *out = canon_bits(t, (uint64_t)((int64_t)a_bits >> shift)); return true; }
+      const uint64_t mask = bits >= 64 ? UINT64_MAX : (UINT64_C(1) << bits) - 1;
+      *out = (a_bits & mask) >> shift;
+      return true;
+    }
+    if (__builtin_expect(bits == 64, 1)) {
+      if (is_signed) {
+        const int64_t a = (int64_t)a_bits, b = (int64_t)b_bits;
+        int64_t r = 0;
+        bool over = false;
+        switch (op) {
+          case Tok::plus: over = __builtin_add_overflow(a, b, &r); break;
+          case Tok::minus: over = __builtin_sub_overflow(a, b, &r); break;
+          case Tok::star: over = __builtin_mul_overflow(a, b, &r); break;
+          case Tok::slash:
+            if (__builtin_expect(b == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+            if (__builtin_expect(a == INT64_MIN && b == -1, 0)) over = true;
+            else r = a / b;
+            break;
+          case Tok::percent:
+            if (__builtin_expect(b == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+            r = (a == INT64_MIN && b == -1) ? 0 : (a % b);
+            break;
+          default: break;
+        }
+        if (__builtin_expect(over, 0)) {
+          err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
           return false;
         }
-        if (op == Tok::shl) { *out = canon_bits(t, a_bits << (int)b); return true; }
-        if (t->is_signed) { *out = canon_bits(t, (uint64_t)((int64_t)a_bits >> (int)b)); return true; }
-        uint64_t mask = t->bits >= 64 ? UINT64_MAX : (UINT64_C(1) << t->bits) - 1;
-        *out = (a_bits & mask) >> (int)b;
+        *out = (uint64_t)r;
+        return true;
+      } else {
+        uint64_t r = 0;
+        bool over = false;
+        switch (op) {
+          case Tok::plus: over = __builtin_add_overflow(a_bits, b_bits, &r); break;
+          case Tok::minus: over = __builtin_sub_overflow(a_bits, b_bits, &r); break;
+          case Tok::star: over = __builtin_mul_overflow(a_bits, b_bits, &r); break;
+          case Tok::slash:
+            if (__builtin_expect(b_bits == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+            r = a_bits / b_bits;
+            break;
+          case Tok::percent:
+            if (__builtin_expect(b_bits == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+            r = a_bits % b_bits;
+            break;
+          default: break;
+        }
+        if (__builtin_expect(over, 0)) {
+          err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
+          return false;
+        }
+        *out = r;
         return true;
       }
-      default: break;
     }
-    if (!fits_type(t, r)) {
-      err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
-      return false;
+    // Narrow widths (8, 16, 32): exact 64-bit math with range check, no __int128 needed.
+    if (is_signed) {
+      const int64_t a = (int64_t)a_bits, b = (int64_t)b_bits;
+      int64_t r = 0;
+      switch (op) {
+        case Tok::plus: r = a + b; break;
+        case Tok::minus: r = a - b; break;
+        case Tok::star: r = a * b; break;
+        case Tok::slash:
+        case Tok::percent:
+          if (__builtin_expect(b == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+          r = op == Tok::slash ? a / b : a % b;
+          break;
+        default: break;
+      }
+      const int64_t lo = -(INT64_C(1) << (bits - 1)), hi = (INT64_C(1) << (bits - 1)) - 1;
+      if (__builtin_expect(r < lo || r > hi, 0)) {
+        err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
+        return false;
+      }
+      *out = (uint64_t)r;
+      return true;
+    } else {
+      const uint64_t hi = (UINT64_C(1) << bits) - 1;
+      uint64_t r = 0;
+      bool over = false;
+      switch (op) {
+        case Tok::plus: r = a_bits + b_bits; over = r > hi; break;
+        case Tok::minus: over = b_bits > a_bits; r = a_bits - b_bits; break;
+        case Tok::star: r = a_bits * b_bits; over = r > hi; break;
+        case Tok::slash:
+        case Tok::percent:
+          if (__builtin_expect(b_bits == 0, 0)) { err(loc, "E0407", "division by zero during compile-time evaluation"); return false; }
+          r = op == Tok::slash ? a_bits / b_bits : a_bits % b_bits;
+          break;
+        default: break;
+      }
+      if (__builtin_expect(over, 0)) {
+        err(loc, "E0407", std::string("integer overflow in ") + type_name(t) + " during compile-time evaluation");
+        return false;
+      }
+      *out = r;
+      return true;
     }
-    *out = canon_bits(t, (uint64_t)r);
-    return true;
   }
   Value int_op(Tok op, Type t, uint64_t a_bits, uint64_t b_bits, Type bt, Loc loc) {
     uint64_t bits;
@@ -1340,7 +1529,7 @@ struct Evaluator {
           if (e->constant->expr->kind == ExprKind::ct_value) return e->constant->expr->ct;
           return h.temp(v);
         }
-        CtLocal *local = frame.find(e->text);
+        CtLocal *local = find_local(frame, e);
         if (!local) {
           err(e->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->text) + "'");
           return nullptr;
@@ -1368,7 +1557,7 @@ struct Evaluator {
           // again), without copying it. Nothing an index expression does can
           // change or drop a caller's local, so the local keeps the storage.
           if (!tick(e->lhs->loc)) return nullptr;
-          CtLocal *local = frame.find(e->lhs->text);
+          CtLocal *local = find_local(frame, e->lhs);
           if (!local) {
             err(e->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->lhs->text) + "'");
             return nullptr;
@@ -1463,11 +1652,8 @@ struct Evaluator {
         return SC_OK;
       case ExprKind::ident:
         if (!e->constant) {
-          // expression(): a step, refunded; place(): the step again.
           if (!tick(e->loc)) return SC_STOP;
-          refund();
-          if (!tick(e->loc)) return SC_STOP;
-          CtLocal *local = frame.find(e->text);
+          CtLocal *local = find_local(frame, e);
           if (!local) {
             err(e->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->text) + "'");
             return SC_STOP;
@@ -1481,9 +1667,45 @@ struct Evaluator {
           return SC_OK;
         }
         break;
-      case ExprKind::field: case ExprKind::index: {
-        if (e->kind == ExprKind::field && e->field_index == -2) break;
-        if (e->kind == ExprKind::index && e->lhs->type == &T_STRING) break;
+      case ExprKind::field: {
+        if (e->field_index == -2) {
+          Type lt = e->lhs->type;
+          if (lt->kind == TypeKind::array && !has_call(e->lhs) && !(e->lhs->effects & 8)) {
+            if (!tick(e->loc)) return SC_STOP;
+            out = {T_INT, (uint64_t)lt->length, 0};
+            return SC_OK;
+          }
+          if (lt->kind == TypeKind::view && e->lhs->kind == ExprKind::ident && !e->lhs->constant) {
+            if (!tick(e->loc) || !tick(e->lhs->loc)) return SC_STOP;
+            CtLocal *local = find_local(frame, e->lhs);
+            if (!local) {
+              err(e->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->lhs->text) + "'");
+              return SC_STOP;
+            }
+            if (!local->initialized) {
+              err(e->lhs->loc, "E0405", "compile-time read of an uninitialized variable");
+              return SC_STOP;
+            }
+            out = {T_INT, (uint64_t)local->value.count, 0};
+            return SC_OK;
+          }
+          break;
+        }
+        if (e->lhs->kind == ExprKind::ident && !e->lhs->constant) {
+          if (!tick(e->loc) || !tick(e->lhs->loc)) return SC_STOP;
+          CtLocal *local = find_local(frame, e->lhs);
+          if (!local) {
+            err(e->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->lhs->text) + "'");
+            return SC_STOP;
+          }
+          if (!local->initialized) {
+            err(e->loc, "E0405", "compile-time read of an uninitialized variable");
+            return SC_STOP;
+          }
+          const Value &fv = (*local->value.agg)[(size_t)e->field_index];
+          out = {fv.type, fv.bits, fv.f};
+          return SC_OK;
+        }
         if (!tick(e->loc)) return SC_STOP;
         Holder h;
         CtLocal *root = nullptr;
@@ -1498,6 +1720,163 @@ struct Evaluator {
         }
         out = {v->type, v->bits, v->f};
         return SC_OK;
+      }
+      case ExprKind::index: {
+        Type lt = e->lhs->type;
+        if (lt == &T_STRING) break;
+        if (e->lhs->kind == ExprKind::ident && !e->lhs->constant && (lt->kind == TypeKind::array || lt->kind == TypeKind::view)) {
+          if (!tick(e->loc) || !tick(e->lhs->loc)) return SC_STOP;
+          CtLocal *local = find_local(frame, e->lhs);
+          if (!local) {
+            err(e->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(e->lhs->text) + "'");
+            return SC_STOP;
+          }
+          if (lt->kind == TypeKind::view && !local->initialized) {
+            err(e->lhs->loc, "E0405", "compile-time read of an uninitialized variable");
+            return SC_STOP;
+          }
+          Scalar iv;
+          const int sc = scalar_eval(e->rhs, frame, allow_calls, iv, ret);
+          if (sc != SC_OK) return sc;
+          if (failed) return SC_STOP;
+          const int64_t i = iv.type->is_signed ? (int64_t)iv.bits : (iv.bits > (uint64_t)INT64_MAX ? -1 : (int64_t)iv.bits);
+          const int64_t count = lt->kind == TypeKind::array ? lt->length : local->value.count;
+          if (__builtin_expect(i < 0 || i >= count, 0)) {
+            err(e->loc, "E0410", "index " + std::to_string((long long)(int64_t)iv.bits) + " is out of bounds for " +
+                                     std::to_string((long long)count) + " elements");
+            return SC_STOP;
+          }
+          if (lt->kind == TypeKind::array && !local->initialized) {
+            err(e->loc, "E0405", "compile-time read of an uninitialized variable");
+            return SC_STOP;
+          }
+          const int64_t off = lt->kind == TypeKind::array ? 0 : local->value.offset;
+          const Value &el = (*local->value.agg)[(size_t)(off + i)];
+          out = {el.type, el.bits, el.f};
+          return SC_OK;
+        }
+        if (!tick(e->loc)) return SC_STOP;
+        Holder h;
+        CtLocal *root = nullptr;
+        refund();
+        auto located = place(e, frame, h, allow_calls, &root);
+        if (located.returning) { ret.emplace(ExprOutcome::returned(std::move(located.returned_value))); return SC_RETURN; }
+        Value *v = located.value;
+        if (!v || failed) return SC_STOP;
+        if (root && !root->initialized) {
+          err(e->loc, "E0405", "compile-time read of an uninitialized variable");
+          return SC_STOP;
+        }
+        out = {v->type, v->bits, v->f};
+        return SC_OK;
+      }
+      case ExprKind::cast: {
+        Type to = e->type, from = e->lhs->type;
+        if (!scalar_type(to) || !scalar_type(from) || to->kind == TypeKind::enum_) break;
+        if (!tick(e->loc)) return SC_STOP;
+        Scalar v;
+        int r = scalar_eval(e->lhs, frame, allow_calls, v, ret);
+        if (r != SC_OK) return r;
+        if (failed) return SC_STOP;
+        if (from == to) { out = v; return SC_OK; }
+        if (is_float(to)) {
+          if (is_float(from)) {
+            if (to == &T_F32 && std::isfinite(v.f) && std::isinf((float)v.f)) {
+              err(e->loc, "E0411", "cast of " + std::to_string(v.f) + " to f32 is out of range");
+              return SC_STOP;
+            }
+            out = {to, 0, to == &T_F32 ? (double)(float)v.f : v.f};
+            return SC_OK;
+          }
+          double f = to == &T_F32 ? (from->is_signed ? (double)(float)(int64_t)v.bits : (double)(float)v.bits)
+                                   : (from->is_signed ? (double)(int64_t)v.bits : (double)v.bits);
+          out = {to, 0, f};
+          return SC_OK;
+        }
+        if (is_float(from)) {
+          double f = std::trunc(v.f);
+          if (std::isnan(f) || f <= -1.8e19 || f >= 1.9e19 || !fits_type(to, (__int128)f)) {
+            err(e->loc, "E0411", std::string("cast of ") + std::to_string(v.f) + " to " + type_name(to) + " is out of range");
+            return SC_STOP;
+          }
+          out = {to, canon_bits(to, (uint64_t)(__int128)f), 0};
+          return SC_OK;
+        }
+        if (e->trunc) { out = {to, canon_bits(to, v.bits), 0}; return SC_OK; }
+        // Exact 64-bit integer range check without __int128.
+        bool ok = true;
+        if (from->is_signed) {
+          const int64_t sv = (int64_t)v.bits;
+          if (to->is_signed) {
+            if (to->bits < 64) {
+              const int64_t lo = -(INT64_C(1) << (to->bits - 1)), hi = (INT64_C(1) << (to->bits - 1)) - 1;
+              ok = sv >= lo && sv <= hi;
+            }
+          } else {
+            const uint64_t hi = to->bits >= 64 ? UINT64_MAX : (UINT64_C(1) << to->bits) - 1;
+            ok = sv >= 0 && (uint64_t)sv <= hi;
+          }
+        } else {
+          if (to->is_signed) {
+            const uint64_t hi = (UINT64_C(1) << (to->bits - 1)) - 1;
+            ok = v.bits <= hi;
+          } else if (to->bits < 64) {
+            const uint64_t hi = (UINT64_C(1) << to->bits) - 1;
+            ok = v.bits <= hi;
+          }
+        }
+        if (__builtin_expect(!ok, 0)) {
+          err(e->loc, "E0411", std::string("cast to ") + type_name(to) + " is out of range");
+          return SC_STOP;
+        }
+        out = {to, canon_bits(to, v.bits), 0};
+        return SC_OK;
+      }
+      case ExprKind::call: {
+        const ByteIntrinsic bk = e->byte_intrinsic;
+        if (bk == ByteIntrinsic::none || !allow_calls) break;
+        if (bk == ByteIntrinsic::value_barrier || bk == ByteIntrinsic::f32_bits || bk == ByteIntrinsic::f64_bits ||
+            bk == ByteIntrinsic::f32_from_bits || bk == ByteIntrinsic::f64_from_bits) {
+          if (!tick(e->loc)) return SC_STOP;
+          Scalar a;
+          int r = scalar_eval(e->args[0], frame, allow_calls, a, ret);
+          if (r != SC_OK) return r;
+          if (failed) return SC_STOP;
+          out = {e->type, 0, 0};
+          if (bk == ByteIntrinsic::value_barrier) out.bits = a.bits;
+          else if (bk == ByteIntrinsic::f32_bits) { float x = (float)a.f; uint32_t b; memcpy(&b, &x, 4); out.bits = b; }
+          else if (bk == ByteIntrinsic::f64_bits) { memcpy(&out.bits, &a.f, 8); }
+          else if (bk == ByteIntrinsic::f32_from_bits) { uint32_t b = (uint32_t)a.bits; float x; memcpy(&x, &b, 4); out.f = x; }
+          else { memcpy(&out.f, &a.bits, 8); }
+          if (is_float(out.type) && !std::isfinite(out.f)) { err(e->loc, "E0412", "non-finite compile-time bit conversion"); return SC_STOP; }
+          return SC_OK;
+        }
+        if (bk == ByteIntrinsic::add_wrap || bk == ByteIntrinsic::sub_wrap || bk == ByteIntrinsic::mul_wrap ||
+            bk == ByteIntrinsic::rotl || bk == ByteIntrinsic::rotr) {
+          if (!tick(e->loc)) return SC_STOP;
+          Scalar a, b;
+          int r = scalar_eval(e->args[0], frame, allow_calls, a, ret);
+          if (r != SC_OK) return r;
+          if (failed) return SC_STOP;
+          r = scalar_eval(e->args[1], frame, allow_calls, b, ret);
+          if (r != SC_OK) return r;
+          if (failed) return SC_STOP;
+          if (bk == ByteIntrinsic::rotl || bk == ByteIntrinsic::rotr) {
+            const unsigned width = e->type == &T_U32 ? 32u : 64u;
+            const unsigned k = (unsigned)(b.bits & (width - 1));
+            uint64_t v = bk == ByteIntrinsic::rotl ? ((a.bits << k) | (a.bits >> ((width - k) & (width - 1))))
+                                                   : ((a.bits >> k) | (a.bits << ((width - k) & (width - 1))));
+            if (width == 32) v &= UINT32_MAX;
+            out = {e->type, v, 0};
+            return SC_OK;
+          }
+          const uint64_t v = bk == ByteIntrinsic::add_wrap ? (a.bits + b.bits)
+                           : bk == ByteIntrinsic::sub_wrap ? (a.bits - b.bits)
+                                                           : (a.bits * b.bits);
+          out = {e->type, canon_bits(e->type, v), 0};
+          return SC_OK;
+        }
+        break;
       }
       case ExprKind::unary: {
         if (!scalar_type(e->lhs->type)) break;
@@ -1566,8 +1945,19 @@ struct Evaluator {
             case Tok::ge: result = a.f >= b.f; break;
             default: break;
           }
+        } else if (t->is_signed) {
+          const int64_t x = (int64_t)a.bits, y = (int64_t)b.bits;
+          switch (e->op) {
+            case Tok::eqeq: result = x == y; break;
+            case Tok::noteq: result = x != y; break;
+            case Tok::lt: result = x < y; break;
+            case Tok::le: result = x <= y; break;
+            case Tok::gt: result = x > y; break;
+            case Tok::ge: result = x >= y; break;
+            default: break;
+          }
         } else {
-          __int128 x = as_int128(t, a.bits), y = as_int128(t, b.bits);
+          const uint64_t x = a.bits, y = b.bits;
           switch (e->op) {
             case Tok::eqeq: result = x == y; break;
             case Tok::noteq: result = x != y; break;
@@ -1806,6 +2196,7 @@ struct Evaluator {
         const uint64_t before = steps;
         const bool recursive = profile && std::find(frames.begin(), frames.end(), e->proc) != frames.end();
         if (profile) frames.push_back(e->proc);
+        ensure_slots(e->proc);
         stmt(e->proc->body, callee, &result);
         if (profile) {
           frames.pop_back();
@@ -1880,8 +2271,19 @@ struct Evaluator {
             case Tok::ge: result = a.f >= b.f; break;
             default: break;
           }
+        } else if (t->is_signed) {
+          const int64_t x = (int64_t)a.bits, y = (int64_t)b.bits;
+          switch (e->op) {
+            case Tok::eqeq: result = x == y; break;
+            case Tok::noteq: result = x != y; break;
+            case Tok::lt: result = x < y; break;
+            case Tok::le: result = x <= y; break;
+            case Tok::gt: result = x > y; break;
+            case Tok::ge: result = x >= y; break;
+            default: break;
+          }
         } else {
-          __int128 x = as_int128(t, a.bits), y = as_int128(t, b.bits);
+          const uint64_t x = a.bits, y = b.bits;
           switch (e->op) {
             case Tok::eqeq: result = x == y; break;
             case Tok::noteq: result = x != y; break;
@@ -2025,34 +2427,115 @@ struct Evaluator {
       }
       case StmtKind::block: {
         size_t mark = frame.locals.size();
-        std::vector<Stmt *> deferred;
+        Stmt *first_defer = nullptr;
+        std::vector<Stmt *> more_defers;
         Flow flow = Flow::normal;
         for (Stmt *child : s->body) {
           if (failed) break;
           if (child->kind == StmtKind::defer) {
-            deferred.push_back(child->then_);
+            if (!first_defer) first_defer = child->then_;
+            else more_defers.push_back(child->then_);
             continue;
           }
           if ((flow = stmt(child, frame, returned)) != Flow::normal) break;
         }
         // Cleanup runs in reverse registration order on every exit.
-        for (size_t i = deferred.size(); i-- > 0 && !failed;) {
+        for (size_t i = more_defers.size(); i-- > 0 && !failed;) {
           Value ignored;
-          if(stmt(deferred[i],frame,&ignored)!=Flow::normal && !failed)
-            err(deferred[i]->loc,"E0401","control transfer in deferred cleanup");
+          if(stmt(more_defers[i],frame,&ignored)!=Flow::normal && !failed)
+            err(more_defers[i]->loc,"E0401","control transfer in deferred cleanup");
+        }
+        if (first_defer && !failed) {
+          Value ignored;
+          if(stmt(first_defer,frame,&ignored)!=Flow::normal && !failed)
+            err(first_defer->loc,"E0401","control transfer in deferred cleanup");
         }
         frame.locals.resize(mark);
         return flow;
       }
       case StmtKind::var: {
+        if (s->expr && scalar_type(s->expr->type)) {
+          CT_STMT_SCALAR(initial, s->expr);
+          frame.locals.emplace_back();
+          CtLocal &loc = frame.locals.back();
+          loc.name = s->name;
+          loc.value.type = initial.type;
+          loc.value.bits = initial.bits;
+          loc.value.f = initial.f;
+          loc.initialized = !s->uninit;
+          return Flow::normal;
+        }
         Value value;
-        if (s->expr && scalar_type(s->expr->type)) { CT_STMT_SCALAR(initial,s->expr);value=scalar_value(initial); }
-        else if (s->expr) { CT_STMT_EVAL(initial,s->expr);value=std::move(initial); }
+        if (s->expr) { CT_STMT_EVAL(initial,s->expr);value=std::move(initial); }
         else value = zero(s->type, s->loc);
         frame.locals.push_back({s->name, std::move(value), !s->uninit});
         return Flow::normal;
       }
       case StmtKind::assign: {
+        // Fast scalar assignment to a local variable or local array/view element:
+        // zero Holder, zero Value construction, zero shared_ptr refcount traffic.
+        if (scalar_type(s->expr->type)) {
+          auto apply_compound = [&](Value &dst, const Scalar &rhs) -> bool {
+            if (s->op == Tok::equal) { dst.bits = rhs.bits; dst.f = rhs.f; return true; }
+            Tok op = s->op == Tok::plus_equal ? Tok::plus : s->op == Tok::minus_equal ? Tok::minus
+                   : s->op == Tok::star_equal ? Tok::star : s->op == Tok::slash_equal ? Tok::slash
+                   : s->op == Tok::percent_equal ? Tok::percent : s->op == Tok::amp_equal ? Tok::amp
+                   : s->op == Tok::pipe_equal ? Tok::pipe : s->op == Tok::caret_equal ? Tok::caret
+                   : s->op == Tok::shl_equal ? Tok::shl : Tok::shr;
+            Type t = dst.type;
+            if (is_float(t)) {
+              double f = 0;
+              switch (op) {
+                case Tok::plus: f = dst.f + rhs.f; break;
+                case Tok::minus: f = dst.f - rhs.f; break;
+                case Tok::star: f = dst.f * rhs.f; break;
+                case Tok::slash: f = dst.f / rhs.f; break;
+                default: break;
+              }
+              dst.f = t == &T_F32 ? (double)(float)f : f;
+              return true;
+            }
+            uint64_t bits;
+            if (!int_bits(op, t, dst.bits, rhs.bits, rhs.type, s->loc, &bits)) return false;
+            dst.bits = bits;
+            return true;
+          };
+          if (s->target->kind == ExprKind::ident && !s->target->constant) {
+            if (!tick(s->target->loc)) return Flow::normal;
+            CtLocal *local = find_local(frame, s->target);
+            if (!local) { err(s->target->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(s->target->text) + "'"); return Flow::normal; }
+            if (local->lent) { err(s->loc, "E0401", "internal: a write to a parameter that shares its argument's storage"); return Flow::normal; }
+            CT_STMT_SCALAR(sc, s->expr);
+            if (s->op != Tok::equal && !local->initialized) { err(s->loc, "E0405", "compile-time read of an uninitialized variable"); return Flow::normal; }
+            if (!apply_compound(local->value, sc)) return Flow::normal;
+            local->initialized = true;
+            return Flow::normal;
+          }
+          if (s->target->kind == ExprKind::index && s->target->lhs->kind == ExprKind::ident && !s->target->lhs->constant &&
+              (s->target->lhs->type->kind == TypeKind::array || s->target->lhs->type->kind == TypeKind::view)) {
+            Type lt = s->target->lhs->type;
+            if (!tick(s->target->loc) || !tick(s->target->lhs->loc)) return Flow::normal;
+            CtLocal *local = find_local(frame, s->target->lhs);
+            if (!local) { err(s->target->lhs->loc, "E0401", "compile-time expression cannot capture runtime value '" + to_std(s->target->lhs->text) + "'"); return Flow::normal; }
+            if (lt->kind == TypeKind::view && !local->initialized) { err(s->target->lhs->loc, "E0405", "compile-time read of an uninitialized variable"); return Flow::normal; }
+            CT_STMT_SCALAR(iv, s->target->rhs);
+            const int64_t i = iv.type->is_signed ? (int64_t)iv.bits : (iv.bits > (uint64_t)INT64_MAX ? -1 : (int64_t)iv.bits);
+            const int64_t count = lt->kind == TypeKind::array ? lt->length : local->value.count;
+            if (__builtin_expect(i < 0 || i >= count, 0)) {
+              err(s->target->loc, "E0410", "index " + std::to_string((long long)(int64_t)iv.bits) + " is out of bounds for " +
+                                           std::to_string((long long)count) + " elements");
+              return Flow::normal;
+            }
+            if (lt->kind == TypeKind::array && local->lent) { err(s->loc, "E0401", "internal: a write to a parameter that shares its argument's storage"); return Flow::normal; }
+            CT_STMT_SCALAR(sc, s->expr);
+            if (lt->kind == TypeKind::array && s->op != Tok::equal && !local->initialized) { err(s->loc, "E0405", "compile-time read of an uninitialized variable"); return Flow::normal; }
+            const int64_t off = lt->kind == TypeKind::array ? 0 : local->value.offset;
+            Value &el = (*local->value.agg)[(size_t)(off + i)];
+            if (!apply_compound(el, sc)) return Flow::normal;
+            if (lt->kind == TypeKind::array) local->initialized = true;
+            return Flow::normal;
+          }
+        }
         Holder h;
         CtLocal *root = nullptr;
         auto located=this->place(s->target,frame,h,true,&root);
@@ -2130,12 +2613,26 @@ struct Evaluator {
         if (failed) return Flow::normal;
         Type t = s->type;
         size_t mark = frame.locals.size();
-        frame.locals.push_back({s->name, scalar_value(lo), true});
-        for (__int128 i = as_int128(t, lo.bits); i < as_int128(t, hi.bits) && !failed; i++) {
-          frame.locals[mark].value = scalar(t, canon_bits(t, (uint64_t)i));
-          Flow f = stmt(s->then_, frame, returned);
-          if (f == Flow::ret) { frame.locals.resize(mark); return f; }
-          if (f == Flow::brk) break;
+        frame.locals.emplace_back();
+        frame.locals[mark].name = s->name;
+        frame.locals[mark].value.type = t;
+        frame.locals[mark].value.bits = lo.bits;
+        frame.locals[mark].initialized = true;
+        if (__builtin_expect(t == &T_S64, 1)) {
+          const int64_t hi_v = (int64_t)hi.bits;
+          for (int64_t i = (int64_t)lo.bits; i < hi_v && !failed; i++) {
+            frame.locals[mark].value.bits = (uint64_t)i;
+            Flow f = stmt(s->then_, frame, returned);
+            if (f == Flow::ret) { frame.locals.resize(mark); return f; }
+            if (f == Flow::brk) break;
+          }
+        } else {
+          for (__int128 i = as_int128(t, lo.bits); i < as_int128(t, hi.bits) && !failed; i++) {
+            frame.locals[mark].value.bits = canon_bits(t, (uint64_t)i);
+            Flow f = stmt(s->then_, frame, returned);
+            if (f == Flow::ret) { frame.locals.resize(mark); return f; }
+            if (f == Flow::brk) break;
+          }
         }
         frame.locals.resize(mark);
         return Flow::normal;
@@ -2206,6 +2703,306 @@ struct Evaluator {
     for(SwitchCase *arm:s->cases)fold_stmt(arm->body);
   }
 
+  static bool expr_has_run(const Expr *e) {
+    if (!e) return false;
+    if (e->kind == ExprKind::run) return true;
+    if (expr_has_run(e->lhs) || expr_has_run(e->rhs) || expr_has_run(e->third)) return true;
+    for (const Expr *a : e->args) if (expr_has_run(a)) return true;
+    for (const FieldInit &f : e->fields) if (expr_has_run(f.value)) return true;
+    return false;
+  }
+
+  // Computes a content-addressed key over the exact transitive declaration
+  // closure of a pure #run constant. Returns "" if any dependency is not yet
+  // evaluated, lacks source bounds, or constant caching is off.
+  std::string const_cache_key(const ConstDecl *root_c) {
+    if (profile || quiet || !file || !file->src) return "";
+    const std::string comp = const_cache_compiler_hash();
+    if (comp.empty()) return "";
+    std::unordered_set<const void *> visited;
+    std::vector<std::pair<int32_t, int32_t>> spans;
+    std::vector<std::string> extras;
+    bool ok = true;
+    const int32_t text_sz = (int32_t)file->src->text.size();
+    auto add_span = [&](Loc loc, int32_t end) {
+      if (loc.offset < 0 || end <= loc.offset || end > text_sz) { ok = false; return; }
+      spans.push_back({loc.offset, end});
+    };
+    std::function<void(const Expr *)> walk_e;
+    std::function<void(const Stmt *)> walk_s;
+    std::function<void(const ProcDecl *)> walk_p;
+    std::function<void(Type)> walk_t;
+    walk_t = [&](Type t) {
+      if (!t || !ok || !visited.insert(t).second) return;
+      if (t->kind == TypeKind::array || t->kind == TypeKind::view) { walk_t(t->elem); return; }
+      if (t->kind == TypeKind::optional) { walk_t(t->elem); return; }
+      if (t->kind == TypeKind::result) { walk_t(t->elem); walk_t(t->sum_error); return; }
+      if (t->kind == TypeKind::struct_ && t->struct_decl) {
+        const StructDecl *d = t->struct_decl;
+        if (visited.insert(d).second) {
+          if (is_builtin_meta_struct(d)) extras.push_back("meta:" + to_std(d->name));
+          else {
+            if (d->defaults != 2) { ok = false; return; }
+            const StructDecl *src_d = d->origin ? d->origin : d;
+            add_span(src_d->loc, src_d->end);
+          }
+          for (const Field &f : d->fields) { walk_t(f.type); walk_e(f.init); }
+        }
+        return;
+      }
+      if (t->kind == TypeKind::enum_ && t->enum_decl) {
+        const EnumDecl *d = t->enum_decl;
+        if (visited.insert(d).second) {
+          add_span(d->loc, d->end);
+          for (const EnumMember &m : d->members) walk_e(m.value);
+        }
+        return;
+      }
+      if (t->kind == TypeKind::union_ && t->union_decl) {
+        const UnionDecl *d = t->union_decl;
+        if (visited.insert(d).second) {
+          add_span(d->loc, d->end);
+          for (const UnionVariant &v : d->variants) walk_t(v.type);
+        }
+        return;
+      }
+    };
+    walk_p = [&](const ProcDecl *p) {
+      if (!p || !ok || !visited.insert(p).second) return;
+      const ProcDecl *src_p = p->origin ? p->origin : p;
+      add_span(src_p->loc, src_p->end);
+      walk_t(p->ret);
+      for (const Param &prm : p->params) walk_t(prm.type);
+      walk_s(p->body);
+    };
+    walk_e = [&](const Expr *e) {
+      if (!e || !ok) return;
+      walk_t(e->type);
+      if (e->proc) walk_p(e->proc);
+      if (e->mutation_proc) walk_p(e->mutation_proc);
+      if (e->kind == ExprKind::ident && e->constant) {
+        const ConstDecl *dep = e->constant;
+        if (visited.insert(dep).second) {
+          add_span(dep->loc, dep->end);
+          walk_t(dep->type);
+          walk_e(dep->expr);
+        }
+      }
+      walk_e(e->lhs); walk_e(e->rhs); walk_e(e->third);
+      for (const Expr *a : e->args) walk_e(a);
+      for (const FieldInit &f : e->fields) walk_e(f.value);
+    };
+    walk_s = [&](const Stmt *s) {
+      if (!s || !ok) return;
+      walk_t(s->type);
+      walk_e(s->expr); walk_e(s->expr2); walk_e(s->target);
+      for (const Stmt *ch : s->body) walk_s(ch);
+      walk_s(s->then_); walk_s(s->else_);
+      for (const SwitchCase *arm : s->cases) { walk_e(arm->enum_pattern); walk_s(arm->body); }
+    };
+    visited.insert(root_c);
+    add_span(root_c->loc, root_c->end);
+    walk_t(root_c->type);
+    walk_e(root_c->expr);
+    if (!ok) return "";
+    std::sort(spans.begin(), spans.end());
+    spans.erase(std::unique(spans.begin(), spans.end()), spans.end());
+    std::vector<std::string> decl_texts;
+    decl_texts.reserve(spans.size());
+    for (const auto &[lo, hi] : spans)
+      decl_texts.emplace_back(file->src->text.data() + lo, (size_t)(hi - lo));
+    std::sort(decl_texts.begin(), decl_texts.end());
+    decl_texts.erase(std::unique(decl_texts.begin(), decl_texts.end()), decl_texts.end());
+    std::sort(extras.begin(), extras.end());
+    std::string payload = "coax.const-cache.v1\n" + comp + "\n" + to_std(root_c->name) + "\n" + type_name(root_c->type) + "\n";
+    for (const std::string &ex : extras) payload += ex + "\n";
+    for (const std::string &txt : decl_texts) {
+      payload += std::to_string(txt.size()) + ":" + txt + "\n";
+    }
+    return debug_source_hash(payload);
+  }
+
+  static bool write_ct_value(std::string &out, const Value &v) {
+    auto put_u8 = [&](uint8_t x) { out.push_back((char)x); };
+    auto put_u32 = [&](uint32_t x) { out.append((const char *)&x, 4); };
+    auto put_u64 = [&](uint64_t x) { out.append((const char *)&x, 8); };
+    const TypeKind k = v.type->kind;
+    if (k == TypeKind::integer || k == TypeKind::bool_ || k == TypeKind::enum_) {
+      put_u8(1); put_u64(v.bits); return true;
+    }
+    if (k == TypeKind::floating) {
+      put_u8(2); uint64_t fb; memcpy(&fb, &v.f, 8); put_u64(fb); return true;
+    }
+    if (k == TypeKind::string_) {
+      if (v.agg || v.s.count < 0) return false;
+      put_u8(3); put_u32((uint32_t)v.s.count);
+      out.append(v.s.data, (size_t)v.s.count);
+      return true;
+    }
+    if (k == TypeKind::struct_ || k == TypeKind::array) {
+      if (!v.agg) return false;
+      put_u8(k == TypeKind::struct_ ? 4 : 5);
+      put_u32((uint32_t)v.agg->size());
+      for (const Value &el : *v.agg) if (!write_ct_value(out, el)) return false;
+      return true;
+    }
+    if (is_sum(v.type)) {
+      put_u8(6); put_u32(v.sum_tag);
+      const uint8_t has_p = v.agg && !v.agg->empty() ? 1 : 0;
+      put_u8(has_p);
+      if (has_p && !write_ct_value(out, (*v.agg)[0])) return false;
+      return true;
+    }
+    return false;
+  }
+
+  bool read_ct_value(const char *&at, const char *end, Type t, Loc loc, Value *out) {
+    auto take = [&](void *dst, size_t n) -> bool {
+      if ((size_t)(end - at) < n) return false;
+      memcpy(dst, at, n); at += n; return true;
+    };
+    uint8_t tag = 0;
+    if (!take(&tag, 1)) return false;
+    const TypeKind k = t->kind;
+    if (tag == 1 && (k == TypeKind::integer || k == TypeKind::bool_ || k == TypeKind::enum_)) {
+      uint64_t bits = 0;
+      if (!take(&bits, 8)) return false;
+      *out = scalar(t, bits);
+      return true;
+    }
+    if (tag == 2 && k == TypeKind::floating) {
+      uint64_t fb = 0; double f = 0;
+      if (!take(&fb, 8)) return false;
+      memcpy(&f, &fb, 8);
+      *out = floating(t, f);
+      return true;
+    }
+    if (tag == 3 && k == TypeKind::string_) {
+      uint32_t n = 0;
+      if (!take(&n, 4) || (size_t)(end - at) < n) return false;
+      auto st = std::make_shared<CtString>(file->ct_memory, (size_t)n + 1);
+      if (n) memcpy(st->bytes.get(), at, n);
+      st->bytes[n] = 0;
+      at += n;
+      Value s; s.type = &T_STRING; s.s = Str{st->bytes.get(), (int32_t)n}; s.string_owner = std::move(st);
+      *out = std::move(s);
+      return true;
+    }
+    if (tag == 4 && k == TypeKind::struct_ && t->struct_decl) {
+      uint32_t n = 0;
+      if (!take(&n, 4) || (int32_t)n != t->struct_decl->fields.count) return false;
+      Value v; v.type = t; v.agg = storage(loc); v.agg->reserve(n);
+      for (uint32_t i = 0; i < n; i++) {
+        Value el;
+        if (!read_ct_value(at, end, t->struct_decl->fields[(int32_t)i].type, loc, &el)) return false;
+        v.agg->push_back(std::move(el));
+      }
+      *out = std::move(v);
+      return true;
+    }
+    if (tag == 5 && k == TypeKind::array) {
+      uint32_t n = 0;
+      if (!take(&n, 4) || (int64_t)n != t->length) return false;
+      Value v; v.type = t; v.agg = storage(loc); v.agg->reserve(n);
+      for (uint32_t i = 0; i < n; i++) {
+        Value el;
+        if (!read_ct_value(at, end, t->elem, loc, &el)) return false;
+        v.agg->push_back(std::move(el));
+      }
+      *out = std::move(v);
+      return true;
+    }
+    if (tag == 6 && is_sum(t)) {
+      uint32_t stag = 0; uint8_t has_p = 0;
+      if (!take(&stag, 4) || !take(&has_p, 1)) return false;
+      Type pt = payload_type(t, stag, loc);
+      if (failed) return false;
+      Value v; v.type = t; v.sum_tag = stag;
+      if (has_p) {
+        if (pt == &T_VOID) return false;
+        Value p;
+        if (!read_ct_value(at, end, pt, loc, &p)) return false;
+        v.agg = storage(loc);
+        v.agg->push_back(std::move(p));
+      } else if (pt != &T_VOID) return false;
+      *out = std::move(v);
+      return true;
+    }
+    return false;
+  }
+
+  void install_frozen(Expr *e, Value owned) {
+    e->type = owned.type;
+    e->lhs = e->rhs = e->third = nullptr;
+    switch (owned.type->kind) {
+      case TypeKind::integer: e->kind = ExprKind::int_lit; e->int_value = owned.bits; break;
+      case TypeKind::bool_: e->kind = ExprKind::bool_lit; e->int_value = owned.bits; break;
+      case TypeKind::enum_: e->kind = ExprKind::enum_value; e->int_value = owned.bits; break;
+      case TypeKind::floating: e->kind = ExprKind::float_lit; e->float_value = owned.f; break;
+      case TypeKind::string_:
+        e->kind = ExprKind::string_lit; e->text = owned.s;
+        if (owned.string_owner) file->frozen_values.push_back(std::make_unique<Value>(std::move(owned)));
+        break;
+      default:
+        file->frozen_values.push_back(std::make_unique<Value>(std::move(owned)));
+        e->kind = ExprKind::ct_value;
+        e->ct = file->frozen_values.back().get();
+        break;
+    }
+  }
+
+  bool try_load_cached_const(ConstDecl *c, const std::string &key) {
+    if (key.empty() || !file->ct_memory) return false;
+    std::string blob;
+    if (!const_cache_read(key, &blob) || blob.size() < 64 || memcmp(blob.data(), "CXCT0001", 8) != 0) return false;
+    uint64_t h[7];
+    memcpy(h, blob.data() + 8, sizeof h);
+    const uint64_t d_steps = h[0], d_trav = h[1], d_slots = h[2], d_cont = h[3], d_str = h[4], d_calls = h[5], d_deps = h[6];
+    auto &m = *file->ct_memory;
+    if (steps > max_steps || d_steps > max_steps - steps) return false;
+    if (!CB_admit(traversal_work, d_trav, traversal_limit)) return false;
+    if (!CB_admit(m.slots, d_slots, m.slot_limit) || !CB_admit(m.containers, d_cont, m.container_limit) ||
+        !CB_admit(m.string_bytes, d_str, CB_string_live_limit())) return false;
+    if (d_calls > MAX_DEPTH || d_deps > MAX_DEPTH) return false;
+    // Never bypass near-limit reports: fall through to real eval if any budget is near its limit.
+    if (capacity_near(steps + d_steps, max_steps) || capacity_near(traversal_work + d_trav, traversal_limit) ||
+        capacity_near(m.slots + d_slots, m.slot_limit) || capacity_near(m.containers + d_cont, m.container_limit) ||
+        capacity_near(m.string_bytes + d_str, CB_string_live_limit())) return false;
+    const uint64_t s0 = m.slots, c0 = m.containers, str0 = m.string_bytes;
+    const char *at = blob.data() + 64, *end = blob.data() + blob.size();
+    Value val;
+    bool ok = false;
+    try { ok = read_ct_value(at, end, c->type, c->loc, &val) && at == end && !failed; } catch (...) { ok = false; }
+    if (!ok) { failed = false; return false; }
+    install_frozen(c->expr, std::move(val));
+    c->evaluated = 2;
+    steps += d_steps;
+    traversal_work += d_trav;
+    peak_calls = std::max<size_t>(peak_calls, (size_t)d_calls);
+    peak_dependencies = std::max<uint32_t>(peak_dependencies, (uint32_t)d_deps);
+    m.peak_slots = std::max<uint64_t>(m.peak_slots, s0 + d_slots);
+    m.peak_containers = std::max<uint64_t>(m.peak_containers, c0 + d_cont);
+    m.string_peak_bytes = std::max<uint64_t>(m.string_peak_bytes, str0 + d_str);
+    return true;
+  }
+
+  void save_cached_const(ConstDecl *c, const std::string &key, uint64_t d_steps, uint64_t d_trav,
+                         uint64_t d_slots, uint64_t d_cont, uint64_t d_str, uint64_t d_calls, uint64_t d_deps) {
+    if (key.empty() || failed || c->evaluated != 2 || d_steps < 200000) return;
+    std::string blob;
+    blob.reserve(4096);
+    blob.append("CXCT0001", 8);
+    const uint64_t h[7] = {d_steps, d_trav, d_slots, d_cont, d_str, d_calls, d_deps};
+    blob.append((const char *)h, sizeof h);
+    bool ok = false;
+    if (c->expr->kind == ExprKind::ct_value && c->expr->ct) ok = write_ct_value(blob, *c->expr->ct);
+    else if (c->expr->kind == ExprKind::int_lit || c->expr->kind == ExprKind::bool_lit || c->expr->kind == ExprKind::enum_value)
+      ok = write_ct_value(blob, scalar(c->expr->type, c->expr->int_value));
+    else if (c->expr->kind == ExprKind::float_lit) ok = write_ct_value(blob, floating(c->expr->type, c->expr->float_value));
+    else if (c->expr->kind == ExprKind::string_lit) { Value s; s.type = &T_STRING; s.s = c->expr->text; ok = write_ct_value(blob, s); }
+    if (ok) const_cache_write(key, blob);
+  }
+
   const ProcDecl *fold_owner = nullptr;  // the procedure whose #run sites are being folded
   bool run() {
     // --timings: each declaration's evaluation seconds and steps (g_decl_costs).
@@ -2223,7 +3020,35 @@ struct Evaluator {
     for (ConstDecl *c : file->constants) {
       if (failed) break;
       begin_site(c, "constant '" + to_std(c->name) + "'", c->loc);
-      if (!is_untyped(c->type)) charge(c, "constant", c->name, c->loc, [&] { constant(c); });  // untyped constants were inlined as literals
+      if (!is_untyped(c->type)) charge(c, "constant", c->name, c->loc, [&] {
+        if (c->evaluated == 0 && expr_has_run(c->expr)) {
+          const std::string key = const_cache_key(c);
+          if (!key.empty() && try_load_cached_const(c, key)) return;
+          const uint64_t s0 = steps, t0 = traversal_work;
+          auto &m = *file->ct_memory;
+          const uint64_t sl0 = m.slots, co0 = m.containers, st0 = m.string_bytes;
+          const uint64_t psl0 = m.peak_slots, pco0 = m.peak_containers, pst0 = m.string_peak_bytes;
+          m.peak_slots = sl0; m.peak_containers = co0; m.string_peak_bytes = st0;
+          const size_t pc0 = peak_calls; const uint32_t pd0 = peak_dependencies;
+          peak_calls = 0; peak_dependencies = 0;
+          nested_const_steps = 0; nested_const_trav = 0;
+          constant(c);
+          const uint64_t own_steps = (steps - s0) > nested_const_steps ? (steps - s0) - nested_const_steps : 0;
+          const uint64_t own_trav = (traversal_work - t0) > nested_const_trav ? (traversal_work - t0) - nested_const_trav : 0;
+          const uint64_t d_slots = m.peak_slots > sl0 ? m.peak_slots - sl0 : 0;
+          const uint64_t d_cont = m.peak_containers > co0 ? m.peak_containers - co0 : 0;
+          const uint64_t d_str = m.string_peak_bytes > st0 ? m.string_peak_bytes - st0 : 0;
+          const uint64_t d_calls = peak_calls, d_deps = peak_dependencies;
+          m.peak_slots = std::max(psl0, m.peak_slots);
+          m.peak_containers = std::max(pco0, m.peak_containers);
+          m.string_peak_bytes = std::max(pst0, m.string_peak_bytes);
+          peak_calls = std::max(pc0, peak_calls);
+          peak_dependencies = std::max(pd0, peak_dependencies);
+          if (!failed && !key.empty()) save_cached_const(c, key, own_steps, own_trav, d_slots, d_cont, d_str, d_calls, d_deps);
+          return;
+        }
+        constant(c);
+      });  // untyped constants were inlined as literals
     }
     for (Expr *a : file->assertions) {
       if (failed) break;
@@ -2328,6 +3153,7 @@ struct Evaluator {
   CheckOutcome check(CheckDecl *c) {
     CheckOutcome out;
     ProcDecl *p = c->proc;
+    ensure_slots(p);
     begin_site(c, std::string(c->forall ? "#forall" : "#test") + " '" + to_std(c->name) + "' itself", c->loc);
     std::vector<Domain> bound;
     uint64_t total = 1;

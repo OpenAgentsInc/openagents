@@ -169,9 +169,10 @@ class Sources(unittest.TestCase):
             self.assertIn("m_twice",c)
             for name in ["m_helper","m_pick","m_more"]: self.assertNotIn(name,c)
         self.assertEqual(len(json.loads(self.success("deps",page))["sources"]),4)
-        # The same sources with a plain load emit the helpers, as they always did.
+        # The same sources with a plain load emit the helpers in library output
+        # (executable builds prune procedures unreachable from main).
         mod.write_text(module.replace(" #test;",";"))
-        plain=self.success("c",page)
+        plain=self.success("c",mod,"--library")
         for name in ["m_helper","m_more"]: self.assertIn(name,plain)
         # Without its checks the module is not covered, alone or in a page.
         mod.write_text(module.replace('#load "m-checks.coax" #test;\n',''))

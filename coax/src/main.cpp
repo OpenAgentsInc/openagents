@@ -116,7 +116,9 @@ struct DeclClock {  // adds the seconds since it started to *into, when timings 
 // is the sequential one. Never more than 16 threads, the cores, COAX_JOBS, or
 // one per `grain` items; one thread runs it inline. Every thread has ended
 // before this returns, so no fork happens with one running.
+static bool g_in_library_child = false;
 static unsigned burst_threads(size_t count, size_t grain) {
+  if (g_in_library_child) return 1;
   unsigned most = std::thread::hardware_concurrency();
   if (most == 0) most = 1;
   if (const char *env = getenv("COAX_JOBS")) { char *end = nullptr; const unsigned long v = strtoul(env, &end, 10); if (end && !*end && v > 0) most = (unsigned)std::min<unsigned long>(most, v); }
@@ -821,12 +823,17 @@ static int write_evidence(const std::string &cmd, const std::string &input, cons
 
 // Descriptor parsing and code generation run inside the compiler.
 // Generated declarations are appended after user text to preserve user locations.
-static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Token> &tokens) {
+static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Token> &tokens, std::vector<std::pair<int, int>> *blanked_out = nullptr) {
+  bool any_import_proto = false;
+  for (const Token &t : tokens) {
+    if (t.kind == Tok::directive && str_eq(t.text, "import_proto")) { any_import_proto = true; break; }
+  }
+  if (!any_import_proto) return true;
   struct Request { std::string path, prefix; Loc loc; int end; };
   std::vector<Request> requests;
   auto input=parser_tokens(tokens);
   const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
-  std::vector<coax_t_PS_Import> records((size_t)caps.imports);
+  zvec<coax_t_PS_Import> records((size_t)caps.imports);
   const auto scan=PS_imports({input.data(),(int64_t)input.size()},{records.data(),(int64_t)records.size()},opts.metal);
   if(scan.code.count) {
     error_at(src,parser_loc(scan.loc),std::string(scan.code.data,(size_t)scan.code.count).c_str(),
@@ -843,11 +850,14 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
     if (path.is_relative()) path = std::filesystem::absolute(std::filesystem::path(source_point(src, r.loc).path).parent_path() / path);
     src->descriptor_inputs.push_back(std::filesystem::absolute(path).lexically_normal().string());
     if(!profile_destination_disjoint(src->descriptor_inputs.back()))return false;
-    proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION,!g_semantic.path.empty());
+    std::string desc_raw;
+    proto::Result result = proto::import_file(path.lexically_normal().string(), r.prefix, VERSION,!g_semantic.path.empty(),&desc_raw);
     if (!result.error.empty()) {
       error_at(src, r.loc, "E0502", result.error);
       return false;
     }
+    { std::error_code ec; auto canon = std::filesystem::weakly_canonical(path, ec);
+      serve_watch_file(ec ? path.lexically_normal().string() : canon.string(), desc_raw, false); }
     if(!g_semantic.path.empty())g_semantic.descriptors.emplace_back(src->descriptor_inputs.back(),result.descriptor_sha256);
     std::string &text = result.source;
     if (generated.size() + text.size() + 1 > 16 * 1024 * 1024) {
@@ -859,8 +869,10 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
     src->generated.push_back({start, start + (int32_t)text.size(), r.loc, r.prefix});
     generated += "\n" + text;
   }
-  for (const Request &r : requests)
+  for (const Request &r : requests) {
+    if (blanked_out) blanked_out->push_back({r.loc.offset, r.end});
     for (int i = r.loc.offset; i < r.end; i++) if (src->text[(size_t)i] != '\n') src->text[(size_t)i] = ' ';
+  }
   src->text += generated;
   return true;
 }
@@ -1635,6 +1647,30 @@ static void cache_record(const std::string &dir, const std::string &key, const s
   if (write_file(temp, record)) check_cache_put(dir, temp, dir + "/" + key, record.size());
 }
 
+std::string const_cache_compiler_hash() {
+  const char *off = getenv("COAX_CONST_CACHE");
+  if (off && (!strcmp(off, "0") || !strcmp(off, "off"))) return "";
+  const std::string h = compiler_hash();
+  return h.empty() ? "" : h + ":dev=" + std::to_string(g_native_opts.development);
+}
+bool const_cache_read(const std::string &key, std::string *out) {
+  if (key.empty()) return false;
+  if (serve_find_const(key, out)) return true;
+  const std::string dir = library_cache_dir();
+  if (dir.empty()) return false;
+  const std::string path = dir + "/ct-" + key;
+  if (!read_record(path, out)) return false;
+  cache_touch(path);
+  serve_keep_const(key, *out);
+  return true;
+}
+void const_cache_write(const std::string &key, const std::string &data) {
+  if (key.empty() || data.empty()) return;
+  serve_keep_const(key, data);
+  const std::string dir = library_cache_dir();
+  if (!dir.empty()) cache_record(dir, "ct-" + key, data);
+}
+
 // The units unit `at` loads, directly or not, itself first, in a fixed order.
 static std::vector<int32_t> library_closure(const Source *src, int32_t at) {
   std::vector<int32_t> out{at};
@@ -1649,11 +1685,37 @@ static std::vector<int32_t> library_closure(const Source *src, int32_t at) {
 // Each unit is known by the SHA-256 of its tokens (kind, spelling, value:
 // ReuseIndex::put), not its bytes, so a comment or a blank line changes no
 // verdict (#13123); sums holds them by unit, "" for none.
+static std::string fast_lexically_relative(const std::string &canonical, const std::string &base_dir) {
+  if (canonical.empty() || base_dir.empty() || canonical[0] != '/' || base_dir[0] != '/') {
+    return std::filesystem::path(canonical).lexically_relative(std::filesystem::path(base_dir)).string();
+  }
+  auto split = [](const std::string &p, std::vector<std::string_view> &parts) {
+    size_t i = 0, n = p.size();
+    while (i < n) {
+      while (i < n && p[i] == '/') i++;
+      size_t j = i;
+      while (j < n && p[j] != '/') j++;
+      if (j > i) parts.emplace_back(p.data() + i, j - i);
+      i = j;
+    }
+  };
+  std::vector<std::string_view> cp, bp;
+  split(canonical, cp);
+  split(base_dir, bp);
+  size_t k = 0;
+  while (k < cp.size() && k < bp.size() && cp[k] == bp[k]) k++;
+  std::string out;
+  for (size_t i = k; i < bp.size(); i++) { if (!out.empty()) out += '/'; out += ".."; }
+  for (size_t i = k; i < cp.size(); i++) { if (!out.empty()) out += '/'; out.append(cp[i].data(), cp[i].size()); }
+  return out.empty() ? "." : out;
+}
+
 static std::string library_key(const Source *src, int32_t at, const EmitOptions &opts, const std::string &compiler, bool run,
-                               const std::vector<std::string> &sums) {
+                               const std::vector<std::string> &sums, const std::vector<int32_t> *closure_override = nullptr) {
   if (compiler.empty()) return "";
-  namespace fs = std::filesystem;
-  const fs::path base = fs::path(src->units[(size_t)at]->canonical).parent_path();
+  const std::string &canon = src->units[(size_t)at]->canonical;
+  const size_t slash = canon.find_last_of('/');
+  const std::string base = slash == std::string::npos ? std::string() : (slash == 0 ? std::string("/") : canon.substr(0, slash));
   std::string text = "coax.library-check.v2\n" + compiler + "\n" + (run ? "run\n" : "check\n");
   text += "run_steps=" + std::to_string(opts.run_steps) + " development=" + std::to_string(opts.development) +
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
@@ -1661,11 +1723,13 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
           std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) + native_key() +
           (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) +
           (g_traversal_limit ? " traversal=" + std::to_string(g_traversal_limit) : std::string()) + "\n";
-  for (int32_t u : library_closure(src, at)) {
+  std::vector<int32_t> owned_closure;
+  const std::vector<int32_t> &closure = closure_override ? *closure_override : (owned_closure = library_closure(src, at));
+  for (int32_t u : closure) {
     const SourceUnit &unit = *src->units[(size_t)u];
     const std::string &sha = (size_t)u < sums.size() ? sums[(size_t)u] : std::string();
     if (sha.empty()) return "";
-    text += fs::path(unit.canonical).lexically_relative(base).string() + "\t" + sha + "\n";
+    text += fast_lexically_relative(unit.canonical, base) + "\t" + sha + "\n";
   }
   return debug_source_hash(text);
 }
@@ -1686,6 +1750,54 @@ static bool run_compilation_checks(File *file) {
   memory.container_limit = CB_test_container_limit();
   memory.reset_peaks();
   g_timings.check_phase = "authority";
+  // In a standalone library-check child (when COAX_NATIVE_CHECKS is unset),
+  // probe the unit's checks in the evaluator first. Compiling + linking + OS-verifying
+  // a native binary costs ~350-1000 ms (and serializes across concurrent children),
+  // whereas the evaluator runs ~100M steps/s fully parallel in-process. So normal
+  // checks finish in-process up to a 25M-step aggregate cap (~150 ms max), while
+  // checks declaring explicit #steps > TEST_STEPS probe only 2M steps (~12 ms)
+  // before escalating cleanly to native_run.
+  if (g_in_library_child && native_mode() == NativeMode::on && native_least() > 0 && g_evidence.path.empty() && file->checks.count > 0) {
+    const size_t n = (size_t)file->checks.count;
+    std::vector<PassedCheck> passed(n);
+    std::unordered_set<const ProcDecl *> proc_set(file->procs.begin(), file->procs.end());
+    uint64_t budget_left = 25000000;
+    bool escalated = false;
+    for (size_t i = 0; i < n; i++) {
+      CheckDecl *c = file->checks[(int32_t)i];
+      const uint64_t true_limit = c->steps ? c->steps : TEST_STEPS;
+      const uint64_t per_cap = true_limit > TEST_STEPS ? (uint64_t)2000000 : true_limit;
+      const uint64_t probe_limit = std::min<uint64_t>(per_cap, budget_left);
+      if (probe_limit == 0) { escalated = true; break; }
+      memory.reset_peaks();
+      CheckOutcome r = run_check(file, c, probe_limit, false);
+      budget_left = r.steps >= budget_left ? 0 : budget_left - r.steps;
+      if (r.passed) {
+        passed[i].passed = true;
+        passed[i].steps = r.steps;
+        passed[i].cases = r.cases;
+        passed[i].budget = true_limit;
+        for (const ProcDecl *p : r.executed) if (proc_set.count(p)) passed[i].executed.push_back(p);
+        continue;
+      }
+      if (r.over_budget && probe_limit < true_limit) { escalated = true; break; }
+      return false;
+    }
+    if (escalated) {
+      std::vector<bool> want(n, false);
+      for (size_t i = 0; i < n; i++) want[i] = !passed[i].passed;
+      native_run(file, want, TEST_STEPS);
+      for (size_t i = 0; i < n; i++) {
+        if (passed[i].passed || !native_passed(file, i)) continue;
+        const NativeResult &nr = g_native.results[i];
+        passed[i].passed = passed[i].native = true;
+        passed[i].cases = nr.cases;
+        passed[i].seconds = nr.seconds;
+        for (const ProcDecl *p : nr.executed) if (proc_set.count(p)) passed[i].executed.push_back(p);
+      }
+    }
+    return run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed);
+  }
   // Each check's time in the last parallel run, beside the check cache
   // ("seconds<TAB>name" lines), so the next run starts the slowest first.
   std::map<std::string, double> times;
@@ -1748,6 +1860,7 @@ static pid_t library_check_start(const Source *src, int32_t at, const EmitOption
   if (pid < 0) { close(fds[0]); close(fds[1]); return -1; }
   if (pid == 0) {
     close(fds[0]);
+    g_in_library_child = true;
     job_child(parent);
     g_native_say_fd = fcntl(2, F_DUPFD_CLOEXEC, 3);  // a coax bug in its native checks is still said (#13570)
     if (g_native_say_fd < 0) g_native_say_fd = 2;
@@ -1873,19 +1986,50 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     // Without generated text a unit's tokens here are its own lex's, so their
     // sum is a fact about the unit's bytes, kept with its lex (UnitLex::token_sum).
     const bool own = src->generated.empty();
-    auto known = [&](size_t i) { return own && src->units[i]->lexed && !src->units[i]->lexed->token_sum.empty(); };
-    std::vector<std::string> bytes(n);
-    for (const Token &t : tokens) {
-      if (t.kind == Tok::eof) continue;
-      const int32_t at = source_unit_index(src, t.loc);
-      if (at >= 0 && !known((size_t)at)) ReuseIndex::put(bytes[(size_t)at], t);
-    }
+    std::vector<uint8_t> known(n, 0);
+    bool any_unknown = false;
     for (size_t i = 0; i < n; i++) {
-      if (known(i)) { sums[i] = src->units[i]->lexed->token_sum; continue; }
-      sums[i] = debug_source_hash("coax.unit-tokens.v1\n" + bytes[i]);
-      if (own && src->units[i]->lexed && !sums[i].empty()) { src->units[i]->lexed->token_sum = sums[i]; serve_keep_unit(src->units[i]->lexed); }
+      if (own && src->units[i]->lexed && !src->units[i]->lexed->token_sum.empty()) {
+        known[i] = 1;
+        sums[i] = src->units[i]->lexed->token_sum;
+      } else {
+        any_unknown = true;
+      }
+    }
+    if (any_unknown) {
+      std::vector<std::string> bytes(n);
+      size_t cur_u = 0;
+      for (const Token &t : tokens) {
+        if (t.kind == Tok::eof) continue;
+        int32_t at = -1;
+        const int32_t off = t.loc.offset;
+        if (src->generated.empty()) {
+          while (cur_u < n && off >= src->units[cur_u]->end) cur_u++;
+          if (cur_u < n && off >= src->units[cur_u]->begin) at = (int32_t)cur_u;
+          else at = source_unit_index(src, t.loc);
+        } else {
+          at = source_unit_index(src, t.loc);
+        }
+        if (at >= 0 && !known[(size_t)at]) ReuseIndex::put(bytes[(size_t)at], t);
+      }
+      burst(n, 1, [&](size_t begin, size_t end, unsigned) {
+        for (size_t i = begin; i < end; i++) {
+          if (known[i]) continue;
+          sums[i] = debug_source_hash("coax.unit-tokens.v1\n" + bytes[i]);
+        }
+      });
+      if (own) {
+        for (size_t i = 0; i < n; i++) {
+          if (!known[i] && src->units[i]->lexed && !sums[i].empty()) {
+            src->units[i]->lexed->token_sum = sums[i];
+            serve_keep_unit(src->units[i]->lexed);
+          }
+        }
+      }
     }
   }
+  // Share parent's already-lexed/syntax-checked/token-hashed UnitLexes via COW into forked library children.
+  serve_seed_local_units(src);
   // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
   std::vector<int32_t> order;
   std::vector<uint8_t> state(n, 0);
@@ -1899,15 +2043,17 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     order.push_back(u);
   };
   post(0);
+  std::vector<std::vector<int32_t>> closures(n);
   for (int32_t u : order) {
+    closures[(size_t)u] = library_closure(src, u);
     bool authority = false, imports = false;
-    for (int32_t c : library_closure(src, u)) { authority = authority || src->units[(size_t)c]->authority; imports = imports || proto[(size_t)c]; }
+    for (int32_t c : closures[(size_t)u]) { authority = authority || src->units[(size_t)c]->authority; imports = imports || proto[(size_t)c]; }
     if (!SU_library_checks(u == 0, authority, imports, true)) continue;  // no check can change the answer
     const std::string &canonical = src->units[(size_t)u]->canonical;
     auto known = g_library_verdicts.find(canonical + (run ? "\nrun" : ""));
     if (known != g_library_verdicts.end()) { out[(size_t)u] = SU_library_checks(false, authority, imports, known->second); continue; }
     const auto began = std::chrono::steady_clock::now();
-    const std::string key = library_key(src, u, opts, compiler, run, sums);
+    const std::string key = library_key(src, u, opts, compiler, run, sums, &closures[(size_t)u]);
     std::string record;
     if (!key.empty() && read_record(dir + "/" + key, &record) && (record == "checks\n" || record == "does not check alone\n")) {
       cache_touch(dir + "/" + key);
@@ -1931,7 +2077,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
   std::set<int32_t> waiting;
   std::vector<std::vector<int32_t>> needs(tasks.size());
   for (size_t i = 0; i < tasks.size(); i++) {
-    for (int32_t c : library_closure(src, tasks[i].unit))
+    for (int32_t c : closures[(size_t)tasks[i].unit])
       if (waiting.count(c)) needs[i].push_back(c);
     waiting.insert(tasks[i].unit);
   }
@@ -2009,12 +2155,9 @@ static void drop_library_checks(const Source *src, const std::vector<bool> &unit
   std::vector<bool> drop(tokens->size(), false);
   for (int64_t i = 0; i < n; i++) {
     const Token &first = (*tokens)[(size_t)spans[(size_t)i].first], &last = (*tokens)[(size_t)spans[(size_t)i].last];
-    for (size_t u = 1; u < src->units.size(); u++) {
-      const SourceUnit &unit = *src->units[u];
-      if (!units[u] || first.loc.offset < unit.begin || first.loc.offset >= unit.end) continue;
-      if (last.loc.offset < unit.end)
-        for (int64_t k = spans[(size_t)i].first; k <= spans[(size_t)i].last; k++) drop[(size_t)k] = true;
-    }
+    const int32_t u = source_unit_index(src, first.loc);
+    if (u >= 1 && units[(size_t)u] && last.loc.offset < src->units[(size_t)u]->end)
+      for (int64_t k = spans[(size_t)i].first; k <= spans[(size_t)i].last; k++) drop[(size_t)k] = true;
   }
   std::vector<Token> kept;
   kept.reserve(tokens->size());
@@ -2154,11 +2297,45 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
   bool ok=true;if(tokens.empty()){TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);}else lex_check(arena, src, tokens);
   if (ok) {
-    size_t before = src->text.size();
-    {TimedPhase phase{"imports"};ok=import_protos(src, opts, tokens);}
+    const size_t before = src->text.size();
+    const char *old_data = src->text.data();
+    std::vector<std::pair<int, int>> blanked;
+    {TimedPhase phase{"imports"};ok=import_protos(src, opts, tokens, &blanked);}
     if (ok && src->text.size() != before) {
-      tokens.clear();
-      TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
+      TimedPhase phase{"lex"};
+      // Incrementally lex only the appended proto-generated suffix while preserving
+      // already-lexed unit tokens (rebasing their slices into src->text).
+      std::vector<Token> kept;
+      kept.reserve(tokens.size() + 1024);
+      const char *new_data = src->text.data();
+      for (Token &t : tokens) {
+        if (t.kind == Tok::eof) continue;
+        bool drop = false;
+        for (const auto &[b, e] : blanked) if (t.loc.offset >= b && t.loc.offset < e) { drop = true; break; }
+        if (drop) continue;
+        if (t.text.data >= old_data && t.text.data <= old_data + before)
+          t.text.data = new_data + (t.text.data - old_data);
+        kept.push_back(t);
+      }
+      int32_t base_lines = 0;
+      for (size_t i = 0; i < before; i++) if (new_data[i] == '\n') base_lines++;
+      Source gen_src;
+      gen_src.path = src->path;
+      gen_src.text.assign(new_data + before, src->text.size() - before);
+      std::vector<Token> gen_tokens;
+      ok = lex(arena, &gen_src, &gen_tokens);
+      if (ok) {
+        const char *gen_base = gen_src.text.data();
+        for (Token &t : gen_tokens) {
+          t.loc.line += base_lines;
+          t.loc.offset += (int32_t)before;
+          if (t.text.data >= gen_base && t.text.data <= gen_base + gen_src.text.size())
+            t.text.data = new_data + before + (t.text.data - gen_base);
+          kept.push_back(t);
+        }
+        tokens = std::move(kept);
+        lex_check(arena, src, tokens);
+      }
     }
   }
   std::vector<bool> dropped;
@@ -2273,11 +2450,15 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   if (what==Output::c)g_timings.generated_bytes=text->size();
   if(!g_semantic.path.empty() && what!=Output::none)g_semantic.emitted=debug_source_hash(*text);
   TimedLaps header_lap;  // --timings: emit.header, the --header file
-  if (header_path && !write_file(*header_path, provenance + emit_header(&file))) {
-    fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
-    return false;
+  if (header_path) {
+    const std::string header_text = provenance + emit_header(&file);
+    if (!write_file(*header_path, header_text)) {
+      fprintf(stderr, "coax: cannot write '%s'\n", header_path->c_str());
+      return false;
+    }
+    serve_record_header(header_text);
+    header_lap.lap("emit.header");
   }
-  if (header_path) header_lap.lap("emit.header");
   return true;
 }
 

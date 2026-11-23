@@ -68,9 +68,9 @@ static Result import_descriptor(View raw,const std::string &prefix,const std::st
   return result;
 #endif
 }
-static Result import_file(const std::string &path,const std::string &prefix,const std::string &compiler,bool capture_descriptor=false) {
+static Result import_file(const std::string &path,const std::string &prefix,const std::string &compiler,bool capture_descriptor=false,std::string *raw_out=nullptr) {
 #ifdef COAX_BOOTSTRAP_IMPORTER
-  (void)path;
+  (void)path;(void)raw_out;
   return import_descriptor({},prefix,compiler,capture_descriptor);
 #else
   const size_t capacity=(size_t)F_capacities().descriptor;
@@ -89,6 +89,7 @@ static Result import_file(const std::string &path,const std::string &prefix,cons
   bool ok=!ferror(file);
   fclose(file);
   if (!ok) return {{},{},"cannot read proto descriptor: "+path};
+  if (raw_out) *raw_out=raw;
   return import_descriptor(raw,prefix,compiler,capture_descriptor);
 #endif
 }

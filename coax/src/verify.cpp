@@ -940,7 +940,7 @@ struct ReuseIndex {
       if (k < 0) { why = "a declaration outside every item"; return -1; }
       if (owner[(size_t)k] && owner[(size_t)k] != decl) { why = "two declarations in one item"; return -1; }
       owner[(size_t)k] = decl;
-      if (name && (!items[(size_t)k].named || items[(size_t)k].name != to_std(*name))) { why = "an item that doesn't spell its declaration's name"; return -1; }
+      if (name && (!items[(size_t)k].named || items[(size_t)k].name != to_std(*name))) { why = "an item that doesn't spell its declaration's name (" + to_std(*name) + " vs " + (items[(size_t)k].named ? items[(size_t)k].name : std::string("<unnamed:") + to_std(tk[(size_t)items[(size_t)k].first].text) + ">") + ")"; return -1; }
       return k;
     };
     auto procedure = [&](const ProcDecl *p) -> bool {
@@ -967,18 +967,20 @@ struct ReuseIndex {
       }
       return true;
     };
-    for (const StructDecl *d : file->structs) if (!d->origin && claim(d, d->loc, &d->name) < 0) return false;
+    for (const StructDecl *d : file->structs) if (!d->origin && !is_builtin_meta_struct(d) && claim(d, d->loc, &d->name) < 0) return false;
     for (const StructDecl *d : file->generic_structs) if (claim(d, d->loc, &d->name) < 0) return false;
     for (const EnumDecl *d : file->enums) if (claim(d, d->loc, &d->name) < 0) return false;
     for (const UnionDecl *d : file->unions) if (claim(d, d->loc, &d->name) < 0) return false;
     for (const ConstDecl *d : file->constants) if (claim(d, d->loc, &d->name) < 0) return false;
     for (const ProcDecl *p : file->procs) if (!p->origin && !procedure(p)) return false;
     for (const ProcDecl *p : file->generics) if (!procedure(p)) return false;
+    std::vector<const CheckDecl *> item_check(items.size(), nullptr);
     for (const CheckDecl *c : file->checks) {
       const int32_t k = claim(c->proc ? (const void *)c->proc : (const void *)c, c->loc, nullptr);
       if (k < 0) return false;
       if (!items[(size_t)k].check) { why = "a check outside a check item"; return false; }
       check_item[c] = k;
+      item_check[(size_t)k] = c;
     }
     // Identities: unit, name and which of the unit's items so named.
     std::map<std::pair<int32_t, std::string>, int32_t> seen;
@@ -989,8 +991,9 @@ struct ReuseIndex {
       Item &it = items[k];
       if (!it.named && !it.check) continue;
       std::string name = it.named ? it.name : "#check";
-      if (it.check) {
-        for (const auto &[c, at] : check_item) if (at == (int32_t)k) name = std::string(c->forall ? "#forall " : "#test ") + to_std(c->name);
+      if (it.check && item_check[k]) {
+        const CheckDecl *c = item_check[k];
+        name = std::string(c->forall ? "#forall " : "#test ") + to_std(c->name);
       }
       const int32_t ordinal = seen[{it.unit, name}]++;
       it.id = (it.unit < 0 ? std::string("?") : unit_paths[(size_t)it.unit]) + "\x1f" + name + "\x1f" + std::to_string(ordinal);
@@ -1290,17 +1293,25 @@ struct ReuseRecord {
     }
   }
   bool save(const std::string &dir, const std::string &path) const {
-    std::map<std::string, size_t> index;
+    std::vector<int32_t> remap(this->table.size(), -1);
+    size_t next_id = 0;
     std::string table, rows;
+    table.reserve(this->table.size() * 64);
+    rows.reserve(entries.size() * 256);
     for (const auto &[check, e] : entries) {
       rows += "c\t" + check + "\t" + e.key;
       for (uint64_t v : e.numbers) rows += "\t" + std::to_string(v);
       rows += "\t";
       for (size_t i = 0; i < e.ran.size(); i++) {
-        const std::string &id = this->table[e.ran[i]];
-        auto at = index.find(id);
-        if (at == index.end()) { at = index.emplace(id, index.size()).first; table += "p\t" + id + "\n"; }
-        rows += (i ? "," : "") + std::to_string(at->second);
+        const uint32_t old_idx = e.ran[i];
+        int32_t mapped = remap[old_idx];
+        if (mapped < 0) {
+          mapped = (int32_t)next_id++;
+          remap[old_idx] = mapped;
+          table += "p\t" + this->table[old_idx] + "\n";
+        }
+        if (i) rows.push_back(',');
+        rows += std::to_string(mapped);
       }
       rows += "\t" + hex_bytes(e.near) + "\n";
     }
@@ -1646,6 +1657,14 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     ReuseRecord kept;
     kept.table = record.table;  // the kept entries' places are the record's
     bool changed = false;
+    struct PendingRec {
+      size_t i;
+      int32_t check_k;
+      ReuseRecord::Entry entry;
+      std::vector<int32_t> ran;
+    };
+    std::vector<PendingRec> pending;
+    pending.reserve(n);
     for (size_t i = 0; i < n; i++) {
       if (check_ids[i].empty()) continue;
       const auto old = record.entries.find(check_ids[i]);
@@ -1656,32 +1675,51 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
         if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
         continue;
       }
-      ReuseRecord::Entry e;
-      std::set<int32_t> ran;
+      PendingRec rec;
+      rec.i = i;
+      rec.check_k = index.check_item[file->checks[(int32_t)i]];
+      rec.entry.ran.reserve(report.size() > FIELDS ? report.size() - FIELDS : 0);
+      rec.ran.reserve(report.size() > FIELDS ? report.size() - FIELDS : 0);
       bool named = true;
       for (size_t k = FIELDS; k < report.size(); k++) {
         const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
         const auto id = index.proc_id.find(p);
         if (id == index.proc_id.end()) { named = false; break; }
-        e.ran.push_back(kept.place(id->second));
-        ran.insert(index.proc_item[p]);
+        rec.entry.ran.push_back(kept.place(id->second));
+        rec.ran.push_back(index.proc_item[p]);
       }
-      if (named) e.key = index.key(index.check_item[file->checks[(int32_t)i]], ran, head);
-      if (!nears[i].empty() && !near_write(nears[i], &e.near, record_place)) e.key.clear();
-      if (e.key.empty()) {
+      if (!named || (!nears[i].empty() && !near_write(nears[i], &rec.entry.near, record_place))) {
         if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
         continue;
       }
+      pending.push_back(std::move(rec));
+    }
+    if (!pending.empty()) {
+      std::vector<ReuseIndex::Scratch> scratches(burst_threads(pending.size(), 16));
+      burst(pending.size(), 16, [&](size_t begin, size_t end, unsigned worker) {
+        ReuseIndex::Scratch &sc = scratches[worker];
+        for (size_t idx = begin; idx < end; idx++)
+          pending[idx].entry.key = index.key(pending[idx].check_k, pending[idx].ran, head, &sc);
+      });
       const size_t from[ReuseRecord::NUMBERS] = {STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
                                                  END_SLOTS, END_CONTAINERS, END_STRINGS};
-      for (size_t k = 0; k < ReuseRecord::NUMBERS; k++) e.numbers[k] = report[from[k]];
-      if (native[i]) {  // native code holds no evaluator storage: the record says what the key's start line says
-        e.numbers[ReuseRecord::PEAK_SLOTS] = e.numbers[ReuseRecord::END_SLOTS] = start_slots;
-        e.numbers[ReuseRecord::PEAK_CONTAINERS] = e.numbers[ReuseRecord::END_CONTAINERS] = start_containers;
-        e.numbers[ReuseRecord::PEAK_STRINGS] = e.numbers[ReuseRecord::END_STRINGS] = start_strings;
+      for (auto &rec : pending) {
+        const size_t i = rec.i;
+        if (rec.entry.key.empty()) {
+          const auto old = record.entries.find(check_ids[i]);
+          if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
+          continue;
+        }
+        const std::vector<uint64_t> &report = reports[i];
+        for (size_t k = 0; k < ReuseRecord::NUMBERS; k++) rec.entry.numbers[k] = report[from[k]];
+        if (native[i]) {  // native code holds no evaluator storage: the record says what the key's start line says
+          rec.entry.numbers[ReuseRecord::PEAK_SLOTS] = rec.entry.numbers[ReuseRecord::END_SLOTS] = start_slots;
+          rec.entry.numbers[ReuseRecord::PEAK_CONTAINERS] = rec.entry.numbers[ReuseRecord::END_CONTAINERS] = start_containers;
+          rec.entry.numbers[ReuseRecord::PEAK_STRINGS] = rec.entry.numbers[ReuseRecord::END_STRINGS] = start_strings;
+        }
+        kept.entries[check_ids[i]] = std::move(rec.entry);
+        changed = true;
       }
-      kept.entries[check_ids[i]] = std::move(e);
-      changed = true;
     }
     if (changed || kept.entries.size() != record.entries.size()) kept.save(g_check_reuse.dir, record_path);
   }

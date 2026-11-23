@@ -36,9 +36,11 @@
 // start beside it. The log of the previous resident is kept as log.1.
 #include <cstdarg>
 #include <ctime>
+#include <dirent.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/file.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -52,14 +54,30 @@ constexpr uint32_t SERVE_MAGIC = 0x53584f43;  // "COXS"
 constexpr uint32_t SERVE_PROTOCOL = 1;
 enum : uint32_t { SERVE_RUN = 1, SERVE_STATUS = 2, SERVE_STOP = 3 };
 // A request's reports to its resident.
-enum : uint32_t { REPORT_RUNNING = 1, REPORT_REPLIED = 2, REPORT_UNIT = 3, REPORT_COMPILER = 4, REPORT_USED = 5, REPORT_END = 6, REPORT_PASSED = 7, REPORT_ANSWERED = 8 };
+enum : uint32_t { REPORT_RUNNING = 1, REPORT_REPLIED = 2, REPORT_UNIT = 3, REPORT_COMPILER = 4, REPORT_USED = 5, REPORT_END = 6, REPORT_PASSED = 7, REPORT_ANSWERED = 8, REPORT_CONST = 9, REPORT_COMPILE = 10 };
 
+struct WatchedFile {
+  std::string path;
+  uint64_t size = 0, hash = 0;
+};
+struct CompiledResult {
+  std::string key, stdout_bytes, stderr_bytes, header_bytes, check_cache_dir;
+  std::vector<WatchedFile> watched;
+  uint64_t unit_count = 0, used = 0;
+  bool had_check_cache = false;
+  uint64_t bytes() const {
+    uint64_t n = key.size() + stdout_bytes.size() + stderr_bytes.size() + header_bytes.size() + check_cache_dir.size() + 256;
+    for (const auto &w : watched) n += w.path.size() + 32;
+    return n;
+  }
+};
 struct ServeEntry {
   std::shared_ptr<const UnitLex> unit;
   uint64_t used = 0;  // the resident's request count when a request last used it
 };
 struct ServeState {
   bool request = false;  // this process is a request a resident forked: lookups are on
+  bool local_memo = false;  // process-local unit lex memo shared via COW into forked library-check children
   std::unordered_map<uint64_t, std::vector<ServeEntry>> units;  // by serve_hash of the bytes
   uint64_t bytes = 0;
   std::string compiler;    // the binary's SHA-256, once a request computed it
@@ -69,6 +87,16 @@ struct ServeState {
   struct Passed { std::vector<std::shared_ptr<const PassedSkeleton>> last; uint64_t used = 0; };
   std::map<std::string, Passed> passed;
   std::vector<std::pair<std::string, std::shared_ptr<const PassedSkeleton>>> passed_fresh;  // a request's own, reported when it ends
+  std::unordered_map<std::string, std::string> ct_blobs;  // pure #run constant cache in RAM
+  uint64_t ct_bytes = 0;
+  std::vector<std::pair<std::string, std::string>> ct_fresh;
+  std::unordered_map<std::string, std::shared_ptr<CompiledResult>> compiles;  // bounded whole-compile cache in RAM
+  uint64_t compile_bytes = 0;
+  std::vector<WatchedFile> watched;
+  uint64_t watched_units = 0;
+  std::string captured_header;
+  bool has_captured_header = false;
+  std::shared_ptr<CompiledResult> compile_fresh;
   bool answered = false;   // a request: its errors came from the changed bodies' check
   std::string executable;  // a request: the client's path to the same binary
   // A request's own additions and uses, reported when it ends.
@@ -188,6 +216,79 @@ std::string serve_dir(const std::string &image) {
   base += name;
   return base.size() + 3 < sizeof(sockaddr_un{}.sun_path) ? base : "";
 }
+// Fast client-side serve_dir: avoids reading the 5 MB compiler binary on every
+// CLI invocation by caching its (dev, ino, size, mtime, ctime) -> dir leaf in
+// $base/.id-<path-hash>. Falls back to mmap hashing on miss, and the resident
+// still independently verifies same_binary().
+std::string serve_dir_for_exe(const std::string &exe) {
+  const char *env = getenv("COAX_SERVE_DIR"), *home = getenv("HOME");
+  std::string base = env && *env ? env : home && *home ? std::string(home) + "/.cache/coax-serve" : "";
+  if (base.empty() || exe.empty()) return "";
+  struct stat st;
+  if (stat(exe.c_str(), &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0) return "";
+#ifdef __APPLE__
+  const long long mt = (long long)st.st_mtimespec.tv_sec * 1000000000LL + st.st_mtimespec.tv_nsec;
+  const long long ct = (long long)st.st_ctimespec.tv_sec * 1000000000LL + st.st_ctimespec.tv_nsec;
+#else
+  const long long mt = (long long)st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
+  const long long ct = (long long)st.st_ctim.tv_sec * 1000000000LL + st.st_ctim.tv_nsec;
+#endif
+  const std::string id = std::to_string((long long)st.st_dev) + ":" + std::to_string((long long)st.st_ino) + ":" +
+                         std::to_string((long long)st.st_size) + ":" + std::to_string(mt) + ":" + std::to_string(ct);
+  char tag[32];
+  snprintf(tag, sizeof tag, "/.id-%016llx", (unsigned long long)serve_hash(exe.data(), exe.size()));
+  const std::string cache_path = base + tag;
+  {
+    int fd = open(cache_path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+      char buf[256];
+      ssize_t n = read(fd, buf, sizeof buf - 1);
+      close(fd);
+      if (n > 0) {
+        buf[n] = 0;
+        if (char *nl = strchr(buf, '\n')) {
+          *nl = 0;
+          char *leaf = nl + 1;
+          if (char *nl2 = strchr(leaf, '\n')) *nl2 = 0;
+          if (id == buf && leaf[0] == '/' && strlen(leaf) < 48) {
+            std::string full = base + leaf;
+            if (full.size() + 3 < sizeof(sockaddr_un{}.sun_path)) return full;
+          }
+        }
+      }
+    }
+  }
+  uint64_t h = 0;
+  size_t sz = (size_t)st.st_size;
+  int fd = open(exe.c_str(), O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return "";
+  void *mapped = mmap(nullptr, sz, PROT_READ, MAP_PRIVATE, fd, 0);
+  close(fd);
+  if (mapped != MAP_FAILED) {
+    h = serve_hash((const char *)mapped, sz);
+    munmap(mapped, sz);
+  } else {
+    const std::string bytes = read_file_bytes(exe);
+    if (bytes.empty()) return "";
+    sz = bytes.size();
+    h = serve_hash(bytes.data(), sz);
+  }
+  char leaf[64];
+  snprintf(leaf, sizeof leaf, "/%016llx-%zu", (unsigned long long)h, sz);
+  struct stat bst;
+  if (stat(base.c_str(), &bst) == 0 && S_ISDIR(bst.st_mode)) {
+    const std::string tmp = cache_path + "." + std::to_string((long long)getpid());
+    int wfd = open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (wfd >= 0) {
+      const std::string rec = id + "\n" + leaf + "\n";
+      const bool ok = write_all(wfd, rec.data(), rec.size());
+      close(wfd);
+      if (!ok || rename(tmp.c_str(), cache_path.c_str()) != 0) unlink(tmp.c_str());
+    }
+  }
+  base += leaf;
+  return base.size() + 3 < sizeof(sockaddr_un{}.sun_path) ? base : "";
+}
 bool socket_address(const std::string &dir, sockaddr_un *out) {
   const std::string path = dir + "/s";
   if (path.size() >= sizeof out->sun_path) return false;
@@ -231,6 +332,24 @@ std::string unit_record(const UnitLex &unit) {
   put_str(out, unit.token_sum);
   return out;
 }
+std::string compile_record(const CompiledResult &c) {
+  std::string out;
+  out.reserve(c.bytes());
+  put_str(out, c.key);
+  put_str(out, c.stdout_bytes);
+  put_str(out, c.stderr_bytes);
+  put_str(out, c.header_bytes);
+  put_u64(out, c.unit_count);
+  put_u32(out, c.had_check_cache ? 1 : 0);
+  put_str(out, c.check_cache_dir);
+  put_u64(out, c.watched.size());
+  for (const auto &w : c.watched) {
+    put_str(out, w.path);
+    put_u64(out, w.size);
+    put_u64(out, w.hash);
+  }
+  return out;
+}
 // The request's reply to its client, then what it learned to its resident.
 void request_finish(int status) {
   ServeState &s = serve_state();
@@ -252,6 +371,8 @@ void request_finish(int status) {
   if (s.compiler_fresh) report_send(REPORT_COMPILER, s.compiler);
   for (const auto &unit : s.fresh) report_send(REPORT_UNIT, unit_record(*unit));
   for (const auto &[entry, passed] : s.passed_fresh) report_send(REPORT_PASSED, passed_record(entry, *passed));
+  for (const auto &[k, blob] : s.ct_fresh) { std::string p; put_str(p, k); put_str(p, blob); report_send(REPORT_CONST, p); }
+  if (s.compile_fresh) report_send(REPORT_COMPILE, compile_record(*s.compile_fresh));
   if (s.answered) report_send(REPORT_ANSWERED, "");
   std::string used;
   put_u64(used, s.hits);
@@ -328,7 +449,208 @@ bool parse_run(const std::string &payload, RunRequest *out) {
     timespec wait{(time_t)(ms / 1000), (long)(ms % 1000) * 1000000L};
     while (nanosleep(&wait, &wait) != 0 && errno == EINTR) {}
   }
+  auto dir_has_entries = [](const std::string &d) -> bool {
+    DIR *dp = opendir(d.c_str());
+    if (!dp) return false;
+    bool any = false;
+    while (struct dirent *de = readdir(dp)) {
+      if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0) { any = true; break; }
+    }
+    closedir(dp);
+    return any;
+  };
+  auto check_cache_dir_now = []() -> std::string {
+    const char *env = getenv("COAX_CHECK_CACHE"), *home = getenv("HOME");
+    if (env) return *env ? std::string(env) : std::string();
+    return home && *home ? std::string(home) + "/.cache/coax-check" : std::string();
+  };
+  auto compile_cache_key = [&](std::string *header_path_out) -> std::string {
+    if (run.args.size() < 3) return "";
+    const std::string &cmd = run.args[1];
+    if (cmd != "c" && cmd != "check" && cmd != "header" && cmd != "deps" && cmd != "layout" && cmd != "checks-c") return "";
+    std::string key = "v1\n" + run.directory + "\n" + std::to_string(run.mask) + "\n";
+    std::string entry_arg;
+    for (size_t i = 1; i < run.args.size(); i++) {
+      const std::string &a = run.args[i];
+      if (a == "--timings" || a == "--timings-json" || a == "--timings-table" || a == "--source-map" ||
+          a == "--evidence" || a == "--profile" || a == "--split" || a == "--split-unit" || a == "-o" ||
+          a == "--profile-report") return "";
+      if (a == "--header" && i + 1 < run.args.size()) {
+        *header_path_out = run.args[++i];
+        key += "--header\x01\n";
+        continue;
+      }
+      if (i == 2 && !a.empty() && a[0] != '-') entry_arg = a;
+      key += a + "\n";
+    }
+    if (!entry_arg.empty()) {
+      std::error_code ec;
+      auto canon = std::filesystem::weakly_canonical(entry_arg, ec);
+      key += "entry:" + (ec ? entry_arg : canon.string()) + "\n";
+    }
+    std::vector<std::string> env_keys;
+    for (const std::string &e : run.env) {
+      if (e.rfind("COAX_", 0) != 0) continue;
+      if (e.rfind("COAX_SERVE_TEST_HOLD_MS=", 0) == 0 || e.rfind("COAX_SERVE_JOBS=", 0) == 0 ||
+          e.rfind("COAX_SERVE_TIMEOUT=", 0) == 0 || e.rfind("COAX_SERVE_IDLE=", 0) == 0 ||
+          e.rfind("COAX_SERVE_WAIT=", 0) == 0) continue;
+      if (e.rfind("COAX_SKELETON_VERIFY=", 0) == 0 || e.rfind("COAX_LEX_CHECK=", 0) == 0 ||
+          e.rfind("COAX_NATIVE_CHECKS_TRACE=", 0) == 0 || e.rfind("COAX_SHOW_ALLOCATIONS=", 0) == 0 ||
+          e.rfind("COAX_LEND_ARGS=", 0) == 0 || e == "COAX_NATIVE_CHECKS=compare") {
+        const size_t eq = e.find('=');
+        if (eq != std::string::npos && eq + 1 < e.size() && e.substr(eq + 1) != "0") return "";
+      }
+      env_keys.push_back(e);
+    }
+    std::sort(env_keys.begin(), env_keys.end());
+    for (const std::string &e : env_keys) key += e + "\n";
+    return key;
+  };
+  auto write_fd_all = [](int fd, const std::string &data) -> bool {
+    const char *at = data.data();
+    size_t left = data.size();
+    while (left) {
+      ssize_t n = write(fd, at, left);
+      if (n < 0) { if (errno == EINTR) continue; return false; }
+      at += n;
+      left -= (size_t)n;
+    }
+    return true;
+  };
+  std::string header_path;
+  const std::string ckey = compile_cache_key(&header_path);
+  if (!ckey.empty()) {
+    auto it = s.compiles.find(ckey);
+    if (it != s.compiles.end()) {
+      const CompiledResult &entry = *it->second;
+      bool valid = !entry.watched.empty() && (!entry.had_check_cache || dir_has_entries(entry.check_cache_dir));
+      std::string scratch;
+      for (const WatchedFile &wf : entry.watched) {
+        if (!valid) break;
+        int wfd = open(wf.path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (wfd < 0) { valid = false; break; }
+        struct stat st;
+        if (fstat(wfd, &st) != 0 || !S_ISREG(st.st_mode) || (uint64_t)st.st_size != wf.size) { close(wfd); valid = false; break; }
+        scratch.resize((size_t)wf.size);
+        size_t got = 0;
+        while (got < scratch.size()) {
+          ssize_t n = read(wfd, scratch.data() + got, scratch.size() - got);
+          if (n < 0) { if (errno == EINTR) continue; valid = false; break; }
+          if (n == 0) { valid = false; break; }
+          got += (size_t)n;
+        }
+        close(wfd);
+        if (!valid || serve_hash(scratch.data(), scratch.size()) != wf.hash) { valid = false; break; }
+      }
+      if (valid && !header_path.empty()) {
+        if (!write_file(header_path, entry.header_bytes)) valid = false;
+      }
+      if (valid) {
+        if (!write_fd_all(1, entry.stdout_bytes) && errno == EPIPE) raise(SIGPIPE);
+        if (!write_fd_all(2, entry.stderr_bytes) && errno == EPIPE) raise(SIGPIPE);
+        s.hits += entry.unit_count;
+        request_finish(0);
+        exit(0);
+      }
+    }
+  }
+  int orig_out = -1, orig_err = -1, cap_out = -1, cap_err = -1;
+  auto make_unlinked_temp = []() -> int {
+    char tpl[] = "/tmp/coax-sc-XXXXXX";
+    int fd = mkstemp(tpl);
+    if (fd >= 0) { unlink(tpl); fcntl(fd, F_SETFD, FD_CLOEXEC); }
+    return fd;
+  };
+  if (!ckey.empty()) {
+    cap_out = make_unlinked_temp();
+    cap_err = make_unlinked_temp();
+    if (cap_out >= 0 && cap_err >= 0) {
+      orig_out = dup(1);
+      orig_err = dup(2);
+      if (orig_out >= 0 && orig_err >= 0) {
+        fcntl(orig_out, F_SETFD, FD_CLOEXEC);
+        fcntl(orig_err, F_SETFD, FD_CLOEXEC);
+        dup2(cap_out, 1);
+        dup2(cap_err, 2);
+      } else {
+        if (orig_out >= 0) close(orig_out);
+        if (orig_err >= 0) close(orig_err);
+        close(cap_out); close(cap_err);
+        orig_out = orig_err = cap_out = cap_err = -1;
+      }
+    } else {
+      if (cap_out >= 0) close(cap_out);
+      if (cap_err >= 0) close(cap_err);
+      cap_out = cap_err = -1;
+    }
+  }
   int status = finish_profile(main_impl((int)run.args.size(), argv.data()));
+  if (orig_out >= 0) {
+    fflush(stdout);
+    fflush(stderr);
+    dup2(orig_out, 1);
+    dup2(orig_err, 2);
+    close(orig_out);
+    close(orig_err);
+    auto read_all_fd = [](int fd, std::string *out, bool *too_big) {
+      struct stat st;
+      if (fstat(fd, &st) != 0 || st.st_size < 0) return;
+      if ((uint64_t)st.st_size > (24u << 20)) { *too_big = true; return; }
+      out->resize((size_t)st.st_size);
+      lseek(fd, 0, SEEK_SET);
+      size_t got = 0;
+      while (got < out->size()) {
+        ssize_t n = read(fd, out->data() + got, out->size() - got);
+        if (n < 0) { if (errno == EINTR) continue; break; }
+        if (n == 0) break;
+        got += (size_t)n;
+      }
+      out->resize(got);
+    };
+    auto forward_fd = [](int src_fd, int dst_fd) {
+      lseek(src_fd, 0, SEEK_SET);
+      char buf[65536];
+      for (;;) {
+        ssize_t n = read(src_fd, buf, sizeof buf);
+        if (n < 0) { if (errno == EINTR) continue; break; }
+        if (n == 0) break;
+        size_t off = 0;
+        while (off < (size_t)n) {
+          ssize_t w = write(dst_fd, buf + off, (size_t)n - off);
+          if (w < 0) { if (errno == EINTR) continue; if (errno == EPIPE) raise(SIGPIPE); return; }
+          off += (size_t)w;
+        }
+      }
+    };
+    bool too_big = false;
+    std::string out_s, err_s;
+    if (status == 0 && !s.watched.empty() && header_path.empty() != s.has_captured_header) {
+      read_all_fd(cap_out, &out_s, &too_big);
+      read_all_fd(cap_err, &err_s, &too_big);
+      if (!too_big && out_s.size() + err_s.size() + s.captured_header.size() <= (24u << 20)) {
+        if (!write_fd_all(1, out_s) && errno == EPIPE) raise(SIGPIPE);
+        if (!write_fd_all(2, err_s) && errno == EPIPE) raise(SIGPIPE);
+        auto res = std::make_shared<CompiledResult>();
+        res->key = ckey;
+        res->stdout_bytes = std::move(out_s);
+        res->stderr_bytes = std::move(err_s);
+        res->header_bytes = std::move(s.captured_header);
+        res->watched = std::move(s.watched);
+        res->unit_count = s.watched_units;
+        res->check_cache_dir = check_cache_dir_now();
+        res->had_check_cache = !res->check_cache_dir.empty() && dir_has_entries(res->check_cache_dir);
+        s.compile_fresh = std::move(res);
+      } else {
+        forward_fd(cap_out, 1);
+        forward_fd(cap_err, 2);
+      }
+    } else {
+      forward_fd(cap_out, 1);
+      forward_fd(cap_err, 2);
+    }
+    close(cap_out);
+    close(cap_err);
+  }
   if (status != 0) report_stale_compiler();
   request_finish(status);
   exit(status);
@@ -508,6 +830,58 @@ void resident_report(Resident &r, Resident::Live &live, uint32_t kind, const std
       }
       resident_log(r, "pid %lld: %llu unit lexes reused, %llu made; memo %llu MiB", (long long)live.pid, (unsigned long long)hits,
                    (unsigned long long)misses, (unsigned long long)(s.bytes >> 20));
+      break;
+    }
+    case REPORT_CONST: {
+      Reader in{payload.data(), payload.data() + payload.size()};
+      std::string k = in.str(), blob = in.str();
+      if (!in.ok || k.size() != 64 || blob.size() > (16u << 20)) break;
+      if (!s.ct_blobs.count(k)) {
+        if (s.ct_blobs.size() >= 64 || s.ct_bytes + blob.size() > (64u << 20)) { s.ct_blobs.clear(); s.ct_bytes = 0; }
+        s.ct_bytes += blob.size();
+        s.ct_blobs.emplace(std::move(k), std::move(blob));
+      }
+      break;
+    }
+    case REPORT_COMPILE: {
+      Reader in{payload.data(), payload.data() + payload.size()};
+      auto rec = std::make_shared<CompiledResult>();
+      rec->key = in.str();
+      rec->stdout_bytes = in.str();
+      rec->stderr_bytes = in.str();
+      rec->header_bytes = in.str();
+      rec->unit_count = in.u64();
+      rec->had_check_cache = in.u32() != 0;
+      rec->check_cache_dir = in.str();
+      const uint64_t wn = in.u64();
+      if (!in.ok || rec->key.empty() || wn == 0 || wn > 16384) break;
+      rec->watched.reserve((size_t)wn);
+      for (uint64_t i = 0; i < wn && in.ok; i++) {
+        WatchedFile w;
+        w.path = in.str();
+        w.size = in.u64();
+        w.hash = in.u64();
+        rec->watched.push_back(std::move(w));
+      }
+      if (!in.ok || in.at != in.end) break;
+      rec->used = r.requests;
+      const uint64_t sz = rec->bytes();
+      if (sz > (32u << 20)) break;
+      auto existing = s.compiles.find(rec->key);
+      if (existing != s.compiles.end()) {
+        s.compile_bytes -= existing->second->bytes();
+        s.compiles.erase(existing);
+      }
+      while (!s.compiles.empty() && (s.compiles.size() >= 8 || s.compile_bytes + sz > (64u << 20))) {
+        auto oldest = s.compiles.begin();
+        for (auto it = s.compiles.begin(); it != s.compiles.end(); ++it)
+          if (it->second->used < oldest->second->used) oldest = it;
+        s.compile_bytes -= oldest->second->bytes();
+        s.compiles.erase(oldest);
+      }
+      s.compile_bytes += sz;
+      const std::string k = rec->key;
+      s.compiles.emplace(k, std::move(rec));
       break;
     }
     case REPORT_END: live.ended = true; break;
@@ -941,7 +1315,7 @@ bool serve_client(int argc, char **argv, int *status) {
   if (argc < 2 || !serve_command(argv[1]) || serve_off() || serve_state().request) return false;
   for (int fd = 0; fd < 3; fd++) if (fcntl(fd, F_GETFD) < 0) return false;
   const std::string exe = executable_path();
-  const std::string dir = serve_dir(read_file_bytes(exe));
+  const std::string dir = serve_dir_for_exe(exe);
   if (dir.empty()) return false;
   int fd = serve_connect(dir);
   if (fd < 0) { serve_start(exe, dir); return false; }
@@ -1007,7 +1381,7 @@ bool serve_client(int argc, char **argv, int *status) {
   return false;
 }
 int serve_ask(uint32_t kind) {
-  const std::string dir = serve_dir(read_file_bytes(executable_path()));
+  const std::string dir = serve_dir_for_exe(executable_path());
   int fd = dir.empty() ? -1 : serve_connect(dir);
   if (fd < 0) { puts("coax serve: no resident is running for this compiler"); return kind == SERVE_STATUS ? 1 : 0; }
   if (!send_head(fd, kind, 0, false)) { close(fd); return 1; }
@@ -1023,17 +1397,55 @@ int serve_ask(uint32_t kind) {
 
 std::shared_ptr<const UnitLex> serve_find_unit(const std::string &text) {
   ServeState &s = serve_state();
-  if (!s.request) return nullptr;
+  if (!s.request && !s.local_memo) return nullptr;
   const uint64_t hash = serve_hash(text.data(), text.size());
   auto found = s.units.find(hash);
   if (found != s.units.end())
     for (const auto &e : found->second) if (e.unit->text == text) {
-      s.hits++;
-      s.used.push_back(hash);
+      if (s.request) { s.hits++; s.used.push_back(hash); }
       return e.unit;
     }
-  s.misses++;
+  if (s.request) s.misses++;
   return nullptr;
+}
+void serve_seed_local_units(const Source *src) {
+  if (!src) return;
+  ServeState &s = serve_state();
+  s.local_memo = true;
+  for (const auto &unit : src->units) {
+    if (!unit || !unit->lexed) continue;
+    const uint64_t hash = serve_hash(unit->lexed->text.data(), unit->lexed->text.size());
+    auto &bucket = s.units[hash];
+    bool have = false;
+    for (const auto &e : bucket) if (e.unit->text == unit->lexed->text) { have = true; break; }
+    if (!have) bucket.push_back({unit->lexed, 0});
+  }
+}
+bool serve_find_const(const std::string &key, std::string *out) {
+  ServeState &s = serve_state();
+  if (!s.request) return false;
+  auto it = s.ct_blobs.find(key);
+  if (it == s.ct_blobs.end()) return false;
+  *out = it->second;
+  return true;
+}
+void serve_keep_const(const std::string &key, const std::string &blob) {
+  ServeState &s = serve_state();
+  if (s.request && !key.empty() && blob.size() <= (16u << 20) && !s.ct_blobs.count(key))
+    s.ct_fresh.emplace_back(key, blob);
+}
+void serve_watch_file(const std::string &canonical, const std::string &bytes, bool is_unit) {
+  ServeState &s = serve_state();
+  if (!s.request || canonical.empty()) return;
+  for (const auto &w : s.watched) if (w.path == canonical) return;
+  s.watched.push_back({canonical, (uint64_t)bytes.size(), serve_hash(bytes.data(), bytes.size())});
+  if (is_unit) s.watched_units++;
+}
+void serve_record_header(const std::string &bytes) {
+  ServeState &s = serve_state();
+  if (!s.request) return;
+  s.captured_header = bytes;
+  s.has_captured_header = true;
 }
 std::vector<std::shared_ptr<const PassedSkeleton>> serve_passed(const std::string &entry) {
   ServeState &s = serve_state();
@@ -1078,7 +1490,7 @@ static bool serve_main(int argc, char **argv, int *status) {
     else if (what == "status" && argc <= 3) *status = serve_ask(SERVE_STATUS);
     else if (what == "stop" && argc == 3) *status = serve_ask(SERVE_STOP);
     else if (what == "start" && argc == 3) {
-      const std::string exe = executable_path(), dir = serve_dir(read_file_bytes(exe));
+      const std::string exe = executable_path(), dir = serve_dir_for_exe(exe);
       if (dir.empty()) { fprintf(stderr, "coax serve: nowhere to keep a resident (set HOME or COAX_SERVE_DIR)\n"); *status = 1; }
       else { serve_start(exe, dir); printf("coax serve: started in %s\n", dir.c_str()); *status = 0; }
     }

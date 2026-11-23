@@ -95,26 +95,37 @@ CK_declare :: (c:CK_Context,name:string,ty:int,loc:CK_Loc,immutable:string) #eff
  else {#assert state[0].error_count==1 && state[0].local_count==0 && errors[0].code=="E0342" && errors[0].loc.line==4;}
 }
 CK_compound :: (op:u32)->u32 #effects(all) {ops:=[10] u32.[34,35,36,37,38,39,40,41,42,43];if op<24 || op>33 {return CK_NONE;}return ops[cast(int)op-24];}
+CK_has :: (id:int)->bool #inline #effects(all) {return id!=CK_NONE;}
+#test "CK_has distinguishes CK_NONE from node ids" {
+  #assert !CK_has(0) && CK_has(1) && CK_has(2);
+}
 CK_loop :: (c:CK_Context,id:int) #effects(all) {c.state[0].loop_depth+=1;CK_stmt(c,id);c.state[0].loop_depth-=1;}
 CK_stmt :: (c:CK_Context,id:int) #effects(all) {
-  if id<2 {return;}s:=c.nodes[id];if !CK_enter(c,s.loc) {return;}defer CK_leave(c);
+  if id<2 {return;}if !CK_enter(c,c.nodes[id].loc) {return;}defer CK_leave(c);
+  kind:=c.nodes[id].kind;
+  if kind==CK_Tag.stmt_block {mark:=c.state[0].local_count;child:=c.nodes[id].head;while child!=CK_NONE && !c.state[0].fatal {CK_stmt(c,child);child=c.nodes[child].next;}c.state[0].local_count=mark;return;}
+  if kind==CK_Tag.stmt_switch {CK_switch(c,id);return;}
+  if kind==CK_Tag.stmt_expr {
+    sa:=c.nodes[id].a;t:=CK_value(c,sa,CK_Hint.{});ek:=c.nodes[sa].kind;
+    if (ek==CK_Tag.expr_try || ek==CK_Tag.expr_or_else) && t==1 {return;}
+    if c.types[t].kind==CK_Kind.result {CK_error(c,c.nodes[id].loc,"E0907","a Result expression must be handled or transferred","");return;}
+    // _ = e; and _ := e; drop the value on purpose (#13125). A Result is still handled, never dropped.
+    if c.nodes[id].flag {return;}
+    if ek!=CK_Tag.expr_call && t!=CK_NONE {CK_error(c,c.nodes[id].loc,"E0322","this expression's value is not used","assign it, or remove it");}
+    else if ek==CK_Tag.expr_call && t!=1 && t!=CK_NONE {en:=c.nodes[sa].name;parts:=[5] string.["the result of '",en,"' (",c.types[t].name,") is not used"];fix:=[5] string.["use it: result := ",en,"(...); or drop it: _ = ",en,"(...);"];CK_error(c,c.nodes[id].loc,"E0323",CK_text(c,parts[..]),CK_text(c,fix[..]));}return;
+  }
+  if kind==CK_Tag.stmt_assert {sa:=c.nodes[id].a;t:=CK_value(c,sa,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[sa].loc,"E0346","#assert requires bool","");}return;}
+  if kind==CK_Tag.stmt_if || kind==CK_Tag.stmt_while {
+    sa:=c.nodes[id].a;t:=CK_value(c,sa,CK_Hint.{});if t!=CK_NONE && t!=2 {fix:="";if CK_numeric(c,t) {fix="compare it: x != 0";}CK_error(c,c.nodes[sa].loc,"E0331",CK_join2(c,"condition must be bool, found ",c.types[t].name),fix);}
+    if kind==CK_Tag.stmt_while {CK_loop(c,c.nodes[id].c);}else {CK_stmt(c,c.nodes[id].c);sd:=c.nodes[id].d;if CK_has(sd) {CK_stmt(c,sd);}}return;
+  }
+  s:=c.nodes[id];
   if s.kind==CK_Tag.stmt_transaction {
     current:=c.nodes[c.state[0].current];ret:=c.types[current.type];
     if !current.generic && ret.kind==CK_Kind.result && !CK_transaction_error_type(c,ret.sum_error) {
       CK_error(c,s.loc,"E0974","a transaction error cannot publish IDs, handles or borrowed views from a rolled-back action","return an error code with owned ordinary values; publish references only on success");
     }
     CK_stmt(c,s.c);return;
-  }
-  if s.kind==CK_Tag.stmt_switch {CK_switch(c,id);return;}
-  if s.kind==CK_Tag.stmt_block {mark:=c.state[0].local_count;child:=s.head;while child!=CK_NONE && !c.state[0].fatal {CK_stmt(c,child);child=c.nodes[child].next;}c.state[0].local_count=mark;return;}
-  if s.kind==CK_Tag.stmt_expr {
-    t:=CK_value(c,s.a,CK_Hint.{});e:=c.nodes[s.a];
-    if (e.kind==CK_Tag.expr_try || e.kind==CK_Tag.expr_or_else) && t==1 {return;}
-    if c.types[t].kind==CK_Kind.result {CK_error(c,s.loc,"E0907","a Result expression must be handled or transferred","");return;}
-    // _ = e; and _ := e; drop the value on purpose (#13125). A Result is still handled, never dropped.
-    if s.flag {return;}
-    if e.kind!=CK_Tag.expr_call && t!=CK_NONE {CK_error(c,s.loc,"E0322","this expression's value is not used","assign it, or remove it");}
-    else if e.kind==CK_Tag.expr_call && t!=1 && t!=CK_NONE {parts:=[5] string.["the result of '",e.name,"' (",c.types[t].name,") is not used"];fix:=[5] string.["use it: result := ",e.name,"(...); or drop it: _ = ",e.name,"(...);"];CK_error(c,s.loc,"E0323",CK_text(c,parts[..]),CK_text(c,fix[..]));}return;
   }
   if s.kind==CK_Tag.stmt_var {
     declared:=CK_resolve(c,s.d,CK_Access.value);
@@ -151,10 +162,6 @@ CK_stmt :: (c:CK_Context,id:int) #effects(all) {
     else if t!=CK_NONE && want!=0 && t!=want {parts:=[5] string.["'",current.name,"' returns ",c.types[want].name,CK_join2(c,", given ",c.types[t].name)];CK_error(c,c.nodes[s.a].loc,"E0330",CK_text(c,parts[..]),"");}
     else if (t==3 || c.types[t].kind==CK_Kind.view) && CK_local_backed(c,s.a) {CK_error(c,c.nodes[s.a].loc,"E0383","returned borrow may refer to a local fixed array","return the fixed array value, or use caller-owned storage passed as a view");}return;
   }
-  if s.kind==CK_Tag.stmt_if || s.kind==CK_Tag.stmt_while {
-    t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {fix:="";if CK_numeric(c,t) {fix="compare it: x != 0";}CK_error(c,c.nodes[s.a].loc,"E0331",CK_join2(c,"condition must be bool, found ",c.types[t].name),fix);}
-    if s.kind==CK_Tag.stmt_while {CK_loop(c,s.c);}else {CK_stmt(c,s.c);}CK_stmt(c,s.d);return;
-  }
   if s.kind==CK_Tag.stmt_range {
     a:=CK_expr(c,s.a,CK_Hint.{});b:=CK_expr(c,s.b,CK_Hint.{});
     if CK_untyped(c,a) && !CK_untyped(c,b) {CK_coerce(c,s.a,b);}else if CK_untyped(c,b) && !CK_untyped(c,a) {CK_coerce(c,s.b,a);}else if CK_untyped(c,a) {CK_coerce(c,s.a,11);CK_coerce(c,s.b,11);}
@@ -173,7 +180,6 @@ CK_stmt :: (c:CK_Context,id:int) #effects(all) {
       if c.state[0].defer_depth!=0 {CK_error(c,s.loc,"E0361",CK_join3(c,"a deferred statement cannot ",what," out of its block"),"");}else {CK_error(c,s.loc,"E0360",CK_join2(c,what," is only allowed inside a loop"),"");}}
     return;
   }
-  if s.kind==CK_Tag.stmt_assert {t:=CK_value(c,s.a,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[s.a].loc,"E0346","#assert requires bool","");}return;}
   if s.kind==CK_Tag.stmt_defer {saved:=c.state[0].loop_depth;c.state[0].loop_depth=0;c.state[0].defer_depth+=1;CK_stmt(c,s.c);c.state[0].defer_depth-=1;c.state[0].loop_depth=saved;}
 }
 CK_always_returns :: (c:CK_Context,id:int)->bool #effects(all) {
@@ -323,10 +329,14 @@ CK_check :: (c:CK_Context,id:int) #effects(all) {
 // The typed graph's resolved callee is present only on a user call.
 // One walker handles syntax unions, including struct field initializers.
 CK_reach :: (c:CK_Context,id:int) #effects(all) {
-  if id==CK_NONE {return;}n:=c.nodes[id];if !CK_enter(c,n.loc) {return;}defer CK_leave(c);
-  if n.proc!=CK_NONE && !c.nodes[n.proc].flag2 && !c.nodes[n.proc].reached {c.nodes[n.proc].reached=true;o:=c.nodes[n.proc].origin;if o!=CK_NONE {c.nodes[o].reached=true;}CK_reach(c,c.nodes[n.proc].b);}
-  CK_reach(c,n.a);CK_reach(c,n.b);CK_reach(c,n.c);CK_reach(c,n.d);
-  child:=n.head;while child!=CK_NONE {CK_reach(c,child);child=c.nodes[child].next;}
+  if !CK_has(id) {return;}if !CK_enter(c,c.nodes[id].loc) {return;}defer CK_leave(c);
+  p:=c.nodes[id].proc;a:=c.nodes[id].a;b:=c.nodes[id].b;x:=c.nodes[id].c;d:=c.nodes[id].d;child:=c.nodes[id].head;
+  if CK_has(p) && !c.nodes[p].flag2 && !c.nodes[p].reached {c.nodes[p].reached=true;o:=c.nodes[p].origin;if CK_has(o) {c.nodes[o].reached=true;}CK_reach(c,c.nodes[p].b);}
+  if CK_has(a) {CK_reach(c,a);}
+  if CK_has(b) {CK_reach(c,b);}
+  if CK_has(x) {CK_reach(c,x);}
+  if CK_has(d) {CK_reach(c,d);}
+  while child!=CK_NONE {CK_reach(c,child);child=c.nodes[child].next;}
 }
 #forall "source-unit authority excludes only foreign, main, reached or unguarded procedures" kind:0..<3, foreign:bool, main_name:bool, reached:bool, skip:bool {
  tags:=[3] CK_Tag.[CK_Tag.proc,CK_Tag.constant,CK_Tag.check];
@@ -349,34 +359,47 @@ CK_EFFECT_CALL :: cast(u8) 1;      // runs a procedure: may write state another 
 CK_EFFECT_TRAP :: cast(u8) 2;      // may stop with a trap under every arithmetic profile
 CK_EFFECT_OVERFLOW :: cast(u8) 4;  // may stop with an overflow trap under checked arithmetic
 CK_EFFECT_PROPAGATE :: cast(u8) 8; // checked recoverable return; not a fatal trap or effects.v1 capability
+CK_own_binary_effects :: (c:CK_Context,op:u32,type:int)->u8 #inline #effects(all) {
+  if !CK_integer(c,type) {return 0;}
+  if op==37 || op==38 || op==42 || op==43 {return CK_EFFECT_TRAP;}
+  if op==34 || op==35 || op==36 {return CK_EFFECT_OVERFLOW;}
+  return 0;
+}
 CK_own_effects :: (c:CK_Context,n:CK_Node)->u8 #effects(all) {
   if n.kind==CK_Tag.expr_try {return CK_EFFECT_PROPAGATE;}
-  integer:=CK_integer(c,n.type);
   if n.kind==CK_Tag.expr_index || n.kind==CK_Tag.expr_slice {return CK_EFFECT_TRAP;}
   if n.kind==CK_Tag.expr_call {if n.byte_intrinsic!=0 {return CK_EFFECT_TRAP;}if n.intrinsic!=0 {return 0;}return CK_EFFECT_CALL;}
-  if n.kind==CK_Tag.expr_cast {if integer && !n.flag {return CK_EFFECT_TRAP;}return 0;}
-  if !integer {return 0;}
-  if n.kind==CK_Tag.expr_binary {
-    if n.op==37 || n.op==38 || n.op==42 || n.op==43 {return CK_EFFECT_TRAP;}
-    if n.op==34 || n.op==35 || n.op==36 {return CK_EFFECT_OVERFLOW;}
-  }
-  if n.kind==CK_Tag.expr_unary && n.op==35 {return CK_EFFECT_OVERFLOW;}
+  if n.kind==CK_Tag.expr_cast {if CK_integer(c,n.type) && !n.flag {return CK_EFFECT_TRAP;}return 0;}
+  if n.kind==CK_Tag.expr_binary {return CK_own_binary_effects(c,n.op,n.type);}
+  if n.kind==CK_Tag.expr_unary && n.op==35 && CK_integer(c,n.type) {return CK_EFFECT_OVERFLOW;}
   return 0;
 }
 CK_effects :: (c:CK_Context,id:int)->u8 #effects(all) {
   if id<0 || id>=c.nodes.count {return 0;}
-  n:=c.nodes[id];if n.effects_known {return n.effects;}
-  e:u8=0;tag:=cast(u32)n.kind;expression:=tag>=16 && tag<40;
-  if n.kind==CK_Tag.field_init {e=CK_effects(c,n.a);}
+  if c.nodes[id].effects_known {return c.nodes[id].effects;}
+  kind:=c.nodes[id].kind;e:u8=0;tag:=cast(u32)kind;expression:=tag>=16 && tag<40;
+  if kind==CK_Tag.field_init {e=CK_effects(c,c.nodes[id].a);}
   // A compound assignment's own operation is its update, `place op value`
   // ('+=' is token 24, '+' is 34); a plain '=' maps to no arithmetic.
-  if n.kind==CK_Tag.stmt_assign {c.nodes[id].own_effects=CK_own_effects(c,CK_Node.{kind=CK_Tag.expr_binary,op=n.op+10,type=c.nodes[n.c].type});}
-  else if expression && !n.folded {
-    own:=CK_own_effects(c,n);c.nodes[id].own_effects=own;
+  if kind==CK_Tag.stmt_assign {c.nodes[id].own_effects=CK_own_binary_effects(c,c.nodes[id].op+10,c.nodes[c.nodes[id].c].type);}
+  else if expression && !c.nodes[id].folded {
+    n:=c.nodes[id];own:=CK_own_effects(c,n);c.nodes[id].own_effects=own;
     e=own|CK_effects(c,n.a)|CK_effects(c,n.b)|CK_effects(c,n.c);
     arg:=n.head;while arg!=CK_NONE {e=e|CK_effects(c,arg);arg=c.nodes[arg].next;}
   }
   c.nodes[id].effects=e;c.nodes[id].effects_known=true;return e;
+}
+#test "CK_effects combines effects from second and third child operands" {
+  nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,used=6}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  for i:0..<16 {types[i]=CK_builtin(i);}
+  nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,type=11};
+  nodes[3]=CK_Node.{kind=CK_Tag.expr_index,type=11};
+  nodes[4]=CK_Node.{kind=CK_Tag.expr_call,type=11};
+  nodes[5]=CK_Node.{kind=CK_Tag.expr_ifx,type=11,a=2,b=3,c=4};
+  #assert CK_effects(c,5)==(CK_EFFECT_TRAP|CK_EFFECT_CALL);
+  nodes[6]=CK_Node.{kind=CK_Tag.expr_ifx,type=11,a=2,b=2,c=3};
+  #assert CK_effects(c,6)==CK_EFFECT_TRAP;
 }
 // Every node of a checked graph, once, after CK_run succeeds.
 CK_lower_effects :: (c:CK_Context) #export_c #effects(all) {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}

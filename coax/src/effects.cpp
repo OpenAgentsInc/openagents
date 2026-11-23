@@ -3,6 +3,8 @@
 #include "coax.h"
 #include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 
 namespace coax {
@@ -33,17 +35,18 @@ struct EffectFacts {
   const File *file;
   bool language = false;
   std::vector<const ProcDecl *> procedures;
-  std::map<const ProcDecl *,int64_t> ids;
+  std::unordered_map<const ProcDecl *,int64_t> ids;
   std::vector<ObservedEffectEdge> edges;
   std::vector<Loc> edge_locations;
   std::vector<ObservedEffectSite> sites;
   std::vector<Loc> site_locations;
   SeenExprs seen;
-  std::set<Type> defaults_seen;
+  std::unordered_set<Type> defaults_seen;
+  std::unordered_map<Type,uint8_t> borrowed_memo;
   std::map<const Stmt *,const ProcDecl *> transactions;
   std::vector<std::unique_ptr<ProcDecl>> transaction_procedures;
-  std::set<const ProcDecl *> transaction_roots;
-  std::set<const ProcDecl *> transaction_unsafe_roots;
+  std::unordered_set<const ProcDecl *> transaction_roots;
+  std::unordered_set<const ProcDecl *> transaction_unsafe_roots;
   bool capture_unsafe = false;
   int64_t current = 0;
   void site(int64_t kind,Loc loc) { sites.push_back({current,kind});site_locations.push_back(loc); }
@@ -63,6 +66,15 @@ struct EffectFacts {
     if(type->kind==TypeKind::union_ && type->union_decl)for(const auto &v:type->union_decl->variants)if(borrowed_type(v.type,seen_types))return true;
     return false;
   }
+  bool borrowed_type_cached(Type type) {
+    if(!type)return false;
+    auto it=borrowed_memo.find(type);
+    if(it!=borrowed_memo.end())return it->second!=0;
+    std::set<Type> seen_types;
+    const bool r=borrowed_type(type,seen_types);
+    borrowed_memo.emplace(type,(uint8_t)(r?1:0));
+    return r;
+  }
   void defaults(Type type) {
     if(!type || !defaults_seen.insert(type).second)return;
     if(type->kind==TypeKind::array)defaults(type->elem);
@@ -71,8 +83,6 @@ struct EffectFacts {
   }
   void expression(const Expr *e,bool place=false) {
     if(!e)return;
-    // Places may also be read later; do not let a write suppress that fact.
-    if(!place && !seen.insert(e))return;
     if(!e->type || e->type->kind==TypeKind::invalid){site(3,e->loc);return;}
     if(e->kind==ExprKind::ct_value)return; // Former compile-time calls are not runtime edges.
     if(e->own_effects&2)site(4,e->loc);
@@ -80,7 +90,7 @@ struct EffectFacts {
     switch(e->kind) {
       case ExprKind::int_lit:case ExprKind::float_lit:case ExprKind::bool_lit:
       case ExprKind::string_lit:case ExprKind::enum_value:return;
-      case ExprKind::ident:if(e->constant)expression(e->constant->expr);return;
+      case ExprKind::ident:if(e->constant && e->constant->expr && seen.insert(e->constant->expr))expression(e->constant->expr);return;
       case ExprKind::run:site(3,e->loc);return;
       case ExprKind::call:
         if(e->builtin_print)site(1,e->loc);
@@ -144,14 +154,17 @@ struct EffectFacts {
     statement(s->then_);statement(s->else_); // Includes defer bodies and every syntactic branch.
   }
   void collect() {
+    const size_t est=(size_t)file->procs.count+(size_t)file->checks.count;
+    ids.reserve(est*2+16);procedures.reserve(est);
     for(const ProcDecl *p:file->procs){ids.emplace(p,(int64_t)procedures.size());procedures.push_back(p);}
     for(const CheckDecl *c:file->checks)if(c->proc && !ids.count(c->proc)){ids.emplace(c->proc,(int64_t)procedures.size());procedures.push_back(c->proc);}
+    const bool has_tx=file->has_transactions;
     for(size_t i=0;i<procedures.size();i++){
       current=(int64_t)i;const auto *p=procedures[i];seen.clear();defaults_seen.clear();
-      capture_unsafe=uninitialized(p->body)||transaction_unsafe_roots.count(p);
-      if(language&&transaction_roots.count(p)){site(5,p->loc);site(4,p->loc);}
-      if(language&&transaction_unsafe_roots.count(p))site(8,p->loc);
-      std::set<Type> return_types;if(borrowed_type(p->ret,return_types))site(11,p->loc);
+      capture_unsafe=has_tx&&(uninitialized(p->body)||transaction_unsafe_roots.count(p));
+      if(language&&has_tx&&transaction_roots.count(p)){site(5,p->loc);site(4,p->loc);}
+      if(language&&has_tx&&transaction_unsafe_roots.count(p))site(8,p->loc);
+      if(borrowed_type_cached(p->ret))site(11,p->loc);
       if(p->foreign)site(2,p->loc);else if(!p->body)site(3,p->loc);else statement(p->body);
     }
   }
@@ -190,11 +203,12 @@ static bool script_compilation(const File *file){return !file->src->units.empty(
 static Loc script_directive(const SourceUnit &u){return {u.first_line+u.script_at.line-1,u.script_at.col,u.begin+u.script_at.offset};}
 static bool effect_contracts(const File *file,const EmitOptions &opts) {
   if(file->has_transactions&&opts.quantity_device){error_at(file->src,{1,1,0},"E0971","transaction undo scopes are not qualified for device output");return false;}
-  auto unit=[&](const ProcDecl *p){const auto *u=source_unit_at(file->src,p->loc);return u?u->canonical:std::string();};
-  std::set<std::string> enabled;
-  for(const auto *p:file->procs)if(p->effect_present)enabled.insert(unit(p));
-  for(const auto *p:file->generics)if(p->effect_present)enabled.insert(unit(p));
-  if(enabled.empty()&&!file->has_transactions&&!g_require_effect_declarations)return true;
+  if(!g_require_effect_declarations&&!file->has_transactions){
+    bool any_effect=false;
+    for(const auto *p:file->procs)if(p->effect_present){any_effect=true;break;}
+    if(!any_effect)for(const auto *p:file->generics)if(p->effect_present){any_effect=true;break;}
+    if(!any_effect)return true;
+  }
   bool valid=true;
   auto declaration=[&](const ProcDecl *p){
     uint32_t allowed=0;
@@ -215,10 +229,13 @@ static bool effect_contracts(const File *file,const EmitOptions &opts) {
   std::vector<coax_t_EC_Procedure> procedures(n);
   std::vector<coax_t_EC_Edge> edges;for(const auto &e:f.edges)edges.push_back({e.from,e.to});
   std::vector<coax_t_EC_Site> sites;for(const auto &s:f.sites)sites.push_back({s.procedure,EC_observe(s.kind,opts.wrapping)});
+  std::unordered_set<const ProcDecl *> check_procs;
+  check_procs.reserve((size_t)file->checks.count*2+8);
+  for(const auto *c:file->checks)if(c->proc)check_procs.insert(c->proc);
   const bool script=script_compilation(file);std::vector<uint8_t> script_roots(n,0);
   for(size_t i=0;i<n;i++){
     const auto *p=f.procedures[i];auto &row=procedures[i];row.declared=p->effect_present;row.foreign=p->foreign;
-    bool check=false;for(const auto *c:file->checks)check=check||c->proc==p;
+    const bool check=check_procs.count(p)!=0;
     row.required=EC_required(g_require_effect_declarations,p->authority,p->export_c,p->foreign,check||to_std(p->name)=="main");
     row.allowed=f.transaction_roots.count(p)?TX_effects():declaration(p);
 #ifndef COAX_BOOTSTRAP_IMPORTER

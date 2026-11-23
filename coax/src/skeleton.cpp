@@ -245,7 +245,7 @@ void skeleton_claims(const SkeletonNow &now, const std::vector<Token> &tk, const
   by_item->assign(now.ranges.size(), nullptr);
   claims->assign(now.ranges.size(), 0);
   auto claim = [&](Loc loc) { const int32_t k = now.item_at(tk, loc.offset); if (k >= 0 && (*claims)[(size_t)k] < 2) (*claims)[(size_t)k]++; return k; };
-  for (const StructDecl *d : file->structs) if (!d->origin) claim(d->loc);
+  for (const StructDecl *d : file->structs) if (!d->origin && !is_builtin_meta_struct(d)) claim(d->loc);
   for (const StructDecl *d : file->generic_structs) claim(d->loc);
   for (const EnumDecl *d : file->enums) claim(d->loc);
   for (const UnionDecl *d : file->unions) claim(d->loc);

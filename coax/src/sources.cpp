@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <functional>
+#include <mutex>
+#include <unordered_map>
 #ifdef COAX_BOOTSTRAP_IMPORTER
 #include "sources.h"
 #else
@@ -63,24 +65,36 @@ static bool source_unit_syntax(const Source *source,const std::vector<Token> &to
                                const std::vector<coax_t_SU_Load> &loads,int64_t load_count,const coax_t_SU_Scan &unit,
                                const std::vector<coax_t_SU_Export> &exports,int64_t export_count,const std::vector<Loc> &lexed,
                                std::pair<int64_t,int64_t> script) {
-  auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
-  std::vector<coax_t_PS_Import> imports((size_t)caps.imports);
-  auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
-  if (scan.code.count) {
-    error_at(source,parser_loc(scan.loc),std::string(scan.code.data,(size_t)scan.code.count).c_str(),
-             std::string(scan.message.data,(size_t)scan.message.count));return false;
+  bool has_proto=false;
+  for (const auto &t:tokens) if (t.kind==Tok::directive && str_eq(t.text,"import_proto")) {has_proto=true;break;}
+  zvec<coax_t_PS_Import> imports;
+  int64_t import_count=0;
+  if (has_proto) {
+    auto input=parser_tokens(tokens);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
+    imports=zvec<coax_t_PS_Import>((size_t)caps.imports);
+    auto scan=PS_imports({input.data(),(int64_t)input.size()},{imports.data(),(int64_t)imports.size()},false);
+    if (scan.code.count) {
+      error_at(source,parser_loc(scan.loc),std::string(scan.code.data,(size_t)scan.code.count).c_str(),
+               std::string(scan.message.data,(size_t)scan.message.count));return false;
+    }
+    import_count=scan.count;
   }
+  const bool any_blank=load_count!=0 || unit.claims || script.second!=0 || export_count!=0 || import_count!=0;
   std::vector<Token> kept;
-  for (const auto &token:tokens) {
-    bool suppressed=false;
-    for(int64_t n=0;n<load_count;n++)suppressed=suppressed || (token.loc.offset>=loads[(size_t)n].begin && token.loc.offset<loads[(size_t)n].end);
-    suppressed=suppressed || (unit.claims && token.loc.offset>=unit.owner_begin && token.loc.offset<unit.owner_end);
-    suppressed=suppressed || (token.loc.offset>=script.first && token.loc.offset<script.second);
-    for(int64_t n=0;n<export_count;n++)suppressed=suppressed || (token.loc.offset>=exports[(size_t)n].begin && token.loc.offset<exports[(size_t)n].end);
-    for(int64_t n=0;n<scan.count;n++)suppressed=suppressed || (token.loc.offset>=imports[(size_t)n].loc.offset && token.loc.offset<imports[(size_t)n].end);
-    if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
+  if (any_blank) {
+    kept.reserve(tokens.size());
+    for (const auto &token:tokens) {
+      bool suppressed=false;
+      for(int64_t n=0;n<load_count;n++)suppressed=suppressed || (token.loc.offset>=loads[(size_t)n].begin && token.loc.offset<loads[(size_t)n].end);
+      suppressed=suppressed || (unit.claims && token.loc.offset>=unit.owner_begin && token.loc.offset<unit.owner_end);
+      suppressed=suppressed || (token.loc.offset>=script.first && token.loc.offset<script.second);
+      for(int64_t n=0;n<export_count;n++)suppressed=suppressed || (token.loc.offset>=exports[(size_t)n].begin && token.loc.offset<exports[(size_t)n].end);
+      for(int64_t n=0;n<import_count;n++)suppressed=suppressed || (token.loc.offset>=imports[(size_t)n].loc.offset && token.loc.offset<imports[(size_t)n].end);
+      if(!suppressed || token.kind==Tok::eof)kept.push_back(token);
+    }
   }
-  input=parser_tokens(kept);caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
+  const std::vector<Token> &use=any_blank?kept:tokens;
+  auto input=parser_tokens(use);auto caps=PS_caps((int64_t)input.size(),(int64_t)source->text.size());
   zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);zvec<uint8_t> message((size_t)caps.message);coax_t_PS_State state{};
   auto parsed=PS_parse({source->text.data(),(int64_t)source->text.size()},{input.data(),(int64_t)input.size()},
                        {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()});
@@ -97,7 +111,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
   struct Unit {
     std::shared_ptr<SourceUnit> source;
     std::string masked;
-    std::vector<Token> tokens;  // outside the blanked directives, their text in source->text
+    std::vector<std::pair<int64_t,int64_t>> blank;  // directive byte spans blanked in masked
     uint8_t state = 1;
     bool balanced = true;
     std::vector<std::pair<int64_t,int64_t>> loaders; // (loading unit, directive offset there)
@@ -138,6 +152,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     u->source->path=display;u->source->canonical=key;
     FILE *f = fopen(key.c_str(),"rb");
     if (!f) {error_at(parent,directive,"E0601","cannot open source unit '"+display+"'");return false;}
+    u->source->text.reserve((size_t)bytes);
     char buffer[65536];size_t n;
     while ((n=fread(buffer,1,sizeof buffer,f))>0) {
       if (!SU_admit((int64_t)units.size(),depth,total,(int64_t)u->source->text.size()+(int64_t)n)) {
@@ -147,6 +162,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     }
     bool read_ok=!ferror(f);fclose(f);
     if (!read_ok) {error_at(parent,directive,"E0601","failed reading source unit '"+display+"'");return false;}
+    serve_watch_file(key,u->source->text,true);
     total+=(int64_t)u->source->text.size();units.push_back(u);
     capacity_use("source units","E0603",units.size(),(uint64_t)SU_unit_limit());
     capacity_use("source bytes","E0603",(uint64_t)total,(uint64_t)SU_byte_limit());
@@ -167,6 +183,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     if (learned) kept=unit_lex(local.text,tokens);
     if (lexed_ok) u->source->lexed=kept;
     std::vector<coax_t_SU_Token> records;
+    records.reserve(tokens.size());
     for (const auto &t : tokens) {
       const auto text=t.kind==Tok::string_lit?t.string_value:t.text;
       records.push_back({(uint32_t)t.kind,{text.data,text.count},t.loc.offset,t.loc.offset+t.text.count});
@@ -236,22 +253,10 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     // After lexer errors the unit's syntax errors are still reported, then it stops.
     if (!lexed_ok) {source_unit_syntax(&local,tokens,loads,scan.count,scan,exported,list.count,lexed,script_span);return stop();}
     u->source->authority=scan.authority;u->balanced=scan.balanced;u->masked=local.text;
-    {
-      std::vector<std::pair<int64_t,int64_t>> blank;  // as blanked in masked below
-      for (int64_t i=0;i<scan.count;i++) blank.push_back({loads[(size_t)i].begin,loads[(size_t)i].end});
-      if (scan.claims) blank.push_back({scan.owner_begin,scan.owner_end});
-      if (script_span.second) blank.push_back(script_span);
-      for (int64_t i=0;i<list.count;i++) blank.push_back({exported[(size_t)i].begin,exported[(size_t)i].end});
-      u->tokens.reserve(tokens.size());
-      for (const auto &t:tokens) {
-        if (t.kind==Tok::eof) continue;
-        bool blanked=false;
-        for (const auto &[from,to]:blank) blanked=blanked || (t.loc.offset>=from && t.loc.offset<to);
-        if (blanked) continue;
-        u->tokens.push_back(t);
-        u->tokens.back().text.data=u->source->text.data()+(t.text.data-local.text.data());
-      }
-    }
+    for (int64_t i=0;i<scan.count;i++) u->blank.push_back({loads[(size_t)i].begin,loads[(size_t)i].end});
+    if (scan.claims) u->blank.push_back({scan.owner_begin,scan.owner_end});
+    if (script_span.second) u->blank.push_back(script_span);
+    for (int64_t i=0;i<list.count;i++) u->blank.push_back({exported[(size_t)i].begin,exported[(size_t)i].end});
     composition=composition || scan.count!=0;
     if (composition && !u->balanced) {
       error_at(&local,{1,1,0},"E0604","source delimiters must balance within a unit and fit depth 128");return stop();
@@ -269,17 +274,29 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     }
     if (scan.claims) for (int64_t at=scan.owner_begin;at<scan.owner_end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
     for (int64_t at=script_span.first;at<script_span.second;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
-    // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
-    // A load that fails is reported and the next one is still tried.
-    bool loaded=true;
+    // Resolve load directives before releasing per-unit token buffers, so deep
+    // #load graphs never retain duplicate token vectors on the recursion stack.
+    struct PendingLoad { std::string path, alias; Loc at; int32_t alias_begin; bool checks; };
+    std::vector<PendingLoad> pending_loads;
+    pending_loads.reserve((size_t)scan.count);
     for (int64_t i=0;i<scan.count;i++) {
       const auto &r=loads[(size_t)i];
       for (int64_t at=r.begin;at<r.end;at++) if (u->masked[(size_t)at]!='\n' && u->masked[(size_t)at]!='\r')u->masked[(size_t)at]=' ';
       std::filesystem::path next(std::string(r.path.data,(size_t)r.path.count));
       if (next.is_relative()) next=std::filesystem::path(display).parent_path()/next;
       Loc at{1,1,(int32_t)r.begin};for(const auto &t:tokens)if(t.loc.offset==at.offset){at=t.loc;break;}
-      if (!visit(next.lexically_normal().string(),depth+1,&local,at,self,r.checks)) {loaded=false;if (exhausted || error_limit()) break;continue;}
-      if (r.alias.count) u->source->aliases.push_back({std::string(r.alias.data,(size_t)r.alias.count),u->source->loads.back(),(int32_t)r.alias_begin});
+      pending_loads.push_back({next.lexically_normal().string(),r.alias.count?std::string(r.alias.data,(size_t)r.alias.count):std::string(),at,(int32_t)r.alias_begin,r.checks});
+    }
+    std::vector<Token>().swap(tokens);
+    std::vector<coax_t_SU_Token>().swap(records);
+    std::vector<coax_t_SU_Load>().swap(loads);
+    std::vector<coax_t_SU_Export>().swap(exported);
+    // Keep the original bytes for diagnostics; only the compiler's flat input is blanked.
+    // A load that fails is reported and the next one is still tried.
+    bool loaded=true;
+    for (const auto &pl : pending_loads) {
+      if (!visit(pl.path,depth+1,&local,pl.at,self,pl.checks)) {loaded=false;if (exhausted || error_limit()) break;continue;}
+      if (!pl.alias.empty()) u->source->aliases.push_back({pl.alias,u->source->loads.back(),pl.alias_begin});
     }
     u->state=2;finished.push_back(self);return loaded;
   };
@@ -298,6 +315,7 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
     for (size_t i=0;i<units.size();i++) units[i]->source->check_unit=!product[i];
   }
   int32_t line=1;
+  src->text.reserve((size_t)total+units.size()+1);
   for (const auto &u:units) {
     u->source->begin=(int32_t)src->text.size();u->source->first_line=line;
     src->text+=u->masked;
@@ -311,16 +329,25 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
   // source's bytes is its to report.
   if (LX_capacities((int64_t)src->text.size()).decoded) {
     size_t count=1;
-    for (const auto &u:units) count+=u->tokens.size();
+    for (const auto &u:units) if (u->source->lexed) count+=u->source->lexed->tokens.size();
     composed->reserve(count);
     for (const auto &u:units) {
       const SourceUnit &unit=*u->source;
-      for (Token t:u->tokens) {
-        t.text.data=src->text.data()+unit.begin+(t.text.data-unit.text.data());
-        t.loc.line+=unit.first_line-1;t.loc.offset+=unit.begin;
+      if (!unit.lexed) continue;
+      const UnitLex &lx=*unit.lexed;
+      for (const UnitToken &v:lx.tokens) {
+        if ((Tok)v.kind==Tok::eof) continue;
+        bool blanked=false;
+        for (const auto &[from,to]:u->blank) if (v.offset>=from && v.offset<to) {blanked=true;break;}
+        if (blanked) continue;
+        Token t;
+        t.kind=(Tok)v.kind;
+        t.loc={v.line+unit.first_line-1,v.col,v.offset+unit.begin};
+        t.text={src->text.data()+unit.begin+v.text,v.count};
+        t.int_value=v.int_value;t.float_value=v.float_value;t.float_bits=v.float_bits;
+        if (v.decoded>=0) t.string_value={lx.decoded.data()+v.decoded,v.decoded_count};
         composed->push_back(t);
       }
-      std::vector<Token>().swap(u->tokens);
     }
     Token eof;
     const size_t last=src->text.rfind('\n');
@@ -400,17 +427,30 @@ static bool load_sources(Arena *arena, Source *src, const char *path, std::vecto
 // absolute path, a fresh worktree reused none of fivelab's 1,049 checks). A
 // unit outside any checkout keeps its canonical path.
 std::string tree_path(const std::string &canonical) {
-  std::error_code ec;
-  std::filesystem::path dir = std::filesystem::path(canonical).parent_path();
-  for (std::filesystem::path at = dir; !at.empty(); at = at.parent_path()) {
-    if (std::filesystem::exists(at / ".git", ec)) {
-      const std::string root = at.string();
-      if (canonical.size() > root.size() + 1 && canonical.compare(0, root.size(), root) == 0 && canonical[root.size()] == '/')
-        return canonical.substr(root.size() + 1);
-      return canonical;
-    }
-    if (at == at.parent_path()) break;
+  static std::mutex mu;
+  static std::unordered_map<std::string, std::string> roots;
+  const size_t slash = canonical.find_last_of('/');
+  if (slash == std::string::npos) return canonical;
+  const std::string dir = canonical.substr(0, slash);
+  std::string root;
+  bool found = false;
+  {
+    std::lock_guard<std::mutex> lock(mu);
+    auto it = roots.find(dir);
+    if (it != roots.end()) { root = it->second; found = true; }
   }
+  if (!found) {
+    std::error_code ec;
+    for (std::filesystem::path at(dir); !at.empty(); at = at.parent_path()) {
+      if (std::filesystem::exists(at / ".git", ec)) { root = at.string(); break; }
+      if (at == at.parent_path()) break;
+    }
+    std::lock_guard<std::mutex> lock(mu);
+    roots.emplace(dir, root);
+  }
+  if (!root.empty() && canonical.size() > root.size() + 1 &&
+      canonical.compare(0, root.size(), root) == 0 && canonical[root.size()] == '/')
+    return canonical.substr(root.size() + 1);
   return canonical;
 }
 } // namespace coax

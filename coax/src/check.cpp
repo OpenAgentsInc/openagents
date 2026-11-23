@@ -122,12 +122,15 @@ template<class T> T *checked_ref(const std::vector<void*> &objects,int64_t id){r
 template<class T> Slice<T> checked_values(Arena *arena,const zvec<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(*checked_ref<T>(objects,id));return to_slice(arena,values);}
 template<class T> Slice<T*> checked_pointers(Arena *arena,const zvec<coax_t_CK_Node> &nodes,const std::vector<void*> &objects,int64_t head){std::vector<T*> values;for(auto id=head;id;id=nodes[(size_t)id].next)values.push_back(checked_ref<T>(objects,id));return to_slice(arena,values);}
 }
+static bool rebuild_parsed_nodes(const Source *src,bool development,zvec<coax_t_PS_Node> *out);
 struct CheckInput {
   zvec<coax_t_CK_Node> nodes;
   // The parser's nodes the store was filled from: a run that fills the store
   // with instances starts again from them (check_input_nodes), so no copy of
-  // the input is kept. Released once no run can need them.
+  // the input is kept. Released early for large graphs (and rebuilt on the
+  // rare retry path) to keep peak RSS low.
   zvec<coax_t_PS_Node> parsed;
+  bool development=false;
   std::vector<int64_t> scopes;  // each unit's module scope
   std::vector<void*> objects;
   int64_t used=0;
@@ -149,7 +152,7 @@ static int64_t module_scope(CheckInput *input,const SourceUnit *unit){
   input->modules.push_back(unit->module);return (int64_t)input->modules.size()-1;
 }
 // Fills the first used+1 nodes of the checker's store from the parser's.
-static void check_input_nodes(const File *file,CheckInput *input){
+static void check_input_nodes(const File *file,CheckInput *input,bool release_parsed=false){
   const auto &nodes=input->parsed;
   // A node's record is made from the parser's same node and the units alone: slices of nodes on threads (burst, main.cpp).
   burst((size_t)input->used+1,16384,[&](size_t begin,size_t end,unsigned){
@@ -167,10 +170,22 @@ static void check_input_nodes(const File *file,CheckInput *input){
     if(unit)n.source_unit=(int64_t)at+1;
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
+  if(release_parsed && end>begin){
+    const uintptr_t pg=16384;
+    const uintptr_t lo=((uintptr_t)(nodes.data()+begin)+pg-1)&~(pg-1);
+    const uintptr_t hi=((uintptr_t)(nodes.data()+end))&~(pg-1);
+    if(hi>lo){
+#ifdef MADV_FREE_REUSABLE
+      madvise((void*)lo,hi-lo,MADV_FREE_REUSABLE);
+#else
+      madvise((void*)lo,hi-lo,MADV_DONTNEED);
+#endif
+    }
+  }
   });
 }
-static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std::vector<void*> &objects,int64_t used){
-  auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;
+static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std::vector<void*> &objects,int64_t used,bool development=false){
+  auto input=std::make_shared<CheckInput>();input->used=used;input->objects=objects;input->development=development;
   // Room for the store check() sizes it to (CK_caps and CK_meta_capacity), so that resize moves nothing; untouched pages cost nothing.
   input->nodes.reserve((size_t)CK_caps(used+1,(int64_t)file->src->text.size()).nodes+65536);
   input->nodes.resize((size_t)used+1);
@@ -203,7 +218,9 @@ static void attach_check_input(File *file,zvec<coax_t_PS_Node> &&nodes,const std
   // Every unit's module scope is already registered above; a node takes its unit's.
   for(const auto &u:file->src->units)input->scopes.push_back(module_scope(input.get(),u.get()));
   input->parsed=std::move(nodes);
-  check_input_nodes(file,input.get());
+  const bool drop=used>=65536;
+  check_input_nodes(file,input.get(),drop);
+  if(drop)input->parsed=zvec<coax_t_PS_Node>();
   file->check_input=std::move(input);
 }
 // A check of the changed procedure bodies alone (skeleton.cpp, #13142) keeps
@@ -261,7 +278,10 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     const int64_t next=retries?CK_node_retry(state.used,capacity,state.fatal,first):0;
     if(ok || !next)break;
     // A fresh zeroed store: the failed run's records past the input must not survive.
-    capacity=next;input->nodes=zvec<coax_t_CK_Node>((size_t)capacity);check_input_nodes(file,input.get());
+    if(input->parsed.empty() && !rebuild_parsed_nodes(file->src,input->development,&input->parsed))break;
+    const bool drop=input->used>=65536;
+    capacity=next;input->nodes=zvec<coax_t_CK_Node>((size_t)capacity);check_input_nodes(file,input.get(),drop);
+    if(drop)input->parsed=zvec<coax_t_PS_Node>();
   }
   input->parsed=zvec<coax_t_PS_Node>();
   capacity_use("checker nesting","E0381",(uint64_t)state.peak_depth,(uint64_t)CK_depth_limit());
@@ -346,25 +366,33 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     }
     if(!placeholder)g_composite_list.push_back(types[(size_t)i]);
   }
-  // Populate all scalar/reference fields before copying aggregate value lists.
-  for(int64_t id=1;id<=state.used;id++){
-    const auto &v=nodes[(size_t)id];const auto loc=checked_loc(v.loc);const auto name=checked_string(arena,v.name);const auto ty=types[(size_t)v.type];
+  // Copy the checker's temporary byte buffer once into the arena so string
+  // transfers are O(1) pointer rebases and run in parallel without arena locks.
+  const char *bytes_begin=(const char*)bytes.data();
+  const char *bytes_end=bytes_begin+(size_t)std::max<int64_t>(state.byte_count,0);
+  char *bytes_copy=state.byte_count>0?(char*)arena_alloc(arena,(size_t)state.byte_count):nullptr;
+  if(bytes_copy)memcpy(bytes_copy,bytes_begin,(size_t)state.byte_count);
+  auto fast_str=[&](coax_string s)->Str{
+    if(!s.count)return {};
+    if(bytes_copy && s.data>=bytes_begin && s.data<bytes_end)return {bytes_copy+(s.data-bytes_begin),(int32_t)s.count};
+    return {s.data,(int32_t)s.count};
+  };
+  // Populate all scalar/reference fields in parallel before copying aggregate value lists.
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned){
+  for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++){
+    const auto &v=nodes[(size_t)id];const auto loc=checked_loc(v.loc);const auto name=fast_str(v.name);const auto ty=types[(size_t)v.type];
     if(checked_type_tag(v.kind)){auto *p=checked_ref<TypeExpr>(objects,id);p->kind=(TypeExpr::Kind)(v.kind-1);p->loc=loc;p->name=name;p->read_only=v.flag;p->length=v.a && nodes[(size_t)v.a].kind==COAX_CK_Tag_type_param?nullptr:checked_ref<Expr>(objects,v.a);p->elem=checked_ref<TypeExpr>(objects,v.b);}
     else if(checked_expr_tag(v.kind)){auto *p=checked_ref<Expr>(objects,id);p->kind=(ExprKind)(v.kind-16);p->loc=loc;p->text=name;p->type=ty;p->int_value=v.value;memcpy(&p->float_value,&v.floating,8);p->op=(Tok)v.op;
       p->effects=v.effects;p->own_effects=v.own_effects;p->lhs=checked_ref<Expr>(objects,v.a);p->rhs=checked_ref<Expr>(objects,v.b);p->third=checked_ref<Expr>(objects,v.c);p->type_expr=checked_ref<TypeExpr>(objects,v.d);p->trunc=v.flag;p->negative=v.negative;p->folded=v.folded;p->compiler_generated=CK_generated(v.mark);p->lowering=v.lowering;p->mutation_status=v.mutation_status;p->mutation_op=(Tok)v.mutation_op;p->mutation_proc=checked_ref<ProcDecl>(objects,v.mutation_proc);p->field_index=(int32_t)v.field_index;p->proc=checked_ref<ProcDecl>(objects,v.proc);p->constant=checked_ref<ConstDecl>(objects,v.constant);p->builtin_print=v.builtin_print;p->byte_intrinsic=(ByteIntrinsic)v.byte_intrinsic;p->intrinsic=(Intrinsic)v.intrinsic;p->args={};p->fields={};p->sum_variant=(int32_t)v.sum_variant;p->propagate_type=v.propagate_type?types[(size_t)v.propagate_type]:nullptr;}
-    else if(checked_stmt_tag(v.kind)){auto *p=checked_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->own_effects=v.own_effects;p->loc=loc;p->name=name;p->name2=checked_string(arena,v.name2);p->name2_loc=checked_loc(v.loc2);p->type=ty;p->expr=checked_ref<Expr>(objects,v.a);p->expr2=checked_ref<Expr>(objects,v.b);p->target=nullptr;p->type_expr=nullptr;p->then_=nullptr;p->else_=nullptr;p->uninit=v.flag;
+    else if(checked_stmt_tag(v.kind)){auto *p=checked_ref<Stmt>(objects,id);p->kind=(StmtKind)(v.kind-40);p->own_effects=v.own_effects;p->loc=loc;p->name=name;p->name2=fast_str(v.name2);p->name2_loc=checked_loc(v.loc2);p->type=ty;p->expr=checked_ref<Expr>(objects,v.a);p->expr2=checked_ref<Expr>(objects,v.b);p->target=nullptr;p->type_expr=nullptr;p->then_=nullptr;p->else_=nullptr;p->uninit=v.flag;
       if(v.kind==COAX_CK_Tag_stmt_var)p->type_expr=checked_ref<TypeExpr>(objects,v.d);
       else if(v.kind==COAX_CK_Tag_stmt_assign){p->target=checked_ref<Expr>(objects,v.c);p->op=(Tok)v.op;}
       else {p->then_=checked_ref<Stmt>(objects,v.c);p->else_=checked_ref<Stmt>(objects,v.d);}}
     else switch(v.kind){
-      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->inline_c=v.op==1;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=checked_string(arena,v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=checked_loc(v.effect_loc);break;}
+      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->loc=loc;p->name=name;p->ret_expr=checked_ref<TypeExpr>(objects,v.a);p->body=checked_ref<Stmt>(objects,v.b);p->ret=ty;p->export_c=v.flag;p->inline_c=v.op==1;p->foreign=v.flag2;p->generic=v.generic;p->scope=v.collides?(int32_t)v.scope:0;p->key=fast_str(v.key);p->origin=checked_ref<ProcDecl>(objects,v.origin);p->effect_present=v.effect_present;p->pure_decl=v.pure_decl;p->effect_loc=checked_loc(v.effect_loc);break;}
       case COAX_CK_Tag_constant:{auto *p=checked_ref<ConstDecl>(objects,id);p->loc=loc;p->name=name;p->expr=checked_ref<Expr>(objects,v.a);p->type=ty;p->checked=(uint8_t)v.mark;break;}
       case COAX_CK_Tag_struct_:{auto *p=checked_ref<StructDecl>(objects,id);p->identity=v.quantity==3?1:v.quantity==4?2:0;p->loc=loc;p->persisted=v.flag;
-        std::string facts=";quantity="+std::to_string(v.quantity);
-        for(auto x:{v.unit.mass,v.unit.length,v.unit.time,v.unit.angle,v.unit.numerator,v.unit.denominator})facts+=","+std::to_string(x);
-        facts+=";frame="+std::to_string(v.frame_decl);
-        for(auto x:{v.frame.handedness,(int64_t)v.frame.convention,(int64_t)v.frame.continuity,v.frame.min_rep})facts+=","+std::to_string(x);
-        p->compatibility_metadata=checked_string(arena,{facts.data(),(int64_t)facts.size()});p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;p->generic=v.generic;p->key=checked_string(arena,v.key);p->origin=checked_ref<StructDecl>(objects,v.origin);break;}
+        p->name=name;p->type=types[(size_t)v.type];p->state=(uint8_t)v.mark;p->generic=v.generic;p->key=fast_str(v.key);p->origin=checked_ref<StructDecl>(objects,v.origin);break;}
       case COAX_CK_Tag_enum_:{auto *p=checked_ref<EnumDecl>(objects,id);p->flags=v.flag;p->loc=loc;p->name=name;p->type=types[(size_t)v.type];p->base_expr=checked_ref<TypeExpr>(objects,v.a);break;}
       case COAX_CK_Tag_param:{auto *p=checked_ref<Param>(objects,id);p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->type=ty;break;}
       case COAX_CK_Tag_field:{auto *p=checked_ref<Field>(objects,id);p->counter=v.op==1;p->loc=loc;p->name=name;p->type_expr=checked_ref<TypeExpr>(objects,v.a);p->init=checked_ref<Expr>(objects,v.b);p->type=ty;p->offset=(int32_t)v.field_index;break;}
@@ -376,28 +404,66 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
       case COAX_CK_Tag_case_binding:{auto *p=checked_ref<CaseBinding>(objects,id);p->name=name;p->loc=loc;p->type=ty;break;}
       case COAX_CK_Tag_effect_name:{auto *p=checked_ref<EffectName>(objects,id);p->name=name;p->loc=loc;break;}
       case COAX_CK_Tag_import_:{auto *p=checked_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
-      case COAX_CK_Tag_check: {
-        auto *p=checked_ref<CheckDecl>(objects,id);
-        p->loc=loc;p->name=name;p->forall=v.flag;p->proc=checked_ref<ProcDecl>(objects,v.a);
-        std::vector<Binding> domains;
-        for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) {
-          domains.push_back({checked_ref<Expr>(objects,nodes[(size_t)b].b),checked_ref<Expr>(objects,nodes[(size_t)b].c)});
-        }
-        p->domains=to_slice(arena,domains);break;
-      }
+      case COAX_CK_Tag_check:{auto *p=checked_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->proc=checked_ref<ProcDecl>(objects,v.a);break;}
     }
   }
-  for(int64_t id=1;id<=state.used;id++){const auto &v=nodes[(size_t)id];switch(v.kind){
-    case COAX_CK_Tag_expr_call:case COAX_CK_Tag_expr_array:checked_ref<Expr>(objects,id)->args=checked_pointers<Expr>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_expr_struct:checked_ref<Expr>(objects,id)->fields=checked_values<FieldInit>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_stmt_block:checked_ref<Stmt>(objects,id)->body=checked_pointers<Stmt>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);p->params=checked_values<Param>(arena,nodes,objects,v.head);p->effect_names=checked_values<EffectName>(arena,nodes,objects,v.effect_head);break;}
-    case COAX_CK_Tag_stmt_switch:checked_ref<Stmt>(objects,id)->cases=checked_pointers<SwitchCase>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_union_:checked_ref<UnionDecl>(objects,id)->variants=checked_values<UnionVariant>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_type_named:{std::vector<TypeArgument> args;for(auto at=v.head;at;at=nodes[(size_t)at].next){TypeArgument a;if(checked_type_tag(nodes[(size_t)at].kind))a.type=checked_ref<TypeExpr>(objects,at);else a.length=checked_ref<Expr>(objects,at);args.push_back(a);}checked_ref<TypeExpr>(objects,id)->args=to_slice(arena,args);break;}
-    case COAX_CK_Tag_struct_:checked_ref<StructDecl>(objects,id)->fields=checked_values<Field>(arena,nodes,objects,v.head);break;
-    case COAX_CK_Tag_enum_:checked_ref<EnumDecl>(objects,id)->members=checked_values<EnumMember>(arena,nodes,objects,v.head);break;
-  }}
+  });
+  // Struct metadata and check domains allocate small arena strings/slices.
+  for(int64_t id=1;id<=state.used;id++){
+    const auto &v=nodes[(size_t)id];
+    if(v.kind==COAX_CK_Tag_struct_){
+      auto *p=checked_ref<StructDecl>(objects,id);
+      std::string facts=";quantity="+std::to_string(v.quantity);
+      for(auto x:{v.unit.mass,v.unit.length,v.unit.time,v.unit.angle,v.unit.numerator,v.unit.denominator})facts+=","+std::to_string(x);
+      facts+=";frame="+std::to_string(v.frame_decl);
+      for(auto x:{v.frame.handedness,(int64_t)v.frame.convention,(int64_t)v.frame.continuity,v.frame.min_rep})facts+=","+std::to_string(x);
+      p->compatibility_metadata=checked_string(arena,{facts.data(),(int64_t)facts.size()});
+    }else if(v.kind==COAX_CK_Tag_check){
+      auto *p=checked_ref<CheckDecl>(objects,id);
+      std::vector<Binding> domains;
+      for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next)
+        domains.push_back({checked_ref<Expr>(objects,nodes[(size_t)b].b),checked_ref<Expr>(objects,nodes[(size_t)b].c)});
+      p->domains=to_slice(arena,domains);
+    }
+  }
+  // Aggregate value/pointer lists: two-pass single-block allocation in parallel.
+  auto lists=[&](int64_t id,uint8_t *at)->size_t{
+    const auto &v=nodes[(size_t)id];
+    auto list=[&](int64_t head,auto *out,auto &&value)->size_t{
+      using T=std::remove_reference_t<decltype(*out->data)>;
+      int32_t n=0;
+      for(auto at_node=head;at_node;at_node=nodes[(size_t)at_node].next){if(at)new((void*)((T*)at+n))T(value(at_node));n++;}
+      if(at){out->count=n;out->data=n?(T*)at:nullptr;}
+      return ((size_t)n*sizeof(T)+15)&~(size_t)15;
+    };
+    auto values=[&](int64_t head,auto *out){return list(head,out,[&](int64_t node){return *checked_ref<std::remove_reference_t<decltype(*out->data)>>(objects,node);});};
+    auto pointers=[&](int64_t head,auto *out){return list(head,out,[&](int64_t node){return checked_ref<std::remove_pointer_t<std::remove_reference_t<decltype(*out->data)>>>(objects,node);});};
+    switch(v.kind){
+      case COAX_CK_Tag_expr_call:case COAX_CK_Tag_expr_array:return pointers(v.head,&checked_ref<Expr>(objects,id)->args);
+      case COAX_CK_Tag_expr_struct:return values(v.head,&checked_ref<Expr>(objects,id)->fields);
+      case COAX_CK_Tag_stmt_block:return pointers(v.head,&checked_ref<Stmt>(objects,id)->body);
+      case COAX_CK_Tag_proc:{auto *p=checked_ref<ProcDecl>(objects,id);const size_t params=values(v.head,&p->params);
+        uint8_t *first=at;if(at)at+=params;const size_t enames=values(v.effect_head,&p->effect_names);at=first;return params+enames;}
+      case COAX_CK_Tag_stmt_switch:return pointers(v.head,&checked_ref<Stmt>(objects,id)->cases);
+      case COAX_CK_Tag_union_:return values(v.head,&checked_ref<UnionDecl>(objects,id)->variants);
+      case COAX_CK_Tag_type_named:return list(v.head,&checked_ref<TypeExpr>(objects,id)->args,[&](int64_t node){
+        TypeArgument a;if(checked_type_tag(nodes[(size_t)node].kind))a.type=checked_ref<TypeExpr>(objects,node);else a.length=checked_ref<Expr>(objects,node);return a;});
+      case COAX_CK_Tag_struct_:return values(v.head,&checked_ref<StructDecl>(objects,id)->fields);
+      case COAX_CK_Tag_enum_:return values(v.head,&checked_ref<EnumDecl>(objects,id)->members);
+    }
+    return 0;
+  };
+  std::vector<size_t> places((size_t)state.used+2,0);
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned){
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++)places[(size_t)id]=lists(id,nullptr);
+  });
+  size_t total_lists=0;
+  for(int64_t id=1;id<=state.used;id++){const size_t sz=places[(size_t)id];places[(size_t)id]=total_lists;total_lists+=sz;}
+  places[(size_t)state.used+1]=total_lists;
+  uint8_t *list_block=total_lists?(uint8_t*)arena_alloc(arena,total_lists):nullptr;
+  burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned){
+    for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++)if(places[(size_t)id+1]!=places[(size_t)id])lists(id,list_block+places[(size_t)id]);
+  });
   // Generic procedures are templates: only declaration listings see them.
   // Their instances (new proc nodes the checker made) are the procedures that
   // emitters, the evaluator and checks see, after the authored ones.

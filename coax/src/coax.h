@@ -322,6 +322,15 @@ std::shared_ptr<UnitLex> unit_lex(const std::string &text, const std::vector<Tok
 // resident to keep.
 std::shared_ptr<const UnitLex> serve_find_unit(const std::string &text);
 void serve_keep_unit(const std::shared_ptr<const UnitLex> &unit);
+void serve_seed_local_units(const Source *src);
+bool serve_find_const(const std::string &key, std::string *out);
+void serve_keep_const(const std::string &key, const std::string &blob);
+void serve_watch_file(const std::string &canonical, const std::string &bytes, bool is_unit);
+void serve_record_header(const std::string &bytes);
+std::string debug_source_hash(const std::string &text);
+std::string const_cache_compiler_hash();
+bool const_cache_read(const std::string &key, std::string *out);
+void const_cache_write(const std::string &key, const std::string &data);
 // The last compiles of an entry unit whose type check passed (skeleton.cpp),
 // newest first; a resident's request keeps the one it made when it ends.
 struct PassedSkeleton;
@@ -574,6 +583,7 @@ struct Expr {
   Value *ct = nullptr;        // ct_value: an aggregate computed at compile time
   int32_t ct_id = -1;         // ct_value: emitted as a static constant
   int32_t sum_variant = -1;
+  int32_t ct_slot = -1;       // evaluator: pre-resolved frame.locals index for local ident
   Type propagate_type = nullptr; // exact admitted enclosing return type on try
 };
 
@@ -628,6 +638,7 @@ struct ProcDecl {
   // The evaluator whose answer ct_lend is: bit i, parameter i may be passed
   // without a copy (Evaluator::lendable, #13609).
   uint64_t ct_lend_mark = 0, ct_lend = 0;
+  uint64_t ct_slot_mark = 0;      // non-zero once local variable slots in body are resolved
   Str name;
   int32_t scope = 0;  // a name two modules declare: its C spelling's module scope (0: the plain name)
   Loc loc;
@@ -677,6 +688,11 @@ struct StructDecl {
   Str key;               // an instance's bindings, for its C name (Pair__3int)
   const StructDecl *origin = nullptr;  // an instance's template
 };
+static inline bool is_builtin_meta_struct(const StructDecl *d) {
+  return d && !d->origin && d->end == 0 &&
+         (str_eq(d->name, "CoaxU64Product") || str_eq(d->name, "CoaxTypeInfo") ||
+          str_eq(d->name, "CoaxFieldInfo") || str_eq(d->name, "CoaxEnumInfo"));
+}
 
 struct EnumMember {
   Str name;

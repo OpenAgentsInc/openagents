@@ -12,6 +12,8 @@
 #include <cmath>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
+#include <string_view>
 #include <functional>
 #include <map>
 #include <set>
@@ -107,8 +109,17 @@ static const char *RUNTIME = R"COAXRT(/* Coax float arithmetic is plain IEEE, on
 
 typedef struct { const char *data; int64_t count; } coax_string;
 #define COAX_STR(lit, n) ((coax_string){(lit), (n)})
+#if defined(__cplusplus)
+#define COAX_NORETURN [[noreturn]]
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define COAX_NORETURN _Noreturn
+#elif defined(__GNUC__)
+#define COAX_NORETURN __attribute__((noreturn))
+#else
+#define COAX_NORETURN
+#endif
 
-static void coax_trap(const char *what, int32_t line) {
+COAX_NORETURN static void coax_trap(const char *what, int32_t line) {
   fflush(stdout);
   fprintf(stderr, "%s:%d: %s\n", coax_source_path, line, what);
   abort();
@@ -119,30 +130,30 @@ static void coax_trap(const char *what, int32_t line) {
    overflow builtins so no C undefined behavior remains). Division by zero,
    bad shifts, bounds and casts trap in every build. */
 #define COAX_INT_OPS(T, N, SIGNED, MIN)                                                                  \
-  static T coax_add_##N(T a, T b, int32_t l) { T r; if (__builtin_add_overflow(a, b, &r)) coax_trap("integer overflow in '+'", l); return r; } \
-  static T coax_sub_##N(T a, T b, int32_t l) { T r; if (__builtin_sub_overflow(a, b, &r)) coax_trap("integer overflow in '-'", l); return r; } \
-  static T coax_mul_##N(T a, T b, int32_t l) { T r; if (__builtin_mul_overflow(a, b, &r)) coax_trap("integer overflow in '*'", l); return r; } \
-  static T coax_neg_##N(T a, int32_t l) { T r; if (__builtin_sub_overflow((T)0, a, &r)) coax_trap("integer overflow in unary '-'", l); return r; } \
-  static T coax_wadd_##N(T a, T b) { T r; __builtin_add_overflow(a, b, &r); return r; }                \
-  static T coax_wsub_##N(T a, T b) { T r; __builtin_sub_overflow(a, b, &r); return r; }                \
-  static T coax_wmul_##N(T a, T b) { T r; __builtin_mul_overflow(a, b, &r); return r; }                \
-  static T coax_wneg_##N(T a) { T r; __builtin_sub_overflow((T)0, a, &r); return r; }                  \
-  static T coax_div_##N(T a, T b, int32_t l) {                                                          \
+  static inline T coax_add_##N(T a, T b, int32_t l) { T r; if (__builtin_add_overflow(a, b, &r)) coax_trap("integer overflow in '+'", l); return r; } \
+  static inline T coax_sub_##N(T a, T b, int32_t l) { T r; if (__builtin_sub_overflow(a, b, &r)) coax_trap("integer overflow in '-'", l); return r; } \
+  static inline T coax_mul_##N(T a, T b, int32_t l) { T r; if (__builtin_mul_overflow(a, b, &r)) coax_trap("integer overflow in '*'", l); return r; } \
+  static inline T coax_neg_##N(T a, int32_t l) { T r; if (__builtin_sub_overflow((T)0, a, &r)) coax_trap("integer overflow in unary '-'", l); return r; } \
+  static inline T coax_wadd_##N(T a, T b) { T r; __builtin_add_overflow(a, b, &r); return r; }         \
+  static inline T coax_wsub_##N(T a, T b) { T r; __builtin_sub_overflow(a, b, &r); return r; }         \
+  static inline T coax_wmul_##N(T a, T b) { T r; __builtin_mul_overflow(a, b, &r); return r; }         \
+  static inline T coax_wneg_##N(T a) { T r; __builtin_sub_overflow((T)0, a, &r); return r; }           \
+  static inline T coax_div_##N(T a, T b, int32_t l) {                                                   \
     if (b == 0) coax_trap("division by zero", l);                                                       \
     if (SIGNED && a == MIN && b == (T)-1) coax_trap("integer overflow in '/'", l);                      \
     return (T)(a / b);                                                                                  \
   }                                                                                                     \
-  static T coax_mod_##N(T a, T b, int32_t l) {                                                          \
+  static inline T coax_mod_##N(T a, T b, int32_t l) {                                                   \
     if (b == 0) coax_trap("division by zero in '%'", l);                                                \
     if (SIGNED && b == (T)-1) return 0;                                                                 \
     return (T)(a % b);                                                                                  \
   }                                                                                                     \
-  static T coax_shl_##N(T a, int64_t b, int32_t l) {                                                    \
-    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+  static inline T coax_shl_##N(T a, int64_t b, int32_t l) {                                             \
+    if ((uint64_t)b >= (uint64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);            \
     return (T)((uint64_t)a << b);                                                                       \
   }                                                                                                     \
-  static T coax_shr_##N(T a, int64_t b, int32_t l) {                                                    \
-    if (b < 0 || b >= (int64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);              \
+  static inline T coax_shr_##N(T a, int64_t b, int32_t l) {                                             \
+    if ((uint64_t)b >= (uint64_t)(8 * sizeof(T))) coax_trap("shift amount out of range", l);            \
     return (T)(a >> b);                                                                                 \
   }
 COAX_INT_OPS(int8_t, s8, 1, INT8_MIN)
@@ -154,61 +165,61 @@ COAX_INT_OPS(uint16_t, u16, 0, 0)
 COAX_INT_OPS(uint32_t, u32, 0, 0)
 COAX_INT_OPS(uint64_t, u64, 0, 0)
 
-static int64_t coax_index(int64_t i, int64_t n, int32_t l) {
+static inline int64_t coax_index(int64_t i, int64_t n, int32_t l) {
   if (i < 0 || i >= n) coax_trap("index out of bounds", l);
   return i;
 }
-static void coax_slice_check(int64_t lo, int64_t hi, int64_t n, int32_t l) {
+static inline void coax_slice_check(int64_t lo, int64_t hi, int64_t n, int32_t l) {
   if (lo < 0 || hi < lo || hi > n) coax_trap("slice out of bounds", l);
 }
-static uint8_t coax_byte(coax_string s, int64_t i, int32_t l) { return (uint8_t)s.data[coax_index(i, s.count, l)]; }
-static coax_string coax_substr(coax_string s, int64_t lo, int64_t hi, int32_t l) {
+static inline uint8_t coax_byte(coax_string s, int64_t i, int32_t l) { return (uint8_t)s.data[coax_index(i, s.count, l)]; }
+static inline coax_string coax_substr(coax_string s, int64_t lo, int64_t hi, int32_t l) {
   coax_slice_check(lo, hi, s.count, l);
   coax_string r = {s.data + lo, hi - lo};
   return r;
 }
-static _Bool coax_string_eq(coax_string a, coax_string b) {
+static inline _Bool coax_string_eq(coax_string a, coax_string b) {
   return a.count == b.count && (a.count == 0 || memcmp(a.data, b.data, (size_t)a.count) == 0);
 }
 
 /* Checked casts: the value must fit the target, in every build. */
-static int64_t coax_cast_ss(int64_t v, int64_t lo, int64_t hi, int32_t l) {
+static inline int64_t coax_cast_ss(int64_t v, int64_t lo, int64_t hi, int32_t l) {
   if (v < lo || v > hi) coax_trap("cast out of range", l);
   return v;
 }
-static uint64_t coax_cast_su(int64_t v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_cast_su(int64_t v, uint64_t hi, int32_t l) {
   if (v < 0 || (uint64_t)v > hi) coax_trap("cast out of range", l);
   return (uint64_t)v;
 }
-static int64_t coax_cast_us(uint64_t v, int64_t hi, int32_t l) {
+static inline int64_t coax_cast_us(uint64_t v, int64_t hi, int32_t l) {
   if (v > (uint64_t)hi) coax_trap("cast out of range", l);
   return (int64_t)v;
 }
-static uint64_t coax_cast_uu(uint64_t v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_cast_uu(uint64_t v, uint64_t hi, int32_t l) {
   if (v > hi) coax_trap("cast out of range", l);
   return v;
 }
-static int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
+static inline int64_t coax_ftoi_s(double v, int64_t lo, int64_t hi, int32_t l) {
   if (!(v >= -9223372036854775808.0 && v < 9223372036854775808.0)) coax_trap("cast out of range", l);
   int64_t i = (int64_t)v;
   if (i < lo || i > hi) coax_trap("cast out of range", l);
   return i;
 }
-static _Bool coax_bytes_overlap(const void *a, int64_t n, const void *b, int64_t m) {
+static inline _Bool coax_bytes_overlap(const void *a, int64_t n, const void *b, int64_t m) {
   if(n<=0 || m<=0) return 0;
   uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;
   return x<=y ? y-x<(uint64_t)n : x-y<(uint64_t)m;
 }
-static float coax_f32_from_bits(uint32_t x){float f;memcpy(&f,&x,4);return f;}
-static double coax_f64_from_bits(uint64_t x){double f;memcpy(&f,&x,8);return f;}
-static uint32_t coax_f32_bits(float f){uint32_t x;memcpy(&x,&f,4);return x;}
-static uint64_t coax_f64_bits(double f){uint64_t x;memcpy(&x,&f,8);return x;}
-static float coax_to_f32(double v, int32_t l) {
+static inline float coax_f32_from_bits(uint32_t x){float f;memcpy(&f,&x,4);return f;}
+static inline double coax_f64_from_bits(uint64_t x){double f;memcpy(&f,&x,8);return f;}
+static inline uint32_t coax_f32_bits(float f){uint32_t x;memcpy(&x,&f,4);return x;}
+static inline uint64_t coax_f64_bits(double f){uint64_t x;memcpy(&x,&f,8);return x;}
+static inline float coax_to_f32(double v, int32_t l) {
   /* Finite values that would round to infinity do not fit; inf and nan stay. */
   if (isfinite(v) && fabs(v) >= 3.4028235677973366e38) coax_trap("cast out of range", l);
   return (float)v;
 }
-static uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
+static inline uint64_t coax_ftoi_u(double v, uint64_t hi, int32_t l) {
   if (!(v > -1.0 && v < 18446744073709551616.0)) coax_trap("cast out of range", l);
   uint64_t u = (uint64_t)v;
   if (u > hi) coax_trap("cast out of range", l);
@@ -352,16 +363,16 @@ COAX_INTOPS_UNSIGNED(uint64_t, u64, UINT64_MAX)
 )COAXRT";
 
 static const char *WRAP_RUNTIME = R"COAXRT(
-static uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
-static uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
-static uint32_t coax_mul_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a*b);}
-static uint32_t coax_rotl_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a<<k)|(a>>((32u-k)&31u)));}
-static uint32_t coax_rotr_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a>>k)|(a<<((32u-k)&31u)));}
-static uint64_t coax_add_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a+b);}
-static uint64_t coax_sub_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a-b);}
-static uint64_t coax_mul_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a*b);}
-static uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a<<k)|(a>>((64u-k)&63u)));}
-static uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
+static inline uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
+static inline uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
+static inline uint32_t coax_mul_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a*b);}
+static inline uint32_t coax_rotl_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a<<k)|(a>>((32u-k)&31u)));}
+static inline uint32_t coax_rotr_u32(uint32_t a,uint32_t b){unsigned k=(unsigned)(b&31u);return (uint32_t)((a>>k)|(a<<((32u-k)&31u)));}
+static inline uint64_t coax_add_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a+b);}
+static inline uint64_t coax_sub_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a-b);}
+static inline uint64_t coax_mul_wrap_u64(uint64_t a,uint64_t b){return (uint64_t)(a*b);}
+static inline uint64_t coax_rotl_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a<<k)|(a>>((64u-k)&63u)));}
+static inline uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&63u);return (uint64_t)((a>>k)|(a<<((64u-k)&63u)));}
 )COAXRT";
 
 // The device runtime of `coax cuda`: the same checks as RUNTIME, spelled for
@@ -480,7 +491,7 @@ COAX_DEV uint64_t coax_rotr_u64(uint64_t a,uint64_t b){unsigned k=(unsigned)(b&6
 
 // Uses the named Coax record declared in Types; inserted only when used.
 static const char *WIDE_RUNTIME = R"COAXRT(
-static coax_t_CoaxU64Product coax_mul_wide(uint64_t a,uint64_t b) {
+static inline coax_t_CoaxU64Product coax_mul_wide(uint64_t a,uint64_t b) {
 #if defined(__SIZEOF_INT128__) && !defined(__wasm__)
   unsigned __int128 p=(unsigned __int128)a*b;
   return (coax_t_CoaxU64Product){(uint64_t)(p>>64),(uint64_t)p};
@@ -1297,6 +1308,143 @@ struct Emitter {
 
   std::string local_name(Str s) { return "l_" + to_std(s); }
 
+  // Pass-by-const-pointer for internal procedures' immutable large aggregate
+  // parameters (> 16 B) that cannot be aliased by any view reachable from the
+  // procedure's parameters, have no local shadowing, and are not sliced.
+  std::unordered_map<const ProcDecl *, uint64_t> ref_param_masks;
+  uint64_t current_ref_mask = 0;
+
+  static bool type_contains_value(Type hay, Type needle, std::unordered_set<Type> &seen) {
+    if (!hay || !needle) return false;
+    if (hay == needle) return true;
+    if (!seen.insert(hay).second) return false;
+    switch (hay->kind) {
+      case TypeKind::array:
+        return type_contains_value(hay->elem, needle, seen);
+      case TypeKind::struct_:
+        if (hay->struct_decl)
+          for (const Field &f : hay->struct_decl->fields)
+            if (type_contains_value(f.type, needle, seen)) return true;
+        return false;
+      case TypeKind::union_:
+        if (hay->union_decl)
+          for (const UnionVariant &v : hay->union_decl->variants)
+            if (type_contains_value(v.type, needle, seen)) return true;
+        return false;
+      case TypeKind::optional:
+        return type_contains_value(hay->elem, needle, seen);
+      case TypeKind::result:
+        return type_contains_value(hay->elem, needle, seen) || type_contains_value(hay->sum_error, needle, seen);
+      default:
+        return false;
+    }
+  }
+
+  static void collect_view_elems(Type t, std::vector<Type> &out, std::unordered_set<Type> &seen) {
+    if (!t || !seen.insert(t).second) return;
+    switch (t->kind) {
+      case TypeKind::view:
+        if (t->elem) { out.push_back(t->elem); collect_view_elems(t->elem, out, seen); }
+        break;
+      case TypeKind::array:
+      case TypeKind::optional:
+        collect_view_elems(t->elem, out, seen);
+        break;
+      case TypeKind::result:
+        collect_view_elems(t->elem, out, seen);
+        collect_view_elems(t->sum_error, out, seen);
+        break;
+      case TypeKind::struct_:
+        if (t->struct_decl)
+          for (const Field &f : t->struct_decl->fields) collect_view_elems(f.type, out, seen);
+        break;
+      case TypeKind::union_:
+        if (t->union_decl)
+          for (const UnionVariant &v : t->union_decl->variants) collect_view_elems(v.type, out, seen);
+        break;
+      default:
+        break;
+    }
+  }
+
+  uint64_t by_ref_mask(const ProcDecl *p) {
+    if (!p || opts.cuda || opts.metal || opts.metal_compute || opts.debug_info) return 0;
+    if (!p->body || p->export_c || p->foreign || p->inline_c || p->params.count == 0 || str_eq(p->name, "main")) return 0;
+    auto it = ref_param_masks.find(p);
+    if (it != ref_param_masks.end()) return it->second;
+    bool any_large = false;
+    for (int32_t i = 0; i < p->params.count && i < 64; i++) {
+      Type t = p->params[i].type;
+      if (t && (t->kind == TypeKind::struct_ || t->kind == TypeKind::array) && t->size > 16) { any_large = true; break; }
+    }
+    if (!any_large) { ref_param_masks.emplace(p, 0); return 0; }
+    std::vector<Type> view_elems;
+    std::unordered_set<Type> seen_t;
+    for (int32_t i = 0; i < p->params.count; i++) collect_view_elems(p->params[i].type, view_elems, seen_t);
+    bool has_tx = false;
+    std::unordered_set<std::string> shadowed, sliced;
+    std::function<void(const Expr *)> walk_e;
+    std::function<void(const Stmt *)> walk_s;
+    walk_e = [&](const Expr *e) {
+      if (!e || has_tx) return;
+      if (e->kind == ExprKind::slice) {
+        const Expr *r = e->lhs;
+        while (r && (r->kind == ExprKind::field || r->kind == ExprKind::index)) r = r->lhs;
+        if (r && r->kind == ExprKind::ident && !r->constant) sliced.insert(to_std(r->text));
+      }
+      walk_e(e->lhs); walk_e(e->rhs); walk_e(e->third);
+      for (const Expr *a : e->args) walk_e(a);
+      for (const FieldInit &f : e->fields) walk_e(f.value);
+    };
+    walk_s = [&](const Stmt *s) {
+      if (!s || has_tx) return;
+      if (s->kind == StmtKind::transaction_) { has_tx = true; return; }
+      if (s->kind == StmtKind::var || s->kind == StmtKind::for_range || s->kind == StmtKind::for_each) {
+        if (s->name.count) shadowed.insert(to_std(s->name));
+        if (s->name2.count) shadowed.insert(to_std(s->name2));
+      }
+      walk_e(s->expr); walk_e(s->expr2); walk_e(s->target);
+      for (const Stmt *ch : s->body) walk_s(ch);
+      walk_s(s->then_); walk_s(s->else_);
+      for (const SwitchCase *arm : s->cases) {
+        if (arm->binding && arm->binding->name.count) shadowed.insert(to_std(arm->binding->name));
+        walk_e(arm->enum_pattern);
+        walk_s(arm->body);
+      }
+    };
+    walk_s(p->body);
+    uint64_t mask = 0;
+    if (!has_tx) {
+      for (int32_t i = 0; i < p->params.count && i < 64; i++) {
+        Type t = p->params[i].type;
+        if (!t || (t->kind != TypeKind::struct_ && t->kind != TypeKind::array) || t->size <= 16) continue;
+        const std::string nm = to_std(p->params[i].name);
+        if (shadowed.count(nm) || sliced.count(nm)) continue;
+        bool aliased = false;
+        for (Type ve : view_elems) {
+          std::unordered_set<Type> vs;
+          if (type_contains_value(ve, t, vs)) { aliased = true; break; }
+        }
+        if (!aliased) mask |= (uint64_t)1 << i;
+      }
+    }
+    ref_param_masks.emplace(p, mask);
+    return mask;
+  }
+
+  bool is_current_ref_param(Str name) const {
+    if (!current_ref_mask || !current) return false;
+    for (int32_t i = 0; i < current->params.count && i < 64; i++)
+      if (((current_ref_mask >> i) & 1u) && str_eq(current->params[i].name, name)) return true;
+    return false;
+  }
+  bool is_current_param(Str name) const {
+    if (!current) return false;
+    for (int32_t i = 0; i < current->params.count; i++)
+      if (str_eq(current->params[i].name, name)) return true;
+    return false;
+  }
+
   // "(x == y)" rather than "((x == y))", which compilers warn about.
   std::string condition(const Expr *e) {
     std::string c = ex(e);
@@ -1324,10 +1472,15 @@ struct Emitter {
   std::string pointer_type(const Expr *place, bool read = false) {
     if (!opts.metal_compute) {
       const Expr *root=place;
+      bool crossed_view=false;
       while(root && (root->kind==ExprKind::index || root->kind==ExprKind::field)) {
-        if(root->lhs->type->kind==TypeKind::view && root->lhs->type->length==1) read=true;
+        if(root->kind==ExprKind::index && root->lhs->type->kind==TypeKind::view) {
+          crossed_view=true;
+          if(root->lhs->type->length==1) read=true;
+        }
         root=root->lhs;
       }
+      if(!crossed_view && root && root->kind==ExprKind::ident && !root->constant && is_current_ref_param(root->text)) read=true;
       return std::string(read ? "const " : "") + c_type(place->type) + " *";
     }
     const Expr *e = place;
@@ -1366,6 +1519,14 @@ struct Emitter {
     if (device() && p->export_c) return "coax_k_" + to_std(p->name);  // the kernel wrapper keeps the name
     if (p->export_c || p->foreign) return to_std(p->name);
     std::string base = p->scope ? "coax_q" + std::to_string(p->scope) + "p_" + to_std(p->name) : "coax_p_" + to_std(p->name);
+    return p->origin ? base + "__" + to_std(p->key) : base;
+  }
+  std::string ref_proc_name(const ProcDecl *p) {
+    if (verification) {
+      auto found = verification_names.find(p);
+      if (found != verification_names.end()) return found->second + "_r";
+    }
+    std::string base = p->scope ? "coax_q" + std::to_string(p->scope) + "pr_" + to_std(p->name) : "coax_pr_" + to_std(p->name);
     return p->origin ? base + "__" + to_std(p->key) : base;
   }
 
@@ -1537,6 +1698,9 @@ struct Emitter {
     }
     if (e->trunc) return "((" + ct + ")(" + x + "))";
     Type fb = from->kind == TypeKind::enum_ ? from->elem : from;
+    if ((fb->is_signed == tb->is_signed && fb->bits <= tb->bits) ||
+        (!fb->is_signed && tb->is_signed && fb->bits < tb->bits))
+      return "((" + ct + ")(" + x + "))";
     std::string fn;
     if (fb->is_signed) fn = tb->is_signed ? "coax_cast_ss((int64_t)(" + x + "), " + lo + ", " + hi_s
                                           : "coax_cast_su((int64_t)(" + x + "), " + hi_u;
@@ -1735,7 +1899,9 @@ struct Emitter {
       case ExprKind::bool_lit: return e->int_value ? "1" : "0";
       case ExprKind::string_lit: return "COAX_STR(" + c_string_text(e->text) + ", " + std::to_string(e->text.count) + ")";
       case ExprKind::ct_value: return ct_name(e);
-      case ExprKind::ident: return e->constant ? ex(e->constant->expr) : local_name(e->text);
+      case ExprKind::ident:
+        if (e->constant) return ex(e->constant->expr);
+        return is_current_ref_param(e->text) ? "(*" + local_name(e->text) + ")" : local_name(e->text);
       case ExprKind::run:
         // Evaluation must replace every #run with a target-independent literal.
         fputs("coax: internal error: unevaluated #run reached the C emitter\n", stderr);
@@ -2183,14 +2349,52 @@ struct Emitter {
           }
           if (str_eq(e->proc->name, "am_f16")) return "((float)as_type<half>((ushort)(" + ex(e->args[0]) + ")))";
         }
+        const uint64_t rmask = e->intrinsic == Intrinsic::none ? by_ref_mask(e->proc) : 0;
         std::vector<Operand> ops;
-        for (const Expr *a : e->args) ops.push_back({a, false});
-        std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
+        std::vector<std::string> direct_ptr((size_t)e->args.count);
+        std::vector<int> op_slot((size_t)e->args.count, -1);
+        for (int32_t i = 0; i < e->args.count; i++) {
+          const Expr *a = e->args[i];
+          if (i < 64 && ((rmask >> i) & 1u) && a->kind == ExprKind::ident && !a->constant && !lowered.count(a) && !mutant_exprs.count(a)) {
+            if (is_current_ref_param(a->text)) {
+              direct_ptr[(size_t)i] = local_name(a->text);
+              continue;
+            }
+            bool safe_local = is_current_param(a->text);
+            if (!safe_local) {
+              safe_local = true;
+              for (int32_t j = i + 1; j < e->args.count; j++)
+                if (e->args[j]->effects & 1) { safe_local = false; break; }
+            }
+            if (safe_local) {
+              direct_ptr[(size_t)i] = "(&" + local_name(a->text) + ")";
+              continue;
+            }
+          }
+          op_slot[(size_t)i] = (int)ops.size();
+          ops.push_back({a, false});
+        }
+        std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : (rmask ? ref_proc_name(e->proc) : proc_name(e->proc));
         bool hidden = opts.metal_compute && e->intrinsic == Intrinsic::none;  // the lane and the error word
         return ordered(ops, [&](const std::vector<std::string> &t) {
           std::string s = name + "(";
-          for (size_t i = 0; i < t.size(); i++) s += (i ? ", " : "") + t[i];
-          if (hidden) s += std::string(t.empty() ? "" : ", ") + "coax_lane, coax_err";
+          for (int32_t i = 0; i < e->args.count; i++) {
+            if (i) s += ", ";
+            if (!direct_ptr[(size_t)i].empty()) {
+              s += direct_ptr[(size_t)i];
+            } else {
+              const std::string &v = t[(size_t)op_slot[(size_t)i]];
+              if (i < 64 && ((rmask >> i) & 1u)) {
+                const bool is_temp = v.size() > 6 && v.compare(0, 6, "coax_t") == 0 &&
+                                     v.find_first_not_of("0123456789", 6) == std::string::npos;
+                if (is_temp) s += "(&" + v + ")";
+                else s += "((const " + c_type(e->args[i]->type) + "[1]){" + v + "})";
+              } else {
+                s += v;
+              }
+            }
+          }
+          if (hidden) s += std::string(e->args.count ? ", " : "") + "coax_lane, coax_err";
           return s + ")";
         });
       }
@@ -2219,6 +2423,8 @@ struct Emitter {
           }
           return "(" + ex(e->lhs) + ").count";
         }
+        if (e->lhs->kind == ExprKind::ident && !e->lhs->constant && is_current_ref_param(e->lhs->text) && !lowered.count(e->lhs) && !mutant_exprs.count(e->lhs))
+          return local_name(e->lhs->text) + "->" + to_std(e->text);
         return "(" + ex(e->lhs) + ")." + to_std(e->text);
       case ExprKind::index: {
         if (device()) {
@@ -2797,7 +3003,7 @@ struct Emitter {
         indent++;
         if (ct->kind == TypeKind::array) {
           // Iterate in place: writes by the body are seen by later iterations.
-          if (is_place(s->expr)) line(c_type(ct) + " *" + c + " = &(" + ex(s->expr) + ");");
+          if (is_place(s->expr)) line("const " + c_type(ct) + " *" + c + " = &(" + ex(s->expr) + ");");
           else {
             line(c_type(ct) + " " + c + "_value = " + ex(s->expr) + ";");
             line(c_type(ct) + " *" + c + " = &" + c + "_value;");
@@ -2993,6 +3199,37 @@ struct Emitter {
       picked.push_back(x);
     }
     if (picked.empty()) return false;
+    // If the loop bounds are constant non-negative literals and every picked
+    // index is a fixed array indexed directly by this loop's counter within
+    // the array's length, bounds hold statically: emit the single unchecked
+    // loop directly without duplicating the body or emitting coax_iv guards.
+    auto const_lit = [](const Expr *x) -> const Expr * {
+      if (x && x->kind == ExprKind::ident && x->constant && x->constant->expr) x = x->constant->expr;
+      return x && x->kind == ExprKind::int_lit ? x : nullptr;
+    };
+    const Expr *lo_lit = const_lit(s->expr), *hi_lit = const_lit(s->expr2);
+    if (lo_lit && hi_lit && (int64_t)lo_lit->int_value >= 0) {
+      const int64_t hi_v = (int64_t)hi_lit->int_value;
+      const std::string cname = name_of(s->name);
+      bool all_static = true;
+      for (auto &x : picked) {
+        const Expr *e = x.first;
+        if (e->lhs->type->kind != TypeKind::array || hi_v > e->lhs->type->length ||
+            e->rhs->kind != ExprKind::ident || e->rhs->constant || name_of(e->rhs->text) != cname) {
+          all_static = false;
+          break;
+        }
+      }
+      if (all_static) {
+        version_depth++;
+        for (auto &x : picked) unchecked.insert(x.first);
+        line(head);
+        loop(s->then_);
+        unchecked.clear();
+        version_depth--;
+        return true;
+      }
+    }
     std::string ok = "coax_ok" + n, lo = "coax_lo" + n, hi = "coax_hi" + n;
     line("int " + ok + " = 1;");
     std::map<const Stmt *, std::string> done;
@@ -3037,19 +3274,24 @@ struct Emitter {
 
   // ---- declarations ----
 
-  std::string prototype(const ProcDecl *p, bool header = false) {
+  std::string prototype(const ProcDecl *p, bool header = false, bool allow_ref = true) {
     // #inline, where this unit holds the one definition: not a device kernel's helper, a header or a --split unit.
     const bool inline_here = p->inline_c && !header && !split && !opts.cuda && !opts.metal_compute;
     inlined = inlined || inline_here;
+    const uint64_t rmask = (!header && allow_ref) ? by_ref_mask(p) : 0;
     const bool metal_cold_fallback = opts.metal_compute && g_narrow.count(p) && !(n32 && n32->proc == p);
     std::string s = (opts.cuda ? "static __device__ " : metal_cold_fallback ? "static __attribute__((noinline)) " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign && !check_binary ? "extern " : split ? "" : inline_here ? "COAX_INLINE " : "static ") + c_type(p->ret) + " " +
-                    proc_name(p) + (n32 && n32->proc == p ? "_n32" : "") + "(";
+                    (rmask ? ref_proc_name(p) : proc_name(p)) + (n32 && n32->proc == p ? "_n32" : "") + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
       if (i) s += ", ";
-      s += c_type(p->params[i].type);
-      if (!header) s += " " + local_name(p->params[i].name);
-      else if (!is_c_keyword(p->params[i].name)) s += " " + to_std(p->params[i].name);
+      if (i < 64 && ((rmask >> i) & 1u)) {
+        s += "const " + c_type(p->params[i].type) + " * const " + local_name(p->params[i].name);
+      } else {
+        s += c_type(p->params[i].type);
+        if (!header) s += " " + local_name(p->params[i].name);
+        else if (!is_c_keyword(p->params[i].name)) s += " " + to_std(p->params[i].name);
+      }
     }
     // Metal: every procedure carries the simdgroup lane and the launch's error words.
     if (opts.metal_compute) s += std::string(p->params.count ? ", " : "") + "uint coax_lane, thread uint *coax_err";
@@ -3064,6 +3306,7 @@ struct Emitter {
     if (p->foreign && check_binary) return "\n" + prototype(p) + " {\n  coax_nc_refuse(\"a host procedure\");\n}\n";
     if (p->foreign) return "";
     current = p;
+    current_ref_mask = by_ref_mask(p);
     transaction_locals.clear();
     for(const auto &param:p->params)transaction_locals.push_back({param.name,param.type,true,true});
     mapping_active=true;debug_location=p->loc;
@@ -3092,6 +3335,17 @@ struct Emitter {
     if (ret_temp) s += "  " + c_type(p->ret) + " coax_ret;\n";
     for (const std::string &t : temps) s += "  " + t + "\n";
     s += body + "}\n";
+    if (current_ref_mask && !split && !check_binary) {
+      s += prototype(p, false, false) + " { ";
+      if (p->ret && p->ret != &T_VOID) s += "return ";
+      s += ref_proc_name(p) + "(";
+      for (int32_t i = 0; i < p->params.count; i++) {
+        if (i) s += ", ";
+        if (i < 64 && ((current_ref_mask >> i) & 1u)) s += "&" + local_name(p->params[i].name);
+        else s += local_name(p->params[i].name);
+      }
+      s += "); }\n";
+    }
     if (opts.debug_info) s+="#line 1 \"<coax-generated>\"\n";
     return s;
   }
@@ -3168,19 +3422,36 @@ static std::string header_type_definition(Type t, const std::string &definition)
 struct TypeWriter {
   std::string out;
   std::vector<Type> done;
+  std::unordered_set<const TypeInfo *> done_ptrs;
+  std::unordered_set<std::string> done_tags;
   bool header = false;
 
+  static std::string dedup_key(Type t) {
+    std::string k;
+    k.reserve(32);
+    k.push_back((char)t->kind);
+    k += tag(t);
+    return k;
+  }
   bool seen(Type t) {
-    for (Type d : done) if (d == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view || is_sum(t)) && d->kind==t->kind && tag(d)==tag(t))) return true;
+    if (done_ptrs.count(t)) return true;
+    if (t->kind == TypeKind::array || t->kind == TypeKind::view || is_sum(t))
+      return done_tags.count(dedup_key(t)) != 0;
     return false;
+  }
+  void mark_done(Type t) {
+    done.push_back(t);
+    done_ptrs.insert(t);
+    if (t->kind == TypeKind::array || t->kind == TypeKind::view || is_sum(t))
+      done_tags.insert(dedup_key(t));
   }
 
   void need(Type t) {
     if (seen(t)) return;
-    if(t->physical) { done.push_back(t); need(t->physical); return; }
+    if(t->physical) { mark_done(t); need(t->physical); return; }
     switch (t->kind) {
       case TypeKind::struct_: {
-        done.push_back(t);
+        mark_done(t);
         const StructDecl *d = t->struct_decl;
         for (const Field &f : d->fields) if (f.type->kind != TypeKind::view) need(f.type);
         for (const Field &f : d->fields) if (f.type->kind == TypeKind::view) need(f.type);
@@ -3192,7 +3463,7 @@ struct TypeWriter {
         break;
       }
       case TypeKind::union_: case TypeKind::result: case TypeKind::optional: {
-        done.push_back(t);
+        mark_done(t);
         bool payload=false;
         for(int32_t i=0;i<sum_count(t);i++)if(sum_payload(t,i)!=&T_VOID){need(sum_payload(t,i));payload=true;}
         std::string definition="struct "+c_type(t)+" { uint32_t tag;";
@@ -3208,13 +3479,13 @@ struct TypeWriter {
       }
       case TypeKind::array: {
         need(t->elem);
-        done.push_back(t);
+        mark_done(t);
         std::string definition = "typedef struct { " + c_type(t->elem) + " e[" + std::to_string(t->length) + "]; } " + c_type(t) + ";\n";
         out += header ? header_type_definition(t, definition) : definition;
         break;
       }
       case TypeKind::view:
-        done.push_back(t);
+        mark_done(t);
         if(is_sum(t->elem)){
           // The sum has a forward alias. Publish its pointer descriptor before
           // walking a recursive union's payloads, which may use this view.
@@ -3240,7 +3511,7 @@ struct TypeWriter {
         }
         break;
       case TypeKind::enum_: {
-        done.push_back(t);
+        mark_done(t);
         std::string definition = "typedef " + c_type(t->elem) + " " + c_type(t) + ";\n";
         for (const EnumMember &m : t->enum_decl->members)
           definition += "#define COAX_" + (t->scope ? "q" + std::to_string(t->scope) + "_" : std::string()) + to_std(t->enum_decl->name) + "_" + to_std(m.name) + " " + int_text(t, m.bits) + "\n";
@@ -3311,14 +3582,19 @@ static std::string transaction_captures(const std::vector<Type> &types) {
 }
 
 void collect_types(const File *file, std::vector<Type> *types) {
+  std::unordered_set<const TypeInfo *> seen_ptr;
+  std::unordered_set<std::string> seen_arr, seen_view;
+  seen_ptr.reserve((size_t)file->structs.count + (size_t)file->enums.count + (size_t)file->unions.count + all_composite_types().size() + 16);
   auto add = [&](Type t) {
-    if(t->physical) return;
-    for (Type x : *types) if (x == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view) && x->kind==t->kind && tag(x)==tag(t))) return;
+    if (t->physical) return;
+    if (!seen_ptr.insert(t).second) return;
+    if (t->kind == TypeKind::array) { if (!seen_arr.insert(tag(t)).second) return; }
+    else if (t->kind == TypeKind::view) { if (!seen_view.insert(tag(t)).second) return; }
     types->push_back(t);
   };
   for (const StructDecl *d : file->structs) add(d->type);
   for (const EnumDecl *d : file->enums) add(d->type);
-  for(const UnionDecl *d:file->unions)add(d->type);
+  for (const UnionDecl *d : file->unions) add(d->type);
   for (Type t : all_composite_types()) add(t);
 }
 
@@ -3326,9 +3602,10 @@ void collect_types(const File *file, std::vector<Type> *types) {
 // calls them), only the helpers that C reaches are kept, through the helpers
 // they call in turn: a type that is never printed or converted to gets none
 // (ax-library-check-cache).
-std::string show_functions(const File *file, Emitter &em, const std::string *uses = nullptr, std::string *protos_out = nullptr) {
-  std::vector<Type> types;
-  collect_types(file, &types);
+std::string show_functions(const File *file, Emitter &em, const std::string *uses = nullptr, std::string *protos_out = nullptr, const std::vector<Type> *cached = nullptr) {
+  std::vector<Type> owned;
+  if (!cached) { collect_types(file, &owned); cached = &owned; }
+  const std::vector<Type> &types = *cached;
   struct Item { std::string protos, bodies; std::vector<std::string> names; };
   std::vector<Item> items;
   // --split: defined once, in the shared unit, for every unit (#12938).
@@ -3402,12 +3679,13 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
     // that starts where no identifier character precedes it and is followed
     // by '(' is a call; a helper is kept when one of its names is called.
     auto ident = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
-    std::unordered_map<std::string, std::vector<size_t>> named;
+    std::unordered_map<std::string_view, std::vector<size_t>> named;
+    named.reserve(items.size() * 2 + 16);
     bool plain = true;
     for (size_t i = 0; i < items.size(); i++)
       for (const std::string &name : items[i].names) {
         plain = plain && !name.empty() && std::all_of(name.begin(), name.end(), ident);
-        named[name].push_back(i);
+        named[std::string_view(name)].push_back(i);
       }
     std::vector<const std::string *> pending{uses};
     while (!pending.empty()) {
@@ -3422,12 +3700,14 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
         continue;
       }
       const std::string &t = *text;
-      for (size_t at = 0; at < t.size();) {
-        if (!ident(t[at]) || (at > 0 && ident(t[at - 1]))) { at++; continue; }
-        size_t end = at;
-        while (end < t.size() && ident(t[end])) end++;
-        if (end < t.size() && t[end] == '(') {
-          auto found = named.find(t.substr(at, end - at));
+      const char *data = t.data();
+      const size_t sz = t.size();
+      for (size_t at = 0; at < sz;) {
+        if (!ident(data[at]) || (at > 0 && ident(data[at - 1]))) { at++; continue; }
+        size_t end = at + 1;
+        while (end < sz && ident(data[end])) end++;
+        if (end < sz && data[end] == '(' && end - at > 8 && data[at] == 'c' && memcmp(data + at, "coax_", 5) == 0) {
+          auto found = named.find(std::string_view(data + at, end - at));
           if (found != named.end())
             for (size_t i : found->second)
               if (!kept[i]) { kept[i] = true; pending.push_back(&items[i].bodies); }
@@ -3442,48 +3722,142 @@ std::string show_functions(const File *file, Emitter &em, const std::string *use
   return protos + bodies;
 }
 
-std::string view_helpers() {
+template <typename F>
+static void scan_coax_calls(const std::string &text, F &&on_call) {
+  auto ident = [](char c) { return isalnum((unsigned char)c) || c == '_'; };
+  const char *data = text.data();
+  const size_t sz = text.size();
+  for (size_t at = 0; at < sz;) {
+    if (!ident(data[at]) || (at > 0 && ident(data[at - 1]))) { at++; continue; }
+    size_t end = at + 1;
+    while (end < sz && ident(data[end])) end++;
+    if (end < sz && data[end] == '(' && end - at > 8 && data[at] == 'c' && memcmp(data + at, "coax_", 5) == 0)
+      on_call(std::string_view(data + at, end - at));
+    at = end;
+  }
+}
+
+std::string view_helpers(const std::string *uses = nullptr) {
+  std::unordered_set<std::string_view> called;
+  if (uses) {
+    called.reserve(512);
+    scan_coax_calls(*uses, [&](std::string_view sv) { called.insert(sv); });
+  }
+  auto want = [&](const std::string &name) { return !uses || called.count(std::string_view(name)) != 0; };
   std::string s;
-  std::set<std::string> emitted;
+  std::unordered_set<std::string> emitted;
   for (Type t : all_composite_types()) {
-    if (t->kind != TypeKind::view || !emitted.insert(tag(t)).second) continue;
-    std::string c = c_type(t), e = (t->length==1 ? "const " : "") + c_type(t->elem), tg = tag(t);
-    if (t->elem == &T_U8)
-      s += "static coax_string coax_string_of_bytes" + std::string(t->length==1 ? "_readonly" : "") + "(" + c + " v) { coax_string s = {(const char *)v.data, v.count}; return s; }\n";
-    s += "static " + e + " *coax_elem_" + tg + "(" + c + " v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }\n";
-    s += "static " + c + " coax_mkview_" + tg + "(" + e + " *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {\n"
-         "  coax_slice_check(lo, hi, n, l);\n  " + c + " r = {data + lo, hi - lo};\n  return r;\n}\n";
-    s += "static " + c + " coax_reslice_" + tg + "(" + c + " v, int64_t lo, int64_t hi, int32_t l) {\n"
-         "  coax_slice_check(lo, hi, v.count, l);\n  " + c + " r = {v.data + lo, hi - lo};\n  return r;\n}\n";
+    if (t->kind != TypeKind::view) continue;
+    std::string tg = tag(t);
+    if (!emitted.insert(tg).second) continue;
+    std::string c = c_type(t), e = (t->length==1 ? "const " : "") + c_type(t->elem);
+    if (t->elem == &T_U8) {
+      std::string sb = "coax_string_of_bytes" + std::string(t->length==1 ? "_readonly" : "");
+      if (want(sb))
+        s += "static inline coax_string " + sb + "(" + c + " v) { coax_string s = {(const char *)v.data, v.count}; return s; }\n";
+    }
+    std::string fe = "coax_elem_" + tg;
+    if (want(fe))
+      s += "static inline " + e + " *" + fe + "(" + c + " v, int64_t i, int32_t l) { return &v.data[coax_index(i, v.count, l)]; }\n";
+    std::string fm = "coax_mkview_" + tg;
+    if (want(fm))
+      s += "static inline " + c + " " + fm + "(" + e + " *data, int64_t n, int64_t lo, int64_t hi, int32_t l) {\n"
+           "  coax_slice_check(lo, hi, n, l);\n  " + c + " r = {data + lo, hi - lo};\n  return r;\n}\n";
+    std::string fr = "coax_reslice_" + tg;
+    if (want(fr))
+      s += "static inline " + c + " " + fr + "(" + c + " v, int64_t lo, int64_t hi, int32_t l) {\n"
+           "  coax_slice_check(lo, hi, v.count, l);\n  " + c + " r = {v.data + lo, hi - lo};\n  return r;\n}\n";
   }
   return s;
 }
 
-std::string init_functions(const File *file, Emitter &em, std::string *protos_out = nullptr) {
-  std::vector<Type> types;
-  collect_types(file, &types);
-  std::string protos, bodies;
+TypeWriter header_types(const File *file);
+bool host_default(Type t);
+
+std::string init_functions(const File *file, Emitter &em, std::string *protos_out = nullptr, const std::vector<Type> *cached = nullptr,
+                           const std::string *uses = nullptr, bool keep_host_defaults = false) {
+  std::vector<Type> owned;
+  if (!cached) { collect_types(file, &owned); cached = &owned; }
+  const std::vector<Type> &types = *cached;
   const std::string local = em.split ? "" : "static ";  // --split: one definition (#12938)
+  std::vector<Type> init_types;
+  std::vector<std::string> init_tags;
+  init_types.reserve(types.size());
+  init_tags.reserve(types.size());
+  std::unordered_map<std::string, size_t> by_initp, by_init;
   for (Type t : types) {
     if (!needs_init(t)) continue;
-    // coax_initp_T writes T's defaults in place over any bytes, nested
-    // fields and elements too, so no copy of T lands on a stack (#13735):
-    // a value can be megabytes and a thread's stack 512 KB. coax_init_T is
-    // the by-value form for expressions.
-    std::string c = c_type(t), tg = tag(t);
-    protos += local + "void coax_initp_" + tg + "(" + c + " *v);\n";
-    protos += local + c + " coax_init_" + tg + "(void);\n";
-    bodies += local + "void coax_initp_" + tg + "(" + c + " *v) {\n  memset(v, 0, sizeof *v);\n";
+    size_t idx = init_types.size();
+    std::string tg = tag(t);
+    by_initp.emplace("coax_initp_" + tg, idx);
+    by_init.emplace("coax_init_" + tg, idx);
+    init_types.push_back(t);
+    init_tags.push_back(std::move(tg));
+  }
+  const size_t m = init_types.size();
+  std::vector<bool> keep_p(m, !uses), keep_v(m, !uses);
+  std::vector<std::string> body_p(m);
+  auto emit_one_p = [&](size_t idx) -> const std::string & {
+    if (!body_p[idx].empty()) return body_p[idx];
+    Type t = init_types[idx];
+    std::string c = c_type(t);
+    const std::string &tg = init_tags[idx];
+    std::string b = local + "void coax_initp_" + tg + "(" + c + " *v) {\n  memset(v, 0, sizeof *v);\n";
     if (t->kind == TypeKind::struct_) {
       for (const Field &f : t->struct_decl->fields) {
-        if (f.init) bodies += "  v->" + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
-        else if (needs_init(f.type)) bodies += "  coax_initp_" + tag(f.type) + "(&v->" + to_std(f.name) + ");\n";
+        if (f.init) b += "  v->" + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
+        else if (needs_init(f.type)) b += "  coax_initp_" + tag(f.type) + "(&v->" + to_std(f.name) + ");\n";
       }
     } else {
-      bodies += "  for (int64_t i = 0; i < " + std::to_string(t->length) + "; i++) coax_initp_" + tag(t->elem) + "(&v->e[i]);\n";
+      b += "  for (int64_t i = 0; i < " + std::to_string(t->length) + "; i++) coax_initp_" + tag(t->elem) + "(&v->e[i]);\n";
     }
-    bodies += "}\n";
-    bodies += local + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  coax_initp_" + tg + "(&v);\n  return v;\n}\n";
+    b += "}\n";
+    body_p[idx] = std::move(b);
+    return body_p[idx];
+  };
+  if (uses) {
+    std::vector<size_t> queue;
+    auto mark_p = [&](size_t idx) { if (!keep_p[idx]) { keep_p[idx] = true; queue.push_back(idx); } };
+    auto mark_v = [&](size_t idx) { keep_v[idx] = true; mark_p(idx); };
+    std::unordered_map<std::string_view, size_t> sv_p, sv_v;
+    sv_p.reserve(m + 8); sv_v.reserve(m + 8);
+    for (const auto &[k, idx] : by_initp) sv_p.emplace(std::string_view(k), idx);
+    for (const auto &[k, idx] : by_init) sv_v.emplace(std::string_view(k), idx);
+    auto scan_text = [&](const std::string &text) {
+      scan_coax_calls(text, [&](std::string_view name) {
+        auto ip = sv_p.find(name);
+        if (ip != sv_p.end()) { mark_p(ip->second); return; }
+        auto iv = sv_v.find(name);
+        if (iv != sv_v.end()) mark_v(iv->second);
+      });
+    };
+    scan_text(*uses);
+    if (keep_host_defaults) {
+      for (Type ht : header_types(file).done) {
+        if (!host_default(ht)) continue;
+        auto it = by_init.find("coax_init_" + tag(ht));
+        if (it != by_init.end()) mark_v(it->second);
+      }
+    }
+    for (size_t head = 0; head < queue.size(); head++) {
+      const std::string &b = emit_one_p(queue[head]);
+      scan_text(b);
+    }
+  } else {
+    for (size_t idx = 0; idx < m; idx++) emit_one_p(idx);
+  }
+  std::string protos, bodies;
+  for (size_t idx = 0; idx < m; idx++) {
+    if (!keep_p[idx] && !keep_v[idx]) continue;
+    Type t = init_types[idx];
+    std::string c = c_type(t);
+    const std::string &tg = init_tags[idx];
+    protos += local + "void coax_initp_" + tg + "(" + c + " *v);\n";
+    bodies += emit_one_p(idx);
+    if (keep_v[idx]) {
+      protos += local + c + " coax_init_" + tg + "(void);\n";
+      bodies += local + c + " coax_init_" + tg + "(void) {\n  " + c + " v;\n  coax_initp_" + tg + "(&v);\n  return v;\n}\n";
+    }
   }
   if (protos_out) { *protos_out = protos; return bodies; }
   return protos + bodies;
@@ -3549,31 +3923,8 @@ std::string escape_path(const std::string &path) {
 
 }  // namespace
 
-// Source-unit provenance is emitted only for composed programs, preserving
-// standalone seed bytes. Runtime helpers receive joined line numbers.
-static bool sum_runtime_profile(const File *file) {
-  if(file->unions.count)return true;
-  for(Type t:all_composite_types())if(is_sum(t))return true;
-  std::function<bool(const Stmt *)> switched=[&](const Stmt *stmt){
-    if(!stmt)return false;
-    if(stmt->kind==StmtKind::switch_)return true;
-    for(const Stmt *child:stmt->body)if(switched(child))return true;
-    return switched(stmt->then_) || switched(stmt->else_);
-  };
-  for(const ProcDecl *proc:file->procs)if(switched(proc->body))return true;
-  for(const CheckDecl *check:file->checks)if(switched(check->proc->body))return true;
-  return false;
-}
-
 static std::string source_runtime(const File *file, bool verification = false) {
-  auto declared_runtime=[&](std::string runtime){
-    if(sum_runtime_profile(file)){
-      const std::string declaration="static void coax_trap(";
-      runtime.replace(runtime.find(declaration),declaration.size(),"static _Noreturn void coax_trap(");
-    }
-    return runtime;
-  };
-  if (file->src->units.size()<2 && !verification) return declared_runtime(RUNTIME);
+  if (file->src->units.size()<2 && !verification) return RUNTIME;
   std::string out="struct coax_source_range { int first, last, base, fixed; const char *path; };\n";
   if (verification) {
     const std::string &path = file->src->units.empty() ? file->src->path : file->src->units.front()->canonical;
@@ -3602,7 +3953,7 @@ static std::string source_runtime(const File *file, bool verification = false) {
   std::string runtime=RUNTIME;std::string needle="coax_source_path, line, what";
   runtime.replace(runtime.find(needle),needle.size(),"coax_path_for(line), coax_line_for(line), what");
   if (verification) {
-    const std::string trap = "static void coax_trap(const char *what, int32_t line) {";
+    const std::string trap = "COAX_NORETURN static void coax_trap(const char *what, int32_t line) {";
     const std::string handler =
         "typedef void (*Coax_VerificationTrapHandler_v1)(const char *, int64_t, const char *, int64_t, int64_t);\n"
         "static Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n"
@@ -3617,7 +3968,7 @@ static std::string source_runtime(const File *file, bool verification = false) {
         "    coax_verification_trap_handler_v1(what, (int64_t)strlen(what), path, (int64_t)strlen(path), coax_line_for(line));\n"
         "  }\n");
   }
-  return out+declared_runtime(std::move(runtime));
+  return out+runtime;
 }
 
 // Procedures a CUDA module contains: the kernels (#export_c) and what they
@@ -8784,6 +9135,79 @@ static std::set<const ProcDecl *> called_instances(const File *file) {
   return reached;
 }
 
+// Product dead-code pruning: when an executable has main/#export_c, or a
+// --library entry unit defines #export_c, emit only procedures transitively
+// reachable from those public roots (and host/local struct default initializers).
+// Standalone --library units without an entry-unit #export_c keep all non-check
+// procedures so direct C test harnesses that #include them keep working.
+static std::unordered_set<const ProcDecl *> reachable_procs(const File *file, const EmitOptions &opts, bool *active) {
+  *active = false;
+  if (opts.metal || !file->src || file->src->units.size() < 2) return {};
+  std::unordered_set<const ProcDecl *> reached;
+  std::vector<const ProcDecl *> work;
+  auto visit_proc = [&](const ProcDecl *p) {
+    if (p && !p->check_unit && reached.insert(p).second) work.push_back(p);
+  };
+  const bool has_u0 = file->src && !file->src->units.empty();
+  const int32_t u0_begin = has_u0 ? file->src->units[0]->begin : 0;
+  const int32_t u0_end = has_u0 ? file->src->units[0]->end : 0;
+  bool unit0_has_export = false;
+  for (const ProcDecl *p : file->procs) {
+    if (p->check_unit) continue;
+    if (!opts.library && str_eq(p->name, "main")) visit_proc(p);
+    if (p->export_c) {
+      visit_proc(p);
+      if (has_u0 && p->loc.offset >= u0_begin && p->loc.offset <= u0_end) unit0_has_export = true;
+    }
+  }
+  *active = opts.library ? unit0_has_export : !work.empty();
+  if (!*active) return {};
+
+  std::unordered_set<const TypeInfo *> seen_types;
+  std::function<void(const Expr *)> visit_expr;
+  std::function<void(Type)> visit_type = [&](Type t) {
+    if (!t || !seen_types.insert(t).second) return;
+    if (t->kind == TypeKind::array || t->kind == TypeKind::view) { visit_type(t->elem); return; }
+    if (t->kind == TypeKind::struct_ && t->struct_decl) {
+      for (const Field &f : t->struct_decl->fields) {
+        if (f.init) visit_expr(f.init);
+        visit_type(f.type);
+      }
+      return;
+    }
+    if (is_sum(t)) for (int32_t i = 0; i < sum_count(t); i++) visit_type(sum_payload(t, i));
+  };
+  visit_expr = [&](const Expr *e) {
+    if (!e) return;
+    visit_proc(e->proc);
+    visit_proc(e->mutation_proc);
+    visit_type(e->type);
+    if (e->kind == ExprKind::ident && e->constant && !e->ct && e->constant->expr) visit_expr(e->constant->expr);
+    visit_expr(e->lhs); visit_expr(e->rhs); visit_expr(e->third);
+    for (const Expr *a : e->args) visit_expr(a);
+    for (const FieldInit &f : e->fields) visit_expr(f.value);
+  };
+  std::function<void(const Stmt *)> visit_stmt = [&](const Stmt *st) {
+    if (!st) return;
+    visit_type(st->type);
+    visit_expr(st->expr); visit_expr(st->expr2); visit_expr(st->target);
+    for (const Stmt *c : st->body) visit_stmt(c);
+    visit_stmt(st->then_); visit_stmt(st->else_);
+    for (const SwitchCase *arm : st->cases) { visit_expr(arm->enum_pattern); visit_stmt(arm->body); }
+  };
+  if (opts.library) {
+    for (Type ht : header_types(file).done) if (host_default(ht)) visit_type(ht);
+  }
+  while (!work.empty()) {
+    const ProcDecl *p = work.back();
+    work.pop_back();
+    visit_type(p->ret);
+    for (const Param &prm : p->params) visit_type(prm.type);
+    if (p->body) visit_stmt(p->body);
+  }
+  return reached;
+}
+
 // #inline (spec section 7.1). A procedure with the note has one body that the
 // C compiler copies into each caller; a generic procedure's instances carry
 // their template's note (check.cpp). main has no caller here, and a body that
@@ -8928,7 +9352,8 @@ static uint64_t split_hash(const std::string &text) {
 
 // The bytes of the procedures' C, as a split emits them (no cost is recorded
 // and no expression is numbered: the C that follows is emitted afresh).
-static size_t split_function_bytes(const File *file, const EmitOptions &opts, const std::set<const ProcDecl *> &called) {
+static size_t split_function_bytes(const File *file, const EmitOptions &opts, const std::set<const ProcDecl *> &called,
+                                   bool prune_active, const std::unordered_set<const ProcDecl *> &reached) {
   Emitter em{file, opts};
   em.split = true;
   std::map<const Expr *, int32_t> ids;
@@ -8936,7 +9361,7 @@ static size_t split_function_bytes(const File *file, const EmitOptions &opts, co
   em.unit_ct_ids = &ids; em.unit_ct_values = &values;
   size_t bytes = 0;
   for (const ProcDecl *p : file->procs)
-    if (!p->check_unit && (!p->origin || called.count(p))) bytes += em.function(p).size();
+    if (!p->check_unit && (prune_active ? reached.count(p) != 0 : (!p->origin || called.count(p)))) bytes += em.function(p).size();
   return bytes;
 }
 
@@ -8945,9 +9370,11 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   em.split = true;
   g_instance_c_bytes = 0;
   TimedLaps laps;
-  const std::set<const ProcDecl *> called = called_instances(file);
+  bool prune_active = false;
+  const std::unordered_set<const ProcDecl *> reached = reachable_procs(file, opts, &prune_active);
+  const std::set<const ProcDecl *> called = prune_active ? std::set<const ProcDecl *>{} : called_instances(file);
   laps.lap("emit.instances");
-  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (!p->origin || called.count(p)); };
+  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (prune_active ? reached.count(p) != 0 : (!p->origin || called.count(p))); };
   // Each procedure's unit: runs of a source file's own procedures, then instances.
   std::map<const ProcDecl *, uint64_t> unit_of;
   std::string run_key, last_path;
@@ -8984,24 +9411,26 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   laps.lap("emit.functions");
   Part &shared = parts[units];
   into(shared);
-  std::string init_protos, show_protos;
-  std::string inits = init_functions(file, em, &init_protos);
+  std::vector<Type> all;
+  collect_types(file, &all);
   std::string hosted = state_defaults(file, em);
+  const std::string init_uses = functions + hosted;
+  std::string init_protos, show_protos;
+  std::string inits = init_functions(file, em, &init_protos, &all, &init_uses, true);
   laps.lap("emit.inits");
-  const std::string uses = inits + functions + hosted;
-  std::string shows = show_functions(file, em, &uses, &show_protos);
+  const std::string uses = inits + init_uses;
+  std::string shows = show_functions(file, em, &uses, &show_protos, &all);
   laps.lap("emit.shows");
   em.unit_ct_ids = nullptr; em.unit_ct_values = nullptr;
   shared.text = "\n" + inits + shows + "\n" + hosted;
 
   TypeWriter types;
   types.forward_structs(file);
-  std::vector<Type> all;
-  collect_types(file, &all);
   for (Type t : all) types.need(t);
   types.layout_asserts(file);
   laps.lap("emit.types");
 
+  const std::string view_uses = uses + shows;
   std::string s = "/* Generated by coax0 from " + file->src->path + " (coax c --split " + std::to_string(units) + "). Do not edit: change the .coax file. */\n";
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
@@ -9016,7 +9445,7 @@ static std::string emit_c_split(const File *file, const EmitOptions &opts, uint6
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;
-  s += view_helpers();
+  s += view_helpers(&view_uses);
   if (em.transactions) s += transaction_captures(types.done);
   s += "\n" + init_protos + show_protos + "\n";
   for (const ProcDecl *p : file->procs) if (emitted(p)) s += em.prototype(p) + ";\n";
@@ -9045,16 +9474,21 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
     // with less than four parts' worth is emitted whole, as without --split
     // (splitting a small unit only makes a release larger: Belt's 1.6 MB of C
     // in 16 parts linked 2% larger).
-    const uint64_t bytes = split_function_bytes(file, opts, called_instances(file));
+    bool prune_active = false;
+    const std::unordered_set<const ProcDecl *> reached = reachable_procs(file, opts, &prune_active);
+    const std::set<const ProcDecl *> called = prune_active ? std::set<const ProcDecl *>{} : called_instances(file);
+    const uint64_t bytes = split_function_bytes(file, opts, called, prune_active, reached);
     if (bytes / opts.split_unit >= 4) return emit_c_split(file, opts, std::min<uint64_t>((uint64_t)opts.split, bytes / opts.split_unit));
   }
   Emitter em{file, opts};
   std::string functions;
   g_instance_c_bytes = 0;
   TimedLaps laps;  // --timings: emit.instances, emit.functions, emit.inits, emit.shows, emit.types, emit.values, emit.assemble
-  const std::set<const ProcDecl *> called = called_instances(file);
+  bool prune_active = false;
+  const std::unordered_set<const ProcDecl *> reached = reachable_procs(file, opts, &prune_active);
+  const std::set<const ProcDecl *> called = prune_active ? std::set<const ProcDecl *>{} : called_instances(file);
   laps.lap("emit.instances");
-  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (!p->origin || called.count(p)); };
+  auto emitted = [&](const ProcDecl *p) { return !p->check_unit && (prune_active ? reached.count(p) != 0 : (!p->origin || called.count(p))); };
   for (const ProcDecl *p : file->procs) {
     if (!emitted(p)) continue;
     const ProcDecl *o = p->origin ? p->origin : p;
@@ -9075,21 +9509,23 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
     for (size_t at = 0; (at = s.find("_Bool", at)) != std::string::npos;) s.replace(at, 5, "bool");
     return s;
   }
-  std::string inits = init_functions(file, em);
+  std::vector<Type> all;
+  collect_types(file, &all);
   std::string hosted = opts.library ? state_defaults(file, em) : std::string();
+  const std::string init_uses = functions + hosted;
+  std::string inits = init_functions(file, em, nullptr, &all, &init_uses, opts.library);
   laps.lap("emit.inits");
-  const std::string uses = inits + functions + hosted;
-  std::string shows = show_functions(file, em, &uses);
+  const std::string uses = inits + init_uses;
+  std::string shows = show_functions(file, em, &uses, nullptr, &all);
   laps.lap("emit.shows");
 
   TypeWriter types;
   types.forward_structs(file);
-  std::vector<Type> all;
-  collect_types(file, &all);
   for (Type t : all) types.need(t);
   types.layout_asserts(file);
   laps.lap("emit.types");
 
+  const std::string view_uses = uses + shows;
   std::string s = "/* Generated by coax0 from " + file->src->path + ". Do not edit: change the .coax file. */\n";
   s += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   s += source_runtime(file);
@@ -9104,7 +9540,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;
-  s += view_helpers();
+  s += view_helpers(&view_uses);
   if (em.transactions) s += transaction_captures(types.done);
   if (!em.ct_values.empty()) {
     s += "\n/* Values computed at compile time */\n";
@@ -9221,12 +9657,12 @@ std::string emit_native_checks_c_plan(const File *file, const EmitOptions &opts,
     if (p->origin) g_instance_c_bytes += function.size();
     functions += function;
   }
-  std::string inits = init_functions(file, em);
-  std::string shows = show_functions(file, em);
-  TypeWriter types;
-  types.forward_structs(file);
   std::vector<Type> all;
   collect_types(file, &all);
+  std::string inits = init_functions(file, em, nullptr, &all);
+  std::string shows = show_functions(file, em, nullptr, nullptr, &all);
+  TypeWriter types;
+  types.forward_structs(file);
   for (Type type : all) types.need(type);
   types.layout_asserts(file);
 
@@ -9324,30 +9760,121 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   size_t total = 0;
   for (size_t i = 0; i < plan.procedures.size(); ++i) { bodies[i] = em.function(plan.procedures[i]); total += bodies[i].size(); }
   g_instance_c_bytes = 0;
-  parts = std::max<size_t>(1, std::min(parts, total / (128 << 10) + 1));
+  // Identify compact hot non-check procedures (#inline or called by heavy checks)
+  // so native_compile can optimize just those small hot TUs at -O2 while keeping
+  // Put hot procedures (#inline, procedures reachable from heavy/#forall checks,
+  // and compact non-check procedures containing loops) into dedicated -O1
+  // translation units for fast native execution, while keeping giant #test
+  // bodies and cold procedures at -O0 for fast C compilation.
+  std::vector<uint8_t> is_hot(plan.procedures.size(), 0);
+  size_t hot_bytes_total = 0;
+  if (!mutants && plan.procedures.size() > 0) {
+    std::unordered_set<const ProcDecl *> check_procs;
+    for (const auto &ce : plan.checks) if (ce.check && ce.check->proc) check_procs.insert(ce.check->proc);
+    std::function<bool(const Stmt *)> has_loop = [&](const Stmt *s) -> bool {
+      if (!s) return false;
+      if (s->kind == StmtKind::for_range || s->kind == StmtKind::for_each || s->kind == StmtKind::while_) return true;
+      for (const Stmt *c : s->body) if (has_loop(c)) return true;
+      if (has_loop(s->then_) || has_loop(s->else_)) return true;
+      for (const SwitchCase *arm : s->cases) if (has_loop(arm->body)) return true;
+      return false;
+    };
+    std::unordered_set<const ProcDecl *> priority_hot;
+    std::unordered_set<const void *> visited;
+    std::function<void(const ProcDecl *)> walk_p;
+    std::function<void(const Expr *)> walk_e = [&](const Expr *e) {
+      if (!e || !visited.insert(e).second) return;
+      if (e->proc) walk_p(e->proc);
+      if (e->mutation_proc) walk_p(e->mutation_proc);
+      walk_e(e->lhs); walk_e(e->rhs); walk_e(e->third);
+      for (const Expr *a : e->args) walk_e(a);
+      for (const FieldInit &f : e->fields) walk_e(f.value);
+    };
+    std::function<void(const Stmt *)> walk_s = [&](const Stmt *s) {
+      if (!s) return;
+      walk_e(s->expr); walk_e(s->expr2); walk_e(s->target);
+      for (const Stmt *c : s->body) walk_s(c);
+      walk_s(s->then_); walk_s(s->else_);
+      for (const SwitchCase *arm : s->cases) { walk_e(arm->enum_pattern); walk_s(arm->body); }
+    };
+    walk_p = [&](const ProcDecl *p) {
+      if (!p || !visited.insert(p).second) return;
+      priority_hot.insert(p);
+      if (p->body) walk_s(p->body);
+    };
+    for (const auto &ce : plan.checks) {
+      if (!ce.check || !ce.check->proc) continue;
+      if (ce.check->steps > 0 || ce.check->traversal > 0 || (ce.check->forall && ce.case_count >= 4))
+        walk_p(ce.check->proc);
+    }
+    constexpr size_t HOT_CAP = 512 * 1024;
+    // Pass 1: priority_hot + #inline (highest execution leverage first).
+    for (size_t i = 0; i < plan.procedures.size(); ++i) {
+      const ProcDecl *p = plan.procedures[i];
+      const bool is_chk = check_procs.count(p) != 0;
+      const size_t max_fn = is_chk ? 6144 : 32768;
+      if ((p->inline_c || priority_hot.count(p)) && bodies[i].size() <= max_fn && hot_bytes_total + bodies[i].size() <= HOT_CAP) {
+        is_hot[i] = 1;
+        hot_bytes_total += bodies[i].size();
+      }
+    }
+    // Pass 2: compact non-check procedures with loops (catches crypto/math/physics
+    // helpers invoked by plain #test checks without #steps, while skipping huge
+    // parser/checker state machines).
+    for (size_t i = 0; i < plan.procedures.size(); ++i) {
+      if (is_hot[i]) continue;
+      const ProcDecl *p = plan.procedures[i];
+      if (check_procs.count(p) != 0) {
+        if (bodies[i].size() <= 3072 && p->body && has_loop(p->body) && hot_bytes_total + bodies[i].size() <= HOT_CAP) {
+          is_hot[i] = 1;
+          hot_bytes_total += bodies[i].size();
+        }
+        continue;
+      }
+      if (bodies[i].size() <= 14336 && p->body && has_loop(p->body) && hot_bytes_total + bodies[i].size() <= HOT_CAP) {
+        is_hot[i] = 1;
+        hot_bytes_total += bodies[i].size();
+      }
+    }
+  }
+  const size_t cold_total = total - hot_bytes_total;
+  const size_t max_hot_parts = std::max<size_t>(1, std::min<size_t>(parts > 1 ? parts / 2 : 1, 8));
+  const size_t hot_parts = hot_bytes_total == 0 ? 0 : std::min<size_t>(max_hot_parts, hot_bytes_total / (64 << 10) + 1);
+  const size_t cold_parts = cold_total == 0 ? 0 : std::max<size_t>(1, std::min(parts > hot_parts ? parts - hot_parts : (size_t)1, cold_total / (128 << 10) + 1));
   std::vector<size_t> order(bodies.size());
   for (size_t i = 0; i < order.size(); ++i) order[i] = i;
   std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return bodies[a].size() > bodies[b].size(); });
-  std::vector<std::string> part_text(parts);
-  std::vector<size_t> part_bytes(parts, 0);
+  std::vector<std::string> hot_text(hot_parts), cold_text(cold_parts);
+  std::vector<size_t> hot_bytes(hot_parts, 0), cold_bytes(cold_parts, 0);
   for (size_t i : order) {
-    size_t at = (size_t)(std::min_element(part_bytes.begin(), part_bytes.end()) - part_bytes.begin());
-    part_text[at] += bodies[i];
-    part_bytes[at] += bodies[i].size();
+    if (is_hot[i] && hot_parts > 0) {
+      size_t at = (size_t)(std::min_element(hot_bytes.begin(), hot_bytes.end()) - hot_bytes.begin());
+      hot_text[at] += bodies[i];
+      hot_bytes[at] += bodies[i].size();
+    } else if (cold_parts > 0) {
+      size_t at = (size_t)(std::min_element(cold_bytes.begin(), cold_bytes.end()) - cold_bytes.begin());
+      cold_text[at] += bodies[i];
+      cold_bytes[at] += bodies[i].size();
+    }
   }
-  std::string init_protos, show_protos;
-  std::string inits = init_functions(file, em, &init_protos);
-  std::string all_functions;
-  for (const std::string &b : bodies) all_functions += b;
-  const std::string uses = inits + all_functions;
-  std::string shows = show_functions(file, em, &uses, &show_protos);
-  std::string table = native_check_table_v2(file, em, plan);
-  TypeWriter types;
-  types.forward_structs(file);
   std::vector<Type> all;
   collect_types(file, &all);
+  std::string all_functions;
+  all_functions.reserve(total);
+  for (const std::string &b : bodies) all_functions += b;
+  std::string init_protos, show_protos;
+  std::string inits = init_functions(file, em, &init_protos, &all, &all_functions, false);
+  const std::string uses = inits + all_functions;
+  std::string shows = show_functions(file, em, &uses, &show_protos, &all);
+  std::string table = native_check_table_v2(file, em, plan);
+  const std::string view_uses = uses + shows + table;
+  TypeWriter types;
+  types.forward_structs(file);
   for (Type type : all) types.need(type);
+  const size_t types_before_asserts = types.out.size();
   types.layout_asserts(file);
+  std::string layout_checks = types.out.substr(types_before_asserts);
+  types.out.resize(types_before_asserts);
 
   std::string runtime = source_runtime(file, true);
   {  // one trap handler for every part, which the driver sets
@@ -9359,7 +9886,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
     if (at != std::string::npos) runtime.erase(at, setter.size());
   }
   std::string prelude = "/* A native check binary (coax native checks). Not product emission. */\n"
-                        "#include <errno.h>\n#include <pthread.h>\n#include <unistd.h>\n";
+                        "#include <errno.h>\n#include <pthread.h>\n#include <stdatomic.h>\n#include <unistd.h>\n";
   if (mutants) prelude += "#include <sys/resource.h>\n";
   prelude += "static const char *coax_source_path = \"" + escape_path(file->src->path) + "\";\n";
   prelude += runtime;
@@ -9386,7 +9913,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   prelude += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   prelude += "\n/* Types */\n" + types.out;
   if (em.wide) prelude += WIDE_RUNTIME;
-  prelude += view_helpers();
+  prelude += view_helpers(&view_uses);
   if (em.transactions) prelude += transaction_captures(types.done);
   std::string values;
   for (size_t i = 0; i < em.ct_values.size(); ++i) {
@@ -9397,17 +9924,41 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
   prelude += "\n" + init_protos + show_protos + "\n";
   for (const ProcDecl *p : plan.procedures) prelude += em.prototype(p) + ";\n";
 
-  std::string shared = prelude + "\nunsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
+  std::string shared_body = "\n" + layout_checks + "\nunsigned char coax_nc_cov[" + std::to_string(plan.procedures.size() + 1) + "];\n"
                        "Coax_VerificationTrapHandler_v1 coax_verification_trap_handler_v1;\n" +
                        (mutants ? "int64_t coax_nm_mutant;\nuint64_t coax_nm_ticks, coax_nm_limit = UINT64_MAX;\n" : "") + values + "\n" + inits + shows + table;
-  shared += "\n/* The driver. */\n"
-       "static uint64_t coax_nc_case;\n"
+  shared_body += "\n/* The driver. */\n"
+       "static _Thread_local uint64_t coax_nc_case;\n"
        "static void coax_nc_trap(const char *what, int64_t what_count, const char *path, int64_t path_count, int64_t line) {\n"
        "  char text[8192]; int n = snprintf(text, sizeof text, \"T %llu\\t%lld\\t%.*s\\t%.*s\\n\", (unsigned long long)coax_nc_case, (long long)line,\n"
        "                                    (int)(path_count < 4000 ? path_count : 4000), path, (int)(what_count < 2000 ? what_count : 2000), what);\n"
        "  if (n > 0) coax_nc_write(text, (size_t)(n < (int)sizeof text ? n : (int)sizeof text - 1));\n"
        "}\n"
-       "static int64_t coax_nc_start, coax_nc_step = 1;\n"
+       "static int64_t coax_nc_start, coax_nc_step = 1, coax_nc_case_threads = 1;\n"
+       + std::string(mutants ? "" :
+       "typedef struct { const Coax_VerificationCheck_v2 *c; _Atomic uint64_t next; uint64_t chunk; } coax_nc_cases_job;\n"
+       "static void *coax_nc_cases_run(void *arg) {\n"
+       "  coax_nc_cases_job *job = (coax_nc_cases_job *)arg;\n"
+       "  const Coax_VerificationCheck_v2 *c = job->c;\n"
+       "  uint64_t words[64];\n"
+       "  for (;;) {\n"
+       "    uint64_t start = atomic_fetch_add_explicit(&job->next, job->chunk, memory_order_relaxed);\n"
+       "    if (start >= c->case_count) break;\n"
+       "    uint64_t end = start + job->chunk;\n"
+       "    if (end > c->case_count) end = c->case_count;\n"
+       "    for (uint64_t k = start; k < end; k++) {\n"
+       "      coax_nc_case = k;\n"
+       "      uint64_t rest = k;\n"
+       "      for (int64_t b = c->binding_count; b-- > 0;) {\n"
+       "        const Coax_VerificationBinding_v2 *d = &c->bindings[b];\n"
+       "        uint64_t at = rest % d->count; rest /= d->count;\n"
+       "        words[b] = d->values ? d->values[at].bits : (uint64_t)d->first + at;\n"
+       "      }\n"
+       "      if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
+       "    }\n"
+       "  }\n"
+       "  return 0;\n"
+       "}\n") +
        "static void *coax_nc_main(void *unused) {\n"
        "  (void)unused;\n"
        "  int64_t count = 0;\n"
@@ -9419,6 +9970,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "    int n = snprintf(text, sizeof text, \"B %lld\\n\", (long long)i); coax_nc_write(text, (size_t)n);\n"
        "    memset(coax_nc_cov, 0, sizeof coax_nc_cov);\n"
        + std::string(mutants ? "    coax_nm_ticks = 0;\n" : "") +
+       (mutants ?
        "    for (uint64_t k = 0; k < c->case_count; k++) {\n"
        "      coax_nc_case = k;\n"
        "      uint64_t rest = k;\n"
@@ -9429,7 +9981,37 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "      }\n"
        "      if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
        "    }\n"
-       + std::string(mutants ? "    n = snprintf(text, sizeof text, \"K %lld %llu\\n\", (long long)i, (unsigned long long)coax_nm_ticks); coax_nc_write(text, (size_t)n);\n" : "") +
+       :
+       "    if (coax_nc_case_threads > 1 && c->case_count >= 4) {\n"
+       "      int64_t nt = coax_nc_case_threads;\n"
+       "      if ((uint64_t)nt > c->case_count) nt = (int64_t)c->case_count;\n"
+       "      if (nt > 16) nt = 16;\n"
+       "      coax_nc_cases_job job;\n"
+       "      job.c = c;\n"
+       "      atomic_init(&job.next, 0);\n"
+       "      job.chunk = c->case_count / ((uint64_t)nt * 4);\n"
+       "      if (job.chunk < 1) job.chunk = 1;\n"
+       "      pthread_t ts[16];\n"
+       "      int64_t started = 0;\n"
+       "      pthread_attr_t cattr; pthread_attr_init(&cattr);\n"
+       "      pthread_attr_setstacksize(&cattr, (size_t)1 << 26);\n"
+       "      for (int64_t t = 1; t < nt; t++) if (pthread_create(&ts[started], &cattr, coax_nc_cases_run, &job) == 0) started++;\n"
+       "      pthread_attr_destroy(&cattr);\n"
+       "      coax_nc_cases_run(&job);\n"
+       "      for (int64_t t = 0; t < started; t++) pthread_join(ts[t], 0);\n"
+       "    } else {\n"
+       "      for (uint64_t k = 0; k < c->case_count; k++) {\n"
+       "        coax_nc_case = k;\n"
+       "        uint64_t rest = k;\n"
+       "        for (int64_t b = c->binding_count; b-- > 0;) {\n"
+       "          const Coax_VerificationBinding_v2 *d = &c->bindings[b];\n"
+       "          uint64_t at = rest % d->count; rest /= d->count;\n"
+       "          words[b] = d->values ? d->values[at].bits : (uint64_t)d->first + at;\n"
+       "        }\n"
+       "        if (c->run_values(words, c->binding_count) != 0) coax_nc_refuse(\"a binding mismatch\");\n"
+       "      }\n"
+       "    }\n") +
+       std::string(mutants ? "    n = snprintf(text, sizeof text, \"K %lld %llu\\n\", (long long)i, (unsigned long long)coax_nm_ticks); coax_nc_write(text, (size_t)n);\n" : "") +
        "    n = snprintf(text, sizeof text, \"E %lld %llu\", (long long)i, (unsigned long long)c->case_count); coax_nc_write(text, (size_t)n);\n"
        "    for (size_t p = 0; p < sizeof coax_nc_cov; p++) if (coax_nc_cov[p]) { n = snprintf(text, sizeof text, \" %zu\", p); coax_nc_write(text, (size_t)n); }\n"
        "    coax_nc_write(\"\\n\", 1);\n"
@@ -9488,6 +10070,7 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "  {\n"
        "  coax_nc_start = argc > 1 ? atoll(argv[1]) : 0;\n"
        "  if (argc > 2 && atoll(argv[2]) > 0) coax_nc_step = atoll(argv[2]);\n"
+       "  if (argc > 3 && atoll(argv[3]) > 1) coax_nc_case_threads = atoll(argv[3]);\n"
        "  }\n"
        "  pthread_attr_t attr; pthread_attr_init(&attr);\n"
        "  pthread_attr_setstacksize(&attr, (size_t)1 << 30);\n"
@@ -9496,8 +10079,20 @@ std::vector<std::string> emit_check_binary_c(const File *file, const EmitOptions
        "  else pthread_join(thread, 0);\n"
        "  return 0;\n"
        "}\n";
-  std::vector<std::string> out{shared};
-  for (std::string &text : part_text) if (!text.empty()) out.push_back(prelude + text);
+  size_t non_empty_parts = 0;
+  for (const std::string &t : hot_text) if (!t.empty()) non_empty_parts++;
+  for (const std::string &t : cold_text) if (!t.empty()) non_empty_parts++;
+  std::vector<std::string> out;
+  if (non_empty_parts >= 2) {
+    out.push_back("/* COAX_PRELUDE_H */\n#ifndef COAX_CHECK_PRELUDE_H\n#define COAX_CHECK_PRELUDE_H\n" + prelude + "\n#endif\n");
+    out.push_back("#include \"prelude.h\"\n" + shared_body);
+    for (std::string &text : hot_text) if (!text.empty()) out.push_back("/* COAX_OPT_O2 */\n#include \"prelude.h\"\n" + text);
+    for (std::string &text : cold_text) if (!text.empty()) out.push_back("#include \"prelude.h\"\n" + text);
+  } else {
+    out.push_back(prelude + shared_body);
+    for (std::string &text : hot_text) if (!text.empty()) out.push_back("/* COAX_OPT_O2 */\n" + prelude + text);
+    for (std::string &text : cold_text) if (!text.empty()) out.push_back(prelude + text);
+  }
   return out;
 }
 
@@ -9528,7 +10123,9 @@ std::string emit_header(const File *file) {
   {
     TypeWriter used = header_types(file);
     types.out += used.out;
-    types.done = used.done;
+    types.done = std::move(used.done);
+    types.done_ptrs = std::move(used.done_ptrs);
+    types.done_tags = std::move(used.done_tags);
   }
   size_t definitions_end=types.out.size();types.sum_layout_asserts("COAX_ALIGNOF");
   std::string asserts=types.out.substr(definitions_end);types.out.resize(definitions_end);
@@ -9613,7 +10210,7 @@ std::string layout_report(const File *file) {
 }  // namespace coax
 
 namespace coax {
-static std::string debug_source_hash(const std::string &text) {
+std::string debug_source_hash(const std::string &text) {
 #ifndef COAX_BOOTSTRAP_IMPORTER
   uint8_t out[64];auto digest=S_hash({text.data(),(int64_t)text.size()});
   if(S_hex(digest,{out,64}))return std::string((char*)out,64);

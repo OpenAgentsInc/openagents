@@ -68,16 +68,19 @@ CK_prechecked :: (node:CK_Node)->bool #effects(all) {
  return (node.mark==2 && node.kind==CK_Tag.expr_cast && node.d==0) || (node.mark==1 && (node.kind==CK_Tag.expr_struct || node.kind==CK_Tag.expr_array)) || (node.mark==2 && node.kind==CK_Tag.expr_call && node.proc!=0);
 }
 CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
+  kind:=c.nodes[id].kind;
+  if kind==CK_Tag.expr_sum || kind==CK_Tag.expr_null || kind==CK_Tag.expr_some || kind==CK_Tag.expr_try || kind==CK_Tag.expr_or_else {return CK_sum_expression(c,id,want);}
+  if CK_has(c.nodes[id].mark) {if CK_prechecked(c.nodes[id]) {return c.nodes[id].type;}}
+  if kind==CK_Tag.expr_int {t:=c.nodes[id].type;if t==0 {return 4;}return t;}
+  if kind==CK_Tag.expr_float {t:=c.nodes[id].type;if t==0 {return 5;}return t;}
+  if kind==CK_Tag.expr_bool {return 2;}if kind==CK_Tag.expr_string {return 3;}
+  if kind==CK_Tag.expr_enum || kind==CK_Tag.expr_ct {return c.nodes[id].type;}
+  if kind==CK_Tag.expr_binary {return CK_binary(c,id,want);}if kind==CK_Tag.expr_field {return CK_field(c,id);}
+  if kind==CK_Tag.expr_call {t:=CK_call(c,id,want);CK_borrow_call(c,id);return t;}
+  if kind==CK_Tag.expr_ident {if c.nodes[id].name2.count==0 {local:=CK_local(c,c.nodes[id].name);if local>=0 {c.nodes[id].borrow_binding=c.locals[local].decl;return c.locals[local].type;}}}
   e:=c.nodes[id];
-  if e.kind==CK_Tag.expr_sum || e.kind==CK_Tag.expr_null || e.kind==CK_Tag.expr_some || e.kind==CK_Tag.expr_try || e.kind==CK_Tag.expr_or_else {return CK_sum_expression(c,id,want);}
-  if CK_prechecked(e) {return e.type;}
-  if e.kind==CK_Tag.expr_int {if e.type==0 {return 4;}return e.type;}
-  if e.kind==CK_Tag.expr_float {if e.type==0 {return 5;}return e.type;}
-  if e.kind==CK_Tag.expr_bool {return 2;}if e.kind==CK_Tag.expr_string {return 3;}
-  if e.kind==CK_Tag.expr_enum || e.kind==CK_Tag.expr_ct {return e.type;}
   if e.kind==CK_Tag.expr_run {t:=CK_value(c,e.a,want);if t==1 {CK_error(c,e.loc,"E0341","#run must produce a value","");}return t;}
   if e.kind==CK_Tag.expr_ident {
-    if e.name2.count==0 {local:=CK_local(c,e.name);if local>=0 {c.nodes[id].borrow_binding=c.locals[local].decl;return c.locals[local].type;}}
     kinds:=[4] CK_Tag.[CK_Tag.constant,CK_Tag.proc,CK_Tag.struct_,CK_Tag.enum_];if !CK_bind_check(c,id,kinds[..],"declaration") {return CK_NONE;}
     constant:=CK_lookup(c,CK_Tag.constant,id);
     if constant!=CK_NONE {t:=CK_constant_type(c,constant);expr:=c.nodes[constant].a;if CK_untyped(c,t) && (c.nodes[expr].kind==CK_Tag.expr_int || c.nodes[expr].kind==CK_Tag.expr_float) {CK_copy_expr(c,id,expr,true);return t;}c.nodes[id].constant=constant;return t;}
@@ -86,7 +89,6 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
     if st!=0 || en!=0 || CK_lookup(c,CK_Tag.union_,id)!=0 {fix:=CK_join3(c,"name a member: ",e.name,".member");if st!=0 {fix=CK_join3(c,"make one: ",e.name,".{}");}CK_error(c,e.loc,"E0354",CK_join3(c,"'",e.name,"' is a type, not a value"),fix);return CK_NONE;}
     CK_error(c,e.loc,"E0306",CK_join3(c,"'",e.name,"' is not declared"),"");return CK_NONE;
   }
-  if e.kind==CK_Tag.expr_call {t:=CK_call(c,id,want);CK_borrow_call(c,id);return t;}
   if e.kind==CK_Tag.expr_unary {
     t:=CK_expr(c,e.a,want);if t==CK_NONE {return CK_NONE;}
     if c.types[t].space.kind!=SP_Kind.raw {return CK_spatial_unary(c,id,t);}
@@ -97,7 +99,6 @@ CK_expr_inner :: (c:CK_Context,id:int,want:CK_Hint)->int #effects(all) {
     }
     if t!=2 {fix:="";if CK_numeric(c,t) || CK_untyped(c,t) {fix="compare it: x == 0";}CK_error(c,e.loc,"E0308",CK_join2(c,"'!' needs a bool, found ",c.types[t].name),fix);return CK_NONE;}return t;
   }
-  if e.kind==CK_Tag.expr_binary {return CK_binary(c,id,want);}if e.kind==CK_Tag.expr_field {return CK_field(c,id);}
   if e.kind==CK_Tag.expr_index {
     t:=CK_expr(c,e.a,CK_Hint.{});index:=CK_value(c,e.b,CK_Hint.{type=11});if t==CK_NONE || index==0 {return CK_NONE;}
     if !CK_integer(c,index) {CK_error(c,c.nodes[e.b].loc,"E0356",CK_join2(c,"an index must be an integer, found ",c.types[index].name),"");return CK_NONE;}

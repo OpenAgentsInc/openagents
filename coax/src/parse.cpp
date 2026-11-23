@@ -73,8 +73,8 @@ template<class T> Slice<T*> parser_pointers(Arena *arena,const zvec<coax_t_PS_No
 }
 }
 namespace {
-std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
-  std::vector<coax_t_PS_Token> input(tokens.size());
+zvec<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
+  zvec<coax_t_PS_Token> input(tokens.size());
   burst(tokens.size(),16384,[&](size_t begin,size_t end,unsigned) {
     for(size_t i=begin;i<end;i++) {
       const auto &t=tokens[i];
@@ -89,7 +89,7 @@ std::vector<coax_t_PS_Token> parser_tokens(const std::vector<Token> &tokens) {
 // per later attempt, each parsed again from the next top-level declaration
 // (PS_recover owns where, and which errors are likely cascades), until the
 // tokens run out or error_limit. lexed: where this unit's lexer errors are.
-static void parse_report(const Source *src,const std::vector<coax_t_PS_Token> &input,const coax_t_PS_State &first,
+static void parse_report(const Source *src,const zvec<coax_t_PS_Token> &input,const coax_t_PS_State &first,
                          const std::string &first_message,const std::vector<Loc> &lexed,bool development) {
   std::vector<int64_t> offsets;for(const auto &l:lexed) offsets.push_back(l.offset);
   const coax_v_t_PS_Token tokens{(coax_t_PS_Token*)input.data(),(int64_t)input.size()};
@@ -164,6 +164,8 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   laps.lap("parse.build");
   if(!result.ok) {parse_report(src,input,state,std::string((char*)message.data(),(size_t)state.length),{},development);return false;}
   if(g_parsed_far_enough && g_parsed_far_enough()) return false;
+  zvec<coax_t_PS_Token>().swap(input);
+  std::vector<Token>().swap(kept);
   std::vector<void*> objects((size_t)state.used+1,nullptr);
   // Allocate first so all subsequent reference copies are independent of order.
   // One block holds every node's object, in node order: each node's size is
@@ -283,6 +285,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   burst((size_t)state.used,16384,[&](size_t begin,size_t end,unsigned) {
     for(int64_t id=(int64_t)begin+1;id<=(int64_t)end;id++) if(places[(size_t)id+1]!=places[(size_t)id]) lists(id,block+places[(size_t)id]);
   });
+  std::vector<size_t>().swap(places);
   std::vector<Import> imports;std::vector<ProcDecl*> procs;std::vector<ConstDecl*> constants;
   std::vector<StructDecl*> structs;std::vector<EnumDecl*> enums;std::vector<UnionDecl*> unions;std::vector<Expr*> assertions;std::vector<CheckDecl*> checks;
   for(auto id=nodes[(size_t)result.root].head;id;id=nodes[(size_t)id].next) switch(nodes[(size_t)id].kind) {
@@ -303,8 +306,26 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &all_tokens,F
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   for(int64_t id=1;id<=state.used;id++)if(nodes[(size_t)id].kind==COAX_PS_Tag_stmt_transaction)out->has_transactions=true;
   laps.lap("parse.tree");
-  attach_check_input(out,std::move(nodes),objects,state.used);
+  attach_check_input(out,std::move(nodes),objects,state.used,development);
   laps.lap("parse.input");
+  return true;
+}
+static bool rebuild_parsed_nodes(const Source *src,bool development,zvec<coax_t_PS_Node> *out) {
+  Arena tmp;
+  std::vector<Token> raw,kept;
+  if(!lex(&tmp,src,&raw)) return false;
+  bool same=true;
+  if(!drop_loaded_run_steps(src,raw,&kept,&same)) return false;
+  const std::vector<Token> &tokens=same?raw:kept;
+  auto input=parser_tokens(tokens);
+  const auto caps=PS_caps((int64_t)input.size(),(int64_t)src->text.size());
+  zvec<coax_t_PS_Node> nodes((size_t)caps.nodes);
+  zvec<uint8_t> message((size_t)caps.message);
+  coax_t_PS_State state{};
+  const auto result=PS_parse_build({src->text.data(),(int64_t)src->text.size()},{input.data(),(int64_t)input.size()},
+      {nodes.data(),(int64_t)nodes.size()},{&state,1},{message.data(),(int64_t)message.size()},development);
+  if(!result.ok) return false;
+  *out=std::move(nodes);
   return true;
 }
 } // namespace coax

@@ -126,7 +126,7 @@ static bool native_write(const std::string &path, const std::string &text) {
   return fclose(f) == 0 && ok;
 }
 
-static int native_spawn(const std::vector<std::string> &args, int out_fd, pid_t *pid_out) {
+static int native_spawn(const std::vector<std::string> &args, int out_fd, pid_t *pid_out, bool quiet_err = false) {
   std::vector<char *> argv;
   for (const std::string &a : args) argv.push_back(const_cast<char *>(a.c_str()));
   argv.push_back(nullptr);
@@ -136,6 +136,8 @@ static int native_spawn(const std::vector<std::string> &args, int out_fd, pid_t 
   posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
   if (out_fd >= 0) {
     posix_spawn_file_actions_adddup2(&actions, out_fd, 3);
+    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+  } else if (quiet_err) {
     posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
   }
   pid_t pid = 0;
@@ -195,18 +197,55 @@ static bool native_compile(const std::vector<std::string> &units, const std::str
   const char *cc = getenv("COAX_CC");
   const char *opt = getenv("COAX_NATIVE_CHECKS_OPT");
   const std::string compiler = cc && *cc ? cc : "cc";
+  const bool has_prelude = !units.empty() && units[0].rfind("/* COAX_PRELUDE_H */\n", 0) == 0;
+  size_t start_u = 0;
+  const std::string prelude_h = dir + "/prelude.h", prelude_pch = dir + "/prelude.h.pch";
+  if (has_prelude) {
+    if (!native_write(prelude_h, units[0])) { *why = "can't write the C"; return false; }
+    start_u = 1;
+  }
+  // Write all translation unit sources up front and identify hot (-O1) vs cold (-O0) TUs.
+  struct TuJob { std::string source, object; bool hot; };
+  std::vector<TuJob> jobs;
+  jobs.reserve(units.size() - start_u);
+  size_t cold_count = 0;
+  for (size_t u = start_u; u < units.size(); u++) {
+    const size_t idx = u - start_u;
+    const std::string source = dir + "/checks" + std::to_string(idx) + ".c", object = dir + "/checks" + std::to_string(idx) + ".o";
+    if (!native_write(source, units[u])) { *why = "can't write the C"; return false; }
+    const bool hot = (!opt || !*opt) && units[u].rfind("/* COAX_OPT_O2 */\n", 0) == 0;
+    if (!hot) cold_count++;
+    jobs.push_back({source, object, hot});
+  }
   std::vector<pid_t> compiling;
   std::vector<std::string> objects;
   bool failed = false;
-  for (size_t u = 0; u < units.size(); u++) {
-    const std::string source = dir + "/checks" + std::to_string(u) + ".c", object = dir + "/checks" + std::to_string(u) + ".o";
-    if (!native_write(source, units[u])) { *why = "can't write the C"; failed = true; break; }
+  auto spawn_tu = [&](const TuJob &j, bool use_pch) {
+    const std::string level = opt && *opt ? std::string(opt) : std::string(j.hot ? "1" : "0");
+    std::vector<std::string> args = {compiler, "-std=c11", "-w", "-O" + level, "-ffp-contract=off", "-fno-builtin-sin",
+                                     "-fno-builtin-cos", "-pthread"};
+    if (has_prelude) {
+      if (use_pch) { args.push_back("-include-pch"); args.push_back(prelude_pch); }
+      args.push_back("-I"); args.push_back(dir);
+    }
+    args.push_back("-c"); args.push_back("-o"); args.push_back(j.object); args.push_back(j.source);
     pid_t pid;
-    if (native_spawn({compiler, "-std=c11", "-w", std::string("-O") + (opt && *opt ? opt : "0"), "-ffp-contract=off", "-fno-builtin-sin",
-                      "-fno-builtin-cos", "-pthread", "-c", "-o", object, source}, -1, &pid) != 0) { *why = "no C compiler"; failed = true; break; }
+    if (native_spawn(args, -1, &pid) != 0) { *why = "no C compiler"; failed = true; return; }
     compiling.push_back(pid);
-    objects.push_back(object);
+    objects.push_back(j.object);
+  };
+  // Spawn hot (-O1) TUs immediately so they compile in parallel with PCH generation.
+  for (const TuJob &j : jobs) if (j.hot && !failed) spawn_tu(j, false);
+  bool has_pch = false;
+  if (!failed && has_prelude && (!opt || !*opt) && cold_count >= 4 && units[0].size() >= 131072) {
+    pid_t pch_pid;
+    if (native_spawn({compiler, "-std=c11", "-w", "-O0", "-ffp-contract=off", "-fno-builtin-sin",
+                      "-fno-builtin-cos", "-pthread", "-x", "c-header", prelude_h, "-o", prelude_pch}, -1, &pch_pid, true) == 0) {
+      const int st = native_wait(pch_pid);
+      has_pch = st >= 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+    }
   }
+  for (const TuJob &j : jobs) if (!j.hot && !failed) spawn_tu(j, has_pch);
   for (pid_t pid : compiling) {
     const int status = native_wait(pid);
     if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) failed = true;
@@ -279,7 +318,8 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   opts.metal = opts.cuda = opts.metal_compute = false;
   auto t0 = std::chrono::steady_clock::now();
   const char *parts_env = getenv("COAX_NATIVE_CHECKS_PARTS");
-  const size_t parts = parts_env && *parts_env ? (size_t)strtoull(parts_env, nullptr, 10) : (size_t)std::min<uint64_t>(available_cores(), 32);
+  const size_t parts = parts_env && *parts_env ? (size_t)strtoull(parts_env, nullptr, 10)
+                     : (g_in_library_child ? (size_t)4 : (size_t)std::min<uint64_t>(available_cores(), 32));
   const std::vector<std::string> units = emit_check_binary_c(file, opts, plan, parts);
   g_native.emit = seconds_since(t0);
   laps.lap("native.emit");
@@ -315,8 +355,15 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
   t0 = std::chrono::steady_clock::now();
   const size_t rows = plan.checks.size();
   const char *jobs_env = getenv("COAX_NATIVE_CHECKS_JOBS");
-  size_t jobs = jobs_env && *jobs_env ? (size_t)strtoull(jobs_env, nullptr, 10) : std::min<size_t>((size_t)available_cores(), std::min<size_t>(16, (rows + 7) / 8));
+  size_t jobs = jobs_env && *jobs_env ? (size_t)strtoull(jobs_env, nullptr, 10)
+              : (g_in_library_child ? (size_t)1 : std::min<size_t>((size_t)available_cores(), std::min<size_t>(16, (rows + 7) / 8)));
   jobs = std::max<size_t>(1, std::min(jobs, rows));
+  size_t case_threads = 1;
+  if (!g_in_library_child && native_mode() != NativeMode::compare) {
+    bool has_heavy_forall = false;
+    for (const auto &ce : plan.checks) if (ce.case_count >= 4) { has_heavy_forall = true; break; }
+    if (has_heavy_forall) case_threads = std::min<size_t>((size_t)available_cores(), 12);
+  }
   std::set<const ProcDecl *> check_bodies;
   for (const CheckDecl *c : file->checks) if (c->proc) check_bodies.insert(c->proc);
   struct Worker {
@@ -339,7 +386,7 @@ static void native_run(File *file, const std::vector<bool> &want, uint64_t steps
     if (pipe(fds) != 0) return;
     fcntl(fds[0], F_SETFD, FD_CLOEXEC);
     pid_t pid;
-    if (native_spawn({exe, std::to_string(k.start), std::to_string(jobs)}, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); return; }
+    if (native_spawn({exe, std::to_string(k.start), std::to_string(jobs), std::to_string(case_threads)}, fds[1], &pid) != 0) { close(fds[0]); close(fds[1]); return; }
     close(fds[1]);
     k.pid = pid;
     k.fd = fds[0];
