@@ -395,14 +395,21 @@ struct AppTailnetComputer: Codable, Equatable {
         }
         return out.trimmingCharacters(in: .whitespaces)
     }
-    /// Where the phone dials: the tailnet address, then the MagicDNS name (the address can change).
-    var dialOrder: [String] { dns.isEmpty || dns == ip ? [ip] : [ip, dns] }
+    /// Where the phone dials: the tailnet address, then the MagicDNS name — filtering empty strings (#14007).
+    var dialOrder: [String] {
+        var out: [String] = []
+        let cleanIP = ip.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDNS = dns.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanIP.isEmpty { out.append(cleanIP) }
+        if !cleanDNS.isEmpty && cleanDNS != cleanIP { out.append(cleanDNS) }
+        return out
+    }
 }
 
 /// The Macs the phone found, kept in a file of its own (not the Keychain: none of it is a secret;
-/// the grant stays in AppDeviceLink's store). At most eight, newest first.
+/// the grant stays in AppDeviceLink's store). At most 32, newest first (#14007).
 final class AppTailnetBook {
-    static let limit = 8
+    static let limit = 32
     let url: URL
     init(url: URL) { self.url = url }
     var computers: [AppTailnetComputer] {

@@ -66,6 +66,11 @@ final class AntigravityStore: ObservableObject {
 
     private var pollTask: Task<Void, Never>?
     private var pushDebounceTask: Task<Void, Never>?
+    private var activeComputerRefreshTask: Task<Void, Never>?
+    private var activeTranscriptRefreshTask: Task<Void, Never>?
+    private var hostSelectionGen: UInt64 = 0
+    private var sessionSelectionGen: UInt64 = 0
+    private var lastGrantRenewAttemptByHost: [String: Int64] = [:]
     private var lastPushReceivedAt: Date = .distantPast
     private var fastPollUntil: Date = .distantPast
     private var reachabilityByID: [String: ReachabilityState] = [:]
@@ -95,15 +100,23 @@ final class AntigravityStore: ObservableObject {
         }
         self.client.onReachabilityChange = { [weak self] host, state in
             self?.reachabilityByID[host] = state
-            if state == .reachable {
-                self?.livePushConnected = true
+            if state != .reachable, self?.activeComputerID == host {
+                self?.livePushConnected = false
             }
             self?.reloadComputers()
+        }
+        self.client.onLivePushStateChange = { [weak self] host, connected in
+            guard let self, self.activeComputerID == host else { return }
+            self.livePushConnected = connected
         }
         self.client.onPushEvent = { [weak self] host, event in
             self?.handlePushEvent(host: host, event: event)
         }
         reloadComputers()
+        if let warn = store.lastPersistenceWarning {
+            statusToast = warn
+            store.lastPersistenceWarning = nil
+        }
         if let activeID = activeComputerID {
             loadPreferences(for: activeID)
             restoreOfflineCache(for: activeID)
@@ -340,10 +353,16 @@ final class AntigravityStore: ObservableObject {
         pollTask = nil
         pushDebounceTask?.cancel()
         pushDebounceTask = nil
+        activeComputerRefreshTask?.cancel()
+        activeComputerRefreshTask = nil
+        activeTranscriptRefreshTask?.cancel()
+        activeTranscriptRefreshTask = nil
+        livePushConnected = false
         #if os(macOS)
         LocalSocketClient.shared.stopWatchingRuns()
         #endif
         client.suspend()
+        MobileCorePool.shared.drain()
     }
 
     // MARK: - Computer management & Relay-free Tailscale Pairing
@@ -423,6 +442,10 @@ final class AntigravityStore: ObservableObject {
     }
 
     func selectComputer(_ computer: ComputerEntry) {
+        hostSelectionGen &+= 1
+        sessionSelectionGen &+= 1
+        activeComputerRefreshTask?.cancel()
+        activeTranscriptRefreshTask?.cancel()
         activeComputerID = computer.id
         store.lastActiveHost = computer.id
         activeSessionID = nil
@@ -435,6 +458,7 @@ final class AntigravityStore: ObservableObject {
         isAwaitingTurnStart = false
         fastPollUntil = .distantPast
         wasActiveSessionBusy = false
+        livePushConnected = computer.isLocalMac && LocalSocketClient.shared.isSocketAvailable
         workspaceSnapshot = nil
         activeSubagentItem = nil
         subagentItems = []
@@ -443,7 +467,7 @@ final class AntigravityStore: ObservableObject {
         loadPreferences(for: computer.id)
         restoreOfflineCache(for: computer.id)
         subscribeActiveHost()
-        Task { await refreshActiveComputer() }
+        activeComputerRefreshTask = Task { await refreshActiveComputer() }
     }
 
     func forgetComputer(_ computer: ComputerEntry) {
@@ -451,12 +475,20 @@ final class AntigravityStore: ObservableObject {
         if let key = computer.hostKey {
             store.removePaired(host: key)
             client.unsubscribe(host: key)
+            store.evictCache(for: key)
         }
+        store.evictCache(for: computer.id)
         store.tailnetBook.forget(computer.id)
         reachabilityByID.removeValue(forKey: computer.id)
+        hostMetaByID.removeValue(forKey: computer.id)
         if activeComputerID == computer.id {
+            hostSelectionGen &+= 1
+            sessionSelectionGen &+= 1
+            activeComputerRefreshTask?.cancel()
+            activeTranscriptRefreshTask?.cancel()
             activeComputerID = nil
             activeSessionID = nil
+            livePushConnected = false
             sessions = []
             items = []
             workspaceSnapshot = nil
@@ -673,6 +705,8 @@ final class AntigravityStore: ObservableObject {
     }
 
     func selectSession(_ session: ChatSessionSummary) {
+        sessionSelectionGen &+= 1
+        activeTranscriptRefreshTask?.cancel()
         activeSessionID = session.id
         pendingOptimisticUserItem = nil
         isAwaitingTurnStart = false
@@ -686,12 +720,45 @@ final class AntigravityStore: ObservableObject {
         bannerError = nil
         isSidebarOpen = false
         subscribeActiveHost()
-        Task { await refreshActiveTranscript() }
+        activeTranscriptRefreshTask = Task { await refreshActiveTranscript() }
+    }
+
+    /// Proactively renews direct Tailscale grants nearing expiry (< 3 days) via `AppTailnetBook.wantsAdmission` (#14007).
+    private func renewGrantIfExpiringSoon(for computer: ComputerEntry) async {
+        guard !computer.isLocalMac, computer.canRequestDirectGrant, let paired = computer.paired else { return }
+        let now = Int64(Date().timeIntervalSince1970)
+        let last = lastGrantRenewAttemptByHost[computer.id]
+        // Renew when within 3 days of expiry (or AppTailnetBook.wantsAdmission window).
+        let nearExpiry = (paired.expires - now) < (3 * 86_400) || AppTailnetBook.wantsAdmission(expires: paired.expires, lastAsked: last, now: now)
+        guard nearExpiry, (last == nil || now - (last ?? 0) >= 60) else { return }
+        lastGrantRenewAttemptByHost[computer.id] = now
+        let target = computer.ip.isEmpty ? computer.dns : computer.ip
+        guard !target.isEmpty, let pubkey = store.devicePublicKeyHex(), !pubkey.isEmpty else { return }
+        if case .success(let answer) = await client.requestDirectGrant(
+            address: target,
+            port: computer.port,
+            devicePubkey: pubkey,
+            clientLabel: store.localClientLabel
+        ), let grant = answer.grant, !grant.isEmpty {
+            let renewed = PairedComputer(
+                host: answer.host,
+                relay: paired.relay,
+                grant: grant,
+                epoch: answer.epoch,
+                expires: answer.expires,
+                name: answer.label.isEmpty ? paired.name : answer.label
+            )
+            store.upsertPaired(renewed)
+            reloadComputers()
+        }
     }
 
     func refreshActiveComputer() async {
         guard let computer = activeComputer else { return }
-        guard computer.canSendRPC else {
+        let capturedHostGen = hostSelectionGen
+        await renewGrantIfExpiringSoon(for: computer)
+        guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
+        guard let currentComputer = activeComputer, currentComputer.id == computer.id, currentComputer.canSendRPC else {
             if !computer.isLocalMac && (!computer.ip.isEmpty || !computer.dns.isEmpty) {
                 await probeComputer(computer)
             }
@@ -700,32 +767,33 @@ final class AntigravityStore: ObservableObject {
         isLoadingSessions = sessions.isEmpty
         defer { isLoadingSessions = false }
 
-        if let descView = await performEnvironmentRPC(computer: computer, method: "DescribeEnvironment") {
-            guard activeComputerID == computer.id else { return }
-            applyMetadata(from: descView)
+        if let descView = await performEnvironmentRPC(computer: currentComputer, method: "DescribeEnvironment") {
+            guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
+            applyMetadata(from: descView, computerID: computer.id)
         }
 
         var mergedByID: [String: ChatSessionSummary] = [:]
-        if let listView = await performEnvironmentRPC(computer: computer, method: "ListSessions") {
-            guard activeComputerID == computer.id else { return }
-            applyMetadata(from: listView)
+        if let listView = await performEnvironmentRPC(computer: currentComputer, method: "ListSessions") {
+            guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
+            applyMetadata(from: listView, computerID: computer.id)
             for s in listView.sessions { mergedByID[s.id] = s }
         }
         // Also fetch native ~/.gemini Antigravity sessions (`host-agy.coax`) and merge cleanly
-        if let agyView = await performEnvironmentRPC(computer: computer, method: "ListSessions", model: "antigravity", quietErrors: true) {
-            guard activeComputerID == computer.id else { return }
+        if let agyView = await performEnvironmentRPC(computer: currentComputer, method: "ListSessions", model: "antigravity", quietErrors: true) {
+            guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
             for s in agyView.sessions where mergedByID[s.id] == nil {
                 mergedByID[s.id] = s
             }
         }
 
-        guard activeComputerID == computer.id else { return }
+        guard capturedHostGen == hostSelectionGen, activeComputerID == computer.id else { return }
         if !mergedByID.isEmpty || bannerError == nil {
-            sessions = mergedByID.values.sorted { $0.updatedAtMs > $1.updatedAtMs }
-            if let sid = activeSessionID, !sessions.contains(where: { $0.id == sid }) {
-                activeSessionID = nil
-                items = []
+            // Preserve the currently open session across page-1 pagination boundaries (#14007).
+            if let sid = activeSessionID, mergedByID[sid] == nil,
+               let existing = sessions.first(where: { $0.id == sid }) {
+                mergedByID[sid] = existing
             }
+            sessions = mergedByID.values.sorted { $0.updatedAtMs > $1.updatedAtMs }
             persistOfflineCache(for: computer.id)
         }
 
@@ -764,11 +832,16 @@ final class AntigravityStore: ObservableObject {
               let computer = activeComputer,
               computer.canSendRPC else { return }
 
+        let capturedHostGen = hostSelectionGen
+        let capturedSessionGen = sessionSelectionGen
         isLoadingTranscript = items.isEmpty
         defer { isLoadingTranscript = false }
 
         if let view = await performEnvironmentRPC(computer: computer, method: "ReadSession", session: sid) {
-            guard activeComputerID == computer.id, activeSessionID == sid else { return }
+            guard capturedHostGen == hostSelectionGen,
+                  capturedSessionGen == sessionSelectionGen,
+                  activeComputerID == computer.id,
+                  activeSessionID == sid else { return }
             var nowBusy = false
             var currentInteraction = ""
             if let updated = view.sessions.first(where: { $0.id == sid }) {
@@ -808,21 +881,23 @@ final class AntigravityStore: ObservableObject {
                 onTurnNotificationEvent?("completed", "Antigravity finished your turn")
             }
 
-            // Auto-dispatch queued follow-up the moment the active turn finishes
+            // Auto-dispatch queued follow-up without clobbering user's live draftText or attachments (#14007).
             if wasActiveSessionBusy && !nowBusy, let nextPrompt = queuedDraft, !nextPrompt.isEmpty {
                 queuedDraft = nil
-                draftText = nextPrompt
                 wasActiveSessionBusy = false
-                await sendMessage()
+                await sendMessage(overrideText: nextPrompt, overrideAttachments: [])
                 return
             }
             wasActiveSessionBusy = nowBusy
         }
     }
 
-    func sendMessage() async {
-        let baseText = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !baseText.isEmpty || !pendingAttachments.isEmpty else { return }
+    func sendMessage(overrideText: String? = nil, overrideAttachments: [FileAttachment]? = nil) async {
+        let isOverride = overrideText != nil
+        let rawInput = overrideText ?? draftText
+        let baseText = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachmentsToSend = overrideAttachments ?? pendingAttachments
+        guard !baseText.isEmpty || !attachmentsToSend.isEmpty else { return }
         guard let computer = activeComputer, computer.canSendRPC else {
             isComputersPresented = true
             return
@@ -830,7 +905,8 @@ final class AntigravityStore: ObservableObject {
 
         let capturedDraft = draftText
         let capturedAttachments = pendingAttachments
-        for att in capturedAttachments {
+        let previousSessionID = activeSessionID
+        for att in attachmentsToSend {
             if let img = att.imageData {
                 sentImagesByName[att.name] = img
             }
@@ -859,8 +935,8 @@ final class AntigravityStore: ObservableObject {
 
         func composePayload(useStructuredAttachments: Bool, modeWire: String) -> (text: String, attachmentsJSON: String) {
             var body = seedPrefix + baseText
-            let attJSON = useStructuredAttachments ? FileAttachment.encodeWireAttachmentsJSON(capturedAttachments) : ""
-            for att in capturedAttachments {
+            let attJSON = useStructuredAttachments ? FileAttachment.encodeWireAttachmentsJSON(attachmentsToSend) : ""
+            for att in attachmentsToSend {
                 if !attJSON.isEmpty && att.hasStructuredWireData {
                     body += att.renderedV2Placeholder()
                 } else {
@@ -887,7 +963,7 @@ final class AntigravityStore: ObservableObject {
             items = []
         }
         let baselineUsers = items.filter { $0.role == .user }.count
-        let optimisticBubbleText = capturedAttachments.contains(where: \.isImage) ? payloadText : (baseText.isEmpty ? payloadText : baseText)
+        let optimisticBubbleText = attachmentsToSend.contains(where: \.isImage) ? payloadText : (baseText.isEmpty ? payloadText : baseText)
         let optimisticItem = TranscriptItem(
             id: optimisticID,
             role: .user,
@@ -905,8 +981,10 @@ final class AntigravityStore: ObservableObject {
         pendingOptimisticBaselineUserCount = baselineUsers
         pendingOptimisticUserItem = optimisticItem
         items.append(optimisticItem)
-        draftText = ""
-        pendingAttachments = []
+        if !isOverride {
+            draftText = ""
+            pendingAttachments = []
+        }
 
         isSending = true
         isAwaitingTurnStart = true
@@ -973,9 +1051,14 @@ final class AntigravityStore: ObservableObject {
             if reviewMode == .ask || reviewMode == .acceptEdits || reviewMode == .turbo {
                 bannerError = "Your Mac is running an older OpenAgents host daemon that doesn't support \(reviewMode.label) mode yet. Update OpenAgents on your Mac, or switch Review Mode to Auto or Plan."
                 pendingOptimisticUserItem = nil
+                activeSessionID = previousSessionID
                 items = previousItems
-                draftText = capturedDraft
-                pendingAttachments = capturedAttachments
+                if !isOverride {
+                    draftText = capturedDraft
+                    pendingAttachments = capturedAttachments
+                } else {
+                    queuedDraft = rawInput
+                }
                 isAwaitingTurnStart = false
                 return
             }
@@ -990,9 +1073,14 @@ final class AntigravityStore: ObservableObject {
                 bannerError = HostErrorFormatter.describe(err, method: activeSession == nil ? "OpenSession" : "SendMessage")
             }
             pendingOptimisticUserItem = nil
+            activeSessionID = previousSessionID
             items = previousItems
-            draftText = capturedDraft
-            pendingAttachments = capturedAttachments
+            if !isOverride {
+                draftText = capturedDraft
+                pendingAttachments = capturedAttachments
+            } else {
+                queuedDraft = rawInput
+            }
             isAwaitingTurnStart = false
             return
         }
@@ -1436,8 +1524,12 @@ final class AntigravityStore: ObservableObject {
         attachmentsJSON: String = "",
         quietErrors: Bool = false
     ) async -> ParsedEnvironmentView? {
-        guard let work = MobileCoreWork(),
-              let params = MobileCore.encodeEnvironmentRequest(
+        guard let work = MobileCorePool.shared.checkout() else {
+            if !quietErrors { bannerError = "Internal crypto/codec arena unavailable." }
+            return nil
+        }
+        defer { MobileCorePool.shared.checkin(work) }
+        guard let params = MobileCore.encodeEnvironmentRequest(
                 work: work,
                 method: method,
                 session: session,
@@ -1458,7 +1550,9 @@ final class AntigravityStore: ObservableObject {
                 optionID: optionID,
                 attachmentsJSON: attachmentsJSON
               ) else {
-            if !quietErrors { bannerError = "Could not build Antigravity request." }
+            if !quietErrors {
+                bannerError = work.lastError.errorDescription ?? "Could not build Antigravity request."
+            }
             return nil
         }
 
@@ -1491,6 +1585,11 @@ final class AntigravityStore: ObservableObject {
                 if !quietErrors { bannerError = "Malformed response from computer." }
                 return nil
             }
+            // Enforce identical Coax schema validation on macOS LocalSocketClient responses (#14006).
+            if computer.isLocalMac, !MobileCore.validateView(work: work, host: parsed.hostPubkey, method: method, raw: data) {
+                if !quietErrors { bannerError = work.lastError.errorDescription ?? "Host response failed schema validation." }
+                return nil
+            }
             if !parsed.error.isEmpty {
                 if !quietErrors { bannerError = HostErrorFormatter.describe(parsed.error, method: method) }
             } else if !quietErrors {
@@ -1515,8 +1614,12 @@ final class AntigravityStore: ObservableObject {
         expiresMs: Int64 = 0,
         quietErrors: Bool = false
     ) async -> WorkspaceSnapshot? {
-        guard let work = MobileCoreWork(),
-              let params = MobileCore.encodeWorkspaceRequest(
+        guard let work = MobileCorePool.shared.checkout() else {
+            if !quietErrors { workspaceError = "Internal crypto/codec arena unavailable." }
+            return nil
+        }
+        defer { MobileCorePool.shared.checkin(work) }
+        guard let params = MobileCore.encodeWorkspaceRequest(
                 work: work,
                 method: method,
                 workspace: workspace,
@@ -1530,7 +1633,7 @@ final class AntigravityStore: ObservableObject {
                 issuedMs: issuedMs,
                 expiresMs: expiresMs
               ) else {
-            if !quietErrors { workspaceError = "Could not encode workspace request." }
+            if !quietErrors { workspaceError = work.lastError.errorDescription ?? "Could not encode workspace request." }
             return nil
         }
 
@@ -1561,6 +1664,11 @@ final class AntigravityStore: ObservableObject {
         case .success(let data):
             guard let parsed = WorkspaceSnapshot.parse(data) else {
                 if !quietErrors { workspaceError = "Malformed workspace response." }
+                return nil
+            }
+            // Enforce identical Coax schema validation on macOS LocalSocketClient responses (#14006).
+            if computer.isLocalMac, !MobileCore.validateWorkspaceView(work: work, host: parsed.host, method: method, raw: data) {
+                if !quietErrors { workspaceError = work.lastError.errorDescription ?? "Workspace response failed schema validation." }
                 return nil
             }
             return parsed

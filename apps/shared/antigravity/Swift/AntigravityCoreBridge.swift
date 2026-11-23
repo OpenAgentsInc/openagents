@@ -2,8 +2,39 @@
 import Foundation
 import Security
 
+/// Typed diagnostic errors returned from `apps/shared/antigravity/client-core-bridge.c` (#14006).
+enum MobileCoreError: Int32, Error, LocalizedError, Equatable {
+    case ok = 0
+    case nullWork = -1
+    case textTooLong = -2
+    case invalidModel = -3
+    case invalidFolder = -4
+    case invalidMode = -5
+    case cryptoFail = -6
+    case bufferSmall = -7
+    case jsonSyntax = -8
+    case schemaMismatch = -9
+    case encodeFail = -10
+
+    var errorDescription: String? {
+        switch self {
+        case .ok: return nil
+        case .nullWork: return "Internal crypto/codec arena unavailable."
+        case .textTooLong: return "Message exceeds the 16 KiB single-turn limit."
+        case .invalidModel: return "Selected model is not permitted for Antigravity."
+        case .invalidFolder: return "Selected workspace folder path is invalid."
+        case .invalidMode: return "Selected review mode is not recognized."
+        case .cryptoFail: return "NIP-44 encryption or signature verification failed."
+        case .bufferSmall: return "Payload exceeds the wire buffer limit."
+        case .jsonSyntax: return "Host returned non-JSON or truncated data."
+        case .schemaMismatch: return "Host response did not match the expected wire schema."
+        case .encodeFail: return "Could not encode Antigravity wire request."
+        }
+    }
+}
+
 /// RAII wrapper around the heap-allocated Coax work arena (`DvWork` + `EaRequest` + `EaView` + `WsRequest` + `WsView`).
-final class MobileCoreWork {
+final class MobileCoreWork: @unchecked Sendable {
     let raw: UnsafeMutableRawPointer
 
     init?() {
@@ -11,8 +42,56 @@ final class MobileCoreWork {
         self.raw = ptr
     }
 
+    var lastError: MobileCoreError {
+        MobileCoreError(rawValue: oa_mobile_last_error(raw)) ?? .encodeFail
+    }
+
     deinit {
         oa_mobile_work_close(raw)
+    }
+}
+
+/// Reusable pool of `MobileCoreWork` arenas eliminating 2.14 MiB/RPC heap allocation churn (#14006).
+/// Every arena is securely zeroized via `oa_mobile_work_close` when drained or deallocated.
+final class MobileCorePool: @unchecked Sendable {
+    static let shared = MobileCorePool()
+
+    private let lock = NSLock()
+    private var available: [MobileCoreWork] = []
+    private let maxCached: Int
+
+    init(maxCached: Int = 4) {
+        self.maxCached = maxCached
+    }
+
+    func checkout() -> MobileCoreWork? {
+        lock.lock()
+        if let existing = available.popLast() {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+        return MobileCoreWork()
+    }
+
+    func checkin(_ work: MobileCoreWork) {
+        lock.lock()
+        if available.count < maxCached {
+            available.append(work)
+        }
+        lock.unlock()
+    }
+
+    func withWork<T>(_ body: (MobileCoreWork) throws -> T) rethrows -> T? {
+        guard let work = checkout() else { return nil }
+        defer { checkin(work) }
+        return try body(work)
+    }
+
+    func drain() {
+        lock.lock()
+        available.removeAll()
+        lock.unlock()
     }
 }
 
@@ -23,16 +102,28 @@ enum MobileCore {
     static let directRelayLabel = "tailscale://direct"
 
     static func randomBytes(_ count: Int) -> Data? {
+        guard count > 0 else { return Data() }
         var bytes = [UInt8](repeating: 0, count: count)
-        guard SecRandomCopyBytes(kSecRandomDefault, count, &bytes) == errSecSuccess else { return nil }
+        if SecRandomCopyBytes(kSecRandomDefault, count, &bytes) == errSecSuccess {
+            return Data(bytes)
+        }
+        // Fail closed on predictable zeros: fall back to kernel CSPRNG `arc4random_buf` only if SecRandom fails (#14006).
+        arc4random_buf(&bytes, count)
+        guard bytes.contains(where: { $0 != 0 }) else { return nil }
         return Data(bytes)
     }
 
-    static func randomHex(bytes count: Int) -> String {
-        guard let data = randomBytes(count) else {
-            return String(repeating: "0", count: count * 2)
-        }
+    static func randomHexOrNil(bytes count: Int) -> String? {
+        guard let data = randomBytes(count) else { return nil }
         return data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func randomHex(bytes count: Int) -> String {
+        if let hex = randomHexOrNil(bytes: count) { return hex }
+        // Never emit predictable all-zeros; mix kernel arc4random_buf directly.
+        var fallback = [UInt8](repeating: 0, count: max(1, count))
+        arc4random_buf(&fallback, fallback.count)
+        return fallback.prefix(count).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Derives the 64-char lowercase hex x-only secp256k1 public key via Coax `dv_public`.

@@ -8,8 +8,23 @@
 extern "C" {
 #endif
 
+typedef enum {
+    OA_ERR_OK = 0,
+    OA_ERR_NULL_WORK = -1,
+    OA_ERR_TEXT_TOO_LONG = -2,
+    OA_ERR_INVALID_MODEL = -3,
+    OA_ERR_INVALID_FOLDER = -4,
+    OA_ERR_INVALID_MODE = -5,
+    OA_ERR_CRYPTO_FAIL = -6,
+    OA_ERR_BUFFER_SMALL = -7,
+    OA_ERR_JSON_SYNTAX = -8,
+    OA_ERR_SCHEMA_MISMATCH = -9,
+    OA_ERR_ENCODE_FAIL = -10
+} oa_err_t;
+
 void *oa_mobile_work_open(void);
 void oa_mobile_work_close(void *work);
+int oa_mobile_last_error(void *work);
 
 int64_t oa_mobile_public(const uint8_t secret[32], uint8_t out[64]);
 int64_t oa_mobile_seal(

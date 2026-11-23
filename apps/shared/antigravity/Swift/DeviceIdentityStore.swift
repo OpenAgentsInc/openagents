@@ -115,15 +115,23 @@ struct CachedHostSnapshot: Codable {
 final class MobileDeviceStore {
     private let keyItem: SecretBlobStore
     private let pairedItem: SecretBlobStore
+    private let pairedFileURL: URL?
     private let defaults: UserDefaults
     let tailnetBook: AppTailnetBook
     private let cacheURL: URL
+    private let cacheQueue = DispatchQueue(label: "com.openagents.cache.io", qos: .utility)
+    private var cacheWriteWorkItem: DispatchWorkItem?
+    private var pendingCacheSnapshots: [String: CachedHostSnapshot] = [:]
+    private let cacheLock = NSLock()
+    /// Surfaces a non-fatal recovery warning if a corrupt persistence file was backed up instead of wiped (#14007).
+    var lastPersistenceWarning: String?
 
     init(
         service: String = "com.openagents.app.auth",
         defaults: UserDefaults = .standard,
         tailnetBookURL: URL? = nil,
-        cacheURL: URL? = nil
+        cacheURL: URL? = nil,
+        pairedFileURL: URL? = nil
     ) {
         self.defaults = defaults
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -131,14 +139,22 @@ final class MobileDeviceStore {
 
         #if os(iOS)
         self.keyItem = MobileKeychainItem(service: service, account: "own-computer-key-v1")
-        self.pairedItem = MobileKeychainItem(service: service, account: "own-computer-paired-v1")
+        if let customPaired = pairedFileURL {
+            self.pairedItem = PrivateFileSecretStore(url: customPaired)
+            self.pairedFileURL = customPaired
+        } else {
+            self.pairedItem = MobileKeychainItem(service: service, account: "own-computer-paired-v1")
+            self.pairedFileURL = nil
+        }
         self.tailnetBook = AppTailnetBook(url: tailnetBookURL ?? support.appendingPathComponent("OpenAgents/tailnet-computers-v1.json"))
         self.cacheURL = cacheURL ?? support.appendingPathComponent("OpenAgents/transcript-cache-v1.json")
         #else
         let home = FileManager.default.homeDirectoryForCurrentUser
         let dir = home.appendingPathComponent(".openagents/macos", isDirectory: true)
+        let pURL = pairedFileURL ?? dir.appendingPathComponent("own-computer-paired-v1.json")
         self.keyItem = PrivateFileSecretStore(url: dir.appendingPathComponent("own-computer-key-v1"))
-        self.pairedItem = PrivateFileSecretStore(url: dir.appendingPathComponent("own-computer-paired-v1.json"))
+        self.pairedItem = PrivateFileSecretStore(url: pURL)
+        self.pairedFileURL = pURL
         self.tailnetBook = AppTailnetBook(url: tailnetBookURL ?? dir.appendingPathComponent("tailnet-computers-v1.json"))
         self.cacheURL = cacheURL ?? dir.appendingPathComponent("transcript-cache-v1.json")
         #endif
@@ -172,15 +188,41 @@ final class MobileDeviceStore {
         #endif
     }
 
+    private func backupCorruptBlob(_ raw: Data, label: String, fileURL: URL?) {
+        let ts = Int64(Date().timeIntervalSince1970)
+        if let fileURL {
+            let backup = fileURL.deletingLastPathComponent()
+                .appendingPathComponent("\(fileURL.lastPathComponent).corrupt.\(ts)")
+            try? raw.write(to: backup, options: .atomic)
+            lastPersistenceWarning = "Recovered from corrupt \(label); backup saved to \(backup.lastPathComponent)."
+        } else {
+            let backup = cacheURL.deletingLastPathComponent()
+                .appendingPathComponent("\(label).corrupt.\(ts).json")
+            try? FileManager.default.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? raw.write(to: backup, options: .atomic)
+            lastPersistenceWarning = "Recovered from corrupt \(label); backup saved to \(backup.lastPathComponent)."
+        }
+    }
+
     var pairedComputers: [PairedComputer] {
         get {
-            guard let data = pairedItem.load(),
-                  let decoded = try? JSONDecoder().decode([PairedComputer].self, from: data) else {
+            guard let data = pairedItem.load(), !data.isEmpty else {
                 return []
             }
-            return decoded
+            do {
+                return try JSONDecoder().decode([PairedComputer].self, from: data)
+            } catch {
+                backupCorruptBlob(data, label: "own-computer-paired-v1.json", fileURL: pairedFileURL)
+                return []
+            }
         }
         set {
+            // Protect against accidentally overwriting a corrupt-but-unrecovered file until backed up (#14007).
+            if let existing = pairedItem.load(), !existing.isEmpty {
+                if (try? JSONDecoder().decode([PairedComputer].self, from: existing)) == nil {
+                    backupCorruptBlob(existing, label: "own-computer-paired-v1.json", fileURL: pairedFileURL)
+                }
+            }
             guard let data = try? JSONEncoder().encode(newValue) else { return }
             _ = pairedItem.save(data)
         }
@@ -238,9 +280,15 @@ final class MobileDeviceStore {
         set { defaults.set(newValue, forKey: "oa.agy.activeHost") }
     }
 
-    // MARK: - Offline transcript cache
+    // MARK: - Offline transcript cache (debounced background I/O + eviction on forget; #14007)
 
     func loadCache(for hostID: String) -> CachedHostSnapshot? {
+        cacheLock.lock()
+        if let inMem = pendingCacheSnapshots[hostID] {
+            cacheLock.unlock()
+            return inMem
+        }
+        cacheLock.unlock()
         guard let data = try? Data(contentsOf: cacheURL),
               let all = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data) else {
             return nil
@@ -249,14 +297,42 @@ final class MobileDeviceStore {
     }
 
     func saveCache(_ snapshot: CachedHostSnapshot) {
-        var all: [String: CachedHostSnapshot] = [:]
-        if let data = try? Data(contentsOf: cacheURL),
-           let decoded = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data) {
-            all = decoded
+        cacheLock.lock()
+        pendingCacheSnapshots[snapshot.hostID] = snapshot
+        cacheWriteWorkItem?.cancel()
+        let url = cacheURL
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.cacheLock.lock()
+            let dirty = self.pendingCacheSnapshots
+            self.cacheLock.unlock()
+            guard !dirty.isEmpty else { return }
+            var all: [String: CachedHostSnapshot] = [:]
+            if let data = try? Data(contentsOf: url),
+               let decoded = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data) {
+                all = decoded
+            }
+            for (k, v) in dirty { all[k] = v }
+            guard let encoded = try? JSONEncoder().encode(all) else { return }
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? encoded.write(to: url, options: .atomic)
         }
-        all[snapshot.hostID] = snapshot
-        guard let encoded = try? JSONEncoder().encode(all) else { return }
-        try? FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? encoded.write(to: cacheURL, options: .atomic)
+        cacheWriteWorkItem = work
+        cacheLock.unlock()
+        cacheQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    func evictCache(for hostID: String) {
+        cacheLock.lock()
+        pendingCacheSnapshots.removeValue(forKey: hostID)
+        cacheLock.unlock()
+        let url = cacheURL
+        cacheQueue.async {
+            guard let data = try? Data(contentsOf: url),
+                  var all = try? JSONDecoder().decode([String: CachedHostSnapshot].self, from: data),
+                  all.removeValue(forKey: hostID) != nil,
+                  let encoded = try? JSONEncoder().encode(all) else { return }
+            try? encoded.write(to: url, options: .atomic)
+        }
     }
 }

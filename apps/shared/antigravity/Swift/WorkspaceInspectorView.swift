@@ -570,7 +570,7 @@ struct WorkspaceInspectorView: View {
         }
 
         if !snap.githubError.isEmpty {
-            Text(snap.githubError)
+            Text(HostErrorFormatter.describe(snap.githubError, method: "ReadWorkspace"))
                 .font(.system(size: 12))
                 .foregroundStyle(OATheme.statusWarn)
         }

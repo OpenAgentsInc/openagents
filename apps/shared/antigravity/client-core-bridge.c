@@ -12,6 +12,7 @@ typedef struct {
     coax_t_EaView view;
     coax_t_WsRequest ws_req;
     coax_t_WsView ws_view;
+    int last_error;
 } oa_mobile_work_t;
 
 static coax_string oa_mc_cstr(const char *s) {
@@ -40,6 +41,11 @@ void oa_mobile_work_close(void *work) {
     free(work);
 }
 
+int oa_mobile_last_error(void *work) {
+    if (!work) return OA_ERR_NULL_WORK;
+    return ((oa_mobile_work_t *)work)->last_error;
+}
+
 int64_t oa_mobile_public(const uint8_t secret[32], uint8_t out[64]) {
     return dv_public(oa_mc_in(secret, 32), oa_mc_out(out, 64));
 }
@@ -59,9 +65,9 @@ int64_t oa_mobile_seal(
     uint8_t *out,
     int64_t cap
 ) {
-    if (!work) return -1;
+    if (!work) return OA_ERR_NULL_WORK;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return dv_seal(
+    int64_t n = dv_seal(
         (coax_v_t_DvWork){ &w->dv, 1 },
         op,
         oa_mc_in(secret, 32),
@@ -74,10 +80,12 @@ int64_t oa_mobile_seal(
         oa_mc_in(random, 96),
         oa_mc_out(out, cap)
     );
+    w->last_error = n > 0 ? OA_ERR_OK : (cap < params_n + 512 ? OA_ERR_BUFFER_SMALL : OA_ERR_CRYPTO_FAIL);
+    return n;
 }
 
 int64_t oa_mobile_event_id(void *work, uint8_t out[64]) {
-    if (!work) return -1;
+    if (!work) return OA_ERR_NULL_WORK;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
     return dv_event_id((coax_v_t_DvWork){ &w->dv, 1 }, oa_mc_out(out, 64));
 }
@@ -92,9 +100,9 @@ int64_t oa_mobile_open(
     uint8_t *out,
     int64_t cap
 ) {
-    if (!work) return -1;
+    if (!work) return OA_ERR_NULL_WORK;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return dv_open(
+    int64_t n = dv_open(
         (coax_v_t_DvWork){ &w->dv, 1 },
         oa_mc_in(secret, 32),
         oa_mc_cstr(host),
@@ -102,6 +110,8 @@ int64_t oa_mobile_open(
         now,
         oa_mc_out(out, cap)
     );
+    w->last_error = n > 0 ? OA_ERR_OK : OA_ERR_CRYPTO_FAIL;
+    return n;
 }
 
 int oa_mobile_host_key_ok(const char *key) {
@@ -155,9 +165,22 @@ int64_t oa_mobile_env_request(
     uint8_t *out,
     int64_t cap
 ) {
-    if (!work) return -1;
+    if (!work) return OA_ERR_NULL_WORK;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return mc_env_request(
+    if (text && strlen(text) > 16384) { w->last_error = OA_ERR_TEXT_TOO_LONG; return OA_ERR_TEXT_TOO_LONG; }
+    if (model && model[0] && !(method && strcmp(method, "ListSessions") == 0 && strcmp(model, "antigravity") == 0) && !mc_is_agy_model(oa_mc_cstr(model))) {
+        w->last_error = OA_ERR_INVALID_MODEL;
+        return OA_ERR_INVALID_MODEL;
+    }
+    if (folder && folder[0] && !mc_folder_ok(oa_mc_cstr(folder))) {
+        w->last_error = OA_ERR_INVALID_FOLDER;
+        return OA_ERR_INVALID_FOLDER;
+    }
+    if (mode && mode[0] && !mc_mode_ok(oa_mc_cstr(mode))) {
+        w->last_error = OA_ERR_INVALID_MODE;
+        return OA_ERR_INVALID_MODE;
+    }
+    int64_t n = mc_env_request(
         (coax_v_t_EaRequest){ &w->req, 1 },
         oa_mc_cstr(method),
         oa_mc_cstr(session),
@@ -179,17 +202,21 @@ int64_t oa_mobile_env_request(
         oa_mc_cstr(attachments),
         oa_mc_out(out, cap)
     );
+    w->last_error = n > 0 ? OA_ERR_OK : OA_ERR_ENCODE_FAIL;
+    return n;
 }
 
 int oa_mobile_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n) {
     if (!work) return 0;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return mc_view_valid(
+    int ok = mc_view_valid(
         (coax_v_t_EaView){ &w->view, 1 },
         oa_mc_cstr(host),
         oa_mc_cstr(method),
         oa_mc_bytes(raw, raw_n)
     ) ? 1 : 0;
+    w->last_error = ok ? OA_ERR_OK : ((raw && raw_n > 0 && raw[0] == '{') ? OA_ERR_SCHEMA_MISMATCH : OA_ERR_JSON_SYNTAX);
+    return ok;
 }
 
 int64_t oa_mobile_ws_request(
@@ -210,9 +237,9 @@ int64_t oa_mobile_ws_request(
     uint8_t *out,
     int64_t cap
 ) {
-    if (!work) return -1;
+    if (!work) return OA_ERR_NULL_WORK;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return mc_ws_request(
+    int64_t n = mc_ws_request(
         (coax_v_t_WsRequest){ &w->ws_req, 1 },
         oa_mc_cstr(method),
         oa_mc_cstr(workspace),
@@ -229,15 +256,19 @@ int64_t oa_mobile_ws_request(
         expires,
         oa_mc_out(out, cap)
     );
+    w->last_error = n > 0 ? OA_ERR_OK : OA_ERR_ENCODE_FAIL;
+    return n;
 }
 
 int oa_mobile_ws_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n) {
     if (!work) return 0;
     oa_mobile_work_t *w = (oa_mobile_work_t *)work;
-    return mc_ws_view_valid(
+    int ok = mc_ws_view_valid(
         (coax_v_t_WsView){ &w->ws_view, 1 },
         oa_mc_cstr(host),
         oa_mc_cstr(method),
         oa_mc_bytes(raw, raw_n)
     ) ? 1 : 0;
+    w->last_error = ok ? OA_ERR_OK : ((raw && raw_n > 0 && raw[0] == '{') ? OA_ERR_SCHEMA_MISMATCH : OA_ERR_JSON_SYNTAX);
+    return ok;
 }

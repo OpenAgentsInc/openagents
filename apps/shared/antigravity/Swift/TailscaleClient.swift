@@ -35,6 +35,8 @@ final class TailscaleClient {
     var onDiscoveredChange: (() -> Void)?
     var onReachabilityChange: ((String, ReachabilityState) -> Void)?
     var onPushEvent: ((String, AppTailnet.PushEvent) -> Void)?
+    /// Fires accurately when the direct TCP push channel transitions connected/disconnected (#14007).
+    var onLivePushStateChange: ((String, Bool) -> Void)?
 
     private struct DirectWaiter {
         let id: UInt64
@@ -53,6 +55,10 @@ final class TailscaleClient {
     private var directWaiters: [String: [DirectWaiter]] = [:]
     private var directQueued: [String: [(Data, DirectWaiter)]] = [:]
     private var subscribedSessions: [String: String] = [:]
+    private var subscribedEndpoints: [String: AppTailnetComputer] = [:]
+    private var reconnectAttempts: [String: Int] = [:]
+    private var reconnectTasks: [String: Task<Void, Never>] = [:]
+    private var consecutiveTimeouts: [String: Int] = [:]
     private var directSerial: UInt64 = 0
 
     init(book: AppTailnetBook) {
@@ -73,7 +79,10 @@ final class TailscaleClient {
         active = false
         browser?.cancel()
         browser = nil
-        dropAllDirect(with: .unreachable("Transport suspended"))
+        for (_, t) in reconnectTasks { t.cancel() }
+        reconnectTasks.removeAll()
+        reconnectAttempts.removeAll()
+        dropAllDirect(with: .unreachable("Transport suspended"), scheduleReconnect: false)
     }
 
     // MARK: - Path monitoring
@@ -90,7 +99,8 @@ final class TailscaleClient {
                     let prev = self.lastPathSignature
                     self.lastPathSignature = sig
                     if let prev, prev != sig, self.active {
-                        self.dropAllDirect(with: .unreachable("Network changed; reconnecting"))
+                        self.reconnectAttempts.removeAll()
+                        self.dropAllDirect(with: .unreachable("Network changed; reconnecting"), scheduleReconnect: true)
                     }
                 }
             }
@@ -283,12 +293,14 @@ final class TailscaleClient {
     func subscribe(endpoint: AppTailnetComputer, session: String = "") {
         let host = endpoint.host
         subscribedSessions[host] = session
+        subscribedEndpoints[host] = endpoint
         guard active else { return }
         if directReady.contains(host), let conn = directConns[host] {
             let line = AppTailnet.subscribeLine(session: session)
             if !line.isEmpty {
                 conn.send(content: line, completion: .contentProcessed { _ in })
             }
+            onLivePushStateChange?(host, true)
         } else if directConns[host] == nil {
             dialDirect(endpoint, order: endpoint.dialOrder)
         }
@@ -296,6 +308,34 @@ final class TailscaleClient {
 
     func unsubscribe(host: String) {
         subscribedSessions.removeValue(forKey: host)
+        subscribedEndpoints.removeValue(forKey: host)
+        reconnectTasks.removeValue(forKey: host)?.cancel()
+        reconnectAttempts.removeValue(forKey: host)
+        onLivePushStateChange?(host, false)
+    }
+
+    /// Computes capped jittered exponential backoff delay (`1s -> 2s -> 4s -> 8s -> 15s`; #14007).
+    nonisolated static func backoffDelaySeconds(attempt: Int, jitterUnit: Double = Double.random(in: 0...1)) -> Double {
+        let exp = min(15.0, pow(2.0, Double(max(0, min(attempt, 4)))))
+        let jitter = exp * 0.25 * max(0.0, min(1.0, jitterUnit))
+        return min(15.0, exp + jitter)
+    }
+
+    private func scheduleReconnect(for host: String) {
+        guard active, let endpoint = subscribedEndpoints[host], subscribedSessions[host] != nil else { return }
+        guard directConns[host] == nil, reconnectTasks[host] == nil else { return }
+        let attempt = reconnectAttempts[host] ?? 0
+        reconnectAttempts[host] = attempt + 1
+        let delay = Self.backoffDelaySeconds(attempt: attempt)
+        reconnectTasks[host] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await MainActor.run {
+                guard let self, self.active else { return }
+                self.reconnectTasks.removeValue(forKey: host)
+                guard self.directConns[host] == nil, let ep = self.subscribedEndpoints[host] else { return }
+                self.dialDirect(ep, order: ep.dialOrder)
+            }
+        }
     }
 
     // MARK: - Sealed NIP-44 RPC over direct Tailscale TCP (Environment & Workspace)
@@ -309,7 +349,8 @@ final class TailscaleClient {
         isWorkspace: Bool = false,
         timeout: TimeInterval = 18.0
     ) async -> Result<Data, TailscaleRPCError> {
-        guard let work = MobileCoreWork() else { return .failure(.encodingFailed) }
+        guard let work = MobileCorePool.shared.checkout() else { return .failure(.encodingFailed) }
+        defer { MobileCorePool.shared.checkin(work) }
         guard let sealed = MobileCore.sealRPC(
             work: work,
             secret: secret,
@@ -380,8 +421,12 @@ final class TailscaleClient {
             MainActor.assumeIsolated {
                 guard let self, !finished else { return }
                 self.removeWaiter(host: host, id: waiterID)
-                if self.directReady.contains(host) {
-                    self.dropDirect(host, with: .timeout)
+                // Isolate single-RPC timeout from tearing down concurrent RPCs & push stream;
+                // only tear down after 2+ consecutive timeouts on the same socket (#14007).
+                let count = (self.consecutiveTimeouts[host] ?? 0) + 1
+                self.consecutiveTimeouts[host] = count
+                if count >= 2, self.directReady.contains(host) {
+                    self.dropDirect(host, with: .timeout, scheduleReconnect: true)
                 }
                 finish(.failure(.timeout))
             }
@@ -474,6 +519,9 @@ final class TailscaleClient {
                             }
                             settled = true
                             self.directReady.insert(c.host)
+                            self.reconnectAttempts[c.host] = 0
+                            self.consecutiveTimeouts[c.host] = 0
+                            self.reconnectTasks.removeValue(forKey: c.host)?.cancel()
                             self.directBuffers[c.host] = restData
                             self.onReachabilityChange?(c.host, .reachable)
                             if let subSession = self.subscribedSessions[c.host] {
@@ -481,6 +529,7 @@ final class TailscaleClient {
                                 if !subLine.isEmpty {
                                     conn.send(content: subLine, completion: .contentProcessed { _ in })
                                 }
+                                self.onLivePushStateChange?(c.host, true)
                             }
                             let queued = self.directQueued.removeValue(forKey: c.host) ?? []
                             for (ev, waiter) in queued {
@@ -510,6 +559,7 @@ final class TailscaleClient {
     }
 
     private func deliverDirectLine(host: String, line: Data) {
+        consecutiveTimeouts[host] = 0
         if let push = AppTailnet.parsePush(line) {
             onPushEvent?(host, push)
             return
@@ -558,19 +608,31 @@ final class TailscaleClient {
         }
     }
 
-    private func dropDirect(_ host: String, with error: TailscaleRPCError) {
+    private func dropDirect(_ host: String, with error: TailscaleRPCError, scheduleReconnect shouldReconnect: Bool = true) {
+        let wasReady = directReady.contains(host)
         directConns.removeValue(forKey: host)?.cancel()
         directReady.remove(host)
         directBuffers.removeValue(forKey: host)
+        consecutiveTimeouts.removeValue(forKey: host)
+        if wasReady || subscribedSessions[host] != nil {
+            onLivePushStateChange?(host, false)
+        }
         let waiters = directWaiters.removeValue(forKey: host) ?? []
         let queued = directQueued.removeValue(forKey: host) ?? []
         for w in waiters { w.finish(.failure(error)) }
         for (_, w) in queued { w.finish(.failure(error)) }
+        if shouldReconnect, active, subscribedSessions[host] != nil {
+            if case .refused = error { return }
+            scheduleReconnect(for: host)
+        }
     }
 
-    private func dropAllDirect(with error: TailscaleRPCError) {
-        let hosts = Set(directConns.keys).union(directWaiters.keys).union(directQueued.keys)
-        for h in hosts { dropDirect(h, with: error) }
+    private func dropAllDirect(with error: TailscaleRPCError, scheduleReconnect shouldReconnect: Bool = true) {
+        let hosts = Set(directConns.keys)
+            .union(directWaiters.keys)
+            .union(directQueued.keys)
+            .union(subscribedSessions.keys)
+        for h in hosts { dropDirect(h, with: error, scheduleReconnect: shouldReconnect) }
     }
 
     nonisolated private static func readFrame(_ conn: NWConnection, _ have: Data, _ done: @escaping @Sendable (Data?, Data) -> Void) {

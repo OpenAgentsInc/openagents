@@ -669,4 +669,80 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(cut.utf8.count, 10)
         XCTAssertEqual(cut, "🚀🚀")
     }
+
+    func testWave2ErrorCoverageTypedFFIDiagnosticsPoolAndPersistenceRecovery() throws {
+        // 1. 100% coverage of Coax EA_ERRORS, HB_CODES, workspace, and tailnet refusal codes (#14006)
+        let allCoaxRefusals = [
+            "unsupported", "forbidden", "missing_right", "expired", "revoked", "stale",
+            "wrong_code", "denied", "refused", "conflict", "stale_cursor", "record_limit",
+            "discovery_incomplete", "no_agent", "model_unavailable", "capacity", "not_found",
+            "unsupported_profile", "folder_refused", "workspace_refused", "stale_state",
+            "dirty_worktree", "workspace_busy", "workspace_locked", "github_unavailable",
+            "github_remote_required", "workspace_unavailable", "repository_unavailable",
+            "diff_unavailable", "branches_unavailable", "invalid_branch", "detached_head",
+            "operation_failed", "storage_unavailable", "source_unavailable", "interaction_expired",
+            "malformed", "rate_limited", "too_large", "bounds", "output_limit",
+            "idempotency_conflict", "not_serving", "busy", "tagged", "not_owner", "not_tailnet", "unavailable"
+        ]
+        for code in allCoaxRefusals {
+            let msg = HostErrorFormatter.describe(code)
+            XCTAssertFalse(msg.isEmpty, "Empty message for \(code)")
+            XCTAssertNotEqual(msg, code, "Naked snake_case leaked for \(code)")
+            XCTAssertFalse(msg.contains("Host refused request ("), "Fell through to default for \(code)")
+        }
+        for ht in ["tagged", "not_owner", "not_tailnet", "unavailable", "not_serving", "busy", "malformed"] {
+            let msg = ReachabilityState.humanRefusal(ht)
+            XCTAssertFalse(msg.contains("Refused ("), "Tailnet refusal fell through for \(ht)")
+        }
+
+        // 2. Typed C FFI diagnostics & MobileCorePool reuse (#14006)
+        let pool = MobileCorePool(maxCached: 2)
+        let w1 = try XCTUnwrap(pool.checkout())
+        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: String(repeating: "x", count: 16_385)))
+        XCTAssertEqual(w1.lastError, .textTooLong)
+        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", model: "inkling-2-mini"))
+        XCTAssertEqual(w1.lastError, .invalidModel)
+        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", folder: "../etc"))
+        XCTAssertEqual(w1.lastError, .invalidFolder)
+        XCTAssertNil(MobileCore.encodeEnvironmentRequest(work: w1, method: "OpenSession", text: "hi", mode: "bogus"))
+        XCTAssertEqual(w1.lastError, .invalidMode)
+        XCTAssertFalse(MobileCore.validateView(work: w1, host: String(repeating: "a", count: 64), method: "ReadSession", raw: Data("not json".utf8)))
+        XCTAssertEqual(w1.lastError, .jsonSyntax)
+        XCTAssertFalse(MobileCore.validateView(work: w1, host: String(repeating: "a", count: 64), method: "ReadSession", raw: Data("{\"bad\":1}".utf8)))
+        XCTAssertEqual(w1.lastError, .schemaMismatch)
+        let ptr1 = w1.raw
+        pool.checkin(w1)
+        let w2 = try XCTUnwrap(pool.checkout())
+        XCTAssertEqual(w2.raw, ptr1, "MobileCorePool should reuse pooled arena without reallocating")
+        pool.checkin(w2)
+        pool.drain()
+
+        // 3. MagicDNS-only dialOrder & AppTailnetBook limit = 32 & exponential backoff (#14007)
+        let dnsOnly = AppTailnetComputer(host: String(repeating: "a", count: 64), ip: "", dns: "studio.ts.net", port: 47109, name: "Studio")
+        XCTAssertEqual(dnsOnly.dialOrder, ["studio.ts.net"])
+        let both = AppTailnetComputer(host: String(repeating: "a", count: 64), ip: "100.64.0.5", dns: "studio.ts.net", port: 47109, name: "Studio")
+        XCTAssertEqual(both.dialOrder, ["100.64.0.5", "studio.ts.net"])
+        XCTAssertEqual(AppTailnetBook.limit, 32)
+        XCTAssertEqual(TailscaleClient.backoffDelaySeconds(attempt: 0, jitterUnit: 0), 1.0)
+        XCTAssertEqual(TailscaleClient.backoffDelaySeconds(attempt: 1, jitterUnit: 0), 2.0)
+        XCTAssertEqual(TailscaleClient.backoffDelaySeconds(attempt: 2, jitterUnit: 0), 4.0)
+        XCTAssertEqual(TailscaleClient.backoffDelaySeconds(attempt: 3, jitterUnit: 0), 8.0)
+        XCTAssertEqual(TailscaleClient.backoffDelaySeconds(attempt: 6, jitterUnit: 1), 15.0)
+
+        // 4. Corrupt paired JSON triggers backup instead of silent wipe (#14007)
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("oa-corrupt-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let pairedFile = tmpDir.appendingPathComponent("own-computer-paired-v1.json")
+        try Data("{corrupt json".utf8).write(to: pairedFile)
+        let devStore = MobileDeviceStore(
+            tailnetBookURL: tmpDir.appendingPathComponent("book.json"),
+            cacheURL: tmpDir.appendingPathComponent("cache.json"),
+            pairedFileURL: pairedFile
+        )
+        XCTAssertTrue(devStore.pairedComputers.isEmpty)
+        XCTAssertNotNil(devStore.lastPersistenceWarning)
+        let files = try FileManager.default.contentsOfDirectory(atPath: tmpDir.path)
+        XCTAssertTrue(files.contains(where: { $0.hasPrefix("own-computer-paired-v1.json.corrupt.") }))
+    }
 }

@@ -297,27 +297,33 @@ struct FileAttachment: Identifiable, Equatable {
         )
     }
 
+    private struct WireAttachmentDTO: Encodable {
+        let name: String
+        let mime_type: String
+        let data: String
+    }
+
     /// Builds a bounded `EaRequest.attachments` JSON array for v2 hosts (`[{"name":...,"mime_type":...,"data":...}]`).
     /// Returns `""` when no binary/image attachments need structured carriage so v1 compat is preserved.
     static func encodeWireAttachmentsJSON(_ attachments: [FileAttachment], maxTotalBytes: Int = 31_000) -> String {
-        var entries: [[String: String]] = []
+        var entries: [WireAttachmentDTO] = []
         var usedBytes = 2 // "[]"
         for att in attachments {
             guard let b64 = att.highResBase64 ?? att.imageBase64 ?? att.binaryBase64, !b64.isEmpty else { continue }
             let est = b64.utf8.count + att.name.utf8.count + att.mimeType.utf8.count + 48
             if usedBytes + est <= maxTotalBytes {
-                entries.append(["name": att.name, "mime_type": att.mimeType, "data": b64])
+                entries.append(WireAttachmentDTO(name: att.name, mime_type: att.mimeType, data: b64))
                 usedBytes += est
             } else if let compact = att.imageBase64, !compact.isEmpty {
                 let compactEst = compact.utf8.count + att.name.utf8.count + att.mimeType.utf8.count + 48
                 if usedBytes + compactEst <= maxTotalBytes {
-                    entries.append(["name": att.name, "mime_type": att.mimeType, "data": compact])
+                    entries.append(WireAttachmentDTO(name: att.name, mime_type: att.mimeType, data: compact))
                     usedBytes += compactEst
                 }
             }
         }
         guard !entries.isEmpty,
-              let data = try? JSONSerialization.data(withJSONObject: entries, options: []),
+              let data = try? JSONEncoder().encode(entries),
               data.count <= maxTotalBytes,
               let json = String(data: data, encoding: .utf8) else {
             return ""
@@ -458,6 +464,10 @@ enum ReachabilityState: Equatable {
             return "Refused: connection did not arrive over Tailscale"
         case "unavailable":
             return "Refused: OpenAgents host daemon is not serving yet"
+        case "not_serving":
+            return "Refused: OpenAgents host daemon is not serving on this computer"
+        case "busy":
+            return "Refused: host is temporarily busy; retrying shortly"
         case "malformed":
             return "Refused: protocol version mismatch"
         default:
@@ -585,7 +595,78 @@ struct ChatSessionSummary: Identifiable, Equatable, Codable {
     }
 }
 
-/// Maps every raw wire/host refusal token into plain, actionable English so users never see naked wire codes.
+/// Resilient forward-compatible enums for wire values (#14006).
+enum SessionControlKind: Equatable {
+    case available
+    case observeOnly
+    case unknown(String)
+
+    init(raw: String) {
+        switch raw {
+        case "available": self = .available
+        case "observe-only": self = .observeOnly
+        default: self = .unknown(raw)
+        }
+    }
+}
+
+enum NoticeKind: Equatable {
+    case install
+    case login
+    case limit
+    case note
+    case none
+    case unknown(String)
+
+    init(raw: String) {
+        switch raw {
+        case "": self = .none
+        case "install": self = .install
+        case "login": self = .login
+        case "limit": self = .limit
+        case "note": self = .note
+        default: self = .unknown(raw)
+        }
+    }
+}
+
+enum WorkspacePRState: Equatable {
+    case open
+    case closed
+    case merged
+    case draft
+    case unknown(String)
+
+    init(raw: String) {
+        switch raw.uppercased() {
+        case "OPEN": self = .open
+        case "CLOSED": self = .closed
+        case "MERGED": self = .merged
+        case "DRAFT": self = .draft
+        default: self = .unknown(raw)
+        }
+    }
+}
+
+enum TailnetPushKind: Equatable {
+    case sessionsChanged
+    case sessionUpdated
+    case interactionPending
+    case turnEnded
+    case unknown(String)
+
+    init(raw: String) {
+        switch raw {
+        case "sessions_changed": self = .sessionsChanged
+        case "session_updated": self = .sessionUpdated
+        case "interaction_pending": self = .interactionPending
+        case "turn_ended": self = .turnEnded
+        default: self = .unknown(raw)
+        }
+    }
+}
+
+/// Maps every raw wire/host/workspace/tailnet refusal token into plain, actionable English (#14006).
 enum HostErrorFormatter {
     static func describe(_ rawCode: String, method: String = "") -> String {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -598,12 +679,26 @@ enum HostErrorFormatter {
                 return "Workspace Git controls aren't enabled for this pairing yet. Re-pair over Tailscale or run `coder host workspace-enable` on your Mac."
             }
             return "This device's grant was not accepted by your Mac. Open Computers and tap Pair over Tailscale to refresh it."
+        case "missing_right":
+            return "This pairing grant does not include permission for that operation. Re-pair from Computers to grant access."
         case "expired":
             return "This pairing grant or request expired. Open Computers and tap Pair over Tailscale to renew."
         case "revoked":
             return "This device's access was revoked on your Mac. Pair again from Computers."
+        case "stale":
+            return "Your device's grant epoch is out of date. Open Computers and pair again."
+        case "wrong_code":
+            return "The pairing code did not match. Request a fresh pairing over Tailscale."
+        case "denied", "refused":
+            return "The host denied this request."
         case "conflict":
             return "This chat is read-only or changed on another device. Start a new chat or refresh to continue."
+        case "stale_cursor":
+            return "The transcript changed while paginating. Refreshing from the latest turn."
+        case "record_limit":
+            return "The host reached its session history record limit for this view."
+        case "discovery_incomplete":
+            return "Some local session files could not be scanned on your Mac."
         case "no_agent":
             return "Antigravity (`agy`) isn't available or signed in on your Mac. Open OpenAgents macOS to sign in."
         case "model_unavailable":
@@ -618,6 +713,32 @@ enum HostErrorFormatter {
             return "That workspace subfolder isn't allowed on your Mac."
         case "workspace_refused":
             return "Workspace access isn't configured on your Mac."
+        case "stale_state":
+            return "The repository changed since you last loaded it. Refresh Workspace and retry."
+        case "dirty_worktree":
+            return "Your workspace has uncommitted changes. Commit, stash, or discard them first."
+        case "workspace_busy":
+            return "An active Antigravity turn is modifying this workspace. Wait for it to finish before running Git changes."
+        case "workspace_locked":
+            return "This Git worktree is locked and cannot be removed."
+        case "github_unavailable":
+            return "GitHub CLI (`gh`) isn't installed or signed in on your Mac. Run `gh auth login` on the host."
+        case "github_remote_required":
+            return "This repository has no GitHub remote configured for pull requests."
+        case "workspace_unavailable":
+            return "The configured workspace directory isn't accessible on your Mac."
+        case "repository_unavailable":
+            return "This folder is not a Git repository on your Mac."
+        case "diff_unavailable":
+            return "Git diff could not be computed for this repository."
+        case "branches_unavailable":
+            return "Could not read Git branches from this repository."
+        case "invalid_branch":
+            return "That branch name is invalid or already exists."
+        case "detached_head":
+            return "The repository is in a detached HEAD state. Switch to or create a branch first."
+        case "operation_failed":
+            return "The Git operation failed on your Mac. Check repository status and retry."
         case "storage_unavailable", "source_unavailable":
             return "Your Mac host couldn't read or write session storage. Check disk space and host daemon logs."
         case "interaction_expired":
@@ -630,10 +751,20 @@ enum HostErrorFormatter {
             return "The message or response exceeded the Tailscale message size limit."
         case "idempotency_conflict":
             return "A duplicate request conflicted with an earlier command. Try sending again."
+        case "not_serving":
+            return "The OpenAgents host daemon is not serving on your Mac."
+        case "busy":
+            return "The host is temporarily busy processing another request. Try again shortly."
+        case "tagged":
+            return "Tagged Tailscale devices cannot pair automatically."
+        case "not_owner":
+            return "Sign into the same Tailscale user account on both devices."
+        case "not_tailnet":
+            return "Connection did not arrive over your Tailscale network."
         case "unavailable":
             return "The host daemon on your Mac is temporarily unavailable."
         default:
-            return code
+            return "Host refused request (\(code))."
         }
     }
 }
@@ -703,6 +834,85 @@ struct TranscriptItem: Identifiable, Equatable, Codable {
     var isSubagent: Bool {
         role == .tool && (subagentCalls > 0 || toolName.lowercased() == "task" || toolName.lowercased().contains("subagent"))
     }
+
+    var typedNoticeKind: NoticeKind { NoticeKind(raw: noticeKind) }
+}
+
+private struct WireEnvironmentViewDTO: Decodable {
+    struct WireSession: Decodable {
+        let session_id: String?
+        let workspace_id: String?
+        let title: String?
+        let origin: String?
+        let control: String?
+        let generation: Int64?
+        let revision: Int64?
+        let busy: Bool?
+        let interaction_id: String?
+        let updated_at_ms: Int64?
+        let model: String?
+        let effort: String?
+        let mode: String?
+        let surface: String?
+        let note: String?
+    }
+    struct WireItem: Decodable {
+        let item_id: String?
+        let role: String?
+        let text: String?
+        let tool_name: String?
+        let complete: Bool?
+        let started_at_ms: Int64?
+        let subagent_calls: Int?
+        let subagent_now: String?
+        let path: String?
+        let diff: String?
+        let diff_cut: Bool?
+        let notice_kind: String?
+    }
+    struct WireThought: Decodable {
+        let item_id: String?
+        let text: String?
+        let complete: Bool?
+        let at: Int?
+    }
+    struct WireModel: Decodable {
+        let model_id: String?
+        let display_name: String?
+        let efforts: [String]?
+    }
+    struct WireInteractionOption: Decodable {
+        let optionId: String?
+        let option_id: String?
+        let id: String?
+        let name: String?
+        let label: String?
+        let kind: String?
+    }
+
+    let host_pubkey: String
+    let display_name: String?
+    let method: String
+    let error: String?
+    let complete: Bool?
+    let next_cursor: String?
+    let workspace_name: String?
+    let folders: [String]?
+    let sessions: [WireSession]?
+    let items: [WireItem]?
+    let thoughts: [WireThought]?
+    let models: [WireModel]?
+    let default_effort: String?
+    let interaction_prompt: String?
+    let interaction_warning: String?
+    let interaction_question: Bool?
+    let interaction_options: [WireInteractionOption]?
+    let host_version: String?
+    let agy_version: String?
+    let agy_update_available: Bool?
+    let agy_auth_method: String?
+    let agy_signed_in: Bool?
+    let capabilities: [String]?
 }
 
 struct ParsedEnvironmentView {
@@ -724,76 +934,65 @@ struct ParsedEnvironmentView {
     let interactionOptions: [InteractionOption]
     let hostMeta: HostRuntimeMeta?
 
-    /// Parses a Coax-validated `EaView` JSON payload and filters its model catalog
-    /// exclusively through Coax `MobileCore.isAntigravityModel` (never Claude or Inkling).
+    /// Parses a Coax-validated `EaView` JSON payload via strict `Decodable` structs (#14006)
+    /// and filters its model catalog exclusively through Coax `MobileCore.isAntigravityModel`.
     static func parse(_ data: Data) -> ParsedEnvironmentView? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let host = obj["host_pubkey"] as? String,
-              let method = obj["method"] as? String else {
+        guard let dto = try? JSONDecoder().decode(WireEnvironmentViewDTO.self, from: data) else {
             return nil
         }
 
-        let displayName = obj["display_name"] as? String ?? ""
-        let error = obj["error"] as? String ?? ""
-        let complete = obj["complete"] as? Bool ?? false
-        let nextCursor = obj["next_cursor"] as? String ?? ""
-        let workspaceName = obj["workspace_name"] as? String ?? ""
-        let folders = (obj["folders"] as? [String] ?? []).filter { MobileCore.isValidFolder($0) }
+        let folders = (dto.folders ?? []).filter { MobileCore.isValidFolder($0) }
 
-        let rawSessions = obj["sessions"] as? [[String: Any]] ?? []
-        let sessions: [ChatSessionSummary] = rawSessions.compactMap { row in
-            guard let sid = row["session_id"] as? String, !sid.isEmpty else { return nil }
+        let sessions: [ChatSessionSummary] = (dto.sessions ?? []).compactMap { row in
+            guard let sid = row.session_id, !sid.isEmpty else { return nil }
             return ChatSessionSummary(
                 id: sid,
-                workspaceID: row["workspace_id"] as? String ?? "default",
-                title: row["title"] as? String ?? "",
-                managed: (row["origin"] as? String) == "managed",
-                control: row["control"] as? String ?? "",
-                generation: (row["generation"] as? NSNumber)?.int64Value ?? 0,
-                revision: (row["revision"] as? NSNumber)?.int64Value ?? 0,
-                busy: row["busy"] as? Bool ?? false,
-                interactionID: row["interaction_id"] as? String ?? "",
-                updatedAtMs: (row["updated_at_ms"] as? NSNumber)?.int64Value ?? 0,
-                model: row["model"] as? String ?? "",
-                effort: row["effort"] as? String ?? "",
-                mode: row["mode"] as? String ?? "",
-                desktopSurface: (row["surface"] as? String) == "coder-desktop",
-                note: row["note"] as? String ?? ""
+                workspaceID: row.workspace_id ?? "default",
+                title: row.title ?? "",
+                managed: row.origin == "managed",
+                control: row.control ?? "",
+                generation: row.generation ?? 0,
+                revision: row.revision ?? 0,
+                busy: row.busy ?? false,
+                interactionID: row.interaction_id ?? "",
+                updatedAtMs: row.updated_at_ms ?? 0,
+                model: row.model ?? "",
+                effort: row.effort ?? "",
+                mode: row.mode ?? "",
+                desktopSurface: row.surface == "coder-desktop",
+                note: row.note ?? ""
             )
         }
         .sorted { $0.updatedAtMs > $1.updatedAtMs }
 
-        let rawItems = obj["items"] as? [[String: Any]] ?? []
-        var items: [TranscriptItem] = rawItems.compactMap { row in
-            guard let iid = row["item_id"] as? String, !iid.isEmpty else { return nil }
-            let roleStr = row["role"] as? String ?? ""
+        var items: [TranscriptItem] = (dto.items ?? []).compactMap { row in
+            guard let iid = row.item_id, !iid.isEmpty else { return nil }
             return TranscriptItem(
                 id: iid,
-                role: TranscriptItem.Role(rawValue: roleStr) ?? .unknown,
-                text: row["text"] as? String ?? "",
-                toolName: row["tool_name"] as? String ?? "",
-                complete: row["complete"] as? Bool ?? true,
-                startedAtMs: (row["started_at_ms"] as? NSNumber)?.int64Value ?? 0,
-                subagentCalls: (row["subagent_calls"] as? NSNumber)?.intValue ?? 0,
-                subagentNow: row["subagent_now"] as? String ?? "",
-                path: row["path"] as? String ?? "",
-                diff: row["diff"] as? String ?? "",
-                diffCut: row["diff_cut"] as? Bool ?? false,
-                noticeKind: row["notice_kind"] as? String ?? ""
+                role: TranscriptItem.Role(rawValue: row.role ?? "") ?? .unknown,
+                text: row.text ?? "",
+                toolName: row.tool_name ?? "",
+                complete: row.complete ?? true,
+                startedAtMs: row.started_at_ms ?? 0,
+                subagentCalls: row.subagent_calls ?? 0,
+                subagentNow: row.subagent_now ?? "",
+                path: row.path ?? "",
+                diff: row.diff ?? "",
+                diffCut: row.diff_cut ?? false,
+                noticeKind: row.notice_kind ?? ""
             )
         }
 
-        if let rawThoughts = obj["thoughts"] as? [[String: Any]], !rawThoughts.isEmpty {
+        if let rawThoughts = dto.thoughts, !rawThoughts.isEmpty {
             var inserted = 0
             for row in rawThoughts {
-                guard let iid = row["item_id"] as? String,
-                      let at = (row["at"] as? NSNumber)?.intValue else { continue }
+                guard let iid = row.item_id, let at = row.at else { continue }
                 let thought = TranscriptItem(
                     id: iid,
                     role: .thought,
-                    text: row["text"] as? String ?? "",
+                    text: row.text ?? "",
                     toolName: "",
-                    complete: row["complete"] as? Bool ?? true,
+                    complete: row.complete ?? true,
                     startedAtMs: 0,
                     subagentCalls: 0,
                     subagentNow: "",
@@ -808,15 +1007,13 @@ struct ParsedEnvironmentView {
             }
         }
 
-        let rawModels = obj["models"] as? [[String: Any]] ?? []
-        let filteredModels: [AntigravityModelOption] = rawModels.compactMap { row in
-            guard let id = row["model_id"] as? String, MobileCore.isAntigravityModel(id) else {
+        let filteredModels: [AntigravityModelOption] = (dto.models ?? []).compactMap { row in
+            guard let id = row.model_id, MobileCore.isAntigravityModel(id) else {
                 return nil
             }
             let normalizedID = MobileCore.normalizeAntigravityModel(id)
-            let label = (row["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? normalizedID
-            let rawEfforts = row["efforts"] as? [String] ?? []
-            let efforts = rawEfforts.compactMap { ThinkingEffort(rawValue: $0) }
+            let label = row.display_name.flatMap { $0.isEmpty ? nil : $0 } ?? normalizedID
+            let efforts = (row.efforts ?? []).compactMap { ThinkingEffort(rawValue: $0) }
             // Preserve empty effort array (e.g. gemini-pro-orchestrator disables --effort; #14005).
             return AntigravityModelOption(
                 id: normalizedID,
@@ -827,32 +1024,21 @@ struct ParsedEnvironmentView {
 
         var seen = Set<String>()
         let uniqueModels = filteredModels.filter { seen.insert($0.id).inserted }
-        let defaultEffortStr = obj["default_effort"] as? String ?? "medium"
-        let defaultEffort = ThinkingEffort(rawValue: defaultEffortStr) ?? .medium
+        let defaultEffort = ThinkingEffort(rawValue: dto.default_effort ?? "medium") ?? .medium
 
-        let interactionPrompt = obj["interaction_prompt"] as? String ?? ""
-        let interactionWarning = obj["interaction_warning"] as? String ?? ""
-        let interactionQuestion = obj["interaction_question"] as? Bool ?? false
-        let rawOptions = obj["interaction_options"] as? [[String: Any]] ?? []
-        let interactionOptions: [InteractionOption] = rawOptions.compactMap { row in
-            let oid = (row["optionId"] as? String)
-                ?? (row["option_id"] as? String)
-                ?? (row["id"] as? String)
-                ?? ""
+        let interactionOptions: [InteractionOption] = (dto.interaction_options ?? []).compactMap { row in
+            let oid = row.optionId ?? row.option_id ?? row.id ?? ""
             guard !oid.isEmpty else { return nil }
-            let label = (row["name"] as? String)
-                ?? (row["label"] as? String)
-                ?? oid
-            let kind = row["kind"] as? String ?? ""
-            return InteractionOption(id: oid, label: label, kind: kind)
+            let label = row.name ?? row.label ?? oid
+            return InteractionOption(id: oid, label: label, kind: row.kind ?? "")
         }
 
-        let hostVer = obj["host_version"] as? String ?? ""
-        let agyVer = obj["agy_version"] as? String ?? ""
-        let agyUpd = obj["agy_update_available"] as? Bool ?? false
-        let agyAuth = obj["agy_auth_method"] as? String ?? ""
-        let agySignedIn = obj["agy_signed_in"] as? Bool
-        let caps = Set(obj["capabilities"] as? [String] ?? [])
+        let hostVer = dto.host_version ?? ""
+        let agyVer = dto.agy_version ?? ""
+        let agyUpd = dto.agy_update_available ?? false
+        let agyAuth = dto.agy_auth_method ?? ""
+        let agySignedIn = dto.agy_signed_in
+        let caps = Set(dto.capabilities ?? [])
         let hostMeta: HostRuntimeMeta? = (!hostVer.isEmpty || !agyVer.isEmpty || !caps.isEmpty || agySignedIn != nil)
             ? HostRuntimeMeta(
                 hostVersion: hostVer,
@@ -865,21 +1051,21 @@ struct ParsedEnvironmentView {
             : nil
 
         return ParsedEnvironmentView(
-            hostPubkey: host,
-            displayName: displayName,
-            method: method,
-            error: error,
-            complete: complete,
-            nextCursor: nextCursor,
-            workspaceName: workspaceName,
+            hostPubkey: dto.host_pubkey,
+            displayName: dto.display_name ?? "",
+            method: dto.method,
+            error: dto.error ?? "",
+            complete: dto.complete ?? false,
+            nextCursor: dto.next_cursor ?? "",
+            workspaceName: dto.workspace_name ?? "",
             folders: folders,
             sessions: sessions,
             items: items,
             antigravityModels: uniqueModels,
             defaultEffort: defaultEffort,
-            interactionPrompt: interactionPrompt,
-            interactionWarning: interactionWarning,
-            interactionQuestion: interactionQuestion,
+            interactionPrompt: dto.interaction_prompt ?? "",
+            interactionWarning: dto.interaction_warning ?? "",
+            interactionQuestion: dto.interaction_question ?? false,
             interactionOptions: interactionOptions,
             hostMeta: hostMeta
         )
@@ -1055,46 +1241,78 @@ struct WorkspaceSnapshot: Equatable {
         )
     }
 
+    private struct WireWorkspaceViewDTO: Decodable {
+        struct WireWorktree: Decodable {
+            let id: String?
+            let path: String?
+            let branch: String?
+            let locked: Bool?
+        }
+        struct WirePR: Decodable {
+            let number: Int?
+            let title: String?
+            let url: String?
+            let head: String?
+            let base: String?
+            let body: String?
+            let state: String?
+        }
+
+        let host: String
+        let workspace: String?
+        let revision: String?
+        let path: String?
+        let repository: String?
+        let branch: String?
+        let status: String?
+        let diff: String?
+        let diff_cut: Bool?
+        let error: String?
+        let github_error: String?
+        let worktrees: [WireWorktree]?
+        let branches: [String]?
+        let pull_requests: [WirePR]?
+    }
+
     static func parse(_ data: Data) -> WorkspaceSnapshot? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let host = obj["host"] as? String else { return nil }
-        let rawTrees = obj["worktrees"] as? [[String: Any]] ?? []
-        let trees: [WorkspaceWorktree] = rawTrees.compactMap { row in
-            guard let id = row["id"] as? String, let path = row["path"] as? String else { return nil }
+        guard let dto = try? JSONDecoder().decode(WireWorkspaceViewDTO.self, from: data) else {
+            return nil
+        }
+        let trees: [WorkspaceWorktree] = (dto.worktrees ?? []).compactMap { row in
+            guard let id = row.id, let path = row.path else { return nil }
             return WorkspaceWorktree(
                 id: id,
                 path: path,
-                branch: row["branch"] as? String ?? "",
-                locked: row["locked"] as? Bool ?? false
+                branch: row.branch ?? "",
+                locked: row.locked ?? false
             )
         }
-        let rawPRs = obj["pull_requests"] as? [[String: Any]] ?? []
-        let prs: [WorkspacePR] = rawPRs.compactMap { row in
-            guard let num = (row["number"] as? NSNumber)?.intValue else { return nil }
+        let prs: [WorkspacePR] = (dto.pull_requests ?? []).compactMap { row in
+            guard let num = row.number else { return nil }
             return WorkspacePR(
                 number: num,
-                title: row["title"] as? String ?? "",
-                url: row["url"] as? String ?? "",
-                head: row["head"] as? String ?? "",
-                base: row["base"] as? String ?? "",
-                body: row["body"] as? String ?? "",
-                state: row["state"] as? String ?? ""
+                title: row.title ?? "",
+                url: row.url ?? "",
+                head: row.head ?? "",
+                base: row.base ?? "",
+                body: row.body ?? "",
+                state: row.state ?? ""
             )
         }
         return WorkspaceSnapshot(
-            host: host,
-            workspace: obj["workspace"] as? String ?? "default",
-            revision: obj["revision"] as? String ?? "",
-            path: obj["path"] as? String ?? "",
-            repository: obj["repository"] as? String ?? "",
-            branch: obj["branch"] as? String ?? "",
-            status: obj["status"] as? String ?? "",
-            diff: obj["diff"] as? String ?? "",
-            diffCut: obj["diff_cut"] as? Bool ?? false,
-            error: obj["error"] as? String ?? "",
-            githubError: obj["github_error"] as? String ?? "",
+            host: dto.host,
+            workspace: dto.workspace ?? "default",
+            revision: dto.revision ?? "",
+            path: dto.path ?? "",
+            repository: dto.repository ?? "",
+            branch: dto.branch ?? "",
+            status: dto.status ?? "",
+            diff: dto.diff ?? "",
+            diffCut: dto.diff_cut ?? false,
+            error: dto.error ?? "",
+            githubError: dto.github_error ?? "",
             worktrees: trees,
-            branches: obj["branches"] as? [String] ?? [],
+            branches: dto.branches ?? [],
             pullRequests: prs
         )
     }
