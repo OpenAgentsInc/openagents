@@ -15,7 +15,10 @@ MASK={1:5,2:6,3:4,4:13,5:20,6:36,7:68,8:132,9:260,10:13,11:4,12:4}
 POISON=1431655765
 
 def command(args,**kw):
- return subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,text=True,timeout=180,**kw)
+ env=kw.pop('env',None)
+ run_env={**os.environ,'COAX_JOBS_QUIET':'1','ASAN_OPTIONS':'detect_leaks=0:halt_on_error=1','UBSAN_OPTIONS':'halt_on_error=1'}
+ if env is not None:run_env.update(env)
+ return subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,text=True,timeout=180,env=run_env,**kw)
 
 def oracle(n,edges,sites,root,wrapping):
  status=1 if n<1 or not 0<=root<n else 4 if any(not(0<=a<n and 0<=b<n) for a,b in edges) else 5 if any(not(0<=p<n and 1<=k<=12) for p,k in sites) else 0

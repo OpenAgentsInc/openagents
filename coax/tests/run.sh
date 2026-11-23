@@ -186,7 +186,8 @@ unit_results() {
 # capability claims. `book/check-examples.sh --only NAME...` reruns single units.
 unit_book() { bash book/check-examples.sh && python3 book/capability-claims.py; }
 unit_sources() {
-  python3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.py && python3 tests/generics.py && python3 tests/effects.py && python3 tests/quantity.py && python3 tests/quantity_native.py && python3 tests/quantity_derived.py && python3 tests/quantity_derived_native.py
+  ( export ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 COAX_JOBS_QUIET=1
+    python3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.py && python3 tests/generics.py && python3 tests/effects.py && python3 tests/quantity.py && python3 tests/quantity_native.py && python3 tests/quantity_derived.py && python3 tests/quantity_derived_native.py )
 }
 unit_reflection() { python3 tests/reflection.py; }
 # Book maintenance and bounded shared-library adoption, without model/network effects.

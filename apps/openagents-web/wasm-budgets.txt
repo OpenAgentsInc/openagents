@@ -30,7 +30,8 @@ builder 100000
 changelog 180000
 characters 100000
 # /chat's Theme (#13230) carries every skin (components/skin/all.coax, the terminal in pixels): 246,393 bytes measured 2026-11-11; about 5% room.
-chat 260000
+# 256,821 bytes measured 2026-11-23 on oa-build-1 after markdown_code_veiled soft-wrap (ad26ca3dda), clickable file:// links (4058b78224), and dead-proc pruning (d261ba5f08); about 5% room (#13990).
+chat 270000
 # /chat on the frames set drawn by the browser (chat-web.coax, components/backend/dom.coax): 98,103 bytes measured 2026-11-11 on a Linux build host;
 # 138,805 after real answers, the model menu and Settings (21121a7788); 157,736 after the agents on this machine
 # (Coder's sessions and Claude Code's conversations in a sidebar, live ones marked, /goal, named models: #13332);

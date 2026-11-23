@@ -65,12 +65,21 @@ g() { git -C "$w/repo" -c user.name=t -c user.email=t@t "$@"; }
 git init -q --bare "$w/origin.git"
 mkdir -p "$w/repo/coax/remote" "$w/repo/coax/web" "$w/repo/everglade" "$w/repo/proto" "$w/repo/metaverse-engine" "$w/repo/lib"
 cp "$here/after.sh" "$here/pipeline-lib.sh" "$here/counts.sh" "$w/repo/coax/remote/"
+# Pre-build mutants-records once before scratch runs so parallel/first-time builds never race or leak stderr (#13991).
+COAX_TOOL_BUILD_ONLY=1 "$here/../web/tool.sh" "$here/mutants-records.coax" > /dev/null
 cat > "$w/mutants-records" <<EOF
 #!/usr/bin/env bash
 exec "$here/../web/tool.sh" "$here/mutants-records.coax" "\$@"
 EOF
 chmod +x "$w/mutants-records"
 export OA_MUTANTS_RECORDS="$w/mutants-records"
+# Isolate from any caller pipeline/remote environment so scratch gates are 100% deterministic (#13991).
+unset OA_PIPELINE_REMOTE OA_PIPELINE_MAIN OA_PIPELINE_GREEN OA_PIPELINE_QUEUE OA_PIPELINE_REJECTED \
+      OA_PIPELINE_NOTIFY OA_PIPELINE_GH_REPO OA_AFTER_MUTATE OA_AFTER_PARTS OA_AFTER_MODULE_PARTS \
+      OA_AFTER_FAST_PARTS OA_AFTER_API_PARTS OA_AFTER_TIMEOUT OA_AFTER_QUEUE OA_AFTER_UNFINISHED \
+      OA_AFTER_MUTATE_TOOLS OA_AFTER_MUTATE_RECHECK OA_AFTER_MUTATE_PART_RECHECK OA_AFTER_COMPILER \
+      OA_AFTER_FUZZ OA_AFTER_SOAK OA_REMOTE_AVOID OA_REMOTE_FRESH_COMPILER
+export OA_PIPELINE_SHARED=0
 printf '# list\na\nb\nc\n' > "$w/repo/coax/tools-port.txt"
 printf '# list\nshape x\n' > "$w/repo/proto/wire-allowlist.txt"
 printf '# layers\nengine-up a -> b\ntests c -> d\n' > "$w/repo/metaverse-engine/layer-allowlist.txt"
@@ -158,8 +167,11 @@ unset OA_PIPELINE_NOTIFY
 mkdir -p "$w/pl/releases/after"; date +%s > "$w/pl/releases/after/last-full"
 base="$(g rev-parse HEAD)"; export OA_AFTER_PRODUCTION="$base"
 red="$w/pl/releases/after/red.json"
+commit_ts=$(( $(date +%s) - 7200 ))
 push() {   # agent subject [trailer]: commit what is staged and push it to the scratch main
-  g add -A && g commit -qm "$2
+  commit_ts=$(( commit_ts + 60 ))
+  GIT_AUTHOR_DATE="@$commit_ts +0000" GIT_COMMITTER_DATE="@$commit_ts +0000" \
+    g add -A && GIT_AUTHOR_DATE="@$commit_ts +0000" GIT_COMMITTER_DATE="@$commit_ts +0000" g commit -qm "$2
 
 ${3:+$3
 }Agent: $1" && g push -q origin main

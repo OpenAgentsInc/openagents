@@ -14,7 +14,10 @@ COMPILER=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax')).resolve
 
 def sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 def invoke(args,**kw):
- return subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,text=True,timeout=180,**kw)
+ env=kw.pop('env',None)
+ run_env={**os.environ,'COAX_JOBS_QUIET':'1','ASAN_OPTIONS':'detect_leaks=0:halt_on_error=1','UBSAN_OPTIONS':'halt_on_error=1'}
+ if env is not None:run_env.update(env)
+ return subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,text=True,timeout=180,env=run_env,**kw)
 def patterns():
  e32=[0,0x80000000,1,0x80000001,0x007fffff,0x807fffff,0x00800000,0x80800000,
       0x3f800000,0xbf800000,0x3f000000,0xbf000000,0x40000000,0xc0000000,

@@ -25,7 +25,8 @@ class Sources(unittest.TestCase):
         return path
     def command(self, cmd, path, *args, env=None, expect_crash=False):
         runner = run_quiet_crash if expect_crash else subprocess.run
-        return runner([str(COAX), cmd, str(path), *args], capture_output=True, text=True, env=env)
+        run_env = {**os.environ, "COAX_JOBS_QUIET": "1"} if env is None else {"COAX_JOBS_QUIET": "1", **env}
+        return runner([str(COAX), cmd, str(path), *args], capture_output=True, text=True, env=run_env)
     def success(self, cmd, path, *args):
         p = self.command(cmd,path,*args)
         self.assertEqual(p.returncode,0,p.stderr)
@@ -357,11 +358,12 @@ int main(void) {
   return 0;
 }''')
         # The seed is the same Coax module, independently exercised as native C.
+        san_env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1", "UBSAN_OPTIONS": "halt_on_error=1"}
         for optimization in ["-O0","-O2"]:
             exe=self.base/"policy"
-            p=subprocess.run([os.environ.get("CC","cc"),"-std=c11",optimization,"-g","-fsanitize=address,undefined","-fno-omit-frame-pointer","-I",str(ROOT/"bootstrap"),str(host),str(ROOT/"bootstrap/sources.c"),"-lm","-o",str(exe)],capture_output=True,text=True)
+            p=subprocess.run([os.environ.get("CC","cc"),"-std=c11",optimization,"-g","-fsanitize=address,undefined","-fno-sanitize-recover=all","-fno-omit-frame-pointer","-I",str(ROOT/"bootstrap"),str(host),str(ROOT/"bootstrap/sources.c"),"-lm","-o",str(exe)],capture_output=True,text=True)
             self.assertEqual(p.returncode,0,p.stderr)
-            p=subprocess.run([str(exe)],capture_output=True,text=True)
+            p=subprocess.run([str(exe)],capture_output=True,text=True,env=san_env)
             self.assertEqual(p.returncode,0,p.stderr)
 
     def test_relocated_compiler_needs_no_helpers_for_load_and_proto(self):

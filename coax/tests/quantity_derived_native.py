@@ -57,8 +57,9 @@ def main():
             'profile':'Round-to-nearest host IEEE binary32/binary64, no fast math/contraction, AArch64 FZ disabled; compare exact non-NaN bits (signed zeros, subnormals, infinities), NaNs by classification with canonicalized transcript. NaN payloads and floating exception flags are outside scope.',
             'scope':'Only NEW derived products/quotients/formal cancellation/explicit named and generated conversion targets, scalar/nested ABI and ordered one-time operand effects. No old M1 native rerun, device ABI, frames or complete R12 claim.',
             'input_sha256':sha(work/'cases.bin'),'source_sha256':{str(p.relative_to(ROOT)):sha(p) for p in [SOURCE,RAW,NATIVE,Path(__file__).resolve()]},'commands':[],'modes':[],'body_comparison':{}}
+    run_env={**os.environ,'COAX_JOBS_QUIET':'1','ASAN_OPTIONS':'detect_leaks=0:halt_on_error=1','UBSAN_OPTIONS':'halt_on_error=1'}
     def command(name,args):
-        start=time.monotonic();p=subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,timeout=180)
+        start=time.monotonic();p=subprocess.run([str(x) for x in args],cwd=ROOT,capture_output=True,timeout=180,env=run_env)
         (work/(name+'.stdout')).write_bytes(p.stdout);(work/(name+'.stderr')).write_bytes(p.stderr)
         record['commands'].append({'name':name,'arguments':[str(x) for x in args],'elapsed_seconds':time.monotonic()-start,'exit':p.returncode})
         (work/'receipt.json').write_text(json.dumps(record,indent=2)+'\n')
