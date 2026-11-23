@@ -73,6 +73,8 @@ final class CoderStore {
     }
     private var searchCache: [String: IndexedChat] = [:]
     private let searchLock = NSLock()
+    private var harnessCache: [String: String] = [:]
+    private let harnessLock = NSLock()
 
     init() {
         let p = DesktopCore.callString(4096) { oa_dc_chats_dir($0) }
@@ -207,6 +209,7 @@ final class CoderStore {
             }
         }
         searchLock.lock(); searchCache.removeValue(forKey: id); searchLock.unlock()
+        harnessLock.lock(); harnessCache.removeValue(forKey: id); harnessLock.unlock()
         reload()
     }
 
@@ -234,8 +237,82 @@ final class CoderStore {
                 }
             }
         }
+        let h = Self.harness(forModel: Self.extractModel(fromPrefix: String(text.prefix(1024))) ?? "")
+        harnessLock.lock(); harnessCache[id] = h; harnessLock.unlock()
         indexChatJSON(id: id, text: text, mtime: Date().timeIntervalSince1970)
         reload()
+    }
+
+    /// Maps a persisted chat's `"model"` identifier to the sidebar harness key (`chats.coax`).
+    static func harness(forModel model: String) -> String {
+        let m = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if m.isEmpty { return "psionic" }
+        if m.hasPrefix("agy:") || m == "antigravity" || m == "agy" || m.hasPrefix("gemini-") || m == "gemini" {
+            return "agy"
+        }
+        if m.hasPrefix("claude") {
+            return "claude"
+        }
+        if m == "codex" || m.hasPrefix("codex:") {
+            return "codex"
+        }
+        return "psionic"
+    }
+
+    /// Fast header-only extraction of the top-level `"model"` string from a saved chat JSON prefix.
+    static func extractModel(fromPrefix prefix: String) -> String? {
+        guard let keyRange = prefix.range(of: "\"model\"") else { return nil }
+        var idx = keyRange.upperBound
+        while idx < prefix.endIndex && (prefix[idx] == " " || prefix[idx] == "\t" || prefix[idx] == "\r" || prefix[idx] == "\n") {
+            idx = prefix.index(after: idx)
+        }
+        guard idx < prefix.endIndex, prefix[idx] == ":" else { return nil }
+        idx = prefix.index(after: idx)
+        while idx < prefix.endIndex && (prefix[idx] == " " || prefix[idx] == "\t" || prefix[idx] == "\r" || prefix[idx] == "\n") {
+            idx = prefix.index(after: idx)
+        }
+        guard idx < prefix.endIndex, prefix[idx] == "\"" else { return nil }
+        idx = prefix.index(after: idx)
+        let start = idx
+        while idx < prefix.endIndex {
+            let ch = prefix[idx]
+            if ch == "\\" {
+                let next = prefix.index(after: idx)
+                if next < prefix.endIndex { idx = prefix.index(after: next); continue }
+                break
+            }
+            if ch == "\"" {
+                return String(prefix[start..<idx])
+            }
+            idx = prefix.index(after: idx)
+        }
+        return nil
+    }
+
+    /// Returns the persisted sidebar harness key for `id` (cached, reading only the JSON header once).
+    func harness(_ id: String) -> String {
+        harnessLock.lock()
+        if let cached = harnessCache[id] {
+            harnessLock.unlock()
+            return cached
+        }
+        harnessLock.unlock()
+
+        var model = ""
+        let path = dir.appendingPathComponent(id + ".json").path
+        if let fh = FileHandle(forReadingAtPath: path) {
+            defer { try? fh.close() }
+            let data = fh.readData(ofLength: 1024)
+            if let prefix = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self) as String?,
+               let extracted = Self.extractModel(fromPrefix: prefix) {
+                model = extracted
+            }
+        }
+        let h = Self.harness(forModel: model)
+        harnessLock.lock()
+        harnessCache[id] = h
+        harnessLock.unlock()
+        return h
     }
 
     private func parseIndexedTurns(_ text: String) -> [IndexedTurn] {

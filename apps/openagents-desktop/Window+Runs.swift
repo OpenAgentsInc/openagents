@@ -535,12 +535,16 @@ extension CoderWindow {
                 branchCache[dir] = b
                 branch = b
             }
-            let prog = (runs[chat.id] ?? (chat.id == self.chat ? run : nil))?.worker.program ?? ""
-            let harness = isManaged ? "foreman"
-                : prog == "claudeworker" ? "claude"
+            let activeRun: CoderRun? = runs[chat.id] ?? (chat.id == self.chat && (cd_running(page) != 0 || run.worker.alive) ? run : nil)
+            let prog = activeRun?.worker.program ?? ""
+            let codexEnv = activeRun?.worker.extraEnv["CODER_PROVIDER"] == "codex"
+            let activeHarness: String? = prog == "claudeworker" ? "claude"
                 : prog == "agyworker" ? "agy"
-                : prog == "codex" ? "codex"
-                : "psionic"
+                : (prog == "codex" || codexEnv) ? "codex"
+                : prog == "inky" ? "psionic"
+                : nil
+            let harness = isManaged ? "foreman"
+                : (activeHarness ?? store.harness(chat.id))
             let cleanBranch = branch.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: "")
             return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + dir + "\t" + String(updatedMs) + "\t" + cleanBranch + "\t" + harness
         }.joined(separator: "\n")
