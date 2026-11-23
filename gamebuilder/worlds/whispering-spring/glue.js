@@ -39,7 +39,7 @@ const DECOR = [["Lantern", "\u{1F3EE}"], ["Candles", "\u{1F56F}\uFE0F"], ["Blueb
 const HANGS = new Set([11, 12]);
 // the basket's shelves
 const CATS = [["Items", [0, 1, 2, 3, 4, 5]], ["Statues", [6, 8, 9, 10, 7]], ["For the trees", [11, 12]], ["Terrain", []]];
-const TOOLS = [["Tall grass", "\u{1F33E}"], ["Low grass", "\u{1F331}"], ["Bare earth", "\u{1F7EB}"]];
+const TOOLS = [["Paint tall grass", "\u{1F58C}\uFE0F"], ["Paint low grass", "\u{1F58C}\uFE0F"], ["Paint bare earth", "\u{1F58C}\uFE0F"]];
 let decorCat = 0;
 let decor = { n: 0, k: -1, ok: 0, m: -1, l: "", t: -1, g: 0, s: 0, i: [] };
 const FABRICS = ["Cotton", "Silk", "Linen"];
@@ -112,6 +112,7 @@ addEventListener("coaxial", (e) => {
   else if (kind === "mode") { if (rest === "ribbon") openRibbon(); else if (rest === "mandala") openMandala(); }
   else if (kind === "mandala") { const [k, r, a] = rest.split(",").map(Number); room.placePiece(k, r, a).then((x) => { if (!x.ok) announce(x.status === 429 ? "A little slower: the mandala needs a breath between pieces." : "That piece stays on your screen; the shared mandala couldn't be reached."); refreshMandala(); }).catch(() => {}); announce(`You set ${M_KINDS[k][0].toLowerCase()} on ring ${r}; it blooms eight times around.`); }
   else if (kind === "pan") { zoneFor(Number(rest)); }
+  else if (kind === "statue") { const [k, x, y] = rest.split(",").map(Number); statueSpeak(k, x, y); }
   else if (kind === "picked") { const nm = DECOR[Number(rest)]?.[0] || "It"; toast(`${DECOR[Number(rest)]?.[1] || ""} ${nm} → inventory`); announce(`${nm} is in your inventory.`); }
   else if (kind === "wrap") { const f = $("fade"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go"); }
   else if (kind === "ribbonat") { ribbonAt = Number(rest); }
@@ -170,11 +171,40 @@ for (const b of $("menu").querySelectorAll("button")) b.addEventListener("click"
 $("t-quiet").addEventListener("click", () => { const q = !document.body.classList.contains("quiet"); document.body.classList.toggle("quiet", q); $("t-quiet").setAttribute("aria-pressed", String(q)); announce(q ? "Quiet view: only the grove." : "The quest and journal are back."); });
 $("g-sound").addEventListener("click", () => { audio.start(); setSetting("sound", !settings.sound); });
 
+// ---- the statues speak when tapped (placeholder words for the artist to rewrite)
+const STATUE_LINES = {
+  6: ["Peace to you, little one. Rest here a while.", "Every prayer on that tree, I hold close.", "The water remembers your name."],
+  7: ["Listen. Each drop is a word the spring forgot.", "Make a wish. I keep them all, and tell no one.", "I only know one song, and I sing it all night."],
+  8: ["Breathe in the grove. Breathe out the hurry.", "The stone does not strive, and still it holds the stack.", "Sit. Nothing here needs you to be anything."],
+  9: ["I keep watch at dusk, so you can rest.", "Courage is a quiet thing. Like a quail.", "No shadow crosses this grove unseen."],
+  10: ["Hssss. A visitor. I like your ribbons.", "I guard the pearl of the spring. You may look.", "Long ago, I was a river."],
+};
+const statueSaid = {};
+let statueTimer = 0;
+function statueSpeak(k, x, y) {
+  const lines = STATUE_LINES[k]; if (!lines) return;
+  const line = lines[(statueSaid[k] = (statueSaid[k] ?? -1) + 1) % lines.length];
+  const name = DECOR[k][0];
+  const b = $("bubble"), t = $("bubble-text");
+  b.querySelector(".who").textContent = name;
+  b.style.left = `${Math.max(180, Math.min(innerWidth - 180, x))}px`;
+  b.style.top = `${Math.max(140, y)}px`;
+  t.textContent = ""; b.classList.remove("gone"); bubbleShown = true; statueTalking = true;
+  announce(`${name} says: ${line}`);
+  const chars = [...line];
+  const seconds = settings.voice && settings.sound
+    ? audio.speak(line, (i) => { t.textContent = chars.slice(0, i + 1).join(""); })
+    : (chars.forEach((_, i) => setTimeout(() => { t.textContent = chars.slice(0, i + 1).join(""); }, i * (settings.motion ? 0 : 30))), chars.length * 0.03 + 0.2);
+  clearTimeout(bubbleTimer); clearTimeout(statueTimer);
+  statueTimer = setTimeout(() => { b.classList.add("gone"); bubbleShown = false; statueTalking = false; b.querySelector(".who").textContent = "The quail"; }, (seconds + 2.5) * 1000);
+}
+let statueTalking = false;
+
 // ---- the quail speaks: its words type into a bubble over it, in its babble voice
 const said = { greeting: 0, prayers: 0, ribbon: 0, found_all: 0 };
 let bubbleTimer = 0, bubbleShown = false;
 function placeBubble(x, y) {
-  if (!bubbleShown) return;
+  if (!bubbleShown || statueTalking) return;
   const b = $("bubble");
   b.style.left = `${Math.max(180, Math.min(innerWidth - 180, x))}px`;
   b.style.top = `${Math.max(140, y)}px`;
@@ -184,6 +214,7 @@ function quailSpeak(kind) {
   if (!Array.isArray(lines) || !lines.length || !inGrove) return;
   const line = lines[said[kind]++ % lines.length];
   const b = $("bubble"), t = $("bubble-text");
+  b.querySelector(".who").textContent = "The quail"; statueTalking = false;
   bubbleShown = true;
   t.textContent = "";
   if (!b.style.left) { b.style.left = "35%"; b.style.top = "55%"; }
@@ -788,7 +819,7 @@ function bagItems() {
     if (!have) return;
     items.push({ icon: ico, r: k >= 6 && k <= 10 ? "epic" : HANGS.has(k) ? "rare" : "common", qty: decor.s ? have : 0, name, kind: HANGS.has(k) ? "Keepsake · hangs in a tree" : k >= 6 && k <= 10 ? "Monument · one of a kind" : "Keepsake", flavor: "Found in the grove. It can go anywhere.", use: HANGS.has(k) ? "Use: hang it on a branch." : "Use: set it down in the grove.", act: () => { close("inventory", false); send(MSG.decor, "o"); send(MSG.decor, `k ${k}`); } });
   });
-  TOOLS.forEach(([name, ico], t) => items.push({ icon: ico, r: "common", name: `${name} brush`, kind: "Terrain", flavor: "Paint the land where you point.", use: decor.g ? "Use: paint with it. (Undo my terrain is in the brush's hint.)" : "Use: paint with it.", act: () => { close("inventory", false); send(MSG.decor, "o"); send(MSG.decor, `t ${t}`); } }));
+  TOOLS.forEach(([name, ico], t) => items.push({ icon: ["\u{1F33E}", "\u{1F331}", "\u{1F7EB}"][t], r: "common", name, kind: "Terrain brush · paints, doesn't place", flavor: "Click or drag on the ground to paint it.", use: decor.g ? "Use: paint with it. (Undo my terrain is in the brush's hint.)" : "Use: paint with it.", act: () => { close("inventory", false); send(MSG.decor, "o"); send(MSG.decor, `t ${t}`); } }));
   const placed = 0;
   if (placed) items.push({ icon: "\u{1F3EE}", r: "common", qty: placed, name: "Things you've set out", kind: "Keepsakes in the grove", flavor: "The grove remembers where you put them.", use: "Use: open the basket.", act: () => { close("inventory", false); open("decor"); } });
   return items;

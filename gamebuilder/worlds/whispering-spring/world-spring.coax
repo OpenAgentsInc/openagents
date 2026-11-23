@@ -145,7 +145,8 @@ Spring :: struct {
   // decorations: kind, x, z each, and how long since each was set down
   decor: [WS_DECOR_MAX * 3] f32; decor_t: [WS_DECOR_MAX] f32; decor_n: int;
   carry: int = -1; carry_x: f32; carry_z: f32; carry_from: int = -1;
-  inv: [WS_DECOR_KINDS] int; stocked: bool;   // the visitor's inventory of things to set out; the world stocked once
+  inv: [WS_DECOR_KINDS] int; stocked: bool;
+  talk_i: int = -1; talk_t: f32 = 9; dab_t: f32 = 9;   // the statue speaking, and for how long   // the visitor's inventory of things to set out; the world stocked once
   terra: [WS_TERRA_MAX * 3] f32; terra_n: int; tool: int = -1; brush_x: f32; brush_z: f32; brush_on: bool; dab_x: f32; dab_z: f32;
   wheel_owe: f32; told_holds: bool; told_ok: bool;
   // an upright phone's look left and right: the camera's first x, how far it has slid, where it is gliding
@@ -1336,7 +1337,7 @@ ws_terra_dab :: (h: [] Spring, x: f32, z: f32) {
   h[0].terra[o] = ws_wrapx(x); h[0].terra[o + 1] = z; h[0].terra[o + 2] = cast(f32) h[0].tool;
   h[0].terra_n += 1;
   if full { ws_terra_rebuild(h); } else { ws_terra_apply(h, x, z, h[0].tool); h[0].ht_gen += 1; }
-  h[0].dab_x = x; h[0].dab_z = z;
+  h[0].dab_x = x; h[0].dab_z = z; h[0].dab_t = 0;
   h[0].dirty = true;
 }
 // The brush follows the pointer over the ground.
@@ -1348,6 +1349,14 @@ ws_brush_aim :: (h: [] Spring, px: f32, py: f32) {
   h[0].brush_x = hit[0]; h[0].brush_z = hit[2]; h[0].brush_on = true;
 }
 ws_draw_brush :: (h: [] Spring, s: [] WsSkin) {
+  if h[0].dab_t < 0.8 && !h[0].calm {
+    dx := ws_near(h, h[0].dab_x); dz := h[0].dab_z; f := h[0].dab_t / 0.8;
+    pc := ifx h[0].tool == 2 then [3] f32.[0.62, 0.42, 0.24] else [3] f32.[0.5, 0.85, 0.3];
+    for i: 0..<12 {
+      a := f32(WS_TAU) * cast(f32) i / 12;
+      ws_skin_octa(s, ws_v(dx + cos(a) * (0.3 + f * 0.9), ws_ground_y(dx, dz) + 0.2 + f * 0.5 - f * f * 0.5, dz + sin(a) * (0.3 + f * 0.9)), 0.05 * (1 - f), 1.0, pc);
+    }
+  }
   if h[0].tool < 0 || !h[0].brush_on || h[0].mode != WS_MODE_DECOR { return; }
   x := h[0].brush_x; z := h[0].brush_z;
   ok := ws_terra_ok(x, z);
@@ -1887,6 +1896,14 @@ ws_draw_decor :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
     dk := cast(int) h[0].decor[i * 3];
     if ws_hangs(dk) { ws_draw_hanger(h, s, eye, dk, ws_tie_of(h[0].decor[i * 3 + 1]), h[0].decor_t[i], i, false, true); continue; }
     ws_draw_one_decor(h, s, eye, dk, ws_near(h, h[0].decor[i * 3 + 1]), h[0].decor[i * 3 + 2], ws_decor_fall(h, h[0].decor_t[i]), i);
+    if i == h[0].talk_i && h[0].talk_t < 6 && !h[0].calm {
+      tx := ws_near(h, h[0].decor[i * 3 + 1]); tz := h[0].decor[i * 3 + 2]; ty := ws_ground_y(tx, tz);
+      for sp: 0..<10 {
+        f := h[0].talk_t * 0.5 + cast(f32) sp / 10; f = f - floor(f);
+        a := f32(WS_TAU) * cast(f32) sp / 10 + h[0].talk_t;
+        ws_skin_octa(s, ws_v(tx + cos(a) * 0.45, ty + 0.2 + f * 1.4, tz + sin(a) * 0.35), 0.03 * (1 - f) + 0.005, 1.2, ws_gold(h, 1.0 - f * 0.4));
+      }
+    }
   }
   if h[0].carry >= 0 && ws_hangs(h[0].carry) {
     // every free tie point in view glints, so it's clear where it can hang
@@ -2395,6 +2412,8 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
   }
   ws_fireflies_step(h, step);
   for c: 0..<WS_CLOUDS { if h[0].cloud_t[c] < 99 { h[0].cloud_t[c] += step; } }
+  if h[0].talk_t < 9 { h[0].talk_t += step; }
+  if h[0].dab_t < 9 { h[0].dab_t += step; }
   if h[0].rfx_t < 99 { h[0].rfx_t += step; }
   ws_build_skin(h);
   ws_draws(h);
@@ -2458,6 +2477,16 @@ ws_pointer :: (h: [] Spring, x: f32, y: f32, phase: int, kind: int, id: int, but
     if !tap { return; }
     if h[0].mode == WS_MODE_DECOR || h[0].mode == WS_MODE_GROVE {
       d := ws_decor_hit(h, x, y);
+      dk := ifx d >= 0 then cast(int) h[0].decor[d * 3] else -1;
+      if d >= 0 && h[0].mode == WS_MODE_GROVE && dk >= 6 && dk <= 10 {
+        // the statue speaks: the page shows its words over its head
+        sx := ws_near(h, h[0].decor[d * 3 + 1]); sz := h[0].decor[d * 3 + 2];
+        head := sty_project(h[0].view[..], sx, ws_ground_y(sx, sz) + 1.15, sz);
+        h[0].talk_i = d; h[0].talk_t = 0;
+        tt: [1] WsText; ws_put(tt[..], "statue|"); ws_put_int(tt[..], dk); ws_put(tt[..], ","); ws_put_int(tt[..], cast(int) (head.x / h[0].dpr)); ws_put(tt[..], ","); ws_put_int(tt[..], cast(int) (head.y / h[0].dpr));
+        ws_send(h, WS_ACT_EVENT, tt[..]);
+        return;
+      }
       if d >= 0 && (h[0].mode == WS_MODE_DECOR || !ws_hangs(cast(int) h[0].decor[d * 3])) {
         if h[0].stocked { ws_decor_to_inv(h, d); } else if h[0].mode == WS_MODE_DECOR { ws_decor_pick_up(h, d); }
         if h[0].stocked || h[0].mode == WS_MODE_DECOR { return; }
@@ -3037,6 +3066,28 @@ sty_frame_ground_ok :: (u: [] f32) -> bool { return u[STY_U_GROUND + 3] == cast(
   ws_test_say(h, WS_MSG_LOOK, "g 40");
   ws_test_run(t[..], 300, 0.016, 390, 844);
   #assert abs(h[0].view[STY_U_GRASS] - (h[0].cam.x - 20)) < 0.5;
+}
+
+#test "a statue speaks when tapped; with the inventory open the tap picks it up" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 200, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_DECOR, "k 8"); h[0].carry_x = 2.6; h[0].carry_z = 4.6;
+  #assert ws_decor_drop(h);
+  ws_test_say(h, WS_MSG_DECOR, "q");
+  ws_test_run(t[..], 60, 0.016, 1280, 720);
+  i := h[0].decor_n - 1;
+  sx := h[0].decor[i * 3 + 1]; sz := h[0].decor[i * 3 + 2];
+  sp := sty_project(h[0].view[..], sx, ws_ground_y(sx, sz) + 0.25, sz);
+  _ = ws_test_drain(h, "");
+  ws_test_click(h, sp.x, sp.y);
+  #assert ws_test_drain(h, "statue|8,") && h[0].talk_i == i && h[0].decor_n == i + 1;
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+  // the inventory open: the same tap takes it into the inventory
+  h[0].stocked = true;
+  ws_test_say(h, WS_MSG_DECOR, "o");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].decor_n == i && h[0].inv[8] == 1;
 }
 
 #test "a pixel's ray meets the ground where the camera shows it" #steps 4000000000 {

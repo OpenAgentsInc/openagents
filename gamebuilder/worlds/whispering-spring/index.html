@@ -114,7 +114,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.82),rgba(34,20,40,.82));box-shadow:0 0 18px rgba(233,163,168,.16);padding:4px}
 #bar .btn{border:0;background:none;border-radius:999px;font-family:var(--serif);font-size:17px;padding:8px 16px}
 #bar .btn:hover{background:rgba(240,215,156,.12)}
-#hint{position:fixed;z-index:30;left:50%;bottom:84px;transform:translateX(-50%);max-width:calc(100% - 24px);padding:10px 18px;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.9),rgba(34,20,40,.9));color:#f7efdc;font-size:16px;text-align:center;box-shadow:0 0 18px rgba(233,163,168,.2)}
+#hint{pointer-events:none;position:fixed;z-index:30;left:50%;bottom:84px;transform:translateX(-50%);max-width:calc(100% - 24px);padding:10px 18px;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.9),rgba(34,20,40,.9));color:#f7efdc;font-size:16px;text-align:center;box-shadow:0 0 18px rgba(233,163,168,.2)}
 #hint[data-ok="1"] b{color:var(--gold)}#hint[data-ok="0"] b{color:#f0a0ad}
 #hint kbd{font:inherit;font-size:13px;padding:1px 6px;border:1px solid rgba(248,220,166,.5);border-radius:6px}
 .decor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
@@ -157,7 +157,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
   #bar .label{display:none}
   #g-sound .label{display:none}
 }
-#caption{position:fixed;left:50%;bottom:136px;transform:translateX(-50%);max-width:min(680px,calc(100% - 24px));padding:10px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-family:var(--serif);font-size:18px;text-align:center;transition:opacity .4s}
+#caption{pointer-events:none;position:fixed;left:50%;bottom:136px;transform:translateX(-50%);max-width:min(680px,calc(100% - 24px));padding:10px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-family:var(--serif);font-size:18px;text-align:center;transition:opacity .4s}
 #caption.gone{opacity:0}
 .panel{position:fixed;z-index:35;right:12px;top:72px;width:min(420px,calc(100% - 24px));max-height:calc(100% - 170px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px}
 .panel h2{font-size:24px;margin-bottom:10px}
