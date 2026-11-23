@@ -13,13 +13,14 @@ Raw histories and converted `.atif.jsonl` caches stay private on disk under `~/.
 Repository (`evals/session-history/`):
 
 - `README.md` — this guide
-- `run.sh` — thin CLI entrypoint (`ingest`, `mine`, `sanitize`, `run`, `compare`)
+- `run.sh` — thin CLI entrypoint (`ingest`, `mine`, `sanitize`, `run`, `compare`, `friction`)
 - `schema/task.schema.json` — sanitized task schema compatible with `evals/openagents-desktop/tier2` and `tier4/golden-template.json`, extended with ATIF `source` provenance and `baseline` metrics
 - `schema/baseline-metrics.schema.json` — schema for `index.jsonl` entries, `inventory.json`, and baseline comparison summaries
 - `tools/ingest.coax` — read-only Stage 1 converter (`ATIF-v1.8` logs + manifests + `index.jsonl` + `inventory.json`)
 - `tools/mine.coax` — Stage 2 episode miner & Bucket A–E stratifier over `.atif.jsonl` logs
 - `tools/sanitize.coax` — Stage 3 secret/PII scrubber, path normalizer, and git-worktree hermeticity gate (`--verify`)
 - `tools/compare.coax` — Stage 5 baseline comparison scorecard and failure-taxonomy tagger
+- `tools/friction.coax` — read-only Transcript Friction Hillclimb Scorecard over Antigravity transcripts, OpenAgents Desktop UI chats (`Coder/chats/*.json`), `.ajr` sessions, and daemon host state
 - `tasks/` — committed sanitized, hermeticity-verified eval task JSONs
 - `results/` — gitignored run outputs (`summary.json`, `scorecard.md`, per-case artifacts)
 
@@ -65,7 +66,7 @@ coax/web/tool.sh evals/session-history/tools/ingest.coax --dry-run
 
 - **Claude Code** (`~/.claude/projects/<project>/<sessionId>.jsonl`): keeps `user`, `assistant`, `system`, titles, `cwd`, `gitBranch`, `model`, and token usage. Drops `api-request-*`, `file-history-*`, `queue-operation`, `atis-latch`, `progress`, and replaces inline base64 images with `[image:sha256]`.
 - **Codex** (`~/.codex/sessions/YYYY/MM/DD/*.jsonl`): maps `session_meta`, `turn_context`, `response_item` (`message`, `custom_tool_call`, `custom_tool_call_output`, `function_call`, `function_call_output`, `reasoning`), and `event_msg` (`token_count`).
-- **OpenAgents Desktop** (`~/.openagents/coder/sessions/*.ajr`, `*.jsonl`): decodes `AJR1` binary journal frames via `coax/lib/agent/journal.coax`.
+- **OpenAgents Desktop** (`~/.openagents/coder/sessions/*.ajr`, `*.jsonl`, and `~/Library/Application Support/Coder/chats/*.json`): decodes `AJR1` binary journal frames via `coax/lib/agent/journal.coax` and persisted UI chat JSONs (turns, steers, commands, cost).
 - **Antigravity** (`~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl` and `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`): reuses `coax/lib/agent/observe/antigravity.coax` (`USER_INPUT` → `user`, `PLANNER_RESPONSE` → `agent`, `GENERIC` → `observation`).
 - **OpenCode** (`~/.local/share/opencode/`): inspects local session storage when present.
 
@@ -92,6 +93,10 @@ evals/session-history/run.sh run --model gemini-4-hydrogen --workers 4
 
 # Re-compute comparison scorecard from an existing run directory
 evals/session-history/run.sh compare --tasks evals/session-history/tasks --run evals/session-history/results/<run_id>
+
+# Compute live Transcript Friction Hillclimb Scorecard across local Antigravity + OpenAgents Desktop histories
+evals/session-history/run.sh friction
+evals/session-history/run.sh friction --limit 50 --json --out /tmp/friction.json
 ```
 
 ## Phase 3 Stratified Suite (`tasks/`, 27 Tasks)
@@ -167,5 +172,6 @@ coax/bin/coax test evals/session-history/tools/ingest.coax
 coax/bin/coax test evals/session-history/tools/mine.coax
 coax/bin/coax test evals/session-history/tools/sanitize.coax
 coax/bin/coax test evals/session-history/tools/compare.coax
+coax/bin/coax test evals/session-history/tools/friction.coax --library
 coax/web/tool.sh tools-check
 ```

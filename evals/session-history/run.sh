@@ -20,6 +20,9 @@ case "$CMD" in
   compare)
     exec "$ROOT/coax/web/tool.sh" "$HERE/tools/compare.coax" "$@"
     ;;
+  friction)
+    exec "$ROOT/coax/web/tool.sh" "$HERE/tools/friction.coax" "$@"
+    ;;
   run)
     TS="$(date -u +%Y%m%dT%H%M%SZ)"
     SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo nogit)"
@@ -32,7 +35,7 @@ case "$CMD" in
     exit "$RC"
     ;;
   *)
-    echo "Usage: $0 <ingest|mine|sanitize|run|compare> [args...]"
+    echo "Usage: $0 <ingest|mine|sanitize|run|compare|friction> [args...]"
     exit 0
     ;;
 esac
