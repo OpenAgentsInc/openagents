@@ -1,4 +1,4 @@
-// Firm reason: 6 (iOS SwiftUI Tailscale Computers sheet for paired/discovered Macs, manual MagicDNS/IP entry, and refusal diagnostics).
+// Firm reason: 6 (iOS SwiftUI Tailscale Computers sheet with relay-free one-tap direct Tailscale pairing, MagicDNS/IP entry, and refusal diagnostics).
 import SwiftUI
 
 struct ComputersView: View {
@@ -8,6 +8,7 @@ struct ComputersView: View {
     @State private var manualAddress = ""
     @State private var manualName = ""
     @State private var manualPort = String(AppTailnet.port)
+    @State private var autoPair = true
     @State private var manualError: String?
     @State private var isAdding = false
     @State private var copiedKey = false
@@ -21,7 +22,7 @@ struct ComputersView: View {
                             Text("No Tailscale computers found yet")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(OATheme.textPrimary)
-                            Text("Make sure Tailscale and OpenAgents are running on your Mac, or add its MagicDNS name or 100.x Tailscale IP below.")
+                            Text("Run OpenAgents on your Mac (or coder host serve --no-relay) on the same Tailscale account, or add its MagicDNS name / 100.x IP below.")
                                 .font(.system(size: 13))
                                 .foregroundStyle(OATheme.textSecondary)
                         }
@@ -64,6 +65,11 @@ struct ComputersView: View {
                     }
                     .listRowBackground(OATheme.surface)
 
+                    Toggle("Pair directly over Tailscale (no relay)", isOn: $autoPair)
+                        .font(.system(size: 14))
+                        .tint(.white)
+                        .listRowBackground(OATheme.surface)
+
                     if let manualError {
                         Text(manualError)
                             .font(.system(size: 12))
@@ -76,7 +82,12 @@ struct ComputersView: View {
                             isAdding = true
                             manualError = nil
                             let port = UInt16(manualPort.trimmingCharacters(in: .whitespaces)) ?? AppTailnet.port
-                            if let err = await store.addManualComputer(address: manualAddress, name: manualName, port: port) {
+                            if let err = await store.addManualComputer(
+                                address: manualAddress,
+                                name: manualName,
+                                port: port,
+                                autoPair: autoPair
+                            ) {
                                 manualError = err
                             } else {
                                 manualAddress = ""
@@ -89,7 +100,7 @@ struct ComputersView: View {
                             if isAdding {
                                 ProgressView().controlSize(.small)
                             }
-                            Text("Add & Probe over Tailscale")
+                            Text(autoPair ? "Add & Pair over Tailscale" : "Add & Probe over Tailscale")
                                 .font(.system(size: 14, weight: .semibold))
                         }
                         .frame(maxWidth: .infinity)
@@ -100,13 +111,13 @@ struct ComputersView: View {
                 } header: {
                     Text("Add by MagicDNS or Tailscale IP")
                 } footer: {
-                    Text("All traffic travels directly over your Tailscale WireGuard tunnel on port 47109. Public relays are disabled.")
+                    Text("Direct grants and NIP-44 E2E RPCs travel straight over your Tailscale WireGuard tunnel on port 47109. Public relays are disabled.")
                 }
 
                 Section {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("This iPhone's Device Key")
+                            Text("This Device's Key")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(OATheme.textPrimary)
                             Text(shortDeviceKey)
@@ -115,7 +126,7 @@ struct ComputersView: View {
                         }
                         Spacer()
                         Button {
-                            UIPasteboard.general.string = store.devicePublicKeyHex
+                            OAClipboard.copy(store.devicePublicKeyHex)
                             copiedKey = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copiedKey = false }
                         } label: {
@@ -127,7 +138,7 @@ struct ComputersView: View {
                 } header: {
                     Text("Local Device Identity")
                 } footer: {
-                    Text("Stored only in this iPhone's Keychain (Coax secp256k1). Never synced or sent to a cloud account.")
+                    Text("Stored only in this device's Keychain (Coax secp256k1). Never synced or sent to a cloud account.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -152,6 +163,9 @@ struct ComputersView: View {
 
     private func computerRow(_ computer: ComputerEntry) -> some View {
         let isActive = store.activeComputerID == computer.id
+        let isPairing = store.isPairingHostID == computer.id
+        let needsPair = computer.paired == nil || computer.paired?.isExpired == true
+
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Circle()
@@ -179,10 +193,10 @@ struct ComputersView: View {
 
                 Spacer()
 
-                if computer.paired != nil {
-                    Text(computer.paired?.isExpired == true ? "Expired" : "Paired")
+                if let paired = computer.paired {
+                    Text(paired.isExpired ? "Expired" : "Paired")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(computer.paired?.isExpired == true ? OATheme.statusWarn : OATheme.statusReady)
+                        .foregroundStyle(paired.isExpired ? OATheme.statusWarn : OATheme.statusReady)
                 } else {
                     Text("Discovered")
                         .font(.system(size: 11, weight: .medium))
@@ -194,14 +208,37 @@ struct ComputersView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(reachabilityColor(for: computer.reachability))
 
-            HStack(spacing: 10) {
-                Button("Select") {
-                    store.selectComputer(computer)
-                    dismiss()
+            HStack(spacing: 8) {
+                if needsPair && computer.canRequestDirectGrant {
+                    Button {
+                        Task {
+                            if let err = await store.pairOverTailscale(computer) {
+                                manualError = err
+                            } else {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isPairing { ProgressView().controlSize(.mini) }
+                            Text(isPairing ? "Pairing…" : "Pair over Tailscale")
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white)
+                    .foregroundStyle(Color.black)
+                    .disabled(isPairing)
+                    .accessibilityIdentifier("computers.pairButton")
+                } else {
+                    Button("Select") {
+                        store.selectComputer(computer)
+                        dismiss()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .buttonStyle(.bordered)
+                    .tint(.white)
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .buttonStyle(.bordered)
-                .tint(.white)
 
                 Button("Probe") {
                     Task { await store.probeComputer(computer) }

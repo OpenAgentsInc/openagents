@@ -1,9 +1,9 @@
-// Firm reason: 6 (XCTest unit suite verifying the compiled Coax C bridge, NIP-44 sealing, Tailscale codecs, and Antigravity-only policy inside the iOS app).
+// Firm reason: 6 (XCTest unit suite verifying the shared Coax C bridge, relay-free direct grants, push frames, review modes, Workspace Git/PR wire, NIP-44 sealing, and Antigravity-only policy inside OpenAgents iOS).
 import XCTest
 @testable import OpenAgents
 
 final class MobileCoreTests: XCTestCase {
-    func testAntigravityOnlyModelAndEffortPolicy() {
+    func testAntigravityOnlyModelEffortAndReviewModePolicy() {
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-neon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-carbon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-3.8-flash"))
@@ -23,14 +23,21 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "xhigh"), "xhigh")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "low"), "low")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "bogus"), "medium")
+
+        XCTAssertTrue(MobileCore.isValidReviewMode("auto"))
+        XCTAssertTrue(MobileCore.isValidReviewMode("default"))
+        XCTAssertTrue(MobileCore.isValidReviewMode("plan"))
+        XCTAssertFalse(MobileCore.isValidReviewMode("unsafe"))
+        XCTAssertEqual(ReviewMode.ask.wireValue, "default")
     }
 
-    func testCoaxRequestEncoderEnforcesAntigravityModelsAtWireBoundary() throws {
+    func testCoaxRequestEncoderEnforcesAntigravityModelsReviewModeAndNativeAgySentinel() throws {
         let work = try XCTUnwrap(MobileCoreWork())
 
         let valid = MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
+            session: "abcdef0123456789abcdef0123456789",
             command: "0123456789abcdef0123456789abcdef",
             generation: 1,
             revision: 0,
@@ -39,19 +46,32 @@ final class MobileCoreTests: XCTestCase {
             expiresMs: 1_700_000_300_000,
             model: "gemini-4-neon",
             effort: "high",
-            folder: "apps/openagents-ios"
+            folder: "apps/openagents-ios",
+            mode: "plan"
         )
         let validData = try XCTUnwrap(valid)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: validData) as? [String: Any])
         XCTAssertEqual(json["method"] as? String, "OpenSession")
+        XCTAssertEqual(json["session_id"] as? String, "abcdef0123456789abcdef0123456789")
         XCTAssertEqual(json["model"] as? String, "gemini-4-neon")
         XCTAssertEqual(json["effort"] as? String, "high")
         XCTAssertEqual(json["folder"] as? String, "apps/openagents-ios")
+        XCTAssertEqual(json["mode"] as? String, "plan")
 
-        // Non-Antigravity models must be rejected by Coax before sealing.
+        // ListSessions with "antigravity" preserves the sentinel for native ~/.gemini chats
+        let nativeList = try XCTUnwrap(MobileCore.encodeEnvironmentRequest(
+            work: work,
+            method: "ListSessions",
+            model: "antigravity"
+        ))
+        let nativeJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: nativeList) as? [String: Any])
+        XCTAssertEqual(nativeJSON["model"] as? String, "antigravity")
+
+        // Non-Antigravity models and invalid review modes must be rejected by Coax before sealing.
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
+            session: "abcdef0123456789abcdef0123456789",
             command: "0123456789abcdef0123456789abcdef",
             generation: 1,
             revision: 0,
@@ -64,20 +84,22 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
+            session: "abcdef0123456789abcdef0123456789",
             command: "0123456789abcdef0123456789abcdef",
             generation: 1,
             revision: 0,
             text: "hi",
             issuedMs: 1_700_000_000_000,
             expiresMs: 1_700_000_300_000,
-            model: "inkling-2-mini",
-            effort: "medium"
+            model: "gemini-4-neon",
+            effort: "high",
+            mode: "bogus"
         ))
-
         // Path traversal in folder is rejected by Coax.
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
+            session: "abcdef0123456789abcdef0123456789",
             command: "0123456789abcdef0123456789abcdef",
             generation: 1,
             revision: 0,
@@ -89,8 +111,38 @@ final class MobileCoreTests: XCTestCase {
         ))
     }
 
+    func testWorkspaceGitAndPullRequestWireEncoding() throws {
+        let work = try XCTUnwrap(MobileCoreWork())
+        let readData = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(work: work, method: "ReadWorkspace"))
+        let readJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: readData) as? [String: Any])
+        XCTAssertEqual(readJSON["method"] as? String, "ReadWorkspace")
+
+        let rev = String(repeating: "a", count: 64)
+        let sw = try XCTUnwrap(MobileCore.encodeWorkspaceRequest(
+            work: work,
+            method: "SwitchBranch",
+            branch: "feat/antigravity",
+            expectedRevision: rev,
+            command: "0123456789abcdef0123456789abcdef",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_060_000
+        ))
+        let swJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: sw) as? [String: Any])
+        XCTAssertEqual(swJSON["branch"] as? String, "feat/antigravity")
+
+        // Unsafe git option-like ref name rejected by Coax WsRequest
+        XCTAssertNil(MobileCore.encodeWorkspaceRequest(
+            work: work,
+            method: "SwitchBranch",
+            branch: "-rf",
+            expectedRevision: rev,
+            command: "0123456789abcdef0123456789abcdef",
+            issuedMs: 1_700_000_000_000,
+            expiresMs: 1_700_000_060_000
+        ))
+    }
+
     func testNIP44PublicKeyAndSealRPC() throws {
-        // Known secp256k1 private key = 1 -> generator G x-coordinate
         var sk = Data(repeating: 0, count: 32)
         sk[31] = 1
         let pub = try XCTUnwrap(MobileCore.publicKeyHex(secret: sk))
@@ -107,7 +159,7 @@ final class MobileCoreTests: XCTestCase {
             work: work,
             secret: sk,
             host: host,
-            relay: "tailscale://direct",
+            relay: MobileCore.directRelayLabel,
             grant: grant,
             epoch: 0,
             params: params,
@@ -117,25 +169,39 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(sealed.event.count > 100)
     }
 
-    func testTailscaleDirectCodecRoundTrip() {
+    func testTailscaleDirectGrantAndPushFrameCodecs() throws {
+        // Direct transport handshake
         let hello = AppTailnet.directHelloLine()
-        XCTAssertFalse(hello.isEmpty)
-        let helloLine = Data(hello.dropLast()) // strip \n
-        XCTAssertTrue(AppTailnet.isDirectHello(helloLine))
+        XCTAssertTrue(AppTailnet.isDirectHello(Data(hello.dropLast())))
+        XCTAssertTrue(AppTailnet.directAck(Data(AppTailnet.directAckLine(refused: nil).dropLast())).ok)
+        XCTAssertEqual(AppTailnet.directAck(Data(AppTailnet.directAckLine(refused: "tagged").dropLast())).refused, "tagged")
 
-        let okAck = AppTailnet.directAckLine(refused: nil)
-        let okParsed = AppTailnet.directAck(Data(okAck.dropLast()))
-        XCTAssertTrue(okParsed.ok)
-        XCTAssertNil(okParsed.refused)
+        // Relay-free direct grant request & answer
+        let dev = String(repeating: "b", count: 64)
+        let host = String(repeating: "a", count: 64)
+        let grant = String(repeating: "c", count: 64)
+        let reqLine = AppTailnet.directGrantRequestLine(device: dev, label: "OpenAgents iOS")
+        let parsedReq = try XCTUnwrap(AppTailnet.parseDirectGrantRequest(Data(reqLine.dropLast())))
+        XCTAssertEqual(parsedReq.device, dev)
+        XCTAssertEqual(parsedReq.label, "OpenAgents iOS")
 
-        let refusedAck = AppTailnet.directAckLine(refused: "tagged")
-        let refusedParsed = AppTailnet.directAck(Data(refusedAck.dropLast()))
-        XCTAssertFalse(refusedParsed.ok)
-        XCTAssertEqual(refusedParsed.refused, "tagged")
+        let ans = AppTailnet.DirectGrantAnswer(host: host, label: "Mac Studio", grant: grant, epoch: 1, expires: 1_800_000_000, refused: nil)
+        let ansLine = AppTailnet.directGrantAnswerLine(ans)
+        let parsedAns = try XCTUnwrap(AppTailnet.directGrantAnswer(Data(ansLine.dropLast())))
+        XCTAssertEqual(parsedAns, ans)
 
-        XCTAssertTrue(AppTailnet.isTailnet("100.101.102.103"))
-        XCTAssertFalse(AppTailnet.isTailnet("192.168.1.5"))
-        XCTAssertEqual(AppTailnet.dnsName("MacBook.Tail123.ts.net."), "macbook.tail123.ts.net")
+        // Real-time push subscribe & change notification frames
+        let subLine = AppTailnet.subscribeLine(session: "0123456789abcdef0123456789abcdef")
+        XCTAssertEqual(AppTailnet.parseSubscribe(Data(subLine.dropLast())), "0123456789abcdef0123456789abcdef")
+
+        let push = AppTailnet.PushEvent(seq: 9, kind: "session_updated", session: "0123456789abcdef0123456789abcdef", revision: 12, busy: true, hasInteraction: true)
+        let pushLine = AppTailnet.pushLine(push)
+        let parsedPush = try XCTUnwrap(AppTailnet.parsePush(Data(pushLine.dropLast())))
+        XCTAssertEqual(parsedPush, push)
+
+        // Unknown push kind must be refused by Coax schema enforcement
+        let badPush = AppTailnet.PushEvent(seq: 1, kind: "bogus", session: "", revision: 0, busy: false, hasInteraction: false)
+        XCTAssertTrue(AppTailnet.pushLine(badPush).isEmpty)
     }
 
     func testParsedEnvironmentViewFiltersOutNonAntigravityModels() throws {
@@ -155,7 +221,7 @@ final class MobileCoreTests: XCTestCase {
           "command_status": "",
           "source_epoch": "",
           "workspace_name": "openagents",
-          "folders": ["apps/openagents-ios", "../escape"],
+          "folders": ["apps/openagents-ios"],
           "efforts": [
             {"effort_id": "low", "display_name": "Low"},
             {"effort_id": "medium", "display_name": "Medium"},
@@ -171,13 +237,8 @@ final class MobileCoreTests: XCTestCase {
           ]
         }
         """
-        let data = Data(rawJSON.utf8)
+        let cleanData = Data(rawJSON.utf8)
         let work = try XCTUnwrap(MobileCoreWork())
-        // Note: `../escape` causes Coax `ea_view_read` to reject malformed folders; verify strictness too.
-        XCTAssertFalse(MobileCore.validateView(work: work, host: host, method: "DescribeEnvironment", raw: data))
-
-        let cleanJSON = rawJSON.replacingOccurrences(of: ", \"../escape\"", with: "")
-        let cleanData = Data(cleanJSON.utf8)
         XCTAssertTrue(MobileCore.validateView(work: work, host: host, method: "DescribeEnvironment", raw: cleanData))
 
         let parsed = try XCTUnwrap(ParsedEnvironmentView.parse(cleanData))

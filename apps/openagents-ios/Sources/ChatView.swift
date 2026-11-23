@@ -1,12 +1,21 @@
-// Firm reason: 6 (iOS SwiftUI chat transcript with Markdown/code blocks, collapsible thoughts/tools/diffs, and native Antigravity composer bar).
+// Firm reason: 6 (iOS SwiftUI chat transcript + interactive approval banner + attachments + / slash commands + queued follow-ups + native Antigravity composer).
+import PhotosUI
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @ObservedObject var store: AppStore
     @FocusState private var composerFocused: Bool
+    @State private var showFileImporter = false
+    @State private var showPhotoPicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
 
     var body: some View {
         VStack(spacing: 0) {
+            if let toast = store.statusToast, !toast.isEmpty {
+                toastBanner(toast)
+            }
             if let error = store.bannerError, !error.isEmpty {
                 errorBanner(error)
             }
@@ -26,13 +35,91 @@ struct ChatView: View {
                 composerFocused = false
             }
 
+            if let interaction = store.pendingInteraction {
+                ApprovalBannerView(interaction: interaction) { allow, note in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    Task { await store.respondToInteraction(allow: allow, note: note) }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
+
+            if !store.matchingSlashCommands.isEmpty {
+                slashCommandMenu
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
+
+            if let queued = store.queuedDraft, !queued.isEmpty {
+                queuedBanner(queued)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            }
+
             Divider().overlay(OATheme.hairline)
             composerBar
         }
         .background(OATheme.background)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItem, matching: .images)
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self) {
+                    let att = FileAttachment(
+                        name: "photo-\(Int(Date().timeIntervalSince1970) % 10000).jpg",
+                        mimeType: "image/jpeg",
+                        textPreview: nil,
+                        byteCount: data.count
+                    )
+                    store.addAttachment(att)
+                }
+                selectedPhotoItem = nil
+            }
+        }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.plainText, .sourceCode, .json, .data, .image],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { return }
+            let preview = String(data: data.prefix(4000), encoding: .utf8)
+            let mime = preview != nil ? "text/plain" : "application/octet-stream"
+            store.addAttachment(FileAttachment(
+                name: url.lastPathComponent,
+                mimeType: mime,
+                textPreview: preview,
+                byteCount: data.count
+            ))
+        }
     }
 
-    // MARK: - Error banner
+    // MARK: - Banners
+
+    private func toastBanner(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.statusReady)
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(OATheme.textPrimary)
+            Spacer()
+            Button {
+                store.statusToast = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(OATheme.textMuted)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(OATheme.surface)
+        .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
+    }
 
     private func errorBanner(_ text: String) -> some View {
         HStack(spacing: 10) {
@@ -58,6 +145,58 @@ struct ChatView: View {
         .overlay(alignment: .bottom) { Divider().overlay(OATheme.hairline) }
     }
 
+    private func queuedBanner(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.textSecondary)
+            Text("Queued: \(text)")
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.textPrimary)
+                .lineLimit(1)
+            Spacer()
+            Button {
+                store.clearQueuedDraft()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(OATheme.textMuted)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+    }
+
+    private var slashCommandMenu: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(store.matchingSlashCommands) { cmd in
+                Button {
+                    store.applySlashCommand(cmd)
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(cmd.command)
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(OATheme.textPrimary)
+                        Text(cmd.subtitle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(OATheme.textSecondary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        .accessibilityIdentifier("chat.slashMenu")
+    }
+
     // MARK: - Empty states
 
     private var tailscaleOnboardingState: some View {
@@ -78,9 +217,9 @@ struct ChatView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    stepRow(number: "1", text: "Sign into Tailscale on this iPhone and on your Mac.")
-                    stepRow(number: "2", text: "Keep OpenAgents running on your Mac (port 47109).")
-                    stepRow(number: "3", text: "Tap Connect Computer to discover nearby or enter its MagicDNS / 100.x IP.")
+                    stepRow(number: "1", text: "Sign into Tailscale on this device and on your Mac.")
+                    stepRow(number: "2", text: "Keep OpenAgents macOS or coder host running on port 47109.")
+                    stepRow(number: "3", text: "Tap Connect Computer to pair directly over Tailscale in one tap.")
                 }
                 .padding(14)
                 .frame(maxWidth: 340, alignment: .leading)
@@ -174,8 +313,10 @@ struct ChatView: View {
                         noticeCard(text: note, kind: "note")
                     }
                     ForEach(store.items) { item in
-                        TranscriptRowView(item: item)
-                            .id(item.id)
+                        TranscriptRowView(item: item) { sub in
+                            store.openSubagent(sub)
+                        }
+                        .id(item.id)
                     }
                     if store.activeSession?.busy == true {
                         HStack(spacing: 8) {
@@ -223,16 +364,75 @@ struct ChatView: View {
 
     private var composerBar: some View {
         VStack(spacing: 8) {
-            TextField("Ask Antigravity…", text: $store.draftText, axis: .vertical)
+            if !store.pendingAttachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(store.pendingAttachments) { att in
+                            HStack(spacing: 5) {
+                                Image(systemName: att.textPreview != nil ? "doc.text" : "photo")
+                                    .font(.system(size: 10))
+                                Text(att.name)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .lineLimit(1)
+                                Button {
+                                    store.removeAttachment(att)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .foregroundStyle(OATheme.textSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(OATheme.elevated, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                }
+            }
+
+            TextField("Ask Antigravity or type /…", text: $store.draftText, axis: .vertical)
                 .lineLimit(1...6)
                 .font(.system(size: 15))
                 .foregroundStyle(OATheme.textPrimary)
                 .focused($composerFocused)
                 .padding(.horizontal, 12)
-                .padding(.top, 10)
+                .padding(.top, store.pendingAttachments.isEmpty ? 10 : 2)
                 .accessibilityIdentifier("chat.composer")
 
             HStack(spacing: 6) {
+                // + Attachment & Slash Menu
+                Menu {
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Label("Attach File", systemImage: "doc.badge.plus")
+                    }
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
+                        Label("Attach Photo", systemImage: "photo")
+                    }
+                    Divider()
+                    Button {
+                        store.draftText = "/"
+                        composerFocused = true
+                    } label: {
+                        Label("Slash Commands", systemImage: "slash.circle")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(OATheme.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .background(OATheme.elevated, in: Circle())
+                        .overlay(Circle().stroke(OATheme.hairline, lineWidth: 1))
+                }
+                .accessibilityIdentifier("chat.attachButton")
+
                 // Antigravity Model Picker
                 Menu {
                     ForEach(store.availableModels) { model in
@@ -315,7 +515,7 @@ struct ChatView: View {
                 .foregroundStyle(OATheme.textSecondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 9)
+        .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(OATheme.elevated, in: Capsule())
         .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
@@ -323,11 +523,12 @@ struct ChatView: View {
 
     @ViewBuilder
     private var actionButton: some View {
-        let hasText = !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasPayload = !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.pendingAttachments.isEmpty
         let isRunning = store.activeSession?.busy == true
 
-        if isRunning && !hasText {
+        if isRunning && !hasPayload {
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 Task { await store.stopActiveTurn() }
             } label: {
                 Image(systemName: "stop.fill")
@@ -339,348 +540,46 @@ struct ChatView: View {
             .accessibilityIdentifier("chat.stop")
             .accessibilityLabel("Stop turn")
         } else {
-            Button {
-                composerFocused = false
-                Task { await store.sendMessage() }
-            } label: {
-                Group {
-                    if store.isSending {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(Color.black)
-                    } else {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(hasText ? Color.black : OATheme.textMuted)
-                    }
-                }
-                .frame(width: 30, height: 30)
-                .background(hasText ? Color.white : OATheme.elevated, in: Circle())
-            }
-            .disabled(!hasText || store.isSending)
-            .accessibilityIdentifier("chat.send")
-            .accessibilityLabel(isRunning ? "Steer Antigravity" : "Send message")
-        }
-    }
-}
-
-// MARK: - Transcript Row
-
-private struct TranscriptRowView: View {
-    let item: TranscriptItem
-    @State private var expanded = false
-
-    var body: some View {
-        switch item.role {
-        case .user:
-            HStack {
-                Spacer(minLength: 48)
-                Text(item.text)
-                    .font(.system(size: 15))
-                    .foregroundStyle(OATheme.textPrimary)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(OATheme.elevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-            }
-
-        case .assistant:
-            VStack(alignment: .leading, spacing: 8) {
-                MarkdownContentView(text: item.text)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-        case .thought:
-            VStack(alignment: .leading, spacing: 6) {
-                Button {
-                    expanded.toggle()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: expanded || !item.complete ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text(item.complete ? "Thought process" : "Thinking…")
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                    }
-                    .foregroundStyle(OATheme.textMuted)
-                }
-                .buttonStyle(.plain)
-
-                if expanded || !item.complete {
-                    Text(item.text)
-                        .font(.system(size: 13))
-                        .foregroundStyle(OATheme.textSecondary)
-                        .textSelection(.enabled)
-                        .padding(.leading, 10)
-                        .overlay(alignment: .leading) {
-                            Rectangle().fill(OATheme.hairline).frame(width: 2)
-                        }
-                }
-            }
-
-        case .tool:
-            VStack(alignment: .leading, spacing: 6) {
-                Button {
-                    expanded.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: toolIcon)
-                            .font(.system(size: 12))
-                            .foregroundStyle(OATheme.textSecondary)
-                        Text(item.toolName.isEmpty ? "Tool" : item.toolName)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            HStack(spacing: 6) {
+                if isRunning && hasPayload {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        store.queueCurrentDraft()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(OATheme.textPrimary)
-                        if !item.path.isEmpty {
-                            Text(item.path)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(OATheme.textSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        } else if !item.text.isEmpty {
-                            Text(item.text.replacingOccurrences(of: "\n", with: " "))
-                                .font(.system(size: 12))
-                                .foregroundStyle(OATheme.textSecondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        if item.subagentCalls > 0 {
-                            Text("\(item.subagentCalls) calls")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(OATheme.textMuted)
-                        }
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10))
-                            .foregroundStyle(OATheme.textMuted)
+                            .frame(width: 28, height: 28)
+                            .background(OATheme.elevated, in: Circle())
+                            .overlay(Circle().stroke(OATheme.hairline, lineWidth: 1))
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                    .accessibilityIdentifier("chat.queue")
+                    .accessibilityLabel("Queue follow-up")
                 }
-                .buttonStyle(.plain)
 
-                if expanded {
-                    if !item.diff.isEmpty {
-                        DiffBlockView(path: item.path, diff: item.diff, truncated: item.diffCut)
-                    } else if !item.text.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            Text(item.text)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(OATheme.textSecondary)
-                                .textSelection(.enabled)
-                                .padding(10)
-                        }
-                        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-                    }
-                }
-            }
-
-        case .notice, .unknown:
-            Text(item.text)
-                .font(.system(size: 13))
-                .foregroundStyle(OATheme.textSecondary)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-        }
-    }
-
-    private var toolIcon: String {
-        let lower = item.toolName.lowercased()
-        if lower.contains("bash") || lower.contains("command") || lower.contains("shell") { return "terminal" }
-        if lower.contains("edit") || lower.contains("write") { return "doc.badge.gearshape" }
-        if lower.contains("read") || lower.contains("view") { return "doc.text" }
-        if lower.contains("search") || lower.contains("grep") || lower.contains("find") { return "magnifyingglass" }
-        return "wrench"
-    }
-}
-
-// MARK: - Markdown + Code Blocks
-
-private struct MarkdownContentView: View {
-    let text: String
-
-    private enum Segment: Identifiable {
-        case prose(id: Int, content: String)
-        case code(id: Int, language: String, content: String)
-
-        var id: Int {
-            switch self {
-            case .prose(let id, _), .code(let id, _, _): return id
-            }
-        }
-    }
-
-    private var segments: [Segment] {
-        var result: [Segment] = []
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var proseBuf: [String] = []
-        var codeBuf: [String] = []
-        var inCode = false
-        var codeLang = ""
-        var nextID = 0
-
-        func flushProse() {
-            let joined = proseBuf.joined(separator: "\n").trimmingCharacters(in: .newlines)
-            if !joined.isEmpty {
-                result.append(.prose(id: nextID, content: joined))
-                nextID += 1
-            }
-            proseBuf.removeAll()
-        }
-
-        for line in lines {
-            if line.hasPrefix("```") {
-                if inCode {
-                    result.append(.code(id: nextID, language: codeLang, content: codeBuf.joined(separator: "\n")))
-                    nextID += 1
-                    codeBuf.removeAll()
-                    codeLang = ""
-                    inCode = false
-                } else {
-                    flushProse()
-                    codeLang = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                    inCode = true
-                }
-            } else if inCode {
-                codeBuf.append(line)
-            } else {
-                proseBuf.append(line)
-            }
-        }
-        if inCode {
-            result.append(.code(id: nextID, language: codeLang, content: codeBuf.joined(separator: "\n")))
-        } else {
-            flushProse()
-        }
-        return result
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(segments) { seg in
-                switch seg {
-                case .prose(_, let content):
-                    if let attributed = try? AttributedString(
-                        markdown: content,
-                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-                    ) {
-                        Text(attributed)
-                            .font(.system(size: 15))
-                            .foregroundStyle(OATheme.textPrimary)
-                            .textSelection(.enabled)
-                    } else {
-                        Text(content)
-                            .font(.system(size: 15))
-                            .foregroundStyle(OATheme.textPrimary)
-                            .textSelection(.enabled)
-                    }
-                case .code(_, let language, let code):
-                    CodeBlockView(language: language, code: code)
-                }
-            }
-        }
-    }
-}
-
-private struct CodeBlockView: View {
-    let language: String
-    let code: String
-    @State private var copied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(language.isEmpty ? "code" : language)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(OATheme.textMuted)
-                Spacer()
                 Button {
-                    UIPasteboard.general.string = code
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                    composerFocused = false
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Task { await store.sendMessage() }
                 } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(OATheme.textSecondary)
+                    Group {
+                        if store.isSending {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(Color.black)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(hasPayload ? Color.black : OATheme.textMuted)
+                        }
+                    }
+                    .frame(width: 30, height: 30)
+                    .background(hasPayload ? Color.white : OATheme.elevated, in: Circle())
                 }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(OATheme.elevated)
-
-            Divider().overlay(OATheme.hairline)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 12.5, design: .monospaced))
-                    .foregroundStyle(OATheme.textPrimary)
-                    .textSelection(.enabled)
-                    .padding(10)
+                .disabled(!hasPayload || store.isSending)
+                .accessibilityIdentifier("chat.send")
+                .accessibilityLabel(isRunning ? "Steer Antigravity" : "Send message")
             }
         }
-        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-}
-
-private struct DiffBlockView: View {
-    let path: String
-    let diff: String
-    let truncated: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !path.isEmpty {
-                Text(path)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(OATheme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OATheme.elevated)
-                Divider().overlay(OATheme.hairline)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(diff.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, rawLine in
-                        let line = String(rawLine)
-                        Text(line.isEmpty ? " " : line)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(diffTextColor(line))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(diffBgColor(line))
-                    }
-                    if truncated {
-                        Text("… diff truncated by wire budget …")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(OATheme.textMuted)
-                            .padding(8)
-                    }
-                }
-            }
-        }
-        .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func diffTextColor(_ line: String) -> Color {
-        if line.hasPrefix("+") { return OATheme.diffAddText }
-        if line.hasPrefix("-") { return OATheme.diffDelText }
-        return OATheme.textSecondary
-    }
-
-    private func diffBgColor(_ line: String) -> Color {
-        if line.hasPrefix("+") { return OATheme.diffAddBg }
-        if line.hasPrefix("-") { return OATheme.diffDelBg }
-        return Color.clear
     }
 }

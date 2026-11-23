@@ -17,6 +17,7 @@ final class LocalSocketClient: @unchecked Sendable {
     #endif
 
     var hostDirectory: URL {
+        #if os(macOS)
         let envHome = ProcessInfo.processInfo.environment["CODER_HOME"]
         let base: URL
         if let envHome, !envHome.isEmpty {
@@ -25,6 +26,9 @@ final class LocalSocketClient: @unchecked Sendable {
             base = FileManager.default.homeDirectoryForCurrentUser
         }
         return base.appendingPathComponent(".openagents/coder/host", isDirectory: true)
+        #else
+        return FileManager.default.temporaryDirectory.appendingPathComponent("openagents-host", isDirectory: true)
+        #endif
     }
 
     var socketURL: URL {

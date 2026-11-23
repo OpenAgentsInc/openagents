@@ -1,4 +1,4 @@
-// Firm reason: 6 (iOS SwiftUI calm pure-black Antigravity sidebar with New chat, Working, Recents, and Tailscale Computers footer).
+// Firm reason: 6 (iOS SwiftUI calm pure-black Antigravity sidebar with New chat, Working, Recents, native agy badges, and Tailscale Computers footer).
 import SwiftUI
 
 struct SidebarView: View {
@@ -14,6 +14,16 @@ struct SidebarView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(OATheme.textPrimary)
                     Spacer()
+                    if store.livePushConnected {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(OATheme.statusReady)
+                                .frame(width: 6, height: 6)
+                            Text("Live")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(OATheme.textMuted)
+                        }
+                    }
                 }
                 .padding(.top, 12)
 
@@ -157,6 +167,10 @@ struct SidebarView: View {
                         ProgressView()
                             .controlSize(.mini)
                             .tint(OATheme.textPrimary)
+                    } else if !session.interactionID.isEmpty {
+                        Circle()
+                            .fill(OATheme.statusWarn)
+                            .frame(width: 6, height: 6)
                     }
                     Text(session.displayTitle)
                         .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
@@ -173,6 +187,15 @@ struct SidebarView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(OATheme.textSecondary)
                         .lineLimit(1)
+                    if session.isNativeAntigravity {
+                        Text("local")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(OATheme.surface, in: Capsule())
+                            .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                    }
                 }
             }
             .padding(.horizontal, 10)

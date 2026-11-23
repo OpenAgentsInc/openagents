@@ -1,0 +1,456 @@
+// Firm reason: 6 (cross-Apple pure-black OLED Workspace Git Diff / Branches / Worktrees / Pull Requests inspector shared by OpenAgents iOS and OpenAgents macOS).
+import SwiftUI
+
+struct WorkspaceInspectorView: View {
+    @ObservedObject var store: AntigravityStore
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case diff = "Diff"
+        case branches = "Branches"
+        case worktrees = "Worktrees"
+        case prs = "PRs"
+        var id: String { rawValue }
+    }
+
+    @State private var selectedTab: Tab = .diff
+    @State private var newBranchName = ""
+    @State private var newWorktreeBranch = ""
+    @State private var prTitle = ""
+    @State private var prBase = "main"
+    @State private var prBody = ""
+    @State private var showCreatePR = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            headerBar
+            Divider().overlay(OATheme.hairline)
+
+            Picker("Workspace tab", selection: $selectedTab) {
+                ForEach(Tab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .accessibilityIdentifier("workspace.tabs")
+
+            if let err = store.workspaceError, !err.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(OATheme.statusWarn)
+                    Text(err)
+                        .font(.system(size: 12))
+                        .foregroundStyle(OATheme.textPrimary)
+                        .lineLimit(3)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(OATheme.surface)
+                Divider().overlay(OATheme.hairline)
+            }
+
+            if store.isLoadingWorkspace && store.workspaceSnapshot == nil {
+                VStack(spacing: 10) {
+                    Spacer()
+                    ProgressView().tint(OATheme.textPrimary)
+                    Text("Loading workspace from computer…")
+                        .font(.system(size: 13))
+                        .foregroundStyle(OATheme.textSecondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let snap = store.workspaceSnapshot {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        switch selectedTab {
+                        case .diff:
+                            diffTab(snap)
+                        case .branches:
+                            branchesTab(snap)
+                        case .worktrees:
+                            worktreesTab(snap)
+                        case .prs:
+                            prsTab(snap)
+                        }
+                    }
+                    .padding(14)
+                }
+            } else {
+                VStack(spacing: 10) {
+                    Spacer()
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 26))
+                        .foregroundStyle(OATheme.textMuted)
+                    Text(store.activeComputer?.canSendRPC == true
+                         ? "Tap refresh to inspect Git status, diffs, branches, and PRs."
+                         : "Connect a computer over Tailscale to review its workspace.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(OATheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    if store.activeComputer?.canSendRPC == true {
+                        Button("Load Workspace") {
+                            Task { await store.refreshWorkspace() }
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.white, in: Capsule())
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(OATheme.background)
+        .task(id: store.activeComputerID) {
+            if store.activeComputer?.canSendRPC == true && store.workspaceSnapshot == nil {
+                await store.refreshWorkspace()
+            }
+        }
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(OATheme.textSecondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(store.workspaceSnapshot?.branch.isEmpty == false ? (store.workspaceSnapshot?.branch ?? "Workspace") : "Workspace")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .lineLimit(1)
+                if let repo = store.workspaceSnapshot?.repository, !repo.isEmpty {
+                    Text(repo)
+                        .font(.system(size: 11))
+                        .foregroundStyle(OATheme.textMuted)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            if store.workspaceSnapshot != nil {
+                Button {
+                    Task { await store.pushCurrentBranch() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.circle")
+                            .font(.system(size: 12))
+                        Text("Push")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(OATheme.textPrimary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(OATheme.elevated, in: Capsule())
+                    .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(store.workspaceActionBusy)
+                .accessibilityIdentifier("workspace.push")
+            }
+            Button {
+                Task { await store.refreshWorkspace() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(OATheme.textSecondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .disabled(store.isLoadingWorkspace)
+            .accessibilityIdentifier("workspace.refresh")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(OATheme.background)
+    }
+
+    // MARK: - Diff tab
+
+    @ViewBuilder
+    private func diffTab(_ snap: WorkspaceSnapshot) -> some View {
+        if !snap.status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("CHANGED FILES")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(OATheme.textMuted)
+                Text(snap.status)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+            }
+        }
+
+        if snap.diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(OATheme.statusReady)
+                Text("Working tree is clean.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(OATheme.textSecondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("UNIFIED DIFF")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(OATheme.textMuted)
+                DiffBlockView(path: snap.branch, diff: snap.diff, truncated: snap.diffCut)
+            }
+        }
+    }
+
+    // MARK: - Branches tab
+
+    @ViewBuilder
+    private func branchesTab(_ snap: WorkspaceSnapshot) -> some View {
+        HStack(spacing: 8) {
+            TextField("new-branch-name", text: $newBranchName)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(OATheme.textPrimary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+
+            Button("Create") {
+                let target = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !target.isEmpty else { return }
+                newBranchName = ""
+                Task { await store.createBranch(name: target, base: snap.branch) }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .buttonStyle(.plain)
+            .disabled(newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.workspaceActionBusy)
+        }
+
+        VStack(spacing: 6) {
+            ForEach(snap.branches, id: \.self) { branch in
+                let isCurrent = branch == snap.branch
+                HStack {
+                    Image(systemName: isCurrent ? "checkmark.circle.fill" : "arrow.triangle.branch")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isCurrent ? OATheme.statusReady : OATheme.textMuted)
+                    Text(branch)
+                        .font(.system(size: 13, weight: isCurrent ? .semibold : .regular, design: .monospaced))
+                        .foregroundStyle(OATheme.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    if !isCurrent {
+                        Button("Switch") {
+                            Task { await store.switchBranch(branch) }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(OATheme.textPrimary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(OATheme.elevated, in: Capsule())
+                        .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                        .buttonStyle(.plain)
+                        .disabled(store.workspaceActionBusy)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+            }
+        }
+    }
+
+    // MARK: - Worktrees tab
+
+    @ViewBuilder
+    private func worktreesTab(_ snap: WorkspaceSnapshot) -> some View {
+        HStack(spacing: 8) {
+            TextField("worktree-branch", text: $newWorktreeBranch)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(OATheme.textPrimary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+
+            Button("Add") {
+                let target = newWorktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !target.isEmpty else { return }
+                newWorktreeBranch = ""
+                Task { await store.createWorktree(branch: target, base: snap.branch) }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .buttonStyle(.plain)
+            .disabled(newWorktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.workspaceActionBusy)
+        }
+
+        if snap.worktrees.isEmpty {
+            Text("No secondary worktrees.")
+                .font(.system(size: 13))
+                .foregroundStyle(OATheme.textMuted)
+        } else {
+            VStack(spacing: 8) {
+                ForEach(snap.worktrees) { tree in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(tree.branch.isEmpty ? tree.id : tree.branch)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(OATheme.textPrimary)
+                            Text(tree.path)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(OATheme.textMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer()
+                        if !tree.locked && tree.path != snap.path && !tree.branch.isEmpty {
+                            Button("Remove") {
+                                Task { await store.removeWorktree(branch: tree.branch) }
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(OATheme.statusError)
+                            .buttonStyle(.plain)
+                            .disabled(store.workspaceActionBusy)
+                        }
+                    }
+                    .padding(10)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                }
+            }
+        }
+    }
+
+    // MARK: - PRs tab
+
+    @ViewBuilder
+    private func prsTab(_ snap: WorkspaceSnapshot) -> some View {
+        Button {
+            showCreatePR.toggle()
+        } label: {
+            HStack {
+                Image(systemName: showCreatePR ? "minus" : "plus")
+                Text(showCreatePR ? "Hide PR form" : "New Pull Request from \(snap.branch)")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+            }
+            .foregroundStyle(OATheme.textPrimary)
+            .padding(10)
+            .background(OATheme.elevated, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+
+        if showCreatePR {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("PR title", text: $prTitle)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .padding(9)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+
+                TextField("Base branch (e.g. main)", text: $prBase)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .padding(9)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+
+                TextField("Description (optional)", text: $prBody, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(2...5)
+                    .font(.system(size: 13))
+                    .foregroundStyle(OATheme.textPrimary)
+                    .padding(9)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+
+                Button("Create Pull Request") {
+                    let title = prTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let base = prBase.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty, !base.isEmpty else { return }
+                    Task {
+                        await store.createPullRequest(title: title, body: prBody, base: base)
+                        prTitle = ""
+                        prBody = ""
+                        showCreatePR = false
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white, in: Capsule())
+                .buttonStyle(.plain)
+                .disabled(prTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.workspaceActionBusy)
+            }
+            .padding(10)
+            .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+        }
+
+        if !snap.githubError.isEmpty {
+            Text(snap.githubError)
+                .font(.system(size: 12))
+                .foregroundStyle(OATheme.statusWarn)
+        }
+
+        if snap.pullRequests.isEmpty {
+            Text("No open pull requests found.")
+                .font(.system(size: 13))
+                .foregroundStyle(OATheme.textMuted)
+        } else {
+            VStack(spacing: 8) {
+                ForEach(snap.pullRequests) { pr in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("#\(pr.number)")
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(OATheme.textSecondary)
+                            Text(pr.title)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(OATheme.textPrimary)
+                                .lineLimit(2)
+                            Spacer()
+                            Text(pr.state.uppercased())
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(OATheme.statusReady)
+                        }
+                        Text("\(pr.head) → \(pr.base)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(OATheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(OATheme.hairline, lineWidth: 1))
+                }
+            }
+        }
+    }
+}
