@@ -192,7 +192,7 @@ cp_set_query :: (s: [] CoderPage) -> string { return cast(string) s[0].set_query
 // was shown stays as it was. The keyboard leaves the composer while it is open (Command-F or a
 // press gives it to the search) and comes back to it after; the host is asked to move it.
 cp_settings_show :: (s: [] CoderPage, open: bool, page: int) {
-  if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { cp_ps_blur_ed(s); s[0].set_scroll = 0; } s[0].set_page = page; }
+  if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { cp_ps_blur_ed(s); s[0].set_scroll = 0; s[0].ps[0].detail_scroll = 0; } s[0].set_page = page; }
   if open && !cp_set_page_ok_flags(s[0].flags, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
   if open == s[0].set_open { return; }
   s[0].set_open = open; s[0].model_menu = false; s[0].effort_menu = false; s[0].usage[0].popover_open = false;

@@ -9,7 +9,7 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   return uiframe_end(f[..], s[0].surface[..]);
 }
 
-#test "providers settings: renders T3 master-detail split in core basic flow (flags == 0), supports toggles, auth method, env vars, models, and 3-step wizard" #steps 60000000 {
+#test "providers settings: renders native single-column settings cards matching General/Models, supports toggles, auth method, env vars, models, and 3-step wizard" #steps 60000000 {
   p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
   cp_init(s); s[0].d = 1.0f32;
 
@@ -34,10 +34,31 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_ps_models_add(s, "gemini-4-neon", "Gemini 4 Neon", true, true, true, false) == 0;
   #assert coder_page_ps_models_add(s, "gemini-4-carbon", "Gemini 4 Carbon", true, false, true, false) == 1;
 
+  // Measure General's column & header so we can verify exact structural alignment with Providers.
+  coder_page_settings_open(s, CP_PG_GENERAL, "");
+  #assert cp_ps_test_frame(s, 1280, 840);
+  gt_idx := surface_find(s[0].surface[..], "set.title");
+  gg_idx := surface_find(s[0].surface[..], "set.general.group");
+  #assert gt_idx >= 0 && gg_idx >= 0;
+  gt_rows := surface_rows(s[0].surface[..]);
+  gen_title_x := gt_rows.rows[gt_idx].x;
+  gen_title_y := gt_rows.rows[gt_idx].y;
+  gen_title_w := gt_rows.rows[gt_idx].w;
+  gen_card_x := gt_rows.rows[gg_idx].x;
+  gen_card_w := gt_rows.rows[gg_idx].w;
+
   // Open Settings -> Providers and render upper view.
   coder_page_settings_open(s, CP_PG_PROVIDERS, "");
   #assert coder_page_settings_page(s) == CP_PG_PROVIDERS;
   #assert cp_ps_test_frame(s, 1280, 840);
+  // Exact column & page-header parity with General, and zero T3 breadcrumb/scope chrome.
+  pt_idx := surface_find(s[0].surface[..], "set.title");
+  pg_idx := surface_find(s[0].surface[..], "ps.providers.group");
+  #assert pt_idx >= 0 && pg_idx >= 0;
+  #assert surface_find(s[0].surface[..], "ps.close") < 0 && surface_find(s[0].surface[..], "ps.add.top") < 0;
+  pt_rows := surface_rows(s[0].surface[..]);
+  #assert pt_rows.rows[pt_idx].x == gen_title_x && pt_rows.rows[pt_idx].y == gen_title_y && pt_rows.rows[pt_idx].w == gen_title_w;
+  #assert pt_rows.rows[pg_idx].x == gen_card_x && pt_rows.rows[pg_idx].w == gen_card_w && pt_rows.rows[pg_idx].h > 40.0f32;
   #assert surface_find(s[0].surface[..], "ps.inst.0") >= 0;
   #assert surface_find(s[0].surface[..], "ps.inst.1") < 0;
   #assert surface_find(s[0].surface[..], "ps.tog.0") >= 0;

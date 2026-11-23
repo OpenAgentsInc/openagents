@@ -78,7 +78,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   }
   // Preserve semantic scientific color roles inside Lean 4 & RH Proof Workbench (#13946)
   // and provider brand/status/accent colors on Settings -> Providers.
-  if cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN) && !(s[0].set_open && s[0].set_page == CP_PG_PROVIDERS) { gpu_monochrome(out, v); }
+  if cp_cust_is_monochrome(s) && !(s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN) { gpu_monochrome(out, v); }
   return v;
 }
 // An icon's size in the atlas, in points. An icon draws at this size wherever it is, so the ones that
