@@ -15,18 +15,21 @@ WS_MSG_PICK :: 120;       // "N": touch spot N (WS_SPOT_*)
 WS_MSG_STONES :: 121;     // "n" next stone, "c K" choose, "t D" turn D steps, "p" place, "a 0|1" assist, "r" rebuild, "x" leave
 WS_MSG_RIBBON :: 122;     // "fabric,colour,charm,branch,word"
 WS_MSG_PAUSE :: 123;      // "1" or "0"
-WS_MSG_SETTINGS :: 124;   // "M B": reduced motion, reduced bloom (0 or 1 each)
+WS_MSG_SETTINGS :: 124;   // "M B N T L": reduced motion, reduced bloom, night, toon shading, light graphics (0 or 1 each)
 WS_MSG_SAVE :: 125;       // keep the save now (the page is being left)
 WS_MSG_EXTRA :: 127;      // "N": keep extra N in the journal
 WS_MSG_FORGET :: 128;     // start over
 WS_MSG_CLOSE :: 129;      // close the open activity
 WS_MSG_SHARED :: 131;     // everyone's ribbons but this visitor's: "fabric,colour,charm,limb,slot;..." (the page reads them from the room)
-WS_MSG_SPEAK :: 132;      // "SECONDS": the quail speaks that long (the page plays its words and its voice)
+WS_MSG_SPEAK :: 132;
+WS_MSG_MANDALA :: 135;    // "e" come in, "x" leave, "k K" pick a material, "p R A" place at ring R, angle A, "s k,r,a;..." everyone's pieces
+WS_MSG_LOOK :: 134;       // "p DX": slide the view DX metres; "g X": glide to x
+WS_MSG_DECOR :: 133;      // the basket of decorations: "o", "k K", "m DX DZ", "p", "x", "d", "c", "q" (ws_decor_message)      // "SECONDS": the quail speaks that long (the page plays its words and its voice)
 WS_ACT_KEEP :: 4;         // host action: keep this text in the browser
 WS_ACT_EVENT :: 90;       // to the page as a "coaxial" event: "kind|..."
 
 WS_FOUND_SPRING :: 1; WS_FOUND_CAIRN :: 2; WS_FOUND_RIBBON :: 4; WS_FOUND_ALL :: 7;
-WS_MODE_GROVE :: 0; WS_MODE_STONES :: 1; WS_MODE_RIBBON :: 2;
+WS_MODE_GROVE :: 0; WS_MODE_STONES :: 1; WS_MODE_RIBBON :: 2; WS_MODE_DECOR :: 3; WS_MODE_MANDALA :: 4;
 
 // ---- the spring: three phrases after one touch (seconds)
 WS_PHRASE_AT :: [3] f32.[0.0, 3.2, 6.8];
@@ -40,15 +43,58 @@ WS_CHAMPAGNE :: [3] f32.[0.95, 0.82, 0.55];
 
 // ---- creek stones: flat, long, round, wedge, pebble
 WS_STONE_N :: 5;
-WS_STONE_HW :: [5] f32.[0.28, 0.33, 0.16, 0.2, 0.1];
-WS_STONE_HH :: [5] f32.[0.06, 0.07, 0.13, 0.1, 0.07];
+WS_STONE_HW :: [5] f32.[0.48, 0.56, 0.27, 0.34, 0.17];
+WS_STONE_HH :: [5] f32.[0.1, 0.12, 0.22, 0.17, 0.12];
+WS_PILE_OFF :: [10] f32.[-0.85, -0.1,  0.15, -0.35,  -0.4, 0.45,  0.55, 0.4,  1.0, 0.0];   // each stone's place in the pile
 WS_STONE_BEST :: [5] int.[0, 0, 0, 15, 0];     // degrees the stone sits best at
-WS_STONE_TOL :: [5] int.[15, 15, 45, 10, 30];  // degrees either side it still holds
-WS_STONE_COL :: [15] f32.[0.62, 0.6, 0.55,  0.55, 0.52, 0.47,  0.46, 0.46, 0.45,  0.66, 0.6, 0.5,  0.73, 0.71, 0.65];
+WS_STONE_TOL :: [5] int.[30, 30, 60, 25, 45];  // degrees either side it still holds  // degrees either side it still holds
+WS_STONE_COL :: [15] f32.[0.78, 0.74, 0.66,  0.7, 0.64, 0.56,  0.6, 0.6, 0.62,  0.82, 0.72, 0.58,  0.88, 0.85, 0.78];
 WS_TURN_STEP :: 15; WS_TURN_MOST :: 60;
 WS_CAIRN_GOAL :: 4;
 WS_BAL_STEADY :: 0; WS_BAL_WOBBLE :: 1; WS_BAL_SLIP :: 2;
-WS_WHY_NONE :: 0; WS_WHY_TILT :: 1; WS_WHY_WIDE :: 2; WS_WHY_ROUND :: 3;
+WS_WHY_NONE :: 0; WS_WHY_TILT :: 1; WS_WHY_WIDE :: 2; WS_WHY_ROUND :: 3; WS_WHY_OFF :: 4;
+// the stone in the air: held under the pointer, falling, tipping off the stack, rolling back to the pile
+WS_FLY_NONE :: 0; WS_FLY_HELD :: 1; WS_FLY_FALL :: 2; WS_FLY_TOPPLE :: 3; WS_FLY_BACK :: 4;
+WS_GRAVITY :: 9.8;
+WS_HOLD_LIFT :: 0.3;     // how far over the stack's top a held stone hangs
+WS_MAGNET :: 0.4;        // within the support's half width and this, a held stone is drawn to the middle
+WS_AIM_REACH :: 2.2;     // how far from the cairn a held stone may be carried
+WS_BACK_S :: 0.8;        // seconds a fallen stone takes to roll back to the pile
+
+// ---- decorations: lantern, candles, bluebonnets, crystal, sage bundle, offering bowl
+// ---- the mandala: everyone's shared design in the clearing past the woodland, seen from overhead.
+// A piece is a material on a ring (1..WS_MANDALA_RINGS) at an angle (0..63 of a turn); it is drawn
+// in eight-fold symmetry, so every piece anyone sets becomes eight.
+WS_MANDALA_MAX :: 60;
+WS_MANDALA_RINGS :: 7;
+WS_MANDALA_RING_M :: 0.55;   // metres between rings
+WS_MANDALA_KINDS :: 8;      // rose petal, marigold petal, bluebonnet, crystal, candle, river stone, leaf, pearl
+// ---- terraforming: a brush that grows tall grass, low grass, or clears to bare earth, where the
+// pointer is (a ring shows it). Each dab is kept (x, z, kind) and laid over the ground table's grass.
+WS_TERRA_MAX :: 200;
+WS_TERRA_R :: 1.1;          // the brush's reach, metres
+WS_TERRA_COVER :: [3] f32.[1.9, 0.4, 0.0];   // tall grass, low grass, bare earth
+WS_DECOR_KINDS :: 13;
+// 0 lantern, 1 candles, 2 bluebonnets, 3 crystal, 4 sage, 5 offering bowl, 6 Mother Mary, 7 fountain,
+// 8 Buddha, 9 Archangel Michael, 10 serpent dragon, 11 bell (hangs in the trees), 12 hanging lantern
+WS_DECOR_BELL :: 11; WS_DECOR_HANGING :: 12;
+WS_DECOR_MAX :: 36;
+// The world is stocked: everything to decorate with is out in the grove at first, to be picked up
+// into the visitor's inventory and set down again anywhere. One of each statue, several of the
+// small things. x, z each (a hanging thing: its tie point, -1).
+WS_STOCK_N :: 30;
+WS_STOCK :: [WS_STOCK_N * 3] f32.[
+  6, -12.5, 4.2,   7, 14.0, 1.6,   8, -35.5, 5.0,   9, 29.0, 2.0,   10, 52.0, 3.0,
+  0, 3.6, 4.8,   0, -17.0, 2.5,   0, 18.0, 4.5,
+  1, -5.6, 2.2,   1, -26.5, 6.2,   1, 10.5, 5.4,   1, 46.0, 5.0,
+  2, -9.5, 5.0,   2, 21.0, 2.2,   2, 35.0, 5.0,   2, -60.0, 3.5,
+  3, -45.0, 4.0,   3, 5.2, 3.6,   3, 60.0, 4.5,
+  4, -20.0, 5.5,   4, 25.0, 5.5,   4, -50.0, 5.5,
+  5, -3.0, 5.8,   5, 39.0, 4.0,
+  11, 3, -1,   11, 38, -1,   11, 57, -1,
+  12, 20, -1,   12, 50, -1,   12, 75, -1];
+WS_DECOR_AREA :: [4] f32.[-68.0, -3.2, 68.0, 6.6];   // where they may stand: x0, z0, x1, z1 (not in the water or on the cairn)
+WS_DECOR_START :: [2] f32.[-1.6, 3.4];
 
 // ---- the ribbon
 WS_RIBBON_COL :: [18] f32.[0.74, 0.33, 0.42,  0.3, 0.38, 0.7,  0.88, 0.84, 0.72,  0.55, 0.62, 0.48,  0.85, 0.45, 0.22,  0.22, 0.22, 0.45];
@@ -56,7 +102,7 @@ WS_FABRIC_WIDE :: [3] f32.[0.095, 0.075, 0.11];
 WS_FABRIC_FLUTTER :: [3] f32.[1.0, 1.45, 0.8];
 WS_WORD :: 48;
 WS_RIBBON_FOUND_AFTER :: 2.5;
-WS_SHARED :: 36;          // other visitors' ribbons drawn at once (the tie points on all six limbs)
+WS_SHARED :: 96;          // other visitors' ribbons drawn at once (the tie points on all sixteen limbs)
 WS_SLOT_AUTO :: 7;        // a ribbon's slot the world picks: the free one nearest its limb's middle
 WS_SLOT_ORDER :: [6] int.[2, 3, 1, 4, 0, 5];
 
@@ -64,15 +110,17 @@ WS_INBOX :: 512;
 WS_MODEL_BYTES :: 131072;
 WS_OUT :: 384;
 WS_QUEUE :: 32;
-WS_SKIN_V :: 22000;
+WS_SKIN_V :: 64000;
 WS_RECORDS :: 2;
 WS_RECORD_FLOATS :: 16;
-WS_DRAWS :: 3;
+WS_DRAWS :: 4;
 
 Spring :: struct {
   time: f32; clock: f32;
   wide: f32; high: f32; dpr: f32 = 1;
   paused: bool; calm: bool; soft: bool;   // reduced motion, reduced bloom
+  night: bool; toon: bool;                 // the look: night instead of golden hour; hard toon bands
+  lite: bool;                              // a phone or a slow device: lighter grass, fewer fireflies, a smaller shadow
   tune: WsTune;
   quail: [1] Quail;
   cam: StyCamera; cam_w: f32; cam_h: f32;
@@ -85,7 +133,32 @@ Spring :: struct {
   plume: [WS_PLUME * WS_PLUME_FLOATS] f32; plume_n: int; plume_owe: f32; plume_k: int;
   // the cairn
   placed: [WS_STONE_N] int; rolls: [WS_STONE_N] int; placed_n: int;
-  held: int = -1; roll: int; assist: bool; slip_t: f32 = -1; built_t: f32 = -1;
+  held: int = -1; roll: int; assist: bool; built_t: f32 = -1; wobble: f32;
+  offs: [WS_STONE_N * 2] f32;     // where each set stone sits off the slab's middle (x, z)
+  // every cairn's stack (the one in use is copied into placed/rolls/offs while it is): its stones,
+  // how many, and a tumble when a finished one is knocked down (where each stone was, and when)
+  site: int;
+  s_placed: [WS_CAIRNS * WS_STONE_N] int; s_rolls: [WS_CAIRNS * WS_STONE_N] int; s_offs: [WS_CAIRNS * WS_STONE_N * 2] f32; s_n: [WS_CAIRNS] int;
+  fall_t: [WS_CAIRNS] f32 = [WS_CAIRNS] f32.[-1, -1, -1, -1, -1]; fall_n: [WS_CAIRNS] int; fall_k: [WS_CAIRNS * WS_STONE_N] int; fall_at: [WS_CAIRNS * WS_STONE_N * 3] f32;
+  fly: int; fx: f32; fy: f32; fz: f32; fvx: f32; fvy: f32; froll: f32; fspin: f32; ft: f32; bx: f32; by: f32; bz: f32;
+  aim_x: f32; aim_z: f32; far: bool; hover_stone: int = -1;
+  // decorations: kind, x, z each, and how long since each was set down
+  decor: [WS_DECOR_MAX * 3] f32; decor_t: [WS_DECOR_MAX] f32; decor_n: int;
+  carry: int = -1; carry_x: f32; carry_z: f32; carry_from: int = -1;
+  inv: [WS_DECOR_KINDS] int; stocked: bool;
+  talk_i: int = -1; talk_t: f32 = 9; dab_t: f32 = 9;   // the statue speaking, and for how long   // the visitor's inventory of things to set out; the world stocked once
+  terra: [WS_TERRA_MAX * 3] f32; terra_n: int; tool: int = -1; brush_x: f32; brush_z: f32; brush_on: bool; dab_x: f32; dab_z: f32;
+  wheel_owe: f32; told_holds: bool; told_ok: bool;
+  // an upright phone's look left and right: the camera's first x, how far it has slid, where it is gliding
+  cam_x0: f32; cam_z0: f32; dolly: f32; dolly_goal: f32; pan: f32; pan_goal: f32; panning: bool; pan_last: f32;
+  // the pointer's place on the screen (-1..1), for the view's slight drift with it
+  look_x: f32; look_y: f32; drift_x: f32; drift_y: f32; told_x: f32 = -999; blades: int;
+  // the fireflies: where each one is and how it moves (x y z, vx vy vz), a swarm that follows the view
+  ff: [WS_FF_MAX * 6] f32; ff_ready: bool;
+  // the clouds: seconds since each was poked; a ribbon's halo of light (seconds, limb, slot)
+  cloud_t: [WS_CLOUDS] f32 = [WS_CLOUDS] f32.[99, 99, 99, 99, 99, 99, 99, 99, 99]; rfx_t: f32 = 99; rfx_l: int; rfx_s: int;
+  // the mandala: everyone's pieces (kind, ring, angle), the material in hand, the overhead view's share
+  mandala: [WS_MANDALA_MAX * 3] int; mandala_n: int; m_kind: int; m_view: f32; m_new: f32 = 9;
   // the ribbon
   ribbon: bool; fabric: int; colour: int; charm: int; branch: int;
   word: [WS_WORD] u8; word_n: int; tied_t: f32 = -1;
@@ -100,6 +173,8 @@ Spring :: struct {
   models: [WS_MODEL_BYTES] u8; models_n: int; model_view: [1] WsModels;
   // GPU stores
   mesh_built: bool; mesh_n: int; mesh: [WS_MESH_VERTICES * ARCH_VERTEX_FLOATS] f32; gen: int;
+  wet_at: int;   // the mesh's water starts here (drawn last, in the water pass)
+  heights: [WS_HT_FLOATS] f32; ht_gen: int;
   records: [WS_RECORDS * WS_RECORD_FLOATS] f32; rec_gen: int;
   skin: [WS_SKIN_V * WS_SKIN_FLOATS] f32; skin_n: int; skin_gen: int;
   tris: [WS_SKIN_V] u32; tris_n: int; tris_gen: int;
@@ -201,6 +276,8 @@ ws_tell_state :: (h: [] Spring) {
   bal := ws_balance(h, h[0].held, h[0].roll);
   ws_put(tt, ";b="); ws_put_int(tt, bal[0]);
   ws_put(tt, ";w="); ws_put_int(tt, bal[1]);
+  ws_put(tt, ";g="); ws_put_int(tt, ifx ws_held_holds(h) then 1 else 0);
+  ws_put(tt, ";y="); ws_put_int(tt, h[0].fly);
   ws_put(tt, ";c=");
   for i: 0..<h[0].placed_n {
     if i > 0 { ws_put(tt, ","); }
@@ -219,10 +296,43 @@ ws_tell_state :: (h: [] Spring) {
 ws_save_text :: (h: [] Spring, t: [] WsText) {
   ws_put(t, "WS1;f="); ws_put_int(t, h[0].found);
   ws_put(t, ";x="); ws_put_int(t, h[0].extras);
+  ws_site_store(h);
+  if h[0].site != 0 { sv := h[0].site; ws_site_go(h, 0); ws_save_body(h, t); ws_site_go(h, sv); } else { ws_save_body(h, t); }
+}
+ws_save_body :: (h: [] Spring, t: [] WsText) {
   ws_put(t, ";c=");
   for i: 0..<h[0].placed_n {
     if i > 0 { ws_put(t, ","); }
     ws_put_int(t, h[0].placed[i]); ws_put(t, ":"); ws_put_int(t, h[0].rolls[i]);
+    ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].offs[i * 2] * 100)); ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].offs[i * 2 + 1] * 100));
+  }
+  ws_put(t, ";k=");
+  first := true;
+  for site: 1..<WS_CAIRNS {
+    for i: 0..<h[0].s_n[site] {
+      if !first { ws_put(t, ","); } first = false;
+      o := site * WS_STONE_N + i;
+      ws_put_int(t, site); ws_put(t, ":"); ws_put_int(t, h[0].s_placed[o]); ws_put(t, ":"); ws_put_int(t, h[0].s_rolls[o]);
+      ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].s_offs[o * 2] * 100)); ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].s_offs[o * 2 + 1] * 100));
+    }
+  }
+  if h[0].decor_n > 0 {
+    ws_put(t, ";d=");
+    for i: 0..<h[0].decor_n {
+      if i > 0 { ws_put(t, ","); }
+      ws_put_int(t, cast(int) h[0].decor[i * 3]); ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].decor[i * 3 + 1] * 100)); ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].decor[i * 3 + 2] * 100));
+    }
+  }
+  if h[0].stocked {
+    ws_put(t, ";i=");
+    for k: 0..<WS_DECOR_KINDS { if k > 0 { ws_put(t, ","); } ws_put_int(t, h[0].inv[k]); }
+  }
+  if h[0].terra_n > 0 {
+    ws_put(t, ";t=");
+    for i: 0..<h[0].terra_n {
+      if i > 0 { ws_put(t, ","); }
+      ws_put_int(t, cast(int) (h[0].terra[i * 3] * 100)); ws_put(t, ":"); ws_put_int(t, cast(int) (h[0].terra[i * 3 + 1] * 100)); ws_put(t, ":"); ws_put_int(t, cast(int) h[0].terra[i * 3 + 2]);
+    }
   }
   if h[0].ribbon {
     ws_put(t, ";r="); ws_put_int(t, h[0].fabric); ws_put(t, ","); ws_put_int(t, h[0].colour); ws_put(t, ",");
@@ -332,6 +442,7 @@ ws_set_shared :: (h: [] Spring, t: string) {
 ws_restore :: (h: [] Spring, t: string) {
   h[0].heard_kept = true;
   if t.count < 4 || t[0] != 'W' || t[1] != 'S' || t[2] != '1' { return; }
+  ws_site_go(h, 0);
   i := 3;
   while i < t.count {
     if t[i] != ';' { i += 1; continue; }
@@ -347,10 +458,78 @@ ws_restore :: (h: [] Spring, t: string) {
         if !k.ok || k.at >= t.count || t[k.at] != ':' { break; }
         r := ws_read_int(t, k.at + 1);
         if !r.ok || k.value < 0 || k.value >= WS_STONE_N || (ws_pile_bits(h) & (1 << k.value)) == 0 { break; }
-        h[0].placed[h[0].placed_n] = k.value; h[0].rolls[h[0].placed_n] = clamp_int(r.value, -WS_TURN_MOST, WS_TURN_MOST);
+        n := h[0].placed_n;
+        h[0].placed[n] = k.value; h[0].rolls[n] = clamp_int(r.value, -WS_TURN_MOST, WS_TURN_MOST);
+        h[0].offs[n * 2] = 0; h[0].offs[n * 2 + 1] = 0;
         h[0].placed_n += 1;
         i = r.at;
+        // where it sat on the slab (centimetres), when the save says
+        if i < t.count && t[i] == ':' {
+          ox := ws_read_int(t, i + 1);
+          if ox.ok && ox.at < t.count && t[ox.at] == ':' {
+            oz := ws_read_int(t, ox.at + 1);
+            if oz.ok { h[0].offs[n * 2] = clamp(cast(f32) ox.value / 100, -0.3, 0.3); h[0].offs[n * 2 + 1] = clamp(cast(f32) oz.value / 100, -0.3, 0.3); i = oz.at; }
+          }
+        }
         if i < t.count && t[i] == ',' { i += 1; }
+      }
+    }
+    else if key == 'i' {
+      h[0].stocked = true;
+      for k: 0..<WS_DECOR_KINDS {
+        v := ws_read_int(t, i); if !v.ok { break; }
+        h[0].inv[k] = clamp_int(v.value, 0, 99); i = v.at;
+        if i < t.count && t[i] == ',' { i += 1; } else { break; }
+      }
+    }
+    else if key == 't' {
+      h[0].terra_n = 0;
+      while i < t.count && t[i] != ';' && h[0].terra_n < WS_TERRA_MAX {
+        xv := ws_read_int(t, i); if !xv.ok || xv.at >= t.count || t[xv.at] != ':' { break; }
+        zv := ws_read_int(t, xv.at + 1); if !zv.ok || zv.at >= t.count || t[zv.at] != ':' { break; }
+        kv := ws_read_int(t, zv.at + 1); if !kv.ok { break; }
+        i = kv.at; if i < t.count && t[i] == ',' { i += 1; }
+        if kv.value < 0 || kv.value > 2 { continue; }
+        o := h[0].terra_n * 3;
+        h[0].terra[o] = cast(f32) xv.value / 100; h[0].terra[o + 1] = cast(f32) zv.value / 100; h[0].terra[o + 2] = cast(f32) kv.value;
+        h[0].terra_n += 1;
+      }
+      ws_terra_rebuild(h);
+    }
+    else if key == 'k' {
+      for c: 1..<WS_CAIRNS { h[0].s_n[c] = 0; }
+      while i < t.count && t[i] != ';' {
+        sv := ws_read_int(t, i); if !sv.ok || sv.at >= t.count || t[sv.at] != ':' { break; }
+        kv := ws_read_int(t, sv.at + 1); if !kv.ok || kv.at >= t.count || t[kv.at] != ':' { break; }
+        rv := ws_read_int(t, kv.at + 1); if !rv.ok || rv.at >= t.count || t[rv.at] != ':' { break; }
+        xv := ws_read_int(t, rv.at + 1); if !xv.ok || xv.at >= t.count || t[xv.at] != ':' { break; }
+        zv := ws_read_int(t, xv.at + 1); if !zv.ok { break; }
+        i = zv.at; if i < t.count && t[i] == ',' { i += 1; }
+        st := sv.value;
+        if st < 1 || st >= WS_CAIRNS || kv.value < 0 || kv.value >= WS_STONE_N || h[0].s_n[st] >= WS_CAIRN_GOAL { continue; }
+        if (ws_site_pile(h, st) & (1 << kv.value)) == 0 { continue; }
+        o := st * WS_STONE_N + h[0].s_n[st];
+        h[0].s_placed[o] = kv.value; h[0].s_rolls[o] = clamp_int(rv.value, -WS_TURN_MOST, WS_TURN_MOST);
+        h[0].s_offs[o * 2] = clamp(cast(f32) xv.value / 100, -0.3, 0.3); h[0].s_offs[o * 2 + 1] = clamp(cast(f32) zv.value / 100, -0.3, 0.3);
+        h[0].s_n[st] += 1;
+      }
+    }
+    else if key == 'd' {
+      h[0].decor_n = 0;
+      while i < t.count && t[i] != ';' && h[0].decor_n < WS_DECOR_MAX {
+        k := ws_read_int(t, i);
+        if !k.ok || k.at >= t.count || t[k.at] != ':' { break; }
+        x := ws_read_int(t, k.at + 1);
+        if !x.ok || x.at >= t.count || t[x.at] != ':' { break; }
+        z := ws_read_int(t, x.at + 1);
+        if !z.ok { break; }
+        i = z.at;
+        if i < t.count && t[i] == ',' { i += 1; }
+        fx := cast(f32) x.value / 100; fz := cast(f32) z.value / 100;
+        if k.value < 0 || k.value >= WS_DECOR_KINDS || !ws_decor_fits(h, k.value, fx, fz) { continue; }
+        o := h[0].decor_n * 3;
+        h[0].decor[o] = cast(f32) k.value; h[0].decor[o + 1] = fx; h[0].decor[o + 2] = fz; h[0].decor_t[h[0].decor_n] = 5;
+        h[0].decor_n += 1;
       }
     }
     else if key == 'r' {
@@ -369,22 +548,40 @@ WS_FOV :: 0.8029;      // 46 degrees tall
 WS_BACK :: [3] f32.[0.0, 0.0, 1.0];
 WS_TILT :: 0.04;   // radians the camera looks up
 WS_FIT_MARGIN :: 0.03;
+// A screen taller than this ratio (a phone held upright) frames less of the grove, closer, and can look
+// left and right: a swipe slides the camera along x within WS_PAN of its first view, and touching a spot
+// glides it there.
+WS_TALL_ASPECT :: 0.9;
+WS_TALL_FOV :: 0.98;     // 56 degrees tall
+WS_SAFE_TALL :: [6] f32.[-3.6, 0.0, -3.7, 1.0, 3.1, 2.7];   // what it shows at first: the quail's strip, the pool, the spout
+WS_PAN :: [2] f32.[-50.0, 50.0];   // how far the view may slide left and right along the grove (metres)
 
 ws_fits :: (u: [] f32, width: f32, height: f32, x: f32, y: f32, z: f32, margin: f32) -> bool {
   p := sty_project(u, x, y, z);
   return p.ahead && p.x >= width * margin && p.x <= width * (1 - margin) && p.y >= height * margin && p.y <= height * (1 - margin);
 }
 
+ws_tall :: (width: f32, height: f32) -> bool { return height > 0 && width / height < f32(WS_TALL_ASPECT); }
+
 ws_box_fits :: (u: [] f32, width: f32, height: f32) -> bool {
   m: f32 = WS_FIT_MARGIN;
+  if ws_tall(width, height) {
+    for c: 0..<8 {
+      x: f32 = ifx (c & 1) != 0 then WS_SAFE_TALL[3] else WS_SAFE_TALL[0];
+      y: f32 = ifx (c & 2) != 0 then WS_SAFE_TALL[4] else WS_SAFE_TALL[1];
+      z: f32 = ifx (c & 4) != 0 then WS_SAFE_TALL[5] else WS_SAFE_TALL[2];
+      if !ws_fits(u, width, height, x, y, z, m) { return false; }
+    }
+    return true;
+  }
   for c: 0..<8 {
     x: f32 = ifx (c & 1) != 0 then WS_SAFE[3] else WS_SAFE[0];
     y: f32 = ifx (c & 2) != 0 then WS_SAFE[4] else WS_SAFE[1];
     z: f32 = ifx (c & 4) != 0 then WS_SAFE[5] else WS_SAFE[2];
     if !ws_fits(u, width, height, x, y, z, m) { return false; }
   }
-  // and the prayer limbs: each end tie point, and a ribbon hanging from it
-  for l: 0..<WS_LIMBS {
+  // and the spring's prayer limbs: each end tie point, and a ribbon hanging from it
+  for l: 0..<WS_GROVE_LIMBS {
     for e: 0..<2 {
       at := ws_tie(l, ifx e == 0 then 0 else WS_LIMB_SLOTS - 1);
       if !ws_fits(u, width, height, at.x, at.y + 0.05, at.z, m) || !ws_fits(u, width, height, at.x, at.y - 0.65, at.z, m) { return false; }
@@ -403,10 +600,13 @@ ws_camera_for :: (width: f32, height: f32) -> StyCamera {
   aspect := ifx height > 0 then width / height else 1.0f32;
   lens: f32 = WS_FOV;
   if aspect < 1.3 { lens = lens * sqrt(1.3 / aspect); if lens > 1.25 { lens = 1.25; } }
+  tall := ws_tall(width, height);
+  if tall { lens = WS_TALL_FOV; }
   c.fov = lens; c.yaw = 0; c.pitch = f32(WS_TILT); c.near = 0.1; c.far = 600;
-  d: f32 = 7.0;
+  d: f32 = ifx tall then 3.0f32 else 7.0f32;
   for i: 0..<140 {
-    c.x = f32(WS_AIM[0]); c.y = f32(WS_AIM[1]); c.z = f32(WS_AIM[2]) + d;
+    c.x = ifx tall then (f32(WS_SAFE_TALL[0]) + f32(WS_SAFE_TALL[3])) * 0.5 else f32(WS_AIM[0]);
+    c.y = f32(WS_AIM[1]); c.z = f32(WS_AIM[2]) + d;
     if width < 1 || height < 1 { return c; }
     _ = sty_frame(u[..], width, height, 0, c, look);
     if ws_box_fits(u[..], width, height) { return c; }
@@ -417,18 +617,43 @@ ws_camera_for :: (width: f32, height: f32) -> StyCamera {
 
 ws_look :: () -> StyLook {
   l: StyLook;
-  // dusk: a low warm sun from the left, just behind the grove, so its glow is in the shot and its light rakes the bank
-  l.sun_x = -0.9; l.sun_y = 0.085; l.sun_z = -0.35; l.shadow = 0.4;
-  l.sun_r = 1.25; l.sun_g = 0.8; l.sun_b = 0.6; l.band = 0.5;    // over 1: what it lights blooms
-  l.sky_r = 0.4; l.sky_g = 0.3; l.sky_b = 0.42;
-  l.ground_r = 0.3; l.ground_g = 0.2; l.ground_b = 0.16;
-  // the painted sky, its colours set by hand: lavender overhead, peach and rose at the horizon, a sunset glow
+  // dusk: the sun just over the hills to the front left, its light low, amber and rose on the bank's
+  // face and the water; long blue shadows under the crowns; violet and peach sky in the canopy's gaps;
+  // the far forest hazes to a warm rose
+  l.sun_x = -0.85; l.sun_y = 0.2; l.sun_z = 0.45; l.shadow = 0.5;
+  l.sun_r = 1.3; l.sun_g = 0.72; l.sun_b = 0.44; l.band = 0.55;    // over 1: what it lights blooms
+  l.sky_r = 0.3; l.sky_g = 0.25; l.sky_b = 0.34;
+  l.ground_r = 0.32; l.ground_g = 0.18; l.ground_b = 0.12;
   l.air = 0;
-  l.zenith_r = 0.36; l.zenith_g = 0.3; l.zenith_b = 0.6;
-  l.horizon_r = 0.98; l.horizon_g = 0.66; l.horizon_b = 0.62;
-  l.glow_r = 0.95; l.glow_g = 0.5; l.glow_b = 0.4;
-  l.cloud = 0.4; l.cloud_scale = 1.2; l.cloud_dim = 0.18;
-  l.haze_r = 0.88; l.haze_g = 0.6; l.haze_b = 0.62; l.haze = 0.008; l.haze_start = 12; l.haze_most = 0.55;
+  l.zenith_r = 0.36; l.zenith_g = 0.32; l.zenith_b = 0.56;
+  l.horizon_r = 1.0; l.horizon_g = 0.64; l.horizon_b = 0.46;
+  l.glow_r = 1.0; l.glow_g = 0.5; l.glow_b = 0.32;
+  l.cloud = 0.25; l.cloud_scale = 1.2; l.cloud_dim = 0.12;
+  l.lush = 1; l.blade = 0.36; l.blade_wide = 0.03; l.grass_cell = 0.2; l.grass_reach = 34; l.meadow_dry = 0.38;
+  l.haze_r = 0.78; l.haze_g = 0.48; l.haze_b = 0.4; l.haze = 0.014; l.haze_start = 12; l.haze_most = 0.5;
+  return l;
+}
+
+// The look this visitor chose: golden hour (the painting) or night, painted or toon-banded.
+ws_look_for :: (h: [] Spring) -> StyLook {
+  l := ws_look();
+  if h[0].night {
+    // a high moon from the left, cool and dim; a deep blue sky with a moon in it; dark blue air.
+    // What glows (lanterns, candles, crystals, the gold, the fireflies) is over 1, so it blooms.
+    l.sun_x = -0.5; l.sun_y = 0.7; l.sun_z = 0.25; l.shadow = 0.7;
+    l.sun_r = 0.34; l.sun_g = 0.42; l.sun_b = 0.62;
+    l.sky_r = 0.09; l.sky_g = 0.11; l.sky_b = 0.2;
+    l.ground_r = 0.05; l.ground_g = 0.05; l.ground_b = 0.08;
+    l.zenith_r = 0.03; l.zenith_g = 0.04; l.zenith_b = 0.12;
+    l.horizon_r = 0.1; l.horizon_g = 0.12; l.horizon_b = 0.26;
+    l.glow_r = 0.16; l.glow_g = 0.18; l.glow_b = 0.34;
+    l.sun_disc = 0.035; l.cloud = 0.2; l.cloud_dim = 0.85;
+    l.haze_r = 0.06; l.haze_g = 0.08; l.haze_b = 0.17; l.haze = 0.02; l.haze_start = 9; l.haze_most = 0.7;
+    l.meadow_dry = 0.2;
+  }
+  if h[0].toon { l.band = 0.04; l.shadow = l.shadow + (1 - l.shadow) * 0.4; }
+  // light graphics: plain blades, further apart, drawn nearer
+  if h[0].lite { l.lush = 0; l.grass_cell = 0.3; l.grass_reach = 20; l.blade = 0.42; l.blade_wide = 0.05; }
   return l;
 }
 
@@ -532,27 +757,128 @@ ws_spring_step :: (h: [] Spring, step: f32) {
   }
 }
 
-// ---- the cairn
+// ---- the cairn: click a stone in the pile to lift it, then click anywhere to let it go. There are
+// no wrong answers: the stone always comes up the right way round, and let go anywhere it drifts to
+// the middle of the stack as it falls, lands with a little wobble and stays. No panel, no rings.
 ws_held_ok :: (h: [] Spring, k: int) -> bool { return k >= 0 && k < WS_STONE_N && (ws_pile_bits(h) & (1 << k)) != 0; }
 
-// How a stone would sit on top of the stack at this roll: [balance, why].
-ws_balance :: (h: [] Spring, k: int, roll: int) -> [2] int {
-  if k < 0 || k >= WS_STONE_N { return [2] int.[WS_BAL_STEADY, WS_WHY_NONE]; }
-  if h[0].assist { return [2] int.[WS_BAL_STEADY, WS_WHY_NONE]; }
-  below := ifx h[0].placed_n > 0 then h[0].placed[h[0].placed_n - 1] else -1;
-  err := roll - WS_STONE_BEST[k]; if err < 0 { err = -err; }
-  tol := WS_STONE_TOL[k];
-  if below == 2 && k != 4 { return [2] int.[WS_BAL_SLIP, WS_WHY_ROUND]; }
-  if below >= 0 && WS_STONE_HW[k] > WS_STONE_HW[below] + 0.06 { return [2] int.[WS_BAL_SLIP, WS_WHY_WIDE]; }
-  if err > tol { return [2] int.[WS_BAL_SLIP, WS_WHY_TILT]; }
-  if err * 2 > tol { return [2] int.[WS_BAL_WOBBLE, WS_WHY_TILT]; }
-  return [2] int.[WS_BAL_STEADY, WS_WHY_NONE];
+// How a stone would sit on top of the stack: always steady.
+ws_balance :: (h: [] Spring, k: int, roll: int) -> [2] int { return [2] int.[WS_BAL_STEADY, WS_WHY_NONE]; }
+
+ws_stack_top :: (h: [] Spring) -> f32 {
+  y: f32 = ws_cairn_top_at(h[0].site);
+  for i: 0..<h[0].placed_n { y += WS_STONE_HH[h[0].placed[i]] * 2 - 0.01; }
+  return y;
 }
+// The half width the next stone rests on: the stone below, or the slab.
+ws_support :: (h: [] Spring) -> f32 {
+  if h[0].placed_n == 0 { return f32(WS_CAIRN_HW); }
+  return WS_STONE_HW[h[0].placed[h[0].placed_n - 1]];
+}
+// The middle of the stack's top (each stone sits a little off true, where it was let go).
+ws_stack_mid :: (h: [] Spring) -> [2] f32 {
+  if h[0].placed_n == 0 { return [2] f32.[ws_cx(h), ws_cz(h)]; }
+  i := h[0].placed_n - 1;
+  return [2] f32.[ws_cx(h) + h[0].offs[i * 2], ws_cz(h) + h[0].offs[i * 2 + 1]];
+}
+ws_cx :: (h: [] Spring) -> f32 { return WS_CAIRN_AT[h[0].site * 2]; }
+ws_cz :: (h: [] Spring) -> f32 { return WS_CAIRN_AT[h[0].site * 2 + 1]; }
+// Where stone k waits in cairn `site`'s pile.
+ws_pile_of :: (site: int, k: int) -> [2] f32 {
+  bx: f32 = ifx site == 0 then f32(WS_PILE_X) else WS_CAIRN_AT[site * 2] + f32(WS_PILE_DX);
+  bz: f32 = ifx site == 0 then f32(WS_PILE_Z) else WS_CAIRN_AT[site * 2 + 1] + f32(WS_PILE_DZ);
+  return [2] f32.[bx + WS_PILE_OFF[k * 2], bz + WS_PILE_OFF[k * 2 + 1]];
+}
+ws_pile_y_of :: (site: int, k: int) -> f32 { p := ws_pile_of(site, k); return ws_ground_y(p[0], p[1]) + WS_STONE_HH[k] * 0.8; }
+ws_pile_at :: (h: [] Spring, k: int) -> [2] f32 { return ws_pile_of(h[0].site, k); }
+ws_pile_y :: (h: [] Spring, k: int) -> f32 { return ws_pile_y_of(h[0].site, k); }
+
+// The cairn in use is copied out to its own place, and another copied in.
+ws_site_store :: (h: [] Spring) {
+  s := h[0].site;
+  for i: 0..<WS_STONE_N {
+    h[0].s_placed[s * WS_STONE_N + i] = h[0].placed[i]; h[0].s_rolls[s * WS_STONE_N + i] = h[0].rolls[i];
+    h[0].s_offs[(s * WS_STONE_N + i) * 2] = h[0].offs[i * 2]; h[0].s_offs[(s * WS_STONE_N + i) * 2 + 1] = h[0].offs[i * 2 + 1];
+  }
+  h[0].s_n[s] = h[0].placed_n;
+}
+ws_site_go :: (h: [] Spring, k: int) {
+  if k < 0 || k >= WS_CAIRNS || k == h[0].site { return; }
+  ws_site_store(h);
+  h[0].site = k;
+  for i: 0..<WS_STONE_N {
+    h[0].placed[i] = h[0].s_placed[k * WS_STONE_N + i]; h[0].rolls[i] = h[0].s_rolls[k * WS_STONE_N + i];
+    h[0].offs[i * 2] = h[0].s_offs[(k * WS_STONE_N + i) * 2]; h[0].offs[i * 2 + 1] = h[0].s_offs[(k * WS_STONE_N + i) * 2 + 1];
+  }
+  h[0].placed_n = h[0].s_n[k]; h[0].built_t = -1;
+}
+// The stones still in cairn k's pile (bit per stone).
+ws_site_pile :: (h: [] Spring, k: int) -> int {
+  if k == h[0].site { return ws_pile_bits(h); }
+  bits := 31;
+  for i: 0..<h[0].s_n[k] { m := 1 << h[0].s_placed[k * WS_STONE_N + i]; if (bits & m) != 0 { bits -= m; } }
+  return bits;
+}
+ws_site_n :: (h: [] Spring, k: int) -> int { return ifx k == h[0].site then h[0].placed_n else h[0].s_n[k]; }
+
+// A finished cairn knocked down: every stone tumbles off and rolls back to its pile, to build again.
+WS_FALL_S :: 1.6;
+ws_cairn_fall :: (h: [] Spring, k: int) {
+  ws_send_back(h); h[0].held = -1; h[0].fly = WS_FLY_NONE;
+  ws_site_go(h, k);
+  y := ws_cairn_top_at(k);
+  h[0].fall_n[k] = h[0].placed_n;
+  for i: 0..<h[0].placed_n {
+    st := h[0].placed[i]; hh: f32 = WS_STONE_HH[st];
+    o := (k * WS_STONE_N + i) * 3;
+    h[0].fall_k[k * WS_STONE_N + i] = st;
+    h[0].fall_at[o] = ws_cx(h) + h[0].offs[i * 2]; h[0].fall_at[o + 1] = y + hh; h[0].fall_at[o + 2] = ws_cz(h) + h[0].offs[i * 2 + 1];
+    y += hh * 2 - 0.01;
+  }
+  h[0].fall_t[k] = 0;
+  h[0].placed_n = 0; h[0].built_t = -1;
+  if h[0].mode == WS_MODE_STONES { h[0].mode = WS_MODE_GROVE; }
+  ws_event(h, "cue", "cairn.fall");
+  ws_keep(h);
+  ws_tell_state(h);
+}
+// The finished cairn under a pixel, or -1.
+ws_cairn_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  for k: 0..<WS_CAIRNS {
+    if ws_site_n(h, k) < WS_CAIRN_GOAL || h[0].fall_t[k] >= 0 { continue; }
+    for e: 0..<3 {
+      sp := sty_project(h[0].view[..], WS_CAIRN_AT[k * 2], ws_cairn_top_at(k) + 0.15 + 0.25 * cast(f32) e, WS_CAIRN_AT[k * 2 + 1]);
+      if !sp.ahead { continue; }
+      dx := px - sp.x; dy := py - sp.y;
+      share := sqrt(dx * dx + dy * dy) / (48 * h[0].dpr);
+      if share < most { most = share; best = k; }
+    }
+  }
+  return best;
+}
+// How far off the stack's middle the stone hangs now.
+ws_held_off :: (h: [] Spring) -> f32 {
+  m := ws_stack_mid(h);
+  dx := h[0].fx - m[0]; dz := h[0].fz - m[1];
+  return sqrt(dx * dx + dz * dz);
+}
+// Would the held stone stay if let go now?
+ws_held_holds :: (h: [] Spring) -> bool { return h[0].held >= 0; }
 
 ws_choose :: (h: [] Spring, k: int) {
-  if !ws_held_ok(h, k) { return; }
-  h[0].held = k; h[0].roll = 0; h[0].slip_t = -1;
-  if h[0].assist { h[0].roll = WS_STONE_BEST[k]; }
+  if !ws_held_ok(h, k) || h[0].placed_n >= WS_CAIRN_GOAL { return; }
+  if h[0].fly != WS_FLY_NONE && h[0].fly != WS_FLY_HELD { return; }   // one stone in the air at a time
+  was := h[0].held;
+  h[0].held = k; h[0].roll = WS_STONE_BEST[k];   // it comes up the right way round
+  m := ws_stack_mid(h);
+  if h[0].fly != WS_FLY_HELD || was < 0 {
+    p := ws_pile_at(h, k);
+    h[0].fx = p[0]; h[0].fz = p[1]; h[0].fy = ws_pile_y(h, k);
+    h[0].aim_x = m[0]; h[0].aim_z = m[1];
+  }
+  h[0].fly = WS_FLY_HELD; h[0].froll = 0; h[0].far = false;
   ws_event(h, "cue", "stone.lift");
 }
 
@@ -563,53 +889,615 @@ ws_choose_next :: (h: [] Spring) {
   }
 }
 
-ws_place :: (h: [] Spring) {
-  if h[0].held < 0 { ws_choose_next(h); return; }
+// Let go of the held stone where it hangs.
+ws_drop :: (h: [] Spring) {
+  if h[0].fly != WS_FLY_HELD || h[0].held < 0 { return; }
+  h[0].roll = WS_STONE_BEST[h[0].held];
+  h[0].fly = WS_FLY_FALL; h[0].fvy = 0; h[0].fvx = 0;
+}
+
+// The held or fallen stone goes back to the pile.
+ws_send_back :: (h: [] Spring) {
+  if h[0].held < 0 { return; }
+  if h[0].fly == WS_FLY_NONE { h[0].held = -1; h[0].roll = 0; return; }
+  if h[0].fly == WS_FLY_BACK { return; }
+  h[0].fly = WS_FLY_BACK; h[0].ft = 0; h[0].bx = h[0].fx; h[0].by = h[0].fy; h[0].bz = h[0].fz;
+}
+
+ws_settle :: (h: [] Spring) {
   k := h[0].held;
-  if h[0].assist { h[0].roll = WS_STONE_BEST[k]; }
-  bal := ws_balance(h, k, h[0].roll);
-  if bal[0] == WS_BAL_SLIP {
-    h[0].slip_t = 0;
-    t: [1] WsText; ws_put(t[..], "slip|"); ws_put_int(t[..], bal[1]);
-    ws_send(h, WS_ACT_EVENT, t[..]);
-    ws_event(h, "cue", "stone.slip");
-    return;
-  }
-  h[0].placed[h[0].placed_n] = k; h[0].rolls[h[0].placed_n] = h[0].roll; h[0].placed_n += 1;
-  h[0].held = -1; h[0].roll = 0;
+  off := ws_held_off(h);
+  sup := ws_support(h);
+  i := h[0].placed_n;
+  h[0].placed[i] = k; h[0].rolls[i] = h[0].roll;
+  h[0].offs[i * 2] = h[0].fx - ws_cx(h); h[0].offs[i * 2 + 1] = h[0].fz - ws_cz(h);
+  h[0].placed_n += 1;
+  h[0].wobble = clamp(0.35 + off / sup, 0.35, 0.8);
+  h[0].built_t = 0;
+  h[0].held = -1; h[0].roll = 0; h[0].fly = WS_FLY_NONE;
   t: [1] WsText; ws_put(t[..], "cue|stone."); ws_put(t[..], ws_stone_name(k));
   ws_send(h, WS_ACT_EVENT, t[..]);
   if h[0].placed_n >= WS_CAIRN_GOAL {
     c: [1] WsText; ws_put(c[..], "cue|cairn.chord|");
-    for i: 0..<h[0].placed_n { if i > 0 { ws_put(c[..], ","); } ws_put(c[..], ws_stone_name(h[0].placed[i])); }
+    for j: 0..<h[0].placed_n { if j > 0 { ws_put(c[..], ","); } ws_put(c[..], ws_stone_name(h[0].placed[j])); }
     ws_send(h, WS_ACT_EVENT, c[..]);
-    h[0].built_t = 0;
     h[0].mode = WS_MODE_GROVE;
     ws_find(h, WS_FOUND_CAIRN);
   }
   ws_keep(h);
+  ws_tell_state(h);
+}
+
+ws_stones_step :: (h: [] Spring, step: f32) {
+  if !(step > 0) { return; }
+  for c: 0..<WS_CAIRNS { if h[0].fall_t[c] >= 0 { h[0].fall_t[c] += step; if h[0].fall_t[c] > f32(WS_FALL_S) + 0.6 { h[0].fall_t[c] = -1; } } }
+  if h[0].built_t >= 0 { h[0].built_t += step; if h[0].built_t > 2.5 { h[0].built_t = -1; } }
+  k := h[0].held;
+  if k < 0 || h[0].fly == WS_FLY_NONE { return; }
+  hh: f32 = WS_STONE_HH[k];
+  want_roll := cast(f32) h[0].roll * 0.0174533;
+  if h[0].fly == WS_FLY_HELD {
+    ty := ws_stack_top(h) + f32(WS_HOLD_LIFT) + hh + (ifx h[0].calm then 0.0f32 else 0.02 * sin(h[0].time * 2.4));
+    ease := clamp(step * 14, 0, 1);
+    h[0].fx += (h[0].aim_x - h[0].fx) * ease; h[0].fz += (h[0].aim_z - h[0].fz) * ease; h[0].fy += (ty - h[0].fy) * ease;
+    h[0].froll += (want_roll - h[0].froll) * clamp(step * 12, 0, 1);
+  } else if h[0].fly == WS_FLY_FALL {
+    h[0].fvy -= f32(WS_GRAVITY) * step; h[0].fy += h[0].fvy * step;
+    h[0].froll += (want_roll - h[0].froll) * clamp(step * 12, 0, 1);
+    // wherever it was let go, it drifts to the middle of the stack as it falls, and always lands on it
+    m := ws_stack_mid(h);
+    pull := clamp(step * 16, 0, 1);
+    h[0].fx += (m[0] - h[0].fx) * pull; h[0].fz += (m[1] - h[0].fz) * pull;
+    rest := ws_stack_top(h) + hh;
+    if h[0].fy <= rest {
+      h[0].fy = rest;
+      h[0].fx = m[0] + (h[0].fx - m[0]) * 0.3; h[0].fz = m[1] + (h[0].fz - m[1]) * 0.3;
+      ws_settle(h);
+    } else if h[0].fy > rest + 0.05 && h[0].fvy > -0.6 { h[0].fvy = -0.6; }   // never hangs in the air
+  } else if h[0].fly == WS_FLY_BACK {
+    h[0].ft += step;
+    f := clamp(h[0].ft / f32(WS_BACK_S), 0, 1);
+    p := ws_pile_at(h, k);
+    gy := ws_pile_y(h, k);
+    h[0].fx = h[0].bx + (p[0] - h[0].bx) * f; h[0].fz = h[0].bz + (p[1] - h[0].bz) * f;
+    h[0].fy = h[0].by + (gy - h[0].by) * f + 0.12 * sin(f * 3.14159);
+    h[0].froll = h[0].froll * (1 - f);
+    if f >= 1 { h[0].fly = WS_FLY_NONE; h[0].held = -1; h[0].roll = 0; h[0].froll = 0; ws_tell_state(h); }
+  }
+}
+
+// The point on a level plane at height `y` under a pixel of the picture: [x, 1 if hit, z].
+ws_ray_plane :: (h: [] Spring, px: f32, py: f32, y: f32) -> [3] f32 {
+  c := h[0].cam;
+  if h[0].cam_w < 1 || h[0].cam_h < 1 { return [3] f32.[0, 0, 0]; }
+  focal := h[0].cam_h * 0.5 / tan(c.fov * 0.5);
+  sp := sin(c.pitch); cp := cos(c.pitch);
+  rx := (px - h[0].cam_w * 0.5) / focal; ry := -(py - h[0].cam_h * 0.5) / focal;
+  dx := rx; dy := sp + ry * cp; dz := -cp + ry * sp;
+  if dy > -0.0005 { return [3] f32.[0, 0, 0]; }
+  t := (y - c.y) / dy;
+  return [3] f32.[c.x + dx * t, 1, c.z + dz * t];
+}
+
+// Carry the held stone to where a pixel points. Near the stack it is drawn to the middle; past
+// WS_AIM_REACH it stays at the edge of reach, and a click there puts it back.
+ws_aim_at :: (h: [] Spring, px: f32, py: f32) {
+  hit := ws_ray_plane(h, px, py, ws_stack_top(h));
+  if hit[1] < 0.5 { h[0].far = true; return; }
+  ax := hit[0]; az := hit[2];
+  cx := ws_cx(h); cz := ws_cz(h);
+  dx := ax - cx; dz := az - cz;
+  d := sqrt(dx * dx + dz * dz);
+  reach: f32 = WS_AIM_REACH;
+  h[0].far = d > reach;
+  if d > reach { ax = cx + dx / d * reach; az = cz + dz / d * reach; }
+  m := ws_stack_mid(h);
+  mx := ax - m[0]; mz := az - m[1];
+  md := sqrt(mx * mx + mz * mz);
+  pull := ws_support(h) + f32(WS_MAGNET);
+  if h[0].assist && md < pull * 1.6 { ax = m[0]; az = m[1]; }
+  else if md < pull { k := 0.35 * md / pull; ax = m[0] + mx * k; az = m[1] + mz * k; }
+  h[0].aim_x = ax; h[0].aim_z = az;
+}
+
+// The pile stone under a pixel, or -1.
+// The pile stone under a pixel, from any cairn's pile: site * 10 + stone, or -1.
+ws_stone_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  u := h[0].view[..];
+  best := -1; most: f32 = 1;
+  for site: 0..<WS_CAIRNS {
+    if ws_site_n(h, site) >= WS_CAIRN_GOAL || h[0].fall_t[site] >= 0 { continue; }
+    if abs(ws_dx(h, WS_CAIRN_AT[site * 2])) > 14 { continue; }
+    pile := ws_site_pile(h, site);
+    for k: 0..<WS_STONE_N {
+      if (pile & (1 << k)) == 0 || (site == h[0].site && k == h[0].held && h[0].fly != WS_FLY_NONE) { continue; }
+      p := ws_pile_of(site, k);
+      sp := sty_project(u, p[0], ws_pile_y_of(site, k), p[1]);
+      if !sp.ahead { continue; }
+      dx := px - sp.x; dy := py - sp.y;
+      share := sqrt(dx * dx + dy * dy) / (40 * h[0].dpr);
+      if share < most { most = share; best = site * 10 + k; }
+    }
+  }
+  return best;
+}
+
+ws_turn_held :: (h: [] Spring, steps: int) { }   // nothing to get wrong: stones always sit right
+
+// The panel and keys: "p" lifts the next stone, or lets the held one go over the stack's middle.
+ws_place :: (h: [] Spring) {
+  if h[0].held < 0 { ws_choose_next(h); return; }
+  if h[0].fly != WS_FLY_HELD { return; }
+  m := ws_stack_mid(h);
+  h[0].aim_x = m[0]; h[0].aim_z = m[1]; h[0].fx = m[0]; h[0].fz = m[1];
+  ws_drop(h);
 }
 
 ws_stones_message :: (h: [] Spring, t: string) {
   if t.count < 1 { return; }
   op := t[0];
-  if h[0].mode != WS_MODE_STONES && op != 'x' && op != 'r' { h[0].mode = WS_MODE_STONES; }
+  if h[0].mode != WS_MODE_STONES && op != 'x' && op != 'r' && op != 'b' { ws_carry_cancel(h); h[0].mode = WS_MODE_STONES; }
   if op == 'n' { ws_choose_next(h); }
   else if op == 'c' { v := ws_read_int(t, 1); if v.ok { ws_choose(h, v.value); } }
-  else if op == 't' {
-    v := ws_read_int(t, 1);
-    if v.ok && h[0].held >= 0 { h[0].roll = clamp_int(h[0].roll + v.value * WS_TURN_STEP, -WS_TURN_MOST, WS_TURN_MOST); h[0].slip_t = -1; }
-  }
+  else if op == 't' { v := ws_read_int(t, 1); if v.ok { ws_turn_held(h, v.value); } }
   else if op == 'p' { ws_place(h); }
   else if op == 'a' { v := ws_read_int(t, 1); if v.ok { h[0].assist = v.value != 0; if h[0].assist && h[0].held >= 0 { h[0].roll = WS_STONE_BEST[h[0].held]; } } }
-  else if op == 'r' { h[0].placed_n = 0; h[0].held = -1; h[0].roll = 0; h[0].built_t = -1; h[0].mode = WS_MODE_STONES; ws_keep(h); }
-  else if op == 'x' { h[0].mode = WS_MODE_GROVE; h[0].held = -1; }
+  else if op == 'r' { h[0].placed_n = 0; h[0].held = -1; h[0].roll = 0; h[0].fly = WS_FLY_NONE; h[0].built_t = -1; h[0].mode = WS_MODE_STONES; ws_keep(h); }
+  else if op == 'b' { ws_send_back(h); }
+  else if op == 'x' { h[0].mode = WS_MODE_GROVE; ws_send_back(h); }
   ws_tell_state(h);
 }
 
+// ---- decorations: things from the visitor's basket set about the grove. Pick one, it hangs under
+// the pointer over the ground (gold ring where it can stand, rose where it can't: the water, the
+// stream, the cairn), click to set it down; it drops and settles. While decorating, a click on one
+// already set picks it up again. Kept in the save.
+// Bells and hanging lanterns hang from the prayer limbs' tie points: their x is the tie point's
+// number (limb * 6 + slot) and their z is -1. Everything else stands on the ground.
+ws_hangs :: (kind: int) -> bool { return kind == WS_DECOR_BELL || kind == WS_DECOR_HANGING; }
+ws_tie_of :: (x: f32) -> int { return cast(int) floor(x + 0.5); }
+ws_decor_fits :: (h: [] Spring, kind: int, x: f32, z: f32) -> bool {
+  if !ws_hangs(kind) { return z > -0.9 && ws_decor_ok(h, x, z); }
+  t := ws_tie_of(x);
+  if z > -0.5 || z < -1.5 || t < 0 || t >= WS_TIE_SLOTS { return false; }
+  for i: 0..<h[0].decor_n {
+    if i == h[0].carry_from || !ws_hangs(cast(int) h[0].decor[i * 3]) { continue; }
+    if ws_tie_of(h[0].decor[i * 3 + 1]) == t { return false; }
+  }
+  return true;
+}
+ws_decor_ok :: (h: [] Spring, x: f32, z: f32) -> bool {
+  if z < f32(WS_DECOR_AREA[1]) || z > f32(WS_DECOR_AREA[3]) { return false; }
+  if z < ws_bank_z(x) + 0.35 { return false; }
+  if ws_mandala_d(x, z) < f32(WS_MANDALA_R) + 0.5 { return false; }
+  if ws_basin_in(x, z) > -0.15 { return false; }
+  if ws_brook_dist(x, z) < f32(WS_STREAM_HALF) - 0.35 { return false; }
+  if ws_near_cairn(x, z, 0.6) { return false; }
+  return true;
+}
+
+ws_stock_world :: (h: [] Spring) {
+  if h[0].stocked { return; }
+  h[0].stocked = true;
+  for i: 0..<WS_STOCK_N {
+    k := cast(int) WS_STOCK[i * 3]; x: f32 = WS_STOCK[i * 3 + 1]; z: f32 = WS_STOCK[i * 3 + 2];
+    if h[0].decor_n >= WS_DECOR_MAX || !ws_decor_fits(h, k, x, z) { h[0].inv[k] += 1; continue; }
+    o := h[0].decor_n * 3;
+    h[0].decor[o] = cast(f32) k; h[0].decor[o + 1] = x; h[0].decor[o + 2] = z; h[0].decor_t[h[0].decor_n] = 5;
+    h[0].decor_n += 1;
+  }
+  ws_keep(h);
+  ws_tell_decor(h);
+}
+// A thing in the world into the inventory.
+ws_decor_to_inv :: (h: [] Spring, i: int) {
+  if i < 0 || i >= h[0].decor_n { return; }
+  k := cast(int) h[0].decor[i * 3];
+  ws_decor_remove(h, i);
+  h[0].inv[k] += 1;
+  tp: [1] WsText; ws_put(tp[..], "picked|"); ws_put_int(tp[..], k); ws_send(h, WS_ACT_EVENT, tp[..]);
+  ws_event(h, "cue", "decor.lift");
+  ws_keep(h);
+  ws_tell_decor(h);
+}
+
+ws_decor_take :: (h: [] Spring, kind: int) {
+  if kind < 0 || kind >= WS_DECOR_KINDS { return; }
+  if h[0].carry_from < 0 && h[0].decor_n >= WS_DECOR_MAX { ws_event(h, "decor", "full"); return; }
+  // once the world is stocked, only what is in the inventory can be set out
+  if h[0].stocked && h[0].carry_from < 0 && h[0].inv[kind] <= 0 { ws_event(h, "decor", "none"); return; }
+  ws_send_back(h);
+  was := h[0].carry;
+  h[0].carry = kind;
+  if ws_hangs(kind) {
+    // the free tie point nearest the middle of the view (so it starts where it can be seen)
+    h[0].carry_z = -1; h[0].carry_x = 0;
+    best: f32 = 1e9;
+    for t: 0..<WS_TIE_SLOTS {
+      if !ws_decor_fits(h, kind, cast(f32) t, -1) { continue; }
+      at := ws_hang_at(t);
+      d := abs(ws_dx(h, at.x));
+      if h[0].viewed { sp := sty_project(h[0].view[..], at.x, at.y, at.z); if sp.ahead { d = abs(sp.x - h[0].cam_w * 0.5) / h[0].cam_w + (ifx sp.x < 0 || sp.x > h[0].cam_w then 10.0f32 else 0.0f32); } }
+      if d < best { best = d; h[0].carry_x = cast(f32) t; }
+    }
+  } else if was < 0 || ws_hangs(was) {
+    // a new one appears in front of the view, wherever along the grove it is
+    h[0].carry_x = ws_wrapx(h[0].cam.x - 1.2); h[0].carry_z = f32(WS_DECOR_START[1]);
+  }
+  h[0].mode = WS_MODE_DECOR;
+  h[0].told_ok = ws_decor_fits(h, kind, h[0].carry_x, h[0].carry_z);
+}
+
+// The decoration under a pixel, or -1.
+ws_decor_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  for i: 0..<h[0].decor_n {
+    if i == h[0].carry_from { continue; }
+    x := ws_near(h, h[0].decor[i * 3 + 1]); z := h[0].decor[i * 3 + 2];
+    sp := sty_project(h[0].view[..], x, ws_ground_y(x, z) + 0.25, z);
+    if ws_hangs(cast(int) h[0].decor[i * 3]) { at := ws_hang_at(ws_tie_of(h[0].decor[i * 3 + 1])); sp = sty_project(h[0].view[..], at.x, at.y - 0.25, at.z); }
+    if !sp.ahead { continue; }
+    dx := px - sp.x; dy := py - sp.y;
+    share := sqrt(dx * dx + dy * dy) / (36 * h[0].dpr);
+    if share < most { most = share; best = i; }
+  }
+  return best;
+}
+
+ws_decor_pick_up :: (h: [] Spring, i: int) {
+  if i < 0 || i >= h[0].decor_n { return; }
+  h[0].carry = cast(int) h[0].decor[i * 3]; h[0].carry_from = i;
+  h[0].carry_x = h[0].decor[i * 3 + 1]; h[0].carry_z = h[0].decor[i * 3 + 2];
+  h[0].mode = WS_MODE_DECOR;
+  h[0].told_ok = true;
+  ws_event(h, "cue", "decor.lift");
+  ws_tell_decor(h);
+}
+
+ws_decor_remove :: (h: [] Spring, i: int) {
+  if i < 0 || i >= h[0].decor_n { return; }
+  for j: i..<h[0].decor_n - 1 {
+    for e: 0..<3 { h[0].decor[j * 3 + e] = h[0].decor[(j + 1) * 3 + e]; }
+    h[0].decor_t[j] = h[0].decor_t[j + 1];
+  }
+  h[0].decor_n -= 1;
+}
+
+// Where a hanging thing's string is tied: the tie point, a little along from the ribbon's knot.
+ws_hang_at :: (t: int) -> WsV { at := ws_tie(t / WS_LIMB_SLOTS, t % WS_LIMB_SLOTS); return ws_v(at.x + 0.07, at.y - 0.02, at.z); }
+// The bell under a pixel (to ring it), or -1.
+ws_bell_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  for i: 0..<h[0].decor_n {
+    if !ws_hangs(cast(int) h[0].decor[i * 3]) { continue; }
+    at := ws_hang_at(ws_tie_of(h[0].decor[i * 3 + 1]));
+    sp := sty_project(h[0].view[..], at.x, at.y - 0.3, at.z);
+    if !sp.ahead { continue; }
+    dx := px - sp.x; dy := py - sp.y;
+    share := sqrt(dx * dx + dy * dy) / (34 * h[0].dpr);
+    if share < most { most = share; best = i; }
+  }
+  return best;
+}
+ws_decor_aim :: (h: [] Spring, px: f32, py: f32) {
+  if ws_hangs(h[0].carry) {
+    // the tie point nearest the pointer on the screen
+    best := -1; most: f32 = 150 * h[0].dpr;
+    for t: 0..<WS_TIE_SLOTS {
+      at := ws_hang_at(t);
+      sp := sty_project(h[0].view[..], at.x, at.y - 0.15, at.z);
+      if !sp.ahead { continue; }
+      d := sqrt((px - sp.x) * (px - sp.x) + (py - sp.y) * (py - sp.y));
+      // a free tie point wins over a taken one a little nearer
+      if !ws_decor_fits(h, h[0].carry, cast(f32) t, -1) { d += 40 * h[0].dpr; }
+      if d < most { most = d; best = t; }
+    }
+    // near a branch: it moves to that tie point; far from any: it waits where it was, not hung
+    if best >= 0 { h[0].carry_x = cast(f32) best; h[0].carry_z = -1; } else { h[0].carry_z = -2; }
+    hok := ws_decor_fits(h, h[0].carry, h[0].carry_x, h[0].carry_z);
+    if hok != h[0].told_ok { h[0].told_ok = hok; ws_tell_decor(h); }
+    return;
+  }
+  hit := ws_ray_plane(h, px, py, 0.1);
+  if hit[1] < 0.5 { return; }
+  // once more at the ground's height there, so it sits under the pointer on a slope
+  hit2 := ws_ray_plane(h, px, py, ws_ground_y(hit[0], hit[2]));
+  if hit2[1] > 0.5 { hit = hit2; }
+  h[0].carry_x = ws_wrapx(hit[0]);
+  h[0].carry_z = clamp(hit[2], f32(WS_DECOR_AREA[1]) - 0.5, f32(WS_DECOR_AREA[3]) + 0.5);
+  ok := ws_decor_fits(h, h[0].carry, h[0].carry_x, h[0].carry_z);
+  if ok != h[0].told_ok { h[0].told_ok = ok; ws_tell_decor(h); }
+}
+
+// Set the carried decoration down where it hangs. False when it can't stand there.
+ws_decor_drop :: (h: [] Spring) -> bool {
+  if h[0].carry < 0 { return false; }
+  if !ws_decor_fits(h, h[0].carry, h[0].carry_x, h[0].carry_z) { ws_event(h, "decor", "blocked"); return false; }
+  i := h[0].carry_from;
+  if i < 0 { i = h[0].decor_n; h[0].decor_n += 1; }
+  if h[0].stocked && h[0].carry_from < 0 { h[0].inv[h[0].carry] -= 1; }
+  h[0].decor[i * 3] = cast(f32) h[0].carry; h[0].decor[i * 3 + 1] = h[0].carry_x; h[0].decor[i * 3 + 2] = h[0].carry_z;
+  h[0].decor_t[i] = 0;
+  h[0].carry = -1; h[0].carry_from = -1;
+  ws_event(h, "cue", "decor.set");
+  ws_keep(h);
+  ws_tell_decor(h);
+  return true;
+}
+
+// Put the carried decoration back: a new one into the basket, a moved one where it stood.
+ws_carry_cancel :: (h: [] Spring) {
+  if h[0].carry < 0 { return; }
+  h[0].carry = -1; h[0].carry_from = -1;
+  ws_tell_decor(h);
+}
+
+ws_decor_step :: (h: [] Spring, step: f32) {
+  for i: 0..<h[0].decor_n { if h[0].decor_t[i] < 5 { h[0].decor_t[i] += step; } }
+}
+
+// The page's picture of the decorations: "decor|n=COUNT;k=CARRIED;ok=0|1;m=MOVING;l=K,K,...".
+ws_tell_decor :: (h: [] Spring) {
+  t: [1] WsText; tt := t[..];
+  ws_put(tt, "decor|n="); ws_put_int(tt, h[0].decor_n);
+  ws_put(tt, ";k="); ws_put_int(tt, h[0].carry);
+  ws_put(tt, ";ok="); ws_put_int(tt, ifx h[0].carry >= 0 && ws_decor_fits(h, h[0].carry, h[0].carry_x, h[0].carry_z) then 1 else 0);
+  ws_put(tt, ";m="); ws_put_int(tt, h[0].carry_from);
+  ws_put(tt, ";t="); ws_put_int(tt, h[0].tool);
+  ws_put(tt, ";s="); ws_put_int(tt, ifx h[0].stocked then 1 else 0);
+  ws_put(tt, ";i=");
+  for k: 0..<WS_DECOR_KINDS { if k > 0 { ws_put(tt, ","); } ws_put_int(tt, h[0].inv[k]); }
+  ws_put(tt, ";g="); ws_put_int(tt, h[0].terra_n);
+  ws_put(tt, ";l=");
+  for i: 0..<h[0].decor_n { if i > 0 { ws_put(tt, ","); } ws_put_int(tt, cast(int) h[0].decor[i * 3]); }
+  ws_send(h, WS_ACT_EVENT, tt);
+}
+
+// From the page: "o" open the basket, "k K" take one of kind K, "m DX DZ" move it (tenths of a
+// metre), "p" set it down, "x" put it back, "d" take the carried one away for good, "c" clear all,
+// "q" close the basket.
+ws_decor_message :: (h: [] Spring, t: string) {
+  if t.count < 1 { return; }
+  op := t[0];
+  if op == 'o' { ws_send_back(h); h[0].mode = WS_MODE_DECOR; }
+  else if op == 'k' { v := ws_read_int(t, 1); if v.ok { h[0].tool = -1; ws_decor_take(h, v.value); } }
+  else if op == 't' { v := ws_read_int(t, 1); if v.ok { ws_carry_cancel(h); h[0].tool = ifx v.value >= 0 && v.value < 3 then v.value else -1; h[0].mode = WS_MODE_DECOR; } }
+  else if op == 'w' { h[0].terra_n = 0; ws_terra_rebuild(h); ws_keep(h); }
+  else if op == 'm' {
+    a := ws_read_int(t, 1);
+    if a.ok && h[0].carry >= 0 && ws_hangs(h[0].carry) {
+      // the keys move a hanging thing from tie point to tie point
+      step := ifx a.value > 0 then 1 else ifx a.value < 0 then -1 else 0;
+      h[0].carry_x = cast(f32) clamp_int(ws_tie_of(h[0].carry_x) + step, 0, WS_TIE_SLOTS - 1); h[0].carry_z = -1;
+    } else if a.ok && h[0].carry >= 0 {
+      b := ws_read_int(t, a.at);
+      h[0].carry_x = ws_wrapx(h[0].carry_x + 0.1 * cast(f32) a.value);
+      if b.ok { h[0].carry_z = clamp(h[0].carry_z + 0.1 * cast(f32) b.value, f32(WS_DECOR_AREA[1]), f32(WS_DECOR_AREA[3])); }
+    }
+  }
+  else if op == 'p' { _ = ws_decor_drop(h); return; }
+  else if op == 'x' { ws_carry_cancel(h); return; }
+  else if op == 'd' {
+    if h[0].carry_from >= 0 { ws_decor_remove(h, h[0].carry_from); ws_keep(h); }
+    h[0].carry = -1; h[0].carry_from = -1;
+  }
+  else if op == 'c' { for j: 0..<h[0].decor_n { h[0].inv[cast(int) h[0].decor[j * 3]] += 1; } h[0].decor_n = 0; h[0].carry = -1; h[0].carry_from = -1; ws_keep(h); }
+  else if op == 'S' { if h[0].heard_kept { ws_stock_world(h); } return; }
+  else if op == 'q' { ws_carry_cancel(h); h[0].tool = -1; if h[0].mode == WS_MODE_DECOR { h[0].mode = WS_MODE_GROVE; } }
+  ws_tell_decor(h);
+}
+
+// ---- terraforming
+ws_terra_ok :: (x: f32, z: f32) -> bool {
+  if z < -3.4 || z > 7.5 { return false; }
+  if z < ws_bank_z(x) + 0.3 { return false; }
+  if ws_basin_in(x, z) > -0.3 || ws_brook_dist(x, z) < f32(WS_STREAM_HALF) - 0.2 { return false; }
+  return true;
+}
+// One dab laid on the ground table: grass cover eased toward the brush's, softly to its rim.
+ws_terra_apply :: (h: [] Spring, x_in: f32, z: f32, kind: int) {
+  x0 := ws_wrapx(x_in);
+  ws_terra_apply_at(h, x0, z, kind);
+  ws_terra_apply_at(h, x0 + f32(WS_LOOP), z, kind);
+  ws_terra_apply_at(h, x0 - f32(WS_LOOP), z, kind);
+}
+ws_terra_apply_at :: (h: [] Spring, x: f32, z: f32, kind: int) {
+  want: f32 = WS_TERRA_COVER[kind];
+  r: f32 = WS_TERRA_R;
+  i0 := cast(int) floor((x - r - f32(WS_HT_X0)) / f32(WS_HT_CELL)); i1 := cast(int) floor((x + r - f32(WS_HT_X0)) / f32(WS_HT_CELL)) + 1;
+  j0 := cast(int) floor((z - r - f32(WS_HT_Z0)) / f32(WS_HT_CELL)); j1 := cast(int) floor((z + r - f32(WS_HT_Z0)) / f32(WS_HT_CELL)) + 1;
+  for j: clamp_int(j0, 0, WS_HT_N)..<clamp_int(j1, 0, WS_HT_N) + 1 {
+    for i: clamp_int(i0, 0, WS_HT_N)..<clamp_int(i1, 0, WS_HT_N) + 1 {
+      cx := f32(WS_HT_X0) + f32(WS_HT_CELL) * cast(f32) i; cz := f32(WS_HT_Z0) + f32(WS_HT_CELL) * cast(f32) j;
+      d := sqrt((cx - x) * (cx - x) + (cz - z) * (cz - z));
+      if d > r || !ws_terra_ok(cx, cz) { continue; }
+      k := clamp((r - d) / (r * 0.45), 0, 1);
+      o := (j * (WS_HT_N + 1) + i) * 4 + 1;
+      h[0].heights[o] = h[0].heights[o] + (want - h[0].heights[o]) * k;
+    }
+  }
+}
+// The ground table again from the land itself, with every dab laid over it.
+ws_terra_rebuild :: (h: [] Spring) {
+  ws_build_heights(h[0].heights[..]);
+  for i: 0..<h[0].terra_n { ws_terra_apply(h, h[0].terra[i * 3], h[0].terra[i * 3 + 1], cast(int) h[0].terra[i * 3 + 2]); }
+  h[0].ht_gen += 1;
+}
+ws_terra_dab :: (h: [] Spring, x: f32, z: f32) {
+  if h[0].tool < 0 || !ws_terra_ok(x, z) { return; }
+  full := h[0].terra_n >= WS_TERRA_MAX;
+  if full {
+    for i: 0..<(WS_TERRA_MAX - 1) * 3 { h[0].terra[i] = h[0].terra[i + 3]; }
+    h[0].terra_n = WS_TERRA_MAX - 1;
+  }
+  o := h[0].terra_n * 3;
+  h[0].terra[o] = ws_wrapx(x); h[0].terra[o + 1] = z; h[0].terra[o + 2] = cast(f32) h[0].tool;
+  h[0].terra_n += 1;
+  if full { ws_terra_rebuild(h); } else { ws_terra_apply(h, x, z, h[0].tool); h[0].ht_gen += 1; }
+  h[0].dab_x = x; h[0].dab_z = z; h[0].dab_t = 0;
+  h[0].dirty = true;
+}
+// The brush follows the pointer over the ground.
+ws_brush_aim :: (h: [] Spring, px: f32, py: f32) {
+  hit := ws_ray_plane(h, px, py, 0.1);
+  if hit[1] < 0.5 { h[0].brush_on = false; return; }
+  hit2 := ws_ray_plane(h, px, py, ws_ground_y(hit[0], hit[2]));
+  if hit2[1] > 0.5 { hit = hit2; }
+  h[0].brush_x = hit[0]; h[0].brush_z = hit[2]; h[0].brush_on = true;
+}
+ws_draw_brush :: (h: [] Spring, s: [] WsSkin) {
+  if h[0].dab_t < 0.8 && !h[0].calm {
+    dx := ws_near(h, h[0].dab_x); dz := h[0].dab_z; f := h[0].dab_t / 0.8;
+    pc := ifx h[0].tool == 2 then [3] f32.[0.62, 0.42, 0.24] else [3] f32.[0.5, 0.85, 0.3];
+    for i: 0..<12 {
+      a := f32(WS_TAU) * cast(f32) i / 12;
+      ws_skin_octa(s, ws_v(dx + cos(a) * (0.3 + f * 0.9), ws_ground_y(dx, dz) + 0.2 + f * 0.5 - f * f * 0.5, dz + sin(a) * (0.3 + f * 0.9)), 0.05 * (1 - f), 1.0, pc);
+    }
+  }
+  if h[0].tool < 0 || !h[0].brush_on || h[0].mode != WS_MODE_DECOR { return; }
+  x := h[0].brush_x; z := h[0].brush_z;
+  ok := ws_terra_ok(x, z);
+  col := ifx !ok then [3] f32.[0.95, 0.42, 0.5] else ifx h[0].tool == 0 then [3] f32.[0.45, 1.1, 0.35] else ifx h[0].tool == 1 then [3] f32.[0.85, 1.1, 0.55] else [3] f32.[1.0, 0.66, 0.36];
+  // floating just over the blades, so it shows in tall grass too
+  gy := ws_ground_y(x, z) + 0.42 + (ifx h[0].calm then 0.0f32 else 0.03 * sin(h[0].time * 2.5));
+  ws_skin_ring(s, x, z, gy, f32(WS_TERRA_R), 0.05, col);
+  ws_skin_ring(s, x, z, gy, f32(WS_TERRA_R) * 0.55, 0.025, col);
+  ws_skin_octa(s, ws_v(x, gy, z), 0.04, 1.0, col);
+  // a few sample tufts in the ring: how the brush will leave it
+  n := ifx h[0].tool == 2 then 0 else 7;
+  tall: f32 = ifx h[0].tool == 0 then 0.5f32 else 0.18f32;
+  for i: 0..<n {
+    a := f32(WS_TAU) * cast(f32) i / 7 + h[0].time * 0.4;
+    bx := x + cos(a) * 0.7; bz := z + sin(a) * 0.7;
+    ws_skin_octa(s, ws_v(bx, ws_ground_y(bx, bz) + tall * 0.5, bz), 0.02, tall * 25, col);
+  }
+}
+
+// ---- the mandala
+ws_mandala_add :: (h: [] Spring, kind: int, ring: int, a: int) {
+  if kind < 0 || kind >= WS_MANDALA_KINDS || ring < 1 || ring > WS_MANDALA_RINGS { return; }
+  if h[0].mandala_n >= WS_MANDALA_MAX {
+    // the oldest piece gives way
+    for i: 0..<(WS_MANDALA_MAX - 1) * 3 { h[0].mandala[i] = h[0].mandala[i + 3]; }
+    h[0].mandala_n = WS_MANDALA_MAX - 1;
+  }
+  o := h[0].mandala_n * 3;
+  h[0].mandala[o] = kind; h[0].mandala[o + 1] = ring; h[0].mandala[o + 2] = ((a % 64) + 64) % 64;
+  h[0].mandala_n += 1;
+}
+// Everyone's pieces, from the page: "k,r,a;k,r,a;..." (oldest first).
+ws_mandala_set :: (h: [] Spring, t: string) {
+  h[0].mandala_n = 0;
+  at := 0;
+  while at < t.count {
+    k := ws_read_int(t, at); if !k.ok || k.at >= t.count || t[k.at] != ',' { break; }
+    r := ws_read_int(t, k.at + 1); if !r.ok || r.at >= t.count || t[r.at] != ',' { break; }
+    a := ws_read_int(t, r.at + 1); if !a.ok { break; }
+    ws_mandala_add(h, k.value, r.value, a.value);
+    at = a.at; while at < t.count && t[at] != ';' { at += 1; } at += 1;
+  }
+}
+// Set a piece of the material in hand at (ring, angle): it is drawn at once and the page shares it.
+ws_mandala_place :: (h: [] Spring, ring: int, a: int) {
+  if ring < 1 || ring > WS_MANDALA_RINGS { return; }
+  ws_mandala_add(h, h[0].m_kind, ring, a);
+  h[0].m_new = 0;
+  tm: [1] WsText; ws_put(tm[..], "mandala|"); ws_put_int(tm[..], h[0].m_kind); ws_put(tm[..], ","); ws_put_int(tm[..], ring); ws_put(tm[..], ","); ws_put_int(tm[..], ((a % 64) + 64) % 64);
+  ws_send(h, WS_ACT_EVENT, tm[..]);
+  ws_event(h, "cue", "decor.set");
+}
+// The ring and angle under a pixel (overhead), or ring 0.
+ws_mandala_at :: (h: [] Spring, px: f32, py: f32) -> [2] int {
+  hit := ws_ray_plane(h, px, py, f32(WS_MANDALA[1]));
+  if hit[1] < 0.5 { return [2] int.[0, 0]; }
+  dx := hit[0] - f32(WS_MANDALA[0]); dz := hit[2] - f32(WS_MANDALA[2]);
+  ring := cast(int) floor(sqrt(dx * dx + dz * dz) / f32(WS_MANDALA_RING_M) + 0.5);
+  if ring < 1 || ring > WS_MANDALA_RINGS { return [2] int.[0, 0]; }
+  a := cast(int) floor(atan2(dz, dx) / f32(WS_TAU) * 64 + 0.5);
+  return [2] int.[ring, ((a % 64) + 64) % 64];
+}
+ws_mandala_enter :: (h: [] Spring) {
+  ws_carry_cancel(h); ws_send_back(h);
+  h[0].mode = WS_MODE_MANDALA;
+  h[0].pan_goal = ws_goal_near(h, WS_MANDALA[0]);
+  ws_event(h, "mode", "mandala");
+  ws_tell_state(h);
+}
+ws_mandala_message :: (h: [] Spring, t: string) {
+  if t.count < 1 { return; }
+  op := t[0];
+  if op == 'e' { ws_mandala_enter(h); return; }
+  if op == 'x' { if h[0].mode == WS_MODE_MANDALA { h[0].mode = WS_MODE_GROVE; ws_tell_state(h); } return; }
+  if op == 'k' { v := ws_read_int(t, 1); if v.ok && v.value >= 0 && v.value < WS_MANDALA_KINDS { h[0].m_kind = v.value; } return; }
+  if op == 'p' { r := ws_read_int(t, 1); if r.ok { a := ws_read_int(t, r.at); if a.ok { ws_mandala_place(h, r.value, a.value); } } return; }
+  if op == 's' { ws_mandala_set(h, t[1..<t.count]); return; }
+}
+
+// One mandala piece, drawn flat on the clearing at (x, z), its long axis along `ang`.
+ws_draw_m_piece :: (h: [] Spring, s: [] WsSkin, eye: WsV, kind: int, x: f32, z: f32, ang: f32, ring: int) {
+  y := f32(WS_MANDALA[1]) + 0.02;
+  ca := cos(ang); sa := sin(ang);
+  side := ws_v(-sa, 0, ca);
+  seglen: f32 = 0.3 + 0.03 * cast(f32) ring;
+  a := ws_v(x - ca * seglen * 0.5, y, z - sa * seglen * 0.5); b := ws_v(x + ca * seglen * 0.5, y, z + sa * seglen * 0.5);
+  above := ws_v(x, y + 5, z);
+  if kind == 0 { ws_skin_strip(s, a, b, side, 0.035, 0.13, [3] f32.[0.92, 0.3, 0.42], above); ws_skin_strip(s, a, ws_v((a.x + b.x) * 0.5, y + 0.005, (a.z + b.z) * 0.5), side, 0.01, 0.05, [3] f32.[1.0, 0.55, 0.62], above); return; }
+  if kind == 1 { ws_skin_strip(s, a, b, side, 0.035, 0.12, [3] f32.[1.0, 0.66, 0.16], above); ws_skin_strip(s, a, ws_v((a.x + b.x) * 0.5, y + 0.005, (a.z + b.z) * 0.5), side, 0.01, 0.045, [3] f32.[1.0, 0.85, 0.4], above); return; }
+  if kind == 2 { for i: 0..<4 { ws_skin_octa(s, ws_v(x + ca * 0.07 * (cast(f32) i - 1.5), y + 0.03, z + sa * 0.07 * (cast(f32) i - 1.5)), 0.045, 0.8, ifx (i % 2) == 0 then [3] f32.[0.28, 0.36, 0.92] else [3] f32.[0.5, 0.56, 1.0]); } return; }
+  if kind == 3 { ws_skin_octa(s, ws_v(x, y + 0.07, z), 0.08, 1.6, ws_decor_glow(h, 0.95, 0.62, 1.45)); return; }
+  if kind == 4 {
+    ws_skin_blob(s, ws_bl(x, y + 0.07, z, 0.045, 0.07, 0.045, 1801), [3] f32.[0.94, 0.88, 0.76]);
+    flick := ifx h[0].calm then 1.0f32 else 0.85 + 0.15 * sin(h[0].time * 8 + x * 7);
+    ws_skin_octa(s, ws_v(x, y + 0.17, z), 0.028 * flick, 2.0, ws_decor_glow(h, 1.8, 1.15, 0.5));
+    return;
+  }
+  if kind == 5 { bb := ws_bl(x, y + 0.02, z, 0.13, 0.045, 0.09, 1803); bb.yaw = -ang; bb.seg = 7; bb.rings = 3; ws_skin_blob(s, bb, [3] f32.[0.64, 0.62, 0.6]); return; }
+  if kind == 6 { ws_skin_strip(s, a, b, side, 0.03, 0.1, [3] f32.[0.3, 0.55, 0.18], above); ws_skin_strip(s, a, b, side, 0.008, 0.008, [3] f32.[0.55, 0.75, 0.32], above); return; }
+  ws_skin_octa(s, ws_v(x, y + 0.05, z), 0.055, 1.0, [3] f32.[1.0, 0.97, 0.92]);
+}
+ws_draw_mandala :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
+  if abs(ws_dx(h, WS_MANDALA[0])) > 22 { return; }
+  mx := f32(WS_MANDALA[0]); mz := f32(WS_MANDALA[2]); y := f32(WS_MANDALA[1]) + 0.015;
+  // faint rings where pieces go, gold in the middle
+  if h[0].m_view > 0.05 {
+    for r: 1..<WS_MANDALA_RINGS + 1 { ws_skin_ring(s, mx, mz, y, f32(WS_MANDALA_RING_M) * cast(f32) r, 0.008, [3] f32.[0.78, 0.68, 0.5]); }
+  }
+  ws_skin_octa(s, ws_v(mx, y + 0.05, mz), 0.08, 1.2, ws_gold(h, 0.8));
+  for i: 0..<h[0].mandala_n {
+    k := h[0].mandala[i * 3]; r := h[0].mandala[i * 3 + 1]; a := h[0].mandala[i * 3 + 2];
+    for c: 0..<8 {
+      ang := f32(WS_TAU) * cast(f32) ((a + c * 8) % 64) / 64;
+      rad := f32(WS_MANDALA_RING_M) * cast(f32) r;
+      ws_draw_m_piece(h, s, eye, k, mx + cos(ang) * rad, mz + sin(ang) * rad, ang, r);
+    }
+  }
+}
+
 // ---- touching the grove
+// An upright phone glides to look at x.
+// x - the camera's x, the short way round the loop; and the copy of x nearest the camera.
+ws_dx :: (h: [] Spring, x: f32) -> f32 { return ws_wrapx(x - h[0].cam.x); }
+ws_near :: (h: [] Spring, x: f32) -> f32 { return h[0].cam.x + ws_dx(h, x); }
+// A pan that brings the view to x the short way round from where it is.
+ws_goal_near :: (h: [] Spring, x: f32) -> f32 { return h[0].pan + ws_wrapx(x - h[0].cam_x0 - h[0].pan); }
+ws_wrap :: (h: [] Spring, shift: f32) {
+  h[0].pan += shift; h[0].pan_goal += shift;
+  for i: 0..<WS_FF_MAX { h[0].ff[i * 6] += shift; }
+}
+// Slide the view by d metres; pushed past an end of the grove, it comes round to the other.
+ws_pan_by :: (h: [] Spring, d: f32) { h[0].pan_goal += d; }
+ws_glide_to :: (h: [] Spring, x: f32) {
+  // a wide screen sees the whole grove; only a spot outside the picture needs a glide
+  if !ws_tall(h[0].cam_w, h[0].cam_h) && abs(ws_dx(h, x)) < 4.5 && abs(h[0].pan) < 4.5 { h[0].pan_goal = 0; return; }
+  h[0].pan_goal = ws_goal_near(h, x);
+}
+
 ws_activate :: (h: [] Spring, s: int) {
   if h[0].paused { return; }
+  if s != WS_SPOT_QUAIL { q := ws_spot(s); ws_glide_to(h, q[0]); }
   if s == WS_SPOT_QUAIL {
     if h[0].quail[0].state != WS_Q_SPEAK && h[0].quail[0].state != WS_Q_ALERT {
       ws_quail_speak(h[0].quail[..], 4.5);
@@ -619,6 +1507,7 @@ ws_activate :: (h: [] Spring, s: int) {
   }
   if s == WS_SPOT_POOL { ws_spring_touch(h); return; }
   if s == WS_SPOT_STONES {
+    ws_site_go(h, 0);
     if h[0].mode != WS_MODE_STONES {
       h[0].mode = WS_MODE_STONES;
       if h[0].placed_n >= WS_CAIRN_GOAL {
@@ -626,14 +1515,15 @@ ws_activate :: (h: [] Spring, s: int) {
         for i: 0..<h[0].placed_n { if i > 0 { ws_put(c[..], ","); } ws_put(c[..], ws_stone_name(h[0].placed[i])); }
         ws_send(h, WS_ACT_EVENT, c[..]);
       }
-      ws_event(h, "mode", "stones");
     } else if h[0].held < 0 { ws_choose_next(h); }
     else { ws_place(h); }
+    ws_carry_cancel(h);
     ws_tell_state(h);
     return;
   }
   if s == WS_SPOT_BRANCH {
-    h[0].mode = WS_MODE_RIBBON; h[0].held = -1;
+    ws_carry_cancel(h); ws_send_back(h);
+    h[0].mode = WS_MODE_RIBBON;
     ws_event(h, "mode", "ribbon");
     ws_tell_state(h);
   }
@@ -646,11 +1536,16 @@ ws_ribbon_step :: (h: [] Spring, step: f32) {
 }
 
 ws_forget :: (h: [] Spring) {
-  h[0].found = 0; h[0].extras = 0; h[0].placed_n = 0; h[0].held = -1; h[0].roll = 0;
+  h[0].found = 0; h[0].extras = 0; h[0].placed_n = 0; h[0].held = -1; h[0].roll = 0; h[0].fly = WS_FLY_NONE;
+  for c: 0..<WS_CAIRNS { h[0].s_n[c] = 0; h[0].fall_t[c] = -1; }
+  h[0].terra_n = 0; h[0].tool = -1; ws_terra_rebuild(h);
+  h[0].stocked = false; for k: 0..<WS_DECOR_KINDS { h[0].inv[k] = 0; }
+  h[0].decor_n = 0; h[0].carry = -1; h[0].carry_from = -1;
   h[0].ribbon = false; h[0].word_n = 0; h[0].tied_t = -1; h[0].built_t = -1;
   h[0].spring_t = -1; h[0].plume_n = 0; h[0].mode = WS_MODE_GROVE;
   ws_keep(h);
   ws_tell_state(h);
+  ws_tell_decor(h);
 }
 
 // ---- the live part of the grove, drawn each frame
@@ -694,35 +1589,339 @@ ws_stone_blob :: (k: int, x: f32, y: f32, z: f32, roll_deg: int) -> WsBlob {
 }
 
 ws_draw_stones :: (h: [] Spring, s: [] WsSkin) {
-  y: f32 = WS_CAIRN_TOP;
-  cx: f32 = WS_CAIRN_X; cz: f32 = WS_CAIRN_Z;
-  for i: 0..<h[0].placed_n {
-    k := h[0].placed[i];
-    hh: f32 = WS_STONE_HH[k];
-    // a settled stone leans as it was set, a share of its roll
-    b := ws_stone_blob(k, cx + 0.01 * cast(f32) (i % 2), y + hh, cz, h[0].rolls[i] / 2);
-    if h[0].built_t >= 0 && h[0].built_t < 2.0 && !h[0].calm {
-      b.y += 0.01 * sin(h[0].built_t * 20 + cast(f32) i) * (2 - h[0].built_t);
+  ws_site_store(h);
+  for site: 0..<WS_CAIRNS {
+    cx: f32 = WS_CAIRN_AT[site * 2]; cz: f32 = WS_CAIRN_AT[site * 2 + 1];
+    if abs(ws_dx(h, cx)) > 22 { continue; }
+    live := site == h[0].site;
+    n := h[0].s_n[site];
+    y := ws_cairn_top_at(site);
+    for i: 0..<n {
+      k := h[0].s_placed[site * WS_STONE_N + i];
+      hh: f32 = WS_STONE_HH[k];
+      // a settled stone sits where it was let go, leaning a share of its roll; the newest wobbles a moment
+      b := ws_stone_blob(k, cx + h[0].s_offs[(site * WS_STONE_N + i) * 2], y + hh, cz + h[0].s_offs[(site * WS_STONE_N + i) * 2 + 1], h[0].s_rolls[site * WS_STONE_N + i] / 2);
+      if live && i == n - 1 && h[0].built_t >= 0 && h[0].built_t < 2.0 && !h[0].calm {
+        fade := (2 - h[0].built_t) * 0.5;
+        b.roll += h[0].wobble * 0.14 * sin(h[0].built_t * 16) * fade * fade;
+        b.y += 0.014 * abs(sin(h[0].built_t * 16)) * fade * fade;
+      }
+      ws_skin_blob(s, b, ws_stone_col(k));
+      y += hh * 2 - 0.01;
     }
-    ws_skin_blob(s, b, ws_stone_col(k));
-    y += hh * 2 - 0.008;
+    // a knocked-down cairn: each stone flies off the stack, bounces and rolls home to the pile
+    flying := 0;
+    ft := h[0].fall_t[site];
+    if ft >= 0 {
+      for i: 0..<h[0].fall_n[site] {
+        k := h[0].fall_k[site * WS_STONE_N + i];
+        f := clamp((ft - 0.07 * cast(f32) i) / f32(WS_FALL_S), 0, 1);
+        if f >= 1 { continue; }
+        flying |= 1 << k;
+        o := (site * WS_STONE_N + i) * 3;
+        p := ws_pile_of(site, k);
+        e := 1 - (1 - f) * (1 - f);
+        x := h[0].fall_at[o] + (p[0] - h[0].fall_at[o]) * e;
+        z := h[0].fall_at[o + 2] + (p[1] - h[0].fall_at[o + 2]) * e;
+        yy := h[0].fall_at[o + 1] + (ws_pile_y_of(site, k) - h[0].fall_at[o + 1]) * f + 0.45 * sin(f * 3.14159) * (1 - f) + 0.08 * abs(sin(f * 9)) * (1 - f);
+        b := ws_stone_blob(k, x, yy, z, 0);
+        b.roll = (ifx h[0].calm then 0.0f32 else 1.0f32) * f * (6 + cast(f32) i) * (ifx (i % 2) == 0 then 1.0f32 else -1.0f32);
+        ws_skin_blob(s, b, ws_stone_col(k));
+      }
+    }
+    pile := ws_site_pile(h, site);
+    waiting := live && h[0].placed_n < WS_CAIRN_GOAL && h[0].held < 0;
+    for k: 0..<WS_STONE_N {
+      if (pile & (1 << k)) == 0 || (flying & (1 << k)) != 0 || (live && k == h[0].held && h[0].fly != WS_FLY_NONE) { continue; }
+      p := ws_pile_of(site, k);
+      b := ws_stone_blob(k, p[0], ws_pile_y_of(site, k), p[1], 0);
+      if h[0].hover_stone == site * 10 + k && !h[0].calm { b.y += 0.03; }
+      ws_skin_blob(s, b, ws_stone_col(k));
+      if waiting && h[0].mode == WS_MODE_STONES {
+        pulse := ifx h[0].calm then 0.6f32 else 0.45 + 0.3 * sin(h[0].time * 1.8 + cast(f32) k);
+        ws_skin_octa(s, ws_v(p[0], ws_pile_y_of(site, k) + WS_STONE_HH[k] + 0.07, p[1]), 0.016, 1.8, ws_gold(h, pulse));
+      }
+    }
   }
-  pile := ws_pile_bits(h);
-  for k: 0..<WS_STONE_N {
-    if (pile & (1 << k)) == 0 || k == h[0].held { continue; }
-    px: f32 = f32(WS_PILE_X) + 0.34 * cast(f32) (k % 3) - 0.3;
-    pz: f32 = f32(WS_PILE_Z) + 0.3 * cast(f32) (k / 3) - 0.12;
-    ws_skin_blob(s, ws_stone_blob(k, px, ws_ground_y(px, pz) + WS_STONE_HH[k] * 0.8, pz, 0), ws_stone_col(k));
-  }
-  if h[0].held >= 0 {
+  if h[0].held >= 0 && h[0].fly != WS_FLY_NONE {
     k := h[0].held;
-    hover := ifx h[0].calm then 0.0f32 else 0.015 * sin(h[0].time * 2.2);
-    wob: f32 = 0;
-    if h[0].slip_t >= 0 && h[0].slip_t < 0.9 { wob = sin(h[0].slip_t * 18) * (0.9 - h[0].slip_t) * 0.12; }
-    b := ws_stone_blob(k, cx + wob, y + WS_STONE_HH[k] + 0.14 + hover, cz, h[0].roll);
+    b := ws_stone_blob(k, h[0].fx, h[0].fy, h[0].fz, 0);
+    b.roll = h[0].froll;
     ws_skin_blob(s, b, ws_stone_col(k));
-    // a fine gold line under it shows where it will sit
-    ws_skin_ring(s, cx, cz, y + 0.004, WS_STONE_HW[k] * 0.9, 0.012, ws_gold(h, 0.55));
+  }
+}
+
+// ---- decorations
+ws_decor_glow :: (h: [] Spring, r: f32, g: f32, b: f32) -> [3] f32 {
+  k: f32 = ifx h[0].soft then 0.7f32 else 1.0f32;
+  return [3] f32.[r * k, g * k, b * k];
+}
+
+WS_DECOR_SIZE :: 1.8;   // decorations are drawn at life size times this, so they read from the camera
+
+ws_draw_one_decor :: (h: [] Spring, s: [] WsSkin, eye: WsV, kind: int, x: f32, z: f32, lift: f32, seed: int) {
+  from := s[0].n;
+  ws_draw_decor_piece(h, s, eye, kind, x, z, ws_ground_y(x, z), seed);
+  // grown about its foot, then lifted
+  // statues and the fountain stand larger than the small things, so they read as monuments
+  k: f32 = ifx kind >= 6 && kind <= 10 then 3.0f32 else f32(WS_DECOR_SIZE); foot := ws_ground_y(x, z);
+  for i: from..<s[0].n {
+    o := i * WS_SKIN_FLOATS;
+    s[0].out[o] = x + (s[0].out[o] - x) * k; s[0].out[o + 1] = foot + lift + (s[0].out[o + 1] - foot) * k; s[0].out[o + 2] = z + (s[0].out[o + 2] - z) * k;
+  }
+}
+
+// A halo: a ring of small gold beads upright behind a head, facing the camera.
+ws_draw_halo :: (h: [] Spring, s: [] WsSkin, cx: f32, cy: f32, cz: f32, r: f32) {
+  for i: 0..<14 {
+    a := f32(WS_TAU) * cast(f32) i / 14;
+    ws_skin_octa(s, ws_v(cx + cos(a) * r, cy + sin(a) * r, cz), r * 0.13, 1.0, ws_gold(h, 0.95));
+  }
+}
+ws_bl :: (x: f32, y: f32, z: f32, rx: f32, ry: f32, rz: f32, seed: int) -> WsBlob {
+  b: WsBlob; b.x = x; b.y = y; b.z = z; b.rx = rx; b.ry = ry; b.rz = rz; b.seg = 8; b.rings = 4; b.seed = seed; b.jag = 0.06;
+  return b;
+}
+
+// A bell or a paper lantern on a string from a tie point; `t` is seconds since it was last rung.
+ws_draw_hanger :: (h: [] Spring, s: [] WsSkin, eye: WsV, kind: int, tie: int, t: f32, seed: int, carried: bool, ok: bool) {
+  at := ws_hang_at(tie);
+  swing := ifx h[0].calm then 0.0f32 else 0.05 * sin(h[0].time * 1.3 + cast(f32) seed);
+  if t < 5 && !h[0].calm { swing += 0.55 * exp(-t * 1.4) * sin(t * 11); }
+  rope: f32 = ifx kind == WS_DECOR_BELL then 0.2f32 else 0.16f32;
+  bot := ws_v(at.x + sin(swing) * rope, at.y - cos(swing) * rope, at.z);
+  side := ws_v(0, 0, 1);
+  ws_skin_strip(s, at, bot, side, 0.006, 0.006, [3] f32.[0.22, 0.16, 0.12], eye);
+  if kind == WS_DECOR_BELL {
+    brass := [3] f32.[1.0, 0.76, 0.34];
+    ws_skin_blob(s, ws_bl(bot.x, bot.y - 0.045, bot.z, 0.042, 0.05, 0.042, 1601), brass);
+    ws_skin_blob(s, ws_bl(bot.x, bot.y - 0.088, bot.z, 0.06, 0.016, 0.06, 1603), brass);
+    ws_skin_octa(s, ws_v(bot.x + sin(swing * 1.6) * 0.03, bot.y - 0.11, bot.z), 0.014, 1.2, [3] f32.[0.5, 0.36, 0.2]);
+    if t < 1.2 && !h[0].calm { ws_skin_octa(s, ws_v(bot.x, bot.y - 0.06, bot.z), 0.09 * (1.2 - t), 1.0, ws_gold(h, 0.4 * (1.2 - t))); }
+  } else {
+    flick := ifx h[0].calm then 1.0f32 else 0.88 + 0.12 * sin(h[0].time * 6.5 + cast(f32) seed);
+    dark := [3] f32.[0.18, 0.12, 0.1];
+    // a paper lantern half again as big as life, so it reads from the camera, its light strong enough to bloom
+    ws_skin_blob(s, ws_bl(bot.x, bot.y - 0.015, bot.z, 0.045, 0.018, 0.045, 1611), dark);
+    ws_skin_blob(s, ws_bl(bot.x, bot.y - 0.13, bot.z, 0.09, 0.11, 0.09, 1613), ws_decor_glow(h, 3.0 * flick, 1.7 * flick, 0.65 * flick));
+    ws_skin_octa(s, ws_v(bot.x, bot.y - 0.13, bot.z), 0.05 * flick, 1.1, ws_decor_glow(h, 3.4, 2.4, 1.1));
+    ws_skin_blob(s, ws_bl(bot.x, bot.y - 0.245, bot.z, 0.04, 0.015, 0.04, 1615), dark);
+    ws_skin_strip(s, ws_v(bot.x, bot.y - 0.255, bot.z), ws_v(bot.x, bot.y - 0.36, bot.z), side, 0.012, 0.004, [3] f32.[0.75, 0.2, 0.18], eye);
+  }
+  if carried {
+    col := ifx ok then ws_gold(h, 0.75) else [3] f32.[0.95, 0.42, 0.5];
+    for i: 0..<10 { a := f32(WS_TAU) * cast(f32) i / 10; ws_skin_octa(s, ws_v(at.x + cos(a) * 0.09, at.y + sin(a) * 0.09, at.z + 0.02), 0.012, 1.0, col); }
+  }
+}
+
+ws_draw_decor_piece :: (h: [] Spring, s: [] WsSkin, eye: WsV, kind: int, x: f32, z: f32, gy: f32, seed: int) {
+  t := ifx h[0].calm then 0.0f32 else h[0].time;
+  if kind == 6 {
+    // Mother Mary: white stone, a blue mantle over her head and shoulders, hands at prayer, a gold halo, roses at her feet
+    stone := [3] f32.[0.92, 0.9, 0.86]; blue := [3] f32.[0.34, 0.5, 0.84];
+    ws_skin_blob(s, ws_bl(x, gy + 0.025, z, 0.09, 0.025, 0.08, 1501), [3] f32.[0.68, 0.64, 0.58]);
+    ws_skin_blob(s, ws_bl(x, gy + 0.2, z - 0.014, 0.07, 0.16, 0.046, 1505), blue);
+    ws_skin_blob(s, ws_bl(x, gy + 0.17, z + 0.006, 0.054, 0.14, 0.044, 1503), stone);
+    ws_skin_blob(s, ws_bl(x, gy + 0.372, z - 0.012, 0.043, 0.05, 0.036, 1509), blue);
+    ws_skin_blob(s, ws_bl(x, gy + 0.362, z + 0.006, 0.029, 0.035, 0.029, 1507), stone);
+    ws_skin_octa(s, ws_v(x, gy + 0.272, z + 0.05), 0.017, 1.9, stone);
+    ws_draw_halo(h, s, x, gy + 0.378, z - 0.035, 0.06);
+    for i: 0..<6 {
+      a := cast(f32) i * 1.05 + 0.3;
+      ws_skin_octa(s, ws_v(x + cos(a) * 0.1, gy + 0.03, z + sin(a) * 0.09 + 0.02), 0.018, 0.9, ifx (i % 2) == 0 then [3] f32.[0.9, 0.3, 0.38] else [3] f32.[0.95, 0.62, 0.68]);
+    }
+    return;
+  }
+  if kind == 7 {
+    // a fountain: a limestone basin, a column and a bowl, water spilling from the top in arcs
+    lime := [3] f32.[0.84, 0.76, 0.62]; water := [3] f32.[0.62, 0.86, 0.92];
+    b := ws_bl(x, gy + 0.05, z, 0.2, 0.05, 0.2, 1521); b.seg = 12; b.rings = 2;
+    ws_skin_blob(s, b, lime);
+    wd := ws_bl(x, gy + 0.096, z, 0.17, 0.008, 0.17, 1523); wd.seg = 12; wd.rings = 2;
+    ws_skin_blob(s, wd, water);
+    ws_skin_blob(s, ws_bl(x, gy + 0.2, z, 0.035, 0.11, 0.035, 1525), lime);
+    ub := ws_bl(x, gy + 0.31, z, 0.1, 0.03, 0.1, 1527); ub.seg = 10; ub.rings = 2;
+    ws_skin_blob(s, ub, lime);
+    ws_skin_blob(s, ws_bl(x, gy + 0.335, z, 0.085, 0.006, 0.085, 1529), water);
+    ws_skin_octa(s, ws_v(x, gy + 0.38, z), 0.02, 1.8, lime);
+    drops := ifx h[0].calm then 0 else 12;
+    for i: 0..<drops {
+      a := f32(WS_TAU) * cast(f32) i / 12;
+      p := t * 0.9 + cast(f32) i / 12; p = p - floor(p);
+      // from the top spout out to the bowl, and from the bowl's lip down to the basin
+      ws_skin_octa(s, ws_v(x + cos(a) * 0.09 * p, gy + 0.4 + 0.05 * sin(p * 3.14159) - 0.06 * p, z + sin(a) * 0.09 * p), 0.008, 1.4, [3] f32.[0.9, 1.0, 1.05]);
+      q := p * p;
+      ws_skin_octa(s, ws_v(x + cos(a + 0.26) * (0.1 + 0.06 * p), gy + 0.31 - 0.21 * q, z + sin(a + 0.26) * (0.1 + 0.06 * p)), 0.007, 1.6, [3] f32.[0.85, 0.97, 1.02]);
+    }
+    return;
+  }
+  if kind == 8 {
+    // the Buddha: seated on a pink lotus, gilded, hands in his lap, a halo behind his head
+    gold := [3] f32.[0.9, 0.68, 0.3];
+    for i: 0..<10 {
+      a := f32(WS_TAU) * cast(f32) i / 10;
+      ws_skin_octa(s, ws_v(x + cos(a) * 0.11, gy + 0.035, z + sin(a) * 0.1), 0.035, 0.7, ifx (i % 2) == 0 then [3] f32.[0.94, 0.6, 0.68] else [3] f32.[0.98, 0.78, 0.8]);
+    }
+    ws_skin_blob(s, ws_bl(x, gy + 0.075, z + 0.01, 0.12, 0.045, 0.08, 1541), gold);
+    ws_skin_blob(s, ws_bl(x, gy + 0.165, z, 0.075, 0.095, 0.058, 1543), gold);
+    ws_skin_blob(s, ws_bl(x, gy + 0.105, z + 0.055, 0.042, 0.02, 0.028, 1545), gold);
+    ws_skin_blob(s, ws_bl(x, gy + 0.3, z, 0.042, 0.047, 0.042, 1547), gold);
+    ws_skin_blob(s, ws_bl(x, gy + 0.35, z, 0.019, 0.02, 0.019, 1549), [3] f32.[0.3, 0.2, 0.14]);
+    ws_skin_octa(s, ws_v(x - 0.044, gy + 0.29, z), 0.012, 2.2, gold); ws_skin_octa(s, ws_v(x + 0.044, gy + 0.29, z), 0.012, 2.2, gold);
+    ws_draw_halo(h, s, x, gy + 0.3, z - 0.05, 0.08);
+    return;
+  }
+  if kind == 9 {
+    // Archangel Michael: silver armour and a red cloak, white wings, a raised shining sword, a halo
+    silver := [3] f32.[0.8, 0.82, 0.88]; red := [3] f32.[0.72, 0.17, 0.18]; white := [3] f32.[0.97, 0.96, 0.93];
+    ws_skin_blob(s, ws_bl(x, gy + 0.025, z, 0.08, 0.025, 0.07, 1561), [3] f32.[0.62, 0.58, 0.54]);
+    ww := ws_bl(x - 0.08, gy + 0.32, z - 0.04, 0.026, 0.14, 0.08, 1563); ww.roll = 0.45;
+    ws_skin_blob(s, ww, white);
+    we := ws_bl(x + 0.08, gy + 0.32, z - 0.04, 0.026, 0.14, 0.08, 1565); we.roll = -0.45;
+    ws_skin_blob(s, we, white);
+    ws_skin_blob(s, ws_bl(x, gy + 0.2, z - 0.025, 0.06, 0.15, 0.03, 1567), red);
+    ws_skin_blob(s, ws_bl(x, gy + 0.1, z, 0.036, 0.075, 0.032, 1569), silver);
+    ws_skin_blob(s, ws_bl(x, gy + 0.235, z + 0.004, 0.055, 0.075, 0.042, 1571), silver);
+    ws_skin_blob(s, ws_bl(x, gy + 0.345, z + 0.004, 0.028, 0.033, 0.028, 1573), [3] f32.[0.92, 0.8, 0.68]);
+    ws_skin_blob(s, ws_bl(x, gy + 0.362, z - 0.008, 0.032, 0.026, 0.03, 1575), [3] f32.[0.9, 0.7, 0.32]);
+    blade := ws_decor_glow(h, 1.35, 1.38, 1.5);
+    ws_skin_strip(s, ws_v(x + 0.07, gy + 0.22, z + 0.035), ws_v(x + 0.13, gy + 0.52, z + 0.035), ws_v(0, 0, 1), 0.012, 0.004, blade, eye);
+    ws_skin_strip(s, ws_v(x + 0.045, gy + 0.225, z + 0.036), ws_v(x + 0.1, gy + 0.21, z + 0.036), ws_v(0, 0, 1), 0.007, 0.007, ws_gold(h, 0.9), eye);
+    ws_draw_halo(h, s, x, gy + 0.35, z - 0.04, 0.058);
+    return;
+  }
+  if kind == 10 {
+    // a serpent dragon: a long jade body in humps over the grass, gold along its spine, a horned head and a pearl
+    jade := [3] f32.[0.2, 0.6, 0.45]; deep := [3] f32.[0.12, 0.44, 0.34]; gold := [3] f32.[0.95, 0.76, 0.32];
+    n := 16;
+    for i: 0..<n {
+      f := cast(f32) i / cast(f32) (n - 1);
+      px := x - 0.22 + f * 0.48; pz := z + 0.07 * sin(f * 7.5 + t * 0.9);
+      py := gy + 0.04 + 0.075 * abs(sin(f * 6.3 + t * 0.7));
+      r := 0.042 * (1 - f * 0.72);
+      ws_skin_blob(s, ws_bl(px, py, pz, r * 1.15, r, r, 1581 + i), ifx (i % 2) == 0 then jade else deep);
+      if (i % 2) == 1 { ws_skin_octa(s, ws_v(px, py + r * 1.05, pz), r * 0.4, 1.8, gold); }
+    }
+    hx := x - 0.27; hy := gy + 0.13 + 0.015 * sin(t * 1.4); hz := z + 0.07 * sin(t * 0.9);
+    ws_skin_blob(s, ws_bl(hx, hy, hz, 0.055, 0.04, 0.045, 1601), jade);
+    ws_skin_blob(s, ws_bl(hx - 0.055, hy - 0.01, hz, 0.035, 0.022, 0.03, 1603), jade);
+    ws_skin_strip(s, ws_v(hx + 0.02, hy + 0.03, hz - 0.02), ws_v(hx + 0.08, hy + 0.1, hz - 0.03), ws_v(0, 0, 1), 0.01, 0.002, gold, eye);
+    ws_skin_strip(s, ws_v(hx + 0.02, hy + 0.03, hz + 0.02), ws_v(hx + 0.08, hy + 0.1, hz + 0.03), ws_v(0, 0, 1), 0.01, 0.002, gold, eye);
+    ws_skin_octa(s, ws_v(hx - 0.02, hy + 0.02, hz + 0.035), 0.01, 1.0, ws_decor_glow(h, 1.6, 1.2, 0.3));
+    ws_skin_strip(s, ws_v(hx - 0.08, hy - 0.01, hz), ws_v(hx - 0.13, hy + 0.02 * sin(t * 2), hz + 0.05), ws_v(0, 1, 0), 0.004, 0.001, gold, eye);
+    ws_skin_octa(s, ws_v(hx - 0.13, hy + 0.01, hz - 0.03), 0.022, 1.0, ws_decor_glow(h, 1.5, 1.45, 1.25));
+    return;
+  }
+  flick := ifx h[0].calm then 1.0f32 else 0.85 + 0.15 * sin(h[0].time * (7 + cast(f32) (seed % 3)) + cast(f32) seed);
+  side := ws_v(0.94, 0, 0.34);
+  if kind == 0 {
+    // a lantern: dark iron foot and cap, amber light inside
+    iron := [3] f32.[0.16, 0.13, 0.12];
+    f: WsBlob; f.x = x; f.y = gy + 0.02; f.z = z; f.rx = 0.07; f.ry = 0.02; f.rz = 0.07; f.seg = 6; f.rings = 2; f.seed = 1401;
+    ws_skin_blob(s, f, iron);
+    g: WsBlob; g.x = x; g.y = gy + 0.12; g.z = z; g.rx = 0.055; g.ry = 0.085; g.rz = 0.055; g.seg = 6; g.rings = 3; g.seed = 1403;
+    ws_skin_blob(s, g, ws_decor_glow(h, 3.0 * flick, 1.8 * flick, 0.7 * flick));
+    ws_skin_octa(s, ws_v(x, gy + 0.12, z), 0.035 * flick, 1.2, ws_decor_glow(h, 3.4, 2.4, 1.1));
+    c: WsBlob; c.x = x; c.y = gy + 0.22; c.z = z; c.rx = 0.06; c.ry = 0.03; c.rz = 0.06; c.seg = 6; c.rings = 2; c.seed = 1405;
+    ws_skin_blob(s, c, iron);
+    ws_skin_strip(s, ws_v(x, gy + 0.24, z), ws_v(x, gy + 0.31, z), side, 0.012, 0.012, iron, eye);
+  } else if kind == 1 {
+    // three candles of different heights, each with a flame
+    for i: 0..<3 {
+      a := cast(f32) i * 2.1 + cast(f32) seed;
+      cx := x + 0.06 * cos(a); cz := z + 0.05 * sin(a);
+      tall: f32 = 0.05 + 0.025 * cast(f32) ((i + seed) % 3);
+      w: WsBlob; w.x = cx; w.y = gy + tall; w.z = cz; w.rx = 0.022; w.ry = tall; w.rz = 0.022; w.seg = 6; w.rings = 3; w.seed = 1411 + i;
+      ws_skin_blob(s, w, [3] f32.[0.9, 0.84, 0.72]);
+      ws_skin_glow(s, ws_v(cx, gy + tall * 2 + 0.025, cz), 0.018 * flick, ws_decor_glow(h, 2.4, 1.6, 0.6), eye);
+      ws_skin_octa(s, ws_v(cx, gy + tall * 2 + 0.03, cz), 0.009 * flick, 2.4, ws_decor_glow(h, 2.8, 2.4, 1.4));
+    }
+  } else if kind == 2 {
+    // bluebonnets: a clump of stalks, blue blooms with white tips
+    for i: 0..<6 {
+      a := ws_rand(1421, seed * 8 + i) * f32(WS_TAU); r := 0.03 + 0.06 * ws_rand(1423, seed * 8 + i);
+      bx := x + cos(a) * r; bz := z + sin(a) * r;
+      tall: f32 = 0.14 + 0.08 * ws_rand(1427, seed * 8 + i);
+      sway := ifx h[0].calm then 0.0f32 else 0.015 * sin(h[0].time * 1.6 + cast(f32) i);
+      ws_skin_strip(s, ws_v(bx, gy, bz), ws_v(bx + sway, gy + tall, bz), side, 0.008, 0.006, [3] f32.[0.3, 0.42, 0.2], eye);
+      for b: 0..<3 {
+        ws_skin_octa(s, ws_v(bx + sway, gy + tall - 0.03 * cast(f32) b, bz), 0.018, 1.3, [3] f32.[0.26, 0.34, 0.86]);
+      }
+      ws_skin_octa(s, ws_v(bx + sway, gy + tall + 0.02, bz), 0.012, 1.4, [3] f32.[0.95, 0.94, 0.9]);
+    }
+  } else if kind == 3 {
+    // a crystal cluster that holds the dusk light
+    pulse := ifx h[0].calm then 1.0f32 else 0.85 + 0.15 * sin(h[0].time * 1.3 + cast(f32) seed);
+    for i: 0..<4 {
+      a := cast(f32) i * 1.7 + cast(f32) seed; r: f32 = ifx i == 0 then 0.0f32 else 0.05f32;
+      big: f32 = ifx i == 0 then 0.045f32 else 0.03f32;
+      ws_skin_octa(s, ws_v(x + cos(a) * r, gy + big * 2.2, z + sin(a) * r), big, 2.6, ws_decor_glow(h, 0.95 * pulse, 0.62 * pulse, 1.45 * pulse));
+    }
+  } else if kind == 4 {
+    // a sage bundle lying on a flat stone, its tip a slow ember
+    st: WsBlob; st.x = x; st.y = gy + 0.02; st.z = z; st.rx = 0.12; st.ry = 0.025; st.rz = 0.09; st.seg = 7; st.rings = 2; st.seed = 1431; st.jag = 0.2;
+    ws_skin_blob(s, st, [3] f32.[0.62, 0.58, 0.52]);
+    b: WsBlob; b.x = x; b.y = gy + 0.07; b.z = z; b.rx = 0.1; b.ry = 0.03; b.rz = 0.035; b.seg = 6; b.rings = 3; b.seed = 1433; b.yaw = 0.4;
+    ws_skin_blob(s, b, [3] f32.[0.55, 0.62, 0.5]);
+    ws_skin_octa(s, ws_v(x + 0.09, gy + 0.08, z + 0.04), 0.02 * flick, 1.0, ws_decor_glow(h, 1.6, 0.7, 0.3));
+    if !h[0].calm {
+      for i: 0..<3 {
+        ph := (h[0].time * 0.4 + 0.33 * cast(f32) i) - floor(h[0].time * 0.4 + 0.33 * cast(f32) i);
+        ws_skin_octa(s, ws_v(x + 0.09 + 0.04 * sin(ph * 6), gy + 0.1 + ph * 0.4, z + 0.04), 0.01 * (1 - ph), 1.0, [3] f32.[0.8, 0.78, 0.82]);
+      }
+    }
+  } else {
+    // an offering bowl of limestone with petals and a gold glint
+    bo: WsBlob; bo.x = x; bo.y = gy + 0.04; bo.z = z; bo.rx = 0.12; bo.ry = 0.045; bo.rz = 0.12; bo.seg = 8; bo.rings = 2; bo.seed = 1441;
+    ws_skin_blob(s, bo, [3] f32.[0.82, 0.76, 0.64]);
+    for i: 0..<7 {
+      a := cast(f32) i * 0.9 + cast(f32) seed; r := 0.035 + 0.04 * ws_rand(1443, seed * 9 + i);
+      col := ifx (i % 3) == 0 then [3] f32.[0.9, 0.5, 0.42] else ifx (i % 3) == 1 then [3] f32.[0.85, 0.38, 0.5] else [3] f32.[0.95, 0.78, 0.4];
+      ws_skin_octa(s, ws_v(x + cos(a) * r, gy + 0.09, z + sin(a) * r), 0.018, 0.5, col);
+    }
+    ws_skin_octa(s, ws_v(x, gy + 0.11, z), 0.014, 1.6, ws_gold(h, 0.9 * flick));
+  }
+}
+
+// A set decoration drops and settles: a short fall, one small bounce.
+ws_decor_fall :: (h: [] Spring, t: f32) -> f32 {
+  if h[0].calm || t >= 0.55 { return 0; }
+  if t < 0.3 { f := 1 - t / 0.3; return 0.35 * f * f; }
+  return 0.045 * sin((t - 0.3) / 0.25 * 3.14159);
+}
+
+ws_draw_decor :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
+  for i: 0..<h[0].decor_n {
+    if i == h[0].carry_from { continue; }
+    dk := cast(int) h[0].decor[i * 3];
+    if ws_hangs(dk) { ws_draw_hanger(h, s, eye, dk, ws_tie_of(h[0].decor[i * 3 + 1]), h[0].decor_t[i], i, false, true); continue; }
+    ws_draw_one_decor(h, s, eye, dk, ws_near(h, h[0].decor[i * 3 + 1]), h[0].decor[i * 3 + 2], ws_decor_fall(h, h[0].decor_t[i]), i);
+    if i == h[0].talk_i && h[0].talk_t < 6 && !h[0].calm {
+      tx := ws_near(h, h[0].decor[i * 3 + 1]); tz := h[0].decor[i * 3 + 2]; ty := ws_ground_y(tx, tz);
+      for sp: 0..<10 {
+        f := h[0].talk_t * 0.5 + cast(f32) sp / 10; f = f - floor(f);
+        a := f32(WS_TAU) * cast(f32) sp / 10 + h[0].talk_t;
+        ws_skin_octa(s, ws_v(tx + cos(a) * 0.45, ty + 0.2 + f * 1.4, tz + sin(a) * 0.35), 0.03 * (1 - f) + 0.005, 1.2, ws_gold(h, 1.0 - f * 0.4));
+      }
+    }
+  }
+  if h[0].carry >= 0 && ws_hangs(h[0].carry) {
+    // every free tie point in view glints, so it's clear where it can hang
+    for t: 0..<WS_TIE_SLOTS {
+      if !ws_decor_fits(h, h[0].carry, cast(f32) t, -1) { continue; }
+      at := ws_hang_at(t);
+      if abs(ws_dx(h, at.x)) > 14 { continue; }
+      pulse := ifx h[0].calm then 0.8f32 else 0.6 + 0.3 * sin(h[0].time * 3 + cast(f32) t);
+      ws_skin_octa(s, ws_v(at.x, at.y - 0.04, at.z), 0.03, 1.0, ws_gold(h, pulse));
+    }
+    ws_draw_hanger(h, s, eye, h[0].carry, ws_tie_of(h[0].carry_x), 9, h[0].decor_n, true, ws_decor_fits(h, h[0].carry, h[0].carry_x, h[0].carry_z));
+  } else if h[0].carry >= 0 {
+    x := ws_near(h, h[0].carry_x); z := h[0].carry_z;
+    bob := ifx h[0].calm then 0.0f32 else 0.02 * sin(h[0].time * 2.4);
+    ws_draw_one_decor(h, s, eye, h[0].carry, x, z, 0.25 + bob, ifx h[0].carry_from >= 0 then h[0].carry_from else h[0].decor_n);
+    ok := ws_decor_fits(h, h[0].carry, x, z);
+    col := ifx ok then ws_gold(h, 0.75) else [3] f32.[0.95, 0.42, 0.5];
+    ws_skin_ring(s, x, z, ws_ground_y(x, z) + 0.012, 0.13 * f32(WS_DECOR_SIZE), 0.025, col);
   }
 }
 
@@ -765,6 +1964,45 @@ ws_draw_one_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV, fabric: int, colour
 }
 
 // The visitor's own ribbon, and everyone else's that the room holds.
+// The ribbon under a pixel: limb * 8 + slot, plus 100 when it is this visitor's own; -1 for none.
+ws_ribbon_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  n := h[0].shared_n + (ifx h[0].ribbon then 1 else 0);
+  for i: 0..<n {
+    mine := i >= h[0].shared_n;
+    l := ifx mine then h[0].branch / 8 else h[0].shared[i * 6 + 3];
+    sl := ifx mine then h[0].branch % 8 else h[0].shared[i * 6 + 4];
+    if sl >= WS_LIMB_SLOTS { continue; }
+    at := ws_tie(l, sl);
+    for e: 0..<2 {
+      sp := sty_project(h[0].view[..], at.x, at.y - 0.12 - 0.3 * cast(f32) e, at.z);
+      if !sp.ahead { continue; }
+      dx := px - sp.x; dy := py - sp.y;
+      share := sqrt(dx * dx + dy * dy) / (30 * h[0].dpr);
+      if share < most { most = share; best = l * 8 + sl + (ifx mine then 100 else 0); }
+    }
+  }
+  return best;
+}
+
+// One of the zones' prayer limbs under a pixel (the spring's own open from its spot), or -1.
+ws_limb_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  for l: WS_GROVE_LIMBS..<WS_LIMBS {
+    for e: 0..<3 {
+      at := ws_limb_point(l, 0.3 + 0.3 * cast(f32) e);
+      sp := sty_project(h[0].view[..], at.x, at.y, at.z);
+      if !sp.ahead { continue; }
+      dx := px - sp.x; dy := py - sp.y;
+      share := sqrt(dx * dx + dy * dy) / (60 * h[0].dpr);
+      if share < most { most = share; best = l; }
+    }
+  }
+  return best;
+}
+
 ws_draw_ribbon :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
   for i: 0..<h[0].shared_n {
     o := i * 6;
@@ -839,19 +2077,6 @@ ws_draw_spout :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
   lip := ws_v(WS_SPOUT_LIP[0], WS_SPOUT_LIP[1], WS_SPOUT_LIP[2]);
   fall := ws_v(WS_SPOUT_FALL[0], WS_SPOUT_FALL[1], WS_SPOUT_FALL[2]);
   glow: f32 = ifx h[0].soft then 0.95f32 else 1.35f32;
-  n := 12;
-  pts: [13] WsV;
-  for i: 0..<n + 1 {
-    f := cast(f32) i / cast(f32) n;
-    pts[i] = ws_v(lip.x + (fall.x - lip.x) * f, lip.y + (fall.y - lip.y) * f * f, lip.z + (fall.z - lip.z) * (1 - (1 - f) * (1 - f)));
-  }
-  side := ws_v(1, 0, 0);
-  for i: 0..<n {
-    f := cast(f32) i / cast(f32) n;
-    run := ifx h[0].calm then 0.5f32 else 0.5 + 0.5 * sin(h[0].time * 7 - f * 9);
-    k := glow * (0.78 + 0.22 * run);
-    ws_skin_strip(s, pts[i], pts[i + 1], side, 0.05 - 0.012 * f, 0.05 - 0.012 * (f + 0.08), [3] f32.[0.72 * k, 0.88 * k, 0.86 * k], eye);
-  }
   // the splash: a ring that keeps spreading, and a few drops
   y: f32 = WS_WATER_Y + 0.014;
   for r: 0..<2 {
@@ -869,17 +2094,145 @@ ws_draw_spout :: (h: [] Spring, s: [] WsSkin, eye: WsV) {
 
 // Fireflies at dusk: gold motes drifting about the grove, each glowing and fading in its own time.
 WS_FIREFLIES :: 36;
+WS_FF_MAX :: 220;          // at night there are twice as many
+WS_CLOUDS :: 9;            // low-poly clouds over the open field, each one pokeable
+// The fireflies: a swarm that keeps the view company. Each has a home somewhere in a band 30 m wide
+// that moves with the camera; when the view slides to another zone they stream after it in loose
+// spirals, trailing light, and settle into a slow hover when it stops.
+ws_ff_count :: (h: [] Spring) -> int { c := ifx h[0].calm then 24 else WS_FIREFLIES; if h[0].night && !h[0].calm { c = c * 2; } if h[0].lite { c = c / 2; } return c; }
+ws_ff_home :: (h: [] Spring, i: int) -> WsV {
+  sp: f32 = 0.25 + 0.3 * ws_rand(1309, i);
+  tt := ifx h[0].calm then 0.0f32 else h[0].time * sp;
+  // the fields only (the golden field and the open field, round past the loop's end), at grass height, bobbing
+  x := ws_near(h, 22.5 + 59.0 * ws_rand(1301, i)) + 0.6 * sin(tt + cast(f32) i);
+  z := -2.6 + 9.0 * ws_rand(1303, i) + 0.5 * cos(tt * 0.8 + cast(f32) i);
+  y := ws_ground_y(x, z) + 0.28 + 0.45 * ws_rand(1307, i) + 0.12 * sin(tt * 2.3 + cast(f32) i * 2);
+  return ws_v(x, y, z);
+}
+ws_fireflies_step :: (h: [] Spring, step: f32) {
+  n := ws_ff_count(h);
+  if !h[0].ff_ready || h[0].calm {
+    for i: 0..<WS_FF_MAX { at := ws_ff_home(h, i); o := i * 6; h[0].ff[o] = at.x; h[0].ff[o + 1] = at.y; h[0].ff[o + 2] = at.z; h[0].ff[o + 3] = 0; h[0].ff[o + 4] = 0; h[0].ff[o + 5] = 0; }
+    h[0].ff_ready = true;
+    return;
+  }
+  if !(step > 0) { return; }
+  for i: 0..<n {
+    o := i * 6;
+    at := ws_ff_home(h, i);
+    dx := at.x - h[0].ff[o]; dy := at.y - h[0].ff[o + 1]; dz := at.z - h[0].ff[o + 2];
+    stiff: f32 = 0.7 + 1.6 * ws_rand(1313, i);
+    damp: f32 = 1.7 * sqrt(stiff);
+    d := sqrt(dx * dx + dz * dz) + 0.001;
+    swirl: f32 = ifx (i % 2) == 0 then 1.4f32 else -1.4f32;
+    ax := dx * stiff - h[0].ff[o + 3] * damp - dz / d * swirl * clamp(d, 0, 2);
+    ay := dy * stiff - h[0].ff[o + 4] * damp + 0.4 * sin(h[0].time * 3 + cast(f32) i);
+    az := dz * stiff - h[0].ff[o + 5] * damp + dx / d * swirl * clamp(d, 0, 2);
+    h[0].ff[o + 3] += ax * step; h[0].ff[o + 4] += ay * step; h[0].ff[o + 5] += az * step;
+    v := sqrt(h[0].ff[o + 3] * h[0].ff[o + 3] + h[0].ff[o + 4] * h[0].ff[o + 4] + h[0].ff[o + 5] * h[0].ff[o + 5]);
+    if v > 9 { k := 9 / v; h[0].ff[o + 3] *= k; h[0].ff[o + 4] *= k; h[0].ff[o + 5] *= k; }
+    h[0].ff[o] += h[0].ff[o + 3] * step; h[0].ff[o + 1] += h[0].ff[o + 4] * step; h[0].ff[o + 2] += h[0].ff[o + 5] * step;
+  }
+}
+// A small round glow that always faces the eye: a light, not a gem.
+ws_skin_glow :: (s: [] WsSkin, c: WsV, r: f32, col: [3] f32, eye: WsV) {
+  d := ws_unit(ws_sub(eye, c));
+  right := ws_unit(ws_cross(ws_v(0, 1, 0), d));
+  up := ws_cross(d, right);
+  behind := ws_sub(c, d);
+  for i: 0..<8 {
+    a0 := f32(WS_TAU) * cast(f32) i / 8; a1 := f32(WS_TAU) * cast(f32) (i + 1) / 8;
+    p0 := ws_add(c, ws_add(ws_scale(right, cos(a0) * r), ws_scale(up, sin(a0) * r)));
+    p1 := ws_add(c, ws_add(ws_scale(right, cos(a1) * r), ws_scale(up, sin(a1) * r)));
+    ws_skin_tri(s, c, p0, p1, col, behind);
+  }
+}
 ws_draw_fireflies :: (h: [] Spring, s: [] WsSkin) {
-  count := ifx h[0].calm then 14 else WS_FIREFLIES;
-  for i: 0..<count {
-    bx: f32 = -4.6 + 9.2 * ws_rand(1301, i); bz: f32 = -3.2 + 5.6 * ws_rand(1303, i); by: f32 = 0.5 + 2.6 * ws_rand(1307, i);
-    sp: f32 = 0.25 + 0.3 * ws_rand(1309, i);
-    tt := ifx h[0].calm then 0.0f32 else h[0].time * sp;
-    x := bx + 0.45 * sin(tt + cast(f32) i); y := by + 0.25 * sin(tt * 1.7 + cast(f32) i * 2); z := bz + 0.35 * cos(tt * 0.8 + cast(f32) i);
+  eye := ws_v(h[0].cam.x, h[0].cam.y, h[0].cam.z);
+  for i: 0..<ws_ff_count(h) {
+    o := i * 6;
+    x := h[0].ff[o]; y := h[0].ff[o + 1]; z := h[0].ff[o + 2];
     beat := 0.5 + 0.5 * sin(h[0].time * (1.1 + ws_rand(1311, i)) + cast(f32) i * 3);
-    k := beat * beat * 1.1;
-    if k < 0.06 { continue; }
-    ws_skin_octa(s, ws_v(x, y, z), 0.014 + 0.008 * k, 1.0, ws_gold(h, k));
+    // a firefly's own warm yellow-green, always a light (over 1), gently brighter on its beat
+    // (with reduced bloom they stay under the bloom's threshold: a soft lit glow, not a light)
+    col := ifx h[0].soft then [3] f32.[1.0, 0.98, 0.4] else [3] f32.[1.12 * (1.15 + 0.2 * beat), 1.1 * (1.15 + 0.2 * beat), 0.42 * (1.15 + 0.2 * beat)];
+    ws_skin_glow(s, ws_v(x, y, z), 0.028 + 0.012 * beat, col, eye);
+    // moving fast: a fine streak of light behind it
+    vx := h[0].ff[o + 3]; vy := h[0].ff[o + 4]; vz := h[0].ff[o + 5];
+    v := sqrt(vx * vx + vy * vy + vz * vz);
+    if v > 0.7 && !h[0].calm {
+      tail := ws_v(x - vx * 0.12, y - vy * 0.12, z - vz * 0.12);
+      side := ws_unit(ws_cross(ws_unit(ws_v(vx, vy, vz)), ws_unit(ws_sub(eye, ws_v(x, y, z)))));
+      ws_skin_strip(s, ws_v(x, y, z), tail, side, 0.014, 0.002, ifx h[0].soft then [3] f32.[0.98, 0.95, 0.42] else [3] f32.[1.1, 1.05, 0.45], eye);
+    }
+  }
+}
+
+// ---- the clouds over the open field: drifting slowly; a tap puffs one up, it blushes gold and sprinkles light
+ws_cloud_at :: (h: [] Spring, i: int) -> WsV {
+  base: f32 = 14.0 + 72.0 * cast(f32) i / cast(f32) WS_CLOUDS;
+  drift := ifx h[0].calm then 0.0f32 else h[0].time * (0.08 + 0.08 * ws_rand(1901, i));
+  x := 12.0 + ((base - 12.0 + drift) - 72.0 * floor((base - 12.0 + drift) / 72.0));
+  return ws_v(ws_near(h, x), 8.5 + 4.5 * ws_rand(1903, i), -24.0 - 16.0 * ws_rand(1905, i));
+}
+ws_cloud_hit :: (h: [] Spring, px: f32, py: f32) -> int {
+  if !h[0].viewed { return -1; }
+  best := -1; most: f32 = 1;
+  for i: 0..<WS_CLOUDS {
+    c := ws_cloud_at(h, i);
+    if abs(ws_dx(h, c.x)) > 45 { continue; }
+    sp := sty_project(h[0].view[..], c.x, c.y, c.z);
+    ep := sty_project(h[0].view[..], c.x + 2.6, c.y, c.z);
+    if !sp.ahead || !ep.ahead { continue; }
+    r := abs(ep.x - sp.x) + 10 * h[0].dpr;
+    share := sqrt((px - sp.x) * (px - sp.x) + (py - sp.y) * (py - sp.y)) / r;
+    if share < most { most = share; best = i; }
+  }
+  return best;
+}
+ws_draw_clouds :: (h: [] Spring, s: [] WsSkin) {
+  for i: 0..<WS_CLOUDS {
+    c := ws_cloud_at(h, i);
+    if abs(ws_dx(h, c.x)) > 48 { continue; }
+    t := h[0].cloud_t[i];
+    puff: f32 = 1.0;
+    if t < 3 && !h[0].calm { puff = 1 + 0.3 * exp(-t * 2) * sin(t * 9) + 0.12 * exp(-t * 1.5); }
+    col := [3] f32.[0.98, 0.86, 0.82];
+    if t < 1.8 { k := 1 - t / 1.8; col = [3] f32.[0.98 + 0.4 * k, 0.86 + 0.2 * k, 0.82 + 0.05 * k]; }
+    for b: 0..<7 {
+      ox := (ws_rand(1907 + i, b) - 0.5) * 4.6; oy := (ws_rand(1909 + i, b) - 0.3) * 1.1; oz := (ws_rand(1911 + i, b) - 0.5) * 1.6;
+      r := (1.0 + 0.9 * ws_rand(1913 + i, b)) * (1.0 - abs(ox) * 0.12) * puff;
+      bl := ws_bl(c.x + ox * puff, c.y + oy, c.z + oz, r * 1.2, r * 0.7, r, 2000 + i * 10 + b);
+      bl.seg = 7; bl.rings = 4; bl.jag = 0.15;
+      ws_skin_blob(s, bl, col);
+    }
+    // a sprinkle of light falling from it after a poke
+    if t < 2.6 && !h[0].calm {
+      for d: 0..<14 {
+        f := t - 0.06 * cast(f32) d;
+        if f < 0 || f > 2.0 { continue; }
+        dxo := (ws_rand(1915 + i, d) - 0.5) * 4.0; dzo := (ws_rand(1917 + i, d) - 0.5) * 1.5;
+        ws_skin_octa(s, ws_v(c.x + dxo, c.y - 0.8 - f * f * 2.5, c.z + dzo), 0.07 * (1 - f * 0.4), 1.6, ws_gold(h, 1.0 - f * 0.25));
+      }
+    }
+  }
+}
+
+// ---- a ribbon's halo in the grove: glyph sparks spiral off it into a ring of light that turns round it
+ws_draw_ribbon_halo :: (h: [] Spring, s: [] WsSkin) {
+  t := h[0].rfx_t;
+  if t > 7 { return; }
+  at := ws_tie(h[0].rfx_l, h[0].rfx_s);
+  cx := at.x; cy := at.y - 0.34; cz := at.z + 0.02;
+  fade: f32 = ifx t > 6 then 7 - t else 1.0f32;
+  for i: 0..<18 {
+    f := clamp((t - 0.05 * cast(f32) i) / 1.3, 0, 1);
+    e := f * f * (3 - 2 * f);
+    a := f32(WS_TAU) * cast(f32) i / 18 + (ifx h[0].calm then 0.0f32 else t * 0.8);
+    sx := at.x + 0.02 * sin(cast(f32) i); sy := at.y - 0.08 - 0.5 * cast(f32) i / 18;
+    rx := cx + cos(a) * 0.46; ry := cy + sin(a) * 0.46;
+    x := sx + (rx - sx) * e; y := sy + (ry - sy) * e + 0.12 * sin(f * 3.14159);
+    ws_skin_octa(s, ws_v(x, y, cz), 0.024 * fade + 0.004, 1.3, ws_gold(h, 0.8 + 0.4 * fade));
   }
 }
 
@@ -888,11 +2241,16 @@ ws_build_skin :: (h: [] Spring) {
   eye := ws_v(h[0].cam.x, h[0].cam.y, h[0].cam.z);
   ws_quail_draw(s[..], h[0].quail[0], h[0].tune, eye);
   ws_draw_stones(h, s[..]);
+  ws_draw_decor(h, s[..], eye);
+  ws_draw_mandala(h, s[..], eye);
+  ws_draw_brush(h, s[..]);
   ws_draw_ribbon(h, s[..], eye);
   ws_draw_water_light(h, s[..]);
   ws_draw_clue(h, s[..]);
   ws_draw_spout(h, s[..], eye);
   ws_draw_fireflies(h, s[..]);
+  ws_draw_clouds(h, s[..]);
+  ws_draw_ribbon_halo(h, s[..]);
   h[0].skin_n = s[0].n;
   h[0].tris_n = s[0].n;
   h[0].skin_gen += 1;
@@ -903,7 +2261,13 @@ ws_build_mesh :: (h: [] Spring) {
   mv := h[0].model_view[0];
   if mv.ok { mv.data = h[0].models[0..<h[0].models_n]; }
   ws_build_grove(p[..], mv);
+  ws_band_copy(p[..]);
+  ws_pen_hills(p[..]);
+  h[0].wet_at = p[0].n;
+  ws_build_wet(p[..], mv);
   h[0].mesh_n = p[0].n;
+  ws_build_heights(h[0].heights[..]);
+  h[0].ht_gen += 1;
   h[0].mesh_built = true;
   h[0].gen += 1;
   for i: 0..<WS_RECORDS * WS_RECORD_FLOATS { h[0].records[i] = 0; }
@@ -919,9 +2283,11 @@ ws_build_mesh :: (h: [] Spring) {
 ws_draws :: (h: [] Spring) {
   d := h[0].host_draws[..];
   d[0] = 0; d[1] = 6; d[2] = 0x80000000; d[3] = 1;
-  d[4] = 6; d[5] = cast(u32) (h[0].mesh_n - 6); d[6] = 0x80000001; d[7] = 1;
+  d[4] = 6; d[5] = cast(u32) (h[0].wet_at - 6); d[6] = 0x80000001; d[7] = 1;
   n := 2;
   if h[0].tris_n > 0 { d[8] = 0; d[9] = cast(u32) h[0].tris_n; d[10] = 0x80000000 | WS_SKIN_AT; d[11] = 1; n = 3; }
+  // the water last: the host draws the last ws_water_draws in the engine's water pass
+  if h[0].mesh_n > h[0].wet_at { o := n * 4; d[o] = cast(u32) h[0].wet_at; d[o + 1] = cast(u32) (h[0].mesh_n - h[0].wet_at); d[o + 2] = 0x80000001; d[o + 3] = 1; n += 1; }
   h[0].draw_n = n;
 }
 
@@ -957,12 +2323,15 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
   if !h[0].heard_kept && h[0].clock > 2.5 { h[0].heard_kept = true; ws_tell_state(h); }
   if h[0].heard_kept && h[0].dirty { ws_keep(h); }
   ws_spring_step(h, sim);
-  if h[0].slip_t >= 0 { h[0].slip_t += sim; if h[0].slip_t > 1 { h[0].slip_t = -1; } }
-  if h[0].built_t >= 0 { h[0].built_t += sim; if h[0].built_t > 3 { h[0].built_t = -1; } }
+  ws_stones_step(h, sim);
+  ws_decor_step(h, sim);
   ws_ribbon_step(h, sim);
   clue := ws_next_clue(h);
   alert := h[0].alert_now; h[0].alert_now = false;
   q := h[0].quail[..];
+  // it may come up close only while the view is home on the grove and nothing else is going on
+  q[0].near_ok = abs(h[0].pan) < 2.5 && h[0].mode == WS_MODE_GROVE && h[0].spring_t < 0 && h[0].cam_h > 0;
+  q[0].near_x = -1.5; q[0].near_z = clamp(h[0].cam.z - 4.4, 3.2, 4.6);
   ws_quail_step(q, h[0].tune, sim, clue, h[0].calm, alert);
   if q[0].called { ws_event(h, "cue", "quail.call"); }
   if q[0].clued >= 0 { ws_event(h, "clue", ws_clue_name(q[0].clued)); h[0].clue_turn += 1; }
@@ -991,21 +2360,61 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
       ws_send(h, WS_ACT_EVENT, tq[..]);
     }
   }
-  if width != h[0].cam_w || height != h[0].cam_h { h[0].cam = ws_camera_for(width, height); h[0].cam_w = width; h[0].cam_h = height; }
+  if width != h[0].cam_w || height != h[0].cam_h {
+    h[0].cam = ws_camera_for(width, height); h[0].cam_w = width; h[0].cam_h = height; h[0].cam_x0 = h[0].cam.x; h[0].cam_z0 = h[0].cam.z;
+  }
+  // the view slides along the grove (a drag, the wheel, the keys), and drifts a little with the
+  // pointer so the near things move against the far ones
+  if !h[0].panning { h[0].pan += (h[0].pan_goal - h[0].pan) * clamp(step * (ifx h[0].calm then 20.0f32 else 3.0f32), 0, 1); }
+  if h[0].cam_x0 + h[0].pan > f32(WS_WORLD_HALF) { ws_wrap(h, -f32(WS_LOOP)); }
+  else if h[0].cam_x0 + h[0].pan < -f32(WS_WORLD_HALF) { ws_wrap(h, f32(WS_LOOP)); }
+  dg := ifx h[0].calm then 0.0f32 else 1.0f32;
+  h[0].drift_x += (h[0].look_x * 0.35 * dg - h[0].drift_x) * clamp(step * 2.5, 0, 1);
+  h[0].drift_y += (-h[0].look_y * 0.12 * dg - h[0].drift_y) * clamp(step * 2.5, 0, 1);
+  h[0].cam.x = h[0].cam_x0 + h[0].pan + h[0].drift_x;
+  h[0].dolly += (h[0].dolly_goal - h[0].dolly) * clamp(step * 3, 0, 1);
+  h[0].cam.z = h[0].cam_z0 - h[0].dolly;
+  h[0].cam.y = f32(WS_AIM[1]) + h[0].drift_y;
+  h[0].cam.yaw = -h[0].drift_x * 0.025;
+  h[0].m_new += step;
+  want_m := ifx h[0].mode == WS_MODE_MANDALA then 1.0f32 else 0.0f32;
+  h[0].m_view += (want_m - h[0].m_view) * clamp(step * (ifx h[0].calm then 30.0f32 else 1.8f32), 0, 1);
+  if h[0].m_view > 0.001 {
+    e := h[0].m_view * h[0].m_view * (3 - 2 * h[0].m_view);
+    over_y: f32 = ifx ws_tall(width, height) then 13.5f32 else 9.5f32;
+    h[0].cam.x += (f32(WS_MANDALA[0]) - h[0].cam.x) * e;
+    h[0].cam.y += (over_y - h[0].cam.y) * e;
+    h[0].cam.z += (f32(WS_MANDALA[2]) + 0.6 - h[0].cam.z) * e;
+    h[0].cam.pitch = f32(WS_TILT) + (-1.48 - f32(WS_TILT)) * e;
+    h[0].cam.yaw = h[0].cam.yaw * (1 - e);
+  } else { h[0].cam.pitch = f32(WS_TILT); }
+  // the page hears where along the grove the view is (for its zone name), now and then
+  if abs(h[0].pan - h[0].told_x) > 0.5 {
+    h[0].told_x = h[0].pan;
+    tp: [1] WsText; ws_put(tp[..], "pan|"); ws_put_int(tp[..], cast(int) (h[0].cam_x0 + h[0].pan)); ws_send(h, WS_ACT_EVENT, tp[..]);
+  }
   if uniforms.count >= WS_UNIFORMS && width >= 1 && height >= 1 {
     u := uniforms;
-    _ = sty_frame(u, width, height, h[0].time, h[0].cam, ws_look());
-    _ = sty_shadow_box(u, 0, 1, -1.5, 15, 50);
+    look := ws_look_for(h);
+    _ = sty_frame(u, width, height, h[0].time, h[0].cam, look);
+    _ = sty_shadow_box(u, h[0].cam.x, 1, -1.5, ifx h[0].lite then 10.0f32 else 15.0f32, 50);
+    reach := look.grass_reach;
+    h[0].blades = sty_grass_field(u, look, h[0].cam.x - reach, -3.6, cast(int) (2 * reach / look.grass_cell), cast(int) (10.6 / look.grass_cell));
     _ = sty_reveal(u, 0, 0, 0, 0);
     _ = sty_mover(u, 0, 0, 0);
     _ = sty_wind(u, 0.6, 0.3, 0.2, 2);
     _ = sty_bare(u, 0, 0, 0, 1, 0.17, 0.17, 0.17, 4);
-    sty_ground_table(u, 0, 0, 1, 0);
+    sty_ground_table(u, WS_HT_X0, WS_HT_Z0, WS_HT_CELL, WS_HT_N);
     sty_path_clear(u);
-    u[WS_U_EXTRA] = d; u[WS_U_EXTRA + 1] = 1; u[WS_U_EXTRA + 2] = 0; u[WS_U_EXTRA + 3] = 0;
+    u[WS_U_EXTRA] = d; u[WS_U_EXTRA + 1] = 1; u[WS_U_EXTRA + 2] = 0; u[WS_U_EXTRA + 3] = ifx h[0].night then 1.0f32 else 0.0f32;
     for i: 0..<WS_UNIFORMS { h[0].view[i] = u[i]; }
     h[0].viewed = true;
   }
+  ws_fireflies_step(h, step);
+  for c: 0..<WS_CLOUDS { if h[0].cloud_t[c] < 99 { h[0].cloud_t[c] += step; } }
+  if h[0].talk_t < 9 { h[0].talk_t += step; }
+  if h[0].dab_t < 9 { h[0].dab_t += step; }
+  if h[0].rfx_t < 99 { h[0].rfx_t += step; }
   ws_build_skin(h);
   ws_draws(h);
   return 0;
@@ -1013,36 +2422,166 @@ ws_frame :: (h: [] Spring, out: [] f32, uniforms: [] f32, width: f32, height: f3
 
 ws_pointer :: (h: [] Spring, x: f32, y: f32, phase: int, kind: int, id: int, button: int) #export_c #effects(all) {
   if h.count < 1 { return; }
-  if phase == 0 { h[0].down = true; h[0].down_x = x; h[0].down_y = y; h[0].down_id = id; return; }
+  holding := h[0].held >= 0 && h[0].fly == WS_FLY_HELD;
+  if phase == 0 {
+    h[0].down = true; h[0].down_x = x; h[0].down_y = y; h[0].down_id = id; h[0].panning = false;
+    if h[0].tool >= 0 && h[0].mode == WS_MODE_DECOR { ws_brush_aim(h, x, y); if h[0].brush_on { ws_terra_dab(h, h[0].brush_x, h[0].brush_z); } return; }
+    if holding { ws_aim_at(h, x, y); }
+    if h[0].carry >= 0 { ws_decor_aim(h, x, y); }
+    return;
+  }
   if phase == 1 {
-    if kind == 0 { h[0].hover = ws_pick(h, x, y); }
+    // on an upright phone, a sideways swipe with nothing in hand slides the view along the grove
+    if kind == 0 && h[0].cam_w > 0 { h[0].look_x = clamp(x / h[0].cam_w * 2 - 1, -1, 1); h[0].look_y = clamp(y / h[0].cam_h * 2 - 1, -1, 1); }
+    if h[0].tool >= 0 && h[0].mode == WS_MODE_DECOR {
+      ws_brush_aim(h, x, y);
+      if h[0].down && h[0].brush_on {
+        dx := h[0].brush_x - h[0].dab_x; dz := h[0].brush_z - h[0].dab_z;
+        if dx * dx + dz * dz > 0.45 * 0.45 { ws_terra_dab(h, h[0].brush_x, h[0].brush_z); }
+      }
+      return;
+    }
+    if h[0].down && id == h[0].down_id && !holding && h[0].carry < 0 && h[0].mode != WS_MODE_MANDALA {
+      if !h[0].panning && abs(x - h[0].down_x) > 14 * h[0].dpr { h[0].panning = true; h[0].pan_last = x; }
+      if h[0].panning {
+        depth := h[0].cam.z - 1.0;
+        per := 2 * depth * tan(h[0].cam.fov * 0.5) / h[0].cam_h;
+        h[0].pan_goal = h[0].pan; ws_pan_by(h, -(x - h[0].pan_last) * per); h[0].pan = h[0].pan_goal; h[0].pan_last = x;
+        return;
+      }
+    }
+    // the held stone or decoration follows the pointer (a mouse, or a finger dragging it)
+    if holding && (kind == 0 || h[0].down) { ws_aim_at(h, x, y); }
+    if h[0].carry >= 0 && (kind == 0 || h[0].down) { ws_decor_aim(h, x, y); }
+    if kind == 0 {
+      h[0].hover_stone = ifx h[0].carry < 0 && !holding then ws_stone_hit(h, x, y) else -1;
+      h[0].hover = ifx h[0].hover_stone >= 0 || holding || h[0].carry >= 0 then -1 else ws_pick(h, x, y);
+    }
     return;
   }
   if phase == 2 && h[0].down && id == h[0].down_id {
     h[0].down = false;
+    if h[0].panning { h[0].panning = false; return; }
+    if h[0].paused { return; }
+    if h[0].tool >= 0 && h[0].mode == WS_MODE_DECOR { ws_keep(h); ws_tell_decor(h); return; }
     dx := x - h[0].down_x; dy := y - h[0].down_y;
-    if dx * dx + dy * dy < 400 * h[0].dpr * h[0].dpr {
-      s := ws_pick(h, x, y);
-      if s >= 0 { ws_activate(h, s); }
+    tap := dx * dx + dy * dy < 400 * h[0].dpr * h[0].dpr;
+    // carrying something: let it go where it is aimed (a tap or the end of a drag)
+    if h[0].carry >= 0 { ws_decor_aim(h, x, y); _ = ws_decor_drop(h); return; }
+    if holding {
+      ws_aim_at(h, x, y);
+      ws_drop(h);
+      ws_tell_state(h);
+      return;
     }
+    if !tap { return; }
+    if h[0].mode == WS_MODE_DECOR || h[0].mode == WS_MODE_GROVE {
+      d := ws_decor_hit(h, x, y);
+      dk := ifx d >= 0 then cast(int) h[0].decor[d * 3] else -1;
+      if d >= 0 && h[0].mode == WS_MODE_GROVE && dk >= 6 && dk <= 10 {
+        // the statue speaks: the page shows its words over its head
+        sx := ws_near(h, h[0].decor[d * 3 + 1]); sz := h[0].decor[d * 3 + 2];
+        head := sty_project(h[0].view[..], sx, ws_ground_y(sx, sz) + 1.15, sz);
+        h[0].talk_i = d; h[0].talk_t = 0;
+        tt: [1] WsText; ws_put(tt[..], "statue|"); ws_put_int(tt[..], dk); ws_put(tt[..], ","); ws_put_int(tt[..], cast(int) (head.x / h[0].dpr)); ws_put(tt[..], ","); ws_put_int(tt[..], cast(int) (head.y / h[0].dpr));
+        ws_send(h, WS_ACT_EVENT, tt[..]);
+        return;
+      }
+      if d >= 0 && (h[0].mode == WS_MODE_DECOR || !ws_hangs(cast(int) h[0].decor[d * 3])) {
+        if h[0].stocked { ws_decor_to_inv(h, d); } else if h[0].mode == WS_MODE_DECOR { ws_decor_pick_up(h, d); }
+        if h[0].stocked || h[0].mode == WS_MODE_DECOR { return; }
+      }
+    }
+    if h[0].mode == WS_MODE_MANDALA {
+      at := ws_mandala_at(h, x, y);
+      if at[0] > 0 { ws_mandala_place(h, at[0], at[1]); }
+      return;
+    }
+    if h[0].mode == WS_MODE_GROVE || (h[0].mode == WS_MODE_DECOR && h[0].tool < 0) {
+      cl := ws_cloud_hit(h, x, y);
+      if cl >= 0 { h[0].cloud_t[cl] = 0; ws_event(h, "cue", "cloud.poke"); return; }
+    }
+    if h[0].mode == WS_MODE_GROVE && abs(ws_dx(h, WS_MANDALA[0])) < 9 {
+      hit := ws_ray_plane(h, x, y, f32(WS_MANDALA[1]));
+      if hit[1] > 0.5 && ws_mandala_d(hit[0], hit[2]) < f32(WS_MANDALA_R) + 0.6 { ws_mandala_enter(h); return; }
+    }
+    // a ribbon on the tree: the page shows it up close, with its words and who tied it
+    if h[0].mode == WS_MODE_GROVE {
+      pl := ws_limb_hit(h, x, y);
+      if pl >= 0 && ws_ribbon_hit(h, x, y) < 0 {
+        ws_carry_cancel(h); ws_send_back(h);
+        h[0].mode = WS_MODE_RIBBON;
+        tl: [1] WsText; ws_put(tl[..], "ribbonat|"); ws_put_int(tl[..], pl); ws_send(h, WS_ACT_EVENT, tl[..]);
+        ws_event(h, "mode", "ribbon");
+        ws_tell_state(h);
+        return;
+      }
+    }
+    if h[0].mode == WS_MODE_GROVE {
+      rh := ws_ribbon_hit(h, x, y);
+      if rh >= 0 {
+        tr: [1] WsText; ws_put(tr[..], "ribbon|"); ws_put_int(tr[..], (rh % 100) / 8); ws_put(tr[..], ","); ws_put_int(tr[..], rh % 8); ws_put(tr[..], ","); ws_put_int(tr[..], rh / 100);
+        ws_send(h, WS_ACT_EVENT, tr[..]);
+        h[0].rfx_t = 0; h[0].rfx_l = (rh % 100) / 8; h[0].rfx_s = rh % 8;
+        ws_event(h, "cue", "ribbon.halo");
+        return;
+      }
+    }
+    bh := ws_bell_hit(h, x, y);
+    if bh >= 0 {
+      h[0].decor_t[bh] = 0;
+      ws_event(h, "cue", ifx cast(int) h[0].decor[bh * 3] == WS_DECOR_BELL then "bell.ring" else "lantern.sway");
+      return;
+    }
+    // a finished cairn: a tap knocks it down, to build again
+    ch := ws_cairn_hit(h, x, y);
+    if ch >= 0 && h[0].fly == WS_FLY_NONE { ws_cairn_fall(h, ch); return; }
+    hit := ws_stone_hit(h, x, y);
+    if hit >= 0 && h[0].fly == WS_FLY_NONE { ws_site_go(h, hit / 10); }
+    k := ifx hit >= 0 then hit % 10 else -1;
+    if k >= 0 && h[0].fly == WS_FLY_NONE {
+      // a stone straight from the pile into the hand; the panel stays shut (the page shows a hint)
+      if h[0].mode != WS_MODE_STONES { h[0].mode = WS_MODE_STONES; }
+      ws_choose(h, k);
+      ws_aim_at(h, x, y);
+      ws_event(h, "hold", ws_stone_name(k));
+      ws_tell_state(h);
+      return;
+    }
+    s := ws_pick(h, x, y);
+    if s >= 0 { ws_activate(h, s); }
     return;
   }
   h[0].down = false;
 }
 
-ws_cursor :: (h: [] Spring) -> int #export_c #effects(all) { return ifx h.count > 0 && h[0].hover >= 0 then 1 else 0; }
+// The wheel turns a held stone: a notch is 15 degrees.
+ws_wheel :: (h: [] Spring, dy: f32) #export_c #effects(all) {
+  if h.count < 1 { return; }
+  // nothing in hand: the wheel slides the view along the grove
+  if h[0].held < 0 || h[0].fly != WS_FLY_HELD { ws_pan_by(h, clamp(dy * 0.01, -6, 6)); return; }
+  h[0].wheel_owe += dy;
+  while h[0].wheel_owe >= 60 { h[0].wheel_owe -= 60; ws_turn_held(h, 1); ws_tell_state(h); }
+  while h[0].wheel_owe <= -60 { h[0].wheel_owe += 60; ws_turn_held(h, -1); ws_tell_state(h); }
+}
 
-ws_blur :: (h: [] Spring) #export_c #effects(all) { if h.count > 0 { h[0].down = false; h[0].hover = -1; } }
+ws_cursor :: (h: [] Spring) -> int #export_c #effects(all) {
+  if h.count < 1 { return 0; }
+  return ifx h[0].hover >= 0 || h[0].hover_stone >= 0 || h[0].carry >= 0 || (h[0].held >= 0 && h[0].fly == WS_FLY_HELD) then 1 else 0;
+}
+
+ws_blur :: (h: [] Spring) #export_c #effects(all) { if h.count > 0 { h[0].down = false; h[0].panning = false; h[0].hover = -1; h[0].hover_stone = -1; h[0].look_x = 0; h[0].look_y = 0; } }
 
 ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
   if h.count < 1 || length < 0 || length > WS_INBOX { return; }
   t := cast(string) h[0].inbox[0..<length];
-  if kind == WS_MSG_KEPT { ws_restore(h, t); ws_tell_state(h); return; }
+  if kind == WS_MSG_KEPT { ws_restore(h, t); ws_tell_state(h); ws_tell_decor(h); return; }
   if kind == WS_MSG_PICK { v := ws_read_int(t, 0); if v.ok && v.value >= 0 && v.value < WS_SPOTS { ws_activate(h, v.value); } return; }
   if kind == WS_MSG_STONES { if !h[0].paused { ws_stones_message(h, t); } return; }
   if kind == WS_MSG_RIBBON {
     if ws_set_ribbon(h, t, 0) {
       h[0].tied_t = 0; h[0].mode = WS_MODE_GROVE;
+      if h[0].branch / 8 < WS_GROVE_LIMBS { ws_glide_to(h, h[0].cam_x0 + 1.2); }
       ws_event(h, "cue", ifx h[0].charm == 1 then "ribbon.tie.bell" else "ribbon.tie");
       ws_keep(h);
     }
@@ -1052,7 +2591,13 @@ ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
   if kind == WS_MSG_PAUSE { v := ws_read_int(t, 0); h[0].paused = v.ok && v.value != 0; if h[0].paused { h[0].down = false; } return; }
   if kind == WS_MSG_SETTINGS {
     m := ws_read_int(t, 0);
-    if m.ok { b := ws_read_int(t, m.at); h[0].calm = m.value != 0; if b.ok { h[0].soft = b.value != 0; } }
+    if m.ok {
+      b := ws_read_int(t, m.at); h[0].calm = m.value != 0;
+      if b.ok {
+        h[0].soft = b.value != 0;
+        n := ws_read_int(t, b.at); if n.ok { h[0].night = n.value != 0; tn := ws_read_int(t, n.at); if tn.ok { h[0].toon = tn.value != 0; lv := ws_read_int(t, tn.at); if lv.ok { h[0].lite = lv.value != 0; } } }
+      }
+    }
     return;
   }
   if kind == WS_MSG_SAVE { h[0].heard_kept = true; ws_keep(h); return; }
@@ -1068,7 +2613,17 @@ ws_message :: (h: [] Spring, kind: int, length: int) #export_c #effects(all) {
     if v.ok && v.value > 0 && v.value <= 30 && h[0].quail[0].state != WS_Q_ALERT { ws_quail_speak(h[0].quail[..], cast(f32) v.value); }
     return;
   }
-  if kind == WS_MSG_CLOSE { if h[0].mode != WS_MODE_GROVE { h[0].mode = WS_MODE_GROVE; h[0].held = -1; ws_tell_state(h); } return; }
+  if kind == WS_MSG_DECOR { if !h[0].paused { ws_decor_message(h, t); } return; }
+  if kind == WS_MSG_MANDALA { ws_mandala_message(h, t); return; }
+  // the view: "p D" slides it D tenths of a metre, "g X" glides it to x = X metres
+  if kind == WS_MSG_LOOK && t.count > 1 {
+    v := ws_read_int(t, 1);
+    if v.ok && t[0] == 'p' { ws_pan_by(h, cast(f32) v.value * 0.1); }
+    if v.ok && t[0] == 'z' { h[0].dolly_goal = clamp(h[0].dolly_goal + cast(f32) v.value * 0.1, -2.5, 2.2); }
+    if v.ok && t[0] == 'g' { h[0].pan_goal = ws_goal_near(h, cast(f32) v.value); }
+    return;
+  }
+  if kind == WS_MSG_CLOSE { if h[0].mode != WS_MODE_GROVE { h[0].mode = WS_MODE_GROVE; ws_send_back(h); ws_carry_cancel(h); ws_tell_state(h); } return; }
 }
 
 ws_action_done :: (h: [] Spring) #export_c #effects(all) {
@@ -1078,11 +2633,17 @@ ws_action_done :: (h: [] Spring) #export_c #effects(all) {
 }
 
 ws_draw_count :: (h: [] Spring) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else h[0].draw_n; }
+ws_grass_instances :: (h: [] Spring) -> int #export_c #effects(all) { return ifx h.count < 1 then 0 else h[0].blades; }
+ws_grass_vertices :: (h: [] Spring) -> int #export_c #effects(all) { return ifx h.count > 0 then sty_grass_vertices(ws_look_for(h)) else 3; }
+// The host's graphics rung (0 lowest .. 3 automatic): the two lowest are light graphics.
+ws_quality :: (h: [] Spring, q: int) #export_c #effects(all) { if h.count > 0 && q >= 0 && q <= 1 { h[0].lite = true; } }
+ws_water_draws :: (h: [] Spring) -> int #export_c #effects(all) { return ifx h.count < 1 || h[0].mesh_n <= h[0].wet_at then 0 else 1; }
 ws_store_cap :: (k: int) -> int #export_c #effects(all) {
   if k == 0 { return WS_MESH_VERTICES * ARCH_VERTEX_FLOATS * 4; }
   if k == 1 { return WS_RECORDS * WS_RECORD_FLOATS * 4; }
   if k == 2 { return WS_SKIN_V * WS_SKIN_FLOATS * 4; }
   if k == 3 { return WS_SKIN_V * 4; }
+  if k == 4 { return WS_HT_FLOATS * 4; }
   return 0;
 }
 ws_store_bytes :: (h: [] Spring, k: int) -> int #export_c #effects(all) {
@@ -1091,6 +2652,7 @@ ws_store_bytes :: (h: [] Spring, k: int) -> int #export_c #effects(all) {
   if k == 1 { return WS_RECORDS * WS_RECORD_FLOATS * 4; }
   if k == 2 { return (ifx h[0].skin_n < 3 then 3 else h[0].skin_n) * WS_SKIN_FLOATS * 4; }
   if k == 3 { return WS_SKIN_V * 4; }
+  if k == 4 { return WS_HT_FLOATS * 4; }
   return 0;
 }
 ws_store_version :: (h: [] Spring, k: int) -> int #export_c #effects(all) {
@@ -1099,6 +2661,7 @@ ws_store_version :: (h: [] Spring, k: int) -> int #export_c #effects(all) {
   if k == 1 { return h[0].rec_gen; }
   if k == 2 { return h[0].skin_gen; }
   if k == 3 { return h[0].tris_gen; }
+  if k == 4 { return h[0].ht_gen; }
   return 0;
 }
 
@@ -1176,28 +2739,34 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
         }
       }
     }
+    // each spot, and every tie point with the foot of a ribbon hanging from it, is in the picture (an
+    // upright phone glides to it first)
+    tall := ws_tall(w, hh);
     for s: 0..<3 {
       q := ws_spot(s);
-      #assert ws_fits(u[..], w, hh, q[0], q[1], q[2], 0.02);
-      for k: 0..<np { #assert !ws_segment_hits(eye, ws_v(q[0], q[1], q[2]), props[k * 4], props[k * 4 + 1], props[k * 4 + 2], props[k * 4 + 3]); }
+      g := c; if tall { g.x = c.x + clamp(q[0] - c.x, f32(WS_PAN[0]), f32(WS_PAN[1])); }
+      v: [STY_UNIFORM_FLOATS] f32; _ = sty_frame(v[..], w, hh, 0, g, look);
+      #assert ws_fits(v[..], w, hh, q[0], q[1], q[2], 0.02);
+      for k: 0..<np { #assert !ws_segment_hits(ws_v(g.x, g.y, g.z), ws_v(q[0], q[1], q[2]), props[k * 4], props[k * 4 + 1], props[k * 4 + 2], props[k * 4 + 3]); }
     }
-    // every tie point, and the foot of a ribbon hanging from it, is in the picture
-    for l: 0..<WS_LIMBS {
+    for l: 0..<WS_GROVE_LIMBS {
       for sl: 0..<WS_LIMB_SLOTS {
         at := ws_tie(l, sl);
-        #assert ws_fits(u[..], w, hh, at.x, at.y, at.z, 0.02) && ws_fits(u[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
+        g := c; if tall { g.x = c.x + clamp(at.x - c.x, f32(WS_PAN[0]), f32(WS_PAN[1])); }
+        v: [STY_UNIFORM_FLOATS] f32; _ = sty_frame(v[..], w, hh, 0, g, look);
+        #assert ws_fits(v[..], w, hh, at.x, at.y, at.z, 0.02) && ws_fits(v[..], w, hh, at.x, at.y - 0.65, at.z, 0.02);
       }
     }
   }
 }
 
-#test "the quail never leaves the picture through a long visit with every activity" #steps 400000000000 {
+#test "the quail never leaves the picture through a long visit with every activity" #steps 400000000000 #traversal 536870912 {
   t: [1] WsTest; h := t[0].h[..];
   ws_test_run(t[..], 2, 0.016, 1280, 720);
   for i: 0..<6000 {
     if i == 100 { ws_test_say(h, WS_MSG_PICK, "0"); }
     if i == 1500 { ws_test_say(h, WS_MSG_PICK, "1"); ws_test_say(h, WS_MSG_STONES, "a 1"); }
-    if i > 1500 && i < 1520 { ws_test_say(h, WS_MSG_STONES, "p"); }
+    if i > 1500 && i < 1900 && i % 40 == 1 { ws_test_say(h, WS_MSG_STONES, "p"); }
     if i == 2000 { ws_test_say(h, WS_MSG_RIBBON, "1,3,1,2,stay"); }
     if i == 4000 { ws_test_say(h, WS_MSG_SETTINGS, "1 1"); }
     w: f32 = ifx (i / 1000) % 2 == 0 then 1280.0f32 else 390.0f32;
@@ -1205,14 +2774,14 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
     ws_test_run(t[..], 1, 0.016 + 0.02 * ws_rand(5, i), w, hh);
     _ = ws_test_drain(h, "");
     q := h[0].quail[0];
-    #assert ws_q_in_range(q);
-    #assert ws_fits(h[0].view[..], w, hh, q.x, ws_ground_y(q.x, q.z) + 0.2, q.z, 0.02);
+    #assert ws_q_in_range(q) || (q.roaming && q.x >= -3.4 && q.x <= 1.0 && q.z <= 5.0);   // home, or out near the camera
+    if abs(h[0].pan) < 0.05 { #assert ws_fits(h[0].view[..], w, hh, q.x, ws_ground_y(q.x, q.z) + 0.2, q.z, 0.02); }
     #assert h[0].skin_n > 0 && h[0].skin_n < WS_SKIN_V;
   }
   #assert h[0].found == WS_FOUND_ALL;
 }
 
-#test "the spring answers one touch in three phrases, the quail goes still, the gold plume blooms, and the track is found" #steps 400000000000 {
+#test "the spring answers one touch in three phrases, the quail goes still, the gold plume blooms, and the track is found" #steps 400000000000 #traversal 4000000000 {
   t: [1] WsTest; h := t[0].h[..];
   ws_test_run(t[..], 2, 0.016, 1280, 720);
   _ = ws_test_drain(h, "");
@@ -1243,31 +2812,465 @@ ws_test_shots :: [6] f32.[1280, 720,  390, 844,  2560, 1080];
   for i: 0..<h[0].skin_n { #assert h[0].skin[i * WS_SKIN_FLOATS + 6] < 1.1; }
 }
 
-#test "creek stones balance by shape and turn, assisted placement always holds, and four make the chord" #steps 40000000000 {
+// A click (down and up) at a pixel.
+ws_test_click :: (h: [] Spring, x: f32, y: f32) { ws_pointer(h, x, y, 0, 0, 1, 0); ws_pointer(h, x, y, 2, 0, 1, 0); }
+
+#test "the pool, the brook and the spill are the mesh's last triangles, drawn last in the engine's water pass over the ground table" #steps 40000000000 {
   t: [1] WsTest; h := t[0].h[..];
   ws_test_run(t[..], 2, 0.016, 1280, 720);
-  ws_test_say(h, WS_MSG_PICK, "1");
-  #assert h[0].mode == WS_MODE_STONES;
-  ws_test_say(h, WS_MSG_STONES, "c 0");       // flat
-  ws_test_say(h, WS_MSG_STONES, "t 3");       // 45 degrees: it slides off
-  ws_test_say(h, WS_MSG_STONES, "p");
-  #assert h[0].placed_n == 0 && h[0].held == 0 && h[0].slip_t == 0;
-  ws_test_say(h, WS_MSG_STONES, "t -3");
-  ws_test_say(h, WS_MSG_STONES, "p");
-  #assert h[0].placed_n == 1 && h[0].placed[0] == 0;
-  ws_test_say(h, WS_MSG_STONES, "c 2");       // round
-  ws_test_say(h, WS_MSG_STONES, "p");
-  #assert h[0].placed_n == 2;
-  ws_test_say(h, WS_MSG_STONES, "c 1");       // long, on the round one: it rolls
-  bl := ws_balance(h, 1, 0); #assert bl[0] == WS_BAL_SLIP && bl[1] == WS_WHY_ROUND;
-  ws_test_say(h, WS_MSG_STONES, "p");
-  #assert h[0].placed_n == 2;
-  ws_test_say(h, WS_MSG_STONES, "a 1");       // assisted: the same reward, no fiddling
-  ws_test_say(h, WS_MSG_STONES, "p");
-  ws_test_say(h, WS_MSG_STONES, "n");
+  #assert h[0].mesh_n > h[0].wet_at + 30 && ws_water_draws(h) == 1;
+  last := (h[0].draw_n - 1) * 4;
+  #assert cast(int) h[0].host_draws[last] == h[0].wet_at && cast(int) h[0].host_draws[last + 1] == h[0].mesh_n - h[0].wet_at;
+  falls := 0;
+  for v: h[0].wet_at..<h[0].mesh_n {
+    m := cast(int) h[0].mesh[v * ARCH_VERTEX_FLOATS + 6];
+    #assert m == ARCH_M_RIVER || m == ARCH_M_FALLS;
+    if m == ARCH_M_FALLS { falls += 1; }
+  }
+  #assert falls >= 6;
+  for v: 0..<h[0].wet_at { #assert cast(int) h[0].mesh[v * ARCH_VERTEX_FLOATS + 6] < ARCH_M_WET; }
+  // the ground table: water over the pool's floor, the spill's foot runs white
+  #assert sty_frame_ground_ok(h[0].view[..]);
+  i := cast(int) ((f32(WS_POOL_X) - f32(WS_HT_X0)) / f32(WS_HT_CELL)); j := cast(int) ((f32(WS_POOL_Z) - f32(WS_HT_Z0)) / f32(WS_HT_CELL));
+  #assert h[0].heights[(j * (WS_HT_N + 1) + i) * 4] < f32(WS_WATER_Y) - 0.15;
+  i = cast(int) ((0.05 - f32(WS_HT_X0)) / f32(WS_HT_CELL)); j = cast(int) ((0.6 - f32(WS_HT_Z0)) / f32(WS_HT_CELL));
+  #assert h[0].heights[(j * (WS_HT_N + 1) + i) * 4 + 3] > 0.5;
+}
+sty_frame_ground_ok :: (u: [] f32) -> bool { return u[STY_U_GROUND + 3] == cast(f32) WS_HT_N && u[STY_U_GROUND + 2] == f32(WS_HT_CELL); }
+
+#test "statues and a fountain stand on the grass anywhere along the grove, bells and lanterns hang from the limbs, a tap rings a bell, and all come back from the save" #steps 80000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  // Mother Mary in the meadow, the dragon in the field: not in the mandala's clearing
+  ws_test_say(h, WS_MSG_DECOR, "k 6");
+  h[0].carry_x = 14; h[0].carry_z = 3;
+  #assert ws_decor_drop(h) && cast(int) h[0].decor[0] == 6;
+  ws_test_say(h, WS_MSG_DECOR, "k 10");
+  h[0].carry_x = WS_MANDALA[0]; h[0].carry_z = WS_MANDALA[2];
+  #assert !ws_decor_drop(h);
+  h[0].carry_x = 30; h[0].carry_z = 2;
+  #assert ws_decor_drop(h) && h[0].decor_n == 2;
+  // a bell goes to a free tie point; a second bell can't share it; the keys move it along
+  ws_test_say(h, WS_MSG_DECOR, "k 11");
+  #assert h[0].carry_z < -0.5 && ws_decor_fits(h, 11, h[0].carry_x, h[0].carry_z);
+  first := ws_tie_of(h[0].carry_x);
+  #assert ws_decor_drop(h) && h[0].decor_n == 3;
+  ws_test_say(h, WS_MSG_DECOR, "k 12");
+  #assert ws_tie_of(h[0].carry_x) != first;
+  #assert !ws_decor_fits(h, 12, cast(f32) first, -1);
+  ws_test_say(h, WS_MSG_DECOR, "m 20 0");
+  #assert ws_decor_drop(h) && h[0].decor_n == 4;
+  ws_test_say(h, WS_MSG_DECOR, "q");
+  // a tap on the bell rings it (and swings it), outside decorating
+  ws_test_run(t[..], 400, 0.016, 1280, 720);
+  at := ws_hang_at(first);
+  sp := sty_project(h[0].view[..], at.x, at.y - 0.3, at.z);
   _ = ws_test_drain(h, "");
-  ws_test_say(h, WS_MSG_STONES, "p");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].decor_t[2] < 0.1 && ws_test_drain(h, "cue|bell.ring");
+  // the save keeps them all, the hanging ones on their tie points
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  #assert g[0].decor_n == 4 && cast(int) g[0].decor[6] == 11 && ws_tie_of(g[0].decor[7]) == first && cast(int) g[0].decor[3] == 10;
+  // and every kind draws inside the skin's room
+  for k: 0..<WS_DECOR_KINDS { ws_test_say(h, WS_MSG_DECOR, "k 0"); }
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+}
+
+#test "the mandala: a tap on the clearing comes in, the view goes overhead, a tap sets a piece eight times over, everyone's pieces arrive, and leaving comes back down" #steps 80000000000 #traversal 536870912 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_LOOK, "g -30");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  #assert abs(h[0].cam.x - f32(WS_MANDALA[0])) < 1.0;
+  cp := sty_project(h[0].view[..], WS_MANDALA[0], WS_MANDALA[1], WS_MANDALA[2]);
+  ws_test_click(h, cp.x, cp.y);
+  #assert h[0].mode == WS_MODE_MANDALA;
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  #assert h[0].cam.pitch < -1.3 && h[0].cam.y > 8;
+  // a tap two rings out to the east sets a piece there, of the material in hand
+  ws_test_say(h, WS_MSG_MANDALA, "k 3");
+  _ = ws_test_drain(h, "");
+  pp := sty_project(h[0].view[..], f32(WS_MANDALA[0]) + 2 * f32(WS_MANDALA_RING_M), WS_MANDALA[1], WS_MANDALA[2]);
+  ws_test_click(h, pp.x, pp.y);
+  #assert h[0].mandala_n == 1 && h[0].mandala[0] == 3 && h[0].mandala[1] == 2 && (h[0].mandala[2] == 0 || h[0].mandala[2] == 63 || h[0].mandala[2] == 1);
+  #assert ws_test_drain(h, "mandala|3,2,");
+  // everyone's pieces replace the list; too many keep the newest
+  ws_test_say(h, WS_MSG_MANDALA, "s0,1,0;1,2,5;6,7,63;9,1,1;2,9,1");
+  #assert h[0].mandala_n == 3;
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+  ws_test_say(h, WS_MSG_MANDALA, "x");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  #assert h[0].mode == WS_MODE_GROVE && h[0].cam.pitch == f32(WS_TILT) && h[0].cam.y < 2;
+}
+
+#test "five cairns along the grove: each keeps its own stack, a tap on a finished one knocks it down to build again, and the save keeps them all" #steps 80000000000 #traversal 536870912 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  // build the meadow's cairn: go there, take its stones one by one
+  ws_test_say(h, WS_MSG_LOOK, "g 14");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  for n: 0..<4 {
+    hit := -1;
+    for k: 0..<WS_STONE_N {
+      if hit >= 0 || (ws_site_pile(h, 2) & (1 << k)) == 0 { continue; }
+      p := ws_pile_of(2, k);
+      sp := sty_project(h[0].view[..], p[0], ws_pile_y_of(2, k), p[1]);
+      ws_test_click(h, sp.x, sp.y);
+      hit = k;
+    }
+    #assert h[0].site == 2 && h[0].held == hit;
+    ws_test_click(h, 640, 100);
+    ws_test_run(t[..], 90, 0.016, 1280, 720);
+  }
+  #assert ws_site_n(h, 2) == 4 && (h[0].found & WS_FOUND_CAIRN) != 0;
+  // the spring's cairn is untouched, and its stones still wait in its own pile
+  #assert ws_site_n(h, 0) == 0 && ws_site_pile(h, 0) == 31;
+  // the save keeps the meadow's stack; the spring's stays empty
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  #assert ws_site_n(g, 2) == 4 && ws_site_n(g, 0) == 0;
+  // a tap on the finished cairn knocks it down: the stones tumble home and it can be built again
+  _ = ws_test_drain(h, "");
+  cp := sty_project(h[0].view[..], WS_CAIRN_AT[4], ws_cairn_top_at(2) + 0.3, WS_CAIRN_AT[5]);
+  ws_test_click(h, cp.x, cp.y);
+  #assert ws_site_n(h, 2) == 0 && h[0].fall_t[2] >= 0 && ws_test_drain(h, "cue|cairn.fall");
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+  ws_test_run(t[..], 200, 0.016, 1280, 720);
+  #assert h[0].fall_t[2] < 0 && ws_site_pile(h, 2) == 31 && ws_stone_hit(h, 0, 0) == -1;
+}
+
+#test "the terrain brush: a ring follows the pointer, a press grows tall grass there, a drag paints a path of it, bare earth clears it, and the save keeps it" #steps 80000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_LOOK, "g 15");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_DECOR, "t 0");
+  #assert h[0].tool == 0 && h[0].mode == WS_MODE_DECOR;
+  ws_pointer(h, 640, 560, 1, 0, 1, 0);
+  #assert h[0].brush_on;
+  bx := h[0].brush_x; bz := h[0].brush_z;
+  ci := cast(int) ((bx - f32(WS_HT_X0)) / f32(WS_HT_CELL) + 0.5); cj := cast(int) ((bz - f32(WS_HT_Z0)) / f32(WS_HT_CELL) + 0.5);
+  before := h[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1];
+  ws_pointer(h, 640, 560, 0, 0, 1, 0);
+  for i: 0..<12 { ws_pointer(h, 640 + 30 * cast(f32) i, 560, 1, 0, 1, 0); }
+  ws_pointer(h, 1000, 560, 2, 0, 1, 0);
+  #assert h[0].terra_n >= 4 && h[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1] > before + 0.3 && h[0].pan_goal < 15.5;
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+  // bare earth over the first dab
+  ws_test_say(h, WS_MSG_DECOR, "t 2");
+  ws_pointer(h, 640, 560, 0, 0, 1, 0); ws_pointer(h, 640, 560, 2, 0, 1, 0);
+  #assert h[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1] < 0.3;
+  // the save brings the painted terrain back
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  #assert g[0].terra_n == h[0].terra_n && abs(g[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1] - h[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1]) < 0.05;
+  // wiping takes it all away
+  ws_test_say(h, WS_MSG_DECOR, "w");
+  #assert h[0].terra_n == 0 && abs(h[0].heights[(cj * (WS_HT_N + 1) + ci) * 4 + 1] - before) < 0.01;
+}
+
+#test "a tree lantern starts on a tie point in view, hangs only near a branch, and the free tie points glint while it is carried" #steps 80000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  // away in the meadow: it starts on the meadow oak's limbs, not on the spring's out of view
+  ws_test_say(h, WS_MSG_LOOK, "g 12");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_DECOR, "k 12");
+  first := ws_tie_of(h[0].carry_x);
+  #assert first / WS_LIMB_SLOTS == 8 || first / WS_LIMB_SLOTS == 9;
+  // a click on open grass far from any branch: refused, nothing hung out of sight
+  ws_pointer(h, 640, 700, 1, 0, 1, 0);
+  #assert h[0].carry_z < -1.5;
+  ws_test_click(h, 640, 700);
+  #assert h[0].decor_n == 0 && h[0].carry == 12;
+  // a click by a tie point hangs it there
+  at := ws_hang_at(first);
+  sp := sty_project(h[0].view[..], at.x, at.y - 0.15, at.z);
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].decor_n == 1 && ws_tie_of(h[0].decor[1]) == first;
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+}
+
+#test "the fireflies bob over the open field's grass; a tap on a cloud puffs it up, while decorating too" #steps 80000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 30, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_LOOK, "g 30");
+  ws_test_run(t[..], 600, 0.016, 1280, 720);
+  // the fireflies keep to the open field, just over the grass
+  for i: 0..<WS_FIREFLIES { o := i * 6; #assert h[0].ff[o] > 20 && h[0].ff[o + 1] < ws_ground_y(h[0].ff[o], h[0].ff[o + 2]) + 1.2; }
+  // a cloud over the open field
+  best := -1;
+  for i: 0..<WS_CLOUDS { if best < 0 { c := ws_cloud_at(h, i); sp := sty_project(h[0].view[..], c.x, c.y, c.z); if sp.ahead && sp.x > 50 && sp.x < 1230 && sp.y > 30 && sp.y < 690 { best = i; } } }
+  #assert best >= 0;
+  c := ws_cloud_at(h, best);
+  sp := sty_project(h[0].view[..], c.x, c.y, c.z);
+  _ = ws_test_drain(h, "");
+  ws_test_say(h, WS_MSG_DECOR, "o");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].cloud_t[best] < 0.1 && ws_test_drain(h, "cue|cloud.poke");
+  // and something set out in the far field stands there
+  ws_test_say(h, WS_MSG_DECOR, "k 6"); h[0].carry_x = 48; h[0].carry_z = 3;
+  #assert ws_decor_drop(h);
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+}
+
+#test "the world is stocked once: a tap picks a thing up into the inventory, it can be set down anywhere from there, and the save keeps both" #steps 80000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 200, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_DECOR, "S");
+  #assert h[0].stocked && h[0].decor_n >= 26;
+  n0 := h[0].decor_n;
+  // the lantern near the spring, picked up
+  li := -1;
+  for i: 0..<h[0].decor_n { if li < 0 && cast(int) h[0].decor[i * 3] == 0 && abs(h[0].decor[i * 3 + 1] - 3.6) < 0.1 { li = i; } }
+  #assert li >= 0;
+  lx := h[0].decor[li * 3 + 1]; lz := h[0].decor[li * 3 + 2];
+  sp := sty_project(h[0].view[..], lx, ws_ground_y(lx, lz) + 0.25, lz);
+  _ = ws_test_drain(h, "");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].decor_n == n0 - 1 && h[0].inv[0] == 1 && ws_test_drain(h, "picked|0");
+  // set down again from the inventory; with none left, there is nothing to take
+  ws_test_say(h, WS_MSG_DECOR, "k 0"); h[0].carry_x = 2.5; h[0].carry_z = 4.6;
+  #assert ws_decor_drop(h) && h[0].inv[0] == 0 && h[0].decor_n == n0;
+  ws_test_say(h, WS_MSG_DECOR, "k 0");
+  #assert h[0].carry < 0;
+  // stocking happens once; the save keeps the world and the inventory
+  ws_test_say(h, WS_MSG_DECOR, "S");
+  #assert h[0].decor_n == n0;
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  ws_test_say(g, WS_MSG_DECOR, "S");
+  #assert g[0].stocked && g[0].decor_n == n0 && g[0].inv[0] == 0;
+}
+
+#test "light graphics: the grass is a patch round the view, plainer and smaller on a phone, and follows the view along the loop" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  full := h[0].blades;
+  #assert full > 1000 && full < 30000 && ws_grass_vertices(h) > 3;
+  ws_test_say(h, WS_MSG_SETTINGS, "0 0 0 0 1");
+  ws_test_run(t[..], 2, 0.016, 390, 844);
+  #assert h[0].lite && h[0].blades < full / 2 && ws_grass_vertices(h) == 3 && ws_ff_count(h) < WS_FIREFLIES;
+  // the patch goes where the view goes
+  ws_test_say(h, WS_MSG_LOOK, "g 40");
+  ws_test_run(t[..], 300, 0.016, 390, 844);
+  #assert abs(h[0].view[STY_U_GRASS] - (h[0].cam.x - 20)) < 0.5;
+}
+
+#test "a statue speaks when tapped; with the inventory open the tap picks it up" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 200, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_DECOR, "k 8"); h[0].carry_x = 2.6; h[0].carry_z = 4.6;
+  #assert ws_decor_drop(h);
+  ws_test_say(h, WS_MSG_DECOR, "q");
+  ws_test_run(t[..], 60, 0.016, 1280, 720);
+  i := h[0].decor_n - 1;
+  sx := h[0].decor[i * 3 + 1]; sz := h[0].decor[i * 3 + 2];
+  sp := sty_project(h[0].view[..], sx, ws_ground_y(sx, sz) + 0.25, sz);
+  _ = ws_test_drain(h, "");
+  ws_test_click(h, sp.x, sp.y);
+  #assert ws_test_drain(h, "statue|8,") && h[0].talk_i == i && h[0].decor_n == i + 1;
+  ws_build_skin(h);
+  #assert h[0].skin_n < WS_SKIN_V;
+  // the inventory open: the same tap takes it into the inventory
+  h[0].stocked = true;
+  ws_test_say(h, WS_MSG_DECOR, "o");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].decor_n == i && h[0].inv[8] == 1;
+}
+
+#test "a pixel's ray meets the ground where the camera shows it" #steps 4000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  for shot: 0..<3 {
+    w: f32 = ws_test_shots[shot * 2]; hh: f32 = ws_test_shots[shot * 2 + 1];
+    ws_test_run(t[..], 1, 0.016, w, hh);
+    pts := [6] f32.[-3.75, 3.9,  1.5, 2.0,  -1.0, -1.0];
+    for i: 0..<3 {
+      x := pts[i * 2]; z := pts[i * 2 + 1];
+      sp := sty_project(h[0].view[..], x, 0.2, z);
+      hit := ws_ray_plane(h, sp.x, sp.y, 0.2);
+      #assert hit[1] > 0.5 && abs(hit[0] - x) < 0.03 && abs(hit[2] - z) < 0.03;
+    }
+  }
+}
+
+#test "the creek stones and their cairn are close to the camera and in the picture at every shape of screen" #steps 4000000000 {
+  for shot: 0..<3 {
+    w: f32 = ws_test_shots[shot * 2]; hh: f32 = ws_test_shots[shot * 2 + 1];
+    c := ws_camera_for(w, hh);
+    u: [STY_UNIFORM_FLOATS] f32; look: StyLook;
+    _ = sty_frame(u[..], w, hh, 0, c, look);
+    if ws_tall(w, hh) {
+      q := ws_spot(WS_SPOT_STONES);
+      c.x = c.x + clamp(q[0] - c.x, f32(WS_PAN[0]), f32(WS_PAN[1]));
+      _ = sty_frame(u[..], w, hh, 0, c, look);
+    }
+    for k: 0..<WS_STONE_N { p := ws_pile_of(0, k); #assert ws_fits(u[..], w, hh, p[0], ws_pile_y_of(0, k), p[1], 0.02); }
+    #assert ws_fits(u[..], w, hh, WS_CAIRN_X, 1.6, WS_CAIRN_Z, 0.02) && ws_fits(u[..], w, hh, WS_CAIRN_X, 0.1, WS_CAIRN_Z, 0.02);
+  }
+}
+
+#test "a click lifts a stone from the pile, a click anywhere sets it on the cairn, nothing ever falls off, and four make the chord" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  u := h[0].view[..];
+  // click the flat stone in the pile: it is in the hand, the right way up
+  p := ws_pile_at(h, 0);
+  sp := sty_project(u, p[0], ws_pile_y(h, 0), p[1]);
+  _ = ws_test_drain(h, "");
+  ws_test_click(h, sp.x, sp.y);
+  #assert h[0].held == 0 && h[0].fly == WS_FLY_HELD && h[0].roll == WS_STONE_BEST[0] && h[0].mode == WS_MODE_STONES;
+  #assert ws_test_drain(h, "hold|") && ws_held_holds(h);
+  // a click over the cairn: it falls and settles near the middle
+  cp := sty_project(u, f32(WS_CAIRN_X) + 0.15, ws_stack_top(h), WS_CAIRN_Z);
+  ws_pointer(h, cp.x, cp.y, 1, 0, 1, 0);
+  ws_test_run(t[..], 30, 0.016, 1280, 720);
+  ws_test_click(h, cp.x, cp.y);
+  #assert h[0].fly == WS_FLY_FALL;
+  ws_test_run(t[..], 60, 0.016, 1280, 720);
+  #assert h[0].placed_n == 1 && h[0].placed[0] == 0 && h[0].held == -1 && abs(h[0].offs[0]) < 0.1;
+  // the long stone, let go far off the stack (a click up in the sky): it still lands on the cairn
+  ws_test_say(h, WS_MSG_STONES, "c 1");
+  ws_test_run(t[..], 20, 0.016, 1280, 720);
+  ws_test_click(h, 1250, 30);
+  ws_test_run(t[..], 90, 0.016, 1280, 720);
+  #assert h[0].placed_n == 2 && h[0].held == -1 && abs(h[0].offs[2] - h[0].offs[0]) < 0.1;
+  // turning can't spoil it: the round stone, turned, still sits right and holds
+  ws_test_say(h, WS_MSG_STONES, "c 2");
+  ws_test_say(h, WS_MSG_STONES, "t 4");
+  ws_wheel(h, 600);
+  #assert h[0].roll == WS_STONE_BEST[2];
+  h[0].aim_x = f32(WS_CAIRN_X) + 1.5; h[0].aim_z = f32(WS_CAIRN_Z) - 0.8;   // aimed badly
+  ws_test_run(t[..], 20, 0.016, 1280, 720);
+  ws_drop(h);
+  ws_test_run(t[..], 90, 0.016, 1280, 720);
+  #assert h[0].placed_n == 3;
+  bl := ws_balance(h, 3, 0); #assert bl[0] == WS_BAL_STEADY;
+  _ = ws_test_drain(h, "");
+  ws_test_say(h, WS_MSG_STONES, "n"); ws_test_say(h, WS_MSG_STONES, "p");
+  ws_test_run(t[..], 90, 0.016, 1280, 720);
   #assert h[0].placed_n == 4 && (h[0].found & WS_FOUND_CAIRN) != 0 && h[0].mode == WS_MODE_GROVE;
+  #assert ws_test_drain(h, "cue|cairn.chord");
+  // a full cairn takes no more
+  ws_test_say(h, WS_MSG_STONES, "n");
+  #assert h[0].held == -1;
+  // the cairn comes back from the save with where each stone sat
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  #assert g[0].placed_n == 4 && g[0].placed[2] == 2 && abs(g[0].offs[0] - h[0].offs[0]) < 0.02;
+}
+
+#test "on an upright phone a sideways swipe looks along the grove, a tap on a spot glides there, and a swipe touches nothing" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 390, 844);
+  x0 := h[0].cam.x;
+  ws_pointer(h, 300, 600, 0, 1, 1, 0);
+  for i: 0..<10 { ws_pointer(h, 300 - 20 * cast(f32) i, 600, 1, 1, 1, 0); }
+  ws_pointer(h, 120, 600, 2, 1, 1, 0);
+  ws_test_run(t[..], 1, 0.016, 390, 844);
+  #assert h[0].cam.x > x0 + 0.3 && h[0].mode == WS_MODE_GROVE && h[0].spring_t < 0;
+  // the stones, by the button: it glides to them
+  ws_test_say(h, WS_MSG_PICK, "1");
+  ws_test_run(t[..], 120, 0.016, 390, 844);
+  q := ws_spot(WS_SPOT_STONES);
+  #assert abs(h[0].cam.x - q[0]) < 0.05;
+  // a wide screen slides too: a drag, then the wheel, move it along the grove and no further than its ends
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  h[0].pan_goal = 0; ws_test_run(t[..], 200, 0.016, 1280, 720);
+  #assert abs(h[0].pan) < 0.05;
+  ws_pointer(h, 900, 500, 0, 0, 1, 0);
+  for i: 0..<10 { ws_pointer(h, 900 - 40 * cast(f32) i, 500, 1, 0, 1, 0); }
+  ws_pointer(h, 500, 500, 2, 0, 1, 0);
+  #assert h[0].pan > 1.0;
+  // the route is a loop with no seam: slide on past the right end and the view comes round from the left
+  ws_test_say(h, WS_MSG_LOOK, "g 66");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_LOOK, "p 60");
+  ws_test_run(t[..], 300, 0.016, 1280, 720);
+  #assert h[0].cam.x < -60 && h[0].cam.x > -68;
+  // the land is the same either side of the join
+  #assert abs(ws_ground_y(67.9, 2) - ws_ground_y(-68.1, 2)) < 0.01 && abs(ws_bank_z(68) - ws_bank_z(-68)) < 0.01 && ws_zone(67.5, 2) == ws_zone(-68.5, 2);
+  // and the far zones are land: grass grows in the meadow, none in the mandala's clearing or the pool
+  #assert ws_grass_cover(18, 1.5) > 0.5 && ws_grass_cover(WS_MANDALA[0], WS_MANDALA[2]) == 0 && ws_grass_cover(WS_POOL_X, WS_POOL_Z) == 0;
+  #assert ws_zone(-30, 2) == WS_ZONE_MANDALA && ws_zone(0, 2) == WS_ZONE_GROVE && ws_zone(30, 2) == WS_ZONE_FIELD;
+}
+
+#test "assisted placement always holds" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  ws_test_say(h, WS_MSG_STONES, "a 1");
+  for i: 0..<4 {
+    ws_test_say(h, WS_MSG_STONES, "n");
+    h[0].aim_x = f32(WS_CAIRN_X) + 0.5; h[0].aim_z = WS_CAIRN_Z;   // aimed badly
+    ws_test_run(t[..], 20, 0.016, 1280, 720);
+    ws_drop(h);
+    ws_test_run(t[..], 60, 0.016, 1280, 720);
+  }
+  #assert h[0].placed_n == 4 && (h[0].found & WS_FOUND_CAIRN) != 0;
+}
+
+#test "decorations come from the basket, stand where they're set (not in the water), move, and come back from the save" #steps 40000000000 {
+  t: [1] WsTest; h := t[0].h[..];
+  ws_test_run(t[..], 200, 0.016, 1280, 720);
+  u := h[0].view[..];
+  ws_test_say(h, WS_MSG_DECOR, "o");
+  #assert h[0].mode == WS_MODE_DECOR;
+  // a lantern, carried over the ground and set down with a click
+  ws_test_say(h, WS_MSG_DECOR, "k 0");
+  #assert h[0].carry == 0;
+  at := sty_project(u, 1.8, ws_ground_y(1.8, 2.6), 2.6);
+  ws_pointer(h, at.x, at.y, 1, 0, 1, 0);
+  #assert abs(h[0].carry_x - 1.8) < 0.08 && abs(h[0].carry_z - 2.6) < 0.08;
+  ws_test_click(h, at.x, at.y);
+  #assert h[0].decor_n == 1 && h[0].carry == -1 && h[0].decor[0] == 0;
+  // it drops and settles
+  ws_test_run(t[..], 60, 0.016, 1280, 720);
+  #assert h[0].decor_t[0] > 0.5;
+  // a crystal can't stand in the pool
+  ws_test_say(h, WS_MSG_DECOR, "k 3");
+  pool := sty_project(u, WS_POOL_X, 0, WS_POOL_Z);
+  ws_test_click(h, pool.x, pool.y);
+  #assert h[0].decor_n == 1 && h[0].carry == 3;
+  ws_test_say(h, WS_MSG_DECOR, "x");
+  #assert h[0].carry == -1;
+  // bluebonnets set from the keys
+  ws_test_say(h, WS_MSG_DECOR, "k 2");
+  ws_test_say(h, WS_MSG_DECOR, "m -10 5");
+  ws_test_say(h, WS_MSG_DECOR, "p");
+  #assert h[0].decor_n == 2 && h[0].decor[3] == 2;
+  // the lantern picked up again and moved
+  lp := sty_project(u, 1.8, ws_ground_y(1.8, 2.6) + 0.25, 2.6);
+  ws_test_click(h, lp.x, lp.y);
+  #assert h[0].carry == 0 && h[0].carry_from == 0;
+  to := sty_project(u, 2.6, ws_ground_y(2.6, 1.6), 1.6);
+  ws_test_click(h, to.x, to.y);
+  #assert h[0].decor_n == 2 && abs(h[0].decor[1] - 2.6) < 0.1;
+  // the skin has room for a full basket
+  for i: 0..<14 { ws_test_say(h, WS_MSG_DECOR, "k 1"); ws_test_say(h, WS_MSG_DECOR, "m 0 0"); h[0].carry_x = -4.3 + 0.4 * cast(f32) (i % 7); h[0].carry_z = 1.2 + 1.4 * cast(f32) (i / 7); ws_test_say(h, WS_MSG_DECOR, "p"); }
+  ws_test_run(t[..], 2, 0.016, 1280, 720);
+  #assert h[0].skin_n < WS_SKIN_V - 600;
+  n := h[0].decor_n;
+  #assert n >= 14;
+  // the save keeps them
+  s: [1] WsText; ws_save_text(h, s[..]);
+  v: [1] WsTest; g := v[0].h[..];
+  ws_test_say(g, WS_MSG_KEPT, cast(string) s[0].b[0..<s[0].n]);
+  #assert g[0].decor_n == n && g[0].decor[3] == 2 && abs(g[0].decor[1] - h[0].decor[1]) < 0.02;
+  // and "c" clears them
+  ws_test_say(h, WS_MSG_DECOR, "c");
+  #assert h[0].decor_n == 0;
 }
 
 #test "the ribbon is tied with its word, catches the wind, and the whole visit comes back from its save" #steps 40000000000 {

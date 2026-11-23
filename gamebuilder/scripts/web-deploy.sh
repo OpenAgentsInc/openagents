@@ -46,7 +46,7 @@ if [[ "${1:-}" == domain ]]; then
   # API's moderated rooms (coax/web/api/room.c), the same Cloud Run service openagents.com routes to.
   rooms=""
   if has compute backend-services describe oa-api --global; then
-    rooms="  - paths: ['/api/playtest/player', '/api/playtest/player/name', '/api/playtest/chat/whispering-spring', '/api/playtest/chat/whispering-spring-ribbons', '/api/playtest/presence/whispering-spring']
+    rooms="  - paths: ['/api/playtest/player', '/api/playtest/player/name', '/api/playtest/chat/whispering-spring', '/api/playtest/chat/whispering-spring-ribbons', '/api/playtest/chat/whispering-spring-mandala', '/api/playtest/presence/whispering-spring']
     service: $base/backendServices/oa-api"
   fi
   snapshot_paths=""

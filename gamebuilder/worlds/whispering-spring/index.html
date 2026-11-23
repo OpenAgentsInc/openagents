@@ -73,10 +73,18 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #sound-more summary{cursor:pointer;color:var(--cream-dim);font-size:14px;list-style:none;text-align:right}
 #landing .foot{position:absolute;left:18px;bottom:16px;max-width:min(420px,calc(100% - 300px));font-size:14px;color:#efe3c8;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 @media (max-width:640px){
-  #landing .title{top:12%}
-  #enter{top:58%;min-width:220px}
-  #listen{right:50%;transform:translateX(50%);top:auto;bottom:150px}
-  #landing .foot{max-width:none;right:18px;bottom:92px;text-align:center}
+  /* a phone: the way in, the album and the sound stack down the screen, nothing on top of anything */
+  #landing .title{top:8%}
+  #enter{top:47%;min-width:220px;min-height:64px;padding:12px 32px}
+  #listen{right:auto;left:50%;transform:translateX(-50%);top:calc(47% + 74px);bottom:auto;min-height:52px;padding:10px 22px;white-space:nowrap}
+  #listen .moon{display:inline;margin-right:8px;font-size:18px}
+  #landing .foot{left:16px;right:16px;bottom:86px;max-width:none;text-align:center;font-size:13px}
+  #landing .corner{left:12px;right:12px;bottom:12px;flex-direction:row-reverse;justify-content:space-between;align-items:flex-end}
+  #sound-more{min-width:0;padding:8px 12px}
+  #sound-more[open]{position:absolute;right:0;bottom:56px;min-width:240px}
+}
+@media (max-width:640px) and (max-height:700px){
+  #landing .foot{display:none}
 }
 .sound{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center}
 
@@ -106,6 +114,29 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #bar{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.82),rgba(34,20,40,.82));box-shadow:0 0 18px rgba(233,163,168,.16);padding:4px}
 #bar .btn{border:0;background:none;border-radius:999px;font-family:var(--serif);font-size:17px;padding:8px 16px}
 #bar .btn:hover{background:rgba(240,215,156,.12)}
+#hint{pointer-events:none;position:fixed;z-index:30;left:50%;bottom:84px;transform:translateX(-50%);max-width:calc(100% - 24px);padding:10px 18px;border-radius:999px;border:1px solid rgba(248,220,166,.6);background:linear-gradient(180deg,rgba(66,36,72,.9),rgba(34,20,40,.9));color:#f7efdc;font-size:16px;text-align:center;box-shadow:0 0 18px rgba(233,163,168,.2)}
+#hint[data-ok="1"] b{color:var(--gold)}#hint[data-ok="0"] b{color:#f0a0ad}
+#hint kbd{font:inherit;font-size:13px;padding:1px 6px;border:1px solid rgba(248,220,166,.5);border-radius:6px}
+.decor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.decor-grid .btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px;font-size:14px}
+.decor-grid .btn .ico{font-size:24px;line-height:1}
+.decor-grid .btn[aria-pressed="true"]{border-color:var(--gold);box-shadow:0 0 10px rgba(240,215,156,.4)}
+#decor.panel{width:min(360px,calc(100% - 24px))}
+.tabs{display:flex;gap:4px;margin-top:6px;border-bottom:1px solid rgba(232,196,140,.3)}
+.tab{flex:1;min-height:40px;padding:6px 4px;border:0;border-bottom:2px solid transparent;background:none;font-family:var(--serif);font-size:15px;color:var(--cream-dim)}
+.tab[aria-selected="true"]{color:var(--gilt-hi);border-bottom-color:var(--gilt)}
+.tab:hover{color:var(--cream)}
+@media (max-width:640px){
+  /* on a phone the basket and the stones are a short tray, so the ground stays free to tap */
+  #decor.panel{max-height:40%;padding:12px 14px}
+  #decor.panel h2{font-size:19px;margin-bottom:4px}
+  #decor.panel > p.small.muted{display:none}
+  .decor-grid{grid-template-columns:repeat(6,1fr);gap:4px;margin-top:6px}
+  .decor-grid .btn{padding:6px 2px;font-size:10px;min-height:52px}
+  .decor-grid .btn .ico{font-size:20px}
+  #hint{bottom:70px;font-size:14px;padding:8px 14px;width:max-content}
+  #callout{font-size:16px;padding:8px 16px}
+}
 #bar .sep{width:1px;height:26px;background:rgba(240,215,156,.35)}
 #menu{position:fixed;right:16px;bottom:76px;display:flex;flex-direction:column;gap:4px;padding:8px;min-width:220px;background:var(--panel);border:1px solid var(--line);border-radius:14px;z-index:19}
 #menu .btn,#menu a{justify-content:flex-start;border:0;background:none;color:var(--cream);text-decoration:none;font-size:16px;min-height:44px;padding:8px 12px;border-radius:8px;display:flex;align-items:center}
@@ -116,7 +147,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 #spots .btn{background:var(--panel-soft);font-size:15px}
 #spots .btn .glint{width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);opacity:0}
 #spots .btn.clue .glint{opacity:1}
-.quiet #quest,.quiet #minijournal,.quiet #callout,.quiet #g-sound{display:none!important}
+.quiet #minijournal,.quiet #g-sound,.quiet #t-account,.quiet .look,.quiet #zone{display:none!important}
 @media (max-width:640px){
   #minijournal{display:none}
   #quest{padding:10px 14px;min-width:0}
@@ -126,7 +157,7 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
   #bar .label{display:none}
   #g-sound .label{display:none}
 }
-#caption{position:fixed;left:50%;bottom:136px;transform:translateX(-50%);max-width:min(680px,calc(100% - 24px));padding:10px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-family:var(--serif);font-size:18px;text-align:center;transition:opacity .4s}
+#caption{pointer-events:none;position:fixed;left:50%;bottom:136px;transform:translateX(-50%);max-width:min(680px,calc(100% - 24px));padding:10px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-family:var(--serif);font-size:18px;text-align:center;transition:opacity .4s}
 #caption.gone{opacity:0}
 .panel{position:fixed;z-index:35;right:12px;top:72px;width:min(420px,calc(100% - 24px));max-height:calc(100% - 170px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px}
 .panel h2{font-size:24px;margin-bottom:10px}
@@ -143,11 +174,103 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
 .status.found{color:var(--gold)}
 .lyric{font-family:var(--serif);font-style:italic;white-space:pre-line;font-size:18px;line-height:1.6;border-left:2px solid var(--gold);padding:4px 0 4px 14px;margin:8px 0}
 .transcript{white-space:pre-line;font-size:15px;border:1px dashed var(--line);border-radius:10px;padding:10px;margin-top:8px}
-.balance{font-size:17px;padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.25)}
-.balance[data-b="0"]::before{content:"● ";color:#9fc28a}.balance[data-b="1"]::before{content:"◐ ";color:var(--gold)}.balance[data-b="2"]::before{content:"○ ";color:#e19a7c}
 #found{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(15,10,6,.45)}
 #found .card{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--gold);border-radius:18px;padding:24px;text-align:center}
 #found h2{font-size:28px;margin:6px 0 4px}
+#ribbon-card{position:fixed;inset:0;z-index:42;display:flex;align-items:center;justify-content:center;padding:16px;background:radial-gradient(ellipse at 50% 40%,rgba(20,12,20,.35),rgba(10,6,10,.78))}
+#ribbon-card .card{position:relative;width:min(420px,100%);max-height:calc(100% - 24px);overflow:auto;padding:22px 22px 18px;text-align:center;border-radius:18px;background:linear-gradient(180deg,rgba(54,30,58,.97),rgba(26,16,30,.97));border:1px solid rgba(232,196,140,.8);box-shadow:inset 0 0 0 5px rgba(20,12,24,.6),inset 0 0 0 6px rgba(232,196,140,.3),0 20px 60px rgba(0,0,0,.6)}
+#ribbon-card .close{position:absolute;top:10px;right:10px}
+#ribbon-card .rc-art{display:flex;justify-content:center;margin:6px 0 4px}
+#ribbon-card .rc-art svg{max-height:46vh;width:auto;filter:drop-shadow(0 8px 18px rgba(0,0,0,.45))}
+@media (prefers-reduced-motion:no-preference){#ribbon-card .rc-art svg{animation:rc-sway 5s ease-in-out infinite;transform-origin:50% 0}}
+@keyframes rc-sway{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
+/* the ribbon's script unfurls: glyphs glow and lift away as sparks, the sparks fly out into a ring,
+   and the ring is the phrase, turning slowly like a halo */
+#ribbon-card .rc-art svg{overflow:visible;height:min(58vh,480px);width:auto;max-height:none}
+#ribbon-card .card{width:min(480px,100%)}
+.rc-halo{transform-box:view-box;transform-origin:120px 190px;opacity:0;filter:drop-shadow(0 0 4px rgba(255,214,150,.8))}
+.rc-halo.quiet{opacity:.45}
+@media (prefers-reduced-motion:no-preference){
+  .rc-g{animation:rc-glyph 1.5s ease-in forwards;animation-delay:calc(var(--i) * 90ms + 500ms)}
+  .rc-p{opacity:0;animation:rc-spark 1.3s cubic-bezier(.3,.1,.3,1) forwards;animation-delay:calc(var(--i) * 90ms + 900ms)}
+  .rc-halo{animation:rc-halo-in 1.2s ease-out 2.1s forwards,rc-turn 40s linear 2.1s infinite}
+  .rc-halo.quiet{animation:rc-turn 40s linear infinite}
+}
+@media (prefers-reduced-motion:reduce){.rc-halo{opacity:1}.rc-p{display:none}}
+body.calm .rc-g,body.calm .rc-p,body.calm .rc-halo{animation:none!important}
+body.calm .rc-halo{opacity:1}body.calm .rc-p{display:none}
+@keyframes rc-glyph{0%{opacity:1}35%{opacity:1;stroke:#ffe6b0;filter:drop-shadow(0 0 3px #ffd890)}100%{opacity:.12}}
+@keyframes rc-spark{0%{opacity:0;transform:translate(0,0)}15%{opacity:1}85%{opacity:1}100%{opacity:0;transform:translate(var(--tx),var(--ty))}}
+@keyframes rc-halo-in{from{opacity:0}to{opacity:1}}
+@keyframes rc-turn{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+#ribbon-card h2{font-size:24px;margin:4px 0}
+#ribbon-card .rc-word{font-family:var(--serif);font-style:italic;font-size:26px;line-height:1.3;color:var(--gold-strong);margin:6px 0 8px;overflow-wrap:anywhere}
+#zone{position:fixed;left:50%;top:22px;transform:translateX(-50%);font-family:"Obsidian Quail Display",var(--serif);font-size:clamp(18px,2.2vw,26px);letter-spacing:.18em;text-transform:uppercase;color:#fbf1e6;text-shadow:0 0 18px rgba(233,163,168,.5),0 2px 10px rgba(30,14,30,.8);pointer-events:none;opacity:0;transition:opacity 1s}
+#zone.show{opacity:1}
+.look{position:fixed;top:50%;transform:translateY(-50%);width:52px;height:88px;border-radius:26px;font-size:34px;line-height:1;background:rgba(38,22,42,.38);border-color:rgba(240,215,156,.35);opacity:.55;transition:opacity .3s}
+.look:hover,.look:focus-visible{opacity:1;background:rgba(38,22,42,.7)}
+#look-l{left:10px}#look-r{right:10px}
+#m-join{position:fixed;left:50%;bottom:86px;transform:translateX(-50%)}
+#mandala.panel{width:min(300px,calc(100% - 24px))}
+.m-kinds{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px}
+.m-kind{font-size:14px;padding:8px 10px;justify-content:flex-start}
+.m-kind .dot{width:16px;height:16px;border-radius:50%;border:1px solid rgba(255,255,255,.6);flex:none}
+.m-kinds .btn[aria-pressed="true"]{border-color:var(--gold);box-shadow:0 0 10px rgba(240,215,156,.45)}
+.m-keys{margin-top:8px;font-size:14px}
+@media (max-width:640px){#mandala.panel{max-height:38%}.m-kinds{grid-template-columns:repeat(4,1fr)}.m-kind{font-size:11px;padding:6px}.look{width:44px;height:70px;font-size:28px}}
+/* ---- the art: obsidian and gilt, a fine grain, corner flourishes; every text at least 4.5:1 */
+:root{--ink:#140c16;--gilt:#e8c48c;--gilt-hi:#ffe4ae;--epic:#c59cff;--legend:#ffb347;--rare:#7fb6ff;--common:#e9dfd2;--poor:#9a8f88}
+.panel{background:linear-gradient(180deg,rgba(46,26,50,.96),rgba(22,13,26,.96));border:1px solid rgba(232,196,140,.7);border-radius:6px;box-shadow:inset 0 0 0 4px rgba(16,9,20,.65),inset 0 0 0 5px rgba(232,196,140,.28),0 18px 50px rgba(0,0,0,.5)}
+.panel::before,.panel::after{content:"";position:absolute;width:26px;height:26px;border:2px solid var(--gilt);pointer-events:none;opacity:.85}
+.panel::before{left:6px;top:6px;border-right:0;border-bottom:0;border-radius:6px 0 0 0}
+.panel::after{right:6px;bottom:6px;border-left:0;border-top:0;border-radius:0 0 6px 0}
+.panel h2{font-family:"Obsidian Quail Display",var(--serif);letter-spacing:.12em;text-transform:uppercase;font-size:21px;color:var(--gilt-hi);text-shadow:0 0 14px rgba(233,163,168,.35)}
+.panel h2::after{content:"";display:block;height:1px;margin:8px 0 2px;background:linear-gradient(90deg,var(--gilt),transparent)}
+#t-account{position:fixed;left:16px;top:16px;border-radius:999px;background:rgba(38,22,42,.66);border-color:rgba(240,215,156,.5);font-family:var(--serif);font-size:16px;padding:6px 16px 6px 6px}
+.avatar{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#5a3a62,#20122a);border:1px solid var(--gilt);color:var(--gilt-hi)}
+.avatar.big{width:56px;height:56px;font-size:24px}
+.acct-card{display:flex;gap:12px;align-items:center;margin:6px 0 12px}
+.acct-name{font-family:var(--serif);font-size:20px}
+.album-buy{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:12px;border:1px solid rgba(232,196,140,.35);border-radius:8px;background:rgba(0,0,0,.2)}
+.album-buy h3{font-size:19px}
+.cover{width:96px;height:96px;border-radius:4px;border:1px solid var(--gilt);background:radial-gradient(circle at 50% 70%,rgba(255,214,140,.9) 0 6%,transparent 7%),radial-gradient(ellipse at 50% 78%,#2f6f6c 0 22%,transparent 23%),linear-gradient(180deg,#4a2a3e,#1d1220 60%,#2a1a14);box-shadow:0 6px 16px rgba(0,0,0,.45)}
+#soon{position:fixed;inset:0;z-index:45;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,6,12,.6)}
+#soon .card{width:min(400px,100%);text-align:center;padding:24px;border-radius:8px;background:linear-gradient(180deg,rgba(54,30,58,.98),rgba(26,16,30,.98));border:1px solid var(--gilt);box-shadow:inset 0 0 0 5px rgba(16,9,20,.6),inset 0 0 0 6px rgba(232,196,140,.3)}
+#soon h2{font-size:26px;margin:4px 0 8px}
+#soon p{margin-bottom:14px}
+/* the inventory: a bag of square slots, rarity in the border, a tooltip card beside it */
+.inv{width:min(720px,calc(100% - 24px))}
+.inv-body{display:grid;grid-template-columns:auto 1fr;gap:16px;margin-top:6px}
+.inv-sub{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--cream-dim);margin-bottom:8px}
+.bag{display:grid;grid-template-columns:repeat(5,60px);gap:6px;padding:8px;border-radius:6px;background:repeating-linear-gradient(45deg,rgba(255,255,255,.015) 0 6px,transparent 6px 12px),rgba(0,0,0,.35);border:1px solid rgba(232,196,140,.25)}
+.slot{position:relative;width:60px;height:60px;padding:0;border-radius:6px;border:2px solid var(--poor);background:radial-gradient(circle at 50% 35%,rgba(255,255,255,.12),rgba(0,0,0,.4));font-size:28px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 10px rgba(0,0,0,.6)}
+.slot[data-r="legend"]{border-color:var(--legend);box-shadow:inset 0 0 10px rgba(0,0,0,.6),0 0 10px rgba(255,179,71,.45)}
+.slot[data-r="epic"]{border-color:var(--epic);box-shadow:inset 0 0 10px rgba(0,0,0,.6),0 0 8px rgba(197,156,255,.4)}
+.slot[data-r="rare"]{border-color:var(--rare)}
+.slot[data-r="common"]{border-color:var(--common)}
+.slot.locked{filter:grayscale(1) brightness(.55)}
+.slot.empty{border-style:dashed;border-color:rgba(232,196,140,.18);background:rgba(0,0,0,.2);box-shadow:none;cursor:default}
+.slot[aria-selected="true"]{outline:3px solid var(--gilt-hi);outline-offset:2px}
+.slot .qty{position:absolute;right:4px;bottom:2px;font-size:12px;font-family:var(--sans);color:#fff;text-shadow:0 1px 2px #000}
+.tip{min-height:200px;padding:12px 14px;border-radius:6px;background:linear-gradient(180deg,rgba(12,8,16,.92),rgba(20,12,24,.92));border:1px solid rgba(232,196,140,.45)}
+.tip .name{font-family:var(--serif);font-size:20px;line-height:1.25}
+.tip .name[data-r="legend"]{color:var(--legend)}.tip .name[data-r="epic"]{color:var(--epic)}.tip .name[data-r="rare"]{color:var(--rare)}.tip .name[data-r="common"]{color:var(--common)}.tip .name[data-r="poor"]{color:var(--poor)}
+.tip .kind{font-size:13px;color:var(--cream-dim);margin:2px 0 8px}
+.tip .flavor{font-family:var(--serif);font-style:italic;color:#f0d79c;margin:8px 0}
+.tip .use{color:#7ee08a;font-size:14px}
+@media (max-width:640px){#inventory.panel.inv,.panel.wide,#ribbon.panel{width:auto;left:12px;right:12px}.inv-body{grid-template-columns:minmax(0,1fr);gap:10px}.inv-body > div,.bag,.slot{min-width:0}.slot{font-size:24px}.tip{min-height:0}.bag{grid-template-columns:repeat(5,1fr)}.slot{width:auto;aspect-ratio:1}#t-account .label{display:none}}
+/* the chat pane: moved by its grip */
+#chat header{cursor:move}
+.grip{min-height:36px;min-width:36px;padding:2px 8px;border:0;background:none;font-size:18px;cursor:move;touch-action:none}
+#minijournal{bottom:84px}
+body.night .panel,body.night #bar{box-shadow:inset 0 0 0 4px rgba(10,8,22,.7),inset 0 0 0 5px rgba(170,190,255,.25),0 18px 50px rgba(0,0,0,.6)}
+#toast{position:fixed;left:50%;top:64px;transform:translate(-50%,-6px);z-index:31;padding:8px 18px;border-radius:999px;border:1px solid rgba(248,220,166,.7);background:linear-gradient(180deg,rgba(66,36,72,.94),rgba(34,20,40,.94));color:#fbf1e6;font-family:var(--serif);font-size:17px;pointer-events:none;opacity:0;transition:opacity .3s,transform .3s}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#fade{position:fixed;inset:0;z-index:28;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,#3a1f36,#140a14);opacity:0}
+#fade.go{animation:fade-over .9s ease-out}
+@keyframes fade-over{0%{opacity:1}100%{opacity:0}}
+.pr-item{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center}
+.pr-mini svg{overflow:visible}
 #paused{position:fixed;inset:0;z-index:25;display:flex;align-items:center;justify-content:center;background:rgba(15,10,6,.55)}
 #paused .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;text-align:center}
 #textmode{position:fixed;inset:0;z-index:15;overflow:auto;padding:84px 16px 140px;background:linear-gradient(180deg,#2a1f15,#1b130c)}
@@ -198,35 +321,33 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
         </div>
       </details>
     </div>
-    <p class="foot">No account needed: play as a guest. What you find stays on this device; ribbons and chat are shared with the grove. <button class="btn small" id="l-settings" type="button" style="min-height:40px;padding:4px 10px;background:rgba(20,14,9,.55)">More settings</button></p>
+    <p class="foot">No account needed: wander as a guest. What you find stays on this device; ribbons and chat are shared with the grove. <button class="btn small" id="l-settings" type="button" style="min-height:40px;padding:4px 10px;background:rgba(20,14,9,.55)">More settings</button></p>
   </section>
 
   <!-- In the grove -->
   <div id="hud" hidden>
-    <section id="quest" class="frame-card" aria-labelledby="quest-title">
-      <h2 id="quest-title">Album Quest</h2><span class="rule" aria-hidden="true"></span>
-      <p id="quest-goal">Listen to the spring</p>
-      <p id="quest-count">0 of 3 lore pages found</p>
-    </section>
-    <button id="minijournal" class="frame-card" type="button" aria-label="Open the album journal" aria-controls="journal">
-      <h2>Album Journal</h2><span class="rule" aria-hidden="true"></span>
+    <button id="minijournal" class="frame-card" type="button" aria-label="Open your inventory" aria-controls="inventory">
+      <h2>Inventory</h2><span class="rule" aria-hidden="true"></span>
       <ul id="mini-list"></ul>
     </button>
-    <button id="callout" type="button" hidden>Listen to the Spring</button>
+    <button class="btn" id="t-account" type="button" aria-controls="account"><span class="avatar" aria-hidden="true">&#10022;</span><span class="label" id="t-account-label">Sign in</span></button>
     <button class="btn" id="g-sound" type="button" aria-pressed="true"><span class="icon" aria-hidden="true">&#9834;</span><span class="label" id="g-sound-label">Sound on</span></button>
     <nav id="bar" aria-label="Grove">
       <button class="btn" id="t-chat" type="button" aria-controls="chat" aria-expanded="false"><span aria-hidden="true">&#128172;</span> <span class="label">Live Chat</span> <span id="chat-unread" class="small"></span></button>
       <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="t-bag" type="button" aria-controls="inventory"><span aria-hidden="true">&#127890;</span> <span class="label">Inventory</span></button>
+      <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="t-menu" type="button" aria-controls="menu" aria-expanded="false"><span aria-hidden="true">&#9776;</span> <span class="label">Menu</span></button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="btn" id="t-night" type="button" aria-pressed="false" aria-label="Night"><span aria-hidden="true">&#10022;</span> <span class="label">Night</span></button>
       <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="t-quiet" type="button" aria-pressed="false"><span aria-hidden="true">&#9790;</span> <span class="label">Quiet View</span></button>
     </nav>
     <div id="menu" hidden role="menu" aria-label="Menu">
-      <button class="btn" id="t-disc" type="button" role="menuitem" aria-controls="discoveries" aria-expanded="false">Discoveries</button>
-      <button class="btn" id="t-journal" type="button" role="menuitem" aria-controls="journal" aria-expanded="false">Album journal</button>
+      <button class="btn" id="t-inv" type="button" role="menuitem" aria-controls="inventory" aria-expanded="false">Inventory</button>
+      <button class="btn" id="t-journal" type="button" role="menuitem" aria-controls="journal" aria-expanded="false">Lore journal</button>
       <button class="btn" id="t-prayers" type="button" role="menuitem" aria-controls="prayers" aria-expanded="false">Prayers on the tree</button>
       <button class="btn" id="t-settings" type="button" role="menuitem" aria-controls="settings" aria-expanded="false">Settings</button>
-      <button class="btn" id="t-pause" type="button" role="menuitem">Pause</button>
       <button class="btn" id="t-leave" type="button" role="menuitem">Leave the grove</button>
       <a id="back" href="/" role="menuitem">Back to GameBuilder</a>
     </div>
@@ -238,40 +359,49 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     </div>
     <div id="bubble" class="gone" aria-hidden="true"><span class="who">The quail</span><span id="bubble-text"></span></div>
     <section id="chat" hidden aria-labelledby="chat-title">
-      <header><h2 id="chat-title">Grove chat</h2><span id="chat-count" aria-live="polite"></span><button class="btn close" type="button" id="chat-close" aria-label="Close chat" style="position:static;min-height:40px;min-width:40px;padding:4px 10px">✕</button></header>
+      <header id="chat-head"><button class="btn grip" type="button" id="chat-grip" aria-label="Move the chat (drag, or use the arrow keys)" title="Drag to move">&#10303;</button><h2 id="chat-title">Grove chat</h2><span id="chat-count" aria-live="polite"></span><button class="btn close" type="button" id="chat-close" aria-label="Close chat" style="position:static;min-height:40px;min-width:40px;padding:4px 10px">✕</button></header>
       <ul id="chat-log" aria-live="polite" aria-label="Messages"></ul>
       <form id="chat-form"><label for="chat-input" class="sr">Say something to the grove</label><input id="chat-input" type="text" maxlength="300" autocomplete="off" placeholder="Say something kind"><button class="btn primary" type="submit">Send</button></form>
     </section>
     <div id="caption" class="gone" aria-hidden="true"></div>
+    <p id="zone" aria-live="polite"></p>
+    <button class="btn look" id="look-l" type="button" aria-label="Look left along the grove">&#8249;</button>
+    <button class="btn look" id="look-r" type="button" aria-label="Look right along the grove">&#8250;</button>
+    <button class="btn primary" id="m-join" type="button" hidden>Join the mandala</button>
   </div>
 
-  <!-- Discoveries -->
-  <section id="discoveries" class="panel" hidden aria-labelledby="disc-title" tabindex="-1">
-    <h2 id="disc-title">Discoveries</h2>
-    <button class="btn close" type="button" data-close aria-label="Close discoveries">✕</button>
-    <p class="muted small" id="disc-count"></p>
-    <ul class="list" id="disc-list"></ul>
-    <p style="margin-top:12px" id="disc-clue" class="muted"></p>
+  <!-- Decorate -->
+  <section id="decor" class="panel" hidden aria-labelledby="decor-title" tabindex="-1">
+    <h2 id="decor-title">Decorate the grove</h2>
+    <button class="btn close" type="button" data-close aria-label="Close decorating">✕</button>
+    <div class="tabs" id="decor-tabs" role="tablist" aria-label="Shelves"></div>
+    <div class="decor-grid" id="decor-items"></div>
+    <p class="small" id="decor-status" aria-live="polite" style="margin-top:10px"></p>
+    <div class="row" id="decor-keys" style="margin-top:8px" hidden>
+      <button class="btn small" type="button" data-move="-2 0" aria-label="Move left">←</button>
+      <button class="btn small" type="button" data-move="0 -2" aria-label="Move back">↑</button>
+      <button class="btn small" type="button" data-move="0 2" aria-label="Move forward">↓</button>
+      <button class="btn small" type="button" data-move="2 0" aria-label="Move right">→</button>
+      <button class="btn small primary" id="decor-set" type="button">Set it here</button>
+      <button class="btn small" id="decor-back" type="button">Put back</button>
+      <button class="btn small" id="decor-remove" type="button" hidden>Remove</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="decor-clear" type="button">Clear all</button><button class="btn small" id="decor-wipe" type="button" hidden>Undo my terrain</button></div>
   </section>
+  <p id="hint" hidden aria-live="polite"></p>
 
-  <!-- Stones -->
-  <section id="stones" class="panel" hidden aria-labelledby="stones-title" tabindex="-1">
-    <h2 id="stones-title">Stack creek stones</h2>
-    <button class="btn close" type="button" data-close aria-label="Close stones">✕</button>
-    <p class="small muted">Pick a stone, turn it, set it on the cairn. Each stone you set plays a note; four make a chord you voiced. Wide, flat stones hold best low down; a round stone only takes a pebble.</p>
-    <fieldset style="margin-top:10px"><legend>Stone in hand</legend><div id="stone-choices"></div></fieldset>
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="turn-l" type="button" aria-label="Turn left 15 degrees" aria-keyshortcuts="Q">↺ Turn</button>
-      <span id="turn-at" aria-live="polite">0°</span>
-      <button class="btn" id="turn-r" type="button" aria-label="Turn right 15 degrees" aria-keyshortcuts="E">Turn ↻</button>
-    </div>
-    <p class="balance" id="balance" data-b="0" style="margin-top:10px" aria-live="polite"></p>
-    <div class="row" style="margin-top:10px">
-      <button class="btn primary" id="place" type="button" aria-keyshortcuts="Enter">Set it on the cairn</button>
-      <label class="check"><input type="checkbox" id="assist"> Assisted placement</label>
-    </div>
-    <p class="small muted" style="margin-top:8px" id="cairn-desc"></p>
-    <div class="row" style="margin-top:8px"><button class="btn small" id="rebuild" type="button">Take the cairn down</button></div>
+  <!-- The mandala -->
+  <section id="mandala" class="panel" hidden aria-labelledby="m-title" tabindex="-1">
+    <h2 id="m-title">The mandala</h2>
+    <button class="btn close" type="button" id="m-leave" aria-label="Leave the mandala">✕</button>
+    <p class="small muted" id="m-count"></p>
+    <div class="m-kinds" id="m-kinds" role="group" aria-label="Material in hand"></div>
+    <details class="m-keys"><summary>Place by number</summary>
+      <div class="row" style="margin-top:6px"><label for="m-ring">Ring</label><input id="m-ring" type="range" min="1" max="7" value="3"><output id="m-ring-out">3</output></div>
+      <div class="row"><label for="m-angle">Angle</label><input id="m-angle" type="range" min="0" max="355" step="5" value="0"><output id="m-angle-out">0°</output></div>
+      <button class="btn small primary" id="m-place" type="button">Set a piece</button>
+    </details>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="m-clear" type="button">Clear the mandala</button></div>
   </section>
 
   <!-- Ribbon -->
@@ -290,9 +420,62 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     </form>
   </section>
 
+  <!-- Inventory: the album as a bag of relics, songs and keepsakes -->
+  <section id="inventory" class="panel wide inv" hidden aria-labelledby="inv-title" tabindex="-1">
+    <h2 id="inv-title">Inventory</h2>
+    <button class="btn close" type="button" data-close aria-label="Close inventory">✕</button>
+    <div class="inv-body">
+      <div>
+        <p class="inv-sub" id="inv-gold"></p>
+        <div class="bag" id="bag" role="listbox" aria-label="Your items"></div>
+      </div>
+      <article class="tip" id="tip" aria-live="polite"></article>
+    </div>
+  </section>
+
+  <!-- Account (a preview: nothing here is live yet) -->
+  <section id="account" class="panel" hidden aria-labelledby="acct-title" tabindex="-1">
+    <h2 id="acct-title">Your account</h2>
+    <button class="btn close" type="button" data-close aria-label="Close account">✕</button>
+    <div id="acct-out">
+      <p class="small muted">Sign in to keep what you find across devices, own the album, and download it.</p>
+      <form id="signin" class="stack" style="margin-top:10px" autocomplete="off">
+        <label for="si-email">Email</label>
+        <input id="si-email" type="text" inputmode="email" placeholder="you@example.com">
+        <button class="btn primary" type="submit">Email me a sign-in code</button>
+        <button class="btn" type="button" id="si-oa">Continue with OpenAgents</button>
+      </form>
+      <button class="btn small" type="button" id="si-preview" style="margin-top:12px">Preview signed in</button>
+    </div>
+    <div id="acct-in" hidden>
+      <div class="acct-card"><span class="avatar big" aria-hidden="true">&#10022;</span><div><p class="acct-name">Quail Friend</p><p class="small muted">Preview account</p></div></div>
+      <div class="album-buy">
+        <div class="cover" aria-hidden="true"></div>
+        <div>
+          <h3>The Whispering Spring</h3>
+          <p class="small muted">Obsidian Quail · digital album · price set by the artist</p>
+          <p class="small" id="own-state">Not in your inventory yet.</p>
+          <div class="row" style="margin-top:8px"><button class="btn primary" type="button" id="buy">Buy the album</button><button class="btn small" type="button" id="own-preview" aria-pressed="false">Preview owning it</button></div>
+        </div>
+      </div>
+      <button class="btn small" type="button" id="si-out" style="margin-top:12px">Sign out of the preview</button>
+    </div>
+  </section>
+
+  <div id="fade" aria-hidden="true"></div>
+  <p id="toast" aria-hidden="true"></p>
+  <div id="soon" hidden role="dialog" aria-modal="true" aria-labelledby="soon-title">
+    <div class="card">
+      <p class="status found">A preview</p>
+      <h2 id="soon-title">Not ready yet</h2>
+      <p id="soon-text"></p>
+      <button class="btn primary" type="button" id="soon-ok">I see</button>
+    </div>
+  </div>
+
   <!-- Journal -->
   <section id="journal" class="panel wide" hidden aria-labelledby="journal-title" tabindex="-1">
-    <h2 id="journal-title">Album journal</h2>
+    <h2 id="journal-title">Lore journal</h2>
     <button class="btn close" type="button" data-close aria-label="Close journal">✕</button>
     <p class="small muted">Pages of the quail's story you have uncovered. The words are placeholders until the artist writes her own.</p>
     <ul class="list" id="journal-list" style="margin-top:10px"></ul>
@@ -325,11 +508,14 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
       <label class="check"><input type="checkbox" id="s-captions" checked> Captions for sounds and transcripts</label>
       <label class="check"><input type="checkbox" id="s-motion"> Reduced motion</label>
       <label class="check"><input type="checkbox" id="s-bloom"> Reduced bloom (softer gold glow)</label>
+      <label class="check"><input type="checkbox" id="s-lite"> Light graphics (for phones and slower computers)</label>
+      <fieldset><legend>Time of day</legend><label class="choice"><input type="radio" name="s-time" value="golden" checked> Dusk</label><label class="choice"><input type="radio" name="s-time" value="night"> Night</label></fieldset>
+      <fieldset><legend>Shading</legend><label class="choice"><input type="radio" name="s-shade" value="painted" checked> Painted</label><label class="choice"><input type="radio" name="s-shade" value="toon"> Toon</label></fieldset>
       <label class="check"><input type="checkbox" id="s-text"> Text-first grove (the same discoveries, in words)</label>
       <label class="check"><input type="checkbox" id="s-voice" checked> The quail's voice (babble when it speaks)</label>
       <div class="row"><label for="s-name" style="min-width:90px">Your name in the grove</label><input id="s-name" type="text" maxlength="40" autocomplete="nickname" placeholder="Guest" style="flex:1"><button class="btn small" id="s-name-save" type="button">Save</button></div>
-      <p class="small muted">Keys: 1 water · 2 stones · 3 ribbon · D discoveries · J journal · P pause · Esc close. In the stones: Q / E turn, Enter set.</p>
-      <button class="btn small" id="s-forget" type="button">Start over (forget what you found)</button>
+      <p class="small muted">Keys: A D or ← → look along the grove · W S or ↑ ↓ lean in and out · I inventory · J lore journal · Esc close. Decorating: arrows move, Enter sets.</p>
+      <button class="btn small" id="s-forget" type="button">Start over as a new visitor</button>
     </div>
   </section>
 
@@ -362,13 +548,19 @@ input[type=text]{min-height:var(--tap);padding:8px 12px;border-radius:10px;borde
     </div>
   </div>
 
-  <div id="paused" hidden role="dialog" aria-modal="true" aria-labelledby="paused-title">
-    <div class="card stack">
-      <h2 id="paused-title">Paused</h2>
-      <p class="muted">The grove waits. What you found is kept on this device.</p>
-      <div class="row" style="justify-content:center"><button class="btn primary" id="resume" type="button">Back to the grove</button><button class="btn" id="paused-leave" type="button">Leave</button></div>
+  <!-- A ribbon up close -->
+  <div id="ribbon-card" hidden role="dialog" aria-modal="true" aria-labelledby="rc-title">
+    <div class="card">
+      <button class="btn close" type="button" id="rc-close" aria-label="Close">✕</button>
+      <p class="status found" id="rc-limb"></p>
+      <div class="rc-art" aria-hidden="true"><svg id="rc-svg" viewBox="0 0 240 420" width="240" height="420"></svg></div>
+      <h2 id="rc-title"></h2>
+      <p class="rc-word" id="rc-word"></p>
+      <p class="muted small" id="rc-meta"></p>
+      <div class="row" style="justify-content:center;margin-top:10px"><button class="btn small" id="rc-hide" type="button">Hide this ribbon</button></div>
     </div>
   </div>
+
 </main>
 <script type="module" src="/coaxial/host.js"
   data-app="whispering-spring"

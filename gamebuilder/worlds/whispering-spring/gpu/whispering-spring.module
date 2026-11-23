@@ -1,3 +1,3 @@
---vertices ws_bg_vs,ws_shadow_vs,ws_scene_vs,ws_fx_vs
---fragments ws_bg_fs,ws_shadow_fs,ws_scene_fs,ws_bloom_fs,ws_post_fs,ws_fx_fs
+--vertices ws_bg_vs,ws_shadow_vs,ws_scene_vs,ws_grass_vs,ws_water_vs,ws_fx_vs
+--fragments ws_bg_fs,ws_shadow_fs,ws_scene_fs,ws_grass_fs,ws_water_transmit_fs,ws_water_emit_fs,ws_bloom_fs,ws_post_fs,ws_fx_fs
 --bindings gamebuilder/worlds/whispering-spring/gpu/whispering-spring.bindings --strip ws_

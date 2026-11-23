@@ -173,6 +173,15 @@ export class SpringAudio {
     if (e?.file) { this.playFile(e.file, out, t); return; }
     if (id === "quail.call") { chirp(ac, out, t, 1900, 2600, 0.11, 0.05); chirp(ac, out, t + 0.16, 2500, 1700, 0.14, 0.05); chirp(ac, out, t + 0.36, 1800, 2300, 0.18, 0.04); return; }
     if (id === "stone.lift") { marimba(ac, out, 180, t, 0.25, 0.05); return; }
+    if (id === "decor.set") { marimba(ac, out, 392, t, 0.6, 0.06); marimba(ac, out, 784, t + 0.08, 0.9, 0.03); return; }
+    if (id === "decor.lift") { marimba(ac, out, 523, t, 0.3, 0.04); return; }
+    // a bell in the tree: a bright strike and a run of softer rings as it swings (ding-a-ling-a-ling)
+    if (id === "bell.ring") { [1568, 1976, 1760, 1976, 1568, 1760].forEach((f, i) => bell(ac, out, f * (1 + (Math.random() - 0.5) * 0.01), t + i * 0.13, 2.2 - i * 0.2, 0.09 * Math.pow(0.78, i))); return; }
+    // a cairn knocked down: stones clatter off one after another and roll away
+    if (id === "cairn.fall") { [330, 262, 294, 220, 247].forEach((f, i) => { marimba(ac, out, f, t + i * 0.11 + Math.random() * 0.03, 0.35, 0.06); marimba(ac, out, f * 1.5, t + 0.05 + i * 0.11, 0.2, 0.025); }); return; }
+    if (id === "cloud.poke") { swish(ac, out, t); [1319, 1760, 2093, 2637].forEach((f, i) => bell(ac, out, f, t + 0.08 + i * 0.09, 1.8, 0.035)); return; }
+    if (id === "ribbon.halo") { [784, 988, 1175, 1568].forEach((f, i) => bell(ac, out, f, t + 0.5 + i * 0.16, 2.2, 0.03)); return; }
+    if (id === "lantern.sway") { marimba(ac, out, 330, t, 0.4, 0.025); return; }
     if (id === "stone.slip") { chirp(ac, out, t, 300, 120, 0.3, 0.07); return; }
     if (id.startsWith("stone.")) { marimba(ac, out, hz(e?.note), t, 2.0, 0.22); return; }
     if (id === "cairn.chord") {

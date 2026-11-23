@@ -12,6 +12,7 @@
 WS_Q_FORAGE :: 0; WS_Q_SCURRY :: 1; WS_Q_SCAN :: 2; WS_Q_PECK :: 3;
 WS_Q_CALL :: 4; WS_Q_ATTEND :: 5; WS_Q_ALERT :: 6; WS_Q_RESUME :: 7;
 WS_Q_SPEAK :: 8;   // still, turned to the visitor, saying its greeting or a prayer
+WS_Q_APPROACH :: 9;   // walks up close to the camera, looks at the visitor a while, then goes back
 WS_CLUE_STONES :: 0; WS_CLUE_RIBBON :: 1; WS_CLUE_POOL :: 2;
 WS_Q_MARGIN :: 0.12;
 
@@ -29,19 +30,27 @@ Quail :: struct {
   clue: int = -1;                // the clue it is giving (WS_CLUE_*), -1 none
   // what happened this step, for the world to tell the page
   called: bool; clued: int = -1;
+  // coming up close: the world says where (in front of the camera) and whether it may now
+  near_x: f32 = -1.5; near_z: f32 = 3.9; near_ok: bool; since_near: f32 = 12; roaming: bool;
 }
 
 ws_q_rand :: (q: [] Quail) -> f32 { q[0].k += 1; return ws_rand(907, q[0].k); }
 
 ws_q_clamp :: (q: [] Quail) {
   m: f32 = WS_Q_MARGIN;
+  // out near the camera or on its way back: only kept to the near box until it is home
+  if q[0].roaming {
+    if ws_q_in_range(q[0]) && q[0].state != WS_Q_APPROACH { q[0].roaming = false; }
+    else { q[0].x = clamp(q[0].x, -3.4, 1.0); q[0].z = clamp(q[0].z, f32(WS_RANGE[1]), 5.0); return; }
+  }
   q[0].x = clamp(q[0].x, f32(WS_RANGE[0]) + m, f32(WS_RANGE[2]) - m);
   q[0].z = clamp(q[0].z, f32(WS_RANGE[1]) + m, f32(WS_RANGE[3]) - m);
 }
 
 ws_q_target :: (q: [] Quail, reach: f32) {
   m: f32 = WS_Q_MARGIN;
-  a := ws_q_rand(q) * f32(WS_TAU); d := reach * (0.35 + 0.65 * ws_q_rand(q));
+  // mostly along the grove (left or right), so it is seen side-on
+  a := (ifx ws_q_rand(q) < 0.5 then 0.0f32 else f32(WS_PI)) + (ws_q_rand(q) - 0.5) * 0.9; d := reach * (0.35 + 0.65 * ws_q_rand(q));
   q[0].tx = clamp(q[0].x + cos(a) * d, f32(WS_RANGE[0]) + m, f32(WS_RANGE[2]) - m);
   q[0].tz = clamp(q[0].z + sin(a) * d, f32(WS_RANGE[1]) + m, f32(WS_RANGE[3]) - m);
   q[0].arrived = false;
@@ -65,6 +74,12 @@ ws_q_next :: (q: [] Quail, t: WsTune, clue: int, calm: bool) {
     return;
   }
   r := ws_q_rand(q);
+  // now and then, curious: it walks right up to the camera
+  if q[0].near_ok && q[0].since_near > 26 && r < 0.2 {
+    ws_q_enter(q, WS_Q_APPROACH, 4.5, t);
+    q[0].tx = q[0].near_x; q[0].tz = q[0].near_z; q[0].roaming = true; q[0].since_near = 0;
+    return;
+  }
   if r < 0.36 { ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t); ws_q_target(q, 0.9); }
   else if r < 0.41 {
     if calm { ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t); ws_q_target(q, 1.2); }
@@ -106,7 +121,7 @@ ws_quail_step :: (q: [] Quail, t: WsTune, step: f32, clue: int, calm: bool, aler
   q[0].called = false; q[0].clued = -1;
   if !(step > 0) { return; }
   if alert && q[0].state != WS_Q_ALERT { ws_q_enter(q, WS_Q_ALERT, t.alert_s, t); q[0].clue = -1; }
-  q[0].t += step; q[0].since_clue += step;
+  q[0].t += step; q[0].since_clue += step; q[0].since_near += step;
   up: f32 = 0; dip: f32 = 0; turn: f32 = 0; scratch: f32 = 0;
   s := q[0].state;
   if s == WS_Q_FORAGE {
@@ -142,21 +157,43 @@ ws_quail_step :: (q: [] Quail, t: WsTune, step: f32, clue: int, calm: bool, aler
       }
       if q[0].t >= q[0].dur { ws_q_enter(q, WS_Q_RESUME, t.resume_s, t); }
     }
+  } else if s == WS_Q_APPROACH {
+    if !q[0].arrived {
+      if ws_q_walk(q, t.walk_speed * 1.7, step) { q[0].arrived = true; q[0].t = 0; }
+      else if q[0].t > 14 { q[0].arrived = true; q[0].t = 0; }
+    } else {
+      // up close: side-on, looking one way and then the other along the grove, with a soft call
+      q[0].speed = 0; up = 1; turn = 0.18 * sin(q[0].t * 1.3);
+      look := ifx (cast(int) (q[0].t / 2.2) % 2) == 0 then 0.25f32 else 2.9f32;
+      q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(look - q[0].face), -4 * step, 4 * step));
+      if q[0].t - step < 1.4 && q[0].t >= 1.4 { q[0].called = true; }
+      if q[0].t >= q[0].dur {
+        // home again: back into its range
+        ws_q_enter(q, WS_Q_FORAGE, t.forage_s, t);
+        q[0].tx = -2.4 + 0.8 * ws_q_rand(q); q[0].tz = 1.2 + 0.8 * ws_q_rand(q);
+      }
+    }
   } else if s == WS_Q_ALERT {
     q[0].speed = 0; up = 1;
   } else if s == WS_Q_SPEAK {
-    // three-quarters toward the camera (which stands at +z), head high, a small nod as it talks
+    // side-on, facing along the grove (it reads best in profile), head high, a small nod as it talks
     q[0].speed = 0; up = 1;
-    want: f32 = ifx q[0].x < 0 then 1.0f32 else 2.1f32;
+    want: f32 = ifx q[0].x < -1.0 then 0.12f32 else 3.02f32;
     q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(want - q[0].face), -4 * step, 4 * step));
     dip = 0.1 * abs(sin(q[0].t * 9)) * (ifx q[0].t < q[0].dur - 0.4 then 1.0f32 else 0.0f32);
   } else {
     q[0].speed = 0; turn = 0.15 * sin(q[0].t * 20) * (1 - q[0].t / q[0].dur);   // a little shake
   }
+  // standing still, it settles side-on (facing left or right along the grove), unless it is
+  // speaking, attending to a clue or up close, which turn it themselves
+  if q[0].speed == 0 && s != WS_Q_SPEAK && s != WS_Q_APPROACH && s != WS_Q_ATTEND {
+    side_face: f32 = ifx cos(q[0].face) >= 0 then 0.0f32 else f32(WS_PI);
+    q[0].face = wrap_angle(q[0].face + clamp(wrap_angle(side_face - q[0].face), -1.6 * step, 1.6 * step));
+  }
   ws_q_clamp(q);
   if q[0].state == s && q[0].t >= q[0].dur {
     if s == WS_Q_ALERT || s == WS_Q_SPEAK { ws_q_enter(q, WS_Q_RESUME, t.resume_s, t); }
-    else if s != WS_Q_ATTEND { ws_q_next(q, t, clue, calm); }
+    else if s != WS_Q_ATTEND && s != WS_Q_APPROACH { ws_q_next(q, t, clue, calm); }
   }
   frozen := q[0].state == WS_Q_ALERT;
   rate: f32 = ifx frozen then 30.0f32 else 10.0f32;
@@ -165,6 +202,8 @@ ws_quail_step :: (q: [] Quail, t: WsTune, step: f32, clue: int, calm: bool, aler
   q[0].head_turn = ws_q_ease(q[0].head_turn, turn, 8, step);
   q[0].scratch = scratch;
   if q[0].speed > 0 { q[0].phase += step * (6 + q[0].speed * 18); }
+  // a forage target set while roaming home may lie outside its range: go straight there first
+  if q[0].roaming && q[0].state == WS_Q_FORAGE && !q[0].arrived { if q[0].t > q[0].dur * 0.5 { q[0].t = q[0].dur * 0.5; } }
 }
 
 ws_q_in_range :: (q: Quail) -> bool {
@@ -214,15 +253,17 @@ ws_skin_strip :: (s: [] WsSkin, a: WsV, b: WsV, side: WsV, wa: f32, wb: f32, col
   ws_skin_tri(s, a0, b0, b1, col, behind); ws_skin_tri(s, a0, b1, a1, col, behind);
 }
 
-WS_OBSIDIAN :: [3] f32.[0.12, 0.095, 0.095];      // the model sheet's warm brown-black
-WS_OBSIDIAN_SHEEN :: [3] f32.[0.17, 0.135, 0.13];
-WS_WING :: [3] f32.[0.15, 0.115, 0.11];
-WS_WING_EDGE :: [3] f32.[0.1, 0.08, 0.08];
-WS_MARK :: [3] f32.[0.93, 0.88, 0.78];             // the cream brow and cheek crescent
-WS_HORN :: [3] f32.[0.2, 0.17, 0.15];
-WS_LEG :: [3] f32.[0.16, 0.12, 0.11];
-WS_EYE :: [3] f32.[0.05, 0.035, 0.03];
-WS_EYE_RING :: [3] f32.[0.62, 0.42, 0.24];
+WS_OBSIDIAN :: [3] f32.[0.11, 0.09, 0.095];       // the model sheet's warm brown-black
+WS_OBSIDIAN_SHEEN :: [3] f32.[0.2, 0.19, 0.23];    // a slate-blue breast that catches the light
+WS_BUFF :: [3] f32.[0.46, 0.37, 0.28];             // the scaled belly
+WS_WING :: [3] f32.[0.21, 0.15, 0.12];             // brown-black wings
+WS_WING_EDGE :: [3] f32.[0.33, 0.25, 0.18];
+WS_MARK :: [3] f32.[0.96, 0.93, 0.86];             // the cream brow, necklace and flank streaks
+WS_HORN :: [3] f32.[0.17, 0.14, 0.13];
+WS_LEG :: [3] f32.[0.42, 0.36, 0.34];
+WS_EYE :: [3] f32.[0.03, 0.02, 0.02];
+WS_EYE_RING :: [3] f32.[0.7, 0.45, 0.22];
+WS_CROWN :: [3] f32.[0.3, 0.18, 0.1];
 
 // The quail's own space: +x forward, +y up, +z to its right; scaled and turned to its heading.
 ws_q_world :: (q: Quail, scale: f32, gy: f32, lx: f32, ly: f32, lz: f32) -> WsV {
@@ -233,8 +274,8 @@ ws_q_world :: (q: Quail, scale: f32, gy: f32, lx: f32, ly: f32, lz: f32) -> WsV 
 
 // The head's own space, nodded (dip, lift) and turned about the neck, into the quail's space.
 ws_q_head :: (q: Quail, lx: f32, ly: f32, lz: f32) -> [3] f32 {
-  nx: f32 = 0.085; ny: f32 = 0.215;     // the neck
-  nod := -q.head_dip * 1.05 + q.head_up * 0.15;
+  nx: f32 = 0.09; ny: f32 = 0.215;     // the neck
+  nod := -q.head_dip * 1.05 + q.head_up * 0.12;
   x := lx - nx; y := ly - ny;
   cn := cos(nod); sn := sin(nod);
   x1 := x * cn - y * sn; y1 := x * sn + y * cn;
@@ -249,124 +290,143 @@ ws_q_hp :: (q: Quail, k: f32, gy: f32, lift: f32, lx: f32, ly: f32, lz: f32) -> 
   return ws_q_world(q, k, gy, h[0], h[1] + lift, h[2]);
 }
 
-// The quail from the Obsidian Quail model sheet: a plump teardrop body in warm brown-black, folded
-// wing plates down each side, a short layered tail, a round head with a cream brow curving behind
-// the eye and a cream crescent down the cheek, a ringed eye, and a thick plume curling forward from
-// the crown into a teardrop. Long thin legs with three toes.
+ws_q_blob :: (s: [] WsSkin, at: WsV, rx: f32, ry: f32, rz: f32, yaw: f32, roll: f32, seg: int, rings: int, seed: int, col: [3] f32) {
+  b: WsBlob; b.x = at.x; b.y = at.y; b.z = at.z; b.rx = rx; b.ry = ry; b.rz = rz; b.yaw = yaw; b.roll = roll;
+  b.seg = seg; b.rings = rings; b.seed = seed; b.jag = 0.02;
+  ws_skin_blob(s, b, col);
+}
+
+// The Obsidian Quail, low poly but read at a glance: a round, plump body tipped chest-up; a slate
+// breast and a buff scaled belly; cream streaks along the flanks; brown wings folded over the back;
+// a short tail; a round head on a short neck with a bold cream brow and a cream necklace framing a
+// black face; a big ringed eye with a bright catch-light; a thick plume curling forward into a
+// teardrop that bobs as it walks; thin grey legs.
 ws_quail_draw :: (s: [] WsSkin, q: Quail, t: WsTune, eye: WsV) {
   k: f32 = t.quail_scale;
   gy := ws_ground_y(q.x, q.z);
   walk := ifx q.speed > 0 then 1.0f32 else 0.0f32;
   bounce := 0.01 * abs(sin(q.phase)) * walk;
-  lean := 0.18 - q.head_dip * 0.25 + q.head_up * 0.08;   // nose-up when alert, level when pecking
-  // body: a plump faceted teardrop, chest forward
-  b: WsBlob;
-  c := ws_q_world(q, k, gy, 0.005, 0.14 + bounce, 0);
-  b.x = c.x; b.y = c.y; b.z = c.z; b.rx = 0.135 * k; b.ry = 0.095 * k; b.rz = 0.098 * k;
-  b.yaw = -q.face; b.roll = lean; b.seg = 10; b.rings = 6; b.seed = 77; b.jag = 0.025;
-  ws_skin_blob(s, b, WS_OBSIDIAN);
-  // the chest, fuller and a shade lighter where the light catches it
-  br := ws_q_world(q, k, gy, 0.07, 0.15 + bounce, 0);
-  b.x = br.x; b.y = br.y; b.z = br.z; b.rx = 0.07 * k; b.ry = 0.08 * k; b.rz = 0.082 * k; b.seed = 79; b.seg = 9; b.rings = 5; b.jag = 0.02; b.roll = lean + 0.3;
-  ws_skin_blob(s, b, WS_OBSIDIAN_SHEEN);
-  // folded wings: a broad plate down each side, its tip layered toward the tail
+  lean := 0.22 - q.head_dip * 0.25 + q.head_up * 0.08;   // chest up when alert, level when pecking
+  yaw := -q.face;
+  up := ws_v(0, 1, 0);
+  // the body: round and plump
+  ws_q_blob(s, ws_q_world(q, k, gy, 0.0, 0.145 + bounce, 0), 0.13 * k, 0.105 * k, 0.105 * k, yaw, lean, 12, 7, 77, WS_OBSIDIAN);
+  // the slate breast, full and forward, and the buff belly under it
+  ws_q_blob(s, ws_q_world(q, k, gy, 0.068, 0.162 + bounce, 0), 0.075 * k, 0.085 * k, 0.088 * k, yaw, lean + 0.35, 10, 6, 79, WS_OBSIDIAN_SHEEN);
+  ws_q_blob(s, ws_q_world(q, k, gy, 0.03, 0.098 + bounce, 0), 0.085 * k, 0.05 * k, 0.078 * k, yaw, lean, 10, 5, 80, WS_BUFF);
+  // the belly's scales: small dark crescents on the buff
+  for sc: 0..<6 {
+    sx: f32 = 0.0 + 0.025 * cast(f32) (sc % 3); sz: f32 = (cast(f32) (sc / 3) - 0.5) * 0.05;
+    ws_skin_octa(s, ws_q_world(q, k, gy, sx + 0.02, 0.078 + bounce, sz), 0.006 * k, 0.6, WS_OBSIDIAN);
+  }
+  // wings: a broad brown plate down each side and over the back, edged lighter
   for wi: 0..<2 {
     side: f32 = ifx wi == 0 then -1.0f32 else 1.0f32;
-    wc := ws_q_world(q, k, gy, -0.025, 0.158 + bounce, side * 0.078);
-    b.x = wc.x; b.y = wc.y; b.z = wc.z; b.rx = 0.105 * k; b.ry = 0.06 * k; b.rz = 0.022 * k;
-    b.yaw = -q.face; b.roll = lean - 0.12; b.pitch = side * 0.08; b.seg = 8; b.rings = 4; b.seed = 90 + wi; b.jag = 0.02;
+    wc := ws_q_world(q, k, gy, -0.03, 0.165 + bounce, side * 0.074);
+    b: WsBlob; b.x = wc.x; b.y = wc.y; b.z = wc.z; b.rx = 0.1 * k; b.ry = 0.062 * k; b.rz = 0.03 * k;
+    b.yaw = yaw; b.roll = lean - 0.15; b.pitch = side * 0.12; b.seg = 9; b.rings = 4; b.seed = 90 + wi; b.jag = 0.02;
     ws_skin_blob(s, b, WS_WING);
-    b.pitch = 0;
     for f: 0..<3 {
-      fy: f32 = 0.15 - 0.022 * cast(f32) f;
-      f0 := ws_q_world(q, k, gy, -0.07, fy + bounce, side * (0.095 - 0.004 * cast(f32) f));
-      f1 := ws_q_world(q, k, gy, -0.165 + 0.012 * cast(f32) f, fy - 0.02 + bounce, side * (0.06 - 0.006 * cast(f32) f));
-      ws_skin_strip(s, f0, f1, ws_v(0, 1, 0), 0.012 * k, 0.004 * k, WS_WING_EDGE, eye);
+      fy: f32 = 0.165 - 0.024 * cast(f32) f;
+      f0 := ws_q_world(q, k, gy, -0.06, fy + bounce, side * (0.1 - 0.004 * cast(f32) f));
+      f1 := ws_q_world(q, k, gy, -0.15 + 0.012 * cast(f32) f, fy - 0.022 + bounce, side * (0.07 - 0.005 * cast(f32) f));
+      ws_skin_strip(s, f0, f1, up, 0.01 * k, 0.004 * k, WS_WING_EDGE, eye);
+    }
+    // the flank streaks: long cream dashes slanting back along the side, below the wing
+    for fs: 0..<4 {
+      fx: f32 = 0.06 - 0.035 * cast(f32) fs;
+      a0 := ws_q_world(q, k, gy, fx, 0.13 + bounce, side * 0.104);
+      a1 := ws_q_world(q, k, gy, fx - 0.045, 0.112 + bounce, side * 0.096);
+      ws_skin_strip(s, a0, a1, up, 0.0055 * k, 0.003 * k, WS_MARK, eye);
     }
   }
-  // the neck up into the head
-  nk := ws_q_world(q, k, gy, 0.09, 0.205 + bounce, 0);
-  b.x = nk.x; b.y = nk.y; b.z = nk.z; b.rx = 0.045 * k; b.ry = 0.05 * k; b.rz = 0.043 * k; b.seed = 85; b.roll = 0.0; b.seg = 6; b.rings = 3;
-  ws_skin_blob(s, b, WS_OBSIDIAN);
-  // the tail: three short layered plates, angled down behind
+  // the tail: short, dark, tipped down behind
   for tf: 0..<3 {
-    tz: f32 = (cast(f32) tf - 1) * 0.022;
-    t0 := ws_q_world(q, k, gy, -0.11, 0.135 + bounce, tz - 0.02); t1 := ws_q_world(q, k, gy, -0.11, 0.135 + bounce, tz + 0.02);
-    tt := ws_q_world(q, k, gy, -0.205 + 0.01 * abs(cast(f32) tf - 1), 0.1 + bounce - 0.008 * cast(f32) tf, tz * 1.6);
-    ws_skin_tri(s, t0, t1, tt, ifx tf == 1 then WS_OBSIDIAN else WS_WING_EDGE, ws_q_world(q, k, gy, -0.1, 0.4, 0));
+    tz: f32 = (cast(f32) tf - 1) * 0.024;
+    t0 := ws_q_world(q, k, gy, -0.11, 0.15 + bounce, tz - 0.02); t1 := ws_q_world(q, k, gy, -0.11, 0.15 + bounce, tz + 0.02);
+    tt := ws_q_world(q, k, gy, -0.19 + 0.01 * abs(cast(f32) tf - 1), 0.12 + bounce - 0.008 * cast(f32) tf, tz * 1.6);
+    ws_skin_tri(s, t0, t1, tt, WS_OBSIDIAN, ws_q_world(q, k, gy, -0.1, 0.4, 0));
   }
-  // head: round
-  hc := ws_q_hp(q, k, gy, bounce, 0.125, 0.26, 0);
-  b.x = hc.x; b.y = hc.y; b.z = hc.z; b.rx = 0.052 * k; b.ry = 0.05 * k; b.rz = 0.046 * k;
-  b.yaw = -q.face - q.head_turn; b.roll = -q.head_dip * 1.0; b.seed = 81; b.seg = 9; b.rings = 5; b.jag = 0.02;
-  ws_skin_blob(s, b, WS_OBSIDIAN);
-  // beak: short, hooked a little
-  pt := ws_q_hp(q, k, gy, bounce, 0.193, 0.247, 0); pu := ws_q_hp(q, k, gy, bounce, 0.167, 0.266, 0);
-  pl := ws_q_hp(q, k, gy, bounce, 0.168, 0.243, -0.014); pr := ws_q_hp(q, k, gy, bounce, 0.168, 0.243, 0.014);
-  ws_skin_tri(s, pt, pu, pl, WS_HORN, hc); ws_skin_tri(s, pt, pr, pu, WS_HORN, hc); ws_skin_tri(s, pt, pl, pr, WS_HORN, hc);
-  // the face's cream marks and the ringed eye, on both sides
-  up := ws_v(0, 1, 0);
+  // the neck and the head
+  ws_q_blob(s, ws_q_world(q, k, gy, 0.095, 0.21 + bounce, 0), 0.046 * k, 0.05 * k, 0.045 * k, yaw, 0, 7, 3, 85, WS_OBSIDIAN);
+  hc := ws_q_hp(q, k, gy, bounce, 0.13, 0.265, 0);
+  ws_q_blob(s, hc, 0.064 * k, 0.06 * k, 0.055 * k, yaw - q.head_turn, -q.head_dip, 12, 7, 81, WS_OBSIDIAN);
+  // a soft scaled nape: a few pale speckles behind the head
+  for nsp: 0..<5 {
+    ns := cast(f32) nsp;
+    ws_skin_octa(s, ws_q_world(q, k, gy, 0.07 - 0.012 * ns, 0.235 + bounce - 0.006 * ns, (ns - 2) * 0.014), 0.0045 * k, 0.8, WS_MARK);
+  }
+  // a warm brown crown cap
+  ws_q_blob(s, ws_q_hp(q, k, gy, bounce, 0.12, 0.3, 0), 0.04 * k, 0.018 * k, 0.034 * k, yaw - q.head_turn, -q.head_dip, 8, 3, 82, WS_CROWN);
+  // beak: short and stout, hooked a little
+  pt := ws_q_hp(q, k, gy, bounce, 0.205, 0.255, 0); pu := ws_q_hp(q, k, gy, bounce, 0.178, 0.276, 0);
+  pl := ws_q_hp(q, k, gy, bounce, 0.178, 0.25, -0.016); pr := ws_q_hp(q, k, gy, bounce, 0.178, 0.25, 0.016);
+  pd := ws_q_hp(q, k, gy, bounce, 0.18, 0.238, 0);
+  ws_skin_tri(s, pt, pu, pl, WS_HORN, hc); ws_skin_tri(s, pt, pr, pu, WS_HORN, hc);
+  ws_skin_tri(s, pt, pl, pd, WS_HORN, hc); ws_skin_tri(s, pt, pd, pr, WS_HORN, hc);
   for side_i: 0..<2 {
-    sz: f32 = ifx side_i == 0 then -0.05f32 else 0.05f32;
-    // the brow: from over the beak, over the eye, curving down behind it
-    br0 := ws_q_hp(q, k, gy, bounce, 0.165, 0.284, sz * 0.6);
-    br1 := ws_q_hp(q, k, gy, bounce, 0.135, 0.293, sz * 0.92);
-    br2 := ws_q_hp(q, k, gy, bounce, 0.1, 0.282, sz * 0.97);
-    br3 := ws_q_hp(q, k, gy, bounce, 0.086, 0.258, sz * 0.92);
-    ws_skin_strip(s, br0, br1, up, 0.004 * k, 0.0055 * k, WS_MARK, eye);
-    ws_skin_strip(s, br1, br2, up, 0.0055 * k, 0.005 * k, WS_MARK, eye);
-    ws_skin_strip(s, br2, br3, ws_v(1, 0, 0), 0.005 * k, 0.003 * k, WS_MARK, eye);
-    // the cheek crescent: from behind the eye down round the jaw toward the throat
-    ck0 := ws_q_hp(q, k, gy, bounce, 0.122, 0.262, sz * 1.0);
-    ck1 := ws_q_hp(q, k, gy, bounce, 0.118, 0.236, sz * 0.98);
-    ck2 := ws_q_hp(q, k, gy, bounce, 0.135, 0.216, sz * 0.86);
-    ws_skin_strip(s, ck0, ck1, ws_v(1, 0, 0), 0.006 * k, 0.006 * k, WS_MARK, eye);
-    ws_skin_strip(s, ck1, ck2, ws_v(1, 0, 0), 0.006 * k, 0.0035 * k, WS_MARK, eye);
-    // the eye: a warm ring and a dark middle
-    e0 := ws_q_hp(q, k, gy, bounce, 0.152, 0.272, sz * 1.02);
-    ws_skin_strip(s, e0, ws_q_hp(q, k, gy, bounce, 0.138, 0.272, sz * 1.04), up, 0.0085 * k, 0.0085 * k, WS_EYE_RING, eye);
-    e1 := ws_q_hp(q, k, gy, bounce, 0.149, 0.272, sz * 1.07);
-    ws_skin_strip(s, e1, ws_q_hp(q, k, gy, bounce, 0.141, 0.272, sz * 1.08), up, 0.005 * k, 0.005 * k, WS_EYE, eye);
+    sz: f32 = ifx side_i == 0 then -0.055f32 else 0.055f32;
+    // the brow: a bold cream line from the beak over the eye and back down the side of the head
+    br0 := ws_q_hp(q, k, gy, bounce, 0.176, 0.287, sz * 0.5);
+    br1 := ws_q_hp(q, k, gy, bounce, 0.145, 0.3, sz * 0.86);
+    br2 := ws_q_hp(q, k, gy, bounce, 0.105, 0.292, sz * 0.97);
+    br3 := ws_q_hp(q, k, gy, bounce, 0.085, 0.262, sz * 0.94);
+    ws_skin_strip(s, br0, br1, up, 0.006 * k, 0.008 * k, WS_MARK, eye);
+    ws_skin_strip(s, br1, br2, up, 0.008 * k, 0.007 * k, WS_MARK, eye);
+    ws_skin_strip(s, br2, br3, ws_v(1, 0, 0), 0.007 * k, 0.004 * k, WS_MARK, eye);
+    // the necklace: from behind the eye down and round under the black throat to the front
+    nk0 := ws_q_hp(q, k, gy, bounce, 0.115, 0.258, sz * 1.0);
+    nk1 := ws_q_hp(q, k, gy, bounce, 0.122, 0.226, sz * 0.92);
+    nk2 := ws_q_hp(q, k, gy, bounce, 0.15, 0.205, sz * 0.62);
+    nk3 := ws_q_hp(q, k, gy, bounce, 0.172, 0.204, 0);
+    ws_skin_strip(s, nk0, nk1, ws_v(1, 0, 0), 0.0075 * k, 0.0075 * k, WS_MARK, eye);
+    ws_skin_strip(s, nk1, nk2, ws_v(1, 0.5, 0), 0.0075 * k, 0.0065 * k, WS_MARK, eye);
+    ws_skin_strip(s, nk2, nk3, up, 0.0065 * k, 0.006 * k, WS_MARK, eye);
+    // the eye: a warm ring, a black middle, and a catch-light
+    e0 := ws_q_hp(q, k, gy, bounce, 0.16, 0.274, sz * 1.0);
+    ws_skin_strip(s, e0, ws_q_hp(q, k, gy, bounce, 0.142, 0.274, sz * 1.02), up, 0.011 * k, 0.011 * k, WS_EYE_RING, eye);
+    e1 := ws_q_hp(q, k, gy, bounce, 0.157, 0.274, sz * 1.06);
+    ws_skin_strip(s, e1, ws_q_hp(q, k, gy, bounce, 0.145, 0.274, sz * 1.07), up, 0.0075 * k, 0.0075 * k, WS_EYE, eye);
+    ws_skin_octa(s, ws_q_hp(q, k, gy, bounce, 0.156, 0.279, sz * 1.1), 0.0028 * k, 1.0, [3] f32.[1.0, 0.98, 0.94]);
   }
   // the plume: a thick stalk up from the crown, curling forward into a teardrop
   bob := 0.22 * sin(q.phase) * walk + 0.05 * sin(q.phase * 0.5 + 1) + q.head_up * 0.05;
-  pts: [6] WsV;
-  for i: 0..<6 {
-    f := cast(f32) i / 5;
-    ang := 1.5 - f * (1.95 + bob);
-    rad := 0.068 * f;
-    pts[i] = ws_q_hp(q, k, gy, bounce, 0.128 + cos(ang) * rad * 0.95, 0.305 + sin(ang) * rad * 1.1, 0);
+  pts: [7] WsV;
+  for i: 0..<7 {
+    f := cast(f32) i / 6;
+    ang := 1.45 - f * (2.0 + bob);
+    rad := 0.075 * f;
+    pts[i] = ws_q_hp(q, k, gy, bounce, 0.135 + cos(ang) * rad * 0.95, 0.31 + sin(ang) * rad * 1.15, 0);
   }
   sc := cos(q.face); ss := sin(q.face);
   across := ws_v(-ss, 0, sc);
-  widths := [6] f32.[0.007, 0.007, 0.0075, 0.008, 0.009, 0.01];
-  for i: 0..<5 { ws_skin_strip(s, pts[i], pts[i + 1], across, widths[i] * k, widths[i + 1] * k, WS_OBSIDIAN, eye); }
-  // the teardrop at its tip
-  b.x = pts[5].x; b.y = pts[5].y; b.z = pts[5].z; b.rx = 0.024 * k; b.ry = 0.017 * k; b.rz = 0.012 * k;
-  b.yaw = -q.face - q.head_turn; b.roll = -0.6 - bob; b.seg = 6; b.rings = 3; b.seed = 87; b.jag = 0.05;
-  ws_skin_blob(s, b, WS_OBSIDIAN);
-  // legs: long and thin, three toes forward and one back, stepping in turn
+  widths := [7] f32.[0.009, 0.009, 0.0095, 0.01, 0.011, 0.012, 0.013];
+  for i: 0..<6 { ws_skin_strip(s, pts[i], pts[i + 1], across, widths[i] * k, widths[i + 1] * k, WS_OBSIDIAN, eye); }
+  tb: WsBlob; tb.x = pts[6].x; tb.y = pts[6].y; tb.z = pts[6].z; tb.rx = 0.036 * k; tb.ry = 0.026 * k; tb.rz = 0.017 * k;
+  tb.yaw = yaw - q.head_turn; tb.roll = -0.6 - bob; tb.seg = 7; tb.rings = 4; tb.seed = 87; tb.jag = 0.04;
+  ws_skin_blob(s, tb, WS_OBSIDIAN);
+  // legs: thin and grey, three toes forward and one back, stepping in turn
   for l: 0..<2 {
     sgn: f32 = ifx l == 0 then -1.0f32 else 1.0f32;
     swing := 0.035 * sin(q.phase + (ifx l == 0 then 0.0f32 else 3.14159f32)) * walk + 0.018 * q.scratch * (ifx l == 0 then 1.0f32 else 0.0f32);
-    hip := ws_q_world(q, k, gy, 0.0, 0.075 + bounce, sgn * 0.032);
-    knee := ws_q_world(q, k, gy, swing * 0.5 - 0.012, 0.04 + bounce * 0.5, sgn * 0.034);
-    foot := ws_q_world(q, k, gy, swing, 0.0, sgn * 0.035);
-    ws_skin_strip(s, hip, knee, ws_v(cos(q.face), 0, sin(q.face)), 0.0065 * k, 0.005 * k, WS_LEG, eye);
-    ws_skin_strip(s, knee, foot, ws_v(cos(q.face), 0, sin(q.face)), 0.005 * k, 0.0035 * k, WS_LEG, eye);
+    hip := ws_q_world(q, k, gy, 0.0, 0.07 + bounce, sgn * 0.034);
+    knee := ws_q_world(q, k, gy, swing * 0.5 - 0.012, 0.038 + bounce * 0.5, sgn * 0.035);
+    foot := ws_q_world(q, k, gy, swing, 0.0, sgn * 0.036);
+    ws_skin_strip(s, hip, knee, ws_v(cos(q.face), 0, sin(q.face)), 0.007 * k, 0.0055 * k, WS_LEG, eye);
+    ws_skin_strip(s, knee, foot, ws_v(cos(q.face), 0, sin(q.face)), 0.0055 * k, 0.004 * k, WS_LEG, eye);
     for toe_i: 0..<3 {
-      spread: f32 = (cast(f32) toe_i - 1) * 0.012;
-      toe := ws_q_world(q, k, gy, swing + 0.036, 0.0, sgn * 0.035 + spread);
-      ws_skin_strip(s, foot, toe, ws_cross(ws_unit(ws_sub(toe, foot)), up), 0.0035 * k, 0.0015 * k, WS_LEG, ws_add(foot, up));
+      spread: f32 = (cast(f32) toe_i - 1) * 0.013;
+      toe := ws_q_world(q, k, gy, swing + 0.038, 0.0, sgn * 0.036 + spread);
+      ws_skin_strip(s, foot, toe, ws_cross(ws_unit(ws_sub(toe, foot)), up), 0.004 * k, 0.0017 * k, WS_LEG, ws_add(foot, up));
     }
-    heel := ws_q_world(q, k, gy, swing - 0.022, 0.0, sgn * 0.035);
-    ws_skin_strip(s, foot, heel, ws_cross(ws_unit(ws_sub(heel, foot)), up), 0.003 * k, 0.0015 * k, WS_LEG, ws_add(foot, up));
+    heel := ws_q_world(q, k, gy, swing - 0.022, 0.0, sgn * 0.036);
+    ws_skin_strip(s, foot, heel, ws_cross(ws_unit(ws_sub(heel, foot)), up), 0.0035 * k, 0.0017 * k, WS_LEG, ws_add(foot, up));
   }
 }
 
 #test "the quail keeps to its range through a long day of every behaviour, clues and alerts" #steps 40000000000 {
   q: [1] Quail; t: WsTune;
-  seen: [8] int;
+  seen: [10] int;
   clues: [3] int;
   for i: 0..<60000 {
     clue := (i / 9000) % 4 - 1;           // all found, then each clue in turn
@@ -393,9 +453,23 @@ ws_quail_draw :: (s: [] WsSkin, q: Quail, t: WsTune, eye: WsV) {
   #assert q[0].state == WS_Q_ALERT && q[0].x == x && q[0].z == z;
 }
 
+#test "now and then the quail walks right up to the camera, looks at the visitor, and goes home" #steps 40000000000 {
+  q: [1] Quail; t: WsTune;
+  q[0].near_ok = true; q[0].near_x = -1.5; q[0].near_z = 4.1;
+  came := false; home := false; closest: f32 = 100;
+  for i: 0..<40000 {
+    ws_quail_step(q[..], t, 0.02, -1, false, false);
+    if q[0].state == WS_Q_APPROACH && q[0].arrived { came = true; }
+    if came && !q[0].roaming && ws_q_in_range(q[0]) { home = true; }
+    d := abs(q[0].z - 4.1) + abs(q[0].x + 1.5); if d < closest { closest = d; }
+    #assert q[0].x >= -3.4 && q[0].x <= 1.0 && q[0].z <= 5.0;
+  }
+  #assert came && home && closest < 0.1;
+}
+
 #test "the quail is drawn as closed facets into its store" {
   out: [6000 * WS_SKIN_FLOATS] f32; s: [1] WsSkin; s[0].out = out[..];
   q: [1] Quail; t: WsTune;
   ws_quail_draw(s[..], q[0], t, ws_v(0, 2, 6));
-  #assert !s[0].full && s[0].n > 150 && s[0].n % 3 == 0;
+  #assert !s[0].full && s[0].n > 400 && s[0].n % 3 == 0;
 }

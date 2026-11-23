@@ -34,6 +34,7 @@ EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32
 }
 EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state, int32_t i) { (void)state; return i == 0 ? (uint32_t)ws_asset_cap() : 0u; }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) { ws_asset_ready(at(state), i, (int64_t)bytes); }
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { ws_wheel(at(state), dy); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)ws_cursor(at(state)); }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { ws_blur(at(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)raw(state)->action; }
@@ -41,13 +42,17 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint3
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)raw(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { ws_action_done(at(state)); }
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)raw(state)->host_draws.e; }
+EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return (uint32_t)ws_grass_instances(at(state)); }
+EXPORT("coaxial_grass_vertices_v1") uint32_t coaxial_grass_vertices_v1(uint32_t state) { return (uint32_t)ws_grass_vertices(at(state)); }
+EXPORT("coaxial_quality") void coaxial_quality(uint32_t state, int32_t q) { ws_quality(at(state), q); }
+EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { return (uint32_t)ws_water_draws(at(state)); }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return (uint32_t)ws_draw_count(at(state)); }
 EXPORT("coaxial_draw_blend_v1") int32_t coaxial_draw_blend_v1(uint32_t state, int32_t i) { (void)state; (void)i; return 0; }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 5; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)ws_store_cap(k); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   coax_t_Spring *h = raw(state);
-  return (uint32_t)(uintptr_t)(k == 0 ? (void *)h->mesh.e : k == 1 ? (void *)h->records.e : k == 2 ? (void *)h->skin.e : (void *)h->tris.e);
+  return (uint32_t)(uintptr_t)(k == 0 ? (void *)h->mesh.e : k == 1 ? (void *)h->records.e : k == 2 ? (void *)h->skin.e : k == 3 ? (void *)h->tris.e : (void *)h->heights.e);
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return (uint32_t)ws_store_bytes(at(state), k); }
 EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) { return (uint32_t)ws_store_version(at(state), k); }

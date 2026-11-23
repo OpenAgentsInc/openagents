@@ -44,8 +44,18 @@ ws_shadow_fs :: (s: StyShade) {}
 
 ws_scene_fs :: (s: StyS, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> StyFilm {
   c: StyFilm = stylized_film_scene_fs(s, u, shadow_map, shadow_cmp);
+  // at night the leaves, painted in their own light by day, go dark under the moon
+  if (s.info.w < 0.5f32 && sty_is(s.info.x, ARCH_M_LEAF)) {
+    k: f32 = 1.0f32 - 0.72f32 * u[WS_U_EXTRA + 3];
+    c.light = v4(c.light.x * k, c.light.y * k, c.light.z * (k + 0.1f32 * u[WS_U_EXTRA + 3]), c.light.w);
+  }
   if (s.info.w > 0.5f32) {
     if (u[WS_U_EXTRA + 2] > 0.5f32) { gpu_demote_helper(); }
+    // a colour over 1 is a light (a lantern, a flame, a crystal, the gold): it shines by itself,
+    // whatever the sun is doing, and blooms
+    mx: f32 = fmax(s.tint.x, fmax(s.tint.y, s.tint.z));
+    // (capped, so a cluster of lights blooms into a soft halo instead of flashing the whole screen)
+    if (mx > 1.05f32) { e: V3 = sty_decode(s.tint); e = v3(fmin(e.x, 2.4f32), fmin(e.y, 2.4f32), fmin(e.z, 2.4f32)); return sty_film(sty_haze(e, s.world, u), u); }
     to: V3 = normalize3(sub3(wg_at3(u, STY_U_EYE), s.world));
     n0: V3 = normalize3(s.normal); ndv: f32 = dot3(n0, to);
     n: V3 = ifx ndv < 0.0f32 then normalize3(sub3(n0, scale3(to, ndv * 1.05f32))) else n0;
@@ -54,6 +64,41 @@ ws_scene_fs :: (s: StyS, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCom
     return sty_film(sty_haze(lit, s.world, u), u);
   }
   return c;
+}
+
+// The grass: the engine's lush blades, rooted on the ground table where its cover says grass grows.
+ws_grass_vs :: (v: u32, i: u32, u: [] f32, mesh: [] f32, objects: [] StyObj, heights: [] f32) -> StyBlade { return stylized_grass_vs(v, i, u, mesh, objects, heights); }
+ws_grass_fs :: (g: StyBlade, u: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> StyFilm {
+  c: StyFilm = stylized_film_grass_fs(g, u, shadow_map, shadow_cmp);
+  k: f32 = 1.0f32 - 0.7f32 * u[WS_U_EXTRA + 3];
+  c.light = v4(c.light.x * k, c.light.y * k, c.light.z * (k + 0.1f32 * u[WS_U_EXTRA + 3]), c.light.w);
+  return c;
+}
+
+// The water: the engine's water pass (stylized.coax sty_wet: the pool and brook clear in the
+// shallows and deep blue-green over the basin, ripples winding downstream, foam at the shore and
+// under the spill; the spill a falling sheet of white streaks). Through the post pass, so both
+// halves write light: the first keeps what the water lets through, the second adds its own.
+ws_water_vs :: (id: u32, instance: u32, u: [] f32, mesh: [] f32, objects: [] StyObj) -> StyS { return sty_stand(id, instance, u, mesh, objects); }
+ws_water_transmit_fs :: (s: StyS, u: [] f32, heights: [] f32) -> StyFilm {
+  k: f32 = 1.0f32 - sty_wet(s, u, heights).w;
+  o: StyFilm; o.light = v4(k, k, k, 1.0f32); o.aux = v4(0.0f32, 0.0f32, 0.0f32, 0.0f32);
+  return o;
+}
+ws_water_emit_fs :: (s: StyS, u: [] f32, heights: [] f32, shadow_map: TexDepth, shadow_cmp: SamplerCompare) -> StyFilm {
+  w: V4 = sty_wet(s, u, heights);
+  up: V3 = v3(0.0f32, 1.0f32, 0.0f32);
+  c: V3 = sty_decode(v3(w.x, w.y, w.z));
+  shadow: f32 = mix(0.45f32, 1.0f32, sty_shadow(s.world, up, u, shadow_map, shadow_cmp));
+  c = sty_lit(c, up, 1.0f32, shadow, u);
+  // the low sun's glints on the water: a warm sparkle where a ripple faces it
+  t: f32 = u[STY_U_SIZE + 2];
+  spark: f32 = smoothstep(0.83f32, 0.95f32, sty_noise2(s.world.x * 6.0f32 + t * 0.7f32, s.world.z * 9.0f32 - t * 1.1f32));
+  rk: f32 = ifx sty_is(s.info.x, ARCH_M_RIVER) then 0.9f32 else 0.25f32;
+  c = add3(c, scale3(v3(1.6f32, 1.15f32, 0.6f32), spark * rk));
+  c = scale3(sty_haze(c, s.world, u), w.w);
+  o: StyFilm = sty_film(c, u); o.light.w = 0.0f32;
+  return o;
 }
 
 ws_fx_vs :: (_vid: u32, _iid: u32, in_: ws_fx_vs_in, u: [] f32) -> WsStroke {
