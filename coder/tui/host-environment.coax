@@ -449,12 +449,15 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
     m.np=0;m.ndiff=0;m.diff_cut=false;m.nnk=0;
     // a setup notice says its kind, so the phone draws it as one, never as the agent's reply
     if p.kind==P_NOTICE {nk:=es_notice_kind(p.notice);if nk.count>0 {m.nnk=ea_copy(m.notice[..],nk);}}
-    // an edit's or a write's file, and what it changed while the page has room (GitHub #13713)
+    // an edit's or a write's file, and what it changed while the page has room (GitHub #13713, #14010)
     if p.kind==P_TOOL && (p.tk==TK_EDIT || p.tk==TK_WRITE) && p.arg.count>0 && p.arg.count<=512 {
       m.np=ea_copy(m.path[..],p.arg);
       if (p.before.count>0 || p.after.count>0) && dbytes<16000 {
         d:[EA_DIFF]u8;cut:[1]bool;dn:=ea_diff_make(d[..],p.before,p.after,cut[..]);
         if dn>0 {m.diff_at=ea_text_put(v,cast(string)d[0..<dn]);if m.diff_at<0 {es_refuse(v,"output_limit");return;}m.ndiff=dn;m.diff_cut=cut[0];dbytes+=dn;}
+      } else if p.detail.count>0 && dbytes<16000 && (p.detail[0]==cast(u8)'-' || p.detail[0]==cast(u8)'+' || p.detail[0]==cast(u8)'@') {
+        ds:=hs_cut(p.detail,EA_DIFF);
+        if ds.count>0 {m.diff_at=ea_text_put(v,ds);if m.diff_at<0 {es_refuse(v,"output_limit");return;}m.ndiff=ds.count;m.diff_cut=ds.count<p.detail.count;dbytes+=ds.count;}
       }
     }
     m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && ((p.kind!=P_TEXT && p.kind!=P_THINK) || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}

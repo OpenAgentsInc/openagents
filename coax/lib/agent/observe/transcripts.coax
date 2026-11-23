@@ -25,6 +25,10 @@ OB_KINDS :: [5] string.["claude", "codex", "coder", "antigravity", "opencode"];
 OB_DONE :: 5;
 OB_AGY_BRAIN :: ".gemini/antigravity-cli/brain";
 OB_AGY_DESKTOP_BRAIN :: ".gemini/antigravity/brain";
+OB_AGY_ACP_BRAIN :: ".gemini/antigravity-acp/brain";
+OB_AGY_MANAGED_BRAIN :: ".openagents/runtimes/agy/profile/antigravity-acp/brain";
+OB_AGY_MANAGED_NATIVE_BRAIN :: ".openagents/runtimes/agy/profile/antigravity/brain";
+OB_AGY_ROOTS :: [5] string.[OB_AGY_BRAIN, OB_AGY_DESKTOP_BRAIN, OB_AGY_ACP_BRAIN, OB_AGY_MANAGED_BRAIN, OB_AGY_MANAGED_NATIVE_BRAIN];
 OB_AGY_LOG :: ".system_generated/logs";
 OB_OPENCODE_DIR :: ".local/share/opencode";
 OB_OPENCODE_DIFF :: ".local/share/opencode/storage/session_diff";
@@ -185,16 +189,17 @@ ob_next :: (w: [] ObWalk) -> bool {
       continue;
     }
     if w[0].phase == OB_AGY {
-      // Antigravity: antigravity-cli/brain and antigravity/brain -> ID/.system_generated/logs/transcript.jsonl.
+      // Antigravity: cli/brain, antigravity/brain, antigravity-acp/brain, and managed profile brains (#14009).
       if !w[0].agy { w[0].phase = OB_OPENCODE; w[0].depth = 0; w[0].sub_phase = 0; continue; }
       if w[0].depth == 0 {
-        root := ifx w[0].sub_phase == 0 then OB_AGY_BRAIN else OB_AGY_DESKTOP_BRAIN;
+        roots := OB_AGY_ROOTS;
+        root := roots[w[0].sub_phase];
         ob_open(w, 0, fs_join(cast(string) w[0].home[0..<w[0].home_n], root, b[..]));
         continue;
       }
       name := ob_name(w, 0);
       if name.count == 0 {
-        if w[0].sub_phase == 0 { w[0].sub_phase = 1; w[0].depth = 0; continue; }
+        if w[0].sub_phase + 1 < OB_AGY_ROOTS.count { w[0].sub_phase += 1; w[0].depth = 0; continue; }
         w[0].phase = OB_OPENCODE; w[0].depth = 0; w[0].sub_phase = 0;
         continue;
       }

@@ -77,6 +77,7 @@ MWW_TODOS :: 27;               // {"kind":"todos","todos":[{"id":I,"content":C,"
 MWW_DEVICE :: 28;              // {"kind":"device","op":OP,"ok":B,"shot":P}: after an oasim command's line, what it did to the simulator (GitHub #13811)
 MWW_PERMIT :: 29;              // {"kind":"permit","ticket":N,"question":B,"title":T,"command":C,"options":O}: interactive permission or user-input question (GitHub #13831)
 MWW_STATS :: 30;               // {"kind":"stats","ttft_ms":N,"decode_ms":N,"output_tokens":N}: per-attempt inference timing (TTFT and decode speed)
+MWW_META :: 31;                // {"kind":"meta","title":T,"commands":[...]}: live session title & available slash commands (#14010)
 // queue ops
 MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
@@ -383,10 +384,19 @@ mww_stats :: (o: [] u8, ttft_ms: int, decode_ms: int, output_tokens: int) -> int
   return json_raw(o, n, "}");
 }
 mww_command :: (o: [] u8, command: string, exit: int, timed_out: bool, output: string) -> int {
+  return mww_command_tool(o, command, exit, timed_out, output, "", "", "", "");
+}
+// Rich tool completion carrying real tool kind, parallel toolCallId, file path, and unified diff (#14010).
+// Optional keys are omitted when empty so existing command lines are byte-for-byte identical.
+mww_command_tool :: (o: [] u8, command: string, exit: int, timed_out: bool, output: string, tool: string, tool_id: string, path: string, diff: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, command);
   n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, exit);
   n = json_raw(o, n, ifx timed_out then ",\"timed_out\":true" else ",\"timed_out\":false");
   n = json_raw(o, n, ",\"output\":"); n = json_write_string(o, n, output);
+  if tool.count > 0 { n = json_raw(o, n, ",\"tool\":"); n = json_write_string(o, n, tool); }
+  if tool_id.count > 0 { n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, tool_id); }
+  if path.count > 0 { n = json_raw(o, n, ",\"path\":"); n = json_write_string(o, n, path); }
+  if diff.count > 0 { n = json_raw(o, n, ",\"diff\":"); n = json_write_string(o, n, diff); }
   return json_raw(o, n, "}");
 }
 mww_view :: (o: [] u8, path: string, found: bool) -> int {
@@ -394,8 +404,22 @@ mww_view :: (o: [] u8, path: string, found: bool) -> int {
   return json_raw(o, n, ifx found then ",\"found\":true}" else ",\"found\":false}");
 }
 mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
+  return mww_ask_tool(o, command, ticket, "", "", "");
+}
+// Rich tool start carrying real tool kind, parallel toolCallId, and file path (#14010).
+mww_ask_tool :: (o: [] u8, command: string, ticket: int, tool: string, tool_id: string, path: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, command);
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
+  if tool.count > 0 { n = json_raw(o, n, ",\"tool\":"); n = json_write_string(o, n, tool); }
+  if tool_id.count > 0 { n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, tool_id); }
+  if path.count > 0 { n = json_raw(o, n, ",\"path\":"); n = json_write_string(o, n, path); }
+  return json_raw(o, n, "}");
+}
+// Live session metadata update: auto-generated title (session_info_update) and/or slash commands (available_commands_update; #14010).
+mww_meta :: (o: [] u8, title: string, commands_json: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"meta\"");
+  if title.count > 0 { n = json_raw(o, n, ",\"title\":"); n = json_write_string(o, n, title); }
+  if commands_json.count > 0 { n = json_raw(o, n, ",\"commands\":"); n = json_raw(o, n, commands_json); }
   return json_raw(o, n, "}");
 }
 // Interactive permission escalation or structured user-input question (GitHub #13831, #13997).
@@ -506,13 +530,13 @@ MwwLine :: struct {
   agent: JsonInt;                // stop_agent: the sub-agent's number, from 1
   tasks: string;                 // delegate: the tasks' JSON list
   gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt; provider_cost_usd_micros: JsonInt;   // attempt, what an owner shows
-  model: string; input_tokens: JsonInt; cached_tokens: JsonInt; output_tokens: JsonInt;   // attempt: the context it used
+  model: string; input_tokens: JsonInt; cached_tokens: JsonInt; output_tokens: JsonInt; reasoning_tokens: JsonInt;   // attempt: the context it used
   values: string;                // embedding: the list's JSON text, "" when there is none
   error: string;                 // embedding: the error member's JSON text, "" when there is none
   why: string;                   // embedding: the error's words
   turn: JsonInt;                 // turn, steer: the turn's number
   source: string;                // turn: message, queue or resubmit
-  id: string;                    // turn, steer, queue_refused: the item's id
+  id: string;                    // turn, steer, queue_refused, ask/command toolCallId
   steer_status: string;          // steer: accepted, rejected, applied, queued or resubmitted
   reason: string;                // steer (rejected), queue (why paused), queue_refused
   step: JsonInt;                 // steer (applied)
@@ -522,8 +546,9 @@ MwwLine :: struct {
   todos: string;                 // todos: the todo list's JSON array ([{"id","content","status"}]); read each with cl_item
   op: string;                    // queue_refused; device: the oasim verb
   ok: ClBool; shot: string;      // device: whether it went, the screenshot it took ("" for none)
-  question: ClBool; title: string; options: string; warning: string; // permit: interactive permission or user-input question
+  question: ClBool; title: string; options: string; warning: string; // permit: interactive permission or user-input question; meta: title
   ttft_ms: JsonInt; decode_ms: JsonInt;               // stats: time-to-first-token and decode duration in ms
+  tool: string; diff: string; commands: string;       // ask/command: real tool kind & diff; meta: available commands JSON (#14010)
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
 // they hold until either changes. A string that does not fit in ar reads as "".
@@ -544,7 +569,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].gateway = cl_str(ar, line, "gateway");
     l[0].status = cl_int(line, "status");
     l[0].model = cl_str(ar, line, "model");
-    l[0].input_tokens = cl_int(line, "input_tokens"); l[0].cached_tokens = cl_int(line, "cached_tokens"); l[0].output_tokens = cl_int(line, "output_tokens");
+    l[0].input_tokens = cl_int(line, "input_tokens"); l[0].cached_tokens = cl_int(line, "cached_tokens"); l[0].output_tokens = cl_int(line, "output_tokens"); l[0].reasoning_tokens = cl_int(line, "reasoning_tokens");
   }
   else if kind == "command" {
     k = MWW_COMMAND;
@@ -552,10 +577,21 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].exit = cl_int(line, "exit");
     l[0].timed_out = cl_bool(line, "timed_out");
     l[0].output = cl_str(ar, line, "output");
+    l[0].tool = cl_str(ar, line, "tool");
+    l[0].id = cl_str(ar, line, "id");
+    l[0].path = cl_str(ar, line, "path");
+    l[0].diff = cl_str(ar, line, "diff");
   }
   else if kind == "view" { k = MWW_VIEW; l[0].path = cl_str(ar, line, "path"); l[0].found = cl_bool(line, "found"); }
   else if kind == "delegate" { k = MWW_DELEGATE; l[0].ticket = cl_int(line, "ticket"); l[0].tasks = cl_raw(line, "tasks"); }
-  else if kind == "ask" { k = MWW_ASK; l[0].ticket = cl_int(line, "ticket"); l[0].command = cl_str(ar, line, "command"); }
+  else if kind == "ask" {
+    k = MWW_ASK;
+    l[0].ticket = cl_int(line, "ticket");
+    l[0].command = cl_str(ar, line, "command");
+    l[0].tool = cl_str(ar, line, "tool");
+    l[0].id = cl_str(ar, line, "id");
+    l[0].path = cl_str(ar, line, "path");
+  }
   else if kind == "permit" {
     k = MWW_PERMIT;
     l[0].ticket = cl_int(line, "ticket");
@@ -577,6 +613,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "stop_agent" { k = MWW_STOP_AGENT; l[0].agent = cl_int(line, "agent"); }
   else if kind == "device" { k = MWW_DEVICE; l[0].op = cl_str(ar, line, "op"); l[0].ok = cl_bool(line, "ok"); l[0].shot = cl_str(ar, line, "shot"); }
   else if kind == "stats" { k = MWW_STATS; l[0].ttft_ms = cl_int(line, "ttft_ms"); l[0].decode_ms = cl_int(line, "decode_ms"); l[0].output_tokens = cl_int(line, "output_tokens"); }
+  else if kind == "meta" { k = MWW_META; l[0].title = cl_str(ar, line, "title"); l[0].commands = cl_raw(line, "commands"); }
   else if kind == "queue_refused" { k = MWW_QUEUE_REFUSED; l[0].op = cl_str(ar, line, "op"); l[0].id = cl_str(ar, line, "id"); l[0].reason = cl_str(ar, line, "reason"); }
   l[0].kind = k;
   return k;

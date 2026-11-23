@@ -528,6 +528,77 @@ dk_sub_for :: (subs: [] DkSub, n: int, task: string) -> int {
   return -1;
 }
 
+dk_tool_kind_code :: (tool: string) -> int {
+  if tool == "read" { return TK_READ; }
+  if tool == "edit" { return TK_EDIT; }
+  if tool == "write" { return TK_WRITE; }
+  if tool == "search" { return TK_SEARCH; }
+  if tool == "mcp" { return TK_MCP; }
+  if tool == "web" || tool == "browser" { return TK_WEB; }
+  if tool == "subagent" { return TK_AGENT; }
+  if tool == "think" { return TK_THOUGHT; }
+  return TK_EXEC;
+}
+dk_tool_display :: (tool: string) -> string {
+  if tool == "read" { return "Read"; }
+  if tool == "edit" { return "Edit"; }
+  if tool == "write" { return "Write"; }
+  if tool == "search" { return "Search"; }
+  if tool == "mcp" { return "MCP"; }
+  if tool == "web" { return "Web"; }
+  if tool == "browser" { return "Browser"; }
+  if tool == "subagent" { return "Task"; }
+  if tool == "think" { return "Thought"; }
+  return "Bash";
+}
+dk_tool_rich :: (s: [] Session, tool: string, cmd: string, path: string) -> int {
+  tk := dk_tool_kind_code(tool);
+  name := dk_tool_display(tool);
+  k := dk_tool(s, name, tk, ifx path.count > 0 && (tk == TK_EDIT || tk == TK_WRITE || tk == TK_READ) then path else cmd);
+  if k >= 0 && path.count > 0 {
+    s[0].parts[k].input = s_put(s, hs_cut(cmd, 4000));
+  }
+  return k;
+}
+dk_done_rich :: (s: [] Session, k: int, output: string, path: string, diff: string, failed: bool) {
+  if k < 0 { return; }
+  if path.count > 0 && s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, hs_cut(path, 512)); }
+  if diff.count > 0 { s[0].parts[k].detail = s_put(s, hs_cut(diff, 4000)); }
+  dk_done(s, k, output, failed);
+}
+// Parallel open-tool table for dk_session (#14010): prevents parallel ACP tool calls from colliding on one scalar `ask`.
+DkOpenTool :: struct { k: int; id: [64] u8; nid: int; cmd: [128] u8; ncmd: int; used: bool; }
+dk_open_push :: (open: [] DkOpenTool, k: int, tid: string, cmd: string) {
+  if k < 0 { return; }
+  for i: 0..<open.count {
+    if !open[i].used {
+      open[i].used = true; open[i].k = k;
+      open[i].nid = hs_set(open[i].id[..], hs_cut(tid, 64));
+      open[i].ncmd = hs_set(open[i].cmd[..], hs_cut(cmd, 128));
+      return;
+    }
+  }
+}
+dk_open_take :: (open: [] DkOpenTool, tid: string, cmd: string) -> int {
+  if tid.count > 0 {
+    ct := hs_cut(tid, 64);
+    for i: 0..<open.count {
+      if open[i].used && open[i].nid == ct.count && cast(string) open[i].id[0..<open[i].nid] == ct {
+        k := open[i].k; open[i].used = false; return k;
+      }
+    }
+  }
+  cc := hs_cut(cmd, 128);
+  i := open.count - 1;
+  while i >= 0 {
+    if open[i].used && open[i].ncmd == cc.count && cast(string) open[i].cmd[0..<open[i].ncmd] == cc {
+      k := open[i].k; open[i].used = false; return k;
+    }
+    i -= 1;
+  }
+  return -1;
+}
+
 dk_tool :: (s: [] Session, name: string, tk: int, arg: string) -> int {
   k := s_part(s, P_TOOL);
   if k < 0 { return -1; }
@@ -597,7 +668,7 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
   dk_earlier(r, s, file, ab);
   op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
   next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine;
-  ask := -1; open := false; text_since := false;
+  open_tools: [32] DkOpenTool; open := false; text_since := false;
   // a phone's own run: a turn its task line started says no words, and the task line is the
   // phone's message alone, so each such turn shows its task's words (the newest ones line up)
   asks: [DK_ASKS] string; nasks := 0; inb: [DK_IN_TAIL] u8; tab: [DK_IN_TAIL] u8; skip := [1] int.[0];
@@ -607,16 +678,19 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
     if line.count == 0 { if next[0] >= t.count { break; } continue; }
     ar[0].at = 0; ar[0].full = false;
     kind := mww_read(ar[..], line, l[..]);
-    if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && skip[0] > 0 { skip[0] -= 1; s_user(s, "(follow-up)"); open = true; text_since = false; ask = -1; }
-    else if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && nasks > 0 { s_user(s, asks[asks.count - nasks]); nasks -= 1; open = true; text_since = false; ask = -1; }
-    else if kind == MWW_TURN { s_user(s, ifx l[0].text.count > 0 then l[0].text else "(follow-up)"); open = true; text_since = false; ask = -1; }
+    if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && skip[0] > 0 { skip[0] -= 1; s_user(s, "(follow-up)"); open = true; text_since = false; for oi: 0..<open_tools.count { open_tools[oi].used = false; } }
+    else if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && nasks > 0 { s_user(s, asks[asks.count - nasks]); nasks -= 1; open = true; text_since = false; for oi: 0..<open_tools.count { open_tools[oi].used = false; } }
+    else if kind == MWW_TURN { s_user(s, ifx l[0].text.count > 0 then l[0].text else "(follow-up)"); open = true; text_since = false; for oi: 0..<open_tools.count { open_tools[oi].used = false; } }
     else if kind == MWW_THOUGHT { s_delta(s, P_THINK, l[0].text); }
     else if kind == MWW_REPLY { s_delta(s, P_TEXT, l[0].text); text_since = true; }
-    else if kind == MWW_ASK { ask = dk_tool(s, "Bash", TK_EXEC, l[0].command); }
+    else if kind == MWW_ASK {
+      k := dk_tool_rich(s, l[0].tool, l[0].command, l[0].path);
+      dk_open_push(open_tools[..], k, l[0].id, l[0].command);
+    }
     else if kind == MWW_COMMAND {
-      k := -1;
-      if ask >= 0 && s[0].parts[ask].arg == hs_cut(l[0].command, 4000) && !s[0].parts[ask].resolved { k = ask; } else { k = dk_tool(s, "Bash", TK_EXEC, l[0].command); }
-      dk_done(s, k, l[0].output, (l[0].exit.ok && l[0].exit.value != 0) || (l[0].timed_out.ok && l[0].timed_out.value)); ask = -1;
+      k := dk_open_take(open_tools[..], l[0].id, l[0].command);
+      if k < 0 { k = dk_tool_rich(s, l[0].tool, l[0].command, l[0].path); }
+      dk_done_rich(s, k, l[0].output, l[0].path, l[0].diff, (l[0].exit.ok && l[0].exit.value != 0) || (l[0].timed_out.ok && l[0].timed_out.value));
     }
     else if kind == MWW_VIEW { k := dk_tool(s, "Read", TK_READ, l[0].path); dk_done(s, k, ifx l[0].found.ok && l[0].found.value then "" else "Not found", false); }
     else if kind == MWW_DELEGATE {
@@ -907,6 +981,38 @@ dk_saved_turns :: (text: string, s: [] Session, ab: [] u8, drop: int) {
   s[0].live = false;
 }
 
+// Scan the run's .out tail for latest live ACP metadata: todos (plan), dynamic slash commands,
+// live session title, and per-turn token usage (#14010).
+dk_apply_stream_meta :: (id: string, file: [] u8, ab: [] u8, v: [] EaView) {
+  op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
+  if t.count == 0 { return; }
+  next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := mww_read(ar[..], line, l[..]);
+    if kind == MWW_TODOS && l[0].todos.count >= 2 {
+      n := ea_copy(v[0].todos[..], l[0].todos);
+      if n >= 2 { v[0].ntodos = n; }
+    } else if kind == MWW_META {
+      if l[0].title.count > 0 && v[0].ns > 0 {
+        nt := ea_copy(v[0].sessions[0].title[..], hs_cut(l[0].title, 256));
+        if nt > 0 { v[0].sessions[0].nt = nt; }
+      }
+      if l[0].commands.count >= 2 {
+        nc := ea_copy(v[0].commands[..], l[0].commands);
+        if nc >= 2 { v[0].ncmds = nc; }
+      }
+    } else if kind == MWW_ATTEMPT {
+      if l[0].input_tokens.ok && l[0].input_tokens.value >= 0 { v[0].usage_in = l[0].input_tokens.value; }
+      if l[0].output_tokens.ok && l[0].output_tokens.value >= 0 { v[0].usage_out = l[0].output_tokens.value; }
+      if l[0].cached_tokens.ok && l[0].cached_tokens.value >= 0 { v[0].usage_cached = l[0].cached_tokens.value; }
+      if l[0].reasoning_tokens.ok && l[0].reasoning_tokens.value >= 0 { v[0].usage_thought = l[0].reasoning_tokens.value; }
+    }
+  }
+}
+
 // ReadSession and ReadSubagent of a Coder Desktop chat.
 dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
   runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
@@ -937,6 +1043,8 @@ dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
   none: [1] DkSub; have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
   if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
   es_project_at(ses[..], stamps[0..<have], q, v);
+  // Populate live ACP todos, slash commands, token usage, and live title from the run's .out stream (#14010).
+  dk_apply_stream_meta(cast(string) r[0].id[..], file[..], ab[..], v);
   // Populate pending interaction details (prompt, security warning, options, question flag) when awaiting approval (#13997).
   if r[0].permit_ticket > 0 {
     pb: [512] u8; pn := 0;

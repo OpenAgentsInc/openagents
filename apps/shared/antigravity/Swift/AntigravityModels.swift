@@ -160,6 +160,48 @@ struct HostRuntimeMeta: Equatable, Codable {
     var supportsModes: Bool { capabilities.contains("agy.modes") }
 }
 
+struct SessionTodoItem: Identifiable, Equatable, Codable {
+    let id: String
+    let content: String
+    let status: String
+
+    var isCompleted: Bool {
+        let lower = status.lowercased()
+        return lower == "completed" || lower == "done"
+    }
+
+    var isInProgress: Bool {
+        let lower = status.lowercased()
+        return lower == "in_progress" || lower == "running" || lower == "active"
+    }
+}
+
+struct SessionUsageStats: Equatable, Codable {
+    let inputTokens: Int
+    let outputTokens: Int
+    let cachedTokens: Int
+    let thoughtTokens: Int
+
+    var totalTokens: Int { inputTokens + outputTokens + cachedTokens + thoughtTokens }
+    /// Estimated occupancy against standard 1M-token Gemini context window.
+    var contextPercent: Double {
+        let ctx = inputTokens + cachedTokens
+        guard ctx > 0 else { return 0 }
+        return min(100.0, (Double(ctx) / 1_000_000.0) * 100.0)
+    }
+    var summaryLabel: String {
+        func fmt(_ n: Int) -> String {
+            if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000.0) }
+            if n >= 1_000 { return String(format: "%.1fk", Double(n) / 1_000.0) }
+            return "\(n)"
+        }
+        var parts = ["in \(fmt(inputTokens))", "out \(fmt(outputTokens))"]
+        if cachedTokens > 0 { parts.append("cache \(fmt(cachedTokens))") }
+        if thoughtTokens > 0 { parts.append("think \(fmt(thoughtTokens))") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 struct SlashCommandItem: Identifiable, Equatable {
     let id: String
     let command: String
@@ -168,8 +210,11 @@ struct SlashCommandItem: Identifiable, Equatable {
 
     static let defaults: [SlashCommandItem] = [
         SlashCommandItem(id: "plan", command: "/plan", subtitle: "Design an implementation plan before editing", template: "/plan "),
-        SlashCommandItem(id: "review", command: "/review", subtitle: "Audit current git diff for bugs and regressions", template: "Review the current git diff and call out any bugs, regressions, or missing tests."),
+        SlashCommandItem(id: "btw", command: "/btw", subtitle: "Ask a read-only side question without altering history", template: "/btw "),
         SlashCommandItem(id: "compact", command: "/compact", subtitle: "Compact conversation context on host", template: "/compact"),
+        SlashCommandItem(id: "fork", command: "/fork", subtitle: "Fork conversation into a new session", template: "/fork"),
+        SlashCommandItem(id: "rewind", command: "/rewind", subtitle: "Rewind conversation to an earlier checkpoint", template: "/rewind"),
+        SlashCommandItem(id: "review", command: "/review", subtitle: "Audit current git diff for bugs and regressions", template: "Review the current git diff and call out any bugs, regressions, or missing tests."),
         SlashCommandItem(id: "test", command: "/test", subtitle: "Run the project test suite and fix failures", template: "Run the relevant tests for our recent changes and fix any failures."),
         SlashCommandItem(id: "explain", command: "/explain", subtitle: "Walk through architecture and key files", template: "Explain how this part of the codebase works: "),
     ]
@@ -890,6 +935,22 @@ private struct WireEnvironmentViewDTO: Decodable {
         let kind: String?
     }
 
+    struct WireTodo: Decodable {
+        let id: String?
+        let content: String?
+        let status: String?
+    }
+    struct WireCommand: Decodable {
+        let name: String?
+        let description: String?
+    }
+    struct WireUsage: Decodable {
+        let input_tokens: Int?
+        let output_tokens: Int?
+        let cached_tokens: Int?
+        let thought_tokens: Int?
+    }
+
     let host_pubkey: String
     let display_name: String?
     let method: String
@@ -913,6 +974,9 @@ private struct WireEnvironmentViewDTO: Decodable {
     let agy_auth_method: String?
     let agy_signed_in: Bool?
     let capabilities: [String]?
+    let todos: [WireTodo]?
+    let commands: [WireCommand]?
+    let usage: WireUsage?
 }
 
 struct ParsedEnvironmentView {
@@ -933,6 +997,9 @@ struct ParsedEnvironmentView {
     let interactionQuestion: Bool
     let interactionOptions: [InteractionOption]
     let hostMeta: HostRuntimeMeta?
+    let todos: [SessionTodoItem]
+    let liveCommands: [SlashCommandItem]
+    let usage: SessionUsageStats?
 
     /// Parses a Coax-validated `EaView` JSON payload via strict `Decodable` structs (#14006)
     /// and filters its model catalog exclusively through Coax `MobileCore.isAntigravityModel`.
@@ -1050,6 +1117,36 @@ struct ParsedEnvironmentView {
             )
             : nil
 
+        let todos: [SessionTodoItem] = (dto.todos ?? []).enumerated().compactMap { idx, row in
+            guard let content = row.content, !content.isEmpty else { return nil }
+            return SessionTodoItem(
+                id: row.id.flatMap { $0.isEmpty ? nil : $0 } ?? "\(idx + 1)",
+                content: content,
+                status: row.status ?? "pending"
+            )
+        }
+
+        let liveCommands: [SlashCommandItem] = (dto.commands ?? []).compactMap { row in
+            guard let raw = row.name?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+            let clean = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+            let cmd = "/\(clean)"
+            return SlashCommandItem(
+                id: "acp-\(clean)",
+                command: cmd,
+                subtitle: row.description.flatMap { $0.isEmpty ? nil : $0 } ?? "Antigravity command",
+                template: "\(cmd) "
+            )
+        }
+
+        let usage: SessionUsageStats? = dto.usage.flatMap { u in
+            let inp = u.input_tokens ?? 0
+            let out = u.output_tokens ?? 0
+            let cac = u.cached_tokens ?? 0
+            let thk = u.thought_tokens ?? 0
+            guard inp > 0 || out > 0 || cac > 0 || thk > 0 else { return nil }
+            return SessionUsageStats(inputTokens: inp, outputTokens: out, cachedTokens: cac, thoughtTokens: thk)
+        }
+
         return ParsedEnvironmentView(
             hostPubkey: dto.host_pubkey,
             displayName: dto.display_name ?? "",
@@ -1067,7 +1164,10 @@ struct ParsedEnvironmentView {
             interactionWarning: dto.interaction_warning ?? "",
             interactionQuestion: dto.interaction_question ?? false,
             interactionOptions: interactionOptions,
-            hostMeta: hostMeta
+            hostMeta: hostMeta,
+            todos: todos,
+            liveCommands: liveCommands,
+            usage: usage
         )
     }
 }

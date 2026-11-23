@@ -20,6 +20,7 @@ CU_CMD_BUF :: 1024;
 CU_INITIALIZE :: 1; CU_AUTHENTICATE :: 2; CU_SESSION_NEW :: 3; CU_SESSION_PROMPT :: 4;
 CU_SESSION_LOAD :: 5; CU_SESSION_CANCEL :: 6; CU_SESSION_SET_MODE :: 7; CU_SESSION_SET_CONFIG :: 8;
 CU_OTHER :: 9; CU_SESSION_RESUME :: 10; CU_SESSION_SET_MODEL :: 11; CU_LOGOUT :: 12;
+CU_SESSION_LIST :: 13; CU_SESSION_CLOSE :: 14;
 
 CU_ASK_PERMISSION :: 1; CU_ASK_QUESTION :: 2; CU_ASK_PLAN :: 3;
 
@@ -36,6 +37,7 @@ CuEventKind :: enum u8 {
   permission;     // session/request_permission; answer with cu_permit
   question;       // cursor/ask_question; answer with cu_question
   plan;           // cursor/create_plan; answer with cu_plan
+  fs_read;        // fs/read_text_file; answer with cu_fs_read_result / cu_fs_read_error
   invalid;
   failed;
   end;
@@ -450,19 +452,70 @@ cu_perm_security_warning :: (params: string, ar: [] ClArena) -> string {
 }
 
 cu_session_new :: (c: [] CuClient, cwd: string) -> int {
-  return cu_session_new_meta(c, cwd, "");
+  return cu_session_new_full(c, cwd, "", "", "", "");
 }
 
 cu_session_new_meta :: (c: [] CuClient, cwd: string, system_prompt_append: string) -> int {
+  return cu_session_new_full(c, cwd, system_prompt_append, "", "", "");
+}
+
+// Open an ACP session with optional _meta.antigravity.{systemPrompt.append, ...}, _meta.agy.{...},
+// and additionalDirectories JSON string items (zero duplicate JSON keys; #14009, #14010).
+cu_session_new_full :: (c: [] CuClient, cwd: string, system_prompt_append: string, add_dirs_json: string, ag_meta_fields: string, agy_meta_fields: string) -> int {
   id := cu_open(c, CU_SESSION_NEW, "session/new");
   o := c[0].out[..];
   cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, ",\"mcpServers\":["); cl_put(o, cu_mcp_servers(c)); cl_put(o, "]");
-  if system_prompt_append.count > 0 {
-    cl_put(o, ",\"_meta\":{\"antigravity\":{\"systemPrompt\":{\"append\":");
-    cl_put_string(o, system_prompt_append);
-    cl_put(o, "}}}");
+  if add_dirs_json.count > 0 {
+    cl_put(o, ",\"additionalDirectories\":["); cl_put(o, add_dirs_json); cl_put(o, "]");
+  }
+  has_ag := system_prompt_append.count > 0 || ag_meta_fields.count > 0;
+  has_agy := agy_meta_fields.count > 0;
+  if has_ag || has_agy {
+    cl_put(o, ",\"_meta\":{");
+    if has_ag {
+      cl_put(o, "\"antigravity\":{");
+      wrote_ag := false;
+      if system_prompt_append.count > 0 {
+        cl_put(o, "\"systemPrompt\":{\"append\":");
+        cl_put_string(o, system_prompt_append);
+        cl_put(o, "}");
+        wrote_ag = true;
+      }
+      if ag_meta_fields.count > 0 {
+        if wrote_ag { cl_put(o, ","); }
+        cl_put(o, ag_meta_fields);
+      }
+      cl_put(o, "}");
+    }
+    if has_agy {
+      if has_ag { cl_put(o, ","); }
+      cl_put(o, "\"agy\":{"); cl_put(o, agy_meta_fields); cl_put(o, "}");
+    }
+    cl_put(o, "}");
   }
   cl_put(o, "}");
+  cu_close(c);
+  return id;
+}
+
+// ACP session/list: discover live Antigravity sessions for cwd (or all when cwd is empty; #14009).
+cu_session_list :: (c: [] CuClient, cwd: string) -> int {
+  id := cu_open(c, CU_SESSION_LIST, "session/list");
+  o := c[0].out[..];
+  if cwd.count > 0 {
+    cl_put(o, "{\"cwd\":"); cl_put_string(o, cwd); cl_put(o, "}");
+  } else {
+    cl_put(o, "{}");
+  }
+  cu_close(c);
+  return id;
+}
+
+// ACP session/close: cleanly release a live session on the ACP server (#14009).
+cu_session_close :: (c: [] CuClient, session: string) -> int {
+  id := cu_open(c, CU_SESSION_CLOSE, "session/close");
+  o := c[0].out[..];
+  cl_put(o, "{\"sessionId\":"); cl_put_string(o, session); cl_put(o, "}");
   cu_close(c);
   return id;
 }
@@ -739,6 +792,9 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
     if method == "cursor/create_plan" {
       if !cu_ask(c, CU_ASK_PLAN, id_json, "") { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
       return CuEvent.{kind = CuEventKind.plan, method = method, params = params, line = line};
+    }
+    if method == "fs/read_text_file" {
+      return CuEvent.{kind = CuEventKind.fs_read, method = method, params = params, result = id_json, line = line};
     }
     buf: [160] u8; n := cl_copy(buf[..], "unsupported method: "); n += cl_copy(buf[n..<buf.count], method);
     o := c[0].out[..];

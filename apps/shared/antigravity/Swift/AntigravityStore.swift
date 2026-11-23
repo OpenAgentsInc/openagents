@@ -57,6 +57,9 @@ final class AntigravityStore: ObservableObject {
     // Real-time stream state
     @Published var livePushConnected: Bool = false
     @Published var dynamicSkills: [SlashCommandItem] = []
+    @Published var liveACPCommands: [SlashCommandItem] = []
+    @Published var activeTodos: [SessionTodoItem] = []
+    @Published var activeUsage: SessionUsageStats?
 
     /// Test-only switch enabled strictly via `-OAE2ELoopbackAllowed` launch argument for local Simulator E2E harnesses.
     var allowLoopbackForTests: Bool = false
@@ -210,7 +213,10 @@ final class AntigravityStore: ObservableObject {
         let trimmed = draftText.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("/") else { return [] }
         let query = trimmed.lowercased()
-        let catalog = SlashCommandItem.defaults + dynamicSkills
+        var seenCmds = Set<String>()
+        let catalog = (liveACPCommands + SlashCommandItem.defaults + dynamicSkills).filter {
+            seenCmds.insert($0.command.lowercased()).inserted
+        }
         if query == "/" { return Array(catalog.prefix(10)) }
         return Array(catalog.filter { $0.command.lowercased().hasPrefix(query) }.prefix(10))
     }
@@ -868,6 +874,15 @@ final class AntigravityStore: ObservableObject {
                 }
             }
             applyServerItems(view.items, nowBusy: nowBusy)
+            if !view.todos.isEmpty || !nowBusy {
+                activeTodos = view.todos
+            }
+            if !view.liveCommands.isEmpty {
+                liveACPCommands = view.liveCommands
+            }
+            if let usage = view.usage {
+                activeUsage = usage
+            }
             persistOfflineCache(for: computer.id)
 
             // Fire zero-secret completion / approval notification hooks for backgrounded clients.

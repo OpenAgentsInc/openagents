@@ -32,8 +32,11 @@ AgrStep :: struct {
   at: int;                       // created_at, seconds since the epoch (0 when absent)
   done: bool;                    // status DONE
   text: string;                  // a request's words, the model's words, a result
+  thinking: string;              // planner thinking/reasoning block (#14009)
+  error: string;                 // non-empty when status == ERROR/FAILED or error field present (#14009)
   model: string;                 // the model chosen in this request, if one was
   tools: int;                    // tool calls in a model step
+  first_tool: string;            // first tool call name when tools > 1 (#14009)
   tool: string; arg: string;     // the last of them and its first telling argument
   input: int; cached: int; output: int;
 }
@@ -41,15 +44,36 @@ AgrStep :: struct {
 agr_has :: (s: string, p: string) -> bool { if p.count > s.count { return false; } for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } } return false; }
 agr_find :: (s: string, p: string, from: int) -> int { if p.count > s.count { return -1; } for i: from..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return i; } } return -1; }
 agr_two :: (s: string, at: int) -> int { return cast(int) (s[at] - '0') * 10 + cast(int) (s[at + 1] - '0'); }
-// 2026-11-11T20:40:26Z as seconds since the epoch; 0 when it isn't one.
+// 2026-11-11T20:40:26Z as seconds since the epoch; 0 when it isn't one (#14009: validates colons + seconds digits).
 agr_time :: (s: string) -> int {
-  if s.count < 19 || s[4] != '-' || s[7] != '-' || s[10] != 'T' { return 0; }
-  for i: [12] int.[0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15] { if s[i] < '0' || s[i] > '9' { return 0; } }
+  if s.count < 19 || s[4] != '-' || s[7] != '-' || s[10] != 'T' || s[13] != ':' || s[16] != ':' { return 0; }
+  for i: [14] int.[0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18] { if s[i] < '0' || s[i] > '9' { return 0; } }
   y := agr_two(s, 0) * 100 + agr_two(s, 2); m := agr_two(s, 5); d := agr_two(s, 8);
+  hh := agr_two(s, 11); mm := agr_two(s, 14); ss := agr_two(s, 17);
+  if m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 60 { return 0; }
   yy := ifx m <= 2 then y - 1 else y; era := yy / 400; yoe := yy - era * 400;
   mp := ifx m > 2 then m - 3 else m + 9; doy := (153 * mp + 2) / 5 + d - 1;
   days := era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
-  return days * 86400 + agr_two(s, 11) * 3600 + agr_two(s, 14) * 60 + agr_two(s, 17);
+  return days * 86400 + hh * 3600 + mm * 60 + ss;
+}
+// Extract original workspace cwd from a transcript record when present (#14009).
+agr_cwd :: (line: string, ar: [] ClArena) -> string {
+  c := cl_str(ar, line, "cwd");
+  if c.count > 0 && c[0] == '/' { return c; }
+  content := cl_str(ar, line, "content");
+  at := agr_find(content, "Command Working Directory: ", 0);
+  if at >= 0 {
+    from := at + 27; end := from;
+    while end < content.count && content[end] != '\n' && content[end] != '\r' { end += 1; }
+    if end > from && content[from] == '/' { return content[from..<end]; }
+  }
+  at = agr_find(content, "Active Workspaces:\n- ", 0);
+  if at >= 0 {
+    from := at + 21; end := from;
+    while end < content.count && content[end] != '\n' && content[end] != '\r' { end += 1; }
+    if end > from && content[from] == '/' { return content[from..<end]; }
+  }
+  return "";
 }
 // What is between <USER_REQUEST> and its end, trimmed; the whole text when there is no such tag.
 agr_request :: (content: string) -> string {
@@ -81,18 +105,26 @@ agr_step :: (line: string, ar: [] ClArena) -> AgrStep {
   ar[0].at = 0; ar[0].full = false;
   ty := cl_str(ar, line, "type");
   r.at = agr_time(cl_str(ar, line, "created_at"));
-  r.done = cl_str(ar, line, "status") == "DONE";
+  status := cl_str(ar, line, "status");
+  r.done = status == "DONE";
   content := cl_str(ar, line, "content");
+  if status == "ERROR" || status == "FAILED" {
+    r.error = cl_str(ar, line, "error");
+    if r.error.count == 0 { r.error = content; }
+  }
   if ty == "USER_INPUT" { r.kind = AGR_USER; r.text = agr_request(content); r.model = agr_model(content); return r; }
   if ty == "GENERIC" { r.kind = AGR_RESULT; r.text = content; return r; }
   if ty != "PLANNER_RESPONSE" { return r; }
   r.kind = AGR_MODEL; r.text = content;
+  r.thinking = cl_str(ar, line, "thinking");
   a := cl_int(line, "input_tokens"); r.input = ifx a.ok then a.value else 0;
   b := cl_int(line, "cache_read_tokens"); r.cached = ifx b.ok then b.value else 0;
   c := cl_int(line, "output_tokens"); r.output = ifx c.ok then c.value else 0;
   calls := cl_raw(line, "tool_calls");
   r.tools = cl_count(calls); if r.tools < 0 { r.tools = 0; }   // (-1: no tool_calls)
   if r.tools > 0 {
+    first := cl_json(calls, cl_item(calls, 0));
+    r.first_tool = cl_str(ar, first, "name");
     last := cl_json(calls, cl_item(calls, r.tools - 1));
     r.tool = cl_str(ar, last, "name");
     args := cl_raw(last, "args");
@@ -132,10 +164,15 @@ agr_turn :: (turn: int, s: AgrStep) -> int {
 #test "antigravity transcript: times, requests and model names" {
   #assert agr_time("1970-01-01T00:00:00Z") == 0 && agr_time("2026-11-11T20:40:26Z") == 1794429626 && agr_time("2000-02-29T00:00:01Z") == 951782401;
   #assert agr_time("") == 0 && agr_time("2026-1x-11T20:40:26Z") == 0;
+  #assert agr_time("2026-11-11T20x40:26Z") == 0 && agr_time("2026-11-11T20:40y26Z") == 0 && agr_time("2026-11-11T20:40:2xZ") == 0;
   #assert agr_request("plain words") == "plain words" && agr_request("<USER_REQUEST>  hi \n</USER_REQUEST>") == "hi" && agr_request("<USER_REQUEST>open") == "open";
   #assert agr_model("no change") == "" && agr_model("`Model Selection` from A to B.") == "B" && agr_model("`Model Selection` from None to Gemini 4 Carbon (High)\nmore") == "Gemini 4 Carbon (High)";
   #assert agr_model("`Model Selection` from Gemini 3.8 Flash to Gemini 4.1 Pro. Next") == "Gemini 4.1 Pro";
   #assert agr_unquote("\"x\"") == "x" && agr_unquote("5000") == "5000" && agr_unquote("\"") == "\"";
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  st := agr_step("{\"type\":\"PLANNER_RESPONSE\",\"status\":\"ERROR\",\"thinking\":\"checking\",\"content\":\"rate limited\",\"tool_calls\":[{\"name\":\"read_file\",\"args\":{\"Path\":\"\\\"a.txt\\\"\"}},{\"name\":\"edit_file\",\"args\":{\"Path\":\"\\\"b.txt\\\"\"}}]}", ar[..]);
+  #assert st.thinking == "checking" && st.error == "rate limited" && st.tools == 2 && st.first_tool == "read_file" && st.tool == "edit_file";
+  #assert agr_cwd("{\"content\":\"Active Workspaces:\\n- /Users/me/repo\\n\"}", ar[..]) == "/Users/me/repo";
 }
 
 // ---------------------------------------------------------------- detached subagents

@@ -96,14 +96,33 @@ ag_item :: (v: [] EaView, line: int, part: string, role: string, tool: string, t
   v[0].items[v[0].ni] = m; v[0].ni += 1;
   return true;
 }
-// How many items a step shows and their text's bytes.
+// How many items a step shows and their text's bytes (#14009: includes thinking & error details).
 ag_weigh :: (s: AgrStep, bytes: [] int) -> int {
   n := 0; bytes[0] = 0;
+  if s.kind == AGR_MODEL && s.thinking.count > 0 { n += 1; bytes[0] += ifx s.thinking.count < AG_ITEM_TEXT then s.thinking.count else AG_ITEM_TEXT; }
   if (s.kind == AGR_USER || s.kind == AGR_MODEL) && s.text.count > 0 { n += 1; bytes[0] += ifx s.text.count < AG_ITEM_TEXT then s.text.count else AG_ITEM_TEXT; }
   if s.kind == AGR_MODEL && s.tools > 0 { n += 1; bytes[0] += ifx s.arg.count < AG_ITEM_TEXT then s.arg.count else AG_ITEM_TEXT; }
+  if s.error.count > 0 && s.error != s.text { n += 1; bytes[0] += ifx s.error.count < AG_ITEM_TEXT then s.error.count else AG_ITEM_TEXT; }
   return n;
 }
-// ReadSession for one of these chats: the newest items that fit, oldest first.
+// Extract the original workspace cwd recorded in a native ~/.gemini transcript (#14009).
+ag_transcript_cwd :: (path: string, out: [] u8) -> string #effects(all) {
+  data: [65536] u8; n := fs_read_at(path, 0, data[..]); if n <= 0 { return ""; }
+  text := cast(string) data[0..<n]; start := 0;
+  ab: [65536] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  while start < text.count {
+    end := start; while end < text.count && text[end] != '\n' { end += 1; }
+    if end >= text.count && n == data.count { break; }
+    ar[0].at = 0; ar[0].full = false;
+    c := agr_cwd(cast(string) text[start..<end], ar[..]);
+    if c.count > 0 && c.count <= out.count && fs_kind(c) == FS_DIR {
+      return cast(string) out[0..<hs_cat(out, 0, c)];
+    }
+    start = end + 1;
+  }
+  return "";
+}
+// ReadSession for one of these chats: newest items that fit, oldest first, supporting `before` cursor pagination (#14009, #14011).
 ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
   id := cast(string) q[0].session[0..<q[0].ns];
   if !ag_is(id) { es_refuse(v, "not_found"); return; }
@@ -118,14 +137,19 @@ ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
   text := cast(string) data[0..<got]; first := 0;
   if off > 0 { while first < text.count && text[first] != '\n' { first += 1; } first += 1; }   // the cut line
   ab: [AG_TAIL] u8; ar: [1] ClArena; ar[0].buf = ab[..];
-  // the lines, then from the newest back while the items and their text fit
+  // the lines, then from limit back while the items and their text fit
   starts: [4096] int; ends: [4096] int; lines := 0; p := first;
   while p < text.count && lines < starts.count {
     e := p; while e < text.count && text[e] != '\n' { e += 1; }
     if e > p { starts[lines] = p; ends[lines] = e; lines += 1; }
     p = e + 1;
   }
-  from := lines; items := 0; bytes := 0; wb: [1] int;
+  limit := lines;
+  if q[0].before > 0 {
+    if q[0].before > lines { es_refuse(v, "stale_cursor"); return; }
+    limit = q[0].before;
+  }
+  from := limit; items := 0; bytes := 0; wb: [1] int;
   while from > 0 {
     s := agr_step(cast(string) text[starts[from - 1]..<ends[from - 1]], ar[..]);
     k := ag_weigh(s, wb[..]);
@@ -133,13 +157,25 @@ ag_read :: (q: [] EaRequest, v: [] EaView) #effects(all) {
     items += k; bytes += wb[0]; from -= 1;
   }
   v[0].ns = 1; ag_summary(found[at], v[0].sessions[0..<1]); v[0].ni = 0; v[0].text_n = 0;
-  for i: from..<lines {
+  for i: from..<limit {
     s := agr_step(cast(string) text[starts[i]..<ends[i]], ar[..]);
     if s.kind == AGR_USER && s.text.count > 0 { if !ag_item(v, i, "", "user", "", s.text) { break; } }
+    if s.kind == AGR_MODEL && s.thinking.count > 0 { if !ag_item(v, i, ".th", EA_ROLE_THOUGHT, "", s.thinking) { break; } }
     if s.kind == AGR_MODEL && s.text.count > 0 { if !ag_item(v, i, "", "assistant", "", s.text) { break; } }
-    if s.kind == AGR_MODEL && s.tools > 0 { if !ag_item(v, i, ".t", "tool", s.tool, s.arg) { break; } }
+    if s.kind == AGR_MODEL && s.tools > 0 {
+      tb: [160] u8; tn := hs_cat(tb[..], 0, s.tool);
+      if s.tools > 1 {
+        nb: [16] u8;
+        tn = hs_cat(tb[..], tn, " (+"); tn = hs_cat(tb[..], tn, hs_itoa(s.tools - 1, nb[..])); tn = hs_cat(tb[..], tn, ")");
+      }
+      if !ag_item(v, i, ".t", "tool", cast(string) tb[0..<tn], s.arg) { break; }
+    }
+    if s.error.count > 0 && s.error != s.text { if !ag_item(v, i, ".err", "notice", "", s.error) { break; } }
   }
   v[0].complete = from == 0 && off == 0;
+  if from > 0 {
+    cb: [64] u8; v[0].nc = ea_copy(v[0].cursor[..], hs_itoa(from, cb[..]));
+  }
   eb: [64] u8; v[0].np = ea_copy(v[0].epoch[..], hs_itoa(found[at].mtime, eb[..]));
 }
 
@@ -166,6 +202,20 @@ ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, file: string, comm
 
   c := h[0].environment[0].configuration[..];
   cwd := cast(string) c[0].workspace[0..<c[0].nw];
+  // Preserve original workspace cwd recorded in the native ~/.gemini transcript when still present on disk (#14009).
+  orig_sid := cast(string) q[0].session[0..<q[0].ns];
+  native_uuid := ifx ag_is(orig_sid) then cast(string) orig_sid[AG_PREFIX.count..<orig_sid.count] else "";
+  orig_cwd_buf: [1024] u8;
+  if native_uuid.count > 0 {
+    found_c: [AG_MAX] ObFound; nc := ag_found(found_c[..]);
+    for i: 0..<nc {
+      if cast(string) found_c[i].parent[0..<found_c[i].parentn] == native_uuid {
+        oc := ag_transcript_cwd(cast(string) found_c[i].path[0..<found_c[i].n], orig_cwd_buf[..]);
+        if oc.count > 0 { cwd = oc; }
+        break;
+      }
+    }
+  }
   idb: [32] u8; id := hs_random_hex(16, idb[..]);
   if id.count != 32 { es_refuse(v, "storage_unavailable"); return; }
   generation := cxproc_wall_us() / 1000;
@@ -185,8 +235,6 @@ ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, file: string, comm
   }
   // Pass the native ~/.gemini conversation UUID via CODER_AGY_RESUME_SESSION for true in-place ACP
   // session/resume (#13993 Phase 2.5), while keeping ph_recall in .in as automatic fallback if refused.
-  orig_sid := cast(string) q[0].session[0..<q[0].ns];
-  native_uuid := ifx ag_is(orig_sid) then cast(string) orig_sid[AG_PREFIX.count..<orig_sid.count] else "";
   why := ph_spec_mode_resume(h, id, PA_AGY, pick.model, eff, want_mode, cwd, 0, native_uuid);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }

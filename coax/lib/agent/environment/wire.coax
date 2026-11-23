@@ -155,7 +155,7 @@ ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(a
 ea_item_diff :: (v:[]EaView,i:int)->string #effects(all) {
   if i<0 || i>=v[0].ni || v[0].items[i].ndiff<1 {return "";}m:=v[0].items[i];return cast(string)v[0].text[m.diff_at..<m.diff_at+m.ndiff];
 }
-EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;inter_prompt:[512]u8;nip:int;inter_warn:[256]u8;niw:int;inter_opts:[1024]u8;nio:int;inter_q:bool;host_ver:[64]u8;nhv:int;agy_ver:[64]u8;nav:int;agy_update:bool;agy_auth:[32]u8;naam:int;agy_signed_in:bool;has_agy_auth:bool;caps:[512]u8;ncap:int;}
+EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;inter_prompt:[512]u8;nip:int;inter_warn:[256]u8;niw:int;inter_opts:[1024]u8;nio:int;inter_q:bool;host_ver:[64]u8;nhv:int;agy_ver:[64]u8;nav:int;agy_update:bool;agy_auth:[32]u8;naam:int;agy_signed_in:bool;has_agy_auth:bool;caps:[512]u8;ncap:int;todos:[4096]u8;ntodos:int;commands:[2048]u8;ncmds:int;usage_in:int;usage_out:int;usage_cached:int;usage_thought:int;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
   at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;
@@ -289,6 +289,16 @@ ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   if v[0].naam>0 {jo_key(o[..],"agy_auth_method");jo_str(o[..],cast(string)v[0].agy_auth[0..<v[0].naam]);}
   if v[0].has_agy_auth {jo_key(o[..],"agy_signed_in");jo_bool(o[..],v[0].agy_signed_in);}
   if v[0].ncap>=2 {jo_key(o[..],"capabilities");jo_raw(o[..],cast(string)v[0].caps[0..<v[0].ncap]);}
+  if v[0].ntodos>=2 {jo_key(o[..],"todos");jo_raw(o[..],cast(string)v[0].todos[0..<v[0].ntodos]);}
+  if v[0].ncmds>=2 {jo_key(o[..],"commands");jo_raw(o[..],cast(string)v[0].commands[0..<v[0].ncmds]);}
+  if v[0].usage_in>0 || v[0].usage_out>0 || v[0].usage_cached>0 || v[0].usage_thought>0 {
+    jo_key(o[..],"usage");jo_obj(o[..]);
+    jo_key(o[..],"input_tokens");jo_int(o[..],v[0].usage_in);
+    jo_key(o[..],"output_tokens");jo_int(o[..],v[0].usage_out);
+    jo_key(o[..],"cached_tokens");jo_int(o[..],v[0].usage_cached);
+    jo_key(o[..],"thought_tokens");jo_int(o[..],v[0].usage_thought);
+    jo_end(o[..]);
+  }
   jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
@@ -341,6 +351,14 @@ ea_interaction_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
   am:=jv_get(j,0,"agy_auth_method");if am>=0 {v[0].naam=jv_str(j,am,v[0].agy_auth[..]);if v[0].naam<0 {v[0].naam=0;}}
   as:=jv_get(j,0,"agy_signed_in");if as>=0 {k:=jv_kind(j,as);if k==JV_TRUE || k==JV_FALSE {v[0].has_agy_auth=true;v[0].agy_signed_in=k==JV_TRUE;}}
   cp:=jv_get(j,0,"capabilities");if cp>=0 && jv_kind(j,cp)==JV_ARRAY {n:=ea_copy(v[0].caps[..],jv_raw(j,cp));if n>=2 {v[0].ncap=n;}}
+  td:=jv_get(j,0,"todos");if td>=0 && jv_kind(j,td)==JV_ARRAY {n:=ea_copy(v[0].todos[..],jv_raw(j,td));if n>=2 {v[0].ntodos=n;}}
+  cm:=jv_get(j,0,"commands");if cm>=0 && jv_kind(j,cm)==JV_ARRAY {n:=ea_copy(v[0].commands[..],jv_raw(j,cm));if n>=2 {v[0].ncmds=n;}}
+  us:=jv_get(j,0,"usage");if us>=0 && jv_kind(j,us)==JV_OBJECT {
+    v[0].usage_in=jv_int(j,jv_get(j,us,"input_tokens"),0);
+    v[0].usage_out=jv_int(j,jv_get(j,us,"output_tokens"),0);
+    v[0].usage_cached=jv_int(j,jv_get(j,us,"cached_tokens"),0);
+    v[0].usage_thought=jv_int(j,jv_get(j,us,"thought_tokens"),0);
+  }
   return true;
 }
 ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {

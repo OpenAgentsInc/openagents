@@ -83,6 +83,7 @@ AgyAuthConfig :: struct {
   gcp_location: string;
   skip_permissions: bool;
   app_data_dir: string;
+  process_per_session: bool;
 }
 
 agy_auth_normalize :: (raw: string) -> string {
@@ -193,6 +194,10 @@ agy_prepare_launch_auth :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: 
   }
   if cfg.skip_permissions && l[0].args_n < l[0].args.count {
     l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
+    l[0].args_n += 1;
+  }
+  if cfg.process_per_session && l[0].args_n < l[0].args.count {
+    l[0].args[l[0].args_n] = "--process-per-session";
     l[0].args_n += 1;
   }
   // Strip all 19 ambient Google/GCP/Gemini/XDG/SSH variables (T3 removedEnvironmentKeys).
@@ -940,6 +945,11 @@ agy_launch_with_opts :: (x: [] CuEngine, program: string, cwd: string, name: str
   }
   if skip_permissions && l[0].args_n < l[0].args.count {
     l[0].args[l[0].args_n] = "--dangerously-skip-permissions";
+    l[0].args_n += 1;
+  }
+  pps_b: [16] u8; pps := cl_getenv("CODER_AGY_PROCESS_PER_SESSION", pps_b[..]);
+  if (pps == "1" || pps == "true") && l[0].args_n < l[0].args.count {
+    l[0].args[l[0].args_n] = "--process-per-session";
     l[0].args_n += 1;
   }
   _ = agy_wrap_windows_cmd(l[..]);

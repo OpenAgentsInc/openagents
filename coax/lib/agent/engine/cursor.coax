@@ -71,6 +71,10 @@ CuEngine :: struct {
   bg_idle_since: int;             // owner's clock (ms) when held_bg became idle awaiting reactive wakeup (-1 while active)
   bg_no_wake: bool;               // true when held work ended with no reactive wakeup expected (e.g. SUBAGENT_STATE_KILLED)
   system_append: [4608] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
+  add_dirs: [2048] u8; add_dirs_n: int;           // optional additionalDirectories JSON string items (#14009)
+  ag_meta: [1024] u8; ag_meta_n: int;             // optional _meta.antigravity inner fields (#14010)
+  agy_meta: [1024] u8; agy_meta_n: int;           // optional _meta.agy inner fields (#14010)
+  fs_read_enabled: bool;                          // advertise clientCapabilities.fs.readTextFile (#14010)
   // the stall watchdog (cue_watch): off while stall_ms is 0, as for Cursor; agy_launch turns it on
   stall_ms: int; recover_max: int;
   heard: bool;                    // the agent sent something since the last cue_watch
@@ -125,7 +129,11 @@ cue_start :: (x: [] CuEngine, launch: CuLaunch, name: string, version: string) -
   x[0].restart_required = false;
   cue_bg_clear(x, true);
   cue_watch_set(x, 0, 0);
-  r := cu_initialize(x[0].c, name, version);
+  if x[0].fs_read_enabled {
+    r := cu_initialize_fs(x[0].c, name, version, true);
+  } else {
+    r := cu_initialize(x[0].c, name, version);
+  }
   return "";
 }
 cue_resume :: (x: [] CuEngine, session: string) { x[0].nresume = e_set(x[0].resume[..], 0, session); }
@@ -153,7 +161,14 @@ cue_fresh_session :: (x: [] CuEngine) {
   x[0].ntools = 0; x[0].recovering = 0;
   if x[0].live {
     x[0].ready = false; x[0].replay = false;
-    r := cu_session_new_meta(x[0].c, e_str(x[0].cwd[..], x[0].ncwd), e_str(x[0].system_append[..], x[0].system_append_n));
+    r := cu_session_new_full(
+      x[0].c,
+      e_str(x[0].cwd[..], x[0].ncwd),
+      e_str(x[0].system_append[..], x[0].system_append_n),
+      e_str(x[0].add_dirs[..], x[0].add_dirs_n),
+      e_str(x[0].ag_meta[..], x[0].ag_meta_n),
+      e_str(x[0].agy_meta[..], x[0].agy_meta_n)
+    );
   }
 }
 
@@ -278,13 +293,36 @@ cue_open :: (x: [] CuEngine) {
   c := x[0].c;
   cwd := e_str(x[0].cwd[..], x[0].ncwd);
   sys_app := e_str(x[0].system_append[..], x[0].system_append_n);
-  if x[0].nresume == 0 { r := cu_session_new_meta(c, cwd, sys_app); return; }
+  add_dirs := e_str(x[0].add_dirs[..], x[0].add_dirs_n);
+  ag_meta := e_str(x[0].ag_meta[..], x[0].ag_meta_n);
+  agy_meta := e_str(x[0].agy_meta[..], x[0].agy_meta_n);
+  if x[0].nresume == 0 { r := cu_session_new_full(c, cwd, sys_app, add_dirs, ag_meta, agy_meta); return; }
   if cue_profile(x).resume == CU_SESSION_RESUME { r := cu_session_resume(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
   else { x[0].replay = true; r := cu_session_load(c, e_str(x[0].resume[..], x[0].nresume), cwd); }
   x[0].nresume = 0;
 }
 cue_set_system_append :: (x: [] CuEngine, text: string) {
   x[0].system_append_n = e_set(x[0].system_append[..], 0, text);
+}
+cue_set_add_dirs :: (x: [] CuEngine, dirs_json: string) {
+  x[0].add_dirs_n = e_set(x[0].add_dirs[..], 0, dirs_json);
+}
+cue_set_ag_meta :: (x: [] CuEngine, meta_fields: string) {
+  x[0].ag_meta_n = e_set(x[0].ag_meta[..], 0, meta_fields);
+}
+cue_set_agy_meta :: (x: [] CuEngine, meta_fields: string) {
+  x[0].agy_meta_n = e_set(x[0].agy_meta[..], 0, meta_fields);
+}
+cue_set_fs_read :: (x: [] CuEngine, enabled: bool) {
+  x[0].fs_read_enabled = enabled;
+}
+cue_list_sessions :: (x: [] CuEngine, cwd: string) -> int {
+  return ifx x[0].live then cu_session_list(x[0].c, cwd) else 0;
+}
+cue_close_session :: (x: [] CuEngine) -> int {
+  sid := cu_session_id(x[0].c);
+  if !x[0].live || sid.count == 0 { return 0; }
+  return cu_session_close(x[0].c, sid);
 }
 cue_set_bg_hold_limit :: (x: [] CuEngine, ms: int) {
   x[0].bg_hold_limit_ms = ifx ms > 0 then ms else 0;

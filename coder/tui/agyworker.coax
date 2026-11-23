@@ -73,6 +73,7 @@ AgywCall :: struct {
   id: [AGYW_ID] u8; id_n: int;
   label: [AGYW_LABEL] u8; label_n: int;
   path: [512] u8; path_n: int;
+  tool_kind: [24] u8; tool_kind_n: int;
   used: bool;
 }
 
@@ -98,6 +99,14 @@ AgywConfig :: struct {
   mcp_stdio: [512] u8; mcp_stdio_n: int;
   resume_session: [128] u8; resume_session_n: int;
   app_data_dir: [64] u8; app_data_dir_n: int;
+  add_dirs: [1024] u8; add_dirs_n: int;
+  tier: [64] u8; tier_n: int;
+  eager_mcp: [512] u8; eager_mcp_n: int;
+  mcp_max_bytes: [32] u8; mcp_max_bytes_n: int;
+  enabled_tools: [512] u8; enabled_tools_n: int;
+  disabled_tools: [512] u8; disabled_tools_n: int;
+  process_per_session: bool;
+  fs_read: bool;
   interactive: bool;
 }
 
@@ -109,6 +118,8 @@ AgywState :: struct {
   next_ticket: int;
   turn_active: bool;
   turn: int;                              // the turns started, as the turn lines number them
+  turn_start_ms: int;                     // wall clock when turn started (for TTFT/decode stats; #14010)
+  first_token_ms: int;                    // wall clock of first thought/reply chunk in this turn
   stopping: bool;
   stop_deadline_ms: int;        // force-close hung agy child if session/cancel gets no reply within 3s
   respawned: bool;
@@ -293,6 +304,16 @@ agyw_load_env :: (s: [] AgywState) {
   msb: [512] u8; s[0].cfg.mcp_stdio_n = agyw_copy(s[0].cfg.mcp_stdio[..], agyw_trim(cl_getenv("CODER_MCP_STDIO", msb[..])));
   rsb: [128] u8; s[0].cfg.resume_session_n = agyw_copy(s[0].cfg.resume_session[..], agyw_trim(cl_getenv("CODER_AGY_RESUME_SESSION", rsb[..])));
   adb: [64] u8; s[0].cfg.app_data_dir_n = agyw_copy(s[0].cfg.app_data_dir[..], agyw_trim(cl_getenv("CODER_AGY_APP_DATA_DIR", adb[..])));
+  addb: [1024] u8; s[0].cfg.add_dirs_n = agyw_copy(s[0].cfg.add_dirs[..], agyw_trim(cl_getenv("CODER_AGY_ADD_DIRS", addb[..])));
+  trb: [64] u8; s[0].cfg.tier_n = agyw_copy(s[0].cfg.tier[..], agyw_trim(cl_getenv("CODER_AGY_TIER", trb[..])));
+  emb: [512] u8; s[0].cfg.eager_mcp_n = agyw_copy(s[0].cfg.eager_mcp[..], agyw_trim(cl_getenv("CODER_AGY_EAGER_MCP", emb[..])));
+  mmb: [32] u8; s[0].cfg.mcp_max_bytes_n = agyw_copy(s[0].cfg.mcp_max_bytes[..], agyw_trim(cl_getenv("CODER_AGY_MCP_MAX_BYTES", mmb[..])));
+  etb: [512] u8; s[0].cfg.enabled_tools_n = agyw_copy(s[0].cfg.enabled_tools[..], agyw_trim(cl_getenv("CODER_AGY_ENABLED_TOOLS", etb[..])));
+  dtb: [512] u8; s[0].cfg.disabled_tools_n = agyw_copy(s[0].cfg.disabled_tools[..], agyw_trim(cl_getenv("CODER_AGY_DISABLED_TOOLS", dtb[..])));
+  ppb: [16] u8; pps := agyw_trim(cl_getenv("CODER_AGY_PROCESS_PER_SESSION", ppb[..]));
+  s[0].cfg.process_per_session = pps == "1" || pps == "true";
+  fsb: [16] u8; fsr := agyw_trim(cl_getenv("CODER_AGY_FS_READ", fsb[..]));
+  s[0].cfg.fs_read = fsr == "1" || fsr == "true";
   // Sync chats with native Google Antigravity app (~/.gemini/antigravity) by default when not isolated.
   if s[0].cfg.profile_n == 0 && s[0].cfg.app_data_dir_n == 0 {
     hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
@@ -315,11 +336,79 @@ agyw_auth_config :: (s: [] AgywState) -> AgyAuthConfig {
     // Security (#13996): ONLY explicit "turbo" mode passes --dangerously-skip-permissions (never "auto").
     skip_permissions = (mode == "turbo"),
     app_data_dir = agyw_str(s[0].cfg.app_data_dir[..], s[0].cfg.app_data_dir_n),
+    process_per_session = s[0].cfg.process_per_session,
   };
+}
+
+// Encode comma/colon/newline-delimited items into JSON quoted string list items ("a","b").
+agyw_csv_to_json_items :: (raw: string, sep: u8, out: [] u8) -> string {
+  if raw.count == 0 { return ""; }
+  o := [1] ClOut.[ClOut.{buf = out}];
+  wrote := false;
+  at := 0;
+  while at <= raw.count {
+    e := at;
+    while e < raw.count && raw[e] != sep && raw[e] != '\n' { e += 1; }
+    part := agyw_trim(cast(string) raw[at..<e]);
+    if part.count > 0 {
+      if wrote { cl_put(o[..], ","); }
+      cl_put_string(o[..], part);
+      wrote = true;
+    }
+    at = e + 1;
+  }
+  return ifx wrote && !o[0].failed then cast(string) out[0..<o[0].len] else "";
+}
+
+// Configure additionalDirectories, _meta.antigravity.{tier,eagerMcpServers,mcpMaxOutputBytes},
+// _meta.agy.{enabledTools,disabledTools}, and fs/read_text_file on CuEngine before launch (#14009, #14010).
+agyw_apply_session_meta :: (s: [] AgywState, x: [] CuEngine) {
+  cue_set_fs_read(x, s[0].cfg.fs_read);
+  db: [2048] u8;
+  dirs := agyw_csv_to_json_items(agyw_str(s[0].cfg.add_dirs[..], s[0].cfg.add_dirs_n), ':', db[..]);
+  cue_set_add_dirs(x, dirs);
+
+  agb: [1024] u8; ago := [1] ClOut.[ClOut.{buf = agb[..]}]; wrote_ag := false;
+  tier := agyw_str(s[0].cfg.tier[..], s[0].cfg.tier_n);
+  if tier.count > 0 {
+    cl_put(ago[..], "\"tier\":"); cl_put_string(ago[..], tier); wrote_ag = true;
+  }
+  eb: [512] u8; eager := agyw_csv_to_json_items(agyw_str(s[0].cfg.eager_mcp[..], s[0].cfg.eager_mcp_n), ',', eb[..]);
+  if eager.count > 0 {
+    if wrote_ag { cl_put(ago[..], ","); }
+    cl_put(ago[..], "\"eagerMcpServers\":["); cl_put(ago[..], eager); cl_put(ago[..], "]");
+    wrote_ag = true;
+  }
+  mmax := agyw_str(s[0].cfg.mcp_max_bytes[..], s[0].cfg.mcp_max_bytes_n);
+  if mmax.count > 0 {
+    ok_digits := true;
+    for c: mmax { if c < '0' || c > '9' { ok_digits = false; break; } }
+    if ok_digits {
+      if wrote_ag { cl_put(ago[..], ","); }
+      cl_put(ago[..], "\"mcpMaxOutputBytes\":"); cl_put(ago[..], mmax);
+      wrote_ag = true;
+    }
+  }
+  cue_set_ag_meta(x, ifx wrote_ag && !ago[0].failed then cast(string) agb[0..<ago[0].len] else "");
+
+  ayb: [1024] u8; ayo := [1] ClOut.[ClOut.{buf = ayb[..]}]; wrote_ay := false;
+  etb: [512] u8; en := agyw_csv_to_json_items(agyw_str(s[0].cfg.enabled_tools[..], s[0].cfg.enabled_tools_n), ',', etb[..]);
+  if en.count > 0 {
+    cl_put(ayo[..], "\"enabledTools\":["); cl_put(ayo[..], en); cl_put(ayo[..], "]");
+    wrote_ay = true;
+  }
+  dtb: [512] u8; dis := agyw_csv_to_json_items(agyw_str(s[0].cfg.disabled_tools[..], s[0].cfg.disabled_tools_n), ',', dtb[..]);
+  if dis.count > 0 {
+    if wrote_ay { cl_put(ayo[..], ","); }
+    cl_put(ayo[..], "\"disabledTools\":["); cl_put(ayo[..], dis); cl_put(ayo[..], "]");
+    wrote_ay = true;
+  }
+  cue_set_agy_meta(x, ifx wrote_ay && !ayo[0].failed then cast(string) ayb[0..<ayo[0].len] else "");
 }
 
 // Launch agy using T3 auth config when CODER_AGY_AUTH_METHOD is configured, else agy_launch_with_opts.
 agyw_launch_engine :: (s: [] AgywState, x: [] CuEngine, cwd: string) -> string {
+  agyw_apply_session_meta(s, x);
   prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
   prof := agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n);
   app_data := agyw_str(s[0].cfg.app_data_dir[..], s[0].cfg.app_data_dir_n);
@@ -470,8 +559,39 @@ agyw_emit_ready :: (s: [] AgywState) { agyw_write_line(s, mww_ready(s[0].out[..]
 agyw_emit_thought :: (s: [] AgywState, text: string) { if text.count > 0 { agyw_write_line(s, mww_thought(s[0].out[..], text)); } }
 agyw_emit_reply :: (s: [] AgywState, text: string) { if text.count > 0 { agyw_write_line(s, mww_reply(s[0].out[..], text)); } }
 agyw_emit_ask :: (s: [] AgywState, cmd: string, ticket: int) { agyw_write_line(s, mww_ask(s[0].out[..], cmd, ticket)); }
+agyw_emit_ask_tool :: (s: [] AgywState, cmd: string, ticket: int, tool: string, tool_id: string, path: string) {
+  agyw_write_line(s, mww_ask_tool(s[0].out[..], cmd, ticket, tool, tool_id, path));
+}
 agyw_emit_command :: (s: [] AgywState, cmd: string, exit_code: int, out_text: string) {
   agyw_write_line(s, mww_command(s[0].out[..], cmd, exit_code, false, out_text));
+}
+agyw_emit_command_tool :: (s: [] AgywState, cmd: string, exit_code: int, out_text: string, tool: string, tool_id: string, path: string, diff: string) {
+  agyw_write_line(s, mww_command_tool(s[0].out[..], cmd, exit_code, false, out_text, tool, tool_id, path, diff));
+}
+agyw_emit_todos :: (s: [] AgywState, todos_json: string) {
+  agyw_write_line(s, mww_todos(s[0].out[..], todos_json));
+}
+agyw_emit_meta :: (s: [] AgywState, title: string, commands_json: string) {
+  if title.count == 0 && commands_json.count == 0 { return; }
+  agyw_write_line(s, mww_meta(s[0].out[..], title, commands_json));
+}
+// Emit normalized token usage (MWW_ATTEMPT) and inference timing (MWW_STATS) from ACP usage JSON (#14010).
+agyw_emit_usage :: (s: [] AgywState, usage_json: string) {
+  if usage_json.count == 0 { return; }
+  u := agy_parse_usage(usage_json);
+  if u.input == 0 && u.output == 0 && u.cached_read == 0 && u.thought == 0 && u.total == 0 { return; }
+  mod := agyw_str(s[0].ran[..], s[0].ran_n);
+  if mod.count == 0 { mod = agyw_str(s[0].turn_model[..], s[0].turn_model_n); }
+  eff := agyw_str(s[0].active_effort[..], s[0].active_effort_n);
+  // CST_ATTEMPT_COUNTS order: input_tokens, output_tokens, cached_tokens, reasoning_tokens, cache_write_tokens, provider_cost, card_estimate
+  vals := [7] int.[u.input, u.output, u.cached_read, u.thought, u.cached_write, -1, -1];
+  agyw_write_line(s, mww_attempt(s[0].out[..], "antigravity", mod, eff, "succeeded", 200, vals[..]));
+  if !s[0].sink {
+    now := cxproc_now_ms();
+    ttft := ifx s[0].turn_start_ms > 0 && s[0].first_token_ms >= s[0].turn_start_ms then s[0].first_token_ms - s[0].turn_start_ms else -1;
+    dec := ifx s[0].first_token_ms > 0 && now >= s[0].first_token_ms then now - s[0].first_token_ms else 0;
+    agyw_write_line(s, mww_stats(s[0].out[..], ttft, dec, u.output + u.thought));
+  }
 }
 agyw_emit_ended :: (s: [] AgywState, ending: string, text: string) { agyw_write_line(s, mww_ended(s[0].out[..], ending, text)); }
 agyw_emit_steered :: (s: [] AgywState, id: string, status: string, reason: string, text: string) {
@@ -538,11 +658,11 @@ agyw_call_open :: (s: [] AgywState, id: string, label: string) -> int {
 }
 
 agyw_call_close :: (s: [] AgywState, at: int) {
-  if at >= 0 && at < AGYW_OPEN { s[0].calls[at].used = false; s[0].calls[at].id_n = 0; s[0].calls[at].label_n = 0; s[0].calls[at].path_n = 0; }
+  if at >= 0 && at < AGYW_OPEN { s[0].calls[at].used = false; s[0].calls[at].id_n = 0; s[0].calls[at].label_n = 0; s[0].calls[at].path_n = 0; s[0].calls[at].tool_kind_n = 0; }
 }
 
 agyw_calls_clear :: (s: [] AgywState) {
-  for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; s[0].calls[i].path_n = 0; }
+  for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; s[0].calls[i].path_n = 0; s[0].calls[i].tool_kind_n = 0; }
 }
 
 // Read-repair (#13834): when fs/read_text_file is served for a path that has an open
@@ -710,13 +830,90 @@ agyw_poll_subagents :: (s: [] AgywState, x: [] CuEngine, emit: bool) {
   if n > 0 || cue_bg_subagents(x) > 0 { _ = agyw_sync_subagents(s, x, subs[..], n, emit); }
 }
 
-// Extract textual output from a tool_call_update's content or rawOutput.
+// Normalize ACP tool kind & tool name into canonical OpenAgents tool category (#14010).
+agyw_normalize_tool_kind :: (raw_kind: string, raw_name: string) -> string {
+  if raw_name == "invoke_subagent" || raw_name == "send_message" || raw_name == "swarm" || raw_name == "run_workflow" { return "subagent"; }
+  if raw_name == "write_file" || raw_name == "write_to_file" { return "write"; }
+  if raw_name == "edit_file" || raw_name == "replace_file_content" || raw_name == "multi_replace_file_content" { return "edit"; }
+  if raw_name == "read_file" || raw_name == "view_file" || raw_name == "view_file_outline" || raw_name == "view_code_item" { return "read"; }
+  if raw_name == "grep_search" || raw_name == "find_by_name" || raw_name == "list_dir" || raw_name == "search_web" { return "search"; }
+  if raw_name == "read_url_content" || raw_name == "browser_subagent" || raw_name == "open_browser_url" { return "browser"; }
+  if agr_has(raw_name, "mcp_") || agr_has(raw_name, "mcp/") { return "mcp"; }
+  if raw_kind == "read" { return "read"; }
+  if raw_kind == "edit" || raw_kind == "delete" || raw_kind == "move" { return "edit"; }
+  if raw_kind == "search" { return "search"; }
+  if raw_kind == "fetch" { return "web"; }
+  if raw_kind == "execute" { return "command"; }
+  if raw_kind == "think" { return "think"; }
+  return "command";
+}
+
+// Format unified -/+ diff lines from ACP content[].type == "diff" (oldText/newText) into out (#14010).
+agyw_format_diff :: (before: string, after: string, out: [] u8) -> int {
+  n := 0;
+  for side: 0..<2 {
+    t := ifx side == 0 then before else after;
+    mark := ifx side == 0 then cast(u8) '-' else cast(u8) '+';
+    start := 0;
+    while start < t.count {
+      i := start;
+      while i < t.count && t[i] != '\n' { i += 1; }
+      if n + (i - start) + 2 > out.count { return n; }
+      out[n] = mark; n += 1;
+      for k: start..<i { out[n] = t[k]; n += 1; }
+      out[n] = '\n'; n += 1;
+      start = i + 1;
+    }
+  }
+  return n;
+}
+
+// Extract structured diff (and optional path override) from tool_call_update content[] (#14010).
+agyw_tool_diff :: (ar: [] ClArena, update: string, path_out: [] u8, path_n: [] int, diff_out: [] u8) -> string {
+  content := cl_raw(update, "content");
+  cnt := cl_count(content);
+  for i: 0..<cnt {
+    item := cl_json(content, cl_item(content, i));
+    ty := cl_str(ar, item, "type");
+    if ty != "diff" { continue; }
+    dp := cl_str(ar, item, "path");
+    if dp.count > 0 && path_n[0] == 0 { path_n[0] = agyw_copy(path_out, dp); }
+    old_t := cl_str(ar, item, "oldText");
+    new_t := cl_str(ar, item, "newText");
+    if old_t.count > 0 || new_t.count > 0 {
+      dn := agyw_format_diff(old_t, new_t, diff_out);
+      if dn > 0 { return cast(string) diff_out[0..<dn]; }
+    }
+  }
+  return "";
+}
+
+// Extract textual output (plus image/diff summaries) from a tool_call_update's content or rawOutput (#14010).
 agyw_tool_output :: (ar: [] ClArena, update: string, out: [] u8) -> string {
   n := 0;
   content := cl_raw(update, "content");
   cnt := cl_count(content);
   for i: 0..<cnt {
     item := cl_json(content, cl_item(content, i));
+    ty := cl_str(ar, item, "type");
+    if ty == "image" {
+      mt := cl_str(ar, item, "mimeType");
+      if mt.count == 0 { mt = "image/png"; }
+      if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+      n += agyw_copy(out[n..<out.count], "[image: ");
+      n += agyw_copy(out[n..<out.count], mt);
+      n += agyw_copy(out[n..<out.count], "]");
+      continue;
+    }
+    if ty == "diff" {
+      dp := cl_str(ar, item, "path");
+      if dp.count > 0 {
+        if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+        n += agyw_copy(out[n..<out.count], "Updated ");
+        n += agyw_copy(out[n..<out.count], dp);
+      }
+      continue;
+    }
     txt := cl_str(ar, item, "content.text");
     if txt.count == 0 { txt = cl_str(ar, item, "text"); }
     if txt.count > 0 {
@@ -1030,11 +1227,75 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
     }
     return;
   }
+  // Forward live session title (session_info_update) and dynamic slash commands (available_commands_update; #14010).
+  if kind == "session_info_update" {
+    t := cl_str(ar, update, "title");
+    if t.count > 0 && emit { agyw_emit_meta(s, t, ""); }
+    return;
+  }
+  if kind == "available_commands_update" {
+    cmds := cl_raw(update, "availableCommands");
+    if cmds.count > 0 && emit {
+      // Compact [{name,description}] array bounded to 2048 bytes.
+      cb: [2048] u8; co := [1] ClOut.[ClOut.{buf = cb[..]}];
+      cl_put(co[..], "[");
+      cn := cl_count(cmds);
+      wrote := false;
+      for i: 0..<cn {
+        row := cl_json(cmds, cl_item(cmds, i));
+        nm := cl_str(ar, row, "name");
+        if nm.count == 0 { continue; }
+        ds := cl_str(ar, row, "description");
+        if co[0].len + nm.count + ds.count + 48 >= cb.count { break; }
+        if wrote { cl_put(co[..], ","); }
+        cl_put(co[..], "{\"name\":"); cl_put_string(co[..], nm);
+        cl_put(co[..], ",\"description\":"); cl_put_string(co[..], ds);
+        cl_put(co[..], "}");
+        wrote = true;
+      }
+      cl_put(co[..], "]");
+      if wrote && !co[0].failed { agyw_emit_meta(s, "", cast(string) cb[0..<co[0].len]); }
+    }
+    return;
+  }
+  if kind == "usage_update" {
+    ujson := cl_raw(update, "usage");
+    if ujson.count == 0 { ujson = update; }
+    if emit { agyw_emit_usage(s, ujson); }
+    return;
+  }
+  if kind == "plan" {
+    entries := cl_raw(update, "entries");
+    if entries.count > 0 && emit {
+      tb: [4096] u8; to := [1] ClOut.[ClOut.{buf = tb[..]}];
+      cl_put(to[..], "[");
+      en := cl_count(entries);
+      wrote := false;
+      for i: 0..<en {
+        row := cl_json(entries, cl_item(entries, i));
+        ct := cl_str(ar, row, "content");
+        if ct.count == 0 { continue; }
+        st := cl_str(ar, row, "status");
+        if st.count == 0 { st = "pending"; }
+        if to[0].len + ct.count + st.count + 64 >= tb.count { break; }
+        if wrote { cl_put(to[..], ","); }
+        cl_put(to[..], "{\"id\":\""); cl_put_int(to[..], i + 1);
+        cl_put(to[..], "\",\"content\":"); cl_put_string(to[..], ct);
+        cl_put(to[..], ",\"status\":"); cl_put_string(to[..], st);
+        cl_put(to[..], "}");
+        wrote = true;
+      }
+      cl_put(to[..], "]");
+      if !to[0].failed { agyw_emit_todos(s, cast(string) tb[0..<to[0].len]); }
+    }
+    return;
+  }
   if !s[0].turn_active { return; }
   if kind == "agent_thought_chunk" {
     txt := cl_str(ar, update, "content.text");
     if txt.count == 0 { txt = cl_str(ar, update, "text"); }
     if txt.count > 0 {
+      if emit && !s[0].sink && s[0].first_token_ms == 0 { s[0].first_token_ms = cxproc_now_ms(); }
       if s[0].reply_n > 0 { s[0].reply_break = true; }
       if emit { agyw_emit_thought(s, txt); }
     }
@@ -1043,6 +1304,7 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
   if kind == "agent_message_chunk" {
     txt := cl_str(ar, update, "content.text");
     if txt.count > 0 {
+      if emit && !s[0].sink && s[0].first_token_ms == 0 { s[0].first_token_ms = cxproc_now_ms(); }
       if s[0].reply_break { s[0].reply_n = 0; s[0].reply_break = false; }
       agy_chunk(x, txt);
       agyw_reply_append(s, txt);
@@ -1053,6 +1315,9 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
   if kind == "tool_call" || kind == "tool_call_update" {
     id := cl_str(ar, update, "toolCallId");
     status := cl_str(ar, update, "status");
+    raw_tk := cl_str(ar, update, "kind");
+    raw_nm := cl_str(ar, update, "name");
+    tk := agyw_normalize_tool_kind(raw_tk, raw_nm);
     nb: [AGYW_LABEL] u8;
     label := cu_tool_display_name(update, ar, nb[..]);
     existing := agyw_call_find(s, id);
@@ -1060,12 +1325,24 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
       if s[0].reply_n > 0 { s[0].reply_break = true; }
       at := agyw_call_open(s, id, label);
       if at >= 0 {
+        s[0].calls[at].tool_kind_n = agyw_copy(s[0].calls[at].tool_kind[..], tk);
         rp := cl_str(ar, update, "rawInput.Path");
         if rp.count == 0 { rp = cl_str(ar, update, "rawInput.path"); }
         if rp.count == 0 { rp = cl_str(ar, update, "rawInput.AbsolutePath"); }
+        if rp.count == 0 { rp = cl_str(ar, update, "rawInput.TargetFile"); }
+        if rp.count == 0 { rp = cl_str(ar, update, "locations.0.path"); }
         if rp.count > 0 { s[0].calls[at].path_n = agyw_copy(s[0].calls[at].path[..], rp); }
         s[0].next_ticket += 1;
-        if emit { agyw_emit_ask(s, agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n), s[0].next_ticket); }
+        if emit {
+          agyw_emit_ask_tool(
+            s,
+            agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n),
+            s[0].next_ticket,
+            agyw_str(s[0].calls[at].tool_kind[..], s[0].calls[at].tool_kind_n),
+            id,
+            agyw_str(s[0].calls[at].path[..], s[0].calls[at].path_n)
+          );
+        }
       }
       return;
     }
@@ -1073,17 +1350,32 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
       if s[0].reply_n > 0 { s[0].reply_break = true; }
       at := existing;
       cmd := "";
-      if at >= 0 && s[0].calls[at].label_n > 0 {
-        // Match the exact label emitted on ask so the UI resolves the running spinner row in place.
-        cmd = agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n);
+      use_tk := tk;
+      path_buf: [512] u8; path_n: [1] int;
+      if at >= 0 {
+        if s[0].calls[at].label_n > 0 {
+          // Match the exact label emitted on ask so the UI resolves the running spinner row in place.
+          cmd = agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n);
+        }
+        if s[0].calls[at].tool_kind_n > 0 {
+          use_tk = agyw_str(s[0].calls[at].tool_kind[..], s[0].calls[at].tool_kind_n);
+        }
+        if s[0].calls[at].path_n > 0 {
+          path_n[0] = agyw_copy(path_buf[..], agyw_str(s[0].calls[at].path[..], s[0].calls[at].path_n));
+        }
       }
       if cmd.count == 0 { cmd = label; }
       if cmd.count == 0 { cmd = "tool"; }
+      diff_buf: [4000] u8;
+      diff_txt := agyw_tool_diff(ar, update, path_buf[..], path_n[..], diff_buf[..]);
+      if diff_txt.count > 0 && (use_tk == "command" || use_tk.count == 0) { use_tk = "edit"; }
       ob: [AGYW_OUTPUT] u8;
       out_txt := agyw_tool_output(ar, update, ob[..]);
       if out_txt.count == 0 && status != "completed" { out_txt = agyw_no_output(s, id, status); }
       exit_code := agyw_exit_code(update, status);
-      if emit { agyw_emit_command(s, cmd, exit_code, out_txt); }
+      if emit {
+        agyw_emit_command_tool(s, cmd, exit_code, out_txt, use_tk, id, cast(string) path_buf[0..<path_n[0]], diff_txt);
+      }
       agyw_call_close(s, at);
       return;
     }
@@ -1259,7 +1551,48 @@ agyw_flag_asked :: (flag: string) -> bool {
 }
 agyw_probe_asked :: () -> bool { return agyw_flag_asked("--probe"); }
 agyw_probe_json_asked :: () -> bool { return agyw_flag_asked("--probe-json"); }
+agyw_list_sessions_asked :: () -> bool { return agyw_flag_asked("--list-sessions"); }
 agyw_logout_asked :: () -> bool { return agyw_flag_asked("--logout"); }
+
+// agyworker --list-sessions [--cwd DIR]: query live ACP session/list and print its JSON result (#14009).
+agyw_list_sessions :: (s: [] AgywState, x: [] CuEngine) -> int {
+  cb: [1024] u8; cwd := agyw_arg_value("--cwd", cb[..]);
+  if cwd.count == 0 {
+    hb: [1024] u8; cwd = cl_getenv("HOME", hb[..]);
+    if cwd.count == 0 { cwd = "."; }
+  }
+  why := agyw_launch_engine(s, x, cwd);
+  if why.count > 0 { tool_errln(why); return 1; }
+  agyw_lease_acquire(s, x[0].p[0].pid);
+  until := cxproc_now_ms() + 15000;
+  sent := false;
+  res_buf: [65536] u8; res_n := 0;
+  while x[0].live && res_n == 0 && cxproc_now_ms() < until {
+    ev: [1] CuEvent;
+    cue_poll(x, ev[..]);
+    if ev[0].kind == CuEventKind.idle { proc_sleep(20); continue; }
+    if ev[0].kind == CuEventKind.initialized && !sent {
+      sent = true;
+      _ = cue_list_sessions(x, cwd);
+    } else if ev[0].kind == CuEventKind.answered && ev[0].of == CU_SESSION_LIST {
+      res_n = agyw_copy(res_buf[..], ev[0].result);
+      break;
+    } else if ev[0].kind == CuEventKind.refused && ev[0].of == CU_SESSION_LIST {
+      break;
+    } else if ev[0].kind == CuEventKind.end || ev[0].kind == CuEventKind.failed {
+      break;
+    }
+  }
+  if x[0].live { cue_close(x); }
+  agyw_lease_release(s);
+  if res_n > 0 {
+    n := agyw_copy(s[0].out[..], cast(string) res_buf[0..<res_n]);
+    agyw_write_line(s, n);
+    return 0;
+  }
+  agyw_write_line(s, agyw_copy(s[0].out[..], "{\"sessions\":[]}"));
+  return 0;
+}
 
 // Extract thought_level config option into JSON snippet:
 // "thinking":true,"thoughtLevels":["low","medium","high","xhigh"],"thinkingId":"...","thinkingDefault":"...","thinkingLevels":[{"value":"...","label":"..."}]
@@ -2056,6 +2389,10 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     }
     if ev.of == CU_SESSION_PROMPT {
       if !s[0].turn_active { return; }
+      if emit {
+        ujson := cl_raw(ev.result, "usage");
+        if ujson.count > 0 { agyw_emit_usage(s, ujson); }
+      }
       if cue_held_bg(x) { return; }
       if s[0].stopping {
         agyw_finish_turn(s, "stopped", "Stopped.", emit);
@@ -2166,6 +2503,13 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
     }
     cu_plan(x[0].c, false); return;
   }
+  if ev.kind == CuEventKind.fs_read {
+    fpath := cl_str(x[0].c[0].ar[..], ev.params, "path");
+    cwd := agyw_str(s[0].cwd[..], s[0].cwd_n);
+    _ = agyw_handle_fs_read(s, x[0].c, ev.result, fpath, cwd, "", emit);
+    if x[0].live && !s[0].sink { _ = cu_flush(x[0].c, x[0].p); }
+    return;
+  }
   if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
     agyw_lease_release(s);
     if s[0].turn_active {
@@ -2228,6 +2572,8 @@ agyw_start_task :: (s: [] AgywState, x: [] CuEngine, req: MwwRequest, source: st
   if req.task.count == 0 { return; }
   s[0].turn += 1; agyw_write_line(s, mww_turn(s[0].out[..], s[0].turn, source, q_id, q_text));
   s[0].turn_active = true;
+  if !s[0].sink { s[0].turn_start_ms = cxproc_now_ms(); }
+  s[0].first_token_ms = 0;
   s[0].stopping = false;
   s[0].stop_deadline_ms = 0;
   s[0].respawned = false;
@@ -2374,6 +2720,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cue_attach(x, cb[..], pb[..], cu_line[..], cu_arena[..], cu_out[..]);
   if agyw_probe_asked() { return agyw_probe(s, x); }
   if agyw_probe_json_asked() { return agyw_probe_json(s, x); }
+  if agyw_list_sessions_asked() { return agyw_list_sessions(s, x); }
   if agyw_logout_asked() { return agyw_logout(s, x); }
   if agyw_update_asked() { return agyw_update_agy(s); }
   if agyw_connect_asked() { return agyw_connect(s, x); }
@@ -2388,7 +2735,10 @@ tool_main :: () -> int #export_c #effects(all) {
     wait_ms := ifx x[0].live || s[0].turn_active then 10 else 50;
     rn := agyw_read_line(in_buf[..], in_len[..], wait_ms);
     if rn == -1 {
-      if x[0].live { cue_stop(x); cue_close(x); }
+      if x[0].live {
+        if x[0].ready { _ = cue_close_session(x); _ = cu_flush(x[0].c, x[0].p); }
+        cue_stop(x); cue_close(x);
+      }
       agyw_lease_release(s);
       break;
     }
@@ -2665,7 +3015,7 @@ agyw_logged :: (s: [] AgywState, part: string) -> bool { return agy_has(agyw_str
   agyw_fx_feed(s, x, asks);
   #assert agy_out_has(x, "\"optionId\":\"deny\"") && s[0].denied_n > 0;
   agyw_fx_feed(s, x, AGYW_FX_OUT_FAILED);
-  #assert agyw_logged(s, "{\"kind\":\"command\",\"command\":\"File ../outside.txt\",\"exit\":1,\"timed_out\":false,\"output\":\"OpenAgents denied File ../outside.txt: it names a path outside the workspace.\"}");
+  #assert agyw_logged(s, "{\"kind\":\"command\",\"command\":\"File ../outside.txt\",\"exit\":1,\"timed_out\":false,\"output\":\"OpenAgents denied File ../outside.txt: it names a path outside the workspace.\",\"tool\":\"read\",\"id\":\"call_15035010722467529939\"");
   agyw_fx_feed(s, x, AGYW_FX_ENDED);
   #assert !s[0].turn_active && agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"OpenAgents denied File ../outside.txt: it names a path outside the workspace. Antigravity ends its turn when a tool call is denied.\"}");
   #assert !agyw_logged(s, "\"ending\":\"finished\"") && s[0].denied_n == 0;
@@ -3130,4 +3480,31 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   bb: [4096] u8;
   blks := agyw_build_attachment_blocks("Describe this", "[{\"name\":\"pic.png\",\"mime_type\":\"image/png\",\"data\":\"iVBORw0=\"}]", att_ar[..], bb[..]);
   #assert agy_has(blks, "\"type\":\"text\",\"text\":\"Describe this\"") && agy_has(blks, "\"type\":\"image\",\"mimeType\":\"image/png\",\"data\":\"iVBORw0=\"");
+}
+
+#test "agyworker: full ACP streaming parity — plan/todos, usage, live title, commands, real tool kinds & diffs (#14010)" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [8192] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  s[0].ran_n = agyw_copy(s[0].ran[..], "gemini-4-neon");
+
+  // 1. ACP plan -> MWW_TODOS
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"plan\",\"entries\":[{\"content\":\"Audit ACP\",\"status\":\"completed\"},{\"content\":\"Ship fix\",\"status\":\"in_progress\"}]}}}");
+  #assert agyw_logged(s, "\"kind\":\"todos\"") && agyw_logged(s, "\"Audit ACP\"") && agyw_logged(s, "\"in_progress\"");
+
+  // 2. session_info_update & available_commands_update -> MWW_META
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"session_info_update\",\"title\":\"Refactor ACP Engine\"}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[{\"name\":\"plan\",\"description\":\"Draft plan\"},{\"name\":\"ship\",\"description\":\"Ship release\"}]}}}");
+  #assert agyw_logged(s, "\"kind\":\"meta\",\"title\":\"Refactor ACP Engine\"") && agyw_logged(s, "\"name\":\"ship\"");
+
+  // 3. usage_update -> MWW_ATTEMPT with normalized non-double-counted output tokens
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"usage_update\",\"usage\":{\"inputTokens\":1000,\"cachedReadTokens\":500,\"thoughtTokens\":200,\"outputTokens\":300,\"totalTokens\":1800}}}}");
+  #assert agyw_logged(s, "\"input_tokens\":1000") && agyw_logged(s, "\"output_tokens\":100") && agyw_logged(s, "\"reasoning_tokens\":200");
+
+  // 4. Structured diff + real tool kind ("edit") + path preserved on tool_call / tool_call_update
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"tc-e1\",\"name\":\"edit_file\",\"kind\":\"edit\",\"status\":\"in_progress\",\"title\":\"Edit main.swift\",\"rawInput\":{\"Path\":\"src/main.swift\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"tc-e1\",\"kind\":\"edit\",\"status\":\"completed\",\"content\":[{\"type\":\"diff\",\"path\":\"src/main.swift\",\"oldText\":\"let a = 1\",\"newText\":\"let a = 2\"}]}}}");
+  #assert agyw_logged(s, "\"tool\":\"edit\",\"id\":\"tc-e1\",\"path\":\"src/main.swift\"") && agyw_logged(s, "\"diff\":\"-let a = 1\\n+let a = 2\\n\"");
 }
