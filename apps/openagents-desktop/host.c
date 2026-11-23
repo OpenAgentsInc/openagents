@@ -358,7 +358,7 @@ static int cd_rescale(CoderHost *c, int row) {
   float want = c->screen * coder_page_scale(cd_state(c));
   if (want == a->dpr) return row;
   for (int i = 0; i < 4; i++) { free(a->font_bytes[i]); a->font_bytes[i] = NULL; }
-  for (int i = 0; i < 64; i++) { free(a->svg[i]); a->svg[i] = NULL; }
+  for (int i = 0; i < 80; i++) { free(a->svg[i]); a->svg[i] = NULL; }
   free(a->mono); free(a->color); free(a->work); a->mono = NULL; a->color = NULL; a->work = NULL;
   memset(a->atlas, 0, sizeof *a->atlas); memset(&a->plan, 0, sizeof a->plan); memset(&a->fonts, 0, sizeof a->fonts);
   a->dpr = want;
