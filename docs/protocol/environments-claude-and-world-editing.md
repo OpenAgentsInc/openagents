@@ -1,5 +1,8 @@
 # Environments, Claude Code and realm authoring from every OpenAgents app
 
+> [!NOTE]
+> **Status update (2026-11-22):** This 2026-11-13 specification remains the normative HOST/ENV/SESS architectural boundary (and its T3-boundary decision is codified in [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../t3/2026-11-22-t3code-borrowing-theory.md)), though several concrete product surfaces have moved beyond its initial assumptions: Desktop and iOS now ship compiled Metal/Vulkan GPU apps (not UIKit/JavaScriptCore), Mac–iPhone connectivity uses zero-config Tailscale/Bonjour pairing alongside `coder-host`, and Desktop ships Antigravity 1.5+ and local Inky alongside Claude. See [`docs/t3/README.md`](../t3/README.md) for current T3 Code references.
+
 Written 2026-11-13. **Status: specification for implementation; no connection,
 service or new wire contract is deployed by this document.** Source review is
 pinned to `94abb1f338`. This is one application profile of the
@@ -69,7 +72,7 @@ and [glossary](../books/glossary.md) determine implementation placement.
 | Account-saved chats and the hosted runner | Keep `openagents.chat.thread.v1`, `openagents.chat.history.v1` and `agent.managed.v1alpha1` unchanged. An environment session is another explicit conversation target, not an account-chat ID reinterpreted as a native Claude ID. |
 | [`world.turn.v1`](world-turn-v1.md), [`world.edit.v1`](world-edit-v1.md), [`realm.result.v1`](realm-result-v1.md) | Reuse context, edits, results, tools and the existing revision/undo log. Do not invent a second mobile scene-edit format or a second `world_*` MCP family. |
 | [`WorldRef`](../../proto/openagents/verse/common/v1alpha1/refs.proto) | Reuse it inside a new authoring target carrying authority and lane. Do not change its existing fields or treat missing revision as revision zero. |
-| [T3 audit](../research/t3code/README.md) | Adopt the execution-host boundary, durable sends and capability-aware adapters. Keep our HOST/ENV/SESS language and carriages; do not import T3's RPC wire or provider-instance vocabulary. |
+| [T3 hub & borrowing theory](../t3/README.md) *(originally [0.1.9 audit](../research/t3code/README.md))* | Adopt the execution-host boundary, durable sends and capability-aware adapters. Keep our HOST/ENV/SESS language and carriages; do not import T3's RPC wire or provider-instance vocabulary. |
 
 “Host” below means the **NIP-HOST principal/service**, not a new name for the
 glossary's deployment VM, room or shard. An **engine session** means a SESS
@@ -1008,7 +1011,7 @@ acceptance belongs in `NEEDS_OWNER.md` when implementation is ready.
 | Account chat/hosted compatibility | [Account-chat fixture](../../proto/coder/account-chat-v1.json), [history fixture](../../proto/coder/chat-history-v1.json), [managed runner schema](../../proto/openagents/agent/managed/v1alpha1/session.proto) |
 | Existing world-edit chat | [Turn context](world-turn-v1.md), [edit/events](world-edit-v1.md), [result/effect/approval](realm-result-v1.md), [command table](../../apps/openagents-cli/commands.coax), [CLI tools](../../apps/openagents-cli/realm-world.coax), [web tool projection](../../apps/openagents-web/chat/chat-tools.coax) |
 | Authoring implementation | [Shared edit codec](../../metaverse-engine/editor/world-edit.coax), [follower](../../metaverse-engine/editor/world-follow.coax), [API](../../coax/web/api/worlds.c), [authority](../../coax/web/api/world-policy.coax), [script contract](world-scripts-v1.md), [code-publication decision](../metaverse/realm-origin.md) |
-| Shared presentation and machines | [Components](../../components/spec.md), [reuse inventory](../reuse.md), [Metaverse OS/CoderOS](../os/2026-11-02-verse-os.md), [T3 audit conclusions](../research/t3code/07-openagents-path.md) |
+| Shared presentation and machines | [Components](../../components/spec.md), [reuse inventory](../reuse.md), [Metaverse OS/CoderOS](../os/2026-11-02-verse-os.md), [T3 borrowing theory](../t3/2026-11-22-t3code-borrowing-theory.md) *(supersedes [07-openagents-path.md](../research/t3code/07-openagents-path.md))* |
 
 This profile leaves the existing environment, host, account, session and realm
 contracts in their owning contexts. The first buildable result is both

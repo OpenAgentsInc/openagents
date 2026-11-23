@@ -1,5 +1,8 @@
 # Native account chat and composer
 
+> [!NOTE]
+> **Status (2026-11-22):** This document records the **historical UIKit/JavaScriptCore phone contract** for builds 1071, 1072, and 1079 (preserving T3 Code `f313d0a6cb` provenance/MIT attribution and the `openagents.chat.thread.v1` account-chat wire contract). `apps/openagents-ios/` has since migrated to a **compiled Metal GPU app** with zero JS, Wasm, WebView, or OTA runtime (see [`apps/openagents-ios/README.md`](../../apps/openagents-ios/README.md)). For current T3 Code references, see [`docs/t3/README.md`](../../docs/t3/README.md).
+
 Build 1071 extends the UIKit/JavaScriptCore profile with the shared kit's
 composer and account-owned text chat. It requires a new native runtime:
 1070 has no multiline editor projection. App state, draft handling, chat
@@ -47,7 +50,7 @@ The regular phone profile follows these reference dimensions in points:
 | Compact row / hit targets | 44 height, minimum editor 36 |
 | Text | DM Sans Regular 16, line height 23, 6 vertical inset, zero fragment padding |
 | Expanded editor | 14 horizontal inset, toolbar below, four-line / 104-point cap |
-| Send | 44 hit target, 30 circle, 16 semibold arrow, primary #346bf1 |
+| Send | 44 hit target, 30 circle, 16 semibold arrow, mono skin `ACTION` button (`NativeButton(.action)`; replaced build 1071's initial T3 reference blue in `569f03794e`) |
 | Model | 44 height, 16 provider symbol; icon and chevron compact, name expanded |
 
 `components/layout/native-composer.coax` owns geometry. The shared

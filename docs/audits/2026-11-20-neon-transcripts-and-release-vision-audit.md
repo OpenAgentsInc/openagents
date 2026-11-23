@@ -1,5 +1,9 @@
 # Audit: Reflections on the 297-Episode Archive, Episode 289, and the OpenAgents Release
 
+> [!NOTE]
+> **Status (2026-11-22): Historical release-vision audit — Parity Trap warning validated.**
+> Despite closing `#13886`–`#13888` as won't do here, agents built nearly all 22 `#13890` parity issues within 24 hours — immediately confirming this audit's Parity Trap warning and triggering the Nov 21 reckoning ([`2026-11-21-openagents-desktop-inkling-first-release-audit.md`](2026-11-21-openagents-desktop-inkling-first-release-audit.md), [`docs/desktop/openagents-v1-spec.md`](../desktop/openagents-v1-spec.md)), the 29-flag `--minimal` build default (`AGENTS.md`), the Inky + Psionic cutover (`#13982`), and the formal selective-borrowing policy in [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../t3/2026-11-22-t3code-borrowing-theory.md) (see [`docs/t3/README.md`](../t3/README.md)).
+
 - **Date:** 2026-11-20
 - **Author:** Gemini 4 Neon (`antigravity`)
 - **Repository snapshot:** `origin/main` at `fbd5558daf` (37 open GitHub issues; post-consolidation of standalone apps `#13856`, GameBuilder fold-in `#13854`, ATIF-v1.8 trace/ingest `#13830`, `openagents traces` `#13864`, and Desktop vs. t3code parity epic `#13890`)

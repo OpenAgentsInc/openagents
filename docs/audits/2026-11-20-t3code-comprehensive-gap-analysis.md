@@ -1,5 +1,11 @@
 # Comprehensive Gap Analysis: OpenAgents vs. T3 Code (`v0.1.12-nightly`)
 
+> [!NOTE]
+> **Status (2026-11-22): Historical 2026-11-20 point-in-time snapshot — superseded by `docs/t3/`.**
+> Since `855654fc81`, OpenAgents shipped **Inky** (`coax/lib/inky/`, replacing Microcoder for local Inkling 2 Mini on native Psionic Metal 4 / CUDA at 150+ tok/s), the 29-flag `--minimal` Desktop release architecture (`openagents-v1-spec.md`), complete Antigravity 1.5+ core parity (including `SUBAGENT_STATE_KILLED`, `--login` OAuth, `/compact`, lost thinking-signature recovery, `call_mcp_tool` unwrap, recall rollback, reactive wakeup holds `a159b463e7`, and native `Settings -> Providers`), and Desktop/phone Tailscale chat sync (`8da287e936`). Meanwhile `t3code` moved +321 commits ahead to `18850a5eeb` (durable workflows `#38882`/`#38884`, MCP Events webhooks `#41141`, multi-repo projects `#35925`, 17 MCP toolkits, 8 Git forges, 110+11 SQLite migrations, 6 eval suites).
+>
+> **Read instead:** [`docs/t3/README.md`](../t3/README.md) (supersedes §2 corpus index), [`docs/t3/reference.md`](../t3/reference.md) (supersedes §3 architecture summary), [`docs/t3/antigravity-quirks.md`](../t3/antigravity-quirks.md), and [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../t3/2026-11-22-t3code-borrowing-theory.md) (supersedes §6 roadmap).
+
 **Date:** 2026-11-20  
 **T3 Code baseline:** `~/work/projects/repos/t3code` (`pingdotgg/t3code`), commit [`8cfd2b5211`](https://github.com/pingdotgg/t3code/commit/8cfd2b5211) (`v0.1.12-nightly.20261121.5024`, package version `0.1.11`, **1,759 commits** ahead of the prior `0.1.9` `f313d0a6cb` audit).  
 **OpenAgents baseline:** `origin/main` commit `855654fc81` (2026-11-20).  

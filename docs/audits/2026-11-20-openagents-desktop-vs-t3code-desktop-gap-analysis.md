@@ -1,5 +1,11 @@
 # OpenAgents Desktop vs. t3code Desktop — Comprehensive Gap Analysis
 
+> [!NOTE]
+> **Status (2026-11-22): Historical 2026-11-20 snapshot — roadmap superseded.**
+> Within 24 hours of this audit, agents built nearly all 22 issues of the `#13890` parity epic, which triggered the 2026-11-21 bundle reckoning ([`2026-11-21-openagents-desktop-inkling-first-release-audit.md`](2026-11-21-openagents-desktop-inkling-first-release-audit.md), [`docs/desktop/openagents-v1-spec.md`](../desktop/openagents-v1-spec.md)). Those features now live behind the 29-flag Coax registry (`coax/lib/agent/desktop/flags.coax`, default `false`) and are stripped from `--minimal` release builds (`page-v1.coax`, `v1-bundle-policy.coax`). Since this snapshot, OpenAgents Desktop also cut local Inkling 2 Mini over from Microcoder/`llama-server` to **Inky** (`coax/lib/inky/`, `#13982`) + native **Psionic Metal 4 / CUDA** (`150+ tok/s` Metal 4, `75+ tok/s` RTX 4080) and promoted Antigravity 1.5+ + native `Settings -> Providers` into `--minimal` core. Meanwhile `t3code` advanced +321 commits to `18850a5eeb` (durable workflows, MCP Events webhooks, multi-repo projects, 8th forge `tanstack-source`, 17 MCP toolkits, 110+11 SQLite migrations, 28 settings routes, environment-instead-of-branch sidebar rows).
+>
+> **Read instead:** [`docs/t3/README.md`](../t3/README.md) (canonical index), [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../t3/2026-11-22-t3code-borrowing-theory.md) (supersedes the P0–P3 roadmap in §13), [`docs/t3/2026-11-22-desktop-sidebar-gap-analysis.md`](../t3/2026-11-22-desktop-sidebar-gap-analysis.md) (updated sidebar status), and [`docs/t3/reference.md`](../t3/reference.md) (`18850a5eeb` reference).
+
 - **Date:** 2026-11-20
 - **OpenAgents snapshot:** `90e3f9361a` (`origin/main`, including Antigravity parity `#13831`–`#13839`)
 - **t3code snapshot:** `b568fcbaa6` (`origin/main`, `v0.1.12-nightly` — pulled immediately prior to this audit)

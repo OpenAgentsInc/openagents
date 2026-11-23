@@ -1,5 +1,10 @@
 # Audit: t3code v0.1.11 Antigravity Support & OpenAgents Parity Plan
 
+> [!NOTE]
+> **Status (2026-11-22): Completed / Superseded as a live tracker.** All five phases below (`#13831`–`#13839`) have **landed** on OpenAgents `origin/main` (`5e9dc70b08`) — including the `>=1.5.0` gate, Auto review mode + escalated permissions, reactive-wakeup background-command holds (`a159b463e7`), detached `SUBAGENT_STATE_KILLED` reader, `steers_with_prompt`, fresh-session recall rollback, `--login` OAuth URL capture, `SSH_CONNECTION` profile isolation, `/compact`, lost thinking-signature recovery, sleep-safe watchdog, `call_mcp_tool` unwrap, managed SHA-512 installer (`agy-install-lib.coax`), and native Desktop `Settings -> Providers` (`bcbd95e454`..`be8f44b460`).
+>
+> For the **live Layer-1 quirk tracker** covering the 22 post-`v0.1.11` T3 Antigravity commits through `18850a5eeb`, see [`docs/t3/antigravity-quirks.md`](../t3/antigravity-quirks.md) (and [`docs/t3/README.md`](../t3/README.md)). For remaining iOS/Tailscale gaps, see [`2026-11-22-mobile-antigravity-over-tailscale-audit.md`](2026-11-22-mobile-antigravity-over-tailscale-audit.md).
+
 Date: 2026-11-20  
 Reference repo: `~/work/projects/repos/t3code` (`v0.1.10` `7d32075e37` .. `v0.1.11` `59651c1761`, checked at `HEAD` `d15123668e`)  
 Prior OpenAgents audit: [`docs/audits/2026-11-11-antigravity-in-coder-and-golemancy.md`](2026-11-11-antigravity-in-coder-and-golemancy.md)

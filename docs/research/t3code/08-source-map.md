@@ -1,5 +1,9 @@
 # Source map, versions and audit method
 
+> [!NOTE]
+> **Status (2026-11-22): Pinned historical source map for `0.1.9` (`f313d0a6cb`).**
+> For the **current `18850a5eeb` (`v0.1.12-nightly.20261123.5124`) dependency table and entry points** (including `@cursor/sdk@1.4.2`, Antigravity `>=1.5.0`, `apps/server/src/workflows/`, `peer/`, `preview/PreviewTunnel.ts`, `sourceControl/`, `issue/`, `speech/`, 17 MCP toolkits, 110+11 SQLite migrations, and `evals/`), see [`docs/t3/reference.md`](../../t3/reference.md) and [`docs/t3/README.md`](../../t3/README.md).
+
 ## Reproducibility
 
 - Reference checkout: `~/work/projects/repos/t3code`.

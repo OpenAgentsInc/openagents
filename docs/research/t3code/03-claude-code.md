@@ -1,5 +1,9 @@
 # Claude Code integration
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`):**
+> Core integration boundaries remain accurate: `ClaudeDriver` still resolves `@anthropic-ai/claude-agent-sdk` **`0.3.321`** (CLI compatibility: supported `>=2.1.280`, recommended `>=2.1.301`), isolates instances via `CLAUDE_CONFIG_DIR` (preserving `HOME`/Keychain), and registers MCP post-init via `setMcpServers`. Notable post-`0.1.9` additions: idle compaction before prompt-cache expiry (`IdleCompaction.ts`, `#39766`), shared macOS process-table polling across open Claude sessions (`#37585`), fixing phantom wakes after resume (`#41120`), and continued growth of `ClaudeAdapterV2.ts` (~15.3k LOC). See [`docs/t3/reference.md`](../../t3/reference.md).
+
 ## Actual integration boundary
 
 The built-in driver kind is `claudeAgent`. `ClaudeDriver.create` constructs the

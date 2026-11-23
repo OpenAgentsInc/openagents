@@ -1,5 +1,9 @@
 # Orchestration, persistence and conversation ownership
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`, +2,121 commits since `f313d0a6cb`):**
+> The core V2 identity separation, transactional `EventSink`, `EffectOutbox`, command receipts, bounded ~24h replay log with authoritative projections, live-vs-async request lifetimes, and `CheckpointRestoreSafety` invariants remain intact. Key changes since `0.1.9`: **SQLite grew to 110 top-level + 11 OrchestrationV2 migrations**; turns can return **schema-checked typed results** (`#38874`, `t3_submit_output`); T3 added Labs-gated **durable workflows** (`apps/server/src/workflows/`, `effect/workflow`, `#38882`/`#38884`) and **multi-repo projects** (`#35925`); **Antigravity now supports host-side Edit-from-here conversation rollback** (`#38227`, superseding the `0.1.9` note in §Checkpoints and revert below). See [`docs/t3/reference.md`](../../t3/reference.md).
+
 ## The identities are deliberately different
 
 T3 separates an application thread from a provider's native thread and from a
@@ -207,7 +211,7 @@ T3 checkpoints filesystem state using hidden Git refs, rather than inserting
 every checkpoint into the user's branch history. Revert coordinates filesystem
 restoration with provider conversation rollback. A provider that cannot roll
 back its native conversation must be rejected before filesystem mutation;
-Antigravity is the documented example. Fork and provider switch likewise need
+at `0.1.9`, Antigravity was the documented example *(later resolved in T3 `v0.1.11` `#38227` via host-side `session/new` history replay)*. Fork and provider switch likewise need
 capability and continuation checks rather than assuming a common transcript is
 enough. [Checkpoint store][checkpoints], [overview][overview], [providers][providers].
 

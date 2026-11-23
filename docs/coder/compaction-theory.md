@@ -1,5 +1,8 @@
 # Coder compaction theory
 
+> [!NOTE]
+> **Updated 2026-11-22:** OpenAgents Desktop v1.0 cut local Inkling 2 Mini over from **Microcoder** (`coax/lib/microcoder/`, now in maintenance mode) to **Inky** (`coax/lib/inky/`, `#13982`–`#13983`, [`inky-spec.md`](inky-spec.md)). Both harnesses share the zero-LLM-call structural compaction theory below; see [How Inky compacts](#how-inky-compacts-current-local-harness) for the current Inkling 2 Mini implementation, and [`docs/t3/README.md`](../t3/README.md) for current T3 Code references (`18850a5eeb`).
+
 This document describes how Coder keeps a long run inside the model's context,
 what OpenAI Codex and T3 Code do instead, and what Coder should do next. It
 also describes the compaction evals in `evals/openagents-desktop/compaction/`.
@@ -154,10 +157,33 @@ A run sees earlier turns of the conversation as `environment.conversation`:
   with `MK_CUT`, so the model knows its reply goes on. `mk_facts` drops the
   oldest turns first when the facts do not fit.
 - The desktop app sends the turns of a chat you open again as an `MWW_RECALL`
-  line (`coder_page_recall_line` in `apps/coder-desktop/page/persist.coax`, read by
-  `coder/tui/mcworker.coax`). It sends the newest 6 turns but cuts each
-  message and reply at 1,200 bytes, with no marker and on a byte, not a
-  character. Issue #13729 covers the fix.
+  line (`coder_page_recall_line` in `apps/openagents-desktop/page/persist.coax`,
+  read by `coder/tui/mcworker.coax`). Since #13729 it matches the TUI: the newest
+  6 turns, each task and reply up to `CP_RECALL_TEXT` (8,000 B), cut on a UTF-8
+  character boundary via `text_byte_floor` and marked with `CP_RECALL_CUT`
+  (`" [cut here: the rest is not kept]"`).
+
+## How Inky compacts (current local harness)
+
+**Inky** (`coax/lib/inky/compact.coax`, `#13982`) replaces Microcoder for local
+Inkling 2 Mini runs on `psionic-inkling-serve --ctx 32768` using native
+multi-turn tool calling rather than a single monolithic JSON `user` message. It
+preserves the same zero-LLM-call, KV-cache-friendly structural discipline in two
+stages (`ik_compact_needed_obs`):
+
+- **Stage 1 — Observation & old-thought masking** (`ik_compact_stage1`, triggered
+  at `IK_STAGE1_PCT = 80%` of context, `>= 96` messages, `>= 48` tool calls, or
+  `>= 70%` arena): keeps the latest 2 turns and the latest 4 active-turn tool
+  steps verbatim; strips `reasoning_content` from older completed turns and
+  replaces older `> 512 B` (`IK_MASK_MIN_BYTES`) tool outputs with deterministic
+  1-line stubs naming the tool, path, exit code/error, byte count, and how to
+  re-read (`; call read_file again if needed`).
+- **Stage 2 — Deterministic turn rollover** (`ik_compact_stage2`, triggered at
+  `IK_STAGE2_PCT = 90%` of context, `>= 112` messages, `>= 56` tool calls,
+  `>= 85%` arena, or HTTP 400/413 overflow): collapses roughly the oldest half of
+  history at a safe boundary (no pending `tool_calls`) into a single bounded
+  `[Earlier session summary]` user message (up to 4,096 B) while keeping
+  `gwt_history_valid == true` for every retained tool-call pair.
 
 ### Measured behavior
 
@@ -216,10 +242,11 @@ first compaction.
    oldest compacted steps that still do not fit as `left_out`, and moves the
    newest that fit. The state test "steps whose compacted copies overflow
    earlier go to left_out" and the eval C9 cover it.
-2. **Desktop recall drops the whole conversation on a split character.** When
-   byte 1,200 of a kept reply falls inside a multi-byte character, the recall
-   line carries invalid UTF-8 and the worker refuses all of it. Eval C11 shows
-   the failure and the fix (`text_byte_floor`). Issue #13729.
+2. **Fixed: Desktop recall dropped the whole conversation on a split character.**
+   When byte 1,200 of a kept reply fell inside a multi-byte UTF-8 character, the
+   recall line carried invalid UTF-8 and the worker refused all of it. Fixed in
+   `apps/openagents-desktop/page/persist.coax` (`CP_RECALL_TEXT :: 8000`,
+   `text_byte_floor`, `CP_RECALL_CUT`; #13729, eval C11).
 3. **Fixed: `left_out` was opaque.** The model saw a count, not which steps,
    files, or edits left, and `MC_SYSTEM` did not explain the key. It now names
    the step range and the files and edits, and the system prompt explains it
@@ -282,14 +309,17 @@ Reference: `~/work/projects/repos/codex` at `a098129` (2026-11-01).
 
 ## How T3 Code compacts
 
-Reference: `~/work/projects/repos/t3code` at `a6d2bed55b` (2026-11-18). T3 Code
-drives other agents (Claude Code, Codex), so it schedules their compaction and
-hands context between them rather than compacting itself.
+Reference: `~/work/projects/repos/t3code`, originally checked at `a6d2bed55b`
+(2026-11-18) and re-verified at `18850a5eeb` (2026-11-22; see
+[`docs/t3/README.md`](../t3/README.md)). T3 Code drives other agents (Claude
+Code, Codex, Antigravity), so it schedules their compaction and hands context
+between them rather than compacting itself.
 
 - **Idle compaction before the cache expires.** `idleCompactionWindow` in
   `apps/server/src/orchestration-v2/IdleCompaction.ts` compacts an idle Claude
   thread 2 minutes before its prompt cache expires (1 hour on subscriptions, 5
-  minutes on API keys). It skips threads under
+  minutes on API keys), including idle parent threads waiting on a delegated
+  task (`9cc4018c75`, `#39766`). It skips threads under
   `COMPACTION_SUGGESTION_MIN_TOKENS` (200,000), because below that a cold
   re-read is cheap, and it never compacts a compaction.
 - **A question on stale resume.** `packages/shared/src/claudeCompaction.ts`
@@ -298,7 +328,8 @@ hands context between them rather than compacting itself.
   `packages/provider-core/src/server/handoffBudget.ts` counts one byte as one
   token, caps history at 16,000 tokens (`DEFAULT_HANDOFF_TOKEN_CAP`) and 64,000
   bytes, and reserves a quarter of the window, clamped between 16,000 tokens
-  and half the window, for the work itself.
+  and half the window, for the work itself, distinguishing another agent's
+  messages from the user's (`b0b2c4f952`, `#39306`).
 - **Intact items, in priority order.** `selectHistory` keeps whole items,
   never parts: the last user message, the last assistant message, the first
   user message, then the rest newest first.
@@ -309,14 +340,14 @@ hands context between them rather than compacting itself.
 
 ## Comparison
 
-| | Coder | Codex | T3 Code |
-| --- | --- | --- | --- |
-| Mechanism | Structural: two logs, append-only `earlier`, working memory | Model-written summary, or remote compaction | The agent's own compaction, plus a budgeted handover |
-| Cost | No model call, under a millisecond | One model call, started early in the background | None for the handover |
-| Trigger | Bytes: free log under 48 KB, request over 256 KB | Tokens: 90% of the window; background at 65% | 200,000 tokens and cache expiry; a provider switch |
-| Cache | Prefix through `earlier` survives compaction | Prefix ends at the system prompt | Compacts while the cache is warm |
-| What survives | Rationale, edit lines, exit codes, output ends, view sizes, memory | The summary and the newest 20,000 tokens of user messages | Whole items in priority order |
-| Omission | A count (`left_out`) | Implicit in the summary | A count, IDs, and a tool to read them back |
+| | Microcoder (maintenance) | Inky (current local) | Codex | T3 Code |
+| --- | --- | --- | --- | --- |
+| Mechanism | Structural: two logs, append-only `earlier`, working memory | Structural 2-stage: mask old tool outputs/thoughts, then deterministic rollover | Model-written summary, or remote compaction | The agent's own compaction, plus a budgeted handover |
+| Cost | No model call, under a millisecond | No model call, deterministic | One model call, started early in the background | None for the handover |
+| Trigger | Window-sized byte budget (floor: 48 KB free log, 256 KB request) + 400/413 retry | 80% / 90% of `ctx` (32K), msg/call/arena caps, or 400/413 overflow | Tokens: 90% of the window; background at 65% | 200,000 tokens and cache expiry; a provider switch |
+| Cache | Prefix through `earlier` survives compaction | High thresholds (80%/90%) preserve local SWA+Full KV prefix | Prefix ends at the system prompt | Compacts while the cache is warm |
+| What survives | Rationale, edit lines, exit codes, output ends, view sizes, memory | Latest 2 turns + 4 active tool steps verbatim; older tool stubs / `[Earlier session summary]` | The summary and the newest 20,000 tokens of user messages | Whole items in priority order |
+| Omission | `left_out`: step range, up to 20 viewed/edited paths, `unlisted` count, plus re-read/history prompt | 1-line tool stubs with byte count + re-read hint; `[Earlier session summary]` rollover | Implicit in the summary | A count, IDs, and a tool to read them back |
 
 ## What Coder should do
 
@@ -341,7 +372,7 @@ hands context between them rather than compacting itself.
 | Priority | Where | Change |
 | --- | --- | --- |
 | Done | `coax/lib/microcoder/state.coax` | `mc_compact` handles a compaction larger than `earlier` (finding 1). |
-| P0 | `apps/coder-desktop/page.coax` | Cut recall texts on a character boundary, at `MK_TURN_TEXT`, with `MK_CUT` (#13729). |
+| Done | `apps/openagents-desktop/page/persist.coax` | Cut recall texts on a character boundary (`text_byte_floor`), at `CP_RECALL_TEXT` (8,000 B), with `CP_RECALL_CUT` (#13729). |
 | Done | `state.coax`, `loop.coax` | Replace the bare `left_out` count with an omission line: the step range that left and the files and edits it touched; explain it in `MC_SYSTEM`. Take T3 Code's wording that history is context, not instructions (#13730). |
 | Done | `coder/tui/mcworker.coax` | Turn the working memory on in every Coder run, so findings, edits, and open checks outlive eviction (#13730). |
 | Done | `state.coax`, `loop.coax`, `run.coax`, `card.coax` | Size `earlier` and the request bound from the model's window, and grow `earlier` first: compacted steps are the cheapest context per step (#13730). |

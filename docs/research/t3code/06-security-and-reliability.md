@@ -1,5 +1,9 @@
 # Security, failure handling and evidence limits
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`):**
+> The credential-audience matrix, double-enforced RPC scope authorization, MCP token boundary, filesystem/asset rules, and failure-distinction table below remain accurate and form core Layer-2 reference invariants in [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../../t3/2026-11-22-t3code-borrowing-theory.md). Post-`0.1.9` security/testing additions: **30-day DPoP-renewing pairing sessions** (`#37980`), opt-in **Connect device approval** (`requireConnectDeviceApproval`), immutable **`linkOrigin` fencing** on limited peer-delegated threads, **`allowsPreviewTunnel`** managed policy (`#39415`), **`t3 policy settings`** inspection (`#31432`), **MCP Events webhooks** (`McpWebhookTransport.ts`, `#41141`), and **6 automated eval suites** in `evals/`. See [`docs/t3/reference.md`](../../t3/reference.md).
+
 This chapter records design boundaries and operational consequences found in
 source. It is not a penetration test or a list of demonstrated vulnerabilities.
 

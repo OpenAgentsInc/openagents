@@ -1,5 +1,9 @@
 # What to adapt for OpenAgents and Coax Native
 
+> [!NOTE]
+> **Status (2026-11-22): Superseded by [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../../t3/2026-11-22-t3code-borrowing-theory.md).**
+> This chapter's lead recommendation — *"Carry the execution boundary across, not the TypeScript stack"* — survived intact and became the foundation of our selective borrowing policy. However, the `6fe29cc703` inventory, UIKit/JavaScriptCore notes, and implementation sequence below are historical (OpenAgents has since shipped compiled Metal/Vulkan Desktop & iOS apps, Inky, Antigravity 1.5+, `coder-host` + Tailscale pairing, and the 29-flag `--minimal` build). Start at [`docs/t3/README.md`](../../t3/README.md).
+
 This chapter is a recommendation derived from the audit. It does not claim
 that the following architecture is already wired into the OpenAgents phone app,
 nor authorize/implement a migration. The only changes in this research task are

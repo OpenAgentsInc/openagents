@@ -1,5 +1,11 @@
 # OpenAgents compared with T3 Code: current implementation gaps
 
+> [!NOTE]
+> **Status (2026-11-22): Historical 2026-11-14 snapshot — superseded.**
+> This comparison was pinned to OpenAgents `097e11c86d` (iOS build **1085**) against T3 Code `0.1.9` (`f313d0a6cb`). Nearly all OpenAgents gaps described below have changed materially: iOS and Desktop moved from UIKit/JavaScriptCore to **compiled Metal/Vulkan GPU** (`apps/openagents-ios/`, `apps/openagents-desktop/`); the desktop op 14/15/16 host-contract mismatch is completely gone; Desktop & iOS gained resident `coder-host`, Tailscale zero-config pairing, per-chat worktrees, Inky + Psionic Metal 4 / CUDA, Antigravity 1.5+ core parity, interactive permission/question cards, follow-up queue/steering, and the 29-flag `--minimal` build.
+>
+> **Read instead:** [`docs/t3/README.md`](../../t3/README.md) (corpus index), [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../../t3/2026-11-22-t3code-borrowing-theory.md) (live disposition & next priorities), and [`docs/t3/reference.md`](../../t3/reference.md) (`t3code` `18850a5eeb`).
+
 2026-11-14. OpenAgents source baseline: `097e11c86d39254390fbbb1316aa5728a074f04e`.
 The latest recorded iOS release at that baseline is **1085**, with native
 Projects. T3 reference: the clean local checkout at

@@ -1,5 +1,9 @@
 # Apps, routes and the connection protocol
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`, +2,121 commits since `f313d0a6cb`):**
+> The core environment topology, Effect RPC JSON-over-WebSocket wire, route-driver preflight, and connection supervisor documented below still hold. Major additions since `0.1.9`: **multi-environment peer linking & remote delegation** (`apps/server/src/peer/`, transitive links `#40036`, `PeerThreadRelay`, `EnvironmentsMap`), **loopback preview tunneling & local port forwarding** (`/api/preview/tunnel`, desktop SOCKS5 proxy, mobile remote `localhost` tabs, `#37947`/`#39393`), **30-day DPoP-renewing pairing sessions** (`#37980`), opt-in **Connect device approval** (`requireConnectDeviceApproval`), and the relay's offline webhook buffer (`HookInboxObject`). See [`docs/t3/reference.md`](../../t3/reference.md) for the current summary and [`docs/t3/README.md`](../../t3/README.md) for the corpus index.
+
 ## Execution location
 
 An **environment** is the T3 server installation that owns projects, threads,

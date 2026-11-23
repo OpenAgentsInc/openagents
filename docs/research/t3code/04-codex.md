@@ -1,5 +1,9 @@
 # Codex integration
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`):**
+> The `codex app-server` stdio transport (`effect-codex-app-server`), CLI compatibility (`>=0.156.0` supported, `>=0.159.0` recommended), shared multi-thread runtime, shadow-home auth overlay, and managed ChatGPT token broker remain accurate. Post-`0.1.9` updates include managed runtime version pruning (`#38740`), fixing Full-access Codex still prompting before dangerous commands (`#40773`), and `CodexAdapterV2.ts` growing to ~9.4k LOC. See [`docs/t3/reference.md`](../../t3/reference.md).
+
 ## A local app-server, not a phone-to-model connection
 
 The Codex driver builds a V2 adapter around T3's

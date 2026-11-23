@@ -1,5 +1,9 @@
 # OpenAgents compared with Zeron: current implementation gaps
 
+> [!NOTE]
+> **Status (2026-11-22): Historical 2026-11-14 point-in-time snapshot (`097e11c86d`, iOS 1085).**
+> OpenAgents has since moved Desktop and iOS to compiled Metal/Vulkan GPU (resolving the UIKit/JSC notes and the desktop op 14/15/16 host-contract mismatch), shipped Inky + Psionic Metal 4 / CUDA, Antigravity 1.5+, `coder-host` + Tailscale pairing, and the 29-flag `--minimal` release build. For newer mobile Zeron comparisons see [`docs/audits/2026-11-20-mobile-ui-gap-analysis-zeron.md`](../../audits/2026-11-20-mobile-ui-gap-analysis-zeron.md); for current T3 Code comparisons see [`docs/t3/README.md`](../../t3/README.md).
+
 2026-11-14. OpenAgents source baseline: `097e11c86d39254390fbbb1316aa5728a074f04e`;
 latest recorded iOS release: **1085**. Zeron reference: the clean local checkout
 at `~/work/projects/repos/zeron`, upstream `zeronsh/zeron`, pinned to
@@ -249,7 +253,8 @@ All Zeron links below are pinned to the inspected revision. In addition to
 the linked modules, the review inspected `crates/engine/src/agent_accounts.rs`,
 its `usage.rs`/`oauth.rs` helpers, `crates/doc/src/queue.rs`, and the native
 iOS composer/transcript/companion file inventory. Test files were inventoried
-as source evidence only. The [T3 comparison](../t3code/09-current-gap-analysis.md)
+as source evidence only. The archived [T3 comparison](../t3code/09-current-gap-analysis.md)
+(and the current [`docs/t3/README.md`](../../t3/README.md) hub)
 covers server orchestration, connection supervision and worktree restore in
 greater detail.
 

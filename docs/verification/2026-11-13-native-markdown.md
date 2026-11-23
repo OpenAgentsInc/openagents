@@ -1,5 +1,8 @@
 # Native Markdown and message presentation, 1072
 
+> [!NOTE]
+> **Immutable historical verification record (2026-11-13, iOS build 1072).** Preserved verbatim as evidence for the UIKit/TextKit build adapted from T3 Code `f313d0a6cb`. `apps/openagents-ios/` has since moved to compiled Metal GPU ([`apps/openagents-ios/README.md`](../../apps/openagents-ios/README.md)); see [`docs/t3/README.md`](../t3/README.md) for current T3 Code docs.
+
 The phone follows T3 Code `f313d0a6cb`'s native text/message approach using
 OpenAgents' existing shared Coax parser and components. The source reference
 and exact scope are in [the native spec](../../coax/native/composer.md#native-messages-build-1072).

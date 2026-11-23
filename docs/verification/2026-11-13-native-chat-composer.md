@@ -1,5 +1,8 @@
 # Native chat composer, 1071
 
+> [!NOTE]
+> **Immutable historical verification record (2026-11-13, iOS build 1071).** Preserved verbatim as evidence for the UIKit/JavaScriptCore build adapted from T3 Code `f313d0a6cb`. `apps/openagents-ios/` has since moved to compiled Metal GPU ([`apps/openagents-ios/README.md`](../../apps/openagents-ios/README.md)); see [`docs/t3/README.md`](../t3/README.md) for current T3 Code docs.
+
 The implementation through `f1b11e55f5` adapts the regular phone composer
 from T3 Code `f313d0a6cb`; [the contract](../../coax/native/composer.md)
 records measurements, provenance and scope. It uses the shared kit composer,

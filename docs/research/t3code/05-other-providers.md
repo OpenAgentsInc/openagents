@@ -1,5 +1,14 @@
 # Other providers and the extension boundary
 
+> [!NOTE]
+> **2026-11-22 update (`t3code` `18850a5eeb`):**
+> `BUILT_IN_DRIVERS` still registers the same **11** drivers (8 with usage readers), but several integrations evolved significantly since `0.1.9`:
+> - **Cursor:** upgraded from `@cursor/sdk` `1.2.0` → **`1.4.2`** (patched), adding isolated worker execution, edit-from-here rewind, and retry-exhaustion preservation (`#41176`).
+> - **Antigravity:** migrated to `agy >= 1.5.0 <2` (recommended `>= 1.5.12`), adding Auto review mode, **host-side Edit-from-here conversation rollback** (`#38227` — superseding the `0.1.9` "does not advertise conversation rollback" note below), background-command holds + reactive wakes, detached subagents (`SUBAGENT_STATE_KILLED`), `steersWithPrompt`, `SSH_CONNECTION` profile isolation, `--login` OAuth, and `/compact`. See [`docs/t3/antigravity-quirks.md`](../../t3/antigravity-quirks.md).
+> - **fx:** added Full access (`#26969`), per-thread backend selection (`#29388`), and safe CLI updates (`#29399`).
+> - **OpenCode:** 2.x recommended floor is now `>= 2.0.18`.
+> See [`docs/t3/reference.md`](../../t3/reference.md) for the live provider table.
+
 ## Registered integrations
 
 The pinned `BUILT_IN_DRIVERS` list contains eleven entries. “Built in” means

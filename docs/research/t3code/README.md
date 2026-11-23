@@ -1,11 +1,14 @@
 # T3 Code: coding-agent connection audit
 
 > [!NOTE]
-> This 2026-11-13 folder is pinned to T3 Code `0.1.9` (`f313d0a6cb`) and early
-> OpenAgents baselines (`6fe29cc703` / `097e11c86d`). For the current
-> comprehensive comparison against T3 Code `v0.1.12-nightly` (`8cfd2b5211`,
-> +1,759 commits) and OpenAgents `855654fc81`, see
-> [`docs/audits/2026-11-20-t3code-comprehensive-gap-analysis.md`](../../audits/2026-11-20-t3code-comprehensive-gap-analysis.md).
+> **Archived Wave-1 audit (pinned to T3 Code `0.1.9` `f313d0a6cb`, 2026-11-13, and early OpenAgents `6fe29cc703` / `097e11c86d`).**
+> T3 Code is now **+2,121 commits** ahead at `18850a5eeb` (`v0.1.12-nightly.20261123.5124`). Chapters `01`–`06` remain useful for deep pinned walkthroughs of T3's core wire, V2 orchestration, Claude SDK, and Codex app-server boundaries (each now carries a `2026-11-22` delta note), while `07`–`09` are superseded.
+>
+> **Start at the canonical hub instead:**
+> - [`docs/t3/README.md`](../../t3/README.md) — master table of contents and corpus index
+> - [`docs/t3/2026-11-22-t3code-borrowing-theory.md`](../../t3/2026-11-22-t3code-borrowing-theory.md) — selective borrowing policy & disposition matrix
+> - [`docs/t3/reference.md`](../../t3/reference.md) — updated `18850a5eeb` architecture, provider & source-map reference
+> - [`docs/t3/antigravity-quirks.md`](../../t3/antigravity-quirks.md) — Layer-1 Antigravity 1.5+ quirk radar
 
 Audited 2026-11-13. Source: the local checkout at
 `~/work/projects/repos/t3code`, upstream
