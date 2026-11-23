@@ -64,6 +64,7 @@ IkLoop :: struct {
   exit_verify_nudged: bool;
   retried_ctx: bool;
   retried_stream: bool;
+  retried_length: bool;
   retrying_same_step: bool;
 }
 
@@ -297,13 +298,18 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
   l[0].retried_stream = false;
 
   // Handle degenerate length cut with 0 text and 0 tool calls (thinking exhausted max_tokens).
+  // Allow at most ONE same-step retry via retried_length so it can never loop infinitely.
   done_r := cast(string) l[0].done_reason[0..<l[0].ndone];
-  if l[0].tstep[0].n == 0 && l[0].nreply == 0 && done_r == "length" && !l[0].retried_stream {
-    l[0].retried_stream = true;
-    l[0].retrying_same_step = true;
-    l[0].phase = IK_PH_MODEL;
-    return IK_PH_MODEL;
+  if l[0].tstep[0].n == 0 && l[0].nreply == 0 && done_r == "length" {
+    if !l[0].retried_length {
+      l[0].retried_length = true;
+      l[0].retrying_same_step = true;
+      l[0].phase = IK_PH_MODEL;
+      return IK_PH_MODEL;
+    }
+    return ik_loop_end(l, IK_END_FAILED, "model exhausted output token budget during thinking without a reply");
   }
+  l[0].retried_length = false;
 
   // Record assistant message with exact interleaved reasoning_content & tool_calls.
   calls: [IK_STEP_CALLS] GwToolCall;
@@ -317,6 +323,13 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
   }
 
   if nc > 0 {
+    if ik_guard_tools_exhausted(l[0].step, l[0].guard[0].max_steps, l[0].guard[0].dup_blocks) {
+      if l[0].nreply > 0 { return ik_loop_end(l, IK_END_FINISHED, ik_loop_reply(l)); }
+      if l[0].step >= l[0].guard[0].max_steps {
+        return ik_loop_end(l, IK_END_BUDGET, "step budget reached; model emitted tool calls after tools were disabled");
+      }
+      return ik_loop_end(l, IK_END_FAILED, "stopped repeated duplicate tool calls without progress");
+    }
     l[0].tool_idx = 0;
     l[0].phase = IK_PH_TOOLS;
     return IK_PH_TOOLS;
@@ -333,6 +346,9 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
       l[0].phase = IK_PH_MODEL;
       return IK_PH_MODEL;
     }
+  }
+  if l[0].nreply == 0 {
+    return ik_loop_end(l, IK_END_FAILED, "model ended the turn without a reply");
   }
   return ik_loop_end(l, IK_END_FINISHED, ik_loop_reply(l));
 }
@@ -553,4 +569,48 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   #assert l[0].last_usage.output_tokens == 2 && l[0].obs_input_tokens == 1 && cast(string) l[0].done_reason[0..<l[0].ndone] == "stop";
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "length", usage = GwUsage.{input_tokens = 0, output_tokens = 0}});
   #assert l[0].obs_input_tokens == 1 && cast(string) l[0].done_reason[0..<l[0].ndone] == "length";
+}
+
+#test "inky loop: empty length-cut retries once then fails, hard-stops tools past max_steps/dup_blocks, and rejects silent empty done" {
+  l: [1] IkLoop; h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 2, 32768, "Do task");
+  ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
+  body_buf: [16384] u8; why: [1] string;
+
+  // 1st empty length cut retries once on same step; 2nd consecutive empty length cut fails cleanly (never loops infinitely).
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  #assert l[0].step == 1;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "long thought..."});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "length"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_MODEL && l[0].retried_length && l[0].retrying_same_step;
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  #assert l[0].step == 1;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_REASONING, text = "still thinking..."});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "length"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED && l[0].ending == IK_END_FAILED;
+
+  // Tool calls emitted at step >= max_steps end immediately with IK_END_BUDGET (never spin to step 80/30).
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 1, 32768, "Do task");
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c1", text = "run_command", reason = "{\"command\":\"ls\"}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED && l[0].ending == IK_END_BUDGET;
+
+  // 3 consecutive dup_blocks stop repeated duplicate tool calls cleanly.
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 10, 32768, "Do task");
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  l[0].guard[0].dup_blocks = 3;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "c2", text = "run_command", reason = "{\"command\":\"ls\"}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED && l[0].ending == IK_END_FAILED;
+
+  // Silent empty 0-tool finish returns IK_END_FAILED instead of silent IK_END_FINISHED.
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 10, 32768, "Do task");
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED && l[0].ending == IK_END_FAILED;
 }

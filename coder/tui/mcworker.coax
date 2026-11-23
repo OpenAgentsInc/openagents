@@ -379,11 +379,11 @@ tool_main :: () -> int #export_c #effects(all) {
   path:[4096]u8;pn:=json_raw(path[..],0,home);pn=json_raw(path[..],pn,"/.openagents/coder/sessions");
   if home.count==0 || pn<0 || !fs_mkdir(cast(string)path[0..<pn]) {return 1;}
   jn:=json_raw(jp[..],0,cast(string)path[0..<pn]);jn=json_raw(jp[..],jn,"/worker-");jn=json_write_int(jp[..],jn,cxproc_wall_us());jn=json_raw(jp[..],jn,".ajr");
-  if jn<0 || !jf_open(journal[..],cast(string)jp[0..<jn]) {return 1;}
+  if jn<0 {return 1;}
   // long outputs are saved whole beside the journal, one file each, for the model to view by range (GitHub #13325)
+  // Journal file opens lazily on the first real turn (before jf_context) to avoid 0-byte .ajr leaks.
   spill:[4096]u8;sn:=json_raw(spill[..],0,cast(string)jp[0..<jn-4]);sn=json_raw(spill[..],sn,".out");
   run[0].spill_dir=ifx sn<0 then "" else cast(string)spill[0..<sn];
-  mw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
   running := false;
   hybrid_on := false;
   req: [1] MwwRequest;
@@ -627,6 +627,10 @@ tool_main :: () -> int #export_c #effects(all) {
     if lg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], lg); }
     gg := mk_goal_guidance(tk);
     if gg.count > 0 { _ = mc_instructions(run[0].l[..], lb[..], gg); }
+    if !journal[0].opened {
+      if !jf_open(journal[..], cast(string) jp[0..<jn]) { mw_ended(out[..], "failed", "durable journal failed to open; no request or tool started"); continue; }
+      mw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
+    }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);
     nc=json_raw(context[..],nc,",\"policy\":");policy:=req[0].policy;nc=json_raw(context[..],nc,ifx policy.count>0 then policy else "null");

@@ -30,6 +30,7 @@ IkGuard :: struct {
   fail_edit_sig: u64;
   fail_edit_streak: int;
   zero_grep_streak: int;
+  dup_blocks: int;
 }
 
 ik_guard_init :: (g: [] IkGuard, max_steps: int) #effects(all) {
@@ -54,6 +55,7 @@ ik_guard_mutated :: (g: [] IkGuard, is_file_edit: bool) #effects(all) {
   g[0].fail_edit_sig = 0;
   g[0].fail_edit_streak = 0;
   g[0].zero_grep_streak = 0;
+  g[0].dup_blocks = 0;
   if is_file_edit { g[0].files_edited += 1; }
 }
 
@@ -215,9 +217,25 @@ ik_guard_is_shell_edit :: (cmd: string) -> bool #effects(all) {
   return false;
 }
 
+// Tracks consecutive duplicate-guard short-circuits; reset on any real tool execution.
+ik_guard_note_block :: (g: [] IkGuard) -> int #effects(all) {
+  g[0].dup_blocks += 1;
+  return g[0].dup_blocks;
+}
+
+ik_guard_note_progress :: (g: [] IkGuard) #effects(all) {
+  g[0].dup_blocks = 0;
+}
+
 // Final closing call disables tools at step >= max_steps so the model summarizes cleanly.
 ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
   return step >= max_steps;
+}
+
+// Hard runtime cutoff: refuse executing further tool calls once step >= max_steps or after
+// 3 consecutive duplicate-guard blocks without progress (prevents [step 80/30] spirals).
+ik_guard_tools_exhausted :: (step: int, max_steps: int, dup_blocks: int) -> bool #effects(all) {
+  return step >= max_steps || dup_blocks >= 3;
 }
 
 // ---------------------------------------------------------------- checks
@@ -362,4 +380,16 @@ ik_guard_disable_tools :: (step: int, max_steps: int) -> bool #effects(all) {
   #assert !ik_guard_is_shell_edit("cat << 'EOF'\nhello\nEOF");
   #assert !ik_guard_is_shell_edit("echo ok > /tmp/out.txt");
   #assert !ik_guard_is_shell_edit("coax test a.coax");
+
+  // Consecutive duplicate-block streak & hard tool-exhaustion cutoff:
+  g5: [1] IkGuard;
+  ik_guard_init(g5[..], 30);
+  #assert g5[0].dup_blocks == 0;
+  #assert ik_guard_note_block(g5[..]) == 1 && ik_guard_note_block(g5[..]) == 2 && !ik_guard_tools_exhausted(29, 30, g5[0].dup_blocks);
+  #assert ik_guard_note_block(g5[..]) == 3 && ik_guard_tools_exhausted(1, 30, g5[0].dup_blocks);
+  ik_guard_note_progress(g5[..]);
+  #assert g5[0].dup_blocks == 0 && !ik_guard_tools_exhausted(29, 30, 0) && ik_guard_tools_exhausted(30, 30, 0);
+  #assert ik_guard_note_block(g5[..]) == 1;
+  ik_guard_mutated(g5[..], false);
+  #assert g5[0].dup_blocks == 0;
 }

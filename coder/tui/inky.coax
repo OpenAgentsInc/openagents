@@ -332,15 +332,16 @@ tool_main :: () -> int #export_c #effects(all) {
   jn = json_raw(jp[..], jn, "/worker-");
   jn = json_write_int(jp[..], jn, cxproc_wall_us());
   jn = json_raw(jp[..], jn, ".ajr");
-  if jn < 0 || !jf_open(journal[..], cast(string) jp[0..<jn]) { return 1; }
+  if jn < 0 { return 1; }
 
   // Sibling .out directory for >16 KB command output spills.
+  // Journal file is opened lazily on the first real turn (right before jf_context)
+  // so build/EOF/rejected worker invocations never leak 0-byte worker-*.ajr files.
   sn := json_raw(run[0].spill_dir[..], 0, cast(string) jp[0..<jn - 4]);
   sn = json_raw(run[0].spill_dir[..], sn, ".out");
   run[0].nspill_dir = ifx sn > 0 then sn else 0;
   run[0].journal = journal[..];
 
-  ikw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
   running := false;
   req: [1] MwwRequest;
   st: [1] McSteers; q: [1] MwQueue; f: [1] IkFollow;
@@ -524,6 +525,16 @@ tool_main :: () -> int #export_c #effects(all) {
       for i: 0..<ne { ikw_event(ev[i], out[..]); }
       ikw_turn_end("failed", st[..], q[..], f[..], out[..]);
       continue;
+    }
+
+    // Lazy journal open on the first real turn (prevents 0-byte .ajr files on EOF/build/reject).
+    if !journal[0].opened {
+      if !jf_open(journal[..], cast(string) jp[0..<jn]) {
+        ikw_ended(out[..], "failed", "durable journal failed to open; no request or tool started");
+        ikw_turn_end("failed", st[..], q[..], f[..], out[..]);
+        continue;
+      }
+      ikw_send(out[..], mww_journal(out[..], cast(string) jp[0..<jn]));
     }
 
     // Durable context frame before the first model call or tool effect.
