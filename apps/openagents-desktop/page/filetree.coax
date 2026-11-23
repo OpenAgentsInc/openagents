@@ -35,7 +35,7 @@ CP_ASK_FILETREE_OPEN :: 87;       // host opens coder_page_filetree_req_path in 
 CP_ASK_OPEN_EDITOR :: 88;         // host launches selected editor (coder_page_editor_pick_id) at file/line
 CP_ASK_FILETREE_TAB_CLOSE :: 89;  // host closes tab coder_page_filetree_close_tab (asking save if dirty)
 
-// UI action IDs (270..281 free after providers.coax & voice.coax)
+// UI action IDs (270..286 free after providers.coax & voice.coax, before CP_RICH_STASH_POP :: 290)
 CP_FT_TOGGLE :: 270;          // corner toolbar button: open/close File Explorer
 CP_FT_CLOSE :: 271;           // close File Explorer when no file is open
 CP_FT_FILTER_FIELD :: 272;    // click quick-filter input
@@ -49,6 +49,14 @@ CP_FT_EDITOR_PICK :: 279;     // pick an editor from dropdown (id: coder.ft.ed.<
 CP_FT_TREE_TOGGLE :: 280;     // collapse/expand tree column inside file pane
 CP_FT_PREVIEW_RAW :: 281;     // toggle rich preview vs raw text
 CP_FT_CRUMB_DIR :: 282;       // click a directory segment in the breadcrumb bar (id: coder.ft.crumb.<idx>)
+CP_FT_CRUMB_PICK :: 283;      // click a sibling file/dir in the breadcrumb popover (id: coder.ft.cdir.<idx>)
+CP_FT_TAB_PREV :: 284;        // scroll overflowing tab strip left
+CP_FT_TAB_NEXT :: 285;        // scroll overflowing tab strip right
+CP_FT_TAB_PIN :: 286;         // pin a transient preview tab (double-click)
+CP_FT_LAST :: 286;
+
+CP_FT_DIR_ITEMS :: 64;        // max entries shown in breadcrumb sibling-directory popover (#13992)
+CP_FT_DIR_POOL :: 4096;       // byte pool for breadcrumb directory listing entries
 
 CP_KB_FT_FILTER :: 6;         // keyboard focus on quick filter (editor.coax CP_KB_*)
 CP_ED_FT_FILTER :: 6;         // editor slot for quick filter (editor.coax CP_EDS :: 7)
@@ -66,6 +74,18 @@ CpFtTab :: struct {
   path: [CP_FT_PATH] u8; path_n: int;
   name_at: int;
   dirty: bool;
+  // Per-tab preserved viewer state (#13992)
+  scroll_y: f32;
+  scroll_x: f32;
+  caret_line: int;
+  wrap: bool;
+  wrap_set: bool;
+  edit_mode: bool;
+  pinned: bool;
+  last_used: int;
+  fold_bits: [8] u64;
+  // Hit rect in Row 1 (for middle-click close / double-click pin)
+  rx: f32; ry: f32; rw: f32; rh: f32;
 }
 
 CpFtEditor :: struct {
@@ -86,11 +106,24 @@ CpFileTree :: struct {
   scroll: f32; content: f32; view: f32;
   tree_x: f32; tree_w: f32;   // last drawn tree rect for wheel routing
   tabs: [CP_FT_TABS] CpFtTab; ntabs: int; active_tab: int;
+  tab_clock: int;
+  tab_scroll: int;
+  open_as_preview: bool;      // next open creates a transient preview tab (single-click from chat/tree)
   editors_ready: bool;
   editors: [CP_FT_EDITORS] CpFtEditor; neditors: int;
   editor_menu: bool;
   editor_btn_x: f32; editor_btn_y: f32;
   pick_editor: int;
+  // Interactive breadcrumb sibling-directory dropdown (#13992)
+  crumb_menu: bool;
+  crumb_dir: [CP_FT_PATH] u8; crumb_dir_n: int;
+  crumb_x: f32; crumb_y: f32;
+  crumb_seg_x: [32] f32;
+  dir_at: [CP_FT_DIR_ITEMS] int;
+  dir_len: [CP_FT_DIR_ITEMS] int;
+  dir_is_dir: [CP_FT_DIR_ITEMS] bool;
+  ndir: int;
+  dir_pool: [CP_FT_DIR_POOL] u8; dir_pool_n: int;
   ssh_host: [128] u8; ssh_host_n: int;
   custom_cmd: [128] u8; custom_cmd_n: int;
   req_path: [CP_FT_PATH] u8; req_path_n: int;
@@ -291,35 +324,84 @@ cp_ft_tab_find :: (s: [] CoderPage, path: string) -> int {
   return -1;
 }
 
-// Records or activates a file tab (up to CP_FT_TABS). Returns its tab index.
+// Save the active file pane's scroll, wrap, edit mode, caret line, and fold state into its tab slot (#13992).
+cp_ft_tab_save_active :: (s: [] CoderPage) {
+  ft := s[0].ft[..]; fp := s[0].fp[..];
+  if !fp[0].open { return; }
+  idx := cp_ft_tab_find(s, cast(string) fp[0].path[0..<fp[0].path_n]);
+  if idx < 0 || idx >= ft[0].ntabs { return; }
+  ft[0].tabs[idx].scroll_y = fp[0].scroll;
+  ft[0].tabs[idx].scroll_x = fp[0].scroll_x;
+  ft[0].tabs[idx].caret_line = cp_fp_caret_line(s);
+  ft[0].tabs[idx].wrap = fp[0].wrap;
+  ft[0].tabs[idx].wrap_set = true;
+  ft[0].tabs[idx].edit_mode = (fp[0].mode == CP_FP_EDIT);
+  ft[0].tabs[idx].dirty = fp[0].dirty;
+  if fp[0].dirty || fp[0].mode == CP_FP_EDIT { ft[0].tabs[idx].pinned = true; }
+  for k: 0..<8 { ft[0].tabs[idx].fold_bits[k] = fp[0].fold_bits[k]; }
+}
+
+// Records or activates a file tab (up to CP_FT_TABS) with true LRU eviction and preview/pinned support (#13992).
 cp_ft_tab_open :: (s: [] CoderPage, path: string) -> int {
   ft := s[0].ft[..];
   if path.count == 0 { return -1; }
+  ft[0].tab_clock += 1;
+  preview := ft[0].open_as_preview;
+  ft[0].open_as_preview = false;
   ex := cp_ft_tab_find(s, path);
   if ex >= 0 {
     ft[0].active_tab = ex;
+    ft[0].tabs[ex].last_used = ft[0].tab_clock;
+    if !preview { ft[0].tabs[ex].pinned = true; }
+    if ex < ft[0].tab_scroll { ft[0].tab_scroll = ex; }
     return ex;
   }
-  slot := ft[0].ntabs;
-  if slot >= CP_FT_TABS {
-    // evict oldest non-active, non-dirty tab; fallback to 0
-    slot = 0;
-    for i: 0..<CP_FT_TABS {
-      if i != ft[0].active_tab && !ft[0].tabs[i].dirty { slot = i; break; }
+  slot := -1;
+  // When opening as a transient preview tab, reuse an existing clean unpinned preview tab if present.
+  if preview {
+    for i: 0..<ft[0].ntabs {
+      if !ft[0].tabs[i].pinned && !ft[0].tabs[i].dirty { slot = i; break; }
     }
-  } else {
-    ft[0].ntabs += 1;
   }
+  if slot < 0 {
+    if ft[0].ntabs < CP_FT_TABS {
+      slot = ft[0].ntabs;
+      ft[0].ntabs += 1;
+    } else {
+      // True LRU eviction of the oldest clean inactive tab (preferring unpinned tabs first).
+      best_lu := 0x7fffffff;
+      for i: 0..<CP_FT_TABS {
+        if i != ft[0].active_tab && !ft[0].tabs[i].dirty && !ft[0].tabs[i].pinned && ft[0].tabs[i].last_used < best_lu {
+          best_lu = ft[0].tabs[i].last_used; slot = i;
+        }
+      }
+      if slot < 0 {
+        for i: 0..<CP_FT_TABS {
+          if i != ft[0].active_tab && !ft[0].tabs[i].dirty && ft[0].tabs[i].last_used < best_lu {
+            best_lu = ft[0].tabs[i].last_used; slot = i;
+          }
+        }
+      }
+      if slot < 0 { slot = 0; }
+    }
+  }
+  ft[0].tabs[slot] = CpFtTab.{};
   ft[0].tabs[slot].path_n = cp_out(ft[0].tabs[slot].path[..], path);
   ft[0].tabs[slot].name_at = cp_ft_basename_at(cast(string) ft[0].tabs[slot].path[0..<ft[0].tabs[slot].path_n]);
   ft[0].tabs[slot].dirty = false;
+  ft[0].tabs[slot].pinned = !preview;
+  ft[0].tabs[slot].last_used = ft[0].tab_clock;
   ft[0].active_tab = slot;
+  if slot < ft[0].tab_scroll { ft[0].tab_scroll = slot; }
   return slot;
 }
 
 cp_ft_tab_set_dirty :: (s: [] CoderPage, path: string, dirty: bool) {
   idx := cp_ft_tab_find(s, path);
-  if idx >= 0 { s[0].ft[0].tabs[idx].dirty = dirty; }
+  if idx >= 0 {
+    s[0].ft[0].tabs[idx].dirty = dirty;
+    if dirty { s[0].ft[0].tabs[idx].pinned = true; }
+  }
 }
 
 // Removes tab idx and returns the newly active tab index (-1 if none left).
@@ -332,14 +414,65 @@ cp_ft_tab_remove :: (s: [] CoderPage, idx: int) -> int {
   ft[0].ntabs -= 1;
   if ft[0].ntabs == 0 {
     ft[0].active_tab = -1;
+    ft[0].tab_scroll = 0;
     return -1;
   }
+  if ft[0].tab_scroll >= ft[0].ntabs { ft[0].tab_scroll = ft[0].ntabs - 1; }
+  if ft[0].tab_scroll < 0 { ft[0].tab_scroll = 0; }
   if ft[0].active_tab == idx {
     if ft[0].active_tab >= ft[0].ntabs { ft[0].active_tab = ft[0].ntabs - 1; }
   } else if ft[0].active_tab > idx {
     ft[0].active_tab -= 1;
   }
   return ft[0].active_tab;
+}
+
+// Step to previous (dir < 0) or next (dir > 0) open file tab (Cmd+Shift+[ / ], #13992).
+cp_ft_tab_step :: (s: [] CoderPage, dir: int) -> bool {
+  ft := s[0].ft[..];
+  if ft[0].ntabs <= 1 { return false; }
+  cp_ft_tab_save_active(s);
+  cur := ifx ft[0].active_tab >= 0 then ft[0].active_tab else 0;
+  step := ifx dir >= 0 then 1 else -1;
+  nxt := (cur + step + ft[0].ntabs) % ft[0].ntabs;
+  ft[0].active_tab = nxt;
+  if nxt < ft[0].tab_scroll { ft[0].tab_scroll = nxt; }
+  p := cp_ft_tab_path(s, nxt);
+  ft[0].req_path_n = cp_out(ft[0].req_path[..], p);
+  s[0].ask = CP_ASK_FILETREE_OPEN;
+  return true;
+}
+
+// Loads newline-delimited sibling directory entries ("D\tname\n" or "F\tname\n") for breadcrumb popover (#13992).
+cp_ft_dir_set :: (s: [] CoderPage, lines: string) -> int {
+  ft := s[0].ft[..];
+  ft[0].ndir = 0; ft[0].dir_pool_n = 0;
+  i := 0;
+  while i < lines.count && ft[0].ndir < CP_FT_DIR_ITEMS {
+    end := i;
+    while end < lines.count && lines[end] != '\n' { end += 1; }
+    stop := ifx end > i && lines[end - 1] == '\r' then end - 1 else end;
+    row := cast(string) lines[i..<stop];
+    i = end + 1;
+    if row.count < 3 || row[1] != '\t' { continue; }
+    is_d := (row[0] == 'D' || row[0] == 'd');
+    name := cast(string) row[2..<row.count];
+    if name.count == 0 || ft[0].dir_pool_n + name.count > CP_FT_DIR_POOL { continue; }
+    at := ft[0].dir_pool_n;
+    for k: 0..<name.count { ft[0].dir_pool[at + k] = name[k]; }
+    ft[0].dir_pool_n += name.count;
+    idx := ft[0].ndir;
+    ft[0].dir_at[idx] = at;
+    ft[0].dir_len[idx] = name.count;
+    ft[0].dir_is_dir[idx] = is_d;
+    ft[0].ndir += 1;
+  }
+  return ft[0].ndir;
+}
+
+cp_ft_dir_name :: (ft: [] CpFileTree, idx: int) -> string {
+  if idx < 0 || idx >= ft[0].ndir { return ""; }
+  return cast(string) ft[0].dir_pool[ft[0].dir_at[idx]..<ft[0].dir_at[idx] + ft[0].dir_len[idx]];
 }
 
 // ---------------------------------------------------------------- rich read-only previewers
@@ -810,7 +943,7 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_FT_CRUMB_DIR {
     seg_idx := cp_number(id, "coder.ft.crumb.");
     p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
-    // Find segment seg_idx in p (skipping leading '/')
+    // Compute directory prefix through segment seg_idx and open interactive sibling popover (#13992).
     at := 0; cur := 0;
     while at < p.count {
       while at < p.count && p[at] == '/' { at += 1; }
@@ -818,17 +951,55 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
       while end < p.count && p[end] != '/' { end += 1; }
       if end > at {
         if cur == seg_idx {
-          seg := cast(string) p[at..<end];
-          ft[0].open = true; ft[0].front = true; ft[0].tree_visible = true;
-          s[0].fp[0].hidden = false;
-          cp_ft_filter_set(s, seg);
-          if !ft[0].loaded { s[0].ask = CP_ASK_FILETREE_LIST; }
+          dir_p := cast(string) p[0..<end];
+          ft[0].editor_menu = false;
+          same := ft[0].crumb_menu && cast(string) ft[0].crumb_dir[0..<ft[0].crumb_dir_n] == dir_p;
+          if same { ft[0].crumb_menu = false; return true; }
+          ft[0].crumb_dir_n = cp_out(ft[0].crumb_dir[..], dir_p);
+          ft[0].crumb_menu = true;
+          ft[0].ndir = 0; ft[0].dir_pool_n = 0;
+          if seg_idx >= 0 && seg_idx < 32 { ft[0].crumb_x = ft[0].crumb_seg_x[seg_idx]; }
+          s[0].ask = CP_ASK_FILE_DIR_LIST;
           return true;
         }
         cur += 1;
       }
       at = end;
     }
+    return false;
+  }
+  if act == CP_FT_CRUMB_PICK {
+    idx := cp_number(id, "coder.ft.cdir.");
+    if idx < 0 || idx >= ft[0].ndir { ft[0].crumb_menu = false; return false; }
+    name := cp_ft_dir_name(ft, idx);
+    base := cast(string) ft[0].crumb_dir[0..<ft[0].crumb_dir_n];
+    pb: [CP_FT_PATH] u8; pn := el_put(pb[..], 0, base);
+    if pn > 0 && pb[pn - 1] != '/' { pn = el_put(pb[..], pn, "/"); }
+    pn = el_put(pb[..], pn, name);
+    joined := cast(string) pb[0..<pn];
+    if ft[0].dir_is_dir[idx] {
+      ft[0].crumb_dir_n = cp_out(ft[0].crumb_dir[..], joined);
+      ft[0].ndir = 0; ft[0].dir_pool_n = 0;
+      s[0].ask = CP_ASK_FILE_DIR_LIST;
+      return true;
+    }
+    ft[0].crumb_menu = false;
+    cp_ft_tab_save_active(s);
+    ft[0].req_path_n = cp_out(ft[0].req_path[..], joined);
+    s[0].ask = CP_ASK_FILETREE_OPEN;
+    return true;
+  }
+  if act == CP_FT_TAB_PREV {
+    if ft[0].tab_scroll > 0 { ft[0].tab_scroll -= 1; }
+    return true;
+  }
+  if act == CP_FT_TAB_NEXT {
+    if ft[0].tab_scroll + 1 < ft[0].ntabs { ft[0].tab_scroll += 1; }
+    return true;
+  }
+  if act == CP_FT_TAB_PIN {
+    idx := cp_number(id, "coder.ft.tab.");
+    if idx >= 0 && idx < ft[0].ntabs { ft[0].tabs[idx].pinned = true; return true; }
     return false;
   }
   if act == CP_FT_FILTER_FIELD {
@@ -848,6 +1019,7 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     return true;
   }
   if act == CP_FT_EDITOR_MENU {
+    ft[0].crumb_menu = false;
     ft[0].editor_menu = !ft[0].editor_menu;
     return true;
   }
@@ -867,6 +1039,8 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
       cp_ft_toggle_dir(s, p);
       return true;
     }
+    cp_ft_tab_save_active(s);
+    ft[0].open_as_preview = true;
     ft[0].req_path_n = cp_out(ft[0].req_path[..], p);
     s[0].ask = CP_ASK_FILETREE_OPEN;
     return true;
@@ -874,6 +1048,7 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_FT_TAB {
     idx := cp_number(id, "coder.ft.tab.");
     if idx < 0 || idx >= ft[0].ntabs { return false; }
+    cp_ft_tab_save_active(s);
     ft[0].active_tab = idx;
     p := cp_ft_tab_path(s, idx);
     ft[0].req_path_n = cp_out(ft[0].req_path[..], p);
@@ -891,42 +1066,6 @@ cp_ft_press :: (s: [] CoderPage, act: int, id: string) -> bool {
 }
 
 // ---------------------------------------------------------------- drawing
-
-// Draws the multi-tab bar for open files (returns height consumed).
-cp_ft_draw_tabs :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
-  ft := s[0].ft[..];
-  if ft[0].ntabs <= 0 { return 0.0f32; }
-  k := f[0].skin; a := k.app; sh := f[0].sheet;
-  th := k.control_h;
-  sheet_fill(sh, x, y, w, th, 0, k.surface);
-  sheet_fill(sh, x, y + th - k.border, w, k.border, 0, k.menu_divider);
-  cx := x + a.gap_small;
-  for i: 0..<ft[0].ntabs {
-    name := cp_ft_tab_name(s, i);
-    nb: [96] u8;
-    nn := el_put(nb[..], 0, name);
-    if ft[0].tabs[i].dirty { nn = el_put(nb[..], nn, " •"); }
-    lbl := sheet_pool(sh, cast(string) nb[0..<nn]);
-    tw := measure_width(f[0].m, k.small.face, lbl) + 28.0f32;
-    if tw > 160.0f32 { tw = 160.0f32; }
-    if cx + tw > x + w - a.gap_small { break; }
-    active := i == ft[0].active_tab;
-    bg := ifx active then k.row_shown else k.surface;
-    sheet_fill(sh, cx, y + 2, tw, th - 4, k.radius_control, bg);
-    if active { sheet_fill(sh, cx, y + th - 2, tw, 2, 0, k.accent); }
-    ib: [32] u8;
-    tid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.ft.tab."), i)]);
-    _ := uiframe_semantic(f, tid, EL_BUTTON, lbl, cx, y + 2, tw - 18.0f32, th - 4, ifx active then EL_S_CURRENT else 0, CP_FT_TAB);
-    fit := app_fit(f, k.small.face, lbl, tw - 24.0f32);
-    _ := sheet_text(sh, f[0].m, -1, cx + 6, y + (th - k.small.line) / 2, k.small.line, k.small.face, ifx active then k.ink else k.muted, fit);
-    xb: [32] u8;
-    xid := sheet_pool(sh, cast(string) xb[0..<el_put_i(xb[..], el_put(xb[..], 0, "coder.ft.tabx."), i)]);
-    _ := uiframe_semantic(f, xid, EL_BUTTON, "Close tab", cx + tw - 18.0f32, y + 2, 18.0f32, th - 4, 0, CP_FT_TAB_CLOSE);
-    _ := sheet_text(sh, f[0].m, -1, cx + tw - 14.0f32, y + (th - k.small.line) / 2, k.small.line, k.small.face, k.faint, "×");
-    cx += tw + 4.0f32;
-  }
-  return th;
-}
 
 // Draws the collapsible File Explorer directory tree column.
 cp_ft_draw_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
@@ -989,20 +1128,70 @@ cp_ft_draw_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f
   ft[0].content = cast(f32) shown_rows * rh + pad;
 }
 
+// Draws a single menu row inside an overlay popover.
+cp_ft_menu_item :: (f: [] UiFrame, id: string, lbl: string, mx: f32, ry: f32, mw: f32, rh: f32, act: int) {
+  k := f[0].skin; sh := f[0].sheet;
+  row := uiframe_semantic(f, id, EL_BUTTON, lbl, mx + 4, ry, mw - 8, rh, 0, act);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, mx + 4, ry, mw - 8, rh);
+  if uiframe_hovered(f, id) { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
+  _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, lbl, mw - 24));
+}
+
+// Draws the interactive breadcrumb sibling-directory popover (#13992).
+cp_ft_draw_crumb_menu :: (s: [] CoderPage, f: [] UiFrame) {
+  ft := s[0].ft[..];
+  if !ft[0].crumb_menu { return; }
+  k := f[0].skin; sh := f[0].sheet;
+  mw := 224.0f32;
+  rh := 26.0f32;
+  max_vis := ifx ft[0].ndir > 14 then 14 else ft[0].ndir;
+  rows := ifx max_vis > 0 then max_vis else 1;
+  mh := cast(f32) rows * rh + 8.0f32;
+  mx := ft[0].crumb_x;
+  if s[0].win_w > 0 && mx + mw > s[0].win_w - 8.0f32 { mx = s[0].win_w - mw - 8.0f32; }
+  if mx < 8.0f32 { mx = 8.0f32; }
+  my := ft[0].crumb_y + 2.0f32;
+  th := cp_theme();
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, k.radius_control, k.shadows.sm));
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, k.radius_control, 1.0f32, th.menu, th.line));
+  _ := uiframe_semantic(f, "coder.ft.cdirmenu", EL_REGION, "Directory siblings", mx, my, mw, mh, 0, 0);
+  ry := my + 4.0f32;
+  if ft[0].ndir == 0 {
+    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.muted, "Loading…");
+    return;
+  }
+  for i: 0..<max_vis {
+    name := cp_ft_dir_name(ft, i);
+    is_d := ft[0].dir_is_dir[i];
+    lb: [128] u8; ln := 0;
+    if is_d { ln = el_put(lb[..], ln, "▸ "); }
+    ln = el_put(lb[..], ln, name);
+    if is_d { ln = el_put(lb[..], ln, "/"); }
+    lbl := sheet_pool(sh, cast(string) lb[0..<ln]);
+    ib: [32] u8;
+    cid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.ft.cdir."), i)]);
+    cp_ft_menu_item(f, cid, lbl, mx, ry, mw, rh, CP_FT_CRUMB_PICK);
+    ry += rh;
+  }
+}
+
 // Draws the unified More & Open-in-Editor dropdown menu (⋮ in Row 2, #13992).
 cp_ft_draw_editor_menu :: (s: [] CoderPage, f: [] UiFrame) {
-  ft := s[0].ft[..];
+  cp_ft_draw_crumb_menu(s, f);
+  ft := s[0].ft[..]; fp := s[0].fp[..];
   if !ft[0].editor_menu { return; }
   cp_ft_init_editors(s);
   k := f[0].skin; sh := f[0].sheet;
-  mw := 196.0f32;
-  rh := k.control_h;
-  has_file := s[0].fp[0].open;
+  mw := 214.0f32;
+  rh := 26.0f32;
+  has_file := fp[0].open;
+  can_edit := has_file && fp[0].mode != CP_FP_FAILED && fp[0].mode != CP_FP_SCENE && ft[0].preview_kind == CP_FT_PREV_NONE && fp[0].src.count <= CP_FP_EDIT_MOST && fp[0].nlines <= CP_FP_EDIT_LINES;
+  is_md := has_file && cp_fp_is_markdown(s);
   ed_count := 0;
   for i: 0..<CP_FT_EDITORS {
     if ft[0].editors[i].installed { ed_count += 1; }
   }
-  top_rows := ifx has_file then 3 else 0;
+  top_rows := ifx has_file then (7 + (ifx can_edit then 1 else 0) + (ifx is_md then 1 else 0)) else 0;
   div_h := ifx has_file && ed_count > 0 then 9.0f32 else 0.0f32;
   if top_rows + ed_count == 0 { return; }
   mh := cast(f32) (top_rows + ed_count) * rh + div_h + 8.0f32;
@@ -1016,20 +1205,30 @@ cp_ft_draw_editor_menu :: (s: [] CoderPage, f: [] UiFrame) {
   _ := uiframe_semantic(f, "coder.ft.edmenu", EL_REGION, "File actions", mx, my, mw, mh, 0, 0);
   ry := my + 4.0f32;
   if has_file {
+    if can_edit {
+      elbl := ifx fp[0].mode == CP_FP_EDIT then "Switch to Read-Only" else "Edit File";
+      cp_ft_menu_item(f, "coder.file.edit_toggle", elbl, mx, ry, mw, rh, CP_FP_TOGGLE_EDIT);
+      ry += rh;
+    }
+    if is_md {
+      mlbl := ifx fp[0].md_preview then "View Markdown Source" else "Preview Markdown";
+      cp_ft_menu_item(f, "coder.file.md_preview", mlbl, mx, ry, mw, rh, CP_FP_MD_PREVIEW);
+      ry += rh;
+    }
     tlbl := ifx ft[0].tree_visible then "Hide File Tree" else "Show File Tree";
-    _ := uiframe_semantic(f, "coder.ft.tree_toggle", EL_BUTTON, tlbl, mx + 4, ry, mw - 8, rh, 0, CP_FT_TREE_TOGGLE);
-    if uiframe_hovered(f, "coder.ft.tree_toggle") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
-    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, tlbl);
+    cp_ft_menu_item(f, "coder.ft.tree_toggle", tlbl, mx, ry, mw, rh, CP_FT_TREE_TOGGLE);
     ry += rh;
-
-    _ := uiframe_semantic(f, "coder.file.copy_path", EL_BUTTON, "Copy Path", mx + 4, ry, mw - 8, rh, 0, CP_FP_COPY_PATH);
-    if uiframe_hovered(f, "coder.file.copy_path") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
-    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, "Copy Path");
+    cp_ft_menu_item(f, "coder.file.goto", "Go to Line… (⌃G)", mx, ry, mw, rh, CP_FP_GOTO_LINE);
     ry += rh;
-
-    _ := uiframe_semantic(f, "coder.file.external", EL_BUTTON, "Open in Default App", mx + 4, ry, mw - 8, rh, 0, CP_FP_EXTERNAL);
-    if uiframe_hovered(f, "coder.file.external") { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
-    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, "Open in Default App");
+    cp_ft_menu_item(f, "coder.file.copy_path", "Copy Path", mx, ry, mw, rh, CP_FP_COPY_PATH);
+    ry += rh;
+    cp_ft_menu_item(f, "coder.file.copy_rel", "Copy Relative Path", mx, ry, mw, rh, CP_FP_COPY_REL_PATH);
+    ry += rh;
+    cp_ft_menu_item(f, "coder.file.copy_contents", "Copy Contents", mx, ry, mw, rh, CP_FP_COPY_CONTENTS);
+    ry += rh;
+    cp_ft_menu_item(f, "coder.file.reveal", "Reveal in Finder", mx, ry, mw, rh, CP_FP_REVEAL);
+    ry += rh;
+    cp_ft_menu_item(f, "coder.file.external", "Open in Default App", mx, ry, mw, rh, CP_FP_EXTERNAL);
     ry += rh;
 
     if ed_count > 0 {
@@ -1042,14 +1241,43 @@ cp_ft_draw_editor_menu :: (s: [] CoderPage, f: [] UiFrame) {
     lbl := sheet_pool(sh, cast(string) ft[0].editors[i].label[0..<ft[0].editors[i].label_n]);
     eb: [32] u8;
     eid := sheet_pool(sh, cast(string) eb[0..<el_put_i(eb[..], el_put(eb[..], 0, "coder.ft.ed."), i)]);
-    _ := uiframe_semantic(f, eid, EL_BUTTON, lbl, mx + 4, ry, mw - 8, rh, 0, CP_FT_EDITOR_PICK);
-    if uiframe_hovered(f, eid) { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx + 4, ry, mw - 8, rh, 6.0f32, 0, k.hover, Rgba.{})); }
-    _ := sheet_text(sh, f[0].m, -1, mx + 12, ry + (rh - k.small.line) / 2, k.small.line, k.small.face, k.ink, lbl);
+    cp_ft_menu_item(f, eid, lbl, mx, ry, mw, rh, CP_FT_EDITOR_PICK);
     ry += rh;
   }
 }
 
 // ---------------------------------------------------------------- C exports
+
+coder_page_file_crumb_dir :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].ft[0].crumb_dir[0..<s[0].ft[0].crumb_dir_n]);
+}
+
+coder_page_file_dir_set :: (s: [] CoderPage, lines: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_ft_dir_set(s, lines);
+}
+
+coder_page_file_tab_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_ft_tab_step(s, dir);
+}
+
+// Middle-click at (x, y) device pixels over a Row 1 tab pill requests closing that tab (#13992).
+coder_page_file_middle_click :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) || !cp_fp_shown(s) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  ft := s[0].ft[..];
+  for i: 0..<ft[0].ntabs {
+    t := ft[0].tabs[i];
+    if t.rw > 0 && ux >= t.rx && ux < t.rx + t.rw && uy >= t.ry && uy < t.ry + t.rh {
+      ft[0].close_tab_idx = i;
+      s[0].ask = CP_ASK_FILETREE_TAB_CLOSE;
+      return true;
+    }
+  }
+  return false;
+}
 
 coder_page_filetree_set :: (s: [] CoderPage, lines: string) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }

@@ -122,7 +122,9 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   // Preserve semantic scientific color roles inside Lean 4 & RH Proof Workbench (#13946),
   // provider brand/status/accent colors on Settings -> Providers, and syntax/badge colors inside the File Viewer (#13992).
   if mono {
-    if fp_vu1 > fp_vu0 || fp_vo1 > fp_vo0 {
+    if composed >= 0 && fp_has_color && s[0].pane_w > 0 {
+      gpu_monochrome_outside(out, v, s[0].pane_x * d, 0.0f32, (s[0].pane_x + s[0].pane_w) * d, h * d);
+    } else if fp_vu1 > fp_vu0 || fp_vo1 > fp_vo0 {
       cur := 0;
       if fp_vu1 > fp_vu0 {
         gpu_monochrome_range(out, cur, fp_vu0);

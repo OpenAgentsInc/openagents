@@ -19,23 +19,26 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_test_draw_side(s, f);
 }
 
-#test "a file opens in the pane with its name, path and numbered lines, editable" {
+#test "a file opens viewer-first in the pane with its name, path, numbered lines, and toggles to Edit mode" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "main :: () {\n  print(\"hi\");\n}\n";
   #assert coder_page_file_open(s, "~/work/app/main.coax", b[0..<cp_out(b[..], src)], src.count);
-  #assert coder_page_file_mode(s) == CP_FP_EDIT && coder_page_file_shown(s) && !coder_page_file_dirty(s);
+  // Viewer-first default (#13992): opens read-only without stealing composer focus
+  #assert coder_page_file_mode(s) == CP_FP_READ && coder_page_file_shown(s) && !coder_page_file_dirty(s);
+  #assert cp_ed_which(s) == CP_ED_COMPOSER;
   #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
   #assert cp_fp_test_label(s, "coder.file.close.tab") == "main.coax";
   #assert cp_fp_test_label(s, "coder.file.path") == "~/work/app/main.coax";
   #assert cp_fp_test_find(s, "coder.file.body") >= 0 && cp_fp_test_find(s, "coder.ft.editors") >= 0;
   #assert cp_fp_test_find(s, "coder.file.expand") >= 0 && cp_fp_test_find(s, "coder.file.hide") >= 0 && cp_fp_test_find(s, "coder.file.add") >= 0;
   #assert cp_fp_test_find(s, "coder.file.reload") >= 0 && cp_fp_test_find(s, "coder.file.wrap") >= 0;
-  // Open in Default App is inside the ⋮ More menu
-  #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.external") >= 0;
+  // Open in Default App and Edit File live inside the ⋮ More menu
   #assert cp_fp_test_press(s, "coder.ft.editors") && cp_test_draw_side(s, f[..]);
-  // nothing to save yet, so no Save; the tab says nothing after the name
-  #assert cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.file.state") < 0;
-  // the editor holds the file, wrapped into its four lines (the last one empty)
+  #assert cp_fp_test_find(s, "coder.file.external") >= 0 && cp_fp_test_find(s, "coder.file.edit_toggle") >= 0;
+  // Toggle into Edit File mode -> UiEditor holds the file's four lines
+  #assert cp_fp_test_press(s, "coder.file.edit_toggle") && coder_page_file_mode(s) == CP_FP_EDIT;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_fp_test_find(s, "coder.file.save") < 0;
   e := s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1];
   #assert ue_value(e) == src && e[0].body[0].lines == 4;
   name: [64] u8; #assert cast(string) name[0..<coder_page_file_name(s, name[..])] == "main.coax";
@@ -44,7 +47,9 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 #test "an edit makes the file Edited with Save; Save asks the host and the saved text clears it" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "one\ntwo\n";
-  #assert coder_page_file_open(s, "~/notes.txt", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
+  #assert coder_page_file_open(s, "~/notes.txt", b[0..<cp_out(b[..], src)], src.count);
+  #assert coder_page_file_set_edit(s, true) && cp_test_draw_side(s, f[..]);
+  _ = coder_page_action(s);
   // a press in its text gives it the keyboard; the host is asked to keep the keyboard on the view
   #assert cp_test_press_field(s, CP_ED_FILE) && s[0].fld[0].kb == CP_KB_FILE && coder_page_action(s) == CP_ASK_FILE_FOCUS;
   #assert coder_page_wants_text(s) && cp_ed_which(s) == CP_ED_FILE;
@@ -71,7 +76,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 #test "Close asks the host, and the closed pane gives the window and the keyboard back" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "x\n";
-  #assert coder_page_file_open(s, "~/a.coax", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
+  #assert coder_page_file_open(s, "~/a.coax", b[0..<cp_out(b[..], src)], src.count) && coder_page_file_set_edit(s, true) && cp_test_draw_side(s, f[..]);
   #assert cp_test_press_field(s, CP_ED_FILE) && s[0].fld[0].kb == CP_KB_FILE;
   _ = coder_page_action(s);
   // the tab's Close asks the host (it asks first when there are changes)
@@ -197,4 +202,85 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
     if a > 0.1f32 && (abs(r - g) > 0.05f32 || abs(g - bl) > 0.05f32) { v_colored += 1; }
   }
   #assert v_colored >= 60;
+}
+
+#test "file viewer Phase 2 & 3: 4 MB cap, code folding, GPU selection/copy, per-tab state, jump, find, disk reload, breadcrumbs (#13992)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  #assert coder_page_file_most() == 4194304;
+
+  // Multi-function C file with long lines and brace blocks for folding, hscroll, selection, find, and jump
+  b: [2048] u8;
+  src := "#include <stdint.h>\nstatic uint64_t fnv1a(const char *s, size_t n) {\n  uint64_t h = 14695981039346656037ull;\n  for (size_t i = 0; i < n; i++) {\n    h ^= (uint8_t)s[i];\n  }\n  return h ? h : 1;\n}\nstatic int alpha(void) {\n  int very_long_identifier_name_that_certainly_exceeds_even_a_wide_split_pane_viewport_width_for_testing_horizontal_scrolling_and_rails_properly = 42;\n  return very_long_identifier_name_that_certainly_exceeds_even_a_wide_split_pane_viewport_width_for_testing_horizontal_scrolling_and_rails_properly;\n}\n";
+  path := "/Users/dev/openagents/psionic/platform/inkling-gguf.c";
+  #assert coder_page_file_open(s, path, b[0..<cp_out(b[..], src)], src.count);
+  #assert coder_page_file_mode(s) == CP_FP_READ;
+  #assert s[0].fp[0].nlines >= 12 && s[0].fp[0].nfolds >= 3;
+  #assert cp_test_draw_side(s, f[..]);
+
+  // Structural folding: click fold 0 chevron collapses block; jump to inner line auto-unfolds it & highlights target range
+  full_content := s[0].fp[0].content;
+  #assert cp_fp_test_find(s, "coder.fp.fold.0") >= 0;
+  #assert cp_fp_test_press(s, "coder.fp.fold.0") && cp_fp_fold_is_closed(s[0].fp[..], 0);
+  #assert cp_test_draw_side(s, f[..]) && s[0].fp[0].content < full_content;
+  coder_page_file_jump(s, 5, 6);
+  #assert !cp_fp_fold_is_closed(s[0].fp[..], 0) && s[0].fp[0].hl_start == 5 && s[0].fp[0].hl_end == 6;
+
+  // GPU text selection (CP_SEL_FILE): Cmd+A selects all file lines, Cmd+C copies code, sel_file_lines reports 1-based range
+  s[0].px = s[0].pane_x + 40.0f32; s[0].py = 200.0f32;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_sel_select_all(s) && s[0].sel[0].region == CP_SEL_FILE && coder_page_has_selection(s);
+  copied: [2048] u8;
+  cn := coder_page_copy(s, false, copied[..]);
+  #assert cn > 100 && cp_find(cast(string) copied[0..<cn], "fnv1a") >= 0;
+  lr: [2] int;
+  #assert coder_page_sel_file_lines(s, lr[..]) && lr[0] == 1 && lr[1] >= 10;
+  cp_sel_clear(s);
+
+  // Horizontal scroll when wrap is off (draw using test_atlas pixel metrics so long line exceeds viewport width)
+  #assert !s[0].fp[0].wrap;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(s[0].atlas[..]), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  s[0].px = s[0].pane_x + 40.0f32;
+  coder_page_scroll_x(s, -60.0f32, true);
+  #assert s[0].fp[0].scroll_x > 0.0f32;
+
+  // In-file Find (Cmd+F) and Go to Line (Ctrl+G)
+  coder_page_file_find_open(s);
+  #assert coder_page_find_is_open(s) && s[0].find[0].file_mode && !s[0].find[0].goto_mode;
+  coder_page_find_set_query(s, "return");
+  #assert coder_page_find_count(s) == 2 && s[0].fp[0].hl_start == 7;
+  #assert coder_page_find_step(s, 1) && s[0].fp[0].hl_start == 11;
+  coder_page_find_close(s);
+  #assert !coder_page_find_is_open(s);
+  coder_page_file_goto_open(s);
+  coder_page_find_set_query(s, "9");
+  #assert coder_page_find_step(s, 1) && s[0].fp[0].hl_start == 9 && !coder_page_find_is_open(s);
+
+  // Per-tab state preservation (scroll, fold, wrap) across tab switch + live reload preserving scroll/folds
+  #assert cp_fp_fold_toggle(s, 0);
+  s[0].fp[0].scroll = 36.0f32;
+  b2: [128] u8; src2 := "# Title\n\n- item one\n";
+  #assert coder_page_file_open(s, "/Users/dev/openagents/README.md", b2[0..<cp_out(b2[..], src2)], src2.count);
+  #assert s[0].ft[0].ntabs == 2 && s[0].ft[0].active_tab == 1;
+  // Switch back to inkling-gguf.c -> restores scroll=36 and fold 0 closed!
+  #assert coder_page_file_open(s, path, b[0..<cp_out(b[..], src)], src.count);
+  #assert s[0].fp[0].scroll == 36.0f32 && cp_fp_fold_is_closed(s[0].fp[..], 0);
+  // Live reload preserves scroll & folds
+  #assert coder_page_file_reload(s, b[0..<cp_out(b[..], src)], src.count);
+  #assert s[0].fp[0].scroll == 36.0f32 && cp_fp_fold_is_closed(s[0].fp[..], 0);
+  // Dirty disk-change banner
+  coder_page_file_disk_changed(s);
+  #assert s[0].fp[0].disk_changed && cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.disk.reload") >= 0;
+  #assert cp_fp_test_press(s, "coder.file.disk.keep") && !s[0].fp[0].disk_changed;
+
+  // Interactive breadcrumb sibling popover: clicking "platform" asks CP_ASK_FILE_DIR_LIST and populates entries
+  #assert cp_fp_test_press(s, "coder.ft.crumb.4") && coder_page_action(s) == CP_ASK_FILE_DIR_LIST;
+  dbuf: [256] u8;
+  #assert cast(string) dbuf[0..<coder_page_file_crumb_dir(s, dbuf[..])] == "/Users/dev/openagents/psionic/platform";
+  #assert coder_page_file_dir_set(s, "D\tsubdir\nF\tinkling-gguf.c\nF\tmetal.m\n") == 3;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.ft.cdir.2") >= 0;
+  #assert cp_fp_test_press(s, "coder.ft.cdir.2") && coder_page_action(s) == CP_ASK_FILETREE_OPEN;
+  req: [256] u8;
+  #assert cast(string) req[0..<coder_page_filetree_req_path(s, req[..])] == "/Users/dev/openagents/psionic/platform/metal.m";
 }

@@ -191,6 +191,14 @@ static int ui_ax_box(UiHost *h, NSRect *box);
 }
 - (void)scrollWheel:(NSEvent *)e {
   UiHost *h = self.host;
+  if (h->app.scroll_x) {
+    CGFloat dx = e.scrollingDeltaX;
+    if (dx == 0 && (e.modifierFlags & NSEventModifierFlagShift) != 0 && e.scrollingDeltaY != 0) dx = e.scrollingDeltaY;
+    if (dx != 0) {
+      h->app.scroll_x(h->app.user, (float)dx, e.hasPreciseScrollingDeltas ? 1 : 0);
+      if (e.scrollingDeltaY == 0 || (e.modifierFlags & NSEventModifierFlagShift) != 0) return;
+    }
+  }
   if (h->app.scroll_gesture) {
     NSEventPhase ph = e.phase, mo = e.momentumPhase;
     int phase = (ph & (NSEventPhaseBegan | NSEventPhaseMayBegin)) ? 1 : (ph & NSEventPhaseChanged) ? 2 : (ph & (NSEventPhaseEnded | NSEventPhaseCancelled)) ? 3 : 0;

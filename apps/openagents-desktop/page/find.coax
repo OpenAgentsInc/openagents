@@ -53,11 +53,16 @@ CpContentHit :: struct {
 }
 
 CpFind :: struct {
-  // In-thread Find bar
+  // In-thread & In-file Find / Go-to-Line bar (#13876, #13992)
   open: bool;
+  file_mode: bool;
+  goto_mode: bool;
   query: [CP_FIND_QUERY] u8; query_n: int;
   hits: [CP_FIND_MAX_HITS] CpFindHit; nhits: int;
-  cur: int;                      // active hit index (-1 when nhits == 0)
+  file_hits: [CP_FIND_MAX_HITS] int;        // byte offsets in active file text
+  file_hit_lines: [CP_FIND_MAX_HITS] int;   // 1-based line numbers in active file
+  nfile_hits: int;
+  cur: int;                      // active hit index (-1 when 0 hits)
   bar_x: f32; bar_y: f32; bar_w: f32; bar_h: f32;
   // Transcript Minimap
   minimap_on: bool;
@@ -83,8 +88,11 @@ CpFind :: struct {
 cp_find_init :: (s: [] CoderPage) {
   fd := s[0].find[..];
   fd[0].open = false;
+  fd[0].file_mode = false;
+  fd[0].goto_mode = false;
   fd[0].query_n = 0;
   fd[0].nhits = 0;
+  fd[0].nfile_hits = 0;
   fd[0].cur = -1;
   fd[0].minimap_on = true;
   fd[0].mm_drag = false;
@@ -201,11 +209,55 @@ cp_find_turn_has_hit :: (s: [] CoderPage, turn: int) -> int {
   return 0;
 }
 
+// Scan the active File Viewer source for case-insensitive matches (#13992).
+cp_find_scan_file :: (s: [] CoderPage) {
+  fd := s[0].find[..];
+  fd[0].nfile_hits = 0;
+  q := cp_find_query(s);
+  if q.count == 0 || !s[0].fp[0].open { fd[0].cur = -1; return; }
+  src := cp_fp_view_src(s);
+  if src.count < q.count { fd[0].cur = -1; return; }
+  at := 0; ln := 1; prev := 0;
+  while fd[0].nfile_hits < CP_FIND_MAX_HITS {
+    pos := cp_find_ci_at(src, q, at);
+    if pos < 0 { break; }
+    for k: prev..<pos { if src[k] == '\n' { ln += 1; } }
+    prev = pos;
+    fd[0].file_hits[fd[0].nfile_hits] = pos;
+    fd[0].file_hit_lines[fd[0].nfile_hits] = ln;
+    fd[0].nfile_hits += 1;
+    at = pos + q.count;
+  }
+  if fd[0].nfile_hits == 0 { fd[0].cur = -1; }
+  else if fd[0].cur < 0 || fd[0].cur >= fd[0].nfile_hits { fd[0].cur = 0; }
+}
+
 cp_find_open :: (s: [] CoderPage) {
   if s[0].set_open || cp_overlay_open(s) { return; }
+  want_file := cp_fp_shown(s) && s[0].fp[0].open && (s[0].fp[0].expanded || s[0].fld[0].kb == CP_KB_FILE || s[0].sel[0].region == CP_SEL_FILE || (s[0].pane_w > 0 && s[0].px >= s[0].pane_x));
+  if want_file { cp_find_file_open(s, false); return; }
   fd := s[0].find[..];
   fd[0].open = true;
+  fd[0].file_mode = false;
+  fd[0].goto_mode = false;
   if fd[0].query_n > 0 { cp_find_scan(s); }
+  s[0].fld[0].kb = CP_KB_FIND;
+  s[0].ask = CP_ASK_FIND_FOCUS;
+}
+
+cp_find_file_open :: (s: [] CoderPage, goto_line: bool) {
+  if s[0].set_open || cp_overlay_open(s) || !cp_fp_shown(s) || !s[0].fp[0].open { return; }
+  fd := s[0].find[..];
+  fd[0].open = true;
+  fd[0].file_mode = true;
+  fd[0].goto_mode = goto_line;
+  if goto_line {
+    fd[0].query_n = 0;
+    fd[0].nfile_hits = 0;
+    fd[0].cur = -1;
+  } else if fd[0].query_n > 0 {
+    cp_find_scan_file(s);
+  }
   s[0].fld[0].kb = CP_KB_FIND;
   s[0].ask = CP_ASK_FIND_FOCUS;
 }
@@ -214,21 +266,52 @@ cp_find_close :: (s: [] CoderPage) {
   fd := s[0].find[..];
   if !fd[0].open { return; }
   fd[0].open = false;
+  fd[0].file_mode = false;
+  fd[0].goto_mode = false;
   if s[0].fld[0].kb == CP_KB_FIND { s[0].fld[0].kb = CP_KB_COMPOSER; }
 }
 
 cp_find_set_query :: (s: [] CoderPage, text: string) {
   fd := s[0].find[..];
   fd[0].query_n = cp_out(fd[0].query[..], text);
+  if fd[0].file_mode {
+    if fd[0].goto_mode { return; }
+    fd[0].cur = 0;
+    cp_find_scan_file(s);
+    if fd[0].nfile_hits > 0 { cp_fp_jump(s, fd[0].file_hit_lines[fd[0].cur], fd[0].file_hit_lines[fd[0].cur]); }
+    return;
+  }
   fd[0].cur = 0;
   cp_find_scan(s);
   if fd[0].nhits > 0 { _ = cp_scroll_to_turn(s, fd[0].hits[fd[0].cur].turn); }
 }
 
-// Step to next (dir > 0) or previous (dir < 0) match, wrapping around.
+// Step to next (dir > 0) or previous (dir < 0) match, wrapping around. In Go-to-Line mode, jumps to line and closes.
 cp_find_step :: (s: [] CoderPage, dir: int) -> bool {
   fd := s[0].find[..];
   if !fd[0].open { return false; }
+  if fd[0].file_mode {
+    if fd[0].goto_mode {
+      q := cp_find_query(s);
+      v := 0; has_d := false;
+      for c: q {
+        if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); has_d = true; }
+      }
+      if has_d && v > 0 {
+        cp_fp_jump(s, v, v);
+        cp_find_close(s);
+        return true;
+      }
+      return false;
+    }
+    if fd[0].nfile_hits == 0 { cp_find_scan_file(s); }
+    if fd[0].nfile_hits == 0 { return false; }
+    step := ifx dir >= 0 then 1 else -1;
+    fd[0].cur = (fd[0].cur + step + fd[0].nfile_hits) % fd[0].nfile_hits;
+    ln := fd[0].file_hit_lines[fd[0].cur];
+    cp_fp_jump(s, ln, ln);
+    return true;
+  }
   if fd[0].nhits == 0 { cp_find_scan(s); }
   if fd[0].nhits == 0 { return false; }
   step := ifx dir >= 0 then 1 else -1;
@@ -245,10 +328,84 @@ cp_find_press :: (s: [] CoderPage, act: int) -> bool {
   return false;
 }
 
+// Floating in-file Find or Go-to-Line bar painted at the top-right of the File Viewer body (#13992).
+cp_find_file_bar :: (s: [] CoderPage, f: [] UiFrame, rx: f32, ry: f32, rw: f32) {
+  fd := s[0].find[..];
+  if !fd[0].open || !fd[0].file_mode { return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bw := ifx fd[0].goto_mode then 220.0f32 else 316.0f32;
+  avail := rw - 20.0f32;
+  if avail < bw { bw = avail; }
+  if bw < 160.0f32 { bw = 160.0f32; }
+  bh := 34.0f32;
+  bx := rx + rw - bw - 12.0f32;
+  if bx < rx + 8.0f32 { bx = rx + 8.0f32; }
+  by := ry + 6.0f32;
+  fd[0].bar_x = bx; fd[0].bar_y = by; fd[0].bar_w = bw; fd[0].bar_h = bh;
+
+  th := cp_theme();
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, bx, by, bw, bh, 8.0f32, k.shadows.sm));
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, bx, by, bw, bh, 8.0f32, 1.0f32, th.menu, th.line));
+  _ := uiframe_semantic(f, "coder.find", EL_REGION, ifx fd[0].goto_mode then "Go to line" else "Find in file", bx, by, bw, bh, 0, 0);
+
+  ico_x := bx + 10.0f32;
+  ico_y := by + (bh - 14.0f32) / 2.0f32;
+  sheet_icon(sh, ICON_SET_SEARCH, ico_x, ico_y, 14.0f32, k.muted);
+
+  btn_s := 24.0f32;
+  btn_y := by + (bh - btn_s) / 2.0f32;
+  close_x := bx + bw - btn_s - 6.0f32;
+  next_x := close_x - btn_s - 2.0f32;
+  prev_x := next_x - btn_s - 2.0f32;
+
+  cb: [32] u8; cn := 0;
+  if !fd[0].goto_mode && fd[0].query_n > 0 {
+    if fd[0].nfile_hits > 0 {
+      cn = el_put_i(cb[..], cn, fd[0].cur + 1);
+      cn = el_put(cb[..], cn, " / ");
+      cn = el_put_i(cb[..], cn, fd[0].nfile_hits);
+    } else {
+      cn = el_put(cb[..], cn, "0 / 0");
+    }
+  }
+  count_str := sheet_pool(sh, cast(string) cb[0..<cn]);
+  count_w := ifx cn > 0 then ceil(measure_width(m, k.small.face, count_str)) + 8.0f32 else 0.0f32;
+  right_edge := ifx fd[0].goto_mode then close_x - 4.0f32 else prev_x - count_w - 4.0f32;
+
+  fx := ico_x + 20.0f32;
+  fw := right_edge - fx - 4.0f32;
+  if fw < 60.0f32 { fw = 60.0f32; }
+  fy := by + (bh - k.label.line) / 2.0f32;
+  ph := ifx fd[0].goto_mode then "Go to line… (Enter)" else "Find in file…";
+  frow := uiframe_semantic(f, "coder.find.field", EL_FIELD, ph, fx, by + 2.0f32, fw, bh - 4.0f32,
+                           ifx cp_ed_which(s) == CP_ED_FIND then EL_S_FOCUSED else 0, CP_FIND_FIELD);
+  elt_value(f[0].rows, frow, cp_find_query(s));
+  sheet_hit(sh, UIFRAME_HIT, frow, 0, fx, by + 2.0f32, fw, bh - 4.0f32);
+  cp_ed_draw(s, f, CP_ED_FIND, fx, fy, fw, k.label.line, ph);
+
+  if cn > 0 {
+    cink := ifx fd[0].nfile_hits == 0 then k.danger else k.muted;
+    _ := sheet_text(sh, m, -1, right_edge, by + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, cink, count_str);
+    _ := uiframe_semantic(f, "coder.find.count", EL_TEXT, count_str, right_edge, by, count_w, bh, 0, 0);
+  }
+  if !fd[0].goto_mode {
+    pr := uiframe_semantic(f, "coder.find.prev", EL_BUTTON, "Previous match", prev_x, btn_y, btn_s, btn_s, 0, CP_FIND_PREV);
+    _ := sheet_text(sh, m, -1, prev_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx fd[0].nfile_hits > 0 then k.ink else k.muted, "↑");
+    sheet_hit(sh, UIFRAME_HIT, pr, 0, prev_x, btn_y, btn_s, btn_s);
+
+    nr := uiframe_semantic(f, "coder.find.next", EL_BUTTON, "Next match", next_x, btn_y, btn_s, btn_s, 0, CP_FIND_NEXT);
+    _ := sheet_text(sh, m, -1, next_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx fd[0].nfile_hits > 0 then k.ink else k.muted, "↓");
+    sheet_hit(sh, UIFRAME_HIT, nr, 0, next_x, btn_y, btn_s, btn_s);
+  }
+  cr := uiframe_semantic(f, "coder.find.close", EL_BUTTON, "Close find", close_x, btn_y, btn_s, btn_s, 0, CP_FIND_CLOSE);
+  _ := sheet_text(sh, m, -1, close_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "×");
+  sheet_hit(sh, UIFRAME_HIT, cr, 0, close_x, btn_y, btn_s, btn_s);
+}
+
 // Floating in-thread Find bar painted at the top-right of the conversation area.
 cp_find_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, top: f32) {
   fd := s[0].find[..];
-  if !fd[0].open { fd[0].bar_w = 0; fd[0].bar_h = 0; return; }
+  if !fd[0].open || fd[0].file_mode { if !fd[0].open { fd[0].bar_w = 0; fd[0].bar_h = 0; } return; }
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
   bw := 348.0f32;
   avail := w - left - 32.0f32;
@@ -685,6 +842,18 @@ coder_page_find_open :: (s: [] CoderPage) #export_c #effects(all) {
   cp_find_open(s);
 }
 
+coder_page_file_find_open :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_find_file_open(s, false);
+}
+
+coder_page_file_goto_open :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_find_file_open(s, true);
+}
+
 coder_page_find_close :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count > 0 { cp_find_close(s); }
 }
@@ -702,7 +871,8 @@ coder_page_find_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(a
 }
 
 coder_page_find_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
-  return ifx s.count > 0 then s[0].find[0].nhits else 0;
+  if s.count < 1 { return 0; }
+  return ifx s[0].find[0].file_mode then s[0].find[0].nfile_hits else s[0].find[0].nhits;
 }
 
 coder_page_find_current :: (s: [] CoderPage) -> int #export_c #effects(all) {

@@ -4,15 +4,21 @@
 // (⋮ More/Editors, ↻ Reload, ≡ Word Wrap), full-color multi-language syntax highlighting, collapsible
 // File Explorer tree, inline editing up to 128 KB / 4,096 lines, and rich read-only previews.
 
-CP_FP_MOST :: 524288;        // bytes the pane shows (512 KB; lifted to 4 MB in Phase 2)
+CP_FP_MOST :: 4194304;       // bytes the pane shows (4 MB, lifted from 512 KB in #13992)
 CP_FP_EDIT_MOST :: 131072;   // bytes a file may have to be edited inline (128 KB, lifted from 16 KB in #13881)
 CP_FP_EDIT_LINES :: 4096;    // lines a file may have to be edited inline (4,096 lines, lifted from 512 in #13881)
 CP_FP_SMALL_LINES :: 512;    // lines fitting in the shared UiEditor; larger files use large_edit mode
 CP_FP_PATH :: 1024;          // bytes of the path it shows
 CP_FP_BAR1_H :: 38.0f32;     // Row 1: unified top tab bar height (level with window titlebar)
 CP_FP_BAR2_H :: 30.0f32;     // Row 2: breadcrumb trail & inline action bar height
+CP_FP_FOLD_W :: 14.0f32;     // fold chevron lane width between line numbers and code (#13992)
+CP_FP_MAX_LINES :: 32768;    // indexed line starts for O(visible lines) virtualization (#13992)
+CP_FP_CP_STEP :: 64;         // lines per multi-line block-comment/docstring state checkpoint
+CP_FP_MAX_CP :: 512;         // CP_FP_MAX_LINES / CP_FP_CP_STEP
+CP_FP_FOLDS :: 512;          // structural code-fold ranges per file (#13992)
+CP_FP_SEL_LINES :: 256;      // visible SheetLine -> 1-based source line map for Copy with Path:Line
 CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3; CP_FP_SCENE :: 4;   // what the pane holds
-// UI actions dispatched by filepane controls (80..89 reserved for filepane.coax)
+// UI actions dispatched by filepane controls (80..89 + 450..459)
 CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82; CP_FP_LEAN_GOAL :: 83;
 CP_FP_EXPAND :: 84;          // ⛶ toggle full-width expanded file viewer
 CP_FP_HIDE :: 85;            // ◫ hide right pane while preserving open tabs & active file
@@ -20,14 +26,33 @@ CP_FP_ADD_TAB :: 86;         // + open Command Palette in Files mode to add anot
 CP_FP_RELOAD :: 87;          // ↻ reload active file from disk preserving scroll
 CP_FP_WRAP :: 88;            // ≡ toggle word wrap in code viewer
 CP_FP_COPY_PATH :: 89;       // copy active file path to clipboard
+CP_FP_FOLD_TOGGLE :: 450;    // ▾/▸ toggle structural fold range (coder.fp.fold.<fi>)
+CP_FP_TOGGLE_EDIT :: 451;    // ⋮ menu: Edit File / Switch to Read-Only
+CP_FP_DISK_RELOAD :: 452;    // dirty disk-change banner: Reload from disk
+CP_FP_DISK_KEEP :: 453;      // dirty disk-change banner: Keep Mine
+CP_FP_COPY_REL_PATH :: 454;  // ⋮ menu: Copy Relative Path
+CP_FP_COPY_CONTENTS :: 455;  // ⋮ menu: Copy Contents
+CP_FP_REVEAL :: 456;         // ⋮ menu: Reveal in Finder / Explorer
+CP_FP_GOTO_LINE :: 457;      // ⋮ menu / Ctrl+G: Go to Line…
+CP_FP_MD_PREVIEW :: 458;     // ⋮ menu: Preview Markdown / View Source
+CP_FP_EXT_LAST :: 459;
 // Host asks (coder_page_action)
 CP_ASK_FILE_SAVE :: 40; CP_ASK_FILE_EXTERNAL :: 41; CP_ASK_FILE_CLOSE :: 42; CP_ASK_FILE_FOCUS :: 43;
 CP_ASK_FILE_LEAN_GOAL :: 157;
-CP_ASK_FILE_RELOAD :: 164;   // host re-reads active file from disk and calls coder_page_file_reload
-CP_ASK_FILE_COPY_PATH :: 165;// host copies coder_page_file_path to the OS clipboard
+CP_ASK_FILE_RELOAD :: 164;        // host re-reads active file from disk and calls coder_page_file_reload
+CP_ASK_FILE_COPY_PATH :: 165;     // host copies coder_page_file_path to the OS clipboard
+CP_ASK_FILE_DIR_LIST :: 166;      // host lists coder_page_file_crumb_dir -> coder_page_file_dir_set (#13992)
+CP_ASK_FILE_COPY_REL :: 167;      // host copies repo-relative path to clipboard (#13992)
+CP_ASK_FILE_COPY_CONTENT :: 168;  // host copies active file contents to clipboard (#13992)
+CP_ASK_FILE_REVEAL :: 169;        // host reveals active file in Finder/Explorer (#13992)
 CP_FP_LEAN_STRIP_H :: 54.0f32;
 CP_KB_FILE :: 3;             // the file's editor has the keyboard (editor.coax's CP_KB_*)
 CP_SCR_FILE :: 5;            // the wheel over the pane (input.coax's CP_SCR_*)
+
+CpFoldRange :: struct {
+  start_line: int;           // 1-based start line (header showing ▾/▸)
+  end_line: int;             // 1-based inclusive end line folded away
+}
 
 CpFilePane :: struct {
   open: bool;
@@ -35,6 +60,8 @@ CpFilePane :: struct {
   hidden: bool;               // collapsed via ◫ while preserving open tabs, active file & scroll (#13992)
   expanded: bool;             // expanded via ⛶ across the main area beside the left sidebar (#13992)
   wrap: bool;                 // soft-wrap long lines in viewer mode (toggled via ≡, #13992)
+  md_preview: bool;           // formatted Markdown preview toggle for .md files (#13992)
+  disk_changed: bool;         // true when external disk edit occurred while dirty (#13992)
   mode: int;                  // CP_FP_*
   large_edit: bool;           // true when editing a file > EB_TEXT or > CP_FP_SMALL_LINES (up to 128 KB / 4,096 lines)
   path: [CP_FP_PATH] u8; path_n: int;   // full or tilde path shown in breadcrumbs
@@ -46,8 +73,25 @@ CpFilePane :: struct {
   caret: int;                 // byte offset of caret in large_edit mode
   dirty: bool;                // text is not what the file holds
   saved: bool;                // saved since it opened, with no change after
-  scroll: f32; content: f32; view: f32;   // the read-only / large-edit view's scroll
+  scroll: f32; content: f32; view: f32;   // the read-only / large-edit view's vertical scroll
+  scroll_x: f32; content_w: f32;          // horizontal scroll offset and max line width when !wrap (#13992)
+  scr: [1] UiScroll;                      // smooth vertical momentum & scroll rail (#13992)
   body_x: f32; body_y: f32; body_w: f32; body_h: f32; cell_w: f32;   // the pane body rect and mono cell width in logical points
+  // Target-line jump highlight (1-based inclusive range; 0 = none, #13992)
+  hl_start: int;
+  hl_end: int;
+  // Virtualized line-offset index, multi-line block-state checkpoints & structural folds (#13992)
+  line_starts: [CP_FP_MAX_LINES] int;
+  nlines: int;
+  max_cols: int;
+  block_cp: [CP_FP_MAX_CP] u8;
+  folds: [CP_FP_FOLDS] CpFoldRange;
+  nfolds: int;
+  fold_bits: [8] u64;
+  // Visible SheetLine -> 1-based line number map for Copy with Path:Line (#13992)
+  sel_l0: int;
+  sel_line_map: [CP_FP_SEL_LINES] int;
+  sel_line_n: int;
   // Live Lean 4 Goal Strip state (#13947: populated asynchronously via oa-leanhost)
   lean_goal: [256] u8; lean_goal_n: int;
   lean_goal_line: int;
@@ -61,6 +105,78 @@ cp_fp_is_lean :: (s: [] CoderPage) -> bool {
   if n < 5 { return false; }
   p := cast(string) s[0].fp[0].path[0..<n];
   return p[n - 5] == '.' && p[n - 4] == 'l' && p[n - 3] == 'e' && p[n - 2] == 'a' && p[n - 1] == 'n';
+}
+
+cp_fp_is_markdown :: (s: [] CoderPage) -> bool {
+  p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+  return cp_ft_ends_ci(p, ".md") || cp_ft_ends_ci(p, ".markdown");
+}
+
+// Formats Markdown text into clean readable preview blocks inside ft[0].preview_buf (#13992).
+cp_fp_format_md_preview :: (src: string, out: [] u8) -> int {
+  n := 0; i := 0; in_fence := false;
+  while i < src.count && n + 16 < out.count {
+    end := i;
+    while end < src.count && src[end] != '\n' { end += 1; }
+    stop := ifx end > i && src[end - 1] == '\r' then end - 1 else end;
+    ln := cast(string) src[i..<stop];
+    i = end + 1;
+    if ln.count >= 3 && ln[0] == '`' && ln[1] == '`' && ln[2] == '`' {
+      in_fence = !in_fence;
+      if in_fence { n = el_put(out, n, "── code ────────────────────────────\n"); }
+      else { n = el_put(out, n, "────────────────────────────────────\n"); }
+      continue;
+    }
+    if in_fence {
+      n = el_put(out, n, "  ");
+      n = el_put(out, n, ln);
+      n = cp_ft_put_ch(out, n, '\n');
+      continue;
+    }
+    if ln.count > 0 && ln[0] == '#' {
+      lvl := 0;
+      while lvl < ln.count && ln[lvl] == '#' { lvl += 1; }
+      t0 := lvl;
+      while t0 < ln.count && ln[t0] == ' ' { t0 += 1; }
+      title := cast(string) ln[t0..<ln.count];
+      if lvl == 1 {
+        n = el_put(out, n, "▸ ");
+        n = el_put(out, n, title);
+        n = el_put(out, n, "\n════════════════════════════════════\n");
+      } else {
+        n = el_put(out, n, "▪ ");
+        n = el_put(out, n, title);
+        n = cp_ft_put_ch(out, n, '\n');
+      }
+      continue;
+    }
+    if ln.count >= 2 && (ln[0] == '-' || ln[0] == '*') && ln[1] == ' ' {
+      n = el_put(out, n, "  • ");
+      n = el_put(out, n, cast(string) ln[2..<ln.count]);
+      n = cp_ft_put_ch(out, n, '\n');
+      continue;
+    }
+    if ln.count >= 2 && ln[0] == '>' && ln[1] == ' ' {
+      n = el_put(out, n, "│ ");
+      n = el_put(out, n, cast(string) ln[2..<ln.count]);
+      n = cp_ft_put_ch(out, n, '\n');
+      continue;
+    }
+    n = el_put(out, n, ln);
+    n = cp_ft_put_ch(out, n, '\n');
+  }
+  return n;
+}
+
+// Active text rendered & searched by the File Viewer (#13992).
+cp_fp_view_src :: (s: [] CoderPage) -> string {
+  fp := s[0].fp[..]; ft := s[0].ft[..];
+  if fp[0].mode == CP_FP_EDIT { return cp_fp_text(s); }
+  if fp[0].md_preview && ft[0].preview_n > 0 { return cast(string) ft[0].preview_buf[0..<ft[0].preview_n]; }
+  if ft[0].preview_kind != CP_FT_PREV_NONE && !ft[0].preview_raw && ft[0].preview_n > 0 {
+    return cast(string) ft[0].preview_buf[0..<ft[0].preview_n];
+  }
+  return cast(string) fp[0].src;
 }
 
 // ---------------------------------------------------------------- what the rest of the page asks
@@ -84,28 +200,31 @@ cp_fp_name :: (s: [] CoderPage) -> string {
   while at > 0 && p[at - 1] != '/' { at -= 1; }
   return cast(string) p[at..<p.count];
 }
-// What the status badge says: Edited, Saved, Read-only, Preview, or nothing.
+// What the status badge says: Edited, Saved, Preview, Read-only (when past edit cap), or nothing.
 cp_fp_state :: (s: [] CoderPage) -> string {
   fp := s[0].fp[..];
   if fp[0].mode == CP_FP_SCENE { return "3D Scene"; }
   if fp[0].mode == CP_FP_READ {
+    if fp[0].md_preview { return "Preview"; }
     pk := s[0].ft[0].preview_kind;
     if pk == CP_FT_PREV_CSV { return "Table"; }
     if pk == CP_FT_PREV_IPYNB { return "Notebook"; }
     if pk == CP_FT_PREV_HEX { return "Hex"; }
     if pk == CP_FT_PREV_IMAGE { return "Image"; }
     if pk == CP_FT_PREV_PDF { return "PDF"; }
-    return "Read-only";
+    if fp[0].src.count > CP_FP_EDIT_MOST || fp[0].nlines > CP_FP_EDIT_LINES { return "Read-only"; }
+    return "";
   }
   if fp[0].mode != CP_FP_EDIT { return ""; }
-  return ifx fp[0].dirty then "Edited" else ifx fp[0].saved then "Saved" else "";
+  return ifx fp[0].dirty then "Edited" else ifx fp[0].saved then "Saved" else "Editing";
 }
 // The editor's text, as the page keeps it (editor.coax opens the field on it for small files).
 cp_fp_text :: (s: [] CoderPage) -> string { return cast(string) s[0].fp[0].text[0..<s[0].fp[0].text_n]; }
 // Current 1-based caret line number in the open file (for Open-in-Editor at line).
 cp_fp_caret_line :: (s: [] CoderPage) -> int {
   fp := s[0].fp[..];
-  if !fp[0].open || fp[0].mode != CP_FP_EDIT { return 1; }
+  if !fp[0].open { return 1; }
+  if fp[0].mode != CP_FP_EDIT { return ifx fp[0].hl_start > 0 then fp[0].hl_start else 1; }
   t := cp_fp_text(s);
   cpos := ifx fp[0].large_edit then fp[0].caret else s[0].fld[0].ed[CP_ED_FILE].body[0].ed[0].caret;
   if cpos > t.count { cpos = t.count; }
@@ -114,6 +233,320 @@ cp_fp_caret_line :: (s: [] CoderPage) -> int {
   for i: 0..<cpos { if t[i] == '\n' { ln += 1; } }
   return ln;
 }
+
+// ---------------------------------------------------------------- line-offset virtualization & structural folding (#13992)
+
+cp_fp_fold_is_closed :: (fp: [] CpFilePane, fi: int) -> bool {
+  if fi < 0 || fi >= fp[0].nfolds || fi >= 512 { return false; }
+  return ((fp[0].fold_bits[fi >> 6] >> cast(u64) (fi & 63)) & 1) != 0;
+}
+
+cp_fp_fold_set_closed :: (fp: [] CpFilePane, fi: int, closed: bool) {
+  if fi < 0 || fi >= fp[0].nfolds || fi >= 512 { return; }
+  bit := cast(u64) 1 << cast(u64) (fi & 63);
+  if closed { fp[0].fold_bits[fi >> 6] |= bit; }
+  else { fp[0].fold_bits[fi >> 6] &= (bit ^ 0xFFFFFFFFFFFFFFFF); }
+}
+
+cp_fp_fold_toggle :: (s: [] CoderPage, fi: int) -> bool {
+  fp := s[0].fp[..];
+  if fi < 0 || fi >= fp[0].nfolds || fi >= 512 { return false; }
+  cp_fp_fold_set_closed(fp, fi, !cp_fp_fold_is_closed(fp, fi));
+  cp_ft_tab_save_active(s);
+  return true;
+}
+
+cp_fp_fold_at_line :: (fp: [] CpFilePane, line1: int) -> int {
+  // folds are sorted ascending by start_line -> binary search O(log nfolds)
+  lo := 0; hi := fp[0].nfolds - 1;
+  while lo <= hi {
+    mid := (lo + hi) >> 1;
+    sl := fp[0].folds[mid].start_line;
+    if sl == line1 { return mid; }
+    if sl < line1 { lo = mid + 1; }
+    else { hi = mid - 1; }
+  }
+  return -1;
+}
+
+cp_fp_unfold_enclosing :: (s: [] CoderPage, line1: int) {
+  fp := s[0].fp[..];
+  for fi: 0..<fp[0].nfolds {
+    if cp_fp_fold_is_closed(fp, fi) && line1 > fp[0].folds[fi].start_line && line1 <= fp[0].folds[fi].end_line {
+      cp_fp_fold_set_closed(fp, fi, false);
+    }
+  }
+}
+
+cp_fp_line_end :: (fp: [] CpFilePane, src: string, li: int) -> int {
+  if li < 0 || li >= fp[0].nlines { return src.count; }
+  end := ifx li + 1 < fp[0].nlines then fp[0].line_starts[li + 1] - 1 else src.count;
+  if end < fp[0].line_starts[li] { end = fp[0].line_starts[li]; }
+  if end > fp[0].line_starts[li] && src[end - 1] == '\r' { end -= 1; }
+  return end;
+}
+
+cp_fp_add_fold :: (fp: [] CpFilePane, start_line: int, end_line: int) {
+  if end_line <= start_line || fp[0].nfolds >= CP_FP_FOLDS { return; }
+  // Maintain ascending start_line order; skip duplicate start_line.
+  at := fp[0].nfolds;
+  while at > 0 && fp[0].folds[at - 1].start_line > start_line { at -= 1; }
+  if at > 0 && fp[0].folds[at - 1].start_line == start_line {
+    if end_line > fp[0].folds[at - 1].end_line { fp[0].folds[at - 1].end_line = end_line; }
+    return;
+  }
+  i := fp[0].nfolds;
+  while i > at { fp[0].folds[i] = fp[0].folds[i - 1]; i -= 1; }
+  fp[0].folds[at] = CpFoldRange.{ start_line = start_line, end_line = end_line };
+  fp[0].nfolds += 1;
+}
+
+// Advances SYN_BLK_* multi-line comment/docstring state across one source line without allocating runs.
+cp_fp_advance_blk :: (lang: int, code: string, blk: [] u8) {
+  if blk.count < 1 || code.count == 0 { return; }
+  c_like := (lang == SYN_LANG_C || lang == SYN_LANG_COAX || lang == SYN_LANG_RUST || lang == SYN_LANG_SWIFT || lang == SYN_LANG_JS || lang == SYN_LANG_JSON);
+  lean := (lang == SYN_LANG_LEAN);
+  py := (lang == SYN_LANG_PYTHON);
+  if !c_like && !lean && !py { return; }
+  i := 0; n := code.count;
+  while i < n {
+    if blk[0] == SYN_BLK_COMMENT {
+      if c_like && i + 1 < n && code[i] == '*' && code[i + 1] == '/' { blk[0] = SYN_BLK_NONE; i += 2; continue; }
+      if lean && i + 1 < n && code[i] == '-' && code[i + 1] == '/' { blk[0] = SYN_BLK_NONE; i += 2; continue; }
+      i += 1; continue;
+    }
+    if blk[0] == SYN_BLK_PY_DQUOTE || blk[0] == SYN_BLK_PY_SQUOTE {
+      q: u8 = ifx blk[0] == SYN_BLK_PY_DQUOTE then '"' else '\'';
+      if code[i] == '\\' && i + 1 < n { i += 2; continue; }
+      if i + 2 < n && code[i] == q && code[i + 1] == q && code[i + 2] == q { blk[0] = SYN_BLK_NONE; i += 3; continue; }
+      i += 1; continue;
+    }
+    if py {
+      if code[i] == '#' { return; }
+      if i + 2 < n && code[i] == '"' && code[i + 1] == '"' && code[i + 2] == '"' { blk[0] = SYN_BLK_PY_DQUOTE; i += 3; continue; }
+      if i + 2 < n && code[i] == '\'' && code[i + 1] == '\'' && code[i + 2] == '\'' { blk[0] = SYN_BLK_PY_SQUOTE; i += 3; continue; }
+      if code[i] == '"' || code[i] == '\'' {
+        q := code[i]; i += 1;
+        while i < n && code[i] != q { if code[i] == '\\' { i += 1; } i += 1; }
+        i += 1; continue;
+      }
+      i += 1; continue;
+    }
+    if code[i] == '"' {
+      i += 1;
+      while i < n && code[i] != '"' { if code[i] == '\\' { i += 1; } i += 1; }
+      i += 1; continue;
+    }
+    if c_like && i + 1 < n && code[i] == '/' && code[i + 1] == '/' { return; }
+    if lean && i + 1 < n && code[i] == '-' && code[i + 1] == '-' { return; }
+    if c_like && i + 1 < n && code[i] == '/' && code[i + 1] == '*' { blk[0] = SYN_BLK_COMMENT; i += 2; continue; }
+    if lean && i + 1 < n && code[i] == '/' && code[i + 1] == '-' { blk[0] = SYN_BLK_COMMENT; i += 2; continue; }
+    i += 1;
+  }
+}
+
+// Computes structural fold ranges once on load/reload (brace blocks, Python/YAML indentation, Markdown headings).
+cp_fp_build_folds :: (s: [] CoderPage, src: string, lang: int) {
+  fp := s[0].fp[..];
+  fp[0].nfolds = 0;
+  nl := fp[0].nlines;
+  if nl < 2 || lang == SYN_LANG_PLAIN { return; }
+  c_like := (lang == SYN_LANG_C || lang == SYN_LANG_COAX || lang == SYN_LANG_RUST || lang == SYN_LANG_SWIFT || lang == SYN_LANG_JS || lang == SYN_LANG_JSON);
+  if c_like {
+    stk: [64] int; sp := 0;
+    blk: [1] u8;
+    for li: 0..<nl {
+      a := fp[0].line_starts[li]; b := cp_fp_line_end(fp, src, li);
+      i := a;
+      while i < b {
+        if blk[0] == SYN_BLK_COMMENT {
+          if i + 1 < b && src[i] == '*' && src[i + 1] == '/' { blk[0] = SYN_BLK_NONE; i += 2; continue; }
+          i += 1; continue;
+        }
+        if src[i] == '"' || src[i] == '\'' {
+          q := src[i]; i += 1;
+          while i < b && src[i] != q { if src[i] == '\\' { i += 1; } i += 1; }
+          i += 1; continue;
+        }
+        if i + 1 < b && src[i] == '/' && src[i + 1] == '/' { break; }
+        if i + 1 < b && src[i] == '/' && src[i + 1] == '*' { blk[0] = SYN_BLK_COMMENT; i += 2; continue; }
+        if src[i] == '{' {
+          if sp < 64 { stk[sp] = li + 1; sp += 1; }
+        } else if src[i] == '}' {
+          if sp > 0 {
+            sp -= 1;
+            cp_fp_add_fold(fp, stk[sp], li + 1);
+          }
+        }
+        i += 1;
+      }
+    }
+    return;
+  }
+  if lang == SYN_LANG_MD {
+    h_line: [6] int; h_lvl: [6] int; sp := 0;
+    for li: 0..<nl {
+      a := fp[0].line_starts[li]; b := cp_fp_line_end(fp, src, li);
+      if a < b && src[a] == '#' {
+        lvl := 0; while a + lvl < b && src[a + lvl] == '#' && lvl < 6 { lvl += 1; }
+        if a + lvl < b && src[a + lvl] == ' ' {
+          while sp > 0 && h_lvl[sp - 1] >= lvl {
+            sp -= 1;
+            cp_fp_add_fold(fp, h_line[sp], li);
+          }
+          if sp < 6 { h_line[sp] = li + 1; h_lvl[sp] = lvl; sp += 1; }
+        }
+      }
+    }
+    while sp > 0 { sp -= 1; cp_fp_add_fold(fp, h_line[sp], nl); }
+    return;
+  }
+  if lang == SYN_LANG_PYTHON || lang == SYN_LANG_CONFIG {
+    // Indentation-based fold ranges: whenever the next non-blank line indents deeper, fold to the last line before dedent.
+    for li: 0..<nl {
+      if fp[0].nfolds >= CP_FP_FOLDS { break; }
+      a := fp[0].line_starts[li]; b := cp_fp_line_end(fp, src, li);
+      ind := 0; while a + ind < b && (src[a + ind] == ' ' || src[a + ind] == '\t') { ind += 1; }
+      if a + ind >= b || src[a + ind] == '#' { continue; }
+      // Find first non-blank line after li
+      nxt := li + 1; nxt_ind := -1;
+      while nxt < nl {
+        na := fp[0].line_starts[nxt]; nb := cp_fp_line_end(fp, src, nxt);
+        ni := 0; while na + ni < nb && (src[na + ni] == ' ' || src[na + ni] == '\t') { ni += 1; }
+        if na + ni < nb && src[na + ni] != '#' { nxt_ind = ni; break; }
+        nxt += 1;
+      }
+      if nxt_ind <= ind { continue; }
+      last_body := nxt;
+      k := nxt + 1;
+      while k < nl {
+        ka := fp[0].line_starts[k]; kb := cp_fp_line_end(fp, src, k);
+        ki := 0; while ka + ki < kb && (src[ka + ki] == ' ' || src[ka + ki] == '\t') { ki += 1; }
+        if ka + ki >= kb { k += 1; continue; }
+        if ki <= ind { break; }
+        last_body = k;
+        k += 1;
+      }
+      if last_body > li { cp_fp_add_fold(fp, li + 1, last_body + 1); }
+    }
+  }
+}
+
+// Builds line_starts[], max_cols, block_cp[] checkpoints, and structural folds once on open/reload/edit (#13992).
+cp_fp_build_index :: (s: [] CoderPage, src: string, lang: int) {
+  fp := s[0].fp[..];
+  fp[0].nlines = 0; fp[0].max_cols = 0; fp[0].nfolds = 0;
+  blk: [1] u8;
+  at := 0; li := 0;
+  while li < CP_FP_MAX_LINES {
+    fp[0].line_starts[li] = at;
+    if (li & (CP_FP_CP_STEP - 1)) == 0 {
+      cp := li / CP_FP_CP_STEP;
+      if cp < CP_FP_MAX_CP { fp[0].block_cp[cp] = blk[0]; }
+    }
+    end := at;
+    while end < src.count && src[end] != '\n' { end += 1; }
+    stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
+    cols := stop - at;
+    if cols > fp[0].max_cols { fp[0].max_cols = cols; }
+    if lang != SYN_LANG_PLAIN && stop > at {
+      cp_fp_advance_blk(lang, cast(string) src[at..<stop], blk[..]);
+    }
+    li += 1;
+    if end >= src.count { break; }
+    at = end + 1;
+  }
+  fp[0].nlines = li;
+  cp_fp_build_folds(s, src, lang);
+}
+
+// Restores block-comment/docstring state at 0-based line `target_li` in O(CP_FP_CP_STEP) using checkpoints.
+cp_fp_block_state_at :: (fp: [] CpFilePane, src: string, lang: int, target_li: int) -> u8 {
+  if lang == SYN_LANG_PLAIN || target_li <= 0 || fp[0].nlines <= 0 { return SYN_BLK_NONE; }
+  cp := target_li / CP_FP_CP_STEP;
+  if cp >= CP_FP_MAX_CP { cp = CP_FP_MAX_CP - 1; }
+  base_li := cp * CP_FP_CP_STEP;
+  blk: [1] u8; blk[0] = fp[0].block_cp[cp];
+  li := base_li;
+  while li < target_li && li < fp[0].nlines {
+    a := fp[0].line_starts[li]; b := cp_fp_line_end(fp, src, li);
+    if b > a { cp_fp_advance_blk(lang, cast(string) src[a..<b], blk[..]); }
+    li += 1;
+  }
+  return blk[0];
+}
+
+// Jumps smoothly to 1-based [start_line, end_line], unfolding enclosing folds and lighting the target lines (#13992).
+cp_fp_jump :: (s: [] CoderPage, start_line: int, end_line: int) {
+  fp := s[0].fp[..];
+  if !fp[0].open || start_line <= 0 { return; }
+  sl := start_line;
+  if fp[0].nlines > 0 && sl > fp[0].nlines { sl = fp[0].nlines; }
+  el := ifx end_line >= sl then end_line else sl;
+  if fp[0].nlines > 0 && el > fp[0].nlines { el = fp[0].nlines; }
+  cp_fp_unfold_enclosing(s, sl);
+  fp[0].hl_start = sl;
+  fp[0].hl_end = el;
+  // Count visible rows before sl (skipping collapsed fold interiors)
+  vis_row := 0; ln := 1;
+  while ln < sl {
+    fi := cp_fp_fold_at_line(fp, ln);
+    if fi >= 0 && cp_fp_fold_is_closed(fp, fi) && fp[0].folds[fi].end_line < sl {
+      ln = fp[0].folds[fi].end_line + 1;
+    } else {
+      ln += 1;
+    }
+    vis_row += 1;
+  }
+  k := cp_skin();
+  lh := ifx k.mono.line > 0 then k.mono.line else 18.0f32;
+  target := cast(f32) (vis_row - 4) * lh;
+  if target < 0.0f32 { target = 0.0f32; }
+  total_est := cast(f32) fp[0].nlines * lh;
+  if total_est > fp[0].content { fp[0].content = total_est; }
+  fp[0].scr[0].coasting = false;
+  fp[0].scr[0].spring = false;
+  fp[0].scroll = ifx fp[0].view > 0 then scroll_clamp(target, fp[0].content, fp[0].view) else target;
+  if fp[0].mode == CP_FP_EDIT && !fp[0].large_edit {
+    c := s[0].fld[0].ed[CP_ED_FILE].body[..];
+    c[0].follow = false;
+    c[0].scroll = target;
+  }
+}
+
+// Switches the open file between Viewer (CP_FP_READ) and Inline Edit (CP_FP_EDIT) modes (#13992).
+cp_fp_set_edit :: (s: [] CoderPage, on: bool) -> bool {
+  fp := s[0].fp[..]; ft := s[0].ft[..];
+  if !fp[0].open || fp[0].mode == CP_FP_FAILED || fp[0].mode == CP_FP_SCENE { return false; }
+  if !on {
+    if fp[0].mode != CP_FP_EDIT { return true; }
+    fp[0].mode = CP_FP_READ;
+    fp[0].large_edit = false;
+    if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
+    path := cast(string) fp[0].path[0..<fp[0].path_n];
+    cp_fp_build_index(s, cp_fp_view_src(s), cp_fp_lang(path, ft[0].preview_kind));
+    cp_ft_tab_save_active(s);
+    return true;
+  }
+  if ft[0].preview_kind != CP_FT_PREV_NONE { return false; }
+  text := cast(string) fp[0].src;
+  nl := ifx fp[0].nlines > 0 then fp[0].nlines else cp_fp_lines(text);
+  if text.count > CP_FP_EDIT_MOST || nl > CP_FP_EDIT_LINES { return false; }
+  fp[0].md_preview = false;
+  fp[0].mode = CP_FP_EDIT;
+  if fp[0].text_n == 0 || !fp[0].dirty {
+    fp[0].text_n = cp_out(fp[0].text[..], text);
+  }
+  fp[0].large_edit = (fp[0].text_n > EB_TEXT || nl > CP_FP_SMALL_LINES);
+  fp[0].caret = 0;
+  ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);
+  cp_ed_focus(s, CP_KB_FILE);
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  cp_fp_build_index(s, cp_fp_text(s), cp_fp_lang(path, CP_FT_PREV_NONE));
+  cp_ft_tab_save_active(s);
+  return true;
+}
+
 // What the editor holds becomes the page's: changed when it is not the file's text.
 cp_fp_publish :: (s: [] CoderPage, text: string) {
   fp := s[0].fp[..];
@@ -122,6 +555,8 @@ cp_fp_publish :: (s: [] CoderPage, text: string) {
   if dirty { fp[0].saved = false; }
   fp[0].dirty = dirty;
   cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], dirty);
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  cp_fp_build_index(s, cp_fp_text(s), cp_fp_lang(path, CP_FT_PREV_NONE));
 }
 // The file editor's skin: the code face on its own line, no room above the text for a scroll.
 // Text ink is transparent when syntax highlighting paints colored runs on top.
@@ -136,29 +571,30 @@ cp_fp_skin :: (k: UiSkin) -> UiSkin {
 cp_fp_yield :: (s: [] CoderPage, act: int, id: string) -> bool {
   fp := s[0].fp[..]; ft := s[0].ft[..];
   if (!fp[0].open && !ft[0].open) || (!fp[0].front && !ft[0].front) || act != CP_REVIEW && act != CP_AGENT { return false; }
-  fp[0].front = false; fp[0].expanded = false; ft[0].front = false; ft[0].editor_menu = false;
+  fp[0].front = false; fp[0].expanded = false; ft[0].front = false; ft[0].editor_menu = false; ft[0].crumb_menu = false;
   if act == CP_REVIEW && s[0].review { s[0].pane_tab = CP_TAB_CHANGES; return true; }
   if act == CP_AGENT && s[0].pane_open && s[0].pane_turn == cp_number(id, "t") && s[0].pane_agent == cp_number(id, ".g") { s[0].pane_tab = CP_TAB_AGENT; return true; }
   return false;
 }
-cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
-  fp := s[0].fp[..];
+cp_fp_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  fp := s[0].fp[..]; ft := s[0].ft[..];
   if act == CP_FP_EXPAND {
     if !cp_fp_shown(s) { return false; }
     fp[0].expanded = !fp[0].expanded;
-    s[0].ft[0].editor_menu = false;
+    ft[0].editor_menu = false; ft[0].crumb_menu = false;
     return true;
   }
   if act == CP_FP_HIDE {
-    if !fp[0].open && !s[0].ft[0].open { return false; }
+    if !fp[0].open && !ft[0].open { return false; }
+    cp_ft_tab_save_active(s);
     fp[0].hidden = true;
     fp[0].expanded = false;
-    s[0].ft[0].editor_menu = false;
+    ft[0].editor_menu = false; ft[0].crumb_menu = false;
     if s[0].fld[0].kb == CP_KB_FILE || s[0].fld[0].kb == CP_KB_FT_FILTER { s[0].fld[0].kb = CP_KB_COMPOSER; }
     return true;
   }
   if act == CP_FP_ADD_TAB {
-    s[0].ft[0].editor_menu = false;
+    ft[0].editor_menu = false; ft[0].crumb_menu = false;
     cp_palette_show(s, APP_PAL_ALL);
     cp_palette_set_mode(s, CP_PAL_MODE_FILES);
     s[0].ov[0].pal_cmd = 19;   // host watches palette AND lists workspace files if needed
@@ -166,22 +602,58 @@ cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
     return true;
   }
   if !fp[0].open { return false; }
-  if act == CP_FP_CLOSE { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_CLOSE; return true; }
+  if act == CP_FP_CLOSE { ft[0].editor_menu = false; ft[0].crumb_menu = false; s[0].ask = CP_ASK_FILE_CLOSE; return true; }
   if act == CP_FP_SAVE { if !fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
-  if act == CP_FP_EXTERNAL { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
-  if act == CP_FP_RELOAD { s[0].ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_RELOAD; return true; }
-  if act == CP_FP_WRAP { fp[0].wrap = !fp[0].wrap; return true; }
+  if act == CP_FP_EXTERNAL { ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
+  if act == CP_FP_RELOAD || act == CP_FP_DISK_RELOAD { ft[0].editor_menu = false; fp[0].disk_changed = false; s[0].ask = CP_ASK_FILE_RELOAD; return true; }
+  if act == CP_FP_DISK_KEEP { fp[0].disk_changed = false; return true; }
+  if act == CP_FP_WRAP { fp[0].wrap = !fp[0].wrap; fp[0].scroll_x = 0.0f32; cp_ft_tab_save_active(s); return true; }
   if act == CP_FP_COPY_PATH {
-    s[0].ft[0].editor_menu = false;
+    ft[0].editor_menu = false;
     s[0].ask = CP_ASK_FILE_COPY_PATH;
     _ := app_toast_push(s[0].toasts[..], "Copied path", APP_TOAST_PLAIN);
     return true;
   }
+  if act == CP_FP_COPY_REL_PATH {
+    ft[0].editor_menu = false;
+    s[0].ask = CP_ASK_FILE_COPY_REL;
+    _ := app_toast_push(s[0].toasts[..], "Copied relative path", APP_TOAST_PLAIN);
+    return true;
+  }
+  if act == CP_FP_COPY_CONTENTS {
+    ft[0].editor_menu = false;
+    s[0].ask = CP_ASK_FILE_COPY_CONTENT;
+    _ := app_toast_push(s[0].toasts[..], "Copied file contents", APP_TOAST_PLAIN);
+    return true;
+  }
+  if act == CP_FP_REVEAL { ft[0].editor_menu = false; s[0].ask = CP_ASK_FILE_REVEAL; return true; }
+  if act == CP_FP_GOTO_LINE { ft[0].editor_menu = false; cp_find_file_open(s, true); return true; }
+  if act == CP_FP_TOGGLE_EDIT {
+    ft[0].editor_menu = false;
+    return cp_fp_set_edit(s, fp[0].mode != CP_FP_EDIT);
+  }
+  if act == CP_FP_MD_PREVIEW {
+    ft[0].editor_menu = false;
+    if !cp_fp_is_markdown(s) { return false; }
+    fp[0].md_preview = !fp[0].md_preview;
+    if fp[0].md_preview {
+      if fp[0].mode == CP_FP_EDIT { _ = cp_fp_set_edit(s, false); }
+      ft[0].preview_n = cp_fp_format_md_preview(cast(string) fp[0].src, ft[0].preview_buf[..]);
+      fp[0].wrap = true;
+    }
+    path := cast(string) fp[0].path[0..<fp[0].path_n];
+    cp_fp_build_index(s, cp_fp_view_src(s), ifx fp[0].md_preview then SYN_LANG_PLAIN else cp_fp_lang(path, ft[0].preview_kind));
+    return true;
+  }
+  if act == CP_FP_FOLD_TOGGLE {
+    fi := cp_number(id, "coder.fp.fold.");
+    return cp_fp_fold_toggle(s, fi);
+  }
   if act == CP_FP_LEAN_GOAL { if !cp_flag(s, DC_FLAG_GYM) { return false; } fp[0].lean_goal_busy = true; s[0].ask = CP_ASK_FILE_LEAN_GOAL; return true; }
   return false;
 }
-// The wheel over the pane: the editor's rows move, or the read-only / large-edit view does.
-cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
+// Vertical wheel/trackpad scroll over the file viewer with smooth UiScroll momentum (#13992).
+cp_fp_scroll_at :: (s: [] CoderPage, delta: f32, kind: int, time: f64) {
   fp := s[0].fp[..];
   if fp[0].open && fp[0].mode == CP_FP_EDIT && !fp[0].large_edit {
     c := s[0].fld[0].ed[CP_ED_FILE].body[..];
@@ -191,7 +663,21 @@ cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
     if c[0].scroll < 0 { c[0].scroll = 0; }
     return;
   }
-  fp[0].scroll = scroll_clamp(fp[0].scroll + delta, fp[0].content, fp[0].view);
+  fp[0].scroll = ui_scroll_by(fp[0].scr[..], scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view), delta, fp[0].content, fp[0].view, kind, time, s[0].reduced);
+}
+cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
+  cp_fp_scroll_at(s, delta, UI_SCROLL_WHEEL, s[0].now);
+}
+// Horizontal scroll over the file viewer when word wrap is off (#13992).
+cp_fp_scroll_x :: (s: [] CoderPage, delta: f32) {
+  fp := s[0].fp[..];
+  if !fp[0].open || fp[0].wrap { return; }
+  most := fp[0].content_w - fp[0].body_w;
+  if most < 0.0f32 { most = 0.0f32; }
+  nx := fp[0].scroll_x + delta;
+  if nx < 0.0f32 { nx = 0.0f32; }
+  if nx > most { nx = most; }
+  fp[0].scroll_x = nx;
 }
 
 // ---------------------------------------------------------------- large-file (>16 KB) inline editing
@@ -202,6 +688,8 @@ cp_fp_large_sync_dirty :: (s: [] CoderPage) {
   if dirty { fp[0].saved = false; }
   fp[0].dirty = dirty;
   cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], dirty);
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  cp_fp_build_index(s, cp_fp_text(s), cp_fp_lang(path, CP_FT_PREV_NONE));
 }
 
 cp_fp_large_insert :: (s: [] CoderPage, ins: string) -> bool {
@@ -379,47 +867,37 @@ cp_fp_number :: (f: [] UiFrame, n: int, right: f32, y: f32, line: f32, lit: bool
   _ := sheet_text(sh, f[0].m, -1, right - w, y, line, k.mono_tiny.face, ifx lit then k.muted else k.faint, t);
 }
 
-// Advances multi-line block comment state across an off-screen line without emitting runs.
-cp_fp_scan_block :: (lang: int, code: string, in_block: [] bool) {
-  if in_block.count < 1 || code.count < 2 { return; }
-  c_like := (lang == SYN_LANG_C || lang == SYN_LANG_COAX || lang == SYN_LANG_RUST || lang == SYN_LANG_SWIFT || lang == SYN_LANG_JS || lang == SYN_LANG_JSON);
-  lean := (lang == SYN_LANG_LEAN);
-  if !c_like && !lean { return; }
-  i := 0;
-  while i + 1 < code.count {
-    if in_block[0] {
-      if lean && code[i] == '-' && code[i + 1] == '/' { in_block[0] = false; i += 2; continue; }
-      if c_like && code[i] == '*' && code[i + 1] == '/' { in_block[0] = false; i += 2; continue; }
-      i += 1; continue;
-    }
-    if code[i] == '"' {
-      i += 1;
-      while i < code.count && code[i] != '"' { if code[i] == '\\' { i += 1; } i += 1; }
-      i += 1; continue;
-    }
-    if c_like && code[i] == '/' && code[i + 1] == '/' { return; }
-    if lean && code[i] == '-' && code[i + 1] == '-' { return; }
-    if c_like && code[i] == '/' && code[i + 1] == '*' { in_block[0] = true; i += 2; continue; }
-    if lean && code[i] == '/' && code[i + 1] == '-' { in_block[0] = true; i += 2; continue; }
-    i += 1;
-  }
-}
-
-// Paints one line of source code using multi-language components/core/syntax.coax roles + uiskin_syntax palette.
-// Returns the number of syntax runs painted.
-cp_fp_syntax_line_lang :: (f: [] UiFrame, lang: int, in_block: [] bool, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
-  if code.count == 0 { return 0; }
+// Paints one line of source code using multi-language components/core/syntax.coax roles + uiskin_syntax palette,
+// carrying SYN_BLK_* multi-line comment/docstring state. Always records a SheetLine for CP_SEL_FILE selection.
+cp_fp_syntax_line_state :: (f: [] UiFrame, lang: int, blk: [] u8, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, hard: bool, out_pen: [] f32) -> int {
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  ln := sheet_line(sh, x, y, lh, hard);
+  if code.count == 0 {
+    if out_pen.count > 0 { out_pen[0] = x; }
+    return 0;
+  }
   runs: [96] MdRun;
-  nr := syn_tokenize_line(lang, code, in_block, runs[..]);
-  ln := sheet_line(sh, x, y, lh, true);
+  st: [1] int; st[0] = cast(int) blk[0];
+  nr := syn_tokenize_line_state(lang, code, st[..], runs[..]);
+  blk[0] = cast(u8) st[0];
   pen := x; i := 0;
   for r: 0..<nr {
     if runs[r].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) code[i..<runs[r].from]); }
     pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(k, runs[r].style, plain), cast(string) code[runs[r].from..<runs[r].to]);
     i = runs[r].to;
   }
-  if i < code.count { _ := sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) code[i..<code.count]); }
+  if i < code.count { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) code[i..<code.count]); }
+  if out_pen.count > 0 { out_pen[0] = pen; }
+  return nr;
+}
+
+// Backward-compatible bool-block wrapper used by cp_fp_edit_view & tests.
+cp_fp_syntax_line_lang :: (f: [] UiFrame, lang: int, in_block: [] bool, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
+  blk: [1] u8;
+  if in_block.count > 0 && in_block[0] { blk[0] = SYN_BLK_COMMENT; }
+  pen: [1] f32;
+  nr := cp_fp_syntax_line_state(f, lang, blk[..], x, y, lh, face, plain, code, true, pen[..]);
+  if in_block.count > 0 { in_block[0] = (blk[0] != SYN_BLK_NONE); }
   return nr;
 }
 
@@ -427,6 +905,59 @@ cp_fp_syntax_line_lang :: (f: [] UiFrame, lang: int, in_block: [] bool, x: f32, 
 cp_fp_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string) -> int {
   blk: [1] bool;
   return cp_fp_syntax_line_lang(f, SYN_LANG_RUST, blk[..], x, y, lh, face, plain, code);
+}
+
+// Paints a plain-text code line recording a SheetLine so CP_SEL_FILE selection works in plain text & previews too.
+cp_fp_plain_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, hard: bool, out_pen: [] f32) {
+  sh := f[0].sheet; m := f[0].m;
+  ln := sheet_line(sh, x, y, lh, hard);
+  pen := x;
+  if code.count > 0 { pen += sheet_text(sh, m, ln, x, y, lh, face, plain, code); }
+  if out_pen.count > 0 { out_pen[0] = pen; }
+}
+
+// Records the 1-based source line number of the SheetLine just created for Copy with Path:Line (#13992).
+cp_fp_sel_track_line :: (fp: [] CpFilePane, line1: int) {
+  if fp[0].sel_line_n < CP_FP_SEL_LINES {
+    fp[0].sel_line_map[fp[0].sel_line_n] = line1;
+    fp[0].sel_line_n += 1;
+  }
+}
+
+// Highlights visible in-file Find matches on a rendered source segment (#13992).
+cp_fp_draw_find_hits :: (s: [] CoderPage, f: [] UiFrame, seg_at: int, seg: string, x: f32, y: f32, lh: f32, face: int) {
+  fd := s[0].find[..];
+  if !fd[0].open || !fd[0].file_mode || fd[0].goto_mode || fd[0].nfile_hits <= 0 { return; }
+  qlen := fd[0].query_n;
+  if qlen <= 0 || seg.count < qlen { return; }
+  seg_end := seg_at + seg.count;
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  for hi: 0..<fd[0].nfile_hits {
+    hp := fd[0].file_hits[hi];
+    if hp >= seg_end { break; }
+    if hp + qlen <= seg_at { continue; }
+    loc0 := ifx hp > seg_at then hp - seg_at else 0;
+    loc1 := ifx hp + qlen < seg_end then (hp + qlen) - seg_at else seg.count;
+    if loc1 <= loc0 { continue; }
+    hx0 := x + measure_width(m, face, cast(string) seg[0..<loc0]);
+    hw := measure_width(m, face, cast(string) seg[loc0..<loc1]);
+    col := ifx hi == fd[0].cur then opacity(k.warning, 0.45f32) else opacity(k.warning, 0.20f32);
+    sheet_fill(sh, hx0, y + 1.0f32, hw, lh - 2.0f32, 2.0f32, col);
+  }
+}
+
+// Draws a clickable ▾ / ▸ structural fold chevron in the fold lane (#13992).
+cp_fp_draw_fold_chevron :: (s: [] CoderPage, f: [] UiFrame, fi: int, x: f32, y: f32, lh: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; fp := s[0].fp[..];
+  closed := cp_fp_fold_is_closed(fp, fi);
+  fb: [32] u8;
+  fid := sheet_pool(sh, cast(string) fb[0..<el_put_i(fb[..], el_put(fb[..], 0, "coder.fp.fold."), fi)]);
+  hov := uiframe_hovered(f, fid);
+  ch := ifx closed then "▸" else "▾";
+  col := ifx closed || hov then k.ink else k.faint;
+  _ := sheet_text(sh, m, -1, x + 2.0f32, y, lh, k.mono_tiny.face, col, ch);
+  row := uiframe_semantic(f, fid, EL_BUTTON, ifx closed then "Expand fold" else "Collapse fold", x, y, CP_FP_FOLD_W, lh, 0, CP_FP_FOLD_TOGGLE);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, CP_FP_FOLD_W, lh);
 }
 
 // Language for a file path in the viewer (SYN_LANG_PLAIN disables highlighting for previews / .txt / .log).
@@ -437,8 +968,8 @@ cp_fp_lang :: (path: string, preview_kind: int) -> int {
 
 // ---------------------------------------------------------------- unified Row 1 tab bar & Row 2 breadcrumb bar (#13992)
 
-// Draws one tab pill in Row 1 (rounded capsule, colored language badge, filename, dirty dot, × close). Returns width consumed.
-cp_fp_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, path: string, label: string, dirty: bool, active: bool, tab_id: string, tab_act: int, close_id: string, close_act: int) -> f32 {
+// Draws one tab pill in Row 1 (rounded capsule, colored language badge, filename, preview indicator, dirty dot, × close).
+cp_fp_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, path: string, label: string, dirty: bool, pinned: bool, active: bool, tab_id: string, tab_act: int, close_id: string, close_act: int) -> f32 {
   k := f[0].skin; sh := f[0].sheet; m := f[0].m;
   nb: [128] u8;
   nn := el_put(nb[..], 0, label);
@@ -465,7 +996,12 @@ cp_fp_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, path:
   text_max := x + w - close_slot - 6.0f32 - lx;
   if text_max > 8.0f32 {
     fit := app_fit(f, k.tool.face, shown, text_max);
-    _ := sheet_text(sh, m, -1, lx, y + (h - k.tool.line) / 2.0f32, k.tool.line, k.tool.face, ifx active || hov_tab then k.ink else k.muted, fit);
+    // Transient preview tabs use a softer muted tint until pinned by double-click/edit/explicit open
+    ink := ifx !pinned then (ifx active then opacity(k.ink, 0.78f32) else k.faint) else (ifx active || hov_tab then k.ink else k.muted);
+    _ := sheet_text(sh, m, -1, lx, y + (h - k.tool.line) / 2.0f32, k.tool.line, k.tool.face, ink, fit);
+    if !pinned && active {
+      sheet_fill(sh, lx, y + h - 3.0f32, measure_width(m, k.tool.face, fit), 1.0f32, 0, opacity(k.muted, 0.45f32));
+    }
   }
   tab_row := uiframe_semantic(f, tab_id, EL_TAB, label, x, y, w - close_slot - 2.0f32, h, ifx active then EL_S_CURRENT else 0, ifx active then 0 else tab_act);
   sheet_hit(sh, UIFRAME_HIT, tab_row, 0, x, y, w - close_slot - 2.0f32, h);
@@ -483,12 +1019,14 @@ cp_fp_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, path:
   return w;
 }
 
-// Row 1 (38pt): Unified horizontal tab strip + '+' quick-open + right-aligned Expand (⛶) and Hide (◫).
+// Row 1 (38pt): Unified horizontal tab strip (with overflow chevrons) + '+' quick-open + Expand (⛶) and Hide (◫).
 cp_fp_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) -> f32 {
-  k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..]; ft := s[0].ft[..];
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; fp := s[0].fp[..]; ft := s[0].ft[..];
   bh := CP_FP_BAR1_H;
-  // Bottom 1px divider
   sheet_fill(sh, px, top + bh - k.border, pw, k.border, 0, k.menu_divider);
+
+  // Reset per-tab hit rects before drawing
+  for i: 0..<CP_FT_TABS { ft[0].tabs[i].rw = 0.0f32; }
 
   side := k.app.icon_button;
   by := top + (bh - side) / 2.0f32;
@@ -503,24 +1041,36 @@ cp_fp_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) 
   cx := px + 8.0f32;
   tabs_end := exp_x - 8.0f32;
   add_w := 26.0f32;
+  ov_w := 20.0f32;
   tab_h := 28.0f32;
   ty := top + (bh - tab_h) / 2.0f32;
 
   if !fp[0].open {
-    // Explorer-only mode: single Files tab pill
     w := app_pane_tab(f, cx, ty, ICON_FOLDER, "Files", "coder.ft.close", CP_FT_CLOSE, 1.0f32);
     cx += w + 4.0f32;
   } else if ft[0].ntabs <= 1 {
     p := cast(string) fp[0].path[0..<fp[0].path_n];
     avail := tabs_end - cx - add_w - 4.0f32;
     if avail < 64.0f32 { avail = tabs_end - cx; }
-    w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, avail, p, cp_fp_name(s), fp[0].dirty, true,
+    pinned := ifx ft[0].ntabs == 1 then ft[0].tabs[0].pinned else true;
+    w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, avail, p, cp_fp_name(s), fp[0].dirty, pinned, true,
                              "coder.file.close.tab", 0, "coder.file.close", CP_FP_CLOSE);
+    if ft[0].ntabs == 1 { ft[0].tabs[0].rx = cx; ft[0].tabs[0].ry = ty; ft[0].tabs[0].rw = w; ft[0].tabs[0].rh = tab_h; }
     cx += w + 4.0f32;
   } else {
-    for i: 0..<ft[0].ntabs {
-      rem := tabs_end - cx - add_w - 4.0f32;
-      if rem < 56.0f32 { break; }
+    if ft[0].tab_scroll < 0 { ft[0].tab_scroll = 0; }
+    if ft[0].tab_scroll >= ft[0].ntabs { ft[0].tab_scroll = ft[0].ntabs - 1; }
+    if ft[0].tab_scroll > 0 {
+      pr := uiframe_semantic(f, "coder.ft.tab.prev", EL_BUTTON, "Previous tabs", cx, ty, ov_w, tab_h, 0, CP_FT_TAB_PREV);
+      sheet_hit(sh, UIFRAME_HIT, pr, 0, cx, ty, ov_w, tab_h);
+      _ := sheet_text(sh, m, -1, cx + 6.0f32, ty + (tab_h - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "‹");
+      cx += ov_w + 2.0f32;
+    }
+    overflowed := false;
+    for i: ft[0].tab_scroll..<ft[0].ntabs {
+      reserve := add_w + 4.0f32 + (ifx i + 1 < ft[0].ntabs then ov_w + 2.0f32 else 0.0f32);
+      rem := tabs_end - cx - reserve;
+      if rem < 56.0f32 { overflowed = true; break; }
       tp := cp_ft_tab_path(s, i);
       tn := cp_ft_tab_name(s, i);
       ib: [32] u8;
@@ -528,10 +1078,17 @@ cp_fp_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) 
       xb: [32] u8;
       xid := sheet_pool(sh, cast(string) xb[0..<el_put_i(xb[..], el_put(xb[..], 0, "coder.ft.tabx."), i)]);
       active := i == ft[0].active_tab;
-      w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, rem, tp, tn, ft[0].tabs[i].dirty, active,
+      w := cp_fp_draw_tab_pill(f, cx, ty, tab_h, rem, tp, tn, ft[0].tabs[i].dirty, ft[0].tabs[i].pinned, active,
                                tid, CP_FT_TAB, xid, CP_FT_TAB_CLOSE);
-      if w <= 0 { break; }
+      if w <= 0 { overflowed = true; break; }
+      ft[0].tabs[i].rx = cx; ft[0].tabs[i].ry = ty; ft[0].tabs[i].rw = w; ft[0].tabs[i].rh = tab_h;
       cx += w + 4.0f32;
+    }
+    if overflowed && cx + ov_w <= tabs_end {
+      nr := uiframe_semantic(f, "coder.ft.tab.next", EL_BUTTON, "More tabs", cx, ty, ov_w, tab_h, 0, CP_FT_TAB_NEXT);
+      sheet_hit(sh, UIFRAME_HIT, nr, 0, cx, ty, ov_w, tab_h);
+      _ := sheet_text(sh, m, -1, cx + 6.0f32, ty + (tab_h - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "›");
+      cx += ov_w + 2.0f32;
     }
   }
 
@@ -551,6 +1108,7 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
   k := f[0].skin; sh := f[0].sheet; m := f[0].m; fp := s[0].fp[..]; ft := s[0].ft[..];
   bh := CP_FP_BAR2_H;
   sheet_fill(sh, fx, y2 + bh - k.border, fw, k.border, 0, k.menu_divider);
+  ft[0].crumb_y = y2 + bh;
 
   // Compact 24pt action buttons on the right: ≡ Wrap, ↻ Reload, ⋮ More/Editors, plus Save & state when active
   bside := 24.0f32;
@@ -584,7 +1142,7 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
     }
   }
 
-  // Left side: segmented path breadcrumbs (eliding leftmost directories when narrow)
+  // Left side: segmented path breadcrumbs using › chevrons (eliding leftmost directories when narrow)
   full := cast(string) fp[0].path[0..<fp[0].path_n];
   bx := fx + 12.0f32;
   avail := right - bx;
@@ -603,10 +1161,9 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
   }
   if nseg == 0 { return y2 + bh; }
 
-  sep_w := measure_width(m, k.tool.face, " > ");
-  ell_w := measure_width(m, k.tool.face, "… > ");
+  sep_w := measure_width(m, k.tool.face, " › ");
+  ell_w := measure_width(m, k.tool.face, "… › ");
   badge_w := 16.0f32 + 4.0f32;
-  // Choose the earliest segment index that fits cleanly within avail
   first := nseg - 1;
   need := badge_w + measure_width(m, k.tool.face, cast(string) full[seg_at[first]..<seg_at[first] + seg_len[first]]);
   while first > 0 {
@@ -625,7 +1182,7 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
   ty := y2 + (bh - k.tool.line) / 2.0f32;
   if first > 0 {
     cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, "…");
-    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " > ");
+    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " › ");
   }
   for si: first..<(nseg - 1) {
     seg := cast(string) full[seg_at[si]..<seg_at[si] + seg_len[si]];
@@ -633,11 +1190,12 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
     cid := sheet_pool(sh, cast(string) cb[0..<el_put_i(cb[..], el_put(cb[..], 0, "coder.ft.crumb."), si)]);
     sw := measure_width(m, k.tool.face, seg);
     hov := uiframe_hovered(f, cid);
+    ft[0].crumb_seg_x[si] = cx;
     _ := sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, ifx hov then k.ink else k.muted, seg);
     row := uiframe_semantic(f, cid, EL_BUTTON, seg, cx, y2 + 2, sw, bh - 4, 0, CP_FT_CRUMB_DIR);
     sheet_hit(sh, UIFRAME_HIT, row, 0, cx, y2 + 2, sw, bh - 4);
     cx += sw;
-    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " > ");
+    cx += sheet_text(sh, m, -1, cx, ty, k.tool.line, k.tool.face, k.faint, " › ");
   }
   // Final segment: colored language badge + filename (carries full path under "coder.file.path" & copies on click)
   fname := cast(string) full[seg_at[nseg - 1]..<seg_at[nseg - 1] + seg_len[nseg - 1]];
@@ -652,6 +1210,27 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
     sheet_hit(sh, UIFRAME_HIT, prow, 0, cx, y2 + 2, (fx_name - cx) + nw, bh - 4);
   }
   return y2 + bh;
+}
+
+// Non-destructive inline banner shown when a dirty open file changed on disk (#13992).
+cp_fp_draw_disk_banner :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bh := 32.0f32;
+  _ = sheet_box(sh, x, y, w, bh, 6.0f32, k.border, k.sunk, opacity(k.warning, 0.55f32));
+  _ := uiframe_semantic(f, "coder.file.disk_banner", EL_REGION, "File changed on disk", x, y, w, bh, 0, 0);
+  keep_w := app_button_width(f, -1, "Keep Mine");
+  rel_w := app_button_width(f, -1, "Reload");
+  kx := x + w - keep_w - 6.0f32;
+  rx := kx - rel_w - 6.0f32;
+  by := y + (bh - k.control_h) / 2.0f32;
+  _ := app_button(f, "coder.file.disk.reload", rx, by, rel_w, -1, "Reload", APP_BUTTON_PRIMARY, 0, CP_FP_DISK_RELOAD);
+  _ := app_button(f, "coder.file.disk.keep", kx, by, keep_w, -1, "Keep Mine", APP_BUTTON_QUIET, 0, CP_FP_DISK_KEEP);
+  msg_w := rx - (x + 10.0f32) - 6.0f32;
+  if msg_w > 40.0f32 {
+    _ := sheet_text(sh, m, -1, x + 10.0f32, y + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, k.warning,
+                    app_fit(f, k.small.face, "File changed on disk", msg_w));
+  }
+  return bh + 6.0f32;
 }
 
 // ---------------------------------------------------------------- main pane draw
@@ -711,6 +1290,7 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     return;
   }
   if fp[0].save_failed { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap_small; }
+  if fp[0].disk_changed { y += cp_fp_draw_disk_banner(s, f, x, y, cw); }
   pk := ft[0].preview_kind;
   if fp[0].mode == CP_FP_READ {
     if pk != CP_FT_PREV_NONE && !ft[0].preview_raw {
@@ -720,20 +1300,23 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
               else ifx pk == CP_FT_PREV_IMAGE then "Image metadata preview (read-only)."
               else "PDF document metadata preview (read-only).";
       y += app_meta(f, "coder.file.readonly", x, y, cw, pmsg, false) + a.gap_small;
-    } else {
+    } else if fp[0].src.count > CP_FP_EDIT_MOST || fp[0].nlines > CP_FP_EDIT_LINES {
       b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 128 KB and 4096 lines here; this one is ");
       n = el_put_i(b[..], n, (fp[0].size + 1023) / 1024); n = el_put(b[..], n, " KB with ");
-      n = el_put_i(b[..], n, cp_fp_lines(cast(string) fp[0].src)); n = el_put(b[..], n, " lines.");
+      n = el_put_i(b[..], n, ifx fp[0].nlines > 0 then fp[0].nlines else cp_fp_lines(cast(string) fp[0].src));
+      n = el_put(b[..], n, " lines.");
       y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(sh, cast(string) b[0..<n]), false) + a.gap_small;
     }
   }
   // Source text to display
-  src := ifx fp[0].mode == CP_FP_EDIT then cp_fp_text(s)
-         else ifx pk != CP_FT_PREV_NONE && !ft[0].preview_raw && ft[0].preview_n > 0 then cast(string) ft[0].preview_buf[0..<ft[0].preview_n]
-         else cast(string) fp[0].src;
-  digits := 3; d := cp_fp_lines(src); while d >= 1000 { digits += 1; d /= 10; }
+  src := cp_fp_view_src(s);
+  total_lines := ifx fp[0].nlines > 0 then fp[0].nlines else cp_fp_lines(src);
+  digits := 3; d := total_lines; while d >= 1000 { digits += 1; d /= 10; }
   gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
-  gx := x + gw; tx := gx + a.gap + 4.0f32; tw := fx + fw - a.gap - tx;
+  gx := x + gw;
+  fold_x := gx + 4.0f32;
+  tx := fold_x + CP_FP_FOLD_W + 4.0f32;
+  tw := fx + fw - a.gap - tx;
   body := y;
   show_lean_strip := cp_flag(s, DC_FLAG_GYM) && cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
   bh := h - a.gap_small - body - (ifx show_lean_strip then CP_FP_LEAN_STRIP_H + 6.0f32 else 0.0f32);
@@ -749,13 +1332,14 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     if fp[0].large_edit { cp_fp_large_edit_view(s, f, src, fx, gx, tx, body, tw, bh); }
     else { cp_fp_edit_view(s, f, fx, gx, tx, body, tw, bh); }
   } else {
-    cp_fp_read_view(s, f, src, fx, gx, tx, body, tw, bh);
+    cp_fp_read_view(s, f, src, fx, gx, fold_x, tx, body, tw, bh);
   }
   if show_lean_strip {
     cp_fp_draw_lean_strip(s, f, fx + a.gap, body + bh + 4.0f32, fw - 2 * a.gap, CP_FP_LEAN_STRIP_H);
   }
   s[0].fp_color_u1 = sh[0].nu;
   s[0].fp_color_o1 = sh[0].no;
+  cp_find_file_bar(s, f, fx, body, fw);
   cp_ft_draw_editor_menu(s, f);
 }
 
@@ -792,16 +1376,15 @@ cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, b
   cp_ed_draw(s, f, CP_ED_FILE, tx, body, tw, bh, "");
   c := s[0].fld[0].ed[CP_ED_FILE].body[..];
   if !(c[0].text_w > 0) { return; }
-  k := f[0].skin;
+  k := f[0].skin; fp := s[0].fp[..];
   t := typed(c); lh := composer_line(c); top := c[0].text_y - c[0].scroll;
-  path := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
   lang := cp_fp_lang(path, CP_FT_PREV_NONE);
-  in_block: [1] bool;
-  // the caret's line, lit while the editor has the keyboard
+  blk: [1] u8;
   lit := -1;
   if c[0].focused { lit = 1; for i: 0..<(ifx c[0].ed[0].caret < t.count then c[0].ed[0].caret else t.count) { if t[i] == '\n' { lit += 1; } } }
   uiframe_clip(f, px, body, tx + tw, body + bh);
-  ln := 0;
+  ln := 0; pen: [1] f32;
   for r: 0..<c[0].lines {
     at := c[0].line_at[r]; end := c[0].line_end[r];
     starts := r == 0 || at > 0 && t[at - 1] == '\n';
@@ -809,61 +1392,110 @@ cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, b
     ry := top + cast(f32) r * lh;
     seg := ifx end > at then cast(string) t[at..<end] else "";
     if ry + lh < body {
-      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
+      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_advance_blk(lang, seg, blk[..]); }
       continue;
     }
     if ry > body + bh { break; }
-    if starts { cp_fp_number(f, ln, gx, ry, lh, ln == lit); }
+    if fp[0].hl_start > 0 && ln >= fp[0].hl_start && ln <= fp[0].hl_end {
+      sheet_fill(f[0].sheet, tx - 4.0f32, ry, tw + 4.0f32, lh, 2.0f32, opacity(k.accent, 0.14f32));
+    }
+    cp_fp_draw_find_hits(s, f, at, seg, tx, ry, lh, k.mono.face);
+    if starts { cp_fp_number(f, ln, gx, ry, lh, ln == lit || (fp[0].hl_start > 0 && ln >= fp[0].hl_start && ln <= fp[0].hl_end)); }
     if seg.count > 0 {
-      if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, ry, lh, k.mono.face, k.ink, seg); }
+      if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_state(f, lang, blk[..], tx, ry, lh, k.mono.face, k.ink, seg, true, pen[..]); }
       else { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, ry, lh, k.mono.face, k.ink, seg); }
     }
   }
   uiframe_unclip(f);
 }
 
-// Large-file (>16 KB or >512 lines, up to 128 KB / 4,096 lines) syntax-highlighted inline editor view.
+// Draws horizontal scroll rail at bottom of viewport when !wrap && content_w > tw (#13992).
+cp_fp_draw_hrail :: (f: [] UiFrame, fp: [] CpFilePane, tx: f32, body: f32, tw: f32, bh: f32) {
+  if fp[0].wrap || !(fp[0].content_w > tw + 2.0f32) || !(bh > 12.0f32) { return; }
+  k := f[0].skin; sh := f[0].sheet;
+  max_x := fp[0].content_w - tw;
+  if !(max_x > 0) { return; }
+  track_w := tw - 12.0f32;
+  if !(track_w > 24.0f32) { return; }
+  thumb_w := track_w * (tw / fp[0].content_w);
+  if thumb_w < 28.0f32 { thumb_w = 28.0f32; }
+  if thumb_w > track_w { thumb_w = track_w; }
+  frac := fp[0].scroll_x / max_x;
+  if frac < 0.0f32 { frac = 0.0f32; }
+  if frac > 1.0f32 { frac = 1.0f32; }
+  hx := tx + 4.0f32 + frac * (track_w - thumb_w);
+  hy := body + bh - 5.0f32;
+  sheet_fill(sh, hx, hy, thumb_w, 3.5f32, 1.75f32, opacity(k.muted, 0.45f32));
+}
+
+// Large-file (>16 KB or >512 lines, up to 128 KB / 4,096 lines) virtualized O(visible lines) inline editor view
+// with horizontal scrolling, CP_SEL_FILE selection, find highlights, and smooth vertical scroll rail (#13992).
 cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
   face := k.mono.face; lh := k.mono.line;
-  fp[0].cell_w = measure_width(f[0].m, face, "0");
+  cell := measure_width(f[0].m, face, "0");
+  fp[0].cell_w = cell;
   focused := s[0].fld[0].active && cp_ed_which(s) == CP_ED_FILE;
   path := cast(string) fp[0].path[0..<fp[0].path_n];
   lang := cp_fp_lang(path, CP_FT_PREV_NONE);
-  in_block: [1] bool;
+  if fp[0].nlines <= 0 { cp_fp_build_index(s, src, lang); }
+  nl := fp[0].nlines;
   lit := ifx focused then cp_fp_caret_line(s) else -1;
   fp[0].view = bh;
+  fp[0].content = cast(f32) nl * lh;
+  fp[0].content_w = cast(f32) fp[0].max_cols * cell + 24.0f32;
   fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+  if fp[0].scroll_x > fp[0].content_w - tw { fp[0].scroll_x = ifx fp[0].content_w > tw then fp[0].content_w - tw else 0.0f32; }
+  if fp[0].scroll_x < 0.0f32 { fp[0].scroll_x = 0.0f32; }
+
+  first_li := cast(int) (fp[0].scroll / lh);
+  if first_li < 0 { first_li = 0; }
+  if first_li >= nl { first_li = nl - 1; }
+  vis_rows := cast(int) (bh / lh) + 3;
+  last_li := first_li + vis_rows;
+  if last_li > nl { last_li = nl; }
+
+  blk: [1] u8;
+  blk[0] = cp_fp_block_state_at(fp, src, lang, first_li);
+  l0 := sh[0].nl;
+  fp[0].sel_l0 = l0; fp[0].sel_line_n = 0;
   uiframe_clip(f, px, body, tx + tw, body + bh);
-  y := body - fp[0].scroll; at := 0; ln := 1;
-  while true {
-    end := at; while end < src.count && src[end] != '\n' { end += 1; }
-    stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
+  pen: [1] f32;
+  for li: first_li..<last_li {
+    ln := li + 1;
+    at := fp[0].line_starts[li];
+    stop := cp_fp_line_end(fp, src, li);
     seg := ifx stop > at then cast(string) src[at..<stop] else "";
-    if y + lh <= body {
-      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
-    } else if y < body + bh {
-      cp_fp_number(f, ln, gx, y, lh, ln == lit);
-      if seg.count > 0 {
-        if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, y, lh, face, k.ink, seg); }
-        else { _ := sheet_text(sh, f[0].m, -1, tx, y, lh, face, k.ink, seg); }
-      }
-      if focused && fp[0].caret >= at && fp[0].caret <= stop {
-        cx := tx + measure_width(f[0].m, face, cast(string) src[at..<fp[0].caret]);
-        sheet_fill(sh, cx, y + 1, k.cmp.caret, lh - 2, 0, k.accent);
-      }
+    y := body + cast(f32) li * lh - fp[0].scroll;
+    if y + lh <= body || y >= body + bh {
+      if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_advance_blk(lang, seg, blk[..]); }
+      continue;
     }
-    y += lh; ln += 1;
-    if end >= src.count { break; }
-    at = end + 1;
+    in_hl := fp[0].hl_start > 0 && ln >= fp[0].hl_start && ln <= fp[0].hl_end;
+    if in_hl { sheet_fill(sh, tx - 4.0f32, y, tw + 4.0f32, lh, 2.0f32, opacity(k.accent, 0.14f32)); }
+    cx0 := tx - fp[0].scroll_x;
+    cp_fp_draw_find_hits(s, f, at, seg, cx0, y, lh, face);
+    cp_fp_number(f, ln, gx, y, lh, ln == lit || in_hl);
+    cp_fp_sel_track_line(fp, ln);
+    if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_state(f, lang, blk[..], cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+    else { cp_fp_plain_line(f, cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+    if focused && fp[0].caret >= at && fp[0].caret <= stop {
+      cx := cx0 + measure_width(f[0].m, face, cast(string) src[at..<fp[0].caret]);
+      sheet_fill(sh, cx, y + 1, k.cmp.caret, lh - 2, 0, k.accent);
+    }
   }
+  l1 := sh[0].nl;
+  cp_sel_record(s, CP_SEL_FILE, l0, l1, tx, body, tx + tw, body + bh, fp[0].scroll);
+  cp_sel_paint(s, f, CP_SEL_FILE, l0, l1, fp[0].scroll);
+  cp_fp_draw_hrail(f, fp, tx, body, tw, bh);
   uiframe_unclip(f);
-  fp[0].content = y + fp[0].scroll - body;
+  app_scroll_rail(f, fp[0].scr[..], tx + tw, body, fp[0].scroll, fp[0].content, fp[0].view, bh, s[0].now, s[0].reduced);
 }
 
-// A read-only file or rich preview: unwrapped by default for code (wrap toggleable via ≡),
-// multi-language syntax-highlighted, with right-aligned line numbers.
-cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
+// Virtualized O(visible lines) read-only file & preview viewer: multi-language syntax color,
+// structural code folding (▾/▸ + … N lines pill), target-line highlight, in-file Find highlights,
+// CP_SEL_FILE GPU selection, horizontal scroll + Word Wrap toggle, and vertical/horizontal rails (#13992).
+cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, fold_x: f32, tx: f32, body: f32, tw: f32, bh: f32) {
   k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
   face := k.mono.face; lh := k.mono.line;
   cell := measure_width(f[0].m, face, "0");
@@ -871,107 +1503,253 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
   cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
   if cols < 1 { cols = 1; }
   path := cast(string) fp[0].path[0..<fp[0].path_n];
-  lang := cp_fp_lang(path, s[0].ft[0].preview_kind);
-  in_block: [1] bool;
+  lang := ifx fp[0].md_preview then SYN_LANG_PLAIN else cp_fp_lang(path, s[0].ft[0].preview_kind);
+  if fp[0].nlines <= 0 { cp_fp_build_index(s, src, lang); }
+  nl := fp[0].nlines;
   wrap_on := fp[0].wrap;
   fp[0].view = bh;
-  fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
-  uiframe_clip(f, px, body, tx + tw, body + bh);
-  y := body - fp[0].scroll; at := 0; ln := 1;
-  while true {
-    end := at; while end < src.count && src[end] != '\n' { end += 1; }
-    stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
-    seg := ifx stop > at then cast(string) src[at..<stop] else "";
-    if !wrap_on {
-      if y + lh <= body {
-        if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
-      } else if y < body + bh {
-        cp_fp_number(f, ln, gx, y, lh, false);
-        if seg.count > 0 {
-          if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, y, lh, face, k.ink, seg); }
-          else { _ := sheet_text(sh, f[0].m, -1, tx, y, lh, face, k.ink, seg); }
-        }
-      }
-      y += lh;
-    } else {
-      n := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { n += 1; } }
-      rows := ifx n == 0 then 1 else (n + cols - 1) / cols;
-      if y + cast(f32) rows * lh <= body {
-        if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_scan_block(lang, seg, in_block[..]); }
-      } else if y < body + bh {
-        cp_fp_number(f, ln, gx, y, lh, false);
-        i := at;
-        for r: 0..<rows {
-          j := i; m := 0; while j < stop && m < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } m += 1; }
-          ry := y + cast(f32) r * lh;
-          if ry + lh > body && ry < body + bh && j > i {
-            part := cast(string) src[i..<j];
-            if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_lang(f, lang, in_block[..], tx, ry, lh, face, k.ink, part); }
-            else { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, part); }
-          }
-          i = j;
-        }
-      }
-      y += cast(f32) rows * lh;
-    }
-    ln += 1;
-    if end >= src.count { break; }
-    at = end + 1;
+  fp[0].content_w = ifx wrap_on then tw else cast(f32) fp[0].max_cols * cell + 36.0f32;
+  if wrap_on { fp[0].scroll_x = 0.0f32; }
+  else {
+    if fp[0].scroll_x > fp[0].content_w - tw { fp[0].scroll_x = ifx fp[0].content_w > tw then fp[0].content_w - tw else 0.0f32; }
+    if fp[0].scroll_x < 0.0f32 { fp[0].scroll_x = 0.0f32; }
   }
+
+  // Fast check whether any fold is currently collapsed
+  any_folded := false;
+  for k8: 0..<8 { if fp[0].fold_bits[k8] != 0 { any_folded = true; break; } }
+
+  l0 := sh[0].nl;
+  fp[0].sel_l0 = l0; fp[0].sel_line_n = 0;
+  uiframe_clip(f, px, body, tx + tw, body + bh);
+  pen: [1] f32;
+
+  if !wrap_on && !any_folded {
+    // Pure O(visible lines) fast path: jump directly to first visible line using line_starts[] + block_cp[]
+    fp[0].content = cast(f32) nl * lh;
+    fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+    first_li := cast(int) (fp[0].scroll / lh);
+    if first_li < 0 { first_li = 0; }
+    if first_li >= nl { first_li = nl - 1; }
+    vis_rows := cast(int) (bh / lh) + 3;
+    last_li := first_li + vis_rows;
+    if last_li > nl { last_li = nl; }
+    blk: [1] u8;
+    blk[0] = cp_fp_block_state_at(fp, src, lang, first_li);
+    for li: first_li..<last_li {
+      ln := li + 1;
+      at := fp[0].line_starts[li];
+      stop := cp_fp_line_end(fp, src, li);
+      seg := ifx stop > at then cast(string) src[at..<stop] else "";
+      y := body + cast(f32) li * lh - fp[0].scroll;
+      if y + lh <= body || y >= body + bh {
+        if lang != SYN_LANG_PLAIN && seg.count > 0 { cp_fp_advance_blk(lang, seg, blk[..]); }
+        continue;
+      }
+      in_hl := fp[0].hl_start > 0 && ln >= fp[0].hl_start && ln <= fp[0].hl_end;
+      if in_hl { sheet_fill(sh, tx - 4.0f32, y, tw + 4.0f32, lh, 2.0f32, opacity(k.accent, 0.14f32)); }
+      cx0 := tx - fp[0].scroll_x;
+      cp_fp_draw_find_hits(s, f, at, seg, cx0, y, lh, face);
+      cp_fp_number(f, ln, gx, y, lh, in_hl);
+      fi := cp_fp_fold_at_line(fp, ln);
+      if fi >= 0 { cp_fp_draw_fold_chevron(s, f, fi, fold_x, y, lh); }
+      cp_fp_sel_track_line(fp, ln);
+      if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_state(f, lang, blk[..], cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+      else { cp_fp_plain_line(f, cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+    }
+  } else {
+    // General indexed path (word wrap and/or collapsed folds): O(nlines) integer skips, O(visible lines) tokenization
+    fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+    y := body - fp[0].scroll;
+    li := 0;
+    blk: [1] u8;
+    blk_li := -1;
+    while li < nl {
+      ln := li + 1;
+      at := fp[0].line_starts[li];
+      stop := cp_fp_line_end(fp, src, li);
+      fi := cp_fp_fold_at_line(fp, ln);
+      closed := fi >= 0 && cp_fp_fold_is_closed(fp, fi);
+      rows := 1;
+      if wrap_on && !closed {
+        nch := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { nch += 1; } }
+        rows = ifx nch == 0 then 1 else (nch + cols - 1) / cols;
+      }
+      row_h := cast(f32) rows * lh;
+      if y + row_h > body && y < body + bh {
+        if blk_li != li { blk[0] = cp_fp_block_state_at(fp, src, lang, li); }
+        seg := ifx stop > at then cast(string) src[at..<stop] else "";
+        in_hl := fp[0].hl_start > 0 && ln >= fp[0].hl_start && ln <= fp[0].hl_end;
+        if in_hl { sheet_fill(sh, tx - 4.0f32, y, tw + 4.0f32, row_h, 2.0f32, opacity(k.accent, 0.14f32)); }
+        cp_fp_number(f, ln, gx, y, lh, in_hl);
+        if fi >= 0 { cp_fp_draw_fold_chevron(s, f, fi, fold_x, y, lh); }
+        if !wrap_on || closed {
+          cx0 := tx - fp[0].scroll_x;
+          cp_fp_draw_find_hits(s, f, at, seg, cx0, y, lh, face);
+          cp_fp_sel_track_line(fp, ln);
+          if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_state(f, lang, blk[..], cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+          else { cp_fp_plain_line(f, cx0, y, lh, face, k.ink, seg, true, pen[..]); }
+          if closed {
+            hidden_n := fp[0].folds[fi].end_line - fp[0].folds[fi].start_line;
+            pb: [32] u8; pn := el_put(pb[..], 0, " … (");
+            pn = el_put_i(pb[..], pn, hidden_n);
+            pn = el_put(pb[..], pn, " lines) ");
+            pill := sheet_pool(sh, cast(string) pb[0..<pn]);
+            pw_pill := measure_width(f[0].m, k.mono_tiny.face, pill);
+            px_pill := pen[0] + 6.0f32;
+            sheet_fill(sh, px_pill, y + 2.0f32, pw_pill, lh - 4.0f32, 4.0f32, k.hover);
+            _ := sheet_text(sh, f[0].m, -1, px_pill, y, lh, k.mono_tiny.face, k.muted, pill);
+          }
+        } else {
+          i := at;
+          for r: 0..<rows {
+            j := i; mc := 0; while j < stop && mc < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } mc += 1; }
+            ry := y + cast(f32) r * lh;
+            if ry + lh > body && ry < body + bh {
+              part := ifx j > i then cast(string) src[i..<j] else "";
+              cp_fp_draw_find_hits(s, f, i, part, tx, ry, lh, face);
+              cp_fp_sel_track_line(fp, ln);
+              if lang != SYN_LANG_PLAIN { _ = cp_fp_syntax_line_state(f, lang, blk[..], tx, ry, lh, face, k.ink, part, r + 1 == rows, pen[..]); }
+              else { cp_fp_plain_line(f, tx, ry, lh, face, k.ink, part, r + 1 == rows, pen[..]); }
+            }
+            i = j;
+          }
+        }
+        blk_li = li + 1;
+      }
+      y += row_h;
+      if closed {
+        li = fp[0].folds[fi].end_line;   // end_line is 1-based inclusive -> next 0-based index is end_line
+        blk_li = -1;
+      } else {
+        li += 1;
+      }
+    }
+    fp[0].content = y + fp[0].scroll - body;
+  }
+
+  l1 := sh[0].nl;
+  cp_sel_record(s, CP_SEL_FILE, l0, l1, tx, body, tx + tw, body + bh, fp[0].scroll);
+  cp_sel_paint(s, f, CP_SEL_FILE, l0, l1, fp[0].scroll);
+  cp_fp_draw_hrail(f, fp, tx, body, tw, bh);
   uiframe_unclip(f);
-  fp[0].content = y + fp[0].scroll - body;
+  app_scroll_rail(f, fp[0].scr[..], tx + tw, body, fp[0].scroll, fp[0].content, fp[0].view, bh, s[0].now, s[0].reduced);
 }
 
 // ---------------------------------------------------------------- the host's calls
 
-// The bytes the pane shows at most: the host does not read a longer file.
+// The bytes the pane shows at most: the host does not read a longer file (4 MB).
 coder_page_file_most :: () -> int #export_c #effects(all) { return CP_FP_MOST; }
 // The bytes the pane edits inline at most (128 KB).
 coder_page_file_edit_most :: () -> int #export_c #effects(all) { return CP_FP_EDIT_MOST; }
-// Current 1-based caret line in the open file.
+// Current 1-based caret or highlighted line in the open file.
 coder_page_file_line :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_fp_caret_line(s) else 1; }
 // Whether the file viewer pane is currently expanded (⛶) or hidden (◫).
 coder_page_file_expanded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].expanded; }
 coder_page_file_hidden :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].hidden; }
+coder_page_file_toggle_expand :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_fp_press(s, CP_FP_EXPAND, ""); }
+coder_page_file_toggle_hide :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_ft_press(s, CP_FT_TOGGLE, "");
+}
+coder_page_file_set_edit :: (s: [] CoderPage, on: bool) -> bool #export_c #effects(all) { return s.count > 0 && cp_fp_set_edit(s, on); }
+coder_page_file_jump :: (s: [] CoderPage, start_line: int, end_line: int) #export_c #effects(all) {
+  if s.count > 0 { cp_fp_jump(s, start_line, end_line); }
+}
+coder_page_file_set_preview_next :: (s: [] CoderPage, preview: bool) #export_c #effects(all) {
+  if s.count > 0 { s[0].ft[0].open_as_preview = preview; }
+}
 
-// A file the host read: path as it shows it, its bytes (the host keeps them until the next file
-// or save), its size on disk. Opens rich read-only preview for CSV/TSV, .ipynb, binary, image/PDF;
-// opens editable up to 128 KB / 4,096 lines; else read-only. Registers/activates its tab.
+// A file the host read: opens Viewer-first (CP_FP_READ) by default without stealing composer focus;
+// preserves & restores per-tab scroll, wrap, edit mode, and fold state across tab switches (#13992).
 coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
   if s.count < 1 || bytes.count > CP_FP_MOST { return false; }
   if !s[0].ready { cp_init(s); }
-  same_path := s[0].fp[0].open && cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n] == path;
-  keep_scroll := ifx same_path then s[0].fp[0].scroll else 0.0f32;
+  cp_ft_tab_save_active(s);
+  prev_tab := cp_ft_tab_find(s, path);
+  has_saved := prev_tab >= 0;
+  saved_sy := ifx has_saved then s[0].ft[0].tabs[prev_tab].scroll_y else 0.0f32;
+  saved_sx := ifx has_saved then s[0].ft[0].tabs[prev_tab].scroll_x else 0.0f32;
+  saved_wrap_set := ifx has_saved then s[0].ft[0].tabs[prev_tab].wrap_set else false;
+  saved_wrap := ifx has_saved then s[0].ft[0].tabs[prev_tab].wrap else false;
+  saved_edit := ifx has_saved then s[0].ft[0].tabs[prev_tab].edit_mode else false;
+  saved_folds: [8] u64;
+  if has_saved { for k: 0..<8 { saved_folds[k] = s[0].ft[0].tabs[prev_tab].fold_bits[k]; } }
+
   cp_fp_begin(s, path);
   fp := s[0].fp[..];
   fp[0].src = bytes; fp[0].size = size;
-  fp[0].scroll = keep_scroll;
+  fp[0].scroll = saved_sy;
+  fp[0].scroll_x = saved_sx;
+  for k: 0..<8 { fp[0].fold_bits[k] = saved_folds[k]; }
   _ = cp_ft_tab_open(s, path);
   pk := cp_ft_prepare_preview(s, path, bytes, size);
   if pk != CP_FT_PREV_NONE {
     fp[0].mode = CP_FP_READ;
-    fp[0].wrap = true;
+    fp[0].wrap = ifx saved_wrap_set then saved_wrap else true;
+    cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
     return true;
   }
-  text := cast(string) bytes;
-  nlines := cp_fp_lines(text);
-  if text.count <= CP_FP_EDIT_MOST && nlines <= CP_FP_EDIT_LINES {
-    fp[0].mode = CP_FP_EDIT;
-    fp[0].text_n = cp_out(fp[0].text[..], text);
-    fp[0].large_edit = (text.count > EB_TEXT || nlines > CP_FP_SMALL_LINES);
-    fp[0].caret = 0;
-    s[0].fld[0].kb = CP_KB_FILE;
-  } else {
-    fp[0].mode = CP_FP_READ;
-    fp[0].wrap = (syn_lang_for_path(path) == SYN_LANG_PLAIN);
-  }
+  fp[0].mode = CP_FP_READ;
+  fp[0].wrap = ifx saved_wrap_set then saved_wrap else (syn_lang_for_path(path) == SYN_LANG_PLAIN);
+  cp_fp_build_index(s, cast(string) bytes, cp_fp_lang(path, CP_FT_PREV_NONE));
+  if saved_edit { _ = cp_fp_set_edit(s, true); }
   return true;
 }
+
+// Live reload of the active file from disk preserving scroll offset, horizontal scroll, folds, and target highlight (#13992).
+coder_page_file_reload :: (s: [] CoderPage, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open || bytes.count > CP_FP_MOST { return false; }
+  fp := s[0].fp[..]; ft := s[0].ft[..];
+  path := cast(string) fp[0].path[0..<fp[0].path_n];
+  was_edit := fp[0].mode == CP_FP_EDIT;
+  keep_sy := fp[0].scroll; keep_sx := fp[0].scroll_x;
+  keep_hl0 := fp[0].hl_start; keep_hl1 := fp[0].hl_end;
+  keep_folds: [8] u64;
+  for k: 0..<8 { keep_folds[k] = fp[0].fold_bits[k]; }
+
+  fp[0].src = bytes; fp[0].size = size;
+  fp[0].dirty = false; fp[0].saved = false; fp[0].save_failed = false; fp[0].disk_changed = false;
+  cp_ft_tab_set_dirty(s, path, false);
+  pk := cp_ft_prepare_preview(s, path, bytes, size);
+  if pk != CP_FT_PREV_NONE {
+    fp[0].mode = CP_FP_READ;
+    cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
+  } else {
+    if fp[0].md_preview {
+      ft[0].preview_n = cp_fp_format_md_preview(cast(string) bytes, ft[0].preview_buf[..]);
+      fp[0].mode = CP_FP_READ;
+      cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
+    } else if was_edit && bytes.count <= CP_FP_EDIT_MOST && cp_fp_lines(cast(string) bytes) <= CP_FP_EDIT_LINES {
+      fp[0].mode = CP_FP_EDIT;
+      fp[0].text_n = cp_out(fp[0].text[..], cast(string) bytes);
+      fp[0].large_edit = (fp[0].text_n > EB_TEXT || cp_fp_lines(cast(string) bytes) > CP_FP_SMALL_LINES);
+      ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);
+      cp_fp_build_index(s, cp_fp_text(s), cp_fp_lang(path, CP_FT_PREV_NONE));
+    } else {
+      fp[0].mode = CP_FP_READ;
+      cp_fp_build_index(s, cast(string) bytes, cp_fp_lang(path, CP_FT_PREV_NONE));
+    }
+  }
+  fp[0].scroll = keep_sy; fp[0].scroll_x = keep_sx;
+  fp[0].hl_start = keep_hl0; fp[0].hl_end = keep_hl1;
+  for k: 0..<8 { fp[0].fold_bits[k] = keep_folds[k]; }
+  if s[0].find[0].open && s[0].find[0].file_mode && !s[0].find[0].goto_mode { cp_find_scan_file(s); }
+  return true;
+}
+
+// Marks the active dirty file as modified externally on disk (displays non-destructive Reload / Keep Mine banner, #13992).
+coder_page_file_disk_changed :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open { return; }
+  s[0].fp[0].disk_changed = true;
+}
+
 // A 3D scene file (ple-scene.v1.json) opened in the pane: the host mounts the Metal viewport over its body rect.
 coder_page_file_open_scene :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if !s[0].ready { cp_init(s); }
   if !cp_flag(s, DC_FLAG_SCENES) { return false; }
+  cp_ft_tab_save_active(s);
   cp_fp_begin(s, path);
   _ = cp_ft_tab_open(s, path);
   s[0].fp[0].mode = CP_FP_SCENE;
@@ -1003,10 +1781,12 @@ cp_fp_begin :: (s: [] CoderPage, path: string) {
   fp[0].expanded = was_expanded;
   fp[0].wrap = was_wrap;
   s[0].ft[0].editor_menu = false;
+  s[0].ft[0].crumb_menu = false;
   s[0].ft[0].preview_kind = CP_FT_PREV_NONE;
   s[0].ft[0].preview_n = 0;
   s[0].sim[0].front = false; s[0].term[0].front = false;   // the file comes in front of the simulator and terminal
   fp[0].path_n = cp_out(fp[0].path[..], path);
+  if s[0].sel[0].region == CP_SEL_FILE { cp_sel_clear(s); }
 }
 // The editor's text, to be saved: its length in out, -1 when out does not hold it or nothing is edited.
 coder_page_file_text :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
@@ -1020,7 +1800,7 @@ coder_page_file_text :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(
 coder_page_file_saved :: (s: [] CoderPage, bytes: [] u8) #export_c #effects(all) {
   if s.count < 1 || !s[0].fp[0].open { return; }
   fp := s[0].fp[..];
-  fp[0].src = bytes; fp[0].size = bytes.count; fp[0].save_failed = false; fp[0].why_n = 0;
+  fp[0].src = bytes; fp[0].size = bytes.count; fp[0].save_failed = false; fp[0].why_n = 0; fp[0].disk_changed = false;
   fp[0].dirty = cp_fp_text(s) != cast(string) bytes;
   fp[0].saved = !fp[0].dirty;
   cp_ft_tab_set_dirty(s, cast(string) fp[0].path[0..<fp[0].path_n], fp[0].dirty);
@@ -1034,6 +1814,8 @@ coder_page_file_save_failed :: (s: [] CoderPage, why: string) #export_c #effects
 coder_page_file_close :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count < 1 { return; }
   if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
+  if s[0].find[0].open && s[0].find[0].file_mode { cp_find_close(s); }
+  if s[0].sel[0].region == CP_SEL_FILE { cp_sel_clear(s); }
   ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);
   p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
   tidx := cp_ft_tab_find(s, p);

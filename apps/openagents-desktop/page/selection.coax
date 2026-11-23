@@ -7,6 +7,7 @@
 CP_SEL_NONE :: 0;
 CP_SEL_CONV :: 1;
 CP_SEL_PANE :: 2;
+CP_SEL_FILE :: 3;
 
 CP_SEL_CHAR :: 1;
 CP_SEL_WORD :: 2;
@@ -22,7 +23,7 @@ CpSelRegion :: struct {
 }
 
 CpSel :: struct {
-  region: int;                  // CP_SEL_NONE, CP_SEL_CONV, CP_SEL_PANE
+  region: int;                  // CP_SEL_NONE, CP_SEL_CONV, CP_SEL_PANE, CP_SEL_FILE
   active: bool;                 // true when a non-empty span is selected
   dragging: bool;               // true while pointer button is held for selection
   was_active: bool;             // true when a selection existed at pointer-down (plain click clears only)
@@ -33,6 +34,7 @@ CpSel :: struct {
   // Per-surface-generation region line ranges & viewports (indexed by surface.front: 0 or 1).
   conv: [2] CpSelRegion;
   pane: [2] CpSelRegion;
+  file: [2] CpSelRegion;
 }
 
 cp_sel_clear :: (s: [] CoderPage) {
@@ -49,6 +51,7 @@ cp_sel_begin_layout :: (s: [] CoderPage) {
   gen := 1 - s[0].surface[0].front;
   s[0].sel[0].conv[gen] = CpSelRegion.{};
   s[0].sel[0].pane[gen] = CpSelRegion.{};
+  s[0].sel[0].file[gen] = CpSelRegion.{};
 }
 
 // Record a laid-out region's line range, viewport, and scroll into the back generation.
@@ -57,6 +60,7 @@ cp_sel_record :: (s: [] CoderPage, region: int, l0: int, l1: int, l: f32, t: f32
   reg := CpSelRegion.{l0 = l0, l1 = l1, l = l, t = t, r = r, b = b, scroll = scroll};
   if region == CP_SEL_CONV { s[0].sel[0].conv[gen] = reg; }
   else if region == CP_SEL_PANE { s[0].sel[0].pane[gen] = reg; }
+  else if region == CP_SEL_FILE { s[0].sel[0].file[gen] = reg; }
 }
 
 // Read the committed generation's region descriptor.
@@ -65,6 +69,7 @@ cp_sel_region_of :: (s: [] CoderPage, region: int) -> CpSelRegion {
   f := s[0].surface[0].front;
   if region == CP_SEL_CONV { return s[0].sel[0].conv[f]; }
   if region == CP_SEL_PANE { return s[0].sel[0].pane[f]; }
+  if region == CP_SEL_FILE { return s[0].sel[0].file[f]; }
   return CpSelRegion.{};
 }
 
@@ -392,9 +397,22 @@ cp_sel_ed_unselect :: (s: [] CoderPage) {
   }
 }
 
-// Select all laid-out lines in the conversation (Cmd+A when no non-empty editor owns focus).
+// Select all laid-out lines in the file viewer (when focused/hovered/expanded) or conversation (Cmd+A).
 cp_sel_select_all :: (s: [] CoderPage) -> bool {
   if s.count < 1 || s[0].set_open || cp_overlay_open(s) || s[0].surface[0].generation == 0 { return false; }
+  want_file := cp_fp_shown(s) && s[0].fp[0].open && (s[0].fp[0].expanded || s[0].sel[0].region == CP_SEL_FILE || (s[0].pane_w > 0 && s[0].px >= s[0].pane_x));
+  if want_file {
+    freg := cp_sel_region_of(s, CP_SEL_FILE);
+    if freg.l1 > freg.l0 {
+      s[0].sel[0].region = CP_SEL_FILE;
+      s[0].sel[0].mode = CP_SEL_ALL;
+      s[0].sel[0].dragging = false;
+      s[0].sel[0].was_active = false;
+      s[0].sel[0].active = true;
+      if cp_sel_has(s) { cp_sel_ed_unselect(s); return true; }
+      cp_sel_clear(s);
+    }
+  }
   reg := cp_sel_region_of(s, CP_SEL_CONV);
   if reg.l1 <= reg.l0 { return false; }
   s[0].sel[0].region = CP_SEL_CONV;
@@ -423,7 +441,11 @@ cp_sel_pointer :: (s: [] CoderPage, ux: f32, uy: f32, phase: int, clicks: int, m
     }
     reg_id := CP_SEL_NONE;
     reg := CpSelRegion.{};
-    if s[0].pane_open {
+    if cp_fp_shown(s) && s[0].fp[0].open {
+      fr := cp_sel_region_of(s, CP_SEL_FILE);
+      if cp_sel_in_region(fr, ux, uy) { reg_id = CP_SEL_FILE; reg = fr; }
+    }
+    if reg_id == CP_SEL_NONE && s[0].pane_open {
       pr := cp_sel_region_of(s, CP_SEL_PANE);
       if cp_sel_in_region(pr, ux, uy) { reg_id = CP_SEL_PANE; reg = pr; }
     }
@@ -513,6 +535,7 @@ cp_sel_over_region :: (sh: Sheet, reg: CpSelRegion, ux: f32, uy: f32) -> bool {
 cp_sel_over_text :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
   if s.count < 1 || s[0].surface[0].generation == 0 { return false; }
   sh := surface_sheet(s[0].surface[..]);
+  if cp_fp_shown(s) && s[0].fp[0].open && cp_sel_over_region(sh, cp_sel_region_of(s, CP_SEL_FILE), ux, uy) { return true; }
   if s[0].pane_open && cp_sel_over_region(sh, cp_sel_region_of(s, CP_SEL_PANE), ux, uy) { return true; }
   if !s[0].set_open && cp_sel_over_region(sh, cp_sel_region_of(s, CP_SEL_CONV), ux, uy) { return true; }
   return false;
@@ -538,10 +561,37 @@ cp_ed_over :: (s: [] CoderPage, ux: f32, uy: f32) -> bool {
 
 // ---------------------------------------------------------------- host C exports
 
-// True when a non-empty GPU transcript or pane text selection is active.
+// True when a non-empty GPU transcript, sub-agent pane, or file viewer text selection is active.
 coder_page_has_selection :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].ready || cp_overlay_open(s) || s[0].set_open { return false; }
   return cp_sel_has(s);
+}
+
+// When the active GPU selection is inside the File Viewer (CP_SEL_FILE), writes its 1-based
+// [start_line, end_line] into out[0..1] and returns true (for "Copy with Path:Line", #13992).
+coder_page_sel_file_lines :: (s: [] CoderPage, out: [] int) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 2 || !s[0].ready || !s[0].sel[0].active || s[0].sel[0].region != CP_SEL_FILE { return false; }
+  if s[0].surface[0].generation == 0 { return false; }
+  reg := cp_sel_region_of(s, CP_SEL_FILE);
+  if reg.l1 <= reg.l0 { return false; }
+  sh := surface_sheet(s[0].surface[..]);
+  lo: [1] CpSelPos; hi: [1] CpSelPos;
+  if !cp_sel_resolve(s, sh, reg.l0, reg.l1, reg.scroll, lo[..], hi[..]) { return false; }
+  fp := s[0].fp[..];
+  if fp[0].sel_line_n <= 0 { return false; }
+  i0 := lo[0].line - fp[0].sel_l0;
+  i1 := hi[0].line - fp[0].sel_l0;
+  if i0 < 0 { i0 = 0; }
+  if i0 >= fp[0].sel_line_n { i0 = fp[0].sel_line_n - 1; }
+  if i1 < 0 { i1 = 0; }
+  if i1 >= fp[0].sel_line_n { i1 = fp[0].sel_line_n - 1; }
+  s_ln := fp[0].sel_line_map[i0];
+  e_ln := fp[0].sel_line_map[i1];
+  if s_ln <= 0 { s_ln = 1; }
+  if e_ln < s_ln { e_ln = s_ln; }
+  out[0] = s_ln;
+  out[1] = e_ln;
+  return true;
 }
 
 // Native pointer cursor kind at the current pointer position:

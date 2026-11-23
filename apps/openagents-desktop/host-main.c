@@ -149,6 +149,10 @@ typedef struct {
   int term_handle[OA_TERMS];
   int term_pid[OA_TERMS];
   int term_active[OA_TERMS];
+  char file_watch_path[OA_PATH];
+  int64_t file_watch_mtime;
+  int64_t file_watch_size;
+  int64_t file_watch_last_ms;
   char *line_buf;
   char *save_buf;
 } DesktopApp;
@@ -1075,26 +1079,186 @@ static void on_portal_chosen(void *user, int request, const char *path) {
   }
 }
 
-static void handle_file_open(DesktopApp *a, const char *path) {
-  if (!path || !path[0]) return;
-  char full[OA_PATH];
-  if (oa_absolute(path)) snprintf(full, sizeof(full), "%s", path);
-  else snprintf(full, sizeof(full), "%s/%s", effective_cwd(a), path);
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
+
+static int oa_parse_pos_int(const char *s, size_t n) {
+  if (!s || n == 0) return 0;
+  int v = 0;
+  for (size_t i = 0; i < n; i++) {
+    if (s[i] < '0' || s[i] > '9') return 0;
+    if (v > 10000000) return 0;
+    v = v * 10 + (s[i] - '0');
+  }
+  return v;
+}
+
+static void oa_parse_file_link(const char *raw, char *path_out, size_t cap, int *out_start, int *out_end) {
+  path_out[0] = '\0';
+  if (out_start) *out_start = 0;
+  if (out_end) *out_end = 0;
+  if (!raw || !raw[0]) return;
+  while (*raw == ' ' || *raw == '\t' || *raw == '\n' || *raw == '\r') raw++;
+  size_t len = strlen(raw);
+  while (len > 0 && (raw[len - 1] == ' ' || raw[len - 1] == '\t' || raw[len - 1] == '\n' || raw[len - 1] == '\r')) len--;
+  int sl = 0, el = 0;
+  const char *hash = memchr(raw, '#', len);
+  size_t base_len = hash ? (size_t)(hash - raw) : len;
+  if (hash) {
+    const char *f = hash + 1;
+    size_t fl = len - base_len - 1;
+    if (fl > 0 && (f[0] == 'L' || f[0] == 'l')) { f++; fl--; }
+    const char *dash = memchr(f, '-', fl);
+    if (dash) {
+      sl = oa_parse_pos_int(f, (size_t)(dash - f));
+      const char *r = dash + 1;
+      size_t rl = fl - (size_t)(dash - f) - 1;
+      if (rl > 0 && (r[0] == 'L' || r[0] == 'l')) { r++; rl--; }
+      el = oa_parse_pos_int(r, rl);
+    } else {
+      sl = oa_parse_pos_int(f, fl);
+      el = sl;
+    }
+  }
+  if (base_len >= 7 && strncmp(raw, "file://", 7) == 0) {
+    raw += 7;
+    base_len -= 7;
+  }
+  if (base_len >= cap) base_len = cap - 1;
+  memcpy(path_out, raw, base_len);
+  path_out[base_len] = '\0';
+  // Strip trailing :start-end, :line:col, or :line if path does not exist verbatim.
+  if (!file_exists(path_out) && base_len > 2) {
+    char *colon = strrchr(path_out, ':');
+    if (colon && colon > path_out + 1) {
+      const char *tail = colon + 1;
+      size_t tl = strlen(tail);
+      const char *dash = strchr(tail, '-');
+      if (dash) {
+        int a1 = oa_parse_pos_int(tail, (size_t)(dash - tail));
+        int a2 = oa_parse_pos_int(dash + 1, strlen(dash + 1));
+        if (a1 > 0 && a2 >= a1) {
+          *colon = '\0';
+          if (sl == 0) { sl = a1; el = a2; }
+        }
+      } else {
+        int n1 = oa_parse_pos_int(tail, tl);
+        if (n1 > 0) {
+          *colon = '\0';
+          int line_val = n1;
+          char *colon2 = strrchr(path_out, ':');
+          if (colon2 && colon2 > path_out + 1) {
+            int n0 = oa_parse_pos_int(colon2 + 1, strlen(colon2 + 1));
+            if (n0 > 0) { *colon2 = '\0'; line_val = n0; }
+          }
+          if (sl == 0) { sl = line_val; el = line_val; }
+        }
+      }
+    }
+  }
+  if (sl > 0 && el < sl) el = sl;
+  if (out_start) *out_start = sl;
+  if (out_end) *out_end = el;
+}
+
+static void resolve_file_path(DesktopApp *a, const char *path, char *full, size_t cap) {
+  if (path[0] == '~' && (path[1] == '/' || path[1] == '\0')) {
+    char hb[OA_PATH] = {0};
+    const char *home = oa_home(hb, sizeof hb);
+    if (home && home[0]) { snprintf(full, cap, "%s%s", home, path + 1); return; }
+  }
+  if (oa_absolute(path)) snprintf(full, cap, "%s", path);
+  else snprintf(full, cap, "%s/%s", effective_cwd(a), path);
+}
+
+static void handle_file_open(DesktopApp *a, const char *raw) {
+  if (!raw || !raw[0]) return;
+  char clean[OA_PATH] = {0}, full[OA_PATH] = {0};
+  int start_line = 0, end_line = 0;
+  oa_parse_file_link(raw, clean, sizeof clean, &start_line, &end_line);
+  if (!clean[0]) return;
+  resolve_file_path(a, clean, full, sizeof full);
+  a->file_watch_path[0] = '\0';
   struct stat st;
   if (stat(full, &st) != 0) {
-    cd_file_failed(a->page, path, strerror(errno));
+    cd_file_failed(a->page, full, strerror(errno));
+    return;
+  }
+  if (S_ISDIR(st.st_mode)) {
+    cd_file_failed(a->page, full, "This path is a folder, not a file.");
+    return;
+  }
+  int most = cd_file_most();
+  if (most <= 0) most = 4 * 1024 * 1024;
+  if ((int64_t)st.st_size > (int64_t)most) {
+    char why[256];
+    snprintf(why, sizeof why, "File is larger than %d MB; open it in its own app.", most >= (1024 * 1024) ? most / (1024 * 1024) : 1);
+    cd_file_failed(a->page, full, why);
     return;
   }
   FILE *f = fopen(full, "rb");
   if (!f) {
-    cd_file_failed(a->page, path, strerror(errno));
+    cd_file_failed(a->page, full, strerror(errno));
     return;
   }
-  int most = cd_file_most();
-  if (most <= 0 || most > OA_SAVE_CAP) most = OA_SAVE_CAP;
-  int n = (int)fread(a->save_buf, 1, (size_t)most, f);
+  size_t need = st.st_size > 0 ? (size_t)st.st_size : 1;
+  if (need > (size_t)most) need = (size_t)most;
+  char *buf = (char *)malloc(need);
+  if (!buf) {
+    fclose(f);
+    cd_file_failed(a->page, full, "Out of memory reading file.");
+    return;
+  }
+  int n = (int)fread(buf, 1, need, f);
   fclose(f);
-  cd_file_open(a->page, path, a->save_buf, n, (long long)st.st_size);
+  int ok = cd_file_open(a->page, full, buf, n, (long long)st.st_size);
+  free(buf);
+  if (ok) {
+    snprintf(a->file_watch_path, sizeof a->file_watch_path, "%s", full);
+    oa_file_stat(full, &a->file_watch_size, &a->file_watch_mtime);
+    a->file_watch_last_ms = oa_core_now_ms();
+    if (start_line > 0) cd_file_jump(a->page, start_line, end_line);
+  }
+}
+
+static void handle_file_reload(DesktopApp *a) {
+  char path[OA_PATH] = {0};
+  if (a->file_watch_path[0]) snprintf(path, sizeof path, "%s", a->file_watch_path);
+  else if (cd_file_path(a->page, path, (int)sizeof path) <= 0) return;
+  char full[OA_PATH] = {0};
+  resolve_file_path(a, path, full, sizeof full);
+  int64_t sz = 0, mt = 0;
+  if (!oa_file_stat(full, &sz, &mt)) return;
+  int most = cd_file_most();
+  if (most <= 0) most = 4 * 1024 * 1024;
+  if (sz > (int64_t)most) return;
+  FILE *f = fopen(full, "rb");
+  if (!f) return;
+  size_t need = sz > 0 ? (size_t)sz : 1;
+  char *buf = (char *)malloc(need);
+  if (!buf) { fclose(f); return; }
+  int n = (int)fread(buf, 1, need, f);
+  fclose(f);
+  if (cd_file_reload(a->page, buf, n, (long long)sz)) {
+    a->file_watch_size = sz;
+    a->file_watch_mtime = mt;
+  }
+  free(buf);
+}
+
+static void pump_file_watch(DesktopApp *a) {
+  if (!a->file_watch_path[0] || !a->page || cd_file_mode(a->page) == 0) return;
+  int64_t now = oa_core_now_ms();
+  if (now - a->file_watch_last_ms < 250) return;
+  a->file_watch_last_ms = now;
+  int64_t sz = 0, mt = 0;
+  if (!oa_file_stat(a->file_watch_path, &sz, &mt)) return;
+  if (sz == a->file_watch_size && mt == a->file_watch_mtime) return;
+  a->file_watch_size = sz;
+  a->file_watch_mtime = mt;
+  if (cd_file_dirty(a->page)) cd_file_disk_changed(a->page);
+  else handle_file_reload(a);
 }
 
 static void handle_file_save(DesktopApp *a) {
@@ -1103,13 +1267,13 @@ static void handle_file_save(DesktopApp *a) {
   int n = cd_file_text(a->page, a->save_buf, OA_SAVE_CAP);
   if (n < 0) { cd_file_save_failed(a->page, "file too large"); return; }
   char full[OA_PATH];
-  if (oa_absolute(name)) snprintf(full, sizeof(full), "%s", name);
-  else snprintf(full, sizeof(full), "%s/%s", effective_cwd(a), name);
+  resolve_file_path(a, name, full, sizeof full);
   FILE *f = fopen(full, "wb");
   if (!f) { cd_file_save_failed(a->page, strerror(errno)); return; }
   size_t w = fwrite(a->save_buf, 1, (size_t)n, f);
   fclose(f);
   if ((int)w != n) { cd_file_save_failed(a->page, "short write"); return; }
+  oa_file_stat(full, &a->file_watch_size, &a->file_watch_mtime);
   cd_file_saved(a->page, a->save_buf, n);
 }
 
@@ -1777,11 +1941,12 @@ static void handle_action(DesktopApp *a, int act) {
       break;
     }
     case 25: handle_followup(a); break;
-    case 26: { // the command palette: rename, delete and stop all need the Mac app's dialogs
+    case 26: { // the command palette: rename, delete, stop all, and workspace file list
       int cmd = cd_palette_command(a->page);
       if (cmd == 16) ask_rename(a);
       else if (cmd == 17) ask_delete(a);
       else if (cmd == 18) handle_action(a, 3);
+      else if (cmd == 19) list_files(a);
       break;
     }
     case 27: { // attach file via the file chooser
@@ -1791,16 +1956,13 @@ static void handle_action(DesktopApp *a, int act) {
     case 28: list_files(a); break;
     case 29: cd_zoom_set(a->page, 2); break;
     case 30: break;   // a sub-agent stopped: pump_subagents reads cd_stop_agent each pass
-    case 31: { // an http(s) link opens in the browser; file:// opens in the File Viewer (#13992)
+    case 31: { // an http(s) link opens in the browser; file:// opens in the File Viewer with line anchors (#13992)
       char url[2048] = {0};
       if (cd_open_url(a->page, url, (int)sizeof(url)) > 0) {
         if (strncmp(url, "https://", 8) == 0 || strncmp(url, "http://", 7) == 0) {
           oa_open_external(url);
         } else {
-          char *hash = strchr(url, '#');
-          if (hash) *hash = '\0';
-          const char *path = strncmp(url, "file://", 7) == 0 ? url + 7 : url;
-          if (path[0]) handle_file_open(a, path);
+          handle_file_open(a, url);
         }
       }
       break;
@@ -1886,15 +2048,101 @@ static void handle_action(DesktopApp *a, int act) {
       if (cd_file_path(a->page, name, (int)sizeof(name)) > 0) { full_path(a, name, full, sizeof full); oa_open_external(full); }
       break;
     }
-    case 42: cd_file_close(a->page); break;
-    case 164: {
-      char path[OA_PATH] = {0};
-      if (cd_file_path(a->page, path, (int)sizeof(path)) > 0) handle_file_open(a, path);
+    case 42: a->file_watch_path[0] = '\0'; cd_file_close(a->page); break;
+    case 86: { // File Explorer tree list & detected editors (#13881, #13992)
+      int n = oa_core_files(cs(effective_cwd(a)), vu(a->save_buf, OA_SAVE_CAP));
+      a->save_buf[n > 0 ? n : 0] = '\0';
+      cd_filetree_set(a->page, a->save_buf);
+      cd_editors_set(a->page, oa_detect_editors(), "", "");
       break;
     }
+    case 87: { // Open file selected in File Explorer tree, tab bar, or breadcrumb menu
+      char path[OA_PATH] = {0};
+      if (cd_filetree_req_path(a->page, path, (int)sizeof path) > 0) handle_file_open(a, path);
+      break;
+    }
+    case 88: { // Launch picked editor from Open-in-Editor / Overflow menu
+      int ed = cd_editor_pick_id(a->page);
+      char path[OA_PATH] = {0}, full[OA_PATH] = {0};
+      if (cd_file_path(a->page, path, (int)sizeof path) > 0) full_path(a, path, full, sizeof full);
+      else snprintf(full, sizeof full, "%s", effective_cwd(a));
+      int ln = cd_file_line(a->page);
+      if (ed == 5) {
+        oa_reveal_file(full);
+      } else if (ed >= 0) {
+        char cmd[OA_PATH + 256] = {0};
+        if (cd_editor_cmd(a->page, ed, full, ln > 0 ? ln : 1, cmd, (int)sizeof cmd) > 0) oa_spawn_shell_cmd(cmd);
+      }
+      break;
+    }
+    case 89: { // Close a File Viewer tab
+      int idx = cd_filetree_close_tab(a->page);
+      if (idx < 0) break;
+      char tp[OA_PATH] = {0}, cur[OA_PATH] = {0};
+      cd_filetree_tab_path(a->page, idx, tp, (int)sizeof tp);
+      cd_file_path(a->page, cur, (int)sizeof cur);
+      int is_active = (tp[0] && cur[0] && strcmp(tp, cur) == 0);
+      int next_idx = cd_filetree_tab_drop(a->page, idx);
+      if (is_active) {
+        if (next_idx >= 0) {
+          char np[OA_PATH] = {0};
+          if (cd_filetree_tab_path(a->page, next_idx, np, (int)sizeof np) > 0) { handle_file_open(a, np); break; }
+        }
+        a->file_watch_path[0] = '\0';
+        cd_file_close(a->page);
+      }
+      break;
+    }
+    case 164: handle_file_reload(a); break;
     case 165: {
       char path[OA_PATH] = {0};
-      if (cd_file_path(a->page, path, (int)sizeof(path)) > 0) oa_clipboard_write(path);
+      int n = cd_file_path(a->page, path, (int)sizeof(path));
+      if (n > 0) cd_copy(a->page, path, n);
+      break;
+    }
+    case 166: { // Breadcrumb sibling directory listing (#13992)
+      char dir[OA_PATH] = {0}, list[8192] = {0};
+      if (cd_file_crumb_dir(a->page, dir, (int)sizeof dir) > 0) {
+        oa_list_dir_entries(dir, list, sizeof list);
+        cd_file_dir_set(a->page, list);
+      }
+      break;
+    }
+    case 167: { // Copy workspace-relative path (#13992)
+      char path[OA_PATH] = {0};
+      if (cd_file_path(a->page, path, (int)sizeof path) > 0) {
+        const char *cwd = effective_cwd(a);
+        size_t cl = strlen(cwd);
+        const char *out_s = path;
+        if (cl > 0 && strncmp(path, cwd, cl) == 0 && path[cl] == '/') out_s = path + cl + 1;
+        cd_copy(a->page, out_s, (int)strlen(out_s));
+      }
+      break;
+    }
+    case 168: { // Copy full file contents (#13992)
+      if (cd_file_mode(a->page) == 1) {
+        int n = cd_file_text(a->page, a->save_buf, OA_SAVE_CAP);
+        if (n >= 0) cd_copy(a->page, a->save_buf, n);
+      } else {
+        char path[OA_PATH] = {0}, full[OA_PATH] = {0};
+        if (cd_file_path(a->page, path, (int)sizeof path) > 0) {
+          resolve_file_path(a, path, full, sizeof full);
+          FILE *f = fopen(full, "rb");
+          if (f) {
+            int n = (int)fread(a->save_buf, 1, (size_t)(OA_SAVE_CAP - 1), f);
+            fclose(f);
+            if (n > 0) cd_copy(a->page, a->save_buf, n);
+          }
+        }
+      }
+      break;
+    }
+    case 169: { // Reveal file in system file manager (#13992)
+      char path[OA_PATH] = {0}, full[OA_PATH] = {0};
+      if (cd_file_path(a->page, path, (int)sizeof path) > 0) {
+        resolve_file_path(a, path, full, sizeof full);
+        oa_reveal_file(full);
+      }
       break;
     }
     case 47: ask_local_models(a); break;
@@ -2031,6 +2279,7 @@ static void pump_host(DesktopApp *a) {
   }
   pump_subagents(a);
   pump_terms(a);
+  pump_file_watch(a);
   pump_local(a);
   pump_agy_connect(a);
   if (cd_save_due(a->page)) save_current_chat(a);
@@ -2702,6 +2951,7 @@ static int oa_main(int argc, char **argv) {
   int smoke = 0, flow = 0, input = 0;
   const char *shot = NULL;
   const char *update_file = NULL;
+  const char *open_file_arg = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--smoke") == 0) smoke = 1;
     else if (strcmp(argv[i], "--flow-test") == 0) flow = 1;
@@ -2711,6 +2961,7 @@ static int oa_main(int argc, char **argv) {
     else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) { snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", argv[++i]); app.custom_worker = 1; }
     else if (strcmp(argv[i], "--daemon") == 0 && i + 1 < argc) snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s", argv[++i]);
     else if (strcmp(argv[i], "--cwd") == 0 && i + 1 < argc) snprintf(app.folder, sizeof(app.folder), "%s", argv[++i]);
+    else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) open_file_arg = argv[++i];
     else if (strcmp(argv[i], "--check-update") == 0 && i + 1 < argc) update_file = argv[++i];
   }
 
@@ -2797,6 +3048,7 @@ static int oa_main(int argc, char **argv) {
   cd_worktree_set(app.page, oa_core_worktrees_get(cs("newChatWorktree")) ? 1 : 0);
   refresh_settings_info(&app);
   refresh_chats(&app);
+  if (open_file_arg && open_file_arg[0]) handle_file_open(&app, open_file_arg);
   if (!store_ok) cd_toast(app.page, "Your chat list could not be read. New chats are not saved until it can be.", 1);
 
   int status = 0;

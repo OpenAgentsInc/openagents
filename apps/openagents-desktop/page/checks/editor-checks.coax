@@ -146,9 +146,11 @@ cp_test_draft :: (s: [] CoderPage) -> string { return eb_text(s[0].draft[..]); }
   #assert s[0].set_open && cp_set_query(s) == "model";
   #assert coder_page_key(s, KEY_ESCAPE, 0) && s[0].set_open && cp_set_query(s) == "";
   #assert coder_page_key(s, KEY_ESCAPE, 0) && !s[0].set_open && cp_ed_which(s) == CP_ED_COMPOSER;
-  // Opening an editable file immediately routes keyboard focus to CP_ED_FILE.
+  // Opening a file defaults to Viewer mode (keeping composer focus); entering Edit mode routes keyboard focus to CP_ED_FILE.
   b: [64] u8; src := "hello\n";
   #assert coder_page_file_open(s, "~/a.txt", b[0..<cp_out(b[..], src)], src.count);
+  #assert cp_ed_which(s) == CP_ED_COMPOSER;
+  #assert coder_page_file_set_edit(s, true);
   #assert cp_ed_which(s) == CP_ED_FILE;
   coder_page_ime_replace(s, -1, -1, "X");
   #assert coder_page_file_dirty(s);

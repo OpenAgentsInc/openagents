@@ -149,6 +149,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
     var folder = FileManager.default.homeDirectoryForCurrentUser
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
+    var fileWatchSource: DispatchSourceFileSystemObject?
+    var fileWatchWork: DispatchWorkItem?
+    var fileWatchMtime: Date?
+    var fileWatchSize: Int64 = -1
     #if OA_FULL
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
     var liveSceneBox: NSView?            // the live 3D card in the transcript: the conversation's clip (Window+Files.swift, #13812)
@@ -388,9 +392,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --file PATH opens a file directly in the right-pane File Viewer at launch (#13992).
         if let at = CommandLine.arguments.firstIndex(of: "--file"), at + 1 < CommandLine.arguments.count {
-            let raw = (CommandLine.arguments[at + 1] as NSString).expandingTildeInPath
-            let url = raw.hasPrefix("/") ? URL(fileURLWithPath: raw) : folder.appendingPathComponent(raw)
-            openFileInPane(url)
+            openFileLink(CommandLine.arguments[at + 1])
         }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
@@ -629,7 +631,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             for r in runs.values where r.page != page { cd_worktree_set(r.page, on ? 1 : 0) }
             if on { prewarmWorktree(for: folder) }
             wake()
-        case 40...43, 164, 165: fileAsked(what)
+        case 40...43, 164...169: fileAsked(what)
         default: break
         }
     }
@@ -792,6 +794,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         ForemanControlDescriptor.remove()
         #endif
         AntigravityProfileManager.retireTempDirs()
+        stopFileWatcher()
         if chat != nil && (cd_save_due(page) != 0 || cd_running(page) != 0) { keep(closing: true) }
         // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
         for back in runs.values { keep(back, closing: true); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }

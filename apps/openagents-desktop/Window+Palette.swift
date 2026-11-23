@@ -111,6 +111,41 @@ extension CoderWindow {
                 self.wake()
                 return nil
             }
+            if !self.overlay.dialogOpen {
+                let ch = event.charactersIgnoringModifiers?.lowercased()
+                // Cmd+W closes the active File Viewer tab without closing the window (#13992).
+                if flags == .command && ch == "w" && cd_file_shown(self.page) != 0 && cd_file_mode(self.page) != 0 {
+                    self.closeActiveFileTab()
+                    return nil
+                }
+                // Cmd+Shift+[ / Cmd+Shift+] steps between open File Viewer tabs (#13992).
+                if flags == [.command, .shift] && cd_file_shown(self.page) != 0 && (event.keyCode == 33 || event.keyCode == 30) {
+                    let dir: Int32 = event.keyCode == 33 ? -1 : 1
+                    if cd_file_tab_step(self.page, dir) != 0 { self.act(cd_action(self.page)) }
+                    self.wake()
+                    return nil
+                }
+                // Cmd+Shift+Enter toggles full-width expanded File Viewer mode (#13992).
+                if flags == [.command, .shift] && cd_file_shown(self.page) != 0 && (event.keyCode == 36 || event.keyCode == 76) {
+                    _ = cd_file_toggle_expand(self.page)
+                    self.wake()
+                    return nil
+                }
+                // Cmd+\ toggles hide/show of the right-hand File Viewer pane (#13992).
+                if flags == .command && event.keyCode == 42 {
+                    _ = cd_file_toggle_hide(self.page)
+                    let a = cd_action(self.page)
+                    if a != 0 { self.act(a) }
+                    self.wake()
+                    return nil
+                }
+                // Ctrl+G opens Go to Line inside the File Viewer (#13992).
+                if flags == .control && ch == "g" && cd_file_shown(self.page) != 0 && cd_file_mode(self.page) != 0 {
+                    cd_file_goto_open(self.page)
+                    self.focusFind()
+                    return nil
+                }
+            }
             guard event.keyCode == 48 else { return event }
             guard flags.contains(.control), !flags.contains(.command), !flags.contains(.option) else { return event }
             if self.overlay.dialogOpen && !self.overlay.paletteUp { return event }

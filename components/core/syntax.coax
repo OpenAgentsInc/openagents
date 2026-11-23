@@ -24,6 +24,13 @@ SYN_LANG_JSON :: 7;     // JSON / JSONC (.json, .jsonc)
 SYN_LANG_MD :: 8;       // Markdown (.md, .markdown)
 SYN_LANG_SH :: 9;       // Shell (.sh, .bash, .zsh, Makefile, Dockerfile)
 SYN_LANG_LEAN :: 10;    // Lean 4 (.lean)
+SYN_LANG_CONFIG :: 11;  // TOML / YAML (.toml, .yaml, .yml)
+
+// Multi-line block states for syn_tokenize_line_state (#13992).
+SYN_BLK_NONE :: 0;
+SYN_BLK_COMMENT :: 1;   // /* ... */ or /- ... -/
+SYN_BLK_PY_DQUOTE :: 2; // Python """ ... """
+SYN_BLK_PY_SQUOTE :: 3; // Python ''' ... '''
 
 syn_ident_start :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 syn_ident :: (c: u8) -> bool { return syn_ident_start(c) || (c >= '0' && c <= '9'); }
@@ -65,9 +72,11 @@ syn_lang_for_path :: (path: string) -> int {
   if syn_ends_ci(path, ".json") || syn_ends_ci(path, ".jsonc") { return SYN_LANG_JSON; }
   if syn_ends_ci(path, ".md") || syn_ends_ci(path, ".markdown") { return SYN_LANG_MD; }
   if syn_ends_ci(path, ".sh") || syn_ends_ci(path, ".bash") || syn_ends_ci(path, ".zsh") ||
-     syn_ends_ci(path, "Makefile") || syn_ends_ci(path, "Dockerfile") ||
-     syn_ends_ci(path, ".toml") || syn_ends_ci(path, ".yaml") || syn_ends_ci(path, ".yml") {
+     syn_ends_ci(path, "Makefile") || syn_ends_ci(path, "Dockerfile") {
     return SYN_LANG_SH;
+  }
+  if syn_ends_ci(path, ".toml") || syn_ends_ci(path, ".yaml") || syn_ends_ci(path, ".yml") {
+    return SYN_LANG_CONFIG;
   }
   if syn_ends_ci(path, ".lean") { return SYN_LANG_LEAN; }
   return SYN_LANG_PLAIN;
@@ -306,12 +315,81 @@ syn_md_line :: (line: string, out: [] MdRun) -> int {
   return n;
 }
 
-// Multi-language line tokenizer supporting multi-line block comments (in_block[0]).
-// Returns the number of SYN_* runs written to `out`.
-syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun) -> int {
+// Tokenizes one line of TOML or YAML config source (#13992).
+syn_config_line :: (line: string, out: [] MdRun) -> int {
+  n := 0; i := 0;
+  while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+  if i >= line.count { return 0; }
+  if line[i] == '#' { return syn_emit(out, n, i, line.count, SYN_COMMENT); }
+  // TOML [section] or [[array_table]]
+  if line[i] == '[' {
+    j := i + 1;
+    while j < line.count && line[j] != ']' { j += 1; }
+    if j < line.count { j += 1; if j < line.count && line[j] == ']' { j += 1; } }
+    n = syn_emit(out, n, i, j, SYN_TAG);
+    i = j;
+  } else {
+    // Optional YAML list dash "- "
+    if line[i] == '-' && i + 1 < line.count && line[i + 1] == ' ' {
+      n = syn_emit(out, n, i, i + 1, SYN_PUNCTUATION);
+      i += 1;
+      while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+    }
+    // Leading key before '=' or ':'
+    ks := i; ke := i;
+    while ke < line.count && line[ke] != '=' && line[ke] != ':' && line[ke] != '#' && line[ke] != '"' && line[ke] != '\'' { ke += 1; }
+    if ke > ks && ke < line.count && (line[ke] == '=' || (line[ke] == ':' && (ke + 1 == line.count || line[ke + 1] == ' ' || line[ke + 1] == '\t'))) {
+      trim := ke;
+      while trim > ks && (line[trim - 1] == ' ' || line[trim - 1] == '\t') { trim -= 1; }
+      if trim > ks { n = syn_emit(out, n, ks, trim, SYN_PROPERTY); }
+      n = syn_emit(out, n, ke, ke + 1, SYN_PUNCTUATION);
+      i = ke + 1;
+    }
+  }
+  while i < line.count && n < out.count {
+    c := line[i];
+    if c == ' ' || c == '\t' { i += 1; continue; }
+    if c == '#' { return syn_emit(out, n, i, line.count, SYN_COMMENT); }
+    if c == '"' || c == '\'' {
+      q := c; j := i + 1;
+      while j < line.count && line[j] != q { if q == '"' && line[j] == '\\' { j += 1; } j += 1; }
+      if j < line.count { j += 1; }
+      if j > line.count { j = line.count; }
+      n = syn_emit(out, n, i, j, SYN_STRING);
+      i = j; continue;
+    }
+    if (c >= '0' && c <= '9') || (c == '-' && i + 1 < line.count && line[i + 1] >= '0' && line[i + 1] <= '9') {
+      j := i + 1;
+      while j < line.count && (syn_ident(line[j]) || line[j] == '.' || line[j] == '-' || line[j] == ':') { j += 1; }
+      n = syn_emit(out, n, i, j, SYN_NUMBER);
+      i = j; continue;
+    }
+    if syn_ident_start(c) {
+      j := i + 1;
+      while j < line.count && (syn_ident(line[j]) || line[j] == '-') { j += 1; }
+      w := cast(string) line[i..<j];
+      role := ifx syn_is(w, "true") || syn_is(w, "false") || syn_is(w, "null") || syn_is(w, "yes") || syn_is(w, "no") then SYN_KEYWORD else SYN_STRING;
+      n = syn_emit(out, n, i, j, role);
+      i = j; continue;
+    }
+    n = syn_emit(out, n, i, i + 1, SYN_PUNCTUATION);
+    i += 1;
+  }
+  return n;
+}
+
+// Multi-language line tokenizer carrying richer multi-line state (block comments + Python triple-quoted strings).
+syn_tokenize_line_state :: (lang: int, line: string, state: [] int, out: [] MdRun) -> int {
   if lang == SYN_LANG_PLAIN || line.count == 0 { return 0; }
-  if lang == SYN_LANG_JSON { return syn_json_line(line, in_block, out); }
+  if lang == SYN_LANG_JSON {
+    b: [1] bool;
+    if state.count > 0 { b[0] = state[0] == SYN_BLK_COMMENT; }
+    nr := syn_json_line(line, b[..], out);
+    if state.count > 0 { state[0] = ifx b[0] then SYN_BLK_COMMENT else SYN_BLK_NONE; }
+    return nr;
+  }
   if lang == SYN_LANG_MD { return syn_md_line(line, out); }
+  if lang == SYN_LANG_CONFIG { return syn_config_line(line, out); }
 
   n := 0; i := 0;
   has_c_block := (lang == SYN_LANG_C || lang == SYN_LANG_COAX || lang == SYN_LANG_RUST || lang == SYN_LANG_SWIFT || lang == SYN_LANG_JS);
@@ -319,18 +397,31 @@ syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun)
   has_slash_comment := has_c_block;
   has_hash_comment := (lang == SYN_LANG_PYTHON || lang == SYN_LANG_SH);
 
-  // Continue an open multi-line block comment from a previous line.
-  if in_block.count > 0 && in_block[0] {
+  // Continue an open multi-line block comment or Python triple-quoted string from a previous line.
+  if state.count > 0 && state[0] != SYN_BLK_NONE {
+    st := state[0];
     j := 0;
-    if has_lean_block {
-      while j + 1 < line.count && !(line[j] == '-' && line[j + 1] == '/') { j += 1; }
-      if j + 1 < line.count { j += 2; in_block[0] = false; } else { j = line.count; }
+    if st == SYN_BLK_PY_DQUOTE || st == SYN_BLK_PY_SQUOTE {
+      q: u8 = ifx st == SYN_BLK_PY_DQUOTE then '"' else '\'';
+      while j + 2 < line.count {
+        if line[j] == '\\' { j += 2; continue; }
+        if line[j] == q && line[j + 1] == q && line[j + 2] == q { j += 3; state[0] = SYN_BLK_NONE; break; }
+        j += 1;
+      }
+      if state[0] != SYN_BLK_NONE { j = line.count; }
+      n = syn_emit(out, n, 0, j, SYN_STRING);
+      i = j;
     } else {
-      while j + 1 < line.count && !(line[j] == '*' && line[j + 1] == '/') { j += 1; }
-      if j + 1 < line.count { j += 2; in_block[0] = false; } else { j = line.count; }
+      if has_lean_block {
+        while j + 1 < line.count && !(line[j] == '-' && line[j + 1] == '/') { j += 1; }
+        if j + 1 < line.count { j += 2; state[0] = SYN_BLK_NONE; } else { j = line.count; }
+      } else {
+        while j + 1 < line.count && !(line[j] == '*' && line[j + 1] == '/') { j += 1; }
+        if j + 1 < line.count { j += 2; state[0] = SYN_BLK_NONE; } else { j = line.count; }
+      }
+      n = syn_emit(out, n, 0, j, SYN_COMMENT);
+      i = j;
     }
-    n = syn_emit(out, n, 0, j, SYN_COMMENT);
-    i = j;
   }
 
   prev_def := false;
@@ -423,15 +514,32 @@ syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun)
     if has_c_block && c == '/' && i + 1 < line.count && line[i + 1] == '*' {
       j := i + 2;
       while j + 1 < line.count && !(line[j] == '*' && line[j + 1] == '/') { j += 1; }
-      if j + 1 < line.count { j += 2; } else { j = line.count; if in_block.count > 0 { in_block[0] = true; } }
+      if j + 1 < line.count { j += 2; } else { j = line.count; if state.count > 0 { state[0] = SYN_BLK_COMMENT; } }
       n = syn_emit(out, n, i, j, SYN_COMMENT);
       i = j; continue;
     }
     if has_lean_block && c == '/' && i + 1 < line.count && line[i + 1] == '-' {
       j := i + 2;
       while j + 1 < line.count && !(line[j] == '-' && line[j + 1] == '/') { j += 1; }
-      if j + 1 < line.count { j += 2; } else { j = line.count; if in_block.count > 0 { in_block[0] = true; } }
+      if j + 1 < line.count { j += 2; } else { j = line.count; if state.count > 0 { state[0] = SYN_BLK_COMMENT; } }
       n = syn_emit(out, n, i, j, SYN_COMMENT);
+      i = j; continue;
+    }
+
+    // Python triple-quoted multi-line strings ("""...""" and '''...''')
+    if lang == SYN_LANG_PYTHON && (c == '"' || c == '\'') && i + 2 < line.count && line[i + 1] == c && line[i + 2] == c {
+      q := c; j := i + 3; closed := false;
+      while j + 2 < line.count {
+        if line[j] == '\\' { j += 2; continue; }
+        if line[j] == q && line[j + 1] == q && line[j + 2] == q { j += 3; closed = true; break; }
+        j += 1;
+      }
+      if !closed {
+        j = line.count;
+        if state.count > 0 { state[0] = ifx q == '"' then SYN_BLK_PY_DQUOTE else SYN_BLK_PY_SQUOTE; }
+      }
+      n = syn_emit(out, n, i, j, SYN_STRING);
+      after_dot = false; prev_def = false;
       i = j; continue;
     }
 
@@ -597,6 +705,15 @@ syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun)
   return n;
 }
 
+// Backward-compatible wrapper carrying boolean block-comment state.
+syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun) -> int {
+  st: [1] int;
+  if in_block.count > 0 && in_block[0] { st[0] = SYN_BLK_COMMENT; }
+  nr := syn_tokenize_line_state(lang, line, st[..], out);
+  if in_block.count > 0 { in_block[0] = st[0] != SYN_BLK_NONE; }
+  return nr;
+}
+
 // ---------------------------------------------------------------- checks
 
 #test "Rust lines highlight with Zeron Dark's roles" {
@@ -679,4 +796,15 @@ syn_tokenize_line :: (lang: int, line: string, in_block: [] bool, out: [] MdRun)
   #assert blk[0] && runs[0].style == SYN_COMMENT;
   n = syn_tokenize_line(SYN_LANG_LEAN, "done -/ def ok := true", blk[..], runs[..]);
   #assert !blk[0] && runs[0].style == SYN_COMMENT && runs[1].style == SYN_KEYWORD;
+  // Python multi-line triple-quoted docstrings & TOML/YAML config highlighting (#13992)
+  st: [1] int;
+  n = syn_tokenize_line_state(SYN_LANG_PYTHON, "\"\"\"multi-line docstring", st[..], runs[..]);
+  #assert n == 1 && runs[0].style == SYN_STRING && st[0] == SYN_BLK_PY_DQUOTE;
+  n = syn_tokenize_line_state(SYN_LANG_PYTHON, "continued\"\"\" + 1", st[..], runs[..]);
+  #assert st[0] == SYN_BLK_NONE && runs[0].style == SYN_STRING && runs[2].style == SYN_NUMBER;
+  #assert syn_lang_for_path("Cargo.toml") == SYN_LANG_CONFIG && syn_lang_for_path("ci.yaml") == SYN_LANG_CONFIG;
+  n = syn_tokenize_line_state(SYN_LANG_CONFIG, "[package]", st[..], runs[..]);
+  #assert n == 1 && runs[0].style == SYN_TAG;
+  n = syn_tokenize_line_state(SYN_LANG_CONFIG, "enabled: true # comment", st[..], runs[..]);
+  #assert runs[0].style == SYN_PROPERTY && runs[2].style == SYN_KEYWORD && runs[3].style == SYN_COMMENT;
 }

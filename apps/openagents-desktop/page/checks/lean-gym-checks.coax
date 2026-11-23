@@ -143,7 +143,7 @@
   coder_page_file_lean_goal(s, 2, true, false, "case zero · ⊢ a + 0 = 0 + a");
   _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
   #assert s[0].refused == 0 && s[0].fp[0].lean_goal_line == 2 && s[0].fp[0].lean_goal_ok;
-  #assert cp_fp_press(s, CP_FP_LEAN_GOAL) && coder_page_action(s) == CP_ASK_FILE_LEAN_GOAL && s[0].fp[0].lean_goal_busy;
+  #assert cp_fp_press(s, CP_FP_LEAN_GOAL, "") && coder_page_action(s) == CP_ASK_FILE_LEAN_GOAL && s[0].fp[0].lean_goal_busy;
 }
 
 #test "lean trust ledger: Tier C receipt strictly requires verified==true and 64-hex SHA-256" {

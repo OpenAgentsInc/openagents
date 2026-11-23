@@ -352,7 +352,13 @@ static LRESULT CALLBACK ui_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOUSEWHEEL: {
       // CSS pixels, 100 a notch, down positive (the Linux host's wheel)
       float dy = -(float)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA * 100.0f;
+      if ((GetKeyState(VK_SHIFT) < 0) && h->app.scroll_x) { h->app.scroll_x(h->app.user, -dy, 1); return 0; }
       if (h->app.wheel) h->app.wheel(h->app.user, dy);
+      return 0;
+    }
+    case WM_MOUSEHWHEEL: {
+      float dx = -(float)GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA * 100.0f;
+      if (h->app.scroll_x) h->app.scroll_x(h->app.user, dx, 1);
       return 0;
     }
     case WM_KEYDOWN: case WM_SYSKEYDOWN:

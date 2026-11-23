@@ -82,7 +82,14 @@ static void ui_host_idle(UiHost *h) {
 
 static void to_pointer(void *user, float x, float y, int phase) { ui_seat_pointer(user, x, y, phase); }
 static void to_moved(void *user, float x, float y) { ui_seat_moved(user, x, y); }
-static void to_wheel(void *user, float dy) { UiHost *h = user; if (h->app.wheel) h->app.wheel(h->app.user, dy); }
+static void to_wheel(void *user, float dy) {
+  UiHost *h = user;
+  if ((ui_mods(h) & 1) && h->app.scroll_x) {
+    h->app.scroll_x(h->app.user, -dy / (h->dpr >= 1.0f ? h->dpr : 1.0f), 1);
+    return;
+  }
+  if (h->app.wheel) h->app.wheel(h->app.user, dy);
+}
 static uint32_t to_key(void *user, int key, int mods, int down) { UiHost *h = user; return h->app.key ? (uint32_t)h->app.key(h->app.user, key, mods, down) : 0; }
 static void to_text(void *user, const char *bytes, size_t n) { UiHost *h = user; if (h->app.text) h->app.text(h->app.user, bytes, n); }
 static int to_wants(void *user) { UiHost *h = user; return h->app.wants_text ? h->app.wants_text(h->app.user) : 0; }

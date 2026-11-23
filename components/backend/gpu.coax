@@ -70,6 +70,15 @@ gpu_monochrome_range :: (out:[]f32,from:int,to:int) {
   for k:0..<2 {p:=at+12+k*4;v:=out[p];if out[p+1]>v {v=out[p+1];}if out[p+2]>v {v=out[p+2];}out[p]=v;out[p+1]=v;out[p+2]=v;}
  }
 }
+// Desaturates vertices whose quad center lies outside the device-pixel rectangle [rx0,rx1]x[ry0,ry1]
+// so composed frames (e.g. inline images or frosted menus) keep File Viewer syntax colors intact (#13992).
+gpu_monochrome_outside :: (out:[]f32,vertices:int,rx0:f32,ry0:f32,rx1:f32,ry1:f32) {
+ for i:0..<vertices {at:=i*GP_VERTEX_FLOATS;if at+GP_VERTEX_FLOATS>out.count {return;}
+  cx:=out[at+4]+out[at+6]*0.5f32; cy:=out[at+5]+out[at+7]*0.5f32;
+  if cx>=rx0 && cx<=rx1 && cy>=ry0 && cy<=ry1 { continue; }
+  for k:0..<2 {p:=at+12+k*4;v:=out[p];if out[p+1]>v {v=out[p+1];}if out[p+2]>v {v=out[p+2];}out[p]=v;out[p+1]=v;out[p+2]=v;}
+ }
+}
 
 // gpui_macos glyph_dilation_for_color: CoreGraphics thickens light text more.
 dilation :: (c: Rgba) -> int {

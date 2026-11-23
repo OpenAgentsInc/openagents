@@ -4,6 +4,8 @@
 // chooser, and the desktop core through host-core.coax).
 #define _GNU_SOURCE
 #include <arpa/inet.h>
+#include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -67,6 +69,77 @@ static void oa_open_external(const char *target) {
     execlp("xdg-open", "xdg-open", target, (char *)NULL);
     _exit(127);
   }
+}
+static void oa_reveal_file(const char *path) {
+  if (!path || !path[0]) return;
+  char parent[PATH_MAX];
+  snprintf(parent, sizeof parent, "%s", path);
+  char *slash = strrchr(parent, '/');
+  if (slash && slash > parent) *slash = '\0';
+  else if (slash == parent) parent[1] = '\0';
+  oa_open_external(parent);
+}
+static void oa_spawn_shell_cmd(const char *cmd) {
+  if (!cmd || !cmd[0]) return;
+  pid_t pid = fork();
+  if (pid == 0) {
+    execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+    _exit(127);
+  }
+}
+static int oa_has_cmd_in_path(const char *name) {
+  const char *env = getenv("PATH");
+  if (!env || !name || !name[0]) return 0;
+  char buf[4096];
+  snprintf(buf, sizeof buf, "%s", env);
+  char *save = NULL;
+  for (char *tok = strtok_r(buf, ":", &save); tok; tok = strtok_r(NULL, ":", &save)) {
+    char cand[PATH_MAX];
+    snprintf(cand, sizeof cand, "%s/%s", tok, name);
+    if (access(cand, X_OK) == 0) return 1;
+  }
+  return 0;
+}
+static int oa_detect_editors(void) {
+  int mask = (1 << 5); // file manager
+  if (oa_has_cmd_in_path("cursor")) mask |= (1 << 0);
+  if (oa_has_cmd_in_path("code")) mask |= (1 << 1);
+  if (oa_has_cmd_in_path("zed")) mask |= (1 << 2);
+  if (oa_has_cmd_in_path("ghostty")) mask |= (1 << 4);
+  return mask;
+}
+typedef struct { int is_dir; char name[256]; } OaDirEnt;
+static int oa_dirent_cmp(const void *pa, const void *pb) {
+  const OaDirEnt *a = (const OaDirEnt *)pa, *b = (const OaDirEnt *)pb;
+  if (a->is_dir != b->is_dir) return b->is_dir - a->is_dir;
+  return strcasecmp(a->name, b->name);
+}
+static int oa_list_dir_entries(const char *dir_path, char *out, size_t cap) {
+  if (!dir_path || !dir_path[0] || !out || cap < 2) return 0;
+  out[0] = '\0';
+  DIR *d = opendir(dir_path);
+  if (!d) return 0;
+  OaDirEnt list[64];
+  int n = 0;
+  struct dirent *e;
+  while ((e = readdir(d)) != NULL && n < 64) {
+    if (e->d_name[0] == '.') continue;
+    char full[PATH_MAX];
+    snprintf(full, sizeof full, "%s/%s", dir_path, e->d_name);
+    struct stat st;
+    int is_d = (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
+    list[n].is_dir = is_d;
+    snprintf(list[n].name, sizeof list[n].name, "%s", e->d_name);
+    n++;
+  }
+  closedir(d);
+  qsort(list, (size_t)n, sizeof list[0], oa_dirent_cmp);
+  size_t pos = 0;
+  for (int i = 0; i < n && pos + 4 < cap; i++) {
+    int w = snprintf(out + pos, cap - pos, "%c\t%s%s", list[i].is_dir ? 'D' : 'F', list[i].name, (i + 1 < n) ? "\n" : "");
+    if (w > 0 && pos + (size_t)w < cap) pos += (size_t)w;
+  }
+  return (int)pos;
 }
 static void oa_fail(const char *why) { fprintf(stderr, "openagents-desktop: %s\n", why); }
 static void oa_started(void) {}

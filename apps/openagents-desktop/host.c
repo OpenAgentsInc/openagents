@@ -310,6 +310,8 @@ static int cd_on_text_rect(void *user, float rect[4]) {
 #endif
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, 0, 1); cd_woke(c); return; } coder_page_wheel(cd_state(c), dy); cd_woke(c); }
 static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, precise != 0, 0); cd_woke(c); return; } coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
+static void cd_on_scroll_x(void *user, float dx, int precise) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_scroll_x(cd_state(c), dx, precise != 0); cd_woke(c); }
+static void cd_on_button(void *user, float x, float y, int phase, int button, int mods) { CoderHost *c = user; (void)mods; if (button == 1 && phase == 0 && !coder_page_overlay_open(cd_state(c))) { if (coder_page_file_middle_click(cd_state(c), x, y)) cd_woke(c); } }
 
 void *cd_open_ex(const char *resources, int offscreen, int width, int height) {
   CoderHost *c = calloc(1, sizeof *c);
@@ -332,7 +334,7 @@ void *cd_open_ex(const char *resources, int offscreen, int width, int height) {
   a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "OpenAgents", .width = width > 0 ? width : 1120, .height = height > 0 ? height : 760, .embedded = embedded, .max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
+               .frame = cd_on_frame, .pointer = cd_on_pointer, .button = cd_on_button, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll, .scroll_x = cd_on_scroll_x,
                .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .image = composition ? cd_image : NULL, .presented = cd_presented};
 #if !defined(__APPLE__) && !defined(_WIN32)
@@ -611,6 +613,38 @@ int cd_file_open(void *page, const char *path, const char *bytes, int len, long 
   cd_woke(c);
   return 1;
 }
+int cd_file_reload(void *page, const char *bytes, int len, long long size) {
+  CoderHost *c = page;
+  if (!c || len < 0 || len > cd_file_most()) return 0;
+  char *keep = cd_keep(bytes, len);
+  if (!keep) return 0;
+  int ok = coder_page_file_reload(cd_state(c), (coax_v_u8){(uint8_t *)keep, len}, size);
+  if (!ok) { free(keep); return 0; }
+  free(c->file); c->file = keep;
+  cd_woke(c);
+  return 1;
+}
+void cd_file_disk_changed(void *page) { CoderHost *c = page; if (c) { coder_page_file_disk_changed(cd_state(c)); cd_woke(c); } }
+void cd_file_jump(void *page, int start_line, int end_line) { CoderHost *c = page; if (c) { coder_page_file_jump(cd_state(c), start_line, end_line); cd_woke(c); } }
+int cd_file_set_edit(void *page, int on) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_set_edit(cd_state(c), on != 0) ? 1 : 0; cd_woke(c); return ok; }
+int cd_file_toggle_expand(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_toggle_expand(cd_state(c)) ? 1 : 0; cd_woke(c); return ok; }
+int cd_file_toggle_hide(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_toggle_hide(cd_state(c)) ? 1 : 0; cd_woke(c); return ok; }
+void cd_file_set_preview_next(void *page, int preview) { CoderHost *c = page; if (c) coder_page_file_set_preview_next(cd_state(c), preview != 0); }
+void cd_file_find_open(void *page) { CoderHost *c = page; if (c) { coder_page_file_find_open(cd_state(c)); cd_woke(c); } }
+void cd_file_goto_open(void *page) { CoderHost *c = page; if (c) { coder_page_file_goto_open(cd_state(c)); cd_woke(c); } }
+int cd_file_crumb_dir(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_file_crumb_dir(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_file_dir_set(void *page, const char *lines) { CoderHost *c = page; if (!c) return 0; int n = (int)coder_page_file_dir_set(cd_state(c), cd_string(lines)); cd_woke(c); return n; }
+int cd_file_tab_step(void *page, int dir) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_tab_step(cd_state(c), dir) ? 1 : 0; cd_woke(c); return ok; }
+int cd_file_middle_click(void *page, float x, float y) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_middle_click(cd_state(c), x, y) ? 1 : 0; if (ok) cd_woke(c); return ok; }
+int cd_sel_file_lines(void *page, int out_lines[2]) {
+  CoderHost *c = page;
+  if (!c || !out_lines) return 0;
+  int64_t tmp[2] = {0, 0};
+  if (!coder_page_sel_file_lines(cd_state(c), (coax_v_s64){tmp, 2})) return 0;
+  out_lines[0] = (int)tmp[0]; out_lines[1] = (int)tmp[1];
+  return 1;
+}
+void cd_scroll_x(void *page, float dx, int precise) { CoderHost *c = page; if (c) { coder_page_scroll_x(cd_state(c), dx, precise != 0); cd_woke(c); } }
 void cd_file_failed(void *page, const char *path, const char *why) { CoderHost *c = page; if (c) { coder_page_file_failed(cd_state(c), cd_string(path), cd_string(why)); cd_woke(c); } }
 int cd_file_text(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_file_text(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : -1; }
 void cd_file_saved(void *page, const char *bytes, int len) {

@@ -98,23 +98,103 @@ md_style_at :: (runs: [] MdRun, i: int) -> int {
 // ends in a file type known here; not a web address, a flag or a version number.
 MD_PATH_TYPES :: [36] string.["coax", "rs", "swift", "md", "ts", "tsx", "js", "jsx", "json", "toml", "yaml", "yml", "sh", "py", "c", "h", "cpp", "go",
                               "html", "css", "txt", "lock", "luau", "lua", "kt", "java", "rb", "sql", "plist", "xml", "csv", "log", "ops", "jsonl", "mm", "m"];
+// Parses a file path or file:// URL with optional :line, :line:col, :start-end, or #Lstart-Lend anchor (#13992).
+MdFileRef :: struct { path_from: int; path_to: int; start_line: int; end_line: int; }
+
+md_parse_uint :: (s: string, from: int, to: int) -> int {
+  if to <= from { return 0; }
+  v := 0;
+  for i: from..<to {
+    c := s[i];
+    if c < '0' || c > '9' { return 0; }
+    if v > 10000000 { return v; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+md_parse_file_ref :: (raw: string) -> MdFileRef {
+  r := MdFileRef.{path_from = 0, path_to = raw.count, start_line = 0, end_line = 0};
+  if raw.count == 0 { return r; }
+  from := 0;
+  if raw.count > 7 && cast(string) raw[0..<7] == "file://" {
+    from = 7;
+    if raw.count > 16 && cast(string) raw[7..<16] == "localhost" && raw[16] == '/' { from = 16; }
+  }
+  r.path_from = from;
+  // Check #Lstart[-Lend] fragment first
+  hash := -1;
+  for i: from..<raw.count { if raw[i] == '#' { hash = i; break; } }
+  if hash >= from {
+    r.path_to = hash;
+    frag_at := hash + 1;
+    if frag_at < raw.count && (raw[frag_at] == 'L' || raw[frag_at] == 'l') { frag_at += 1; }
+    dash := -1;
+    for i: frag_at..<raw.count { if raw[i] == '-' { dash = i; break; } }
+    if dash > frag_at {
+      s1 := md_parse_uint(raw, frag_at, dash);
+      e_at := dash + 1;
+      if e_at < raw.count && (raw[e_at] == 'L' || raw[e_at] == 'l') { e_at += 1; }
+      s2 := md_parse_uint(raw, e_at, raw.count);
+      if s1 > 0 { r.start_line = s1; r.end_line = ifx s2 >= s1 then s2 else s1; }
+    } else if frag_at < raw.count {
+      s1 := md_parse_uint(raw, frag_at, raw.count);
+      if s1 > 0 { r.start_line = s1; r.end_line = s1; }
+    }
+    return r;
+  }
+  // Check trailing :line, :line:col, or :start-end (avoiding Windows drive letter C:\)
+  colon := -1;
+  i := raw.count - 1;
+  while i > from {
+    if raw[i] == '/' { break; }
+    if raw[i] == ':' { colon = i; }
+    i -= 1;
+  }
+  if colon > from + 1 && colon + 1 < raw.count {
+    rest := cast(string) raw[colon + 1..<raw.count];
+    c2 := -1; dash := -1;
+    for k: 0..<rest.count {
+      if rest[k] == ':' && c2 < 0 { c2 = k; }
+      if rest[k] == '-' && dash < 0 { dash = k; }
+    }
+    if dash > 0 && c2 < 0 {
+      s1 := md_parse_uint(rest, 0, dash);
+      s2 := md_parse_uint(rest, dash + 1, rest.count);
+      if s1 > 0 && s2 >= s1 { r.path_to = colon; r.start_line = s1; r.end_line = s2; return r; }
+    } else if c2 > 0 && dash < 0 {
+      s1 := md_parse_uint(rest, 0, c2);
+      col := md_parse_uint(rest, c2 + 1, rest.count);
+      if s1 > 0 && col > 0 { r.path_to = colon; r.start_line = s1; r.end_line = s1; return r; }
+    } else if c2 < 0 && dash < 0 {
+      s1 := md_parse_uint(rest, 0, rest.count);
+      if s1 > 0 { r.path_to = colon; r.start_line = s1; r.end_line = s1; return r; }
+    }
+  }
+  return r;
+}
+
 md_path_like :: (text: string) -> bool {
   most := 1024;   // not a size: bytes a path may take
   if text.count < 2 || text.count > most || text[0] == '-' { return false; }
+  // Strip optional :line / :line:col / :start-end / #Lstart-Lend anchor before validating path characters (#13992).
+  ref := md_parse_file_ref(text);
+  end := ifx ref.start_line > 0 then ref.path_to else text.count;
+  if end < 2 { return false; }
   slash := false; dot := -1; letter := false;
-  for i: 0..<text.count {
+  for i: 0..<end {
     c := text[i];
     is_letter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
     if is_letter { letter = true; }
     if c == '/' { slash = true; dot = -1; }
     else if c == '.' { dot = i; }
-    else if c == ':' { return false; }   // a web address (https://…) or a line (file.rs:12) is not opened as a file
+    else if c == ':' { return false; }   // a web address (https://…) or non-numeric colon is not opened as a file
     else if !(is_letter || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '~' || c == '@' || c == '+') { return false; }
   }
   if !letter { return false; }
-  if slash { return text.count > 1 && !(text[0] == '/' && text[1] == '/'); }
-  if dot <= 0 || dot + 1 >= text.count { return false; }
-  kind := cast(string) text[dot + 1..<text.count];
+  if slash { return end > 1 && !(text[0] == '/' && text[1] == '/'); }
+  if dot <= 0 || dot + 1 >= end { return false; }
+  kind := cast(string) text[dot + 1..<end];
   types := MD_PATH_TYPES;
   for k: 0..<types.count { if kind == types[k] { return true; } }
   return false;
@@ -886,9 +966,16 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
   #assert md_block_text(d3[..], 1) == "line one\n```\nline two";
 }
 
-#test "inline code that names a file or folder is a path; a web address, a flag, a version or an identifier is not" {
+#test "inline code that names a file or folder (with optional :line or #Lstart-Lend) is a path; a web address, a flag, a version or an identifier is not" {
   #assert md_path_like("apps/coder-desktop/page.coax") && md_path_like("README.md") && md_path_like("~/work/openagents") && md_path_like("src/") && md_path_like("/usr/bin/true");
-  #assert !md_path_like("https://openagents.com") && !md_path_like("--force") && !md_path_like("1.2.3") && !md_path_like("s.md.line") && !md_path_like("a b/c") && !md_path_like("page.coax:12") && !md_path_like("x");
+  #assert md_path_like("page.coax:12") && md_path_like("psionic/platform/inkling-gguf.c:149") && md_path_like("file.coax:42-68") && md_path_like("file.coax:12:4") && md_path_like("a/b.c#L10-L20");
+  #assert !md_path_like("https://openagents.com") && !md_path_like("--force") && !md_path_like("1.2.3") && !md_path_like("s.md.line") && !md_path_like("a b/c") && !md_path_like("foo:bar") && !md_path_like("x");
+  r1 := md_parse_file_ref("psionic/platform/inkling-gguf.c:149");
+  #assert cast(string) "psionic/platform/inkling-gguf.c:149"[r1.path_from..<r1.path_to] == "psionic/platform/inkling-gguf.c" && r1.start_line == 149 && r1.end_line == 149;
+  r2 := md_parse_file_ref("file:///abs/path/a.c#L149-L170");
+  #assert cast(string) "file:///abs/path/a.c#L149-L170"[r2.path_from..<r2.path_to] == "/abs/path/a.c" && r2.start_line == 149 && r2.end_line == 170;
+  r3 := md_parse_file_ref("file.coax:42-68");
+  #assert cast(string) "file.coax:42-68"[r3.path_from..<r3.path_to] == "file.coax" && r3.start_line == 42 && r3.end_line == 68;
 }
 
 #test "bare http and https URLs parse as links with trailing punctuation trimmed" {

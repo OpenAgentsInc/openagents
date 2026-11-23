@@ -134,6 +134,75 @@ static void oa_open_external(const char *target) {
   if (oa_absolute(target)) oa_back(w);
   ShellExecuteW(NULL, L"open", w, NULL, NULL, SW_SHOWNORMAL);
 }
+static void oa_reveal_file(const char *path) {
+  if (!path || !path[0]) return;
+  wchar_t wp[4096], arg[4200];
+  oa_wide(path, wp, sizeof wp / sizeof wp[0]);
+  oa_back(wp);
+  swprintf(arg, sizeof arg / sizeof arg[0], L"/select,\"%ls\"", wp);
+  ShellExecuteW(NULL, L"open", L"explorer.exe", arg, NULL, SW_SHOWNORMAL);
+}
+static void oa_spawn_shell_cmd(const char *cmd) {
+  if (!cmd || !cmd[0]) return;
+  char full[4200];
+  snprintf(full, sizeof full, "cmd.exe /c %s", cmd);
+  wchar_t wcmd[4200];
+  oa_wide(full, wcmd, sizeof wcmd / sizeof wcmd[0]);
+  STARTUPINFOW si; PROCESS_INFORMATION pi;
+  memset(&si, 0, sizeof si); si.cb = sizeof si;
+  memset(&pi, 0, sizeof pi);
+  if (CreateProcessW(NULL, wcmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+  }
+}
+static int oa_has_cmd_in_path(const wchar_t *exe) {
+  wchar_t found[MAX_PATH];
+  return SearchPathW(NULL, exe, NULL, MAX_PATH, found, NULL) > 0;
+}
+static int oa_detect_editors(void) {
+  int mask = (1 << 5); // Explorer
+  if (oa_has_cmd_in_path(L"cursor.cmd") || oa_has_cmd_in_path(L"cursor.exe")) mask |= (1 << 0);
+  if (oa_has_cmd_in_path(L"code.cmd") || oa_has_cmd_in_path(L"code.exe")) mask |= (1 << 1);
+  if (oa_has_cmd_in_path(L"zed.exe")) mask |= (1 << 2);
+  return mask;
+}
+typedef struct { int is_dir; char name[256]; } OaDirEnt;
+static int oa_dirent_cmp(const void *pa, const void *pb) {
+  const OaDirEnt *a = (const OaDirEnt *)pa, *b = (const OaDirEnt *)pb;
+  if (a->is_dir != b->is_dir) return b->is_dir - a->is_dir;
+  return _stricmp(a->name, b->name);
+}
+static int oa_list_dir_entries(const char *dir_path, char *out, size_t cap) {
+  if (!dir_path || !dir_path[0] || !out || cap < 2) return 0;
+  out[0] = '\0';
+  char pat[4096];
+  snprintf(pat, sizeof pat, "%s/*", dir_path);
+  wchar_t wpat[4096];
+  oa_wide(pat, wpat, sizeof wpat / sizeof wpat[0]);
+  oa_back(wpat);
+  WIN32_FIND_DATAW fd;
+  HANDLE h = FindFirstFileW(wpat, &fd);
+  if (h == INVALID_HANDLE_VALUE) return 0;
+  OaDirEnt list[64];
+  int n = 0;
+  do {
+    char name[256];
+    oa_utf8(fd.cFileName, name, sizeof name);
+    if (!name[0] || name[0] == '.') continue;
+    list[n].is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+    snprintf(list[n].name, sizeof list[n].name, "%s", name);
+    n++;
+  } while (n < 64 && FindNextFileW(h, &fd));
+  FindClose(h);
+  qsort(list, (size_t)n, sizeof list[0], oa_dirent_cmp);
+  size_t pos = 0;
+  for (int i = 0; i < n && pos + 4 < cap; i++) {
+    int w = snprintf(out + pos, cap - pos, "%c\t%s%s", list[i].is_dir ? 'D' : 'F', list[i].name, (i + 1 < n) ? "\n" : "");
+    if (w > 0 && pos + (size_t)w < cap) pos += (size_t)w;
+  }
+  return (int)pos;
+}
 static void oa_fail(const char *why) {
   fprintf(stderr, "openagents-desktop: %s\n", why);
   fflush(stderr);

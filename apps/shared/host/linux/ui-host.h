@@ -128,6 +128,8 @@ typedef struct {
   void (*scroll_gesture)(void *user, float dy, int precise, int phase, int momentum, double time);
   // Files carried over the window toward a drop (1) and no longer (0): dropped, or carried away (the Mac's).
   void (*carrying)(void *user, int on);
+  // Horizontal scroll delta (trackpad swipe or Shift+wheel, #13992).
+  void (*scroll_x)(void *user, float dx, int precise);
 
 } UiApp;
 

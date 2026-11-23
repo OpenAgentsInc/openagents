@@ -114,7 +114,8 @@
   fb: [64] u8; src := "static int main(void) { return 0; }\n";
   #assert coder_page_file_open(s[..], "/Users/me/work/inkling-gguf.c", fb[0..<cp_out(fb[..], src)], src.count);
   #assert coder_page_file_shown(s[..]);
-  #assert coder_page_file_mode(s[..]) == CP_FP_EDIT;
+  #assert coder_page_file_mode(s[..]) == CP_FP_READ;
+  #assert coder_page_file_set_edit(s[..], true) && coder_page_file_mode(s[..]) == CP_FP_EDIT;
   coder_page_palette_set_mode(s[..], CP_PAL_MODE_FILES);
   #assert coder_page_palette_mode(s[..]) == CP_PAL_MODE_FILES;
 }

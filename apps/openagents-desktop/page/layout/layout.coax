@@ -8,6 +8,13 @@ cp_sidebar_spec :: () -> AppSidebarSpec {
 cp_pane_spec :: () -> AppPaneSpec {
   return AppPaneSpec.{ default_w = cast(f32) CP_PANE, min_w = cast(f32) CP_PANE_LEAST, max_w = cast(f32) CP_PANE_MOST, main_min = cast(f32) CP_PANE_MAIN };
 }
+// Dynamic split-pane spec allowing wide monitors to drag the File Viewer wider while keeping CP_PANE_MAIN (#13992).
+cp_pane_spec_for :: (window_w: f32, left: f32) -> AppPaneSpec {
+  sp := cp_pane_spec();
+  dyn := window_w - left - sp.main_min;
+  if dyn > sp.max_w { sp.max_w = dyn; }
+  return sp;
+}
 // The right sidebar: the file pane or the code review when it shows, else the task list at the top
 // with any sub-agent's transcript underneath.
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
@@ -45,7 +52,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   // wide viewports, centered conversation column, and right sub-agent transcript / file viewer pane.
   fp_vis := !s[0].fp[0].hidden && ((s[0].fp[0].open && (s[0].fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES))) || s[0].ft[0].open);
   pane_any := s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review) || fp_vis || (cp_flag(s, DC_FLAG_SIMULATOR) && s[0].sim[0].open) || (cp_flag(s, DC_FLAG_TERMINAL) && s[0].term[0].open) || (cp_flag(s, DC_FLAG_RICH) && s[0].rich[0].side_open) || (cp_flag(s, DC_FLAG_PREVIEW) && s[0].preview[0].open) || (cp_flag(s, DC_FLAG_FORGE) && s[0].forge[0].open) || todos_side;
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  est_left := ifx !s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM then (ifx s[0].side_w > 0 then s[0].side_w else cast(f32) CP_SIDE) else 0.0f32;
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, pane_any, cp_sidebar_spec(), cp_pane_spec_for(window_w, est_left), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
   kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");

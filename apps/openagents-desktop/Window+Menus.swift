@@ -48,12 +48,25 @@ extension CoderWindow {
         #endif
         var out = [CChar](repeating: 0, count: 128)
         guard cd_chat_at(page, px, py, &out, Int32(out.count)) > 0 else {
-            // Right-click with an active GPU transcript selection offers Copy.
+            // Right-click with an active GPU transcript or File Viewer selection offers Copy (+ Copy with Path:Line in File Viewer, #13992).
             if cd_has_selection(page) != 0 {
-                let items = [Item(label: "Copy")]
+                var lr: [Int32] = [0, 0]
+                let isFileSel = cd_sel_file_lines(page, &lr) != 0 && lr[0] > 0
+                let items = isFileSel
+                    ? [Item(label: "Copy"), Item(label: "Copy with Path:Line")]
+                    : [Item(label: "Copy")]
                 overlay.presentMenu(items, x: px, y: py) { [weak self] chosen in
-                    guard let self, chosen == 0 else { return }
+                    guard let self, chosen >= 0 else { return }
                     _ = cd_key(self.page, Int32(UnicodeScalar("c").value), 8)
+                    if chosen == 1 && isFileSel {
+                        let rel = self.openFileRelativePath()
+                        let copied = NSPasteboard.general.string(forType: .string) ?? ""
+                        let lineSpec = lr[1] > lr[0] ? "\(lr[0])-\(lr[1])" : "\(lr[0])"
+                        let tagged = rel.isEmpty ? copied : "\(rel):\(lineSpec)\n\(copied)"
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setString(tagged, forType: .string)
+                    }
                     self.wake()
                 }
                 return true

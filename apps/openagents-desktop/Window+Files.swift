@@ -7,24 +7,42 @@ import AppKit
 import UniformTypeIdentifiers
 
 extension CoderWindow {
-    /// A file a row, a reply or an attachment names: opens in the pane (editable text up to 128 KB,
-    /// syntax-highlighted code, or rich read-only preview for CSV/TSV, .ipynb, images, PDFs, binary hex).
-    func openNamedFile(_ url: URL) {
+    /// A file a row, a reply or an attachment names: opens in the pane (viewer-first syntax-highlighted
+    /// code up to 4 MB, explicit inline edit up to 128 KB, or rich read-only preview for CSV/TSV, .ipynb,
+    /// images, PDFs, binary hex).
+    func openNamedFile(_ url: URL, jumpRange: (Int, Int)? = nil) {
         #if OA_FULL
         if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
-            openFileInPane(url)
+            openFileInPane(url, jumpRange: nil)
             return
         }
         #endif
-        openFileInPane(url)
+        openFileInPane(url, jumpRange: jumpRange)
     }
 
-    /// Resolves a `file://` URL, absolute path, tilde path, or repo-relative path (optionally carrying `#L10-L20` or `:10`)
-    /// and opens it in the right-pane File Viewer (#13992).
-    func openFileLink(_ raw: String) {
+    /// Parses `#Lstart-Lend`, `#Lstart`, `:start-end`, `:line:col`, or `:line` suffixes out of a raw file link (#13992).
+    static func parseFileLink(_ raw: String) -> (path: String, startLine: Int, endLine: Int) {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let noFrag = trimmed.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? trimmed
+        guard !trimmed.isEmpty else { return ("", 0, 0) }
+        var startLine = 0
+        var endLine = 0
+        let parts = trimmed.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+        let noFrag = String(parts[0])
+        if parts.count == 2 {
+            let frag = String(parts[1])
+            let body = (frag.hasPrefix("L") || frag.hasPrefix("l")) ? String(frag.dropFirst()) : frag
+            let rangeParts = body.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+            if let s = Int(rangeParts[0]), s > 0 {
+                startLine = s
+                if rangeParts.count == 2 {
+                    let rhs = String(rangeParts[1])
+                    let rhsDigits = (rhs.hasPrefix("L") || rhs.hasPrefix("l")) ? String(rhs.dropFirst()) : rhs
+                    endLine = Int(rhsDigits) ?? s
+                } else {
+                    endLine = s
+                }
+            }
+        }
         var pathStr: String
         if noFrag.lowercased().hasPrefix("file://") {
             if let u = URL(string: noFrag), u.isFileURL {
@@ -35,22 +53,43 @@ extension CoderWindow {
             }
         } else {
             pathStr = noFrag
-            // Strip trailing :line or :line:col when the full string is not an existing file.
+            // Strip trailing :start-end, :line:col, or :line when the full string is not an existing file.
             if !FileManager.default.fileExists(atPath: (pathStr as NSString).expandingTildeInPath) {
-                if let colon = pathStr.lastIndex(of: ":"),
-                   colon > pathStr.startIndex,
-                   pathStr[pathStr.index(after: colon)...].allSatisfy({ $0.isNumber }) {
-                    var base = String(pathStr[..<colon])
-                    if let colon2 = base.lastIndex(of: ":"),
-                       colon2 > base.startIndex,
-                       base[base.index(after: colon2)...].allSatisfy({ $0.isNumber }) {
-                        base = String(base[..<colon2])
+                if let colon = pathStr.lastIndex(of: ":"), colon > pathStr.startIndex {
+                    let tail = String(pathStr[pathStr.index(after: colon)...])
+                    if let dash = tail.firstIndex(of: "-") {
+                        let a = String(tail[..<dash])
+                        let b = String(tail[tail.index(after: dash)...])
+                        if let s = Int(a), let e = Int(b), s > 0, e >= s {
+                            pathStr = String(pathStr[..<colon])
+                            if startLine == 0 { startLine = s; endLine = e }
+                        }
+                    } else if let n1 = Int(tail), n1 > 0, tail.allSatisfy({ $0.isNumber }) {
+                        var base = String(pathStr[..<colon])
+                        var lineVal = n1
+                        if let colon2 = base.lastIndex(of: ":"), colon2 > base.startIndex {
+                            let mid = String(base[base.index(after: colon2)...])
+                            if let n0 = Int(mid), n0 > 0, mid.allSatisfy({ $0.isNumber }) {
+                                base = String(base[..<colon2])
+                                lineVal = n0
+                            }
+                        }
+                        pathStr = base
+                        if startLine == 0 { startLine = lineVal; endLine = lineVal }
                     }
-                    pathStr = base
                 }
             }
         }
-        let expanded = (pathStr as NSString).expandingTildeInPath
+        if startLine > 0 && endLine < startLine { endLine = startLine }
+        return (pathStr, startLine, endLine)
+    }
+
+    /// Resolves a `file://` URL, absolute path, tilde path, or repo-relative path (optionally carrying `#L10-L20` or `:10`)
+    /// and opens it in the right-pane File Viewer, jumping smoothly to any line anchor (#13992).
+    func openFileLink(_ raw: String) {
+        let parsed = Self.parseFileLink(raw)
+        guard !parsed.path.isEmpty else { return }
+        let expanded = (parsed.path as NSString).expandingTildeInPath
         let url: URL
         if expanded.hasPrefix("/") {
             url = URL(fileURLWithPath: expanded)
@@ -65,23 +104,30 @@ extension CoderWindow {
                 url = candidate
             }
         }
-        openNamedFile(url)
+        let jump: (Int, Int)? = parsed.startLine > 0 ? (parsed.startLine, parsed.endLine) : nil
+        openNamedFile(url, jumpRange: jump)
     }
 
     /// A file into the pane. The open one, if it has changes, is asked about first; the same file
     /// opened again comes forward with its changes, or is read again when it has none.
-    func openFileInPane(_ url: URL) {
+    func openFileInPane(_ url: URL, jumpRange: (Int, Int)? = nil) {
         let url = url.standardizedFileURL
         if let open = fileURL, cd_file_mode(page) != 0, cd_file_dirty(page) != 0 {
-            if open == url { _ = cd_file_front(page); return }
-            askToSave { [weak self] in self?.readIntoPane(url) }
+            if open == url {
+                _ = cd_file_front(page)
+                if let r = jumpRange { cd_file_jump(page, Int32(r.0), Int32(r.1)) }
+                wake()
+                return
+            }
+            askToSave { [weak self] in self?.readIntoPane(url, jumpRange: jumpRange) }
             return
         }
-        readIntoPane(url)
+        readIntoPane(url, jumpRange: jumpRange)
     }
 
     /// Reads url and hands it to the page: its bytes, or why it can't be shown.
-    private func readIntoPane(_ url: URL) {
+    private func readIntoPane(_ url: URL, jumpRange: (Int, Int)? = nil) {
+        stopFileWatcher()
         fileURL = url
         // Pass full path so Row 2 breadcrumbs render Users › ... › dir › filename (#13992).
         let shown = url.path
@@ -106,11 +152,14 @@ extension CoderWindow {
         }
         hideScenePanel()
         #endif
-        let size = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+        let mtime = attrs?[.modificationDate] as? Date
         let most = Int64(cd_file_most())
         if size > most {
             let f = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-            cd_file_failed(page, shown, "\(name) is \(f). Coder shows files up to \(most / 1024) KB here; open it in its own app with the button above.")
+            let capLabel = most >= 1024 * 1024 ? "\(most / (1024 * 1024)) MB" : "\(most / 1024) KB"
+            cd_file_failed(page, shown, "\(name) is \(f). Coder shows files up to \(capLabel) here; open it in its own app with the button above.")
             wake(); return
         }
         let data: Data
@@ -122,11 +171,91 @@ extension CoderWindow {
         }
         if ok == 0 { cd_file_failed(page, shown, "Coder couldn't show \(name) here.") }
         else {
+            fileWatchMtime = mtime
+            fileWatchSize = size
+            startFileWatcher(for: url)
+            if let r = jumpRange {
+                cd_file_jump(page, Int32(r.0), Int32(r.1))
+            }
             if cd_file_mode(page) == 1 { window.makeFirstResponder(canvas) }
             #if OA_FULL
             if url.pathExtension.lowercased() == "lean" { refreshFilePaneLeanGoal() }
             #endif
         }
+        wake()
+    }
+
+    // MARK: - Live File Watcher (DispatchSourceFileSystemObject, #13992)
+
+    func stopFileWatcher() {
+        fileWatchWork?.cancel()
+        fileWatchWork = nil
+        fileWatchSource?.cancel()
+        fileWatchSource = nil
+        fileWatchMtime = nil
+        fileWatchSize = -1
+    }
+
+    private func startFileWatcher(for url: URL) {
+        fileWatchWork?.cancel()
+        fileWatchWork = nil
+        fileWatchSource?.cancel()
+        fileWatchSource = nil
+        let fd = Darwin.open(url.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .extend, .rename, .delete, .attrib],
+            queue: .main
+        )
+        src.setCancelHandler { Darwin.close(fd) }
+        src.setEventHandler { [weak self, weak src] in
+            guard let self, let src else { return }
+            let flags = src.data
+            let rearm = flags.contains(.rename) || flags.contains(.delete)
+            self.scheduleFileWatchCheck(for: url, rearm: rearm)
+        }
+        fileWatchSource = src
+        src.resume()
+    }
+
+    private func scheduleFileWatchCheck(for url: URL, rearm: Bool) {
+        fileWatchWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.fileURL == url, cd_file_mode(self.page) != 0 else { return }
+            if rearm { self.startFileWatcher(for: url) }
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else { return }
+            let mtime = attrs[.modificationDate] as? Date
+            let size = (attrs[.size] as? NSNumber)?.int64Value ?? -1
+            if mtime == self.fileWatchMtime && size == self.fileWatchSize { return }
+            self.fileWatchMtime = mtime
+            self.fileWatchSize = size
+            if cd_file_dirty(self.page) != 0 {
+                cd_file_disk_changed(self.page)
+                self.wake()
+            } else {
+                self.reloadFileFromDisk(url)
+            }
+        }
+        fileWatchWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    /// Re-reads url into the open File Viewer via cd_file_reload, preserving scroll offset and code folds (#13992).
+    private func reloadFileFromDisk(_ url: URL) {
+        guard fileURL == url else { return }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+        let most = Int64(cd_file_most())
+        guard size <= most, let data = try? Data(contentsOf: url) else { return }
+        fileWatchMtime = attrs?[.modificationDate] as? Date
+        fileWatchSize = size
+        _ = data.withUnsafeBytes { raw in
+            cd_file_reload(page, raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), size)
+        }
+        #if OA_FULL
+        if url.pathExtension.lowercased() == "lean" { refreshFilePaneLeanGoal() }
+        #endif
         wake()
     }
 
@@ -152,7 +281,7 @@ extension CoderWindow {
     }
     #endif
 
-    /// What the pane asked (cd_action 40..43, 164 reload, 165 copy path).
+    /// What the pane asked (cd_action 40..43, 164..169).
     func fileAsked(_ what: Int32) {
         switch what {
         case 40: _ = saveOpenFile()
@@ -161,18 +290,70 @@ extension CoderWindow {
         case 43: window.makeFirstResponder(canvas); wake()
         case 164: reloadOpenFile()
         case 165: copyOpenFilePath()
+        case 166: listBreadcrumbDir()
+        case 167: copyOpenFileRelativePath()
+        case 168: copyOpenFileContents()
+        case 169: revealOpenFileInFinder()
         default: break
         }
     }
 
-    /// Re-reads the currently open file from disk, preserving scroll offset (asks first if dirty).
+    /// Re-reads the currently open file from disk, preserving scroll offset & folds (asks first if dirty).
     func reloadOpenFile() {
         guard let url = fileURL else { return }
         if cd_file_dirty(page) != 0 {
-            askToSave { [weak self] in self?.readIntoPane(url) }
+            askToSave { [weak self] in self?.reloadFileFromDisk(url) }
             return
         }
-        readIntoPane(url)
+        reloadFileFromDisk(url)
+    }
+
+    /// Populates the breadcrumb sibling-directory popover (CP_ASK_FILE_DIR_LIST = 166, #13992).
+    func listBreadcrumbDir() {
+        var buf = [CChar](repeating: 0, count: 1024)
+        let n = cd_file_crumb_dir(page, &buf, Int32(buf.count))
+        guard n > 0 else { return }
+        let dirPath = String(cString: buf)
+        let dirURL = URL(fileURLWithPath: dirPath)
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(
+            at: dirURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            _ = cd_file_dir_set(page, "")
+            wake()
+            return
+        }
+        var entries: [(isDir: Bool, name: String)] = items.map { item in
+            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            return (isDir, item.lastPathComponent)
+        }
+        entries.sort { a, b in
+            if a.isDir != b.isDir { return a.isDir }
+            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+        }
+        let payload = entries.prefix(64).map { ($0.isDir ? "D\t" : "F\t") + $0.name }.joined(separator: "\n")
+        _ = cd_file_dir_set(page, payload)
+        wake()
+    }
+
+    /// Active file's path relative to the workspace folder (or full path when outside workspace).
+    func openFileRelativePath() -> String {
+        let full: String
+        if let url = fileURL {
+            full = url.standardizedFileURL.path
+        } else {
+            var out = [CChar](repeating: 0, count: 1024)
+            guard cd_file_path(page, &out, Int32(out.count)) > 0 else { return "" }
+            full = String(cString: out)
+        }
+        let base = folder.standardizedFileURL.path
+        let prefix = base.hasSuffix("/") ? base : base + "/"
+        if full.hasPrefix(prefix) {
+            return String(full.dropFirst(prefix.count))
+        }
+        return full
     }
 
     /// Copies the active file's full path to the system clipboard.
@@ -188,6 +369,45 @@ extension CoderWindow {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(path, forType: .string)
+    }
+
+    /// Copies the active file's workspace-relative path to the system clipboard (#13992).
+    func copyOpenFileRelativePath() {
+        let rel = openFileRelativePath()
+        guard !rel.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(rel, forType: .string)
+    }
+
+    /// Copies the active file's full contents (edited buffer if in edit mode, else file on disk) to clipboard (#13992).
+    func copyOpenFileContents() {
+        let text: String?
+        if cd_file_mode(page) == 1 {
+            let cap = max(Int(cd_file_edit_most()), 16384) + 1
+            var out = [CChar](repeating: 0, count: cap)
+            let n = cd_file_text(page, &out, Int32(out.count))
+            if n >= 0 {
+                let bytes = out.withUnsafeBufferPointer { Data(buffer: UnsafeBufferPointer(rebasing: $0[0..<Int(n)])) }
+                text = String(data: bytes, encoding: .utf8)
+            } else {
+                text = nil
+            }
+        } else if let url = fileURL, let data = try? Data(contentsOf: url) {
+            text = String(data: data, encoding: .utf8)
+        } else {
+            text = nil
+        }
+        guard let text else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+    }
+
+    /// Reveals the active file in Finder (#13992).
+    func revealOpenFileInFinder() {
+        guard let url = fileURL, FileManager.default.fileExists(atPath: url.path) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     /// File > Save works while the pane shows a file with changes.
@@ -214,6 +434,10 @@ extension CoderWindow {
             cd_file_save_failed(page, "Coder couldn't save \(url.lastPathComponent): \(error.localizedDescription)")
             wake(); return false
         }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
+            fileWatchMtime = attrs[.modificationDate] as? Date
+            fileWatchSize = (attrs[.size] as? NSNumber)?.int64Value ?? Int64(data.count)
+        }
         data.withUnsafeBytes { raw in cd_file_saved(page, raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count)) }
         wake()
         return true
@@ -227,6 +451,7 @@ extension CoderWindow {
     }
     func dropFile() {
         let hadKeys = cd_wants_text(page) != 0
+        stopFileWatcher()
         #if OA_FULL
         hideScenePanel()
         #endif
@@ -327,7 +552,28 @@ extension CoderWindow {
 
     /// Closes a tab from the multi-tab bar, asking to save if it is the currently open dirty file.
     private func closeFileTreeTab() {
-        let idx = cd_filetree_close_tab(page)
+        closeFileTreeTabAt(cd_filetree_close_tab(page))
+    }
+
+    /// Closes the currently active tab (Cmd+W when the File Viewer is open, #13992).
+    func closeActiveFileTab() {
+        guard cd_file_shown(page) != 0, cd_file_mode(page) != 0 else { return }
+        var curBuf = [CChar](repeating: 0, count: 1024)
+        let activePath = cd_file_path(page, &curBuf, Int32(curBuf.count)) > 0 ? String(cString: curBuf) : (fileURL?.path ?? "")
+        for i: Int32 in 0..<16 {
+            var pbuf = [CChar](repeating: 0, count: 1024)
+            let pn = cd_filetree_tab_path(page, i, &pbuf, Int32(pbuf.count))
+            if pn <= 0 { break }
+            let tp = String(cString: pbuf)
+            if tp == activePath || tp == (fileURL?.path ?? "") {
+                closeFileTreeTabAt(i)
+                return
+            }
+        }
+        closeFilePane()
+    }
+
+    private func closeFileTreeTabAt(_ idx: Int32) {
         guard idx >= 0 else { return }
         var pbuf = [CChar](repeating: 0, count: 1024)
         let pn = cd_filetree_tab_path(page, idx, &pbuf, Int32(pbuf.count))

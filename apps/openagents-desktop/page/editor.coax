@@ -224,8 +224,13 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     coder_page_settings_open(s, -2, "");
     return true;
   }
-  if s[0].ft[0].editor_menu && key == KEY_ESCAPE && mods == 0 {
+  if (s[0].ft[0].editor_menu || s[0].ft[0].crumb_menu) && key == KEY_ESCAPE && mods == 0 {
     s[0].ft[0].editor_menu = false;
+    s[0].ft[0].crumb_menu = false;
+    return true;
+  }
+  if !cp_overlay_open(s) && !s[0].set_open && key == 'g' && mods == MOD_CTRL && cp_fp_shown(s) && s[0].fp[0].open {
+    cp_find_file_open(s, true);
     return true;
   }
   if !cp_overlay_open(s) && !s[0].set_open && key == KEY_ESCAPE && mods == 0 && cp_sel_has(s) {

@@ -72,6 +72,8 @@ cp_ft_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   }
   #assert n > EB_TEXT && n < CP_FP_EDIT_MOST;
   #assert coder_page_file_open(s, "~/proj/large.rs", big[0..<n], n);
+  #assert coder_page_file_mode(s) == CP_FP_READ;
+  #assert coder_page_file_set_edit(s, true);
   #assert coder_page_file_mode(s) == CP_FP_EDIT && s[0].fp[0].large_edit && !coder_page_file_dirty(s);
   #assert cp_test_draw_side(s, f[..]);
   // Edit at caret (insert + Enter + Down arrow)
