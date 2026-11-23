@@ -35,7 +35,7 @@ xcodegen generate
 sign_id="${MACOS_CODESIGN_IDENTITY:--}"
 xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -configuration Release -sdk macosx \
   -derivedDataPath "$stage/derived" \
-  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="$sign_id" build
+  CODE_SIGN_STYLE=Manual CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="-" build
 
 app="$stage/OpenAgents.app"
 ditto "$stage/derived/Build/Products/Release/OpenAgents.app" "$app"
