@@ -75,13 +75,12 @@ tool_main :: () -> int #export_c #effects(all) {
     return 0;
   }
   crit_bad := false;
-  crit_buf: [2048] u8;
   for i: 0..<CC_CRITICAL_FILES.count {
     cf := CC_CRITICAL_FILES[i];
-    fl := CC_CRITICAL_FLOORS[i];
-    rn := fs_read(cf, crit_buf[..]);
-    if !cc_critical_ok(rn, fl) {
-      print("contributor-check: FAILED: critical root file % is missing or truncated (% B < floor % B)\n", cf, rn, fl);
+    min_b := CC_CRITICAL_FLOORS[i];
+    sz := fs_size(cf);
+    if !cc_critical_ok(sz, min_b) {
+      print("contributor-check: FAILED: critical root file % is missing or truncated (% B < floor % B)\n", cf, sz, min_b);
       crit_bad = true;
     }
   }
