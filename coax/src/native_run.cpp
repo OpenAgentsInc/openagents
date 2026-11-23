@@ -199,9 +199,12 @@ static bool native_compile(const std::vector<std::string> &units, const std::str
   const std::string compiler = cc && *cc ? cc : "cc";
   const bool has_prelude = !units.empty() && units[0].rfind("/* COAX_PRELUDE_H */\n", 0) == 0;
   size_t start_u = 0;
-  const std::string prelude_h = dir + "/prelude.h", prelude_pch = dir + "/prelude.h.pch";
+  const std::string inc_dir = dir + "/inc", pch_dir = dir + "/pch";
+  const std::string prelude_h = inc_dir + "/prelude.h", prelude_pch = pch_dir + "/prelude.h.gch";
   if (has_prelude) {
-    if (!native_write(prelude_h, units[0])) { *why = "can't write the C"; return false; }
+    std::error_code ec;
+    std::filesystem::create_directories(inc_dir, ec);
+    if (ec || !native_write(prelude_h, units[0])) { *why = "can't write the C"; return false; }
     start_u = 1;
   }
   // Write all translation unit sources up front and identify hot (-O1) vs cold (-O0) TUs.
@@ -217,16 +220,18 @@ static bool native_compile(const std::vector<std::string> &units, const std::str
     if (!hot) cold_count++;
     jobs.push_back({source, object, hot});
   }
+  enum class PchKind { none, clang, gcc };
   std::vector<pid_t> compiling;
   std::vector<std::string> objects;
   bool failed = false;
-  auto spawn_tu = [&](const TuJob &j, bool use_pch) {
+  auto spawn_tu = [&](const TuJob &j, PchKind pch) {
     const std::string level = opt && *opt ? std::string(opt) : std::string(j.hot ? "1" : "0");
     std::vector<std::string> args = {compiler, "-std=c11", "-w", "-O" + level, "-ffp-contract=off", "-fno-builtin-sin",
                                      "-fno-builtin-cos", "-pthread"};
     if (has_prelude) {
-      if (use_pch) { args.push_back("-include-pch"); args.push_back(prelude_pch); }
-      args.push_back("-I"); args.push_back(dir);
+      if (pch == PchKind::clang) { args.push_back("-include-pch"); args.push_back(prelude_pch); }
+      else if (pch == PchKind::gcc) { args.push_back("-I"); args.push_back(pch_dir); }
+      args.push_back("-I"); args.push_back(inc_dir);
     }
     args.push_back("-c"); args.push_back("-o"); args.push_back(j.object); args.push_back(j.source);
     pid_t pid;
@@ -235,17 +240,31 @@ static bool native_compile(const std::vector<std::string> &units, const std::str
     objects.push_back(j.object);
   };
   // Spawn hot (-O1) TUs immediately so they compile in parallel with PCH generation.
-  for (const TuJob &j : jobs) if (j.hot && !failed) spawn_tu(j, false);
-  bool has_pch = false;
+  for (const TuJob &j : jobs) if (j.hot && !failed) spawn_tu(j, PchKind::none);
+  PchKind pch_kind = PchKind::none;
   if (!failed && has_prelude && (!opt || !*opt) && cold_count >= 4 && units[0].size() >= 131072) {
+    std::error_code ec;
+    std::filesystem::create_directories(pch_dir, ec);
     pid_t pch_pid;
-    if (native_spawn({compiler, "-std=c11", "-w", "-O0", "-ffp-contract=off", "-fno-builtin-sin",
-                      "-fno-builtin-cos", "-pthread", "-x", "c-header", prelude_h, "-o", prelude_pch}, -1, &pch_pid, true) == 0) {
+    if (!ec && native_spawn({compiler, "-std=c11", "-w", "-O0", "-ffp-contract=off", "-fno-builtin-sin",
+                             "-fno-builtin-cos", "-pthread", "-x", "c-header", prelude_h, "-o", prelude_pch}, -1, &pch_pid, true) == 0) {
       const int st = native_wait(pch_pid);
-      has_pch = st >= 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0;
+      if (st >= 0 && WIFEXITED(st) && WEXITSTATUS(st) == 0) {
+        // Detect Clang ("CPCH") vs GCC ("gpch") from the emitted PCH magic bytes:
+        // GCC rejects Clang's -include-pch flag (parsing it as -include -pch) and
+        // instead consumes prelude.h.gch automatically via -I pch_dir.
+        int fd = open(prelude_pch.c_str(), O_RDONLY);
+        if (fd >= 0) {
+          char magic[4] = {};
+          const ssize_t got = read(fd, magic, 4);
+          close(fd);
+          if (got == 4 && memcmp(magic, "CPCH", 4) == 0) pch_kind = PchKind::clang;
+          else if (got == 4 && memcmp(magic, "gpch", 4) == 0) pch_kind = PchKind::gcc;
+        }
+      }
     }
   }
-  for (const TuJob &j : jobs) if (!j.hot && !failed) spawn_tu(j, has_pch);
+  for (const TuJob &j : jobs) if (!j.hot && !failed) spawn_tu(j, pch_kind);
   for (pid_t pid : compiling) {
     const int status = native_wait(pid);
     if (status < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) failed = true;

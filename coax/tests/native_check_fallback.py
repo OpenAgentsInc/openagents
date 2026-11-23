@@ -66,5 +66,25 @@ class NativeCheckFallback(unittest.TestCase):
         self.assertIn("0 passed", r.stderr)
 
 
+    def test_large_prelude_pch_passes_on_both_clang_and_gcc(self):
+        # >128 KB prelude + >=4 cold TUs exercises the native_compile PCH path on both Clang and GCC.
+        lines = []
+        for i in range(420):
+            lines.append(f"BigStruct_{i} :: struct {{ a_{i}: s64; b_{i}: s64; c_{i}: s64; d_{i}: s64; e_{i}: s64; f_{i}: s64; }}")
+        for i in range(40):
+            lines.append(f"helper_{i} :: (x: int) -> int {{ return x + {i}; }}")
+        for i in range(40):
+            lines.append(f'#test "pch tu check {i}" {{ #assert helper_{i}(10) == {10 + i}; }}')
+        big = Path(self.tmp.name) / "large_pch.coax"
+        big.write_text("\n".join(lines) + "\n")
+        r = subprocess.run([str(COMPILER), "test", str(big), "--library"], capture_output=True, text=True,
+                           timeout=120, env={**os.environ, "COAX_NATIVE_CHECKS": "1", "COAX_NATIVE_CHECKS_TRACE": "1",
+                                             "TMPDIR": self.tmp.name})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn(FAILED, r.stderr)
+        self.assertNotIn("-pch", r.stderr)
+        self.assertIn("40 of 40 eligible, 40 passed", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
