@@ -12,7 +12,7 @@
 
 #define CT_WIDTH 8192
 #define CT_FONTS 16
-#define CT_ICONS 64
+#define CT_ICONS 80
 // Slots from here on are display faces (components/layout/font.coax GP_BODY_FONTS): ASCII at one
 // weight and one subpixel offset, and they do not size the glyph cache.
 #define CT_BODY_FONTS 12

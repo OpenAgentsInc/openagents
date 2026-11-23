@@ -252,7 +252,7 @@ int oc_scroll_page(void *chat, int dir) { Chat *c = chat; if (!c || !chat_scroll
 static int oc_atlas_again(Chat *c, float zoom) {
   App *a = &c->app;
   for (int i = 0; i < 4; i++) { free(a->font_bytes[i]); a->font_bytes[i] = NULL; }
-  for (int i = 0; i < 64; i++) { free(a->svg[i]); a->svg[i] = NULL; a->svg_n[i] = 0; }
+  for (int i = 0; i < 80; i++) { free(a->svg[i]); a->svg[i] = NULL; a->svg_n[i] = 0; }
   free(a->mono); free(a->color); free(a->work); a->mono = a->color = NULL; a->work = NULL;
   memset(&a->plan, 0, sizeof a->plan); memset(&a->fonts, 0, sizeof a->fonts); memset(&c->s->atlas, 0, sizeof c->s->atlas);
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;

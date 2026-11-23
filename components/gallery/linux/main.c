@@ -51,10 +51,10 @@ typedef struct {
   uint8_t *fallback_bytes;
   coax_t_RaPlan plan;
   coax_t_RaWork *work;
-  float sizes[16], icon_sizes[64];
+  float sizes[16], icon_sizes[80];
   int64_t weights[16];
   int nfonts, nicons;
-  char *svg[64]; size_t svg_n[64];
+  char *svg[80]; size_t svg_n[80];
   uint8_t *mono, *color;
   uint32_t max_vertices;
   float dpr;
@@ -119,7 +119,7 @@ static int atlas_setup(App *a) {
     }
   }
   a->nfonts = (int)coaxial_components_font_count(); a->nicons = a->icon_count ? a->icon_count() : (int)coaxial_components_icon_count();
-  if (a->nfonts > 16 || a->nicons > 64) return 0;
+  if (a->nfonts > 16 || a->nicons > 80) return 0;
   for (int k = 0; k < a->nfonts; k++) { a->sizes[k] = a->font_size ? a->font_size(k) : coaxial_components_font_size(k); a->weights[k] = coaxial_components_font_weight(k); }
   for (int i = 0; i < a->nicons; i++) {
     char name[65]; int n = a->icon_name ? a->icon_name(i, name, 64) : (int)coaxial_components_icon_text(i, (coax_v_u8){(uint8_t *)name, 64});
@@ -182,7 +182,7 @@ static void gallery_free(App *a) {
   if (a->host) ui_close(a->host);
   for (int i=0;i<4;i++) free(a->font_bytes[i]);
   free(a->fallback_bytes);
-  for (int i=0;i<64;i++) free(a->svg[i]);
+  for (int i=0;i<80;i++) free(a->svg[i]);
   free(a->mono);free(a->color);free(a->work);free(a->g);
 }
 #ifdef COMPONENTS_EMBEDDED

@@ -42,7 +42,7 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
         h_str := ifx h + 1 < e then cast(string) list[h + 1..<e] else "";
         s[0].chats[k].harness = ifx h_str == "claude" then ICON_CLAUDE
                                 else ifx h_str == "codex" then ICON_OPENAI
-                                else ifx h_str == "agy" then ICON_BRAIN
+                                else ifx h_str == "agy" then ICON_ANTIGRAVITY
                                 else ifx h_str == "foreman" then ICON_BOT
                                 else ICON_PSIONIC;
         s[0].nchats += 1;
