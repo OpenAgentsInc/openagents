@@ -179,7 +179,16 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_NEW { cp_pal_leave_settings(s); return cp_new(s); }
   if c == CP_PC_FOREMAN { return cp_pal_open_chat(s, -1); }
   if c == CP_PC_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
-  if c == CP_PC_SIDEBAR { s[0].side_collapsed = !s[0].side_collapsed; return true; }
+  if c == CP_PC_SIDEBAR {
+    if s[0].win_w > 0 && s[0].win_w < cast(f32) CP_SIDE_FROM {
+      s[0].side_drawer = !s[0].side_drawer;
+      if !s[0].side_drawer { cp_ed_focus(s, CP_KB_COMPOSER); }
+    } else {
+      s[0].side_collapsed = !s[0].side_collapsed;
+      if s[0].side_collapsed { cp_ed_focus(s, CP_KB_COMPOSER); }
+    }
+    return true;
+  }
   if c == CP_PC_SETTINGS { cp_settings_show(s, true, -1); return true; }
   if c == CP_PC_BUDGET { if !cp_flag(s, DC_FLAG_USAGE) { return false; } s[0].ask = CP_ASK_BUDGET; return true; }
   if c == CP_PC_GOAL { s[0].ask = CP_ASK_GOAL; return true; }
@@ -255,7 +264,17 @@ coder_page_chat_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(a
   return s.count > 0 && cp_chat_step(s, dir);
 }
 // ⌘B: the sidebar shows or hides.
-coder_page_toggle_sidebar :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 && !s[0].set_open { s[0].side_collapsed = !s[0].side_collapsed; } }
+coder_page_toggle_sidebar :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count > 0 && !s[0].set_open {
+    if s[0].win_w > 0 && s[0].win_w < cast(f32) CP_SIDE_FROM {
+      s[0].side_drawer = !s[0].side_drawer;
+      if !s[0].side_drawer { cp_ed_focus(s, CP_KB_COMPOSER); }
+    } else {
+      s[0].side_collapsed = !s[0].side_collapsed;
+      if s[0].side_collapsed { cp_ed_focus(s, CP_KB_COMPOSER); }
+    }
+  }
+}
 // ⌘/: the composer's model menu opens or closes.
 coder_page_toggle_models :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count > 0 && cp_models(s) > 0 && !s[0].set_open && !cp_overlay_open(s) { s[0].effort_menu = false; s[0].model_menu = !s[0].model_menu; }

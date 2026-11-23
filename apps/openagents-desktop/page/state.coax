@@ -359,7 +359,7 @@ CoderPage :: struct {
   calls: [] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
   long_buf: [] u8; long_n: int;   // CP_LONG_POOL bytes in the page's store
   agent_buf: [] u8; agent_n: int; // CP_AGENT_POOL bytes in the page's store: the sub-agents' replies
-  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; cmd_hints: bool;
+  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; side_drawer: bool; cmd_hints: bool;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [] u8;             // CP_SCRATCH bytes in the page's store
   zoom: int;                  // the text size, a row of CP_ZOOMS

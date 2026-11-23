@@ -49,7 +49,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_flag(s, DC_FLAG_GIT) && cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_flag(s, DC_FLAG_TERMINAL) && cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_flag(s, DC_FLAG_GIT) && cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
-  if act >= CP_SB_VIEW_ACTIVE_ACT && act <= CP_SB_LOAD_MORE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar working shelf, archive, bulk, load more & undo (sidebar_groups.coax; #13875)
+  if act >= CP_SB_VIEW_ACTIVE_ACT && act <= CP_SB_SNOOZED_TOGGLE { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar working/snoozed shelf, archive, bulk, load more & undo (sidebar_groups.coax; #13875, #14025)
   if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
   if act >= CP_VOICE_MIC && act <= CP_VOICE_CANCEL { return cp_flag(s, DC_FLAG_VOICE) && cp_voice_press(s, act); }  // Voice dictation (voice.coax; #13882)
   if act >= CP_RICH_STASH_POP && act <= CP_RICH_SIDE_OPEN_MAIN { return cp_flag(s, DC_FLAG_RICH) && cp_rich_press(s, act, surface_id(s[0].surface[..], row)); } // Rich composer & Side Chat (rich.coax; #13884)
@@ -184,10 +184,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].copied_turn = s[0].pane_turn; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_PANE; s[0].ask = CP_ASK_COPY; return true;
   }
   if act == CP_CHAT {
+    // ShiftGuard (#14025): swallow involuntary clicks for 500ms after background row-order shifts.
+    if s[0].clock > 0.0f32 && s[0].clock < s[0].sb[0].shift_until { return true; }
     id := surface_id(s[0].surface[..], row);
     for q: 0..<s[0].nchats {
       if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
         if cp_sb_chat_click(s, q) { return true; }
+        s[0].side_drawer = false;
         if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
         s[0].open = q; s[0].ask = CP_ASK_OPEN; return true;
       }
@@ -213,12 +216,22 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if cp_running(s) { s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
     return cp_send(s);
   }
-  if act == CP_NEW { return cp_new(s); }
+  if act == CP_NEW { s[0].side_drawer = false; return cp_new(s); }
   if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
   if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].ask = CP_ASK_FOREMAN; return true; }
   if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].ask = CP_ASK_GYM; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
-  if act == CP_SIDE_TOGGLE { s[0].side_collapsed = !s[0].side_collapsed; return true; }
+  if act == CP_SIDE_TOGGLE {
+    if s[0].win_w > 0 && s[0].win_w < cast(f32) CP_SIDE_FROM {
+      s[0].side_drawer = !s[0].side_drawer;
+      if !s[0].side_drawer { cp_ed_focus(s, CP_KB_COMPOSER); }
+    } else {
+      s[0].side_collapsed = !s[0].side_collapsed;
+      if s[0].side_collapsed { cp_ed_focus(s, CP_KB_COMPOSER); }
+    }
+    return true;
+  }
+  if act == CP_SIDE_DRAWER_CLOSE { s[0].side_drawer = false; cp_ed_focus(s, CP_KB_COMPOSER); return true; }
   if act == CP_FOREMAN_HUD_TOGGLE { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
   if act == CP_FOREMAN_HUD_OPEN {
     if !cp_flag(s, DC_FLAG_FOREMAN) { return false; }
@@ -383,8 +396,18 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
   id := surface_id(s[0].surface[..], row);
   acts := surface_action(s[0].surface[..], row) != 0;
   was := cast(string) s[0].pressed[0..<s[0].pressed_n];
-  // a sidebar's edge: a press on it takes hold, a move drags it, and the conversation keeps 380 points
-  if phase == 0 { s[0].drag = cp_edge(s, ux); if s[0].drag != 0 { s[0].touching = false; s[0].pressed_n = 0; return true; } }
+  // a sidebar's edge: double-click resets width to default (#14025); a press takes hold, a move drags it
+  if phase == 0 {
+    s[0].drag = cp_edge(s, ux);
+    if s[0].drag != 0 {
+      if clicks >= 2 {
+        if s[0].drag == 1 { s[0].side_w = 0.0f32; } else { s[0].pane_user = 0.0f32; }
+        s[0].sides_due = true; s[0].drag = 0; s[0].touching = false; s[0].pressed_n = 0;
+        return true;
+      }
+      s[0].touching = false; s[0].pressed_n = 0; return true;
+    }
+  }
   if s[0].drag != 0 {
     if phase == 1 {
       if s[0].drag == 1 {

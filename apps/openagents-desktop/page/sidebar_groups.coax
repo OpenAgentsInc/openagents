@@ -44,6 +44,9 @@ CP_SB_UNDO_ACT :: 219;
 CP_SB_UNDO_CLOSE_ACT :: 220;
 CP_SB_WORKING_TOGGLE :: 222;
 CP_SB_LOAD_MORE_ACT :: 223;
+CP_SB_SNOOZED_TOGGLE :: 224;
+CP_SIDE_DRAWER_CLOSE :: 225;
+CP_SB_SHIFT_GUARD_S :: 0.5f32;   // 500ms involuntary row-shift click swallow (#14025)
 
 CpSbUndo :: struct {
   active: bool;
@@ -57,7 +60,12 @@ CpSidebar :: struct {
   view_mode: int;             // CP_SB_VIEW_ACTIVE or CP_SB_VIEW_ARCHIVED
   now_ms: int;                // current wall-clock epoch ms for snooze wake comparison
   working_collapsed: bool;    // Working shelf collapse state (false = expanded by default)
+  snoozed_collapsed: bool;    // Snoozed shelf collapse state (true = collapsed by default; #14025)
   chat_limit: int;            // max chats rendered before "Load more" (defaults to CP_SB_PAGE_SIZE)
+  shift_hash: int;            // rolling hash of rendered visible chat order for ShiftGuard (#14025)
+  shift_until: f32;           // swallow involuntary CP_CHAT clicks while clock < shift_until (#14025)
+  shift_init: bool;
+  shift_suppress: bool;       // set by intentional sidebar UI actions (Load more, Working/Snoozed toggle)
   sel: [CP_CHATS] bool;       // multi-select bitset indexed by s[0].chats[q]
   sel_count: int;
   sel_anchor: int;            // last clicked chat index q for Shift-click range (-1: none)
@@ -69,7 +77,7 @@ CpSidebar :: struct {
 }
 
 cp_sb_init :: (s: [] CoderPage) {
-  s[0].sb[0] = CpSidebar.{sel_anchor = -1, chat_limit = CP_SB_PAGE_SIZE};
+  s[0].sb[0] = CpSidebar.{sel_anchor = -1, chat_limit = CP_SB_PAGE_SIZE, snoozed_collapsed = true};
 }
 
 cp_sb_chat_limit :: (s: [] CoderPage) -> int {
@@ -371,15 +379,23 @@ cp_sb_bulk_bar :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32) -> f32 {
 cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_SB_WORKING_TOGGLE {
     s[0].sb[0].working_collapsed = !s[0].sb[0].working_collapsed;
+    s[0].sb[0].shift_suppress = true;
+    return true;
+  }
+  if act == CP_SB_SNOOZED_TOGGLE {
+    s[0].sb[0].snoozed_collapsed = !s[0].sb[0].snoozed_collapsed;
+    s[0].sb[0].shift_suppress = true;
     return true;
   }
   if act == CP_SB_LOAD_MORE_ACT {
     s[0].sb[0].chat_limit = cp_sb_chat_limit(s) + CP_SB_PAGE_SIZE;
+    s[0].sb[0].shift_suppress = true;
     return true;
   }
   if act == CP_SB_VIEW_ACTIVE_ACT {
     s[0].sb[0].view_mode = CP_SB_VIEW_ACTIVE;
     s[0].sb[0].chat_limit = CP_SB_PAGE_SIZE;
+    s[0].sb[0].shift_suppress = true;
     cp_sb_clear_sel(s);
     s[0].side_scroll = 0;
     return true;
@@ -387,6 +403,7 @@ cp_sb_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_SB_VIEW_ARCHIVED_ACT {
     s[0].sb[0].view_mode = CP_SB_VIEW_ARCHIVED;
     s[0].sb[0].chat_limit = CP_SB_PAGE_SIZE;
+    s[0].sb[0].shift_suppress = true;
     cp_sb_clear_sel(s);
     s[0].side_scroll = 0;
     return true;

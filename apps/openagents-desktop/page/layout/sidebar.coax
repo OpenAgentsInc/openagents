@@ -22,6 +22,14 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
     if age.count > 0 { st_str = sheet_pool(f[0].sheet, age); }
   }
   h_icon := ifx s[0].chats[q].harness >= 0 then s[0].chats[q].harness else ICON_PSIONIC;
+  skind := APP_SIDE_STATUS_NONE;
+  if is {
+    if s[0].permit[0].open {
+      skind = ifx s[0].permit[0].question then APP_SIDE_STATUS_INPUT else APP_SIDE_STATUS_APPROVAL;
+    } else if s[0].nturns > 0 && s[0].turns[s[0].nturns - 1].state == CP_FAILED {
+      skind = APP_SIDE_STATUS_FAILED;
+    }
+  }
   if s[0].sb[0].vis_n < CP_CHATS { s[0].sb[0].vis_order[s[0].sb[0].vis_n] = q; s[0].sb[0].vis_n += 1; }
   return AppSideRow.{id = id, title = t_str,
                      state = (ifx is || sel then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0),
@@ -32,7 +40,8 @@ cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, runnin
                      card = true,
                      repo = repo_str,
                      branch = br_str,
-                     harness_icon = h_icon};
+                     harness_icon = h_icon,
+                     status_kind = skind};
 }
 
 // One physical device pixel in page units (1pt fallback when s[0].d is unset in headless checks).
@@ -203,7 +212,46 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
         nrows += 1; visible_chats += 1;
       }
     }
+    // Collapsible Snoozed shelf (only shown when nsnoozed > 0 so no snoozed chat is ever unreachable; #14025).
+    nsnoozed := cp_sb_snoozed_count(s);
+    if nsnoozed > 0 && nrows < rows.count {
+      s_collapsed := s[0].sb[0].snoozed_collapsed;
+      scnt_b: [16] u8; scn := el_put_i(scnt_b[..], 0, nsnoozed);
+      rows[nrows] = AppSideRow.{id = "coder.snoozed",
+                                title = "Snoozed",
+                                status = sheet_pool(f[0].sheet, cast(string) scnt_b[0..<scn]),
+                                state = EL_S_EXPANDS | (ifx !s_collapsed then EL_S_EXPANDED else 0),
+                                trail_icon = ifx s_collapsed then ICON_CHEVRON_RIGHT else ICON_CHEVRON,
+                                action = CP_SB_SNOOZED_TOGGLE};
+      nrows += 1;
+      if !s_collapsed {
+        for q: 0..<s[0].nchats {
+          if nrows >= rows.count { break; }
+          if s[0].chats[q].archived || !cp_sb_is_snoozed(s[0].chats[q], now_ms) { continue; }
+          rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
+          nrows += 1;
+        }
+      }
+    }
   }
+  // ShiftGuard (#14025): detect involuntary sidebar row-order shifts (e.g. a chat moving into/out of Working)
+  // and arm a 500ms misclick swallow window unless suppressed by an intentional sidebar control action.
+  sh_h := (s[0].sb[0].vis_n * 31 + nworking * 7 + 17) & 0x3FFFFFF;
+  for i: 0..<s[0].sb[0].vis_n {
+    q := s[0].sb[0].vis_order[i];
+    sh_h = (sh_h * 131 + q + 1) & 0x3FFFFFF;
+    if q >= 0 && q < s[0].nchats {
+      for b: 0..<s[0].chats[q].id_n {
+        sh_h = (sh_h * 31 + cast(int) s[0].chats[q].id[b]) & 0x3FFFFFF;
+      }
+    }
+  }
+  if s[0].sb[0].shift_init && sh_h != s[0].sb[0].shift_hash && !s[0].sb[0].shift_suppress && s[0].clock > 0.0f32 {
+    s[0].sb[0].shift_until = s[0].clock + CP_SB_SHIFT_GUARD_S;
+  }
+  s[0].sb[0].shift_hash = sh_h;
+  s[0].sb[0].shift_init = true;
+  s[0].sb[0].shift_suppress = false;
   if hidden_chats > 0 {
     lmb: [24] u8;
     lmn := el_put_i(lmb[..], 0, hidden_chats);

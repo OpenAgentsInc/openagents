@@ -680,6 +680,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
         }
         let fgRunning = cd_running(page) != 0
+        KeepAwakeManager.shared.update(active: KeepAwakeManager.enabled && (fgRunning || !runs.isEmpty))
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
             if !fgRunning {

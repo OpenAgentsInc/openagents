@@ -124,7 +124,7 @@ core_swift=(
   "$here/Window+Dialogs.swift" "$here/Window+Files.swift" "$here/Window+FollowUps.swift"
   "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Runs.swift"
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
-  "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift"
+  "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
 )
 swift_files=("${core_swift[@]}")
 

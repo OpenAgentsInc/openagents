@@ -101,7 +101,9 @@ extension CoderWindow {
             if isSnoozed {
                 items.append(Item(label: "Unsnooze Chat"))
                 acts.append { [weak self] in self?.unsnoozeChat(id) }
-            } else {
+            }
+            #if OA_FULL
+            if !isSnoozed {
                 items.append(Item(label: "Snooze 1 Hour"))
                 acts.append { [weak self] in self?.snoozeChat(id, durationSeconds: 3600) }
                 items.append(Item(label: "Snooze 4 Hours"))
@@ -111,6 +113,7 @@ extension CoderWindow {
                 items.append(Item(label: "Snooze Custom…"))
                 acts.append { [weak self] in self?.snoozeChatCustom(id) }
             }
+            #endif
         }
         items.append(Item(kind: 2)); acts.append {}
         items.append(Item(label: "Delete Chat…", disabled: busy(id), danger: true))

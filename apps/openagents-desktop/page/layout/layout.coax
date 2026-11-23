@@ -66,9 +66,11 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   right := pane_w * app_presence(f, pk, docked);
   if left < 0.5 { left = 0; }
   if right < 0.5 { right = 0; }
+  narrow := window_w < cast(f32) CP_SIDE_FROM;
+  if !narrow { s[0].side_drawer = false; }
   s[0].side = left; s[0].pane_w = ifx right > 0 then pane_w else 0.0f32; s[0].pane_x = window_w - right;
   s[0].gym_w = 0; s[0].gym_h = 0;
-  toggle := left > 0 || (s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM);
+  toggle := left > 0 || (s[0].side_collapsed && !narrow) || narrow;
   if cp_flag(s, DC_FLAG_GYM) && s[0].gym_open {
     running := cp_running(s);
     sc := cp_scale(s);
@@ -111,9 +113,20 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   running := cp_running(s); full := cp_full(s); exceeded := cp_flag(s, DC_FLAG_USAGE) && cp_budget_exceeded(s);
   cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
   cp_corners(s, f, left, w, window_w, exceeded);
-  // the sidebar at its whole width, slid out to the left as it shuts
-  if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
-  cp_title_bar(s, f, left, toggle);
+  // the sidebar at its whole width, slid out to the left as it shuts; on narrow viewports (< CP_SIDE_FROM),
+  // render an overlay drawer with scrim when s[0].side_drawer is open (#14025).
+  if left > 0 {
+    from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0);
+  } else if narrow && s[0].side_drawer {
+    dw := cast(f32) CP_SIDE;
+    if dw > window_w - 48.0f32 { dw = window_w - 48.0f32; }
+    if dw < 200.0f32 { dw = window_w; }
+    sheet_fill(f[0].sheet, 0, 0, window_w, h, 0, rgba(0, 0, 0, 0.55f32));
+    srow := uiframe_semantic(f, "coder.side.scrim", EL_BUTTON, "Close sidebar", 0, 0, window_w, h, 0, CP_SIDE_DRAWER_CLOSE);
+    sheet_hit(f[0].sheet, UIFRAME_HIT, srow, 0, 0, 0, window_w, h);
+    cp_sidebar(s, f, dw, h, running);
+  }
+  cp_title_bar(s, f, ifx left > 0 then left else ifx narrow && s[0].side_drawer then cast(f32) CP_SIDE else 0.0f32, toggle);
   cp_composer(s, f, x, cw, h, running, full, exceeded);
   cp_drop_overlay(s, f, window_w, h);
 }

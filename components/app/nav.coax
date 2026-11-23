@@ -135,6 +135,11 @@ app_side_action :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
 }
+APP_SIDE_STATUS_NONE :: 0;
+APP_SIDE_STATUS_APPROVAL :: 1;   // amber dot: waiting for tool/permission approval (#14025)
+APP_SIDE_STATUS_INPUT :: 2;      // indigo/cyan dot: waiting for user question/input (#14025)
+APP_SIDE_STATUS_FAILED :: 3;     // red dot: last turn failed (#14025)
+
 // One row of a history list.
 AppSideRow :: struct {
   id: string;                 // its stable id (the chat's, never its place in the list)
@@ -157,6 +162,7 @@ AppSideRow :: struct {
   repo: string;               // Line 2 project/folder name
   branch: string;             // Line 2 git branch name (appended after repo)
   harness_icon: int = -1;     // Line 2 trailing harness/provider icon
+  status_kind: int;           // APP_SIDE_STATUS_* subtle semantic cue on 2-line card (#14025)
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
@@ -202,7 +208,16 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   y1 := pill_y + pad_y;
   sy1 := y1 + (tf.line - s.small.line) / 2.0f32;
   r1_right := irx;
-  if busy {
+  if !off && r.status_kind != APP_SIDE_STATUS_NONE {
+    dot := a.dot;
+    cue_c := ifx r.status_kind == APP_SIDE_STATUS_APPROVAL then rgba(245, 158, 11, 0.95f32)
+             else ifx r.status_kind == APP_SIDE_STATUS_INPUT then rgba(99, 102, 241, 0.95f32)
+             else rgba(239, 68, 68, 0.95f32);
+    if r1_right - dot > ix0 + 24.0f32 {
+      sheet_fill(sh, r1_right - dot, sy1 + (s.small.line - dot) / 2.0f32, dot, dot, dot / 2.0f32, cue_c);
+      r1_right -= dot + 6.0f32;
+    }
+  } else if busy {
     spin_s := 11.0f32;
     if r1_right - spin_s > ix0 + 24.0f32 {
       activity(sh, s, r1_right - spin_s, sy1 + (s.small.line - spin_s) / 2.0f32, spin_s, f[0].clock, f[0].reduced_motion);

@@ -332,8 +332,11 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   i := cp_island(s, true);
   #assert i.x == 6 && i.y == 4 && i.h == 32 && i.x + i.w == 88 + 24 + 4 + 24 + 10;   // zeron.island: inset 6, pad 4, two 24pt controls + 4pt gap
   #assert cp_bar_row(s, "t0.u").y >= 38 && coder_page_bar_drags(s, 170, 20);
-  // a narrow window can't show the sidebar: no toggle, search icon sits past the lights in the island
-  #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") < 0 && cp_bar_row(s, "coder.search").x == 88;
+  // a narrow window (< CP_SIDE_FROM) keeps the sidebar toggle so users can open the overlay drawer (#14025)
+  #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.toggle") >= 0 && cp_bar_row(s, "coder.search").x == 88 + 24 + 4;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_drawer;
+  #assert cp_bar_draw(s, f[..], 900, 900) && surface_find(s[0].surface[..], "coder.side.scrim") >= 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.scrim")) && !s[0].side_drawer;
   i = cp_island(s, false);
   #assert i.x == 6 && i.x + i.w == 88 + 24 + 10;
   // full screen hides the lights: the toggle takes the window's edge and search sits beside it
@@ -350,4 +353,37 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar_draw(s, f[..], 1200, 700);
   #assert cp_bar_row(s, "set.back").y >= 38 && cp_bar_row(s, "set.title").y >= 38;
   #assert surface_find(s[0].surface[..], "coder.side.toggle") < 0 && coder_page_bar_drags(s, 120, 20);
+}
+
+#test "sidebar ShiftGuard swallows involuntary shifts, rail double-click resets width, and Snoozed shelf reveals snoozed chats (#14025)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  coder_page_chats(s, "c1\tFirst\t0\t0\t0\t0\t0\t0\t/w\t1000\tmain\t0\nc2\tSecond\t0\t0\t0\t0\t0\t9999999999999\t/w\t900\tmain\t0\n");
+  s[0].sb[0].now_ms = 2000;
+  s[0].clock = 1.0f32;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  // Collapsible Snoozed shelf appears when a chat is snoozed, and expands to reveal chat.c2.
+  sn_row := surface_find(s[0].surface[..], "coder.snoozed");
+  #assert sn_row >= 0 && surface_find(s[0].surface[..], "chat.c2") < 0;
+  #assert cp_press(s, sn_row) && !s[0].sb[0].snoozed_collapsed;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert surface_find(s[0].surface[..], "chat.c1") >= 0;
+  #assert surface_find(s[0].surface[..], "chat.c2") >= 0;
+
+  // ShiftGuard: when c1 suddenly becomes busy (moves into Working), clicks within 500ms are swallowed.
+  coder_page_chats(s, "c1\tFirst\t1\t0\t0\t0\t0\t0\t/w\t1000\tmain\t0\nc3\tThird\t0\t0\t0\t0\t0\t0\t/w\t950\tmain\t0\n");
+  s[0].clock = 2.0f32;
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  #assert s[0].sb[0].shift_until > 2.4f32;
+  c3_row := surface_find(s[0].surface[..], "chat.c3");
+  #assert c3_row >= 0;
+  s[0].ask = 0;
+  #assert cp_press(s, c3_row) && s[0].ask == 0;   // swallowed during 500ms guard
+  s[0].clock = 2.6f32;
+  #assert cp_press(s, c3_row) && s[0].ask == CP_ASK_OPEN;   // allowed after 500ms
+
+  // Resize rail double-click resets side_w to 0 (default width).
+  s[0].side_w = 340.0f32;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && s[0].side == 340.0f32;
+  #assert cp_pointer_with(s, 340.0f32, 300.0f32, 0, 2, 0) && s[0].side_w == 0.0f32 && s[0].sides_due;
 }

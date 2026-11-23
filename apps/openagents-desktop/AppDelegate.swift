@@ -179,6 +179,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
     func applicationWillTerminate(_ notification: Notification) {
+        KeepAwakeManager.shared.release()
         let keepLocalServer = (main?.runsOutliveQuit == true) && ((main?.runningCount ?? 0) > 0)
         DesktopActivation.shared.stop()
         #if OA_FULL
