@@ -975,7 +975,8 @@ dk_saved_turns :: (text: string, s: [] Session, ab: [] u8, drop: int) {
     state := cl_int(t, "state"); st := ifx state.ok then state.value else DK_DONE;
     ar[0].at = 0; ar[0].full = false;
     note := cl_str(ar[..], t, "note");
-    if st == DK_STOPPED || st == DK_RUNNING { s_notice(s, N_STOPPED, "Stopped"); }
+    if st == DK_RUNNING { s_notice(s, N_STOPPED, ifx note.count > 0 then note else "Interrupted before the reply finished."); }
+    else if st == DK_STOPPED { s_notice(s, N_STOPPED, ifx note.count > 0 then note else "Stopped"); }
     else if st == DK_FAILED { s_notice(s, N_ERROR, ifx note.count > 0 then note else "The turn ended early."); }
   }
   s[0].live = false;

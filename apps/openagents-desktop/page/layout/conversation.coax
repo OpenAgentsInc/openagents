@@ -473,7 +473,10 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap;
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
       }
-      else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
+      else if st == CP_STOPPED {
+        stop_label := ifx s[0].turns[i].note_n > 0 then cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n] else "Stopped";
+        y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, stop_label, false) + a.gap;
+      }
       if i + 1 < s[0].nturns { y += a.gap; }
       real := y - y0;
       hit := cp_find_turn_has_hit(s, i);

@@ -655,12 +655,18 @@ ph_inkling_ensure_model :: (want_model: string, out: [] u8) -> string {
     _ = proc_quiet(h);
     _ = proc_detach(h);
     if ok && proc_start(h) == 0 {
+      pid := proc_pid(h);
       hb: [1024] u8; home := ph_home(hb[..]);
       if home.count > 0 {
         rd: [1400] u8; rn := hs_cat(rd[..], 0, home); rn = hs_cat(rd[..], rn, "/.openagents/run");
         _ = fs_mkdir_private(cast(string) rd[0..<rn]);
         pf: [1400] u8; pn := hs_cat(pf[..], 0, cast(string) rd[0..<rn]); pn = hs_cat(pf[..], pn, "/inkling-serve.port");
         _ = fs_replace_durable(cast(string) pf[0..<pn], port_s);
+        if pid > 1 {
+          pidb: [32] u8; pid_s := hs_itoa(pid, pidb[..]);
+          pif: [1400] u8; pin := hs_cat(pif[..], 0, cast(string) rd[0..<rn]); pin = hs_cat(pif[..], pin, "/inkling-serve.pid");
+          _ = fs_replace_durable(cast(string) pif[0..<pin], pid_s);
+        }
       }
       deadline := proc_now_ms() + 20000;
       while proc_now_ms() < deadline {

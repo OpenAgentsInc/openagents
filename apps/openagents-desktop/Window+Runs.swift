@@ -820,6 +820,9 @@ extension CoderWindow {
         } else if !isRunning && !working.isEmpty && !working[working.count - 1].ended {
             working[working.count - 1].ended = true
             working[working.count - 1].state = 3
+            if working[working.count - 1].note.isEmpty && working[working.count - 1].reply.isEmpty {
+                working[working.count - 1].note = "Interrupted before the reply finished."
+            }
         }
 
         guard !working.isEmpty else { return nil }

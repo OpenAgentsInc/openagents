@@ -399,7 +399,7 @@ cp_handoff_compose :: (s: [] CoderPage, from_provider: string, to_provider: stri
     if room <= u_lbl.count + 4 { break; }
 
     ask := cast(string) s[0].turns[ti].ask[0..<s[0].turns[ti].ask_n];
-    reply := ifx s[0].turns[ti].reply_n > 0 then cast(string) s[0].turns[ti].reply[0..<s[0].turns[ti].reply_n] else cp_recall_ended(s[0].turns[ti].state);
+    reply := ifx s[0].turns[ti].reply_n > 0 then cast(string) s[0].turns[ti].reply[0..<s[0].turns[ti].reply_n] else cp_recall_ended(s[0].turns[ti].state, s[0].turns[ti].note_n > 0);
 
     // Split text budget between ask (up to 40%) and reply (remainder), or full if short.
     text_budget := ifx turn_budget > overhead then turn_budget - overhead else 0;
