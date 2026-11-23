@@ -15,6 +15,7 @@
 #load "../app/device/seal.coax";
 #load "../../../coax/lib/nostr/host/tailnet.coax";
 #load "../../../coax/lib/agent/environment/phone-agent-policy.coax";
+#load "../../../coax/lib/agent/environment/remote-reliability.coax";
 
 mc_copy :: (out: [] u8, s: string) -> int #effects(all) {
   if s.count > out.count { return -1; }

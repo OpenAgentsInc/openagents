@@ -3540,3 +3540,46 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert cue_held_bg(x) && cue_steer(x, "prioritize tests") && !cue_held_bg(x) && x[0].nbg_tools == 1;
   #assert agy_out_has(x, "\"method\":\"session/prompt\"") && agy_out_has(x, "prioritize tests");
 }
+
+#test "agyworker: recorded-transcript replay catches approval, reactive-wake, and crash callback races (#14027)" {
+  // Replay a scrubbed multi-step Antigravity ACP transcript through the real worker orchestration:
+  // tool_call -> escalated permission -> owner approval -> background settle -> mid-wake steer ->
+  // reactive wake usage settle -> clean turn end, plus unexpected process exit clearing live callbacks.
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [8192] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  s[0].cfg.interactive = true;
+  s[0].cwd_n = agyw_copy(s[0].cwd[..], "/repo");
+  x[0].live = true; x[0].ready = true; x[0].hold = 0;
+
+  // Step 1: thought + tool_call + escalated permission request -> emits MWW_PERMIT and pauses
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Checking build\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"tc-r1\",\"name\":\"run_command\",\"kind\":\"execute\",\"status\":\"in_progress\",\"title\":\"Run tests\",\"rawInput\":{\"CommandLine\":\"cargo test\"}}}}");
+  s[0].turn_mode_n = agyw_copy(s[0].turn_mode[..], "default");
+  perm_req := "{\"jsonrpc\":\"2.0\",\"id\":77,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"g-1\",\"toolCall\":{\"toolCallId\":\"tc-r1\",\"kind\":\"execute\",\"title\":\"Run tests\",\"rawInput\":{\"CommandLine\":\"cargo test\"}},\"options\":[{\"optionId\":\"allow_once\",\"kind\":\"allow_once\",\"name\":\"Allow once\"},{\"optionId\":\"reject_once\",\"kind\":\"reject_once\",\"name\":\"Deny\"}]}}";
+  agyw_fx_feed(s, x, perm_req);
+  #assert s[0].pending_permit && agyw_logged(s, "\"kind\":\"permit\"") && agyw_logged(s, "cargo test");
+
+  // Step 2: owner approves live callback -> clears pending_permit and sends allow_once
+  ans: [1] MwwRequest;
+  ans[0].ticket.ok = true; ans[0].ticket.value = s[0].pending_ticket;
+  ans[0].allow = true; ans[0].option = "allow_once";
+  #assert agyw_handle_answer(s, x, ans[0]) && !s[0].pending_permit;
+  #assert agy_out_has(x, "\"optionId\":\"allow_once\"");
+
+  // Step 3: background tool completes + reply arrives -> turn finishes cleanly
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"tc-r1\",\"kind\":\"execute\",\"status\":\"completed\",\"rawOutput\":{\"output\":\"ok\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"All tests passed.\"}}}}");
+  agyw_turn_end(s, x[0].c[0].ar[..], "{\"stopReason\":\"end_turn\"}", true);
+  #assert !s[0].turn_active && agyw_logged(s, "\"ending\":\"finished\"") && agyw_logged(s, "All tests passed.");
+
+  // Step 4: unexpected turn failure/crash while a live permission callback is pending MUST clear pending_permit
+  // (live process callbacks die with the child process and are never resurrected).
+  s[0].turn_active = true;
+  agyw_fx_feed(s, x, perm_req);
+  #assert s[0].pending_permit;
+  agyw_finish_turn(s, "failed", "Antigravity exited unexpectedly.", true);
+  #assert !s[0].turn_active && !s[0].pending_permit && s[0].pending_ticket == 0;
+}

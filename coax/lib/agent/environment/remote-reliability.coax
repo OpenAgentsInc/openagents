@@ -1,0 +1,261 @@
+// Layer-2 Mobile/Remote Reliability Invariants (GitHub #14027):
+// Translates T3 Code orchestration-v2 / client-runtime distributed laws into #authority Coax:
+//   1. Durable offline send outbox with idempotent command IDs & ack dedupe ring.
+//   2. Separation of transport readiness, auth validity, and replay-cursor freshness
+//      (authoritative snapshot fallback whenever a cursor is expired/pruned or ahead of log_head).
+//   3. Explicit request-lifetime modeling distinguishing live child-process callbacks
+//      (which die on process exit/epoch change) from async message-answer questions.
+//
+//   coax/bin/coax test coax/lib/agent/environment/remote-reliability.coax --library
+//   coax/bin/coax mutate coax/lib/agent/environment/remote-reliability.coax --library
+#authority;
+
+RR_OUTBOX_CAP :: 16;
+RR_DEDUPE_CAP :: 32;
+RR_ID_MAX :: 64;
+
+RR_CMD_PENDING :: 1;
+RR_CMD_SENT :: 2;
+
+RR_ENQ_INVALID :: -1;
+RR_ENQ_FULL :: -2;
+RR_ENQ_DUP :: 0;
+RR_ENQ_OK :: 1;
+
+RR_SYNC_WAIT_TRANSPORT :: 0;
+RR_SYNC_WAIT_AUTH :: 1;
+RR_SYNC_INCREMENTAL :: 2;
+RR_SYNC_SNAPSHOT :: 3;
+
+RR_REQ_LIVE_CALLBACK :: 1;
+RR_REQ_ASYNC_MESSAGE :: 2;
+
+RR_LIFE_ACTIVE :: 0;
+RR_LIFE_DEAD_PROCESS :: 1;
+RR_LIFE_EXPIRED :: 2;
+
+RrOutboxItem :: struct {
+  cmd_id: [RR_ID_MAX] u8; cmd_id_n: int;
+  session_id: [RR_ID_MAX] u8; session_id_n: int;
+  status: int;       // RR_CMD_PENDING or RR_CMD_SENT
+  attempts: int;
+  created_ms: int;
+}
+
+RrOutbox :: struct {
+  items: [RR_OUTBOX_CAP] RrOutboxItem;
+  count: int;
+  acked: [RR_DEDUPE_CAP][RR_ID_MAX] u8;
+  acked_n: [RR_DEDUPE_CAP] int;
+  acked_head: int;
+  acked_count: int;
+}
+
+rr_eq :: (buf: [] u8, n: int, s: string) -> bool #effects(reads, traps) {
+  if n != s.count { return false; }
+  for i: 0..<n {
+    if buf[i] != s[i] { return false; }
+  }
+  return true;
+}
+
+rr_copy_id :: (dst: [] u8, s: string) -> int #effects(reads, writes, traps) {
+  if s.count == 0 || s.count > dst.count { return -1; }
+  for i: 0..<s.count { dst[i] = s[i]; }
+  return s.count;
+}
+
+rr_outbox_is_acked :: (o: [] RrOutbox, cmd_id: string) -> bool #effects(reads, traps) {
+  for i: 0..<o[0].acked_count {
+    if rr_eq(o[0].acked[i][..], o[0].acked_n[i], cmd_id) { return true; }
+  }
+  return false;
+}
+
+rr_outbox_find :: (o: [] RrOutbox, cmd_id: string) -> int #effects(reads, traps) {
+  for i: 0..<o[0].count {
+    if rr_eq(o[0].items[i].cmd_id[..], o[0].items[i].cmd_id_n, cmd_id) { return i; }
+  }
+  return -1;
+}
+
+// Durable idempotent enqueue: rejects empty/oversized IDs, deduplicates against both active
+// entries and the acked ring, and returns RR_ENQ_FULL under backpressure.
+rr_outbox_enqueue :: (o: [] RrOutbox, cmd_id: string, session_id: string, now_ms: int) -> int #effects(reads, writes, traps) {
+  if cmd_id.count == 0 || cmd_id.count > RR_ID_MAX || session_id.count == 0 || session_id.count > RR_ID_MAX {
+    return RR_ENQ_INVALID;
+  }
+  if rr_outbox_is_acked(o, cmd_id) || rr_outbox_find(o, cmd_id) >= 0 {
+    return RR_ENQ_DUP;
+  }
+  if o[0].count >= RR_OUTBOX_CAP { return RR_ENQ_FULL; }
+  idx := o[0].count;
+  o[0].items[idx] = RrOutboxItem.{status = RR_CMD_PENDING, attempts = 0, created_ms = now_ms};
+  o[0].items[idx].cmd_id_n = rr_copy_id(o[0].items[idx].cmd_id[..], cmd_id);
+  o[0].items[idx].session_id_n = rr_copy_id(o[0].items[idx].session_id[..], session_id);
+  o[0].count += 1;
+  return RR_ENQ_OK;
+}
+
+// Transitions a pending command to in-flight SENT and increments its attempt counter.
+rr_outbox_mark_sent :: (o: [] RrOutbox, cmd_id: string) -> bool #effects(reads, writes, traps) {
+  idx := rr_outbox_find(o, cmd_id);
+  if idx < 0 || o[0].items[idx].status != RR_CMD_PENDING { return false; }
+  o[0].items[idx].status = RR_CMD_SENT;
+  o[0].items[idx].attempts += 1;
+  return true;
+}
+
+// Records a durable receipt in the acked ring and removes the command from the active outbox.
+rr_outbox_ack :: (o: [] RrOutbox, cmd_id: string) -> bool #effects(reads, writes, traps) {
+  if cmd_id.count == 0 || cmd_id.count > RR_ID_MAX { return false; }
+  if !rr_outbox_is_acked(o, cmd_id) {
+    slot := o[0].acked_head;
+    o[0].acked_n[slot] = rr_copy_id(o[0].acked[slot][..], cmd_id);
+    o[0].acked_head = (slot + 1) % RR_DEDUPE_CAP;
+    if o[0].acked_count < RR_DEDUPE_CAP { o[0].acked_count += 1; }
+  }
+  idx := rr_outbox_find(o, cmd_id);
+  if idx >= 0 {
+    for i: idx..<(o[0].count - 1) { o[0].items[i] = o[0].items[i + 1]; }
+    o[0].count -= 1;
+  }
+  return true;
+}
+
+// On disconnect or app restart, resets in-flight SENT commands back to PENDING without dropping intent.
+rr_outbox_requeue_inflight :: (o: [] RrOutbox) -> int #effects(reads, writes, traps) {
+  moved := 0;
+  for i: 0..<o[0].count {
+    if o[0].items[i].status == RR_CMD_SENT {
+      o[0].items[i].status = RR_CMD_PENDING;
+      moved += 1;
+    }
+  }
+  return moved;
+}
+
+// Separates transport readiness, authorization, and replay-cursor freshness:
+// falls back to RR_SYNC_SNAPSHOT whenever client_cursor is unset (< 0), pruned (< log_floor),
+// or ahead of the server's log_head (e.g. after daemon reset).
+rr_sync_action :: (
+  transport_up: bool,
+  auth_valid: bool,
+  client_cursor: int,
+  log_floor: int,
+  log_head: int
+) -> int #effects() {
+  if !transport_up { return RR_SYNC_WAIT_TRANSPORT; }
+  if !auth_valid { return RR_SYNC_WAIT_AUTH; }
+  if client_cursor < 0 || client_cursor < log_floor || client_cursor > log_head {
+    return RR_SYNC_SNAPSHOT;
+  }
+  return RR_SYNC_INCREMENTAL;
+}
+
+// Explicit request-lifetime policy:
+// - Live callbacks (RR_REQ_LIVE_CALLBACK) die immediately if the child process is dead or its
+//   process_epoch advanced, and can never be resurrected from disk.
+// - Async message-answer questions (RR_REQ_ASYNC_MESSAGE) survive process exit/restart.
+// - Both respect optional wall-clock expiry when expires_ms > 0.
+rr_request_liveness :: (
+  kind: int,
+  req_epoch: int,
+  live_epoch: int,
+  process_alive: bool,
+  now_ms: int,
+  expires_ms: int
+) -> int #effects() {
+  if kind == RR_REQ_LIVE_CALLBACK {
+    if !process_alive || req_epoch != live_epoch { return RR_LIFE_DEAD_PROCESS; }
+  }
+  if expires_ms > 0 && now_ms >= expires_ms { return RR_LIFE_EXPIRED; }
+  return RR_LIFE_ACTIVE;
+}
+
+#test "remote reliability: durable outbox deduplicates, survives reconnect, and enforces bounds" {
+  ob: [1] RrOutbox; o := ob[..];
+  // Invalid inputs rejected
+  #assert rr_outbox_enqueue(o, "", "s1", 100) == RR_ENQ_INVALID;
+  #assert rr_outbox_enqueue(o, "c1", "", 100) == RR_ENQ_INVALID;
+  big: [RR_ID_MAX + 1] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  big_s := cast(string) big[..];
+  #assert rr_outbox_enqueue(o, big_s, "s1", 100) == RR_ENQ_INVALID;
+  #assert rr_outbox_enqueue(o, "c1", big_s, 100) == RR_ENQ_INVALID;
+  #assert !rr_outbox_ack(o, "") && !rr_outbox_ack(o, big_s);
+  #assert rr_copy_id(big[0..<0], "x") == -1 && rr_copy_id(big[0..<2], "") == -1;
+
+  // Enqueue, dedupe active, mark sent, reconnect requeue, ack, dedupe acked
+  #assert rr_outbox_enqueue(o, "cmd-1", "sess-a", 1000) == RR_ENQ_OK;
+  #assert rr_outbox_enqueue(o, "cmd-1", "sess-a", 1001) == RR_ENQ_DUP;
+  #assert rr_outbox_enqueue(o, "cmd-2", "sess-a", 1002) == RR_ENQ_OK;
+  #assert o[0].count == 2 && o[0].items[0].created_ms == 1000 && o[0].items[0].attempts == 0;
+  #assert rr_outbox_mark_sent(o, "cmd-1") && o[0].items[0].status == RR_CMD_SENT && o[0].items[0].attempts == 1;
+  #assert !rr_outbox_mark_sent(o, "cmd-1") && !rr_outbox_mark_sent(o, "missing");
+
+  // Transport drops: in-flight cmd-1 returns to PENDING; cmd-2 stays PENDING
+  #assert rr_outbox_requeue_inflight(o) == 1 && o[0].items[0].status == RR_CMD_PENDING && o[0].items[1].status == RR_CMD_PENDING;
+  #assert rr_outbox_requeue_inflight(o) == 0;
+
+  // Ack removes cmd-1, shifts cmd-2 to index 0, and blocks re-enqueue of cmd-1
+  #assert rr_outbox_ack(o, "cmd-1") && o[0].count == 1;
+  #assert rr_eq(o[0].items[0].cmd_id[..], o[0].items[0].cmd_id_n, "cmd-2");
+  #assert rr_eq(o[0].items[0].session_id[..], o[0].items[0].session_id_n, "sess-a");
+  #assert !rr_eq(o[0].items[0].cmd_id[..], o[0].items[0].cmd_id_n, "cmd-1");
+  #assert !rr_eq(o[0].items[0].cmd_id[..], o[0].items[0].cmd_id_n, "xmd-2");
+  #assert !rr_eq(o[0].items[0].cmd_id[..], o[0].items[0].cmd_id_n, "cmd-22");
+  #assert rr_outbox_enqueue(o, "cmd-1", "sess-a", 1005) == RR_ENQ_DUP;
+  // Duplicate ack is idempotent and does not advance acked_count
+  #assert rr_outbox_ack(o, "cmd-1") && o[0].acked_count == 1;
+
+  // Exact RR_ID_MAX boundary (64 bytes) succeeds for enqueue and ack
+  exact: [RR_ID_MAX] u8;
+  for i: 0..<RR_ID_MAX { exact[i] = 'z'; }
+  exact_s := cast(string) exact[..];
+  #assert rr_outbox_enqueue(o, exact_s, exact_s, 1006) == RR_ENQ_OK;
+  #assert rr_outbox_ack(o, exact_s) && o[0].count == 1 && o[0].acked_count == 2;
+
+  // Fill outbox to RR_OUTBOX_CAP and verify backpressure + ack at full capacity
+  idb: [8] u8; idb[0] = 'k';
+  for k: 0..<(RR_OUTBOX_CAP - 1) {
+    idb[1] = cast(u8) ('a' + k);
+    #assert rr_outbox_enqueue(o, cast(string) idb[0..<2], "s1", 2000 + k) == RR_ENQ_OK;
+  }
+  #assert o[0].count == RR_OUTBOX_CAP;
+  #assert rr_outbox_enqueue(o, "overflow", "s1", 3000) == RR_ENQ_FULL;
+  #assert rr_outbox_ack(o, "cmd-2") && o[0].count == RR_OUTBOX_CAP - 1;
+
+  // Wrap acked dedupe ring past RR_DEDUPE_CAP
+  ab: [8] u8; ab[0] = 'r';
+  for k: 0..<(RR_DEDUPE_CAP + 2) {
+    ab[1] = cast(u8) ('0' + (k / 10));
+    ab[2] = cast(u8) ('0' + (k % 10));
+    #assert rr_outbox_ack(o, cast(string) ab[0..<3]);
+  }
+  #assert o[0].acked_count == RR_DEDUPE_CAP && o[0].acked_head == (3 + RR_DEDUPE_CAP + 2) % RR_DEDUPE_CAP;
+}
+
+#test "remote reliability: transport/auth/cursor sync policy and request lifetime modeling" {
+  // Transport / auth / replay cursor freshness
+  #assert rr_sync_action(false, true, 10, 0, 20) == RR_SYNC_WAIT_TRANSPORT;
+  #assert rr_sync_action(true, false, 10, 0, 20) == RR_SYNC_WAIT_AUTH;
+  #assert rr_sync_action(true, true, -1, 0, 20) == RR_SYNC_SNAPSHOT;
+  #assert rr_sync_action(true, true, 4, 5, 20) == RR_SYNC_SNAPSHOT;
+  #assert rr_sync_action(true, true, 21, 5, 20) == RR_SYNC_SNAPSHOT;
+  #assert rr_sync_action(true, true, 5, 5, 20) == RR_SYNC_INCREMENTAL;
+  #assert rr_sync_action(true, true, 20, 5, 20) == RR_SYNC_INCREMENTAL;
+  #assert rr_sync_action(true, true, 0, 0, 0) == RR_SYNC_INCREMENTAL;
+
+  // Request lifetime: live callback dies on process exit or epoch mismatch
+  #assert rr_request_liveness(RR_REQ_LIVE_CALLBACK, 3, 3, true, 100, 0) == RR_LIFE_ACTIVE;
+  #assert rr_request_liveness(RR_REQ_LIVE_CALLBACK, 3, 3, false, 100, 0) == RR_LIFE_DEAD_PROCESS;
+  #assert rr_request_liveness(RR_REQ_LIVE_CALLBACK, 2, 3, true, 100, 0) == RR_LIFE_DEAD_PROCESS;
+  #assert rr_request_liveness(RR_REQ_LIVE_CALLBACK, 3, 3, true, 199, 200) == RR_LIFE_ACTIVE;
+  #assert rr_request_liveness(RR_REQ_LIVE_CALLBACK, 3, 3, true, 200, 200) == RR_LIFE_EXPIRED;
+
+  // Async message questions survive process exit/restart, still honor expiry (including expires_ms == 1)
+  #assert rr_request_liveness(RR_REQ_ASYNC_MESSAGE, 1, 9, false, 100, 0) == RR_LIFE_ACTIVE;
+  #assert rr_request_liveness(RR_REQ_ASYNC_MESSAGE, 1, 9, false, 1, 1) == RR_LIFE_EXPIRED;
+  #assert rr_request_liveness(RR_REQ_ASYNC_MESSAGE, 1, 9, false, 500, 500) == RR_LIFE_EXPIRED;
+}
