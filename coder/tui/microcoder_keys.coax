@@ -50,6 +50,7 @@ MkKeys :: struct {
   gurl: [512] u8;
   orh: [2] string;               // OpenRouter's headers: the plan keeps them
   ormodel: [256] u8;             // the picked OpenRouter model, copied: the plan keeps it past the task line
+  vmodel: [128] u8;              // the picked Vertex model, copied: survives mcworker's per-line stdin arena reset
   none: [1] string;              // no headers, also kept
   told: bool;                    // why Vertex was skipped went to stderr
   pbase: [512] u8; purl: [600] u8; pmodel: [256] u8;   // the psionic engine's server
@@ -250,7 +251,11 @@ mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, model: string) -> 
   picked := mk_openrouter_model(model);
   if picked.count > 0 { return mk_plan_openrouter(k, p, picked); }
   why := mk_vertex(k);
-  if why.count == 0 { vm := mk_vertex_model(model); x := gw_plan_add(p, gw_vertex_native(k[0].vx[..], vm), vm, none); }
+  if why.count == 0 {
+    vm_raw := mk_vertex_model(model);
+    vm := cast(string) k[0].vmodel[0..<mk_cat(k[0].vmodel[..], 0, vm_raw)];
+    x := gw_plan_add(p, gw_vertex_native(k[0].vx[..], vm), vm, none);
+  }
   else if !k[0].told { k[0].told = true; tool_err("microcoder: Vertex skipped: "); tool_errln(why); }
   if k[0].ngm > 0 {
     g := gw_gemini(GW_GEMINI_FLASH, true, k[0].gurl[..]); g.key_value = cast(string) k[0].gm_key[0..<k[0].ngm];
@@ -825,4 +830,16 @@ mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_se
   #assert json_valid(f_conv) && cl_count(cl_raw(f_conv, "conversation")) == 1;
   ar[0].at = 0; ar[0].full = false;
   #assert cl_str(ar[..], f_conv, "self") == MK_SELF_KNOWLEDGE;
+}
+
+#test "Vertex model copied into MkKeys.vmodel survives caller arena overwrite" {
+  k: [1] MkKeys;
+  arena: [64] u8;
+  src := "gemini-4-neon";
+  for c, i: src { arena[i] = c; }
+  vm_raw := mk_vertex_model(cast(string) arena[0..<src.count]);
+  vm := cast(string) k[0].vmodel[0..<mk_cat(k[0].vmodel[..], 0, vm_raw)];
+  // Simulate mcworker resetting its per-line stdin arena on the next message.
+  for i: 0..<src.count { arena[i] = 'X'; }
+  #assert vm == "gemini-4-neon";
 }

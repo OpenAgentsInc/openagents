@@ -10,7 +10,7 @@
 #load "../sys/fs.coax";
 
 IK_WS_MAX_DIRS :: 32;
-IK_WS_INSTR_MAX :: 2560;
+IK_WS_INSTR_MAX :: 4096;
 IK_WS_NOTE_MAX :: 640;
 IK_WS_FILE_BUF :: 16384;
 IK_WS_SCAN_MAX :: 262144;

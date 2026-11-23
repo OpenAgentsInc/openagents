@@ -117,4 +117,5 @@ if [[ -n "$why" ]]; then
   rm -rf "$work"; trap - EXIT
   [[ ! -t 2 ]] || printf '%s: built in %d s\n' "$name" $((SECONDS - started)) >&2
 fi
+[[ "${COAX_TOOL_BUILD_ONLY:-0}" != "1" ]] || exit 0
 COAX_TOOL_REPO="${COAX_TOOL_REPO:-$repo}" exec "$bin" "$@"

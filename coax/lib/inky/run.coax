@@ -379,6 +379,7 @@ ik_cmd_begin :: (r: [] IkRun, b: [] IkRunBufs, command: string, timeout_s: int) 
     return;
   }
   ok := ik_linux_sandbox_args(h, ik_run_cwd(r), ik_loop_profile(r[0].l[..]));
+  ok = ok && proc_env(h, "OA_AGENT_ID=inky");
   ok = ok && proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, command);
   ok = ok && proc_cwd(h, ik_run_cwd(r));
   ok = ok && proc_err_to_out(h);
@@ -486,12 +487,14 @@ ik_exec_read :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   cn = ik_fmt_int(cb[..], cn, a.start_line); cn = ik_fmt_byte(cb[..], cn, '-'); cn = ik_fmt_int(cb[..], cn, a.end_line);
   dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_READ, cast(string) cb[0..<cn], r[0].l[0].step);
   if dup > 0 {
+    _ = ik_guard_note_block(r[0].l[0].guard[..]);
     eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same read_file already succeeded at step ");
     en = ik_fmt_int(eb[..], en, dup);
     en = ik_fmt_put(eb[..], en, " with no changes since. Use the prior output, read a different line range, or answer directly.");
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_READ, a.path, 1, cast(string) eb[0..<en], true);
     return ne;
   }
+  ik_guard_note_progress(r[0].l[0].guard[..]);
 
   pbuf: [4096] u8;
   pn := ik_path_resolve(ik_run_real_cwd(r), ik_run_real_spill(r), a.path, true, pbuf[..]);
@@ -891,12 +894,14 @@ ik_exec_list :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   cb: [512] u8; cn := ik_fmt_put(cb[..], 0, a.path); cn = ik_fmt_byte(cb[..], cn, ':'); cn = ik_fmt_int(cb[..], cn, a.depth);
   dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_LIST, cast(string) cb[0..<cn], r[0].l[0].step);
   if dup > 0 {
+    _ = ik_guard_note_block(r[0].l[0].guard[..]);
     eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same list_dir already succeeded at step ");
     en = ik_fmt_int(eb[..], en, dup);
     en = ik_fmt_put(eb[..], en, " with no changes since. Use the prior listing or inspect a specific path.");
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_LIST, a.path, 1, cast(string) eb[0..<en], true);
     return ne;
   }
+  ik_guard_note_progress(r[0].l[0].guard[..]);
   pbuf: [4096] u8;
   pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
   if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
@@ -953,12 +958,14 @@ ik_exec_grep :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, args_json: strin
   cn = ik_fmt_put(cb[..], cn, a.path); cn = ik_fmt_byte(cb[..], cn, '|'); cn = ik_fmt_put(cb[..], cn, a.glob);
   dup := ik_guard_check_read(r[0].l[0].guard[..], IK_TK_GREP, cast(string) cb[0..<cn], r[0].l[0].step);
   if dup > 0 {
+    _ = ik_guard_note_block(r[0].l[0].guard[..]);
     eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate call: exact same grep already succeeded at step ");
     en = ik_fmt_int(eb[..], en, dup);
     en = ik_fmt_put(eb[..], en, " with no changes since. Try a different pattern/path or answer directly.");
     _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_GREP, a.pattern, 1, cast(string) eb[0..<en], true);
     return ne;
   }
+  ik_guard_note_progress(r[0].l[0].guard[..]);
   pbuf: [4096] u8;
   pn := ik_path_resolve(ik_run_real_cwd(r), "", a.path, false, pbuf[..]);
   if pn < 0 { pn = ik_path_resolve(ik_run_cwd(r), "", a.path, false, pbuf[..]); }
@@ -1276,6 +1283,7 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
     is_chk := mc_cmd_kind(a.command) == MC_CMD_CHECK;
     dup := ik_guard_check_cmd(r[0].l[0].guard[..], a.command, is_chk);
     if dup > 0 {
+      _ = ik_guard_note_block(r[0].l[0].guard[..]);
       eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Check already passed (exit 0) at step ");
       en = ik_fmt_int(eb[..], en, dup);
       en = ik_fmt_put(eb[..], en, " with no edits since. Proceed to your final answer.");
@@ -1284,12 +1292,14 @@ ik_dispatch_next_tool :: (r: [] IkRun, h: [] IkHistory, b: [] IkRunBufs, out: []
     }
     dup_ro := ik_guard_check_read_cmd(r[0].l[0].guard[..], a.command, !is_chk && ik_cmd_is_readonly_inspect(a.command), r[0].l[0].step);
     if dup_ro > 0 {
+      _ = ik_guard_note_block(r[0].l[0].guard[..]);
       eb: [256] u8; en := ik_fmt_put(eb[..], 0, "Duplicate shell inspection: equivalent command already ran at step ");
       en = ik_fmt_int(eb[..], en, dup_ro);
       en = ik_fmt_put(eb[..], en, " with no edits since. Use prior output, read_file, or apply edit_file.");
       _ = ik_loop_tool_done(r[0].l[..], h, b[0].hist_tmp[..], IK_TK_CMD, a.command, 1, cast(string) eb[0..<en], true);
       return ne;
     }
+    ik_guard_note_progress(r[0].l[0].guard[..]);
     if r[0].hybrid_exec {
       wbv := mc_exec_check_wire_bounds(1, 16, 2, 1, a.command.count, a.command.count + 2, 8192);
       if !wbv.ok {
