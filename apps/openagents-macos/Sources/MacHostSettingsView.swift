@@ -76,12 +76,14 @@ struct MacHostSettingsView: View {
                 )
                 statusRow(
                     title: "Direct Listener (Port \(hostServer.listenPort))",
-                    value: hostServer.isListening ? "Listening (\(hostServer.activeClients) subscribed clients)" : "Stopped",
+                    value: hostServer.headlessOwnsTailnet
+                        ? "Headless coder-host active (stays online when app quits)"
+                        : (hostServer.isListening ? "Listening (\(hostServer.activeClients) subscribed clients)" : "Stopped"),
                     ok: hostServer.isListening
                 )
                 statusRow(
                     title: "Local Host Daemon (service.sock)",
-                    value: hostServer.daemonRunning ? "Running (--no-relay)" : "Not running",
+                    value: hostServer.daemonRunning ? "Running (--no-relay --tailnet-listen)" : "Not running",
                     ok: hostServer.daemonRunning
                 )
                 statusRow(
@@ -89,6 +91,13 @@ struct MacHostSettingsView: View {
                     value: authController.summaryLabel,
                     ok: authController.isAuthenticated
                 )
+                if let meta = store.activeHostMeta {
+                    statusRow(
+                        title: "Remote / Host Runtime",
+                        value: "host v\(meta.hostVersion.isEmpty ? "1" : meta.hostVersion) · agy \(meta.agyVersion.isEmpty ? "unknown" : meta.agyVersion) · \(meta.capabilities.count) capabilities",
+                        ok: !meta.agyUpdateAvailable
+                    )
+                }
 
                 Divider().overlay(OATheme.hairline)
 
@@ -148,6 +157,25 @@ struct MacHostSettingsView: View {
                     .background(OATheme.elevated, in: Capsule())
                     .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
                     .buttonStyle(.plain)
+
+                    if let comp = store.activeComputer, let meta = store.hostMetaByID[comp.id], meta.supportsRemoteUpdate {
+                        let updating = store.isUpdatingRemoteAgyHostID == comp.id
+                        Button(updating ? "Updating Antigravity…" : (meta.agyUpdateAvailable ? "Update Antigravity" : "Sync agy")) {
+                            Task {
+                                if let err = await store.updateRemoteAntigravity(on: comp) {
+                                    remoteError = err
+                                }
+                            }
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(meta.agyUpdateAvailable ? Color.black : OATheme.textPrimary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(meta.agyUpdateAvailable ? OATheme.statusWarn : OATheme.elevated, in: Capsule())
+                        .overlay(Capsule().stroke(OATheme.hairline, lineWidth: 1))
+                        .buttonStyle(.plain)
+                        .disabled(updating)
+                    }
 
                     Spacer()
 

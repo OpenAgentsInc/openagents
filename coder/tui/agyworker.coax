@@ -234,11 +234,11 @@ agyw_effective_mode :: (s: [] AgywState) -> string {
 // first within 3 to 9 s. A thought arrives every few seconds while the model thinks, so a long
 // think (#13227) reads as thinking, not as a stall.
 AGYW_EFFORT :: "medium";
-// Resolve effort from task or CODER_AGY_EFFORT: low | medium | high | xhigh (else empty).
+// Resolve effort from task or CODER_AGY_EFFORT: none | minimal | low | medium | high | xhigh | max (else empty).
 agyw_resolve_effort :: (task_effort: string, env_effort: string) -> string {
   e := agyw_trim(task_effort);
   if e.count == 0 { e = agyw_trim(env_effort); }
-  if e == "low" || e == "medium" || e == "high" || e == "xhigh" { return e; }
+  if e == "none" || e == "minimal" || e == "low" || e == "medium" || e == "high" || e == "xhigh" || e == "max" { return e; }
   return "";
 }
 
@@ -1019,11 +1019,18 @@ agyw_reply_append :: (s: [] AgywState, text: string) {
 // ---------------------------------------------------------------- notification & event dispatch
 
 agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bool) {
-  if !s[0].turn_active { return; }
   update := cl_raw(params, "update");
   if update.count == 0 { return; }
   ar := x[0].c[0].ar[..];
   kind := cl_str(ar, update, "sessionUpdate");
+  // Keep cached session configOptions fresh across mid-session model/effort switches (#14005).
+  if kind == "config_option_update" {
+    if cl_raw(update, "configOptions").count > 0 {
+      s[0].sess_json_n = agyw_copy(s[0].sess_json[..], update);
+    }
+    return;
+  }
+  if !s[0].turn_active { return; }
   if kind == "agent_thought_chunk" {
     txt := cl_str(ar, update, "content.text");
     if txt.count == 0 { txt = cl_str(ar, update, "text"); }
@@ -1300,7 +1307,7 @@ agyw_put_thinking_json :: (o: [] ClOut, result: string, ar: [] ClArena) {
   cl_put(o, ",\"thinking\":false,\"thoughtLevels\":[]");
 }
 
-AGYW_MAX_PROBED :: 24;
+AGYW_MAX_PROBED :: 64;
 AgywProbedModel :: struct {
   slug: [128] u8; slug_n: int;
   name: [128] u8; name_n: int;
@@ -1658,6 +1665,24 @@ agyw_arg_value :: (name: string, out: [] u8) -> string {
   return cast(string) out[0..<agyw_copy(out, v)];
 }
 
+agyw_update_asked :: () -> bool { return agyw_flag_asked("--update-agy"); }
+
+// Download, verify via ACP initialize (agy_verify_init_result), and activate the latest Antigravity CLI release (#14004).
+agyw_update_agy :: (s: [] AgywState) -> int {
+  o: [1] ClOut; o[0].buf = s[0].out[..];
+  s[0].cfg.program_n = 0;
+  ib: [1024] u8; iw := agyw_install(s, ib[..]);
+  if iw.count > 0 {
+    cl_put(o[..], "{\"ok\":false,\"error\":"); cl_put_string(o[..], iw); cl_put(o[..], "}");
+    agyw_write_line(s, o[0].len);
+    return 1;
+  }
+  prog := agyw_str(s[0].cfg.program[..], s[0].cfg.program_n);
+  cl_put(o[..], "{\"ok\":true,\"binaryPath\":"); cl_put_string(o[..], prog); cl_put(o[..], "}");
+  agyw_write_line(s, o[0].len);
+  return 0;
+}
+
 agyw_connect_asked :: () -> bool {
   a: [1] Args;
   if !args_load(a[..]) { return false; }
@@ -1969,10 +1994,7 @@ agyw_reconfigure :: (s: [] AgywState, x: [] CuEngine, mod: string, eff: string, 
   acp_mode := agyw_acp_mode(mode);
   caps := agyw_str(s[0].sess_json[..], s[0].sess_json_n);
   if caps.count > 0 {
-    missed := agy_configure_at(x, caps, mod, eff, acp_mode, AGYW_EFFORT);
-    if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
-      cue_set(x, "thought_level", eff);
-    }
+    _ = agy_configure_at(x, caps, mod, eff, acp_mode, AGYW_EFFORT);
     if mode != prev_mode && !agy_has(caps, "\"modes\"") {
       cue_set_mode(x, acp_mode);
     }
@@ -1980,9 +2002,8 @@ agyw_reconfigure :: (s: [] AgywState, x: [] CuEngine, mod: string, eff: string, 
   } else {
     x[0].hold = 0;
     if mod != prev_mod && mod.count > 0 { cue_set_model(x, mod); }
-    if eff != prev_eff {
-      level := ifx eff.count > 0 then eff else AGYW_EFFORT;
-      cue_set(x, "thought_level", level);
+    if eff != prev_eff && eff.count > 0 {
+      cue_set(x, "thought_level", eff);
     }
     if mode != prev_mode && acp_mode.count > 0 {
       cue_set_mode(x, acp_mode);
@@ -2021,15 +2042,15 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       s[0].active_model_n = agyw_copy(s[0].active_model[..], mod);
       s[0].active_effort_n = agyw_copy(s[0].active_effort[..], eff);
       s[0].active_mode_n = agyw_copy(s[0].active_mode[..], mode);
-      missed := agy_configure_at(x, ev.result, mod, eff, agyw_acp_mode(mode), AGYW_EFFORT);
-      if eff.count > 0 && (missed & AGY_EFFORT_NOT_APPLIED) != 0 && eff == "xhigh" {
-        cue_set(x, "thought_level", eff);
-      }
+      _ = agy_configure_at(x, ev.result, mod, eff, agyw_acp_mode(mode), AGYW_EFFORT);
       agyw_ran(s, x, ev.result, mod, eff, emit);
       cue_owed(x, s[0].turn_active);
       return;
     }
     if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
+      if ev.result.count > 0 && agy_has(ev.result, "configOptions") {
+        s[0].sess_json_n = agyw_copy(s[0].sess_json[..], ev.result);
+      }
       cue_owed(x, s[0].turn_active);
       return;
     }
@@ -2354,6 +2375,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if agyw_probe_asked() { return agyw_probe(s, x); }
   if agyw_probe_json_asked() { return agyw_probe_json(s, x); }
   if agyw_logout_asked() { return agyw_logout(s, x); }
+  if agyw_update_asked() { return agyw_update_agy(s); }
   if agyw_connect_asked() { return agyw_connect(s, x); }
 
   in_buf: [AGYW_LINE] u8; in_len: [1] int;

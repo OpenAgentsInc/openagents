@@ -22,6 +22,8 @@ final class AntigravityStore: ObservableObject {
     @Published var availableModels: [AntigravityModelOption] = AntigravityModelOption.fallbackCatalog
     @Published var selectedModelID: String = "gemini-4-neon"
     @Published var selectedEffort: ThinkingEffort = .medium
+    @Published var hostMetaByID: [String: HostRuntimeMeta] = [:]
+    @Published var isUpdatingRemoteAgyHostID: String?
     @Published var reviewMode: ReviewMode = .auto
 
     @Published var draftText: String = ""
@@ -169,6 +171,26 @@ final class AntigravityStore: ObservableObject {
 
     var supportedEffortsForSelectedModel: [ThinkingEffort] {
         selectedModelOption.supportedEfforts
+    }
+
+    var selectedModelSupportsThinking: Bool {
+        selectedModelOption.supportsThinking
+    }
+
+    var groupedAvailableModels: [(family: String, models: [AntigravityModelOption])] {
+        var order: [String] = []
+        var buckets: [String: [AntigravityModelOption]] = [:]
+        for model in availableModels {
+            let fam = model.family
+            if buckets[fam] == nil { order.append(fam) }
+            buckets[fam, default: []].append(model)
+        }
+        return order.map { ($0, buckets[$0] ?? []) }
+    }
+
+    var activeHostMeta: HostRuntimeMeta? {
+        guard let id = activeComputerID else { return nil }
+        return hostMetaByID[id]
     }
 
     var matchingSlashCommands: [SlashCommandItem] {
@@ -895,7 +917,9 @@ final class AntigravityStore: ObservableObject {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let expiresMs = nowMs + 300_000
         let model = MobileCore.normalizeAntigravityModel(selectedModelID)
-        let effort = MobileCore.normalizeAntigravityEffort(model: model, want: selectedEffort.rawValue)
+        let effort = selectedModelSupportsThinking
+            ? MobileCore.normalizeAntigravityEffort(model: model, want: selectedEffort.rawValue)
+            : ""
 
         func dispatchSend(modeArg: String, textArg: String, attArg: String, cmdArg: String) async -> ParsedEnvironmentView? {
             let quiet = !modeArg.isEmpty || !attArg.isEmpty
@@ -1346,7 +1370,7 @@ final class AntigravityStore: ObservableObject {
         )
     }
 
-    private func applyMetadata(from view: ParsedEnvironmentView) {
+    private func applyMetadata(from view: ParsedEnvironmentView, computerID: String? = nil) {
         if !view.workspaceName.isEmpty {
             workspaceName = view.workspaceName
         }
@@ -1358,7 +1382,36 @@ final class AntigravityStore: ObservableObject {
             if !availableModels.contains(where: { $0.id == selectedModelID }) {
                 selectedModelID = availableModels[0].id
             }
+            let supported = selectedModelOption.supportedEfforts
+            if !supported.isEmpty && !supported.contains(selectedEffort) {
+                selectedEffort = supported.contains(.medium) ? .medium : supported[0]
+            }
         }
+        if let meta = view.hostMeta, let cid = computerID ?? activeComputerID {
+            hostMetaByID[cid] = meta
+        }
+    }
+
+    /// Triggers remote `HostUpdateAgy` RPC on a paired host (#14004).
+    func updateRemoteAntigravity(on computer: ComputerEntry) async -> String? {
+        guard computer.canSendRPC else { return "Host is not paired or reachable." }
+        isUpdatingRemoteAgyHostID = computer.id
+        defer { isUpdatingRemoteAgyHostID = nil }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        guard let view = await performEnvironmentRPC(
+            computer: computer,
+            method: "HostUpdateAgy",
+            command: MobileCore.randomHex(bytes: 16),
+            issuedMs: nowMs,
+            expiresMs: nowMs + 120_000
+        ) else {
+            return bannerError ?? "Could not update Antigravity on host."
+        }
+        applyMetadata(from: view, computerID: computer.id)
+        if !view.error.isEmpty {
+            return HostErrorFormatter.describe(view.error, method: "HostUpdateAgy")
+        }
+        return nil
     }
 
     private func performEnvironmentRPC(

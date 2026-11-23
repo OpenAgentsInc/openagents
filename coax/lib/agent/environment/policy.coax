@@ -25,7 +25,7 @@ ea_fresh :: (issued:int,expires:int,now:int)->bool #effects(all) {
 
 #test "environment methods have fixed rights, unknown methods cannot dispatch" {
   #assert ea_right("DescribeEnvironment")==0 && ea_right("ListSessions")==0 && ea_right("ReadSession")==0 && ea_right("ReadSubagent")==0;
-  #assert ea_right("OpenSession")==1 && ea_right("SendMessage")==1 && ea_right("StopTurn")==1 && ea_right("StopSubagent")==1;
+  #assert ea_right("OpenSession")==1 && ea_right("SendMessage")==1 && ea_right("StopTurn")==1 && ea_right("StopSubagent")==1 && ea_right("HostUpdateAgy")==1;
   #assert ea_right("RespondInteraction")==3 && ea_right("")== -1 && ea_right("RunCommand")== -1;
 }
 #test "only an explicitly scoped device may see or operate the local environment" {
@@ -56,7 +56,7 @@ ea_fresh :: (issued:int,expires:int,now:int)->bool #effects(all) {
 
 ea_right :: (method:string)->int #effects(all) {
   if method=="DescribeEnvironment" || method=="ListSessions" || method=="ReadSession" || method=="ReadSubagent" {return 0;}
-  if method=="OpenSession" || method=="SendMessage" || method=="StopTurn" || method=="StopSubagent" {return 1;}
+  if method=="OpenSession" || method=="SendMessage" || method=="StopTurn" || method=="StopSubagent" || method=="HostUpdateAgy" {return 1;}
   if method=="RespondInteraction" {return 3;}return -1;
 }
 ea_scope :: (admitted:bool,enabled:bool,device:bool,workspace:bool)->bool #effects(all) {return admitted && enabled && device && workspace;}

@@ -149,7 +149,7 @@ ag_continue :: (h: [] HsHost, q: [] EaRequest, grant: string, file: string, comm
   if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
   text := cast(string) q[0].text[0..<q[0].nt];
   if !ea_text(text) { es_refuse(v, "malformed"); return; }
-  pick := pa_pick(ph_facts(h), ifx q[0].nmo > 0 then cast(string) q[0].model[0..<q[0].nmo] else PA_AGY_DEFAULT);
+  pick := ph_pick(h, ifx q[0].nmo > 0 then cast(string) q[0].model[0..<q[0].nmo] else PA_AGY_DEFAULT);
   if pick.engine != PA_AGY { es_refuse(v, "no_agent"); return; }
 
   // Read existing turns from the native ~/.gemini transcript into a Session for recall.

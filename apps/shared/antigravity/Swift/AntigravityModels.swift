@@ -5,21 +5,29 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum ThinkingEffort: String, CaseIterable, Identifiable, Codable {
+    case none
+    case minimal
     case low
     case medium
     case high
     case xhigh
+    case max
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .none: return "Off"
+        case .minimal: return "Minimal"
         case .low: return "Low"
         case .medium: return "Medium"
         case .high: return "High"
         case .xhigh: return "X-High"
+        case .max: return "Max"
         }
     }
+
+    static let standardLevels: [ThinkingEffort] = [.low, .medium, .high, .xhigh]
 }
 
 extension String {
@@ -115,13 +123,41 @@ struct AntigravityModelOption: Identifiable, Equatable, Codable {
     let label: String
     let supportedEfforts: [ThinkingEffort]
 
+    var supportsThinking: Bool { !supportedEfforts.isEmpty }
+
+    var family: String {
+        let lower = id.lowercased()
+        if lower.contains("orchestrator") { return "Orchestrator" }
+        if lower.hasPrefix("gemini-4") { return "Gemini 4" }
+        if lower.hasPrefix("gemini-3") { return "Gemini 3.8" }
+        if lower.hasPrefix("gemini-") { return "Gemini" }
+        if lower.hasPrefix("claude-") { return "Claude (ACP)" }
+        if lower.hasPrefix("gpt-") { return "GPT-OSS" }
+        return "Custom / Gateway"
+    }
+
     static let fallbackCatalog: [AntigravityModelOption] = [
-        AntigravityModelOption(id: "gemini-4-neon", label: "Gemini 4 Neon", supportedEfforts: ThinkingEffort.allCases),
-        AntigravityModelOption(id: "gemini-4-carbon", label: "Gemini 4 Carbon", supportedEfforts: ThinkingEffort.allCases),
-        AntigravityModelOption(id: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen", supportedEfforts: ThinkingEffort.allCases),
-        AntigravityModelOption(id: "gemini-4-argon", label: "Gemini 4 Argon", supportedEfforts: ThinkingEffort.allCases),
+        AntigravityModelOption(id: "gemini-4-neon", label: "Gemini 4 Neon", supportedEfforts: ThinkingEffort.standardLevels),
+        AntigravityModelOption(id: "gemini-4-carbon", label: "Gemini 4 Carbon", supportedEfforts: ThinkingEffort.standardLevels),
+        AntigravityModelOption(id: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen", supportedEfforts: ThinkingEffort.standardLevels),
+        AntigravityModelOption(id: "gemini-4-argon", label: "Gemini 4 Argon", supportedEfforts: ThinkingEffort.standardLevels),
         AntigravityModelOption(id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", supportedEfforts: [.low, .medium, .high]),
     ]
+}
+
+struct HostRuntimeMeta: Equatable, Codable {
+    let hostVersion: String
+    let agyVersion: String
+    let agyUpdateAvailable: Bool
+    let agyAuthMethod: String
+    let agySignedIn: Bool?
+    let capabilities: Set<String>
+
+    var supportsV2Wire: Bool { capabilities.contains("wire.v2") }
+    var supportsRemoteUpdate: Bool { capabilities.contains("agy.update") }
+    var supportsDynamicModels: Bool { capabilities.contains("agy.dynamic_models") }
+    var supportsAttachments: Bool { capabilities.contains("agy.attachments") }
+    var supportsModes: Bool { capabilities.contains("agy.modes") }
 }
 
 struct SlashCommandItem: Identifiable, Equatable {
@@ -686,6 +722,7 @@ struct ParsedEnvironmentView {
     let interactionWarning: String
     let interactionQuestion: Bool
     let interactionOptions: [InteractionOption]
+    let hostMeta: HostRuntimeMeta?
 
     /// Parses a Coax-validated `EaView` JSON payload and filters its model catalog
     /// exclusively through Coax `MobileCore.isAntigravityModel` (never Claude or Inkling).
@@ -780,10 +817,11 @@ struct ParsedEnvironmentView {
             let label = (row["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? normalizedID
             let rawEfforts = row["efforts"] as? [String] ?? []
             let efforts = rawEfforts.compactMap { ThinkingEffort(rawValue: $0) }
+            // Preserve empty effort array (e.g. gemini-pro-orchestrator disables --effort; #14005).
             return AntigravityModelOption(
                 id: normalizedID,
                 label: label,
-                supportedEfforts: efforts.isEmpty ? ThinkingEffort.allCases : efforts
+                supportedEfforts: efforts
             )
         }
 
@@ -809,6 +847,23 @@ struct ParsedEnvironmentView {
             return InteractionOption(id: oid, label: label, kind: kind)
         }
 
+        let hostVer = obj["host_version"] as? String ?? ""
+        let agyVer = obj["agy_version"] as? String ?? ""
+        let agyUpd = obj["agy_update_available"] as? Bool ?? false
+        let agyAuth = obj["agy_auth_method"] as? String ?? ""
+        let agySignedIn = obj["agy_signed_in"] as? Bool
+        let caps = Set(obj["capabilities"] as? [String] ?? [])
+        let hostMeta: HostRuntimeMeta? = (!hostVer.isEmpty || !agyVer.isEmpty || !caps.isEmpty || agySignedIn != nil)
+            ? HostRuntimeMeta(
+                hostVersion: hostVer,
+                agyVersion: agyVer,
+                agyUpdateAvailable: agyUpd,
+                agyAuthMethod: agyAuth,
+                agySignedIn: agySignedIn,
+                capabilities: caps
+            )
+            : nil
+
         return ParsedEnvironmentView(
             hostPubkey: host,
             displayName: displayName,
@@ -825,7 +880,8 @@ struct ParsedEnvironmentView {
             interactionPrompt: interactionPrompt,
             interactionWarning: interactionWarning,
             interactionQuestion: interactionQuestion,
-            interactionOptions: interactionOptions
+            interactionOptions: interactionOptions,
+            hostMeta: hostMeta
         )
     }
 }

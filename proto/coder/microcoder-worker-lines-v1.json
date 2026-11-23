@@ -120,6 +120,16 @@
      "name": "device",
      "type": "true",
      "note": "written only when true: the iOS Simulator is open beside the chat, so a step may hold device ops (coax/lib/microcoder/device.coax), run as oasim commands (GitHub #13811)"
+    },
+    {
+     "name": "mode",
+     "type": "string",
+     "note": "optional Antigravity review mode: auto, default, plan, accept-edits, or turbo (#13996)"
+    },
+    {
+     "name": "attachments",
+     "type": "array",
+     "note": "optional multimodal attachments forwarded to ACP prompt blocks (#14002)"
     }
    ]
   },
@@ -138,6 +148,11 @@
      "name": "ticket",
      "type": "integer",
      "note": "the ask line's ticket; an answer for another ticket is ignored"
+    },
+    {
+     "name": "option",
+     "type": "string",
+     "note": "optional native ACP optionId (e.g. allow_once, allow_always, reject_once, reject_always) (#13997)"
     },
     {
      "name": "why",
@@ -865,6 +880,50 @@
      "name": "shot",
      "type": "string",
      "note": "written only when the command went and its JSON line names a path: the screenshot it took, absolute"
+    }
+   ]
+  },
+  {
+   "kind": "permit",
+   "from": "worker",
+   "writer": "mww_permit_warn (mww_permit)",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "permit",
+     "note": "interactive permission escalation or structured user-input question from agyworker (#13831, #13997)"
+    },
+    {
+     "name": "ticket",
+     "type": "integer",
+     "note": "the ticket the owner answers with"
+    },
+    {
+     "name": "question",
+     "type": "boolean",
+     "note": "true for a structured user-input question, false for a tool/command permission request"
+    },
+    {
+     "name": "title",
+     "type": "string",
+     "note": "human-readable prompt or title"
+    },
+    {
+     "name": "command",
+     "type": "string",
+     "note": "command or tool summary requiring review"
+    },
+    {
+     "name": "warning",
+     "type": "string",
+     "note": "optional security warning from _meta.agy.security.warning"
+    },
+    {
+     "name": "options",
+     "type": "array",
+     "note": "JSON array of native ACP option objects ([{\"optionId\":I,\"name\":L,\"kind\":K}])"
     }
    ]
   }
@@ -2364,6 +2423,23 @@
      "from": "worker",
      "kind": "ended",
      "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"About shows iOS version 26.5.\"}"
+    }
+   ]
+  },
+  {
+   "name": "antigravity-permit",
+   "what": "agyworker interactive permission escalation and optionId answer round-trip (#13997, #14004)",
+   "from": "Antigravity worker (coder/tui/agyworker.coax) and coder-host interactive approval bridge",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "permit",
+     "line": "{\"kind\":\"permit\",\"ticket\":1,\"question\":false,\"title\":\"Run command\",\"command\":\"git status\",\"warning\":\"Modifies workspace\",\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":1,\"option\":\"allow_once\"}"
     }
    ]
   }

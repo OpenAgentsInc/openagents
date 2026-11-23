@@ -96,11 +96,19 @@ agy_rename_retry :: (from: string, to: string) -> bool {
   return false;
 }
 
-// True when a POSIX process with pid is currently alive (`kill -0 <pid>`).
+// True when a process with pid is currently alive (POSIX `kill -0`, Windows `tasklist` — #14004).
 agy_pid_alive :: (pid: int) -> bool {
   if pid <= 0 { return false; }
   pb: [32] u8; ps := agy_int_to_str(pid, pb[..]);
   if ps.count == 0 { return false; }
+  if tool_os() == 3 {
+    fb: [48] u8; fn := cl_copy(fb[..], "PID eq "); fn += cl_copy(fb[fn..<fb.count], ps);
+    argv := [4] string.["tasklist", "/FI", cast(string) fb[0..<fn], "/NH"];
+    out: [512] u8; err: [128] u8;
+    r := proc_run(argv[..], 3000, out[..], err[..]);
+    if r.started != 0 || r.status != 0 { return true; } // Fail safe on Windows: never delete a lease if tasklist fails
+    return agy_has(cast(string) out[0..<r.out_n], ps);
+  }
   argv := [3] string.["kill", "-0", ps];
   out: [64] u8; err: [64] u8;
   r := proc_run(argv[..], 2000, out[..], err[..]);
@@ -297,6 +305,45 @@ agy_install_from_manifest :: (
     }
   }
 
+  // Verify downloaded live binary responds to ACP initialize with valid version & capabilities
+  // before atomically flipping active.json (#14004). Skip for offline synthetic fixture overrides.
+  if artifact_override.count == 0 {
+    vh := proc_new();
+    if vh >= 0 {
+      defer { _ = proc_release(vh); }
+      vok := proc_arg(vh, target_exe) && proc_arg(vh, "acp") && proc_arg(vh, "--stdio") && proc_env(vh, "AGY_CLI_DISABLE_AUTO_UPDATE=1");
+      if vok && proc_start(vh) == 0 {
+        init_req := "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{},\"clientInfo\":{\"name\":\"openagents\",\"version\":\"1.0\"}}}\n";
+        _ = proc_send(vh, init_req);
+        _ = proc_close_stdin(vh);
+        vbuf: [16384] u8; vn := 0; vdead := proc_now_ms() + 10000;
+        while proc_now_ms() < vdead {
+          ln := cxproc_read_line(vh, 500);
+          if ln == PROC_TIMEOUT { continue; }
+          if ln < 0 { break; }
+          if ln > 0 && ln <= vbuf.count {
+            for bi: 0..<ln { vbuf[bi] = cast(u8) cxproc_line_byte(vh, bi); }
+            line_s := cast(string) vbuf[0..<ln];
+            res_s := cl_raw(line_s, "result");
+            if res_s.count > 2 {
+              vab: [4096] u8; var_a := [1] ClArena.[ClArena.{buf = vab[..]}];
+              verr := agy_verify_init_result(res_s, var_a[..]);
+              _ = proc_kill(vh, PROC_SIGKILL);
+              _ = proc_wait(vh, 500);
+              if verr.count > 0 {
+                _ = agy_remove_retry(rdir);
+                return verr;
+              }
+              vn = ln;
+              break;
+            }
+          }
+        }
+        if vn == 0 { _ = proc_kill(vh, PROC_SIGKILL); _ = proc_wait(vh, 500); }
+      }
+    }
+  }
+
   // Atomic active pointer switch via durable temp-file rename (#13839).
   ap_b: [1200] u8; ap := agy_active_pointer_path(root, ap_b[..]);
   af_b: [128] u8; af := agy_format_active_release(rid, af_b[..]);
@@ -317,11 +364,30 @@ agy_detect_arch :: (out: [] u8) -> string {
   ob: [64] u8; eb: [64] u8;
   r := proc_run(argv[..], 5000, ob[..], eb[..]);
   if r.started == 0 && r.status == 0 && r.out_n > 0 {
-    m := cast(string) ob[0..<r.out_n];
+    n := r.out_n;
+    while n > 0 && ob[n - 1] <= 32 { n -= 1; }
+    m := cast(string) ob[0..<n];
     if m == "arm64" || m == "aarch64" { return cast(string) out[0..<cl_copy(out, "arm64")]; }
     if m == "x86_64" || m == "amd64" { return cast(string) out[0..<cl_copy(out, "x64")]; }
   }
-  return cast(string) out[0..<cl_copy(out, "arm64")];
+  return cast(string) out[0..<cl_copy(out, ifx tool_os() == TOOL_MAC then "arm64" else "x64")];
+}
+
+// Detect musl libc on Linux (Alpine / Void / static musl containers; #14004).
+agy_detect_musl :: () -> bool {
+  if tool_os() != TOOL_LINUX { return false; }
+  if fs_exists("/etc/alpine-release") || fs_exists("/lib/ld-musl-x86_64.so.1") || fs_exists("/lib/ld-musl-aarch64.so.1") {
+    return true;
+  }
+  argv := [2] string.["ldd", "--version"];
+  ob: [256] u8; eb: [256] u8;
+  r := proc_run(argv[..], 2000, ob[..], eb[..]);
+  if r.started == 0 {
+    if agy_has(cast(string) ob[0..<r.out_n], "musl") || agy_has(cast(string) eb[0..<r.err_n], "musl") {
+      return true;
+    }
+  }
+  return false;
 }
 
 agy_print :: (s: string) {
@@ -358,9 +424,10 @@ agy_install_latest :: (out_exe: [] u8) -> string {
   if root.count == 0 { return "could not find the home folder to install the Antigravity CLI in"; }
   os := agy_host_os();
   ab: [16] u8; arch := agy_host_arch(ab[..]);
-  mb: [8192] u8; mjson := agy_fetch_manifest(os, arch, false, mb[..]);
+  musl := agy_detect_musl();
+  mb: [8192] u8; mjson := agy_fetch_manifest(os, arch, musl, mb[..]);
   if mjson.count == 0 { return "could not reach Google's Antigravity CLI release list (check the internet connection)"; }
-  err := agy_install_from_manifest(root, mjson, os, arch, false, "", true, out_exe);
+  err := agy_install_from_manifest(root, mjson, os, arch, musl, "", true, out_exe);
   if err.count > 0 { return err; }
   ap_b: [4260] u8; ap := agy_active_pointer_path(root, ap_b[..]);
   fb: [512] u8; fn := fs_read(ap, fb[..]);

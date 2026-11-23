@@ -81,6 +81,16 @@ ht_refusal_ok :: (s: string) -> bool {
   return s == "not_tailnet" || s == "unavailable" || s == "tagged" || s == "not_owner" || s == "not_serving" || s == "busy";
 }
 
+// Forward-compatible token validation for wire readers (#14004): 1..32 lowercase [a-z0-9_], starting with a letter.
+ht_token_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 32 { return false; }
+  if s[0] < 'a' || s[0] > 'z' { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; }
+  }
+  return true;
+}
+
 ht_requires_empty :: (d: Jv, root: int) -> bool {
   req := jv_get(d, root, "requires");
   if jv_kind(d, req) != JV_ARRAY { return false; }
@@ -187,7 +197,7 @@ ht_answer_read :: (raw: string, out: [] HtAdmissionAnswer) -> bool {
     return true;
   }
   rn := jv_str(d[0], ref_at, out[0].refused[..]);
-  if rn < 1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  if rn < 1 || !ht_token_ok(cast(string) out[0].refused[0..<rn]) { return false; }
   if hn != 0 && (hn != 64 || !ht_hex64(cast(string) out[0].host[0..<64])) { return false; }
   out[0].nref = rn;
   return true;
@@ -237,7 +247,7 @@ ht_direct_ack_read :: (raw: string, out: [] HtDirectAck) -> bool {
   if ref_at < 0 || jv_kind(d[0], ref_at) == JV_NULL { return true; }
   if jv_kind(d[0], ref_at) != JV_STRING { return false; }
   rn := jv_str(d[0], ref_at, out[0].refused[..]);
-  if rn < 1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  if rn < 1 || !ht_token_ok(cast(string) out[0].refused[0..<rn]) { return false; }
   out[0].nref = rn;
   return true;
 }
@@ -411,7 +421,7 @@ ht_grant_answer_read :: (raw: string, out: [] HtGrantAnswer) -> bool {
     return true;
   }
   rn := jv_str(d[0], r_at, out[0].refused[..]);
-  if rn == -1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  if rn == -1 || !ht_token_ok(cast(string) out[0].refused[0..<rn]) { return false; }
   out[0].nref = rn;
   return true;
 }
@@ -475,7 +485,7 @@ ht_push_read :: (raw: string, out: [] HtPushEvent) -> bool {
   rev := jv_int(d[0], jv_get(d[0], 0, "revision"), -1);
   kn := jv_str(d[0], jv_get(d[0], 0, "kind"), out[0].kind[..]);
   sn := jv_str(d[0], jv_get(d[0], 0, "session"), out[0].session[..]);
-  if seq < 0 || rev < 0 || kn == -1 || sn < 0 || !ht_push_kind_ok(cast(string) out[0].kind[0..<kn]) { return false; }
+  if seq < 0 || rev < 0 || kn == -1 || sn < 0 || !ht_token_ok(cast(string) out[0].kind[0..<kn]) { return false; }
   out[0].seq = seq; out[0].revision = rev; out[0].nkind = kn; out[0].nsess = sn;
   out[0].busy = jv_bool(d[0], jv_get(d[0], 0, "busy"));
   out[0].has_interaction = jv_bool(d[0], jv_get(d[0], 0, "interaction"));
@@ -598,8 +608,9 @@ oa_ht_push_read :: (raw: string, kind_out: [] u8, session_out: [] u8, meta: [] i
   #assert ht_answer_read(cast(string) buf[0..<m], got[..]);
   #assert got[0].ninv == 0 && cast(string) got[0].refused[0..<got[0].nref] == "not_owner";
 
-  // unknown refusal code, both invitation and refused, or bad host key are rejected
-  #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"\",\"label\":\"\",\"refused\":\"bogus\"}", got[..]);
+  // forward-compat (#14004): unknown future lowercase refusal token accepted; malformed token, both invitation and refused, or bad host key rejected
+  #assert ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"\",\"label\":\"\",\"refused\":\"upgrade_required\"}", got[..]);
+  #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"\",\"label\":\"\",\"refused\":\"BAD!\"}", got[..]);
   #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"label\":\"Mac\",\"invitation\":\"openagents://pair\",\"refused\":\"not_owner\"}", got[..]);
   #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"not-a-host\",\"label\":\"Mac\",\"refused\":\"not_owner\"}", got[..]);
 }
@@ -748,7 +759,8 @@ oa_ht_push_read :: (raw: string, kind_out: [] u8, session_out: [] u8, meta: [] i
   #assert !ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":0,\"refused\":null}", got[..]);
   #assert ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":0,\"expires\":1,\"refused\":null}", got[..]) && got[0].epoch == 0 && got[0].expires == 1;
   #assert !ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"\",\"grant\":null,\"refused\":\"\"}", got[..]);
-  #assert !ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"\",\"grant\":null,\"refused\":\"bogus\"}", got[..]);
+  #assert ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"\",\"grant\":null,\"refused\":\"upgrade_required\",\"host_version\":\"2.0\"}", got[..]);
+  #assert !ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"\",\"grant\":null,\"refused\":\"BAD!\"}", got[..]);
   #assert !ht_grant_answer_read("{\"v\":\"openagents.host-tailnet-grant.v1\",\"host\":\"\",\"grant\":null,\"refused\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}", got[..]);
   _ = s129;
 }
@@ -828,7 +840,8 @@ oa_ht_push_read :: (raw: string, kind_out: [] u8, session_out: [] u8, meta: [] i
   #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"turn_ended\",\"session\":\"\",\"revision\":-1,\"busy\":false,\"interaction\":false}", out_ev[..]);
   #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"turn_ended\",\"session\":\"\",\"busy\":false,\"interaction\":false}", out_ev[..]);
   #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"\",\"session\":\"\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
-  #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"bogus\",\"session\":\"\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
+  #assert ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"artifact_updated\",\"session\":\"s1\",\"revision\":1,\"busy\":false,\"interaction\":false,\"extra\":true}", out_ev[..]);
+  #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"BAD!\",\"session\":\"\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
   #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"session\":\"\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
   #assert !ht_push_read("{\"v\":\"openagents.host-tailnet-push.v1\",\"seq\":0,\"kind\":\"session_updated\",\"revision\":0,\"busy\":false,\"interaction\":false}", out_ev[..]);
 }

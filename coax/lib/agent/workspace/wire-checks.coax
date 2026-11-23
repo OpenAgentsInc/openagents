@@ -50,6 +50,10 @@ ws_fixture_array :: (element:string,count:int,out:[]u8)->string {o:[1]Jo;jo_star
  // A correlated refusal can have empty optional presentation fields.
  #assert ws_view_read(jf_replace(WS_VIEW_GOLDEN,"method","\"ReadWorkspace\"",b[..]),v[..]);v[0].nw=0;n:=ws_view_write(v[..],tmp[..]);#assert n>0 && ws_view_read(cast(string)tmp[0..<n],v[..]) && v[0].nw==0;
 }
-#test "workspace response rejects a fourth page kind and unknown nested PR fields" {
- v:[1]WsView;b:[1048576]u8;#assert !ws_view_read(jf_replace(WS_VIEW_GOLDEN,"page","4",b[..]),v[..]);nodes:[128]JvNode;d:[1]Jv;#assert jv_parse(d[..],WS_VIEW_GOLDEN,nodes[..]);pr:=jv_raw(d[0],jv_at(d[0],jv_get(d[0],0,"pull_requests"),0));row:[16384]u8;array:[131072]u8;changed:=jf_replace(pr,"title","\"Title\",\"unexpected\":true",row[..]);list:=ws_fixture_array(changed,1,array[..]);#assert !ws_view_read(jf_replace(WS_VIEW_GOLDEN,"pull_requests",list,b[..]),v[..]);
+#test "workspace response rejects a fourth page kind and tolerates unknown forward-compatible fields" {
+ v:[1]WsView;b:[1048576]u8;#assert !ws_view_read(jf_replace(WS_VIEW_GOLDEN,"page","4",b[..]),v[..]);nodes:[128]JvNode;d:[1]Jv;#assert jv_parse(d[..],WS_VIEW_GOLDEN,nodes[..]);
+ // Forward-compat (#14004): unknown fields on root, worktrees, and pull_requests must be ignored rather than breaking clients.
+ #assert ws_view_read(jf_replace(WS_VIEW_GOLDEN,"repository","\"example/repo\",\"future_field\":42",b[..]),v[..]);
+ pr:=jv_raw(d[0],jv_at(d[0],jv_get(d[0],0,"pull_requests"),0));row:[16384]u8;array:[131072]u8;changed:=jf_replace(pr,"title","\"Title\",\"draft\":true",row[..]);list:=ws_fixture_array(changed,1,array[..]);#assert ws_view_read(jf_replace(WS_VIEW_GOLDEN,"pull_requests",list,b[..]),v[..]);
+ tree:=jv_raw(d[0],jv_at(d[0],jv_get(d[0],0,"worktrees"),0));changed=jf_replace(tree,"locked","false,\"head_sha\":\"abc123\"",row[..]);list=ws_fixture_array(changed,1,array[..]);#assert ws_view_read(jf_replace(WS_VIEW_GOLDEN,"worktrees",list,b[..]),v[..]);
 }

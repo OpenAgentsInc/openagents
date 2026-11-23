@@ -42,10 +42,10 @@ PA_MICRO_ID :: [PA_MICRO_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "ge
 PA_MICRO_LABEL :: [PA_MICRO_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
 PA_MICRO_EFFORT :: "low";
 
-// Thinking / effort levels offered for Neon + Inkling.
-PA_EFFORTS :: 4;
-PA_EFFORT_ID :: [PA_EFFORTS] string.["low", "medium", "high", "xhigh"];
-PA_EFFORT_LABEL :: [PA_EFFORTS] string.["Low", "Medium", "High", "X-High"];
+// Thinking / effort levels offered for Antigravity + Inkling (#14005: full ACP effort ladder).
+PA_EFFORTS :: 7;
+PA_EFFORT_ID :: [PA_EFFORTS] string.["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+PA_EFFORT_LABEL :: [PA_EFFORTS] string.["Off", "Minimal", "Low", "Medium", "High", "X-High", "Max"];
 
 // What this computer can run now.
 PaFacts :: struct { claude: bool; gemini: bool; agy: bool; inkling: bool; }
@@ -153,15 +153,18 @@ PA_ENGINE_NAME :: [4] string.["Claude Code", "Microcoder on Gemini", "Antigravit
   } } } }
 }
 #test "effort resolution clamps to each engine's supported levels and defaults cleanly" {
-  #assert pa_effort(PA_AGY, "gemini-4-neon", "") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "xhigh") == "xhigh" && pa_effort(PA_AGY, "gemini-4-neon", "low") == "low" && pa_effort(PA_AGY, "gemini-4-neon", "high") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "medium") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "bogus") == "medium";
+  #assert pa_effort(PA_AGY, "gemini-4-neon", "") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "xhigh") == "xhigh" && pa_effort(PA_AGY, "gemini-4-neon", "low") == "low" && pa_effort(PA_AGY, "gemini-4-neon", "high") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "medium") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "max") == "max" && pa_effort(PA_AGY, "gemini-4-neon", "minimal") == "minimal" && pa_effort(PA_AGY, "gemini-4-neon", "none") == "none" && pa_effort(PA_AGY, "gemini-4-neon", "bogus") == "medium";
+  #assert pa_effort(PA_AGY, "gemini-3.8-flash", "xhigh") == "high" && pa_effort(PA_AGY, "gemini-3.8-flash", "max") == "high" && pa_effort(PA_AGY, "gemini-3.8-flash", "high") == "high";
+  #assert pa_effort(PA_AGY, "gemini-pro-orchestrator", "high") == "";
   #assert pa_effort(PA_INKLING, "inkling-2-mini", "") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "low") == "low" && pa_effort(PA_INKLING, "inkling-2-mini", "medium") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "high") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "xhigh") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "bogus") == "medium";
   #assert pa_effort(PA_MICRO, "gemini-4-neon", "high") == "low" && pa_effort(PA_CLAUDE, "default", "high") == "high" && pa_effort(PA_NONE, "", "high") == "";
 }
-#test "Antigravity-only mobile client allows only Antigravity models and normalizes others to Gemini 4 Neon" {
+#test "Antigravity mobile client supports dynamic ACP model slugs and rejects local Inkling or malformed ids" {
   #assert pa_mobile_agy_allowed("gemini-4-neon") && pa_mobile_agy_allowed("gemini-4-carbon") && pa_mobile_agy_allowed("gemini-3.8-flash") && pa_mobile_agy_allowed("antigravity");
-  #assert !pa_mobile_agy_allowed("inkling-2-mini") && !pa_mobile_agy_allowed("inkling") && !pa_mobile_agy_allowed("claude-opus-5-5") && !pa_mobile_agy_allowed("default") && !pa_mobile_agy_allowed("") && !pa_mobile_agy_allowed("gemini-");
-  #assert pa_mobile_agy_model("gemini-4-carbon") == "gemini-4-carbon" && pa_mobile_agy_model("gemini-3.8-flash") == "gemini-3.8-flash";
-  #assert pa_mobile_agy_model("antigravity") == PA_AGY_DEFAULT && pa_mobile_agy_model("inkling-2-mini") == PA_AGY_DEFAULT && pa_mobile_agy_model("claude-opus-5-5") == PA_AGY_DEFAULT && pa_mobile_agy_model("") == PA_AGY_DEFAULT;
+  #assert pa_mobile_agy_allowed("gemini-pro-orchestrator") && pa_mobile_agy_allowed("gemini-5-pro") && pa_mobile_agy_allowed("claude-opus-5-5") && pa_mobile_agy_allowed("gpt-oss-120b") && pa_mobile_agy_allowed("vertex/gemini_5:latest");
+  #assert !pa_mobile_agy_allowed("inkling-2-mini") && !pa_mobile_agy_allowed("inkling") && !pa_mobile_agy_allowed("default") && !pa_mobile_agy_allowed("") && !pa_mobile_agy_allowed("gemini-") && !pa_mobile_agy_allowed("claude-") && !pa_mobile_agy_allowed("--danger");
+  #assert pa_mobile_agy_model("gemini-4-carbon") == "gemini-4-carbon" && pa_mobile_agy_model("gemini-3.8-flash") == "gemini-3.8-flash" && pa_mobile_agy_model("claude-opus-5-5") == "claude-opus-5-5" && pa_mobile_agy_model("gemini-pro-orchestrator") == "gemini-pro-orchestrator";
+  #assert pa_mobile_agy_model("antigravity") == PA_AGY_DEFAULT && pa_mobile_agy_model("inkling-2-mini") == PA_AGY_DEFAULT && pa_mobile_agy_model("default") == PA_AGY_DEFAULT && pa_mobile_agy_model("") == PA_AGY_DEFAULT;
 }
 
 pa_usable :: (f: PaFacts, engine: int) -> bool #effects(all) {
@@ -203,7 +206,11 @@ pa_pick :: (f: PaFacts, want: string) -> PaPick #effects(all) {
 // The effort level a turn runs at for `engine` and `model` ("" for none).
 pa_effort :: (engine: int, model: string, want: string) -> string #effects(all) {
   if engine == PA_AGY {
-    if want == "low" || want == "medium" || want == "high" || want == "xhigh" { return want; }
+    if model == "gemini-pro-orchestrator" { return ""; }
+    if model == "gemini-3.8-flash" {
+      if want == "xhigh" || want == "max" { return "high"; }
+    }
+    if want == "none" || want == "minimal" || want == "low" || want == "medium" || want == "high" || want == "xhigh" || want == "max" { return want; }
     return PA_AGY_EFFORT;
   }
   if engine == PA_INKLING {
@@ -244,12 +251,23 @@ pa_offer :: (f: PaFacts, out: [] int) -> int #effects(all) {
   for e: PA_ORDER { if n < out.count && pa_usable(f, e) { out[n] = e; n += 1; } }
   return n;
 }
-// Antigravity-only mobile client policy (#13993): only Antigravity/Gemini model ids are allowed,
-// and any generic or non-Antigravity selection resolves to PA_AGY_DEFAULT ("gemini-4-neon").
+// Dynamic Antigravity ACP model catalog validation (#14005): accepts any safe ACP model slug
+// advertised by `agy` (Gemini 3.8/4/5, Orchestrator, Claude 5.5 via ACP, GPT-OSS, Enterprise Gateway,
+// local LiteRT) while excluding non-Antigravity local sentinels ("inkling", "default") and option flags.
+pa_agy_catalog_slug_ok :: (id: string) -> bool #effects(all) {
+  if id.count < 1 || id.count > 128 { return false; }
+  if pa_inkling_model(id) || id == "default" || id == "gemini-" || id == "claude-" { return false; }
+  if id[0] == '-' || id[id.count - 1] == '-' { return false; }
+  for c: id {
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' || c == ':' || c == '/';
+    if !ok { return false; }
+  }
+  return true;
+}
 pa_mobile_agy_allowed :: (id: string) -> bool #effects(all) {
-  return pa_agy_model(id);
+  return id == PA_AGY_ID || pa_agy_catalog_slug_ok(id);
 }
 pa_mobile_agy_model :: (want: string) -> string #effects(all) {
-  if pa_agy_model(want) && want != PA_AGY_ID { return want; }
+  if pa_agy_catalog_slug_ok(want) && want != PA_AGY_ID { return want; }
   return PA_AGY_DEFAULT;
 }

@@ -4175,6 +4175,7 @@
       "step": "C11",
       "files": [
         "coder/tui/mcworker.coax",
+        "coder/tui/agyworker.coax",
         "coax/lib/agent/engine/mcworker-client.coax",
         "coder/tui/microcoder.coax",
         "coax/lib/agent/engine/run.coax",

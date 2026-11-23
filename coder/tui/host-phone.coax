@@ -36,6 +36,9 @@ PhHost :: struct {
   agy_project: [128] u8; agy_nproject: int;
   agy_location: [64] u8; agy_nlocation: int;
   agy_explicit_profile: bool;
+  agy_version: [64] u8; agy_nversion: int;
+  agy_auth_probed: [32] u8; agy_nauth_probed: int;
+  agy_update_avail: bool;
   agy_models: [EA_MODELS] EaModel; agy_nmodels: int;
   // Non-blocking periodic agyworker --probe-json refresh (#14000)
   probe_active: bool;
@@ -65,12 +68,15 @@ ph_sha256_hex :: (s: string, out: [] u8) -> string {
   return cast(string) out[0..<64];
 }
 
-// Effort bitmask for the 4 standard Neon + Inkling levels: 0=low, 1=medium, 2=high, 3=xhigh.
+// Effort bitmask matching PA_EFFORT_ID: 0=none, 1=minimal, 2=low, 3=medium, 4=high, 5=xhigh, 6=max (#14005).
 ph_effort_bit :: (id: string) -> int {
-  if id == "low" { return 1; }
-  if id == "medium" { return 2; }
-  if id == "high" { return 4; }
-  if id == "xhigh" { return 8; }
+  if id == "none" { return 1; }
+  if id == "minimal" { return 2; }
+  if id == "low" { return 4; }
+  if id == "medium" { return 8; }
+  if id == "high" { return 16; }
+  if id == "xhigh" { return 32; }
+  if id == "max" { return 64; }
   return 0;
 }
 
@@ -252,7 +258,7 @@ ph_load_agy_cfg :: (p: [] PhHost) -> bool {
   return p[0].agy_nbin > 0;
 }
 
-// Parse `agyworker --probe-json` output into `models` (Gemini 4 Neon first). Returns true if authenticated.
+// Parse `agyworker --probe-json` output into `models` (dynamic full ACP catalog, Neon first; #14005). Returns true if authenticated.
 ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
   nout[0] = 0;
   if raw.count < 2 { return false; }
@@ -261,8 +267,8 @@ ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
   if auth != "authenticated" { return false; }
   list := cl_raw(raw, "models");
   total := cl_count(list);
-  // Two passes: Gemini 4 Neon first, then all remaining authenticated models up to EA_MODELS.
-  for pass: 0..<2 {
+  // Three passes: (0) PA_AGY_DEFAULT first, (1) remaining gemini-* models, (2) all other ACP models (Claude, GPT-OSS, custom/gateway).
+  for pass: 0..<3 {
     for i: 0..<total {
       if nout[0] >= models.count { break; }
       one := cl_json(list, cl_item(list, i));
@@ -270,10 +276,11 @@ ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
       slug := cl_str(ar[..], one, "slug");
       name := cl_str(ar[..], one, "name");
       if slug.count < 1 || !ea_choice(slug) { continue; }
-      // Match Desktop's Gemini 4-only Antigravity picker (b5b5dbf0ba): Gemini 4 Neon first, then other Gemini 4 models.
-      if slug.count < 10 || cast(string) slug[0..<9] != "gemini-4-" { continue; }
       is_neon := slug == PA_AGY_DEFAULT;
-      if (pass == 0) != is_neon { continue; }
+      is_gemini := slug.count > 7 && cast(string) slug[0..<7] == "gemini-";
+      if pass == 0 && !is_neon { continue; }
+      if pass == 1 && (is_neon || !is_gemini) { continue; }
+      if pass == 2 && is_gemini { continue; }
       dup := false;
       for k: 0..<nout[0] { if cast(string) models[k].id[0..<models[k].ni] == slug { dup = true; break; } }
       if dup { continue; }
@@ -289,12 +296,50 @@ ph_parse_agy_probe :: (raw: string, models: [] EaModel, nout: [] int) -> bool {
         ladder |= ph_effort_bit(lv);
       }
       th := cl_bool(one, "thinking");
-      if ladder == 0 && th.ok && th.value { ladder = 1 | 2 | 4; }
+      if ladder == 0 && th.ok && th.value { ladder = 4 | 8 | 16; }
       m.ladder = ladder;
       models[nout[0]] = m; nout[0] += 1;
     }
   }
   return true;
+}
+
+// Check if an agy CLI version meets the >= 1.5.10 ACP floor (accepts >= 2.0.0 & date-stamped RCs; #14004).
+ph_agy_ver_ok :: (ver: string) -> bool {
+  if ver.count == 0 { return true; }
+  if ver.count >= 15 && cast(string) ver[0..<15] == "agy_acp_server_" { return true; }
+  i := 0;
+  if ver[0] == 'v' || ver[0] == 'V' { i = 1; }
+  maj := 0; md := 0;
+  while i < ver.count && ver[i] >= '0' && ver[i] <= '9' { maj = maj * 10 + cast(int) (ver[i] - '0'); md += 1; i += 1; }
+  if md == 0 || i >= ver.count || ver[i] != '.' { return false; }
+  i += 1;
+  min := 0; nd := 0;
+  while i < ver.count && ver[i] >= '0' && ver[i] <= '9' { min = min * 10 + cast(int) (ver[i] - '0'); nd += 1; i += 1; }
+  if nd == 0 { return false; }
+  pat := 0;
+  if i < ver.count && ver[i] == '.' {
+    i += 1;
+    while i < ver.count && ver[i] >= '0' && ver[i] <= '9' { pat = pat * 10 + cast(int) (ver[i] - '0'); i += 1; }
+  }
+  if maj > 1 { return true; }
+  if maj < 1 { return false; }
+  if min > 5 { return true; }
+  return min == 5 && pat >= 10;
+}
+
+// Extract version and authMethod metadata from `agyworker --probe-json` output (#14004).
+ph_record_agy_probe_meta :: (p: [] PhHost, raw: string) {
+  if raw.count < 2 { return; }
+  ab: [1024] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  ver := cl_str(ar[..], raw, "version");
+  if ver.count > 0 {
+    p[0].agy_nversion = hs_cat(p[0].agy_version[..], 0, ver);
+    p[0].agy_update_avail = !ph_agy_ver_ok(ver);
+  }
+  ar[0].at = 0; ar[0].full = false;
+  am := cl_str(ar[..], raw, "authMethod");
+  if am.count > 0 { p[0].agy_nauth_probed = hs_cat(p[0].agy_auth_probed[..], 0, am); }
 }
 
 // Helper: populate env vars for agyworker --probe-json (including API key & optional gateway env; #13995).
@@ -358,8 +403,10 @@ ph_agy_probe_once :: (p: [] PhHost, worker: string, use_profile: bool) -> bool {
   }
   _ = proc_wait(h, 500);
   if on < 2 { return false; }
+  raw_probe := cast(string) out[0..<on];
+  ph_record_agy_probe_meta(p, raw_probe);
   nm: [1] int;
-  if !ph_parse_agy_probe(cast(string) out[0..<on], p[0].agy_models[..], nm[..]) { return false; }
+  if !ph_parse_agy_probe(raw_probe, p[0].agy_models[..], nm[..]) { return false; }
   p[0].agy_nmodels = nm[0];
   return true;
 }
@@ -558,7 +605,9 @@ ph_tick :: (h: [] HsHost) {
       _ = proc_release(p[0].probe_h);
       p[0].probe_active = false;
       nm: [1] int;
-      agy_ok := p[0].probe_n >= 2 && ph_parse_agy_probe(cast(string) p[0].probe_buf[0..<p[0].probe_n], p[0].agy_models[..], nm[..]);
+      raw_probe := ifx p[0].probe_n >= 2 then cast(string) p[0].probe_buf[0..<p[0].probe_n] else "";
+      if raw_probe.count >= 2 { ph_record_agy_probe_meta(p, raw_probe); }
+      agy_ok := raw_probe.count >= 2 && ph_parse_agy_probe(raw_probe, p[0].agy_models[..], nm[..]);
       if agy_ok { p[0].agy_nmodels = nm[0]; } else { p[0].agy_nmodels = 0; }
       p[0].facts = PaFacts.{
         agy = agy_ok,
@@ -630,7 +679,7 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
     o[0].levels[k].nl = ea_copy(o[0].levels[k].label[..], eff_labels[k]);
   }
   o[0].nv = PA_EFFORTS;
-  o[0].default_level = 1; // "medium" (default for both Gemini 4 Neon and Inkling 2 Mini)
+  o[0].default_level = 3; // "medium" (index 3 in PA_EFFORT_ID)
   f := ph_facts(h);
   p := h[0].phone[..];
   // 1. Gemini 4 Neon first when Antigravity is ready.
@@ -644,13 +693,13 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
         break;
       }
     }
-    if !neon_added { ph_offer_add_model(o[..], PA_AGY_DEFAULT, "Gemini 4 Neon", 1 | 2 | 4 | 8); }
+    if !neon_added { ph_offer_add_model(o[..], PA_AGY_DEFAULT, "Gemini 4 Neon", 4 | 8 | 16 | 32); }
   }
   // 2. Inkling 2 Mini (Local) right beside Neon so the Neon + Inkling pair are top choices.
   if f.inkling {
-    ph_offer_add_model(o[..], PA_INKLING_ID, PA_INKLING_LABEL, 1 | 2 | 4);
+    ph_offer_add_model(o[..], PA_INKLING_ID, PA_INKLING_LABEL, 4 | 8 | 16);
   }
-  // 3. Remaining authenticated Antigravity models (Carbon, Hydrogen, Argon, Flash, etc.).
+  // 3. Remaining authenticated Antigravity models (Carbon, Hydrogen, Argon, Flash, Orchestrator, Claude 5.5 via ACP, GPT-OSS, etc.).
   if f.agy {
     if p[0].agy_nmodels > 0 {
       for i: 0..<p[0].agy_nmodels {
@@ -660,14 +709,14 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
     } else {
       nids := PA_NEON_ID; nlabels := PA_NEON_LABEL;
       for k: 0..<PA_NEON_MODELS {
-        ph_offer_add_model(o[..], nids[k], nlabels[k], ifx k == 0 then (1 | 2 | 4 | 8) else (1 | 2 | 4));
+        ph_offer_add_model(o[..], nids[k], nlabels[k], ifx k == 0 then (4 | 8 | 16 | 32) else (4 | 8 | 16));
       }
     }
   }
   // 4. Legacy fallbacks (only when neither Neon/Antigravity nor Inkling covers them).
   if f.gemini && !f.agy {
     mids := PA_MICRO_ID; mlabels := PA_MICRO_LABEL;
-    for k: 0..<PA_MICRO_MODELS { ph_offer_add_model(o[..], mids[k], mlabels[k], 1); }
+    for k: 0..<PA_MICRO_MODELS { ph_offer_add_model(o[..], mids[k], mlabels[k], 4); }
   }
   if f.claude && !f.agy && !f.inkling {
     for k: 0..<claude.n {
@@ -683,6 +732,80 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
     }
   }
   v[0].offer = o[0];
+}
+
+// Catalog-aware agent selection (#14005): any model slug offered by live agyworker --probe-json
+// (including Claude 5.5 via ACP, GPT-OSS, Orchestrator, Enterprise Gateway) routes directly to PA_AGY.
+ph_pick :: (h: [] HsHost, want: string) -> PaPick {
+  f := ph_facts(h);
+  if f.agy && want.count > 0 {
+    p := h[0].phone[..];
+    for i: 0..<p[0].agy_nmodels {
+      if cast(string) p[0].agy_models[i].id[0..<p[0].agy_models[i].ni] == want {
+        return PaPick.{engine = PA_AGY, model = want, fell_back = false, asked = PA_AGY};
+      }
+    }
+  }
+  return pa_pick(f, want);
+}
+
+// Populate remote host & Antigravity version/capability handshake on DescribeEnvironment (#14004).
+PH_HOST_VERSION :: "2.0.0";
+PH_CAPABILITIES :: "[\"wire.v2\",\"agy.dynamic_models\",\"agy.interactive_permit\",\"agy.attachments\",\"agy.modes\",\"agy.update\",\"tailnet.push.v2\"]";
+
+ph_describe_meta :: (h: [] HsHost, v: [] EaView) {
+  f := ph_facts(h);
+  p := h[0].phone[..];
+  v[0].nhv = ea_copy(v[0].host_ver[..], PH_HOST_VERSION);
+  if p[0].agy_nversion > 0 {
+    v[0].nav = ea_copy(v[0].agy_ver[..], cast(string) p[0].agy_version[0..<p[0].agy_nversion]);
+  }
+  v[0].agy_update = p[0].agy_update_avail;
+  if p[0].agy_nauth_probed > 0 {
+    v[0].naam = ea_copy(v[0].agy_auth[..], cast(string) p[0].agy_auth_probed[0..<p[0].agy_nauth_probed]);
+  } else if p[0].agy_nauth > 0 {
+    v[0].naam = ea_copy(v[0].agy_auth[..], cast(string) p[0].agy_auth[0..<p[0].agy_nauth]);
+  }
+  v[0].has_agy_auth = true;
+  v[0].agy_signed_in = f.agy;
+  v[0].ncap = ea_copy(v[0].caps[..], PH_CAPABILITIES);
+}
+
+// Run `agyworker --update-agy` and refresh probed catalog/version (#14004).
+ph_update_agy :: (h: [] HsHost, v: [] EaView) -> bool {
+  p := h[0].phone[..];
+  wb: [1400] u8; worker := ph_worker("agyworker", wb[..]);
+  if worker.count == 0 { es_refuse(v, "no_agent"); return false; }
+  ph := proc_new();
+  if ph < 0 { es_refuse(v, "unavailable"); return false; }
+  defer { _ = proc_release(ph); }
+  hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
+  path := ph_worker_path(home, proc_getenv("PATH", had[..]), pb[..]);
+  eb: [9000] u8; en := hs_cat(eb[..], 0, "PATH="); en = hs_cat(eb[..], en, path);
+  ok := proc_arg(ph, worker) && proc_arg(ph, "--update-agy") && proc_env(ph, cast(string) eb[0..<en]);
+  if !ok || proc_start(ph) != 0 { es_refuse(v, "unavailable"); return false; }
+  _ = proc_close_stdin(ph);
+  out: [8192] u8; on := 0; deadline := proc_now_ms() + 120000;
+  while proc_now_ms() < deadline {
+    left := proc_left(deadline, proc_now_ms());
+    ln := cxproc_read_line(ph, ifx left > 500 then 500 else left);
+    if ln == PROC_TIMEOUT || ln == PROC_TOO_LONG { continue; }
+    if ln < 0 { break; }
+    if ln > 2 && ln < out.count {
+      for i: 0..<ln { out[i] = cast(u8) cxproc_line_byte(ph, i); }
+      if ph_line_is_json_obj(out[..], ln) { on = ln; break; }
+    }
+  }
+  st := proc_wait(ph, 2000);
+  if st != 0 || on < 2 || !cl_bool(cast(string) out[0..<on], "ok").value {
+    es_refuse(v, "unavailable");
+    return false;
+  }
+  // Force fresh probe on next call so updated agy version + models appear immediately.
+  p[0].known = false;
+  ph_describe_meta(h, v);
+  ph_offer(h, v);
+  return true;
 }
 
 // ---------------------------------------------------------------- the phone's runs
@@ -913,7 +1036,7 @@ ph_restart_full :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command
   facts := ph_facts(h);
   engine := prev_engine;
   pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
-  prev_mb: [64] u8; prev_model := ph_model_in(pm, prev_mb[..]);
+  prev_mb: [128] u8; prev_model := ph_model_in(pm, prev_mb[..]);
   prev_eb: [16] u8; prev_effort := ph_effort_in(pm, prev_eb[..]);
   prev_mdb: [16] u8; prev_mode := ph_mode_in(pm, prev_mdb[..]);
   model := ifx want_model.count > 0 then want_model else prev_model;
@@ -921,11 +1044,11 @@ ph_restart_full :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command
   mode := ifx ea_mode_ok(want_mode) then want_mode else ifx prev_mode.count > 0 then prev_mode else "auto";
   pick := PaPick.{engine = engine, model = model};
   if want_model.count > 0 {
-    p := pa_pick(facts, want_model);
+    p := ph_pick(h, want_model);
     if p.engine == PA_NONE || p.engine == PA_CLAUDE { return "no_agent"; }
     pick = p; engine = p.engine; model = p.model;
   } else if !pa_usable(facts, engine) {
-    p := pa_pick(facts, "");
+    p := ph_pick(h, "");
     if p.engine == PA_NONE || p.engine == PA_CLAUDE { return "no_agent"; }
     pick = PaPick.{engine = p.engine, model = p.model, fell_back = true, asked = prev_engine};
     engine = p.engine; model = p.model;
@@ -987,14 +1110,18 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
   n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", "high", out[..]);
   ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && !t[0].local && t[0].model == "gemini-4-neon" && t[0].effort == "low";
 }
-#test "agy probe json extracts authenticated Gemini 4 models with Gemini 4 Neon first and rejects unauthenticated" {
-  raw := "{\"authStatus\":\"authenticated\",\"models\":[{\"slug\":\"gemini-3.5-flash\",\"name\":\"Gemini 3.5 Flash\",\"thinking\":false},{\"slug\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";
+#test "agy probe json extracts full dynamic ACP catalog with Gemini 4 Neon first, empty thinking ladder preserved, and rejects unauthenticated" {
+  raw := "{\"authStatus\":\"authenticated\",\"version\":\"1.5.14\",\"authMethod\":\"oauth-personal\",\"models\":[{\"slug\":\"gemini-3.8-flash\",\"name\":\"Gemini 3.8 Flash\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\"]},{\"slug\":\"gemini-pro-orchestrator\",\"name\":\"Gemini Pro Orchestrator\",\"thinking\":false,\"thoughtLevels\":[]},{\"slug\":\"claude-opus-5-5\",\"name\":\"Claude Opus 5.5\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"max\"]},{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\",\"thinking\":true,\"thoughtLevels\":[\"low\",\"medium\",\"high\",\"xhigh\"]}]}";
   models: [EA_MODELS] EaModel; nm: [1] int;
-  #assert ph_parse_agy_probe(raw, models[..], nm[..]) && nm[0] == 2;
-  #assert cast(string) models[0].id[0..<models[0].ni] == "gemini-4-neon" && models[0].ladder == (1 | 2 | 4 | 8);
-  #assert cast(string) models[1].id[0..<models[1].ni] == "gemini-4-carbon" && models[1].ladder == (1 | 2 | 4);
+  #assert ph_parse_agy_probe(raw, models[..], nm[..]) && nm[0] == 4;
+  #assert cast(string) models[0].id[0..<models[0].ni] == "gemini-4-neon" && models[0].ladder == (4 | 8 | 16 | 32);
+  #assert cast(string) models[1].id[0..<models[1].ni] == "gemini-3.8-flash" && models[1].ladder == (4 | 8 | 16);
+  #assert cast(string) models[2].id[0..<models[2].ni] == "gemini-pro-orchestrator" && models[2].ladder == 0;
+  #assert cast(string) models[3].id[0..<models[3].ni] == "claude-opus-5-5" && models[3].ladder == (4 | 8 | 16 | 64);
   unauth := "{\"authStatus\":\"unauthenticated\",\"models\":[{\"slug\":\"gemini-4-neon\",\"name\":\"Gemini 4 Neon\"}]}";
   #assert !ph_parse_agy_probe(unauth, models[..], nm[..]) && nm[0] == 0;
+  #assert ph_agy_ver_ok("1.5.10") && ph_agy_ver_ok("1.5.14") && ph_agy_ver_ok("2.0.0") && ph_agy_ver_ok("agy_acp_server_20261120_1_rc");
+  #assert !ph_agy_ver_ok("1.5.9") && !ph_agy_ver_ok("1.4.12");
 }
 #test "SHA-256 profile digest matches Desktop AntigravityProvider for antigravity" {
   h: [64] u8;

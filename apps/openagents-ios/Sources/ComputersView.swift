@@ -211,6 +211,26 @@ struct ComputersView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(reachabilityColor(for: computer.reachability))
 
+            if let meta = store.hostMetaByID[computer.id] {
+                HStack(spacing: 8) {
+                    if !meta.hostVersion.isEmpty {
+                        Text("host v\(meta.hostVersion)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                    }
+                    if !meta.agyVersion.isEmpty {
+                        Text("agy \(meta.agyVersion)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(meta.agyUpdateAvailable ? OATheme.statusWarn : OATheme.textSecondary)
+                    }
+                    if !meta.capabilities.isEmpty {
+                        Text("\(meta.capabilities.count) caps")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(OATheme.textMuted)
+                    }
+                }
+            }
+
             HStack(spacing: 8) {
                 if needsPair && computer.canRequestDirectGrant {
                     Button {
@@ -249,6 +269,26 @@ struct ComputersView: View {
                 .font(.system(size: 12, weight: .medium))
                 .buttonStyle(.bordered)
                 .tint(OATheme.textSecondary)
+
+                if let meta = store.hostMetaByID[computer.id], meta.supportsRemoteUpdate, computer.canSendRPC {
+                    let updating = store.isUpdatingRemoteAgyHostID == computer.id
+                    Button {
+                        Task {
+                            if let err = await store.updateRemoteAntigravity(on: computer) {
+                                manualError = err
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if updating { ProgressView().controlSize(.mini) }
+                            Text(updating ? "Updating…" : (meta.agyUpdateAvailable ? "Update agy" : "Sync agy"))
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(meta.agyUpdateAvailable ? OATheme.statusWarn : OATheme.textSecondary)
+                    .disabled(updating)
+                }
 
                 Spacer()
 

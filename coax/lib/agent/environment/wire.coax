@@ -45,7 +45,7 @@ EaRequest :: struct {
   method:[32]u8;nm:int;workspace:[64]u8;nw:int;session:[128]u8;ns:int;
   command:[32]u8;nc:int;generation:int;revision:int;text:[16384]u8;nt:int;
   interaction:[128]u8;ni:int;allow:bool;before:int;expires:int;issued:int;
-  model:[64]u8;nmo:int;effort:[16]u8;nef:int;
+  model:[128]u8;nmo:int;effort:[16]u8;nef:int;
   folder:[EA_FOLDER]u8;nf:int;
   item:[128]u8;nit:int;
   mode:[16]u8;nmd:int;
@@ -81,7 +81,7 @@ ea_attachments_ok :: (v:Jv,att:int)->bool #effects(all) {
 // older computer offers none and an older phone names none. A folder is plain relative segments,
 // none empty, hidden, "." or "..", so it can never leave the bound workspace by its spelling;
 // the computer checks the real path too.
-EA_FOLDER :: 256;EA_FOLDERS :: 24;
+EA_FOLDER :: 256;EA_FOLDERS :: 128;
 EaFolder :: struct {path:[EA_FOLDER]u8;np:int;}
 ea_folder_ok :: (p:string)->bool #effects(all) {
   if p.count<1 || p.count>EA_FOLDER {return false;}
@@ -103,12 +103,11 @@ EA_SURFACE_DESKTOP :: "coder-desktop";
 // so this chat runs on Gemini 4 Neon."). It rides on the session, never as an item, so a reader that
 // predates it (TestFlight 1413, which draws every non-user item as the agent's reply) skips it.
 EA_NOTE :: 256;
-EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;note:[EA_NOTE]u8;nno:int;mode:[16]u8;nmd:int;}
-// What the computer's Claude offers a turn: its models and effort levels.
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[128]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;note:[EA_NOTE]u8;nno:int;mode:[16]u8;nmd:int;}
+// What the computer offers a turn: dynamic ACP models and effort levels (#14004, #14005).
 // Bit k of a model's ladder is level k; a model with no ladder takes no effort.
-// The default model's id is "default" (the CLI's own choice, no --model).
-EA_MODELS :: 12;EA_LEVELS :: 8;
-EaModel :: struct {id:[64]u8;ni:int;label:[48]u8;nl:int;ladder:int;}
+EA_MODELS :: 64;EA_LEVELS :: 16;
+EaModel :: struct {id:[128]u8;ni:int;label:[48]u8;nl:int;ladder:int;}
 EaLevel :: struct {id:[16]u8;ni:int;label:[24]u8;nl:int;}
 EaOffer :: struct {models:[EA_MODELS]EaModel;n:int;levels:[EA_LEVELS]EaLevel;nv:int;default_level:int;}
 EA_ITEMS :: 64;
@@ -132,8 +131,13 @@ EA_NOTICE_INSTALL :: "install"; EA_NOTICE_LOGIN :: "login"; EA_NOTICE_LIMIT :: "
 // note: a quiet line about the chat itself, in plain words (the agent it fell back to), not a problem
 EA_NOTICE_NOTE :: "note";
 EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;notice:[16]u8;nnk:int;}
-// A notice kind the wire carries.
+// A notice kind the wire carries (canonical + forward-compatible lowercase token for #14004).
 ea_notice_ok :: (k:string)->bool #effects(all) {return k==EA_NOTICE_INSTALL || k==EA_NOTICE_LOGIN || k==EA_NOTICE_LIMIT || k==EA_NOTICE_NOTE;}
+ea_notice_read_ok :: (k:string)->bool #effects(all) {
+  if k.count<1 || k.count>16 {return false;}
+  for c:k {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='_' || c=='-') {return false;}}
+  return true;
+}
 // An edit's change as "-" lines (before) then "+" lines (after), whole lines only, into out: its
 // length. cut[0] says some lines did not fit.
 ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(all) {
@@ -151,7 +155,7 @@ ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(a
 ea_item_diff :: (v:[]EaView,i:int)->string #effects(all) {
   if i<0 || i>=v[0].ni || v[0].items[i].ndiff<1 {return "";}m:=v[0].items[i];return cast(string)v[0].text[m.diff_at..<m.diff_at+m.ndiff];
 }
-EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;inter_prompt:[512]u8;nip:int;inter_warn:[256]u8;niw:int;inter_opts:[1024]u8;nio:int;inter_q:bool;}
+EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;root:[EA_FOLDER]u8;nroot:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;inter_prompt:[512]u8;nip:int;inter_warn:[256]u8;niw:int;inter_opts:[1024]u8;nio:int;inter_q:bool;host_ver:[64]u8;nhv:int;agy_ver:[64]u8;nav:int;agy_update:bool;agy_auth:[32]u8;naam:int;agy_signed_in:bool;has_agy_auth:bool;caps:[512]u8;ncap:int;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
   at:=v[0].text_n;for c,i:text {v[0].text[at+i]=c;}v[0].text_n+=text.count;return at;
@@ -162,10 +166,11 @@ ea_item_text :: (v:[]EaView,i:int)->string #effects(all) {
 }
 ea_copy :: (out:[]u8,s:string)->int #effects(all) {if s.count>out.count {return -1;}for c,i:s {out[i]=c;}return s.count;}
 ea_field :: (d:Jv,key:string,out:[]u8)->int #effects(all) {return jv_str(d,jv_get(d,0,key),out);}
-// A model or effort id: lowercase letters, digits, '.' and '-'.
+// A model or effort id: alphanumeric plus '.', '-', '_', ':', '/' up to 128 bytes (#14005).
 ea_choice :: (id:string)->bool #effects(all) {
-  if id.count==0 {return false;}
-  for c:id {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}return true;
+  if id.count==0 || id.count>128 {return false;}
+  if id[0]=='-' {return false;}
+  for c:id {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='.' || c=='-' || c=='_' || c==':' || c=='/') {return false;}}return true;
 }
 // An optional choice field of object `at`: 0 when absent, -1 when present but not an id.
 ea_optional :: (d:Jv,at:int,key:string,out:[]u8)->int #effects(all) {
@@ -277,7 +282,14 @@ ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   if v[0].nip>0 {jo_key(o[..],"interaction_prompt");jo_str(o[..],cast(string)v[0].inter_prompt[0..<v[0].nip]);}
   if v[0].niw>0 {jo_key(o[..],"interaction_warning");jo_str(o[..],cast(string)v[0].inter_warn[0..<v[0].niw]);}
   if v[0].nio>0 {jo_key(o[..],"interaction_options");jo_raw(o[..],cast(string)v[0].inter_opts[0..<v[0].nio]);}
-  if v[0].inter_q {jo_key(o[..],"interaction_question");jo_bool(o[..],true);}jo_end(o[..]);
+  if v[0].inter_q {jo_key(o[..],"interaction_question");jo_bool(o[..],true);}
+  if v[0].nhv>0 {jo_key(o[..],"host_version");jo_str(o[..],cast(string)v[0].host_ver[0..<v[0].nhv]);}
+  if v[0].nav>0 {jo_key(o[..],"agy_version");jo_str(o[..],cast(string)v[0].agy_ver[0..<v[0].nav]);}
+  if v[0].agy_update {jo_key(o[..],"agy_update_available");jo_bool(o[..],true);}
+  if v[0].naam>0 {jo_key(o[..],"agy_auth_method");jo_str(o[..],cast(string)v[0].agy_auth[0..<v[0].naam]);}
+  if v[0].has_agy_auth {jo_key(o[..],"agy_signed_in");jo_bool(o[..],v[0].agy_signed_in);}
+  if v[0].ncap>=2 {jo_key(o[..],"capabilities");jo_raw(o[..],cast(string)v[0].caps[0..<v[0].ncap]);}
+  jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_offer_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -322,6 +334,13 @@ ea_interaction_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
   wk:=jv_get(j,0,"interaction_warning");if wk>=0 {v[0].niw=jv_str(j,wk,v[0].inter_warn[..]);if v[0].niw<1 {return false;}}
   ok:=jv_get(j,0,"interaction_options");if ok>=0 {if jv_kind(j,ok)!=JV_ARRAY {return false;}v[0].nio=ea_copy(v[0].inter_opts[..],jv_raw(j,ok));if v[0].nio<2 {return false;}}
   qk:=jv_get(j,0,"interaction_question");if qk>=0 {k:=jv_kind(j,qk);if k!=JV_TRUE && k!=JV_FALSE {return false;}v[0].inter_q=k==JV_TRUE;}
+  // Version & capability handshake fields (#14004) — all optional for forward/backward compat.
+  hv:=jv_get(j,0,"host_version");if hv>=0 {v[0].nhv=jv_str(j,hv,v[0].host_ver[..]);if v[0].nhv<0 {v[0].nhv=0;}}
+  av:=jv_get(j,0,"agy_version");if av>=0 {v[0].nav=jv_str(j,av,v[0].agy_ver[..]);if v[0].nav<0 {v[0].nav=0;}}
+  au:=jv_get(j,0,"agy_update_available");if au>=0 {v[0].agy_update=jv_bool(j,au);}
+  am:=jv_get(j,0,"agy_auth_method");if am>=0 {v[0].naam=jv_str(j,am,v[0].agy_auth[..]);if v[0].naam<0 {v[0].naam=0;}}
+  as:=jv_get(j,0,"agy_signed_in");if as>=0 {k:=jv_kind(j,as);if k==JV_TRUE || k==JV_FALSE {v[0].has_agy_auth=true;v[0].agy_signed_in=k==JV_TRUE;}}
+  cp:=jv_get(j,0,"capabilities");if cp>=0 && jv_kind(j,cp)==JV_ARRAY {n:=ea_copy(v[0].caps[..],jv_raw(j,cp));if n>=2 {v[0].ncap=n;}}
   return true;
 }
 ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
@@ -337,12 +356,12 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   v[0].ns=jv_len(j,list);v[0].ni=jv_len(j,items);if v[0].ns>128 || v[0].ni>64 {return false;}
   for i:0..<v[0].ns {s:=v[0].sessions[i];row:=jv_at(j,list,i);
     s.ni=jv_str(j,jv_get(j,row,"session_id"),s.id[..]);s.nw=jv_str(j,jv_get(j,row,"workspace_id"),s.workspace[..]);s.nt=jv_str(j,jv_get(j,row,"title"),s.title[..]);
-    origin:=jv_raw(j,jv_get(j,row,"origin"));if origin!="managed" && origin!="observed-native" {return false;}s.managed=origin=="managed";
+    origin:=jv_raw(j,jv_get(j,row,"origin"));if origin.count<1 {return false;}s.managed=origin=="managed";
     s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
     s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);s.desktop=jv_raw(j,jv_get(j,row,"surface"))==EA_SURFACE_DESKTOP;
     nn:=jv_get(j,row,"note");s.nno=ifx nn<0 then 0 else jv_str(j,nn,s.note[..]);if nn>=0 && (s.nno<1 || !ea_text(cast(string)s.note[0..<s.nno])) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
-    md:=jv_get(j,row,"mode");s.nmd=ifx md<0 then 0 else jv_str(j,md,s.mode[..]);if md>=0 && (s.nmd<1 || !ea_mode_ok(cast(string)s.mode[0..<s.nmd])) {return false;}
+    md:=jv_get(j,row,"mode");s.nmd=ifx md<0 then 0 else jv_str(j,md,s.mode[..]);if md>=0 && s.nmd<1 {return false;}
     if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
@@ -357,7 +376,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     ck:=jv_get(j,row,"diff_cut");m.diff_cut=ck>=0 && jv_bool(j,ck); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     if m.np<0 || m.ndiff<0 || (m.diff_cut && m.ndiff==0) {return false;}v[0].text_n+=m.ndiff;
     nk:=jv_get(j,row,"notice_kind");m.nnk=ifx nk<0 then 0 else jv_str(j,nk,m.notice[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
-    if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_ok(cast(string)m.notice[0..<m.nnk]))) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_read_ok(cast(string)m.notice[0..<m.nnk]))) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     v[0].items[i]=m;
   }
   if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) || !ea_interaction_read(j,v) {return false;}
@@ -513,7 +532,9 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   tail:="],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}";
   b:[2048]u8;k:=0;
   for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"login\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert ea_view_read(cast(string)b[0..<k],r[..]) && cast(string)r[0].items[0].notice[0..<r[0].items[0].nnk]=="login";
-  k=0;for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"other\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
+  // Forward-compat (#14004): unknown future lowercase notice_kind is accepted on notice items; invalid chars or non-notice role refused.
+  k=0;for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"rate_limit\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert ea_view_read(cast(string)b[0..<k],r[..]) && cast(string)r[0].items[0].notice[0..<r[0].items[0].nnk]=="rate_limit";
+  k=0;for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
   k=0;for part:[3]string.[head,"assistant\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"login\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
 }
 #test "ReadSubagent names the item that started its agent, and only it may" {

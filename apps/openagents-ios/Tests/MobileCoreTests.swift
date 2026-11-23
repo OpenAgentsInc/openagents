@@ -10,21 +10,27 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-neon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-4-carbon"))
         XCTAssertTrue(MobileCore.isAntigravityModel("gemini-3.8-flash"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("gemini-pro-orchestrator"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("claude-opus-5-5"))
+        XCTAssertTrue(MobileCore.isAntigravityModel("gpt-oss-120b"))
         XCTAssertTrue(MobileCore.isAntigravityModel("antigravity"))
 
         XCTAssertFalse(MobileCore.isAntigravityModel("inkling-2-mini"))
         XCTAssertFalse(MobileCore.isAntigravityModel("inkling"))
-        XCTAssertFalse(MobileCore.isAntigravityModel("claude-opus-5-5"))
         XCTAssertFalse(MobileCore.isAntigravityModel("default"))
         XCTAssertFalse(MobileCore.isAntigravityModel(""))
+        XCTAssertFalse(MobileCore.isAntigravityModel("--danger"))
 
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("gemini-4-hydrogen"), "gemini-4-hydrogen")
+        XCTAssertEqual(MobileCore.normalizeAntigravityModel("claude-opus-5-5"), "claude-opus-5-5")
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("antigravity"), "gemini-4-neon")
-        XCTAssertEqual(MobileCore.normalizeAntigravityModel("claude-opus-5-5"), "gemini-4-neon")
         XCTAssertEqual(MobileCore.normalizeAntigravityModel("inkling-2-mini"), "gemini-4-neon")
 
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "xhigh"), "xhigh")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "low"), "low")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "claude-opus-5-5", want: "max"), "max")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-3.8-flash", want: "xhigh"), "high")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-pro-orchestrator", want: "high"), "")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "bogus"), "medium")
 
         XCTAssertTrue(MobileCore.isValidReviewMode("auto"))
@@ -70,7 +76,7 @@ final class MobileCoreTests: XCTestCase {
         let nativeJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: nativeList) as? [String: Any])
         XCTAssertEqual(nativeJSON["model"] as? String, "antigravity")
 
-        // Non-Antigravity models and invalid review modes must be rejected by Coax before sealing.
+        // Local Inkling and invalid review modes must be rejected by Coax before sealing.
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
             work: work,
             method: "OpenSession",
@@ -81,7 +87,7 @@ final class MobileCoreTests: XCTestCase {
             text: "hi",
             issuedMs: 1_700_000_000_000,
             expiresMs: 1_700_000_300_000,
-            model: "claude-opus-5-5",
+            model: "inkling-2-mini",
             effort: "high"
         ))
         XCTAssertNil(MobileCore.encodeEnvironmentRequest(
@@ -229,15 +235,22 @@ final class MobileCoreTests: XCTestCase {
             {"effort_id": "low", "display_name": "Low"},
             {"effort_id": "medium", "display_name": "Medium"},
             {"effort_id": "high", "display_name": "High"},
-            {"effort_id": "xhigh", "display_name": "X-High"}
+            {"effort_id": "xhigh", "display_name": "X-High"},
+            {"effort_id": "max", "display_name": "Max"}
           ],
           "default_effort": "medium",
           "models": [
             {"model_id": "gemini-4-neon", "display_name": "Gemini 4 Neon", "efforts": ["low", "medium", "high", "xhigh"]},
             {"model_id": "inkling-2-mini", "display_name": "Inkling 2 Mini", "efforts": ["low", "medium", "high"]},
-            {"model_id": "claude-opus-5-5", "display_name": "Claude Opus 5.5", "efforts": ["high"]},
+            {"model_id": "gemini-pro-orchestrator", "display_name": "Gemini Pro Orchestrator", "efforts": []},
+            {"model_id": "claude-opus-5-5", "display_name": "Claude Opus 5.5", "efforts": ["high", "max"]},
             {"model_id": "gemini-3.8-flash", "display_name": "Gemini 3.8 Flash", "efforts": ["low", "medium", "high"]}
-          ]
+          ],
+          "host_version": "2.0.0",
+          "agy_version": "1.5.14",
+          "agy_auth_method": "oauth-personal",
+          "agy_signed_in": true,
+          "capabilities": ["wire.v2", "agy.dynamic_models", "agy.update"]
         }
         """
         let cleanData = Data(rawJSON.utf8)
@@ -245,7 +258,15 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertTrue(MobileCore.validateView(work: work, host: host, method: "DescribeEnvironment", raw: cleanData))
 
         let parsed = try XCTUnwrap(ParsedEnvironmentView.parse(cleanData))
-        XCTAssertEqual(parsed.antigravityModels.map(\.id), ["gemini-4-neon", "gemini-3.8-flash"])
+        XCTAssertEqual(parsed.antigravityModels.map(\.id), ["gemini-4-neon", "gemini-pro-orchestrator", "claude-opus-5-5", "gemini-3.8-flash"])
+        let orch = try XCTUnwrap(parsed.antigravityModels.first(where: { $0.id == "gemini-pro-orchestrator" }))
+        XCTAssertTrue(orch.supportedEfforts.isEmpty)
+        XCTAssertFalse(orch.supportsThinking)
+        let claude = try XCTUnwrap(parsed.antigravityModels.first(where: { $0.id == "claude-opus-5-5" }))
+        XCTAssertEqual(claude.supportedEfforts, [.high, .max])
+        XCTAssertEqual(parsed.hostMeta?.hostVersion, "2.0.0")
+        XCTAssertEqual(parsed.hostMeta?.agyVersion, "1.5.14")
+        XCTAssertTrue(parsed.hostMeta?.supportsRemoteUpdate == true)
         XCTAssertEqual(parsed.folders, ["apps/openagents-ios"])
     }
 

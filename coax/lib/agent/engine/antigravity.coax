@@ -872,15 +872,24 @@ agy_win_retry_delay_ms :: (attempt: int) -> int {
 }
 
 // Parse an Antigravity agentInfo.version (stripping any agy_acp_server_ prefix).
-// Accepts >= 1.5.0 < 2.0.0 (and empty/absent version); refuses explicit < 1.5.0 or >= 2.0.0.
+// Accepts >= 1.5.10 (including >= 2.0.0), date-stamped RC builds (agy_acp_server_YYYYMMDD_*),
+// and empty/absent version; refuses explicit < 1.5.10 (#14004).
 agy_version_ok :: (version: string) -> bool {
   if version.count == 0 { return true; }
   s := version;
+  has_prefix := false;
   if s.count >= AGY_VERSION_PREFIX.count && cast(string) s[0..<AGY_VERSION_PREFIX.count] == AGY_VERSION_PREFIX {
     s = cast(string) s[AGY_VERSION_PREFIX.count..<s.count];
+    has_prefix = true;
   }
   if s.count > 0 && (s[0] == 'v' || s[0] == 'V') { s = cast(string) s[1..<s.count]; }
   if s.count == 0 || s[0] < '0' || s[0] > '9' { return false; }
+  // Accept date-stamped RC server builds such as "agy_acp_server_20261120_1_rc" (#14004).
+  if has_prefix && s.count >= 9 && s[8] == '_' {
+    date_ok := true;
+    for k: 0..<8 { if s[k] < '0' || s[k] > '9' { date_ok = false; break; } }
+    if date_ok { return true; }
+  }
   i := 0; major := 0;
   while i < s.count && s[i] >= '0' && s[i] <= '9' {
     if major > 100000 { return false; }
@@ -894,13 +903,18 @@ agy_version_ok :: (version: string) -> bool {
     if minor > 100000 { return false; }
     minor = minor * 10 + cast(int) (s[i] - '0'); i += 1;
   }
+  patch := 0;
   if i < s.count && s[i] == '.' {
     i += 1;
     if i >= s.count || s[i] < '0' || s[i] > '9' { return false; }
-    while i < s.count && s[i] >= '0' && s[i] <= '9' { i += 1; }
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if patch > 100000 { return false; }
+      patch = patch * 10 + cast(int) (s[i] - '0'); i += 1;
+    }
   }
   if i < s.count && s[i] != '-' && s[i] != '+' { return false; }
-  return major == 1 && minor >= 5;
+  if major >= 2 { return true; }
+  return major == 1 && (minor > 5 || (minor == 5 && patch >= 10));
 }
 
 // Empty when the reported version is acceptable, else an actionable upgrade message naming AGY_INSTALL.
@@ -1552,14 +1566,14 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   #assert agy_is(xb[..]) && cue_title(xb[..]) == "Antigravity";
 }
 
-#test "antigravity: version gate accepts >= 1.5.0 < 2.0.0 and refuses older versions with upgrade instructions" {
+#test "antigravity: version gate accepts >= 1.5.10, >= 2.0.0 and date-stamped RCs, and refuses < 1.5.10" {
   #assert agy_version_ok("");
-  #assert agy_version_ok("1.5.0") && agy_version_ok("1.5.12") && agy_version_ok("1.9.0-rc1");
-  #assert agy_version_ok("agy_acp_server_1.5.0") && agy_version_ok("agy_acp_server_1.5.12") && agy_version_ok("v1.6.1");
-  #assert !agy_version_ok("1.4.9") && !agy_version_ok("agy_acp_server_1.4.9") && !agy_version_ok("0.9.0");
-  #assert !agy_version_ok("2.0.0") && !agy_version_ok("agy_acp_server_2.0.0") && !agy_version_ok("not-a-version");
-  #assert agy_check_version("agy_acp_server_1.5.12") == "";
-  why := agy_check_version("agy_acp_server_1.4.9");
+  #assert agy_version_ok("1.5.10") && agy_version_ok("1.5.14") && agy_version_ok("1.9.0-rc1");
+  #assert agy_version_ok("agy_acp_server_1.5.10") && agy_version_ok("agy_acp_server_1.5.14") && agy_version_ok("v1.6.1");
+  #assert agy_version_ok("2.0.0") && agy_version_ok("agy_acp_server_2.0.0") && agy_version_ok("agy_acp_server_20261120_1_rc");
+  #assert !agy_version_ok("1.5.9") && !agy_version_ok("1.5.0") && !agy_version_ok("1.4.12") && !agy_version_ok("agy_acp_server_1.4.9") && !agy_version_ok("0.9.0") && !agy_version_ok("not-a-version");
+  #assert agy_check_version("agy_acp_server_1.5.14") == "";
+  why := agy_check_version("agy_acp_server_1.5.9");
   #assert why.count > 0 && agy_has(why, AGY_INSTALL);
 }
 

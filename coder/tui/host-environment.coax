@@ -675,7 +675,13 @@ es_native_read :: (h:[]HsHost,q:[]EaRequest,v:[]EaView) #effects(all) {
 }
 es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];es_snapshot(h,q,grant,v);method:=cast(string)q[0].method[0..<q[0].nm];
-  if method=="DescribeEnvironment" {es_folders(h,v);return;}
+  if method=="DescribeEnvironment" {es_folders(h,v);ph_describe_meta(h,v);return;}
+  if method=="HostUpdateAgy" {
+    if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) {es_refuse(v,"malformed");return;}
+    if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
+    if ph_update_agy(h,v) {v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],"completed");}
+    return;
+  }
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
   // Coder Desktop's chats, whose workers the daemon runs (host-desktop.coax, GitHub #13713)
   // Antigravity's own chats, asked for by name or continued interactively (host-agy.coax)
@@ -713,7 +719,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
     // the agent that answers: the phone's pick when this computer runs it, else its working default,
     // never an engine whose CLI is missing (phone-agent-policy.coax)
-    pick:=pa_pick(ph_facts(h),cast(string)q[0].model[0..<q[0].nmo]);
+    pick:=ph_pick(h,cast(string)q[0].model[0..<q[0].nmo]);
     if pick.engine==PA_NONE {es_refuse(v,"no_agent");return;}
     if pick.engine!=PA_CLAUDE {
       c:=e[0].configuration[..];real:[1024]u8;cwd:=cast(string)c[0].workspace[0..<c[0].nw];

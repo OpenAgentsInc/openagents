@@ -1114,7 +1114,7 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
   prev_engine := ph_engine(id);
   switch_engine := false;
   if method == "SendMessage" && dk_running(r) && !r[0].busy && want_model.count > 0 {
-    p := pa_pick(ph_facts(h), want_model);
+    p := ph_pick(h, want_model);
     if p.engine != PA_NONE && p.engine != PA_CLAUDE && p.engine != prev_engine { switch_engine = true; }
   }
   desktop_ahead := method == "SendMessage" && dk_is_desktop_ahead(r, chats, nc);
@@ -1128,13 +1128,13 @@ ph_write :: (h: [] HsHost, q: [] EaRequest, r: [] DkInfo, runs: [] DkInfo, n: in
     mode := want_mode;
     if method == "SendMessage" && !r[0].busy && (want_model.count > 0 || want_effort.count > 0 || want_mode.count > 0) {
       pmb: [1024] u8; pm := ph_meta_read(id, pmb[..]);
-      prev_mb: [64] u8; prev_m := ph_model_in(pm, prev_mb[..]);
+      prev_mb: [128] u8; prev_m := ph_model_in(pm, prev_mb[..]);
       prev_eb: [16] u8; prev_e := ph_effort_in(pm, prev_eb[..]);
       prev_mdb: [16] u8; prev_md := ph_mode_in(pm, prev_mdb[..]);
       if model.count == 0 {
         model = prev_m;
       } else {
-        p := pa_pick(ph_facts(h), model);
+        p := ph_pick(h, model);
         model = ifx p.engine == prev_engine && p.model.count > 0 then p.model else prev_m;
       }
       eff = pa_effort(prev_engine, model, ifx want_effort.count > 0 then want_effort else prev_e);

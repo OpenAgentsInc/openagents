@@ -525,16 +525,20 @@ struct ChatView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 5) {
-                        // Antigravity Model Picker
+                        // Antigravity Model Picker (grouped by family, full dynamic ACP catalog; #14005)
                         Menu {
-                            ForEach(store.availableModels) { model in
-                                Button {
-                                    store.chooseModel(model.id)
-                                } label: {
-                                    if model.id == store.selectedModelID {
-                                        Label(model.label, systemImage: "checkmark")
-                                    } else {
-                                        Text(model.label)
+                            ForEach(store.groupedAvailableModels, id: \.family) { group in
+                                Section(group.family) {
+                                    ForEach(group.models) { model in
+                                        Button {
+                                            store.chooseModel(model.id)
+                                        } label: {
+                                            if model.id == store.selectedModelID {
+                                                Label(model.label, systemImage: "checkmark")
+                                            } else {
+                                                Text(model.label)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -543,23 +547,25 @@ struct ChatView: View {
                         }
                         .accessibilityIdentifier("chat.modelPicker")
 
-                        // Thinking Effort Picker
-                        Menu {
-                            ForEach(store.supportedEffortsForSelectedModel) { effort in
-                                Button {
-                                    store.chooseEffort(effort)
-                                } label: {
-                                    if effort == store.selectedEffort {
-                                        Label(effort.label, systemImage: "checkmark")
-                                    } else {
-                                        Text(effort.label)
+                        // Thinking Effort Picker (hidden when selected model disables --effort, e.g. Orchestrator; #14005)
+                        if store.selectedModelSupportsThinking {
+                            Menu {
+                                ForEach(store.supportedEffortsForSelectedModel) { effort in
+                                    Button {
+                                        store.chooseEffort(effort)
+                                    } label: {
+                                        if effort == store.selectedEffort {
+                                            Label(effort.label, systemImage: "checkmark")
+                                        } else {
+                                            Text(effort.label)
+                                        }
                                     }
                                 }
+                            } label: {
+                                chipLabel(icon: "sparkles", text: store.selectedEffort.label, showMark: false)
                             }
-                        } label: {
-                            chipLabel(icon: "sparkles", text: store.selectedEffort.label, showMark: false)
+                            .accessibilityIdentifier("chat.effortPicker")
                         }
-                        .accessibilityIdentifier("chat.effortPicker")
 
                         // Review Mode Chip (Auto / Ask / Plan)
                         Menu {

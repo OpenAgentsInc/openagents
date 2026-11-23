@@ -725,10 +725,14 @@ struct MacRootView: View {
                 .buttonStyle(.plain)
                 .help("Attach file")
 
-                // Model Picker
+                // Model Picker (grouped by family, full dynamic ACP catalog; #14005)
                 Menu {
-                    ForEach(store.availableModels) { model in
-                        Button(model.label) { store.chooseModel(model.id) }
+                    ForEach(store.groupedAvailableModels, id: \.family) { group in
+                        Section(group.family) {
+                            ForEach(group.models) { model in
+                                Button(model.label) { store.chooseModel(model.id) }
+                            }
+                        }
                     }
                 } label: {
                     composerChip(mark: true, icon: nil, title: store.selectedModelOption.label)
@@ -736,16 +740,18 @@ struct MacRootView: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
 
-                // Effort Picker
-                Menu {
-                    ForEach(store.supportedEffortsForSelectedModel) { eff in
-                        Button(eff.label) { store.chooseEffort(eff) }
+                // Effort Picker (hidden when model disables thinking/effort; #14005)
+                if store.selectedModelSupportsThinking {
+                    Menu {
+                        ForEach(store.supportedEffortsForSelectedModel) { eff in
+                            Button(eff.label) { store.chooseEffort(eff) }
+                        }
+                    } label: {
+                        composerChip(mark: false, icon: "sparkles", title: store.selectedEffort.label)
                     }
-                } label: {
-                    composerChip(mark: false, icon: "sparkles", title: store.selectedEffort.label)
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
 
                 // Review Mode Picker
                 Menu {

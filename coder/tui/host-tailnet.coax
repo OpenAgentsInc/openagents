@@ -16,6 +16,15 @@ HtSrvPeer :: struct {
   buf: [HT_SRV_LINE] u8; blen: int;
 }
 
+HtRunTrack :: struct {
+  used: bool;
+  id: [64] u8; nid: int;
+  out_size: int;
+  idle: bool;
+  interaction_active: bool;
+  revision: int;
+}
+
 HtTailnetServer :: struct {
   listener: int;
   port: int;
@@ -27,6 +36,7 @@ HtTailnetServer :: struct {
   push_seq: int;
   last_sig: int;
   last_check_ms: int;
+  tracks: [DR_MAX] HtRunTrack;
   peers: [HT_SRV_PEERS] HtSrvPeer;
 }
 
@@ -152,7 +162,7 @@ ht_srv_start :: (h: [] HsHost, srv: [] HtTailnetServer, args: [] Args) #effects(
   if args_has(args, "--no-tailnet") { return; }
 
   port_str := args_value(args, "--tailnet-port", "");
-  want_listen := port_str.count > 0 || args_has(args, "--no-relay") || args_has(args, "--tailnet-test-loopback");
+  want_listen := port_str.count > 0 || args_has(args, "--tailnet-listen") || args_has(args, "--no-relay") || args_has(args, "--tailnet-test-loopback");
   if !want_listen { return; }
 
   srv[0].test_loopback = args_has(args, "--tailnet-test-loopback");
@@ -279,22 +289,22 @@ ht_srv_issue_grant :: (h: [] HsHost, st: [] HsState, statebuf: [] u8, device: st
   return ht_grant_answer_write(ans[..], out);
 }
 
-// Compute a cheap monotonic change signature over active runs so subscribed Tailscale peers
-// get real-time `openagents.host-tailnet-push.v1` notifications the instant outputs grow.
-ht_srv_runs_signature :: (h: [] HsHost) -> int #effects(all) {
-  sig := dr_active(h) * 131;
-  r := h[0].runs[..];
-  op: [1400] u8;
-  for i: 0..<DR_MAX {
-    if !r[0].runs[i].used { continue; }
-    out_sz := fs_size(dr_file(cast(string) r[0].runs[i].id[..], ".out", op[..]));
-    if out_sz < 0 { out_sz = 0; }
-    sig = sig * 31 + r[0].runs[i].pid + out_sz + (ifx r[0].runs[i].idle then 1 else 0);
-  }
-  return sig;
+// Classify the last non-empty JSONL line of a worker `.out` file into a push event kind (#14003).
+ht_srv_classify_tail :: (tail: string) -> string {
+  end := tail.count;
+  while end > 0 && (tail[end - 1] == '\n' || tail[end - 1] == '\r' || tail[end - 1] == ' ') { end -= 1; }
+  if end < 2 { return "session_updated"; }
+  start := end;
+  while start > 0 && tail[start - 1] != '\n' { start -= 1; }
+  line := cast(string) tail[start..<end];
+  ab: [512] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  kind := cl_str(ar[..], line, "kind");
+  if kind == "permit" || kind == "ask" { return "interaction_pending"; }
+  if kind == "ended" { return "turn_ended"; }
+  return "session_updated";
 }
 
-ht_srv_broadcast_push :: (srv: [] HtTailnetServer, kind: string, session: string, busy: bool) #effects(all) {
+ht_srv_broadcast_push :: (srv: [] HtTailnetServer, kind: string, session: string, revision: int, busy: bool, has_interaction: bool) #effects(all) {
   any := false;
   for i: 0..<HT_SRV_PEERS {
     if srv[0].peers[i].conn >= 0 && srv[0].peers[i].direct_ok && srv[0].peers[i].subscribed { any = true; break; }
@@ -305,14 +315,88 @@ ht_srv_broadcast_push :: (srv: [] HtTailnetServer, kind: string, session: string
   ev[0].seq = srv[0].push_seq;
   ev[0].nkind = ht_copy(ev[0].kind[..], kind);
   ev[0].nsess = ht_copy(ev[0].session[..], session);
+  ev[0].revision = ifx revision >= 0 then revision else 0;
   ev[0].busy = busy;
+  ev[0].has_interaction = has_interaction;
   pbuf: [HT_LINE_MAX] u8; pn := ht_push_write(ev[..], pbuf[..]);
   if pn < 1 { return; }
   msg := cast(string) pbuf[0..<pn];
   for i: 0..<HT_SRV_PEERS {
     if srv[0].peers[i].conn >= 0 && srv[0].peers[i].direct_ok && srv[0].peers[i].subscribed {
+      // Honor optional per-session filter (always deliver sessions_changed).
+      if kind != "sessions_changed" && session.count > 0 && srv[0].peers[i].nsub_session > 0 {
+        if cast(string) srv[0].peers[i].sub_session[0..<srv[0].peers[i].nsub_session] != session { continue; }
+      }
       ht_srv_write_line(srv[0].peers[i].conn, msg);
     }
+  }
+}
+
+// Per-run push delta detection: emits session_updated (<=150ms during streaming), interaction_pending,
+// turn_ended, and sessions_changed directly from coder-host's event loop (#14003).
+ht_srv_emit_run_pushes :: (h: [] HsHost, srv: [] HtTailnetServer) #effects(all) {
+  r := h[0].runs[..];
+  op: [1400] u8;
+  tail_buf: [2048] u8;
+  list_changed := false;
+  for i: 0..<DR_MAX {
+    run := r[0].runs[i];
+    tr := srv[0].tracks[i..<i + 1];
+    if !run.used {
+      if tr[0].used {
+        if !tr[0].idle {
+          ht_srv_broadcast_push(srv, "turn_ended", cast(string) tr[0].id[0..<tr[0].nid], tr[0].revision, false, false);
+        }
+        tr[0] = HtRunTrack.{};
+        list_changed = true;
+      }
+      continue;
+    }
+    rid := cast(string) run.id[..];
+    same := tr[0].used && tr[0].nid == rid.count && cast(string) tr[0].id[0..<tr[0].nid] == rid;
+    path := dr_file(rid, ".out", op[..]);
+    out_sz := fs_size(path);
+    if out_sz < 0 { out_sz = 0; }
+    if !same {
+      tr[0] = HtRunTrack.{};
+      tr[0].used = true;
+      tr[0].nid = ht_copy(tr[0].id[..], rid);
+      tr[0].out_size = out_sz;
+      tr[0].idle = run.idle;
+      tr[0].revision = 1;
+      list_changed = true;
+      continue;
+    }
+    if out_sz != tr[0].out_size {
+      tr[0].out_size = out_sz;
+      tr[0].revision += 1;
+      // Read the tail of the .out file to distinguish interaction_pending / turn_ended / session_updated.
+      off := ifx out_sz > tail_buf.count then out_sz - tail_buf.count else 0;
+      rn := fs_read_at(path, off, tail_buf[..]);
+      ev_kind := ifx rn > 0 then ht_srv_classify_tail(cast(string) tail_buf[0..<rn]) else "session_updated";
+      if ev_kind == "interaction_pending" {
+        tr[0].interaction_active = true;
+        ht_srv_broadcast_push(srv, "interaction_pending", rid, tr[0].revision, true, true);
+      } else if ev_kind == "turn_ended" {
+        tr[0].interaction_active = false;
+        tr[0].idle = true;
+        ht_srv_broadcast_push(srv, "turn_ended", rid, tr[0].revision, false, false);
+      } else {
+        tr[0].interaction_active = false;
+        tr[0].idle = run.idle;
+        ht_srv_broadcast_push(srv, "session_updated", rid, tr[0].revision, !run.idle, false);
+      }
+    } else if !tr[0].idle && run.idle {
+      tr[0].idle = true;
+      tr[0].interaction_active = false;
+      tr[0].revision += 1;
+      ht_srv_broadcast_push(srv, "turn_ended", rid, tr[0].revision, false, false);
+    } else {
+      tr[0].idle = run.idle;
+    }
+  }
+  if list_changed {
+    ht_srv_broadcast_push(srv, "sessions_changed", "", 0, dr_active(h) > 0, false);
   }
 }
 
@@ -411,18 +495,17 @@ ht_srv_tick :: (h: [] HsHost, srv: [] HtTailnetServer, w: [] HbWork, st: [] HsSt
   now_ms := cxsock_now_ms();
   if now_ms - srv[0].last_check_ms >= 150 {
     srv[0].last_check_ms = now_ms;
-    sig := ht_srv_runs_signature(h);
-    if sig != srv[0].last_sig {
-      srv[0].last_sig = sig;
-      ht_srv_broadcast_push(srv, "sessions_changed", "", dr_active(h) > 0);
-    }
+    ht_srv_emit_run_pushes(h, srv);
   }
 
   return did;
 }
 
-#test "native tailnet IPv4 CGNAT admission check admits only 100.64.0.0/10" {
+#test "native tailnet IPv4 CGNAT admission check admits only 100.64.0.0/10 and classifies run push tails" {
   #assert ht_srv_is_tailnet_v4("100.64.0.1") && ht_srv_is_tailnet_v4("100.127.255.254") && ht_srv_is_tailnet_v4("100.100.42.9");
   #assert !ht_srv_is_tailnet_v4("100.63.255.255") && !ht_srv_is_tailnet_v4("100.128.0.0");
   #assert !ht_srv_is_tailnet_v4("127.0.0.1") && !ht_srv_is_tailnet_v4("192.168.1.5") && !ht_srv_is_tailnet_v4("10.0.0.1") && !ht_srv_is_tailnet_v4("");
+  #assert ht_srv_classify_tail("{\"kind\":\"reply\",\"text\":\"hi\"}\n") == "session_updated";
+  #assert ht_srv_classify_tail("{\"kind\":\"reply\",\"text\":\"hi\"}\n{\"kind\":\"permit\",\"ticket\":1,\"question\":false,\"title\":\"Run\",\"command\":\"ls\",\"options\":[]}\n") == "interaction_pending";
+  #assert ht_srv_classify_tail("{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}\n") == "turn_ended";
 }

@@ -8,6 +8,7 @@ final class TailscaleHostServer: ObservableObject {
     let authController = AntigravityAuthController()
 
     @Published var isListening = false
+    @Published var headlessOwnsTailnet = false
     @Published var listenPort: UInt16 = AppTailnet.port
     @Published var owner: AppTailnet.Owner?
     @Published var hostKeyHex: String = ""
@@ -108,11 +109,21 @@ final class TailscaleHostServer: ObservableObject {
                         switch state {
                         case .ready:
                             self.isListening = true
+                            self.headlessOwnsTailnet = false
                             self.listenPort = nwListener.port?.rawValue ?? AppTailnet.port
                             self.updateBonjourAdvertisement()
                         case .failed(let err):
-                            self.isListening = false
-                            self.statusNote = "Tailscale listener failed: \(err.localizedDescription)"
+                            // Headless `coder-host serve --tailnet-listen` already owns TCP :47109 (#14003).
+                            if case .posix(let code) = err, code == .EADDRINUSE, LocalSocketClient.shared.isSocketAvailable {
+                                self.isListening = true
+                                self.headlessOwnsTailnet = true
+                                self.listenPort = AppTailnet.port
+                                self.statusNote = "Headless coder-host serving Tailscale :\(AppTailnet.port) (stays online when app quits)"
+                            } else {
+                                self.isListening = false
+                                self.headlessOwnsTailnet = false
+                                self.statusNote = "Tailscale listener failed: \(err.localizedDescription)"
+                            }
                             self.listener?.cancel()
                             self.listener = nil
                         case .cancelled:
@@ -237,7 +248,7 @@ final class TailscaleHostServer: ObservableObject {
         }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bin)
-        proc.arguments = ["serve", "--no-relay"]
+        proc.arguments = ["serve", "--no-relay", "--tailnet-listen"]
         proc.environment = Self.daemonEnvironment()
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
@@ -280,7 +291,7 @@ final class TailscaleHostServer: ObservableObject {
         let envPath = "/opt/homebrew/bin:/usr/local/bin:\(home)/.local/bin:\(home)/.openagents/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         let plist: [String: Any] = [
             "Label": Self.launchAgentLabel,
-            "ProgramArguments": [bin, "serve", "--no-relay"],
+            "ProgramArguments": [bin, "serve", "--no-relay", "--tailnet-listen"],
             "EnvironmentVariables": [
                 "PATH": envPath,
                 "HOME": home,

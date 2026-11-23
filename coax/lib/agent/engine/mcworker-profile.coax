@@ -26,13 +26,13 @@ MP_CHECK :: "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/
 // The profile's names for the kinds: an owner's line by the member that makes it its kind, a
 // worker's by its kind, except steered and queued, the worker's {"kind":"steer"} and
 // {"kind":"queue"} (named as the codec names them, apart from the owner's steer and queue lines).
-MP_KINDS :: 28;
+MP_KINDS :: 29;
 MP_NAMES :: [MP_KINDS] string.["task", "answer", "stop", "forget", "embed", "results", "recall", "steer", "interrupt", "queue",
                                "journal", "ready", "reply", "thought", "attempt", "command", "view", "ask", "delegate", "ended", "embedding",
-                               "turn", "steered", "queued", "queue_refused", "stop_agent", "todos", "device"];
+                               "turn", "steered", "queued", "queue_refused", "stop_agent", "todos", "device", "permit"];
 MP_CODES :: [MP_KINDS] int.[MWW_TASK, MWW_ANSWER, MWW_STOP, MWW_FORGET, MWW_EMBED, MWW_RESULTS, MWW_RECALL, MWW_STEER, MWW_INTERRUPT, MWW_QUEUE,
                             MWW_JOURNAL, MWW_READY, MWW_REPLY, MWW_THOUGHT, MWW_ATTEMPT, MWW_COMMAND, MWW_VIEW, MWW_ASK, MWW_DELEGATE, MWW_ENDED, MWW_EMBEDDING,
-                            MWW_TURN, MWW_STEERED, MWW_QUEUED, MWW_QUEUE_REFUSED, MWW_STOP_AGENT, MWW_TODOS, MWW_DEVICE];
+                            MWW_TURN, MWW_STEERED, MWW_QUEUED, MWW_QUEUE_REFUSED, MWW_STOP_AGENT, MWW_TODOS, MWW_DEVICE, MWW_PERMIT];
 MP_OWNER :: 10;      // the first ten are the owner's lines
 
 MpWork :: struct {
@@ -112,6 +112,7 @@ mp_worker :: (w: [] MpWork, k: int, line: string) -> string {
   else if got == MWW_STOP_AGENT { if !l[0].agent.ok { return "a stop_agent with no agent"; } n = mww_stop_agent(o, l[0].agent.value); }
   else if got == MWW_TODOS { if l[0].todos.count < 2 { return "a todos with no todos"; } n = mww_todos(o, l[0].todos); }
   else if got == MWW_DEVICE { if !l[0].ok.ok || l[0].op.count == 0 { return "a device with no op or ok"; } n = mww_device(o, l[0].op, l[0].ok.value, l[0].shot); }
+  else if got == MWW_PERMIT { if !l[0].ticket.ok || !l[0].question.ok { return "a permit with no ticket or question"; } n = mww_permit_warn(o, l[0].ticket.value, l[0].question.value, l[0].title, l[0].command, l[0].warning, l[0].options); }
   if ar[0].full { return "it does not fit the check's arena"; }
   if n < 0 || cast(string) o[0..<n] != line { return "written back, it is not the same bytes"; }
   return "";
@@ -133,7 +134,7 @@ mp_owner :: (w: [] MpWork, k: int, line: string, read_only: bool) -> string {
     }
     n = mww_task(o, t[0]);
   }
-  else if got == MWW_ANSWER { if !r[0].ticket.ok { return "an answer with no ticket"; } n = mww_answer(o, r[0].allow, r[0].ticket.value, r[0].why); }
+  else if got == MWW_ANSWER { if !r[0].ticket.ok { return "an answer with no ticket"; } n = ifx r[0].option.count > 0 then mww_answer_option(o, r[0].allow, r[0].ticket.value, r[0].option, r[0].why) else mww_answer(o, r[0].allow, r[0].ticket.value, r[0].why); }
   else if got == MWW_EMBED { n = mww_embed(o, r[0].text, r[0].query); }
   else if got == MWW_STOP { n = json_raw(o, 0, MWW_STOP_LINE); }
   else if got == MWW_FORGET { n = json_raw(o, 0, MWW_FORGET_LINE); }

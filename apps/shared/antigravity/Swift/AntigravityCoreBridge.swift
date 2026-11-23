@@ -58,17 +58,18 @@ enum MobileCore {
 
     /// Coax `#authority` normalization strictly within Antigravity (defaults to `gemini-4-neon`).
     static func normalizeAntigravityModel(_ want: String) -> String {
-        var out = [UInt8](repeating: 0, count: 64)
+        var out = [UInt8](repeating: 0, count: 128)
         let n = oa_mobile_normalize_agy_model(want, &out, Int64(out.count))
         guard n > 0 else { return "gemini-4-neon" }
         return String(decoding: out[0..<Int(n)], as: UTF8.self)
     }
 
-    /// Coax `#authority` effort normalization for Antigravity (`low` | `medium` | `high` | `xhigh`).
+    /// Coax `#authority` effort normalization for Antigravity (`none`..`max`, or `""` for non-thinking models like Orchestrator).
     static func normalizeAntigravityEffort(model: String, want: String) -> String {
         var out = [UInt8](repeating: 0, count: 32)
         let n = oa_mobile_normalize_agy_effort(model, want, &out, Int64(out.count))
-        guard n > 0 else { return "medium" }
+        guard n >= 0 else { return "medium" }
+        if n == 0 { return "" }
         return String(decoding: out[0..<Int(n)], as: UTF8.self)
     }
 

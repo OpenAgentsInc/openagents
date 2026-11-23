@@ -19,10 +19,10 @@ ewc_name :: (n:int,c:u8,out:[]u8)->string #effects(all) {
   k:=ea_copy(out,"\"workspace_name\":\"");for i:0..<n {out[k]=c;k+=1;}out[k]='"';k+=1;
   return cast(string)out[0..<k];
 }
-// "folders":[...] with n one-letter folders a, b, c...
+// "folders":[...] with n unique folder names ("a0".."aN")
 ewc_folders :: (n:int,out:[]u8)->string #effects(all) {
   k:=ea_copy(out,"\"folders\":[");
-  for i:0..<n {if i>0 {out[k]=',';k+=1;}out[k]='"';out[k+1]=cast(u8)('a'+i);out[k+2]='"';k+=3;}
+  for i:0..<n {if i>0 {out[k]=',';k+=1;}out[k]='"';out[k+1]=cast(u8)('a'+(i%26));out[k+2]=cast(u8)('0'+(i/26));out[k+3]='"';k+=4;}
   out[k]=']';k+=1;return cast(string)out[0..<k];
 }
 
@@ -58,13 +58,13 @@ ewc_folders :: (n:int,out:[]u8)->string #effects(all) {
   #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":\"/x\"",buf[..]),w[..]);
 }
 
-#test "a computer offers at most 24 folders, each a plain relative path, the first checked like the rest" {
+#test "a computer offers at most EA_FOLDERS (128) folders, each a plain relative path, the first checked like the rest" {
   v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],EWC_HOST);v[0].nm=ea_copy(v[0].method[..],"DescribeEnvironment");
   out:[8192]u8;n:=ea_view_write(v[..],out[..]);base:=cast(string)out[0..<n];
-  buf:[16384]u8;x:[512]u8;w:[1]EaView;
-  #assert ea_view_read(ewc_splice(base,ewc_folders(24,x[..]),buf[..]),w[..]) && w[0].nfolders==24;
-  #assert w[0].folders[0].np==1 && w[0].folders[0].path[0]=='a' && w[0].folders[23].np==1 && w[0].folders[23].path[0]=='x';
-  #assert !ea_view_read(ewc_splice(base,ewc_folders(25,x[..]),buf[..]),w[..]);
+  buf:[16384]u8;x:[4096]u8;w:[1]EaView;
+  #assert ea_view_read(ewc_splice(base,ewc_folders(128,x[..]),buf[..]),w[..]) && w[0].nfolders==128;
+  #assert w[0].folders[0].np==2 && w[0].folders[0].path[0]=='a';
+  #assert !ea_view_read(ewc_splice(base,ewc_folders(129,x[..]),buf[..]),w[..]);
   #assert !ea_view_read(ewc_splice(base,"\"folders\":\"apps\"",buf[..]),w[..]);
   #assert !ea_view_read(ewc_splice(base,"\"folders\":[\".git\"]",buf[..]),w[..]);
   #assert !ea_view_read(ewc_splice(base,"\"folders\":[\".git\",\"apps\"]",buf[..]),w[..]);
@@ -142,12 +142,13 @@ ewc_same :: (raw:string)->bool #effects(all) {
   for h:heads {k:=h[0..<h.count-3];w:[64]u8;n:=ea_copy(w[..],k);n+=ea_copy(w[n..<64],"5");#assert ewc_refuses(EWC_FULL,h,cast(string)w[0..<n],b[..],r[..]);}
   #assert ewc_refuses(EWC_BARE,"\"sessions\":[{\"session_id\":\"s\",\"workspace_id\":\"\",\"title\":\"\",\"origin\":\"observed-native\",\"control\":\"c\",\"generation\":0,\"revision\":0,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":0}]","\"sessions\":{}",b[..],r[..]);
   #assert ewc_refuses(EWC_FULL,"\"items\":[{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"y\",\"tool_name\":\"k\",\"complete\":true,\"started_at_ms\":1,\"subagent_calls\":1,\"subagent_now\":\"z\",\"path\":\"p\",\"diff\":\"d\"}]","\"items\":{}",b[..],r[..]);
-  // a session's: an unknown origin, an empty id or control, a missing or negative number, a non-string, a bad choice or note
-  bad:=[19]string.["\"origin\":\"managed\"","\"origin\":\"other\"", "\"session_id\":\"s\"","\"session_id\":\"\"", "\"control\":\"c\"","\"control\":\"\"",
+  // a session's: an empty origin/id/control, a missing or negative number, a non-string, a bad choice or note (unknown future origin tolerated per #14004)
+  #assert ea_view_read(ewc_swap(EWC_FULL,"\"origin\":\"managed\"","\"origin\":\"observed-remote\"",b[..]),r[..]) && !r[0].sessions[0].managed;
+  bad:=[19]string.["\"origin\":\"managed\"","\"origin\":\"\"", "\"session_id\":\"s\"","\"session_id\":\"\"", "\"control\":\"c\"","\"control\":\"\"",
     "\"generation\":3,","", "\"revision\":4,","", "\"updated_at_ms\":5,","", "\"workspace_id\":\"w\"","\"workspace_id\":5", "\"title\":\"t\"","\"title\":5", "\"interaction_id\":\"i\"","\"interaction_id\":5", ""];
   for i:0..<9 {#assert ewc_refuses(EWC_FULL,bad[2*i],bad[2*i+1],b[..],r[..]);}
-  more:=[16]string.["\"generation\":3","\"generation\":-1", "\"revision\":4","\"revision\":-1", "\"updated_at_ms\":5","\"updated_at_ms\":-1", "\"model\":\"m\"","\"model\":\"M\"",
-    "\"effort\":\"e\"","\"effort\":\"E\"", "\"note\":\"n\"","\"note\":\"\"", "\"note\":\"n\"","\"note\":\"\\u0000n\"", "\"note\":\"n\"","\"note\":5"];
+  more:=[16]string.["\"generation\":3","\"generation\":-1", "\"revision\":4","\"revision\":-1", "\"updated_at_ms\":5","\"updated_at_ms\":-1", "\"model\":\"m\"","\"model\":\"-bad\"",
+    "\"effort\":\"e\"","\"effort\":\"-bad\"", "\"note\":\"n\"","\"note\":\"\"", "\"note\":\"n\"","\"note\":\"\\u0000n\"", "\"note\":\"n\"","\"note\":5"];
   for i:0..<8 {#assert ewc_refuses(EWC_FULL,more[2*i],more[2*i+1],b[..],r[..]);}
   // an item's: an empty id or role, a non-string text, tool or path, a bad count, a newest call without a count
   item:=[14]string.["\"item_id\":\"x\"","\"item_id\":\"\"", "\"role\":\"r\"","\"role\":\"\"", "\"text\":\"y\"","\"text\":5", "\"tool_name\":\"k\"","\"tool_name\":5",

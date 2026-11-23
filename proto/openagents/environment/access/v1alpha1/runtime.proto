@@ -6,7 +6,7 @@ package openagents.environment.access.v1alpha1;
 // Carried in HOST app.rpc; method/right mapping is closed in the Coax policy.
 message RuntimeRequest {
   string method = 1 [json_name = "method"]; // DescribeEnvironment, ListSessions, ReadSession,
-                    // ReadSubagent, OpenSession, SendMessage, StopTurn, StopSubagent, RespondInteraction
+                    // ReadSubagent, OpenSession, SendMessage, StopTurn, StopSubagent, RespondInteraction, HostUpdateAgy
   string workspace_id = 2 [json_name = "workspace_id"]; // configured canonical workspace ID, never a path
   string session_id = 3 [json_name = "session_id"]; // 32 lowercase hex managed ID or native UUID
   string command_id = 4 [json_name = "command_id"]; // 32 lowercase hex, caller retained across retries
@@ -142,6 +142,13 @@ message RuntimeView {
   optional string interaction_warning = 20 [json_name = "interaction_warning"];
   repeated RuntimeInteractionOption interaction_options = 21 [json_name = "interaction_options"];
   optional bool interaction_question = 22 [json_name = "interaction_question"];
+  // DescribeEnvironment: optional remote host & Antigravity version/capability handshake (#14004).
+  optional string host_version = 23 [json_name = "host_version"];
+  optional string agy_version = 24 [json_name = "agy_version"];
+  optional bool agy_update_available = 25 [json_name = "agy_update_available"];
+  optional string agy_auth_method = 26 [json_name = "agy_auth_method"];
+  optional bool agy_signed_in = 27 [json_name = "agy_signed_in"];
+  repeated string capabilities = 28 [json_name = "capabilities"];
 }
 message RuntimeInteractionOption {
   string option_id = 1 [json_name = "optionId"];
