@@ -153,6 +153,30 @@ ing_is_verify_cmd :: (cmd: string) -> bool {
   return false;
 }
 
+// Detects any non-zero exit code (not only code 1) or explicit harness error in tool results.
+ing_has_nonzero_exit :: (s: string) -> bool {
+  if csr_has(s, "Encountered error") || csr_has(s, "failed with exit code") { return true; }
+  needle := "Command exited with code ";
+  pos := 0;
+  while pos + needle.count <= s.count {
+    at := agr_find(s, needle, pos);
+    if at < 0 { break; }
+    i := at + needle.count;
+    neg := false;
+    if i < s.count && s[i] == '-' { neg = true; i += 1; }
+    if i < s.count && s[i] >= '0' && s[i] <= '9' {
+      v := 0;
+      while i < s.count && s[i] >= '0' && s[i] <= '9' {
+        v = v * 10 + cast(int) (s[i] - '0');
+        i += 1;
+      }
+      if neg || v != 0 { return true; }
+    }
+    pos = at + needle.count;
+  }
+  return false;
+}
+
 ing_claude_drop_type :: (ty: string) -> bool {
   if ty == "api-request-blob" || ty == "api-request" || ty == "api-request-shape" { return true; }
   if ty == "file-history-snapshot" || ty == "file-history-delta" || ty == "queue-operation" || ty == "atis-latch" { return true; }
@@ -247,6 +271,7 @@ ing_sink_init :: (s: [] IngSink, path: string) {
 ing_sink_flush :: (s: [] IngSink) -> bool {
   if !s[0].ok { return false; }
   if s[0].out_n == 0 { return true; }
+  if s[0].path_n == 0 { s[0].started_file = true; s[0].out_n = 0; return true; }
   p := cast(string) s[0].path[0..<s[0].path_n];
   data := cast(string) s[0].out_buf[0..<s[0].out_n];
   ok := ifx !s[0].started_file then fs_write(p, data) else fs_append(p, data);
@@ -273,6 +298,7 @@ ing_sink_write :: (s: [] IngSink, data: string) -> bool {
   // Buffer or flush to disk
   if data.count > s[0].out_buf.count {
     if !ing_sink_flush(s) { return false; }
+    if s[0].path_n == 0 { s[0].started_file = true; return true; }
     p := cast(string) s[0].path[0..<s[0].path_n];
     ok := ifx !s[0].started_file then fs_write(p, data) else fs_append(p, data);
     s[0].started_file = true;
@@ -419,18 +445,36 @@ ing_discover_codex :: (home: string, list: [] IngCandidate, count: [] int, total
 
 ing_discover_openagents :: (home: string, list: [] IngCandidate, count: [] int, total: [] int) {
   rb: [1024] u8; root := fs_join(home, ".openagents/coder/sessions", rb[..]);
-  if fs_kind(root) != FS_DIR { return; }
-  files: [1] FsList; nf := fs_list(root, files[..]);
-  if nf <= 0 { return; }
-  for i: 0..<nf {
-    fname := fs_entry(files[..], i);
-    is_ajr := ing_ends_with(fname, ".ajr") && fname.count > 4;
-    is_jsonl := ing_ends_with(fname, ".jsonl") && fname.count > 6;
-    if !is_ajr && !is_jsonl { continue; }
-    pb: [1024] u8; full := fs_join(root, fname, pb[..]);
-    if fs_kind(full) != FS_FILE { continue; }
-    stem := ifx is_ajr then fname[0..<fname.count - 4] else fname[0..<fname.count - 6];
-    ing_add_cand(list, count, total, full, "openagents-desktop", stem, SRC_OPENAGENTS);
+  if fs_kind(root) == FS_DIR {
+    files: [1] FsList; nf := fs_list(root, files[..]);
+    if nf > 0 {
+      for i: 0..<nf {
+        fname := fs_entry(files[..], i);
+        is_ajr := ing_ends_with(fname, ".ajr") && fname.count > 4;
+        is_jsonl := ing_ends_with(fname, ".jsonl") && fname.count > 6;
+        if !is_ajr && !is_jsonl { continue; }
+        pb: [1024] u8; full := fs_join(root, fname, pb[..]);
+        if fs_kind(full) != FS_FILE { continue; }
+        stem := ifx is_ajr then fname[0..<fname.count - 4] else fname[0..<fname.count - 6];
+        ing_add_cand(list, count, total, full, "openagents-desktop", stem, SRC_OPENAGENTS);
+      }
+    }
+  }
+  // OpenAgents Desktop persisted UI chats (macOS Application Support/Coder/chats/*.json).
+  cb: [1024] u8; croot := fs_join(home, "Library/Application Support/Coder/chats", cb[..]);
+  if fs_kind(croot) == FS_DIR {
+    cfiles: [1] FsList; ncf := fs_list(croot, cfiles[..]);
+    if ncf > 0 {
+      for i: 0..<ncf {
+        fname := fs_entry(cfiles[..], i);
+        if fname.count <= 5 || fname[0] == '.' || !ing_ends_with(fname, ".json") { continue; }
+        if fname == "index.json" || fname == "sidebar-meta.json" { continue; }
+        pb: [1024] u8; full := fs_join(croot, fname, pb[..]);
+        if fs_kind(full) != FS_FILE { continue; }
+        stem := fname[0..<fname.count - 5];
+        ing_add_cand(list, count, total, full, "openagents-desktop-ui", stem, SRC_OPENAGENTS);
+      }
+    }
   }
 }
 
@@ -1001,6 +1045,158 @@ ing_convert_openagents_ajr :: (cand_in: IngCandidate, sink: [] IngSink, meta: []
   return true;
 }
 
+// ---- Adapter 3b: OpenAgents Desktop persisted UI chat JSON (Coder/chats/*.json)
+
+ing_convert_openagents_chat_text :: (text: string, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
+  turns_raw := cl_raw(text, "turns");
+  if turns_raw.count < 2 || turns_raw[0] != '[' { return false; }
+
+  ab: [65536] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  ar[0].at = 0; ar[0].full = false;
+  top_model := cl_str(ar[..], text, "model");
+  if top_model.count > 0 { meta[0].model_n = ing_copy(meta[0].model[..], top_model); }
+  cost_r := cl_int(text, "cost_usd_micros");
+  if cost_r.ok && cost_r.value > 0 { meta[0].cost_usd_micros = cost_r.value; }
+  cin_r := cl_int(text, "ctx_in");
+  if cin_r.ok && cin_r.value > 0 { meta[0].prompt_tokens = cin_r.value; }
+  cc_r := cl_int(text, "ctx_cached");
+  if cc_r.ok && cc_r.value > 0 { meta[0].cached_tokens = cc_r.value; }
+  cout_r := cl_int(text, "ctx_out");
+  if cout_r.ok && cout_r.value > 0 { meta[0].completion_tokens = cout_r.value; }
+
+  hdr := AtifSessionHeader.{
+    trajectory_id = cast(string) meta[0].trajectory_id[0..<meta[0].trajectory_id_n],
+    session_id = cast(string) meta[0].session_id[0..<meta[0].session_id_n],
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "openagents-desktop-ui",
+    model_name = cast(string) meta[0].model[0..<meta[0].model_n],
+    source_harness = "openagents",
+  };
+  hbuf: [4096] u8;
+  hn := atif_write_session_line(hdr, hbuf[..]);
+  if hn <= 0 || !ing_sink_write(sink, cast(string) hbuf[0..<hn]) { return false; }
+
+  tj: [1] Json; cl_parse(tj[..], turns_raw);
+  if json_next(tj[..]) != JSON_ARRAY { return false; }
+  call_seq := 0;
+  last_state := 0;
+  while true {
+    t := json_next(tj[..]);
+    if t == JSON_ARRAY_END || t == JSON_ERROR { break; }
+    tv := cl_value_here(tj[..]);
+    if !tv.ok { break; }
+    turn := cl_json(turns_raw, tv);
+
+    ar[0].at = 0; ar[0].full = false;
+    tmodel := cl_str(ar[..], turn, "model");
+    if tmodel.count > 0 { meta[0].model_n = ing_copy(meta[0].model[..], tmodel); }
+    cur_model := cast(string) meta[0].model[0..<meta[0].model_n];
+    st_r := cl_int(turn, "state");
+    last_state = ifx st_r.ok then st_r.value else 0;
+    meta[0].turns += 1;
+
+    ar[0].at = 0; ar[0].full = false;
+    ask := cl_str(ar[..], turn, "ask");
+    if ask.count > 0 {
+      ustep := AtifStep.{source = ATIF_SOURCE_USER, message = csr_cut(ask, ING_MSG_MAX)};
+      if !ing_sink_step(sink, ustep) { return false; }
+    }
+
+    steers_raw := cl_raw(turn, "steers");
+    if steers_raw.count >= 2 && steers_raw[0] == '[' {
+      sj: [1] Json; cl_parse(sj[..], steers_raw);
+      if json_next(sj[..]) == JSON_ARRAY {
+        while true {
+          st := json_next(sj[..]);
+          if st == JSON_ARRAY_END || st == JSON_ERROR { break; }
+          sv := cl_value_here(sj[..]);
+          if !sv.ok { break; }
+          ar[0].at = 0; ar[0].full = false;
+          smsg := cl_text(ar[..], steers_raw, sv);
+          if smsg.count > 0 {
+            sstep := AtifStep.{source = ATIF_SOURCE_USER, message = csr_cut(smsg, ING_MSG_MAX)};
+            if !ing_sink_step(sink, sstep) { return false; }
+          }
+        }
+      }
+    }
+
+    cmds_raw := cl_raw(turn, "cmds");
+    if cmds_raw.count >= 2 && cmds_raw[0] == '[' {
+      cj: [1] Json; cl_parse(cj[..], cmds_raw);
+      if json_next(cj[..]) == JSON_ARRAY {
+        while true {
+          ct := json_next(cj[..]);
+          if ct == JSON_ARRAY_END || ct == JSON_ERROR { break; }
+          cv := cl_value_here(cj[..]);
+          if !cv.ok { break; }
+          cmd := cl_json(cmds_raw, cv);
+          th_r := cl_bool(cmd, "thought");
+          sd_r := cl_bool(cmd, "said");
+          if (th_r.ok && th_r.value) || (sd_r.ok && sd_r.value) { continue; }
+          rd_r := cl_bool(cmd, "read");
+          fl_r := cl_bool(cmd, "failed");
+          is_read := rd_r.ok && rd_r.value;
+          is_err := fl_r.ok && fl_r.value;
+          ar[0].at = 0; ar[0].full = false;
+          ctext := cl_str(ar[..], cmd, "text");
+          cout := cl_str(ar[..], cmd, "out");
+          call_seq += 1;
+          meta[0].roles[ifx is_read then ROLE_READ else ROLE_SHELL] += 1;
+          if !is_read && ing_is_verify_cmd(ctext) { meta[0].has_verify_cmd = true; }
+          if is_err { meta[0].failed_tool_calls += 1; }
+
+          tc_buf: [8192] u8; tco: [1] Jo; jo_start(tco[..], tc_buf[..]);
+          jo_arr(tco[..]); jo_obj(tco[..]);
+          cid_buf: [32] u8; co: [1] Jo; jo_start(co[..], cid_buf[..]); jo_int(co[..], call_seq);
+          jo_key(tco[..], "tool_call_id"); jo_str(tco[..], jo_text(co[..]));
+          jo_key(tco[..], "function_name"); jo_str(tco[..], ifx is_read then "view" else "shell");
+          jo_key(tco[..], "arguments"); jo_obj(tco[..]);
+          jo_key(tco[..], ifx is_read then "path" else "command"); jo_str(tco[..], csr_cut(ctext, 2048));
+          jo_end(tco[..]); jo_end(tco[..]); jo_end(tco[..]);
+          if !tco[0].bad {
+            cstep := AtifStep.{source = ATIF_SOURCE_AGENT, message = "", model_name = cur_model, tool_calls_json = jo_text(tco[..])};
+            if !ing_sink_step(sink, cstep) { return false; }
+          }
+          obs_buf: [12288] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]);
+          jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]);
+          atif_jo_obs_result(obso[..], jo_text(co[..]), csr_cut(cout, ING_OBS_MAX), is_err);
+          jo_end(obso[..]); jo_end(obso[..]);
+          if !obso[0].bad {
+            ostep := AtifStep.{source = ATIF_SOURCE_AGENT, message = "", observation_json = jo_text(obso[..])};
+            if !ing_sink_step(sink, ostep) { return false; }
+          }
+        }
+      }
+    }
+
+    ar[0].at = 0; ar[0].full = false;
+    reply := cl_str(ar[..], turn, "reply");
+    note := cl_str(ar[..], turn, "note");
+    if reply.count > 0 || note.count > 0 || last_state != 0 {
+      astep := AtifStep.{
+        source = ATIF_SOURCE_AGENT,
+        message = csr_cut(reply, ING_MSG_MAX),
+        reasoning_content = csr_cut(note, ING_THINK_MAX),
+        model_name = cur_model,
+      };
+      if !ing_sink_step(sink, astep) { return false; }
+    }
+  }
+  meta[0].ended = last_state == 1;
+  return true;
+}
+
+ing_convert_openagents_chat_json :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta, buf: [] u8) -> bool {
+  cand := cand_in;
+  path := cast(string) cand.path[0..<cand.path_n];
+  fsize := fs_size(path);
+  if fsize <= 0 || fsize > buf.count { return false; }
+  n := fs_read_at(path, 0, buf[0..<fsize]);
+  if n <= 0 { return false; }
+  return ing_convert_openagents_chat_text(cast(string) buf[0..<n], sink, meta);
+}
+
 // ---- Adapter 4: Antigravity (reusing coax/lib/agent/observe/antigravity.coax)
 
 ing_convert_antigravity :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] IngTrajMeta) -> bool {
@@ -1112,10 +1308,11 @@ ing_convert_antigravity :: (cand_in: IngCandidate, sink: [] IngSink, meta: [] In
       }
       jo_end(tco[..]);
       if tc_count > 0 && !tco[0].bad { step.tool_calls_json = jo_text(tco[..]); }
-      if step.message.count == 0 && step.reasoning_content.count == 0 && tc_count == 0 { continue; }
+      // Preserve completed empty assistant turns so silent empty completions remain observable in ATIF.
+      if !st.done && step.message.count == 0 && step.reasoning_content.count == 0 && tc_count == 0 { continue; }
       if !ing_sink_step(sink, step) { return false; }
     } else if st.kind == AGR_RESULT {
-      is_err := csr_has(st.text, "Command exited with code 1") || csr_has(st.text, "Encountered error");
+      is_err := ing_has_nonzero_exit(st.text);
       if is_err { meta[0].failed_tool_calls += 1; }
       obs_buf: [12288] u8; obso: [1] Jo; jo_start(obso[..], obs_buf[..]);
       jo_obj(obso[..]); jo_key(obso[..], "results"); jo_arr(obso[..]);
@@ -1250,6 +1447,7 @@ tool_main :: () -> int #export_c #effects(all) {
 
   stats: [SRC_COUNT] IngStats;
   names := SRC_NAMES;
+  chat_buf: [8388608] u8;
 
   for sidx: 0..<SRC_COUNT {
     if only_src >= 0 && only_src != sidx { continue; }
@@ -1297,7 +1495,9 @@ tool_main :: () -> int #export_c #effects(all) {
       if sidx == SRC_CLAUDE { converted = ing_convert_claude(c, sink[..], meta[..]); }
       else if sidx == SRC_CODEX { converted = ing_convert_codex(c, sink[..], meta[..]); }
       else if sidx == SRC_OPENAGENTS {
-        if ing_ends_with(cast(string) c.path[0..<c.path_n], ".ajr") { converted = ing_convert_openagents_ajr(c, sink[..], meta[..]); }
+        cpath := cast(string) c.path[0..<c.path_n];
+        if ing_ends_with(cpath, ".ajr") { converted = ing_convert_openagents_ajr(c, sink[..], meta[..]); }
+        else if ing_ends_with(cpath, ".json") { converted = ing_convert_openagents_chat_json(c, sink[..], meta[..], chat_buf[..]); }
         else { converted = ing_convert_claude(c, sink[..], meta[..]); }
       } else if sidx == SRC_ANTIGRAVITY { converted = ing_convert_antigravity(c, sink[..], meta[..]); }
       else { converted = false; }
@@ -1402,4 +1602,38 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert jv_int(d[0], jv_get(d[0], 0, "anchorable_episodes"), -1) == 5;
   #assert jv_int(d[0], jv_path(d[0], 0, "sources.claude.ingested"), -1) == 5;
   #assert jv_int(d[0], jv_path(d[0], 0, "sources.antigravity.steps"), -1) == 20;
+}
+
+#test "ingest: nonzero exit detection catches all error codes and ignores exit 0" {
+  #assert !ing_has_nonzero_exit("Command exited with code 0.");
+  #assert !ing_has_nonzero_exit("Command exited with code 0.\nAll tests passed.");
+  #assert ing_has_nonzero_exit("Command exited with code 1.");
+  #assert ing_has_nonzero_exit("Command exited with code 2.\nusage error");
+  #assert ing_has_nonzero_exit("Command exited with code 4.\nDEFERRED");
+  #assert ing_has_nonzero_exit("Command exited with code 127.\ncommand not found");
+  #assert ing_has_nonzero_exit("Command exited with code -9.");
+  #assert ing_has_nonzero_exit("Command exited with code 0.\nCommand exited with code 137.");
+  #assert ing_has_nonzero_exit("Encountered error while running tool");
+  #assert ing_has_nonzero_exit("build failed with exit code 2");
+}
+
+#test "ingest: openagents desktop chat JSON converts turns, steers, cmds, and cost" {
+  chat := "{\"v\":1,\"cost_usd_micros\":42500,\"model\":\"inkling-2-mini\",\"ctx_in\":1200,\"ctx_cached\":800,\"ctx_out\":150,\"turns\":[{\"ask\":\"fix bug\",\"reply\":\"Fixed it.\",\"state\":1,\"model\":\"inkling-2-mini\",\"note\":\"\",\"steers\":[\"also run tests\"],\"cmds\":[{\"text\":\"view foo.coax\",\"out\":\"ok\",\"read\":true,\"failed\":false},{\"text\":\"coax test foo.coax\",\"out\":\"pass\",\"read\":false,\"failed\":false},{\"text\":\"coax check bad.coax\",\"out\":\"err\",\"read\":false,\"failed\":true},{\"text\":\"thinking\",\"out\":\"...\",\"read\":false,\"failed\":false,\"thought\":true}]}]}";
+  sink: [1] IngSink;
+  ing_sink_init(sink[..], "");
+  meta: [1] IngTrajMeta;
+  meta[0].source = SRC_OPENAGENTS;
+  meta[0].trajectory_id_n = ing_copy(meta[0].trajectory_id[..], "chat_unit");
+  meta[0].session_id_n = ing_copy(meta[0].session_id[..], "chat_unit");
+  ok := ing_convert_openagents_chat_text(chat, sink[..], meta[..]);
+  #assert ok;
+  #assert meta[0].turns == 1;
+  #assert meta[0].cost_usd_micros == 42500;
+  #assert meta[0].prompt_tokens == 1200 && meta[0].cached_tokens == 800 && meta[0].completion_tokens == 150;
+  #assert meta[0].roles[ROLE_READ] == 1 && meta[0].roles[ROLE_SHELL] == 2;
+  #assert meta[0].failed_tool_calls == 1;
+  #assert meta[0].has_verify_cmd;
+  #assert meta[0].ended;
+  // user ask + user steer + 3*(tool_call + obs) + agent reply = 9 steps
+  #assert sink[0].step_count == 9;
 }
