@@ -536,7 +536,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
         desc = ifx amode == 1 then "Pause for review before risky edits." else ifx amode == 2 then "Propose a plan before making edits." else "Apply edits and run commands automatically.",
         kind = SET_ROW_CHOICE, noptions = 3, chosen = amode, action = CP_SET_ACT};
       arows[1].options[0] = "Auto"; arows[1].options[1] = "Default"; arows[1].options[2] = "Plan";
-      arows[2] = SetRow.{id = "set.agy.model", name = "Model & effort", desc = ifx s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" then "None set: agy's own default model, at medium effort, which streams its thinking. Set a model id and effort to change it." else "The Antigravity model id and reasoning effort (low, medium, high) you set.",
+      arows[2] = SetRow.{id = "set.agy.model", name = "Model & effort", desc = ifx s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" then "None set: agy's own default model, at high effort, which streams its thinking. Set a model id and effort to change it." else "The Antigravity model id and reasoning effort (low, medium, high) you set.",
         value = agy_mod, kind = SET_ROW_LINK, action = CP_SET_ACT};
       arows[3] = SetRow.{id = "set.agy.auth", name = "Sign-in & profile", desc = "Google sign-in, isolated profile directory, or antigravity.env ADC.",
         value = agy_au, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};

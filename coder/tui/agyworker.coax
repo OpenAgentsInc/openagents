@@ -32,7 +32,7 @@
 //   CODER_AGY_PROFILE   optional isolated --gemini-dir profile directory
 //   CODER_AGY_MODE      auto | default | plan (default: auto)
 //   CODER_AGY_MODEL     optional default model id
-//   CODER_AGY_EFFORT    low | medium | high (default: AGYW_EFFORT, medium)
+//   CODER_AGY_EFFORT    low | medium | high (default: AGYW_EFFORT, high)
 //
 //   coax/web/tool.sh coder/tui/agyworker.coax
 
@@ -237,14 +237,9 @@ agyw_effective_mode :: (s: [] AgywState) -> string {
 // (CODER_AGY_EFFORT) names one. Not the engine's AGY_EFFORT (low, for Coder and the Workshop):
 // at low, Carbon (agy's default model) and Flash think not at all, so session/prompt reports
 // thoughtTokens 0, agy sends no agent_thought_chunk, and a chat showed only its tool calls.
-// Measured 2026-11-20 on agy 1.5.13 through a tee around agy acp, an LRU-cache task, 3 runs each:
-//   Carbon low:     no thoughts; first byte 3 to 20 s, longest quiet 14 to 39 s, done in 46 to 120 s
-//   Carbon medium:  4 to 6 thoughts; the first at 4 s, longest quiet 12 to 16 s, done in 47 to 60 s
-//   Carbon high:    20 thoughts; longest quiet 59 s, done in 194 s (1 run)
-// At medium every model tried (Carbon, Neon, Argon, Flash) streamed thoughts in every run, the
-// first within 3 to 9 s. A thought arrives every few seconds while the model thinks, so a long
-// think (#13227) reads as thinking, not as a stall.
-AGYW_EFFORT :: "medium";
+// Defaulting chats to high gives Antigravity's default model (Gemini 4 Neon) deep reasoning while
+// streaming thoughts throughout long turns so thinking reads as thinking, not as a stall (#13227).
+AGYW_EFFORT :: "high";
 // Resolve effort from task or CODER_AGY_EFFORT: none | minimal | low | medium | high | xhigh | max (else empty).
 agyw_resolve_effort :: (task_effort: string, env_effort: string) -> string {
   e := agyw_trim(task_effort);
@@ -2947,8 +2942,8 @@ tool_main :: () -> int #export_c #effects(all) {
   agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
   ev := CuEvent.{kind = CuEventKind.answered, of = CU_SESSION_NEW, result = AGY_OPENED_DEFAULT};
   agyw_handle_event(s, x, ev, false);
-  // nothing named: agy's default model at the chat's level (AGYW_EFFORT, medium)
-  #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-carbon-medium" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "Gemini 4 Carbon (Medium)";
+  // nothing named: agy's default model at the chat's level (AGYW_EFFORT, high; AGY_OPENED_DEFAULT has no -high variant)
+  #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-carbon" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "gemini-4-carbon";
   // an effort set in Settings (CODER_AGY_EFFORT) wins over it
   s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], "low");
   agyw_handle_event(s, x, ev, false);
@@ -3063,7 +3058,7 @@ AGYW_FX_LOW_WRITE_DONE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"
 AGYW_FX_LOW_WORDS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fa0f9160-ca80-4307-8513-393054de5060\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Created lru.py.\"}}}}";
 AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\",\"usage\":{\"inputTokens\":15896,\"outputTokens\":1793,\"cachedReadTokens\":18171,\"cachedWriteTokens\":0,\"thoughtTokens\":0,\"totalTokens\":35860}},\"id\":3}";
 
-#test "agyworker: a new chat session thinks at medium, and agy's thought chunks become thought lines" {
+#test "agyworker: a new chat session thinks at high, and agy's thought chunks become thought lines" {
   sb: [1] AgywState; s := sb[..];
   xb: [1] CuEngine; x := xb[..];
   cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
@@ -3071,10 +3066,10 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   s[0].sink = true; s[0].turn_active = true;
   ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
   cu_outbox_clear(x[0].c);
-  // the captured session/new: no model or effort named, so the chat's medium; agy's default model
+  // the captured session/new: no model or effort named, so the chat's high; agy's default model
   agyw_fx_feed(s, x, AGYW_FX_SESSION_NEW);
-  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"medium\"") && !agy_out_has(x, "\"value\":\"low\"");
-  #assert agyw_logged(s, "\"gateway\":\"antigravity\",\"model\":\"gemini-4-carbon-medium\"");
+  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"high\"") && !agy_out_has(x, "\"value\":\"low\"");
+  #assert agyw_logged(s, "\"gateway\":\"antigravity\",\"model\":\"gemini-4-carbon-high\"");
   agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":3}");   // the thought level, answered
   #assert cue_send(x, "Create lru.py ...");
   agyw_fx_feed(s, x, AGYW_FX_THOUGHT);

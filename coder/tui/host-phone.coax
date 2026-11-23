@@ -677,7 +677,7 @@ ph_offer :: (h: [] HsHost, v: [] EaView) {
     o[0].levels[k].nl = ea_copy(o[0].levels[k].label[..], eff_labels[k]);
   }
   o[0].nv = PA_EFFORTS;
-  o[0].default_level = 3; // "medium" (index 3 in PA_EFFORT_ID)
+  o[0].default_level = 4; // "high" (index 4 in PA_EFFORT_ID)
   f := ph_facts(h);
   p := h[0].phone[..];
   // 1. Gemini 4 Neon first when Antigravity is ready.

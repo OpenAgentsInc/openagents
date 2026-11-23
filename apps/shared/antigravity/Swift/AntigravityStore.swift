@@ -21,7 +21,7 @@ final class AntigravityStore: ObservableObject {
 
     @Published var availableModels: [AntigravityModelOption] = AntigravityModelOption.fallbackCatalog
     @Published var selectedModelID: String = "gemini-4-neon"
-    @Published var selectedEffort: ThinkingEffort = .medium
+    @Published var selectedEffort: ThinkingEffort = .high
     @Published var hostMetaByID: [String: HostRuntimeMeta] = [:]
     @Published var isUpdatingRemoteAgyHostID: String?
     @Published var reviewMode: ReviewMode = .auto
@@ -872,7 +872,7 @@ final class AntigravityStore: ObservableObject {
         let model = store.selectedModel(for: hostID)
         selectedModelID = model
         let effortRaw = store.selectedEffort(for: hostID, model: model)
-        selectedEffort = ThinkingEffort(rawValue: effortRaw) ?? .medium
+        selectedEffort = ThinkingEffort(rawValue: effortRaw) ?? .high
         reviewMode = store.selectedReviewMode(for: hostID)
     }
 
@@ -893,7 +893,7 @@ final class AntigravityStore: ObservableObject {
 
     func chooseEffort(_ effort: ThinkingEffort) {
         let clamped = MobileCore.normalizeAntigravityEffort(model: selectedModelID, want: effort.rawValue)
-        selectedEffort = ThinkingEffort(rawValue: clamped) ?? .medium
+        selectedEffort = ThinkingEffort(rawValue: clamped) ?? .high
         if let hostID = activeComputer?.id {
             store.setSelectedEffort(selectedEffort.rawValue, for: hostID, model: selectedModelID)
         }
@@ -2331,7 +2331,7 @@ final class AntigravityStore: ObservableObject {
             }
             let supported = selectedModelOption.supportedEfforts
             if !supported.isEmpty && !supported.contains(selectedEffort) {
-                selectedEffort = supported.contains(.medium) ? .medium : supported[0]
+                selectedEffort = supported.contains(.high) ? .high : supported[0]
             }
         }
         if let meta = view.hostMeta, let cid = computerID ?? activeComputerID {

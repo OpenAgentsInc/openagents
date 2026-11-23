@@ -177,7 +177,7 @@ CpAgyModel :: struct {
   slug: [96] u8; slug_n: int;
   name: [96] u8; name_n: int;
   efforts_mask: int;
-  default_effort: int;   // CP_EFFORT_LOW..CP_EFFORT_XHIGH (0: medium)
+  default_effort: int;   // CP_EFFORT_LOW..CP_EFFORT_XHIGH (0: high)
   is_default: bool;
 }
 CP_LOCAL_DL :: 400;         // first-run onboarding: Download / Retry Inkling 2 Mini

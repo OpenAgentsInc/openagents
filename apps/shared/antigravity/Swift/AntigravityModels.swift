@@ -1091,7 +1091,7 @@ struct ParsedEnvironmentView {
 
         var seen = Set<String>()
         let uniqueModels = filteredModels.filter { seen.insert($0.id).inserted }
-        let defaultEffort = ThinkingEffort(rawValue: dto.default_effort ?? "medium") ?? .medium
+        let defaultEffort = ThinkingEffort(rawValue: dto.default_effort ?? "high") ?? .high
 
         let interactionOptions: [InteractionOption] = (dto.interaction_options ?? []).compactMap { row in
             let oid = row.optionId ?? row.option_id ?? row.id ?? ""

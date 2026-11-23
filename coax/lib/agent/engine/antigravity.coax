@@ -1035,7 +1035,7 @@ agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
 // a call's first byte, and Carbon's long calls thought for 5 to 6 minutes (#13227).
 //
 // A caller with another default passes it as fallback (agy_configure_at): OpenAgents Desktop's
-// chats think at medium (coder/tui/agyworker.coax, AGYW_EFFORT), where the owner reads the thoughts.
+// chats think at high (coder/tui/agyworker.coax, AGYW_EFFORT), where the owner reads the thoughts.
 AGY_EFFORT :: "low";
 agy_configure_mode :: (x: [] CuEngine, result: string, model: string, effort: string, want_mode: string) -> int {
   return agy_configure_at(x, result, model, effort, want_mode, AGY_EFFORT);

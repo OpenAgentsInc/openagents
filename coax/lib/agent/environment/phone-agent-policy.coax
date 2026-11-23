@@ -30,7 +30,7 @@ PA_NEON_LABEL :: [PA_NEON_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "G
 PA_AGY_ID :: "antigravity";
 PA_AGY_DEFAULT :: "gemini-4-neon";
 PA_AGY_LABEL :: "Antigravity";
-PA_AGY_EFFORT :: "medium";
+PA_AGY_EFFORT :: "high";
 
 PA_INKLING_ID :: "inkling-2-mini";
 PA_INKLING_LABEL :: "Inkling 2 Mini";
@@ -153,7 +153,7 @@ PA_ENGINE_NAME :: [4] string.["Claude Code", "Microcoder on Gemini", "Antigravit
   } } } }
 }
 #test "effort resolution clamps to each engine's supported levels and defaults cleanly" {
-  #assert pa_effort(PA_AGY, "gemini-4-neon", "") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "xhigh") == "xhigh" && pa_effort(PA_AGY, "gemini-4-neon", "low") == "low" && pa_effort(PA_AGY, "gemini-4-neon", "high") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "medium") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "max") == "max" && pa_effort(PA_AGY, "gemini-4-neon", "minimal") == "minimal" && pa_effort(PA_AGY, "gemini-4-neon", "none") == "none" && pa_effort(PA_AGY, "gemini-4-neon", "bogus") == "medium";
+  #assert pa_effort(PA_AGY, "gemini-4-neon", "") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "xhigh") == "xhigh" && pa_effort(PA_AGY, "gemini-4-neon", "low") == "low" && pa_effort(PA_AGY, "gemini-4-neon", "high") == "high" && pa_effort(PA_AGY, "gemini-4-neon", "medium") == "medium" && pa_effort(PA_AGY, "gemini-4-neon", "max") == "max" && pa_effort(PA_AGY, "gemini-4-neon", "minimal") == "minimal" && pa_effort(PA_AGY, "gemini-4-neon", "none") == "none" && pa_effort(PA_AGY, "gemini-4-neon", "bogus") == "high";
   #assert pa_effort(PA_AGY, "gemini-3.8-flash", "xhigh") == "high" && pa_effort(PA_AGY, "gemini-3.8-flash", "max") == "high" && pa_effort(PA_AGY, "gemini-3.8-flash", "high") == "high";
   #assert pa_effort(PA_AGY, "gemini-pro-orchestrator", "high") == "";
   #assert pa_effort(PA_INKLING, "inkling-2-mini", "") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "low") == "low" && pa_effort(PA_INKLING, "inkling-2-mini", "medium") == "medium" && pa_effort(PA_INKLING, "inkling-2-mini", "high") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "xhigh") == "high" && pa_effort(PA_INKLING, "inkling-2-mini", "bogus") == "medium";

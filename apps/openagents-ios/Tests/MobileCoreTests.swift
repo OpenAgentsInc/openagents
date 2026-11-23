@@ -31,7 +31,8 @@ final class MobileCoreTests: XCTestCase {
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "claude-opus-5-5", want: "max"), "max")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-3.8-flash", want: "xhigh"), "high")
         XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-pro-orchestrator", want: "high"), "")
-        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "bogus"), "medium")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: ""), "high")
+        XCTAssertEqual(MobileCore.normalizeAntigravityEffort(model: "gemini-4-neon", want: "bogus"), "high")
 
         XCTAssertTrue(MobileCore.isValidReviewMode("auto"))
         XCTAssertTrue(MobileCore.isValidReviewMode("default"))

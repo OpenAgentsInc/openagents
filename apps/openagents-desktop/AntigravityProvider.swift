@@ -101,7 +101,7 @@ struct ProviderModelConfig: Codable, Equatable {
     var isDefault: Bool
     var defaultEffort: String
 
-    init(slug: String, name: String, enabled: Bool, favorite: Bool, thinking: Bool, thoughtLevels: [String], custom: Bool, isDefault: Bool = false, defaultEffort: String = "medium") {
+    init(slug: String, name: String, enabled: Bool, favorite: Bool, thinking: Bool, thoughtLevels: [String], custom: Bool, isDefault: Bool = false, defaultEffort: String = "high") {
         self.slug = slug
         self.name = name
         self.enabled = enabled
@@ -123,7 +123,7 @@ struct ProviderModelConfig: Codable, Equatable {
         thoughtLevels = try c.decode([String].self, forKey: .thoughtLevels)
         custom = try c.decode(Bool.self, forKey: .custom)
         isDefault = (try? c.decodeIfPresent(Bool.self, forKey: .isDefault)) ?? false
-        defaultEffort = (try? c.decodeIfPresent(String.self, forKey: .defaultEffort)) ?? "medium"
+        defaultEffort = (try? c.decodeIfPresent(String.self, forKey: .defaultEffort)) ?? "high"
     }
 }
 
@@ -1398,6 +1398,10 @@ final class ProviderInstancesStore {
             } else if !fallbackDefaultSlug.isEmpty {
                 kept[i].isDefault = (kept[i].slug == fallbackDefaultSlug)
             }
+            let supportsHigh = kept[i].thoughtLevels.isEmpty || kept[i].thoughtLevels.contains { $0.lowercased() == "high" }
+            if kept[i].thinking && supportsHigh && (kept[i].isDefault || kept[i].defaultEffort.isEmpty || kept[i].defaultEffort.lowercased() == "medium") {
+                kept[i].defaultEffort = "high"
+            }
         }
         return kept
     }
@@ -1873,7 +1877,7 @@ final class ProviderInstancesStore {
                     }
                     let thinking = !levels.isEmpty || ((m["thinking"] as? Bool) ?? false)
                     let isDefault = (m["isDefault"] as? Bool) ?? (slug == defModel)
-                    let defEffort = (m["thinkingDefault"] as? String) ?? "medium"
+                    let defEffort = (m["thinkingDefault"] as? String) ?? "high"
                     let prev = existing[slug]
                     bySlug[slug] = ProviderModelConfig(
                         slug: slug, name: name,
@@ -1883,7 +1887,7 @@ final class ProviderInstancesStore {
                         thoughtLevels: levels,
                         custom: false,
                         isDefault: isDefault,
-                        defaultEffort: defEffort.isEmpty ? "medium" : defEffort
+                        defaultEffort: (defEffort.isEmpty || defEffort.lowercased() == "medium") ? "high" : defEffort
                     )
                 }
                 for old in instances[idx].models {
@@ -1966,7 +1970,7 @@ extension CoderWindow {
             case "medium": defEff = 2
             case "high": defEff = 3
             case "xhigh": defEff = 4
-            default: defEff = 2
+            default: defEff = 3
             }
             _ = cd_agy_models_add(targetPage, entry.instId, entry.instName, m.slug, m.name, mask, defEff, m.isDefault ? 1 : 0)
         }
@@ -2198,7 +2202,7 @@ extension CoderWindow {
                         enabled: en != 0, favorite: fav != 0, thinking: th != 0,
                         thoughtLevels: prev?.thoughtLevels ?? [], custom: cu != 0,
                         isDefault: prev?.isDefault ?? false,
-                        defaultEffort: prev?.defaultEffort ?? "medium"
+                        defaultEffort: prev?.defaultEffort ?? "high"
                     ))
                 }
             }

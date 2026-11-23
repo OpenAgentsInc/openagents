@@ -199,13 +199,14 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   #assert coder_page_pick_model(s, "agy") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
   model := elt_find(t[..], "coder.model"); eff := elt_find(t[..], "coder.effort");
-  #assert eff >= 0 && elt_value_of(t[..], eff) == "Medium";
+  #assert eff >= 0 && elt_value_of(t[..], eff) == "High";
   // right of the model chip, on the same line
   #assert t[0].rows[eff].x > t[0].rows[model].x + t[0].rows[model].w - 0.01 && abs(t[0].rows[eff].y - t[0].rows[model].y) < 0.01;
   // the effort set in Settings is Antigravity's default
-  coder_page_settings_agy(s, "Installed", 0, "Default · high", "Isolated profile");
-  #assert cp_effort_label(s, cp_model_index(s)) == "High";
+  coder_page_settings_agy(s, "Installed", 0, "Default · medium", "Isolated profile");
+  #assert cp_effort_label(s, cp_model_index(s)) == "Medium";
   coder_page_settings_agy(s, "Installed", 0, "Default", "Isolated profile");
+  #assert cp_effort_label(s, cp_model_index(s)) == "High";
   // clicking the effort chip opens the dropdown menu with Low, Medium, High (does not cycle directly)
   #assert !s[0].effort_menu && cp_press(s, eff) && s[0].effort_menu && s[0].effort == CP_EFFORT_DEFAULT;
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);

@@ -183,15 +183,16 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_agy_models_clear(s);
   #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-3.8-flash", "Gemini 3.8 Flash", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, false) == -1;
   #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-pro-orchestrator", "Orchestrator", 0, CP_EFFORT_MEDIUM, false) == -1;
-  #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_MEDIUM, false) == 0;
-  #assert coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, true) == 1;
+  #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_HIGH, false) == 0;
+  #assert coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_HIGH, true) == 1;
   coder_page_set_agy(s, true);
   #assert cp_has_model_picker(s) && cp_models(s) == 3;
   #assert cp_model_label(s, 0) == "Gemini 4 Neon" && cp_model_id(s, 0) == "agy:gemini-4-neon";
   #assert cp_model_label(s, 1) == "Gemini 4 Carbon" && cp_model_id(s, 1) == "agy:gemini-4-carbon";
   #assert cp_model_label(s, 2) == "Inkling 2 Mini";
-  // Empty new chat automatically switched from Inkling to Antigravity Gemini 4 Neon.
+  // Empty new chat automatically switched from Inkling to Antigravity Gemini 4 Neon at High reasoning.
   #assert coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "agy:gemini-4-neon";
+  #assert cp_effort_label(s, cp_model_index(s)) == "High" && cp_task_effort(s, cp_model_index(s)) == "high";
   #assert cp_model_start(s) == 0;
 
   // Neon supports 4 thinking levels (including X-High); Carbon supports 3.
@@ -216,8 +217,8 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
 
   // Refreshing the model list preserves the active selection ("agy:gemini-4-carbon").
   coder_page_agy_models_clear(s);
-  _ = coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_MEDIUM, false);
-  _ = coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, true);
+  _ = coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-4-neon", "Gemini 4 Neon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH | CP_EFF_BIT_XHIGH, CP_EFFORT_HIGH, false);
+  _ = coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_HIGH, true);
   coder_page_set_agy(s, true);
   #assert cp_model_id(s, cp_model_index(s)) == "agy:gemini-4-carbon";
 

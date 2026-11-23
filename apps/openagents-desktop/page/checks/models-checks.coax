@@ -325,7 +325,7 @@
   #assert cp_turn_meta(s, 0) == "Antigravity CLI · Gemini 4 Carbon (Low)";
 }
 
-#test "an Antigravity turn's task line names no effort, so Settings or agyworker's medium decides; Microcoder's names low" {
+#test "an Antigravity turn's task line names no effort, so Settings or agyworker's high decides; Microcoder's names low" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s);

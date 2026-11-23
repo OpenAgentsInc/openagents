@@ -759,7 +759,7 @@ cp_effort_of :: (word: string) -> int {
   return CP_EFFORT_DEFAULT;
 }
 // The level a model runs at when the chat names none: for Antigravity, the effort Settings sets
-// (its model summary, "MODEL · high"), else agyworker's own, medium; a Claude model's, the level
+// (its model summary, "MODEL · high"), else agyworker's own, high; a Claude model's, the level
 // Settings set for it (high until then); Inkling / Hybrid Executor models, medium; Microcoder's
 // cloud models, low.
 cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
@@ -772,7 +772,7 @@ cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
     def_e := s[0].agy_models[aslot].default_effort;
     top := CP_EFFORT_LOW + cp_effort_count(s, idx) - 1;
     if def_e >= CP_EFFORT_LOW && def_e <= top { return def_e; }
-    return CP_EFFORT_MEDIUM;
+    return CP_EFFORT_HIGH;
   }
   m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
   dot := " · ";
@@ -781,7 +781,7 @@ cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
       if cast(string) m[i..<i + dot.count] == dot { e := cp_effort_of(cast(string) m[i + dot.count..<m.count]); if e != CP_EFFORT_DEFAULT { return e; } }
     }
   }
-  return CP_EFFORT_MEDIUM;
+  return CP_EFFORT_HIGH;
 }
 cp_effort_at :: (s: [] CoderPage, idx: int) -> int {
   e := s[0].effort;
