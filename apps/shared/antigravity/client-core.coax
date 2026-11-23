@@ -16,6 +16,7 @@
 #load "../../../coax/lib/nostr/host/tailnet.coax";
 #load "../../../coax/lib/agent/environment/phone-agent-policy.coax";
 #load "../../../coax/lib/agent/environment/remote-reliability.coax";
+#load "../../../coax/lib/agent/environment/route-policy.coax";
 
 mc_copy :: (out: [] u8, s: string) -> int #effects(all) {
   if s.count > out.count { return -1; }
@@ -45,6 +46,28 @@ mc_folder_ok :: (folder: string) -> bool #export_c #effects(all) {
 
 mc_mode_ok :: (mode: string) -> bool #export_c #effects(all) {
   return ea_mode_ok(mode);
+}
+
+// #authority Layer-2 reliability & route-policy C ABI exports (#14030, #14032).
+mc_rr_sync_action :: (transport_up: bool, auth_valid: bool, client_cursor: int, log_floor: int, log_head: int) -> int #export_c #effects(all) {
+  return rr_sync_action(transport_up, auth_valid, client_cursor, log_floor, log_head);
+}
+
+mc_rr_request_liveness :: (kind: int, req_epoch: int, live_epoch: int, process_alive: bool, now_ms: int, expires_ms: int) -> int #export_c #effects(all) {
+  return rr_request_liveness(kind, req_epoch, live_epoch, process_alive, now_ms, expires_ms);
+}
+
+mc_route_select :: (
+  tailnet_cfg: bool, tailnet_ok: bool, tailnet_fail_ms: int,
+  lan_cfg: bool, lan_ok: bool, lan_fail_ms: int,
+  nostr_cfg: bool, nostr_ok: bool, nostr_fail_ms: int,
+  now_ms: int
+) -> int #export_c #effects(all) {
+  return rp_route_select(tailnet_cfg, tailnet_ok, tailnet_fail_ms, lan_cfg, lan_ok, lan_fail_ms, nostr_cfg, nostr_ok, nostr_fail_ms, now_ms);
+}
+
+mc_cred_audience_ok :: (presented_aud: int, expected_aud: int, now_ms: int, expires_ms: int) -> bool #export_c #effects(all) {
+  return rp_cred_audience_ok(presented_aud, expected_aud, now_ms, expires_ms);
 }
 
 // Builds a bounded, policy-checked EaRequest JSON payload using caller-owned scratch q.
@@ -350,4 +373,17 @@ mc_dm_view_valid :: (v: [] DmView, host: string, method: string, raw: string) ->
   n := mc_env_request(q[..], "OpenSession", "0123456789abcdef0123456789abcdef", "abcdef0123456789abcdef0123456789", 1, 0, cast(string) tb[..], "", false, 0, 1700000000000, 1700000300000, "gemini-4-neon", "medium", "", "", "auto", "", "", out[..]);
   #assert n > 0 && mc_v1_ea_compat(cast(string) out[0..<n]) && ea_read(cast(string) out[0..<n], r[..]);
   #assert cast(string) r[0].text[0..<r[0].nt] == cast(string) tb[..];
+}
+
+#test "client-core: exported #authority Layer-2 reliability and route-policy C ABI (#14030, #14032)" {
+  #assert mc_rr_sync_action(false, true, 5, 0, 10) == RR_SYNC_WAIT_TRANSPORT;
+  #assert mc_rr_sync_action(true, false, 5, 0, 10) == RR_SYNC_WAIT_AUTH;
+  #assert mc_rr_sync_action(true, true, 2, 5, 10) == RR_SYNC_SNAPSHOT;
+  #assert mc_rr_sync_action(true, true, 5, 5, 10) == RR_SYNC_INCREMENTAL;
+  #assert mc_rr_request_liveness(RR_REQ_LIVE_CALLBACK, 1, 2, true, 100, 0) == RR_LIFE_DEAD_PROCESS;
+  #assert mc_rr_request_liveness(RR_REQ_ASYNC_MESSAGE, 1, 2, false, 100, 0) == RR_LIFE_ACTIVE;
+  #assert mc_route_select(true, false, 1000, true, true, 0, true, true, 0, 5000) == RP_ROUTE_LAN;
+  #assert mc_route_select(true, false, 1000, true, true, 0, true, true, 0, 16000) == RP_ROUTE_TAILNET;
+  #assert mc_cred_audience_ok(RP_AUD_TAILNET_GRANT, RP_AUD_TAILNET_GRANT, 100, 200);
+  #assert !mc_cred_audience_ok(RP_AUD_PAIRING_BOOTSTRAP, RP_AUD_TAILNET_GRANT, 100, 200);
 }

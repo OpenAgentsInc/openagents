@@ -322,3 +322,28 @@ int oa_mobile_dm_view_valid(void *work, const char *host, const char *method, co
     w->last_error = ok ? OA_ERR_OK : ((raw && raw_n > 0 && raw[0] == '{') ? OA_ERR_SCHEMA_MISMATCH : OA_ERR_JSON_SYNTAX);
     return ok;
 }
+
+int64_t oa_mobile_rr_sync_action(int transport_up, int auth_valid, int64_t client_cursor, int64_t log_floor, int64_t log_head) {
+    return mc_rr_sync_action(transport_up != 0, auth_valid != 0, client_cursor, log_floor, log_head);
+}
+
+int64_t oa_mobile_rr_request_liveness(int64_t kind, int64_t req_epoch, int64_t live_epoch, int process_alive, int64_t now_ms, int64_t expires_ms) {
+    return mc_rr_request_liveness(kind, req_epoch, live_epoch, process_alive != 0, now_ms, expires_ms);
+}
+
+int64_t oa_mobile_route_select(
+    int tailnet_cfg, int tailnet_ok, int64_t tailnet_fail_ms,
+    int lan_cfg, int lan_ok, int64_t lan_fail_ms,
+    int nostr_cfg, int nostr_ok, int64_t nostr_fail_ms,
+    int64_t now_ms
+) {
+    return mc_route_select(
+        tailnet_cfg != 0, tailnet_ok != 0, tailnet_fail_ms,
+        lan_cfg != 0, lan_ok != 0, lan_fail_ms,
+        nostr_cfg != 0, nostr_ok != 0, nostr_fail_ms,
+        now_ms);
+}
+
+int oa_mobile_cred_audience_ok(int64_t presented_aud, int64_t expected_aud, int64_t now_ms, int64_t expires_ms) {
+    return mc_cred_audience_ok(presented_aud, expected_aud, now_ms, expires_ms) ? 1 : 0;
+}

@@ -122,6 +122,16 @@ int64_t oa_mobile_dm_request(
 
 int oa_mobile_dm_view_valid(void *work, const char *host, const char *method, const uint8_t *raw, int64_t raw_n);
 
+// #authority Layer-2 reliability & route-policy C ABI (#14030, #14032).
+int64_t oa_mobile_rr_sync_action(int transport_up, int auth_valid, int64_t client_cursor, int64_t log_floor, int64_t log_head);
+int64_t oa_mobile_rr_request_liveness(int64_t kind, int64_t req_epoch, int64_t live_epoch, int process_alive, int64_t now_ms, int64_t expires_ms);
+int64_t oa_mobile_route_select(
+    int tailnet_cfg, int tailnet_ok, int64_t tailnet_fail_ms,
+    int lan_cfg, int lan_ok, int64_t lan_fail_ms,
+    int nostr_cfg, int nostr_ok, int64_t nostr_fail_ms,
+    int64_t now_ms);
+int oa_mobile_cred_audience_ok(int64_t presented_aud, int64_t expected_aud, int64_t now_ms, int64_t expires_ms);
+
 #ifdef __cplusplus
 }
 #endif
