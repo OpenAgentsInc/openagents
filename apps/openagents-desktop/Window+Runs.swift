@@ -250,10 +250,12 @@ extension CoderWindow {
                 self.wake()
                 let latestURL = LocalModelServer.baseURL
                 let latestModel = LocalModelStore.entry.id
+                let latestCtx = String(LocalModelStore.recommendedContextTokens)
                 var retryRecall = needsRecall
-                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL || r.worker.extraEnv["PSIONIC_MODEL"] != latestModel {
+                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL || r.worker.extraEnv["PSIONIC_MODEL"] != latestModel || r.worker.extraEnv["PSIONIC_CTX"] != latestCtx {
                     r.worker.extraEnv["PSIONIC_BASE_URL"] = latestURL
                     r.worker.extraEnv["PSIONIC_MODEL"] = latestModel
+                    r.worker.extraEnv["PSIONIC_CTX"] = latestCtx
                     if r.worker.alive {
                         r.worker.stop(forget: false)
                         retryRecall = true
@@ -1035,6 +1037,7 @@ extension CoderWindow {
             if FlawedSettings.pageNeedsLocal(r.page) || LocalModelServer.shared.isReady {
                 env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
                 env["PSIONIC_MODEL"] = LocalModelStore.entry.id
+                env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
             }
         }
         #if OA_FULL

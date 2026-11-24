@@ -920,7 +920,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   stash_h := ifx cp_flag(s, DC_FLAG_RICH) then cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw) else 0.0f32;
   tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
   // Quiet, borderless readiness / download progress caption above the composer.
-  loading_bg := !no_local && !running && s[0].inkling && s[0].local_dl_state == CP_LOCAL_STARTING && cp_is_inkling(s, cp_model_index(s));
+  loading_bg := !no_local && !running && s[0].inkling && s[0].local_dl_state == CP_LOCAL_STARTING && (cp_is_inkling(s, cp_model_index(s)) || cp_is_flawed_local(s, cp_model_index(s)));
   if no_local || loading_bg {
     sh := f[0].sheet; th := cp_theme();
     st := s[0].local_dl_state;

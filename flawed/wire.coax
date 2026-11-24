@@ -200,6 +200,12 @@ flawed_wire_gemini_level :: (effort: string) -> string #effects(all) {
   return "high";
 }
 
+flawed_wire_local_effort :: (thinking_mode: int, effort: string) -> string #effects(all) {
+  if thinking_mode == FLAWED_THINK_OFF { return "none"; }
+  if effort == "low" || effort == "medium" || effort == "high" || effort == "xhigh" || effort == "max" { return effort; }
+  return "high";
+}
+
 flawed_wire_max_tokens :: (thinking_mode: int, effort: string, is_local: bool) -> int #effects(all) {
   if is_local {
     if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 4096; }
@@ -234,12 +240,13 @@ flawed_wire_tool_allowed :: (tool_name: string, allowed_csv: string, disallowed_
 }
 
 flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, bypass_danger: bool, session_allow: bool) -> int #effects(all) {
-  eff_mode := ifx bypass_danger then FLAWED_PMODE_BYPASS else pmode; // mutant: equivalent (FLAWED_PMODE_BYPASS=5 and FLAWED_PMODE_AUTO=6 take identical branches here)
+  // Default Allow All (FLAWED_PMODE_BYPASS) and explicit bypass approve everything with zero permission checks.
+  if bypass_danger || pmode == FLAWED_PMODE_BYPASS { return FLAWED_PBEH_ALLOW; }
   if tool_name == "Read" || tool_name == "Glob" || tool_name == "Grep" || tool_name == "TodoWrite" {
     return FLAWED_PBEH_ALLOW;
   }
   if tool_name == "WebFetch" {
-    if eff_mode == FLAWED_PMODE_BYPASS || eff_mode == FLAWED_PMODE_AUTO || eff_mode == FLAWED_PMODE_ACCEPT_EDITS || eff_mode == FLAWED_PMODE_DONT_ASK || session_allow {
+    if pmode == FLAWED_PMODE_AUTO || pmode == FLAWED_PMODE_ACCEPT_EDITS || pmode == FLAWED_PMODE_DONT_ASK || session_allow {
       return FLAWED_PBEH_ALLOW;
     }
     return FLAWED_PBEH_ASK;
@@ -247,21 +254,21 @@ flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, b
   if tool_name == "Edit" || tool_name == "Write" {
     ps := flawed_check_path_safety_for_auto_edit(target);
     if !ps.safe {
-      return ifx eff_mode == FLAWED_PMODE_DONT_ASK then FLAWED_PBEH_DENY else FLAWED_PBEH_ASK;
+      return ifx pmode == FLAWED_PMODE_DONT_ASK then FLAWED_PBEH_DENY else FLAWED_PBEH_ASK;
     }
-    if eff_mode == FLAWED_PMODE_PLAN { return FLAWED_PBEH_DENY; }
-    if eff_mode == FLAWED_PMODE_BYPASS || eff_mode == FLAWED_PMODE_AUTO || eff_mode == FLAWED_PMODE_ACCEPT_EDITS || eff_mode == FLAWED_PMODE_DONT_ASK || session_allow {
+    if pmode == FLAWED_PMODE_PLAN { return FLAWED_PBEH_DENY; }
+    if pmode == FLAWED_PMODE_AUTO || pmode == FLAWED_PMODE_ACCEPT_EDITS || pmode == FLAWED_PMODE_DONT_ASK || session_allow {
       return FLAWED_PBEH_ALLOW;
     }
     return FLAWED_PBEH_ASK;
   }
   if tool_name == "Bash" {
     if !flawed_bash_precheck_safe(target) {
-      return ifx eff_mode == FLAWED_PMODE_DONT_ASK then FLAWED_PBEH_DENY else FLAWED_PBEH_ASK;
+      return ifx pmode == FLAWED_PMODE_DONT_ASK then FLAWED_PBEH_DENY else FLAWED_PBEH_ASK;
     }
-    if eff_mode == FLAWED_PMODE_PLAN { return FLAWED_PBEH_ASK; }
-    if eff_mode == FLAWED_PMODE_BYPASS || eff_mode == FLAWED_PMODE_AUTO { return FLAWED_PBEH_ALLOW; }
-    if eff_mode == FLAWED_PMODE_DONT_ASK { return ifx session_allow then FLAWED_PBEH_ALLOW else FLAWED_PBEH_DENY; }
+    if pmode == FLAWED_PMODE_PLAN { return FLAWED_PBEH_ASK; }
+    if pmode == FLAWED_PMODE_AUTO { return FLAWED_PBEH_ALLOW; }
+    if pmode == FLAWED_PMODE_DONT_ASK { return ifx session_allow then FLAWED_PBEH_ALLOW else FLAWED_PBEH_DENY; }
     return ifx session_allow then FLAWED_PBEH_ALLOW else FLAWED_PBEH_ASK;
   }
   return FLAWED_PBEH_ASK;
@@ -543,6 +550,10 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
 
   #assert flawed_wire_gemini_level("low") == "low" && flawed_wire_gemini_level("medium") == "medium";
   #assert flawed_wire_gemini_level("high") == "high" && flawed_wire_gemini_level("xhigh") == "high" && flawed_wire_gemini_level("max") == "high";
+  #assert flawed_wire_local_effort(FLAWED_THINK_OFF, "high") == "none";
+  #assert flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "low") == "low" && flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "medium") == "medium";
+  #assert flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "high") == "high" && flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "xhigh") == "xhigh";
+  #assert flawed_wire_local_effort(FLAWED_THINK_EXTENDED, "max") == "max" && flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "") == "high";
 
   #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "high", true) == 4096 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", true) == 4096;
   #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", true) == 8192;
@@ -558,21 +569,29 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_tool_allowed("Read", " read , edit ", "") && !flawed_wire_tool_allowed("Write", "read,edit", "");
 }
 
-#test "wire: Ch 11/12 permission classifier enforces bypass-immune walls and all 6 modes" {
+#test "wire: Allow All bypasses every permission check; opt-in modes enforce Ch 11/12 rules" {
+  // Default Allow All (FLAWED_PMODE_BYPASS) and bypass_danger=true approve everything with zero checks.
+  #assert flawed_wire_tool_permission("Bash", "IFS=: read a", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("Edit", "/repo/.git/hooks/pre-commit", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("Write", "/repo/.env", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("UnknownTool", "", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("Bash", "IFS=: read a", FLAWED_PMODE_DEFAULT, true, false) == FLAWED_PBEH_ALLOW;
+  #assert flawed_wire_tool_permission("UnknownTool", "", FLAWED_PMODE_PLAN, true, false) == FLAWED_PBEH_ALLOW;
+
+  // Opt-in modes enforce fine-grained tool rules.
   #assert flawed_wire_tool_permission("Read", "/repo/a.coax", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Glob", "**/*.coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Grep", "foo", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("TodoWrite", "", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
 
   #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
-  #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_DEFAULT, true, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_DEFAULT, false, true) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
-  #assert flawed_wire_tool_permission("WebFetch", "https://example.com", FLAWED_PMODE_BYPASS, false, false) == FLAWED_PBEH_ALLOW;
 
-  #assert flawed_wire_tool_permission("Edit", "/repo/.git/hooks/pre-commit", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_ASK;
+  #assert flawed_wire_tool_permission("Edit", "/repo/.git/hooks/pre-commit", FLAWED_PMODE_AUTO, false, true) == FLAWED_PBEH_ASK;
   #assert flawed_wire_tool_permission("Write", "/repo/.git/hooks/pre-commit", FLAWED_PMODE_DONT_ASK, false, true) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("Edit", "/repo/src/a.coax", FLAWED_PMODE_PLAN, false, true) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("Edit", "/repo/src/a.coax", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
@@ -580,9 +599,8 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_tool_permission("Write", "/repo/src/a.coax", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Edit", "/repo/src/a.coax", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Edit", "/repo/src/a.coax", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
-  #assert flawed_wire_tool_permission("Edit", "/repo/src/a.coax", FLAWED_PMODE_BYPASS, true, false) == FLAWED_PBEH_ALLOW;
 
-  #assert flawed_wire_tool_permission("Bash", "IFS=: read a", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_ASK;
+  #assert flawed_wire_tool_permission("Bash", "IFS=: read a", FLAWED_PMODE_AUTO, false, true) == FLAWED_PBEH_ASK;
   #assert flawed_wire_tool_permission("Bash", "IFS=: read a", FLAWED_PMODE_DONT_ASK, false, true) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_PLAN, false, true) == FLAWED_PBEH_ASK;
   #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ASK;
@@ -591,8 +609,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_AUTO, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_DONT_ASK, false, true) == FLAWED_PBEH_ALLOW;
-  #assert flawed_wire_tool_permission("Bash", "git status", FLAWED_PMODE_DEFAULT, true, false) == FLAWED_PBEH_ALLOW;
-  #assert flawed_wire_tool_permission("UnknownTool", "", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_ASK;
+  #assert flawed_wire_tool_permission("UnknownTool", "", FLAWED_PMODE_DEFAULT, false, true) == FLAWED_PBEH_ASK;
 }
 
 #test "wire: Gemini native SSE parser handles thoughts, text, functionCall, thoughtSignature, usage, and errors" {

@@ -121,7 +121,7 @@
   // Prefs roundtrip & press handling on Settings -> Flawed.
   pv: [CP_FLAWED_PREFS_COUNT] int;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT;
-  #assert pv[0] == 0 && pv[1] == 0 && pv[4] == 2 && pv[9] == 1 && pv[11] == 1 && pv[12] == 1 && pv[16] == 1;
+  #assert pv[0] == 0 && pv[1] == 0 && pv[4] == 2 && pv[6] == 0 && pv[9] == 0 && pv[11] == 1 && pv[12] == 1 && pv[16] == 1;
   #assert cp_flawed_settings_press(s[..], "set.flawed.pmode.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert cp_flawed_settings_press(s[..], "set.flawed.ctx1m.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[6] == 1 && pv[18] == 1;

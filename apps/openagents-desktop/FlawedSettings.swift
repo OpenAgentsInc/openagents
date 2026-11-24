@@ -37,17 +37,23 @@ enum FlawedSettings {
     private static let kMaxBudgetMicros = "flawed.maxBudgetMicros"
 
     private static let kSchemaVersion = "flawed.schemaVersion"
-    private static let currentSchemaVersion = 2
+    private static let currentSchemaVersion = 3
     private static var didMigrate = false
 
     private static func migrateIfNeeded() {
         guard !didMigrate else { return }
         didMigrate = true
         let v = d.integer(forKey: kSchemaVersion)
-        if v < currentSchemaVersion {
+        if v < 2 {
             // Reset legacy Anthropic model slot / backend prefs to Auto + Inkling 2 Mini (fallback Gemini 4 Neon).
             d.set(0, forKey: kModelSlot)
             d.set(0, forKey: kBackend)
+        }
+        if v < 3 {
+            // Default to Allow All (0) with zero permission checks and opt-in git guard.
+            d.set(0, forKey: kPermissionMode)
+            d.set(false, forKey: kBypassDanger)
+            d.set(false, forKey: kGitGuard)
             d.set(currentSchemaVersion, forKey: kSchemaVersion)
         }
     }
@@ -112,7 +118,7 @@ enum FlawedSettings {
         set { d.set(max(0, min(2, newValue)), forKey: kSandboxMode) }
     }
     static var gitGuard: Bool {
-        get { getBool(kGitGuard, default: true) }
+        get { getBool(kGitGuard, default: false) }
         set { d.set(newValue, forKey: kGitGuard) }
     }
     static var promptCache: Int {
@@ -252,6 +258,8 @@ enum FlawedSettings {
         if !baseURL.isEmpty { env["FLAWED_BASE_URL"] = baseURL }
         if backend == 1 || backend == 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+            env["PSIONIC_MODEL"] = LocalModelStore.entry.id
+            env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
         }
         DispatchQueue.global(qos: .userInitiated).async {
             let line = CoderProbes.ask("flawedworker", ["--auth"], env: env, timeout: 8)
@@ -316,11 +324,11 @@ enum FlawedSettings {
 
     private static func permissionModeWireName(_ v: Int) -> String {
         switch v {
-        case 1: return "accept_edits"
-        case 2: return "plan"
-        case 3: return "auto"
+        case 1: return "ask"
+        case 2: return "accept_edits"
+        case 3: return "plan"
         case 4: return "dont_ask"
-        default: return "default"
+        default: return "allow_all"
         }
     }
 
@@ -464,7 +472,7 @@ enum FlawedSettings {
         permissionMode = 0
         bypassDanger = false
         sandboxMode = 0
-        gitGuard = true
+        gitGuard = false
         promptCache = 0
         autoCompact = true
         autoMemory = true
@@ -733,7 +741,7 @@ extension CoderWindow {
         var d = CoderDialog(
             size: .sm,
             title: "Reset Flawed settings?",
-            body: "Restores Flawed's default agent, model, thinking, permissions, sandbox, caching, compaction, output style, hooks, tool rules, and limits to Claude Code defaults. Your saved API key is kept."
+            body: "Restores Flawed's defaults (local Inkling 2 Mini, Allow All permissions, sandbox off, thinking adaptive, compaction & memory on). Your saved API key is kept."
         )
         d.buttons = [
             .init(title: "Cancel"),

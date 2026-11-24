@@ -652,15 +652,27 @@
   // Once Inkling weights are verified on startup, untouched fresh chat automatically promotes to Flawed · Inkling 2 Mini!
   coder_page_set_inkling(s, true);
   #assert coder_page_model_flawed(s) && coder_page_model_flawed_local(s) && cp_model_id(s, cp_model_index(s)) == "flawed:inkling-2-mini";
+  // Uncensored Inkling variants propagate ID, label, description, and 32K context window cleanly through Flawed.
+  coder_page_set_inkling_info(s, "inkling-2-mini-uncensored-lora", "Inkling 2 Mini Uncensored (LoRA)", "Psionic Metal · IQ4_NL + LoRA · Local");
+  #assert cp_model_id(s, 0) == "flawed:inkling-2-mini-uncensored-lora";
+  #assert cp_model_label(s, 0) == "Flawed · Inkling 2 Mini Uncensored (LoRA)";
+  #assert cp_contains(cp_model_desc(s, 0), "IQ4_NL + LoRA");
+  #assert cp_model_known_label("flawed:inkling-2-mini-uncensored-q4k") == "Flawed · Inkling 2 Mini Uncensored (AD-Q4_K)";
+  #assert cp_model_known_meta("flawed:inkling-2-mini-uncensored-lora") == "Flawed Agent · Inkling 2 Mini Uncensored (LoRA)";
   #assert cp_effort_count(s, cp_model_index(s)) == 5 && cp_effort_label(s, cp_model_index(s)) == "High";
-  // Switching Flawed default effort & Fast mode in prefs updates immediately.
+  // Default permission mode is Allow All (0) and git_guard is Off (0, opt-in).
   vals: [CP_FLAWED_PREFS_COUNT] int;
-  #assert coder_page_flawed_prefs_get(s, vals[..]) == CP_FLAWED_PREFS_COUNT;
+  #assert coder_page_flawed_prefs_get(s, vals[..]) == CP_FLAWED_PREFS_COUNT && vals[6] == 0 && vals[9] == 0;
   vals[4] = 4;   // Max
   vals[17] = 1;  // Fast mode
   coder_page_flawed_prefs_set(s, vals[..]);
   #assert cp_effort_label(s, cp_model_index(s)) == "Max" && cp_task_effort(s, cp_model_index(s)) == "max";
   #assert cp_contains(cp_model_desc(s, 1), "Fast");
+  // Attempt on uncensored local Inkling reports 32K context window (32,768 tokens).
+  #assert coder_page_set_text(s, "check") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"local\",\"model\":\"inkling-2-mini-uncensored-lora\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":1200,\"cached_tokens\":0,\"output_tokens\":100}") == MWW_ATTEMPT;
+  #assert s[0].ctx_window == 32768;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   // Attempt on Gemini 4 Neon reports 1M context window (1,048,576 tokens).
   #assert coder_page_pick_model(s, "flawed:gemini-4-neon") && !coder_page_model_flawed_local(s);
   #assert coder_page_set_text(s, "refactor") && coder_page_submit(s);

@@ -410,6 +410,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let isFlawed = requested == "flawed" || requested == "Flawed" || requested.hasPrefix("flawed:")
             let isInkling = requested.hasPrefix("inkling-2-mini") || ["inkling", "Inkling 2 Mini"].contains(requested)
             if isFlawed {
+                if requested.hasPrefix("flawed:") {
+                    let bare = String(requested.dropFirst("flawed:".count))
+                    if LocalModelStore.variant(id: bare) != nil && LocalModelStore.activeVariantId != bare {
+                        if LocalModelStore.setActiveVariant(bare) {
+                            LocalModelServer.shared.restartForVariantChange()
+                        }
+                        syncLocalModels()
+                    }
+                }
                 _ = cd_pick_model(page, requested)
             } else if isInkling {
                 if LocalModelStore.variant(id: requested) != nil && LocalModelStore.activeVariantId != requested {

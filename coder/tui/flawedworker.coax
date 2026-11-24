@@ -161,6 +161,15 @@ FwConfig :: struct {
   additional_dirs: [1024] u8; nadd_dirs: int;
 }
 
+fww_parse_permission_mode :: (pm: string) -> int {
+  if pm == "ask" || pm == "default" { return FLAWED_PMODE_DEFAULT; }
+  if pm == "accept_edits" || pm == "acceptEdits" { return FLAWED_PMODE_ACCEPT_EDITS; }
+  if pm == "plan" { return FLAWED_PMODE_PLAN; }
+  if pm == "auto" { return FLAWED_PMODE_AUTO; }
+  if pm == "dont_ask" || pm == "dontAsk" { return FLAWED_PMODE_DONT_ASK; }
+  return FLAWED_PMODE_BYPASS;
+}
+
 fww_load_config :: (cfg: [] FwConfig) {
   cfg[0] = FwConfig.{};
   b: [1024] u8;
@@ -189,12 +198,7 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].thinking_hidden = td == "omitted" || td == "hidden" || td == "1";
 
   pm := fww_trim(cl_getenv("FLAWED_PERMISSION_MODE", b[..]));
-  if pm == "accept_edits" || pm == "acceptEdits" || pm == "1" { cfg[0].permission_mode = FLAWED_PMODE_ACCEPT_EDITS; }
-  else if pm == "plan" || pm == "2" { cfg[0].permission_mode = FLAWED_PMODE_PLAN; }
-  else if pm == "auto" || pm == "3" { cfg[0].permission_mode = FLAWED_PMODE_AUTO; }
-  else if pm == "dont_ask" || pm == "dontAsk" || pm == "4" { cfg[0].permission_mode = FLAWED_PMODE_DONT_ASK; }
-  else if pm == "bypass" || pm == "bypassPermissions" || pm == "5" { cfg[0].permission_mode = FLAWED_PMODE_BYPASS; }
-  else { cfg[0].permission_mode = FLAWED_PMODE_DEFAULT; }
+  cfg[0].permission_mode = fww_parse_permission_mode(pm);
 
   cfg[0].bypass_danger = fww_env_bool("FLAWED_BYPASS_PERMISSIONS", false);
 
@@ -203,7 +207,7 @@ fww_load_config :: (cfg: [] FwConfig) {
   else if sb == "enforced" || sb == "2" { cfg[0].sandbox_mode = FLAWED_SANDBOX_ENFORCED; }
   else { cfg[0].sandbox_mode = FLAWED_SANDBOX_OFF; }
 
-  cfg[0].git_guard = fww_env_bool("FLAWED_GIT_GUARD", true);
+  cfg[0].git_guard = fww_env_bool("FLAWED_GIT_GUARD", false);
 
   pc := fww_trim(cl_getenv("FLAWED_PROMPT_CACHE", b[..]));
   if pc == "org" || pc == "1" { cfg[0].prompt_cache = FLAWED_CACHE_ORG; }
@@ -466,7 +470,36 @@ fww_local_installed :: (home: string) -> bool {
   pb: [1024] u8;
   return fs_exists(fs_join(home, ".openagents/models/inkling-2-mini", pb[..]))
       || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-lora", pb[..]))
-      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-q4k", pb[..]));
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-q4k", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-iq3s", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-iq2m", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-abliterated-mix16g", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-abliterated-mix12g", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-custom", pb[..]));
+}
+
+fww_local_variant_short :: (pm: string) -> string {
+  if pm == "inkling-2-mini-uncensored-lora" { return "Uncensored LoRA"; }
+  if pm == "inkling-2-mini-uncensored-q4k" { return "Uncensored AD-Q4_K"; }
+  if pm == "inkling-2-mini-uncensored-iq3s" { return "Uncensored AD-IQ3_S"; }
+  if pm == "inkling-2-mini-uncensored-iq2m" { return "Uncensored AD-IQ2_M"; }
+  if pm == "inkling-2-mini-abliterated-mix16g" { return "Abliterated Mix-16G"; }
+  if pm == "inkling-2-mini-abliterated-mix12g" { return "Abliterated Mix-12G"; }
+  if pm == "inkling-2-mini-custom" { return "Custom Local .gguf"; }
+  if pm == "inkling-2-mini" { return "Official IQ4_NL"; }
+  return pm;
+}
+
+fww_cat_local_label :: (out: [] u8, at: int) -> int {
+  n := fww_cat(out, at, "Local Psionic");
+  pb: [128] u8;
+  pm := fww_trim(cl_getenv("PSIONIC_MODEL", pb[..]));
+  if pm.count > 0 {
+    n = fww_cat(out, n, " (");
+    n = fww_cat(out, n, fww_local_variant_short(pm));
+    n = fww_cat(out, n, ")");
+  }
+  return n;
 }
 
 fww_vertex_label :: (auth: [] FwAuth, out: [] u8) -> int {
@@ -508,7 +541,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     or_b: [256] u8; or_n := fww_try_openrouter_key(home, or_b[..]);
     n := 0;
     if has_local {
-      n = fww_cat(auth[0].label[..], n, "Local Psionic");
+      n = fww_cat_local_label(auth[0].label[..], n);
       auth[0].ok = true;
       auth[0].backend = FLAWED_BE_LOCAL;
       auth[0].nsource = fww_keep(auth[0].source[..], "local");
@@ -543,7 +576,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
       auth[0].ok = true;
       auth[0].backend = FLAWED_BE_LOCAL;
       auth[0].nsource = fww_keep(auth[0].source[..], "local");
-      auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic Metal");
+      auth[0].nlabel = fww_cat_local_label(auth[0].label[..], 0);
       return;
     }
     auth[0].nsource = fww_keep(auth[0].source[..], "local_offline");
@@ -821,6 +854,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   n = fww_cat(out, n, ifx tool_os() == TOOL_LINUX then "Linux" else "macOS");
   n = fww_cat(out, n, "\n\nGuidelines:\n");
   n = fww_cat(out, n, "- Use Read, Edit, Write, Glob, Grep, Bash, TodoWrite, and WebFetch tools to inspect and modify the codebase directly.\n");
+  n = fww_cat(out, n, "- Answer conversational greetings or general questions directly without running tools unless workspace inspection is actually needed.\n");
   n = fww_cat(out, n, "- Always Read a file before using Edit on it.\n");
   n = fww_cat(out, n, "- Verify code changes by running relevant tests/builds before claiming completion.\n");
   n = fww_cat(out, n, "- Keep responses accurate, well-structured in Markdown, and grounded in observed tool outputs.\n");
@@ -1013,13 +1047,26 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, out: [] u8) -> int {
+fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
   jo_key(o[..], "model"); jo_str(o[..], model);
-  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort, is_local));
-  if cfg[0].thinking_mode != FLAWED_THINK_OFF && effort.count > 0 {
+  mtok := flawed_wire_max_tokens(cfg[0].thinking_mode, effort, is_local);
+  if is_local && local_ctx > 0 && mtok > local_ctx / 2 { mtok = local_ctx / 2; }
+  jo_key(o[..], "max_tokens"); jo_int(o[..], mtok);
+  if is_local {
+    if cfg[0].thinking_mode == FLAWED_THINK_OFF {
+      jo_key(o[..], "enable_thinking"); jo_bool(o[..], false);
+      jo_key(o[..], "reasoning_effort"); jo_str(o[..], "none");
+    } else {
+      jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_local_effort(cfg[0].thinking_mode, effort));
+    }
+    // Match Inky's proven interactive sampling defaults for Inkling 2 Mini & uncensored LoRA / AD quants.
+    jo_key(o[..], "temperature"); jo_raw(o[..], "0.6");
+    jo_key(o[..], "top_p"); jo_raw(o[..], "0.95");
+    jo_key(o[..], "top_k"); jo_int(o[..], 40);
+  } else if cfg[0].thinking_mode != FLAWED_THINK_OFF && effort.count > 0 {
     jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_gemini_level(effort));
   }
   jo_key(o[..], "stream"); jo_bool(o[..], true);
@@ -1104,6 +1151,7 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
           jo_obj(o[..]);
           jo_key(o[..], "role"); jo_str(o[..], "tool");
           jo_key(o[..], "tool_call_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+          if is_local && bk.name_n > 0 { jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n)); }
           jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
           if is_local && bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
           jo_end(o[..]);
@@ -1704,12 +1752,15 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
   is_local := auth[0].backend == FLAWED_BE_LOCAL;
   is_gem := flawed_wire_is_gemini(auth[0].backend);
+  local_ctx := fww_env_int("PSIONIC_CTX", 32768);
+  if local_ctx < 4096 { local_ctx = 4096; }
+  if local_ctx > 131072 { local_ctx = 131072; }
 
   // Auto-compaction check (Ch 09) before request when enabled
   if cfg[0].auto_compact && h[0].nmsgs > 6 {
     est_tok := h[0].nslab / 4;
-    ctx_win := ifx is_local then 32768 else 1048576;
-    res_tok := ifx is_local then 8192 else 32768;
+    ctx_win := ifx is_local then local_ctx else 1048576;
+    res_tok := ifx is_local then local_ctx / 4 else 32768;
     eff_win := flawed_effective_context_window(ctx_win, res_tok, 0);
     if flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, est_tok, 0, eff_win, 0) {
       _ = fww_hist_compact(h, b[0].compact_buf[..]);
@@ -1725,7 +1776,12 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   } else if is_local {
     lb: [128] u8;
     pm := fww_trim(cl_getenv("PSIONIC_MODEL", lb[..]));
-    wire_model = ifx pm.count > 0 then pm else "inkling-2-mini";
+    if pm.count > 0 {
+      wire_model = pm;
+    } else {
+      stripped := flawed_wire_strip_model(raw_m);
+      wire_model = ifx flawed_aw_starts(stripped, "inkling-2-mini") then stripped else "inkling-2-mini";
+    }
   } else {
     n := flawed_wire_gemini_model(raw_m, mdl_b[..]);
     wire_model = cast(string) mdl_b[0..<n];
@@ -1736,7 +1792,7 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
   bn := ifx is_gem
         then fww_build_gemini_body(cfg, h, eff, sys, b[0].req_body[..])
-        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, b[0].req_body[..]);
+        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, b[0].req_body[..]);
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
   ub: [512] u8;
@@ -2695,4 +2751,35 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_poll_wait_ms(true, true) == 0;
   #assert fww_url_safe("https://openagents.com/docs") && !fww_url_safe("http://127.0.0.1:8080/x");
   #assert !fww_url_safe("http://169.254.169.254/latest/meta-data") && !fww_url_safe("file:///etc/passwd");
+}
+
+#test "flawedworker: default config is Allow All (no permission checks) and local uncensored bodies format cleanly" {
+  #assert fww_parse_permission_mode("") == FLAWED_PMODE_BYPASS && fww_parse_permission_mode("allow_all") == FLAWED_PMODE_BYPASS;
+  #assert fww_parse_permission_mode("ask") == FLAWED_PMODE_DEFAULT && fww_parse_permission_mode("accept_edits") == FLAWED_PMODE_ACCEPT_EDITS;
+  #assert fww_parse_permission_mode("plan") == FLAWED_PMODE_PLAN && fww_parse_permission_mode("dont_ask") == FLAWED_PMODE_DONT_ASK;
+  #assert fww_local_variant_short("inkling-2-mini-uncensored-lora") == "Uncensored LoRA";
+  #assert fww_local_variant_short("inkling-2-mini-uncensored-q4k") == "Uncensored AD-Q4_K";
+  #assert fww_local_variant_short("inkling-2-mini-abliterated-mix16g") == "Abliterated Mix-16G";
+  #assert fww_local_variant_short("inkling-2-mini-custom") == "Custom Local .gguf";
+
+  cfg: [1] FwConfig;
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "hi");
+  body: [16384] u8;
+  n1 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-lora", "xhigh", "sys", true, 8192, body[..]);
+  s1 := cast(string) body[0..<n1];
+  nodes: [512] JvNode; d: [1] Jv; eb: [64] u8;
+  #assert n1 > 0 && jv_parse(d[..], s1, nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], 0, "max_tokens"), 0) == 4096;
+  #assert jv_raw(d[0], jv_get(d[0], 0, "temperature")) == "0.6" && jv_int(d[0], jv_get(d[0], 0, "top_k"), 0) == 40;
+  en1 := jv_str(d[0], jv_get(d[0], 0, "reasoning_effort"), eb[..]);
+  #assert cast(string) eb[0..<en1] == "xhigh";
+
+  cfg[0].thinking_mode = FLAWED_THINK_OFF;
+  n2 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-q4k", "high", "sys", true, 32768, body[..]);
+  s2 := cast(string) body[0..<n2];
+  #assert n2 > 0 && jv_parse(d[..], s2, nodes[..]);
+  #assert !jv_bool(d[0], jv_get(d[0], 0, "enable_thinking")) && jv_raw(d[0], jv_get(d[0], 0, "enable_thinking")) == "false";
+  en2 := jv_str(d[0], jv_get(d[0], 0, "reasoning_effort"), eb[..]);
+  #assert cast(string) eb[0..<en2] == "none";
 }

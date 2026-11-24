@@ -387,6 +387,13 @@ cp_model_known_label :: (name: string) -> string {
   fids := CP_FLAWED_ID; flabels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return flabels[i]; } }
   if name == "flawed" { return "Flawed · Inkling 2 Mini"; }
+  if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
+  if name == "flawed:inkling-2-mini-uncensored-iq3s" { return "Flawed · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
+  if name == "flawed:inkling-2-mini-uncensored-iq2m" { return "Flawed · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
+  if name == "flawed:inkling-2-mini-abliterated-mix16g" { return "Flawed · Inkling 2 Mini Abliterated (Mix-16G)"; }
+  if name == "flawed:inkling-2-mini-abliterated-mix12g" { return "Flawed · Inkling 2 Mini Abliterated (Mix-12G)"; }
+  if name == "flawed:inkling-2-mini-custom" { return "Flawed · Inkling 2 Mini (Custom Local .gguf)"; }
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     return cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
   }
@@ -427,6 +434,13 @@ cp_model_known_meta :: (name: string) -> string {
   fids := CP_FLAWED_ID; fmetas := CP_FLAWED_META;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return fmetas[i]; } }
   if name == "flawed" { return "Flawed Agent · Inkling 2 Mini"; }
+  if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed Agent · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
+  if name == "flawed:inkling-2-mini-uncensored-iq3s" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
+  if name == "flawed:inkling-2-mini-uncensored-iq2m" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
+  if name == "flawed:inkling-2-mini-abliterated-mix16g" { return "Flawed Agent · Inkling 2 Mini Abliterated (Mix-16G)"; }
+  if name == "flawed:inkling-2-mini-abliterated-mix12g" { return "Flawed Agent · Inkling 2 Mini Abliterated (Mix-12G)"; }
+  if name == "flawed:inkling-2-mini-custom" { return "Flawed Agent · Inkling 2 Mini (Custom Local .gguf)"; }
   if name == "inkling-2-mini-uncensored-lora" { return "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)"; }
   if name == "inkling-2-mini-uncensored-q4k" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "inkling-2-mini-uncensored-iq3s" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
@@ -473,7 +487,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].prov[0].acp_id_buf[0..<n];
   }
   if e.kind == CP_MK_CLAUDE { cids := CP_CLAUDE_ID; return cids[e.slot]; }
-  if e.kind == CP_MK_FLAWED { fids := CP_FLAWED_ID; return fids[e.slot]; }
+  if e.kind == CP_MK_FLAWED { return cp_flawed_id_for(s, e.slot); }
   st := cp_model_start(s);
   if st >= 0 && st != idx { return cp_model_id(s, st); }
   return cp_inkling_id(s);

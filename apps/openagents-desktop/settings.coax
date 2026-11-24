@@ -124,7 +124,7 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.url", name = "Custom API base URL", terms = "flawed base url proxy endpoint gateway"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tmode", name = "Thinking mode", terms = "flawed adaptive extended thinking reasoning budget"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.effort", name = "Default effort", terms = "flawed effort low medium high xhigh max reasoning"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "flawed permission default accept edits plan auto dont ask bypass"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "flawed permission allow all ask accept edits plan auto dont ask bypass"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "flawed sandbox seatbelt sandbox-exec bash confinement"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "flawed allowedTools disallowedTools additionalDirs tools"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "flawed prompt cache auto compact memory claude.md bare mode"},

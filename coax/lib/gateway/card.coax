@@ -172,7 +172,8 @@ GW_CLAUDE_WINDOW :: 200000;
 GW_CLAUDE_EXTENDED_WINDOW :: 1000000;
 
 // model as a plan sends it ("google/" before a Gemini model on the OpenAI-style endpoints,
-// "anthropic/" on OpenRouter, "flawed:" from Flawed presets, "[1m]" for extended context).
+// "anthropic/" on OpenRouter, "flawed:" from Flawed presets, "[1m]" for extended context,
+// and any "inkling-2-mini-*" uncensored/abliterated/custom local variant).
 gw_window :: (model: string) -> int {
   m := model;
   if m.count > 7 && m[0..<7] == "flawed:" { m = cast(string) m[7..<m.count]; }
@@ -182,13 +183,19 @@ gw_window :: (model: string) -> int {
   if ext { m = cast(string) m[0..<m.count - 4]; }
   rows := GW_WINDOWS;
   for r: rows { if r.model == m { return r.tokens; } }
+  if m.count > 15 && m[0..<15] == "inkling-2-mini-" { return 32768; }
   if m.count > 7 && m[0..<7] == "claude-" { return ifx ext then GW_CLAUDE_EXTENDED_WINDOW else GW_CLAUDE_WINDOW; }
   return 0;
 }
 
-#test "context windows: the Gemini models a plan sends, with or without google/; Claude; local Inkling 32K; anything else unknown" {
+#test "context windows: the Gemini models a plan sends, with or without google/; Claude; local Inkling & uncensored variants 32K; anything else unknown" {
   #assert gw_window("gemini-4-hydrogen") == 1048576 && gw_window("google/gemini-4-hydrogen") == 1048576 && gw_window("gemini-4-neon") == 1048576;
   #assert gw_window("inkling-2-mini") == 32768 && gw_window("hybrid-exec-v1") == 32768;
+  #assert gw_window("inkling-2-mini-uncensored-lora") == 32768 && gw_window("inkling-2-mini-uncensored-q4k") == 32768;
+  #assert gw_window("inkling-2-mini-uncensored-iq3s") == 32768 && gw_window("inkling-2-mini-uncensored-iq2m") == 32768;
+  #assert gw_window("inkling-2-mini-abliterated-mix16g") == 32768 && gw_window("inkling-2-mini-abliterated-mix12g") == 32768;
+  #assert gw_window("inkling-2-mini-custom") == 32768;
+  #assert gw_window("flawed:inkling-2-mini-uncensored-lora") == 32768 && gw_window("flawed:inkling-2-mini-uncensored-q4k") == 32768;
   #assert gw_window("claude-haiku-4-5") == 200000 && gw_window("flawed:gemini-4-neon") == 1048576 && gw_window("flawed:inkling-2-mini") == 32768 && gw_window("claude-opus-4-7[1m]") == 1000000 && gw_window("anthropic/claude-sonnet-4-6") == 200000;
   #assert gw_window("local") == 0 && gw_window("z-ai/glm-5.3-flash") == 0 && gw_window("") == 0 && gw_window("google/") == 0;
 }
