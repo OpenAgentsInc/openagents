@@ -5,15 +5,16 @@
 #test "OpenRouter: the set model is a picker entry and a sub-agent level, routed as openrouter: ids, kept by save/load" {
   p: [1] CoderPage; p2: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
-  #assert cp_models(s) == 1 + CP_MODELS;                           // Inkling (0) + 4 Gemini (1..4); no OpenRouter yet
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS;        // Flawed (0..3) + Inkling (4) + 4 Gemini (5..8); no OpenRouter yet
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_pick_model(s, "gemini-4-neon");
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].openrouter == "" && back[0].model == "gemini-4-neon";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "moonshotai/kimi-k3");
-  or_i := 1 + CP_MODEL_OR;
-  #assert cp_models(s) == 1 + CP_MODELS + 1 && cp_model_label(s, or_i) == "deepseek-v4.1-flash-1017" && cp_model_desc(s, or_i) == "OpenRouter";
+  or_i := CP_FLAWED_MODELS + 1 + CP_MODEL_OR;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 1 && cp_model_label(s, or_i) == "deepseek-v4.1-flash-1017" && cp_model_desc(s, or_i) == "OpenRouter";
   #assert cp_model_meta(s, or_i) == "Microcoder · OpenRouter · deepseek/deepseek-v4.1-flash-1017";
   s[0].model = or_i;
   #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
@@ -35,13 +36,13 @@
   coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
   #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]) && s2[0].model == or_i && s2[0].turns[1].model == or_i && s2[0].turns[1].agents[0].level == CP_LEVEL_OR;
   coder_page_set_openrouter(s2, "", "");
-  #assert s2[0].model == cp_model_start(s2) && cp_model_id(s2, s2[0].model) == "gemini-4-neon";
+  #assert s2[0].model == cp_model_start(s2) && cp_model_id(s2, s2[0].model) == "flawed:claude-opus-4-7";
   // a launch's --model
   #assert !coder_page_pick_model(s2, "openrouter") && coder_page_pick_model(s2, "Carbon") && cp_model_id(s2, s2[0].model) == "gemini-4-carbon" && !coder_page_pick_model(s2, "gpt");
   coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
   #assert coder_page_pick_model(s2, "openrouter") && s2[0].model == or_i && coder_page_pick_model(s2, "gemini-4-neon") && cp_model_id(s2, s2[0].model) == "gemini-4-neon";
-  // Inkling 2 Mini local model (#13825) is ALWAYS present in the picker (entry 0), even before download
-  #assert coder_page_pick_model(s2, "inkling-2-mini") && coder_page_model_inkling(s2) && s2[0].model == 0;
+  // Inkling 2 Mini local model (#13825) is ALWAYS present in the picker (entry CP_FLAWED_MODELS), even before download
+  #assert coder_page_pick_model(s2, "inkling-2-mini") && coder_page_model_inkling(s2) && s2[0].model == CP_FLAWED_MODELS;
   coder_page_set_inkling(s2, true);
   #assert coder_page_pick_model(s2, "inkling-2-mini");
   #assert coder_page_model_inkling(s2);
@@ -54,7 +55,7 @@
   #assert coder_page_line(s2, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   coder_page_set_inkling(s2, false);
   // Still stays on Inkling entry (always visible so user can re-download if needed).
-  #assert coder_page_model_inkling(s2) && s2[0].model == 0;
+  #assert coder_page_model_inkling(s2) && s2[0].model == CP_FLAWED_MODELS;
 }
 
 #test "composer model picker switches models per chat, routes tasks, and persists across save/load/take/new" {
@@ -62,16 +63,17 @@
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
+  flaw_i := cp_model_find_exact(s, "flawed:claude-opus-4-7");
   neon_i := cp_model_find_exact(s, "gemini-4-neon");
   carb_i := cp_model_find_exact(s, "gemini-4-carbon");
-  #assert s[0].model == neon_i && cp_model_id(s, s[0].model) == "gemini-4-neon";
-  // First turn uses Neon.
+  #assert s[0].model == flaw_i && cp_model_id(s, s[0].model) == "flawed:claude-opus-4-7";
+  // First turn uses default Flawed · Opus 4.7.
   #assert coder_page_set_text(s, "first") && coder_page_submit(s);
   out: [4096] u8;
   n := coder_page_task(s, "sess-1", "/w", out[..]);
   ar: [1] ClArena; ab: [2048] u8; ar[0] = ClArena.{buf = ab[..]};
   back: [1] McTask;
-  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-neon";
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "flawed:claude-opus-4-7";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   // Layout and open the model picker popover via the composer button.
   f: [1] UiFrame;
@@ -82,7 +84,7 @@
   #assert btn >= 0 && !s[0].model_menu;
   #assert cp_press(s, btn);
   #assert s[0].model_menu;
-  // Re-layout with popover open: Inkling (0) + all 4 Gemini options (1..4) appear.
+  // Re-layout with popover open: Flawed (0..3) + Inkling (4) + all 4 Gemini options (5..8) appear.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
@@ -91,18 +93,19 @@
   opt2 := surface_find(s[0].surface[..], "coder.model.2");
   opt3 := surface_find(s[0].surface[..], "coder.model.3");
   opt4 := surface_find(s[0].surface[..], "coder.model.4");
-  #assert opt0 >= 0 && opt1 >= 0 && opt2 >= 0 && opt3 >= 0 && opt4 >= 0;
-  // Pick Gemini 4 Carbon (index 2).
-  #assert cp_press(s, opt2);
+  opt_carb := surface_find(s[0].surface[..], "coder.model.6");
+  #assert opt0 >= 0 && opt1 >= 0 && opt2 >= 0 && opt3 >= 0 && opt4 >= 0 && opt_carb >= 0;
+  // Pick Gemini 4 Carbon (index 6).
+  #assert cp_press(s, opt_carb);
   #assert !s[0].model_menu && s[0].model == carb_i && cp_model_id(s, s[0].model) == "gemini-4-carbon";
   #assert coder_page_save_due(s);
-  // Second turn routes to Carbon while first turn remembers Neon.
+  // Second turn routes to Carbon while first turn remembers Flawed.
   #assert coder_page_set_text(s, "second") && coder_page_submit(s);
   n = coder_page_task(s, "sess-1", "/w", out[..]);
   ar[0].at = 0;
   #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-carbon";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok2\"}") == MWW_ENDED;
-  #assert s[0].turns[0].model == neon_i && s[0].turns[1].model == carb_i;
+  #assert s[0].turns[0].model == flaw_i && s[0].turns[1].model == carb_i;
   // Clicking outside an open popover dismisses it.
   s[0].model_menu = true;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
@@ -117,17 +120,18 @@
   p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
   cp_init(s2);
   #assert coder_page_load(s2, cast(string) saved[0..<sn]);
-  #assert s2[0].model == carb_i && s2[0].turns[0].model == neon_i && s2[0].turns[1].model == carb_i;
+  #assert s2[0].model == carb_i && s2[0].turns[0].model == flaw_i && s2[0].turns[1].model == carb_i;
   // coder_page_take transfers selected model and resets source to start model.
   s3 := s;   // the chat in s goes; s2's takes its place
   #assert coder_page_take(s3, s2);
-  #assert s3[0].model == carb_i && s2[0].model == neon_i;
+  #assert s3[0].model == carb_i && s2[0].model == flaw_i;
   // New chat resets selected model to start model.
   #assert cp_new(s3);
-  #assert s3[0].model == neon_i && !s3[0].model_menu;
+  #assert s3[0].model == flaw_i && !s3[0].model_menu;
   // Loading an older saved chat without a model field defaults to start model.
   #assert coder_page_load(s3, "{\"turns\":[{\"ask\":\"hi\",\"reply\":\"yo\",\"state\":1}]}");
-  #assert s3[0].model == neon_i && s3[0].turns[0].model == neon_i;
+  #assert s3[0].model == flaw_i && s3[0].turns[0].model == flaw_i;
+  _ = neon_i;
 }
 
 #test "OpenRouter model picker popover clears the composer, keeps presses from the composer's editor while open, and receives clicks" {
@@ -135,7 +139,7 @@
   s[0].d = 1.0f32;
   s[0].nturns = 1;
   coder_page_set_openrouter(s, "anthropic/claude-sonnet-4", "");
-  #assert cp_models(s) == 6;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 6;
   f: [1] UiFrame;
   // Closed state: the composer's editor takes a press.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
@@ -153,18 +157,18 @@
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   comp := elt_find(t[..], "coder.composer");
   menu := elt_find(t[..], "coder.model.menu");
-  or_opt := elt_find(t[..], "coder.model.5");
+  or_opt := elt_find(t[..], "coder.model.9");
   #assert comp >= 0 && menu >= 0 && or_opt >= 0;
   // When docked at the bottom (s[0].d == 1), popover sits above the composer (no overlap).
   #assert t[0].rows[menu].y + t[0].rows[menu].h <= t[0].rows[comp].y;
   #assert t[0].rows[or_opt].y + t[0].rows[or_opt].h <= t[0].rows[comp].y;
-  // Clicking the center of the OpenRouter option hits coder.model.5 and selects OpenRouter.
+  // Clicking the center of the OpenRouter option hits coder.model.9 and selects OpenRouter.
   cx := t[0].rows[or_opt].x + t[0].rows[or_opt].w * 0.5f32;
   cy := t[0].rows[or_opt].y + t[0].rows[or_opt].h * 0.5f32;
   #assert surface_hit(s[0].surface[..], cx, cy) == or_opt;
   #assert coder_page_pointer(s, cx, cy, 0);
   #assert coder_page_pointer(s, cx, cy, 2);
-  #assert !s[0].model_menu && s[0].model == 1 + CP_MODEL_OR;
+  #assert !s[0].model_menu && s[0].model == CP_FLAWED_MODELS + 1 + CP_MODEL_OR;
   // Once closed, the editor takes presses again.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
@@ -174,6 +178,7 @@
 
 #test "Centred new chat opens the model picker popover below the model chip" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
+  coder_page_show_other_models_set(s, false);
   s[0].d = 0.0f32;
   f: [1] UiFrame;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
@@ -199,11 +204,11 @@
   coder_page_init(s);
   coder_page_show_other_models_set(s, true);
   coder_page_experimental_set(s, true); s[0].cloud_authed = true;
-  #assert !coder_page_model_agy(s) && cp_models(s) == 1 + CP_MODELS;
+  #assert !coder_page_model_agy(s) && cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS;
   #assert !coder_page_pick_model(s, "antigravity");
   coder_page_set_agy(s, true);
-  agy_i := 1 + CP_MODELS;
-  #assert cp_models(s) == 1 + CP_MODELS + 1;
+  agy_i := CP_FLAWED_MODELS + 1 + CP_MODELS;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 1;
   #assert cp_model_label(s, agy_i) == "Antigravity";
   #assert cp_model_id(s, agy_i) == "antigravity";
   // the row names the CLI and the mode picked in Settings
@@ -226,82 +231,84 @@
   #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   // Also works alongside OpenRouter without shifting OpenRouter's index.
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash", "");
-  #assert cp_models(s) == 1 + CP_MODELS + 2 && cp_is_or(s, 1 + CP_MODEL_OR) && cp_is_agy(s, 1 + CP_MODELS + 1);
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 2 && cp_is_or(s, CP_FLAWED_MODELS + 1 + CP_MODEL_OR) && cp_is_agy(s, CP_FLAWED_MODELS + 1 + CP_MODELS + 1);
   #assert coder_page_pick_model(s, "agy") && coder_page_model_agy(s);
   // Removing Antigravity resets the selection back to start model.
   coder_page_set_agy(s, false);
   #assert !coder_page_model_agy(s) && s[0].model == cp_model_start(s);
 }
 
-#test "cloud models require models.gemini + auth + show_other_models; default mode is Inkling-only" {
+#test "cloud models require models.gemini + auth + show_other_models; default mode is Flawed + Inkling" {
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
   s[0].local_os_ok = true; s[0].local_hw_ok = true;
-  // Default (flags = 0, show_other_models = false): Inkling is the sole model, even if agy/cloud exist.
+  // Default (flags = 0, show_other_models = false): Flawed (4) + Inkling (1) = 5 core models, starting on Flawed.
   coder_page_experimental_set(s, false);
   coder_page_set_cloud_authed(s, false);
-  #assert !coder_page_cloud_ok(s) && !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
+  #assert !coder_page_cloud_ok(s) && cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, 0) == "flawed:claude-opus-4-7" && cp_model_id(s, CP_FLAWED_MODELS) == "inkling-2-mini";
   #assert !coder_page_pick_model(s, "gemini-4-neon");
-  // Setting agy while show_other_models == false STILL keeps picker Inkling-only.
+  // Setting agy while show_other_models == false STILL hides Antigravity.
   coder_page_set_agy(s, true);
-  #assert !cp_has_model_picker(s) && cp_models(s) == 1 && !coder_page_model_agy(s);
-  // Explicitly opting into show_other_models exposes Antigravity alongside Inkling (entry 0).
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 && !coder_page_model_agy(s);
+  // Explicitly opting into show_other_models exposes Antigravity alongside Flawed & Inkling.
   coder_page_show_other_models_set(s, true);
-  #assert cp_has_model_picker(s) && cp_models(s) == 2 && cp_model_label(s, 0) == "Inkling 2 Mini" && cp_model_label(s, 1) == "Antigravity";
+  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 2 && cp_model_label(s, 0) == "Flawed · Opus 4.7" && cp_model_label(s, CP_FLAWED_MODELS) == "Inkling 2 Mini" && cp_model_label(s, CP_FLAWED_MODELS + 1) == "Antigravity";
   #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   // Experimental on alone (not logged in) still hides cloud models.
   coder_page_experimental_set(s, true);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 2 && coder_page_model_agy(s);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 2 && coder_page_model_agy(s);
   // Logged in alone (experimental off) still hides cloud models, keeping Antigravity available.
   coder_page_experimental_set(s, false);
   coder_page_set_cloud_authed(s, true);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 2 && coder_page_model_agy(s);
-  // Disabling Antigravity with experimental off returns to single-model Inkling.
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 2 && coder_page_model_agy(s);
+  // Disabling Antigravity with experimental off returns to core Flawed + Inkling.
   coder_page_set_agy(s, false);
-  #assert !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, 0) == "inkling-2-mini";
+  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, 0) == "flawed:claude-opus-4-7";
   coder_page_set_agy(s, true);
-  // Both experimental && logged in: cloud models appear alongside Inkling (0) and Antigravity.
+  // Both experimental && logged in: cloud models appear alongside Flawed, Inkling, and Antigravity.
   coder_page_experimental_set(s, true);
-  #assert coder_page_cloud_ok(s) && cp_models(s) == 1 + CP_MODELS + 1 && coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
+  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 1 && coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   #assert coder_page_pick_model(s, "gemini-4-neon") && !coder_page_model_agy(s);
-  // Logging out drops cloud models; Antigravity remains selectable.
+  // Logging out drops cloud models; falls back to default Flawed while Antigravity remains selectable.
   coder_page_set_cloud_authed(s, false);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 2 && coder_page_model_agy(s);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 2 && coder_page_model_flawed(s) && coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
 }
 
-#test "the backend label names what runs the next message: Psionic Metal, Antigravity CLI, OpenRouter, Gemini API" {
+#test "the backend label names what runs the next message: Flawed Agent, Psionic Metal, Antigravity CLI, OpenRouter, Gemini API" {
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
   s[0].local_os_ok = true; s[0].local_hw_ok = true;
-  // Release default: Inkling 2 Mini on Psionic Metal.
+  // Release default: Flawed Agent (Opus 4.7); Inkling 2 Mini is Psionic Metal.
   coder_page_experimental_set(s, false); coder_page_set_cloud_authed(s, false);
-  #assert cp_model_index(s) == 0 && cp_backend_label(s) == "Psionic Metal";
-  // Even with developer flags and show_other_models on, Inkling remains present at entry 0 (never empty list).
+  #assert cp_model_index(s) == 0 && cp_backend_label(s) == "Flawed Agent";
+  #assert coder_page_pick_model(s, "inkling-2-mini") && cp_backend_label(s) == "Psionic Metal";
+  // Even with developer flags and show_other_models on, Flawed & Inkling stay at the top.
   coder_page_show_other_models_set(s, true);
   coder_page_experimental_set(s, true);
-  #assert cp_model_index(s) == 0 && cp_backend_label(s) == "Psionic Metal";
-  // agy installed alongside Inkling
+  #assert cp_backend_label(s) == "Psionic Metal";
+  // agy installed alongside Flawed & Inkling
   coder_page_set_agy(s, true);
   #assert coder_page_pick_model(s, "agy") && cp_backend_label(s) == "Antigravity CLI";
   // a Gemini key set in Settings: Gemini models run on Microcoder through the Gemini API, shown in the dropdown
   s[0].set_gemini_n = cp_out(s[0].set_gemini[..], "Ends 1a2b"); s[0].model = cp_model_index(s);
-  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API" && cp_model_desc(s, 1) == "Fast frontier · Gemini API";
+  g0 := CP_FLAWED_MODELS + 1;
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API" && cp_model_desc(s, g0) == "Fast frontier · Gemini API";
   #assert coder_page_pick_model(s, "agy") && cp_backend_label(s) == "Antigravity CLI";
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
-  #assert coder_page_pick_model(s, "openrouter") && cp_backend_label(s) == "OpenRouter" && cp_model_desc(s, 1 + CP_MODEL_OR) == "OpenRouter";
+  #assert coder_page_pick_model(s, "openrouter") && cp_backend_label(s) == "OpenRouter" && cp_model_desc(s, g0 + CP_MODEL_OR) == "OpenRouter";
   // no key, signed in with Experimental features: still Gemini
   s[0].set_gemini_n = 0; coder_page_experimental_set(s, true); coder_page_set_cloud_authed(s, true);
   #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
   // Microcoder will answer on Vertex AI (a service account on disk, mcworker --auth): the dropdown says so
   coder_page_settings_gauth(s, "vertex", "Vertex AI (service account, project openagentsgemini)");
-  #assert cp_backend_label(s) == "Vertex AI" && cp_model_desc(s, 1) == "Fast frontier · Vertex AI";
+  #assert cp_backend_label(s) == "Vertex AI" && cp_model_desc(s, g0) == "Fast frontier · Vertex AI";
   coder_page_settings_gauth(s, "key", "API key ending 1a2b (~/work/.secrets)");
-  #assert cp_backend_label(s) == "Gemini API" && cp_model_desc(s, 1) == "Fast frontier · Gemini API";
+  #assert cp_backend_label(s) == "Gemini API" && cp_model_desc(s, g0) == "Fast frontier · Gemini API";
   // the menu and the palette keep each row's line, so one row's line never becomes another's
-  d0 := cp_model_desc(s, 1); d1 := cp_model_desc(s, 2); da := cp_model_desc(s, 1 + CP_MODELS);
-  #assert d0 == "Fast frontier · Gemini API" && d1 == "Deep reasoning · Gemini API" && cp_model_desc(s, 4) == "Heavyweight · Gemini API";
+  d0 := cp_model_desc(s, g0); d1 := cp_model_desc(s, g0 + 1); da := cp_model_desc(s, g0 + CP_MODELS);
+  #assert d0 == "Fast frontier · Gemini API" && d1 == "Deep reasoning · Gemini API" && cp_model_desc(s, g0 + 3) == "Heavyweight · Gemini API";
   #assert d0 != d1 && da.count > 0 && d0 != da;
 }
 
@@ -314,18 +321,18 @@
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_MODELS_GEMINI) | dc_flag_bit(DC_FLAG_MODELS_ANTIGRAVITY));
   coder_page_set_cloud_authed(s, false);
   coder_page_set_agy(s, true);
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 2;
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 2;
   #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   // the owner's setup: ~/work/.secrets/vertex-sa-inference.json and gcloud, no key in Settings
   coder_page_settings_gauth(s, "vertex", "Vertex AI (service account, project openagentsgemini)");
-  #assert coder_page_cloud_ok(s) && cp_models(s) == 1 + CP_MODELS + 1 && coder_page_model_agy(s);
+  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 1 && coder_page_model_agy(s);
   #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Vertex AI";
   // a Gemini API key in ~/work/.secrets or the environment counts too
   coder_page_settings_gauth(s, "key", "API key ending 1a2b (GEMINI_API_KEY)");
   #assert coder_page_cloud_ok(s) && !s[0].gauth_vertex;
-  // none found: back to Antigravity + Inkling
+  // none found: drops Gemini, falls back to Flawed while Antigravity remains selectable
   coder_page_settings_gauth(s, "none", "");
-  #assert !coder_page_cloud_ok(s) && cp_models(s) == 2 && coder_page_model_agy(s);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == CP_FLAWED_MODELS + 2 && coder_page_model_flawed(s) && coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
 }
 
 #test "a reply's label names the model Antigravity reported running, and keeps it with the chat" {
@@ -343,6 +350,7 @@
 
 #test "an Antigravity turn's task line names no effort, so Settings or agyworker's high decides; Microcoder's names low" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  #assert coder_page_pick_model(s, "gemini-4-neon");
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
   n := coder_page_task(s, "s", "/w", out[..]);
@@ -461,11 +469,12 @@
 #test "Claude as a chat's main model: four picker entries when Claude Code is here, its task line, and the model new chats start on" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
+  flaw_i := cp_model_find_exact(s, "flawed:claude-opus-4-7");
   neon_i := cp_model_find_exact(s, "gemini-4-neon");
-  #assert cp_models(s) == 1 + CP_MODELS && cp_model_start(s) == neon_i && !coder_page_pick_model(s, "claude-opus-5-5") && cp_model_find_s(s, "claude-opus-5-5") == neon_i;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS && cp_model_start(s) == flaw_i && !coder_page_pick_model(s, "claude-opus-5-5") && cp_model_find_s(s, "claude-opus-5-5") == flaw_i;
   coder_page_set_claude(s, true);
   base := cp_claude_base_idx(s);
-  #assert cp_models(s) == 1 + CP_MODELS + CP_CLAUDE_MODELS && base == 1 + CP_MODELS && s[0].model == neon_i;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + CP_CLAUDE_MODELS && base == CP_FLAWED_MODELS + 1 + CP_MODELS && s[0].model == flaw_i;
   #assert cp_model_label(s, base) == "Claude Fable 5.2" && cp_model_label(s, base + 1) == "Claude Opus 5.5" && cp_model_label(s, base + 2) == "Claude Sonnet 5.5" && cp_model_label(s, base + 3) == "Claude Haiku 5.5";
   #assert cp_model_id(s, base) == "claude-fable-5-2" && cp_model_id(s, base + 1) == "claude-opus-5-5" && cp_model_id(s, base + 2) == "claude-sonnet-5-5" && cp_model_id(s, base + 3) == "claude-haiku-5-5";
   #assert cp_model_desc(s, base + 1) == "Deep reasoning · Claude Code" && cp_model_meta(s, base) == "Claude Code · Claude Fable 5.2";
@@ -489,18 +498,18 @@
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "fable" && !back[0].agents;
   // a chat on Claude stays on it when an entry joins before it
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
-  #assert cp_claude_base_idx(s) == 1 + CP_MODELS + 1 && s[0].model == 1 + CP_MODELS + 2 && cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5";
+  #assert cp_claude_base_idx(s) == CP_FLAWED_MODELS + 1 + CP_MODELS + 1 && s[0].model == CP_FLAWED_MODELS + 1 + CP_MODELS + 2 && cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5";
   coder_page_set_openrouter(s, "", "");
   #assert s[0].model == base + 1;
 }
 
-#test "Settings picks the model new chats start on: default until Claude is picked, and a chat with messages keeps its own" {
+#test "Settings picks the model new chats start on: Flawed default until Claude is picked, and a chat with messages keeps its own" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
-  neon_i := cp_model_find_exact(s, "gemini-4-neon");
+  flaw_i := cp_model_find_exact(s, "flawed:claude-opus-4-7");
   // picked before the host says Claude Code is here: it takes hold when it does
   coder_page_orchestrator_set(s, true, 0);
-  #assert coder_page_orchestrator(s) == 1 && coder_page_orchestrator_model(s) == 0 && cp_model_index(s) == neon_i && cp_model_start(s) == neon_i;
+  #assert coder_page_orchestrator(s) == 1 && coder_page_orchestrator_model(s) == 0 && cp_model_index(s) == flaw_i && cp_model_start(s) == flaw_i;
   coder_page_set_claude(s, true);
   #assert cp_model_id(s, cp_model_index(s)) == "claude-fable-5-2";
   coder_page_orchestrator_set(s, true, 2);
@@ -511,8 +520,8 @@
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   coder_page_orchestrator_set(s, false, 3);
-  #assert cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5" && cp_model_start(s) == neon_i;
-  #assert cp_new(s) && cp_model_id(s, cp_model_index(s)) == "gemini-4-neon";
+  #assert cp_model_id(s, cp_model_index(s)) == "claude-opus-5-5" && cp_model_start(s) == flaw_i;
+  #assert cp_new(s) && cp_model_id(s, cp_model_index(s)) == "flawed:claude-opus-4-7";
   coder_page_orchestrator_set(s, true, 3);
   #assert cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
@@ -520,7 +529,7 @@
   #assert cp_new(s) && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
   // Claude Code gone: new chats start on default again
   coder_page_set_claude(s, false);
-  #assert cp_models(s) == 1 + CP_MODELS && cp_model_index(s) == neon_i;
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 + CP_MODELS && cp_model_index(s) == flaw_i;
 }
 
 #test "composer model picker shows real-time Local Models row and opens Local Models manager (#13826)" {
@@ -571,17 +580,18 @@
   coder_page_set_inkling_info(s, "inkling-2-mini-uncensored-lora", "Inkling 2 Mini Uncensored (LoRA)", "Not downloaded (17.67 GB) · Click to download");
   coder_page_local_state(s, true, true, 64, CP_LOCAL_NOT_INSTALLED, 0, 0, 16853, "");
 
-  // 1. ONLY the active uncensored Inkling variant is shown (even though flags/agy/claude/cloud are set).
-  #assert !coder_page_show_other_models(s) && !cp_has_model_picker(s);
-  #assert cp_models(s) == 1 && cp_model_index(s) == 0;
-  #assert cp_model_id(s, 0) == "inkling-2-mini-uncensored-lora";
-  #assert cp_model_label(s, 0) == "Inkling 2 Mini Uncensored (LoRA)";
-  #assert cp_model_desc(s, 0) == "Not downloaded (17.67 GB) · Click to download";
-  #assert cp_model_meta(s, 0) == "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)";
+  // 1. Flawed (0..3) + active uncensored Inkling variant (4) are shown (even though flags/agy/claude/cloud are set).
+  ink_i := CP_FLAWED_MODELS;
+  #assert !coder_page_show_other_models(s) && cp_has_model_picker(s);
+  #assert cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_index(s) == 0 && coder_page_model_flawed(s);
+  #assert cp_model_id(s, ink_i) == "inkling-2-mini-uncensored-lora";
+  #assert cp_model_label(s, ink_i) == "Inkling 2 Mini Uncensored (LoRA)";
+  #assert cp_model_desc(s, ink_i) == "Not downloaded (17.67 GB) · Click to download";
+  #assert cp_model_meta(s, ink_i) == "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)";
   #assert cp_model_known_label("inkling-2-mini-uncensored-lora") == "Inkling 2 Mini Uncensored (LoRA)";
   #assert cp_model_known_label("inkling-2-mini-uncensored-q4k") == "Inkling 2 Mini Uncensored (AD-Q4_K)";
 
-  // 2. Composer & model picker chip are visible even before download, showing the real uncensored name!
+  // 2. Composer & model picker chip are visible even before download, showing Flawed + active Inkling variant!
   f: [1] UiFrame;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
@@ -593,15 +603,15 @@
   cp_layout(s, f[..], 900.0f32, 700.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
-  opt0 := elt_find(t[..], "coder.model.0");
-  #assert opt0 >= 0 && elt_find(t[..], "coder.model.1") < 0;
-  #assert cast(string) t[0].rows[opt0].label[0..<t[0].rows[opt0].label_n] == "Inkling 2 Mini Uncensored (LoRA)";
-  #assert cast(string) t[0].rows[opt0].value[0..<t[0].rows[opt0].value_n] == "Not downloaded (17.67 GB) · Click to download";
+  opt_ink := elt_find(t[..], "coder.model.4");
+  #assert opt_ink >= 0 && elt_find(t[..], "coder.model.5") < 0;
+  #assert cast(string) t[0].rows[opt_ink].label[0..<t[0].rows[opt_ink].label_n] == "Inkling 2 Mini Uncensored (LoRA)";
+  #assert cast(string) t[0].rows[opt_ink].value[0..<t[0].rows[opt_ink].value_n] == "Not downloaded (17.67 GB) · Click to download";
 
-  // 3. Picking the undownloaded model in the dropdown dispatches CP_ASK_LOCAL_DOWNLOAD immediately!
-  #assert cp_press(s, opt0) && !s[0].model_menu && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
+  // 3. Picking the undownloaded Inkling model in the dropdown dispatches CP_ASK_LOCAL_DOWNLOAD immediately!
+  #assert cp_press(s, opt_ink) && !s[0].model_menu && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
 
-  // 4. Clicking "Show other models…" reveals other models while keeping the menu open and Inkling at entry 0.
+  // 4. Clicking "Show other models…" reveals other models while keeping the menu open and Flawed + Inkling at top.
   s[0].model_menu = true;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
@@ -609,15 +619,15 @@
   others := surface_find(s[0].surface[..], "coder.model.others");
   #assert others >= 0 && cp_press(s, others);
   #assert coder_page_show_other_models(s) && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && s[0].model_menu;
-  #assert cp_models(s) > 1 && cp_model_id(s, 0) == "inkling-2-mini-uncensored-lora";
+  #assert cp_models(s) > CP_FLAWED_MODELS + 1 && cp_model_id(s, ink_i) == "inkling-2-mini-uncensored-lora";
 
-  // 5. Clicking "Hide other models" collapses back to ONLY the active uncensored Inkling variant.
+  // 5. Clicking "Hide other models" collapses back to core Flawed + active uncensored Inkling variant.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   hide_btn := surface_find(s[0].surface[..], "coder.model.others");
   #assert hide_btn >= 0 && surface_say(s[0].surface[..], hide_btn) == "Hide other models";
-  #assert cp_press(s, hide_btn) && !coder_page_show_other_models(s) && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && !s[0].model_menu && cp_models(s) == 1;
+  #assert cp_press(s, hide_btn) && !coder_page_show_other_models(s) && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && !s[0].model_menu && cp_models(s) == CP_FLAWED_MODELS + 1;
 
   // 6. Once downloaded, clicking the model does NOT re-trigger download, and switching variant updates the label immediately.
   coder_page_set_inkling(s, true);
@@ -626,7 +636,36 @@
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.064, 0.016, false, false);
   cp_layout(s, f[..], 900.0f32, 700.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
-  q4_opt := surface_find(s[0].surface[..], "coder.model.0");
+  q4_opt := surface_find(s[0].surface[..], "coder.model.4");
   #assert q4_opt >= 0 && surface_say(s[0].surface[..], q4_opt) == "Inkling 2 Mini Uncensored (AD-Q4_K)";
   #assert cp_press(s, q4_opt) && coder_page_action(s) == CP_ASK_NONE;
+}
+
+#test "Flawed Agent: default selection, 5 effort levels, 1M/Fast/custom override badges, and save/load roundtrip" {
+  p: [1] CoderPage; p2: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  coder_page_flags_set(s, 0);
+  coder_page_show_other_models_set(s, false);
+  #assert coder_page_model_flawed(s) && coder_page_model_provider(s) == CP_PROV_FLAWED;
+  #assert cp_model_id(s, cp_model_index(s)) == "flawed:claude-opus-4-7";
+  #assert cp_effort_count(s, cp_model_index(s)) == 5 && cp_effort_label(s, cp_model_index(s)) == "High";
+  // Switching Flawed default effort in prefs updates default effort on new chats.
+  vals: [CP_FLAWED_PREFS_COUNT] int;
+  #assert coder_page_flawed_prefs_get(s, vals[..]) == CP_FLAWED_PREFS_COUNT;
+  vals[4] = 4;   // Max
+  vals[17] = 1;  // Fast mode
+  vals[18] = 1;  // 1M extended context
+  coder_page_flawed_prefs_set(s, vals[..]);
+  #assert cp_effort_label(s, cp_model_index(s)) == "Max" && cp_task_effort(s, cp_model_index(s)) == "max";
+  #assert cp_contains(cp_model_desc(s, 0), "1M") && cp_contains(cp_model_desc(s, 0), "Fast");
+  // Attempt with 200K model upgrades ctx_window to 1,000,000 when extended_ctx is on.
+  #assert coder_page_set_text(s, "refactor") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"anthropic\",\"model\":\"claude-opus-4-7\",\"outcome\":\"succeeded\",\"status\":200,\"input_tokens\":5000,\"cached_tokens\":3000,\"output_tokens\":200}") == MWW_ATTEMPT;
+  #assert s[0].ctx_window == 1000000;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  // Save & load preserves flawed:claude-sonnet-4-6 cleanly.
+  #assert coder_page_pick_model(s, "flawed:claude-sonnet-4-6");
+  saved: [16384] u8; sn := coder_page_save(s, saved[..]);
+  p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]); cp_init(s2);
+  #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]) && cp_model_id(s2, cp_model_index(s2)) == "flawed:claude-sonnet-4-6";
 }

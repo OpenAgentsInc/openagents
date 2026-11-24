@@ -15,22 +15,22 @@
 
 #load "../../components/app/settings.coax";
 
-CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9; CP_PG_CONNECTIONS :: 10; CP_PG_SCHED :: 11; CP_PG_APPEARANCE :: 12; CP_PG_KEYBINDINGS :: 13; CP_PG_PROVIDERS :: 14;
-CP_SET_PAGES :: 15;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks", "Appearance", "Keybindings", "Providers"];
-CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN, ICON_SET_GENERAL, ICON_SET_GENERAL, ICON_WIDGET];
+CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9; CP_PG_CONNECTIONS :: 10; CP_PG_SCHED :: 11; CP_PG_APPEARANCE :: 12; CP_PG_KEYBINDINGS :: 13; CP_PG_PROVIDERS :: 14; CP_PG_FLAWED :: 15;
+CP_SET_PAGES :: 16;
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks", "Appearance", "Keybindings", "Providers", "Flawed"];
+CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN, ICON_SET_GENERAL, ICON_SET_GENERAL, ICON_WIDGET, ICON_CLAUDE];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
 CP_SET_GROUP :: [CP_SET_GROUPS] string.["Personal", "Agents", "Coder"];
-CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_APPEARANCE, CP_PG_KEYBINDINGS, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_PROVIDERS, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_SCHED, CP_PG_FOREMAN, CP_PG_CONNECTIONS, CP_PG_ABOUT];
-CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2];   // the group of each place in CP_SET_ORDER
+CP_SET_ORDER :: [CP_SET_PAGES] int.[CP_PG_GENERAL, CP_PG_APPEARANCE, CP_PG_KEYBINDINGS, CP_PG_VOICE, CP_PG_USAGE, CP_PG_WALLET, CP_PG_ACCOUNT, CP_PG_FLAWED, CP_PG_PROVIDERS, CP_PG_MODELS, CP_PG_MCP, CP_PG_SKILLS, CP_PG_SCHED, CP_PG_FOREMAN, CP_PG_CONNECTIONS, CP_PG_ABOUT];
+CP_SET_IN :: [CP_SET_PAGES] int.[0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2];   // the group of each place in CP_SET_ORDER
 CP_SET_QUERY :: 64;           // bytes of a search kept
 CP_SET_HITS :: 8;             // search results shown
 CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 80;
+CP_SET_ENTRIES :: 97;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -112,12 +112,29 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "", name = "Keybindings", terms = "keybindings shortcuts hotkeys keys rebind when clause conflict"},
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.reset", name = "Reset keybindings", terms = "reset default shortcuts keybindings"},
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.0", name = "Customize shortcuts", terms = "rebind shortcut when editorFocus terminalFocus filePaneFocus settingsFocus"},
-    CpSetEntry.{page = CP_PG_PROVIDERS, id = "", name = "Providers", terms = "antigravity claude codex cursor acp sign-in method gcp project location vertex ai gemini enterprise api key binary path managed runtime add provider"}];
+    CpSetEntry.{page = CP_PG_PROVIDERS, id = "", name = "Providers", terms = "antigravity claude codex cursor acp sign-in method gcp project location vertex ai gemini enterprise api key binary path managed runtime add provider"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "", name = "Flawed", terms = "flawed agent claude code parity anthropic opus sonnet haiku default agent"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.agent", name = "Default agent", terms = "flawed inkling default agent new chat startup"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.model", name = "Default Flawed model", terms = "flawed opus 4.7 sonnet 4.6 haiku 4.5 opus 4.6 claude model"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.custom", name = "Custom model override", terms = "flawed custom model slug proxy gateway router"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.ctx1m", name = "Extended 1M context", terms = "flawed 1m million context window long context"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.fast", name = "Fast mode", terms = "flawed fast mode speed output pricing"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.backend", name = "Inference backend", terms = "flawed backend auto anthropic oauth router local psionic"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.key", name = "Anthropic / Flawed API key", terms = "flawed anthropic api key secret token credential"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.url", name = "Custom API base URL", terms = "flawed base url proxy endpoint gateway"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tmode", name = "Thinking mode", terms = "flawed adaptive extended thinking reasoning budget"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.effort", name = "Default effort", terms = "flawed effort low medium high xhigh max reasoning"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "flawed permission default accept edits plan auto dont ask bypass"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "flawed sandbox seatbelt sandbox-exec bash confinement"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "flawed allowedTools disallowedTools additionalDirs tools"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "flawed prompt cache auto compact memory claude.md bare mode"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "flawed concise explanatory learning hooks defer toolsearch"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "flawed max turns budget usd cap remote bridge"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
-// Core release pages (flags == 0): General, Providers, Models (Local), and About & updates.
+// Core release pages (flags == 0): General, Flawed, Providers, Models (Local), and About & updates.
 cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
-  if page == CP_PG_GENERAL || page == CP_PG_MODELS || page == CP_PG_PROVIDERS || page == CP_PG_ABOUT { return true; }
+  if page == CP_PG_GENERAL || page == CP_PG_FLAWED || page == CP_PG_MODELS || page == CP_PG_PROVIDERS || page == CP_PG_ABOUT { return true; }
   if page == CP_PG_FOREMAN { return dc_flag_on(flags, DC_FLAG_FOREMAN); }
   if page == CP_PG_ACCOUNT { return dc_flag_on(flags, DC_FLAG_ACCOUNT); }
   if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
@@ -219,6 +236,7 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     return true;
   }
   if act != CP_SET_ACT { return false; }
+  if cp_flawed_settings_press(s, id) { return true; }
   if id == "set.folder.a" { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if id == "set.zoom.a" { s[0].ask = CP_ASK_ZOOM_OUT; return true; }
   if id == "set.zoom.b" { s[0].ask = CP_ASK_ZOOM_IN; return true; }
@@ -456,6 +474,8 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     irows[1] = SetRow.{id = "set.instr.reset", name = "Reset to default", desc = "Puts OpenAgents' default instructions back in place of yours.",
       kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
     y += cp_set_group(s, f, "set.instr.group", x, y, w, irows[..]);
+  } else if page == CP_PG_FLAWED {
+    y += cp_settings_flawed(s, f, x, y, w);
   } else if page == CP_PG_MODELS {
     models_sub := ifx cp_has_model_picker(s) then "The local runtime and optional cloud or CLI models." else "Inkling 2 Mini runs locally on this Mac through Psionic Metal.";
     y += set_page_head(f, "set.title", x, y, w, names[page], models_sub) + t.block_gap;
@@ -1082,7 +1102,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator_model(s) == 0 && cp_model_id(s, cp_model_index(s)) == "claude-fable-5-2";
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.3") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
   #assert !cp_settings_press(s, CP_SET_ACT, "set.orch.model.4");
-  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "gemini-4-neon";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "flawed:claude-opus-4-7";
 }
 
 #test "settings: each Claude model has a thinking level, which a chat on it and a sub-agent on it run at" {
@@ -1121,9 +1141,47 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert s[0].effort == CP_EFFORT_XHIGH && cp_effort_label(s, cp_model_index(s)) == "X-High" && cp_task_effort(s, cp_model_index(s)) == "xhigh";
   cp_effort_cycle(s); cp_effort_cycle(s);
   #assert s[0].effort == CP_EFFORT_LOW;
-  // x-high on a model that has no such level runs as high, and its chip wraps from high
-  s[0].effort = CP_EFFORT_MAX; s[0].model = CP_MODEL_DEFAULT;
-  #assert cp_effort_label(s, CP_MODEL_DEFAULT) == "High" && cp_task_effort(s, CP_MODEL_DEFAULT) == "high";
+  // x-high on a model that has no such level (e.g. Gemini) runs as high, and its chip wraps from high
+  gi := cp_model_find_exact(s, "gemini-4-neon");
+  #assert gi >= 0;
+  s[0].effort = CP_EFFORT_MAX; s[0].model = gi;
+  #assert cp_effort_label(s, gi) == "High" && cp_task_effort(s, gi) == "high";
   cp_effort_cycle(s);
   #assert s[0].effort == CP_EFFORT_LOW && cp_effort_of("xhigh") == CP_EFFORT_XHIGH && cp_effort_of("max") == CP_EFFORT_MAX;
+}
+
+#test "settings: Flawed page renders all Claude-Code-parity controls, responds to search, and updates prefs" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_flags_set(s, 0);
+  coder_page_flawed_info(s, "Anthropic API key (ends …5gAA)", "Ends 5gAA", "https://api.anthropic.com", "", "All built-in tools", "Unlimited turns");
+  coder_page_settings_open(s, CP_PG_FLAWED, "");
+  #assert coder_page_settings_page(s) == CP_PG_FLAWED;
+  #assert cp_set_test_frame(s, 1200, 3200);
+  #assert surface_find(s[0].surface[..], "set.flawed.agent") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.model") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.backend") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.tmode") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.pmode") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.bypass") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.sandbox") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.cache") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.style") >= 0;
+  #assert surface_find(s[0].surface[..], "set.flawed.reset") >= 0;
+  // Switching default agent to Inkling moves an empty chat to Inkling; switching back moves to Flawed.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_inkling(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed(s);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "flawed:claude-sonnet-4-6";
+  // Dialog actions dispatch cleanly.
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.key.a") && coder_page_action(s) == CP_ASK_FLAWED_KEY;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.url.a") && coder_page_action(s) == CP_ASK_FLAWED_BASE_URL;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.custom.a") && coder_page_action(s) == CP_ASK_FLAWED_CUSTOM_MODEL;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.tools.a") && coder_page_action(s) == CP_ASK_FLAWED_TOOLS;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.limits.a") && coder_page_action(s) == CP_ASK_FLAWED_LIMITS;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.auth.a") && coder_page_action(s) == CP_ASK_FLAWED_AUTH_CHECK;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.reset.a") && coder_page_action(s) == CP_ASK_FLAWED_RESET;
+  // Search finds Flawed settings even with flags == 0.
+  hits: [CP_SET_HITS] int;
+  #assert cp_set_hits_flags("flawed", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("sandbox", hits[..], 0) >= 1;
 }

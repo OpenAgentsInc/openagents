@@ -248,6 +248,10 @@ int cd_model_inst_id(void *page, char *out, int cap);
 int cd_model_agy(void *page);
 int cd_model_inkling(void *page);
 int cd_model_hybrid(void *page);
+int cd_model_flawed(void *page);
+void cd_flawed_prefs_set(void *page, const int *vals, int count);
+int cd_flawed_prefs_get(void *page, int *out, int cap);
+void cd_flawed_info(void *page, const char *auth_status, const char *key_label, const char *base_url, const char *custom_model, const char *tools_summary, const char *limits_summary);
 // cd_model_claude: whether the shown chat's model is a Claude one, which the Claude worker runs
 // (cd_model_provider says 7). cd_orchestrator_set: Settings > Models' pick of the model new chats
 // start on, as the host kept it: claude 0 for Gemini 4 Neon, 1 for Claude, and the Claude model

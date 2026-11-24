@@ -299,7 +299,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             setFolder(URL(fileURLWithPath: kept), keep: false)
         } else { setFolder(folder, keep: false) }
         cd_worktree_set(page, ChatWorktree.enabled ? 1 : 0)
+        FlawedSettings.apply(to: page)
         syncSettingsInfo()
+        checkFlawedAuth(showToast: false)
         setupProvidersSettings()
         #if OA_FULL
         if FeatureFlags.isOn(.usage) { setupUsageDashboard() }
@@ -365,7 +367,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             guard let self else { return }
             self.syncPhoneRuns()
-            if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && (!ComposerModelVisibility.showOtherModels || cd_model_inkling(self.page) != 0) {
+            let wantsLocal = cd_model_inkling(self.page) != 0 || (cd_model_flawed(self.page) != 0 && FlawedSettings.backend == 4)
+            if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && wantsLocal {
                 LocalModelServer.shared.prewarmIfReady()
             }
         }
@@ -392,9 +395,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym") { openGym() }
         if FeatureFlags.isOn(.gym) && CommandLine.arguments.contains("--gym-lean") { openGym(mode: 2) }
         #endif
-        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice, connections, scheduled, appearance, keybindings, providers).
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice, connections, scheduled, appearance, keybindings, providers, flawed).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
-           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
+           let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers", "flawed"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --file PATH opens a file directly in the right-pane File Viewer at launch (#13992).
@@ -404,8 +407,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
             let requested = CommandLine.arguments[at + 1]
+            let isFlawed = requested == "flawed" || requested == "Flawed" || requested.hasPrefix("flawed:")
             let isInkling = requested.hasPrefix("inkling-2-mini") || ["inkling", "Inkling 2 Mini"].contains(requested)
-            if isInkling {
+            if isFlawed {
+                _ = cd_pick_model(page, requested)
+            } else if isInkling {
                 if LocalModelStore.variant(id: requested) != nil && LocalModelStore.activeVariantId != requested {
                     if LocalModelStore.setActiveVariant(requested) {
                         LocalModelServer.shared.restartForVariantChange()
@@ -638,6 +644,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
+        case 190...197: flawedAsked(what)
         case 189:
             let on = cd_show_other_models(page) != 0
             ComposerModelVisibility.showOtherModels = on

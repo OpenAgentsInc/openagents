@@ -1,0 +1,2450 @@
+// Flawed Live Agent Worker for OpenAgents Desktop.
+// Pure-Coax worker powered by flawed/core.coax (Chapters 01-24) speaking the exact
+// mcworker-wire.coax JSON-line protocol on stdin/stdout with true SSE streaming,
+// adaptive/extended thinking, prompt caching, 8 built-in Claude-Code-parity tools,
+// interactive permission approval cards, Seatbelt sandbox, gitguard, auto-compaction,
+// memory/instructions loading, mid-turn steers, and follow-up queuing.
+//
+// Build: coax/web/tool.sh coder/tui/flawedworker.coax
+// Probe: coax/web/tool.sh coder/tui/flawedworker.coax --auth
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/gateway/transport.coax";
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "../../coax/lib/agent/engine/mcworker-queue.coax";
+#load "../../coax/lib/agent/user-instructions.coax";
+#load "../../coax/lib/microcoder/steer.coax";
+#load "../../flawed/core.coax";
+
+cxproc_wall_us :: () -> int #foreign #effects(all);
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxsecret_read_service :: (service: [] u8, account: [] u8, out: [] u8) -> int #foreign #effects(all);
+
+FWW_LINE :: 1048576;
+FWW_SLAB :: 2097152;
+FWW_MAX_MSGS :: 96;
+FWW_MAX_BLOCKS :: 16;
+FWW_MAX_TOOLS_CALL :: 12;
+FWW_FILE_MAX :: 262144;
+FWW_TOOL_OUT_MAX :: 32768;
+FWW_FC_ENTRIES :: 128;
+FWW_FC_SLAB :: 1048576;
+
+FWW_SRC_MESSAGE :: 0;
+FWW_SRC_QUEUE :: 1;
+FWW_SRC_RESUBMIT :: 2;
+
+FWW_MROLE_USER :: 1;
+FWW_MROLE_ASSISTANT :: 2;
+FWW_MROLE_TOOL_RESULTS :: 3;
+
+FWW_MB_TEXT :: 1;
+FWW_MB_THINK :: 2;
+FWW_MB_TOOL_USE :: 3;
+FWW_MB_TOOL_RES :: 4;
+
+// ---------------------------------------------------------------- basic helpers
+
+fww_send :: (o: [] u8, n: int) {
+  if n < 0 || n >= o.count { return; }
+  o[n] = 10;
+  _ = cxterm_write(o[0..<n + 1]);
+}
+
+fww_keep :: (dst: [] u8, s: string) -> int {
+  n := ifx s.count < dst.count then s.count else dst.count;
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+fww_cat :: (dst: [] u8, at: int, s: string) -> int {
+  n := at;
+  if n < 0 { return 0; }
+  for c: s {
+    if n >= dst.count { return n; }
+    dst[n] = c; n += 1;
+  }
+  return n;
+}
+
+fww_put_int :: (dst: [] u8, at: int, v: int) -> int {
+  n := at;
+  if n < 0 || n >= dst.count { return n; }
+  x := v;
+  if x < 0 {
+    dst[n] = '-'; n += 1;
+    x = -x;
+  }
+  if x == 0 {
+    if n < dst.count { dst[n] = '0'; n += 1; }
+    return n;
+  }
+  tmp: [24] u8; k := 0;
+  while x > 0 && k < 24 { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  while k > 0 && n < dst.count { k -= 1; dst[n] = tmp[k]; n += 1; }
+  return n;
+}
+
+fww_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+fww_parse_int :: (s: string, fallback: int) -> int {
+  t := fww_trim(s);
+  if t.count == 0 { return fallback; }
+  v := 0;
+  for c: t {
+    if c < '0' || c > '9' { return fallback; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+fww_env_int :: (name: string, fallback: int) -> int {
+  b: [64] u8;
+  s := cl_getenv(name, b[..]);
+  if s.count == 0 { return fallback; }
+  return fww_parse_int(s, fallback);
+}
+
+fww_env_bool :: (name: string, fallback: bool) -> bool {
+  b: [32] u8;
+  s := fww_trim(cl_getenv(name, b[..]));
+  if s.count == 0 { return fallback; }
+  if s == "1" || s == "true" || s == "on" || s == "yes" { return true; }
+  if s == "0" || s == "false" || s == "off" || s == "no" { return false; }
+  return fallback;
+}
+
+fww_poll_wait_ms :: (running: bool, polled: bool) -> int {
+  if !running { return 200; }
+  return ifx polled then 0 else 10;
+}
+
+// ---------------------------------------------------------------- runtime config (from Settings -> Flawed env)
+
+FwConfig :: struct {
+  backend_pref: int;          // FLAWED_BE_*
+  model: [128] u8; nmodel: int;
+  custom_model: [128] u8; ncustom_model: int;
+  effort: [32] u8; neffort: int;
+  thinking_mode: int;         // FLAWED_THINK_*
+  thinking_hidden: bool;
+  permission_mode: int;       // FLAWED_PMODE_*
+  bypass_danger: bool;
+  sandbox_mode: int;          // FLAWED_SANDBOX_*
+  git_guard: bool;
+  prompt_cache: int;          // FLAWED_CACHE_*
+  auto_compact: bool;
+  auto_memory: bool;
+  bare_mode: bool;
+  output_style: int;          // FLAWED_STYLE_*
+  hooks_mode: int;            // FLAWED_HOOKS_*
+  mcp_defer: bool;
+  fast_mode: bool;
+  extended_ctx: bool;
+  remote_bridge: bool;
+  max_turns: int;             // 0 = unlimited (capped at 64 safety)
+  max_budget_micros: int;     // 0 = unlimited
+  base_url: [512] u8; nbase_url: int;
+  allowed_tools: [512] u8; nallowed: int;
+  disallowed_tools: [512] u8; ndisallowed: int;
+  additional_dirs: [1024] u8; nadd_dirs: int;
+}
+
+fww_load_config :: (cfg: [] FwConfig) {
+  cfg[0] = FwConfig.{};
+  b: [1024] u8;
+
+  be := fww_trim(cl_getenv("FLAWED_BACKEND", b[..]));
+  if be == "anthropic" || be == "1" { cfg[0].backend_pref = FLAWED_BE_ANTHROPIC; }
+  else if be == "claude_oauth" || be == "oauth" || be == "2" { cfg[0].backend_pref = FLAWED_BE_CLAUDE_OAUTH; }
+  else if be == "openrouter" || be == "3" { cfg[0].backend_pref = FLAWED_BE_OPENROUTER; }
+  else if be == "local" || be == "psionic" || be == "4" { cfg[0].backend_pref = FLAWED_BE_LOCAL; }
+  else { cfg[0].backend_pref = FLAWED_BE_AUTO; }
+
+  m := fww_trim(cl_getenv("FLAWED_MODEL", b[..]));
+  cfg[0].nmodel = fww_keep(cfg[0].model[..], ifx m.count > 0 then m else "claude-opus-4-7");
+  cm := fww_trim(cl_getenv("FLAWED_CUSTOM_MODEL", b[..]));
+  cfg[0].ncustom_model = fww_keep(cfg[0].custom_model[..], cm);
+
+  ef := fww_trim(cl_getenv("FLAWED_EFFORT", b[..]));
+  cfg[0].neffort = fww_keep(cfg[0].effort[..], ifx ef.count > 0 then ef else "high");
+
+  tm := fww_trim(cl_getenv("FLAWED_THINKING_MODE", b[..]));
+  if tm == "extended" || tm == "1" { cfg[0].thinking_mode = FLAWED_THINK_EXTENDED; }
+  else if tm == "off" || tm == "2" { cfg[0].thinking_mode = FLAWED_THINK_OFF; }
+  else { cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE; }
+
+  td := fww_trim(cl_getenv("FLAWED_THINKING_DISPLAY", b[..]));
+  cfg[0].thinking_hidden = td == "omitted" || td == "hidden" || td == "1";
+
+  pm := fww_trim(cl_getenv("FLAWED_PERMISSION_MODE", b[..]));
+  if pm == "accept_edits" || pm == "acceptEdits" || pm == "1" { cfg[0].permission_mode = FLAWED_PMODE_ACCEPT_EDITS; }
+  else if pm == "plan" || pm == "2" { cfg[0].permission_mode = FLAWED_PMODE_PLAN; }
+  else if pm == "auto" || pm == "3" { cfg[0].permission_mode = FLAWED_PMODE_AUTO; }
+  else if pm == "dont_ask" || pm == "dontAsk" || pm == "4" { cfg[0].permission_mode = FLAWED_PMODE_DONT_ASK; }
+  else if pm == "bypass" || pm == "bypassPermissions" || pm == "5" { cfg[0].permission_mode = FLAWED_PMODE_BYPASS; }
+  else { cfg[0].permission_mode = FLAWED_PMODE_DEFAULT; }
+
+  cfg[0].bypass_danger = fww_env_bool("FLAWED_BYPASS_PERMISSIONS", false);
+
+  sb := fww_trim(cl_getenv("FLAWED_SANDBOX_MODE", b[..]));
+  if sb == "auto" || sb == "1" { cfg[0].sandbox_mode = FLAWED_SANDBOX_AUTO; }
+  else if sb == "enforced" || sb == "2" { cfg[0].sandbox_mode = FLAWED_SANDBOX_ENFORCED; }
+  else { cfg[0].sandbox_mode = FLAWED_SANDBOX_OFF; }
+
+  cfg[0].git_guard = fww_env_bool("FLAWED_GIT_GUARD", true);
+
+  pc := fww_trim(cl_getenv("FLAWED_PROMPT_CACHE", b[..]));
+  if pc == "org" || pc == "1" { cfg[0].prompt_cache = FLAWED_CACHE_ORG; }
+  else if pc == "off" || pc == "2" { cfg[0].prompt_cache = FLAWED_CACHE_OFF; }
+  else { cfg[0].prompt_cache = FLAWED_CACHE_GLOBAL; }
+
+  cfg[0].auto_compact = fww_env_bool("FLAWED_AUTO_COMPACT", true);
+  cfg[0].auto_memory = fww_env_bool("FLAWED_AUTO_MEMORY", true);
+  cfg[0].bare_mode = fww_env_bool("FLAWED_BARE_MODE", false);
+
+  os_st := fww_trim(cl_getenv("FLAWED_OUTPUT_STYLE", b[..]));
+  if os_st == "concise" || os_st == "1" { cfg[0].output_style = FLAWED_STYLE_CONCISE; }
+  else if os_st == "explanatory" || os_st == "2" { cfg[0].output_style = FLAWED_STYLE_EXPLANATORY; }
+  else if os_st == "learning" || os_st == "3" { cfg[0].output_style = FLAWED_STYLE_LEARNING; }
+  else { cfg[0].output_style = FLAWED_STYLE_DEFAULT; }
+
+  hm := fww_trim(cl_getenv("FLAWED_HOOKS_MODE", b[..]));
+  if hm == "managed" || hm == "1" { cfg[0].hooks_mode = FLAWED_HOOKS_MANAGED; }
+  else if hm == "off" || hm == "2" { cfg[0].hooks_mode = FLAWED_HOOKS_OFF; }
+  else { cfg[0].hooks_mode = FLAWED_HOOKS_ALL; }
+
+  cfg[0].mcp_defer = fww_env_bool("FLAWED_MCP_DEFER", true);
+  cfg[0].fast_mode = fww_env_bool("FLAWED_FAST_MODE", false);
+  cfg[0].extended_ctx = fww_env_bool("FLAWED_EXTENDED_CTX", false);
+  cfg[0].remote_bridge = fww_env_bool("FLAWED_REMOTE_BRIDGE", false);
+  cfg[0].max_turns = fww_env_int("FLAWED_MAX_TURNS", 0);
+  cfg[0].max_budget_micros = fww_env_int("FLAWED_MAX_BUDGET_MICROS", 0);
+
+  bu := fww_trim(cl_getenv("FLAWED_BASE_URL", b[..]));
+  if bu.count == 0 { bu = fww_trim(cl_getenv("ANTHROPIC_BASE_URL", b[..])); }
+  cfg[0].nbase_url = fww_keep(cfg[0].base_url[..], bu);
+
+  cfg[0].nallowed = fww_keep(cfg[0].allowed_tools[..], fww_trim(cl_getenv("FLAWED_ALLOWED_TOOLS", b[..])));
+  cfg[0].ndisallowed = fww_keep(cfg[0].disallowed_tools[..], fww_trim(cl_getenv("FLAWED_DISALLOWED_TOOLS", b[..])));
+  cfg[0].nadd_dirs = fww_keep(cfg[0].additional_dirs[..], fww_trim(cl_getenv("FLAWED_ADDITIONAL_DIRS", b[..])));
+}
+
+// ---------------------------------------------------------------- secure credential resolution (never logged)
+
+FwAuth :: struct {
+  ok: bool;
+  backend: int;               // resolved FLAWED_BE_ANTHROPIC / _CLAUDE_OAUTH / _OPENROUTER / _LOCAL
+  is_oauth: bool;
+  key: [4096] u8; nkey: int;
+  source: [64] u8; nsource: int;
+  label: [128] u8; nlabel: int;
+}
+
+fww_read_trimmed_file :: (path: string, out: [] u8) -> int {
+  if path.count == 0 || !fs_exists(path) { return 0; }
+  raw: [4096] u8;
+  n := fs_read(path, raw[..]);
+  if n <= 0 { return 0; }
+  t := fww_trim(cast(string) raw[0..<n]);
+  return fww_keep(out, t);
+}
+
+fww_read_env_file_key :: (path: string, var_name: string, out: [] u8) -> int {
+  if path.count == 0 || !fs_exists(path) { return 0; }
+  raw: [8192] u8;
+  n := fs_read(path, raw[..]);
+  if n <= 0 { return 0; }
+  s := cast(string) raw[0..<n];
+  i := 0;
+  while i < s.count {
+    e := i;
+    while e < s.count && s[e] != '\n' { e += 1; }
+    ln := fww_trim(cast(string) s[i..<e]);
+    i = e + 1;
+    if ln.count == 0 || ln[0] == '#' { continue; }
+    if flawed_aw_starts(ln, "export ") { ln = fww_trim(cast(string) ln[7..<ln.count]); }
+    if ln.count > var_name.count + 1 && flawed_aw_starts(ln, var_name) && ln[var_name.count] == '=' {
+      val := fww_trim(cast(string) ln[var_name.count + 1..<ln.count]);
+      if val.count >= 2 && ((val[0] == '"' && val[val.count - 1] == '"') || (val[0] == '\'' && val[val.count - 1] == '\'')) {
+        val = cast(string) val[1..<val.count - 1];
+      }
+      return fww_keep(out, val);
+    }
+  }
+  return 0;
+}
+
+fww_read_claude_oauth :: (home: string, out: [] u8) -> int {
+  raw: [16384] u8;
+  defer { for i: 0..<raw.count { raw[i] = 0; } }
+  svc: [64] u8; ns := fww_keep(svc[..], "Claude Code-credentials");
+  user: [256] u8; uname := proc_username(user[..]);
+  sz := cxsecret_read_service(svc[0..<ns], user[0..<uname.count], raw[..]);
+  if sz <= 0 && home.count > 0 {
+    pb: [1024] u8;
+    p := fs_join(home, ".claude/.credentials.json", pb[..]);
+    if p.count > 0 && fs_exists(p) { sz = fs_read(p, raw[..]); }
+  }
+  if sz <= 0 { return 0; }
+  nodes: [128] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], cast(string) raw[0..<sz], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
+  tok := jv_path(d[0], 0, "claudeAiOauth.accessToken");
+  if tok < 0 { tok = jv_get(d[0], 0, "accessToken"); }
+  if tok < 0 { return 0; }
+  tn := jv_str(d[0], tok, out);
+  return ifx tn > 0 then tn else 0;
+}
+
+fww_key_suffix_label :: (prefix: string, key: string, out: [] u8) -> int {
+  n := fww_cat(out, 0, prefix);
+  if key.count >= 4 {
+    n = fww_cat(out, n, " (ends …");
+    n = fww_cat(out, n, cast(string) key[key.count - 4..<key.count]);
+    n = fww_cat(out, n, ")");
+  }
+  return n;
+}
+
+fww_try_anthropic_key :: (home: string, out_key: [] u8, src_out: [] u8, nsrc: [] int) -> int {
+  b: [4096] u8;
+  k := fww_trim(cl_getenv("FLAWED_API_KEY", b[..]));
+  if k.count > 0 { nsrc[0] = fww_keep(src_out, "flawed_env"); return fww_keep(out_key, k); }
+  if home.count > 0 {
+    pb: [1024] u8;
+    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/flawed-key", pb[..]), out_key);
+    if n > 0 { nsrc[0] = fww_keep(src_out, "flawed_key"); return n; }
+  }
+  k = fww_trim(cl_getenv("ANTHROPIC_API_KEY", b[..]));
+  if k.count > 0 { nsrc[0] = fww_keep(src_out, "anthropic_env"); return fww_keep(out_key, k); }
+  k = fww_trim(cl_getenv("CODER_CLAUDE_KEY", b[..]));
+  if k.count > 0 { nsrc[0] = fww_keep(src_out, "claude_env"); return fww_keep(out_key, k); }
+  if home.count > 0 {
+    pb: [1024] u8;
+    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/claude-key", pb[..]), out_key);
+    if n > 0 { nsrc[0] = fww_keep(src_out, "claude_key"); return n; }
+  }
+  return 0;
+}
+
+fww_try_openrouter_key :: (home: string, out_key: [] u8) -> int {
+  b: [4096] u8;
+  k := fww_trim(cl_getenv("OPENROUTER_API_KEY", b[..]));
+  if k.count > 0 { return fww_keep(out_key, k); }
+  if home.count > 0 {
+    pb: [1024] u8;
+    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/openrouter-key", pb[..]), out_key);
+    if n > 0 { return n; }
+    n = fww_read_env_file_key(fs_join(home, "work/.secrets/openrouter.env", pb[..]), "OPENROUTER_API_KEY", out_key);
+    if n > 0 { return n; }
+  }
+  return 0;
+}
+
+fww_local_reachable :: (local_base: string) -> bool {
+  ub: [512] u8;
+  b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:11435");
+  n := fww_cat(ub[..], 0, b);
+  n = fww_cat(ub[..], n, "/v1/models");
+  h := proc_new();
+  if h < 0 { return false; }
+  ok := proc_arg(h, "curl") && proc_arg(h, "-sf") && proc_arg(h, "--connect-timeout") && proc_arg(h, "1") && proc_arg(h, "--max-time") && proc_arg(h, "2") && proc_arg(h, cast(string) ub[0..<n]);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return false; }
+  _ = proc_close_stdin(h);
+  st := proc_wait(h, 2500);
+  _ = proc_release(h);
+  return st == 0;
+}
+
+fww_resolve_auth :: (cfg: [] FwConfig, home: string, auth: [] FwAuth) {
+  auth[0] = FwAuth.{};
+  rb: [256] u8;
+  replaying := cl_getenv("GW_REPLAY", rb[..]).count > 0;
+  pref := cfg[0].backend_pref;
+  lbase_b: [512] u8;
+  lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
+
+  // Local explicit
+  if pref == FLAWED_BE_LOCAL {
+    if replaying || fww_local_reachable(lbase) {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_LOCAL;
+      auth[0].nsource = fww_keep(auth[0].source[..], "local");
+      auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic Metal");
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "local_offline");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic server not running");
+    return;
+  }
+
+  // OpenRouter explicit
+  if pref == FLAWED_BE_OPENROUTER {
+    kn := fww_try_openrouter_key(home, auth[0].key[..]);
+    if kn > 0 || replaying {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_OPENROUTER;
+      auth[0].nkey = kn;
+      auth[0].nsource = fww_keep(auth[0].source[..], "openrouter");
+      auth[0].nlabel = fww_key_suffix_label("OpenRouter", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "No OpenRouter API key configured");
+    return;
+  }
+
+  // Claude OAuth explicit
+  if pref == FLAWED_BE_CLAUDE_OAUTH {
+    kn := fww_read_claude_oauth(home, auth[0].key[..]);
+    if kn > 0 || replaying {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_CLAUDE_OAUTH;
+      auth[0].is_oauth = true;
+      auth[0].nkey = kn;
+      auth[0].nsource = fww_keep(auth[0].source[..], "claude_oauth");
+      auth[0].nlabel = fww_keep(auth[0].label[..], "Claude Account (OAuth Keychain)");
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "No Claude OAuth login found (run `claude login`)");
+    return;
+  }
+
+  // Anthropic API explicit
+  if pref == FLAWED_BE_ANTHROPIC {
+    src_b: [32] u8; nsrc := [1] int.[0];
+    kn := fww_try_anthropic_key(home, auth[0].key[..], src_b[..], nsrc[..]);
+    if kn > 0 || replaying {
+      kstr := cast(string) auth[0].key[0..<kn];
+      is_oa := flawed_aw_starts(kstr, "sk-ant-oat");
+      auth[0].ok = true;
+      auth[0].backend = ifx is_oa then FLAWED_BE_CLAUDE_OAUTH else FLAWED_BE_ANTHROPIC;
+      auth[0].is_oauth = is_oa;
+      auth[0].nkey = kn;
+      auth[0].nsource = fww_keep(auth[0].source[..], ifx nsrc[0] > 0 then cast(string) src_b[0..<nsrc[0]] else "anthropic_api");
+      auth[0].nlabel = fww_key_suffix_label(ifx is_oa then "Anthropic OAuth" else "Anthropic API key", kstr, auth[0].label[..]);
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Add an API key in Settings → Flawed");
+    return;
+  }
+
+  // Auto priority:
+  // 1. Explicit Flawed/Anthropic API key (or custom base URL with key)
+  src_b: [32] u8; nsrc := [1] int.[0];
+  kn := fww_try_anthropic_key(home, auth[0].key[..], src_b[..], nsrc[..]);
+  if kn > 0 {
+    kstr := cast(string) auth[0].key[0..<kn];
+    is_oa := flawed_aw_starts(kstr, "sk-ant-oat");
+    auth[0].ok = true;
+    auth[0].backend = ifx is_oa then FLAWED_BE_CLAUDE_OAUTH else FLAWED_BE_ANTHROPIC;
+    auth[0].is_oauth = is_oa;
+    auth[0].nkey = kn;
+    auth[0].nsource = fww_keep(auth[0].source[..], cast(string) src_b[0..<nsrc[0]]);
+    auth[0].nlabel = fww_key_suffix_label(ifx is_oa then "Anthropic OAuth" else "Anthropic API key", kstr, auth[0].label[..]);
+    return;
+  }
+  // 2. Claude Code OAuth Keychain / ~/.claude/.credentials.json
+  kn = fww_read_claude_oauth(home, auth[0].key[..]);
+  if kn > 0 {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_CLAUDE_OAUTH;
+    auth[0].is_oauth = true;
+    auth[0].nkey = kn;
+    auth[0].nsource = fww_keep(auth[0].source[..], "claude_oauth");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Claude Account (OAuth Keychain)");
+    return;
+  }
+  // 3. OpenRouter key
+  kn = fww_try_openrouter_key(home, auth[0].key[..]);
+  if kn > 0 {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_OPENROUTER;
+    auth[0].nkey = kn;
+    auth[0].nsource = fww_keep(auth[0].source[..], "openrouter");
+    auth[0].nlabel = fww_key_suffix_label("OpenRouter", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
+    return;
+  }
+  // 4. Local Psionic Metal or Replay
+  if replaying {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_ANTHROPIC;
+    auth[0].nsource = fww_keep(auth[0].source[..], "replay");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Replay");
+    return;
+  }
+  if fww_local_reachable(lbase) {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_LOCAL;
+    auth[0].nsource = fww_keep(auth[0].source[..], "local");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic Metal");
+    return;
+  }
+  auth[0].nsource = fww_keep(auth[0].source[..], "none");
+  auth[0].nlabel = fww_keep(auth[0].label[..], "No API key or login configured");
+}
+
+// ---------------------------------------------------------------- conversation history (zero-heap slab)
+
+FwBlock :: struct {
+  kind: int;
+  id_at: int; id_n: int;
+  name_at: int; name_n: int;
+  text_at: int; text_n: int;
+  sig_at: int; sig_n: int;
+  is_error: bool;
+}
+
+FwMsg :: struct {
+  role: int;
+  blocks: [FWW_MAX_BLOCKS] FwBlock;
+  nblocks: int;
+}
+
+FwHist :: struct {
+  msgs: [FWW_MAX_MSGS] FwMsg;
+  nmsgs: int;
+  slab: [FWW_SLAB] u8;
+  nslab: int;
+  total_in: int;
+  total_out: int;
+  total_cached: int;
+  total_cost_micros: int;
+}
+
+fww_slab_put :: (h: [] FwHist, s: string, out_at: [] int) -> int {
+  if s.count == 0 { out_at[0] = 0; return 0; }
+  avail := h[0].slab.count - h[0].nslab;
+  if avail <= 0 { out_at[0] = 0; return 0; }
+  n := ifx s.count < avail then s.count else avail;
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  at := h[0].nslab;
+  for i: 0..<n { h[0].slab[at + i] = s[i]; }
+  h[0].nslab += n;
+  out_at[0] = at;
+  return n;
+}
+
+fww_slab_str :: (h: [] FwHist, at: int, n: int) -> string {
+  if n <= 0 || at < 0 || at + n > h[0].slab.count { return ""; }
+  return cast(string) h[0].slab[at..<at + n];
+}
+
+fww_hist_clear :: (h: [] FwHist) {
+  h[0].nmsgs = 0;
+  h[0].nslab = 0;
+}
+
+fww_hist_push_user :: (h: [] FwHist, text: string) {
+  if h[0].nmsgs >= FWW_MAX_MSGS { return; }
+  m := h[0].nmsgs;
+  h[0].msgs[m] = FwMsg.{role = FWW_MROLE_USER};
+  at := [1] int.[0];
+  n := fww_slab_put(h, text, at[..]);
+  h[0].msgs[m].blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = at[0], text_n = n};
+  h[0].msgs[m].nblocks = 1;
+  h[0].nmsgs += 1;
+}
+
+fww_hist_push_assistant_text :: (h: [] FwHist, text: string) {
+  if h[0].nmsgs >= FWW_MAX_MSGS { return; }
+  m := h[0].nmsgs;
+  h[0].msgs[m] = FwMsg.{role = FWW_MROLE_ASSISTANT};
+  at := [1] int.[0];
+  n := fww_slab_put(h, text, at[..]);
+  h[0].msgs[m].blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = at[0], text_n = n};
+  h[0].msgs[m].nblocks = 1;
+  h[0].nmsgs += 1;
+}
+
+// Compacts oldest turns when history grows large (Ch 09 5-layer compaction policy).
+fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
+  if h[0].nmsgs <= 4 { return false; }
+  // Preserve the last 4 messages (ending cleanly on a user turn boundary when possible).
+  keep_from := h[0].nmsgs - 4;
+  while keep_from > 0 && h[0].msgs[keep_from].role != FWW_MROLE_USER { keep_from -= 1; }
+  if keep_from <= 0 { return false; }
+
+  // Build concise summary of compacted messages into tmp_buf[0..<sum_n].
+  sum_n := fww_cat(tmp_buf, 0, "[Compacted earlier conversation context — ");
+  sum_n = fww_put_int(tmp_buf, sum_n, keep_from);
+  sum_n = fww_cat(tmp_buf, sum_n, " earlier messages summarized]\n");
+  for i: 0..<keep_from {
+    if sum_n + 256 >= tmp_buf.count { break; }
+    role_lbl := ifx h[0].msgs[i].role == FWW_MROLE_USER then "User: " else ifx h[0].msgs[i].role == FWW_MROLE_ASSISTANT then "Assistant: " else "Tools: ";
+    sum_n = fww_cat(tmp_buf, sum_n, role_lbl);
+    for b: 0..<h[0].msgs[i].nblocks {
+      bk := h[0].msgs[i].blocks[b];
+      if bk.kind == FWW_MB_TEXT {
+        txt := fww_slab_str(h, bk.text_at, bk.text_n);
+        take := ifx txt.count > 160 then 160 else txt.count;
+        while take > 0 && take < txt.count && (txt[take] & 0xC0) == 0x80 { take -= 1; }
+        sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
+        break;
+      }
+    }
+    sum_n = fww_cat(tmp_buf, sum_n, "\n");
+  }
+
+  // Copy kept messages' strings into tail half of tmp_buf, reset slab, re-insert cleanly.
+  kept_msgs: [FWW_MAX_MSGS] FwMsg;
+  nkept := h[0].nmsgs - keep_from;
+  for k: 0..<nkept { kept_msgs[k] = h[0].msgs[keep_from + k]; }
+
+  // Relocate slab bytes for kept messages by copying into a scratch window in tmp_buf[sum_n..].
+  reloc_base := sum_n;
+  reloc_at := reloc_base;
+  for k: 0..<nkept {
+    for b: 0..<kept_msgs[k].nblocks {
+      bk := kept_msgs[k].blocks[b];
+      // Copy id, name, text, sig
+      id_s := fww_slab_str(h, bk.id_at, bk.id_n);
+      id_new := reloc_at; id_n := fww_cat(tmp_buf, reloc_at, id_s) - reloc_at; reloc_at += id_n;
+      nm_s := fww_slab_str(h, bk.name_at, bk.name_n);
+      nm_new := reloc_at; nm_n := fww_cat(tmp_buf, reloc_at, nm_s) - reloc_at; reloc_at += nm_n;
+      tx_s := fww_slab_str(h, bk.text_at, bk.text_n);
+      tx_new := reloc_at; tx_n := fww_cat(tmp_buf, reloc_at, tx_s) - reloc_at; reloc_at += tx_n;
+      sg_s := fww_slab_str(h, bk.sig_at, bk.sig_n);
+      sg_new := reloc_at; sg_n := fww_cat(tmp_buf, reloc_at, sg_s) - reloc_at; reloc_at += sg_n;
+      kept_msgs[k].blocks[b].id_at = id_new; kept_msgs[k].blocks[b].id_n = id_n;
+      kept_msgs[k].blocks[b].name_at = nm_new; kept_msgs[k].blocks[b].name_n = nm_n;
+      kept_msgs[k].blocks[b].text_at = tx_new; kept_msgs[k].blocks[b].text_n = tx_n;
+      kept_msgs[k].blocks[b].sig_at = sg_new; kept_msgs[k].blocks[b].sig_n = sg_n;
+    }
+  }
+
+  fww_hist_clear(h);
+  fww_hist_push_user(h, cast(string) tmp_buf[0..<sum_n]);
+  fww_hist_push_assistant_text(h, "Understood. I have the compacted context and will continue seamlessly.");
+  for k: 0..<nkept {
+    if h[0].nmsgs >= FWW_MAX_MSGS { break; }
+    mi := h[0].nmsgs;
+    h[0].msgs[mi] = FwMsg.{role = kept_msgs[k].role};
+    for b: 0..<kept_msgs[k].nblocks {
+      bk := kept_msgs[k].blocks[b];
+      nb := FwBlock.{kind = bk.kind, is_error = bk.is_error};
+      a0 := [1] int.[0];
+      nb.id_n = fww_slab_put(h, cast(string) tmp_buf[bk.id_at..<bk.id_at + bk.id_n], a0[..]); nb.id_at = a0[0];
+      nb.name_n = fww_slab_put(h, cast(string) tmp_buf[bk.name_at..<bk.name_at + bk.name_n], a0[..]); nb.name_at = a0[0];
+      nb.text_n = fww_slab_put(h, cast(string) tmp_buf[bk.text_at..<bk.text_at + bk.text_n], a0[..]); nb.text_at = a0[0];
+      nb.sig_n = fww_slab_put(h, cast(string) tmp_buf[bk.sig_at..<bk.sig_at + bk.sig_n], a0[..]); nb.sig_at = a0[0];
+      h[0].msgs[mi].blocks[b] = nb;
+    }
+    h[0].msgs[mi].nblocks = kept_msgs[k].nblocks;
+    h[0].nmsgs += 1;
+  }
+  return true;
+}
+
+// Hydrate persisted turns from MWW_RECALL JSON array [{"task":...,"reply":...},...].
+fww_hist_recall :: (h: [] FwHist, recall_json: string) {
+  fww_hist_clear(h);
+  if recall_json.count < 2 { return; }
+  cnt := cl_count(recall_json);
+  ab: [65536] u8;
+  ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  for i: 0..<cnt {
+    if h[0].nmsgs + 2 >= FWW_MAX_MSGS { break; }
+    ar[0].at = 0; ar[0].full = false;
+    item := cl_json(recall_json, cl_item(recall_json, i));
+    if item.count == 0 { continue; }
+    tk := cl_str(ar[..], item, "task");
+    rp := cl_str(ar[..], item, "reply");
+    if tk.count > 0 { fww_hist_push_user(h, tk); }
+    if rp.count > 0 { fww_hist_push_assistant_text(h, rp); }
+  }
+}
+
+// ---------------------------------------------------------------- system prompt & memory loader (Ch 04 + Ch 10)
+
+fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
+  n := 0;
+  n = fww_cat(out, n, "You are Flawed, an autonomous software engineering coding agent running natively inside OpenAgents Desktop.\n");
+  n = fww_cat(out, n, "Working directory: ");
+  n = fww_cat(out, n, cwd);
+  n = fww_cat(out, n, "\nPlatform: ");
+  n = fww_cat(out, n, ifx tool_os() == TOOL_LINUX then "Linux" else "macOS");
+  n = fww_cat(out, n, "\n\nGuidelines:\n");
+  n = fww_cat(out, n, "- Use Read, Edit, Write, Glob, Grep, Bash, TodoWrite, and WebFetch tools to inspect and modify the codebase directly.\n");
+  n = fww_cat(out, n, "- Always Read a file before using Edit on it.\n");
+  n = fww_cat(out, n, "- Verify code changes by running relevant tests/builds before claiming completion.\n");
+  n = fww_cat(out, n, "- Keep responses accurate, well-structured in Markdown, and grounded in observed tool outputs.\n");
+
+  if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger {
+    n = fww_cat(out, n, "\n[PLAN MODE ACTIVE]: Do not edit or write files. Inspect the codebase, analyze requirements, and present a clear step-by-step implementation plan.\n");
+  }
+
+  if cfg[0].output_style == FLAWED_STYLE_CONCISE {
+    n = fww_cat(out, n, "\n[Output Style: Concise]: Be brief and direct. Avoid unnecessary filler.\n");
+  } else if cfg[0].output_style == FLAWED_STYLE_EXPLANATORY {
+    n = fww_cat(out, n, "\n[Output Style: Explanatory]: Explain the architectural reasoning and tradeoffs behind your implementation choices.\n");
+  } else if cfg[0].output_style == FLAWED_STYLE_LEARNING {
+    n = fww_cat(out, n, "\n[Output Style: Learning]: Explain key concepts clearly and invite collaborative decisions on non-trivial tradeoffs.\n");
+  }
+
+  if !cfg[0].bare_mode {
+    // Load user instructions (~/.openagents/instructions.md)
+    upb: [FS_PATH_MAX] u8;
+    upath := uinstr_path(upb[..]);
+    ubuf: [4608] u8;
+    usr := uinstr_read(upath, ubuf[..]);
+    if usr.count > 0 {
+      n = fww_cat(out, n, "\n\n# User Instructions\n");
+      n = fww_cat(out, n, usr);
+    }
+
+    // Load project CLAUDE.md / AGENTS.md + auto-memory MEMORY.md (Ch 10)
+    if cfg[0].auto_memory {
+      pb: [FS_PATH_MAX] u8;
+      fbuf: [8192] u8;
+      cpath := fs_join(cwd, "CLAUDE.md", pb[..]);
+      if cpath.count > 0 && fs_exists(cpath) {
+        rn := fs_read(cpath, fbuf[..]);
+        if rn > 0 {
+          n = fww_cat(out, n, "\n\n# Project CLAUDE.md\n");
+          n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
+        }
+      }
+      apath := fs_join(cwd, "AGENTS.md", pb[..]);
+      if apath.count > 0 && fs_exists(apath) {
+        rn := fs_read(apath, fbuf[..]);
+        if rn > 0 {
+          n = fww_cat(out, n, "\n\n# Project AGENTS.md\n");
+          n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
+        }
+      }
+      if home.count > 0 {
+        mpath := fs_join(home, ".claude/CLAUDE.md", pb[..]);
+        if mpath.count > 0 && fs_exists(mpath) {
+          rn := fs_read(mpath, fbuf[..]);
+          if rn > 0 {
+            n = fww_cat(out, n, "\n\n# Global ~/.claude/CLAUDE.md\n");
+            n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
+          }
+        }
+      }
+    }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- request JSON builders (Anthropic & OpenAI)
+
+fww_build_anthropic_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, out: [] u8) -> int {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort));
+  jo_key(o[..], "stream"); jo_bool(o[..], true);
+
+  cache_on := cfg[0].prompt_cache != FLAWED_CACHE_OFF;
+
+  // System prompt array with cache_control
+  jo_key(o[..], "system");
+  jo_arr(o[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "text");
+  jo_key(o[..], "text"); jo_str(o[..], sys_prompt);
+  if cache_on {
+    jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}");
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+
+  // Thinking configuration (Adaptive / Extended / Off)
+  if cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE {
+    jo_key(o[..], "thinking"); jo_raw(o[..], "{\"type\":\"adaptive\"}");
+    jo_key(o[..], "output_config");
+    jo_obj(o[..]);
+    jo_key(o[..], "effort"); jo_str(o[..], flawed_wire_effort_token(effort));
+    jo_end(o[..]);
+  } else if cfg[0].thinking_mode == FLAWED_THINK_EXTENDED {
+    jo_key(o[..], "thinking");
+    jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], "enabled");
+    jo_key(o[..], "budget_tokens"); jo_int(o[..], flawed_wire_thinking_budget(effort));
+    jo_end(o[..]);
+  }
+
+  // Tools
+  allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
+  disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
+  jo_key(o[..], "tools");
+  _ = flawed_wire_write_tools(o[..], true, allowed, disallowed, cache_on);
+
+  // Messages
+  jo_key(o[..], "messages");
+  jo_arr(o[..]);
+  last_user := -1;
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role == FWW_MROLE_USER || h[0].msgs[i].role == FWW_MROLE_TOOL_RESULTS { last_user = i; }
+  }
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "role");
+    jo_str(o[..], ifx msg.role == FWW_MROLE_ASSISTANT then "assistant" else "user");
+    jo_key(o[..], "content");
+    jo_arr(o[..]);
+    for b: 0..<msg.nblocks {
+      bk := msg.blocks[b];
+      is_last_bp := cache_on && i == last_user && b == msg.nblocks - 1;
+      if bk.kind == FWW_MB_THINK {
+        sig := fww_slab_str(h, bk.sig_at, bk.sig_n);
+        if sig.count > 0 {
+          jo_obj(o[..]);
+          jo_key(o[..], "type"); jo_str(o[..], "thinking");
+          jo_key(o[..], "thinking"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          jo_key(o[..], "signature"); jo_str(o[..], sig);
+          jo_end(o[..]);
+        }
+      } else if bk.kind == FWW_MB_TEXT {
+        jo_obj(o[..]);
+        jo_key(o[..], "type"); jo_str(o[..], "text");
+        jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+        if is_last_bp { jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}"); }
+        jo_end(o[..]);
+      } else if bk.kind == FWW_MB_TOOL_USE {
+        jo_obj(o[..]);
+        jo_key(o[..], "type"); jo_str(o[..], "tool_use");
+        jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+        jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n));
+        inp := fww_slab_str(h, bk.text_at, bk.text_n);
+        jo_key(o[..], "input");
+        jo_raw(o[..], ifx inp.count > 0 && json_valid(inp) then inp else "{}");
+        jo_end(o[..]);
+      } else if bk.kind == FWW_MB_TOOL_RES {
+        jo_obj(o[..]);
+        jo_key(o[..], "type"); jo_str(o[..], "tool_result");
+        jo_key(o[..], "tool_use_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+        jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+        if bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
+        if is_last_bp { jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}"); }
+        jo_end(o[..]);
+      }
+    }
+    jo_end(o[..]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, out: [] u8) -> int {
+  o: [1] Jo;
+  jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort));
+  jo_key(o[..], "stream"); jo_bool(o[..], true);
+  jo_key(o[..], "stream_options"); jo_raw(o[..], "{\"include_usage\":true}");
+
+  allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
+  disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
+  jo_key(o[..], "tools");
+  _ = flawed_wire_write_tools(o[..], false, allowed, disallowed, false);
+
+  jo_key(o[..], "messages");
+  jo_arr(o[..]);
+  // System message
+  jo_obj(o[..]);
+  jo_key(o[..], "role"); jo_str(o[..], "system");
+  jo_key(o[..], "content"); jo_str(o[..], sys_prompt);
+  jo_end(o[..]);
+
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    if msg.role == FWW_MROLE_USER {
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "user");
+      txt := ifx msg.nblocks > 0 then fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n) else "";
+      jo_key(o[..], "content"); jo_str(o[..], txt);
+      jo_end(o[..]);
+    } else if msg.role == FWW_MROLE_ASSISTANT {
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "assistant");
+      has_text := false;
+      has_tools := false;
+      for b: 0..<msg.nblocks {
+        if msg.blocks[b].kind == FWW_MB_TEXT && msg.blocks[b].text_n > 0 { has_text = true; }
+        if msg.blocks[b].kind == FWW_MB_TOOL_USE { has_tools = true; }
+      }
+      if has_text {
+        jo_key(o[..], "content");
+        for b: 0..<msg.nblocks {
+          if msg.blocks[b].kind == FWW_MB_TEXT {
+            jo_str(o[..], fww_slab_str(h, msg.blocks[b].text_at, msg.blocks[b].text_n));
+            break;
+          }
+        }
+      } else {
+        jo_key(o[..], "content"); jo_raw(o[..], "null");
+      }
+      if has_tools {
+        jo_key(o[..], "tool_calls");
+        jo_arr(o[..]);
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind != FWW_MB_TOOL_USE { continue; }
+          jo_obj(o[..]);
+          jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+          jo_key(o[..], "type"); jo_str(o[..], "function");
+          jo_key(o[..], "function");
+          jo_obj(o[..]);
+          jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n));
+          inp := fww_slab_str(h, bk.text_at, bk.text_n);
+          jo_key(o[..], "arguments"); jo_str(o[..], ifx inp.count > 0 then inp else "{}");
+          jo_end(o[..]);
+          jo_end(o[..]);
+        }
+        jo_end(o[..]);
+      }
+      jo_end(o[..]);
+    } else if msg.role == FWW_MROLE_TOOL_RESULTS {
+      for b: 0..<msg.nblocks {
+        bk := msg.blocks[b];
+        if bk.kind != FWW_MB_TOOL_RES { continue; }
+        jo_obj(o[..]);
+        jo_key(o[..], "role"); jo_str(o[..], "tool");
+        jo_key(o[..], "tool_call_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+        jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+        jo_end(o[..]);
+      }
+    }
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---------------------------------------------------------------- workspace tools implementation (8 Claude-Code-parity tools)
+
+fww_resolve_path :: (cwd: string, raw: string, out: [] u8) -> string {
+  if raw.count == 0 { return ""; }
+  if raw[0] == '/' {
+    n := fww_keep(out, raw);
+    return cast(string) out[0..<n];
+  }
+  if raw.count >= 2 && raw[0] == '~' && raw[1] == '/' {
+    hb: [1024] u8;
+    home := cl_getenv("HOME", hb[..]);
+    if home.count > 0 {
+      return fs_join(home, cast(string) raw[2..<raw.count], out);
+    }
+  }
+  return fs_join(cwd, raw, out);
+}
+
+// Format unified diff hunk for desktop UI's cp_act_edit (renders native +N/-M diff rows!).
+fww_format_diff :: (old_s: string, new_s: string, out: [] u8) -> int {
+  n := fww_cat(out, 0, "@@ -1 +1 @@\n");
+  // Emit '-' lines for old_s
+  i := 0;
+  shown := 0;
+  while i < old_s.count && shown < 24 && n + 128 < out.count {
+    e := i;
+    while e < old_s.count && old_s[e] != '\n' { e += 1; }
+    n = fww_cat(out, n, "-");
+    n = fww_cat(out, n, cast(string) old_s[i..<e]);
+    n = fww_cat(out, n, "\n");
+    i = e + 1; shown += 1;
+  }
+  // Emit '+' lines for new_s
+  i = 0; shown = 0;
+  while i < new_s.count && shown < 24 && n + 128 < out.count {
+    e := i;
+    while e < new_s.count && new_s[e] != '\n' { e += 1; }
+    n = fww_cat(out, n, "+");
+    n = fww_cat(out, n, cast(string) new_s[i..<e]);
+    n = fww_cat(out, n, "\n");
+    i = e + 1; shown += 1;
+  }
+  return n;
+}
+
+fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Read.");
+  }
+  pb_raw: [1024] u8;
+  pn := jv_str(d[0], jv_get(d[0], 0, "file_path"), pb_raw[..]);
+  if pn <= 0 { pn = jv_str(d[0], jv_get(d[0], 0, "path"), pb_raw[..]); }
+  if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Read requires file_path."); }
+  raw_path := cast(string) pb_raw[0..<pn];
+  offset := jv_int(d[0], jv_get(d[0], 0, "offset"), 1);
+  limit := jv_int(d[0], jv_get(d[0], 0, "limit"), 250);
+  if offset < 1 { offset = 1; }
+  if limit < 1 { limit = 250; }
+  if limit > 1000 { limit = 1000; }
+
+  rval := flawed_read_validate_input(raw_path, false, offset, limit);
+  if rval == FLAWED_RVAL_BLOCKED_DEVICE {
+    is_err[0] = true; return fww_keep(out_res, "Refused: blocked special device file.");
+  }
+
+  full_b: [FS_PATH_MAX] u8;
+  full := fww_resolve_path(cwd, raw_path, full_b[..]);
+  if full.count == 0 || !fs_exists(full) {
+    fww_send(wire_out, mww_view(wire_out, raw_path, false));
+    is_err[0] = true;
+    n := fww_cat(out_res, 0, "File not found: ");
+    return fww_cat(out_res, n, raw_path);
+  }
+  sz := fs_read(full, fbuf);
+  if sz < 0 {
+    fww_send(wire_out, mww_view(wire_out, raw_path, false));
+    is_err[0] = true;
+    return fww_keep(out_res, "Failed to read file.");
+  }
+  content := cast(string) fbuf[0..<sz];
+  // Cache read into Ch 01/12 FileStateCache for edit staleness check!
+  _ = flawed_fc_put(fc, full, content, 1, cast(u64) sz, proc_now_ms(), offset, limit, false);
+  fww_send(wire_out, mww_view(wire_out, raw_path, true));
+
+  // Emit numbered lines from offset..<offset+limit
+  n := 0;
+  line_no := 1;
+  shown := 0;
+  i := 0;
+  while i < content.count {
+    e := i;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    if line_no >= offset && shown < limit {
+      if n + 32 >= out_res.count {
+        n = fww_cat(out_res, n, "\n... [output truncated]");
+        break;
+      }
+      n = fww_put_int(out_res, n, line_no);
+      n = fww_cat(out_res, n, "\t");
+      n = fww_cat(out_res, n, cast(string) content[i..<e]);
+      n = fww_cat(out_res, n, "\n");
+      shown += 1;
+    }
+    line_no += 1;
+    i = e + 1;
+  }
+  if shown == 0 {
+    n = fww_cat(out_res, 0, "(empty file or offset past EOF; total lines: ");
+    n = fww_put_int(out_res, n, line_no - 1);
+    n = fww_cat(out_res, n, ")");
+  }
+  return n;
+}
+
+fww_tool_edit :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] u8, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Edit.");
+  }
+  pb_raw: [1024] u8;
+  pn := jv_str(d[0], jv_get(d[0], 0, "file_path"), pb_raw[..]);
+  if pn <= 0 { pn = jv_str(d[0], jv_get(d[0], 0, "path"), pb_raw[..]); }
+  if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Edit requires file_path."); }
+  raw_path := cast(string) pb_raw[0..<pn];
+
+  old_b: [65536] u8; new_b: [65536] u8;
+  old_n := jv_str(d[0], jv_get(d[0], 0, "old_string"), old_b[..]);
+  new_n := jv_str(d[0], jv_get(d[0], 0, "new_string"), new_b[..]);
+  if old_n < 0 || new_n < 0 { is_err[0] = true; return fww_keep(out_res, "Edit requires old_string and new_string."); }
+  old_s := cast(string) old_b[0..<old_n];
+  new_s := cast(string) new_b[0..<new_n];
+  rep_all := jv_bool(d[0], jv_get(d[0], 0, "replace_all"));
+
+  lbl_b: [1088] u8;
+  ln := fww_cat(lbl_b[..], 0, "Edit ");
+  ln = fww_cat(lbl_b[..], ln, raw_path);
+  label := cast(string) lbl_b[0..<ln];
+
+  full_b: [FS_PATH_MAX] u8;
+  full := fww_resolve_path(cwd, raw_path, full_b[..]);
+  if full.count == 0 || !fs_exists(full) {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "File not found."));
+    return fww_keep(out_res, "File not found.");
+  }
+  sz := fs_read(full, fbuf);
+  if sz < 0 {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Could not read file."));
+    return fww_keep(out_res, "Could not read file.");
+  }
+  content := cast(string) fbuf[0..<sz];
+  if old_s.count == 0 {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string cannot be empty."));
+    return fww_keep(out_res, "old_string cannot be empty.");
+  }
+
+  // Count matches of old_s in content
+  matches := 0;
+  first_pos := -1;
+  pos := 0;
+  while pos + old_s.count <= content.count {
+    if cast(string) content[pos..<pos + old_s.count] == old_s {
+      if first_pos < 0 { first_pos = pos; }
+      matches += 1;
+      pos += old_s.count;
+    } else {
+      pos += 1;
+    }
+  }
+  if matches == 0 {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string not found in file."));
+    return fww_keep(out_res, "old_string not found in file. Read the file to verify exact text.");
+  }
+  if matches > 1 && !rep_all {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string matched multiple times."));
+    return fww_keep(out_res, "old_string matched multiple times; provide more surrounding context or set replace_all: true.");
+  }
+
+  // Build updated file contents into ebuf
+  en := 0;
+  pos = 0;
+  replaced := 0;
+  while pos < content.count {
+    if (rep_all || replaced == 0) && pos + old_s.count <= content.count && cast(string) content[pos..<pos + old_s.count] == old_s {
+      en = fww_cat(ebuf, en, new_s);
+      pos += old_s.count;
+      replaced += 1;
+    } else {
+      if en < ebuf.count { ebuf[en] = content[pos]; en += 1; }
+      pos += 1;
+    }
+  }
+  if !fs_write(full, cast(string) ebuf[0..<en]) {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Failed to write edited file."));
+    return fww_keep(out_res, "Failed to write edited file.");
+  }
+  _ = flawed_fc_put(fc, full, cast(string) ebuf[0..<en], 1, cast(u64) en, proc_now_ms(), -1, -1, false);
+
+  diff_b: [4096] u8;
+  dn := fww_format_diff(old_s, new_s, diff_b[..]);
+  fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) diff_b[0..<dn]));
+
+  rn := fww_cat(out_res, 0, "Edited ");
+  rn = fww_cat(out_res, rn, raw_path);
+  rn = fww_cat(out_res, rn, " (");
+  rn = fww_put_int(out_res, rn, replaced);
+  rn = fww_cat(out_res, rn, " replacement(s)).");
+  return rn;
+}
+
+fww_tool_write :: (cwd: string, args_json: string, fc: FlawedFileCache, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Write.");
+  }
+  pb_raw: [1024] u8;
+  pn := jv_str(d[0], jv_get(d[0], 0, "file_path"), pb_raw[..]);
+  if pn <= 0 { pn = jv_str(d[0], jv_get(d[0], 0, "path"), pb_raw[..]); }
+  if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Write requires file_path."); }
+  raw_path := cast(string) pb_raw[0..<pn];
+
+  cn := jv_str(d[0], jv_get(d[0], 0, "content"), ebuf);
+  if cn < 0 { is_err[0] = true; return fww_keep(out_res, "Write requires content string (or content exceeds buffer)."); }
+  body := cast(string) ebuf[0..<cn];
+
+  lbl_b: [1088] u8;
+  ln := fww_cat(lbl_b[..], 0, "Write ");
+  ln = fww_cat(lbl_b[..], ln, raw_path);
+  label := cast(string) lbl_b[0..<ln];
+
+  full_b: [FS_PATH_MAX] u8;
+  full := fww_resolve_path(cwd, raw_path, full_b[..]);
+  if full.count == 0 {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Invalid path."));
+    return fww_keep(out_res, "Invalid file path.");
+  }
+  parent := fs_dir(full);
+  if parent.count > 0 && !fs_exists(parent) { _ = fs_mkdir(parent); }
+  if !fs_write(full, body) {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Failed to write file."));
+    return fww_keep(out_res, "Failed to write file.");
+  }
+  _ = flawed_fc_put(fc, full, body, 1, cast(u64) cn, proc_now_ms(), -1, -1, false);
+  diff_b: [4096] u8;
+  dn := fww_format_diff("", body, diff_b[..]);
+  fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) diff_b[0..<dn]));
+
+  rn := fww_cat(out_res, 0, "Wrote ");
+  rn = fww_put_int(out_res, rn, cn);
+  rn = fww_cat(out_res, rn, " bytes to ");
+  rn = fww_cat(out_res, rn, raw_path);
+  return rn;
+}
+
+fww_glob_walk :: (dir: string, rel_prefix: string, pattern: string, depth: int, out: [] u8, at: [] int, hits: [] int, max_hits: int) {
+  if depth > 12 || hits[0] >= max_hits || at[0] + 64 >= out.count { return; }
+  lst: [1] FsList;
+  n := fs_list(dir, lst[..]);
+  for i: 0..<n {
+    if hits[0] >= max_hits || at[0] + 64 >= out.count { break; }
+    name := fs_entry(lst[..], i);
+    if name.count == 0 || name == "." || name == ".." || name == ".git" || name == "node_modules" || name == ".build" { continue; }
+    fb: [FS_PATH_MAX] u8;
+    full := fs_join(dir, name, fb[..]);
+    rb: [FS_PATH_MAX] u8;
+    rn := 0;
+    if rel_prefix.count > 0 { rn = fww_cat(rb[..], 0, rel_prefix); rn = fww_cat(rb[..], rn, "/"); }
+    rn = fww_cat(rb[..], rn, name);
+    rel := cast(string) rb[0..<rn];
+    k := fs_kind(full);
+    if k == FS_DIR {
+      fww_glob_walk(full, rel, pattern, depth + 1, out, at, hits, max_hits);
+    } else if k == FS_FILE {
+      if flawed_glob_match(pattern, rel) || flawed_glob_match(pattern, name) {
+        at[0] = fww_cat(out, at[0], rel);
+        at[0] = fww_cat(out, at[0], "\n");
+        hits[0] += 1;
+      }
+    }
+  }
+}
+
+fww_tool_glob :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Glob.");
+  }
+  pat_b: [512] u8; sub_b: [1024] u8;
+  pn := jv_str(d[0], jv_get(d[0], 0, "pattern"), pat_b[..]);
+  if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Glob requires pattern."); }
+  pat := cast(string) pat_b[0..<pn];
+  sn := jv_str(d[0], jv_get(d[0], 0, "path"), sub_b[..]);
+  base_b: [FS_PATH_MAX] u8;
+  base := ifx sn > 0 then fww_resolve_path(cwd, cast(string) sub_b[0..<sn], base_b[..]) else cwd;
+
+  at := [1] int.[0];
+  hits := [1] int.[0];
+  fww_glob_walk(base, "", pat, 0, out_res, at[..], hits[..], 200);
+  if hits[0] == 0 { at[0] = fww_keep(out_res, "No files matched."); }
+
+  lbl_b: [600] u8;
+  ln := fww_cat(lbl_b[..], 0, "Glob ");
+  ln = fww_cat(lbl_b[..], ln, pat);
+  fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], 0, false, cast(string) out_res[0..<at[0]]));
+  return at[0];
+}
+
+fww_tool_grep :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Grep.");
+  }
+  pat_b: [512] u8; sub_b: [1024] u8; glob_b: [256] u8;
+  pn := jv_str(d[0], jv_get(d[0], 0, "pattern"), pat_b[..]);
+  if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Grep requires pattern."); }
+  pat := cast(string) pat_b[0..<pn];
+  sn := jv_str(d[0], jv_get(d[0], 0, "path"), sub_b[..]);
+  gn := jv_str(d[0], jv_get(d[0], 0, "glob"), glob_b[..]);
+  hlim := jv_int(d[0], jv_get(d[0], 0, "head_limit"), 80);
+  if hlim < 1 { hlim = 80; }
+  if hlim > 300 { hlim = 300; }
+
+  base_b: [FS_PATH_MAX] u8;
+  base := ifx sn > 0 then fww_resolve_path(cwd, cast(string) sub_b[0..<sn], base_b[..]) else cwd;
+
+  h := proc_new();
+  n := 0;
+  if h >= 0 {
+    ok := proc_arg(h, "rg") && proc_arg(h, "--no-heading") && proc_arg(h, "--line-number") && proc_arg(h, "--color=never") && proc_arg(h, "--max-count=10");
+    if gn > 0 { ok = ok && proc_arg(h, "--glob") && proc_arg(h, cast(string) glob_b[0..<gn]); }
+    ok = ok && proc_arg(h, "--") && proc_arg(h, pat) && proc_arg(h, base) && proc_err_to_out(h);
+    if ok && proc_start(h) == 0 {
+      _ = proc_close_stdin(h);
+      lbuf: [4096] u8;
+      lines := 0;
+      deadline := proc_now_ms() + 15000;
+      while lines < hlim && proc_now_ms() < deadline {
+        r := proc_line(h, 200, lbuf[..]);
+        if r == PROC_EOF { break; }
+        if r == PROC_TIMEOUT { continue; }
+        if r < 0 { break; }
+        if n + r + 2 >= out_res.count { break; }
+        n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+        n = fww_cat(out_res, n, "\n");
+        lines += 1;
+      }
+      _ = proc_wait(h, 1000);
+    }
+    _ = proc_release(h);
+  }
+  if n == 0 { n = fww_keep(out_res, "No matches found."); }
+  lbl_b: [600] u8;
+  ln := fww_cat(lbl_b[..], 0, "Grep ");
+  ln = fww_cat(lbl_b[..], ln, pat);
+  fww_send(wire_out, mww_command(wire_out, cast(string) lbl_b[0..<ln], 0, false, cast(string) out_res[0..<n]));
+  return n;
+}
+
+fww_tool_todos :: (args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  raw_todos := cl_raw(args_json, "todos");
+  if raw_todos.count < 2 {
+    is_err[0] = true; return fww_keep(out_res, "TodoWrite requires todos array.");
+  }
+  fww_send(wire_out, mww_todos(wire_out, raw_todos));
+  return fww_keep(out_res, "Updated todo list.");
+}
+
+// Ch 13 SSRF check for WebFetch: blocks localhost, loopback, link-local 169.254.*, and non-http(s) schemes.
+fww_url_safe :: (url: string) -> bool {
+  if !(flawed_aw_starts(url, "https://") || flawed_aw_starts(url, "http://")) { return false; }
+  at := ifx flawed_aw_starts(url, "https://") then 8 else 7;
+  end := at;
+  while end < url.count && url[end] != '/' && url[end] != ':' && url[end] != '?' { end += 1; }
+  host := cast(string) url[at..<end];
+  if host.count == 0 { return false; }
+  if flawed_aw_eq_ci(host, "localhost") || host == "127.0.0.1" || host == "::1" || host == "[::1]" || flawed_aw_starts(host, "169.254.") || flawed_aw_starts(host, "10.") || flawed_aw_starts(host, "192.168.") || flawed_aw_starts(host, "0.") {
+    return false;
+  }
+  return true;
+}
+
+fww_tool_webfetch :: (args_json: string, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+  is_err[0] = false;
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) {
+    is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for WebFetch.");
+  }
+  ub: [2048] u8;
+  un := jv_str(d[0], jv_get(d[0], 0, "url"), ub[..]);
+  if un <= 0 { is_err[0] = true; return fww_keep(out_res, "WebFetch requires url."); }
+  url := cast(string) ub[0..<un];
+
+  lbl_b: [2100] u8;
+  ln := fww_cat(lbl_b[..], 0, "WebFetch ");
+  ln = fww_cat(lbl_b[..], ln, url);
+  label := cast(string) lbl_b[0..<ln];
+
+  if !fww_url_safe(url) {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "Blocked by SSRF guard."));
+    return fww_keep(out_res, "WebFetch blocked: private/local/non-HTTP(S) URL.");
+  }
+  h := proc_new();
+  n := 0;
+  exit_code := 1;
+  if h >= 0 {
+    ok := proc_arg(h, "curl") && proc_arg(h, "-sS") && proc_arg(h, "-L") && proc_arg(h, "--max-time") && proc_arg(h, "20") && proc_arg(h, "--max-filesize") && proc_arg(h, "262144") && proc_arg(h, "--") && proc_arg(h, url) && proc_err_to_out(h);
+    if ok && proc_start(h) == 0 {
+      _ = proc_close_stdin(h);
+      lbuf: [4096] u8;
+      deadline := proc_now_ms() + 22000;
+      while proc_now_ms() < deadline {
+        r := proc_line(h, 250, lbuf[..]);
+        if r == PROC_EOF { break; }
+        if r == PROC_TIMEOUT { continue; }
+        if r < 0 { break; }
+        if n + r + 2 >= out_res.count { break; }
+        n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+        n = fww_cat(out_res, n, "\n");
+      }
+      exit_code = proc_wait(h, 2000);
+    }
+    _ = proc_release(h);
+  }
+  is_err[0] = exit_code != 0;
+  if n == 0 { n = fww_keep(out_res, ifx exit_code == 0 then "(empty response)" else "Failed to fetch URL."); }
+  fww_send(wire_out, mww_command(wire_out, label, exit_code, false, cast(string) out_res[0..<n]));
+  return n;
+}
+
+// ---------------------------------------------------------------- active streaming turn & tool loop state
+
+FwPendingTool :: struct {
+  id: [128] u8; nid: int;
+  name: [64] u8; nname: int;
+  args: [65536] u8; nargs: int;
+  done: bool;
+  is_error: bool;
+  res: [FWW_TOOL_OUT_MAX] u8; nres: int;
+}
+
+FwAsyncCmd :: struct {
+  active: bool;
+  h: int;
+  tool_idx: int;
+  deadline_ms: int;
+  timed_out: bool;
+  cmd: [8192] u8; ncmd: int;
+  out: [FWW_TOOL_OUT_MAX] u8; nout: int;
+}
+
+FwStreamAccum :: struct {
+  text: [131072] u8; ntext: int;
+  think: [65536] u8; nthink: int;
+  sig: [8192] u8; nsig: int;
+  tools: [FWW_MAX_TOOLS_CALL] FwPendingTool;
+  ntools: int;
+  cur_block_kind: int;
+  cur_tool_idx: int;
+  stop_reason: int;
+  in_tok: int;
+  out_tok: int;
+  cache_read: int;
+  cache_write: int;
+  saw_error: bool;
+  err_msg: [512] u8; nerr: int;
+  resp_model: [128] u8; nresp_model: int;
+}
+
+FwRun :: struct {
+  active: bool;
+  streaming: bool;
+  waiting_permit: bool;
+  waiting_ask_ticket: int;
+  permit_ticket: int;
+  permit_tool_idx: int;
+  next_ticket: int;
+  session_allow: bool;
+  step_num: int;
+  turn_cost_micros: int;
+  cwd: [FS_PATH_MAX] u8; ncwd: int;
+  model: [128] u8; nmodel: int;
+  effort: [32] u8; neffort: int;
+  sys_prompt: [32768] u8; nsys: int;
+  gw: [1] GwStream;
+  retry: [1] FlawedRetryState;
+  retry_at_ms: int;
+  req_start_ms: int;
+  first_tok_ms: int;
+  acc: [1] FwStreamAccum;
+  cmd: [1] FwAsyncCmd;
+  next_tool_idx: int;
+}
+
+FwFollow :: struct {
+  turn: int;
+  steerable: bool;
+  starting: bool;
+  src: int;
+  src_id: [MWQ_ID] u8; nsrc_id: int;
+  src_text: [MWQ_TEXT] u8; nsrc_text: int;
+  last: [MWQ_MESSAGE] u8; nlast: int;
+  resubmit: [MWQ_MESSAGE] u8; nresubmit: int;
+  resubmit_due: bool;
+  force_head: bool;
+  qbuf: [MWQ_FILE] u8;
+  qarena: [MWQ_MESSAGE + MWQ_TEXT] u8;
+}
+
+FwBufs :: struct {
+  req_body: [524288] u8;
+  sse_line: [131072] u8;
+  ev_txt: [65536] u8;
+  file_buf: [FWW_FILE_MAX] u8;
+  edit_buf: [FWW_FILE_MAX] u8;
+  compact_buf: [262144] u8;
+  fc_entries: [FWW_FC_ENTRIES] FlawedFileEntry;
+  fc_slab: [FWW_FC_SLAB] u8;
+  fc_state: [1] FlawedFileCacheState;
+}
+
+fww_fc :: (b: [] FwBufs) -> FlawedFileCache {
+  return FlawedFileCache.{entries = b[0].fc_entries[..], slab = b[0].fc_slab[..], state = b[0].fc_state[..]};
+}
+
+fww_emit_attempt :: (r: [] FwRun, auth: [] FwAuth, outcome: string, status: int, cost_micros: int, out: [] u8) {
+  gw_name := ifx auth[0].backend == FLAWED_BE_OPENROUTER then "openrouter" else ifx auth[0].backend == FLAWED_BE_LOCAL then "local" else "anthropic";
+  mdl := ifx r[0].acc[0].nresp_model > 0 then cast(string) r[0].acc[0].resp_model[0..<r[0].acc[0].nresp_model] else cast(string) r[0].model[0..<r[0].nmodel];
+  eff := cast(string) r[0].effort[0..<r[0].neffort];
+  in_t := r[0].acc[0].in_tok + r[0].acc[0].cache_read + r[0].acc[0].cache_write;
+  vals := [7] int.[
+    ifx in_t > 0 then in_t else -1,
+    ifx r[0].acc[0].out_tok > 0 then r[0].acc[0].out_tok else -1,
+    ifx r[0].acc[0].cache_read > 0 then r[0].acc[0].cache_read else -1,
+    -1,
+    ifx r[0].acc[0].cache_write > 0 then r[0].acc[0].cache_write else -1,
+    cost_micros,
+    cost_micros,
+  ];
+  fww_send(out, mww_attempt(out, gw_name, mdl, eff, outcome, status, vals[..]));
+  if outcome == "done" {
+    now_ms := proc_now_ms();
+    ttft := ifx r[0].first_tok_ms >= r[0].req_start_ms && r[0].first_tok_ms > 0 then r[0].first_tok_ms - r[0].req_start_ms else -1;
+    if ttft == 0 { ttft = 1; }
+    dec := ifx r[0].first_tok_ms > 0 && now_ms > r[0].first_tok_ms then now_ms - r[0].first_tok_ms else -1;
+    if ttft > 0 || (r[0].acc[0].out_tok > 0 && dec > 0) {
+      fww_send(out, mww_stats(out, ttft, dec, r[0].acc[0].out_tok));
+    }
+  }
+}
+
+// Launch one streaming LLM request for the current history. Returns "" on success or error reason.
+fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, out: [] u8) -> string {
+  r[0].acc[0] = FwStreamAccum.{cur_tool_idx = -1};
+  r[0].first_tok_ms = 0;
+  r[0].req_start_ms = proc_now_ms();
+
+  // Auto-compaction check (Ch 09) before request when enabled
+  if cfg[0].auto_compact && h[0].nmsgs > 8 {
+    est_tok := h[0].nslab / 4;
+    ctx_win := ifx cfg[0].extended_ctx then 1000000 else 200000;
+    eff_win := flawed_effective_context_window(ctx_win, 32768, 0);
+    if flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, est_tok, 0, eff_win, 0) {
+      _ = fww_hist_compact(h, b[0].compact_buf[..]);
+    }
+  }
+
+  raw_m := cast(string) r[0].model[0..<r[0].nmodel];
+  mdl_b: [128] u8;
+  wire_model := "";
+  if auth[0].backend == FLAWED_BE_OPENROUTER {
+    n := flawed_wire_openrouter_model(raw_m, mdl_b[..]);
+    wire_model = cast(string) mdl_b[0..<n];
+  } else if auth[0].backend == FLAWED_BE_LOCAL {
+    lb: [128] u8;
+    pm := fww_trim(cl_getenv("PSIONIC_MODEL", lb[..]));
+    wire_model = ifx pm.count > 0 then pm else "inkling-2-mini";
+  } else {
+    wire_model = flawed_wire_strip_model(raw_m);
+  }
+  eff := cast(string) r[0].effort[0..<r[0].neffort];
+  sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
+
+  is_anth := flawed_wire_is_anthropic(auth[0].backend);
+  bn := ifx is_anth
+        then fww_build_anthropic_body(cfg, h, wire_model, eff, sys, b[0].req_body[..])
+        else fww_build_openai_body(cfg, h, wire_model, eff, sys, b[0].req_body[..]);
+  if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
+
+  ub: [512] u8;
+  lbase_b: [512] u8;
+  lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
+  un := flawed_wire_endpoint_url(auth[0].backend, cast(string) cfg[0].base_url[0..<cfg[0].nbase_url], lbase, ub[..]);
+  url := cast(string) ub[0..<un];
+
+  cli := GwClient.{url = url, connect_timeout_s = 15, max_time_s = 600};
+  if auth[0].backend == FLAWED_BE_LOCAL {
+    cli.key_env = "";
+    cli.key_value = "";
+  } else if auth[0].is_oauth || auth[0].backend == FLAWED_BE_OPENROUTER {
+    cli.key_env = "FLAWED_REQ_KEY";
+    cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+    cli.key_header = "Authorization";
+    cli.scheme = "Bearer";
+  } else {
+    cli.key_env = "FLAWED_REQ_KEY";
+    cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+    cli.key_header = "x-api-key";
+    cli.scheme = "";
+  }
+
+  hdrs: [4] string;
+  nh := 0;
+  beta_b: [256] u8;
+  if is_anth {
+    hdrs[nh] = "anthropic-version: 2023-06-01"; nh += 1;
+    bn2 := fww_cat(beta_b[..], 0, "anthropic-beta: interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14");
+    if auth[0].is_oauth { bn2 = fww_cat(beta_b[..], bn2, ",oauth-2025-04-20"); }
+    if cfg[0].extended_ctx || flawed_wire_has_1m(raw_m) { bn2 = fww_cat(beta_b[..], bn2, ",context-1m-2025-08-07"); }
+    hdrs[nh] = cast(string) beta_b[0..<bn2]; nh += 1;
+  } else if auth[0].backend == FLAWED_BE_OPENROUTER {
+    hdrs[nh] = "HTTP-Referer: https://openagents.com"; nh += 1;
+    hdrs[nh] = "X-Title: OpenAgents Flawed"; nh += 1;
+  }
+
+  fww_emit_attempt(r, auth, "started", 0, 0, out);
+  err := gw_start(cli, cast(string) b[0].req_body[0..<bn], hdrs[0..<nh], r[0].gw[..]);
+  if err.count > 0 { return err; }
+  r[0].streaming = true;
+  return "";
+}
+
+// Start async Bash subprocess (respecting macOS Seatbelt sandbox & gitguard).
+fww_start_bash :: (r: [] FwRun, cfg: [] FwConfig, tool_idx: int, cmd_str: string, timeout_s: int, out: [] u8) -> bool {
+  r[0].cmd[0] = FwAsyncCmd.{h = -1, tool_idx = tool_idx};
+  r[0].cmd[0].ncmd = fww_keep(r[0].cmd[0].cmd[..], cmd_str);
+  ts := ifx timeout_s > 0 && timeout_s <= 300 then timeout_s else 120;
+  r[0].cmd[0].deadline_ms = proc_now_ms() + ts * 1000;
+  cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
+
+  h := proc_new();
+  if h < 0 { return false; }
+
+  use_sb := flawed_should_use_sandbox(cfg[0].sandbox_mode != FLAWED_SANDBOX_OFF, false, false, false, tool_os() == TOOL_MAC, true);
+  ok := true;
+  if use_sb && fs_exists("/usr/bin/sandbox-exec") {
+    // Workspace-writable Seatbelt profile (Ch 12): allow read + process + writes only under cwd & /tmp.
+    sb_b: [4096] u8;
+    sn := fww_cat(sb_b[..], 0, "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"");
+    sn = fww_cat(sb_b[..], sn, cwd);
+    sn = fww_cat(sb_b[..], sn, "\") (subpath \"/tmp\") (subpath \"/private/tmp\") (subpath \"/var/folders\") (literal \"/dev/null\") (literal \"/dev/tty\"))");
+    ok = proc_arg(h, "/usr/bin/sandbox-exec") && proc_arg(h, "-p") && proc_arg(h, cast(string) sb_b[0..<sn]) && proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd_str);
+  } else {
+    ok = proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd_str);
+  }
+  ok = ok && proc_cwd(h, cwd) && proc_err_to_out(h);
+  if cfg[0].git_guard {
+    ok = ok && proc_env(h, "CODER_GIT_GUARD=1");
+  }
+  if !ok || proc_start(h) != 0 {
+    _ = proc_release(h);
+    return false;
+  }
+  _ = proc_close_stdin(h);
+  r[0].cmd[0].h = h;
+  r[0].cmd[0].active = true;
+  r[0].next_ticket += 1;
+  r[0].waiting_ask_ticket = r[0].next_ticket;
+  fww_send(out, mww_ask(out, cmd_str, r[0].waiting_ask_ticket));
+  return true;
+}
+
+// Extract target path or command string from a tool call's JSON arguments for permission checking.
+fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args_json, nodes[..]) { return ""; }
+  n := 0;
+  if name == "Bash" { n = jv_str(d[0], jv_get(d[0], 0, "command"), out); }
+  else if name == "WebFetch" { n = jv_str(d[0], jv_get(d[0], 0, "url"), out); }
+  else {
+    n = jv_str(d[0], jv_get(d[0], 0, "file_path"), out);
+    if n <= 0 { n = jv_str(d[0], jv_get(d[0], 0, "path"), out); }
+  }
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+// Execute one tool call (after permission check passed). Returns true if async (Bash running).
+fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, b: [] FwBufs, idx: int, out: [] u8) -> bool {
+  name := cast(string) r[0].acc[0].tools[idx].name[0..<r[0].acc[0].tools[idx].nname];
+  args := cast(string) r[0].acc[0].tools[idx].args[0..<r[0].acc[0].tools[idx].nargs];
+  cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
+  is_err := [1] bool.[false];
+
+  if name == "Bash" {
+    nodes: [128] JvNode; d: [1] Jv;
+    cb: [8192] u8;
+    cn := 0; timeout_s := 120;
+    if jv_parse(d[..], args, nodes[..]) {
+      cn = jv_str(d[0], jv_get(d[0], 0, "command"), cb[..]);
+      timeout_s = jv_int(d[0], jv_get(d[0], 0, "timeout"), 120);
+      if timeout_s > 1000 { timeout_s = timeout_s / 1000; } // accept ms or seconds
+    }
+    if cn <= 0 {
+      r[0].acc[0].tools[idx].done = true;
+      r[0].acc[0].tools[idx].is_error = true;
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Bash requires command.");
+      return false;
+    }
+    if fww_start_bash(r, cfg, idx, cast(string) cb[0..<cn], timeout_s, out) {
+      return true;
+    }
+    r[0].acc[0].tools[idx].done = true;
+    r[0].acc[0].tools[idx].is_error = true;
+    r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Failed to spawn shell process.");
+    return false;
+  }
+
+  rn := 0;
+  if name == "Read" { rn = fww_tool_read(cwd, args, fww_fc(b), b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Edit" { rn = fww_tool_edit(cwd, args, fww_fc(b), b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Write" { rn = fww_tool_write(cwd, args, fww_fc(b), b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Glob" { rn = fww_tool_glob(cwd, args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Grep" { rn = fww_tool_grep(cwd, args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "TodoWrite" { rn = fww_tool_todos(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "WebFetch" { rn = fww_tool_webfetch(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else {
+    is_err[0] = true;
+    rn = fww_keep(r[0].acc[0].tools[idx].res[..], "Unknown tool.");
+  }
+  r[0].acc[0].tools[idx].nres = rn;
+  r[0].acc[0].tools[idx].is_error = is_err[0];
+  r[0].acc[0].tools[idx].done = true;
+  return false;
+}
+
+// Advance tool execution queue; when all tools finish, append tool_results to history and start next LLM step.
+fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, st: [] McSteers, out: [] u8) -> string {
+  while r[0].next_tool_idx < r[0].acc[0].ntools {
+    idx := r[0].next_tool_idx;
+    if r[0].acc[0].tools[idx].done { r[0].next_tool_idx += 1; continue; }
+
+    name := cast(string) r[0].acc[0].tools[idx].name[0..<r[0].acc[0].tools[idx].nname];
+    args := cast(string) r[0].acc[0].tools[idx].args[0..<r[0].acc[0].tools[idx].nargs];
+    tb: [2048] u8;
+    target := fww_tool_target(name, args, tb[..]);
+    full_b: [FS_PATH_MAX] u8;
+    check_target := ifx (name == "Edit" || name == "Write") && target.count > 0 then fww_resolve_path(cast(string) r[0].cwd[0..<r[0].ncwd], target, full_b[..]) else target;
+    beh := flawed_wire_tool_permission(name, check_target, cfg[0].permission_mode, cfg[0].bypass_danger, r[0].session_allow);
+    if beh == FLAWED_PBEH_DENY {
+      r[0].acc[0].tools[idx].done = true;
+      r[0].acc[0].tools[idx].is_error = true;
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Permission denied by active Flawed permission mode.");
+      r[0].next_tool_idx += 1;
+      continue;
+    }
+    if beh == FLAWED_PBEH_ASK {
+      r[0].next_ticket += 1;
+      r[0].permit_ticket = r[0].next_ticket;
+      r[0].permit_tool_idx = idx;
+      r[0].waiting_permit = true;
+      ttl_b: [128] u8;
+      tn := fww_cat(ttl_b[..], 0, "Allow Flawed to run ");
+      tn = fww_cat(ttl_b[..], tn, name);
+      opts := "[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_session\",\"name\":\"Allow for session\",\"kind\":\"allow_always\"}]";
+      fww_send(out, mww_permit(out, r[0].permit_ticket, false, cast(string) ttl_b[0..<tn], target, opts));
+      return "";
+    }
+    r[0].next_tool_idx += 1;
+    if fww_exec_tool_now(r, cfg, b, idx, out) {
+      return ""; // async Bash running
+    }
+  }
+
+  // All tool calls finished! Commit tool_results message to history.
+  if h[0].nmsgs < FWW_MAX_MSGS {
+    mi := h[0].nmsgs;
+    h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS};
+    nb := 0;
+    for i: 0..<r[0].acc[0].ntools {
+      if nb >= FWW_MAX_BLOCKS { break; }
+      a0 := [1] int.[0];
+      id_s := cast(string) r[0].acc[0].tools[i].id[0..<r[0].acc[0].tools[i].nid];
+      res_s := cast(string) r[0].acc[0].tools[i].res[0..<r[0].acc[0].tools[i].nres];
+      bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = r[0].acc[0].tools[i].is_error};
+      bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
+      bk.text_n = fww_slab_put(h, res_s, a0[..]); bk.text_at = a0[0];
+      h[0].msgs[mi].blocks[nb] = bk;
+      nb += 1;
+    }
+    // Inject any pending mid-turn steers right into this user turn!
+    if st[0].n > 0 && nb < FWW_MAX_BLOCKS {
+      jb: [MWQ_MESSAGE] u8;
+      stxt := mc_steer_join(st, jb[..]);
+      if stxt.count > 0 {
+        a0 := [1] int.[0];
+        sb := FwBlock.{kind = FWW_MB_TEXT};
+        sb.text_n = fww_slab_put(h, stxt, a0[..]); sb.text_at = a0[0];
+        h[0].msgs[mi].blocks[nb] = sb;
+        nb += 1;
+        _ = mc_steer_take(st, r[0].step_num);
+      }
+    }
+    h[0].msgs[mi].nblocks = nb;
+    h[0].nmsgs += 1;
+  }
+
+  // Enforce max_turns / max_budget_micros limits
+  r[0].step_num += 1;
+  max_t := ifx cfg[0].max_turns > 0 then cfg[0].max_turns else 64;
+  if r[0].step_num > max_t {
+    r[0].active = false;
+    fww_send(out, mww_ended(out, "finished", "Reached Flawed max turns limit."));
+    return "finished";
+  }
+  if cfg[0].max_budget_micros > 0 && r[0].turn_cost_micros >= cfg[0].max_budget_micros {
+    r[0].active = false;
+    fww_send(out, mww_ended(out, "finished", "Reached Flawed max budget limit."));
+    return "finished";
+  }
+
+  err := fww_start_request(r, cfg, auth, h, b, out);
+  if err.count > 0 {
+    r[0].active = false;
+    fww_send(out, mww_ended(out, "failed", err));
+    return "failed";
+  }
+  return "";
+}
+
+// Commit finished assistant stream into history, then either run tools or end turn.
+fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, st: [] McSteers, out: [] u8) -> string {
+  status := r[0].gw[0].status;
+  exit_code := r[0].gw[0].exit;
+  gw_close(r[0].gw[..]);
+  r[0].streaming = false;
+
+  // Check transport / HTTP error with Ch 05 retry policy
+  if status < 200 || status >= 300 || r[0].acc[0].saw_error {
+    ri := FlawedRetryInput.{
+      status = ifx status > 0 then status else 503,
+      is_foreground = true,
+      retry_after_ms = -1,
+    };
+    dec := flawed_eval_retry(r[0].retry[..], ri);
+    if dec.action == FLAWED_RETRY_SLEEP && !r[0].acc[0].saw_error {
+      fww_emit_attempt(r, auth, "retried", status, 0, out);
+      r[0].retry_at_ms = proc_now_ms() + dec.delay_ms;
+      return "";
+    }
+    fww_emit_attempt(r, auth, "failed", status, 0, out);
+    eb: [640] u8;
+    en := 0;
+    if r[0].acc[0].nerr > 0 {
+      en = fww_cat(eb[..], 0, cast(string) r[0].acc[0].err_msg[0..<r[0].acc[0].nerr]);
+    } else if status == 401 || status == 403 {
+      en = fww_cat(eb[..], 0, "Authentication failed (HTTP ");
+      en = fww_put_int(eb[..], en, status);
+      en = fww_cat(eb[..], en, "). Check your API key or backend in Settings → Flawed.");
+    } else if status > 0 {
+      en = fww_cat(eb[..], 0, "API request failed with HTTP ");
+      en = fww_put_int(eb[..], en, status);
+    } else {
+      en = fww_cat(eb[..], 0, "Could not reach API server (curl exit ");
+      en = fww_put_int(eb[..], en, exit_code);
+      en = fww_cat(eb[..], en, ").");
+    }
+    r[0].active = false;
+    fww_send(out, mww_ended(out, "failed", cast(string) eb[0..<en]));
+    return "failed";
+  }
+
+  // Account cost (Ch 05 flawed_calc_micro_usd)
+  fam := flawed_wire_model_family(cast(string) r[0].model[0..<r[0].nmodel]);
+  u := FlawedChunkUsage.{
+    input_tokens = r[0].acc[0].in_tok,
+    output_tokens = r[0].acc[0].out_tok,
+    cache_read_tokens = r[0].acc[0].cache_read,
+    cache_creation_tokens = r[0].acc[0].cache_write,
+    speed_fast = cfg[0].fast_mode,
+  };
+  cost := ifx auth[0].backend == FLAWED_BE_LOCAL then 0 else flawed_calc_micro_usd(cast(u8) fam, u, cfg[0].fast_mode);
+  r[0].turn_cost_micros += cost;
+  h[0].total_in += r[0].acc[0].in_tok;
+  h[0].total_out += r[0].acc[0].out_tok;
+  h[0].total_cached += r[0].acc[0].cache_read;
+  h[0].total_cost_micros += cost;
+  fww_emit_attempt(r, auth, "done", status, cost, out);
+
+  // Append assistant message to history
+  if h[0].nmsgs < FWW_MAX_MSGS {
+    mi := h[0].nmsgs;
+    h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_ASSISTANT};
+    nb := 0;
+    a0 := [1] int.[0];
+    if r[0].acc[0].nthink > 0 && r[0].acc[0].nsig > 0 && nb < FWW_MAX_BLOCKS {
+      tb := FwBlock.{kind = FWW_MB_THINK};
+      tb.text_n = fww_slab_put(h, cast(string) r[0].acc[0].think[0..<r[0].acc[0].nthink], a0[..]); tb.text_at = a0[0];
+      tb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); tb.sig_at = a0[0];
+      h[0].msgs[mi].blocks[nb] = tb; nb += 1;
+    }
+    if r[0].acc[0].ntext > 0 && nb < FWW_MAX_BLOCKS {
+      xb := FwBlock.{kind = FWW_MB_TEXT};
+      xb.text_n = fww_slab_put(h, cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext], a0[..]); xb.text_at = a0[0];
+      h[0].msgs[mi].blocks[nb] = xb; nb += 1;
+    }
+    for t: 0..<r[0].acc[0].ntools {
+      if nb >= FWW_MAX_BLOCKS { break; }
+      ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+      ub.id_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].id[0..<r[0].acc[0].tools[t].nid], a0[..]); ub.id_at = a0[0];
+      ub.name_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].name[0..<r[0].acc[0].tools[t].nname], a0[..]); ub.name_at = a0[0];
+      ub.text_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].args[0..<r[0].acc[0].tools[t].nargs], a0[..]); ub.text_at = a0[0];
+      h[0].msgs[mi].blocks[nb] = ub; nb += 1;
+    }
+    if nb > 0 {
+      h[0].msgs[mi].nblocks = nb;
+      h[0].nmsgs += 1;
+    }
+  }
+
+  // If tool calls were emitted, run them!
+  if r[0].acc[0].ntools > 0 {
+    r[0].next_tool_idx = 0;
+    return fww_advance_tools(r, cfg, auth, h, b, st, out);
+  }
+
+  // Otherwise finish the turn!
+  r[0].active = false;
+  final_txt := cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext];
+  fww_send(out, mww_ended(out, "finished", final_txt));
+  return "finished";
+}
+
+// Poll active stream, retry backoff, or active Bash subprocess. Returns (emitted_activity, ended_string).
+fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, st: [] McSteers, out: [] u8, active_io: [] bool) -> string {
+  active_io[0] = false;
+  if !r[0].active { return ""; }
+
+  // 1. Waiting for retry backoff timer
+  if r[0].retry_at_ms > 0 {
+    if proc_now_ms() >= r[0].retry_at_ms {
+      r[0].retry_at_ms = 0;
+      err := fww_start_request(r, cfg, auth, h, b, out);
+      if err.count > 0 {
+        r[0].active = false;
+        fww_send(out, mww_ended(out, "failed", err));
+        return "failed";
+      }
+      active_io[0] = true;
+    }
+    return "";
+  }
+
+  // 2. Waiting for interactive permission card answer
+  if r[0].waiting_permit { return ""; }
+
+  // 3. Active async Bash subprocess
+  if r[0].cmd[0].active {
+    lbuf: [4096] u8;
+    for step: 0..<64 {
+      ln := proc_line(r[0].cmd[0].h, 0, lbuf[..]);
+      if ln == PROC_TIMEOUT { break; }
+      if ln == PROC_EOF || ln < 0 {
+        exit_c := proc_wait(r[0].cmd[0].h, 2000);
+        _ = proc_release(r[0].cmd[0].h);
+        r[0].cmd[0].h = -1;
+        r[0].cmd[0].active = false;
+        ti := r[0].cmd[0].tool_idx;
+        cmd_s := cast(string) r[0].cmd[0].cmd[0..<r[0].cmd[0].ncmd];
+        out_s := cast(string) r[0].cmd[0].out[0..<r[0].cmd[0].nout];
+        fww_send(out, mww_command(out, cmd_s, exit_c, r[0].cmd[0].timed_out, out_s));
+        r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], ifx out_s.count > 0 then out_s else "(no output)");
+        r[0].acc[0].tools[ti].is_error = exit_c != 0 || r[0].cmd[0].timed_out;
+        r[0].acc[0].tools[ti].done = true;
+        active_io[0] = true;
+        return fww_advance_tools(r, cfg, auth, h, b, st, out);
+      }
+      active_io[0] = true;
+      if r[0].cmd[0].nout + ln + 2 < r[0].cmd[0].out.count {
+        r[0].cmd[0].nout = fww_cat(r[0].cmd[0].out[..], r[0].cmd[0].nout, cast(string) lbuf[0..<ln]);
+        r[0].cmd[0].nout = fww_cat(r[0].cmd[0].out[..], r[0].cmd[0].nout, "\n");
+      }
+    }
+    if proc_now_ms() >= r[0].cmd[0].deadline_ms {
+      r[0].cmd[0].timed_out = true;
+      _ = proc_release(r[0].cmd[0].h);
+      r[0].cmd[0].h = -1;
+      r[0].cmd[0].active = false;
+      ti := r[0].cmd[0].tool_idx;
+      cmd_s := cast(string) r[0].cmd[0].cmd[0..<r[0].cmd[0].ncmd];
+      out_s := cast(string) r[0].cmd[0].out[0..<r[0].cmd[0].nout];
+      fww_send(out, mww_command(out, cmd_s, 124, true, out_s));
+      r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], "Command timed out.");
+      r[0].acc[0].tools[ti].is_error = true;
+      r[0].acc[0].tools[ti].done = true;
+      return fww_advance_tools(r, cfg, auth, h, b, st, out);
+    }
+    return "";
+  }
+
+  // 4. Active streaming HTTP SSE response (drain up to 32 SSE lines per tick with zero lag!)
+  if !r[0].streaming { return ""; }
+  is_anth := flawed_wire_is_anthropic(auth[0].backend);
+  for step: 0..<32 {
+    rd := gw_poll_wait(r[0].gw[..], b[0].sse_line[..], 0);
+    if rd.kind == GW_IDLE { break; }
+    active_io[0] = true;
+    if rd.kind == GW_END {
+      return fww_finish_stream(r, cfg, auth, h, b, st, out);
+    }
+    if rd.kind != GW_LINE { continue; }
+    // Handle non-2xx JSON error bodies directly (not SSE-framed)
+    if r[0].gw[0].status >= 400 {
+      if r[0].acc[0].nerr == 0 && rd.text.count > 0 {
+        nodes: [64] JvNode; d: [1] Jv;
+        if jv_parse(d[..], rd.text, nodes[..]) {
+          em := jv_path(d[0], 0, "error.message");
+          if em < 0 { em = jv_get(d[0], 0, "message"); }
+          if em >= 0 {
+            n := jv_str(d[0], em, r[0].acc[0].err_msg[..]);
+            if n > 0 { r[0].acc[0].nerr = n; }
+          }
+        }
+        if r[0].acc[0].nerr == 0 { r[0].acc[0].nerr = fww_keep(r[0].acc[0].err_msg[..], rd.text); }
+      }
+      continue;
+    }
+    // Feed line through SSE parser (or direct data: prefix)
+    data := "";
+    if flawed_aw_starts(rd.text, "data: ") {
+      data = cast(string) rd.text[6..<rd.text.count];
+    } else if flawed_aw_starts(rd.text, "data:") {
+      data = cast(string) rd.text[5..<rd.text.count];
+    } else {
+      continue;
+    }
+    data = fww_trim(data);
+    if data.count == 0 { continue; }
+
+    ev: [1] FlawedWireSseEvent;
+    ok := ifx is_anth
+          then flawed_wire_parse_anthropic_sse(data, ev[..], b[0].ev_txt[..])
+          else flawed_wire_parse_openai_sse(data, ev[..], b[0].ev_txt[..]);
+    if !ok { continue; }
+    k := ev[0].kind;
+    if k == FLAWED_SSE_MSG_START {
+      if ev[0].name_n > 0 { r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
+      if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
+      if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
+      if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
+      if ev[0].cache_write_tokens > 0 { r[0].acc[0].cache_write = ev[0].cache_write_tokens; }
+    } else if k == FLAWED_SSE_BLK_START {
+      r[0].acc[0].cur_block_kind = ev[0].block_kind;
+      if ev[0].block_kind == FLAWED_SBLK_TOOL_USE && r[0].acc[0].ntools < FWW_MAX_TOOLS_CALL {
+        ti := r[0].acc[0].ntools;
+        r[0].acc[0].tools[ti] = FwPendingTool.{};
+        r[0].acc[0].tools[ti].nid = fww_keep(r[0].acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]);
+        r[0].acc[0].tools[ti].nname = fww_keep(r[0].acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]);
+        r[0].acc[0].cur_tool_idx = ti;
+        r[0].acc[0].ntools += 1;
+      }
+    } else if k == FLAWED_SSE_THINK_DELTA {
+      if ev[0].text_n > 0 {
+        if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
+        piece := cast(string) b[0].ev_txt[0..<ev[0].text_n];
+        r[0].acc[0].nthink = fww_cat(r[0].acc[0].think[..], r[0].acc[0].nthink, piece);
+        if !cfg[0].thinking_hidden {
+          fww_send(out, mww_thought(out, piece));
+        }
+      }
+    } else if k == FLAWED_SSE_SIG_DELTA {
+      if ev[0].text_n > 0 {
+        r[0].acc[0].nsig = fww_cat(r[0].acc[0].sig[..], r[0].acc[0].nsig, cast(string) b[0].ev_txt[0..<ev[0].text_n]);
+      }
+    } else if k == FLAWED_SSE_TEXT_DELTA {
+      if ev[0].text_n > 0 {
+        if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
+        piece := cast(string) b[0].ev_txt[0..<ev[0].text_n];
+        r[0].acc[0].ntext = fww_cat(r[0].acc[0].text[..], r[0].acc[0].ntext, piece);
+        fww_send(out, mww_reply(out, piece));
+      }
+    } else if k == FLAWED_SSE_JSON_DELTA {
+      ti := r[0].acc[0].cur_tool_idx;
+      if ti >= 0 && ti < r[0].acc[0].ntools && ev[0].text_n > 0 {
+        r[0].acc[0].tools[ti].nargs = fww_cat(r[0].acc[0].tools[ti].args[..], r[0].acc[0].tools[ti].nargs, cast(string) b[0].ev_txt[0..<ev[0].text_n]);
+      }
+    } else if k == FLAWED_SSE_OAI_TOOL_DELTA {
+      ti := ev[0].block_index;
+      if ti >= 0 && ti < FWW_MAX_TOOLS_CALL {
+        if ti >= r[0].acc[0].ntools {
+          for fill: r[0].acc[0].ntools..<ti + 1 { r[0].acc[0].tools[fill] = FwPendingTool.{}; }
+          r[0].acc[0].ntools = ti + 1;
+        }
+        if ev[0].id_n > 0 { r[0].acc[0].tools[ti].nid = fww_keep(r[0].acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]); }
+        if ev[0].name_n > 0 { r[0].acc[0].tools[ti].nname = fww_cat(r[0].acc[0].tools[ti].name[..], r[0].acc[0].tools[ti].nname, cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
+        if ev[0].text_n > 0 { r[0].acc[0].tools[ti].nargs = fww_cat(r[0].acc[0].tools[ti].args[..], r[0].acc[0].tools[ti].nargs, cast(string) b[0].ev_txt[0..<ev[0].text_n]); }
+      }
+    } else if k == FLAWED_SSE_MSG_DELTA {
+      if ev[0].stop_reason != FLAWED_STOP_NONE { r[0].acc[0].stop_reason = ev[0].stop_reason; }
+      if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
+      if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
+      if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
+    } else if k == FLAWED_SSE_ERROR {
+      r[0].acc[0].saw_error = true;
+      r[0].acc[0].nerr = fww_keep(r[0].acc[0].err_msg[..], cast(string) b[0].ev_txt[0..<ev[0].text_n]);
+    } else if k == FLAWED_SSE_MSG_STOP {
+      return fww_finish_stream(r, cfg, auth, h, b, st, out);
+    }
+  }
+  return "";
+}
+
+fww_stop_active :: (r: [] FwRun, out: [] u8) {
+  if r[0].streaming { gw_close(r[0].gw[..]); r[0].streaming = false; }
+  if r[0].cmd[0].active {
+    _ = proc_release(r[0].cmd[0].h);
+    r[0].cmd[0].h = -1;
+    r[0].cmd[0].active = false;
+  }
+  r[0].waiting_permit = false;
+  r[0].retry_at_ms = 0;
+  r[0].active = false;
+  fww_send(out, mww_ended(out, "stopped", ""));
+}
+
+// Handle inline slash commands (/compact, /clear, /cost, /status). Returns true if handled locally.
+fww_handle_slash :: (tk: string, r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, out: [] u8) -> bool {
+  cmd := fww_trim(tk);
+  if cmd == "/clear" {
+    fww_hist_clear(h);
+    fww_send(out, mww_ended(out, "finished", "Cleared Flawed conversation history."));
+    return true;
+  }
+  if cmd == "/compact" {
+    if fww_hist_compact(h, b[0].compact_buf[..]) {
+      fww_send(out, mww_ended(out, "finished", "Compacted conversation history."));
+    } else {
+      fww_send(out, mww_ended(out, "finished", "Conversation is already compact (fewer than 5 messages)."));
+    }
+    return true;
+  }
+  if cmd == "/cost" {
+    rb: [512] u8;
+    n := fww_cat(rb[..], 0, "**Flawed Session Usage**\n- Input tokens: ");
+    n = fww_put_int(rb[..], n, h[0].total_in);
+    n = fww_cat(rb[..], n, "\n- Cached input tokens: ");
+    n = fww_put_int(rb[..], n, h[0].total_cached);
+    n = fww_cat(rb[..], n, "\n- Output tokens: ");
+    n = fww_put_int(rb[..], n, h[0].total_out);
+    n = fww_cat(rb[..], n, "\n- Estimated cost: $");
+    cents := (h[0].total_cost_micros + 5000) / 10000;
+    n = fww_put_int(rb[..], n, cents / 100);
+    n = fww_cat(rb[..], n, ".");
+    if cents % 100 < 10 { n = fww_cat(rb[..], n, "0"); }
+    n = fww_put_int(rb[..], n, cents % 100);
+    fww_send(out, mww_ended(out, "finished", cast(string) rb[0..<n]));
+    return true;
+  }
+  if cmd == "/status" {
+    rb: [1024] u8;
+    n := fww_cat(rb[..], 0, "**Flawed Runtime Status**\n- Model: `");
+    n = fww_cat(rb[..], n, cast(string) r[0].model[0..<r[0].nmodel]);
+    n = fww_cat(rb[..], n, "`\n- Effort: `");
+    n = fww_cat(rb[..], n, cast(string) r[0].effort[0..<r[0].neffort]);
+    n = fww_cat(rb[..], n, "`\n- Auth: ");
+    n = fww_cat(rb[..], n, cast(string) auth[0].label[0..<auth[0].nlabel]);
+    n = fww_cat(rb[..], n, "\n- Messages in context: ");
+    n = fww_put_int(rb[..], n, h[0].nmsgs);
+    fww_send(out, mww_ended(out, "finished", cast(string) rb[0..<n]));
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- follow-up / queue / steer helpers
+
+fww_src_name :: (src: int) -> string {
+  if src == FWW_SRC_QUEUE { return "queue"; }
+  if src == FWW_SRC_RESUBMIT { return "resubmit"; }
+  return "message";
+}
+
+fww_queue_changed :: (q: [] MwQueue, f: [] FwFollow, o: [] u8) {
+  _ = mwq_save(q, f[0].qbuf[..]);
+  fww_send(o, mwq_line(q, o));
+}
+
+fww_task_with :: (f: [] FwFollow, text: string, out: [] u8) -> string {
+  if f[0].nlast == 0 { return ""; }
+  ab: [MWQ_MESSAGE] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  t: [1] McTask;
+  last := cast(string) f[0].last[0..<f[0].nlast];
+  if !mww_task_read(ar[..], last, t[..]) {
+    t[0] = McTask.{cwd = cl_str(ar[..], last, "cwd"), session = cl_str(ar[..], last, "session"), sandbox = "danger-full-access"};
+  }
+  t[0].task = text;
+  n := mww_task(out, t[0]);
+  return ifx n < 2 then "" else cast(string) out[0..<n - 1];
+}
+
+fww_turn_begin :: (f: [] FwFollow, msg: string, o: [] u8) {
+  f[0].turn += 1;
+  fww_send(o, mww_turn(o, f[0].turn, fww_src_name(f[0].src), cast(string) f[0].src_id[0..<f[0].nsrc_id], cast(string) f[0].src_text[0..<f[0].nsrc_text]));
+  f[0].nlast = ifx msg.count <= f[0].last.count then fww_keep(f[0].last[..], msg) else 0;
+  st := cl_bool(msg, "steerable");
+  f[0].steerable = !st.ok || st.value;
+  f[0].starting = true;
+  f[0].src = FWW_SRC_MESSAGE; f[0].nsrc_id = 0; f[0].nsrc_text = 0;
+}
+
+fww_drained :: (st: [] McSteers, f: [] FwFollow, o: [] u8) {
+  for i: 0..<st[0].nd {
+    fww_send(o, mww_steered(o, mc_steer_done_id(st, i), "applied", f[0].turn, "", st[0].done[i].step, ""));
+  }
+  st[0].nd = 0;
+}
+
+fww_turn_end :: (ending: string, st: [] McSteers, q: [] MwQueue, f: [] FwFollow, o: [] u8) {
+  f[0].starting = false;
+  mwq_ended(q);
+  if st[0].n > 0 && f[0].resubmit_due {
+    jb: [MWQ_MESSAGE] u8; text := mc_steer_join(st, jb[..]);
+    m := fww_task_with(f, text, f[0].resubmit[..]);
+    f[0].nresubmit = m.count;
+    if m.count > 0 {
+      f[0].nsrc_id = fww_keep(f[0].src_id[..], mc_steer_id(st, 0));
+      f[0].nsrc_text = fww_keep(f[0].src_text[..], text);
+      for i: 0..<st[0].n { fww_send(o, mww_steered(o, mc_steer_id(st, i), "resubmitted", f[0].turn, "", 0, "")); }
+      mc_steer_clear(st);
+    }
+  }
+  i := st[0].n - 1;
+  while i >= 0 {
+    mb: [MWQ_MESSAGE] u8; m := fww_task_with(f, mc_steer_text(st, i), mb[..]);
+    why := ifx m.count > 0 then mwq_add_first(q, mc_steer_id(st, i), mc_steer_text(st, i), m) else "invalid";
+    fww_send(o, mww_steered(o, mc_steer_id(st, i), ifx why.count == 0 then "queued" else "rejected", f[0].turn, why, 0, ""));
+    i -= 1;
+  }
+  mc_steer_clear(st);
+  f[0].resubmit_due = false;
+  if ending == "stopped" && f[0].nresubmit == 0 && !f[0].force_head { mwq_pause(q, "interrupted"); }
+  else if ending == "failed" || ending == "no_capacity" { mwq_pause(q, "error"); }
+  fww_queue_changed(q, f, o);
+}
+
+fww_dispatch :: (q: [] MwQueue, f: [] FwFollow, line: [] u8, o: [] u8) -> int {
+  if f[0].nresubmit > 0 {
+    n := fww_keep(line, cast(string) f[0].resubmit[0..<f[0].nresubmit]);
+    f[0].nresubmit = 0; f[0].src = FWW_SRC_RESUBMIT;
+    return n;
+  }
+  if q[0].n == 0 || (q[0].paused && !f[0].force_head) { return 0; }
+  n := fww_keep(line, mwq_message(q, 0));
+  f[0].src = FWW_SRC_QUEUE;
+  f[0].nsrc_id = fww_keep(f[0].src_id[..], mwq_id(q, 0));
+  f[0].nsrc_text = fww_keep(f[0].src_text[..], mwq_text(q, 0));
+  f[0].force_head = false;
+  _ = mwq_start_head(q);
+  fww_queue_changed(q, f, o);
+  return n;
+}
+
+fww_steer :: (running: bool, req: [] MwwRequest, st: [] McSteers, f: [] FwFollow, o: [] u8) {
+  why := "";
+  if !running || f[0].starting { why = "no_active_turn"; }
+  else if req[0].turn.ok && req[0].turn.value != f[0].turn { why = "expected_turn_mismatch"; }
+  else if !f[0].steerable && !req[0].parent { why = "active_turn_not_steerable"; }
+  else { why = mc_steer_add(st, req[0].id, req[0].text); }
+  fww_send(o, mww_steered(o, req[0].id, ifx why.count == 0 then "accepted" else "rejected", f[0].turn, why, 0, ifx why.count == 0 then req[0].text else ""));
+}
+
+fww_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] FwFollow, home: string, o: [] u8) -> bool {
+  op := req[0].op; id := req[0].id; why := "";
+  stop := false;
+  if op == "open" {
+    pb: [4096] u8; path := mwq_path(home, req[0].key, pb[..]);
+    if path.count == 0 { why = "invalid"; }
+    else if cast(string) q[0].path[0..<q[0].npath] != path {
+      _ = mwq_save(q, f[0].qbuf[..]);
+      if q[0].npath == 0 && q[0].n > 0 { q[0].npath = fww_keep(q[0].path[..], path); }
+      else { _ = mwq_load(q, path, f[0].qbuf[..], f[0].qarena[..]); }
+    }
+  }
+  else if op == "add" { why = mwq_add(q, id, req[0].text, req[0].message); }
+  else if op == "update" { why = mwq_update(q, id, req[0].text, req[0].message); }
+  else if op == "delete" { why = mwq_delete(q, id); }
+  else if op == "move" { why = mwq_move(q, id, ifx req[0].to.ok then req[0].to.value else 0); }
+  else if op == "promote" {
+    why = mwq_move(q, id, 0);
+    if why.count == 0 && req[0].now { f[0].force_head = true; stop = running; }
+  }
+  else if op == "pause" { mwq_pause(q, "user"); }
+  else if op == "resume" { mwq_resume(q); }
+  else if op == "clear" { mwq_clear(q); }
+  else if op != "list" { why = "invalid"; }
+  if why.count > 0 { fww_send(o, mww_queue_refused(o, op, id, why)); return false; }
+  fww_queue_changed(q, f, o);
+  return stop;
+}
+
+fww_auth_asked :: () -> bool {
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--auth" { return true; } }
+  return false;
+}
+
+// ---------------------------------------------------------------- main event loop
+
+tool_main :: () -> int #export_c #effects(all) {
+  homebuf: [4096] u8;
+  home := cl_getenv("CODER_HOME", homebuf[..]);
+  if home.count == 0 { home = cl_getenv("HOME", homebuf[..]); }
+
+  cfg: [1] FwConfig;
+  auth: [1] FwAuth;
+  fww_load_config(cfg[..]);
+  fww_resolve_auth(cfg[..], home, auth[..]);
+
+  if fww_auth_asked() {
+    ob: [512] u8;
+    jo: [1] Jo;
+    jo_start(jo[..], ob[..]);
+    jo_obj(jo[..]);
+    jo_key(jo[..], "source"); jo_str(jo[..], cast(string) auth[0].source[0..<auth[0].nsource]);
+    jo_key(jo[..], "ready"); jo_bool(jo[..], auth[0].ok);
+    jo_key(jo[..], "label"); jo_str(jo[..], cast(string) auth[0].label[0..<auth[0].nlabel]);
+    jo_end(jo[..]);
+    fww_send(ob[..], jo[0].n);
+    return 0;
+  }
+
+  run: [1] FwRun;
+  hist: [1] FwHist;
+  bufs: [1] FwBufs;
+  line: [FWW_LINE] u8; nl := 0;
+  out: [FWW_LINE] u8;
+  ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  task_buf: [32768] u8; cwd_buf: [4096] u8;
+  req: [1] MwwRequest;
+  st: [1] McSteers; q: [1] MwQueue; f: [1] FwFollow;
+
+  fww_send(out[..], mww_ready(out[..]));
+
+  while true {
+    ended := "";
+    polled := [1] bool.[false];
+    if run[0].active {
+      ended = fww_poll_step(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..], polled[..]);
+      fww_drained(st[..], f[..], out[..]);
+    }
+    if !run[0].active && f[0].starting && ended.count == 0 { ended = "failed"; }
+    if ended.count > 0 { fww_turn_end(ended, st[..], q[..], f[..], out[..]); }
+
+    fed := false;
+    if !run[0].active && nl == 0 { nl = fww_dispatch(q[..], f[..], line[..], out[..]); fed = nl > 0; }
+    if !fed {
+      ch := cxterm_byte(fww_poll_wait_ms(run[0].active, polled[0]));
+      if ch == -2 { break; }
+      got_line := false;
+      while ch >= 0 {
+        if ch == 10 { got_line = true; break; }
+        if nl < line.count { line[nl] = cast,trunc(u8) ch; nl += 1; }
+        ch = cxterm_byte(0);
+      }
+      if ch == -2 && !got_line { break; }
+      if !got_line { continue; }
+    }
+    msg := cast(string) line[0..<nl];
+    nl = 0;
+    ar[0].at = 0; ar[0].full = false;
+    what := mww_request(ar[..], msg, req[..]);
+
+    if what == MWW_STEER { fww_steer(run[0].active, req[..], st[..], f[..], out[..]); continue; }
+    if what == MWW_QUEUE {
+      if !fww_queue_op(run[0].active, req[..], q[..], f[..], home, out[..]) { continue; }
+      what = MWW_STOP;
+    }
+    if what == MWW_INTERRUPT {
+      if !run[0].active { continue; }
+      f[0].resubmit_due = req[0].resubmit;
+      what = MWW_STOP;
+    }
+    if what == MWW_STOP {
+      if run[0].active {
+        fww_stop_active(run[..], out[..]);
+        fww_turn_end("stopped", st[..], q[..], f[..], out[..]);
+      }
+      continue;
+    }
+    if what == MWW_FORGET {
+      if !run[0].active {
+        fww_hist_clear(hist[..]);
+        run[0].session_allow = false;
+      }
+      continue;
+    }
+    if what == MWW_RECALL {
+      if !run[0].active { fww_hist_recall(hist[..], req[0].recall); }
+      continue;
+    }
+    if what == MWW_EMBED {
+      fww_send(out[..], mww_embedding_error(out[..], "embeddings are not served by flawedworker"));
+      continue;
+    }
+    if what == MWW_ANSWER {
+      if run[0].active && run[0].waiting_permit {
+        tk_ok := !req[0].ticket.ok || req[0].ticket.value == run[0].permit_ticket;
+        if tk_ok {
+          run[0].waiting_permit = false;
+          ti := run[0].permit_tool_idx;
+          if req[0].allow {
+            if req[0].option == "allow_session" { run[0].session_allow = true; }
+            run[0].next_tool_idx = ti + 1;
+            if !fww_exec_tool_now(run[..], cfg[..], bufs[..], ti, out[..]) {
+              e := fww_advance_tools(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..]);
+              if e.count > 0 { fww_turn_end(e, st[..], q[..], f[..], out[..]); }
+            }
+          } else {
+            run[0].acc[0].tools[ti].done = true;
+            run[0].acc[0].tools[ti].is_error = true;
+            why := ifx req[0].why.count > 0 then req[0].why else "User denied tool permission.";
+            run[0].acc[0].tools[ti].nres = fww_keep(run[0].acc[0].tools[ti].res[..], why);
+            run[0].next_tool_idx = ti + 1;
+            e := fww_advance_tools(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..]);
+            if e.count > 0 { fww_turn_end(e, st[..], q[..], f[..], out[..]); }
+          }
+        }
+      }
+      continue;
+    }
+    if what != MWW_TASK || run[0].active { continue; }
+
+    fww_turn_begin(f[..], msg, out[..]);
+    mw_task := req[0].task;
+    mw_cwd := req[0].cwd;
+    if mw_task.count > task_buf.count || mw_cwd.count == 0 || mw_cwd.count > cwd_buf.count {
+      fww_send(out[..], mww_ended(out[..], "failed", "Task or workspace exceeds worker bounds."));
+      fww_turn_end("failed", st[..], q[..], f[..], out[..]);
+      continue;
+    }
+    tn := fww_keep(task_buf[..], mw_task);
+    cn := fww_keep(cwd_buf[..], mw_cwd);
+    tk := cast(string) task_buf[0..<tn];
+    cd := cast(string) cwd_buf[0..<cn];
+
+    // Refresh auth & config cleanly per turn so newly saved keys take effect.
+    fww_load_config(cfg[..]);
+    fww_resolve_auth(cfg[..], home, auth[..]);
+
+    // Model selection: custom override > task's requested model > config default
+    req_model := ifx req[0].model.count > 0 then req[0].model else cl_str(ar[..], msg, "model");
+    picked_model := ifx cfg[0].ncustom_model > 0 then cast(string) cfg[0].custom_model[0..<cfg[0].ncustom_model]
+                    else ifx req_model.count > 0 then req_model
+                    else cast(string) cfg[0].model[0..<cfg[0].nmodel];
+    picked_effort := ifx req[0].effort.count > 0 then req[0].effort else cast(string) cfg[0].effort[0..<cfg[0].neffort];
+
+    run[0].ncwd = fww_keep(run[0].cwd[..], cd);
+    run[0].nmodel = fww_keep(run[0].model[..], picked_model);
+    run[0].neffort = fww_keep(run[0].effort[..], picked_effort);
+    run[0].step_num = 1;
+    run[0].turn_cost_micros = 0;
+    run[0].retry[0] = FlawedRetryState.{max_retries = 3};
+    run[0].retry_at_ms = 0;
+    run[0].waiting_permit = false;
+
+    // Handle local slash commands instantaneously
+    if fww_handle_slash(tk, run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]) {
+      fww_turn_end("finished", st[..], q[..], f[..], out[..]);
+      continue;
+    }
+
+    if !auth[0].ok {
+      fww_send(out[..], mww_ended(out[..], "failed", cast(string) auth[0].label[0..<auth[0].nlabel]));
+      fww_turn_end("failed", st[..], q[..], f[..], out[..]);
+      continue;
+    }
+
+    run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+    fww_hist_push_user(hist[..], tk);
+    mc_steer_clear(st[..]); st[0].nd = 0;
+
+    err := fww_start_request(run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]);
+    if err.count > 0 {
+      fww_send(out[..], mww_ended(out[..], "failed", err));
+      fww_turn_end("failed", st[..], q[..], f[..], out[..]);
+      continue;
+    }
+    run[0].active = true;
+    f[0].starting = false;
+  }
+
+  if run[0].active { fww_stop_active(run[..], out[..]); }
+  return 0;
+}
+
+#test "flawedworker: poll wait drains streaming tokens at 0ms and SSRF guard blocks private URLs" {
+  #assert fww_poll_wait_ms(false, false) == 200;
+  #assert fww_poll_wait_ms(true, false) == 10;
+  #assert fww_poll_wait_ms(true, true) == 0;
+  #assert fww_url_safe("https://docs.anthropic.com/en/api") && !fww_url_safe("http://127.0.0.1:8080/x");
+  #assert !fww_url_safe("http://169.254.169.254/latest/meta-data") && !fww_url_safe("file:///etc/passwd");
+}

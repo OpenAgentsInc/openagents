@@ -61,6 +61,7 @@ coder_page_model_id_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effec
   return cp_out(out, cp_model_id(s, cp_model_index(s)));
 }
 coder_page_model_provider :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count > 0 && cp_is_flawed(s, cp_model_index(s)) { return 8; }
   if s.count > 0 && cp_is_agy(s, cp_model_index(s)) { return 1; }
   return 2;
 }

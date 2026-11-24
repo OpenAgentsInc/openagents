@@ -10,6 +10,7 @@ enum ExternalProviders {
     static let providerCursor: Int32 = 4
     static let providerAcp: Int32 = 5
     static let providerClaude: Int32 = 7   // a chat on a Claude model: Claude Code, through claudeworker
+    static let providerFlawed: Int32 = 8   // native pure-Coax Flawed Agent, through flawedworker
 
     static var registryURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -97,6 +98,7 @@ enum ExternalProviders {
         case providerCursor: return "Cursor"
         case providerAcp: return "ACP Agent"
         case providerClaude: return "Claude"
+        case providerFlawed: return "Flawed"
         default: return "Microcoder"
         }
     }
@@ -298,6 +300,9 @@ extension CoderWindow {
         case ExternalProviders.providerClaude:
             program = "claudeworker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
+        case ExternalProviders.providerFlawed:
+            program = "flawedworker"
+            r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerInkling:
             program = "inky"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
@@ -353,6 +358,7 @@ extension CoderWindow {
         var spawned = 0
         for (idx, modelID) in targets.enumerated() {
             guard let back = cd_headless() else { continue }
+            FlawedSettings.apply(to: back)
             syncExternalProviders(on: back)
             coderApplyOpenRouter(back)
             coderApplyClaude(back)

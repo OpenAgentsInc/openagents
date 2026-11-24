@@ -451,6 +451,31 @@ int cd_model_inst_id(void *page, char *out, int cap) {
 int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model_agy(cd_state(c)) ? 1 : 0; }
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
 int cd_model_claude(void *page) { CoderHost *c = page; return c && coder_page_model_claude(cd_state(c)) ? 1 : 0; }
+int cd_model_flawed(void *page) { CoderHost *c = page; return c && coder_page_model_flawed(cd_state(c)) ? 1 : 0; }
+void cd_flawed_prefs_set(void *page, const int *vals, int count) {
+  CoderHost *c = page;
+  if (!c || !vals || count <= 0) return;
+  int64_t tmp[32];
+  int n = count < 32 ? count : 32;
+  for (int i = 0; i < n; i++) tmp[i] = (int64_t)vals[i];
+  coder_page_flawed_prefs_set(cd_state(c), (coax_v_s64){tmp, (int64_t)n});
+  cd_woke(c);
+}
+int cd_flawed_prefs_get(void *page, int *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap <= 0) return 0;
+  int64_t tmp[32];
+  int want = cap < 32 ? cap : 32;
+  int n = (int)coder_page_flawed_prefs_get(cd_state(c), (coax_v_s64){tmp, (int64_t)want});
+  for (int i = 0; i < n && i < cap; i++) out[i] = (int)tmp[i];
+  return n;
+}
+void cd_flawed_info(void *page, const char *auth_status, const char *key_label, const char *base_url, const char *custom_model, const char *tools_summary, const char *limits_summary) {
+  CoderHost *c = page;
+  if (!c) return;
+  coder_page_flawed_info(cd_state(c), cd_string(auth_status), cd_string(key_label), cd_string(base_url), cd_string(custom_model), cd_string(tools_summary), cd_string(limits_summary));
+  cd_changed(c);
+}
 void cd_orchestrator_set(void *page, int claude, int model) { CoderHost *c = page; if (!c) return; coder_page_orchestrator_set(cd_state(c), claude != 0, model); cd_woke(c); }
 void cd_claude_effort_set(void *page, int model, int level) { CoderHost *c = page; if (!c) return; coder_page_claude_effort_set(cd_state(c), model, level); cd_woke(c); }
 int cd_claude_effort(void *page, int model) { CoderHost *c = page; return c ? (int)coder_page_claude_effort(cd_state(c), model) : 2; }

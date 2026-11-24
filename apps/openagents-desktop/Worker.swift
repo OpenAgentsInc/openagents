@@ -27,11 +27,7 @@ final class CoderWorker {
 
     var alive: Bool { process?.isRunning == true || runID != nil }
     var isDaemonRun: Bool { runID != nil }
-    #if OA_MINIMAL
-    var program = "inky"
-    #else
-    var program = "mcworker"
-    #endif
+    var program = "flawedworker"
     var extraEnv: [String: String] = [:]
     var folder = ""
 
@@ -49,6 +45,7 @@ final class CoderWorker {
 
     private var defaultAgentID: String {
         switch program {
+        case "flawedworker": return "flawed"
         case "agyworker": return "antigravity"
         case "inky": return "inky"
         case "claudeworker": return "claude"
@@ -71,7 +68,7 @@ final class CoderWorker {
         #endif
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         #if OA_FULL
-        if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
+        if (program == "claudeworker" || program == "flawedworker"), let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
         #endif
         return (env, ["CODER_CLAUDE_KEY"])
     }

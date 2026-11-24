@@ -9,7 +9,7 @@
   #assert s[0].nturns == 1 && cp_running(s) && eb_text(s[0].draft[..]) == "" && coder_page_action(s) == CP_ASK_SEND && coder_page_action(s) == CP_ASK_NONE;
   out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
   ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
-  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "gemini-4-neon" && back[0].sandbox == "danger-full-access" && back[0].cwd == "/w";
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "flawed:claude-opus-4-7" && back[0].sandbox == "danger-full-access" && back[0].cwd == "/w";
   #assert !coder_page_submit(s);   // one run at a time
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"equals 4\"}") == MWW_REPLY;
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4" && s[0].turns[0].blocks == 1 && cp_running(s);
@@ -804,7 +804,7 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   s[0].px = ir.x + ir.w / 2.0f32; s[0].py = ir.y + ir.h / 2.0f32;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   mr := surface_find(s[0].surface[..], "t0.m");
-  #assert mr >= 0 && surface_say(s[0].surface[..], mr) == "Psionic Metal · Inkling 2 Mini";
+  #assert mr >= 0 && surface_say(s[0].surface[..], mr) == "Flawed Agent · Claude Opus 4.7";
   // Clicking the Info icon toggles persistent visibility even after the pointer leaves.
   #assert cp_press(s, surface_find(s[0].surface[..], "t0.ai")) && s[0].turns[0].info;
   s[0].px = 0; s[0].py = 0;

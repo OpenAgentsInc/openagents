@@ -24,7 +24,7 @@ extension CoderWindow {
             self.markUnread(r)
             self.pump(r)
         }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -151,28 +151,30 @@ extension CoderWindow {
                 needsRecall = false
             }
         }
-        let useAgy = cd_model_agy(r.page) != 0
+        let useFlawed = cd_model_flawed(r.page) != 0
+        let useAgy = !useFlawed && cd_model_agy(r.page) != 0
         #if OA_FULL
-        let useInkling = !useAgy && (cd_model_inkling(r.page) != 0 || !ComposerModelVisibility.showOtherModels)
+        let useInkling = !useFlawed && !useAgy && cd_model_inkling(r.page) != 0
         let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
-        // Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
-        let useExternal = FeatureFlags.anyExtraModel && (provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp || provKind == ExternalProviders.providerClaude)
+        // Flawed, Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
+        let useExternal = useFlawed || (FeatureFlags.anyExtraModel && (provKind == ExternalProviders.providerCodex || provKind == ExternalProviders.providerCursor || provKind == ExternalProviders.providerAcp || provKind == ExternalProviders.providerClaude))
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = FeatureFlags.isOn(.modelsGemini) && (CoderGemini.saved != nil || CoderProbes.geminiReady || (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn))
-        if !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
+        if !useFlawed && !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
             cd_failed(r.page, ProviderInstancesStore.shared.hasLoadedAntigravityModels
-                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to an Antigravity model."
-                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or sign into Antigravity in Settings → Providers.")
+                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Flawed or Antigravity."
+                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Flawed.")
             wake()
             return
         }
         #else
-        let useInkling = !useAgy
+        let useInkling = !useFlawed && !useAgy
         let useHybrid = false
         #endif
-        if useInkling || useHybrid {
+        let flawedWantsLocal = useFlawed && FlawedSettings.backend == 4
+        if useInkling || useHybrid || flawedWantsLocal {
             #if OA_FULL
             if useHybrid {
                 let snap = ExecutorModelStore.scan()
@@ -255,17 +257,17 @@ extension CoderWindow {
                         retryRecall = true
                     }
                 }
-                self.launchWorker(r, useAgy: false, needsRecall: retryRecall)
+                self.launchWorker(r, useFlawed: useFlawed, useAgy: false, needsRecall: retryRecall)
             }
             return
         }
-        launchWorker(r, useAgy: useAgy, needsRecall: needsRecall)
+        launchWorker(r, useFlawed: useFlawed, useAgy: useAgy, needsRecall: needsRecall)
     }
-    private func launchWorker(_ r: CoderRun, useAgy: Bool, needsRecall: Bool) {
+    private func launchWorker(_ r: CoderRun, useFlawed: Bool, useAgy: Bool, needsRecall: Bool) {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useFlawed ? ("flawedworker", 8, nil) : useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
@@ -299,7 +301,7 @@ extension CoderWindow {
             }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
-                let fallbackErr = r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
+                let fallbackErr = r.worker.program == "flawedworker" ? "Flawed could not start." : r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
                 cd_failed(r.page, r.worker.failure ?? fallbackErr)
                 self.wake()
                 return
@@ -363,6 +365,7 @@ extension CoderWindow {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
             cd_flags_set(back, FeatureFlags.mask)
+            FlawedSettings.apply(to: back)
             syncLocalState(on: back)
             if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
             #if OA_FULL
@@ -946,7 +949,8 @@ extension CoderWindow {
             let activeRun: CoderRun? = runs[chat.id] ?? (chat.id == self.chat && (cd_running(page) != 0 || run.worker.alive) ? run : nil)
             let prog = activeRun?.worker.program ?? ""
             let codexEnv = activeRun?.worker.extraEnv["CODER_PROVIDER"] == "codex"
-            let activeHarness: String? = prog == "claudeworker" ? "claude"
+            let activeHarness: String? = prog == "flawedworker" ? "flawed"
+                : prog == "claudeworker" ? "claude"
                 : prog == "agyworker" ? "agy"
                 : (prog == "codex" || codexEnv) ? "codex"
                 : prog == "inky" ? "psionic"
@@ -1024,6 +1028,13 @@ extension CoderWindow {
         } else {
             env = CoderAntigravity.workerEnv()
         }
+        if cd_model_flawed(r.page) != 0 {
+            for (k, v) in FlawedSettings.workerEnv() { env[k] = v }
+            if FlawedSettings.backend == 4 || (FlawedSettings.backend == 0 && LocalModelServer.shared.isReady) {
+                env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+                env["PSIONIC_MODEL"] = LocalModelStore.entry.id
+            }
+        }
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) {
             for (k, v) in McpServerStore.workerEnv() { env[k] = v }
@@ -1040,17 +1051,17 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "hybrid-exec-v1"
-        } else if cd_model_inkling(r.page) != 0 || (!ComposerModelVisibility.showOtherModels && cd_model_agy(r.page) == 0) {
+        } else if cd_model_inkling(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = LocalModelStore.entry.id
         }
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
         if FeatureFlags.isOn(.simulator) {
             env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
-            env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+            env["OA_SIM_ENGINE"] = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
         #else
-        if cd_model_agy(r.page) == 0 {
+        if cd_model_inkling(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = LocalModelStore.entry.id
         }
@@ -1091,6 +1102,7 @@ extension CoderWindow {
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
+        FlawedSettings.apply(to: back)
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels {
             syncAntigravityModels(on: back)

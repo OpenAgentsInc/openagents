@@ -102,6 +102,7 @@ vbc_macos_binary_allowed :: (name: string) -> bool {
 vbc_resource_allowed :: (platform: int, name: string) -> bool {
   if platform == VBC_MAC {
     return name == "coder-host"
+      || name == "flawedworker"
       || name == "inky"
       || name == "agyworker"   // Antigravity ACP worker (core Settings -> Providers)
       || name == "psionic-inkling-serve"
@@ -113,6 +114,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
   if platform == VBC_LINUX {
     return name == "OpenAgents"
       || name == "coder-host"
+      || name == "flawedworker"
       || name == "inky"
       || name == "agyworker"   // the onboarding's Connect Google Antigravity where Inkling cannot run
       || name == "psionic-inkling-serve"
@@ -129,6 +131,7 @@ vbc_resource_allowed :: (platform: int, name: string) -> bool {
   if platform == VBC_WINDOWS {
     return name == "OpenAgents.exe"
       || name == "coder-host.exe"
+      || name == "flawedworker.exe"
       || name == "inky.exe"
       || name == "agyworker.exe"   // the onboarding's Connect Google Antigravity where Inkling cannot run
       || name == "psionic-inkling-serve.exe"
@@ -243,6 +246,7 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
 #test "v1-bundle-check: macOS, Linux, and Windows shipped-file allowlists reject excluded artifacts" {
   // macOS v1.0 core allowed
   #assert vbc_resource_allowed(VBC_MAC, "coder-host");
+  #assert vbc_resource_allowed(VBC_MAC, "flawedworker");
   #assert vbc_resource_allowed(VBC_MAC, "inky");
   #assert vbc_resource_allowed(VBC_MAC, "agyworker");
   #assert vbc_resource_allowed(VBC_MAC, "psionic-inkling-serve");

@@ -255,7 +255,10 @@ final class CoderStore {
     /// Maps a persisted chat's `"model"` identifier to the sidebar harness key (`chats.coax`).
     static func harness(forModel model: String) -> String {
         let m = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if m.isEmpty { return "psionic" }
+        if m.isEmpty { return "flawed" }
+        if m.hasPrefix("flawed:") || m == "flawed" {
+            return "flawed"
+        }
         if m.hasPrefix("agy:") || m == "antigravity" || m == "agy" || m.hasPrefix("gemini-") || m == "gemini" {
             return "agy"
         }

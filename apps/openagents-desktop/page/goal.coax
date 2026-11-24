@@ -257,7 +257,9 @@ cp_ctx_take :: (s: [] CoderPage, l: MwwLine) {
   s[0].ctx_in = l.input_tokens.value;
   s[0].ctx_cached = ifx l.cached_tokens.ok && l.cached_tokens.value > 0 then l.cached_tokens.value else 0;
   s[0].ctx_out = ifx l.output_tokens.ok && l.output_tokens.value > 0 then l.output_tokens.value else 0;
-  win := gw_window(l.model); if win > 0 { s[0].ctx_window = win; }
+  win := gw_window(l.model);
+  if cp_is_flawed(s, cp_model_index(s)) && s[0].flawed[0].extended_ctx && win == 200000 { win = 1000000; }
+  if win > 0 { s[0].ctx_window = win; }
 }
 cp_ctx_reset :: (s: [] CoderPage) { s[0].ctx_in = 0; s[0].ctx_cached = 0; s[0].ctx_out = 0; s[0].ctx_window = 0; }
 // How full the context is, 0 to 1 (0 while the window is not known).

@@ -104,7 +104,8 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   for qi: 0..<sh0.no { #assert sh0.over[qi].kind != PRIM_TEXT || cp_find(sh0.over[qi].text, "Antigravity CLI") < 0; }
   #assert cp_press(s, model) && s[0].model_menu && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
-  agy_opt := elt_find(t[..], "coder.model.6");
+  agy_id_b: [32] u8; agy_n := el_put(agy_id_b[..], 0, "coder.model."); agy_n = el_put_i(agy_id_b[..], agy_n, cp_agy_idx(s));
+  agy_opt := elt_find(t[..], cast(string) agy_id_b[0..<agy_n]);
   #assert agy_opt >= 0 && cp_find(elt_value_of(t[..], agy_opt), "Antigravity CLI") >= 0;
   s[0].model_menu = false;
   // fractional glyph advances in a proportional font must not truncate "Antigravity" into "Antigravi…"

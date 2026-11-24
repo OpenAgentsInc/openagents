@@ -310,6 +310,11 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     }
     return true;
   }
+  if act == CP_MODEL_FLAWED {
+    s[0].model_menu = false;
+    cp_settings_show(s, true, CP_PG_FLAWED);
+    return true;
+  }
   if act == CP_MODEL_LOCAL {
     s[0].model_menu = false;
     s[0].ask = CP_ASK_LOCAL_MODELS;

@@ -477,6 +477,7 @@ CoderPage :: struct {
   mcp_skills: [1] CpMcpSkills; // MCP server management, OAuth PKCE card, and Skills catalog (mcpskills.coax; #13879)
   prov: [1] CpProviders;       // Codex, Cursor, ACP Registry, budgeted handoff, Fresh Session & multi-model fan-out (providers.coax; #13878)
   ps: [1] CpProvSettings;      // Settings -> Providers screen & Add provider 3-step modal wizard (providers_settings.coax)
+  flawed: [1] CpFlawedSettings; // Flawed Agent settings & Claude-Code-parity preferences (flawed_settings.coax)
   env: [1] CpEnvState;         // Remote SSH/Boat/WSL2 environments, Server Exposure & Keep-Awake (environments.coax; #13883)
   cust: [1] CpCustomizeState;  // Theme engine, when-clause keybindings & i18n locale (customize.coax; #13887)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
@@ -557,11 +558,10 @@ CpCheckStore :: struct {
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
   return s.count > 0 && dc_flag_on(s[0].flags, flag);
 }
-// True when the user explicitly opted into seeing other models AND any extra non-Inkling
-// model flag is on or Antigravity has loaded models in core Providers.
-// Off by default so ONLY the active local Inkling variant is shown and loaded until requested.
+// True whenever more than one model/agent is selectable in the composer picker
+// (always true since Flawed Agent models and local Inkling 2 Mini are both built-in).
 cp_has_model_picker :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && s[0].show_other_models && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0);
+  return s.count > 0 && cp_models(s) > 1;
 }
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {

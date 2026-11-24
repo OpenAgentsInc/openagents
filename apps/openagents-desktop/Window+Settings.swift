@@ -385,6 +385,7 @@ extension CoderWindow {
         let gemini = ""
         #endif
         cd_flags_set(page, FeatureFlags.mask)
+        FlawedSettings.apply(to: page)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
@@ -461,7 +462,8 @@ extension CoderWindow {
         for r in runs.values where r.page != page {
             syncLocalState(on: r.page)
         }
-        if prewarm && LocalModelStore.isSelectable && (!ComposerModelVisibility.showOtherModels || cd_model_inkling(page) != 0) {
+        let wantsLocal = cd_model_inkling(page) != 0 || (cd_model_flawed(page) != 0 && FlawedSettings.backend == 4)
+        if prewarm && LocalModelStore.isSelectable && wantsLocal {
             LocalModelServer.shared.prewarmIfReady()
         }
         if let shownState = localModelsDialogState, overlay.dialogOpen {

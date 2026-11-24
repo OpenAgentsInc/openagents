@@ -12,6 +12,7 @@ CP_PROV_ACP :: 5;       // User-registered generic ACP CLI binary
 CP_PROV_HYBRID :: 6;    // Local Hybrid Executor (hybrid-exec-v1) via Psionic Metal + W2.2 modules (#13924)
 
 CP_PROV_CLAUDE :: 7;    // Claude Code as the chat's main model via claudeworker
+CP_PROV_FLAWED :: 8;    // Native pure-Coax Flawed Agent via flawedworker
 
 // Host actions (coder_page_action; non-conflicting with state.coax / mcpskills.coax 0..74).
 CP_ASK_CODEX :: 75;        // Settings > Models > Codex status/configure dialog
@@ -301,6 +302,7 @@ cp_model_provider_kind :: (s: [] CoderPage, idx: int) -> int {
   if e.kind == CP_MK_CURSOR { return CP_PROV_CURSOR; }
   if e.kind == CP_MK_ACP { return CP_PROV_ACP; }
   if e.kind == CP_MK_CLAUDE { return CP_PROV_CLAUDE; }
+  if e.kind == CP_MK_FLAWED { return CP_PROV_FLAWED; }
   return CP_PROV_CLOUD;
 }
 

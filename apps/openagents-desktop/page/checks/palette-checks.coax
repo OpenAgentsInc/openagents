@@ -78,7 +78,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_overlay_key(s, APP_OV_BACKSPACE, 0) && p[0].depth == 0;
   p[0].lit = cp_pal_test_row(s, "Switch model");
   #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_overlay_key(s, APP_OV_DOWN, 0) && coder_page_overlay_key(s, APP_OV_ENTER, 0);
-  #assert !coder_page_palette_open(s) && s[0].model == 2;
+  #assert !coder_page_palette_open(s) && s[0].model == 1;
 }
 #test "a setting opens settings at its row; rename asks the host; Escape closes with nothing done" {
   pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
@@ -127,7 +127,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert app_palette_count(p, APP_PAL_SESSIONS) == 3 && app_palette_count(p, APP_PAL_SETTINGS) == expected_set;
   #assert app_pal_label(p, p[0].rows[1].item) == "Pinned plan";
   #assert cp_pal_test_row(s, "Open Foreman") < 0 && cp_pal_test_row(s, "Foreman permission tier") < 0 && cp_pal_test_row(s, "View Foreman audit log") < 0;
-  #assert cp_pal_test_row(s, "Switch model") < 0;
+  #assert cp_pal_test_row(s, "Switch model") >= 0;
   #assert cp_pal_test_row(s, "Experimental features") > 0 && cp_pal_test_row(s, "New chat") > 0;
   #assert !coder_page_palette_toggle(s, APP_PAL_ALL);
   #assert !cp_pal_open_chat(s, -1);
