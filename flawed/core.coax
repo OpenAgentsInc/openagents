@@ -30,6 +30,7 @@
 #load "config.coax";
 #load "mcp.coax";
 #load "extensions.coax";
+#load "tasks.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -311,4 +312,16 @@
   #assert !flawed_output_style_keep_coding(true, true, true) && flawed_output_style_overrides(FLAWED_OSTYLE_MANAGED, false, FLAWED_OSTYLE_PLUGIN, true);
   #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 2) == 2000;
   #assert !flawed_lsp_can_open_file(true, 100) && flawed_lsp_can_emit_diagnostic(true, 9, 29);
+}
+
+#test "flawed core (Ch 17): background task contract, TOCTOU guards, agent-isolated queue, Sleep upgrade & cron jitter compose" {
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_AGENT, true) == 115 && flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_BASH, false) == 98;
+  #assert flawed_task_can_apply_offset(FLAWED_TSTAT_RUNNING) && !flawed_task_can_apply_offset(FLAWED_TSTAT_COMPLETED);
+  #assert flawed_stop_task_suppress_xml(FLAWED_TTYPE_LOCAL_BASH) && !flawed_stop_task_suppress_xml(FLAWED_TTYPE_LOCAL_AGENT);
+  #assert flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_LATER, false, true, true, 0, 0);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_NOW, false, true, true, 7, 0);
+  #assert !flawed_cron_durable_allowed(true, true, true);
+  #assert flawed_cron_recurring_jitter_ms(3600000, 500) == 180000;
+  #assert flawed_cron_oneshot_lead_ms(30, 500, 0, 90000) == 45000;
+  #assert flawed_cron_missed_fence_len("```code```") == 4;
 }

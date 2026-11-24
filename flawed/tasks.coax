@@ -1,0 +1,282 @@
+// Flawed Layer 6 (Chapter 17) — Background Task Runtime: 7-Type Task Contract,
+// TOCTOU-Safe Offset/Eviction Guards, Agent-Isolated Priority Queue, and Proactive Cron Jitter.
+// Replaces cc/Task.ts, cc/tasks/{types,stopTask,LocalAgentTask,RemoteAgentTask}.ts,
+// cc/utils/task/framework.ts, cc/utils/{messageQueueManager,cronTasks,cronScheduler}.ts,
+// and cc/query.ts mid-turn queue drain invariants.
+//   coax/bin/coax test flawed/tasks.coax --library
+//   coax/bin/coax mutate flawed/tasks.coax --root-only
+#module "flawed.tasks";
+#authority;
+#load "extensions.coax";
+
+// 7 unified TaskType variants (Task.ts:6-13).
+FLAWED_TTYPE_LOCAL_BASH :: 1;
+FLAWED_TTYPE_LOCAL_AGENT :: 2;
+FLAWED_TTYPE_REMOTE_AGENT :: 3;
+FLAWED_TTYPE_TEAMMATE :: 4;
+FLAWED_TTYPE_LOCAL_WORKFLOW :: 5;
+FLAWED_TTYPE_MONITOR_MCP :: 6;
+FLAWED_TTYPE_DREAM :: 7;
+
+// 5 unified TaskStatus states (Task.ts:15-20).
+FLAWED_TSTAT_PENDING :: 1;
+FLAWED_TSTAT_RUNNING :: 2;
+FLAWED_TSTAT_COMPLETED :: 3;
+FLAWED_TSTAT_FAILED :: 4;
+FLAWED_TSTAT_KILLED :: 5;
+
+// Priority queue levels (lower = higher priority: now 0 > next 1 > later 2).
+FLAWED_QPRIO_NOW :: 0;
+FLAWED_QPRIO_NEXT :: 1;
+FLAWED_QPRIO_LATER :: 2;
+
+// Runtime limits & watchdog constants (LocalAgentTask, RemoteAgentTask, InProcessTeammateTask, cronTasks).
+FLAWED_TASK_PANEL_GRACE_MS :: 30000;
+FLAWED_REMOTE_STABLE_IDLE_POLLS :: 5;
+FLAWED_REMOTE_REVIEW_TIMEOUT_MS :: 1800000; // 30 minutes from pollStartedAt
+FLAWED_TEAMMATE_UI_MSG_CAP :: 50;           // 36.8GB whale-session RSS guard
+FLAWED_CRON_MAX_JOBS :: 50;
+FLAWED_CRON_RECURRING_CAP_MS :: 900000;     // 15 minutes
+FLAWED_CRON_ONESHOT_MOD :: 30;              // local :00 and :30
+
+flawed_task_is_terminal :: (status: u8) -> bool #effects(traps) {
+  return status == FLAWED_TSTAT_COMPLETED || status == FLAWED_TSTAT_FAILED ||
+         status == FLAWED_TSTAT_KILLED;
+}
+
+// 1-char symlink-resistant ID prefix (Task.ts:79-106, LocalMainSessionTask.ts:75-82).
+flawed_task_id_prefix :: (kind: u8, is_main_session: bool) -> u8 #effects(traps) {
+  if kind == FLAWED_TTYPE_LOCAL_BASH { return 98; } // 'b'
+  if kind == FLAWED_TTYPE_LOCAL_AGENT {
+    if is_main_session { return 115; }              // 's'
+    return 97;                                      // 'a'
+  }
+  if kind == FLAWED_TTYPE_REMOTE_AGENT { return 114; } // 'r'
+  if kind == FLAWED_TTYPE_TEAMMATE { return 116; }     // 't'
+  if kind == FLAWED_TTYPE_LOCAL_WORKFLOW { return 119; } // 'w'
+  if kind == FLAWED_TTYPE_MONITOR_MCP { return 109; }  // 'm'
+  return 100;                                          // 'd' (dream)
+}
+
+// isBackgroundTask() footer visibility (tasks/types.ts:12-46).
+flawed_task_is_visible_bg :: (status: u8, has_bg_flag: bool, is_backgrounded: bool) -> bool #effects(traps) {
+  if status != FLAWED_TSTAT_PENDING && status != FLAWED_TSTAT_RUNNING { return false; }
+  if has_bg_flag { return is_backgrounded; }
+  return true;
+}
+
+// LocalAgentTask terminal eviction deadline (LocalAgentTask.tsx): -1 means retained (Infinity).
+flawed_task_evict_after_ms :: (now_ms: int, retain: bool) -> int #effects(traps) {
+  if retain { return -1; }
+  return now_ms + FLAWED_TASK_PANEL_GRACE_MS;
+}
+
+// RemoteAgentTask --resume sidecar cleanup: ONLY HTTP 404 or archived deletes sidecar (preserves across 401/network!).
+flawed_remote_should_delete_sidecar :: (http_status: int, is_archived: bool) -> bool #effects(traps) {
+  return http_status == 404 || is_archived;
+}
+
+// RemoteAgentTask completion gate (RemoteAgentTask.tsx:538-799):
+// Bughunter (SessionStart hook) stays "idle" the whole run -> completes ONLY on <remote-review> tag or 30m poll timeout.
+flawed_remote_poll_completed :: (
+  stable_idle_polls: int,
+  has_session_start_hook: bool,
+  saw_review_tag: bool,
+  poll_elapsed_ms: int
+) -> bool #effects(traps) {
+  if saw_review_tag { return true; }
+  if has_session_start_hook {
+    return poll_elapsed_ms >= FLAWED_REMOTE_REVIEW_TIMEOUT_MS;
+  }
+  return stable_idle_polls >= FLAWED_REMOTE_STABLE_IDLE_POLLS;
+}
+
+// TOCTOU-safe offset patch & eviction re-checks on fresh AppState (utils/task/framework.ts:213-308).
+flawed_task_can_apply_offset :: (fresh_status: u8) -> bool #effects(traps) {
+  return fresh_status == FLAWED_TSTAT_RUNNING;
+}
+
+flawed_task_can_evict :: (
+  fresh_status: u8,
+  fresh_notified: bool,
+  has_retain_field: bool,
+  evict_after_ms: int,
+  now_ms: int
+) -> bool #effects(traps) {
+  if !flawed_task_is_terminal(fresh_status) || !fresh_notified { return false; }
+  if has_retain_field {
+    if evict_after_ms < 0 || evict_after_ms > now_ms { return false; }
+  }
+  return true;
+}
+
+// Atomic test-and-set on task.notified (prevents duplicate completion notifications).
+flawed_task_claim_notify :: (notified: [] bool) -> bool #effects(reads, writes, traps) {
+  if notified[0] { return false; }
+  notified[0] = true;
+  return true;
+}
+
+// stopTask() notification asymmetry (tasks/stopTask.ts:57-96):
+// Suppresses noisy "exit code 137" XML for local_bash, preserves partial-result XML for agent tasks.
+flawed_stop_task_suppress_xml :: (task_type: u8) -> bool #effects(traps) {
+  return task_type == FLAWED_TTYPE_LOCAL_BASH;
+}
+
+// Queue item editability: task-notification XML and isMeta items never enter user prompt buffer.
+flawed_queue_item_editable :: (is_task_notification: bool, is_meta: bool) -> bool #effects(traps) {
+  return !is_task_notification && !is_meta;
+}
+
+// Mid-turn command queue drain filter (query.ts:1566-1578):
+// - Upgrades max priority to LATER when SleepTool ran (prevents 0ms infinite wake loop).
+// - Enforces strict main-thread (agent_id == 0) vs subagent (task-notification && agent_id == cur) isolation.
+flawed_queue_drain_mid_turn_allowed :: (
+  sleep_ran: bool,
+  item_prio: u8,
+  is_slash_cmd: bool,
+  is_main_thread: bool,
+  is_task_notification: bool,
+  item_agent_id: int,
+  cur_agent_id: int
+) -> bool #effects(traps) {
+  max_prio := ifx sleep_ran then cast(u8) FLAWED_QPRIO_LATER else cast(u8) FLAWED_QPRIO_NEXT;
+  if item_prio > max_prio || is_slash_cmd { return false; }
+  if is_main_thread { return item_agent_id == 0; }
+  return is_task_notification && item_agent_id == cur_agent_id;
+}
+
+// SDK structured task_notification emission gate (cli/print.ts:2063-2092):
+// Statusless stall pings MUST NOT emit a closing SDK event.
+flawed_sdk_should_emit_task_notification :: (has_status_tag: bool) -> bool #effects(traps) {
+  return has_status_tag;
+}
+
+// Proactive cron enablement & teammate durability prohibition (CronCreateTool.ts:105-114).
+flawed_cron_enabled :: (feature_on: bool, disable_env: bool, gb_flag: bool) -> bool #effects(traps) {
+  return feature_on && !disable_env && gb_flag;
+}
+
+flawed_cron_durable_allowed :: (is_teammate: bool, gb_durable_flag: bool, req_durable: bool) -> bool #effects(traps) {
+  return !is_teammate && gb_durable_flag && req_durable;
+}
+
+// Recurring forward jitter (cronTasks.ts:381-400): up to 10% of period (frac_permille in [0..999]), capped at 15 min.
+flawed_cron_recurring_jitter_ms :: (period_ms: int, frac_permille: int) -> int #effects(traps) {
+  if period_ms <= 0 || frac_permille <= 0 { return 0; } // mutant: equivalent // zero factors also yield 0
+  jitter := (period_ms * frac_permille) / 10000;
+  if jitter > FLAWED_CRON_RECURRING_CAP_MS { return FLAWED_CRON_RECURRING_CAP_MS; } // mutant: equivalent // equal values return the same result
+  return jitter;
+}
+
+// One-shot backward lead (cronTasks.ts:402-445): fires early ONLY on local :00 / :30 minutes.
+flawed_cron_oneshot_lead_ms :: (local_minute: int, frac_permille: int, floor_ms: int, max_ms: int) -> int #effects(traps) {
+  if local_minute % FLAWED_CRON_ONESHOT_MOD != 0 { return 0; }
+  return floor_ms + ((max_ms - floor_ms) * frac_permille) / 1000;
+}
+
+// Prompt-injection-safe CommonMark fence length for missed one-shot prompts (cronScheduler.ts:542-565):
+// Always max(3, longest_backtick_run + 1) so embedded ``` cannot escape the confirmation block.
+flawed_cron_missed_fence_len :: (prompt: string) -> int #effects(reads, traps) {
+  longest := 2;
+  cur := 0;
+  for i: 0..<prompt.count {
+    if prompt[i] == 96 { // '`'
+      cur = cur + 1;
+      if cur > longest { longest = cur; } // mutant: equivalent // equal values assign the same number
+    } else {
+      cur = 0;
+    }
+  }
+  return longest + 1;
+}
+
+#test "tasks: 7-type contract, ID prefixes, TOCTOU guards, remote polling, and atomic notify" {
+  #assert !flawed_task_is_terminal(FLAWED_TSTAT_PENDING) && !flawed_task_is_terminal(FLAWED_TSTAT_RUNNING);
+  #assert flawed_task_is_terminal(FLAWED_TSTAT_COMPLETED) && flawed_task_is_terminal(FLAWED_TSTAT_FAILED) && flawed_task_is_terminal(FLAWED_TSTAT_KILLED);
+
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_BASH, false) == 98;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_AGENT, false) == 97;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_AGENT, true) == 115;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_REMOTE_AGENT, false) == 114;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_TEAMMATE, false) == 116;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_LOCAL_WORKFLOW, false) == 119;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_MONITOR_MCP, false) == 109;
+  #assert flawed_task_id_prefix(FLAWED_TTYPE_DREAM, false) == 100;
+
+  // Footer visibility & eviction grace
+  #assert flawed_task_is_visible_bg(FLAWED_TSTAT_PENDING, false, false);
+  #assert flawed_task_is_visible_bg(FLAWED_TSTAT_RUNNING, true, true);
+  #assert !flawed_task_is_visible_bg(FLAWED_TSTAT_RUNNING, true, false);
+  #assert !flawed_task_is_visible_bg(FLAWED_TSTAT_COMPLETED, false, true);
+  #assert flawed_task_evict_after_ms(1000, true) == -1;
+  #assert flawed_task_evict_after_ms(1000, false) == 31000;
+
+  // Remote sidecar & bughunter completion guard
+  #assert flawed_remote_should_delete_sidecar(404, false) && flawed_remote_should_delete_sidecar(200, true);
+  #assert !flawed_remote_should_delete_sidecar(401, false);
+  #assert flawed_remote_poll_completed(0, true, true, 0);
+  #assert !flawed_remote_poll_completed(10, true, false, FLAWED_REMOTE_REVIEW_TIMEOUT_MS - 1);
+  #assert flawed_remote_poll_completed(0, true, false, FLAWED_REMOTE_REVIEW_TIMEOUT_MS);
+  #assert !flawed_remote_poll_completed(4, false, false, 0);
+  #assert flawed_remote_poll_completed(5, false, false, 0);
+
+  // TOCTOU re-checks & atomic notify claim & stopTask XML asymmetry
+  #assert flawed_task_can_apply_offset(FLAWED_TSTAT_RUNNING) && !flawed_task_can_apply_offset(FLAWED_TSTAT_COMPLETED);
+  #assert !flawed_task_can_evict(FLAWED_TSTAT_RUNNING, true, false, 0, 100);
+  #assert !flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, false, false, 0, 100);
+  #assert flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, true, false, -1, 100);
+  #assert !flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, true, true, -1, 100);
+  #assert !flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, true, true, 101, 100);
+  #assert flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, true, true, 100, 100);
+  #assert flawed_task_can_evict(FLAWED_TSTAT_COMPLETED, true, true, 0, 0);
+
+  nf: [1] bool;
+  #assert flawed_task_claim_notify(nf[..]) && nf[0];
+  #assert !flawed_task_claim_notify(nf[..]);
+  #assert flawed_stop_task_suppress_xml(FLAWED_TTYPE_LOCAL_BASH) && !flawed_stop_task_suppress_xml(FLAWED_TTYPE_LOCAL_AGENT);
+}
+
+#test "tasks: agent-isolated priority queue, SleepTool wakeup upgrade, cron jitter, and backtick fence" {
+  #assert flawed_queue_item_editable(false, false);
+  #assert !flawed_queue_item_editable(true, false);
+  #assert !flawed_queue_item_editable(false, true);
+
+  // Mid-turn drain: priority upgrade on sleep_ran, main vs subagent isolation
+  #assert flawed_queue_drain_mid_turn_allowed(false, FLAWED_QPRIO_NEXT, false, true, false, 0, 0);
+  #assert !flawed_queue_drain_mid_turn_allowed(false, FLAWED_QPRIO_LATER, false, true, true, 0, 0);
+  #assert flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_LATER, false, true, true, 0, 0);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, 3, false, true, true, 0, 0);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_NOW, true, true, false, 0, 0);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_NOW, false, true, true, 7, 0);
+  #assert flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_LATER, false, false, true, 7, 7);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_LATER, false, false, false, 7, 7);
+  #assert !flawed_queue_drain_mid_turn_allowed(true, FLAWED_QPRIO_LATER, false, false, true, 8, 7);
+
+  #assert flawed_sdk_should_emit_task_notification(true) && !flawed_sdk_should_emit_task_notification(false);
+
+  // Cron enablement, teammate durability block, asymmetric jitter, and missed-task fence
+  #assert flawed_cron_enabled(true, false, true);
+  #assert !flawed_cron_enabled(false, false, true) && !flawed_cron_enabled(true, true, true) && !flawed_cron_enabled(true, false, false);
+  #assert flawed_cron_durable_allowed(false, true, true);
+  #assert !flawed_cron_durable_allowed(true, true, true) && !flawed_cron_durable_allowed(false, false, true) && !flawed_cron_durable_allowed(false, true, false);
+
+  // 1-hour recurring job at frac=500 (0.5) -> 5% of 3,600,000 = 180,000 ms; huge period caps at 900,000 ms
+  #assert flawed_cron_recurring_jitter_ms(-3600000, 500) == 0 && flawed_cron_recurring_jitter_ms(3600000, -500) == 0;
+  #assert flawed_cron_recurring_jitter_ms(0, 500) == 0 && flawed_cron_recurring_jitter_ms(3600000, 0) == 0;
+  #assert flawed_cron_recurring_jitter_ms(3600000, 500) == 180000;
+  #assert flawed_cron_recurring_jitter_ms(100000, 1) == 10;
+  #assert flawed_cron_recurring_jitter_ms(1, 10000) == 1;
+  #assert flawed_cron_recurring_jitter_ms(86400000, 500) == FLAWED_CRON_RECURRING_CAP_MS;
+
+  // One-shot backward lead: fires early on local :00 / :30 only
+  #assert flawed_cron_oneshot_lead_ms(15, 500, 0, 90000) == 0;
+  #assert flawed_cron_oneshot_lead_ms(30, 500, 0, 90000) == 45000;
+  #assert flawed_cron_oneshot_lead_ms(0, 500, 30000, 90000) == 60000;
+
+  // CommonMark backtick fence anti-injection
+  #assert flawed_cron_missed_fence_len("hello") == 3;
+  #assert flawed_cron_missed_fence_len("`a`") == 3;
+  #assert flawed_cron_missed_fence_len("```") == 4;
+  #assert flawed_cron_missed_fence_len("a``b````c") == 5;
+}
