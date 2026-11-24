@@ -56,6 +56,12 @@ EOF
   echo "Installed macOS LaunchAgent: $PLIST (port $PORT)"
 elif [[ "$OS" == "Linux" ]]; then
   UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  # The usual places, then the system and per-user profiles NixOS keeps its programs in (there is
+  # no /usr/bin there, so the host found neither git nor the Antigravity CLI's own tools).
+  SERVICE_PATH="${HOME}/.openagents/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  for extra in /run/wrappers/bin "${HOME}/.nix-profile/bin" "/etc/profiles/per-user/${USER:-$(id -un)}/bin" /nix/var/nix/profiles/default/bin /run/current-system/sw/bin; do
+    if [[ -d "$extra" ]]; then SERVICE_PATH="${SERVICE_PATH}:${extra}"; fi
+  done
   UNIT="$UNIT_DIR/openagents-coder-host.service"
   mkdir -p "$UNIT_DIR"
   cat > "$UNIT" <<EOF
@@ -68,7 +74,7 @@ Type=simple
 ExecStart=${BIN} serve --no-relay --tailnet-listen --tailnet-port ${PORT}
 Restart=always
 RestartSec=3
-Environment=PATH=${HOME}/.openagents/bin:${HOME}/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=${SERVICE_PATH}
 StandardOutput=append:${LOG_DIR}/coder-host.out.log
 StandardError=append:${LOG_DIR}/coder-host.err.log
 
