@@ -86,3 +86,12 @@ coder_page_bar_drags :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #eff
 // The window went into full screen (on) or came out: the lights hide there, so the toggle takes the
 // window's edge.
 coder_page_bar_full :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].bar_full = on; } }
+// A Linux or Windows window: key hints read Ctrl, and Ctrl-N starts a new chat (editor.coax).
+coder_page_ctrl_keys :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].ctrl_keys = on; } }
+// The local model's name with the variant in use, for the model chip ("" for the plain name).
+coder_page_inkling_label :: (s: [] CoderPage, label: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  n := 0;
+  for c: label { if n < s[0].inkling_label.count { s[0].inkling_label[n] = c; n += 1; } }
+  s[0].inkling_label_n = n;
+}

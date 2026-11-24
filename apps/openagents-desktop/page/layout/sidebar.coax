@@ -70,7 +70,8 @@ cp_side_border_left :: (s: [] CoderPage, sh: [] Sheet, edge_x: f32, y: f32, h: f
 }
 
 // Primary sidebar action row with trailing macOS keycap chips (e.g. ⌘ N for New chat).
-cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, title: string, key: string, state: int, action: int) -> f32 {
+// ctrl: a Linux or Windows window, where the first chip reads Ctrl in place of the Command sign.
+cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, title: string, key: string, ctrl: bool, state: int, action: int) -> f32 {
   k := f[0].skin; a := k.app; t := k.set; sh := f[0].sheet; m := f[0].m;
   off := (state & EL_S_DISABLED) != 0;
   h := a.side_row;
@@ -92,7 +93,7 @@ cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon:
   if key.count > 0 && t.key_h > 0.0f32 {
     kw2 := ceil(measure_width(m, t.head_face, key)) + 2.0f32 * t.key_pad;
     if kw2 < t.key_h { kw2 = t.key_h; }
-    kw1 := t.key_icon + 2.0f32 * t.key_pad;
+    kw1 := ifx ctrl then ceil(measure_width(m, t.head_face, "Ctrl")) + 2.0f32 * t.key_pad else t.key_icon + 2.0f32 * t.key_pad;
     if kw1 < t.key_h { kw1 = t.key_h; }
     caps_w := kw1 + t.key_gap + kw2;
     if right - caps_w - a.gap > tx + 24.0f32 {
@@ -104,7 +105,12 @@ cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon:
       _ := sheet_text(sh, m, -1, cx + (kw2 - tw2) / 2.0f32, y + (h - t.head_line) / 2.0f32, t.head_line, t.head_face, key_ink, key);
       cx -= t.key_gap + kw1;
       sheet_fill(sh, cx, ky, kw1, t.key_h, t.key_radius, t.well);
-      sheet_icon(sh, ICON_SET_COMMAND, cx + (kw1 - t.key_icon) / 2.0f32, y + (h - t.key_icon) / 2.0f32, t.key_icon, key_ink);
+      if ctrl {
+        tw1 := measure_width(m, t.head_face, "Ctrl");
+        _ := sheet_text(sh, m, -1, cx + (kw1 - tw1) / 2.0f32, y + (h - t.head_line) / 2.0f32, t.head_line, t.head_face, key_ink, "Ctrl");
+      } else {
+        sheet_icon(sh, ICON_SET_COMMAND, cx + (kw1 - t.key_icon) / 2.0f32, y + (h - t.key_icon) / 2.0f32, t.key_icon, key_ink);
+      }
       right = cx - a.gap;
     }
   }
@@ -127,7 +133,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
-  sy += cp_side_action_keys(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), "N", 0, CP_NEW);
+  sy += cp_side_action_keys(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), "N", s[0].ctrl_keys, 0, CP_NEW);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Flag-gated sidebar destinations: Foreman stays at top; Gym and PRs & Issues live in the icon-only footer bar.
   if cp_flag(s, DC_FLAG_FOREMAN) {
