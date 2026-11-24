@@ -20,6 +20,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 12 — Shell, Sandboxing & Workspace Tools** | Layer 4 | `shell_sandbox.coax` (`#authority`), `workspace_tools.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 13 — The Hook System** | Layer 4 | `hooks.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 14 — Configuration & Enterprise Policy** | Layer 4 | `config.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 15 — Model Context Protocol (MCP)** | Layer 5 | `mcp.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

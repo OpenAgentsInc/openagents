@@ -28,6 +28,7 @@
 #load "workspace_tools.coax";
 #load "hooks.coax";
 #load "config.coax";
+#load "mcp.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -286,4 +287,18 @@
   #assert !flawed_env_apply_allowed(FLAWED_CSRC_PROJECT, false, false, false, false, false, false, false, false);
   #assert !flawed_policy_limit_allowed(false, false, false, true, true);
   #assert flawed_remote_security_dialog_action(true, true, false) == FLAWED_RSEC_SHUTDOWN_FAIL_CLOSED;
+}
+
+#test "flawed core (Ch 15): MCP policy/dedup, session expiry, XAA no-downgrade, normalization, and ToolSearch deferral compose" {
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, true, true, false);
+  #assert !flawed_mcp_scope_allowed(FLAWED_MSCOPE_USER, true, false, false);
+  #assert flawed_mcp_is_session_expired(404, -32001) && !flawed_mcp_is_session_expired(404, 0);
+  #assert flawed_mcp_oauth_action(true, false, false, 0, true) == FLAWED_OAUTH_XAA_REFUSE_DOWNGRADE;
+  #assert flawed_mcp_oauth_action(false, false, true, 999, true) == FLAWED_OAUTH_STEPUP_RECONSENT;
+  buf: [32] u8;
+  n := flawed_mcp_normalize_name(" claude.ai  Slack! ", true, buf[..]);
+  #assert n == 15 && cast(string) buf[0..<n] == "claude_ai_Slack";
+  #assert flawed_mcp_is_deferred_tool(false, true, false, false) && !flawed_mcp_is_deferred_tool(true, true, false, true);
+  #assert !flawed_mcp_wire_include_tool(true, true, false, false) && flawed_mcp_wire_include_tool(true, true, false, true);
+  #assert flawed_tool_search_score_term(true, true, false, false, true, true) == 18;
 }

@@ -1,0 +1,355 @@
+// Flawed Layer 5 (Chapter 15) — Model Context Protocol (MCP): Config & Policy Gates,
+// Transport Resilience, OAuth 2.1 / Step-Up / XAA, Naming Normalization, and ToolSearch Deferral.
+// Replaces cc/services/mcp/{config,client,auth,useManageMCPConnections,normalization,
+// headersHelper}.ts, cc/utils/toolSearch.ts, and cc/tools/ToolSearchTool/ToolSearchTool.ts invariants.
+//   coax/bin/coax test flawed/mcp.coax --library
+//   coax/bin/coax mutate flawed/mcp.coax --root-only
+#module "flawed.mcp";
+#authority;
+#load "config.coax";
+
+// Transport, OAuth, output & elicitation constants (services/mcp/{client,auth,useManageMCPConnections}.ts).
+FLAWED_MCP_REQUEST_TIMEOUT_MS :: 60000;
+FLAWED_MCP_MAX_CONN_ERRORS :: 3;
+FLAWED_MCP_MAX_RECONNECTS :: 5;
+FLAWED_MCP_RECONNECT_BASE_MS :: 1000;
+FLAWED_MCP_RECONNECT_MAX_MS :: 30000;
+FLAWED_MCP_BATCH_FLUSH_MS :: 16;
+FLAWED_MCP_OAUTH_REFRESH_MARGIN_S :: 300;
+FLAWED_MCP_MAX_DESC_CHARS :: 2048;
+FLAWED_MCP_MAX_OUTPUT_TOKENS :: 25000;
+FLAWED_MCP_MAX_URL_ELICIT_RETRIES :: 3;
+
+// 7 MCP config scopes (services/mcp/types.ts:10-20).
+FLAWED_MSCOPE_LOCAL :: 1;
+FLAWED_MSCOPE_USER :: 2;
+FLAWED_MSCOPE_PROJECT :: 3;
+FLAWED_MSCOPE_DYNAMIC_PLUGIN :: 4;
+FLAWED_MSCOPE_ENTERPRISE :: 5;
+FLAWED_MSCOPE_CLAUDEAI :: 6;
+FLAWED_MSCOPE_SDK :: 7;
+
+// OAuth 2.1 / Step-Up / XAA decision actions (services/mcp/auth.ts).
+FLAWED_OAUTH_USE_TOKEN :: 1;
+FLAWED_OAUTH_LOCKFILE_REFRESH :: 2;
+FLAWED_OAUTH_STEPUP_RECONSENT :: 3;
+FLAWED_OAUTH_INTERACTIVE_LOGIN :: 4;
+FLAWED_OAUTH_XAA_EXCHANGE :: 5;
+FLAWED_OAUTH_XAA_REFUSE_DOWNGRADE :: 6;
+
+// ToolSearch ENABLE_TOOL_SEARCH mode settings (utils/toolSearch.ts:172-198).
+FLAWED_TSMODE_UNSET :: 1;
+FLAWED_TSMODE_ALWAYS :: 2;
+FLAWED_TSMODE_AUTO :: 3;
+FLAWED_TSMODE_STANDARD :: 4;
+
+// Exclusive managed-mcp.json & strictPluginOnlyCustomization('mcp') scope gate (services/mcp/config.ts:1470-1504).
+flawed_mcp_scope_allowed :: (
+  scope: u8,
+  has_managed_mcp: bool,
+  is_sdk_claude_vscode: bool,
+  restricted_plugin_only: bool
+) -> bool #effects(traps) {
+  if has_managed_mcp {
+    return scope == FLAWED_MSCOPE_ENTERPRISE ||
+           (scope == FLAWED_MSCOPE_SDK && is_sdk_claude_vscode);
+  }
+  if restricted_plugin_only {
+    return scope == FLAWED_MSCOPE_ENTERPRISE || scope == FLAWED_MSCOPE_DYNAMIC_PLUGIN ||
+           scope == FLAWED_MSCOPE_SDK;
+  }
+  return scope >= FLAWED_MSCOPE_LOCAL && scope <= FLAWED_MSCOPE_SDK;
+}
+
+// Enterprise allow/deny policy (services/mcp/config.ts:417-551):
+// SDK servers are exempt; denylist (merged from all sources) always wins; empty allowlist [] blocks all.
+flawed_mcp_server_allowed_by_policy :: (
+  is_sdk: bool,
+  in_denylist: bool,
+  has_allowlist: bool,
+  allowlist_empty: bool,
+  allowlist_matched: bool
+) -> bool #effects(traps) {
+  if is_sdk { return true; }
+  if in_denylist { return false; }
+  if !has_allowlist { return true; }
+  if allowlist_empty { return false; }
+  return allowlist_matched;
+}
+
+// Pre-trust gate on headersHelper shell commands (services/mcp/headersHelper.ts:42-57).
+flawed_mcp_headers_helper_allowed :: (scope: u8, is_interactive: bool, trust_accepted: bool) -> bool #effects(traps) {
+  if is_interactive && !trust_accepted && (scope == FLAWED_MSCOPE_PROJECT || scope == FLAWED_MSCOPE_LOCAL) {
+    return false;
+  }
+  return true;
+}
+
+// Content-signature dedup invariant: disabled or policy-blocked manual servers must NEVER suppress twins!
+flawed_mcp_manual_can_suppress_twin :: (is_disabled: bool, is_policy_blocked: bool) -> bool #effects(traps) {
+  return !is_disabled && !is_policy_blocked;
+}
+
+// wrapFetchWithTimeout(): GET long-lived SSE streams never receive the 60s request timeout (client.ts:492-549).
+flawed_mcp_fetch_needs_timeout :: (is_get_sse: bool) -> bool #effects(traps) {
+  return !is_get_sse;
+}
+
+// Session expiry requires BOTH HTTP 404 AND JSON-RPC -32001 (client.ts:193-206).
+flawed_mcp_is_session_expired :: (http_status: int, jsonrpc_code: int) -> bool #effects(traps) {
+  return http_status == 404 && jsonrpc_code == -32001;
+}
+
+// Force client.close() to reject pending callTool() promises on drop signatures (client.ts:1227-1345).
+flawed_mcp_should_close_transport :: (
+  is_session_expired: bool,
+  exhausted_sse_retries: bool,
+  consecutive_terminal_errs: int
+) -> bool #effects(traps) {
+  return is_session_expired || exhausted_sse_retries ||
+         consecutive_terminal_errs >= FLAWED_MCP_MAX_CONN_ERRORS;
+}
+
+// Automatic reconnect backoff (useManageMCPConnections.ts:333-468):
+// Remote only, disk-checked !is_disabled, 1s -> 2s -> 4s -> 8s -> 16s (cap 30s), up to max_attempts; else -1.
+flawed_mcp_reconnect_delay_ms :: (is_remote: bool, is_disabled: bool, attempt: int, max_attempts: int) -> int #effects(traps) {
+  if !is_remote || is_disabled || attempt < 0 || attempt >= max_attempts {
+    return -1;
+  }
+  delay := FLAWED_MCP_RECONNECT_BASE_MS;
+  for i: 0..<attempt {
+    delay = delay * 2;
+  }
+  if delay > FLAWED_MCP_RECONNECT_MAX_MS { return FLAWED_MCP_RECONNECT_MAX_MS; } // mutant: equivalent // equal values return the same result
+  return delay;
+}
+
+// OAuth 2.1 / Step-Up (RFC 6749 §6) / XAA (SEP-990) decision machine (services/mcp/auth.ts).
+// XAA NEVER silently downgrades to standard browser consent!
+flawed_mcp_oauth_action :: (
+  is_xaa: bool,
+  xaa_env_enabled: bool,
+  has_pending_stepup_missing: bool,
+  expires_in_s: int,
+  has_refresh_token: bool
+) -> u8 #effects(traps) {
+  if is_xaa {
+    if !xaa_env_enabled { return FLAWED_OAUTH_XAA_REFUSE_DOWNGRADE; }
+    return FLAWED_OAUTH_XAA_EXCHANGE;
+  }
+  if has_pending_stepup_missing { return FLAWED_OAUTH_STEPUP_RECONSENT; }
+  if expires_in_s > FLAWED_MCP_OAUTH_REFRESH_MARGIN_S { return FLAWED_OAUTH_USE_TOKEN; }
+  if has_refresh_token { return FLAWED_OAUTH_LOCKFILE_REFRESH; }
+  return FLAWED_OAUTH_INTERACTIVE_LOGIN;
+}
+
+flawed_mcp_is_ident_char :: (c: u8) -> bool #effects(traps) {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) ||
+         (c >= 48 && c <= 57) || c == 95 || c == 45;
+}
+
+// normalizeNameForMCP() (services/mcp/normalization.ts:17-23):
+// Maps non-[A-Za-z0-9_-] to '_'; for claude.ai servers, collapses '_+' and trims leading/trailing '_'.
+flawed_mcp_normalize_name :: (src: string, is_claudeai: bool, out: [] u8) -> int #effects(reads, writes, traps) {
+  w := 0;
+  for i: 0..<src.count {
+    if w >= out.count { return -1; }
+    ch := ifx flawed_mcp_is_ident_char(src[i]) then src[i] else cast(u8) 95;
+    if is_claudeai && ch == 95 {
+      if w == 0 || out[w - 1] == 95 { continue; }
+    }
+    out[w] = ch;
+    w = w + 1;
+  }
+  if is_claudeai && w > 1 && out[w - 1] == 95 { // mutant: equivalent // out[0] is never '_' when is_claudeai
+    w = w - 1;
+  }
+  return w;
+}
+
+// ToolSearch deferral priority (ToolSearchTool/prompt.ts:62-108):
+// 1. alwaysLoad -> false  2. isMcp -> true  3. ToolSearch/eager -> false  4. shouldDefer.
+flawed_mcp_is_deferred_tool :: (
+  always_load: bool,
+  is_mcp: bool,
+  is_always_eager_builtin: bool,
+  should_defer_flag: bool
+) -> bool #effects(traps) {
+  if always_load { return false; }
+  if is_mcp { return true; }
+  if is_always_eager_builtin { return false; }
+  return should_defer_flag;
+}
+
+// Wire tool filtering (services/api/claude.ts:1154-1168):
+// Sends non-deferred + ToolSearch + already-discovered deferred tools (with defer_loading: true).
+flawed_mcp_wire_include_tool :: (
+  use_tool_search: bool,
+  is_deferred: bool,
+  is_tool_search: bool,
+  is_discovered: bool
+) -> bool #effects(traps) {
+  if !use_tool_search || !is_deferred || is_tool_search { return true; }
+  return is_discovered;
+}
+
+// Master ToolSearch runtime enablement gate (utils/toolSearch.ts:172-435, claude.ts:1139-1148).
+flawed_mcp_use_tool_search :: (
+  disable_exp_betas: bool,
+  env_mode: u8,                 // FLAWED_TSMODE_*
+  is_1p_url: bool,
+  model_supports_tool_ref: bool,
+  has_tool_search_tool: bool,
+  has_deferred_or_pending: bool,
+  schema_pct: int,
+  auto_threshold_pct: int
+) -> bool #effects(traps) {
+  if disable_exp_betas || !model_supports_tool_ref || !has_tool_search_tool || !has_deferred_or_pending {
+    return false;
+  }
+  if env_mode == FLAWED_TSMODE_STANDARD { return false; }
+  if env_mode == FLAWED_TSMODE_UNSET && !is_1p_url { return false; }
+  if env_mode == FLAWED_TSMODE_AUTO {
+    return schema_pct >= auto_threshold_pct;
+  }
+  return true;
+}
+
+// Weighted keyword search scoring per term (ToolSearchTool.ts:266-291).
+flawed_tool_search_score_term :: (
+  is_mcp: bool,
+  exact_part: bool,
+  partial_part: bool,
+  full_substr: bool,
+  hint_match: bool,
+  desc_match: bool
+) -> int #effects(traps) {
+  score := 0;
+  if exact_part {
+    score = ifx is_mcp then 12 else 10;
+  } else if partial_part {
+    score = ifx is_mcp then 6 else 5;
+  }
+  if full_substr && score == 0 { score = 3; }
+  if hint_match { score = score + 4; }
+  if desc_match { score = score + 2; }
+  return score;
+}
+
+#test "mcp: scopes, enterprise policy, headersHelper trust, transport resilience, and OAuth/Step-Up/XAA" {
+  // Exclusive managed-mcp.json & strictPluginOnlyCustomization
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_ENTERPRISE, true, false, false);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, true, true, false);
+  #assert !flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, true, false, false);
+  #assert !flawed_mcp_scope_allowed(FLAWED_MSCOPE_USER, true, true, false);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_ENTERPRISE, false, false, true);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_DYNAMIC_PLUGIN, false, false, true);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, false, false, true);
+  #assert !flawed_mcp_scope_allowed(FLAWED_MSCOPE_PROJECT, false, false, true);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_LOCAL, false, false, false);
+  #assert flawed_mcp_scope_allowed(FLAWED_MSCOPE_SDK, false, false, false);
+  #assert !flawed_mcp_scope_allowed(0, false, false, false);
+  #assert !flawed_mcp_scope_allowed(8, false, false, false);
+
+  // Policy: SDK exempt, denylist wins, empty allowlist blocks all
+  #assert flawed_mcp_server_allowed_by_policy(true, true, true, true, false);
+  #assert !flawed_mcp_server_allowed_by_policy(false, true, false, false, true);
+  #assert flawed_mcp_server_allowed_by_policy(false, false, false, true, false);
+  #assert !flawed_mcp_server_allowed_by_policy(false, false, true, true, true);
+  #assert flawed_mcp_server_allowed_by_policy(false, false, true, false, true);
+  #assert !flawed_mcp_server_allowed_by_policy(false, false, true, false, false);
+
+  // headersHelper trust & dedup twin guard
+  #assert !flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_PROJECT, true, false);
+  #assert !flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_LOCAL, true, false);
+  #assert flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_USER, true, false);
+  #assert flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_PROJECT, true, true);
+  #assert flawed_mcp_headers_helper_allowed(FLAWED_MSCOPE_PROJECT, false, false);
+  #assert flawed_mcp_manual_can_suppress_twin(false, false);
+  #assert !flawed_mcp_manual_can_suppress_twin(true, false);
+  #assert !flawed_mcp_manual_can_suppress_twin(false, true);
+
+  // Transport timeouts, session expiry (404 + -32001), close trigger, reconnect backoff
+  #assert !flawed_mcp_fetch_needs_timeout(true) && flawed_mcp_fetch_needs_timeout(false);
+  #assert flawed_mcp_is_session_expired(404, -32001);
+  #assert !flawed_mcp_is_session_expired(404, -32000);
+  #assert !flawed_mcp_is_session_expired(500, -32001);
+  #assert flawed_mcp_should_close_transport(true, false, 0);
+  #assert flawed_mcp_should_close_transport(false, true, 0);
+  #assert flawed_mcp_should_close_transport(false, false, 3);
+  #assert !flawed_mcp_should_close_transport(false, false, 2);
+
+  #assert flawed_mcp_reconnect_delay_ms(false, false, 0, FLAWED_MCP_MAX_RECONNECTS) == -1;
+  #assert flawed_mcp_reconnect_delay_ms(true, true, 0, FLAWED_MCP_MAX_RECONNECTS) == -1;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, -1, FLAWED_MCP_MAX_RECONNECTS) == -1;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, 0, FLAWED_MCP_MAX_RECONNECTS) == 1000;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, 1, FLAWED_MCP_MAX_RECONNECTS) == 2000;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, 4, FLAWED_MCP_MAX_RECONNECTS) == 16000;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, 5, FLAWED_MCP_MAX_RECONNECTS) == -1;
+  #assert flawed_mcp_reconnect_delay_ms(true, false, 5, 6) == 30000;
+
+  // OAuth 2.1 / Step-Up / XAA (no silent downgrade!)
+  #assert flawed_mcp_oauth_action(true, false, false, 0, true) == FLAWED_OAUTH_XAA_REFUSE_DOWNGRADE;
+  #assert flawed_mcp_oauth_action(true, true, false, 0, false) == FLAWED_OAUTH_XAA_EXCHANGE;
+  #assert flawed_mcp_oauth_action(false, false, true, 999, true) == FLAWED_OAUTH_STEPUP_RECONSENT;
+  #assert flawed_mcp_oauth_action(false, false, false, 301, true) == FLAWED_OAUTH_USE_TOKEN;
+  #assert flawed_mcp_oauth_action(false, false, false, 300, true) == FLAWED_OAUTH_LOCKFILE_REFRESH;
+  #assert flawed_mcp_oauth_action(false, false, false, 300, false) == FLAWED_OAUTH_INTERACTIVE_LOGIN;
+}
+
+#test "mcp: name normalization, ToolSearch deferral, wire filter, runtime guards, and weighted scoring" {
+  // Ident char exact boundaries: 'A'(65)..'Z'(90), 'a'(97)..'z'(122), '0'(48)..'9'(57), '_'(95), '-'(45)
+  #assert !flawed_mcp_is_ident_char(64) && flawed_mcp_is_ident_char(65) && flawed_mcp_is_ident_char(90) && !flawed_mcp_is_ident_char(91);
+  #assert !flawed_mcp_is_ident_char(96) && flawed_mcp_is_ident_char(97) && flawed_mcp_is_ident_char(122) && !flawed_mcp_is_ident_char(123);
+  #assert !flawed_mcp_is_ident_char(47) && flawed_mcp_is_ident_char(48) && flawed_mcp_is_ident_char(57) && !flawed_mcp_is_ident_char(58);
+  #assert flawed_mcp_is_ident_char(95) && flawed_mcp_is_ident_char(45);
+
+  buf: [32] u8;
+  n1 := flawed_mcp_normalize_name("org/my.tool", false, buf[..]);
+  #assert n1 == 11 && cast(string) buf[0..<n1] == "org_my_tool";
+  // claude.ai collapses consecutive '_' and trims leading/trailing '_'
+  n2 := flawed_mcp_normalize_name(" claude.ai  Drive! ", true, buf[..]);
+  #assert n2 == 15 && cast(string) buf[0..<n2] == "claude_ai_Drive";
+  n3 := flawed_mcp_normalize_name("___", true, buf[..]);
+  #assert n3 == 0;
+  n4 := flawed_mcp_normalize_name("a_", true, buf[..]);
+  #assert n4 == 1 && cast(string) buf[0..<n4] == "a";
+  tiny: [2] u8;
+  #assert flawed_mcp_normalize_name("abc", false, tiny[..]) == -1;
+  #assert flawed_mcp_normalize_name("ab", false, tiny[..]) == 2;
+
+  // Deferral priority & wire filter
+  #assert !flawed_mcp_is_deferred_tool(true, true, false, true);
+  #assert flawed_mcp_is_deferred_tool(false, true, true, false);
+  #assert !flawed_mcp_is_deferred_tool(false, false, true, true);
+  #assert flawed_mcp_is_deferred_tool(false, false, false, true);
+  #assert !flawed_mcp_is_deferred_tool(false, false, false, false);
+
+  #assert flawed_mcp_wire_include_tool(false, true, false, false);
+  #assert flawed_mcp_wire_include_tool(true, false, false, false);
+  #assert flawed_mcp_wire_include_tool(true, true, true, false);
+  #assert flawed_mcp_wire_include_tool(true, true, false, true);
+  #assert !flawed_mcp_wire_include_tool(true, true, false, false);
+
+  // Runtime ToolSearch enablement guards
+  #assert !flawed_mcp_use_tool_search(true, FLAWED_TSMODE_ALWAYS, true, true, true, true, 50, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_ALWAYS, true, false, true, true, 50, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_ALWAYS, true, true, false, true, 50, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_ALWAYS, true, true, true, false, 50, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_STANDARD, true, true, true, true, 50, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_UNSET, false, true, true, true, 50, 10);
+  #assert flawed_mcp_use_tool_search(false, FLAWED_TSMODE_UNSET, true, true, true, true, 0, 10);
+  #assert flawed_mcp_use_tool_search(false, FLAWED_TSMODE_ALWAYS, false, true, true, true, 0, 10);
+  #assert flawed_mcp_use_tool_search(false, FLAWED_TSMODE_AUTO, false, true, true, true, 10, 10);
+  #assert !flawed_mcp_use_tool_search(false, FLAWED_TSMODE_AUTO, true, true, true, true, 9, 10);
+
+  // Weighted keyword scoring
+  #assert flawed_tool_search_score_term(true, true, false, true, true, true) == 18;
+  #assert flawed_tool_search_score_term(false, true, false, false, false, false) == 10;
+  #assert flawed_tool_search_score_term(true, false, true, true, false, false) == 6;
+  #assert flawed_tool_search_score_term(false, false, true, false, false, false) == 5;
+  #assert flawed_tool_search_score_term(false, false, false, true, false, false) == 3;
+  #assert flawed_tool_search_score_term(false, false, false, false, true, false) == 4;
+  #assert flawed_tool_search_score_term(false, false, false, false, false, true) == 2;
+  #assert flawed_tool_search_score_term(false, false, false, false, false, false) == 0;
+}
