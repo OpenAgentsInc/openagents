@@ -1,0 +1,270 @@
+// Flawed Layer 6 (Chapter 19) — Agent Teams, Swarms, File-Locked Mailbox IPC,
+// Permission Bubbling, and Coordinator Mode Pure Orchestration.
+// Replaces cc/utils/{agentSwarmsEnabled,teammate,teammateMailbox}.ts,
+// cc/utils/swarm/{teamHelpers,inProcessRunner,leaderPermissionBridge,backends/registry}.ts,
+// cc/tools/{TeamCreateTool,TeamDeleteTool,SendMessageTool}/, and
+// cc/coordinator/coordinatorMode.ts + cc/utils/toolPool.ts invariants.
+//   coax/bin/coax test flawed/swarm.coax --library
+//   coax/bin/coax mutate flawed/swarm.coax --root-only
+#module "flawed.swarm";
+#authority;
+#load "subagent.coax";
+
+// Startup teammateMode snapshot values (teammateModeSnapshot.ts:56-87).
+FLAWED_TMODE_AUTO :: 1;
+FLAWED_TMODE_TMUX :: 2;
+FLAWED_TMODE_IN_PROCESS :: 3;
+
+// Pane backend selection outcomes (utils/swarm/backends/registry.ts:136-254).
+FLAWED_PBACK_TMUX_NATIVE :: 1;
+FLAWED_PBACK_ITERM2 :: 2;
+FLAWED_PBACK_TMUX_EXTERNAL :: 3;
+FLAWED_PBACK_NONE :: 4;
+
+// 5-tier in-process teammate wakeup priority (inProcessRunner.ts:689-868).
+FLAWED_WAKE_USER_DIRECT :: 1;
+FLAWED_WAKE_SHUTDOWN_REQ :: 2;
+FLAWED_WAKE_TEAM_LEAD :: 3;
+FLAWED_WAKE_PEER_FIFO :: 4;
+FLAWED_WAKE_CLAIM_TASK :: 5;
+FLAWED_WAKE_IDLE :: 6;
+
+// Coordinator Mode tool categories (constants/tools.ts:107-112, utils/toolPool.ts:11-41).
+FLAWED_CTOOL_AGENT :: 1;
+FLAWED_CTOOL_TASK_STOP :: 2;
+FLAWED_CTOOL_SEND_MESSAGE :: 3;
+FLAWED_CTOOL_SYNTHETIC_OUTPUT :: 4;
+FLAWED_CTOOL_PR_ACTIVITY_MCP :: 5;
+FLAWED_CTOOL_OTHER :: 6;
+
+// Agent Teams feature gate (utils/agentSwarmsEnabled.ts:24-44).
+flawed_swarms_enabled :: (is_ant: bool, has_opt_in: bool, gb_amber_flint: bool) -> bool #effects(traps) {
+  if is_ant { return true; }
+  return has_opt_in && gb_amber_flint;
+}
+
+// Three-tier identity check (utils/teammate.ts:108-114):
+// In-process ALS active OR pane teammate carrying BOTH agentId and teamName.
+flawed_is_teammate :: (
+  in_process_als_active: bool,
+  has_dyn_agent_id: bool,
+  has_dyn_team_name: bool
+) -> bool #effects(traps) {
+  if in_process_als_active { return true; }
+  return has_dyn_agent_id && has_dyn_team_name;
+}
+
+// Team lifecycle invariants: 1 team per leader, flat rosters, no active members on delete.
+flawed_team_can_create :: (already_has_team: bool) -> bool #effects(traps) {
+  return !already_has_team;
+}
+
+flawed_team_can_delete :: (active_non_lead_members: int) -> bool #effects(traps) {
+  return active_non_lead_members == 0;
+}
+
+flawed_team_can_spawn_teammate :: (caller_is_teammate: bool) -> bool #effects(traps) {
+  return !caller_is_teammate;
+}
+
+flawed_team_can_spawn_bg_subagent :: (caller_is_in_process_teammate: bool) -> bool #effects(traps) {
+  return !caller_is_in_process_teammate;
+}
+
+// Execution mode selection (utils/swarm/backends/registry.ts:351-398):
+// Non-interactive (-p) ALWAYS forces in-process; explicit snapshot modes win; auto falls back cleanly.
+flawed_swarm_use_in_process :: (
+  is_non_interactive: bool,
+  snap_mode: u8,
+  fallback_active: bool,
+  inside_tmux: bool,
+  inside_iterm2: bool
+) -> bool #effects(traps) {
+  if is_non_interactive { return true; }
+  if snap_mode == FLAWED_TMODE_IN_PROCESS { return true; }
+  if snap_mode == FLAWED_TMODE_TMUX { return false; }
+  if fallback_active { return true; }
+  return !inside_tmux && !inside_iterm2;
+}
+
+// Pane backend priority (registry.ts:136-254): tmux native > iTerm2 (with live it2 API) > external tmux > none.
+flawed_swarm_select_pane_backend :: (
+  inside_tmux: bool,
+  inside_iterm2: bool,
+  it2_api_ok: bool,
+  prefer_tmux_over_iterm: bool,
+  tmux_installed: bool
+) -> u8 #effects(traps) {
+  if inside_tmux { return FLAWED_PBACK_TMUX_NATIVE; }
+  if inside_iterm2 && it2_api_ok && !prefer_tmux_over_iterm { return FLAWED_PBACK_ITERM2; }
+  if tmux_installed { return FLAWED_PBACK_TMUX_EXTERNAL; }
+  return FLAWED_PBACK_NONE;
+}
+
+// planModeRequired ALWAYS overrides leader bypassPermissions/acceptEdits/auto (spawnUtils.ts:45-56).
+flawed_swarm_teammate_initial_mode :: (plan_mode_required: bool, leader_mode: u8) -> u8 #effects(traps) {
+  if plan_mode_required { return FLAWED_PMODE_PLAN; }
+  return leader_mode;
+}
+
+// Dual AbortController invariant (inProcessRunner.ts:1053-1309):
+// Escaping current turn interrupts work and idles; ONLY outer lifecycle abort terminates the teammate.
+flawed_swarm_teammate_should_exit :: (lifecycle_aborted: bool, work_aborted: bool) -> bool #effects(traps) {
+  _ = work_aborted;
+  return lifecycle_aborted;
+}
+
+// 5-tier mailbox wakeup hierarchy (inProcessRunner.ts:689-868):
+// Direct user input > shutdown_request (anti-starvation) > team-lead > peer FIFO > unclaimed task > idle.
+flawed_mailbox_wakeup_priority :: (
+  has_user_msg: bool,
+  has_shutdown_req: bool,
+  has_lead_msg: bool,
+  has_peer_msg: bool,
+  has_unclaimed_task: bool
+) -> u8 #effects(traps) {
+  if has_user_msg { return FLAWED_WAKE_USER_DIRECT; }
+  if has_shutdown_req { return FLAWED_WAKE_SHUTDOWN_REQ; }
+  if has_lead_msg { return FLAWED_WAKE_TEAM_LEAD; }
+  if has_peer_msg { return FLAWED_WAKE_PEER_FIFO; }
+  if has_unclaimed_task { return FLAWED_WAKE_CLAIM_TASK; }
+  return FLAWED_WAKE_IDLE;
+}
+
+// SendMessageTool routing & protocol validation (SendMessageTool.ts:442-912):
+// - Cross-session (bridge:/uds:) and broadcast (*) reject structured messages.
+// - shutdown_response targets team-lead only; plan_approval_response requires team-lead sender.
+flawed_send_msg_allowed :: (
+  is_cross_session: bool,
+  is_broadcast: bool,
+  is_structured: bool,
+  is_shutdown_resp: bool,
+  target_is_lead: bool,
+  is_plan_approval: bool,
+  sender_is_lead: bool
+) -> bool #effects(traps) {
+  if (is_cross_session || is_broadcast) && is_structured { return false; }
+  if is_shutdown_resp && !target_is_lead { return false; }
+  if is_plan_approval && !sender_is_lead { return false; }
+  return true;
+}
+
+// Protocol forgery defense (useInboxPoller.ts:158-195, 550-562):
+// Only messages from 'team-lead' may mutate teammate permission modes.
+flawed_mailbox_mode_mutation_trusted :: (sender_is_lead: bool) -> bool #effects(traps) {
+  return sender_is_lead;
+}
+
+// Attachment-vs-poller race & broadcast self-echo guard (attachments.ts:3532-3630, teammateMailbox.ts:1073-1095):
+// Never surface structured control JSON as LLM attachment text, and never let in-process teammates read leader inbox.
+flawed_mailbox_attachment_allowed :: (
+  is_structured_protocol: bool,
+  is_in_process_teammate: bool,
+  is_leader_inbox: bool
+) -> bool #effects(traps) {
+  if is_structured_protocol { return false; }
+  if is_in_process_teammate && is_leader_inbox { return false; }
+  return true;
+}
+
+// Leader permission bridge rule write-back (leaderPermissionBridge.ts, inProcessRunner.ts:263-281):
+// preserveMode prevents a worker's acceptEdits mode from overwriting the coordinator's permission mode.
+flawed_bridge_resolved_leader_mode :: (
+  leader_mode: u8,
+  worker_mode: u8,
+  preserve_mode: bool
+) -> u8 #effects(traps) {
+  if preserve_mode { return leader_mode; }
+  return worker_mode;
+}
+
+// Coordinator Mode surgical tool allowlist (constants/tools.ts:107-112, utils/toolPool.ts:11-41).
+flawed_coord_tool_allowed :: (tool_kind: u8) -> bool #effects(traps) {
+  return tool_kind == FLAWED_CTOOL_AGENT || tool_kind == FLAWED_CTOOL_TASK_STOP ||
+         tool_kind == FLAWED_CTOOL_SEND_MESSAGE || tool_kind == FLAWED_CTOOL_SYNTHETIC_OUTPUT ||
+         tool_kind == FLAWED_CTOOL_PR_ACTIVITY_MCP;
+}
+
+// Coordinator Mode strips worker model overrides (AgentTool.tsx:252) & suppresses proactive ticks (main.tsx:2199).
+flawed_coord_effective_worker_model :: (is_coordinator: bool, requested_model_id: int) -> int #effects(traps) {
+  if is_coordinator { return 0; } // 0 = inherit default model
+  return requested_model_id;
+}
+
+flawed_coord_proactive_allowed :: (is_coordinator: bool) -> bool #effects(traps) {
+  return !is_coordinator;
+}
+
+#test "swarm: gates, identity, team lifecycle, backend selection, dual abort, and 5-tier wakeup" {
+  #assert flawed_swarms_enabled(true, false, false);
+  #assert flawed_swarms_enabled(false, true, true);
+  #assert !flawed_swarms_enabled(false, false, true);
+  #assert !flawed_swarms_enabled(false, true, false);
+
+  #assert flawed_is_teammate(true, false, false);
+  #assert flawed_is_teammate(false, true, true);
+  #assert !flawed_is_teammate(false, true, false);
+  #assert !flawed_is_teammate(false, false, true);
+
+  #assert flawed_team_can_create(false) && !flawed_team_can_create(true);
+  #assert flawed_team_can_delete(0) && !flawed_team_can_delete(1);
+  #assert flawed_team_can_spawn_teammate(false) && !flawed_team_can_spawn_teammate(true);
+  #assert flawed_team_can_spawn_bg_subagent(false) && !flawed_team_can_spawn_bg_subagent(true);
+
+  // In-process vs pane execution & pane priority
+  #assert flawed_swarm_use_in_process(true, FLAWED_TMODE_TMUX, false, true, true);
+  #assert flawed_swarm_use_in_process(false, FLAWED_TMODE_IN_PROCESS, false, true, true);
+  #assert !flawed_swarm_use_in_process(false, FLAWED_TMODE_TMUX, true, false, false);
+  #assert flawed_swarm_use_in_process(false, FLAWED_TMODE_AUTO, true, true, true);
+  #assert !flawed_swarm_use_in_process(false, FLAWED_TMODE_AUTO, false, true, false);
+  #assert !flawed_swarm_use_in_process(false, FLAWED_TMODE_AUTO, false, false, true);
+  #assert flawed_swarm_use_in_process(false, FLAWED_TMODE_AUTO, false, false, false);
+
+  #assert flawed_swarm_select_pane_backend(true, true, true, false, true) == FLAWED_PBACK_TMUX_NATIVE;
+  #assert flawed_swarm_select_pane_backend(false, true, true, false, true) == FLAWED_PBACK_ITERM2;
+  #assert flawed_swarm_select_pane_backend(false, true, true, true, true) == FLAWED_PBACK_TMUX_EXTERNAL;
+  #assert flawed_swarm_select_pane_backend(false, true, false, false, true) == FLAWED_PBACK_TMUX_EXTERNAL;
+  #assert flawed_swarm_select_pane_backend(false, false, false, false, false) == FLAWED_PBACK_NONE;
+
+  #assert flawed_swarm_teammate_initial_mode(true, FLAWED_PMODE_BYPASS) == FLAWED_PMODE_PLAN;
+  #assert flawed_swarm_teammate_initial_mode(false, FLAWED_PMODE_BYPASS) == FLAWED_PMODE_BYPASS;
+  #assert !flawed_swarm_teammate_should_exit(false, true) && flawed_swarm_teammate_should_exit(true, false);
+
+  // 5-tier wakeup hierarchy
+  #assert flawed_mailbox_wakeup_priority(true, true, true, true, true) == FLAWED_WAKE_USER_DIRECT;
+  #assert flawed_mailbox_wakeup_priority(false, true, true, true, true) == FLAWED_WAKE_SHUTDOWN_REQ;
+  #assert flawed_mailbox_wakeup_priority(false, false, true, true, true) == FLAWED_WAKE_TEAM_LEAD;
+  #assert flawed_mailbox_wakeup_priority(false, false, false, true, true) == FLAWED_WAKE_PEER_FIFO;
+  #assert flawed_mailbox_wakeup_priority(false, false, false, false, true) == FLAWED_WAKE_CLAIM_TASK;
+  #assert flawed_mailbox_wakeup_priority(false, false, false, false, false) == FLAWED_WAKE_IDLE;
+}
+
+#test "swarm: SendMessage protocol guards, forgery defense, permission bridge, and Coordinator Mode" {
+  #assert !flawed_send_msg_allowed(true, false, true, false, true, false, true);
+  #assert !flawed_send_msg_allowed(false, true, true, false, true, false, true);
+  #assert flawed_send_msg_allowed(true, false, false, false, false, false, false);
+  #assert !flawed_send_msg_allowed(false, false, true, true, false, false, false);
+  #assert flawed_send_msg_allowed(false, false, true, true, true, false, false);
+  #assert !flawed_send_msg_allowed(false, false, true, false, false, true, false);
+  #assert flawed_send_msg_allowed(false, false, true, false, false, true, true);
+
+  #assert flawed_mailbox_mode_mutation_trusted(true) && !flawed_mailbox_mode_mutation_trusted(false);
+  #assert !flawed_mailbox_attachment_allowed(true, false, false);
+  #assert !flawed_mailbox_attachment_allowed(false, true, true);
+  #assert flawed_mailbox_attachment_allowed(false, true, false);
+  #assert flawed_mailbox_attachment_allowed(false, false, true);
+
+  #assert flawed_bridge_resolved_leader_mode(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_ACCEPT_EDITS, true) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_bridge_resolved_leader_mode(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_ACCEPT_EDITS, false) == FLAWED_PMODE_ACCEPT_EDITS;
+
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_AGENT);
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_TASK_STOP);
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_SEND_MESSAGE);
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_SYNTHETIC_OUTPUT);
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_PR_ACTIVITY_MCP);
+  #assert !flawed_coord_tool_allowed(FLAWED_CTOOL_OTHER);
+
+  #assert flawed_coord_effective_worker_model(true, 42) == 0;
+  #assert flawed_coord_effective_worker_model(false, 42) == 42;
+  #assert !flawed_coord_proactive_allowed(true) && flawed_coord_proactive_allowed(false);
+}

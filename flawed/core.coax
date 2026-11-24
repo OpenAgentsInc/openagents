@@ -32,6 +32,7 @@
 #load "extensions.coax";
 #load "tasks.coax";
 #load "subagent.coax";
+#load "swarm.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -337,4 +338,15 @@
   #assert !flawed_wt_validate_slug("a+b") && !flawed_wt_validate_slug("a/../b");
   #assert !flawed_wt_exit_allowed(true, true, false, true, false, 0, 0);
   #assert flawed_wt_stale_sweep_can_remove(true, false, true, true, true);
+}
+
+#test "flawed core (Ch 19): swarms, backend routing, 5-tier wakeup, permission bridge & Coordinator Mode compose" {
+  #assert flawed_swarms_enabled(false, true, true) && flawed_team_can_delete(0) && !flawed_team_can_spawn_teammate(true);
+  #assert flawed_swarm_use_in_process(true, FLAWED_TMODE_TMUX, false, true, true);
+  #assert flawed_swarm_teammate_initial_mode(true, FLAWED_PMODE_BYPASS) == FLAWED_PMODE_PLAN;
+  #assert flawed_mailbox_wakeup_priority(false, true, true, true, true) == FLAWED_WAKE_SHUTDOWN_REQ;
+  #assert !flawed_mailbox_attachment_allowed(true, false, false);
+  #assert flawed_bridge_resolved_leader_mode(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_ACCEPT_EDITS, true) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_coord_tool_allowed(FLAWED_CTOOL_AGENT) && !flawed_coord_tool_allowed(FLAWED_CTOOL_OTHER);
+  #assert flawed_coord_effective_worker_model(true, 9) == 0 && !flawed_coord_proactive_allowed(true);
 }
