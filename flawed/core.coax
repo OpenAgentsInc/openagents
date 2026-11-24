@@ -26,6 +26,7 @@
 #load "perm_match.coax";
 #load "shell_sandbox.coax";
 #load "workspace_tools.coax";
+#load "hooks.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -262,4 +263,16 @@
   #assert flawed_edit_check_staleness(true, false, true, false, 500, 501, true, true) == FLAWED_STALE_OK;
   #assert flawed_line_ending_for_write(true, true) == FLAWED_EOL_LF;
   #assert flawed_grep_handle_timeout(true, 3) == FLAWED_GREP_OK;
+}
+
+#test "flawed core (Ch 13): hook trust/enterprise gates, parallel DENY>ASK>ALLOW merge, ConfigChange policy audit, and SSRF guard compose" {
+  #assert !flawed_hook_central_gate_allows(false, false, true, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_POLICY, false, false, false, true);
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_SETTINGS, false, false, false, true);
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_ALLOW, FLAWED_PBEH_DENY) == FLAWED_PBEH_DENY;
+  #assert !flawed_hook_config_change_blocked(true, true);
+  #assert flawed_hook_stop_action(true, true) == FLAWED_HSTOP_HALT;
+  #assert flawed_hook_async_dispatch(false, true, true) == FLAWED_HASYNC_REWAKE;
+  v6_meta: [8] u16; v6_meta[5] = 0xffff; v6_meta[6] = 0xa9fe; v6_meta[7] = 0x0808;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_meta[..]) && !flawed_ssrf_is_blocked_ipv4(127, 0);
 }

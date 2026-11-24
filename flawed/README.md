@@ -18,6 +18,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 10 — Memory Systems & Auto-Dream** | Layer 3 | `memory.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 11 — The Permission Engine** | Layer 4 | `permissions.coax` (`#authority`), `perm_match.coax` (`#authority`), `flawed-cli perm-check` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 12 — Shell, Sandboxing & Workspace Tools** | Layer 4 | `shell_sandbox.coax` (`#authority`), `workspace_tools.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 13 — The Hook System** | Layer 4 | `hooks.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

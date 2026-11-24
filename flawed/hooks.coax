@@ -1,0 +1,364 @@
+// Flawed Layer 4 (Chapter 13) — The Hook System: 27-Event Lifecycle Bus, Trust &
+// Enterprise Precedence Gates, Parallel Aggregation, SSRF IPv4/IPv6 Guard, and Async Rewake.
+// Replaces cc/utils/hooks.ts, cc/utils/hooks/{execHttpHook,ssrfGuard,hooksConfigSnapshot,
+// registerFrontmatterHooks,execAgentHook}.ts, and cc/services/tools/toolHooks.ts invariants.
+//   coax/bin/coax test flawed/hooks.coax --library
+//   coax/bin/coax mutate flawed/hooks.coax --root-only
+#module "flawed.hooks";
+#authority;
+#load "workspace_tools.coax";
+
+// Hook timing & capacity constants (utils/hooks.ts, execAgentHook.ts, hookEvents.ts).
+FLAWED_HOOK_DEFAULT_TIMEOUT_MS :: 600000;     // 10 min command hook timeout
+FLAWED_HOOK_SESSION_END_TIMEOUT_MS :: 1500;   // SessionEnd fast cap
+FLAWED_HOOK_PROMPT_TIMEOUT_MS :: 30000;       // Single-shot prompt hook
+FLAWED_HOOK_AGENT_TIMEOUT_MS :: 60000;        // Multi-turn verifier agent hook
+FLAWED_HOOK_AGENT_MAX_TURNS :: 50;            // Fail-open exhaustion ceiling
+FLAWED_HOOK_MAX_PENDING_EVENTS :: 100;        // Pre-handler event buffer cap
+
+// Representative HOOK_EVENTS tags (27-event bus, coreTypes.ts:25-53).
+FLAWED_HEV_PRE_TOOL_USE :: 1;
+FLAWED_HEV_POST_TOOL_USE :: 2;
+FLAWED_HEV_POST_TOOL_FAILURE :: 3;
+FLAWED_HEV_PERMISSION_REQUEST :: 4;
+FLAWED_HEV_PERMISSION_DENIED :: 5;
+FLAWED_HEV_SESSION_START :: 6;
+FLAWED_HEV_SETUP :: 7;
+FLAWED_HEV_USER_PROMPT_SUBMIT :: 8;
+FLAWED_HEV_STOP :: 9;
+FLAWED_HEV_SUBAGENT_STOP :: 10;
+FLAWED_HEV_CONFIG_CHANGE :: 11;
+FLAWED_HEV_SESSION_END :: 12;
+
+// Hook execution backends (4 persisted + 2 in-memory).
+FLAWED_HBACK_COMMAND :: 1;
+FLAWED_HBACK_HTTP :: 2;
+FLAWED_HBACK_PROMPT :: 3;
+FLAWED_HBACK_AGENT :: 4;
+FLAWED_HBACK_CALLBACK :: 5;
+FLAWED_HBACK_FUNCTION :: 6;
+
+// Hook configuration sources (hooksConfigSnapshot.ts:18-53).
+FLAWED_HSRC_POLICY :: 1;
+FLAWED_HSRC_SETTINGS :: 2;        // user / project / local settings.json
+FLAWED_HSRC_PLUGIN :: 3;
+FLAWED_HSRC_TRUSTED_AGENT :: 4;
+FLAWED_HSRC_SESSION :: 5;         // ephemeral skill / subagent / function hooks
+
+// Exit code outcomes (utils/hooks.ts:2500-2697).
+FLAWED_HOUT_SUCCESS :: 1;
+FLAWED_HOUT_BLOCKING :: 2;
+FLAWED_HOUT_NON_BLOCKING_ERR :: 3;
+
+// Stop hook resolution actions (query/stopHooks.ts:325-327).
+FLAWED_HSTOP_ALLOW :: 1;
+FLAWED_HSTOP_CONTINUE_FEEDBACK :: 2;
+FLAWED_HSTOP_HALT :: 3;
+
+// Async command hook dispatch modes (utils/hooks.ts:184-265).
+FLAWED_HASYNC_SYNC :: 1;
+FLAWED_HASYNC_REGISTRY :: 2;      // AsyncHookRegistry (background + poll)
+FLAWED_HASYNC_REWAKE :: 3;        // asyncRewake (in-memory stderr, skip spillToDisk!)
+
+// Events supporting pre-spawn permission-rule `if` filters (utils/hooks.ts:1390-1421).
+flawed_hook_event_supports_if_filter :: (ev: u8) -> bool #effects(traps) {
+  return ev == FLAWED_HEV_PRE_TOOL_USE || ev == FLAWED_HEV_POST_TOOL_USE ||
+         ev == FLAWED_HEV_POST_TOOL_FAILURE || ev == FLAWED_HEV_PERMISSION_REQUEST;
+}
+
+// HTTP hooks are stripped from SessionStart & Setup to prevent headless sandbox deadlocks (utils/hooks.ts:1850-1864).
+flawed_hook_http_allowed_for_event :: (ev: u8) -> bool #effects(traps) {
+  return ev != FLAWED_HEV_SESSION_START && ev != FLAWED_HEV_SETUP;
+}
+
+// executeHooksOutsideREPL() only runs command, http, and callback (no ToolUseContext for prompt/agent/function).
+flawed_hook_backend_allowed_outside_repl :: (backend: u8) -> bool #effects(traps) {
+  return backend == FLAWED_HBACK_COMMAND || backend == FLAWED_HBACK_HTTP ||
+         backend == FLAWED_HBACK_CALLBACK;
+}
+
+// Centralized 3-gate guard (utils/hooks.ts:1978-1999, 286-296):
+// Blocks pre-trust RCE in interactive mode while treating SDK non-interactive mode as implicitly trusted.
+flawed_hook_central_gate_allows :: (
+  policy_disable_all: bool,
+  simple_mode: bool,
+  is_interactive: bool,
+  trust_accepted: bool
+) -> bool #effects(traps) {
+  if policy_disable_all || simple_mode { return false; }
+  if is_interactive && !trust_accepted { return false; }
+  return true;
+}
+
+// 4-tier enterprise snapshot precedence (hooksConfigSnapshot.ts:18-53):
+// 1. policy disableAllHooks -> nothing (not even policy)
+// 2. allowManagedHooksOnly -> policy only (blocks settings, plugins, session)
+// 3. isRestrictedToPluginOnly('hooks') -> policy + plugin + trusted agent (blocks settings & untrusted session)
+// 4. non-managed merged disableAllHooks -> policy only (local settings cannot disable managed hooks!)
+flawed_hook_source_allowed :: (
+  src: u8,
+  policy_disable_all: bool,
+  allow_managed_only: bool,
+  restricted_plugin_only: bool,
+  merged_disable_all: bool
+) -> bool #effects(traps) {
+  if policy_disable_all { return false; }
+  if allow_managed_only { return src == FLAWED_HSRC_POLICY; }
+  if restricted_plugin_only {
+    return src == FLAWED_HSRC_POLICY || src == FLAWED_HSRC_PLUGIN ||
+           src == FLAWED_HSRC_TRUSTED_AGENT;
+  }
+  if merged_disable_all { return src == FLAWED_HSRC_POLICY; }
+  return src >= FLAWED_HSRC_POLICY && src <= FLAWED_HSRC_SESSION;
+}
+
+// Exit code mapping (utils/hooks.ts:2500-2697): 0=success, 2=blocking, other=non_blocking_error.
+flawed_hook_exit_outcome :: (exit_code: int) -> u8 #effects(traps) {
+  if exit_code == 0 { return FLAWED_HOUT_SUCCESS; }
+  if exit_code == 2 { return FLAWED_HOUT_BLOCKING; }
+  return FLAWED_HOUT_NON_BLOCKING_ERR;
+}
+
+// Parallel hook permission aggregation: strict monotonic precedence DENY > ASK > ALLOW > PASSTHROUGH.
+flawed_hook_merge_permission :: (acc: u8, incoming: u8) -> u8 #effects(traps) {
+  if acc == FLAWED_PBEH_DENY || incoming == FLAWED_PBEH_DENY { return FLAWED_PBEH_DENY; }
+  if acc == FLAWED_PBEH_ASK || incoming == FLAWED_PBEH_ASK { return FLAWED_PBEH_ASK; }
+  if acc == FLAWED_PBEH_ALLOW || incoming == FLAWED_PBEH_ALLOW { return FLAWED_PBEH_ALLOW; }
+  return FLAWED_PBEH_PASSTHROUGH;
+}
+
+// ConfigChange enterprise audit guard (utils/hooks.ts:4232-4236):
+// Local hooks can audit policy_settings changes but NEVER veto them.
+flawed_hook_config_change_blocked :: (is_policy_settings: bool, any_blocking: bool) -> bool #effects(traps) {
+  if is_policy_settings { return false; }
+  return any_blocking;
+}
+
+// Stop hook precedence (query/stopHooks.ts:325-327):
+// continue:false (prevent_continuation) short-circuits and drops blockingErrors.
+flawed_hook_stop_action :: (prevent_continuation: bool, has_blocking_err: bool) -> u8 #effects(traps) {
+  if prevent_continuation { return FLAWED_HSTOP_HALT; }
+  if has_blocking_err { return FLAWED_HSTOP_CONTINUE_FEEDBACK; }
+  return FLAWED_HSTOP_ALLOW;
+}
+
+// PostToolUse updatedMCPToolOutput guard (toolHooks.ts:146): MCP tools only!
+flawed_hook_can_override_output :: (is_mcp_tool: bool, has_updated_output: bool) -> bool #effects(traps) {
+  return is_mcp_tool && has_updated_output;
+}
+
+// Async command hook dispatch (utils/hooks.ts:184-265):
+// force_sync suppresses backgrounding; asyncRewake skips AsyncHookRegistry/spillToDisk.
+flawed_hook_async_dispatch :: (force_sync: bool, is_async_rewake: bool, is_async_flag: bool) -> u8 #effects(traps) {
+  if force_sync { return FLAWED_HASYNC_SYNC; }
+  if is_async_rewake { return FLAWED_HASYNC_REWAKE; }
+  if is_async_flag { return FLAWED_HASYNC_REGISTRY; }
+  return FLAWED_HASYNC_SYNC;
+}
+
+// Subagent frontmatter hook remapping (registerFrontmatterHooks.ts:40-45): Stop -> SubagentStop.
+flawed_frontmatter_remap_event :: (ev: u8, is_subagent: bool) -> u8 #effects(traps) {
+  if is_subagent && ev == FLAWED_HEV_STOP { return FLAWED_HEV_SUBAGENT_STOP; }
+  return ev;
+}
+
+// DNS-rebinding-safe SSRF IPv4 blocklist over first two octets (utils/hooks/ssrfGuard.ts:42-283):
+// Blocks 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10 (Alibaba metadata), 169.254.0.0/16 (AWS/GCP/Azure metadata),
+// 172.16.0.0/12, 192.168.0.0/16. Intentionally ALLOWS 127.0.0.0/8 loopback for local policy servers!
+flawed_ssrf_is_blocked_ipv4 :: (a: u8, b: u8) -> bool #effects(traps) {
+  if a == 0 || a == 10 { return true; }
+  if a == 100 && b >= 64 && b <= 127 { return true; }
+  if a == 169 && b == 254 { return true; }
+  if a == 172 && b >= 16 && b <= 31 { return true; }
+  if a == 192 && b == 168 { return true; }
+  return false;
+}
+
+// SSRF IPv6 blocklist over 8 16-bit groups (ssrfGuard.ts:133-204):
+// Blocks ::, fc00::/7, fe80::/10, and IPv4-mapped ::ffff:w6:w7 (e.g. ::ffff:a9fe:a9fe -> 169.254.169.254).
+// Intentionally ALLOWS ::1 loopback!
+flawed_ssrf_is_blocked_ipv6 :: (w: [] const u16) -> bool #effects(reads, traps) {
+  if w.count != 8 { return true; } // fail closed on malformed length
+  // Unspecified :: (all 8 words zero)
+  all_zero := true;
+  for i: 0..<8 {
+    if w[i] != 0 { all_zero = false; }
+  }
+  if all_zero { return true; }
+  // Unique local fc00::/7 (0xfc00..0xfdff) and link-local fe80::/10 (0xfe80..0xfebf)
+  if w[0] >= 0xfc00 && w[0] <= 0xfdff { return true; }
+  if w[0] >= 0xfe80 && w[0] <= 0xfebf { return true; }
+  // IPv4-mapped ::ffff:0:0/96 -> delegate top 16 bits (w[6]) to IPv4 blocklist!
+  if w[0] == 0 && w[1] == 0 && w[2] == 0 && w[3] == 0 && w[4] == 0 && w[5] == 0xffff {
+    a := cast(u8) (w[6] / 256);
+    b := cast(u8) (w[6] % 256);
+    return flawed_ssrf_is_blocked_ipv4(a, b);
+  }
+  return false;
+}
+
+// Proxy handoff (execHttpHook.ts:176-217): disable direct lookup guard when proxy resolves DNS.
+flawed_http_hook_use_ssrf_lookup :: (sandbox_proxy_active: bool, env_proxy_active: bool) -> bool #effects(traps) {
+  return !sandbox_proxy_active && !env_proxy_active;
+}
+
+// Double-gated header env interpolation & CRLF/NUL sanitization (execHttpHook.ts:76-108).
+flawed_http_header_env_allowed :: (in_hook_allowlist: bool, in_enterprise_allowlist: bool) -> bool #effects(traps) {
+  return in_hook_allowlist && in_enterprise_allowlist;
+}
+
+flawed_http_header_value_clean :: (val: string) -> bool #effects(reads, traps) {
+  for i: 0..<val.count {
+    c := val[i];
+    if c == 13 || c == 10 || c == 0 { return false; }
+  }
+  return true;
+}
+
+#test "hooks: event gates, enterprise 4-tier snapshot precedence, and exit/permission/stop/async aggregation" {
+  // if-filter support & HTTP SessionStart/Setup deadlock exclusion & outside-REPL backends
+  #assert flawed_hook_event_supports_if_filter(FLAWED_HEV_PRE_TOOL_USE);
+  #assert flawed_hook_event_supports_if_filter(FLAWED_HEV_POST_TOOL_USE);
+  #assert flawed_hook_event_supports_if_filter(FLAWED_HEV_POST_TOOL_FAILURE);
+  #assert flawed_hook_event_supports_if_filter(FLAWED_HEV_PERMISSION_REQUEST);
+  #assert !flawed_hook_event_supports_if_filter(FLAWED_HEV_STOP);
+
+  #assert !flawed_hook_http_allowed_for_event(FLAWED_HEV_SESSION_START);
+  #assert !flawed_hook_http_allowed_for_event(FLAWED_HEV_SETUP);
+  #assert flawed_hook_http_allowed_for_event(FLAWED_HEV_PRE_TOOL_USE);
+
+  #assert flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_COMMAND);
+  #assert flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_HTTP);
+  #assert flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_CALLBACK);
+  #assert !flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_PROMPT);
+  #assert !flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_AGENT);
+  #assert !flawed_hook_backend_allowed_outside_repl(FLAWED_HBACK_FUNCTION);
+
+  // Central 3-gate trust guard
+  #assert !flawed_hook_central_gate_allows(true, false, false, true);
+  #assert !flawed_hook_central_gate_allows(false, true, false, true);
+  #assert !flawed_hook_central_gate_allows(false, false, true, false);
+  #assert flawed_hook_central_gate_allows(false, false, true, true);
+  #assert flawed_hook_central_gate_allows(false, false, false, false);
+
+  // 4-tier enterprise snapshot precedence
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_POLICY, true, false, false, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_POLICY, false, true, false, false);
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_PLUGIN, false, true, false, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_POLICY, false, false, true, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_PLUGIN, false, false, true, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_TRUSTED_AGENT, false, false, true, false);
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_SETTINGS, false, false, true, false);
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_SESSION, false, false, true, false);
+  // Non-managed disableAllHooks cannot disable enterprise managed hooks!
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_POLICY, false, false, false, true);
+  #assert !flawed_hook_source_allowed(FLAWED_HSRC_SETTINGS, false, false, false, true);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_POLICY, false, false, false, false);
+  #assert flawed_hook_source_allowed(FLAWED_HSRC_SESSION, false, false, false, false);
+  #assert !flawed_hook_source_allowed(0, false, false, false, false);
+  #assert !flawed_hook_source_allowed(6, false, false, false, false);
+
+  // Exit codes, parallel DENY > ASK > ALLOW > PASSTHROUGH, ConfigChange, Stop, MCP override, async, remap
+  #assert flawed_hook_exit_outcome(0) == FLAWED_HOUT_SUCCESS;
+  #assert flawed_hook_exit_outcome(2) == FLAWED_HOUT_BLOCKING;
+  #assert flawed_hook_exit_outcome(1) == FLAWED_HOUT_NON_BLOCKING_ERR;
+
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_ALLOW, FLAWED_PBEH_DENY) == FLAWED_PBEH_DENY;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_DENY, FLAWED_PBEH_ALLOW) == FLAWED_PBEH_DENY;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_ALLOW, FLAWED_PBEH_ASK) == FLAWED_PBEH_ASK;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_ASK, FLAWED_PBEH_ALLOW) == FLAWED_PBEH_ASK;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_PASSTHROUGH, FLAWED_PBEH_ALLOW) == FLAWED_PBEH_ALLOW;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_ALLOW, FLAWED_PBEH_PASSTHROUGH) == FLAWED_PBEH_ALLOW;
+  #assert flawed_hook_merge_permission(FLAWED_PBEH_PASSTHROUGH, FLAWED_PBEH_PASSTHROUGH) == FLAWED_PBEH_PASSTHROUGH;
+
+  #assert !flawed_hook_config_change_blocked(true, true);
+  #assert flawed_hook_config_change_blocked(false, true);
+  #assert !flawed_hook_config_change_blocked(false, false);
+
+  #assert flawed_hook_stop_action(true, true) == FLAWED_HSTOP_HALT;
+  #assert flawed_hook_stop_action(false, true) == FLAWED_HSTOP_CONTINUE_FEEDBACK;
+  #assert flawed_hook_stop_action(false, false) == FLAWED_HSTOP_ALLOW;
+
+  #assert flawed_hook_can_override_output(true, true);
+  #assert !flawed_hook_can_override_output(false, true);
+  #assert !flawed_hook_can_override_output(true, false);
+
+  #assert flawed_hook_async_dispatch(true, true, true) == FLAWED_HASYNC_SYNC;
+  #assert flawed_hook_async_dispatch(false, true, true) == FLAWED_HASYNC_REWAKE;
+  #assert flawed_hook_async_dispatch(false, false, true) == FLAWED_HASYNC_REGISTRY;
+  #assert flawed_hook_async_dispatch(false, false, false) == FLAWED_HASYNC_SYNC;
+
+  #assert flawed_frontmatter_remap_event(FLAWED_HEV_STOP, true) == FLAWED_HEV_SUBAGENT_STOP;
+  #assert flawed_frontmatter_remap_event(FLAWED_HEV_STOP, false) == FLAWED_HEV_STOP;
+  #assert flawed_frontmatter_remap_event(FLAWED_HEV_PRE_TOOL_USE, true) == FLAWED_HEV_PRE_TOOL_USE;
+}
+
+#test "hooks: DNS-rebinding-safe SSRF IPv4/IPv6 blocklist, proxy bypass, and header sanitization" {
+  // IPv4 blocked ranges + loopback 127.0.0.1 allowed + public IP allowed
+  #assert flawed_ssrf_is_blocked_ipv4(0, 0);
+  #assert flawed_ssrf_is_blocked_ipv4(10, 0);
+  #assert flawed_ssrf_is_blocked_ipv4(100, 64);
+  #assert flawed_ssrf_is_blocked_ipv4(100, 100);
+  #assert flawed_ssrf_is_blocked_ipv4(100, 127);
+  #assert !flawed_ssrf_is_blocked_ipv4(100, 63);
+  #assert !flawed_ssrf_is_blocked_ipv4(100, 128);
+  #assert flawed_ssrf_is_blocked_ipv4(169, 254);
+  #assert !flawed_ssrf_is_blocked_ipv4(169, 253);
+  #assert flawed_ssrf_is_blocked_ipv4(172, 16);
+  #assert flawed_ssrf_is_blocked_ipv4(172, 31);
+  #assert !flawed_ssrf_is_blocked_ipv4(172, 15);
+  #assert !flawed_ssrf_is_blocked_ipv4(172, 32);
+  #assert flawed_ssrf_is_blocked_ipv4(192, 168);
+  #assert !flawed_ssrf_is_blocked_ipv4(192, 167);
+  #assert !flawed_ssrf_is_blocked_ipv4(127, 0);
+  #assert !flawed_ssrf_is_blocked_ipv4(8, 8);
+
+  // IPv6: :: blocked, ::1 allowed, fc00::/7 & fe80::/10 blocked, ::ffff:a9fe:0001 (169.254.0.1) blocked!
+  bad_len: [2] u16;
+  #assert flawed_ssrf_is_blocked_ipv6(bad_len[..]);
+  v6_zero: [8] u16;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_zero[..]);
+  v6_lo: [8] u16; v6_lo[7] = 1;
+  #assert !flawed_ssrf_is_blocked_ipv6(v6_lo[..]);
+  v6_ula1: [8] u16; v6_ula1[0] = 0xfc00;
+  v6_ula2: [8] u16; v6_ula2[0] = 0xfdff;
+  v6_ok1: [8] u16; v6_ok1[0] = 0xfbff;
+  v6_ok2: [8] u16; v6_ok2[0] = 0xfe00;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_ula1[..]) && flawed_ssrf_is_blocked_ipv6(v6_ula2[..]);
+  #assert !flawed_ssrf_is_blocked_ipv6(v6_ok1[..]) && !flawed_ssrf_is_blocked_ipv6(v6_ok2[..]);
+  v6_ll1: [8] u16; v6_ll1[0] = 0xfe80;
+  v6_ll2: [8] u16; v6_ll2[0] = 0xfebf;
+  v6_ok3: [8] u16; v6_ok3[0] = 0xfe7f;
+  v6_ok4: [8] u16; v6_ok4[0] = 0xfec0;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_ll1[..]) && flawed_ssrf_is_blocked_ipv6(v6_ll2[..]);
+  #assert !flawed_ssrf_is_blocked_ipv6(v6_ok3[..]) && !flawed_ssrf_is_blocked_ipv6(v6_ok4[..]);
+  // IPv4-mapped metadata ::ffff:a9fe:0808 -> 169.254.8.8 and ::ffff:ac10:0808 -> 172.16.8.8
+  v6_meta: [8] u16; v6_meta[5] = 0xffff; v6_meta[6] = 0xa9fe; v6_meta[7] = 0x0808;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_meta[..]);
+  v6_priv: [8] u16; v6_priv[5] = 0xffff; v6_priv[6] = 0xac10; v6_priv[7] = 0x0808;
+  #assert flawed_ssrf_is_blocked_ipv6(v6_priv[..]);
+  v6_pub: [8] u16; v6_pub[5] = 0xffff; v6_pub[6] = 0x0808; v6_pub[7] = 0xa9fe;
+  #assert !flawed_ssrf_is_blocked_ipv6(v6_pub[..]);
+  // Non-mapped prefix variants (ensure w0..w5 checks are all enforced)
+  v6_nm: [8] u16; v6_nm[5] = 0xfffe; v6_nm[6] = 0xa9fe; v6_nm[7] = 0x0001;
+  #assert !flawed_ssrf_is_blocked_ipv6(v6_nm[..]);
+  for idx: 0..<5 {
+    v6_t: [8] u16; v6_t[idx] = 1; v6_t[5] = 0xffff; v6_t[6] = 0xa9fe; v6_t[7] = 0x0001;
+    #assert !flawed_ssrf_is_blocked_ipv6(v6_t[..]);
+  }
+
+  // Proxy bypass & header env intersection & CRLF/NUL sanitization
+  #assert flawed_http_hook_use_ssrf_lookup(false, false);
+  #assert !flawed_http_hook_use_ssrf_lookup(true, false);
+  #assert !flawed_http_hook_use_ssrf_lookup(false, true);
+
+  #assert flawed_http_header_env_allowed(true, true);
+  #assert !flawed_http_header_env_allowed(true, false);
+  #assert !flawed_http_header_env_allowed(false, true);
+
+  #assert flawed_http_header_value_clean("Bearer tok-123");
+  #assert !flawed_http_header_value_clean("\rX-Evil: 1");
+  #assert !flawed_http_header_value_clean("tok\nX-Evil: 1");
+  bnul: [2] u8; bnul[0] = 65; bnul[1] = 0;
+  #assert !flawed_http_header_value_clean(cast(string) bnul[..]);
+}
