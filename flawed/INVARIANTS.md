@@ -16,3 +16,9 @@
 4. **Fail-Closed Concurrency-Barrier Scheduler (`flawed/scheduler.coax`, `#authority`).**
    - Work slots default to `concurrency_safe = false` (serial barrier).
    - At most `max_concurrent` concurrency-safe slots run in parallel; serial slots wait for `running == 0`, execute exclusively (`serial_active = true`), and block subsequent slots behind them until settled (`coax mutate flawed/scheduler.coax --root-only`: 0 surviving mutants).
+5. **Fail-Closed Tool Contract & Prompt-Cache-Stable Pool (`flawed/tool.coax`, `#authority`).**
+   - `flawed_tool_defaults` enforces fail-closed defaults (`concurrency_safe = false`, `read_only = false`, `interrupt_behavior = BLOCK`); mutating invocations can never be classified concurrency-safe.
+   - `flawed_is_unc_path` detects `\\...` and `//...` so `validateInput` never triggers outbound SMB/NTLM probes prior to permission checks.
+   - `flawed_assemble_tool_pool` applies `simple_mode`, `repl_mode`, and blanket deny rules (exact names + strict `mcp__<server>__` boundaries), keeps built-ins in a sorted contiguous prefix `[0..<builtin_count]` ahead of sorted MCP tools for global prompt-cache stability, and blocks MCP name-shadowing of built-ins (`coax mutate flawed/tool.coax --root-only`: 0 surviving mutants).
+6. **GlobTool Contract & Dual Projection (`flawed/glob_tool.coax`).**
+   - Separates LLM `tool_result` projection (`"No files found"` + truncation hints) from transcript search text (`extractSearchText`, exact visible paths with zero chrome) and relativizes paths under `cwd` to save tokens.

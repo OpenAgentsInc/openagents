@@ -18,13 +18,62 @@ FlawedCliWork :: struct {
   env: [1] FlawedProcessEnv;
   st: [1] FlawedSessionState;
   sched: [1] FlawedScheduler;
+  glob_out: [1] FlawedGlobOutput;
+  glob_txt: [32768] u8;
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapter 01 — Layer 0 Atoms)\n");
+  print("flawed (Chapters 01-02 — Layer 0 Atoms + Layer 1 Tool Contract)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
+  print("  flawed-cli glob PATTERN [DIR]\n");
+}
+
+flawed_cli_glob_walk :: (dir: string, root: string, pat: string, out: [] FlawedGlobOutput, depth: int) #effects(all) {
+  if depth > 12 || out[0].truncated { return; }
+  list: [1] FsList;
+  n := fs_list(dir, list[..]);
+  if n <= 0 { return; }
+  for i: 0..<n {
+    if out[0].truncated { return; }
+    name := fs_entry(list[..], i);
+    if name == ".git" || name == "node_modules" || name == "target" || name == "build" { continue; }
+    pb: [FLAWED_FC_PATH_MAX] u8;
+    full := fs_join(dir, name, pb[..]);
+    if full.count == 0 { continue; }
+    k := fs_kind(full);
+    if k == FS_DIR {
+      flawed_cli_glob_walk(full, root, pat, out, depth + 1);
+    } else if k == FS_FILE {
+      rb: [FLAWED_FC_PATH_MAX] u8;
+      rn := flawed_glob_relativize(full, root, rb[..]);
+      if rn > 0 {
+        rel := cast(string) rb[0..<rn];
+        if flawed_glob_match(pat, rel) {
+          _ = flawed_glob_add_match(out, rel, FLAWED_GLOB_DEFAULT_LIMIT);
+        }
+      }
+    }
+  }
+}
+
+flawed_cli_glob :: (w: [] FlawedCliWork, pat: string, dir: string) -> int #effects(all) {
+  v := flawed_glob_validate(pat, dir);
+  if v != FLAWED_VAL_OK {
+    tool_errln("flawed-cli: invalid glob input");
+    return 1;
+  }
+  if flawed_is_unc_path(dir) {
+    tool_errln("flawed-cli: UNC path blocked pending permission check");
+    return 1;
+  }
+  w[0].glob_out[0] = FlawedGlobOutput.{};
+  flawed_cli_glob_walk(dir, dir, pat, w[0].glob_out[..], 0);
+  mn := flawed_glob_format_model(w[0].glob_out[..], w[0].glob_txt[..]);
+  if mn < 0 { tool_errln("flawed-cli: glob output buffer overflow"); return 1; }
+  print("%\n", cast(string) w[0].glob_txt[0..<mn]);
+  return 0;
 }
 
 flawed_cli_inspect :: (w: [] FlawedCliWork, path: string) -> int #effects(all) {
@@ -85,6 +134,11 @@ tool_main :: () -> int #export_c #effects(all) {
   if cmd == "inspect" {
     if a[0].n < 2 { tool_errln("flawed-cli: inspect requires FILE"); return 2; }
     return flawed_cli_inspect(w[..], args_at(a[..], 1));
+  }
+  if cmd == "glob" {
+    if a[0].n < 2 { tool_errln("flawed-cli: glob requires PATTERN [DIR]"); return 2; }
+    dir := ifx a[0].n >= 3 then args_at(a[..], 2) else ".";
+    return flawed_cli_glob(w[..], args_at(a[..], 1), dir);
   }
   flawed_cli_usage();
   return 2;

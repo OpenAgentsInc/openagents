@@ -1,0 +1,249 @@
+// Flawed Layer 1 (Chapter 02) — Concrete Tool Walkthrough: GlobTool.
+// Mirrors cc/tools/GlobTool/GlobTool.ts:
+//   - Built on flawed_tool_defaults("Glob") with explicit read_only + concurrency_safe opt-in
+//   - Static const schema metadata (pattern, path) with 0 us boot cost
+//   - Defensive pre-permission validateInput with UNC path bypass (prevents NTLM leak)
+//   - Deterministic glob matcher (*, ?, **, [a-z]) with bounded recursion
+//   - Token-saving path relativization + dual projection (LLM tool_result vs transcript search text)
+//   coax/bin/coax test flawed/glob_tool.coax --library
+#module "flawed.glob_tool";
+#load "tool.coax";
+#load "file_cache.coax";
+
+FLAWED_GLOB_DEFAULT_LIMIT :: 100;
+FLAWED_GLOB_MAX_RESULTS :: 128;
+
+FlawedGlobInput :: struct {
+  pattern: [FLAWED_FC_PATH_MAX] u8; pattern_n: int;
+  path: [FLAWED_FC_PATH_MAX] u8; path_n: int;
+  limit: int;
+}
+
+FlawedGlobMatch :: struct {
+  path: [FLAWED_FC_PATH_MAX] u8;
+  path_n: int;
+}
+
+FlawedGlobOutput :: struct {
+  matches: [FLAWED_GLOB_MAX_RESULTS] FlawedGlobMatch;
+  count: int;
+  truncated: bool;
+  duration_ms: int;
+}
+
+// Construct GlobTool specification via fail-closed flawed_tool_defaults + explicit read/concurrent opt-in.
+flawed_glob_spec :: () -> FlawedToolSpec #effects(reads, writes, traps) {
+  sb: [1] FlawedToolSpec;
+  sb[0] = flawed_tool_defaults("Glob", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  sb[0].concurrency_safe = true;
+  sb[0].read_only = true;
+  sb[0].max_result_size_chars = FLAWED_RESULT_DEFAULT_MAX_CHARS;
+  _ = flawed_tool_add_field(sb[..], "pattern", cast(u8) FLAWED_FIELD_STRING, true);
+  _ = flawed_tool_add_field(sb[..], "path", cast(u8) FLAWED_FIELD_PATH, false);
+  return sb[0];
+}
+
+// Pre-permission validation (cc GlobTool.ts:94-134):
+//   - Rejects empty pattern or embedded NUL bytes
+//   - SECURITY: Returns FLAWED_VAL_OK on UNC paths without touching disk so checkPermissions handles it
+//   - For local paths, verifies normalization succeeds (no root escape)
+flawed_glob_validate :: (pattern: string, dir_path: string) -> int #effects(reads, writes, traps) {
+  if pattern.count == 0 || pattern.count > FLAWED_FC_PATH_MAX { return FLAWED_VAL_EMPTY_REQUIRED; }
+  for i: 0..<pattern.count { if pattern[i] == 0 { return FLAWED_VAL_INVALID_PATH; } }
+  if dir_path.count == 0 { return FLAWED_VAL_OK; }
+  if flawed_is_unc_path(dir_path) { return FLAWED_VAL_OK; }
+  nb: [FLAWED_FC_PATH_MAX] u8;
+  if flawed_norm_path(dir_path, nb[..]) <= 0 { return FLAWED_VAL_INVALID_PATH; }
+  return FLAWED_VAL_OK;
+}
+
+// Iterative/memo-bounded glob matcher supporting '*', '?', '**' (cross-directory), and '[a-z]'.
+flawed_glob_match_at :: (pat: string, pi: int, text: string, ti: int, depth: int) -> bool #effects(reads, traps) {
+  if depth > 64 { return false; }
+  p := pi;
+  t := ti;
+  while p < pat.count {
+    if pat[p] == '*' {
+      if p + 1 < pat.count && pat[p + 1] == '*' {
+        // "**" matches zero or more path segments (including '/')
+        next_p := p + 2;
+        if next_p < pat.count && pat[next_p] == '/' { next_p += 1; }
+        // Try matching 0 segments first, then advance one byte at a time
+        if flawed_glob_match_at(pat, next_p, text, t, depth + 1) { return true; }
+        k := t;
+        while k < text.count {
+          if flawed_glob_match_at(pat, next_p, text, k + 1, depth + 1) { return true; }
+          k += 1;
+        }
+        return false;
+      }
+      // Single '*' matches any chars EXCEPT '/'
+      next_p := p + 1;
+      if flawed_glob_match_at(pat, next_p, text, t, depth + 1) { return true; }
+      k := t;
+      while k < text.count && text[k] != '/' {
+        if flawed_glob_match_at(pat, next_p, text, k + 1, depth + 1) { return true; }
+        k += 1;
+      }
+      return false;
+    }
+    if t >= text.count { return false; }
+    if pat[p] == '?' {
+      if text[t] == '/' { return false; }
+      p += 1; t += 1;
+      continue;
+    }
+    if pat[p] == '[' {
+      close := p + 1;
+      while close < pat.count && pat[close] != ']' { close += 1; }
+      if close < pat.count && text[t] != '/' {
+        ch := text[t];
+        matched := false;
+        ci := p + 1;
+        while ci < close {
+          if ci + 2 < close && pat[ci + 1] == '-' {
+            if ch >= pat[ci] && ch <= pat[ci + 2] { matched = true; }
+            ci += 3;
+          } else {
+            if ch == pat[ci] { matched = true; }
+            ci += 1;
+          }
+        }
+        if !matched { return false; }
+        p = close + 1;
+        t += 1;
+        continue;
+      }
+    }
+    if pat[p] != text[t] { return false; }
+    p += 1; t += 1;
+  }
+  return t == text.count;
+}
+
+flawed_glob_match :: (pattern: string, path: string) -> bool #effects(reads, traps) {
+  if pattern.count == 0 { return false; }
+  return flawed_glob_match_at(pattern, 0, path, 0, 0);
+}
+
+// Relativize path under root to save model tokens (cc GlobTool.ts toRelativePath).
+flawed_glob_relativize :: (path: string, root: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if path.count == 0 || out.count == 0 { return -1; }
+  rn := root.count;
+  while rn > 1 && root[rn - 1] == '/' { rn -= 1; }
+  start := 0;
+  if rn > 0 && path.count > rn {
+    prefix_ok := true;
+    for i: 0..<rn { if path[i] != root[i] { prefix_ok = false; break; } }
+    if prefix_ok {
+      if root[rn - 1] == '/' { start = rn; }
+      else if path[rn] == '/' { start = rn + 1; }
+    }
+  }
+  rem := path.count - start;
+  if rem <= 0 || rem > out.count { return -1; }
+  for i: 0..<rem { out[i] = path[start + i]; }
+  return rem;
+}
+
+// Add a matching path into FlawedGlobOutput enforcing `limit` (sets truncated=true on overflow).
+flawed_glob_add_match :: (out: [] FlawedGlobOutput, rel_path: string, limit: int) -> bool #effects(reads, writes, traps) {
+  if out.count == 0 || rel_path.count == 0 || rel_path.count > FLAWED_FC_PATH_MAX { return false; }
+  eff_lim := ifx limit > 0 && limit <= FLAWED_GLOB_MAX_RESULTS then limit else FLAWED_GLOB_DEFAULT_LIMIT;
+  if out[0].count >= eff_lim {
+    out[0].truncated = true;
+    return false;
+  }
+  idx := out[0].count;
+  for i: 0..<rel_path.count { out[0].matches[idx].path[i] = rel_path[i]; }
+  out[0].matches[idx].path_n = rel_path.count;
+  out[0].count += 1;
+  return true;
+}
+
+// Projection 1: Model view (mapToolResultToToolResultBlockParam) — emits "No files found" when empty,
+// or newline-joined relative paths plus truncation notice for the LLM.
+flawed_glob_format_model :: (out: [] const FlawedGlobOutput, dst: [] u8) -> int #effects(reads, writes, traps) {
+  if out.count == 0 || dst.count == 0 { return -1; }
+  if out[0].count == 0 {
+    msg := "No files found";
+    if msg.count > dst.count { return -1; }
+    for i: 0..<msg.count { dst[i] = msg[i]; }
+    return msg.count;
+  }
+  pos := 0;
+  for i: 0..<out[0].count {
+    if i > 0 {
+      if pos + 1 > dst.count { return -1; }
+      dst[pos] = '\n'; pos += 1;
+    }
+    n := out[0].matches[i].path_n;
+    if pos + n > dst.count { return -1; }
+    for j: 0..<n { dst[pos + j] = out[0].matches[i].path[j]; }
+    pos += n;
+  }
+  if out[0].truncated {
+    note := "\n(Results are truncated. Consider using a more specific path or pattern.)";
+    if pos + note.count > dst.count { return -1; }
+    for j: 0..<note.count { dst[pos + j] = note[j]; }
+    pos += note.count;
+  }
+  return pos;
+}
+
+// Projection 2: Transcript search view (extractSearchText) — exact visible file paths, zero chrome.
+flawed_glob_extract_search_text :: (out: [] const FlawedGlobOutput, dst: [] u8) -> int #effects(reads, writes, traps) {
+  if out.count == 0 { return 0; }
+  pos := 0;
+  for i: 0..<out[0].count {
+    if i > 0 {
+      if pos + 1 > dst.count { return -1; }
+      dst[pos] = '\n'; pos += 1;
+    }
+    n := out[0].matches[i].path_n;
+    if pos + n > dst.count { return -1; }
+    for j: 0..<n { dst[pos + j] = out[0].matches[i].path[j]; }
+    pos += n;
+  }
+  return pos;
+}
+
+#test "flawed glob_tool: spec, UNC bypass, glob matching, relativize, and dual projection" {
+  spec := flawed_glob_spec();
+  #assert flawed_bytes_eq(spec.name[..], spec.name_n, "Glob") && spec.read_only && spec.concurrency_safe && spec.field_count == 2;
+  // Pre-permission validation + UNC NTLM guard
+  #assert flawed_glob_validate("", "/repo") == FLAWED_VAL_EMPTY_REQUIRED;
+  #assert flawed_glob_validate("**/*.coax", "") == FLAWED_VAL_OK;
+  #assert flawed_glob_validate("**/*.coax", "/repo/flawed") == FLAWED_VAL_OK;
+  #assert flawed_glob_validate("**/*.coax", "//attacker/share") == FLAWED_VAL_OK; // UNC bypassed safely
+  #assert flawed_glob_validate("**/*.coax", "/a/../../escape") == FLAWED_VAL_INVALID_PATH;
+
+  // Glob matching (*, ?, **, [a-z])
+  #assert flawed_glob_match("*.coax", "ids.coax") && !flawed_glob_match("*.coax", "a/ids.coax");
+  #assert flawed_glob_match("**/*.coax", "ids.coax") && flawed_glob_match("**/*.coax", "flawed/tools/cli.coax");
+  #assert !flawed_glob_match("**/*.coax", "flawed/README.md");
+  #assert flawed_glob_match("ch0?.md", "ch01.md") && !flawed_glob_match("ch0?.md", "ch010.md");
+  #assert flawed_glob_match("ch[0-9][1-2].md", "ch02.md") && !flawed_glob_match("ch[0-9][1-2].md", "ch09.md");
+
+  // Relativization
+  rb: [64] u8;
+  rn := flawed_glob_relativize("/repo/flawed/ids.coax", "/repo", rb[..]);
+  #assert rn == 15 && cast(string) rb[0..<rn] == "flawed/ids.coax";
+  rn = flawed_glob_relativize("/other/x.coax", "/repo", rb[..]);
+  #assert rn == 13 && cast(string) rb[0..<rn] == "/other/x.coax";
+
+  // Dual projection: empty vs populated + truncated
+  res: [1] FlawedGlobOutput;
+  mb: [256] u8; sb: [256] u8;
+  mn := flawed_glob_format_model(res[..], mb[..]);
+  sn := flawed_glob_extract_search_text(res[..], sb[..]);
+  #assert mn == 14 && cast(string) mb[0..<mn] == "No files found" && sn == 0;
+
+  #assert flawed_glob_add_match(res[..], "flawed/ids.coax", 2);
+  #assert flawed_glob_add_match(res[..], "flawed/tool.coax", 2);
+  #assert !flawed_glob_add_match(res[..], "flawed/state.coax", 2) && res[0].truncated;
+  mn = flawed_glob_format_model(res[..], mb[..]);
+  sn = flawed_glob_extract_search_text(res[..], sb[..]);
+  #assert cast(string) sb[0..<sn] == "flawed/ids.coax\nflawed/tool.coax";
+  #assert mn > sn && cast(string) mb[0..<sn] == "flawed/ids.coax\nflawed/tool.coax";
+}

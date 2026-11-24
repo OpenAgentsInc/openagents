@@ -6,6 +6,8 @@
 #load "state.coax";
 #load "file_cache.coax";
 #load "scheduler.coax";
+#load "tool.coax";
+#load "glob_tool.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");

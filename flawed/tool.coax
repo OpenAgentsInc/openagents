@@ -1,0 +1,551 @@
+// Flawed Layer 1 (Chapter 02) — The Tool Contract & Prompt-Cache-Stable Tool Pool.
+// Replaces cc/Tool.ts (buildTool, ToolPermissionContext, UNC guard, dual projection)
+// and cc/tools.ts (simple mode, blanket deny rules, partitioned sorting, built-in shadowing defense).
+//   coax/bin/coax test flawed/tool.coax --library
+//   coax/bin/coax mutate flawed/tool.coax --root-only
+#module "flawed.tool";
+#authority;
+#load "state.coax";
+
+FLAWED_TOOL_NAME_MAX :: 64;
+FLAWED_TOOL_HINT_MAX :: 96;
+FLAWED_TOOL_POOL_MAX :: 64;
+FLAWED_DENY_RULES_MAX :: 32;
+FLAWED_SCHEMA_FIELDS_MAX :: 16;
+
+FLAWED_RESULT_DEFAULT_MAX_CHARS :: 100000;
+FLAWED_RESULT_UNBOUNDED :: -1; // e.g. Read tool: never spill to disk (prevents Read->spill->Read loop)
+
+// Tool provenance partition (built-ins ALWAYS precede MCP tools for prompt-cache prefix stability).
+FLAWED_TOOL_SRC_BUILTIN :: 0;
+FLAWED_TOOL_SRC_MCP :: 1;
+
+// Interrupt behavior when user sends a new message mid-tool-call.
+FLAWED_INTERRUPT_BLOCK :: 0;  // fail-safe default: wait for tool to settle
+FLAWED_INTERRUPT_CANCEL :: 1; // cancel and discard
+
+// Static schema field types (replaces runtime Zod + lazySchema thunks with zero-boot const metadata).
+FLAWED_FIELD_STRING :: 0;
+FLAWED_FIELD_INT :: 1;
+FLAWED_FIELD_BOOL :: 2;
+FLAWED_FIELD_PATH :: 3;
+FLAWED_FIELD_ARRAY :: 4;
+FLAWED_FIELD_OBJECT :: 5;
+
+// Permission decisions returned by checkPermissions / permission engine.
+FLAWED_PERM_ALLOW :: 0;
+FLAWED_PERM_ASK :: 1;
+FLAWED_PERM_DENY :: 2;
+
+// Validation error codes (pre-permission rejection so bad args bounce to model without nagging human).
+FLAWED_VAL_OK :: 0;
+FLAWED_VAL_EMPTY_REQUIRED :: 1;
+FLAWED_VAL_INVALID_PATH :: 2;
+FLAWED_VAL_NOT_FOUND :: 3;
+FLAWED_VAL_BAD_TYPE :: 4;
+
+FlawedSchemaField :: struct {
+  name: [32] u8; name_n: int;
+  kind: u8;
+  required: bool;
+}
+
+FlawedToolSpec :: struct {
+  // Face 1: Identity, provenance, schema metadata, deferral & spill cap
+  name: [FLAWED_TOOL_NAME_MAX] u8; name_n: int;
+  alias: [FLAWED_TOOL_NAME_MAX] u8; alias_n: int;
+  search_hint: [FLAWED_TOOL_HINT_MAX] u8; search_hint_n: int;
+  source: u8;
+  should_defer: bool;
+  always_load: bool;
+  simple_core: bool;            // true for [Bash, Edit, Read] kept in CLAUDE_CODE_SIMPLE mode
+  repl_hidden: bool;            // hidden when VM REPL mode is active
+  max_result_size_chars: int;   // FLAWED_RESULT_UNBOUNDED (-1) disables disk spill
+  // Face 2: Safety & scheduling (fail-closed defaults from flawed_tool_defaults)
+  enabled: bool;
+  concurrency_safe: bool;       // default: false (serial barrier)
+  read_only: bool;              // default: false (assumed mutating)
+  destructive: bool;            // default: false
+  input_sensitive_safety: bool; // e.g. BashTool: safety depends on parsed command
+  interrupt_behavior: u8;       // default: FLAWED_INTERRUPT_BLOCK
+  // Static schema descriptor (zero-cost boot)
+  fields: [FLAWED_SCHEMA_FIELDS_MAX] FlawedSchemaField;
+  field_count: int;
+}
+
+FlawedDenyRule :: struct {
+  pattern: [FLAWED_TOOL_NAME_MAX] u8;
+  pattern_n: int;
+}
+
+// ToolPermissionContext (cc Tool.ts:123-138).
+FlawedToolPermContext :: struct {
+  mode: int;
+  pre_plan_mode: int;
+  avoid_permission_prompts: bool; // headless background subagents auto-deny interactive asks
+  simple_mode: bool;              // CLAUDE_CODE_SIMPLE: collapse to simple_core built-ins
+  repl_mode: bool;                // hide repl_hidden primitive tools
+  deny_rules: [FLAWED_DENY_RULES_MAX] FlawedDenyRule;
+  deny_count: int;
+}
+
+FlawedToolSafety :: struct {
+  concurrency_safe: bool;
+  read_only: bool;
+}
+
+FlawedToolPool :: struct {
+  tools: [FLAWED_TOOL_POOL_MAX] FlawedToolSpec;
+  count: int;
+  builtin_count: int; // contiguous prefix [0..<builtin_count] for global prompt-cache breakpoint
+}
+
+flawed_str_cmp :: (a: [] const u8, an: int, b: [] const u8, bn: int) -> int #effects(reads, traps) {
+  lim := ifx an < bn then an else bn; // mutant: equivalent // when an == bn both branches yield the same length
+  for i: 0..<lim {
+    if a[i] < b[i] { return -1; }
+    if a[i] > b[i] { return 1; }
+  }
+  if an < bn { return -1; }
+  if an > bn { return 1; }
+  return 0;
+}
+
+// Fail-closed buildTool() constructor (cc Tool.ts:757-792):
+// Zero-init guarantees concurrency_safe = false, read_only = false, destructive = false,
+// interrupt_behavior = FLAWED_INTERRUPT_BLOCK (0); enabled = true, max_result_size_chars = 100_000.
+flawed_tool_defaults :: (name: string, source: u8) -> FlawedToolSpec #effects(reads, traps) {
+  spec: FlawedToolSpec;
+  if name.count == 0 || name.count > FLAWED_TOOL_NAME_MAX { return spec; }
+  for i: 0..<name.count { spec.name[i] = name[i]; }
+  spec.name_n = name.count;
+  spec.source = source;
+  spec.enabled = true;
+  spec.max_result_size_chars = FLAWED_RESULT_DEFAULT_MAX_CHARS;
+  return spec;
+}
+
+flawed_tool_set_alias :: (t: [] FlawedToolSpec, alias: string) -> bool #effects(reads, writes, traps) {
+  if t.count == 0 || alias.count == 0 || alias.count > FLAWED_TOOL_NAME_MAX { return false; }
+  for i: 0..<alias.count { t[0].alias[i] = alias[i]; }
+  t[0].alias_n = alias.count;
+  return true;
+}
+
+flawed_tool_add_field :: (t: [] FlawedToolSpec, name: string, kind: u8, required: bool) -> bool #effects(reads, writes, traps) {
+  if t.count == 0 || name.count == 0 || name.count > 32 || t[0].field_count >= FLAWED_SCHEMA_FIELDS_MAX { return false; }
+  idx := t[0].field_count;
+  f: FlawedSchemaField;
+  for i: 0..<name.count { f.name[i] = name[i]; }
+  f.name_n = name.count;
+  f.kind = kind;
+  f.required = required;
+  t[0].fields[idx] = f;
+  t[0].field_count += 1;
+  return true;
+}
+
+// Compute effective per-invocation safety:
+// - If spec.input_sensitive_safety is false, static tool metadata governs (never escalated by input).
+// - If spec.input_sensitive_safety is true (e.g. BashTool), use input classification, enforcing
+//   fail-closed invariant: a mutating command (!input_read_only) can never be concurrency_safe.
+flawed_tool_effective_safety :: (
+  spec: FlawedToolSpec,
+  input_read_only: bool,
+  input_concurrency_safe: bool
+) -> FlawedToolSafety #effects(computes) {
+  if !spec.input_sensitive_safety {
+    return FlawedToolSafety.{
+      concurrency_safe = spec.concurrency_safe && spec.read_only,
+      read_only = spec.read_only
+    };
+  }
+  return FlawedToolSafety.{
+    concurrency_safe = input_concurrency_safe && input_read_only,
+    read_only = input_read_only
+  };
+}
+
+// SECURITY (cc GlobTool.ts:100-103): Detect UNC network paths (\\server\share or //server/share)
+// so validateInput NEVER probes the filesystem before permission checks (prevents NTLM leaks).
+flawed_is_unc_path :: (path: string) -> bool #effects(reads, traps) {
+  if path.count < 2 { return false; }
+  return (path[0] == '\\' && path[1] == '\\') || (path[0] == '/' && path[1] == '/');
+}
+
+// Whether a tool output of `chars` length should spill to disk.
+// Tools with max_result_size_chars == FLAWED_RESULT_UNBOUNDED (-1, e.g. Read) never spill.
+flawed_tool_should_spill :: (spec: FlawedToolSpec, chars: int) -> bool #effects(computes) {
+  if spec.max_result_size_chars == FLAWED_RESULT_UNBOUNDED { return false; }
+  return chars > spec.max_result_size_chars;
+}
+
+// Permission context helpers.
+flawed_perm_ctx_init :: (ctx: [] FlawedToolPermContext, mode: int, avoid_prompts: bool) -> bool #effects(writes, traps) {
+  if ctx.count == 0 || !flawed_mode_valid(mode) { return false; }
+  ctx[0] = FlawedToolPermContext.{
+    mode = mode,
+    pre_plan_mode = mode,
+    avoid_permission_prompts = avoid_prompts
+  };
+  return true;
+}
+
+// Enter / exit Plan Mode remembering pre_plan_mode (cc ToolPermissionContext.prePlanMode).
+flawed_perm_enter_plan :: (ctx: [] FlawedToolPermContext) -> bool #effects(reads, writes, traps) {
+  if ctx.count == 0 || ctx[0].mode == FLAWED_MODE_PLAN { return false; }
+  ctx[0].pre_plan_mode = ctx[0].mode;
+  ctx[0].mode = FLAWED_MODE_PLAN;
+  return true;
+}
+
+flawed_perm_exit_plan :: (ctx: [] FlawedToolPermContext) -> bool #effects(reads, writes, traps) {
+  if ctx.count == 0 || ctx[0].mode != FLAWED_MODE_PLAN { return false; }
+  ctx[0].mode = ctx[0].pre_plan_mode;
+  return true;
+}
+
+flawed_perm_add_deny :: (ctx: [] FlawedToolPermContext, pattern: string) -> bool #effects(reads, writes, traps) {
+  if ctx.count == 0 || pattern.count == 0 || pattern.count > FLAWED_TOOL_NAME_MAX || ctx[0].deny_count >= FLAWED_DENY_RULES_MAX {
+    return false;
+  }
+  idx := ctx[0].deny_count;
+  r: FlawedDenyRule;
+  for i: 0..<pattern.count { r.pattern[i] = pattern[i]; }
+  r.pattern_n = pattern.count;
+  ctx[0].deny_rules[idx] = r;
+  ctx[0].deny_count += 1;
+  return true;
+}
+
+// Blanket deny matching (cc tools.ts filterToolsByDenyRules):
+//   - Exact tool name match: "Bash" denies "Bash"
+//   - MCP server prefix match: "mcp__server" denies "mcp__server__anything" (must match "__" boundary,
+//     never "mcp__server2__anything"!)
+flawed_deny_rule_matches :: (rule: FlawedDenyRule, tool_name: [] const u8, tool_name_n: int) -> bool #effects(reads, traps) {
+  if rule.pattern_n == 0 { return false; }
+  if rule.pattern_n == tool_name_n {
+    for i: 0..<rule.pattern_n {
+      if rule.pattern[i] != tool_name[i] { return false; }
+    }
+    return true;
+  }
+  // Check MCP server blanket prefix: rule starts with "mcp__" and tool_name starts with "<rule>__".
+  if rule.pattern_n >= 6 && tool_name_n > rule.pattern_n + 2 {
+    if rule.pattern[0] == 'm' && rule.pattern[1] == 'c' && rule.pattern[2] == 'p' &&
+       rule.pattern[3] == '_' && rule.pattern[4] == '_' {
+      for i: 0..<rule.pattern_n {
+        if rule.pattern[i] != tool_name[i] { return false; }
+      }
+      return tool_name[rule.pattern_n] == '_' && tool_name[rule.pattern_n + 1] == '_';
+    }
+  }
+  return false;
+}
+
+flawed_tool_is_denied :: (ctx: [] const FlawedToolPermContext, spec: FlawedToolSpec) -> bool #effects(reads, traps) {
+  if ctx.count == 0 { return false; }
+  for i: 0..<ctx[0].deny_count {
+    if flawed_deny_rule_matches(ctx[0].deny_rules[i], spec.name[..], spec.name_n) { return true; }
+  }
+  return false;
+}
+
+flawed_pool_has_name :: (pool: [] const FlawedToolPool, name: [] const u8, name_n: int) -> bool #effects(reads, traps) {
+  for i: 0..<pool[0].count {
+    if flawed_str_cmp(pool[0].tools[i].name[..], pool[0].tools[i].name_n, name, name_n) == 0 {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Insertion-sort a contiguous slice of pool.tools[lo..<hi] lexicographically by name.
+flawed_pool_sort_range :: (pool: [] FlawedToolPool, lo: int, hi: int) #effects(reads, writes, traps) {
+  i := lo + 1;
+  while i < hi {
+    key := pool[0].tools[i];
+    j := i - 1;
+    while j >= lo && flawed_str_cmp(pool[0].tools[j].name[..], pool[0].tools[j].name_n, key.name[..], key.name_n) > 0 { // mutant: equivalent // pool names are deduplicated before sorting
+      pool[0].tools[j + 1] = pool[0].tools[j];
+      j -= 1;
+    }
+    pool[0].tools[j + 1] = key;
+    i += 1;
+  }
+}
+
+// Assemble the final tool pool (cc tools.ts:345-367):
+//   1. Filter disabled tools, simple_mode (simple_core built-ins only), repl_mode (hide repl_hidden),
+//      and blanket deny rules (before model ever sees the schemas).
+//   2. Keep built-ins in a contiguous sorted prefix [0..<builtin_count], followed by allowed MCP
+//      tools in a separate sorted suffix [builtin_count..<count] for global prompt-cache stability.
+//   3. Deduplicate by name with built-ins first so a colliding MCP tool can NEVER shadow a built-in.
+flawed_assemble_tool_pool :: (
+  pool: [] FlawedToolPool,
+  ctx: [] const FlawedToolPermContext,
+  builtins: [] const FlawedToolSpec,
+  mcp_tools: [] const FlawedToolSpec
+) -> bool #effects(reads, writes, traps) {
+  if pool.count == 0 || ctx.count == 0 { return false; }
+  pool[0] = FlawedToolPool.{};
+
+  // Partition 1: Built-in tools
+  for i: 0..<builtins.count {
+    t := builtins[i];
+    if t.name_n == 0 || !t.enabled { continue; }
+    if ctx[0].simple_mode && !t.simple_core { continue; }
+    if ctx[0].repl_mode && t.repl_hidden { continue; }
+    if flawed_tool_is_denied(ctx, t) { continue; }
+    if flawed_pool_has_name(pool, t.name[..], t.name_n) { continue; }
+    if pool[0].count >= FLAWED_TOOL_POOL_MAX { break; }
+    t.source = cast(u8) FLAWED_TOOL_SRC_BUILTIN;
+    pool[0].tools[pool[0].count] = t;
+    pool[0].count += 1;
+  }
+  pool[0].builtin_count = pool[0].count;
+  flawed_pool_sort_range(pool, 0, pool[0].builtin_count);
+
+  // Partition 2: Allowed MCP tools (omitted in simple_mode)
+  if !ctx[0].simple_mode {
+    for i: 0..<mcp_tools.count {
+      t := mcp_tools[i];
+      if t.name_n == 0 || !t.enabled { continue; }
+      if flawed_tool_is_denied(ctx, t) { continue; }
+      // Built-in wins on name collision!
+      if flawed_pool_has_name(pool, t.name[..], t.name_n) { continue; }
+      if pool[0].count >= FLAWED_TOOL_POOL_MAX { break; }
+      t.source = cast(u8) FLAWED_TOOL_SRC_MCP;
+      pool[0].tools[pool[0].count] = t;
+      pool[0].count += 1;
+    }
+    flawed_pool_sort_range(pool, pool[0].builtin_count, pool[0].count);
+  }
+  return true;
+}
+
+// Find tool in assembled pool by canonical name first, then alias (cc Tool.ts findToolByName).
+flawed_pool_find :: (pool: [] const FlawedToolPool, name: string) -> int #effects(reads, traps) {
+  if pool.count == 0 || name.count == 0 { return -1; }
+  for i: 0..<pool[0].count {
+    if flawed_bytes_eq(pool[0].tools[i].name[..], pool[0].tools[i].name_n, name) { return i; }
+  }
+  for i: 0..<pool[0].count {
+    if flawed_bytes_eq(pool[0].tools[i].alias[..], pool[0].tools[i].alias_n, name) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+#test "flawed tool: fail-closed defaults, input-sensitive safety, UNC guard, and spill cap" {
+  // Invalid names rejected; 1-byte and 64-byte boundaries accepted
+  bad0 := flawed_tool_defaults("", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  #assert bad0.name_n == 0;
+  one := flawed_tool_defaults("X", cast(u8) FLAWED_TOOL_SRC_MCP);
+  #assert one.name_n == 1 && one.source == cast(u8) FLAWED_TOOL_SRC_MCP;
+  max64: [64] u8;
+  for i: 0..<64 { max64[i] = 't'; }
+  #assert flawed_tool_defaults(cast(string) max64[..], cast(u8) FLAWED_TOOL_SRC_BUILTIN).name_n == 64;
+  long65: [65] u8;
+  for i: 0..<65 { long65[i] = 't'; }
+  #assert flawed_tool_defaults(cast(string) long65[..], cast(u8) FLAWED_TOOL_SRC_BUILTIN).name_n == 0;
+
+  // Fail-closed defaults on newly built tool
+  tb: [1] FlawedToolSpec;
+  tb[0] = flawed_tool_defaults("Edit", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  #assert tb[0].name_n == 4 && tb[0].enabled && !tb[0].concurrency_safe && !tb[0].read_only && !tb[0].destructive;
+  #assert tb[0].interrupt_behavior == cast(u8) FLAWED_INTERRUPT_BLOCK && tb[0].max_result_size_chars == 100000;
+  #assert !flawed_tool_should_spill(tb[0], 100000) && flawed_tool_should_spill(tb[0], 100001);
+
+  // Read tool opts out of spill with FLAWED_RESULT_UNBOUNDED
+  rd := flawed_tool_defaults("Read", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  rd.max_result_size_chars = FLAWED_RESULT_UNBOUNDED;
+  #assert !flawed_tool_should_spill(rd, 999999999);
+
+  // Alias & static schema field metadata (including exact 64B alias & 32B field boundaries)
+  #assert !flawed_tool_set_alias(tb[0..<0], "FileEdit") && !flawed_tool_set_alias(tb[..], "") && !flawed_tool_set_alias(tb[..], cast(string) long65[..]);
+  #assert flawed_tool_set_alias(tb[..], cast(string) max64[..]) && tb[0].alias_n == 64;
+  #assert flawed_tool_set_alias(tb[..], "FileEdit") && tb[0].alias_n == 8;
+  max32: [32] u8;
+  for i: 0..<32 { max32[i] = 'k'; }
+  long33: [33] u8;
+  for i: 0..<33 { long33[i] = 'f'; }
+  #assert !flawed_tool_add_field(tb[0..<0], "path", cast(u8) FLAWED_FIELD_PATH, true);
+  #assert !flawed_tool_add_field(tb[..], "", cast(u8) FLAWED_FIELD_PATH, true);
+  #assert !flawed_tool_add_field(tb[..], cast(string) long33[..], cast(u8) FLAWED_FIELD_PATH, true);
+  #assert flawed_tool_add_field(tb[..], cast(string) max32[..], cast(u8) FLAWED_FIELD_PATH, true);
+  #assert tb[0].fields[0].name_n == 32 && tb[0].fields[0].name[0] == 'k' && tb[0].fields[0].kind == cast(u8) FLAWED_FIELD_PATH;
+  for i: 1..<FLAWED_SCHEMA_FIELDS_MAX {
+    fnm := [3] u8.['f', cast,trunc(u8) ('a' + (i / 10)), cast,trunc(u8) ('0' + (i % 10))];
+    #assert flawed_tool_add_field(tb[..], cast(string) fnm[..], cast(u8) FLAWED_FIELD_STRING, false);
+  }
+  #assert !flawed_tool_add_field(tb[..], "over", cast(u8) FLAWED_FIELD_STRING, false);
+  #assert tb[0].field_count == FLAWED_SCHEMA_FIELDS_MAX && tb[0].fields[0].required && !tb[0].fields[1].required;
+
+  // Input-sensitive safety: static tool ignores input hints; dynamic Bash enforces read_only => concurrency_safe
+  s_static := flawed_tool_effective_safety(tb[0], true, true);
+  #assert !s_static.concurrency_safe && !s_static.read_only;
+  // Static tool claiming concurrency_safe without read_only still fails closed!
+  bad_static := flawed_tool_defaults("Weird", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  bad_static.concurrency_safe = true; bad_static.read_only = false;
+  #assert !flawed_tool_effective_safety(bad_static, false, false).concurrency_safe;
+  ro_static := flawed_tool_defaults("Glob", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  ro_static.concurrency_safe = true; ro_static.read_only = true;
+  s_ro := flawed_tool_effective_safety(ro_static, false, false);
+  #assert s_ro.concurrency_safe && s_ro.read_only;
+
+  bash := flawed_tool_defaults("Bash", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  bash.input_sensitive_safety = true;
+  s_ls := flawed_tool_effective_safety(bash, true, true);
+  s_rm := flawed_tool_effective_safety(bash, false, true); // mutating cannot be concurrent
+  #assert s_ls.read_only && s_ls.concurrency_safe;
+  #assert !s_rm.read_only && !s_rm.concurrency_safe;
+
+  // UNC path detection (Windows NTLM leak guard, including exact 2-byte "//" and "\\")
+  #assert !flawed_is_unc_path("") && !flawed_is_unc_path("/") && !flawed_is_unc_path("\\");
+  #assert !flawed_is_unc_path("/etc/passwd") && !flawed_is_unc_path("\\a");
+  #assert flawed_is_unc_path("\\\\") && flawed_is_unc_path("//");
+  #assert flawed_is_unc_path("\\\\attacker\\share") && flawed_is_unc_path("//attacker/share");
+  #assert !flawed_is_unc_path("/\\mixed") && !flawed_is_unc_path("\\/mixed");
+}
+
+#test "flawed tool: permission context, blanket deny prefix rules, partitioned prompt-cache sort, and anti-shadowing" {
+  ctx: [1] FlawedToolPermContext;
+  #assert !flawed_perm_ctx_init(ctx[0..<0], FLAWED_MODE_DEFAULT, false);
+  #assert !flawed_perm_ctx_init(ctx[..], 99, false);
+  #assert flawed_perm_ctx_init(ctx[..], FLAWED_MODE_ACCEPT_EDITS, true);
+  #assert ctx[0].mode == FLAWED_MODE_ACCEPT_EDITS && ctx[0].pre_plan_mode == FLAWED_MODE_ACCEPT_EDITS && ctx[0].avoid_permission_prompts;
+  ctx[0].mode = FLAWED_MODE_AUTO; // distinct from pre_plan_mode so enter_plan MUST snapshot mode
+  #assert !flawed_perm_exit_plan(ctx[..]) && !flawed_perm_enter_plan(ctx[0..<0]) && !flawed_perm_exit_plan(ctx[0..<0]);
+  #assert flawed_perm_enter_plan(ctx[..]) && ctx[0].mode == FLAWED_MODE_PLAN && ctx[0].pre_plan_mode == FLAWED_MODE_AUTO;
+  #assert !flawed_perm_enter_plan(ctx[..]); // already in plan
+  #assert flawed_perm_exit_plan(ctx[..]) && ctx[0].mode == FLAWED_MODE_AUTO;
+
+  // Deny rules: exact tool name (index 0!) + MCP server prefix (strict __ boundary!)
+  max64: [64] u8;
+  for i: 0..<64 { max64[i] = 'r'; }
+  long65: [65] u8;
+  for i: 0..<65 { long65[i] = 'r'; }
+  #assert !flawed_perm_add_deny(ctx[0..<0], "Bash") && !flawed_perm_add_deny(ctx[..], "") && !flawed_perm_add_deny(ctx[..], cast(string) long65[..]);
+  #assert flawed_perm_add_deny(ctx[..], "Write");
+  #assert flawed_perm_add_deny(ctx[..], cast(string) max64[..]);
+  #assert flawed_perm_add_deny(ctx[..], "mcp__evil");
+  #assert flawed_perm_add_deny(ctx[..], "mcp__x"); // exact len 6 boundary
+  #assert flawed_perm_add_deny(ctx[..], "Z");      // 1-char exact deny
+
+  // Build unsorted built-ins + MCP tools (also pass wrong source tags to verify partition normalization)
+  b0 := flawed_tool_defaults("Read", cast(u8) FLAWED_TOOL_SRC_MCP);
+  b0.simple_core = true; b0.read_only = true; b0.concurrency_safe = true;
+  b0a := [1] FlawedToolSpec.[b0]; _ = flawed_tool_set_alias(b0a[..], "FileRead"); b0 = b0a[0];
+  b1 := flawed_tool_defaults("Bash", cast(u8) FLAWED_TOOL_SRC_MCP);
+  b1.simple_core = true; b1.repl_hidden = true;
+  b1a := [1] FlawedToolSpec.[b1]; _ = flawed_tool_set_alias(b1a[..], "B"); b1 = b1a[0];
+  b2 := flawed_tool_defaults("Write", cast(u8) FLAWED_TOOL_SRC_BUILTIN); // denied by rule!
+  b3 := flawed_tool_defaults("Glob", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  b4 := flawed_tool_defaults("DisabledTool", cast(u8) FLAWED_TOOL_SRC_BUILTIN); b4.enabled = false;
+  b5 := flawed_tool_defaults("Read", cast(u8) FLAWED_TOOL_SRC_BUILTIN); // duplicate built-in
+  b6: FlawedToolSpec; // empty name skipped
+  b7 := flawed_tool_defaults("Z", cast(u8) FLAWED_TOOL_SRC_BUILTIN); // 1-char denied
+  b8 := flawed_tool_defaults("A", cast(u8) FLAWED_TOOL_SRC_BUILTIN); // 1-char allowed
+  builtins := [9] FlawedToolSpec.[b0, b1, b2, b3, b4, b5, b6, b7, b8];
+
+  m0 := flawed_tool_defaults("mcp__zeta__run", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  m1 := flawed_tool_defaults("mcp__alpha__query", cast(u8) FLAWED_TOOL_SRC_MCP);
+  m2 := flawed_tool_defaults("mcp__evil__steal", cast(u8) FLAWED_TOOL_SRC_MCP);   // denied by mcp__evil
+  m3 := flawed_tool_defaults("mcp__evil2__safe", cast(u8) FLAWED_TOOL_SRC_MCP);   // MUST NOT be denied by mcp__evil!
+  m4 := flawed_tool_defaults("Read", cast(u8) FLAWED_TOOL_SRC_MCP);               // colliding MCP MUST NOT shadow built-in Read!
+  m5 := flawed_tool_defaults("mcp__x__d", cast(u8) FLAWED_TOOL_SRC_MCP);          // exact pattern_n + 3 boundary: denied by mcp__x
+  m6 := flawed_tool_defaults("mcp__x__", cast(u8) FLAWED_TOOL_SRC_MCP);           // exact pattern_n + 2 (no tool name after __): NOT denied
+  m7 := flawed_tool_defaults("mcp__alpha__off", cast(u8) FLAWED_TOOL_SRC_MCP); m7.enabled = false;
+  m8 := flawed_tool_defaults("mcp__evil_not", cast(u8) FLAWED_TOOL_SRC_MCP);      // single underscore -> NOT denied
+  m9 := flawed_tool_defaults("Q", cast(u8) FLAWED_TOOL_SRC_MCP);                  // 1-char allowed MCP
+  mcps := [10] FlawedToolSpec.[m0, m1, m2, m3, m4, m5, m6, m7, m8, m9];
+
+  pool: [1] FlawedToolPool;
+  #assert !flawed_assemble_tool_pool(pool[0..<0], ctx[..], builtins[..], mcps[..]);
+  #assert !flawed_assemble_tool_pool(pool[..], ctx[0..<0], builtins[..], mcps[..]);
+  #assert flawed_assemble_tool_pool(pool[..], ctx[..], builtins[..], mcps[..]);
+  // Partition 1 (sorted built-ins): ["A", "Bash", "Glob", "Read"] -> builtin_count == 4
+  // Partition 2 (sorted allowed MCPs): ["Q", "mcp__alpha__query", "mcp__evil2__safe", "mcp__evil_not", "mcp__x__", "mcp__zeta__run"]
+  #assert pool[0].builtin_count == 4 && pool[0].count == 10;
+  #assert flawed_bytes_eq(pool[0].tools[0].name[..], pool[0].tools[0].name_n, "A") && pool[0].tools[0].source == cast(u8) FLAWED_TOOL_SRC_BUILTIN;
+  #assert flawed_bytes_eq(pool[0].tools[1].name[..], pool[0].tools[1].name_n, "Bash") && pool[0].tools[1].source == cast(u8) FLAWED_TOOL_SRC_BUILTIN;
+  #assert flawed_bytes_eq(pool[0].tools[2].name[..], pool[0].tools[2].name_n, "Glob") && pool[0].tools[2].source == cast(u8) FLAWED_TOOL_SRC_BUILTIN;
+  #assert flawed_bytes_eq(pool[0].tools[3].name[..], pool[0].tools[3].name_n, "Read") && pool[0].tools[3].source == cast(u8) FLAWED_TOOL_SRC_BUILTIN && pool[0].tools[3].read_only;
+  #assert flawed_bytes_eq(pool[0].tools[4].name[..], pool[0].tools[4].name_n, "Q") && pool[0].tools[4].source == cast(u8) FLAWED_TOOL_SRC_MCP;
+  #assert flawed_bytes_eq(pool[0].tools[9].name[..], pool[0].tools[9].name_n, "mcp__zeta__run") && pool[0].tools[9].source == cast(u8) FLAWED_TOOL_SRC_MCP;
+
+  // Lookup by canonical name and by alias (including 1-char name/alias and index 0!)
+  #assert flawed_pool_find(pool[0..<0], "Read") == -1 && flawed_pool_find(pool[..], "") == -1;
+  #assert flawed_pool_find(pool[..], "A") == 0 && flawed_pool_find(pool[..], "B") == 1;
+  #assert flawed_pool_find(pool[..], "Read") == 3 && flawed_pool_find(pool[..], "FileRead") == 3;
+  #assert flawed_pool_find(pool[..], "Write") == -1 && flawed_pool_find(pool[..], "mcp__evil__steal") == -1;
+  // Alias at index 0
+  pool[0].tools[0].alias[0] = 'a'; pool[0].tools[0].alias_n = 1;
+  #assert flawed_pool_find(pool[..], "a") == 0;
+
+  // CLAUDE_CODE_SIMPLE mode collapses to simple_core built-ins only (no MCP tools)
+  ctx[0].simple_mode = true;
+  #assert flawed_assemble_tool_pool(pool[..], ctx[..], builtins[..], mcps[..]);
+  #assert pool[0].builtin_count == 2 && pool[0].count == 2; // Bash, Read
+  #assert flawed_pool_find(pool[..], "Glob") == -1 && flawed_pool_find(pool[..], "mcp__alpha__query") == -1;
+
+  // REPL mode hides repl_hidden primitives (Bash)
+  ctx[0].simple_mode = false; ctx[0].repl_mode = true;
+  #assert flawed_assemble_tool_pool(pool[..], ctx[..], builtins[..], mcps[..]);
+  #assert flawed_pool_find(pool[..], "Bash") == -1 && flawed_pool_find(pool[..], "Glob") >= 0;
+
+  // Deny rule edge cases (every byte of "mcp__" prefix + index 0 mismatch + empty/1-char)
+  #assert !flawed_tool_is_denied(ctx[0..<0], b0);
+  empty_rule: FlawedDenyRule;
+  #assert !flawed_deny_rule_matches(empty_rule, b0.name[..], b0.name_n);
+  #assert !flawed_deny_rule_matches(empty_rule, b0.name[..], 0);
+  #assert !flawed_deny_rule_matches(ctx[0].deny_rules[1], b0.name[..], 0);
+  // Same length, mismatch at index 0 ("Write" vs "Xrite")
+  xrite := flawed_tool_defaults("Xrite", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  #assert !flawed_tool_is_denied(ctx[..], xrite);
+  // Prefix mismatch at index 0 ("mcp__evil" vs "xcp__evil__a")
+  xcp_t := flawed_tool_defaults("xcp__evil__a", cast(u8) FLAWED_TOOL_SRC_MCP);
+  #assert !flawed_tool_is_denied(ctx[..], xcp_t);
+  // Non-"mcp__" prefixes differing at each of positions 0..4 MUST NOT prefix-match
+  ctx2: [1] FlawedToolPermContext;
+  #assert flawed_perm_ctx_init(ctx2[..], FLAWED_MODE_DEFAULT, false);
+  #assert flawed_perm_add_deny(ctx2[..], "xcp__s");
+  #assert flawed_perm_add_deny(ctx2[..], "mxp__s");
+  #assert flawed_perm_add_deny(ctx2[..], "mcx__s");
+  #assert flawed_perm_add_deny(ctx2[..], "mcpX_s");
+  #assert flawed_perm_add_deny(ctx2[..], "mcp_Xs");
+  #assert !flawed_tool_is_denied(ctx2[..], flawed_tool_defaults("xcp__s__t", cast(u8) FLAWED_TOOL_SRC_MCP));
+  #assert !flawed_tool_is_denied(ctx2[..], flawed_tool_defaults("mxp__s__t", cast(u8) FLAWED_TOOL_SRC_MCP));
+  #assert !flawed_tool_is_denied(ctx2[..], flawed_tool_defaults("mcx__s__t", cast(u8) FLAWED_TOOL_SRC_MCP));
+  #assert !flawed_tool_is_denied(ctx2[..], flawed_tool_defaults("mcpX_s__t", cast(u8) FLAWED_TOOL_SRC_MCP));
+  #assert !flawed_tool_is_denied(ctx2[..], flawed_tool_defaults("mcp_Xs__t", cast(u8) FLAWED_TOOL_SRC_MCP));
+  // Fill deny rules to cap
+  for i: 5..<FLAWED_DENY_RULES_MAX {
+    rn := [4] u8.['d', '_', cast,trunc(u8) ('a' + (i / 10)), cast,trunc(u8) ('0' + (i % 10))];
+    #assert flawed_perm_add_deny(ctx2[..], cast(string) rn[..]);
+  }
+  #assert !flawed_perm_add_deny(ctx2[..], "overflow");
+
+  // Pool capacity cap for built-ins (65 -> 64) and MCP overflow (63 built-ins + 2 MCP -> 64)
+  many_b: [65] FlawedToolSpec;
+  for i: 0..<65 {
+    tn := [4] u8.['b', '_', cast,trunc(u8) ('a' + (i / 10)), cast,trunc(u8) ('0' + (i % 10))];
+    many_b[i] = flawed_tool_defaults(cast(string) tn[..], cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  }
+  ctx3: [1] FlawedToolPermContext;
+  #assert flawed_perm_ctx_init(ctx3[..], FLAWED_MODE_DEFAULT, false);
+  #assert flawed_assemble_tool_pool(pool[..], ctx3[..], many_b[..], mcps[0..<0]);
+  #assert pool[0].count == FLAWED_TOOL_POOL_MAX && pool[0].builtin_count == FLAWED_TOOL_POOL_MAX;
+  #assert flawed_assemble_tool_pool(pool[..], ctx3[..], many_b[0..<63], mcps[0..<3]);
+  #assert pool[0].count == FLAWED_TOOL_POOL_MAX && pool[0].builtin_count == 63;
+
+  // Exact string comparison edge cases (shorter, longer, greater char)
+  a_s := flawed_tool_defaults("Ab", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  b_s := flawed_tool_defaults("Abc", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  z_s := flawed_tool_defaults("Zb", cast(u8) FLAWED_TOOL_SRC_BUILTIN);
+  #assert flawed_str_cmp(a_s.name[..], a_s.name_n, b_s.name[..], b_s.name_n) == -1;
+  #assert flawed_str_cmp(b_s.name[..], b_s.name_n, a_s.name[..], a_s.name_n) == 1;
+  #assert flawed_str_cmp(z_s.name[..], z_s.name_n, a_s.name[..], a_s.name_n) == 1;
+}
