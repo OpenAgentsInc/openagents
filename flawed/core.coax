@@ -36,6 +36,7 @@
 #load "screen.coax";
 #load "repl.coax";
 #load "cli_boot.coax";
+#load "sdk_protocol.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -395,4 +396,16 @@
   #assert flawed_signal_exit_code(FLAWED_SIG_INT, true) == FLAWED_SIG_DEFER;
   st: [1] FlawedShutdownState;
   #assert flawed_shutdown_begin_sync(st[..], 1) && !flawed_main_continue_after_setup(st[0].exit_code_set);
+}
+
+#test "flawed core (Ch 23): NDJSON escaper, stdout guard, flag matrix, StructuredIO dedup ring, gh-30008 & mcp serve compose" {
+  raw: [3] u8; raw[0] = 0xE2; raw[1] = 0x80; raw[2] = 0xA8;
+  out: [8] u8;
+  #assert flawed_ndjson_escape_terminators(cast(string) raw[..], out[..]) == 6 && cast(string) out[0..<6] == "\\u2028";
+  #assert flawed_stdout_guard_classify_line("stray") == FLAWED_GUARD_DIVERT_STDERR && !flawed_stdin_peek_allowed(true, false, true);
+  #assert flawed_sdk_validate_flags(true, true, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_TEXT, true, true, true) == FLAWED_SFLAG_OK;
+  #assert flawed_sdk_classify_control_response(false, true, true) == FLAWED_CTRLRESP_DROP_DUP;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_MCP_SET_SERVERS) == FLAWED_CDISP_REPLY_BEFORE_WORK;
+  #assert !flawed_sdk_should_hold_back_result(true, true) && !flawed_sdk_can_seed_read_state(1001, 1000);
+  #assert !flawed_mcp_serve_include_output_schema(true, false) && flawed_mcp_serve_can_call_tool(true, true, true);
 }

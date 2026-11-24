@@ -1,0 +1,326 @@
+// Flawed Layer 8 (Chapter 23) — Machine-Readable Modes, Headless SDK & Control Protocols:
+// NDJSON U+2028/U+2029 Escaper, stdout Guard, Flag Matrix, StructuredIO Bounded Dedup Ring,
+// Permission Race & Concurrency Guards, Deadlock-Safe Control Dispatch, gh-30008 Result Hold-Back,
+// seed_read_state Freshness Guard, and Inverted `claude mcp serve` Schema Filter.
+// Replaces cc/cli/{ndjsonSafeStringify,structuredIO,print}.ts,
+// cc/utils/streamJsonStdoutGuard.ts, and cc/entrypoints/mcp.ts invariants.
+//   coax/bin/coax test flawed/sdk_protocol.coax --library
+//   coax/bin/coax mutate flawed/sdk_protocol.coax --root-only
+#module "flawed.sdk_protocol";
+#authority;
+#load "ids.coax";
+
+// Wire format enums (main.tsx:1237-1861, cli/print.ts:787-973).
+FLAWED_IOFMT_TEXT :: 1;
+FLAWED_IOFMT_JSON :: 2;
+FLAWED_IOFMT_STREAM_JSON :: 3;
+
+FLAWED_SFLAG_OK :: 1;
+FLAWED_SFLAG_IN_NEEDS_OUT_STREAM :: 2;
+FLAWED_SFLAG_REPLAY_NEEDS_BOTH_STREAM :: 3;
+FLAWED_SFLAG_PARTIAL_NEEDS_PRINT_STREAM :: 4;
+FLAWED_SFLAG_STREAM_NEEDS_VERBOSE :: 5;
+
+// stdout guard verdicts (utils/streamJsonStdoutGuard.ts:14-91).
+FLAWED_GUARD_PASS :: 1;
+FLAWED_GUARD_DIVERT_STDERR :: 2;
+
+// Outbound message categories for lastMessage exit-code tracking (cli/print.ts:892-909).
+FLAWED_SMSG_RESULT :: 1;
+FLAWED_SMSG_ASSISTANT :: 2;
+FLAWED_SMSG_TAIL_EPHEMERAL :: 3; // control_*, stream_event, session_state_changed, task_*, post_turn_summary, prompt_suggestion
+
+// Control response routing & permission race verdicts (cli/structuredIO.ts:341-655).
+FLAWED_CTRLRESP_MATCHED :: 1;
+FLAWED_CTRLRESP_DROP_DUP :: 2;
+FLAWED_CTRLRESP_ORPHAN_RECOVER :: 3;
+
+FLAWED_RACE_USE_HOOK_AND_CANCEL_SDK :: 1;
+FLAWED_RACE_AWAIT_SDK :: 2;
+
+// Host -> CLI control request dispatch classes (cli/print.ts:2970-4030).
+FLAWED_CREQ_INITIALIZE :: 1;
+FLAWED_CREQ_INTERRUPT :: 2;
+FLAWED_CREQ_MCP_SET_SERVERS :: 3;
+FLAWED_CREQ_GEN_TITLE :: 4;
+FLAWED_CREQ_SIDE_QUESTION :: 5;
+FLAWED_CREQ_UNKNOWN :: 6;
+
+FLAWED_CDISP_INLINE :: 1;
+FLAWED_CDISP_REPLY_BEFORE_WORK :: 2;
+FLAWED_CDISP_FIRE_AND_FORGET :: 3;
+FLAWED_CDISP_UNKNOWN_ERROR :: 4;
+
+// Bounded resolvedToolUseIds ring (production cap = 1000; 8-slot fixed ring for zero-heap core).
+FLAWED_SDK_MAX_RESOLVED_IDS :: 1000;
+FLAWED_SDK_RING_CAP :: 8;
+
+FlawedResolvedIdRing :: struct {
+  ids: [FLAWED_SDK_RING_CAP] int;
+  count: int;
+  head: int;
+}
+
+// Single-pass ECMA-262 U+2028 / U+2029 line-terminator escaper for NDJSON (cli/ndjsonSafeStringify.ts, gh-28405).
+// UTF-8: U+2028 = 0xE2 0x80 0xA8 -> "\u2028"; U+2029 = 0xE2 0x80 0xA9 -> "\u2029". Returns -1 on overflow.
+flawed_ndjson_escape_terminators :: (src: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  w := 0;
+  i := 0;
+  while i < src.count {
+    if i + 2 < src.count && src[i] == 0xE2 && src[i + 1] == 0x80 && (src[i + 2] == 0xA8 || src[i + 2] == 0xA9) {
+      if w + 6 > out.count { return -1; }
+      out[w] = 92;     // '\'
+      out[w + 1] = 117; // 'u'
+      out[w + 2] = 50;  // '2'
+      out[w + 3] = 48;  // '0'
+      out[w + 4] = 50;  // '2'
+      out[w + 5] = ifx src[i + 2] == 0xA8 then cast(u8) 56 else cast(u8) 57; // '8' or '9'
+      w = w + 6;
+      i = i + 3;
+      continue;
+    }
+    if w >= out.count { return -1; }
+    out[w] = src[i];
+    w = w + 1;
+    i = i + 1;
+  }
+  return w;
+}
+
+// stream-json stdout guard line classifier (utils/streamJsonStdoutGuard.ts:14-26):
+// Blank lines pass; trimmed lines framed as JSON object/array pass; stray non-JSON text diverts to stderr.
+flawed_stdout_guard_classify_line :: (line: string) -> u8 #effects(reads, traps) {
+  s := 0;
+  while s < line.count && (line[s] == 32 || line[s] == 9 || line[s] == 13) { s = s + 1; }
+  e := line.count;
+  while e > s && (line[e - 1] == 32 || line[e - 1] == 9 || line[e - 1] == 13) { e = e - 1; }
+  if s == e { return FLAWED_GUARD_PASS; }
+  first := line[s];
+  last := line[e - 1];
+  if (first == 123 && last == 125) || (first == 91 && last == 93) {
+    return FLAWED_GUARD_PASS;
+  }
+  return FLAWED_GUARD_DIVERT_STDERR;
+}
+
+// Non-TTY stdin peek guard (main.tsx:857-883): never touch stdin during `mcp` subcommand!
+flawed_stdin_peek_allowed :: (has_mcp_arg: bool, stdin_is_tty: bool, is_text_input: bool) -> bool #effects(traps) {
+  return !has_mcp_arg && !stdin_is_tty && is_text_input;
+}
+
+// Headless CLI flag matrix validation (main.tsx:1237-1861, cli/print.ts:787-793).
+flawed_sdk_validate_flags :: (
+  has_print: bool,
+  has_sdk_url: bool,
+  raw_in_fmt: u8,
+  raw_out_fmt: u8,
+  verbose: bool,
+  replay_user: bool,
+  include_partial: bool
+) -> u8 #effects(traps) {
+  in_fmt := ifx has_sdk_url then cast(u8) FLAWED_IOFMT_STREAM_JSON else raw_in_fmt;
+  out_fmt := ifx has_sdk_url then cast(u8) FLAWED_IOFMT_STREAM_JSON else raw_out_fmt;
+  if in_fmt == FLAWED_IOFMT_STREAM_JSON && out_fmt != FLAWED_IOFMT_STREAM_JSON {
+    return FLAWED_SFLAG_IN_NEEDS_OUT_STREAM;
+  }
+  if replay_user && (in_fmt != FLAWED_IOFMT_STREAM_JSON || out_fmt != FLAWED_IOFMT_STREAM_JSON) {
+    return FLAWED_SFLAG_REPLAY_NEEDS_BOTH_STREAM;
+  }
+  if include_partial && (!has_print || out_fmt != FLAWED_IOFMT_STREAM_JSON) {
+    return FLAWED_SFLAG_PARTIAL_NEEDS_PRINT_STREAM;
+  }
+  if out_fmt == FLAWED_IOFMT_STREAM_JSON && !verbose {
+    return FLAWED_SFLAG_STREAM_NEEDS_VERBOSE;
+  }
+  return FLAWED_SFLAG_OK;
+}
+
+// Memory & exit-code invariants (cli/print.ts:851-973).
+flawed_sdk_needs_full_message_array :: (out_fmt: u8, verbose: bool) -> bool #effects(traps) {
+  return out_fmt == FLAWED_IOFMT_JSON && verbose;
+}
+
+flawed_sdk_tracks_last_message :: (msg_kind: u8) -> bool #effects(traps) {
+  return msg_kind != FLAWED_SMSG_TAIL_EPHEMERAL;
+}
+
+flawed_sdk_exit_code :: (last_is_result: bool, last_is_error: bool) -> int #effects(traps) {
+  if last_is_result && last_is_error { return 1; }
+  return 0;
+}
+
+// Bounded FIFO resolvedToolUseIds ring (cli/structuredIO.ts:133, 176-187):
+// Evicts oldest entry at cap so redelivered control_responses never trigger duplicate tool runs.
+flawed_resolved_ring_has :: (r: [] const FlawedResolvedIdRing, tool_id: int) -> bool #effects(reads, traps) {
+  for i: 0..<r[0].count {
+    idx := (r[0].head + i) % FLAWED_SDK_RING_CAP;
+    if r[0].ids[idx] == tool_id { return true; }
+  }
+  return false;
+}
+
+flawed_resolved_ring_record :: (r: [] FlawedResolvedIdRing, tool_id: int) -> bool #effects(reads, writes, traps) {
+  if tool_id <= 0 || flawed_resolved_ring_has(r, tool_id) { return false; }
+  if r[0].count < FLAWED_SDK_RING_CAP {
+    r[0].ids[r[0].count] = tool_id;
+    r[0].count = r[0].count + 1;
+  } else {
+    r[0].ids[r[0].head] = tool_id;
+    r[0].head = (r[0].head + 1) % FLAWED_SDK_RING_CAP;
+  }
+  return true;
+}
+
+// Inbound control_response arbitration (cli/structuredIO.ts:374-401):
+// Pending -> matched; already resolved -> drop duplicate; unknown + orphan cb -> recover.
+flawed_sdk_classify_control_response :: (
+  has_pending: bool,
+  already_resolved: bool,
+  has_orphan_cb: bool
+) -> u8 #effects(traps) {
+  if has_pending { return FLAWED_CTRLRESP_MATCHED; }
+  if already_resolved { return FLAWED_CTRLRESP_DROP_DUP; }
+  if has_orphan_cb { return FLAWED_CTRLRESP_ORPHAN_RECOVER; }
+  return FLAWED_CTRLRESP_DROP_DUP;
+}
+
+// Local PermissionRequest hook vs remote SDK prompt race (cli/structuredIO.ts:576-638).
+flawed_sdk_perm_race_action :: (hook_won: bool, hook_decided: bool) -> u8 #effects(traps) {
+  if hook_won && hook_decided { return FLAWED_RACE_USE_HOOK_AND_CANCEL_SDK; }
+  return FLAWED_RACE_AWAIT_SDK;
+}
+
+// Concurrent permission UI guard (cli/structuredIO.ts:653-655) & mobile empty updatedInput fallback.
+flawed_sdk_should_emit_running_state :: (pending_perm_count: int) -> bool #effects(traps) {
+  return pending_perm_count == 0;
+}
+
+flawed_sdk_use_original_input :: (updated_input_empty: bool) -> bool #effects(traps) {
+  return updated_input_empty;
+}
+
+// Host -> CLI control request dispatch strategy (cli/print.ts:3059-3064, 3783-3874, 4021-4028).
+// mcp_set_servers MUST reply before updateSdkMcp() to prevent deadlock; title/side_question fire-and-forget.
+flawed_sdk_control_dispatch :: (subtype: u8) -> u8 #effects(traps) {
+  if subtype == FLAWED_CREQ_MCP_SET_SERVERS { return FLAWED_CDISP_REPLY_BEFORE_WORK; }
+  if subtype == FLAWED_CREQ_GEN_TITLE || subtype == FLAWED_CREQ_SIDE_QUESTION {
+    return FLAWED_CDISP_FIRE_AND_FORGET;
+  }
+  if subtype == FLAWED_CREQ_INITIALIZE || subtype == FLAWED_CREQ_INTERRUPT {
+    return FLAWED_CDISP_INLINE;
+  }
+  return FLAWED_CDISP_UNKNOWN_ERROR;
+}
+
+// heldBackResult teammate deadlock guard (cli/print.ts:2392-2394, gh-30008),
+// seed_read_state stale-overwrite guard (cli/print.ts:3017-3054), and prompt batching.
+flawed_sdk_should_hold_back_result :: (has_bg_task: bool, is_in_process_teammate: bool) -> bool #effects(traps) {
+  return has_bg_task && !is_in_process_teammate;
+}
+
+flawed_sdk_can_seed_read_state :: (stat_mtime_ms: int, req_mtime_ms: int) -> bool #effects(traps) {
+  return stat_mtime_ms <= req_mtime_ms;
+}
+
+flawed_sdk_can_batch_prompts :: (both_prompt: bool, same_workload: bool, same_is_meta: bool) -> bool #effects(traps) {
+  return both_prompt && same_workload && same_is_meta;
+}
+
+// Inverted `claude mcp serve` invariants (entrypoints/mcp.ts:69-82, 136-169, issues/8014).
+flawed_mcp_serve_include_output_schema :: (has_schema: bool, root_is_object: bool) -> bool #effects(traps) {
+  return has_schema && root_is_object;
+}
+
+flawed_mcp_serve_can_call_tool :: (tool_exists: bool, is_enabled: bool, validate_ok: bool) -> bool #effects(traps) {
+  return tool_exists && is_enabled && validate_ok;
+}
+
+#test "sdk_protocol: NDJSON U+2028/U+2029 escaper, stdout guard, stdin peek & flag matrix" {
+  // Build raw UTF-8 string containing U+2028 (E2 80 A8), U+2029 (E2 80 A9), and non-terminator E2 80 AA
+  raw: [12] u8;
+  raw[0] = 97; // 'a'
+  raw[1] = 0xE2; raw[2] = 0x80; raw[3] = 0xA8; // U+2028
+  raw[4] = 98; // 'b'
+  raw[5] = 0xE2; raw[6] = 0x80; raw[7] = 0xA9; // U+2029
+  raw[8] = 0xE2; raw[9] = 0x80; raw[10] = 0xAA; // U+202A (leave intact)
+  raw[11] = 99; // 'c'
+  out: [32] u8;
+  n := flawed_ndjson_escape_terminators(cast(string) raw[..], out[..]);
+  #assert n == 18 && cast(string) out[0..<14] == "a\\u2028b\\u2029";
+  #assert out[14] == 0xE2 && out[15] == 0x80 && out[16] == 0xAA && out[17] == 99;
+  // Trailing 2-byte prefix (i + 2 == count) does not read OOB; tight buffer overflow returns -1
+  tail2: [2] u8; tail2[0] = 0xE2; tail2[1] = 0x80;
+  #assert flawed_ndjson_escape_terminators(cast(string) tail2[..], out[0..<2]) == 2;
+  #assert flawed_ndjson_escape_terminators(cast(string) tail2[..], out[0..<1]) == -1;
+  #assert flawed_ndjson_escape_terminators(cast(string) raw[1..<4], out[0..<5]) == -1;
+  #assert flawed_ndjson_escape_terminators(cast(string) raw[1..<4], out[0..<6]) == 6;
+
+  // stdout guard: empty/whitespace, JSON object, JSON array pass; stray console.log diverts to stderr
+  #assert flawed_stdout_guard_classify_line(" \t\r ") == FLAWED_GUARD_PASS;
+  #assert flawed_stdout_guard_classify_line("{}") == FLAWED_GUARD_PASS;
+  #assert flawed_stdout_guard_classify_line(" \r{\"type\":\"result\"}\r ") == FLAWED_GUARD_PASS;
+  #assert flawed_stdout_guard_classify_line("\t[1,2]\t") == FLAWED_GUARD_PASS;
+  #assert flawed_stdout_guard_classify_line("!{}") == FLAWED_GUARD_DIVERT_STDERR;
+  #assert flawed_stdout_guard_classify_line("{\"broken\"") == FLAWED_GUARD_DIVERT_STDERR;
+  #assert flawed_stdout_guard_classify_line("[broken}") == FLAWED_GUARD_DIVERT_STDERR;
+  #assert flawed_stdout_guard_classify_line("stray console.log") == FLAWED_GUARD_DIVERT_STDERR;
+
+  #assert flawed_stdin_peek_allowed(false, false, true);
+  #assert !flawed_stdin_peek_allowed(true, false, true) && !flawed_stdin_peek_allowed(false, true, true) && !flawed_stdin_peek_allowed(false, false, false);
+
+  // Flag validation matrix
+  #assert flawed_sdk_validate_flags(true, true, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_TEXT, true, true, true) == FLAWED_SFLAG_OK;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_STREAM_JSON, FLAWED_IOFMT_TEXT, true, false, false) == FLAWED_SFLAG_IN_NEEDS_OUT_STREAM;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_STREAM_JSON, true, true, false) == FLAWED_SFLAG_REPLAY_NEEDS_BOTH_STREAM;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_TEXT, true, true, false) == FLAWED_SFLAG_REPLAY_NEEDS_BOTH_STREAM;
+  #assert flawed_sdk_validate_flags(false, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_STREAM_JSON, true, false, true) == FLAWED_SFLAG_PARTIAL_NEEDS_PRINT_STREAM;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_JSON, true, false, true) == FLAWED_SFLAG_PARTIAL_NEEDS_PRINT_STREAM;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_STREAM_JSON, false, false, false) == FLAWED_SFLAG_STREAM_NEEDS_VERBOSE;
+  #assert flawed_sdk_validate_flags(true, false, FLAWED_IOFMT_TEXT, FLAWED_IOFMT_TEXT, false, false, false) == FLAWED_SFLAG_OK;
+
+  #assert flawed_sdk_needs_full_message_array(FLAWED_IOFMT_JSON, true);
+  #assert !flawed_sdk_needs_full_message_array(FLAWED_IOFMT_JSON, false) && !flawed_sdk_needs_full_message_array(FLAWED_IOFMT_STREAM_JSON, true);
+  #assert flawed_sdk_tracks_last_message(FLAWED_SMSG_RESULT) && !flawed_sdk_tracks_last_message(FLAWED_SMSG_TAIL_EPHEMERAL);
+  #assert flawed_sdk_exit_code(true, true) == 1 && flawed_sdk_exit_code(true, false) == 0 && flawed_sdk_exit_code(false, true) == 0;
+}
+
+#test "sdk_protocol: StructuredIO dedup ring, control dispatch, permission race, gh-30008 & mcp serve" {
+  ring: [1] FlawedResolvedIdRing;
+  #assert !flawed_resolved_ring_record(ring[..], 0);
+  for id: 1..<(FLAWED_SDK_RING_CAP + 1) {
+    #assert flawed_resolved_ring_record(ring[..], id);
+  }
+  #assert !flawed_resolved_ring_record(ring[..], 3) && flawed_resolved_ring_has(ring[..], 1);
+  // Wrap head fully around ring capacity (9..17) and verify FIFO eviction
+  for id: 9..<18 {
+    #assert flawed_resolved_ring_record(ring[..], id);
+  }
+  #assert !flawed_resolved_ring_has(ring[..], 9) && flawed_resolved_ring_has(ring[..], 10) && flawed_resolved_ring_has(ring[..], 17);
+
+  #assert flawed_sdk_classify_control_response(true, true, true) == FLAWED_CTRLRESP_MATCHED;
+  #assert flawed_sdk_classify_control_response(false, true, true) == FLAWED_CTRLRESP_DROP_DUP;
+  #assert flawed_sdk_classify_control_response(false, false, true) == FLAWED_CTRLRESP_ORPHAN_RECOVER;
+  #assert flawed_sdk_classify_control_response(false, false, false) == FLAWED_CTRLRESP_DROP_DUP;
+
+  #assert flawed_sdk_perm_race_action(true, true) == FLAWED_RACE_USE_HOOK_AND_CANCEL_SDK;
+  #assert flawed_sdk_perm_race_action(true, false) == FLAWED_RACE_AWAIT_SDK;
+  #assert flawed_sdk_perm_race_action(false, true) == FLAWED_RACE_AWAIT_SDK;
+  #assert flawed_sdk_should_emit_running_state(0) && !flawed_sdk_should_emit_running_state(1);
+  #assert flawed_sdk_use_original_input(true) && !flawed_sdk_use_original_input(false);
+
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_MCP_SET_SERVERS) == FLAWED_CDISP_REPLY_BEFORE_WORK;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_GEN_TITLE) == FLAWED_CDISP_FIRE_AND_FORGET;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_SIDE_QUESTION) == FLAWED_CDISP_FIRE_AND_FORGET;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_INITIALIZE) == FLAWED_CDISP_INLINE;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_INTERRUPT) == FLAWED_CDISP_INLINE;
+  #assert flawed_sdk_control_dispatch(FLAWED_CREQ_UNKNOWN) == FLAWED_CDISP_UNKNOWN_ERROR;
+
+  #assert flawed_sdk_should_hold_back_result(true, false) && !flawed_sdk_should_hold_back_result(true, true) && !flawed_sdk_should_hold_back_result(false, false);
+  #assert flawed_sdk_can_seed_read_state(1000, 1000) && flawed_sdk_can_seed_read_state(999, 1000) && !flawed_sdk_can_seed_read_state(1001, 1000);
+  #assert flawed_sdk_can_batch_prompts(true, true, true);
+  #assert !flawed_sdk_can_batch_prompts(false, true, true) && !flawed_sdk_can_batch_prompts(true, false, true) && !flawed_sdk_can_batch_prompts(true, true, false);
+
+  #assert flawed_mcp_serve_include_output_schema(true, true) && !flawed_mcp_serve_include_output_schema(true, false) && !flawed_mcp_serve_include_output_schema(false, true);
+  #assert flawed_mcp_serve_can_call_tool(true, true, true);
+  #assert !flawed_mcp_serve_can_call_tool(false, true, true) && !flawed_mcp_serve_can_call_tool(true, false, true) && !flawed_mcp_serve_can_call_tool(true, true, false);
+}
