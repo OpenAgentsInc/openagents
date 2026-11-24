@@ -44,10 +44,10 @@ SR_DEFAULT_TTS_MODEL :: "gemini-2.5-pro-tts";
 SR_DEFAULT_VOICE :: "Sulafat";
 SR_DEFAULT_IMAGEN :: "gemini-2.5-flash-image";
 SR_VOICE_ANCHOR :: "A woman's voice, distinctly feminine and never masculine.";
-SR_DEFAULT_VOICE_PROMPT :: "Speak as a sharp, poised, warmly confident woman in her late twenties addressing a close collaborator directly on camera. Grounded, level opening with zero exaggerated upward lilt or cheesy presenter voice. Natural conversational cadence, genuine warmth and spark, crisp consonants, brisk clean pacing with natural breaths; never robotic, never flat.";
+SR_DEFAULT_VOICE_PROMPT :: "Speak as a sharp, warm, confident General American woman in her late twenties (California/Midwest US accent) addressing a close collaborator directly on camera. Enunciate the opening word cleanly on a grounded, level start with zero exaggerated upward lilt or cheesy presenter voice. Pronounce 'Serah'/'Sarah' strictly as American 'SAIR-uh' (rhyming with 'fair-uh', NEVER 'SAH-rah'). Natural conversational cadence, crisp consonants, brisk pacing; never robotic, never flat.";
 SR_DEFAULT_PORTRAIT_PROMPT :: "Close-up studio portrait of a poised young woman in her late twenties with intense bright blue eyes, long dark-brown hair framing her face, subtle natural skin texture, composed neutral closed-lip expression with steady direct eye contact into the camera. Wearing a dark matte navy-black sci-fi jacket collar with subtle thin glowing cyan accent piping. Cinematic split lighting with warm amber key light on the left cheek and cool cyan rim light on the right cheek, softly blurred dark moody background, fixed camera, photorealistic 85mm portrait lens, clean unobstructed frame.";
-SR_DEFAULT_VIDEO_PROMPT :: "Natural, poised, and genuinely engaged directly to camera throughout the entire clip. Warm confident eyes, subtle natural head accents matching spoken emphasis, natural blinks, continuous crisp mouth articulation synchronized to speech from start to finish without freezing or exaggerated grinning. Warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.";
-SR_DEFAULT_NEG_PROMPT :: "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face, frozen mouth";
+SR_DEFAULT_VIDEO_PROMPT :: "Natural, poised, and genuinely engaged directly to camera from the very first syllable to the end. Crisp, clear lip and jaw articulation synchronized tightly to every spoken word, including the opening word. Warm confident eyes, subtle natural head accents matching spoken emphasis, natural blinks, controlled natural smile without exaggerated grinning. Warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.";
+SR_DEFAULT_NEG_PROMPT :: "mumbling, closed mouth during speech, delayed lip sync, frozen mouth, frozen static face, big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers";
 
 SR_BIG :: 16 * 1024 * 1024;
 SR_AUDIO_MAX_FRAMES :: 48000 * 65;   // up to 65 seconds at 48 kHz
@@ -416,13 +416,17 @@ sr_run_synth :: (text: string, out_dir: string, voice: string, tts_model: string
   tok_buf: [4096] u8; token := sr_gcp_token(tok_buf[..]);
   if token.count == 0 { tool_errln("sarah synth: failed to mint Google access token"); return 1; }
 
-  // 1. Google Cloud TTS: Gemini 2.5 Pro/Flash TTS (style-prompted) or legacy Chirp 3 HD (LINEAR16 48 kHz)
+  // 1. Apply spoken-form phonetic pass (e.g. "Sarah" -> "Serah" for American /ˈsɛrə/, "openagents.com" -> "open agents dot com")
+  // before Google Cloud TTS while keeping canonical `text` for STT verification and receipts.
+  spoken_buf: [8192] u8;
+  spoken_text := sr_spoken_form(text, spoken_buf[..]);
+  if spoken_text.count == 0 { spoken_text = text; }
   use_gemini_tts := sr_starts_with(tts_model, "gemini-");
   t_tts := proc_now_ms();
   req_buf: [16384] u8; o: [1] Jo; jo_start(o[..], req_buf[..]);
   jo_obj(o[..]);
   jo_key(o[..], "input"); jo_obj(o[..]);
-    jo_key(o[..], "text"); jo_str(o[..], text);
+    jo_key(o[..], "text"); jo_str(o[..], spoken_text);
     if use_gemini_tts && style_prompt.count > 0 { jo_key(o[..], "prompt"); jo_str(o[..], style_prompt); }
   jo_end(o[..]);
   jo_key(o[..], "voice"); jo_obj(o[..]);
@@ -458,12 +462,14 @@ sr_run_synth :: (text: string, out_dir: string, voice: string, tts_model: string
   w24 := fs_join(out_dir, "take-24k.wav", res[0].wav_24k[..]); res[0].wav_24k_n = w24.count;
   w16_buf: [2048] u8; w16 := fs_join(out_dir, "take-16k.wav", w16_buf[..]);
 
-  // Compute exact gain toward -16.0 LUFS, then clamp with alimiter at -3.0 dBTP (0.707 linear, auto-gain disabled).
+  // Compute exact gain toward -16.0 LUFS, strip arbitrary TTS dead air, then prepend a deterministic
+  // 400 ms silence lead-in (adelay=400:all=1) so Pruna's diffusion model has runway off frame 0 to
+  // open Sarah's mouth cleanly on the very first syllable.
   gain_tenths := -160 - raw_st.lufs_tenths;
   if gain_tenths > 180 { gain_tenths = 180; }
   if gain_tenths < -180 { gain_tenths = -180; }
   af_buf: [512] u8; af: [1] SrBuf; af[0].data = af_buf[..];
-  sr_put(af[..], "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-55dB,volume=");
+  sr_put(af[..], "silenceremove=start_periods=1:start_duration=0.04:start_threshold=-55dB,adelay=400:all=1,volume=");
   sr_put_tenths(af[..], gain_tenths);
   sr_put(af[..], "dB,alimiter=limit=0.707:level=false");
   fo: [512] u8; fe: [2048] u8;

@@ -103,6 +103,42 @@ sr_anchor_voice_prompt :: (anchor: string, raw_prompt: string, out: [] u8) -> st
   return sr_text(b[..]);
 }
 
+// ---- Spoken-form phonetic normalization pass (before TTS)
+
+sr_word_match_at :: (s: string, pos: int, pat: string) -> bool {
+  if pos + pat.count > s.count { return false; }
+  if pos > 0 && sr_is_alnum(s[pos - 1]) { return false; }
+  if pos + pat.count < s.count && sr_is_alnum(s[pos + pat.count]) { return false; }
+  for j: 0..<pat.count {
+    if sr_lower(s[pos + j]) != sr_lower(pat[j]) { return false; }
+  }
+  return true;
+}
+
+// Rewrites canonical display text into unambiguous General American spoken forms
+// before TTS (e.g. "Sarah" -> "Serah" to force American /ˈsɛrə/ over broad /ˈsɑːrə/,
+// "openagents.com" -> "open agents dot com", "macOS" -> "Mac O S").
+sr_spoken_form :: (text: string, out: [] u8) -> string {
+  b: [1] SrBuf; b[0].data = out;
+  pats := [9] string.["openagents.com", "openagents", "sarah", "macos", "ios", "github", "testflight", "tailscale", "wireguard"];
+  reps := [9] string.["open agents dot com", "Open Agents", "Serah", "Mac O S", "I O S", "Git Hub", "Test Flight", "Tail scale", "Wire Guard"];
+  i := 0;
+  while i < text.count {
+    hit := -1;
+    for k: 0..<9 {
+      if sr_word_match_at(text, i, pats[k]) { hit = k; break; }
+    }
+    if hit >= 0 {
+      sr_put(b[..], reps[hit]);
+      i += pats[hit].count;
+    } else {
+      sr_put_byte(b[..], text[i]);
+      i += 1;
+    }
+  }
+  return ifx b[0].bad then "" else sr_text(b[..]);
+}
+
 // ---- Verbatim STT word normalization & matching
 
 // Normalizes text into lowercase single-space-separated alphanumeric words with
@@ -629,4 +665,24 @@ sr_synth_receipt_json :: (r: SrSynthReceipt, out: [] u8) -> string {
   #assert j == "{\"schema\":\"openagents.sarah.synth_receipt.v1\",\"voice\":\"en-US-Chirp3-HD-Leda\",\"text\":\"Hello.\",\"ttsMs\":1200,\"sttMs\":900,\"judgeMs\":3000,\"audioMs\":2400,\"rawLufs\":-23.7,\"finalLufs\":-16.6,\"finalPeakDbfs\":-3.0,\"sttPass\":true,\"sttHeard\":\"Hello\",\"judgeOverall\":8,\"judgeNaturalness\":8,\"judgeWarmth\":7,\"judgeConfidence\":9,\"judgeNotes\":\"clear\"}";
   tiny: [8] u8;
   #assert sr_synth_receipt_json(r, tiny[..]) == "";
+}
+
+#test "spoken-form pronunciation pass rewrites Sarah and tech terms cleanly at word boundaries" {
+  out: [512] u8;
+  r := sr_spoken_form(
+    "I'm Sarah. Visit openagents.com for OpenAgents on macOS, iOS, GitHub, TestFlight, Tailscale, and WireGuard!",
+    out[..]
+  );
+  #assert r == "I'm Serah. Visit open agents dot com for Open Agents on Mac O S, I O S, Git Hub, Test Flight, Tail scale, and Wire Guard!";
+  // Word boundaries prevent partial-word corruption ("MySarah", "Sarahs", "aSarah").
+  out2: [128] u8;
+  #assert sr_spoken_form("Sarah", out2[..]) == "Serah";
+  #assert sr_spoken_form("MySarah Sarahs aios xmacos", out2[..]) == "MySarah Sarahs aios xmacos";
+  #assert sr_spoken_form("xSarah", out2[..]) == "xSarah";
+  #assert sr_spoken_form("a Sarah", out2[..]) == "a Serah";
+  #assert sr_spoken_form("sarah", out2[..]) == "Serah";
+  #assert sr_spoken_form("xarah", out2[..]) == "xarah";
+  #assert sr_spoken_form("sara", out2[..]) == "sara";
+  tiny: [4] u8;
+  #assert sr_spoken_form("Sarah", tiny[..]) == "";
 }
