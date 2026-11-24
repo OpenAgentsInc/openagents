@@ -658,14 +658,85 @@ static size_t cuda_ggml_row_bytes(uint32_t type, int64_t cols) {
     return (be > 0 && bb > 0) ? (size_t)((cols / be) * bb) : 0;
 }
 
-static uint8_t *ggml_repack_to_q8_0(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
-    size_t src_rb = cuda_ggml_row_bytes(src_type, cols);
-    int64_t nblk = cols / 32;
-    size_t dst_rb = (size_t)nblk * 34;
-    uint8_t *dst = (uint8_t *)malloc((size_t)rows * dst_rb);
-    float *tmp = (float *)malloc((size_t)cols * sizeof(float));
-    if (!dst || !tmp) { free(dst); free(tmp); return NULL; }
-    for (int64_t r = 0; r < rows; r++) {
+/* ---- Rows of a tensor converted on several CPU threads. ----
+   A GGUF in a type the kernels do not read (Q4_K, IQ3_S, IQ2_S, ...) is
+   converted row by row at load. The rows are independent, and one thread took
+   168 s for the 3072 expert matrices of an IQ2_M file, so they are split over
+   the CPU's threads. INK_LOAD_THREADS sets the count (1 turns it off). */
+typedef void (*RowsFn)(void *ctx, int64_t r0, int64_t r1, float *tmp);
+typedef struct { RowsFn fn; void *ctx; int64_t r0, r1, cols; int failed; } RowsJob;
+
+static void rows_job_run(RowsJob *j) {
+    float *tmp = (float *)malloc((size_t)(j->cols > 0 ? j->cols : 1) * sizeof(float));
+    if (!tmp) { j->failed = 1; return; }
+    j->fn(j->ctx, j->r0, j->r1, tmp);
+    free(tmp);
+}
+
+#ifdef _WIN32
+#include <windows.h>
+static DWORD WINAPI rows_job_thread(LPVOID p) { rows_job_run((RowsJob *)p); return 0; }
+static int rows_cpu_count(void) { SYSTEM_INFO si; GetSystemInfo(&si); return (int)si.dwNumberOfProcessors; }
+#else
+#include <pthread.h>
+#include <unistd.h>
+static void *rows_job_thread(void *p) { rows_job_run((RowsJob *)p); return NULL; }
+static int rows_cpu_count(void) { long n = sysconf(_SC_NPROCESSORS_ONLN); return n > 0 ? (int)n : 1; }
+#endif
+
+#define ROWS_MAX_THREADS 32
+static int rows_thread_count(void) {
+    static int cached = 0;
+    if (cached > 0) return cached;
+    int n = rows_cpu_count();
+    const char *e = getenv("INK_LOAD_THREADS");
+    if (e && e[0]) n = atoi(e);
+    if (n < 1) n = 1;
+    if (n > ROWS_MAX_THREADS) n = ROWS_MAX_THREADS;
+    cached = n;
+    return n;
+}
+
+/* fn(ctx, r0, r1, tmp) over [0, rows) in contiguous ranges; tmp holds cols
+   floats and belongs to the calling thread. 0 on success, 1 when out of memory. */
+static int rows_parallel(RowsFn fn, void *ctx, int64_t rows, int64_t cols) {
+    int nt = rows_thread_count();
+    if (rows < 64) nt = 1;
+    if ((int64_t)nt > rows / 16) nt = (int)(rows / 16 > 0 ? rows / 16 : 1);
+    RowsJob jobs[ROWS_MAX_THREADS];
+    for (int t = 0; t < nt; t++) {
+        jobs[t].fn = fn; jobs[t].ctx = ctx; jobs[t].cols = cols; jobs[t].failed = 0;
+        jobs[t].r0 = rows * t / nt; jobs[t].r1 = rows * (t + 1) / nt;
+    }
+#ifdef _WIN32
+    HANDLE th[ROWS_MAX_THREADS];
+    for (int t = 1; t < nt; t++) th[t] = CreateThread(NULL, 0, rows_job_thread, &jobs[t], 0, NULL);
+    rows_job_run(&jobs[0]);
+    for (int t = 1; t < nt; t++) {
+        if (th[t]) { WaitForSingleObject(th[t], INFINITE); CloseHandle(th[t]); }
+        else rows_job_run(&jobs[t]);
+    }
+#else
+    pthread_t th[ROWS_MAX_THREADS];
+    int started[ROWS_MAX_THREADS];
+    for (int t = 1; t < nt; t++) started[t] = pthread_create(&th[t], NULL, rows_job_thread, &jobs[t]) == 0;
+    rows_job_run(&jobs[0]);
+    for (int t = 1; t < nt; t++) {
+        if (started[t]) pthread_join(th[t], NULL);
+        else rows_job_run(&jobs[t]);
+    }
+#endif
+    for (int t = 0; t < nt; t++) if (jobs[t].failed) return 1;
+    return 0;
+}
+
+typedef struct { uint32_t src_type; const uint8_t *src; size_t src_rb; uint8_t *dst; size_t dst_rb; int64_t cols, nblk; float *out; } RepackCtx;
+
+static void repack_q8_rows(void *raw, int64_t r0, int64_t r1, float *tmp) {
+    RepackCtx *x = (RepackCtx *)raw;
+    uint32_t src_type = x->src_type; const uint8_t *src = x->src; size_t src_rb = x->src_rb, dst_rb = x->dst_rb;
+    uint8_t *dst = x->dst; int64_t cols = x->cols, nblk = x->nblk;
+    for (int64_t r = r0; r < r1; r++) {
         ink_ggml_dequant_row(src_type, src + (size_t)r * src_rb, tmp, cols);
         uint8_t *orow = dst + (size_t)r * dst_rb;
         for (int64_t b = 0; b < nblk; b++) {
@@ -686,19 +757,23 @@ static uint8_t *ggml_repack_to_q8_0(uint32_t src_type, const uint8_t *src, int64
             }
         }
     }
-    free(tmp);
-    return dst;
 }
 
-static uint8_t *ggml_repack_to_iq4_nl(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
+static uint8_t *ggml_repack_to_q8_0(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
+    RepackCtx x = { .src_type = src_type, .src = src, .src_rb = cuda_ggml_row_bytes(src_type, cols), .cols = cols, .nblk = cols / 32 };
+    x.dst_rb = (size_t)x.nblk * 34;
+    x.dst = (uint8_t *)malloc((size_t)rows * x.dst_rb);
+    if (!x.dst) return NULL;
+    if (rows_parallel(repack_q8_rows, &x, rows, cols)) { free(x.dst); return NULL; }
+    return x.dst;
+}
+
+static void repack_iq4_rows(void *raw, int64_t r0, int64_t r1, float *tmp) {
     static const int8_t kvals[16] = {-127,-104,-83,-65,-49,-35,-22,-10,1,13,25,38,53,69,89,113};
-    size_t src_rb = cuda_ggml_row_bytes(src_type, cols);
-    int64_t nblk = cols / 32;
-    size_t dst_rb = (size_t)nblk * 18;
-    uint8_t *dst = (uint8_t *)malloc((size_t)rows * dst_rb);
-    float *tmp = (float *)malloc((size_t)cols * sizeof(float));
-    if (!dst || !tmp) { free(dst); free(tmp); return NULL; }
-    for (int64_t r = 0; r < rows; r++) {
+    RepackCtx *x = (RepackCtx *)raw;
+    uint32_t src_type = x->src_type; const uint8_t *src = x->src; size_t src_rb = x->src_rb, dst_rb = x->dst_rb;
+    uint8_t *dst = x->dst; int64_t cols = x->cols, nblk = x->nblk;
+    for (int64_t r = r0; r < r1; r++) {
         ink_ggml_dequant_row(src_type, src + (size_t)r * src_rb, tmp, cols);
         uint8_t *orow = dst + (size_t)r * dst_rb;
         for (int64_t b = 0; b < nblk; b++) {
@@ -723,8 +798,22 @@ static uint8_t *ggml_repack_to_iq4_nl(uint32_t src_type, const uint8_t *src, int
             }
         }
     }
-    free(tmp);
-    return dst;
+}
+
+static uint8_t *ggml_repack_to_iq4_nl(uint32_t src_type, const uint8_t *src, int64_t rows, int64_t cols) {
+    RepackCtx x = { .src_type = src_type, .src = src, .src_rb = cuda_ggml_row_bytes(src_type, cols), .cols = cols, .nblk = cols / 32 };
+    x.dst_rb = (size_t)x.nblk * 18;
+    x.dst = (uint8_t *)malloc((size_t)rows * x.dst_rb);
+    if (!x.dst) return NULL;
+    if (rows_parallel(repack_iq4_rows, &x, rows, cols)) { free(x.dst); return NULL; }
+    return x.dst;
+}
+
+static void dequant_f32_rows(void *raw, int64_t r0, int64_t r1, float *tmp) {
+    RepackCtx *x = (RepackCtx *)raw;
+    (void)tmp;
+    for (int64_t r = r0; r < r1; r++)
+        ink_ggml_dequant_row(x->src_type, x->src + (size_t)r * x->src_rb, x->out + r * x->cols, x->cols);
 }
 
 static float *ggml_dequant_tensor_f32(const InkTensor *t, const uint8_t *src) {
@@ -734,9 +823,8 @@ static float *ggml_dequant_tensor_f32(const InkTensor *t, const uint8_t *src) {
     size_t src_rb = cuda_ggml_row_bytes(t->type, cols);
     float *out = (float *)malloc((size_t)(rows * cols) * sizeof(float));
     if (!out) return NULL;
-    for (int64_t r = 0; r < rows; r++) {
-        ink_ggml_dequant_row(t->type, src + (size_t)r * src_rb, out + r * cols, cols);
-    }
+    RepackCtx x = { .src_type = t->type, .src = src, .src_rb = src_rb, .cols = cols, .out = out };
+    if (rows_parallel(dequant_f32_rows, &x, rows, cols)) { free(out); return NULL; }
     return out;
 }
 
