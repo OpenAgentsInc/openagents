@@ -1,23 +1,34 @@
 {
   "schema": "openagents.sarah.avatar_direction.v2",
-  "updated_at": "2026-11-23",
-  "summary": "Canonical direction profile for Sarah voice and talking-avatar generation. Restored from dabc08102f~1:scripts/sarah-avatar/sarah-direction.json and updated for the Coax-native Google Chirp 3 HD + Vertex Imagen + Segmind audio-driven pipeline.",
-  "google_tts_voice": "en-US-Chirp3-HD-Leda",
+  "updated_at": "2026-11-24",
+  "summary": "Canonical direction profile for Sarah voice and talking-avatar generation. Updated after owner playback A/B (2026-11-24): Google gemini-2.5-pro-tts (Sulafat primary, Leda alternate) with grounded style prompting + subtle room bed -> Pruna p-video-avatar on the settled 1920x1088 real Sarah portrait + Episode-298 vertical-slice (486x688) framing.",
+  "google_tts_model": "gemini-2.5-pro-tts",
+  "google_tts_voice": "Sulafat",
+  "google_tts_voice_alt": "Leda",
+  "google_tts_realtime_voice": "en-US-Chirp3-HD-Leda",
   "google_tts_language": "en-US",
   "google_tts_rate": 0.98,
+  "segmind_model": "p-video-avatar",
   "segmind_voice": "Leda (Female)",
   "segmind_voice_language": "English (US)",
   "voice_anchor": "A woman's voice, distinctly feminine and never masculine.",
-  "voice_prompt": "A calm, certain, direct register. Grounded and unhurried. Precise consonants, short declarative phrasing, and controlled urgency. Plain professional English with dry warmth; no cheer, sales cadence, sing-song rhythm, or military allegory. Leda's clear, slightly higher voice remains settled and level.",
+  "voice_prompt": "Speak as a sharp, poised, warmly confident woman in her late twenties addressing a close collaborator directly on camera. Grounded, level opening with zero exaggerated upward lilt or cheesy presenter voice. Natural conversational cadence, genuine warmth and spark, crisp consonants, brisk clean pacing with natural breaths; never robotic, never flat.",
   "portrait_prompt": "Close-up studio portrait of a poised young woman in her late twenties with intense bright blue eyes, long dark-brown hair framing her face, subtle natural skin texture, composed neutral closed-lip expression with steady direct eye contact into the camera. Wearing a dark matte navy-black sci-fi jacket collar with subtle thin glowing cyan accent piping. Cinematic split lighting with warm amber key light on the left cheek and cool cyan rim light on the right cheek, softly blurred dark moody background, fixed camera, photorealistic 85mm portrait lens, clean unobstructed frame.",
-  "video_prompt": "Composed, still, and direct to camera. Neutral closed-lip expression at rest; no persistent toothy smile. Steady eye contact, restrained natural head movement and blinking synchronized to the spoken audio. Cinematic warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.",
-  "negative_prompt": "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face",
+  "video_prompt": "Natural, poised, and genuinely engaged directly to camera throughout the entire clip. Warm confident eyes, subtle natural head accents matching spoken emphasis, natural blinks, continuous crisp mouth articulation synchronized to speech from start to finish without freezing or exaggerated grinning. Warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.",
+  "negative_prompt": "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face, frozen mouth",
   "resolution": "1080p",
+  "vertical_slice": {
+    "source_crop": "768x1088+586+0",
+    "overlay_size": "486x688",
+    "overlay_position_1080p": "1380x134",
+    "corner_radius_px": 22
+  },
   "audio_targets": {
     "integrated_lufs": -16.0,
     "true_peak_dbtp": -3.0,
     "sample_rate_hz": 48000,
-    "avatar_sample_rate_hz": 24000
+    "avatar_sample_rate_hz": 24000,
+    "ambient_bed_db": -27.0
   },
   "max_continuous_take_seconds": 60,
   "director_notes": [
@@ -35,7 +46,11 @@
     },
     {
       "date": "2026-11-23",
-      "note": "Audio-first architecture: synthesize and QA-gate Sarah's locked Google Chirp 3 HD Leda track before driving portrait lip-sync models; enforce SQ-1 playback-first scoreboard."
+      "note": "Audio-first architecture: synthesize and QA-gate Sarah's locked Google track before driving portrait lip-sync models; enforce SQ-1 playback-first scoreboard."
+    },
+    {
+      "date": "2026-11-24",
+      "note": "Owner playback verdict on real Sarah portrait: Kling (kling-v2-standard-avatar) distorts her mouth (rejected); Pruna (p-video-avatar) works cleanly. Plain Chirp 3 HD sounded flat/boring; Pruna built-in voice_prompt opened with too crazy a lilt. Google gemini-2.5-pro-tts (Arm C Sulafat + subtle room bed, Arm A Leda close second) passed owner review; use settled 1920x1088 portrait, auto-trim Pruna trailing pad + remux 48 kHz WAV, and crop vertical slice 486x688 (Ep298 layout) for PiP overlays."
     }
   ]
 }

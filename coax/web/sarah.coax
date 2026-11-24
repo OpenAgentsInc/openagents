@@ -1,21 +1,24 @@
 // Sarah media, audio-first QA, GCS V4 URL signing, and lip-sync MVP CLI.
-//   coax/web/tool.sh sarah portrait --out portrait.png [--prompt "..."] [--model imagen-4.0-generate-001]
-//   coax/web/tool.sh sarah synth --text "..." --out DIR [--voice en-US-Chirp3-HD-Leda] [--rate 0.98] [--skip-judge]
+//   coax/web/tool.sh sarah portrait --out portrait.png [--prompt "..."] [--model gemini-2.5-flash-image]
+//   coax/web/tool.sh sarah synth --text "..." --out DIR [--voice Sulafat] [--tts-model gemini-2.5-pro-tts] [--prompt "..."] [--skip-judge]
 //   coax/web/tool.sh sarah lipsync --image PATH --audio PATH --out MP4 [--model p-video-avatar]
-//       [--bucket openagentsgemini-sarah-export] [--script "..."] [--voice-judge N] [--judge-notes "..."]
+//       [--bucket openagentsgemini-sarah-export] [--script "..."] [--no-remux]
+//   coax/web/tool.sh sarah slice --in MP4 --out MP4 [--w 486] [--h 688] [--x 586]
 //   coax/web/tool.sh sarah mvp --text "..." --out DIR [--image PATH]
-//       [--models p-video-avatar,kling-v2-standard-avatar] [--bucket openagentsgemini-sarah-export]
+//       [--models p-video-avatar] [--voice Sulafat] [--tts-model gemini-2.5-pro-tts] [--bucket openagentsgemini-sarah-export]
 //
 // Pipeline (audio-first, Google-first, SQ-1 playback-first):
-//   1. Portrait  — Google Vertex AI Imagen (imagen-4.0-generate-001) or owner-supplied --image
-//   2. Synth     — Google Cloud TTS Chirp 3 HD (en-US-Chirp3-HD-Leda, 48 kHz LINEAR16)
+//   1. Portrait  — owner-supplied master still (--image) or Vertex AI gemini-2.5-flash-image fallback
+//   2. Synth     — Google Cloud Gemini 2.5 Pro TTS (Sulafat/Leda + style prompt, 48 kHz LINEAR16; or Chirp 3 HD)
 //                  -> Coax measure.coax EBU R128 LUFS/peak -> ffmpeg -16 LUFS / -3 dBTP master + 24 kHz copy
 //                  -> Google Cloud STT V2 (chirp_3) verbatim word check
 //                  -> Vertex AI Gemini (gemini-2.5-flash) multimodal audio judge (1..10)
 //   3. Lip-sync  — gcloud storage cp -> pure-Coax GCS V4 canonical request + OpenSSL RSA-SHA256 signing
-//                  -> Segmind Async Inference V2 (submit -> poll -> download MP4)
+//                  -> Segmind Async Inference V2 (p-video-avatar default; submit -> poll -> download MP4)
+//                  -> auto-trim Pruna trailing dead pad + remux mastered 48 kHz WAV
 //                  -> ffprobe A/V check + final MP4 STT round-trip + Coax LUFS + QA stills + 6-frame strip
 //                  -> sarah-take-scoreboard.v1 JSON + Markdown (advance: false until owner playback PASS)
+//   4. Slice     — crop 1920x1088 portrait into vertical speaker overlay slice (486x688 @ 30fps, Ep298 style)
 //
 // Secrets stay local (never printed, never passed in argv):
 //   ~/work/.secrets/gcloud-sa-config, ~/work/.secrets/gcp-mvp-automation.json, ~/work/.secrets/segmind.env
@@ -37,13 +40,14 @@ SR_STT_V2_URL :: "https://us-speech.googleapis.com/v2/projects/openagentsgemini/
 SR_GEMINI_URL :: "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent";
 SR_IMAGEN_PREFIX :: "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/";
 SR_DEFAULT_BUCKET :: "openagentsgemini-sarah-export";
-SR_DEFAULT_VOICE :: "en-US-Chirp3-HD-Leda";
+SR_DEFAULT_TTS_MODEL :: "gemini-2.5-pro-tts";
+SR_DEFAULT_VOICE :: "Sulafat";
 SR_DEFAULT_IMAGEN :: "gemini-2.5-flash-image";
 SR_VOICE_ANCHOR :: "A woman's voice, distinctly feminine and never masculine.";
-SR_DEFAULT_VOICE_PROMPT :: "A calm, certain, direct register. Grounded and unhurried. Precise consonants, short declarative phrasing, plain professional English with dry warmth; no cheer or sales cadence.";
+SR_DEFAULT_VOICE_PROMPT :: "Speak as a sharp, poised, warmly confident woman in her late twenties addressing a close collaborator directly on camera. Grounded, level opening with zero exaggerated upward lilt or cheesy presenter voice. Natural conversational cadence, genuine warmth and spark, crisp consonants, brisk clean pacing with natural breaths; never robotic, never flat.";
 SR_DEFAULT_PORTRAIT_PROMPT :: "Close-up studio portrait of a poised young woman in her late twenties with intense bright blue eyes, long dark-brown hair framing her face, subtle natural skin texture, composed neutral closed-lip expression with steady direct eye contact into the camera. Wearing a dark matte navy-black sci-fi jacket collar with subtle thin glowing cyan accent piping. Cinematic split lighting with warm amber key light on the left cheek and cool cyan rim light on the right cheek, softly blurred dark moody background, fixed camera, photorealistic 85mm portrait lens, clean unobstructed frame.";
-SR_DEFAULT_VIDEO_PROMPT :: "Composed, still, and direct to camera. Neutral closed-lip expression at rest; no persistent toothy smile. Steady eye contact, restrained natural head movement and blinking synchronized to the spoken audio. Cinematic warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.";
-SR_DEFAULT_NEG_PROMPT :: "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face";
+SR_DEFAULT_VIDEO_PROMPT :: "Natural, poised, and genuinely engaged directly to camera throughout the entire clip. Warm confident eyes, subtle natural head accents matching spoken emphasis, natural blinks, continuous crisp mouth articulation synchronized to speech from start to finish without freezing or exaggerated grinning. Warm-amber and cool-cyan sci-fi lighting matching the source portrait. Fixed camera.";
+SR_DEFAULT_NEG_PROMPT :: "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, over-cheerful, bubbly, laughing, giddy, angry glare, sneer, exaggerated expression, subtitles, text, watermark, UI overlay, blurry, distorted face, extra fingers, frozen static face, frozen mouth";
 
 SR_BIG :: 16 * 1024 * 1024;
 SR_AUDIO_MAX_FRAMES :: 48000 * 65;   // up to 65 seconds at 48 kHz
@@ -407,21 +411,29 @@ SrSynthOut :: struct {
   judge: SrJudge;
 }
 
-sr_run_synth :: (text: string, out_dir: string, voice: string, rate_str: string, skip_judge: bool, res: [] SrSynthOut) -> int {
+sr_run_synth :: (text: string, out_dir: string, voice: string, tts_model: string, style_prompt: string, rate_str: string, skip_judge: bool, res: [] SrSynthOut) -> int {
   if !sr_mkdir_p(out_dir) { tool_errln("sarah synth: failed to create output directory"); return 1; }
   tok_buf: [4096] u8; token := sr_gcp_token(tok_buf[..]);
   if token.count == 0 { tool_errln("sarah synth: failed to mint Google access token"); return 1; }
 
-  // 1. Google Cloud TTS Chirp 3 HD (LINEAR16 48 kHz)
+  // 1. Google Cloud TTS: Gemini 2.5 Pro/Flash TTS (style-prompted) or legacy Chirp 3 HD (LINEAR16 48 kHz)
+  use_gemini_tts := sr_starts_with(tts_model, "gemini-");
   t_tts := proc_now_ms();
-  req_buf: [8192] u8; o: [1] Jo; jo_start(o[..], req_buf[..]);
+  req_buf: [16384] u8; o: [1] Jo; jo_start(o[..], req_buf[..]);
   jo_obj(o[..]);
-  jo_key(o[..], "input"); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
-  jo_key(o[..], "voice"); jo_obj(o[..]); jo_key(o[..], "languageCode"); jo_str(o[..], "en-US"); jo_key(o[..], "name"); jo_str(o[..], voice); jo_end(o[..]);
+  jo_key(o[..], "input"); jo_obj(o[..]);
+    jo_key(o[..], "text"); jo_str(o[..], text);
+    if use_gemini_tts && style_prompt.count > 0 { jo_key(o[..], "prompt"); jo_str(o[..], style_prompt); }
+  jo_end(o[..]);
+  jo_key(o[..], "voice"); jo_obj(o[..]);
+    jo_key(o[..], "languageCode"); jo_str(o[..], "en-US");
+    jo_key(o[..], "name"); jo_str(o[..], voice);
+    if use_gemini_tts { jo_key(o[..], "modelName"); jo_str(o[..], tts_model); }
+  jo_end(o[..]);
   jo_key(o[..], "audioConfig"); jo_obj(o[..]);
     jo_key(o[..], "audioEncoding"); jo_str(o[..], "LINEAR16");
     jo_key(o[..], "sampleRateHertz"); jo_int(o[..], 48000);
-    jo_key(o[..], "speakingRate"); jo_raw(o[..], rate_str);
+    if !use_gemini_tts { jo_key(o[..], "speakingRate"); jo_raw(o[..], rate_str); }
   jo_end(o[..]);
   jo_end(o[..]);
   bp: [2048] u8; bodyp := fs_join(out_dir, "tts-req.json", bp[..]);
@@ -437,7 +449,7 @@ sr_run_synth :: (text: string, out_dir: string, voice: string, rate_str: string,
   if wav_bytes <= 44 { tool_errln("sarah synth: Google TTS returned empty audioContent"); return 1; }
   res[0].tts_ms = proc_now_ms() - t_tts;
 
-  // 2. Measure raw loudness in Coax (measure.coax), then normalize to -16 LUFS / -3 dBTP
+  // 2. Measure raw loudness in Coax (measure.coax), then trim leading silence and normalize to -16 LUFS / -3 dBTP
   raw_st := sr_measure_wav_48k(rawp);
   if !raw_st.ok { tool_errln("sarah synth: failed to measure raw 48 kHz WAV"); return 1; }
   res[0].raw_lufs_tenths = raw_st.lufs_tenths;
@@ -446,12 +458,14 @@ sr_run_synth :: (text: string, out_dir: string, voice: string, rate_str: string,
   w24 := fs_join(out_dir, "take-24k.wav", res[0].wav_24k[..]); res[0].wav_24k_n = w24.count;
   w16_buf: [2048] u8; w16 := fs_join(out_dir, "take-16k.wav", w16_buf[..]);
 
-  // Compute exact gain toward -16.0 LUFS, then clamp with alimiter at -3.0 dBTP (0.707 linear).
+  // Compute exact gain toward -16.0 LUFS, then clamp with alimiter at -3.0 dBTP (0.707 linear, auto-gain disabled).
   gain_tenths := -160 - raw_st.lufs_tenths;
   if gain_tenths > 180 { gain_tenths = 180; }
   if gain_tenths < -180 { gain_tenths = -180; }
-  af_buf: [256] u8; af: [1] SrBuf; af[0].data = af_buf[..];
-  sr_put(af[..], "volume="); sr_put_tenths(af[..], gain_tenths); sr_put(af[..], "dB,alimiter=limit=0.707:level=false");
+  af_buf: [512] u8; af: [1] SrBuf; af[0].data = af_buf[..];
+  sr_put(af[..], "silenceremove=start_periods=1:start_duration=0.05:start_threshold=-55dB,volume=");
+  sr_put_tenths(af[..], gain_tenths);
+  sr_put(af[..], "dB,alimiter=limit=0.707:level=false");
   fo: [512] u8; fe: [2048] u8;
   ff48 := [14] string.["ffmpeg", "-v", "error", "-y", "-i", rawp, "-af", sr_text(af[..]), "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le"];
   h48 := proc_new(); ok48 := true;
@@ -654,7 +668,8 @@ sr_parse_fps_tenths :: (s: string) -> int {
 
 cmd_lipsync :: (
   image_path: string, audio_path: string, out_mp4: string, model: string, bucket: string,
-  script: string, resolution: string, seed: int, judge_overall: int, judge_notes: string
+  script: string, resolution: string, seed: int, judge_overall: int, judge_notes: string,
+  remux_audio: bool, voice_label: string
 ) -> int {
   if image_path.count == 0 || out_mp4.count == 0 { tool_errln("sarah lipsync: --image and --out are required"); return 2; }
   if audio_path.count == 0 && script.count == 0 { tool_errln("sarah lipsync: pass --audio PATH (recommended) or --script TEXT"); return 2; }
@@ -802,8 +817,64 @@ cmd_lipsync :: (
   render_wall_s := (proc_now_ms() - t_start) / 1000;
   print("sarah lipsync: downloaded % in %s\n", out_mp4, render_wall_s);
 
-  // 5. Post-render QA: ffprobe geometry & durations, extract MP4 audio -> LUFS + Google STT V2, extract QA stills + 6-frame strip
+  // 4b. When audio-driven and remux_audio is enabled, trim Pruna's trailing dead pad (>250 ms past audio)
+  // and remux the clean mastered source WAV (prevents Kling -3 dB drop and Pruna dead tail).
   fo: [4096] u8; fe: [4096] u8;
+  if audio_path.count > 0 && remux_audio {
+    fpa0 := [10] string.["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", audio_path, "", ""];
+    h_a0 := proc_new(); oka0 := true;
+    for k: 0..<8 { oka0 = oka0 && proc_arg(h_a0, fpa0[k]); }
+    a0_ms := 0;
+    if oka0 && proc_start(h_a0) == 0 {
+      n0 := proc_line(h_a0, 15000, fo[..]);
+      w0 := proc_wait(h_a0, 15000);
+      if n0 > 0 && w0 == 0 { a0_ms = sr_parse_decimal_ms(cast(string) fo[0..<n0]); }
+    }
+    da0 := proc_release(h_a0);
+    if a0_ms > 0 {
+      trim_ms := a0_ms + 250;
+      tbuf: [32] u8; tb: [1] SrBuf; tb[0].data = tbuf[..];
+      sr_put_int(tb[..], trim_ms / 1000); sr_put_byte(tb[..], '.');
+      rem := trim_ms % 1000;
+      if rem < 100 { sr_put_byte(tb[..], '0'); }
+      if rem < 10 { sr_put_byte(tb[..], '0'); }
+      sr_put_int(tb[..], rem);
+      trim_str := sr_text(tb[..]);
+      af_pad: [128] u8; apb: [1] SrBuf; apb[0].data = af_pad[..];
+      sr_put(apb[..], "apad=pad_dur=0.35,atrim=0:"); sr_put(apb[..], trim_str);
+      raw_mp4_buf: [2048] u8; rmb: [1] SrBuf; rmb[0].data = raw_mp4_buf[..];
+      sr_put(rmb[..], out_mp4); sr_put(rmb[..], ".raw.mp4");
+      raw_mp4 := sr_text(rmb[..]);
+      mva := [3] string.["mv", out_mp4, raw_mp4];
+      mvr := proc_run(mva[..], 15000, fo[..], fe[..]);
+      if mvr.status == 0 {
+        hr := proc_new(); okr := true;
+        remux_args := [25] string.[
+          "ffmpeg", "-v", "error", "-y", "-i", raw_mp4, "-i", audio_path,
+          "-map", "0:v:0", "-map", "1:a:0",
+          "-af", sr_text(apb[..]), "-t", trim_str,
+          "-c:v", "libx264", "-crf", "16", "-preset", "fast", "-pix_fmt", "yuv420p",
+          "-c:a"
+        ];
+        for ra: remux_args { okr = okr && proc_arg(hr, ra); }
+        okr = okr && proc_arg(hr, "aac") && proc_arg(hr, "-b:a") && proc_arg(hr, "192k") &&
+              proc_arg(hr, "-ar") && proc_arg(hr, "48000") && proc_arg(hr, "-movflags") &&
+              proc_arg(hr, "+faststart") && proc_arg(hr, out_mp4);
+        rst := -1;
+        if okr && proc_start(hr) == 0 { rst = proc_wait(hr, 120000); }
+        drx := proc_release(hr);
+        if rst == 0 {
+          grm := fs_remove(raw_mp4);
+          print("sarah lipsync: trimmed & remuxed clean 48 kHz audio (t=%s)\n", trim_str);
+        } else {
+          rv := [3] string.["mv", raw_mp4, out_mp4];
+          rvr := proc_run(rv[..], 15000, fo[..], fe[..]);
+        }
+      }
+    }
+  }
+
+  // 5. Post-render QA: ffprobe geometry & durations, extract MP4 audio -> LUFS + Google STT V2, extract QA stills + 6-frame strip
   // Video stream probe: width,height,r_frame_rate,duration
   fpv := [10] string.["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate,duration", "-of", "csv=p=0", out_mp4];
   pv := proc_run(fpv[..], 30000, fo[..], fe[..]);
@@ -875,7 +946,7 @@ cmd_lipsync :: (
     take_id = sr_text(tid[..]),
     date = date_str,
     model = model,
-    voice = ifx audio_path.count > 0 then SR_DEFAULT_VOICE else "Segmind built-in Leda",
+    voice = ifx voice_label.count > 0 then voice_label else (ifx audio_path.count > 0 then SR_DEFAULT_VOICE else "Segmind built-in Leda"),
     script = script,
     stt_heard = heard,
     stt_pass = stt_pass,
@@ -903,9 +974,41 @@ cmd_lipsync :: (
   return 0;
 }
 
-// ---- Command 4: mvp (end-to-end Portrait -> Google Chirp 3 HD Synth+QA -> Segmind Audio-Driven Lip-Sync A/B)
+// ---- Command 4: slice (crop 1920x1088 portrait into vertical speaker overlay slice, Ep298 style)
 
-cmd_mvp :: (text: string, out_dir: string, image_arg: string, models_csv: string, bucket: string, imagen_model: string, skip_judge: bool) -> int {
+cmd_slice :: (in_mp4: string, out_mp4: string, w: int, h: int, crop_x: int) -> int {
+  if in_mp4.count == 0 || out_mp4.count == 0 { tool_errln("sarah slice: --in MP4 and --out MP4 are required"); return 2; }
+  ow := ifx w > 0 then w else 486;
+  oh := ifx h > 0 then h else 688;
+  cx := ifx crop_x >= 0 then crop_x else 586;
+  // Crop vertical slice preserving ow:oh aspect at full 1088 height (768x1088 for 486x688), then Lanczos-scale to ow x oh @ 30fps.
+  crop_w := (1088 * ow + oh / 2) / oh;
+  if crop_w % 2 != 0 { crop_w -= 1; }
+  vf_buf: [256] u8; vf: [1] SrBuf; vf[0].data = vf_buf[..];
+  sr_put(vf[..], "fps=30,crop="); sr_put_int(vf[..], crop_w); sr_put(vf[..], ":1088:");
+  sr_put_int(vf[..], cx); sr_put(vf[..], ":0,scale="); sr_put_int(vf[..], ow);
+  sr_put_byte(vf[..], ':'); sr_put_int(vf[..], oh); sr_put(vf[..], ":flags=lanczos");
+  hs := proc_new();
+  ok := proc_arg(hs, "ffmpeg") && proc_arg(hs, "-v") && proc_arg(hs, "error") && proc_arg(hs, "-y") &&
+        proc_arg(hs, "-i") && proc_arg(hs, in_mp4) && proc_arg(hs, "-vf") && proc_arg(hs, sr_text(vf[..])) &&
+        proc_arg(hs, "-c:v") && proc_arg(hs, "libx264") && proc_arg(hs, "-crf") && proc_arg(hs, "16") &&
+        proc_arg(hs, "-preset") && proc_arg(hs, "fast") && proc_arg(hs, "-pix_fmt") && proc_arg(hs, "yuv420p") &&
+        proc_arg(hs, "-c:a") && proc_arg(hs, "copy") && proc_arg(hs, "-movflags") && proc_arg(hs, "+faststart") &&
+        proc_arg(hs, out_mp4);
+  st := -1;
+  if ok && proc_start(hs) == 0 { st = proc_wait(hs, 120000); }
+  done := proc_release(hs);
+  if st != 0 { tool_errln("sarah slice: ffmpeg vertical crop failed"); return 1; }
+  print("sarah slice: wrote %x%@30fps vertical slice -> %\n", ow, oh, out_mp4);
+  return 0;
+}
+
+// ---- Command 5: mvp (end-to-end Portrait -> Google Gemini 2.5 Pro TTS Synth+QA -> Segmind Audio-Driven Lip-Sync)
+
+cmd_mvp :: (
+  text: string, out_dir: string, image_arg: string, models_csv: string, bucket: string,
+  imagen_model: string, voice: string, tts_model: string, style_prompt: string, skip_judge: bool
+) -> int {
   if text.count == 0 || out_dir.count == 0 { tool_errln("sarah mvp: --text and --out DIR are required"); return 2; }
   if !sr_mkdir_p(out_dir) { tool_errln("sarah mvp: cannot create --out DIR"); return 1; }
 
@@ -925,12 +1028,17 @@ cmd_mvp :: (text: string, out_dir: string, image_arg: string, models_csv: string
   // 2. Audio-first synthesis + Coax LUFS + Google STT V2 + Vertex Gemini Judge
   sdir_buf: [2048] u8; sdir := fs_join(out_dir, "audio", sdir_buf[..]);
   sout: [1] SrSynthOut;
-  src := sr_run_synth(text, sdir, SR_DEFAULT_VOICE, "0.98", skip_judge, sout[..]);
+  src := sr_run_synth(text, sdir, voice, tts_model, style_prompt, "0.98", skip_judge, sout[..]);
   if src != 0 { return src; }
-  wav24 := cast(string) sout[0].wav_24k[0..<sout[0].wav_24k_n];
+  wav48 := cast(string) sout[0].wav_48k[0..<sout[0].wav_48k_n];
   jnotes := cast(string) sout[0].judge.notes[0..<sout[0].judge.notes_n];
 
-  // 3. Lip-sync across comma-separated models
+  // 3. Lip-sync across comma-separated models (remuxing full-band 48 kHz WAV & trimming dead tail)
+  vlabel_buf: [128] u8; vb: [1] SrBuf; vb[0].data = vlabel_buf[..];
+  if tts_model.count > 0 { sr_put(vb[..], tts_model); sr_put_byte(vb[..], ':'); }
+  sr_put(vb[..], voice);
+  vlabel := sr_text(vb[..]);
+
   i := 0; fails := 0;
   while i < models_csv.count {
     e := i; while e < models_csv.count && models_csv[e] != ',' { e += 1; }
@@ -938,7 +1046,7 @@ cmd_mvp :: (text: string, out_dir: string, image_arg: string, models_csv: string
     if m.count == 0 { continue; }
     mp4_buf: [2048] u8; mb: [1] SrBuf; mb[0].data = mp4_buf[..];
     sr_put(mb[..], out_dir); sr_put(mb[..], "/sarah-"); sr_put(mb[..], m); sr_put(mb[..], ".mp4");
-    lrc := cmd_lipsync(img_path, wav24, sr_text(mb[..]), m, bucket, text, "1080p", 4242, sout[0].judge.overall, jnotes);
+    lrc := cmd_lipsync(img_path, wav48, sr_text(mb[..]), m, bucket, text, "1080p", 4242, sout[0].judge.overall, jnotes, true, vlabel);
     if lrc != 0 { fails += 1; }
   }
   return ifx fails > 0 then 1 else 0;
@@ -946,9 +1054,10 @@ cmd_mvp :: (text: string, out_dir: string, image_arg: string, models_csv: string
 
 usage :: () -> int {
   tool_errln("usage: coax/web/tool.sh sarah portrait --out PNG [--prompt ...] [--model gemini-2.5-flash-image] [--aspect 16:9]");
-  tool_errln("       coax/web/tool.sh sarah synth --text \"...\" --out DIR [--voice en-US-Chirp3-HD-Leda] [--rate 0.98] [--skip-judge]");
-  tool_errln("       coax/web/tool.sh sarah lipsync --image PNG --audio WAV --out MP4 [--model p-video-avatar] [--bucket BUCKET] [--script \"...\"]");
-  tool_errln("       coax/web/tool.sh sarah mvp --text \"...\" --out DIR [--image PNG] [--models p-video-avatar,kling-v2-standard-avatar] [--bucket BUCKET]");
+  tool_errln("       coax/web/tool.sh sarah synth --text \"...\" --out DIR [--voice Sulafat] [--tts-model gemini-2.5-pro-tts] [--prompt ...] [--rate 0.98] [--skip-judge]");
+  tool_errln("       coax/web/tool.sh sarah lipsync --image PNG --audio WAV --out MP4 [--model p-video-avatar] [--bucket BUCKET] [--script \"...\"] [--no-remux]");
+  tool_errln("       coax/web/tool.sh sarah slice --in MP4 --out MP4 [--w 486] [--h 688] [--x 586]");
+  tool_errln("       coax/web/tool.sh sarah mvp --text \"...\" --out DIR [--image PNG] [--models p-video-avatar] [--voice Sulafat] [--tts-model gemini-2.5-pro-tts] [--bucket BUCKET]");
   return 2;
 }
 
@@ -973,6 +1082,8 @@ tool_main :: () -> int #export_c #effects(all) {
     return sr_run_synth(
       text, out_dir,
       args_value(a[..], "--voice", SR_DEFAULT_VOICE),
+      args_value(a[..], "--tts-model", SR_DEFAULT_TTS_MODEL),
+      args_value(a[..], "--prompt", SR_DEFAULT_VOICE_PROMPT),
       args_value(a[..], "--rate", "0.98"),
       args_has(a[..], "--skip-judge"),
       sout[..]
@@ -988,7 +1099,18 @@ tool_main :: () -> int #export_c #effects(all) {
       args_value(a[..], "--bucket", SR_DEFAULT_BUCKET),
       args_value(a[..], "--script", ""),
       args_value(a[..], "--resolution", "1080p"),
-      seed, -1, ""
+      seed, -1, "",
+      !args_has(a[..], "--no-remux"),
+      args_value(a[..], "--voice", "")
+    );
+  }
+  if cmd == "slice" {
+    return cmd_slice(
+      args_value(a[..], "--in", ""),
+      args_value(a[..], "--out", ""),
+      args_whole(args_value(a[..], "--w", "486")),
+      args_whole(args_value(a[..], "--h", "688")),
+      args_whole(args_value(a[..], "--x", "586"))
     );
   }
   if cmd == "mvp" {
@@ -996,9 +1118,12 @@ tool_main :: () -> int #export_c #effects(all) {
       args_value(a[..], "--text", ""),
       args_value(a[..], "--out", ""),
       args_value(a[..], "--image", ""),
-      args_value(a[..], "--models", "p-video-avatar,kling-v2-standard-avatar"),
+      args_value(a[..], "--models", "p-video-avatar"),
       args_value(a[..], "--bucket", SR_DEFAULT_BUCKET),
       args_value(a[..], "--imagen-model", SR_DEFAULT_IMAGEN),
+      args_value(a[..], "--voice", SR_DEFAULT_VOICE),
+      args_value(a[..], "--tts-model", SR_DEFAULT_TTS_MODEL),
+      args_value(a[..], "--prompt", SR_DEFAULT_VOICE_PROMPT),
       args_has(a[..], "--skip-judge")
     );
   }
