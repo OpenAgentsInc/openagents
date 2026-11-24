@@ -24,7 +24,7 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-10 — Layers 0-3: Atoms, Contracts, Agent Engine, Compaction & Memory)\n");
+  print("flawed (Chapters 01-11 — Layers 0-4: Atoms, Contracts, Engine, Compaction, Memory & Permissions)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
@@ -32,6 +32,14 @@ flawed_cli_usage :: () {
   print("  flawed-cli route INPUT [--bridge]\n");
   print("  flawed-cli cache-plan [--3p] [--mcp]\n");
   print("  flawed-cli cost-check\n");
+  print("  flawed-cli perm-check PATH\n");
+}
+
+flawed_cli_perm_check :: (path: string) -> int #effects(all) {
+  s := flawed_check_path_safety_for_auto_edit(path);
+  rm_bad := flawed_is_dangerous_removal_path(path);
+  print("perm-check: safe=% classifier_approvable=% dangerous_rm=%\n", s.safe, s.classifier_approvable, rm_bad);
+  return 0;
 }
 
 flawed_cli_cost_check :: () -> int #effects(all) {
@@ -202,6 +210,10 @@ tool_main :: () -> int #export_c #effects(all) {
     return flawed_cli_cache_plan(is_3p, has_mcp);
   }
   if cmd == "cost-check" { return flawed_cli_cost_check(); }
+  if cmd == "perm-check" {
+    if a[0].n < 2 { tool_errln("flawed-cli: perm-check requires PATH"); return 2; }
+    return flawed_cli_perm_check(args_at(a[..], 1));
+  }
   flawed_cli_usage();
   return 2;
 }

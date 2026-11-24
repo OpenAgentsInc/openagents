@@ -1,0 +1,446 @@
+// Flawed Layer 4 (Chapter 11) — Protected Path Safety, Dangerous Removal Guard,
+// Shell Wildcard Rule Matching, and Auto-Mode XML Classifier Output Parser.
+// Replaces cc/utils/permissions/{filesystem,pathValidation,shellRuleMatching,yoloClassifier}.ts
+// matching & safety invariants with zero-regex, zero-heap checked Coax.
+//   coax/bin/coax test flawed/perm_match.coax --library
+//   coax/bin/coax mutate flawed/perm_match.coax --root-only
+#module "flawed.perm_match";
+#authority;
+#load "permissions.coax";
+
+FlawedPathSafety :: struct {
+  safe: bool;
+  classifier_approvable: bool;
+}
+
+// ASCII lowercase helper (no locale surprises).
+flawed_pm_lower :: (c: u8) -> u8 #effects(traps) {
+  if c >= 65 && c <= 90 { return c + 32; }
+  return c;
+}
+
+flawed_pm_eq_ci :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    if flawed_pm_lower(a[i]) != flawed_pm_lower(b[i]) { return false; }
+  }
+  return true;
+}
+
+flawed_pm_is_sep :: (c: u8) -> bool #effects(traps) {
+  return c == 47 || c == 92; // '/' or '\\'
+}
+
+flawed_pm_is_suspicious_seg :: (seg: string) -> bool #effects(reads, traps) {
+  n := seg.count;
+  // Trailing '.' or ' ' on non-"." / non-".." segment (catches ".git.", "file ", and "...")
+  last := seg[n - 1];
+  is_dot := n == 1 && seg[0] == 46;
+  is_dotdot := n == 2 && seg[0] == 46 && seg[1] == 46;
+  if !is_dot && !is_dotdot && (last == 46 || last == 32) {
+    return true;
+  }
+  // NTFS 8.3 short name: '~' followed by ASCII digit '0'..'9'
+  for k: 0..<(n - 1) {
+    if seg[k] == 126 && seg[k + 1] >= 48 && seg[k + 1] <= 57 {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Suspicious Windows path patterns (filesystem.ts:537-602):
+// - \\?\ or //?/ extended-length prefix
+// - NTFS 8.3 short names (~\d), trailing dot/space (except "."/".."), and "..."
+flawed_has_suspicious_win_path :: (path: string) -> bool #effects(reads, traps) {
+  n := path.count;
+  if n >= 4 && flawed_pm_is_sep(path[0]) && flawed_pm_is_sep(path[1]) &&
+     path[2] == 63 && flawed_pm_is_sep(path[3]) {
+    return true;
+  }
+  seg_start := -1;
+  for i: 0..<n {
+    if flawed_pm_is_sep(path[i]) {
+      if seg_start >= 0 {
+        if flawed_pm_is_suspicious_seg(path[seg_start..<i]) { return true; }
+        seg_start = -1;
+      }
+    } else if seg_start < 0 {
+      seg_start = i;
+    }
+  }
+  if seg_start >= 0 && flawed_pm_is_suspicious_seg(path[seg_start..<n]) { return true; }
+  return false;
+}
+
+// Protected dotfiles (filesystem.ts:57-68).
+flawed_is_dangerous_dotfile :: (seg: string) -> bool #effects(reads, traps) {
+  return flawed_pm_eq_ci(seg, ".gitconfig") || flawed_pm_eq_ci(seg, ".gitmodules") ||
+         flawed_pm_eq_ci(seg, ".bashrc") || flawed_pm_eq_ci(seg, ".zshrc") ||
+         flawed_pm_eq_ci(seg, ".profile") || flawed_pm_eq_ci(seg, ".ripgreprc") ||
+         flawed_pm_eq_ci(seg, ".mcp.json") || flawed_pm_eq_ci(seg, ".claude.json");
+}
+
+flawed_pm_seg_is_protected :: (seg: string) -> bool #effects(reads, traps) {
+  return flawed_pm_eq_ci(seg, ".git") || flawed_pm_eq_ci(seg, ".vscode") ||
+         flawed_pm_eq_ci(seg, ".idea") || flawed_is_dangerous_dotfile(seg);
+}
+
+// Two-tier checkPathSafetyForAutoEdit (filesystem.ts:620-665):
+// 1) Suspicious Windows path -> {safe: false, classifier_approvable: false}
+// 2) UNC (// or \\), protected dirs (.git, .vscode, .idea, .claude except .claude/worktrees/),
+//    or dangerous dotfiles -> {safe: false, classifier_approvable: true}
+flawed_check_path_safety_for_auto_edit :: (path: string) -> FlawedPathSafety #effects(reads, traps) {
+  if flawed_has_suspicious_win_path(path) {
+    return FlawedPathSafety.{safe = false, classifier_approvable = false};
+  }
+  if path.count >= 2 && flawed_pm_is_sep(path[0]) && flawed_pm_is_sep(path[1]) {
+    return FlawedPathSafety.{safe = false, classifier_approvable = true};
+  }
+  n := path.count;
+  prev_was_claude := false;
+  seg_start := -1; // mutant: equivalent // empty prefix path[0..<0] never matches any protected segment
+  for i: 0..<(n + 1) {
+    at_end := i == n;
+    if at_end || flawed_pm_is_sep(path[i]) {
+      if seg_start >= 0 {
+        seg := path[seg_start..<i];
+        seg_start = -1;
+        if prev_was_claude {
+          if flawed_pm_eq_ci(seg, "worktrees") {
+            prev_was_claude = false;
+            continue;
+          }
+          return FlawedPathSafety.{safe = false, classifier_approvable = true};
+        }
+        if flawed_pm_eq_ci(seg, ".claude") {
+          prev_was_claude = true;
+          continue;
+        }
+        if flawed_pm_seg_is_protected(seg) {
+          return FlawedPathSafety.{safe = false, classifier_approvable = true};
+        }
+      }
+    } else if seg_start < 0 {
+      seg_start = i;
+    }
+  }
+  if prev_was_claude {
+    return FlawedPathSafety.{safe = false, classifier_approvable = true};
+  }
+  return FlawedPathSafety.{safe = true, classifier_approvable = true};
+}
+
+// Dangerous removal paths (pathValidation.ts:331-367):
+// Blocks "", "*", "/*", "/", and direct children of "/" (e.g. "/etc", "/Users").
+flawed_is_dangerous_removal_path :: (path: string) -> bool #effects(reads, traps) {
+  if path.count == 0 { return true; }
+  if path == "*" || path == "/*" { return true; }
+  if path[0] == 47 {
+    segs := 0;
+    in_seg := false;
+    for i: 1..<path.count {
+      if path[i] == 47 {
+        in_seg = false;
+      } else if !in_seg {
+        in_seg = true;
+        segs = segs + 1;
+      }
+    }
+    return segs <= 1;
+  }
+  return false;
+}
+
+// Shell TOCTOU token guard (pathValidation.ts:101-220):
+// Rejects UNC, unexpanded ~root / ~+, shell expansions ($, %, leading =), and write globs.
+flawed_shell_path_token_safe :: (tok: string, is_write: bool) -> bool #effects(reads, traps) {
+  if tok.count == 0 { return false; }
+  if tok.count >= 2 && flawed_pm_is_sep(tok[0]) && flawed_pm_is_sep(tok[1]) { return false; }
+  if tok[0] == 61 { return false; }
+  if tok[0] == 126 && tok.count > 1 && !flawed_pm_is_sep(tok[1]) { return false; }
+  for i: 0..<tok.count {
+    c := tok[i];
+    if c == 36 || c == 37 { return false; }
+    if is_write && (c == 42 || c == 63 || c == 91) { return false; }
+  }
+  return true;
+}
+
+// Count unescaped '*' in pattern (backslash parity).
+flawed_count_unescaped_stars :: (pat: string) -> int #effects(reads, traps) {
+  count := 0;
+  escaped := false;
+  for i: 0..<pat.count {
+    c := pat[i];
+    if c == 92 {
+      escaped = !escaped;
+    } else {
+      if c == 42 && !escaped { count = count + 1; }
+      escaped = false;
+    }
+  }
+  return count;
+}
+
+// Core glob matcher over escaped pattern (supports \* literal star, \\ literal backslash, * dotAll across \n).
+flawed_pm_match_glob_core :: (pat: string, cmd: string, ci: bool) -> bool #effects(reads, traps) {
+  pi := 0;
+  si := 0;
+  star_p := -1;
+  star_s := 0; // mutant: equivalent // overwritten whenever star_p >= 0 is set
+  while si < cmd.count {
+    if pi + 1 < pat.count && pat[pi] == 92 && (pat[pi + 1] == 42 || pat[pi + 1] == 92) {
+      if pat[pi + 1] == cmd[si] {
+        pi = pi + 2;
+        si = si + 1;
+        continue;
+      }
+    } else if pi < pat.count && pat[pi] == 42 {
+      star_p = pi;
+      star_s = si;
+      pi = pi + 1;
+      continue;
+    } else if pi < pat.count {
+      pc := pat[pi];
+      sc := cmd[si];
+      eq := ifx ci then flawed_pm_lower(pc) == flawed_pm_lower(sc) else pc == sc;
+      if eq {
+        pi = pi + 1;
+        si = si + 1;
+        continue;
+      }
+    }
+    if star_p >= 0 {
+      star_s = star_s + 1;
+      si = star_s;
+      pi = star_p + 1;
+    } else {
+      return false;
+    }
+  }
+  while pi < pat.count && pat[pi] == 42 { pi = pi + 1; }
+  return pi == pat.count;
+}
+
+// Shell permission rule matcher (shellRuleMatching.ts:90-184):
+// - Legacy "prefix:*" -> matches exact "prefix" or "prefix ..."
+// - Single trailing " *" -> word boundary ("git *" matches "git" & "git status", rejects "gitconfig")
+// - Wildcard "*" matches across '\n' (dotAll); case_insensitive for PowerShell vs Bash.
+flawed_match_shell_wildcard :: (pattern: string, cmd: string, case_insensitive: bool) -> bool #effects(reads, traps) {
+  pn := pattern.count;
+  // Legacy prefix rule: "<prefix>:*"
+  if pn >= 3 && pattern[pn - 2] == 58 && pattern[pn - 1] == 42 {
+    pref := pattern[0..<(pn - 2)];
+    if cmd.count < pref.count { return false; }
+    for i: 0..<pref.count {
+      pc := pref[i];
+      sc := cmd[i];
+      eq := ifx case_insensitive then flawed_pm_lower(pc) == flawed_pm_lower(sc) else pc == sc;
+      if !eq { return false; }
+    }
+    return cmd.count == pref.count || cmd[pref.count] == 32;
+  }
+  stars := flawed_count_unescaped_stars(pattern);
+  // Single trailing " *" word boundary: "^<prefix>( .*)?$"
+  if stars == 1 && pn >= 2 && pattern[pn - 2] == 32 && pattern[pn - 1] == 42 {
+    if flawed_pm_match_glob_core(pattern[0..<(pn - 2)], cmd, case_insensitive) { return true; }
+    return flawed_pm_match_glob_core(pattern, cmd, case_insensitive);
+  }
+  if stars == 0 {
+    // Exact match (preserving the \* dead-rule scar: no unescaping when stars == 0)
+    if cmd.count != pn { return false; }
+    for i: 0..<pn {
+      pc := pattern[i];
+      sc := cmd[i];
+      eq := ifx case_insensitive then flawed_pm_lower(pc) == flawed_pm_lower(sc) else pc == sc;
+      if !eq { return false; }
+    }
+    return true;
+  }
+  return flawed_pm_match_glob_core(pattern, cmd, case_insensitive);
+}
+
+flawed_pm_starts_at :: (text: string, pos: int, tag: string) -> bool #effects(reads, traps) {
+  if pos + tag.count > text.count { return false; }
+  return flawed_pm_eq_ci(text[pos..<(pos + tag.count)], tag);
+}
+
+flawed_pm_xml_word_end :: (text: string, pos: int) -> bool #effects(reads, traps) {
+  return pos == text.count || text[pos] == 60 || text[pos] == 32 || text[pos] == 10;
+}
+
+// Parse auto-mode XML classifier response: strips <thinking>...</thinking> (and unclosed <thinking>...)
+// before matching <block>yes|no (case-insensitive). Returns 1=yes (block), 0=no (allow), -1=unparseable.
+flawed_parse_xml_classifier_block :: (text: string) -> int #effects(reads, traps) {
+  in_think := false;
+  for i: 0..<text.count {
+    if in_think {
+      if flawed_pm_starts_at(text, i, "</thinking>") { in_think = false; }
+      continue;
+    }
+    if flawed_pm_starts_at(text, i, "<thinking>") {
+      in_think = true;
+      continue;
+    }
+    if flawed_pm_starts_at(text, i, "<block>") {
+      j := i + 7;
+      if flawed_pm_starts_at(text, j, "yes") && flawed_pm_xml_word_end(text, j + 3) {
+        return 1;
+      }
+      if flawed_pm_starts_at(text, j, "no") && flawed_pm_xml_word_end(text, j + 2) {
+        return 0;
+      }
+    }
+  }
+  return -1;
+}
+
+#test "perm_match: ASCII lower, eq_ci, and checkPathSafetyForAutoEdit" {
+  // Exact ASCII bounds for lowercase helper
+  #assert flawed_pm_lower(64) == 64 && flawed_pm_lower(65) == 97 && flawed_pm_lower(90) == 122 && flawed_pm_lower(91) == 91;
+  #assert !flawed_pm_eq_ci("xbc", "abc") && flawed_pm_eq_ci("Az", "aZ");
+
+  // Suspicious Windows patterns -> classifier_approvable = false
+  w1 := flawed_check_path_safety_for_auto_edit("\\\\?\\");
+  #assert !w1.safe && !w1.classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("/a?/x").safe;
+  #assert flawed_check_path_safety_for_auto_edit("a\\?\\x").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("~1").classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("1~a").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("C:/repo/GIT~0/config").classifier_approvable;
+  #assert !flawed_check_path_safety_for_auto_edit("C:/repo/GIT~9").classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("C:/repo/a~:/b").safe;
+  #assert flawed_check_path_safety_for_auto_edit("C:/repo/a~/b").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("repo/.git./config").classifier_approvable;
+  #assert !flawed_check_path_safety_for_auto_edit("a.").classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit(".a").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("repo/file ").classifier_approvable;
+  #assert !flawed_check_path_safety_for_auto_edit("repo/.../foo.ts").classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("app/[...slug]/page.tsx").safe;
+  s_ok := flawed_check_path_safety_for_auto_edit("./src/../main.coax");
+  #assert s_ok.safe && s_ok.classifier_approvable;
+
+  // Protected dirs & dotfiles -> safe=false, classifier_approvable=true
+  g1 := flawed_check_path_safety_for_auto_edit("/repo/.git/hooks/pre-commit");
+  #assert !g1.safe && g1.classifier_approvable;
+  g2 := flawed_check_path_safety_for_auto_edit("/repo/.vscode/tasks.json");
+  #assert !g2.safe && g2.classifier_approvable;
+  g3 := flawed_check_path_safety_for_auto_edit("/repo/.idea/workspace.xml");
+  #assert !g3.safe && g3.classifier_approvable;
+  g4 := flawed_check_path_safety_for_auto_edit("/repo/.claude/settings.json");
+  #assert !g4.safe && g4.classifier_approvable;
+  g5 := flawed_check_path_safety_for_auto_edit(".claude");
+  #assert !g5.safe && g5.classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("/repo/.claude/worktrees/wt1/main.coax").safe;
+  u1 := flawed_check_path_safety_for_auto_edit("//");
+  #assert !u1.safe && u1.classifier_approvable;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.gitconfig").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/repo/.gitmodules").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.bashrc").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.zshrc").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.profile").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.ripgreprc").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/repo/.mcp.json").safe;
+  #assert !flawed_check_path_safety_for_auto_edit("/home/u/.claude.json").safe;
+  #assert flawed_check_path_safety_for_auto_edit("/repo/src/App.tsx").safe;
+}
+
+#test "perm_match: dangerous removal paths and shell path token TOCTOU guard" {
+  #assert flawed_is_dangerous_removal_path("");
+  #assert flawed_is_dangerous_removal_path("*");
+  #assert flawed_is_dangerous_removal_path("/*");
+  #assert flawed_is_dangerous_removal_path("/");
+  #assert flawed_is_dangerous_removal_path("///");
+  #assert flawed_is_dangerous_removal_path("/etc");
+  #assert flawed_is_dangerous_removal_path("/Users/");
+  #assert !flawed_is_dangerous_removal_path("/a/b");
+  #assert !flawed_is_dangerous_removal_path("build/out");
+
+  #assert !flawed_shell_path_token_safe("", false);
+  #assert !flawed_shell_path_token_safe("//", false);
+  #assert !flawed_shell_path_token_safe("=python", false);
+  #assert !flawed_shell_path_token_safe("~a", false);
+  #assert flawed_shell_path_token_safe("~", true);
+  #assert flawed_shell_path_token_safe("~/notes.md", true);
+  #assert !flawed_shell_path_token_safe("$HOME/a", false);
+  #assert !flawed_shell_path_token_safe("%APPDATA%/a", false);
+  #assert flawed_shell_path_token_safe("src/*.coax", false);
+  #assert !flawed_shell_path_token_safe("src/*.coax", true);
+  #assert !flawed_shell_path_token_safe("src/?.coax", true);
+  #assert !flawed_shell_path_token_safe("src/[a].coax", true);
+}
+
+#test "perm_match: shell wildcard matching and XML block parser" {
+  // Backslash parity star counter
+  #assert flawed_count_unescaped_stars("*") == 1;
+  #assert flawed_count_unescaped_stars("\\*") == 0;
+  #assert flawed_count_unescaped_stars("\\\\*") == 1;
+  #assert flawed_count_unescaped_stars("\\\\\\*") == 0;
+
+  // Legacy prefix:* (including 3-char "a:*")
+  #assert flawed_match_shell_wildcard("a:*", "a", false);
+  #assert flawed_match_shell_wildcard("git:*", "git", false);
+  #assert flawed_match_shell_wildcard("git:*", "git status", false);
+  #assert !flawed_match_shell_wildcard("git:*", "gitconfig", false);
+  #assert !flawed_match_shell_wildcard("git:*", "gi", false);
+  #assert flawed_match_shell_wildcard("Git:*", "git status", true);
+  #assert !flawed_match_shell_wildcard("Git:*", "git status", false);
+
+  // Single trailing " *" word boundary (including 2-char " *")
+  #assert flawed_match_shell_wildcard(" *", "", false);
+  #assert flawed_match_shell_wildcard("git *", "git", false);
+  #assert flawed_match_shell_wildcard("git *", "git diff HEAD", false);
+  #assert !flawed_match_shell_wildcard("git *", "gitconfig", false);
+  #assert !flawed_match_shell_wildcard("git *", "gi", false);
+  #assert flawed_match_shell_wildcard("Get-ChildItem *", "get-childitem -force", true);
+  #assert !flawed_match_shell_wildcard("Get-ChildItem *", "get-childitem -force", false);
+
+  // Glob * backtracking, leading *, multi-*, dotAll newlines, \* and \\ escapes
+  #assert !flawed_pm_match_glob_core("ab", "xb", false);
+  #assert !flawed_match_shell_wildcard("cb*bx", "cbx", false);
+  #assert !flawed_match_shell_wildcard("*ab", "axb", false);
+  #assert flawed_match_shell_wildcard("a*\\", "a\\", false);
+  #assert flawed_match_shell_wildcard("*bar", "xxbar", false);
+  #assert flawed_match_shell_wildcard("*bar", "bar", false);
+  #assert !flawed_match_shell_wildcard("*bar", "baz", false);
+  #assert flawed_match_shell_wildcard("*a*b", "xaxab", false);
+  #assert !flawed_match_shell_wildcard("*a*b", "xaxac", false);
+  #assert flawed_match_shell_wildcard("a* *", "a1 2", false);
+  #assert !flawed_match_shell_wildcard("a* *", "a1", false);
+  #assert flawed_match_shell_wildcard("echo * --end", "echo hi\nthere --end", false);
+  #assert !flawed_match_shell_wildcard("echo * --end", "echo hi --other", false);
+  #assert flawed_match_shell_wildcard("grep \\* *", "grep * file.txt", false);
+  #assert !flawed_match_shell_wildcard("grep \\* *", "grep x file.txt", false);
+  #assert flawed_match_shell_wildcard("*\\*", "x*", false);
+  #assert flawed_match_shell_wildcard("echo \\\\*", "echo \\abc", false);
+  #assert flawed_match_shell_wildcard("A*B", "axxb", true);
+  #assert !flawed_match_shell_wildcard("A*B", "axxb", false);
+  #assert flawed_match_shell_wildcard("a*", "a", false);
+  #assert flawed_match_shell_wildcard("a**", "a", false);
+
+  // Exact match & \* dead-rule scar
+  #assert flawed_match_shell_wildcard("pwd", "pwd", false);
+  #assert !flawed_match_shell_wildcard("pwd", "pwd -P", false);
+  #assert flawed_match_shell_wildcard("Pwd", "pwd", true);
+  #assert !flawed_match_shell_wildcard("Pwd", "pwd", false);
+  #assert !flawed_match_shell_wildcard("echo \\*", "echo *", false);
+
+  // XML classifier parser: closed/unclosed <thinking>, word boundaries (EOF, '<', ' ', '\n')
+  #assert flawed_parse_xml_classifier_block("<thinking><block>yes</block></thinking><block>no</block>") == 0;
+  #assert flawed_parse_xml_classifier_block("<thinking></thinking><block>YES ") == 1;
+  #assert flawed_parse_xml_classifier_block("<thinking>x</thinking><block>yes") == 1;
+  #assert flawed_parse_xml_classifier_block("x<block>no") == 0;
+  #assert flawed_parse_xml_classifier_block("<block>yes\n") == 1;
+  #assert flawed_parse_xml_classifier_block("<block>yes") == 1;
+  #assert flawed_parse_xml_classifier_block("<block>no") == 0;
+  #assert flawed_parse_xml_classifier_block("<block>no ") == 0;
+  #assert flawed_parse_xml_classifier_block("<block>no\n") == 0;
+  #assert flawed_parse_xml_classifier_block("<block>") == -1;
+  #assert flawed_parse_xml_classifier_block("<block>n") == -1;
+  #assert flawed_parse_xml_classifier_block("<thinking>") == -1;
+  #assert flawed_parse_xml_classifier_block("<thinking>a</thinking>") == -1;
+  #assert flawed_parse_xml_classifier_block("<thinking>truncated <block>no</block>") == -1;
+  #assert flawed_parse_xml_classifier_block("<block>nope</block>") == -1;
+  #assert flawed_parse_xml_classifier_block("<block>yesterday</block>") == -1;
+}

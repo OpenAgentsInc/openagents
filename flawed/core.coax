@@ -22,6 +22,8 @@
 #load "transcript_dag.coax";
 #load "compaction.coax";
 #load "memory.coax";
+#load "permissions.coax";
+#load "perm_match.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -226,4 +228,22 @@
   #assert flawed_dream_eval_gates(true, 24, 24, FLAWED_DREAM_SCAN_COOLDOWN_MS, 5, 5, FLAWED_DREAM_LOCK_STALE_MS, true) == FLAWED_DREAM_RUN;
   #assert flawed_team_mem_has_secret("leaked AKIA0000000000000000");
   #assert flawed_team_sync_is_permanent_failure(FLAWED_SYNC_ERR_HTTP, 413);
+}
+
+#test "flawed core (Ch 11): bypass-immune permission engine, auto classifier, denial breaker, path safety & shell wildcards compose" {
+  // Protected path safety feeds bypass-immune 1g safetyCheck
+  ps := flawed_check_path_safety_for_auto_edit("/repo/.git/hooks/pre-commit");
+  #assert !ps.safe && ps.classifier_approvable;
+  #assert flawed_check_path_safety_for_auto_edit("/repo/.claude/worktrees/wt1/a.coax").safe;
+  #assert flawed_match_shell_wildcard("git *", "git status", false) && !flawed_match_shell_wildcard("git *", "gitconfig", false);
+  #assert flawed_parse_xml_classifier_block("<thinking><block>yes</block></thinking><block>no</block>") == 0;
+
+  dt: [1] FlawedDenialTracker;
+  v := flawed_eval_permission_outer(FlawedOuterInput.{
+    inner = FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, tool_behavior = FLAWED_PBEH_ASK, is_safety_check = true, classifier_approvable = ps.classifier_approvable},
+  }, dt[..]);
+  #assert v.behavior == FLAWED_PBEH_ASK && v.reason == FLAWED_PREASON_SAFETY_CHECK;
+  #assert flawed_plan_mode_transition(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_AUTO, false, true).status == FLAWED_MTRANS_STRIP_DANGEROUS;
+  ro: [1] FlawedResolveOnce;
+  #assert flawed_resolve_claim(ro[..], 1) && !flawed_resolve_claim(ro[..], 2) && flawed_resolve_deliver(ro[..], FLAWED_PBEH_ALLOW);
 }

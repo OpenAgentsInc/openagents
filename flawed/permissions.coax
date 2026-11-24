@@ -1,0 +1,596 @@
+// Flawed Layer 4 (Chapter 11) — The Permission Engine: Modes, 8 Rule Sources,
+// Two-Layer Bypass-Immune Evaluator, Mode Transitions, Denial Breaker, and Two-Phase claim().
+// Replaces cc/types/permissions.ts, cc/utils/permissions/{PermissionMode,getNextPermissionMode,
+// permissions,permissionSetup,permissionsLoader,denialTracking}.ts, and
+// cc/hooks/toolPermission/PermissionContext.ts.
+//   coax/bin/coax test flawed/permissions.coax --library
+//   coax/bin/coax mutate flawed/permissions.coax --root-only
+#module "flawed.permissions";
+#authority;
+#load "memory.coax";
+
+// 7 internal permission modes (types/permissions.ts:16-38).
+// External SDK modes: DEFAULT, ACCEPT_EDITS, PLAN, DONT_ASK, BYPASS (1..5).
+// Runtime user-addressable adds AUTO (6) when classifier feature is on; BUBBLE (7) is internal-only.
+FLAWED_PMODE_DEFAULT :: 1;
+FLAWED_PMODE_ACCEPT_EDITS :: 2;
+FLAWED_PMODE_PLAN :: 3;
+FLAWED_PMODE_DONT_ASK :: 4;
+FLAWED_PMODE_BYPASS :: 5;
+FLAWED_PMODE_AUTO :: 6;
+FLAWED_PMODE_BUBBLE :: 7;
+
+// 8 PermissionRuleSources (types/permissions.ts:54-62).
+FLAWED_PSRC_USER :: 1;
+FLAWED_PSRC_PROJECT :: 2;
+FLAWED_PSRC_LOCAL :: 3;
+FLAWED_PSRC_FLAG :: 4;
+FLAWED_PSRC_POLICY :: 5;
+FLAWED_PSRC_CLI_ARG :: 6;
+FLAWED_PSRC_COMMAND :: 7;
+FLAWED_PSRC_SESSION :: 8;
+
+// Tool checkPermissions() result behaviors.
+FLAWED_PBEH_PASSTHROUGH :: 1;
+FLAWED_PBEH_ALLOW :: 2;
+FLAWED_PBEH_ASK :: 3;
+FLAWED_PBEH_DENY :: 4;
+
+// Decision reasons & outer outcomes.
+FLAWED_PREASON_NONE :: 1;
+FLAWED_PREASON_BLANKET_DENY :: 2;
+FLAWED_PREASON_BLANKET_ASK :: 3;
+FLAWED_PREASON_TOOL_DENY :: 4;
+FLAWED_PREASON_USER_INTERACTION :: 5;
+FLAWED_PREASON_CONTENT_ASK :: 6;
+FLAWED_PREASON_SAFETY_CHECK :: 7;
+FLAWED_PREASON_BYPASS_MODE :: 8;
+FLAWED_PREASON_BLANKET_ALLOW :: 9;
+FLAWED_PREASON_DEFAULT_ASK :: 10;
+FLAWED_PREASON_DONT_ASK :: 11;
+FLAWED_PREASON_AUTO_ALLOW :: 12;
+FLAWED_PREASON_AUTO_DENY :: 13;
+FLAWED_PREASON_AUTO_FALLBACK_ASK :: 14;
+FLAWED_PREASON_ASYNC_DENY :: 15;
+FLAWED_PREASON_ABORT :: 16;
+
+// Classifier verdict codes for auto-mode evaluation.
+FLAWED_CLF_ALLOW :: 1;
+FLAWED_CLF_BLOCK :: 2;
+FLAWED_CLF_UNAVAILABLE :: 3;
+FLAWED_CLF_TOO_LONG :: 4;
+
+// Mode transition actions (permissionSetup.ts:617-637).
+FLAWED_MTRANS_OK :: 1;
+FLAWED_MTRANS_STRIP_DANGEROUS :: 2;
+FLAWED_MTRANS_RESTORE_DANGEROUS :: 3;
+FLAWED_MTRANS_GATE_REFUSED :: 4;
+
+// Denial circuit breaker limits (denialTracking.ts:12-16).
+FLAWED_DENIAL_MAX_CONSECUTIVE :: 3;
+FLAWED_DENIAL_MAX_TOTAL :: 20;
+
+FlawedInnerInput :: struct {
+  mode: u8;
+  bypass_available: bool;
+  hook_mirror: bool;            // true => checkRuleBasedPermissions (stops after 1g)
+  has_blanket_deny: bool;
+  has_blanket_ask: bool;
+  is_sandboxed_auto_bash: bool; // exempts Bash from 1b blanket ask
+  tool_behavior: u8;            // FLAWED_PBEH_*
+  requires_user_interaction: bool;
+  has_content_ask: bool;
+  is_safety_check: bool;
+  classifier_approvable: bool;
+  has_blanket_allow: bool;
+}
+
+FlawedPermVerdict :: struct {
+  behavior: u8;                 // FLAWED_PBEH_ALLOW | ASK | DENY | PASSTHROUGH
+  reason: u8;                   // FLAWED_PREASON_*
+  classifier_approvable: bool;
+}
+
+FlawedOuterInput :: struct {
+  inner: FlawedInnerInput;
+  auto_active: bool;            // authoritative isAutoModeActive() signal
+  avoid_prompts: bool;          // headless / async agent
+  headless_hook_allows: bool;
+  is_powershell: bool;
+  powershell_auto_enabled: bool;
+  is_accept_edits_eligible: bool;
+  is_agent_or_repl: bool;       // excluded from auto acceptEdits fast-path
+  is_auto_allowlisted: bool;
+  classifier_verdict: u8;       // FLAWED_CLF_*
+  iron_gate_closed: bool;       // tengu_iron_gate_closed (default true)
+}
+
+FlawedDenialTracker :: struct {
+  consecutive: int;
+  total: int;
+}
+
+FlawedModeTransition :: struct {
+  status: u8;                   // FLAWED_MTRANS_*
+  set_auto_active: bool;
+  next_auto_active: bool;
+  emit_exit_attachment: bool;
+}
+
+// Two-phase claim() / deliver() lock across 5 concurrent modal racers (PermissionContext.ts:75-94).
+FlawedResolveOnce :: struct {
+  claimed: bool;
+  delivered: bool;
+  winning_racer: u8;
+  delivered_behavior: u8;
+}
+
+// Project internal mode to SDK-safe ExternalPermissionMode (PermissionMode.ts:107-115).
+flawed_to_external_mode :: (mode: u8) -> u8 #effects(traps) {
+  if mode == FLAWED_PMODE_AUTO || mode == FLAWED_PMODE_BUBBLE {
+    return FLAWED_PMODE_DEFAULT;
+  }
+  return mode;
+}
+
+// User-addressable runtime mode validation (types/permissions.ts:32-38).
+// BUBBLE is never user-addressable; AUTO requires classifier availability.
+flawed_is_user_addressable_mode :: (mode: u8, classifier_enabled: bool) -> bool #effects(traps) {
+  if mode == FLAWED_PMODE_DEFAULT || mode == FLAWED_PMODE_ACCEPT_EDITS ||
+     mode == FLAWED_PMODE_PLAN || mode == FLAWED_PMODE_DONT_ASK ||
+     mode == FLAWED_PMODE_BYPASS {
+    return true;
+  }
+  return mode == FLAWED_PMODE_AUTO && classifier_enabled;
+}
+
+// Parent-mode floor: subagent definitions cannot override parent BYPASS, ACCEPT_EDITS, or AUTO (runAgent.ts:421-434).
+flawed_parent_mode_floor :: (parent_mode: u8, child_requested: u8, classifier_enabled: bool) -> u8 #effects(traps) {
+  if parent_mode == FLAWED_PMODE_BYPASS || parent_mode == FLAWED_PMODE_ACCEPT_EDITS {
+    return parent_mode;
+  }
+  if parent_mode == FLAWED_PMODE_AUTO && classifier_enabled {
+    return parent_mode;
+  }
+  return child_requested;
+}
+
+// Shift+Tab carousel (getNextPermissionMode.ts:17-101).
+flawed_next_permission_mode :: (
+  cur: u8,
+  bypass_available: bool,
+  auto_available: bool,
+  auto_gate_enabled: bool
+) -> u8 #effects(traps) {
+  can_auto := auto_available && auto_gate_enabled;
+  if cur == FLAWED_PMODE_DEFAULT { return FLAWED_PMODE_ACCEPT_EDITS; }
+  if cur == FLAWED_PMODE_ACCEPT_EDITS { return FLAWED_PMODE_PLAN; }
+  if cur == FLAWED_PMODE_PLAN {
+    if bypass_available { return FLAWED_PMODE_BYPASS; }
+    if can_auto { return FLAWED_PMODE_AUTO; }
+    return FLAWED_PMODE_DEFAULT;
+  }
+  if cur == FLAWED_PMODE_BYPASS {
+    if can_auto { return FLAWED_PMODE_AUTO; }
+    return FLAWED_PMODE_DEFAULT;
+  }
+  return FLAWED_PMODE_DEFAULT;
+}
+
+// Rule source predicates (types/permissions.ts:54-62, permissionsLoader.ts:31-242).
+flawed_psrc_is_editable :: (src: u8) -> bool #effects(traps) {
+  return src == FLAWED_PSRC_USER || src == FLAWED_PSRC_PROJECT || src == FLAWED_PSRC_LOCAL;
+}
+
+flawed_psrc_is_shared :: (src: u8) -> bool #effects(traps) {
+  return src == FLAWED_PSRC_PROJECT || src == FLAWED_PSRC_POLICY || src == FLAWED_PSRC_COMMAND;
+}
+
+// Managed lockdown: allowManagedPermissionRulesOnly restricts active rules to policySettings only.
+flawed_psrc_allowed :: (src: u8, managed_only: bool) -> bool #effects(traps) {
+  if managed_only { return src == FLAWED_PSRC_POLICY; }
+  return src >= FLAWED_PSRC_USER && src <= FLAWED_PSRC_SESSION;
+}
+
+// Cloned repo projectSettings MUST NOT opt the user into auto mode (permissionSetup.ts:1446-1455).
+flawed_auto_mode_opt_in_trusted :: (src: u8) -> bool #effects(traps) {
+  return src != FLAWED_PSRC_PROJECT && src >= FLAWED_PSRC_USER && src <= FLAWED_PSRC_POLICY;
+}
+
+// Inner evaluator: Steps 1a..1g are BYPASS-IMMUNE; Steps 2a..3 run only after clearing 1g (permissions.ts:1158-1319).
+// When inp.hook_mirror is true, mirrors checkRuleBasedPermissions (1a-1d, 1f-1g only; skips 1e and 2a-3).
+flawed_eval_permission_inner :: (inp: FlawedInnerInput) -> FlawedPermVerdict #effects(traps) {
+  // 1a. Blanket deny
+  if inp.has_blanket_deny {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_BLANKET_DENY};
+  }
+  // 1b. Blanket ask (exempts sandboxed auto-allow Bash, which falls through to 1c)
+  if inp.has_blanket_ask && !inp.is_sandboxed_auto_bash {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_BLANKET_ASK};
+  }
+  // 1d. Tool checkPermissions() deny
+  if inp.tool_behavior == FLAWED_PBEH_DENY {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_TOOL_DENY};
+  }
+  // 1e. requiresUserInteraction (skipped by checkRuleBasedPermissions hook mirror)
+  if !inp.hook_mirror && inp.requires_user_interaction {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_USER_INTERACTION};
+  }
+  // 1f. Content-specific ask rule
+  if inp.has_content_ask {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_CONTENT_ASK};
+  }
+  // 1g. Bypass-immune safetyCheck (.git/, .claude/, .vscode/, dotfiles, suspicious Windows paths)
+  if inp.tool_behavior == FLAWED_PBEH_ASK && inp.is_safety_check {
+    return FlawedPermVerdict.{
+      behavior = FLAWED_PBEH_ASK,
+      reason = FLAWED_PREASON_SAFETY_CHECK,
+      classifier_approvable = inp.classifier_approvable,
+    };
+  }
+  if inp.hook_mirror {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_PASSTHROUGH, reason = FLAWED_PREASON_NONE};
+  }
+  // ---------------- BYPASS-IMMUNE BOUNDARY ----------------
+  // 2a. bypassPermissions or plan + isBypassPermissionsModeAvailable
+  if inp.mode == FLAWED_PMODE_BYPASS || (inp.mode == FLAWED_PMODE_PLAN && inp.bypass_available) {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_BYPASS_MODE};
+  }
+  // 2b. Blanket allow rule or tool-level allow
+  if inp.has_blanket_allow || inp.tool_behavior == FLAWED_PBEH_ALLOW {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_BLANKET_ALLOW};
+  }
+  // 3. Default / passthrough promotes to ASK
+  return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_DEFAULT_ASK};
+}
+
+// Denial circuit breaker (denialTracking.ts:12-45).
+// Returns true iff state actually mutated (no-op at 0 preserves React/state identity).
+flawed_denial_record_success :: (dt: [] FlawedDenialTracker) -> bool #effects(reads, writes, traps) {
+  if dt[0].consecutive == 0 { return false; }
+  dt[0].consecutive = 0;
+  return true;
+}
+
+flawed_denial_record_block :: (dt: [] FlawedDenialTracker) #effects(reads, writes, traps) {
+  dt[0].consecutive = dt[0].consecutive + 1;
+  dt[0].total = dt[0].total + 1;
+}
+
+flawed_denial_should_fallback :: (dt: [] const FlawedDenialTracker) -> bool #effects(reads, traps) {
+  return dt[0].consecutive >= FLAWED_DENIAL_MAX_CONSECUTIVE ||
+         dt[0].total >= FLAWED_DENIAL_MAX_TOTAL;
+}
+
+// Outer permission wrapper (permissions.ts:473-956).
+// Runs dontAsk -> auto/plan+auto (BEFORE avoid_prompts!) -> headless avoid_prompts.
+flawed_eval_permission_outer :: (inp: FlawedOuterInput, dt: [] FlawedDenialTracker) -> FlawedPermVerdict #effects(reads, writes, traps) {
+  v := flawed_eval_permission_inner(inp.inner);
+  in_auto := inp.inner.mode == FLAWED_PMODE_AUTO ||
+             (inp.inner.mode == FLAWED_PMODE_PLAN && inp.auto_active);
+
+  if v.behavior == FLAWED_PBEH_ALLOW {
+    if in_auto { _ = flawed_denial_record_success(dt); }
+    return v;
+  }
+  if v.behavior == FLAWED_PBEH_DENY { return v; }
+
+  // Inner emitted ASK:
+  if inp.inner.mode == FLAWED_PMODE_DONT_ASK {
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_DONT_ASK};
+  }
+
+  if in_auto {
+    // Non-classifierApprovable safetyCheck cannot be approved by classifier
+    if v.reason == FLAWED_PREASON_SAFETY_CHECK && !v.classifier_approvable {
+      if inp.avoid_prompts {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_AUTO_DENY};
+      }
+      return v;
+    }
+    // Tools requiring human interaction cannot be auto-approved
+    if v.reason == FLAWED_PREASON_USER_INTERACTION {
+      if inp.avoid_prompts {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_AUTO_DENY};
+      }
+      return v;
+    }
+    // PowerShell guard unless feature('POWERSHELL_AUTO_MODE') is enabled
+    if inp.is_powershell && !inp.powershell_auto_enabled {
+      if inp.avoid_prompts {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_AUTO_DENY};
+      }
+      return v;
+    }
+    // acceptEdits fast-path inside auto mode (excludes Agent and REPL)
+    if inp.is_accept_edits_eligible && !inp.is_agent_or_repl && v.reason != FLAWED_PREASON_SAFETY_CHECK {
+      _ = flawed_denial_record_success(dt);
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_AUTO_ALLOW};
+    }
+    // Safe allowlist bypasses classifier LLM call
+    if inp.is_auto_allowlisted && v.reason != FLAWED_PREASON_SAFETY_CHECK {
+      _ = flawed_denial_record_success(dt);
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_AUTO_ALLOW};
+    }
+    // Classifier verdict handling
+    if inp.classifier_verdict == FLAWED_CLF_ALLOW {
+      _ = flawed_denial_record_success(dt);
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_AUTO_ALLOW};
+    }
+    if inp.classifier_verdict == FLAWED_CLF_TOO_LONG {
+      // transcriptTooLong bypasses iron_gate_closed: aborts headless, asks interactively
+      if inp.avoid_prompts {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_ABORT};
+      }
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_AUTO_FALLBACK_ASK};
+    }
+    if inp.classifier_verdict == FLAWED_CLF_UNAVAILABLE {
+      // tengu_iron_gate_closed fails closed WITHOUT tripping denial counters
+      if inp.iron_gate_closed {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_AUTO_DENY};
+      }
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_AUTO_FALLBACK_ASK};
+    }
+    // Classifier blocked: advance denial circuit breaker
+    flawed_denial_record_block(dt);
+    if flawed_denial_should_fallback(dt) {
+      if inp.avoid_prompts {
+        return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_ABORT};
+      }
+      // Interactive fallback resets counts when total limit hit (permissions.ts:1034-1040)
+      if dt[0].total >= FLAWED_DENIAL_MAX_TOTAL {
+        dt[0].consecutive = 0;
+        dt[0].total = 0;
+      }
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ASK, reason = FLAWED_PREASON_AUTO_FALLBACK_ASK};
+    }
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_AUTO_DENY};
+  }
+
+  // Headless / async agent (shouldAvoidPermissionPrompts)
+  if inp.avoid_prompts {
+    if inp.headless_hook_allows {
+      return FlawedPermVerdict.{behavior = FLAWED_PBEH_ALLOW, reason = FLAWED_PREASON_AUTO_ALLOW};
+    }
+    return FlawedPermVerdict.{behavior = FLAWED_PBEH_DENY, reason = FLAWED_PREASON_ASYNC_DENY};
+  }
+  return v;
+}
+
+// Centralized mode transition using authoritative auto_active signal (permissionSetup.ts:617-637).
+flawed_plan_mode_transition :: (
+  from_mode: u8,
+  to_mode: u8,
+  auto_active: bool,
+  auto_gate_enabled: bool
+) -> FlawedModeTransition #effects(traps) {
+  from_uses := from_mode == FLAWED_PMODE_AUTO || (from_mode == FLAWED_PMODE_PLAN && auto_active);
+  to_uses := to_mode == FLAWED_PMODE_AUTO;
+  if to_uses && !from_uses {
+    if !auto_gate_enabled {
+      return FlawedModeTransition.{status = FLAWED_MTRANS_GATE_REFUSED};
+    }
+    return FlawedModeTransition.{
+      status = FLAWED_MTRANS_STRIP_DANGEROUS,
+      set_auto_active = true,
+      next_auto_active = true,
+    };
+  }
+  if from_uses && !to_uses {
+    return FlawedModeTransition.{
+      status = FLAWED_MTRANS_RESTORE_DANGEROUS,
+      set_auto_active = true,
+      next_auto_active = false,
+      emit_exit_attachment = true,
+    };
+  }
+  return FlawedModeTransition.{status = FLAWED_MTRANS_OK};
+}
+
+// Two-phase claim() / deliver() racer lock (PermissionContext.ts:75-94).
+flawed_resolve_claim :: (r: [] FlawedResolveOnce, racer_id: u8) -> bool #effects(reads, writes, traps) {
+  if r[0].claimed { return false; }
+  r[0].claimed = true;
+  r[0].winning_racer = racer_id;
+  return true;
+}
+
+flawed_resolve_deliver :: (r: [] FlawedResolveOnce, behavior: u8) -> bool #effects(reads, writes, traps) {
+  if r[0].delivered { return false; }
+  r[0].delivered = true;
+  r[0].claimed = true;
+  r[0].delivered_behavior = behavior;
+  return true;
+}
+
+flawed_resolve_is_claimed :: (r: [] const FlawedResolveOnce) -> bool #effects(reads, traps) {
+  return r[0].claimed;
+}
+
+#test "permissions: mode projections, parent floor, Shift+Tab carousel, and 8 rule sources" {
+  #assert flawed_to_external_mode(FLAWED_PMODE_AUTO) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_to_external_mode(FLAWED_PMODE_BUBBLE) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_to_external_mode(FLAWED_PMODE_PLAN) == FLAWED_PMODE_PLAN;
+
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_DEFAULT, false);
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_ACCEPT_EDITS, false);
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_PLAN, false);
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_DONT_ASK, false);
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_BYPASS, false);
+  #assert !flawed_is_user_addressable_mode(FLAWED_PMODE_BUBBLE, true);
+  #assert !flawed_is_user_addressable_mode(FLAWED_PMODE_AUTO, false);
+  #assert flawed_is_user_addressable_mode(FLAWED_PMODE_AUTO, true);
+
+  // Parent-mode floor
+  #assert flawed_parent_mode_floor(FLAWED_PMODE_BYPASS, FLAWED_PMODE_PLAN, false) == FLAWED_PMODE_BYPASS;
+  #assert flawed_parent_mode_floor(FLAWED_PMODE_ACCEPT_EDITS, FLAWED_PMODE_DEFAULT, false) == FLAWED_PMODE_ACCEPT_EDITS;
+  #assert flawed_parent_mode_floor(FLAWED_PMODE_AUTO, FLAWED_PMODE_DEFAULT, true) == FLAWED_PMODE_AUTO;
+  #assert flawed_parent_mode_floor(FLAWED_PMODE_AUTO, FLAWED_PMODE_PLAN, false) == FLAWED_PMODE_PLAN;
+  #assert flawed_parent_mode_floor(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_PLAN, true) == FLAWED_PMODE_PLAN;
+
+  // Shift+Tab carousel
+  #assert flawed_next_permission_mode(FLAWED_PMODE_DEFAULT, true, true, true) == FLAWED_PMODE_ACCEPT_EDITS;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_ACCEPT_EDITS, true, true, true) == FLAWED_PMODE_PLAN;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_PLAN, true, true, true) == FLAWED_PMODE_BYPASS;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_PLAN, false, true, true) == FLAWED_PMODE_AUTO;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_PLAN, false, true, false) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_PLAN, false, false, true) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_BYPASS, true, true, true) == FLAWED_PMODE_AUTO;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_BYPASS, true, false, true) == FLAWED_PMODE_DEFAULT;
+  #assert flawed_next_permission_mode(FLAWED_PMODE_AUTO, true, true, true) == FLAWED_PMODE_DEFAULT;
+
+  // 8 rule sources + managed lockdown + untrusted project opt-in
+  #assert flawed_psrc_is_editable(FLAWED_PSRC_USER) && flawed_psrc_is_editable(FLAWED_PSRC_PROJECT) && flawed_psrc_is_editable(FLAWED_PSRC_LOCAL);
+  #assert !flawed_psrc_is_editable(FLAWED_PSRC_POLICY) && !flawed_psrc_is_editable(FLAWED_PSRC_SESSION);
+  #assert flawed_psrc_is_shared(FLAWED_PSRC_PROJECT) && flawed_psrc_is_shared(FLAWED_PSRC_POLICY) && flawed_psrc_is_shared(FLAWED_PSRC_COMMAND);
+  #assert !flawed_psrc_is_shared(FLAWED_PSRC_USER) && !flawed_psrc_is_shared(FLAWED_PSRC_LOCAL);
+  #assert flawed_psrc_allowed(FLAWED_PSRC_POLICY, true) && !flawed_psrc_allowed(FLAWED_PSRC_USER, true);
+  #assert flawed_psrc_allowed(FLAWED_PSRC_USER, false) && flawed_psrc_allowed(FLAWED_PSRC_SESSION, false);
+  #assert !flawed_psrc_allowed(0, false) && !flawed_psrc_allowed(9, false);
+  #assert !flawed_auto_mode_opt_in_trusted(FLAWED_PSRC_PROJECT);
+  #assert flawed_auto_mode_opt_in_trusted(FLAWED_PSRC_USER) && flawed_auto_mode_opt_in_trusted(FLAWED_PSRC_POLICY);
+  #assert !flawed_auto_mode_opt_in_trusted(0) && !flawed_auto_mode_opt_in_trusted(FLAWED_PSRC_CLI_ARG);
+}
+
+#test "permissions: inner bypass-immune wall (1a..1g) and hook parity mirror" {
+  // 1a blanket deny beats bypassPermissions
+  d := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, has_blanket_deny = true, has_blanket_allow = true});
+  #assert d.behavior == FLAWED_PBEH_DENY && d.reason == FLAWED_PREASON_BLANKET_DENY;
+  // 1b blanket ask beats bypassPermissions EXCEPT sandboxed auto-allow Bash
+  a1 := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, has_blanket_ask = true});
+  #assert a1.behavior == FLAWED_PBEH_ASK && a1.reason == FLAWED_PREASON_BLANKET_ASK;
+  a2 := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, has_blanket_ask = true, is_sandboxed_auto_bash = true});
+  #assert a2.behavior == FLAWED_PBEH_ALLOW && a2.reason == FLAWED_PREASON_BYPASS_MODE;
+  // 1d tool deny, 1e user interaction, 1f content ask, 1g safetyCheck all beat bypassPermissions
+  td := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, tool_behavior = FLAWED_PBEH_DENY});
+  #assert td.behavior == FLAWED_PBEH_DENY && td.reason == FLAWED_PREASON_TOOL_DENY;
+  ui_in := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, requires_user_interaction = true});
+  #assert ui_in.behavior == FLAWED_PBEH_ASK && ui_in.reason == FLAWED_PREASON_USER_INTERACTION;
+  ca := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, has_content_ask = true});
+  #assert ca.behavior == FLAWED_PBEH_ASK && ca.reason == FLAWED_PREASON_CONTENT_ASK;
+  sc := flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, tool_behavior = FLAWED_PBEH_ASK, is_safety_check = true, classifier_approvable = true});
+  #assert sc.behavior == FLAWED_PBEH_ASK && sc.reason == FLAWED_PREASON_SAFETY_CHECK && sc.classifier_approvable;
+  // Non-safetyCheck tool ask falls through to bypassPermissions
+  #assert flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_BYPASS, tool_behavior = FLAWED_PBEH_ASK}).behavior == FLAWED_PBEH_ALLOW;
+  // Hook mirror skips 1e and returns PASSTHROUGH after 1g
+  hm := flawed_eval_permission_inner(FlawedInnerInput.{hook_mirror = true, requires_user_interaction = true, has_blanket_allow = true});
+  #assert hm.behavior == FLAWED_PBEH_PASSTHROUGH && hm.reason == FLAWED_PREASON_NONE;
+  // 2a plan + bypass_available, 2b blanket/tool allow, 3 default ask
+  #assert flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_PLAN, bypass_available = true}).reason == FLAWED_PREASON_BYPASS_MODE;
+  #assert flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_PLAN, bypass_available = false}).reason == FLAWED_PREASON_DEFAULT_ASK;
+  #assert flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT, has_blanket_allow = true}).reason == FLAWED_PREASON_BLANKET_ALLOW;
+  #assert flawed_eval_permission_inner(FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT, tool_behavior = FLAWED_PBEH_ALLOW}).reason == FLAWED_PREASON_BLANKET_ALLOW;
+}
+
+#test "permissions: outer wrapper (dontAsk, auto, classifier, iron gate, denial breaker, headless) & transitions & claim()" {
+  dt: [1] FlawedDenialTracker;
+  // Inner allow in auto resets consecutive denials; no-op when already 0
+  #assert !flawed_denial_record_success(dt[..]);
+  dt[0].consecutive = 2;
+  #assert flawed_denial_record_success(dt[..]) && dt[0].consecutive == 0;
+  dt[0].consecutive = 2;
+  #assert flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO, has_blanket_allow = true}}, dt[..]).behavior == FLAWED_PBEH_ALLOW;
+  #assert dt[0].consecutive == 0;
+  // Inner deny passes straight through even in dontAsk/auto
+  id_v := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DONT_ASK, has_blanket_deny = true}}, dt[..]);
+  #assert id_v.behavior == FLAWED_PBEH_DENY && id_v.reason == FLAWED_PREASON_BLANKET_DENY;
+  // dontAsk converts ASK -> DENY
+  da_v := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DONT_ASK}}, dt[..]);
+  #assert da_v.behavior == FLAWED_PBEH_DENY && da_v.reason == FLAWED_PREASON_DONT_ASK;
+
+  // Auto mode: non-approvable safetyCheck, user interaction, PowerShell guard
+  sc_no := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO, tool_behavior = FLAWED_PBEH_ASK, is_safety_check = true, classifier_approvable = false}};
+  #assert flawed_eval_permission_outer(sc_no, dt[..]).behavior == FLAWED_PBEH_ASK;
+  sc_no.avoid_prompts = true;
+  sc_no_v := flawed_eval_permission_outer(sc_no, dt[..]);
+  #assert sc_no_v.behavior == FLAWED_PBEH_DENY && sc_no_v.reason == FLAWED_PREASON_AUTO_DENY;
+
+  ui := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO, requires_user_interaction = true}};
+  #assert flawed_eval_permission_outer(ui, dt[..]).behavior == FLAWED_PBEH_ASK;
+  ui.avoid_prompts = true;
+  ui_v := flawed_eval_permission_outer(ui, dt[..]);
+  #assert ui_v.behavior == FLAWED_PBEH_DENY && ui_v.reason == FLAWED_PREASON_AUTO_DENY;
+
+  ps := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, is_powershell = true, powershell_auto_enabled = false};
+  #assert flawed_eval_permission_outer(ps, dt[..]).behavior == FLAWED_PBEH_ASK;
+  ps.avoid_prompts = true;
+  ps_v := flawed_eval_permission_outer(ps, dt[..]);
+  #assert ps_v.behavior == FLAWED_PBEH_DENY && ps_v.reason == FLAWED_PREASON_AUTO_DENY;
+
+  // acceptEdits fast-path inside auto (excludes Agent/REPL and safetyCheck!)
+  ae := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, is_accept_edits_eligible = true};
+  dt[0].consecutive = 1;
+  ae_v := flawed_eval_permission_outer(ae, dt[..]);
+  #assert ae_v.behavior == FLAWED_PBEH_ALLOW && ae_v.reason == FLAWED_PREASON_AUTO_ALLOW && dt[0].consecutive == 0;
+  ae_ag := ae; ae_ag.is_agent_or_repl = true; ae_ag.classifier_verdict = FLAWED_CLF_ALLOW;
+  ae_ag_v := flawed_eval_permission_outer(ae_ag, dt[..]);
+  #assert ae_ag_v.behavior == FLAWED_PBEH_ALLOW && ae_ag_v.reason == FLAWED_PREASON_AUTO_ALLOW;
+  ae_sc := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO, tool_behavior = FLAWED_PBEH_ASK, is_safety_check = true, classifier_approvable = true}, is_accept_edits_eligible = true, is_auto_allowlisted = true, classifier_verdict = FLAWED_CLF_BLOCK};
+  ae_sc_v := flawed_eval_permission_outer(ae_sc, dt[..]);
+  #assert ae_sc_v.behavior == FLAWED_PBEH_DENY && ae_sc_v.reason == FLAWED_PREASON_AUTO_DENY;
+
+  // Allowlist + plan+auto_active (and plan without auto_active stays DEFAULT_ASK!)
+  dt[0] = FlawedDenialTracker.{consecutive = 1};
+  al := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_PLAN}, auto_active = true, is_auto_allowlisted = true};
+  al_v := flawed_eval_permission_outer(al, dt[..]);
+  #assert al_v.behavior == FLAWED_PBEH_ALLOW && al_v.reason == FLAWED_PREASON_AUTO_ALLOW && dt[0].consecutive == 0;
+  al_no := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_PLAN}, auto_active = false, is_auto_allowlisted = true};
+  #assert flawed_eval_permission_outer(al_no, dt[..]).reason == FLAWED_PREASON_DEFAULT_ASK;
+  al_def := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT}, auto_active = true, is_auto_allowlisted = true};
+  #assert flawed_eval_permission_outer(al_def, dt[..]).reason == FLAWED_PREASON_DEFAULT_ASK;
+
+  // Classifier allow resets consecutive; transcriptTooLong bypasses iron gate; unavailable honors iron gate WITHOUT counting denials
+  dt[0] = FlawedDenialTracker.{consecutive = 2};
+  c_ok := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_ALLOW, is_powershell = true, powershell_auto_enabled = true}, dt[..]);
+  #assert c_ok.behavior == FLAWED_PBEH_ALLOW && c_ok.reason == FLAWED_PREASON_AUTO_ALLOW && dt[0].consecutive == 0;
+  c_tl := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_TOO_LONG, iron_gate_closed = true}, dt[..]);
+  #assert c_tl.behavior == FLAWED_PBEH_ASK && c_tl.reason == FLAWED_PREASON_AUTO_FALLBACK_ASK;
+  c_tla := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_TOO_LONG, avoid_prompts = true}, dt[..]);
+  #assert c_tla.behavior == FLAWED_PBEH_DENY && c_tla.reason == FLAWED_PREASON_ABORT;
+  c_un1 := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_UNAVAILABLE, iron_gate_closed = true}, dt[..]);
+  #assert c_un1.behavior == FLAWED_PBEH_DENY && c_un1.reason == FLAWED_PREASON_AUTO_DENY && dt[0].total == 0;
+  c_un2 := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_UNAVAILABLE, iron_gate_closed = false}, dt[..]);
+  #assert c_un2.behavior == FLAWED_PBEH_ASK && c_un2.reason == FLAWED_PREASON_AUTO_FALLBACK_ASK;
+
+  // Denial circuit breaker: 3 consecutive -> interactive fallback ASK (keeps total < 20), headless -> ABORT, total >= 20 resets counts
+  dt[0] = FlawedDenialTracker.{};
+  blk := FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_AUTO}, classifier_verdict = FLAWED_CLF_BLOCK};
+  #assert flawed_eval_permission_outer(blk, dt[..]).reason == FLAWED_PREASON_AUTO_DENY;
+  #assert flawed_eval_permission_outer(blk, dt[..]).reason == FLAWED_PREASON_AUTO_DENY;
+  b3 := flawed_eval_permission_outer(blk, dt[..]);
+  #assert b3.behavior == FLAWED_PBEH_ASK && b3.reason == FLAWED_PREASON_AUTO_FALLBACK_ASK && dt[0].total == 3;
+  blk.avoid_prompts = true;
+  b4 := flawed_eval_permission_outer(blk, dt[..]);
+  #assert b4.behavior == FLAWED_PBEH_DENY && b4.reason == FLAWED_PREASON_ABORT;
+  dt[0] = FlawedDenialTracker.{consecutive = 0, total = 19};
+  blk.avoid_prompts = false;
+  b20 := flawed_eval_permission_outer(blk, dt[..]);
+  #assert b20.behavior == FLAWED_PBEH_ASK && b20.reason == FLAWED_PREASON_AUTO_FALLBACK_ASK && dt[0].total == 0 && dt[0].consecutive == 0;
+
+  // Headless avoid_prompts (outside auto)
+  h_ok := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT}, avoid_prompts = true, headless_hook_allows = true}, dt[..]);
+  #assert h_ok.behavior == FLAWED_PBEH_ALLOW && h_ok.reason == FLAWED_PREASON_AUTO_ALLOW;
+  h_no := flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT}, avoid_prompts = true, headless_hook_allows = false}, dt[..]);
+  #assert h_no.behavior == FLAWED_PBEH_DENY && h_no.reason == FLAWED_PREASON_ASYNC_DENY;
+  #assert flawed_eval_permission_outer(FlawedOuterInput.{inner = FlawedInnerInput.{mode = FLAWED_PMODE_DEFAULT}}, dt[..]).reason == FLAWED_PREASON_DEFAULT_ASK;
+
+  // Mode transitions: strip on enter, gate refused, restore + exit attachment on leave (including plan+auto_active)
+  t_ref := flawed_plan_mode_transition(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_AUTO, false, false);
+  #assert t_ref.status == FLAWED_MTRANS_GATE_REFUSED;
+  t_ent := flawed_plan_mode_transition(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_AUTO, false, true);
+  #assert t_ent.status == FLAWED_MTRANS_STRIP_DANGEROUS && t_ent.set_auto_active && t_ent.next_auto_active && !t_ent.emit_exit_attachment;
+  t_ext := flawed_plan_mode_transition(FLAWED_PMODE_PLAN, FLAWED_PMODE_DEFAULT, true, true);
+  #assert t_ext.status == FLAWED_MTRANS_RESTORE_DANGEROUS && t_ext.set_auto_active && !t_ext.next_auto_active && t_ext.emit_exit_attachment;
+  #assert flawed_plan_mode_transition(FLAWED_PMODE_AUTO, FLAWED_PMODE_AUTO, true, true).status == FLAWED_MTRANS_OK;
+  #assert flawed_plan_mode_transition(FLAWED_PMODE_PLAN, FLAWED_PMODE_DEFAULT, false, true).status == FLAWED_MTRANS_OK;
+
+  // Two-phase claim() / deliver() racer lock
+  ro: [1] FlawedResolveOnce;
+  #assert !flawed_resolve_is_claimed(ro[..]);
+  #assert flawed_resolve_claim(ro[..], 2) && flawed_resolve_is_claimed(ro[..]) && ro[0].winning_racer == 2;
+  #assert !flawed_resolve_claim(ro[..], 3);
+  #assert flawed_resolve_deliver(ro[..], FLAWED_PBEH_ALLOW) && ro[0].delivered_behavior == FLAWED_PBEH_ALLOW;
+  #assert !flawed_resolve_deliver(ro[..], FLAWED_PBEH_DENY) && ro[0].delivered_behavior == FLAWED_PBEH_ALLOW;
+  ro2: [1] FlawedResolveOnce;
+  #assert flawed_resolve_deliver(ro2[..], FLAWED_PBEH_DENY) && flawed_resolve_is_claimed(ro2[..]);
+}
