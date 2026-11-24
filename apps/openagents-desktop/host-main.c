@@ -167,11 +167,12 @@ typedef struct {
   char inky_worker_bin[OA_PATH];
   char claude_worker_bin[OA_PATH];
   char agy_worker_bin[OA_PATH];
+  char flawed_worker_bin[OA_PATH];   // the Flawed agent's worker ("" when this build has none)
   char daemon_bin[OA_PATH];
   char agy_bin[OA_PATH];
   char agy_model[128];
   int agy_mode;
-  int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude, 3 Inky
+  int worker_is_agy;   // the running main worker: 0 Microcoder, 1 Antigravity, 2 Claude, 3 Inky, 4 Flawed
   // Connect Google Antigravity from the onboarding where Inkling cannot run: agyworker --connect,
   // its lines read from a log in its own temporary folder (agy_connect_start / pump_agy_connect).
   OaSubproc agy_conn_proc;
@@ -1112,6 +1113,49 @@ static void pump_local(DesktopApp *a) {
   }
 }
 
+// Whether the shown chat runs on the Flawed agent, and whether that turn needs the local model
+// server: Settings > Flawed's backend says Local, or says Automatic with an Inkling model picked.
+static int flawed_wanted(DesktopApp *a) {
+#ifdef OA_FLAWED_WORKER
+  return a && a->page && a->flawed_worker_bin[0] != '\0' && !a->test_mode && !a->custom_worker && cd_model_flawed(a->page) != 0;
+#else
+  (void)a; return 0;
+#endif
+}
+static int flawed_needs_local(DesktopApp *a) {
+  if (!flawed_wanted(a)) return 0;
+  int v[32] = {0};
+  int backend = cd_flawed_prefs_get(a->page, v, 32) >= 3 ? v[2] : 0;
+  return backend == 1 || (backend == 0 && cd_model_flawed_local(a->page) != 0);
+}
+// Settings > Flawed for flawedworker, as FLAWED_* lines (the Mac's FlawedSettings.workerEnv). The
+// chat's model rides each task; these are the worker's defaults and its guards.
+static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
+  static const char *const BACKEND[] = {"auto", "local", "vertex", "gemini", "openrouter"};
+  static const char *const MODEL[] = {"inkling-2-mini", "gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"};
+  static const char *const EFFORT[] = {"low", "medium", "high", "xhigh", "max"};
+  static const char *const THINK[] = {"adaptive", "extended", "off"};
+  static const char *const PERMIT[] = {"default", "accept_edits", "plan", "auto", "dont_ask"};
+  static const char *const SANDBOX[] = {"off", "auto", "enforced"};
+  static const char *const CACHE[] = {"global", "org", "off"};
+  static const char *const STYLE[] = {"default", "concise", "explanatory", "learning"};
+  static const char *const HOOKS[] = {"all", "managed", "off"};
+  int v[32] = {0};
+  if (cd_flawed_prefs_get(a->page, v, 32) < 20) return 0;
+#define FL_PICK(T, i) T[(v[i] >= 0 && v[i] < (int)(sizeof T / sizeof T[0])) ? v[i] : 0]
+  int n = snprintf(out, cap,
+    "FLAWED_MODEL=%s\nFLAWED_BACKEND=%s\nFLAWED_THINKING_MODE=%s\nFLAWED_EFFORT=%s\nFLAWED_THINKING_DISPLAY=%s\n"
+    "FLAWED_PERMISSION_MODE=%s\nFLAWED_BYPASS_PERMISSIONS=%d\nFLAWED_SANDBOX_MODE=%s\nFLAWED_GIT_GUARD=%d\n"
+    "FLAWED_PROMPT_CACHE=%s\nFLAWED_AUTO_COMPACT=%d\nFLAWED_AUTO_MEMORY=%d\nFLAWED_BARE_MODE=%d\n"
+    "FLAWED_OUTPUT_STYLE=%s\nFLAWED_HOOKS_MODE=%s\nFLAWED_MCP_DEFER=%d\nFLAWED_FAST_MODE=%d\nFLAWED_EXTENDED_CTX=%d\nFLAWED_REMOTE_BRIDGE=%d\n",
+    FL_PICK(MODEL, 1), FL_PICK(BACKEND, 2), FL_PICK(THINK, 3), FL_PICK(EFFORT, 4), v[5] == 1 ? "omitted" : "summarized",
+    FL_PICK(PERMIT, 6), v[7] ? 1 : 0, FL_PICK(SANDBOX, 8), v[9] ? 1 : 0,
+    FL_PICK(CACHE, 10), v[11] ? 1 : 0, v[12] ? 1 : 0, v[13] ? 1 : 0,
+    FL_PICK(STYLE, 14), FL_PICK(HOOKS, 15), v[16] ? 1 : 0, v[17] ? 1 : 0, v[18] ? 1 : 0, v[19] ? 1 : 0);
+#undef FL_PICK
+  return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
+}
+
 // The worker's extra environment: OpenRouter key, Antigravity CLI/model, and Psionic Inkling URL/model.
 static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
   char key[1024] = {0};
@@ -1129,7 +1173,9 @@ static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
     if (oa_core_key_read(cs("agy-profile"), vu(prof, (int)sizeof prof)) > 0 && prof[0] && pos < cap)
       pos += (size_t)snprintf(out + pos, cap - pos, "CODER_AGY_PROFILE=%s\n", prof);
   }
-  if (!is_agy && a && a->page && (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags))) {
+  int is_flawed = !is_agy && flawed_wanted(a);
+  if (is_flawed && pos < cap) pos += flawed_env(a, out + pos, cap - pos);
+  if (!is_agy && a && a->page && (is_flawed || cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags))) {
     int port = a->local.port > 0 ? a->local.port : 18794;
     if (pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "PSIONIC_BASE_URL=http://127.0.0.1:%d\n", port);
     if (pos < cap) pos += (size_t)snprintf(out + pos, cap - pos, "PSIONIC_MODEL=inkling-2-mini\n");
@@ -1137,14 +1183,16 @@ static void worker_extra(DesktopApp *a, int is_agy, char *out, size_t cap) {
 }
 
 static int ensure_worker(DesktopApp *a) {
-  int want_agy = cd_model_agy(a->page) != 0 && a->agy_worker_bin[0] != '\0';
+  // a chat on a Flawed model runs on flawedworker (kind 4), ahead of the others, as on the Mac
+  int want_flawed = flawed_wanted(a);
+  int want_agy = !want_flawed && cd_model_agy(a->page) != 0 && a->agy_worker_bin[0] != '\0';
   // a chat on a Claude model runs on the Claude worker (kind 2), as its sub-agents do
-  int want_claude = !want_agy && cd_model_claude(a->page) != 0 && a->claude_worker_bin[0] != '\0';
-  int want_inkling = !want_agy && !want_claude && !a->test_mode && !a->custom_worker &&
+  int want_claude = !want_flawed && !want_agy && cd_model_claude(a->page) != 0 && a->claude_worker_bin[0] != '\0';
+  int want_inkling = !want_flawed && !want_agy && !want_claude && !a->test_mode && !a->custom_worker &&
                      (cd_model_inkling(a->page) != 0 || !oa_core_flags_any_extra_model(a->flags));
   int use_inky = want_inkling && a->inky_worker_bin[0] != '\0';
-  int want_kind = want_agy ? 1 : want_claude ? 2 : use_inky ? 3 : 0;
-  if (want_inkling) {
+  int want_kind = want_flawed ? 4 : want_agy ? 1 : want_claude ? 2 : use_inky ? 3 : 0;
+  if (want_inkling || flawed_needs_local(a)) {
     char srv_err[512] = {0};
     int need_load = (oa_http_probe_health(a->local.port) != 1);
     if (need_load) cd_turn_loading_model(a->page, 1);
@@ -1163,14 +1211,14 @@ static int ensure_worker(DesktopApp *a) {
       return 1;
     }
   }
-  const char *bin = want_agy ? a->agy_worker_bin : want_claude ? a->claude_worker_bin : use_inky ? a->inky_worker_bin : a->worker_bin;
+  const char *bin = want_flawed ? a->flawed_worker_bin : want_agy ? a->agy_worker_bin : want_claude ? a->claude_worker_bin : use_inky ? a->inky_worker_bin : a->worker_bin;
   if (!bin[0]) {
     cd_failed(a->page, want_agy ? "agyworker binary not found" : "local agent worker binary not found");
     return 0;
   }
   maybe_prepare_worktree(a);
   char err[512] = {0};
-  char extra[2200];
+  char extra[3600];
   worker_extra(a, want_agy, extra, sizeof extra);
   int started = oa_core_worker_start(vc(a), cs(bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
   memset(extra, 0, sizeof extra);
@@ -2302,6 +2350,11 @@ static void handle_action(DesktopApp *a, int act) {
     }
     case 20: ask_clear_foreman(a); break;
     case 13: if (cd_settings_page(a->page) < 0) cd_focus(a->page, 1); else refresh_settings_info(a); break;
+    // Settings > Flawed changed: flawedworker reads its settings when it starts, so an idle one
+    // stops here and the next turn starts it with the new ones
+    case 190: case 197:
+      if (a->worker_is_agy == 4 && oa_core_worker_alive(vc(a)) && !cd_running(a->page)) oa_core_worker_stop(vc(a), 0);
+      break;
     case 14: cd_zoom(a->page, 1); break;
     case 15: cd_zoom(a->page, -1); break;
     case 16: ask_key(a, OA_DIALOG_CLAUDE); break;
@@ -3100,6 +3153,54 @@ static int flow_write_file(const char *path, const char *text) {
   fclose(f);
   return ok;
 }
+// --flawed-test: one real turn on the Flawed agent with the local Inkling 2 Mini, offscreen, through
+// the app's own path (the model pick, ensure_worker, the model server, flawedworker). It uses the
+// machine's installed weights and GPU, so it is a check to run by hand and not part of --flow-test.
+static int run_flawed(DesktopApp *a) {
+  if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
+  if (!a->flawed_worker_bin[0]) return flow_fail("worker", "flawedworker is not beside the app");
+  a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
+  if (!a->page) return flow_fail("page", "cd_open_ex(offscreen) failed");
+  local_init(a);
+  local_sync(a);
+  set_folder(a, a->folder);
+  if (!a->local.manifest_valid) return flow_fail("weights", "no verified Inkling 2 Mini weights for the chosen variant");
+  if (!cd_pick_model(a->page, "flawed:inkling-2-mini") || !cd_model_flawed(a->page) || !cd_model_flawed_local(a->page))
+    return flow_fail("model", "the page did not pick Flawed with Inkling 2 Mini");
+  if (!flawed_wanted(a) || !flawed_needs_local(a)) return flow_fail("model", "the host does not route this chat to flawedworker and the local server");
+  flow_ok("model", "Flawed with Inkling 2 Mini picked");
+  if (!cd_set_text(a->page, "Reply with exactly the word PINEAPPLE and nothing else.") || !cd_submit(a->page)) return flow_fail("send", "the draft was not sent");
+  if (!flow_until_idle(a, 300000)) return flow_fail("send", "the turn did not end in 5 minutes");
+  if (a->worker_is_agy != 4 || !oa_core_worker_alive(vc(a))) return flow_fail("worker", "the turn did not run on flawedworker");
+  if (oa_http_probe_health(a->local.port) != 1) return flow_fail("server", "the local model server is not answering");
+  int n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  const char *reply = n > 0 ? strstr(a->save_buf, "PINEAPPLE and nothing else.") : NULL;
+  if (!reply || !strstr(reply + 27, "PINEAPPLE")) {
+    fprintf(stderr, "flawed-test: chat as kept:\n%.1500s\n", n > 0 ? a->save_buf : "");
+    return flow_fail("reply", "the chat does not hold the model's reply");
+  }
+  flow_ok("reply", "flawedworker answered from the local Inkling 2 Mini");
+  // A turn that needs a tool: the worker's request for permission reaches the page as a card.
+  if (!cd_set_text(a->page, "Use your shell tool to run `ls` in the working folder, then list the files.") || !cd_submit(a->page)) return flow_fail("tool", "the draft was not sent");
+  int asked = 0;
+  for (int t = 0; t < 12000 && !asked; t++) {
+    pump_host(a);
+    if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return flow_fail("tool", "a frame did not render");
+    if (cd_permit_pending(a->page) > 0 || cd_permit_open(a->page)) asked = 1;
+    else if (t > 50 && !cd_running(a->page)) break;
+    flow_sleep_ms(10);
+  }
+  if (!asked) return flow_fail("tool", "the model ended the turn without asking to run a tool");
+  char title[256] = {0};
+  cd_permit_title(a->page, title, (int)sizeof title);
+  flow_ok("tool", title[0] ? title : "a permission card is waiting");
+  oa_core_worker_stop(vc(a), 0);
+  cd_close(a->page);
+  a->page = NULL;
+  printf("openagents-desktop-%s flawed: ok\n", OA_PLATFORM);
+  return 0;
+}
+
 static int run_flow(DesktopApp *a, const char *shot_out) {
   a->test_mode = 1;
   char store[OA_PATH] = {0}, detail[OA_PATH + 128], list[65536];
@@ -3458,6 +3559,10 @@ static int oa_main(int argc, char **argv) {
   if (!file_exists(app.claude_worker_bin)) app.claude_worker_bin[0] = '\0';
   snprintf(app.agy_worker_bin, sizeof(app.agy_worker_bin), "%s/%s", app.exe_dir, OA_AGY_WORKER);
   if (!file_exists(app.agy_worker_bin)) app.agy_worker_bin[0] = '\0';
+#ifdef OA_FLAWED_WORKER
+  snprintf(app.flawed_worker_bin, sizeof(app.flawed_worker_bin), "%s/%s", app.exe_dir, OA_FLAWED_WORKER);
+  if (!file_exists(app.flawed_worker_bin)) app.flawed_worker_bin[0] = '\0';
+#endif
   snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s/%s", app.exe_dir, OA_DAEMON);
   if (!file_exists(app.daemon_bin)) {
     snprintf(app.daemon_bin, sizeof(app.daemon_bin), "%s/%s", app.exe_dir, OA_DAEMON_ALT);
@@ -3466,13 +3571,14 @@ static int oa_main(int argc, char **argv) {
 
   oa_working_dir(app.folder, sizeof(app.folder));
 
-  int smoke = 0, flow = 0, input = 0;
+  int smoke = 0, flow = 0, input = 0, flawed_test = 0;
   const char *shot = NULL;
   const char *update_file = NULL;
   const char *open_file_arg = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--smoke") == 0) smoke = 1;
     else if (strcmp(argv[i], "--flow-test") == 0) flow = 1;
+    else if (strcmp(argv[i], "--flawed-test") == 0) flawed_test = 1;
     else if (strcmp(argv[i], "--input-test") == 0) input = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
@@ -3504,6 +3610,11 @@ static int oa_main(int argc, char **argv) {
 #else
   (void)input;
 #endif
+  if (flawed_test) {
+    int rc = run_flawed(&app);
+    free(app.core); free(app.line_buf); free(app.save_buf);
+    return rc;
+  }
   if (flow) {
     int rc = run_flow(&app, shot);
     free(app.core); free(app.line_buf); free(app.save_buf);

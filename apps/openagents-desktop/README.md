@@ -465,6 +465,18 @@ switches to the marked variant.
 `linux/flow-test.sh` selects every variant on the real handlers, and `--smoke` checks each variant's
 manifest.
 
+### Flawed on Linux
+
+The Linux build bundles `flawedworker` beside `OpenAgents`. A chat on a Flawed model runs on it:
+with Inkling 2 Mini picked (or Settings > Flawed's backend set to Local) the app starts the local
+model server first, and passes Settings > Flawed to the worker as `FLAWED_*` variables. Changing
+those settings restarts an idle worker. The Gemini 4 Neon models need a Vertex AI, Gemini or
+OpenRouter sign-in in the environment the app starts from. Windows does not bundle it yet.
+
+`OpenAgents --flawed-test --resources DIR --cwd DIR` runs one real turn offscreen on the installed
+weights and GPU, then a second turn that must raise a permission card for a tool. Run it by hand;
+it is not part of `--flow-test`.
+
 ## Install in Applications
 
 To keep `/Applications/OpenAgents.app` at the newest `main`, run this once:
