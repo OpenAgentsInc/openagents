@@ -24,6 +24,8 @@
 #load "memory.coax";
 #load "permissions.coax";
 #load "perm_match.coax";
+#load "shell_sandbox.coax";
+#load "workspace_tools.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -246,4 +248,18 @@
   #assert flawed_plan_mode_transition(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_AUTO, false, true).status == FLAWED_MTRANS_STRIP_DANGEROUS;
   ro: [1] FlawedResolveOnce;
   #assert flawed_resolve_claim(ro[..], 1) && !flawed_resolve_claim(ro[..], 2) && flawed_resolve_deliver(ro[..], FLAWED_PBEH_ALLOW);
+}
+
+#test "flawed core (Ch 12): shell AST fail-closed gate, sandbox/bare-git policy, and workspace FileStateCache handshake compose" {
+  #assert flawed_classify_parse_result(FLAWED_PARSE_ABORTED, 10, 5) == FLAWED_AST_TOO_COMPLEX;
+  #assert !flawed_bash_precheck_safe("IFS=: read a") && flawed_bash_precheck_safe("git status");
+  #assert !flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, true, "TERM");
+  #assert !flawed_exit_code_is_error(FLAWED_SEM_SEARCH_DIFF_TEST, 1);
+  #assert flawed_should_use_sandbox(true, false, false, false, true, true);
+  #assert flawed_bare_git_action(true) == FLAWED_BAREGIT_DENY_WRITE && flawed_bare_git_action(false) == FLAWED_BAREGIT_POST_SCRUB;
+  #assert flawed_read_validate_input("/dev/zero", false, 1, 10) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert !flawed_read_can_dedup(false, true, false, false, 1, 10, 1, 10, 500, 500);
+  #assert flawed_edit_check_staleness(true, false, true, false, 500, 501, true, true) == FLAWED_STALE_OK;
+  #assert flawed_line_ending_for_write(true, true) == FLAWED_EOL_LF;
+  #assert flawed_grep_handle_timeout(true, 3) == FLAWED_GREP_OK;
 }

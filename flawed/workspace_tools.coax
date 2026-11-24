@@ -1,0 +1,206 @@
+// Flawed Layer 4 (Chapter 12) — Core Workspace Tools: FileReadTool, FileEditTool,
+// FileWriteTool, and GrepTool Invariants & FileStateCache TOCTOU Handshake.
+// Replaces cc/tools/{FileReadTool,FileEditTool,FileWriteTool,GrepTool}/ and
+// cc/utils/ripgrep.ts policy invariants.
+//   coax/bin/coax test flawed/workspace_tools.coax --library
+//   coax/bin/coax mutate flawed/workspace_tools.coax --root-only
+#module "flawed.workspace_tools";
+#authority;
+#load "shell_sandbox.coax";
+
+// FileReadTool / FileEditTool / GrepTool caps (FileReadTool/limits.ts, FileEditTool.ts, GrepTool.ts).
+FLAWED_READ_MAX_BYTES :: 262144;         // 256 KiB
+FLAWED_READ_DEFAULT_MAX_TOKENS :: 25000;
+FLAWED_EDIT_MAX_BYTES :: 1073741824;     // 1 GiB
+FLAWED_GREP_MAX_RESULT_CHARS :: 20000;
+FLAWED_GREP_MAX_COLUMNS :: 500;
+FLAWED_GREP_DEFAULT_HEAD_LIMIT :: 250;
+FLAWED_GREP_DEFAULT_TIMEOUT_MS :: 20000;
+FLAWED_GREP_WSL2_TIMEOUT_MS :: 60000;
+
+// FileReadTool zero-I/O validateInput verdicts.
+FLAWED_RVAL_OK :: 1;
+FLAWED_RVAL_EMPTY_PATH :: 2;
+FLAWED_RVAL_UNC_SKIP_STAT :: 3;
+FLAWED_RVAL_BLOCKED_DEVICE :: 4;
+FLAWED_RVAL_DENIED :: 5;
+FLAWED_RVAL_BAD_RANGE :: 6;
+
+// FileEditTool / FileWriteTool staleness verdicts.
+FLAWED_STALE_OK :: 1;
+FLAWED_STALE_NOT_FOUND :: 2;
+FLAWED_STALE_UNREAD :: 3;
+FLAWED_STALE_PARTIAL_VIEW :: 4;
+FLAWED_STALE_MODIFIED :: 5;
+
+// Line ending policy.
+FLAWED_EOL_LF :: 1;
+FLAWED_EOL_CRLF :: 2;
+
+// Grep timeout handling outcomes.
+FLAWED_GREP_OK :: 1;
+FLAWED_GREP_TIMEOUT_ERR :: 2;
+
+// Infinite/TTY blocked device paths (FileReadTool.ts:98-128).
+flawed_is_blocked_device_path :: (path: string) -> bool #effects(reads, traps) {
+  if path == "/dev/zero" || path == "/dev/random" || path == "/dev/urandom" ||
+     path == "/dev/full" || path == "/dev/tty" || path == "/dev/stdin" ||
+     path == "/dev/stdout" || path == "/dev/stderr" {
+    return true;
+  }
+  return flawed_pm_starts_at(path, 0, "/dev/fd/");
+}
+
+// Zero-I/O FileReadTool.validateInput() (FileReadTool.ts:418-495):
+// UNC paths short-circuit before any stat() to prevent Windows SMB/NTLM credential leaks.
+flawed_read_validate_input :: (path: string, is_denied: bool, offset: int, limit: int) -> u8 #effects(reads, traps) {
+  if path.count == 0 { return FLAWED_RVAL_EMPTY_PATH; }
+  if is_denied { return FLAWED_RVAL_DENIED; }
+  if path.count >= 2 && flawed_pm_is_sep(path[0]) && flawed_pm_is_sep(path[1]) {
+    return FLAWED_RVAL_UNC_SKIP_STAT;
+  }
+  if flawed_is_blocked_device_path(path) { return FLAWED_RVAL_BLOCKED_DEVICE; }
+  if offset < 0 || limit < 0 { return FLAWED_RVAL_BAD_RANGE; }
+  return FLAWED_RVAL_OK;
+}
+
+// Exact FILE_UNCHANGED_STUB dedup gate (FileReadTool.ts:536-573):
+// Requires killswitch off, non-partial cached entry, explicit offset (Edit/Write/sed clear offset!),
+// exact (offset, limit) match, and floored mtimeMs equality.
+flawed_read_can_dedup :: (
+  killswitch_on: bool,
+  has_entry: bool,
+  is_partial_view: bool,
+  has_offset: bool,
+  cached_offset: int,
+  cached_limit: int,
+  req_offset: int,
+  req_limit: int,
+  cached_mtime_ms: int,
+  disk_mtime_ms: int
+) -> bool #effects(traps) {
+  if killswitch_on || !has_entry || is_partial_view || !has_offset { return false; }
+  return cached_offset == req_offset && cached_limit == req_limit &&
+         cached_mtime_ms == disk_mtime_ms;
+}
+
+// FileReadTool two-tier byte/token budget check (FileReadTool/limits.ts:18-92).
+// Oversized reads fail fast with a ~100-byte error (PR #21841 truncation was reverted).
+flawed_read_within_budget :: (file_bytes: int, est_tokens: int, max_tokens: int) -> bool #effects(traps) {
+  eff_tokens := ifx max_tokens > 0 then max_tokens else FLAWED_READ_DEFAULT_MAX_TOKENS;
+  return file_bytes <= FLAWED_READ_MAX_BYTES && est_tokens <= eff_tokens;
+}
+
+// FileEditTool & FileWriteTool two-phase TOCTOU staleness guard (FileEditTool.ts:442-468, FileWriteTool.ts:286-295).
+// Write fast-paths new files; Edit requires file existence.
+// Windows mtime-drift content fallback engages ONLY when is_full_read_without_offset (offset/limit unset).
+flawed_edit_check_staleness :: (
+  file_exists: bool,
+  is_write_tool: bool,
+  has_read: bool,
+  is_partial_view: bool,
+  cached_mtime_ms: int,
+  disk_mtime_ms: int,
+  is_full_read_without_offset: bool,
+  content_matches: bool
+) -> u8 #effects(traps) {
+  if !file_exists {
+    if is_write_tool { return FLAWED_STALE_OK; }
+    return FLAWED_STALE_NOT_FOUND;
+  }
+  if !has_read { return FLAWED_STALE_UNREAD; }
+  if is_partial_view { return FLAWED_STALE_PARTIAL_VIEW; }
+  if disk_mtime_ms > cached_mtime_ms {
+    if is_full_read_without_offset && content_matches { return FLAWED_STALE_OK; }
+    return FLAWED_STALE_MODIFIED;
+  }
+  return FLAWED_STALE_OK;
+}
+
+// FileWriteTool ALWAYS writes LF (prevents \r corruption in Linux bash scripts);
+// FileEditTool preserves detected CRLF vs LF (FileWriteTool.ts:300-305).
+flawed_line_ending_for_write :: (is_write_tool: bool, detected_crlf: bool) -> u8 #effects(traps) {
+  if !is_write_tool && detected_crlf { return FLAWED_EOL_CRLF; }
+  return FLAWED_EOL_LF;
+}
+
+// GrepTool ripgrep timeout selection (utils/ripgrep.ts:98-182).
+flawed_grep_timeout_ms :: (is_wsl2: bool, env_override_s: int) -> int #effects(traps) {
+  if env_override_s > 0 { return env_override_s * 1000; }
+  if is_wsl2 { return FLAWED_GREP_WSL2_TIMEOUT_MS; }
+  return FLAWED_GREP_DEFAULT_TIMEOUT_MS;
+}
+
+// Non-aborting GrepTool timeout outcome (utils/ripgrep.ts:446-454):
+// Throws RipgrepTimeoutError ONLY when timed out with 0 lines; partial matches succeed!
+flawed_grep_handle_timeout :: (is_timeout: bool, matched_lines: int) -> u8 #effects(traps) {
+  if is_timeout && matched_lines == 0 { return FLAWED_GREP_TIMEOUT_ERR; }
+  return FLAWED_GREP_OK;
+}
+
+#test "workspace_tools: FileReadTool zero-I/O validation, device blocklist, budget, and FILE_UNCHANGED_STUB dedup" {
+  #assert flawed_read_validate_input("", false, 1, 100) == FLAWED_RVAL_EMPTY_PATH;
+  #assert flawed_read_validate_input("/repo/secret", true, 1, 100) == FLAWED_RVAL_DENIED;
+  #assert flawed_read_validate_input("//", false, 1, 100) == FLAWED_RVAL_UNC_SKIP_STAT;
+  #assert flawed_read_validate_input("\\\\server\\share\\a", false, 1, 100) == FLAWED_RVAL_UNC_SKIP_STAT;
+  #assert flawed_read_validate_input("/dev/zero", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/random", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/urandom", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/full", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/tty", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/stdin", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/stdout", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/stderr", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/dev/fd/3", false, 1, 100) == FLAWED_RVAL_BLOCKED_DEVICE;
+  #assert flawed_read_validate_input("/repo/a.coax", false, -1, 100) == FLAWED_RVAL_BAD_RANGE;
+  #assert flawed_read_validate_input("/repo/a.coax", false, 0, -1) == FLAWED_RVAL_BAD_RANGE;
+  #assert flawed_read_validate_input("a", false, 0, 0) == FLAWED_RVAL_OK;
+  #assert flawed_read_validate_input("a/b", false, 0, 0) == FLAWED_RVAL_OK;
+  #assert flawed_read_validate_input("/repo/a.coax", false, 0, 0) == FLAWED_RVAL_OK;
+
+  // Exact dedup gate
+  #assert flawed_read_can_dedup(false, true, false, true, 1, 100, 1, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(true, true, false, true, 1, 100, 1, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, false, false, true, 1, 100, 1, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, true, true, true, 1, 100, 1, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, true, false, false, 1, 100, 1, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, true, false, true, 1, 100, 2, 100, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, true, false, true, 1, 100, 1, 200, 5000, 5000);
+  #assert !flawed_read_can_dedup(false, true, false, true, 1, 100, 1, 100, 5000, 5001);
+
+  // Two-tier budget
+  #assert flawed_read_within_budget(FLAWED_READ_MAX_BYTES, FLAWED_READ_DEFAULT_MAX_TOKENS, 0);
+  #assert !flawed_read_within_budget(FLAWED_READ_MAX_BYTES + 1, 100, 0);
+  #assert !flawed_read_within_budget(100, FLAWED_READ_DEFAULT_MAX_TOKENS + 1, 0);
+  #assert flawed_read_within_budget(100, 30000, 30000);
+  #assert !flawed_read_within_budget(100, 30001, 30000);
+  #assert !flawed_read_within_budget(10, 2, 1);
+}
+
+#test "workspace_tools: FileEdit/FileWrite TOCTOU staleness, LF policy, and GrepTool timeout" {
+  // Missing file: Write fast-paths OK, Edit returns NOT_FOUND
+  #assert flawed_edit_check_staleness(false, true, false, false, 0, 0, false, false) == FLAWED_STALE_OK;
+  #assert flawed_edit_check_staleness(false, false, false, false, 0, 0, false, false) == FLAWED_STALE_NOT_FOUND;
+  // Unread & partial view
+  #assert flawed_edit_check_staleness(true, false, false, false, 100, 100, false, true) == FLAWED_STALE_UNREAD;
+  #assert flawed_edit_check_staleness(true, true, true, true, 100, 100, false, true) == FLAWED_STALE_PARTIAL_VIEW;
+  // Unchanged mtime -> OK; drifted mtime -> fallback ONLY when full read without offset AND content matches
+  #assert flawed_edit_check_staleness(true, false, true, false, 100, 100, false, false) == FLAWED_STALE_OK;
+  #assert flawed_edit_check_staleness(true, false, true, false, 100, 101, true, true) == FLAWED_STALE_OK;
+  #assert flawed_edit_check_staleness(true, false, true, false, 100, 101, false, true) == FLAWED_STALE_MODIFIED;
+  #assert flawed_edit_check_staleness(true, false, true, false, 100, 101, true, false) == FLAWED_STALE_MODIFIED;
+
+  // Forced LF for FileWriteTool vs preserved CRLF for FileEditTool
+  #assert flawed_line_ending_for_write(true, true) == FLAWED_EOL_LF;
+  #assert flawed_line_ending_for_write(false, true) == FLAWED_EOL_CRLF;
+  #assert flawed_line_ending_for_write(false, false) == FLAWED_EOL_LF;
+
+  // GrepTool timeout & partial-match survival
+  #assert flawed_grep_timeout_ms(false, 0) == FLAWED_GREP_DEFAULT_TIMEOUT_MS;
+  #assert flawed_grep_timeout_ms(true, 0) == FLAWED_GREP_WSL2_TIMEOUT_MS;
+  #assert flawed_grep_timeout_ms(false, 1) == 1000;
+  #assert flawed_grep_timeout_ms(true, 15) == 15000;
+  #assert flawed_grep_handle_timeout(true, 0) == FLAWED_GREP_TIMEOUT_ERR;
+  #assert flawed_grep_handle_timeout(true, 1) == FLAWED_GREP_OK;
+  #assert flawed_grep_handle_timeout(false, 0) == FLAWED_GREP_OK;
+}

@@ -1,0 +1,309 @@
+// Flawed Layer 4 (Chapter 12) — Shell Security Gate, Asymmetric Env Stripping,
+// Subprocess Semantics, 4-Path Background Promotion, and OS Sandbox / Bare-Git Defense.
+// Replaces cc/utils/bash/{parser,ast}.ts, cc/tools/BashTool/{bashPermissions,
+// commandSemantics,shouldUseSandbox,BashTool}.ts, cc/utils/{timeouts,ShellCommand}.ts,
+// and cc/utils/sandbox/sandbox-adapter.ts policy invariants.
+//   coax/bin/coax test flawed/shell_sandbox.coax --library
+//   coax/bin/coax mutate flawed/shell_sandbox.coax --root-only
+#module "flawed.shell_sandbox";
+#authority;
+#load "perm_match.coax";
+
+// Anti-DoS parser caps (utils/bash/parser.ts:19, bashParser.ts:29-32).
+FLAWED_BASH_MAX_CMD_LEN :: 10000;
+FLAWED_BASH_MAX_NODES :: 50000;
+
+// Timeout & background watchdog constants (utils/timeouts.ts, ShellCommand.ts, BashTool.tsx).
+FLAWED_BASH_DEFAULT_TIMEOUT_MS :: 120000;
+FLAWED_BASH_MAX_TIMEOUT_MS :: 600000;
+FLAWED_PROGRESS_THRESHOLD_MS :: 2000;
+FLAWED_KAIROS_BLOCKING_BUDGET_MS :: 15000;
+FLAWED_BG_SIZE_CAP_BYTES :: 5368709120; // 5 GiB (768 GB incident guard)
+
+// AST parse statuses & fail-closed security verdicts.
+FLAWED_PARSE_OK :: 1;
+FLAWED_PARSE_UNAVAILABLE :: 2;
+FLAWED_PARSE_ABORTED :: 3;
+
+FLAWED_AST_SIMPLE :: 1;
+FLAWED_AST_TOO_COMPLEX :: 2;
+FLAWED_AST_FALLBACK_LEGACY :: 3;
+
+// Env-var strip modes (bashPermissions.ts:524-776, HackerOne #3543050).
+FLAWED_ENVSTRIP_ALLOW :: 1;
+FLAWED_ENVSTRIP_DENY_ASK :: 2;
+FLAWED_ENVSTRIP_SANDBOX_EXCL :: 3;
+
+// Command semantic families for exit-code interpretation (commandSemantics.ts:31-89).
+FLAWED_SEM_NORMAL :: 1;
+FLAWED_SEM_SEARCH_DIFF_TEST :: 2; // grep, rg, find, diff, test, [
+
+// Background promotion outcomes (BashTool.tsx:826-1143).
+FLAWED_BG_STAY_FG :: 1;
+FLAWED_BG_EXPLICIT :: 2;
+FLAWED_BG_TIMEOUT_AUTO :: 3;
+FLAWED_BG_KAIROS_BUDGET :: 4;
+FLAWED_BG_CTRL_B :: 5;
+FLAWED_BG_KILL_SIZE_CAP :: 6;
+
+// Bare-git escape defense actions (#29316, sandbox-adapter.ts:257-280).
+FLAWED_BAREGIT_DENY_WRITE :: 1;
+FLAWED_BAREGIT_POST_SCRUB :: 2;
+
+// Fail-closed AST parse classification (utils/bash/ast.ts:444-459).
+// PARSE_ABORTED (or length/node limit hit) MUST map to TOO_COMPLEX, NEVER legacy fallback!
+flawed_classify_parse_result :: (status: u8, cmd_len: int, node_count: int) -> u8 #effects(traps) {
+  if status == FLAWED_PARSE_UNAVAILABLE { return FLAWED_AST_FALLBACK_LEGACY; }
+  if status == FLAWED_PARSE_ABORTED { return FLAWED_AST_TOO_COMPLEX; }
+  if cmd_len > FLAWED_BASH_MAX_CMD_LEN || node_count > FLAWED_BASH_MAX_NODES {
+    return FLAWED_AST_TOO_COMPLEX;
+  }
+  return FLAWED_AST_SIMPLE;
+}
+
+// Pre-AST tokenization differential guard (utils/bash/ast.ts:248-437):
+// Rejects \r, NUL, non-ASCII bytes (Unicode whitespace/homoglyphs), Zsh =cmd, ~[...],
+// and IFS=/PS4= poisoning at token boundaries.
+flawed_bash_precheck_safe :: (cmd: string) -> bool #effects(reads, traps) {
+  n := cmd.count;
+  if n == 0 || n > FLAWED_BASH_MAX_CMD_LEN { return false; }
+  at_word_start := true;
+  for i: 0..<n {
+    c := cmd[i];
+    // Reject CR, NUL, and non-ASCII (>= 128 catches Unicode whitespace & homoglyphs)
+    if c == 13 || c == 0 || c >= 128 { return false; }
+    // Zsh ~[...] expansion anywhere
+    if c == 126 && i + 1 < n && cmd[i + 1] == 91 { return false; }
+    if at_word_start {
+      // Zsh =cmd expansion
+      if c == 61 { return false; }
+      // IFS= or PS4= poisoning
+      if flawed_pm_starts_at(cmd, i, "IFS=") || flawed_pm_starts_at(cmd, i, "PS4=") {
+        return false;
+      }
+    }
+    at_word_start = c == 32 || c == 9 || c == 10 || c == 59 || c == 124 || c == 38;
+  }
+  return true;
+}
+
+// Check if env var name is a binary-hijack vector (bashPermissions.ts:708: LD_*, DYLD_*, PATH).
+flawed_is_binary_hijack_var :: (name: string) -> bool #effects(reads, traps) {
+  if name == "PATH" { return true; }
+  if name.count >= 3 && name[0] == 76 && name[1] == 68 && name[2] == 95 { return true; }
+  if name.count >= 5 && name[0] == 68 && name[1] == 89 && name[2] == 76 && name[3] == 68 && name[4] == 95 {
+    return true;
+  }
+  return false;
+}
+
+// Check if env var name is in SAFE_ENV_VARS for allow-rule stripping (bashPermissions.ts:524-565).
+flawed_is_safe_env_var :: (name: string) -> bool #effects(reads, traps) {
+  return name == "TERM" || name == "LANG" || name == "LC_ALL" ||
+         name == "NO_COLOR" || name == "CI" || name == "TZ";
+}
+
+// Asymmetric env-var stripping policy (HackerOne #3543050):
+// Never strips env vars AFTER a wrapper command (timeout/time/nice/nohup) because wrappers pass them to execvp!
+flawed_can_strip_env_var :: (mode: u8, after_wrapper: bool, name: string) -> bool #effects(reads, traps) {
+  if after_wrapper { return false; }
+  if mode == FLAWED_ENVSTRIP_ALLOW { return flawed_is_safe_env_var(name); }
+  if mode == FLAWED_ENVSTRIP_DENY_ASK { return true; }
+  if mode == FLAWED_ENVSTRIP_SANDBOX_EXCL { return !flawed_is_binary_hijack_var(name); }
+  return false;
+}
+
+// Timeout clamping (utils/timeouts.ts:1-39): max_ms is clamped >= default_ms.
+flawed_clamp_bash_timeout :: (req_ms: int, default_ms: int, max_ms: int) -> int #effects(traps) {
+  eff_max := ifx max_ms < default_ms then default_ms else max_ms; // mutant: equivalent // equal values return the same result
+  if req_ms <= 0 { return default_ms; }
+  if req_ms > eff_max { return eff_max; } // mutant: equivalent // equal values return the same result
+  return req_ms;
+}
+
+// Semantic exit-code interpretation (commandSemantics.ts:31-140):
+// grep/rg/find/diff/test/[ treat exit 1 as informational non-error; error only for >= 2 or < 0.
+flawed_exit_code_is_error :: (sem_kind: u8, exit_code: int) -> bool #effects(traps) {
+  if exit_code == 0 { return false; }
+  if sem_kind == FLAWED_SEM_SEARCH_DIFF_TEST && exit_code == 1 { return false; }
+  return true;
+}
+
+// Four-path background promotion + 5 GiB runaway file watchdog (BashTool.tsx:826-1143, ShellCommand.ts:239-366).
+flawed_eval_bg_promotion :: (
+  already_bg: bool,
+  output_bytes: int,
+  disable_bg_tasks: bool,
+  req_run_in_bg: bool,
+  timed_out: bool,
+  is_disallowed_auto_bg_cmd: bool, // e.g. sleep
+  kairos_active: bool,
+  is_main_thread: bool,
+  elapsed_ms: int,
+  user_ctrl_b: bool
+) -> u8 #effects(traps) {
+  if already_bg {
+    if output_bytes > FLAWED_BG_SIZE_CAP_BYTES { return FLAWED_BG_KILL_SIZE_CAP; }
+    return FLAWED_BG_STAY_FG;
+  }
+  if disable_bg_tasks { return FLAWED_BG_STAY_FG; }
+  if req_run_in_bg { return FLAWED_BG_EXPLICIT; }
+  if timed_out && !is_disallowed_auto_bg_cmd { return FLAWED_BG_TIMEOUT_AUTO; }
+  if kairos_active && is_main_thread && elapsed_ms >= FLAWED_KAIROS_BLOCKING_BUDGET_MS {
+    return FLAWED_BG_KAIROS_BUDGET;
+  }
+  if user_ctrl_b && elapsed_ms >= FLAWED_PROGRESS_THRESHOLD_MS {
+    return FLAWED_BG_CTRL_B;
+  }
+  return FLAWED_BG_STAY_FG;
+}
+
+// Per-command OS sandbox gate (shouldUseSandbox.ts:130-153):
+// excludedCommands is honored ONLY when no binary-hijack env var (LD_*/DYLD_*/PATH) is present.
+flawed_should_use_sandbox :: (
+  sandbox_enabled: bool,
+  dangerously_disable: bool,
+  allow_unsandboxed: bool,
+  cmd_empty: bool,
+  is_excluded: bool,
+  has_binary_hijack_env: bool
+) -> bool #effects(traps) {
+  if !sandbox_enabled || cmd_empty { return false; }
+  if dangerously_disable && allow_unsandboxed { return false; }
+  if is_excluded && !has_binary_hijack_env { return false; }
+  return true;
+}
+
+// Bare-git escape defense (#29316, sandbox-adapter.ts:257-280):
+// Existing HEAD/objects/refs/hooks/config -> denyWrite (ro-bind); missing -> post-command scrub.
+flawed_bare_git_action :: (exists_on_disk: bool) -> u8 #effects(traps) {
+  if exists_on_disk { return FLAWED_BAREGIT_DENY_WRITE; }
+  return FLAWED_BAREGIT_POST_SCRUB;
+}
+
+// Sandbox write allowlist gate (pathValidation.ts:233-245):
+// Applies strictly outside cwd so seeding '.' into allowOnly never bypasses acceptEdits inside cwd.
+flawed_sandbox_write_allowlist_applies :: (
+  is_in_working_dir: bool,
+  in_allow_only: bool,
+  in_deny_within_allow: bool
+) -> bool #effects(traps) {
+  return !is_in_working_dir && in_allow_only && !in_deny_within_allow;
+}
+
+// Windows PowerShell sandbox refusal (PowerShellTool.tsx:208-222).
+flawed_powershell_sandbox_refused :: (
+  sandbox_enabled: bool,
+  allow_unsandboxed: bool,
+  is_windows: bool
+) -> bool #effects(traps) {
+  return is_windows && sandbox_enabled && !allow_unsandboxed;
+}
+
+#test "shell_sandbox: AST fail-closed gate, prechecks, and HackerOne #3543050 env stripping" {
+  // PARSE_ABORTED fails closed to TOO_COMPLEX (never FALLBACK_LEGACY!)
+  #assert flawed_classify_parse_result(FLAWED_PARSE_UNAVAILABLE, 10, 5) == FLAWED_AST_FALLBACK_LEGACY;
+  #assert flawed_classify_parse_result(FLAWED_PARSE_ABORTED, 10, 5) == FLAWED_AST_TOO_COMPLEX;
+  #assert flawed_classify_parse_result(FLAWED_PARSE_OK, FLAWED_BASH_MAX_CMD_LEN, FLAWED_BASH_MAX_NODES) == FLAWED_AST_SIMPLE;
+  #assert flawed_classify_parse_result(FLAWED_PARSE_OK, FLAWED_BASH_MAX_CMD_LEN + 1, 10) == FLAWED_AST_TOO_COMPLEX;
+  #assert flawed_classify_parse_result(FLAWED_PARSE_OK, 10, FLAWED_BASH_MAX_NODES + 1) == FLAWED_AST_TOO_COMPLEX;
+
+  // Tokenization differential prechecks
+  #assert !flawed_bash_precheck_safe("");
+  #assert flawed_bash_precheck_safe("git status && echo ok");
+  #assert !flawed_bash_precheck_safe("echo hi\r");
+  #assert !flawed_bash_precheck_safe("=curl http://evil");
+  #assert !flawed_bash_precheck_safe("echo =curl");
+  #assert flawed_bash_precheck_safe("echo !=curl");
+  #assert !flawed_bash_precheck_safe("echo ok;=curl x");
+  #assert flawed_bash_precheck_safe("echo <=curl");
+  #assert !flawed_bash_precheck_safe("echo ok|=curl x");
+  #assert !flawed_bash_precheck_safe("echo ok&=curl x");
+  #assert !flawed_bash_precheck_safe("echo\t=curl");
+  #assert !flawed_bash_precheck_safe("echo\n=curl");
+  #assert !flawed_bash_precheck_safe("a~[");
+  #assert flawed_bash_precheck_safe("cat ~");
+  #assert flawed_bash_precheck_safe("echo [");
+  #assert flawed_bash_precheck_safe("cat ~/foo");
+  #assert !flawed_bash_precheck_safe("IFS=: read a");
+  #assert !flawed_bash_precheck_safe("PS4=+x bash -x");
+  #assert flawed_bash_precheck_safe("echo foo=bar");
+  // Non-ASCII byte (>= 128) & NUL rejection via local buffer
+  b_nonascii: [2] u8; b_nonascii[0] = 97; b_nonascii[1] = 128;
+  #assert !flawed_bash_precheck_safe(cast(string) b_nonascii[..]);
+  b_nul: [2] u8; b_nul[0] = 97; b_nul[1] = 0;
+  #assert !flawed_bash_precheck_safe(cast(string) b_nul[..]);
+  b_max: [FLAWED_BASH_MAX_CMD_LEN + 1] u8;
+  for i: 0..<(FLAWED_BASH_MAX_CMD_LEN + 1) { b_max[i] = 97; }
+  #assert flawed_bash_precheck_safe(cast(string) b_max[0..<FLAWED_BASH_MAX_CMD_LEN]);
+  #assert !flawed_bash_precheck_safe(cast(string) b_max[..]);
+
+  // Asymmetric env-var stripping (HackerOne #3543050)
+  #assert flawed_is_binary_hijack_var("PATH") && flawed_is_binary_hijack_var("LD_") && flawed_is_binary_hijack_var("DYLD_");
+  #assert !flawed_is_binary_hijack_var("LD") && !flawed_is_binary_hijack_var("DYLD") && !flawed_is_binary_hijack_var("FOO");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "TERM");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "LANG");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "LC_ALL");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "NO_COLOR");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "CI");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "TZ");
+  #assert !flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, false, "FOO");
+  #assert !flawed_can_strip_env_var(FLAWED_ENVSTRIP_ALLOW, true, "TERM");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_DENY_ASK, false, "LD_PRELOAD");
+  #assert !flawed_can_strip_env_var(FLAWED_ENVSTRIP_DENY_ASK, true, "LD_PRELOAD");
+  #assert flawed_can_strip_env_var(FLAWED_ENVSTRIP_SANDBOX_EXCL, false, "FOO");
+  #assert !flawed_can_strip_env_var(FLAWED_ENVSTRIP_SANDBOX_EXCL, false, "LD_PRELOAD");
+  #assert !flawed_can_strip_env_var(99, false, "TERM");
+}
+
+#test "shell_sandbox: timeouts, semantic exit codes, 4-path bg promotion, sandbox gating & bare-git defense" {
+  // Timeout clamping
+  #assert flawed_clamp_bash_timeout(0, 120000, 600000) == 120000;
+  #assert flawed_clamp_bash_timeout(1, 120000, 600000) == 1;
+  #assert flawed_clamp_bash_timeout(-5, 120000, 600000) == 120000;
+  #assert flawed_clamp_bash_timeout(50000, 120000, 600000) == 50000;
+  #assert flawed_clamp_bash_timeout(900000, 120000, 600000) == 600000;
+  #assert flawed_clamp_bash_timeout(200000, 120000, 60000) == 120000;
+
+  // Semantic exit codes
+  #assert !flawed_exit_code_is_error(FLAWED_SEM_NORMAL, 0);
+  #assert flawed_exit_code_is_error(FLAWED_SEM_NORMAL, 1);
+  #assert !flawed_exit_code_is_error(FLAWED_SEM_SEARCH_DIFF_TEST, 0);
+  #assert !flawed_exit_code_is_error(FLAWED_SEM_SEARCH_DIFF_TEST, 1);
+  #assert flawed_exit_code_is_error(FLAWED_SEM_SEARCH_DIFF_TEST, 2);
+
+  // 4-path background promotion + 5 GiB watchdog
+  #assert flawed_eval_bg_promotion(true, FLAWED_BG_SIZE_CAP_BYTES, false, false, false, false, false, true, 0, false) == FLAWED_BG_STAY_FG;
+  #assert flawed_eval_bg_promotion(true, FLAWED_BG_SIZE_CAP_BYTES + 1, false, false, false, false, false, true, 0, false) == FLAWED_BG_KILL_SIZE_CAP;
+  #assert flawed_eval_bg_promotion(false, 0, true, true, true, false, true, true, 20000, true) == FLAWED_BG_STAY_FG;
+  #assert flawed_eval_bg_promotion(false, 0, false, true, false, false, false, true, 0, false) == FLAWED_BG_EXPLICIT;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, true, false, false, true, 0, false) == FLAWED_BG_TIMEOUT_AUTO;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, true, true, false, true, 0, false) == FLAWED_BG_STAY_FG;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, false, false, true, true, FLAWED_KAIROS_BLOCKING_BUDGET_MS, false) == FLAWED_BG_KAIROS_BUDGET;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, false, false, true, true, FLAWED_KAIROS_BLOCKING_BUDGET_MS - 1, false) == FLAWED_BG_STAY_FG;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, false, false, true, false, FLAWED_KAIROS_BLOCKING_BUDGET_MS, false) == FLAWED_BG_STAY_FG;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, false, false, false, true, FLAWED_PROGRESS_THRESHOLD_MS, true) == FLAWED_BG_CTRL_B;
+  #assert flawed_eval_bg_promotion(false, 0, false, false, false, false, false, true, FLAWED_PROGRESS_THRESHOLD_MS - 1, true) == FLAWED_BG_STAY_FG;
+
+  // Per-command sandbox gate & bare-git defense & write allowlist & PowerShell Windows refusal
+  #assert !flawed_should_use_sandbox(false, false, false, false, false, false);
+  #assert !flawed_should_use_sandbox(true, false, false, true, false, false);
+  #assert !flawed_should_use_sandbox(true, true, true, false, false, false);
+  #assert flawed_should_use_sandbox(true, true, false, false, false, false);
+  #assert !flawed_should_use_sandbox(true, false, false, false, true, false);
+  #assert flawed_should_use_sandbox(true, false, false, false, true, true);
+  #assert flawed_should_use_sandbox(true, false, false, false, false, false);
+
+  #assert flawed_bare_git_action(true) == FLAWED_BAREGIT_DENY_WRITE;
+  #assert flawed_bare_git_action(false) == FLAWED_BAREGIT_POST_SCRUB;
+
+  #assert flawed_sandbox_write_allowlist_applies(false, true, false);
+  #assert !flawed_sandbox_write_allowlist_applies(true, true, false);
+  #assert !flawed_sandbox_write_allowlist_applies(false, false, false);
+  #assert !flawed_sandbox_write_allowlist_applies(false, true, true);
+
+  #assert flawed_powershell_sandbox_refused(true, false, true);
+  #assert !flawed_powershell_sandbox_refused(true, true, true);
+  #assert !flawed_powershell_sandbox_refused(false, false, true);
+  #assert !flawed_powershell_sandbox_refused(true, false, false);
+}
