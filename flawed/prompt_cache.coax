@@ -1,0 +1,616 @@
+// Flawed Layer 2 (Chapter 04) — Prompt Cache Boundaries, 5-Tier Cascade, Wire Splitter & Cache-Break Forensics.
+// Replaces cc/utils/systemPrompt.ts, cc/utils/api.ts (splitSysPromptPrefix, tool cache gates),
+// and cc/services/api/promptCacheBreakDetection.ts (2-phase 12-dim diffing + 5-tier attribution + FIFO tracker).
+//   coax/bin/coax test flawed/prompt_cache.coax --library
+//   coax/bin/coax mutate flawed/prompt_cache.coax --root-only
+#module "flawed.prompt_cache";
+#authority;
+#load "tool.coax";
+
+FLAWED_SYS_BLOCKS_MAX :: 16;
+FLAWED_WIRE_SYS_MAX :: 4;
+FLAWED_MAX_TRACKED_SOURCES :: 10;
+FLAWED_MIN_CACHE_MISS_TOKENS :: 2000;
+FLAWED_CACHE_TTL_5M_MS :: 300000;
+FLAWED_CACHE_TTL_1H_MS :: 3600000;
+
+// Effective system prompt tiers (utils/systemPrompt.ts:56-122).
+FLAWED_TIER_OVERRIDE :: 1;
+FLAWED_TIER_COORDINATOR :: 2;
+FLAWED_TIER_AGENT_PROACTIVE :: 3;
+FLAWED_TIER_AGENT_STANDARD :: 4;
+FLAWED_TIER_CUSTOM :: 5;
+FLAWED_TIER_DEFAULT :: 6;
+
+// Input system prompt block classes for wire prefix splitting.
+FLAWED_SBLK_BILLING :: 1;   // x-anthropic-billing-header*
+FLAWED_SBLK_CLI_PREFIX :: 2;// CLI_SYSPROMPT_PREFIXES
+FLAWED_SBLK_CONTENT :: 3;   // Static (before boundary) or dynamic (after boundary)
+FLAWED_SBLK_BOUNDARY :: 4;  // SYSTEM_PROMPT_DYNAMIC_BOUNDARY sentinel
+
+// Wire cache_control scopes.
+FLAWED_CACHE_SCOPE_NONE :: 0;
+FLAWED_CACHE_SCOPE_ORG :: 1;
+FLAWED_CACHE_SCOPE_GLOBAL :: 2;
+
+// Wire cache strategy outcomes from splitSysPromptPrefix.
+FLAWED_STRAT_TOOL_BASED :: 1;   // Branch 1: non-deferred MCP forces org tool-based fallback
+FLAWED_STRAT_GLOBAL :: 2;       // Branch 2: 1P + boundary found -> global cache scope on static block
+FLAWED_STRAT_ORG_FALLBACK :: 3; // Branch 3: 3P / betas off / missing boundary -> org fallback
+
+// 12 orthogonal prompt-cache-break diff bits (promptCacheBreakDetection.ts).
+FLAWED_CBD_SYSTEM :: cast(u16) 1;
+FLAWED_CBD_TOOLS :: cast(u16) 2;
+FLAWED_CBD_CACHE_CTRL :: cast(u16) 4;
+FLAWED_CBD_MODEL :: cast(u16) 8;
+FLAWED_CBD_FAST_MODE :: cast(u16) 16;
+FLAWED_CBD_STRATEGY :: cast(u16) 32;
+FLAWED_CBD_BETAS :: cast(u16) 64;
+FLAWED_CBD_AUTO_MODE :: cast(u16) 128;
+FLAWED_CBD_OVERAGE :: cast(u16) 256;
+FLAWED_CBD_CACHED_MC :: cast(u16) 512;
+FLAWED_CBD_EFFORT :: cast(u16) 1024;
+FLAWED_CBD_EXTRA_BODY :: cast(u16) 2048;
+
+// 5-tier cache break attribution reasons.
+FLAWED_BREAK_NONE :: 0;
+FLAWED_BREAK_SUPPRESSED_DELETION :: 1;
+FLAWED_BREAK_CLIENT :: 2;
+FLAWED_BREAK_TTL_1H :: 3;
+FLAWED_BREAK_TTL_5M :: 4;
+FLAWED_BREAK_SERVER :: 5;
+FLAWED_BREAK_UNKNOWN :: 6;
+
+FlawedPromptTierDecision :: struct {
+  tier: u8;
+  include_default: bool;
+  include_append: bool;
+  keeps_global_boundary: bool;
+}
+
+FlawedSysBlock :: struct {
+  kind: u8;
+  tag_id: int; // caller content identifier or slice index
+}
+
+FlawedWireSysBlock :: struct {
+  scope: u8;
+  block_count: int;
+  first_tag: int;
+}
+
+FlawedWireSysSplit :: struct {
+  strategy: u8;
+  blocks: [FLAWED_WIRE_SYS_MAX] FlawedWireSysBlock;
+  count: int;
+  missing_boundary_warn: bool;
+}
+
+FlawedPromptStateSnap :: struct {
+  system_hash: u64;
+  tools_hash: u64;
+  cache_control_hash: u64;
+  model_hash: u64;
+  betas_hash: u64;
+  extra_body_hash: u64;
+  fast_mode: bool;
+  global_strategy: u8;
+  auto_mode: bool;
+  using_overage: bool;
+  cached_mc: bool;
+  effort: u8;
+}
+
+FlawedCacheSourceState :: struct {
+  source_id: int;
+  has_prev: bool;
+  prev_snap: FlawedPromptStateSnap;
+  prev_cache_read: int;
+  pending_diff: u16;
+  cache_deletions_pending: bool;
+}
+
+FlawedCacheBreakTracker :: struct {
+  slots: [FLAWED_MAX_TRACKED_SOURCES] FlawedCacheSourceState;
+  count: int;
+}
+
+FlawedCacheBreakVerdict :: struct {
+  reason: u8;
+  diff_mask: u16;
+  token_drop: int;
+}
+
+// Load-bearing global cache scope gate (utils/betas.ts:227-232):
+// Only true on direct 1P Anthropic API with experimental betas enabled.
+flawed_should_use_global_cache_scope :: (is_first_party: bool, disable_experimental_betas: bool) -> bool #effects(traps) {
+  return is_first_party && !disable_experimental_betas;
+}
+
+// Fine-grained tool streaming gate (utils/api.ts:199-206):
+// Locked to direct 1P api.anthropic.com (proxies/Bedrock/Vertex 400 on this field).
+flawed_eager_input_streaming_allowed :: (is_first_party: bool, is_direct_base_url: bool, feature_or_env_enabled: bool) -> bool #effects(traps) {
+  return is_first_party && is_direct_base_url && feature_or_env_enabled;
+}
+
+// Any non-deferred MCP tool diverges tools[] before byte 0 of system[], forcing tool-based org fallback.
+flawed_needs_tool_based_cache_marker :: (pool: [] const FlawedToolPool) -> bool #effects(reads, traps) {
+  for i: 0..<pool[0].count {
+    if pool[0].tools[i].source == FLAWED_TOOL_SRC_MCP && !pool[0].tools[i].should_defer {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Telemetry privacy hygiene (promptCacheBreakDetection.ts:183-185):
+// Collapses any "mcp__*" tool name to "mcp" to prevent server/filepath leaks.
+flawed_is_mcp_prefixed_name :: (name: string) -> bool #effects(reads, traps) {
+  return name.count >= 5 && name[0] == 109 && name[1] == 99 && name[2] == 112 && name[3] == 95 && name[4] == 95;
+}
+
+// Five-tier effective system prompt precedence (utils/systemPrompt.ts:56-122):
+// 0. Override (drops append)
+// 1. Coordinator (only when !has_agent_prompt — --agent beats Coordinator!)
+// 2a. Agent + Proactive (appends custom agent instructions onto default skeleton)
+// 2b. Agent standard (replaces default)
+// 3. Custom (--system-prompt)
+// 4. Default (sole tier that keeps global boundary when 1P + betas on)
+flawed_resolve_prompt_tier :: (
+  has_override: bool,
+  coordinator_mode: bool,
+  has_agent: bool,
+  proactive_active: bool,
+  has_custom: bool,
+  has_append: bool,
+  use_global_scope: bool
+) -> FlawedPromptTierDecision #effects(traps) {
+  d: FlawedPromptTierDecision;
+  if has_override {
+    d.tier = FLAWED_TIER_OVERRIDE;
+    return d;
+  }
+  d.include_append = has_append;
+  if coordinator_mode && !has_agent {
+    d.tier = FLAWED_TIER_COORDINATOR;
+    return d;
+  }
+  if has_agent {
+    if proactive_active {
+      d.tier = FLAWED_TIER_AGENT_PROACTIVE;
+      d.include_default = true;
+    } else {
+      d.tier = FLAWED_TIER_AGENT_STANDARD;
+    }
+    return d;
+  }
+  if has_custom {
+    d.tier = FLAWED_TIER_CUSTOM;
+    return d;
+  }
+  d.tier = FLAWED_TIER_DEFAULT;
+  d.include_default = true;
+  d.keeps_global_boundary = use_global_scope;
+  return d;
+}
+
+// Three-branch wire prefix splitter (utils/api.ts:321-435):
+// - Branch 1 (use_global && skip_global_for_mcp): strips sentinel, emits [billing(NONE), cli_pfx(ORG), rest(ORG)]
+// - Branch 2 (use_global && !skip_global_for_mcp && boundary_idx >= 0): strips sentinel, emits
+//   [billing(NONE), cli_pfx(NONE), static(GLOBAL), dynamic(NONE)] (<= 4 blocks)
+// - Branch 3 (otherwise): org fallback [billing(NONE), cli_pfx(ORG), rest(ORG)], warns if use_global && missing boundary
+flawed_split_sys_prompt_prefix :: (
+  blocks: [] const FlawedSysBlock,
+  count: int,
+  use_global: bool,
+  skip_global_for_mcp: bool
+) -> FlawedWireSysSplit #effects(reads, traps) {
+  out: FlawedWireSysSplit;
+  n := ifx count > FLAWED_SYS_BLOCKS_MAX then FLAWED_SYS_BLOCKS_MAX else count; // mutant: equivalent // when count == FLAWED_SYS_BLOCKS_MAX both yield the same limit
+
+  boundary_idx := -1;
+  for i: 0..<n {
+    if blocks[i].kind == FLAWED_SBLK_BOUNDARY {
+      boundary_idx = i;
+      break;
+    }
+  }
+
+  has_billing := false; billing_tag: int;
+  has_prefix := false; prefix_tag: int;
+
+  // Branch 2: Global Active
+  if use_global && !skip_global_for_mcp && boundary_idx >= 0 {
+    out.strategy = FLAWED_STRAT_GLOBAL;
+    static_n := 0; static_first: int;
+    dyn_n := 0; dyn_first: int;
+    for i: 0..<n {
+      k := blocks[i].kind;
+      if k == FLAWED_SBLK_BOUNDARY { continue; }
+      if k == FLAWED_SBLK_BILLING {
+        has_billing = true; billing_tag = blocks[i].tag_id;
+      } else if k == FLAWED_SBLK_CLI_PREFIX {
+        has_prefix = true; prefix_tag = blocks[i].tag_id;
+      } else if i < boundary_idx { // mutant: equivalent // i == boundary_idx already continued above
+        if static_n == 0 { static_first = blocks[i].tag_id; }
+        static_n += 1;
+      } else {
+        if dyn_n == 0 { dyn_first = blocks[i].tag_id; }
+        dyn_n += 1;
+      }
+    }
+    if has_billing {
+      out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_NONE, block_count = 1, first_tag = billing_tag};
+      out.count += 1;
+    }
+    if has_prefix {
+      // cli_prefix gets scope NONE in global mode (covered by static block's global breakpoint to save a slot)
+      out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_NONE, block_count = 1, first_tag = prefix_tag};
+      out.count += 1;
+    }
+    if static_n > 0 {
+      out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_GLOBAL, block_count = static_n, first_tag = static_first};
+      out.count += 1;
+    }
+    if dyn_n > 0 {
+      out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_NONE, block_count = dyn_n, first_tag = dyn_first};
+      out.count += 1;
+    }
+    return out;
+  }
+
+  // Branch 1 (tool-based fallback) vs Branch 3 (default org fallback)
+  strip_boundary := use_global && skip_global_for_mcp;
+  if strip_boundary {
+    out.strategy = FLAWED_STRAT_TOOL_BASED;
+  } else {
+    out.strategy = FLAWED_STRAT_ORG_FALLBACK;
+    if use_global { out.missing_boundary_warn = true; }
+  }
+
+  rest_n := 0; rest_first: int;
+  for i: 0..<n {
+    k := blocks[i].kind;
+    if k == FLAWED_SBLK_BOUNDARY && strip_boundary { continue; }
+    if k == FLAWED_SBLK_BILLING {
+      has_billing = true; billing_tag = blocks[i].tag_id;
+    } else if k == FLAWED_SBLK_CLI_PREFIX {
+      has_prefix = true; prefix_tag = blocks[i].tag_id;
+    } else {
+      if rest_n == 0 { rest_first = blocks[i].tag_id; }
+      rest_n += 1;
+    }
+  }
+  if has_billing {
+    out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_NONE, block_count = 1, first_tag = billing_tag};
+    out.count += 1;
+  }
+  if has_prefix {
+    out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_ORG, block_count = 1, first_tag = prefix_tag};
+    out.count += 1;
+  }
+  if rest_n > 0 {
+    out.blocks[out.count] = FlawedWireSysBlock.{scope = FLAWED_CACHE_SCOPE_ORG, block_count = rest_n, first_tag = rest_first};
+    out.count += 1;
+  }
+  return out;
+}
+
+// Compute 12-bit orthogonal diff mask between two snapshots (promptCacheBreakDetection.ts).
+flawed_cbd_diff_snaps :: (a: FlawedPromptStateSnap, b: FlawedPromptStateSnap) -> u16 #effects(traps) {
+  m: u16 = 0;
+  if a.system_hash != b.system_hash { m = m | FLAWED_CBD_SYSTEM; }
+  if a.tools_hash != b.tools_hash { m = m | FLAWED_CBD_TOOLS; }
+  if a.cache_control_hash != b.cache_control_hash { m = m | FLAWED_CBD_CACHE_CTRL; }
+  if a.model_hash != b.model_hash { m = m | FLAWED_CBD_MODEL; }
+  if a.fast_mode != b.fast_mode { m = m | FLAWED_CBD_FAST_MODE; }
+  if a.global_strategy != b.global_strategy { m = m | FLAWED_CBD_STRATEGY; }
+  if a.betas_hash != b.betas_hash { m = m | FLAWED_CBD_BETAS; }
+  if a.auto_mode != b.auto_mode { m = m | FLAWED_CBD_AUTO_MODE; }
+  if a.using_overage != b.using_overage { m = m | FLAWED_CBD_OVERAGE; }
+  if a.cached_mc != b.cached_mc { m = m | FLAWED_CBD_CACHED_MC; }
+  if a.effort != b.effort { m = m | FLAWED_CBD_EFFORT; }
+  if a.extra_body_hash != b.extra_body_hash { m = m | FLAWED_CBD_EXTRA_BODY; }
+  // Suppress redundant cache_control flag when strategy or system_prompt already explains it
+  if (m & (FLAWED_CBD_STRATEGY | FLAWED_CBD_SYSTEM)) != 0 {
+    m = m & (FLAWED_CBD_CACHE_CTRL ^ cast(u16) 65535);
+  }
+  return m;
+}
+
+flawed_cbd_find_slot :: (t: [] const FlawedCacheBreakTracker, source_id: int) -> int #effects(reads, traps) {
+  for i: 0..<t[0].count {
+    if t[0].slots[i].source_id == source_id { return i; }
+  }
+  return -1;
+}
+
+// Insertion-order FIFO lookup/allocation bounded by FLAWED_MAX_TRACKED_SOURCES (10).
+flawed_cbd_get_or_alloc :: (t: [] FlawedCacheBreakTracker, source_id: int) -> int #effects(reads, writes, traps) {
+  idx := flawed_cbd_find_slot(t, source_id);
+  if idx >= 0 { return idx; }
+  if t[0].count < FLAWED_MAX_TRACKED_SOURCES {
+    idx = t[0].count;
+    t[0].count += 1;
+  } else {
+    // FIFO evict oldest slot [0], shifting [1..count-1] left
+    for i: 1..<t[0].count {
+      t[0].slots[i - 1] = t[0].slots[i];
+    }
+    idx = t[0].count - 1;
+  }
+  t[0].slots[idx] = FlawedCacheSourceState.{source_id = source_id};
+  return idx;
+}
+
+// Phase 1: record pre-call prompt state snapshot and compute diff against previous call.
+flawed_cbd_record :: (t: [] FlawedCacheBreakTracker, source_id: int, snap: FlawedPromptStateSnap) -> u16 #effects(reads, writes, traps) {
+  idx := flawed_cbd_get_or_alloc(t, source_id);
+  diff: u16 = 0;
+  if t[0].slots[idx].has_prev {
+    diff = flawed_cbd_diff_snaps(t[0].slots[idx].prev_snap, snap);
+  }
+  t[0].slots[idx].pending_diff = diff;
+  t[0].slots[idx].prev_snap = snap;
+  return diff;
+}
+
+flawed_cbd_notify_deletion :: (t: [] FlawedCacheBreakTracker, source_id: int) -> bool #effects(reads, writes, traps) {
+  idx := flawed_cbd_find_slot(t, source_id);
+  if idx < 0 { return false; }
+  t[0].slots[idx].cache_deletions_pending = true;
+  return true;
+}
+
+flawed_cbd_notify_compaction :: (t: [] FlawedCacheBreakTracker, source_id: int) -> bool #effects(reads, writes, traps) {
+  idx := flawed_cbd_find_slot(t, source_id);
+  if idx < 0 { return false; }
+  t[0].slots[idx] = FlawedCacheSourceState.{source_id = source_id};
+  return true;
+}
+
+// Phase 2: post-call cache-break evaluation (promptCacheBreakDetection.ts:437-666).
+// Requires BOTH token_drop >= 2000 AND cache_read < 95% of prev_cache_read (> 5% drop).
+flawed_cbd_check :: (
+  t: [] FlawedCacheBreakTracker,
+  source_id: int,
+  cache_read_tokens: int,
+  elapsed_ms: int,
+  is_haiku: bool
+) -> FlawedCacheBreakVerdict #effects(reads, writes, traps) {
+  v: FlawedCacheBreakVerdict;
+  if is_haiku { return v; }
+  idx := flawed_cbd_find_slot(t, source_id);
+  if idx < 0 { return v; }
+
+  // First call establishes baseline only
+  if !t[0].slots[idx].has_prev {
+    t[0].slots[idx].has_prev = true;
+    t[0].slots[idx].prev_cache_read = cache_read_tokens;
+    return v;
+  }
+
+  prev := t[0].slots[idx].prev_cache_read;
+  diff := t[0].slots[idx].pending_diff;
+  t[0].slots[idx].prev_cache_read = cache_read_tokens;
+  t[0].slots[idx].pending_diff = 0;
+
+  if t[0].slots[idx].cache_deletions_pending {
+    t[0].slots[idx].cache_deletions_pending = false;
+    v.reason = FLAWED_BREAK_SUPPRESSED_DELETION;
+    return v;
+  }
+
+  drop := prev - cache_read_tokens;
+  if drop < FLAWED_MIN_CACHE_MISS_TOKENS || cache_read_tokens * 100 >= prev * 95 {
+    return v;
+  }
+
+  v.token_drop = drop;
+  v.diff_mask = diff;
+  if diff != 0 {
+    v.reason = FLAWED_BREAK_CLIENT;
+  } else if elapsed_ms >= FLAWED_CACHE_TTL_1H_MS {
+    v.reason = FLAWED_BREAK_TTL_1H;
+  } else if elapsed_ms >= FLAWED_CACHE_TTL_5M_MS {
+    v.reason = FLAWED_BREAK_TTL_5M;
+  } else if elapsed_ms >= 0 {
+    v.reason = FLAWED_BREAK_SERVER;
+  } else {
+    v.reason = FLAWED_BREAK_UNKNOWN;
+  }
+  return v;
+}
+
+#test "prompt_cache: gates, 5-tier priority cascade, and 3-branch wire prefix splitter" {
+  #assert flawed_should_use_global_cache_scope(true, false);
+  #assert !flawed_should_use_global_cache_scope(false, false);
+  #assert !flawed_should_use_global_cache_scope(true, true);
+
+  #assert flawed_eager_input_streaming_allowed(true, true, true);
+  #assert !flawed_eager_input_streaming_allowed(false, true, true);
+  #assert !flawed_eager_input_streaming_allowed(true, false, true);
+  #assert !flawed_eager_input_streaming_allowed(true, true, false);
+
+  // MCP telemetry sanitizer
+  #assert flawed_is_mcp_prefixed_name("mcp__fs__read");
+  #assert flawed_is_mcp_prefixed_name("mcp__");
+  #assert !flawed_is_mcp_prefixed_name("mcp_");
+  #assert !flawed_is_mcp_prefixed_name("xcp__a");
+  #assert !flawed_is_mcp_prefixed_name("mxp__a");
+  #assert !flawed_is_mcp_prefixed_name("mcx__a");
+  #assert !flawed_is_mcp_prefixed_name("mcp-_a");
+  #assert !flawed_is_mcp_prefixed_name("mcp_-a");
+
+  // Tool-based cache marker check
+  pool: [1] FlawedToolPool;
+  pool[0].tools[0] = flawed_tool_defaults("Read", FLAWED_TOOL_SRC_BUILTIN);
+  mcp_def := flawed_tool_defaults("mcp__g__a", FLAWED_TOOL_SRC_MCP);
+  mcp_def.should_defer = true;
+  pool[0].tools[1] = mcp_def;
+  pool[0].count = 2;
+  #assert !flawed_needs_tool_based_cache_marker(pool[..]);
+  pool[0].tools[0] = flawed_tool_defaults("mcp__g__b", FLAWED_TOOL_SRC_MCP); // index 0 non-deferred MCP
+  #assert flawed_needs_tool_based_cache_marker(pool[..]);
+
+  // 5-tier effective system prompt priority cascade
+  t0 := flawed_resolve_prompt_tier(true, true, true, true, true, true, true);
+  #assert t0.tier == FLAWED_TIER_OVERRIDE && !t0.include_append && !t0.include_default && !t0.keeps_global_boundary;
+  t1 := flawed_resolve_prompt_tier(false, true, false, false, true, true, true);
+  #assert t1.tier == FLAWED_TIER_COORDINATOR && t1.include_append && !t1.keeps_global_boundary;
+  // --agent beats coordinator! Proactive appends onto default; standard replaces default
+  t2a := flawed_resolve_prompt_tier(false, true, true, true, true, true, true);
+  #assert t2a.tier == FLAWED_TIER_AGENT_PROACTIVE && t2a.include_default && t2a.include_append && !t2a.keeps_global_boundary;
+  t2b := flawed_resolve_prompt_tier(false, true, true, false, true, false, true);
+  #assert t2b.tier == FLAWED_TIER_AGENT_STANDARD && !t2b.include_default && !t2b.include_append;
+  t3 := flawed_resolve_prompt_tier(false, false, false, false, true, true, true);
+  #assert t3.tier == FLAWED_TIER_CUSTOM && !t3.include_default && t3.include_append;
+  t4a := flawed_resolve_prompt_tier(false, false, false, false, false, true, true);
+  #assert t4a.tier == FLAWED_TIER_DEFAULT && t4a.include_default && t4a.include_append && t4a.keeps_global_boundary;
+  t4b := flawed_resolve_prompt_tier(false, false, false, false, false, false, false);
+  #assert t4b.tier == FLAWED_TIER_DEFAULT && t4b.include_default && !t4b.keeps_global_boundary;
+
+  // 3-branch wire prefix splitter
+  sb: [FLAWED_SYS_BLOCKS_MAX] FlawedSysBlock;
+  sb[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BILLING, tag_id = 10};
+  sb[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CLI_PREFIX, tag_id = 20};
+  sb[2] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 30};
+  sb[3] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 31};
+  sb[4] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 99};
+  sb[5] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 40};
+  sb[6] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 41};
+
+  // Branch 2: Global active -> 4 blocks [NONE(10), NONE(20), GLOBAL(2, 30), NONE(2, 40)]
+  w2 := flawed_split_sys_prompt_prefix(sb[..], 7, true, false);
+  #assert w2.strategy == FLAWED_STRAT_GLOBAL && !w2.missing_boundary_warn && w2.count == 4;
+  #assert w2.blocks[0].scope == FLAWED_CACHE_SCOPE_NONE && w2.blocks[0].block_count == 1 && w2.blocks[0].first_tag == 10;
+  #assert w2.blocks[1].scope == FLAWED_CACHE_SCOPE_NONE && w2.blocks[1].block_count == 1 && w2.blocks[1].first_tag == 20;
+  #assert w2.blocks[2].scope == FLAWED_CACHE_SCOPE_GLOBAL && w2.blocks[2].block_count == 2 && w2.blocks[2].first_tag == 30;
+  #assert w2.blocks[3].scope == FLAWED_CACHE_SCOPE_NONE && w2.blocks[3].block_count == 2 && w2.blocks[3].first_tag == 40;
+
+  // Branch 2 with boundary at index 0 (no static blocks, 1 dynamic) and boundary at end (1 static, 0 dynamic)
+  sb_b0: [2] FlawedSysBlock;
+  sb_b0[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 99};
+  sb_b0[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 50};
+  w2_b0 := flawed_split_sys_prompt_prefix(sb_b0[..], 2, true, false);
+  #assert w2_b0.strategy == FLAWED_STRAT_GLOBAL && w2_b0.count == 1 && w2_b0.blocks[0].scope == FLAWED_CACHE_SCOPE_NONE && w2_b0.blocks[0].first_tag == 50;
+
+  sb_s1: [2] FlawedSysBlock;
+  sb_s1[0] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 55};
+  sb_s1[1] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 99};
+  w2_s1 := flawed_split_sys_prompt_prefix(sb_s1[..], 2, true, false);
+  #assert w2_s1.strategy == FLAWED_STRAT_GLOBAL && w2_s1.count == 1 && w2_s1.blocks[0].scope == FLAWED_CACHE_SCOPE_GLOBAL && w2_s1.blocks[0].block_count == 1 && w2_s1.blocks[0].first_tag == 55;
+
+  // Branch 1: MCP tool-based fallback -> strips sentinel, emits [NONE(10), ORG(20), ORG(4, 30)]
+  w1 := flawed_split_sys_prompt_prefix(sb[..], 7, true, true);
+  #assert w1.strategy == FLAWED_STRAT_TOOL_BASED && !w1.missing_boundary_warn && w1.count == 3;
+  #assert w1.blocks[0].scope == FLAWED_CACHE_SCOPE_NONE && w1.blocks[0].block_count == 1 && w1.blocks[0].first_tag == 10;
+  #assert w1.blocks[1].scope == FLAWED_CACHE_SCOPE_ORG && w1.blocks[1].block_count == 1 && w1.blocks[1].first_tag == 20;
+  #assert w1.blocks[2].scope == FLAWED_CACHE_SCOPE_ORG && w1.blocks[2].block_count == 4 && w1.blocks[2].first_tag == 30;
+
+  // Branch 3a: 3P / betas disabled -> does NOT strip sentinel (count=5 content blocks), NO missing-boundary warning
+  w3a := flawed_split_sys_prompt_prefix(sb[..], 7, false, false);
+  #assert w3a.strategy == FLAWED_STRAT_ORG_FALLBACK && !w3a.missing_boundary_warn && w3a.count == 3;
+  #assert w3a.blocks[2].block_count == 5;
+
+  // Branch 3b: 1P global expected, boundary missing -> missing_boundary_warn = true! Also test rest_n == 1
+  sb_nob: [3] FlawedSysBlock;
+  sb_nob[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BILLING, tag_id = 1};
+  sb_nob[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CLI_PREFIX, tag_id = 2};
+  sb_nob[2] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 3};
+  w3b := flawed_split_sys_prompt_prefix(sb_nob[..], 2, true, false);
+  #assert w3b.strategy == FLAWED_STRAT_ORG_FALLBACK && w3b.missing_boundary_warn && w3b.count == 2;
+  w3c := flawed_split_sys_prompt_prefix(sb_nob[..], 3, true, false);
+  #assert w3c.count == 3 && w3c.blocks[2].block_count == 1 && w3c.blocks[2].first_tag == 3;
+
+  // Over-cap clamp (> FLAWED_SYS_BLOCKS_MAX)
+  sb_max: [FLAWED_SYS_BLOCKS_MAX] FlawedSysBlock;
+  for i: 0..<FLAWED_SYS_BLOCKS_MAX { sb_max[i] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = i + 1}; }
+  w_cap := flawed_split_sys_prompt_prefix(sb_max[..], 20, false, false);
+  #assert w_cap.count == 1 && w_cap.blocks[0].block_count == FLAWED_SYS_BLOCKS_MAX;
+}
+
+#test "prompt_cache: 2-phase cache-break forensics, 12-dim diffing, 5-tier attribution, and FIFO eviction" {
+  // Verify all 12 orthogonal diff dimensions + cache_control suppression rule
+  base := FlawedPromptStateSnap.{system_hash = 1, tools_hash = 2, cache_control_hash = 3, model_hash = 4, betas_hash = 5, extra_body_hash = 6, global_strategy = FLAWED_STRAT_GLOBAL, effort = 1};
+  #assert flawed_cbd_diff_snaps(base, base) == 0;
+
+  s := base; s.system_hash = 9; s.cache_control_hash = 99;
+  #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_SYSTEM; // cache_control suppressed by system!
+  s = base; s.global_strategy = FLAWED_STRAT_ORG_FALLBACK; s.cache_control_hash = 99;
+  #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_STRATEGY; // cache_control suppressed by strategy!
+  s = base; s.cache_control_hash = 99;
+  #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_CACHE_CTRL; // standalone cache_control preserved!
+  s = base; s.tools_hash = 9; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_TOOLS;
+  s = base; s.model_hash = 9; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_MODEL;
+  s = base; s.fast_mode = true; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_FAST_MODE;
+  s = base; s.betas_hash = 9; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_BETAS;
+  s = base; s.auto_mode = true; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_AUTO_MODE;
+  s = base; s.using_overage = true; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_OVERAGE;
+  s = base; s.cached_mc = true; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_CACHED_MC;
+  s = base; s.effort = 2; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_EFFORT;
+  s = base; s.extra_body_hash = 9; #assert flawed_cbd_diff_snaps(base, s) == FLAWED_CBD_EXTRA_BODY;
+
+  // Tracker lifecycle
+  tr: [1] FlawedCacheBreakTracker;
+  #assert !flawed_cbd_notify_deletion(tr[..], 1);
+  #assert !flawed_cbd_notify_compaction(tr[..], 1);
+  #assert flawed_cbd_check(tr[..], 1, 50000, 1000, false).reason == FLAWED_BREAK_NONE;
+
+  // Call #1 establishes baseline (never fires)
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 100000, 1000, true).reason == FLAWED_BREAK_NONE; // Haiku ignored
+  #assert flawed_cbd_check(tr[..], 1, 100000, 1000, false).reason == FLAWED_BREAK_NONE;
+
+  // Below threshold: drop == 5000 on 100000 (exact 5%, i.e. 95% remaining) -> no break;
+  // 5.5% drop (94500 of 100000 -> 94500*100 < 9500000, kills 100->101) -> fires SERVER break!
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 95000, 1000, false).reason == FLAWED_BREAK_NONE; // 95000*100 >= 100000*95
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 93001, 1000, false).reason == FLAWED_BREAK_NONE; // drop 1999 < 2000
+
+  // Reset via compaction resets has_prev/prev_cache_read/pending_diff cleanly
+  s_tools := base; s_tools.tools_hash = 777;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == FLAWED_CBD_TOOLS;
+  #assert flawed_cbd_notify_compaction(tr[..], 1);
+  #assert !tr[0].slots[0].has_prev && tr[0].slots[0].prev_cache_read == 0 && tr[0].slots[0].pending_diff == 0;
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 100000, 1000, false).reason == FLAWED_BREAK_NONE; // fresh baseline
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 94500, 1000, false).reason == FLAWED_BREAK_SERVER; // 5.5% drop > 5%
+
+  // Exact 2000 drop on 30000 (6.67% drop) -> CLIENT break when tools changed, AND pending_diff cleared after check!
+  #assert flawed_cbd_notify_compaction(tr[..], 1);
+  #assert flawed_cbd_record(tr[..], 1, base) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 30000, 1000, false).reason == FLAWED_BREAK_NONE;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == FLAWED_CBD_TOOLS;
+  vc := flawed_cbd_check(tr[..], 1, 28000, 1000, false);
+  #assert vc.reason == FLAWED_BREAK_CLIENT && vc.diff_mask == FLAWED_CBD_TOOLS && vc.token_drop == 2000;
+  #assert tr[0].slots[0].pending_diff == 0;
+
+  // 1h TTL, 5m TTL, Server (<5m), Unknown (<0), and deletion suppression (one-shot!)
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 20000, FLAWED_CACHE_TTL_1H_MS, false).reason == FLAWED_BREAK_TTL_1H;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 12000, FLAWED_CACHE_TTL_5M_MS, false).reason == FLAWED_BREAK_TTL_5M;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 6000, 0, false).reason == FLAWED_BREAK_SERVER;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 2000, -1, false).reason == FLAWED_BREAK_UNKNOWN;
+
+  // Deletion suppression clears pending flag so the NEXT drop is NOT suppressed
+  #assert flawed_cbd_notify_deletion(tr[..], 1);
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 10000, 100, false).reason == FLAWED_BREAK_SUPPRESSED_DELETION;
+  #assert flawed_cbd_record(tr[..], 1, s_tools) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 2000, 100, false).reason == FLAWED_BREAK_SERVER;
+
+  // FIFO eviction at FLAWED_MAX_TRACKED_SOURCES (10): adding source 11 evicts source 1, keeping source 2..11
+  for sid: 2..<12 {
+    #assert flawed_cbd_record(tr[..], sid, base) == 0;
+  }
+  #assert tr[0].count == FLAWED_MAX_TRACKED_SOURCES;
+  #assert flawed_cbd_find_slot(tr[..], 1) == -1;
+  #assert flawed_cbd_find_slot(tr[..], 2) == 0;
+  #assert flawed_cbd_find_slot(tr[..], 11) == 9;
+}

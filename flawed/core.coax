@@ -11,6 +11,8 @@
 #load "command.coax";
 #load "messages.coax";
 #load "message_wire.coax";
+#load "prompt_cache.coax";
+#load "prompt_context.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -90,4 +92,40 @@
   #assert flawed_ensure_tool_result_pairing(s1_clean[..], s2[..], true) == FLAWED_PAIR_STRICT_REJECT;
   #assert flawed_ensure_tool_result_pairing(s1_clean[..], s2[..], false) == 1;
   #assert s2[0].count == 3 && s2[0].msgs[2].blocks[0].is_error;
+}
+
+#test "flawed core (Ch 04): context freeze, cache boundary split, and cache-break forensics compose end-to-end" {
+  st: [1] FlawedSessionState;
+  #assert flawed_state_init(st[..], "/repo", "claude-opus-4-7");
+  ctx: [1] FlawedContextCache;
+  #assert flawed_ctx_snapshot_git(ctx[..], "M flawed/core.coax", true, false, true);
+  #assert flawed_ctx_snapshot_user(ctx[..], st[..], "# Flawed Rules", "2026-11-24", false);
+
+  // Assemble tool pool with 1 built-in + 1 deferred MCP -> keeps global cache scope
+  bi: [1] FlawedToolSpec;
+  bi[0] = flawed_tool_defaults("Read", FLAWED_TOOL_SRC_BUILTIN);
+  mcps: [1] FlawedToolSpec;
+  mcps[0] = flawed_tool_defaults("mcp__fs__stat", FLAWED_TOOL_SRC_MCP);
+  mcps[0].should_defer = true;
+  pctx: [1] FlawedToolPermContext;
+  pool: [1] FlawedToolPool;
+  #assert flawed_assemble_tool_pool(pool[..], pctx[..], bi[..], mcps[..]);
+  #assert !flawed_needs_tool_based_cache_marker(pool[..]);
+
+  sb: [4] FlawedSysBlock;
+  sb[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BILLING, tag_id = 1};
+  sb[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 2};
+  sb[2] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 3};
+  sb[3] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 4};
+  w := flawed_split_sys_prompt_prefix(sb[..], 4, flawed_should_use_global_cache_scope(true, false), flawed_needs_tool_based_cache_marker(pool[..]));
+  #assert w.strategy == FLAWED_STRAT_GLOBAL && w.blocks[1].scope == FLAWED_CACHE_SCOPE_GLOBAL;
+
+  // Record turn 1 & turn 2 with tools hash change -> attributed to CLIENT
+  tr: [1] FlawedCacheBreakTracker;
+  s1 := FlawedPromptStateSnap.{system_hash = 10, tools_hash = 20, global_strategy = w.strategy};
+  s2 := s1; s2.tools_hash = 21;
+  #assert flawed_cbd_record(tr[..], 1, s1) == 0;
+  #assert flawed_cbd_check(tr[..], 1, 50000, 1000, false).reason == FLAWED_BREAK_NONE;
+  #assert flawed_cbd_record(tr[..], 1, s2) == FLAWED_CBD_TOOLS;
+  #assert flawed_cbd_check(tr[..], 1, 10000, 1000, false).reason == FLAWED_BREAK_CLIENT;
 }

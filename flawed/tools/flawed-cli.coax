@@ -24,12 +24,26 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-03 — Layer 0 Atoms + Layer 1 Tool/Command/Message Contracts)\n");
+  print("flawed (Chapters 01-04 — Layer 0 Atoms + Layer 1 Contracts + Layer 2 Prompt Cache)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
   print("  flawed-cli glob PATTERN [DIR]\n");
   print("  flawed-cli route INPUT [--bridge]\n");
+  print("  flawed-cli cache-plan [--3p] [--mcp]\n");
+}
+
+flawed_cli_cache_plan :: (is_3p: bool, has_non_deferred_mcp: bool) -> int #effects(all) {
+  sb: [5] FlawedSysBlock;
+  sb[0] = FlawedSysBlock.{kind = FLAWED_SBLK_BILLING, tag_id = 1};
+  sb[1] = FlawedSysBlock.{kind = FLAWED_SBLK_CLI_PREFIX, tag_id = 2};
+  sb[2] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 3};
+  sb[3] = FlawedSysBlock.{kind = FLAWED_SBLK_BOUNDARY, tag_id = 4};
+  sb[4] = FlawedSysBlock.{kind = FLAWED_SBLK_CONTENT, tag_id = 5};
+  use_global := flawed_should_use_global_cache_scope(!is_3p, false);
+  w := flawed_split_sys_prompt_prefix(sb[..], 5, use_global, has_non_deferred_mcp);
+  print("cache-plan: strategy=% blocks=% warn_missing_boundary=%\n", w.strategy, w.count, w.missing_boundary_warn);
+  return 0;
 }
 
 flawed_cli_route :: (w: [] FlawedCliWork, input: string, bridge: bool) -> int #effects(all) {
@@ -167,6 +181,14 @@ tool_main :: () -> int #export_c #effects(all) {
     if a[0].n < 2 { tool_errln("flawed-cli: route requires INPUT [--bridge]"); return 2; }
     bridge := a[0].n >= 3 && args_at(a[..], 2) == "--bridge";
     return flawed_cli_route(w[..], args_at(a[..], 1), bridge);
+  }
+  if cmd == "cache-plan" {
+    is_3p := false; has_mcp := false;
+    for i: 1..<a[0].n {
+      if args_at(a[..], i) == "--3p" { is_3p = true; }
+      if args_at(a[..], i) == "--mcp" { has_mcp = true; }
+    }
+    return flawed_cli_cache_plan(is_3p, has_mcp);
   }
   flawed_cli_usage();
   return 2;

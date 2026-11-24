@@ -1,0 +1,254 @@
+// Flawed Layer 2 (Chapter 04) — Conversation-Memoized Context, Section Registry & Beta Latches.
+// Replaces cc/context.ts (frozen git status, user context, CLAUDE.md cycle breaker, tail date rollover)
+// and cc/constants/systemPromptSections.ts (negative null caching, DANGEROUS_uncached, 4 sticky beta latches).
+//   coax/bin/coax test flawed/prompt_context.coax --library
+#module "flawed.prompt_context";
+#load "prompt_cache.coax";
+#load "messages.coax";
+#load "file_cache.coax";
+
+FLAWED_MAX_GIT_STATUS_CHARS :: 2000;
+FLAWED_SECTION_SLOTS_MAX :: 16;
+FLAWED_SECTION_NAME_MAX :: 32;
+FLAWED_SECTION_VAL_MAX :: 128;
+FLAWED_DATE_MAX :: 16;
+
+// Paired sticky-on beta header latches (constants/systemPromptSections.ts + services/api/claude.ts:1412-1456).
+FLAWED_BETA_AFK_MODE :: cast(u8) 1;
+FLAWED_BETA_FAST_MODE :: cast(u8) 2;
+FLAWED_BETA_CACHE_EDITING :: cast(u8) 4;
+FLAWED_BETA_THINKING_CLEAR :: cast(u8) 8;
+
+FlawedPromptSectionEntry :: struct {
+  occupied: bool;
+  is_null: bool; // negative null caching: prevents mid-session flag flip from injecting new section
+  name: [FLAWED_SECTION_NAME_MAX] u8; name_n: int;
+  val: [FLAWED_SECTION_VAL_MAX] u8; val_n: int;
+}
+
+FlawedContextCache :: struct {
+  // Frozen git status snapshot (survives /compact, wiped only by /clear)
+  git_cached: bool;
+  git_truncated: bool;
+  git_status: [FLAWED_MAX_GIT_STATUS_CHARS] u8;
+  git_status_n: int;
+
+  // Frozen user context (CLAUDE.md + turn-1 date; wiped by both /clear and main-thread /compact)
+  user_ctx_cached: bool;
+  has_claude_md: bool;
+  claude_md_len: int;
+  session_date: [FLAWED_DATE_MAX] u8; session_date_n: int;
+  last_emitted_date: [FLAWED_DATE_MAX] u8; last_emitted_date_n: int;
+
+  // Memoized dynamic system prompt sections + 4 sticky-on beta latches
+  sections: [FLAWED_SECTION_SLOTS_MAX] FlawedPromptSectionEntry;
+  section_count: int;
+  beta_latches: u8;
+}
+
+// Memoize git status once per conversation (context.ts:36-111).
+// Refuses to run before trust dialog, in remote mode, or when git instructions are disabled.
+flawed_ctx_snapshot_git :: (
+  c: [] FlawedContextCache,
+  raw_status: string,
+  trust_accepted: bool,
+  is_remote: bool,
+  include_git: bool
+) -> bool #effects(reads, writes, traps) {
+  if !trust_accepted || is_remote || !include_git { return false; }
+  if c[0].git_cached { return true; } // frozen for conversation lifetime!
+  n := raw_status.count;
+  if n > FLAWED_MAX_GIT_STATUS_CHARS {
+    n = FLAWED_MAX_GIT_STATUS_CHARS;
+    c[0].git_truncated = true;
+  } else {
+    c[0].git_truncated = false;
+  }
+  for i: 0..<n { c[0].git_status[i] = raw_status[i]; }
+  c[0].git_status_n = n;
+  c[0].git_cached = true;
+  return true;
+}
+
+// Memoize user context (CLAUDE.md + frozen turn-1 date) and sync CLAUDE.md SHA-256 hash into
+// FlawedSessionState (breaking the 4-hop claudemd -> permissions -> yoloClassifier cycle).
+flawed_ctx_snapshot_user :: (
+  c: [] FlawedContextCache,
+  st: [] FlawedSessionState,
+  claude_md: string,
+  iso_date: string,
+  disable_claude_md: bool
+) -> bool #effects(all) {
+  if c[0].user_ctx_cached { return true; }
+  c[0].session_date_n = flawed_copy_str_into(c[0].session_date[..], FLAWED_DATE_MAX, iso_date);
+  c[0].last_emitted_date = c[0].session_date;
+  c[0].last_emitted_date_n = c[0].session_date_n;
+
+  if !disable_claude_md && claude_md.count > 0 {
+    c[0].has_claude_md = true;
+    c[0].claude_md_len = claude_md.count;
+    // Hash CLAUDE.md bytes into FlawedSessionState leaf store (4-hop cycle breaker)
+    hex: [64] u8;
+    if S_hex(S_hash(claude_md), hex[..]) {
+      _ = flawed_state_set_claude_md_hash(st, cast(string) hex[0..<64]);
+    }
+  } else {
+    c[0].has_claude_md = false;
+    c[0].claude_md_len = 0;
+  }
+  c[0].user_ctx_cached = true;
+  return true;
+}
+
+// Midnight rollover detector (utils/attachments.ts:1402-1444):
+// Keeps messages[0] session_date frozen (saving ~920K tokens per overnight rollover) and emits
+// a tail date_change attachment once per calendar day change.
+flawed_ctx_check_date_rollover :: (c: [] FlawedContextCache, today_iso: string) -> bool #effects(reads, writes, traps) {
+  if !c[0].user_ctx_cached || today_iso.count == 0 { return false; }
+  if flawed_bytes_eq_str(c[0].last_emitted_date[..], c[0].last_emitted_date_n, today_iso) {
+    return false;
+  }
+  c[0].last_emitted_date_n = flawed_copy_str_into(c[0].last_emitted_date[..], FLAWED_DATE_MAX, today_iso);
+  return true;
+}
+
+// Resolve a dynamic system prompt section (constants/systemPromptSections.ts:20-58):
+// - Default (cache_break=false): memoizes both values AND negative nulls!
+// - DANGEROUS_uncached (cache_break=true): always writes the fresh value into cache slot too.
+// Returns index into c.sections (>= 0) or -1 if table full.
+flawed_ctx_resolve_section :: (
+  c: [] FlawedContextCache,
+  name: string,
+  computed_val: string,
+  computed_is_null: bool,
+  cache_break: bool
+) -> int #effects(reads, writes, traps) {
+  for i: 0..<c[0].section_count {
+    if flawed_bytes_eq_str(c[0].sections[i].name[..], c[0].sections[i].name_n, name) {
+      if !cache_break {
+        return i; // cached hit (including negative null!)
+      }
+      c[0].sections[i].is_null = computed_is_null;
+      c[0].sections[i].val_n = ifx computed_is_null then 0 else flawed_copy_str_into(c[0].sections[i].val[..], FLAWED_SECTION_VAL_MAX, computed_val);
+      return i;
+    }
+  }
+  if c[0].section_count >= FLAWED_SECTION_SLOTS_MAX { return -1; }
+  idx := c[0].section_count;
+  c[0].sections[idx].occupied = true;
+  c[0].sections[idx].name_n = flawed_copy_str_into(c[0].sections[idx].name[..], FLAWED_SECTION_NAME_MAX, name);
+  c[0].sections[idx].is_null = computed_is_null;
+  c[0].sections[idx].val_n = ifx computed_is_null then 0 else flawed_copy_str_into(c[0].sections[idx].val[..], FLAWED_SECTION_VAL_MAX, computed_val);
+  c[0].section_count += 1;
+  return idx;
+}
+
+// Sticky-on beta latch (services/api/claude.ts:1412-1456): once enabled, stays set until section reset.
+flawed_ctx_latch_beta :: (c: [] FlawedContextCache, bit: u8, active: bool) -> bool #effects(reads, writes, traps) {
+  if active { c[0].beta_latches = c[0].beta_latches | bit; }
+  return (c[0].beta_latches & bit) != 0;
+}
+
+// clearSystemPromptSections (constants/systemPromptSections.ts:61-68):
+// Always clears section cache AND all 4 sticky beta latches together.
+flawed_ctx_clear_sections_and_latches :: (c: [] FlawedContextCache) #effects(writes, traps) {
+  c[0].section_count = 0;
+  c[0].beta_latches = 0;
+}
+
+// Compaction reset (services/compact/postCompactCleanup.ts:36-62):
+// Clears user_ctx + sections + beta latches ONLY on main thread; keeps git_status frozen!
+flawed_ctx_clear_compact :: (c: [] FlawedContextCache, is_main_thread: bool) -> bool #effects(reads, writes, traps) {
+  if !is_main_thread { return false; }
+  c[0].user_ctx_cached = false;
+  flawed_ctx_clear_sections_and_latches(c);
+  return true;
+}
+
+// Full /clear reset (commands/clear/caches.ts:52-84): wipes git_status, user_ctx, sections, and beta latches.
+flawed_ctx_clear_session :: (c: [] FlawedContextCache) #effects(writes, traps) {
+  c[0] = FlawedContextCache.{};
+}
+
+// prependUserContext (utils/api.ts:449-474):
+// Prepends frozen userContext as an is_meta=true USER <system-reminder> at messages[0].
+flawed_prepend_user_context :: (
+  c: [] const FlawedContextCache,
+  src: [] const FlawedTranscript,
+  dst: [] FlawedTranscript
+) -> int #effects(reads, writes, traps) {
+  dst[0] = FlawedTranscript.{};
+  if c[0].user_ctx_cached && c[0].session_date_n > 0 {
+    m: [1] FlawedMessage;
+    m[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "user_ctx", "");
+    m[0].is_meta = true;
+    _ = flawed_msg_push_block(m[..], flawed_blk_text("<system-reminder>userContext</system-reminder>"));
+    _ = flawed_tx_push(dst, m[0]);
+  }
+  for i: 0..<src[0].count {
+    _ = flawed_tx_push(dst, src[0].msgs[i]);
+  }
+  return dst[0].count;
+}
+
+#test "prompt_context: frozen git/user context, negative null caching, beta latches, midnight rollover, and split resets" {
+  c: [1] FlawedContextCache;
+  st: [1] FlawedSessionState;
+  #assert flawed_state_init(st[..], "/repo", "gemini-4-neon");
+
+  // Pre-trust and remote mode refuse git snapshot
+  #assert !flawed_ctx_snapshot_git(c[..], "M a.coax", false, false, true);
+  #assert !flawed_ctx_snapshot_git(c[..], "M a.coax", true, true, true);
+  #assert !flawed_ctx_snapshot_git(c[..], "M a.coax", true, false, false);
+  #assert flawed_ctx_snapshot_git(c[..], "M a.coax", true, false, true);
+  // Second call stays frozen (does not overwrite with new status!)
+  #assert flawed_ctx_snapshot_git(c[..], "M b.coax", true, false, true);
+  #assert flawed_bytes_eq_str(c[0].git_status[..], c[0].git_status_n, "M a.coax");
+
+  // User context freezes CLAUDE.md + date and populates SessionState claude_md_hash cycle breaker
+  #assert flawed_ctx_snapshot_user(c[..], st[..], "# Project Rules", "2026-11-24", false);
+  #assert st[0].claude_md_cached;
+  // Same day -> no rollover; midnight rollover -> emits once, keeping session_date frozen at 2026-11-24!
+  #assert !flawed_ctx_check_date_rollover(c[..], "2026-11-24");
+  #assert flawed_ctx_check_date_rollover(c[..], "2026-11-25");
+  #assert !flawed_ctx_check_date_rollover(c[..], "2026-11-25");
+  #assert flawed_bytes_eq_str(c[0].session_date[..], c[0].session_date_n, "2026-11-24");
+
+  // Negative null caching prevents mid-session flag flip from busting cache
+  i_null := flawed_ctx_resolve_section(c[..], "scratchpad", "", true, false);
+  #assert i_null == 0 && c[0].sections[0].is_null;
+  i_null2 := flawed_ctx_resolve_section(c[..], "scratchpad", "suddenly enabled", false, false);
+  #assert i_null2 == 0 && c[0].sections[0].is_null; // still null!
+
+  // DANGEROUS_uncached recomputes and updates slot
+  i_mcp := flawed_ctx_resolve_section(c[..], "mcp_instructions", "srv1", false, true);
+  #assert i_mcp == 1 && flawed_bytes_eq_str(c[0].sections[1].val[..], c[0].sections[1].val_n, "srv1");
+  _ = flawed_ctx_resolve_section(c[..], "mcp_instructions", "srv1+srv2", false, true);
+  #assert flawed_bytes_eq_str(c[0].sections[1].val[..], c[0].sections[1].val_n, "srv1+srv2");
+
+  // Sticky-on beta latches stay on even when input flips false
+  #assert flawed_ctx_latch_beta(c[..], FLAWED_BETA_CACHE_EDITING, true);
+  #assert flawed_ctx_latch_beta(c[..], FLAWED_BETA_CACHE_EDITING, false);
+
+  // Subagent compaction MUST NOT clobber main-thread caches!
+  #assert !flawed_ctx_clear_compact(c[..], false);
+  #assert c[0].user_ctx_cached && c[0].section_count == 2 && c[0].beta_latches != 0;
+
+  // Main-thread compaction clears user_ctx + sections + beta latches, while preserving frozen git_status!
+  #assert flawed_ctx_clear_compact(c[..], true);
+  #assert !c[0].user_ctx_cached && c[0].section_count == 0 && c[0].beta_latches == 0 && c[0].git_cached;
+
+  // prependUserContext inserts is_meta message at index 0
+  #assert flawed_ctx_snapshot_user(c[..], st[..], "# Rules", "2026-11-25", false);
+  tx: [1] FlawedTranscript;
+  u: [1] FlawedMessage; u[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u1", "");
+  #assert flawed_msg_push_block(u[..], flawed_blk_text("hi"));
+  #assert flawed_tx_push(tx[..], u[0]);
+  with_ctx: [1] FlawedTranscript;
+  #assert flawed_prepend_user_context(c[..], tx[..], with_ctx[..]) == 2;
+  #assert with_ctx[0].msgs[0].is_meta && with_ctx[0].msgs[1].role == FLAWED_ROLE_USER;
+
+  // Full /clear wipes everything including git_status
+  flawed_ctx_clear_session(c[..]);
+  #assert !c[0].git_cached && !c[0].user_ctx_cached;
+}
