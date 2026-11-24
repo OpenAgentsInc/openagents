@@ -38,6 +38,7 @@
 #define OA_INKY_WORKER "inky"
 #define OA_CLAUDE_WORKER "claudeworker"
 #define OA_AGY_WORKER "agyworker"
+#define OA_FLAWED_WORKER "flawedworker"
 #define OA_DAEMON "coder-host"
 #define OA_DAEMON_ALT "openagents-daemon"
 
