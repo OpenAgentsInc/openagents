@@ -957,7 +957,8 @@ static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
     }
     l->server_pid = pid;
   }
-  for (int i = 0; i < 360; i++) {
+  // Up to 3 minutes: weights in a type the kernels do not read are converted at load.
+  for (int i = 0; i < 720; i++) {
     if (oa_http_probe_health(l->port) == 1) return 1;
     if (!oa_server_pid_alive(l->server_pid)) {
       l->server_pid = 0;
