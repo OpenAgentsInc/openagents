@@ -13,6 +13,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 05 — Talking to the Model** | Layer 2 | `api_policy.coax` (`#authority`), `sse_stream.coax`, `flawed-cli cost-check` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 06 — Executing Tools** | Layer 2 | `tool_exec.coax` (`#authority`), `tool_spill.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 07 — The Heartbeat Query Loop** | Layer 2 | `query_loop.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 08 — Session Envelope & Transcripts** | Layer 2 | `session.coax` (`#authority`), `transcript_dag.coax` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

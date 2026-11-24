@@ -18,6 +18,8 @@
 #load "tool_exec.coax";
 #load "tool_spill.coax";
 #load "query_loop.coax";
+#load "session.coax";
+#load "transcript_dag.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -187,4 +189,20 @@
   // Step 3: clean reply -> completed with CacheSafeParams saved!
   fin := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{});
   #assert fin.is_terminal && fin.terminal == FLAWED_TERM_COMPLETED && fin.save_cache_safe_params && fin.notify_commands_completed;
+}
+
+#test "flawed core (Ch 08): QueryEngine envelope, append-only DAG, file history /rewind, and fork policy compose" {
+  env: [1] FlawedSessionEnvelope;
+  env[0] = flawed_envelope_init(5, 500000, 3);
+  #assert flawed_envelope_begin_turn(env[..]);
+  dag: [1] FlawedTranscriptDag;
+  flawed_dag_init(dag[..], 77);
+  #assert flawed_dag_append(dag[..], 10, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 100);
+  #assert flawed_dag_append(dag[..], 11, -1, FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, false, 200);
+  fh: [1] FlawedFileHistory;
+  #assert flawed_fh_make_snapshot(fh[..], 10) == 1;
+  #assert flawed_fh_track_edit(fh[..], 1, true, 1);
+  #assert flawed_fh_rewind_plan(fh[..], 10, 1).action == FLAWED_REWIND_RESTORE;
+  rp := flawed_plan_resume(true, true);
+  #assert !rp.restore_worktree && rp.seed_content_replacements && rp.restamp_session_id;
 }

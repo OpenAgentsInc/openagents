@@ -1,0 +1,408 @@
+// Flawed Layer 2 (Chapter 08) — Session Envelope (QueryEngine), File History /rewind,
+// Resume/Fork Policy & Transcript Scale Guards.
+// Replaces cc/QueryEngine.ts, cc/utils/queryHelpers.ts, cc/utils/sessionRestore.ts,
+// cc/utils/conversationRecovery.ts, and cc/utils/fileHistory.ts.
+//   coax/bin/coax test flawed/session.coax --library
+//   coax/bin/coax mutate flawed/session.coax --root-only
+#module "flawed.session";
+#authority;
+#load "query_loop.coax";
+#load "sse_stream.coax";
+
+FLAWED_DEFAULT_MAX_STRUCTURED_RETRIES :: 5;
+FLAWED_SKIP_PRECOMPACT_BYTES :: 5242880; // 5 MiB scale guard
+FLAWED_FH_MAX_SNAPSHOTS :: 16;
+FLAWED_FH_MAX_FILES_PER_SNAP :: 8;
+
+// Envelope guardrail exit statuses.
+FLAWED_GUARD_OK :: 0;
+FLAWED_GUARD_ABORTED :: 1;
+FLAWED_GUARD_MAX_TURNS :: 2;
+FLAWED_GUARD_MAX_BUDGET :: 3;
+FLAWED_GUARD_MAX_STRUCTURED_RETRIES :: 4;
+
+// Turn interruption states on resume (conversationRecovery.ts:272-333).
+FLAWED_INTR_NONE :: 0;
+FLAWED_INTR_PROMPT :: 1; // unanswered user prompt or non-terminal tool_result
+FLAWED_INTR_TURN :: 2;   // dangling assistant tool_use
+
+// Rewind action per tracked file (fileHistory.ts:347-397).
+FLAWED_REWIND_NOOP :: 0;
+FLAWED_REWIND_RESTORE :: 1;
+FLAWED_REWIND_UNLINK :: 2;
+FLAWED_REWIND_FAIL_EVICTED :: 3;
+
+FlawedSessionEnvelope :: struct {
+  turns_used: int;
+  max_turns: int;
+  total_cost_micro_usd: int;
+  max_budget_micro_usd: int;
+  structured_retries: int;
+  max_structured_retries: int;
+  aborted: bool;                     // latched forever once interrupt() is called
+  has_handled_orphaned_perm: bool;
+  discovered_skills_count: int;      // turn-scoped: cleared at each submit_turn
+  loaded_memory_count: int;          // session-scoped: persists across turns
+}
+
+FlawedResumePlan :: struct {
+  switch_session: bool;
+  restore_worktree: bool;
+  seed_content_replacements: bool;
+  restamp_session_id: bool;
+}
+
+FlawedBackupRef :: struct {
+  path_id: int;
+  version: int;
+  existed_before: bool; // false => null backup sentinel (rewind must unlink!)
+}
+
+FlawedFileSnapshot :: struct {
+  seq: int;
+  msg_id: int;
+  files: [FLAWED_FH_MAX_FILES_PER_SNAP] FlawedBackupRef;
+  file_count: int;
+}
+
+FlawedFileHistory :: struct {
+  snapshots: [FLAWED_FH_MAX_SNAPSHOTS] FlawedFileSnapshot;
+  count: int;
+  next_seq: int;
+  evicted_count: int;
+}
+
+FlawedRewindPlan :: struct {
+  action: u8;
+  version: int;
+}
+
+flawed_envelope_init :: (max_turns: int, max_budget_micro_usd: int, max_structured_retries: int) -> FlawedSessionEnvelope #effects(traps) {
+  msr := ifx max_structured_retries > 0 then max_structured_retries else FLAWED_DEFAULT_MAX_STRUCTURED_RETRIES;
+  return FlawedSessionEnvelope.{
+    max_turns = max_turns,
+    max_budget_micro_usd = max_budget_micro_usd,
+    max_structured_retries = msr,
+  };
+}
+
+// Permanent engine interrupt (QueryEngine.ts:1158-1160): abortController never resets.
+flawed_envelope_interrupt :: (e: [] FlawedSessionEnvelope) #effects(writes, traps) {
+  e[0].aborted = true;
+}
+
+// Start of submitMessage(): clears turn-scoped discovered_skills_count, keeps session-wide loaded_memory_count.
+flawed_envelope_begin_turn :: (e: [] FlawedSessionEnvelope) -> bool #effects(reads, writes, traps) {
+  if e[0].aborted { return false; }
+  e[0].discovered_skills_count = 0;
+  return true;
+}
+
+// Guardrail evaluation across turns, budget, and structured output retries (QueryEngine.ts:842-1156).
+flawed_envelope_check_guardrails :: (e: [] const FlawedSessionEnvelope) -> u8 #effects(reads, traps) {
+  if e[0].aborted { return FLAWED_GUARD_ABORTED; }
+  if e[0].max_turns > 0 && e[0].turns_used >= e[0].max_turns { return FLAWED_GUARD_MAX_TURNS; }
+  if e[0].max_budget_micro_usd > 0 && e[0].total_cost_micro_usd >= e[0].max_budget_micro_usd { return FLAWED_GUARD_MAX_BUDGET; }
+  if e[0].structured_retries >= e[0].max_structured_retries { return FLAWED_GUARD_MAX_STRUCTURED_RETRIES; }
+  return FLAWED_GUARD_OK;
+}
+
+// Pre-query / exit eager flush policy (QueryEngine.ts:450-463):
+// Bare mode fire-and-forgets; non-bare Cowork/EAGER_FLUSH awaits flushSessionStorage().
+flawed_should_eager_flush :: (persist_session: bool, is_bare_mode: bool, eager_or_cowork: bool) -> bool #effects(traps) {
+  return persist_session && !is_bare_mode && eager_or_cowork;
+}
+
+// isResultSuccessful() with #23537 & zero-block end_turn carve-out (utils/queryHelpers.ts:56-94).
+flawed_is_result_successful :: (
+  last_role: u8,
+  has_visible_or_thinking: bool,
+  all_tool_results: bool,
+  stop_reason: u8
+) -> bool #effects(traps) {
+  if last_role == FLAWED_ROLE_ASSISTANT {
+    return has_visible_or_thinking || stop_reason == FLAWED_STOP_END_TURN;
+  }
+  if last_role == FLAWED_ROLE_USER {
+    return all_tool_results;
+  }
+  return false;
+}
+
+// Scale guards (utils/sessionStorage.ts:3442, 3536):
+// 1. > 5 MiB fd-level pre-compact streaming skip (unless disabled)
+// 2. Byte-level 50% dead-fork stitch gate (len - chainBytes >= len / 2)
+flawed_should_skip_precompact :: (file_bytes: int, disable_skip: bool) -> bool #effects(traps) {
+  return !disable_skip && file_bytes > FLAWED_SKIP_PRECOMPACT_BYTES;
+}
+
+flawed_should_stitch_live_chain :: (total_bytes: int, live_chain_bytes: int) -> bool #effects(traps) {
+  if total_bytes <= 0 || live_chain_bytes < 0 || live_chain_bytes > total_bytes { return false; } // mutant: equivalent // when live_chain_bytes == total_bytes, dead_bytes == 0 so 0 >= total_bytes is false
+  dead_bytes := total_bytes - live_chain_bytes;
+  return dead_bytes * 2 >= total_bytes;
+}
+
+// Turn interruption detection on resume (conversationRecovery.ts:272-373, #20467 terminal tool fix).
+flawed_detect_turn_interruption :: (
+  last_role: u8,
+  has_unresolved_tool_use: bool,
+  is_tool_result_msg: bool,
+  is_terminal_tool_result: bool
+) -> u8 #effects(traps) {
+  if last_role == FLAWED_ROLE_ASSISTANT {
+    if has_unresolved_tool_use { return FLAWED_INTR_TURN; }
+    return FLAWED_INTR_NONE;
+  }
+  if last_role == FLAWED_ROLE_USER {
+    if is_tool_result_msg && is_terminal_tool_result { return FLAWED_INTR_NONE; }
+    return FLAWED_INTR_PROMPT;
+  }
+  return FLAWED_INTR_NONE;
+}
+
+// Resume vs --fork-session orchestration (utils/sessionRestore.ts:436-472):
+// Fork keeps fresh startup sessionId, strips parent worktree, seeds contentReplacements to prevent FROZEN cache misses.
+flawed_plan_resume :: (fork_session: bool, has_content_replacements: bool) -> FlawedResumePlan #effects(traps) {
+  return FlawedResumePlan.{
+    switch_session = !fork_session,
+    restore_worktree = !fork_session,
+    seed_content_replacements = fork_session && has_content_replacements,
+    restamp_session_id = true,
+  };
+}
+
+// Dual interactive vs SDK file checkpointing gate (utils/fileHistory.ts:63-78).
+flawed_file_history_enabled :: (
+  is_interactive: bool,
+  setting_disabled: bool,
+  env_disable: bool,
+  env_enable_sdk: bool
+) -> bool #effects(traps) {
+  if env_disable { return false; }
+  if is_interactive { return !setting_disabled; }
+  return env_enable_sdk;
+}
+
+// Turn-start snapshot creation enforcing FLAWED_FH_MAX_SNAPSHOTS FIFO eviction with monotonic sequence.
+flawed_fh_make_snapshot :: (fh: [] FlawedFileHistory, msg_id: int) -> int #effects(reads, writes, traps) {
+  fh[0].next_seq += 1;
+  seq := fh[0].next_seq;
+  if fh[0].count >= FLAWED_FH_MAX_SNAPSHOTS {
+    for i: 1..<FLAWED_FH_MAX_SNAPSHOTS {
+      fh[0].snapshots[i - 1] = fh[0].snapshots[i];
+    }
+    fh[0].count = FLAWED_FH_MAX_SNAPSHOTS - 1;
+    fh[0].evicted_count += 1;
+  }
+  idx := fh[0].count;
+  fh[0].snapshots[idx] = FlawedFileSnapshot.{seq = seq, msg_id = msg_id};
+  fh[0].count += 1;
+  return seq;
+}
+
+// Mid-turn pre-edit tracking (fileHistoryTrackEdit): attaches backup to most recent snapshot,
+// refusing to overwrite an existing backup for path_id in that snapshot so v1 is never corrupted!
+flawed_fh_track_edit :: (
+  fh: [] FlawedFileHistory,
+  path_id: int,
+  existed_before: bool,
+  version: int
+) -> bool #effects(reads, writes, traps) {
+  if fh[0].count <= 0 { return false; }
+  idx := fh[0].count - 1;
+  for i: 0..<fh[0].snapshots[idx].file_count {
+    if fh[0].snapshots[idx].files[i].path_id == path_id {
+      return false; // preserve first backup for this turn (never clobber v1!)
+    }
+  }
+  if fh[0].snapshots[idx].file_count >= FLAWED_FH_MAX_FILES_PER_SNAP { return false; }
+  fi := fh[0].snapshots[idx].file_count;
+  fh[0].snapshots[idx].files[fi] = FlawedBackupRef.{
+    path_id = path_id,
+    version = version,
+    existed_before = existed_before,
+  };
+  fh[0].snapshots[idx].file_count += 1;
+  return true;
+}
+
+// Pure read-only /rewind plan for a single path_id back to target_msg_id (fileHistoryRewind):
+// Never mutates FlawedFileHistory so repeated forward/backward rewinds work!
+// - Finds target snapshot; if path_id has a backup there, restores or unlinks per existed_before.
+// - If target predates path_id's first edit, uses first tracked version==1 (or fails safe if evicted!).
+flawed_fh_rewind_plan :: (fh: [] const FlawedFileHistory, target_msg_id: int, path_id: int) -> FlawedRewindPlan #effects(reads, traps) {
+  target_idx := -1;
+  for i: 0..<fh[0].count {
+    if fh[0].snapshots[i].msg_id == target_msg_id {
+      target_idx = i;
+      break;
+    }
+  }
+  if target_idx < 0 { return FlawedRewindPlan.{action = FLAWED_REWIND_NOOP}; }
+
+  // Look for latest snapshot <= target_idx containing path_id
+  found_idx := -1;
+  found_ref: FlawedBackupRef;
+  for i: 0..<target_idx + 1 {
+    s := fh[0].snapshots[i];
+    for j: 0..<s.file_count {
+      if s.files[j].path_id == path_id {
+        found_idx = i;
+        found_ref = s.files[j];
+      }
+    }
+  }
+  if found_idx >= 0 {
+    if !found_ref.existed_before { return FlawedRewindPlan.{action = FLAWED_REWIND_UNLINK}; }
+    return FlawedRewindPlan.{action = FLAWED_REWIND_RESTORE, version = found_ref.version};
+  }
+
+  // Target predates path_id's recorded backups in this window -> inspect earliest later edit
+  for i: target_idx + 1..<fh[0].count {
+    s := fh[0].snapshots[i];
+    for j: 0..<s.file_count {
+      if s.files[j].path_id == path_id {
+        if s.files[j].version != 1 { return FlawedRewindPlan.{action = FLAWED_REWIND_FAIL_EVICTED}; }
+        if !s.files[j].existed_before { return FlawedRewindPlan.{action = FLAWED_REWIND_UNLINK}; }
+        return FlawedRewindPlan.{action = FLAWED_REWIND_RESTORE, version = 1};
+      }
+    }
+  }
+  return FlawedRewindPlan.{action = FLAWED_REWIND_NOOP};
+}
+
+#test "session: envelope guardrails, result success carve-out, scale guards, and resume/fork policy" {
+  e: [1] FlawedSessionEnvelope;
+  e[0] = flawed_envelope_init(2, 100000, 0);
+  #assert e[0].max_structured_retries == FLAWED_DEFAULT_MAX_STRUCTURED_RETRIES;
+  e_custom := flawed_envelope_init(2, 100000, 1);
+  #assert e_custom.max_structured_retries == 1;
+
+  e[0].discovered_skills_count = 3;
+  e[0].loaded_memory_count = 5;
+  #assert flawed_envelope_begin_turn(e[..]);
+  #assert e[0].discovered_skills_count == 0 && e[0].loaded_memory_count == 5;
+  #assert flawed_envelope_check_guardrails(e[..]) == FLAWED_GUARD_OK;
+
+  e[0].turns_used = 2;
+  #assert flawed_envelope_check_guardrails(e[..]) == FLAWED_GUARD_MAX_TURNS;
+  e[0].turns_used = 1;
+  e[0].total_cost_micro_usd = 100000;
+  #assert flawed_envelope_check_guardrails(e[..]) == FLAWED_GUARD_MAX_BUDGET;
+  e[0].total_cost_micro_usd = 99999;
+  e[0].structured_retries = 5;
+  #assert flawed_envelope_check_guardrails(e[..]) == FLAWED_GUARD_MAX_STRUCTURED_RETRIES;
+  e[0].structured_retries = 0;
+
+  flawed_envelope_interrupt(e[..]);
+  #assert !flawed_envelope_begin_turn(e[..]);
+  #assert flawed_envelope_check_guardrails(e[..]) == FLAWED_GUARD_ABORTED;
+
+  // Exact cap=1 boundaries for turns and budget
+  e1: [1] FlawedSessionEnvelope;
+  e1[0] = flawed_envelope_init(1, 1, 1);
+  e1[0].turns_used = 1; #assert flawed_envelope_check_guardrails(e1[..]) == FLAWED_GUARD_MAX_TURNS;
+  e1[0].turns_used = 0; e1[0].total_cost_micro_usd = 1; #assert flawed_envelope_check_guardrails(e1[..]) == FLAWED_GUARD_MAX_BUDGET;
+
+  // Unlimited turns/budget (0) stay OK
+  e0: [1] FlawedSessionEnvelope;
+  e0[0] = flawed_envelope_init(0, 0, 2);
+  e0[0].turns_used = 99; e0[0].total_cost_micro_usd = 9999999;
+  #assert flawed_envelope_check_guardrails(e0[..]) == FLAWED_GUARD_OK;
+
+  // Eager flush & result success (#23537 + zero-block end_turn carve-out)
+  #assert flawed_should_eager_flush(true, false, true);
+  #assert !flawed_should_eager_flush(false, false, true);
+  #assert !flawed_should_eager_flush(true, true, true);
+  #assert !flawed_should_eager_flush(true, false, false);
+
+  #assert flawed_is_result_successful(FLAWED_ROLE_ASSISTANT, true, false, FLAWED_STOP_NONE);
+  #assert flawed_is_result_successful(FLAWED_ROLE_ASSISTANT, false, false, FLAWED_STOP_END_TURN); // zero-block carve-out!
+  #assert !flawed_is_result_successful(FLAWED_ROLE_ASSISTANT, false, false, FLAWED_STOP_MAX_TOKENS);
+  #assert flawed_is_result_successful(FLAWED_ROLE_USER, false, true, FLAWED_STOP_NONE);
+  #assert !flawed_is_result_successful(FLAWED_ROLE_USER, true, false, FLAWED_STOP_NONE);
+  #assert !flawed_is_result_successful(FLAWED_ROLE_SYSTEM, true, true, FLAWED_STOP_END_TURN);
+
+  // Scale guards: > 5 MiB skip, >= 50% dead bytes stitch
+  #assert !flawed_should_skip_precompact(FLAWED_SKIP_PRECOMPACT_BYTES, false);
+  #assert flawed_should_skip_precompact(FLAWED_SKIP_PRECOMPACT_BYTES + 1, false);
+  #assert !flawed_should_skip_precompact(FLAWED_SKIP_PRECOMPACT_BYTES + 1, true);
+  #assert !flawed_should_stitch_live_chain(0, 0);
+  #assert !flawed_should_stitch_live_chain(100, -1);
+  #assert !flawed_should_stitch_live_chain(100, 101);
+  #assert flawed_should_stitch_live_chain(100, 50);  // exact 50% dead -> stitch!
+  #assert !flawed_should_stitch_live_chain(100, 51); // 49% dead -> skip!
+  #assert flawed_should_stitch_live_chain(100, 0);
+  #assert flawed_should_stitch_live_chain(1, 0);
+  #assert !flawed_should_stitch_live_chain(1, 1);
+
+  // Turn interruption detection (#20467 brief terminal tool fix)
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_ASSISTANT, true, false, false) == FLAWED_INTR_TURN;
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_ASSISTANT, false, false, false) == FLAWED_INTR_NONE;
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_USER, false, true, true) == FLAWED_INTR_NONE;
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_USER, false, true, false) == FLAWED_INTR_PROMPT;
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_USER, false, false, true) == FLAWED_INTR_PROMPT;
+  #assert flawed_detect_turn_interruption(FLAWED_ROLE_SYSTEM, true, false, false) == FLAWED_INTR_NONE;
+
+  // Resume vs --fork-session plan
+  r_in := flawed_plan_resume(false, true);
+  #assert r_in.switch_session && r_in.restore_worktree && !r_in.seed_content_replacements && r_in.restamp_session_id;
+  r_fk := flawed_plan_resume(true, true);
+  #assert !r_fk.switch_session && !r_fk.restore_worktree && r_fk.seed_content_replacements && r_fk.restamp_session_id;
+  r_fk0 := flawed_plan_resume(true, false);
+  #assert !r_fk0.seed_content_replacements;
+}
+
+#test "session: file history dual gate, v1 preservation, FIFO eviction, and read-only /rewind plans" {
+  // Dual interactive vs SDK gate
+  #assert flawed_file_history_enabled(true, false, false, false);
+  #assert !flawed_file_history_enabled(true, true, false, true);
+  #assert !flawed_file_history_enabled(true, false, true, true);
+  #assert !flawed_file_history_enabled(false, false, false, false);
+  #assert flawed_file_history_enabled(false, true, false, true);
+  #assert !flawed_file_history_enabled(false, false, true, true);
+
+  fh: [1] FlawedFileHistory;
+  #assert !flawed_fh_track_edit(fh[..], 10, true, 1); // no snapshot yet!
+  #assert flawed_fh_rewind_plan(fh[..], 100, 10).action == FLAWED_REWIND_NOOP;
+
+  // Snapshot 1 (msg 100): untouched file 10, touched file 20 (created new -> existed_before=false)
+  #assert flawed_fh_make_snapshot(fh[..], 100) == 1;
+  #assert flawed_fh_track_edit(fh[..], 20, false, 1);
+  // Repeat edit to file 20 in same turn MUST fail to preserve v1!
+  #assert !flawed_fh_track_edit(fh[..], 20, true, 2);
+
+  // Snapshot 2 (msg 200): file 10 first edited (v1 existed), file 30 created new (v1 !existed), file 40 v2 (v1 evicted!)
+  #assert flawed_fh_make_snapshot(fh[..], 200) == 2;
+  #assert flawed_fh_track_edit(fh[..], 10, true, 1);
+  #assert flawed_fh_track_edit(fh[..], 30, false, 1);
+  #assert flawed_fh_track_edit(fh[..], 40, true, 2);
+
+  // Rewind to msg 100 (pure read-only):
+  // - file 20: existed_before=false -> UNLINK
+  // - file 10: edited later at msg 200 with v1 existed -> RESTORE v1
+  // - file 30: created later at msg 200 with v1 !existed -> UNLINK
+  // - file 40: earliest visible version is v2 (v1 evicted!) -> FAIL_EVICTED
+  // - file 99: never edited -> NOOP
+  #assert flawed_fh_rewind_plan(fh[..], 100, 20).action == FLAWED_REWIND_UNLINK;
+  p10 := flawed_fh_rewind_plan(fh[..], 100, 10);
+  #assert p10.action == FLAWED_REWIND_RESTORE && p10.version == 1;
+  #assert flawed_fh_rewind_plan(fh[..], 100, 30).action == FLAWED_REWIND_UNLINK;
+  #assert flawed_fh_rewind_plan(fh[..], 100, 40).action == FLAWED_REWIND_FAIL_EVICTED;
+  #assert flawed_fh_rewind_plan(fh[..], 100, 99).action == FLAWED_REWIND_NOOP;
+  #assert flawed_fh_rewind_plan(fh[..], 9999, 20).action == FLAWED_REWIND_NOOP; // unknown msg_id on non-empty fh!
+
+  // Forward rewind to msg 200 still works (FileHistory was NOT mutated!)
+  p40 := flawed_fh_rewind_plan(fh[..], 200, 40);
+  #assert p40.action == FLAWED_REWIND_RESTORE && p40.version == 2;
+  #assert fh[0].count == 2;
+
+  // Per-snapshot file cap (8) & FIFO snapshot eviction (16)
+  for k: 0..<5 { #assert flawed_fh_track_edit(fh[..], 500 + k, true, 1); } // 3 + 5 = 8 files
+  #assert !flawed_fh_track_edit(fh[..], 999, true, 1);
+  for s: 0..<FLAWED_FH_MAX_SNAPSHOTS {
+    _ = flawed_fh_make_snapshot(fh[..], 1000 + s);
+  }
+  #assert fh[0].count == FLAWED_FH_MAX_SNAPSHOTS && fh[0].evicted_count == 2;
+  #assert fh[0].snapshots[0].msg_id == 1000;
+}

@@ -1,0 +1,222 @@
+// Flawed Layer 2 (Chapter 08) — Append-Only JSONL Transcript DAG & Crash Recovery.
+// Replaces cc/utils/sessionStorage.ts (lazy materialization, sidechain messageSet isolation inc-4718,
+// parentUuid / logicalParentUuid DAG, post-spread sessionId re-stamp, progressBridge, snip relinking)
+// and cc/utils/json.ts (tolerant line-skipping partial-write JSONL recovery).
+//   coax/bin/coax test flawed/transcript_dag.coax --library
+#module "flawed.transcript_dag";
+#load "session.coax";
+
+FLAWED_DAG_MAX_ENTRIES :: 64;
+
+FlawedDagEntry :: struct {
+  uuid: int;
+  parent_uuid: int;         // -1 = root / compact_boundary severance
+  logical_parent_uuid: int; // preserves pre-compaction parent on compact_boundary
+  session_id: int;          // ALWAYS re-stamped to active session_id (post-spread invariant!)
+  role: u8;
+  subtype: u8;
+  is_sidechain: bool;
+  is_snipped: bool;
+  byte_len: int;
+}
+
+FlawedTranscriptDag :: struct {
+  session_id: int;
+  materialized: bool; // stays false until first USER/ASSISTANT entry (prevents empty .jsonl leaks!)
+  head_uuid: int;     // last chain-participant UUID (-1 initially)
+  entries: [FLAWED_DAG_MAX_ENTRIES] FlawedDagEntry;
+  count: int;
+  pending_before_materialize: int;
+}
+
+flawed_dag_init :: (dag: [] FlawedTranscriptDag, session_id: int) #effects(writes, traps) {
+  dag[0] = FlawedTranscriptDag.{session_id = session_id, head_uuid = -1};
+}
+
+flawed_dag_has_main_uuid :: (dag: [] const FlawedTranscriptDag, uuid: int) -> bool #effects(reads, traps) {
+  for i: 0..<dag[0].count {
+    if !dag[0].entries[i].is_sidechain && dag[0].entries[i].uuid == uuid { return true; }
+  }
+  return false;
+}
+
+// Append entry to append-only JSONL DAG (utils/sessionStorage.ts:960-1083):
+// - Lazy materialization on first USER/ASSISTANT
+// - Sidechain entries bypass main messageSet dedup (inc-4718) and never advance main head_uuid
+// - COMPACT_BOUNDARY severs parent_uuid = -1 and preserves logical_parent_uuid = head_uuid
+// - PROGRESS is not a chain participant (does not advance head_uuid)
+// - Always re-stamps session_id = dag.session_id (post-spread invariant!)
+flawed_dag_append :: (
+  dag: [] FlawedTranscriptDag,
+  uuid: int,
+  explicit_parent: int, // >=0 overrides head_uuid (e.g. tool_result -> sourceToolAssistantUUID or rewind branch)
+  role: u8,
+  subtype: u8,
+  is_sidechain: bool,
+  byte_len: int
+) -> bool #effects(reads, writes, traps) {
+  if dag[0].count >= FLAWED_DAG_MAX_ENTRIES { return false; }
+
+  // Main-file-authoritative dedup (inc-4718: sidechains bypass main dedup!)
+  if !is_sidechain && flawed_dag_has_main_uuid(dag, uuid) { return false; }
+
+  // Lazy materialization trigger
+  if !dag[0].materialized {
+    if role == FLAWED_ROLE_USER || role == FLAWED_ROLE_ASSISTANT {
+      dag[0].materialized = true;
+    } else {
+      dag[0].pending_before_materialize += 1;
+    }
+  }
+
+  eff_parent := ifx explicit_parent >= 0 then explicit_parent else dag[0].head_uuid;
+  is_compact := role == FLAWED_ROLE_SYSTEM && subtype == FLAWED_SYS_COMPACT_BOUNDARY;
+  e := FlawedDagEntry.{
+    uuid = uuid,
+    parent_uuid = ifx is_compact then -1 else eff_parent,
+    logical_parent_uuid = ifx is_compact then eff_parent else -1,
+    session_id = dag[0].session_id, // post-spread session re-stamp!
+    role = role,
+    subtype = subtype,
+    is_sidechain = is_sidechain,
+    byte_len = byte_len,
+  };
+  dag[0].entries[dag[0].count] = e;
+  dag[0].count += 1;
+
+  // Only non-sidechain chain participants (role != PROGRESS) advance head_uuid
+  if !is_sidechain && role != FLAWED_ROLE_PROGRESS {
+    dag[0].head_uuid = uuid;
+  }
+  return true;
+}
+
+flawed_dag_mark_snipped :: (dag: [] FlawedTranscriptDag, uuid: int) -> bool #effects(reads, writes, traps) {
+  for i: 0..<dag[0].count {
+    if !dag[0].entries[i].is_sidechain && dag[0].entries[i].uuid == uuid {
+      dag[0].entries[i].is_snipped = true;
+      return true;
+    }
+  }
+  return false;
+}
+
+flawed_dag_find_main :: (dag: [] const FlawedTranscriptDag, uuid: int) -> int #effects(reads, traps) {
+  for i: 0..<dag[0].count {
+    if !dag[0].entries[i].is_sidechain && dag[0].entries[i].uuid == uuid { return i; }
+  }
+  return -1;
+}
+
+// Reconstruct live chain from leaf_uuid back to root with:
+// - Cycle guard
+// - Legacy progress bridging (skips PROGRESS nodes transparently)
+// - Snip removal relinking (skips is_snipped nodes transparently)
+// Writes live UUIDs in root->leaf order into `out_uuids` and returns live count; sets `out_live_bytes[0]`.
+flawed_dag_reconstruct_chain :: (
+  dag: [] const FlawedTranscriptDag,
+  leaf_uuid: int,
+  out_uuids: [] int,
+  out_live_bytes: [] int
+) -> int #effects(reads, writes, traps) {
+  rev: [FLAWED_DAG_MAX_ENTRIES] int;
+  rev_n := 0;
+  visited: [FLAWED_DAG_MAX_ENTRIES] bool;
+  live_bytes := 0;
+
+  cur := leaf_uuid;
+  while cur >= 0 {
+    idx := flawed_dag_find_main(dag, cur);
+    if idx < 0 || visited[idx] { break; }
+    visited[idx] = true;
+    e := dag[0].entries[idx];
+    if e.role != FLAWED_ROLE_PROGRESS && !e.is_snipped {
+      if rev_n < FLAWED_DAG_MAX_ENTRIES {
+        rev[rev_n] = e.uuid;
+        rev_n += 1;
+      }
+      live_bytes += e.byte_len;
+    }
+    cur = e.parent_uuid;
+  }
+
+  out_live_bytes[0] = live_bytes;
+  n := ifx rev_n < out_uuids.count then rev_n else out_uuids.count;
+  for i: 0..<n {
+    out_uuids[i] = rev[rev_n - 1 - i];
+  }
+  return n;
+}
+
+// Tolerant JSONL partial-write scanner (utils/json.ts:102-175):
+// Strips optional UTF-8 BOM, counts valid complete '{...}' JSON object lines, and skips
+// truncated or corrupted lines past '\n' without losing preceding or following valid lines!
+flawed_scan_jsonl_valid_lines :: (raw: string) -> int #effects(reads, traps) {
+  pos := 0;
+  // Strip UTF-8 BOM (EF BB BF)
+  if raw.count >= 3 && raw[0] == 239 && raw[1] == 187 && raw[2] == 191 {
+    pos = 3;
+  }
+  valid := 0;
+  while pos < raw.count {
+    line_start := pos;
+    while pos < raw.count && raw[pos] != 10 { pos += 1; }
+    line_end := pos;
+    if pos < raw.count && raw[pos] == 10 { pos += 1; }
+    while line_end > line_start && (raw[line_end - 1] == 13 || raw[line_end - 1] == 32) { line_end -= 1; }
+    while line_start < line_end && raw[line_start] == 32 { line_start += 1; }
+    if line_end - line_start >= 2 && raw[line_start] == 123 && raw[line_end - 1] == 125 {
+      valid += 1;
+    }
+  }
+  return valid;
+}
+
+#test "transcript_dag: lazy materialization, sidechain isolation, compact severance, snip relink, and tolerant JSONL" {
+  dag: [1] FlawedTranscriptDag;
+  flawed_dag_init(dag[..], 42);
+
+  // Early system/progress rows buffer without materializing file on disk!
+  #assert flawed_dag_append(dag[..], 1, -1, FLAWED_ROLE_SYSTEM, FLAWED_SYS_INFORMATIONAL, false, 50);
+  #assert !dag[0].materialized && dag[0].pending_before_materialize == 1;
+
+  // First USER materializes file and stamps session_id=42
+  #assert flawed_dag_append(dag[..], 2, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 100);
+  #assert dag[0].materialized && dag[0].entries[1].session_id == 42;
+  #assert !flawed_dag_append(dag[..], 2, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 100); // main dedup blocks duplicate
+
+  // Sidechain sharing parent uuid 2 bypasses main dedup (inc-4718) and does NOT move main head_uuid!
+  #assert flawed_dag_append(dag[..], 2, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, true, 80);
+  #assert dag[0].head_uuid == 2;
+
+  // Legacy PROGRESS entry does not advance head_uuid; assistant 3 & abandoned branch 4
+  #assert flawed_dag_append(dag[..], 90, -1, FLAWED_ROLE_PROGRESS, FLAWED_SYS_NONE, false, 40);
+  #assert dag[0].head_uuid == 2;
+  #assert flawed_dag_append(dag[..], 3, -1, FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, false, 200);
+  #assert flawed_dag_append(dag[..], 4, 3, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 5000); // abandoned big branch!
+
+  // /rewind chains new user 5 off uuid 2 (without truncating JSONL!), then snips 5, adds 6
+  #assert flawed_dag_append(dag[..], 5, 2, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 150);
+  #assert flawed_dag_append(dag[..], 6, 5, FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, false, 120);
+  #assert flawed_dag_mark_snipped(dag[..], 5);
+
+  chain: [16] int;
+  live_bytes: [1] int;
+  n := flawed_dag_reconstruct_chain(dag[..], 6, chain[..], live_bytes[..]);
+  // Root->leaf: [1, 2, 6] (4 is dead fork, 5 is snipped & relinked transparently!)
+  #assert n == 3 && chain[0] == 1 && chain[1] == 2 && chain[2] == 6;
+  #assert live_bytes[0] == 270;
+  // Dead bytes (5000+200+150+40) > 50% of total -> triggers byte-level dead-fork stitch!
+  #assert flawed_should_stitch_live_chain(5740, live_bytes[0]);
+
+  // COMPACT_BOUNDARY severs parent_uuid=-1 and preserves logical_parent_uuid=6
+  #assert flawed_dag_append(dag[..], 7, -1, FLAWED_ROLE_SYSTEM, FLAWED_SYS_COMPACT_BOUNDARY, false, 60);
+  cb_idx := flawed_dag_find_main(dag[..], 7);
+  #assert dag[0].entries[cb_idx].parent_uuid == -1 && dag[0].entries[cb_idx].logical_parent_uuid == 6;
+  #assert flawed_dag_append(dag[..], 8, -1, FLAWED_ROLE_USER, FLAWED_SYS_NONE, false, 90);
+  n2 := flawed_dag_reconstruct_chain(dag[..], 8, chain[..], live_bytes[..]);
+  #assert n2 == 2 && chain[0] == 7 && chain[1] == 8;
+
+  // Tolerant JSONL recovery skips truncated trailing line and mid-stream garbage
+  #assert flawed_scan_jsonl_valid_lines("{\"a\":1}\n{truncated\n{\"b\":2}\r\n  \n{\"c\":3") == 2;
+}
