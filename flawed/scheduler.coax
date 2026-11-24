@@ -1,0 +1,261 @@
+// Flawed Layer 0 (Chapter 01) — Bounded Concurrent Tool-Batch Scheduler.
+// Replaces cc/utils/generators.ts (all() async-generator Promise.race multiplexer)
+// with an explicit, deterministic, zero-allocation step/event state machine:
+//   - Fail-closed default: work slots default to concurrency_safe = false (serial barrier)
+//   - Bounded concurrency cap: at most max_concurrent concurrency_safe slots run together
+//   - Strict barrier ordering: a serial slot waits until running == 0, runs exclusively
+//     (serial_active = true), and blocks later slots behind it until it settles
+//   - Incremental progress streaming via a bounded FlawedWorkEvent ring
+//   coax/bin/coax test flawed/scheduler.coax --library
+//   coax/bin/coax mutate flawed/scheduler.coax --root-only
+#module "flawed.scheduler";
+#authority;
+#load "ids.coax";
+
+FLAWED_SCHED_MAX_SLOTS :: 32;
+FLAWED_SCHED_EVENT_CAP :: 64;
+
+FLAWED_WORK_EMPTY :: 0;
+FLAWED_WORK_QUEUED :: 1;
+FLAWED_WORK_RUNNING :: 2;
+FLAWED_WORK_DONE :: 3;
+FLAWED_WORK_FAILED :: 4;
+FLAWED_WORK_CANCELLED :: 5;
+
+FLAWED_WEV_NONE :: 0;
+FLAWED_WEV_STARTED :: 1;
+FLAWED_WEV_PROGRESS :: 2;
+FLAWED_WEV_DONE :: 3;
+FLAWED_WEV_FAILED :: 4;
+FLAWED_WEV_CANCELLED :: 5;
+
+FlawedWorkSlot :: struct {
+  tool_use_id: FlawedToolUseId;
+  state: u8;
+  concurrency_safe: bool; // fail-closed default: false (serial barrier)
+  progress_count: int;
+  result_code: int;
+}
+
+FlawedWorkEvent :: struct {
+  kind: u8;
+  slot_index: int;
+  code: int;
+}
+
+FlawedScheduler :: struct {
+  max_concurrent: int;
+  slot_count: int;
+  running: int;
+  serial_active: bool;
+  slots: [FLAWED_SCHED_MAX_SLOTS] FlawedWorkSlot;
+  events: [FLAWED_SCHED_EVENT_CAP] FlawedWorkEvent;
+  ev_head: int;
+  ev_count: int;
+  ev_dropped: int;
+}
+
+flawed_sched_emit :: (s: [] FlawedScheduler, kind: u8, slot_index: int, code: int) #effects(reads, writes, traps) {
+  idx := (s[0].ev_head + s[0].ev_count) % FLAWED_SCHED_EVENT_CAP;
+  if s[0].ev_count == FLAWED_SCHED_EVENT_CAP {
+    s[0].ev_head = (s[0].ev_head + 1) % FLAWED_SCHED_EVENT_CAP;
+    s[0].ev_dropped += 1;
+  } else {
+    s[0].ev_count += 1;
+  }
+  s[0].events[idx] = FlawedWorkEvent.{kind = kind, slot_index = slot_index, code = code};
+}
+
+flawed_sched_init :: (s: [] FlawedScheduler, max_concurrent: int) -> bool #effects(writes, traps) {
+  if s.count == 0 || max_concurrent < 1 || max_concurrent > FLAWED_SCHED_MAX_SLOTS { return false; }
+  s[0] = FlawedScheduler.{max_concurrent = max_concurrent};
+  return true;
+}
+
+// Enqueue a tool call slot. Rejects invalid or duplicate tool_use_id, or full queue.
+flawed_sched_enqueue :: (s: [] FlawedScheduler, id: FlawedToolUseId, concurrency_safe: bool) -> int #effects(reads, writes, traps) {
+  if s.count == 0 || !flawed_tool_use_id_valid(id) || s[0].slot_count >= FLAWED_SCHED_MAX_SLOTS { return -1; }
+  for i: 0..<s[0].slot_count {
+    if flawed_tool_use_id_eq(s[0].slots[i].tool_use_id, id) { return -1; }
+  }
+  idx := s[0].slot_count;
+  s[0].slots[idx] = FlawedWorkSlot.{
+    tool_use_id = id,
+    state = cast(u8) FLAWED_WORK_QUEUED,
+    concurrency_safe = concurrency_safe
+  };
+  s[0].slot_count += 1;
+  return idx;
+}
+
+// Admit the next eligible queued slot (in FIFO order), respecting serial barriers and max_concurrent.
+// Returns the newly started slot index, or -1 if nothing can be dispatched right now.
+flawed_sched_dispatch :: (s: [] FlawedScheduler) -> int #effects(reads, writes, traps) {
+  if s.count == 0 || s[0].serial_active || s[0].running >= s[0].max_concurrent { return -1; }
+  for i: 0..<s[0].slot_count {
+    if s[0].slots[i].state != cast(u8) FLAWED_WORK_QUEUED { continue; }
+    if !s[0].slots[i].concurrency_safe {
+      // Serial barrier: must wait until all earlier running slots drain; blocks later slots behind it.
+      if s[0].running > 0 { return -1; }
+      s[0].slots[i].state = cast(u8) FLAWED_WORK_RUNNING;
+      s[0].running = 1;
+      s[0].serial_active = true;
+      flawed_sched_emit(s, cast(u8) FLAWED_WEV_STARTED, i, 0);
+      return i;
+    }
+    s[0].slots[i].state = cast(u8) FLAWED_WORK_RUNNING;
+    s[0].running += 1;
+    flawed_sched_emit(s, cast(u8) FLAWED_WEV_STARTED, i, 0);
+    return i;
+  }
+  return -1;
+}
+
+// Record an incremental progress tick from a running slot (replaces AsyncGenerator yield).
+flawed_sched_progress :: (s: [] FlawedScheduler, slot_index: int, code: int) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || slot_index < 0 || slot_index >= s[0].slot_count { return false; }
+  if s[0].slots[slot_index].state != cast(u8) FLAWED_WORK_RUNNING { return false; }
+  s[0].slots[slot_index].progress_count += 1;
+  flawed_sched_emit(s, cast(u8) FLAWED_WEV_PROGRESS, slot_index, code);
+  return true;
+}
+
+// Settle a running slot as DONE (ok=true) or FAILED (ok=false), releasing its slot / serial lock.
+flawed_sched_finish :: (s: [] FlawedScheduler, slot_index: int, ok: bool, code: int) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || slot_index < 0 || slot_index >= s[0].slot_count { return false; }
+  if s[0].slots[slot_index].state != cast(u8) FLAWED_WORK_RUNNING { return false; }
+  s[0].slots[slot_index].state = cast(u8) (ifx ok then FLAWED_WORK_DONE else FLAWED_WORK_FAILED);
+  s[0].slots[slot_index].result_code = code;
+  s[0].running -= 1;
+  if !s[0].slots[slot_index].concurrency_safe { s[0].serial_active = false; }
+  flawed_sched_emit(s, cast(u8) (ifx ok then FLAWED_WEV_DONE else FLAWED_WEV_FAILED), slot_index, code);
+  return true;
+}
+
+// Cancel all not-yet-started queued slots (e.g. on user abort / sibling bash error).
+// Returns count of newly cancelled slots.
+flawed_sched_cancel_queued :: (s: [] FlawedScheduler) -> int #effects(reads, writes, traps) {
+  if s.count == 0 { return 0; }
+  cancelled := 0;
+  for i: 0..<s[0].slot_count {
+    if s[0].slots[i].state == cast(u8) FLAWED_WORK_QUEUED {
+      s[0].slots[i].state = cast(u8) FLAWED_WORK_CANCELLED;
+      flawed_sched_emit(s, cast(u8) FLAWED_WEV_CANCELLED, i, 0);
+      cancelled += 1;
+    }
+  }
+  return cancelled;
+}
+
+flawed_sched_pop_event :: (s: [] FlawedScheduler) -> FlawedWorkEvent #effects(reads, writes, traps) {
+  if s.count == 0 || s[0].ev_count == 0 { return FlawedWorkEvent.{}; }
+  ev := s[0].events[s[0].ev_head];
+  s[0].ev_head = (s[0].ev_head + 1) % FLAWED_SCHED_EVENT_CAP;
+  s[0].ev_count -= 1;
+  return ev;
+}
+
+flawed_sched_done :: (s: [] const FlawedScheduler) -> bool #effects(reads, traps) {
+  if s.count == 0 { return true; }
+  for i: 0..<s[0].slot_count {
+    st := s[0].slots[i].state;
+    if st == cast(u8) FLAWED_WORK_QUEUED || st == cast(u8) FLAWED_WORK_RUNNING { return false; }
+  }
+  return true;
+}
+
+#test "flawed scheduler: concurrent cap, strict serial barriers, progress streaming, and cancel" {
+  sb: [1] FlawedScheduler;
+  #assert !flawed_sched_init(sb[0..<0], 2) && !flawed_sched_init(sb[..], 0) && !flawed_sched_init(sb[..], FLAWED_SCHED_MAX_SLOTS + 1);
+  #assert flawed_sched_init(sb[..], FLAWED_SCHED_MAX_SLOTS);
+  #assert flawed_sched_init(sb[..], 2) && flawed_sched_done(sb[..]) && flawed_sched_done(sb[0..<0]);
+
+  // Verify slot 0 alone controls done and cancel_queued
+  #assert flawed_sched_enqueue(sb[..], flawed_parse_tool_use_id("solo"), true) == 0;
+  #assert !flawed_sched_done(sb[..]) && flawed_sched_cancel_queued(sb[..]) == 1 && flawed_sched_done(sb[..]);
+  ev_solo := flawed_sched_pop_event(sb[..]);
+  #assert ev_solo.kind == cast(u8) FLAWED_WEV_CANCELLED && ev_solo.slot_index == 0 && ev_solo.code == 0;
+  #assert flawed_sched_init(sb[..], 2);
+
+  // Batch: [R0(safe), R1(safe), R2(safe), W3(serial), R4(safe)]
+  t0 := flawed_parse_tool_use_id("tu_0");
+  t1 := flawed_parse_tool_use_id("tu_1");
+  t2 := flawed_parse_tool_use_id("tu_2");
+  t3 := flawed_parse_tool_use_id("tu_3");
+  t4 := flawed_parse_tool_use_id("tu_4");
+  bad: FlawedToolUseId;
+  #assert flawed_sched_enqueue(sb[0..<0], t0, true) == -1 && flawed_sched_enqueue(sb[..], bad, true) == -1;
+  #assert flawed_sched_enqueue(sb[..], t0, true) == 0;
+  #assert flawed_sched_enqueue(sb[..], t0, true) == -1; // reject duplicate id
+  #assert flawed_sched_enqueue(sb[..], t1, true) == 1;
+  #assert flawed_sched_enqueue(sb[..], t2, true) == 2;
+  #assert flawed_sched_enqueue(sb[..], t3, false) == 3; // mutating serial barrier
+  #assert flawed_sched_enqueue(sb[..], t4, true) == 4;
+  #assert !flawed_sched_done(sb[..]);
+
+  // Dispatch up to max_concurrent (2): R0 and R1 start; R2 waits for a slot
+  #assert flawed_sched_dispatch(sb[0..<0]) == -1;
+  #assert flawed_sched_dispatch(sb[..]) == 0 && flawed_sched_dispatch(sb[..]) == 1 && flawed_sched_dispatch(sb[..]) == -1;
+  #assert sb[0].running == 2 && !sb[0].serial_active;
+
+  // Incremental progress only on running slots
+  #assert !flawed_sched_progress(sb[0..<0], 0, 10) && !flawed_sched_progress(sb[..], -1, 10) && !flawed_sched_progress(sb[..], 5, 10);
+  #assert !flawed_sched_progress(sb[..], 2, 10); // queued, not running
+  #assert flawed_sched_progress(sb[..], 1, 50) && sb[0].slots[1].progress_count == 1;
+
+  // Finish R0 -> R2 dispatches immediately; W3 (serial) is still blocked behind R1 & R2
+  #assert !flawed_sched_finish(sb[0..<0], 0, true, 0) && !flawed_sched_finish(sb[..], -1, true, 0) && !flawed_sched_finish(sb[..], 5, true, 0);
+  #assert !flawed_sched_finish(sb[..], 2, true, 0); // queued
+  #assert flawed_sched_finish(sb[..], 0, true, 0) && sb[0].slots[0].state == cast(u8) FLAWED_WORK_DONE && sb[0].slots[0].result_code == 0;
+  #assert flawed_sched_dispatch(sb[..]) == 2 && flawed_sched_dispatch(sb[..]) == -1;
+
+  // Finish R1 -> R2 still running, so W3 (serial barrier) MUST NOT start yet AND R4 MUST NOT jump W3!
+  #assert flawed_sched_finish(sb[..], 1, true, 0) && flawed_sched_dispatch(sb[..]) == -1;
+  // Finish R2 (failed code 7) -> running == 0 -> W3 now starts exclusively, blocking R4!
+  #assert flawed_sched_finish(sb[..], 2, false, 7) && sb[0].slots[2].state == cast(u8) FLAWED_WORK_FAILED && sb[0].slots[2].result_code == 7;
+  #assert flawed_sched_dispatch(sb[..]) == 3;
+  #assert sb[0].running == 1 && sb[0].serial_active && flawed_sched_dispatch(sb[..]) == -1;
+
+  // Finish W3 -> releases serial barrier -> cancel queued R4
+  #assert flawed_sched_finish(sb[..], 3, true, 0) && !sb[0].serial_active && sb[0].running == 0;
+  #assert flawed_sched_cancel_queued(sb[0..<0]) == 0;
+  #assert flawed_sched_cancel_queued(sb[..]) == 1 && flawed_sched_done(sb[..]);
+  #assert sb[0].slots[4].state == cast(u8) FLAWED_WORK_CANCELLED;
+  #assert flawed_sched_dispatch(sb[..]) == -1;
+
+  // Verify ALL 10 FIFO events in exact order
+  #assert sb[0].ev_count == 10;
+  e0 := flawed_sched_pop_event(sb[..]); #assert e0.kind == cast(u8) FLAWED_WEV_STARTED && e0.slot_index == 0 && e0.code == 0 && sb[0].ev_count == 9;
+  e1 := flawed_sched_pop_event(sb[..]); #assert e1.kind == cast(u8) FLAWED_WEV_STARTED && e1.slot_index == 1 && e1.code == 0;
+  e2 := flawed_sched_pop_event(sb[..]); #assert e2.kind == cast(u8) FLAWED_WEV_PROGRESS && e2.slot_index == 1 && e2.code == 50;
+  e3 := flawed_sched_pop_event(sb[..]); #assert e3.kind == cast(u8) FLAWED_WEV_DONE && e3.slot_index == 0 && e3.code == 0;
+  e4 := flawed_sched_pop_event(sb[..]); #assert e4.kind == cast(u8) FLAWED_WEV_STARTED && e4.slot_index == 2 && e4.code == 0;
+  e5 := flawed_sched_pop_event(sb[..]); #assert e5.kind == cast(u8) FLAWED_WEV_DONE && e5.slot_index == 1 && e5.code == 0;
+  e6 := flawed_sched_pop_event(sb[..]); #assert e6.kind == cast(u8) FLAWED_WEV_FAILED && e6.slot_index == 2 && e6.code == 7;
+  e7 := flawed_sched_pop_event(sb[..]); #assert e7.kind == cast(u8) FLAWED_WEV_STARTED && e7.slot_index == 3 && e7.code == 0;
+  e8 := flawed_sched_pop_event(sb[..]); #assert e8.kind == cast(u8) FLAWED_WEV_DONE && e8.slot_index == 3 && e8.code == 0;
+  e9 := flawed_sched_pop_event(sb[..]); #assert e9.kind == cast(u8) FLAWED_WEV_CANCELLED && e9.slot_index == 4 && e9.code == 0;
+  #assert sb[0].ev_count == 0 && flawed_sched_pop_event(sb[..]).kind == cast(u8) FLAWED_WEV_NONE;
+  #assert flawed_sched_pop_event(sb[0..<0]).kind == cast(u8) FLAWED_WEV_NONE;
+
+  // Verify full queue refusal, exact slot_count == MAX_SLOTS OOB check, and ring wraparound
+  sb2: [1] FlawedScheduler;
+  #assert flawed_sched_init(sb2[..], 1);
+  for i: 0..<FLAWED_SCHED_MAX_SLOTS {
+    nm := [4] u8.['t', '_', cast,trunc(u8) ('a' + (i / 10)), cast,trunc(u8) ('0' + (i % 10))];
+    #assert flawed_sched_enqueue(sb2[..], flawed_parse_tool_use_id(cast(string) nm[..]), true) == i;
+  }
+  #assert flawed_sched_enqueue(sb2[..], flawed_parse_tool_use_id("overflow"), true) == -1;
+  #assert !flawed_sched_progress(sb2[..], FLAWED_SCHED_MAX_SLOTS, 0);
+  #assert !flawed_sched_finish(sb2[..], FLAWED_SCHED_MAX_SLOTS, true, 0);
+  // Push 130 events (1 started + 129 progress) so ev_head wraps completely past 64 twice
+  #assert flawed_sched_dispatch(sb2[..]) == 0;
+  for k: 1..<130 { #assert flawed_sched_progress(sb2[..], 0, k); }
+  #assert sb2[0].ev_count == FLAWED_SCHED_EVENT_CAP && sb2[0].ev_dropped == 66 && sb2[0].ev_head == 2;
+  // Pop all 64 retained events and verify exact FIFO sequence [66..129] across wraparound
+  for k: 66..<130 {
+    ev := flawed_sched_pop_event(sb2[..]);
+    #assert ev.kind == cast(u8) FLAWED_WEV_PROGRESS && ev.slot_index == 0 && ev.code == k;
+  }
+  #assert sb2[0].ev_count == 0 && sb2[0].ev_head == 2;
+}

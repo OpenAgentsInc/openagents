@@ -1,0 +1,91 @@
+// Flawed Native CLI — exercises real workspace files through the Flawed Coax core.
+// Usage:
+//   coax/web/tool.sh flawed/tools/flawed-cli.coax selftest
+//   coax/web/tool.sh flawed/tools/flawed-cli.coax inspect FILE
+//   coax/bin/coax test flawed/tools/flawed-cli.coax
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../core.coax";
+
+FLAWED_CLI_IO_CAP :: 262144;
+
+FlawedCliWork :: struct {
+  io: [FLAWED_CLI_IO_CAP] u8;
+  entries: [16] FlawedFileEntry;
+  slab: [FLAWED_CLI_IO_CAP] u8;
+  fc_state: [1] FlawedFileCacheState;
+  env: [1] FlawedProcessEnv;
+  st: [1] FlawedSessionState;
+  sched: [1] FlawedScheduler;
+}
+
+flawed_cli_usage :: () {
+  print("flawed (Chapter 01 — Layer 0 Atoms)\n");
+  print("usage:\n");
+  print("  flawed-cli selftest\n");
+  print("  flawed-cli inspect FILE\n");
+}
+
+flawed_cli_inspect :: (w: [] FlawedCliWork, path: string) -> int #effects(all) {
+  n := fs_read(path, w[0].io[..]);
+  if n < 0 {
+    tool_errln("flawed-cli: could not read file (missing or > 256 KiB)");
+    return 1;
+  }
+  mtime := fs_mtime_ns(path);
+  if mtime < 0 { mtime = 0; }
+  fc := FlawedFileCache.{entries = w[0].entries[..], slab = w[0].slab[..], state = w[0].fc_state[..]};
+  content := cast(string) w[0].io[0..<n];
+  if !flawed_fc_put(fc, path, content, 0, 0, mtime, -1, -1, false) {
+    tool_errln("flawed-cli: failed to cache file");
+    return 1;
+  }
+  idx := flawed_fc_get(fc, path);
+  verdict := flawed_fc_check_edit_safe(fc, path, 0, 0, mtime, content);
+  norm := cast(string) w[0].entries[idx].path[0..<w[0].entries[idx].path_n];
+  hex := cast(string) w[0].entries[idx].sha256[0..<64];
+  print("path: %\nbytes: %\nmtime_ns: %\nsha256: %\nedit_safe: %\n", norm, n, mtime, hex, verdict == FLAWED_EDIT_OK);
+  return 0;
+}
+
+flawed_cli_selftest :: (w: [] FlawedCliWork) -> int #effects(all) {
+  sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  cwd_buf: [FLAWED_PATH_CAP] u8;
+  cwd := fs_cwd(cwd_buf[..]);
+  if cwd.count == 0 { cwd = "."; }
+  if !flawed_env_init(w[0].env[..], sid, cwd, cwd, 0, true) {
+    tool_errln("flawed-cli: env init failed");
+    return 1;
+  }
+  if !flawed_state_init(w[0].st[..], cwd, "gemini-4-neon") {
+    tool_errln("flawed-cli: state init failed");
+    return 1;
+  }
+  _ = flawed_state_set_mode(w[0].st[..], FLAWED_MODE_AUTO);
+  if !flawed_sched_init(w[0].sched[..], 4) {
+    tool_errln("flawed-cli: sched init failed");
+    return 1;
+  }
+  _ = flawed_sched_enqueue(w[0].sched[..], flawed_parse_tool_use_id("tu_selftest"), true);
+  slot := flawed_sched_dispatch(w[0].sched[..]);
+  _ = flawed_sched_finish(w[0].sched[..], slot, true, 0);
+  print("flawed selftest ok: chapter=01 project_root=% gen=% sched_done=%\n",
+        flawed_env_project_root(w[0].env[..]), w[0].st[0].gen.value, flawed_sched_done(w[0].sched[..]));
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("flawed-cli: arguments did not fit"); return 2; }
+  if a[0].n < 1 { flawed_cli_usage(); return 0; }
+  w: [1] FlawedCliWork;
+  cmd := args_at(a[..], 0);
+  if cmd == "selftest" { return flawed_cli_selftest(w[..]); }
+  if cmd == "inspect" {
+    if a[0].n < 2 { tool_errln("flawed-cli: inspect requires FILE"); return 2; }
+    return flawed_cli_inspect(w[..], args_at(a[..], 1));
+  }
+  flawed_cli_usage();
+  return 2;
+}

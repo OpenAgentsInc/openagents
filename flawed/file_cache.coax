@@ -1,0 +1,528 @@
+// Flawed Layer 0 (Chapter 01) — Bounded File Awareness & Memory Deduplication.
+// Keeps and upgrades cc/utils/fileStateCache.ts (142 lines):
+//   - Path normalization (\ -> /, // collapse, . and .. resolution, trailing / strip)
+//   - Caller-owned bounded entry array + contiguous byte slab (zero hidden allocation)
+//   - Dual eviction caps (max entries AND max slab bytes) with LRU eviction + slab compaction
+//   - Zero-byte file accounting (Math.max(1, byteLen) logical weight) + oversized metadata-only fallback
+//   - OS identity (dev, ino, mtime_ns) + SHA-256 staleness verification (flawed_fc_check_edit_safe)
+//   - is_partial_view guard (auto-injected CLAUDE.md/MEMORY.md cannot be edited without explicit Read)
+//   - Subagent cache cloning (flawed_fc_clone) + separate FlawedMemoryPathSet immune to LRU eviction
+//   coax/bin/coax test flawed/file_cache.coax --library
+//   coax/bin/coax mutate flawed/file_cache.coax --root-only
+#module "flawed.file_cache";
+#load "../coax/lib/crypto/sha256-kernel.coax";
+
+FLAWED_FC_PATH_MAX :: 256;
+FLAWED_FC_DEFAULT_ENTRIES :: 100;
+FLAWED_FC_DEFAULT_MAX_BYTES :: 26214400; // 25 MiB (cc DEFAULT_MAX_CACHE_SIZE_BYTES)
+FLAWED_MEM_PATH_CAP :: 64;
+
+// Edit-safety verdict codes for FileEdit/FileWrite guards.
+FLAWED_EDIT_OK :: 0;
+FLAWED_EDIT_UNREAD :: 1;
+FLAWED_EDIT_PARTIAL_VIEW :: 2;
+FLAWED_EDIT_STALE :: 3;
+FLAWED_EDIT_INVALID_PATH :: 4;
+
+FlawedFileEntry :: struct {
+  live: bool;
+  path: [FLAWED_FC_PATH_MAX] u8; path_n: int;
+  dev: u64;
+  ino: u64;
+  mtime_ns: int;
+  sha256: [64] u8;
+  slab_off: int;
+  content_len: int;
+  logical_weight: int;  // max(1, content_len) — mirrors cc's Math.max(1, byteLength)
+  offset_line: int;     // -1 when full file read
+  limit_lines: int;     // -1 when full file read
+  is_partial_view: bool;
+  last_touch: int;
+}
+
+FlawedFileCacheState :: struct {
+  live_count: int;
+  slab_used: int;
+  logical_used: int;
+  touch_clock: int;
+  evictions: int;
+}
+
+FlawedFileCache :: struct {
+  entries: [] FlawedFileEntry;
+  slab: [] u8;
+  state: [] FlawedFileCacheState;
+}
+
+// Separate deduplication set for loaded nested CLAUDE.md / memory paths
+// (cc ToolUseContext.loadedNestedMemoryPaths) so LRU eviction never causes duplicate re-injection.
+FlawedMemoryPathEntry :: struct {
+  path: [FLAWED_FC_PATH_MAX] u8;
+  path_n: int;
+}
+
+FlawedMemoryPathSet :: struct {
+  items: [FLAWED_MEM_PATH_CAP] FlawedMemoryPathEntry;
+  count: int;
+}
+
+// Normalize path: '\' -> '/', collapse '//', resolve '.' and '..' (refusing '..' above root),
+// strip trailing '/' except for "/". Returns byte length, or -1 if empty/invalid/too long.
+flawed_norm_path :: (raw: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if raw.count == 0 { return -1; }
+  for i: 0..<raw.count { if raw[i] == 0 { return -1; } }
+  is_abs := raw[0] == '/' || raw[0] == '\\';
+  // Segment start offsets in `out` so ".." pops cleanly in O(1).
+  seg_starts: [128] int;
+  seg_n := 0;
+  pos := 0;
+  if is_abs {
+    if out.count < 1 { return -1; }
+    out[0] = '/';
+    pos = 1;
+  }
+  i := 0;
+  while i < raw.count {
+    while i < raw.count && (raw[i] == '/' || raw[i] == '\\') { i += 1; }
+    if i >= raw.count { break; }
+    start := i;
+    while i < raw.count && raw[i] != '/' && raw[i] != '\\' { i += 1; }
+    seg_len := i - start;
+    if seg_len == 1 && raw[start] == '.' {
+      continue;
+    }
+    if seg_len == 2 && raw[start] == '.' && raw[start + 1] == '.' {
+      if seg_n > 0 {
+        seg_n -= 1;
+        pos = seg_starts[seg_n];
+      } else if is_abs {
+        return -1; // refuse climbing above filesystem root
+      } else {
+        // Relative leading ".." preserved
+        need := (ifx pos > 0 then 1 else 0) + 2;
+        if pos + need > out.count { return -1; }
+        if pos > 0 { out[pos] = '/'; pos += 1; }
+        out[pos] = '.'; out[pos + 1] = '.'; pos += 2;
+      }
+      continue;
+    }
+    if seg_n >= 128 { return -1; }
+    need := (ifx pos > 0 && (!is_abs || pos > 1) then 1 else 0) + seg_len;
+    if pos + need > out.count || pos + need > FLAWED_FC_PATH_MAX { return -1; }
+    seg_starts[seg_n] = pos;
+    seg_n += 1;
+    if pos > 0 && (!is_abs || pos > 1) { out[pos] = '/'; pos += 1; }
+    for j: 0..<seg_len { out[pos + j] = raw[start + j]; }
+    pos += seg_len;
+  }
+  if pos == 0 {
+    if out.count < 1 { return -1; }
+    out[0] = '.';
+    return 1;
+  }
+  return pos;
+}
+
+flawed_fc_path_eq :: (e: FlawedFileEntry, norm: string) -> bool #effects(reads, traps) {
+  if !e.live || e.path_n != norm.count { return false; }
+  for i: 0..<e.path_n {
+    if e.path[i] != norm[i] { return false; }
+  }
+  return true;
+}
+
+flawed_fc_hex_eq :: (a: [64] u8, b: [64] u8) -> bool #effects(computes, traps) {
+  for i: 0..<64 {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+flawed_fc_valid :: (fc: FlawedFileCache) -> bool #effects(computes) {
+  return fc.entries.count > 0 && fc.slab.count > 0 && fc.state.count > 0;
+}
+
+flawed_fc_reset :: (fc: FlawedFileCache) #effects(reads, writes, traps) {
+  if !flawed_fc_valid(fc) { return; }
+  for i: 0..<fc.entries.count { fc.entries[i] = FlawedFileEntry.{}; }
+  fc.state[0] = FlawedFileCacheState.{};
+}
+
+// Find entry index by normalized path (returns -1 if absent).
+flawed_fc_find_norm :: (fc: FlawedFileCache, norm: string) -> int #effects(all) {
+  for i: 0..<fc.entries.count {
+    if flawed_fc_path_eq(fc.entries[i], norm) { return i; }
+  }
+  return -1;
+}
+
+// Find entry index by (dev, ino) OS identity when both are nonzero (catches symlink/alias paths).
+flawed_fc_find_inode :: (fc: FlawedFileCache, dev: u64, ino: u64) -> int #effects(all) {
+  if dev == 0 || ino == 0 { return -1; }
+  for i: 0..<fc.entries.count {
+    if fc.entries[i].live && fc.entries[i].dev == dev && fc.entries[i].ino == ino { return i; }
+  }
+  return -1;
+}
+
+// Compact live content slices toward offset 0 in order of slab_off so freed bytes
+// are reclaimed with zero fragmentation and zero heap allocation.
+flawed_fc_compact :: (fc: FlawedFileCache) #effects(reads, writes, traps) {
+  // Move live entries with content_len > 0 in ascending slab_off order.
+  // Because new_off <= old_off for every live block, forward byte copy is overlap-safe.
+  moved: [256] bool;
+  head := 0;
+  for step: 0..<fc.entries.count {
+    best := -1;
+    best_off := 0;
+    for i: 0..<fc.entries.count {
+      if i >= 256 { break; }
+      if !fc.entries[i].live || fc.entries[i].content_len == 0 || moved[i] { continue; }
+      if best < 0 || fc.entries[i].slab_off < best_off {
+        best = i;
+        best_off = fc.entries[i].slab_off;
+      }
+    }
+    if best < 0 { break; }
+    moved[best] = true;
+    old_off := fc.entries[best].slab_off;
+    n := fc.entries[best].content_len;
+    if head != old_off {
+      for k: 0..<n { fc.slab[head + k] = fc.slab[old_off + k]; }
+      fc.entries[best].slab_off = head;
+    }
+    head += n;
+  }
+  fc.state[0].slab_used = head;
+}
+
+// Evict least-recently-touched live entry. Returns false if cache is empty.
+flawed_fc_evict_lru :: (fc: FlawedFileCache) -> bool #effects(all) {
+  victim := -1;
+  victim_touch := 0;
+  for i: 0..<fc.entries.count {
+    if !fc.entries[i].live { continue; }
+    if victim < 0 || fc.entries[i].last_touch < victim_touch {
+      victim = i;
+      victim_touch = fc.entries[i].last_touch;
+    }
+  }
+  if victim < 0 { return false; }
+  fc.state[0].logical_used -= fc.entries[victim].logical_weight;
+  fc.state[0].live_count -= 1;
+  fc.state[0].evictions += 1;
+  fc.entries[victim] = FlawedFileEntry.{};
+  flawed_fc_compact(fc);
+  return true;
+}
+
+// Record a file read (or auto-injected partial view) in the cache.
+// Computes SHA-256 of raw disk bytes. If content exceeds slab capacity, stores metadata-only
+// with is_partial_view = true so staleness checks still work without blowing the byte cap.
+flawed_fc_put :: (
+  fc: FlawedFileCache,
+  raw_path: string,
+  content: string,
+  dev: u64,
+  ino: u64,
+  mtime_ns: int,
+  offset_line: int,
+  limit_lines: int,
+  is_partial_view: bool
+) -> bool #effects(all) {
+  if !flawed_fc_valid(fc) || mtime_ns < 0 { return false; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return false; }
+  norm := cast(string) norm_buf[0..<nn];
+
+  digest_hex: [64] u8;
+  if !S_hex(S_hash(content), digest_hex[..]) { return false; }
+
+  oversized := content.count > fc.slab.count;
+  store_len := ifx oversized then 0 else content.count;
+  eff_partial := is_partial_view || oversized || offset_line >= 0 || limit_lines >= 0;
+  weight := ifx store_len > 0 then store_len else 1;
+
+  // Replace existing entry for same normalized path if present.
+  slot := flawed_fc_find_norm(fc, norm);
+  if slot >= 0 {
+    fc.state[0].logical_used -= fc.entries[slot].logical_weight;
+    fc.state[0].live_count -= 1;
+    fc.entries[slot] = FlawedFileEntry.{};
+    flawed_fc_compact(fc);
+  }
+
+  // Enforce dual eviction caps: entry count AND slab bytes.
+  while fc.state[0].live_count >= fc.entries.count {
+    if !flawed_fc_evict_lru(fc) { break; }
+  }
+  while store_len > 0 && fc.state[0].slab_used + store_len > fc.slab.count {
+    if !flawed_fc_evict_lru(fc) { break; }
+  }
+
+  // Pick free slot.
+  free_slot := -1;
+  for i: 0..<fc.entries.count {
+    if !fc.entries[i].live { free_slot = i; break; }
+  }
+  if free_slot < 0 { return false; }
+
+  off := fc.state[0].slab_used;
+  for i: 0..<store_len { fc.slab[off + i] = content[i]; }
+  fc.state[0].slab_used += store_len;
+  fc.state[0].live_count += 1;
+  fc.state[0].logical_used += weight;
+  fc.state[0].touch_clock += 1;
+
+  e: FlawedFileEntry;
+  e.live = true;
+  for i: 0..<nn { e.path[i] = norm_buf[i]; }
+  e.path_n = nn;
+  e.dev = dev;
+  e.ino = ino;
+  e.mtime_ns = mtime_ns;
+  e.sha256 = digest_hex;
+  e.slab_off = off;
+  e.content_len = store_len;
+  e.logical_weight = weight;
+  e.offset_line = offset_line;
+  e.limit_lines = limit_lines;
+  e.is_partial_view = eff_partial;
+  e.last_touch = fc.state[0].touch_clock;
+  fc.entries[free_slot] = e;
+  return true;
+}
+
+// Look up cached entry by normalized path and bump LRU touch clock. Returns slot index or -1.
+flawed_fc_get :: (fc: FlawedFileCache, raw_path: string) -> int #effects(reads, writes, traps) {
+  if !flawed_fc_valid(fc) { return -1; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return -1; }
+  idx := flawed_fc_find_norm(fc, cast(string) norm_buf[0..<nn]);
+  if idx < 0 { return -1; }
+  fc.state[0].touch_clock += 1;
+  fc.entries[idx].last_touch = fc.state[0].touch_clock;
+  return idx;
+}
+
+flawed_fc_content :: (fc: FlawedFileCache, idx: int) -> string #effects(reads, traps) {
+  if !flawed_fc_valid(fc) || idx < 0 || idx >= fc.entries.count || !fc.entries[idx].live { return ""; }
+  off := fc.entries[idx].slab_off;
+  n := fc.entries[idx].content_len;
+  return cast(string) fc.slab[off..<off + n];
+}
+
+// Remove an entry by path. Returns true if it was present.
+flawed_fc_delete :: (fc: FlawedFileCache, raw_path: string) -> bool #effects(all) {
+  if !flawed_fc_valid(fc) { return false; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return false; }
+  idx := flawed_fc_find_norm(fc, cast(string) norm_buf[0..<nn]);
+  if idx < 0 { return false; }
+  fc.state[0].logical_used -= fc.entries[idx].logical_weight;
+  fc.state[0].live_count -= 1;
+  fc.entries[idx] = FlawedFileEntry.{};
+  flawed_fc_compact(fc);
+  return true;
+}
+
+// Check whether editing `raw_path` against current disk metadata + content is safe:
+//   - refuses invalid paths, unread files, partial views (CLAUDE.md auto-inject / sliced reads),
+//     or stale disk state (inode change, mtime drift, or content hash mismatch).
+flawed_fc_check_edit_safe :: (
+  fc: FlawedFileCache,
+  raw_path: string,
+  disk_dev: u64,
+  disk_ino: u64,
+  disk_mtime_ns: int,
+  disk_content: string
+) -> int #effects(all) {
+  if !flawed_fc_valid(fc) { return FLAWED_EDIT_UNREAD; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return FLAWED_EDIT_INVALID_PATH; }
+  idx := flawed_fc_find_norm(fc, cast(string) norm_buf[0..<nn]);
+  if idx < 0 { idx = flawed_fc_find_inode(fc, disk_dev, disk_ino); }
+  if idx < 0 { return FLAWED_EDIT_UNREAD; }
+  e := fc.entries[idx];
+  if e.is_partial_view { return FLAWED_EDIT_PARTIAL_VIEW; }
+  if (e.dev != 0 && disk_dev != 0 && e.dev != disk_dev) || (e.ino != 0 && disk_ino != 0 && e.ino != disk_ino) {
+    return FLAWED_EDIT_STALE;
+  }
+  disk_hex: [64] u8;
+  if !S_hex(S_hash(disk_content), disk_hex[..]) { return FLAWED_EDIT_STALE; }
+  if e.mtime_ns != disk_mtime_ns || !flawed_fc_hex_eq(e.sha256, disk_hex) {
+    return FLAWED_EDIT_STALE;
+  }
+  return FLAWED_EDIT_OK;
+}
+
+// Clone cache into an isolated subagent cache (cc cloneFileStateCache).
+// Copies live entries in LRU order; returns count of cloned entries or -1 if invalid.
+flawed_fc_clone :: (dst: FlawedFileCache, src: FlawedFileCache) -> int #effects(all) {
+  if !flawed_fc_valid(dst) || !flawed_fc_valid(src) { return -1; }
+  flawed_fc_reset(dst);
+  copied: [256] bool;
+  count := 0;
+  for step: 0..<src.entries.count {
+    oldest := -1;
+    oldest_touch := 0;
+    for i: 0..<src.entries.count {
+      if i >= 256 { break; }
+      if !src.entries[i].live || copied[i] { continue; }
+      if oldest < 0 || src.entries[i].last_touch < oldest_touch {
+        oldest = i;
+        oldest_touch = src.entries[i].last_touch;
+      }
+    }
+    if oldest < 0 { break; }
+    copied[oldest] = true;
+    e := src.entries[oldest];
+    p := cast(string) e.path[0..<e.path_n];
+    c := cast(string) src.slab[e.slab_off..<e.slab_off + e.content_len];
+    if flawed_fc_put(dst, p, c, e.dev, e.ino, e.mtime_ns, e.offset_line, e.limit_lines, e.is_partial_view) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+// Separate memory-path deduplication set (immune to FileStateCache LRU eviction).
+flawed_mem_paths_add :: (m: [] FlawedMemoryPathSet, raw_path: string) -> bool #effects(all) {
+  if m.count == 0 { return false; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return false; }
+  norm := cast(string) norm_buf[0..<nn];
+  for i: 0..<m[0].count {
+    if m[0].items[i].path_n == nn {
+      same := true;
+      for j: 0..<nn { if m[0].items[i].path[j] != norm[j] { same = false; break; } }
+      if same { return false; }
+    }
+  }
+  if m[0].count >= FLAWED_MEM_PATH_CAP { return false; }
+  slot := m[0].count;
+  for j: 0..<nn { m[0].items[slot].path[j] = norm_buf[j]; }
+  m[0].items[slot].path_n = nn;
+  m[0].count += 1;
+  return true;
+}
+
+flawed_mem_paths_has :: (m: [] const FlawedMemoryPathSet, raw_path: string) -> bool #effects(all) {
+  if m.count == 0 { return false; }
+  norm_buf: [FLAWED_FC_PATH_MAX] u8;
+  nn := flawed_norm_path(raw_path, norm_buf[..]);
+  if nn <= 0 { return false; }
+  for i: 0..<m[0].count {
+    if m[0].items[i].path_n == nn {
+      same := true;
+      for j: 0..<nn { if m[0].items[i].path[j] != norm_buf[j] { same = false; break; } }
+      if same { return true; }
+    }
+  }
+  return false;
+}
+
+#test "flawed file_cache: path normalization collapses slashes, dot segments, and rejects root escape" {
+  out: [FLAWED_FC_PATH_MAX] u8;
+  n := flawed_norm_path("/a/b/../c//d/", out[..]);
+  #assert n == 6 && cast(string) out[0..<n] == "/a/c/d";
+  n = flawed_norm_path("\\a\\./b\\..\\c", out[..]);
+  #assert n == 4 && cast(string) out[0..<n] == "/a/c";
+  n = flawed_norm_path("/", out[..]);
+  #assert n == 1 && cast(string) out[0..<n] == "/";
+  n = flawed_norm_path("a/./b/../c", out[..]);
+  #assert n == 3 && cast(string) out[0..<n] == "a/c";
+  n = flawed_norm_path(".", out[..]);
+  #assert n == 1 && cast(string) out[0..<n] == ".";
+  n = flawed_norm_path("../x/y", out[..]);
+  #assert n == 6 && cast(string) out[0..<n] == "../x/y";
+  n = flawed_norm_path("../../x", out[..]);
+  #assert n == 7 && cast(string) out[0..<n] == "../../x";
+  // Reject empty, NUL byte, root escape, and tiny output buffer
+  #assert flawed_norm_path("", out[..]) == -1;
+  nul := [3] u8.['a', 0, 'b'];
+  #assert flawed_norm_path(cast(string) nul[..], out[..]) == -1;
+  #assert flawed_norm_path("/a/../../b", out[..]) == -1;
+  tiny: [2] u8;
+  #assert flawed_norm_path("/abc", tiny[..]) == -1;
+  #assert flawed_norm_path("../x", tiny[..]) == -1;
+  #assert flawed_norm_path("/", tiny[0..<0]) == -1;
+  #assert flawed_norm_path(".", tiny[0..<0]) == -1;
+}
+
+#test "flawed file_cache: LRU dual eviction, slab compaction, partial views, staleness, clone, and memory paths" {
+  entries: [3] FlawedFileEntry;
+  slab: [16] u8;
+  st: [1] FlawedFileCacheState;
+  fc := FlawedFileCache.{entries = entries[..], slab = slab[..], state = st[..]};
+
+  // Store 3 files filling entry cap (and verify zero-byte file gets logical_weight 1)
+  #assert flawed_fc_put(fc, "/repo/a.txt", "123456", 1, 101, 1000, -1, -1, false);
+  #assert flawed_fc_put(fc, "/repo/empty.txt", "", 1, 102, 1000, -1, -1, false);
+  #assert flawed_fc_put(fc, "/repo/b.txt", "abcdef", 1, 103, 1000, -1, -1, false);
+  #assert st[0].live_count == 3 && st[0].slab_used == 12 && st[0].logical_used == 13;
+  // Touch /repo/a.txt via unnormalized alias so empty.txt becomes LRU victim
+  idx_a := flawed_fc_get(fc, "/repo/sub/../a.txt");
+  #assert idx_a >= 0 && flawed_fc_content(fc, idx_a) == "123456";
+  // Insert 4th file: evicts empty.txt (entry cap), compacts slab cleanly
+  #assert flawed_fc_put(fc, "/repo/c.txt", "XY", 1, 104, 1000, -1, -1, false);
+  #assert st[0].live_count == 3 && st[0].evictions == 1 && flawed_fc_get(fc, "/repo/empty.txt") == -1;
+  // Insert 10-byte file: slab_used (14) + 10 > 16 -> evicts LRU entries until it fits and compacts
+  #assert flawed_fc_put(fc, "/repo/big.txt", "0123456789", 1, 105, 2000, -1, -1, false);
+  #assert st[0].slab_used <= 16 && flawed_fc_content(fc, flawed_fc_get(fc, "/repo/big.txt")) == "0123456789";
+
+  // Edit safety checks: unread, partial view, stale inode/mtime/hash, and ok
+  #assert flawed_fc_check_edit_safe(fc, "/repo/never.txt", 1, 999, 1000, "x") == FLAWED_EDIT_UNREAD;
+  #assert flawed_fc_check_edit_safe(fc, "", 1, 999, 1000, "x") == FLAWED_EDIT_INVALID_PATH;
+  #assert flawed_fc_check_edit_safe(fc, "/repo/big.txt", 1, 105, 2000, "0123456789") == FLAWED_EDIT_OK;
+  // Symlink / alias path with same (dev, ino) resolves via inode fallback!
+  #assert flawed_fc_check_edit_safe(fc, "/symlink/big.txt", 1, 105, 2000, "0123456789") == FLAWED_EDIT_OK;
+  // Stale detection on mtime, content hash, dev, and ino
+  #assert flawed_fc_check_edit_safe(fc, "/repo/big.txt", 1, 105, 2001, "0123456789") == FLAWED_EDIT_STALE;
+  #assert flawed_fc_check_edit_safe(fc, "/repo/big.txt", 1, 105, 2000, "012345678X") == FLAWED_EDIT_STALE;
+  #assert flawed_fc_check_edit_safe(fc, "/repo/big.txt", 2, 105, 2000, "0123456789") == FLAWED_EDIT_STALE;
+  #assert flawed_fc_check_edit_safe(fc, "/repo/big.txt", 1, 106, 2000, "0123456789") == FLAWED_EDIT_STALE;
+
+  // Partial view (auto-injected CLAUDE.md or sliced read or oversized file) blocks Edit until full Read
+  #assert flawed_fc_put(fc, "/repo/CLAUDE.md", "raw disk", 1, 200, 3000, -1, -1, true);
+  #assert flawed_fc_check_edit_safe(fc, "/repo/CLAUDE.md", 1, 200, 3000, "raw disk") == FLAWED_EDIT_PARTIAL_VIEW;
+  // Explicit full read clears is_partial_view
+  #assert flawed_fc_put(fc, "/repo/CLAUDE.md", "raw disk", 1, 200, 3000, -1, -1, false);
+  #assert flawed_fc_check_edit_safe(fc, "/repo/CLAUDE.md", 1, 200, 3000, "raw disk") == FLAWED_EDIT_OK;
+  // Oversized file (> slab 16 bytes) stores metadata-only with is_partial_view=true
+  #assert flawed_fc_put(fc, "/repo/huge.bin", "0123456789abcdef0123", 1, 201, 4000, -1, -1, false);
+  #assert flawed_fc_check_edit_safe(fc, "/repo/huge.bin", 1, 201, 4000, "0123456789abcdef0123") == FLAWED_EDIT_PARTIAL_VIEW;
+
+  // Clone into isolated subagent cache; mutating child never touches parent
+  c_entries: [3] FlawedFileEntry; c_slab: [16] u8; c_st: [1] FlawedFileCacheState;
+  child := FlawedFileCache.{entries = c_entries[..], slab = c_slab[..], state = c_st[..]};
+  cloned := flawed_fc_clone(child, fc);
+  #assert cloned == st[0].live_count && flawed_fc_get(child, "/repo/CLAUDE.md") >= 0;
+  #assert flawed_fc_delete(child, "/repo/CLAUDE.md") && flawed_fc_get(child, "/repo/CLAUDE.md") == -1;
+  #assert flawed_fc_get(fc, "/repo/CLAUDE.md") >= 0;
+  #assert !flawed_fc_delete(child, "/repo/CLAUDE.md") && !flawed_fc_delete(child, "");
+
+  // Invalid inputs & guards
+  bad_fc := FlawedFileCache.{};
+  #assert !flawed_fc_put(bad_fc, "/a", "x", 0, 0, 0, -1, -1, false);
+  #assert !flawed_fc_put(fc, "/a", "x", 0, 0, -1, -1, -1, false);
+  #assert !flawed_fc_put(fc, "", "x", 0, 0, 0, -1, -1, false);
+  #assert flawed_fc_get(bad_fc, "/a") == -1 && flawed_fc_get(fc, "") == -1;
+  #assert flawed_fc_content(bad_fc, 0) == "" && flawed_fc_content(fc, -1) == "" && flawed_fc_content(fc, 99) == "";
+  #assert !flawed_fc_delete(bad_fc, "/a") && flawed_fc_check_edit_safe(bad_fc, "/a", 0, 0, 0, "") == FLAWED_EDIT_UNREAD;
+  #assert flawed_fc_clone(bad_fc, fc) == -1 && flawed_fc_clone(child, bad_fc) == -1;
+  flawed_fc_reset(bad_fc);
+
+  // Separate FlawedMemoryPathSet is immune to FileStateCache LRU eviction
+  mp: [1] FlawedMemoryPathSet;
+  #assert !flawed_mem_paths_add(mp[0..<0], "/repo/CLAUDE.md") && !flawed_mem_paths_add(mp[..], "");
+  #assert !flawed_mem_paths_has(mp[0..<0], "/repo/CLAUDE.md") && !flawed_mem_paths_has(mp[..], "");
+  #assert flawed_mem_paths_add(mp[..], "/repo/sub/../CLAUDE.md");
+  #assert !flawed_mem_paths_add(mp[..], "/repo/CLAUDE.md"); // normalized dedup
+  #assert flawed_mem_paths_has(mp[..], "/repo//CLAUDE.md") && !flawed_mem_paths_has(mp[..], "/repo/other.md");
+}

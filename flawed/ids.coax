@@ -1,0 +1,306 @@
+// Flawed Layer 0 (Chapter 01) — Branded Identity & Generational Handles.
+// Replaces cc/types/ids.ts (TypeScript branded strings) with compile-time nominal
+// fixed-byte durable IDs, ordered @id counters, and generational Handle(T) refs.
+//   coax/bin/coax test flawed/ids.coax --library
+//   coax/bin/coax mutate flawed/ids.coax --root-only
+#module "flawed.ids";
+#authority;
+#load "../coax/lib/handle.coax";
+
+FLAWED_SESSION_ID_LEN :: 36;    // canonical lowercase UUID: 8-4-4-4-12
+FLAWED_AGENT_ID_MIN :: 17;      // "a" + 16 lowercase hex chars
+FLAWED_AGENT_ID_MAX :: 64;      // "a" + optional "<prefix>-" + 16 lowercase hex chars
+FLAWED_TOOL_USE_ID_MAX :: 64;   // [A-Za-z0-9_-]{1,64}
+FLAWED_SKILL_KEY_MAX :: 128;    // "<agentId?>:<skillName>"
+
+// Ordered monotonic counters (nominal @id integer domains).
+FlawedTurnSeq :: struct @id(ordered) { value: int #counter; }
+FlawedStateGen :: struct @id(ordered) { value: int #counter; }
+
+// Process-local slot tags for Handle(T) generational references.
+FlawedAgentSlot :: struct { generation_hint: u32; active: bool; }
+FlawedTaskSlot :: struct { kind: u8; active: bool; }
+
+// Durable wire/disk identities: distinct nominal structs so SessionId, AgentId,
+// and ToolUseId can never be mixed at compile time.
+FlawedSessionId :: struct { bytes: [FLAWED_SESSION_ID_LEN] u8; valid: bool; }
+FlawedAgentId :: struct { bytes: [FLAWED_AGENT_ID_MAX] u8; len: int; }
+FlawedToolUseId :: struct { bytes: [FLAWED_TOOL_USE_ID_MAX] u8; len: int; }
+
+flawed_is_lower_hex :: (c: u8) -> bool #effects(computes) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+}
+
+flawed_is_tool_id_char :: (c: u8) -> bool #effects(computes) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-';
+}
+
+// Parse canonical lowercase UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
+flawed_parse_session_id :: (s: string) -> FlawedSessionId #effects(reads, traps) {
+  out: FlawedSessionId;
+  if s.count != FLAWED_SESSION_ID_LEN { return out; }
+  for i: 0..<FLAWED_SESSION_ID_LEN {
+    c := s[i];
+    if i == 8 || i == 13 || i == 18 || i == 23 {
+      if c != '-' { return FlawedSessionId.{}; }
+    } else {
+      if !flawed_is_lower_hex(c) { return FlawedSessionId.{}; }
+    }
+    out.bytes[i] = c;
+  }
+  out.valid = true;
+  return out;
+}
+
+flawed_session_id_valid :: (id: FlawedSessionId) -> bool #effects(computes) {
+  return id.valid;
+}
+
+flawed_session_id_eq :: (a: FlawedSessionId, b: FlawedSessionId) -> bool #effects(computes, traps) {
+  if !a.valid || !b.valid { return false; }
+  for i: 0..<FLAWED_SESSION_ID_LEN {
+    if a.bytes[i] != b.bytes[i] { return false; }
+  }
+  return true;
+}
+
+flawed_session_id_str :: (id: [] FlawedSessionId) -> string #effects(reads, traps) {
+  if id.count == 0 || !id[0].valid { return ""; }
+  return cast(string) id[0].bytes[0..<FLAWED_SESSION_ID_LEN];
+}
+
+// Runtime boundary parser matching cc/types/ids.ts toAgentId():
+//   /^a(?:.+-)?[0-9a-f]{16}$/
+// Rejects control bytes, whitespace, length outside [17, 64], missing leading 'a',
+// non-lowercase-hex trailing 16 bytes, or malformed middle segment without trailing '-'.
+flawed_parse_agent_id :: (s: string) -> FlawedAgentId #effects(reads, traps) {
+  out: FlawedAgentId;
+  if s.count < FLAWED_AGENT_ID_MIN || s.count > FLAWED_AGENT_ID_MAX { return out; }
+  if s[0] != 'a' { return out; }
+  hex_start := s.count - 16;
+  if hex_start > 1 {
+    // Prefix between leading 'a' and the 16-hex suffix must be "<non-empty>-".
+    if hex_start < 3 || s[hex_start - 1] != '-' { return out; }
+    for i: 1..<hex_start {
+      c := s[i];
+      if c <= 32 || c >= 127 { return out; }
+    }
+  }
+  for i: hex_start..<s.count {
+    if !flawed_is_lower_hex(s[i]) { return out; }
+  }
+  for i: 0..<s.count { out.bytes[i] = s[i]; }
+  out.len = s.count;
+  return out;
+}
+
+flawed_agent_id_valid :: (id: FlawedAgentId) -> bool #effects(computes) {
+  return id.len >= FLAWED_AGENT_ID_MIN && id.len <= FLAWED_AGENT_ID_MAX;
+}
+
+flawed_agent_id_eq :: (a: FlawedAgentId, b: FlawedAgentId) -> bool #effects(computes, traps) {
+  if !flawed_agent_id_valid(a) || a.len != b.len { return false; }
+  for i: 0..<a.len {
+    if a.bytes[i] != b.bytes[i] { return false; }
+  }
+  return true;
+}
+
+flawed_agent_id_str :: (id: [] FlawedAgentId) -> string #effects(reads, traps) {
+  if id.count == 0 || !flawed_agent_id_valid(id[0]) { return ""; }
+  return cast(string) id[0].bytes[0..<id[0].len];
+}
+
+// Parse tool-use ID: 1..64 bytes of [A-Za-z0-9_-].
+flawed_parse_tool_use_id :: (s: string) -> FlawedToolUseId #effects(reads, traps) {
+  out: FlawedToolUseId;
+  if s.count < 1 || s.count > FLAWED_TOOL_USE_ID_MAX { return out; }
+  for i: 0..<s.count {
+    c := s[i];
+    if !flawed_is_tool_id_char(c) { return FlawedToolUseId.{}; }
+    out.bytes[i] = c;
+  }
+  out.len = s.count;
+  return out;
+}
+
+flawed_tool_use_id_valid :: (id: FlawedToolUseId) -> bool #effects(computes) {
+  return id.len >= 1 && id.len <= FLAWED_TOOL_USE_ID_MAX;
+}
+
+flawed_tool_use_id_eq :: (a: FlawedToolUseId, b: FlawedToolUseId) -> bool #effects(computes, traps) {
+  if !flawed_tool_use_id_valid(a) || a.len != b.len { return false; }
+  for i: 0..<a.len {
+    if a.bytes[i] != b.bytes[i] { return false; }
+  }
+  return true;
+}
+
+flawed_tool_use_id_str :: (id: [] FlawedToolUseId) -> string #effects(reads, traps) {
+  if id.count == 0 || !flawed_tool_use_id_valid(id[0]) { return ""; }
+  return cast(string) id[0].bytes[0..<id[0].len];
+}
+
+// Build composite skill key "${agentId ?? ''}:${skillName}" (cc bootstrap/state.ts:178)
+// so a subagent's invoked skill never overwrites the main thread's record.
+// Returns written byte count, or -1 if skill_name is empty/invalid or buffer too small.
+flawed_skill_key :: (agent: FlawedAgentId, skill_name: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if skill_name.count == 0 { return -1; }
+  for i: 0..<skill_name.count {
+    c := skill_name[i];
+    if c <= 32 || c >= 127 || c == ':' { return -1; }
+  }
+  prefix_len := ifx flawed_agent_id_valid(agent) then agent.len else 0;
+  total := prefix_len + 1 + skill_name.count;
+  if total > out.count || total > FLAWED_SKILL_KEY_MAX { return -1; }
+  for i: 0..<prefix_len { out[i] = agent.bytes[i]; }
+  out[prefix_len] = ':';
+  for i: 0..<skill_name.count { out[prefix_len + 1 + i] = skill_name[i]; }
+  return total;
+}
+
+#test "flawed ids: session UUID parsing, validation, equality, and string view" {
+  good := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  same := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  diff := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440001");
+  diff0 := flawed_parse_session_id("650e8400-e29b-41d4-a716-446655440000");
+  #assert flawed_session_id_valid(good) && flawed_session_id_eq(good, same) && !flawed_session_id_eq(good, diff) && !flawed_session_id_eq(good, diff0);
+  // Same bytes but one invalid must not compare equal
+  ghost := good; ghost.valid = false;
+  #assert !flawed_session_id_eq(good, ghost) && !flawed_session_id_eq(ghost, good);
+  gb := [1] FlawedSessionId.[good];
+  #assert flawed_session_id_str(gb[..]) == "550e8400-e29b-41d4-a716-446655440000";
+  // Reject empty, short, long, uppercase, bad dash positions, and non-hex
+  bad_empty := flawed_parse_session_id("");
+  bad_short := flawed_parse_session_id("550e8400-e29b-41d4-a716-44665544000");
+  bad_long  := flawed_parse_session_id("550e8400-e29b-41d4-a716-4466554400000");
+  bad_upper := flawed_parse_session_id("550E8400-e29b-41d4-a716-446655440000");
+  bad_d8    := flawed_parse_session_id("550e8400xe29b-41d4-a716-446655440000");
+  bad_d13   := flawed_parse_session_id("550e8400-e29bx41d4-a716-446655440000");
+  bad_d18   := flawed_parse_session_id("550e8400-e29b-41d4xa716-446655440000");
+  bad_d23   := flawed_parse_session_id("550e8400-e29b-41d4-a716x446655440000");
+  bad_hex   := flawed_parse_session_id("550e8400-e29b-41d4-a716-44665544000g");
+  #assert !flawed_session_id_valid(bad_empty) && !flawed_session_id_valid(bad_short) && !flawed_session_id_valid(bad_long);
+  #assert !flawed_session_id_valid(bad_upper) && !flawed_session_id_valid(bad_d8) && !flawed_session_id_valid(bad_d13);
+  #assert !flawed_session_id_valid(bad_d18) && !flawed_session_id_valid(bad_d23) && !flawed_session_id_valid(bad_hex);
+  #assert !flawed_session_id_eq(bad_empty, bad_empty) && !flawed_session_id_eq(good, bad_empty) && !flawed_session_id_eq(bad_empty, good);
+  bb := [1] FlawedSessionId.[bad_empty];
+  #assert flawed_session_id_str(bb[..]) == "" && flawed_session_id_str(bb[0..<0]) == "";
+}
+
+#test "flawed ids: agent ID boundary parser matches /^a(?:.+-)?[0-9a-f]{16}$/" {
+  plain := flawed_parse_agent_id("a0123456789abcdef");
+  pref  := flawed_parse_agent_id("aresearch-0123456789abcdef");
+  pmin  := flawed_parse_agent_id("a!-0123456789abcdef"); // ASCII 33 boundary in prefix
+  pmax  := flawed_parse_agent_id("a0123456789012345678901234567890123456789012345-0123456789abcdef"); // 64 bytes
+  over  := flawed_parse_agent_id("a01234567890123456789012345678901234567890123456-0123456789abcdef"); // 65 bytes
+  #assert flawed_agent_id_valid(plain) && plain.len == 17;
+  #assert flawed_agent_id_valid(pref) && pref.len == 26;
+  #assert flawed_agent_id_valid(pmin) && pmin.len == 19;
+  #assert flawed_agent_id_valid(pmax) && pmax.len == 64;
+  #assert !flawed_agent_id_valid(over);
+  pb := [1] FlawedAgentId.[plain];
+  #assert flawed_agent_id_str(pb[..]) == "a0123456789abcdef";
+  #assert flawed_agent_id_eq(plain, flawed_parse_agent_id("a0123456789abcdef"));
+  #assert !flawed_agent_id_eq(plain, pref);
+  #assert !flawed_agent_id_eq(plain, flawed_parse_agent_id("a0123456789abcdee"));
+  raw_diff0 := plain; raw_diff0.bytes[0] = 'b';
+  #assert !flawed_agent_id_eq(plain, raw_diff0);
+  // Reject malformed forms
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("a0123456789abcde"));          // 16 bytes (too short)
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("b0123456789abcdef"));         // wrong leading char
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("a-0123456789abcdef"));        // empty prefix before '-'
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("ax0123456789abcdef"));        // missing '-' separator
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("a0123456789abcdeF"));         // uppercase hex
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("a0123456789abcdeg"));         // non-hex
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id("a bad-0123456789abcdef"));    // whitespace in prefix
+  del_bad := [19] u8.['a', 127, '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+  #assert !flawed_agent_id_valid(flawed_parse_agent_id(cast(string) del_bad[..]));
+  empty_a: FlawedAgentId;
+  #assert !flawed_agent_id_valid(empty_a) && !flawed_agent_id_eq(empty_a, empty_a);
+  #assert !flawed_agent_id_eq(plain, empty_a) && !flawed_agent_id_eq(empty_a, plain);
+  eb := [1] FlawedAgentId.[empty_a];
+  #assert flawed_agent_id_str(eb[..]) == "" && flawed_agent_id_str(eb[0..<0]) == "";
+  over_len := FlawedAgentId.{len = 65};
+  #assert !flawed_agent_id_valid(over_len);
+}
+
+#test "flawed ids: tool-use ID parsing, validation, and composite skill keys" {
+  t1 := flawed_parse_tool_use_id("toolu_01ABC-xyz9");
+  t2 := flawed_parse_tool_use_id("toolu_01ABC-xyz9");
+  t3 := flawed_parse_tool_use_id("toolu_01ABC-xyz8");
+  t4 := flawed_parse_tool_use_id("Xoolu_01ABC-xyz9");
+  t_one := flawed_parse_tool_use_id("a");
+  t_max := flawed_parse_tool_use_id("0123456789012345678901234567890123456789012345678901234567890123"); // 64
+  t_over := flawed_parse_tool_use_id("01234567890123456789012345678901234567890123456789012345678901234"); // 65
+  #assert flawed_tool_use_id_valid(t1) && flawed_tool_use_id_eq(t1, t2) && !flawed_tool_use_id_eq(t1, t3) && !flawed_tool_use_id_eq(t1, t4);
+  #assert flawed_tool_use_id_valid(t_one) && flawed_tool_use_id_valid(t_max) && !flawed_tool_use_id_valid(t_over);
+  #assert !flawed_tool_use_id_eq(t1, t_one);
+  #assert !flawed_tool_use_id_valid(flawed_parse_tool_use_id(""));
+  #assert !flawed_tool_use_id_valid(flawed_parse_tool_use_id("bad/slash"));
+  #assert !flawed_tool_use_id_valid(flawed_parse_tool_use_id("bad space"));
+  tb := [1] FlawedToolUseId.[t1];
+  #assert flawed_tool_use_id_str(tb[..]) == "toolu_01ABC-xyz9";
+  empty_t: FlawedToolUseId;
+  #assert !flawed_tool_use_id_valid(empty_t) && !flawed_tool_use_id_eq(empty_t, empty_t);
+  #assert !flawed_tool_use_id_eq(t1, empty_t) && !flawed_tool_use_id_eq(empty_t, t1);
+  eb := [1] FlawedToolUseId.[empty_t];
+  #assert flawed_tool_use_id_str(eb[..]) == "" && flawed_tool_use_id_str(eb[0..<0]) == "";
+  #assert !flawed_tool_use_id_valid(FlawedToolUseId.{len = 65});
+
+  // Composite skill key separates main thread from subagent
+  buf: [FLAWED_SKILL_KEY_MAX] u8;
+  no_agent: FlawedAgentId;
+  sub := flawed_parse_agent_id("a0123456789abcdef");
+  n_main := flawed_skill_key(no_agent, "!commit", buf[..]); // ASCII 33 at index 0
+  #assert n_main == 8 && cast(string) buf[0..<n_main] == ":!commit";
+  n_sub := flawed_skill_key(sub, "commit", buf[..]);
+  #assert n_sub == 24 && cast(string) buf[0..<n_sub] == "a0123456789abcdef:commit";
+  // Reject invalid skill names (including index 0) and small buffers
+  #assert flawed_skill_key(no_agent, "", buf[..]) == -1;
+  #assert flawed_skill_key(no_agent, ":lead", buf[..]) == -1;
+  #assert flawed_skill_key(no_agent, "bad:colon", buf[..]) == -1;
+  #assert flawed_skill_key(no_agent, "bad space", buf[..]) == -1;
+  del_skill := [2] u8.['x', 127];
+  #assert flawed_skill_key(no_agent, cast(string) del_skill[..], buf[..]) == -1;
+  small: [6] u8;
+  #assert flawed_skill_key(no_agent, "commit", small[..]) == -1;
+  exact: [7] u8;
+  #assert flawed_skill_key(no_agent, "commit", exact[..]) == 7;
+  // Exact FLAWED_SKILL_KEY_MAX (128) succeeds; 129 fails even with larger buffer
+  big: [200] u8;
+  max_skill: [127] u8;
+  for i: 0..<127 { max_skill[i] = 'a'; }
+  #assert flawed_skill_key(no_agent, cast(string) max_skill[..], big[..]) == 128;
+  long_skill: [128] u8;
+  for i: 0..<128 { long_skill[i] = 'a'; }
+  #assert flawed_skill_key(no_agent, cast(string) long_skill[..], big[..]) == -1;
+}
+
+#test "flawed ids: generational Handle(T) detects stale refs across agent & task stores" {
+  a_vals: [4] FlawedAgentSlot; a_gens: [4] u32; a_live: [4] bool; a_free: [4] int; a_st: [1] StoreState;
+  agents: Store(FlawedAgentSlot) = Store.{values = a_vals[..], generations = a_gens[..], live = a_live[..], free = a_free[..], state = a_st[..]};
+  t_vals: [4] FlawedTaskSlot; t_gens: [4] u32; t_live: [4] bool; t_free: [4] int; t_st: [1] StoreState;
+  tasks: Store(FlawedTaskSlot) = Store.{values = t_vals[..], generations = t_gens[..], live = t_live[..], free = t_free[..], state = t_st[..]};
+
+  ha_opt := store_put(agents, FlawedAgentSlot.{generation_hint = 1, active = true});
+  ht_opt := store_put(tasks, FlawedTaskSlot.{kind = 2, active = true});
+  ha: Handle(FlawedAgentSlot);
+  ht: Handle(FlawedTaskSlot);
+  switch ha_opt { case none { #assert false; } case some(h) { ha = h; } }
+  switch ht_opt { case none { #assert false; } case some(h) { ht = h; } }
+  #assert store_has(agents, ha) && store_has(tasks, ht);
+  #assert store_remove(agents, ha) && !store_has(agents, ha);
+  ha2_opt := store_put(agents, FlawedAgentSlot.{generation_hint = 2, active = true});
+  ha2: Handle(FlawedAgentSlot);
+  switch ha2_opt { case none { #assert false; } case some(h) { ha2 = h; } }
+  // Slot 0 reused with incremented generation: stale handle ha is rejected, ha2 is live.
+  #assert store_has(agents, ha2) && !store_has(agents, ha) && !handle_same(ha, ha2);
+}
+
+#forall "flawed ids: lower_hex and tool_id_char agree with exact ASCII ranges" b: u8 {
+  want_hex := (b >= 48 && b <= 57) || (b >= 97 && b <= 102);
+  #assert flawed_is_lower_hex(b) == want_hex;
+  want_tid := (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 || b == 45;
+  #assert flawed_is_tool_id_char(b) == want_tid;
+}

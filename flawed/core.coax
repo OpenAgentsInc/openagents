@@ -1,0 +1,51 @@
+// Flawed — Unified Coax Core Library Entry Point.
+// Bottom-up coding agent harness built chapter-by-chapter from ~/work/cc/book.
+//   coax/bin/coax test flawed/core.coax --library
+#module "flawed.core";
+#load "ids.coax";
+#load "state.coax";
+#load "file_cache.coax";
+#load "scheduler.coax";
+
+#test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
+  sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  sub := flawed_parse_agent_id("aexplorer-0123456789abcdef");
+
+  // 1. Immutable ProcessEnv + reactive SessionState
+  env: [1] FlawedProcessEnv;
+  st: [1] FlawedSessionState;
+  #assert flawed_env_init(env[..], sid, "/repo", "/repo", 1700000000000, false);
+  #assert flawed_state_init(st[..], "/repo", "gemini-4-neon");
+  #assert flawed_state_set_worktree(st[..], "/wt/feature");
+  #assert flawed_env_project_root(env[..]) == "/repo";
+
+  // 2. Root turn + isolated subagent turn
+  root_t: [1] FlawedTurnState;
+  sub_t: [1] FlawedTurnState;
+  #assert flawed_turn_begin_root(root_t[..], env[..], FlawedTurnSeq.{value = 1}, 8);
+  #assert flawed_turn_fork_subagent(sub_t[..], root_t[..], sub, 4);
+  #assert flawed_state_record_skill(st[..], FlawedAgentId.{}, "review");
+  #assert flawed_state_record_skill(st[..], sub, "review");
+
+  // 3. Parent FileStateCache cloned for subagent + independent memory-path dedup
+  p_e: [4] FlawedFileEntry; p_s: [64] u8; p_st: [1] FlawedFileCacheState;
+  p_fc := FlawedFileCache.{entries = p_e[..], slab = p_s[..], state = p_st[..]};
+  #assert flawed_fc_put(p_fc, "/repo/src/../main.coax", "main :: () {}", 1, 77, 5000, -1, -1, false);
+  #assert flawed_fc_check_edit_safe(p_fc, "/repo/main.coax", 1, 77, 5000, "main :: () {}") == FLAWED_EDIT_OK;
+
+  c_e: [4] FlawedFileEntry; c_s: [64] u8; c_st: [1] FlawedFileCacheState;
+  c_fc := FlawedFileCache.{entries = c_e[..], slab = c_s[..], state = c_st[..]};
+  #assert flawed_fc_clone(c_fc, p_fc) == 1;
+  #assert flawed_fc_delete(c_fc, "/repo/main.coax") && flawed_fc_get(p_fc, "/repo/main.coax") >= 0;
+
+  // 4. Bounded concurrent scheduler enforcing read-parallel + write-serial barrier
+  sched: [1] FlawedScheduler;
+  #assert flawed_sched_init(sched[..], 4);
+  #assert flawed_sched_enqueue(sched[..], flawed_parse_tool_use_id("tu_read_1"), true) == 0;
+  #assert flawed_sched_enqueue(sched[..], flawed_parse_tool_use_id("tu_read_2"), true) == 1;
+  #assert flawed_sched_enqueue(sched[..], flawed_parse_tool_use_id("tu_edit_1"), false) == 2;
+  #assert flawed_sched_dispatch(sched[..]) == 0 && flawed_sched_dispatch(sched[..]) == 1 && flawed_sched_dispatch(sched[..]) == -1;
+  #assert flawed_sched_finish(sched[..], 0, true, 0) && flawed_sched_finish(sched[..], 1, true, 0);
+  #assert flawed_sched_dispatch(sched[..]) == 2 && sched[0].serial_active;
+  #assert flawed_sched_finish(sched[..], 2, true, 0) && flawed_sched_done(sched[..]);
+}

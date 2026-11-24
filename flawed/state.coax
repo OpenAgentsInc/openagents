@@ -1,0 +1,519 @@
+// Flawed Layer 0 (Chapter 01) — Three-Lifetime State Architecture.
+// Replaces cc/state/store.ts, cc/state/AppStateStore.ts, and cc/bootstrap/state.ts
+// with three explicit, zero-global, caller-owned state lifetimes:
+//   1. FlawedProcessEnv   — immutable startup identity (original_cwd, stable project_root, session_id)
+//   2. FlawedSessionState — flat reactive state with Object.is no-op bailout, u64 dirty bitmask,
+//                           bounded synchronous event ring, usage accounting, and invoked-skill set
+//   3. FlawedTurnState    — per-turn execution context with isolated subagent forking
+//   coax/bin/coax test flawed/state.coax --library
+//   coax/bin/coax mutate flawed/state.coax --root-only
+#module "flawed.state";
+#load "ids.coax";
+
+FLAWED_PATH_CAP :: 256;
+FLAWED_MODEL_CAP :: 64;
+FLAWED_EVENT_CAP :: 64;
+FLAWED_SKILL_CAP :: 32;
+
+// Permission modes (cc/utils/permissions/PermissionMode.ts).
+FLAWED_MODE_DEFAULT :: 0;
+FLAWED_MODE_PLAN :: 1;
+FLAWED_MODE_ACCEPT_EDITS :: 2;
+FLAWED_MODE_AUTO :: 3;
+FLAWED_MODE_BYPASS :: 4;
+
+// Reasoning effort levels.
+FLAWED_EFFORT_LOW :: 0;
+FLAWED_EFFORT_MEDIUM :: 1;
+FLAWED_EFFORT_HIGH :: 2;
+FLAWED_EFFORT_XHIGH :: 3;
+
+// Reactive dirty-bitmask slices (replaces React selector subscriptions).
+FLAWED_DIRTY_MODE :: 1;
+FLAWED_DIRTY_WORKTREE :: 2;
+FLAWED_DIRTY_MODEL :: 4;
+FLAWED_DIRTY_EFFORT :: 8;
+FLAWED_DIRTY_USAGE :: 16;
+FLAWED_DIRTY_SKILLS :: 32;
+FLAWED_DIRTY_CLAUDE_MD :: 64;
+
+// Synchronous state transition event kinds (replaces createStore onChange hook).
+FLAWED_EV_NONE :: 0;
+FLAWED_EV_MODE :: 1;
+FLAWED_EV_WORKTREE :: 2;
+FLAWED_EV_MODEL :: 3;
+FLAWED_EV_EFFORT :: 4;
+FLAWED_EV_USAGE :: 5;
+FLAWED_EV_SKILL :: 6;
+FLAWED_EV_CLAUDE_MD :: 7;
+
+// Lifetime 1: Immutable process-wide environment (replaces bootstrap/state.ts startup fields).
+// project_root never shifts on mid-session EnterWorktree; worktree_cwd lives on SessionState.
+FlawedProcessEnv :: struct {
+  session_id: FlawedSessionId;
+  original_cwd: [FLAWED_PATH_CAP] u8; original_cwd_n: int;
+  project_root: [FLAWED_PATH_CAP] u8; project_root_n: int;
+  started_at_ms: int;
+  headless: bool;
+  initialized: bool;
+}
+
+FlawedUsage :: struct {
+  input_tokens: int;
+  output_tokens: int;
+  cache_read_tokens: int;
+  cache_write_tokens: int;
+  cost_micro_usd: int;
+  api_duration_ms: int;
+}
+
+FlawedStateEvent :: struct {
+  kind: u8;
+  gen: FlawedStateGen;
+  old_val: int;
+  new_val: int;
+}
+
+FlawedSkillEntry :: struct {
+  key: [FLAWED_SKILL_KEY_MAX] u8;
+  key_n: int;
+}
+
+// Lifetime 2: Flat reactive session state (replaces AppStateStore + bootstrap accumulators).
+FlawedSessionState :: struct {
+  gen: FlawedStateGen;
+  dirty_mask: u64;
+  mode: int;
+  effort: int;
+  model: [FLAWED_MODEL_CAP] u8; model_n: int;
+  worktree_cwd: [FLAWED_PATH_CAP] u8; worktree_cwd_n: int;
+  usage: FlawedUsage;
+  claude_md_hash: [64] u8; claude_md_cached: bool;
+  skills: [FLAWED_SKILL_CAP] FlawedSkillEntry; skill_count: int;
+  events: [FLAWED_EVENT_CAP] FlawedStateEvent; event_head: int; event_count: int; event_dropped: int;
+}
+
+// Lifetime 3: Per-turn execution context (main thread vs isolated subagent fork).
+FlawedTurnState :: struct {
+  session_id: FlawedSessionId;
+  agent_id: FlawedAgentId;
+  is_subagent: bool;
+  turn_seq: FlawedTurnSeq;
+  step_count: int;
+  max_steps: int;
+  aborted: bool;
+}
+
+flawed_bytes_eq :: (a: [] const u8, an: int, b: string) -> bool #effects(reads, traps) {
+  if an != b.count { return false; }
+  for i: 0..<an {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+flawed_copy_str :: (dst: [] u8, src: string) -> int #effects(reads, writes, traps) {
+  if src.count > dst.count { return -1; }
+  for i: 0..<src.count { dst[i] = src[i]; }
+  return src.count;
+}
+
+flawed_mode_valid :: (mode: int) -> bool #effects(computes) {
+  return mode >= FLAWED_MODE_DEFAULT && mode <= FLAWED_MODE_BYPASS;
+}
+
+flawed_effort_valid :: (effort: int) -> bool #effects(computes) {
+  return effort >= FLAWED_EFFORT_LOW && effort <= FLAWED_EFFORT_XHIGH;
+}
+
+// Initialize immutable ProcessEnv. Refuses invalid session ID, empty/oversized paths, or negative time.
+flawed_env_init :: (
+  env: [] FlawedProcessEnv,
+  session_id: FlawedSessionId,
+  original_cwd: string,
+  project_root: string,
+  started_at_ms: int,
+  headless: bool
+) -> bool #effects(reads, writes, traps) {
+  if env.count == 0 || !flawed_session_id_valid(session_id) { return false; }
+  if original_cwd.count == 0 || original_cwd.count > FLAWED_PATH_CAP { return false; }
+  if project_root.count == 0 || project_root.count > FLAWED_PATH_CAP { return false; }
+  if started_at_ms < 0 { return false; }
+  env[0] = FlawedProcessEnv.{};
+  env[0].session_id = session_id;
+  env[0].original_cwd_n = flawed_copy_str(env[0].original_cwd[..], original_cwd);
+  env[0].project_root_n = flawed_copy_str(env[0].project_root[..], project_root);
+  env[0].started_at_ms = started_at_ms;
+  env[0].headless = headless;
+  env[0].initialized = true;
+  return true;
+}
+
+flawed_env_project_root :: (env: [] FlawedProcessEnv) -> string #effects(reads, traps) {
+  if env.count == 0 || !env[0].initialized { return ""; }
+  return cast(string) env[0].project_root[0..<env[0].project_root_n];
+}
+
+flawed_env_original_cwd :: (env: [] FlawedProcessEnv) -> string #effects(reads, traps) {
+  if env.count == 0 || !env[0].initialized { return ""; }
+  return cast(string) env[0].original_cwd[0..<env[0].original_cwd_n];
+}
+
+// Internal helper: advance generation, mark dirty bit, and push synchronous event to bounded ring.
+flawed_state_emit :: (s: [] FlawedSessionState, dirty_bit: u64, kind: u8, old_val: int, new_val: int) #effects(reads, writes, traps) {
+  s[0].gen.value = add_sat(s[0].gen.value, 1);
+  s[0].dirty_mask = s[0].dirty_mask | dirty_bit;
+  idx := (s[0].event_head + s[0].event_count) % FLAWED_EVENT_CAP;
+  if s[0].event_count == FLAWED_EVENT_CAP {
+    s[0].event_head = (s[0].event_head + 1) % FLAWED_EVENT_CAP;
+    s[0].event_dropped += 1;
+  } else {
+    s[0].event_count += 1;
+  }
+  s[0].events[idx] = FlawedStateEvent.{kind = kind, gen = s[0].gen, old_val = old_val, new_val = new_val};
+}
+
+// Reset / initialize SessionState cleanly (replaces resetStateForTests() without globals).
+flawed_state_init :: (s: [] FlawedSessionState, initial_cwd: string, model: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || initial_cwd.count == 0 || initial_cwd.count > FLAWED_PATH_CAP { return false; }
+  if model.count == 0 || model.count > FLAWED_MODEL_CAP { return false; }
+  s[0] = FlawedSessionState.{};
+  s[0].mode = FLAWED_MODE_DEFAULT;
+  s[0].effort = FLAWED_EFFORT_HIGH;
+  s[0].worktree_cwd_n = flawed_copy_str(s[0].worktree_cwd[..], initial_cwd);
+  s[0].model_n = flawed_copy_str(s[0].model[..], model);
+  return true;
+}
+
+// Set permission mode with Object.is no-op bailout.
+flawed_state_set_mode :: (s: [] FlawedSessionState, mode: int) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || !flawed_mode_valid(mode) { return false; }
+  if s[0].mode == mode { return false; }
+  old := s[0].mode;
+  s[0].mode = mode;
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_MODE, cast(u8) FLAWED_EV_MODE, old, mode);
+  return true;
+}
+
+// Set reasoning effort with Object.is no-op bailout.
+flawed_state_set_effort :: (s: [] FlawedSessionState, effort: int) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || !flawed_effort_valid(effort) { return false; }
+  if s[0].effort == effort { return false; }
+  old := s[0].effort;
+  s[0].effort = effort;
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_EFFORT, cast(u8) FLAWED_EV_EFFORT, old, effort);
+  return true;
+}
+
+// Set active model name with Object.is no-op bailout.
+flawed_state_set_model :: (s: [] FlawedSessionState, model: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || model.count == 0 || model.count > FLAWED_MODEL_CAP { return false; }
+  if flawed_bytes_eq(s[0].model[..], s[0].model_n, model) { return false; }
+  old_n := s[0].model_n;
+  s[0].model_n = flawed_copy_str(s[0].model[..], model);
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_MODEL, cast(u8) FLAWED_EV_MODEL, old_n, s[0].model_n);
+  return true;
+}
+
+// Switch active worktree cwd (leaves ProcessEnv.project_root untouched!) with no-op bailout.
+flawed_state_set_worktree :: (s: [] FlawedSessionState, cwd: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || cwd.count == 0 || cwd.count > FLAWED_PATH_CAP { return false; }
+  if flawed_bytes_eq(s[0].worktree_cwd[..], s[0].worktree_cwd_n, cwd) { return false; }
+  old_n := s[0].worktree_cwd_n;
+  s[0].worktree_cwd_n = flawed_copy_str(s[0].worktree_cwd[..], cwd);
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_WORKTREE, cast(u8) FLAWED_EV_WORKTREE, old_n, s[0].worktree_cwd_n);
+  return true;
+}
+
+// Accumulate token/cost/latency usage; refuses negative deltas and bails out on all-zero no-op.
+flawed_state_add_usage :: (s: [] FlawedSessionState, delta: FlawedUsage) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 { return false; }
+  if delta.input_tokens < 0 || delta.output_tokens < 0 || delta.cache_read_tokens < 0 ||
+     delta.cache_write_tokens < 0 || delta.cost_micro_usd < 0 || delta.api_duration_ms < 0 {
+    return false;
+  }
+  if delta.input_tokens == 0 && delta.output_tokens == 0 && delta.cache_read_tokens == 0 &&
+     delta.cache_write_tokens == 0 && delta.cost_micro_usd == 0 && delta.api_duration_ms == 0 {
+    return false;
+  }
+  old_cost := s[0].usage.cost_micro_usd;
+  s[0].usage.input_tokens += delta.input_tokens;
+  s[0].usage.output_tokens += delta.output_tokens;
+  s[0].usage.cache_read_tokens += delta.cache_read_tokens;
+  s[0].usage.cache_write_tokens += delta.cache_write_tokens;
+  s[0].usage.cost_micro_usd += delta.cost_micro_usd;
+  s[0].usage.api_duration_ms += delta.api_duration_ms;
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_USAGE, cast(u8) FLAWED_EV_USAGE, old_cost, s[0].usage.cost_micro_usd);
+  return true;
+}
+
+// Record an invoked skill scoped by "${agentId ?? ''}:${skillName}" (deduplicated, no-op bailout).
+flawed_state_record_skill :: (s: [] FlawedSessionState, agent: FlawedAgentId, skill_name: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 { return false; }
+  key_buf: [FLAWED_SKILL_KEY_MAX] u8;
+  kn := flawed_skill_key(agent, skill_name, key_buf[..]);
+  if kn <= 0 { return false; }
+  key := cast(string) key_buf[0..<kn];
+  for i: 0..<s[0].skill_count {
+    if flawed_bytes_eq(s[0].skills[i].key[..], s[0].skills[i].key_n, key) { return false; }
+  }
+  if s[0].skill_count >= FLAWED_SKILL_CAP { return false; }
+  old_c := s[0].skill_count;
+  slot := s[0].skill_count;
+  for i: 0..<kn { s[0].skills[slot].key[i] = key_buf[i]; }
+  s[0].skills[slot].key_n = kn;
+  s[0].skill_count += 1;
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_SKILLS, cast(u8) FLAWED_EV_SKILL, old_c, s[0].skill_count);
+  return true;
+}
+
+flawed_state_has_skill :: (s: [] const FlawedSessionState, agent: FlawedAgentId, skill_name: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 { return false; }
+  key_buf: [FLAWED_SKILL_KEY_MAX] u8;
+  kn := flawed_skill_key(agent, skill_name, key_buf[..]);
+  if kn <= 0 { return false; }
+  key := cast(string) key_buf[0..<kn];
+  for i: 0..<s[0].skill_count {
+    if flawed_bytes_eq(s[0].skills[i].key[..], s[0].skills[i].key_n, key) { return true; }
+  }
+  return false;
+}
+
+// Cache CLAUDE.md digest (replaces bootstrap/state.ts cachedClaudeMdContent cycle-breaker).
+flawed_state_set_claude_md_hash :: (s: [] FlawedSessionState, hex64: string) -> bool #effects(reads, writes, traps) {
+  if s.count == 0 || hex64.count != 64 { return false; }
+  for i: 0..<64 { if !flawed_is_lower_hex(hex64[i]) { return false; } }
+  if s[0].claude_md_cached && flawed_bytes_eq(s[0].claude_md_hash[..], 64, hex64) { return false; }
+  old_flag := ifx s[0].claude_md_cached then 1 else 0;
+  for i: 0..<64 { s[0].claude_md_hash[i] = hex64[i]; }
+  s[0].claude_md_cached = true;
+  flawed_state_emit(s, cast(u64) FLAWED_DIRTY_CLAUDE_MD, cast(u8) FLAWED_EV_CLAUDE_MD, old_flag, 1);
+  return true;
+}
+
+// Acknowledge dirty slices for a TUI / UI consumer without mutating generation.
+flawed_state_ack_dirty :: (s: [] FlawedSessionState, mask: u64) #effects(reads, writes, traps) {
+  if s.count == 0 { return; }
+  s[0].dirty_mask = s[0].dirty_mask & (mask ^ cast(u64) 18446744073709551615);
+}
+
+// Pop oldest unread synchronous event from the ring; returns FLAWED_EV_NONE when empty.
+flawed_state_pop_event :: (s: [] FlawedSessionState) -> FlawedStateEvent #effects(reads, writes, traps) {
+  if s.count == 0 || s[0].event_count == 0 { return FlawedStateEvent.{}; }
+  ev := s[0].events[s[0].event_head];
+  s[0].event_head = (s[0].event_head + 1) % FLAWED_EVENT_CAP;
+  s[0].event_count -= 1;
+  return ev;
+}
+
+// Begin a root (main-thread) turn.
+flawed_turn_begin_root :: (
+  t: [] FlawedTurnState,
+  env: [] const FlawedProcessEnv,
+  seq: FlawedTurnSeq,
+  max_steps: int
+) -> bool #effects(reads, writes, traps) {
+  if t.count == 0 || env.count == 0 || !env[0].initialized || max_steps < 1 || seq.value < 1 { return false; }
+  t[0] = FlawedTurnState.{
+    session_id = env[0].session_id,
+    is_subagent = false,
+    turn_seq = seq,
+    step_count = 0,
+    max_steps = max_steps,
+    aborted = false
+  };
+  return true;
+}
+
+// Fork an isolated subagent turn from a parent turn: keeps session_id, sets valid agent_id,
+// resets step_count/aborted, and enforces bounded max_steps (<= parent.max_steps).
+flawed_turn_fork_subagent :: (
+  child: [] FlawedTurnState,
+  parent: [] const FlawedTurnState,
+  agent_id: FlawedAgentId,
+  max_steps: int
+) -> bool #effects(reads, writes, traps) {
+  if child.count == 0 || parent.count == 0 || !flawed_session_id_valid(parent[0].session_id) { return false; }
+  if !flawed_agent_id_valid(agent_id) || max_steps < 1 || max_steps > parent[0].max_steps { return false; }
+  child[0] = FlawedTurnState.{
+    session_id = parent[0].session_id,
+    agent_id = agent_id,
+    is_subagent = true,
+    turn_seq = parent[0].turn_seq,
+    step_count = 0,
+    max_steps = max_steps,
+    aborted = false
+  };
+  return true;
+}
+
+flawed_turn_advance_step :: (t: [] FlawedTurnState) -> bool #effects(reads, writes, traps) {
+  if t.count == 0 || t[0].aborted || t[0].step_count >= t[0].max_steps { return false; }
+  t[0].step_count += 1;
+  return true;
+}
+
+flawed_turn_abort :: (t: [] FlawedTurnState) #effects(reads, writes, traps) {
+  if t.count == 0 { return; }
+  t[0].aborted = true;
+}
+
+#test "flawed state: ProcessEnv keeps project_root immutable across worktree switches" {
+  sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  bad_sid: FlawedSessionId;
+  eb: [1] FlawedProcessEnv;
+  #assert !flawed_env_init(eb[0..<0], sid, "/repo", "/repo", 100, false);
+  #assert !flawed_env_init(eb[..], bad_sid, "/repo", "/repo", 100, false);
+  #assert !flawed_env_init(eb[..], sid, "", "/repo", 100, false);
+  #assert !flawed_env_init(eb[..], sid, "/repo", "", 100, false);
+  #assert !flawed_env_init(eb[..], sid, "/repo", "/repo", -1, false);
+  too_long: [257] u8;
+  for i: 0..<257 { too_long[i] = 'a'; }
+  #assert !flawed_env_init(eb[..], sid, cast(string) too_long[..], "/repo", 0, false);
+  #assert !flawed_env_init(eb[..], sid, "/repo", cast(string) too_long[..], 0, false);
+  #assert flawed_env_project_root(eb[..]) == "" && flawed_env_original_cwd(eb[..]) == "";
+  #assert flawed_env_project_root(eb[0..<0]) == "" && flawed_env_original_cwd(eb[0..<0]) == "";
+
+  #assert flawed_env_init(eb[..], sid, "/repo/sub", "/repo", 0, true);
+  #assert flawed_env_original_cwd(eb[..]) == "/repo/sub" && flawed_env_project_root(eb[..]) == "/repo" && eb[0].headless;
+
+  sb: [1] FlawedSessionState;
+  #assert !flawed_state_init(sb[0..<0], "/repo", "neon");
+  #assert !flawed_state_init(sb[..], "", "neon");
+  #assert !flawed_state_init(sb[..], cast(string) too_long[..], "neon");
+  #assert !flawed_state_init(sb[..], "/repo", "");
+  long_model: [65] u8;
+  for i: 0..<65 { long_model[i] = 'm'; }
+  #assert !flawed_state_init(sb[..], "/repo", cast(string) long_model[..]);
+  #assert flawed_state_init(sb[..], "/repo/sub", "gemini-4-neon");
+
+  // Switching worktree updates SessionState, never ProcessEnv.project_root
+  #assert flawed_state_set_worktree(sb[..], "/wt/branch-1");
+  #assert flawed_env_project_root(eb[..]) == "/repo";
+  #assert sb[0].gen.value == 1 && (sb[0].dirty_mask & cast(u64) FLAWED_DIRTY_WORKTREE) != 0;
+  // No-op bailout on identical worktree
+  #assert !flawed_state_set_worktree(sb[..], "/wt/branch-1");
+  #assert sb[0].gen.value == 1 && sb[0].event_count == 1;
+  #assert !flawed_state_set_worktree(sb[0..<0], "/a") && !flawed_state_set_worktree(sb[..], "") && !flawed_state_set_worktree(sb[..], cast(string) too_long[..]);
+}
+
+#test "flawed state: Object.is no-op bailouts, dirty bitmask, usage, skills, and event ring" {
+  sb: [1] FlawedSessionState;
+  #assert flawed_state_init(sb[..], "/repo", "gemini-4-neon");
+  // Mode & effort transitions + no-op bailouts + invalid rejections
+  #assert !flawed_state_set_mode(sb[0..<0], FLAWED_MODE_PLAN);
+  #assert !flawed_state_set_mode(sb[..], -1) && !flawed_state_set_mode(sb[..], 5);
+  #assert !flawed_state_set_mode(sb[..], FLAWED_MODE_DEFAULT); // already default -> bailout
+  #assert flawed_state_set_mode(sb[..], FLAWED_MODE_BYPASS) && sb[0].gen.value == 1;
+  #assert !flawed_state_set_mode(sb[..], FLAWED_MODE_BYPASS) && sb[0].gen.value == 1;
+  #assert !flawed_state_set_effort(sb[0..<0], FLAWED_EFFORT_LOW);
+  #assert !flawed_state_set_effort(sb[..], -1) && !flawed_state_set_effort(sb[..], 4);
+  #assert !flawed_state_set_effort(sb[..], FLAWED_EFFORT_HIGH); // already high -> bailout
+  #assert flawed_state_set_effort(sb[..], FLAWED_EFFORT_XHIGH) && sb[0].gen.value == 2;
+  #assert !flawed_state_set_effort(sb[..], FLAWED_EFFORT_XHIGH) && sb[0].gen.value == 2;
+  // Model transitions + bailout
+  long_model: [65] u8;
+  for i: 0..<65 { long_model[i] = 'x'; }
+  #assert !flawed_state_set_model(sb[0..<0], "a") && !flawed_state_set_model(sb[..], "") && !flawed_state_set_model(sb[..], cast(string) long_model[..]);
+  #assert !flawed_state_set_model(sb[..], "gemini-4-neon") && sb[0].gen.value == 2;
+  #assert flawed_state_set_model(sb[..], "gemini-4-flash") && sb[0].gen.value == 3;
+  // Usage accounting: reject negatives, bail out on zero, accumulate positive
+  #assert !flawed_state_add_usage(sb[0..<0], FlawedUsage.{input_tokens = 1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{input_tokens = -1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{output_tokens = -1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{cache_read_tokens = -1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{cache_write_tokens = -1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{cost_micro_usd = -1});
+  #assert !flawed_state_add_usage(sb[..], FlawedUsage.{api_duration_ms = -1});
+  #assert flawed_state_add_usage(sb[..], FlawedUsage.{input_tokens = 100, output_tokens = 25, cache_read_tokens = 80, cache_write_tokens = 10, cost_micro_usd = 42, api_duration_ms = 300});
+  #assert sb[0].usage.input_tokens == 100 && sb[0].usage.output_tokens == 25 && sb[0].usage.cache_read_tokens == 80;
+  #assert sb[0].usage.cache_write_tokens == 10 && sb[0].usage.cost_micro_usd == 42 && sb[0].usage.api_duration_ms == 300;
+  #assert flawed_state_add_usage(sb[..], FlawedUsage.{api_duration_ms = 50}) && sb[0].usage.api_duration_ms == 350;
+  // Skills: main vs subagent namespace separation + deduplication + capacity bound
+  no_agent: FlawedAgentId;
+  sub := flawed_parse_agent_id("a0123456789abcdef");
+  #assert !flawed_state_record_skill(sb[0..<0], no_agent, "plan");
+  #assert !flawed_state_record_skill(sb[..], no_agent, "");
+  #assert !flawed_state_has_skill(sb[0..<0], no_agent, "plan") && !flawed_state_has_skill(sb[..], no_agent, "");
+  #assert flawed_state_record_skill(sb[..], no_agent, "plan");
+  #assert !flawed_state_record_skill(sb[..], no_agent, "plan"); // duplicate bailout
+  #assert flawed_state_record_skill(sb[..], sub, "plan");       // distinct subagent namespace!
+  #assert flawed_state_has_skill(sb[..], no_agent, "plan") && flawed_state_has_skill(sb[..], sub, "plan");
+  #assert !flawed_state_has_skill(sb[..], no_agent, "other");
+  // CLAUDE.md hash caching
+  h1 := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  h2 := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert !flawed_state_set_claude_md_hash(sb[0..<0], h1) && !flawed_state_set_claude_md_hash(sb[..], "short");
+  #assert !flawed_state_set_claude_md_hash(sb[..], "E3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  #assert flawed_state_set_claude_md_hash(sb[..], h1) && !flawed_state_set_claude_md_hash(sb[..], h1);
+  #assert flawed_state_set_claude_md_hash(sb[..], h2);
+  // Acknowledge dirty bits selectively
+  flawed_state_ack_dirty(sb[0..<0], cast(u64) FLAWED_DIRTY_MODE);
+  flawed_state_ack_dirty(sb[..], cast(u64) (FLAWED_DIRTY_MODE | FLAWED_DIRTY_EFFORT));
+  #assert (sb[0].dirty_mask & cast(u64) FLAWED_DIRTY_MODE) == 0 && (sb[0].dirty_mask & cast(u64) FLAWED_DIRTY_MODEL) != 0;
+  // Pop events in FIFO order
+  e1 := flawed_state_pop_event(sb[..]);
+  #assert e1.kind == cast(u8) FLAWED_EV_MODE && e1.old_val == FLAWED_MODE_DEFAULT && e1.new_val == FLAWED_MODE_BYPASS && e1.gen.value == 1;
+  e2 := flawed_state_pop_event(sb[..]);
+  #assert e2.kind == cast(u8) FLAWED_EV_EFFORT && e2.old_val == FLAWED_EFFORT_HIGH && e2.new_val == FLAWED_EFFORT_XHIGH && e2.gen.value == 2;
+  // Overflow event ring past FLAWED_EVENT_CAP to verify bounded eviction & drop counter
+  for i: 0..<70 {
+    m := ifx i % 2 == 0 then FLAWED_MODE_PLAN else FLAWED_MODE_AUTO;
+    _ = flawed_state_set_mode(sb[..], m);
+  }
+  #assert sb[0].event_count == FLAWED_EVENT_CAP && sb[0].event_dropped > 0;
+  while sb[0].event_count > 0 { _ = flawed_state_pop_event(sb[..]); }
+  #assert flawed_state_pop_event(sb[..]).kind == cast(u8) FLAWED_EV_NONE;
+  #assert flawed_state_pop_event(sb[0..<0]).kind == cast(u8) FLAWED_EV_NONE;
+  // Fill skills to capacity and verify clean refusal
+  sb2: [1] FlawedSessionState;
+  #assert flawed_state_init(sb2[..], "/r", "m");
+  for i: 0..<FLAWED_SKILL_CAP {
+    nm := [3] u8.['s', cast,trunc(u8) ('a' + (i / 10)), cast,trunc(u8) ('0' + (i % 10))];
+    #assert flawed_state_record_skill(sb2[..], no_agent, cast(string) nm[..]);
+  }
+  #assert !flawed_state_record_skill(sb2[..], no_agent, "overflow");
+}
+
+#test "flawed state: turn lifecycle and isolated subagent forking" {
+  sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
+  eb: [1] FlawedProcessEnv;
+  root: [1] FlawedTurnState;
+  child: [1] FlawedTurnState;
+  #assert !flawed_turn_begin_root(root[..], eb[..], FlawedTurnSeq.{value = 1}, 5); // uninitialized env
+  #assert flawed_env_init(eb[..], sid, "/repo", "/repo", 10, false);
+  #assert !flawed_turn_begin_root(root[0..<0], eb[..], FlawedTurnSeq.{value = 1}, 5);
+  #assert !flawed_turn_begin_root(root[..], eb[0..<0], FlawedTurnSeq.{value = 1}, 5);
+  #assert !flawed_turn_begin_root(root[..], eb[..], FlawedTurnSeq.{value = 0}, 5);
+  #assert !flawed_turn_begin_root(root[..], eb[..], FlawedTurnSeq.{value = 1}, 0);
+  #assert flawed_turn_begin_root(root[..], eb[..], FlawedTurnSeq.{value = 1}, 3);
+  #assert !root[0].is_subagent && root[0].step_count == 0 && root[0].max_steps == 3;
+  #assert flawed_turn_advance_step(root[..]) && root[0].step_count == 1;
+  // Fork subagent: child gets own agent_id, step_count=0, max_steps <= parent.max_steps
+  sub_id := flawed_parse_agent_id("aresearch-0123456789abcdef");
+  bad_id: FlawedAgentId;
+  empty_parent: [1] FlawedTurnState;
+  #assert !flawed_turn_fork_subagent(child[0..<0], root[..], sub_id, 2);
+  #assert !flawed_turn_fork_subagent(child[..], root[0..<0], sub_id, 2);
+  #assert !flawed_turn_fork_subagent(child[..], empty_parent[..], sub_id, 2);
+  #assert !flawed_turn_fork_subagent(child[..], root[..], bad_id, 2);
+  #assert !flawed_turn_fork_subagent(child[..], root[..], sub_id, 0);
+  #assert !flawed_turn_fork_subagent(child[..], root[..], sub_id, 4); // exceeds parent max_steps
+  #assert flawed_turn_fork_subagent(child[..], root[..], sub_id, 2);
+  #assert child[0].is_subagent && child[0].step_count == 0 && flawed_session_id_eq(child[0].session_id, sid);
+  #assert flawed_agent_id_eq(child[0].agent_id, sub_id);
+  // Aborting child never aborts parent; max_steps stops advance
+  flawed_turn_abort(child[0..<0]);
+  flawed_turn_abort(child[..]);
+  #assert !flawed_turn_advance_step(child[..]) && !root[0].aborted;
+  #assert !flawed_turn_advance_step(root[0..<0]);
+  #assert flawed_turn_advance_step(root[..]) && flawed_turn_advance_step(root[..]) && !flawed_turn_advance_step(root[..]);
+}
+
+#forall "flawed state: mode validation matches [FLAWED_MODE_DEFAULT, FLAWED_MODE_BYPASS]" m: -2..<7 {
+  #assert flawed_mode_valid(m) == (m >= 0 && m <= 4);
+}
+#forall "flawed state: effort validation matches [FLAWED_EFFORT_LOW, FLAWED_EFFORT_XHIGH]" e: -2..<6 {
+  #assert flawed_effort_valid(e) == (e >= 0 && e <= 3);
+}
