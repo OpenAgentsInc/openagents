@@ -20,7 +20,7 @@ GB_PROF_LOCAL_CORE :: 4;
 GB_PROF_CODING_LINUX :: 5;
 GB_PROF_COUNT :: 6;
 
-// Local Inkling variations + llama.cpp comparators (mirrors apps/openagents-desktop/LocalModels.swift)
+// Local Inkling variations, llama.cpp comparators, Gemini 4 Neon family, and Flawed Agent Harness variants
 GB_VAR_INKLING_BASE :: 0;
 GB_VAR_INKLING_LORA :: 1;
 GB_VAR_INKLING_Q4K :: 2;
@@ -30,7 +30,18 @@ GB_VAR_INKLING_MIX16G :: 5;
 GB_VAR_INKLING_MIX12G :: 6;
 GB_VAR_LLAMACPP_BASE :: 7;
 GB_VAR_LLAMACPP_Q4K :: 8;
-GB_VAR_COUNT :: 9;
+GB_VAR_GEMINI_NEON :: 9;
+GB_VAR_GEMINI_CARBON :: 10;
+GB_VAR_GEMINI_HYDROGEN :: 11;
+GB_VAR_GEMINI_ARGON :: 12;
+GB_VAR_FLAWED_INKLING_BASE :: 13;
+GB_VAR_FLAWED_INKLING_LORA :: 14;
+GB_VAR_FLAWED_INKLING_Q4K :: 15;
+GB_VAR_FLAWED_GEMINI_NEON :: 16;
+GB_VAR_FLAWED_GEMINI_CARBON :: 17;
+GB_VAR_FLAWED_GEMINI_HYDROGEN :: 18;
+GB_VAR_FLAWED_GEMINI_ARGON :: 19;
+GB_VAR_COUNT :: 20;
 
 GB_LOCAL_FAST_SUITES :: [6] string.[
   "gsm8k",
@@ -103,12 +114,27 @@ GbVariantInfo :: struct {
   id: int;
   slug: string;
   label: string;
-  backend: string;        // "psionic-metal" | "llamacpp-metal"
+  backend: string;        // "psionic-metal" | "llamacpp-metal" | "vertex-bridge" | "flawed-local" | "flawed-cloud"
   model_id: string;       // served model id for /v1/models
-  rel_gguf: string;       // relative to ~/.openagents/models/
+  rel_gguf: string;       // relative to ~/.openagents/models/ (empty for cloud backends)
   rel_lora: string;       // optional LoRA path relative to ~/.openagents/models/ (empty if none)
   quant: string;
   min_ram_gb: int;
+}
+
+gb_variant_is_cloud :: (backend: string) -> bool #effects(reads, traps) {
+  return backend == "vertex-bridge" || backend == "flawed-cloud";
+}
+
+gb_variant_upstream_model :: (id: int) -> string {
+  if id == GB_VAR_FLAWED_INKLING_BASE { return "inkling-2-mini"; }
+  if id == GB_VAR_FLAWED_INKLING_LORA { return "inkling-2-mini-uncensored-lora"; }
+  if id == GB_VAR_FLAWED_INKLING_Q4K { return "inkling-2-mini-uncensored-q4k"; }
+  if id == GB_VAR_FLAWED_GEMINI_NEON { return "gemini-4-neon"; }
+  if id == GB_VAR_FLAWED_GEMINI_CARBON { return "gemini-4-carbon"; }
+  if id == GB_VAR_FLAWED_GEMINI_HYDROGEN { return "gemini-4-hydrogen"; }
+  if id == GB_VAR_FLAWED_GEMINI_ARGON { return "gemini-4-argon"; }
+  return gb_variant_info(id).model_id;
 }
 
 gb_kind_name :: (kind: int) -> string #effects() {
@@ -316,16 +342,159 @@ gb_variant_info :: (id: int) -> GbVariantInfo {
       min_ram_gb = 32,
     };
   }
+  if id == GB_VAR_LLAMACPP_Q4K {
+    return GbVariantInfo.{
+      id = GB_VAR_LLAMACPP_Q4K,
+      slug = "llamacpp-inkling-uncensored-q4k",
+      label = "Inkling 2 Mini · llama.cpp Uncensored AD-Q4_K",
+      backend = "llamacpp-metal",
+      model_id = "inkling-2-mini-uncensored-q4k",
+      rel_gguf = "inkling-2-mini-uncensored-q4k/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+      rel_lora = "",
+      quant = "AD-Q4_K",
+      min_ram_gb = 24,
+    };
+  }
+  if id == GB_VAR_GEMINI_NEON {
+    return GbVariantInfo.{
+      id = GB_VAR_GEMINI_NEON,
+      slug = "gemini-4-neon",
+      label = "Gemini 4 Neon · Vertex AI",
+      backend = "vertex-bridge",
+      model_id = "gemini-4-neon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_GEMINI_CARBON {
+    return GbVariantInfo.{
+      id = GB_VAR_GEMINI_CARBON,
+      slug = "gemini-4-carbon",
+      label = "Gemini 4 Carbon · Vertex AI",
+      backend = "vertex-bridge",
+      model_id = "gemini-4-carbon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_GEMINI_HYDROGEN {
+    return GbVariantInfo.{
+      id = GB_VAR_GEMINI_HYDROGEN,
+      slug = "gemini-4-hydrogen",
+      label = "Gemini 4 Hydrogen · Vertex AI",
+      backend = "vertex-bridge",
+      model_id = "gemini-4-hydrogen",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_GEMINI_ARGON {
+    return GbVariantInfo.{
+      id = GB_VAR_GEMINI_ARGON,
+      slug = "gemini-4-argon",
+      label = "Gemini 4 Argon · Vertex AI",
+      backend = "vertex-bridge",
+      model_id = "gemini-4-argon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_FLAWED_INKLING_BASE {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_INKLING_BASE,
+      slug = "flawed-inkling-2-mini",
+      label = "Flawed Harness · Inkling 2 Mini IQ4_NL",
+      backend = "flawed-local",
+      model_id = "flawed-inkling-2-mini",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "",
+      quant = "Agent+IQ4_NL",
+      min_ram_gb = 32,
+    };
+  }
+  if id == GB_VAR_FLAWED_INKLING_LORA {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_INKLING_LORA,
+      slug = "flawed-inkling-uncensored-lora",
+      label = "Flawed Harness · Inkling Uncensored LoRA",
+      backend = "flawed-local",
+      model_id = "flawed-inkling-uncensored-lora",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "inkling-2-mini-uncensored-lora/Inkling-2-Mini-Uncensored-LoRA.gguf",
+      quant = "Agent+LoRA",
+      min_ram_gb = 32,
+    };
+  }
+  if id == GB_VAR_FLAWED_INKLING_Q4K {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_INKLING_Q4K,
+      slug = "flawed-inkling-uncensored-q4k",
+      label = "Flawed Harness · Inkling Uncensored AD-Q4_K",
+      backend = "flawed-local",
+      model_id = "flawed-inkling-uncensored-q4k",
+      rel_gguf = "inkling-2-mini-uncensored-q4k/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+      rel_lora = "",
+      quant = "Agent+Q4_K",
+      min_ram_gb = 24,
+    };
+  }
+  if id == GB_VAR_FLAWED_GEMINI_NEON {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_GEMINI_NEON,
+      slug = "flawed-gemini-4-neon",
+      label = "Flawed Harness · Gemini 4 Neon",
+      backend = "flawed-cloud",
+      model_id = "flawed-gemini-4-neon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Agent+Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_FLAWED_GEMINI_CARBON {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_GEMINI_CARBON,
+      slug = "flawed-gemini-4-carbon",
+      label = "Flawed Harness · Gemini 4 Carbon",
+      backend = "flawed-cloud",
+      model_id = "flawed-gemini-4-carbon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Agent+Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_FLAWED_GEMINI_HYDROGEN {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_GEMINI_HYDROGEN,
+      slug = "flawed-gemini-4-hydrogen",
+      label = "Flawed Harness · Gemini 4 Hydrogen",
+      backend = "flawed-cloud",
+      model_id = "flawed-gemini-4-hydrogen",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Agent+Cloud",
+      min_ram_gb = 0,
+    };
+  }
   return GbVariantInfo.{
-    id = GB_VAR_LLAMACPP_Q4K,
-    slug = "llamacpp-inkling-uncensored-q4k",
-    label = "Inkling 2 Mini · llama.cpp Uncensored AD-Q4_K",
-    backend = "llamacpp-metal",
-    model_id = "inkling-2-mini-uncensored-q4k",
-    rel_gguf = "inkling-2-mini-uncensored-q4k/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+    id = GB_VAR_FLAWED_GEMINI_ARGON,
+    slug = "flawed-gemini-4-argon",
+    label = "Flawed Harness · Gemini 4 Argon",
+    backend = "flawed-cloud",
+    model_id = "flawed-gemini-4-argon",
+    rel_gguf = "",
     rel_lora = "",
-    quant = "AD-Q4_K",
-    min_ram_gb = 24,
+    quant = "Agent+Cloud",
+    min_ram_gb = 0,
   };
 }
 
@@ -339,10 +508,21 @@ gb_variant_by_slug :: (slug: string) -> int {
   if slug == "inkling-2-mini-abliterated-mix12g" || slug == "mix12g" { return GB_VAR_INKLING_MIX12G; }
   if slug == "llamacpp-inkling-2-mini" || slug == "llamacpp" || slug == "llama" { return GB_VAR_LLAMACPP_BASE; }
   if slug == "llamacpp-inkling-uncensored-q4k" || slug == "llama-q4k" { return GB_VAR_LLAMACPP_Q4K; }
+  if slug == "gemini-4-neon" || slug == "neon" { return GB_VAR_GEMINI_NEON; }
+  if slug == "gemini-4-carbon" || slug == "carbon" { return GB_VAR_GEMINI_CARBON; }
+  if slug == "gemini-4-hydrogen" || slug == "hydrogen" { return GB_VAR_GEMINI_HYDROGEN; }
+  if slug == "gemini-4-argon" || slug == "argon" { return GB_VAR_GEMINI_ARGON; }
+  if slug == "flawed-inkling-2-mini" || slug == "flawed-inkling" || slug == "flawed:inkling-2-mini" { return GB_VAR_FLAWED_INKLING_BASE; }
+  if slug == "flawed-inkling-uncensored-lora" || slug == "flawed-lora" || slug == "flawed:inkling-2-mini-uncensored-lora" { return GB_VAR_FLAWED_INKLING_LORA; }
+  if slug == "flawed-inkling-uncensored-q4k" || slug == "flawed-q4k" || slug == "flawed:inkling-2-mini-uncensored-q4k" { return GB_VAR_FLAWED_INKLING_Q4K; }
+  if slug == "flawed-gemini-4-neon" || slug == "flawed-neon" || slug == "flawed:gemini-4-neon" { return GB_VAR_FLAWED_GEMINI_NEON; }
+  if slug == "flawed-gemini-4-carbon" || slug == "flawed-carbon" || slug == "flawed:gemini-4-carbon" { return GB_VAR_FLAWED_GEMINI_CARBON; }
+  if slug == "flawed-gemini-4-hydrogen" || slug == "flawed-hydrogen" || slug == "flawed:gemini-4-hydrogen" { return GB_VAR_FLAWED_GEMINI_HYDROGEN; }
+  if slug == "flawed-gemini-4-argon" || slug == "flawed-argon" || slug == "flawed:gemini-4-argon" { return GB_VAR_FLAWED_GEMINI_ARGON; }
   return -1;
 }
 
-#test "gbench suites: curated profiles, suite IDs, and Inkling variant catalog" {
+#test "gbench suites: curated profiles, suite IDs, and Inkling/Neon/Flawed variant catalog" {
   #assert gb_profile_by_slug("oa-template-smoke") == GB_PROF_TEMPLATE_SMOKE;
   #assert gb_profile_by_slug("oa-perf-quick") == GB_PROF_PERF_QUICK;
   #assert gb_profile_by_slug("oa-perf-agentic") == GB_PROF_PERF_AGENTIC;
@@ -363,14 +543,35 @@ gb_variant_by_slug :: (slug: string) -> int {
   #assert gb_profile_info(GB_PROF_LOCAL_CORE).count == 16;
   #assert gb_profile_info(GB_PROF_TEMPLATE_SMOKE).count == 16;
 
+  expected_ram := [GB_VAR_COUNT] int.[32, 32, 24, 16, 12, 24, 16, 32, 24, 0, 0, 0, 0, 32, 32, 24, 0, 0, 0, 0];
   for vid: 0..<GB_VAR_COUNT {
     v := gb_variant_info(vid);
+    #assert v.id == vid;
+    #assert v.min_ram_gb == expected_ram[vid];
     #assert gb_valid_slug(v.slug);
     #assert gb_valid_slug(v.model_id);
     #assert gb_variant_by_slug(v.slug) == vid;
-    #assert v.rel_gguf.count > 0;
+    if gb_variant_is_cloud(v.backend) {
+      #assert v.rel_gguf.count == 0;
+    } else {
+      #assert v.rel_gguf.count > 0;
+    }
   }
   #assert gb_variant_info(GB_VAR_INKLING_LORA).rel_lora.count > 0;
   #assert gb_variant_info(GB_VAR_INKLING_BASE).rel_lora.count == 0;
+  #assert gb_variant_by_slug("neon") == GB_VAR_GEMINI_NEON;
+  #assert gb_variant_by_slug("carbon") == GB_VAR_GEMINI_CARBON;
+  #assert gb_variant_by_slug("hydrogen") == GB_VAR_GEMINI_HYDROGEN;
+  #assert gb_variant_by_slug("argon") == GB_VAR_GEMINI_ARGON;
+  #assert gb_variant_by_slug("flawed-neon") == GB_VAR_FLAWED_GEMINI_NEON;
+  #assert gb_variant_by_slug("flawed-lora") == GB_VAR_FLAWED_INKLING_LORA;
+  #assert gb_variant_upstream_model(GB_VAR_INKLING_BASE) == "inkling-2-mini";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_BASE) == "inkling-2-mini";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_LORA) == "inkling-2-mini-uncensored-lora";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_Q4K) == "inkling-2-mini-uncensored-q4k";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_NEON) == "gemini-4-neon";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_CARBON) == "gemini-4-carbon";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_HYDROGEN) == "gemini-4-hydrogen";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_ARGON) == "gemini-4-argon";
   #assert gb_variant_by_slug("unknown") == -1;
 }

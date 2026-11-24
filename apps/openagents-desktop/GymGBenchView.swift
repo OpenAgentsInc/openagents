@@ -532,7 +532,7 @@ final class GymGBenchView: NSView {
 
     // Top controls
     private let headerBar = NSView()
-    private let titleLabel = NSTextField(labelWithString: "gBench · Inkling Variants & Serving Eval")
+    private let titleLabel = NSTextField(labelWithString: "gBench · Inkling · Gemini 4 Neon · Flawed Harness")
     private let scaffoldBadge = NSTextField(labelWithString: "SCAFFOLD —")
     private let doctorPill = NSTextField(labelWithString: "Checking gBench / Psionic / Tokenizer…")
 
@@ -935,10 +935,13 @@ final class GymGBenchView: NSView {
             ),
         ]
         variants = [
-            GbVariantCatalogEntry(slug: "inkling-2-mini", label: "Inkling 2 Mini · Psionic IQ4_NL", backend: "psionic-metal", model_id: "inkling-2-mini", quant: "IQ4_NL", has_lora: false, installed: true, min_ram_gb: 24),
-            GbVariantCatalogEntry(slug: "inkling-2-mini-uncensored-lora", label: "Inkling 2 Mini · Uncensored LoRA", backend: "psionic-metal", model_id: "inkling-2-mini-uncensored-lora", quant: "IQ4_NL+LoRA", has_lora: true, installed: true, min_ram_gb: 24),
+            GbVariantCatalogEntry(slug: "inkling-2-mini", label: "Inkling 2 Mini · Psionic IQ4_NL", backend: "psionic-metal", model_id: "inkling-2-mini", quant: "IQ4_NL", has_lora: false, installed: true, min_ram_gb: 32),
+            GbVariantCatalogEntry(slug: "inkling-2-mini-uncensored-lora", label: "Inkling 2 Mini · Uncensored LoRA", backend: "psionic-metal", model_id: "inkling-2-mini-uncensored-lora", quant: "IQ4_NL+LoRA", has_lora: true, installed: true, min_ram_gb: 32),
             GbVariantCatalogEntry(slug: "inkling-2-mini-uncensored-q4k", label: "Inkling 2 Mini · Uncensored AD-Q4_K", backend: "psionic-metal", model_id: "inkling-2-mini-uncensored-q4k", quant: "AD-Q4_K", has_lora: false, installed: true, min_ram_gb: 24),
-            GbVariantCatalogEntry(slug: "llamacpp-inkling-2-mini", label: "Inkling 2 Mini · llama.cpp IQ4_NL", backend: "llamacpp-metal", model_id: "inkling-2-mini", quant: "IQ4_NL", has_lora: false, installed: true, min_ram_gb: 24),
+            GbVariantCatalogEntry(slug: "llamacpp-inkling-2-mini", label: "Inkling 2 Mini · llama.cpp IQ4_NL", backend: "llamacpp-metal", model_id: "inkling-2-mini", quant: "IQ4_NL", has_lora: false, installed: true, min_ram_gb: 32),
+            GbVariantCatalogEntry(slug: "gemini-4-neon", label: "Gemini 4 Neon · Vertex AI", backend: "vertex-bridge", model_id: "gemini-4-neon", quant: "Cloud", has_lora: false, installed: true, min_ram_gb: 0),
+            GbVariantCatalogEntry(slug: "flawed-inkling-uncensored-lora", label: "Flawed Harness · Inkling Uncensored LoRA", backend: "flawed-local", model_id: "flawed-inkling-uncensored-lora", quant: "Agent+LoRA", has_lora: true, installed: true, min_ram_gb: 32),
+            GbVariantCatalogEntry(slug: "flawed-gemini-4-neon", label: "Flawed Harness · Gemini 4 Neon", backend: "flawed-cloud", model_id: "flawed-gemini-4-neon", quant: "Agent+Cloud", has_lora: false, installed: true, min_ram_gb: 0),
         ]
         rebuildProfileMenu(selectSlug: "oa-local-fast")
         rebuildVariantMenus(selectA: "inkling-2-mini", selectB: "inkling-2-mini-uncensored-lora")

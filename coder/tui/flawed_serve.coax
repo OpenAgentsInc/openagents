@@ -1,0 +1,1263 @@
+// OpenAI-compatible HTTP server (`flawedworker --serve`) connecting the Flawed Agent
+// harness and Gemini 4 Neon (Vertex AI / Gemini API) directly to google-deepmind/gbench
+// and OpenAgents Desktop Gym.
+//
+// Endpoints on 127.0.0.1:<port>:
+//   GET  /health               -> {"status":"ok","engine":"flawed","mode":"raw|harness","model":"..."}
+//   GET  /v1/models            -> OpenAI model list advertising the served model id
+//   POST /v1/chat/completions  -> OpenAI JSON or SSE streaming (raw wire or full Flawed agent loop)
+//
+// Modes:
+//   --mode raw      Direct wire bridge through flawed/wire.coax (Vertex AI Neon or Local Psionic).
+//   --mode harness  Full Flawed autonomous coding-agent loop (Bash/Read/Write/Edit/Glob/Grep tools,
+//                   Allow All, isolated temp workspace) for open-ended reasoning/math/coding items,
+//                   with automatic wire passthrough for external benchmark tools, multi-turn template
+//                   checks, and tiny single-token choice prompts (max_tokens <= 32).
+
+FWS_REQ_BUF :: 524288;
+FWS_RESP_BUF :: 524288;
+FWS_NODES_MAX :: 4096;
+
+FwServeOpts :: struct {
+  port: int;
+  served_model: [128] u8; nserved: int;
+  upstream_model: [128] u8; nupstream: int;
+  harness_mode: bool;
+  effort: [32] u8; neffort: int;
+  thinking_override: int; // -1 unset, 0 off, 1 on
+}
+
+FwServeWork :: struct {
+  raw_req: [FWS_REQ_BUF] u8;
+  resp_buf: [FWS_RESP_BUF] u8;
+  nodes: [FWS_NODES_MAX] JvNode;
+  run: [1] FwRun;
+  hist: [1] FwHist;
+  bufs: [1] FwBufs;
+  steers: [1] McSteers;
+  dummy_out: [65536] u8;
+  req_seq: int;
+}
+
+fws_write_all :: (fd: int, data: string) -> bool {
+  at := 0;
+  while at < data.count {
+    chunk := data.count - at;
+    if chunk > 262144 { chunk = 262144; }
+    for i: 0..<chunk {
+      if cxsock_write(fd, cast(int) data[at + i]) != 0 { return false; }
+    }
+    if cxsock_flush(fd, 15000) != 0 { return false; }
+    at += chunk;
+  }
+  return true;
+}
+
+fws_send_http :: (fd: int, code: int, reason: string, ctype: string, body: string) {
+  hb: [512] u8;
+  n := fww_cat(hb[..], 0, "HTTP/1.1 ");
+  n = fww_put_int(hb[..], n, code);
+  n = fww_cat(hb[..], n, " ");
+  n = fww_cat(hb[..], n, reason);
+  n = fww_cat(hb[..], n, "\r\nContent-Type: ");
+  n = fww_cat(hb[..], n, ctype);
+  n = fww_cat(hb[..], n, "\r\nContent-Length: ");
+  n = fww_put_int(hb[..], n, body.count);
+  n = fww_cat(hb[..], n, "\r\nConnection: close\r\n\r\n");
+  if fws_write_all(fd, cast(string) hb[0..<n]) {
+    _ = fws_write_all(fd, body);
+  }
+}
+
+fws_send_error :: (fd: int, code: int, reason: string, etype: string, msg: string) {
+  eb: [1024] u8;
+  o: [1] Jo; jo_start(o[..], eb[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "error");
+  jo_obj(o[..]);
+  jo_key(o[..], "message"); jo_str(o[..], msg);
+  jo_key(o[..], "type"); jo_str(o[..], etype);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  fws_send_http(fd, code, reason, "application/json", jo_text(o[..]));
+}
+
+fws_send_sse_head :: (fd: int) -> bool {
+  return fws_write_all(fd, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n");
+}
+
+fws_find_crlfcrlf :: (buf: [] u8, n: int) -> int {
+  if n < 4 { return -1; }
+  for i: 0..<n - 3 {
+    if buf[i] == 13 && buf[i + 1] == 10 && buf[i + 2] == 13 && buf[i + 3] == 10 { return i; }
+  }
+  return -1;
+}
+
+fws_parse_uint_str :: (s: string) -> int {
+  t := fww_trim(s);
+  if t.count == 0 { return 0; }
+  v := 0;
+  for c: t {
+    if c < '0' || c > '9' { break; }
+    if v < 100000000 { v = v * 10 + cast(int) (c - '0'); }
+  }
+  return v;
+}
+
+fws_read_http :: (fd: int, raw: [] u8, method_out: [] u8, nmethod: [] int, path_out: [] u8, npath: [] int, body_at: [] int, body_len: [] int) -> bool {
+  nmethod[0] = 0; npath[0] = 0; body_at[0] = 0; body_len[0] = 0;
+  total := 0;
+  hdr_end := -1;
+  deadline := proc_now_ms() + 15000;
+  while proc_now_ms() < deadline && total < raw.count {
+    got := cxsock_read(fd, 1000);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    take := ifx total + got <= raw.count then got else raw.count - total;
+    for i: 0..<take { raw[total + i] = cast,trunc(u8) cxsock_byte(fd, i); }
+    total += take;
+    hdr_end = fws_find_crlfcrlf(raw, total);
+    if hdr_end >= 0 { break; }
+  }
+  if hdr_end < 0 { return false; }
+
+  // Parse request line: METHOD PATH HTTP/1.x
+  eol := 0;
+  while eol < hdr_end && raw[eol] != 13 && raw[eol] != 10 { eol += 1; }
+  rline := cast(string) raw[0..<eol];
+  sp1 := 0;
+  while sp1 < rline.count && rline[sp1] != ' ' { sp1 += 1; }
+  if sp1 == 0 || sp1 >= rline.count { return false; }
+  nmethod[0] = fww_keep(method_out, cast(string) rline[0..<sp1]);
+  p0 := sp1 + 1;
+  while p0 < rline.count && rline[p0] == ' ' { p0 += 1; }
+  p1 := p0;
+  while p1 < rline.count && rline[p1] != ' ' && rline[p1] != '?' { p1 += 1; }
+  if p1 <= p0 { return false; }
+  npath[0] = fww_keep(path_out, cast(string) rline[p0..<p1]);
+
+  // Scan headers for Content-Length and Expect: 100-continue
+  clen := 0;
+  expect_100 := false;
+  pos := eol;
+  while pos < hdr_end {
+    while pos < hdr_end && (raw[pos] == 13 || raw[pos] == 10) { pos += 1; }
+    ls := pos;
+    while pos < hdr_end && raw[pos] != 13 && raw[pos] != 10 { pos += 1; }
+    if pos <= ls { continue; }
+    line := cast(string) raw[ls..<pos];
+    col := -1;
+    for i: 0..<line.count { if line[i] == ':' { col = i; break; } }
+    if col <= 0 { continue; }
+    k := fww_trim(cast(string) line[0..<col]);
+    v := fww_trim(cast(string) line[col + 1..<line.count]);
+    if flawed_aw_eq_ci(k, "content-length") { clen = fws_parse_uint_str(v); }
+    else if flawed_aw_eq_ci(k, "expect") && flawed_aw_eq_ci(v, "100-continue") { expect_100 = true; }
+  }
+
+  bat := hdr_end + 4;
+  if expect_100 && total < bat + clen {
+    _ = fws_write_all(fd, "HTTP/1.1 100 Continue\r\n\r\n");
+  }
+  if clen < 0 || bat + clen > raw.count { return false; }
+
+  deadline2 := proc_now_ms() + 20000;
+  while total < bat + clen && proc_now_ms() < deadline2 {
+    got := cxsock_read(fd, 1000);
+    if got == -2 { continue; }
+    if got <= 0 { break; }
+    take := ifx total + got <= raw.count then got else raw.count - total;
+    for i: 0..<take { raw[total + i] = cast,trunc(u8) cxsock_byte(fd, i); }
+    total += take;
+  }
+  if total < bat + clen { return false; }
+  body_at[0] = bat;
+  body_len[0] = clen;
+  return true;
+}
+
+// Extract text from an OpenAI message content node (string or array of content parts).
+// Sets has_mm[0] = true if any multimodal image/audio part is present.
+fws_extract_msg_content :: (d: Jv, cnode: int, out: [] u8, has_mm: [] bool) -> int {
+  k := jv_kind(d, cnode);
+  if k == JV_STRING {
+    n := jv_str(d, cnode, out);
+    return ifx n > 0 then n else 0;
+  }
+  if k != JV_ARRAY { return 0; }
+  n := 0;
+  np := jv_len(d, cnode);
+  tb: [32] u8;
+  pb: [16384] u8;
+  for i: 0..<np {
+    p := jv_at(d, cnode, i);
+    if jv_kind(d, p) != JV_OBJECT { continue; }
+    tn := jv_str(d, jv_get(d, p, "type"), tb[..]);
+    ts := ifx tn > 0 then cast(string) tb[0..<tn] else "";
+    if ts == "image_url" || ts == "input_audio" || ts == "image" || ts == "audio" || ts == "video_url" {
+      has_mm[0] = true;
+      continue;
+    }
+    if ts == "text" || ts == "input_text" || ts.count == 0 {
+      pn := jv_str(d, jv_get(d, p, "text"), pb[..]);
+      if pn > 0 {
+        if n > 0 { n = fww_cat(out, n, "\n"); }
+        n = fww_cat(out, n, cast(string) pb[0..<pn]);
+      }
+    }
+  }
+  return n;
+}
+
+fws_msgs_have_multimodal :: (d: Jv, msgs: int) -> bool {
+  if jv_kind(d, msgs) != JV_ARRAY { return false; }
+  nm := jv_len(d, msgs);
+  tb: [32] u8;
+  for i: 0..<nm {
+    m := jv_at(d, msgs, i);
+    c := jv_get(d, m, "content");
+    if jv_kind(d, c) != JV_ARRAY { continue; }
+    np := jv_len(d, c);
+    for j: 0..<np {
+      p := jv_at(d, c, j);
+      if jv_kind(d, p) != JV_OBJECT { continue; }
+      tn := jv_str(d, jv_get(d, p, "type"), tb[..]);
+      ts := ifx tn > 0 then cast(string) tb[0..<tn] else "";
+      if ts == "image_url" || ts == "input_audio" || ts == "image" || ts == "audio" || ts == "video_url" {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Recursively write a JSON Schema object sanitized for Vertex AI / Gemini functionDeclarations.
+fws_write_gemini_schema :: (o: [] Jo, d: Jv, node: int, depth: int) {
+  if depth > 14 || node < 0 { jo_raw(o, "{}"); return; }
+  k := jv_kind(d, node);
+  if k == JV_OBJECT {
+    jo_obj(o);
+    ch := d.nodes[node].first;
+    kb: [128] u8;
+    tb: [32] u8;
+    while ch >= 0 {
+      raw_k := cast(string) d.text[d.nodes[ch].key_from..<d.nodes[ch].key_to];
+      kn := jv_unescape(raw_k, kb[..]);
+      ks := ifx kn > 0 then cast(string) kb[0..<kn] else raw_k;
+      // Skip JSON Schema keywords Vertex AI rejects inside functionDeclaration parameters
+      skip := ks == "$schema" || ks == "additionalProperties" || ks == "default"
+           || ks == "examples" || ks == "$id" || ks == "const" || ks == "$defs"
+           || ks == "definitions" || ks == "exclusiveMinimum" || ks == "exclusiveMaximum"
+           || ks == "patternProperties" || ks == "propertyNames" || ks == "title";
+      if !skip && ks.count > 0 {
+        if ks == "type" && jv_kind(d, ch) == JV_ARRAY {
+          // Convert union type ["string", "null"] -> first non-null type
+          chosen := "string";
+          nl := jv_len(d, ch);
+          for ti: 0..<nl {
+            tv := jv_at(d, ch, ti);
+            tn := jv_str(d, tv, tb[..]);
+            ts := ifx tn > 0 then cast(string) tb[0..<tn] else "";
+            if ts.count > 0 && ts != "null" { chosen = ts; break; }
+          }
+          jo_key(o, "type"); jo_str(o, chosen);
+        } else {
+          jo_key(o, ks);
+          fws_write_gemini_schema(o, d, ch, depth + 1);
+        }
+      }
+      ch = d.nodes[ch].next;
+    }
+    jo_end(o);
+    return;
+  }
+  if k == JV_ARRAY {
+    jo_arr(o);
+    nl := jv_len(d, node);
+    for i: 0..<nl {
+      fws_write_gemini_schema(o, d, jv_at(d, node, i), depth + 1);
+    }
+    jo_end(o);
+    return;
+  }
+  if k == JV_STRING {
+    sb: [4096] u8;
+    sn := jv_str(d, node, sb[..]);
+    jo_str(o, ifx sn > 0 then cast(string) sb[0..<sn] else "");
+    return;
+  }
+  raw := jv_raw(d, node);
+  jo_raw(o, ifx raw.count > 0 then raw else "null");
+}
+
+// Resolve a tool call name for a role=="tool" message by matching tool_call_id in earlier assistant messages.
+fws_find_tool_name_by_id :: (d: Jv, msgs: int, before_idx: int, tc_id: string, out: [] u8) -> int {
+  if tc_id.count == 0 { return 0; }
+  ib: [128] u8;
+  for i: 0..<before_idx {
+    m := jv_at(d, msgs, i);
+    tcs := jv_get(d, m, "tool_calls");
+    if jv_kind(d, tcs) != JV_ARRAY { continue; }
+    nt := jv_len(d, tcs);
+    for j: 0..<nt {
+      tc := jv_at(d, tcs, j);
+      idn := jv_str(d, jv_get(d, tc, "id"), ib[..]);
+      if idn > 0 && cast(string) ib[0..<idn] == tc_id {
+        fn := jv_get(d, tc, "function");
+        nn := jv_str(d, jv_get(d, fn, "name"), out);
+        if nn > 0 { return nn; }
+      }
+    }
+  }
+  return 0;
+}
+
+// Translate incoming OpenAI Chat Completions JSON into Vertex AI / Gemini native streamGenerateContent JSON.
+fws_build_gemini_from_oai :: (
+  d: Jv,
+  msgs: int,
+  tools_node: int,
+  resp_fmt: int,
+  temp_raw: string,
+  req_max_tok: int,
+  think_on: bool,
+  effort: string,
+  out: [] u8
+) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+
+  // 1. System / developer messages -> systemInstruction
+  nm := ifx jv_kind(d, msgs) == JV_ARRAY then jv_len(d, msgs) else 0;
+  sys_b: [65536] u8; nsys := 0;
+  rb: [32] u8;
+  cb: [65536] u8;
+  mm := [1] bool.[false];
+  for i: 0..<nm {
+    m := jv_at(d, msgs, i);
+    rn := jv_str(d, jv_get(d, m, "role"), rb[..]);
+    role := ifx rn > 0 then cast(string) rb[0..<rn] else "";
+    if role == "system" || role == "developer" {
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      if cn > 0 {
+        if nsys > 0 { nsys = fww_cat(sys_b[..], nsys, "\n\n"); }
+        nsys = fww_cat(sys_b[..], nsys, cast(string) cb[0..<cn]);
+      }
+    }
+  }
+  if nsys > 0 {
+    jo_key(o[..], "systemInstruction");
+    jo_obj(o[..]);
+    jo_key(o[..], "parts");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "text"); jo_str(o[..], cast(string) sys_b[0..<nsys]);
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_end(o[..]);
+  }
+
+  // 2. External benchmark tools -> Gemini functionDeclarations
+  if jv_kind(d, tools_node) == JV_ARRAY && jv_len(d, tools_node) > 0 {
+    jo_key(o[..], "tools");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "functionDeclarations");
+    jo_arr(o[..]);
+    nt := jv_len(d, tools_node);
+    nb: [128] u8; db: [4096] u8;
+    for i: 0..<nt {
+      t := jv_at(d, tools_node, i);
+      fn := jv_get(d, t, "function");
+      if jv_kind(d, fn) != JV_OBJECT { fn = t; }
+      nn := jv_str(d, jv_get(d, fn, "name"), nb[..]);
+      if nn <= 0 { continue; }
+      jo_obj(o[..]);
+      jo_key(o[..], "name"); jo_str(o[..], cast(string) nb[0..<nn]);
+      dn := jv_str(d, jv_get(d, fn, "description"), db[..]);
+      if dn > 0 { jo_key(o[..], "description"); jo_str(o[..], cast(string) db[0..<dn]); }
+      pn := jv_get(d, fn, "parameters");
+      if jv_kind(d, pn) == JV_OBJECT {
+        jo_key(o[..], "parameters");
+        fws_write_gemini_schema(o[..], d, pn, 0);
+      }
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_end(o[..]);
+  }
+
+  // 3. Messages -> Gemini contents (merging adjacent same-role user/tool turns)
+  jo_key(o[..], "contents");
+  jo_arr(o[..]);
+  open_role := 0; // 0 none, 1 user, 2 model
+  for i: 0..<nm {
+    m := jv_at(d, msgs, i);
+    rn := jv_str(d, jv_get(d, m, "role"), rb[..]);
+    role := ifx rn > 0 then cast(string) rb[0..<rn] else "user";
+    if role == "system" || role == "developer" { continue; }
+    want_role := ifx role == "assistant" then 2 else 1;
+    if open_role != want_role {
+      if open_role != 0 { jo_end(o[..]); jo_end(o[..]); }
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], ifx want_role == 2 then "model" else "user");
+      jo_key(o[..], "parts");
+      jo_arr(o[..]);
+      open_role = want_role;
+    }
+    if role == "tool" {
+      id_b: [128] u8; nm_b: [128] u8;
+      idn := jv_str(d, jv_get(d, m, "tool_call_id"), id_b[..]);
+      id_s := ifx idn > 0 then cast(string) id_b[0..<idn] else "";
+      nn := jv_str(d, jv_get(d, m, "name"), nm_b[..]);
+      if nn <= 0 { nn = fws_find_tool_name_by_id(d, msgs, i, id_s, nm_b[..]); }
+      nm_s := ifx nn > 0 then cast(string) nm_b[0..<nn] else "tool";
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      jo_obj(o[..]);
+      jo_key(o[..], "functionResponse");
+      jo_obj(o[..]);
+      jo_key(o[..], "name"); jo_str(o[..], nm_s);
+      if id_s.count > 0 { jo_key(o[..], "id"); jo_str(o[..], id_s); }
+      jo_key(o[..], "response");
+      jo_obj(o[..]);
+      jo_key(o[..], "output"); jo_str(o[..], cast(string) cb[0..<cn]);
+      jo_end(o[..]);
+      jo_end(o[..]);
+      jo_end(o[..]);
+    } else if role == "assistant" {
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      wrote_any := false;
+      if cn > 0 {
+        jo_obj(o[..]);
+        jo_key(o[..], "text"); jo_str(o[..], cast(string) cb[0..<cn]);
+        jo_end(o[..]);
+        wrote_any = true;
+      }
+      tcs := jv_get(d, m, "tool_calls");
+      if jv_kind(d, tcs) == JV_ARRAY {
+        nt := jv_len(d, tcs);
+        id_b: [128] u8; nm_b: [128] u8; ab: [16384] u8;
+        for j: 0..<nt {
+          tc := jv_at(d, tcs, j);
+          fn := jv_get(d, tc, "function");
+          nn := jv_str(d, jv_get(d, fn, "name"), nm_b[..]);
+          if nn <= 0 { continue; }
+          idn := jv_str(d, jv_get(d, tc, "id"), id_b[..]);
+          an := jv_str(d, jv_get(d, fn, "arguments"), ab[..]);
+          args_s := ifx an > 0 then cast(string) ab[0..<an] else "{}";
+          jo_obj(o[..]);
+          jo_key(o[..], "functionCall");
+          jo_obj(o[..]);
+          jo_key(o[..], "name"); jo_str(o[..], cast(string) nm_b[0..<nn]);
+          jo_key(o[..], "args");
+          jo_raw(o[..], ifx args_s.count > 0 && json_valid(args_s) && args_s[0] == '{' then args_s else "{}");
+          if idn > 0 { jo_key(o[..], "id"); jo_str(o[..], cast(string) id_b[0..<idn]); }
+          jo_end(o[..]);
+          jo_key(o[..], "thoughtSignature"); jo_str(o[..], "skip_thought_signature_validator");
+          jo_end(o[..]);
+          wrote_any = true;
+        }
+      }
+      if !wrote_any {
+        jo_obj(o[..]);
+        jo_key(o[..], "text"); jo_str(o[..], "");
+        jo_end(o[..]);
+      }
+    } else {
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      jo_obj(o[..]);
+      jo_key(o[..], "text"); jo_str(o[..], cast(string) cb[0..<cn]);
+      jo_end(o[..]);
+    }
+  }
+  if open_role != 0 { jo_end(o[..]); jo_end(o[..]); }
+  jo_end(o[..]);
+
+  // 4. generationConfig (with Gemini 4 thinking-token allowance so max_tokens=1 never returns empty text!)
+  jo_key(o[..], "generationConfig");
+  jo_obj(o[..]);
+  lvl := ifx !think_on then "low" else flawed_wire_gemini_level(effort);
+  is_perf := jv_bool(d, jv_get(d, 0, "ignore_eos"));
+  headroom := ifx is_perf && !think_on then 256 else ifx !think_on || lvl == "low" then 1024 else 4096;
+  base_tok := ifx req_max_tok > 0 then req_max_tok else 4096;
+  max_out := base_tok + headroom;
+  if max_out > 65536 { max_out = 65536; }
+  jo_key(o[..], "maxOutputTokens"); jo_int(o[..], max_out);
+  if temp_raw.count > 0 {
+    jo_key(o[..], "temperature"); jo_raw(o[..], temp_raw);
+  }
+  if jv_kind(d, resp_fmt) == JV_OBJECT {
+    rfb: [32] u8;
+    rfn := jv_str(d, jv_get(d, resp_fmt, "type"), rfb[..]);
+    rft := ifx rfn > 0 then cast(string) rfb[0..<rfn] else "";
+    if rft == "json_object" || rft == "json_schema" {
+      jo_key(o[..], "responseMimeType"); jo_str(o[..], "application/json");
+    }
+  }
+  jo_key(o[..], "thinkingConfig");
+  jo_obj(o[..]);
+  jo_key(o[..], "includeThoughts"); jo_bool(o[..], think_on);
+  jo_key(o[..], "thinkingLevel"); jo_str(o[..], lvl);
+  jo_end(o[..]);
+  jo_end(o[..]);
+
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Forward an incoming OpenAI request to local Psionic Metal (or OpenRouter) preserving exact fields.
+fws_build_oai_forward :: (
+  d: Jv,
+  msgs: int,
+  tools_node: int,
+  tool_choice: int,
+  resp_fmt: int,
+  wire_model: string,
+  temp_raw: string,
+  req_max_tok: int,
+  think_on: bool,
+  effort: string,
+  is_local: bool,
+  out: [] u8
+) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], wire_model);
+  mt := ifx req_max_tok > 0 then req_max_tok else ifx is_local then 4096 else 8192;
+  jo_key(o[..], "max_tokens"); jo_int(o[..], mt);
+  if temp_raw.count > 0 {
+    jo_key(o[..], "temperature"); jo_raw(o[..], temp_raw);
+  }
+  if is_local {
+    jo_key(o[..], "chat_template_kwargs");
+    jo_obj(o[..]);
+    jo_key(o[..], "enable_thinking"); jo_bool(o[..], think_on);
+    jo_end(o[..]);
+    if !think_on {
+      jo_key(o[..], "enable_thinking"); jo_bool(o[..], false);
+      jo_key(o[..], "reasoning_effort"); jo_str(o[..], "none");
+    } else if effort.count > 0 {
+      jo_key(o[..], "reasoning_effort"); jo_str(o[..], effort);
+    }
+  } else if think_on && effort.count > 0 {
+    jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_gemini_level(effort));
+  }
+  jo_key(o[..], "stream"); jo_bool(o[..], true);
+  jo_key(o[..], "stream_options"); jo_raw(o[..], "{\"include_usage\":true}");
+  if jv_kind(d, tools_node) == JV_ARRAY && jv_len(d, tools_node) > 0 {
+    jo_key(o[..], "tools"); jo_raw(o[..], jv_raw(d, tools_node));
+  }
+  if tool_choice >= 0 && jv_kind(d, tool_choice) != 0 && jv_kind(d, tool_choice) != JV_NULL {
+    jo_key(o[..], "tool_choice");
+    if jv_kind(d, tool_choice) == JV_STRING {
+      tcb: [64] u8; tcn := jv_str(d, tool_choice, tcb[..]);
+      jo_str(o[..], ifx tcn > 0 then cast(string) tcb[0..<tcn] else "auto");
+    } else {
+      jo_raw(o[..], jv_raw(d, tool_choice));
+    }
+  }
+  if jv_kind(d, resp_fmt) == JV_OBJECT {
+    jo_key(o[..], "response_format"); jo_raw(o[..], jv_raw(d, resp_fmt));
+  }
+  jo_key(o[..], "messages");
+  jo_raw(o[..], jv_raw(d, msgs));
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+fws_finish_str :: (stop_reason: int, ntools: int) -> string {
+  if ntools > 0 || stop_reason == FLAWED_STOP_TOOL_USE { return "tool_calls"; }
+  if stop_reason == FLAWED_STOP_MAX_TOKENS { return "length"; }
+  if stop_reason == FLAWED_STOP_REFUSAL { return "content_filter"; }
+  return "stop";
+}
+
+fws_emit_sse_delta :: (fd: int, req_seq: int, model: string, delta_key: string, text: string) -> bool {
+  cb: [16384] u8;
+  o: [1] Jo; jo_start(o[..], cb[..]);
+  jo_obj(o[..]);
+  id_b: [48] u8; idn := fww_cat(id_b[..], 0, "chatcmpl-flawed-"); idn = fww_put_int(id_b[..], idn, req_seq);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) id_b[0..<idn]);
+  jo_key(o[..], "object"); jo_str(o[..], "chat.completion.chunk");
+  jo_key(o[..], "created"); jo_int(o[..], proc_now_ms() / 1000);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "choices");
+  jo_arr(o[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "index"); jo_int(o[..], 0);
+  jo_key(o[..], "delta");
+  jo_obj(o[..]);
+  jo_key(o[..], delta_key); jo_str(o[..], text);
+  jo_end(o[..]);
+  jo_key(o[..], "finish_reason"); jo_raw(o[..], "null");
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  return fws_write_all(fd, "data: ") && fws_write_all(fd, jo_text(o[..])) && fws_write_all(fd, "\n\n");
+}
+
+fws_emit_sse_done :: (fd: int, req_seq: int, model: string, finish_s: string, in_tok: int, out_tok: int) {
+  cb: [2048] u8;
+  o: [1] Jo; jo_start(o[..], cb[..]);
+  jo_obj(o[..]);
+  id_b: [48] u8; idn := fww_cat(id_b[..], 0, "chatcmpl-flawed-"); idn = fww_put_int(id_b[..], idn, req_seq);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) id_b[0..<idn]);
+  jo_key(o[..], "object"); jo_str(o[..], "chat.completion.chunk");
+  jo_key(o[..], "created"); jo_int(o[..], proc_now_ms() / 1000);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "choices");
+  jo_arr(o[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "index"); jo_int(o[..], 0);
+  jo_key(o[..], "delta"); jo_raw(o[..], "{}");
+  jo_key(o[..], "finish_reason"); jo_str(o[..], finish_s);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "usage");
+  jo_obj(o[..]);
+  jo_key(o[..], "prompt_tokens"); jo_int(o[..], in_tok);
+  jo_key(o[..], "completion_tokens"); jo_int(o[..], out_tok);
+  jo_key(o[..], "total_tokens"); jo_int(o[..], in_tok + out_tok);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if !o[0].bad {
+    _ = fws_write_all(fd, "data: ");
+    _ = fws_write_all(fd, jo_text(o[..]));
+    _ = fws_write_all(fd, "\n\ndata: [DONE]\n\n");
+  }
+}
+
+fws_write_oai_json_resp :: (
+  req_seq: int,
+  model: string,
+  text: string,
+  think: string,
+  acc: [] FwStreamAccum,
+  include_tools: bool,
+  finish_s: string,
+  in_tok: int,
+  out_tok: int,
+  out: [] u8
+) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  id_b: [48] u8; idn := fww_cat(id_b[..], 0, "chatcmpl-flawed-"); idn = fww_put_int(id_b[..], idn, req_seq);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) id_b[0..<idn]);
+  jo_key(o[..], "object"); jo_str(o[..], "chat.completion");
+  jo_key(o[..], "created"); jo_int(o[..], proc_now_ms() / 1000);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "choices");
+  jo_arr(o[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "index"); jo_int(o[..], 0);
+  jo_key(o[..], "message");
+  jo_obj(o[..]);
+  jo_key(o[..], "role"); jo_str(o[..], "assistant");
+  jo_key(o[..], "content"); jo_str(o[..], text);
+  if think.count > 0 {
+    jo_key(o[..], "reasoning_content"); jo_str(o[..], think);
+  }
+  if include_tools && acc[0].ntools > 0 {
+    jo_key(o[..], "tool_calls");
+    jo_arr(o[..]);
+    for ti: 0..<acc[0].ntools {
+      jo_obj(o[..]);
+      jo_key(o[..], "id"); jo_str(o[..], cast(string) acc[0].tools[ti].id[0..<acc[0].tools[ti].nid]);
+      jo_key(o[..], "type"); jo_str(o[..], "function");
+      jo_key(o[..], "function");
+      jo_obj(o[..]);
+      jo_key(o[..], "name"); jo_str(o[..], cast(string) acc[0].tools[ti].name[0..<acc[0].tools[ti].nname]);
+      args_s := cast(string) acc[0].tools[ti].args[0..<acc[0].tools[ti].nargs];
+      jo_key(o[..], "arguments"); jo_str(o[..], ifx args_s.count > 0 then args_s else "{}");
+      jo_end(o[..]);
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "finish_reason"); jo_str(o[..], finish_s);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "usage");
+  jo_obj(o[..]);
+  jo_key(o[..], "prompt_tokens"); jo_int(o[..], in_tok);
+  jo_key(o[..], "completion_tokens"); jo_int(o[..], out_tok);
+  jo_key(o[..], "total_tokens"); jo_int(o[..], in_tok + out_tok);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Execute one raw/passthrough completion via Flawed's wire transport (with 3x retry on 429/503).
+fws_exec_raw :: (
+  fd: int,
+  w: [] FwServeWork,
+  cfg: [] FwConfig,
+  auth: [] FwAuth,
+  home: string,
+  served_model: string,
+  upstream_model: string,
+  d: Jv,
+  msgs: int,
+  tools_node: int,
+  tool_choice: int,
+  resp_fmt: int,
+  temp_raw: string,
+  req_max_tok: int,
+  think_on: bool,
+  effort: string,
+  want_stream: bool
+) {
+  is_local := auth[0].backend == FLAWED_BE_LOCAL;
+  is_gem := flawed_wire_is_gemini(auth[0].backend);
+
+  mdl_b: [128] u8;
+  wire_model := upstream_model;
+  if auth[0].backend == FLAWED_BE_OPENROUTER {
+    n := flawed_wire_openrouter_model(upstream_model, mdl_b[..]);
+    wire_model = cast(string) mdl_b[0..<n];
+  } else if is_local {
+    lb: [128] u8;
+    pm := fww_trim(cl_getenv("PSIONIC_MODEL", lb[..]));
+    wire_model = ifx pm.count > 0 then pm else upstream_model;
+  } else {
+    n := flawed_wire_gemini_model(upstream_model, mdl_b[..]);
+    wire_model = cast(string) mdl_b[0..<n];
+  }
+
+  bn := ifx is_gem
+        then fws_build_gemini_from_oai(d, msgs, tools_node, resp_fmt, temp_raw, req_max_tok, think_on, effort, w[0].bufs[0].req_body[..])
+        else fws_build_oai_forward(d, msgs, tools_node, tool_choice, resp_fmt, wire_model, temp_raw, req_max_tok, think_on, effort, is_local, w[0].bufs[0].req_body[..]);
+  if bn <= 0 {
+    fws_send_error(fd, 400, "Bad Request", "invalid_request_error", "request body exceeded Flawed server buffer");
+    return;
+  }
+
+  ub: [512] u8; lbase_b: [512] u8;
+  lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
+  vx_proj := cast(string) auth[0].vx_project[0..<auth[0].nvx_project];
+  vx_loc := cast(string) auth[0].vx_location[0..<auth[0].nvx_location];
+  un := flawed_wire_endpoint_url(auth[0].backend, cast(string) cfg[0].base_url[0..<cfg[0].nbase_url], lbase, vx_proj, vx_loc, wire_model, ub[..]);
+  url := cast(string) ub[0..<un];
+
+  sse_sent := false;
+  acc := w[0].run[0].acc[..];
+  for attempt: 0..<4 {
+    // Refresh Vertex token if near expiry
+    if auth[0].backend == FLAWED_BE_VERTEX {
+      _ = fww_vertex_mint(auth);
+      auth[0].nkey = fww_keep(auth[0].key[..], cast(string) auth[0].vx_tok[0..<auth[0].nvx_tok]);
+    }
+    acc[0] = FwStreamAccum.{cur_tool_idx = -1};
+    cli := GwClient.{url = url, connect_timeout_s = 20, max_time_s = 300};
+    if is_local {
+      cli.key_env = ""; cli.key_value = "";
+    } else if auth[0].backend == FLAWED_BE_GEMINI {
+      cli.key_env = "FLAWED_REQ_KEY"; cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+      cli.key_header = "x-goog-api-key"; cli.scheme = "";
+    } else {
+      cli.key_env = "FLAWED_REQ_KEY"; cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+      cli.key_header = "Authorization"; cli.scheme = "Bearer";
+    }
+    hdrs: [2] string; nh := 0;
+    if auth[0].backend == FLAWED_BE_OPENROUTER {
+      hdrs[0] = "HTTP-Referer: https://openagents.com";
+      hdrs[1] = "X-Title: OpenAgents Flawed";
+      nh = 2;
+    }
+
+    serr := gw_start(cli, cast(string) w[0].bufs[0].req_body[0..<bn], hdrs[0..<nh], w[0].run[0].gw[..]);
+    if serr.count > 0 {
+      if attempt < 3 { proc_sleep(1000 * (attempt + 1)); continue; }
+      fws_send_error(fd, 502, "Bad Gateway", "server_error", serr);
+      return;
+    }
+
+    deadline := proc_now_ms() + 300000;
+    while proc_now_ms() < deadline {
+      rd := gw_poll_wait(w[0].run[0].gw[..], w[0].bufs[0].sse_line[..], 50);
+      if rd.kind == GW_IDLE { continue; }
+      if rd.kind == GW_END { break; }
+      if rd.kind != GW_LINE { continue; }
+      if w[0].run[0].gw[0].status >= 400 {
+        if rd.text.count > 0 {
+          acc[0].nerr_body = fww_cat(acc[0].err_body[..], acc[0].nerr_body, rd.text);
+          acc[0].nerr_body = fww_cat(acc[0].err_body[..], acc[0].nerr_body, "\n");
+        }
+        continue;
+      }
+      data := "";
+      if flawed_aw_starts(rd.text, "data: ") { data = cast(string) rd.text[6..<rd.text.count]; }
+      else if flawed_aw_starts(rd.text, "data:") { data = cast(string) rd.text[5..<rd.text.count]; }
+      else { continue; }
+      data = fww_trim(data);
+      if data.count == 0 { continue; }
+
+      ev: [1] FlawedWireSseEvent;
+      if is_gem {
+        sig_n := [1] int.[0];
+        for pi: 0..<16 {
+          nparts := flawed_wire_parse_gemini_sse(data, pi, ev[..], w[0].bufs[0].ev_txt[..], w[0].bufs[0].sig_buf[..], sig_n[..]);
+          if nparts < 0 { break; }
+          if ev[0].stop_reason != FLAWED_STOP_NONE { acc[0].stop_reason = ev[0].stop_reason; }
+          if ev[0].input_tokens > 0 { acc[0].in_tok = ev[0].input_tokens; }
+          if ev[0].output_tokens > 0 { acc[0].out_tok = ev[0].output_tokens; }
+          k := ev[0].kind;
+          if k == FLAWED_SSE_THINK_DELTA && ev[0].text_n > 0 {
+            piece := cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n];
+            acc[0].nthink = fww_cat(acc[0].think[..], acc[0].nthink, piece);
+            if want_stream {
+              if !sse_sent { sse_sent = fws_send_sse_head(fd); }
+              if sse_sent { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "reasoning_content", piece); }
+            }
+          } else if k == FLAWED_SSE_TEXT_DELTA && ev[0].text_n > 0 {
+            piece := cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n];
+            acc[0].ntext = fww_cat(acc[0].text[..], acc[0].ntext, piece);
+            if want_stream {
+              if !sse_sent { sse_sent = fws_send_sse_head(fd); }
+              if sse_sent { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "content", piece); }
+            }
+          } else if k == FLAWED_SSE_OAI_TOOL_DELTA && acc[0].ntools < FWW_MAX_TOOLS_CALL {
+            ti := acc[0].ntools;
+            acc[0].tools[ti] = FwPendingTool.{};
+            if ev[0].id_n > 0 {
+              acc[0].tools[ti].nid = fww_keep(acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]);
+            } else {
+              idn := fww_cat(acc[0].tools[ti].id[..], 0, "call_");
+              idn = fww_put_int(acc[0].tools[ti].id[..], idn, ti + 1);
+              acc[0].tools[ti].nid = idn;
+            }
+            acc[0].tools[ti].nname = fww_keep(acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]);
+            acc[0].tools[ti].nargs = fww_keep(acc[0].tools[ti].args[..], cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n]);
+            acc[0].ntools += 1;
+          } else if k == FLAWED_SSE_ERROR {
+            acc[0].saw_error = true;
+            acc[0].nerr = fww_keep(acc[0].err_msg[..], cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n]);
+          }
+          if pi + 1 >= nparts { break; }
+        }
+      } else {
+        if flawed_wire_parse_openai_sse(data, ev[..], w[0].bufs[0].ev_txt[..]) {
+          if ev[0].stop_reason != FLAWED_STOP_NONE { acc[0].stop_reason = ev[0].stop_reason; }
+          if ev[0].input_tokens > 0 { acc[0].in_tok = ev[0].input_tokens; }
+          if ev[0].output_tokens > 0 { acc[0].out_tok = ev[0].output_tokens; }
+          k := ev[0].kind;
+          if k == FLAWED_SSE_THINK_DELTA && ev[0].text_n > 0 {
+            piece := cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n];
+            acc[0].nthink = fww_cat(acc[0].think[..], acc[0].nthink, piece);
+            if want_stream {
+              if !sse_sent { sse_sent = fws_send_sse_head(fd); }
+              if sse_sent { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "reasoning_content", piece); }
+            }
+          } else if k == FLAWED_SSE_TEXT_DELTA && ev[0].text_n > 0 {
+            piece := cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n];
+            acc[0].ntext = fww_cat(acc[0].text[..], acc[0].ntext, piece);
+            if want_stream {
+              if !sse_sent { sse_sent = fws_send_sse_head(fd); }
+              if sse_sent { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "content", piece); }
+            }
+          } else if k == FLAWED_SSE_OAI_TOOL_DELTA {
+            ti := ev[0].block_index;
+            if ti >= 0 && ti < FWW_MAX_TOOLS_CALL {
+              while acc[0].ntools <= ti {
+                acc[0].tools[acc[0].ntools] = FwPendingTool.{};
+                acc[0].ntools += 1;
+              }
+              if ev[0].id_n > 0 { acc[0].tools[ti].nid = fww_keep(acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]); }
+              if ev[0].name_n > 0 { acc[0].tools[ti].nname = fww_keep(acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
+              if ev[0].text_n > 0 { acc[0].tools[ti].nargs = fww_cat(acc[0].tools[ti].args[..], acc[0].tools[ti].nargs, cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n]); }
+            }
+          } else if k == FLAWED_SSE_ERROR {
+            acc[0].saw_error = true;
+            acc[0].nerr = fww_keep(acc[0].err_msg[..], cast(string) w[0].bufs[0].ev_txt[0..<ev[0].text_n]);
+          }
+        }
+      }
+    }
+
+    st := w[0].run[0].gw[0].status;
+    gw_close(w[0].run[0].gw[..]);
+    if (st == 429 || st == 503 || st == 502 || st == 0) && !sse_sent && attempt < 3 {
+      proc_sleep(1500 * (attempt + 1));
+      continue;
+    }
+    if st != 200 || acc[0].saw_error {
+      if sse_sent {
+        fws_emit_sse_done(fd, w[0].req_seq, served_model, "stop", acc[0].in_tok, acc[0].out_tok);
+        return;
+      }
+      emsg := ifx acc[0].nerr > 0 then cast(string) acc[0].err_msg[0..<acc[0].nerr]
+              else ifx acc[0].nerr_body > 0 then cast(string) acc[0].err_body[0..<ifx acc[0].nerr_body < 400 then acc[0].nerr_body else 400]
+              else "upstream request failed";
+      code := ifx st >= 400 && st < 600 then st else 502;
+      fws_send_error(fd, code, "Upstream Error", "upstream_error", emsg);
+      return;
+    }
+
+    fin_s := fws_finish_str(acc[0].stop_reason, acc[0].ntools);
+    if want_stream {
+      if !sse_sent { sse_sent = fws_send_sse_head(fd); }
+      if sse_sent { fws_emit_sse_done(fd, w[0].req_seq, served_model, fin_s, acc[0].in_tok, acc[0].out_tok); }
+      return;
+    }
+    rn := fws_write_oai_json_resp(
+      w[0].req_seq, served_model,
+      cast(string) acc[0].text[0..<acc[0].ntext],
+      cast(string) acc[0].think[0..<acc[0].nthink],
+      acc, true, fin_s, acc[0].in_tok, acc[0].out_tok,
+      w[0].resp_buf[..]
+    );
+    if rn > 0 {
+      fws_send_http(fd, 200, "OK", "application/json", cast(string) w[0].resp_buf[0..<rn]);
+    } else {
+      fws_send_error(fd, 500, "Internal Server Error", "server_error", "response serialization overflow");
+    }
+    return;
+  }
+}
+
+// Execute one full autonomous Flawed Agent turn (with live Bash/Read/Write/Edit/Glob/Grep tools
+// in an isolated temp workspace, Allow All default permissions) and return OpenAI JSON or SSE.
+fws_exec_harness :: (
+  fd: int,
+  w: [] FwServeWork,
+  cfg: [] FwConfig,
+  auth: [] FwAuth,
+  home: string,
+  served_model: string,
+  upstream_model: string,
+  sys_extra: string,
+  user_prompt: string,
+  think_on: bool,
+  effort: string,
+  want_stream: bool
+) {
+  // Create isolated per-request workspace under /tmp/flawed-gb-<seq>
+  ws_b: [256] u8;
+  wn := fww_cat(ws_b[..], 0, "/tmp/flawed-gb-");
+  wn = fww_put_int(ws_b[..], wn, proc_now_ms() % 1000000);
+  wn = fww_cat(ws_b[..], wn, "-");
+  wn = fww_put_int(ws_b[..], wn, w[0].req_seq);
+  ws := cast(string) ws_b[0..<wn];
+  _ = fs_mkdir_all(ws);
+
+  // Configure Flawed agent run: Allow All permissions, bare mode (no repo AGENTS.md contamination), max 6 turns.
+  hcfg := [1] FwConfig.[cfg[0]];
+  hcfg[0].permission_mode = FLAWED_PMODE_BYPASS;
+  hcfg[0].bypass_danger = true;
+  hcfg[0].git_guard = false;
+  hcfg[0].bare_mode = true;
+  hcfg[0].thinking_mode = ifx think_on then FLAWED_THINK_ADAPTIVE else FLAWED_THINK_OFF;
+  hcfg[0].thinking_hidden = true;
+  hcfg[0].max_turns = 6;
+
+  r := w[0].run[..];
+  h := w[0].hist[..];
+  fww_hist_clear(h);
+  r[0] = FwRun.{};
+  r[0].ncwd = fww_keep(r[0].cwd[..], ws);
+  r[0].nmodel = fww_keep(r[0].model[..], upstream_model);
+  // Normalize numeric gBench effort scales ("0.2", "0.7", "0.9") to Flawed wire effort names
+  // so local Inkling never silently falls back to "high" (8192 tokens) on low-effort sweeps.
+  norm_eff := effort;
+  if norm_eff.count == 0 || norm_eff == "0" || norm_eff == "0.1" || norm_eff == "0.2" || norm_eff == "0.3" {
+    norm_eff = "low";
+  } else if norm_eff == "0.4" || norm_eff == "0.5" || norm_eff == "0.6" || norm_eff == "0.7" {
+    norm_eff = "medium";
+  } else if norm_eff == "0.8" || norm_eff == "0.9" || norm_eff == "0.95" || norm_eff == "0.99" {
+    norm_eff = "high";
+  }
+  r[0].neffort = fww_keep(r[0].effort[..], norm_eff);
+  r[0].step_num = 1;
+  r[0].retry[0] = FlawedRetryState.{max_retries = 3};
+
+  // Build Flawed autonomous harness system prompt + benchmark formatting rules
+  sn := fww_build_system_prompt(hcfg[..], ws, home, r[0].sys_prompt[..]);
+  sn = fww_cat(r[0].sys_prompt[..], sn, "\n- Answer straightforward factual, trivia, translation, or formatting prompts directly without calling tools.\n");
+  sn = fww_cat(r[0].sys_prompt[..], sn, "- For math, algorithmic, or code verification tasks, you may use Bash (e.g., python3) in the workspace to verify calculations before answering.\n");
+  sn = fww_cat(r[0].sys_prompt[..], sn, "- Follow any formatting constraints in the user prompt strictly and concisely in your final answer.\n");
+  if sys_extra.count > 0 {
+    sn = fww_cat(r[0].sys_prompt[..], sn, "\n# Task Instructions\n");
+    sn = fww_cat(r[0].sys_prompt[..], sn, sys_extra);
+  }
+  r[0].nsys = sn;
+
+  fww_hist_push_user(h, user_prompt);
+  mc_steer_clear(w[0].steers[..]); w[0].steers[0].nd = 0;
+
+  // Refresh Vertex token before starting the agent loop
+  if auth[0].backend == FLAWED_BE_VERTEX {
+    _ = fww_vertex_mint(auth);
+    auth[0].nkey = fww_keep(auth[0].key[..], cast(string) auth[0].vx_tok[0..<auth[0].nvx_tok]);
+  }
+
+  err := fww_start_request(r, hcfg[..], auth, h, w[0].bufs[..], w[0].dummy_out[..]);
+  if err.count > 0 {
+    rm_argv := [3] string.["/bin/rm", "-rf", ws];
+    ob: [64] u8; eb: [64] u8;
+    _ = proc_run(rm_argv[..], 3000, ob[..], eb[..]);
+    fws_send_error(fd, 502, "Bad Gateway", "server_error", err);
+    return;
+  }
+  r[0].active = true;
+
+  deadline := proc_now_ms() + 240000;
+  ended := "";
+  polled := [1] bool.[false];
+  while r[0].active && proc_now_ms() < deadline {
+    ended = fww_poll_step(r, hcfg[..], auth, h, w[0].bufs[..], w[0].steers[..], w[0].dummy_out[..], polled[..]);
+    if ended.count > 0 { break; }
+    if !polled[0] { proc_sleep(10); }
+  }
+  if r[0].active {
+    fww_stop_active(r, w[0].dummy_out[..]);
+    ended = "failed";
+  }
+
+  // Clean up isolated temp workspace
+  {
+    rm_argv := [3] string.["/bin/rm", "-rf", ws];
+    ob: [64] u8; eb: [64] u8;
+    _ = proc_run(rm_argv[..], 3000, ob[..], eb[..]);
+  }
+
+  if ended == "failed" && r[0].acc[0].ntext == 0 {
+    emsg := ifx r[0].acc[0].nerr > 0 then cast(string) r[0].acc[0].err_msg[0..<r[0].acc[0].nerr] else "Flawed harness turn failed";
+    fws_send_error(fd, 502, "Bad Gateway", "server_error", emsg);
+    return;
+  }
+
+  final_txt := cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext];
+  final_th := cast(string) r[0].acc[0].think[0..<r[0].acc[0].nthink];
+  in_tok := ifx h[0].total_in > 0 then h[0].total_in else r[0].acc[0].in_tok;
+  out_tok := ifx h[0].total_out > 0 then h[0].total_out else r[0].acc[0].out_tok;
+  fin_s := fws_finish_str(r[0].acc[0].stop_reason, 0);
+
+  if want_stream {
+    if fws_send_sse_head(fd) {
+      if final_th.count > 0 { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "reasoning_content", final_th); }
+      if final_txt.count > 0 { _ = fws_emit_sse_delta(fd, w[0].req_seq, served_model, "content", final_txt); }
+      fws_emit_sse_done(fd, w[0].req_seq, served_model, fin_s, in_tok, out_tok);
+    }
+    return;
+  }
+
+  rn := fws_write_oai_json_resp(
+    w[0].req_seq, served_model,
+    final_txt, final_th,
+    r[0].acc[..], false, fin_s, in_tok, out_tok,
+    w[0].resp_buf[..]
+  );
+  if rn > 0 {
+    fws_send_http(fd, 200, "OK", "application/json", cast(string) w[0].resp_buf[0..<rn]);
+  } else {
+    fws_send_error(fd, 500, "Internal Server Error", "server_error", "response serialization overflow");
+  }
+}
+
+fws_handle_conn :: (fd: int, opts: [] FwServeOpts, w: [] FwServeWork, cfg: [] FwConfig, auth: [] FwAuth, home: string) {
+  mb: [16] u8; pb: [256] u8;
+  nm := [1] int.[0]; np := [1] int.[0];
+  bat := [1] int.[0]; blen := [1] int.[0];
+  if !fws_read_http(fd, w[0].raw_req[..], mb[..], nm[..], pb[..], np[..], bat[..], blen[..]) {
+    return;
+  }
+  method := cast(string) mb[0..<nm[0]];
+  path := cast(string) pb[0..<np[0]];
+  served_model := cast(string) opts[0].served_model[0..<opts[0].nserved];
+  upstream_model := cast(string) opts[0].upstream_model[0..<opts[0].nupstream];
+  mode_s := ifx opts[0].harness_mode then "harness" else "raw";
+
+  if method == "GET" && (path == "/health" || path == "/") {
+    hb: [512] u8;
+    o: [1] Jo; jo_start(o[..], hb[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "status"); jo_str(o[..], "ok");
+    jo_key(o[..], "engine"); jo_str(o[..], "flawed");
+    jo_key(o[..], "mode"); jo_str(o[..], mode_s);
+    jo_key(o[..], "model"); jo_str(o[..], served_model);
+    jo_end(o[..]);
+    fws_send_http(fd, 200, "OK", "application/json", jo_text(o[..]));
+    return;
+  }
+  if method == "GET" && (path == "/v1/models" || path == "/models") {
+    mbuf: [512] u8;
+    o: [1] Jo; jo_start(o[..], mbuf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "object"); jo_str(o[..], "list");
+    jo_key(o[..], "data");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "id"); jo_str(o[..], served_model);
+    jo_key(o[..], "object"); jo_str(o[..], "model");
+    jo_key(o[..], "owned_by"); jo_str(o[..], "openagents-flawed");
+    jo_key(o[..], "max_model_len"); jo_int(o[..], ifx flawed_wire_is_local_model(upstream_model) then 32768 else 1048576);
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_end(o[..]);
+    fws_send_http(fd, 200, "OK", "application/json", jo_text(o[..]));
+    return;
+  }
+  if method != "POST" || (path != "/v1/chat/completions" && path != "/chat/completions") {
+    fws_send_error(fd, 404, "Not Found", "invalid_request_error", "unknown endpoint");
+    return;
+  }
+
+  body := cast(string) w[0].raw_req[bat[0]..<bat[0] + blen[0]];
+  jd: [1] Jv;
+  if !jv_parse(jd[..], body, w[0].nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT {
+    fws_send_error(fd, 400, "Bad Request", "invalid_request_error", "invalid JSON request body");
+    return;
+  }
+  d := jd[0];
+  msgs := jv_get(d, 0, "messages");
+  if jv_kind(d, msgs) != JV_ARRAY || jv_len(d, msgs) == 0 {
+    fws_send_error(fd, 400, "Bad Request", "invalid_request_error", "messages array is required");
+    return;
+  }
+  // Reject multimodal probes with HTTP 400 so gBench cleanly detects text-only capability
+  if fws_msgs_have_multimodal(d, msgs) {
+    fws_send_error(fd, 400, "Bad Request", "invalid_request_error", "multimodal input is not supported by text-only endpoint");
+    return;
+  }
+
+  w[0].req_seq += 1;
+  want_stream := jv_bool(d, jv_get(d, 0, "stream"));
+  req_max_tok := jv_int(d, jv_get(d, 0, "max_tokens"), 0);
+  if req_max_tok <= 0 { req_max_tok = jv_int(d, jv_get(d, 0, "max_completion_tokens"), 0); }
+  temp_node := jv_get(d, 0, "temperature");
+  temp_raw := ifx jv_kind(d, temp_node) == JV_NUMBER then jv_raw(d, temp_node) else "";
+  tools_node := jv_get(d, 0, "tools");
+  has_ext_tools := jv_kind(d, tools_node) == JV_ARRAY && jv_len(d, tools_node) > 0;
+  tool_choice := jv_get(d, 0, "tool_choice");
+  resp_fmt := jv_get(d, 0, "response_format");
+
+  // Resolve thinking switch: request chat_template_kwargs.enable_thinking / enable_thinking > CLI --thinking > mode default
+  req_think := -1;
+  ctk := jv_get(d, 0, "chat_template_kwargs");
+  if jv_kind(d, ctk) == JV_OBJECT {
+    et := jv_get(d, ctk, "enable_thinking");
+    if jv_kind(d, et) == JV_TRUE { req_think = 1; }
+    else if jv_kind(d, et) == JV_FALSE { req_think = 0; }
+  }
+  et_top := jv_get(d, 0, "enable_thinking");
+  if req_think < 0 {
+    if jv_kind(d, et_top) == JV_TRUE { req_think = 1; }
+    else if jv_kind(d, et_top) == JV_FALSE { req_think = 0; }
+  }
+  think_on := ifx req_think >= 0 then (req_think == 1)
+              else ifx opts[0].thinking_override >= 0 then (opts[0].thinking_override == 1)
+              else opts[0].harness_mode;
+
+  ef_b: [32] u8;
+  efn := jv_str(d, jv_get(d, 0, "reasoning_effort"), ef_b[..]);
+  effort := ifx efn > 0 then cast(string) ef_b[0..<efn]
+            else ifx opts[0].neffort > 0 then cast(string) opts[0].effort[0..<opts[0].neffort]
+            else "low";
+
+  // Count non-system turns and extract system + last user text for harness routing
+  non_sys := 0;
+  sys_b: [32768] u8; nsys := 0;
+  usr_b: [65536] u8; nusr := 0;
+  rb: [32] u8; cb: [65536] u8; mm := [1] bool.[false];
+  nm_msgs := jv_len(d, msgs);
+  for i: 0..<nm_msgs {
+    m := jv_at(d, msgs, i);
+    rn := jv_str(d, jv_get(d, m, "role"), rb[..]);
+    role := ifx rn > 0 then cast(string) rb[0..<rn] else "user";
+    if role == "system" || role == "developer" {
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      if cn > 0 {
+        if nsys > 0 { nsys = fww_cat(sys_b[..], nsys, "\n\n"); }
+        nsys = fww_cat(sys_b[..], nsys, cast(string) cb[0..<cn]);
+      }
+    } else {
+      non_sys += 1;
+      if role == "user" {
+        nusr = fws_extract_msg_content(d, jv_get(d, m, "content"), usr_b[..], mm[..]);
+      }
+    }
+  }
+
+  // In --mode harness: run the full Flawed autonomous agent loop on single-turn open-ended tasks
+  // without external benchmark tools, without serving-perf ignore_eos probes, and without tiny
+  // single-token choice limits (max_tokens <= 32).
+  is_perf := jv_bool(d, jv_get(d, 0, "ignore_eos"));
+  use_harness := opts[0].harness_mode && !has_ext_tools && !is_perf && non_sys == 1 && nusr > 0
+              && (req_max_tok == 0 || req_max_tok > 32)
+              && jv_kind(d, resp_fmt) != JV_OBJECT;
+
+  if use_harness {
+    fws_exec_harness(fd, w, cfg, auth, home, served_model, upstream_model, cast(string) sys_b[0..<nsys], cast(string) usr_b[0..<nusr], think_on, effort, want_stream);
+  } else {
+    fws_exec_raw(fd, w, cfg, auth, home, served_model, upstream_model, d, msgs, tools_node, tool_choice, resp_fmt, temp_raw, req_max_tok, think_on, effort, want_stream);
+  }
+}
+
+fws_parse_serve_args :: (opts: [] FwServeOpts) -> bool {
+  opts[0] = FwServeOpts.{port = 18891, thinking_override = -1};
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  if !args_has(a[..], "--serve") { return false; }
+  ps := args_value(a[..], "--port", "18891");
+  opts[0].port = fws_parse_uint_str(ps);
+  if opts[0].port <= 0 || opts[0].port > 65535 { opts[0].port = 18891; }
+  ms := args_value(a[..], "--model", "gemini-4-neon");
+  opts[0].nserved = fww_keep(opts[0].served_model[..], ms);
+  us := args_value(a[..], "--upstream-model", ms);
+  opts[0].nupstream = fww_keep(opts[0].upstream_model[..], us);
+  mode_s := args_value(a[..], "--mode", "raw");
+  opts[0].harness_mode = mode_s == "harness" || mode_s == "agent";
+  ef := args_value(a[..], "--effort", "");
+  if ef.count > 0 { opts[0].neffort = fww_keep(opts[0].effort[..], ef); }
+  ts := args_value(a[..], "--thinking", "");
+  if ts == "1" || ts == "true" || ts == "on" { opts[0].thinking_override = 1; }
+  else if ts == "0" || ts == "false" || ts == "off" { opts[0].thinking_override = 0; }
+  return true;
+}
+
+fws_serve_main :: (opts: [] FwServeOpts, cfg: [] FwConfig, auth: [] FwAuth, home: string) -> int {
+  upstream := cast(string) opts[0].upstream_model[0..<opts[0].nupstream];
+  fww_resolve_auth(cfg, home, upstream, auth, false);
+  if !auth[0].ok {
+    tool_err("flawedworker --serve: auth failed: ");
+    tool_errln(cast(string) auth[0].label[0..<auth[0].nlabel]);
+    return 1;
+  }
+  lh := cxsock_listen(opts[0].port);
+  if lh < 0 {
+    tool_errln("flawedworker --serve: failed to bind loopback port");
+    return 1;
+  }
+  defer { _ = cxsock_close(lh); }
+
+  w: [1] FwServeWork;
+  while true {
+    cfd := cxsock_accept(lh, 500);
+    if cfd == -2 { continue; }
+    if cfd < 0 { break; }
+    fws_handle_conn(cfd, opts, w[..], cfg, auth, home);
+    _ = cxsock_close(cfd);
+  }
+  return 0;
+}
+
+#test "flawed_serve: OpenAI->Gemini translation handles tools, multimodal detection, and thinking allowance" {
+  nodes: [512] JvNode; d: [1] Jv;
+  req_mm := "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,AA==\"}}]}]}";
+  #assert jv_parse(d[..], req_mm, nodes[..]) && fws_msgs_have_multimodal(d[0], jv_get(d[0], 0, "messages"));
+
+  req_ok := "{\"messages\":[{\"role\":\"system\",\"content\":\"Be exact.\"},{\"role\":\"user\",\"content\":\"What is 2+2?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"calc\",\"description\":\"math\",\"parameters\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"x\":{\"type\":[\"string\",\"null\"]}}}}}]}";
+  #assert jv_parse(d[..], req_ok, nodes[..]) && !fws_msgs_have_multimodal(d[0], jv_get(d[0], 0, "messages"));
+  out: [8192] u8;
+  n := fws_build_gemini_from_oai(d[0], jv_get(d[0], 0, "messages"), jv_get(d[0], 0, "tools"), -1, "0.0", 1, false, "low", out[..]);
+  #assert n > 0;
+  s := cast(string) out[0..<n];
+  #assert jv_parse(d[..], s, nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], jv_get(d[0], 0, "generationConfig"), "maxOutputTokens"), 0) == 1025;
+  #assert jv_kind(d[0], jv_get(d[0], 0, "systemInstruction")) == JV_OBJECT;
+  #assert jv_kind(d[0], jv_get(d[0], 0, "tools")) == JV_ARRAY;
+}

@@ -13,6 +13,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
 #load "../../coax/lib/gateway/transport.coax";
 #load "../../coax/lib/gateway/card.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
@@ -1619,7 +1620,7 @@ FwPendingTool :: struct {
   id: [128] u8; nid: int;
   name: [64] u8; nname: int;
   args: [65536] u8; nargs: int;
-  sig: [4096] u8; nsig: int;
+  sig_at: int; nsig: int;
   done: bool;
   is_error: bool;
   res: [FWW_TOOL_OUT_MAX] u8; nres: int;
@@ -1638,7 +1639,8 @@ FwAsyncCmd :: struct {
 FwStreamAccum :: struct {
   text: [131072] u8; ntext: int;
   think: [65536] u8; nthink: int;
-  sig: [8192] u8; nsig: int;
+  sig: [32768] u8; nsig: int;
+  tool_sig_slab: [65536] u8; ntool_sig_slab: int;
   tools: [FWW_MAX_TOOLS_CALL] FwPendingTool;
   ntools: int;
   cur_block_kind: int;
@@ -1698,7 +1700,7 @@ FwBufs :: struct {
   req_body: [524288] u8;
   sse_line: [131072] u8;
   ev_txt: [65536] u8;
-  sig_buf: [8192] u8;
+  sig_buf: [32768] u8;
   file_buf: [FWW_FILE_MAX] u8;
   edit_buf: [FWW_FILE_MAX] u8;
   compact_buf: [262144] u8;
@@ -2129,7 +2131,7 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     if (r[0].acc[0].ntext > 0 || (r[0].acc[0].nsig > 0 && r[0].acc[0].ntools == 0)) && nb < FWW_MAX_BLOCKS {
       xb := FwBlock.{kind = FWW_MB_TEXT};
       xb.text_n = fww_slab_put(h, cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext], a0[..]); xb.text_at = a0[0];
-      if r[0].acc[0].nsig > 0 { xb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); xb.sig_at = a0[0]; }
+      if r[0].acc[0].nsig > 0 && r[0].acc[0].ntools == 0 { xb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); xb.sig_at = a0[0]; }
       h[0].msgs[mi].blocks[nb] = xb; nb += 1;
     }
     for t: 0..<r[0].acc[0].ntools {
@@ -2139,7 +2141,11 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       ub.name_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].name[0..<r[0].acc[0].tools[t].nname], a0[..]); ub.name_at = a0[0];
       ub.text_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].args[0..<r[0].acc[0].tools[t].nargs], a0[..]); ub.text_at = a0[0];
       if r[0].acc[0].tools[t].nsig > 0 {
-        ub.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].sig[0..<r[0].acc[0].tools[t].nsig], a0[..]); ub.sig_at = a0[0];
+        sa := r[0].acc[0].tools[t].sig_at;
+        sn := r[0].acc[0].tools[t].nsig;
+        ub.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].tool_sig_slab[sa..<sa + sn], a0[..]); ub.sig_at = a0[0];
+      } else if t == 0 && r[0].acc[0].nsig > 0 {
+        ub.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); ub.sig_at = a0[0];
       }
       h[0].msgs[mi].blocks[nb] = ub; nb += 1;
     }
@@ -2304,7 +2310,15 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
             }
             if ev[0].name_n > 0 { r[0].acc[0].tools[ti].nname = fww_keep(r[0].acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
             if ev[0].text_n > 0 { r[0].acc[0].tools[ti].nargs = fww_keep(r[0].acc[0].tools[ti].args[..], cast(string) b[0].ev_txt[0..<ev[0].text_n]); }
-            if sig_n[0] > 0 { r[0].acc[0].tools[ti].nsig = fww_keep(r[0].acc[0].tools[ti].sig[..], cast(string) b[0].sig_buf[0..<sig_n[0]]); }
+            if sig_n[0] > 0 {
+              at := r[0].acc[0].ntool_sig_slab;
+              if at + sig_n[0] <= r[0].acc[0].tool_sig_slab.count {
+                for si: 0..<sig_n[0] { r[0].acc[0].tool_sig_slab[at + si] = b[0].sig_buf[si]; }
+                r[0].acc[0].tools[ti].sig_at = at;
+                r[0].acc[0].tools[ti].nsig = sig_n[0];
+                r[0].acc[0].ntool_sig_slab = at + sig_n[0];
+              }
+            }
             r[0].acc[0].ntools += 1;
           }
         } else if k == FLAWED_SSE_ERROR {
@@ -2555,6 +2569,8 @@ fww_auth_asked :: () -> bool {
   return false;
 }
 
+#load "flawed_serve.coax";
+
 // ---------------------------------------------------------------- main event loop
 
 tool_main :: () -> int #export_c #effects(all) {
@@ -2565,6 +2581,12 @@ tool_main :: () -> int #export_c #effects(all) {
   cfg: [1] FwConfig;
   auth: [1] FwAuth;
   fww_load_config(cfg[..]);
+
+  sopts: [1] FwServeOpts;
+  if fws_parse_serve_args(sopts[..]) {
+    return fws_serve_main(sopts[..], cfg[..], auth[..], home);
+  }
+
   fww_resolve_auth(cfg[..], home, cast(string) cfg[0].model[0..<cfg[0].nmodel], auth[..], true);
 
   if fww_auth_asked() {

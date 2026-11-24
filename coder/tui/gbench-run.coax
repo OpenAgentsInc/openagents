@@ -22,7 +22,7 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";
-#load "../../coax/lib/gbench/runner.coax";
+#load "gbench_host.coax";
 
 gbc_usage :: () -> int #effects(all) {
   print("gbench-run — OpenAgents Coax gBench Runner, Inkling Variant Comparator & Hillclimber\n\n");
@@ -63,6 +63,9 @@ gbc_cmd_doctor :: (a: [] Args) -> int #effects(all) {
     cast(string) env[0].psionic_bin[0..<env[0].psionic_bin_n]);
   print("  llama.cpp: % (%)\n", ifx doc[0].llama_ok then "OK" else "MISSING",
     cast(string) env[0].llama_bin[0..<env[0].llama_bin_n]);
+  print("  flawed:    % (%)\n", ifx env[0].flawed_ok then "OK" else "MISSING",
+    cast(string) env[0].flawed_bin[0..<env[0].flawed_bin_n]);
+  print("  vertex:    %\n", ifx env[0].vertex_ok then "OK (Gemini 4 Neon family & Flawed Cloud ready)" else "not configured ($0 local mode)");
   print("  tokenizer: % (%)\n", ifx doc[0].tokenizer_ok then "OK" else "MISSING",
     cast(string) env[0].tokenizer_dir[0..<env[0].tokenizer_dir_n]);
   print("  variants:  % Inkling checkpoint(s) installed in ~/.openagents/models\n", doc[0].variants_installed);
@@ -143,7 +146,7 @@ gbc_cmd_variants :: (a: [] Args) -> int #effects(all) {
     print("%\n", jo_text(o[..]));
     return 0;
   }
-  print("Local Inkling Variations & Comparators:\n");
+  print("Inkling, Gemini 4 Neon & Flawed Harness Variants:\n");
   for vid: 0..<GB_VAR_COUNT {
     v := gb_variant_info(vid);
     print("  [%]  %  (% · %)  — %\n", ifx env[0].variant_ready[vid] then "READY" else "-----", v.slug, v.backend, v.quant, v.label);
