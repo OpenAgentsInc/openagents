@@ -17,6 +17,7 @@
 #load "sse_stream.coax";
 #load "tool_exec.coax";
 #load "tool_spill.coax";
+#load "query_loop.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -171,4 +172,19 @@
   c[1] = FlawedBudgetCandidate.{tool_use_id = 2, size_chars = 250000, is_unbounded = false};
   #assert flawed_enforce_message_budget(rs[..], c[..], 2, FLAWED_DEFAULT_MSG_BUDGET_CHARS, FLAWED_PREVIEW_SIZE_BYTES) == 1;
   #assert flawed_rstate_lookup(rs[..], 1) == FLAWED_DEC_KEPT && flawed_rstate_lookup(rs[..], 2) == FLAWED_DEC_REPLACED;
+}
+
+#test "flawed core (Ch 07): heartbeat query state machine runs multi-step tool loop, recovery ladder, and budget" {
+  cfg := FlawedQueryConfig.{auto_compact_enabled = true, reactive_compact_enabled = true, otk_slot_enabled = true, is_main_or_sdk_source = true, max_turns = 4};
+  st: [1] FlawedQueryState; st[0] = flawed_query_state_init(10000);
+  bt: [1] FlawedBudgetTracker;
+  // Step 1: tool use -> next_turn (turn_count 1 -> 2)
+  #assert flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 2}).cont == FLAWED_CONT_NEXT_TURN;
+  #assert st[0].turn_count == 2;
+  // Step 2: withheld PTL -> reactive compact retry (turn_count stays 2!)
+  #assert flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_PROMPT_TOO_LONG, reactive_compact_ok = true, reactive_reclaimed_tokens = 2500}).cont == FLAWED_CONT_REACTIVE_COMPACT;
+  #assert st[0].turn_count == 2 && st[0].has_attempted_reactive_compact && st[0].task_budget_remaining == 7500;
+  // Step 3: clean reply -> completed with CacheSafeParams saved!
+  fin := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{});
+  #assert fin.is_terminal && fin.terminal == FLAWED_TERM_COMPLETED && fin.save_cache_safe_params && fin.notify_commands_completed;
 }

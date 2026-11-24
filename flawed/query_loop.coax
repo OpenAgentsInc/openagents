@@ -1,0 +1,533 @@
+// Flawed Layer 2 (Chapter 07) — The Heartbeat: Flat Agentic Turn State Machine.
+// Replaces cc/query.ts (flat while-loop whole-object State, 7 Continue transitions, 10 Terminal exits,
+// 4-stage withheld error recovery ladder, stopHookActive & reactive-compact death-spiral guards),
+// cc/query/config.ts, cc/query/stopHooks.ts, and cc/query/tokenBudget.ts.
+//   coax/bin/coax test flawed/query_loop.coax --library
+//   coax/bin/coax mutate flawed/query_loop.coax --root-only
+#module "flawed.query_loop";
+#authority;
+#load "tool_exec.coax";
+#load "tool_spill.coax";
+
+FLAWED_MAX_OUTPUT_TOKENS_RECOVERY_LIMIT :: 3;
+FLAWED_ESCALATED_MAX_TOKENS :: 64000;
+FLAWED_TOKEN_BUDGET_DIMINISHING :: 500;
+FLAWED_TOKEN_BUDGET_MIN_CONTS :: 3;
+
+// 7 typed Continue transitions (reconstructing snapshot-absent query/transitions.ts).
+FLAWED_CONT_NONE :: 0;
+FLAWED_CONT_COLLAPSE_DRAIN :: 1;        // collapse_drain_retry (one-shot via state.transition)
+FLAWED_CONT_REACTIVE_COMPACT :: 2;      // reactive_compact_retry (one-shot via has_attempted_reactive_compact)
+FLAWED_CONT_MAX_TOKENS_ESCALATE :: 3;   // max_output_tokens_escalate (8k -> 64k clean retry)
+FLAWED_CONT_MAX_TOKENS_RECOVERY :: 4;   // max_output_tokens_recovery (up to 3 nudges)
+FLAWED_CONT_STOP_HOOK_BLOCKING :: 5;    // stop_hook_blocking (sets stop_hook_active, preserves reactive latch!)
+FLAWED_CONT_TOKEN_BUDGET :: 6;          // token_budget_continuation (resets reactive latch & stop_hook_active)
+FLAWED_CONT_NEXT_TURN :: 7;             // next_turn (SOLE site incrementing turn_count!)
+
+// 10 typed Terminal exits across queryLoop()'s 12 return sites.
+FLAWED_TERM_NONE :: 0;
+FLAWED_TERM_BLOCKING_LIMIT :: 1;
+FLAWED_TERM_IMAGE_ERROR :: 2;
+FLAWED_TERM_MODEL_ERROR :: 3;
+FLAWED_TERM_ABORTED_STREAMING :: 4;
+FLAWED_TERM_PROMPT_TOO_LONG :: 5;
+FLAWED_TERM_COMPLETED :: 6;
+FLAWED_TERM_STOP_HOOK_PREVENTED :: 7;
+FLAWED_TERM_ABORTED_TOOLS :: 8;
+FLAWED_TERM_HOOK_STOPPED :: 9;
+FLAWED_TERM_MAX_TURNS :: 10;
+
+// Stream error classifications for withholding & recovery ladder.
+FLAWED_SERR_NONE :: 0;
+FLAWED_SERR_PROMPT_TOO_LONG :: 1;
+FLAWED_SERR_MEDIA_SIZE :: 2;
+FLAWED_SERR_MAX_OUTPUT_TOKENS :: 3;
+FLAWED_SERR_OTHER_API :: 4;
+FLAWED_SERR_IMAGE_THROW :: 5;
+FLAWED_SERR_MODEL_THROW :: 6;
+
+// Immutable per-turn runtime gate snapshot (query/config.ts).
+FlawedQueryConfig :: struct {
+  streaming_tool_execution: bool;
+  is_subagent: bool;
+  is_main_or_sdk_source: bool; // eligible for CacheSafeParams snapshot
+  auto_compact_enabled: bool;
+  context_collapse_enabled: bool;
+  reactive_compact_enabled: bool; // hoisted once per turn to avoid mid-stream staleness skew
+  otk_slot_enabled: bool;         // tengu_otk_slot_v1 8k->64k escalation
+  env_max_output_tokens_set: bool;// CLAUDE_CODE_MAX_OUTPUT_TOKENS bypasses escalation
+  max_turns: int;                 // <= 0 means unlimited
+}
+
+// Client-side TOKEN_BUDGET tracker (query/tokenBudget.ts).
+FlawedBudgetTracker :: struct {
+  continuation_count: int;
+  last_delta_tokens: int;
+  last_global_turn_tokens: int;
+}
+
+// Whole-object cross-iteration state (query.ts:204-217).
+FlawedQueryState :: struct {
+  turn_count: int; // 1-indexed; ONLY incremented by FLAWED_CONT_NEXT_TURN!
+  max_output_tokens_recovery_count: int;
+  has_attempted_reactive_compact: bool;
+  max_output_tokens_override: int; // 0 = unset
+  stop_hook_active: bool;
+  transition: u8;                  // FLAWED_CONT_*
+  task_budget_remaining: int;
+}
+
+// Inputs observed from one iteration of pre-API / stream / tools / hooks.
+FlawedStepObservation :: struct {
+  at_blocking_limit: bool;
+  compaction_just_ran: bool;
+  is_compact_query: bool;
+  stream_error: u8;        // FLAWED_SERR_*
+  aborted_streaming: bool;
+  observed_tool_uses: int; // sole driver of needsFollowUp (never stop_reason!)
+  collapse_committed: int; // >0 if collapse drain reclaimed context
+  reactive_compact_ok: bool;
+  reactive_reclaimed_tokens: int;
+  stop_hook_prevented: bool;
+  stop_hook_blocking: bool;
+  aborted_tools: bool;
+  hook_stopped_tools: bool;
+  turn_budget_target: int; // <=0 disables client-side TOKEN_BUDGET loop
+  global_turn_tokens: int;
+}
+
+FlawedStepOutcome :: struct {
+  is_terminal: bool;
+  terminal: u8;               // FLAWED_TERM_* when is_terminal
+  cont: u8;                   // FLAWED_CONT_* when !is_terminal
+  surface_withheld_error: bool;
+  fire_stop_failure: bool;
+  save_cache_safe_params: bool;
+  notify_commands_completed: bool;
+}
+
+flawed_query_state_init :: (task_budget: int) -> FlawedQueryState #effects(traps) {
+  return FlawedQueryState.{turn_count = 1, task_budget_remaining = task_budget};
+}
+
+// Streaming withholding predicate (query.ts:796-827):
+// Suppresses mid-stream yield of recoverable errors so SDK clients don't tear down before recovery.
+flawed_should_withhold_stream_error :: (cfg: FlawedQueryConfig, stream_error: u8) -> bool #effects(traps) {
+  if stream_error == FLAWED_SERR_PROMPT_TOO_LONG {
+    return cfg.context_collapse_enabled || cfg.reactive_compact_enabled;
+  }
+  if stream_error == FLAWED_SERR_MEDIA_SIZE {
+    return cfg.reactive_compact_enabled;
+  }
+  return stream_error == FLAWED_SERR_MAX_OUTPUT_TOKENS;
+}
+
+// Pre-API hard blocking limit check (query.ts:612-648):
+// Skipped when compaction just ran, query is itself compaction, or collapse/reactive owns 413 recovery under auto-compact.
+flawed_should_preempt_blocking_limit :: (cfg: FlawedQueryConfig, obs: FlawedStepObservation) -> bool #effects(traps) {
+  if !obs.at_blocking_limit { return false; }
+  if obs.compaction_just_ran || obs.is_compact_query { return false; }
+  if cfg.auto_compact_enabled && (cfg.context_collapse_enabled || cfg.reactive_compact_enabled) {
+    return false;
+  }
+  return true;
+}
+
+// Client-side TOKEN_BUDGET auto-continue guard (query/tokenBudget.ts:45-76):
+// Continues iff !is_subagent, budget > 0, !is_diminishing, and turn_tokens < 90% of budget.
+flawed_check_token_budget :: (
+  bt: [] FlawedBudgetTracker,
+  is_subagent: bool,
+  budget: int,
+  global_turn_tokens: int
+) -> bool #effects(reads, writes, traps) {
+  if is_subagent || budget <= 0 { return false; } // mutant: equivalent // when budget == 0 and tokens >= 0, tokens*10 < 0 is false
+  delta := global_turn_tokens - bt[0].last_global_turn_tokens;
+  diminishing := bt[0].continuation_count >= FLAWED_TOKEN_BUDGET_MIN_CONTS &&
+                 delta < FLAWED_TOKEN_BUDGET_DIMINISHING &&
+                 bt[0].last_delta_tokens < FLAWED_TOKEN_BUDGET_DIMINISHING;
+  if !diminishing && global_turn_tokens * 10 < budget * 9 {
+    bt[0].continuation_count += 1;
+    bt[0].last_delta_tokens = delta;
+    bt[0].last_global_turn_tokens = global_turn_tokens;
+    return true;
+  }
+  return false;
+}
+
+// Single step of queryLoop() covering all 7 Continue transitions and all 10 Terminal exits.
+flawed_query_step :: (
+  st: [] FlawedQueryState,
+  bt: [] FlawedBudgetTracker,
+  cfg: FlawedQueryConfig,
+  obs: FlawedStepObservation
+) -> FlawedStepOutcome #effects(reads, writes, traps) {
+  out: FlawedStepOutcome;
+
+  // 1. Pre-API blocking limit guard
+  if flawed_should_preempt_blocking_limit(cfg, obs) {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_BLOCKING_LIMIT;
+    out.notify_commands_completed = true;
+    return out;
+  }
+
+  // 2. Hard stream throws (image_error / model_error) — no normal command completion on throw!
+  if obs.stream_error == FLAWED_SERR_IMAGE_THROW {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_IMAGE_ERROR;
+    return out;
+  }
+  if obs.stream_error == FLAWED_SERR_MODEL_THROW {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_MODEL_ERROR;
+    return out;
+  }
+
+  // 3. Aborted during streaming
+  if obs.aborted_streaming {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_ABORTED_STREAMING;
+    out.notify_commands_completed = true;
+    return out;
+  }
+
+  // needsFollowUp is derived STRICTLY from observed tool_use blocks (never stop_reason!).
+  needs_follow_up := obs.observed_tool_uses > 0;
+
+  // 4a. No tool calls: run 4-stage withheld error recovery ladder, then stop hooks, then token budget
+  if !needs_follow_up {
+    is_ptl := obs.stream_error == FLAWED_SERR_PROMPT_TOO_LONG;
+    is_media := obs.stream_error == FLAWED_SERR_MEDIA_SIZE;
+    if is_ptl || is_media {
+      // Stage 1: CONTEXT_COLLAPSE drain (PTL only; media skips collapse; one-shot via state.transition)
+      if is_ptl && cfg.context_collapse_enabled && st[0].transition != FLAWED_CONT_COLLAPSE_DRAIN && obs.collapse_committed > 0 {
+        st[0] = FlawedQueryState.{
+          turn_count = st[0].turn_count,
+          max_output_tokens_recovery_count = st[0].max_output_tokens_recovery_count,
+          has_attempted_reactive_compact = st[0].has_attempted_reactive_compact,
+          max_output_tokens_override = st[0].max_output_tokens_override,
+          stop_hook_active = false,
+          transition = FLAWED_CONT_COLLAPSE_DRAIN,
+          task_budget_remaining = st[0].task_budget_remaining,
+        };
+        out.cont = FLAWED_CONT_COLLAPSE_DRAIN;
+        return out;
+      }
+      // Stage 2: REACTIVE_COMPACT (PTL or media; one-shot via has_attempted_reactive_compact)
+      if cfg.reactive_compact_enabled && !st[0].has_attempted_reactive_compact && obs.reactive_compact_ok {
+        rem := st[0].task_budget_remaining - obs.reactive_reclaimed_tokens;
+        if rem < 0 { rem = 0; } // mutant: equivalent // when rem == 0 both yield 0
+        st[0] = FlawedQueryState.{
+          turn_count = st[0].turn_count,
+          max_output_tokens_recovery_count = st[0].max_output_tokens_recovery_count,
+          has_attempted_reactive_compact = true,
+          max_output_tokens_override = st[0].max_output_tokens_override,
+          stop_hook_active = false,
+          transition = FLAWED_CONT_REACTIVE_COMPACT,
+          task_budget_remaining = rem,
+        };
+        out.cont = FLAWED_CONT_REACTIVE_COMPACT;
+        return out;
+      }
+      // Unrecovered PTL/media: surface once, fire StopFailure, bypass handleStopHooks!
+      out.is_terminal = true;
+      out.terminal = ifx is_media then cast(u8) FLAWED_TERM_IMAGE_ERROR else cast(u8) FLAWED_TERM_PROMPT_TOO_LONG;
+      out.surface_withheld_error = flawed_should_withhold_stream_error(cfg, obs.stream_error);
+      out.fire_stop_failure = true;
+      out.notify_commands_completed = true;
+      return out;
+    }
+
+    if obs.stream_error == FLAWED_SERR_MAX_OUTPUT_TOKENS {
+      // Stage 3: tengu_otk_slot_v1 8k -> 64k clean escalation
+      if cfg.otk_slot_enabled && st[0].max_output_tokens_override == 0 && !cfg.env_max_output_tokens_set {
+        st[0] = FlawedQueryState.{
+          turn_count = st[0].turn_count,
+          max_output_tokens_recovery_count = st[0].max_output_tokens_recovery_count,
+          has_attempted_reactive_compact = st[0].has_attempted_reactive_compact,
+          max_output_tokens_override = FLAWED_ESCALATED_MAX_TOKENS,
+          stop_hook_active = false,
+          transition = FLAWED_CONT_MAX_TOKENS_ESCALATE,
+          task_budget_remaining = st[0].task_budget_remaining,
+        };
+        out.cont = FLAWED_CONT_MAX_TOKENS_ESCALATE;
+        return out;
+      }
+      // Stage 4: up to 3 resume nudges, clearing max_output_tokens_override
+      if st[0].max_output_tokens_recovery_count < FLAWED_MAX_OUTPUT_TOKENS_RECOVERY_LIMIT {
+        st[0] = FlawedQueryState.{
+          turn_count = st[0].turn_count,
+          max_output_tokens_recovery_count = st[0].max_output_tokens_recovery_count + 1,
+          has_attempted_reactive_compact = st[0].has_attempted_reactive_compact,
+          max_output_tokens_override = 0,
+          stop_hook_active = false,
+          transition = FLAWED_CONT_MAX_TOKENS_RECOVERY,
+          task_budget_remaining = st[0].task_budget_remaining,
+        };
+        out.cont = FLAWED_CONT_MAX_TOKENS_RECOVERY;
+        return out;
+      }
+      // Exhausted max_output_tokens -> surface once, fire StopFailure, asymmetric terminal COMPLETED!
+      out.is_terminal = true;
+      out.terminal = FLAWED_TERM_COMPLETED;
+      out.surface_withheld_error = true;
+      out.fire_stop_failure = true;
+      out.notify_commands_completed = true;
+      return out;
+    }
+
+    // Other unrecovered API error: fire StopFailure and exit COMPLETED before handleStopHooks!
+    if obs.stream_error == FLAWED_SERR_OTHER_API {
+      out.is_terminal = true;
+      out.terminal = FLAWED_TERM_COMPLETED;
+      out.fire_stop_failure = true;
+      out.notify_commands_completed = true;
+      return out;
+    }
+
+    // Clean reply -> Phase 1: CacheSafeParams snapshot for main thread / SDK (never subagents)
+    out.save_cache_safe_params = cfg.is_main_or_sdk_source && !cfg.is_subagent;
+
+    // Phase 4: handleStopHooks() — preventContinuation beats blockingErrors!
+    if obs.stop_hook_prevented {
+      out.is_terminal = true;
+      out.terminal = FLAWED_TERM_STOP_HOOK_PREVENTED;
+      out.notify_commands_completed = true;
+      return out;
+    }
+    if obs.stop_hook_blocking {
+      // CRITICAL SCAR: preserve has_attempted_reactive_compact to prevent infinite compact->hook loops!
+      st[0] = FlawedQueryState.{
+        turn_count = st[0].turn_count,
+        max_output_tokens_recovery_count = st[0].max_output_tokens_recovery_count,
+        has_attempted_reactive_compact = st[0].has_attempted_reactive_compact,
+        max_output_tokens_override = 0,
+        stop_hook_active = true,
+        transition = FLAWED_CONT_STOP_HOOK_BLOCKING,
+        task_budget_remaining = st[0].task_budget_remaining,
+      };
+      out.cont = FLAWED_CONT_STOP_HOOK_BLOCKING;
+      return out;
+    }
+
+    // Client-side TOKEN_BUDGET auto-continue (resets reactive latch & stop_hook_active)
+    if flawed_check_token_budget(bt, cfg.is_subagent, obs.turn_budget_target, obs.global_turn_tokens) {
+      st[0] = FlawedQueryState.{
+        turn_count = st[0].turn_count,
+        max_output_tokens_recovery_count = 0,
+        has_attempted_reactive_compact = false,
+        max_output_tokens_override = 0,
+        stop_hook_active = false,
+        transition = FLAWED_CONT_TOKEN_BUDGET,
+        task_budget_remaining = st[0].task_budget_remaining,
+      };
+      out.cont = FLAWED_CONT_TOKEN_BUDGET;
+      return out;
+    }
+
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_COMPLETED;
+    out.notify_commands_completed = true;
+    return out;
+  }
+
+  // 4b. needsFollowUp == true: tools ran -> check post-tool aborts, hook stops, and 1-indexed maxTurns
+  if obs.aborted_tools {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_ABORTED_TOOLS;
+    out.notify_commands_completed = true;
+    return out;
+  }
+  if obs.hook_stopped_tools {
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_HOOK_STOPPED;
+    out.notify_commands_completed = true;
+    return out;
+  }
+
+  next_turn := st[0].turn_count + 1;
+  if cfg.max_turns > 0 && next_turn > cfg.max_turns {
+    st[0].turn_count = next_turn;
+    out.is_terminal = true;
+    out.terminal = FLAWED_TERM_MAX_TURNS;
+    out.notify_commands_completed = true;
+    return out;
+  }
+
+  // SOLE transition incrementing turn_count! Preserves stop_hook_active across tool rollovers.
+  st[0] = FlawedQueryState.{
+    turn_count = next_turn,
+    max_output_tokens_recovery_count = 0,
+    has_attempted_reactive_compact = st[0].has_attempted_reactive_compact,
+    max_output_tokens_override = 0,
+    stop_hook_active = st[0].stop_hook_active,
+    transition = FLAWED_CONT_NEXT_TURN,
+    task_budget_remaining = st[0].task_budget_remaining,
+  };
+  out.cont = FLAWED_CONT_NEXT_TURN;
+  return out;
+}
+
+#test "query_loop: withholding, blocking limit preempt, and 4-stage error recovery ladder" {
+  cfg := FlawedQueryConfig.{
+    auto_compact_enabled = true,
+    context_collapse_enabled = true,
+    reactive_compact_enabled = true,
+    otk_slot_enabled = true,
+    is_main_or_sdk_source = true,
+  };
+
+  // Withholding predicates
+  #assert flawed_should_withhold_stream_error(cfg, FLAWED_SERR_PROMPT_TOO_LONG);
+  #assert flawed_should_withhold_stream_error(cfg, FLAWED_SERR_MEDIA_SIZE);
+  #assert flawed_should_withhold_stream_error(cfg, FLAWED_SERR_MAX_OUTPUT_TOKENS);
+  #assert !flawed_should_withhold_stream_error(cfg, FLAWED_SERR_OTHER_API);
+  cfg_off := FlawedQueryConfig.{};
+  #assert !flawed_should_withhold_stream_error(cfg_off, FLAWED_SERR_PROMPT_TOO_LONG);
+  #assert !flawed_should_withhold_stream_error(cfg_off, FLAWED_SERR_MEDIA_SIZE);
+  #assert flawed_should_withhold_stream_error(cfg_off, FLAWED_SERR_MAX_OUTPUT_TOKENS);
+  // PTL withheld when only reactive_compact is on (collapse off)
+  #assert flawed_should_withhold_stream_error(FlawedQueryConfig.{reactive_compact_enabled = true}, FLAWED_SERR_PROMPT_TOO_LONG);
+
+  // Pre-API blocking limit skipped under auto_compact + (collapse|reactive), compaction_just_ran, or is_compact_query
+  #assert !flawed_should_preempt_blocking_limit(cfg, FlawedStepObservation.{at_blocking_limit = true});
+  #assert !flawed_should_preempt_blocking_limit(FlawedQueryConfig.{auto_compact_enabled = true, reactive_compact_enabled = true}, FlawedStepObservation.{at_blocking_limit = true});
+  #assert flawed_should_preempt_blocking_limit(FlawedQueryConfig.{auto_compact_enabled = false, context_collapse_enabled = true}, FlawedStepObservation.{at_blocking_limit = true});
+  #assert !flawed_should_preempt_blocking_limit(cfg_off, FlawedStepObservation.{at_blocking_limit = true, compaction_just_ran = true});
+  #assert !flawed_should_preempt_blocking_limit(cfg_off, FlawedStepObservation.{at_blocking_limit = true, is_compact_query = true});
+  #assert flawed_should_preempt_blocking_limit(cfg_off, FlawedStepObservation.{at_blocking_limit = true});
+
+  st: [1] FlawedQueryState;
+  bt: [1] FlawedBudgetTracker;
+  st[0] = flawed_query_state_init(5000);
+
+  // Pre-API blocking limit terminal
+  o_blk := flawed_query_step(st[..], bt[..], cfg_off, FlawedStepObservation.{at_blocking_limit = true});
+  #assert o_blk.is_terminal && o_blk.terminal == FLAWED_TERM_BLOCKING_LIMIT && o_blk.notify_commands_completed;
+
+  // Image throw & model throw terminals (no notify_commands_completed on throw!)
+  o_it := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_IMAGE_THROW});
+  #assert o_it.is_terminal && o_it.terminal == FLAWED_TERM_IMAGE_ERROR && !o_it.notify_commands_completed;
+  o_mt := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_MODEL_THROW});
+  #assert o_mt.is_terminal && o_mt.terminal == FLAWED_TERM_MODEL_ERROR && !o_mt.notify_commands_completed;
+  o_as := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{aborted_streaming = true});
+  #assert o_as.is_terminal && o_as.terminal == FLAWED_TERM_ABORTED_STREAMING && o_as.notify_commands_completed;
+
+  // Stage 1: collapse_drain_retry (one-shot via transition; clears stop_hook_active; does NOT increment turn_count!)
+  st[0].stop_hook_active = true;
+  o_c1 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_PROMPT_TOO_LONG, collapse_committed = 1});
+  #assert !o_c1.is_terminal && o_c1.cont == FLAWED_CONT_COLLAPSE_DRAIN && st[0].turn_count == 1 && !st[0].stop_hook_active && st[0].transition == FLAWED_CONT_COLLAPSE_DRAIN;
+  // Stage 2: second PTL skips collapse (one-shot!) -> enters reactive_compact_retry & decrements task_budget_remaining!
+  st[0].stop_hook_active = true;
+  o_c2 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_PROMPT_TOO_LONG, collapse_committed = 2, reactive_compact_ok = true, reactive_reclaimed_tokens = 6000});
+  #assert !o_c2.is_terminal && o_c2.cont == FLAWED_CONT_REACTIVE_COMPACT && st[0].has_attempted_reactive_compact && st[0].task_budget_remaining == 0 && !st[0].stop_hook_active && st[0].transition == FLAWED_CONT_REACTIVE_COMPACT;
+  // Third PTL (reactive latch already true) -> surfaces withheld error once, fires StopFailure, exits PROMPT_TOO_LONG!
+  o_c3 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_PROMPT_TOO_LONG, reactive_compact_ok = true});
+  #assert o_c3.is_terminal && o_c3.terminal == FLAWED_TERM_PROMPT_TOO_LONG && o_c3.surface_withheld_error && o_c3.fire_stop_failure && o_c3.notify_commands_completed;
+
+  // Media error skips collapse -> tries reactive (exact rem=1 check kills 0->1!) -> if unrecovered exits IMAGE_ERROR!
+  st[0] = flawed_query_state_init(401);
+  o_m1 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_MEDIA_SIZE, collapse_committed = 3, reactive_compact_ok = true, reactive_reclaimed_tokens = 400});
+  #assert !o_m1.is_terminal && o_m1.cont == FLAWED_CONT_REACTIVE_COMPACT && st[0].task_budget_remaining == 1;
+  o_m2 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_MEDIA_SIZE, reactive_compact_ok = true});
+  #assert o_m2.is_terminal && o_m2.terminal == FLAWED_TERM_IMAGE_ERROR && o_m2.surface_withheld_error && o_m2.fire_stop_failure;
+
+  // Stage 3 + Stage 4: max_output_tokens 8k->64k escalate once, then 3 resume nudges, then COMPLETED + StopFailure
+  st[0] = flawed_query_state_init(0);
+  st[0].stop_hook_active = true;
+  o_e0 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_MAX_OUTPUT_TOKENS});
+  #assert !o_e0.is_terminal && o_e0.cont == FLAWED_CONT_MAX_TOKENS_ESCALATE && st[0].max_output_tokens_override == FLAWED_ESCALATED_MAX_TOKENS && !st[0].stop_hook_active && st[0].transition == FLAWED_CONT_MAX_TOKENS_ESCALATE;
+  // 3 nudges (override cleared to 0, count 1->2->3, stop_hook_active cleared)
+  st[0].stop_hook_active = true;
+  o_e1 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_MAX_OUTPUT_TOKENS});
+  #assert !o_e1.is_terminal && o_e1.cont == FLAWED_CONT_MAX_TOKENS_RECOVERY && st[0].max_output_tokens_recovery_count == 1 && st[0].max_output_tokens_override == 0 && !st[0].stop_hook_active && st[0].transition == FLAWED_CONT_MAX_TOKENS_RECOVERY;
+  // With env_max_output_tokens_set=true, Stage 3 is skipped even when override==0!
+  cfg_env := cfg; cfg_env.env_max_output_tokens_set = true;
+  o_e2 := flawed_query_step(st[..], bt[..], cfg_env, FlawedStepObservation.{stream_error = FLAWED_SERR_MAX_OUTPUT_TOKENS});
+  #assert o_e2.cont == FLAWED_CONT_MAX_TOKENS_RECOVERY && st[0].max_output_tokens_recovery_count == 2;
+  o_e3 := flawed_query_step(st[..], bt[..], cfg_env, FlawedStepObservation.{stream_error = FLAWED_SERR_MAX_OUTPUT_TOKENS});
+  #assert o_e3.cont == FLAWED_CONT_MAX_TOKENS_RECOVERY && st[0].max_output_tokens_recovery_count == 3;
+  o_e4 := flawed_query_step(st[..], bt[..], cfg_env, FlawedStepObservation.{stream_error = FLAWED_SERR_MAX_OUTPUT_TOKENS});
+  #assert o_e4.is_terminal && o_e4.terminal == FLAWED_TERM_COMPLETED && o_e4.surface_withheld_error && o_e4.fire_stop_failure && o_e4.notify_commands_completed;
+
+  // Other API error bypasses stop hooks -> COMPLETED + fire_stop_failure
+  o_oa := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stream_error = FLAWED_SERR_OTHER_API, stop_hook_blocking = true});
+  #assert o_oa.is_terminal && o_oa.terminal == FLAWED_TERM_COMPLETED && o_oa.fire_stop_failure && o_oa.notify_commands_completed;
+}
+
+#test "query_loop: stop hooks, death-spiral latch preservation, TOKEN_BUDGET diminishing guard, and next_turn maxTurns" {
+  cfg := FlawedQueryConfig.{is_main_or_sdk_source = true, max_turns = 2};
+  st: [1] FlawedQueryState;
+  bt: [1] FlawedBudgetTracker;
+  st[0] = flawed_query_state_init(0);
+  st[0].has_attempted_reactive_compact = true;
+
+  // Stop hook preventContinuation beats blockingErrors; saves CacheSafeParams on main/SDK
+  o_sp := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stop_hook_prevented = true, stop_hook_blocking = true});
+  #assert o_sp.is_terminal && o_sp.terminal == FLAWED_TERM_STOP_HOOK_PREVENTED && o_sp.save_cache_safe_params && o_sp.notify_commands_completed;
+
+  // Stop hook blocking sets stop_hook_active=true AND PRESERVES has_attempted_reactive_compact (no death spiral!)
+  st[0].max_output_tokens_override = 64000;
+  o_sb := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{stop_hook_blocking = true});
+  #assert !o_sb.is_terminal && o_sb.cont == FLAWED_CONT_STOP_HOOK_BLOCKING;
+  #assert st[0].stop_hook_active && st[0].has_attempted_reactive_compact && st[0].turn_count == 1 && st[0].max_output_tokens_override == 0 && st[0].transition == FLAWED_CONT_STOP_HOOK_BLOCKING;
+
+  // Tool rollover (next_turn) is the SOLE site incrementing turn_count, preserving stop_hook_active & resetting recovery/override!
+  o_at := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 1, aborted_tools = true});
+  #assert o_at.is_terminal && o_at.terminal == FLAWED_TERM_ABORTED_TOOLS && o_at.notify_commands_completed;
+  o_hs := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 1, hook_stopped_tools = true});
+  #assert o_hs.is_terminal && o_hs.terminal == FLAWED_TERM_HOOK_STOPPED && o_hs.notify_commands_completed;
+
+  st[0].max_output_tokens_recovery_count = 2;
+  st[0].max_output_tokens_override = 64000;
+  o_nt := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 1});
+  #assert !o_nt.is_terminal && o_nt.cont == FLAWED_CONT_NEXT_TURN && st[0].turn_count == 2 && st[0].stop_hook_active;
+  #assert st[0].max_output_tokens_recovery_count == 0 && st[0].max_output_tokens_override == 0 && st[0].transition == FLAWED_CONT_NEXT_TURN;
+  // Second tool rollover pushes turn_count 2 -> 3 > max_turns(2) -> MAX_TURNS!
+  o_mt := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{observed_tool_uses = 1});
+  #assert o_mt.is_terminal && o_mt.terminal == FLAWED_TERM_MAX_TURNS && st[0].turn_count == 3 && o_mt.notify_commands_completed;
+  // max_turns == 1 terminates on first rollover (1 -> 2 > 1); max_turns == 0 is unlimited!
+  st[0] = flawed_query_state_init(0);
+  #assert flawed_query_step(st[..], bt[..], FlawedQueryConfig.{max_turns = 1}, FlawedStepObservation.{observed_tool_uses = 1}).terminal == FLAWED_TERM_MAX_TURNS;
+  st[0] = flawed_query_state_init(0);
+  #assert flawed_query_step(st[..], bt[..], FlawedQueryConfig.{max_turns = 0}, FlawedStepObservation.{observed_tool_uses = 1}).cont == FLAWED_CONT_NEXT_TURN;
+
+  // TOKEN_BUDGET: continues under 90% and resets reactive latch, stop_hook_active, recovery_count, override!
+  cfg_sub := cfg; cfg_sub.is_subagent = true;
+  #assert !flawed_check_token_budget(bt[..], true, 10000, 100);
+  #assert !flawed_check_token_budget(bt[..], false, 0, 100);
+  #assert !flawed_check_token_budget(bt[..], false, -1, -10);
+  // budget == 1, tokens == 0 -> continues (kills 0 -> 1 on budget <= 0!)
+  bt_tiny: [1] FlawedBudgetTracker;
+  #assert flawed_check_token_budget(bt_tiny[..], false, 1, 0);
+  // Exact 90% boundary: 9000 of 10000 stops; 8500 of 10000 continues (8500*10 < 90000, whereas 8500*11 > 90000!)
+  #assert !flawed_check_token_budget(bt[..], false, 10000, 9000);
+  st[0] = flawed_query_state_init(0);
+  st[0].has_attempted_reactive_compact = true;
+  st[0].stop_hook_active = true;
+  st[0].max_output_tokens_recovery_count = 2;
+  st[0].max_output_tokens_override = 64000;
+  o_tb1 := flawed_query_step(st[..], bt[..], cfg, FlawedStepObservation.{turn_budget_target = 10000, global_turn_tokens = 1000});
+  #assert !o_tb1.is_terminal && o_tb1.cont == FLAWED_CONT_TOKEN_BUDGET && !st[0].has_attempted_reactive_compact && !st[0].stop_hook_active;
+  #assert st[0].max_output_tokens_recovery_count == 0 && st[0].max_output_tokens_override == 0 && st[0].transition == FLAWED_CONT_TOKEN_BUDGET;
+  // Continuation #2 (delta=500 -> NOT < 500)
+  #assert flawed_check_token_budget(bt[..], false, 10000, 1500) && bt[0].continuation_count == 2;
+  // Continuation #3 (delta=500 -> exact boundary: last_delta_tokens == 500, NOT < 500!)
+  #assert flawed_check_token_budget(bt[..], false, 10000, 2000) && bt[0].continuation_count == 3;
+  // Continuation #4: continuation_count==3, last_delta==500 (NOT < 500), delta==400 (< 500) -> STILL continues! (kills < -> <= and 500 -> 501 on last_delta!)
+  #assert flawed_check_token_budget(bt[..], false, 10000, 2400) && bt[0].continuation_count == 4 && bt[0].last_global_turn_tokens == 2400;
+  // Next call with 2500 (delta=100 < 500) trips diminishing because last_global_turn_tokens updated to 2400!
+  #assert !flawed_check_token_budget(bt[..], false, 10000, 2500);
+  // Exact diminishing boundary at continuation_count==3 with last_delta==400: delta==499 stops, delta==500 continues!
+  bt_dim: [1] FlawedBudgetTracker;
+  bt_dim[0] = FlawedBudgetTracker.{continuation_count = 3, last_delta_tokens = 400, last_global_turn_tokens = 2000};
+  #assert !flawed_check_token_budget(bt_dim[..], false, 10000, 2499); // delta=499 < 500 stops at count==3!
+  #assert flawed_check_token_budget(bt_dim[..], false, 10000, 2500);  // delta=500 >= 500 continues!
+  // Now on bt: last_delta==400 < 500: 8500 (delta >= 500, 8500*10 < 90000) continues!
+  #assert flawed_check_token_budget(bt[..], false, 10000, 8500) && bt[0].continuation_count == 5;
+
+  // Normal clean completion on subagent does NOT save CacheSafeParams
+  o_done := flawed_query_step(st[..], bt[..], cfg_sub, FlawedStepObservation.{});
+  #assert o_done.is_terminal && o_done.terminal == FLAWED_TERM_COMPLETED && !o_done.save_cache_safe_params && o_done.notify_commands_completed;
+}
