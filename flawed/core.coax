@@ -13,6 +13,8 @@
 #load "message_wire.coax";
 #load "prompt_cache.coax";
 #load "prompt_context.coax";
+#load "api_policy.coax";
+#load "sse_stream.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -128,4 +130,24 @@
   #assert flawed_cbd_check(tr[..], 1, 50000, 1000, false).reason == FLAWED_BREAK_NONE;
   #assert flawed_cbd_record(tr[..], 1, s2) == FLAWED_CBD_TOOLS;
   #assert flawed_cbd_check(tr[..], 1, 10000, 1000, false).reason == FLAWED_BREAK_CLIENT;
+}
+
+#test "flawed core (Ch 05): retry policy, O(n) SSE stream accumulation, and micro-USD accounting compose" {
+  st: [1] FlawedSessionState;
+  #assert flawed_state_init(st[..], "/repo", "claude-opus-4-6");
+  rs: [1] FlawedRetryState;
+  rs[0].max_retries = FLAWED_DEFAULT_MAX_RETRIES;
+  // 2 transient 529s recover, then stream completes and bills 6x fast mode
+  e529 := FlawedRetryInput.{status = 529, is_foreground = true, fallback_all_models = true, has_fallback_model = true, retry_after_ms = -1};
+  #assert flawed_eval_retry(rs[..], e529).action == FLAWED_RETRY_SLEEP;
+  #assert flawed_eval_retry(rs[..], e529).action == FLAWED_RETRY_SLEEP;
+
+  ss: [1] FlawedStreamSession;
+  flawed_stream_begin(ss[..], FLAWED_MODEL_OPUS, true, 0);
+  flawed_stream_on_message_start(ss[..], "msg_1", FlawedChunkUsage.{input_tokens = 1000, speed_fast = true}, 100);
+  flawed_stream_on_block_start(ss[..], FLAWED_BLK_TEXT, "", 200);
+  #assert flawed_stream_on_block_delta(ss[..], "done", 300);
+  #assert flawed_stream_on_block_stop(ss[..], 400);
+  cost := flawed_stream_on_message_delta(ss[..], st[..], FLAWED_STOP_END_TURN, FlawedChunkUsage.{output_tokens = 1000}, 500);
+  #assert cost == 180000 && flawed_stream_is_valid_completion(ss[..]) && flawed_stream_release(ss[..]);
 }

@@ -24,13 +24,24 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-04 — Layer 0 Atoms + Layer 1 Contracts + Layer 2 Prompt Cache)\n");
+  print("flawed (Chapters 01-05 — Layer 0 Atoms + Layer 1 Contracts + Layer 2 Prompt & Model API)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
   print("  flawed-cli glob PATTERN [DIR]\n");
   print("  flawed-cli route INPUT [--bridge]\n");
   print("  flawed-cli cache-plan [--3p] [--mcp]\n");
+  print("  flawed-cli cost-check\n");
+}
+
+flawed_cli_cost_check :: () -> int #effects(all) {
+  u := FlawedChunkUsage.{input_tokens = 10000, output_tokens = 2000, cache_read_tokens = 50000, cache_creation_tokens = 4000};
+  c_sonnet := flawed_calc_micro_usd(FLAWED_MODEL_SONNET, u, false);
+  c_opus := flawed_calc_micro_usd(FLAWED_MODEL_OPUS, u, false);
+  u_fast := u; u_fast.speed_fast = true;
+  c_fast := flawed_calc_micro_usd(FLAWED_MODEL_OPUS, u_fast, true);
+  print("cost-check (micro-USD): sonnet=% opus=% opus_fast=%\n", c_sonnet, c_opus, c_fast);
+  return 0;
 }
 
 flawed_cli_cache_plan :: (is_3p: bool, has_non_deferred_mcp: bool) -> int #effects(all) {
@@ -190,6 +201,7 @@ tool_main :: () -> int #export_c #effects(all) {
     }
     return flawed_cli_cache_plan(is_3p, has_mcp);
   }
+  if cmd == "cost-check" { return flawed_cli_cost_check(); }
   flawed_cli_usage();
   return 2;
 }

@@ -1,0 +1,458 @@
+// Flawed Layer 2 (Chapter 05) — Model/Thinking/Effort Policy, Retry/529 Fallback & Micro-USD Accounting.
+// Replaces cc/utils/model/model.ts, cc/utils/thinking.ts, cc/utils/effort.ts,
+// cc/services/api/withRetry.ts, cc/services/api/errors.ts, and cc/utils/modelCost.ts.
+//   coax/bin/coax test flawed/api_policy.coax --library
+//   coax/bin/coax mutate flawed/api_policy.coax --root-only
+#module "flawed.api_policy";
+#authority;
+#load "messages.coax";
+#load "state.coax";
+
+FLAWED_DEFAULT_MAX_RETRIES :: 10;
+FLAWED_MAX_529_RETRIES :: 3;
+FLAWED_RETRY_BASE_MS :: 500;
+FLAWED_RETRY_MAX_BACKOFF_MS :: 32000;
+FLAWED_FAST_SHORT_RETRY_MS :: 20000;
+FLAWED_FAST_COOLDOWN_MIN_MS :: 600000;     // 10m floor
+FLAWED_FAST_COOLDOWN_DEFAULT_MS :: 1800000;// 30m default
+FLAWED_FLOOR_OUTPUT_TOKENS :: 3000;
+FLAWED_OVERFLOW_BUFFER_TOKENS :: 1000;
+FLAWED_MAX_NON_STREAMING_TOKENS :: 64000;
+
+// Model families / aliases.
+FLAWED_MODEL_HAIKU_35 :: 1;
+FLAWED_MODEL_HAIKU_45 :: 2;
+FLAWED_MODEL_SONNET :: 3;
+FLAWED_MODEL_OPUS_45 :: 4;
+FLAWED_MODEL_OPUS :: 5;
+FLAWED_MODEL_OPUSPLAN :: 6;
+
+// Effort policy values (0 = unset/auto).
+FLAWED_PEFF_UNSET :: 0;
+FLAWED_PEFF_LOW :: 1;
+FLAWED_PEFF_MEDIUM :: 2;
+FLAWED_PEFF_HIGH :: 3;
+FLAWED_PEFF_MAX :: 4;
+
+// Retry decision actions.
+FLAWED_RETRY_SLEEP :: 1;
+FLAWED_RETRY_NOW :: 2;           // immediate retry (e.g. max_tokens overflow trimmed)
+FLAWED_RETRY_FALLBACK_MODEL :: 3;// cumulative 529 >= 3 with fallbackModel
+FLAWED_RETRY_SHED_BG_529 :: 4;   // background query dropped immediately on 529
+FLAWED_RETRY_ABORT_529 :: 5;     // external interactive user exhausted 3x 529 with no fallback
+FLAWED_RETRY_ABORT_FATAL :: 6;   // non-retryable or max_retries exhausted
+
+FlawedRetryState :: struct {
+  attempt: int;
+  max_retries: int;
+  cumulative_529: int;       // forensic invariant: NEVER resets on non-529 errors!
+  fast_mode_active: bool;
+  fast_cooldown_ms: int;
+  max_tokens_override: int;
+  keepalive_disabled: bool;
+}
+
+FlawedRetryInput :: struct {
+  status: int;
+  is_overloaded_stream: bool;
+  is_conn_error: bool;
+  is_econnreset: bool;
+  x_should_retry_false: bool;
+  is_remote: bool;
+  is_internal: bool;
+  is_foreground: bool;
+  is_subscriber: bool;
+  is_non_custom_opus: bool;
+  fallback_all_models: bool;
+  has_fallback_model: bool;
+  persistent_retry: bool;
+  retry_after_ms: int;        // -1 if header absent
+  overflow_available_out: int;// >0 when 400 max_tokens context overflow parsed
+}
+
+FlawedRetryDecision :: struct {
+  action: u8;
+  delay_ms: int;
+  rebuild_client: bool;
+}
+
+FlawedChunkUsage :: struct {
+  input_tokens: int;
+  output_tokens: int;
+  cache_creation_tokens: int;
+  cache_read_tokens: int;
+  web_search_requests: int;
+  speed_fast: bool;
+}
+
+// Fail-closed 1M Opus merge guard (utils/model/model.ts:314-332):
+// Prevents VS Code partial OAuth tokens (subscriber with missing subscriptionType) from leaking opus[1m].
+flawed_opus_1m_merge_enabled :: (
+  disable_1m: bool,
+  is_pro: bool,
+  is_first_party: bool,
+  is_subscriber: bool,
+  has_subscription_type: bool
+) -> bool #effects(traps) {
+  if disable_1m || is_pro || !is_first_party { return false; }
+  if is_subscriber && !has_subscription_type { return false; }
+  return true;
+}
+
+// Runtime plan-mode model switch (utils/model/model.ts:145-167).
+flawed_resolve_runtime_model :: (base_model: u8, in_plan_mode: bool, exceeds_200k: bool) -> u8 #effects(traps) {
+  if base_model == FLAWED_MODEL_OPUSPLAN {
+    if in_plan_mode && !exceeds_200k { return FLAWED_MODEL_OPUS; }
+    return FLAWED_MODEL_SONNET;
+  }
+  if base_model == FLAWED_MODEL_HAIKU_45 && in_plan_mode {
+    return FLAWED_MODEL_SONNET;
+  }
+  return base_model;
+}
+
+// Effort resolution with MAX->HIGH clamp (utils/effort.ts:152-167).
+flawed_resolve_effort :: (env_effort: u8, app_effort: u8, model_default: u8, supports_max: bool) -> u8 #effects(traps) {
+  eff := env_effort;
+  if eff == FLAWED_PEFF_UNSET { eff = app_effort; }
+  if eff == FLAWED_PEFF_UNSET { eff = model_default; }
+  if eff == FLAWED_PEFF_MAX && !supports_max { return FLAWED_PEFF_HIGH; }
+  return eff;
+}
+
+// Effort persistence guard (utils/effort.ts:95-105): rejects numbers; MAX is ant-only on disk.
+flawed_can_persist_effort :: (effort: u8, is_numeric: bool, is_internal: bool) -> bool #effects(traps) {
+  if is_numeric || effort == FLAWED_PEFF_UNSET || effort > FLAWED_PEFF_MAX { return false; }
+  if effort == FLAWED_PEFF_MAX && !is_internal { return false; }
+  return true;
+}
+
+// Non-streaming cap & thinking budget invariant (services/api/claude.ts:3354-3392):
+// Non-streaming caps max_tokens at 64,000; thinking budget MUST satisfy budget <= max_tokens - 1.
+flawed_clamp_max_tokens :: (requested: int, non_streaming: bool) -> int #effects(traps) {
+  if non_streaming && requested > FLAWED_MAX_NON_STREAMING_TOKENS { // mutant: equivalent // when requested == 64000 both return 64000
+    return FLAWED_MAX_NON_STREAMING_TOKENS;
+  }
+  return requested;
+}
+
+flawed_clamp_thinking_budget :: (budget: int, max_output_tokens: int) -> int #effects(traps) {
+  lim := max_output_tokens - 1;
+  out := ifx budget < lim then budget else lim; // mutant: equivalent // when budget == lim both return lim
+  if out < 0 { return 0; } // mutant: equivalent // when out == 0 both return 0
+  return out;
+}
+
+// inc-4029 proxy guard: only send x-client-request-id to direct 1P Anthropic API (services/api/client.ts:102-112).
+flawed_should_inject_client_req_id :: (is_first_party: bool, is_direct_base_url: bool) -> bool #effects(traps) {
+  return is_first_party && is_direct_base_url;
+}
+
+// Single message-level cache_control breakpoint (services/api/claude.ts:3078-3095):
+// Exactly one marker frees Mycro KVCC locals; fire-and-forget forks shift to msg_count - 2.
+flawed_select_cache_marker_index :: (msg_count: int, skip_cache_write: bool) -> int #effects(traps) {
+  idx := ifx skip_cache_write then msg_count - 2 else msg_count - 1;
+  if idx < 0 { return -1; }
+  return idx;
+}
+
+// assistantMessageToMessageParam refuses cache_control on thinking/redacted_thinking (claude.ts:658-665).
+flawed_can_cache_assistant_block :: (block_kind: u8) -> bool #effects(traps) {
+  return block_kind != FLAWED_BLK_THINKING && block_kind != FLAWED_BLK_REDACTED_THINKING;
+}
+
+// Exponential retry backoff (services/api/withRetry.ts:814-822):
+// Honors retry_after_ms when >= 0; else min(500 * 2^(attempt-1), 32000).
+flawed_compute_retry_delay_ms :: (attempt: int, retry_after_ms: int) -> int #effects(traps) {
+  if retry_after_ms >= 0 { return retry_after_ms; }
+  delay := FLAWED_RETRY_BASE_MS;
+  steps := ifx attempt > 1 then attempt - 1 else 0; // mutant: equivalent // when attempt == 1 both yield 0
+  for i: 0..<steps {
+    delay = delay * 2;
+    if delay >= FLAWED_RETRY_MAX_BACKOFF_MS { return FLAWED_RETRY_MAX_BACKOFF_MS; } // mutant: equivalent // delay doubles by powers of 2 from 500, hitting 32000 exactly
+  }
+  return delay;
+}
+
+// Retry & overload-fallback state machine (services/api/withRetry.ts:170-517).
+flawed_eval_retry :: (st: [] FlawedRetryState, inp: FlawedRetryInput) -> FlawedRetryDecision #effects(reads, writes, traps) {
+  d: FlawedRetryDecision;
+  st[0].attempt += 1;
+
+  // Sticky keepalive disable on ECONNRESET
+  if inp.is_econnreset {
+    st[0].keepalive_disabled = true;
+    d.rebuild_client = true;
+  }
+
+  // Context max_tokens overflow repair (1k buffer, 3000 floor) -> immediate retry without sleep
+  if inp.status == 400 {
+    trimmed := inp.overflow_available_out - FLAWED_OVERFLOW_BUFFER_TOKENS;
+    if trimmed >= FLAWED_FLOOR_OUTPUT_TOKENS {
+      st[0].max_tokens_override = trimmed;
+      d.action = FLAWED_RETRY_NOW;
+      return d;
+    }
+  }
+
+  is_529 := inp.status == 529 || inp.is_overloaded_stream;
+
+  // Background 529 load shedding (FOREGROUND_529_RETRY_SOURCES)
+  if is_529 && !inp.is_foreground {
+    d.action = FLAWED_RETRY_SHED_BG_529;
+    return d;
+  }
+
+  // Fast-mode 429/529 cooldown handling (withRetry.ts:261-314)
+  if st[0].fast_mode_active && (inp.status == 429 || is_529) {
+    if inp.retry_after_ms >= 0 && inp.retry_after_ms < FLAWED_FAST_SHORT_RETRY_MS {
+      d.action = FLAWED_RETRY_SLEEP;
+      d.delay_ms = inp.retry_after_ms;
+      return d;
+    }
+    st[0].fast_mode_active = false;
+    cd := ifx inp.retry_after_ms >= FLAWED_FAST_SHORT_RETRY_MS then inp.retry_after_ms else FLAWED_FAST_COOLDOWN_DEFAULT_MS; // mutant: equivalent // non-negative values < 20000 already returned above
+    if cd < FLAWED_FAST_COOLDOWN_MIN_MS { cd = FLAWED_FAST_COOLDOWN_MIN_MS; } // mutant: equivalent // when cd == 600000 both yield 600000
+    st[0].fast_cooldown_ms = cd;
+  }
+
+  // Cumulative 529 overload fallback (NEVER resets on non-529 errors!)
+  if is_529 && (inp.fallback_all_models || (!inp.is_subscriber && inp.is_non_custom_opus)) {
+    st[0].cumulative_529 += 1;
+    if st[0].cumulative_529 >= FLAWED_MAX_529_RETRIES {
+      if inp.has_fallback_model {
+        d.action = FLAWED_RETRY_FALLBACK_MODEL;
+        return d;
+      }
+      if !inp.is_internal && !inp.persistent_retry {
+        d.action = FLAWED_RETRY_ABORT_529;
+        return d;
+      }
+    }
+  }
+
+  if st[0].attempt > st[0].max_retries {
+    d.action = FLAWED_RETRY_ABORT_FATAL;
+    return d;
+  }
+
+  // Auth heal flags
+  if inp.status == 401 || inp.status == 403 {
+    d.rebuild_client = true;
+  }
+
+  // x-should-retry: false precedence rules (withRetry.ts:696-787)
+  if inp.x_should_retry_false {
+    remote_auth := inp.is_remote && (inp.status == 401 || inp.status == 403);
+    ant_5xx := inp.is_internal && inp.status >= 500;
+    if !remote_auth && !ant_5xx {
+      d.action = FLAWED_RETRY_ABORT_FATAL;
+      return d;
+    }
+  }
+
+  retryable := is_529 || inp.is_conn_error || inp.status == 408 || inp.status == 409 ||
+               inp.status == 401 || inp.status == 403 || inp.status >= 500 ||
+               (inp.status == 429 && !inp.is_subscriber);
+  if !retryable {
+    d.action = FLAWED_RETRY_ABORT_FATAL;
+    return d;
+  }
+
+  d.action = FLAWED_RETRY_SLEEP;
+  d.delay_ms = flawed_compute_retry_delay_ms(st[0].attempt, inp.retry_after_ms);
+  return d;
+}
+
+// Per-chunk streaming usage merge (services/api/claude.ts:2924-2987):
+// Guards input/cache counts with > 0 so message_delta zeros never wipe message_start counts!
+flawed_merge_chunk_usage :: (cur: FlawedChunkUsage, delta: FlawedChunkUsage) -> FlawedChunkUsage #effects(traps) {
+  out := cur;
+  if delta.input_tokens > 0 { out.input_tokens = delta.input_tokens; }
+  if delta.output_tokens > 0 { out.output_tokens = delta.output_tokens; }
+  if delta.cache_creation_tokens > 0 { out.cache_creation_tokens = delta.cache_creation_tokens; }
+  if delta.cache_read_tokens > 0 { out.cache_read_tokens = delta.cache_read_tokens; }
+  if delta.web_search_requests > 0 { out.web_search_requests = delta.web_search_requests; }
+  if delta.speed_fast { out.speed_fast = true; }
+  return out;
+}
+
+// Exact integer micro-USD cost calculation (1 USD = 1,000,000 micro-USD, utils/modelCost.ts:27-180).
+// Per-Mtok rates in micro-USD per 1M tokens == dollars * 1_000_000, so micro_usd = tokens * usd_cents / 10_000.
+// Using cents per Mtok: $0.80 -> 80, $1 -> 100, $3 -> 300, $5 -> 500, $15 -> 1500, $30 -> 3000.
+// Cache write = 1.25x input (5/4); cache read = 0.10x input (1/10); web_search = $0.01 (10,000 micro-USD).
+flawed_calc_micro_usd :: (model_tier: u8, u: FlawedChunkUsage, fast_mode_enabled: bool) -> int #effects(traps) {
+  in_cents := 300;  // default Sonnet $3/$15
+  out_cents := 1500;
+  if model_tier == FLAWED_MODEL_HAIKU_35 {
+    in_cents = 80; out_cents = 400;
+  } else if model_tier == FLAWED_MODEL_HAIKU_45 {
+    in_cents = 100; out_cents = 500;
+  } else if model_tier == FLAWED_MODEL_OPUS_45 {
+    in_cents = 500; out_cents = 2500;
+  } else if model_tier == FLAWED_MODEL_OPUS {
+    if fast_mode_enabled && u.speed_fast {
+      in_cents = 3000; out_cents = 15000; // 6x Opus fast mode ($30/$150)
+    } else {
+      in_cents = 1500; out_cents = 7500;
+    }
+  }
+  c_in := (u.input_tokens * in_cents) / 100;
+  c_out := (u.output_tokens * out_cents) / 100;
+  c_cw := (u.cache_creation_tokens * in_cents * 5) / 400;
+  c_cr := (u.cache_read_tokens * in_cents) / 1000;
+  c_ws := u.web_search_requests * 10000;
+  return c_in + c_out + c_cw + c_cr + c_ws;
+}
+
+#test "api_policy: model 1M guard, plan switch, effort clamp, thinking budget, and cache marker" {
+  // 1M Opus merge fail-closed guard
+  #assert flawed_opus_1m_merge_enabled(false, false, true, false, false);
+  #assert flawed_opus_1m_merge_enabled(false, false, true, true, true);
+  #assert !flawed_opus_1m_merge_enabled(true, false, true, false, false);
+  #assert !flawed_opus_1m_merge_enabled(false, true, true, false, false);
+  #assert !flawed_opus_1m_merge_enabled(false, false, false, false, false);
+  #assert !flawed_opus_1m_merge_enabled(false, false, true, true, false); // VS Code partial OAuth scar!
+
+  // Runtime plan-mode switch
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_OPUSPLAN, true, false) == FLAWED_MODEL_OPUS;
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_OPUSPLAN, true, true) == FLAWED_MODEL_SONNET;
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_OPUSPLAN, false, false) == FLAWED_MODEL_SONNET;
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_HAIKU_45, true, false) == FLAWED_MODEL_SONNET;
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_HAIKU_45, false, false) == FLAWED_MODEL_HAIKU_45;
+  #assert flawed_resolve_runtime_model(FLAWED_MODEL_SONNET, true, false) == FLAWED_MODEL_SONNET;
+
+  // Effort cascade & persistence guard
+  #assert flawed_resolve_effort(FLAWED_PEFF_LOW, FLAWED_PEFF_HIGH, FLAWED_PEFF_MEDIUM, true) == FLAWED_PEFF_LOW;
+  #assert flawed_resolve_effort(FLAWED_PEFF_UNSET, FLAWED_PEFF_MAX, FLAWED_PEFF_MEDIUM, false) == FLAWED_PEFF_HIGH;
+  #assert flawed_resolve_effort(FLAWED_PEFF_UNSET, FLAWED_PEFF_UNSET, FLAWED_PEFF_MAX, true) == FLAWED_PEFF_MAX;
+  #assert flawed_can_persist_effort(FLAWED_PEFF_HIGH, false, false);
+  #assert !flawed_can_persist_effort(FLAWED_PEFF_MAX, false, false);
+  #assert flawed_can_persist_effort(FLAWED_PEFF_MAX, false, true);
+  #assert !flawed_can_persist_effort(FLAWED_PEFF_HIGH, true, true);
+  #assert !flawed_can_persist_effort(FLAWED_PEFF_UNSET, false, true);
+  #assert !flawed_can_persist_effort(5, false, true);
+
+  // Non-streaming cap & thinking budget
+  #assert flawed_clamp_max_tokens(64001, true) == FLAWED_MAX_NON_STREAMING_TOKENS;
+  #assert flawed_clamp_max_tokens(64000, true) == 64000;
+  #assert flawed_clamp_max_tokens(100000, false) == 100000;
+  #assert flawed_clamp_thinking_budget(5000, 4000) == 3999;
+  #assert flawed_clamp_thinking_budget(2000, 4000) == 2000;
+  #assert flawed_clamp_thinking_budget(100, 0) == 0;
+  #assert flawed_clamp_thinking_budget(100, 1) == 0;
+  #assert flawed_clamp_thinking_budget(-1, 4000) == 0;
+  #assert flawed_clamp_thinking_budget(0, 4000) == 0;
+  #assert flawed_clamp_thinking_budget(1, 2) == 1;
+
+  // Client request ID & single cache marker
+  #assert flawed_should_inject_client_req_id(true, true);
+  #assert !flawed_should_inject_client_req_id(false, true);
+  #assert !flawed_should_inject_client_req_id(true, false);
+  #assert flawed_select_cache_marker_index(0, false) == -1;
+  #assert flawed_select_cache_marker_index(1, false) == 0;
+  #assert flawed_select_cache_marker_index(1, true) == -1;
+  #assert flawed_select_cache_marker_index(2, true) == 0;
+  #assert flawed_select_cache_marker_index(5, false) == 4;
+  #assert flawed_can_cache_assistant_block(FLAWED_BLK_TEXT);
+  #assert !flawed_can_cache_assistant_block(FLAWED_BLK_THINKING);
+  #assert !flawed_can_cache_assistant_block(FLAWED_BLK_REDACTED_THINKING);
+}
+
+#test "api_policy: retry backoff, overflow repair, fast cooldown, cumulative 529 fallback, and usage/cost" {
+  // Exponential backoff & retry-after
+  #assert flawed_compute_retry_delay_ms(1, 0) == 0;
+  #assert flawed_compute_retry_delay_ms(1, 1500) == 1500;
+  #assert flawed_compute_retry_delay_ms(1, -1) == 500;
+  #assert flawed_compute_retry_delay_ms(2, -1) == 1000;
+  #assert flawed_compute_retry_delay_ms(7, -1) == 32000;
+  #assert flawed_compute_retry_delay_ms(8, -1) == 32000;
+  #assert flawed_compute_retry_delay_ms(20, -1) == 32000;
+
+  // Overflow repair trims with 1k buffer down to 3000 floor (strictly HTTP 400 only)
+  st: [1] FlawedRetryState;
+  st[0].max_retries = 10;
+  d_ov := flawed_eval_retry(st[..], FlawedRetryInput.{status = 400, overflow_available_out = 4000, retry_after_ms = -1});
+  #assert d_ov.action == FLAWED_RETRY_NOW && st[0].max_tokens_override == 3000;
+  d_ov_lo := flawed_eval_retry(st[..], FlawedRetryInput.{status = 400, overflow_available_out = 3999, retry_after_ms = -1});
+  #assert d_ov_lo.action == FLAWED_RETRY_ABORT_FATAL;
+  d_ov_500 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, overflow_available_out = 5000, retry_after_ms = -1});
+  #assert d_ov_500.action == FLAWED_RETRY_SLEEP;
+
+  // Background 529 sheds immediately
+  st[0] = FlawedRetryState.{max_retries = 10};
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = false, retry_after_ms = -1}).action == FLAWED_RETRY_SHED_BG_529;
+
+  // Fast-mode: 500 leaves fast_mode untouched; 429 with retry_after=0 or <20s keeps fast_mode;
+  // >=20s enters cooldown (600000 floor, 600001 kept, -1 -> 1800000 default)
+  st[0] = FlawedRetryState.{max_retries = 10, fast_mode_active = true};
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, is_foreground = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP && st[0].fast_mode_active;
+  df0 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 429, is_foreground = true, retry_after_ms = 0});
+  #assert df0.action == FLAWED_RETRY_SLEEP && df0.delay_ms == 0 && st[0].fast_mode_active;
+  df1 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 429, is_foreground = true, retry_after_ms = 19999});
+  #assert df1.action == FLAWED_RETRY_SLEEP && df1.delay_ms == 19999 && st[0].fast_mode_active;
+  df2 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 429, is_foreground = true, retry_after_ms = 20000});
+  #assert df2.action == FLAWED_RETRY_SLEEP && !st[0].fast_mode_active && st[0].fast_cooldown_ms == FLAWED_FAST_COOLDOWN_MIN_MS;
+  st[0] = FlawedRetryState.{max_retries = 10, fast_mode_active = true};
+  _ = flawed_eval_retry(st[..], FlawedRetryInput.{status = 429, is_foreground = true, retry_after_ms = 600001});
+  #assert !st[0].fast_mode_active && st[0].fast_cooldown_ms == 600001;
+  st[0] = FlawedRetryState.{max_retries = 10, fast_mode_active = true};
+  _ = flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = true, retry_after_ms = -1});
+  #assert !st[0].fast_mode_active && st[0].fast_cooldown_ms == FLAWED_FAST_COOLDOWN_DEFAULT_MS;
+
+  // Cumulative 529 fallback across interleaved non-529 error (counter NEVER resets, and non-529/subscriber/non-opus don't increment!)
+  st[0] = FlawedRetryState.{max_retries = 10};
+  e529 := FlawedRetryInput.{status = 529, is_foreground = true, is_non_custom_opus = true, has_fallback_model = true, retry_after_ms = -1};
+  #assert flawed_eval_retry(st[..], e529).action == FLAWED_RETRY_SLEEP && st[0].cumulative_529 == 1;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, is_foreground = true, fallback_all_models = true, is_econnreset = true, retry_after_ms = -1}).rebuild_client && st[0].keepalive_disabled && st[0].cumulative_529 == 1;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = true, is_subscriber = true, is_non_custom_opus = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP && st[0].cumulative_529 == 1;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = true, is_subscriber = false, is_non_custom_opus = false, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP && st[0].cumulative_529 == 1;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{is_overloaded_stream = true, is_foreground = true, fallback_all_models = true, has_fallback_model = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP && st[0].cumulative_529 == 2;
+  #assert flawed_eval_retry(st[..], e529).action == FLAWED_RETRY_FALLBACK_MODEL && st[0].cumulative_529 == 3;
+
+  // External 3x 529 with no fallback -> ABORT_529; internal/persistent keeps retrying
+  st[0] = FlawedRetryState.{max_retries = 10, cumulative_529 = 2};
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = true, fallback_all_models = true, retry_after_ms = -1}).action == FLAWED_RETRY_ABORT_529;
+  st[0] = FlawedRetryState.{max_retries = 10, cumulative_529 = 2};
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 529, is_foreground = true, fallback_all_models = true, persistent_retry = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+
+  // x-should-retry: false rules (remote 401/403 and ant 5xx override; else abort), plus subscriber 429 vs non-subscriber 429
+  st[0] = FlawedRetryState.{max_retries = 10};
+  d_r401 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 401, x_should_retry_false = true, is_remote = true, retry_after_ms = -1});
+  #assert d_r401.action == FLAWED_RETRY_SLEEP && d_r401.rebuild_client && d_r401.delay_ms == 500;
+  d_r403 := flawed_eval_retry(st[..], FlawedRetryInput.{status = 403, x_should_retry_false = true, is_remote = true, retry_after_ms = -1});
+  #assert d_r403.action == FLAWED_RETRY_SLEEP && d_r403.rebuild_client;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, x_should_retry_false = true, is_remote = true, retry_after_ms = -1}).action == FLAWED_RETRY_ABORT_FATAL;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, x_should_retry_false = true, is_internal = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, x_should_retry_false = true, retry_after_ms = -1}).action == FLAWED_RETRY_ABORT_FATAL;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 429, is_subscriber = true, retry_after_ms = -1}).action == FLAWED_RETRY_ABORT_FATAL;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 408, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 409, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{is_conn_error = true, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+  // Exact max_retries boundary: attempt 9 -> 10 succeeds, 10 -> 11 aborts
+  st[0] = FlawedRetryState.{attempt = 9, max_retries = 10};
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, retry_after_ms = -1}).action == FLAWED_RETRY_SLEEP;
+  #assert flawed_eval_retry(st[..], FlawedRetryInput.{status = 500, retry_after_ms = -1}).action == FLAWED_RETRY_ABORT_FATAL;
+
+  // Usage merge preserves non-zero message_start counts against message_delta zeros, and updates on 1
+  u0 := FlawedChunkUsage.{input_tokens = 1000, output_tokens = 500, cache_creation_tokens = 400, cache_read_tokens = 2000, web_search_requests = 1};
+  u1 := flawed_merge_chunk_usage(u0, FlawedChunkUsage.{speed_fast = true});
+  #assert u1.input_tokens == 1000 && u1.output_tokens == 500 && u1.cache_creation_tokens == 400 && u1.cache_read_tokens == 2000 && u1.web_search_requests == 1 && u1.speed_fast;
+  u2 := flawed_merge_chunk_usage(FlawedChunkUsage.{}, FlawedChunkUsage.{input_tokens = 1, output_tokens = 1, cache_creation_tokens = 1, cache_read_tokens = 1, web_search_requests = 1});
+  #assert u2.input_tokens == 1 && u2.output_tokens == 1 && u2.cache_creation_tokens == 1 && u2.cache_read_tokens == 1 && u2.web_search_requests == 1;
+
+  // Micro-USD pricing across all 6 tiers (1000 tokens = 0.001 Mtok)
+  u_1k := FlawedChunkUsage.{input_tokens = 1000, output_tokens = 1000, cache_creation_tokens = 1000, cache_read_tokens = 1000, web_search_requests = 1, speed_fast = true};
+  // Sonnet ($3/$15): in=3000, out=15000, cw=3750, cr=300, ws=10000 -> 32050 micro-USD
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_SONNET, u_1k, false) == 32050;
+  // Haiku 3.5 ($0.80/$4): in=800, out=4000, cw=1000, cr=80, ws=10000 -> 15880
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_HAIKU_35, u_1k, false) == 15880;
+  // Haiku 4.5 ($1/$5): in=1000, out=5000, cw=1250, cr=100, ws=10000 -> 17350
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_HAIKU_45, u_1k, false) == 17350;
+  // Opus 4.5 ($5/$25): in=5000, out=25000, cw=6250, cr=500, ws=10000 -> 46750
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_OPUS_45, u_1k, false) == 46750;
+  // Opus standard ($15/$75): in=15000, out=75000, cw=18750, cr=1500, ws=10000 -> 120250
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_OPUS, u_1k, false) == 120250;
+  // Opus 6x fast mode ($30/$150): in=30000, out=150000, cw=37500, cr=3000, ws=10000 -> 230500
+  #assert flawed_calc_micro_usd(FLAWED_MODEL_OPUS, u_1k, true) == 230500;
+}

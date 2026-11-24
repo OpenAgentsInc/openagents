@@ -1,0 +1,272 @@
+// Flawed Layer 2 (Chapter 05) — O(n) Raw SSE Frame Parser, Stream Accumulator & Socket Hygiene.
+// Replaces cc/services/api/claude.ts raw SSE loop (solving BetaMessageStream's O(n^2) partialParse),
+// message_delta in-place usage/stop_reason commit, empty-200 rejection, watchdog, and GH #32920 cleanup.
+//   coax/bin/coax test flawed/sse_stream.coax --library
+#module "flawed.sse_stream";
+#load "api_policy.coax";
+
+FLAWED_SSE_LINE_CAP :: 512;
+FLAWED_SSE_STALL_WARN_MS :: 30000;
+FLAWED_SSE_DEFAULT_IDLE_TIMEOUT_MS :: 90000;
+
+FLAWED_STOP_NONE :: 0;
+FLAWED_STOP_END_TURN :: 1;
+FLAWED_STOP_TOOL_USE :: 2;
+FLAWED_STOP_MAX_TOKENS :: 3;
+FLAWED_STOP_REFUSAL :: 4;
+FLAWED_STOP_CTX_EXCEEDED :: 5;
+
+FLAWED_SSE_EV_NONE :: 0;
+FLAWED_SSE_EV_MSG_START :: 1;
+FLAWED_SSE_EV_BLK_START :: 2;
+FLAWED_SSE_EV_BLK_DELTA :: 3;
+FLAWED_SSE_EV_BLK_STOP :: 4;
+FLAWED_SSE_EV_MSG_DELTA :: 5;
+FLAWED_SSE_EV_MSG_STOP :: 6;
+FLAWED_SSE_EV_OVERLOADED :: 7;
+
+FLAWED_WATCHDOG_OK :: 0;
+FLAWED_WATCHDOG_STALL_WARN :: 1;
+FLAWED_WATCHDOG_IDLE_TIMEOUT :: 2;
+
+FlawedSseFrame :: struct {
+  event_kind: u8;
+  data: [FLAWED_SSE_LINE_CAP] u8;
+  data_n: int;
+}
+
+FlawedSseParser :: struct {
+  line: [FLAWED_SSE_LINE_CAP] u8;
+  line_n: int;
+  cur_event: u8;
+  data: [FLAWED_SSE_LINE_CAP] u8;
+  data_n: int;
+  has_data: bool;
+}
+
+FlawedStreamSession :: struct {
+  open: bool;
+  released: bool;
+  started: bool;
+  model_tier: u8;
+  fast_mode_enabled: bool;
+  msg_id: [FLAWED_MSG_ID_MAX] u8; msg_id_n: int;
+  // Active block accumulator (O(n) byte append, parsed once at content_block_stop)
+  active_block: bool;
+  cur_block: FlawedBlock;
+  // Emitted single-block messages (streamed immediately at content_block_stop)
+  emitted: [1] FlawedTranscript;
+  stop_reason: u8;
+  usage: FlawedChunkUsage;
+  cost_micro_usd: int;
+  last_event_ms: int;
+  frames_seen: int;
+}
+
+flawed_sse_classify_event :: (name: [] const u8, n: int) -> u8 #effects(reads, traps) {
+  if flawed_bytes_eq_str(name, n, "message_start") { return FLAWED_SSE_EV_MSG_START; }
+  if flawed_bytes_eq_str(name, n, "content_block_start") { return FLAWED_SSE_EV_BLK_START; }
+  if flawed_bytes_eq_str(name, n, "content_block_delta") { return FLAWED_SSE_EV_BLK_DELTA; }
+  if flawed_bytes_eq_str(name, n, "content_block_stop") { return FLAWED_SSE_EV_BLK_STOP; }
+  if flawed_bytes_eq_str(name, n, "message_delta") { return FLAWED_SSE_EV_MSG_DELTA; }
+  if flawed_bytes_eq_str(name, n, "message_stop") { return FLAWED_SSE_EV_MSG_STOP; }
+  if flawed_bytes_eq_str(name, n, "error") { return FLAWED_SSE_EV_OVERLOADED; }
+  return FLAWED_SSE_EV_NONE;
+}
+
+// Feed raw TCP/HTTP bytes into the O(n) SSE frame parser across arbitrary chunk splits.
+// Writes up to `out.count` completed frames and returns count emitted.
+flawed_sse_feed :: (p: [] FlawedSseParser, chunk: string, out: [] FlawedSseFrame) -> int #effects(reads, writes, traps) {
+  emitted := 0;
+  for i: 0..<chunk.count {
+    c := chunk[i];
+    if c == 13 { continue; } // strip CR in CRLF
+    if c != 10 {
+      if p[0].line_n < FLAWED_SSE_LINE_CAP {
+        p[0].line[p[0].line_n] = c;
+        p[0].line_n += 1;
+      }
+      continue;
+    }
+    // Complete line at LF
+    ln := p[0].line_n;
+    p[0].line_n = 0;
+    if ln == 0 {
+      // Blank line terminates current SSE frame
+      if (p[0].cur_event != FLAWED_SSE_EV_NONE || p[0].has_data) && emitted < out.count {
+        f: FlawedSseFrame;
+        f.event_kind = p[0].cur_event;
+        for k: 0..<p[0].data_n { f.data[k] = p[0].data[k]; }
+        f.data_n = p[0].data_n;
+        out[emitted] = f;
+        emitted += 1;
+      }
+      p[0].cur_event = FLAWED_SSE_EV_NONE;
+      p[0].data_n = 0;
+      p[0].has_data = false;
+      continue;
+    }
+    if flawed_bytes_has_prefix(p[0].line[..], ln, "event:") {
+      off := 6;
+      if off < ln && p[0].line[off] == 32 { off += 1; }
+      p[0].cur_event = flawed_sse_classify_event(p[0].line[off..<ln], ln - off);
+    } else if flawed_bytes_has_prefix(p[0].line[..], ln, "data:") {
+      off := 5;
+      if off < ln && p[0].line[off] == 32 { off += 1; }
+      if p[0].has_data && p[0].data_n < FLAWED_SSE_LINE_CAP {
+        p[0].data[p[0].data_n] = 10;
+        p[0].data_n += 1;
+      }
+      for k: off..<ln {
+        if p[0].data_n < FLAWED_SSE_LINE_CAP {
+          p[0].data[p[0].data_n] = p[0].line[k];
+          p[0].data_n += 1;
+        }
+      }
+      p[0].has_data = true;
+    }
+  }
+  return emitted;
+}
+
+flawed_stream_begin :: (s: [] FlawedStreamSession, model_tier: u8, fast_mode: bool, now_ms: int) #effects(writes, traps) {
+  s[0] = FlawedStreamSession.{open = true, model_tier = model_tier, fast_mode_enabled = fast_mode, last_event_ms = now_ms};
+}
+
+flawed_stream_on_message_start :: (s: [] FlawedStreamSession, msg_id: string, init_usage: FlawedChunkUsage, now_ms: int) #effects(reads, writes, traps) {
+  s[0].started = true;
+  s[0].msg_id_n = flawed_copy_str_into(s[0].msg_id[..], FLAWED_MSG_ID_MAX, msg_id);
+  s[0].usage = flawed_merge_chunk_usage(s[0].usage, init_usage);
+  s[0].last_event_ms = now_ms;
+  s[0].frames_seen += 1;
+}
+
+flawed_stream_on_block_start :: (s: [] FlawedStreamSession, kind: u8, id: string, now_ms: int) #effects(reads, writes, traps) {
+  s[0].active_block = true;
+  s[0].cur_block = FlawedBlock.{kind = kind};
+  s[0].cur_block.id_n = flawed_copy_str_into(s[0].cur_block.id[..], FLAWED_BLOCK_ID_MAX, id);
+  s[0].last_event_ms = now_ms;
+  s[0].frames_seen += 1;
+}
+
+// O(n) chunk append: never re-parses partial JSON on every delta!
+flawed_stream_on_block_delta :: (s: [] FlawedStreamSession, piece: string, now_ms: int) -> bool #effects(reads, writes, traps) {
+  if !s[0].active_block { return false; }
+  for i: 0..<piece.count {
+    if s[0].cur_block.text_n < FLAWED_BLOCK_TEXT_MAX {
+      s[0].cur_block.text[s[0].cur_block.text_n] = piece[i];
+      s[0].cur_block.text_n += 1;
+    }
+  }
+  s[0].last_event_ms = now_ms;
+  s[0].frames_seen += 1;
+  return true;
+}
+
+// content_block_stop: immediately yields single-block AssistantMessage (enabling mid-stream tool dispatch).
+flawed_stream_on_block_stop :: (s: [] FlawedStreamSession, now_ms: int) -> bool #effects(reads, writes, traps) {
+  if !s[0].active_block { return false; }
+  m: [1] FlawedMessage;
+  m[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "", "");
+  m[0].msg_id = s[0].msg_id;
+  m[0].msg_id_n = s[0].msg_id_n;
+  _ = flawed_msg_push_block(m[..], s[0].cur_block);
+  ok := flawed_tx_push(s[0].emitted[..], m[0]);
+  s[0].active_block = false;
+  s[0].last_event_ms = now_ms;
+  s[0].frames_seen += 1;
+  return ok;
+}
+
+// message_delta: merges usage without zero-wiping message_start, commits stop_reason, and bills session cost.
+flawed_stream_on_message_delta :: (
+  s: [] FlawedStreamSession,
+  st: [] FlawedSessionState,
+  stop_reason: u8,
+  delta_usage: FlawedChunkUsage,
+  now_ms: int
+) -> int #effects(reads, writes, traps) {
+  s[0].stop_reason = stop_reason;
+  s[0].usage = flawed_merge_chunk_usage(s[0].usage, delta_usage);
+  cost := flawed_calc_micro_usd(s[0].model_tier, s[0].usage, s[0].fast_mode_enabled);
+  s[0].cost_micro_usd += cost;
+  _ = flawed_state_add_usage(st, FlawedUsage.{
+    input_tokens = s[0].usage.input_tokens,
+    output_tokens = s[0].usage.output_tokens,
+    cache_read_tokens = s[0].usage.cache_read_tokens,
+    cache_write_tokens = s[0].usage.cache_creation_tokens,
+    cost_micro_usd = cost,
+  });
+  s[0].last_event_ms = now_ms;
+  s[0].frames_seen += 1;
+  return cost;
+}
+
+// Empty HTTP 200 body guard (services/api/claude.ts:2337-2350):
+// Rejects !started || (emitted==0 && stop_reason==NONE); permits empty end_turn responses.
+flawed_stream_is_valid_completion :: (s: [] const FlawedStreamSession) -> bool #effects(reads, traps) {
+  if !s[0].started { return false; }
+  if s[0].emitted[0].count == 0 && s[0].stop_reason == FLAWED_STOP_NONE { return false; }
+  return true;
+}
+
+// Passive 30s stall warning & opt-in idle timeout watchdog (claude.ts:1868-1966).
+flawed_stream_check_watchdog :: (s: [] const FlawedStreamSession, now_ms: int, watchdog_enabled: bool, idle_timeout_ms: int) -> u8 #effects(reads, traps) {
+  if !s[0].open { return FLAWED_WATCHDOG_OK; }
+  idle := now_ms - s[0].last_event_ms;
+  if watchdog_enabled && idle >= idle_timeout_ms { return FLAWED_WATCHDOG_IDLE_TIMEOUT; }
+  if idle >= FLAWED_SSE_STALL_WARN_MS { return FLAWED_WATCHDOG_STALL_WARN; }
+  return FLAWED_WATCHDOG_OK;
+}
+
+// GH #32920 socket hygiene: deterministic idempotent cleanup on completion or early abort.
+flawed_stream_release :: (s: [] FlawedStreamSession) -> bool #effects(reads, writes, traps) {
+  if !s[0].open { return false; }
+  s[0].open = false;
+  s[0].released = true;
+  return true;
+}
+
+#test "sse_stream: chunk-split SSE framing, O(n) delta accumulation, billing, watchdog, and GH #32920 release" {
+  // Split SSE frames across arbitrary mid-token boundaries + CRLF
+  p: [1] FlawedSseParser;
+  frames: [4] FlawedSseFrame;
+  n1 := flawed_sse_feed(p[..], "event: message_st", frames[..]);
+  #assert n1 == 0;
+  n2 := flawed_sse_feed(p[..], "art\r\ndata: {\"id\":\"m1\"}\r\n\r\nevent: content_block_stop\ndata: {}\n\n", frames[..]);
+  #assert n2 == 2;
+  #assert frames[0].event_kind == FLAWED_SSE_EV_MSG_START && flawed_bytes_eq_str(frames[0].data[..], frames[0].data_n, "{\"id\":\"m1\"}");
+  #assert frames[1].event_kind == FLAWED_SSE_EV_BLK_STOP && flawed_bytes_eq_str(frames[1].data[..], frames[1].data_n, "{}");
+
+  // Full streaming lifecycle -> mid-stream block emit -> message_delta billing -> release
+  st: [1] FlawedSessionState;
+  #assert flawed_state_init(st[..], "/repo", "claude-sonnet-4-6");
+  ss: [1] FlawedStreamSession;
+  flawed_stream_begin(ss[..], FLAWED_MODEL_SONNET, false, 1000);
+  #assert !flawed_stream_is_valid_completion(ss[..]); // empty 200 rejected
+
+  flawed_stream_on_message_start(ss[..], "msg_9", FlawedChunkUsage.{input_tokens = 2000, cache_read_tokens = 1000}, 1200);
+  #assert !flawed_stream_is_valid_completion(ss[..]); // started but 0 blocks and no stop_reason
+  flawed_stream_on_block_start(ss[..], FLAWED_BLK_TOOL_USE, "tu_42", 1300);
+  #assert flawed_stream_on_block_delta(ss[..], "{\"path\":", 1400);
+  #assert flawed_stream_on_block_delta(ss[..], "\"a.coax\"}", 1500);
+  #assert flawed_stream_on_block_stop(ss[..], 1600);
+  #assert ss[0].emitted[0].count == 1 && ss[0].emitted[0].msgs[0].blocks[0].kind == FLAWED_BLK_TOOL_USE;
+  #assert flawed_bytes_eq_str(ss[0].emitted[0].msgs[0].blocks[0].text[..], ss[0].emitted[0].msgs[0].blocks[0].text_n, "{\"path\":\"a.coax\"}");
+
+  // message_delta arrives with input_tokens=0 (must NOT wipe 2000!) + output_tokens=500
+  cost := flawed_stream_on_message_delta(ss[..], st[..], FLAWED_STOP_TOOL_USE, FlawedChunkUsage.{output_tokens = 500}, 1800);
+  #assert cost == 13800; // 2000*$3/M (6000) + 500*$15/M (7500) + 1000*$0.30/M (300) = 13800 micro-USD
+  #assert st[0].usage.input_tokens == 2000 && st[0].usage.output_tokens == 500 && st[0].usage.cost_micro_usd == 13800;
+  #assert flawed_stream_is_valid_completion(ss[..]);
+
+  // Watchdog transitions: OK -> STALL_WARN (30s) -> IDLE_TIMEOUT (90s)
+  #assert flawed_stream_check_watchdog(ss[..], 20000, true, FLAWED_SSE_DEFAULT_IDLE_TIMEOUT_MS) == FLAWED_WATCHDOG_OK;
+  #assert flawed_stream_check_watchdog(ss[..], 31800, true, FLAWED_SSE_DEFAULT_IDLE_TIMEOUT_MS) == FLAWED_WATCHDOG_STALL_WARN;
+  #assert flawed_stream_check_watchdog(ss[..], 91800, false, FLAWED_SSE_DEFAULT_IDLE_TIMEOUT_MS) == FLAWED_WATCHDOG_STALL_WARN;
+  #assert flawed_stream_check_watchdog(ss[..], 91800, true, FLAWED_SSE_DEFAULT_IDLE_TIMEOUT_MS) == FLAWED_WATCHDOG_IDLE_TIMEOUT;
+
+  // Idempotent socket release
+  #assert flawed_stream_release(ss[..]) && ss[0].released && !ss[0].open;
+  #assert !flawed_stream_release(ss[..]);
+}
