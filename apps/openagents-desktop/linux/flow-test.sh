@@ -57,8 +57,11 @@ if [[ "$status" == 0 ]]; then
   if [[ "$tasks" != 2 ]] || ! grep -q 'flow test first message' "$tmp/record.jsonl" || ! grep -q 'flow test second message' "$tmp/record.jsonl"; then
     echo "flow: FAIL worker: expected 2 tasks with both messages, the worker recorded ${tasks:-0}" >&2
     status=1
+  elif [[ "$(grep -c "\"cwd\":\"$tmp/work\"" "$tmp/record.jsonl" 2>/dev/null || true)" != 2 ]]; then
+    echo "flow: FAIL worker: the tasks did not carry the working folder $tmp/work" >&2
+    status=1
   else
-    echo "flow: ok worker: 2 tasks recorded"
+    echo "flow: ok worker: 2 tasks recorded, each with the working folder"
   fi
 fi
 exit "$status"

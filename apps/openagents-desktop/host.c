@@ -1047,6 +1047,8 @@ int cd_settings_agy_mode(void *page) { CoderHost *c = page; return c ? (int)code
 int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_tier(cd_state(c)) : 0; }
 void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
 int cd_bar_drags(void *page, float x, float y) { CoderHost *c = page; return c && coder_page_bar_drags(cd_state(c), x, y); }
+void cd_ctrl_keys(void *page, int on) { CoderHost *c = page; if (c) { coder_page_ctrl_keys(cd_state(c), on != 0); cd_woke(c); } }
+void cd_inkling_label(void *page, const char *label) { CoderHost *c = page; if (c) { coder_page_inkling_label(cd_state(c), cd_string(label)); cd_changed(c); } }
 void cd_bar_full(void *page, int on) { CoderHost *c = page; if (c) { coder_page_bar_full(cd_state(c), on != 0); cd_woke(c); } }
 int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_submit(cd_state(c)); cd_woke(c); return ok; }
 // Dialogs and right-click menus over the page (page/overlay.coax, GitHub #13746).

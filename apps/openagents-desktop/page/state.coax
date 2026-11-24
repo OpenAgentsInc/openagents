@@ -432,6 +432,8 @@ CoderPage :: struct {
   set_query: [64] u8; set_query_n: int;
   set_target: [EL_ID] u8; set_target_n: int;
   set_box: [4] f32; set_due: bool; bar_full: bool;   // set_due: the page scrolled to a row, one more frame; bar_full: the window is in full screen (titlebar.coax)
+  // ctrl_keys: a Linux or Windows window, where chords are Ctrl and not Command (titlebar.coax)
+  ctrl_keys: bool;
   set_claude: [48] u8; set_claude_n: int;
   set_gemini: [48] u8; set_gemini_n: int;
   set_local_status: [128] u8; set_local_status_n: int;  // Local Models status in Settings > Models & composer picker (#13826)

@@ -410,6 +410,10 @@ int cd_search_clear(void *page);
 // window moves). cd_bar_full: the window went into full screen (1) or came out (0).
 int cd_bar_drags(void *page, float x, float y);
 void cd_bar_full(void *page, int on);
+// cd_ctrl_keys: a Linux or Windows window, so key hints read Ctrl and Ctrl-N starts a new chat.
+// cd_inkling_label: the local model's name with the variant in use, for the model chip.
+void cd_ctrl_keys(void *page, int on);
+void cd_inkling_label(void *page, const char *label);
 // Dialogs and right-click menus drawn over the page (page/overlay.coax, GitHub #13746).
 // A dialog: cd_dialog_begin (size 0 sm, 1 md, 2 lg), its fields (secure; lines 1 a line, more a
 // box) and buttons in the foot's order (kind 0 primary, 1 secondary, 2 destructive; aside at the

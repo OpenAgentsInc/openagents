@@ -262,7 +262,9 @@ static void refresh_settings_info(DesktopApp *a) {
 
 static void set_folder(DesktopApp *a, const char *folder) {
   if (!folder || !folder[0]) return;
-  snprintf(a->folder, sizeof(a->folder), "%s", folder);
+  // The callers at start pass a->folder itself: snprintf onto its own source left it empty, and
+  // every task then went to the worker with no working folder.
+  if (folder != a->folder) snprintf(a->folder, sizeof(a->folder), "%s", folder);
   char shown[OA_PATH];
   format_folder_shown(a->folder, shown, sizeof(shown));
   cd_folder(a->page, shown);
@@ -1012,6 +1014,9 @@ static void local_sync(DesktopApp *a) {
   char summary[256] = {0};
   local_status_summary(a, summary, sizeof summary);
   cd_settings_local(a->page, summary);
+  char chip[96] = {0};
+  if (l->variant != 0) snprintf(chip, sizeof chip, "Inkling 2 Mini · %s", OA_LM_VARIANTS[l->variant].label);
+  cd_inkling_label(a->page, chip);
   l->last_state = st;
   l->last_sync_ms = oa_core_now_ms();
 }
@@ -3387,6 +3392,7 @@ static int oa_main(int argc, char **argv) {
   /* A Linux or Windows window has no buttons at its top left, as a Mac's has: the sidebar's toggle
      takes the window's edge, as it does on a Mac in full screen. */
   cd_bar_full(app.page, 1);
+  cd_ctrl_keys(app.page, 1);
   app.portal = shot ? NULL : portal_open();
   oa_started();
   // Resolve the 28-flag mask via #authority coax/lib/agent/desktop/flags.coax (all off by default),
