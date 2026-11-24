@@ -442,6 +442,29 @@ the entry logic in `host-main.c` and the core's C ABI in `host-core.coax`. See
 [`windows/README.md`](windows/README.md) for the Windows build, what it does not do yet, and
 how it is checked.
 
+### Inkling 2 Mini variants on Linux and Windows
+
+**Settings > Local Models** shows the variant in use. **Change Model...** opens a chooser with the
+seven catalog variants (the same ids, files, sizes and SHA-256 digests as `LocalModels.swift`):
+Official IQ4_NL, Uncensored LoRA, Uncensored Q4_K, Uncensored IQ3_S, Uncensored IQ2_M, Abliterated
+Mix-16G and Abliterated Mix-12G. **Previous** and **Next** move the mark, and **Use This Model**
+switches to the marked variant.
+
+- Each variant is stored in `~/.openagents/models/<id>/` with its own `manifest.json`. The choice is
+  remembered in `~/.openagents/models/selected-variant`.
+- Changing the variant stops the local server. The next message starts it on the new weights. On
+  Linux, a server left running on other weights is detected through `/health` and replaced.
+- Uncensored LoRA is a 43.8 MB overlay. It is served as the Official IQ4_NL weights plus `INK_LORA`,
+  so the official weights must be installed too.
+- The two Abliterated variants are gated on Hugging Face. Accept the terms on the model page, then
+  save an access token in `~/.cache/huggingface/token` or set `HF_TOKEN`. The token is passed to
+  `curl` in a private config file, never on its command line, and the file is deleted when the
+  download stops.
+- Importing a custom `.gguf` is available only in the Mac app.
+
+`linux/flow-test.sh` selects every variant on the real handlers, and `--smoke` checks each variant's
+manifest.
+
 ## Install in Applications
 
 To keep `/Applications/OpenAgents.app` at the newest `main`, run this once:

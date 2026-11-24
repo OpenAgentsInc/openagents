@@ -595,8 +595,11 @@ static int oa_port_conflict(int port, char *out, size_t cap) {
   return 0;
 }
 
-// Localhost GET /health probe: 0=free, 1=healthy Psionic server, 2=occupied by non-Psionic service.
-static int oa_http_probe_health(int port) {
+// Localhost GET /health: the raw response in out; its length, or 0 when nothing listens.
+#define OA_HAVE_HEALTH_TEXT 1
+static int oa_http_health_text(int port, char *resp, size_t resp_cap) {
+  if (!resp || resp_cap < 2) return 0;
+  resp[0] = '\0';
   int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
   if (fd < 0) return 0;
   struct sockaddr_in addr;
@@ -614,17 +617,26 @@ static int oa_http_probe_health(int port) {
   }
   const char *req = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
   (void)send(fd, req, strlen(req), MSG_NOSIGNAL);
-  char resp[2048];
   size_t total = 0;
-  for (int i = 0; i < 8 && total + 1 < sizeof resp; i++) {
+  for (int i = 0; i < 8 && total + 1 < resp_cap; i++) {
     struct pollfd pf = {fd, POLLIN, 0};
     if (poll(&pf, 1, 250) <= 0) break;
-    ssize_t r = recv(fd, resp + total, sizeof resp - 1 - total, 0);
+    ssize_t r = recv(fd, resp + total, resp_cap - 1 - total, 0);
     if (r <= 0) break;
     total += (size_t)r;
   }
   close(fd);
   resp[total] = '\0';
+  // Something listens but said nothing: still not free.
+  if (total == 0) { snprintf(resp, resp_cap, "?"); return 1; }
+  return (int)total;
+}
+
+// Localhost GET /health probe: 0=free, 1=healthy Psionic server, 2=occupied by non-Psionic service.
+static int oa_http_probe_health(int port) {
+  char resp[2048];
+  size_t total = (size_t)oa_http_health_text(port, resp, sizeof resp);
+  if (total == 0) return 0;
   if (total > 0 && strncmp(resp, "HTTP/1.", 7) == 0 && strstr(resp, " 200") &&
       strstr(resp, "psionic-") && strstr(resp, "\"ok\"")) {
     return 1;

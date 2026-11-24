@@ -48,11 +48,56 @@ enum { OA_LM_RM_OK = 0, OA_LM_RM_ACTIVE_RUNS = 1, OA_LM_RM_BUSY = 2 };
 enum { OA_LM_QUIT_STOP = 0, OA_LM_QUIT_KEEP_DETACHED = 1 };
 enum { OA_LM_CTX = 32768, OA_LM_IDLE_EXIT_S = 300 };
 
+// The Inkling 2 Mini variants (#14028), the same ids, files, sizes and digests as the Mac
+// catalog in LocalModels.swift. Each lives in ~/.openagents/models/<id>/.
+typedef struct {
+  const char *id, *label, *quant, *file, *url, *sha, *repo;
+  int64_t bytes;
+  int lora;    // a small overlay served on top of the official weights (variant 0)
+  int gated;   // Hugging Face asks for an access token
+} OaLocalVariant;
+#define OA_HF "https://huggingface.co/"
+static const OaLocalVariant OA_LM_VARIANTS[] = {
+  {"inkling-2-mini", "Official IQ4_NL", "IQ4_NL GGUF", "Inkling-2-Mini-IQ4_NL.gguf",
+   OA_HF "ggml-org/Inkling-2-Mini-GGUF/resolve/main/Inkling-2-Mini-IQ4_NL.gguf",
+   "cbdf3fa9dc50a4124977980f37da4f1fa764b0cfe800d275cd43d26ce2a81af4",
+   OA_HF "ggml-org/Inkling-2-Mini-GGUF", 17627940768LL, 0, 0},
+  {"inkling-2-mini-uncensored-lora", "Uncensored LoRA", "GGUF LoRA overlay on Official IQ4_NL", "Inkling-2-Mini-Uncensored-LoRA.gguf",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF/resolve/main/Inkling-2-Mini-Uncensored-LoRA.gguf",
+   "42914b85c874e7fe249e93f0ac6e8abf08dc0bdf32aa1ec46c72714e64808f12",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF", 43805184LL, 1, 0},
+  {"inkling-2-mini-uncensored-q4k", "Uncensored Q4_K", "AD-Q4_K GGUF", "Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF/resolve/main/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+   "36e99f1f56ca33cb356f19d7e3822938f65af1cde978ad13170238928d4c955f",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF", 16525559776LL, 0, 0},
+  {"inkling-2-mini-uncensored-iq3s", "Uncensored IQ3_S", "AD-IQ3_S GGUF", "Inkling-2-Mini-Uncensored-AD-IQ3_S.gguf",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF/resolve/main/Inkling-2-Mini-Uncensored-AD-IQ3_S.gguf",
+   "23a8e6792481b6f1d0ebad51399e9ee2a2c2be8525b09ed1ae6737811159f892",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF", 13340510176LL, 0, 0},
+  {"inkling-2-mini-uncensored-iq2m", "Uncensored IQ2_M", "AD-IQ2_M GGUF", "Inkling-2-Mini-Uncensored-AD-IQ2_M.gguf",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF/resolve/main/Inkling-2-Mini-Uncensored-AD-IQ2_M.gguf",
+   "fca99d488bff5d401c8bc6b0110c5377c743f0ffb3a6d19c1ae4a3b9071fa2cd",
+   OA_HF "AtomicChat/Inkling-2-Mini-Uncensored-GGUF", 8665091680LL, 0, 0},
+  {"inkling-2-mini-abliterated-mix16g", "Abliterated Mix-16G", "Mix-16G GGUF", "Inkling-2-Mini-abliterated-Mix-16G.gguf",
+   OA_HF "orcarouter/Inkling-2-Mini-abliterated-GGUF/resolve/main/Inkling-2-Mini-abliterated-Mix-16G.gguf",
+   "", OA_HF "orcarouter/Inkling-2-Mini-abliterated-GGUF", 15721831424LL, 0, 1},
+  {"inkling-2-mini-abliterated-mix12g", "Abliterated Mix-12G", "Mix-12G GGUF", "Inkling-2-Mini-abliterated-Mix-12G.gguf",
+   OA_HF "orcarouter/Inkling-2-Mini-abliterated-GGUF/resolve/main/Inkling-2-Mini-abliterated-Mix-12G.gguf",
+   "", OA_HF "orcarouter/Inkling-2-Mini-abliterated-GGUF", 11634058560LL, 0, 1},
+};
+enum { OA_LM_NVARIANTS = (int)(sizeof OA_LM_VARIANTS / sizeof OA_LM_VARIANTS[0]) };
+
 typedef struct {
   OaLocalHw hw;
   int hw_verdict;
   int hw_probed;
   char hw_reason[256];
+  int variant;                    // index into OA_LM_VARIANTS: the one in use
+  int pick;                       // the one highlighted in the chooser
+  int base_ready;                 // the official weights are verified (a LoRA overlay needs them)
+  char models_root[OA_PATH];      // ~/.openagents/models
+  char base_weights[OA_PATH];     // the official weights' path
+  char hf_auth_dir[OA_PATH];      // holds a curl config with the Hugging Face token during a gated download
   char models_dir[OA_PATH];
   char weights_path[OA_PATH];
   char partial_path[OA_PATH];
@@ -98,6 +143,7 @@ typedef struct {
   int btn_reveal;
   int btn_delete;
   int btn_close;
+  int btn_change;
 
   int64_t server_pid;
 } LocalModelCtx;
@@ -194,9 +240,10 @@ static void refresh_chats(DesktopApp *a) {
   cd_current(a->page, a->chat_id);
 }
 
-enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE };
+enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE, OA_DIALOG_LOCAL_PICK };
 static void local_sync(DesktopApp *a);
 static void ask_local_models(DesktopApp *a);
+static int local_running_count(DesktopApp *a);
 
 static void refresh_settings_info(DesktopApp *a) {
   char ck[256] = {0}, ok[256] = {0};
@@ -301,6 +348,90 @@ static void local_find_server_bin(DesktopApp *a) {
   }
 }
 
+// The variant chosen last time (~/.openagents/models/selected-variant holds its id).
+static int local_saved_variant(LocalModelCtx *l) {
+  char path[OA_PATH + 32], id[128] = {0};
+  snprintf(path, sizeof path, "%s/selected-variant", l->models_root);
+  FILE *f = fopen(path, "rb");
+  if (!f) return 0;
+  size_t n = fread(id, 1, sizeof id - 1, f);
+  fclose(f);
+  while (n > 0 && (id[n - 1] == '\n' || id[n - 1] == '\r' || id[n - 1] == ' ')) id[--n] = '\0';
+  for (int i = 0; i < OA_LM_NVARIANTS; i++) if (strcmp(id, OA_LM_VARIANTS[i].id) == 0) return i;
+  return 0;
+}
+
+static void local_save_variant(LocalModelCtx *l) {
+  char path[OA_PATH + 32];
+  oa_mkdir_all(l->models_root);
+  snprintf(path, sizeof path, "%s/selected-variant", l->models_root);
+  FILE *f = fopen(path, "wb");
+  if (!f) return;
+  fprintf(f, "%s\n", OA_LM_VARIANTS[l->variant].id);
+  fclose(f);
+}
+
+// Points the paths, the download and the pinned size and digest at the variant in use.
+static void local_apply_variant(LocalModelCtx *l) {
+  if (l->variant < 0 || l->variant >= OA_LM_NVARIANTS) l->variant = 0;
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
+  snprintf(l->models_dir, sizeof l->models_dir, "%s/%s", l->models_root, v->id);
+  snprintf(l->weights_path, sizeof l->weights_path, "%s/%s", l->models_dir, v->file);
+  snprintf(l->partial_path, sizeof l->partial_path, "%s/%s.part", l->models_dir, v->file);
+  snprintf(l->download_url, sizeof l->download_url, "%s", v->url);
+  snprintf(l->expected_sha, sizeof l->expected_sha, "%s", v->sha);
+  l->expected_bytes = v->bytes;
+  l->manifest_valid = 0;
+  l->base_ready = 0;
+  l->paused = 0;
+  l->auto_verify_key[0] = '\0';
+  l->last_error[0] = '\0';
+}
+
+// The curl config that carries the Hugging Face token must not outlive the download.
+static void local_drop_hf_auth(LocalModelCtx *l) {
+  if (!l->hf_auth_dir[0]) return;
+  char path[OA_PATH + 32];
+  snprintf(path, sizeof path, "%s/.curlrc", l->hf_auth_dir);
+  remove(path);
+  snprintf(path, sizeof path, "%s/_curlrc", l->hf_auth_dir);
+  remove(path);
+}
+
+static void local_env(const char *name, const char *value) {
+#ifdef _WIN32
+  _putenv_s(name, value ? value : "");
+#else
+  if (value) setenv(name, value, 1); else unsetenv(name);
+#endif
+}
+
+// The token from HF_TOKEN or ~/.cache/huggingface/token; 1 when one was found.
+static int local_hf_token(char *out, size_t cap) {
+  out[0] = '\0';
+  const char *env = getenv("HF_TOKEN");
+  if (env && env[0]) { snprintf(out, cap, "%s", env); }
+  else {
+    char hb[OA_PATH] = {0}, path[OA_PATH + 64];
+    const char *home = oa_home(hb, sizeof hb);
+    if (!home || !home[0]) return 0;
+    snprintf(path, sizeof path, "%s/.cache/huggingface/token", home);
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    size_t n = fread(out, 1, cap - 1, f);
+    fclose(f);
+    out[n] = '\0';
+  }
+  size_t n = strlen(out);
+  while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ' || out[n - 1] == '\t')) out[--n] = '\0';
+  // A token is letters, digits, '_' and '-'; anything else must not reach a curl config.
+  for (size_t i = 0; i < n; i++) {
+    char c = out[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) { out[0] = '\0'; return 0; }
+  }
+  return n > 0;
+}
+
 static void local_init(DesktopApp *a) {
   LocalModelCtx *l = &a->local;
   oa_probe_local_hw(&l->hw);
@@ -311,15 +442,20 @@ static void local_init(DesktopApp *a) {
   oa_core_local_hw_reason(l->hw_verdict, vu(l->hw_reason, (int)sizeof l->hw_reason));
   oa_core_local_models_dir(vu(l->models_dir, (int)sizeof l->models_dir));
   oa_core_local_logs_dir(vu(l->logs_dir, (int)sizeof l->logs_dir));
-  oa_core_local_download_url(vu(l->download_url, (int)sizeof l->download_url));
-  oa_core_local_expected_sha(vu(l->expected_sha, (int)sizeof l->expected_sha));
-  l->expected_bytes = oa_core_local_expected_bytes();
-  char wname[128] = {0}, pname[128] = {0};
-  oa_core_local_weights_name(vu(wname, (int)sizeof wname));
-  oa_core_local_partial_name(vu(pname, (int)sizeof pname));
-  if (l->models_dir[0] && wname[0]) snprintf(l->weights_path, sizeof l->weights_path, "%s/%s", l->models_dir, wname);
-  if (l->models_dir[0] && pname[0]) snprintf(l->partial_path, sizeof l->partial_path, "%s/%s", l->models_dir, pname);
+  // models_dir is the official variant's folder; its parent holds one folder per variant.
+  snprintf(l->models_root, sizeof l->models_root, "%s", l->models_dir);
+  char *root_end = strrchr(l->models_root, '/');
+#ifdef _WIN32
+  char *root_end2 = strrchr(l->models_root, '\\');
+  if (root_end2 && (!root_end || root_end2 > root_end)) root_end = root_end2;
+#endif
+  if (root_end) *root_end = '\0';
+  snprintf(l->base_weights, sizeof l->base_weights, "%s/%s", l->models_dir, OA_LM_VARIANTS[0].file);
+  l->variant = local_saved_variant(l);
+  local_apply_variant(l);
   if (l->logs_dir[0]) {
+    snprintf(l->hf_auth_dir, sizeof l->hf_auth_dir, "%s/hf-auth", l->logs_dir);
+    local_drop_hf_auth(l);
     snprintf(l->dl_log_path, sizeof l->dl_log_path, "%s/inkling-download.log", l->logs_dir);
     snprintf(l->srv_log_path, sizeof l->srv_log_path, "%s/psionic-inkling-serve.log", l->logs_dir);
   }
@@ -332,6 +468,7 @@ static void local_init(DesktopApp *a) {
 
 static void local_refresh_disk(DesktopApp *a) {
   LocalModelCtx *l = &a->local;
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
   int64_t wb = 0, wm = 0, pb = 0;
   if (oa_file_stat(l->weights_path, &wb, &wm)) {
     l->weights_bytes = wb;
@@ -345,9 +482,19 @@ static void local_refresh_disk(DesktopApp *a) {
   // Avoid re-entering oa_core file effects while the background SHA-256 thread is running.
   if (!l->verifying) {
     if (l->weights_bytes > 0 && l->weights_mtime > 0 && l->models_dir[0]) {
-      l->manifest_valid = (int)oa_core_local_manifest_valid(cs(l->models_dir), l->weights_bytes, l->weights_mtime);
+      l->manifest_valid = (int)oa_core_local_manifest_valid_for(
+          cs(l->models_dir), l->weights_bytes, l->weights_mtime, cs(v->id), cs(v->file), v->bytes, cs(v->sha));
     } else {
       l->manifest_valid = 0;
+    }
+    l->base_ready = 1;
+    if (v->lora) {
+      const OaLocalVariant *b = &OA_LM_VARIANTS[0];
+      char bdir[OA_PATH + 64];
+      int64_t bb = 0, bm = 0;
+      snprintf(bdir, sizeof bdir, "%s/%s", l->models_root, b->id);
+      l->base_ready = oa_file_stat(l->base_weights, &bb, &bm) &&
+          (int)oa_core_local_manifest_valid_for(cs(bdir), bb, bm, cs(b->id), cs(b->file), b->bytes, cs(b->sha));
     }
   }
 }
@@ -362,7 +509,7 @@ static int local_current_state(DesktopApp *a) {
 
 static int local_is_selectable(DesktopApp *a) {
   LocalModelCtx *l = &a->local;
-  return l->hw_verdict == OA_LM_HW_OK && l->manifest_valid && !l->downloading && !l->verifying;
+  return l->hw_verdict == OA_LM_HW_OK && l->manifest_valid && l->base_ready && !l->downloading && !l->verifying;
 }
 
 static void local_status_summary(DesktopApp *a, char *out, size_t cap) {
@@ -391,16 +538,18 @@ static void local_status_summary(DesktopApp *a, char *out, size_t cap) {
     local_format_bytes(l->partial_bytes, b1, sizeof b1);
     local_format_bytes(l->expected_bytes, b2, sizeof b2);
     snprintf(out, cap, "Paused %d%% · %s / %s · Resume...", pct, b1, b2);
+  } else if (st == OA_LM_STATE_INSTALLED && !l->base_ready) {
+    snprintf(out, cap, "%s needs the Official IQ4_NL weights · Download them first", OA_LM_VARIANTS[l->variant].label);
   } else if (st == OA_LM_STATE_INSTALLED) {
     local_format_bytes(l->weights_bytes, b1, sizeof b1);
-    snprintf(out, cap, "Installed (%s · SHA-256 verified)", b1);
+    snprintf(out, cap, "%s · Installed (%s · SHA-256 verified)", OA_LM_VARIANTS[l->variant].label, b1);
   } else if (st == OA_LM_STATE_ERROR) {
     snprintf(out, cap, "Error: %s", l->last_error);
   } else if (l->weights_bytes == l->expected_bytes && l->expected_bytes > 0) {
     snprintf(out, cap, "Unverified weights on disk · Verify SHA-256");
   } else {
     local_format_bytes(l->expected_bytes, b2, sizeof b2);
-    snprintf(out, cap, "Not downloaded (%s) · Download...", b2);
+    snprintf(out, cap, "%s · Not downloaded (%s) · Download...", OA_LM_VARIANTS[l->variant].label, b2);
   }
 }
 
@@ -421,21 +570,28 @@ static void local_dialog_body(DesktopApp *a, char *out, size_t cap) {
   } else {
     snprintf(gpu_desc, sizeof gpu_desc, "No supported CUDA GPU detected");
   }
-  char sha_short[32] = {0};
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
+  char sha_short[48] = {0};
   if (strlen(l->expected_sha) >= 20) {
     snprintf(sha_short, sizeof sha_short, "%.12s...%s", l->expected_sha, l->expected_sha + strlen(l->expected_sha) - 8);
+  } else {
+    snprintf(sha_short, sizeof sha_short, "recorded after download");
   }
   size_t pos = 0;
   pos += (size_t)snprintf(out + pos, cap - pos,
-      "Inkling 2 Mini — 26.4B total / 3.4B active looped MoE (3 passes)\n"
-      "Format: IQ4_NL GGUF · Size: %s · SHA-256: %s\n"
+      "Inkling 2 Mini (%s) — 26.4B total / 3.4B active looped MoE (3 passes)\n"
+      "Format: %s · Size: %s · SHA-256: %s\n"
       "Host (%s): %s · RAM: %d GB · Free disk: %s\n"
       "Cache: %s · Disk usage: %s\n"
       "Server: 127.0.0.1:%d (--ctx %d --idle-exit-s %d)\n\n",
-      exp_s, sha_short, OA_PLATFORM_NAME, gpu_desc, l->hw.system_ram_gb, avail_s,
+      v->label, v->quant, exp_s, sha_short, OA_PLATFORM_NAME, gpu_desc, l->hw.system_ram_gb, avail_s,
       l->models_dir, used_s, l->port, OA_LM_CTX, OA_LM_IDLE_EXIT_S);
   if (st == OA_LM_STATE_UNSUPPORTED_HW && pos < cap) {
     pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s — %s", state_lbl, l->hw_reason);
+  } else if (st == OA_LM_STATE_INSTALLED && !l->base_ready && pos < cap) {
+    pos += (size_t)snprintf(out + pos, cap - pos,
+        "Status: The overlay is installed, but it runs on the Official IQ4_NL weights, which are not installed. "
+        "Choose Change Model, pick Official IQ4_NL and download it, then come back to this one.");
   } else if (st == OA_LM_STATE_INSTALLED && pos < cap) {
     pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s · Ready for local coding on Psionic (%s).", state_lbl, l->server_bin[0] ? l->server_bin : "psionic-inkling-serve pending");
   } else if (st == OA_LM_STATE_VERIFYING && pos < cap) {
@@ -451,6 +607,10 @@ static void local_dialog_body(DesktopApp *a, char *out, size_t cap) {
     pos += (size_t)snprintf(out + pos, cap - pos, "Status: Unverified checkpoint found on disk. Click Verify SHA-256 to authenticate.");
   } else if (pos < cap) {
     pos += (size_t)snprintf(out + pos, cap - pos, "Status: %s — Ready to download (%s, resumable, SHA-256 verified).", state_lbl, exp_s);
+    if (v->gated && pos < cap) {
+      pos += (size_t)snprintf(out + pos, cap - pos,
+          "\nThis model is gated. Accept its terms at %s, then save a Hugging Face access token in ~/.cache/huggingface/token.", v->repo);
+    }
   }
   if (l->last_error[0] && pos < cap) {
     snprintf(out + pos, cap - pos, "\n\nLast error: %s", l->last_error);
@@ -473,7 +633,8 @@ static void local_verify_thread(void *raw) {
              (long long)fbytes, (long long)l->expected_bytes);
   } else {
     char sha[65] = {0};
-    int ok = (int)oa_core_local_verify_file(cs(path), vu(sha, (int)sizeof sha));
+    const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
+    int ok = (int)oa_core_local_verify_file_for(cs(path), l->expected_bytes, cs(l->expected_sha), vu(sha, (int)sizeof sha));
     snprintf(l->verify_sha, sizeof l->verify_sha, "%s", sha);
     if (ok) {
       int promoted = 1;
@@ -486,7 +647,7 @@ static void local_verify_thread(void *raw) {
         int64_t final_bytes = fbytes, final_mtime = fmtime;
         oa_file_stat(l->weights_path, &final_bytes, &final_mtime);
         int64_t now_s = (int64_t)time(NULL);
-        if (oa_core_local_manifest_write(cs(l->models_dir), final_bytes, cs(sha), final_mtime, now_s)) {
+        if (oa_core_local_manifest_write_for(cs(l->models_dir), cs(v->id), cs(v->file), final_bytes, cs(sha), final_mtime, now_s)) {
           l->verify_ok = 1;
         } else {
           snprintf(l->verify_err, sizeof l->verify_err, "Verified SHA-256, but could not write manifest.json.");
@@ -539,8 +700,9 @@ static void local_start_download(DesktopApp *a) {
   LocalModelCtx *l = &a->local;
   local_refresh_disk(a);
   int64_t avail = oa_avail_disk_bytes(l->models_dir);
-  int verdict = (int)oa_core_local_admit_download(
-      l->hw_verdict, l->manifest_valid, l->downloading || l->verifying, avail, l->partial_bytes);
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
+  int verdict = (int)oa_core_local_admit_download_for(
+      l->hw_verdict, l->manifest_valid, l->downloading || l->verifying, avail, l->partial_bytes, l->expected_bytes);
   if (verdict == OA_LM_DL_UNSUPPORTED_HW) {
     snprintf(l->last_error, sizeof l->last_error, "%s", l->hw_reason[0] ? l->hw_reason : "Hardware unsupported for Inkling 2 Mini.");
     if (a->page) cd_toast(a->page, l->last_error, 1);
@@ -554,9 +716,10 @@ static void local_start_download(DesktopApp *a) {
   }
   if (verdict == OA_LM_DL_BUSY) return;
   if (verdict == OA_LM_DL_LOW_DISK) {
-    char avail_s[32];
+    char avail_s[32], need_s[32];
     local_format_bytes(avail, avail_s, sizeof avail_s);
-    snprintf(l->last_error, sizeof l->last_error, "Insufficient free disk space (%s available; need ~18.2 GB free).", avail_s);
+    local_format_bytes(l->expected_bytes - l->partial_bytes + 536870912LL, need_s, sizeof need_s);
+    snprintf(l->last_error, sizeof l->last_error, "Not enough free disk space (%s available; this download needs %s free).", avail_s, need_s);
     if (a->page) cd_toast(a->page, l->last_error, 1);
     local_sync(a);
     return;
@@ -570,7 +733,39 @@ static void local_start_download(DesktopApp *a) {
   l->bytes_per_sec = 0.0;
   l->last_sample_ms = oa_core_now_ms();
   l->last_sample_bytes = l->partial_bytes;
-  if (!oa_dl_start(&l->dl_proc, l->download_url, l->partial_path, l->dl_log_path)) {
+  // A gated download: curl reads the token from a private config in CURL_HOME, never from its arguments.
+  int with_auth = 0;
+  if (v->gated) {
+    char token[512], rc[OA_PATH + 32];
+    int ok = local_hf_token(token, sizeof token) && l->hf_auth_dir[0];
+    if (ok) {
+      oa_mkdir_all(l->hf_auth_dir);
+#ifdef _WIN32
+      snprintf(rc, sizeof rc, "%s/_curlrc", l->hf_auth_dir);
+#else
+      snprintf(rc, sizeof rc, "%s/.curlrc", l->hf_auth_dir);
+#endif
+      remove(rc);
+      FILE *f = fopen(rc, "wb");
+#ifndef _WIN32
+      if (f && chmod(rc, 0600) != 0) { fclose(f); f = NULL; remove(rc); }
+#endif
+      if (f) { fprintf(f, "header = \"Authorization: Bearer %s\"\n", token); fclose(f); with_auth = 1; }
+    }
+    memset(token, 0, sizeof token);
+    if (!with_auth) {
+      snprintf(l->last_error, sizeof l->last_error,
+               "This model is gated on Hugging Face. Accept its terms at %s, then save an access token in ~/.cache/huggingface/token.", v->repo);
+      if (a->page) cd_toast(a->page, l->last_error, 1);
+      local_sync(a);
+      return;
+    }
+    local_env("CURL_HOME", l->hf_auth_dir);
+  }
+  int started = oa_dl_start(&l->dl_proc, l->download_url, l->partial_path, l->dl_log_path);
+  if (with_auth) local_env("CURL_HOME", NULL);
+  if (!started) {
+    local_drop_hf_auth(l);
     snprintf(l->last_error, sizeof l->last_error, "Could not launch curl to download Inkling 2 Mini.");
     if (a->page) cd_toast(a->page, l->last_error, 1);
     local_sync(a);
@@ -585,6 +780,7 @@ static void local_pause_download(DesktopApp *a) {
   if (!l->downloading) return;
   l->pause_requested = 1;
   oa_dl_stop(&l->dl_proc);
+  local_drop_hf_auth(l);
   l->downloading = 0;
   l->paused = 1;
   l->bytes_per_sec = 0.0;
@@ -597,6 +793,7 @@ static void local_cancel_download(DesktopApp *a) {
   l->pause_requested = 0;
   if (l->downloading) {
     oa_dl_stop(&l->dl_proc);
+    local_drop_hf_auth(l);
     l->downloading = 0;
   }
   remove(l->partial_path);
@@ -656,10 +853,64 @@ static void local_read_log_tail(const char *path, char *out, size_t cap) {
   snprintf(out, cap, "%s", tail);
 }
 
+#ifdef OA_HAVE_HEALTH_TEXT
+// 1 when the server on the port reports the files of the variant in use.
+static int local_server_matches(LocalModelCtx *l) {
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
+  char text[2048], want[320];
+  if (oa_http_health_text(l->port, text, sizeof text) <= 0) return 0;
+  // A server from before /health named its files can only be serving the official weights.
+  if (!strstr(text, "\"model\":\"")) return l->variant == 0;
+  snprintf(want, sizeof want, "\"model\":\"%s\"", v->lora ? OA_LM_VARIANTS[0].file : v->file);
+  if (!strstr(text, want)) return 0;
+  snprintf(want, sizeof want, "\"lora_file\":\"%s\"", v->lora ? v->file : "");
+  return strstr(text, want) != NULL;
+}
+#endif
+
+// Switches to another variant: the server for the old one stops, and the choice is remembered.
+static int local_select_variant(DesktopApp *a, int idx) {
+  LocalModelCtx *l = &a->local;
+  if (idx < 0 || idx >= OA_LM_NVARIANTS) return 0;
+  if (idx == l->variant) return 1;
+  if (l->downloading || l->verifying) {
+    if (a->page) cd_toast(a->page, "Finish or cancel the current download or check before changing the model.", 1);
+    return 0;
+  }
+  if (local_running_count(a) > 0) {
+    if (a->page) cd_toast(a->page, "Stop the active reply before changing the model.", 1);
+    return 0;
+  }
+  local_server_stop(a);
+  l->variant = idx;
+  local_apply_variant(l);
+  local_save_variant(l);
+  local_sync(a);
+  return 1;
+}
+
 static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
   LocalModelCtx *l = &a->local;
   local_refresh_disk(a);
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
   int hp = oa_http_probe_health(l->port);
+#ifdef OA_HAVE_HEALTH_TEXT
+  // A server left running by an earlier choice serves other weights: stop it and start this variant's.
+  if (hp == 1 && !local_server_matches(l)) {
+    if (l->server_pid > 0) local_server_stop(a);
+    else {
+      char owner[160] = {0};
+      const char *pp = (oa_port_conflict(l->port, owner, sizeof owner) && strstr(owner, "psionic")) ? strstr(owner, "PID ") : NULL;
+      int opid = pp ? atoi(pp + 4) : 0;
+      if (opid > 1) oa_server_pid_stop(opid);
+    }
+    for (int i = 0; i < 40 && (hp = oa_http_probe_health(l->port)) != 0; i++) oa_sleep_ms(250);
+    if (hp == 1) {
+      snprintf(err, err_cap, "A local server on port %d is serving a different Inkling 2 Mini variant and could not be stopped.", l->port);
+      return 0;
+    }
+  }
+#endif
   if (hp == 1) return 1;
   if (hp == 2) {
     char who[160] = {0};
@@ -677,6 +928,10 @@ static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
     snprintf(err, err_cap, "%s", l->hw_reason[0] ? l->hw_reason : "Hardware unsupported for local Inkling 2 Mini.");
     return 0;
   }
+  if (l->manifest_valid && !l->base_ready) {
+    snprintf(err, err_cap, "%s runs on the Official IQ4_NL weights, which are not installed. Download them in Settings > Local Models.", v->label);
+    return 0;
+  }
   if (!l->manifest_valid) {
     char sum[256] = {0};
     local_status_summary(a, sum, sizeof sum);
@@ -690,9 +945,12 @@ static int local_ensure_server(DesktopApp *a, char *err, size_t err_cap) {
   }
   if (l->server_pid <= 0 || !oa_server_pid_alive(l->server_pid)) {
     oa_mkdir_all(l->logs_dir);
+    // An overlay is served as the official weights plus INK_LORA, which the server reads at start.
+    local_env("INK_LORA", v->lora ? l->weights_path : NULL);
     int64_t pid = oa_server_spawn_detached(
-        l->server_bin, l->weights_path, "127.0.0.1",
+        l->server_bin, v->lora ? l->base_weights : l->weights_path, "127.0.0.1",
         l->port, OA_LM_CTX, OA_LM_IDLE_EXIT_S, l->srv_log_path);
+    local_env("INK_LORA", NULL);
     if (pid <= 0) {
       snprintf(err, err_cap, "Could not launch %s (see %s).", l->server_bin, l->srv_log_path);
       return 0;
@@ -763,6 +1021,7 @@ static void pump_local(DesktopApp *a) {
   if (l->downloading) {
     int code = 0;
     if (oa_dl_poll(&l->dl_proc, &code)) {
+      local_drop_hf_auth(l);
       l->downloading = 0;
       l->bytes_per_sec = 0.0;
       if (l->cancel_requested) {
@@ -1557,20 +1816,67 @@ static void ask_local_delete(DesktopApp *a) {
   show_dialog(a, OA_DIALOG_LOCAL_DELETE, 1, 1);
 }
 
+// One line per variant for the chooser: what it is and what is on disk.
+static void local_variant_line(LocalModelCtx *l, int i, char *out, size_t cap) {
+  const OaLocalVariant *v = &OA_LM_VARIANTS[i];
+  char dir[OA_PATH + 64], w[OA_PATH + 256], part[OA_PATH + 256], size_s[32], state[96];
+  snprintf(dir, sizeof dir, "%s/%s", l->models_root, v->id);
+  snprintf(w, sizeof w, "%s/%s", dir, v->file);
+  snprintf(part, sizeof part, "%s/%s.part", dir, v->file);
+  int64_t wb = 0, wm = 0, pb = 0;
+  local_format_bytes(v->bytes, size_s, sizeof size_s);
+  if (oa_file_stat(w, &wb, &wm)) {
+    int ok = !l->verifying && (int)oa_core_local_manifest_valid_for(cs(dir), wb, wm, cs(v->id), cs(v->file), v->bytes, cs(v->sha));
+    snprintf(state, sizeof state, "%s", ok ? "installed" : "on disk, not checked yet");
+  } else if (oa_file_stat(part, &pb, NULL) && pb > 0) {
+    snprintf(state, sizeof state, "%d%% downloaded", (int)oa_core_local_download_pct(pb, v->bytes));
+  } else {
+    snprintf(state, sizeof state, "%s", v->gated ? "not downloaded, needs a Hugging Face token" : "not downloaded");
+  }
+  snprintf(out, cap, "%s %s — %s · %s%s", i == l->pick ? ">>" : "    ", v->label, size_s, state, i == l->variant ? " · in use" : "");
+}
+
+static void ask_local_pick(DesktopApp *a) {
+  LocalModelCtx *l = &a->local;
+  if (l->pick < 0 || l->pick >= OA_LM_NVARIANTS) l->pick = l->variant;
+  char body[2048];
+  size_t pos = 0;
+  pos += (size_t)snprintf(body + pos, sizeof body - pos, "Previous and Next move the >> mark. Use This Model switches to the marked one.\n\n");
+  for (int i = 0; i < OA_LM_NVARIANTS && pos < sizeof body; i++) {
+    char line[512];
+    local_variant_line(l, i, line, sizeof line);
+    pos += (size_t)snprintf(body + pos, sizeof body - pos, "%s\n", line);
+  }
+  if (pos < sizeof body) {
+    snprintf(body + pos, sizeof body - pos,
+             "\nUncensored LoRA is a 43.8 MB overlay that runs on the Official IQ4_NL weights. The others are complete weights.");
+  }
+  cd_dialog_begin(a->page, 2, "Choose an Inkling 2 Mini model", body);
+  cd_dialog_button(a->page, "Previous", 1, 1);
+  cd_dialog_button(a->page, "Next", 1, 1);
+  cd_dialog_button(a->page, "Cancel", 1, 0);
+  cd_dialog_button(a->page, "Use This Model", 0, 0);
+  show_dialog(a, OA_DIALOG_LOCAL_PICK, 3, 2);
+}
+
 static void ask_local_models(DesktopApp *a) {
   LocalModelCtx *l = &a->local;
   local_sync(a);
   int st = local_current_state(a);
+  const OaLocalVariant *v = &OA_LM_VARIANTS[l->variant];
   l->dialog_state = st;
-  l->btn_download = l->btn_pause = l->btn_cancel_dl = l->btn_verify = l->btn_reveal = l->btn_delete = l->btn_close = -9;
-  char body[2048];
+  l->btn_download = l->btn_pause = l->btn_cancel_dl = l->btn_verify = l->btn_reveal = l->btn_delete = l->btn_close = l->btn_change = -9;
+  char body[2048], title[160], dl_label[64], size_s[32];
   local_dialog_body(a, body, sizeof body);
-  cd_dialog_begin(a->page, 2, "Local Models — Inkling 2 Mini", body);
+  snprintf(title, sizeof title, "Local Models — Inkling 2 Mini (%s)", v->label);
+  local_format_bytes(l->expected_bytes, size_s, sizeof size_s);
+  snprintf(dl_label, sizeof dl_label, "Download (%s)", size_s);
+  cd_dialog_begin(a->page, 2, title, body);
   int idx = 0, confirm = 0, cancel = 0;
   if (st == OA_LM_STATE_INSTALLED) {
     l->btn_delete = idx++; cd_dialog_button(a->page, "Delete...", 2, 1);
     l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
-    l->btn_verify = idx++; cd_dialog_button(a->page, "Verify SHA-256", 1, 0);
+    l->btn_change = idx++; cd_dialog_button(a->page, "Change Model...", 1, 0);
     l->btn_close = idx++; cd_dialog_button(a->page, "Done", 0, 0);
     confirm = l->btn_close; cancel = l->btn_close;
   } else if (st == OA_LM_STATE_DOWNLOADING) {
@@ -1584,7 +1890,7 @@ static void ask_local_models(DesktopApp *a) {
     confirm = l->btn_close; cancel = l->btn_close;
   } else if (st == OA_LM_STATE_PAUSED) {
     l->btn_cancel_dl = idx++; cd_dialog_button(a->page, "Cancel Download", 2, 1);
-    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
+    l->btn_change = idx++; cd_dialog_button(a->page, "Change Model...", 1, 0);
     l->btn_close = idx++; cd_dialog_button(a->page, "Close", 1, 0);
     l->btn_download = idx++; cd_dialog_button(a->page, "Resume", 0, 0);
     confirm = l->btn_download; cancel = l->btn_close;
@@ -1593,14 +1899,15 @@ static void ask_local_models(DesktopApp *a) {
     confirm = l->btn_close; cancel = l->btn_close;
   } else if (l->weights_bytes == l->expected_bytes && l->expected_bytes > 0) {
     l->btn_delete = idx++; cd_dialog_button(a->page, "Delete...", 2, 1);
-    l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 0);
+    l->btn_change = idx++; cd_dialog_button(a->page, "Change Model...", 1, 0);
     l->btn_close = idx++; cd_dialog_button(a->page, "Cancel", 1, 0);
     l->btn_verify = idx++; cd_dialog_button(a->page, "Verify SHA-256", 0, 0);
     confirm = l->btn_verify; cancel = l->btn_close;
   } else {
     l->btn_reveal = idx++; cd_dialog_button(a->page, "Open Folder", 1, 1);
+    l->btn_change = idx++; cd_dialog_button(a->page, "Change Model...", 1, 0);
     l->btn_close = idx++; cd_dialog_button(a->page, "Cancel", 1, 0);
-    l->btn_download = idx++; cd_dialog_button(a->page, "Download (17.6 GB)", 0, 0);
+    l->btn_download = idx++; cd_dialog_button(a->page, dl_label, 0, 0);
     confirm = l->btn_download; cancel = l->btn_close;
   }
   show_dialog(a, OA_DIALOG_LOCAL, confirm, cancel);
@@ -1719,8 +2026,21 @@ static void pump_dialog(DesktopApp *a) {
         ask_local_models(a);
       } else if (answer == l->btn_delete) {
         ask_local_delete(a);
+      } else if (answer == l->btn_change) {
+        l->pick = l->variant;
+        ask_local_pick(a);
       } else {
         local_sync(a);
+      }
+      break;
+    }
+    case OA_DIALOG_LOCAL_PICK: {
+      LocalModelCtx *l = &a->local;
+      if (answer == 0) { l->pick = (l->pick + OA_LM_NVARIANTS - 1) % OA_LM_NVARIANTS; ask_local_pick(a); }
+      else if (answer == 1) { l->pick = (l->pick + 1) % OA_LM_NVARIANTS; ask_local_pick(a); }
+      else {
+        if (answer == 3) local_select_variant(a, l->pick);
+        ask_local_models(a);
       }
       break;
     }
@@ -2459,7 +2779,12 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     int tid = cd_term_new_tab(a->page, "smoke", tmp);
     int pty_pid = -1;
     int pty_h = cd_pty_spawn(NULL, tmp, 80, 24, &pty_pid);
+#ifdef OA_MINIMAL
+    // The minimal build leaves the terminal pane out (page/v1-stubs.coax): only the PTY is checked.
+    if (tid < 0 || pty_h < 0) {
+#else
     if (tid <= 0 || pty_h < 0) {
+#endif
       fprintf(stderr, "smoke: cd_pty_spawn failed (tid=%d, h=%d)\n", tid, pty_h);
       return 1;
     }
@@ -2540,6 +2865,31 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     int vres = (int)oa_core_local_verify_file(cs(probe_file), vu(got_sha, (int)sizeof got_sha));
     if (vres != 0 || strcmp(got_sha, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") != 0) {
       fprintf(stderr, "smoke: oa_core_local_verify_file SHA-256 mismatch (got=%s, vres=%d)\n", got_sha, vres);
+      return 1;
+    }
+    // Every catalog variant: its manifest admits its own file and no other variant's, and the
+    // variant-aware digest check passes on a pinned match and fails on a wrong size or digest.
+    const char *abc_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    for (int i = 0; i < OA_LM_NVARIANTS; i++) {
+      const OaLocalVariant *v = &OA_LM_VARIANTS[i], *o = &OA_LM_VARIANTS[(i + 1) % OA_LM_NVARIANTS];
+      char vdir[OA_PATH];
+      snprintf(vdir, sizeof vdir, "%s/local-model/%s", tmp, v->id);
+      const char *sha = v->sha[0] ? v->sha : abc_sha;
+      if (!oa_core_local_manifest_write_for(cs(vdir), cs(v->id), cs(v->file), v->bytes, cs(sha), 1763700000, 1763700005) ||
+          !oa_core_local_manifest_valid_for(cs(vdir), v->bytes, 1763700000, cs(v->id), cs(v->file), v->bytes, cs(v->sha)) ||
+          oa_core_local_manifest_valid_for(cs(vdir), v->bytes, 1763700001, cs(v->id), cs(v->file), v->bytes, cs(v->sha)) ||
+          oa_core_local_manifest_valid_for(cs(vdir), v->bytes - 1, 1763700000, cs(v->id), cs(v->file), v->bytes, cs(v->sha)) ||
+          oa_core_local_manifest_valid_for(cs(vdir), v->bytes, 1763700000, cs(o->id), cs(o->file), v->bytes, cs(v->sha))) {
+        fprintf(stderr, "smoke: variant manifest check failed for %s\n", v->id);
+        return 1;
+      }
+    }
+    char for_sha[65] = {0};
+    if (!oa_core_local_verify_file_for(cs(probe_file), 3, cs(abc_sha), vu(for_sha, (int)sizeof for_sha)) || strcmp(for_sha, abc_sha) != 0 ||
+        !oa_core_local_verify_file_for(cs(probe_file), 3, cs(""), vu(for_sha, (int)sizeof for_sha)) ||
+        oa_core_local_verify_file_for(cs(probe_file), 4, cs(abc_sha), vu(for_sha, (int)sizeof for_sha)) ||
+        oa_core_local_verify_file_for(cs(probe_file), 3, cs(OA_LM_VARIANTS[0].sha), vu(for_sha, (int)sizeof for_sha))) {
+      fprintf(stderr, "smoke: variant digest check failed\n");
       return 1;
     }
     if (oa_core_local_admit_remove(1, 0) != OA_LM_RM_ACTIVE_RUNS ||
@@ -2746,6 +3096,35 @@ static int run_flow(DesktopApp *a, const char *shot_out) {
   oa_core_store_lines(vc(a), vu(list, (int)sizeof(list)));
   if (flow_count_lines(list) != 3 || !strstr(list, third)) return flow_fail("shared", "this app's save dropped a chat kept elsewhere");
   flow_ok("shared", "3 chats after a save beside another writer");
+
+  // 8. The Local Models dialogs and a change of Inkling 2 Mini variant, on the real handlers.
+  {
+    LocalModelCtx *l = &a->local;
+    if (!l->hw_probed) local_init(a);
+    if (l->variant != 0) return flow_fail("variants", "a new home did not start on the official weights");
+    ask_local_models(a);
+    if (a->dialog != OA_DIALOG_LOCAL) return flow_fail("variants", "the Local Models dialog did not open");
+    if (l->hw_verdict == OA_LM_HW_OK && l->btn_change < 0) return flow_fail("variants", "the dialog has no Change Model button");
+    l->pick = 1;
+    ask_local_pick(a);
+    if (a->dialog != OA_DIALOG_LOCAL_PICK) return flow_fail("variants", "the chooser did not open");
+    a->dialog = OA_DIALOG_NONE;
+    for (int i = 1; i < OA_LM_NVARIANTS; i++) {
+      const OaLocalVariant *v = &OA_LM_VARIANTS[i];
+      if (!local_select_variant(a, i) || l->variant != i) return flow_fail("variants", "a variant could not be selected");
+      size_t wn = strlen(l->weights_path), fn = strlen(v->file);
+      if (wn < fn || strcmp(l->weights_path + wn - fn, v->file) != 0 || !strstr(l->models_dir, v->id) ||
+          l->expected_bytes != v->bytes || strcmp(l->download_url, v->url) != 0) return flow_fail("variants", "the paths did not follow the variant");
+      if (local_saved_variant(l) != i) return flow_fail("variants", "the choice was not remembered");
+      if (local_is_selectable(a)) return flow_fail("variants", "a variant with no weights on disk was offered for chat");
+      if (v->gated && l->hw_verdict == OA_LM_HW_OK && !getenv("HF_TOKEN")) {
+        local_start_download(a);
+        if (l->downloading || !strstr(l->last_error, "Hugging Face")) return flow_fail("variants", "a gated download started without a token");
+      }
+    }
+    if (!local_select_variant(a, 0) || local_saved_variant(l) != 0) return flow_fail("variants", "could not return to the official weights");
+    flow_ok("variants", "7 variants selected, remembered and gated without a token");
+  }
 
   stop_all_terms(a);
   stop_all_subagents(a);
