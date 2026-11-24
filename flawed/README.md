@@ -8,6 +8,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | :--- | :--- | :--- | :--- | :--- |
 | **Ch 01 — The Atoms** | Layer 0 | `ids.coax` (`#authority`), `state.coax`, `file_cache.coax`, `scheduler.coax` (`#authority`), `core.coax`, `tools/flawed-cli.coax` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 02 — The Tool Contract** | Layer 1 | `tool.coax` (`#authority`), `glob_tool.coax`, `flawed-cli glob` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 03 — Command & Message Contracts** | Layer 1 | `command.coax` (`#authority`), `messages.coax`, `message_wire.coax` (`#authority`), `flawed-cli route` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

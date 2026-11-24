@@ -8,6 +8,9 @@
 #load "scheduler.coax";
 #load "tool.coax";
 #load "glob_tool.coax";
+#load "command.coax";
+#load "messages.coax";
+#load "message_wire.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -50,4 +53,41 @@
   #assert flawed_sched_finish(sched[..], 0, true, 0) && flawed_sched_finish(sched[..], 1, true, 0);
   #assert flawed_sched_dispatch(sched[..]) == 2 && sched[0].serial_active;
   #assert flawed_sched_finish(sched[..], 2, true, 0) && flawed_sched_done(sched[..]);
+}
+
+#test "flawed core (Ch 03): input routing flows into Stage 1 normalization, 4-pass thinking cleanup, and Stage 2 pairing" {
+  reg: [1] FlawedCommandRegistry;
+  auth := FlawedAuthContext.{first_party_base_url = true};
+  #assert flawed_reg_add(reg[..], flawed_cmd_defaults("compact", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_reg_add(reg[..], flawed_cmd_defaults("review", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL));
+  #assert flawed_reg_add(reg[..], flawed_cmd_defaults("model", FLAWED_CMD_LOCAL_JSX, FLAWED_CMD_SRC_BUILTIN));
+
+  r_ok := flawed_route_user_input(reg[..], auth, "/review src/main.coax", FLAWED_INPUT_PROMPT, false, true, true);
+  #assert r_ok.kind == FLAWED_ROUTE_SLASH_PROMPT_INLINE && r_ok.should_query;
+  r_blk := flawed_route_user_input(reg[..], auth, "/model", FLAWED_INPUT_PROMPT, false, true, true);
+  #assert r_blk.kind == FLAWED_ROUTE_BRIDGE_BLOCKED && !r_blk.should_query;
+
+  // Build transcript with compaction boundary, split assistant chunks, trailing thinking trap, and missing tool_result
+  raw: [1] FlawedTranscript;
+  #assert flawed_tx_push(raw[..], flawed_msg_new(FLAWED_ROLE_SYSTEM, FLAWED_SYS_COMPACT_BOUNDARY, "cb", ""));
+  u1: [1] FlawedMessage; u1[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u1", "");
+  #assert flawed_msg_push_block(u1[..], flawed_blk_text("review code"));
+  #assert flawed_tx_push(raw[..], u1[0]);
+  a1: [1] FlawedMessage; a1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a1", "m1");
+  #assert flawed_msg_push_block(a1[..], flawed_blk_tool_use("tu_1", "Glob"));
+  #assert flawed_tx_push(raw[..], a1[0]);
+  a2: [1] FlawedMessage; a2[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a2", "m1");
+  #assert flawed_msg_push_block(a2[..], flawed_blk_thinking("sig", false));
+  #assert flawed_tx_push(raw[..], a2[0]);
+
+  s1: [1] FlawedTranscript;
+  s1_clean: [1] FlawedTranscript;
+  s2: [1] FlawedTranscript;
+  #assert flawed_normalize_messages_for_api(raw[..], s1[..], true) == 2;
+  #assert flawed_clean_assistant_thinking(s1[..], s1_clean[..]) == 2;
+  // Trailing thinking stripped from assistant; Stage 2 injects synthetic error tool_result for dangling tu_1
+  #assert s1_clean[0].msgs[1].block_count == 1 && s1_clean[0].msgs[1].blocks[0].kind == FLAWED_BLK_TOOL_USE;
+  #assert flawed_ensure_tool_result_pairing(s1_clean[..], s2[..], true) == FLAWED_PAIR_STRICT_REJECT;
+  #assert flawed_ensure_tool_result_pairing(s1_clean[..], s2[..], false) == 1;
+  #assert s2[0].count == 3 && s2[0].msgs[2].blocks[0].is_error;
 }

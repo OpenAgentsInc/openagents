@@ -1,0 +1,497 @@
+// Flawed Layer 1 (Chapter 03) — Dual Transcript Projections & Stage 1 API Normalization.
+// Replaces cc/utils/messages.ts (UI 1->N view, compact boundary slicing, attachment bubbling,
+// Stage 1 normalizeMessagesForAPI, user/assistant merging, #21049 reminder smooshing, error sanitization).
+//   coax/bin/coax test flawed/messages.coax --library
+#module "flawed.messages";
+#load "ids.coax";
+
+FLAWED_MSG_MAX :: 24;
+FLAWED_BLOCKS_PER_MSG :: 8;
+FLAWED_BLOCK_ID_MAX :: 32;
+FLAWED_BLOCK_TEXT_MAX :: 96;
+FLAWED_MSG_ID_MAX :: 24;
+FLAWED_MAX_IMAGE_BYTES :: 5242880; // 5 MiB base64 API cap
+
+// Five core transcript variants (cc utils/messages.ts factories).
+FLAWED_ROLE_USER :: 1;
+FLAWED_ROLE_ASSISTANT :: 2;
+FLAWED_ROLE_ATTACHMENT :: 3;
+FLAWED_ROLE_PROGRESS :: 4;
+FLAWED_ROLE_SYSTEM :: 5;
+
+// System message subtypes (only LOCAL_COMMAND promotes to API; others are UI/control-only).
+FLAWED_SYS_NONE :: 0;
+FLAWED_SYS_LOCAL_COMMAND :: 1;
+FLAWED_SYS_COMPACT_BOUNDARY :: 2;
+FLAWED_SYS_MICROCOMPACT_BOUNDARY :: 3;
+FLAWED_SYS_API_ERROR :: 4;
+FLAWED_SYS_TURN_DURATION :: 5;
+FLAWED_SYS_STOP_HOOK_SUMMARY :: 6;
+FLAWED_SYS_INFORMATIONAL :: 7;
+FLAWED_SYS_WARNING :: 8;
+
+// Content block kinds.
+FLAWED_BLK_TEXT :: 1;
+FLAWED_BLK_THINKING :: 2;
+FLAWED_BLK_REDACTED_THINKING :: 3;
+FLAWED_BLK_TOOL_USE :: 4;
+FLAWED_BLK_TOOL_RESULT :: 5;
+FLAWED_BLK_SERVER_TOOL_USE :: 6;
+FLAWED_BLK_SERVER_TOOL_RESULT :: 7;
+FLAWED_BLK_IMAGE :: 8;
+
+FlawedBlock :: struct {
+  kind: u8;
+  is_error: bool;
+  image_bytes: int;
+  id: [FLAWED_BLOCK_ID_MAX] u8; id_n: int;
+  text: [FLAWED_BLOCK_TEXT_MAX] u8; text_n: int;
+}
+
+FlawedMessage :: struct {
+  role: u8;
+  subtype: u8;
+  uuid: [FLAWED_MSG_ID_MAX] u8; uuid_n: int;
+  msg_id: [FLAWED_MSG_ID_MAX] u8; msg_id_n: int;
+  is_meta: bool;
+  is_virtual: bool;
+  is_synthetic_error: bool;
+  is_channel_origin: bool;
+  blocks: [FLAWED_BLOCKS_PER_MSG] FlawedBlock;
+  block_count: int;
+}
+
+FlawedTranscript :: struct {
+  msgs: [FLAWED_MSG_MAX] FlawedMessage;
+  count: int;
+}
+
+flawed_copy_str_into :: (dst: [] u8, cap: int, s: string) -> int #effects(reads, writes, traps) {
+  n := ifx s.count < cap then s.count else cap;
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+flawed_bytes_eq_buf :: (a: [] const u8, an: int, b: [] const u8, bn: int) -> bool #effects(reads, traps) {
+  if an != bn { return false; }
+  for i: 0..<an {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+flawed_bytes_eq_str :: (a: [] const u8, an: int, s: string) -> bool #effects(reads, traps) {
+  if an != s.count { return false; }
+  for i: 0..<an {
+    if a[i] != s[i] { return false; }
+  }
+  return true;
+}
+
+flawed_bytes_has_prefix :: (a: [] const u8, an: int, pfx: string) -> bool #effects(reads, traps) {
+  if an < pfx.count { return false; }
+  for i: 0..<pfx.count {
+    if a[i] != pfx[i] { return false; }
+  }
+  return true;
+}
+
+flawed_blk_text :: (text: string) -> FlawedBlock #effects(reads, writes, traps) {
+  b: FlawedBlock;
+  b.kind = FLAWED_BLK_TEXT;
+  b.text_n = flawed_copy_str_into(b.text[..], FLAWED_BLOCK_TEXT_MAX, text);
+  return b;
+}
+
+flawed_blk_thinking :: (text: string, redacted: bool) -> FlawedBlock #effects(reads, writes, traps) {
+  b: FlawedBlock;
+  b.kind = ifx redacted then cast(u8) FLAWED_BLK_REDACTED_THINKING else cast(u8) FLAWED_BLK_THINKING;
+  b.text_n = flawed_copy_str_into(b.text[..], FLAWED_BLOCK_TEXT_MAX, text);
+  return b;
+}
+
+flawed_blk_tool_use :: (id: string, name: string) -> FlawedBlock #effects(reads, writes, traps) {
+  b: FlawedBlock;
+  b.kind = FLAWED_BLK_TOOL_USE;
+  b.id_n = flawed_copy_str_into(b.id[..], FLAWED_BLOCK_ID_MAX, id);
+  b.text_n = flawed_copy_str_into(b.text[..], FLAWED_BLOCK_TEXT_MAX, name);
+  return b;
+}
+
+flawed_blk_tool_result :: (id: string, text: string, is_error: bool) -> FlawedBlock #effects(reads, writes, traps) {
+  b: FlawedBlock;
+  b.kind = FLAWED_BLK_TOOL_RESULT;
+  b.is_error = is_error;
+  b.id_n = flawed_copy_str_into(b.id[..], FLAWED_BLOCK_ID_MAX, id);
+  b.text_n = flawed_copy_str_into(b.text[..], FLAWED_BLOCK_TEXT_MAX, text);
+  return b;
+}
+
+flawed_blk_server_tool :: (kind: u8, id: string, text: string) -> FlawedBlock #effects(reads, writes, traps) {
+  b: FlawedBlock;
+  b.kind = kind;
+  b.id_n = flawed_copy_str_into(b.id[..], FLAWED_BLOCK_ID_MAX, id);
+  b.text_n = flawed_copy_str_into(b.text[..], FLAWED_BLOCK_TEXT_MAX, text);
+  return b;
+}
+
+flawed_blk_image :: (size_bytes: int) -> FlawedBlock #effects(traps) {
+  b: FlawedBlock;
+  b.kind = FLAWED_BLK_IMAGE;
+  b.image_bytes = size_bytes;
+  return b;
+}
+
+flawed_msg_new :: (role: u8, subtype: u8, uuid: string, msg_id: string) -> FlawedMessage #effects(reads, writes, traps) {
+  m: FlawedMessage;
+  m.role = role;
+  m.subtype = subtype;
+  m.uuid_n = flawed_copy_str_into(m.uuid[..], FLAWED_MSG_ID_MAX, uuid);
+  m.msg_id_n = flawed_copy_str_into(m.msg_id[..], FLAWED_MSG_ID_MAX, msg_id);
+  return m;
+}
+
+flawed_msg_push_block :: (m: [] FlawedMessage, b: FlawedBlock) -> bool #effects(reads, writes, traps) {
+  if m[0].block_count >= FLAWED_BLOCKS_PER_MSG { return false; }
+  m[0].blocks[m[0].block_count] = b;
+  m[0].block_count += 1;
+  return true;
+}
+
+flawed_tx_push :: (tx: [] FlawedTranscript, m: FlawedMessage) -> bool #effects(reads, writes, traps) {
+  if tx[0].count >= FLAWED_MSG_MAX { return false; }
+  tx[0].msgs[tx[0].count] = m;
+  tx[0].count += 1;
+  return true;
+}
+
+// UI view helper: shouldShowUserMessage (utils/messages.ts:4658-4677).
+// Hides is_meta user messages unless origin.kind === 'channel'.
+flawed_ui_should_show_user :: (m: FlawedMessage) -> bool #effects(traps) {
+  if m.role != FLAWED_ROLE_USER { return false; }
+  if !m.is_meta { return true; }
+  return m.is_channel_origin;
+}
+
+// UI view 1->N splitter (normalizeMessages, utils/messages.ts:741-823):
+// Splits multi-block user/assistant messages into single-block rows for stable terminal rendering.
+flawed_ui_split_to_rows :: (src: [] const FlawedTranscript, dst: [] FlawedTranscript) -> int #effects(reads, writes, traps) {
+  dst[0] = FlawedTranscript.{};
+  for i: 0..<src[0].count {
+    m := src[0].msgs[i];
+    if m.block_count <= 1 {
+      _ = flawed_tx_push(dst, m);
+    } else {
+      for b: 0..<m.block_count {
+        row := m;
+        row.blocks[0] = m.blocks[b];
+        row.block_count = 1;
+        _ = flawed_tx_push(dst, row);
+      }
+    }
+  }
+  return dst[0].count;
+}
+
+// Slice strictly after the last SYSTEM/COMPACT_BOUNDARY (utils/messages.ts:4643-4656).
+flawed_get_messages_after_compact_boundary :: (src: [] const FlawedTranscript, dst: [] FlawedTranscript) -> int #effects(reads, writes, traps) {
+  dst[0] = FlawedTranscript.{};
+  start := 0;
+  for i: 0..<src[0].count {
+    if src[0].msgs[i].role == FLAWED_ROLE_SYSTEM && src[0].msgs[i].subtype == FLAWED_SYS_COMPACT_BOUNDARY {
+      start = i + 1;
+    }
+  }
+  for i: start..<src[0].count {
+    _ = flawed_tx_push(dst, src[0].msgs[i]);
+  }
+  return dst[0].count;
+}
+
+flawed_msg_has_tool_result :: (m: FlawedMessage) -> bool #effects(traps) {
+  for i: 0..<m.block_count {
+    if m.blocks[i].kind == FLAWED_BLK_TOOL_RESULT { return true; }
+  }
+  return false;
+}
+
+// Merge two consecutive USER messages (utils/messages.ts:2411-2449):
+// - Hoists all TOOL_RESULT blocks ahead of non-TOOL_RESULT blocks (hoistToolResults)
+// - Preserves non-meta UUID (a.is_meta ? b.uuid : a.uuid)
+// - Narrows is_meta to (a.is_meta && b.is_meta)
+flawed_merge_user_messages :: (a: FlawedMessage, b: FlawedMessage) -> FlawedMessage #effects(reads, traps) {
+  out := a;
+  if a.is_meta && !b.is_meta {
+    out.uuid = b.uuid;
+    out.uuid_n = b.uuid_n;
+  }
+  out.is_meta = a.is_meta && b.is_meta;
+  out.block_count = 0;
+
+  // Pass 1: hoist TOOL_RESULT blocks from a then b
+  for i: 0..<a.block_count {
+    if a.blocks[i].kind == FLAWED_BLK_TOOL_RESULT && out.block_count < FLAWED_BLOCKS_PER_MSG {
+      out.blocks[out.block_count] = a.blocks[i];
+      out.block_count += 1;
+    }
+  }
+  for i: 0..<b.block_count {
+    if b.blocks[i].kind == FLAWED_BLK_TOOL_RESULT && out.block_count < FLAWED_BLOCKS_PER_MSG {
+      out.blocks[out.block_count] = b.blocks[i];
+      out.block_count += 1;
+    }
+  }
+  // Pass 2: append remaining non-TOOL_RESULT blocks from a then b
+  for i: 0..<a.block_count {
+    if a.blocks[i].kind != FLAWED_BLK_TOOL_RESULT && out.block_count < FLAWED_BLOCKS_PER_MSG {
+      out.blocks[out.block_count] = a.blocks[i];
+      out.block_count += 1;
+    }
+  }
+  for i: 0..<b.block_count {
+    if b.blocks[i].kind != FLAWED_BLK_TOOL_RESULT && out.block_count < FLAWED_BLOCKS_PER_MSG {
+      out.blocks[out.block_count] = b.blocks[i];
+      out.block_count += 1;
+    }
+  }
+  return out;
+}
+
+// Merge streaming ASSISTANT chunks sharing the same msg_id (utils/messages.ts:2389-2400).
+flawed_merge_assistant_messages :: (a: FlawedMessage, b: FlawedMessage) -> FlawedMessage #effects(traps) {
+  out := a;
+  for i: 0..<b.block_count {
+    if out.block_count < FLAWED_BLOCKS_PER_MSG {
+      out.blocks[out.block_count] = b.blocks[i];
+      out.block_count += 1;
+    }
+  }
+  return out;
+}
+
+// #21049 smooshing scar (utils/messages.ts:2605-2628):
+// Fold sibling <system-reminder> TEXT blocks into the last preceding TOOL_RESULT block so models
+// do not learn premature 3-token end_turn stops after tool execution.
+flawed_smoosh_reminder_siblings :: (m: FlawedMessage) -> FlawedMessage #effects(reads, traps) {
+  if m.role != FLAWED_ROLE_USER { return m; }
+  last_tr := -1;
+  for i: 0..<m.block_count {
+    if m.blocks[i].kind == FLAWED_BLK_TOOL_RESULT { last_tr = i; }
+  }
+  if last_tr < 0 { return m; }
+
+  out := m;
+  out.block_count = 0;
+  for i: 0..<m.block_count {
+    b := m.blocks[i];
+    if i > last_tr && b.kind == FLAWED_BLK_TEXT && flawed_bytes_has_prefix(b.text[..], b.text_n, "<system-reminder>") {
+      // Append "\n" + reminder text into out.blocks[last_tr]
+      if out.blocks[last_tr].text_n < FLAWED_BLOCK_TEXT_MAX {
+        out.blocks[last_tr].text[out.blocks[last_tr].text_n] = 10;
+        out.blocks[last_tr].text_n += 1;
+      }
+      for k: 0..<b.text_n {
+        if out.blocks[last_tr].text_n < FLAWED_BLOCK_TEXT_MAX {
+          out.blocks[last_tr].text[out.blocks[last_tr].text_n] = b.text[k];
+          out.blocks[last_tr].text_n += 1;
+        }
+      }
+    } else {
+      out.blocks[out.block_count] = b;
+      out.block_count += 1;
+    }
+  }
+  return out;
+}
+
+// Stage 1 API normalization (utils/messages.ts:1989-2370):
+// Model-agnostic normalization returning internal (USER | ASSISTANT) messages with uuid/is_meta/msg_id intact.
+flawed_normalize_messages_for_api :: (src: [] const FlawedTranscript, dst: [] FlawedTranscript, smoosh_reminders: bool) -> int #effects(reads, writes, traps) {
+  // 1. Slice strictly after last COMPACT_BOUNDARY
+  sliced: [1] FlawedTranscript;
+  _ = flawed_get_messages_after_compact_boundary(src, sliced[..]);
+
+  // 2. Drop is_virtual records and bubble ATTACHMENT messages upward past non-assistant / non-tool_result user messages
+  reordered: [1] FlawedTranscript;
+  for i: 0..<sliced[0].count {
+    m := sliced[0].msgs[i];
+    if m.is_virtual { continue; }
+    if m.role == FLAWED_ROLE_ATTACHMENT {
+      // Bubble upward while preceding slot is a plain USER without tool_result or another non-blocking record
+      pos := reordered[0].count;
+      if pos < FLAWED_MSG_MAX {
+        while pos > 0 {
+          prev := reordered[0].msgs[pos - 1];
+          if prev.role == FLAWED_ROLE_ASSISTANT { break; }
+          if prev.role == FLAWED_ROLE_USER && flawed_msg_has_tool_result(prev) { break; }
+          if prev.role == FLAWED_ROLE_ATTACHMENT { break; }
+          reordered[0].msgs[pos] = prev;
+          pos -= 1;
+        }
+        reordered[0].msgs[pos] = m;
+        reordered[0].count += 1;
+      }
+    } else {
+      _ = flawed_tx_push(reordered[..], m);
+    }
+  }
+
+  // 3. Filter progress, 13/14 system subtypes, and synthetic API errors; promote local_command & attachment;
+  //    merge consecutive users and split streaming assistants sharing msg_id.
+  dst[0] = FlawedTranscript.{};
+  for i: 0..<reordered[0].count {
+    m := reordered[0].msgs[i];
+    if m.role == FLAWED_ROLE_PROGRESS || m.is_synthetic_error { continue; }
+    if m.role == FLAWED_ROLE_SYSTEM && m.subtype != FLAWED_SYS_LOCAL_COMMAND { continue; }
+
+    // Promote SYSTEM/LOCAL_COMMAND -> USER, ATTACHMENT -> is_meta USER
+    if m.role == FLAWED_ROLE_SYSTEM {
+      m.role = FLAWED_ROLE_USER;
+      m.subtype = FLAWED_SYS_NONE;
+    } else if m.role == FLAWED_ROLE_ATTACHMENT {
+      m.role = FLAWED_ROLE_USER;
+      m.is_meta = true;
+    }
+
+    // Drop oversized (> 5 MiB) image blocks (validateImagesForAPI) & strip image blocks next to error tool_results
+    clean := m;
+    clean.block_count = 0;
+    for bi: 0..<m.block_count {
+      blk := m.blocks[bi];
+      if blk.kind == FLAWED_BLK_IMAGE && blk.image_bytes > FLAWED_MAX_IMAGE_BYTES { continue; }
+      if blk.kind == FLAWED_BLK_TOOL_RESULT && blk.is_error && blk.text_n == 0 {
+        blk.text_n = flawed_copy_str_into(blk.text[..], FLAWED_BLOCK_TEXT_MAX, "[error]");
+      }
+      clean.blocks[clean.block_count] = blk;
+      clean.block_count += 1;
+    }
+
+    if clean.role == FLAWED_ROLE_USER {
+      if dst[0].count > 0 && dst[0].msgs[dst[0].count - 1].role == FLAWED_ROLE_USER {
+        dst[0].msgs[dst[0].count - 1] = flawed_merge_user_messages(dst[0].msgs[dst[0].count - 1], clean);
+      } else {
+        _ = flawed_tx_push(dst, clean);
+      }
+    } else if clean.role == FLAWED_ROLE_ASSISTANT {
+      // Walk backward to merge split streaming chunks sharing non-empty msg_id
+      merged := false;
+      if clean.msg_id_n > 0 {
+        j := dst[0].count - 1;
+        while j >= 0 {
+          if dst[0].msgs[j].role == FLAWED_ROLE_ASSISTANT &&
+             flawed_bytes_eq_buf(dst[0].msgs[j].msg_id[..], dst[0].msgs[j].msg_id_n, clean.msg_id[..], clean.msg_id_n) {
+            dst[0].msgs[j] = flawed_merge_assistant_messages(dst[0].msgs[j], clean);
+            merged = true;
+            break;
+          }
+          j -= 1;
+        }
+      }
+      if !merged {
+        _ = flawed_tx_push(dst, clean);
+      }
+    }
+  }
+
+  // 4. Optional #21049 reminder smooshing
+  if smoosh_reminders {
+    for i: 0..<dst[0].count {
+      if dst[0].msgs[i].role == FLAWED_ROLE_USER {
+        dst[0].msgs[i] = flawed_smoosh_reminder_siblings(dst[0].msgs[i]);
+      }
+    }
+  }
+
+  return dst[0].count;
+}
+
+#test "messages: dual UI/API views, compact boundary slicing, filtering, merging, and #21049 smooshing" {
+  tx: [1] FlawedTranscript;
+
+  // Pre-compaction turn (must vanish after COMPACT_BOUNDARY)
+  old_u: [1] FlawedMessage;
+  old_u[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u0", "");
+  #assert flawed_msg_push_block(old_u[..], flawed_blk_text("old prompt"));
+  #assert flawed_tx_push(tx[..], old_u[0]);
+
+  cb := flawed_msg_new(FLAWED_ROLE_SYSTEM, FLAWED_SYS_COMPACT_BOUNDARY, "cb1", "");
+  #assert flawed_tx_push(tx[..], cb);
+
+  // Post-compaction: virtual (drop), progress (drop), api_error system (drop), local_command (promote)
+  virt := flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "v1", "");
+  virt.is_virtual = true;
+  #assert flawed_tx_push(tx[..], virt);
+
+  prog := flawed_msg_new(FLAWED_ROLE_PROGRESS, FLAWED_SYS_NONE, "p1", "");
+  #assert flawed_tx_push(tx[..], prog);
+
+  syse := flawed_msg_new(FLAWED_ROLE_SYSTEM, FLAWED_SYS_API_ERROR, "se1", "");
+  #assert flawed_tx_push(tx[..], syse);
+
+  loc: [1] FlawedMessage;
+  loc[0] = flawed_msg_new(FLAWED_ROLE_SYSTEM, FLAWED_SYS_LOCAL_COMMAND, "lc1", "");
+  #assert flawed_msg_push_block(loc[..], flawed_blk_text("/files output"));
+  #assert flawed_tx_push(tx[..], loc[0]);
+
+  // Meta user followed by real user (must merge, keep real uuid "u_real", narrow is_meta=false)
+  u_meta: [1] FlawedMessage;
+  u_meta[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u_meta", "");
+  u_meta[0].is_meta = true;
+  #assert flawed_msg_push_block(u_meta[..], flawed_blk_text("ctx"));
+  #assert !flawed_ui_should_show_user(u_meta[0]);
+  u_chan := u_meta[0];
+  u_chan.is_channel_origin = true;
+  #assert flawed_ui_should_show_user(u_chan);
+  #assert flawed_tx_push(tx[..], u_meta[0]);
+
+  u_real: [1] FlawedMessage;
+  u_real[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u_real", "");
+  #assert flawed_msg_push_block(u_real[..], flawed_blk_text("please run"));
+  #assert flawed_msg_push_block(u_real[..], flawed_blk_image(FLAWED_MAX_IMAGE_BYTES + 1)); // dropped (>5MiB)
+  #assert flawed_ui_should_show_user(u_real[0]);
+  #assert flawed_tx_push(tx[..], u_real[0]);
+
+  // Split streaming assistant chunks sharing msg_id "m1" across an interleaved synthetic error
+  a1: [1] FlawedMessage;
+  a1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a1", "m1");
+  #assert flawed_msg_push_block(a1[..], flawed_blk_text("calling tool"));
+  #assert flawed_tx_push(tx[..], a1[0]);
+
+  syn := flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "syn", "");
+  syn.is_synthetic_error = true;
+  #assert flawed_tx_push(tx[..], syn);
+
+  a2: [1] FlawedMessage;
+  a2[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a2", "m1");
+  #assert flawed_msg_push_block(a2[..], flawed_blk_tool_use("tu_1", "Read"));
+  #assert flawed_tx_push(tx[..], a2[0]);
+
+  // Tool result + trailing attachment + reminder text -> tool_result hoisted first, reminder smooshed
+  u_text: [1] FlawedMessage;
+  u_text[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u_t", "");
+  #assert flawed_msg_push_block(u_text[..], flawed_blk_text("<system-reminder>stay concise</system-reminder>"));
+  #assert flawed_tx_push(tx[..], u_text[0]);
+
+  u_tr: [1] FlawedMessage;
+  u_tr[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u_tr", "");
+  #assert flawed_msg_push_block(u_tr[..], flawed_blk_tool_result("tu_1", "ok", false));
+  #assert flawed_tx_push(tx[..], u_tr[0]);
+
+  // UI 1->N split preserves every block on its own row
+  ui_rows: [1] FlawedTranscript;
+  #assert flawed_ui_split_to_rows(tx[..], ui_rows[..]) == tx[0].count + 1; // u_real had 2 blocks
+
+  // Stage 1 API normalization
+  api: [1] FlawedTranscript;
+  n := flawed_normalize_messages_for_api(tx[..], api[..], true);
+  #assert n == 3;
+  // Turn 0: merged [local_command, u_meta, u_real] with oversized image dropped
+  #assert api[0].msgs[0].role == FLAWED_ROLE_USER && !api[0].msgs[0].is_meta && api[0].msgs[0].block_count == 3;
+  // Turn 1: merged split assistant chunks "m1" -> [text, tool_use]
+  #assert api[0].msgs[1].role == FLAWED_ROLE_ASSISTANT && api[0].msgs[1].block_count == 2;
+  #assert api[0].msgs[1].blocks[0].kind == FLAWED_BLK_TEXT && api[0].msgs[1].blocks[1].kind == FLAWED_BLK_TOOL_USE;
+  // Turn 2: tool_result hoisted to index 0, <system-reminder> smooshed into tool_result text
+  #assert api[0].msgs[2].role == FLAWED_ROLE_USER && api[0].msgs[2].block_count == 1;
+  #assert api[0].msgs[2].blocks[0].kind == FLAWED_BLK_TOOL_RESULT;
+  #assert flawed_bytes_has_prefix(api[0].msgs[2].blocks[0].text[..], api[0].msgs[2].blocks[0].text_n, "ok\n<system-reminder>");
+}

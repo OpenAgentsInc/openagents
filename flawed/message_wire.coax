@@ -1,0 +1,598 @@
+// Flawed Layer 1 (Chapter 03) — Wire-Safety Invariants: Thinking Passes & Tool Pairing.
+// Replaces cc/utils/messages.ts (4-pass non-commutable thinking cleanup, stripSignatureBlocks,
+// and Stage 2 bidirectional ensureToolResultPairing with strict inc-4977 mode).
+//   coax/bin/coax test flawed/message_wire.coax --library
+//   coax/bin/coax mutate flawed/message_wire.coax --root-only
+#module "flawed.message_wire";
+#authority;
+#load "messages.coax";
+
+FLAWED_PAIR_STRICT_REJECT :: -1; // inc-4977: refuse to inject synthetic placeholders in strict HFI mode
+FLAWED_SEEN_IDS_MAX :: 64;
+
+flawed_is_thinking_kind :: (k: u8) -> bool #effects(traps) {
+  return k == FLAWED_BLK_THINKING || k == FLAWED_BLK_REDACTED_THINKING;
+}
+
+flawed_blk_is_whitespace_text :: (b: FlawedBlock) -> bool #effects(reads, traps) {
+  if b.kind != FLAWED_BLK_TEXT { return false; }
+  for i: 0..<b.text_n {
+    c := b.text[i];
+    if c != 32 && c != 9 && c != 10 && c != 13 { return false; }
+  }
+  return true;
+}
+
+flawed_msg_is_thinking_only :: (m: FlawedMessage) -> bool #effects(traps) {
+  if m.block_count == 0 { return false; }
+  for i: 0..<m.block_count {
+    if !flawed_is_thinking_kind(m.blocks[i].kind) { return false; }
+  }
+  return true;
+}
+
+flawed_msg_is_whitespace_only :: (m: FlawedMessage) -> bool #effects(reads, traps) {
+  if m.block_count == 0 { return false; }
+  for i: 0..<m.block_count {
+    if !flawed_blk_is_whitespace_text(m.blocks[i]) { return false; }
+  }
+  return true;
+}
+
+// Strict 4-pass non-commutable thinking cleanup (utils/messages.ts:2307-2325):
+// Pass 1: filterOrphanedThinkingOnlyMessages (drops thinking-only shards with no non-thinking sibling)
+// Pass 2: filterTrailingThinkingFromLastAssistant (strips trailing thinking from final assistant; "[No message content]" fallback)
+// Pass 3: filterWhitespaceOnlyAssistantMessages (drops whitespace-only assistants & re-merges newly adjacent users)
+// Pass 4: ensureNonEmptyAssistantContent (patches non-final empty assistants to "(no content)"; final empty legal for prefill)
+flawed_clean_assistant_thinking :: (src: [] const FlawedTranscript, dst: [] FlawedTranscript) -> int #effects(reads, writes, traps) {
+  // Pass 1: drop orphaned thinking-only assistants
+  p1: [1] FlawedTranscript;
+  for i: 0..<src[0].count {
+    m := src[0].msgs[i];
+    if m.role == FLAWED_ROLE_ASSISTANT && flawed_msg_is_thinking_only(m) {
+      has_sibling := false;
+      if m.msg_id_n > 0 {
+        for j: 0..<src[0].count {
+          if j == i { continue; }
+          o := src[0].msgs[j];
+          if o.role == FLAWED_ROLE_ASSISTANT &&
+             flawed_bytes_eq_buf(o.msg_id[..], o.msg_id_n, m.msg_id[..], m.msg_id_n) &&
+             !flawed_msg_is_thinking_only(o) {
+            has_sibling = true;
+            break;
+          }
+        }
+      }
+      if !has_sibling { continue; }
+    }
+    _ = flawed_tx_push(p1[..], m);
+  }
+
+  // Pass 2: strip trailing thinking from final message if it is a non-empty assistant
+  if p1[0].count > 0 {
+    last := p1[0].count - 1;
+    if p1[0].msgs[last].role == FLAWED_ROLE_ASSISTANT && p1[0].msgs[last].block_count > 0 {
+      while p1[0].msgs[last].block_count > 0 &&
+            flawed_is_thinking_kind(p1[0].msgs[last].blocks[p1[0].msgs[last].block_count - 1].kind) {
+        p1[0].msgs[last].block_count -= 1;
+      }
+      if p1[0].msgs[last].block_count == 0 {
+        p1[0].msgs[last].blocks[0] = flawed_blk_text("[No message content]");
+        p1[0].msgs[last].block_count = 1;
+      }
+    }
+  }
+
+  // Pass 3: drop whitespace-only assistants (catching [text("\n\n")] exposed by Pass 2) & re-merge adjacent users
+  dst[0] = FlawedTranscript.{};
+  for i: 0..<p1[0].count {
+    m := p1[0].msgs[i];
+    if m.role == FLAWED_ROLE_ASSISTANT && flawed_msg_is_whitespace_only(m) { continue; }
+    if m.role == FLAWED_ROLE_USER && dst[0].count > 0 && dst[0].msgs[dst[0].count - 1].role == FLAWED_ROLE_USER {
+      dst[0].msgs[dst[0].count - 1] = flawed_merge_user_messages(dst[0].msgs[dst[0].count - 1], m);
+    } else {
+      _ = flawed_tx_push(dst, m);
+    }
+  }
+
+  // Pass 4: ensure non-final assistants are non-empty ("(no content)"); final empty assistant remains valid prefill
+  if dst[0].count > 1 { // mutant: equivalent // when count == 1 loop range 0..<0 executes 0 times
+    for i: 0..<dst[0].count - 1 {
+      if dst[0].msgs[i].role == FLAWED_ROLE_ASSISTANT && dst[0].msgs[i].block_count == 0 {
+        dst[0].msgs[i].blocks[0] = flawed_blk_text("(no content)");
+        dst[0].msgs[i].block_count = 1;
+      }
+    }
+  }
+  return dst[0].count;
+}
+
+// Credential/model switch sanitizer (/login, fallback retry): strips thinking & redacted_thinking blocks
+// (utils/messages.ts:5066-5099).
+flawed_strip_signature_blocks :: (tx: [] FlawedTranscript) -> int #effects(reads, writes, traps) {
+  removed := 0;
+  for i: 0..<tx[0].count {
+    if tx[0].msgs[i].role != FLAWED_ROLE_ASSISTANT { continue; }
+    w := 0;
+    for b: 0..<tx[0].msgs[i].block_count {
+      if flawed_is_thinking_kind(tx[0].msgs[i].blocks[b].kind) {
+        removed += 1;
+      } else {
+        tx[0].msgs[i].blocks[w] = tx[0].msgs[i].blocks[b];
+        w += 1;
+      }
+    }
+    tx[0].msgs[i].block_count = w;
+  }
+  return removed;
+}
+
+FlawedIdSet :: struct {
+  ids: [FLAWED_SEEN_IDS_MAX][FLAWED_BLOCK_ID_MAX] u8;
+  lens: [FLAWED_SEEN_IDS_MAX] int;
+  count: int;
+}
+
+flawed_idset_has :: (s: [] const FlawedIdSet, id: [] const u8, id_n: int) -> bool #effects(reads, traps) {
+  for i: 0..<s[0].count {
+    if flawed_bytes_eq_buf(s[0].ids[i][..], s[0].lens[i], id, id_n) { return true; }
+  }
+  return false;
+}
+
+flawed_idset_add :: (s: [] FlawedIdSet, id: [] const u8, id_n: int) -> bool #effects(reads, writes, traps) {
+  if flawed_idset_has(s, id, id_n) { return false; }
+  if s[0].count >= FLAWED_SEEN_IDS_MAX { return false; }
+  idx := s[0].count;
+  for i: 0..<id_n { s[0].ids[idx][i] = id[i]; }
+  s[0].lens[idx] = id_n;
+  s[0].count += 1;
+  return true;
+}
+
+// Stage 2 bidirectional tool_use / tool_result wire invariant enforcer (utils/messages.ts:5133-5460):
+// 1. No leading tool_result on USER without preceding ASSISTANT
+// 2. Global cross-message tool_use_id deduplication (CC-1212)
+// 3. Same-message SERVER_TOOL_USE / SERVER_TOOL_RESULT pairing
+// 4. Non-empty assistant fallback ("[Tool use interrupted]")
+// 5. Bidirectional forward synthetic error injection & reverse orphan/duplicate tool_result stripping + role alternation
+// 6. Strict mode (inc-4977): returns FLAWED_PAIR_STRICT_REJECT (-1) if any repair would be needed
+flawed_ensure_tool_result_pairing :: (src: [] const FlawedTranscript, dst: [] FlawedTranscript, strict_mode: bool) -> int #effects(reads, writes, traps) {
+  dst[0] = FlawedTranscript.{};
+  seen_tu: [1] FlawedIdSet;
+  repairs := 0;
+  i := 0;
+  while i < src[0].count {
+    m := src[0].msgs[i];
+
+    // Invariant 1: USER not immediately paired after an ASSISTANT cannot carry tool_result blocks
+    if m.role == FLAWED_ROLE_USER {
+      clean: [1] FlawedMessage;
+      clean[0] = m;
+      clean[0].block_count = 0;
+      stripped := false;
+      for b: 0..<m.block_count {
+        if m.blocks[b].kind == FLAWED_BLK_TOOL_RESULT {
+          stripped = true;
+          repairs += 1;
+        } else {
+          _ = flawed_msg_push_block(clean[..], m.blocks[b]);
+        }
+      }
+      if stripped && clean[0].block_count == 0 && dst[0].count == 0 {
+        _ = flawed_msg_push_block(clean[..], flawed_blk_text("[Orphaned tool result removed due to conversation resume]"));
+      }
+      if clean[0].block_count > 0 {
+        _ = flawed_tx_push(dst, clean[0]);
+      }
+      i += 1;
+      continue;
+    }
+
+    // ASSISTANT message: enforce Invariants 2, 3, 4
+    if m.role == FLAWED_ROLE_ASSISTANT {
+      // Collect same-message SERVER_TOOL_RESULT IDs for Invariant 3
+      srv_res: [1] FlawedIdSet;
+      for b: 0..<m.block_count {
+        if m.blocks[b].kind == FLAWED_BLK_SERVER_TOOL_RESULT {
+          _ = flawed_idset_add(srv_res[..], m.blocks[b].id[..], m.blocks[b].id_n);
+        }
+      }
+
+      clean_a: [1] FlawedMessage;
+      clean_a[0] = m;
+      clean_a[0].block_count = 0;
+      tu_ids: [1] FlawedIdSet;
+      for b: 0..<m.block_count {
+        blk := m.blocks[b];
+        if blk.kind == FLAWED_BLK_TOOL_USE {
+          if !flawed_idset_add(seen_tu[..], blk.id[..], blk.id_n) {
+            repairs += 1;
+            continue; // CC-1212 duplicate tool_use_id across turns
+          }
+          _ = flawed_idset_add(tu_ids[..], blk.id[..], blk.id_n);
+        } else if blk.kind == FLAWED_BLK_SERVER_TOOL_USE {
+          if !flawed_idset_has(srv_res[..], blk.id[..], blk.id_n) {
+            repairs += 1;
+            continue;
+          }
+        }
+        _ = flawed_msg_push_block(clean_a[..], blk);
+      }
+      if m.block_count > 0 && clean_a[0].block_count == 0 {
+        _ = flawed_msg_push_block(clean_a[..], flawed_blk_text("[Tool use interrupted]"));
+      }
+      _ = flawed_tx_push(dst, clean_a[0]);
+
+      // Invariant 5: Bidirectional pairing against immediately following USER (if any)
+      has_next_user := (i + 1 < src[0].count) && (src[0].msgs[i + 1].role == FLAWED_ROLE_USER);
+      if has_next_user {
+        nxt := src[0].msgs[i + 1];
+        kept_tr: [1] FlawedIdSet;
+        repaired_u: [1] FlawedMessage;
+
+        // Pass A: keep only valid, non-duplicate tool_results matching tu_ids
+        for b: 0..<nxt.block_count {
+          blk := nxt.blocks[b];
+          if blk.kind == FLAWED_BLK_TOOL_RESULT {
+            if !flawed_idset_has(tu_ids[..], blk.id[..], blk.id_n) ||
+               !flawed_idset_add(kept_tr[..], blk.id[..], blk.id_n) {
+              repairs += 1; // orphan or duplicate tool_result
+              continue;
+            }
+            _ = flawed_msg_push_block(repaired_u[..], blk);
+          }
+        }
+
+        // Pass B: synthesize missing tool_results (forward direction) ahead of kept tool_results & other blocks
+        synth_u: [1] FlawedMessage;
+        synth_u[0] = nxt;
+        synth_u[0].block_count = 0;
+        for t: 0..<tu_ids[0].count {
+          if !flawed_idset_has(kept_tr[..], tu_ids[0].ids[t][..], tu_ids[0].lens[t]) {
+            repairs += 1;
+            sb := flawed_blk_tool_result("", "[Tool result missing due to internal error]", true);
+            for k: 0..<tu_ids[0].lens[t] { sb.id[k] = tu_ids[0].ids[t][k]; }
+            sb.id_n = tu_ids[0].lens[t];
+            _ = flawed_msg_push_block(synth_u[..], sb);
+          }
+        }
+        for b: 0..<repaired_u[0].block_count {
+          _ = flawed_msg_push_block(synth_u[..], repaired_u[0].blocks[b]);
+        }
+        for b: 0..<nxt.block_count {
+          if nxt.blocks[b].kind != FLAWED_BLK_TOOL_RESULT {
+            _ = flawed_msg_push_block(synth_u[..], nxt.blocks[b]);
+          }
+        }
+
+        // Role alternation preservation: if stripping emptied next USER, keep "(no content)" is_meta user
+        if synth_u[0].block_count == 0 {
+          synth_u[0].is_meta = true;
+          _ = flawed_msg_push_block(synth_u[..], flawed_blk_text("(no content)"));
+        }
+        _ = flawed_tx_push(dst, synth_u[0]);
+        i += 2;
+        continue;
+      }
+
+      // No following USER, yet assistant emitted tool_use blocks -> inject synthetic USER with error tool_results
+      if tu_ids[0].count > 0 {
+        synth_u: [1] FlawedMessage;
+        synth_u[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "", "");
+        synth_u[0].is_meta = true;
+        for t: 0..<tu_ids[0].count {
+          repairs += 1;
+          sb := flawed_blk_tool_result("", "[Tool result missing due to internal error]", true);
+          for k: 0..<tu_ids[0].lens[t] { sb.id[k] = tu_ids[0].ids[t][k]; }
+          sb.id_n = tu_ids[0].lens[t];
+          _ = flawed_msg_push_block(synth_u[..], sb);
+        }
+        _ = flawed_tx_push(dst, synth_u[0]);
+      }
+      i += 1;
+      continue;
+    }
+
+    _ = flawed_tx_push(dst, m);
+    i += 1;
+  }
+
+  // Invariant 6: HFI strict mode (inc-4977) refuses silent repairs
+  if strict_mode && repairs > 0 { return FLAWED_PAIR_STRICT_REJECT; }
+  return repairs;
+}
+
+#test "wire: strict 4-pass thinking cleanup catches [text(\"\\n\\n\"), thinking] trap and preserves final prefill" {
+  // Empty transcript + dirty dst reset check
+  empty_tx: [1] FlawedTranscript;
+  out_e: [1] FlawedTranscript;
+  out_e[0].count = 3;
+  #assert flawed_clean_assistant_thinking(empty_tx[..], out_e[..]) == 0;
+
+  // Single-message assistant ending in thinking (count == 1) -> "[No message content]"
+  single: [1] FlawedTranscript;
+  st1: [1] FlawedMessage;
+  st1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "st1", "x");
+  #assert flawed_msg_push_block(st1[..], flawed_blk_text("ok"));
+  #assert flawed_msg_push_block(st1[..], flawed_blk_thinking("sig", false));
+  #assert flawed_tx_push(single[..], st1[0]);
+  out_s: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(single[..], out_s[..]) == 1 && out_s[0].msgs[0].block_count == 1;
+  #assert flawed_bytes_eq_str(out_s[0].msgs[0].blocks[0].text[..], out_s[0].msgs[0].blocks[0].text_n, "ok");
+
+  // Main multi-pass scenario:
+  // [empty_asst_0, u1, a_ws, u2, a_orph_empty_id, a_orph_id, a_tool, a_trap([text("\n\n"), redacted_thinking])]
+  tx: [1] FlawedTranscript;
+
+  // Non-final empty assistant at index 0 -> patched to "(no content)" in Pass 4
+  a_empty := flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "ae", "m_e");
+  #assert flawed_tx_push(tx[..], a_empty);
+
+  // User 1 + whitespace-only assistant + User 2 (Pass 3 drops a_ws and merges u1+u2 at dst count==1!)
+  u1: [1] FlawedMessage;
+  u1[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u1", "");
+  #assert flawed_msg_push_block(u1[..], flawed_blk_text("hi"));
+  #assert flawed_tx_push(tx[..], u1[0]);
+
+  a_ws: [1] FlawedMessage;
+  a_ws[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "aws", "m_ws");
+  #assert flawed_msg_push_block(a_ws[..], flawed_blk_text(" \t\r\n"));
+  #assert flawed_tx_push(tx[..], a_ws[0]);
+
+  u2: [1] FlawedMessage;
+  u2[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u2", "");
+  #assert flawed_msg_push_block(u2[..], flawed_blk_text("next"));
+  #assert flawed_tx_push(tx[..], u2[0]);
+
+  // Two orphaned thinking-only assistants: one with empty msg_id (must NOT match another empty msg_id!)
+  a_no_id: [1] FlawedMessage;
+  a_no_id[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "an", "");
+  #assert flawed_msg_push_block(a_no_id[..], flawed_blk_thinking("solo", false));
+  #assert flawed_tx_push(tx[..], a_no_id[0]);
+
+  a_other_empty_id: [1] FlawedMessage;
+  a_other_empty_id[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "ao2", "");
+  #assert flawed_msg_push_block(a_other_empty_id[..], flawed_blk_text("x"));
+  #assert flawed_tx_push(tx[..], a_other_empty_id[0]);
+
+  // Assistant with non-text block (TOOL_USE) must NOT be classified as whitespace-only
+  a_tool: [1] FlawedMessage;
+  a_tool[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "atl", "mt");
+  #assert flawed_msg_push_block(a_tool[..], flawed_blk_tool_use("tu_x", "Read"));
+  #assert flawed_tx_push(tx[..], a_tool[0]);
+
+  // Final assistant with [text("\n\n"), redacted_thinking] -> Pass 2 strips trailing thinking,
+  // exposing [text("\n\n")], which Pass 3 then drops!
+  a_trap: [1] FlawedMessage;
+  a_trap[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "at", "m_t");
+  #assert flawed_msg_push_block(a_trap[..], flawed_blk_text("\n\n"));
+  #assert flawed_msg_push_block(a_trap[..], flawed_blk_thinking("sig", true));
+  #assert flawed_tx_push(tx[..], a_trap[0]);
+
+  out: [1] FlawedTranscript;
+  n := flawed_clean_assistant_thinking(tx[..], out[..]);
+  #assert n == 4; // a_empty("(no content)"), merged(u1+u2), a_other_empty_id("x"), a_tool
+  #assert out[0].msgs[0].role == FLAWED_ROLE_ASSISTANT && out[0].msgs[0].block_count == 1;
+  #assert flawed_bytes_eq_str(out[0].msgs[0].blocks[0].text[..], out[0].msgs[0].blocks[0].text_n, "(no content)");
+  #assert out[0].msgs[1].role == FLAWED_ROLE_USER && out[0].msgs[1].block_count == 2;
+  #assert out[0].msgs[2].role == FLAWED_ROLE_ASSISTANT && flawed_bytes_eq_str(out[0].msgs[2].blocks[0].text[..], out[0].msgs[2].blocks[0].text_n, "x");
+  #assert out[0].msgs[3].role == FLAWED_ROLE_ASSISTANT && out[0].msgs[3].blocks[0].kind == FLAWED_BLK_TOOL_USE;
+
+  // Non-final empty USER does NOT get "(no content)" patched in Pass 4; final empty assistant stays empty (valid prefill)
+  tx3: [1] FlawedTranscript;
+  u_empty := flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "ue", "");
+  #assert flawed_tx_push(tx3[..], u_empty);
+  #assert flawed_tx_push(tx3[..], a_empty);
+  out3: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(tx3[..], out3[..]) == 2;
+  #assert out3[0].msgs[0].block_count == 0 && out3[0].msgs[1].block_count == 0;
+
+  // Thinking-only shard WITH a 1-char msg_id sibling survives Pass 1; Pass 2 replaces final thinking-only with "[No message content]"
+  tx2: [1] FlawedTranscript;
+  s1: [1] FlawedMessage;
+  s1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "s1", "q");
+  #assert flawed_msg_push_block(s1[..], flawed_blk_thinking("sig0", false));
+  #assert flawed_msg_push_block(s1[..], flawed_blk_text("real"));
+  #assert flawed_tx_push(tx2[..], s1[0]);
+  s2: [1] FlawedMessage;
+  s2[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "s2", "q");
+  #assert flawed_msg_push_block(s2[..], flawed_blk_thinking("tail", false));
+  #assert flawed_tx_push(tx2[..], s2[0]);
+  out2: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(tx2[..], out2[..]) == 2;
+  #assert out2[0].msgs[1].block_count == 1;
+  #assert flawed_bytes_eq_str(out2[0].msgs[1].blocks[0].text[..], out2[0].msgs[1].blocks[0].text_n, "[No message content]");
+
+  // strip_signature_blocks compacts blocks in-place starting at index 0
+  #assert flawed_strip_signature_blocks(tx2[..]) == 2;
+  #assert tx2[0].msgs[0].block_count == 1;
+  #assert flawed_bytes_eq_str(tx2[0].msgs[0].blocks[0].text[..], tx2[0].msgs[0].blocks[0].text_n, "real");
+  #assert tx2[0].msgs[1].block_count == 0;
+
+  // Single-message whitespace-only text with non-ws char at index 0
+  #assert !flawed_blk_is_whitespace_text(flawed_blk_text("a "));
+  #assert flawed_blk_is_whitespace_text(flawed_blk_text(" \t\r\n"));
+
+  // Pass 1 sibling guard: USER with same msg_id or second thinking-only assistant with same msg_id do NOT rescue orphan
+  tx_o: [1] FlawedTranscript;
+  uo := flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "uo", "dup");
+  ao1: [1] FlawedMessage; ao1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "ao1", "dup");
+  #assert flawed_msg_push_block(ao1[..], flawed_blk_thinking("t1", false));
+  ao2: [1] FlawedMessage; ao2[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "ao2", "dup");
+  #assert flawed_msg_push_block(ao2[..], flawed_blk_thinking("t2", false));
+  #assert flawed_tx_push(tx_o[..], uo);
+  #assert flawed_tx_push(tx_o[..], ao1[0]);
+  #assert flawed_tx_push(tx_o[..], ao2[0]);
+  out_o: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(tx_o[..], out_o[..]) == 1 && out_o[0].msgs[0].role == FLAWED_ROLE_USER;
+
+  // Pass 3 user merge when dst count == 1 ([u1, a_ws, u2] -> single merged user)
+  tx_u: [1] FlawedTranscript;
+  #assert flawed_tx_push(tx_u[..], u1[0]);
+  #assert flawed_tx_push(tx_u[..], a_ws[0]);
+  #assert flawed_tx_push(tx_u[..], u2[0]);
+  out_u: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(tx_u[..], out_u[..]) == 1 && out_u[0].msgs[0].block_count == 2;
+
+  // Pass 4 exact count == 2: [a_empty, u1] patches index 0 (dst.count - 2)
+  tx_p4: [1] FlawedTranscript;
+  #assert flawed_tx_push(tx_p4[..], a_empty);
+  #assert flawed_tx_push(tx_p4[..], u1[0]);
+  out_p4: [1] FlawedTranscript;
+  #assert flawed_clean_assistant_thinking(tx_p4[..], out_p4[..]) == 2 && out_p4[0].msgs[0].block_count == 1;
+}
+
+#test "wire: bidirectional ensureToolResultPairing enforces all 6 invariants, capacity, and strict inc-4977 mode" {
+  // FlawedIdSet capacity check (64 max)
+  ids: [1] FlawedIdSet;
+  kbuf: [2] u8;
+  for n: 0..<FLAWED_SEEN_IDS_MAX {
+    kbuf[0] = cast(u8) (65 + (n / 16));
+    kbuf[1] = cast(u8) (65 + (n % 16));
+    #assert flawed_idset_add(ids[..], kbuf[..], 2);
+  }
+  kbuf[0] = 90; kbuf[1] = 90;
+  #assert !flawed_idset_add(ids[..], kbuf[..], 2);
+
+  // Case 1: Clean paired transcript (with SERVER_TOOL_RESULT at index 0, text at nxt index 0, and system passthrough) -> 0 repairs
+  clean_tx: [1] FlawedTranscript;
+  u0: [1] FlawedMessage;
+  u0[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u0", "");
+  #assert flawed_msg_push_block(u0[..], flawed_blk_text("go"));
+  #assert flawed_tx_push(clean_tx[..], u0[0]);
+  a0: [1] FlawedMessage;
+  a0[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a0", "m0");
+  #assert flawed_msg_push_block(a0[..], flawed_blk_server_tool(FLAWED_BLK_SERVER_TOOL_RESULT, "srv_1", "res"));
+  #assert flawed_msg_push_block(a0[..], flawed_blk_server_tool(FLAWED_BLK_SERVER_TOOL_USE, "srv_1", "web"));
+  #assert flawed_msg_push_block(a0[..], flawed_blk_tool_use("tu_1", "Read"));
+  #assert flawed_tx_push(clean_tx[..], a0[0]);
+  u1: [1] FlawedMessage;
+  u1[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u1", "");
+  #assert flawed_msg_push_block(u1[..], flawed_blk_text("first-text"));
+  #assert flawed_msg_push_block(u1[..], flawed_blk_tool_result("tu_1", "contents", false));
+  #assert flawed_tx_push(clean_tx[..], u1[0]);
+  // Empty assistant followed by assistant (no next user, no tool_use -> no synthetic user injected, no "[Tool use interrupted]")
+  a_emp := flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "ae", "me");
+  #assert flawed_tx_push(clean_tx[..], a_emp);
+  // Non-user/assistant passthrough followed by trailing text user
+  sys_m := flawed_msg_new(FLAWED_ROLE_SYSTEM, FLAWED_SYS_INFORMATIONAL, "sm", "");
+  #assert flawed_tx_push(clean_tx[..], sys_m);
+  u_end: [1] FlawedMessage;
+  u_end[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "ue", "");
+  #assert flawed_msg_push_block(u_end[..], flawed_blk_text("bye"));
+  #assert flawed_tx_push(clean_tx[..], u_end[0]);
+
+  out_clean: [1] FlawedTranscript;
+  #assert flawed_ensure_tool_result_pairing(clean_tx[..], out_clean[..], true) == 0;
+  #assert out_clean[0].count == 6;
+  #assert out_clean[0].msgs[0].role == FLAWED_ROLE_USER && out_clean[0].msgs[0].uuid_n == 2 && out_clean[0].msgs[0].block_count == 1 && flawed_bytes_eq_str(out_clean[0].msgs[0].blocks[0].text[..], out_clean[0].msgs[0].blocks[0].text_n, "go");
+  #assert out_clean[0].msgs[1].block_count == 3 && out_clean[0].msgs[1].blocks[2].kind == FLAWED_BLK_TOOL_USE;
+  #assert out_clean[0].msgs[2].role == FLAWED_ROLE_USER && out_clean[0].msgs[2].uuid_n == 2 && out_clean[0].msgs[2].block_count == 2;
+  #assert out_clean[0].msgs[2].blocks[0].kind == FLAWED_BLK_TOOL_RESULT && flawed_bytes_eq_str(out_clean[0].msgs[2].blocks[0].text[..], out_clean[0].msgs[2].blocks[0].text_n, "contents");
+  #assert out_clean[0].msgs[2].blocks[1].kind == FLAWED_BLK_TEXT && flawed_bytes_eq_str(out_clean[0].msgs[2].blocks[1].text[..], out_clean[0].msgs[2].blocks[1].text_n, "first-text");
+  #assert out_clean[0].msgs[3].block_count == 0;
+  #assert out_clean[0].msgs[4].role == FLAWED_ROLE_SYSTEM;
+  #assert flawed_bytes_eq_str(out_clean[0].msgs[5].blocks[0].text[..], out_clean[0].msgs[5].blocks[0].text_n, "bye");
+
+  // Case 1b: Empty non-stripped user at index 0 -> dropped with 0 repairs (no resume placeholder)
+  emp_only: [1] FlawedTranscript;
+  u_empty_0 := flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "u0e", "");
+  #assert flawed_tx_push(emp_only[..], u_empty_0);
+  out_one: [1] FlawedTranscript;
+  #assert flawed_ensure_tool_result_pairing(emp_only[..], out_one[..], true) == 0 && out_one[0].count == 0;
+
+  // Case 1c: 2-msg [a0, u1] exact boundary + trailing assistant [a3] at end of transcript
+  pair2: [1] FlawedTranscript;
+  #assert flawed_tx_push(pair2[..], a0[0]);
+  #assert flawed_tx_push(pair2[..], u1[0]);
+  #assert flawed_ensure_tool_result_pairing(pair2[..], out_one[..], true) == 0 && out_one[0].count == 2;
+
+  trail_a: [1] FlawedTranscript;
+  trail_a[0].msgs[1] = u1[0]; // stale message past count=1 must NEVER be read as next user
+  a_end: [1] FlawedMessage;
+  a_end[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "at", "mt");
+  #assert flawed_msg_push_block(a_end[..], flawed_blk_tool_use("tu_end", "Bash"));
+  #assert flawed_tx_push(trail_a[..], a_end[0]);
+  #assert flawed_ensure_tool_result_pairing(trail_a[..], out_one[..], false) == 1 && out_one[0].count == 2;
+  #assert out_one[0].msgs[1].role == FLAWED_ROLE_USER && out_one[0].msgs[1].blocks[0].is_error;
+
+  // Case 1d: Single-violation strict mode rejection (repairs == 1 -> FLAWED_PAIR_STRICT_REJECT)
+  one_err: [1] FlawedTranscript;
+  #assert flawed_tx_push(one_err[..], u_empty_0);
+  u_tr_only: [1] FlawedMessage;
+  u_tr_only[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "utr", "");
+  #assert flawed_msg_push_block(u_tr_only[..], flawed_blk_tool_result("tu_x", "x", false));
+  #assert flawed_tx_push(one_err[..], u_tr_only[0]);
+  #assert flawed_ensure_tool_result_pairing(one_err[..], out_one[..], true) == FLAWED_PAIR_STRICT_REJECT;
+  // Stripped user after non-empty dst is dropped without resume placeholder
+  one_err2: [1] FlawedTranscript;
+  #assert flawed_tx_push(one_err2[..], u0[0]);
+  #assert flawed_tx_push(one_err2[..], u_tr_only[0]);
+  #assert flawed_ensure_tool_result_pairing(one_err2[..], out_one[..], false) == 1;
+  #assert out_one[0].count == 1;
+
+  // Case 2: Broken transcript exercising all 6 invariants
+  bad: [1] FlawedTranscript;
+  // Leading orphaned tool_result at index 0 -> replaced with resume placeholder
+  lead: [1] FlawedMessage;
+  lead[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "l0", "");
+  #assert flawed_msg_push_block(lead[..], flawed_blk_tool_result("tu_old", "stale", false));
+  #assert flawed_tx_push(bad[..], lead[0]);
+
+  // Assistant with missing tu_first (index 0!), paired tu_a, and unpaired server_tool_use srv_bad
+  a1: [1] FlawedMessage;
+  a1[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a1", "m1");
+  #assert flawed_msg_push_block(a1[..], flawed_blk_tool_use("tu_first", "Glob"));
+  #assert flawed_msg_push_block(a1[..], flawed_blk_tool_use("tu_a", "Read"));
+  #assert flawed_msg_push_block(a1[..], flawed_blk_server_tool(FLAWED_BLK_SERVER_TOOL_USE, "srv_bad", "web"));
+  #assert flawed_tx_push(bad[..], a1[0]);
+
+  // Following user has tu_a twice (dup), orphan tu_ghost, and is MISSING tu_first (index 0 of tu_ids)
+  u_bad: [1] FlawedMessage;
+  u_bad[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "ub", "");
+  #assert flawed_msg_push_block(u_bad[..], flawed_blk_tool_result("tu_a", "ok", false));
+  #assert flawed_msg_push_block(u_bad[..], flawed_blk_tool_result("tu_a", "dup", false));
+  #assert flawed_msg_push_block(u_bad[..], flawed_blk_tool_result("tu_ghost", "nope", false));
+  #assert flawed_tx_push(bad[..], u_bad[0]);
+
+  // Second assistant reuses tu_a (CC-1212 cross-message duplicate!) -> emptied, gets "[Tool use interrupted]"
+  a2: [1] FlawedMessage;
+  a2[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a2", "m2");
+  #assert flawed_msg_push_block(a2[..], flawed_blk_tool_use("tu_a", "Read"));
+  #assert flawed_tx_push(bad[..], a2[0]);
+
+  // Following user has only orphaned tool_result -> emptied, replaced with is_meta "(no content)" to preserve alternation
+  u_emp: [1] FlawedMessage;
+  u_emp[0] = flawed_msg_new(FLAWED_ROLE_USER, FLAWED_SYS_NONE, "ue", "");
+  #assert flawed_msg_push_block(u_emp[..], flawed_blk_tool_result("tu_a", "orphan", false));
+  #assert flawed_tx_push(bad[..], u_emp[0]);
+
+  // Assistant with dangling tu_c followed immediately by another Assistant (tests has_next_user false with i+1<count)
+  a3: [1] FlawedMessage;
+  a3[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a3", "m3");
+  #assert flawed_msg_push_block(a3[..], flawed_blk_tool_use("tu_c", "Bash"));
+  #assert flawed_tx_push(bad[..], a3[0]);
+  a4: [1] FlawedMessage;
+  a4[0] = flawed_msg_new(FLAWED_ROLE_ASSISTANT, FLAWED_SYS_NONE, "a4", "m4");
+  #assert flawed_msg_push_block(a4[..], flawed_blk_text("done"));
+  #assert flawed_tx_push(bad[..], a4[0]);
+
+  out_rep: [1] FlawedTranscript;
+  #assert flawed_ensure_tool_result_pairing(bad[..], out_rep[..], true) == FLAWED_PAIR_STRICT_REJECT;
+  rep := flawed_ensure_tool_result_pairing(bad[..], out_rep[..], false);
+  #assert rep == 8;
+  #assert out_rep[0].count == 8;
+  #assert out_rep[0].msgs[0].block_count == 1;
+  #assert flawed_bytes_eq_str(out_rep[0].msgs[0].blocks[0].text[..], out_rep[0].msgs[0].blocks[0].text_n, "[Orphaned tool result removed due to conversation resume]");
+  #assert out_rep[0].msgs[1].block_count == 2;
+  #assert out_rep[0].msgs[2].block_count == 2;
+  #assert out_rep[0].msgs[2].blocks[0].is_error && flawed_bytes_eq_str(out_rep[0].msgs[2].blocks[0].id[..], out_rep[0].msgs[2].blocks[0].id_n, "tu_first");
+  #assert !out_rep[0].msgs[2].blocks[1].is_error && flawed_bytes_eq_str(out_rep[0].msgs[2].blocks[1].id[..], out_rep[0].msgs[2].blocks[1].id_n, "tu_a");
+  #assert out_rep[0].msgs[3].block_count == 1 && flawed_bytes_eq_str(out_rep[0].msgs[3].blocks[0].text[..], out_rep[0].msgs[3].blocks[0].text_n, "[Tool use interrupted]");
+  #assert out_rep[0].msgs[4].block_count == 1 && out_rep[0].msgs[4].is_meta && flawed_bytes_eq_str(out_rep[0].msgs[4].blocks[0].text[..], out_rep[0].msgs[4].blocks[0].text_n, "(no content)");
+  #assert out_rep[0].msgs[6].role == FLAWED_ROLE_USER && out_rep[0].msgs[6].subtype == FLAWED_SYS_NONE && out_rep[0].msgs[6].is_meta && out_rep[0].msgs[6].block_count == 1;
+  #assert out_rep[0].msgs[6].blocks[0].kind == FLAWED_BLK_TOOL_RESULT && out_rep[0].msgs[6].blocks[0].is_error;
+  #assert flawed_bytes_eq_str(out_rep[0].msgs[6].blocks[0].id[..], out_rep[0].msgs[6].blocks[0].id_n, "tu_c");
+  #assert out_rep[0].msgs[7].role == FLAWED_ROLE_ASSISTANT && flawed_bytes_eq_str(out_rep[0].msgs[7].blocks[0].text[..], out_rep[0].msgs[7].blocks[0].text_n, "done");
+}

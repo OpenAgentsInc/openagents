@@ -20,14 +20,37 @@ FlawedCliWork :: struct {
   sched: [1] FlawedScheduler;
   glob_out: [1] FlawedGlobOutput;
   glob_txt: [32768] u8;
+  cmd_reg: [1] FlawedCommandRegistry;
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-02 — Layer 0 Atoms + Layer 1 Tool Contract)\n");
+  print("flawed (Chapters 01-03 — Layer 0 Atoms + Layer 1 Tool/Command/Message Contracts)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
   print("  flawed-cli glob PATTERN [DIR]\n");
+  print("  flawed-cli route INPUT [--bridge]\n");
+}
+
+flawed_cli_route :: (w: [] FlawedCliWork, input: string, bridge: bool) -> int #effects(all) {
+  w[0].cmd_reg[0] = FlawedCommandRegistry.{};
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("compact", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("clear", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("cost", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("summary", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("files", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("model", FLAWED_CMD_LOCAL_JSX, FLAWED_CMD_SRC_BUILTIN));
+  _ = flawed_reg_add(w[0].cmd_reg[..], flawed_cmd_defaults("review", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL));
+  auth := FlawedAuthContext.{first_party_base_url = true};
+  is_path := false;
+  parsed := flawed_parse_slash_command(input);
+  if parsed.valid && input.count > 0 && input[0] == 47 {
+    is_path = fs_kind(input) != FS_NONE;
+  }
+  r := flawed_route_user_input(w[0].cmd_reg[..], auth, input, FLAWED_INPUT_PROMPT, is_path, bridge, bridge);
+  print("route: kind=% should_query=% run_hooks=% bridge=% is_mcp=%\n",
+        r.kind, r.should_query, r.run_hooks, bridge, r.parsed.is_mcp);
+  return 0;
 }
 
 flawed_cli_glob_walk :: (dir: string, root: string, pat: string, out: [] FlawedGlobOutput, depth: int) #effects(all) {
@@ -139,6 +162,11 @@ tool_main :: () -> int #export_c #effects(all) {
     if a[0].n < 2 { tool_errln("flawed-cli: glob requires PATTERN [DIR]"); return 2; }
     dir := ifx a[0].n >= 3 then args_at(a[..], 2) else ".";
     return flawed_cli_glob(w[..], args_at(a[..], 1), dir);
+  }
+  if cmd == "route" {
+    if a[0].n < 2 { tool_errln("flawed-cli: route requires INPUT [--bridge]"); return 2; }
+    bridge := a[0].n >= 3 && args_at(a[..], 2) == "--bridge";
+    return flawed_cli_route(w[..], args_at(a[..], 1), bridge);
   }
   flawed_cli_usage();
   return 2;

@@ -1,0 +1,634 @@
+// Flawed Layer 1 (Chapter 03) — Command Contract, Slash Parser, Bridge Gate & Input Router.
+// Replaces cc/types/command.ts, cc/commands.ts, cc/utils/slashCommandParsing.ts,
+// and cc/utils/processUserInput/{processUserInput.ts,processSlashCommand.tsx}.
+//   coax/bin/coax test flawed/command.coax --library
+//   coax/bin/coax mutate flawed/command.coax --root-only
+#module "flawed.command";
+#authority;
+#load "ids.coax";
+
+FLAWED_CMD_NAME_MAX :: 64;
+FLAWED_CMD_ARGS_MAX :: 192;
+FLAWED_CMD_REG_MAX :: 48;
+FLAWED_MAX_HOOK_OUTPUT_CHARS :: 10000;
+
+// Three-variant command contract (types/command.ts:205-206).
+FLAWED_CMD_PROMPT :: 0;
+FLAWED_CMD_LOCAL :: 1;
+FLAWED_CMD_LOCAL_JSX :: 2;
+
+// Prompt command execution context (types/command.ts:42).
+FLAWED_CMD_CTX_INLINE :: 0;
+FLAWED_CMD_CTX_FORK :: 1;
+
+// Command provenance (ordered for findCommand priority).
+FLAWED_CMD_SRC_BUNDLED_SKILL :: 0;
+FLAWED_CMD_SRC_DISK_SKILL :: 1;
+FLAWED_CMD_SRC_WORKFLOW :: 2;
+FLAWED_CMD_SRC_PLUGIN :: 3;
+FLAWED_CMD_SRC_DYNAMIC_SKILL :: 4;
+FLAWED_CMD_SRC_BUILTIN :: 5;
+FLAWED_CMD_SRC_MCP :: 6;
+
+// Static auth/provider availability bitmask (types/command.ts:169-173).
+FLAWED_AVAIL_ANY :: 0;
+FLAWED_AVAIL_CLAUDE_AI :: 1;
+FLAWED_AVAIL_CONSOLE :: 2;
+
+// User input modes (processUserInput.ts).
+FLAWED_INPUT_PROMPT :: 0;
+FLAWED_INPUT_BASH :: 1;
+
+// Resolved input routing actions (non-zero so uninitialized zero state is distinguishable).
+FLAWED_ROUTE_TEXT_PROMPT :: 1;
+FLAWED_ROUTE_BASH :: 2;
+FLAWED_ROUTE_SLASH_LOCAL :: 3;
+FLAWED_ROUTE_SLASH_LOCAL_JSX :: 4;
+FLAWED_ROUTE_SLASH_PROMPT_INLINE :: 5;
+FLAWED_ROUTE_SLASH_PROMPT_FORK :: 6;
+FLAWED_ROUTE_UNKNOWN_SLASH :: 7;
+FLAWED_ROUTE_BRIDGE_BLOCKED :: 8;
+FLAWED_ROUTE_NON_USER_INVOCABLE :: 9;
+
+// UserPromptSubmit hook outcomes (processUserInput.ts:193-229).
+FLAWED_HOOK_SKIPPED :: 0;       // base_should_query was false (local/bash turn bypasses hooks)
+FLAWED_HOOK_PASS :: 1;
+FLAWED_HOOK_BLOCK_ERASE :: 2;   // blockingError: wipes messages, emits system warning, shouldQuery=false
+FLAWED_HOOK_PREVENT_KEEP :: 3;  // preventContinuation: preserves prompt, appends stop note, shouldQuery=false
+
+FlawedAuthContext :: struct {
+  is_subscriber: bool;
+  using_3p_services: bool;
+  first_party_base_url: bool;
+  is_internal: bool;
+  is_demo: bool;
+}
+
+FlawedCommandSpec :: struct {
+  name: [FLAWED_CMD_NAME_MAX] u8; name_n: int;
+  kind: u8;                     // FLAWED_CMD_*
+  ctx: u8;                      // FLAWED_CMD_CTX_* (PROMPT only)
+  source: u8;                   // FLAWED_CMD_SRC_*
+  availability: u8;             // bitmask of FLAWED_AVAIL_* (0 = any)
+  enabled: bool;
+  internal_only: bool;
+  user_invocable: bool;
+  disable_model_invocation: bool;
+  is_skill: bool;
+  is_sensitive: bool;           // redact args as "***" in transcript
+  has_hooks: bool;
+  admin_trusted: bool;
+}
+
+FlawedParsedSlash :: struct {
+  valid: bool;
+  name: [FLAWED_CMD_NAME_MAX] u8; name_n: int;
+  args: [FLAWED_CMD_ARGS_MAX] u8; args_n: int;
+  is_mcp: bool;
+}
+
+FlawedCommandRegistry :: struct {
+  cmds: [FLAWED_CMD_REG_MAX] FlawedCommandSpec;
+  count: int;
+}
+
+FlawedInputRoute :: struct {
+  kind: u8;
+  cmd_index: int;               // index into registry or -1
+  should_query: bool;
+  run_hooks: bool;
+  collect_attachments: bool;
+  redact_args: bool;
+  emit_caveat: bool;
+  parsed: FlawedParsedSlash;
+}
+
+FlawedHookOutcome :: struct {
+  action: u8;
+  should_query: bool;
+  erase_messages: bool;
+}
+
+flawed_cmd_bytes_eq :: (a: [] const u8, an: int, b: string) -> bool #effects(reads, traps) {
+  if an != b.count { return false; }
+  for i: 0..<an {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+flawed_cmd_defaults :: (name: string, kind: u8, source: u8) -> FlawedCommandSpec #effects(reads, traps) {
+  c: FlawedCommandSpec;
+  if name.count == 0 || name.count > FLAWED_CMD_NAME_MAX { return c; }
+  for i: 0..<name.count { c.name[i] = name[i]; }
+  c.name_n = name.count;
+  c.kind = kind;
+  c.source = source;
+  c.enabled = true;
+  c.user_invocable = true;
+  return c;
+}
+
+// Live availability check (commands.ts:417-443).
+// 'console' requires !isClaudeAISubscriber && !isUsing3PServices && isFirstPartyAnthropicBaseUrl.
+flawed_cmd_meets_availability :: (c: FlawedCommandSpec, auth: FlawedAuthContext) -> bool #effects(traps) {
+  if c.internal_only && (!auth.is_internal || auth.is_demo) { return false; }
+  if c.availability == FLAWED_AVAIL_ANY { return true; }
+  if (c.availability & FLAWED_AVAIL_CLAUDE_AI) != 0 && auth.is_subscriber { return true; }
+  if (c.availability & FLAWED_AVAIL_CONSOLE) != 0 && !auth.is_subscriber && !auth.using_3p_services && auth.first_party_base_url {
+    return true;
+  }
+  return false;
+}
+
+flawed_cmd_is_live :: (c: FlawedCommandSpec, auth: FlawedAuthContext) -> bool #effects(traps) {
+  return c.name_n > 0 && c.enabled && flawed_cmd_meets_availability(c, auth);
+}
+
+// Remote Control bridge safety gate (commands.ts:651-676, PR #19134 relaxation):
+// - prompt: safe by construction (expands into conversation prompt)
+// - local: fail-closed allowlist of 6 commands
+// - local-jsx (and any unknown kind): always blocked (would pop Ink picker on local terminal)
+flawed_is_bridge_safe_command :: (c: FlawedCommandSpec) -> bool #effects(reads, traps) {
+  if c.kind == FLAWED_CMD_PROMPT { return true; }
+  if c.kind != FLAWED_CMD_LOCAL { return false; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "compact") { return true; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "clear") { return true; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "cost") { return true; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "summary") { return true; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "release-notes") { return true; }
+  if flawed_cmd_bytes_eq(c.name[..], c.name_n, "files") { return true; }
+  return false;
+}
+
+// Skill hook trust policy (processSlashCommand.tsx:874):
+// strictPluginOnlyCustomization:["hooks"] restricts skill hooks unless source is admin-trusted.
+flawed_cmd_hooks_allowed :: (c: FlawedCommandSpec, strict_plugin_only_hooks: bool) -> bool #effects(traps) {
+  if !c.has_hooks { return false; }
+  if !strict_plugin_only_hooks { return true; }
+  return c.admin_trusted;
+}
+
+// Two distinct skill selectors (commands.ts:563-608):
+// - SkillTool selector: strictly model-invocable (!disable_model_invocation)
+// - SlashCommand selector: skill-shaped prompts, explicitly INCLUDING disable_model_invocation
+flawed_cmd_is_skill_tool_eligible :: (c: FlawedCommandSpec, auth: FlawedAuthContext) -> bool #effects(traps) {
+  return flawed_cmd_is_live(c, auth) && c.kind == FLAWED_CMD_PROMPT && !c.disable_model_invocation;
+}
+
+flawed_cmd_is_slash_skill_eligible :: (c: FlawedCommandSpec, auth: FlawedAuthContext) -> bool #effects(traps) {
+  return flawed_cmd_is_live(c, auth) && c.kind == FLAWED_CMD_PROMPT && c.is_skill;
+}
+
+// Zero-import slash parser with two-token "(MCP)" glue (utils/slashCommandParsing.ts:25-60).
+flawed_parse_slash_command :: (input: string) -> FlawedParsedSlash #effects(reads, traps) {
+  out: FlawedParsedSlash;
+  // Trim leading/trailing ASCII whitespace
+  lo := 0;
+  hi := input.count;
+  while lo < hi && (input[lo] == 32 || input[lo] == 9 || input[lo] == 10 || input[lo] == 13) { lo += 1; }
+  while hi > lo && (input[hi - 1] == 32 || input[hi - 1] == 9 || input[hi - 1] == 10 || input[hi - 1] == 13) { hi -= 1; }
+  if hi <= lo || input[lo] != 47 { return out; } // must start with '/'
+
+  start := lo + 1;
+  w1_end := start;
+  while w1_end < hi && input[w1_end] != 32 { w1_end += 1; }
+  w1_n := w1_end - start;
+  if w1_n == 0 || w1_n > FLAWED_CMD_NAME_MAX { return out; }
+
+  // Check if next space-separated word is literally "(MCP)" (5 bytes, preceded by 1 space)
+  args_start := w1_end;
+  is_mcp := false;
+  w2_start := w1_end + 1;
+  w2_end := w2_start;
+  while w2_end < hi && input[w2_end] != 32 { w2_end += 1; }
+  if w2_end - w2_start == 5 &&
+     input[w2_start] == 40 && input[w2_start + 1] == 77 && input[w2_start + 2] == 67 &&
+     input[w2_start + 3] == 80 && input[w2_start + 4] == 41 {
+    is_mcp = true;
+    args_start = w2_end;
+  }
+
+  name_len := w1_n;
+  if is_mcp {
+    if w1_n + 6 > FLAWED_CMD_NAME_MAX { return out; }
+    name_len = w1_n + 6;
+  }
+  for i: 0..<w1_n { out.name[i] = input[start + i]; }
+  if is_mcp {
+    out.name[w1_n] = 32;
+    out.name[w1_n + 1] = 40;
+    out.name[w1_n + 2] = 77;
+    out.name[w1_n + 3] = 67;
+    out.name[w1_n + 4] = 80;
+    out.name[w1_n + 5] = 41;
+  }
+  out.name_n = name_len;
+  out.is_mcp = is_mcp;
+
+  // Remaining slice after one separating space becomes args (preserving internal spaces)
+  if args_start < hi {
+    a_lo := args_start + 1;
+    a_n := hi - a_lo;
+    if a_n > FLAWED_CMD_ARGS_MAX { a_n = FLAWED_CMD_ARGS_MAX; } // mutant: equivalent // when a_n == FLAWED_CMD_ARGS_MAX both branches assign the same value
+    for i: 0..<a_n { out.args[i] = input[a_lo + i]; }
+    out.args_n = a_n;
+  }
+  out.valid = true;
+  return out;
+}
+
+// Disambiguates /foo-bar:baz from POSIX paths like /etc/hosts (processSlashCommand.tsx:304-308).
+// Note: '0'..'9' is 48..57 and ':' is 58, so 48..58 covers digits + colon contiguously.
+flawed_looks_like_command :: (name: [] const u8, n: int) -> bool #effects(reads, traps) {
+  if n <= 0 { return false; }
+  for i: 0..<n {
+    c := name[i];
+    ok := (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 58) || c == 45 || c == 95;
+    if !ok { return false; }
+  }
+  return true;
+}
+
+flawed_reg_add :: (reg: [] FlawedCommandRegistry, cmd: FlawedCommandSpec) -> bool #effects(reads, writes, traps) {
+  if cmd.name_n <= 0 || reg[0].count >= FLAWED_CMD_REG_MAX { return false; }
+  reg[0].cmds[reg[0].count] = cmd;
+  reg[0].count += 1;
+  return true;
+}
+
+flawed_reg_find_live :: (reg: [] const FlawedCommandRegistry, auth: FlawedAuthContext, name: [] const u8, name_n: int) -> int #effects(reads, traps) {
+  for i: 0..<reg[0].count {
+    c := reg[0].cmds[i];
+    if !flawed_cmd_is_live(c, auth) { continue; }
+    if c.name_n != name_n { continue; }
+    same := true;
+    for j: 0..<name_n {
+      if c.name[j] != name[j] { same = false; break; }
+    }
+    if same { return i; }
+  }
+  return -1;
+}
+
+// Multi-modal input router (processUserInput.ts:422-588 + processSlashCommand.tsx:333-525).
+flawed_route_user_input :: (
+  reg: [] const FlawedCommandRegistry,
+  auth: FlawedAuthContext,
+  input: string,
+  input_mode: u8,
+  is_existing_path: bool,
+  bridge_origin: bool,
+  skip_slash: bool
+) -> FlawedInputRoute #effects(reads, traps) {
+  r: FlawedInputRoute;
+  r.cmd_index = -1;
+
+  // Bash '!' escape: runs shell directly, no model query, no UserPromptSubmit hooks.
+  if input_mode == FLAWED_INPUT_BASH {
+    r.kind = FLAWED_ROUTE_BASH;
+    return r;
+  }
+
+  parsed := flawed_parse_slash_command(input);
+  effective_skip := skip_slash;
+
+  // Bridge gate (processUserInput.ts:422-453): mobile/web arrives with bridge_origin=true.
+  if bridge_origin && parsed.valid {
+    idx := flawed_reg_find_live(reg, auth, parsed.name[..], parsed.name_n);
+    if idx >= 0 {
+      if flawed_is_bridge_safe_command(reg[0].cmds[idx]) {
+        effective_skip = false;
+      } else {
+        r.kind = FLAWED_ROUTE_BRIDGE_BLOCKED;
+        r.cmd_index = idx;
+        r.parsed = parsed;
+        return r;
+      }
+    }
+  }
+
+  if parsed.valid && !effective_skip {
+    r.parsed = parsed;
+    idx := flawed_reg_find_live(reg, auth, parsed.name[..], parsed.name_n);
+    if idx < 0 {
+      // Unknown slash: real filesystem paths or non-command tokens (e.g. /etc/hosts) fall through as plain text.
+      if !is_existing_path && flawed_looks_like_command(parsed.name[..], parsed.name_n) {
+        r.kind = FLAWED_ROUTE_UNKNOWN_SLASH;
+        return r;
+      }
+    } else {
+      c := reg[0].cmds[idx];
+      r.cmd_index = idx;
+      if !c.user_invocable {
+        r.kind = FLAWED_ROUTE_NON_USER_INVOCABLE;
+        return r;
+      }
+      if c.kind == FLAWED_CMD_LOCAL {
+        r.kind = FLAWED_ROUTE_SLASH_LOCAL;
+        r.redact_args = c.is_sensitive;
+        return r;
+      }
+      if c.kind == FLAWED_CMD_LOCAL_JSX {
+        r.kind = FLAWED_ROUTE_SLASH_LOCAL_JSX;
+        r.emit_caveat = true;
+        return r;
+      }
+      if c.ctx == FLAWED_CMD_CTX_FORK {
+        r.kind = FLAWED_ROUTE_SLASH_PROMPT_FORK;
+        r.emit_caveat = true;
+        return r;
+      }
+      r.kind = FLAWED_ROUTE_SLASH_PROMPT_INLINE;
+      r.should_query = true;
+      r.run_hooks = true;
+      return r;
+    }
+  }
+
+  // Plain-text prompt (including skipped slash commands and /etc/hosts fallthrough).
+  r.kind = FLAWED_ROUTE_TEXT_PROMPT;
+  r.should_query = true;
+  r.run_hooks = true;
+  r.collect_attachments = true;
+  return r;
+}
+
+// UserPromptSubmit hook decision reducer (processUserInput.ts:193-229).
+flawed_apply_prompt_hook :: (base_should_query: bool, has_blocking_error: bool, prevent_continuation: bool) -> FlawedHookOutcome #effects(traps) {
+  o: FlawedHookOutcome;
+  if !base_should_query { return o; }
+  if has_blocking_error {
+    o.action = FLAWED_HOOK_BLOCK_ERASE;
+    o.erase_messages = true;
+    return o;
+  }
+  if prevent_continuation {
+    o.action = FLAWED_HOOK_PREVENT_KEEP;
+    return o;
+  }
+  o.action = FLAWED_HOOK_PASS;
+  o.should_query = true;
+  return o;
+}
+
+// Cap hook output length at FLAWED_MAX_HOOK_OUTPUT_CHARS (processUserInput.ts:272-279).
+flawed_clamp_hook_output_len :: (n: int) -> int #effects(traps) {
+  if n < 0 { return 0; } // mutant: equivalent // when n == 0 both branches return 0
+  if n > FLAWED_MAX_HOOK_OUTPUT_CHARS { return FLAWED_MAX_HOOK_OUTPUT_CHARS; } // mutant: equivalent // when n == max both branches return max
+  return n;
+}
+
+#test "command: slash parser handles plain commands, args, trimming, and two-token (MCP) glue" {
+  #assert !flawed_parse_slash_command("").valid;
+  #assert !flawed_parse_slash_command("hello").valid;
+  #assert !flawed_parse_slash_command("/").valid;
+  #assert !flawed_parse_slash_command("   /   ").valid;
+  #assert !flawed_parse_slash_command("/   ").valid;
+
+  // Single-character command + all 4 ASCII whitespace bytes at both ends
+  p0 := flawed_parse_slash_command("\r\n\t /a \t\r\n");
+  #assert p0.valid && !p0.is_mcp && p0.name_n == 1 && p0.args_n == 0;
+  #assert flawed_cmd_bytes_eq(p0.name[..], p0.name_n, "a");
+  #assert !flawed_cmd_bytes_eq(p0.name[..], p0.name_n, "b");
+  // Leading 1-char whitespace test kills lo += 2 and hi -= 2
+  p_ws := flawed_parse_slash_command(" /z ");
+  #assert p_ws.valid && p_ws.name_n == 1 && flawed_cmd_bytes_eq(p_ws.name[..], p_ws.name_n, "z");
+  p_ws2 := flawed_parse_slash_command("\n/z\t");
+  #assert p_ws2.valid && p_ws2.name_n == 1 && flawed_cmd_bytes_eq(p_ws2.name[..], p_ws2.name_n, "z");
+  p_ws3 := flawed_parse_slash_command("\r/z!\n");
+  #assert p_ws3.valid && p_ws3.name_n == 2 && flawed_cmd_bytes_eq(p_ws3.name[..], p_ws3.name_n, "z!");
+
+  p1 := flawed_parse_slash_command(" \t/compact\r\n");
+  #assert p1.valid && !p1.is_mcp && p1.name_n == 7 && p1.args_n == 0;
+  #assert flawed_cmd_bytes_eq(p1.name[..], p1.name_n, "compact");
+
+  p2 := flawed_parse_slash_command("/review src/main.coax  --strict");
+  #assert p2.valid && !p2.is_mcp && p2.name_n == 6;
+  #assert flawed_cmd_bytes_eq(p2.name[..], p2.name_n, "review");
+  #assert flawed_cmd_bytes_eq(p2.args[..], p2.args_n, "src/main.coax  --strict");
+
+  p3 := flawed_parse_slash_command("/github:pr-review (MCP) #42");
+  #assert p3.valid && p3.is_mcp;
+  #assert flawed_cmd_bytes_eq(p3.name[..], p3.name_n, "github:pr-review (MCP)");
+  #assert flawed_cmd_bytes_eq(p3.args[..], p3.args_n, "#42");
+  // Exact 6-byte " (MCP)" suffix at end of string
+  p3b := flawed_parse_slash_command("/g (MCP)");
+  #assert p3b.valid && p3b.is_mcp && p3b.args_n == 0 && flawed_cmd_bytes_eq(p3b.name[..], p3b.name_n, "g (MCP)");
+
+  // Non-(MCP) second token is NOT glued (check every character mismatch)
+  p4 := flawed_parse_slash_command("/foo (MCX) bar");
+  #assert p4.valid && !p4.is_mcp && flawed_cmd_bytes_eq(p4.name[..], p4.name_n, "foo");
+  #assert flawed_cmd_bytes_eq(p4.args[..], p4.args_n, "(MCX) bar");
+  #assert !flawed_parse_slash_command("/foo (MCP").is_mcp;
+  #assert !flawed_parse_slash_command("/foo [MCP)").is_mcp;
+  #assert !flawed_parse_slash_command("/foo (XCP)").is_mcp;
+  #assert !flawed_parse_slash_command("/foo (MXP)").is_mcp;
+  #assert !flawed_parse_slash_command("/foo (MCX)").is_mcp;
+  #assert !flawed_parse_slash_command("/foo (MCP]").is_mcp;
+
+  // Exact 64-byte name succeeds; 65-byte rejects; 58 + " (MCP)" = 64 succeeds; 59 + " (MCP)" = 65 rejects
+  exact64 := "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert flawed_parse_slash_command(exact64).valid;
+  big65 := "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert !flawed_parse_slash_command(big65).valid;
+  exact58 := "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (MCP)";
+  pe := flawed_parse_slash_command(exact58);
+  #assert pe.valid && pe.is_mcp && pe.name_n == 64;
+  big59 := "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (MCP)";
+  #assert !flawed_parse_slash_command(big59).valid;
+  // Args of length 193 clamp to 192
+  args193 := "/x 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012";
+  pl := flawed_parse_slash_command(args193);
+  #assert pl.valid && pl.args_n == FLAWED_CMD_ARGS_MAX;
+}
+
+#test "command: looks_like_command disambiguates valid command names from POSIX paths" {
+  b: [16] u8;
+  ok1 := "azAZ09:_-";
+  for i: 0..<ok1.count { b[i] = ok1[i]; }
+  #assert flawed_looks_like_command(b[..], ok1.count);
+  #assert flawed_looks_like_command(b[..], 1);
+  #assert !flawed_looks_like_command(b[..], 0);
+  bad_slash := "etc/hosts";
+  for i: 0..<bad_slash.count { b[i] = bad_slash[i]; }
+  #assert !flawed_looks_like_command(b[..], bad_slash.count);
+  bad_dot := "foo.txt";
+  for i: 0..<bad_dot.count { b[i] = bad_dot[i]; }
+  #assert !flawed_looks_like_command(b[..], bad_dot.count);
+  // Boundary ASCII tests around ranges: '`' (96), '{' (123), '@' (64), '[' (91), '/' (47), ';' (59)
+  b[0] = 96;  #assert !flawed_looks_like_command(b[..], 1);
+  b[0] = 123; #assert !flawed_looks_like_command(b[..], 1);
+  b[0] = 64;  #assert !flawed_looks_like_command(b[..], 1);
+  b[0] = 91;  #assert !flawed_looks_like_command(b[..], 1);
+  b[0] = 47;  #assert !flawed_looks_like_command(b[..], 1);
+  b[0] = 59;  #assert !flawed_looks_like_command(b[..], 1);
+}
+
+#test "command: availability, bridge allowlist, hooks policy, and dual skill selectors" {
+  sub_auth := FlawedAuthContext.{is_subscriber = true, first_party_base_url = true};
+  con_auth := FlawedAuthContext.{first_party_base_url = true};
+  p3_auth := FlawedAuthContext.{using_3p_services = true, first_party_base_url = true};
+  gw_auth := FlawedAuthContext.{first_party_base_url = false};
+  ant_auth := FlawedAuthContext.{is_internal = true, first_party_base_url = true};
+  demo_auth := FlawedAuthContext.{is_internal = true, is_demo = true, first_party_base_url = true};
+
+  #assert flawed_cmd_defaults("", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN).name_n == 0;
+  c64 := flawed_cmd_defaults("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_PLUGIN);
+  #assert c64.name_n == 64 && c64.source == FLAWED_CMD_SRC_PLUGIN;
+  #assert flawed_cmd_defaults("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN).name_n == 0;
+  c1 := flawed_cmd_defaults("a", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  #assert flawed_cmd_is_live(c1, con_auth);
+  #assert !flawed_cmd_is_live(FlawedCommandSpec.{enabled = true}, con_auth);
+
+  c_con := flawed_cmd_defaults("billing", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_con.availability = FLAWED_AVAIL_CONSOLE;
+  #assert flawed_cmd_meets_availability(c_con, con_auth);
+  #assert !flawed_cmd_meets_availability(c_con, sub_auth);
+  #assert !flawed_cmd_meets_availability(c_con, p3_auth);
+  #assert !flawed_cmd_meets_availability(c_con, gw_auth);
+
+  c_sub := flawed_cmd_defaults("usage", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_sub.availability = FLAWED_AVAIL_CLAUDE_AI;
+  #assert flawed_cmd_meets_availability(c_sub, sub_auth);
+  #assert !flawed_cmd_meets_availability(c_sub, con_auth);
+
+  c_int := flawed_cmd_defaults("ant-debug", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_int.internal_only = true;
+  #assert flawed_cmd_meets_availability(c_int, ant_auth);
+  #assert !flawed_cmd_meets_availability(c_int, con_auth);
+  #assert !flawed_cmd_meets_availability(c_int, demo_auth);
+
+  // Bridge safety allowlist (6 local commands + all prompts; zero local-jsx)
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("compact", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("clear", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("cost", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("summary", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("release-notes", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("files", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert !flawed_is_bridge_safe_command(flawed_cmd_defaults("login", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN));
+  #assert !flawed_is_bridge_safe_command(flawed_cmd_defaults("model", FLAWED_CMD_LOCAL_JSX, FLAWED_CMD_SRC_BUILTIN));
+  #assert flawed_is_bridge_safe_command(flawed_cmd_defaults("review", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL));
+  bad_kind := flawed_cmd_defaults("x", 99, FLAWED_CMD_SRC_BUILTIN);
+  #assert !flawed_is_bridge_safe_command(bad_kind);
+
+  // Skill hook trust policy
+  c_hk := flawed_cmd_defaults("deploy", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL);
+  #assert !flawed_cmd_hooks_allowed(c_hk, false);
+  c_hk.has_hooks = true;
+  #assert flawed_cmd_hooks_allowed(c_hk, false);
+  #assert !flawed_cmd_hooks_allowed(c_hk, true);
+  c_hk.admin_trusted = true;
+  #assert flawed_cmd_hooks_allowed(c_hk, true);
+
+  // Dual skill selectors
+  sk := flawed_cmd_defaults("commit", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL);
+  sk.is_skill = true;
+  #assert flawed_cmd_is_skill_tool_eligible(sk, con_auth);
+  #assert flawed_cmd_is_slash_skill_eligible(sk, con_auth);
+  sk.disable_model_invocation = true;
+  #assert !flawed_cmd_is_skill_tool_eligible(sk, con_auth);
+  #assert flawed_cmd_is_slash_skill_eligible(sk, con_auth);
+  sk.enabled = false;
+  #assert !flawed_cmd_is_slash_skill_eligible(sk, con_auth);
+  #assert !flawed_cmd_is_skill_tool_eligible(c_con, con_auth);
+}
+
+#test "command: multi-modal input router enforces bash, bridge gate, POSIX fallthrough, and hooks" {
+  reg: [1] FlawedCommandRegistry;
+  auth := FlawedAuthContext.{first_party_base_url = true};
+
+  c_compact := flawed_cmd_defaults("compact", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_secret := flawed_cmd_defaults("token", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_secret.is_sensitive = true;
+  c_model := flawed_cmd_defaults("model", FLAWED_CMD_LOCAL_JSX, FLAWED_CMD_SRC_BUILTIN);
+  c_review := flawed_cmd_defaults("review", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL);
+  c_fork := flawed_cmd_defaults("audit", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL);
+  c_fork.ctx = FLAWED_CMD_CTX_FORK;
+  c_hidden := flawed_cmd_defaults("internal-skill", FLAWED_CMD_PROMPT, FLAWED_CMD_SRC_DISK_SKILL);
+  c_hidden.user_invocable = false;
+  c_off := flawed_cmd_defaults("off", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+  c_off.enabled = false;
+  c_one := flawed_cmd_defaults("q", FLAWED_CMD_LOCAL, FLAWED_CMD_SRC_BUILTIN);
+
+  #assert !flawed_reg_add(reg[..], FlawedCommandSpec.{});
+  #assert flawed_reg_add(reg[..], c_compact);
+  #assert flawed_reg_add(reg[..], c_secret);
+  #assert flawed_reg_add(reg[..], c_model);
+  #assert flawed_reg_add(reg[..], c_review);
+  #assert flawed_reg_add(reg[..], c_fork);
+  #assert flawed_reg_add(reg[..], c_hidden);
+  #assert flawed_reg_add(reg[..], c_off);
+  #assert flawed_reg_add(reg[..], c_one);
+
+  // First-character mismatch in find_live (same length as "token", differs at index 0)
+  r_xoken := flawed_route_user_input(reg[..], auth, "/xoken", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_xoken.kind == FLAWED_ROUTE_UNKNOWN_SLASH && r_xoken.parsed.valid;
+  r_q := flawed_route_user_input(reg[..], auth, "/q", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_q.kind == FLAWED_ROUTE_SLASH_LOCAL && r_q.cmd_index == 7;
+
+  // Bash escape bypasses query and hooks
+  rb := flawed_route_user_input(reg[..], auth, "ls -la", FLAWED_INPUT_BASH, false, false, false);
+  #assert rb.kind == FLAWED_ROUTE_BASH && !rb.should_query && !rb.run_hooks && rb.cmd_index == -1;
+
+  // Local, sensitive local, local-jsx, inline prompt, forked prompt, non-user-invocable
+  r_loc := flawed_route_user_input(reg[..], auth, "/compact", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_loc.kind == FLAWED_ROUTE_SLASH_LOCAL && !r_loc.should_query && !r_loc.redact_args && r_loc.cmd_index == 0 && r_loc.parsed.valid;
+
+  r_sec := flawed_route_user_input(reg[..], auth, "/token sk-123", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_sec.kind == FLAWED_ROUTE_SLASH_LOCAL && r_sec.redact_args && r_sec.cmd_index == 1;
+
+  r_jsx := flawed_route_user_input(reg[..], auth, "/model", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_jsx.kind == FLAWED_ROUTE_SLASH_LOCAL_JSX && !r_jsx.should_query && r_jsx.emit_caveat;
+
+  r_inl := flawed_route_user_input(reg[..], auth, "/review", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_inl.kind == FLAWED_ROUTE_SLASH_PROMPT_INLINE && r_inl.should_query && r_inl.run_hooks && !r_inl.collect_attachments;
+
+  r_frk := flawed_route_user_input(reg[..], auth, "/audit", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_frk.kind == FLAWED_ROUTE_SLASH_PROMPT_FORK && !r_frk.should_query && r_frk.emit_caveat;
+
+  r_nouser := flawed_route_user_input(reg[..], auth, "/internal-skill", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_nouser.kind == FLAWED_ROUTE_NON_USER_INVOCABLE && !r_nouser.should_query;
+
+  // Disabled command behaves as unknown slash
+  r_off := flawed_route_user_input(reg[..], auth, "/off", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_off.kind == FLAWED_ROUTE_UNKNOWN_SLASH && !r_off.should_query;
+
+  // POSIX path falls through as plain text (either non-command chars like '/' or existing file on disk)
+  r_etc := flawed_route_user_input(reg[..], auth, "/etc/hosts", FLAWED_INPUT_PROMPT, false, false, false);
+  #assert r_etc.kind == FLAWED_ROUTE_TEXT_PROMPT && r_etc.should_query && r_etc.run_hooks && r_etc.collect_attachments;
+  r_ex := flawed_route_user_input(reg[..], auth, "/tmp", FLAWED_INPUT_PROMPT, true, false, false);
+  #assert r_ex.kind == FLAWED_ROUTE_TEXT_PROMPT && r_ex.should_query && r_ex.run_hooks;
+
+  // Remote Control bridge gate: safe command clears skip_slash; unsafe blocks; unknown falls through as plain text
+  r_br_ok := flawed_route_user_input(reg[..], auth, "/compact", FLAWED_INPUT_PROMPT, false, true, true);
+  #assert r_br_ok.kind == FLAWED_ROUTE_SLASH_LOCAL && r_br_ok.cmd_index == 0;
+  r_br_blk := flawed_route_user_input(reg[..], auth, "/model", FLAWED_INPUT_PROMPT, false, true, true);
+  #assert r_br_blk.kind == FLAWED_ROUTE_BRIDGE_BLOCKED && !r_br_blk.should_query && r_br_blk.cmd_index == 2 && r_br_blk.parsed.valid;
+  r_br_unk := flawed_route_user_input(reg[..], auth, "/shrug", FLAWED_INPUT_PROMPT, false, true, true);
+  #assert r_br_unk.kind == FLAWED_ROUTE_TEXT_PROMPT && r_br_unk.should_query && r_br_unk.run_hooks;
+
+  // Registry overflow guard
+  full: [1] FlawedCommandRegistry;
+  for i: 0..<FLAWED_CMD_REG_MAX {
+    #assert flawed_reg_add(full[..], c_compact);
+  }
+  #assert !flawed_reg_add(full[..], c_compact);
+
+  // UserPromptSubmit hook outcomes + 10k truncation cap
+  h0 := flawed_apply_prompt_hook(false, true, true);
+  #assert h0.action == FLAWED_HOOK_SKIPPED && !h0.should_query && !h0.erase_messages;
+  h1 := flawed_apply_prompt_hook(true, true, true);
+  #assert h1.action == FLAWED_HOOK_BLOCK_ERASE && !h1.should_query && h1.erase_messages;
+  h2 := flawed_apply_prompt_hook(true, false, true);
+  #assert h2.action == FLAWED_HOOK_PREVENT_KEEP && !h2.should_query && !h2.erase_messages;
+  h3 := flawed_apply_prompt_hook(true, false, false);
+  #assert h3.action == FLAWED_HOOK_PASS && h3.should_query && !h3.erase_messages;
+
+  #assert flawed_clamp_hook_output_len(-1) == 0;
+  #assert flawed_clamp_hook_output_len(0) == 0;
+  #assert flawed_clamp_hook_output_len(1) == 1;
+  #assert flawed_clamp_hook_output_len(500) == 500;
+  #assert flawed_clamp_hook_output_len(10000) == 10000;
+  #assert flawed_clamp_hook_output_len(10001) == 10000;
+}
