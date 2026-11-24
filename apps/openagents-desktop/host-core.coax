@@ -597,6 +597,56 @@ oa_core_local_weights_name :: (out: [] u8) -> int #export_c #effects(all) { retu
 oa_core_local_partial_name :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_PARTIAL_FILE, out); }
 oa_core_local_expected_sha :: (out: [] u8) -> int #export_c #effects(all) { return oa_copy_out(LM_EXPECTED_SHA256, out); }
 
+// ---- Variant-aware forms (#14028 catalog on Linux and Windows): the host passes the selected
+// variant's id, file, size and pinned SHA-256 (empty when the catalog does not pin one). ----
+
+oa_core_local_manifest_valid_for :: (dir: string, disk_bytes: int, disk_mtime: int, id: string, weights: string, expected_bytes: int, sha256: string) -> int #export_c #effects(all) {
+  if dir.count == 0 || id.count == 0 || weights.count == 0 { return 0; }
+  pb: [DC_PATH] u8;
+  path := dc_join(dir, LM_MANIFEST_FILE, pb[..]);
+  if path.count == 0 { return 0; }
+  buf: [4096] u8;
+  n := dcos_read(path, buf[..]);
+  if n <= 0 { return 0; }
+  m: [1] LmManifest;
+  if !lm_manifest_parse(cast(string) buf[0..<n], m[..]) { return 0; }
+  if sha256.count == 64 {
+    return ifx lm_manifest_admits(m[0], disk_bytes, disk_mtime, id, weights, expected_bytes, sha256) then 1 else 0;
+  }
+  return ifx lm_manifest_admits_local(m[0], disk_bytes, disk_mtime, id, weights, expected_bytes) then 1 else 0;
+}
+
+oa_core_local_manifest_write_for :: (dir: string, id: string, weights: string, bytes: int, sha256: string, mtime: int, verified_at: int) -> int #export_c #effects(all) {
+  if dir.count == 0 || id.count == 0 || weights.count == 0 || !dcos_mkdirs(dir) { return 0; }
+  buf: [1024] u8;
+  n := lm_manifest_write(id, weights, bytes, sha256, mtime, true, LM_DEFAULT_LOOPS, verified_at, buf[0..<buf.count - 1]);
+  if n <= 0 { return 0; }
+  buf[n] = '\n';
+  pb: [DC_PATH] u8;
+  path := dc_join(dir, LM_MANIFEST_FILE, pb[..]);
+  if path.count == 0 { return 0; }
+  return ifx dcos_write(path, cast(string) buf[0..<n + 1]) then 1 else 0;
+}
+
+// Hashes path; the size must equal expected_bytes when that is pinned, and the digest must
+// equal sha256 when that is pinned. With neither pinned it reports the digest it computed.
+oa_core_local_verify_file_for :: (path: string, expected_bytes: int, sha256: string, out_sha: [] u8) -> int #export_c #effects(all) {
+  if out_sha.count > 0 { out_sha[0] = 0; }
+  if path.count == 0 { return 0; }
+  sz: [1] int;
+  hex: [64] u8;
+  if !dc_update_file_sha(path, sz[..], hex[..]) { return 0; }
+  _ := oa_copy_out(cast(string) hex[..], out_sha);
+  if sz[0] <= 0 { return 0; }
+  if expected_bytes > 0 && sz[0] != expected_bytes { return 0; }
+  if sha256.count == 0 { return 1; }
+  return ifx lm_sha256_eq(cast(string) hex[..], sha256) then 1 else 0;
+}
+
+oa_core_local_admit_download_for :: (hw_verdict: int, manifest_valid: int, busy: int, avail_disk_bytes: int, partial_bytes: int, expected_bytes: int) -> int #export_c #effects(all) {
+  return lm_admit_download(hw_verdict, manifest_valid != 0, busy != 0, avail_disk_bytes, partial_bytes, expected_bytes, LM_DISK_HEADROOM_BYTES);
+}
+
 oa_core_local_models_dir :: (out: [] u8) -> int #export_c #effects(all) {
   hb: [DC_PATH] u8; pb: [DC_PATH] u8;
   return oa_copy_out(oa_local_models_path(dcos_home(hb[..]), pb[..]), out);
@@ -641,6 +691,14 @@ oa_core_local_logs_dir :: (out: [] u8) -> int #export_c #effects(all) {
   #assert oa_core_local_admit_download(LM_HW_OK, 0, 1, 100_000_000_000, 0) == LM_DL_BUSY;
   #assert oa_core_local_admit_download(LM_HW_OK, 0, 0, 1024, 0) == LM_DL_LOW_DISK;
   #assert oa_core_local_admit_download(LM_HW_OK, 0, 0, LM_EXPECTED_BYTES + LM_DISK_HEADROOM_BYTES, 0) == LM_DL_OK;
+  // A variant's own size sets the disk it needs.
+  #assert oa_core_local_admit_download_for(LM_HW_OK, 0, 0, 43_805_184 + LM_DISK_HEADROOM_BYTES, 0, 43_805_184) == LM_DL_OK;
+  #assert oa_core_local_admit_download_for(LM_HW_OK, 0, 0, 43_805_184, 0, 43_805_184) == LM_DL_LOW_DISK;
+  #assert oa_core_local_admit_download_for(LM_HW_OK, 1, 0, 0, 0, 43_805_184) == LM_DL_ALREADY_INSTALLED;
+  // A manifest needs a folder, an id and a file name.
+  #assert oa_core_local_manifest_valid_for("", 1, 1, "inkling-2-mini", "x.gguf", 1, "") == 0;
+  #assert oa_core_local_manifest_write_for("", "inkling-2-mini", "x.gguf", 1, "", 1, 1) == 0;
+  #assert oa_core_local_verify_file_for("", 0, "", rb[..]) == 0;
 
   #assert oa_core_local_admit_remove(1, 0) == LM_RM_ACTIVE_RUNS;
   #assert oa_core_local_admit_remove(0, 1) == LM_RM_BUSY;
