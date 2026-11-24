@@ -3103,7 +3103,32 @@ static int run_flow(DesktopApp *a, const char *shot_out) {
   if (flow_count_lines(list) != 3 || !strstr(list, third)) return flow_fail("shared", "this app's save dropped a chat kept elsewhere");
   flow_ok("shared", "3 chats after a save beside another writer");
 
-  // 8. The Local Models dialogs and a change of Inkling 2 Mini variant, on the real handlers.
+  // 8. Ctrl chords on Linux and Windows: text size, the palette and a new chat, through the page's
+  // key entry and the app's own action handler.
+  {
+    cd_ctrl_keys(a->page, 1);
+    (void)cd_action(a->page);
+    int z0 = cd_zoom(a->page, 0);
+    if (!cd_key(a->page, '=', 2)) return flow_fail("chords", "Ctrl = was not taken");
+    handle_action(a, cd_action(a->page));
+    if (cd_zoom(a->page, 0) != z0 + 1) return flow_fail("chords", "Ctrl = did not make the text bigger");
+    if (!cd_key(a->page, '-', 2)) return flow_fail("chords", "Ctrl - was not taken");
+    handle_action(a, cd_action(a->page));
+    if (cd_zoom(a->page, 0) != z0) return flow_fail("chords", "Ctrl - did not make the text smaller");
+    if (!cd_key(a->page, '+', 3) || (handle_action(a, cd_action(a->page)), cd_zoom(a->page, 0)) != z0 + 1) return flow_fail("chords", "Ctrl Shift + did not make the text bigger");
+    if (!cd_key(a->page, '0', 2) || (handle_action(a, cd_action(a->page)), cd_zoom(a->page, 0)) != 2) return flow_fail("chords", "Ctrl 0 did not reset the text size");
+    if (!a->chat_id[0]) return flow_fail("chords", "no chat is open before Ctrl N");
+    if (!cd_key(a->page, 'n', 2)) return flow_fail("chords", "Ctrl N was not taken");
+    handle_action(a, cd_action(a->page));
+    if (a->chat_id[0]) return flow_fail("chords", "Ctrl N did not start a new chat");
+    if (!cd_key(a->page, 'k', 2) || !cd_palette_open(a->page)) return flow_fail("chords", "Ctrl K did not open the palette");
+    (void)cd_action(a->page);
+    if (!cd_key(a->page, 'k', 2) || cd_palette_open(a->page)) return flow_fail("chords", "Ctrl K did not close the palette");
+    (void)cd_action(a->page);
+    flow_ok("chords", "Ctrl = - + 0 size the text, Ctrl K toggles the palette, Ctrl N starts a new chat");
+  }
+
+  // 9. The Local Models dialogs and a change of Inkling 2 Mini variant, on the real handlers.
   {
     LocalModelCtx *l = &a->local;
     if (!l->hw_probed) local_init(a);

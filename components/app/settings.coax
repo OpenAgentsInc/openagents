@@ -89,14 +89,15 @@ set_search :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, placeholder: s
     i := keys.count - 1;
     while i >= 0 {
       // the Command key's sign is an icon the size of the cap's words (the faces hold ASCII only)
-      sign := keys[i] == "⌘";
-      tw := ifx sign then t.key_icon else set_width(f, t.head_face, keys[i]);
+      kword := key_chip_word(keys[i], t.key_ctrl);
+      sign := kword == "⌘";
+      tw := ifx sign then t.key_icon else set_width(f, t.head_face, kword);
       kw := tw + 2 * t.key_pad;
       if kw < t.key_h { kw = t.key_h; }
       cx -= kw;
       sheet_fill(sh, cx, y + (h - t.key_h) / 2, kw, t.key_h, t.key_radius, t.well);
       if sign { sheet_icon(sh, ICON_SET_COMMAND, cx + (kw - tw) / 2, y + (h - tw) / 2, tw, t.tertiary); }
-      else { _ := set_line(f, cx + (kw - tw) / 2, y + (h - t.head_line) / 2, kw, t.head_face, t.head_line, t.tertiary, keys[i]); }
+      else { _ := set_line(f, cx + (kw - tw) / 2, y + (h - t.head_line) / 2, kw, t.head_face, t.head_line, t.tertiary, kword); }
       cx -= t.key_gap; i -= 1;
     }
     tx := x + t.search_pad + t.search_icon + t.search_gap;

@@ -422,7 +422,7 @@ app_pal_caps :: (f: [] UiFrame, o: AppPaletteSpec, right: f32, y: f32, h: f32, k
   cx := right; e := keys.count;
   while e > 0 {
     a := e; while a > 0 && keys[a - 1] != ' ' { a -= 1; }
-    k := cast(string) keys[a..<e];
+    k := key_chip_word(cast(string) keys[a..<e], st.key_ctrl);
     if k.count > 0 {
       sign := k == "⌘";
       tw := ifx sign then st.key_icon else ceil(measure_width(f[0].m, st.head_face, k));
@@ -594,7 +594,7 @@ app_pal_legend_w :: (f: [] UiFrame, o: AppPaletteSpec, keys: string, words: stri
   st := f[0].skin.set; w: f32 = 0; e := keys.count;
   while e > 0 {
     a := e; while a > 0 && keys[a - 1] != ' ' { a -= 1; }
-    kw := ceil(measure_width(f[0].m, st.head_face, cast(string) keys[a..<e])) + 2 * o.key_pad; if kw < o.key_h { kw = o.key_h; }
+    kw := ceil(measure_width(f[0].m, st.head_face, key_chip_word(cast(string) keys[a..<e], st.key_ctrl))) + 2 * o.key_pad; if kw < o.key_h { kw = o.key_h; }
     w += kw + o.key_gap; e = a - 1;
   }
   return w + o.gap / 2 + ceil(measure_width(f[0].m, st.desc_face, words));
