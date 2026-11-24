@@ -15,6 +15,8 @@
 #load "prompt_context.coax";
 #load "api_policy.coax";
 #load "sse_stream.coax";
+#load "tool_exec.coax";
+#load "tool_spill.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -150,4 +152,23 @@
   #assert flawed_stream_on_block_stop(ss[..], 400);
   cost := flawed_stream_on_message_delta(ss[..], st[..], FLAWED_STOP_END_TURN, FlawedChunkUsage.{output_tokens = 1000}, 500);
   #assert cost == 180000 && flawed_stream_is_valid_completion(ss[..]) && flawed_stream_release(ss[..]);
+}
+
+#test "flawed core (Ch 06): hook arbitration, StreamingToolExecutor, and Stage A/B spill compose" {
+  // PreToolUse allow still respects settings deny rule (inc-4788)
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, false, false, false, FLAWED_RULE_DENY).action == FLAWED_ARB_DENY;
+  // Mid-stream Bash error cancels siblings without aborting turn
+  ste: [1] FlawedStreamingExecutor;
+  #assert flawed_ste_add(ste[..], 1, true, true, true, FLAWED_INTERRUPT_BLOCK) == 0;
+  #assert flawed_ste_add(ste[..], 2, true, true, true, FLAWED_INTERRUPT_BLOCK) == 1;
+  #assert flawed_ste_process_queue(ste[..]) == 2;
+  #assert flawed_ste_complete(ste[..], 0, true) && ste[0].sibling_aborted && !ste[0].turn_aborted && ste[0].slots[1].aborted;
+  // Stage A Read opt-out beats remote override; Stage B freezes budget across turns
+  #assert flawed_classify_stage_a_spill(500000, false, FLAWED_RESULT_UNBOUNDED, 1000) == FLAWED_SPILL_KEEP;
+  rs: [1] FlawedReplacementState;
+  c: [2] FlawedBudgetCandidate;
+  c[0] = FlawedBudgetCandidate.{tool_use_id = 1, size_chars = 150000, is_unbounded = true};
+  c[1] = FlawedBudgetCandidate.{tool_use_id = 2, size_chars = 250000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(rs[..], c[..], 2, FLAWED_DEFAULT_MSG_BUDGET_CHARS, FLAWED_PREVIEW_SIZE_BYTES) == 1;
+  #assert flawed_rstate_lookup(rs[..], 1) == FLAWED_DEC_KEPT && flawed_rstate_lookup(rs[..], 2) == FLAWED_DEC_REPLACED;
 }

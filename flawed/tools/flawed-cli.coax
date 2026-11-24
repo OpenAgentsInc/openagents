@@ -24,7 +24,7 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-05 — Layer 0 Atoms + Layer 1 Contracts + Layer 2 Prompt & Model API)\n");
+  print("flawed (Chapters 01-06 — Layer 0 Atoms + Layer 1 Contracts + Layer 2 Prompt/API/Tool Exec)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");

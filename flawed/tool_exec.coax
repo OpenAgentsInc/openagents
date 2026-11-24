@@ -1,0 +1,398 @@
+// Flawed Layer 2 (Chapter 06) — Tool Execution Lifecycle, Hook-vs-Rule Arbitration,
+// Fail-Closed Concurrency Partitioning & StreamingToolExecutor 3-Level Abort Tree.
+// Replaces cc/services/tools/{toolExecution.ts,toolHooks.ts,toolOrchestration.ts,StreamingToolExecutor.ts}.
+//   coax/bin/coax test flawed/tool_exec.coax --library
+//   coax/bin/coax mutate flawed/tool_exec.coax --root-only
+#module "flawed.tool_exec";
+#authority;
+#load "tool.coax";
+
+FLAWED_EXEC_MAX_TOOLS :: 32;
+FLAWED_DEFAULT_TOOL_CONCURRENCY :: 10;
+
+// Hook permission behaviors (PreToolUse -> resolveHookPermissionDecision).
+FLAWED_HOOK_PERM_NONE :: 0;
+FLAWED_HOOK_PERM_ALLOW :: 1;
+FLAWED_HOOK_PERM_ASK :: 2;
+FLAWED_HOOK_PERM_DENY :: 3;
+
+// Rule-based permission check outcomes (checkRuleBasedPermissions).
+FLAWED_RULE_NONE :: 0;
+FLAWED_RULE_ASK :: 1;
+FLAWED_RULE_DENY :: 2;
+
+// Final arbitrated permission action (inc-4788 security invariant).
+FLAWED_ARB_ALLOW :: 1;
+FLAWED_ARB_DENY :: 2;
+FLAWED_ARB_PROMPT_CAN_USE_TOOL :: 3;
+
+// Failure stages for exact PostToolUseFailure boundary.
+FLAWED_FAIL_UNKNOWN_TOOL :: 1;
+FLAWED_FAIL_PRE_ABORT :: 2;
+FLAWED_FAIL_VALIDATION :: 3;
+FLAWED_FAIL_PRE_HOOK_STOP :: 4;
+FLAWED_FAIL_PERM_DENIED :: 5;
+FLAWED_FAIL_CALL_EXCEPTION :: 6;
+FLAWED_FAIL_MID_CALL_ABORT :: 7;
+
+// 3-level AbortController reasons (StreamingToolExecutor).
+FLAWED_ABORT_NONE :: 0;
+FLAWED_ABORT_SIBLING_ERROR :: 1; // Bash failure: cancels siblings, NEVER bubbles up to turn!
+FLAWED_ABORT_PERM_REJECT :: 2;   // Permission rejection: MUST bubble up to turn (#21056)!
+FLAWED_ABORT_USER_INTERRUPT :: 3;// User submit interrupt: only cancels FLAWED_INTERRUPT_CANCEL tools!
+
+// StreamingToolExecutor per-tool states.
+FLAWED_STE_QUEUED :: 0;
+FLAWED_STE_EXECUTING :: 1;
+FLAWED_STE_COMPLETED :: 2;
+FLAWED_STE_YIELDED :: 3;
+
+FlawedPermArbitration :: struct {
+  action: u8;
+  force_prompt: bool;
+}
+
+FlawedBatchCall :: struct {
+  id: int;
+  valid_input: bool;
+  concurrency_safe: bool;
+}
+
+FlawedExecBatch :: struct {
+  is_concurrent: bool;
+  start_idx: int;
+  count: int;
+}
+
+FlawedSteSlot :: struct {
+  tool_id: int;
+  status: u8;
+  concurrency_safe: bool;
+  is_bash: bool;
+  interrupt_behavior: u8;
+  aborted: bool;
+  is_error: bool;
+}
+
+FlawedStreamingExecutor :: struct {
+  // 3-level AbortController tree: Level 1 (turn) -> Level 2 (sibling) -> Level 3 (slot.aborted)
+  turn_aborted: bool;
+  sibling_aborted: bool;
+  discarded: bool;
+  slots: [FLAWED_EXEC_MAX_TOOLS] FlawedSteSlot;
+  count: int;
+  executing_count: int;
+  serial_executing: bool;
+}
+
+// inc-4788 security invariant (services/tools/toolHooks.ts:332-433):
+// PreToolUse 'allow' can NEVER bypass settings 'deny' rules, 'ask' rules,
+// require_can_use_tool, or unsatisfied requires_interaction tools!
+flawed_resolve_hook_permission :: (
+  hook_perm: u8,
+  hook_updated_input: bool,
+  requires_interaction: bool,
+  require_can_use_tool: bool,
+  rule_check: u8
+) -> FlawedPermArbitration #effects(traps) {
+  a: FlawedPermArbitration;
+  if hook_perm == FLAWED_HOOK_PERM_DENY {
+    a.action = FLAWED_ARB_DENY;
+    return a;
+  }
+  if hook_perm == FLAWED_HOOK_PERM_ALLOW {
+    if rule_check == FLAWED_RULE_DENY {
+      a.action = FLAWED_ARB_DENY;
+      return a;
+    }
+    interaction_unsatisfied := requires_interaction && !hook_updated_input;
+    if interaction_unsatisfied || require_can_use_tool || rule_check == FLAWED_RULE_ASK {
+      a.action = FLAWED_ARB_PROMPT_CAN_USE_TOOL;
+      return a;
+    }
+    a.action = FLAWED_ARB_ALLOW;
+    return a;
+  }
+  a.action = FLAWED_ARB_PROMPT_CAN_USE_TOOL;
+  if hook_perm == FLAWED_HOOK_PERM_ASK {
+    a.force_prompt = true;
+  }
+  return a;
+}
+
+// Exact PostToolUseFailure boundary (services/tools/toolExecution.ts:1589-1737):
+// Fires STRICTLY on tool.call()-region exceptions and mid-call aborts.
+flawed_should_run_post_failure_hook :: (fail_stage: u8) -> bool #effects(traps) {
+  return fail_stage == FLAWED_FAIL_CALL_EXCEPTION || fail_stage == FLAWED_FAIL_MID_CALL_ABORT;
+}
+
+// Minification-safe error name filter (toolExecution.ts:165):
+// Rejects 1..3-char mangled constructor names like "nJT".
+flawed_is_unminified_error_name :: (name_len: int) -> bool #effects(traps) {
+  return name_len > 3;
+}
+
+// Safe concurrency cap normalization (fixes cc's '-1' starvation bug in toolOrchestration.ts:8-12).
+flawed_normalize_tool_concurrency :: (requested: int) -> int #effects(traps) {
+  if requested <= 0 { return FLAWED_DEFAULT_TOOL_CONCURRENCY; }
+  return requested;
+}
+
+// Fail-closed concurrency partitioning (services/tools/toolOrchestration.ts:91-116):
+// Coalesces contiguous valid concurrency-safe calls into parallel batches; isolates every
+// invalid/unsafe call into a singleton serial batch, preserving exact relative order.
+flawed_partition_tool_calls :: (
+  calls: [] const FlawedBatchCall,
+  call_count: int,
+  batches: [] FlawedExecBatch
+) -> int #effects(reads, writes, traps) {
+  bcount := 0;
+  for i: 0..<call_count {
+    safe := calls[i].valid_input && calls[i].concurrency_safe;
+    if safe && bcount > 0 && batches[bcount - 1].is_concurrent {
+      batches[bcount - 1].count += 1;
+    } else if bcount < batches.count {
+      batches[bcount] = FlawedExecBatch.{is_concurrent = safe, start_idx = i, count = 1};
+      bcount += 1;
+    }
+  }
+  return bcount;
+}
+
+flawed_ste_add :: (
+  ste: [] FlawedStreamingExecutor,
+  tool_id: int,
+  valid_input: bool,
+  concurrency_safe: bool,
+  is_bash: bool,
+  interrupt_behavior: u8
+) -> int #effects(reads, writes, traps) {
+  if ste[0].count >= FLAWED_EXEC_MAX_TOOLS { return -1; }
+  idx := ste[0].count;
+  ste[0].slots[idx] = FlawedSteSlot.{
+    tool_id = tool_id,
+    status = FLAWED_STE_QUEUED,
+    concurrency_safe = valid_input && concurrency_safe, // fail closed on invalid input!
+    is_bash = is_bash,
+    interrupt_behavior = interrupt_behavior,
+  };
+  ste[0].count += 1;
+  return idx;
+}
+
+// Dispatch next eligible queued tools enforcing strict serial barrier (no leapfrogging!).
+// Returns count of newly started tools.
+flawed_ste_process_queue :: (ste: [] FlawedStreamingExecutor) -> int #effects(reads, writes, traps) {
+  if ste[0].discarded || ste[0].turn_aborted || ste[0].sibling_aborted { return 0; }
+  started := 0;
+  for i: 0..<ste[0].count {
+    if ste[0].slots[i].status != FLAWED_STE_QUEUED { continue; }
+    if ste[0].slots[i].concurrency_safe {
+      if ste[0].serial_executing { break; }
+      ste[0].slots[i].status = FLAWED_STE_EXECUTING;
+      ste[0].executing_count += 1;
+      started += 1;
+    } else {
+      // Unsafe tool requires exclusive execution and blocks any queued safe tools behind it!
+      if ste[0].executing_count == 0 {
+        ste[0].slots[i].status = FLAWED_STE_EXECUTING;
+        ste[0].executing_count = 1;
+        ste[0].serial_executing = true;
+        started += 1;
+      }
+      break;
+    }
+  }
+  return started;
+}
+
+// Downward Level 2 cascade: ONLY Bash errors cancel siblings without aborting Level 1 turn!
+flawed_ste_complete :: (ste: [] FlawedStreamingExecutor, idx: int, is_error: bool) -> bool #effects(reads, writes, traps) {
+  if idx < 0 || idx >= ste[0].count || ste[0].slots[idx].status != FLAWED_STE_EXECUTING { return false; }
+  ste[0].slots[idx].status = FLAWED_STE_COMPLETED;
+  ste[0].slots[idx].is_error = is_error;
+  ste[0].executing_count -= 1;
+  if !ste[0].slots[idx].concurrency_safe {
+    ste[0].serial_executing = false;
+  }
+  if is_error && ste[0].slots[idx].is_bash {
+    ste[0].sibling_aborted = true;
+    for i: 0..<ste[0].count {
+      if i != idx && (ste[0].slots[i].status == FLAWED_STE_QUEUED || ste[0].slots[i].status == FLAWED_STE_EXECUTING) {
+        ste[0].slots[i].aborted = true;
+      }
+    }
+  }
+  return true;
+}
+
+// Level 3 -> Level 1 upward bubble-up (#21056 regression guard):
+// Non-sibling_error aborts (e.g. permission rejection) bubble up to turn_aborted unless discarded!
+flawed_ste_abort_tool :: (ste: [] FlawedStreamingExecutor, idx: int, reason: u8) -> bool #effects(reads, writes, traps) {
+  if idx < 0 || idx >= ste[0].count { return false; }
+  if reason == FLAWED_ABORT_USER_INTERRUPT && ste[0].slots[idx].interrupt_behavior != FLAWED_INTERRUPT_CANCEL {
+    return false; // fail-safe BLOCK waits for tool to settle!
+  }
+  ste[0].slots[idx].aborted = true;
+  if reason != FLAWED_ABORT_SIBLING_ERROR && !ste[0].discarded {
+    ste[0].turn_aborted = true;
+  }
+  return true;
+}
+
+// Streaming/model fallback discard (StreamingToolExecutor.ts:69-71):
+// Passive discard: suppresses future yields and blocks orphaned bubble-up without setting sibling_aborted.
+flawed_ste_discard :: (ste: [] FlawedStreamingExecutor) #effects(writes, traps) {
+  ste[0].discarded = true;
+}
+
+// Can yield completed slot index (returns -1 if discarded or blocked behind executing serial tool).
+flawed_ste_next_yieldable :: (ste: [] FlawedStreamingExecutor) -> int #effects(reads, writes, traps) {
+  if ste[0].discarded { return -1; }
+  for i: 0..<ste[0].count {
+    st := ste[0].slots[i].status;
+    if st == FLAWED_STE_COMPLETED {
+      ste[0].slots[i].status = FLAWED_STE_YIELDED;
+      return i;
+    }
+    if st == FLAWED_STE_EXECUTING && !ste[0].slots[i].concurrency_safe {
+      return -1; // strict serial barrier
+    }
+  }
+  return -1;
+}
+
+#test "tool_exec: inc-4788 hook-vs-rule arbitration, PostToolUseFailure boundary, and fail-closed batching" {
+  // Hook DENY short-circuits canUseTool
+  a_d := flawed_resolve_hook_permission(FLAWED_HOOK_PERM_DENY, false, false, false, FLAWED_RULE_NONE);
+  #assert a_d.action == FLAWED_ARB_DENY && !a_d.force_prompt;
+
+  // Hook ALLOW can NEVER bypass deny rules, ask rules, require_can_use_tool, or unsatisfied interaction!
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, true, false, false, FLAWED_RULE_DENY).action == FLAWED_ARB_DENY;
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, true, false, false, FLAWED_RULE_ASK).action == FLAWED_ARB_PROMPT_CAN_USE_TOOL;
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, true, false, true, FLAWED_RULE_NONE).action == FLAWED_ARB_PROMPT_CAN_USE_TOOL;
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, false, true, false, FLAWED_RULE_NONE).action == FLAWED_ARB_PROMPT_CAN_USE_TOOL;
+  // Hook ALLOW succeeds only when all guards clear (including interaction satisfied via updatedInput)
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, true, true, false, FLAWED_RULE_NONE).action == FLAWED_ARB_ALLOW;
+  #assert flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ALLOW, false, false, false, FLAWED_RULE_NONE).action == FLAWED_ARB_ALLOW;
+
+  // Hook ASK forces prompt; NONE prompts normally without force_prompt
+  a_ask := flawed_resolve_hook_permission(FLAWED_HOOK_PERM_ASK, false, false, false, FLAWED_RULE_NONE);
+  #assert a_ask.action == FLAWED_ARB_PROMPT_CAN_USE_TOOL && a_ask.force_prompt;
+  a_none := flawed_resolve_hook_permission(FLAWED_HOOK_PERM_NONE, false, false, false, FLAWED_RULE_NONE);
+  #assert a_none.action == FLAWED_ARB_PROMPT_CAN_USE_TOOL && !a_none.force_prompt;
+
+  // Exact PostToolUseFailure boundary + minification filter + concurrency cap normalization
+  #assert !flawed_should_run_post_failure_hook(FLAWED_FAIL_UNKNOWN_TOOL);
+  #assert !flawed_should_run_post_failure_hook(FLAWED_FAIL_PRE_ABORT);
+  #assert !flawed_should_run_post_failure_hook(FLAWED_FAIL_VALIDATION);
+  #assert !flawed_should_run_post_failure_hook(FLAWED_FAIL_PRE_HOOK_STOP);
+  #assert !flawed_should_run_post_failure_hook(FLAWED_FAIL_PERM_DENIED);
+  #assert flawed_should_run_post_failure_hook(FLAWED_FAIL_CALL_EXCEPTION);
+  #assert flawed_should_run_post_failure_hook(FLAWED_FAIL_MID_CALL_ABORT);
+  #assert !flawed_is_unminified_error_name(3) && flawed_is_unminified_error_name(4);
+  #assert flawed_normalize_tool_concurrency(-1) == FLAWED_DEFAULT_TOOL_CONCURRENCY;
+  #assert flawed_normalize_tool_concurrency(0) == FLAWED_DEFAULT_TOOL_CONCURRENCY;
+  #assert flawed_normalize_tool_concurrency(1) == 1;
+
+  // Fail-closed partitioning: [Read1, Read2, Edit1, Read3(invalid!), Read4, Bash1]
+  calls: [6] FlawedBatchCall;
+  calls[0] = FlawedBatchCall.{id = 1, valid_input = true, concurrency_safe = true};
+  calls[1] = FlawedBatchCall.{id = 2, valid_input = true, concurrency_safe = true};
+  calls[2] = FlawedBatchCall.{id = 3, valid_input = true, concurrency_safe = false};
+  calls[3] = FlawedBatchCall.{id = 4, valid_input = false, concurrency_safe = true}; // invalid -> fail closed serial!
+  calls[4] = FlawedBatchCall.{id = 5, valid_input = true, concurrency_safe = true};
+  calls[5] = FlawedBatchCall.{id = 6, valid_input = true, concurrency_safe = false};
+  batches: [8] FlawedExecBatch;
+  nb := flawed_partition_tool_calls(calls[..], 6, batches[..]);
+  #assert nb == 5;
+  #assert batches[0].is_concurrent && batches[0].start_idx == 0 && batches[0].count == 2;
+  #assert !batches[1].is_concurrent && batches[1].start_idx == 2 && batches[1].count == 1;
+  #assert !batches[2].is_concurrent && batches[2].start_idx == 3 && batches[2].count == 1;
+  #assert batches[3].is_concurrent && batches[3].start_idx == 4 && batches[3].count == 1;
+  #assert !batches[4].is_concurrent && batches[4].start_idx == 5 && batches[4].count == 1;
+  // Tiny output batch slice caps safely
+  small_b: [1] FlawedExecBatch;
+  #assert flawed_partition_tool_calls(calls[..], 6, small_b[..]) == 1;
+}
+
+#test "tool_exec: StreamingToolExecutor serial barrier, Bash sibling cancel, #21056 bubble-up, and discard" {
+  ste: [1] FlawedStreamingExecutor;
+  // Queue: [Read1(safe), Read2(safe), Edit1(unsafe), Read3(safe)]
+  #assert flawed_ste_add(ste[..], 1, true, true, false, FLAWED_INTERRUPT_CANCEL) == 0;
+  #assert flawed_ste_add(ste[..], 2, true, true, false, FLAWED_INTERRUPT_BLOCK) == 1;
+  #assert flawed_ste_add(ste[..], 3, true, false, false, FLAWED_INTERRUPT_BLOCK) == 2;
+  #assert flawed_ste_add(ste[..], 4, true, true, false, FLAWED_INTERRUPT_CANCEL) == 3;
+
+  // Only Read1 & Read2 start; Edit1 waits AND blocks Read3 from leapfrogging!
+  #assert flawed_ste_process_queue(ste[..]) == 2;
+  #assert ste[0].slots[0].status == FLAWED_STE_EXECUTING && ste[0].slots[1].status == FLAWED_STE_EXECUTING;
+  #assert ste[0].slots[2].status == FLAWED_STE_QUEUED && ste[0].slots[3].status == FLAWED_STE_QUEUED;
+  #assert flawed_ste_next_yieldable(ste[..]) == -1;
+
+  // Read2 finishes first -> yields in completion order; Read1 fails (non-Bash -> does NOT cancel siblings!)
+  #assert flawed_ste_complete(ste[..], 1, false);
+  #assert !ste[0].slots[1].is_error;
+  #assert flawed_ste_next_yieldable(ste[..]) == 1 && ste[0].slots[1].status == FLAWED_STE_YIELDED;
+  #assert flawed_ste_complete(ste[..], 0, true) && ste[0].slots[0].is_error;
+  #assert !ste[0].sibling_aborted && !ste[0].turn_aborted;
+  #assert flawed_ste_next_yieldable(ste[..]) == 0;
+
+  // Now executing_count == 0 -> Edit1 launches exclusively, blocking Read3 while serial_executing
+  #assert flawed_ste_process_queue(ste[..]) == 1 && ste[0].serial_executing && ste[0].executing_count == 1;
+  #assert flawed_ste_process_queue(ste[..]) == 0; // Read3 cannot start while serial_executing!
+  // Even if a later slot were COMPLETED behind an EXECUTING serial tool, strict barrier blocks yielding it
+  ste[0].slots[3].status = FLAWED_STE_COMPLETED;
+  #assert flawed_ste_next_yieldable(ste[..]) == -1;
+  ste[0].slots[3].status = FLAWED_STE_QUEUED;
+  #assert flawed_ste_complete(ste[..], 2, false) && !ste[0].serial_executing && ste[0].executing_count == 0;
+  #assert flawed_ste_next_yieldable(ste[..]) == 2 && ste[0].slots[2].status == FLAWED_STE_YIELDED;
+  #assert flawed_ste_process_queue(ste[..]) == 1 && ste[0].slots[3].status == FLAWED_STE_EXECUTING;
+  #assert flawed_ste_complete(ste[..], 3, false) && flawed_ste_next_yieldable(ste[..]) == 3;
+  // Stale slot past count=4 must be rejected by idx >= count
+  ste[0].slots[4].status = FLAWED_STE_EXECUTING;
+  #assert !flawed_ste_complete(ste[..], -1, false) && !flawed_ste_complete(ste[..], 4, false) && !flawed_ste_complete(ste[..], 2, false);
+
+  // Bash failure at slot 1 cancels earlier slot 0 (EXECUTING) & later slot 2 (QUEUED), skips already-COMPLETED slot 3,
+  // does NOT abort slot 1 itself, and NEVER aborts Level 1 turn!
+  sb: [1] FlawedStreamingExecutor;
+  #assert flawed_ste_add(sb[..], 10, true, true, true, FLAWED_INTERRUPT_BLOCK) == 0;
+  #assert flawed_ste_add(sb[..], 11, true, true, true, FLAWED_INTERRUPT_BLOCK) == 1;
+  #assert flawed_ste_add(sb[..], 12, true, false, true, FLAWED_INTERRUPT_BLOCK) == 2;
+  #assert flawed_ste_add(sb[..], 13, true, true, true, FLAWED_INTERRUPT_BLOCK) == 3;
+  #assert flawed_ste_process_queue(sb[..]) == 2;
+  sb[0].slots[3].status = FLAWED_STE_COMPLETED;
+  #assert flawed_ste_complete(sb[..], 1, true);
+  #assert sb[0].sibling_aborted && !sb[0].turn_aborted;
+  #assert sb[0].slots[0].aborted && !sb[0].slots[1].aborted && sb[0].slots[2].aborted && !sb[0].slots[3].aborted;
+  #assert flawed_ste_process_queue(sb[..]) == 0; // blocked by sibling_aborted
+
+  // #21056 permission rejection bubbles up to Level 1 turn_aborted; BLOCK rejects USER_INTERRUPT; CANCEL accepts USER_INTERRUPT
+  pa: [1] FlawedStreamingExecutor;
+  #assert flawed_ste_add(pa[..], 20, true, true, false, FLAWED_INTERRUPT_BLOCK) == 0;
+  #assert flawed_ste_add(pa[..], 21, true, true, false, FLAWED_INTERRUPT_CANCEL) == 1;
+  #assert !flawed_ste_abort_tool(pa[..], -1, FLAWED_ABORT_PERM_REJECT);
+  #assert !flawed_ste_abort_tool(pa[..], 2, FLAWED_ABORT_PERM_REJECT);
+  #assert !flawed_ste_abort_tool(pa[..], 0, FLAWED_ABORT_USER_INTERRUPT) && !pa[0].slots[0].aborted; // BLOCK waits!
+  #assert flawed_ste_abort_tool(pa[..], 0, FLAWED_ABORT_SIBLING_ERROR) && pa[0].slots[0].aborted && !pa[0].turn_aborted; // sibling_error never bubbles!
+  #assert flawed_ste_abort_tool(pa[..], 1, FLAWED_ABORT_USER_INTERRUPT) && pa[0].slots[1].aborted && pa[0].turn_aborted; // CANCEL interrupts & bubbles!
+  #assert flawed_ste_process_queue(pa[..]) == 0;
+
+  // Passive discard suppresses yields AND blocks orphaned bubble-up without setting sibling_aborted
+  ds: [1] FlawedStreamingExecutor;
+  #assert flawed_ste_add(ds[..], 30, true, true, false, FLAWED_INTERRUPT_CANCEL) == 0;
+  #assert flawed_ste_process_queue(ds[..]) == 1;
+  #assert flawed_ste_complete(ds[..], 0, false);
+  flawed_ste_discard(ds[..]);
+  #assert flawed_ste_next_yieldable(ds[..]) == -1;
+  #assert flawed_ste_abort_tool(ds[..], 0, FLAWED_ABORT_PERM_REJECT) && !ds[0].turn_aborted;
+  #assert flawed_ste_process_queue(ds[..]) == 0;
+
+  // Slot overflow guard
+  full: [1] FlawedStreamingExecutor;
+  for i: 0..<FLAWED_EXEC_MAX_TOOLS {
+    #assert flawed_ste_add(full[..], i, false, true, false, FLAWED_INTERRUPT_BLOCK) == i;
+  }
+  #assert flawed_ste_add(full[..], 99, true, true, false, FLAWED_INTERRUPT_BLOCK) == -1;
+  #assert !full[0].slots[0].concurrency_safe; // invalid input failed closed!
+}

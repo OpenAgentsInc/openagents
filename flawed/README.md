@@ -11,6 +11,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 03 — Command & Message Contracts** | Layer 1 | `command.coax` (`#authority`), `messages.coax`, `message_wire.coax` (`#authority`), `flawed-cli route` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 04 — Prompt Engineering & Cache Boundaries** | Layer 2 | `prompt_cache.coax` (`#authority`), `prompt_context.coax`, `flawed-cli cache-plan` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 05 — Talking to the Model** | Layer 2 | `api_policy.coax` (`#authority`), `sse_stream.coax`, `flawed-cli cost-check` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 06 — Executing Tools** | Layer 2 | `tool_exec.coax` (`#authority`), `tool_spill.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

@@ -1,0 +1,281 @@
+// Flawed Layer 2 (Chapter 06) — Two-Stage Tool Result Disk Spill & Cache-Safe Budgeting.
+// Replaces cc/utils/toolResultStorage.ts (Stage A Infinity opt-out before flag overrides,
+// inc-4586 empty placeholder, line-snapped preview, Stage B 200k per-message aggregate budget
+// with atomic ContentReplacementState seen/replaced freeze for prompt-cache invariance).
+//   coax/bin/coax test flawed/tool_spill.coax --library
+//   coax/bin/coax mutate flawed/tool_spill.coax --root-only
+#module "flawed.tool_spill";
+#authority;
+#load "tool.coax";
+
+FLAWED_DEFAULT_PERSIST_CHARS :: 50000;
+FLAWED_PREVIEW_SIZE_BYTES :: 2000;
+FLAWED_DEFAULT_MSG_BUDGET_CHARS :: 200000;
+FLAWED_REPLACE_STATE_MAX :: 64;
+
+// Stage A spill actions.
+FLAWED_SPILL_KEEP :: 1;
+FLAWED_SPILL_EMPTY_PLACEHOLDER :: 2; // inc-4586: "(Tool completed with no output)"
+FLAWED_SPILL_PERSIST :: 3;
+
+// Stage B frozen decision status per tool_use_id.
+FLAWED_DEC_UNSEEN :: 0;
+FLAWED_DEC_KEPT :: 1;
+FLAWED_DEC_REPLACED :: 2;
+
+FlawedReplaceEntry :: struct {
+  tool_use_id: int;
+  decision: u8; // FLAWED_DEC_KEPT or FLAWED_DEC_REPLACED
+  replaced_size: int;
+}
+
+FlawedReplacementState :: struct {
+  entries: [FLAWED_REPLACE_STATE_MAX] FlawedReplaceEntry;
+  count: int;
+}
+
+FlawedBudgetCandidate :: struct {
+  tool_use_id: int;
+  size_chars: int;
+  is_unbounded: bool; // Read tool (maxResultSizeChars == Infinity): never persist!
+}
+
+// Stage A persistence threshold (utils/toolResultStorage.ts:55-78):
+// Checks FLAWED_RESULT_UNBOUNDED (-1, i.e. Infinity) BEFORE remote flag override so no remote
+// flag (tengu_satin_quoll) can ever force Read into a circular Read -> spill -> Read loop!
+flawed_persistence_threshold :: (declared_max: int, remote_override: int) -> int #effects(traps) {
+  if declared_max == FLAWED_RESULT_UNBOUNDED { return FLAWED_RESULT_UNBOUNDED; }
+  if remote_override > 0 { return remote_override; }
+  if declared_max < FLAWED_DEFAULT_PERSIST_CHARS { return declared_max; } // mutant: equivalent // when equal both return FLAWED_DEFAULT_PERSIST_CHARS
+  return FLAWED_DEFAULT_PERSIST_CHARS;
+}
+
+// Stage A per-tool spill classifier (inc-4586 empty guard, image bypass, non-text fail-open).
+flawed_classify_stage_a_spill :: (
+  size_chars: int,
+  has_non_text_or_image: bool,
+  declared_max: int,
+  remote_override: int
+) -> u8 #effects(traps) {
+  if size_chars == 0 && !has_non_text_or_image { return FLAWED_SPILL_EMPTY_PLACEHOLDER; }
+  if has_non_text_or_image { return FLAWED_SPILL_KEEP; }
+  thresh := flawed_persistence_threshold(declared_max, remote_override);
+  if thresh == FLAWED_RESULT_UNBOUNDED { return FLAWED_SPILL_KEEP; }
+  if size_chars > thresh { return FLAWED_SPILL_PERSIST; }
+  return FLAWED_SPILL_KEEP;
+}
+
+// Line-snapped preview length (utils/toolResultStorage.ts:189-199):
+// Slices at max_bytes; snaps back to last '\n' ONLY if last_nl > max_bytes / 2.
+flawed_preview_snap_len :: (text: string, max_bytes: int) -> int #effects(reads, traps) {
+  if max_bytes <= 0 { return 0; } // mutant: equivalent // when max_bytes == 0 and text non-empty returns 0
+  if text.count <= max_bytes { return text.count; } // mutant: equivalent // when text.count == max_bytes both return max_bytes
+  half := max_bytes / 2;
+  last_nl := max_bytes;
+  for i: half + 1..<max_bytes {
+    if text[i] == 10 { last_nl = i; }
+  }
+  return last_nl;
+}
+
+flawed_rstate_lookup :: (st: [] const FlawedReplacementState, tool_use_id: int) -> u8 #effects(reads, traps) {
+  for i: 0..<st[0].count {
+    if st[0].entries[i].tool_use_id == tool_use_id { return st[0].entries[i].decision; }
+  }
+  return FLAWED_DEC_UNSEEN;
+}
+
+flawed_rstate_commit :: (st: [] FlawedReplacementState, tool_use_id: int, decision: u8, replaced_size: int) -> bool #effects(reads, writes, traps) {
+  if flawed_rstate_lookup(st, tool_use_id) != FLAWED_DEC_UNSEEN { return false; }
+  if st[0].count >= FLAWED_REPLACE_STATE_MAX { return false; }
+  st[0].entries[st[0].count] = FlawedReplaceEntry.{
+    tool_use_id = tool_use_id,
+    decision = decision,
+    replaced_size = replaced_size,
+  };
+  st[0].count += 1;
+  return true;
+}
+
+// Deep copy for cache-sharing subagent forks (cloneContentReplacementState, toolResultStorage.ts:405-412).
+flawed_rstate_clone :: (dst: [] FlawedReplacementState, src: [] const FlawedReplacementState) #effects(reads, writes, traps) {
+  dst[0] = src[0];
+}
+
+// Stage B per-message aggregate budget enforcer (utils/toolResultStorage.ts:769-909):
+// 1. Frozen candidates (already seen) NEVER change their decision (prompt-cache invariance!).
+// 2. Fresh unbounded candidates (Read) are skipped & frozen as KEPT without counting toward fresh_size.
+// 3. If frozen_size + fresh_size > limit, selects largest-first fresh candidates to persist until
+//    remaining <= limit, committing REPLACED + seen atomically; remaining fresh freeze as KEPT.
+// Returns count of newly persisted candidates.
+flawed_enforce_message_budget :: (
+  st: [] FlawedReplacementState,
+  cands: [] const FlawedBudgetCandidate,
+  cand_count: int,
+  budget_limit: int,
+  preview_size: int
+) -> int #effects(reads, writes, traps) {
+  frozen_size := 0;
+  fresh_idx: [FLAWED_REPLACE_STATE_MAX] int;
+  fresh_n := 0;
+  fresh_size := 0;
+
+  for i: 0..<cand_count {
+    c := cands[i];
+    dec := flawed_rstate_lookup(st, c.tool_use_id);
+    if dec != FLAWED_DEC_UNSEEN {
+      if dec == FLAWED_DEC_KEPT {
+        frozen_size += c.size_chars;
+      } else {
+        frozen_size += preview_size;
+      }
+      continue;
+    }
+    if c.is_unbounded {
+      _ = flawed_rstate_commit(st, c.tool_use_id, FLAWED_DEC_KEPT, 0);
+      continue;
+    }
+    if fresh_n < FLAWED_REPLACE_STATE_MAX {
+      fresh_idx[fresh_n] = i;
+      fresh_n += 1;
+      fresh_size += c.size_chars;
+    }
+  }
+
+  // Sort fresh_idx descending by size_chars (selection sort: largest-first replacement)
+  for i: 0..<fresh_n {
+    best := i;
+    for j: i + 1..<fresh_n {
+      if cands[fresh_idx[j]].size_chars > cands[fresh_idx[best]].size_chars { // mutant: equivalent // equal-size tie order does not affect budget reduction
+        best = j;
+      }
+    }
+    if best != i {
+      tmp := fresh_idx[i];
+      fresh_idx[i] = fresh_idx[best];
+      fresh_idx[best] = tmp;
+    }
+  }
+
+  total := frozen_size + fresh_size;
+  persisted := 0;
+  for i: 0..<fresh_n {
+    c := cands[fresh_idx[i]];
+    if total > budget_limit && c.size_chars > preview_size {
+      if flawed_rstate_commit(st, c.tool_use_id, FLAWED_DEC_REPLACED, preview_size) {
+        total = total - c.size_chars + preview_size;
+        persisted += 1;
+      }
+    } else {
+      _ = flawed_rstate_commit(st, c.tool_use_id, FLAWED_DEC_KEPT, 0);
+    }
+  }
+  return persisted;
+}
+
+#test "tool_spill: Stage A Infinity opt-out, inc-4586 empty placeholder, and line-snapped preview" {
+  // Infinity (-1) opt-out MUST beat remote override!
+  #assert flawed_persistence_threshold(FLAWED_RESULT_UNBOUNDED, 1000) == FLAWED_RESULT_UNBOUNDED;
+  #assert flawed_persistence_threshold(30000, 1) == 1;
+  #assert flawed_persistence_threshold(30000, 1000) == 1000;
+  #assert flawed_persistence_threshold(30000, 0) == 30000;
+  #assert flawed_persistence_threshold(100000, 0) == FLAWED_DEFAULT_PERSIST_CHARS;
+  #assert flawed_persistence_threshold(50000, 0) == 50000;
+
+  // Stage A classification
+  #assert flawed_classify_stage_a_spill(0, false, 30000, 0) == FLAWED_SPILL_EMPTY_PLACEHOLDER;
+  #assert flawed_classify_stage_a_spill(0, true, 30000, 0) == FLAWED_SPILL_KEEP; // image bypass
+  #assert flawed_classify_stage_a_spill(999999, true, 30000, 0) == FLAWED_SPILL_KEEP;
+  #assert flawed_classify_stage_a_spill(999999, false, FLAWED_RESULT_UNBOUNDED, 1000) == FLAWED_SPILL_KEEP;
+  #assert flawed_classify_stage_a_spill(30000, false, 30000, 0) == FLAWED_SPILL_KEEP;
+  #assert flawed_classify_stage_a_spill(30001, false, 30000, 0) == FLAWED_SPILL_PERSIST;
+
+  // Preview line-snap (> max_bytes / 2 only!)
+  #assert flawed_preview_snap_len("hello", -1) == 0;
+  #assert flawed_preview_snap_len("hello", 0) == 0;
+  #assert flawed_preview_snap_len("hello", 1) == 1;
+  #assert flawed_preview_snap_len("hello", 5) == 5;
+  #assert flawed_preview_snap_len("hello", 10) == 5;
+  // max_bytes=10 -> half=5: newline at index 5 is NOT > 5 (returns 10); newline at index 6 IS > 5 (snaps to 6)
+  #assert flawed_preview_snap_len("01234\n6789abcdef", 10) == 10;
+  #assert flawed_preview_snap_len("012345\n789abcdef", 10) == 6;
+}
+
+#test "tool_spill: Stage B largest-first aggregate budget, Read opt-out, cache-invariant freeze, and fork clone" {
+  // Exact budget boundary (fresh_size == budget_limit -> 0 persisted; fresh_size == budget_limit + 1 -> 1 persisted)
+  // AND 2-item cascade where replacing item 1 leaves total = limit + 1 (kills '+' -> '-' on preview_size!)
+  ex_st: [1] FlawedReplacementState;
+  ex_c: [2] FlawedBudgetCandidate;
+  ex_c[0] = FlawedBudgetCandidate.{tool_use_id = 10, size_chars = 5000, is_unbounded = false};
+  ex_c[1] = FlawedBudgetCandidate.{tool_use_id = 11, size_chars = 5000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(ex_st[..], ex_c[..], 2, 10000, 2000) == 0;
+  #assert ex_st[0].count == 2 && ex_st[0].entries[0].replaced_size == 0 && ex_st[0].entries[1].replaced_size == 0;
+
+  // Exact cascade: 6000 + 5000 = 11000, limit=6999, preview=2000 -> after replacing 6000: 11000-6000+2000 = 7000 > 6999 -> replaces 5000 too!
+  // (With '+' mutated to '-': 11000-6000-2000 = 3000 <= 6999 would wrongly keep 5000!)
+  cas_st: [1] FlawedReplacementState;
+  cas_c: [2] FlawedBudgetCandidate;
+  cas_c[0] = FlawedBudgetCandidate.{tool_use_id = 20, size_chars = 6000, is_unbounded = false};
+  cas_c[1] = FlawedBudgetCandidate.{tool_use_id = 21, size_chars = 5000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(cas_st[..], cas_c[..], 2, 6999, 2000) == 2;
+  // Next turn with frozen REPLACED entries (2 * 2000 = 4000) + fresh 3000 = 7000 > 6999 -> replaces id=22!
+  // (Kills frozen_size += preview_size removal or '-='!)
+  cas_c2: [3] FlawedBudgetCandidate;
+  cas_c2[0] = cas_c[0]; cas_c2[1] = cas_c[1];
+  cas_c2[2] = FlawedBudgetCandidate.{tool_use_id = 22, size_chars = 3000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(cas_st[..], cas_c2[..], 3, 6999, 2000) == 1;
+  #assert flawed_rstate_lookup(cas_st[..], 22) == FLAWED_DEC_REPLACED;
+
+  st: [1] FlawedReplacementState;
+
+  // Turn 1: 4 candidates totaling > 200k:
+  //   id=1: Read (is_unbounded=true, 180k) -> skipped & frozen KEPT, excluded from fresh_size
+  //   id=2: small tool (40k)
+  //   id=3: huge tool (120k) -> largest, replaced first!
+  //   id=4: large tool (100k) -> remaining 140k + 2k = 142k <= 200k, so KEPT!
+  c1: [4] FlawedBudgetCandidate;
+  c1[0] = FlawedBudgetCandidate.{tool_use_id = 1, size_chars = 180000, is_unbounded = true};
+  c1[1] = FlawedBudgetCandidate.{tool_use_id = 2, size_chars = 40000, is_unbounded = false};
+  c1[2] = FlawedBudgetCandidate.{tool_use_id = 3, size_chars = 120000, is_unbounded = false};
+  c1[3] = FlawedBudgetCandidate.{tool_use_id = 4, size_chars = 100000, is_unbounded = false};
+
+  p1 := flawed_enforce_message_budget(st[..], c1[..], 4, FLAWED_DEFAULT_MSG_BUDGET_CHARS, FLAWED_PREVIEW_SIZE_BYTES);
+  #assert p1 == 1;
+  #assert flawed_rstate_lookup(st[..], 1) == FLAWED_DEC_KEPT && st[0].entries[0].replaced_size == 0;
+  #assert flawed_rstate_lookup(st[..], 3) == FLAWED_DEC_REPLACED;
+  #assert flawed_rstate_lookup(st[..], 4) == FLAWED_DEC_KEPT;
+  #assert flawed_rstate_lookup(st[..], 2) == FLAWED_DEC_KEPT;
+
+  // Re-running Stage B on Turn 2 with a tighter budget (10k) MUST NOT change any already-frozen decision!
+  #assert flawed_enforce_message_budget(st[..], c1[..], 4, 10000, FLAWED_PREVIEW_SIZE_BYTES) == 0;
+  #assert flawed_rstate_lookup(st[..], 4) == FLAWED_DEC_KEPT;
+  #assert flawed_rstate_lookup(st[..], 3) == FLAWED_DEC_REPLACED;
+
+  // Clone state for cache-sharing fork; new candidate id=5 on clone sees frozen size (180k + 40k + 2k + 100k = 322k)
+  // and does not mutate parent!
+  fork_st: [1] FlawedReplacementState;
+  flawed_rstate_clone(fork_st[..], st[..]);
+  c2: [5] FlawedBudgetCandidate;
+  for i: 0..<4 { c2[i] = c1[i]; }
+  c2[4] = FlawedBudgetCandidate.{tool_use_id = 5, size_chars = 5000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(fork_st[..], c2[..], 5, 200000, 2000) == 1;
+  #assert flawed_rstate_lookup(fork_st[..], 5) == FLAWED_DEC_REPLACED;
+  #assert flawed_rstate_lookup(st[..], 5) == FLAWED_DEC_UNSEEN;
+
+  // Fresh candidate smaller than preview_size is never replaced even if over budget; duplicate/overflow commit fails
+  small_c: [1] FlawedBudgetCandidate;
+  small_c[0] = FlawedBudgetCandidate.{tool_use_id = 6, size_chars = 2000, is_unbounded = false};
+  #assert flawed_enforce_message_budget(fork_st[..], small_c[..], 1, 100, 2000) == 0;
+  #assert flawed_rstate_lookup(fork_st[..], 6) == FLAWED_DEC_KEPT;
+  #assert !flawed_rstate_commit(st[..], 1, FLAWED_DEC_REPLACED, 2000);
+
+  // 65 fresh candidates cap cleanly at FLAWED_REPLACE_STATE_MAX (64) without out-of-bounds
+  big_st: [1] FlawedReplacementState;
+  big_c: [65] FlawedBudgetCandidate;
+  for i: 0..<65 {
+    big_c[i] = FlawedBudgetCandidate.{tool_use_id = i + 500, size_chars = 100, is_unbounded = false};
+  }
+  #assert flawed_enforce_message_budget(big_st[..], big_c[..], 65, 100000, 2000) == 0;
+  #assert big_st[0].count == FLAWED_REPLACE_STATE_MAX;
+  #assert !flawed_rstate_commit(big_st[..], 999, FLAWED_DEC_KEPT, 0);
+}
