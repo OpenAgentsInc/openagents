@@ -20,6 +20,7 @@
 #load "query_loop.coax";
 #load "session.coax";
 #load "transcript_dag.coax";
+#load "compaction.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -205,4 +206,13 @@
   #assert flawed_fh_rewind_plan(fh[..], 10, 1).action == FLAWED_REWIND_RESTORE;
   rp := flawed_plan_resume(true, true);
   #assert !rp.restore_worktree && rp.seed_content_replacements && rp.restamp_session_id;
+}
+
+#test "flawed core (Ch 09): five-layer compaction pipeline, 3-failure breaker, SM fast path, and cleanup isolation compose" {
+  eff := flawed_effective_context_window(200000, 64000, 0);
+  #assert flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, 170000, 0, eff, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 3, 170000, 0, eff, 0);
+  #assert flawed_subtract_task_budget(false, 0, 100000, 40000) == 60000;
+  #assert !flawed_post_compact_cleanup_plan(FLAWED_QSRC_SUBAGENT).clear_user_context_and_memory;
+  #assert flawed_post_compact_cleanup_plan(FLAWED_QSRC_MAIN_OR_SDK).clear_user_context_and_memory;
 }

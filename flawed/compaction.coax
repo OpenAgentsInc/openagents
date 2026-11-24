@@ -1,0 +1,369 @@
+// Flawed Layer 3 (Chapter 09) — The Five-Layer Compaction Pipeline.
+// Replaces cc/services/compact/{autoCompact.ts,microCompact.ts,apiMicrocompact.ts,
+// compact.ts,sessionMemoryCompact.ts,postCompactCleanup.ts}.
+//   coax/bin/coax test flawed/compaction.coax --library
+//   coax/bin/coax mutate flawed/compaction.coax --root-only
+#module "flawed.compaction";
+#authority;
+#load "session.coax";
+
+FLAWED_MAX_SUMMARY_OUT_TOKENS :: 20000;
+FLAWED_AUTOCOMPACT_BUFFER :: 13000;
+FLAWED_WARNING_BUFFER :: 20000;
+FLAWED_BLOCKING_BUFFER :: 3000;
+FLAWED_MAX_AUTOCOMPACT_FAILURES :: 3;
+
+FLAWED_POST_COMPACT_MAX_FILES :: 5;
+FLAWED_POST_COMPACT_FILE_TOK_CAP :: 5000;
+FLAWED_POST_COMPACT_TOTAL_TOK_BUDGET :: 50000;
+FLAWED_POST_COMPACT_SKILL_TOK_CAP :: 5000;
+FLAWED_POST_COMPACT_SKILLS_BUDGET :: 25000;
+
+// Query source categories for recursion & isolation guards.
+FLAWED_QSRC_MAIN_OR_SDK :: 1;
+FLAWED_QSRC_SUBAGENT :: 2;
+FLAWED_QSRC_COMPACT :: 3;
+FLAWED_QSRC_SESSION_MEMORY :: 4;
+FLAWED_QSRC_COLLAPSE_AGENT :: 5;
+
+// Server-side context_management clear_thinking_20251015 modes (apiMicrocompact.ts:82-90).
+FLAWED_THINK_KEEP_OMIT :: 0;
+FLAWED_THINK_KEEP_ALL :: 1;
+FLAWED_THINK_KEEP_TURNS_1 :: 2;
+
+FlawedTokenWarningState :: struct {
+  adjusted_tokens: int;
+  auto_threshold: int;
+  warning_threshold: int;
+  blocking_limit: int;
+  is_above_warning: bool;
+  is_above_auto_threshold: bool;
+  is_at_blocking_limit: bool;
+}
+
+FlawedPostCompactCleanupPlan :: struct {
+  reset_microcompact: bool;
+  reset_context_collapse: bool;
+  clear_user_context_and_memory: bool;
+  clear_sections_and_beta_latches: bool;
+  clear_session_msg_cache: bool;
+  preserve_sent_skill_names: bool;
+}
+
+FlawedRestoreFileCand :: struct {
+  tokens: int;
+  excluded: bool; // plan/memory path or already-preserved non-stub Read
+}
+
+// Effective context window reserves min(model_max_out, 20_000) for summary output (autoCompact.ts:28-49).
+flawed_effective_context_window :: (model_window: int, model_max_out: int, window_override: int) -> int #effects(traps) {
+  win := model_window;
+  if window_override > 0 && window_override < win { win = window_override; } // mutant: equivalent // when window_override == win assigning win is a no-op
+  reserve := ifx model_max_out < FLAWED_MAX_SUMMARY_OUT_TOKENS then model_max_out else FLAWED_MAX_SUMMARY_OUT_TOKENS; // mutant: equivalent // when equal both yield FLAWED_MAX_SUMMARY_OUT_TOKENS
+  eff := win - reserve;
+  if eff < 0 { return 0; } // mutant: equivalent // when eff == 0 both return 0
+  return eff;
+}
+
+// Auto-compact threshold = eff_window - 13_000, optionally tightened by pct_override (> 0).
+flawed_auto_compact_threshold :: (eff_window: int, pct_override: int) -> int #effects(traps) {
+  base := eff_window - FLAWED_AUTOCOMPACT_BUFFER;
+  if base < 0 { base = 0; } // mutant: equivalent // when base == 0 both yield 0
+  if pct_override > 0 {
+    by_pct := (eff_window * pct_override) / 100;
+    if by_pct < base { return by_pct; } // mutant: equivalent // when equal both return base
+  }
+  return base;
+}
+
+// Snip-adjusted warning / auto-compact / blocking-limit thresholds (autoCompact.ts:72-145).
+flawed_calc_token_warning_state :: (
+  est_tokens: int,
+  snip_tokens_freed: int,
+  eff_window: int,
+  auto_enabled: bool,
+  pct_override: int
+) -> FlawedTokenWarningState #effects(traps) {
+  adj := est_tokens - snip_tokens_freed;
+  if adj < 0 { adj = 0; } // mutant: equivalent // when adj == 0 both yield 0
+  auto_th := flawed_auto_compact_threshold(eff_window, pct_override);
+  warn_base := ifx auto_enabled then auto_th else eff_window;
+  warn_th := warn_base - FLAWED_WARNING_BUFFER;
+  if warn_th < 0 { warn_th = 0; } // mutant: equivalent // when warn_th == 0 both yield 0
+  blk_lim := eff_window - FLAWED_BLOCKING_BUFFER;
+  if blk_lim < 0 { blk_lim = 0; } // mutant: equivalent // when blk_lim == 0 both yield 0
+  return FlawedTokenWarningState.{
+    adjusted_tokens = adj,
+    auto_threshold = auto_th,
+    warning_threshold = warn_th,
+    blocking_limit = blk_lim,
+    is_above_warning = adj >= warn_th,
+    is_above_auto_threshold = adj >= auto_th,
+    is_at_blocking_limit = adj >= blk_lim,
+  };
+}
+
+// Six-gate shouldAutoCompact() + 3-failure circuit breaker (autoCompact.ts:160-265).
+flawed_should_auto_compact :: (
+  qsrc: u8,
+  disable_compact: bool,
+  auto_enabled: bool,
+  reactive_only: bool,
+  collapse_owns: bool,
+  consecutive_failures: int,
+  est_tokens: int,
+  snip_freed: int,
+  eff_window: int,
+  pct_override: int
+) -> bool #effects(traps) {
+  if disable_compact || !auto_enabled { return false; }
+  if consecutive_failures >= FLAWED_MAX_AUTOCOMPACT_FAILURES { return false; }
+  // Recursion & collapse-agent exclusion guards
+  if qsrc == FLAWED_QSRC_COMPACT || qsrc == FLAWED_QSRC_SESSION_MEMORY || qsrc == FLAWED_QSRC_COLLAPSE_AGENT {
+    return false;
+  }
+  if reactive_only || collapse_owns { return false; }
+  adj := est_tokens - snip_freed;
+  return adj >= flawed_auto_compact_threshold(eff_window, pct_override);
+}
+
+// Circuit breaker counter update (autoCompact.ts:328-350):
+// Success -> 0; SM null fallthrough -> unchanged; LLM failure (incl. user abort) -> +1.
+flawed_autocompact_next_failures :: (prev_failures: int, succeeded: bool, sm_fallthrough: bool) -> int #effects(traps) {
+  if succeeded { return 0; }
+  if sm_fallthrough { return prev_failures; }
+  return prev_failures + 1;
+}
+
+// Cold-cache time-based microcompact trigger (microCompact.ts:422-465):
+// Main-thread only, gap >= threshold, keepRecent clamped >= 1 (avoids slice(-0)!).
+flawed_time_microcompact_keep_count :: (
+  enabled: bool,
+  is_main_thread: bool,
+  idle_minutes: int,
+  gap_threshold_minutes: int,
+  keep_recent: int
+) -> int #effects(traps) {
+  if !enabled || !is_main_thread || idle_minutes < gap_threshold_minutes { return 0; }
+  if keep_recent < 1 { return 1; } // mutant: equivalent // when keep_recent == 1 both return 1
+  return keep_recent;
+}
+
+// Server-side context_management clear_thinking_20251015 policy (apiMicrocompact.ts:82-90).
+flawed_api_thinking_clear_mode :: (has_thinking: bool, redact_active: bool, clear_latched: bool) -> u8 #effects(traps) {
+  if !has_thinking || redact_active { return FLAWED_THINK_KEEP_OMIT; }
+  if clear_latched { return FLAWED_THINK_KEEP_TURNS_1; }
+  return FLAWED_THINK_KEEP_ALL;
+}
+
+// SessionMemory compact tail expansion (sessionMemoryCompact.ts:370-396):
+// Walks backward from count-1, floored at boundary_idx+1, stopping at max_tokens OR (min_tokens && min_text_msgs).
+flawed_sm_tail_start_index :: (
+  msg_tokens: [] const int,
+  has_text: [] const bool,
+  count: int,
+  boundary_idx: int,
+  min_tokens: int,
+  min_text_msgs: int,
+  max_tokens: int
+) -> int #effects(reads, traps) {
+  min_idx := boundary_idx + 1;
+  if count <= min_idx { return min_idx; } // mutant: equivalent // when count == min_idx loop runs 0 times and returns count == min_idx
+  start := count;
+  total := 0;
+  text_cnt := 0;
+  i := count - 1;
+  while i >= min_idx {
+    total += msg_tokens[i];
+    if has_text[i] { text_cnt += 1; }
+    start = i;
+    if total >= max_tokens { break; }
+    if total >= min_tokens && text_cnt >= min_text_msgs { break; }
+    i -= 1;
+  }
+  return start;
+}
+
+// Reject SessionMemory compact if post-compact payload still >= auto_threshold (sessionMemoryCompact.ts:605-614).
+flawed_sm_compact_fits :: (post_tokens: int, auto_threshold: int) -> bool #effects(traps) {
+  return post_tokens < auto_threshold;
+}
+
+// PTL head-truncation retry group drop count (compact.ts:243-291):
+// Drops oldest groups covering target_gap (or 20% of group_count when target_gap <= 0), strictly <= group_count - 1.
+flawed_ptl_drop_groups :: (group_tokens: [] const int, group_count: int, target_gap: int) -> int #effects(reads, traps) {
+  if group_count <= 1 { return 0; }
+  max_drop := group_count - 1;
+  if target_gap <= 0 {
+    d := group_count / 5;
+    if d < 1 { return 1; } // mutant: equivalent // when d == 1 both return 1
+    return d;
+  }
+  acc := 0;
+  dropped := 0;
+  for i: 0..<max_drop {
+    acc += group_tokens[i];
+    dropped += 1;
+    if acc >= target_gap { break; }
+  }
+  return dropped;
+}
+
+// Budgeted post-compact item restoration (compact.ts:1415-1464, 1520-1599):
+// Enforces max_items, per_item_cap, and total_budget; skips excluded/non-positive items.
+flawed_count_post_compact_items :: (
+  cands: [] const FlawedRestoreFileCand,
+  count: int,
+  max_items: int,
+  per_item_cap: int,
+  total_budget: int
+) -> int #effects(reads, traps) {
+  restored := 0;
+  budget_used := 0;
+  for i: 0..<count {
+    if restored >= max_items { break; }
+    c := cands[i];
+    if c.excluded || c.tokens <= 0 || c.tokens > per_item_cap { continue; }
+    if budget_used + c.tokens > total_budget { continue; }
+    budget_used += c.tokens;
+    restored += 1;
+  }
+  return restored;
+}
+
+// Centralized subagent-isolated post-compact cleanup plan (postCompactCleanup.ts:31-77):
+// Only main thread (REPL/SDK) resets context collapse, getUserContext, and memory files!
+flawed_post_compact_cleanup_plan :: (qsrc: u8) -> FlawedPostCompactCleanupPlan #effects(traps) {
+  is_main := qsrc == FLAWED_QSRC_MAIN_OR_SDK;
+  return FlawedPostCompactCleanupPlan.{
+    reset_microcompact = true,
+    reset_context_collapse = is_main,
+    clear_user_context_and_memory = is_main,
+    clear_sections_and_beta_latches = true,
+    clear_session_msg_cache = true,
+    preserve_sent_skill_names = true,
+  };
+}
+
+// Manual taskBudgetRemaining subtraction (query.ts:504-515, 1138-1146):
+// Subtracts pre-compact final window (iterations[-1] input+output) and clamps at 0.
+flawed_subtract_task_budget :: (has_prev: bool, prev_remaining: int, total_budget: int, pre_compact_ctx: int) -> int #effects(traps) {
+  base := ifx has_prev then prev_remaining else total_budget;
+  rem := base - pre_compact_ctx;
+  if rem < 0 { return 0; } // mutant: equivalent // when rem == 0 both return 0
+  return rem;
+}
+
+#test "compaction: window math, snip-adjusted thresholds, 6-gate shouldAutoCompact, and 3-failure breaker" {
+  // Effective window reserves min(model_max_out, 20000), clamped by override
+  #assert flawed_effective_context_window(200000, 64000, 0) == 180000;
+  #assert flawed_effective_context_window(200000, 8192, 0) == 191808;
+  #assert flawed_effective_context_window(200000, 64000, 1) == 0; // override=1 < 200000 (kills 0->1!)
+  #assert flawed_effective_context_window(200000, 64000, 100000) == 80000;
+  #assert flawed_effective_context_window(200000, 64000, 250000) == 180000; // override > window ignored
+  #assert flawed_effective_context_window(10000, 20000, 0) == 0;
+
+  // Auto threshold = eff - 13000, optionally tightened by pct_override (> 0)
+  #assert flawed_auto_compact_threshold(180000, 0) == 167000;
+  #assert flawed_auto_compact_threshold(180000, 1) == 1800; // kills 0->1!
+  #assert flawed_auto_compact_threshold(180000, 50) == 90000;
+  #assert flawed_auto_compact_threshold(180000, 100) == 167000;
+  #assert flawed_auto_compact_threshold(10000, 0) == 0;
+
+  // Warning state with snip_tokens_freed subtraction (exact warn_th=147000, auto_th=167000, blocking_limit=177000!)
+  ws0 := flawed_calc_token_warning_state(147000, 0, 180000, true, 0);
+  #assert ws0.is_above_warning && !ws0.is_above_auto_threshold && ws0.blocking_limit == 177000;
+  #assert flawed_calc_token_warning_state(167000, 0, 180000, true, 0).is_above_auto_threshold;
+  ws1 := flawed_calc_token_warning_state(170000, 5000, 180000, true, 0); // adj=165000, auto=167000
+  #assert ws1.adjusted_tokens == 165000 && ws1.is_above_warning && !ws1.is_above_auto_threshold && !ws1.is_at_blocking_limit;
+  ws2 := flawed_calc_token_warning_state(177000, 0, 180000, false, 0); // auto off -> warn=160000, blk=177000
+  #assert ws2.warning_threshold == 160000 && ws2.is_at_blocking_limit;
+  ws_cl := flawed_calc_token_warning_state(100, 500, 2000, true, 0); // clamped floors
+  #assert ws_cl.adjusted_tokens == 0 && ws_cl.warning_threshold == 0 && ws_cl.blocking_limit == 0;
+
+  // Six-gate shouldAutoCompact + 3-failure breaker
+  #assert flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 2, 167000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 2, 167000, 1, 180000, 0); // snip subtraction!
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 3, 170000, 0, 180000, 0); // breaker tripped!
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, true, true, false, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, false, false, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_COMPACT, false, true, false, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_SESSION_MEMORY, false, true, false, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_COLLAPSE_AGENT, false, true, false, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, true, false, 0, 170000, 0, 180000, 0);
+  #assert !flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, true, 0, 170000, 0, 180000, 0);
+
+  #assert flawed_autocompact_next_failures(2, true, false) == 0;
+  #assert flawed_autocompact_next_failures(2, false, true) == 2; // SM null fallthrough leaves breaker untouched
+  #assert flawed_autocompact_next_failures(2, false, false) == 3;
+}
+
+#test "compaction: microcompact, SessionMemory tail sizing, PTL retry drops, file restoration, cleanup & taskBudget" {
+  // Cold-cache time-based microcompact (keepRecent clamped >= 1!)
+  #assert flawed_time_microcompact_keep_count(false, true, 60, 60, 5) == 0;
+  #assert flawed_time_microcompact_keep_count(true, false, 60, 60, 5) == 0;
+  #assert flawed_time_microcompact_keep_count(true, true, 59, 60, 5) == 0;
+  #assert flawed_time_microcompact_keep_count(true, true, 60, 60, 0) == 1; // slice(-0) guard!
+  #assert flawed_time_microcompact_keep_count(true, true, 60, 60, 5) == 5;
+
+  // Server-side clear_thinking_20251015
+  #assert flawed_api_thinking_clear_mode(false, false, false) == FLAWED_THINK_KEEP_OMIT;
+  #assert flawed_api_thinking_clear_mode(true, true, false) == FLAWED_THINK_KEEP_OMIT;
+  #assert flawed_api_thinking_clear_mode(true, false, false) == FLAWED_THINK_KEEP_ALL;
+  #assert flawed_api_thinking_clear_mode(true, false, true) == FLAWED_THINK_KEEP_TURNS_1;
+
+  // SessionMemory tail sizing floored at boundary_idx + 1
+  toks: [6] int; toks[0] = 5000; toks[1] = 1000; toks[2] = 4000; toks[3] = 4000; toks[4] = 4000; toks[5] = 4000;
+  ht: [6] bool; ht[0] = true; ht[1] = false; ht[2] = true; ht[3] = true; ht[4] = false; ht[5] = true;
+  // boundary_idx=1 -> floor=2; exact min_tokens=12000 && min_text=2 hits at index 3 (4k+4k+4k=12k, 2 text msgs)!
+  // Note: at index 4 total=8k < 12k, text=1; at index 3 total=12k == 12k, text=2 -> kills >= -> >, && -> ||, 0->1, +=2!
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 6, 1, 12000, 2, 40000) == 3;
+  // Require 3 text msgs with min_tokens=8000 -> index 3 has 12k >= 8k but only 2 text -> must walk back to index 2!
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 6, 1, 8000, 3, 40000) == 2;
+  // Exact 12001 min_tokens -> index 3 has 12000 < 12001 -> must walk back to index 2! (kills total := 0 -> 1!)
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 6, 1, 12001, 2, 40000) == 2;
+  // With max_tokens=8000 -> stops at index 4!
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 6, 1, 10000, 5, 8000) == 4;
+  // Never walks past boundary_idx=1 (floor=2) even when minimums unmet
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 6, 1, 99999, 99, 99999) == 2;
+  #assert flawed_sm_tail_start_index(toks[..], ht[..], 1, 1, 1000, 1, 10000) == 2;
+  #assert flawed_sm_compact_fits(166999, 167000) && !flawed_sm_compact_fits(167000, 167000);
+
+  // PTL head-truncation group drops
+  gt: [10] int; for k: 0..<10 { gt[k] = 3000; }
+  #assert flawed_ptl_drop_groups(gt[..], 1, 0) == 0;        // kills <= -> < on group_count <= 1!
+  #assert flawed_ptl_drop_groups(gt[..], 10, 0) == 2;       // 20% of 10 = 2 (kills 5 -> 6 and d=1 -> 2!)
+  #assert flawed_ptl_drop_groups(gt[..], 10, -1) == 2;
+  #assert flawed_ptl_drop_groups(gt[..], 10, 1) == 1;       // target_gap=1 <= gt[0] -> 1 (kills target_gap <= 0 -> 1!)
+  #assert flawed_ptl_drop_groups(gt[..], 2, 0) == 1;        // min 1 fallback
+  #assert flawed_ptl_drop_groups(gt[..], 5, 3001) == 2;     // 3000 < 3001 -> needs 2 groups (kills acc := 0 -> 1!)
+  #assert flawed_ptl_drop_groups(gt[..], 5, 6000) == 2;
+  #assert flawed_ptl_drop_groups(gt[..], 5, 999999) == 4;   // clamped to group_count - 1!
+
+  // Post-compact budgeted restoration (max_items, per_item_cap, total_budget, excluded/non-positive skips)
+  fc: [8] FlawedRestoreFileCand;
+  fc[0] = FlawedRestoreFileCand.{tokens = 1, excluded = false};    // index 0 accepted (kills for 0->1, tokens <= 0 -> 1!)
+  fc[1] = FlawedRestoreFileCand.{tokens = 4000, excluded = true};  // excluded skipped
+  fc[2] = FlawedRestoreFileCand.{tokens = 0, excluded = false};    // 0 skipped (kills <= -> <!)
+  fc[3] = FlawedRestoreFileCand.{tokens = 5001, excluded = false}; // >cap skipped
+  fc[4] = FlawedRestoreFileCand.{tokens = 5000, excluded = false}; // exact cap accepted (budget_used=5001)
+  fc[5] = FlawedRestoreFileCand.{tokens = 2999, excluded = false}; // exact total_budget=8000 hit (5001+2999=8000)!
+  fc[6] = FlawedRestoreFileCand.{tokens = 2, excluded = false};    // 8000+2 > 8000 rejected (and 7999+2 > 8000 if i=0 skipped)!
+  fc[7] = FlawedRestoreFileCand.{tokens = 100, excluded = false};
+  #assert flawed_count_post_compact_items(fc[..], 8, FLAWED_POST_COMPACT_MAX_FILES, FLAWED_POST_COMPACT_FILE_TOK_CAP, 8000) == 3;
+  // Exact max_items=5 cap with ample total_budget=50000
+  fc9: [6] FlawedRestoreFileCand;
+  for i: 0..<6 { fc9[i] = FlawedRestoreFileCand.{tokens = 1000, excluded = false}; }
+  #assert flawed_count_post_compact_items(fc9[..], 6, FLAWED_POST_COMPACT_MAX_FILES, FLAWED_POST_COMPACT_FILE_TOK_CAP, FLAWED_POST_COMPACT_TOTAL_TOK_BUDGET) == 5;
+
+  // Subagent isolation in postCompactCleanup
+  p_main := flawed_post_compact_cleanup_plan(FLAWED_QSRC_MAIN_OR_SDK);
+  #assert p_main.reset_microcompact && p_main.reset_context_collapse && p_main.clear_user_context_and_memory && p_main.clear_sections_and_beta_latches && p_main.clear_session_msg_cache && p_main.preserve_sent_skill_names;
+  p_sub := flawed_post_compact_cleanup_plan(FLAWED_QSRC_SUBAGENT);
+  #assert p_sub.reset_microcompact && !p_sub.reset_context_collapse && !p_sub.clear_user_context_and_memory && p_sub.clear_sections_and_beta_latches;
+
+  // Manual taskBudgetRemaining subtraction
+  #assert flawed_subtract_task_budget(false, 0, 100000, 35000) == 65000;
+  #assert flawed_subtract_task_budget(true, 65000, 100000, 20000) == 45000;
+  #assert flawed_subtract_task_budget(true, 45000, 100000, 50000) == 0;
+}
