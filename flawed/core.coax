@@ -37,6 +37,7 @@
 #load "repl.coax";
 #load "cli_boot.coax";
 #load "sdk_protocol.coax";
+#load "remote_bridge.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -408,4 +409,18 @@
   #assert flawed_sdk_control_dispatch(FLAWED_CREQ_MCP_SET_SERVERS) == FLAWED_CDISP_REPLY_BEFORE_WORK;
   #assert !flawed_sdk_should_hold_back_result(true, true) && !flawed_sdk_can_seed_read_state(1001, 1000);
   #assert !flawed_mcp_serve_include_output_schema(true, false) && flawed_mcp_serve_can_call_tool(true, true, true);
+}
+
+#test "flawed core (Ch 24): remote transports, bridge OAuth/FlushGate/capacity, SessionsWS & upstreamproxy relay compose" {
+  #assert flawed_remote_select_transport(true, true) == FLAWED_XPORT_SSE_CCR_V2;
+  #assert flawed_ws_tick_action(60001, true) == FLAWED_WSTICK_SUSPEND_RECONNECT;
+  #assert flawed_ws_close_action(4003, true) == FLAWED_WSCLOSE_RETRY && flawed_ws_close_action(4003, false) == FLAWED_WSCLOSE_STOP;
+  #assert flawed_bridge_oauth_should_skip(3, 1000, 1000) && flawed_same_session_id("cse_abc", "session_abc");
+  #assert flawed_bridge_mirror_control_allowed(true, true) && !flawed_bridge_mirror_control_allowed(true, false);
+  #assert flawed_bridge_work_action(false, true, false, 32, 32) == FLAWED_BWORK_AT_CAPACITY_NO_ACK;
+  #assert flawed_sessions_ws_close_action(4001, 2) == FLAWED_SWS_RETRY_4001;
+  #assert flawed_relay_validate_connect_line("CONNECT api.example.com:443 HTTP/1.1", 64) == 200;
+  #assert !flawed_relay_send_502_on_error(true);
+  pb: [4] u8;
+  #assert flawed_proto_encode_chunk_header(300, pb[..]) == 3 && pb[0] == 0x0A && pb[1] == 0xAC && pb[2] == 0x02;
 }

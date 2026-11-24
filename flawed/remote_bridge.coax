@@ -1,0 +1,356 @@
+// Flawed Layer 8 (Chapter 24) — Across the Wire: Remote Sessions, Always-On Bridge,
+// Direct Connect & Zero-Secret CCR Upstream Proxy Relay:
+// Transport Priority, WS Sleep/4003 Recovery, CCR v2 Auth/Backoff, OAuth Cross-Process Backoff,
+// cse_*/session_* ID Compat, FlushGate, Multi-Session Capacity-Before-Ack, SessionsWS 4001 Compaction
+// Tolerance, and CONNECT-over-WebSocket Protobuf Wire Framing.
+// Replaces cc/cli/transports/*, cc/bridge/*, cc/remote/*, cc/server/*, and cc/upstreamproxy/* invariants.
+//   coax/bin/coax test flawed/remote_bridge.coax --library
+//   coax/bin/coax mutate flawed/remote_bridge.coax --root-only
+#module "flawed.remote_bridge";
+#authority;
+#load "sdk_protocol.coax";
+
+// Transport substrate selection (cli/transports/transportUtils.ts:16-44).
+FLAWED_XPORT_SSE_CCR_V2 :: 1;
+FLAWED_XPORT_HYBRID :: 2;
+FLAWED_XPORT_WEBSOCKET :: 3;
+
+// WebSocket ping/sleep & close policies (cli/transports/WebSocketTransport.ts:42-46, 427-455, 706-745).
+FLAWED_WS_SLEEP_THRESHOLD_MS :: 60000;
+FLAWED_WSTICK_SEND_PING :: 1;
+FLAWED_WSTICK_TIMEOUT_RECONNECT :: 2;
+FLAWED_WSTICK_SUSPEND_RECONNECT :: 3;
+
+FLAWED_WSCLOSE_RETRY :: 1;
+FLAWED_WSCLOSE_STOP :: 2;
+
+// CCR v2 auth & batch retry bounds (cli/transports/ccrClient.ts:589-614).
+FLAWED_CCR_MAX_AUTH_FAILURES :: 10;
+FLAWED_CCRAUTH_RETRY :: 1;
+FLAWED_CCRAUTH_STOP :: 2;
+
+// Always-on bridge multi-session & crash-recovery constants (bridge/bridgeMain.ts, bridgePointer.ts).
+FLAWED_BRIDGE_OAUTH_MAX_FAILS :: 3;
+FLAWED_BRIDGE_SPAWN_SINGLE :: 1;
+FLAWED_BRIDGE_SPAWN_SAME_DIR :: 2;
+FLAWED_BRIDGE_SPAWN_WORKTREE :: 3;
+FLAWED_BRIDGE_MAX_MULTI_SESSIONS :: 32;
+FLAWED_BRIDGE_POINTER_TTL_MS :: 14400000; // 4 hours
+
+FLAWED_BWORK_SKIP_DUP :: 1;
+FLAWED_BWORK_STOP_POISON :: 2;
+FLAWED_BWORK_ROTATE_TOKEN_AND_ACK :: 3;
+FLAWED_BWORK_AT_CAPACITY_NO_ACK :: 4;
+FLAWED_BWORK_SPAWN_AND_ACK :: 5;
+
+// Remote CCR SessionsWebSocket close policy (remote/SessionsWebSocket.ts:246-272).
+FLAWED_SWS_MAX_4001_RETRIES :: 3;
+FLAWED_SWS_CLOSE :: 1;
+FLAWED_SWS_RETRY_4001 :: 2;
+FLAWED_SWS_RETRY :: 3;
+
+// Upstream proxy CONNECT header cap & protobuf tag (upstreamproxy/relay.ts:66-103, 327-420).
+FLAWED_RELAY_MAX_HDR_BYTES :: 8192;
+FLAWED_RELAY_PROTO_DATA_TAG :: 0x0A;
+
+FlawedFlushGate :: struct {
+  gating: bool;
+  queued_count: int;
+}
+
+// Transport selection priority: CCR v2 SSE > Hybrid WS+POST > WebSocket (transportUtils.ts:16-44).
+flawed_remote_select_transport :: (use_ccr_v2: bool, post_for_ingress_v2: bool) -> u8 #effects(traps) {
+  if use_ccr_v2 { return FLAWED_XPORT_SSE_CCR_V2; }
+  if post_for_ingress_v2 { return FLAWED_XPORT_HYBRID; }
+  return FLAWED_XPORT_WEBSOCKET;
+}
+
+// WebSocket ping-loop suspension detector (WebSocketTransport.ts:706-745):
+// Tick gap > 60s assumes dead NAT socket after laptop sleep and forces immediate reconnect.
+flawed_ws_tick_action :: (gap_ms: int, pong_received: bool) -> u8 #effects(traps) {
+  if gap_ms > FLAWED_WS_SLEEP_THRESHOLD_MS { return FLAWED_WSTICK_SUSPEND_RECONNECT; }
+  if !pong_received { return FLAWED_WSTICK_TIMEOUT_RECONNECT; }
+  return FLAWED_WSTICK_SEND_PING;
+}
+
+// WebSocket close-code policy (WebSocketTransport.ts:42-46, 427-455):
+// 1002 & 4001 stop immediately; 4003 retries ONLY if refreshHeaders() rotated the Authorization token.
+flawed_ws_close_action :: (close_code: int, auth_header_changed: bool) -> u8 #effects(traps) {
+  if close_code == 1002 || close_code == 4001 { return FLAWED_WSCLOSE_STOP; }
+  if close_code == 4003 {
+    if auth_header_changed { return FLAWED_WSCLOSE_RETRY; }
+    return FLAWED_WSCLOSE_STOP;
+  }
+  return FLAWED_WSCLOSE_RETRY;
+}
+
+// SSE permanent HTTP statuses (SSETransport.ts:245-266) & CCR v2 JWT expiry vs transient 401/403.
+flawed_sse_status_is_permanent :: (http_status: int) -> bool #effects(traps) {
+  return http_status == 401 || http_status == 403 || http_status == 404;
+}
+
+flawed_ccr_auth_failure_action :: (jwt_expired: bool, consecutive_failures: int) -> u8 #effects(traps) {
+  if jwt_expired || consecutive_failures >= FLAWED_CCR_MAX_AUTH_FAILURES {
+    return FLAWED_CCRAUTH_STOP;
+  }
+  return FLAWED_CCRAUTH_RETRY;
+}
+
+// Clamped, jittered Retry-After backoff (SerialBatchEventUploader.ts:235-253).
+flawed_batch_retry_delay_ms :: (
+  retry_after_ms: int,
+  base_delay_ms: int,
+  max_delay_ms: int,
+  jitter_ms: int
+) -> int #effects(traps) {
+  clamped := retry_after_ms;
+  if clamped < base_delay_ms { clamped = base_delay_ms; } // mutant: equivalent // equal values assign the same bound
+  if clamped > max_delay_ms { clamped = max_delay_ms; } // mutant: equivalent // equal values assign the same bound
+  return clamped + jitter_ms;
+}
+
+// Cross-process content-addressed dead-OAuth backoff (bridge/initReplBridge.ts:169-240):
+// Skips network once 3 processes observe the same dead expiresAt; /login mints a new expiresAt and clears it.
+flawed_bridge_oauth_should_skip :: (
+  fail_count: int,
+  saved_expires_at: int,
+  cur_expires_at: int
+) -> bool #effects(traps) {
+  return fail_count >= FLAWED_BRIDGE_OAUTH_MAX_FAILS && saved_expires_at == cur_expires_at;
+}
+
+// Env-less bridge core selection (bridge/initReplBridge.ts:410-544): stays env-based for perpetual KAIROS.
+flawed_bridge_use_envless_core :: (flag_v2_enabled: bool, is_perpetual: bool) -> bool #effects(traps) {
+  return flag_v2_enabled && !is_perpetual;
+}
+
+// Session ID prefix-agnostic comparison (bridge/workSecret.ts:50-73):
+// Compares UUID bodies strictly after the last '_' so cse_<id> matches session_<id>.
+flawed_same_session_id :: (a: string, b: string) -> bool #effects(reads, traps) {
+  sa := 0;
+  for i: 0..<a.count {
+    if a[i] == 95 { sa = i + 1; }
+  }
+  sb := 0;
+  for i: 0..<b.count {
+    if b[i] == 95 { sb = i + 1; }
+  }
+  la := a.count - sa;
+  lb := b.count - sb;
+  if la == 0 || la != lb { return false; }
+  for i: 0..<la {
+    if a[sa + i] != b[sb + i] { return false; }
+  }
+  return true;
+}
+
+// Outbound-only mirror mode control policy (bridge/bridgeMessaging.ts:265-283):
+// initialize MUST still return success even in outboundOnly mode or the server kills the link in 10-14s.
+flawed_bridge_mirror_control_allowed :: (outbound_only: bool, is_initialize: bool) -> bool #effects(traps) {
+  if !outbound_only { return true; }
+  return is_initialize;
+}
+
+// FlushGate (bridge/flushGate.ts): queues live writes during initial history upload, drains in order.
+flawed_fg_activate :: (fg: [] FlawedFlushGate) #effects(writes, traps) {
+  fg[0].gating = true;
+}
+
+flawed_fg_submit :: (fg: [] FlawedFlushGate) -> bool #effects(reads, writes, traps) {
+  if fg[0].gating {
+    fg[0].queued_count = fg[0].queued_count + 1;
+    return false; // buffered behind initial history upload
+  }
+  return true; // pass straight through to transport
+}
+
+flawed_fg_drain :: (fg: [] FlawedFlushGate) -> int #effects(reads, writes, traps) {
+  drained := fg[0].queued_count;
+  fg[0].queued_count = 0;
+  fg[0].gating = false;
+  return drained;
+}
+
+// Multi-session bridge spawn cap, strict capacity-before-ack order & 4h pointer TTL (bridgeMain.ts, bridgePointer.ts).
+flawed_bridge_max_sessions :: (spawn_mode: u8, is_resume: bool) -> int #effects(traps) {
+  if is_resume || spawn_mode == FLAWED_BRIDGE_SPAWN_SINGLE { return 1; }
+  return FLAWED_BRIDGE_MAX_MULTI_SESSIONS;
+}
+
+flawed_bridge_work_action :: (
+  is_completed_dup: bool,
+  decode_ok: bool,
+  session_active: bool,
+  active_count: int,
+  max_sessions: int
+) -> u8 #effects(traps) {
+  if is_completed_dup { return FLAWED_BWORK_SKIP_DUP; }
+  if !decode_ok { return FLAWED_BWORK_STOP_POISON; }
+  if session_active { return FLAWED_BWORK_ROTATE_TOKEN_AND_ACK; }
+  if active_count >= max_sessions { return FLAWED_BWORK_AT_CAPACITY_NO_ACK; }
+  return FLAWED_BWORK_SPAWN_AND_ACK;
+}
+
+flawed_bridge_pointer_is_fresh :: (now_ms: int, mtime_ms: int) -> bool #effects(traps) {
+  age := now_ms - mtime_ms;
+  return age >= 0 && age <= FLAWED_BRIDGE_POINTER_TTL_MS;
+}
+
+// Remote CCR SessionsWebSocket close policy (remote/SessionsWebSocket.ts:246-272):
+// 4003 closes permanently; 4001 (transient during compaction) retries up to 3 times.
+flawed_sessions_ws_close_action :: (close_code: int, not_found_retries: int) -> u8 #effects(traps) {
+  if close_code == 4003 { return FLAWED_SWS_CLOSE; }
+  if close_code == 4001 {
+    if not_found_retries < FLAWED_SWS_MAX_4001_RETRIES { return FLAWED_SWS_RETRY_4001; }
+    return FLAWED_SWS_CLOSE;
+  }
+  return FLAWED_SWS_RETRY;
+}
+
+flawed_remote_viewer_allow_interrupt :: (viewer_only: bool) -> bool #effects(traps) {
+  return !viewer_only;
+}
+
+// Zero-secret CCR upstreamproxy/ relay guards (upstreamproxy/upstreamproxy.ts, relay.ts).
+flawed_upstream_proxy_boot_allowed :: (
+  is_remote: bool,
+  proxy_enabled_env: bool,
+  has_token: bool
+) -> bool #effects(traps) {
+  return is_remote && proxy_enabled_env && has_token;
+}
+
+// Phase-1 HTTP CONNECT request-line validator (upstreamproxy/relay.ts:327-340):
+// >8192 header bytes -> 400; valid "CONNECT <target> HTTP/1.[01]" -> 200; else -> 405.
+flawed_relay_validate_connect_line :: (line: string, total_hdr_bytes: int) -> int #effects(reads, traps) {
+  if total_hdr_bytes > FLAWED_RELAY_MAX_HDR_BYTES { return 400; }
+  // Minimum valid line: "CONNECT a HTTP/1.1" = 18 bytes ("CONNECT " = 8, target >= 1, " HTTP/1.x" = 9)
+  if line.count < 18 { return 405; }
+  if line[0..<8] != "CONNECT " { return 405; }
+  sfx := line[(line.count - 9)..<line.count];
+  if sfx != " HTTP/1.1" && sfx != " HTTP/1.0" { return 405; }
+  for i: 8..<(line.count - 9) {
+    if line[i] == 32 || line[i] == 9 { return 405; }
+  }
+  return 200;
+}
+
+// Never inject plaintext HTTP/1.1 502 once TLS tunnel payload bytes have flowed (relay.ts:405-420).
+flawed_relay_send_502_on_error :: (tunnel_established: bool) -> bool #effects(traps) {
+  return !tunnel_established;
+}
+
+// Hand-rolled zero-dependency protobuf header encoder for UpstreamProxyChunk { bytes data = 1; }
+// Wire format: tag 0x0A + LEB128 base-128 varint(payload_len). Returns header bytes written or -1.
+flawed_proto_encode_chunk_header :: (payload_len: int, out: [] u8) -> int #effects(writes, traps) {
+  if payload_len < 0 || out.count < 2 { return -1; }
+  out[0] = FLAWED_RELAY_PROTO_DATA_TAG;
+  w := 1;
+  v := payload_len;
+  while v >= 128 {
+    if w + 1 >= out.count { return -1; }
+    out[w] = cast(u8) ((v & 127) | 128);
+    w = w + 1;
+    v = v >> 7;
+  }
+  out[w] = cast(u8) v;
+  return w + 1;
+}
+
+#test "remote_bridge: transport priority, WS sleep/4003 recovery, SSE/CCR auth & clamped Retry-After" {
+  #assert flawed_remote_select_transport(true, true) == FLAWED_XPORT_SSE_CCR_V2;
+  #assert flawed_remote_select_transport(false, true) == FLAWED_XPORT_HYBRID;
+  #assert flawed_remote_select_transport(false, false) == FLAWED_XPORT_WEBSOCKET;
+
+  #assert flawed_ws_tick_action(60001, true) == FLAWED_WSTICK_SUSPEND_RECONNECT;
+  #assert flawed_ws_tick_action(60000, true) == FLAWED_WSTICK_SEND_PING;
+  #assert flawed_ws_tick_action(10000, false) == FLAWED_WSTICK_TIMEOUT_RECONNECT;
+
+  #assert flawed_ws_close_action(1002, true) == FLAWED_WSCLOSE_STOP;
+  #assert flawed_ws_close_action(4001, true) == FLAWED_WSCLOSE_STOP;
+  #assert flawed_ws_close_action(4003, false) == FLAWED_WSCLOSE_STOP;
+  #assert flawed_ws_close_action(4003, true) == FLAWED_WSCLOSE_RETRY;
+  #assert flawed_ws_close_action(1006, false) == FLAWED_WSCLOSE_RETRY;
+
+  #assert flawed_sse_status_is_permanent(401) && flawed_sse_status_is_permanent(403) && flawed_sse_status_is_permanent(404);
+  #assert !flawed_sse_status_is_permanent(503) && !flawed_sse_status_is_permanent(429);
+
+  #assert flawed_ccr_auth_failure_action(true, 1) == FLAWED_CCRAUTH_STOP;
+  #assert flawed_ccr_auth_failure_action(false, 9) == FLAWED_CCRAUTH_RETRY;
+  #assert flawed_ccr_auth_failure_action(false, 10) == FLAWED_CCRAUTH_STOP;
+
+  #assert flawed_batch_retry_delay_ms(50, 500, 10000, 75) == 575;
+  #assert flawed_batch_retry_delay_ms(2000, 500, 10000, 75) == 2075;
+  #assert flawed_batch_retry_delay_ms(99999, 500, 10000, 75) == 10075;
+}
+
+#test "remote_bridge: OAuth backoff, cse_*/session_* compat, FlushGate, capacity-before-ack, SessionsWS & relay proto" {
+  #assert !flawed_bridge_oauth_should_skip(2, 1000, 1000);
+  #assert flawed_bridge_oauth_should_skip(3, 1000, 1000);
+  #assert !flawed_bridge_oauth_should_skip(3, 1000, 2000);
+
+  #assert flawed_bridge_use_envless_core(true, false);
+  #assert !flawed_bridge_use_envless_core(true, true) && !flawed_bridge_use_envless_core(false, false);
+
+  #assert flawed_same_session_id("cse_abc123", "session_abc123");
+  #assert flawed_same_session_id("org_cse_abc123", "abc123");
+  #assert flawed_same_session_id("abc123", "cse_abc123");
+  #assert flawed_same_session_id("_abc123", "abc123") && flawed_same_session_id("abc123", "_abc123");
+  #assert !flawed_same_session_id("cse_xbc123", "session_abc123");
+  #assert !flawed_same_session_id("cse_abc123", "session_abc124");
+  #assert !flawed_same_session_id("cse_abc123", "session_abc12");
+  #assert !flawed_same_session_id("cse_", "session_");
+
+  #assert flawed_bridge_mirror_control_allowed(false, false);
+  #assert flawed_bridge_mirror_control_allowed(true, true);
+  #assert !flawed_bridge_mirror_control_allowed(true, false);
+
+  fg: [1] FlawedFlushGate;
+  #assert flawed_fg_submit(fg[..]);
+  flawed_fg_activate(fg[..]);
+  #assert !flawed_fg_submit(fg[..]) && !flawed_fg_submit(fg[..]) && fg[0].queued_count == 2;
+  #assert flawed_fg_drain(fg[..]) == 2 && fg[0].queued_count == 0 && flawed_fg_submit(fg[..]);
+
+  #assert flawed_bridge_max_sessions(FLAWED_BRIDGE_SPAWN_SINGLE, false) == 1;
+  #assert flawed_bridge_max_sessions(FLAWED_BRIDGE_SPAWN_WORKTREE, true) == 1;
+  #assert flawed_bridge_max_sessions(FLAWED_BRIDGE_SPAWN_WORKTREE, false) == 32;
+
+  #assert flawed_bridge_work_action(true, false, false, 0, 1) == FLAWED_BWORK_SKIP_DUP;
+  #assert flawed_bridge_work_action(false, false, false, 0, 1) == FLAWED_BWORK_STOP_POISON;
+  #assert flawed_bridge_work_action(false, true, true, 1, 1) == FLAWED_BWORK_ROTATE_TOKEN_AND_ACK;
+  #assert flawed_bridge_work_action(false, true, false, 32, 32) == FLAWED_BWORK_AT_CAPACITY_NO_ACK;
+  #assert flawed_bridge_work_action(false, true, false, 31, 32) == FLAWED_BWORK_SPAWN_AND_ACK;
+
+  #assert flawed_bridge_pointer_is_fresh(14400000, 0) && flawed_bridge_pointer_is_fresh(100, 100);
+  #assert !flawed_bridge_pointer_is_fresh(14400001, 0) && !flawed_bridge_pointer_is_fresh(99, 100);
+
+  #assert flawed_sessions_ws_close_action(4003, 0) == FLAWED_SWS_CLOSE;
+  #assert flawed_sessions_ws_close_action(4001, 2) == FLAWED_SWS_RETRY_4001;
+  #assert flawed_sessions_ws_close_action(4001, 3) == FLAWED_SWS_CLOSE;
+  #assert flawed_sessions_ws_close_action(1006, 5) == FLAWED_SWS_RETRY;
+  #assert flawed_remote_viewer_allow_interrupt(false) && !flawed_remote_viewer_allow_interrupt(true);
+
+  #assert flawed_upstream_proxy_boot_allowed(true, true, true);
+  #assert !flawed_upstream_proxy_boot_allowed(false, true, true) && !flawed_upstream_proxy_boot_allowed(true, false, true) && !flawed_upstream_proxy_boot_allowed(true, true, false);
+
+  #assert flawed_relay_validate_connect_line("CONNECT a:443 HTTP/1.1", 8192) == 200;
+  #assert flawed_relay_validate_connect_line("CONNECT a HTTP/1.0", 64) == 200;
+  #assert flawed_relay_validate_connect_line("CONNECT a HTTP/1.1", 8193) == 400;
+  #assert flawed_relay_validate_connect_line("CONNECT  HTTP/1.1", 64) == 405;
+  #assert flawed_relay_validate_connect_line("GET /foo/bar HTTP/1.1", 64) == 405;
+  #assert flawed_relay_validate_connect_line("CONNECT a:443 HTTP/2.0", 64) == 405;
+  #assert flawed_relay_validate_connect_line("CONNECT  a HTTP/1.1", 64) == 405;
+  #assert flawed_relay_validate_connect_line("CONNECT a  HTTP/1.1", 64) == 405;
+  #assert flawed_relay_validate_connect_line("CONNECT a\tb HTTP/1.1", 64) == 405;
+  #assert flawed_relay_send_502_on_error(false) && !flawed_relay_send_502_on_error(true);
+
+  // Protobuf UpstreamProxyChunk { bytes data = 1; } header encoding (0, 127, 128, 300, overflow)
+  pb: [8] u8;
+  #assert flawed_proto_encode_chunk_header(-1, pb[..]) == -1;
+  #assert flawed_proto_encode_chunk_header(0, pb[0..<1]) == -1;
+  #assert flawed_proto_encode_chunk_header(0, pb[0..<2]) == 2 && pb[0] == 0x0A && pb[1] == 0;
+  #assert flawed_proto_encode_chunk_header(127, pb[..]) == 2 && pb[0] == 0x0A && pb[1] == 127;
+  #assert flawed_proto_encode_chunk_header(128, pb[0..<2]) == -1;
+  #assert flawed_proto_encode_chunk_header(128, pb[0..<3]) == 3 && pb[0] == 0x0A && pb[1] == 0x80 && pb[2] == 0x01;
+  #assert flawed_proto_encode_chunk_header(300, pb[..]) == 3 && pb[0] == 0x0A && pb[1] == 0xAC && pb[2] == 0x02;
+}

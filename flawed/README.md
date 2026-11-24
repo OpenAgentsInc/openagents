@@ -29,6 +29,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 21 — The Interactive REPL** | Layer 7 | `repl.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 22 — Cold Start Mastery** | Layer 8 | `cli_boot.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 23 — Headless SDK & Control Protocols** | Layer 8 | `sdk_protocol.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 24 — Remote Sessions, Bridge & Direct Connect** | Layer 8 | `remote_bridge.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

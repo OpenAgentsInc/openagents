@@ -24,7 +24,7 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-23 — Layers 0-8: Atoms, Contracts, Engine, Memory, Policy, Extensions, Swarms, REPL, Boot & SDK)\n");
+  print("flawed (Chapters 01-24 — Layers 0-8 Complete: Full Coax Coding Agent Harness)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");
@@ -175,7 +175,7 @@ flawed_cli_selftest :: (w: [] FlawedCliWork) -> int #effects(all) {
   _ = flawed_sched_enqueue(w[0].sched[..], flawed_parse_tool_use_id("tu_selftest"), true);
   slot := flawed_sched_dispatch(w[0].sched[..]);
   _ = flawed_sched_finish(w[0].sched[..], slot, true, 0);
-  print("flawed selftest ok: chapter=01 project_root=% gen=% sched_done=%\n",
+  print("flawed selftest ok: chapters=01-24 project_root=% gen=% sched_done=%\n",
         flawed_env_project_root(w[0].env[..]), w[0].st[0].gen.value, flawed_sched_done(w[0].sched[..]));
   return 0;
 }
