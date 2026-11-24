@@ -81,6 +81,9 @@ typedef struct {
   unsigned char extra_down[2]; // right and middle buttons actually forwarded
   int shift, keys_down[KEY_MAX + 1];
   unsigned char forwarded_down[KEY_MAX + 1]; // physical keys delivered to the desk
+  // A held key repeats (a Wayland client repeats its own keys): the seat's rate and delay, the
+  // key that repeats (-1: none) and when it next does, in seconds on the monotonic clock.
+  int repeat_rate, repeat_delay, repeat_code; double repeat_next;
   VkwTo to;
 #ifdef ENGINE_WAYLAND_TEXT_V1
   HwtSdk text_sdk;
@@ -95,6 +98,8 @@ typedef struct {
 } Vkw;
 
 static Vkw *vkw_;   // the one window the listeners serve
+#include <time.h>
+static double vkw_now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec/1e9;}
 
 #ifdef ENGINE_WAYLAND_TEXT_V1
 static void vkw_compose_cancel(void*user){Vkw*w=user;if(w->input.compose)xkb_compose_state_reset(w->input.compose);}
@@ -214,6 +219,7 @@ static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_s
   (void)d; (void)k; (void)s; (void)w;
   int released=vkw_->to.focus?vkw_->to.focus(vkw_->to.user,0):0;
   vkw_->keyboard_focused=0;
+  vkw_->repeat_code=-1;
   vkw_text_invalidate(vkw_);
 #ifdef ENGINE_WAYLAND_TEXT_V1
   if(vkw_->to.realm_key)hwt_focus(&vkw_->text_sdk,0);
@@ -248,7 +254,12 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
    if(pressed&&hwt_paste(vkw_paste_code(code),hwi_sdk_mods(&vkw_->input),hwt_wants(t))){vkw_->pasted_down[code]=1;if(!hwt_paste_start(t))hwt_error(t,"Clipboard unavailable");return;}
    if(pressed&&t->preedit&&vkw_->input.state){xkb_keysym_t sym=xkb_state_key_get_one_sym(vkw_->input.state,code+8);if(hwi_text(hwt_wants(t),hwi_sdk_mods(&vkw_->input),hwi_key(sym,xkb_keysym_to_utf32(sym)))){vkw_->input.text_down[code]=1;return;}}
 #endif
-   hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);vkw_text_sync(vkw_,0);return;}
+   hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);vkw_text_sync(vkw_,0);
+   // the newest held key repeats, unless the keymap says it does not (a modifier) or the seat turned repeat off
+   if(!pressed){if(vkw_->repeat_code==(int)code)vkw_->repeat_code=-1;}
+   else if(vkw_->repeat_rate>=0&&vkw_->input.map&&xkb_keymap_key_repeats(vkw_->input.map,code+8)){vkw_->repeat_code=(int)code;vkw_->repeat_next=vkw_now()+(vkw_->repeat_delay>0?vkw_->repeat_delay:400)/1000.0;}
+   else vkw_->repeat_code=-1;
+   return;}
 #endif
   int r = pressed ? realm_key_shifted((int)code, vkw_->shift > 0) : vkw_->keys_down[code];
   if (!r) return;
@@ -262,7 +273,7 @@ static void vkw_mods(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t a
 #endif
  (void)a;(void)b;(void)c;(void)g;
 }
-static void vkw_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay) { (void)d; (void)k; (void)rate; (void)delay; }
+static void vkw_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay) { (void)d; (void)k; vkw_->repeat_rate = rate > 0 ? rate : -1; vkw_->repeat_delay = delay > 0 ? delay : 400; }
 static const struct wl_keyboard_listener vkw_kb_listener = {.keymap = vkw_keymap, .enter = vkw_kb_enter, .leave = vkw_kb_leave, .key = vkw_key, .modifiers = vkw_mods, .repeat_info = vkw_repeat};
 
 // The pointer: hidden over the realm, which draws its own.
@@ -411,7 +422,7 @@ static const struct wl_registry_listener vkw_registry_listener = {.global = vkw_
 
 // The window, mapped, and Vulkan opened with its surface. Exits, saying why, if it cannot.
 static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t height, int fullscreen, VkwTo to) {
-  memset(w, 0, sizeof *w);
+  memset(w, 0, sizeof *w); w->repeat_code = -1;
   vkw_ = w;
   w->to = to;
 #ifdef ENGINE_WAYLAND_TEXT_V1
@@ -471,6 +482,18 @@ static void vkw_pump(Vkw *w) {
   wl_display_dispatch_pending(w->display);
 #ifdef ENGINE_WAYLAND_TEXT_V1
   if(w->to.realm_key)hwt_poll(&w->text_sdk);
+#endif
+#ifdef ENGINE_WAYLAND_INPUT_V1
+  // the held key again, at the seat's rate (a few at most in one pump, after a long frame)
+  if(w->to.realm_key&&w->repeat_code>=0&&w->keyboard_focused){
+    double now=vkw_now(),step=1.0/(w->repeat_rate>0?w->repeat_rate:25);
+    for(int i=0;i<4&&w->repeat_code>=0&&now>=w->repeat_next;i++){
+      hwi_sdk_key(&w->input,w->to.user,(uint32_t)w->repeat_code,1,w->to.wants_text?w->to.wants_text(w->to.user):0,w->to.realm_key,w->to.text);
+      vkw_text_sync(w,0);
+      w->repeat_next+=step;
+    }
+    if(w->repeat_code>=0&&now>w->repeat_next+0.25)w->repeat_next=now+step;
+  }
 #endif
 }
 

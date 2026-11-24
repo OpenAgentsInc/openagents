@@ -167,6 +167,11 @@ cp_skin_from :: (th: Theme, base_noir: bool) -> UiSkin {
 cp_skin :: () -> UiSkin { return cp_skin_from(cp_t3_dark(), true); }
 // Coder Desktop's live skin for the active theme state (customize.coax; #13887).
 cp_skin_for :: (s: [] CoderPage) -> UiSkin {
+  k := cp_skin_base(s);
+  if s.count > 0 { k.set.key_ctrl = s[0].ctrl_keys; }
+  return k;
+}
+cp_skin_base :: (s: [] CoderPage) -> UiSkin {
   if s.count < 1 || !cp_flag(s, DC_FLAG_CUSTOMIZE) { return cp_skin(); }
   th := cp_cust_theme(s);
   is_default_noir := cp_cust_is_monochrome(s) && !s[0].cust[0].theme[0].high_contrast;

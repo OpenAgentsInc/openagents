@@ -1147,7 +1147,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
       mw := ifx w_model < avail_m then w_model else avail_m;
       right_x -= 4.0f32 + mw;
       s[0].model_x = right_x;
-      _ := cp_foot_chip(f, "coder.model", "Model (⌘/)", right_x, chip_y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU);
+      _ := cp_foot_chip(f, "coder.model", ifx s[0].ctrl_keys then "Model (Ctrl+/)" else "Model (⌘/)", right_x, chip_y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU);
     } else {
       s[0].model_x = min_chip_x;
     }

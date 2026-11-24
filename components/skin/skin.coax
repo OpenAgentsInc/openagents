@@ -212,6 +212,7 @@ UiSettings :: struct {
   edge: f32; handle: f32;                  // the hairline down its right; the drag handle
   search_h: f32; search_radius: f32; search_icon: f32; search_pad: f32; search_gap: f32;   // the search field (size sm)
   key_h: f32; key_icon: f32; key_pad: f32; key_radius: f32; key_gap: f32; // its quiet ⌘ F key chip
+  key_ctrl: bool;   // a Linux or Windows window: key chips read Ctrl, Alt and Shift in place of the Mac signs
   account: f32; avatar: f32; account_top: f32; toggle_radius: f32;   // the account row: its slot, the avatar, the gap above it, the toggle's corner
   // a page (Settings.Page)
   measure: f32; page_pad: f32; page_top: f32; page_bottom: f32;    // its column at most; side, top and bottom padding
@@ -577,5 +578,15 @@ uiskin_bar :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f32,
   r := ifx s.frame == UIFRAME_PLATE || s.frame == UIFRAME_IRON then h / 2 else 0.0f32;
   k := prim_box(list, n, x, y, w, h, r, ifx s.frame == UIFRAME_IRON then s.border else 0.0f32, s.sunk, s.frame_mid);
   if f > 0 { k = prim_fill(list, k, x, y, w * f, h, r, color); }
+  return k;
+}
+
+// A key chip's word on a Linux or Windows window (ctrl), where the Mac signs are not on the keyboard
+// and the faces hold ASCII only. The Command sign stays an icon on a Mac (the caller draws it).
+key_chip_word :: (k: string, ctrl: bool) -> string {
+  if !ctrl { return k; }
+  if k == "⌘" || k == "⌃" { return "Ctrl"; }
+  if k == "⌥" { return "Alt"; }
+  if k == "⇧" { return "Shift"; }
   return k;
 }

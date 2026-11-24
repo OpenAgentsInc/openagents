@@ -248,7 +248,13 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   int over = coder_page_overlay_open(cd_state(c)), took = 0;
   int wants = coder_page_wants_text(cd_state(c)) != 0;
   int has_sel = coder_page_has_selection(cd_state(c)) != 0;
-  if ((mods & 8) && !(mods & 6) && ((key == 'c' && (wants || has_sel)) || ((key == 'x' || key == 'v') && wants))) {
+#ifdef __APPLE__
+  int clip_chord = (mods & 8) && !(mods & 6);
+#else
+  // copy, cut and paste are Ctrl chords on Linux and Windows
+  int clip_chord = ((mods & 8) && !(mods & 6)) || ((mods & 2) && !(mods & 12));
+#endif
+  if (clip_chord && ((key == 'c' && (wants || has_sel)) || ((key == 'x' || key == 'v') && wants))) {
     if (key == 'v') {
       // files or a picture on the pasteboard join the draft's attachments (cd_on_file); else its text
 #if defined(__APPLE__) || defined(_WIN32)

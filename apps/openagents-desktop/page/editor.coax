@@ -200,7 +200,41 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
 // reply runs it steers, editing a queued one it saves), Shift-Return queues while a reply runs
 // (else makes a new line), Option-Return makes a new line, Esc gives an edit up or stops the
 // reply. In the search Return opens its best match. True when the page took it.
+// A palette command by its code, as choosing it in the palette does (palette.coax).
+cp_chord_cmd :: (s: [] CoderPage, code: int) -> bool {
+  cp_palette_fill(s);
+  p := cp_pal(s);
+  for i: 0..<p[0].n { if p[0].items[i].code == code && p[0].items[i].page == 0 { return cp_palette_run(s, i); } }
+  return false;
+}
+// The chords a Mac's menu bar takes with Command, on Linux and Windows with Ctrl: the palette's own
+// key hints, one table. Text chords (select all, undo) reach the fields as Command.
 coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return false; }
+  if !s[0].ctrl_keys || (mods != MOD_CTRL && mods != MOD_CTRL + MOD_SHIFT) { return cp_key_in(s, key, mods); }
+  shift := mods == MOD_CTRL + MOD_SHIFT;
+  if (key == 'k' || key == 'K') && !shift && !s[0].ov[0].dlg[0].shown { _ = coder_page_palette_toggle(s, APP_PAL_ALL); if cp_pal(s)[0].open { s[0].ask = CP_ASK_PALETTE; } return true; }
+  if !cp_overlay_open(s) {
+    if key == '=' || key == '+' { return cp_chord_cmd(s, CP_PC_BIGGER); }
+    if key == '-' || key == '_' { return cp_chord_cmd(s, CP_PC_SMALLER); }
+    if key == '0' && !shift { return cp_chord_cmd(s, CP_PC_ACTUAL); }
+    if (key == 'n' || key == 'N') && !shift { s[0].side_drawer = false; return cp_new(s); }
+    if (key == 'o' || key == 'O') && !shift { return cp_chord_cmd(s, CP_PC_FOLDER); }
+    if (key == 'b' || key == 'B') && !shift { return cp_chord_cmd(s, CP_PC_SIDEBAR); }
+    if key == ',' && !shift { return cp_chord_cmd(s, CP_PC_SETTINGS); }
+    if (key == 'f' || key == 'F') && !shift { return cp_chord_cmd(s, CP_PC_FIND); }
+    if (key == 'j' || key == 'J') && !shift { return cp_chord_cmd(s, CP_PC_TERM); }
+    if key == '`' && !shift { return cp_chord_cmd(s, CP_PC_FOREMAN); }
+    if key == '/' && !shift && cp_has_model_picker(s) { s[0].model_menu = !s[0].model_menu; s[0].effort_menu = false; return true; }
+    if (key == '.' || key == '>') && shift { return cp_chord_cmd(s, CP_PC_STOP_ALL); }
+  }
+  // select all and undo/redo: the fields know them as Command chords
+  if key == 'a' || key == 'A' || key == 'z' || key == 'Z' || key == 'y' || key == 'Y' {
+    if cp_key_in(s, key, mods - MOD_CTRL + MOD_CMD) { return true; }
+  }
+  return cp_key_in(s, key, mods);
+}
+cp_key_in :: (s: [] CoderPage, key: int, mods: int) -> bool {
   if s.count < 1 || !s[0].ready { return false; }
   if cp_overlay_open(s) {
     // a composition in the palette's field keeps its keys (Backspace on it is not going back)
@@ -209,11 +243,6 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     if coder_page_overlay_key(s, ifx key == -15 then APP_OV_TAB else key, mods) { return true; }
     w := cp_ed_which(s);
     if w != CP_ED_DIALOG && w != CP_ED_PALETTE { return true; }
-  }
-  // Ctrl-N on Linux and Windows: a new chat, as the sidebar's New chat row and its key hint say.
-  if s[0].ctrl_keys && !cp_overlay_open(s) && !s[0].set_open && (key == 'n' || key == 'N') && mods == MOD_CTRL {
-    s[0].side_drawer = false;
-    return cp_new(s);
   }
   if s[0].model_menu && key == KEY_ESCAPE && mods == 0 {
     s[0].model_menu = false;
