@@ -35,6 +35,7 @@
 #load "swarm.coax";
 #load "screen.coax";
 #load "repl.coax";
+#load "cli_boot.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -381,4 +382,17 @@
   _ = flawed_vim_step(vs[..], 51, false, false, false);
   r := flawed_vim_step(vs[..], 119, false, false, false);
   #assert r.action == FLAWED_VACT_MOTION_OP && r.op == FLAWED_VOP_DELETE && r.effective_count == 6;
+}
+
+#test "flawed core (Ch 22): cold-start fast-paths, bridge preflight, trust/CA/bypass guards & shutdown budgets compose" {
+  #assert flawed_cli_route_fast_path("--version", 1, false, false) == FLAWED_BOOT_VERSION;
+  #assert flawed_cli_route_fast_path("--daemon-worker", 1, false, false) == FLAWED_BOOT_DAEMON_WORKER;
+  #assert flawed_bridge_preflight(false, false, false, false) == FLAWED_BRIDGE_NEED_LOGIN;
+  #assert !flawed_early_input_allowed(true, true) && flawed_skip_subcommand_registration(true, false);
+  #assert !flawed_ca_cert_source_trusted(FLAWED_CSRC_PROJECT) && !flawed_init_preconnect_allowed(false, true, false, false);
+  #assert !flawed_setup_bypass_allowed(true, false, false, false, false, false, true);
+  #assert !flawed_main_fire_startup_hooks(false, true) && flawed_shutdown_failsafe_ms(8000) == 11500;
+  #assert flawed_signal_exit_code(FLAWED_SIG_INT, true) == FLAWED_SIG_DEFER;
+  st: [1] FlawedShutdownState;
+  #assert flawed_shutdown_begin_sync(st[..], 1) && !flawed_main_continue_after_setup(st[0].exit_code_set);
 }

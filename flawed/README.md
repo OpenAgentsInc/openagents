@@ -27,6 +27,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 19 — Agent Teams, Swarms & Coordinator Mode** | Layer 6 | `swarm.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 20 — Native Terminal Screen Renderer** | Layer 7 | `screen.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 21 — The Interactive REPL** | Layer 7 | `repl.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 22 — Cold Start Mastery** | Layer 8 | `cli_boot.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 

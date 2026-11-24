@@ -1,0 +1,335 @@
+// Flawed Layer 8 (Chapter 22) — Cold-Start Boot, Trust Boundary & Bulletproof Teardown:
+// Zero-Import Fast-Path Router, Bridge Preflight, Init Ordering (CA/Preconnect/Bypass),
+// Wave-2 Worktree & Double-Hook Guards, and Budget-Bounded Graceful Shutdown.
+// Replaces cc/entrypoints/{cli.tsx,init.ts}, cc/setup.ts, cc/main.tsx,
+// cc/utils/{earlyInput,apiPreconnect,gracefulShutdown}.ts invariants.
+//   coax/bin/coax test flawed/cli_boot.coax --library
+//   coax/bin/coax mutate flawed/cli_boot.coax --root-only
+#module "flawed.cli_boot";
+#authority;
+#load "repl.coax";
+
+// Fast-path CLI routes (entrypoints/cli.tsx:53-274).
+FLAWED_BOOT_MAIN :: 1;
+FLAWED_BOOT_VERSION :: 2;
+FLAWED_BOOT_CHROME_MCP :: 3;
+FLAWED_BOOT_COMPUTER_MCP :: 4;
+FLAWED_BOOT_DAEMON_WORKER :: 5;
+FLAWED_BOOT_BRIDGE :: 6;
+FLAWED_BOOT_DAEMON :: 7;
+FLAWED_BOOT_TMUX_WORKTREE :: 8;
+
+// Bridge preflight outcomes (entrypoints/cli.tsx:132-145): OAuth checked BEFORE GrowthBook!
+FLAWED_BRIDGE_OK :: 1;
+FLAWED_BRIDGE_NEED_LOGIN :: 2;
+FLAWED_BRIDGE_DISABLED :: 3;
+FLAWED_BRIDGE_MIN_VERSION :: 4;
+FLAWED_BRIDGE_POLICY_BLOCKED :: 5;
+
+// Main execution dispatch exits (main.tsx:2572-3807).
+FLAWED_EXEC_INIT_ONLY :: 1;
+FLAWED_EXEC_HEADLESS :: 2;
+FLAWED_EXEC_INTERACTIVE :: 3;
+
+// Invalid ~/.claude.json parse-error handling (entrypoints/init.ts:216-233).
+FLAWED_CFGERR_STDERR_EXIT :: 1;
+FLAWED_CFGERR_INK_DIALOG :: 2;
+
+// Shutdown signals & bounded teardown budgets (utils/gracefulShutdown.ts:256-523).
+FLAWED_SIG_INT :: 1;
+FLAWED_SIG_TERM :: 2;
+FLAWED_SIG_HUP :: 3;
+FLAWED_SIG_DEFER :: -1;
+
+FLAWED_SHUTDOWN_CLEANUP_MS :: 2000;
+FLAWED_SHUTDOWN_ANALYTICS_MS :: 500;
+FLAWED_SHUTDOWN_FAILSAFE_MIN_MS :: 5000;
+FLAWED_SHUTDOWN_FAILSAFE_PAD_MS :: 3500;
+FLAWED_SHUTDOWN_DEFAULT_HOOK_MS :: 1500;
+FLAWED_CLAUDE_AI_MCP_CAP_MS :: 5000;
+
+FlawedShutdownState :: struct {
+  in_progress: bool;
+  exit_code_set: bool;
+  exit_code: int;
+  resume_hint_printed: bool;
+}
+
+// Zero-import fast-path CLI router (entrypoints/cli.tsx:53-274).
+// --daemon-worker precedes daemon so workers skip enableConfigs() and sinks.
+flawed_cli_route_fast_path :: (
+  arg0: string,
+  arg_count: int,
+  has_worktree: bool,
+  has_tmux: bool
+) -> u8 #effects(reads, traps) {
+  if arg_count == 1 && (arg0 == "--version" || arg0 == "-v" || arg0 == "-V") {
+    return FLAWED_BOOT_VERSION;
+  }
+  if arg0 == "--claude-in-chrome-mcp" || arg0 == "--chrome-native-host" {
+    return FLAWED_BOOT_CHROME_MCP;
+  }
+  if arg0 == "--computer-use-mcp" { return FLAWED_BOOT_COMPUTER_MCP; }
+  if arg0 == "--daemon-worker" { return FLAWED_BOOT_DAEMON_WORKER; }
+  if arg0 == "remote-control" || arg0 == "rc" || arg0 == "remote" || arg0 == "sync" || arg0 == "bridge" {
+    return FLAWED_BOOT_BRIDGE;
+  }
+  if arg0 == "daemon" { return FLAWED_BOOT_DAEMON; }
+  if has_worktree && has_tmux { return FLAWED_BOOT_TMUX_WORKTREE; }
+  return FLAWED_BOOT_MAIN;
+}
+
+// Bridge startup preflight (entrypoints/cli.tsx:132-145):
+// MUST verify OAuth token before GrowthBook, otherwise missing auth headers cause GB to return false.
+flawed_bridge_preflight :: (
+  has_oauth_token: bool,
+  gb_enabled: bool,
+  meets_min_version: bool,
+  policy_allowed: bool
+) -> u8 #effects(traps) {
+  if !has_oauth_token { return FLAWED_BRIDGE_NEED_LOGIN; }
+  if !gb_enabled { return FLAWED_BRIDGE_DISABLED; }
+  if !meets_min_version { return FLAWED_BRIDGE_MIN_VERSION; }
+  if !policy_allowed { return FLAWED_BRIDGE_POLICY_BLOCKED; }
+  return FLAWED_BRIDGE_OK;
+}
+
+// Early raw-mode stdin capture (utils/earlyInput.ts:30-40):
+// Refuses -p/--print because setRawMode(true) disables kernel ISIG (Ctrl+C -> SIGINT).
+flawed_early_input_allowed :: (stdin_is_tty: bool, is_print_mode: bool) -> bool #effects(traps) {
+  return stdin_is_tty && !is_print_mode;
+}
+
+// Interactive classification & -p subcommand skip (main.tsx:799-855, 3883-3890).
+flawed_classify_non_interactive :: (
+  has_print: bool,
+  has_init_only: bool,
+  has_sdk_url: bool,
+  stdout_is_tty: bool
+) -> bool #effects(traps) {
+  return has_print || has_init_only || has_sdk_url || !stdout_is_tty;
+}
+
+flawed_skip_subcommand_registration :: (has_print: bool, rewritten_to_open: bool) -> bool #effects(traps) {
+  return has_print && !rewritten_to_open;
+}
+
+// API TCP+TLS preconnect gate (utils/apiPreconnect.ts:31-71):
+// Skips 3P endpoints and custom-dispatcher configs (proxy/mTLS/unix socket) that never share Bun's global pool.
+flawed_init_preconnect_allowed :: (
+  is_third_party_provider: bool,
+  has_proxy: bool,
+  has_mtls: bool,
+  has_unix_socket: bool
+) -> bool #effects(traps) {
+  return !is_third_party_provider && !has_proxy && !has_mtls && !has_unix_socket;
+}
+
+// Pre-trust NODE_EXTRA_CA_CERTS gate (utils/caCertsConfig.ts):
+// Strictly user-controlled (~/.claude.json or userSettings) — NEVER project or local settings.
+flawed_ca_cert_source_trusted :: (src: u8) -> bool #effects(traps) {
+  return src == FLAWED_CSRC_USER || src == FLAWED_CSRC_POLICY;
+}
+
+// Config parse error handler (entrypoints/init.ts:216-233):
+// Non-interactive never mounts Ink dialog (would corrupt JSON stdout consumers).
+flawed_config_parse_error_action :: (is_non_interactive: bool) -> u8 #effects(traps) {
+  if is_non_interactive { return FLAWED_CFGERR_STDERR_EXIT; }
+  return FLAWED_CFGERR_INK_DIALOG;
+}
+
+// Wave-2 parallel commands/agents gate (main.tsx:1931-1932):
+// Must serialize when --worktree will chdir() inside setup().
+flawed_setup_parallel_cmds_allowed :: (worktree_enabled: bool) -> bool #effects(traps) {
+  return !worktree_enabled;
+}
+
+// Bypass-permissions root & ant sandbox gate (setup.ts:396-442).
+flawed_setup_bypass_allowed :: (
+  is_root_uid: bool,
+  is_sandbox_env: bool,
+  is_bubblewrap: bool,
+  is_ant_user: bool,
+  is_exempt_entrypoint: bool,
+  is_docker: bool,
+  has_internet: bool
+) -> bool #effects(traps) {
+  if is_root_uid && !is_sandbox_env && !is_bubblewrap { return false; }
+  if is_ant_user && !is_exempt_entrypoint {
+    if !(is_docker || is_bubblewrap) || has_internet { return false; }
+  }
+  return true;
+}
+
+// Post-trust abort & double-hook guards (main.tsx:2312, 2432-2440, 399, 2572-3807).
+flawed_main_continue_after_setup :: (exit_code_set: bool) -> bool #effects(traps) {
+  return !exit_code_set;
+}
+
+flawed_main_fire_startup_hooks :: (has_continue: bool, has_resume: bool) -> bool #effects(traps) {
+  return !has_continue && !has_resume;
+}
+
+flawed_main_allow_deferred_prefetches :: (is_bare: bool, exit_after_first_render: bool) -> bool #effects(traps) {
+  return !is_bare && !exit_after_first_render;
+}
+
+flawed_main_execution_mode :: (has_init_only: bool, is_non_interactive: bool) -> u8 #effects(traps) {
+  if has_init_only { return FLAWED_EXEC_INIT_ONLY; }
+  if is_non_interactive { return FLAWED_EXEC_HEADLESS; }
+  return FLAWED_EXEC_INTERACTIVE;
+}
+
+// Scaled shutdown failsafe timer (utils/gracefulShutdown.ts:401-429, gh-32712):
+// max(5000, session_end_hook_timeout_ms + 3500) so long SessionEnd hooks aren't killed at 5s.
+flawed_shutdown_failsafe_ms :: (session_end_hook_timeout_ms: int) -> int #effects(traps) {
+  scaled := session_end_hook_timeout_ms + FLAWED_SHUTDOWN_FAILSAFE_PAD_MS;
+  if scaled < FLAWED_SHUTDOWN_FAILSAFE_MIN_MS { return FLAWED_SHUTDOWN_FAILSAFE_MIN_MS; } // mutant: equivalent // equal values return the same result
+  return scaled;
+}
+
+// Signal exit-code dispatch (utils/gracefulShutdown.ts:256-297):
+// SIGINT defers in -p/--print mode so cli/print.ts aborts queries without racing.
+flawed_signal_exit_code :: (sig: u8, is_print_mode: bool) -> int #effects(traps) {
+  if sig == FLAWED_SIG_INT {
+    if is_print_mode { return FLAWED_SIG_DEFER; }
+    return 0;
+  }
+  if sig == FLAWED_SIG_TERM { return 143; }
+  return 129;
+}
+
+// macOS silent TTY revocation orphan watchdog (utils/gracefulShutdown.ts:272-284).
+flawed_orphan_tty_should_exit :: (
+  is_win32: bool,
+  stdin_is_tty: bool,
+  is_scroll_draining: bool,
+  stdout_writable: bool,
+  stdin_readable: bool
+) -> bool #effects(traps) {
+  if is_win32 || !stdin_is_tty || is_scroll_draining { return false; }
+  return !stdout_writable || !stdin_readable;
+}
+
+// Synchronous exitCode latch + single-entry shutdown guard (utils/gracefulShutdown.ts:344-405).
+flawed_shutdown_begin_sync :: (st: [] FlawedShutdownState, exit_code: int) -> bool #effects(reads, writes, traps) {
+  if st[0].in_progress { return false; }
+  st[0].in_progress = true;
+  st[0].exit_code_set = true;
+  st[0].exit_code = exit_code;
+  return true;
+}
+
+// Resume hint prints at most once on interactive TTY sessions with a persisted session file.
+flawed_shutdown_print_resume_hint :: (
+  st: [] FlawedShutdownState,
+  is_tty: bool,
+  is_interactive: bool,
+  has_session_file: bool
+) -> bool #effects(reads, writes, traps) {
+  if st[0].resume_hint_printed || !is_tty || !is_interactive || !has_session_file {
+    return false;
+  }
+  st[0].resume_hint_printed = true;
+  return true;
+}
+
+#test "cli_boot: fast-path routing, bridge OAuth-first preflight, early input & non-interactive classification" {
+  #assert flawed_cli_route_fast_path("--version", 1, false, false) == FLAWED_BOOT_VERSION;
+  #assert flawed_cli_route_fast_path("-v", 1, false, false) == FLAWED_BOOT_VERSION;
+  #assert flawed_cli_route_fast_path("-V", 1, false, false) == FLAWED_BOOT_VERSION;
+  #assert flawed_cli_route_fast_path("--version", 2, false, false) == FLAWED_BOOT_MAIN;
+  #assert flawed_cli_route_fast_path("--claude-in-chrome-mcp", 1, false, false) == FLAWED_BOOT_CHROME_MCP;
+  #assert flawed_cli_route_fast_path("--chrome-native-host", 1, false, false) == FLAWED_BOOT_CHROME_MCP;
+  #assert flawed_cli_route_fast_path("--computer-use-mcp", 1, false, false) == FLAWED_BOOT_COMPUTER_MCP;
+  #assert flawed_cli_route_fast_path("--daemon-worker", 1, false, false) == FLAWED_BOOT_DAEMON_WORKER;
+  #assert flawed_cli_route_fast_path("remote-control", 1, false, false) == FLAWED_BOOT_BRIDGE;
+  #assert flawed_cli_route_fast_path("rc", 1, false, false) == FLAWED_BOOT_BRIDGE;
+  #assert flawed_cli_route_fast_path("remote", 1, false, false) == FLAWED_BOOT_BRIDGE;
+  #assert flawed_cli_route_fast_path("sync", 1, false, false) == FLAWED_BOOT_BRIDGE;
+  #assert flawed_cli_route_fast_path("bridge", 1, false, false) == FLAWED_BOOT_BRIDGE;
+  #assert flawed_cli_route_fast_path("daemon", 1, false, false) == FLAWED_BOOT_DAEMON;
+  #assert flawed_cli_route_fast_path("chat", 1, true, true) == FLAWED_BOOT_TMUX_WORKTREE;
+  #assert flawed_cli_route_fast_path("chat", 1, true, false) == FLAWED_BOOT_MAIN;
+  #assert flawed_cli_route_fast_path("chat", 1, false, true) == FLAWED_BOOT_MAIN;
+
+  // Bridge preflight checks OAuth BEFORE GrowthBook
+  #assert flawed_bridge_preflight(false, false, false, false) == FLAWED_BRIDGE_NEED_LOGIN;
+  #assert flawed_bridge_preflight(true, false, true, true) == FLAWED_BRIDGE_DISABLED;
+  #assert flawed_bridge_preflight(true, true, false, true) == FLAWED_BRIDGE_MIN_VERSION;
+  #assert flawed_bridge_preflight(true, true, true, false) == FLAWED_BRIDGE_POLICY_BLOCKED;
+  #assert flawed_bridge_preflight(true, true, true, true) == FLAWED_BRIDGE_OK;
+
+  #assert flawed_early_input_allowed(true, false);
+  #assert !flawed_early_input_allowed(false, false) && !flawed_early_input_allowed(true, true);
+
+  #assert !flawed_classify_non_interactive(false, false, false, true);
+  #assert flawed_classify_non_interactive(true, false, false, true);
+  #assert flawed_classify_non_interactive(false, true, false, true);
+  #assert flawed_classify_non_interactive(false, false, true, true);
+  #assert flawed_classify_non_interactive(false, false, false, false);
+
+  #assert flawed_skip_subcommand_registration(true, false);
+  #assert !flawed_skip_subcommand_registration(false, false) && !flawed_skip_subcommand_registration(true, true);
+}
+
+#test "cli_boot: init preconnect, CA trust, bypass safety, main guards & graceful shutdown budgets" {
+  #assert flawed_init_preconnect_allowed(false, false, false, false);
+  #assert !flawed_init_preconnect_allowed(true, false, false, false);
+  #assert !flawed_init_preconnect_allowed(false, true, false, false);
+  #assert !flawed_init_preconnect_allowed(false, false, true, false);
+  #assert !flawed_init_preconnect_allowed(false, false, false, true);
+
+  #assert flawed_ca_cert_source_trusted(FLAWED_CSRC_USER) && flawed_ca_cert_source_trusted(FLAWED_CSRC_POLICY);
+  #assert !flawed_ca_cert_source_trusted(FLAWED_CSRC_PROJECT) && !flawed_ca_cert_source_trusted(FLAWED_CSRC_LOCAL);
+
+  #assert flawed_config_parse_error_action(true) == FLAWED_CFGERR_STDERR_EXIT;
+  #assert flawed_config_parse_error_action(false) == FLAWED_CFGERR_INK_DIALOG;
+
+  #assert flawed_setup_parallel_cmds_allowed(false) && !flawed_setup_parallel_cmds_allowed(true);
+
+  // Bypass safety: POSIX root requires IS_SANDBOX or bubblewrap; ant requires (docker|bwrap) + !internet
+  #assert !flawed_setup_bypass_allowed(true, false, false, false, false, false, true);
+  #assert flawed_setup_bypass_allowed(true, true, false, false, false, false, true);
+  #assert flawed_setup_bypass_allowed(true, false, true, false, false, false, true);
+  #assert !flawed_setup_bypass_allowed(false, false, false, true, false, false, false);
+  #assert !flawed_setup_bypass_allowed(false, false, false, true, false, true, true);
+  #assert flawed_setup_bypass_allowed(false, false, false, true, false, true, false);
+  #assert flawed_setup_bypass_allowed(false, false, false, true, false, false, false) == false;
+  #assert flawed_setup_bypass_allowed(false, false, true, true, false, false, false);
+  #assert flawed_setup_bypass_allowed(false, false, false, true, true, false, true);
+
+  #assert flawed_main_continue_after_setup(false) && !flawed_main_continue_after_setup(true);
+  #assert flawed_main_fire_startup_hooks(false, false);
+  #assert !flawed_main_fire_startup_hooks(true, false) && !flawed_main_fire_startup_hooks(false, true);
+  #assert flawed_main_allow_deferred_prefetches(false, false);
+  #assert !flawed_main_allow_deferred_prefetches(true, false) && !flawed_main_allow_deferred_prefetches(false, true);
+  #assert flawed_main_execution_mode(true, true) == FLAWED_EXEC_INIT_ONLY;
+  #assert flawed_main_execution_mode(false, true) == FLAWED_EXEC_HEADLESS;
+  #assert flawed_main_execution_mode(false, false) == FLAWED_EXEC_INTERACTIVE;
+
+  // Shutdown failsafe timer (gh-32712), signal exit codes, orphan watchdog, and latches
+  #assert flawed_shutdown_failsafe_ms(1000) == 5000;
+  #assert flawed_shutdown_failsafe_ms(1500) == 5000;
+  #assert flawed_shutdown_failsafe_ms(8000) == 11500;
+  #assert flawed_signal_exit_code(FLAWED_SIG_INT, true) == FLAWED_SIG_DEFER;
+  #assert flawed_signal_exit_code(FLAWED_SIG_INT, false) == 0;
+  #assert flawed_signal_exit_code(FLAWED_SIG_TERM, true) == 143;
+  #assert flawed_signal_exit_code(FLAWED_SIG_HUP, false) == 129;
+
+  #assert !flawed_orphan_tty_should_exit(true, true, false, false, false);
+  #assert !flawed_orphan_tty_should_exit(false, false, false, false, false);
+  #assert !flawed_orphan_tty_should_exit(false, true, true, false, false);
+  #assert !flawed_orphan_tty_should_exit(false, true, false, true, true);
+  #assert flawed_orphan_tty_should_exit(false, true, false, false, true);
+  #assert flawed_orphan_tty_should_exit(false, true, false, true, false);
+
+  st: [1] FlawedShutdownState;
+  #assert flawed_shutdown_begin_sync(st[..], 1) && st[0].in_progress && st[0].exit_code_set && st[0].exit_code == 1;
+  #assert !flawed_shutdown_begin_sync(st[..], 0) && st[0].exit_code == 1;
+  #assert !flawed_shutdown_print_resume_hint(st[..], false, true, true);
+  #assert !flawed_shutdown_print_resume_hint(st[..], true, false, true);
+  #assert !flawed_shutdown_print_resume_hint(st[..], true, true, false);
+  #assert flawed_shutdown_print_resume_hint(st[..], true, true, true);
+  #assert !flawed_shutdown_print_resume_hint(st[..], true, true, true);
+}
