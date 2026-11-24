@@ -1,0 +1,373 @@
+// Flawed Layer 7 (Chapter 20) — Native Coax Packed Terminal Screen Engine:
+// 64-Bit-Per-Cell Double Buffer, Wide-Char Orphan Protection, DECSTBM Row Shifting,
+// Damage-Bounded Integer Diffing, Blit Guards, and VT/Kitty/DA1 Input Protocols.
+// Replaces cc/ink/{screen,log-update,optimizer,terminal,parse-keypress,terminal-querier}.ts
+// with zero-heap, zero-React native Coax buffers.
+//   coax/bin/coax test flawed/screen.coax --library
+//   coax/bin/coax mutate flawed/screen.coax --root-only
+#module "flawed.screen";
+#authority;
+#load "swarm.coax";
+
+// Packed cell width tags (ink/screen.ts:332-348).
+FLAWED_CW_NARROW :: 0;
+FLAWED_CW_WIDE :: 1;
+FLAWED_CW_SPACER_TAIL :: 2;
+FLAWED_CW_SPACER_HEAD :: 3;
+
+// Kitty / modifyOtherKeys modifier bits (m = raw_mod - 1).
+FLAWED_KMOD_SHIFT :: 1;
+FLAWED_KMOD_ALT :: 2;
+FLAWED_KMOD_CTRL :: 4;
+FLAWED_KMOD_SUPER :: 8;
+
+// TerminalQuerier FIFO entry kinds (ink/terminal-querier.ts:195-211).
+FLAWED_TQ_QUERY :: 1;
+FLAWED_TQ_SENTINEL :: 2;
+
+FLAWED_SCR_MAX_CELLS :: 256; // bounded test/slice screen cap for stack buffers
+
+// Packed 64-bit cell: word0 = char_id, word1 = style_id[31:17] | hyperlink_id[16:2] | width[1:0].
+FlawedCell :: struct {
+  w0: u32;
+  w1: u32;
+}
+
+FlawedDamage :: struct {
+  valid: bool;
+  x0: int;
+  y0: int;
+  x1: int;
+  y1: int;
+}
+
+FlawedScreen :: struct {
+  w: int;
+  h: int;
+  cells: [FLAWED_SCR_MAX_CELLS] FlawedCell;
+  dmg: FlawedDamage;
+}
+
+// StylePool bit-0 invariant: odd style IDs have visible effect on space (bg/underline/inverse/strike); even IDs are fg-only.
+flawed_style_make_id :: (raw_id: u32, visible_on_space: bool) -> u32 #effects(traps) {
+  return (raw_id * 2) + (ifx visible_on_space then cast(u32) 1 else cast(u32) 0);
+}
+
+flawed_cell_pack_w1 :: (style_id: u32, hyperlink_id: u32, width: u32) -> u32 #effects(traps) {
+  return (style_id << 17) | ((hyperlink_id & 0x7fff) << 2) | (width & 3);
+}
+
+flawed_cell_style :: (w1: u32) -> u32 #effects(traps) { return w1 >> 17; }
+flawed_cell_hyperlink :: (w1: u32) -> u32 #effects(traps) { return (w1 >> 2) & 0x7fff; }
+flawed_cell_width :: (w1: u32) -> u32 #effects(traps) { return w1 & 3; }
+
+// Fast invisible-space test (ink/screen.ts:624-650): charId == 0 (' ') AND hyperlink == 0 AND style bit-0 == 0.
+flawed_cell_is_blank_space :: (c: FlawedCell) -> bool #effects(traps) {
+  return c.w0 == 0 && (c.w1 & 0x3fffc) == 0;
+}
+
+flawed_screen_init :: (s: [] FlawedScreen, w: int, h: int) -> bool #effects(reads, writes, traps) {
+  if w <= 0 || h <= 0 || w * h > FLAWED_SCR_MAX_CELLS { return false; }
+  s[0] = FlawedScreen.{w = w, h = h};
+  return true;
+}
+
+flawed_screen_expand_dmg :: (s: [] FlawedScreen, x: int, y: int) #effects(reads, writes, traps) {
+  if !s[0].dmg.valid {
+    s[0].dmg = FlawedDamage.{valid = true, x0 = x, y0 = y, x1 = x, y1 = y};
+    return;
+  }
+  if x < s[0].dmg.x0 { s[0].dmg.x0 = x; } // mutant: equivalent // equal values assign the same bound
+  if y < s[0].dmg.y0 { s[0].dmg.y0 = y; } // mutant: equivalent // equal values assign the same bound
+  if x > s[0].dmg.x1 { s[0].dmg.x1 = x; } // mutant: equivalent // equal values assign the same bound
+  if y > s[0].dmg.y1 { s[0].dmg.y1 = y; } // mutant: equivalent // equal values assign the same bound
+}
+
+// Clear orphaned partner cell when overwriting either half of a Wide/SpacerTail pair (ink/screen.ts:703-808).
+// Invariant: WIDE is never placed at x == w - 1 and SPACER_TAIL is never placed at x == 0.
+flawed_screen_clear_partner :: (s: [] FlawedScreen, x: int, y: int) #effects(reads, writes, traps) {
+  idx := y * s[0].w + x;
+  cur_w := flawed_cell_width(s[0].cells[idx].w1);
+  if cur_w == FLAWED_CW_WIDE {
+    s[0].cells[idx + 1] = FlawedCell.{};
+    flawed_screen_expand_dmg(s, x + 1, y);
+  } else if cur_w == FLAWED_CW_SPACER_TAIL {
+    s[0].cells[idx - 1] = FlawedCell.{};
+    flawed_screen_expand_dmg(s, x - 1, y);
+  }
+}
+
+// Wide-character orphan-safe cell write (ink/screen.ts:703-808).
+flawed_screen_set_cell :: (
+  s: [] FlawedScreen,
+  x: int,
+  y: int,
+  char_id: u32,
+  style_id: u32,
+  hyperlink_id: u32,
+  width: u32
+) -> bool #effects(reads, writes, traps) {
+  if x < 0 || y < 0 || x >= s[0].w || y >= s[0].h { return false; }
+  flawed_screen_clear_partner(s, x, y);
+  idx := y * s[0].w + x;
+  if width == FLAWED_CW_WIDE {
+    if x + 1 >= s[0].w {
+      // Wide glyph cannot fit at right margin -> place SpacerHead
+      s[0].cells[idx] = FlawedCell.{w0 = 1, w1 = flawed_cell_pack_w1(style_id, hyperlink_id, FLAWED_CW_SPACER_HEAD)};
+      flawed_screen_expand_dmg(s, x, y);
+      return true;
+    }
+    flawed_screen_clear_partner(s, x + 1, y);
+    s[0].cells[idx] = FlawedCell.{w0 = char_id, w1 = flawed_cell_pack_w1(style_id, hyperlink_id, FLAWED_CW_WIDE)};
+    s[0].cells[idx + 1] = FlawedCell.{w0 = 1, w1 = flawed_cell_pack_w1(style_id, hyperlink_id, FLAWED_CW_SPACER_TAIL)};
+    flawed_screen_expand_dmg(s, x, y);
+    flawed_screen_expand_dmg(s, x + 1, y);
+    return true;
+  }
+  s[0].cells[idx] = FlawedCell.{w0 = char_id, w1 = flawed_cell_pack_w1(style_id, hyperlink_id, width)};
+  flawed_screen_expand_dmg(s, x, y);
+  return true;
+}
+
+// In-place DECSTBM row shift (ink/screen.ts:shiftRows, ink/log-update.ts:165-185).
+// delta > 0 shifts content UP (rows move toward top); delta < 0 shifts content DOWN.
+flawed_screen_shift_rows :: (s: [] FlawedScreen, top: int, bottom: int, delta: int) -> bool #effects(reads, writes, traps) {
+  if top < 0 || bottom < top || bottom >= s[0].h || delta == 0 { return false; }
+  w := s[0].w;
+  if delta > 0 { // mutant: equivalent // delta == 0 returned early
+    for r: top..<(bottom + 1) {
+      src := r + delta;
+      for c: 0..<w {
+        dst_i := r * w + c;
+        if src <= bottom {
+          s[0].cells[dst_i] = s[0].cells[src * w + c];
+        } else {
+          s[0].cells[dst_i] = FlawedCell.{};
+        }
+      }
+    }
+  } else {
+    d := -delta;
+    r := bottom;
+    while r >= top {
+      src := r - d;
+      for c: 0..<w {
+        dst_i := r * w + c;
+        if src >= top {
+          s[0].cells[dst_i] = s[0].cells[src * w + c];
+        } else {
+          s[0].cells[dst_i] = FlawedCell.{};
+        }
+      }
+      r = r - 1;
+    }
+  }
+  flawed_screen_expand_dmg(s, 0, top);
+  flawed_screen_expand_dmg(s, w - 1, bottom);
+  return true;
+}
+
+flawed_screen_union_damage :: (a: [] const FlawedScreen, b: [] const FlawedScreen) -> FlawedDamage #effects(reads, traps) {
+  if !a[0].dmg.valid { return b[0].dmg; }
+  if !b[0].dmg.valid { return a[0].dmg; }
+  return FlawedDamage.{
+    valid = true,
+    x0 = ifx a[0].dmg.x0 < b[0].dmg.x0 then a[0].dmg.x0 else b[0].dmg.x0, // mutant: equivalent // equal values return the same bound
+    y0 = ifx a[0].dmg.y0 < b[0].dmg.y0 then a[0].dmg.y0 else b[0].dmg.y0, // mutant: equivalent // equal values return the same bound
+    x1 = ifx a[0].dmg.x1 > b[0].dmg.x1 then a[0].dmg.x1 else b[0].dmg.x1, // mutant: equivalent // equal values return the same bound
+    y1 = ifx a[0].dmg.y1 > b[0].dmg.y1 then a[0].dmg.y1 else b[0].dmg.y1, // mutant: equivalent // equal values return the same bound
+  };
+}
+
+// Damage-bounded integer cell diff count between two same-size screens (ink/screen.ts:diffEach).
+flawed_screen_count_diffs :: (a: [] const FlawedScreen, b: [] const FlawedScreen) -> int #effects(reads, traps) {
+  if a[0].w != b[0].w || a[0].h != b[0].h { return -1; }
+  u := flawed_screen_union_damage(a, b);
+  if !u.valid { return 0; }
+  diffs := 0;
+  w := a[0].w;
+  for y: u.y0..<(u.y1 + 1) {
+    for x: u.x0..<(u.x1 + 1) {
+      i := y * w + x;
+      if a[0].cells[i].w0 != b[0].cells[i].w0 || a[0].cells[i].w1 != b[0].cells[i].w1 {
+        diffs = diffs + 1;
+      }
+    }
+  }
+  return diffs;
+}
+
+// DECSTBM hardware scroll gate (ink/log-update.ts:165-185, ink/terminal.ts:70-74):
+// Disabled under tmux (!sync_output_supported) to prevent blank scrolled edge flashes.
+flawed_screen_decstbm_safe :: (
+  alt_screen: bool,
+  has_scroll_hint: bool,
+  sync_output_supported: bool,
+  top: int,
+  bottom: int,
+  screen_h: int
+) -> bool #effects(traps) {
+  return alt_screen && has_scroll_hint && sync_output_supported &&
+         top >= 0 && bottom >= top && bottom < screen_h;
+}
+
+// Clean-subtree blit eligibility (ink/render-node-to-output.ts, ink/ink.tsx).
+flawed_screen_can_blit :: (
+  node_dirty: bool,
+  coords_unchanged: bool,
+  prev_frame_contaminated: bool,
+  abs_node_removed: bool,
+  seen_dirty_unclipped: bool
+) -> bool #effects(traps) {
+  return !node_dirty && coords_unchanged && !prev_frame_contaminated &&
+         !abs_node_removed && !seen_dirty_unclipped;
+}
+
+// Kitty CSI u / modifyOtherKeys modifier bitmask decoder (ink/parse-keypress.ts).
+flawed_kitty_mod_decode :: (raw_mod: int) -> u8 #effects(traps) {
+  if raw_mod <= 1 { return 0; } // mutant: equivalent // raw_mod == 1 yields 0 in both branches
+  return cast(u8) ((raw_mod - 1) & 15);
+}
+
+// SGR mouse wheel bit 0x40 splits wheel events into ParsedKey vs clicks/drags into ParsedMouse.
+flawed_is_sgr_mouse_wheel :: (btn: u8) -> bool #effects(traps) {
+  return (btn & 64) != 0;
+}
+
+// 50ms incomplete-escape timer guard (ink/components/App.tsx:283-306):
+// Never flush Escape when buffered stdin bytes are still unread in Node's poll queue.
+flawed_should_flush_incomplete_esc :: (stdin_readable_bytes: int) -> bool #effects(traps) {
+  return stdin_readable_bytes == 0;
+}
+
+// Click-to-open hyperlink guard (ink/components/App.tsx:632-643):
+// Disabled on xterm.js/VS Code so Linkifier does not open Cmd+Click URLs twice.
+flawed_should_open_click_url :: (is_xterm_js: bool, consumed_by_dom: bool) -> bool #effects(traps) {
+  return !is_xterm_js && !consumed_by_dom;
+}
+
+// TerminalQuerier DA1 sentinel FIFO drain (ink/terminal-querier.ts:195-211):
+// Returns count of entries drained up to and including the first DA1 sentinel (0 if none).
+flawed_da1_sentinel_drain_count :: (kinds: [] const u8, n: int) -> int #effects(reads, traps) {
+  for i: 0..<n {
+    if kinds[i] == FLAWED_TQ_SENTINEL { return i + 1; }
+  }
+  return 0;
+}
+
+#test "screen: packed 64-bit cells, style bit-0 visibility, wide-char orphan safety, shift_rows & diff" {
+  // Style bit-0 visibility & cell bit packing
+  s_fg := flawed_style_make_id(5, false);
+  s_bg := flawed_style_make_id(5, true);
+  #assert s_fg == 10 && s_bg == 11;
+  w1 := flawed_cell_pack_w1(s_bg, 42, FLAWED_CW_WIDE);
+  #assert flawed_cell_style(w1) == s_bg && flawed_cell_hyperlink(w1) == 42 && flawed_cell_width(w1) == FLAWED_CW_WIDE;
+  #assert flawed_cell_is_blank_space(FlawedCell.{w0 = 0, w1 = flawed_cell_pack_w1(s_fg, 0, FLAWED_CW_NARROW)});
+  #assert flawed_cell_is_blank_space(FlawedCell.{w0 = 0, w1 = flawed_cell_pack_w1(s_fg, 0, FLAWED_CW_WIDE)});
+  #assert !flawed_cell_is_blank_space(FlawedCell.{w0 = 0, w1 = flawed_cell_pack_w1(s_bg, 0, FLAWED_CW_NARROW)});
+  #assert !flawed_cell_is_blank_space(FlawedCell.{w0 = 0, w1 = flawed_cell_pack_w1(s_fg, 1, FLAWED_CW_NARROW)});
+  #assert !flawed_cell_is_blank_space(FlawedCell.{w0 = 65, w1 = 0});
+
+  // Init bounds (1x1, 16x16 == 256, 17x16 & 1x257 rejected) + 16x16 bottom-row diff guard
+  s1: [1] FlawedScreen;
+  s2: [1] FlawedScreen;
+  #assert !flawed_screen_init(s1[..], 0, 4) && !flawed_screen_init(s1[..], 4, 0) && !flawed_screen_init(s1[..], 1, 257) && !flawed_screen_init(s1[..], 17, 16);
+  #assert flawed_screen_init(s1[..], 1, 1) && flawed_screen_init(s1[..], 16, 16) && flawed_screen_init(s2[..], 16, 16);
+  #assert flawed_screen_set_cell(s1[..], 15, 15, 65, 0, 0, FLAWED_CW_NARROW) && flawed_screen_count_diffs(s1[..], s2[..]) == 1;
+  #assert flawed_screen_init(s1[..], 4, 3) && flawed_screen_init(s2[..], 4, 3);
+  #assert flawed_screen_count_diffs(s1[..], s2[..]) == 0;
+
+  // Out-of-bounds cell write refused
+  #assert !flawed_screen_set_cell(s1[..], -1, 0, 65, 0, 0, FLAWED_CW_NARROW);
+  #assert !flawed_screen_set_cell(s1[..], 0, -1, 65, 0, 0, FLAWED_CW_NARROW);
+  #assert !flawed_screen_set_cell(s1[..], 4, 0, 65, 0, 0, FLAWED_CW_NARROW);
+  #assert !flawed_screen_set_cell(s1[..], 0, 3, 65, 0, 0, FLAWED_CW_NARROW);
+
+  // Wide glyph at right margin x=3 becomes SpacerHead & marks damage; at x=2 fits as WIDE + SPACER_TAIL (w0=1)
+  #assert flawed_screen_set_cell(s1[..], 3, 0, 99, 0, 0, FLAWED_CW_WIDE);
+  #assert flawed_cell_width(s1[0].cells[3].w1) == FLAWED_CW_SPACER_HEAD && s1[0].cells[3].w0 == 1 && s1[0].dmg.valid && s1[0].dmg.x0 == 3;
+  s1[0].dmg = FlawedDamage.{};
+  #assert flawed_screen_set_cell(s1[..], 2, 0, 70, 0, 0, FLAWED_CW_WIDE);
+  #assert s1[0].cells[2].w0 == 70 && s1[0].cells[3].w0 == 1 && flawed_cell_width(s1[0].cells[3].w1) == FLAWED_CW_SPACER_TAIL;
+  #assert s1[0].dmg.x0 == 2 && s1[0].dmg.x1 == 3;
+  // Writing WIDE at x=1 overlaps WIDE at x=2 -> clears partner at x=3!
+  #assert flawed_screen_set_cell(s1[..], 1, 0, 77, 0, 0, FLAWED_CW_WIDE);
+  #assert s1[0].cells[1].w0 == 77 && s1[0].cells[2].w0 == 1 && s1[0].cells[3].w0 == 0;
+  // Overwriting SPACER_TAIL at x=2 clears x=1 AND expands dmg.x0 to 1!
+  s1[0].dmg = FlawedDamage.{};
+  #assert flawed_screen_set_cell(s1[..], 2, 0, 66, 0, 0, FLAWED_CW_NARROW);
+  #assert s1[0].cells[1].w0 == 0 && s1[0].cells[2].w0 == 66 && s1[0].dmg.x0 == 1 && s1[0].dmg.x1 == 2;
+  // Overwriting WIDE at x=0 clears x=1 AND expands dmg.x1 to 1!
+  #assert flawed_screen_set_cell(s1[..], 0, 1, 88, 0, 0, FLAWED_CW_WIDE);
+  s1[0].dmg = FlawedDamage.{};
+  #assert flawed_screen_set_cell(s1[..], 0, 1, 67, 0, 0, FLAWED_CW_NARROW);
+  #assert s1[0].cells[4].w0 == 67 && s1[0].cells[5].w0 == 0 && s1[0].dmg.x0 == 0 && s1[0].dmg.x1 == 1;
+
+  // Diff when ONLY b (s2) has damage vs clean s_clean!
+  s_clean: [1] FlawedScreen;
+  #assert flawed_screen_init(s_clean[..], 4, 3);
+  #assert flawed_screen_set_cell(s2[..], 3, 2, 90, 0, 0, FLAWED_CW_NARROW);
+  #assert flawed_screen_count_diffs(s_clean[..], s2[..]) == 1;
+  #assert flawed_screen_count_diffs(s2[..], s_clean[..]) == 1;
+  // Both damaged with disjoint boxes + w1-only diff at (0,1)
+  #assert flawed_screen_set_cell(s1[..], 0, 0, 65, 0, 0, FLAWED_CW_NARROW);
+  #assert flawed_screen_set_cell(s2[..], 0, 1, 67, s_bg, 0, FLAWED_CW_NARROW);
+  #assert flawed_screen_count_diffs(s1[..], s2[..]) == 4;
+  // Mismatched dimensions -> -1
+  s_sm: [1] FlawedScreen;
+  #assert flawed_screen_init(s_sm[..], 2, 3);
+  #assert flawed_screen_count_diffs(s1[..], s_sm[..]) == -1;
+  #assert flawed_screen_init(s_sm[..], 4, 2);
+  #assert flawed_screen_count_diffs(s1[..], s_sm[..]) == -1;
+
+  // DECSTBM row shift UP (delta=+1) and DOWN (delta=-1), including single-row top==bottom & dmg bounds
+  #assert !flawed_screen_shift_rows(s1[..], -1, 2, 1);
+  #assert !flawed_screen_shift_rows(s1[..], 2, 1, 1);
+  #assert !flawed_screen_shift_rows(s1[..], 0, 3, 1);
+  #assert !flawed_screen_shift_rows(s1[..], 0, 2, 0);
+  #assert flawed_screen_set_cell(s1[..], 1, 2, 91, 0, 0, FLAWED_CW_NARROW);
+  s1[0].dmg = FlawedDamage.{};
+  #assert flawed_screen_shift_rows(s1[..], 0, 2, 1);
+  #assert s1[0].cells[0].w0 == 67 && s1[0].cells[5].w0 == 91 && s1[0].cells[9].w0 == 0;
+  #assert s1[0].dmg.valid && s1[0].dmg.x0 == 0 && s1[0].dmg.x1 == 3 && s1[0].dmg.y0 == 0 && s1[0].dmg.y1 == 2;
+  #assert flawed_screen_shift_rows(s1[..], 0, 2, -1);
+  #assert s1[0].cells[4].w0 == 67 && s1[0].cells[9].w0 == 91 && s1[0].cells[0].w0 == 0;
+  // Partial region shift [0..1] must NOT disturb row 2!
+  #assert flawed_screen_shift_rows(s1[..], 0, 1, 1) && s1[0].cells[9].w0 == 91;
+  #assert flawed_screen_shift_rows(s1[..], 2, 2, 1) && s1[0].cells[9].w0 == 0;
+}
+
+#test "screen: DECSTBM safety, blit guards, Kitty modifiers, SGR wheel, escape flush & DA1 sentinel" {
+  #assert flawed_screen_decstbm_safe(true, true, true, 0, 23, 24);
+  #assert flawed_screen_decstbm_safe(true, true, true, 5, 5, 24);
+  #assert !flawed_screen_decstbm_safe(false, true, true, 0, 23, 24);
+  #assert !flawed_screen_decstbm_safe(true, false, true, 0, 23, 24);
+  #assert !flawed_screen_decstbm_safe(true, true, false, 0, 23, 24);
+  #assert !flawed_screen_decstbm_safe(true, true, true, -1, 23, 24);
+  #assert !flawed_screen_decstbm_safe(true, true, true, 5, 4, 24);
+  #assert !flawed_screen_decstbm_safe(true, true, true, 0, 24, 24);
+
+  #assert flawed_screen_can_blit(false, true, false, false, false);
+  #assert !flawed_screen_can_blit(true, true, false, false, false);
+  #assert !flawed_screen_can_blit(false, false, false, false, false);
+  #assert !flawed_screen_can_blit(false, true, true, false, false);
+  #assert !flawed_screen_can_blit(false, true, false, true, false);
+  #assert !flawed_screen_can_blit(false, true, false, false, true);
+
+  #assert flawed_kitty_mod_decode(0) == 0 && flawed_kitty_mod_decode(1) == 0;
+  #assert flawed_kitty_mod_decode(2) == FLAWED_KMOD_SHIFT;
+  #assert flawed_kitty_mod_decode(6) == (FLAWED_KMOD_SHIFT | FLAWED_KMOD_CTRL);
+  #assert flawed_kitty_mod_decode(16) == 15;
+  #assert flawed_kitty_mod_decode(17) == 0;
+
+  #assert flawed_is_sgr_mouse_wheel(64) && flawed_is_sgr_mouse_wheel(65) && !flawed_is_sgr_mouse_wheel(1) && !flawed_is_sgr_mouse_wheel(0);
+  #assert flawed_should_flush_incomplete_esc(0) && !flawed_should_flush_incomplete_esc(5);
+  #assert flawed_should_open_click_url(false, false) && !flawed_should_open_click_url(true, false) && !flawed_should_open_click_url(false, true);
+
+  q: [4] u8;
+  q[0] = FLAWED_TQ_QUERY; q[1] = FLAWED_TQ_QUERY; q[2] = FLAWED_TQ_SENTINEL; q[3] = FLAWED_TQ_QUERY;
+  #assert flawed_da1_sentinel_drain_count(q[..], 4) == 3;
+  #assert flawed_da1_sentinel_drain_count(q[..], 2) == 0;
+  q[0] = FLAWED_TQ_SENTINEL;
+  #assert flawed_da1_sentinel_drain_count(q[..], 4) == 1;
+}

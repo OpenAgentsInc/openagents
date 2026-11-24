@@ -33,6 +33,7 @@
 #load "tasks.coax";
 #load "subagent.coax";
 #load "swarm.coax";
+#load "screen.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -349,4 +350,17 @@
   #assert flawed_bridge_resolved_leader_mode(FLAWED_PMODE_DEFAULT, FLAWED_PMODE_ACCEPT_EDITS, true) == FLAWED_PMODE_DEFAULT;
   #assert flawed_coord_tool_allowed(FLAWED_CTOOL_AGENT) && !flawed_coord_tool_allowed(FLAWED_CTOOL_OTHER);
   #assert flawed_coord_effective_worker_model(true, 9) == 0 && !flawed_coord_proactive_allowed(true);
+}
+
+#test "flawed core (Ch 20): native 64-bit packed terminal screen, wide-char orphan safety, DECSTBM & DA1 sentinel compose" {
+  s1: [1] FlawedScreen; s2: [1] FlawedScreen;
+  #assert flawed_screen_init(s1[..], 8, 4) && flawed_screen_init(s2[..], 8, 4);
+  #assert flawed_screen_set_cell(s1[..], 1, 1, 77, flawed_style_make_id(2, true), 3, FLAWED_CW_WIDE);
+  #assert flawed_screen_set_cell(s1[..], 2, 1, 65, 0, 0, FLAWED_CW_NARROW);
+  #assert s1[0].cells[9].w0 == 0 && s1[0].cells[10].w0 == 65;
+  #assert flawed_screen_count_diffs(s1[..], s2[..]) == 1;
+  #assert flawed_screen_shift_rows(s1[..], 0, 3, 1) && s1[0].cells[2].w0 == 65;
+  #assert !flawed_screen_decstbm_safe(true, true, false, 0, 3, 4);
+  #assert flawed_kitty_mod_decode(6) == (FLAWED_KMOD_SHIFT | FLAWED_KMOD_CTRL);
+  #assert !flawed_should_open_click_url(true, false);
 }
