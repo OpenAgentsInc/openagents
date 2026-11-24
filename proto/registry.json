@@ -7204,6 +7204,76 @@
         "proto/coder/sarah-mvp-v1.json"
       ],
       "note": "SQ-1 playback-first media take scoreboard emitted by coax/web/sarah.coax; advance stays false until owner playback, prosody, and verbatim STT all pass."
+    },
+    {
+      "id": "gbench-doctor.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/gbench-gym-v1.json",
+      "codec": "coax/lib/gbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/gbench-gym-v1.json",
+        "coax/lib/gbench/wire-checks.coax"
+      ],
+      "note": "Host readiness report for gBench venv, Psionic Metal, llama-server, Inkling HF tokenizer, bwrap/Docker, and installed Inkling variants."
+    },
+    {
+      "id": "gbench-policy.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/gbench-gym-v1.json",
+      "codec": "coax/lib/gbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/gbench-gym-v1.json",
+        "coax/lib/gbench/wire-checks.coax"
+      ],
+      "note": "SHA-256-hashed Inkling variant and serving policy manifest for reproducible gBench comparisons and hillclimbing."
+    },
+    {
+      "id": "gbench-item.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/gbench-gym-v1.json",
+      "codec": "coax/lib/gbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/gbench-gym-v1.json",
+        "coax/lib/gbench/wire-checks.coax"
+      ],
+      "note": "Normalized Golden Set case, Serving Perf run, or Evaluation suite outcome row carrying scaffold_id, subject_id, distillation eligibility, and ATIF-v1.8 digest."
+    },
+    {
+      "id": "gbench-compare.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/gbench-gym-v1.json",
+      "codec": "coax/lib/gbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/gbench-gym-v1.json",
+        "coax/lib/gbench/wire-checks.coax"
+      ],
+      "note": "Side-by-side Arm A vs Arm B gBench comparison snapshot persisted to ~/.openagents/gym/last-gbench.json for OpenAgents Desktop Gym."
+    },
+    {
+      "id": "gbench-hillclimb.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/gbench-gym-v1.json",
+      "codec": "coax/lib/gbench/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/gbench-gym-v1.json",
+        "coax/lib/gbench/wire-checks.coax"
+      ],
+      "note": "Append-only #authority hillclimbing round ledger row recording scaffold lock, score/latency deltas, promotion verdict, and license-gated ATIF distillation count."
     }
   ]
 }

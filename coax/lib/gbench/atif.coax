@@ -1,0 +1,270 @@
+// Canonical ATIF-v1.8 trajectory exporter for gBench Golden, Serving Perf, and Eval runs.
+//
+// Converts gBench summary/eval JSON outputs into verified NIP-ATIF `.atif.jsonl` logs
+// via coax/lib/nostr/atif/log.coax and computes exact verified `steps_digest`.
+//
+//   coax/bin/coax test coax/lib/gbench/atif.coax --library
+#load "../sys/fs.coax";
+#load "../nostr/atif/log.coax";
+#load "wire.coax";
+
+GbAtifWork :: struct {
+  out: [524288] u8;
+  step: [32768] u8;
+  line: [36864] u8;
+  prompt: [16384] u8;
+  resp: [16384] u8;
+  reason: [16384] u8;
+  tid: [128] u8;
+  extra: [1024] u8;
+}
+
+gb_atif_put :: (dst: [] u8, at: int, s: string) -> int #effects(all) {
+  n := at;
+  for c: s { if n < dst.count { dst[n] = c; n += 1; } }
+  return n;
+}
+
+// Builds a verified 2-step ATIF-v1.8 log in `w[0].out`, verifying via `atif_verify_log`.
+// Returns byte length written to `w[0].out` (>0) on success, or -1 on error; writes 64-hex digest into `digest_out`.
+gb_atif_build_item :: (
+  w: [] GbAtifWork,
+  run_id: string,
+  item_id: string,
+  model_id: string,
+  timestamp: string,
+  user_msg: string,
+  agent_msg: string,
+  reasoning_msg: string,
+  scaffold_id: string,
+  passed: bool,
+  score_bps: int,
+  digest_out: [] u8
+) -> int #effects(all) {
+  if run_id.count == 0 || item_id.count == 0 { return -1; }
+  tn := gb_atif_put(w[0].tid[..], 0, run_id);
+  tn = gb_atif_put(w[0].tid[..], tn, "-");
+  tn = gb_atif_put(w[0].tid[..], tn, item_id);
+  tid_s := cast(string) w[0].tid[0..<tn];
+
+  n := 0;
+  hdr := AtifSessionHeader.{
+    trajectory_id = tid_s,
+    session_id = run_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "gbench-run",
+    model_name = model_id,
+    cwd = "",
+    git_branch = "",
+    source_harness = "gbench",
+    created_at = timestamp,
+  };
+  k := atif_write_session_line(hdr, w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return -1; }
+  n += k;
+
+  // Step 1: user / benchmark prompt
+  u_txt := ifx user_msg.count > 0 then user_msg else item_id;
+  s1 := AtifStep.{
+    step_id = 1,
+    timestamp = timestamp,
+    source = ATIF_SOURCE_USER,
+    message = u_txt,
+  };
+  s1_n := atif_write_step_json(s1, w[0].step[..]);
+  if s1_n <= 0 { return -1; }
+  k = atif_write_step_line(cast(string) w[0].step[0..<s1_n], w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return -1; }
+  n += k;
+
+  // Step 2: model response + verifier metadata in extra
+  eo: [1] Jo; jo_start(eo[..], w[0].extra[..]);
+  jo_obj(eo[..]);
+  jo_key(eo[..], "item_id"); jo_str(eo[..], item_id);
+  jo_key(eo[..], "scaffold_id"); jo_str(eo[..], scaffold_id);
+  jo_key(eo[..], "passed"); jo_bool(eo[..], passed);
+  jo_key(eo[..], "score_bps"); jo_int(eo[..], score_bps);
+  jo_end(eo[..]);
+  ex_s := ifx !eo[0].bad then jo_text(eo[..]) else "";
+
+  s2 := AtifStep.{
+    step_id = 2,
+    timestamp = timestamp,
+    source = ATIF_SOURCE_AGENT,
+    message = agent_msg,
+    reasoning_content = reasoning_msg,
+    model_name = model_id,
+    extra_json = ex_s,
+  };
+  s2_n := atif_write_step_json(s2, w[0].step[..]);
+  if s2_n <= 0 { return -1; }
+  k = atif_write_step_line(cast(string) w[0].step[0..<s2_n], w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return -1; }
+  n += k;
+
+  k = atif_write_end_line(timestamp, ATIF_STATE_ENDED, w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return -1; }
+  n += k;
+
+  doc_s := cast(string) w[0].out[0..<n];
+  sum := atif_verify_log(doc_s, "");
+  if !sum.ok || !sum.digest_ok { return -1; }
+  _ = gbw_put(digest_out, cast(string) sum.steps_digest[..]);
+  return n;
+}
+
+// Writes a verified 2-step ATIF-v1.8 trajectory for one gBench item to `atif_path`.
+gb_atif_write_item :: (
+  w: [] GbAtifWork,
+  atif_path: string,
+  run_id: string,
+  item_id: string,
+  model_id: string,
+  timestamp: string,
+  user_msg: string,
+  agent_msg: string,
+  reasoning_msg: string,
+  scaffold_id: string,
+  passed: bool,
+  score_bps: int,
+  digest_out: [] u8
+) -> bool #effects(all) {
+  if atif_path.count == 0 { return false; }
+  n := gb_atif_build_item(
+    w, run_id, item_id, model_id, timestamp, user_msg, agent_msg, reasoning_msg,
+    scaffold_id, passed, score_bps, digest_out
+  );
+  if n <= 0 { return false; }
+  return fs_write(atif_path, cast(string) w[0].out[0..<n]);
+}
+
+// Exports an entire eval JSON file's `sample_traces[]` (up to 32 traces) into one verified ATIF-v1.8 log.
+gb_atif_export_eval_traces :: (
+  w: [] GbAtifWork,
+  d: Jv,
+  traces_node: int,
+  atif_path: string,
+  run_id: string,
+  suite_id: string,
+  model_id: string,
+  timestamp: string,
+  scaffold_id: string,
+  digest_out: [] u8
+) -> bool #effects(all) {
+  if atif_path.count == 0 || jv_kind(d, traces_node) != JV_ARRAY { return false; }
+  tn := gb_atif_put(w[0].tid[..], 0, run_id);
+  tn = gb_atif_put(w[0].tid[..], tn, "-");
+  tn = gb_atif_put(w[0].tid[..], tn, suite_id);
+  tid_s := cast(string) w[0].tid[0..<tn];
+
+  n := 0;
+  hdr := AtifSessionHeader.{
+    trajectory_id = tid_s,
+    session_id = run_id,
+    schema_version = ATIF_SCHEMA_VERSION,
+    agent_name = "gbench-run",
+    model_name = model_id,
+    source_harness = "gbench",
+    created_at = timestamp,
+  };
+  k := atif_write_session_line(hdr, w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return false; }
+  n += k;
+
+  step_id := 1;
+  nt := jv_len(d, traces_node);
+  max_t := ifx nt < 32 then nt else 32;
+  for i: 0..<max_t {
+    tr := jv_at(d, traces_node, i);
+    if jv_kind(d, tr) != JV_OBJECT { continue; }
+    // Extract last user message from messages[]
+    p_len := 0;
+    msgs := jv_get(d, tr, "messages");
+    if jv_kind(d, msgs) == JV_ARRAY {
+      nm := jv_len(d, msgs);
+      for mi: 0..<nm {
+        mo := jv_at(d, msgs, mi);
+        rb: [16] u8; rn := jv_str(d, jv_get(d, mo, "role"), rb[..]);
+        if rn > 0 && cast(string) rb[0..<rn] == "user" {
+          cn := jv_str(d, jv_get(d, mo, "content"), w[0].prompt[..]);
+          if cn > 0 { p_len = cn; }
+        }
+      }
+    }
+    if p_len == 0 {
+      p_len = gb_atif_put(w[0].prompt[..], 0, suite_id);
+    }
+    r_len := jv_str(d, jv_get(d, tr, "response_text"), w[0].resp[..]);
+    if r_len < 0 { r_len = 0; }
+    th_len := jv_str(d, jv_get(d, tr, "reasoning"), w[0].reason[..]);
+    if th_len < 0 { th_len = 0; }
+    ok_sample := jv_bool(d, jv_get(d, tr, "is_correct"));
+    ctok := jv_int(d, jv_get(d, tr, "completion_tokens"), 0);
+
+    // Emit user step
+    su := AtifStep.{
+      step_id = step_id,
+      timestamp = timestamp,
+      source = ATIF_SOURCE_USER,
+      message = cast(string) w[0].prompt[0..<p_len],
+    };
+    sn := atif_write_step_json(su, w[0].step[..]);
+    if sn <= 0 { break; }
+    k = atif_write_step_line(cast(string) w[0].step[0..<sn], w[0].out[n..<w[0].out.count]);
+    if k <= 0 { break; }
+    n += k;
+    step_id += 1;
+
+    // Emit agent step
+    eo: [1] Jo; jo_start(eo[..], w[0].extra[..]);
+    jo_obj(eo[..]);
+    jo_key(eo[..], "suite"); jo_str(eo[..], suite_id);
+    jo_key(eo[..], "sample_idx"); jo_int(eo[..], i);
+    jo_key(eo[..], "scaffold_id"); jo_str(eo[..], scaffold_id);
+    jo_key(eo[..], "is_correct"); jo_bool(eo[..], ok_sample);
+    jo_end(eo[..]);
+    ex_s := ifx !eo[0].bad then jo_text(eo[..]) else "";
+
+    sa := AtifStep.{
+      step_id = step_id,
+      timestamp = timestamp,
+      source = ATIF_SOURCE_AGENT,
+      message = cast(string) w[0].resp[0..<r_len],
+      reasoning_content = cast(string) w[0].reason[0..<th_len],
+      model_name = model_id,
+      metrics = AtifMetrics.{has_completion = ctok > 0, completion_tokens = ctok},
+      extra_json = ex_s,
+    };
+    sn = atif_write_step_json(sa, w[0].step[..]);
+    if sn <= 0 { break; }
+    k = atif_write_step_line(cast(string) w[0].step[0..<sn], w[0].out[n..<w[0].out.count]);
+    if k <= 0 { break; }
+    n += k;
+    step_id += 1;
+  }
+
+  if step_id == 1 { return false; }
+  k = atif_write_end_line(timestamp, ATIF_STATE_ENDED, w[0].out[n..<w[0].out.count]);
+  if k <= 0 { return false; }
+  n += k;
+
+  doc_s := cast(string) w[0].out[0..<n];
+  sum := atif_verify_log(doc_s, "");
+  if !sum.ok || !sum.digest_ok { return false; }
+  if !fs_write(atif_path, doc_s) { return false; }
+  _ = gbw_put(digest_out, cast(string) sum.steps_digest[..]);
+  return true;
+}
+
+#test "gbench atif: verified ATIF-v1.8 single-item and eval-trace export" {
+  w: [1] GbAtifWork;
+  dig: [64] u8;
+  rn := gb_atif_build_item(
+    w[..], "gb-unit-1", "math_canonical", "inkling-2-mini",
+    "2026-11-24T00:00:00Z", "What is 6 * 7?", "42", "", "sc_965cd8ee",
+    true, 10000, dig[..]
+  );
+  #assert rn > 0 && gb_valid_sha256(cast(string) dig[..]);
+  v := atif_verify_log(cast(string) w[0].out[0..<rn], cast(string) dig[..]);
+  #assert v.ok && v.step_count == 2 && v.digest_matches;
+}

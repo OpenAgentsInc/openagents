@@ -39,7 +39,7 @@ obj_stale() {
 if [[ "$minimal" == "1" ]]; then
   rm -rf "$app/Contents/Frameworks" \
     "$res/bip39-english.txt" "$res/mcworker" "$res/claudeworker" "$res/oasim" \
-    "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" \
+    "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" "$res/gbench-run" \
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
     "$res/foreman-ctl"
@@ -159,7 +159,7 @@ if [[ "$minimal" != "1" ]]; then
     "$here/Window+McpSkills.swift" "$here/Window+Providers.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
-    "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift"
+    "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift" "$here/GymGBenchView.swift"
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
     "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift"
     "$here/Window+Wallet.swift" "$here/Window+WalletRPC.swift"
@@ -222,6 +222,7 @@ if [[ "$minimal" != "1" ]]; then
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/tbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gbench-run.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" < /dev/null > /dev/null & full_pids+=($!)
@@ -254,6 +255,7 @@ if [[ "$minimal" != "1" ]]; then
   cp "$repo/coax/web/build/tools/ple-run-$coax_hash" "$res/ple-run"
   cp "$repo/coax/web/build/tools/lean-run-$coax_hash" "$res/lean-run"
   cp "$repo/coax/web/build/tools/tbench-run-$coax_hash" "$res/tbench-run"
+  cp "$repo/coax/web/build/tools/gbench-run-$coax_hash" "$res/gbench-run"
   cp "$repo/coax/web/build/tools/proof-export-$coax_hash" "$res/proof-export"
   cp "$repo/coax/web/build/tools/capability-eval-$coax_hash" "$res/capability-eval"
   cp "$repo/coax/web/build/tools/agents-catalog-$coax_hash" "$res/agents-catalog"

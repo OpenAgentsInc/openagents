@@ -260,13 +260,14 @@ final class GymWorkbenchView: NSView {
     var pendingPlan: PleGymPlan?
     var pendingPlanDone: ((String?) -> Void)?
 
-    // Top mode switcher: Benchmarks (0) | Terminal-Bench (3) | PLE 3D Workbench (1)
+    // Top mode switcher: Benchmarks (0) | Terminal-Bench (3) | gBench (4) | PLE 3D Workbench (1)
     private let modeBar = NSView()
     private let modeBarDivider = NSView()
     private let modeTitleLabel = NSTextField(labelWithString: "GYM")
     private let modeControl = NSSegmentedControl(labels: ["Benchmarks", "PLE 3D"], trackingMode: .selectOne, target: nil, action: nil)
     let benchmarkView = GymBenchmarkView(frame: .zero)
     let terminalBenchView = GymTerminalBenchView(frame: .zero)
+    let gbenchView = GymGBenchView(frame: .zero)
     private var activeGymMode: Int32 = 0
 
     override init(frame frameRect: NSRect) {
@@ -327,6 +328,10 @@ final class GymWorkbenchView: NSView {
         terminalBenchView.translatesAutoresizingMaskIntoConstraints = false
         terminalBenchView.workingFolderProvider = { [weak self] in self?.workingFolderProvider?() }
         addSubview(terminalBenchView)
+
+        gbenchView.translatesAutoresizingMaskIntoConstraints = false
+        gbenchView.workingFolderProvider = { [weak self] in self?.workingFolderProvider?() }
+        addSubview(gbenchView)
 
         railView.translatesAutoresizingMaskIntoConstraints = false
         railView.wantsLayer = true
@@ -669,6 +674,11 @@ final class GymWorkbenchView: NSView {
             terminalBenchView.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalBenchView.trailingAnchor.constraint(equalTo: trailingAnchor),
 
+            gbenchView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
+            gbenchView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            gbenchView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            gbenchView.trailingAnchor.constraint(equalTo: trailingAnchor),
+
             railView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             railView.bottomAnchor.constraint(equalTo: bottomAnchor),
             railView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -782,15 +792,19 @@ final class GymWorkbenchView: NSView {
         applyModeVisibility()
         if mode == 3 {
             terminalBenchView.onBecomeVisible()
+        } else if mode == 4 {
+            gbenchView.onBecomeVisible()
         }
     }
 
     private func applyModeVisibility() {
         let isBench = (activeGymMode == 0)
         let isTbench = (activeGymMode == 3)
-        let isPle = !isBench && !isTbench
+        let isGbench = (activeGymMode == 4)
+        let isPle = !isBench && !isTbench && !isGbench
         benchmarkView.isHidden = !isBench
         terminalBenchView.isHidden = !isTbench
+        gbenchView.isHidden = !isGbench
         railView.isHidden = !isPle
         dividerView.isHidden = !isPle
         scenePanel.isHidden = !isPle

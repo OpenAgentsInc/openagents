@@ -10,6 +10,7 @@ CP_GYM_BENCH :: 0;          // macOS Swift GymBenchmarkView (Psionic vs llama.cp
 CP_GYM_PLE :: 1;            // macOS Swift 3D PLE Workbench
 CP_GYM_LEAN :: 2;           // Cross-platform Coax Lean 4 & Riemann Hypothesis Workbench
 CP_GYM_TBENCH :: 3;         // macOS Swift GymTerminalBenchView (Harbor Docker + Microcoder Hillclimbing; #13952)
+CP_GYM_GBENCH :: 4;         // macOS Swift GymGBenchView (google-deepmind/gbench Inkling Variants + Hillclimbing)
 
 CP_GYM_BAR_H :: 36.0f32;    // Unified top GYM mode switcher bar height
 CP_LEAN_SUB_H :: 34.0f32;   // Sub-tab bar inside Lean · RH mode
@@ -529,7 +530,7 @@ cp_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> int {
     tour_step = l[0].tour_step + 1
   }];
   st[0].id_n = lw_put(st[0].id[..], req_id);
-  mode_s := ifx s[0].gym_mode == CP_GYM_BENCH then "benchmarks" else ifx s[0].gym_mode == CP_GYM_TBENCH then "tbench" else ifx s[0].gym_mode == CP_GYM_PLE then "ple" else "lean";
+  mode_s := ifx s[0].gym_mode == CP_GYM_BENCH then "benchmarks" else ifx s[0].gym_mode == CP_GYM_TBENCH then "tbench" else ifx s[0].gym_mode == CP_GYM_GBENCH then "gbench" else ifx s[0].gym_mode == CP_GYM_PLE then "ple" else "lean";
   st[0].mode_n = lw_put(st[0].mode[..], mode_s);
   st[0].view_n = lw_put(st[0].view[..], cp_lean_view_name(l[0].view));
   st[0].mod_name_n = lw_put(st[0].mod_name[..], cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);

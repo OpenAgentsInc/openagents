@@ -1,0 +1,259 @@
+// Pure Coax gBench Hillclimbing Engine for Local Inkling Variations & Serving Policies.
+//
+// Manages:
+//   - Deterministic challenger proposal over real Inkling variation + serving axes
+//     (effort level 0.7 -> 0.9 official parity, thinking on/off, Uncensored LoRA overlay,
+//      Uncensored AD-Q4_K checkpoint, prompt-lookup speculative decoding).
+//   - Arm summary aggregation with exact integer Wilson 95% CI (gb_wilson_95).
+//   - #authority two-arm promotion verdicts via coax/lib/gbench/policy.coax (gb_admit_hillclimb).
+//   - License-gated + Ch 247 secret-redacted ATIF-v1.8 distillation into ~/.openagents/gbench/distill/
+//     (refuses CC-BY-NC, GPL-3.0, canary, undeclared, and secret-bearing trajectories).
+//
+//   coax/bin/coax test coax/lib/gbench/hillclimb.coax --library
+#load "../sys/fs.coax";
+#load "../agent/redact-trajectory.coax";
+#load "suites.coax";
+#load "wire.coax";
+
+// Generate a deterministic challenger policy manifest for `round_num` mutating from `champion`.
+gb_propose_challenger :: (champ: [] GbPolicy, round_num: int, out: [] GbPolicy, note_out: [] u8) -> int #effects(all) {
+  out[0] = champ[0];
+  out[0].manifest_sha_n = 0;
+  step := (round_num - 1) % 5;
+  if step < 0 { step = 0; }
+
+  note := "";
+  if step == 0 {
+    // Axis 1: Raise server-side reasoning effort to official Inkling template default (0.9) on IQ4_NL.
+    out[0].id_n = gbw_put(out[0].id[..], "inkling-effort-09");
+    out[0].label_n = gbw_put(out[0].label[..], "Inkling IQ4_NL · Effort 0.9 (Official)");
+    out[0].variant_n = gbw_put(out[0].variant[..], "inkling-2-mini");
+    out[0].backend_n = gbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_id_n = gbw_put(out[0].model_id[..], "inkling-2-mini");
+    out[0].effort_n = gbw_put(out[0].effort[..], "0.9");
+    out[0].spec_lookup = false;
+    out[0].lora_path_n = 0;
+    note = "set server reasoning effort to official Inkling default (0.9)";
+  } else if step == 1 {
+    // Axis 2: Direction-ablation Uncensored LoRA overlay over official IQ4_NL base.
+    out[0].id_n = gbw_put(out[0].id[..], "inkling-lora-e09");
+    out[0].label_n = gbw_put(out[0].label[..], "Inkling IQ4_NL + Uncensored LoRA · Effort 0.9");
+    out[0].variant_n = gbw_put(out[0].variant[..], "inkling-2-mini-uncensored-lora");
+    out[0].backend_n = gbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_id_n = gbw_put(out[0].model_id[..], "inkling-2-mini-uncensored-lora");
+    out[0].effort_n = gbw_put(out[0].effort[..], "0.9");
+    out[0].spec_lookup = false;
+    out[0].lora_path_n = 0;
+    note = "apply AtomicChat Uncensored LoRA overlay over official IQ4_NL base";
+  } else if step == 2 {
+    // Axis 3: Standalone AtomicChat Uncensored AD-Q4_K checkpoint.
+    out[0].id_n = gbw_put(out[0].id[..], "inkling-q4k-e09");
+    out[0].label_n = gbw_put(out[0].label[..], "Inkling Uncensored AD-Q4_K · Effort 0.9");
+    out[0].variant_n = gbw_put(out[0].variant[..], "inkling-2-mini-uncensored-q4k");
+    out[0].backend_n = gbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_id_n = gbw_put(out[0].model_id[..], "inkling-2-mini-uncensored-q4k");
+    out[0].effort_n = gbw_put(out[0].effort[..], "0.9");
+    out[0].spec_lookup = false;
+    out[0].lora_path_n = 0;
+    note = "switch to standalone AtomicChat Uncensored AD-Q4_K checkpoint";
+  } else if step == 3 {
+    // Axis 4: Balanced low-effort thinking (effort=0.2) for latency-accuracy sweet spot.
+    out[0].id_n = gbw_put(out[0].id[..], "inkling-effort-02");
+    out[0].label_n = gbw_put(out[0].label[..], "Inkling IQ4_NL · Low Effort 0.2");
+    out[0].variant_n = gbw_put(out[0].variant[..], "inkling-2-mini");
+    out[0].backend_n = gbw_put(out[0].backend[..], "psionic-metal");
+    out[0].model_id_n = gbw_put(out[0].model_id[..], "inkling-2-mini");
+    out[0].effort_n = gbw_put(out[0].effort[..], "0.2");
+    out[0].spec_lookup = false;
+    out[0].lora_path_n = 0;
+    note = "test low-effort reasoning (effort=0.2) for latency/accuracy Pareto frontier";
+  } else {
+    // Axis 5: Lossless prompt-lookup speculative decoding (INK_SPEC_LOOKUP=1) on champion's checkpoint.
+    out[0].id_n = gbw_put(out[0].id[..], "inkling-spec-lookup");
+    out[0].label_n = gbw_put(out[0].label[..], "Inkling Champion · Lossless SpecLookup");
+    out[0].spec_lookup = true;
+    note = "enable lossless prompt-lookup speculation (INK_SPEC_LOOKUP=1) on champion";
+  }
+  gbw_policy_hash(out);
+  return gbw_put(note_out, note);
+}
+
+// Aggregate an array of GbItemRecord items into one GbArmSummary with exact Wilson 95% CI.
+gb_summarize_arm :: (
+  p: [] GbPolicy,
+  items: [] GbItemRecord,
+  n_items: int,
+  boot_ms: int,
+  peak_rss_mb: int,
+  out: [] GbArmSummary
+) #effects(all) {
+  out[0] = GbArmSummary.{};
+  out[0].id_n = gbw_put(out[0].id[..], cast(string) p[0].id[0..<p[0].id_n]);
+  out[0].label_n = gbw_put(out[0].label[..], cast(string) p[0].label[0..<p[0].label_n]);
+  out[0].variant_n = gbw_put(out[0].variant[..], cast(string) p[0].variant[0..<p[0].variant_n]);
+  out[0].backend_n = gbw_put(out[0].backend[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  out[0].model_id_n = gbw_put(out[0].model_id[..], cast(string) p[0].model_id[0..<p[0].model_id_n]);
+  out[0].effort_n = gbw_put(out[0].effort[..], cast(string) p[0].effort[0..<p[0].effort_n]);
+  out[0].thinking = p[0].thinking;
+  if p[0].manifest_sha_n == 0 { gbw_policy_hash(p); }
+  out[0].policy_sha_n = gbw_put(out[0].policy_sha[..], cast(string) p[0].manifest_sha[0..<p[0].manifest_sha_n]);
+  out[0].boot_ms = boot_ms;
+  out[0].peak_rss_mb = peak_rss_mb;
+  out[0].total = n_items;
+  out[0].atif_all_verified = n_items > 0;
+  out[0].leaderboard_comparable = n_items > 0;
+
+  score_sum := 0;
+  score_n := 0;
+  ttft_sum := 0; ttft_n := 0;
+  tpot_sum := 0; tpot_n := 0;
+  itl_max := 0;
+  tps_sum := 0; tps_n := 0;
+  cv_max := 0;
+
+  for i: 0..<n_items {
+    rec := items[i];
+    if out[0].scaffold_id_n == 0 && rec.scaffold_id_n > 0 {
+      out[0].scaffold_id_n = gbw_put(out[0].scaffold_id[..], cast(string) rec.scaffold_id[0..<rec.scaffold_id_n]);
+    }
+    if out[0].subject_id_n == 0 && rec.subject_id_n > 0 {
+      out[0].subject_id_n = gbw_put(out[0].subject_id[..], cast(string) rec.subject_id[0..<rec.subject_id_n]);
+    }
+    pil := cast(string) rec.pillar[0..<rec.pillar_n];
+    if rec.status_code != GB_STATUS_NA {
+      if rec.status_code == GB_STATUS_INFRA {
+        out[0].infra_errors += ifx rec.harness_errors > 0 then rec.harness_errors else 1;
+      } else {
+        out[0].graded += ifx rec.graded > 0 then rec.graded else 1;
+        out[0].passed += rec.passed_count;
+        if rec.graded > rec.passed_count {
+          out[0].failed += (rec.graded - rec.passed_count);
+        } else if rec.graded == 0 && rec.status_code != GB_STATUS_PASS {
+          out[0].failed += 1;
+        }
+        score_sum += rec.score_bps;
+        score_n += 1;
+        out[0].infra_errors += rec.harness_errors;
+      }
+      if pil == "golden" {
+        out[0].golden_applicable += 1;
+        if rec.status_code == GB_STATUS_PASS { out[0].golden_passed += 1; }
+      }
+    } else {
+      out[0].infra_errors += rec.harness_errors;
+    }
+    out[0].token_leaks += rec.token_leaks;
+    out[0].total_wall_ms += rec.wall_ms;
+    if rec.ttft_us > 0 { ttft_sum += rec.ttft_us; ttft_n += 1; }
+    if rec.tpot_us > 0 { tpot_sum += rec.tpot_us; tpot_n += 1; }
+    if rec.itl_p99_us > itl_max { itl_max = rec.itl_p99_us; }
+    if rec.tok_per_s_x10 > 0 { tps_sum += rec.tok_per_s_x10; tps_n += 1; }
+    if rec.cv_bps > cv_max { cv_max = rec.cv_bps; }
+    if !rec.atif_verified { out[0].atif_all_verified = false; }
+    if !rec.leaderboard_comparable { out[0].leaderboard_comparable = false; }
+  }
+  if out[0].graded > 0 {
+    out[0].score_bps = gb_rate_bps(out[0].passed, out[0].graded);
+    wil := gb_wilson_95(out[0].passed, out[0].graded);
+    out[0].wilson_low_bps = wil.low_bps;
+    out[0].wilson_high_bps = wil.high_bps;
+  } else if score_n > 0 {
+    out[0].score_bps = score_sum / score_n;
+  }
+  if ttft_n > 0 { out[0].ttft_p50_us = ttft_sum / ttft_n; }
+  if tpot_n > 0 { out[0].tpot_p50_us = tpot_sum / tpot_n; }
+  out[0].itl_p99_us = itl_max;
+  if tps_n > 0 { out[0].tok_per_s_x10 = tps_sum / tps_n; }
+  out[0].cv_bps = cv_max;
+}
+
+// License-gated & Ch 247 Secret-Redacted ATIF-v1.8 Export for Psionic W3.2 / W5 Distillation.
+// Strictly enforces BOTH:
+//   1. #authority gb_admit_distill_suite(suite) == GB_DISTILL_ADMIT (blocks CC-BY-NC, GPL, canary, undeclared)
+//   2. Ch 247 rt_redact + rt_admit_trajectory == RT_ADMIT (blocks any residual secrets or unverified ATIF)
+gb_distill_atif :: (
+  items: [] GbItemRecord,
+  n_items: int,
+  distill_dir: string,
+  run_id: string
+) -> int #effects(all) {
+  _ = fs_mkdir_all(distill_dir);
+  exported := 0;
+  raw_buf: [524288] u8;
+  red_buf: [524288] u8;
+  for i: 0..<n_items {
+    rec := items[i];
+    if !rec.atif_verified || rec.status_code != GB_STATUS_PASS { continue; }
+    suite_s := cast(string) rec.item_id[0..<rec.item_id_n];
+    pil_s := cast(string) rec.pillar[0..<rec.pillar_n];
+    gate_key := ifx pil_s == "golden" then "golden" else suite_s;
+    if gb_admit_distill_suite(gate_key) != GB_DISTILL_ADMIT { continue; }
+    atif_src := cast(string) rec.atif_path[0..<rec.atif_path_n];
+    if atif_src.count == 0 { continue; }
+    rn := fs_read(atif_src, raw_buf[..]);
+    if rn <= 0 { continue; }
+    red_n := rt_redact(cast(string) raw_buf[0..<rn], red_buf[..]);
+    if red_n <= 0 { continue; }
+    red_str := cast(string) red_buf[0..<red_n];
+    adm := rt_admit_trajectory(RtAdmission.{
+      global_opt_in = true,
+      workspace_opt_in = true,
+      secret_clean = rt_find_secret(red_str) == -1,
+      has_test_verdict = true,
+      held_out_contaminated = false,
+      atif_verified = rec.atif_verified,
+    });
+    if adm != RT_ADMIT { continue; }
+    fn_b: [256] u8;
+    fn_n := gbw_put(fn_b[..], run_id);
+    if fn_n < fn_b.count { fn_b[fn_n] = '-'; fn_n += 1; }
+    for c: suite_s { if fn_n < fn_b.count { fn_b[fn_n] = c; fn_n += 1; } }
+    suf := ".atif.jsonl";
+    for c: suf { if fn_n < fn_b.count { fn_b[fn_n] = c; fn_n += 1; } }
+    dst_b: [FS_PATH_MAX] u8;
+    if fs_write(fs_join(distill_dir, cast(string) fn_b[0..<fn_n], dst_b[..]), red_str) {
+      exported += 1;
+    }
+  }
+  return exported;
+}
+
+#test "gbench hillclimb: challenger proposals, arm summary, and license-gated distillation" {
+  champ: [1] GbPolicy;
+  champ[0].id_n = gbw_put(champ[0].id[..], "inkling-base-v1");
+  champ[0].variant_n = gbw_put(champ[0].variant[..], "inkling-2-mini");
+  champ[0].backend_n = gbw_put(champ[0].backend[..], "psionic-metal");
+  champ[0].model_id_n = gbw_put(champ[0].model_id[..], "inkling-2-mini");
+  champ[0].effort_n = gbw_put(champ[0].effort[..], "0.7");
+  champ[0].max_output_tokens = 2048;
+  champ[0].ctx_tokens = 32768;
+  gbw_policy_hash(champ[..]);
+
+  cand: [1] GbPolicy;
+  note: [160] u8;
+  for r: 1..<6 {
+    nn := gb_propose_challenger(champ[..], r, cand[..], note[..]);
+    #assert nn > 0 && cand[0].manifest_sha_n == 64;
+    #assert gb_valid_slug(cast(string) cand[0].id[0..<cand[0].id_n]);
+  }
+
+  // Arm aggregation
+  items: [2] GbItemRecord;
+  items[0].item_id_n = gbw_put(items[0].item_id[..], "gsm8k");
+  items[0].pillar_n = gbw_put(items[0].pillar[..], "eval");
+  items[0].status_code = GB_STATUS_PASS;
+  items[0].graded = 10; items[0].passed_count = 9; items[0].score_bps = 9000;
+  items[0].scaffold_id_n = gbw_put(items[0].scaffold_id[..], "sc_d7ca3dea");
+  items[0].atif_verified = true;
+  items[1].item_id_n = gbw_put(items[1].item_id[..], "ifeval");
+  items[1].pillar_n = gbw_put(items[1].pillar[..], "eval");
+  items[1].status_code = GB_STATUS_FAIL;
+  items[1].graded = 10; items[1].passed_count = 7; items[1].score_bps = 7000;
+  items[1].scaffold_id_n = gbw_put(items[1].scaffold_id[..], "sc_d7ca3dea");
+  items[1].atif_verified = true;
+
+  sum: [1] GbArmSummary;
+  gb_summarize_arm(champ[..], items[..], 2, 1400, 11200, sum[..]);
+  #assert sum[0].graded == 20 && sum[0].passed == 16 && sum[0].score_bps == 8000;
+  #assert sum[0].atif_all_verified && sum[0].wilson_low_bps > 5000;
+}

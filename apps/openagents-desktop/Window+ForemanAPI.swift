@@ -71,6 +71,25 @@ extension CoderWindow {
             }
             return
         }
+        if request.path == "/v1/gym/gbench" && (request.method == "GET" || request.method == "POST") {
+            guard FeatureFlags.isOn(.gym) else {
+                done(ForemanResponse(status: 403, body: ["error": "gym feature flag is disabled"]))
+                return
+            }
+            if request.method == "GET" {
+                done(ForemanResponse(status: 200, body: gbenchGymStateForProgram()))
+                return
+            }
+            let body = (try? JSONSerialization.data(withJSONObject: request.payload)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+            handleGBenchGymRequest(body) { [weak self] state in
+                let ok = (state["ok"] as? Bool) == true
+                if let self {
+                    self.foremanAudit.record(action: "gym_gbench", tier: self.foremanTier, chatID: nil, status: ok ? 200 : 400, detail: ["principal": request.principal.rawValue, "error": state["error"] ?? ""])
+                }
+                done(ForemanResponse(status: ok ? 200 : 400, body: state))
+            }
+            return
+        }
         if let response = handleForemanManagement(request) {
             done(response)
             return

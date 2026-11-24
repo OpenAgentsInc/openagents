@@ -1,0 +1,119 @@
+// Golden byte checker for gBench Gym & Inkling Hillclimbing wire shapes
+// (proto/coder/gbench-gym-v1.json).
+// Reads every golden record in the profile through coax/lib/gbench/wire.coax,
+// re-serializes it byte-for-byte, and verifies every malformed record in "refused" is rejected.
+//
+//   coax/web/tool.sh coax/lib/gbench/wire-checks.coax proto/coder/gbench-gym-v1.json
+#import "Basic";
+#load "wire.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+GbwcWork :: struct {
+  file: [1048576] u8;
+  nodes: [32768] JvNode;
+  cnodes: [8192] JvNode;
+  line: [32768] u8;
+  back: [32768] u8;
+  kind: [64] u8;
+  doc: [1] GbDoctor;
+  pol: [1] GbPolicy;
+  rec: [1] GbItemRecord;
+  cmp: [1] GbCompareDoc;
+  hc: [1] GbHillclimbRound;
+  checked: int;
+  failed: int;
+}
+
+gbwc_roundtrip :: (w: [] GbwcWork, kind: string, line: string) -> bool #effects(all) {
+  k := -1;
+  if kind == GB_SCHEMA_DOCTOR {
+    if !gbw_doctor_parse(line, w[0].doc[..]) { return false; }
+    k = gbw_doctor_write(w[0].doc[..], w[0].back[..]);
+  } else if kind == GB_SCHEMA_POLICY {
+    if !gbw_policy_parse(line, w[0].pol[..]) { return false; }
+    k = gbw_policy_write(w[0].pol[..], w[0].back[..]);
+  } else if kind == GB_SCHEMA_ITEM {
+    if !gbw_item_parse(line, w[0].rec[..]) { return false; }
+    k = gbw_item_write(w[0].rec[..], w[0].back[..]);
+  } else if kind == GB_SCHEMA_COMPARE {
+    if !gbw_compare_parse(line, w[0].cmp[..], w[0].cnodes[..]) { return false; }
+    k = gbw_compare_write(
+      cast(string) w[0].cmp[0].run_id[0..<w[0].cmp[0].run_id_n],
+      cast(string) w[0].cmp[0].timestamp[0..<w[0].cmp[0].timestamp_n],
+      cast(string) w[0].cmp[0].profile[0..<w[0].cmp[0].profile_n],
+      cast(string) w[0].cmp[0].pillar[0..<w[0].cmp[0].pillar_n],
+      w[0].cmp[0].scaffold_locked,
+      w[0].cmp[0].arm_a[..], w[0].cmp[0].rows_a[..], w[0].cmp[0].n_a,
+      w[0].cmp[0].arm_b[..], w[0].cmp[0].rows_b[..], w[0].cmp[0].n_b,
+      w[0].back[..]
+    );
+  } else if kind == GB_SCHEMA_HILLCLIMB {
+    if !gbw_hillclimb_parse(line, w[0].hc[..]) { return false; }
+    k = gbw_hillclimb_write(w[0].hc[..], w[0].back[..]);
+  } else {
+    return false;
+  }
+  return k == line.count && cast(string) w[0].back[0..<k] == line;
+}
+
+gbwc_accepts_any :: (w: [] GbwcWork, line: string) -> bool #effects(all) {
+  return gbw_doctor_parse(line, w[0].doc[..])
+    || gbw_policy_parse(line, w[0].pol[..])
+    || gbw_item_parse(line, w[0].rec[..])
+    || gbw_compare_parse(line, w[0].cmp[..], w[0].cnodes[..])
+    || gbw_hillclimb_parse(line, w[0].hc[..]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; _ = args_load(args[..]);
+  path := args_at(args[..], 0);
+  if path.count == 0 { path = "proto/coder/gbench-gym-v1.json"; }
+  w: [1] GbwcWork;
+  n := fs_read(path, w[0].file[..]);
+  if n <= 0 { tool_errln("gbench wire-checks: cannot read profile"); return 1; }
+  jd: [1] Jv;
+  if !jv_parse(jd[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) {
+    tool_errln("gbench wire-checks: profile is not valid JSON");
+    return 1;
+  }
+  d := jd[0];
+  goldens := jv_get(d, 0, "goldens");
+  seen := [5] bool.[false, false, false, false, false];
+  schemas := [5] string.[GB_SCHEMA_DOCTOR, GB_SCHEMA_POLICY, GB_SCHEMA_ITEM, GB_SCHEMA_COMPARE, GB_SCHEMA_HILLCLIMB];
+  for i: 0..<jv_len(d, goldens) {
+    e := jv_at(d, goldens, i);
+    kn := jv_str(d, jv_get(d, e, "schema"), w[0].kind[..]);
+    ln := jv_str(d, jv_get(d, e, "line"), w[0].line[..]);
+    if kn <= 0 || ln <= 0 { w[0].failed += 1; continue; }
+    kind := cast(string) w[0].kind[0..<kn];
+    line := cast(string) w[0].line[0..<ln];
+    w[0].checked += 1;
+    if !gbwc_roundtrip(w[..], kind, line) {
+      tool_err("gbench wire-checks: roundtrip mismatch for "); tool_errln(kind);
+      w[0].failed += 1;
+    } else {
+      for s: 0..<5 { if schemas[s] == kind { seen[s] = true; } }
+    }
+  }
+  for s: 0..<5 {
+    if !seen[s] {
+      tool_err("gbench wire-checks: missing golden for "); tool_errln(schemas[s]);
+      w[0].failed += 1;
+    }
+  }
+  refused := jv_get(d, 0, "refused");
+  for i: 0..<jv_len(d, refused) {
+    ln := jv_str(d, jv_at(d, refused, i), w[0].line[..]);
+    if ln < 0 { continue; }
+    w[0].checked += 1;
+    if gbwc_accepts_any(w[..], cast(string) w[0].line[0..<ln]) {
+      tool_errln("gbench wire-checks: malformed record unexpectedly accepted");
+      w[0].failed += 1;
+    }
+  }
+  if w[0].failed > 0 { return 1; }
+  print("gbench wire-checks: ok (% vectors)\n", w[0].checked);
+  return 0;
+}

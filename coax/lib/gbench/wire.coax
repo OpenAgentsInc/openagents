@@ -1,0 +1,773 @@
+// Registered wire & stored JSON codecs for gBench Gym & Inkling Hillclimbing
+// (proto/coder/gbench-gym-v1.json).
+//
+// Shapes owned here (single writer/reader in repo per proto/registry.json):
+//   - gbench-doctor.v1      Host readiness & dependency check report
+//   - gbench-policy.v1      Inkling variant + serving configuration manifest
+//   - gbench-item.v1        Normalized Golden case, Perf run, or Eval suite result row
+//   - gbench-compare.v1     Side-by-side Arm A vs Arm B comparison snapshot (~/.openagents/gym/last-gbench.json)
+//   - gbench-hillclimb.v1   Append-only #authority hillclimbing round ledger row
+//
+//   coax/bin/coax test coax/lib/gbench/wire.coax --library
+#load "../json/json.coax";
+#load "../crypto/sha256.coax";
+#load "policy.coax";
+
+GB_SCHEMA_DOCTOR :: "gbench-doctor.v1";
+GB_SCHEMA_POLICY :: "gbench-policy.v1";
+GB_SCHEMA_ITEM :: "gbench-item.v1";
+GB_SCHEMA_COMPARE :: "gbench-compare.v1";
+GB_SCHEMA_HILLCLIMB :: "gbench-hillclimb.v1";
+
+GB_MAX_ITEMS :: 64;
+
+GbDoctor :: struct {
+  ok: bool;
+  venv_ok: bool;
+  gbench_version: [32] u8; gbench_version_n: int;
+  python_version: [32] u8; python_version_n: int;
+  psionic_ok: bool;
+  llama_ok: bool;
+  tokenizer_ok: bool;
+  bwrap_ok: bool;
+  docker_ok: bool;
+  gemini_key_set: bool;
+  hf_token_set: bool;
+  variants_installed: int;
+}
+
+GbPolicy :: struct {
+  id: [64] u8; id_n: int;
+  label: [96] u8; label_n: int;
+  variant: [64] u8; variant_n: int;
+  backend: [48] u8; backend_n: int;          // "psionic-metal" | "llamacpp-metal" | "custom-http"
+  model_id: [64] u8; model_id_n: int;
+  effort: [16] u8; effort_n: int;            // "0" | "0.2" | "0.7" | "0.9" | "0.99"
+  thinking: bool;
+  temp_milli: int;                           // temperature * 1000 (-1 = suite default, 0 = greedy)
+  max_output_tokens: int;                    // explicit --max-output-tokens
+  ctx_tokens: int;                           // server --ctx
+  spec_lookup: bool;                         // INK_SPEC_LOOKUP=1
+  lora_path: [256] u8; lora_path_n: int;
+  manifest_sha: [64] u8; manifest_sha_n: int;
+}
+
+GbItemRecord :: struct {
+  item_id: [64] u8; item_id_n: int;
+  pillar: [16] u8; pillar_n: int;            // "golden" | "perf" | "eval"
+  category: [48] u8; category_n: int;
+  arm: [64] u8; arm_n: int;
+  status_code: int;                          // GB_STATUS_PASS/FAIL/INFRA/WITHHELD/NA
+  score_bps: int;                            // 0..10000
+  graded: int;
+  passed_count: int;
+  harness_errors: int;
+  token_leaks: int;
+  wall_ms: int;
+  ttft_us: int;
+  tpot_us: int;
+  itl_p99_us: int;
+  tok_per_s_x10: int;
+  cv_bps: int;
+  scaffold_id: [48] u8; scaffold_id_n: int;
+  subject_id: [48] u8; subject_id_n: int;
+  leaderboard_comparable: bool;
+  distill_allowed: bool;
+  atif_verified: bool;
+  atif_digest: [64] u8; atif_digest_n: int;
+  atif_path: [256] u8; atif_path_n: int;
+  detail: [200] u8; detail_n: int;
+}
+
+GbArmSummary :: struct {
+  id: [64] u8; id_n: int;
+  label: [96] u8; label_n: int;
+  variant: [64] u8; variant_n: int;
+  backend: [48] u8; backend_n: int;
+  model_id: [64] u8; model_id_n: int;
+  effort: [16] u8; effort_n: int;
+  thinking: bool;
+  policy_sha: [64] u8; policy_sha_n: int;
+  scaffold_id: [48] u8; scaffold_id_n: int;
+  subject_id: [48] u8; subject_id_n: int;
+  boot_ms: int;
+  peak_rss_mb: int;
+  total: int;
+  graded: int;
+  passed: int;
+  failed: int;
+  infra_errors: int;
+  score_bps: int;
+  wilson_low_bps: int;
+  wilson_high_bps: int;
+  golden_passed: int;
+  golden_applicable: int;
+  token_leaks: int;
+  ttft_p50_us: int;
+  tpot_p50_us: int;
+  itl_p99_us: int;
+  tok_per_s_x10: int;
+  cv_bps: int;
+  total_wall_ms: int;
+  atif_all_verified: bool;
+  leaderboard_comparable: bool;
+}
+
+GbCompareDoc :: struct {
+  run_id: [64] u8; run_id_n: int;
+  timestamp: [40] u8; timestamp_n: int;
+  profile: [64] u8; profile_n: int;
+  pillar: [16] u8; pillar_n: int;
+  scaffold_locked: bool;
+  arm_a: [1] GbArmSummary;
+  arm_b: [1] GbArmSummary;
+  rows_a: [GB_MAX_ITEMS] GbItemRecord; n_a: int;
+  rows_b: [GB_MAX_ITEMS] GbItemRecord; n_b: int;
+}
+
+GbHillclimbRound :: struct {
+  round_num: int;
+  timestamp: [40] u8; timestamp_n: int;
+  profile: [64] u8; profile_n: int;
+  champion_id: [64] u8; champion_id_n: int;
+  champion_sha: [64] u8; champion_sha_n: int;
+  challenger_id: [64] u8; challenger_id_n: int;
+  challenger_sha: [64] u8; challenger_sha_n: int;
+  mutation_note: [160] u8; mutation_note_n: int;
+  scaffold_id: [48] u8; scaffold_id_n: int;
+  graded_total: int;
+  champ_score_bps: int;
+  cand_score_bps: int;
+  champ_ttft_us: int;
+  cand_ttft_us: int;
+  champ_tpot_us: int;
+  cand_tpot_us: int;
+  cand_harness_errors: int;
+  gate_code: int;
+  distilled_atif: int;
+  run_dir: [256] u8; run_dir_n: int;
+}
+
+gbw_put :: (dst: [] u8, src: string) -> int #effects(all) {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+gbw_hex32 :: (d: [32] u8, out: [] u8) -> int #effects(all) {
+  hex := "0123456789abcdef";
+  n := 0;
+  for i: 0..<32 {
+    if n + 1 >= out.count { break; }
+    b := cast(int) d[i];
+    out[n] = hex[(b >> 4) & 15];
+    out[n + 1] = hex[b & 15];
+    n += 2;
+  }
+  return n;
+}
+
+gbw_sha256_bytes :: (data: [] u8, out64: [] u8) -> int #effects(all) {
+  sha: [112] u8; d: [32] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+  #assert sha256_update_checked(sha[..], data, false) == SHA_OK;
+  #assert sha256_final_checked(sha[..], d[..], false) == SHA_OK;
+  return gbw_hex32(d, out64);
+}
+
+gbw_valid_pillar :: (p: string) -> bool #effects(reads, traps) {
+  return p == "golden" || p == "perf" || p == "eval";
+}
+
+gbw_parse_status :: (s: string) -> int #effects(reads, traps) {
+  if s == "PASS" { return GB_STATUS_PASS; }
+  if s == "FAIL" { return GB_STATUS_FAIL; }
+  if s == "INFRA_ERROR" { return GB_STATUS_INFRA; }
+  if s == "WITHHELD" { return GB_STATUS_WITHHELD; }
+  if s == "NOT_APPLICABLE" { return GB_STATUS_NA; }
+  return -1;
+}
+
+gbw_parse_gate :: (verdict: string, reason: string) -> int #effects(reads, traps) {
+  if verdict == "PROMOTED" && reason == "promoted_gain_verified" { return GB_GATE_PROMOTED; }
+  if verdict == "QUARANTINE_HELD" && reason == "quarantine_held_no_strict_gain" { return GB_GATE_HOLD_NO_GAIN; }
+  if verdict != "REJECTED" { return -1; }
+  if reason == "rejected_scaffold_mismatch" { return GB_GATE_SCAFFOLD_MISMATCH; }
+  if reason == "rejected_atif_unverified" { return GB_GATE_ATIF_UNVERIFIED; }
+  if reason == "rejected_harness_errors" { return GB_GATE_HARNESS_ERRORS; }
+  if reason == "rejected_no_graded_items" { return GB_GATE_NO_GRADED; }
+  if reason == "rejected_golden_regressed" { return GB_GATE_GOLDEN_REGRESSED; }
+  if reason == "rejected_score_regressed" { return GB_GATE_SCORE_REGRESSED; }
+  if reason == "rejected_cv_exceeded" { return GB_GATE_CV_EXCEEDED; }
+  if reason == "rejected_cost_over_cap" { return GB_GATE_COST_OVER_CAP; }
+  return -1;
+}
+
+// Compute canonical SHA-256 hex digest of a gBench policy manifest (excluding manifest_sha itself).
+gbw_policy_hash :: (p: [] GbPolicy) #effects(all) {
+  buf: [2048] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "backend"); jo_str(o[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  jo_key(o[..], "ctx_tokens"); jo_int(o[..], p[0].ctx_tokens);
+  jo_key(o[..], "effort"); jo_str(o[..], cast(string) p[0].effort[0..<p[0].effort_n]);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) p[0].id[0..<p[0].id_n]);
+  jo_key(o[..], "lora_path"); jo_str(o[..], cast(string) p[0].lora_path[0..<p[0].lora_path_n]);
+  jo_key(o[..], "max_output_tokens"); jo_int(o[..], p[0].max_output_tokens);
+  jo_key(o[..], "model_id"); jo_str(o[..], cast(string) p[0].model_id[0..<p[0].model_id_n]);
+  jo_key(o[..], "spec_lookup"); jo_bool(o[..], p[0].spec_lookup);
+  jo_key(o[..], "temp_milli"); jo_int(o[..], p[0].temp_milli);
+  jo_key(o[..], "thinking"); jo_bool(o[..], p[0].thinking);
+  jo_key(o[..], "variant"); jo_str(o[..], cast(string) p[0].variant[0..<p[0].variant_n]);
+  jo_end(o[..]);
+  p[0].manifest_sha_n = gbw_sha256_bytes(buf[0..<o[0].n], p[0].manifest_sha[..]);
+}
+
+// ---- gbench-doctor.v1 ----
+
+gbw_doctor_write :: (doc: [] GbDoctor, out: [] u8) -> int #effects(all) {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], GB_SCHEMA_DOCTOR);
+  jo_key(o[..], "ok"); jo_bool(o[..], doc[0].ok);
+  jo_key(o[..], "venv_ok"); jo_bool(o[..], doc[0].venv_ok);
+  jo_key(o[..], "gbench_version"); jo_str(o[..], cast(string) doc[0].gbench_version[0..<doc[0].gbench_version_n]);
+  jo_key(o[..], "python_version"); jo_str(o[..], cast(string) doc[0].python_version[0..<doc[0].python_version_n]);
+  jo_key(o[..], "psionic_ok"); jo_bool(o[..], doc[0].psionic_ok);
+  jo_key(o[..], "llama_ok"); jo_bool(o[..], doc[0].llama_ok);
+  jo_key(o[..], "tokenizer_ok"); jo_bool(o[..], doc[0].tokenizer_ok);
+  jo_key(o[..], "bwrap_ok"); jo_bool(o[..], doc[0].bwrap_ok);
+  jo_key(o[..], "docker_ok"); jo_bool(o[..], doc[0].docker_ok);
+  jo_key(o[..], "gemini_key_set"); jo_bool(o[..], doc[0].gemini_key_set);
+  jo_key(o[..], "hf_token_set"); jo_bool(o[..], doc[0].hf_token_set);
+  jo_key(o[..], "variants_installed"); jo_int(o[..], doc[0].variants_installed);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+gbw_doctor_parse :: (text: string, out: [] GbDoctor) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = GbDoctor.{};
+  nodes: [64] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], text, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  sb: [32] u8; sn := jv_str(d, jv_get(d, 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != GB_SCHEMA_DOCTOR { return false; }
+  k_ok := jv_kind(d, jv_get(d, 0, "ok"));
+  k_vo := jv_kind(d, jv_get(d, 0, "venv_ok"));
+  if (k_ok != JV_TRUE && k_ok != JV_FALSE) || (k_vo != JV_TRUE && k_vo != JV_FALSE) { return false; }
+  out[0].ok = k_ok == JV_TRUE;
+  out[0].venv_ok = k_vo == JV_TRUE;
+  gn := jv_str(d, jv_get(d, 0, "gbench_version"), out[0].gbench_version[..]);
+  pn := jv_str(d, jv_get(d, 0, "python_version"), out[0].python_version[..]);
+  out[0].gbench_version_n = ifx gn > 0 then gn else 0;
+  out[0].python_version_n = ifx pn > 0 then pn else 0;
+  out[0].psionic_ok = jv_bool(d, jv_get(d, 0, "psionic_ok"));
+  out[0].llama_ok = jv_bool(d, jv_get(d, 0, "llama_ok"));
+  out[0].tokenizer_ok = jv_bool(d, jv_get(d, 0, "tokenizer_ok"));
+  out[0].bwrap_ok = jv_bool(d, jv_get(d, 0, "bwrap_ok"));
+  out[0].docker_ok = jv_bool(d, jv_get(d, 0, "docker_ok"));
+  out[0].gemini_key_set = jv_bool(d, jv_get(d, 0, "gemini_key_set"));
+  out[0].hf_token_set = jv_bool(d, jv_get(d, 0, "hf_token_set"));
+  vi := jv_int(d, jv_get(d, 0, "variants_installed"), -1);
+  if vi < 0 { return false; }
+  out[0].variants_installed = vi;
+  return true;
+}
+
+// ---- gbench-policy.v1 ----
+
+gbw_policy_write :: (p: [] GbPolicy, out: [] u8) -> int #effects(all) {
+  id_s := cast(string) p[0].id[0..<p[0].id_n];
+  if !gb_valid_slug(id_s) { return -1; }
+  if p[0].max_output_tokens <= 0 || p[0].ctx_tokens <= 0 { return -1; }
+  if p[0].manifest_sha_n == 0 { gbw_policy_hash(p); }
+  sha_s := cast(string) p[0].manifest_sha[0..<p[0].manifest_sha_n];
+  if !gb_valid_sha256(sha_s) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], GB_SCHEMA_POLICY);
+  jo_key(o[..], "id"); jo_str(o[..], id_s);
+  jo_key(o[..], "label"); jo_str(o[..], cast(string) p[0].label[0..<p[0].label_n]);
+  jo_key(o[..], "variant"); jo_str(o[..], cast(string) p[0].variant[0..<p[0].variant_n]);
+  jo_key(o[..], "backend"); jo_str(o[..], cast(string) p[0].backend[0..<p[0].backend_n]);
+  jo_key(o[..], "model_id"); jo_str(o[..], cast(string) p[0].model_id[0..<p[0].model_id_n]);
+  jo_key(o[..], "effort"); jo_str(o[..], cast(string) p[0].effort[0..<p[0].effort_n]);
+  jo_key(o[..], "thinking"); jo_bool(o[..], p[0].thinking);
+  jo_key(o[..], "temp_milli"); jo_int(o[..], p[0].temp_milli);
+  jo_key(o[..], "max_output_tokens"); jo_int(o[..], p[0].max_output_tokens);
+  jo_key(o[..], "ctx_tokens"); jo_int(o[..], p[0].ctx_tokens);
+  jo_key(o[..], "spec_lookup"); jo_bool(o[..], p[0].spec_lookup);
+  jo_key(o[..], "lora_path"); jo_str(o[..], cast(string) p[0].lora_path[0..<p[0].lora_path_n]);
+  jo_key(o[..], "manifest_sha"); jo_str(o[..], sha_s);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+gbw_policy_parse :: (text: string, out: [] GbPolicy) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = GbPolicy.{};
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], text, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  sb: [32] u8; sn := jv_str(d, jv_get(d, 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != GB_SCHEMA_POLICY { return false; }
+  out[0].id_n = jv_str(d, jv_get(d, 0, "id"), out[0].id[..]);
+  if out[0].id_n <= 0 || !gb_valid_slug(cast(string) out[0].id[0..<out[0].id_n]) { return false; }
+  ln := jv_str(d, jv_get(d, 0, "label"), out[0].label[..]);
+  out[0].label_n = ifx ln > 0 then ln else 0;
+  vn := jv_str(d, jv_get(d, 0, "variant"), out[0].variant[..]);
+  if vn <= 0 { return false; }
+  out[0].variant_n = vn;
+  bn := jv_str(d, jv_get(d, 0, "backend"), out[0].backend[..]);
+  if bn <= 0 { return false; }
+  out[0].backend_n = bn;
+  mn := jv_str(d, jv_get(d, 0, "model_id"), out[0].model_id[..]);
+  if mn <= 0 { return false; }
+  out[0].model_id_n = mn;
+  en := jv_str(d, jv_get(d, 0, "effort"), out[0].effort[..]);
+  out[0].effort_n = ifx en > 0 then en else 0;
+  out[0].thinking = jv_bool(d, jv_get(d, 0, "thinking"));
+  out[0].temp_milli = jv_int(d, jv_get(d, 0, "temp_milli"), 0);
+  mot := jv_int(d, jv_get(d, 0, "max_output_tokens"), 0);
+  ctx := jv_int(d, jv_get(d, 0, "ctx_tokens"), 0);
+  if mot <= 0 || ctx <= 0 { return false; }
+  out[0].max_output_tokens = mot;
+  out[0].ctx_tokens = ctx;
+  out[0].spec_lookup = jv_bool(d, jv_get(d, 0, "spec_lookup"));
+  lpn := jv_str(d, jv_get(d, 0, "lora_path"), out[0].lora_path[..]);
+  out[0].lora_path_n = ifx lpn > 0 then lpn else 0;
+  shn := jv_str(d, jv_get(d, 0, "manifest_sha"), out[0].manifest_sha[..]);
+  if shn != 64 || !gb_valid_sha256(cast(string) out[0].manifest_sha[0..<64]) { return false; }
+  out[0].manifest_sha_n = 64;
+  return true;
+}
+
+// ---- gbench-item.v1 ----
+
+gbw_item_emit :: (o: [] Jo, rec: [] GbItemRecord) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "schema"); jo_str(o, GB_SCHEMA_ITEM);
+  jo_key(o, "item_id"); jo_str(o, cast(string) rec[0].item_id[0..<rec[0].item_id_n]);
+  jo_key(o, "pillar"); jo_str(o, cast(string) rec[0].pillar[0..<rec[0].pillar_n]);
+  jo_key(o, "category"); jo_str(o, cast(string) rec[0].category[0..<rec[0].category_n]);
+  jo_key(o, "arm"); jo_str(o, cast(string) rec[0].arm[0..<rec[0].arm_n]);
+  jo_key(o, "status"); jo_str(o, gb_status_label(rec[0].status_code));
+  jo_key(o, "passed"); jo_bool(o, rec[0].status_code == GB_STATUS_PASS);
+  jo_key(o, "score_bps"); jo_int(o, rec[0].score_bps);
+  jo_key(o, "graded"); jo_int(o, rec[0].graded);
+  jo_key(o, "passed_count"); jo_int(o, rec[0].passed_count);
+  jo_key(o, "harness_errors"); jo_int(o, rec[0].harness_errors);
+  jo_key(o, "token_leaks"); jo_int(o, rec[0].token_leaks);
+  jo_key(o, "wall_ms"); jo_int(o, rec[0].wall_ms);
+  jo_key(o, "ttft_us"); jo_int(o, rec[0].ttft_us);
+  jo_key(o, "tpot_us"); jo_int(o, rec[0].tpot_us);
+  jo_key(o, "itl_p99_us"); jo_int(o, rec[0].itl_p99_us);
+  jo_key(o, "tok_per_s_x10"); jo_int(o, rec[0].tok_per_s_x10);
+  jo_key(o, "cv_bps"); jo_int(o, rec[0].cv_bps);
+  jo_key(o, "scaffold_id"); jo_str(o, cast(string) rec[0].scaffold_id[0..<rec[0].scaffold_id_n]);
+  jo_key(o, "subject_id"); jo_str(o, cast(string) rec[0].subject_id[0..<rec[0].subject_id_n]);
+  jo_key(o, "leaderboard_comparable"); jo_bool(o, rec[0].leaderboard_comparable);
+  jo_key(o, "distill_allowed"); jo_bool(o, rec[0].distill_allowed);
+  jo_key(o, "atif_verified"); jo_bool(o, rec[0].atif_verified);
+  jo_key(o, "atif_digest"); jo_str(o, cast(string) rec[0].atif_digest[0..<rec[0].atif_digest_n]);
+  jo_key(o, "atif_path"); jo_str(o, cast(string) rec[0].atif_path[0..<rec[0].atif_path_n]);
+  jo_key(o, "detail"); jo_str(o, cast(string) rec[0].detail[0..<rec[0].detail_n]);
+  jo_end(o);
+}
+
+gbw_item_write :: (rec: [] GbItemRecord, out: [] u8) -> int #effects(all) {
+  id_s := cast(string) rec[0].item_id[0..<rec[0].item_id_n];
+  pil_s := cast(string) rec[0].pillar[0..<rec[0].pillar_n];
+  if !gb_valid_suite_id(id_s) || !gbw_valid_pillar(pil_s) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  gbw_item_emit(o[..], rec);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+gbw_item_parse_node :: (d: Jv, root: int, out: [] GbItemRecord) -> bool #effects(all) {
+  if out.count == 0 || jv_kind(d, root) != JV_OBJECT { return false; }
+  out[0] = GbItemRecord.{};
+  sb: [32] u8; sn := jv_str(d, jv_get(d, root, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != GB_SCHEMA_ITEM { return false; }
+  out[0].item_id_n = jv_str(d, jv_get(d, root, "item_id"), out[0].item_id[..]);
+  if out[0].item_id_n <= 0 || !gb_valid_suite_id(cast(string) out[0].item_id[0..<out[0].item_id_n]) { return false; }
+  out[0].pillar_n = jv_str(d, jv_get(d, root, "pillar"), out[0].pillar[..]);
+  if out[0].pillar_n <= 0 || !gbw_valid_pillar(cast(string) out[0].pillar[0..<out[0].pillar_n]) { return false; }
+  cn := jv_str(d, jv_get(d, root, "category"), out[0].category[..]);
+  out[0].category_n = ifx cn > 0 then cn else 0;
+  an := jv_str(d, jv_get(d, root, "arm"), out[0].arm[..]);
+  if an <= 0 { return false; }
+  out[0].arm_n = an;
+  stb: [32] u8; stn := jv_str(d, jv_get(d, root, "status"), stb[..]);
+  if stn <= 0 { return false; }
+  sc := gbw_parse_status(cast(string) stb[0..<stn]);
+  if sc < 0 { return false; }
+  k_p := jv_kind(d, jv_get(d, root, "passed"));
+  if k_p != JV_TRUE && k_p != JV_FALSE { return false; }
+  if (k_p == JV_TRUE) != (sc == GB_STATUS_PASS) { return false; }
+  out[0].status_code = sc;
+  out[0].score_bps = jv_int(d, jv_get(d, root, "score_bps"), -1);
+  if out[0].score_bps < 0 || out[0].score_bps > 10000 { return false; }
+  out[0].graded = jv_int(d, jv_get(d, root, "graded"), 0);
+  out[0].passed_count = jv_int(d, jv_get(d, root, "passed_count"), 0);
+  out[0].harness_errors = jv_int(d, jv_get(d, root, "harness_errors"), 0);
+  out[0].token_leaks = jv_int(d, jv_get(d, root, "token_leaks"), 0);
+  out[0].wall_ms = jv_int(d, jv_get(d, root, "wall_ms"), 0);
+  out[0].ttft_us = jv_int(d, jv_get(d, root, "ttft_us"), 0);
+  out[0].tpot_us = jv_int(d, jv_get(d, root, "tpot_us"), 0);
+  out[0].itl_p99_us = jv_int(d, jv_get(d, root, "itl_p99_us"), 0);
+  out[0].tok_per_s_x10 = jv_int(d, jv_get(d, root, "tok_per_s_x10"), 0);
+  out[0].cv_bps = jv_int(d, jv_get(d, root, "cv_bps"), 0);
+  scn := jv_str(d, jv_get(d, root, "scaffold_id"), out[0].scaffold_id[..]);
+  out[0].scaffold_id_n = ifx scn > 0 then scn else 0;
+  sun := jv_str(d, jv_get(d, root, "subject_id"), out[0].subject_id[..]);
+  out[0].subject_id_n = ifx sun > 0 then sun else 0;
+  out[0].leaderboard_comparable = jv_bool(d, jv_get(d, root, "leaderboard_comparable"));
+  out[0].distill_allowed = jv_bool(d, jv_get(d, root, "distill_allowed"));
+  out[0].atif_verified = jv_bool(d, jv_get(d, root, "atif_verified"));
+  dn := jv_str(d, jv_get(d, root, "atif_digest"), out[0].atif_digest[..]);
+  out[0].atif_digest_n = ifx dn > 0 then dn else 0;
+  if out[0].atif_verified && !gb_valid_sha256(cast(string) out[0].atif_digest[0..<out[0].atif_digest_n]) { return false; }
+  apn := jv_str(d, jv_get(d, root, "atif_path"), out[0].atif_path[..]);
+  out[0].atif_path_n = ifx apn > 0 then apn else 0;
+  dtn := jv_str(d, jv_get(d, root, "detail"), out[0].detail[..]);
+  out[0].detail_n = ifx dtn > 0 then dtn else 0;
+  return true;
+}
+
+gbw_item_parse :: (text: string, out: [] GbItemRecord) -> bool #effects(all) {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], text, nodes[..]) { return false; }
+  return gbw_item_parse_node(jd[0], 0, out);
+}
+
+// ---- gbench-compare.v1 ----
+
+gbw_arm_emit :: (o: [] Jo, a: [] GbArmSummary) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "id"); jo_str(o, cast(string) a[0].id[0..<a[0].id_n]);
+  jo_key(o, "label"); jo_str(o, cast(string) a[0].label[0..<a[0].label_n]);
+  jo_key(o, "variant"); jo_str(o, cast(string) a[0].variant[0..<a[0].variant_n]);
+  jo_key(o, "backend"); jo_str(o, cast(string) a[0].backend[0..<a[0].backend_n]);
+  jo_key(o, "model_id"); jo_str(o, cast(string) a[0].model_id[0..<a[0].model_id_n]);
+  jo_key(o, "effort"); jo_str(o, cast(string) a[0].effort[0..<a[0].effort_n]);
+  jo_key(o, "thinking"); jo_bool(o, a[0].thinking);
+  jo_key(o, "policy_sha"); jo_str(o, cast(string) a[0].policy_sha[0..<a[0].policy_sha_n]);
+  jo_key(o, "scaffold_id"); jo_str(o, cast(string) a[0].scaffold_id[0..<a[0].scaffold_id_n]);
+  jo_key(o, "subject_id"); jo_str(o, cast(string) a[0].subject_id[0..<a[0].subject_id_n]);
+  jo_key(o, "boot_ms"); jo_int(o, a[0].boot_ms);
+  jo_key(o, "peak_rss_mb"); jo_int(o, a[0].peak_rss_mb);
+  jo_key(o, "total"); jo_int(o, a[0].total);
+  jo_key(o, "graded"); jo_int(o, a[0].graded);
+  jo_key(o, "passed"); jo_int(o, a[0].passed);
+  jo_key(o, "failed"); jo_int(o, a[0].failed);
+  jo_key(o, "infra_errors"); jo_int(o, a[0].infra_errors);
+  jo_key(o, "score_bps"); jo_int(o, a[0].score_bps);
+  jo_key(o, "wilson_low_bps"); jo_int(o, a[0].wilson_low_bps);
+  jo_key(o, "wilson_high_bps"); jo_int(o, a[0].wilson_high_bps);
+  jo_key(o, "golden_passed"); jo_int(o, a[0].golden_passed);
+  jo_key(o, "golden_applicable"); jo_int(o, a[0].golden_applicable);
+  jo_key(o, "token_leaks"); jo_int(o, a[0].token_leaks);
+  jo_key(o, "ttft_p50_us"); jo_int(o, a[0].ttft_p50_us);
+  jo_key(o, "tpot_p50_us"); jo_int(o, a[0].tpot_p50_us);
+  jo_key(o, "itl_p99_us"); jo_int(o, a[0].itl_p99_us);
+  jo_key(o, "tok_per_s_x10"); jo_int(o, a[0].tok_per_s_x10);
+  jo_key(o, "cv_bps"); jo_int(o, a[0].cv_bps);
+  jo_key(o, "total_wall_ms"); jo_int(o, a[0].total_wall_ms);
+  jo_key(o, "atif_all_verified"); jo_bool(o, a[0].atif_all_verified);
+  jo_key(o, "leaderboard_comparable"); jo_bool(o, a[0].leaderboard_comparable);
+  jo_end(o);
+}
+
+gbw_arm_parse_node :: (d: Jv, root: int, out: [] GbArmSummary) -> bool #effects(all) {
+  if out.count == 0 || jv_kind(d, root) != JV_OBJECT { return false; }
+  out[0] = GbArmSummary.{};
+  out[0].id_n = jv_str(d, jv_get(d, root, "id"), out[0].id[..]);
+  if out[0].id_n <= 0 { return false; }
+  ln := jv_str(d, jv_get(d, root, "label"), out[0].label[..]);
+  out[0].label_n = ifx ln > 0 then ln else 0;
+  vn := jv_str(d, jv_get(d, root, "variant"), out[0].variant[..]);
+  out[0].variant_n = ifx vn > 0 then vn else 0;
+  bn := jv_str(d, jv_get(d, root, "backend"), out[0].backend[..]);
+  out[0].backend_n = ifx bn > 0 then bn else 0;
+  mn := jv_str(d, jv_get(d, root, "model_id"), out[0].model_id[..]);
+  out[0].model_id_n = ifx mn > 0 then mn else 0;
+  en := jv_str(d, jv_get(d, root, "effort"), out[0].effort[..]);
+  out[0].effort_n = ifx en > 0 then en else 0;
+  out[0].thinking = jv_bool(d, jv_get(d, root, "thinking"));
+  psn := jv_str(d, jv_get(d, root, "policy_sha"), out[0].policy_sha[..]);
+  out[0].policy_sha_n = ifx psn > 0 then psn else 0;
+  scn := jv_str(d, jv_get(d, root, "scaffold_id"), out[0].scaffold_id[..]);
+  out[0].scaffold_id_n = ifx scn > 0 then scn else 0;
+  sun := jv_str(d, jv_get(d, root, "subject_id"), out[0].subject_id[..]);
+  out[0].subject_id_n = ifx sun > 0 then sun else 0;
+  out[0].boot_ms = jv_int(d, jv_get(d, root, "boot_ms"), 0);
+  out[0].peak_rss_mb = jv_int(d, jv_get(d, root, "peak_rss_mb"), 0);
+  out[0].total = jv_int(d, jv_get(d, root, "total"), 0);
+  out[0].graded = jv_int(d, jv_get(d, root, "graded"), 0);
+  out[0].passed = jv_int(d, jv_get(d, root, "passed"), 0);
+  out[0].failed = jv_int(d, jv_get(d, root, "failed"), 0);
+  out[0].infra_errors = jv_int(d, jv_get(d, root, "infra_errors"), 0);
+  out[0].score_bps = jv_int(d, jv_get(d, root, "score_bps"), 0);
+  out[0].wilson_low_bps = jv_int(d, jv_get(d, root, "wilson_low_bps"), 0);
+  out[0].wilson_high_bps = jv_int(d, jv_get(d, root, "wilson_high_bps"), 0);
+  out[0].golden_passed = jv_int(d, jv_get(d, root, "golden_passed"), 0);
+  out[0].golden_applicable = jv_int(d, jv_get(d, root, "golden_applicable"), 0);
+  out[0].token_leaks = jv_int(d, jv_get(d, root, "token_leaks"), 0);
+  out[0].ttft_p50_us = jv_int(d, jv_get(d, root, "ttft_p50_us"), 0);
+  out[0].tpot_p50_us = jv_int(d, jv_get(d, root, "tpot_p50_us"), 0);
+  out[0].itl_p99_us = jv_int(d, jv_get(d, root, "itl_p99_us"), 0);
+  out[0].tok_per_s_x10 = jv_int(d, jv_get(d, root, "tok_per_s_x10"), 0);
+  out[0].cv_bps = jv_int(d, jv_get(d, root, "cv_bps"), 0);
+  out[0].total_wall_ms = jv_int(d, jv_get(d, root, "total_wall_ms"), 0);
+  out[0].atif_all_verified = jv_bool(d, jv_get(d, root, "atif_all_verified"));
+  out[0].leaderboard_comparable = jv_bool(d, jv_get(d, root, "leaderboard_comparable"));
+  return true;
+}
+
+gbw_compare_write :: (
+  run_id: string,
+  timestamp: string,
+  profile: string,
+  pillar: string,
+  scaffold_locked: bool,
+  arm_a: [] GbArmSummary,
+  rows_a: [] GbItemRecord,
+  n_a: int,
+  arm_b: [] GbArmSummary,
+  rows_b: [] GbItemRecord,
+  n_b: int,
+  out: [] u8
+) -> int #effects(all) {
+  if run_id.count == 0 || timestamp.count == 0 || !gb_valid_slug(profile) || !gbw_valid_pillar(pillar) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], GB_SCHEMA_COMPARE);
+  jo_key(o[..], "run_id"); jo_str(o[..], run_id);
+  jo_key(o[..], "timestamp"); jo_str(o[..], timestamp);
+  jo_key(o[..], "profile"); jo_str(o[..], profile);
+  jo_key(o[..], "pillar"); jo_str(o[..], pillar);
+  jo_key(o[..], "scaffold_locked"); jo_bool(o[..], scaffold_locked);
+  jo_key(o[..], "arm_a"); gbw_arm_emit(o[..], arm_a);
+  jo_key(o[..], "arm_b"); gbw_arm_emit(o[..], arm_b);
+  jo_key(o[..], "rows_a"); jo_arr(o[..]);
+  for i: 0..<n_a {
+    rec := [1] GbItemRecord.[rows_a[i]];
+    gbw_item_emit(o[..], rec[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "rows_b"); jo_arr(o[..]);
+  for i: 0..<n_b {
+    rec := [1] GbItemRecord.[rows_b[i]];
+    gbw_item_emit(o[..], rec[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+gbw_compare_parse :: (text: string, out: [] GbCompareDoc, nodes: [] JvNode) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = GbCompareDoc.{};
+  jd: [1] Jv;
+  if !jv_parse(jd[..], text, nodes) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  sb: [32] u8; sn := jv_str(d, jv_get(d, 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != GB_SCHEMA_COMPARE { return false; }
+  out[0].run_id_n = jv_str(d, jv_get(d, 0, "run_id"), out[0].run_id[..]);
+  out[0].timestamp_n = jv_str(d, jv_get(d, 0, "timestamp"), out[0].timestamp[..]);
+  out[0].profile_n = jv_str(d, jv_get(d, 0, "profile"), out[0].profile[..]);
+  out[0].pillar_n = jv_str(d, jv_get(d, 0, "pillar"), out[0].pillar[..]);
+  if out[0].run_id_n <= 0 || out[0].timestamp_n <= 0 || out[0].profile_n <= 0 || out[0].pillar_n <= 0 { return false; }
+  if !gb_valid_slug(cast(string) out[0].profile[0..<out[0].profile_n]) { return false; }
+  if !gbw_valid_pillar(cast(string) out[0].pillar[0..<out[0].pillar_n]) { return false; }
+  out[0].scaffold_locked = jv_bool(d, jv_get(d, 0, "scaffold_locked"));
+  if !gbw_arm_parse_node(d, jv_get(d, 0, "arm_a"), out[0].arm_a[..]) { return false; }
+  if !gbw_arm_parse_node(d, jv_get(d, 0, "arm_b"), out[0].arm_b[..]) { return false; }
+  ra := jv_get(d, 0, "rows_a");
+  if jv_kind(d, ra) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d, ra) {
+    if out[0].n_a >= GB_MAX_ITEMS { break; }
+    rec: [1] GbItemRecord;
+    if !gbw_item_parse_node(d, jv_at(d, ra, i), rec[..]) { return false; }
+    out[0].rows_a[out[0].n_a] = rec[0];
+    out[0].n_a += 1;
+  }
+  rb := jv_get(d, 0, "rows_b");
+  if jv_kind(d, rb) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d, rb) {
+    if out[0].n_b >= GB_MAX_ITEMS { break; }
+    rec: [1] GbItemRecord;
+    if !gbw_item_parse_node(d, jv_at(d, rb, i), rec[..]) { return false; }
+    out[0].rows_b[out[0].n_b] = rec[0];
+    out[0].n_b += 1;
+  }
+  return true;
+}
+
+// ---- gbench-hillclimb.v1 ----
+
+gbw_hillclimb_write :: (r: [] GbHillclimbRound, out: [] u8) -> int #effects(all) {
+  if r[0].round_num <= 0 { return -1; }
+  prof_s := cast(string) r[0].profile[0..<r[0].profile_n];
+  if !gb_valid_slug(prof_s) { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], GB_SCHEMA_HILLCLIMB);
+  jo_key(o[..], "round"); jo_int(o[..], r[0].round_num);
+  jo_key(o[..], "timestamp"); jo_str(o[..], cast(string) r[0].timestamp[0..<r[0].timestamp_n]);
+  jo_key(o[..], "profile"); jo_str(o[..], prof_s);
+  jo_key(o[..], "champion_id"); jo_str(o[..], cast(string) r[0].champion_id[0..<r[0].champion_id_n]);
+  jo_key(o[..], "champion_sha"); jo_str(o[..], cast(string) r[0].champion_sha[0..<r[0].champion_sha_n]);
+  jo_key(o[..], "challenger_id"); jo_str(o[..], cast(string) r[0].challenger_id[0..<r[0].challenger_id_n]);
+  jo_key(o[..], "challenger_sha"); jo_str(o[..], cast(string) r[0].challenger_sha[0..<r[0].challenger_sha_n]);
+  jo_key(o[..], "mutation_note"); jo_str(o[..], cast(string) r[0].mutation_note[0..<r[0].mutation_note_n]);
+  jo_key(o[..], "scaffold_id"); jo_str(o[..], cast(string) r[0].scaffold_id[0..<r[0].scaffold_id_n]);
+  jo_key(o[..], "graded_total"); jo_int(o[..], r[0].graded_total);
+  jo_key(o[..], "champ_score_bps"); jo_int(o[..], r[0].champ_score_bps);
+  jo_key(o[..], "cand_score_bps"); jo_int(o[..], r[0].cand_score_bps);
+  jo_key(o[..], "champ_ttft_us"); jo_int(o[..], r[0].champ_ttft_us);
+  jo_key(o[..], "cand_ttft_us"); jo_int(o[..], r[0].cand_ttft_us);
+  jo_key(o[..], "champ_tpot_us"); jo_int(o[..], r[0].champ_tpot_us);
+  jo_key(o[..], "cand_tpot_us"); jo_int(o[..], r[0].cand_tpot_us);
+  jo_key(o[..], "cand_harness_errors"); jo_int(o[..], r[0].cand_harness_errors);
+  jo_key(o[..], "verdict"); jo_str(o[..], gb_gate_status(r[0].gate_code));
+  jo_key(o[..], "reason"); jo_str(o[..], gb_gate_reason(r[0].gate_code));
+  jo_key(o[..], "distilled_atif"); jo_int(o[..], r[0].distilled_atif);
+  jo_key(o[..], "run_dir"); jo_str(o[..], cast(string) r[0].run_dir[0..<r[0].run_dir_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+gbw_hillclimb_parse :: (text: string, out: [] GbHillclimbRound) -> bool #effects(all) {
+  if out.count == 0 { return false; }
+  out[0] = GbHillclimbRound.{};
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], text, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  sb: [32] u8; sn := jv_str(d, jv_get(d, 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != GB_SCHEMA_HILLCLIMB { return false; }
+  rn := jv_int(d, jv_get(d, 0, "round"), 0);
+  if rn <= 0 { return false; }
+  out[0].round_num = rn;
+  out[0].timestamp_n = jv_str(d, jv_get(d, 0, "timestamp"), out[0].timestamp[..]);
+  out[0].profile_n = jv_str(d, jv_get(d, 0, "profile"), out[0].profile[..]);
+  if out[0].timestamp_n <= 0 || out[0].profile_n <= 0 || !gb_valid_slug(cast(string) out[0].profile[0..<out[0].profile_n]) { return false; }
+  out[0].champion_id_n = jv_str(d, jv_get(d, 0, "champion_id"), out[0].champion_id[..]);
+  out[0].challenger_id_n = jv_str(d, jv_get(d, 0, "challenger_id"), out[0].challenger_id[..]);
+  if out[0].champion_id_n <= 0 || out[0].challenger_id_n <= 0 { return false; }
+  csn := jv_str(d, jv_get(d, 0, "champion_sha"), out[0].champion_sha[..]);
+  out[0].champion_sha_n = ifx csn > 0 then csn else 0;
+  ksn := jv_str(d, jv_get(d, 0, "challenger_sha"), out[0].challenger_sha[..]);
+  out[0].challenger_sha_n = ifx ksn > 0 then ksn else 0;
+  mnn := jv_str(d, jv_get(d, 0, "mutation_note"), out[0].mutation_note[..]);
+  out[0].mutation_note_n = ifx mnn > 0 then mnn else 0;
+  scn := jv_str(d, jv_get(d, 0, "scaffold_id"), out[0].scaffold_id[..]);
+  out[0].scaffold_id_n = ifx scn > 0 then scn else 0;
+  out[0].graded_total = jv_int(d, jv_get(d, 0, "graded_total"), 0);
+  out[0].champ_score_bps = jv_int(d, jv_get(d, 0, "champ_score_bps"), 0);
+  out[0].cand_score_bps = jv_int(d, jv_get(d, 0, "cand_score_bps"), 0);
+  out[0].champ_ttft_us = jv_int(d, jv_get(d, 0, "champ_ttft_us"), 0);
+  out[0].cand_ttft_us = jv_int(d, jv_get(d, 0, "cand_ttft_us"), 0);
+  out[0].champ_tpot_us = jv_int(d, jv_get(d, 0, "champ_tpot_us"), 0);
+  out[0].cand_tpot_us = jv_int(d, jv_get(d, 0, "cand_tpot_us"), 0);
+  out[0].cand_harness_errors = jv_int(d, jv_get(d, 0, "cand_harness_errors"), 0);
+  vb: [32] u8; vn := jv_str(d, jv_get(d, 0, "verdict"), vb[..]);
+  rb: [64] u8; rsn := jv_str(d, jv_get(d, 0, "reason"), rb[..]);
+  if vn <= 0 || rsn <= 0 { return false; }
+  gc := gbw_parse_gate(cast(string) vb[0..<vn], cast(string) rb[0..<rsn]);
+  if gc < 0 { return false; }
+  out[0].gate_code = gc;
+  out[0].distilled_atif = jv_int(d, jv_get(d, 0, "distilled_atif"), 0);
+  rdn := jv_str(d, jv_get(d, 0, "run_dir"), out[0].run_dir[..]);
+  out[0].run_dir_n = ifx rdn > 0 then rdn else 0;
+  return true;
+}
+
+#test "gbench wire: round-trip doctor, policy, item, compare, and hillclimb records" {
+  buf: [16384] u8;
+  // Doctor
+  doc := [1] GbDoctor.[GbDoctor.{ok = true, venv_ok = true, psionic_ok = true, llama_ok = true, tokenizer_ok = true, variants_installed = 3}];
+  doc[0].gbench_version_n = gbw_put(doc[0].gbench_version[..], "0.5.0.post1");
+  doc[0].python_version_n = gbw_put(doc[0].python_version[..], "3.12.13");
+  dn := gbw_doctor_write(doc[..], buf[..]);
+  #assert dn > 0;
+  doc2: [1] GbDoctor;
+  #assert gbw_doctor_parse(cast(string) buf[0..<dn], doc2[..]);
+  #assert doc2[0].ok && doc2[0].variants_installed == 3;
+
+  // Policy
+  pol: [1] GbPolicy;
+  pol[0].id_n = gbw_put(pol[0].id[..], "inkling-base-v1");
+  pol[0].label_n = gbw_put(pol[0].label[..], "Inkling 2 Mini IQ4_NL");
+  pol[0].variant_n = gbw_put(pol[0].variant[..], "inkling-2-mini");
+  pol[0].backend_n = gbw_put(pol[0].backend[..], "psionic-metal");
+  pol[0].model_id_n = gbw_put(pol[0].model_id[..], "inkling-2-mini");
+  pol[0].effort_n = gbw_put(pol[0].effort[..], "0.7");
+  pol[0].thinking = false;
+  pol[0].temp_milli = 0;
+  pol[0].max_output_tokens = 2048;
+  pol[0].ctx_tokens = 32768;
+  gbw_policy_hash(pol[..]);
+  pn := gbw_policy_write(pol[..], buf[..]);
+  #assert pn > 0;
+  pol2: [1] GbPolicy;
+  #assert gbw_policy_parse(cast(string) buf[0..<pn], pol2[..]);
+  #assert pol2[0].max_output_tokens == 2048 && pol2[0].manifest_sha_n == 64;
+
+  // Item
+  rec: [1] GbItemRecord;
+  rec[0].item_id_n = gbw_put(rec[0].item_id[..], "gsm8k");
+  rec[0].pillar_n = gbw_put(rec[0].pillar[..], "eval");
+  rec[0].category_n = gbw_put(rec[0].category[..], "math");
+  rec[0].arm_n = gbw_put(rec[0].arm[..], "inkling-base-v1");
+  rec[0].status_code = GB_STATUS_PASS;
+  rec[0].score_bps = 10000;
+  rec[0].graded = 10;
+  rec[0].passed_count = 10;
+  rec[0].scaffold_id_n = gbw_put(rec[0].scaffold_id[..], "sc_d7ca3dea");
+  rec[0].subject_id_n = gbw_put(rec[0].subject_id[..], "sb_f77ab882");
+  rec[0].distill_allowed = true;
+  rec[0].atif_verified = true;
+  rec[0].atif_digest_n = gbw_put(rec[0].atif_digest[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  in_n := gbw_item_write(rec[..], buf[..]);
+  #assert in_n > 0;
+  rec2: [1] GbItemRecord;
+  #assert gbw_item_parse(cast(string) buf[0..<in_n], rec2[..]);
+  #assert rec2[0].score_bps == 10000 && rec2[0].atif_verified;
+
+  // Compare
+  aa: [1] GbArmSummary;
+  aa[0].id_n = gbw_put(aa[0].id[..], "inkling-base-v1");
+  aa[0].variant_n = gbw_put(aa[0].variant[..], "inkling-2-mini");
+  aa[0].backend_n = gbw_put(aa[0].backend[..], "psionic-metal");
+  aa[0].model_id_n = gbw_put(aa[0].model_id[..], "inkling-2-mini");
+  aa[0].scaffold_id_n = gbw_put(aa[0].scaffold_id[..], "sc_d7ca3dea");
+  aa[0].score_bps = 10000;
+  rows_a: [1] GbItemRecord; rows_a[0] = rec[0];
+  cn := gbw_compare_write("gb-20261124-0001", "2026-11-24T00:01:00Z", "oa-local-fast", "eval", true, aa[..], rows_a[..], 1, aa[..], rows_a[..], 1, buf[..]);
+  #assert cn > 0;
+  cmp: [1] GbCompareDoc;
+  cnodes: [2048] JvNode;
+  #assert gbw_compare_parse(cast(string) buf[0..<cn], cmp[..], cnodes[..]);
+  #assert cmp[0].scaffold_locked && cmp[0].n_a == 1 && cmp[0].n_b == 1;
+
+  // Hillclimb
+  hc: [1] GbHillclimbRound;
+  hc[0].round_num = 1;
+  hc[0].timestamp_n = gbw_put(hc[0].timestamp[..], "2026-11-24T00:05:00Z");
+  hc[0].profile_n = gbw_put(hc[0].profile[..], "oa-local-fast");
+  hc[0].champion_id_n = gbw_put(hc[0].champion_id[..], "inkling-base-v1");
+  hc[0].challenger_id_n = gbw_put(hc[0].challenger_id[..], "inkling-effort-09");
+  hc[0].scaffold_id_n = gbw_put(hc[0].scaffold_id[..], "sc_d7ca3dea");
+  hc[0].graded_total = 10;
+  hc[0].champ_score_bps = 7000;
+  hc[0].cand_score_bps = 8000;
+  hc[0].gate_code = GB_GATE_PROMOTED;
+  hn := gbw_hillclimb_write(hc[..], buf[..]);
+  #assert hn > 0;
+  hc2: [1] GbHillclimbRound;
+  #assert gbw_hillclimb_parse(cast(string) buf[0..<hn], hc2[..]);
+  #assert hc2[0].gate_code == GB_GATE_PROMOTED;
+}

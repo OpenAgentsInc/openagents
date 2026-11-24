@@ -334,32 +334,56 @@ static int http_origin_ok(const char *origin) {
     return http_loopback_host(host);
 }
 
-static int send_http_json_ex(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len, int keep_alive) {
+static int http_host_matches_ip(const char *h, const char *ip) {
+    if (!h || !h[0] || !ip || !ip[0]) return 0;
+    const char *colon = strchr(h, ':');
+    size_t hlen = colon ? (size_t)(colon - h) : strlen(h);
+    if (colon && !http_port_valid(colon + 1)) return 0;
+    return hlen == strlen(ip) && strncasecmp(h, ip, hlen) == 0;
+}
+
+static int http_docker_host(const char *h, const char *bind_host) {
+    if (!h || !h[0]) return 0;
+    const char *colon = strchr(h, ':');
+    size_t hlen = colon ? (size_t)(colon - h) : strlen(h);
+    if (colon && !http_port_valid(colon + 1)) return 0;
+    if (hlen == 20 && strncasecmp(h, "host.docker.internal", 20) == 0) return 1;
+    if (hlen == 23 && strncasecmp(h, "gateway.docker.internal", 23) == 0) return 1;
+    if (bind_host && bind_host[0] && strcmp(bind_host, "0.0.0.0") != 0 &&
+        http_host_matches_ip(h, bind_host)) return 1;
+    return 0;
+}
+
+static int send_http_text_ex(int fd, int status, const char *reason, const char *content_type, const char *origin, const char *body, size_t body_len, int keep_alive) {
     char hdr[1024];
     int n;
     const char *conn_hdr = keep_alive ? "Connection: keep-alive\r\nKeep-Alive: timeout=15, max=64\r\n" : "Connection: close\r\n";
     if (origin && origin[0]) {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 %d %s\r\n"
-                     "Content-Type: application/json\r\n"
+                     "Content-Type: %s\r\n"
                      "Content-Length: %zu\r\n"
                      "%s"
                      "Access-Control-Allow-Origin: %s\r\n"
                      "Vary: Origin\r\n"
                      "\r\n",
-                     status, reason, body_len, conn_hdr, origin);
+                     status, reason, content_type, body_len, conn_hdr, origin);
     } else {
         n = snprintf(hdr, sizeof hdr,
                      "HTTP/1.1 %d %s\r\n"
-                     "Content-Type: application/json\r\n"
+                     "Content-Type: %s\r\n"
                      "Content-Length: %zu\r\n"
                      "%s"
                      "\r\n",
-                     status, reason, body_len, conn_hdr);
+                     status, reason, content_type, body_len, conn_hdr);
     }
     if (n <= 0 || (size_t)n >= sizeof hdr) return 1;
     if (send_all(fd, hdr, (size_t)n)) return 1;
     return body_len ? send_all(fd, body, body_len) : 0;
+}
+
+static int send_http_json_ex(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len, int keep_alive) {
+    return send_http_text_ex(fd, status, reason, "application/json", origin, body, body_len, keep_alive);
 }
 
 static int send_http_json(int fd, int status, const char *reason, const char *origin, const char *body, size_t body_len) {
@@ -652,6 +676,16 @@ typedef struct {
     Buf      stops[4];          /* up to 4 OpenAI stop sequences */
     int      n_stops;
     size_t   max_stop_len;
+    int      has_unsupported_media; /* 1 when image_url/input_audio/video content part seen */
+    int      has_explicit_effort;   /* 1 when reasoning_effort or reasoning.effort was sent */
+    int      has_enable_thinking;   /* 1 when chat_template_kwargs.enable_thinking was sent */
+    int      enable_thinking;       /* 0 or 1 */
+    int      return_token_ids;      /* 1 when return_token_ids=true requested */
+    int      continue_final_message;/* 1 when continue_final_message=true requested */
+    int      add_generation_prompt; /* default 1 */
+    int      add_special_tokens;    /* default 1 (used by /tokenize) */
+    Buf      raw_prompt;            /* optional "prompt" string (used by /tokenize) */
+    int      has_raw_prompt;
 } Req;
 
 static void tc_free(ToolCall *tc) {
@@ -693,6 +727,7 @@ static void req_free(Req *r) {
     buf_free(&r->prediction);
     buf_free(&r->tool_choice_name);
     for (int i = 0; i < 4; i++) buf_free(&r->stops[i]);
+    buf_free(&r->raw_prompt);
 }
 
 static ChatMsg *req_add_msg(Req *r) {
@@ -708,7 +743,7 @@ static ChatMsg *req_add_msg(Req *r) {
     return m;
 }
 
-static int parse_content_value(JScan *j, Buf *out) {
+static int parse_content_value(JScan *j, Buf *out, int *unsupported_media) {
     j_ws(j);
     if (j->pos >= j->len) return 1;
     if (j->s[j->pos] == '"') return j_string(j, out);
@@ -729,11 +764,35 @@ static int parse_content_value(JScan *j, Buf *out) {
                     j_ws(j);
                     if (j->pos >= j->len || j->s[j->pos] != ':') { buf_free(&k); return 1; }
                     j->pos++;
-                    if (k.data && (!strcmp(k.data, "text") || !strcmp(k.data, "input_text"))) {
+                    const char *ks = k.data ? k.data : "";
+                    if (!strcmp(ks, "text") || !strcmp(ks, "input_text")) {
                         j_ws(j);
                         if (j->pos < j->len && j->s[j->pos] == '"') {
                             if (j_string(j, out)) { buf_free(&k); return 1; }
                         } else if (j_skip(j)) { buf_free(&k); return 1; }
+                    } else if (!strcmp(ks, "type")) {
+                        Buf tv = {0};
+                        j_ws(j);
+                        if (j->pos < j->len && j->s[j->pos] == '"') {
+                            if (j_string(j, &tv)) { buf_free(&tv); buf_free(&k); return 1; }
+                            if (tv.data && strcmp(tv.data, "text") != 0 &&
+                                strcmp(tv.data, "input_text") != 0 &&
+                                strcmp(tv.data, "output_text") != 0) {
+                                if (!strcmp(tv.data, "image_url") || !strcmp(tv.data, "input_image") ||
+                                    !strcmp(tv.data, "image") || !strcmp(tv.data, "input_audio") ||
+                                    !strcmp(tv.data, "audio_url") || !strcmp(tv.data, "audio") ||
+                                    !strcmp(tv.data, "video_url") || !strcmp(tv.data, "input_video") ||
+                                    !strcmp(tv.data, "video")) {
+                                    if (unsupported_media) *unsupported_media = 1;
+                                }
+                            }
+                        } else if (j_skip(j)) { buf_free(&tv); buf_free(&k); return 1; }
+                        buf_free(&tv);
+                    } else if (!strcmp(ks, "image_url") || !strcmp(ks, "input_audio") ||
+                               !strcmp(ks, "audio_url") || !strcmp(ks, "video_url") ||
+                               !strcmp(ks, "image") || !strcmp(ks, "audio") || !strcmp(ks, "video")) {
+                        if (unsupported_media) *unsupported_media = 1;
+                        if (j_skip(j)) { buf_free(&k); return 1; }
                     } else {
                         if (j_skip(j)) { buf_free(&k); return 1; }
                     }
@@ -928,7 +987,7 @@ static int parse_message_obj(JScan *j, Req *r) {
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &m->tool_call_id);
             else j_skip(j);
         } else if (k.data && (!strcmp(k.data, "content") || !strcmp(k.data, "output"))) {
-            parse_content_value(j, &m->content);
+            parse_content_value(j, &m->content, &r->has_unsupported_media);
         } else if (k.data && !strcmp(k.data, "arguments")) {
             j_ws(j);
             if (j->pos < j->len && j->s[j->pos] == '"') j_string(j, &fc_args);
@@ -1080,13 +1139,16 @@ static void parse_format_obj(JScan *j, Req *r) {
 
 static int parse_request_json(const char *body, size_t body_len, Req *r) {
     memset(r, 0, sizeof *r);
-    buf_adds(&r->model, "inkling-2-mini");
-    buf_adds(&r->effort, "0.7");
+    const char *def_eff = getenv("INK_DEFAULT_EFFORT");
+    if (def_eff && def_eff[0]) apply_effort_str(r, def_eff);
+    else buf_adds(&r->effort, "0.7");
     r->max_tokens = 2048;
     r->temperature = 0.0f;
     r->top_p = 0.95f;
     r->top_k = 40;
     r->cache_prompt = 1;
+    r->add_generation_prompt = 1;
+    r->add_special_tokens = 1;
 
     JScan j = { body, body_len, 0 };
     j_ws(&j);
@@ -1161,7 +1223,10 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
             j_ws(&j);
             if (j.pos < j.len && j.s[j.pos] == '"') {
                 j_string(&j, &ev);
-                apply_effort_str(r, ev.data);
+                if (ev.len > 0) {
+                    apply_effort_str(r, ev.data);
+                    r->has_explicit_effort = 1;
+                }
             } else {
                 j_skip(&j);
             }
@@ -1179,7 +1244,10 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
                     if (rk.data && !strcmp(rk.data, "effort")) {
                         Buf ev = {0};
                         j_string(&j, &ev);
-                        apply_effort_str(r, ev.data);
+                        if (ev.len > 0) {
+                            apply_effort_str(r, ev.data);
+                            r->has_explicit_effort = 1;
+                        }
                         buf_free(&ev);
                     } else if (rk.data && (!strcmp(rk.data, "max_tokens") || !strcmp(rk.data, "max_thinking_tokens"))) {
                         double v = 0;
@@ -1192,6 +1260,55 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
                     if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
                 }
                 if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
+        } else if (!strcmp(ks, "chat_template_kwargs")) {
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == '{') {
+                j.pos++; j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != '}') {
+                    Buf ck = {0};
+                    if (j_string(&j, &ck)) { buf_free(&ck); break; }
+                    j_ws(&j);
+                    if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&ck); break; }
+                    j.pos++;
+                    if (ck.data && (!strcmp(ck.data, "enable_thinking") || !strcmp(ck.data, "thinking"))) {
+                        int et = 1;
+                        if (!j_bool(&j, &et)) {
+                            r->has_enable_thinking = 1;
+                            r->enable_thinking = et;
+                        }
+                    } else {
+                        j_skip(&j);
+                    }
+                    buf_free(&ck);
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == '}') j.pos++;
+            } else {
+                j_skip(&j);
+            }
+        } else if (!strcmp(ks, "enable_thinking")) {
+            int et = 1;
+            if (!j_bool(&j, &et)) {
+                r->has_enable_thinking = 1;
+                r->enable_thinking = et;
+            }
+        } else if (!strcmp(ks, "return_token_ids")) {
+            j_bool(&j, &r->return_token_ids);
+        } else if (!strcmp(ks, "continue_final_message")) {
+            j_bool(&j, &r->continue_final_message);
+        } else if (!strcmp(ks, "add_generation_prompt")) {
+            j_bool(&j, &r->add_generation_prompt);
+        } else if (!strcmp(ks, "add_special_tokens")) {
+            j_bool(&j, &r->add_special_tokens);
+        } else if (!strcmp(ks, "prompt")) {
+            j_ws(&j);
+            r->raw_prompt.len = 0;
+            if (j.pos < j.len && j.s[j.pos] == '"') {
+                if (!j_string(&j, &r->raw_prompt)) r->has_raw_prompt = 1;
             } else {
                 j_skip(&j);
             }
@@ -1315,7 +1432,7 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
             ChatMsg *m = req_add_msg(r);
             if (m) {
                 buf_adds(&m->role, "system");
-                parse_content_value(&j, &m->content);
+                parse_content_value(&j, &m->content, &r->has_unsupported_media);
             } else {
                 j_skip(&j);
             }
@@ -1347,6 +1464,10 @@ static int parse_request_json(const char *body, size_t body_len, Req *r) {
         buf_free(&k);
         j_ws(&j);
         if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+    }
+    if (r->has_enable_thinking && !r->has_explicit_effort && !r->enable_thinking) {
+        r->effort.len = 0;
+        buf_adds(&r->effort, "0");
     }
     return 0;
 }
@@ -1412,6 +1533,7 @@ found_tname:;
             buf_append(out, m->reasoning.data, m->reasoning.len);
             buf_adds(out, "<|end_message|>");
         }
+        int is_cont_final = (r->continue_final_message && i == r->n_msgs - 1 && !strcmp(role, "assistant"));
         if (m->content.len > 0 || strcmp(role, "assistant") != 0 || (m->reasoning.len == 0 && m->n_tcs == 0)) {
             buf_append(out, rtok.data, rtok.len);
             if (!strcmp(role, "tool") && m->is_error) {
@@ -1420,7 +1542,7 @@ found_tname:;
                 buf_adds(out, "<|content_text|>");
             }
             if (m->content.len > 0) buf_append(out, m->content.data, m->content.len);
-            buf_adds(out, "<|end_message|>");
+            if (!is_cont_final) buf_adds(out, "<|end_message|>");
         }
         if (!strcmp(role, "assistant") && m->n_tcs > 0) {
             for (int t = 0; t < m->n_tcs; t++) {
@@ -1435,7 +1557,7 @@ found_tname:;
                 buf_adds(out, "}<|end_message|>");
             }
         }
-        if (!strcmp(role, "assistant")) {
+        if (!strcmp(role, "assistant") && !is_cont_final) {
             buf_adds(out, "<|content_model_end_sampling|>");
         }
         buf_free(&rtok);
@@ -1469,18 +1591,38 @@ static size_t utf8_complete_prefix(const unsigned char *s, size_t n) {
 
 /* ---------------- Generation & HTTP handlers ---------------- */
 
+/* Prometheus ITL histogram upper bounds (seconds), matching vLLM defaults. */
+static const double k_itl_le[15] = {
+    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
+};
+
 typedef struct {
     InkSession     *sess;
     InkMutex        sess_mu;
     InkMutex        state_mu;
     const char     *engine;
     int             in_flight;
+    int             running;
     double          last_active;
     int             idle_exit_s;
     int             max_ctx;
     int             has_lora;
+    const char     *model_id;
     const char     *model_name;
     const char     *lora_name;
+    const char     *bind_host;
+    int             allow_docker_host;
+    size_t          max_body_bytes;
+    /* Prometheus /metrics counters (protected by state_mu) */
+    uint64_t        m_prompt_tokens;
+    uint64_t        m_generation_tokens;
+    uint64_t        m_prefix_cache_hits;
+    uint64_t        m_prefix_cache_queries;
+    uint64_t        m_request_success;
+    uint64_t        m_spec_draft_tokens;
+    uint64_t        m_itl_buckets[16]; /* 15 finite upper bounds + +Inf */
+    uint64_t        m_itl_count;
+    double          m_itl_sum;
     int32_t         tok_user;
     int32_t         tok_model;
     int32_t         tok_thinking;
@@ -1499,6 +1641,18 @@ typedef struct {
     uint16_t       *vocab_len;
     uint8_t        *vocab_special;
 } Server;
+
+static void sv_record_itl(Server *sv, double dt_s) {
+    if (dt_s < 0.0) dt_s = 0.0;
+    ink_mutex_lock(&sv->state_mu);
+    for (int b = 0; b < 15; b++) {
+        if (dt_s <= k_itl_le[b]) sv->m_itl_buckets[b]++;
+    }
+    sv->m_itl_buckets[15]++;
+    sv->m_itl_count++;
+    sv->m_itl_sum += dt_s;
+    ink_mutex_unlock(&sv->state_mu);
+}
 
 static int vocab_table_build(Server *sv) {
     int n = ink_vocab_unpadded(sv->sess);
@@ -2207,6 +2361,12 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         req_free(&r);
         return keep_alive;
     }
+    if (r.has_unsupported_media) {
+        const char *e = "{\"error\":{\"message\":\"Multimodal content (image/audio/video) is not supported by this text-only model\",\"type\":\"invalid_request_error\",\"code\":\"unsupported_media_type\"}}";
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
+        req_free(&r);
+        return keep_alive;
+    }
 
     int use_js = 0;
     coax_t_JsSchema *js_sc = NULL;
@@ -2238,8 +2398,17 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         use_js = 1;
     }
 
+    int no_think = (r.has_enable_thinking && !r.enable_thinking) ||
+                   (r.effort.data && !strcmp(r.effort.data, "0"));
+    int prefill_text_hdr = no_think && r.tools_json.len == 0 && !r.continue_final_message && !use_js;
     Buf prompt = {0};
     format_inkling_prompt(&r, &prompt);
+    if (prefill_text_hdr) {
+        /* Pre-seed the deterministic 2-token assistant text header in the prompt when thinking
+         * and tools are both disabled: avoids wasting 2 decode steps on framing tokens, fixes
+         * max_tokens=1 benchmarks (e.g. MMLU-Redux / HELM), and cuts ~2 decode steps from TTFT. */
+        buf_adds(&prompt, "<|message_model|><|content_text|>");
+    }
 
     ink_mutex_lock(&sv->state_mu);
     sv->in_flight++;
@@ -2247,10 +2416,13 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     ink_mutex_unlock(&sv->state_mu);
 
     ink_mutex_lock(&sv->sess_mu);
+    ink_mutex_lock(&sv->state_mu);
+    sv->running++;
+    ink_mutex_unlock(&sv->state_mu);
 
     if (sock_disconnected(fd)) {
         ink_mutex_unlock(&sv->sess_mu);
-        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
         return 0;
     }
@@ -2261,7 +2433,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
         send_http_json(fd, 500, "Internal Server Error", origin, e, strlen(e));
         ink_mutex_unlock(&sv->sess_mu);
-        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         buf_free(&prompt); free(js_sc); req_free(&r);
         return 0;
     }
@@ -2270,7 +2442,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         const char *e = "{\"error\":{\"message\":\"empty prompt\",\"type\":\"invalid_request_error\"}}";
         send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
         ink_mutex_unlock(&sv->sess_mu);
-        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return keep_alive;
     }
@@ -2281,13 +2453,14 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                  max_ctx);
         send_http_json_ex(fd, 400, "Bad Request", origin, ebuf, strlen(ebuf), keep_alive);
         ink_mutex_unlock(&sv->sess_mu);
-        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return keep_alive;
     }
 
     int64_t created = (int64_t)time(NULL);
-    const char *model = (r.model.data && r.model.len) ? r.model.data : "inkling-2-mini";
+    const char *def_model = (sv->model_id && sv->model_id[0]) ? sv->model_id : "inkling-2-mini";
+    const char *model = (r.model.data && r.model.len) ? r.model.data : def_model;
     sv->req_seq++;
     fprintf(stderr, "[psionic-inkling-serve] req#%d %s stream=%d fmt=%d prompt=%d starting\n",
             sv->req_seq, is_responses ? "/v1/responses" : "/v1/chat/completions", r.stream, r.resp_fmt, n_prompt);
@@ -2302,7 +2475,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         }
         if (send_sse_headers_ex(fd, origin, sse_chunked) != 0) {
             ink_mutex_unlock(&sv->sess_mu);
-            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+            ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return 0;
         }
@@ -2361,7 +2534,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                 send_http_json(fd, 500, "Internal Server Error", origin, ebuf, strlen(ebuf));
             }
             ink_mutex_unlock(&sv->sess_mu);
-            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+            ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return 0;
         }
@@ -2393,7 +2566,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                 send_http_json(fd, 500, "Internal Server Error", origin, ebuf, strlen(ebuf));
             }
             ink_mutex_unlock(&sv->sess_mu);
-            ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+            ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
             free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
             return 0;
         }
@@ -2402,7 +2575,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         fprintf(stderr, "[psionic-inkling-serve] req#%d aborted during prefill (client disconnected)\n", sv->req_seq);
         fflush(stderr);
         ink_mutex_unlock(&sv->sess_mu);
-        ink_mutex_lock(&sv->state_mu); sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
+        ink_mutex_lock(&sv->state_mu); sv->running--; sv->in_flight--; sv->last_active = now_sec(); ink_mutex_unlock(&sv->state_mu);
         free(toks); buf_free(&prompt); free(js_sc); req_free(&r);
         return 0;
     }
@@ -2433,16 +2606,22 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     }
 
     /* Channel state machine: 0=none, 1=thinking, 2=text, 3=invoke_tool_json, 4=invoke_tool_text */
-    int channel = 0;
+    int channel = (prefill_text_hdr || r.continue_final_message) ? 2 : 0;
     int in_header = 0;
     int js_started = 0;
     int think_start = -1;
-    int chan_start = -1;
-    int think_broken = 0;
+    int chan_start = (channel == 2) ? n_prompt : -1;
+    int think_broken = no_think ? 1 : 0;
     int saw_think = 0;
     int out_loop_broken = 0;
     int stop_hit = 0;
     int n_reason = 0;
+    int32_t *gen_toks = NULL;
+    int n_gen_toks = 0, cap_gen_toks = 0;
+    if (r.return_token_ids) {
+        cap_gen_toks = 256;
+        gen_toks = (int32_t *)malloc((size_t)cap_gen_toks * sizeof(int32_t));
+    }
     Buf header_buf = {0};
     Buf tool_json = {0};
     Buf pending = {0};
@@ -2464,6 +2643,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     int n_gen = 0;
     const char *finish_reason = "length";
     double td0 = now_sec();
+    double t_prev_tok = td0;
 
     /* Optional lossless prompt-lookup speculative decoding (opt-in via INK_SPEC_LOOKUP=1;
      * off by default on sparse 128-expert MoE where batched expert fan-out outweighs reuse). */
@@ -2547,18 +2727,24 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         } else {
             tok = ink_sample(sv->sess, &sp, &sv->rng);
         }
-        /* Once thinking budget or thinking-loop breaker has fired, forbid reopening a 2nd thinking block. */
+        /* Once thinking budget, thinking-loop breaker, or enable_thinking=false has fired, forbid opening a thinking block. */
         if (think_broken && !tok_already_stepped && sv->tok_thinking >= 0 && tok == sv->tok_thinking) {
-            const float *lg = ink_logits(sv->sess);
-            int nv_l = ink_vocab_unpadded(sv->sess);
-            if (lg && nv_l > 0) {
-                int best_alt = -1;
-                float best_v = -1e30f;
-                for (int vi = 0; vi < nv_l; vi++) {
-                    if (vi == sv->tok_thinking) continue;
-                    if (lg[vi] > best_v) { best_v = lg[vi]; best_alt = vi; }
+            if (no_think && sv->tok_text >= 0) {
+                tok = sv->tok_text;
+                v_head = v_tail = 0;
+                has_prefetched = 0;
+            } else {
+                const float *lg = ink_logits(sv->sess);
+                int nv_l = ink_vocab_unpadded(sv->sess);
+                if (lg && nv_l > 0) {
+                    int best_alt = -1;
+                    float best_v = -1e30f;
+                    for (int vi = 0; vi < nv_l; vi++) {
+                        if (vi == sv->tok_thinking) continue;
+                        if (lg[vi] > best_v) { best_v = lg[vi]; best_alt = vi; }
+                    }
+                    if (best_alt >= 0) tok = (int32_t)best_alt;
                 }
-                if (best_alt >= 0) tok = (int32_t)best_alt;
             }
         }
         if (tok < 0) break;
@@ -2604,6 +2790,19 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             has_prefetched = 0;
         }
         n_gen++;
+        {
+            double t_now_tok = now_sec();
+            if (n_gen > 1) sv_record_itl(sv, t_now_tok - t_prev_tok);
+            t_prev_tok = t_now_tok;
+        }
+        if (r.return_token_ids && gen_toks) {
+            if (n_gen_toks >= cap_gen_toks) {
+                int nc = cap_gen_toks * 2;
+                int32_t *np = (int32_t *)realloc(gen_toks, (size_t)nc * sizeof(int32_t));
+                if (np) { gen_toks = np; cap_gen_toks = nc; }
+            }
+            if (n_gen_toks < cap_gen_toks) gen_toks[n_gen_toks++] = tok;
+        }
 
         if (tok == sv->tok_eog || ink_is_eog(sv->sess, tok)) {
             if (r.cache_prompt && !g_stop && !client_gone && n_all < max_ctx) {
@@ -2878,6 +3077,14 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
                     }
                     all_toks[n_all++] = sv->tok_end_msg;
                     n_gen++;
+                    if (r.return_token_ids && gen_toks) {
+                        if (n_gen_toks >= cap_gen_toks) {
+                            int nc = cap_gen_toks * 2;
+                            int32_t *np = (int32_t *)realloc(gen_toks, (size_t)nc * sizeof(int32_t));
+                            if (np) { gen_toks = np; cap_gen_toks = nc; }
+                        }
+                        if (n_gen_toks < cap_gen_toks) gen_toks[n_gen_toks++] = sv->tok_end_msg;
+                    }
                 }
             } else if ((channel == 2 || channel == 3 || channel == 4) && chan_start >= 0 && ((n_all - chan_start) & 15) == 0) {
                 int lp = detect_output_loop(all_toks, chan_start, n_all);
@@ -3090,15 +3297,27 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         }
         buf_adds(&out, "},\"finish_reason\":\"");
         buf_adds(&out, finish_reason);
+        buf_addc(&out, '"');
+        if (r.return_token_ids && gen_toks && n_gen_toks > 0) {
+            buf_adds(&out, ",\"token_ids\":[");
+            char nb[24];
+            for (int ti = 0; ti < n_gen_toks; ti++) {
+                if (ti > 0) buf_addc(&out, ',');
+                snprintf(nb, sizeof nb, "%d", (int)gen_toks[ti]);
+                buf_adds(&out, nb);
+            }
+            buf_addc(&out, ']');
+        }
         char utail[384];
         snprintf(utail, sizeof utail,
-                 "\"}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
+                 "}],\"usage\":{\"prompt_tokens\":%d,\"completion_tokens\":%d,\"total_tokens\":%d,\"prompt_tokens_details\":{\"cached_tokens\":%d},\"completion_tokens_details\":{\"reasoning_tokens\":%d,\"thinking_budget_hits\":%d,\"post_budget_thinking_tokens\":%d}}}",
                  n_prompt, n_gen, n_prompt + n_gen, cached, n_reason, think_budget_hits, post_budget_think_toks);
         buf_adds(&out, utail);
         if (send_http_json_ex(fd, 200, "OK", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
         buf_free(&out);
     }
 
+    free(gen_toks);
     for (int t = 0; t < n_emitted_tcs; t++) tc_free(&emitted_tcs[t]);
     free(emitted_tcs);
     stream_tc_reset(&stc);
@@ -3109,12 +3328,240 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     buf_free(&full_think);
     ink_mutex_unlock(&sv->sess_mu);
     ink_mutex_lock(&sv->state_mu);
+    sv->m_prompt_tokens += (uint64_t)n_prompt;
+    sv->m_generation_tokens += (uint64_t)n_gen;
+    if (r.cache_prompt) {
+        sv->m_prefix_cache_queries += (uint64_t)n_prompt;
+        sv->m_prefix_cache_hits += (uint64_t)cached;
+    }
+    if (!client_gone) sv->m_request_success++;
+    sv->m_spec_draft_tokens += (uint64_t)spec_drafted;
+    sv->running--;
     sv->in_flight--;
     sv->last_active = now_sec();
     ink_mutex_unlock(&sv->state_mu);
     free(js_sc);
     req_free(&r);
     return (client_gone || g_stop) ? 0 : keep_alive;
+}
+
+static int handle_tokenize(Server *sv, int fd, const char *origin, const char *body, size_t body_len, int keep_alive) {
+    Req r;
+    if (parse_request_json(body, body_len, &r) != 0) {
+        const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
+        req_free(&r);
+        return keep_alive;
+    }
+    Buf prompt = {0};
+    const char *text = "";
+    size_t text_len = 0;
+    int parse_special = 1;
+    if (r.has_raw_prompt) {
+        text = r.raw_prompt.data ? r.raw_prompt.data : "";
+        text_len = r.raw_prompt.len;
+        parse_special = r.add_special_tokens ? 1 : 0;
+    } else if (r.n_msgs > 0) {
+        format_inkling_prompt(&r, &prompt);
+        text = prompt.data ? prompt.data : "";
+        text_len = prompt.len;
+        parse_special = 1;
+    } else {
+        const char *e = "{\"error\":{\"message\":\"missing prompt or messages\",\"type\":\"invalid_request_error\"}}";
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
+        req_free(&r);
+        return keep_alive;
+    }
+
+    int cap = sv->max_ctx * 2 + 4096;
+    if (cap < 65536) cap = 65536;
+    if ((size_t)cap < text_len + 16) cap = (int)(text_len + 16);
+    int32_t *toks = (int32_t *)malloc((size_t)cap * sizeof(int32_t));
+    if (!toks) {
+        const char *e = "{\"error\":{\"message\":\"out of memory\"}}";
+        send_http_json(fd, 500, "Internal Server Error", origin, e, strlen(e));
+        buf_free(&prompt);
+        req_free(&r);
+        return 0;
+    }
+    ink_mutex_lock(&sv->sess_mu);
+    int n_tok = (text_len == 0) ? 0 : ink_encode(sv->sess, text, text_len, toks, cap, parse_special);
+    ink_mutex_unlock(&sv->sess_mu);
+    if (n_tok < 0) n_tok = 0;
+
+    Buf out = {0};
+    char head[128];
+    snprintf(head, sizeof head, "{\"count\":%d,\"max_model_len\":%d,\"tokens\":[", n_tok, sv->max_ctx);
+    buf_adds(&out, head);
+    char nb[24];
+    for (int i = 0; i < n_tok; i++) {
+        if (i > 0) buf_addc(&out, ',');
+        snprintf(nb, sizeof nb, "%d", (int)toks[i]);
+        buf_adds(&out, nb);
+    }
+    buf_adds(&out, "]}");
+    if (!out.data || send_http_json_ex(fd, 200, "OK", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
+    buf_free(&out);
+    free(toks);
+    buf_free(&prompt);
+    req_free(&r);
+    return keep_alive;
+}
+
+static int handle_detokenize(Server *sv, int fd, const char *origin, const char *body, size_t body_len, int keep_alive) {
+    int32_t *ids = NULL;
+    int n_ids = 0, cap_ids = 0;
+    int found_tokens = 0;
+    JScan j = { body, body_len, 0 };
+    j_ws(&j);
+    if (j.pos >= j.len || j.s[j.pos] != '{') {
+        const char *e = "{\"error\":{\"message\":\"invalid JSON request\",\"type\":\"invalid_request_error\"}}";
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
+        return keep_alive;
+    }
+    j.pos++;
+    j_ws(&j);
+    while (j.pos < j.len && j.s[j.pos] != '}') {
+        Buf k = {0};
+        if (j_string(&j, &k)) { buf_free(&k); break; }
+        j_ws(&j);
+        if (j.pos >= j.len || j.s[j.pos] != ':') { buf_free(&k); break; }
+        j.pos++;
+        if (k.data && !strcmp(k.data, "tokens")) {
+            j_ws(&j);
+            if (j.pos < j.len && j.s[j.pos] == '[') {
+                found_tokens = 1;
+                j.pos++;
+                j_ws(&j);
+                while (j.pos < j.len && j.s[j.pos] != ']') {
+                    double v = 0;
+                    if (j_number(&j, &v) == 0) {
+                        if (n_ids >= cap_ids) {
+                            int nc = cap_ids ? cap_ids * 2 : 64;
+                            int32_t *np = (int32_t *)realloc(ids, (size_t)nc * sizeof(int32_t));
+                            if (!np) break;
+                            ids = np;
+                            cap_ids = nc;
+                        }
+                        ids[n_ids++] = (int32_t)(int64_t)v;
+                    }
+                    j_ws(&j);
+                    if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+                }
+                if (j.pos < j.len && j.s[j.pos] == ']') j.pos++;
+            } else {
+                j_skip(&j);
+            }
+        } else {
+            j_skip(&j);
+        }
+        buf_free(&k);
+        j_ws(&j);
+        if (j.pos < j.len && j.s[j.pos] == ',') j.pos++;
+    }
+    if (!found_tokens) {
+        free(ids);
+        const char *e = "{\"error\":{\"message\":\"missing tokens array\",\"type\":\"invalid_request_error\"}}";
+        send_http_json_ex(fd, 400, "Bad Request", origin, e, strlen(e), keep_alive);
+        return keep_alive;
+    }
+
+    Buf decoded = {0};
+    ink_mutex_lock(&sv->sess_mu);
+    char piece[512];
+    for (int i = 0; i < n_ids; i++) {
+        int32_t id = ids[i];
+        if (id < 0 || id >= sv->n_vocab) continue;
+        if (id >= 200000 || sv->vocab_special[id] || ink_is_eog(sv->sess, id)) {
+            const char *ts = ink_token_str(sv->sess, id);
+            if (ts && ts[0]) buf_adds(&decoded, ts);
+        } else {
+            int plen = ink_decode_piece(sv->sess, id, piece, (int)sizeof piece);
+            if (plen > 0) buf_append(&decoded, piece, (size_t)plen);
+        }
+    }
+    ink_mutex_unlock(&sv->sess_mu);
+    free(ids);
+
+    Buf out = {0};
+    buf_adds(&out, "{\"prompt\":\"");
+    if (decoded.len > 0) buf_add_json_escaped(&out, decoded.data, decoded.len);
+    buf_adds(&out, "\"}");
+    if (!out.data || send_http_json_ex(fd, 200, "OK", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
+    buf_free(&out);
+    buf_free(&decoded);
+    return keep_alive;
+}
+
+static int handle_metrics(Server *sv, int fd, const char *origin, int keep_alive) {
+    uint64_t prompt_toks, gen_toks, pc_hits, pc_queries, req_ok, spec_draft;
+    uint64_t itl_b[16], itl_cnt;
+    double itl_sum;
+    int running, waiting;
+    ink_mutex_lock(&sv->state_mu);
+    prompt_toks = sv->m_prompt_tokens;
+    gen_toks = sv->m_generation_tokens;
+    pc_hits = sv->m_prefix_cache_hits;
+    pc_queries = sv->m_prefix_cache_queries;
+    req_ok = sv->m_request_success;
+    spec_draft = sv->m_spec_draft_tokens;
+    memcpy(itl_b, sv->m_itl_buckets, sizeof itl_b);
+    itl_cnt = sv->m_itl_count;
+    itl_sum = sv->m_itl_sum;
+    running = sv->running;
+    waiting = sv->in_flight > running ? (sv->in_flight - running) : 0;
+    ink_mutex_unlock(&sv->state_mu);
+
+    const char *mid = (sv->model_id && sv->model_id[0]) ? sv->model_id : "inkling-2-mini";
+    Buf out = {0};
+    char line[2048];
+    snprintf(line, sizeof line,
+             "# TYPE vllm:prompt_tokens_total counter\n"
+             "vllm:prompt_tokens_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:generation_tokens_total counter\n"
+             "vllm:generation_tokens_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:prefix_cache_hits_total counter\n"
+             "vllm:prefix_cache_hits_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:prefix_cache_queries_total counter\n"
+             "vllm:prefix_cache_queries_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:request_success_total counter\n"
+             "vllm:request_success_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:spec_decode_num_draft_tokens_total counter\n"
+             "vllm:spec_decode_num_draft_tokens_total{model_name=\"%s\"} %llu\n"
+             "# TYPE vllm:num_requests_running gauge\n"
+             "vllm:num_requests_running{model_name=\"%s\"} %d\n"
+             "# TYPE vllm:num_requests_waiting gauge\n"
+             "vllm:num_requests_waiting{model_name=\"%s\"} %d\n"
+             "# TYPE vllm:cache_config_info gauge\n"
+             "vllm:cache_config_info{enable_prefix_caching=\"True\",engine=\"%s\",max_model_len=\"%d\"} 1\n",
+             mid, (unsigned long long)prompt_toks,
+             mid, (unsigned long long)gen_toks,
+             mid, (unsigned long long)pc_hits,
+             mid, (unsigned long long)pc_queries,
+             mid, (unsigned long long)req_ok,
+             mid, (unsigned long long)spec_draft,
+             mid, running,
+             mid, waiting,
+             sv->engine ? sv->engine : "psionic", sv->max_ctx);
+    buf_adds(&out, line);
+    buf_adds(&out, "# TYPE vllm:inter_token_latency_seconds histogram\n");
+    for (int b = 0; b < 15; b++) {
+        snprintf(line, sizeof line,
+                 "vllm:inter_token_latency_seconds_bucket{model_name=\"%s\",le=\"%g\"} %llu\n",
+                 mid, k_itl_le[b], (unsigned long long)itl_b[b]);
+        buf_adds(&out, line);
+    }
+    snprintf(line, sizeof line,
+             "vllm:inter_token_latency_seconds_bucket{model_name=\"%s\",le=\"+Inf\"} %llu\n"
+             "vllm:inter_token_latency_seconds_count{model_name=\"%s\"} %llu\n"
+             "vllm:inter_token_latency_seconds_sum{model_name=\"%s\"} %.6f\n",
+             mid, (unsigned long long)itl_b[15],
+             mid, (unsigned long long)itl_cnt,
+             mid, itl_sum);
+    buf_adds(&out, line);
+    if (!out.data || send_http_text_ex(fd, 200, "OK", "text/plain; version=0.0.4; charset=utf-8", origin, out.data, out.len, keep_alive) != 0) keep_alive = 0;
+    buf_free(&out);
+    return keep_alive;
 }
 
 static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t cap) {
@@ -3126,7 +3573,7 @@ static void copy_trimmed_hdr(const char *val, const char *eol, char *dst, size_t
     dst[n] = '\0';
 }
 
-static int read_http_request(int fd, char *method, size_t mcap, char *path, size_t pcap,
+static int read_http_request(int fd, size_t max_body_bytes, char *method, size_t mcap, char *path, size_t pcap,
                              char *host, size_t hcap, char *origin, size_t ocap, Buf *body, int *want_keepalive, int *want_chunked_sse) {
     Buf raw = {0};
     char tmp[8192];
@@ -3135,12 +3582,13 @@ static int read_http_request(int fd, char *method, size_t mcap, char *path, size
     int have_hdr = 0;
     int ka = 1;
     int csse = 0;
+    size_t max_total = max_body_bytes > 0 ? max_body_bytes : (4 * 1024 * 1024);
     if (host && hcap) host[0] = '\0';
     if (origin && ocap) origin[0] = '\0';
     if (want_keepalive) *want_keepalive = 0;
     if (want_chunked_sse) *want_chunked_sse = 0;
 
-    while (raw.len < 4 * 1024 * 1024) {
+    while (raw.len < max_total) {
         ssize_t n = sock_recv(fd, tmp, sizeof tmp);
         if (n < 0) { if (sock_interrupted()) continue; buf_free(&raw); return 1; }
         if (n == 0) break;
@@ -3238,13 +3686,14 @@ static void conn_thread(void *arg) {
         Buf body = {0};
         int ka = 0;
         int csse = 0;
-        if (read_http_request(cfd, method, sizeof method, path, sizeof path,
+        if (read_http_request(cfd, sv->max_body_bytes, method, sizeof method, path, sizeof path,
                               host, sizeof host, origin, sizeof origin, &body, &ka, &csse) != 0) {
             buf_free(&body);
             break;
         }
         int keep = ka;
-        if (!http_loopback_host(host) || !http_origin_ok(origin)) {
+        int host_ok = http_loopback_host(host) || (sv->allow_docker_host && http_docker_host(host, sv->bind_host));
+        if (!host_ok || !http_origin_ok(origin)) {
             const char *fb = "{\"error\":{\"message\":\"forbidden host or origin\",\"type\":\"permission_error\"}}";
             send_http_json(cfd, 403, "Forbidden", NULL, fb, strlen(fb));
             keep = 0;
@@ -3287,11 +3736,23 @@ static void conn_thread(void *arg) {
             if (!ok.data || send_http_json_ex(cfd, 200, "OK", origin, ok.data, ok.len, ka) != 0) keep = 0;
             buf_free(&ok);
         } else if (!strcmp(method, "GET") && !strcmp(path, "/v1/models")) {
-            char ms[224];
-            snprintf(ms, sizeof ms,
-                     "{\"object\":\"list\",\"data\":[{\"id\":\"inkling-2-mini\",\"object\":\"model\",\"owned_by\":\"%s\"}]}",
-                     sv->engine);
-            if (send_http_json_ex(cfd, 200, "OK", origin, ms, strlen(ms), ka) != 0) keep = 0;
+            const char *mid = (sv->model_id && sv->model_id[0]) ? sv->model_id : "inkling-2-mini";
+            Buf ms = {0};
+            buf_adds(&ms, "{\"object\":\"list\",\"data\":[{\"id\":\"");
+            buf_add_json_escaped(&ms, mid, strlen(mid));
+            char tail[224];
+            snprintf(tail, sizeof tail,
+                     "\",\"object\":\"model\",\"owned_by\":\"%s\",\"max_model_len\":%d}]}",
+                     sv->engine, sv->max_ctx);
+            buf_adds(&ms, tail);
+            if (!ms.data || send_http_json_ex(cfd, 200, "OK", origin, ms.data, ms.len, ka) != 0) keep = 0;
+            buf_free(&ms);
+        } else if (!strcmp(method, "GET") && !strcmp(path, "/metrics")) {
+            keep = handle_metrics(sv, cfd, origin, ka);
+        } else if (!strcmp(method, "POST") && !strcmp(path, "/tokenize")) {
+            keep = handle_tokenize(sv, cfd, origin, body.data ? body.data : "", body.len, ka);
+        } else if (!strcmp(method, "POST") && !strcmp(path, "/detokenize")) {
+            keep = handle_detokenize(sv, cfd, origin, body.data ? body.data : "", body.len, ka);
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/chat/completions")) {
             keep = handle_inference(sv, cfd, 0, origin, body.data ? body.data : "", body.len, ka, csse);
         } else if (!strcmp(method, "POST") && !strcmp(path, "/v1/responses")) {
@@ -3345,24 +3806,33 @@ int main(int argc, char **argv) {
     const char *gguf = NULL;
     const char *metal = NULL;
     const char *lora = getenv("INK_LORA");
+    const char *model_id = getenv("INK_MODEL_ID");
     const char *host = "127.0.0.1";
     int port = 18794;
     int max_ctx = 32768;
     int idle_exit_s = 0;
+    int allow_docker_host = 0;
+    int max_body_mb = 4;
 
     for (int i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "--model") || !strcmp(argv[i], "-m")) && i + 1 < argc) gguf = argv[++i];
         else if ((!strcmp(argv[i], "--kernels") || !strcmp(argv[i], "--metal")) && i + 1 < argc) metal = argv[++i];
         else if (!strcmp(argv[i], "--lora") && i + 1 < argc) lora = argv[++i];
+        else if (!strcmp(argv[i], "--model-id") && i + 1 < argc) model_id = argv[++i];
         else if (!strcmp(argv[i], "--host") && i + 1 < argc) host = argv[++i];
         else if (!strcmp(argv[i], "--port") && i + 1 < argc) port = atoi(argv[++i]);
         else if ((!strcmp(argv[i], "--ctx") || !strcmp(argv[i], "--ctx-size")) && i + 1 < argc) max_ctx = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--idle-exit-s") && i + 1 < argc) idle_exit_s = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--allow-docker-host")) allow_docker_host = 1;
+        else if (!strcmp(argv[i], "--max-body-mb") && i + 1 < argc) max_body_mb = atoi(argv[++i]);
     }
+    if (max_body_mb < 1) max_body_mb = 1;
+    if (max_body_mb > 64) max_body_mb = 64;
+    if (!model_id || !model_id[0]) model_id = "inkling-2-mini";
     char kernels_beside[4200];
     if (!metal) metal = default_kernels(argv[0], kernels_beside, sizeof kernels_beside);
     if (!gguf || !metal) {
-        fprintf(stderr, "usage: %s --model PATH.gguf [--lora PATH.gguf] [--kernels PATH] [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0]\n"
+        fprintf(stderr, "usage: %s --model PATH.gguf [--lora PATH.gguf] [--model-id NAME] [--kernels PATH] [--host 127.0.0.1] [--port 18794] [--ctx 32768] [--idle-exit-s 0] [--allow-docker-host] [--max-body-mb 4]\n"
                         "  --kernels  the engine's generated kernel source: inkling-kernels.metal or inkling-kernels-cuda.cu (--metal is the same option).\n"
                         "             Default: that file in this program's directory.\n", argv[0]);
         return 2;
@@ -3379,8 +3849,12 @@ int main(int argc, char **argv) {
     sv.idle_exit_s = idle_exit_s;
     sv.max_ctx = max_ctx;
     sv.has_lora = (lora && lora[0]) ? 1 : 0;
+    sv.model_id = model_id;
     sv.model_name = path_basename(gguf);
     sv.lora_name = sv.has_lora ? path_basename(lora) : "";
+    sv.bind_host = host;
+    sv.allow_docker_host = allow_docker_host;
+    sv.max_body_bytes = (size_t)max_body_mb * 1024 * 1024;
     sv.rng = (uint64_t)time(NULL) ^ 0x9E3779B97F4A7C15ULL;
     char err[512];
     if (ink_open_lora(gguf, metal, sv.has_lora ? lora : NULL, max_ctx, 0, &sv.sess, err, sizeof err) != 0) {

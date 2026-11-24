@@ -1,0 +1,568 @@
+// gBench #authority Trial Classification, Scaffold Lock, Dataset License Gate & Hillclimb Promotion Policy.
+//
+// This file is #authority: nothing else decides whether two gBench arms are comparable
+// (scaffold_id lock), whether a suite's traces may be distilled into Psionic W3.2 training
+// data (license / canary allowlist), or whether a challenger Inkling configuration promotes
+// over the current champion.
+//
+//   coax/bin/coax test coax/lib/gbench/policy.coax --library
+//   coax/bin/coax mutate coax/lib/gbench/policy.coax --root-only
+#authority;
+
+// gBench process exit codes (upstream gbench/cli.py contract)
+GB_EXIT_OK :: 0;
+GB_EXIT_CAPABILITY_FAIL :: 1;
+GB_EXIT_HARNESS_ERR :: 2;
+
+// Normalized task / suite outcome codes
+GB_STATUS_PASS :: 0;
+GB_STATUS_FAIL :: 1;
+GB_STATUS_INFRA :: 2;
+GB_STATUS_WITHHELD :: 3;
+GB_STATUS_NA :: 4;
+
+// Static dataset distillation / license verdicts (W3.2 LoRA / W5 DiLoCo gate)
+GB_DISTILL_ADMIT :: 0;
+GB_DISTILL_DENY_NC :: 1;
+GB_DISTILL_DENY_GPL :: 2;
+GB_DISTILL_DENY_CANARY :: 3;
+GB_DISTILL_DENY_UNDECLARED :: 4;
+GB_DISTILL_DENY_UNKNOWN :: 5;
+
+// #authority Two-Arm Hillclimb Promotion Verdicts
+GB_GATE_PROMOTED :: 0;
+GB_GATE_HOLD_NO_GAIN :: 1;
+GB_GATE_SCAFFOLD_MISMATCH :: 2;
+GB_GATE_ATIF_UNVERIFIED :: 3;
+GB_GATE_HARNESS_ERRORS :: 4;
+GB_GATE_NO_GRADED :: 5;
+GB_GATE_GOLDEN_REGRESSED :: 6;
+GB_GATE_SCORE_REGRESSED :: 7;
+GB_GATE_CV_EXCEEDED :: 8;
+GB_GATE_COST_OVER_CAP :: 9;
+
+GbWilson :: struct {
+  low_bps: int;
+  high_bps: int;
+}
+
+GbSuiteOutcomeInput :: struct {
+  applicable: int;
+  passed: int;
+  harness_errors: int;
+  withheld: bool;
+  infra_required: bool;
+  exit_code: int;
+}
+
+GbHillclimbEval :: struct {
+  scaffolds_match: bool;
+  atif_verified: bool;
+  golden_regressed: bool;
+  cand_harness_errors: int;
+  graded_total: int;
+  champ_score_bps: int;
+  cand_score_bps: int;
+  champ_ttft_us: int;
+  cand_ttft_us: int;
+  champ_tpot_us: int;
+  cand_tpot_us: int;
+  cand_cv_bps: int;
+  max_cv_bps: int;
+  cand_cost_micros: int;
+  max_cost_micros: int;
+}
+
+// Validates a slug/arm/profile ID: [a-z0-9-], len 2..48, no leading/trailing/adjacent '-'.
+gb_valid_slug :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 2 || s.count > 48 { return false; }
+  if s[0] == '-' || s[s.count - 1] == '-' { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+    if !ok { return false; }
+    if c == '-' && s[i - 1] == '-' { return false; } // mutant: equivalent (symmetric with i+1 because s[0] != '-' and s[n-1] != '-')
+  }
+  return true;
+}
+
+// Validates a gBench suite or task ID: [a-z0-9_-], len 2..64, starts with alnum.
+gb_valid_suite_id :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 2 || s.count > 64 { return false; }
+  c0 := s[0];
+  if !((c0 >= 'a' && c0 <= 'z') || (c0 >= '0' && c0 <= '9')) { return false; }
+  for i: 1..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// Validates a gBench scaffold_id or subject_id token: [a-z0-9_-], len 3..48.
+gb_valid_contract_id :: (s: string) -> bool #effects(reads, traps) {
+  if s.count < 3 || s.count > 48 { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// Validates a 64-char lowercase hexadecimal SHA-256 digest.
+gb_valid_sha256 :: (s: string) -> bool #effects(reads, traps) {
+  if s.count != 64 { return false; }
+  for i: 0..<64 {
+    c := s[i];
+    ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// Two arms are comparable under gBench's Scaffold Contract v2 only when both carry
+// valid non-empty scaffold_ids that match byte-for-byte.
+gb_scaffolds_match :: (a: string, b: string) -> bool #effects(reads, traps) {
+  if !gb_valid_contract_id(a) { return false; }
+  return a == b;
+}
+
+// Golden Set deployment gate: requires at least 1 applicable case, 100% pass,
+// 0 harness errors, and 0 chat-template token leaks.
+gb_golden_passes :: (applicable: int, passed: int, harness_errors: int, token_leaks: int) -> bool #effects() {
+  if applicable <= 0 { return false; }
+  if harness_errors != 0 || token_leaks != 0 { return false; }
+  return passed >= applicable;
+}
+
+// Serving performance repeatability gate: CV <= max_cv (both in basis points, e.g. 500 = 5.00%).
+gb_cv_acceptable :: (cv_bps: int, max_cv_bps: int) -> bool #effects() {
+  if cv_bps < 0 || max_cv_bps <= 0 { return false; }
+  return cv_bps <= max_cv_bps;
+}
+
+// Classify one gBench suite/task outcome strictly from upstream exit/verdict fields.
+gb_classify_outcome :: (x: GbSuiteOutcomeInput) -> int #effects() {
+  if x.infra_required || x.exit_code == GB_EXIT_HARNESS_ERR || x.harness_errors > 0 {
+    return GB_STATUS_INFRA;
+  }
+  if x.withheld { return GB_STATUS_WITHHELD; }
+  if x.applicable <= 0 { return GB_STATUS_NA; }
+  if x.passed >= x.applicable && x.exit_code == GB_EXIT_OK { return GB_STATUS_PASS; }
+  return GB_STATUS_FAIL;
+}
+
+gb_status_label :: (code: int) -> string #effects() {
+  if code == GB_STATUS_PASS { return "PASS"; }
+  if code == GB_STATUS_FAIL { return "FAIL"; }
+  if code == GB_STATUS_INFRA { return "INFRA_ERROR"; }
+  if code == GB_STATUS_WITHHELD { return "WITHHELD"; }
+  if code == GB_STATUS_NA { return "NOT_APPLICABLE"; }
+  return "UNKNOWN";
+}
+
+// Integer square root floor for deterministic Wilson 95% CI math with zero float drift.
+gb_isqrt :: (n: int) -> int #effects(traps) {
+  if n < 0 { return 0; } // mutant: equivalent (n == 0 skips loop lo=1..hi=0 and returns 0 either way)
+  lo := 1;
+  hi := n;
+  if hi > 1000000000 { hi = 1000000000; } // mutant: equivalent (overflow guard for int64 square; exact root <= 1e9 for inputs <= 1e18)
+  ans := 0;
+  while lo <= hi {
+    mid := lo + (hi - lo) / 2; // mutant: equivalent (any interior pivot in [lo, hi] converges to floor(sqrt(n)))
+    if mid * mid <= n { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans;
+}
+
+// Pass rate in basis points (0..10000).
+gb_rate_bps :: (passed: int, graded: int) -> int #effects(traps) {
+  if graded <= 0 || passed <= 0 { return 0; } // mutant: equivalent (when passed == 0 and graded > 0, (0 * 10000) / graded == 0)
+  if passed >= graded { return 10000; } // mutant: equivalent (when passed == graded, (passed * 10000) / graded == 10000)
+  return (passed * 10000) / graded;
+}
+
+// Exact integer 95% Wilson confidence interval in basis points (z = 1.96 -> z^2 = 3.8416).
+gb_wilson_95 :: (passed: int, graded: int) -> GbWilson #effects(traps) {
+  if graded <= 0 { return GbWilson.{low_bps = 0, high_bps = 0}; }
+  k := passed;
+  if k < 0 { k = 0; } // mutant: equivalent (k == 0 unchanged by clamping to 0)
+  if k > graded { k = graded; } // mutant: equivalent (k == graded unchanged by clamping to graded)
+  z2 := 38416;
+  denom := graded * 10000 + z2;
+  center := k * 10000 + z2 / 2;
+  inner := (k * (graded - k) * 10000) / graded + 9604;
+  margin := 196 * gb_isqrt(inner);
+  lo := ((center - margin) * 10000) / denom;
+  hi := ((center + margin) * 10000) / denom;
+  return GbWilson.{low_bps = lo, high_bps = hi};
+}
+
+// Static dataset license / canary allowlist for Psionic W3.2 / W5 distillation.
+// Fail-closed: only explicitly permissive non-canary suites are admitted.
+gb_admit_distill_suite :: (suite: string) -> int #effects(reads, traps) {
+  // CC-BY-NC* non-commercial datasets (blocked for commercial weights)
+  if suite == "aime" || suite == "hmmt" || suite == "cimemories"
+    || suite == "nexusraven_api_eval" || suite == "mobilegym" || suite == "mobilegym_v2" {
+    return GB_DISTILL_DENY_NC;
+  }
+  // GPL-3.0 copyleft datasets
+  if suite == "chartqa" {
+    return GB_DISTILL_DENY_GPL;
+  }
+  // Canary / strictly held-out test-set-only benchmarks
+  if suite == "gpqa" || suite == "gpqa_diamond" || suite == "humanitys_last_exam" {
+    return GB_DISTILL_DENY_CANARY;
+  }
+  // Undeclared or restricted license datasets
+  if suite == "gaia" || suite == "wildbench" || suite == "livebench"
+    || suite == "ojbench" || suite == "putnam" || suite == "causalbench"
+    || suite == "coco_caption" || suite == "textvqa" || suite == "omnidocbench"
+    || suite == "i18n_translate" || suite == "gdpval" || suite == "sharegpt" {
+    return GB_DISTILL_DENY_UNDECLARED;
+  }
+  // Explicitly permissive (Apache-2.0 / MIT / BSD / CC-BY-4.0) local suites
+  if suite == "golden" || suite == "gsm8k" || suite == "ifeval"
+    || suite == "arc_agi" || suite == "mmlu_pro" || suite == "mmlu_redux"
+    || suite == "multilingual_mmlu" || suite == "amc_aime" || suite == "gorilla_apibench"
+    || suite == "seal_tools" || suite == "agent_dojo" || suite == "loft_scifact"
+    || suite == "longbench_v2_code" || suite == "mrcr" {
+    return GB_DISTILL_ADMIT;
+  }
+  return GB_DISTILL_DENY_UNKNOWN;
+}
+
+gb_distill_reason :: (code: int) -> string #effects() {
+  if code == GB_DISTILL_ADMIT { return "admitted_permissive"; }
+  if code == GB_DISTILL_DENY_NC { return "denied_non_commercial_license"; }
+  if code == GB_DISTILL_DENY_GPL { return "denied_gpl_license"; }
+  if code == GB_DISTILL_DENY_CANARY { return "denied_canary_benchmark"; }
+  if code == GB_DISTILL_DENY_UNDECLARED { return "denied_undeclared_license"; }
+  return "denied_unknown_suite";
+}
+
+// #authority Two-Arm Hillclimb Promotion Gate for Inkling variations & serving configs.
+gb_admit_hillclimb :: (e: GbHillclimbEval) -> int #effects(traps) {
+  if !e.scaffolds_match { return GB_GATE_SCAFFOLD_MISMATCH; }
+  if !e.atif_verified { return GB_GATE_ATIF_UNVERIFIED; }
+  if e.cand_harness_errors > 0 { return GB_GATE_HARNESS_ERRORS; }
+  if e.graded_total <= 0 { return GB_GATE_NO_GRADED; }
+  if e.golden_regressed { return GB_GATE_GOLDEN_REGRESSED; }
+  if e.cand_score_bps < e.champ_score_bps { return GB_GATE_SCORE_REGRESSED; }
+  if e.max_cv_bps > 0 && e.cand_cv_bps > e.max_cv_bps { return GB_GATE_CV_EXCEEDED; }
+  if e.max_cost_micros > 0 && e.cand_cost_micros > e.max_cost_micros { return GB_GATE_COST_OVER_CAP; }
+  if e.cand_score_bps > e.champ_score_bps { return GB_GATE_PROMOTED; }
+  tpot_gain := e.cand_tpot_us > 0 && e.cand_tpot_us * 100 <= e.champ_tpot_us * 90;
+  ttft_gain := e.cand_ttft_us > 0 && e.cand_ttft_us * 100 <= e.champ_ttft_us * 90;
+  if tpot_gain || ttft_gain { return GB_GATE_PROMOTED; }
+  return GB_GATE_HOLD_NO_GAIN;
+}
+
+gb_gate_status :: (code: int) -> string #effects() {
+  if code == GB_GATE_PROMOTED { return "PROMOTED"; }
+  if code == GB_GATE_HOLD_NO_GAIN { return "QUARANTINE_HELD"; }
+  return "REJECTED";
+}
+
+gb_gate_reason :: (code: int) -> string #effects() {
+  if code == GB_GATE_PROMOTED { return "promoted_gain_verified"; }
+  if code == GB_GATE_HOLD_NO_GAIN { return "quarantine_held_no_strict_gain"; }
+  if code == GB_GATE_SCAFFOLD_MISMATCH { return "rejected_scaffold_mismatch"; }
+  if code == GB_GATE_ATIF_UNVERIFIED { return "rejected_atif_unverified"; }
+  if code == GB_GATE_HARNESS_ERRORS { return "rejected_harness_errors"; }
+  if code == GB_GATE_NO_GRADED { return "rejected_no_graded_items"; }
+  if code == GB_GATE_GOLDEN_REGRESSED { return "rejected_golden_regressed"; }
+  if code == GB_GATE_SCORE_REGRESSED { return "rejected_score_regressed"; }
+  if code == GB_GATE_CV_EXCEEDED { return "rejected_cv_exceeded"; }
+  if code == GB_GATE_COST_OVER_CAP { return "rejected_cost_over_cap"; }
+  return "rejected_unknown";
+}
+
+#test "gbench policy: validators, scaffold lock, golden/CV gates, outcome classifier, Wilson CI, license allowlist, and #authority hillclimb gate" {
+  // Slug boundaries
+  #assert !gb_valid_slug("");
+  #assert !gb_valid_slug("a");
+  #assert gb_valid_slug("ab");
+  #assert gb_valid_slug("inkling-2-mini-uncensored-lora");
+  #assert gb_valid_slug("a0-9z");
+  #assert !gb_valid_slug("-ab");
+  #assert !gb_valid_slug("ab-");
+  #assert !gb_valid_slug("a--b");
+  #assert !gb_valid_slug("Bad");
+  #assert !gb_valid_slug("a_b");
+  #assert !gb_valid_slug("a{");
+  #assert !gb_valid_slug("a:");
+  #assert !gb_valid_slug("a/");
+  #assert gb_valid_slug("a12345678901234567890123456789012345678901234567");
+  #assert !gb_valid_slug("a123456789012345678901234567890123456789012345678");
+
+  // Suite ID boundaries
+  #assert !gb_valid_suite_id("");
+  #assert !gb_valid_suite_id("a");
+  #assert gb_valid_suite_id("0a");
+  #assert gb_valid_suite_id("z9");
+  #assert gb_valid_suite_id("9z");
+  #assert gb_valid_suite_id("longbench_v2_code");
+  #assert gb_valid_suite_id("oa-local-core");
+  #assert !gb_valid_suite_id("_gsm8k");
+  #assert !gb_valid_suite_id("-gsm8k");
+  #assert !gb_valid_suite_id("{a");
+  #assert !gb_valid_suite_id(":a");
+  #assert !gb_valid_suite_id("Gsm8k");
+  #assert !gb_valid_suite_id("a.b");
+  #assert !gb_valid_suite_id("a{");
+  #assert !gb_valid_suite_id("a:");
+  #assert !gb_valid_suite_id("a/");
+  #assert gb_valid_suite_id("a012345678901234567890123456789012345678901234567890123456789012");
+  #assert !gb_valid_suite_id("a0123456789012345678901234567890123456789012345678901234567890123");
+
+  // Contract ID & scaffold lock
+  #assert !gb_valid_contract_id("");
+  #assert !gb_valid_contract_id("sc");
+  #assert gb_valid_contract_id("sc_");
+  #assert gb_valid_contract_id("sc_965cd8ee");
+  #assert gb_valid_contract_id("a0-9_z");
+  #assert !gb_valid_contract_id("!sc");
+  #assert !gb_valid_contract_id("sc/bad");
+  #assert !gb_valid_contract_id("sc:bad");
+  #assert !gb_valid_contract_id("sc{bad");
+  #assert !gb_valid_contract_id("SC_965");
+  #assert gb_valid_contract_id("sc_012345678901234567890123456789012345678901234");
+  #assert !gb_valid_contract_id("sc_0123456789012345678901234567890123456789012345");
+  #assert gb_scaffolds_match("sc_965cd8ee", "sc_965cd8ee");
+  #assert !gb_scaffolds_match("sc_965cd8ee", "sc_deadbeef");
+  #assert !gb_scaffolds_match("BAD!", "BAD!");
+  #assert !gb_scaffolds_match("", "sc_965cd8ee");
+  #assert !gb_scaffolds_match("sc_965cd8ee", "");
+
+  // SHA-256 validator
+  #assert gb_valid_sha256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !gb_valid_sha256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde");
+  #assert !gb_valid_sha256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
+  #assert !gb_valid_sha256("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !gb_valid_sha256("/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !gb_valid_sha256(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !gb_valid_sha256("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+
+  // Golden deployment gate & CV gate
+  #assert gb_golden_passes(14, 14, 0, 0);
+  #assert gb_golden_passes(1, 2, 0, 0);
+  #assert !gb_golden_passes(0, 0, 0, 0);
+  #assert !gb_golden_passes(-1, 0, 0, 0);
+  #assert !gb_golden_passes(14, 13, 0, 0);
+  #assert !gb_golden_passes(14, 14, 1, 0);
+  #assert !gb_golden_passes(14, 14, 0, 1);
+  #assert gb_cv_acceptable(0, 500);
+  #assert gb_cv_acceptable(1, 1);
+  #assert gb_cv_acceptable(500, 500);
+  #assert !gb_cv_acceptable(501, 500);
+  #assert !gb_cv_acceptable(-1, 500);
+  #assert !gb_cv_acceptable(0, 0);
+  #assert !gb_cv_acceptable(100, 0);
+
+  // Outcome classification & labels
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 1, passed = 1, exit_code = GB_EXIT_OK}) == GB_STATUS_PASS;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, exit_code = GB_EXIT_OK}) == GB_STATUS_PASS;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 11, exit_code = GB_EXIT_OK}) == GB_STATUS_PASS;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 9, exit_code = GB_EXIT_OK}) == GB_STATUS_FAIL;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, exit_code = GB_EXIT_CAPABILITY_FAIL}) == GB_STATUS_FAIL;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, exit_code = GB_EXIT_HARNESS_ERR}) == GB_STATUS_INFRA;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, harness_errors = 1}) == GB_STATUS_INFRA;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, infra_required = true}) == GB_STATUS_INFRA;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 10, passed = 10, withheld = true}) == GB_STATUS_WITHHELD;
+  #assert gb_classify_outcome(GbSuiteOutcomeInput.{applicable = 0, passed = 0}) == GB_STATUS_NA;
+  #assert gb_status_label(GB_STATUS_PASS) == "PASS";
+  #assert gb_status_label(GB_STATUS_FAIL) == "FAIL";
+  #assert gb_status_label(GB_STATUS_INFRA) == "INFRA_ERROR";
+  #assert gb_status_label(GB_STATUS_WITHHELD) == "WITHHELD";
+  #assert gb_status_label(GB_STATUS_NA) == "NOT_APPLICABLE";
+  #assert gb_status_label(99) == "UNKNOWN";
+
+  // isqrt, rate_bps, Wilson 95% CI
+  #assert gb_isqrt(-1) == 0;
+  #assert gb_isqrt(0) == 0;
+  #assert gb_isqrt(1) == 1;
+  #assert gb_isqrt(2) == 1;
+  #assert gb_isqrt(4) == 2;
+  #assert gb_isqrt(99) == 9;
+  #assert gb_isqrt(100) == 10;
+  #assert gb_isqrt(1000000000000) == 1000000;
+  #assert gb_rate_bps(0, 0) == 0;
+  #assert gb_rate_bps(1, 0) == 0;
+  #assert gb_rate_bps(-1, 10) == 0;
+  #assert gb_rate_bps(0, 1) == 0;
+  #assert gb_rate_bps(1, 1) == 10000;
+  #assert gb_rate_bps(2, 3) == 6666;
+  #assert gb_rate_bps(12, 10) == 10000;
+  w0 := gb_wilson_95(0, 0);
+  #assert w0.low_bps == 0 && w0.high_bps == 0;
+  w1 := gb_wilson_95(0, 1);
+  #assert w1.low_bps == 0 && w1.high_bps == 7934;
+  wneg := gb_wilson_95(-1, 10);
+  #assert wneg.low_bps == 0 && wneg.high_bps == 2775;
+  whi := gb_wilson_95(11, 10);
+  #assert whi.low_bps == 7224 && whi.high_bps == 10000;
+  wmid := gb_wilson_95(5, 10);
+  #assert wmid.low_bps == 2366 && wmid.high_bps == 7633;
+  wone := gb_wilson_95(1, 10);
+  #assert wone.low_bps == 184 && wone.high_bps == 4035;
+  wedge := gb_wilson_95(19, 41);
+  #assert wedge.low_bps == 3209 && wedge.high_bps == 6121;
+
+  // Dataset distillation license / canary allowlist
+  #assert gb_admit_distill_suite("golden") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("gsm8k") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("ifeval") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("arc_agi") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("mmlu_pro") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("mmlu_redux") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("multilingual_mmlu") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("amc_aime") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("gorilla_apibench") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("seal_tools") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("agent_dojo") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("loft_scifact") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("longbench_v2_code") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("mrcr") == GB_DISTILL_ADMIT;
+  #assert gb_admit_distill_suite("aime") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("hmmt") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("cimemories") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("nexusraven_api_eval") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("mobilegym") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("mobilegym_v2") == GB_DISTILL_DENY_NC;
+  #assert gb_admit_distill_suite("chartqa") == GB_DISTILL_DENY_GPL;
+  #assert gb_admit_distill_suite("gpqa") == GB_DISTILL_DENY_CANARY;
+  #assert gb_admit_distill_suite("gpqa_diamond") == GB_DISTILL_DENY_CANARY;
+  #assert gb_admit_distill_suite("humanitys_last_exam") == GB_DISTILL_DENY_CANARY;
+  #assert gb_admit_distill_suite("gaia") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("wildbench") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("livebench") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("ojbench") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("putnam") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("causalbench") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("coco_caption") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("textvqa") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("omnidocbench") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("i18n_translate") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("gdpval") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("sharegpt") == GB_DISTILL_DENY_UNDECLARED;
+  #assert gb_admit_distill_suite("unlisted_custom") == GB_DISTILL_DENY_UNKNOWN;
+  #assert gb_distill_reason(GB_DISTILL_ADMIT) == "admitted_permissive";
+  #assert gb_distill_reason(GB_DISTILL_DENY_NC) == "denied_non_commercial_license";
+  #assert gb_distill_reason(GB_DISTILL_DENY_GPL) == "denied_gpl_license";
+  #assert gb_distill_reason(GB_DISTILL_DENY_CANARY) == "denied_canary_benchmark";
+  #assert gb_distill_reason(GB_DISTILL_DENY_UNDECLARED) == "denied_undeclared_license";
+  #assert gb_distill_reason(GB_DISTILL_DENY_UNKNOWN) == "denied_unknown_suite";
+
+  // #authority Two-Arm Hillclimb Promotion Gate
+  min_ok := GbHillclimbEval.{
+    scaffolds_match = true,
+    atif_verified = true,
+    golden_regressed = false,
+    cand_harness_errors = 0,
+    graded_total = 1,
+    champ_score_bps = 5000,
+    cand_score_bps = 5001,
+    champ_ttft_us = 2,
+    cand_ttft_us = 1,
+    champ_tpot_us = 2,
+    cand_tpot_us = 1,
+    cand_cv_bps = 1,
+    max_cv_bps = 1,
+    cand_cost_micros = 1,
+    max_cost_micros = 1,
+  };
+  #assert gb_admit_hillclimb(min_ok) == GB_GATE_PROMOTED;
+  min_cv_over := min_ok; min_cv_over.cand_cv_bps = 2;
+  #assert gb_admit_hillclimb(min_cv_over) == GB_GATE_CV_EXCEEDED;
+  min_co_over := min_ok; min_co_over.cand_cost_micros = 2;
+  #assert gb_admit_hillclimb(min_co_over) == GB_GATE_COST_OVER_CAP;
+
+  base := GbHillclimbEval.{
+    scaffolds_match = true,
+    atif_verified = true,
+    golden_regressed = false,
+    cand_harness_errors = 0,
+    graded_total = 10,
+    champ_score_bps = 7000,
+    cand_score_bps = 7500,
+    champ_ttft_us = 100000,
+    cand_ttft_us = 100000,
+    champ_tpot_us = 10000,
+    cand_tpot_us = 10000,
+    cand_cv_bps = 500,
+    max_cv_bps = 500,
+    cand_cost_micros = 100,
+    max_cost_micros = 100,
+  };
+  #assert gb_admit_hillclimb(base) == GB_GATE_PROMOTED;
+  #assert gb_gate_status(GB_GATE_PROMOTED) == "PROMOTED";
+  #assert gb_gate_reason(GB_GATE_PROMOTED) == "promoted_gain_verified";
+
+  b_sc := base; b_sc.scaffolds_match = false;
+  #assert gb_admit_hillclimb(b_sc) == GB_GATE_SCAFFOLD_MISMATCH;
+  #assert gb_gate_status(GB_GATE_SCAFFOLD_MISMATCH) == "REJECTED";
+  #assert gb_gate_reason(GB_GATE_SCAFFOLD_MISMATCH) == "rejected_scaffold_mismatch";
+
+  b_at := base; b_at.atif_verified = false;
+  #assert gb_admit_hillclimb(b_at) == GB_GATE_ATIF_UNVERIFIED;
+  #assert gb_gate_reason(GB_GATE_ATIF_UNVERIFIED) == "rejected_atif_unverified";
+
+  b_he := base; b_he.cand_harness_errors = 1;
+  #assert gb_admit_hillclimb(b_he) == GB_GATE_HARNESS_ERRORS;
+  #assert gb_gate_reason(GB_GATE_HARNESS_ERRORS) == "rejected_harness_errors";
+
+  b_ng := base; b_ng.graded_total = 0;
+  #assert gb_admit_hillclimb(b_ng) == GB_GATE_NO_GRADED;
+  #assert gb_gate_reason(GB_GATE_NO_GRADED) == "rejected_no_graded_items";
+
+  b_gr := base; b_gr.golden_regressed = true;
+  #assert gb_admit_hillclimb(b_gr) == GB_GATE_GOLDEN_REGRESSED;
+  #assert gb_gate_reason(GB_GATE_GOLDEN_REGRESSED) == "rejected_golden_regressed";
+
+  b_sr := base; b_sr.cand_score_bps = 6999;
+  #assert gb_admit_hillclimb(b_sr) == GB_GATE_SCORE_REGRESSED;
+  #assert gb_gate_reason(GB_GATE_SCORE_REGRESSED) == "rejected_score_regressed";
+
+  b_cv := base; b_cv.cand_cv_bps = 501;
+  #assert gb_admit_hillclimb(b_cv) == GB_GATE_CV_EXCEEDED;
+  #assert gb_gate_reason(GB_GATE_CV_EXCEEDED) == "rejected_cv_exceeded";
+  b_cv0 := base; b_cv0.max_cv_bps = 0; b_cv0.cand_cv_bps = 9999;
+  #assert gb_admit_hillclimb(b_cv0) == GB_GATE_PROMOTED;
+
+  b_co := base; b_co.cand_cost_micros = 101;
+  #assert gb_admit_hillclimb(b_co) == GB_GATE_COST_OVER_CAP;
+  #assert gb_gate_reason(GB_GATE_COST_OVER_CAP) == "rejected_cost_over_cap";
+  b_co0 := base; b_co0.max_cost_micros = 0; b_co0.cand_cost_micros = 9999;
+  #assert gb_admit_hillclimb(b_co0) == GB_GATE_PROMOTED;
+
+  tie := base; tie.cand_score_bps = 7000;
+  #assert gb_admit_hillclimb(tie) == GB_GATE_HOLD_NO_GAIN;
+  #assert gb_gate_status(GB_GATE_HOLD_NO_GAIN) == "QUARANTINE_HELD";
+  #assert gb_gate_reason(GB_GATE_HOLD_NO_GAIN) == "quarantine_held_no_strict_gain";
+
+  fast_tpot := tie; fast_tpot.cand_tpot_us = 9000;
+  #assert gb_admit_hillclimb(fast_tpot) == GB_GATE_PROMOTED;
+  fast_tpot_1 := tie; fast_tpot_1.champ_tpot_us = 2; fast_tpot_1.cand_tpot_us = 1;
+  #assert gb_admit_hillclimb(fast_tpot_1) == GB_GATE_PROMOTED;
+  miss_tpot := tie; miss_tpot.cand_tpot_us = 9001;
+  #assert gb_admit_hillclimb(miss_tpot) == GB_GATE_HOLD_NO_GAIN;
+  zero_tpot := tie; zero_tpot.cand_tpot_us = 0;
+  #assert gb_admit_hillclimb(zero_tpot) == GB_GATE_HOLD_NO_GAIN;
+  cz_tpot := tie; cz_tpot.champ_tpot_us = 0;
+  #assert gb_admit_hillclimb(cz_tpot) == GB_GATE_HOLD_NO_GAIN;
+
+  fast_ttft := tie; fast_ttft.cand_ttft_us = 90000;
+  #assert gb_admit_hillclimb(fast_ttft) == GB_GATE_PROMOTED;
+  fast_ttft_1 := tie; fast_ttft_1.champ_ttft_us = 2; fast_ttft_1.cand_ttft_us = 1;
+  #assert gb_admit_hillclimb(fast_ttft_1) == GB_GATE_PROMOTED;
+  miss_ttft := tie; miss_ttft.cand_ttft_us = 90001;
+  #assert gb_admit_hillclimb(miss_ttft) == GB_GATE_HOLD_NO_GAIN;
+  zero_ttft := tie; zero_ttft.cand_ttft_us = 0;
+  #assert gb_admit_hillclimb(zero_ttft) == GB_GATE_HOLD_NO_GAIN;
+  cz_ttft := tie; cz_ttft.champ_ttft_us = 0;
+  #assert gb_admit_hillclimb(cz_ttft) == GB_GATE_HOLD_NO_GAIN;
+
+  #assert gb_gate_reason(99) == "rejected_unknown";
+}

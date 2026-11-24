@@ -1,0 +1,52 @@
+{
+  "profile": "gbench-gym-v1",
+  "description": "Canonical JSON wire goldens and adversarial refusals for gBench Coax Runner, OpenAgents Desktop Gym gBench Workbench, and Inkling Hillclimbing.",
+  "schemas": [
+    "gbench-doctor.v1",
+    "gbench-policy.v1",
+    "gbench-item.v1",
+    "gbench-compare.v1",
+    "gbench-hillclimb.v1"
+  ],
+  "goldens": [
+    {
+      "schema": "gbench-doctor.v1",
+      "line": "{\"schema\":\"gbench-doctor.v1\",\"ok\":true,\"venv_ok\":true,\"gbench_version\":\"0.5.0.post1\",\"python_version\":\"3.12.13\",\"psionic_ok\":true,\"llama_ok\":true,\"tokenizer_ok\":true,\"bwrap_ok\":false,\"docker_ok\":false,\"gemini_key_set\":false,\"hf_token_set\":false,\"variants_installed\":3}"
+    },
+    {
+      "schema": "gbench-policy.v1",
+      "line": "{\"schema\":\"gbench-policy.v1\",\"id\":\"inkling-base-v1\",\"label\":\"Inkling 2 Mini · Psionic IQ4_NL\",\"variant\":\"inkling-2-mini\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini\",\"effort\":\"0.7\",\"thinking\":false,\"temp_milli\":0,\"max_output_tokens\":2048,\"ctx_tokens\":32768,\"spec_lookup\":false,\"lora_path\":\"\",\"manifest_sha\":\"7b8a3f92e145c010d23456789abcdef0123456789abcdef0123456789abcdef0\"}"
+    },
+    {
+      "schema": "gbench-item.v1",
+      "line": "{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"category\":\"math\",\"arm\":\"inkling-base-v1\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10000,\"graded\":10,\"passed_count\":10,\"harness_errors\":0,\"token_leaks\":0,\"wall_ms\":12920,\"ttft_us\":300900,\"tpot_us\":12375,\"itl_p99_us\":74558,\"tok_per_s_x10\":567,\"cv_bps\":0,\"scaffold_id\":\"sc_d7ca3dea\",\"subject_id\":\"sb_f77ab882\",\"leaderboard_comparable\":false,\"distill_allowed\":true,\"atif_verified\":true,\"atif_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"atif_path\":\"/Users/test/.openagents/gbench/runs/gb-1/gsm8k.atif.jsonl\",\"detail\":\"strict-match 100.0%\"}"
+    },
+    {
+      "schema": "gbench-compare.v1",
+      "line": "{\"schema\":\"gbench-compare.v1\",\"run_id\":\"gb-20261124-0001\",\"timestamp\":\"2026-11-24T00:01:00Z\",\"profile\":\"oa-local-fast\",\"pillar\":\"eval\",\"scaffold_locked\":true,\"arm_a\":{\"id\":\"inkling-base-v1\",\"label\":\"Inkling 2 Mini · Psionic IQ4_NL\",\"variant\":\"inkling-2-mini\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini\",\"effort\":\"0.7\",\"thinking\":false,\"policy_sha\":\"7b8a3f92e145c010d23456789abcdef0123456789abcdef0123456789abcdef0\",\"scaffold_id\":\"sc_d7ca3dea\",\"subject_id\":\"sb_f77ab882\",\"boot_ms\":1420,\"peak_rss_mb\":11200,\"total\":1,\"graded\":10,\"passed\":10,\"failed\":0,\"infra_errors\":0,\"score_bps\":10000,\"wilson_low_bps\":7224,\"wilson_high_bps\":10000,\"golden_passed\":13,\"golden_applicable\":14,\"token_leaks\":0,\"ttft_p50_us\":300900,\"tpot_p50_us\":12375,\"itl_p99_us\":74558,\"tok_per_s_x10\":567,\"cv_bps\":0,\"total_wall_ms\":12920,\"atif_all_verified\":true,\"leaderboard_comparable\":false},\"arm_b\":{\"id\":\"inkling-lora-v1\",\"label\":\"Inkling 2 Mini · Uncensored LoRA\",\"variant\":\"inkling-2-mini-uncensored-lora\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini-uncensored-lora\",\"effort\":\"0.7\",\"thinking\":false,\"policy_sha\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"scaffold_id\":\"sc_d7ca3dea\",\"subject_id\":\"sb_aaaaaaaa\",\"boot_ms\":1450,\"peak_rss_mb\":11300,\"total\":1,\"graded\":10,\"passed\":9,\"failed\":1,\"infra_errors\":0,\"score_bps\":9000,\"wilson_low_bps\":5958,\"wilson_high_bps\":9821,\"golden_passed\":13,\"golden_applicable\":14,\"token_leaks\":0,\"ttft_p50_us\":310000,\"tpot_p50_us\":12600,\"itl_p99_us\":76000,\"tok_per_s_x10\":550,\"cv_bps\":0,\"total_wall_ms\":13200,\"atif_all_verified\":true,\"leaderboard_comparable\":false},\"rows_a\":[{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"category\":\"math\",\"arm\":\"inkling-base-v1\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10000,\"graded\":10,\"passed_count\":10,\"harness_errors\":0,\"token_leaks\":0,\"wall_ms\":12920,\"ttft_us\":300900,\"tpot_us\":12375,\"itl_p99_us\":74558,\"tok_per_s_x10\":567,\"cv_bps\":0,\"scaffold_id\":\"sc_d7ca3dea\",\"subject_id\":\"sb_f77ab882\",\"leaderboard_comparable\":false,\"distill_allowed\":true,\"atif_verified\":true,\"atif_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"atif_path\":\"\",\"detail\":\"strict-match 100.0%\"}],\"rows_b\":[{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"category\":\"math\",\"arm\":\"inkling-lora-v1\",\"status\":\"FAIL\",\"passed\":false,\"score_bps\":9000,\"graded\":10,\"passed_count\":9,\"harness_errors\":0,\"token_leaks\":0,\"wall_ms\":13200,\"ttft_us\":310000,\"tpot_us\":12600,\"itl_p99_us\":76000,\"tok_per_s_x10\":550,\"cv_bps\":0,\"scaffold_id\":\"sc_d7ca3dea\",\"subject_id\":\"sb_aaaaaaaa\",\"leaderboard_comparable\":false,\"distill_allowed\":true,\"atif_verified\":true,\"atif_digest\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"atif_path\":\"\",\"detail\":\"strict-match 90.0%\"}]}"
+    },
+    {
+      "schema": "gbench-hillclimb.v1",
+      "line": "{\"schema\":\"gbench-hillclimb.v1\",\"round\":1,\"timestamp\":\"2026-11-24T00:05:00Z\",\"profile\":\"oa-local-fast\",\"champion_id\":\"inkling-base-v1\",\"champion_sha\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"challenger_id\":\"inkling-effort-09\",\"challenger_sha\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"mutation_note\":\"raise thinking effort 0.7 -> 0.9 with official template parity\",\"scaffold_id\":\"sc_d7ca3dea\",\"graded_total\":20,\"champ_score_bps\":7500,\"cand_score_bps\":8500,\"champ_ttft_us\":300900,\"cand_ttft_us\":302000,\"champ_tpot_us\":12375,\"cand_tpot_us\":12400,\"cand_harness_errors\":0,\"verdict\":\"PROMOTED\",\"reason\":\"promoted_gain_verified\",\"distilled_atif\":12,\"run_dir\":\"/Users/test/.openagents/gbench/runs/hc-round-1\"}"
+    }
+  ],
+  "refused": [
+    "",
+    "[]",
+    "{}",
+    "{\"schema\":\"unknown.v1\"}",
+    "{\"schema\":\"gbench-doctor.v1\",\"ok\":1,\"venv_ok\":true,\"variants_installed\":1}",
+    "{\"schema\":\"gbench-doctor.v1\",\"ok\":true,\"venv_ok\":true,\"variants_installed\":-1}",
+    "{\"schema\":\"gbench-policy.v1\",\"id\":\"BAD SLUG!\",\"variant\":\"inkling-2-mini\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini\",\"max_output_tokens\":2048,\"ctx_tokens\":32768,\"manifest_sha\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+    "{\"schema\":\"gbench-policy.v1\",\"id\":\"ok-id\",\"variant\":\"inkling-2-mini\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini\",\"max_output_tokens\":0,\"ctx_tokens\":32768,\"manifest_sha\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",
+    "{\"schema\":\"gbench-policy.v1\",\"id\":\"ok-id\",\"variant\":\"inkling-2-mini\",\"backend\":\"psionic-metal\",\"model_id\":\"inkling-2-mini\",\"max_output_tokens\":2048,\"ctx_tokens\":32768,\"manifest_sha\":\"deadbeef\"}",
+    "{\"schema\":\"gbench-item.v1\",\"item_id\":\"../escape\",\"pillar\":\"eval\",\"arm\":\"a\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10000}",
+    "{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"bad\",\"arm\":\"a\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10000}",
+    "{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"arm\":\"a\",\"status\":\"PASS\",\"passed\":false,\"score_bps\":10000}",
+    "{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"arm\":\"a\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10001}",
+    "{\"schema\":\"gbench-item.v1\",\"item_id\":\"gsm8k\",\"pillar\":\"eval\",\"arm\":\"a\",\"status\":\"PASS\",\"passed\":true,\"score_bps\":10000,\"atif_verified\":true,\"atif_digest\":\"short\"}",
+    "{\"schema\":\"gbench-compare.v1\",\"run_id\":\"\",\"timestamp\":\"t\",\"profile\":\"oa-local-fast\",\"pillar\":\"eval\"}",
+    "{\"schema\":\"gbench-hillclimb.v1\",\"round\":0,\"timestamp\":\"t\",\"profile\":\"oa-local-fast\",\"champion_id\":\"a\",\"challenger_id\":\"b\",\"verdict\":\"PROMOTED\",\"reason\":\"promoted_gain_verified\"}",
+    "{\"schema\":\"gbench-hillclimb.v1\",\"round\":1,\"timestamp\":\"t\",\"profile\":\"oa-local-fast\",\"champion_id\":\"a\",\"challenger_id\":\"b\",\"verdict\":\"PROMOTED\",\"reason\":\"rejected_scaffold_mismatch\"}"
+  ]
+}

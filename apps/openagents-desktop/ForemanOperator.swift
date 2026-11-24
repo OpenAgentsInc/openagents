@@ -58,6 +58,8 @@ enum ForemanAPI {
         ForemanRoute(method: "POST", path: "/v1/gym", operatorOnly: false, summary: "Steer the Gym: {run?, camera?, only?, show?, hide?, step?, select?, live?, open?, id?}"),
         ForemanRoute(method: "GET", path: "/v1/gym/lean", operatorOnly: false, summary: "The Lean 4 & Riemann Hypothesis Proof Workbench state (lean-gym-state.v1)"),
         ForemanRoute(method: "POST", path: "/v1/gym/lean", operatorOnly: false, summary: "Steer Gym -> Lean · RH: {view?, module?, decl?, tour_step?, search?, math_tab?, file?, line?, open?, id?}"),
+        ForemanRoute(method: "GET", path: "/v1/gym/gbench", operatorOnly: false, summary: "The gBench Inkling Variant & Hillclimbing Workbench state"),
+        ForemanRoute(method: "POST", path: "/v1/gym/gbench", operatorOnly: false, summary: "Steer Gym -> gBench: {action?, profile?, arm_a?, arm_b?, thinking?, limit?, open?}"),
         ForemanRoute(method: "GET", path: "/v1/wallet/status", operatorOnly: false, summary: "Bitcoin/Lightning Spark wallet status, balance in sats, Spark address, and daily limit"),
         ForemanRoute(method: "POST", path: "/v1/wallet/receive", operatorOnly: false, summary: "Generate a BOLT11 invoice, Spark address, or Bitcoin address: {kind?, amount_sats?, description?}"),
         ForemanRoute(method: "POST", path: "/v1/wallet/quote", operatorOnly: false, summary: "Prepare a real Spark send quote: {destination, amount_sats?, comment?}"),

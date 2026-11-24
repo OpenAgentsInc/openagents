@@ -4,7 +4,7 @@ import AppKit
 
 extension CoderWindow {
     /// Opens the Gym in the main content area beside the sidebar.
-    /// mode: 0 Benchmarks, 1 PLE 3D, 2 Lean · RH, 3 Terminal-Bench (nil keeps the page's current mode).
+    /// mode: 0 Benchmarks, 1 PLE 3D, 2 Lean · RH, 3 Terminal-Bench, 4 gBench (nil keeps the page's current mode).
     func openGym(mode: Int32? = nil) {
         guard Experimental.on else { return }   // an experimental feature (Settings > General)
         cd_gym_set(page, 1)
@@ -377,7 +377,7 @@ extension CoderWindow {
             state["open"] = self.map { cd_gym_open($0.page) != 0 } ?? false
             if let self {
                 let m = cd_gym_mode(self.page)
-                state["mode"] = m == 0 ? "benchmarks" : (m == 1 ? "ple" : "lean")
+                state["mode"] = m == 0 ? "benchmarks" : (m == 1 ? "ple" : (m == 3 ? "tbench" : (m == 4 ? "gbench" : "lean")))
             }
             if let error { state["error"] = error }
             done(state)
@@ -391,11 +391,41 @@ extension CoderWindow {
         state["ok"] = true
         state["open"] = cd_gym_open(page) != 0
         let m = cd_gym_mode(page)
-        state["mode"] = m == 0 ? "benchmarks" : (m == 1 ? "ple" : "lean")
+        state["mode"] = m == 0 ? "benchmarks" : (m == 1 ? "ple" : (m == 3 ? "tbench" : (m == 4 ? "gbench" : "lean")))
         return state
     }
 
-    /// `ple-run gym` and `lean-run gym` hand requests over in ~/.openagents/{ple,lean}/gym-request.json,
+    // MARK: - gBench Workbench Steering (`GET/POST /v1/gym/gbench` & `~/.openagents/gbench/gym-request.json`)
+
+    static var gbenchGymRequestFile: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/gbench/gym-request.json") }
+    static var gbenchGymStateFile: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/gbench/gym-state.json") }
+
+    func gbenchGymStateForProgram() -> [String: Any] {
+        guard Experimental.on else {
+            return ["ok": false, "error": "the Gym is an experimental feature: turn on Experimental features in Settings > General"]
+        }
+        var state = gymView?.gbenchView.gbenchState() ?? ["ok": true, "mode": "gbench"]
+        state["open"] = cd_gym_open(page) != 0 && cd_gym_mode(page) == 4
+        return state
+    }
+
+    func handleGBenchGymRequest(_ json: String, done: @escaping ([String: Any]) -> Void) {
+        guard Experimental.on else {
+            done(["ok": false, "error": "the Gym is an experimental feature: turn on Experimental features in Settings > General"])
+            return
+        }
+        let reqObj = (json.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+        let shouldOpen = (reqObj["open"] as? Bool) ?? true
+        if shouldOpen {
+            openGym(mode: 4)
+        }
+        let wb = ensureGymView()
+        var state = wb.gbenchView.applyRequest(reqObj)
+        state["open"] = cd_gym_open(page) != 0 && cd_gym_mode(page) == 4
+        done(state)
+    }
+
+    /// `ple-run gym`, `lean-run gym`, and `gbench-run` hand requests over in ~/.openagents/{ple,lean,gbench}/gym-request.json,
     /// taken (and removed) twice a second while Experimental features are on; answers go to gym-state.json beside them.
     static var gymRequestFile: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/ple/gym-request.json") }
     static var gymStateFile: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/ple/gym-state.json") }
@@ -405,6 +435,7 @@ extension CoderWindow {
         gymRequestTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.takeGymRequest()
             self?.takeLeanGymRequest()
+            self?.takeGBenchGymRequest()
         }
     }
 
@@ -441,6 +472,22 @@ extension CoderWindow {
                 _ = try FileManager.default.replaceItemAt(CoderWindow.leanGymStateFile, withItemAt: tmp)
             } catch {
                 try? out.write(to: CoderWindow.leanGymStateFile, options: .atomic)
+            }
+        }
+    }
+
+    private func takeGBenchGymRequest() {
+        let file = CoderWindow.gbenchGymRequestFile
+        guard let data = try? Data(contentsOf: file) else { return }
+        try? FileManager.default.removeItem(at: file)
+        handleGBenchGymRequest(String(decoding: data, as: UTF8.self)) { state in
+            guard let out = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) else { return }
+            let tmp = CoderWindow.gbenchGymStateFile.appendingPathExtension("tmp")
+            do {
+                try out.write(to: tmp)
+                _ = try FileManager.default.replaceItemAt(CoderWindow.gbenchGymStateFile, withItemAt: tmp)
+            } catch {
+                try? out.write(to: CoderWindow.gbenchGymStateFile, options: .atomic)
             }
         }
     }

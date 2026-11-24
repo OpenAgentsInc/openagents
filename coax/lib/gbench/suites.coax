@@ -1,0 +1,376 @@
+// gBench Curated OpenAgents Profiles & Local Inkling Variant Catalog.
+//
+// Maps OpenAgents Desktop LocalModels.swift (#14028) Inkling variations + llama.cpp
+// comparators to exact GGUF/LoRA paths and defines the curated $0.00 local gBench profiles.
+//
+//   coax/bin/coax test coax/lib/gbench/suites.coax --library
+#load "policy.coax";
+
+// Profile pillar kinds
+GB_KIND_GOLDEN :: 0;
+GB_KIND_PERF :: 1;
+GB_KIND_EVAL :: 2;
+
+// Curated profiles
+GB_PROF_TEMPLATE_SMOKE :: 0;
+GB_PROF_PERF_QUICK :: 1;
+GB_PROF_PERF_AGENTIC :: 2;
+GB_PROF_LOCAL_FAST :: 3;
+GB_PROF_LOCAL_CORE :: 4;
+GB_PROF_CODING_LINUX :: 5;
+GB_PROF_COUNT :: 6;
+
+// Local Inkling variations + llama.cpp comparators (mirrors apps/openagents-desktop/LocalModels.swift)
+GB_VAR_INKLING_BASE :: 0;
+GB_VAR_INKLING_LORA :: 1;
+GB_VAR_INKLING_Q4K :: 2;
+GB_VAR_INKLING_IQ3S :: 3;
+GB_VAR_INKLING_IQ2M :: 4;
+GB_VAR_INKLING_MIX16G :: 5;
+GB_VAR_INKLING_MIX12G :: 6;
+GB_VAR_LLAMACPP_BASE :: 7;
+GB_VAR_LLAMACPP_Q4K :: 8;
+GB_VAR_COUNT :: 9;
+
+GB_LOCAL_FAST_SUITES :: [6] string.[
+  "gsm8k",
+  "amc_aime",
+  "ifeval",
+  "arc_agi",
+  "mmlu_redux",
+  "seal_tools",
+];
+
+GB_LOCAL_CORE_SUITES :: [16] string.[
+  "gsm8k",
+  "ifeval",
+  "arc_agi",
+  "mmlu_redux",
+  "mmlu_pro",
+  "multilingual_mmlu",
+  "amc_aime",
+  "seal_tools",
+  "gorilla_apibench",
+  "nexusraven_api_eval",
+  "agent_dojo",
+  "causalbench",
+  "loft_scifact",
+  "longbench_v2_code",
+  "mrcr",
+  "i18n_translate",
+];
+
+GB_CODING_LINUX_SUITES :: [6] string.[
+  "acebench",
+  "codeforces",
+  "cruxeval",
+  "lcb",
+  "nestful",
+  "scicode",
+];
+
+GB_GOLDEN_TASKS :: [16] string.[
+  "audio_transcription_smoketest",
+  "code_canonical",
+  "function_call_single",
+  "identify_person",
+  "location_identification",
+  "math_canonical",
+  "multimodal_vision_landmark",
+  "safety_boundary",
+  "structured_json",
+  "template_multi_turn",
+  "template_multi_turn_twin",
+  "template_tool_response",
+  "template_tool_response_twin",
+  "tool_call_minimal",
+  "translation_romance",
+  "two_rivers_zurich",
+];
+
+GbProfileInfo :: struct {
+  id: int;
+  slug: string;
+  title: string;
+  kind: int;
+  count: int;
+  requires_linux_bwrap: bool;
+  default_limit: int;
+  default_max_output_tokens: int;
+}
+
+GbVariantInfo :: struct {
+  id: int;
+  slug: string;
+  label: string;
+  backend: string;        // "psionic-metal" | "llamacpp-metal"
+  model_id: string;       // served model id for /v1/models
+  rel_gguf: string;       // relative to ~/.openagents/models/
+  rel_lora: string;       // optional LoRA path relative to ~/.openagents/models/ (empty if none)
+  quant: string;
+  min_ram_gb: int;
+}
+
+gb_kind_name :: (kind: int) -> string #effects() {
+  if kind == GB_KIND_GOLDEN { return "golden"; }
+  if kind == GB_KIND_PERF { return "perf"; }
+  return "eval";
+}
+
+gb_profile_info :: (id: int) -> GbProfileInfo {
+  if id == GB_PROF_TEMPLATE_SMOKE {
+    return GbProfileInfo.{
+      id = GB_PROF_TEMPLATE_SMOKE,
+      slug = "oa-template-smoke",
+      title = "Golden Set & Chat-Template Smoke (16 cases, $0)",
+      kind = GB_KIND_GOLDEN,
+      count = 16,
+      requires_linux_bwrap = false,
+      default_limit = 0,
+      default_max_output_tokens = 512,
+    };
+  }
+  if id == GB_PROF_PERF_QUICK {
+    return GbProfileInfo.{
+      id = GB_PROF_PERF_QUICK,
+      slug = "oa-perf-quick",
+      title = "Serving Latency Quick (TTFT / TPOT / ITL, $0)",
+      kind = GB_KIND_PERF,
+      count = 1,
+      requires_linux_bwrap = false,
+      default_limit = 0,
+      default_max_output_tokens = 64,
+    };
+  }
+  if id == GB_PROF_PERF_AGENTIC {
+    return GbProfileInfo.{
+      id = GB_PROF_PERF_AGENTIC,
+      slug = "oa-perf-agentic",
+      title = "Serving Campaign: Agentic Workload (TTFT / TPOT / ITL, $0)",
+      kind = GB_KIND_PERF,
+      count = 1,
+      requires_linux_bwrap = false,
+      default_limit = 0,
+      default_max_output_tokens = 512,
+    };
+  }
+  if id == GB_PROF_LOCAL_FAST {
+    return GbProfileInfo.{
+      id = GB_PROF_LOCAL_FAST,
+      slug = "oa-local-fast",
+      title = "Local Core Fast — 6 Zero-Infra Suites (Math, IFEval, ARC, MMLU, Tools, $0)",
+      kind = GB_KIND_EVAL,
+      count = 6,
+      requires_linux_bwrap = false,
+      default_limit = 10,
+      default_max_output_tokens = 2048,
+    };
+  }
+  if id == GB_PROF_LOCAL_CORE {
+    return GbProfileInfo.{
+      id = GB_PROF_LOCAL_CORE,
+      slug = "oa-local-core",
+      title = "Local Core Full — All 16 Zero-Infra Pure-HTTP Suites ($0)",
+      kind = GB_KIND_EVAL,
+      count = 16,
+      requires_linux_bwrap = false,
+      default_limit = 20,
+      default_max_output_tokens = 4096,
+    };
+  }
+  return GbProfileInfo.{
+    id = GB_PROF_CODING_LINUX,
+    slug = "oa-coding-linux",
+    title = "Linux Sandboxed Coding — 6 bwrap Suites (Linux-only)",
+    kind = GB_KIND_EVAL,
+    count = 6,
+    requires_linux_bwrap = true,
+    default_limit = 10,
+    default_max_output_tokens = 4096,
+  };
+}
+
+gb_profile_by_slug :: (slug: string) -> int {
+  if slug == "oa-template-smoke" || slug == "golden" || slug == "smoke" { return GB_PROF_TEMPLATE_SMOKE; }
+  if slug == "oa-perf-quick" || slug == "perf-quick" { return GB_PROF_PERF_QUICK; }
+  if slug == "oa-perf-agentic" || slug == "perf" || slug == "agentic" { return GB_PROF_PERF_AGENTIC; }
+  if slug == "oa-local-fast" || slug == "fast" { return GB_PROF_LOCAL_FAST; }
+  if slug == "oa-local-core" || slug == "core" { return GB_PROF_LOCAL_CORE; }
+  if slug == "oa-coding-linux" || slug == "coding" { return GB_PROF_CODING_LINUX; }
+  return -1;
+}
+
+gb_profile_item :: (prof_id: int, idx: int) -> string {
+  if idx < 0 { return ""; }
+  if prof_id == GB_PROF_TEMPLATE_SMOKE && idx < 16 { return GB_GOLDEN_TASKS[idx]; }
+  if prof_id == GB_PROF_PERF_QUICK && idx == 0 { return "serving_quick"; }
+  if prof_id == GB_PROF_PERF_AGENTIC && idx == 0 { return "serving_agentic"; }
+  if prof_id == GB_PROF_LOCAL_FAST && idx < 6 { return GB_LOCAL_FAST_SUITES[idx]; }
+  if prof_id == GB_PROF_LOCAL_CORE && idx < 16 { return GB_LOCAL_CORE_SUITES[idx]; }
+  if prof_id == GB_PROF_CODING_LINUX && idx < 6 { return GB_CODING_LINUX_SUITES[idx]; }
+  return "";
+}
+
+gb_variant_info :: (id: int) -> GbVariantInfo {
+  if id == GB_VAR_INKLING_BASE {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_BASE,
+      slug = "inkling-2-mini",
+      label = "Inkling 2 Mini · Psionic IQ4_NL (Official)",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "",
+      quant = "IQ4_NL",
+      min_ram_gb = 32,
+    };
+  }
+  if id == GB_VAR_INKLING_LORA {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_LORA,
+      slug = "inkling-2-mini-uncensored-lora",
+      label = "Inkling 2 Mini · Psionic IQ4_NL + Uncensored LoRA",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-uncensored-lora",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "inkling-2-mini-uncensored-lora/Inkling-2-Mini-Uncensored-LoRA.gguf",
+      quant = "IQ4_NL+LoRA",
+      min_ram_gb = 32,
+    };
+  }
+  if id == GB_VAR_INKLING_Q4K {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_Q4K,
+      slug = "inkling-2-mini-uncensored-q4k",
+      label = "Inkling 2 Mini · Psionic Uncensored AD-Q4_K",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-uncensored-q4k",
+      rel_gguf = "inkling-2-mini-uncensored-q4k/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+      rel_lora = "",
+      quant = "AD-Q4_K",
+      min_ram_gb = 24,
+    };
+  }
+  if id == GB_VAR_INKLING_IQ3S {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_IQ3S,
+      slug = "inkling-2-mini-uncensored-iq3s",
+      label = "Inkling 2 Mini · Psionic Uncensored AD-IQ3_S",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-uncensored-iq3s",
+      rel_gguf = "inkling-2-mini-uncensored-iq3s/Inkling-2-Mini-Uncensored-AD-IQ3_S.gguf",
+      rel_lora = "",
+      quant = "AD-IQ3_S",
+      min_ram_gb = 16,
+    };
+  }
+  if id == GB_VAR_INKLING_IQ2M {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_IQ2M,
+      slug = "inkling-2-mini-uncensored-iq2m",
+      label = "Inkling 2 Mini · Psionic Uncensored AD-IQ2_M",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-uncensored-iq2m",
+      rel_gguf = "inkling-2-mini-uncensored-iq2m/Inkling-2-Mini-Uncensored-AD-IQ2_M.gguf",
+      rel_lora = "",
+      quant = "AD-IQ2_M",
+      min_ram_gb = 12,
+    };
+  }
+  if id == GB_VAR_INKLING_MIX16G {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_MIX16G,
+      slug = "inkling-2-mini-abliterated-mix16g",
+      label = "Inkling 2 Mini · Psionic Abliterated Mix-16G",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-abliterated-mix16g",
+      rel_gguf = "inkling-2-mini-abliterated-mix16g/Inkling-2-Mini-abliterated-Mix-16G.gguf",
+      rel_lora = "",
+      quant = "Mix-16G",
+      min_ram_gb = 24,
+    };
+  }
+  if id == GB_VAR_INKLING_MIX12G {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_MIX12G,
+      slug = "inkling-2-mini-abliterated-mix12g",
+      label = "Inkling 2 Mini · Psionic Abliterated Mix-12G",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-abliterated-mix12g",
+      rel_gguf = "inkling-2-mini-abliterated-mix12g/Inkling-2-Mini-abliterated-Mix-12G.gguf",
+      rel_lora = "",
+      quant = "Mix-12G",
+      min_ram_gb = 16,
+    };
+  }
+  if id == GB_VAR_LLAMACPP_BASE {
+    return GbVariantInfo.{
+      id = GB_VAR_LLAMACPP_BASE,
+      slug = "llamacpp-inkling-2-mini",
+      label = "Inkling 2 Mini · llama.cpp IQ4_NL (Comparator)",
+      backend = "llamacpp-metal",
+      model_id = "inkling-2-mini",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "",
+      quant = "IQ4_NL",
+      min_ram_gb = 32,
+    };
+  }
+  return GbVariantInfo.{
+    id = GB_VAR_LLAMACPP_Q4K,
+    slug = "llamacpp-inkling-uncensored-q4k",
+    label = "Inkling 2 Mini · llama.cpp Uncensored AD-Q4_K",
+    backend = "llamacpp-metal",
+    model_id = "inkling-2-mini-uncensored-q4k",
+    rel_gguf = "inkling-2-mini-uncensored-q4k/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+    rel_lora = "",
+    quant = "AD-Q4_K",
+    min_ram_gb = 24,
+  };
+}
+
+gb_variant_by_slug :: (slug: string) -> int {
+  if slug == "inkling-2-mini" || slug == "psionic" || slug == "base" { return GB_VAR_INKLING_BASE; }
+  if slug == "inkling-2-mini-uncensored-lora" || slug == "lora" || slug == "uncensored-lora" { return GB_VAR_INKLING_LORA; }
+  if slug == "inkling-2-mini-uncensored-q4k" || slug == "q4k" || slug == "uncensored-q4k" { return GB_VAR_INKLING_Q4K; }
+  if slug == "inkling-2-mini-uncensored-iq3s" || slug == "iq3s" { return GB_VAR_INKLING_IQ3S; }
+  if slug == "inkling-2-mini-uncensored-iq2m" || slug == "iq2m" { return GB_VAR_INKLING_IQ2M; }
+  if slug == "inkling-2-mini-abliterated-mix16g" || slug == "mix16g" { return GB_VAR_INKLING_MIX16G; }
+  if slug == "inkling-2-mini-abliterated-mix12g" || slug == "mix12g" { return GB_VAR_INKLING_MIX12G; }
+  if slug == "llamacpp-inkling-2-mini" || slug == "llamacpp" || slug == "llama" { return GB_VAR_LLAMACPP_BASE; }
+  if slug == "llamacpp-inkling-uncensored-q4k" || slug == "llama-q4k" { return GB_VAR_LLAMACPP_Q4K; }
+  return -1;
+}
+
+#test "gbench suites: curated profiles, suite IDs, and Inkling variant catalog" {
+  #assert gb_profile_by_slug("oa-template-smoke") == GB_PROF_TEMPLATE_SMOKE;
+  #assert gb_profile_by_slug("oa-perf-quick") == GB_PROF_PERF_QUICK;
+  #assert gb_profile_by_slug("oa-perf-agentic") == GB_PROF_PERF_AGENTIC;
+  #assert gb_profile_by_slug("oa-local-fast") == GB_PROF_LOCAL_FAST;
+  #assert gb_profile_by_slug("oa-local-core") == GB_PROF_LOCAL_CORE;
+  #assert gb_profile_by_slug("oa-coding-linux") == GB_PROF_CODING_LINUX;
+  #assert gb_profile_by_slug("nope") == -1;
+
+  for pid: 0..<GB_PROF_COUNT {
+    info := gb_profile_info(pid);
+    #assert gb_valid_slug(info.slug);
+    #assert info.count > 0;
+    for i: 0..<info.count {
+      item := gb_profile_item(pid, i);
+      #assert gb_valid_suite_id(item);
+    }
+  }
+  #assert gb_profile_info(GB_PROF_LOCAL_CORE).count == 16;
+  #assert gb_profile_info(GB_PROF_TEMPLATE_SMOKE).count == 16;
+
+  for vid: 0..<GB_VAR_COUNT {
+    v := gb_variant_info(vid);
+    #assert gb_valid_slug(v.slug);
+    #assert gb_valid_slug(v.model_id);
+    #assert gb_variant_by_slug(v.slug) == vid;
+    #assert v.rel_gguf.count > 0;
+  }
+  #assert gb_variant_info(GB_VAR_INKLING_LORA).rel_lora.count > 0;
+  #assert gb_variant_info(GB_VAR_INKLING_BASE).rel_lora.count == 0;
+  #assert gb_variant_by_slug("unknown") == -1;
+}
