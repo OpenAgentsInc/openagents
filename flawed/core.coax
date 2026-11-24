@@ -27,6 +27,7 @@
 #load "shell_sandbox.coax";
 #load "workspace_tools.coax";
 #load "hooks.coax";
+#load "config.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -275,4 +276,14 @@
   #assert flawed_hook_async_dispatch(false, true, true) == FLAWED_HASYNC_REWAKE;
   v6_meta: [8] u16; v6_meta[5] = 0xffff; v6_meta[6] = 0xa9fe; v6_meta[7] = 0x0808;
   #assert flawed_ssrf_is_blocked_ipv6(v6_meta[..]) && !flawed_ssrf_is_blocked_ipv4(127, 0);
+}
+
+#test "flawed core (Ch 14): GlobalConfig auth-loss guard, policy first-source-wins, two-phase env trust, and HIPAA policy limits compose" {
+  #assert flawed_cfg_would_lose_auth(true, true, false, true);
+  #assert !flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_PROJECT);
+  #assert flawed_resolve_policy_origin(false, true, true, true) == FLAWED_PORIG_ADMIN_MDM;
+  #assert !flawed_cfg_should_watch_source(FLAWED_CSRC_FLAG, false, false);
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_PROJECT, false, false, false, false, false, false, false, false);
+  #assert !flawed_policy_limit_allowed(false, false, false, true, true);
+  #assert flawed_remote_security_dialog_action(true, true, false) == FLAWED_RSEC_SHUTDOWN_FAIL_CLOSED;
 }

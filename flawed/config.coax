@@ -1,0 +1,318 @@
+// Flawed Layer 4 (Chapter 14) — Configuration, Settings Precedence, Live Propagation,
+// Two-Phase Trusted Env Loading, Enterprise Policy Services & Idempotent Migrations.
+// Replaces cc/utils/{config,managedEnv}.ts, cc/utils/settings/{constants,settings,
+// changeDetector,applySettingsChange,validateEditTool,pluginOnlyPolicy}.ts,
+// cc/services/{remoteManagedSettings,policyLimits}/index.ts, and cc/migrations/ gates.
+//   coax/bin/coax test flawed/config.coax --library
+//   coax/bin/coax mutate flawed/config.coax --root-only
+#module "flawed.config";
+#authority;
+#load "hooks.coax";
+
+// GlobalConfig backup, watch, and migration constants (utils/config.ts, changeDetector.ts, main.tsx).
+FLAWED_CFG_MIN_BACKUP_INTERVAL_MS :: 60000;
+FLAWED_CFG_MAX_BACKUPS :: 5;
+FLAWED_CFG_STABILITY_MS :: 1000;
+FLAWED_CFG_POLL_MS :: 500;
+FLAWED_CFG_DELETION_GRACE_MS :: 1700;       // strictly > STABILITY_MS + POLL_MS
+FLAWED_CFG_INTERNAL_WRITE_WINDOW_MS :: 5000;
+FLAWED_CFG_MDM_POLL_MS :: 1800000;          // 30 minutes
+FLAWED_CFG_CURRENT_MIGRATION_VERSION :: 11;
+
+// 6-layer declarative settings cascade (lowest -> highest priority).
+FLAWED_CSRC_PLUGIN_BASE :: 1;
+FLAWED_CSRC_USER :: 2;
+FLAWED_CSRC_PROJECT :: 3;
+FLAWED_CSRC_LOCAL :: 4;
+FLAWED_CSRC_FLAG :: 5;
+FLAWED_CSRC_POLICY :: 6;
+
+// Inside policySettings: strict first-source-wins origins.
+FLAWED_PORIG_REMOTE :: 1;
+FLAWED_PORIG_ADMIN_MDM :: 2;
+FLAWED_PORIG_MANAGED_FILE :: 3;
+FLAWED_PORIG_HKCU :: 4;
+FLAWED_PORIG_NONE :: 5;
+
+// Remote managed settings HTTP response actions (services/remoteManagedSettings/index.ts).
+FLAWED_RSET_APPLY_CACHE :: 1;
+FLAWED_RSET_KEEP_CACHE :: 2;
+FLAWED_RSET_REVOKE_UNLINK :: 3;
+FLAWED_RSET_AUTH_SKIP_RETRY :: 4;
+FLAWED_RSET_RETRY_FAIL_OPEN :: 5;
+
+// Remote managed settings security dialog outcomes (securityCheck.tsx).
+FLAWED_RSEC_APPLY :: 1;
+FLAWED_RSEC_SHUTDOWN_FAIL_CLOSED :: 2;
+
+// GlobalConfig boot latch & anti-reentrancy guard (utils/config.ts:48-51, 1332-1356).
+flawed_cfg_can_read :: (reading_allowed: bool, inside_get_config: bool) -> bool #effects(traps) {
+  return reading_allowed && !inside_get_config;
+}
+
+// GH #3117 auth-loss guard (utils/config.ts:783-795):
+// Aborts write if freshly read disk config lost in-memory OAuth auth or onboarding completion.
+flawed_cfg_would_lose_auth :: (
+  mem_has_oauth: bool,
+  mem_onboarded: bool,
+  disk_has_oauth: bool,
+  disk_onboarded: bool
+) -> bool #effects(traps) {
+  return (mem_has_oauth && !disk_has_oauth) || (mem_onboarded && !disk_onboarded);
+}
+
+// Rate-limited backup rotation gate (utils/config.ts:1245-1309).
+flawed_cfg_should_backup :: (now_ms: int, last_backup_ms: int) -> bool #effects(traps) {
+  if last_backup_ms == 0 { return true; }
+  return now_ms - last_backup_ms >= FLAWED_CFG_MIN_BACKUP_INTERVAL_MS;
+}
+
+// Write-through cache mtime filter (utils/config.ts:992-1086):
+// Only strictly newer external writes trigger async re-read; own writes are skipped.
+flawed_cfg_watch_is_external_write :: (disk_mtime_ms: int, cached_write_mtime_ms: int) -> bool #effects(traps) {
+  return disk_mtime_ms > cached_write_mtime_ms;
+}
+
+// Settings source editability & security-sensitive opt-in trust (settings.ts:416-425, 882-982).
+flawed_cfg_source_is_editable :: (src: u8) -> bool #effects(traps) {
+  return src == FLAWED_CSRC_USER || src == FLAWED_CSRC_PROJECT || src == FLAWED_CSRC_LOCAL;
+}
+
+// Security opt-ins (skipDangerousModePermissionPrompt, autoMode) MUST exclude projectSettings!
+flawed_cfg_source_trusted_for_optin :: (src: u8) -> bool #effects(traps) {
+  return src == FLAWED_CSRC_USER || src == FLAWED_CSRC_LOCAL ||
+         src == FLAWED_CSRC_FLAG || src == FLAWED_CSRC_POLICY;
+}
+
+// Strict first-source-wins inside policySettings (settings.ts:322-407, mdm/settings.ts:255-270):
+// Remote > Admin MDM (macOS plist / Win HKLM) > managed-settings.json+.d/ > Win HKCU.
+flawed_resolve_policy_origin :: (
+  has_remote: bool,
+  has_admin_mdm: bool,
+  has_managed_file: bool,
+  has_hkcu: bool
+) -> u8 #effects(traps) {
+  if has_remote { return FLAWED_PORIG_REMOTE; }
+  if has_admin_mdm { return FLAWED_PORIG_ADMIN_MDM; }
+  if has_managed_file { return FLAWED_PORIG_MANAGED_FILE; }
+  if has_hkcu { return FLAWED_PORIG_HKCU; }
+  return FLAWED_PORIG_NONE;
+}
+
+// Settings file FileEditTool schema guard (validateEditTool.ts:14-45):
+// Rejects breaking a previously valid settings.json; allows editing an already-invalid file to repair it!
+flawed_validate_settings_edit_allowed :: (before_valid: bool, after_valid: bool) -> bool #effects(traps) {
+  if !before_valid { return true; }
+  return after_valid;
+}
+
+// Live watcher target guard (changeDetector.ts:85, 180-250):
+// Skips --bare, remote, and flagSettings (avoids $TMPDIR chokidar EOPNOTSUPP GH #16469).
+flawed_cfg_should_watch_source :: (src: u8, is_bare: bool, is_remote: bool) -> bool #effects(traps) {
+  if is_bare || is_remote { return false; }
+  return src == FLAWED_CSRC_USER || src == FLAWED_CSRC_PROJECT ||
+         src == FLAWED_CSRC_LOCAL || src == FLAWED_CSRC_POLICY;
+}
+
+// Self-write echo suppression (internalWrites.ts, changeDetector.ts:232).
+flawed_cfg_is_internal_write_echo :: (event_ms: int, marked_ms: int) -> bool #effects(traps) {
+  if marked_ms <= 0 || event_ms < marked_ms { return false; }
+  return event_ms - marked_ms <= FLAWED_CFG_INTERNAL_WRITE_WINDOW_MS;
+}
+
+// Effort propagation guard (applySettingsChange.ts:70-89):
+// Updates AppState.effortValue ONLY when effortLevel is defined and actually changed.
+flawed_cfg_should_update_effort :: (prev_effort: u8, new_effort: u8, has_new_effort: bool) -> bool #effects(traps) {
+  return has_new_effort && new_effort != prev_effort;
+}
+
+// Two-phase environment loading across workspace trust + 3 host-protection strip filters (managedEnv.ts:23-199).
+flawed_env_apply_allowed :: (
+  src: u8,
+  trust_accepted: bool,
+  is_safe_env_var: bool,
+  is_ssh_tunnel_var: bool,
+  ssh_tunnel_active: bool,
+  is_provider_var: bool,
+  host_managed_provider: bool,
+  is_ccd_spawn_key: bool,
+  is_claude_desktop: bool
+) -> bool #effects(traps) {
+  // Three host-protection strip filters always win regardless of source or trust
+  if ssh_tunnel_active && is_ssh_tunnel_var { return false; }
+  if host_managed_provider && is_provider_var { return false; }
+  if is_claude_desktop && is_ccd_spawn_key { return false; }
+  // Pre-trust: project & local sources may only apply SAFE_ENV_VARS
+  if !trust_accepted && (src == FLAWED_CSRC_PROJECT || src == FLAWED_CSRC_LOCAL) {
+    return is_safe_env_var;
+  }
+  return true;
+}
+
+// Remote managed settings HTTP status dispatch (services/remoteManagedSettings/index.ts:273-306).
+flawed_remote_settings_http_action :: (status: int) -> u8 #effects(traps) {
+  if status == 200 { return FLAWED_RSET_APPLY_CACHE; }
+  if status == 304 { return FLAWED_RSET_KEEP_CACHE; }
+  if status == 204 || status == 404 { return FLAWED_RSET_REVOKE_UNLINK; }
+  if status == 401 || status == 403 { return FLAWED_RSET_AUTH_SKIP_RETRY; }
+  return FLAWED_RSET_RETRY_FAIL_OPEN;
+}
+
+// Dangerous remote settings approval dialog (securityCheck.tsx):
+// Interactive refusal fails closed; non-interactive skips dialog.
+flawed_remote_security_dialog_action :: (
+  has_dangerous_delta: bool,
+  is_interactive: bool,
+  user_approved: bool
+) -> u8 #effects(traps) {
+  if !has_dangerous_delta || !is_interactive || user_approved { return FLAWED_RSEC_APPLY; }
+  return FLAWED_RSEC_SHUTDOWN_FAIL_CLOSED;
+}
+
+// Policy limits check with HIPAA essential-traffic fail-closed exception (services/policyLimits/index.ts:502-526).
+flawed_policy_limit_allowed :: (
+  has_cache: bool,
+  entry_present: bool,
+  entry_allowed: bool,
+  is_essential_traffic_only: bool,
+  is_product_feedback: bool
+) -> bool #effects(traps) {
+  if !has_cache {
+    if is_essential_traffic_only && is_product_feedback { return false; }
+    return true;
+  }
+  if !entry_present { return true; }
+  return entry_allowed;
+}
+
+// strictPluginOnlyCustomization enforcement (utils/settings/pluginOnlyPolicy.ts).
+flawed_strict_plugin_surface_allowed :: (surface_locked: bool, is_admin_trusted_source: bool) -> bool #effects(traps) {
+  if !surface_locked { return true; }
+  return is_admin_trusted_source;
+}
+
+// Startup migration version latch & first-run toast suppression (main.tsx:325-352, migrateSonnet45ToSonnet46.ts).
+flawed_should_run_migrations :: (stored_version: int) -> bool #effects(traps) {
+  return stored_version != FLAWED_CFG_CURRENT_MIGRATION_VERSION;
+}
+
+flawed_migration_show_upgrade_toast :: (num_startups: int) -> bool #effects(traps) {
+  return num_startups > 1;
+}
+
+#test "config: GlobalConfig boot latch, GH #3117 auth-loss guard, backup throttle, and policy cascade" {
+  #assert flawed_cfg_can_read(true, false);
+  #assert !flawed_cfg_can_read(false, false);
+  #assert !flawed_cfg_can_read(true, true);
+
+  #assert flawed_cfg_would_lose_auth(true, false, false, false);
+  #assert flawed_cfg_would_lose_auth(false, true, false, false);
+  #assert !flawed_cfg_would_lose_auth(true, true, true, true);
+  #assert !flawed_cfg_would_lose_auth(false, false, false, false);
+
+  #assert flawed_cfg_should_backup(1000, 0);
+  #assert flawed_cfg_should_backup(70000, 10000);
+  #assert !flawed_cfg_should_backup(69999, 10000);
+
+  #assert flawed_cfg_watch_is_external_write(1001, 1000);
+  #assert !flawed_cfg_watch_is_external_write(1000, 1000);
+
+  // Source editability & untrusted projectSettings opt-in exclusion
+  #assert flawed_cfg_source_is_editable(FLAWED_CSRC_USER);
+  #assert flawed_cfg_source_is_editable(FLAWED_CSRC_PROJECT);
+  #assert flawed_cfg_source_is_editable(FLAWED_CSRC_LOCAL);
+  #assert !flawed_cfg_source_is_editable(FLAWED_CSRC_FLAG);
+  #assert !flawed_cfg_source_is_editable(FLAWED_CSRC_POLICY);
+
+  #assert flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_USER);
+  #assert !flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_PROJECT);
+  #assert flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_LOCAL);
+  #assert flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_FLAG);
+  #assert flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_POLICY);
+  #assert !flawed_cfg_source_trusted_for_optin(FLAWED_CSRC_PLUGIN_BASE);
+
+  // Strict first-source-wins inside policySettings
+  #assert flawed_resolve_policy_origin(true, true, true, true) == FLAWED_PORIG_REMOTE;
+  #assert flawed_resolve_policy_origin(false, true, true, true) == FLAWED_PORIG_ADMIN_MDM;
+  #assert flawed_resolve_policy_origin(false, false, true, true) == FLAWED_PORIG_MANAGED_FILE;
+  #assert flawed_resolve_policy_origin(false, false, false, true) == FLAWED_PORIG_HKCU;
+  #assert flawed_resolve_policy_origin(false, false, false, false) == FLAWED_PORIG_NONE;
+
+  // Settings edit guard
+  #assert flawed_validate_settings_edit_allowed(true, true);
+  #assert !flawed_validate_settings_edit_allowed(true, false);
+  #assert flawed_validate_settings_edit_allowed(false, false);
+}
+
+#test "config: live watch, echo suppression, two-phase env trust, remote policy, HIPAA exception & migrations" {
+  // Watch targets skip --bare, remote, and flagSettings
+  #assert flawed_cfg_should_watch_source(FLAWED_CSRC_USER, false, false);
+  #assert flawed_cfg_should_watch_source(FLAWED_CSRC_PROJECT, false, false);
+  #assert flawed_cfg_should_watch_source(FLAWED_CSRC_LOCAL, false, false);
+  #assert flawed_cfg_should_watch_source(FLAWED_CSRC_POLICY, false, false);
+  #assert !flawed_cfg_should_watch_source(FLAWED_CSRC_FLAG, false, false);
+  #assert !flawed_cfg_should_watch_source(FLAWED_CSRC_USER, true, false);
+  #assert !flawed_cfg_should_watch_source(FLAWED_CSRC_USER, false, true);
+
+  // Internal write echo suppression (5000ms window)
+  #assert !flawed_cfg_is_internal_write_echo(1000, 0);
+  #assert flawed_cfg_is_internal_write_echo(1, 1);
+  #assert !flawed_cfg_is_internal_write_echo(999, 1000);
+  #assert flawed_cfg_is_internal_write_echo(1000, 1000);
+  #assert flawed_cfg_is_internal_write_echo(6000, 1000);
+  #assert !flawed_cfg_is_internal_write_echo(6001, 1000);
+
+  // Effort propagation
+  #assert flawed_cfg_should_update_effort(1, 2, true);
+  #assert !flawed_cfg_should_update_effort(2, 2, true);
+  #assert !flawed_cfg_should_update_effort(1, 2, false);
+
+  // Two-phase env loading + 3 host-protection strip filters
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, true, true, false, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, true, false, false, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, true, false, false, false, false);
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, true, true, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, true, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, false, true, false, false);
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, false, false, true, true);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, false, false, true, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_POLICY, true, true, false, false, false, false, false, true);
+  // Pre-trust: project & local limited to SAFE_ENV_VARS; user/flag/policy apply all
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_PROJECT, false, false, false, false, false, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_PROJECT, false, true, false, false, false, false, false, false);
+  #assert !flawed_env_apply_allowed(FLAWED_CSRC_LOCAL, false, false, false, false, false, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_USER, false, false, false, false, false, false, false, false);
+  #assert flawed_env_apply_allowed(FLAWED_CSRC_PROJECT, true, false, false, false, false, false, false, false);
+
+  // Remote settings HTTP & security dialog
+  #assert flawed_remote_settings_http_action(200) == FLAWED_RSET_APPLY_CACHE;
+  #assert flawed_remote_settings_http_action(304) == FLAWED_RSET_KEEP_CACHE;
+  #assert flawed_remote_settings_http_action(204) == FLAWED_RSET_REVOKE_UNLINK;
+  #assert flawed_remote_settings_http_action(404) == FLAWED_RSET_REVOKE_UNLINK;
+  #assert flawed_remote_settings_http_action(401) == FLAWED_RSET_AUTH_SKIP_RETRY;
+  #assert flawed_remote_settings_http_action(403) == FLAWED_RSET_AUTH_SKIP_RETRY;
+  #assert flawed_remote_settings_http_action(503) == FLAWED_RSET_RETRY_FAIL_OPEN;
+
+  #assert flawed_remote_security_dialog_action(false, true, false) == FLAWED_RSEC_APPLY;
+  #assert flawed_remote_security_dialog_action(true, false, false) == FLAWED_RSEC_APPLY;
+  #assert flawed_remote_security_dialog_action(true, true, true) == FLAWED_RSEC_APPLY;
+  #assert flawed_remote_security_dialog_action(true, true, false) == FLAWED_RSEC_SHUTDOWN_FAIL_CLOSED;
+
+  // Policy limits + HIPAA essential-traffic fail-closed exception
+  #assert !flawed_policy_limit_allowed(false, false, false, true, true);
+  #assert flawed_policy_limit_allowed(false, false, false, true, false);
+  #assert flawed_policy_limit_allowed(false, false, false, false, true);
+  #assert flawed_policy_limit_allowed(true, false, false, true, true);
+  #assert !flawed_policy_limit_allowed(true, true, false, false, false);
+  #assert flawed_policy_limit_allowed(true, true, true, true, true);
+
+  // strictPluginOnlyCustomization & migrations
+  #assert flawed_strict_plugin_surface_allowed(false, false);
+  #assert flawed_strict_plugin_surface_allowed(true, true);
+  #assert !flawed_strict_plugin_surface_allowed(true, false);
+
+  #assert flawed_should_run_migrations(10);
+  #assert !flawed_should_run_migrations(FLAWED_CFG_CURRENT_MIGRATION_VERSION);
+  #assert !flawed_migration_show_upgrade_toast(1);
+  #assert flawed_migration_show_upgrade_toast(2);
+}
