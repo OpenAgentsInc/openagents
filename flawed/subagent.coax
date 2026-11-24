@@ -1,0 +1,288 @@
+// Flawed Layer 6 (Chapter 18) — Subagents, Cache-Exact Context Forking, Sidechain Resume,
+// and Git Worktree Slug Validation & Fail-Closed Lifecycle.
+// Replaces cc/utils/{forkedAgent,worktree}.ts, cc/tools/AgentTool/{forkSubagent,
+// loadAgentsDir,agentToolUtils,runAgent,AgentTool,resumeAgent}.ts, and
+// cc/tools/ExitWorktreeTool/ExitWorktreeTool.ts invariants.
+//   coax/bin/coax test flawed/subagent.coax --library
+//   coax/bin/coax mutate flawed/subagent.coax --root-only
+#module "flawed.subagent";
+#authority;
+#load "tasks.coax";
+
+FLAWED_WT_MAX_SLUG_LEN :: 64;
+
+// Agent definition source precedence (loadAgentsDir.ts:193-221: lowest -> highest).
+FLAWED_ASRC_BUILTIN :: 1;
+FLAWED_ASRC_PLUGIN :: 2;
+FLAWED_ASRC_USER :: 3;
+FLAWED_ASRC_PROJECT :: 4;
+FLAWED_ASRC_FLAG :: 5;
+FLAWED_ASRC_POLICY :: 6;
+
+// Context isolation rules (utils/forkedAgent.ts:345-462, runAgent.ts:415-528):
+// Foreground agents share setAppState and link abort to parent; async agents isolate both
+// (so ESC never kills background agents, while tasks/hooks always route via setAppStateForTasks).
+flawed_subagent_share_ui_state :: (is_async: bool) -> bool #effects(traps) {
+  return !is_async;
+}
+
+flawed_subagent_avoid_prompts :: (
+  parent_avoids: bool,
+  can_show_ui: bool,
+  is_bubble_mode: bool
+) -> bool #effects(traps) {
+  if parent_avoids { return true; }
+  return !can_show_ui && !is_bubble_mode;
+}
+
+// Implicit fork enablement (forkSubagent.ts:32-39): off in coordinator mode and non-interactive sessions.
+flawed_fork_subagent_enabled :: (
+  feature_on: bool,
+  is_coordinator: bool,
+  is_interactive: bool
+) -> bool #effects(traps) {
+  return feature_on && !is_coordinator && is_interactive;
+}
+
+// Compaction-resistant two-tier recursive fork guard (AgentTool.tsx:325-335, forkSubagent.ts:74-89).
+flawed_fork_is_recursive_blocked :: (
+  is_fork_query_source: bool,
+  has_fork_boilerplate_msg: bool
+) -> bool #effects(traps) {
+  return is_fork_query_source || has_fork_boilerplate_msg;
+}
+
+// 5-component prompt-cache parity check for cache-sharing fork children (Ch 18 Section 2).
+flawed_fork_cache_parity_ok :: (
+  same_sys_prompt: bool,
+  use_exact_tools: bool,
+  same_model: bool,
+  same_thinking: bool,
+  cloned_replacements: bool
+) -> bool #effects(traps) {
+  return same_sys_prompt && use_exact_tools && same_model && same_thinking && cloned_replacements;
+}
+
+// Agent source precedence (loadAgentsDir.ts:193-221): last-write-wins by tier rank.
+flawed_agent_source_overrides :: (cand_src: u8, cur_src: u8) -> bool #effects(traps) {
+  return cand_src >= cur_src;
+}
+
+// Subagent tool filtering (agentToolUtils.ts:70-225, constants/tools.ts:36-88):
+// - MCP tools & plan-mode ExitPlanMode pass global disallow.
+// - Async subagents restricted to ASYNC_AGENT_ALLOWED_TOOLS unless teammate override applies.
+// - Per-agent disallowedTools and explicit tools allowlist apply last.
+flawed_agent_tool_allowed :: (
+  is_mcp: bool,
+  is_exit_plan_in_plan_mode: bool,
+  is_all_agent_disallowed: bool,
+  is_async: bool,
+  in_async_allowlist: bool,
+  is_teammate_override: bool,
+  in_agent_disallowed: bool,
+  has_agent_allowlist: bool,
+  in_agent_allowlist: bool
+) -> bool #effects(traps) {
+  if in_agent_disallowed { return false; }
+  if has_agent_allowlist && !in_agent_allowlist { return false; }
+  if is_mcp || is_exit_plan_in_plan_mode { return true; }
+  if is_all_agent_disallowed { return false; }
+  if is_async && !in_async_allowlist && !is_teammate_override { return false; }
+  return true;
+}
+
+// Forced async launch conditions (AgentTool.tsx:555-565): CLAUDE_CODE_DISABLE_BACKGROUND_TASKS overrides all.
+flawed_agent_should_run_async :: (
+  disable_bg_tasks: bool,
+  req_bg: bool,
+  agent_bg: bool,
+  is_coordinator: bool,
+  fork_enabled: bool,
+  proactive_or_kairos: bool
+) -> bool #effects(traps) {
+  if disable_bg_tasks { return false; }
+  return req_bg || agent_bg || is_coordinator || fork_enabled || proactive_or_kairos;
+}
+
+// Fleet-scale token trimming for Explore/Plan one-shot built-ins (runAgent.ts:385-410).
+flawed_agent_should_trim_claudemd :: (is_explore_or_plan: bool, gb_slim_enabled: bool) -> bool #effects(traps) {
+  return is_explore_or_plan && gb_slim_enabled;
+}
+
+// Allowed worktree slug character: [A-Za-z0-9._-] (notice '+' is EXCLUDED so '/' -> '+' is injective!).
+flawed_wt_is_slug_char :: (c: u8) -> bool #effects(traps) {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) ||
+         (c >= 48 && c <= 57) || c == 46 || c == 95 || c == 45;
+}
+
+// Worktree slug validation (utils/worktree.ts:48-87):
+// 1..64 bytes, no leading/trailing '/', no '//', no '.' or '..' segments, valid slug chars only.
+flawed_wt_validate_slug :: (slug: string) -> bool #effects(reads, traps) {
+  n := slug.count;
+  if n == 0 || n > FLAWED_WT_MAX_SLUG_LEN { return false; }
+  seg_start := 0;
+  for i: 0..<(n + 1) {
+    if i == n || slug[i] == 47 {
+      seg_len := i - seg_start;
+      if seg_len == 0 { return false; } // "//"
+      if seg_len == 1 && slug[seg_start] == 46 { return false; } // "."
+      if seg_len == 2 && slug[seg_start] == 46 && slug[seg_start + 1] == 46 { return false; } // ".."
+      seg_start = i + 1;
+    } else if !flawed_wt_is_slug_char(slug[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Injective D/F-conflict-free slug flattening (utils/worktree.ts:208-227): validates slug, maps '/' -> '+'.
+flawed_wt_flatten_slug :: (slug: string, out: [] u8) -> int #effects(reads, writes, traps) {
+  if !flawed_wt_validate_slug(slug) || slug.count > out.count { return -1; }
+  for i: 0..<slug.count {
+    out[i] = ifx slug[i] == 47 then cast(u8) 43 else slug[i];
+  }
+  return slug.count;
+}
+
+// Fail-closed subagent worktree cleanup (AgentTool.tsx:644-685, worktree.ts:1144-1173):
+// Never deletes hook-based worktrees; fails closed on any git error or dirty/committed changes.
+flawed_wt_subagent_can_delete :: (
+  is_hook_worktree: bool,
+  git_check_ok: bool,
+  has_changes: bool
+) -> bool #effects(traps) {
+  return !is_hook_worktree && git_check_ok && !has_changes;
+}
+
+// Fail-closed ExitWorktreeTool remove guard (ExitWorktreeTool.ts:67-113):
+// Refuses if no active session worktree; for action='remove' without discard_changes, refuses on
+// git error, missing originalHeadCommit, changed_files > 0, or commits > 0.
+flawed_wt_exit_allowed :: (
+  has_session_wt: bool,
+  is_remove_action: bool,
+  discard_changes: bool,
+  git_check_ok: bool,
+  has_orig_head: bool,
+  changed_files: int,
+  commits: int
+) -> bool #effects(traps) {
+  if !has_session_wt { return false; }
+  if !is_remove_action || discard_changes { return true; }
+  return git_check_ok && has_orig_head && changed_files == 0 && commits == 0;
+}
+
+// 30-day stale ephemeral worktree sweeper (utils/worktree.ts:1058-1136).
+flawed_wt_stale_sweep_can_remove :: (
+  is_ephemeral_slug: bool,
+  is_active_session_wt: bool,
+  is_older_than_cutoff: bool,
+  status_clean: bool,
+  unpushed_empty: bool
+) -> bool #effects(traps) {
+  return is_ephemeral_slug && !is_active_session_wt && is_older_than_cutoff &&
+         status_clean && unpushed_empty;
+}
+
+#test "subagent: context isolation, cache-exact forking, recursion guard, tool filtering & async launch" {
+  #assert flawed_subagent_share_ui_state(false) && !flawed_subagent_share_ui_state(true);
+  #assert flawed_subagent_avoid_prompts(true, true, true);
+  #assert !flawed_subagent_avoid_prompts(false, true, false);
+  #assert !flawed_subagent_avoid_prompts(false, false, true);
+  #assert flawed_subagent_avoid_prompts(false, false, false);
+
+  #assert flawed_fork_subagent_enabled(true, false, true);
+  #assert !flawed_fork_subagent_enabled(false, false, true);
+  #assert !flawed_fork_subagent_enabled(true, true, true);
+  #assert !flawed_fork_subagent_enabled(true, false, false);
+
+  #assert flawed_fork_is_recursive_blocked(true, false);
+  #assert flawed_fork_is_recursive_blocked(false, true);
+  #assert !flawed_fork_is_recursive_blocked(false, false);
+
+  #assert flawed_fork_cache_parity_ok(true, true, true, true, true);
+  #assert !flawed_fork_cache_parity_ok(false, true, true, true, true);
+  #assert !flawed_fork_cache_parity_ok(true, false, true, true, true);
+  #assert !flawed_fork_cache_parity_ok(true, true, false, true, true);
+  #assert !flawed_fork_cache_parity_ok(true, true, true, false, true);
+  #assert !flawed_fork_cache_parity_ok(true, true, true, true, false);
+
+  #assert flawed_agent_source_overrides(FLAWED_ASRC_POLICY, FLAWED_ASRC_FLAG);
+  #assert flawed_agent_source_overrides(FLAWED_ASRC_USER, FLAWED_ASRC_USER);
+  #assert !flawed_agent_source_overrides(FLAWED_ASRC_BUILTIN, FLAWED_ASRC_PLUGIN);
+
+  // Tool filter rules
+  #assert !flawed_agent_tool_allowed(true, true, false, false, true, true, true, false, true);
+  #assert !flawed_agent_tool_allowed(true, true, false, false, true, true, false, true, false);
+  #assert flawed_agent_tool_allowed(true, false, true, true, false, false, false, true, true);
+  #assert flawed_agent_tool_allowed(false, true, true, true, false, false, false, false, false);
+  #assert !flawed_agent_tool_allowed(false, false, true, false, true, true, false, false, false);
+  #assert !flawed_agent_tool_allowed(false, false, false, true, false, false, false, false, false);
+  #assert flawed_agent_tool_allowed(false, false, false, true, true, false, false, false, false);
+  #assert flawed_agent_tool_allowed(false, false, false, true, false, true, false, false, false);
+  #assert flawed_agent_tool_allowed(false, false, false, false, false, false, false, false, false);
+
+  // Forced async & Explore/Plan CLAUDE.md trim
+  #assert !flawed_agent_should_run_async(true, true, true, true, true, true);
+  #assert flawed_agent_should_run_async(false, true, false, false, false, false);
+  #assert flawed_agent_should_run_async(false, false, true, false, false, false);
+  #assert flawed_agent_should_run_async(false, false, false, true, false, false);
+  #assert flawed_agent_should_run_async(false, false, false, false, true, false);
+  #assert flawed_agent_should_run_async(false, false, false, false, false, true);
+  #assert !flawed_agent_should_run_async(false, false, false, false, false, false);
+  #assert flawed_agent_should_trim_claudemd(true, true) && !flawed_agent_should_trim_claudemd(true, false) && !flawed_agent_should_trim_claudemd(false, true);
+}
+
+#test "subagent: worktree slug validation, injective flattening, and fail-closed cleanup/exit/sweep" {
+  // Slug char exact boundaries: A..Z, a..z, 0..9, '.', '_', '-' (NOT '+'!)
+  #assert !flawed_wt_is_slug_char(64) && flawed_wt_is_slug_char(65) && flawed_wt_is_slug_char(90) && !flawed_wt_is_slug_char(91);
+  #assert !flawed_wt_is_slug_char(96) && flawed_wt_is_slug_char(97) && flawed_wt_is_slug_char(122) && !flawed_wt_is_slug_char(123);
+  #assert !flawed_wt_is_slug_char(47) && flawed_wt_is_slug_char(48) && flawed_wt_is_slug_char(57) && !flawed_wt_is_slug_char(58);
+  #assert flawed_wt_is_slug_char(46) && flawed_wt_is_slug_char(95) && flawed_wt_is_slug_char(45) && !flawed_wt_is_slug_char(43);
+
+  #assert !flawed_wt_validate_slug("");
+  #assert flawed_wt_validate_slug("a");
+  #assert !flawed_wt_validate_slug("/feat");
+  #assert !flawed_wt_validate_slug("feat/");
+  #assert !flawed_wt_validate_slug("a//b");
+  #assert !flawed_wt_validate_slug(".");
+  #assert !flawed_wt_validate_slug("a/./b");
+  #assert !flawed_wt_validate_slug("..");
+  #assert !flawed_wt_validate_slug("a/../b");
+  #assert flawed_wt_validate_slug("a/.b/c");
+  #assert flawed_wt_validate_slug("a/b./c");
+  #assert !flawed_wt_validate_slug("a+b"); // '+' rejected for injectivity!
+  b65: [65] u8;
+  for i: 0..<65 { b65[i] = 97; }
+  #assert flawed_wt_validate_slug(cast(string) b65[0..<64]);
+  #assert !flawed_wt_validate_slug(cast(string) b65[..]);
+
+  flat: [32] u8;
+  fn := flawed_wt_flatten_slug("user/feat-1.0_a", flat[..]);
+  #assert fn == 15 && cast(string) flat[0..<fn] == "user+feat-1.0_a";
+  #assert flawed_wt_flatten_slug("bad+slug", flat[..]) == -1;
+  tiny: [3] u8;
+  #assert flawed_wt_flatten_slug("a/b", tiny[..]) == 3;
+  #assert flawed_wt_flatten_slug("a/bc", tiny[..]) == -1;
+
+  // Fail-closed subagent cleanup, ExitWorktree, and 30-day stale sweep
+  #assert flawed_wt_subagent_can_delete(false, true, false);
+  #assert !flawed_wt_subagent_can_delete(true, true, false);
+  #assert !flawed_wt_subagent_can_delete(false, false, false);
+  #assert !flawed_wt_subagent_can_delete(false, true, true);
+
+  #assert !flawed_wt_exit_allowed(false, false, false, true, true, 0, 0);
+  #assert flawed_wt_exit_allowed(true, false, false, false, false, 5, 2);
+  #assert flawed_wt_exit_allowed(true, true, true, false, false, 5, 2);
+  #assert flawed_wt_exit_allowed(true, true, false, true, true, 0, 0);
+  #assert !flawed_wt_exit_allowed(true, true, false, false, true, 0, 0);
+  #assert !flawed_wt_exit_allowed(true, true, false, true, false, 0, 0);
+  #assert !flawed_wt_exit_allowed(true, true, false, true, true, 1, 0);
+  #assert !flawed_wt_exit_allowed(true, true, false, true, true, 0, 1);
+
+  #assert flawed_wt_stale_sweep_can_remove(true, false, true, true, true);
+  #assert !flawed_wt_stale_sweep_can_remove(false, false, true, true, true);
+  #assert !flawed_wt_stale_sweep_can_remove(true, true, true, true, true);
+  #assert !flawed_wt_stale_sweep_can_remove(true, false, false, true, true);
+  #assert !flawed_wt_stale_sweep_can_remove(true, false, true, false, true);
+  #assert !flawed_wt_stale_sweep_can_remove(true, false, true, true, false);
+}

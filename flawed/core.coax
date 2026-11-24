@@ -31,6 +31,7 @@
 #load "mcp.coax";
 #load "extensions.coax";
 #load "tasks.coax";
+#load "subagent.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -324,4 +325,16 @@
   #assert flawed_cron_recurring_jitter_ms(3600000, 500) == 180000;
   #assert flawed_cron_oneshot_lead_ms(30, 500, 0, 90000) == 45000;
   #assert flawed_cron_missed_fence_len("```code```") == 4;
+}
+
+#test "flawed core (Ch 18): subagent isolation, cache-exact forking, recursion guard, worktree slug & fail-closed teardown compose" {
+  #assert !flawed_subagent_share_ui_state(true) && !flawed_subagent_avoid_prompts(false, false, true);
+  #assert flawed_fork_subagent_enabled(true, false, true) && !flawed_fork_subagent_enabled(true, true, true);
+  #assert flawed_fork_is_recursive_blocked(true, false) && flawed_fork_cache_parity_ok(true, true, true, true, true);
+  flat: [32] u8;
+  fn := flawed_wt_flatten_slug("team/feature-1", flat[..]);
+  #assert fn == 14 && cast(string) flat[0..<fn] == "team+feature-1";
+  #assert !flawed_wt_validate_slug("a+b") && !flawed_wt_validate_slug("a/../b");
+  #assert !flawed_wt_exit_allowed(true, true, false, true, false, 0, 0);
+  #assert flawed_wt_stale_sweep_can_remove(true, false, true, true, true);
 }

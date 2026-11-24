@@ -23,6 +23,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 15 — Model Context Protocol (MCP)** | Layer 5 | `mcp.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 16 — Skills, Plugins, Output Styles & LSP** | Layer 5 | `extensions.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 17 — Background Task Runtime** | Layer 6 | `tasks.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 18 — Subagents, Context Forking & Worktrees** | Layer 6 | `subagent.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 
