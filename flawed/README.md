@@ -15,6 +15,7 @@ Pure Coax autonomous coding agent harness built bottom-up, chapter-by-chapter fr
 | **Ch 07 — The Heartbeat Query Loop** | Layer 2 | `query_loop.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 08 — Session Envelope & Transcripts** | Layer 2 | `session.coax` (`#authority`), `transcript_dag.coax` | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 | **Ch 09 — Five-Layer Compaction Pipeline** | Layer 3 | `compaction.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
+| **Ch 10 — Memory Systems & Auto-Dream** | Layer 3 | `memory.coax` (`#authority`) | `coax test` + `coax mutate --root-only` (0 survivors) | Complete |
 
 ## Verification
 
