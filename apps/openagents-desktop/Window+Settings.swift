@@ -402,12 +402,16 @@ extension CoderWindow {
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
         let ui = LocalModelStore.uiState()
-        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels
+        let selectableVariants = LocalModelStore.catalog.filter { LocalModelStore.isSelectable(for: $0) }
+        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels && selectableVariants.count <= 1
         var status = LocalModelStore.statusSummary()
+        if selectableVariants.count > 1 && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying && !LocalModelStore.hasPartial {
+            status = "\(selectableVariants.count) local models ready (\(LocalModelStore.formatBytes(LocalModelStore.totalCacheDiskUsageBytes)) · SHA-256 verified)"
+        }
         var statusCode = ui.statusCode
         var err = ui.err
         var on: Int32 = 0
-        if LocalModelStore.isSelectable {
+        if !selectableVariants.isEmpty {
             switch LocalModelServer.shared.state {
             case .ready:
                 on = 1
@@ -432,6 +436,11 @@ extension CoderWindow {
                 err = msg
                 status = "Server error — click Retry"
             }
+        }
+        cd_local_models_clear(target)
+        for v in selectableVariants {
+            let customTag = (v.isCustom ? LocalModelStore.customDisplayName : nil) ?? v.quantization
+            _ = cd_local_models_add(target, v.id, v.name, "Psionic Metal · Local · \(customTag)")
         }
         cd_settings_local(target, status)
         cd_inkling(target, on)

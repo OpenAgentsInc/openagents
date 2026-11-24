@@ -905,9 +905,9 @@ extension CoderWindow {
     }
 
     /// True when the foreground chat or any background chat is actively running a reply on Inkling 2 Mini or Hybrid Executor.
-    private func isInklingReplyRunning() -> Bool {
-        if cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0) { return true }
-        for r in runs.values where r.page != page {
+    func isInklingReplyRunning(excluding ignored: CoderRun? = nil) -> Bool {
+        if run !== ignored, cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0) { return true }
+        for r in runs.values where r.page != page && r !== ignored {
             if cd_running(r.page) != 0 && (cd_model_inkling(r.page) != 0 || cd_model_hybrid(r.page) != 0) { return true }
         }
         return false
@@ -1158,6 +1158,9 @@ extension CoderWindow {
             LocalModelServer.shared.restartForVariantChange()
         }
         syncLocalModels()
+        if LocalModelStore.isSelectable && cd_running(page) == 0 && (cd_model_inkling(page) != 0 || !ProviderInstancesStore.shared.hasLoadedAntigravityModels) {
+            _ = cd_pick_model(page, id)
+        }
         manageLocalModels()
     }
 

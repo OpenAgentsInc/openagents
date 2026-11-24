@@ -1009,6 +1009,12 @@ void cd_settings_executor(void *page, const char *status, const char *lineage, c
 void cd_settings_pylon(void *page, const char *state, const char *contrib, const char *sats, const char *release) { CoderHost *c = page; if (c) { coder_page_settings_pylon(cd_state(c), cd_string(state), cd_string(contrib), cd_string(sats), cd_string(release)); cd_changed(c); } }
 void cd_settings_wallet(void *page, const char *status, const char *balance, const char *addr, const char *npub, const char *limit, const char *backup, const char *history, int ready) { CoderHost *c = page; if (c) { coder_page_settings_wallet(cd_state(c), cd_string(status), cd_string(balance), cd_string(addr), cd_string(npub), cd_string(limit), cd_string(backup), cd_string(history), ready != 0); cd_changed(c); } }
 void cd_inkling(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_inkling(cd_state(c), on != 0); cd_changed(c); } }
+void cd_local_models_clear(void *page) { CoderHost *c = page; if (c) coder_page_local_models_clear(cd_state(c)); }
+int cd_local_models_add(void *page, const char *id, const char *name, const char *desc) {
+  CoderHost *c = page;
+  if (!c) return -1;
+  return (int)coder_page_local_models_add(cd_state(c), cd_string(id), cd_string(name), cd_string(desc));
+}
 void cd_hybrid_exec(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_hybrid_exec(cd_state(c), on != 0); cd_changed(c); } }
 void cd_settings_instructions(void *page, const char *words) { CoderHost *c = page; if (c) { coder_page_settings_instructions(cd_state(c), cd_string(words)); cd_changed(c); } }
 void cd_settings_gauth(void *page, const char *kind, const char *text) { CoderHost *c = page; if (c) { coder_page_settings_gauth(cd_state(c), cd_string(kind), cd_string(text)); cd_changed(c); } }

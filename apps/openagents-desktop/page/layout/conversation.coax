@@ -1362,7 +1362,7 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   k := f[0].skin; sh := f[0].sheet; th := cp_theme();
   z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
   glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
-  pw := 288.0f32;
+  pw := 316.0f32;
   if pw > cw { pw = cw; }
   pad := 6.0f32;
   nm := cp_models(s);

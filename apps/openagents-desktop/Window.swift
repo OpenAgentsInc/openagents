@@ -397,9 +397,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
             let requested = CommandLine.arguments[at + 1]
-            let isInkling = ["inkling-2-mini", "inkling", "Inkling 2 Mini"].contains(requested)
+            let isInkling = LocalModelStore.variant(id: requested) != nil
+                || LocalModelStore.catalog.contains(where: { $0.name == requested })
+                || ["inkling", "Inkling 2 Mini (Local)"].contains(requested)
             if isInkling || FeatureFlags.anyExtraModel {
                 if cd_pick_model(page, requested) == 0 && isInkling {
+                    if let v = LocalModelStore.variant(id: requested) { _ = LocalModelStore.setActiveVariant(v.id) }
                     if !LocalModelStore.anyVariantSupported {
                         present(.notice("Inkling 2 Mini requires \(LocalModelStore.minSupportedRamGB) GB RAM", LocalModelStore.statusSummary()))
                     } else {
@@ -436,6 +439,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var draft: String {
         var out = [CChar](repeating: 0, count: 16385)
         return cd_draft(page, &out, Int32(out.count)) > 0 ? String(cString: out) : ""
+    }
+    func selectedModelID(on targetPage: UnsafeMutableRawPointer) -> String {
+        var out = [CChar](repeating: 0, count: 128)
+        return cd_model_id_out(targetPage, &out, Int32(out.count)) > 0 ? String(cString: out) : ""
     }
     /// Command-C, -X, -V, -A, -Z and Shift-Command-Z as the page's key and modifiers; nil for the rest.
     private func editingChord(_ event: NSEvent) -> (code: Int32, mods: Int32)? {
@@ -661,6 +668,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        if cd_running(page) == 0 && cd_model_inkling(page) != 0 && !overlay.dialogOpen && !LocalModelStore.isDownloading && !LocalModelStore.isVerifying {
+            let picked = selectedModelID(on: page)
+            if !picked.isEmpty, LocalModelStore.activeVariantId != picked,
+               let v = LocalModelStore.variant(id: picked), LocalModelStore.isSelectable(for: v),
+               !isInklingReplyRunning() {
+                if LocalModelStore.setActiveVariant(picked) {
+                    LocalModelServer.shared.restartForVariantChange()
+                    syncLocalModels(prewarm: false)
+                }
+            }
+        }
         if now - sweptAt >= CoderWindow.sweepEvery { sweepRuns() }
         if now - phoneSyncedAt >= 1.5 { syncPhoneRuns() }
         checkRunNotifications(run)

@@ -170,6 +170,7 @@ CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Mode
 CP_MODEL_PROVIDERS :: 396;  // composer model picker footer row: open Settings -> Providers
 CP_AGY_MODELS_MAX :: 16;    // max loaded Antigravity models surfaced individually in the composer picker
 CP_AGY_PREFIX :: "agy:";    // canonical saved model id prefix for Antigravity models (avoids Microcoder collision)
+CP_LOCAL_MODELS_MAX :: 8;   // max installed local Inkling variants surfaced individually in the composer picker (#14028)
 CP_EFF_BIT_LOW :: 1; CP_EFF_BIT_MED :: 2; CP_EFF_BIT_HIGH :: 4; CP_EFF_BIT_XHIGH :: 8;
 CpAgyModel :: struct {
   inst_id: [64] u8; inst_id_n: int;
@@ -179,6 +180,11 @@ CpAgyModel :: struct {
   efforts_mask: int;
   default_effort: int;   // CP_EFFORT_LOW..CP_EFFORT_XHIGH (0: high)
   is_default: bool;
+}
+CpLocalModel :: struct {
+  id: [64] u8; id_n: int;
+  name: [96] u8; name_n: int;
+  desc: [128] u8; desc_n: int;
 }
 CP_LOCAL_DL :: 400;         // first-run onboarding: Download / Retry Inkling 2 Mini
 CP_LOCAL_CANCEL :: 401;     // first-run onboarding: Cancel download
@@ -457,6 +463,9 @@ CoderPage :: struct {
   agy_id_buf: [128] u8;       // "agy:<slug>" id for loaded Antigravity models
   agy_prev_id: [128] u8; agy_prev_id_n: int;   // active model id captured across agy_models_clear -> set_agy
   agy_models: [CP_AGY_MODELS_MAX] CpAgyModel; agy_models_n: int;
+  local_meta: [160] u8;
+  local_prev_id: [128] u8; local_prev_id_n: int;
+  local_models: [CP_LOCAL_MODELS_MAX] CpLocalModel; local_models_n: int;
   agy_seen: [64] u8; agy_seen_n: int;             // the model agy runs a new session on with these settings (agyworker --probe): its id
   agy_seen_name: [64] u8; agy_seen_name_n: int;   // and agy's name for it ("Gemini 4 Carbon (Low)")
   set_agy_mode: int;          // 0 Auto, 1 Default, 2 Plan
@@ -553,7 +562,7 @@ cp_flag :: (s: [] CoderPage, flag: int) -> bool {
 // True when any extra non-Inkling model flag is on or Antigravity has loaded models in core Providers.
 // Off in the Inkling-only first release until Antigravity is authenticated and models are loaded.
 cp_has_model_picker :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0);
+  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0 || s[0].local_models_n > 1);
 }
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {

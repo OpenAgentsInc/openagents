@@ -173,6 +173,15 @@ extension CoderWindow {
         let useHybrid = false
         #endif
         if useInkling || useHybrid {
+            let pickedLocalId = useInkling ? selectedModelID(on: r.page) : ""
+            if useInkling, let pickedVariant = LocalModelStore.variant(id: pickedLocalId),
+               LocalModelStore.isSelectable(for: pickedVariant),
+               LocalModelStore.activeVariantId != pickedVariant.id,
+               !isInklingReplyRunning(excluding: r) {
+                _ = LocalModelStore.setActiveVariant(pickedVariant.id)
+                syncLocalModels(prewarm: false)
+            }
+            let targetLocalEntry = LocalModelStore.variant(id: pickedLocalId) ?? LocalModelStore.entry
             #if OA_FULL
             if useHybrid {
                 let snap = ExecutorModelStore.scan()
@@ -182,12 +191,12 @@ extension CoderWindow {
                     wake()
                     return
                 }
-            } else if !LocalModelStore.isSelectable {
-                let cur = LocalModelStore.entry
+            } else if !LocalModelStore.isSelectable(for: targetLocalEntry) {
+                let cur = targetLocalEntry
                 let why: String
                 if !LocalModelStore.isAppleSilicon {
                     why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
-                } else if !LocalModelStore.hardwareSupported {
+                } else if !LocalModelStore.hardwareSupported(for: cur) {
                     why = "\(cur.name) requires at least \(cur.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected). Switch to a smaller quant in Settings → Models → Local Model."
                 } else if LocalModelStore.isVerifying {
                     why = "\(cur.name) is verifying its SHA-256 checksum. Please wait a moment."
@@ -202,12 +211,12 @@ extension CoderWindow {
                 return
             }
             #else
-            if !LocalModelStore.isSelectable {
-                let cur = LocalModelStore.entry
+            if !LocalModelStore.isSelectable(for: targetLocalEntry) {
+                let cur = targetLocalEntry
                 let why: String
                 if !LocalModelStore.isAppleSilicon {
                     why = "Inkling 2 Mini requires an Apple Silicon Mac (macOS arm64)."
-                } else if !LocalModelStore.hardwareSupported {
+                } else if !LocalModelStore.hardwareSupported(for: cur) {
                     why = "\(cur.name) requires at least \(cur.minRamGB) GB unified memory (\(LocalModelStore.physicalMemoryGB) GB detected). Switch to a smaller quant in Settings → Models → Local Model."
                 } else if LocalModelStore.isVerifying {
                     why = "\(cur.name) is verifying its SHA-256 checksum. Please wait a moment."
@@ -224,6 +233,7 @@ extension CoderWindow {
             #endif
             r.startingWorker = true
             let gen = r.startGen
+            let targetModelId = useHybrid ? "hybrid-exec-v1" : targetLocalEntry.id
             if !LocalModelServer.shared.isReady {
                 cd_turn_loading_model(r.page, 1)
                 wake()
@@ -248,8 +258,9 @@ extension CoderWindow {
                 self.wake()
                 let latestURL = LocalModelServer.baseURL
                 var retryRecall = needsRecall
-                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL {
+                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL || r.worker.extraEnv["PSIONIC_MODEL"] != targetModelId {
                     r.worker.extraEnv["PSIONIC_BASE_URL"] = latestURL
+                    r.worker.extraEnv["PSIONIC_MODEL"] = targetModelId
                     if r.worker.alive {
                         r.worker.stop(forget: false)
                         retryRecall = true
@@ -612,7 +623,7 @@ extension CoderWindow {
             let m = rawModel.isEmpty ? "gemini-4-neon" : rawModel
             savedModel = m.hasPrefix("agy:") ? m : "agy:" + m
         } else if engine == "inkling" {
-            savedModel = "inkling-2-mini"
+            savedModel = rawModel.isEmpty ? "inkling-2-mini" : rawModel
         } else {
             savedModel = rawModel.isEmpty ? "gemini-4-neon" : rawModel
         }
@@ -1040,8 +1051,9 @@ extension CoderWindow {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "hybrid-exec-v1"
         } else if cd_model_inkling(r.page) != 0 || (!FeatureFlags.anyExtraModel && cd_model_agy(r.page) == 0) {
+            let pickedLocal = selectedModelID(on: r.page)
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
-            env["PSIONIC_MODEL"] = "inkling-2-mini"
+            env["PSIONIC_MODEL"] = LocalModelStore.variant(id: pickedLocal)?.id ?? LocalModelStore.activeVariantId
         }
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
         if FeatureFlags.isOn(.simulator) {
@@ -1050,8 +1062,9 @@ extension CoderWindow {
         }
         #else
         if cd_model_agy(r.page) == 0 {
+            let pickedLocal = selectedModelID(on: r.page)
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
-            env["PSIONIC_MODEL"] = "inkling-2-mini"
+            env["PSIONIC_MODEL"] = LocalModelStore.variant(id: pickedLocal)?.id ?? LocalModelStore.activeVariantId
         }
         #endif
         let cwd = (r === run ? folder : r.folder).path

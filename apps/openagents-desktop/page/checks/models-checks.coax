@@ -540,3 +540,45 @@
   #assert loc2 >= 0 && cast(string) t2[0].rows[loc2].label[0..<t2[0].rows[loc2].label_n] == "Manage Local Models…";
   #assert cast(string) t2[0].rows[loc2].value[0..<t2[0].rows[loc2].value_n] == "Installed (17.63 GB · SHA-256 verified)";
 }
+
+#test "installed local Inkling variants (Official, Uncensored LoRA, Uncensored AD-Q4_K) appear individually in the composer picker and route exact slugs (#14028)" {
+  p: [1] CoderPage; p2: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); coder_page_flags_set(s, 0); coder_page_set_cloud_authed(s, false);
+  // Register three verified local variants without Antigravity: picker unlocks for local variant switching.
+  coder_page_local_models_clear(s);
+  #assert coder_page_local_models_add(s, "inkling-2-mini", "Inkling 2 Mini", "Psionic Metal · Local · IQ4_NL GGUF") == 0;
+  #assert coder_page_local_models_add(s, "inkling-2-mini-uncensored-lora", "Inkling 2 Mini Uncensored (LoRA)", "Psionic Metal · Local · GGUF LoRA Adapter") == 1;
+  #assert coder_page_local_models_add(s, "inkling-2-mini-uncensored-q4k", "Inkling 2 Mini Uncensored (AD-Q4_K)", "Psionic Metal · Local · AD-Q4_K GGUF") == 2;
+  coder_page_set_inkling(s, true);
+  #assert cp_has_model_picker(s) && cp_models(s) == 3;
+  #assert cp_model_label(s, 1) == "Inkling 2 Mini Uncensored (LoRA)" && cp_model_id(s, 1) == "inkling-2-mini-uncensored-lora";
+  #assert cp_model_label(s, 2) == "Inkling 2 Mini Uncensored (AD-Q4_K)" && cp_model_id(s, 2) == "inkling-2-mini-uncensored-q4k";
+
+  // Pick Uncensored AD-Q4_K and verify selection survives local_models refresh + Antigravity probing.
+  #assert coder_page_pick_model(s, "inkling-2-mini-uncensored-q4k") && coder_page_model_inkling(s);
+  coder_page_local_models_clear(s);
+  _ = coder_page_local_models_add(s, "inkling-2-mini", "Inkling 2 Mini", "Psionic Metal · Local · IQ4_NL GGUF");
+  _ = coder_page_local_models_add(s, "inkling-2-mini-uncensored-lora", "Inkling 2 Mini Uncensored (LoRA)", "Psionic Metal · Local · GGUF LoRA Adapter");
+  _ = coder_page_local_models_add(s, "inkling-2-mini-uncensored-q4k", "Inkling 2 Mini Uncensored (AD-Q4_K)", "Psionic Metal · Local · AD-Q4_K GGUF");
+  coder_page_set_inkling(s, true);
+  #assert cp_model_id(s, cp_model_index(s)) == "inkling-2-mini-uncensored-q4k";
+  #assert cp_model_meta(s, cp_model_index(s)) == "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)";
+
+  // Task payload carries local:true and exact uncensored variant slug.
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "hello uncensored") && coder_page_submit(s);
+  n := coder_page_task(s, "sess-unc", "/w", out[..]);
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].local && back[0].model == "inkling-2-mini-uncensored-q4k" && back[0].effort == "medium";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+
+  // Save/load preserves exact uncensored variant selection and turn byline.
+  saved: [16384] u8; sn := coder_page_save(s, saved[..]);
+  p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]); cp_init(s2);
+  coder_page_local_models_clear(s2);
+  _ = coder_page_local_models_add(s2, "inkling-2-mini", "Inkling 2 Mini", "Psionic Metal · Local · IQ4_NL GGUF");
+  _ = coder_page_local_models_add(s2, "inkling-2-mini-uncensored-q4k", "Inkling 2 Mini Uncensored (AD-Q4_K)", "Psionic Metal · Local · AD-Q4_K GGUF");
+  coder_page_set_inkling(s2, true);
+  #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]);
+  #assert cp_model_id(s2, cp_model_index(s2)) == "inkling-2-mini-uncensored-q4k";
+  #assert cp_turn_meta(s2, 0) == "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)";
+}
