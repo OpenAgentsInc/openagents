@@ -3159,6 +3159,10 @@ static int flow_write_file(const char *path, const char *text) {
 static int run_flawed(DesktopApp *a) {
   if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
   if (!a->flawed_worker_bin[0]) return flow_fail("worker", "flawedworker is not beside the app");
+  // as the app does at launch: with a resident host service the worker starts through it, and an
+  // older service refuses a worker it does not know
+  if (a->daemon_bin[0]) oa_core_daemon_ensure(vc(a), cs(a->daemon_bin), 1500);
+  flow_ok("service", oa_core_daemon_owns_runs(vc(a)) ? "workers start through the resident host service" : "no resident host service: workers start directly");
   a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
   if (!a->page) return flow_fail("page", "cd_open_ex(offscreen) failed");
   local_init(a);
