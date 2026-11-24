@@ -224,9 +224,11 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   if chat_model_str.count > 0 && matched_model < 0 {
     s[0].migrated_from_n = cp_out(s[0].migrated_from[..], chat_model_str);
     s[0].model = cp_model_start(s);
+    s[0].flawed[0].user_picked = false;
   } else {
     s[0].migrated_from_n = 0;
     s[0].model = ifx matched_model >= 0 then matched_model else cp_model_start(s);
+    s[0].flawed[0].user_picked = matched_model >= 0;
   }
   mar[0].at = 0;
   s[0].effort = cp_effort_of(cl_str(mar[..], text, "effort")); s[0].kept_effort = s[0].effort;
@@ -303,6 +305,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
   s[0].nturns = 0; s[0].chat_gen += 1; cp_calls_reset(s); cp_fu_reset(s); cp_todos_reset(s); cp_ckpt_reset(s); cp_permit_new_chat(s); cp_prov_reset_chat(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
+  s[0].flawed[0].user_picked = false;
   s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort_menu = false; s[0].migrated_from_n = 0; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_sel_clear(s);
@@ -376,6 +379,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   from[0].nturns = 0; from[0].chat_gen += 1; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
+  from[0].flawed[0].user_picked = false;
   from[0].model = cp_model_start(from); from[0].kept_model = from[0].model; from[0].model_menu = false; from[0].effort_menu = false; from[0].effort = CP_EFFORT_DEFAULT; from[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;

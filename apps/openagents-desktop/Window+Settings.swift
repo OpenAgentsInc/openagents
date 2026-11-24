@@ -462,7 +462,7 @@ extension CoderWindow {
         for r in runs.values where r.page != page {
             syncLocalState(on: r.page)
         }
-        let wantsLocal = cd_model_inkling(page) != 0 || (cd_model_flawed(page) != 0 && FlawedSettings.backend == 4)
+        let wantsLocal = cd_model_inkling(page) != 0 || FlawedSettings.pageNeedsLocal(page)
         if prewarm && LocalModelStore.isSelectable && wantsLocal {
             LocalModelServer.shared.prewarmIfReady()
         }

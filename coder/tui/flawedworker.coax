@@ -1,9 +1,10 @@
 // Flawed Live Agent Worker for OpenAgents Desktop.
 // Pure-Coax worker powered by flawed/core.coax (Chapters 01-24) speaking the exact
-// mcworker-wire.coax JSON-line protocol on stdin/stdout with true SSE streaming,
-// adaptive/extended thinking, prompt caching, 8 built-in Claude-Code-parity tools,
-// interactive permission approval cards, Seatbelt sandbox, gitguard, auto-compaction,
-// memory/instructions loading, mid-turn steers, and follow-up queuing.
+// mcworker-wire.coax JSON-line protocol on stdin/stdout with true SSE streaming on
+// Local Psionic Metal (Inkling 2 Mini) and Vertex AI / Gemini API (Gemini 4 Neon family),
+// plus optional OpenRouter, 8 built-in Claude-Code-parity tools, interactive permission
+// approval cards, Seatbelt sandbox, gitguard, auto-compaction, memory/instructions loading,
+// mid-turn steers, and follow-up queuing.
 //
 // Build: coax/web/tool.sh coder/tui/flawedworker.coax
 // Probe: coax/web/tool.sh coder/tui/flawedworker.coax --auth
@@ -13,6 +14,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/gateway/transport.coax";
+#load "../../coax/lib/gateway/card.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/agent/engine/mcworker-queue.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
@@ -22,7 +24,6 @@
 cxproc_wall_us :: () -> int #foreign #effects(all);
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
-cxsecret_read_service :: (service: [] u8, account: [] u8, out: [] u8) -> int #foreign #effects(all);
 
 FWW_LINE :: 1048576;
 FWW_SLAB :: 2097152;
@@ -165,14 +166,14 @@ fww_load_config :: (cfg: [] FwConfig) {
   b: [1024] u8;
 
   be := fww_trim(cl_getenv("FLAWED_BACKEND", b[..]));
-  if be == "anthropic" || be == "1" { cfg[0].backend_pref = FLAWED_BE_ANTHROPIC; }
-  else if be == "claude_oauth" || be == "oauth" || be == "2" { cfg[0].backend_pref = FLAWED_BE_CLAUDE_OAUTH; }
-  else if be == "openrouter" || be == "3" { cfg[0].backend_pref = FLAWED_BE_OPENROUTER; }
-  else if be == "local" || be == "psionic" || be == "4" { cfg[0].backend_pref = FLAWED_BE_LOCAL; }
+  if be == "local" || be == "psionic" || be == "1" { cfg[0].backend_pref = FLAWED_BE_LOCAL; }
+  else if be == "vertex" || be == "2" { cfg[0].backend_pref = FLAWED_BE_VERTEX; }
+  else if be == "gemini" || be == "3" { cfg[0].backend_pref = FLAWED_BE_GEMINI; }
+  else if be == "openrouter" || be == "4" { cfg[0].backend_pref = FLAWED_BE_OPENROUTER; }
   else { cfg[0].backend_pref = FLAWED_BE_AUTO; }
 
   m := fww_trim(cl_getenv("FLAWED_MODEL", b[..]));
-  cfg[0].nmodel = fww_keep(cfg[0].model[..], ifx m.count > 0 then m else "claude-opus-4-7");
+  cfg[0].nmodel = fww_keep(cfg[0].model[..], ifx m.count > 0 then m else "inkling-2-mini");
   cm := fww_trim(cl_getenv("FLAWED_CUSTOM_MODEL", b[..]));
   cfg[0].ncustom_model = fww_keep(cfg[0].custom_model[..], cm);
 
@@ -232,7 +233,6 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].max_budget_micros = fww_env_int("FLAWED_MAX_BUDGET_MICROS", 0);
 
   bu := fww_trim(cl_getenv("FLAWED_BASE_URL", b[..]));
-  if bu.count == 0 { bu = fww_trim(cl_getenv("ANTHROPIC_BASE_URL", b[..])); }
   cfg[0].nbase_url = fww_keep(cfg[0].base_url[..], bu);
 
   cfg[0].nallowed = fww_keep(cfg[0].allowed_tools[..], fww_trim(cl_getenv("FLAWED_ALLOWED_TOOLS", b[..])));
@@ -242,13 +242,23 @@ fww_load_config :: (cfg: [] FwConfig) {
 
 // ---------------------------------------------------------------- secure credential resolution (never logged)
 
+FWW_VX_TTL_MS :: 3000000;   // 50 minutes (Vertex tokens live 60 minutes)
+FWW_GCLOUDS :: [5] string.["/google-cloud-sdk/bin/gcloud", "/.nix-profile/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud", "/run/current-system/sw/bin/gcloud"];
+FWW_GCLOUDS_HOME :: 2;
+
 FwAuth :: struct {
   ok: bool;
-  backend: int;               // resolved FLAWED_BE_ANTHROPIC / _CLAUDE_OAUTH / _OPENROUTER / _LOCAL
-  is_oauth: bool;
+  backend: int;               // resolved FLAWED_BE_LOCAL / _VERTEX / _GEMINI / _OPENROUTER
   key: [4096] u8; nkey: int;
+  vx_project: [128] u8; nvx_project: int;
+  vx_location: [64] u8; nvx_location: int;
+  vx_keyfile: [1200] u8; nvx_keyfile: int;
+  vx_gcloud: [1200] u8; nvx_gcloud: int;
+  vx_config: [1200] u8; nvx_config: int;
+  vx_tok: [4096] u8; nvx_tok: int;
+  vx_minted_ms: int;
   source: [64] u8; nsource: int;
-  label: [128] u8; nlabel: int;
+  label: [160] u8; nlabel: int;
 }
 
 fww_read_trimmed_file :: (path: string, out: [] u8) -> int {
@@ -257,7 +267,9 @@ fww_read_trimmed_file :: (path: string, out: [] u8) -> int {
   n := fs_read(path, raw[..]);
   if n <= 0 { return 0; }
   t := fww_trim(cast(string) raw[0..<n]);
-  return fww_keep(out, t);
+  r := fww_keep(out, t);
+  for i: 0..<raw.count { raw[i] = 0; }
+  return r;
 }
 
 fww_read_env_file_key :: (path: string, var_name: string, out: [] u8) -> int {
@@ -266,6 +278,7 @@ fww_read_env_file_key :: (path: string, var_name: string, out: [] u8) -> int {
   n := fs_read(path, raw[..]);
   if n <= 0 { return 0; }
   s := cast(string) raw[0..<n];
+  res := 0;
   i := 0;
   while i < s.count {
     e := i;
@@ -279,32 +292,12 @@ fww_read_env_file_key :: (path: string, var_name: string, out: [] u8) -> int {
       if val.count >= 2 && ((val[0] == '"' && val[val.count - 1] == '"') || (val[0] == '\'' && val[val.count - 1] == '\'')) {
         val = cast(string) val[1..<val.count - 1];
       }
-      return fww_keep(out, val);
+      res = fww_keep(out, val);
+      break;
     }
   }
-  return 0;
-}
-
-fww_read_claude_oauth :: (home: string, out: [] u8) -> int {
-  raw: [16384] u8;
-  defer { for i: 0..<raw.count { raw[i] = 0; } }
-  svc: [64] u8; ns := fww_keep(svc[..], "Claude Code-credentials");
-  user: [256] u8; uname := proc_username(user[..]);
-  sz := cxsecret_read_service(svc[0..<ns], user[0..<uname.count], raw[..]);
-  if sz <= 0 && home.count > 0 {
-    pb: [1024] u8;
-    p := fs_join(home, ".claude/.credentials.json", pb[..]);
-    if p.count > 0 && fs_exists(p) { sz = fs_read(p, raw[..]); }
-  }
-  if sz <= 0 { return 0; }
-  nodes: [128] JvNode;
-  d: [1] Jv;
-  if !jv_parse(d[..], cast(string) raw[0..<sz], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
-  tok := jv_path(d[0], 0, "claudeAiOauth.accessToken");
-  if tok < 0 { tok = jv_get(d[0], 0, "accessToken"); }
-  if tok < 0 { return 0; }
-  tn := jv_str(d[0], tok, out);
-  return ifx tn > 0 then tn else 0;
+  for k: 0..<raw.count { raw[k] = 0; }
+  return res;
 }
 
 fww_key_suffix_label :: (prefix: string, key: string, out: [] u8) -> int {
@@ -317,24 +310,123 @@ fww_key_suffix_label :: (prefix: string, key: string, out: [] u8) -> int {
   return n;
 }
 
-fww_try_anthropic_key :: (home: string, out_key: [] u8, src_out: [] u8, nsrc: [] int) -> int {
+fww_token_valid :: (t: string) -> bool {
+  if t.count < 20 { return false; }
+  for c: t { if c < 33 || c > 126 { return false; } }
+  return true;
+}
+
+// Discover Vertex AI project, location, keyfile, and gcloud binary (same discovery as microcoder_keys.coax).
+fww_vertex_discover :: (home: string, auth: [] FwAuth) {
+  b: [1200] u8;
+  agy_p: [1400] u8;
+  agy_path := ifx home.count > 0 then fs_join(home, ".openagents/coder/antigravity.env", agy_p[..]) else "";
+
+  proj := fww_trim(cl_getenv("GOOGLE_CLOUD_PROJECT", b[..]));
+  if proj.count == 0 && agy_path.count > 0 {
+    pn := fww_read_env_file_key(agy_path, "GOOGLE_CLOUD_PROJECT", b[..]);
+    if pn > 0 { proj = cast(string) b[0..<pn]; }
+  }
+  auth[0].nvx_project = fww_keep(auth[0].vx_project[..], ifx proj.count > 0 then proj else "openagentsgemini");
+
+  loc := fww_trim(cl_getenv("GOOGLE_CLOUD_LOCATION", b[..]));
+  if loc.count == 0 && agy_path.count > 0 {
+    ln := fww_read_env_file_key(agy_path, "GOOGLE_CLOUD_LOCATION", b[..]);
+    if ln > 0 { loc = cast(string) b[0..<ln]; }
+  }
+  auth[0].nvx_location = fww_keep(auth[0].vx_location[..], ifx loc.count > 0 then loc else "us");
+
+  auth[0].nvx_keyfile = 0;
+  env_kf := fww_trim(cl_getenv("GOOGLE_APPLICATION_CREDENTIALS", b[..]));
+  if env_kf.count > 0 && fs_exists(env_kf) {
+    auth[0].nvx_keyfile = fww_keep(auth[0].vx_keyfile[..], env_kf);
+  }
+  if auth[0].nvx_keyfile == 0 && agy_path.count > 0 {
+    kn := fww_read_env_file_key(agy_path, "GOOGLE_APPLICATION_CREDENTIALS", b[..]);
+    if kn > 0 && fs_exists(cast(string) b[0..<kn]) {
+      auth[0].nvx_keyfile = fww_keep(auth[0].vx_keyfile[..], cast(string) b[0..<kn]);
+    }
+  }
+  if auth[0].nvx_keyfile == 0 && home.count > 0 {
+    kp: [1400] u8;
+    def_kf := fs_join(home, "work/.secrets/vertex-sa-inference.json", kp[..]);
+    if def_kf.count > 0 && fs_exists(def_kf) {
+      auth[0].nvx_keyfile = fww_keep(auth[0].vx_keyfile[..], def_kf);
+    }
+  }
+
+  auth[0].nvx_gcloud = 0;
+  gclouds := FWW_GCLOUDS;
+  for g, i: gclouds {
+    gp: [1400] u8;
+    n := ifx i < FWW_GCLOUDS_HOME then (ifx home.count > 0 then fww_cat(gp[..], fww_cat(gp[..], 0, home), g) else 0) else fww_cat(gp[..], 0, g);
+    if n > 0 && fs_exists(cast(string) gp[0..<n]) {
+      auth[0].nvx_gcloud = fww_keep(auth[0].vx_gcloud[..], cast(string) gp[0..<n]);
+      break;
+    }
+  }
+  auth[0].nvx_config = ifx home.count > 0 then fww_cat(auth[0].vx_config[..], fww_cat(auth[0].vx_config[..], 0, home), "/.cache/openagents/coder-gcloud") else 0;
+}
+
+fww_vertex_has_creds :: (auth: [] FwAuth) -> bool {
+  tb: [64] u8;
+  if fww_trim(cl_getenv("VERTEX_ACCESS_TOKEN", tb[..])).count >= 20 { return true; }
+  return auth[0].nvx_keyfile > 0 && auth[0].nvx_gcloud > 0;
+}
+
+// Mint (or reuse 50-min cached) Vertex AI OAuth access token via env or gcloud SA keyfile.
+fww_vertex_mint :: (auth: [] FwAuth) -> bool {
+  now := proc_now_ms();
+  if auth[0].nvx_tok > 0 && now - auth[0].vx_minted_ms < FWW_VX_TTL_MS { return true; }
+  auth[0].nvx_tok = 0;
+
+  tb: [4096] u8;
+  env_t := fww_trim(cl_getenv("VERTEX_ACCESS_TOKEN", tb[..]));
+  if fww_token_valid(env_t) {
+    auth[0].nvx_tok = fww_keep(auth[0].vx_tok[..], env_t);
+    auth[0].vx_minted_ms = now;
+    return true;
+  }
+  if auth[0].nvx_keyfile == 0 || auth[0].nvx_gcloud == 0 { return false; }
+
+  h := proc_new();
+  if h < 0 { return false; }
+  e1: [1400] u8; n1 := fww_cat(e1[..], fww_cat(e1[..], 0, "GOOGLE_APPLICATION_CREDENTIALS="), cast(string) auth[0].vx_keyfile[0..<auth[0].nvx_keyfile]);
+  e2: [1400] u8; n2 := fww_cat(e2[..], fww_cat(e2[..], 0, "CLOUDSDK_CONFIG="), cast(string) auth[0].vx_config[0..<auth[0].nvx_config]);
+  e3 := "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/run/current-system/sw/bin";
+  ok := proc_arg(h, cast(string) auth[0].vx_gcloud[0..<auth[0].nvx_gcloud])
+        && proc_arg(h, "auth") && proc_arg(h, "application-default") && proc_arg(h, "print-access-token")
+        && proc_env(h, cast(string) e1[0..<n1])
+        && proc_env(h, cast(string) e2[0..<n2])
+        && proc_env(h, e3);
+  if !ok || proc_start(h) != 0 { _ = proc_release(h); return false; }
+  _ = proc_close_stdin(h);
+  ln := proc_line(h, 25000, tb[..]);
+  st := proc_wait(h, 2000);
+  _ = proc_release(h);
+  if st != 0 || ln <= 0 { return false; }
+  tok := fww_trim(cast(string) tb[0..<ln]);
+  if !fww_token_valid(tok) { return false; }
+  auth[0].nvx_tok = fww_keep(auth[0].vx_tok[..], tok);
+  auth[0].vx_minted_ms = proc_now_ms();
+  return true;
+}
+
+fww_try_gemini_key :: (home: string, out_key: [] u8, src_out: [] u8, nsrc: [] int) -> int {
   b: [4096] u8;
   k := fww_trim(cl_getenv("FLAWED_API_KEY", b[..]));
-  if k.count > 0 { nsrc[0] = fww_keep(src_out, "flawed_env"); return fww_keep(out_key, k); }
+  if k.count > 0 && !flawed_aw_starts(k, "sk-or-") { nsrc[0] = fww_keep(src_out, "flawed_env"); return fww_keep(out_key, k); }
   if home.count > 0 {
     pb: [1024] u8;
     n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/flawed-key", pb[..]), out_key);
-    if n > 0 { nsrc[0] = fww_keep(src_out, "flawed_key"); return n; }
+    if n > 0 && !flawed_aw_starts(cast(string) out_key[0..<n], "sk-or-") { nsrc[0] = fww_keep(src_out, "flawed_key"); return n; }
+    n = fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/gemini-key", pb[..]), out_key);
+    if n > 0 { nsrc[0] = fww_keep(src_out, "gemini_key"); return n; }
+    n = fww_read_env_file_key(fs_join(home, "work/.secrets/openagents-gemini-provider.env", pb[..]), "GEMINI_API_KEY", out_key);
+    if n > 0 { nsrc[0] = fww_keep(src_out, "gemini_secrets"); return n; }
   }
-  k = fww_trim(cl_getenv("ANTHROPIC_API_KEY", b[..]));
-  if k.count > 0 { nsrc[0] = fww_keep(src_out, "anthropic_env"); return fww_keep(out_key, k); }
-  k = fww_trim(cl_getenv("CODER_CLAUDE_KEY", b[..]));
-  if k.count > 0 { nsrc[0] = fww_keep(src_out, "claude_env"); return fww_keep(out_key, k); }
-  if home.count > 0 {
-    pb: [1024] u8;
-    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/claude-key", pb[..]), out_key);
-    if n > 0 { nsrc[0] = fww_keep(src_out, "claude_key"); return n; }
-  }
+  k = fww_trim(cl_getenv("GEMINI_API_KEY", b[..]));
+  if k.count > 0 { nsrc[0] = fww_keep(src_out, "gemini_env"); return fww_keep(out_key, k); }
   return 0;
 }
 
@@ -344,7 +436,9 @@ fww_try_openrouter_key :: (home: string, out_key: [] u8) -> int {
   if k.count > 0 { return fww_keep(out_key, k); }
   if home.count > 0 {
     pb: [1024] u8;
-    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/openrouter-key", pb[..]), out_key);
+    n := fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/flawed-key", pb[..]), out_key);
+    if n > 0 && flawed_aw_starts(cast(string) out_key[0..<n], "sk-or-") { return n; }
+    n = fww_read_trimmed_file(fs_join(home, "Library/Application Support/Coder/openrouter-key", pb[..]), out_key);
     if n > 0 { return n; }
     n = fww_read_env_file_key(fs_join(home, "work/.secrets/openrouter.env", pb[..]), "OPENROUTER_API_KEY", out_key);
     if n > 0 { return n; }
@@ -354,7 +448,7 @@ fww_try_openrouter_key :: (home: string, out_key: [] u8) -> int {
 
 fww_local_reachable :: (local_base: string) -> bool {
   ub: [512] u8;
-  b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:11435");
+  b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:8080");
   n := fww_cat(ub[..], 0, b);
   n = fww_cat(ub[..], n, "/v1/models");
   h := proc_new();
@@ -367,17 +461,85 @@ fww_local_reachable :: (local_base: string) -> bool {
   return st == 0;
 }
 
-fww_resolve_auth :: (cfg: [] FwConfig, home: string, auth: [] FwAuth) {
+fww_local_installed :: (home: string) -> bool {
+  if home.count == 0 { return false; }
+  pb: [1024] u8;
+  return fs_exists(fs_join(home, ".openagents/models/inkling-2-mini", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-lora", pb[..]))
+      || fs_exists(fs_join(home, ".openagents/models/inkling-2-mini-uncensored-q4k", pb[..]));
+}
+
+fww_vertex_label :: (auth: [] FwAuth, out: [] u8) -> int {
+  n := fww_cat(out, 0, "Vertex AI (project ");
+  n = fww_cat(out, n, cast(string) auth[0].vx_project[0..<auth[0].nvx_project]);
+  n = fww_cat(out, n, ")");
+  return n;
+}
+
+// Model-aware credential & backend resolution (Local Psionic Metal, Vertex AI, Gemini API, OpenRouter — zero Anthropic).
+// Keeps cached Vertex OAuth token intact across turns.
+fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: [] FwAuth, probe_only: bool) {
+  // Preserve cached Vertex token across refreshes
+  saved_tok: [4096] u8;
+  saved_nt := auth[0].nvx_tok;
+  saved_ms := auth[0].vx_minted_ms;
+  if saved_nt > 0 { for i: 0..<saved_nt { saved_tok[i] = auth[0].vx_tok[i]; } }
+
   auth[0] = FwAuth.{};
+  if saved_nt > 0 {
+    for i: 0..<saved_nt { auth[0].vx_tok[i] = saved_tok[i]; }
+    auth[0].nvx_tok = saved_nt;
+    auth[0].vx_minted_ms = saved_ms;
+  }
+
+  fww_vertex_discover(home, auth);
   rb: [256] u8;
   replaying := cl_getenv("GW_REPLAY", rb[..]).count > 0;
   pref := cfg[0].backend_pref;
   lbase_b: [512] u8;
   lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
 
-  // Local explicit
-  if pref == FLAWED_BE_LOCAL {
-    if replaying || fww_local_reachable(lbase) {
+  // Probe summary for --auth in Settings -> Flawed
+  if probe_only && pref == FLAWED_BE_AUTO {
+    has_local := fww_local_installed(home) || fww_local_reachable(lbase);
+    has_vx := fww_vertex_has_creds(auth);
+    src_b: [32] u8; nsrc := [1] int.[0];
+    gm_b: [256] u8; gm_n := fww_try_gemini_key(home, gm_b[..], src_b[..], nsrc[..]);
+    or_b: [256] u8; or_n := fww_try_openrouter_key(home, or_b[..]);
+    n := 0;
+    if has_local {
+      n = fww_cat(auth[0].label[..], n, "Local Psionic");
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_LOCAL;
+      auth[0].nsource = fww_keep(auth[0].source[..], "local");
+    }
+    if has_vx {
+      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+      n = fww_cat(auth[0].label[..], n, "Vertex AI (");
+      n = fww_cat(auth[0].label[..], n, cast(string) auth[0].vx_project[0..<auth[0].nvx_project]);
+      n = fww_cat(auth[0].label[..], n, ")");
+      auth[0].ok = true;
+      if !has_local { auth[0].backend = FLAWED_BE_VERTEX; auth[0].nsource = fww_keep(auth[0].source[..], "vertex"); }
+    } else if gm_n > 0 {
+      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+      n = fww_cat(auth[0].label[..], n, "Gemini API");
+      auth[0].ok = true;
+      if !has_local { auth[0].backend = FLAWED_BE_GEMINI; auth[0].nsource = fww_keep(auth[0].source[..], "gemini"); }
+    } else if or_n > 0 {
+      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+      n = fww_cat(auth[0].label[..], n, "OpenRouter");
+      auth[0].ok = true;
+      if !has_local { auth[0].backend = FLAWED_BE_OPENROUTER; auth[0].nsource = fww_keep(auth[0].source[..], "openrouter"); }
+    }
+    if n > 0 { auth[0].nlabel = n; return; }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Install Inkling 2 Mini or configure Vertex AI / Gemini API");
+    return;
+  }
+
+  wants_local := pref == FLAWED_BE_LOCAL || (pref == FLAWED_BE_AUTO && flawed_wire_is_local_model(req_model));
+  if wants_local {
+    if replaying || probe_only && fww_local_installed(home) || fww_local_reachable(lbase) {
       auth[0].ok = true;
       auth[0].backend = FLAWED_BE_LOCAL;
       auth[0].nsource = fww_keep(auth[0].source[..], "local");
@@ -385,11 +547,40 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, auth: [] FwAuth) {
       return;
     }
     auth[0].nsource = fww_keep(auth[0].source[..], "local_offline");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic server not running");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic server not running (start Inkling 2 Mini or switch to Gemini 4 Neon)");
     return;
   }
 
-  // OpenRouter explicit
+  if pref == FLAWED_BE_VERTEX {
+    if replaying || (probe_only && fww_vertex_has_creds(auth)) || (!probe_only && fww_vertex_mint(auth)) {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_VERTEX;
+      auth[0].nkey = fww_keep(auth[0].key[..], cast(string) auth[0].vx_tok[0..<auth[0].nvx_tok]);
+      auth[0].nsource = fww_keep(auth[0].source[..], "vertex");
+      auth[0].nlabel = fww_vertex_label(auth, auth[0].label[..]);
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "No Vertex AI credentials found (check gcloud & service account)");
+    return;
+  }
+
+  if pref == FLAWED_BE_GEMINI {
+    src_b: [32] u8; nsrc := [1] int.[0];
+    kn := fww_try_gemini_key(home, auth[0].key[..], src_b[..], nsrc[..]);
+    if kn > 0 || replaying {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_GEMINI;
+      auth[0].nkey = kn;
+      auth[0].nsource = fww_keep(auth[0].source[..], ifx nsrc[0] > 0 then cast(string) src_b[0..<nsrc[0]] else "gemini");
+      auth[0].nlabel = fww_key_suffix_label("Gemini API key", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "No Gemini API key configured (add in Settings → Flawed)");
+    return;
+  }
+
   if pref == FLAWED_BE_OPENROUTER {
     kn := fww_try_openrouter_key(home, auth[0].key[..]);
     if kn > 0 || replaying {
@@ -405,67 +596,25 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, auth: [] FwAuth) {
     return;
   }
 
-  // Claude OAuth explicit
-  if pref == FLAWED_BE_CLAUDE_OAUTH {
-    kn := fww_read_claude_oauth(home, auth[0].key[..]);
-    if kn > 0 || replaying {
-      auth[0].ok = true;
-      auth[0].backend = FLAWED_BE_CLAUDE_OAUTH;
-      auth[0].is_oauth = true;
-      auth[0].nkey = kn;
-      auth[0].nsource = fww_keep(auth[0].source[..], "claude_oauth");
-      auth[0].nlabel = fww_keep(auth[0].label[..], "Claude Account (OAuth Keychain)");
-      return;
-    }
-    auth[0].nsource = fww_keep(auth[0].source[..], "none");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "No Claude OAuth login found (run `claude login`)");
-    return;
-  }
-
-  // Anthropic API explicit
-  if pref == FLAWED_BE_ANTHROPIC {
-    src_b: [32] u8; nsrc := [1] int.[0];
-    kn := fww_try_anthropic_key(home, auth[0].key[..], src_b[..], nsrc[..]);
-    if kn > 0 || replaying {
-      kstr := cast(string) auth[0].key[0..<kn];
-      is_oa := flawed_aw_starts(kstr, "sk-ant-oat");
-      auth[0].ok = true;
-      auth[0].backend = ifx is_oa then FLAWED_BE_CLAUDE_OAUTH else FLAWED_BE_ANTHROPIC;
-      auth[0].is_oauth = is_oa;
-      auth[0].nkey = kn;
-      auth[0].nsource = fww_keep(auth[0].source[..], ifx nsrc[0] > 0 then cast(string) src_b[0..<nsrc[0]] else "anthropic_api");
-      auth[0].nlabel = fww_key_suffix_label(ifx is_oa then "Anthropic OAuth" else "Anthropic API key", kstr, auth[0].label[..]);
-      return;
-    }
-    auth[0].nsource = fww_keep(auth[0].source[..], "none");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Add an API key in Settings → Flawed");
-    return;
-  }
-
-  // Auto priority:
-  // 1. Explicit Flawed/Anthropic API key (or custom base URL with key)
-  src_b: [32] u8; nsrc := [1] int.[0];
-  kn := fww_try_anthropic_key(home, auth[0].key[..], src_b[..], nsrc[..]);
-  if kn > 0 {
-    kstr := cast(string) auth[0].key[0..<kn];
-    is_oa := flawed_aw_starts(kstr, "sk-ant-oat");
+  // Auto cloud routing (for Gemini 4 Neon / Carbon / Hydrogen / Argon):
+  // 1. Vertex AI (service account / ADC / VERTEX_ACCESS_TOKEN)
+  if fww_vertex_has_creds(auth) && (probe_only || fww_vertex_mint(auth)) {
     auth[0].ok = true;
-    auth[0].backend = ifx is_oa then FLAWED_BE_CLAUDE_OAUTH else FLAWED_BE_ANTHROPIC;
-    auth[0].is_oauth = is_oa;
+    auth[0].backend = FLAWED_BE_VERTEX;
+    auth[0].nkey = fww_keep(auth[0].key[..], cast(string) auth[0].vx_tok[0..<auth[0].nvx_tok]);
+    auth[0].nsource = fww_keep(auth[0].source[..], "vertex");
+    auth[0].nlabel = fww_vertex_label(auth, auth[0].label[..]);
+    return;
+  }
+  // 2. Gemini API key
+  src_b: [32] u8; nsrc := [1] int.[0];
+  kn := fww_try_gemini_key(home, auth[0].key[..], src_b[..], nsrc[..]);
+  if kn > 0 {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_GEMINI;
     auth[0].nkey = kn;
     auth[0].nsource = fww_keep(auth[0].source[..], cast(string) src_b[0..<nsrc[0]]);
-    auth[0].nlabel = fww_key_suffix_label(ifx is_oa then "Anthropic OAuth" else "Anthropic API key", kstr, auth[0].label[..]);
-    return;
-  }
-  // 2. Claude Code OAuth Keychain / ~/.claude/.credentials.json
-  kn = fww_read_claude_oauth(home, auth[0].key[..]);
-  if kn > 0 {
-    auth[0].ok = true;
-    auth[0].backend = FLAWED_BE_CLAUDE_OAUTH;
-    auth[0].is_oauth = true;
-    auth[0].nkey = kn;
-    auth[0].nsource = fww_keep(auth[0].source[..], "claude_oauth");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Claude Account (OAuth Keychain)");
+    auth[0].nlabel = fww_key_suffix_label("Gemini API key", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
     return;
   }
   // 3. OpenRouter key
@@ -478,23 +627,16 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, auth: [] FwAuth) {
     auth[0].nlabel = fww_key_suffix_label("OpenRouter", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
     return;
   }
-  // 4. Local Psionic Metal or Replay
+  // 4. Replay fallback
   if replaying {
     auth[0].ok = true;
-    auth[0].backend = FLAWED_BE_ANTHROPIC;
+    auth[0].backend = FLAWED_BE_VERTEX;
     auth[0].nsource = fww_keep(auth[0].source[..], "replay");
     auth[0].nlabel = fww_keep(auth[0].label[..], "Replay");
     return;
   }
-  if fww_local_reachable(lbase) {
-    auth[0].ok = true;
-    auth[0].backend = FLAWED_BE_LOCAL;
-    auth[0].nsource = fww_keep(auth[0].source[..], "local");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic Metal");
-    return;
-  }
   auth[0].nsource = fww_keep(auth[0].source[..], "none");
-  auth[0].nlabel = fww_keep(auth[0].label[..], "No API key or login configured");
+  auth[0].nlabel = fww_keep(auth[0].label[..], "No Vertex AI or Gemini API credentials configured (open Settings → Flawed)");
 }
 
 // ---------------------------------------------------------------- conversation history (zero-heap slab)
@@ -741,123 +883,152 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   return n;
 }
 
-// ---------------------------------------------------------------- request JSON builders (Anthropic & OpenAI)
+// ---------------------------------------------------------------- request JSON builders (Gemini Native & OpenAI/Psionic)
 
-fww_build_anthropic_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, out: [] u8) -> int {
+fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
-  jo_key(o[..], "model"); jo_str(o[..], model);
-  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort));
-  jo_key(o[..], "stream"); jo_bool(o[..], true);
 
-  cache_on := cfg[0].prompt_cache != FLAWED_CACHE_OFF;
-
-  // System prompt array with cache_control
-  jo_key(o[..], "system");
-  jo_arr(o[..]);
-  jo_obj(o[..]);
-  jo_key(o[..], "type"); jo_str(o[..], "text");
-  jo_key(o[..], "text"); jo_str(o[..], sys_prompt);
-  if cache_on {
-    jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}");
-  }
-  jo_end(o[..]);
-  jo_end(o[..]);
-
-  // Thinking configuration (Adaptive / Extended / Off)
-  if cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE {
-    jo_key(o[..], "thinking"); jo_raw(o[..], "{\"type\":\"adaptive\"}");
-    jo_key(o[..], "output_config");
+  // System instruction
+  if sys_prompt.count > 0 {
+    jo_key(o[..], "systemInstruction");
     jo_obj(o[..]);
-    jo_key(o[..], "effort"); jo_str(o[..], flawed_wire_effort_token(effort));
+    jo_key(o[..], "parts");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "text"); jo_str(o[..], sys_prompt);
     jo_end(o[..]);
-  } else if cfg[0].thinking_mode == FLAWED_THINK_EXTENDED {
-    jo_key(o[..], "thinking");
-    jo_obj(o[..]);
-    jo_key(o[..], "type"); jo_str(o[..], "enabled");
-    jo_key(o[..], "budget_tokens"); jo_int(o[..], flawed_wire_thinking_budget(effort));
+    jo_end(o[..]);
     jo_end(o[..]);
   }
 
-  // Tools
+  // Tools (Gemini functionDeclarations)
   allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
   disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
   jo_key(o[..], "tools");
-  _ = flawed_wire_write_tools(o[..], true, allowed, disallowed, cache_on);
+  _ = flawed_wire_write_tools(o[..], true, allowed, disallowed);
 
-  // Messages
-  jo_key(o[..], "messages");
+  // Contents
+  jo_key(o[..], "contents");
   jo_arr(o[..]);
-  last_user := -1;
-  for i: 0..<h[0].nmsgs {
-    if h[0].msgs[i].role == FWW_MROLE_USER || h[0].msgs[i].role == FWW_MROLE_TOOL_RESULTS { last_user = i; }
-  }
   for i: 0..<h[0].nmsgs {
     msg := h[0].msgs[i];
-    jo_obj(o[..]);
-    jo_key(o[..], "role");
-    jo_str(o[..], ifx msg.role == FWW_MROLE_ASSISTANT then "assistant" else "user");
-    jo_key(o[..], "content");
-    jo_arr(o[..]);
-    for b: 0..<msg.nblocks {
-      bk := msg.blocks[b];
-      is_last_bp := cache_on && i == last_user && b == msg.nblocks - 1;
-      if bk.kind == FWW_MB_THINK {
-        sig := fww_slab_str(h, bk.sig_at, bk.sig_n);
-        if sig.count > 0 {
+    if msg.role == FWW_MROLE_USER {
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "user");
+      jo_key(o[..], "parts");
+      jo_arr(o[..]);
+      txt := ifx msg.nblocks > 0 then fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n) else "";
+      jo_obj(o[..]);
+      jo_key(o[..], "text"); jo_str(o[..], txt);
+      jo_end(o[..]);
+      jo_end(o[..]);
+      jo_end(o[..]);
+    } else if msg.role == FWW_MROLE_ASSISTANT {
+      // Count model parts (text + tool_use; skip thought-only blocks without text/tool)
+      nparts := 0;
+      for b: 0..<msg.nblocks {
+        bk := msg.blocks[b];
+        if (bk.kind == FWW_MB_TEXT && (bk.text_n > 0 || bk.sig_n > 0)) || bk.kind == FWW_MB_TOOL_USE { nparts += 1; }
+      }
+      if nparts == 0 { continue; }
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "model");
+      jo_key(o[..], "parts");
+      jo_arr(o[..]);
+      for b: 0..<msg.nblocks {
+        bk := msg.blocks[b];
+        if bk.kind == FWW_MB_TEXT && (bk.text_n > 0 || bk.sig_n > 0) {
           jo_obj(o[..]);
-          jo_key(o[..], "type"); jo_str(o[..], "thinking");
-          jo_key(o[..], "thinking"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-          jo_key(o[..], "signature"); jo_str(o[..], sig);
+          jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          if bk.sig_n > 0 { jo_key(o[..], "thoughtSignature"); jo_str(o[..], fww_slab_str(h, bk.sig_at, bk.sig_n)); }
+          jo_end(o[..]);
+        } else if bk.kind == FWW_MB_TOOL_USE {
+          jo_obj(o[..]);
+          jo_key(o[..], "functionCall");
+          jo_obj(o[..]);
+          jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n));
+          inp := fww_slab_str(h, bk.text_at, bk.text_n);
+          jo_key(o[..], "args");
+          jo_raw(o[..], ifx inp.count > 0 && json_valid(inp) && inp[0] == '{' then inp else "{}");
+          if bk.id_n > 0 { jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n)); }
+          jo_end(o[..]);
+          if bk.sig_n > 0 { jo_key(o[..], "thoughtSignature"); jo_str(o[..], fww_slab_str(h, bk.sig_at, bk.sig_n)); }
           jo_end(o[..]);
         }
-      } else if bk.kind == FWW_MB_TEXT {
-        jo_obj(o[..]);
-        jo_key(o[..], "type"); jo_str(o[..], "text");
-        jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-        if is_last_bp { jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}"); }
-        jo_end(o[..]);
-      } else if bk.kind == FWW_MB_TOOL_USE {
-        jo_obj(o[..]);
-        jo_key(o[..], "type"); jo_str(o[..], "tool_use");
-        jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
-        jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n));
-        inp := fww_slab_str(h, bk.text_at, bk.text_n);
-        jo_key(o[..], "input");
-        jo_raw(o[..], ifx inp.count > 0 && json_valid(inp) then inp else "{}");
-        jo_end(o[..]);
-      } else if bk.kind == FWW_MB_TOOL_RES {
-        jo_obj(o[..]);
-        jo_key(o[..], "type"); jo_str(o[..], "tool_result");
-        jo_key(o[..], "tool_use_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
-        jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-        if bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
-        if is_last_bp { jo_key(o[..], "cache_control"); jo_raw(o[..], "{\"type\":\"ephemeral\"}"); }
-        jo_end(o[..]);
       }
+      jo_end(o[..]);
+      jo_end(o[..]);
+    } else if msg.role == FWW_MROLE_TOOL_RESULTS {
+      jo_obj(o[..]);
+      jo_key(o[..], "role"); jo_str(o[..], "user");
+      jo_key(o[..], "parts");
+      jo_arr(o[..]);
+      for b: 0..<msg.nblocks {
+        bk := msg.blocks[b];
+        if bk.kind == FWW_MB_TOOL_RES {
+          jo_obj(o[..]);
+          jo_key(o[..], "functionResponse");
+          jo_obj(o[..]);
+          nm := fww_slab_str(h, bk.name_at, bk.name_n);
+          jo_key(o[..], "name"); jo_str(o[..], ifx nm.count > 0 then nm else "tool");
+          if bk.id_n > 0 { jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n)); }
+          jo_key(o[..], "response");
+          jo_obj(o[..]);
+          jo_key(o[..], "output"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          if bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
+          jo_end(o[..]);
+          jo_end(o[..]);
+          jo_end(o[..]);
+        } else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+          jo_obj(o[..]);
+          jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          jo_end(o[..]);
+        }
+      }
+      jo_end(o[..]);
+      jo_end(o[..]);
     }
-    jo_end(o[..]);
-    jo_end(o[..]);
   }
   jo_end(o[..]);
+
+  // Generation & thinking config
+  jo_key(o[..], "generationConfig");
+  jo_obj(o[..]);
+  jo_key(o[..], "maxOutputTokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort, false));
+  jo_key(o[..], "thinkingConfig");
+  jo_obj(o[..]);
+  if cfg[0].thinking_mode == FLAWED_THINK_OFF {
+    jo_key(o[..], "includeThoughts"); jo_bool(o[..], false);
+    jo_key(o[..], "thinkingLevel"); jo_str(o[..], "low");
+  } else {
+    jo_key(o[..], "includeThoughts"); jo_bool(o[..], true);
+    jo_key(o[..], "thinkingLevel"); jo_str(o[..], flawed_wire_gemini_level(effort));
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+
   jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, out: [] u8) -> int {
+fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
   jo_key(o[..], "model"); jo_str(o[..], model);
-  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort));
+  jo_key(o[..], "max_tokens"); jo_int(o[..], flawed_wire_max_tokens(cfg[0].thinking_mode, effort, is_local));
+  if cfg[0].thinking_mode != FLAWED_THINK_OFF && effort.count > 0 {
+    jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_gemini_level(effort));
+  }
   jo_key(o[..], "stream"); jo_bool(o[..], true);
   jo_key(o[..], "stream_options"); jo_raw(o[..], "{\"include_usage\":true}");
 
   allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
   disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
   jo_key(o[..], "tools");
-  _ = flawed_wire_write_tools(o[..], false, allowed, disallowed, false);
+  _ = flawed_wire_write_tools(o[..], false, allowed, disallowed);
 
   jo_key(o[..], "messages");
   jo_arr(o[..]);
@@ -880,9 +1051,11 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
       jo_key(o[..], "role"); jo_str(o[..], "assistant");
       has_text := false;
       has_tools := false;
+      has_think := false;
       for b: 0..<msg.nblocks {
         if msg.blocks[b].kind == FWW_MB_TEXT && msg.blocks[b].text_n > 0 { has_text = true; }
         if msg.blocks[b].kind == FWW_MB_TOOL_USE { has_tools = true; }
+        if msg.blocks[b].kind == FWW_MB_THINK && msg.blocks[b].text_n > 0 { has_think = true; }
       }
       if has_text {
         jo_key(o[..], "content");
@@ -894,6 +1067,15 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
         }
       } else {
         jo_key(o[..], "content"); jo_raw(o[..], "null");
+      }
+      if is_local && has_think {
+        jo_key(o[..], "reasoning_content");
+        for b: 0..<msg.nblocks {
+          if msg.blocks[b].kind == FWW_MB_THINK {
+            jo_str(o[..], fww_slab_str(h, msg.blocks[b].text_at, msg.blocks[b].text_n));
+            break;
+          }
+        }
       }
       if has_tools {
         jo_key(o[..], "tool_calls");
@@ -918,12 +1100,19 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
     } else if msg.role == FWW_MROLE_TOOL_RESULTS {
       for b: 0..<msg.nblocks {
         bk := msg.blocks[b];
-        if bk.kind != FWW_MB_TOOL_RES { continue; }
-        jo_obj(o[..]);
-        jo_key(o[..], "role"); jo_str(o[..], "tool");
-        jo_key(o[..], "tool_call_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
-        jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-        jo_end(o[..]);
+        if bk.kind == FWW_MB_TOOL_RES {
+          jo_obj(o[..]);
+          jo_key(o[..], "role"); jo_str(o[..], "tool");
+          jo_key(o[..], "tool_call_id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n));
+          jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          if is_local && bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
+          jo_end(o[..]);
+        } else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+          jo_obj(o[..]);
+          jo_key(o[..], "role"); jo_str(o[..], "user");
+          jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          jo_end(o[..]);
+        }
       }
     }
   }
@@ -1382,6 +1571,7 @@ FwPendingTool :: struct {
   id: [128] u8; nid: int;
   name: [64] u8; nname: int;
   args: [65536] u8; nargs: int;
+  sig: [4096] u8; nsig: int;
   done: bool;
   is_error: bool;
   res: [FWW_TOOL_OUT_MAX] u8; nres: int;
@@ -1412,6 +1602,7 @@ FwStreamAccum :: struct {
   cache_write: int;
   saw_error: bool;
   err_msg: [512] u8; nerr: int;
+  err_body: [4096] u8; nerr_body: int;
   resp_model: [128] u8; nresp_model: int;
 }
 
@@ -1459,6 +1650,7 @@ FwBufs :: struct {
   req_body: [524288] u8;
   sse_line: [131072] u8;
   ev_txt: [65536] u8;
+  sig_buf: [8192] u8;
   file_buf: [FWW_FILE_MAX] u8;
   edit_buf: [FWW_FILE_MAX] u8;
   compact_buf: [262144] u8;
@@ -1471,11 +1663,18 @@ fww_fc :: (b: [] FwBufs) -> FlawedFileCache {
   return FlawedFileCache.{entries = b[0].fc_entries[..], slab = b[0].fc_slab[..], state = b[0].fc_state[..]};
 }
 
+fww_gw_name :: (backend: int) -> string {
+  if backend == FLAWED_BE_LOCAL { return "psionic"; }
+  if backend == FLAWED_BE_VERTEX { return "vertex"; }
+  if backend == FLAWED_BE_GEMINI { return "gemini"; }
+  return "openrouter";
+}
+
 fww_emit_attempt :: (r: [] FwRun, auth: [] FwAuth, outcome: string, status: int, cost_micros: int, out: [] u8) {
-  gw_name := ifx auth[0].backend == FLAWED_BE_OPENROUTER then "openrouter" else ifx auth[0].backend == FLAWED_BE_LOCAL then "local" else "anthropic";
+  gw_name := fww_gw_name(auth[0].backend);
   mdl := ifx r[0].acc[0].nresp_model > 0 then cast(string) r[0].acc[0].resp_model[0..<r[0].acc[0].nresp_model] else cast(string) r[0].model[0..<r[0].nmodel];
   eff := cast(string) r[0].effort[0..<r[0].neffort];
-  in_t := r[0].acc[0].in_tok + r[0].acc[0].cache_read + r[0].acc[0].cache_write;
+  in_t := r[0].acc[0].in_tok;
   vals := [7] int.[
     ifx in_t > 0 then in_t else -1,
     ifx r[0].acc[0].out_tok > 0 then r[0].acc[0].out_tok else -1,
@@ -1503,11 +1702,15 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   r[0].first_tok_ms = 0;
   r[0].req_start_ms = proc_now_ms();
 
+  is_local := auth[0].backend == FLAWED_BE_LOCAL;
+  is_gem := flawed_wire_is_gemini(auth[0].backend);
+
   // Auto-compaction check (Ch 09) before request when enabled
-  if cfg[0].auto_compact && h[0].nmsgs > 8 {
+  if cfg[0].auto_compact && h[0].nmsgs > 6 {
     est_tok := h[0].nslab / 4;
-    ctx_win := ifx cfg[0].extended_ctx then 1000000 else 200000;
-    eff_win := flawed_effective_context_window(ctx_win, 32768, 0);
+    ctx_win := ifx is_local then 32768 else 1048576;
+    res_tok := ifx is_local then 8192 else 32768;
+    eff_win := flawed_effective_context_window(ctx_win, res_tok, 0);
     if flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, est_tok, 0, eff_win, 0) {
       _ = fww_hist_compact(h, b[0].compact_buf[..]);
     }
@@ -1519,54 +1722,51 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if auth[0].backend == FLAWED_BE_OPENROUTER {
     n := flawed_wire_openrouter_model(raw_m, mdl_b[..]);
     wire_model = cast(string) mdl_b[0..<n];
-  } else if auth[0].backend == FLAWED_BE_LOCAL {
+  } else if is_local {
     lb: [128] u8;
     pm := fww_trim(cl_getenv("PSIONIC_MODEL", lb[..]));
     wire_model = ifx pm.count > 0 then pm else "inkling-2-mini";
   } else {
-    wire_model = flawed_wire_strip_model(raw_m);
+    n := flawed_wire_gemini_model(raw_m, mdl_b[..]);
+    wire_model = cast(string) mdl_b[0..<n];
   }
+  r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], wire_model);
   eff := cast(string) r[0].effort[0..<r[0].neffort];
   sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
 
-  is_anth := flawed_wire_is_anthropic(auth[0].backend);
-  bn := ifx is_anth
-        then fww_build_anthropic_body(cfg, h, wire_model, eff, sys, b[0].req_body[..])
-        else fww_build_openai_body(cfg, h, wire_model, eff, sys, b[0].req_body[..]);
+  bn := ifx is_gem
+        then fww_build_gemini_body(cfg, h, eff, sys, b[0].req_body[..])
+        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, b[0].req_body[..]);
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
   ub: [512] u8;
   lbase_b: [512] u8;
   lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
-  un := flawed_wire_endpoint_url(auth[0].backend, cast(string) cfg[0].base_url[0..<cfg[0].nbase_url], lbase, ub[..]);
+  vx_proj := cast(string) auth[0].vx_project[0..<auth[0].nvx_project];
+  vx_loc := cast(string) auth[0].vx_location[0..<auth[0].nvx_location];
+  un := flawed_wire_endpoint_url(auth[0].backend, cast(string) cfg[0].base_url[0..<cfg[0].nbase_url], lbase, vx_proj, vx_loc, wire_model, ub[..]);
   url := cast(string) ub[0..<un];
 
   cli := GwClient.{url = url, connect_timeout_s = 15, max_time_s = 600};
-  if auth[0].backend == FLAWED_BE_LOCAL {
+  if is_local {
     cli.key_env = "";
     cli.key_value = "";
-  } else if auth[0].is_oauth || auth[0].backend == FLAWED_BE_OPENROUTER {
+  } else if auth[0].backend == FLAWED_BE_GEMINI {
+    cli.key_env = "FLAWED_REQ_KEY";
+    cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+    cli.key_header = "x-goog-api-key";
+    cli.scheme = "";
+  } else {
+    // Vertex AI OAuth Bearer token or OpenRouter Bearer API key
     cli.key_env = "FLAWED_REQ_KEY";
     cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
     cli.key_header = "Authorization";
     cli.scheme = "Bearer";
-  } else {
-    cli.key_env = "FLAWED_REQ_KEY";
-    cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
-    cli.key_header = "x-api-key";
-    cli.scheme = "";
   }
 
   hdrs: [4] string;
   nh := 0;
-  beta_b: [256] u8;
-  if is_anth {
-    hdrs[nh] = "anthropic-version: 2023-06-01"; nh += 1;
-    bn2 := fww_cat(beta_b[..], 0, "anthropic-beta: interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14");
-    if auth[0].is_oauth { bn2 = fww_cat(beta_b[..], bn2, ",oauth-2025-04-20"); }
-    if cfg[0].extended_ctx || flawed_wire_has_1m(raw_m) { bn2 = fww_cat(beta_b[..], bn2, ",context-1m-2025-08-07"); }
-    hdrs[nh] = cast(string) beta_b[0..<bn2]; nh += 1;
-  } else if auth[0].backend == FLAWED_BE_OPENROUTER {
+  if auth[0].backend == FLAWED_BE_OPENROUTER {
     hdrs[nh] = "HTTP-Referer: https://openagents.com"; nh += 1;
     hdrs[nh] = "X-Title: OpenAgents Flawed"; nh += 1;
   }
@@ -1728,9 +1928,11 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       if nb >= FWW_MAX_BLOCKS { break; }
       a0 := [1] int.[0];
       id_s := cast(string) r[0].acc[0].tools[i].id[0..<r[0].acc[0].tools[i].nid];
+      nm_s := cast(string) r[0].acc[0].tools[i].name[0..<r[0].acc[0].tools[i].nname];
       res_s := cast(string) r[0].acc[0].tools[i].res[0..<r[0].acc[0].tools[i].nres];
       bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = r[0].acc[0].tools[i].is_error};
       bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
+      bk.name_n = fww_slab_put(h, nm_s, a0[..]); bk.name_at = a0[0];
       bk.text_n = fww_slab_put(h, res_s, a0[..]); bk.text_at = a0[0];
       h[0].msgs[mi].blocks[nb] = bk;
       nb += 1;
@@ -1775,6 +1977,24 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   return "";
 }
 
+// Extract readable error.message from single-object or Gemini array error response body.
+fww_extract_err_msg :: (raw_body: string, out: [] u8) -> int {
+  t := fww_trim(raw_body);
+  if t.count == 0 { return 0; }
+  nodes: [256] JvNode; d: [1] Jv;
+  if jv_parse(d[..], t, nodes[..]) {
+    root := 0;
+    if jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) > 0 { root = jv_at(d[0], 0, 0); }
+    em := jv_path(d[0], root, "error.message");
+    if em < 0 { em = jv_get(d[0], root, "message"); }
+    if em >= 0 {
+      n := jv_str(d[0], em, out);
+      if n > 0 { return n; }
+    }
+  }
+  return fww_keep(out, t);
+}
+
 // Commit finished assistant stream into history, then either run tools or end turn.
 fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, st: [] McSteers, out: [] u8) -> string {
   status := r[0].gw[0].status;
@@ -1784,6 +2004,9 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
   // Check transport / HTTP error with Ch 05 retry policy
   if status < 200 || status >= 300 || r[0].acc[0].saw_error {
+    if r[0].acc[0].nerr == 0 && r[0].acc[0].nerr_body > 0 {
+      r[0].acc[0].nerr = fww_extract_err_msg(cast(string) r[0].acc[0].err_body[0..<r[0].acc[0].nerr_body], r[0].acc[0].err_msg[..]);
+    }
     ri := FlawedRetryInput.{
       status = ifx status > 0 then status else 503,
       is_foreground = true,
@@ -1803,7 +2026,7 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     } else if status == 401 || status == 403 {
       en = fww_cat(eb[..], 0, "Authentication failed (HTTP ");
       en = fww_put_int(eb[..], en, status);
-      en = fww_cat(eb[..], en, "). Check your API key or backend in Settings → Flawed.");
+      en = fww_cat(eb[..], en, "). Check your Vertex AI / Gemini credentials in Settings → Flawed.");
     } else if status > 0 {
       en = fww_cat(eb[..], 0, "API request failed with HTTP ");
       en = fww_put_int(eb[..], en, status);
@@ -1817,16 +2040,17 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     return "failed";
   }
 
-  // Account cost (Ch 05 flawed_calc_micro_usd)
-  fam := flawed_wire_model_family(cast(string) r[0].model[0..<r[0].nmodel]);
-  u := FlawedChunkUsage.{
-    input_tokens = r[0].acc[0].in_tok,
-    output_tokens = r[0].acc[0].out_tok,
-    cache_read_tokens = r[0].acc[0].cache_read,
-    cache_creation_tokens = r[0].acc[0].cache_write,
-    speed_fast = cfg[0].fast_mode,
-  };
-  cost := ifx auth[0].backend == FLAWED_BE_LOCAL then 0 else flawed_calc_micro_usd(cast(u8) fam, u, cfg[0].fast_mode);
+  // Account cost via coax/lib/gateway/card.coax ($0 for Local Psionic Metal)
+  cost := 0;
+  if auth[0].backend != FLAWED_BE_LOCAL {
+    gwn := fww_gw_name(auth[0].backend);
+    rm := ifx r[0].acc[0].nresp_model > 0 then cast(string) r[0].acc[0].resp_model[0..<r[0].acc[0].nresp_model] else flawed_wire_strip_model(cast(string) r[0].model[0..<r[0].nmodel]);
+    rf := gw_rate(gwn, rm);
+    if !rf.ok { rf = gw_rate("vertex", rm); }
+    if rf.ok {
+      cost = gw_card_cost(rf.rate, r[0].acc[0].in_tok, r[0].acc[0].cache_read, 0, r[0].acc[0].out_tok);
+    }
+  }
   r[0].turn_cost_micros += cost;
   h[0].total_in += r[0].acc[0].in_tok;
   h[0].total_out += r[0].acc[0].out_tok;
@@ -1834,21 +2058,22 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   h[0].total_cost_micros += cost;
   fww_emit_attempt(r, auth, "done", status, cost, out);
 
-  // Append assistant message to history
+  // Append assistant message to history (preserving per-tool thoughtSignature for Gemini 4 and reasoning for Local Psionic)
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
     h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_ASSISTANT};
     nb := 0;
     a0 := [1] int.[0];
-    if r[0].acc[0].nthink > 0 && r[0].acc[0].nsig > 0 && nb < FWW_MAX_BLOCKS {
+    if r[0].acc[0].nthink > 0 && nb < FWW_MAX_BLOCKS {
       tb := FwBlock.{kind = FWW_MB_THINK};
       tb.text_n = fww_slab_put(h, cast(string) r[0].acc[0].think[0..<r[0].acc[0].nthink], a0[..]); tb.text_at = a0[0];
-      tb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); tb.sig_at = a0[0];
+      if r[0].acc[0].nsig > 0 { tb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); tb.sig_at = a0[0]; }
       h[0].msgs[mi].blocks[nb] = tb; nb += 1;
     }
-    if r[0].acc[0].ntext > 0 && nb < FWW_MAX_BLOCKS {
+    if (r[0].acc[0].ntext > 0 || (r[0].acc[0].nsig > 0 && r[0].acc[0].ntools == 0)) && nb < FWW_MAX_BLOCKS {
       xb := FwBlock.{kind = FWW_MB_TEXT};
       xb.text_n = fww_slab_put(h, cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext], a0[..]); xb.text_at = a0[0];
+      if r[0].acc[0].nsig > 0 { xb.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].sig[0..<r[0].acc[0].nsig], a0[..]); xb.sig_at = a0[0]; }
       h[0].msgs[mi].blocks[nb] = xb; nb += 1;
     }
     for t: 0..<r[0].acc[0].ntools {
@@ -1857,6 +2082,9 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       ub.id_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].id[0..<r[0].acc[0].tools[t].nid], a0[..]); ub.id_at = a0[0];
       ub.name_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].name[0..<r[0].acc[0].tools[t].nname], a0[..]); ub.name_at = a0[0];
       ub.text_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].args[0..<r[0].acc[0].tools[t].nargs], a0[..]); ub.text_at = a0[0];
+      if r[0].acc[0].tools[t].nsig > 0 {
+        ub.sig_n = fww_slab_put(h, cast(string) r[0].acc[0].tools[t].sig[0..<r[0].acc[0].tools[t].nsig], a0[..]); ub.sig_at = a0[0];
+      }
       h[0].msgs[mi].blocks[nb] = ub; nb += 1;
     }
     if nb > 0 {
@@ -1947,7 +2175,7 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
 
   // 4. Active streaming HTTP SSE response (drain up to 32 SSE lines per tick with zero lag!)
   if !r[0].streaming { return ""; }
-  is_anth := flawed_wire_is_anthropic(auth[0].backend);
+  is_gem := flawed_wire_is_gemini(auth[0].backend);
   for step: 0..<32 {
     rd := gw_poll_wait(r[0].gw[..], b[0].sse_line[..], 0);
     if rd.kind == GW_IDLE { break; }
@@ -1956,19 +2184,11 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
       return fww_finish_stream(r, cfg, auth, h, b, st, out);
     }
     if rd.kind != GW_LINE { continue; }
-    // Handle non-2xx JSON error bodies directly (not SSE-framed)
+    // Collect non-2xx error body (including multi-line Vertex JSON arrays) for clean reporting
     if r[0].gw[0].status >= 400 {
-      if r[0].acc[0].nerr == 0 && rd.text.count > 0 {
-        nodes: [64] JvNode; d: [1] Jv;
-        if jv_parse(d[..], rd.text, nodes[..]) {
-          em := jv_path(d[0], 0, "error.message");
-          if em < 0 { em = jv_get(d[0], 0, "message"); }
-          if em >= 0 {
-            n := jv_str(d[0], em, r[0].acc[0].err_msg[..]);
-            if n > 0 { r[0].acc[0].nerr = n; }
-          }
-        }
-        if r[0].acc[0].nerr == 0 { r[0].acc[0].nerr = fww_keep(r[0].acc[0].err_msg[..], rd.text); }
+      if rd.text.count > 0 {
+        r[0].acc[0].nerr_body = fww_cat(r[0].acc[0].err_body[..], r[0].acc[0].nerr_body, rd.text);
+        r[0].acc[0].nerr_body = fww_cat(r[0].acc[0].err_body[..], r[0].acc[0].nerr_body, "\n");
       }
       continue;
     }
@@ -1985,28 +2205,68 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     if data.count == 0 { continue; }
 
     ev: [1] FlawedWireSseEvent;
-    ok := ifx is_anth
-          then flawed_wire_parse_anthropic_sse(data, ev[..], b[0].ev_txt[..])
-          else flawed_wire_parse_openai_sse(data, ev[..], b[0].ev_txt[..]);
-    if !ok { continue; }
-    k := ev[0].kind;
-    if k == FLAWED_SSE_MSG_START {
-      if ev[0].name_n > 0 { r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
-      if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
-      if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
-      if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
-      if ev[0].cache_write_tokens > 0 { r[0].acc[0].cache_write = ev[0].cache_write_tokens; }
-    } else if k == FLAWED_SSE_BLK_START {
-      r[0].acc[0].cur_block_kind = ev[0].block_kind;
-      if ev[0].block_kind == FLAWED_SBLK_TOOL_USE && r[0].acc[0].ntools < FWW_MAX_TOOLS_CALL {
-        ti := r[0].acc[0].ntools;
-        r[0].acc[0].tools[ti] = FwPendingTool.{};
-        r[0].acc[0].tools[ti].nid = fww_keep(r[0].acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]);
-        r[0].acc[0].tools[ti].nname = fww_keep(r[0].acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]);
-        r[0].acc[0].cur_tool_idx = ti;
-        r[0].acc[0].ntools += 1;
+    if is_gem {
+      sig_n := [1] int.[0];
+      for pi: 0..<16 {
+        nparts := flawed_wire_parse_gemini_sse(data, pi, ev[..], b[0].ev_txt[..], b[0].sig_buf[..], sig_n[..]);
+        if nparts < 0 { break; }
+        if ev[0].stop_reason != FLAWED_STOP_NONE { r[0].acc[0].stop_reason = ev[0].stop_reason; }
+        if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
+        if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
+        if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
+        k := ev[0].kind;
+        if k == FLAWED_SSE_THINK_DELTA {
+          if ev[0].text_n > 0 {
+            if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
+            piece := cast(string) b[0].ev_txt[0..<ev[0].text_n];
+            r[0].acc[0].nthink = fww_cat(r[0].acc[0].think[..], r[0].acc[0].nthink, piece);
+            if !cfg[0].thinking_hidden { fww_send(out, mww_thought(out, piece)); }
+          }
+          if sig_n[0] > 0 { r[0].acc[0].nsig = fww_keep(r[0].acc[0].sig[..], cast(string) b[0].sig_buf[0..<sig_n[0]]); }
+        } else if k == FLAWED_SSE_TEXT_DELTA {
+          if ev[0].text_n > 0 {
+            if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
+            piece := cast(string) b[0].ev_txt[0..<ev[0].text_n];
+            r[0].acc[0].ntext = fww_cat(r[0].acc[0].text[..], r[0].acc[0].ntext, piece);
+            fww_send(out, mww_reply(out, piece));
+          }
+          if sig_n[0] > 0 { r[0].acc[0].nsig = fww_keep(r[0].acc[0].sig[..], cast(string) b[0].sig_buf[0..<sig_n[0]]); }
+        } else if k == FLAWED_SSE_SIG_DELTA {
+          if sig_n[0] > 0 { r[0].acc[0].nsig = fww_keep(r[0].acc[0].sig[..], cast(string) b[0].sig_buf[0..<sig_n[0]]); }
+        } else if k == FLAWED_SSE_OAI_TOOL_DELTA {
+          if r[0].acc[0].ntools < FWW_MAX_TOOLS_CALL {
+            if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
+            ti := r[0].acc[0].ntools;
+            r[0].acc[0].tools[ti] = FwPendingTool.{};
+            if ev[0].id_n > 0 {
+              r[0].acc[0].tools[ti].nid = fww_keep(r[0].acc[0].tools[ti].id[..], cast(string) ev[0].id_buf[0..<ev[0].id_n]);
+            } else {
+              idn := fww_cat(r[0].acc[0].tools[ti].id[..], 0, "call_");
+              idn = fww_put_int(r[0].acc[0].tools[ti].id[..], idn, r[0].step_num);
+              idn = fww_cat(r[0].acc[0].tools[ti].id[..], idn, "_");
+              r[0].acc[0].tools[ti].nid = fww_put_int(r[0].acc[0].tools[ti].id[..], idn, ti);
+            }
+            if ev[0].name_n > 0 { r[0].acc[0].tools[ti].nname = fww_keep(r[0].acc[0].tools[ti].name[..], cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
+            if ev[0].text_n > 0 { r[0].acc[0].tools[ti].nargs = fww_keep(r[0].acc[0].tools[ti].args[..], cast(string) b[0].ev_txt[0..<ev[0].text_n]); }
+            if sig_n[0] > 0 { r[0].acc[0].tools[ti].nsig = fww_keep(r[0].acc[0].tools[ti].sig[..], cast(string) b[0].sig_buf[0..<sig_n[0]]); }
+            r[0].acc[0].ntools += 1;
+          }
+        } else if k == FLAWED_SSE_ERROR {
+          r[0].acc[0].saw_error = true;
+          r[0].acc[0].nerr = fww_keep(r[0].acc[0].err_msg[..], cast(string) b[0].ev_txt[0..<ev[0].text_n]);
+        }
+        if pi + 1 >= nparts { break; }
       }
-    } else if k == FLAWED_SSE_THINK_DELTA {
+      continue;
+    }
+
+    if !flawed_wire_parse_openai_sse(data, ev[..], b[0].ev_txt[..]) { continue; }
+    if ev[0].stop_reason != FLAWED_STOP_NONE { r[0].acc[0].stop_reason = ev[0].stop_reason; }
+    if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
+    if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
+    if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
+    k := ev[0].kind;
+    if k == FLAWED_SSE_THINK_DELTA {
       if ev[0].text_n > 0 {
         if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
         piece := cast(string) b[0].ev_txt[0..<ev[0].text_n];
@@ -2015,10 +2275,6 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
           fww_send(out, mww_thought(out, piece));
         }
       }
-    } else if k == FLAWED_SSE_SIG_DELTA {
-      if ev[0].text_n > 0 {
-        r[0].acc[0].nsig = fww_cat(r[0].acc[0].sig[..], r[0].acc[0].nsig, cast(string) b[0].ev_txt[0..<ev[0].text_n]);
-      }
     } else if k == FLAWED_SSE_TEXT_DELTA {
       if ev[0].text_n > 0 {
         if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
@@ -2026,14 +2282,10 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
         r[0].acc[0].ntext = fww_cat(r[0].acc[0].text[..], r[0].acc[0].ntext, piece);
         fww_send(out, mww_reply(out, piece));
       }
-    } else if k == FLAWED_SSE_JSON_DELTA {
-      ti := r[0].acc[0].cur_tool_idx;
-      if ti >= 0 && ti < r[0].acc[0].ntools && ev[0].text_n > 0 {
-        r[0].acc[0].tools[ti].nargs = fww_cat(r[0].acc[0].tools[ti].args[..], r[0].acc[0].tools[ti].nargs, cast(string) b[0].ev_txt[0..<ev[0].text_n]);
-      }
     } else if k == FLAWED_SSE_OAI_TOOL_DELTA {
       ti := ev[0].block_index;
       if ti >= 0 && ti < FWW_MAX_TOOLS_CALL {
+        if r[0].first_tok_ms == 0 { r[0].first_tok_ms = proc_now_ms(); }
         if ti >= r[0].acc[0].ntools {
           for fill: r[0].acc[0].ntools..<ti + 1 { r[0].acc[0].tools[fill] = FwPendingTool.{}; }
           r[0].acc[0].ntools = ti + 1;
@@ -2042,11 +2294,6 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
         if ev[0].name_n > 0 { r[0].acc[0].tools[ti].nname = fww_cat(r[0].acc[0].tools[ti].name[..], r[0].acc[0].tools[ti].nname, cast(string) ev[0].name_buf[0..<ev[0].name_n]); }
         if ev[0].text_n > 0 { r[0].acc[0].tools[ti].nargs = fww_cat(r[0].acc[0].tools[ti].args[..], r[0].acc[0].tools[ti].nargs, cast(string) b[0].ev_txt[0..<ev[0].text_n]); }
       }
-    } else if k == FLAWED_SSE_MSG_DELTA {
-      if ev[0].stop_reason != FLAWED_STOP_NONE { r[0].acc[0].stop_reason = ev[0].stop_reason; }
-      if ev[0].input_tokens > 0 { r[0].acc[0].in_tok = ev[0].input_tokens; }
-      if ev[0].output_tokens > 0 { r[0].acc[0].out_tok = ev[0].output_tokens; }
-      if ev[0].cache_read_tokens > 0 { r[0].acc[0].cache_read = ev[0].cache_read_tokens; }
     } else if k == FLAWED_SSE_ERROR {
       r[0].acc[0].saw_error = true;
       r[0].acc[0].nerr = fww_keep(r[0].acc[0].err_msg[..], cast(string) b[0].ev_txt[0..<ev[0].text_n]);
@@ -2262,7 +2509,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cfg: [1] FwConfig;
   auth: [1] FwAuth;
   fww_load_config(cfg[..]);
-  fww_resolve_auth(cfg[..], home, auth[..]);
+  fww_resolve_auth(cfg[..], home, cast(string) cfg[0].model[0..<cfg[0].nmodel], auth[..], true);
 
   if fww_auth_asked() {
     ob: [512] u8;
@@ -2391,9 +2638,8 @@ tool_main :: () -> int #export_c #effects(all) {
     tk := cast(string) task_buf[0..<tn];
     cd := cast(string) cwd_buf[0..<cn];
 
-    // Refresh auth & config cleanly per turn so newly saved keys take effect.
+    // Refresh config & model-aware auth cleanly per turn so switching Inkling <-> Neon works seamlessly.
     fww_load_config(cfg[..]);
-    fww_resolve_auth(cfg[..], home, auth[..]);
 
     // Model selection: custom override > task's requested model > config default
     req_model := ifx req[0].model.count > 0 then req[0].model else cl_str(ar[..], msg, "model");
@@ -2401,6 +2647,8 @@ tool_main :: () -> int #export_c #effects(all) {
                     else ifx req_model.count > 0 then req_model
                     else cast(string) cfg[0].model[0..<cfg[0].nmodel];
     picked_effort := ifx req[0].effort.count > 0 then req[0].effort else cast(string) cfg[0].effort[0..<cfg[0].neffort];
+
+    fww_resolve_auth(cfg[..], home, picked_model, auth[..], false);
 
     run[0].ncwd = fww_keep(run[0].cwd[..], cd);
     run[0].nmodel = fww_keep(run[0].model[..], picked_model);
@@ -2445,6 +2693,6 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_poll_wait_ms(false, false) == 200;
   #assert fww_poll_wait_ms(true, false) == 10;
   #assert fww_poll_wait_ms(true, true) == 0;
-  #assert fww_url_safe("https://docs.anthropic.com/en/api") && !fww_url_safe("http://127.0.0.1:8080/x");
+  #assert fww_url_safe("https://openagents.com/docs") && !fww_url_safe("http://127.0.0.1:8080/x");
   #assert !fww_url_safe("http://169.254.169.254/latest/meta-data") && !fww_url_safe("file:///etc/passwd");
 }

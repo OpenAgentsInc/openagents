@@ -36,17 +36,36 @@ enum FlawedSettings {
     private static let kMaxTurns = "flawed.maxTurns"
     private static let kMaxBudgetMicros = "flawed.maxBudgetMicros"
 
+    private static let kSchemaVersion = "flawed.schemaVersion"
+    private static let currentSchemaVersion = 2
+    private static var didMigrate = false
+
+    private static func migrateIfNeeded() {
+        guard !didMigrate else { return }
+        didMigrate = true
+        let v = d.integer(forKey: kSchemaVersion)
+        if v < currentSchemaVersion {
+            // Reset legacy Anthropic model slot / backend prefs to Auto + Inkling 2 Mini (fallback Gemini 4 Neon).
+            d.set(0, forKey: kModelSlot)
+            d.set(0, forKey: kBackend)
+            d.set(currentSchemaVersion, forKey: kSchemaVersion)
+        }
+    }
+
     private static var cachedAuthStatus: String = "Checking…"
     private static var probingAuth = false
 
     private static func getInt(_ key: String, default def: Int) -> Int {
-        d.object(forKey: key) as? Int ?? def
+        migrateIfNeeded()
+        return d.object(forKey: key) as? Int ?? def
     }
     private static func getBool(_ key: String, default def: Bool) -> Bool {
-        d.object(forKey: key) as? Bool ?? def
+        migrateIfNeeded()
+        return d.object(forKey: key) as? Bool ?? def
     }
     private static func getString(_ key: String) -> String {
-        (d.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        migrateIfNeeded()
+        return (d.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static var defaultAgent: Int {
@@ -54,12 +73,19 @@ enum FlawedSettings {
         set { d.set(max(0, min(1, newValue)), forKey: kDefaultAgent) }
     }
     static var modelSlot: Int {
-        get { max(0, min(3, getInt(kModelSlot, default: 0))) }
-        set { d.set(max(0, min(3, newValue)), forKey: kModelSlot) }
+        get { max(0, min(4, getInt(kModelSlot, default: 0))) }
+        set { d.set(max(0, min(4, newValue)), forKey: kModelSlot) }
     }
     static var backend: Int {
         get { max(0, min(4, getInt(kBackend, default: 0))) }
         set { d.set(max(0, min(4, newValue)), forKey: kBackend) }
+    }
+
+    /// True when the active page is on Flawed and routed to the local Psionic Metal server (Inkling 2 Mini).
+    static func pageNeedsLocal(_ page: UnsafeMutableRawPointer?) -> Bool {
+        guard let page, cd_model_flawed(page) != 0 else { return false }
+        if backend == 1 { return true }
+        return backend == 0 && cd_model_flawed_local(page) != 0
     }
     static var thinkingMode: Int {
         get { max(0, min(2, getInt(kThinkingMode, default: 0))) }
@@ -184,7 +210,7 @@ enum FlawedSettings {
             }
             return tail.isEmpty ? "Saved" : "Ends \(tail)"
         }
-        return "Not set (uses Anthropic / OAuth / OpenRouter)"
+        return "Not set (uses Local Psionic / Vertex AI)"
     }
 
     static var toolsSummary: String {
@@ -224,7 +250,7 @@ enum FlawedSettings {
             "FLAWED_BACKEND": backendWireName(backend),
         ]
         if !baseURL.isEmpty { env["FLAWED_BASE_URL"] = baseURL }
-        if backend == 4 || backend == 0 {
+        if backend == 1 || backend == 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
         }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -252,20 +278,21 @@ enum FlawedSettings {
 
     private static func backendWireName(_ v: Int) -> String {
         switch v {
-        case 1: return "anthropic"
-        case 2: return "claude_oauth"
-        case 3: return "openrouter"
-        case 4: return "local"
+        case 1: return "local"
+        case 2: return "vertex"
+        case 3: return "gemini"
+        case 4: return "openrouter"
         default: return "auto"
         }
     }
 
     private static func modelWireName(_ slot: Int) -> String {
         switch slot {
-        case 1: return "claude-sonnet-4-6"
-        case 2: return "claude-haiku-4-5"
-        case 3: return "claude-opus-4-6"
-        default: return "claude-opus-4-7"
+        case 1: return "gemini-4-neon"
+        case 2: return "gemini-4-carbon"
+        case 3: return "gemini-4-hydrogen"
+        case 4: return "gemini-4-argon"
+        default: return "inkling-2-mini"
         }
     }
 
@@ -508,11 +535,11 @@ extension CoderWindow {
         let hasSaved = FlawedSettings.savedKey != nil
         var d = CoderDialog(
             size: .md,
-            title: "Anthropic / Flawed API key",
-            body: "Stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Leave empty or click Remove to fall back to ANTHROPIC_API_KEY, Claude Code OAuth, OpenRouter, or Local Psionic."
+            title: "Gemini / OpenRouter API key",
+            body: "Optional key stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Not needed when using Local Inkling 2 Mini or Google Cloud Vertex AI service account credentials."
         )
         d.fields = [
-            .init(label: "API key", value: "", hint: hasSaved ? "Currently \(FlawedSettings.keyLabel) — paste a new key to replace" : "sk-ant-api03-… or sk-or-v1-…", secure: true),
+            .init(label: "API key", value: "", hint: hasSaved ? "Currently \(FlawedSettings.keyLabel) — paste a new key to replace" : "AIza… (Gemini) or sk-or-v1-… (OpenRouter)", secure: true),
         ]
         if hasSaved {
             d.buttons = [
@@ -553,10 +580,10 @@ extension CoderWindow {
         var d = CoderDialog(
             size: .md,
             title: "Custom API base URL",
-            body: "Optional endpoint override for Anthropic-compatible proxies, enterprise gateways, OpenRouter mirrors, or custom OpenAI-compatible servers. Leave blank for the default endpoint."
+            body: "Optional endpoint override for Vertex/Gemini proxies, OpenRouter mirrors, or remote Psionic Metal servers. Leave blank for the default endpoint."
         )
         d.fields = [
-            .init(label: "Base URL", value: FlawedSettings.baseURL, hint: "https://api.anthropic.com"),
+            .init(label: "Base URL", value: FlawedSettings.baseURL, hint: "https://generativelanguage.googleapis.com"),
         ]
         if hasURL {
             d.buttons = [
@@ -593,7 +620,7 @@ extension CoderWindow {
         var d = CoderDialog(
             size: .md,
             title: "Custom model override",
-            body: "Override the model slug sent on the wire (e.g. claude-opus-4-7, claude-sonnet-4-6[1m], anthropic/claude-opus-4-7). Leave blank to use the model selected in the composer picker."
+            body: "Override the model slug sent on the wire (e.g. gemini-4-neon, gemini-4-carbon, inkling-2-mini, google/gemini-4-hydrogen). Leave blank to use the model selected in the composer picker."
         )
         d.fields = [
             .init(label: "Model slug", value: FlawedSettings.customModel, hint: "Leave empty to use picker selection"),

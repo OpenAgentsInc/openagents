@@ -1,11 +1,12 @@
 // Flawed — Live LLM Wire Codec & Runtime Policy Authority.
-// Pure, I/O-free, zero-heap serializer and streaming SSE parser for Anthropic Messages API v1
-// and OpenAI/OpenRouter/Psionic Chat Completions, plus Claude-Code-parity tool permission
-// classification and endpoint/thinking/cache resolution.
+// Pure, I/O-free, zero-heap serializer and streaming SSE parser for Local Psionic Metal
+// (Inkling 2 Mini / OpenAI Chat Completions), Vertex AI & Gemini API (Gemini 4 Neon family
+// native streamGenerateContent), and OpenRouter, plus Claude-Code-parity tool permission
+// classification and endpoint/thinking resolution.
 //
-// Checks: coax/bin/coax test flawed/anthropic_wire.coax --library
-// Mutate: coax/bin/coax mutate flawed/anthropic_wire.coax --root-only
-#module "flawed.anthropic_wire";
+// Checks: coax/bin/coax test flawed/wire.coax --library
+// Mutate: coax/bin/coax mutate flawed/wire.coax --root-only
+#module "flawed.wire";
 #load "../coax/lib/json/json.coax";
 #load "permissions.coax";
 #load "perm_match.coax";
@@ -14,10 +15,10 @@
 #authority;
 
 FLAWED_BE_AUTO :: 0;
-FLAWED_BE_ANTHROPIC :: 1;
-FLAWED_BE_CLAUDE_OAUTH :: 2;
-FLAWED_BE_OPENROUTER :: 3;
-FLAWED_BE_LOCAL :: 4;
+FLAWED_BE_LOCAL :: 1;
+FLAWED_BE_VERTEX :: 2;
+FLAWED_BE_GEMINI :: 3;
+FLAWED_BE_OPENROUTER :: 4;
 
 FLAWED_THINK_ADAPTIVE :: 0;
 FLAWED_THINK_EXTENDED :: 1;
@@ -41,26 +42,17 @@ FLAWED_HOOKS_MANAGED :: 1;
 FLAWED_HOOKS_OFF :: 2;
 
 FLAWED_SSE_NONE :: 0;
-FLAWED_SSE_MSG_START :: 1;
-FLAWED_SSE_BLK_START :: 2;
 FLAWED_SSE_TEXT_DELTA :: 3;
 FLAWED_SSE_THINK_DELTA :: 4;
 FLAWED_SSE_SIG_DELTA :: 5;
-FLAWED_SSE_JSON_DELTA :: 6;
-FLAWED_SSE_BLK_STOP :: 7;
 FLAWED_SSE_MSG_DELTA :: 8;
 FLAWED_SSE_MSG_STOP :: 9;
 FLAWED_SSE_ERROR :: 10;
 FLAWED_SSE_OAI_TOOL_DELTA :: 11;
 
-FLAWED_SBLK_TEXT :: 1;
-FLAWED_SBLK_THINKING :: 2;
-FLAWED_SBLK_TOOL_USE :: 3;
-
 FlawedWireSseEvent :: struct {
   kind: int;
   block_index: int;
-  block_kind: int;
   text_n: int;
   id_buf: [128] u8; id_n: int;
   name_buf: [64] u8; name_n: int;
@@ -68,7 +60,6 @@ FlawedWireSseEvent :: struct {
   input_tokens: int;
   output_tokens: int;
   cache_read_tokens: int;
-  cache_write_tokens: int;
 }
 
 flawed_aw_copy :: (dst: [] u8, src: string) -> int #effects(all) {
@@ -101,20 +92,6 @@ flawed_aw_ends :: (s: string, suf: string) -> bool #effects(all) {
   return true;
 }
 
-flawed_aw_contains :: (hay: string, needle: string) -> bool #effects(all) {
-  if needle.count == 0 { return true; }
-  if hay.count < needle.count { return false; }
-  limit := hay.count - needle.count + 1;
-  for i: 0..<limit {
-    ok := true;
-    for j: 0..<needle.count {
-      if hay[i + j] != needle[j] { ok = false; break; }
-    }
-    if ok { return true; }
-  }
-  return false;
-}
-
 flawed_aw_lower :: (c: u8) -> u8 #effects(all) {
   return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
 }
@@ -138,31 +115,33 @@ flawed_wire_strip_model :: (raw: string) -> string #effects(all) {
   return s;
 }
 
-flawed_wire_has_1m :: (raw: string) -> bool #effects(all) {
-  return flawed_aw_ends(raw, "[1m]");
+flawed_wire_is_local_model :: (raw: string) -> bool #effects(all) {
+  m := flawed_wire_strip_model(raw);
+  return flawed_aw_starts(m, "inkling") || m == "local" || m == "hybrid-exec-v1";
 }
 
-flawed_wire_model_family :: (model: string) -> int #effects(all) {
-  if flawed_aw_contains(model, "haiku") { return FLAWED_MODEL_HAIKU_45; }
-  if flawed_aw_contains(model, "sonnet") { return FLAWED_MODEL_SONNET; }
-  return FLAWED_MODEL_OPUS;
+flawed_wire_is_gemini :: (backend: int) -> bool #effects(all) {
+  return backend == FLAWED_BE_VERTEX || backend == FLAWED_BE_GEMINI;
+}
+
+flawed_wire_gemini_model :: (raw: string, out: [] u8) -> int #effects(all) {
+  m := flawed_wire_strip_model(raw);
+  if flawed_aw_starts(m, "google/") { m = cast(string) m[7..<m.count]; }
+  if m.count == 0 || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "gemini-4-neon"); }
+  return flawed_aw_copy(out, m);
 }
 
 flawed_wire_openrouter_model :: (raw: string, out: [] u8) -> int #effects(all) {
   m := flawed_wire_strip_model(raw);
-  if m.count == 0 { return flawed_aw_copy(out, "anthropic/claude-sonnet-4.6"); }
+  if m.count == 0 || flawed_wire_is_local_model(m) { return flawed_aw_copy(out, "google/gemini-4-neon"); }
   for c: m { if c == '/' { return flawed_aw_copy(out, m); } }
-  if m == "claude-opus-4-7" { return flawed_aw_copy(out, "anthropic/claude-opus-4.7"); }
-  if m == "claude-opus-4-6" { return flawed_aw_copy(out, "anthropic/claude-opus-4.6"); }
-  if m == "claude-sonnet-4-6" { return flawed_aw_copy(out, "anthropic/claude-sonnet-4.6"); }
-  if m == "claude-haiku-4-5" { return flawed_aw_copy(out, "anthropic/claude-haiku-4.5"); }
-  n := flawed_aw_cat(out, 0, "anthropic/");
+  n := flawed_aw_cat(out, 0, "google/");
   return flawed_aw_cat(out, n, m);
 }
 
-flawed_wire_endpoint_url :: (backend: int, base_url: string, local_base: string, out: [] u8) -> int #effects(all) {
+flawed_wire_endpoint_url :: (backend: int, base_url: string, local_base: string, project: string, location: string, model: string, out: [] u8) -> int #effects(all) {
   if backend == FLAWED_BE_LOCAL {
-    b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:11435");
+    b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:8080");
     if flawed_aw_ends(b, "/chat/completions") { return flawed_aw_copy(out, b); }
     n := flawed_aw_cat(out, 0, b);
     if flawed_aw_ends(b, "/v1") { return flawed_aw_cat(out, n, "/chat/completions"); }
@@ -174,42 +153,63 @@ flawed_wire_endpoint_url :: (backend: int, base_url: string, local_base: string,
     n := flawed_aw_cat(out, 0, b);
     return flawed_aw_cat(out, n, "/chat/completions");
   }
-  b := flawed_aw_trim_slash(ifx base_url.count > 0 then base_url else "https://api.anthropic.com");
-  if flawed_aw_ends(b, "/v1/messages") || flawed_aw_ends(b, "/messages") { return flawed_aw_copy(out, b); }
-  n := flawed_aw_cat(out, 0, b);
-  if flawed_aw_ends(b, "/v1") { return flawed_aw_cat(out, n, "/messages"); }
-  return flawed_aw_cat(out, n, "/v1/messages");
-}
-
-flawed_wire_is_anthropic :: (backend: int) -> bool #effects(all) {
-  return backend == FLAWED_BE_ANTHROPIC || backend == FLAWED_BE_CLAUDE_OAUTH;
-}
-
-flawed_wire_thinking_budget :: (effort: string) -> int #effects(all) {
-  if effort == "low" { return 4096; }
-  if effort == "medium" { return 10000; }
-  if effort == "xhigh" { return 48000; }
-  if effort == "max" { return 64000; }
-  return 24000;
-}
-
-flawed_wire_max_tokens :: (thinking_mode: int, effort: string) -> int #effects(all) {
-  if thinking_mode == FLAWED_THINK_OFF { return 16384; }
-  if thinking_mode == FLAWED_THINK_EXTENDED {
-    return flawed_wire_thinking_budget(effort) + 16384;
+  mb: [128] u8;
+  mn := flawed_wire_gemini_model(model, mb[..]);
+  gm := cast(string) mb[0..<mn];
+  if backend == FLAWED_BE_GEMINI {
+    b := flawed_aw_trim_slash(ifx base_url.count > 0 then base_url else "https://generativelanguage.googleapis.com");
+    if flawed_aw_ends(b, ":streamGenerateContent?alt=sse") { return flawed_aw_copy(out, b); }
+    n := flawed_aw_cat(out, 0, b);
+    n = flawed_aw_cat(out, n, "/v1beta/models/");
+    n = flawed_aw_cat(out, n, gm);
+    return flawed_aw_cat(out, n, ":streamGenerateContent?alt=sse");
   }
-  if effort == "low" { return 16384; }
-  if effort == "medium" { return 24576; }
-  if effort == "xhigh" { return 49152; }
-  if effort == "max" { return 64000; }
-  return 32768;
+  // FLAWED_BE_VERTEX (native streamGenerateContent?alt=sse on us/eu multi-region, global, or regional)
+  proj := ifx project.count > 0 then project else "openagentsgemini";
+  loc := ifx location.count > 0 then location else "us";
+  n := 0; // mutant: equivalent (both branches below overwrite n before reading it)
+  if base_url.count > 0 {
+    b := flawed_aw_trim_slash(base_url);
+    if flawed_aw_ends(b, ":streamGenerateContent?alt=sse") { return flawed_aw_copy(out, b); }
+    n = flawed_aw_cat(out, 0, b);
+  } else {
+    n = flawed_aw_cat(out, 0, "https://");
+    if loc == "us" || loc == "eu" {
+      n = flawed_aw_cat(out, n, "aiplatform.");
+      n = flawed_aw_cat(out, n, loc);
+      n = flawed_aw_cat(out, n, ".rep.googleapis.com");
+    } else if loc == "global" {
+      n = flawed_aw_cat(out, n, "aiplatform.googleapis.com");
+    } else {
+      n = flawed_aw_cat(out, n, loc);
+      n = flawed_aw_cat(out, n, "-aiplatform.googleapis.com");
+    }
+  }
+  n = flawed_aw_cat(out, n, "/v1/projects/");
+  n = flawed_aw_cat(out, n, proj);
+  n = flawed_aw_cat(out, n, "/locations/");
+  n = flawed_aw_cat(out, n, loc);
+  n = flawed_aw_cat(out, n, "/publishers/google/models/");
+  n = flawed_aw_cat(out, n, gm);
+  return flawed_aw_cat(out, n, ":streamGenerateContent?alt=sse");
 }
 
-flawed_wire_effort_token :: (effort: string) -> string #effects(all) {
+flawed_wire_gemini_level :: (effort: string) -> string #effects(all) {
   if effort == "low" { return "low"; }
   if effort == "medium" { return "medium"; }
-  if effort == "max" { return "max"; }
   return "high";
+}
+
+flawed_wire_max_tokens :: (thinking_mode: int, effort: string, is_local: bool) -> int #effects(all) {
+  if is_local {
+    if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 4096; }
+    return 8192;
+  }
+  if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 16384; }
+  if effort == "medium" { return 24576; }
+  if effort == "xhigh" { return 49152; }
+  if effort == "max" { return 65536; }
+  return 32768;
 }
 
 flawed_wire_csv_has :: (csv: string, name: string) -> bool #effects(all) {
@@ -268,10 +268,10 @@ flawed_wire_tool_permission :: (tool_name: string, target: string, pmode: int, b
 }
 
 flawed_wire_stop_reason :: (s: string) -> int #effects(all) {
-  if s == "end_turn" || s == "stop" { return FLAWED_STOP_END_TURN; }
+  if s == "end_turn" || s == "stop" || s == "STOP" { return FLAWED_STOP_END_TURN; }
   if s == "tool_use" || s == "tool_calls" { return FLAWED_STOP_TOOL_USE; }
-  if s == "max_tokens" || s == "length" { return FLAWED_STOP_MAX_TOKENS; }
-  if s == "refusal" { return FLAWED_STOP_REFUSAL; }
+  if s == "max_tokens" || s == "length" || s == "MAX_TOKENS" { return FLAWED_STOP_MAX_TOKENS; }
+  if s == "refusal" || s == "SAFETY" || s == "RECITATION" || s == "PROHIBITED_CONTENT" { return FLAWED_STOP_REFUSAL; }
   return FLAWED_STOP_NONE;
 }
 
@@ -280,92 +280,79 @@ flawed_aw_str :: (v: Jv, node: int, out: [] u8) -> int #effects(all) {
   return ifx n > 0 then n else 0; // mutant: equivalent (when n == 0 both branches return 0)
 }
 
-flawed_wire_parse_anthropic_sse :: (data_json: string, out_ev: [] FlawedWireSseEvent, txt_buf: [] u8) -> bool #effects(all) {
-  if out_ev.count < 1 { return false; }
+// Parses part `part_idx` of a Vertex AI / Gemini native streamGenerateContent SSE JSON chunk.
+// Returns total part count (>= 1) when candidates[0].content.parts is non-empty, 0 for error
+// or metadata-only chunks, or -1 on malformed input / empty output slices.
+flawed_wire_parse_gemini_sse :: (data_json: string, part_idx: int, out_ev: [] FlawedWireSseEvent, txt_buf: [] u8, sig_buf: [] u8, out_sig_n: [] int) -> int #effects(all) {
+  if out_ev.count < 1 || out_sig_n.count < 1 { return -1; }
   out_ev[0] = FlawedWireSseEvent.{};
-  nodes: [256] JvNode;
+  out_sig_n[0] = 0;
+  nodes: [512] JvNode;
   d: [1] Jv;
-  if !jv_parse(d[..], data_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; } // mutant: equivalent (jv_parse fails -> count == 0 -> jv_kind == 0 != JV_OBJECT)
+  if !jv_parse(d[..], data_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; } // mutant: equivalent (jv_parse fails -> jv_kind == 0 != JV_OBJECT)
   v := d[0];
-  tb: [64] u8;
-  tn := jv_str(v, jv_get(v, 0, "type"), tb[..]);
-  if tn <= 0 { return false; }
-  ev_type := cast(string) tb[0..<tn];
 
-  if ev_type == "message_start" {
-    out_ev[0].kind = FLAWED_SSE_MSG_START;
-    msg := jv_get(v, 0, "message");
-    out_ev[0].name_n = flawed_aw_str(v, jv_get(v, msg, "model"), out_ev[0].name_buf[..]);
-    u := jv_get(v, msg, "usage");
-    out_ev[0].input_tokens = jv_int(v, jv_get(v, u, "input_tokens"), 0);
-    out_ev[0].output_tokens = jv_int(v, jv_get(v, u, "output_tokens"), 0);
-    out_ev[0].cache_read_tokens = jv_int(v, jv_get(v, u, "cache_read_input_tokens"), 0);
-    out_ev[0].cache_write_tokens = jv_int(v, jv_get(v, u, "cache_creation_input_tokens"), 0);
-    return true;
-  }
-  if ev_type == "content_block_start" {
-    out_ev[0].kind = FLAWED_SSE_BLK_START;
-    out_ev[0].block_index = jv_int(v, jv_get(v, 0, "index"), 0);
-    cb := jv_get(v, 0, "content_block");
-    kb: [32] u8;
-    kn := flawed_aw_str(v, jv_get(v, cb, "type"), kb[..]);
-    kstr := cast(string) kb[0..<kn];
-    if kstr == "text" { out_ev[0].block_kind = FLAWED_SBLK_TEXT; }
-    else if kstr == "thinking" { out_ev[0].block_kind = FLAWED_SBLK_THINKING; }
-    else if kstr == "tool_use" {
-      out_ev[0].block_kind = FLAWED_SBLK_TOOL_USE;
-      out_ev[0].id_n = flawed_aw_str(v, jv_get(v, cb, "id"), out_ev[0].id_buf[..]);
-      out_ev[0].name_n = flawed_aw_str(v, jv_get(v, cb, "name"), out_ev[0].name_buf[..]);
-    }
-    return true;
-  }
-  if ev_type == "content_block_delta" {
-    out_ev[0].block_index = jv_int(v, jv_get(v, 0, "index"), 0);
-    dl := jv_get(v, 0, "delta");
-    db: [32] u8;
-    dn := flawed_aw_str(v, jv_get(v, dl, "type"), db[..]);
-    dstr := cast(string) db[0..<dn];
-    if dstr == "text_delta" {
-      out_ev[0].kind = FLAWED_SSE_TEXT_DELTA;
-      out_ev[0].text_n = flawed_aw_str(v, jv_get(v, dl, "text"), txt_buf);
-    } else if dstr == "thinking_delta" {
-      out_ev[0].kind = FLAWED_SSE_THINK_DELTA;
-      out_ev[0].text_n = flawed_aw_str(v, jv_get(v, dl, "thinking"), txt_buf);
-    } else if dstr == "signature_delta" {
-      out_ev[0].kind = FLAWED_SSE_SIG_DELTA;
-      out_ev[0].text_n = flawed_aw_str(v, jv_get(v, dl, "signature"), txt_buf);
-    } else if dstr == "input_json_delta" {
-      out_ev[0].kind = FLAWED_SSE_JSON_DELTA;
-      out_ev[0].text_n = flawed_aw_str(v, jv_get(v, dl, "partial_json"), txt_buf);
-    }
-    return true;
-  }
-  if ev_type == "content_block_stop" {
-    out_ev[0].kind = FLAWED_SSE_BLK_STOP;
-    out_ev[0].block_index = jv_int(v, jv_get(v, 0, "index"), 0);
-    return true;
-  }
-  if ev_type == "message_delta" {
-    out_ev[0].kind = FLAWED_SSE_MSG_DELTA;
-    dl := jv_get(v, 0, "delta");
-    sb: [32] u8;
-    sn := flawed_aw_str(v, jv_get(v, dl, "stop_reason"), sb[..]);
-    out_ev[0].stop_reason = flawed_wire_stop_reason(cast(string) sb[0..<sn]);
-    out_ev[0].output_tokens = jv_int(v, jv_get(v, jv_get(v, 0, "usage"), "output_tokens"), 0);
-    return true;
-  }
-  if ev_type == "message_stop" {
-    out_ev[0].kind = FLAWED_SSE_MSG_STOP;
-    return true;
-  }
-  if ev_type == "error" {
+  err := jv_get(v, 0, "error");
+  if jv_kind(v, err) == JV_OBJECT {
     out_ev[0].kind = FLAWED_SSE_ERROR;
-    out_ev[0].text_n = flawed_aw_str(v, jv_get(v, jv_get(v, 0, "error"), "message"), txt_buf);
-    return true;
+    out_ev[0].text_n = flawed_aw_str(v, jv_get(v, err, "message"), txt_buf);
+    return 0;
   }
-  return true;
+
+  um := jv_get(v, 0, "usageMetadata");
+  out_ev[0].input_tokens = jv_int(v, jv_get(v, um, "promptTokenCount"), 0);
+  cand_tok := jv_int(v, jv_get(v, um, "candidatesTokenCount"), 0);
+  th_tok := jv_int(v, jv_get(v, um, "thoughtsTokenCount"), 0);
+  out_ev[0].output_tokens = cand_tok + th_tok;
+  out_ev[0].cache_read_tokens = jv_int(v, jv_get(v, um, "cachedContentTokenCount"), 0);
+
+  c0 := jv_at(v, jv_get(v, 0, "candidates"), 0);
+  fb: [32] u8;
+  fn := flawed_aw_str(v, jv_get(v, c0, "finishReason"), fb[..]);
+  out_ev[0].stop_reason = flawed_wire_stop_reason(cast(string) fb[0..<fn]);
+
+  parts := jv_get(v, jv_get(v, c0, "content"), "parts");
+  nparts := jv_len(v, parts);
+  has_meta := out_ev[0].stop_reason != FLAWED_STOP_NONE || out_ev[0].input_tokens > 0 || out_ev[0].output_tokens > 0;
+  if nparts <= 0 || part_idx < 0 || part_idx >= nparts { // mutant: equivalent (jv_len returns >= 0 so nparts < 0 is unreachable)
+    if has_meta { out_ev[0].kind = FLAWED_SSE_MSG_DELTA; }
+    return 0;
+  }
+
+  p := jv_at(v, parts, part_idx);
+  out_sig_n[0] = flawed_aw_str(v, jv_get(v, p, "thoughtSignature"), sig_buf);
+
+  fc := jv_get(v, p, "functionCall");
+  if jv_kind(v, fc) == JV_OBJECT {
+    out_ev[0].kind = FLAWED_SSE_OAI_TOOL_DELTA;
+    out_ev[0].block_index = part_idx;
+    out_ev[0].name_n = flawed_aw_str(v, jv_get(v, fc, "name"), out_ev[0].name_buf[..]);
+    out_ev[0].id_n = flawed_aw_str(v, jv_get(v, fc, "id"), out_ev[0].id_buf[..]);
+    args_n := jv_get(v, fc, "args");
+    if jv_kind(v, args_n) == JV_OBJECT {
+      out_ev[0].text_n = flawed_aw_copy(txt_buf, jv_raw(v, args_n));
+    } else {
+      out_ev[0].text_n = flawed_aw_copy(txt_buf, "{}");
+    }
+    return nparts;
+  }
+
+  tn := flawed_aw_str(v, jv_get(v, p, "text"), txt_buf);
+  if tn > 0 {
+    is_th := jv_bool(v, jv_get(v, p, "thought"));
+    out_ev[0].kind = ifx is_th then FLAWED_SSE_THINK_DELTA else FLAWED_SSE_TEXT_DELTA;
+    out_ev[0].text_n = tn;
+    return nparts;
+  }
+  if out_sig_n[0] > 0 {
+    out_ev[0].kind = FLAWED_SSE_SIG_DELTA;
+    return nparts;
+  }
+  if has_meta { out_ev[0].kind = FLAWED_SSE_MSG_DELTA; }
+  return nparts;
 }
 
+// Parses one OpenAI / Local Psionic Metal / OpenRouter Chat Completions SSE chunk.
 flawed_wire_parse_openai_sse :: (data_json: string, out_ev: [] FlawedWireSseEvent, txt_buf: [] u8) -> bool #effects(all) {
   if out_ev.count < 1 { return false; }
   out_ev[0] = FlawedWireSseEvent.{};
@@ -392,6 +379,10 @@ flawed_wire_parse_openai_sse :: (data_json: string, out_ev: [] FlawedWireSseEven
   has_usage := out_ev[0].input_tokens > 0 || out_ev[0].output_tokens > 0;
 
   ch := jv_at(v, jv_get(v, 0, "choices"), 0);
+  sb: [32] u8;
+  sn := flawed_aw_str(v, jv_get(v, ch, "finish_reason"), sb[..]);
+  out_ev[0].stop_reason = flawed_wire_stop_reason(cast(string) sb[0..<sn]);
+
   dl := jv_get(v, ch, "delta");
   rc := jv_get(v, dl, "reasoning_content");
   if rc < 0 { rc = jv_get(v, dl, "reasoning"); } // mutant: equivalent (node 0 is root object, child node index is always >= 1 or -1)
@@ -417,26 +408,18 @@ flawed_wire_parse_openai_sse :: (data_json: string, out_ev: [] FlawedWireSseEven
     out_ev[0].text_n = flawed_aw_str(v, jv_get(v, fn, "arguments"), txt_buf);
     return true;
   }
-  sb: [32] u8;
-  sn := flawed_aw_str(v, jv_get(v, ch, "finish_reason"), sb[..]);
-  if sn > 0 {
+  if sn > 0 || has_usage {
     out_ev[0].kind = FLAWED_SSE_MSG_DELTA;
-    out_ev[0].stop_reason = flawed_wire_stop_reason(cast(string) sb[0..<sn]);
-    return true;
   }
-  if has_usage { out_ev[0].kind = FLAWED_SSE_MSG_DELTA; }
   return true;
 }
 
-flawed_wire_write_tool_one :: (o: [] Jo, anthropic: bool, name: string, desc: string, schema_raw: string, cache_bp: bool) #effects(all) {
-  if anthropic {
+flawed_wire_write_tool_one :: (o: [] Jo, gemini_fmt: bool, name: string, desc: string, schema_raw: string) #effects(all) {
+  if gemini_fmt {
     jo_obj(o);
     jo_key(o, "name"); jo_str(o, name);
     jo_key(o, "description"); jo_str(o, desc);
-    jo_key(o, "input_schema"); jo_raw(o, schema_raw);
-    if cache_bp {
-      jo_key(o, "cache_control"); jo_raw(o, "{\"type\":\"ephemeral\"}");
-    }
+    jo_key(o, "parameters"); jo_raw(o, schema_raw);
     jo_end(o);
   } else {
     jo_obj(o);
@@ -452,7 +435,7 @@ flawed_wire_write_tool_one :: (o: [] Jo, anthropic: bool, name: string, desc: st
 
 FLAWED_WIRE_NTOOLS :: 8;
 
-flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disallowed_csv: string, cache_last: bool) -> int #effects(all) {
+flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string) -> int #effects(all) {
   names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
     "Read a file from the filesystem with optional 1-based offset and line limit.",
@@ -474,18 +457,27 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
     "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"activeForm\":{\"type\":\"string\"}},\"required\":[\"content\",\"status\"]}}},\"required\":[\"todos\"]}",
     "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
   ];
-  last_i := -1; // mutant: equivalent (when no tools pass flawed_wire_tool_allowed, the second loop never calls flawed_wire_write_tool_one)
-  for i: 0..<FLAWED_WIRE_NTOOLS {
-    if flawed_wire_tool_allowed(names[i], allowed_csv, disallowed_csv) { last_i = i; }
+  if gemini_fmt {
+    jo_arr(o);
+    jo_obj(o);
+    jo_key(o, "functionDeclarations");
+    jo_arr(o);
+  } else {
+    jo_arr(o);
   }
-  jo_arr(o);
   emitted := 0;
   for i: 0..<FLAWED_WIRE_NTOOLS {
     if !flawed_wire_tool_allowed(names[i], allowed_csv, disallowed_csv) { continue; }
-    flawed_wire_write_tool_one(o, anthropic, names[i], descs[i], schemas[i], anthropic && cache_last && i == last_i);
+    flawed_wire_write_tool_one(o, gemini_fmt, names[i], descs[i], schemas[i]);
     emitted += 1;
   }
-  jo_end(o);
+  if gemini_fmt {
+    jo_end(o);
+    jo_end(o);
+    jo_end(o);
+  } else {
+    jo_end(o);
+  }
   return emitted;
 }
 
@@ -493,69 +485,71 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
 // Unit Tests (0 surviving mutants)
 // ============================================================================
 
-#test "anthropic_wire: string helpers, boundaries, and model/OpenRouter mapping" {
-  // Copy & cat boundaries
+#test "wire: string helpers, model classification, Gemini/OpenRouter slugs, and URLs" {
   small: [3] u8;
   #assert flawed_aw_copy(small[..], "abcde") == 3 && cast(string) small[0..<3] == "abc";
   #assert flawed_aw_cat(small[..], -1, "x") == 0;
   #assert flawed_aw_cat(small[..], 2, "xy") == 3 && small[2] == 'x';
-  // Starts / ends / contains / lower / eq_ci / trim_slash exact edges
   #assert flawed_aw_starts("ab", "ab") && !flawed_aw_starts("a", "ab") && !flawed_aw_starts("xb", "ab");
   #assert flawed_aw_ends("ab", "ab") && !flawed_aw_ends("b", "ab") && !flawed_aw_ends("ax", "ab") && !flawed_aw_ends("xb", "ab");
-  #assert flawed_aw_contains("abc", "") && flawed_aw_contains("abc", "abc") && flawed_aw_contains("abc", "c") && !flawed_aw_contains("ab", "abc") && !flawed_aw_contains("abc", "d") && !flawed_aw_contains("axc", "bc");
   #assert flawed_aw_lower('A') == 'a' && flawed_aw_lower('Z') == 'z' && flawed_aw_lower('@') == '@' && flawed_aw_lower('[') == '[';
   #assert flawed_aw_eq_ci("Ab", "aB") && !flawed_aw_eq_ci("Ab", "xb") && !flawed_aw_eq_ci("a", "ab");
   #assert flawed_aw_trim_slash("/") == "/" && flawed_aw_trim_slash("a//") == "a" && flawed_aw_trim_slash("a/") == "a";
 
-  #assert flawed_wire_strip_model("flawed:claude-opus-4-7") == "claude-opus-4-7";
-  #assert flawed_wire_strip_model("flawed:claude-sonnet-4-6[1m]") == "claude-sonnet-4-6";
-  #assert flawed_wire_strip_model("claude-haiku-4-5") == "claude-haiku-4-5";
-  #assert flawed_wire_has_1m("flawed:claude-opus-4-7[1m]") && !flawed_wire_has_1m("claude-opus-4-7");
+  #assert flawed_wire_strip_model("flawed:gemini-4-neon") == "gemini-4-neon";
+  #assert flawed_wire_strip_model("flawed:gemini-4-carbon[1m]") == "gemini-4-carbon";
+  #assert flawed_wire_strip_model("inkling-2-mini") == "inkling-2-mini";
+  #assert flawed_wire_is_local_model("flawed:inkling-2-mini") && flawed_wire_is_local_model("inkling-2-mini-uncensored-lora");
+  #assert flawed_wire_is_local_model("local") && flawed_wire_is_local_model("hybrid-exec-v1");
+  #assert !flawed_wire_is_local_model("flawed:gemini-4-neon") && !flawed_wire_is_local_model("");
 
-  #assert flawed_wire_model_family("claude-haiku-4-5") == FLAWED_MODEL_HAIKU_45;
-  #assert flawed_wire_model_family("claude-sonnet-4-6") == FLAWED_MODEL_SONNET;
-  #assert flawed_wire_model_family("claude-opus-4-7") == FLAWED_MODEL_OPUS;
+  #assert flawed_wire_is_gemini(FLAWED_BE_VERTEX) && flawed_wire_is_gemini(FLAWED_BE_GEMINI);
+  #assert !flawed_wire_is_gemini(FLAWED_BE_LOCAL) && !flawed_wire_is_gemini(FLAWED_BE_OPENROUTER);
 
-  ob: [96] u8;
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("flawed:claude-opus-4-7", ob[..])] == "anthropic/claude-opus-4.7";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("claude-opus-4-6", ob[..])] == "anthropic/claude-opus-4.6";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("claude-sonnet-4-6", ob[..])] == "anthropic/claude-sonnet-4.6";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("claude-haiku-4-5", ob[..])] == "anthropic/claude-haiku-4.5";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("google/gemini-2.5-pro", ob[..])] == "google/gemini-2.5-pro";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("claude-custom", ob[..])] == "anthropic/claude-custom";
-  #assert cast(string) ob[0..<flawed_wire_openrouter_model("", ob[..])] == "anthropic/claude-sonnet-4.6";
-}
+  mb: [96] u8;
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("flawed:gemini-4-neon", mb[..])] == "gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("google/gemini-4-carbon", mb[..])] == "gemini-4-carbon";
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("flawed:inkling-2-mini", mb[..])] == "gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("", mb[..])] == "gemini-4-neon";
 
-#test "anthropic_wire: endpoint resolution, thinking budgets, max_tokens, and CSV tool filters" {
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("flawed:gemini-4-neon", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("z-ai/glm-5.3-flash", mb[..])] == "z-ai/glm-5.3-flash";
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("flawed:inkling-2-mini", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("", mb[..])] == "google/gemini-4-neon";
+
   ub: [256] u8;
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_ANTHROPIC, "", "", ub[..])] == "https://api.anthropic.com/v1/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_ANTHROPIC, "x", "", ub[..])] == "x/v1/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_CLAUDE_OAUTH, "https://proxy.test/", "", ub[..])] == "https://proxy.test/v1/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_ANTHROPIC, "https://proxy.test/v1", "", ub[..])] == "https://proxy.test/v1/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_ANTHROPIC, "https://proxy.test/v1/messages", "", ub[..])] == "https://proxy.test/v1/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_ANTHROPIC, "https://proxy.test/messages", "", ub[..])] == "https://proxy.test/messages";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "", "", ub[..])] == "https://openrouter.ai/api/v1/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "x", "", ub[..])] == "x/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "https://or.local/v1/chat/completions", "", ub[..])] == "https://or.local/v1/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "", ub[..])] == "http://127.0.0.1:11435/v1/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "x", ub[..])] == "x/v1/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
-  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/chat/completions", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:8080/v1/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "x", "", "", "inkling-2-mini", ub[..])] == "x/v1/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/chat/completions", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
 
-  #assert flawed_wire_is_anthropic(FLAWED_BE_ANTHROPIC) && flawed_wire_is_anthropic(FLAWED_BE_CLAUDE_OAUTH);
-  #assert !flawed_wire_is_anthropic(FLAWED_BE_OPENROUTER) && !flawed_wire_is_anthropic(FLAWED_BE_LOCAL);
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "", "", "", "", "gemini-4-neon", ub[..])] == "https://openrouter.ai/api/v1/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "x", "", "", "", "gemini-4-neon", ub[..])] == "x/chat/completions";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "https://or.local/v1/chat/completions", "", "", "", "gemini-4-neon", ub[..])] == "https://or.local/v1/chat/completions";
 
-  #assert flawed_wire_thinking_budget("low") == 4096 && flawed_wire_thinking_budget("medium") == 10000;
-  #assert flawed_wire_thinking_budget("high") == 24000 && flawed_wire_thinking_budget("xhigh") == 48000 && flawed_wire_thinking_budget("max") == 64000;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "max") == 16384;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_EXTENDED, "medium") == 26384;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low") == 16384 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium") == 24576;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high") == 32768 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "xhigh") == 49152 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "max") == 64000;
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_GEMINI, "", "", "", "", "flawed:gemini-4-neon", ub[..])] == "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_GEMINI, "x", "", "", "", "gemini-4-carbon", ub[..])] == "x/v1beta/models/gemini-4-carbon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_GEMINI, "https://gem.proxy/", "", "", "", "gemini-4-carbon", ub[..])] == "https://gem.proxy/v1beta/models/gemini-4-carbon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_GEMINI, "https://gem.proxy/custom:streamGenerateContent?alt=sse", "", "", "", "gemini-4-carbon", ub[..])] == "https://gem.proxy/custom:streamGenerateContent?alt=sse";
 
-  #assert flawed_wire_effort_token("low") == "low" && flawed_wire_effort_token("medium") == "medium";
-  #assert flawed_wire_effort_token("high") == "high" && flawed_wire_effort_token("xhigh") == "high" && flawed_wire_effort_token("max") == "max";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "", "", "", "", "flawed:gemini-4-neon", ub[..])] == "https://aiplatform.us.rep.googleapis.com/v1/projects/openagentsgemini/locations/us/publishers/google/models/gemini-4-neon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "", "", "p", "l", "gemini-4-neon", ub[..])] == "https://l-aiplatform.googleapis.com/v1/projects/p/locations/l/publishers/google/models/gemini-4-neon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "", "", "p1", "eu", "gemini-4-carbon", ub[..])] == "https://aiplatform.eu.rep.googleapis.com/v1/projects/p1/locations/eu/publishers/google/models/gemini-4-carbon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "", "", "p1", "global", "gemini-4-hydrogen", ub[..])] == "https://aiplatform.googleapis.com/v1/projects/p1/locations/global/publishers/google/models/gemini-4-hydrogen:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "", "", "p1", "us-central1", "gemini-4-argon", ub[..])] == "https://us-central1-aiplatform.googleapis.com/v1/projects/p1/locations/us-central1/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "x", "", "p1", "us", "gemini-4-neon", ub[..])] == "x/v1/projects/p1/locations/us/publishers/google/models/gemini-4-neon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "http://127.0.0.1:9/", "", "p1", "us", "gemini-4-neon", ub[..])] == "http://127.0.0.1:9/v1/projects/p1/locations/us/publishers/google/models/gemini-4-neon:streamGenerateContent?alt=sse";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_VERTEX, "http://127.0.0.1:9/x:streamGenerateContent?alt=sse", "", "p1", "us", "gemini-4-neon", ub[..])] == "http://127.0.0.1:9/x:streamGenerateContent?alt=sse";
 
-  // CSV edge cases: empty, tabs, leading/trailing commas, single-char tokens
+  #assert flawed_wire_gemini_level("low") == "low" && flawed_wire_gemini_level("medium") == "medium";
+  #assert flawed_wire_gemini_level("high") == "high" && flawed_wire_gemini_level("xhigh") == "high" && flawed_wire_gemini_level("max") == "high";
+
+  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "high", true) == 4096 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", true) == 4096;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", true) == 8192;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "max", false) == 16384 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", false) == 16384;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium", false) == 24576 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", false) == 32768;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "xhigh", false) == 49152 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "max", false) == 65536;
+
   #assert !flawed_wire_csv_has("", "Read") && !flawed_wire_csv_has("Read", "");
   #assert flawed_wire_csv_has(",\tA\t, B ", "a") && flawed_wire_csv_has(" , , ", "x") == false;
   #assert flawed_wire_tool_allowed("Read", "", "") && !flawed_wire_tool_allowed("", "", "");
@@ -564,7 +558,7 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
   #assert flawed_wire_tool_allowed("Read", " read , edit ", "") && !flawed_wire_tool_allowed("Write", "read,edit", "");
 }
 
-#test "anthropic_wire: Ch 11/12 permission classifier enforces bypass-immune walls and all 6 modes" {
+#test "wire: Ch 11/12 permission classifier enforces bypass-immune walls and all 6 modes" {
   #assert flawed_wire_tool_permission("Read", "/repo/a.coax", FLAWED_PMODE_DEFAULT, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Glob", "**/*.coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("Grep", "foo", FLAWED_PMODE_DONT_ASK, false, false) == FLAWED_PBEH_ALLOW;
@@ -601,63 +595,63 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
   #assert flawed_wire_tool_permission("UnknownTool", "", FLAWED_PMODE_BYPASS, true, true) == FLAWED_PBEH_ASK;
 }
 
-#test "anthropic_wire: Anthropic SSE parser handles all events and malformed inputs" {
+#test "wire: Gemini native SSE parser handles thoughts, text, functionCall, thoughtSignature, usage, and errors" {
   ev: [1] FlawedWireSseEvent;
   tb: [256] u8;
-  #assert !flawed_wire_parse_anthropic_sse("{}", ev[0..<0], tb[..]);
-  #assert !flawed_wire_parse_anthropic_sse("", ev[..], tb[..]) && !flawed_wire_parse_anthropic_sse("not json", ev[..], tb[..]);
-  #assert !flawed_wire_parse_anthropic_sse("[]", ev[..], tb[..]) && !flawed_wire_parse_anthropic_sse("{\"type\":\"\"}", ev[..], tb[..]);
+  sb: [256] u8;
+  sn := [1] int.[0];
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"message_start\",\"message\":{\"model\":\"claude-opus-4-7\",\"usage\":{\"input_tokens\":1200,\"output_tokens\":5,\"cache_read_input_tokens\":800,\"cache_creation_input_tokens\":100}}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_MSG_START && cast(string) ev[0].name_buf[0..<ev[0].name_n] == "claude-opus-4-7";
-  #assert ev[0].input_tokens == 1200 && ev[0].output_tokens == 5 && ev[0].cache_read_tokens == 800 && ev[0].cache_write_tokens == 100;
+  #assert flawed_wire_parse_gemini_sse("{}", 0, ev[0..<0], tb[..], sb[..], sn[..]) == -1;
+  #assert flawed_wire_parse_gemini_sse("{}", 0, ev[..], tb[..], sb[..], sn[0..<0]) == -1;
+  sn[0] = 9;
+  #assert flawed_wire_parse_gemini_sse("", 0, ev[..], tb[..], sb[..], sn[..]) == -1 && sn[0] == 0;
+  #assert flawed_wire_parse_gemini_sse("[]", 0, ev[..], tb[..], sb[..], sn[..]) == -1;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_start\",\"index\":3,\"content_block\":{\"type\":\"thinking\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_BLK_START && ev[0].block_index == 3 && ev[0].block_kind == FLAWED_SBLK_THINKING;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"other\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_BLK_START && ev[0].block_kind == 0;
+  // Error object resets out_sig_n
+  sn[0] = 5;
+  #assert flawed_wire_parse_gemini_sse("{\"error\":{\"code\":400,\"message\":\"bad arg\"}}", 0, ev[..], tb[..], sb[..], sn[..]) == 0;
+  #assert ev[0].kind == FLAWED_SSE_ERROR && cast(string) tb[0..<ev[0].text_n] == "bad arg" && sn[0] == 0;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"index\":3,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Let me check\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_THINK_DELTA && ev[0].block_index == 3 && cast(string) tb[0..<ev[0].text_n] == "Let me check";
+  // Multi-part chunk: part 0 thought, part 1 single-byte text, part 2 functionCall with thoughtSignature
+  multi := "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"thought\":true,\"text\":\"Thinking...\"},{\"text\":\"H\"},{\"functionCall\":{\"name\":\"Read\",\"id\":\"call_7\",\"args\":{\"file_path\":\"a.coax\"}},\"thoughtSignature\":\"SIG_ABC\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":120,\"candidatesTokenCount\":30,\"thoughtsTokenCount\":45,\"cachedContentTokenCount\":80}}";
+  #assert flawed_wire_parse_gemini_sse(multi, 0, ev[..], tb[..], sb[..], sn[..]) == 3;
+  #assert ev[0].kind == FLAWED_SSE_THINK_DELTA && cast(string) tb[0..<ev[0].text_n] == "Thinking..." && sn[0] == 0;
+  #assert ev[0].input_tokens == 120 && ev[0].output_tokens == 75 && ev[0].cache_read_tokens == 80 && ev[0].stop_reason == FLAWED_STOP_END_TURN;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig_xyz\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_SIG_DELTA && cast(string) tb[0..<ev[0].text_n] == "sig_xyz";
+  #assert flawed_wire_parse_gemini_sse(multi, 1, ev[..], tb[..], sb[..], sn[..]) == 3;
+  #assert ev[0].kind == FLAWED_SSE_TEXT_DELTA && cast(string) tb[0..<ev[0].text_n] == "H";
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_BLK_START && ev[0].block_index == 1 && ev[0].block_kind == FLAWED_SBLK_TEXT;
+  #assert flawed_wire_parse_gemini_sse(multi, 2, ev[..], tb[..], sb[..], sn[..]) == 3;
+  #assert ev[0].kind == FLAWED_SSE_OAI_TOOL_DELTA && ev[0].block_index == 2;
+  #assert cast(string) ev[0].name_buf[0..<ev[0].name_n] == "Read" && cast(string) ev[0].id_buf[0..<ev[0].id_n] == "call_7";
+  #assert cast(string) tb[0..<ev[0].text_n] == "{\"file_path\":\"a.coax\"}" && cast(string) sb[0..<sn[0]] == "SIG_ABC";
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_TEXT_DELTA && ev[0].block_index == 1 && cast(string) tb[0..<ev[0].text_n] == "Hello";
+  // Out-of-bounds part_idx still preserves metadata as MSG_DELTA
+  #assert flawed_wire_parse_gemini_sse(multi, 3, ev[..], tb[..], sb[..], sn[..]) == 0 && ev[0].kind == FLAWED_SSE_MSG_DELTA;
+  #assert flawed_wire_parse_gemini_sse(multi, -1, ev[..], tb[..], sb[..], sn[..]) == 0 && ev[0].kind == FLAWED_SSE_MSG_DELTA;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Read\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_BLK_START && ev[0].block_kind == FLAWED_SBLK_TOOL_USE;
-  #assert cast(string) ev[0].id_buf[0..<ev[0].id_n] == "toolu_1" && cast(string) ev[0].name_buf[0..<ev[0].name_n] == "Read";
+  // Function call without args defaults to "{}"
+  no_args := "{\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"name\":\"Ping\"}}]}}]}";
+  #assert flawed_wire_parse_gemini_sse(no_args, 0, ev[..], tb[..], sb[..], sn[..]) == 1;
+  #assert ev[0].kind == FLAWED_SSE_OAI_TOOL_DELTA && cast(string) tb[0..<ev[0].text_n] == "{}" && ev[0].cache_read_tokens == 0;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"file_path\\\":\\\"a.coax\\\"}\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_JSON_DELTA && cast(string) tb[0..<ev[0].text_n] == "{\"file_path\":\"a.coax\"}";
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"unknown\"}}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_NONE;
+  // Trailing single-byte signature-only empty text part
+  sig_only := "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"S\"}]},\"finishReason\":\"MAX_TOKENS\"}]}";
+  #assert flawed_wire_parse_gemini_sse(sig_only, 0, ev[..], tb[..], sb[..], sn[..]) == 1;
+  #assert ev[0].kind == FLAWED_SSE_SIG_DELTA && cast(string) sb[0..<sn[0]] == "S" && ev[0].stop_reason == FLAWED_STOP_MAX_TOKENS;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_stop\",\"index\":2}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_BLK_STOP && ev[0].block_index == 2;
+  // Empty text part with finishReason/usage -> MSG_DELTA; without metadata -> NONE
+  fin_empty := "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}]},\"finishReason\":\"SAFETY\"}]}";
+  #assert flawed_wire_parse_gemini_sse(fin_empty, 0, ev[..], tb[..], sb[..], sn[..]) == 1 && ev[0].kind == FLAWED_SSE_MSG_DELTA && ev[0].stop_reason == FLAWED_STOP_REFUSAL;
+  #assert flawed_wire_parse_gemini_sse("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}]}}]}", 0, ev[..], tb[..], sb[..], sn[..]) == 1 && ev[0].kind == FLAWED_SSE_NONE;
 
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":95}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_MSG_DELTA && ev[0].stop_reason == FLAWED_STOP_TOOL_USE && ev[0].output_tokens == 95;
-
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"message_stop\"}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_MSG_STOP;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"error\",\"error\":{\"message\":\"overloaded\"}}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_ERROR && cast(string) tb[0..<ev[0].text_n] == "overloaded";
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"ping\"}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_NONE;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"x\"}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_NONE;
-  // Missing numeric fields default strictly to 0
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"message_start\",\"message\":{}}", ev[..], tb[..]);
-  #assert ev[0].input_tokens == 0 && ev[0].output_tokens == 0 && ev[0].cache_read_tokens == 0 && ev[0].cache_write_tokens == 0;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_start\",\"content_block\":{\"type\":\"text\"}}", ev[..], tb[..]) && ev[0].block_index == 0;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"a\"}}", ev[..], tb[..]) && ev[0].block_index == 0;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"content_block_stop\"}", ev[..], tb[..]) && ev[0].block_index == 0;
-  #assert flawed_wire_parse_anthropic_sse("{\"type\":\"message_delta\",\"delta\":{}}", ev[..], tb[..]) && ev[0].output_tokens == 0;
+  // Metadata-only chunk (no parts): prompt only, output only, or completely empty
+  #assert flawed_wire_parse_gemini_sse("{\"usageMetadata\":{\"promptTokenCount\":1}}", 0, ev[..], tb[..], sb[..], sn[..]) == 0 && ev[0].kind == FLAWED_SSE_MSG_DELTA;
+  #assert flawed_wire_parse_gemini_sse("{\"usageMetadata\":{\"candidatesTokenCount\":1}}", 0, ev[..], tb[..], sb[..], sn[..]) == 0 && ev[0].kind == FLAWED_SSE_MSG_DELTA;
+  #assert flawed_wire_parse_gemini_sse("{}", 0, ev[..], tb[..], sb[..], sn[..]) == 0 && ev[0].kind == FLAWED_SSE_NONE;
 }
 
-#test "anthropic_wire: OpenAI/OpenRouter SSE parser and exact tool schema serialization" {
+#test "wire: OpenAI/Psionic SSE parser and OpenAI+Gemini tool schema serialization" {
   ev: [1] FlawedWireSseEvent;
   tb: [256] u8;
   #assert !flawed_wire_parse_openai_sse("{}", ev[0..<0], tb[..]);
@@ -671,16 +665,15 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{\"reasoning\":\"alt\"}}]}", ev[..], tb[..]);
   #assert ev[0].kind == FLAWED_SSE_THINK_DELTA && cast(string) tb[0..<ev[0].text_n] == "alt";
 
-  #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{\"content\":\"h\"}}]}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_TEXT_DELTA && cast(string) tb[0..<ev[0].text_n] == "h";
+  #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{\"content\":\"h\"},\"finish_reason\":\"stop\"}]}", ev[..], tb[..]);
+  #assert ev[0].kind == FLAWED_SSE_TEXT_DELTA && cast(string) tb[0..<ev[0].text_n] == "h" && ev[0].stop_reason == FLAWED_STOP_END_TURN;
 
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":2,\"id\":\"call_1\",\"function\":{\"name\":\"Bash\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}}]}", ev[..], tb[..]);
   #assert ev[0].kind == FLAWED_SSE_OAI_TOOL_DELTA && ev[0].block_index == 2 && cast(string) ev[0].id_buf[0..<ev[0].id_n] == "call_1";
   #assert cast(string) ev[0].name_buf[0..<ev[0].name_n] == "Bash" && cast(string) tb[0..<ev[0].text_n] == "{\"command\":\"ls\"}";
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"a\"}}]}}]}", ev[..], tb[..]) && ev[0].block_index == 0;
 
-  #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}", ev[..], tb[..]);
-  #assert ev[0].kind == FLAWED_SSE_MSG_DELTA && ev[0].stop_reason == FLAWED_STOP_END_TURN;
+  #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_MSG_DELTA && ev[0].stop_reason == FLAWED_STOP_END_TURN;
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{},\"finish_reason\":\"x\"}]}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_MSG_DELTA && ev[0].stop_reason == FLAWED_STOP_NONE;
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}", ev[..], tb[..]) && ev[0].stop_reason == FLAWED_STOP_TOOL_USE;
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}", ev[..], tb[..]) && ev[0].stop_reason == FLAWED_STOP_MAX_TOKENS;
@@ -691,42 +684,32 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
   #assert flawed_wire_parse_openai_sse("{\"choices\":[],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1}}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_MSG_DELTA;
   #assert flawed_wire_parse_openai_sse("{\"choices\":[{\"delta\":{}}]}", ev[..], tb[..]) && ev[0].kind == FLAWED_SSE_NONE;
 
-  #assert flawed_wire_stop_reason("end_turn") == FLAWED_STOP_END_TURN && flawed_wire_stop_reason("max_tokens") == FLAWED_STOP_MAX_TOKENS;
-  #assert flawed_wire_stop_reason("refusal") == FLAWED_STOP_REFUSAL && flawed_wire_stop_reason("other") == FLAWED_STOP_NONE;
+  #assert flawed_wire_stop_reason("end_turn") == FLAWED_STOP_END_TURN && flawed_wire_stop_reason("tool_use") == FLAWED_STOP_TOOL_USE;
+  #assert flawed_wire_stop_reason("max_tokens") == FLAWED_STOP_MAX_TOKENS && flawed_wire_stop_reason("refusal") == FLAWED_STOP_REFUSAL;
+  #assert flawed_wire_stop_reason("RECITATION") == FLAWED_STOP_REFUSAL && flawed_wire_stop_reason("PROHIBITED_CONTENT") == FLAWED_STOP_REFUSAL;
+  #assert flawed_wire_stop_reason("other") == FLAWED_STOP_NONE;
 
-  // Tool schema serialization: parse back with jv_parse to verify exact JSON structure and cache_control placement
+  // Tool schema serialization: Gemini functionDeclarations vs OpenAI function wrapper
   buf: [8192] u8;
   o: [1] Jo;
   nodes: [512] JvNode;
   d: [1] Jv;
   sb: [128] u8;
 
-  // Anthropic with cache_last=true, 1 tool disallowed -> 7 tools, cache_control ONLY on index 6 (TodoWrite)
+  // Gemini format with 1 tool disallowed -> 7 declarations inside [{"functionDeclarations":[...]}]
   jo_start(o[..], buf[..]);
-  n1 := flawed_wire_write_tools(o[..], true, "", "WebFetch", true);
-  #assert !o[0].bad && n1 == 7 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) == 7;
-  t0 := jv_at(d[0], 0, 0);
+  n1 := flawed_wire_write_tools(o[..], true, "", "WebFetch");
+  #assert !o[0].bad && n1 == 7 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY && jv_len(d[0], 0) == 1;
+  decls := jv_get(d[0], jv_at(d[0], 0, 0), "functionDeclarations");
+  #assert jv_kind(d[0], decls) == JV_ARRAY && jv_len(d[0], decls) == 7;
+  t0 := jv_at(d[0], decls, 0);
   #assert jv_str(d[0], jv_get(d[0], t0, "name"), sb[..]) == 4 && cast(string) sb[0..<4] == "Read";
   #assert jv_str(d[0], jv_get(d[0], t0, "description"), sb[..]) > 10;
-  #assert jv_kind(d[0], jv_get(d[0], t0, "input_schema")) == JV_OBJECT;
-  #assert jv_get(d[0], t0, "cache_control") == -1;
-  t6 := jv_at(d[0], 0, 6);
-  #assert jv_str(d[0], jv_get(d[0], t6, "name"), sb[..]) == 9 && cast(string) sb[0..<9] == "TodoWrite";
-  #assert jv_kind(d[0], jv_get(d[0], t6, "cache_control")) == JV_OBJECT;
+  #assert jv_kind(d[0], jv_get(d[0], t0, "parameters")) == JV_OBJECT;
 
-  // Anthropic with only index 0 (Read) allowed and cache_last=true -> index 0 gets cache_control
+  // OpenAI format -> function wrapper
   jo_start(o[..], buf[..]);
-  n1a := flawed_wire_write_tools(o[..], true, "Read", "", true);
-  #assert !o[0].bad && n1a == 1 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_kind(d[0], jv_get(d[0], jv_at(d[0], 0, 0), "cache_control")) == JV_OBJECT;
-
-  // Anthropic with cache_last=false -> no cache_control even on last tool
-  jo_start(o[..], buf[..]);
-  n1b := flawed_wire_write_tools(o[..], true, "Read", "", false);
-  #assert !o[0].bad && n1b == 1 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_get(d[0], jv_at(d[0], 0, 0), "cache_control") == -1;
-
-  // OpenAI format with cache_last=true -> function wrapper, never cache_control
-  jo_start(o[..], buf[..]);
-  n2 := flawed_wire_write_tools(o[..], false, "Read,Bash", "", true);
+  n2 := flawed_wire_write_tools(o[..], false, "Read,Bash", "");
   #assert !o[0].bad && n2 == 2 && jv_parse(d[..], jo_text(o[..]), nodes[..]) && jv_len(d[0], 0) == 2;
   f1 := jv_at(d[0], 0, 1);
   #assert jv_str(d[0], jv_get(d[0], f1, "type"), sb[..]) == 8 && cast(string) sb[0..<8] == "function";
@@ -734,9 +717,8 @@ flawed_wire_write_tools :: (o: [] Jo, anthropic: bool, allowed_csv: string, disa
   #assert jv_str(d[0], jv_get(d[0], fn1, "name"), sb[..]) == 4 && cast(string) sb[0..<4] == "Bash";
   #assert jv_str(d[0], jv_get(d[0], fn1, "description"), sb[..]) > 10;
   #assert jv_kind(d[0], jv_get(d[0], fn1, "parameters")) == JV_OBJECT;
-  #assert jv_get(d[0], f1, "cache_control") == -1;
 
-  // Empty allow result -> valid empty JSON array []
+  // Empty allow result -> valid empty JSON
   jo_start(o[..], buf[..]);
-  #assert flawed_wire_write_tools(o[..], true, "NoSuch", "", true) == 0 && !o[0].bad && jo_text(o[..]) == "[]";
+  #assert flawed_wire_write_tools(o[..], false, "NoSuch", "") == 0 && !o[0].bad && jo_text(o[..]) == "[]";
 }

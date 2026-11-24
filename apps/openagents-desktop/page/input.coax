@@ -305,7 +305,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].model_menu = false;
     if idx < 0 || idx >= cp_models(s) { return false; }
     s[0].model = idx;
-    if cp_is_inkling(s, idx) && !s[0].inkling {
+    s[0].flawed[0].user_picked = true;
+    if (cp_is_inkling(s, idx) || cp_is_flawed_local(s, idx)) && !s[0].inkling {
       s[0].ask = CP_ASK_LOCAL_DOWNLOAD;
     }
     return true;

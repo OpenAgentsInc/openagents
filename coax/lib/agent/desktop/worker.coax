@@ -112,7 +112,7 @@ dc_worker_env_on :: (e: [] DcEnv, os: int, program_files: string, had_home: stri
   sep := ifx windows then ";" else ":";
   dc_env_lines(e, caches, path, sep);
   dc_env_lines(e, extra, path, sep);
-  if (dc_ends(program, "claudeworker") || dc_ends(program, "flawedworker")) && key.count > 0 { dc_env_add(e, "CODER_CLAUDE_KEY", key); return; }
+  if dc_ends(program, "claudeworker") && key.count > 0 { dc_env_add(e, "CODER_CLAUDE_KEY", key); return; }
   e[0].unset[0] = "CODER_CLAUDE_KEY"; e[0].unset_n = 1;
 }
 dc_env_lines :: (e: [] DcEnv, lines: string, path: string, sep: string) {
@@ -310,7 +310,7 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
   dc_worker_env_on(w3[..], DC_OS_WINDOWS, "C:/PF", "C:/U", "", "C:/app/claudeworker", "", "C:/U", "", "k");
   #assert w3[0].set_n == 2 && w3[0].set[0] == "PATH=C:/U/.local/bin;C:/PF/Git/cmd;C:/PF/Git/usr/bin" && w3[0].set[1] == "CODER_CLAUDE_KEY=k" && w3[0].unset_n == 0;
   dc_worker_env_on(w3[..], DC_OS_LINUX, "", "", "", "/app/flawedworker", "", "/u", "/bin", "k");
-  #assert w3[0].set_n == 2 && w3[0].set[1] == "CODER_CLAUDE_KEY=k" && w3[0].unset_n == 0;
+  #assert w3[0].set_n == 1 && w3[0].unset_n == 1 && w3[0].unset[0] == "CODER_CLAUDE_KEY";
   dc_worker_env_on(w3[..], DC_OS_WINDOWS, "C:/PF", "C:/U", "", "C:/app/claudeworker", "", "C:/U", "", "");
   #assert w3[0].set_n == 1 && w3[0].unset_n == 1;
   big: [1200] u8; bn := dc_copy(big[..], "K="); for i: 0..<1000 { bn = dc_cat(big[..], bn, "v"); }

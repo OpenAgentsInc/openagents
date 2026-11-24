@@ -1425,12 +1425,12 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   compact := s[0].show_other_models;
   pad := 5.0f32;
   nm := cp_models(s);
-  rh := ifx !compact then (ifx nm > 3 then 34.0f32 else 42.0f32) else ifx nm > 8 then 30.0f32 else 32.0f32;
+  rh := ifx !compact then (ifx nm > 5 then 31.0f32 else ifx nm > 3 then 34.0f32 else 42.0f32) else ifx nm > 8 then 30.0f32 else 32.0f32;
   div_h := 5.0f32;
   frh := 24.0f32;
-  lrh := ifx compact then 30.0f32 else 32.0f32;
+  lrh := ifx compact || nm > 5 then 26.0f32 else 32.0f32;
   prh := 24.0f32;
-  orh := ifx compact then 24.0f32 else 30.0f32;
+  orh := ifx compact || nm > 5 then 24.0f32 else 30.0f32;
   show_flawed_row := true;
   show_local_row := true;
   show_others_row := true;

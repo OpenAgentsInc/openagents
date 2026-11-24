@@ -63,9 +63,11 @@ cp_is_inkling_id :: (name: string) -> bool {
   if name.count > 15 && cast(string) name[0..<15] == "Inkling 2 Mini " { return true; }
   return false;
 }
-// True when the currently selected model is local Inkling and its weights/server are not ready to send.
+// True when the currently selected model requires local Inkling weights and they are not ready to send.
 cp_local_unavailable :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && cp_is_inkling(s, cp_model_index(s)) && !s[0].inkling;
+  if s.count < 1 || s[0].inkling { return false; }
+  idx := cp_model_index(s);
+  return cp_is_inkling(s, idx) || cp_is_flawed_local(s, idx);
 }
 
 // Builds the single canonical list of currently available models in picker order.
@@ -150,23 +152,27 @@ cp_flawed_slot :: (s: [] CoderPage, idx: int) -> int {
   return ifx e.kind == CP_MK_FLAWED then e.slot else -1;
 }
 cp_is_flawed :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) >= 0; }
+cp_is_flawed_local :: (s: [] CoderPage, idx: int) -> bool { return cp_flawed_slot(s, idx) == CP_FLAWED_START_LOCAL; }
 cp_flawed_idx :: (s: [] CoderPage) -> int {
-  slot := ifx s.count > 0 && s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START;
+  slot := ifx s.count > 0 && s[0].flawed[0].model_slot >= 0 && s[0].flawed[0].model_slot < CP_FLAWED_MODELS then s[0].flawed[0].model_slot else CP_FLAWED_START_LOCAL;
+  // Default to Inkling 2 Mini when installed; automatically fall back to Gemini 4 Neon when not installed.
+  if slot == CP_FLAWED_START_LOCAL && (s.count < 1 || !s[0].inkling) { slot = CP_FLAWED_START_CLOUD; }
   return cp_model_idx_of(s, CP_MK_FLAWED, slot);
 }
 cp_flawed_find :: (name: string) -> int {
-  if name == "flawed" || name == "Flawed" { return CP_FLAWED_START; }
+  if name == "flawed" || name == "Flawed" { return CP_FLAWED_START_LOCAL; }
   ids := CP_FLAWED_ID; labels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS {
     if name == ids[i] || name == labels[i] { return i; }
   }
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     bare := cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
-    if bare == "opus" || bare == "claude-opus-4-7" || bare == "opus-4-7" { return 0; }
-    if bare == "sonnet" || bare == "claude-sonnet-4-6" || bare == "sonnet-4-6" { return 1; }
-    if bare == "haiku" || bare == "claude-haiku-4-5" || bare == "haiku-4-5" { return 2; }
-    if bare == "claude-opus-4-6" || bare == "opus-4-6" { return 3; }
-    return CP_FLAWED_START;
+    if cp_is_inkling_id(bare) || bare == "local" { return 0; }
+    if bare == "gemini-4-neon" || bare == "neon" { return 1; }
+    if bare == "gemini-4-carbon" || bare == "carbon" { return 2; }
+    if bare == "gemini-4-hydrogen" || bare == "hydrogen" { return 3; }
+    if bare == "gemini-4-argon" || bare == "argon" { return 4; }
+    return CP_FLAWED_START_CLOUD;
   }
   return -1;
 }
@@ -380,7 +386,7 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
 cp_model_known_label :: (name: string) -> string {
   fids := CP_FLAWED_ID; flabels := CP_FLAWED_LABEL;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return flabels[i]; } }
-  if name == "flawed" { return "Flawed · Opus 4.7"; }
+  if name == "flawed" { return "Flawed · Inkling 2 Mini"; }
   if name.count > CP_FLAWED_PREFIX.count && cast(string) name[0..<CP_FLAWED_PREFIX.count] == CP_FLAWED_PREFIX {
     return cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
   }
@@ -420,7 +426,7 @@ cp_model_known_label :: (name: string) -> string {
 cp_model_known_meta :: (name: string) -> string {
   fids := CP_FLAWED_ID; fmetas := CP_FLAWED_META;
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return fmetas[i]; } }
-  if name == "flawed" { return "Flawed Agent · Claude Opus 4.7"; }
+  if name == "flawed" { return "Flawed Agent · Inkling 2 Mini"; }
   if name == "inkling-2-mini-uncensored-lora" { return "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)"; }
   if name == "inkling-2-mini-uncensored-q4k" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "inkling-2-mini-uncensored-iq3s" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
@@ -494,7 +500,7 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if e.kind == CP_MK_CURSOR { return "Cursor"; }
   if e.kind == CP_MK_ACP { return cast(string) s[0].prov[0].acp[e.slot].name[0..<s[0].prov[0].acp[e.slot].name_n]; }
   if e.kind == CP_MK_CLAUDE { clabels := CP_CLAUDE_LABEL; return clabels[e.slot]; }
-  if e.kind == CP_MK_FLAWED { flabels := CP_FLAWED_LABEL; return flabels[e.slot]; }
+  if e.kind == CP_MK_FLAWED { return cp_flawed_label_for(s, e.slot); }
   return "No model";
 }
 
@@ -689,7 +695,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     return cast(string) s[0].prov[0].acp_meta_buf[0..<n];
   }
   if e.kind == CP_MK_CLAUDE { cmetas := CP_CLAUDE_META; return cmetas[e.slot]; }
-  if e.kind == CP_MK_FLAWED { fmetas := CP_FLAWED_META; return fmetas[e.slot]; }
+  if e.kind == CP_MK_FLAWED { return cp_flawed_meta_for(s, e.slot); }
   return "No model";
 }
 
@@ -698,6 +704,7 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
   idx := cp_model_find_exact(s, name);
   if idx < 0 { return false; }
   s[0].model = idx;
+  s[0].flawed[0].user_picked = true;
   return true;
 }
 
@@ -762,8 +769,15 @@ coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
 
 coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was := s[0].inkling;
   pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].inkling = on;
+  // Promote an untouched fresh chat from Neon fallback -> Flawed Inkling 2 Mini once weights verify (or fall back if uninstalled).
+  if was != on && s[0].nturns == 0 && !cp_running(s) && !s[0].flawed[0].user_picked && s[0].flawed[0].default_agent == 0 && s[0].flawed[0].model_slot == CP_FLAWED_START_LOCAL {
+    s[0].model = cp_model_start(s);
+    s[0].model = cp_model_index(s);
+    return;
+  }
   cp_model_restore_id(s, prev);
 }
 

@@ -77,8 +77,9 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert p[0].nrows == cp_models(s) && p[0].items[p[0].rows[p[0].lit].item].code == CP_PAL_MODEL + cp_model_index(s);
   #assert coder_page_overlay_key(s, APP_OV_BACKSPACE, 0) && p[0].depth == 0;
   p[0].lit = cp_pal_test_row(s, "Switch model");
+  start_m := cp_model_index(s);
   #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_overlay_key(s, APP_OV_DOWN, 0) && coder_page_overlay_key(s, APP_OV_ENTER, 0);
-  #assert !coder_page_palette_open(s) && s[0].model == 1;
+  #assert !coder_page_palette_open(s) && s[0].model == start_m + 1;
 }
 #test "a setting opens settings at its row; rename asks the host; Escape closes with nothing done" {
   pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);

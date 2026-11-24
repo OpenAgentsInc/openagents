@@ -173,7 +173,7 @@ extension CoderWindow {
         let useInkling = !useFlawed && !useAgy
         let useHybrid = false
         #endif
-        let flawedWantsLocal = useFlawed && FlawedSettings.backend == 4
+        let flawedWantsLocal = FlawedSettings.pageNeedsLocal(r.page)
         if useInkling || useHybrid || flawedWantsLocal {
             #if OA_FULL
             if useHybrid {
@@ -249,9 +249,11 @@ extension CoderWindow {
                 }
                 self.wake()
                 let latestURL = LocalModelServer.baseURL
+                let latestModel = LocalModelStore.entry.id
                 var retryRecall = needsRecall
-                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL {
+                if r.worker.extraEnv["PSIONIC_BASE_URL"] != latestURL || r.worker.extraEnv["PSIONIC_MODEL"] != latestModel {
                     r.worker.extraEnv["PSIONIC_BASE_URL"] = latestURL
+                    r.worker.extraEnv["PSIONIC_MODEL"] = latestModel
                     if r.worker.alive {
                         r.worker.stop(forget: false)
                         retryRecall = true
@@ -1030,7 +1032,7 @@ extension CoderWindow {
         }
         if cd_model_flawed(r.page) != 0 {
             for (k, v) in FlawedSettings.workerEnv() { env[k] = v }
-            if FlawedSettings.backend == 4 || (FlawedSettings.backend == 0 && LocalModelServer.shared.isReady) {
+            if FlawedSettings.pageNeedsLocal(r.page) || LocalModelServer.shared.isReady {
                 env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
                 env["PSIONIC_MODEL"] = LocalModelStore.entry.id
             }

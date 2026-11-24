@@ -189,6 +189,6 @@ gw_window :: (model: string) -> int {
 #test "context windows: the Gemini models a plan sends, with or without google/; Claude; local Inkling 32K; anything else unknown" {
   #assert gw_window("gemini-4-hydrogen") == 1048576 && gw_window("google/gemini-4-hydrogen") == 1048576 && gw_window("gemini-4-neon") == 1048576;
   #assert gw_window("inkling-2-mini") == 32768 && gw_window("hybrid-exec-v1") == 32768;
-  #assert gw_window("claude-haiku-4-5") == 200000 && gw_window("flawed:claude-opus-4-7") == 200000 && gw_window("claude-opus-4-7[1m]") == 1000000 && gw_window("anthropic/claude-sonnet-4-6") == 200000;
+  #assert gw_window("claude-haiku-4-5") == 200000 && gw_window("flawed:gemini-4-neon") == 1048576 && gw_window("flawed:inkling-2-mini") == 32768 && gw_window("claude-opus-4-7[1m]") == 1000000 && gw_window("anthropic/claude-sonnet-4-6") == 200000;
   #assert gw_window("local") == 0 && gw_window("z-ai/glm-5.3-flash") == 0 && gw_window("") == 0 && gw_window("google/") == 0;
 }

@@ -249,6 +249,7 @@ int cd_model_agy(void *page);
 int cd_model_inkling(void *page);
 int cd_model_hybrid(void *page);
 int cd_model_flawed(void *page);
+int cd_model_flawed_local(void *page);
 void cd_flawed_prefs_set(void *page, const int *vals, int count);
 int cd_flawed_prefs_get(void *page, int *out, int cap);
 void cd_flawed_info(void *page, const char *auth_status, const char *key_label, const char *base_url, const char *custom_model, const char *tools_summary, const char *limits_summary);

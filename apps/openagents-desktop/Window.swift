@@ -367,7 +367,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             guard let self else { return }
             self.syncPhoneRuns()
-            let wantsLocal = cd_model_inkling(self.page) != 0 || (cd_model_flawed(self.page) != 0 && FlawedSettings.backend == 4)
+            let wantsLocal = cd_model_inkling(self.page) != 0 || FlawedSettings.pageNeedsLocal(self.page)
             if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && wantsLocal {
                 LocalModelServer.shared.prewarmIfReady()
             }

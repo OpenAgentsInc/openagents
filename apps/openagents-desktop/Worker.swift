@@ -68,7 +68,7 @@ final class CoderWorker {
         #endif
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         #if OA_FULL
-        if (program == "claudeworker" || program == "flawedworker"), let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
+        if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
         #endif
         return (env, ["CODER_CLAUDE_KEY"])
     }

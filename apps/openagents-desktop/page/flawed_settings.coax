@@ -1,39 +1,47 @@
 // Coder Desktop page (../page.coax & ../page-v1.coax): Flawed Agent model table,
 // Claude-Code-parity Settings -> Flawed screen, state, press handlers, and host C exports.
+// Uses Local Inkling 2 Mini (default when installed) and Gemini 4 Neon family models — zero Anthropic.
 
-CP_FLAWED_MODELS :: 4;
+CP_FLAWED_MODELS :: 5;
 CP_FLAWED_PREFIX :: "flawed:";
 CP_FLAWED_ID :: [CP_FLAWED_MODELS] string.[
-  "flawed:claude-opus-4-7",
-  "flawed:claude-sonnet-4-6",
-  "flawed:claude-haiku-4-5",
-  "flawed:claude-opus-4-6",
+  "flawed:inkling-2-mini",
+  "flawed:gemini-4-neon",
+  "flawed:gemini-4-carbon",
+  "flawed:gemini-4-hydrogen",
+  "flawed:gemini-4-argon",
 ];
 CP_FLAWED_LABEL :: [CP_FLAWED_MODELS] string.[
-  "Flawed · Opus 4.7",
-  "Flawed · Sonnet 4.6",
-  "Flawed · Haiku 4.5",
-  "Flawed · Opus 4.6",
+  "Flawed · Inkling 2 Mini",
+  "Flawed · Gemini 4 Neon",
+  "Flawed · Gemini 4 Carbon",
+  "Flawed · Gemini 4 Hydrogen",
+  "Flawed · Gemini 4 Argon",
 ];
 CP_FLAWED_SHORT :: [CP_FLAWED_MODELS] string.[
-  "Opus 4.7",
-  "Sonnet 4.6",
-  "Haiku 4.5",
-  "Opus 4.6",
+  "Inkling 2 Mini",
+  "Neon",
+  "Carbon",
+  "Hydrogen",
+  "Argon",
 ];
 CP_FLAWED_DESC :: [CP_FLAWED_MODELS] string.[
-  "Deepest reasoning · Flawed Agent",
-  "Everyday coding · Flawed Agent",
-  "Fast & lightweight · Flawed Agent",
-  "Previous frontier · Flawed Agent",
+  "Local Psionic Metal · Flawed Agent",
+  "Frontier reasoning · 1M context · Vertex / Gemini",
+  "Deep coding · 1M context · Vertex / Gemini",
+  "Fast & light · 1M context · Vertex / Gemini",
+  "High precision · 1M context · Vertex / Gemini",
 ];
 CP_FLAWED_META :: [CP_FLAWED_MODELS] string.[
-  "Flawed Agent · Claude Opus 4.7",
-  "Flawed Agent · Claude Sonnet 4.6",
-  "Flawed Agent · Claude Haiku 4.5",
-  "Flawed Agent · Claude Opus 4.6",
+  "Flawed Agent · Inkling 2 Mini",
+  "Flawed Agent · Gemini 4 Neon",
+  "Flawed Agent · Gemini 4 Carbon",
+  "Flawed Agent · Gemini 4 Hydrogen",
+  "Flawed Agent · Gemini 4 Argon",
 ];
-CP_FLAWED_START :: 0;          // Opus 4.7
+CP_FLAWED_START_LOCAL :: 0;    // Inkling 2 Mini (default when installed)
+CP_FLAWED_START_CLOUD :: 1;    // Gemini 4 Neon (automatic fallback when Inkling is not installed)
+CP_FLAWED_START :: 0;
 CP_FLAWED_EFFORTS :: 5;        // Low, Medium, High, X-High, Max
 CP_FLAWED_EFFORT_START :: 2;   // High
 CP_FLAWED_PREFS_COUNT :: 20;
@@ -51,8 +59,9 @@ CP_ASK_FLAWED_RESET :: 197;
 // Composer model picker footer shortcut to Settings -> Flawed.
 CP_MODEL_FLAWED :: 398;
 
-// Zero-initialized defaults match Claude Code out of the box:
-// default_agent=0 (Flawed), model_slot=0 (Opus 4.7), backend=0 (Auto),
+// Zero-initialized defaults:
+// default_agent=0 (Flawed), model_slot=0 (Inkling 2 Mini if installed, else Gemini 4 Neon),
+// backend=0 (Auto: Local Psionic for Inkling, Vertex AI -> Gemini API -> OpenRouter for Neon),
 // thinking_mode=0 (Adaptive), effort_off=0 (High), thinking_display=0 (Summarized),
 // permission_mode=0 (Default), bypass_danger=false, sandbox_mode=0 (Off),
 // git_guard_off=false (On), prompt_cache=0 (Global), auto_compact_off=false (On),
@@ -60,9 +69,9 @@ CP_MODEL_FLAWED :: 398;
 // hooks_mode=0 (All), mcp_defer_off=false (On), fast_mode=false,
 // extended_ctx=false, remote_bridge=false.
 CpFlawedSettings :: struct {
-  default_agent: int;      // 0: Flawed, 1: Inkling 2 Mini
-  model_slot: int;         // 0..3 into CP_FLAWED_ID
-  backend: int;            // 0 Auto, 1 Anthropic, 2 Claude OAuth, 3 OpenRouter, 4 Local Psionic
+  default_agent: int;      // 0: Flawed, 1: Inky (legacy local)
+  model_slot: int;         // 0..4 into CP_FLAWED_ID (0 = Inkling 2 Mini -> fallback Neon)
+  backend: int;            // 0 Auto, 1 Local Psionic, 2 Vertex AI, 3 Gemini API, 4 OpenRouter
   thinking_mode: int;      // 0 Adaptive, 1 Extended, 2 Off
   effort_off: int;         // level - CP_FLAWED_EFFORT_START (0 -> High)
   thinking_display: int;   // 0 Summarized, 1 Hidden
@@ -73,13 +82,14 @@ CpFlawedSettings :: struct {
   prompt_cache: int;       // 0 Global, 1 Org, 2 Off
   auto_compact_off: bool;  // inverted so zero-init = On
   auto_memory_off: bool;   // inverted so zero-init = On
-  bare_mode: bool;         // skip CLAUDE.md / auto-memory / hooks
+  bare_mode: bool;         // skip CLAUDE.md / AGENTS.md / auto-memory / hooks
   output_style: int;       // 0 Default, 1 Concise, 2 Explanatory, 3 Learning
   hooks_mode: int;         // 0 All, 1 Managed, 2 Off
   mcp_defer_off: bool;     // inverted so zero-init = On
-  fast_mode: bool;         // Anthropic fast output mode
-  extended_ctx: bool;      // 1M extended context window
+  fast_mode: bool;         // fast mode toggle
+  extended_ctx: bool;      // 1M context window preference
   remote_bridge: bool;     // Remote Control session bridge
+  user_picked: bool;       // true after explicit user model pick or loaded chat
   // Host-supplied display strings for Settings -> Flawed.
   auth_status: [128] u8; auth_status_n: int;
   key_label: [64] u8; key_label_n: int;
@@ -88,6 +98,8 @@ CpFlawedSettings :: struct {
   tools_summary: [192] u8; tools_summary_n: int;
   limits_summary: [128] u8; limits_summary_n: int;
   desc_buf: [192] u8;
+  label_buf: [128] u8;
+  meta_buf: [128] u8;
 }
 
 cp_flawed_clamp :: (v: int, lo: int, hi: int) -> int {
@@ -108,19 +120,42 @@ cp_flawed_auto_memory :: (s: [] CoderPage) -> bool { return s.count < 1 || !s[0]
 cp_flawed_mcp_defer :: (s: [] CoderPage) -> bool { return s.count < 1 || !s[0].flawed[0].mcp_defer_off; }
 
 cp_flawed_backend_label :: (be: int) -> string {
-  if be == 1 { return "Anthropic API"; }
-  if be == 2 { return "Claude OAuth"; }
-  if be == 3 { return "OpenRouter"; }
-  if be == 4 { return "Local Psionic"; }
+  if be == 1 { return "Local Psionic"; }
+  if be == 2 { return "Vertex AI"; }
+  if be == 3 { return "Gemini API"; }
+  if be == 4 { return "OpenRouter"; }
   return "Auto";
+}
+
+cp_flawed_label_for :: (s: [] CoderPage, slot: int) -> string {
+  labels := CP_FLAWED_LABEL;
+  if slot == CP_FLAWED_START_LOCAL && s.count > 0 {
+    n := el_put(s[0].flawed[0].label_buf[..], 0, "Flawed · ");
+    n = el_put(s[0].flawed[0].label_buf[..], n, cp_inkling_label(s));
+    return cast(string) s[0].flawed[0].label_buf[0..<n];
+  }
+  return ifx slot >= 0 && slot < CP_FLAWED_MODELS then labels[slot] else labels[CP_FLAWED_START_CLOUD];
+}
+
+cp_flawed_meta_for :: (s: [] CoderPage, slot: int) -> string {
+  metas := CP_FLAWED_META;
+  if slot == CP_FLAWED_START_LOCAL && s.count > 0 {
+    n := el_put(s[0].flawed[0].meta_buf[..], 0, "Flawed Agent · ");
+    n = el_put(s[0].flawed[0].meta_buf[..], n, cp_inkling_label(s));
+    return cast(string) s[0].flawed[0].meta_buf[0..<n];
+  }
+  return ifx slot >= 0 && slot < CP_FLAWED_MODELS then metas[slot] else metas[CP_FLAWED_START_CLOUD];
 }
 
 cp_flawed_desc_for :: (s: [] CoderPage, slot: int) -> string {
   descs := CP_FLAWED_DESC;
-  base := ifx slot >= 0 && slot < CP_FLAWED_MODELS then descs[slot] else descs[0];
+  base := ifx slot >= 0 && slot < CP_FLAWED_MODELS then descs[slot] else descs[CP_FLAWED_START_CLOUD];
   if s.count < 1 { return base; }
+  if slot == CP_FLAWED_START_LOCAL && !s[0].inkling {
+    return cp_inkling_desc(s);
+  }
   fl := s[0].flawed[..];
-  has_extra := fl[0].custom_model_n > 0 || fl[0].backend != 0 || fl[0].extended_ctx || fl[0].fast_mode;
+  has_extra := fl[0].custom_model_n > 0 || fl[0].backend != 0 || fl[0].fast_mode;
   if !has_extra { return base; }
   n := 0;
   if fl[0].custom_model_n > 0 {
@@ -133,7 +168,6 @@ cp_flawed_desc_for :: (s: [] CoderPage, slot: int) -> string {
     n = el_put(fl[0].desc_buf[..], n, " · ");
     n = el_put(fl[0].desc_buf[..], n, cp_flawed_backend_label(fl[0].backend));
   }
-  if fl[0].extended_ctx { n = el_put(fl[0].desc_buf[..], n, " · 1M"); }
   if fl[0].fast_mode { n = el_put(fl[0].desc_buf[..], n, " · Fast"); }
   return cast(string) fl[0].desc_buf[0..<n];
 }
@@ -141,6 +175,7 @@ cp_flawed_desc_for :: (s: [] CoderPage, slot: int) -> string {
 cp_flawed_sync_empty_chat :: (s: [] CoderPage) {
   if s.count < 1 { return; }
   if s[0].nturns == 0 && !cp_running(s) {
+    s[0].flawed[0].user_picked = false;
     s[0].model = cp_model_start(s);
     s[0].model = cp_model_index(s);
   }
@@ -154,86 +189,88 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   y := y0;
 
   y += set_page_head(f, "set.title", x, y, w, "Flawed",
-    "Native pure-Coax autonomous coding agent with full Claude Code parity: streaming, adaptive thinking, permissions, sandboxing, compaction, memory, and hooks.") + t.block_gap;
+    "Native pure-Coax autonomous coding agent powered by local Inkling 2 Mini (Psionic Metal) and Gemini 4 Neon models, with streaming, thinking, permissions, sandboxing, compaction, memory, and hooks.") + t.block_gap;
 
   // 1. Default Agent & Model
   y += set_section_head(f, "set.flawed.model.head", x, y, w, "Default Agent & Model",
-    "Choose which agent new chats start on and configure Flawed's Claude model, context window, and fast output mode.") + t.section_gap;
+    "Defaults to local Inkling 2 Mini when installed (or Gemini 4 Neon otherwise). Switch freely between Inkling 2 Mini and Neon models in the composer.") + t.section_gap;
   mrows: [5] SetRow;
   mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default agent",
     desc = ifx fl[0].default_agent == 0
-           then "New chats start on Flawed Agent. You can switch per chat in the composer."
-           else "New chats start on local Inkling 2 Mini. Pick Flawed anytime in the composer.",
+           then "New chats start on Flawed Agent. Switch models anytime in the composer."
+           else "New chats start on standalone Inkling 2 Mini (Inky). Pick Flawed anytime in the composer.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].default_agent, 0, 1), action = CP_SET_ACT};
   mrows[0].options[0] = "Flawed";
-  mrows[0].options[1] = "Inkling";
+  mrows[0].options[1] = "Inky";
 
   shorts := CP_FLAWED_SHORT;
   mslot := cp_flawed_clamp(fl[0].model_slot, 0, CP_FLAWED_MODELS - 1);
   mrows[1] = SetRow.{id = "set.flawed.model", name = "Default model",
-    desc = "The Flawed Claude model new chats start on when Flawed is the default agent.",
+    desc = ifx mslot == CP_FLAWED_START_LOCAL
+           then "Starts on local Inkling 2 Mini when installed, automatically falling back to Gemini 4 Neon otherwise."
+           else "New Flawed chats start on this Gemini 4 Neon family model.",
     kind = SET_ROW_CHOICE, noptions = CP_FLAWED_MODELS, chosen = mslot, action = CP_SET_ACT};
   for i: 0..<CP_FLAWED_MODELS { mrows[1].options[i] = shorts[i]; }
 
   cmod := ifx fl[0].custom_model_n > 0 then sheet_pool(sh, cast(string) fl[0].custom_model[0..<fl[0].custom_model_n]) else "Default (from picker)";
   mrows[2] = SetRow.{id = "set.flawed.custom", name = "Custom model override",
-    desc = "Override the wire model slug for proxies, Bedrock/Vertex gateways, OpenRouter, or local GGUFs.",
+    desc = "Override the wire model slug for Vertex AI, Gemini API, OpenRouter, or custom local Psionic models.",
     value = cmod, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
 
   mrows[3] = SetRow.{id = "set.flawed.ctx1m", name = "Extended 1M context",
-    desc = "Enable the 1,000,000-token context window on supported Claude 4.x models (default 200K).",
+    desc = "Gemini 4 Neon models natively support 1,048,576 input tokens (32K on local Inkling 2 Mini).",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].extended_ctx then 1 else 0, action = CP_SET_ACT};
-  mrows[3].options[0] = "Off"; mrows[3].options[1] = "On";
+  mrows[3].options[0] = "Auto"; mrows[3].options[1] = "1M";
 
   mrows[4] = SetRow.{id = "set.flawed.fast", name = "Fast mode",
-    desc = "Faster token generation at higher per-token pricing when supported by Anthropic.",
+    desc = "Prefer lower-latency output when supported by the active backend.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].fast_mode then 1 else 0, action = CP_SET_ACT};
   mrows[4].options[0] = "Off"; mrows[4].options[1] = "On";
   y += cp_set_group(s, f, "set.flawed.model.group", x, y, w, mrows[..]) + t.block_gap;
 
   // 2. Authentication & Backend
   y += set_section_head(f, "set.flawed.auth.head", x, y, w, "Authentication & Backend",
-    "Auto uses a saved Flawed/Anthropic key, Claude Code OAuth credentials, OpenRouter, or Local Psionic Metal in order.") + t.section_gap;
+    "Auto routes Inkling 2 Mini to Local Psionic Metal and Neon models to Vertex AI, Gemini API, or OpenRouter.") + t.section_gap;
   arows: [4] SetRow;
   be := cp_flawed_clamp(fl[0].backend, 0, 4);
   arows[0] = SetRow.{id = "set.flawed.backend", name = "Inference backend",
-    desc = ifx be == 1 then "Direct Anthropic Messages API (x-api-key)."
-           else ifx be == 2 then "Claude Code OAuth token from macOS Keychain or ~/.claude/.credentials.json."
-           else ifx be == 3 then "OpenRouter Chat Completions API (anthropic/claude-* slugs)."
-           else ifx be == 4 then "Local Psionic Metal OpenAI-compatible server (no data leaves this Mac)."
-           else "Auto-detect best ready credential: API key -> Claude OAuth -> OpenRouter -> Local.",
+    desc = ifx be == 1 then "Force Local Psionic Metal server (on-device Inkling 2 Mini; nothing leaves this Mac)."
+           else ifx be == 2 then "Force Google Cloud Vertex AI (us multi-region service account / ADC)."
+           else ifx be == 3 then "Force Gemini Developer API (x-goog-api-key)."
+           else ifx be == 4 then "Force OpenRouter Chat Completions API (google/gemini-4-* slugs)."
+           else "Auto-route by model: Local Psionic for Inkling 2 Mini; Vertex AI -> Gemini API -> OpenRouter for Neon.",
     kind = SET_ROW_CHOICE, noptions = 5, chosen = be, action = CP_SET_ACT};
   arows[0].options[0] = "Auto";
-  arows[0].options[1] = "Anthropic";
-  arows[0].options[2] = "OAuth";
-  arows[0].options[3] = "OpenRouter";
-  arows[0].options[4] = "Local";
+  arows[0].options[1] = "Local";
+  arows[0].options[2] = "Vertex";
+  arows[0].options[3] = "Gemini";
+  arows[0].options[4] = "OpenRouter";
 
   auth_val := ifx fl[0].auth_status_n > 0 then sheet_pool(sh, cast(string) fl[0].auth_status[0..<fl[0].auth_status_n]) else "Not checked yet";
   arows[1] = SetRow.{id = "set.flawed.auth", name = "Active credentials",
-    desc = "Live probe from flawedworker --auth using your selected backend and saved keys.",
+    desc = "Live probe from flawedworker --auth showing Local Psionic and Vertex AI / Gemini readiness.",
     value = auth_val, kind = SET_ROW_BUTTON, button = "Check", action = CP_SET_ACT};
 
   key_val := ifx fl[0].key_label_n > 0 then sheet_pool(sh, cast(string) fl[0].key_label[0..<fl[0].key_label_n]) else "Not set";
-  arows[2] = SetRow.{id = "set.flawed.key", name = "Anthropic / Flawed API key",
-    desc = "Stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Overrides env & OAuth.",
+  arows[2] = SetRow.{id = "set.flawed.key", name = "Gemini / OpenRouter API key",
+    desc = "Optional key stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Not needed for Local Psionic or Vertex SA.",
     value = key_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
 
   url_val := ifx fl[0].base_url_n > 0 then sheet_pool(sh, cast(string) fl[0].base_url[0..<fl[0].base_url_n]) else "Default endpoint";
   arows[3] = SetRow.{id = "set.flawed.url", name = "Custom API base URL",
-    desc = "Optional base URL for Anthropic-compatible proxies, enterprise gateways, or custom local endpoints.",
+    desc = "Optional endpoint override for Vertex/Gemini proxies, OpenRouter mirrors, or remote Psionic servers.",
     value = url_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
   y += cp_set_group(s, f, "set.flawed.auth.group", x, y, w, arows[..]) + t.block_gap;
 
   // 3. Reasoning & Thinking
   y += set_section_head(f, "set.flawed.think.head", x, y, w, "Reasoning & Thinking",
-    "Controls extended / adaptive thinking blocks, default reasoning effort, and lossless thinking replay across tool turns.") + t.section_gap;
+    "Controls live streamed thinking summaries, default reasoning effort, and lossless thought-signature replay across tool turns.") + t.section_gap;
   trows: [3] SetRow;
   tm := cp_flawed_clamp(fl[0].thinking_mode, 0, 2);
   trows[0] = SetRow.{id = "set.flawed.tmode", name = "Thinking mode",
-    desc = ifx tm == 0 then "Adaptive — lets Claude allocate thinking budget dynamically per effort level (recommended)."
-           else ifx tm == 1 then "Extended — explicit fixed thinking token budget scaled by effort level."
-           else "Off — disable thinking blocks for lowest latency.",
+    desc = ifx tm == 0 then "Adaptive — stream native reasoning thoughts scaled by effort level (recommended)."
+           else ifx tm == 1 then "Extended — deeper reasoning budget scaled by effort level."
+           else "Off — hide thoughts and minimize reasoning latency.",
     kind = SET_ROW_CHOICE, noptions = 3, chosen = tm, action = CP_SET_ACT};
   trows[0].options[0] = "Adaptive"; trows[0].options[1] = "Extended"; trows[0].options[2] = "Off";
 
@@ -244,7 +281,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   for ei: 0..<CP_FLAWED_EFFORTS { trows[1].options[ei] = elabels[ei]; }
 
   trows[2] = SetRow.{id = "set.flawed.tdisp", name = "Thinking display",
-    desc = "Show live streamed thought rows in the activity timeline, or omit them from the UI while still replaying signatures.",
+    desc = "Show live streamed thought rows in the activity timeline, or omit them from the UI while still preserving tool thought signatures.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].thinking_display, 0, 1), action = CP_SET_ACT};
   trows[2].options[0] = "Summarized"; trows[2].options[1] = "Hidden";
   y += cp_set_group(s, f, "set.flawed.think.group", x, y, w, trows[..]) + t.block_gap;
@@ -293,11 +330,11 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   // 5. Context, Compaction & Memory (Chapters 04, 09–10)
   y += set_section_head(f, "set.flawed.ctx.head", x, y, w, "Context, Compaction & Memory",
-    "Prompt cache breakpoints, automatic context compaction before overflow, and CLAUDE.md / AGENTS.md instruction discovery.") + t.section_gap;
+    "Prefix KV/context caching, automatic context compaction before overflow, and CLAUDE.md / AGENTS.md instruction discovery.") + t.section_gap;
   crows: [4] SetRow;
   pc := cp_flawed_clamp(fl[0].prompt_cache, 0, 2);
   crows[0] = SetRow.{id = "set.flawed.cache", name = "Prompt caching",
-    desc = "Attach ephemeral cache_control breakpoints on system prompt, tool definitions, and conversation prefix.",
+    desc = "Maintain stable system prompt, tool definitions, and conversation prefix ordering for maximum cache hit rates.",
     kind = SET_ROW_CHOICE, noptions = 3, chosen = pc, action = CP_SET_ACT};
   crows[0].options[0] = "Global"; crows[0].options[1] = "Org"; crows[0].options[2] = "Off";
 
@@ -306,13 +343,13 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_auto_compact(s) then 0 else 1, action = CP_SET_ACT};
   crows[1].options[0] = "On"; crows[1].options[1] = "Off";
 
-  crows[2] = SetRow.{id = "set.flawed.memory", name = "Auto-memory & CLAUDE.md",
-    desc = "Load CLAUDE.md, AGENTS.md, and ~/.openagents/instructions.md into the dynamic system prompt.",
+  crows[2] = SetRow.{id = "set.flawed.memory", name = "Auto-memory & AGENTS.md",
+    desc = "Load AGENTS.md, CLAUDE.md, and ~/.openagents/instructions.md into the dynamic system prompt.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx cp_flawed_auto_memory(s) then 0 else 1, action = CP_SET_ACT};
   crows[2].options[0] = "On"; crows[2].options[1] = "Off";
 
   crows[3] = SetRow.{id = "set.flawed.bare", name = "Bare / simple mode",
-    desc = "Minimal prompt mode (equivalent to --bare / CLAUDE_CODE_SIMPLE): skips CLAUDE.md, auto-memory, and hooks.",
+    desc = "Minimal prompt mode (equivalent to --bare): skips AGENTS.md, CLAUDE.md, auto-memory, and hooks.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bare_mode then 1 else 0, action = CP_SET_ACT};
   crows[3].options[0] = "Off"; crows[3].options[1] = "On";
   y += cp_set_group(s, f, "set.flawed.ctx.group", x, y, w, crows[..]) + t.block_gap;
@@ -326,7 +363,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     desc = ifx ost == 1 then "Concise — terse answers, minimal prose, code and diffs first."
            else ifx ost == 2 then "Explanatory — walk through design trade-offs and architectural rationale."
            else ifx ost == 3 then "Learning — collaborative coaching with explanations of why each change works."
-           else "Default — balanced Claude Code engineering style.",
+           else "Default — balanced autonomous engineering style.",
     kind = SET_ROW_CHOICE, noptions = 4, chosen = ost, action = CP_SET_ACT};
   erows[0].options[0] = "Default"; erows[0].options[1] = "Concise"; erows[0].options[2] = "Explanatory"; erows[0].options[3] = "Learning";
 
@@ -352,7 +389,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   erows[4].options[0] = "Off"; erows[4].options[1] = "On";
 
   erows[5] = SetRow.{id = "set.flawed.reset", name = "Reset Flawed settings",
-    desc = "Restore all Flawed settings (model, thinking, permissions, sandbox, limits) to Claude Code defaults.",
+    desc = "Restore all Flawed settings (default model, thinking, permissions, sandbox, limits) to defaults.",
     kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
   y += cp_set_group(s, f, "set.flawed.ext.group", x, y, w, erows[..]);
 
@@ -432,6 +469,10 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
 
 coder_page_model_flawed :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_flawed(s, cp_model_index(s));
+}
+
+coder_page_model_flawed_local :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_is_flawed_local(s, cp_model_index(s));
 }
 
 coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effects(all) {

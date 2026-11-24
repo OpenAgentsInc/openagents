@@ -452,6 +452,7 @@ int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model
 int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
 int cd_model_claude(void *page) { CoderHost *c = page; return c && coder_page_model_claude(cd_state(c)) ? 1 : 0; }
 int cd_model_flawed(void *page) { CoderHost *c = page; return c && coder_page_model_flawed(cd_state(c)) ? 1 : 0; }
+int cd_model_flawed_local(void *page) { CoderHost *c = page; return c && coder_page_model_flawed_local(cd_state(c)) ? 1 : 0; }
 void cd_flawed_prefs_set(void *page, const int *vals, int count) {
   CoderHost *c = page;
   if (!c || !vals || count <= 0) return;
