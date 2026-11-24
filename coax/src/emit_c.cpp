@@ -1370,6 +1370,13 @@ struct Emitter {
     }
   }
 
+  static bool type_has_view(Type t) {
+    std::vector<Type> elems;
+    std::unordered_set<Type> seen;
+    collect_view_elems(t, elems, seen);
+    return !elems.empty();
+  }
+
   uint64_t by_ref_mask(const ProcDecl *p) {
     if (!p || opts.cuda || opts.metal || opts.metal_compute || opts.debug_info) return 0;
     if (!p->body || p->export_c || p->foreign || p->inline_c || p->params.count == 0 || str_eq(p->name, "main")) return 0;
@@ -1378,7 +1385,7 @@ struct Emitter {
     bool any_large = false;
     for (int32_t i = 0; i < p->params.count && i < 64; i++) {
       Type t = p->params[i].type;
-      if (t && (t->kind == TypeKind::struct_ || t->kind == TypeKind::array) && t->size > 16) { any_large = true; break; }
+      if (t && (t->kind == TypeKind::struct_ || t->kind == TypeKind::array) && t->size > 16 && !type_has_view(t)) { any_large = true; break; }
     }
     if (!any_large) { ref_param_masks.emplace(p, 0); return 0; }
     std::vector<Type> view_elems;
@@ -1420,7 +1427,7 @@ struct Emitter {
     if (!has_tx) {
       for (int32_t i = 0; i < p->params.count && i < 64; i++) {
         Type t = p->params[i].type;
-        if (!t || (t->kind != TypeKind::struct_ && t->kind != TypeKind::array) || t->size <= 16) continue;
+        if (!t || (t->kind != TypeKind::struct_ && t->kind != TypeKind::array) || t->size <= 16 || type_has_view(t)) continue;
         const std::string nm = to_std(p->params[i].name);
         if (shadowed.count(nm) || sliced.count(nm)) continue;
         bool aliased = false;

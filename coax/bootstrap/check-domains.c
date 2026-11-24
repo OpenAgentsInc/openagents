@@ -233,8 +233,8 @@ coax_t_FD_Cursor FD_advance(coax_t_FD_Cursor l_cursor);
 static _Bool coax_p_fd_width(uint32_t l_bits);
 static _Bool coax_p_fd_total(uint64_t l_count);
 static uint64_t coax_p_fd_rank(int64_t l_value);
-static _Bool coax_pr_fd_shape(const coax_t_FD_Domain * const l_d);
-static uint64_t coax_pr_fd_word(const coax_t_FD_Domain * const l_d, uint64_t l_at);
+static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d);
+static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at);
 static _Bool coax_p_fd_canonical(uint64_t l_word, uint32_t l_bits, _Bool l_is_signed);
 
 uint64_t FD_limit(void) {
@@ -327,7 +327,7 @@ uint32_t FD_tuple(coax_v_t_FD_Domain l_domains, uint64_t l_ordinal, coax_v_u64 l
       {
         return (l_p).reason;
       }
-      if (!coax_pr_fd_shape((&l_d)))
+      if (!coax_p_fd_shape(l_d))
       {
         return ((uint32_t)UINT64_C(6));
       }
@@ -365,7 +365,7 @@ uint32_t FD_tuple(coax_v_t_FD_Domain l_domains, uint64_t l_ordinal, coax_v_u64 l
       uint64_t l_at = coax_mod_u64(l_rest, (l_d).count, 171);
       l_rest = coax_div_u64(l_rest, (l_d).count, 171);
       coax_t5 = &((*coax_elem_v_u64(l_out, l_i, 171)));
-      *coax_t5 = coax_pr_fd_word((&l_d), l_at);
+      *coax_t5 = coax_p_fd_word(l_d, l_at);
     }
   }
   return ((uint32_t)UINT64_C(0));
@@ -400,36 +400,34 @@ static uint64_t coax_p_fd_rank(int64_t l_value) {
   return ((uint64_t)(((uint64_t)(l_value)) ^ UINT64_C(9223372036854775808)));
 }
 
-static _Bool coax_pr_fd_shape(const coax_t_FD_Domain * const l_d) {
-  if (l_d->kind == ((uint32_t)UINT64_C(4)))
+static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d) {
+  if ((l_d).kind == ((uint32_t)UINT64_C(4)))
   {
-    return ((coax_p_fd_width(l_d->bits) && (l_d->first == INT64_C(0))) && (((uint64_t)coax_cast_su((int64_t)((l_d->values).count), UINT64_C(18446744073709551615), 187)) == l_d->count));
+    return ((coax_p_fd_width((l_d).bits) && ((l_d).first == INT64_C(0))) && (((uint64_t)coax_cast_su((int64_t)(((l_d).values).count), UINT64_C(18446744073709551615), 187)) == (l_d).count));
   }
-  if ((l_d->values).count != INT64_C(0))
+  if (((l_d).values).count != INT64_C(0))
   {
     return 0;
   }
-  if (l_d->kind == ((uint32_t)UINT64_C(5)))
+  if ((l_d).kind == ((uint32_t)UINT64_C(5)))
   {
-    return (((l_d->bits == ((uint32_t)UINT64_C(64))) && l_d->is_signed) && (l_d->count <= coax_sub_u64(UINT64_C(18446744073709551615), coax_p_fd_rank(l_d->first), 189)));
+    return ((((l_d).bits == ((uint32_t)UINT64_C(64))) && (l_d).is_signed) && ((l_d).count <= coax_sub_u64(UINT64_C(18446744073709551615), coax_p_fd_rank((l_d).first), 189)));
   }
-  coax_t_FD_Result l_normal = FD_domain(l_d->kind, l_d->bits, l_d->is_signed, l_d->first, l_d->first, ((int64_t)coax_cast_us((uint64_t)(l_d->count), INT64_C(9223372036854775807), 190)));
-  return ((((((l_normal).reason == ((uint32_t)UINT64_C(0))) && (((l_normal).domain).first == l_d->first)) && (((l_normal).domain).count == l_d->count)) && (((l_normal).domain).bits == l_d->bits)) && (((l_normal).domain).is_signed == l_d->is_signed));
+  coax_t_FD_Result l_normal = FD_domain((l_d).kind, (l_d).bits, (l_d).is_signed, (l_d).first, (l_d).first, ((int64_t)coax_cast_us((uint64_t)((l_d).count), INT64_C(9223372036854775807), 190)));
+  return ((((((l_normal).reason == ((uint32_t)UINT64_C(0))) && (((l_normal).domain).first == (l_d).first)) && (((l_normal).domain).count == (l_d).count)) && (((l_normal).domain).bits == (l_d).bits)) && (((l_normal).domain).is_signed == (l_d).is_signed));
 }
-static _Bool coax_p_fd_shape(coax_t_FD_Domain l_d) { return coax_pr_fd_shape(&l_d); }
 
-static uint64_t coax_pr_fd_word(const coax_t_FD_Domain * const l_d, uint64_t l_at) {
-  if (l_d->kind == ((uint32_t)UINT64_C(4)))
+static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at) {
+  if ((l_d).kind == ((uint32_t)UINT64_C(4)))
   {
-    return (*coax_elem_v_u64(l_d->values, ((int64_t)coax_cast_us((uint64_t)(l_at), INT64_C(9223372036854775807), 194)), 194));
+    return (*coax_elem_v_u64((l_d).values, ((int64_t)coax_cast_us((uint64_t)(l_at), INT64_C(9223372036854775807), 194)), 194));
   }
-  if ((l_d->kind == ((uint32_t)UINT64_C(2))) || (l_d->kind == ((uint32_t)UINT64_C(5))))
+  if (((l_d).kind == ((uint32_t)UINT64_C(2))) || ((l_d).kind == ((uint32_t)UINT64_C(5))))
   {
-    return ((uint64_t)(coax_add_u64(coax_p_fd_rank(l_d->first), l_at, 195) ^ UINT64_C(9223372036854775808)));
+    return ((uint64_t)(coax_add_u64(coax_p_fd_rank((l_d).first), l_at, 195) ^ UINT64_C(9223372036854775808)));
   }
   return l_at;
 }
-static uint64_t coax_p_fd_word(coax_t_FD_Domain l_d, uint64_t l_at) { return coax_pr_fd_word(&l_d, l_at); }
 
 static _Bool coax_p_fd_canonical(uint64_t l_word, uint32_t l_bits, _Bool l_is_signed) {
   if (l_bits == ((uint32_t)UINT64_C(64)))
