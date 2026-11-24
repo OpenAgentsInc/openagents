@@ -1,0 +1,276 @@
+// Flawed Layer 5 (Chapter 16) — Skills, Plugins, Output Styles, and LSP Intelligence.
+// Replaces cc/skills/loadSkillsDir.ts, cc/tools/SkillTool/{SkillTool,prompt}.ts,
+// cc/utils/plugins/{pluginLoader,schemas,dependencyResolver}.ts, cc/constants/outputStyles.ts,
+// and cc/services/lsp/{LSPServerInstance,LSPDiagnosticRegistry}.ts + cc/tools/LSPTool/LSPTool.ts invariants.
+//   coax/bin/coax test flawed/extensions.coax --library
+//   coax/bin/coax mutate flawed/extensions.coax --root-only
+#module "flawed.extensions";
+#authority;
+#load "mcp.coax";
+
+// Skill listing budget & cap constants (tools/SkillTool/prompt.ts:20-171).
+FLAWED_SKILL_BUDGET_FALLBACK_CHARS :: 8000;
+FLAWED_SKILL_MAX_DESC_CHARS :: 250;
+FLAWED_SKILL_MIN_DESC_CHARS :: 20;
+
+// Skill source tiers (skills/loadSkillsDir.ts:638-720).
+FLAWED_SKSRC_POLICY :: 1;
+FLAWED_SKSRC_USER :: 2;
+FLAWED_SKSRC_PROJECT :: 3;
+FLAWED_SKSRC_ADD_DIR :: 4;
+FLAWED_SKSRC_BUNDLED :: 5;
+FLAWED_SKSRC_PLUGIN :: 6;
+
+// Output style tiers (constants/outputStyles.ts:158-159 actual code precedence).
+FLAWED_OSTYLE_BUILTIN :: 1;
+FLAWED_OSTYLE_PLUGIN :: 2;
+FLAWED_OSTYLE_USER :: 3;
+FLAWED_OSTYLE_PROJECT :: 4;
+FLAWED_OSTYLE_MANAGED :: 5;
+
+// LSP retry, file size & passive diagnostic caps (LSPServerInstance.ts, LSPTool.ts, LSPDiagnosticRegistry.ts).
+FLAWED_LSP_ERR_CONTENT_MODIFIED :: -32801;
+FLAWED_LSP_MAX_RETRIES :: 3;
+FLAWED_LSP_RETRY_BASE_MS :: 500;
+FLAWED_LSP_MAX_FILE_BYTES :: 10000000; // 10 MB
+FLAWED_LSP_MAX_DIAG_PER_FILE :: 10;
+FLAWED_LSP_MAX_DIAG_TOTAL :: 30;
+
+// Security: remote MCP skills MUST NEVER execute inline !`cmd` shell commands (loadSkillsDir.ts:76-100).
+flawed_skill_inline_shell_allowed :: (is_mcp_skill: bool) -> bool #effects(traps) {
+  return !is_mcp_skill;
+}
+
+// Fail-closed SAFE_SKILL_PROPERTIES allowlist (SkillTool.ts:875-933):
+// Any skill granting allowedTools, registering hooks, or containing unknown fields forces a prompt.
+flawed_skill_safe_auto_allow :: (
+  has_allowed_tools: bool,
+  has_hooks: bool,
+  has_unreviewed_fields: bool
+) -> bool #effects(traps) {
+  return !has_allowed_tools && !has_hooks && !has_unreviewed_fields;
+}
+
+// Skill directory discovery policy gate (loadSkillsDir.ts:658-714):
+// --bare skips auto-discovery (allowing only explicit --add-dir), while strictPluginOnlyCustomization still wins.
+flawed_skill_dir_load_allowed :: (
+  src: u8,
+  is_bare: bool,
+  disable_policy_skills: bool,
+  restricted_plugin_only: bool
+) -> bool #effects(traps) {
+  if restricted_plugin_only {
+    return src == FLAWED_SKSRC_POLICY || src == FLAWED_SKSRC_BUNDLED || src == FLAWED_SKSRC_PLUGIN;
+  }
+  if src == FLAWED_SKSRC_POLICY && disable_policy_skills { return false; }
+  if is_bare { return src == FLAWED_SKSRC_ADD_DIR; }
+  return src >= FLAWED_SKSRC_POLICY && src <= FLAWED_SKSRC_PLUGIN;
+}
+
+// 1% context-window char budget for incremental skill listings (SkillTool/prompt.ts:20-55).
+flawed_skill_listing_budget :: (ctx_window_tokens: int, env_override_chars: int) -> int #effects(traps) {
+  if env_override_chars > 0 { return env_override_chars; }
+  if ctx_window_tokens <= 0 { return FLAWED_SKILL_BUDGET_FALLBACK_CHARS; }
+  return (ctx_window_tokens * 4) / 100;
+}
+
+// Per-skill description cap after reserving bundled skills (SkillTool/prompt.ts:80-171):
+// Returns 0 (names-only "- skill-name" fallback) when per-skill share drops below MIN_DESC_CHARS (20).
+flawed_skill_per_entry_desc_cap :: (remaining_budget: int, non_bundled_count: int) -> int #effects(traps) {
+  if non_bundled_count <= 0 { return 0; }
+  share := remaining_budget / non_bundled_count;
+  if share < FLAWED_SKILL_MIN_DESC_CHARS { return 0; }
+  if share > FLAWED_SKILL_MAX_DESC_CHARS { return FLAWED_SKILL_MAX_DESC_CHARS; } // mutant: equivalent // equal values return the same result
+  return share;
+}
+
+// Preserve [1m] context window when a skill specifies a base model (SkillTool.ts:200-209).
+flawed_skill_keep_1m_suffix :: (skill_requests_base_model: bool, session_has_1m: bool) -> bool #effects(traps) {
+  return skill_requests_base_model && session_has_1m;
+}
+
+// Marketplace name homograph guard (utils/plugins/schemas.ts:19-157): rejects empty or non-ASCII names.
+flawed_plugin_marketplace_name_valid :: (name: string) -> bool #effects(reads, traps) {
+  if name.count == 0 { return false; }
+  for i: 0..<name.count {
+    if name[i] < 32 || name[i] >= 127 { return false; }
+  }
+  return true;
+}
+
+// --plugin-dir override guard (pluginLoader.ts:3009-3064):
+// Session --plugin-dir cannot override a plugin locked (force-enabled or force-disabled) by policySettings.
+flawed_plugin_dir_override_allowed :: (locked_by_policy: bool) -> bool #effects(traps) {
+  return !locked_by_policy;
+}
+
+// Enterprise fail-closed marketplace guard (pluginLoader.ts:1920-1995):
+// Under strictKnownMarketplaces or blockedMarketplaces, unresolved marketplace config MUST fail closed.
+flawed_plugin_marketplace_policy_allowed :: (
+  has_strict_list: bool,
+  has_blocked_list: bool,
+  resolved_ok: bool,
+  in_strict_list: bool,
+  in_blocked_list: bool
+) -> bool #effects(traps) {
+  if (has_strict_list || has_blocked_list) && !resolved_ok { return false; }
+  if has_blocked_list && in_blocked_list { return false; }
+  if has_strict_list && !in_strict_list { return false; }
+  return true;
+}
+
+// Cross-marketplace dependency gate (dependencyResolver.ts): root allowlist only, no transitive trust.
+flawed_plugin_dep_allowed :: (same_marketplace: bool, root_allows_target: bool) -> bool #effects(traps) {
+  return same_marketplace || root_allows_target;
+}
+
+// Output style coding-instructions gate (constants/prompts.ts:398-400, loadPluginOutputStyles.ts:64-78):
+// Null style keeps coding instructions; plugin styles always omit them; other styles obey keep_coding_flag.
+flawed_output_style_keep_coding :: (
+  has_style: bool,
+  is_plugin_style: bool,
+  keep_coding_flag: bool
+) -> bool #effects(traps) {
+  if !has_style { return true; }
+  if is_plugin_style { return false; }
+  return keep_coding_flag;
+}
+
+// Output style winner (constants/outputStyles.ts:158-211):
+// force_for_plugin wins over normal settings; otherwise higher source rank wins (managed > project > user > plugin > builtin).
+flawed_output_style_overrides :: (
+  cur_src: u8,
+  cur_forced: bool,
+  cand_src: u8,
+  cand_forced: bool
+) -> bool #effects(traps) {
+  if cur_forced { return false; }
+  if cand_forced { return true; }
+  return cand_src >= cur_src;
+}
+
+// LSP transient -32801 (ContentModified) exponential retry (LSPServerInstance.ts:367-402): 500, 1000, 2000 ms.
+flawed_lsp_retry_delay_ms :: (err_code: int, attempt: int) -> int #effects(traps) {
+  if err_code != FLAWED_LSP_ERR_CONTENT_MODIFIED || attempt < 0 || attempt >= FLAWED_LSP_MAX_RETRIES {
+    return -1;
+  }
+  delay := FLAWED_LSP_RETRY_BASE_MS;
+  for i: 0..<attempt { delay = delay * 2; }
+  return delay;
+}
+
+// LSPTool 1-based editor coordinates -> 0-based LSP coordinates (LSPTool.ts:432-436).
+flawed_lsp_to_zero_based :: (pos_1based: int) -> int #effects(traps) {
+  if pos_1based <= 1 { return 0; } // mutant: equivalent // pos_1based == 1 yields 0 in both branches
+  return pos_1based - 1;
+}
+
+// LSPTool lazy didOpen safety guard (LSPTool.ts:170-173, 261-278): UNC skip + 10 MB size ceiling.
+flawed_lsp_can_open_file :: (is_unc: bool, file_bytes: int) -> bool #effects(traps) {
+  return !is_unc && file_bytes >= 0 && file_bytes <= FLAWED_LSP_MAX_FILE_BYTES;
+}
+
+// Passive LSP diagnostics attachment gate & volume caps (attachments.ts:2885-2935, LSPDiagnosticRegistry.ts).
+flawed_lsp_can_emit_diagnostic :: (
+  agent_has_bash_tool: bool,
+  file_emitted: int,
+  total_emitted: int
+) -> bool #effects(traps) {
+  return agent_has_bash_tool &&
+         file_emitted < FLAWED_LSP_MAX_DIAG_PER_FILE &&
+         total_emitted < FLAWED_LSP_MAX_DIAG_TOTAL;
+}
+
+#test "extensions: skills security, --bare/policy discovery, 1% budget, and [1m] window preservation" {
+  #assert !flawed_skill_inline_shell_allowed(true) && flawed_skill_inline_shell_allowed(false);
+
+  #assert flawed_skill_safe_auto_allow(false, false, false);
+  #assert !flawed_skill_safe_auto_allow(true, false, false);
+  #assert !flawed_skill_safe_auto_allow(false, true, false);
+  #assert !flawed_skill_safe_auto_allow(false, false, true);
+
+  // Discovery gates: strictPluginOnly, --bare, disable_policy_skills
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_POLICY, true, true, true);
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_BUNDLED, false, false, true);
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_PLUGIN, false, false, true);
+  #assert !flawed_skill_dir_load_allowed(FLAWED_SKSRC_ADD_DIR, true, false, true);
+  #assert !flawed_skill_dir_load_allowed(FLAWED_SKSRC_POLICY, false, true, false);
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_ADD_DIR, true, false, false);
+  #assert !flawed_skill_dir_load_allowed(FLAWED_SKSRC_USER, true, false, false);
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_POLICY, false, false, false);
+  #assert flawed_skill_dir_load_allowed(FLAWED_SKSRC_PLUGIN, false, false, false);
+  #assert !flawed_skill_dir_load_allowed(0, false, false, false);
+  #assert !flawed_skill_dir_load_allowed(7, false, false, false);
+
+  // 1% context window budget & per-entry description cap
+  #assert flawed_skill_listing_budget(200000, 1) == 1;
+  #assert flawed_skill_listing_budget(0, 0) == FLAWED_SKILL_BUDGET_FALLBACK_CHARS;
+  #assert flawed_skill_listing_budget(1, 0) == 0;
+  #assert flawed_skill_listing_budget(200000, 0) == 8000;
+  #assert flawed_skill_listing_budget(1000000, 0) == 40000;
+
+  #assert flawed_skill_per_entry_desc_cap(100, 0) == 0;
+  #assert flawed_skill_per_entry_desc_cap(20, 1) == 20;
+  #assert flawed_skill_per_entry_desc_cap(0, 5) == 0;
+  #assert flawed_skill_per_entry_desc_cap(95, 5) == 0;    // 19 < 20 -> names-only
+  #assert flawed_skill_per_entry_desc_cap(100, 5) == 20;  // exact floor
+  #assert flawed_skill_per_entry_desc_cap(5000, 5) == 250; // capped at 250
+
+  #assert flawed_skill_keep_1m_suffix(true, true);
+  #assert !flawed_skill_keep_1m_suffix(true, false);
+  #assert !flawed_skill_keep_1m_suffix(false, true);
+}
+
+#test "extensions: plugin trust/policy, output style framing, and LSP retry/coords/diagnostics" {
+  // Marketplace name homograph guard (ASCII 32..126)
+  #assert !flawed_plugin_marketplace_name_valid("");
+  #assert flawed_plugin_marketplace_name_valid(" ~a");
+  b_ctrl: [2] u8; b_ctrl[0] = 31; b_ctrl[1] = 97;
+  #assert !flawed_plugin_marketplace_name_valid(cast(string) b_ctrl[..]);
+  b_del: [2] u8; b_del[0] = 97; b_del[1] = 127;
+  #assert !flawed_plugin_marketplace_name_valid(cast(string) b_del[..]);
+
+  #assert !flawed_plugin_dir_override_allowed(true) && flawed_plugin_dir_override_allowed(false);
+
+  // Enterprise fail-closed marketplace policy
+  #assert !flawed_plugin_marketplace_policy_allowed(true, false, false, true, false);
+  #assert !flawed_plugin_marketplace_policy_allowed(false, true, false, false, false);
+  #assert !flawed_plugin_marketplace_policy_allowed(false, true, true, false, true);
+  #assert flawed_plugin_marketplace_policy_allowed(false, true, true, false, false);
+  #assert !flawed_plugin_marketplace_policy_allowed(true, false, true, false, false);
+  #assert flawed_plugin_marketplace_policy_allowed(true, false, true, true, false);
+  #assert flawed_plugin_marketplace_policy_allowed(false, false, false, false, false);
+
+  #assert flawed_plugin_dep_allowed(true, false);
+  #assert flawed_plugin_dep_allowed(false, true);
+  #assert !flawed_plugin_dep_allowed(false, false);
+
+  // Output styles
+  #assert flawed_output_style_keep_coding(false, true, false);
+  #assert !flawed_output_style_keep_coding(true, true, true);
+  #assert flawed_output_style_keep_coding(true, false, true);
+  #assert !flawed_output_style_keep_coding(true, false, false);
+
+  #assert !flawed_output_style_overrides(FLAWED_OSTYLE_PLUGIN, true, FLAWED_OSTYLE_MANAGED, true);
+  #assert flawed_output_style_overrides(FLAWED_OSTYLE_MANAGED, false, FLAWED_OSTYLE_PLUGIN, true);
+  #assert flawed_output_style_overrides(FLAWED_OSTYLE_PROJECT, false, FLAWED_OSTYLE_MANAGED, false);
+  #assert flawed_output_style_overrides(FLAWED_OSTYLE_USER, false, FLAWED_OSTYLE_USER, false);
+  #assert !flawed_output_style_overrides(FLAWED_OSTYLE_MANAGED, false, FLAWED_OSTYLE_PROJECT, false);
+
+  // LSP -32801 retry, 1->0 coords, 10MB/UNC guard, passive diagnostic caps
+  #assert flawed_lsp_retry_delay_ms(-32800, 0) == -1;
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, -1) == -1;
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 0) == 500;
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 1) == 1000;
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 2) == 2000;
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 3) == -1;
+
+  #assert flawed_lsp_to_zero_based(0) == 0 && flawed_lsp_to_zero_based(1) == 0 && flawed_lsp_to_zero_based(2) == 1;
+  #assert flawed_lsp_can_open_file(false, 0) && flawed_lsp_can_open_file(false, FLAWED_LSP_MAX_FILE_BYTES);
+  #assert !flawed_lsp_can_open_file(true, 100) && !flawed_lsp_can_open_file(false, -1) && !flawed_lsp_can_open_file(false, FLAWED_LSP_MAX_FILE_BYTES + 1);
+
+  #assert flawed_lsp_can_emit_diagnostic(true, 9, 29);
+  #assert !flawed_lsp_can_emit_diagnostic(false, 0, 0);
+  #assert !flawed_lsp_can_emit_diagnostic(true, 10, 10);
+  #assert !flawed_lsp_can_emit_diagnostic(true, 0, 30);
+}

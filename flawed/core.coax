@@ -29,6 +29,7 @@
 #load "hooks.coax";
 #load "config.coax";
 #load "mcp.coax";
+#load "extensions.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -301,4 +302,13 @@
   #assert flawed_mcp_is_deferred_tool(false, true, false, false) && !flawed_mcp_is_deferred_tool(true, true, false, true);
   #assert !flawed_mcp_wire_include_tool(true, true, false, false) && flawed_mcp_wire_include_tool(true, true, false, true);
   #assert flawed_tool_search_score_term(true, true, false, false, true, true) == 18;
+}
+
+#test "flawed core (Ch 16): skills safety/budget, plugin marketplace fail-closed policy, output styles, and LSP diagnostics compose" {
+  #assert !flawed_skill_inline_shell_allowed(true) && !flawed_skill_safe_auto_allow(true, false, false);
+  #assert flawed_skill_listing_budget(200000, 0) == 8000 && flawed_skill_per_entry_desc_cap(95, 5) == 0;
+  #assert !flawed_plugin_marketplace_policy_allowed(true, false, false, true, false);
+  #assert !flawed_output_style_keep_coding(true, true, true) && flawed_output_style_overrides(FLAWED_OSTYLE_MANAGED, false, FLAWED_OSTYLE_PLUGIN, true);
+  #assert flawed_lsp_retry_delay_ms(FLAWED_LSP_ERR_CONTENT_MODIFIED, 2) == 2000;
+  #assert !flawed_lsp_can_open_file(true, 100) && flawed_lsp_can_emit_diagnostic(true, 9, 29);
 }
