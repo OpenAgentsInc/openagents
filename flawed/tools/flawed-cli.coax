@@ -24,7 +24,7 @@ FlawedCliWork :: struct {
 }
 
 flawed_cli_usage :: () {
-  print("flawed (Chapters 01-20 — Layers 0-7: Atoms, Contracts, Engine, Memory, Policy, Extensions, Swarms & Screen)\n");
+  print("flawed (Chapters 01-21 — Layers 0-7: Atoms, Contracts, Engine, Memory, Policy, Extensions, Swarms & REPL)\n");
   print("usage:\n");
   print("  flawed-cli selftest\n");
   print("  flawed-cli inspect FILE\n");

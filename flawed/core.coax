@@ -34,6 +34,7 @@
 #load "subagent.coax";
 #load "swarm.coax";
 #load "screen.coax";
+#load "repl.coax";
 
 #test "flawed core (Ch 01): Layer 0 atoms compose across env, reactive state, subagent fork, file cache, and scheduler" {
   sid := flawed_parse_session_id("550e8400-e29b-41d4-a716-446655440000");
@@ -363,4 +364,21 @@
   #assert !flawed_screen_decstbm_safe(true, true, false, 0, 3, 4);
   #assert flawed_kitty_mod_decode(6) == (FLAWED_KMOD_SHIFT | FLAWED_KMOD_CTRL);
   #assert !flawed_should_open_click_url(true, false);
+}
+
+#test "flawed core (Ch 21): REPL QueryGuard, modal focus arbitration, slice anchor, paste/chords & Vim FSM compose" {
+  qg: [1] FlawedQueryGuard; qg[0] = flawed_qg_init();
+  #assert flawed_qg_reserve(qg[..]) && flawed_qg_try_start(qg[..]) == 1 && flawed_qg_force_end(qg[..]);
+  g3 := flawed_qg_try_start(qg[..]);
+  #assert g3 == 3 && !flawed_qg_end(qg[..], 1) && flawed_qg_end(qg[..], g3);
+  #assert flawed_repl_focused_dialog(false, false, false, false, false, true, true, true) == FLAWED_DLG_ELICITATION;
+  #assert flawed_compute_slice_start(251, false, false, 0, 0, 200, 50) == 51;
+  #assert flawed_paste_should_collapse(10, 3, 40) && flawed_kb_resolve_chord(true, true, false) == FLAWED_KB_CHORD_STARTED;
+  vs: [1] FlawedVimState; vs[0] = flawed_vim_init();
+  #assert flawed_vim_step(vs[..], 0, true, false, false).action == FLAWED_VACT_MODE_CHANGED;
+  _ = flawed_vim_step(vs[..], 50, false, false, false);
+  _ = flawed_vim_step(vs[..], 100, false, false, false);
+  _ = flawed_vim_step(vs[..], 51, false, false, false);
+  r := flawed_vim_step(vs[..], 119, false, false, false);
+  #assert r.action == FLAWED_VACT_MOTION_OP && r.op == FLAWED_VOP_DELETE && r.effective_count == 6;
 }

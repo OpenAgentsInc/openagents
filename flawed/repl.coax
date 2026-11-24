@@ -1,0 +1,455 @@
+// Flawed Layer 7 (Chapter 21) — Interactive REPL State Machines:
+// QueryGuard Generation Mutex, Modal Focus Arbitration, UUID-Anchored Message Cap,
+// Chorded Keybinding Resolver, and Pure-Functional Vim Modal Transition Engine.
+// Replaces cc/utils/QueryGuard.ts, cc/screens/REPL.tsx, cc/components/Messages.tsx,
+// cc/keybindings/resolver.ts, and cc/vim/{types,transitions}.ts + cc/hooks/useVimInput.ts invariants.
+//   coax/bin/coax test flawed/repl.coax --library
+//   coax/bin/coax mutate flawed/repl.coax --root-only
+#module "flawed.repl";
+#authority;
+#load "screen.coax";
+
+// QueryGuard 3-state mutex (utils/QueryGuard.ts:29-93).
+FLAWED_QG_IDLE :: 1;
+FLAWED_QG_DISPATCHING :: 2;
+FLAWED_QG_RUNNING :: 3;
+
+// Focused modal dialog outcomes (screens/REPL.tsx:2017-2065).
+FLAWED_DLG_NONE :: 1;
+FLAWED_DLG_MSG_SELECTOR :: 2;
+FLAWED_DLG_SANDBOX_PERM :: 3;
+FLAWED_DLG_TOOL_PERM :: 4;
+FLAWED_DLG_ELICITATION :: 5;
+FLAWED_DLG_ADVISORY :: 6;
+
+// Message cap & paste collapse constants (Messages.tsx:270-271, PromptInput.tsx).
+FLAWED_MSG_CAP_DEFAULT :: 200;
+FLAWED_MSG_CAP_STEP :: 50;
+FLAWED_PASTE_CHAR_THRESHOLD :: 800;
+
+// Keybinding chord resolution outcomes (keybindings/resolver.ts:166-244).
+FLAWED_KB_NO_MATCH :: 1;
+FLAWED_KB_CHORD_STARTED :: 2;
+FLAWED_KB_MATCH :: 3;
+FLAWED_KB_UNBOUND :: 4;
+
+// Vim modal engine constants (vim/types.ts, vim/transitions.ts).
+FLAWED_VIM_MAX_COUNT :: 10000;
+FLAWED_VIM_INSERT :: 1;
+FLAWED_VIM_NORMAL :: 2;
+
+FLAWED_VCMD_IDLE :: 1;
+FLAWED_VCMD_COUNT :: 2;
+FLAWED_VCMD_OP :: 3;
+FLAWED_VCMD_OP_COUNT :: 4;
+FLAWED_VCMD_REPLACE :: 5;
+
+FLAWED_VOP_NONE :: 0;
+FLAWED_VOP_DELETE :: 1;
+FLAWED_VOP_CHANGE :: 2;
+FLAWED_VOP_YANK :: 3;
+
+FLAWED_VACT_NONE :: 1;
+FLAWED_VACT_MODE_CHANGED :: 2;
+FLAWED_VACT_LINE_START :: 3;
+FLAWED_VACT_LINE_OP :: 4;
+FLAWED_VACT_MOTION_OP :: 5;
+FLAWED_VACT_REPLACE_CHAR :: 6;
+FLAWED_VACT_MOTION_H :: 7;
+FLAWED_VACT_DELETE_CHAR :: 8;
+
+FlawedQueryGuard :: struct {
+  status: u8;
+  gen: int;
+}
+
+FlawedVimState :: struct {
+  mode: u8;
+  cmd: u8;
+  op: u8;
+  count: int;
+  op_count: int;
+}
+
+FlawedVimStep :: struct {
+  action: u8;
+  op: u8;
+  effective_count: int;
+}
+
+// QueryGuard transitions (utils/QueryGuard.ts:29-93).
+flawed_qg_init :: () -> FlawedQueryGuard #effects(traps) {
+  return FlawedQueryGuard.{status = FLAWED_QG_IDLE, gen = 0};
+}
+
+flawed_qg_is_active :: (qg: [] const FlawedQueryGuard) -> bool #effects(reads, traps) {
+  return qg[0].status != FLAWED_QG_IDLE;
+}
+
+flawed_qg_reserve :: (qg: [] FlawedQueryGuard) -> bool #effects(reads, writes, traps) {
+  if qg[0].status != FLAWED_QG_IDLE { return false; }
+  qg[0].status = FLAWED_QG_DISPATCHING;
+  return true;
+}
+
+flawed_qg_cancel_reservation :: (qg: [] FlawedQueryGuard) -> bool #effects(reads, writes, traps) {
+  if qg[0].status != FLAWED_QG_DISPATCHING { return false; }
+  qg[0].status = FLAWED_QG_IDLE;
+  return true;
+}
+
+flawed_qg_try_start :: (qg: [] FlawedQueryGuard) -> int #effects(reads, writes, traps) {
+  if qg[0].status == FLAWED_QG_RUNNING { return 0; }
+  qg[0].status = FLAWED_QG_RUNNING;
+  qg[0].gen = qg[0].gen + 1;
+  return qg[0].gen;
+}
+
+flawed_qg_end :: (qg: [] FlawedQueryGuard, gen: int) -> bool #effects(reads, writes, traps) {
+  if qg[0].gen != gen || qg[0].status != FLAWED_QG_RUNNING { return false; }
+  qg[0].status = FLAWED_QG_IDLE;
+  return true;
+}
+
+flawed_qg_force_end :: (qg: [] FlawedQueryGuard) -> bool #effects(reads, writes, traps) {
+  if qg[0].status == FLAWED_QG_IDLE { return false; }
+  qg[0].status = FLAWED_QG_IDLE;
+  qg[0].gen = qg[0].gen + 1;
+  return true;
+}
+
+// Deterministic modal focus priority ladder (screens/REPL.tsx:2017-2065):
+// Exit > MessageSelector > Prompt typing suppression > SandboxPerm > ToolPerm (anim-gated) > Elicitation > Advisory.
+flawed_repl_focused_dialog :: (
+  is_exiting: bool,
+  has_msg_selector: bool,
+  is_prompt_active: bool,
+  has_sandbox_perm: bool,
+  allow_dialogs_with_anim: bool,
+  has_tool_perm: bool,
+  has_elicitation: bool,
+  has_advisory: bool
+) -> u8 #effects(traps) {
+  if is_exiting { return FLAWED_DLG_NONE; }
+  if has_msg_selector { return FLAWED_DLG_MSG_SELECTOR; }
+  if is_prompt_active { return FLAWED_DLG_NONE; }
+  if has_sandbox_perm { return FLAWED_DLG_SANDBOX_PERM; }
+  if allow_dialogs_with_anim && has_tool_perm { return FLAWED_DLG_TOOL_PERM; }
+  if has_elicitation { return FLAWED_DLG_ELICITATION; }
+  if has_advisory { return FLAWED_DLG_ADVISORY; }
+  return FLAWED_DLG_NONE;
+}
+
+// UUID-anchored main-screen render-window slice start (Messages.tsx:307-340, CC-1174):
+// Advances ONLY when total_len - start > cap + step so scrollback doesn't reset every append.
+flawed_compute_slice_start :: (
+  total_len: int,
+  has_anchor: bool,
+  anchor_found: bool,
+  anchor_idx: int,
+  prev_idx: int,
+  cap: int,
+  step: int
+) -> int #effects(traps) {
+  start := 0;
+  if has_anchor {
+    if anchor_found {
+      start = anchor_idx;
+    } else {
+      tail_start := total_len - cap;
+      if tail_start < 0 { tail_start = 0; } // mutant: equivalent // equal values assign the same bound
+      start = ifx prev_idx < tail_start then prev_idx else tail_start; // mutant: equivalent // equal values return the same bound
+    }
+  }
+  if total_len - start > cap + step {
+    start = total_len - cap;
+  }
+  return start;
+}
+
+// Ephemeral progress coalescing (screens/REPL.tsx:2608-2627): prevents 120 MB JSONL bloat on Bash/Sleep ticks.
+flawed_should_coalesce_progress :: (
+  is_ephemeral_kind: bool,
+  same_parent_tool_id: bool,
+  same_progress_kind: bool
+) -> bool #effects(traps) {
+  return is_ephemeral_kind && same_parent_tool_id && same_progress_kind;
+}
+
+// Paste collapse threshold (PromptInput.tsx:1151-1246): > 800 chars OR > min(max(1, rows - 10), 2) lines.
+flawed_paste_should_collapse :: (char_len: int, line_count: int, term_rows: int) -> bool #effects(traps) {
+  if char_len > FLAWED_PASTE_CHAR_THRESHOLD { return true; }
+  max_lines := term_rows - 10;
+  if max_lines < 1 { max_lines = 1; } // mutant: equivalent // equal values assign the same bound
+  if max_lines > 2 { max_lines = 2; } // mutant: equivalent // equal values assign the same bound
+  return line_count > max_lines;
+}
+
+// Chorded keybinding resolution (keybindings/resolver.ts:192-236).
+flawed_kb_resolve_chord :: (
+  has_active_longer_chord: bool,
+  has_exact_match: bool,
+  exact_is_null_unbind: bool
+) -> u8 #effects(traps) {
+  if has_active_longer_chord { return FLAWED_KB_CHORD_STARTED; }
+  if !has_exact_match { return FLAWED_KB_NO_MATCH; }
+  if exact_is_null_unbind { return FLAWED_KB_UNBOUND; }
+  return FLAWED_KB_MATCH;
+}
+
+flawed_vim_init :: () -> FlawedVimState #effects(traps) {
+  return FlawedVimState.{mode = FLAWED_VIM_INSERT, cmd = FLAWED_VCMD_IDLE, op = FLAWED_VOP_NONE};
+}
+
+flawed_vim_clamp_count :: (v: int) -> int #effects(traps) {
+  if v > FLAWED_VIM_MAX_COUNT { return FLAWED_VIM_MAX_COUNT; } // mutant: equivalent // equal values return the same result
+  return v;
+}
+
+flawed_vim_char_to_op :: (ch: u8) -> u8 #effects(traps) {
+  if ch == 100 { return FLAWED_VOP_DELETE; } // 'd'
+  if ch == 99 { return FLAWED_VOP_CHANGE; }  // 'c'
+  if ch == 121 { return FLAWED_VOP_YANK; }   // 'y'
+  return FLAWED_VOP_NONE;
+}
+
+// Pure-functional Vim modal transition machine (vim/transitions.ts, hooks/useVimInput.ts).
+// Supports Esc (hardcoded), count prefix (0=line start in idle, digit in count), multiplicative 2d3w,
+// doubled dd/cc/yy, r<char> with safe r<BS> cancel, and <BS>/<Del> motion-only guards.
+flawed_vim_step :: (
+  vs: [] FlawedVimState,
+  ch: u8,
+  is_esc: bool,
+  is_bs: bool,
+  is_del: bool
+) -> FlawedVimStep #effects(reads, writes, traps) {
+  if is_esc {
+    was_insert := vs[0].mode == FLAWED_VIM_INSERT;
+    vs[0] = FlawedVimState.{mode = FLAWED_VIM_NORMAL, cmd = FLAWED_VCMD_IDLE, op = FLAWED_VOP_NONE};
+    if was_insert { return FlawedVimStep.{action = FLAWED_VACT_MODE_CHANGED}; }
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+  if vs[0].mode == FLAWED_VIM_INSERT {
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+  // NORMAL mode:
+  if vs[0].cmd == FLAWED_VCMD_REPLACE {
+    vs[0].cmd = FLAWED_VCMD_IDLE;
+    // r<BS> or r<Del> cancels cleanly without deleting or replacing with 'h'/'x'!
+    if is_bs || is_del || ch == 0 {
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    return FlawedVimStep.{action = FLAWED_VACT_REPLACE_CHAR, effective_count = 1};
+  }
+  // Motion-context BS/Del guards (useVimInput.ts:251-271): Del excluded from COUNT so 5<Del> != 5x!
+  if is_bs {
+    cnt := ifx vs[0].cmd == FLAWED_VCMD_COUNT then vs[0].count else 1;
+    vs[0].cmd = FLAWED_VCMD_IDLE;
+    vs[0].op = FLAWED_VOP_NONE;
+    return FlawedVimStep.{action = FLAWED_VACT_MOTION_H, effective_count = cnt};
+  }
+  if is_del {
+    if vs[0].cmd == FLAWED_VCMD_IDLE {
+      return FlawedVimStep.{action = FLAWED_VACT_DELETE_CHAR, effective_count = 1};
+    }
+    vs[0].cmd = FLAWED_VCMD_IDLE;
+    vs[0].op = FLAWED_VOP_NONE;
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+
+  is_digit := ch >= 48 && ch <= 57;
+  digit := cast(int) ch - 48;
+
+  if vs[0].cmd == FLAWED_VCMD_IDLE {
+    if ch == 105 { // 'i' -> INSERT
+      vs[0].mode = FLAWED_VIM_INSERT;
+      return FlawedVimStep.{action = FLAWED_VACT_MODE_CHANGED};
+    }
+    if ch == 48 { return FlawedVimStep.{action = FLAWED_VACT_LINE_START, effective_count = 1}; }
+    if ch == 114 { // 'r' -> REPLACE
+      vs[0].cmd = FLAWED_VCMD_REPLACE;
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    if is_digit {
+      vs[0].cmd = FLAWED_VCMD_COUNT;
+      vs[0].count = digit;
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    op := flawed_vim_char_to_op(ch);
+    if op != FLAWED_VOP_NONE {
+      vs[0].cmd = FLAWED_VCMD_OP;
+      vs[0].op = op;
+      vs[0].count = 1;
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+
+  if vs[0].cmd == FLAWED_VCMD_COUNT {
+    if is_digit {
+      vs[0].count = flawed_vim_clamp_count(vs[0].count * 10 + digit);
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    op := flawed_vim_char_to_op(ch);
+    if op != FLAWED_VOP_NONE {
+      vs[0].cmd = FLAWED_VCMD_OP;
+      vs[0].op = op;
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    vs[0].cmd = FLAWED_VCMD_IDLE;
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+
+  if vs[0].cmd == FLAWED_VCMD_OP {
+    op2 := flawed_vim_char_to_op(ch);
+    if op2 == vs[0].op {
+      out_op := vs[0].op;
+      out_cnt := vs[0].count;
+      vs[0].cmd = FLAWED_VCMD_IDLE;
+      vs[0].op = FLAWED_VOP_NONE;
+      return FlawedVimStep.{action = FLAWED_VACT_LINE_OP, op = out_op, effective_count = out_cnt};
+    }
+    if is_digit && ch != 48 {
+      vs[0].cmd = FLAWED_VCMD_OP_COUNT;
+      vs[0].op_count = digit;
+      return FlawedVimStep.{action = FLAWED_VACT_NONE};
+    }
+    out_op := vs[0].op;
+    out_cnt := vs[0].count;
+    vs[0].cmd = FLAWED_VCMD_IDLE;
+    vs[0].op = FLAWED_VOP_NONE;
+    return FlawedVimStep.{action = FLAWED_VACT_MOTION_OP, op = out_op, effective_count = out_cnt};
+  }
+
+  // FLAWED_VCMD_OP_COUNT
+  if is_digit {
+    vs[0].op_count = flawed_vim_clamp_count(vs[0].op_count * 10 + digit);
+    return FlawedVimStep.{action = FLAWED_VACT_NONE};
+  }
+  out_op := vs[0].op;
+  eff := flawed_vim_clamp_count(vs[0].count * vs[0].op_count);
+  vs[0].cmd = FLAWED_VCMD_IDLE;
+  vs[0].op = FLAWED_VOP_NONE;
+  return FlawedVimStep.{action = FLAWED_VACT_MOTION_OP, op = out_op, effective_count = eff};
+}
+
+#test "repl: QueryGuard generation mutex, modal focus arbitration, slice anchor, paste & chords" {
+  qg: [1] FlawedQueryGuard; qg[0] = flawed_qg_init();
+  #assert !flawed_qg_is_active(qg[..]);
+  #assert !flawed_qg_cancel_reservation(qg[..]) && !flawed_qg_force_end(qg[..]);
+  #assert flawed_qg_reserve(qg[..]) && flawed_qg_is_active(qg[..]) && !flawed_qg_reserve(qg[..]);
+  #assert flawed_qg_cancel_reservation(qg[..]) && !flawed_qg_is_active(qg[..]);
+  #assert flawed_qg_reserve(qg[..]);
+  g1 := flawed_qg_try_start(qg[..]);
+  #assert g1 == 1 && flawed_qg_try_start(qg[..]) == 0;
+  #assert !flawed_qg_cancel_reservation(qg[..]); // no-op once running!
+  #assert !flawed_qg_end(qg[..], 999);
+  #assert flawed_qg_force_end(qg[..]) && !flawed_qg_is_active(qg[..]);
+  // Stale finally with g1 cannot end new turn g3!
+  g3 := flawed_qg_try_start(qg[..]);
+  #assert g3 == 3 && !flawed_qg_end(qg[..], g1) && flawed_qg_end(qg[..], g3) && !flawed_qg_is_active(qg[..]);
+  #assert !flawed_qg_end(qg[..], g3);
+
+  // Modal focus ladder: Exit > MsgSelector > PromptActive > SandboxPerm > ToolPerm (anim) > Elicitation > Advisory
+  #assert flawed_repl_focused_dialog(true, true, false, true, true, true, true, true) == FLAWED_DLG_NONE;
+  #assert flawed_repl_focused_dialog(false, true, true, true, true, true, true, true) == FLAWED_DLG_MSG_SELECTOR;
+  #assert flawed_repl_focused_dialog(false, false, true, true, true, true, true, true) == FLAWED_DLG_NONE;
+  #assert flawed_repl_focused_dialog(false, false, false, true, true, true, true, true) == FLAWED_DLG_SANDBOX_PERM;
+  #assert flawed_repl_focused_dialog(false, false, false, false, true, true, true, true) == FLAWED_DLG_TOOL_PERM;
+  #assert flawed_repl_focused_dialog(false, false, false, false, false, true, true, true) == FLAWED_DLG_ELICITATION;
+  #assert flawed_repl_focused_dialog(false, false, false, false, false, false, false, true) == FLAWED_DLG_ADVISORY;
+  #assert flawed_repl_focused_dialog(false, false, false, false, false, false, false, false) == FLAWED_DLG_NONE;
+
+  // UUID-anchored slice start (cap=200, step=50)
+  #assert flawed_compute_slice_start(250, false, false, 0, 0, 200, 50) == 0;
+  #assert flawed_compute_slice_start(251, false, false, 0, 0, 200, 50) == 51;
+  #assert flawed_compute_slice_start(260, true, true, 15, 0, 200, 50) == 15;
+  #assert flawed_compute_slice_start(280, true, false, 0, 50, 200, 50) == 50;
+  #assert flawed_compute_slice_start(100, true, false, 0, 50, 200, 50) == 0;
+
+  // Coalescing, paste collapse, and chord resolution
+  #assert flawed_should_coalesce_progress(true, true, true);
+  #assert !flawed_should_coalesce_progress(false, true, true) && !flawed_should_coalesce_progress(true, false, true) && !flawed_should_coalesce_progress(true, true, false);
+  #assert flawed_paste_should_collapse(801, 1, 40) && !flawed_paste_should_collapse(800, 2, 40) && flawed_paste_should_collapse(10, 3, 40);
+  #assert flawed_paste_should_collapse(10, 2, 10) && !flawed_paste_should_collapse(10, 1, 10) && !flawed_paste_should_collapse(10, 2, 12);
+
+  #assert flawed_kb_resolve_chord(true, true, false) == FLAWED_KB_CHORD_STARTED;
+  #assert flawed_kb_resolve_chord(false, false, false) == FLAWED_KB_NO_MATCH;
+  #assert flawed_kb_resolve_chord(false, true, true) == FLAWED_KB_UNBOUND;
+  #assert flawed_kb_resolve_chord(false, true, false) == FLAWED_KB_MATCH;
+}
+
+#test "repl: pure-functional Vim state machine (Esc, 0, 2d3w, dd/cc/yy, r<BS>, 5<Del>, count clamp)" {
+  vs: [1] FlawedVimState; vs[0] = flawed_vim_init();
+  #assert vs[0].mode == FLAWED_VIM_INSERT && vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  // INSERT ignores normal keys; Esc always enters NORMAL
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE;
+  #assert flawed_vim_step(vs[..], 0, true, false, false).action == FLAWED_VACT_MODE_CHANGED && vs[0].mode == FLAWED_VIM_NORMAL && vs[0].op == FLAWED_VOP_NONE;
+  // Esc in NORMAL while holding pending op resets op & stays idle
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE && vs[0].op == FLAWED_VOP_DELETE;
+  #assert flawed_vim_step(vs[..], 0, true, false, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  // '0' in IDLE -> LINE_START; ':' (58) is NOT a digit
+  s0 := flawed_vim_step(vs[..], 48, false, false, false);
+  #assert s0.action == FLAWED_VACT_LINE_START && s0.effective_count == 1;
+  #assert flawed_vim_step(vs[..], 58, false, false, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE;
+  // 'i' -> INSERT, then Esc back to NORMAL
+  #assert flawed_vim_step(vs[..], 105, false, false, false).action == FLAWED_VACT_MODE_CHANGED && vs[0].mode == FLAWED_VIM_INSERT;
+  #assert flawed_vim_step(vs[..], 0, true, false, false).action == FLAWED_VACT_MODE_CHANGED;
+
+  // Compound 2d3w -> DELETE with effective_count = 6; also verify 2d enters VCMD_OP and 2dd -> LINE_OP(2)
+  #assert flawed_vim_step(vs[..], 50, false, false, false).action == FLAWED_VACT_NONE; // '2'
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_OP; // 'd'
+  #assert flawed_vim_step(vs[..], 51, false, false, false).action == FLAWED_VACT_NONE; // '3'
+  r_2d3w := flawed_vim_step(vs[..], 119, false, false, false); // 'w'
+  #assert r_2d3w.action == FLAWED_VACT_MOTION_OP && r_2d3w.op == FLAWED_VOP_DELETE && r_2d3w.effective_count == 6;
+  #assert vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+
+  // Multi-digit count exact arithmetic ('1','0','2' -> 102) & MAX_VIM_COUNT clamp (10299 -> 10000)
+  #assert flawed_vim_step(vs[..], 49, false, false, false).action == FLAWED_VACT_NONE; // '1'
+  #assert flawed_vim_step(vs[..], 48, false, false, false).action == FLAWED_VACT_NONE && vs[0].count == 10; // '0'
+  #assert flawed_vim_step(vs[..], 50, false, false, false).action == FLAWED_VACT_NONE && vs[0].count == 102; // '2'
+  #assert flawed_vim_step(vs[..], 57, false, false, false).action == FLAWED_VACT_NONE; // 1029
+  #assert flawed_vim_step(vs[..], 57, false, false, false).action == FLAWED_VACT_NONE && vs[0].count == FLAWED_VIM_MAX_COUNT;
+  // Non-op after count resets cleanly
+  #assert flawed_vim_step(vs[..], 122, false, false, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE;
+
+  // Doubled cc line op & single op + motion ('y0') & op + 2-digit op_count ('d12w')
+  #assert flawed_vim_step(vs[..], 99, false, false, false).action == FLAWED_VACT_NONE;
+  r_cc := flawed_vim_step(vs[..], 99, false, false, false);
+  #assert r_cc.action == FLAWED_VACT_LINE_OP && r_cc.op == FLAWED_VOP_CHANGE && r_cc.effective_count == 1;
+  #assert vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  #assert flawed_vim_step(vs[..], 121, false, false, false).action == FLAWED_VACT_NONE;
+  r_y0 := flawed_vim_step(vs[..], 48, false, false, false);
+  #assert r_y0.action == FLAWED_VACT_MOTION_OP && r_y0.op == FLAWED_VOP_YANK && r_y0.effective_count == 1;
+  #assert vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE;
+  #assert flawed_vim_step(vs[..], 49, false, false, false).action == FLAWED_VACT_NONE; // '1'
+  #assert flawed_vim_step(vs[..], 50, false, false, false).action == FLAWED_VACT_NONE; // '2'
+  r_d12w := flawed_vim_step(vs[..], 119, false, false, false);
+  #assert r_d12w.action == FLAWED_VACT_MOTION_OP && r_d12w.effective_count == 12 && vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+
+  // Replace 'r': normal char replaces; r<BS>, r<Del> (with non-zero ch), r<NUL> cancel cleanly!
+  #assert flawed_vim_step(vs[..], 114, false, false, false).action == FLAWED_VACT_NONE;
+  r_ok := flawed_vim_step(vs[..], 120, false, false, false);
+  #assert r_ok.action == FLAWED_VACT_REPLACE_CHAR && r_ok.effective_count == 1;
+  #assert flawed_vim_step(vs[..], 114, false, false, false).action == FLAWED_VACT_NONE;
+  #assert flawed_vim_step(vs[..], 120, false, true, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE;
+  #assert flawed_vim_step(vs[..], 114, false, false, false).action == FLAWED_VACT_NONE;
+  #assert flawed_vim_step(vs[..], 120, false, false, true).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE;
+  #assert flawed_vim_step(vs[..], 114, false, false, false).action == FLAWED_VACT_NONE;
+  #assert flawed_vim_step(vs[..], 0, false, false, false).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE;
+
+  // BS maps to h (honoring count, clearing pending op); Del maps to x ONLY in IDLE (5<Del> / d<Del> != x!)
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE; // 'd'
+  b1 := flawed_vim_step(vs[..], 0, false, true, false);
+  #assert b1.action == FLAWED_VACT_MOTION_H && b1.effective_count == 1 && vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  #assert flawed_vim_step(vs[..], 53, false, false, false).action == FLAWED_VACT_NONE; // '5'
+  b5 := flawed_vim_step(vs[..], 0, false, true, false);
+  #assert b5.action == FLAWED_VACT_MOTION_H && b5.effective_count == 5;
+  d1 := flawed_vim_step(vs[..], 0, false, false, true);
+  #assert d1.action == FLAWED_VACT_DELETE_CHAR && d1.effective_count == 1;
+  #assert flawed_vim_step(vs[..], 100, false, false, false).action == FLAWED_VACT_NONE; // 'd'
+  #assert flawed_vim_step(vs[..], 0, false, false, true).action == FLAWED_VACT_NONE && vs[0].cmd == FLAWED_VCMD_IDLE && vs[0].op == FLAWED_VOP_NONE;
+  // Unrecognized char in IDLE is a no-op
+  #assert flawed_vim_step(vs[..], 122, false, false, false).action == FLAWED_VACT_NONE;
+}
