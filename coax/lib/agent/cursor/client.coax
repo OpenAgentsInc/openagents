@@ -47,6 +47,7 @@ CuEventKind :: enum u8 {
 CuEvent :: struct {
   kind: CuEventKind;
   of: int;
+  id: int;
   method: string;
   params: string;
   result: string;
@@ -838,7 +839,7 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
     msg := cl_text(ar, line, cl_member(line, e, "message"));
     if of == CU_INITIALIZE { return cu_fail(c, "initialize: ", msg); }
     if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
-    return CuEvent.{kind = CuEventKind.refused, of = of, message = msg, line = line};
+    return CuEvent.{kind = CuEventKind.refused, of = of, id = idn, message = msg, line = line};
   }
   r := cl_find(line, "result");
   result := cl_json(line, r);
@@ -846,7 +847,7 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
     c[0].initialized = true; c[0].init_wait = false;
     v := cu_agent_version(result, ar);
     c[0].agent_ver_n = ifx v.count > 0 then cu_keep(c[0].agent_ver[..], v) else 0;
-    return CuEvent.{kind = CuEventKind.initialized, of = of, result = result, line = line};
+    return CuEvent.{kind = CuEventKind.initialized, of = of, id = idn, result = result, line = line};
   }
   if of == CU_SESSION_NEW || of == CU_SESSION_LOAD || of == CU_SESSION_RESUME { cu_remember_session(c, result); }
   if of == CU_SESSION_SET_MODE && c[0].pending_mode_n > 0 {
@@ -854,5 +855,5 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
     c[0].pending_mode_n = 0;
   }
   if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
-  return CuEvent.{kind = CuEventKind.answered, of = of, result = result, line = line};
+  return CuEvent.{kind = CuEventKind.answered, of = of, id = idn, result = result, line = line};
 }

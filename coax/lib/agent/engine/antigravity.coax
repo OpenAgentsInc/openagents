@@ -1083,10 +1083,12 @@ agy_respawn :: (x: [] CuEngine, program: string, cwd: string, name: string, vers
 
 // agy waits a fixed 5 minutes on a reply stream that went silent before it retries (twice in the
 // task-fit runs, GitHub #13193). The shared engine's watchdog (cue_watch) cancels such a turn and
-// asks it to continue. agy sends a thought chunk every 2 to 3 s while a model thinks, but nothing
-// while it writes a tool call's arguments (27 s for a 1,500-line file on Flash at low) or waits
-// for a first token (up to 83 s in the us location, #13227), so the limit sits above both.
-AGY_STALL_S :: 120;
+// asks it to continue. agy sends a thought chunk every 2 to 3 s while a model thinks, but emits
+// zero ACP frames while generating tool-call JSON arguments (multi-file parallel write_file batches
+// of 50+ KB on high-effort models routinely exceed 120 s) or waiting for a first token. Match T3
+// Code's 15-minute prompt inactivity ceiling (900 s) so active large code-generation turns are
+// never falsely cancelled mid-stream.
+AGY_STALL_S :: 900;
 AGY_RECOVERIES :: 2;
 AgyWatch :: struct { stall_ms: int; recoveries: int; }
 // A count from a setting's word, or fallback when the word is not digits.
@@ -1101,13 +1103,13 @@ agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
   return AgyWatch.{stall_ms = agy_count(stall_word, AGY_STALL_S) * 1000, recoveries = agy_count(recover_word, AGY_RECOVERIES)};
 }
 
-#test "antigravity: the watchdog's limits come from the settings, else 120 s and 2" {
+#test "antigravity: the watchdog's limits come from the settings, else 900 s and 2" {
   w := agy_watch_limits("", "");
-  #assert w.stall_ms == 120000 && w.recoveries == 2;
+  #assert w.stall_ms == 900000 && w.recoveries == 2;
   w = agy_watch_limits("30", "5"); #assert w.stall_ms == 30000 && w.recoveries == 5;
   w = agy_watch_limits("0", "0"); #assert w.stall_ms == 0 && w.recoveries == 0;
-  w = agy_watch_limits("4m", "-1"); #assert w.stall_ms == 120000 && w.recoveries == 2;
-  w = agy_watch_limits("1234567", "1"); #assert w.stall_ms == 120000 && w.recoveries == 1;
+  w = agy_watch_limits("4m", "-1"); #assert w.stall_ms == 900000 && w.recoveries == 2;
+  w = agy_watch_limits("1234567", "1"); #assert w.stall_ms == 900000 && w.recoveries == 1;
 }
 
 // ---------------------------------------------------------------- the opened session

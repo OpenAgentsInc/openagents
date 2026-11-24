@@ -2772,7 +2772,7 @@ tool_main :: () -> int #export_c #effects(all) {
       } else if rk == MWW_STEER {
         if agyw_is_compact(req[0].text) && (!x[0].live || !cu_can_compact(x[0].c)) {
           agyw_emit_steered(s, req[0].id, "rejected", "compact_unavailable", req[0].text);
-        } else if x[0].live {
+        } else if x[0].live && (s[0].turn_active || cue_turn_active(x)) {
           agyw_emit_steered(s, req[0].id, "accepted", "", req[0].text);
           _ = cue_steer(x, req[0].text);
           agyw_emit_steered(s, req[0].id, "applied", "", req[0].text);
@@ -2825,6 +2825,9 @@ tool_main :: () -> int #export_c #effects(all) {
           w := cue_watch(x, now);
           if w == CUE_WATCH_BG_DONE {
             agyw_turn_end(s, x[0].c[0].ar[..], "", true);
+          } else if w == CUE_WATCH_RECOVERING || w == CUE_WATCH_GAVE_UP {
+            wb: [256] u8;
+            agyw_emit_thought(s, cue_watch_notice(x, w, wb[..]));
           } else if w == CUE_WATCH_ENDED {
             agyw_finish_turn(s, "failed", "Antigravity stopped responding and was closed.", true);
           }
@@ -3590,4 +3593,22 @@ AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn
   #assert cp_cache_status(1000, 301000, 0, 8000, 12000, true) == CP_CACHE_EXPIRED;
   #assert cp_cache_status(1000, 301000, 0, 8000, 24000, true) == CP_CACHE_EXPIRED_COMPACT;
   #assert cp_cache_status(1000, 301000, 0, 8000, 24000, false) == CP_CACHE_EXPIRED;
+}
+
+#test "agyworker: mid-turn steer swallows superseded end_turn and keeps session synchronized" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [8192] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+  #assert x[0].active_prompt_id == 3;
+  // User steers mid-turn -> sends session/prompt id=4 without session/cancel.
+  #assert cue_steer(x, "write 1 file per turn") && x[0].active_prompt_id == 4;
+  // Server answers superseded prompt id=3 with empty end_turn -> MUST NOT fail the turn!
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert s[0].turn_active && !agyw_logged(s, "\"kind\":\"ended\"") && !agyw_logged(s, "without a reply");
+  // Steered prompt id=4 streams reply and finishes cleanly.
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Wrote ids.coax.\"}}}}");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert !s[0].turn_active && agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Wrote ids.coax.\"}");
 }
