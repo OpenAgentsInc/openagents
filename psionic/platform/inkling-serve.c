@@ -2439,6 +2439,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
     int think_start = -1;
     int chan_start = -1;
     int think_broken = 0;
+    int saw_think = 0;
     int out_loop_broken = 0;
     int stop_hit = 0;
     int n_reason = 0;
@@ -2562,17 +2563,36 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
         }
         if (tok < 0) break;
         /* Sampler-level tool_choice enforcement (zero prompt mutation -> 100% KV cache preserved):
-           - tool_choice="none" (or empty tools): forbid invoke_tool tokens, redirect to tok_text.
+           - tool_choice="none" (or empty tools): forbid tool-name headers right after <|message_model|>
+             (in_header == 1) as well as invoke_tool tokens. In Inkling's native framing, only tool
+             calls emit header tokens between <|message_model|> and <|content_invoke_tool_json|>;
+             allowing a tool name like `run_command` to be stepped into the KV cache before rewriting
+             invoke_tool -> tok_text leaves `<|message_model|>run_command<|content_text|>` in context,
+             causing the model to emit raw tool-call JSON into user-visible text.
            - tool_choice="required" / named function: before 1st tool call, redirect premature
              tok_text / tok_eog into tok_invoke_tool cleanly. */
-        if ((r.tools_json.len == 0 || r.tool_choice_mode == 1) &&
-            ((sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) ||
-             (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text))) {
-            if (sv->tok_text >= 0) {
-                tok = sv->tok_text;
+        int tools_forbidden = (r.tools_json.len == 0 || r.tool_choice_mode == 1);
+        if (tools_forbidden && sv->tok_text >= 0) {
+            int bad_invoke = (sv->tok_invoke_tool >= 0 && tok == sv->tok_invoke_tool) ||
+                             (sv->tok_invoke_tool_text >= 0 && tok == sv->tok_invoke_tool_text);
+            if (full_text.len > 0 && channel == 0 &&
+                (in_header || tok == sv->tok_model || bad_invoke)) {
+                /* Plain-text assistant message already completed while tools are forbidden:
+                   do not allow a follow-up <|message_model|> tool attempt or repeated text loop. */
+                tok = (sv->tok_eog >= 0) ? sv->tok_eog : sv->tok_end_msg;
                 tok_already_stepped = 0;
                 v_head = v_tail = 0;
                 has_prefetched = 0;
+            } else {
+                int bad_header = in_header &&
+                                 tok != sv->tok_text &&
+                                 !(sv->tok_thinking >= 0 && tok == sv->tok_thinking && !think_broken && !saw_think && full_text.len == 0);
+                if (bad_header || bad_invoke) {
+                    tok = (channel == 2 && full_text.len > 0 && sv->tok_end_msg >= 0) ? sv->tok_end_msg : sv->tok_text;
+                    tok_already_stepped = 0;
+                    v_head = v_tail = 0;
+                    has_prefetched = 0;
+                }
             }
         } else if ((r.tool_choice_mode == 2 || r.tool_choice_mode == 3) &&
                    r.tools_json.len > 0 && n_emitted_tcs == 0 && channel == 0 &&
@@ -2661,6 +2681,7 @@ static int handle_inference(Server *sv, int fd, int is_responses, const char *or
             }
         } else if (tok == sv->tok_thinking) {
             channel = 1;
+            saw_think = 1;
             in_header = 0;
             pending.len = 0;
             think_start = n_all + 1;

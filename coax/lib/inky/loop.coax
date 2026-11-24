@@ -282,6 +282,24 @@ ik_loop_event :: (l: [] IkLoop, ev: GwEvent) -> IkFeedRes {
   return res;
 }
 
+// Detects a bare leaked native tool-call JSON object (e.g. `{"name":"run_command","args":{...}}`)
+// emitted into plain text instead of a structured tool_calls delta.
+ik_loop_is_leaked_tool_json :: (reply: string) -> bool {
+  t := ik_fmt_trim_ws(reply);
+  if t.count < 20 || t[0] != '{' || t[t.count - 1] != '}' { return false; }
+  if !json_valid(t) { return false; }
+  nb: [64] u8;
+  ar := [1] ClArena.[ClArena.{buf = nb[..]}];
+  name := cl_str(ar[..], t, "name");
+  known := name == "run_command" || name == "read_file" || name == "edit_file" ||
+           name == "write_file" || name == "grep" || name == "list_dir" ||
+           name == "outline" || name == "update_todos" || name == "executor_verify";
+  if !known { return false; }
+  args := cl_raw(t, "args");
+  if args.count == 0 { args = cl_raw(t, "arguments"); }
+  return args.count >= 2 && args[0] == '{';
+}
+
 // Seals the finished model stream and transitions to IK_PH_TOOLS, IK_PH_MODEL (retry/steer), or IK_PH_ENDED.
 ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transport_ok: bool, has_steers: bool) -> int {
   if l[0].phase != IK_PH_STREAM { return l[0].phase; }
@@ -342,6 +360,16 @@ ik_loop_stream_end :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, transpo
   calls: [IK_STEP_CALLS] GwToolCall;
   nc := l[0].tstep[0].n;
   for i: 0..<nc { calls[i] = gwt_step_call(l[0].tstep[..], i); }
+
+  // Defense-in-depth: if tools were already disabled and a server/checkpoint still leaked raw
+  // native tool-call JSON into plain text, do not poison history or finish as a normal reply.
+  if nc == 0 && ik_guard_tools_exhausted(l[0].step, l[0].guard[0].max_steps, l[0].guard[0].dup_blocks) && ik_loop_is_leaked_tool_json(ik_loop_reply(l)) {
+    if l[0].step >= l[0].guard[0].max_steps {
+      return ik_loop_end(l, IK_END_BUDGET, "step budget reached; model attempted a raw tool call after tools were disabled");
+    }
+    return ik_loop_end(l, IK_END_FAILED, "stopped repeated duplicate tool calls without progress");
+  }
+
   if !ik_hist_assistant(h, l[0].step, ik_loop_reply(l), ik_loop_think(l), calls[0..<nc]) {
     _ = ik_compact_stage2(h, tmp);
     if !ik_hist_assistant(h, l[0].step, ik_loop_reply(l), ik_loop_think(l), calls[0..<nc]) {
@@ -392,11 +420,16 @@ ik_loop_tool_done :: (l: [] IkLoop, h: [] IkHistory, tmp: [] IkHistory, tool_kin
   tc := gwt_step_call(l[0].tstep[..], l[0].tool_idx);
   is_last := l[0].tool_idx + 1 >= l[0].tstep[0].n;
 
-  // Soft wrap-up notice (step == max_steps - 2), exploration nudge (steps 8, 14 with 0 edits),
-  // or cache-safe step-budget awareness once past the halfway mark (docs/coder/inky-avenues-from-other-projects.md).
+  // Explicit closing notice right before tool_choice="none" takes effect (step == max_steps - 1
+  // or duplicate-block cutoff), soft wrap-up notice (step == max_steps - 2), exploration nudge
+  // (steps 8, 14 with 0 edits), or cache-safe step-budget awareness once past the halfway mark.
   final_out := output;
   wbuf: [24576] u8;
-  if is_last && ik_guard_warn_budget(l[0].step, l[0].guard[0].max_steps) {
+  if is_last && ik_guard_tools_exhausted(l[0].step + 1, l[0].guard[0].max_steps, l[0].guard[0].dup_blocks) {
+    n := ik_fmt_put(wbuf[..], 0, output);
+    n = ik_fmt_put(wbuf[..], n, "\n[Tool calls are now disabled for your final turn. Do not call any more tools; write a clear final answer for the user now based on what you observed.]");
+    final_out = cast(string) wbuf[0..<n];
+  } else if is_last && ik_guard_warn_budget(l[0].step, l[0].guard[0].max_steps) {
     n := ik_fmt_put(wbuf[..], 0, output);
     n = ik_fmt_put(wbuf[..], n, "\n[Step budget nearly reached: synthesize your findings and answer the user now.]");
     final_out = cast(string) wbuf[0..<n];
@@ -500,6 +533,9 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
   #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_LIST, ".", 0, "b.coax\n", false) == IK_PH_MODEL;
+  // Final-turn notice appended on step max_steps - 1 right before tool_choice="none":
+  pre_close := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  #assert ik_prompt_has_ci(pre_close, "Tool calls are now disabled for your final turn");
 
   // Step 3 (step == max_steps): on Psionic native (GW_CHAT_TOOL_ERROR), tools stay declared to
   // preserve 100% KV prefix cache while tool_choice="none" enforces zero tool calls at the sampler!
@@ -671,4 +707,41 @@ ik_loop_stop :: (l: [] IkLoop) -> int {
   #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
   _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
   #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED && l[0].ending == IK_END_FAILED;
+}
+
+#test "inky loop: leaked raw tool-call JSON detection and dup-block closing notice" {
+  // Positive cases: native `args` and OpenAI `arguments` wrappers for known Inky tools.
+  #assert ik_loop_is_leaked_tool_json("{\"name\":\"run_command\",\"args\":{\"command\":\"ls\"}}");
+  #assert ik_loop_is_leaked_tool_json("  {\"name\":\"read_file\",\"arguments\":{\"path\":\"a.coax\"}} \n");
+  // Negative cases: normal prose, non-tool JSON, missing args object, invalid JSON.
+  #assert !ik_loop_is_leaked_tool_json("Here is what I found in qBittorrent.");
+  #assert !ik_loop_is_leaked_tool_json("{\"name\":\"alice\",\"args\":{\"role\":\"admin\"}}");
+  #assert !ik_loop_is_leaked_tool_json("{\"name\":\"run_command\",\"args\":\"ls\"}");
+  #assert !ik_loop_is_leaked_tool_json("{\"name\":\"run_command\"}");
+  #assert !ik_loop_is_leaked_tool_json("{\"name\":\"run_command\",\"args\":{");
+
+  // Leaked raw tool JSON on a tool-exhausted step ends with IK_END_BUDGET without polluting history.
+  l: [1] IkLoop; h: [1] IkHistory; tmp: [1] IkHistory;
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 1, 32768, "Check download");
+  ub: [128] u8; g := gw_psionic_native("http://127.0.0.1:18795", ub[..]);
+  body_buf: [16384] u8; why: [1] string;
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  hist_before := h[0].n;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TEXT, text = "{\"name\":\"run_command\",\"args\":{\"command\":\"ls\"}}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "stop"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_ENDED;
+  #assert l[0].ending == IK_END_BUDGET && h[0].n == hist_before;
+
+  // Duplicate-block cutoff (dup_blocks >= 3) appends closing notice before tool_choice="none".
+  ik_hist_init(h[..]);
+  #assert ik_loop_begin(l[..], h[..], tmp[..], "sys", "workspace-write", 10, 32768, "Check download");
+  #assert ik_loop_prepare_req(l[..], h[..], tmp[..], g, "inkling-2-mini", "medium", true, body_buf[..], why[..]).count > 0;
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_TOOL, status = 0, call_id = "d1", text = "read_file", reason = "{\"path\":\"a.coax\"}"});
+  _ = ik_loop_event(l[..], GwEvent.{kind = GW_EV_DONE, reason = "tool_calls"});
+  #assert ik_loop_stream_end(l[..], h[..], tmp[..], true, false) == IK_PH_TOOLS;
+  l[0].guard[0].dup_blocks = 3;
+  #assert ik_loop_tool_done(l[..], h[..], tmp[..], IK_TK_READ, "a.coax", 1, "Duplicate call", true) == IK_PH_MODEL;
+  dup_out := ik_hist_str(h[..], h[0].msgs[h[0].n - 1].text);
+  #assert ik_prompt_has_ci(dup_out, "Tool calls are now disabled for your final turn");
 }
