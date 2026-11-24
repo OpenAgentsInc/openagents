@@ -164,9 +164,17 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_local_state(s, true, true, 64, CP_LOCAL_READY, 100, 16811, 16811, "");
   coder_page_set_inkling(s, true);
 
-  // 1. Before Antigravity auth: zero Antigravity models; model menu has Inkling + Connect Antigravity...
+  // 1. Default (show_other_models == false): ONLY Inkling is shown, Manage Local Models + Show other models…
+  //    appear in the footer, and Providers shortcut appears once the user clicks Show other models…
+  coder_page_show_other_models_set(s, false);
   #assert cp_models(s) == 1 && !cp_model_agy_test(s);
   coder_page_toggle_models(s);
+  #assert cp_ps_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.model.providers") < 0;
+  others_row := surface_find(s[0].surface[..], "coder.model.others");
+  #assert others_row >= 0 && surface_say(s[0].surface[..], others_row) == "Show other models…";
+  // Pressing Show other models… opts in, keeps the menu open, and reveals Connect Antigravity…
+  #assert cp_press(s, others_row) && coder_page_show_other_models(s) && coder_page_action(s) == CP_ASK_SHOW_OTHER_MODELS && s[0].model_menu;
   #assert cp_ps_test_frame(s, 1200, 800);
   prov_row := surface_find(s[0].surface[..], "coder.model.providers");
   #assert prov_row >= 0 && surface_say(s[0].surface[..], prov_row) == "Connect Antigravity…";
@@ -178,8 +186,8 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert s[0].ps[0].ed_field == CP_PS_ED_OAUTH_CODE && cp_ed_which(s) == CP_ED_PROV;
   cp_settings_show(s, false, CP_PG_PROVIDERS);
 
-  // 2. After Antigravity auth: only Gemini 4 models are admitted, Neon is always the default
-  //    even if another model had is_default=true, and new chats default to Antigravity (not Inkling).
+  // 2. After Antigravity auth with show_other_models enabled: only Gemini 4 models are admitted,
+  //    active local Inkling stays at index 0 as the default, and Gemini 4 Neon & Carbon appear below it.
   coder_page_agy_models_clear(s);
   #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-3.8-flash", "Gemini 3.8 Flash", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_MEDIUM, false) == -1;
   #assert coder_page_agy_models_add(s, "antigravity", "Antigravity", "gemini-pro-orchestrator", "Orchestrator", 0, CP_EFFORT_MEDIUM, false) == -1;
@@ -187,17 +195,17 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_agy_models_add(s, "antigravity-work", "Work", "gemini-4-carbon", "Gemini 4 Carbon", CP_EFF_BIT_LOW | CP_EFF_BIT_MED | CP_EFF_BIT_HIGH, CP_EFFORT_HIGH, true) == 1;
   coder_page_set_agy(s, true);
   #assert cp_has_model_picker(s) && cp_models(s) == 3;
-  #assert cp_model_label(s, 0) == "Gemini 4 Neon" && cp_model_id(s, 0) == "agy:gemini-4-neon";
-  #assert cp_model_label(s, 1) == "Gemini 4 Carbon" && cp_model_id(s, 1) == "agy:gemini-4-carbon";
-  #assert cp_model_label(s, 2) == "Inkling 2 Mini";
-  // Empty new chat automatically switched from Inkling to Antigravity Gemini 4 Neon at High reasoning.
-  #assert coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "agy:gemini-4-neon";
-  #assert cp_effort_label(s, cp_model_index(s)) == "High" && cp_task_effort(s, cp_model_index(s)) == "high";
+  #assert cp_model_label(s, 0) == "Inkling 2 Mini" && cp_model_id(s, 0) == "inkling-2-mini";
+  #assert cp_model_label(s, 1) == "Gemini 4 Neon" && cp_model_id(s, 1) == "agy:gemini-4-neon";
+  #assert cp_model_label(s, 2) == "Gemini 4 Carbon" && cp_model_id(s, 2) == "agy:gemini-4-carbon";
+  // Empty new chat stays on our default local Inkling model (Antigravity never hijacks it).
+  #assert !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "inkling-2-mini";
   #assert cp_model_start(s) == 0;
 
   // Neon supports 4 thinking levels (including X-High); Carbon supports 3.
-  #assert cp_effort_count(s, 0) == 4 && cp_effort_count(s, 1) == 3;
+  #assert cp_effort_count(s, 1) == 4 && cp_effort_count(s, 2) == 3;
   #assert coder_page_pick_model(s, "agy:gemini-4-neon") && coder_page_model_agy(s);
+  #assert cp_effort_label(s, cp_model_index(s)) == "High" && cp_task_effort(s, cp_model_index(s)) == "high";
   ib: [64] u8;
   #assert cast(string) ib[0..<coder_page_model_inst_id(s, ib[..])] == "antigravity";
   s[0].effort = CP_EFFORT_XHIGH;
@@ -227,20 +235,19 @@ cp_ps_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cp_ps_test_frame(s, 1200, 800);
   prov_row2 := surface_find(s[0].surface[..], "coder.model.providers");
   #assert prov_row2 >= 0 && surface_say(s[0].surface[..], prov_row2) == "Manage Providers…";
-  m0 := surface_find(s[0].surface[..], "coder.model.0");
   m1 := surface_find(s[0].surface[..], "coder.model.1");
-  #assert m0 >= 0 && m1 >= 0;
+  m2 := surface_find(s[0].surface[..], "coder.model.2");
+  #assert m1 >= 0 && m2 >= 0;
   mt := [1] ElTable.[surface_rows(s[0].surface[..])];
-  #assert cast(string) mt[0].rows[m0].value[0..<mt[0].rows[m0].value_n] == "Antigravity · gemini-4-neon";
-  #assert cast(string) mt[0].rows[m1].value[0..<mt[0].rows[m1].value_n] == "Work · gemini-4-carbon";
+  #assert cast(string) mt[0].rows[m1].value[0..<mt[0].rows[m1].value_n] == "Antigravity · gemini-4-neon";
+  #assert cast(string) mt[0].rows[m2].value[0..<mt[0].rows[m2].value_n] == "Work · gemini-4-carbon";
 
-  // Starting a new chat while Antigravity is installed defaults to Gemini 4 Neon (not Inkling).
-  #assert coder_page_new(s) && coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "agy:gemini-4-neon";
-
-  // Disabling Antigravity falls back to Inkling on new chats.
-  coder_page_agy_models_clear(s);
-  coder_page_set_agy(s, false);
+  // Starting a new chat while local Inkling is installed defaults to our best local Inkling model.
   #assert coder_page_new(s) && !coder_page_model_agy(s) && cp_model_id(s, cp_model_index(s)) == "inkling-2-mini";
+
+  // Hiding other models collapses right back to Inkling-only.
+  coder_page_show_other_models_set(s, false);
+  #assert !cp_has_model_picker(s) && cp_models(s) == 1 && cp_model_id(s, cp_model_index(s)) == "inkling-2-mini";
 }
 
 cp_model_agy_test :: (s: [] CoderPage) -> bool { return coder_page_model_agy(s); }

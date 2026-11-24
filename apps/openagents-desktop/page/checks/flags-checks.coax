@@ -55,12 +55,13 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert coder_page_palette_mode(s) == CP_PAL_MODE_FILES;
   coder_page_palette_set_mode(s, CP_PAL_MODE_COMMANDS);
 
-  // Model menu opens with Inkling 2 Mini as the sole option in single-model release mode.
+  // Model menu opens with Inkling 2 Mini as the sole model plus Manage Local Models and Show other models…
+  coder_page_show_other_models_set(s, false);
   coder_page_toggle_models(s);
   #assert s[0].model_menu && cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.model.menu") >= 0;
   #assert surface_find(s[0].surface[..], "coder.model.0") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.0")) == "Inkling 2 Mini";
-  #assert surface_find(s[0].surface[..], "coder.model.1") < 0 && surface_find(s[0].surface[..], "coder.model.local") < 0;
+  #assert surface_find(s[0].surface[..], "coder.model.1") < 0 && surface_find(s[0].surface[..], "coder.model.local") >= 0 && surface_find(s[0].surface[..], "coder.model.others") >= 0 && surface_find(s[0].surface[..], "coder.model.providers") < 0;
   coder_page_toggle_models(s);
   #assert !s[0].model_menu;
 
@@ -138,9 +139,11 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.onboarding.ram") >= 0;
   #assert surface_find(s[0].surface[..], "coder.local.dl") < 0;
 
-  // 3. Supported Apple Silicon >= 32 GB, not downloaded yet -> Download button dispatches CP_ASK_LOCAL_DOWNLOAD
+  // 3. Supported Apple Silicon >= 32 GB, not downloaded yet -> composer & model picker stay visible,
+  //    Download button AND picking the model in the dropdown both dispatch CP_ASK_LOCAL_DOWNLOAD
   coder_page_local_state(s, true, true, 64, CP_LOCAL_NOT_INSTALLED, 0, 0, 16811, "");
   #assert cp_flag_test_frame(s, 1200, 800);
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0 && surface_find(s[0].surface[..], "coder.model") >= 0;
   dl_btn := surface_find(s[0].surface[..], "coder.local.dl");
   #assert dl_btn >= 0 && cp_press(s, dl_btn) && coder_page_action(s) == CP_ASK_LOCAL_DOWNLOAD;
 
@@ -162,11 +165,11 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.onboarding.error") >= 0;
   #assert surface_find(s[0].surface[..], "coder.local.dl") >= 0;
 
-  // 6b. Starting Psionic Metal server -> centered starting status, composer hidden, send & /goal refused
+  // 6b. Starting Psionic Metal server while not selectable -> loading caption above composer, send & /goal refused
   coder_page_local_state(s, true, true, 64, CP_LOCAL_STARTING, 100, 16811, 16811, "");
   #assert cp_flag_test_frame(s, 1200, 800);
-  #assert surface_find(s[0].surface[..], "coder.onboarding.starting") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.composer") < 0;
+  #assert surface_find(s[0].surface[..], "coder.local.status") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") >= 0;
   #assert coder_page_set_text(s, "who are you") && !coder_page_submit(s) && s[0].nturns == 0;
   #assert coder_page_set_text(s, "/goal fix it") && !coder_page_submit(s) && s[0].nturns == 0;
 

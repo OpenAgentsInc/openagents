@@ -155,7 +155,14 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     s[0].set_target_n = cp_out(s[0].set_target[..], es[e].id); s[0].set_scroll = 0;
     return true;
   }
-  if c >= CP_PAL_MODEL && c < CP_PAL_TIER { if !cp_has_model_picker(s) { return false; } m := c - CP_PAL_MODEL; if m >= cp_models(s) { return false; } s[0].model = m; return true; }
+  if c >= CP_PAL_MODEL && c < CP_PAL_TIER {
+    if !cp_has_model_picker(s) { return false; }
+    m := c - CP_PAL_MODEL;
+    if m >= cp_models(s) { return false; }
+    s[0].model = m;
+    if cp_is_inkling(s, m) && !s[0].inkling { s[0].ask = CP_ASK_LOCAL_DOWNLOAD; }
+    return true;
+  }
   if c >= CP_PAL_CONTENT {
     idx := c - CP_PAL_CONTENT;
     if idx < 0 || idx >= s[0].find[0].ncontent { return false; }

@@ -384,6 +384,9 @@ void cd_settings_executor(void *page, const char *status, const char *lineage, c
 void cd_settings_pylon(void *page, const char *state, const char *contrib, const char *sats, const char *release);
 void cd_settings_wallet(void *page, const char *status, const char *balance, const char *addr, const char *npub, const char *limit, const char *backup, const char *history, int ready);
 void cd_inkling(void *page, int on);
+void cd_inkling_info(void *page, const char *id, const char *label, const char *desc);
+void cd_show_other_models_set(void *page, int on);
+int cd_show_other_models(void *page);
 void cd_hybrid_exec(void *page, int on);
 // cd_settings_instructions: the agent instructions' state General shows ("Default", "Edited"; #13808).
 void cd_settings_instructions(void *page, const char *words);

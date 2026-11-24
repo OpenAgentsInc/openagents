@@ -232,12 +232,19 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                      Unmanaged.passUnretained(self).toOpaque())
         // Push the resolved 28-flag mask first; all gated probes, services, and UI stay off when their flag is off.
         cd_flags_set(page, FeatureFlags.mask)
-        syncAntigravityModels(on: page)
+        cd_show_other_models_set(page, ComposerModelVisibility.showOtherModels ? 1 : 0)
+        if ComposerModelVisibility.showOtherModels {
+            syncAntigravityModels(on: page)
+        }
         #if OA_FULL
         if FeatureFlags.isOn(.mcp) { cd_skills(page, coderSkillsNote()) } else { cd_skills(page, "") }
-        if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(page) } else { cd_claude(page, 0) }
-        if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
-        if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(page) }
+        if ComposerModelVisibility.showOtherModels {
+            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(page) } else { cd_claude(page, 0) }
+            if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: page) }
+            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(page) }
+        } else {
+            cd_claude(page, 0)
+        }
         #else
         cd_skills(page, "")
         cd_claude(page, 0)
@@ -272,7 +279,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // ProviderInstancesStore.shared.refreshAll() in setupProvidersSettings() probes enabled
         // Antigravity instances and updates both loaded models and legacy CoderProbes cache.
         #if OA_FULL
-        if FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
+        if ComposerModelVisibility.showOtherModels && FeatureFlags.isOn(.modelsGemini) { CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() } }
         if FeatureFlags.isOn(.foreman) { startForemanServer() }
         if FeatureFlags.isOn(.gym) { startGymRequests() }
         #endif
@@ -358,7 +365,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
             guard let self else { return }
             self.syncPhoneRuns()
-            if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && (!FeatureFlags.anyExtraModel || cd_model_inkling(self.page) != 0) {
+            if LocalModelStore.isSelectable && !LocalModelServer.shared.isReady && (!ComposerModelVisibility.showOtherModels || cd_model_inkling(self.page) != 0) {
                 LocalModelServer.shared.prewarmIfReady()
             }
         }
@@ -397,15 +404,26 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count {
             let requested = CommandLine.arguments[at + 1]
-            let isInkling = ["inkling-2-mini", "inkling", "Inkling 2 Mini"].contains(requested)
-            if isInkling || FeatureFlags.anyExtraModel {
-                if cd_pick_model(page, requested) == 0 && isInkling {
+            let isInkling = requested.hasPrefix("inkling-2-mini") || ["inkling", "Inkling 2 Mini"].contains(requested)
+            if isInkling {
+                if LocalModelStore.variant(id: requested) != nil && LocalModelStore.activeVariantId != requested {
+                    if LocalModelStore.setActiveVariant(requested) {
+                        LocalModelServer.shared.restartForVariantChange()
+                    }
+                    syncLocalModels()
+                }
+                _ = cd_pick_model(page, requested)
+                if !LocalModelStore.isSelectable {
                     if !LocalModelStore.anyVariantSupported {
                         present(.notice("Inkling 2 Mini requires \(LocalModelStore.minSupportedRamGB) GB RAM", LocalModelStore.statusSummary()))
                     } else {
                         manageLocalModels()
                     }
                 }
+            } else if FeatureFlags.anyExtraModel || requested.hasPrefix("agy:") || requested == "antigravity" || requested == "agy" {
+                cd_show_other_models_set(page, 1)
+                syncAntigravityModels(on: page)
+                _ = cd_pick_model(page, requested)
             }
         }
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
@@ -620,6 +638,38 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
+        case 189:
+            let on = cd_show_other_models(page) != 0
+            ComposerModelVisibility.showOtherModels = on
+            for r in runs.values where r.page != page {
+                cd_show_other_models_set(r.page, on ? 1 : 0)
+            }
+            if on {
+                syncAntigravityModels(on: page)
+                for r in runs.values where r.page != page { syncAntigravityModels(on: r.page) }
+                if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
+                    AntigravityRuntimeManager.shared.checkLatestRelease()
+                    ProviderInstancesStore.shared.refreshAll()
+                }
+                #if OA_FULL
+                if FeatureFlags.isOn(.modelsClaude) {
+                    coderApplyClaude(page)
+                    for r in runs.values where r.page != page { coderApplyClaude(r.page) }
+                }
+                if FeatureFlags.isOn(.modelsOpenrouter) {
+                    coderApplyOpenRouter(page)
+                    for r in runs.values where r.page != page { coderApplyOpenRouter(r.page) }
+                }
+                if FeatureFlags.isOn(.modelsExternal) { syncExternalProvidersAll() }
+                if FeatureFlags.isOn(.modelsGemini) {
+                    CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+                }
+                #endif
+                applyProbes()
+            } else {
+                syncLocalModels(prewarm: true)
+            }
+            wake()
         case 160: startInklingDownload()
         case 161: cancelInklingDownload()
         case 163:

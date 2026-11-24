@@ -1006,12 +1006,14 @@ int main(int argc, char **argv) {
       int got = sscanf(line, "%*s %d %127s", &si, val);
       int ok = 0;
       if (got >= 2 && si >= 0 && si < MAX_SLOTS && g_slots[si].page) {
-        if (strcmp(val, "inkling-2-mini") == 0 || strcmp(val, "inkling") == 0) {
+        if (strncmp(val, "inkling-2-mini", 14) == 0 || strcmp(val, "inkling") == 0) {
           // Single-model Inkling release path: keep flags untouched (default 0).
+          cd_show_other_models_set(g_slots[si].page, 0);
           cd_local_state(g_slots[si].page, 1, 1, 64, 3, 100, 16811, 16811, "");
           cd_inkling(g_slots[si].page, 1);
         } else {
-          // Opt-in developer/legacy model override unlocks all flags for comparison runs.
+          // Opt-in developer/legacy model override unlocks all flags and shows other models for comparison runs.
+          cd_show_other_models_set(g_slots[si].page, 1);
           cd_flags_set(g_slots[si].page, (1LL << 28) - 1);
           cd_cloud_authed_set(g_slots[si].page, 1);
           cd_inkling(g_slots[si].page, 1);

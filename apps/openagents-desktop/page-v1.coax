@@ -94,11 +94,16 @@
   #assert !cp_set_page_ok_flags(0, CP_PG_VOICE);
   #assert !cp_set_page_ok_flags(0, CP_PG_SCHED);
 
-  // Enabling Antigravity in core v1.0 exposes the model picker and switches provider kind cleanly.
+  // Enabling Antigravity does NOT expose other models until the user explicitly opts in via show_other_models.
   coder_page_set_agy(s[..], true);
-  #assert cp_has_model_picker(s[..]);
+  #assert !cp_has_model_picker(s[..]) && cp_models(s[..]) == 1 && coder_page_model_provider(s[..]) == 2;
+  // Once the user opts into seeing other models, Antigravity joins the picker and switches cleanly.
+  coder_page_show_other_models_set(s[..], true);
+  #assert cp_has_model_picker(s[..]) && cp_models(s[..]) == 2;
   #assert coder_page_pick_model(s[..], "antigravity") && coder_page_model_agy(s[..]) && coder_page_model_provider(s[..]) == 1;
   #assert coder_page_pick_model(s[..], "inkling-2-mini") && coder_page_model_provider(s[..]) == 2;
+  coder_page_show_other_models_set(s[..], false);
+  #assert !cp_has_model_picker(s[..]) && cp_models(s[..]) == 1 && coder_page_model_provider(s[..]) == 2;
   coder_page_set_agy(s[..], false);
   #assert !cp_has_model_picker(s[..]) && coder_page_model_provider(s[..]) == 2;
 

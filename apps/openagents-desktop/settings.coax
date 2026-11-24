@@ -460,9 +460,10 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     models_sub := ifx cp_has_model_picker(s) then "The local runtime and optional cloud or CLI models." else "Inkling 2 Mini runs locally on this Mac through Psionic Metal.";
     y += set_page_head(f, "set.title", x, y, w, names[page], models_sub) + t.block_gap;
     local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "Not downloaded";
-    y += set_section_head(f, "set.local.head", x, y, w, "Local Model", "Download, verify (SHA-256), and manage Inkling 2 Mini on Psionic Metal (~/.openagents/models).") + t.section_gap;
+    local_name := sheet_pool(sh, cp_inkling_label(s));
+    y += set_section_head(f, "set.local.head", x, y, w, "Local Model", "Download, verify (SHA-256), and switch Inkling 2 Mini variants on Psionic Metal (~/.openagents/models).") + t.section_gap;
     lrows: [1] SetRow;
-    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (17.63 GB IQ4_NL GGUF · SHA-256 verified · native Psionic Metal). Requires >= 32 GB Apple Silicon Mac.",
+    lrows[0] = SetRow.{id = "set.local", name = local_name, desc = "26.4B total / 3.4B active looped MoE (Uncensored LoRA, AD quants, Official IQ4_NL, or Custom .gguf · SHA-256 verified · native Psionic Metal). Requires >= 12 GB Apple Silicon Mac.",
       value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
     y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]) + t.block_gap;
     if cp_flag(s, DC_FLAG_MODELS_GEMINI) {

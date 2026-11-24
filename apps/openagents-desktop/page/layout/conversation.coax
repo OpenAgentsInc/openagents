@@ -889,9 +889,11 @@ CP_COMPOSER_FOOT_CORNER :: CP_COMPOSER_FOOT_INSET + ZC_CONTROL / 2;
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
   is_foreman := cp_flag(s, DC_FLAG_FOREMAN) && cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
-  // Single-model release mode before Inkling 2 Mini is downloaded: show the first-run setup card
-  // on an empty chat instead of a bare composer that cannot send.
-  if !cp_has_model_picker(s) && !is_foreman && s[0].nturns == 0 && !s[0].inkling {
+  // When local Inkling cannot run on this machine at all (Intel Mac, Linux without GPU, <12 GB RAM)
+  // and the user has not opted into other models, show the hardware setup / Connect Antigravity card.
+  // On supported Apple Silicon Macs, ALWAYS show the composer and its model picker (even before download)
+  // so the default local model is always visible and picking it downloads it immediately.
+  if !cp_has_model_picker(s) && !is_foreman && s[0].nturns == 0 && !s[0].inkling && (!s[0].local_os_ok || !s[0].local_hw_ok) {
     cp_local_onboarding(s, f, x, cw, h);
     return;
   }
@@ -905,7 +907,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
     if top < cast(f32) CP_CORNER + a.icon_button { top = cast(f32) CP_CORNER + a.icon_button; }
     if top < box_y { box_y = top; }
   }
-  no_local := !cp_has_model_picker(s) && !s[0].inkling;
+  no_local := cp_local_unavailable(s);
   s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded || no_local);
   s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
@@ -917,33 +919,90 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   voice_h := ifx cp_flag(s, DC_FLAG_VOICE) then cp_voice_pill(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h, cw) else 0.0f32;
   stash_h := ifx cp_flag(s, DC_FLAG_RICH) then cp_stash_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h, cw) else 0.0f32;
   tray_top := box_y - a.gap_small - s[0].fu[0].tray_h - todos_h - git_h - permit_h - oauth_h - voice_h - stash_h;
-  // Quiet, borderless single-line readiness or migration caption above the composer.
-  loading_bg := !no_local && !running && s[0].inkling && s[0].local_dl_state == CP_LOCAL_STARTING && (!cp_has_model_picker(s) || cp_is_inkling(s, cp_model_index(s)));
+  // Quiet, borderless readiness / download progress caption above the composer.
+  loading_bg := !no_local && !running && s[0].inkling && s[0].local_dl_state == CP_LOCAL_STARTING && cp_is_inkling(s, cp_model_index(s));
   if no_local || loading_bg {
     sh := f[0].sheet; th := cp_theme();
     st := s[0].local_dl_state;
-    spinning := st == CP_LOCAL_STARTING || st == CP_LOCAL_VERIFYING || st == CP_LOCAL_DOWNLOADING;
-    show_action := !spinning && s[0].local_os_ok && s[0].local_hw_ok;
-    cap_h := ifx show_action then k.cmp.chip_h else k.small.line;
-    cap_y := tray_top - cap_h - 4.0f32;
-    if spinning {
+    mname := cp_inkling_label(s);
+    if st == CP_LOCAL_DOWNLOADING {
       s[0].anim = true;
-      msg := ifx st == CP_LOCAL_STARTING then "Loading model…"
-             else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
-             else "Downloading Inkling 2 Mini…";
+      pb: [192] u8; pn := el_put(pb[..], 0, "Downloading ");
+      pn = el_put(pb[..], pn, mname);
+      pn = el_put(pb[..], pn, " — ");
+      if s[0].local_dl_total_mb > 0 {
+        pn = el_put_i(pb[..], pn, s[0].local_dl_mb); pn = el_put(pb[..], pn, " / ");
+        pn = el_put_i(pb[..], pn, s[0].local_dl_total_mb); pn = el_put(pb[..], pn, " MB (");
+        pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%)");
+      } else {
+        pn = el_put_i(pb[..], pn, s[0].local_dl_pct); pn = el_put(pb[..], pn, "%");
+      }
+      ptext := sheet_pool(sh, cast(string) pb[0..<pn]);
+      cancel_w := cp_foot_chip_width(f, -1, "Cancel", false);
+      bar_h := 6.0f32;
+      cap_h := k.cmp.chip_h + bar_h + 6.0f32;
+      cap_y := tray_top - cap_h - 4.0f32;
+      avail_w := cw - a.icon - a.gap_small - cancel_w - a.gap_small - 16.0f32;
+      if avail_w < 80.0f32 { avail_w = 80.0f32; }
+      mfit := app_fit(f, k.small.face, ptext, avail_w);
+      mw := ceil(measure_width(f[0].m, k.small.face, mfit));
+      row_w := a.icon + a.gap_small + mw + a.gap_small + cancel_w;
+      rx := x + (cw - row_w) / 2.0f32;
+      ty := cap_y + (k.cmp.chip_h - k.small.line) / 2.0f32;
+      activity(sh, k, rx, cap_y + (k.cmp.chip_h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
+      _ := uiframe_semantic(f, "coder.local.status", EL_TEXT, mfit, rx + a.icon + a.gap_small, ty, mw, k.small.line, 0, 0);
+      _ := sheet_text(sh, f[0].m, -1, rx + a.icon + a.gap_small, ty, k.small.line, k.small.face, th.muted, mfit);
+      _ := cp_foot_chip(f, "coder.local.cancel", "Cancel download", rx + a.icon + a.gap_small + mw + a.gap_small, cap_y, cancel_w, -1, "Cancel", false, 0, CP_LOCAL_CANCEL);
+      bar_w := ifx cw < 420.0f32 then cw - 16.0f32 else 420.0f32;
+      bx := x + (cw - bar_w) / 2.0f32;
+      by := cap_y + k.cmp.chip_h + 4.0f32;
+      pct_clamped := ifx s[0].local_dl_pct < 0 then 0 else ifx s[0].local_dl_pct > 100 then 100 else s[0].local_dl_pct;
+      share := cast(f32) pct_clamped / 100.0f32;
+      prow := uiframe_semantic(f, "coder.onboarding.progress", EL_PROGRESS, "Download progress", bx, by, bar_w, bar_h, 0, 0);
+      elt_value_share(f[0].rows, prow, share);
+      sheet_fill(sh, bx, by, bar_w, bar_h, 3.0f32, th.raised);
+      if share > 0 { sheet_fill(sh, bx, by, bar_w * share, bar_h, 3.0f32, th.accent); }
+      s[0].bar_h += cap_h + a.gap_small + 4.0f32;
+    } else if st == CP_LOCAL_STARTING || st == CP_LOCAL_VERIFYING {
+      s[0].anim = true;
+      cap_h := k.small.line;
+      cap_y := tray_top - cap_h - 4.0f32;
+      vb: [160] u8; vn := 0;
+      if st == CP_LOCAL_STARTING {
+        vn = el_put(vb[..], 0, "Loading model…");
+      } else {
+        vn = el_put(vb[..], 0, "Verifying ");
+        vn = el_put(vb[..], vn, mname);
+        vn = el_put(vb[..], vn, " SHA-256…");
+      }
+      msg := sheet_pool(sh, cast(string) vb[0..<vn]);
       mfit := app_fit(f, k.small.face, msg, cw - a.icon - a.gap_small - 16.0f32);
       mw := ceil(measure_width(f[0].m, k.small.face, mfit));
       row_w := a.icon + a.gap_small + mw;
       rx := x + (cw - row_w) / 2.0f32;
       activity(sh, k, rx, cap_y + (cap_h - a.icon) / 2.0f32, a.icon, f[0].clock, f[0].reduced_motion);
-      _ := uiframe_semantic(f, "coder.local.status", EL_TEXT, mfit, rx + a.icon + a.gap_small, cap_y, mw, k.small.line, 0, 0);
+      sid := ifx st == CP_LOCAL_VERIFYING then "coder.onboarding.verifying" else "coder.local.status";
+      _ := uiframe_semantic(f, sid, EL_TEXT, mfit, rx + a.icon + a.gap_small, cap_y, mw, k.small.line, 0, 0);
       _ := sheet_text(sh, f[0].m, -1, rx + a.icon + a.gap_small, cap_y, k.small.line, k.small.face, th.muted, mfit);
+      s[0].bar_h += cap_h + a.gap_small + 4.0f32;
     } else {
-      btn_lbl := ifx st == CP_LOCAL_SERVER_ERROR || st == CP_LOCAL_ERROR then "Retry" else "Download";
+      show_action := s[0].local_os_ok && s[0].local_hw_ok;
+      cap_h := ifx show_action then k.cmp.chip_h else k.small.line;
+      cap_y := tray_top - cap_h - 4.0f32;
+      is_err := st == CP_LOCAL_SERVER_ERROR || st == CP_LOCAL_ERROR;
+      btn_lbl := ifx is_err then "Retry" else "Download";
       btn_w := ifx show_action then cp_foot_chip_width(f, -1, btn_lbl, false) else 0.0f32;
-      raw_msg := ifx s[0].local_dl_err_n > 0 then sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n])
-                 else ifx !s[0].local_os_ok || !s[0].local_hw_ok then "Inkling 2 Mini is not supported on this Mac"
-                 else "Inkling 2 Mini is not ready";
+      nb: [192] u8; nn := 0;
+      raw_msg := "";
+      if s[0].local_dl_err_n > 0 {
+        raw_msg = sheet_pool(sh, cast(string) s[0].local_dl_err[0..<s[0].local_dl_err_n]);
+      } else if !s[0].local_os_ok || !s[0].local_hw_ok {
+        nn = el_put(nb[..], 0, mname); nn = el_put(nb[..], nn, " is not supported on this Mac");
+        raw_msg = sheet_pool(sh, cast(string) nb[0..<nn]);
+      } else {
+        nn = el_put(nb[..], 0, mname); nn = el_put(nb[..], nn, " is not downloaded");
+        raw_msg = sheet_pool(sh, cast(string) nb[0..<nn]);
+      }
       avail_w := cw - (ifx show_action then btn_w + a.gap_small else 0.0f32) - 16.0f32;
       if avail_w < 60.0f32 { avail_w = 60.0f32; }
       mfit := app_fit(f, k.small.face, raw_msg, avail_w);
@@ -951,19 +1010,21 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
       row_w := mw + (ifx show_action then a.gap_small + btn_w else 0.0f32);
       rx := x + (cw - row_w) / 2.0f32;
       ty := cap_y + (cap_h - k.small.line) / 2.0f32;
-      _ := uiframe_semantic(f, "coder.local.status", EL_TEXT, mfit, rx, ty, mw, k.small.line, 0, 0);
-      _ := sheet_text(sh, f[0].m, -1, rx, ty, k.small.line, k.small.face, th.muted, mfit);
+      sid := ifx is_err then "coder.onboarding.error" else "coder.local.status";
+      _ := uiframe_semantic(f, sid, EL_TEXT, mfit, rx, ty, mw, k.small.line, 0, 0);
+      _ := sheet_text(sh, f[0].m, -1, rx, ty, k.small.line, k.small.face, ifx is_err then th.danger else th.muted, mfit);
       if show_action {
         _ := cp_foot_chip(f, "coder.local.dl", btn_lbl, rx + mw + a.gap_small, cap_y, btn_w, -1, btn_lbl, false, 0, CP_LOCAL_DL);
       }
+      s[0].bar_h += cap_h + a.gap_small + 4.0f32;
     }
-    s[0].bar_h += cap_h + a.gap_small + 4.0f32;
   } else if s[0].migrated_from_n > 0 && s[0].nturns > 0 {
     sh := f[0].sheet; th := cp_theme();
     from_id := cast(string) s[0].migrated_from[0..<s[0].migrated_from_n];
     mb: [160] u8; mn := el_put(mb[..], 0, "Started on ");
     mn = el_put(mb[..], mn, cp_model_known_label(from_id));
-    mn = el_put(mb[..], mn, " · continues on Inkling 2 Mini");
+    mn = el_put(mb[..], mn, " · continues on ");
+    mn = el_put(mb[..], mn, cp_inkling_label(s));
     mfit := app_fit(f, k.small.face, sheet_pool(sh, cast(string) mb[0..<mn]), cw - 16.0f32);
     mw := ceil(measure_width(f[0].m, k.small.face, mfit));
     mx := x + (cw - mw) / 2.0f32;
@@ -1031,12 +1092,12 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
   // Clean minimal placeholder (never cluttered with shortcut hints).
   hint := "Message OpenAgents";
-  if !running && !cp_has_model_picker(s) && !s[0].inkling {
+  if !running && cp_local_unavailable(s) {
     st := s[0].local_dl_state;
     hint = ifx st == CP_LOCAL_STARTING then "Loading model…"
-           else ifx st == CP_LOCAL_VERIFYING then "Verifying Inkling 2 Mini…"
-           else ifx st == CP_LOCAL_DOWNLOADING then "Downloading Inkling 2 Mini…"
-           else "Inkling 2 Mini is not ready";
+           else ifx st == CP_LOCAL_VERIFYING then "Verifying local model…"
+           else ifx st == CP_LOCAL_DOWNLOADING then "Downloading local model…"
+           else "Click the model below to download";
   }
   has_voice := cp_flag(s, DC_FLAG_VOICE);
   mic_side := cast(f32) ZC_CONTROL; mic_gap := 6.0f32;
@@ -1359,24 +1420,28 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   k := f[0].skin; sh := f[0].sheet; th := cp_theme();
   z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
   glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
-  pw := 288.0f32;
+  pw := 316.0f32;
   if pw > cw { pw = cw; }
-  pad := 6.0f32;
+  compact := s[0].show_other_models;
+  pad := ifx compact then 5.0f32 else 6.0f32;
   nm := cp_models(s);
-  rh := ifx nm > 8 then 36.0f32 else ifx nm >= 4 then 38.0f32 else 42.0f32;
-  div_h := 7.0f32;
-  prh := 34.0f32;
-  lrh := 36.0f32;
-  show_local_row := cp_has_model_picker(s);
-  show_prov_row := true;
-  footer_h := (ifx show_prov_row || show_local_row then div_h else 0.0f32)
+  rh := ifx !compact then 42.0f32 else ifx nm > 8 then 32.0f32 else 34.0f32;
+  div_h := ifx compact then 5.0f32 else 7.0f32;
+  lrh := ifx compact then 32.0f32 else 36.0f32;
+  prh := 24.0f32;
+  orh := ifx compact then 24.0f32 else 36.0f32;
+  show_local_row := true;
+  show_others_row := true;
+  show_prov_row := s[0].show_other_models;
+  footer_h := div_h
+            + (ifx show_local_row then lrh else 0.0f32)
             + (ifx show_prov_row then prh else 0.0f32)
-            + (ifx show_local_row then lrh else 0.0f32);
+            + (ifx show_others_row then orh else 0.0f32);
   ph := pad * 2 + cast(f32) nm * rh + footer_h;
   px := m_x;
   if px + pw > x + cw { px = x + cw - pw; }
   if px < x { px = x; }
-  below_y := foot_y + k.cmp.chip_h + 6.0f32;
+  below_y := foot_y;
   py := ifx below_y + ph <= h - 8.0f32 then below_y else box_y - ph - 6.0f32;
   if py < 8.0f32 { py = 8.0f32; }
   menu_r := 12.0f32;
@@ -1390,6 +1455,8 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32, ifx glass then opacity(th.menu, 0.8) else th.menu, th.line));
   card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
   sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
+  sub_face := ifx compact then k.menu_small.face else k.small.face;
+  sub_line := ifx compact then k.menu_small.line else k.small.line;
   mb: [32] u8;
   for mi: 0..<cp_models(s) {
     ry := py + pad + cast(f32) mi * rh;
@@ -1407,10 +1474,10 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     }
     tx := px + pad + 10.0f32;
     tw := pw - 2 * pad - 34.0f32;
-    ty1 := ifx nm > 8 then 2.0f32 else ifx nm >= 4 then 3.0f32 else 4.0f32;
-    ty2 := ifx nm > 8 then 18.0f32 else ifx nm >= 4 then 19.0f32 else 22.0f32;
+    ty1 := ifx !compact then 4.0f32 else ifx nm > 8 then 1.0f32 else 2.0f32;
+    ty2 := ifx !compact then 22.0f32 else ifx nm > 8 then 17.0f32 else 18.0f32;
     _ := sheet_text(sh, f[0].m, -1, tx, ry + ty1, k.label.line, k.label.face, z_ink, app_fit(f, k.label.face, label, tw));
-    _ := sheet_text(sh, f[0].m, -1, tx, ry + ty2, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, desc, tw));
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + ty2, sub_line, sub_face, z_sec, app_fit(f, sub_face, desc, tw));
     if sel {
       ck := 14.0f32;
       sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10.0f32 - ck, ry + (rh - ck) / 2, ck, ck, z_ink));
@@ -1418,11 +1485,29 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
   }
   fy := py + pad + cast(f32) nm * rh;
-  if show_prov_row || show_local_row {
-    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad + 6.0f32, fy + 3.0f32, pw - 2 * pad - 12.0f32, 1.0f32, 0, 0, th.line, Rgba.{}));
-    fy += div_h;
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad + 6.0f32, fy + (div_h - 1.0f32) / 2.0f32, pw - 2 * pad - 12.0f32, 1.0f32, 0, 0, th.line, Rgba.{}));
+  fy += div_h;
+  // Local Models action row (#13826, #14028): always reachable to switch Inkling variants, verify SHA-256, or manage storage.
+  if show_local_row {
+    lry := fy;
+    lhov := uiframe_hover(f, KEYED_LAZY, "coder.model.local");
+    llabel := "Manage Local Models…";
+    ldesc := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else ifx s[0].inkling then "Installed · Switch variants & manage storage" else "Switch variants, download or import .gguf";
+    lrow := uiframe_semantic(f, "coder.model.local", EL_BUTTON, llabel, px + pad, lry, pw - 2 * pad, lrh, 0, CP_MODEL_LOCAL);
+    elt_value(f[0].rows, lrow, ldesc);
+    if lhov > 0 {
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, lry + 1.0f32, pw - 2 * pad, lrh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, lhov), Rgba.{}));
+    }
+    ltx := px + pad + 10.0f32;
+    ltw := pw - 2 * pad - 20.0f32;
+    lty1 := ifx compact then 1.0f32 else 2.0f32;
+    lty2 := ifx compact then 17.0f32 else 19.0f32;
+    _ := sheet_text(sh, f[0].m, -1, ltx, lry + lty1, k.label.line, k.label.face, z_sec, app_fit(f, k.label.face, llabel, ltw));
+    _ := sheet_text(sh, f[0].m, -1, ltx, lry + lty2, sub_line, sub_face, z_sec, app_fit(f, sub_face, ldesc, ltw));
+    sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
+    fy += lrh;
   }
-  // Providers action row: opens Settings -> Providers to sign into Antigravity & manage models (T3 parity).
+  // Providers action row: shown only after the user opts into seeing other models.
   if show_prov_row {
     phov := uiframe_hover(f, KEYED_LAZY, "coder.model.providers");
     plabel := ifx s[0].agy_models_n > 0 then "Manage Providers…" else "Connect Antigravity…";
@@ -1434,27 +1519,30 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     }
     ptx := px + pad + 10.0f32;
     ptw := pw - 2 * pad - 20.0f32;
-    _ := sheet_text(sh, f[0].m, -1, ptx, fy + 1.0f32, k.label.line, k.label.face, ifx s[0].agy_models_n > 0 then z_sec else z_ink, app_fit(f, k.label.face, plabel, ptw));
-    _ := sheet_text(sh, f[0].m, -1, ptx, fy + 17.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, pdesc, ptw));
+    _ := sheet_text(sh, f[0].m, -1, ptx, fy + (prh - k.label.line) / 2.0f32, k.label.line, k.label.face, ifx s[0].agy_models_n > 0 then z_sec else z_ink, app_fit(f, k.label.face, plabel, ptw));
     sheet_hit(sh, UIFRAME_HIT, prow, 0, px + pad, fy, pw - 2 * pad, prh);
     fy += prh;
   }
-  // Local Models action row (#13826, #13825): shown in multi-model mode; in single-model mode Inkling 2 Mini is the sole option.
-  if show_local_row {
-    lry := fy;
-    lhov := uiframe_hover(f, KEYED_LAZY, "coder.model.local");
-    llabel := ifx s[0].inkling then "Manage Local Models…" else "Inkling 2 Mini (Local)";
-    ldesc := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else ifx s[0].inkling then "Installed · Psionic Metal" else "Not downloaded (17.6 GB) · Download…";
-    lrow := uiframe_semantic(f, "coder.model.local", EL_BUTTON, llabel, px + pad, lry, pw - 2 * pad, lrh, 0, CP_MODEL_LOCAL);
-    elt_value(f[0].rows, lrow, ldesc);
-    if lhov > 0 {
-      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, lry + 1.0f32, pw - 2 * pad, lrh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, lhov), Rgba.{}));
+  // Explicit user opt-in toggle to show/hide non-Inkling models.
+  if show_others_row {
+    ohov := uiframe_hover(f, KEYED_LAZY, "coder.model.others");
+    olabel := ifx s[0].show_other_models then "Hide other models" else "Show other models…";
+    odesc := ifx s[0].show_other_models then "Show only local Inkling model" else "Antigravity, cloud & external CLI models";
+    orow := uiframe_semantic(f, "coder.model.others", EL_BUTTON, olabel, px + pad, fy, pw - 2 * pad, orh, 0, CP_MODEL_TOGGLE_OTHERS);
+    elt_value(f[0].rows, orow, odesc);
+    if ohov > 0 {
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, fy + 1.0f32, pw - 2 * pad, orh - 2.0f32, k.cmp.chip_radius, 0, opacity(z_hov, ohov), Rgba.{}));
     }
-    ltx := px + pad + 10.0f32;
-    ltw := pw - 2 * pad - 20.0f32;
-    _ := sheet_text(sh, f[0].m, -1, ltx, lry + 2.0f32, k.label.line, k.label.face, ifx s[0].inkling then z_sec else z_ink, app_fit(f, k.label.face, llabel, ltw));
-    _ := sheet_text(sh, f[0].m, -1, ltx, lry + 18.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, ldesc, ltw));
-    sheet_hit(sh, UIFRAME_HIT, lrow, 0, px + pad, lry, pw - 2 * pad, lrh);
+    otx := px + pad + 10.0f32;
+    otw := pw - 2 * pad - 20.0f32;
+    if compact {
+      _ := sheet_text(sh, f[0].m, -1, otx, fy + (orh - k.label.line) / 2.0f32, k.label.line, k.label.face, z_sec, app_fit(f, k.label.face, olabel, otw));
+    } else {
+      _ := sheet_text(sh, f[0].m, -1, otx, fy + 2.0f32, k.label.line, k.label.face, z_sec, app_fit(f, k.label.face, olabel, otw));
+      _ := sheet_text(sh, f[0].m, -1, otx, fy + 19.0f32, sub_line, sub_face, z_sec, app_fit(f, sub_face, odesc, otw));
+    }
+    sheet_hit(sh, UIFRAME_HIT, orow, 0, px + pad, fy, pw - 2 * pad, orh);
+    fy += orh;
   }
   if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
 }
@@ -1475,7 +1563,7 @@ cp_effort_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, e_x: f32, bo
   px := e_x;
   if px + pw > x + cw { px = x + cw - pw; }
   if px < x { px = x; }
-  below_y := foot_y + k.cmp.chip_h + 6.0f32;
+  below_y := foot_y;
   py := ifx below_y + ph <= h - 8.0f32 then below_y else box_y - ph - 6.0f32;
   if py < 8.0f32 { py = 8.0f32; }
   menu_r := 12.0f32;

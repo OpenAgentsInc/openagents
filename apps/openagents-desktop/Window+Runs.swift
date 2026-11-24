@@ -153,7 +153,7 @@ extension CoderWindow {
         }
         let useAgy = cd_model_agy(r.page) != 0
         #if OA_FULL
-        let useInkling = !useAgy && (cd_model_inkling(r.page) != 0 || !FeatureFlags.anyExtraModel)
+        let useInkling = !useAgy && (cd_model_inkling(r.page) != 0 || !ComposerModelVisibility.showOtherModels)
         let useHybrid = FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0
         let provKind = cd_model_provider(r.page)
         // Codex, Cursor, an ACP agent and Claude Code sign in on their own: no Gemini sign-in is needed
@@ -364,11 +364,15 @@ extension CoderWindow {
             }
             cd_flags_set(back, FeatureFlags.mask)
             syncLocalState(on: back)
-            syncAntigravityModels(on: back)
+            if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
             #if OA_FULL
-            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
-            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
-            if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
+            if ComposerModelVisibility.showOtherModels {
+                if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+                if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
+                if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
+            } else {
+                cd_claude(back, 0)
+            }
             cd_cloud_authed_set(back, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, FeatureFlags.isOn(.modelsGemini) ? (CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "") : "")
             #else
@@ -1036,9 +1040,9 @@ extension CoderWindow {
         if FeatureFlags.isOn(.modelsExecutor) && cd_model_hybrid(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = "hybrid-exec-v1"
-        } else if cd_model_inkling(r.page) != 0 || (!FeatureFlags.anyExtraModel && cd_model_agy(r.page) == 0) {
+        } else if cd_model_inkling(r.page) != 0 || (!ComposerModelVisibility.showOtherModels && cd_model_agy(r.page) == 0) {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
-            env["PSIONIC_MODEL"] = "inkling-2-mini"
+            env["PSIONIC_MODEL"] = LocalModelStore.entry.id
         }
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
         if FeatureFlags.isOn(.simulator) {
@@ -1048,7 +1052,7 @@ extension CoderWindow {
         #else
         if cd_model_agy(r.page) == 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
-            env["PSIONIC_MODEL"] = "inkling-2-mini"
+            env["PSIONIC_MODEL"] = LocalModelStore.entry.id
         }
         #endif
         let cwd = (r === run ? folder : r.folder).path
@@ -1088,10 +1092,16 @@ extension CoderWindow {
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
         syncLocalState(on: back)
-        syncAntigravityModels(on: back)
-        #if OA_FULL
-        if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
-        #endif
+        if ComposerModelVisibility.showOtherModels {
+            syncAntigravityModels(on: back)
+            #if OA_FULL
+            if FeatureFlags.isOn(.modelsOpenrouter) { coderApplyOpenRouter(back) }
+            if FeatureFlags.isOn(.modelsClaude) { coderApplyClaude(back) } else { cd_claude(back, 0) }
+            if FeatureFlags.isOn(.modelsExternal) { syncExternalProviders(on: back) }
+            #endif
+        } else {
+            cd_claude(back, 0)
+        }
         guard cd_take(back, page) != 0 else { cd_close(back); return false }
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id

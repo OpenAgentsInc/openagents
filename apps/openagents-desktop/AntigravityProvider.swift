@@ -2038,20 +2038,24 @@ extension CoderWindow {
                 #if OA_FULL
                 if FeatureFlags.isOn(.modelsAgy) { self.syncAntigravitySettings() }
                 #endif
-                self.syncAntigravityModels(on: self.page)
-                for r in self.runs.values where r.page != self.page { self.syncAntigravityModels(on: r.page) }
+                if ComposerModelVisibility.showOtherModels {
+                    self.syncAntigravityModels(on: self.page)
+                    for r in self.runs.values where r.page != self.page { self.syncAntigravityModels(on: r.page) }
+                }
                 self.applyProbes()
                 self.wake()
             }
         }
         syncProvidersSettingsPage()
-        syncAntigravityModels(on: page)
-        AntigravityRuntimeManager.shared.checkLatestRelease()
-        // Probe enabled Antigravity instances asynchronously at launch so already-authenticated
-        // accounts load real models into the composer picker automatically (never opens a browser).
-        if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                ProviderInstancesStore.shared.refreshAll()
+        // Do not probe or load external/Antigravity models on startup unless the user explicitly
+        // opted into seeing other models (default: load and show ONLY the active local Inkling model).
+        if ComposerModelVisibility.showOtherModels {
+            syncAntigravityModels(on: page)
+            AntigravityRuntimeManager.shared.checkLatestRelease()
+            if ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    ProviderInstancesStore.shared.refreshAll()
+                }
             }
         }
     }
@@ -2132,6 +2136,11 @@ extension CoderWindow {
             let idx = Int(cd_ps_action_idx(page))
             let on = cd_ps_inst_enabled(page, Int32(idx)) != 0
             store.setEnabled(index: idx, enabled: on)
+            if on && !ComposerModelVisibility.showOtherModels {
+                ComposerModelVisibility.showOtherModels = true
+                cd_show_other_models_set(page, 1)
+                syncAntigravityModels(on: page)
+            }
             configureWorkerEnv(run, isForeman: isForemanShown)
         case 173: // CP_ASK_PS_CONFIG
             let name = psReadField(0)

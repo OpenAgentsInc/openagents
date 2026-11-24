@@ -356,8 +356,8 @@ extension CoderWindow {
             syncExternalProviders(on: back)
             coderApplyOpenRouter(back)
             coderApplyClaude(back)
-            syncAntigravityModels(on: back)
-            cd_inkling(back, LocalModelStore.isSelectable ? 1 : 0)
+            syncLocalState(on: back)
+            if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
             let execSnap = ExecutorModelStore.scan()
             cd_settings_executor(back, execSnap.status, execSnap.lineage, execSnap.badge)
             cd_hybrid_exec(back, execSnap.selectable ? 1 : 0)

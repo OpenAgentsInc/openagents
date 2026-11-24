@@ -524,7 +524,8 @@ mk_plan_local_for :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, req_mode
   picked := mk_local_model_pick(req_model, peer_model, env_model);
   model := cast(string) k[0].pmodel[0..<mk_keep(k[0].pmodel[..], picked)];
   sb: [16] u8; strict_env := gw_env("PSIONIC_STRICT_SCHEMA", sb[..]);
-  use_strict := strict_env != "0" && (strict_env == "1" || model == "inkling-2-mini" || model == "hybrid-exec-v1" || mk_is_hybrid_model(req_model) || peer_model.count > 0);
+  is_inkling_m := model == "inkling-2-mini" || (model.count > 15 && cast(string) model[0..<15] == "inkling-2-mini-");
+  use_strict := strict_env != "0" && (strict_env == "1" || is_inkling_m || model == "hybrid-exec-v1" || mk_is_hybrid_model(req_model) || peer_model.count > 0);
   if use_strict {
     x := gw_plan_add(p, gw_psionic_strict(base, k[0].purl[..]), model, k[0].none[0..<0]);
   }

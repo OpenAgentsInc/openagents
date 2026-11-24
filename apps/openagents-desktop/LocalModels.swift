@@ -191,15 +191,26 @@ struct LocalModelCatalogEntry: Equatable {
     )
 
     static let allVariants: [LocalModelCatalogEntry] = [
-        .inkling2Mini,
         .inkling2MiniUncensoredLora,
         .inkling2MiniUncensoredQ4K,
         .inkling2MiniUncensoredIQ3S,
         .inkling2MiniUncensoredIQ2M,
+        .inkling2Mini,
         .inkling2MiniAbliteratedMix16G,
         .inkling2MiniAbliteratedMix12G,
         .inkling2MiniCustom,
     ]
+}
+
+/// Controls whether non-Inkling models (Antigravity, cloud, external CLIs) appear in the composer
+/// model picker and are probed at launch. Defaults to false so ONLY the active local Inkling model
+/// is shown and loaded unless the user explicitly asks to see other models.
+enum ComposerModelVisibility {
+    private static let key = "composer.showOtherModels"
+    static var showOtherModels: Bool {
+        get { UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
 }
 
 struct LocalModelManifest: Codable, Equatable {
@@ -252,10 +263,12 @@ enum LocalModelStore {
     }
 
     /// Best default variant for this Mac's unified memory when the user has not explicitly picked one yet.
+    /// Defaults to our gBench-verified uncensored champion on every RAM tier (LoRA over IQ4_NL at >= 32 GB,
+    /// AD-Q4_K at 24 GB, AD-IQ3_S at 16 GB, AD-IQ2_M at 12 GB).
     static func defaultVariantId() -> String {
         if let catalogOverride { return catalogOverride.id }
-        if isFileInstalled(for: .inkling2Mini) || physicalMemoryGB >= 32 {
-            return LocalModelCatalogEntry.inkling2Mini.id
+        if physicalMemoryGB >= 32 {
+            return LocalModelCatalogEntry.inkling2MiniUncensoredLora.id
         }
         if physicalMemoryGB >= 24 { return LocalModelCatalogEntry.inkling2MiniUncensoredQ4K.id }
         if physicalMemoryGB >= 16 { return LocalModelCatalogEntry.inkling2MiniUncensoredIQ3S.id }
@@ -473,9 +486,11 @@ enum LocalModelStore {
     }
 
     static func uiState() -> UIState {
-        let expB = effectiveExpectedBytes(for: entry)
+        let tgt = activeDownloadEntry
+        let expB = effectiveExpectedBytes(for: tgt)
+        let partB = partialBytes(for: tgt)
         let totalMB = Int32(expB / (1024 * 1024))
-        let dlMB = Int32((isInstalled ? expB : partialBytes) / (1024 * 1024))
+        let dlMB = Int32((isInstalled ? expB : partB) / (1024 * 1024))
         let hwOk: Int32 = anyVariantSupported ? 1 : 0
         let ram = Int32(physicalMemoryGB)
         if isVerifying {
@@ -535,10 +550,39 @@ enum LocalModelStore {
     static var totalCacheDiskUsageBytes: Int64 {
         catalog.reduce(Int64(0)) { $0 + weightsBytes(for: $1) + partialBytes(for: $1) }
     }
-    static var remainingDownloadBytes: Int64 { max(0, expectedBytes - partialBytes) }
+
+    /// Next file to download to make `entry` ready: for a LoRA overlay whose base IQ4_NL weights are
+    /// not yet verified on disk, download the base first and automatically chain the LoRA adapter after.
+    static var nextDownloadTarget: LocalModelCatalogEntry {
+        if entry.isLoraOverlay, let base = baseEntry, !isFileInstalled(for: base) {
+            return base
+        }
+        return entry
+    }
+
+    /// Entry whose download/partial progress is actively tracked for UI display.
+    static var activeDownloadEntry: LocalModelCatalogEntry {
+        downloadTargetEntry ?? nextDownloadTarget
+    }
+
+    static var remainingDownloadBytes: Int64 {
+        var rem: Int64 = 0
+        if entry.isLoraOverlay, let base = baseEntry, !isFileInstalled(for: base) {
+            rem += max(0, base.expectedBytes - partialBytes(for: base))
+        }
+        if !isFileInstalled(for: entry) && entry.expectedBytes > 0 {
+            rem += max(0, entry.expectedBytes - partialBytes(for: entry))
+        }
+        return rem
+    }
+
     static var requiredFreeDiskBytes: Int64 {
-        guard expectedBytes > 0 else { return 0 }
-        return remainingDownloadBytes + entry.diskHeadroomBytes
+        let rem = remainingDownloadBytes
+        guard rem > 0 else { return 0 }
+        let headroom = (entry.isLoraOverlay && needsBaseModel)
+            ? (baseEntry?.diskHeadroomBytes ?? entry.diskHeadroomBytes)
+            : entry.diskHeadroomBytes
+        return rem + headroom
     }
     static var hasEnoughDiskForDownload: Bool { availableDiskBytes() >= requiredFreeDiskBytes }
 
@@ -596,15 +640,22 @@ enum LocalModelStore {
         hardwareSupported(for: item) && isInstalled(for: item)
     }
 
+    static func hasUnverifiedWeights(for item: LocalModelCatalogEntry) -> Bool {
+        let wb = weightsBytes(for: item)
+        if item.expectedBytes > 0 {
+            return wb == item.expectedBytes && !manifestIsValid(for: item)
+        }
+        return wb > 0 && !manifestIsValid(for: item)
+    }
+
     static var isInstalled: Bool { isInstalled(for: entry) }
     static var isFileInstalled: Bool { isFileInstalled(for: entry) }
     static var needsBaseModel: Bool { entry.isLoraOverlay && !isBaseInstalled(for: entry) }
     static var hasUnverifiedWeights: Bool {
-        let wb = weightsBytes
-        if entry.expectedBytes > 0 {
-            return wb == entry.expectedBytes && !manifestIsValid()
+        if entry.isLoraOverlay, let base = baseEntry, hasUnverifiedWeights(for: base) {
+            return true
         }
-        return wb > 0 && !manifestIsValid()
+        return hasUnverifiedWeights(for: entry)
     }
     static var isSelectable: Bool { isSelectable(for: entry) }
 
@@ -666,13 +717,15 @@ enum LocalModelStore {
     static private(set) var etaSeconds: Double = -1
     static var lastError: String?
 
-    static var hasPartial: Bool { partialBytes > 0 }
+    static var hasPartial: Bool { partialBytes(for: activeDownloadEntry) > 0 }
     static var downloadPct: Int {
-        let expB = effectiveExpectedBytes(for: entry)
-        guard expB > 0 else { return isFileInstalled ? 100 : 0 }
-        let b = isFileInstalled ? expB : partialBytes
+        let tgt = activeDownloadEntry
+        let expB = effectiveExpectedBytes(for: tgt)
+        let installedTgt = isFileInstalled(for: tgt)
+        guard expB > 0 else { return installedTgt ? 100 : 0 }
+        let b = installedTgt ? expB : partialBytes(for: tgt)
         let pct = Int((Double(b) / Double(expB)) * 100.0)
-        return isFileInstalled ? 100 : min(99, max(0, pct))
+        return installedTgt ? 100 : min(99, max(0, pct))
     }
 
     static var state: LocalModelState {
@@ -895,20 +948,34 @@ enum LocalModelStore {
     /// Automatically runs one-time background SHA-256 verification when an unmanifested GGUF already exists on disk.
     static func verifyExistingIfNeeded(onUpdate: @escaping () -> Void) {
         guard hardwareSupported, !isDownloading, !isVerifying, hasUnverifiedWeights else { return }
-        let key = "\(weightsURL.path)#\(weightsMtime)#\(weightsBytes)"
+        let target: LocalModelCatalogEntry
+        if entry.isLoraOverlay, let base = baseEntry, hasUnverifiedWeights(for: base) {
+            target = base
+        } else {
+            target = entry
+        }
+        let url = weightsURL(for: target)
+        let key = "\(url.path)#\(weightsMtime(for: target))#\(weightsBytes(for: target))"
         if autoVerifyAttemptedPath == key { return }
         autoVerifyAttemptedPath = key
-        verifyInstalledNow(onUpdate: onUpdate)
+        verifyInstalledNow(for: target, onUpdate: onUpdate)
     }
 
     /// User-triggered or startup background streaming SHA-256 check on weightsURL.
-    static func verifyInstalledNow(onUpdate: @escaping () -> Void) {
-        guard !isDownloading, !isVerifying, weightsBytes > 0 else { return }
+    static func verifyInstalledNow(for explicitTarget: LocalModelCatalogEntry? = nil, onUpdate: @escaping () -> Void) {
+        let target: LocalModelCatalogEntry
+        if let explicitTarget {
+            target = explicitTarget
+        } else if entry.isLoraOverlay, let base = baseEntry, hasUnverifiedWeights(for: base) {
+            target = base
+        } else {
+            target = entry
+        }
+        guard !isDownloading, !isVerifying, weightsBytes(for: target) > 0 else { return }
         isVerifying = true
         verifyPct = 0
         lastError = nil
         onUpdate()
-        let target = entry
         let url = weightsURL(for: target)
         let expHash = target.expectedSHA256
         let expBytes = target.expectedBytes
@@ -940,6 +1007,9 @@ enum LocalModelStore {
                     lastError = (res.error ?? "SHA-256 verification failed.") + " Delete and re-download to restore."
                 }
                 onUpdate()
+                if res.ok && target.id != entry.id && hasUnverifiedWeights(for: entry) {
+                    verifyInstalledNow(for: entry, onUpdate: onUpdate)
+                }
             }
         }
     }
@@ -977,6 +1047,69 @@ enum LocalModelStore {
         return "[" + String(repeating: "█", count: filled) + String(repeating: "░", count: empty) + "] \(clamped)%"
     }
 
+    /// Canonical model id pushed into the composer model picker for the active local Inkling variant.
+    static var pickerModelId: String { entry.id }
+
+    /// Display name shown in the composer model chip and dropdown for the active local Inkling variant.
+    static var pickerModelLabel: String {
+        if entry.isCustom, let orig = customDisplayName, !orig.isEmpty, isFileInstalled {
+            return "Inkling 2 Mini (\(orig))"
+        }
+        return entry.name
+    }
+
+    /// Concise subtitle shown under the active Inkling model row in the composer dropdown.
+    static func pickerModelDesc(serverStarting: Bool = false, serverError: String? = nil) -> String {
+        if isSelectable {
+            if let err = serverError, !err.isEmpty {
+                return "Server error · Click to retry"
+            }
+            if serverStarting {
+                return "Loading model… · Psionic Metal"
+            }
+            if entry.isLoraOverlay {
+                return "Psionic Metal · IQ4_NL + LoRA · Local"
+            }
+            return "Psionic Metal · \(entry.quantization) · Local"
+        }
+        switch state {
+        case .unsupportedHardware:
+            return "Requires \(entry.minRamGB) GB RAM (\(physicalMemoryGB) GB detected)"
+        case .verifying:
+            return "Verifying SHA-256… (\(verifyPct)%)"
+        case .downloading:
+            let tgt = activeDownloadEntry
+            let stepTag = (entry.isLoraOverlay && tgt.id != entry.id) ? "base " : ""
+            let done = formatBytes(partialBytes(for: tgt))
+            let tot = formatBytes(effectiveExpectedBytes(for: tgt))
+            if bytesPerSec > 1024 {
+                return "Downloading \(stepTag)\(downloadPct)% · \(done) / \(tot) · \(formatSpeed(bytesPerSec))"
+            }
+            return "Downloading \(stepTag)\(downloadPct)% · \(done) / \(tot)"
+        case .paused:
+            return "Paused \(downloadPct)% · Click to resume"
+        case .installed:
+            return entry.isLoraOverlay
+                ? "Psionic Metal · IQ4_NL + LoRA · Local"
+                : "Psionic Metal · \(entry.quantization) · Local"
+        case .notInstalled:
+            if entry.isCustom {
+                return "Not imported · Click to import .gguf"
+            }
+            if entry.requiresHFToken && effectiveHFToken == nil {
+                return "HF token required · Click to configure"
+            }
+            if hasUnverifiedWeights {
+                return "Unverified weights · Click to verify"
+            }
+            let need = remainingDownloadBytes > 0 ? remainingDownloadBytes : expectedBytes
+            if need > 0 {
+                return "Not downloaded (\(formatBytes(need))) · Click to download"
+            }
+            return "Not downloaded · Click to download"
+        }
+    }
+
     /// Concise live status shown in Settings > Models and in the composer model picker footer.
     static func statusSummary() -> String {
         let prefix = entry.id == LocalModelCatalogEntry.inkling2Mini.id ? "" : "\(entry.shortLabel) · "
@@ -986,27 +1119,34 @@ enum LocalModelStore {
         case .verifying:
             return "\(prefix)Verifying SHA-256… (\(verifyPct)%)"
         case .downloading:
-            let done = formatBytes(partialBytes)
-            let tot = formatBytes(expectedBytes)
+            let tgt = activeDownloadEntry
+            let stepTag = (entry.isLoraOverlay && tgt.id != entry.id) ? "base " : ""
+            let done = formatBytes(partialBytes(for: tgt))
+            let tot = formatBytes(effectiveExpectedBytes(for: tgt))
             if bytesPerSec > 1024 {
-                return "\(prefix)Downloading \(downloadPct)% · \(done) / \(tot) · \(formatSpeed(bytesPerSec)) · ETA \(formatETA(etaSeconds))"
+                return "\(prefix)Downloading \(stepTag)\(downloadPct)% · \(done) / \(tot) · \(formatSpeed(bytesPerSec)) · ETA \(formatETA(etaSeconds))"
             }
-            return "\(prefix)Downloading \(downloadPct)% · \(done) / \(tot)"
+            return "\(prefix)Downloading \(stepTag)\(downloadPct)% · \(done) / \(tot)"
         case .paused:
-            return "\(prefix)Paused \(downloadPct)% · \(formatBytes(partialBytes)) / \(formatBytes(expectedBytes)) · Resume…"
+            let tgt = activeDownloadEntry
+            return "\(prefix)Paused \(downloadPct)% · \(formatBytes(partialBytes(for: tgt))) / \(formatBytes(effectiveExpectedBytes(for: tgt))) · Resume…"
         case .installed:
-            return "\(prefix)Installed (\(formatBytes(weightsBytes)) · SHA-256 verified)"
+            let installedSize = entry.isLoraOverlay
+                ? (weightsBytes(for: baseEntry ?? .inkling2Mini) + weightsBytes)
+                : weightsBytes
+            return "\(prefix)Installed (\(formatBytes(installedSize)) · SHA-256 verified)"
         case .notInstalled:
             if entry.isCustom {
                 return "\(prefix)Import a local Inkling 2 Mini .gguf…"
             }
             if isFileInstalled && needsBaseModel {
-                return "\(prefix)LoRA installed · Needs Official IQ4_NL base"
+                return "\(prefix)LoRA installed · Needs Official IQ4_NL base (\(formatBytes(remainingDownloadBytes)))"
             }
             if hasUnverifiedWeights {
                 return "\(prefix)Unverified weights on disk · Verify SHA-256"
             }
-            return "\(prefix)Not downloaded (\(formatBytes(expectedBytes))) · Download…"
+            let need = remainingDownloadBytes > 0 ? remainingDownloadBytes : expectedBytes
+            return "\(prefix)Not downloaded (\(formatBytes(need))) · Download…"
         }
     }
 
@@ -1020,6 +1160,7 @@ enum LocalModelStore {
             sizeStr = formatBytes(item.expectedBytes)
         }
         var tags: [String] = [sizeStr, "\(item.minRamGB) GB+"]
+        if item.id == defaultVariantId() { tags.append("Default") }
         if item.requiresHFToken { tags.append("HF Gated") }
         if isInstalled(for: item) {
             tags.append("Ready")
@@ -1038,7 +1179,7 @@ enum LocalModelStore {
         let ramGB = physicalMemoryGB
         let freeBytes = availableDiskBytes()
         let ramMark = hardwareSupported ? "✓" : "✗"
-        let diskOK = isFileInstalled || entry.isCustom || hasEnoughDiskForDownload
+        let diskOK = isInstalled || entry.isCustom || hasEnoughDiskForDownload
         let diskMark = diskOK ? "✓" : "✗"
         let ctxK = recommendedContextTokens / 1024
 
@@ -1088,22 +1229,27 @@ enum LocalModelStore {
             lines.append("Status: Verifying GGUF & SHA-256 checksum on disk…")
             lines.append(progressBar(pct: verifyPct))
         case .downloading:
+            let tgt = activeDownloadEntry
+            let stepNote = (entry.isLoraOverlay && tgt.id != entry.id)
+                ? "Downloading Official IQ4_NL base (LoRA downloads next)"
+                : "Downloading from Hugging Face (resumable)"
             lines.append("")
-            lines.append("Status: Downloading from Hugging Face (resumable)")
-            lines.append("\(progressBar(pct: downloadPct))  \(formatBytes(partialBytes)) / \(formatBytes(expectedBytes))")
+            lines.append("Status: \(stepNote)")
+            lines.append("\(progressBar(pct: downloadPct))  \(formatBytes(partialBytes(for: tgt))) / \(formatBytes(effectiveExpectedBytes(for: tgt)))")
             lines.append("Speed: \(formatSpeed(bytesPerSec)) · ETA: \(formatETA(etaSeconds))")
         case .paused:
+            let tgt = activeDownloadEntry
             lines.append("")
             lines.append("Status: Download paused (partial file kept for resume)")
-            lines.append("\(progressBar(pct: downloadPct))  \(formatBytes(partialBytes)) / \(formatBytes(expectedBytes))")
+            lines.append("\(progressBar(pct: downloadPct))  \(formatBytes(partialBytes(for: tgt))) / \(formatBytes(effectiveExpectedBytes(for: tgt)))")
         case .notInstalled:
             lines.append("")
             if entry.isCustom {
                 lines.append("Status: No custom .gguf imported yet. Click 'Import Local .gguf…' to load any Inkling 2 Mini GGUF checkpoint.")
             } else if entry.isLoraOverlay && isFileInstalled && needsBaseModel {
-                lines.append("Status: LoRA adapter is verified on disk, but the base Official IQ4_NL checkpoint (17.63 GB) is not installed yet. Switch to Official IQ4_NL to download the base weights, or pick a standalone Uncensored quant.")
+                lines.append("Status: LoRA adapter is verified on disk, but the Official IQ4_NL base (17.63 GB) is not installed yet. Click Download Base to install it while keeping Uncensored LoRA active.")
             } else if entry.isLoraOverlay && needsBaseModel {
-                lines.append("Status: Ready to download the 43.8 MB LoRA adapter (also requires Official IQ4_NL base checkpoint installed).")
+                lines.append("Status: Ready to download Official IQ4_NL base (17.63 GB) + 43.8 MB Uncensored LoRA adapter (resumable, SHA-256 verified).")
             } else if hasUnverifiedWeights {
                 lines.append("Status: Checkpoint found on disk without a verified SHA-256 manifest. Click Verify SHA-256 to authenticate it.")
             } else if !hasEnoughDiskForDownload {
@@ -1167,17 +1313,20 @@ enum LocalModelStore {
     }
 
     /// Starts or resumes a resumable download (`curl -C -`), tracks speed/ETA, and verifies SHA-256 on completion.
+    /// For a LoRA overlay whose base IQ4_NL checkpoint is not yet installed, downloads and verifies the base first
+    /// while keeping the LoRA variant active, then automatically chains downloading the 43.8 MB LoRA adapter.
     /// For gated Hugging Face repos, passes Authorization header exclusively via `curl -K -` stdin (never argv).
     static func startDownload(onUpdate: @escaping () -> Void) {
         guard !isDownloading, !isVerifying else { return }
-        let target = entry
+        let active = entry
+        let target = nextDownloadTarget
         guard !target.isCustom, !target.downloadURL.isEmpty else {
             lastError = "Use 'Import Local .gguf…' to load a custom local checkpoint."
             onUpdate()
             return
         }
-        guard hardwareSupported(for: target) else {
-            lastError = "\(target.name) requires at least \(target.minRamGB) GB unified memory (\(physicalMemoryGB) GB detected)."
+        guard hardwareSupported(for: active) && hardwareSupported(for: target) else {
+            lastError = "\(active.name) requires at least \(active.minRamGB) GB unified memory (\(physicalMemoryGB) GB detected)."
             onUpdate()
             return
         }
@@ -1253,6 +1402,10 @@ enum LocalModelStore {
                             isVerifying = false
                             verifyPct = res.ok ? 100 : 0
                             onUpdate()
+                            // If we just installed the base IQ4_NL for an active LoRA overlay, chain the LoRA adapter automatically.
+                            if res.ok && target.id != entry.id && !isFileInstalled(for: entry) {
+                                startDownload(onUpdate: onUpdate)
+                            }
                         }
                     }
                 } else {
@@ -1307,7 +1460,7 @@ enum LocalModelStore {
 
     /// Cancels an active or paused download and deletes any `.part` file cleanly.
     static func cancelDownload(onUpdate: (() -> Void)? = nil) {
-        let target = downloadTargetEntry ?? entry
+        let target = activeDownloadEntry
         cancelRequested = true
         pauseRequested = false
         stopProgressTimer()

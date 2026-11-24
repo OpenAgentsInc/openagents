@@ -131,10 +131,11 @@ CP_ASK_GEMINI_KEY :: 38;    // Settings > Models > Gemini API key dialog
 CP_ASK_INSTRUCTIONS :: 44;  // Settings > General > Agent instructions: the editor (~/.openagents/instructions.md, #13808)
 CP_ASK_INSTRUCTIONS_RESET :: 45;  // Settings > General > Agent instructions: Reset to default (#13808)
 CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and manager UI (#13826)
-CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding: start downloading Inkling 2 Mini
-CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding: cancel Inkling 2 Mini download
+CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding / composer picker: start downloading active Inkling variant
+CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding / composer bar: cancel Inkling download
 CP_ASK_AGY_CONNECT :: 162;    // First-run onboarding where Inkling cannot run: install agy if needed, sign in, use Antigravity
 CP_ASK_WORKTREE_TOGGLE :: 163; // New-chat composer foot checkbox: persist sticky new-chat worktree preference (coder_page_worktree)
+CP_ASK_SHOW_OTHER_MODELS :: 189; // Composer model picker footer: persist Show/Hide other models toggle (coder_page_show_other_models)
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
@@ -168,6 +169,7 @@ CP_PERMIT_OPT :: 75;        // an allow/choice button on the interactive permiss
 CP_PERMIT_DENY :: 76;       // the Deny button on the interactive permission card (permit.coax; #13831)
 CP_MODEL_LOCAL :: 395;      // composer model picker footer row: open Local Models downloader/manager (#13826)
 CP_MODEL_PROVIDERS :: 396;  // composer model picker footer row: open Settings -> Providers
+CP_MODEL_TOGGLE_OTHERS :: 397; // composer model picker footer row: show/hide non-Inkling models on user request
 CP_AGY_MODELS_MAX :: 16;    // max loaded Antigravity models surfaced individually in the composer picker
 CP_AGY_PREFIX :: "agy:";    // canonical saved model id prefix for Antigravity models (avoids Microcoder collision)
 CP_EFF_BIT_LOW :: 1; CP_EFF_BIT_MED :: 2; CP_EFF_BIT_HIGH :: 4; CP_EFF_BIT_XHIGH :: 8;
@@ -309,8 +311,13 @@ CoderPage :: struct {
   claude: bool;               // Claude Code is installed here: a chat may run on it, and hand tasks to it
   claude_effort: [CP_CLAUDE_MODELS] int;   // Settings > Models: each Claude model's thinking level less CP_CLAUDE_EFFORT_START (0: high), so a new page starts at high
   orch_claude: bool; orch_model: int;   // Settings > Models: new chats start on Claude (which of CP_CLAUDE_ID), not Neon
-  agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
-  inkling: bool;              // Inkling 2 Mini local checkpoint is installed on >=32GB Mac: shown in the model picker (#13825)
+  agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker when show_other_models is on
+  inkling: bool;              // active Inkling 2 Mini local variant is installed & verified on disk (#13825, #14028)
+  show_other_models: bool;    // false by default: show ONLY the active local Inkling variant unless user explicitly requests seeing others
+  inkling_id: [64] u8; inkling_id_n: int;         // active local Inkling variant id (e.g. "inkling-2-mini-uncensored-lora")
+  inkling_label: [96] u8; inkling_label_n: int;   // active local Inkling variant display name
+  inkling_desc: [160] u8; inkling_desc_n: int;    // active local Inkling variant picker subtitle
+  inkling_meta: [160] u8;                         // formatted "Psionic Metal · <label>" for cp_model_meta
   hybrid_exec: bool;          // Hybrid Executor (hybrid-exec-v1) verified Ready (base + 4/4 Class-E SHA-256 modules, #13924)
   new_chat_worktree: bool;    // sticky preference: create an isolated git worktree on new chats (default false)
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
@@ -550,20 +557,23 @@ CpCheckStore :: struct {
 cp_flag :: (s: [] CoderPage, flag: int) -> bool {
   return s.count > 0 && dc_flag_on(s[0].flags, flag);
 }
-// True when any extra non-Inkling model flag is on or Antigravity has loaded models in core Providers.
-// Off in the Inkling-only first release until Antigravity is authenticated and models are loaded.
+// True when the user explicitly opted into seeing other models AND any extra non-Inkling
+// model flag is on or Antigravity has loaded models in core Providers.
+// Off by default so ONLY the active local Inkling variant is shown and loaded until requested.
 cp_has_model_picker :: (s: [] CoderPage) -> bool {
-  return s.count > 0 && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0);
+  return s.count > 0 && s[0].show_other_models && (dc_flags_any_extra_model(s[0].flags) || s[0].agy || s[0].agy_models_n > 0);
 }
 
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;   // the checks see every feature; per-flag & release-set checks turn them off
+  p[0].show_other_models = true;
   p[0].cloud_authed = true;
   p[0].local_os_ok = true;
   p[0].local_hw_ok = true;
   p[0].local_ram_gb = 64;
+  p[0].model = cp_model_start(p);
   return p;
 }
 // A second page's storage in a check that holds two (a chat taken or read back): a few turns.
@@ -584,6 +594,7 @@ cp_check_lean :: (p: [] CoderPage, st: [] CpCheckLean) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
+  p[0].show_other_models = true;
   p[0].cloud_authed = true;
   p[0].local_os_ok = true;
   p[0].local_hw_ok = true;
@@ -607,6 +618,7 @@ cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   p[0].flags = DC_FLAGS_ALL;
   p[0].experimental = true;
+  p[0].show_other_models = true;
   p[0].cloud_authed = true;
   p[0].local_os_ok = true;
   p[0].local_hw_ok = true;
@@ -629,7 +641,8 @@ cp_init :: (s: [] CoderPage) {
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].notify_mode = CP_NOTIFY_DEFAULT;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
-  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false; s[0].effort_menu = false; s[0].effort_x = 0; s[0].orch_model = CP_CLAUDE_START;
+  start_m := cp_model_start(s);
+  s[0].model = ifx start_m >= 0 then start_m else CP_MODEL_DEFAULT; s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort_menu = false; s[0].effort_x = 0; s[0].orch_model = CP_CLAUDE_START;
   s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
   cp_git_init(s);

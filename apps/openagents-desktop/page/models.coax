@@ -37,10 +37,44 @@ cp_has_inkling_neon :: (s: [] CoderPage) -> bool {
   return s.count > 0 && cp_flag(s, DC_FLAG_MODELS_INKLING_NEON) && cp_cloud_ok(s) && s[0].inkling;
 }
 
+// Active local Inkling variant metadata pushed from host (falls back to generic Inkling 2 Mini when unset).
+cp_inkling_id :: (s: [] CoderPage) -> string {
+  if s.count > 0 && s[0].inkling_id_n > 0 { return cast(string) s[0].inkling_id[0..<s[0].inkling_id_n]; }
+  return "inkling-2-mini";
+}
+cp_inkling_label :: (s: [] CoderPage) -> string {
+  if s.count > 0 && s[0].inkling_label_n > 0 { return cast(string) s[0].inkling_label[0..<s[0].inkling_label_n]; }
+  return "Inkling 2 Mini";
+}
+cp_inkling_desc :: (s: [] CoderPage) -> string {
+  if s.count > 0 && s[0].inkling_desc_n > 0 { return cast(string) s[0].inkling_desc[0..<s[0].inkling_desc_n]; }
+  if s.count > 0 && !s[0].inkling {
+    if s[0].local_dl_state == CP_LOCAL_DOWNLOADING { return "Downloading…"; }
+    if s[0].local_dl_state == CP_LOCAL_VERIFYING { return "Verifying SHA-256…"; }
+    if !s[0].local_os_ok || !s[0].local_hw_ok { return "Requires Apple Silicon with 12 GB+ RAM"; }
+    return "Not downloaded · Click to download";
+  }
+  return "Psionic Metal · Local · 26.4B/3.4B MoE";
+}
+cp_is_inkling_id :: (name: string) -> bool {
+  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" || name == "Inkling 2 Mini (Local)" { return true; }
+  if name.count > 15 && cast(string) name[0..<15] == "inkling-2-mini-" { return true; }
+  if name.count > 15 && cast(string) name[0..<15] == "Inkling 2 Mini " { return true; }
+  return false;
+}
+// True when the currently selected model is local Inkling and its weights/server are not ready to send.
+cp_local_unavailable :: (s: [] CoderPage) -> bool {
+  return s.count > 0 && cp_is_inkling(s, cp_model_index(s)) && !s[0].inkling;
+}
+
 // Builds the single canonical list of currently available models in picker order.
+// The active local Inkling variant is ALWAYS entry 0 (even when not yet downloaded, so picking
+// it initiates download) and is the SOLE entry until the user explicitly enables show_other_models.
 cp_model_list :: (s: [] CoderPage, out: [] CpModelEntry) -> int {
   if s.count < 1 { return 0; }
   n := 0;
+  if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_INKLING, slot = 0}; n += 1; }
+  if !s[0].show_other_models { return n; }
   if cp_cloud_ok(s) {
     for i: 0..<CP_MODELS {
       if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_GEMINI, slot = i}; n += 1; }
@@ -55,11 +89,6 @@ cp_model_list :: (s: [] CoderPage, out: [] CpModelEntry) -> int {
     }
   } else if s[0].agy {
     if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_AGY, slot = 0}; n += 1; }
-  }
-  // Inkling 2 Mini is the built-in first-release model: always present in single-model release
-  // mode (all extra model flags off), and present whenever installed in multi-model dev mode.
-  if s[0].inkling || !cp_has_model_picker(s) {
-    if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_INKLING, slot = 0}; n += 1; }
   }
   if cp_flag(s, DC_FLAG_MODELS_EXECUTOR) && s[0].hybrid_exec {
     if n < out.count { out[n] = CpModelEntry.{kind = CP_MK_HYBRID, slot = 0}; n += 1; }
@@ -207,22 +236,29 @@ cp_model_restore_id :: (s: [] CoderPage, prev: string) {
 }
 
 // The entry a new chat starts on:
-// - Single-model release mode (no Antigravity / extra flags): Inkling 2 Mini.
-// - Multi-model mode: Claude when Settings picked it and Claude is enabled; else Antigravity
-//   (defaulting to Gemini 4 Neon) when Antigravity is installed; else Gemini 4 Neon when cloud
-//   is available; else Inkling when installed; else the first enabled entry (-1 if none).
+// - Default (show_other_models == false): ALWAYS our active local Inkling variant (entry 0),
+//   even when not yet downloaded (so picking it or clicking Download installs it).
+// - When the user explicitly opted into seeing other models (show_other_models == true):
+//   - Claude when Settings explicitly picked Claude as orchestrator and Claude is enabled;
+//   - Else active local Inkling whenever installed (s[0].inkling == true);
+//   - Else Antigravity or Gemini cloud if available (e.g. unsupported Mac or before local download);
+//   - Else active local Inkling (entry 0).
 cp_model_start :: (s: [] CoderPage) -> int {
   if s.count < 1 { return -1; }
-  if !cp_has_model_picker(s) { return cp_inkling_idx(s); }
+  if !s[0].show_other_models { return cp_inkling_idx(s); }
   if cp_flag(s, DC_FLAG_MODELS_CLAUDE) && s[0].orch_claude && s[0].claude {
     k := ifx s[0].orch_model >= 0 && s[0].orch_model < CP_CLAUDE_MODELS then s[0].orch_model else CP_CLAUDE_START;
     idx := cp_model_idx_of(s, CP_MK_CLAUDE, k);
     if idx >= 0 { return idx; }
   }
+  ink := cp_inkling_idx(s);
+  if ink >= 0 && s[0].inkling { return ink; }
   agy_def := cp_agy_default_idx(s);
   if agy_def >= 0 { return agy_def; }
-  if cp_cloud_ok(s) { return CP_MODEL_DEFAULT; }
-  ink := cp_inkling_idx(s);
+  if cp_cloud_ok(s) {
+    gi := cp_model_idx_of(s, CP_MK_GEMINI, 0);
+    if gi >= 0 { return gi; }
+  }
   if ink >= 0 { return ink; }
   return ifx cp_models(s) > 0 then 0 else -1;
 }
@@ -269,7 +305,7 @@ cp_model_find_exact :: (s: [] CoderPage, name: string) -> int {
     return -1;
   }
   if name == "antigravity" || name == "Antigravity" || name == "agy" { return cp_agy_default_idx(s); }
-  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" || name == "Inkling 2 Mini (Local)" { return cp_model_idx_of(s, CP_MK_INKLING, 0); }
+  if name == cp_inkling_id(s) || name == cp_inkling_label(s) || cp_is_inkling_id(name) { return cp_model_idx_of(s, CP_MK_INKLING, 0); }
   if name == "hybrid-exec-v1" || name == "hybrid-executor" || name == "Hybrid Executor" || name == "Hybrid Executor [E]" { return cp_model_idx_of(s, CP_MK_HYBRID, 0); }
   if name == "inkling-neon" || name == "hybrid-neon" || name == "inkling+neon" || name == "Inkling + Neon" { return cp_model_idx_of(s, CP_MK_INKLING_NEON, 0); }
   if name == "codex" || name == "Codex" { return cp_model_idx_of(s, CP_MK_CODEX, 0); }
@@ -317,6 +353,13 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
 // Human-readable display name for any saved model id (including models whose flag is off,
 // for kept-chat turn bylines and migration notices).
 cp_model_known_label :: (name: string) -> string {
+  if name == "inkling-2-mini-uncensored-lora" { return "Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "inkling-2-mini-uncensored-q4k" { return "Inkling 2 Mini Uncensored (AD-Q4_K)"; }
+  if name == "inkling-2-mini-uncensored-iq3s" { return "Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
+  if name == "inkling-2-mini-uncensored-iq2m" { return "Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
+  if name == "inkling-2-mini-abliterated-mix16g" { return "Inkling 2 Mini Abliterated (Mix-16G)"; }
+  if name == "inkling-2-mini-abliterated-mix12g" { return "Inkling 2 Mini Abliterated (Mix-12G)"; }
+  if name == "inkling-2-mini-custom" { return "Inkling 2 Mini (Custom Local .gguf)"; }
   if name == "inkling-2-mini" || name == "inkling" { return "Inkling 2 Mini"; }
   if name == "hybrid-exec-v1" || name == "hybrid-executor" { return "Hybrid Executor [E]"; }
   if name == "inkling-neon" || name == "hybrid-neon" { return "Inkling + Neon"; }
@@ -344,6 +387,13 @@ cp_model_known_label :: (name: string) -> string {
 }
 
 cp_model_known_meta :: (name: string) -> string {
+  if name == "inkling-2-mini-uncensored-lora" { return "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "inkling-2-mini-uncensored-q4k" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
+  if name == "inkling-2-mini-uncensored-iq3s" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
+  if name == "inkling-2-mini-uncensored-iq2m" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
+  if name == "inkling-2-mini-abliterated-mix16g" { return "Psionic Metal · Inkling 2 Mini Abliterated (Mix-16G)"; }
+  if name == "inkling-2-mini-abliterated-mix12g" { return "Psionic Metal · Inkling 2 Mini Abliterated (Mix-12G)"; }
+  if name == "inkling-2-mini-custom" { return "Psionic Metal · Inkling 2 Mini (Custom Local .gguf)"; }
   if name == "inkling-2-mini" || name == "inkling" { return "Psionic Metal · Inkling 2 Mini"; }
   if name == "hybrid-exec-v1" || name == "hybrid-executor" { return "Psionic Metal · Hybrid Executor [E]"; }
   if name == "inkling-neon" || name == "hybrid-neon" { return "Hybrid · Inkling + Gemini 4 Neon"; }
@@ -372,7 +422,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
     }
     return "antigravity";
   }
-  if e.kind == CP_MK_INKLING { return "inkling-2-mini"; }
+  if e.kind == CP_MK_INKLING { return cp_inkling_id(s); }
   if e.kind == CP_MK_HYBRID { return "hybrid-exec-v1"; }
   if e.kind == CP_MK_INKLING_NEON { return "inkling-neon"; }
   if e.kind == CP_MK_CODEX { return "codex"; }
@@ -385,7 +435,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if e.kind == CP_MK_CLAUDE { cids := CP_CLAUDE_ID; return cids[e.slot]; }
   st := cp_model_start(s);
   if st >= 0 && st != idx { return cp_model_id(s, st); }
-  return "inkling-2-mini";
+  return cp_inkling_id(s);
 }
 
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
@@ -402,7 +452,7 @@ cp_model_label :: (s: [] CoderPage, idx: int) -> string {
     }
     return "Antigravity";
   }
-  if e.kind == CP_MK_INKLING { return "Inkling 2 Mini"; }
+  if e.kind == CP_MK_INKLING { return cp_inkling_label(s); }
   if e.kind == CP_MK_HYBRID { return "Hybrid Executor [E]"; }
   if e.kind == CP_MK_INKLING_NEON { return "Inkling + Neon (Hybrid)"; }
   if e.kind == CP_MK_CODEX { return "Codex"; }
@@ -440,7 +490,7 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], mode);
     return cast(string) s[0].agy_desc[0..<n];
   }
-  if e.kind == CP_MK_INKLING { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if e.kind == CP_MK_INKLING { return cp_inkling_desc(s); }
   if e.kind == CP_MK_HYBRID {
     badge := ifx s[0].set_exec_badge_n > 0 then cast(string) s[0].set_exec_badge[0..<s[0].set_exec_badge_n] else "Exact Replay [E]";
     n := cp_out(s[0].hybrid_desc[..], "Psionic Metal · hybrid-exec-v1 · ");
@@ -587,7 +637,11 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     }
     return cp_agy_meta(s, cp_agy_shown(s));
   }
-  if e.kind == CP_MK_INKLING { return "Psionic Metal · Inkling 2 Mini"; }
+  if e.kind == CP_MK_INKLING {
+    n := cp_out(s[0].inkling_meta[..], "Psionic Metal · ");
+    n += cp_out(s[0].inkling_meta[n..<s[0].inkling_meta.count], cp_inkling_label(s));
+    return cast(string) s[0].inkling_meta[0..<n];
+  }
   if e.kind == CP_MK_HYBRID { return "Psionic Metal · Hybrid Executor [E]"; }
   if e.kind == CP_MK_INKLING_NEON { return "Hybrid · Inkling + Gemini 4 Neon"; }
   if e.kind == CP_MK_CODEX { return "Codex CLI"; }
@@ -649,7 +703,6 @@ coder_page_model_inst_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effe
 
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  was_agy := s[0].agy;
   pb: [128] u8;
   prev := "";
   if s[0].agy_prev_id_n > 0 {
@@ -659,12 +712,12 @@ coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
     prev = cp_model_save_id(s, pb[..]);
   }
   s[0].agy = on;
-  // When Antigravity becomes available on an empty new chat that was only on the Inkling
-  // or generic fallback, switch it to Antigravity's default (Gemini 4 Neon).
-  if !was_agy && on && s[0].nturns == 0 && !cp_running(s) && (prev.count == 0 || prev == "inkling-2-mini" || prev == "antigravity") {
-    s[0].model = cp_model_start(s);
-    s[0].model = cp_model_index(s);
-    return;
+  // On a machine where local Inkling cannot run (!local_os_ok || !local_hw_ok), connecting
+  // Antigravity from onboarding opts into showing it and selects Antigravity cleanly.
+  if on && !s[0].inkling && (!s[0].local_os_ok || !s[0].local_hw_ok) {
+    s[0].show_other_models = true;
+    agy_def := cp_agy_default_idx(s);
+    if agy_def >= 0 { s[0].model = agy_def; return; }
   }
   cp_model_restore_id(s, prev);
 }
@@ -673,12 +726,25 @@ coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   pb: [96] u8; prev := cp_model_save_id(s, pb[..]);
   s[0].inkling = on;
-  if on && s[0].nturns == 0 && !cp_running(s) && prev.count == 0 {
-    s[0].model = cp_model_start(s);
-    s[0].model = cp_model_index(s);
-    return;
-  }
   cp_model_restore_id(s, prev);
+}
+
+coder_page_set_inkling_info :: (s: [] CoderPage, id: string, label: string, desc: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].inkling_id_n = cp_out(s[0].inkling_id[..], id);
+  s[0].inkling_label_n = cp_out(s[0].inkling_label[..], label);
+  s[0].inkling_desc_n = cp_out(s[0].inkling_desc[..], desc);
+}
+
+coder_page_show_other_models_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  pb: [128] u8; prev := cp_model_save_id(s, pb[..]);
+  s[0].show_other_models = on;
+  cp_model_restore_id(s, prev);
+}
+
+coder_page_show_other_models :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].show_other_models;
 }
 
 coder_page_set_hybrid_exec :: (s: [] CoderPage, on: bool) #export_c #effects(all) {

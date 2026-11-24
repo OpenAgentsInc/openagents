@@ -165,15 +165,23 @@ struct LocalModelsCheck {
         check(LocalModelStore.recommendedContextTokens == 16384, "24GB ctx 16384")
         LocalModelStore.physicalMemoryGBOverride = 32
         check(LocalModelStore.hardwareSupported(for: .inkling2Mini), "32GB supports IQ4_NL")
-        check(LocalModelStore.defaultVariantId() == LocalModelCatalogEntry.inkling2Mini.id, "32GB default IQ4_NL")
+        check(LocalModelStore.hardwareSupported(for: .inkling2MiniUncensoredLora), "32GB supports Uncensored LoRA")
+        check(LocalModelStore.defaultVariantId() == LocalModelCatalogEntry.inkling2MiniUncensoredLora.id, "32GB default Uncensored LoRA")
         check(LocalModelStore.recommendedContextTokens == 32768, "32GB ctx 32768")
 
-        // 14. LoRA overlay activeModelURL/activeLoraURL & health basenames.
+        // 14. LoRA overlay activeModelURL/activeLoraURL, chained base->LoRA download target, and picker metadata.
         check(LocalModelStore.setActiveVariant(LocalModelCatalogEntry.inkling2MiniUncensoredLora.id), "switch to LoRA variant")
         check(LocalModelStore.activeHealthModelName == "Inkling-2-Mini-IQ4_NL.gguf", "LoRA health model basename")
         check(LocalModelStore.activeHealthLoraName == "Inkling-2-Mini-Uncensored-LoRA.gguf", "LoRA health lora basename")
         check(LocalModelStore.activeLoraURL?.lastPathComponent == "Inkling-2-Mini-Uncensored-LoRA.gguf", "LoRA activeLoraURL")
         check(LocalModelStore.needsBaseModel, "LoRA reports needsBaseModel when base missing")
+        check(LocalModelStore.nextDownloadTarget.id == LocalModelCatalogEntry.inkling2Mini.id, "LoRA chains base download first when base missing")
+        check(LocalModelStore.activeVariantId == LocalModelCatalogEntry.inkling2MiniUncensoredLora.id, "LoRA remains active variant while base is pending")
+        check(LocalModelStore.remainingDownloadBytes == LocalModelCatalogEntry.inkling2Mini.expectedBytes + LocalModelCatalogEntry.inkling2MiniUncensoredLora.expectedBytes, "LoRA remainingDownloadBytes includes base + adapter")
+        check(LocalModelStore.pickerModelId == "inkling-2-mini-uncensored-lora", "pickerModelId matches active uncensored LoRA")
+        check(LocalModelStore.pickerModelLabel == "Inkling 2 Mini Uncensored (LoRA)", "pickerModelLabel matches active uncensored LoRA")
+        check(LocalModelStore.pickerModelDesc().contains("Not downloaded") && LocalModelStore.pickerModelDesc().contains("Click to download"), "undownloaded pickerModelDesc prompts click-to-download")
+        check(LocalModelStore.variantMenuLabel(for: .inkling2MiniUncensoredLora).contains("Default"), "default variant carries Default tag")
 
         // 15. GGUF v3 header validation + local BYO .gguf import + tamper detection.
         func makeSyntheticGGUF(version: UInt32, marker: String) -> Data {

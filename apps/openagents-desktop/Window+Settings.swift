@@ -348,7 +348,16 @@ extension CoderWindow {
     /// Settings opened or closed: the keyboard goes to the page or back to the composer.
     func settingsMoved() {
         // the page moved the keyboard itself (settings.coax): away from the composer, or back to it
-        if settingsOpen { syncSettingsInfo(); wake() } else { focusComposer() }
+        if settingsOpen {
+            syncSettingsInfo()
+            if cd_settings_page(page) == 14 && ProviderInstancesStore.shared.hasEnabledAntigravityBinary {
+                AntigravityRuntimeManager.shared.checkLatestRelease()
+                ProviderInstancesStore.shared.refreshAll()
+            }
+            wake()
+        } else {
+            focusComposer()
+        }
     }
     /// After a sheet: the composer takes the keyboard back, unless settings is open.
     func refocus() { if !settingsOpen { focusComposer() } else { window.makeFirstResponder(canvas); syncSettingsInfo(); wake() } }
@@ -395,18 +404,20 @@ extension CoderWindow {
         if FeatureFlags.isOn(.mcp) { syncMcpSkills() }
         if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
         if FeatureFlags.isOn(.scheduled) { syncScheduledSettings() }
-        if FeatureFlags.isOn(.modelsGemini) {
+        if FeatureFlags.isOn(.modelsGemini) && (ComposerModelVisibility.showOtherModels || cd_settings_page(page) == 1) {
             CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         }
         #endif
     }
     func syncLocalState(on target: UnsafeMutableRawPointer) {
         let ui = LocalModelStore.uiState()
-        let singleModel = !FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels
+        let showOthers = ComposerModelVisibility.showOtherModels
         var status = LocalModelStore.statusSummary()
         var statusCode = ui.statusCode
         var err = ui.err
         var on: Int32 = 0
+        var serverStarting = false
+        var serverErr: String? = nil
         if LocalModelStore.isSelectable {
             switch LocalModelServer.shared.state {
             case .ready:
@@ -422,17 +433,22 @@ extension CoderWindow {
                 // Allow immediate compose/send while loading; an active turn shows "Loading model…"
                 // until the server is warm and excludes model load from TTFT.
                 on = 1
+                serverStarting = true
                 statusCode = 5 // CP_LOCAL_STARTING
                 err = ""
                 let tag = LocalModelStore.entry.id == LocalModelCatalogEntry.inkling2Mini.id ? "" : "\(LocalModelStore.entry.shortLabel) · "
                 status = "\(tag)Loading model…"
             case .failed(let msg):
-                on = singleModel ? 0 : 1
+                on = 0
+                serverErr = msg
                 statusCode = 6 // CP_LOCAL_SERVER_ERROR
                 err = msg
                 status = "Server error — click Retry"
             }
         }
+        let desc = LocalModelStore.pickerModelDesc(serverStarting: serverStarting, serverError: serverErr)
+        cd_show_other_models_set(target, showOthers ? 1 : 0)
+        cd_inkling_info(target, LocalModelStore.pickerModelId, LocalModelStore.pickerModelLabel, desc)
         cd_settings_local(target, status)
         cd_inkling(target, on)
         cd_local_state(target, ui.osOk, ui.hwOk, ui.ramGB, statusCode, ui.pct, ui.dlMB, ui.totalMB, err)
@@ -441,12 +457,12 @@ extension CoderWindow {
         LocalModelStore.verifyExistingIfNeeded { [weak self] in
             self?.syncLocalModels()
         }
-        if prewarm && LocalModelStore.isSelectable && ((!FeatureFlags.anyExtraModel && !ProviderInstancesStore.shared.hasLoadedAntigravityModels) || cd_model_inkling(page) != 0) {
-            LocalModelServer.shared.prewarmIfReady()
-        }
         syncLocalState(on: page)
         for r in runs.values where r.page != page {
             syncLocalState(on: r.page)
+        }
+        if prewarm && LocalModelStore.isSelectable && (!ComposerModelVisibility.showOtherModels || cd_model_inkling(page) != 0) {
+            LocalModelServer.shared.prewarmIfReady()
         }
         if let shownState = localModelsDialogState, overlay.dialogOpen {
             let cur = LocalModelStore.state

@@ -7,7 +7,7 @@
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   base := cp_models(s);
-  #assert base == CP_MODELS;
+  #assert base == 1 + CP_MODELS;
   #assert coder_page_model_provider(s) == CP_PROV_CLOUD;
 
   // Enable Codex and Cursor.

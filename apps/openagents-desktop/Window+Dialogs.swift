@@ -879,7 +879,7 @@ extension CoderWindow {
         }
     }
     #endif
-    /// Onboarding / Settings direct actions (CP_ASK_LOCAL_DOWNLOAD=160, CP_ASK_LOCAL_CANCEL=161).
+    /// Onboarding / composer picker / Settings direct actions (CP_ASK_LOCAL_DOWNLOAD=160, CP_ASK_LOCAL_CANCEL=161).
     func startInklingDownload() {
         if LocalModelStore.isSelectable {
             LocalModelServer.shared.retry { [weak self] _ in
@@ -888,10 +888,27 @@ extension CoderWindow {
             syncLocalModels()
             return
         }
-        if LocalModelStore.entry.isCustom || (LocalModelStore.entry.requiresHFToken && LocalModelStore.effectiveHFToken == nil) {
+        if LocalModelStore.isDownloading || LocalModelStore.isVerifying {
             manageLocalModels()
             return
         }
+        if !LocalModelStore.hardwareSupported
+            || LocalModelStore.entry.isCustom
+            || (LocalModelStore.entry.requiresHFToken && LocalModelStore.effectiveHFToken == nil)
+            || !LocalModelStore.hasEnoughDiskForDownload
+        {
+            manageLocalModels()
+            return
+        }
+        if LocalModelStore.hasUnverifiedWeights {
+            cd_toast(page, "Verifying \(LocalModelStore.entry.name) SHA-256…", 0)
+            LocalModelStore.verifyInstalledNow { [weak self] in
+                self?.syncLocalModels()
+            }
+            syncLocalModels()
+            return
+        }
+        cd_toast(page, "Downloading \(LocalModelStore.entry.name)…", 0)
         LocalModelStore.startDownload { [weak self] in
             self?.syncLocalModels()
         }
@@ -1092,14 +1109,14 @@ extension CoderWindow {
             menu.addItem(item)
         }
 
-        addHeader("Official")
-        addVariant(.inkling2Mini)
-        menu.addItem(.separator())
-        addHeader("Uncensored — AtomicChat")
+        addHeader("Uncensored — AtomicChat (Default)")
         addVariant(.inkling2MiniUncensoredLora)
         addVariant(.inkling2MiniUncensoredQ4K)
         addVariant(.inkling2MiniUncensoredIQ3S)
         addVariant(.inkling2MiniUncensoredIQ2M)
+        menu.addItem(.separator())
+        addHeader("Official")
+        addVariant(.inkling2Mini)
         menu.addItem(.separator())
         addHeader("Abliterated — OrcaRouter (HF Gated)")
         addVariant(.inkling2MiniAbliteratedMix16G)
@@ -1290,7 +1307,8 @@ extension CoderWindow {
                 tokenIdx = d.buttons.count; d.buttons.append(.init(title: "HF Token…", kind: .primary))
                 d.confirm = tokenIdx; d.cancel = closeIdx
             } else if LocalModelStore.hasEnoughDiskForDownload {
-                let szLabel = LocalModelStore.formatBytes(cur.expectedBytes)
+                let szBytes = LocalModelStore.remainingDownloadBytes > 0 ? LocalModelStore.remainingDownloadBytes : cur.expectedBytes
+                let szLabel = LocalModelStore.formatBytes(szBytes)
                 switchIdx = d.buttons.count; d.buttons.append(.init(title: "Switch Variant…", aside: true))
                 if cur.requiresHFToken {
                     importIdx = d.buttons.count; d.buttons.append(.init(title: "Import .gguf…"))
@@ -1318,14 +1336,10 @@ extension CoderWindow {
             self.localModelsDialogState = nil
             if answer == switchIdx {
                 self.presentLocalModelVariantMenu()
-            } else if answer == downloadIdx {
+            } else if answer == downloadIdx || answer == downloadBaseIdx {
+                // Keeps the active variant selected (for LoRA overlays, startDownload downloads
+                // the Official IQ4_NL base first and chains the LoRA adapter automatically).
                 LocalModelStore.startDownload { [weak self] in self?.syncLocalModels() }
-                self.syncLocalModels()
-                self.manageLocalModels()
-            } else if answer == downloadBaseIdx {
-                if LocalModelStore.setActiveVariant(LocalModelCatalogEntry.inkling2Mini.id) {
-                    LocalModelStore.startDownload { [weak self] in self?.syncLocalModels() }
-                }
                 self.syncLocalModels()
                 self.manageLocalModels()
             } else if answer == importIdx {
