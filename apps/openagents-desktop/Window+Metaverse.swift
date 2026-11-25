@@ -71,10 +71,21 @@ extension CoderWindow {
         let vp = ensureMetaverseViewport()
         let prev = preserveCamera ? mv.scenes[path] : nil
         let scene = vp.loadScene(from: URL(fileURLWithPath: path), preserveCameraFrom: prev)
+        // Phase 2 (#14042): Hand off camera pose from inline OA-SHOW-LIVE card when opening the same target
+        if !preserveCamera, path == liveScenePath, let livePanel = liveScenePanel {
+            let pose = livePanel.metalView.exportOrbitPose()
+            scene.target = pose.target
+            scene.distance = pose.distance
+            scene.azimuth = pose.azimuth
+            scene.elevation = pose.elevation
+            scene.flyMode = false
+        }
         mv.scenes[path] = scene
         mv.activePath = path
+        MetaverseGpuCoordinator.shared.enforceBudget(scenes: mv.scenes, activePath: path)
         if scene.errorText.isEmpty {
-            cd_mv_tab_status(page, Int32(tabIdx), 1, 1, 0, 0, 0, 0, 0, scene.statsText, "")
+            let rev = Int32(max(1, scene.savedRev))
+            cd_mv_tab_status(page, Int32(tabIdx), rev, rev, 0, 0, 0, 0, 0, scene.statsText, "")
             _ = cd_mv_set_tree(page, scene.treeTSV)
             vp.setActiveScene(scene)
             startMetaverseWatcher(for: path, tabIdx: tabIdx)
@@ -83,6 +94,33 @@ extension CoderWindow {
             vp.setActiveScene(nil)
         }
         wake()
+    }
+
+    /// Queries #authority aethyr_inline_dedup so inline OA-SHOW-LIVE cards yield GPU ownership
+    /// when the same target is actively shown in the right-side Metaverse pane (#14042).
+    func shouldDeduplicateInlineLiveCard(for inlinePath: String) -> Bool {
+        let shown = cd_mv_shown(page)
+        let hidden = cd_mv_hidden(page)
+        let activeIdx = cd_mv_active_tab(page)
+        var activePath = mv.activePath
+        if activeIdx >= 0 {
+            var pbuf = [CChar](repeating: 0, count: 1024)
+            if cd_mv_tab_path(page, activeIdx, &pbuf, Int32(pbuf.count)) > 0 {
+                activePath = String(cString: pbuf)
+            }
+        }
+        return oa_mv_policy_inline_dedup(inlinePath, shown, hidden, activePath) != 0
+    }
+
+    /// Transfers camera pose back from right-pane Metaverse tab to inline OA-SHOW-LIVE card when re-shown (#14042).
+    func handoffCameraToLiveCard(for inlinePath: String, panel: PleScenePanelView) {
+        guard let sc = mv.scenes[inlinePath] else { return }
+        panel.metalView.importOrbitPose(
+            target: sc.target,
+            distance: sc.distance,
+            azimuth: sc.azimuth,
+            elevation: sc.elevation
+        )
     }
 
     private func startMetaverseWatcher(for path: String, tabIdx: Int) {
@@ -141,7 +179,10 @@ extension CoderWindow {
     }
 
     func hideMetaverseViewport() {
-        mvViewport?.isHidden = true
+        if let vp = mvViewport, !vp.isHidden {
+            vp.isHidden = true
+            vp.setPaneVisible(false)
+        }
     }
 
     func toggleMetaversePane() {
@@ -180,6 +221,7 @@ extension CoderWindow {
         vp.setHoles(pageOverRects(in: vp))
         if vp.isHidden {
             vp.isHidden = false
+            vp.setPaneVisible(true)
             vp.renderNow()
         }
     }

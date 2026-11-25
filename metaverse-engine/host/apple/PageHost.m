@@ -56,7 +56,8 @@ typedef uintptr_t A;
  F(A,sounds,(A)) F(uint32_t,sounds_capacity,(A)) F(A,sound_bank,(A)) F(uint32_t,sound_bank_len,(A)) F(uint32_t,sound_bank_capacity,(A)) \
  F(A,sound_bank_storage,(A)) F(uint32_t,sound_bank_storage_bytes,(A)) F(A,mesh_bounds_v1,(A)) \
  F(A,rig_v1,(A,uint32_t)) F(void,rig_ready_v1,(A,uint32_t)) F(uint32_t,frame_plan_v1,(A,uint32_t,uint32_t *,uint32_t)) \
- F(uint32_t,grass_instances,(A)) F(uint32_t,grass_vertices_v1,(A)) F(uint32_t,grass_range_count_v1,(A)) F(uint32_t,grass_range_v1,(A,uint32_t,uint32_t)) F(int32_t,draw_blend_v1,(A,int32_t))
+ F(uint32_t,grass_instances,(A)) F(uint32_t,grass_vertices_v1,(A)) F(uint32_t,grass_range_count_v1,(A)) F(uint32_t,grass_range_v1,(A,uint32_t,uint32_t)) F(int32_t,draw_blend_v1,(A,int32_t)) \
+ F(void,init_v2,(A,AethyrHostCtx *))
 // Optional browser editor exports. Counts remain u32; addresses are native.
 #define PH_EDITOR(F) F(int32_t,field_probe,(A,int32_t)) F(int32_t,edit_rev,(A)) F(A,edit_model,(A)) F(uint32_t,edit_model_len,(A)) F(uint32_t,edit_own,(A)) F(void,page,(A,int32_t))
 typedef struct {
@@ -67,6 +68,104 @@ typedef struct {
 } PHFace;
 
 @implementation AEPageConfig @end
+
+typedef struct {
+ BOOL used, focused;
+ uint32_t instanceId;
+ AethyrInstanceKind kind;
+ uint64_t bytes, lastTick;
+} AEBudgetEntry;
+
+@implementation AEGpuBudget {
+ AEBudgetEntry _slots[AETHYR_HOST_MAX_INSTANCES];
+ uint64_t _limitBytes, _totalBytes, _tick;
+ uint32_t _nextId;
+}
+- (instancetype)initWithLimitBytes:(uint64_t)limitBytes {
+ if (!(self = [super init])) return nil;
+ if (limitBytes < AETHYR_HOST_MIN_BUDGET_BYTES) limitBytes = AETHYR_HOST_MIN_BUDGET_BYTES;
+ if (limitBytes > AETHYR_HOST_DEFAULT_BUDGET_BYTES) limitBytes = AETHYR_HOST_DEFAULT_BUDGET_BYTES;
+ _limitBytes = limitBytes;
+ return self;
+}
++ (instancetype)sharedDesktopBudget {
+ static AEGpuBudget *shared;
+ static dispatch_once_t once;
+ dispatch_once(&once, ^{
+  uint64_t ram = NSProcessInfo.processInfo.physicalMemory;
+  uint64_t tenth = ram / 10;
+  uint64_t cap = tenth < AETHYR_HOST_MIN_BUDGET_BYTES ? AETHYR_HOST_MIN_BUDGET_BYTES : (tenth > AETHYR_HOST_DEFAULT_BUDGET_BYTES ? AETHYR_HOST_DEFAULT_BUDGET_BYTES : tenth);
+  shared = [[AEGpuBudget alloc] initWithLimitBytes:cap];
+ });
+ return shared;
+}
+- (uint64_t)limitBytes { @synchronized (self) { return _limitBytes; } }
+- (uint64_t)totalBytes { @synchronized (self) { return _totalBytes; } }
+- (uint32_t)registerInstance:(AethyrInstanceKind)kind {
+ @synchronized (self) {
+  for (int i = 0; i < AETHYR_HOST_MAX_INSTANCES; i++) {
+   if (!_slots[i].used) {
+    _slots[i].used = YES; _slots[i].focused = NO; _slots[i].kind = kind;
+    _slots[i].bytes = 0; _slots[i].lastTick = ++_tick; _slots[i].instanceId = ++_nextId;
+    return _slots[i].instanceId;
+   }
+  }
+  return 0;
+ }
+}
+- (void)unregisterInstance:(uint32_t)instanceId {
+ if (!instanceId) return;
+ @synchronized (self) {
+  for (int i = 0; i < AETHYR_HOST_MAX_INSTANCES; i++) {
+   if (_slots[i].used && _slots[i].instanceId == instanceId) {
+    if (_totalBytes >= _slots[i].bytes) _totalBytes -= _slots[i].bytes; else _totalBytes = 0;
+    memset(&_slots[i], 0, sizeof _slots[i]);
+    return;
+   }
+  }
+ }
+}
+- (void)setFocused:(BOOL)focused forInstance:(uint32_t)instanceId {
+ if (!instanceId) return;
+ @synchronized (self) {
+  for (int i = 0; i < AETHYR_HOST_MAX_INSTANCES; i++) {
+   if (_slots[i].used && _slots[i].instanceId == instanceId) {
+    _slots[i].focused = focused; _slots[i].lastTick = ++_tick; return;
+   }
+  }
+ }
+}
+- (BOOL)recordBytes:(uint64_t)bytes forInstance:(uint32_t)instanceId {
+ if (!instanceId) return YES;
+ @synchronized (self) {
+  for (int i = 0; i < AETHYR_HOST_MAX_INSTANCES; i++) {
+   if (_slots[i].used && _slots[i].instanceId == instanceId) {
+    uint64_t slotLim = _slots[i].kind == AETHYR_INSTANCE_INLINE_CARD ? AETHYR_HOST_INLINE_CARD_BUDGET : AETHYR_HOST_ACTIVE_TAB_BUDGET;
+    if (slotLim > _limitBytes) slotLim = _limitBytes;
+    if (bytes > slotLim) return NO;
+    uint64_t next = (_totalBytes >= _slots[i].bytes ? _totalBytes - _slots[i].bytes : 0) + bytes;
+    if (next > _limitBytes) return NO;
+    _totalBytes = next; _slots[i].bytes = bytes; _slots[i].lastTick = ++_tick;
+    return YES;
+   }
+  }
+  return NO;
+ }
+}
+- (BOOL)needsEviction {
+ @synchronized (self) { return _totalBytes * 4 > _limitBytes * 3; }
+}
+- (uint32_t)lruVictimExcluding:(uint32_t)instanceId {
+ @synchronized (self) {
+  int best = -1; uint64_t bestTick = UINT64_MAX;
+  for (int i = 0; i < AETHYR_HOST_MAX_INSTANCES; i++) {
+   if (!_slots[i].used || _slots[i].focused || _slots[i].instanceId == instanceId || _slots[i].bytes == 0) continue;
+   if (best < 0 || _slots[i].lastTick < bestTick) { best = i; bestTick = _slots[i].lastTick; }
+  }
+  return best >= 0 ? _slots[best].instanceId : 0;
+ }
+}
+@end
 
 // One resource a shader reads, from its .bind file (`coax metal`'s reflection).
 typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // kind 1 buffer, 2 texture, 3 sampler
@@ -117,6 +216,14 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
  NSMutableArray<PHEvent *> *events; NSString *playerKey, *playerId, *playerAccount;
  NSMutableDictionary<NSNumber *, NSValue *> *fingers; NSMutableDictionary<NSNumber *, NSNumber *> *fingerDown;   // a touch's start and the time it began, by its number
  int width, height; float dpr; CGSize points; int quality; double opened; BOOL closed;
+ // Per-instance aethyr.host.v2 context, VRAM budget slot, idle pause, recovery, and timing accumulators
+ AethyrHostCtx hostCtx;
+ AEGpuBudget *gpuBudget;
+ uint32_t budgetId;
+ uint64_t gpuBytes;
+ BOOL idlePaused, wantsRecovery;
+ double timingFace, timingEncode, timingGpu;
+ int timingFrames;
  // the frame being walked from its plan (planBegin and the rest, below): the command buffer, the open pass and what the frame has
  id<MTLCommandBuffer> planCmd; id<MTLRenderCommandEncoder> planE;
  struct { const uint32_t *list, *shadowList; uint32_t hud, depth; BOOL post, scene, flatDepth, sparks; } pf;
@@ -130,9 +237,19 @@ typedef struct { char name[32]; int kind, slot, stride, stages; } PHUse;   // ki
 - (int32_t)http:(NSString *)path body:(NSData *)body flags:(int32_t)flags timeout:(int64_t)timeout bounded:(BOOL)bounded;
 - (void)after;
 - (id<MTLRenderPipelineState>)boxPipe:(MTLPixelFormat)format;
+- (void)updateGpuBudget;
 @end
 
-static __weak AEPageHost *phCurrent;   // the page the face's imports reach: one is open at a time
+// Context-safe thread-local active-host stack for legacy aethyr-host-v1 imports.
+// Multi-instance v2 producers pass AethyrHostCtx* directly with zero thread-local lookup.
+static _Thread_local __unsafe_unretained AEPageHost *phThreadHost = nil;
+static inline AEPageHost *phActiveHost(void) { return phThreadHost; }
+static void phScopeRestore(__unsafe_unretained AEPageHost **prev) { phThreadHost = *prev; }
+#define PH_SCOPE(hostObj) __unsafe_unretained AEPageHost *__phPrevHost __attribute__((cleanup(phScopeRestore))) = phThreadHost; phThreadHost = (hostObj)
+static int32_t phStorageForHost(AEPageHost *h, int32_t slot, int32_t token, uintptr_t space, int32_t ns, int32_t version, uintptr_t key, int32_t nk, uintptr_t bytes, int32_t count, BOOL write);
+static int64_t phV2NowMs(AethyrHostCtx *ctx);
+static double phV2MeasureMs(AethyrHostCtx *ctx);
+static int32_t phV2Http(AethyrHostCtx *ctx, uintptr_t url, uint32_t length, uintptr_t body, uint32_t body_length, int32_t flags, int64_t timeout_ms, bool bounded);
 // ENGINE_PAGE_LOG=1 says on stderr what crosses the network (never a body, a key or a ticket).
 static void phLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
 static void phLog(NSString *format, ...) {
@@ -498,13 +615,65 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
 
 // ---- opening
 + (instancetype)open:(AEPageConfig *)config device:(id<MTLDevice>)device queue:(id<MTLCommandQueue>)queue why:(NSString **)why {
+ return [self open:config device:device queue:queue budget:config.gpuBudget why:why];
+}
++ (instancetype)open:(AEPageConfig *)config device:(id<MTLDevice>)device queue:(id<MTLCommandQueue>)queue budget:(AEGpuBudget *)budget why:(NSString **)why {
  AEPageHost *h = [AEPageHost new];
- NSString *error = [h open:config device:device queue:queue];
+ NSString *error = [h open:config device:device queue:queue budget:budget];
  if (error) { if (why) *why = error; [h close]; return nil; }
  return h;
 }
-- (NSString *)open:(AEPageConfig *)c device:(id<MTLDevice>)d queue:(id<MTLCommandQueue>)q {
+- (AethyrHostCtx *)hostContext { return &hostCtx; }
+- (uint64_t)gpuBytesAllocated { return gpuBytes; }
+- (BOOL)isIdlePaused { return idlePaused; }
+- (void)updateGpuBudget {
+ uint64_t bytes = 0;
+ bytes += uniformBuffer.length + fxBuffer.length + frameBuffer.length + storageBuffer.length + indexBuffer.length + particleBuffer.length;
+ for (id<MTLBuffer> b in stores) bytes += b.length;
+ id<MTLTexture> texs[] = { sheets, dataLayers, sans, shadowMap, light, aux, depth, q0, q1, e0, e1, screen };
+ for (size_t i = 0; i < sizeof(texs) / sizeof(texs[0]); i++) if (texs[i]) bytes += texs[i].allocatedSize;
+ gpuBytes = bytes;
+ if (gpuBudget && budgetId) [gpuBudget recordBytes:bytes forInstance:budgetId];
+}
+- (void)evictTransientTargets {
+ if (closed) return;
+ [last waitUntilCompleted]; last = nil;
+ light = nil; aux = nil; depth = nil; q0 = nil; q1 = nil; e0 = nil; e1 = nil; shadowMap = nil;
+ width = 0; height = 0;
+ [self updateGpuBudget];
+}
+- (BOOL)recoverGPU {
+ if (closed) return NO;
+ [last waitUntilCompleted]; last = nil;
+ light = aux = depth = q0 = q1 = e0 = e1 = screen = shadowMap = nil;
+ width = height = 0;
+ [pipes removeAllObjects]; [boxPipes removeAllObjects]; clearPipe = nil;
+ id<MTLDevice> nextDevice = device ?: MTLCreateSystemDefaultDevice();
+ id<MTLCommandQueue> nextQueue = nextDevice ? [nextDevice newCommandQueue] : nil;
+ if (!nextDevice || !nextQueue) return NO;
+ device = nextDevice; queue = nextQueue;
+ wantsRecovery = NO;
+ [self updateGpuBudget];
+ return YES;
+}
+- (NSString *)open:(AEPageConfig *)c device:(id<MTLDevice>)d queue:(id<MTLCommandQueue>)q budget:(AEGpuBudget *)budget {
  config = c; device = d; queue = q; opened = CACurrentMediaTime();
+ gpuBudget = budget ?: c.gpuBudget;
+ if (gpuBudget) budgetId = [gpuBudget registerInstance:AETHYR_INSTANCE_REALM];
+ memset(&hostCtx, 0, sizeof hostCtx);
+ hostCtx.abi_version = AETHYR_HOST_ABI_V2;
+ hostCtx.instance_id = budgetId;
+ hostCtx.host = (__bridge void *)self;
+ hostCtx.gpu_budget = (__bridge void *)gpuBudget;
+ hostCtx.socket_open = coaxial_v2_socket_open;
+ hostCtx.socket_send = coaxial_v2_socket_send;
+ hostCtx.socket_close = coaxial_v2_socket_close;
+ hostCtx.http_request = phV2Http;
+ hostCtx.http_cancel = coaxial_v2_http_cancel;
+ hostCtx.storage_get = coaxial_v2_storage_get;
+ hostCtx.storage_put = coaxial_v2_storage_put;
+ hostCtx.now_ms = phV2NowMs;
+ hostCtx.measure_ms = phV2MeasureMs;
  coax_default_t_HostTransport(&transport);
  shaders = [NSMutableDictionary dictionary]; pipes = [NSMutableDictionary dictionary]; sceneNames = [NSMutableDictionary dictionary];
  media = [NSMutableDictionary dictionary]; boxPipes = [NSMutableDictionary dictionary]; events = [NSMutableArray array]; stores = [NSMutableArray array]; storeVersions = [NSMutableArray array]; storeSent = [NSMutableArray array]; fingers = [NSMutableDictionary dictionary]; fingerDown = [NSMutableDictionary dictionary];
@@ -515,12 +684,13 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
  PH_EDITOR(PH_LOAD)
 #undef PH_LOAD
  if (!x.state_size || !x.state_init || !x.frame || !x.max_vertices || !x.vertex_floats || !x.uniform_floats || !x.inbox || !x.inbox_cap || !x.message) return @"the realm's library lacks the page's face";
- phCurrent = self;
+ PH_SCOPE(self);
  stateBytes = [NSMutableData dataWithLength:MAX(x.state_size(), 1024u)];
  vertexBytes = [NSMutableData dataWithLength:(size_t)x.max_vertices() * x.vertex_floats() * 4];
  uniformBytes = [NSMutableData dataWithLength:(size_t)x.uniform_floats() * 4];
  if (!stateBytes || !vertexBytes || !uniformBytes) return @"not enough memory for the realm";
  state = (A)stateBytes.mutableBytes; x.state_init(state);
+ if (x.init_v2) x.init_v2(state, &hostCtx);
  [self readPlayer];
  NSString *kept = [self kept:@"verse.quality"]; NSUInteger qi = [@[@"high", @"medium", @"low", @"auto"] indexOfObject:kept];
  // nothing kept: AUTO, the realm's governor sets the pixels (metaverse-engine/core/quality.coax); a touch screen starts at medium, as host.js starts a phone
@@ -587,12 +757,13 @@ static id<MTLTexture> phBlockLayers(id<MTLDevice> device, const EngineCorePack *
  dd.depthWriteEnabled = NO; depthRead = [device newDepthStencilStateWithDescriptor:dd];
  sans = [self atlas];
  if (!sans) return @"the HUD's fonts are missing";
+ [self updateGpuBudget];
  return nil;
 }
 // What the core calls of the face: its exports, with a message followed by the host's turn (after),
 // and a destination taken when the bytes fit the capacity the face states.
 static void *phSpan(void *user, EngineAddr at, uint32_t capacity, uint32_t n) { return n <= capacity ? (void *)at : NULL; }
-static void phMessage(A state, int32_t kind, uint32_t n) { AEPageHost *h = phCurrent; if (!h) return; h->x.message(state, kind, n); [h after]; }
+static void phMessage(A state, int32_t kind, uint32_t n) { AEPageHost *h = phActiveHost(); if (!h) return; h->x.message(state, kind, n); [h after]; }
 static int phHasBuild(void *user, const char *tag) {
  return [[NSFileManager defaultManager] fileExistsAtPath:[NSString stringWithFormat:@"%@.%s.vpk3", (__bridge NSString *)user, tag]] ? 1 : 0;
 }
@@ -647,20 +818,21 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 
  // The host core sorts the pack's entries through the one pack reader (metaverse-engine/host/pack-table.coax
  // pack_table): every extent is checked against the whole file before a byte of it is read here.
- static EngineCorePack pack;
- if (!engine_core_pack(&pack, b, n)) return n ? @"the realm's pack is damaged" : @"the realm's pack is missing";
- if (pack.catalog < 0 || pack.vertices < 0 || pack.indices < 0) return @"the realm's pack lacks its catalog, vertices or indices";
- packVertices = engine_core_entry(&pack, pack.vertices, &packVertexBytes);
- packIndices = engine_core_entry(&pack, pack.indices, &packIndexBytes);
+ EngineCorePack *pack = calloc(1, sizeof *pack);
+ if (!pack) return @"not enough memory for the realm's pack";
+ if (!engine_core_pack(pack, b, n)) { free(pack); return n ? @"the realm's pack is damaged" : @"the realm's pack is missing"; }
+ if (pack->catalog < 0 || pack->vertices < 0 || pack->indices < 0) { free(pack); return @"the realm's pack lacks its catalog, vertices or indices"; }
+ packVertices = engine_core_entry(pack, pack->vertices, &packVertexBytes);
+ packIndices = engine_core_entry(pack, pack->indices, &packIndexBytes);
  NSMutableArray<NSData *> *colour = [NSMutableArray array], *maps = [NSMutableArray array];
- for (int k = 0; k < pack.colours; k++) { size_t len; const uint8_t *at = engine_core_entry(&pack, pack.colour[k], &len); [colour addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
- for (int k = 0; k < pack.datas; k++) { size_t len; const uint8_t *at = engine_core_entry(&pack, pack.data[k], &len); [maps addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ for (int k = 0; k < pack->colours; k++) { size_t len; const uint8_t *at = engine_core_entry(pack, pack->colour[k], &len); [colour addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
+ for (int k = 0; k < pack->datas; k++) { size_t len; const uint8_t *at = engine_core_entry(pack, pack->data[k], &len); [maps addObject:[NSData dataWithBytesNoCopy:(void *)at length:len freeWhenDone:NO]]; }
  // The core hands the face the pack's parts in the browser's order: the progress message, asset 0
  // the catalog (copied in once its destination is measured), 1 and 2 the vertex and index bytes,
  // the rig when the pack has one. Asset 3, the layers, follows once they are on the GPU.
  EngineCoreFace face = {x.asset, x.asset_capacity, x.asset_ready, x.inbox, x.inbox_cap, x.message ? phMessage : NULL, x.rig_v1, x.rig_ready_v1, x.frame_plan_v1, phSpan, NULL};
- phCurrent = self;
- engine_core_deliver(&pack, &face, state, ENGINE_CORE_GEOMETRY, 0, NULL);
+ PH_SCOPE(self);
+ engine_core_deliver(pack, &face, state, ENGINE_CORE_GEOMETRY, 0, NULL);
  [self meshBounds];
  storageBuffer = [device newBufferWithBytes:packVertices length:packVertexBytes options:MTLResourceStorageModeShared];
  indexBuffer = [device newBufferWithBytes:packIndices length:packIndexBytes options:MTLResourceStorageModeShared];
@@ -670,10 +842,10 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
  int dataSide = 512;
  if (config.layerSide) { int s = config.layerSide(side), ds = config.layerSide(dataSide); if (s > 0 && s < side) side = s; if (ds > 0 && ds < dataSide) dataSide = ds; }
  EngineCoreLayer first;
- sheets = engine_core_blocks(&pack, &first) ? phBlockLayers(device, &pack, &first) : nil;
+ sheets = engine_core_blocks(pack, &first) ? phBlockLayers(device, pack, &first) : nil;
  BOOL blocks = sheets != nil;
  if (!sheets) sheets = [self layers:colour side:side data:NO];
- if (!sheets) return @"the realm's pack has a picture this Mac can't read";
+ if (!sheets) { free(pack); return @"the realm's pack has a picture this Mac can't read"; }
  phLog(@"layers: %d as %@ at %d, %d levels, %llu bytes on the GPU", (int)sheets.arrayLength, blocks ? [NSString stringWithUTF8String:first.tag] : @"rgba8", (int)sheets.width, (int)sheets.mipmapLevelCount, (unsigned long long)sheets.allocatedSize);
  BOOL wantsData = x.data_layers_v1 && x.data_layers_v1() == 1;
  if (wantsData) {
@@ -684,13 +856,15 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
    [dataLayers replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 slice:0 withBytes:flat bytesPerRow:4 bytesPerImage:0];
   }
  }
- engine_core_deliver(&pack, &face, state, ENGINE_CORE_LAYERS, 0, NULL);
+ engine_core_deliver(pack, &face, state, ENGINE_CORE_LAYERS, 0, NULL);
+ free(pack);
  // an asset or pack installed: the shadow tiles are drawn again
  if (x.shadow_event_v1) x.shadow_event_v1(state, 1, 0);
  [self after];
  // The pack's bytes are on the GPU and in the face now: nothing reads the file's copy again (the
  // index count is kept), so an inflated pack's memory goes back.
  packBytes = nil; packVertices = packIndices = NULL;
+ [self updateGpuBudget];
  return nil;
 }
 
@@ -836,36 +1010,36 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 // Editor messages use the same bounded inbox, never direct state mutation.
 - (NSData *)viewMenu {
  if (closed || !x.view_menu_v1 || !x.view_menu_len_v1) return nil;
- phCurrent=self;uint32_t n=x.view_menu_len_v1(state);if (!n || n>32768) return nil;A p=x.view_menu_v1(state);
+ PH_SCOPE(self); uint32_t n=x.view_menu_len_v1(state);if (!n || n>32768) return nil;A p=x.view_menu_v1(state);
  return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
 }
 - (NSData *)servoLab {
  if (closed || !x.servo_lab_v1 || !x.servo_lab_len_v1) return nil;
- phCurrent=self;uint32_t n=x.servo_lab_len_v1(state);if (n!=312) return nil;A p=x.servo_lab_v1(state);
+ PH_SCOPE(self); uint32_t n=x.servo_lab_len_v1(state);if (n!=312) return nil;A p=x.servo_lab_v1(state);
  return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
 }
 - (NSData *)servoRun {
  if (closed || !x.servo_run_v1 || !x.servo_run_len_v1) return nil;
- phCurrent=self;uint32_t n=x.servo_run_len_v1(state);if (n<1088 || n>1472) return nil;A p=x.servo_run_v1(state);
+ PH_SCOPE(self); uint32_t n=x.servo_run_len_v1(state);if (n<1088 || n>1472) return nil;A p=x.servo_run_v1(state);
  return p ? [NSData dataWithBytes:(void *)p length:n] : nil;
 }
 - (void)documentReply:(int32_t)token status:(int32_t)status bytes:(NSData *)bytes {
  if (closed || !x.document_reply_v1 || !x.inbox || !x.inbox_cap) return;
- phCurrent=self;uint32_t n=(uint32_t)bytes.length;
+ PH_SCOPE(self); uint32_t n=(uint32_t)bytes.length;
  if (bytes.length>2048 || bytes.length>x.inbox_cap()) {status=4;n=0;}
  A p=x.inbox(state);if (n && !p) {status=2;n=0;}if (n) memcpy((void *)p,bytes.bytes,n);
  x.document_reply_v1(state,token,status,n);[self after];
 }
 - (NSData *)editorModel {
  if (closed || !x.edit_model || !x.edit_model_len) return nil;
- phCurrent=self;uint32_t n=x.edit_model_len(state);A p=x.edit_model(state);
+ PH_SCOPE(self); uint32_t n=x.edit_model_len(state);A p=x.edit_model(state);
  return p && n && n<=65536 ? [NSData dataWithBytes:(void *)p length:n] : nil;
 }
 - (int32_t)editorRevision {return !closed && x.edit_rev ? x.edit_rev(state) : -1;}
 - (BOOL)editorOwned {return !closed && x.edit_own && x.edit_own(state)!=0;}
 - (BOOL)deliverAsset:(int32_t)i bytes:(NSData *)bytes {
  if (closed || !x.asset || !x.asset_capacity || !x.asset_ready || bytes.length>UINT32_MAX || bytes.length>x.asset_capacity(state,i)) return NO;
- phCurrent=self;A p=x.asset(state,i,(uint32_t)bytes.length);if (!p && bytes.length) return NO;
+ PH_SCOPE(self); A p=x.asset(state,i,(uint32_t)bytes.length);if (!p && bytes.length) return NO;
  if (bytes.length) memcpy((void *)p,bytes.bytes,bytes.length);x.asset_ready(state,i,(uint32_t)bytes.length);[self after];return YES;
 }
 - (void)assetsChanged {for (NSString *key in media.allKeys) {if (media[key]->failed) [media removeObjectForKey:key];}}
@@ -1109,16 +1283,27 @@ static NSData *phPackImage(NSString *path, id<MTLDevice> device) {
 static void phPlanBegin(void *s, const engine_fp_op *op) { [(__bridge AEPageHost *)s planBegin:op]; }
 static void phPlanEnd(void *s) { [(__bridge AEPageHost *)s planEnd]; }
 static void phPlanDraw(void *s, const engine_fp_op *op, uint32_t item) { (void)item; [(__bridge AEPageHost *)s planDraw:op]; }
-static void phPlanCopy(void *s, uint32_t from, uint32_t to) { (void)s; (void)from; (void)to; }   // the water's copies: this host has no water pass
+static void phPlanCopy(void *s, uint32_t from, uint32_t to) {
+ AEPageHost *h = (__bridge AEPageHost *)s;
+ if (!h || !h->planCmd) return;
+ id<MTLTexture> src = [h planTarget:from], dst = [h planTarget:to];
+ if (!src || !dst || src == dst || src.pixelFormat != dst.pixelFormat) return;
+ NSUInteger cw = MIN(src.width, dst.width), ch = MIN(src.height, dst.height);
+ if (!cw || !ch) return;
+ id<MTLBlitCommandEncoder> blit = [h->planCmd blitCommandEncoder];
+ [blit copyFromTexture:src sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(cw, ch, 1) toTexture:dst destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+ [blit endEncoding];
+}
 static void phPlanRect(void *s, int scissor, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh) { [(__bridge AEPageHost *)s planRect:scissor != 0 x:rx y:ry w:rw h:rh]; }
-static void phPlanCompute(void *s, uint32_t kind, uint32_t runs) { (void)s; (void)kind; (void)runs; }   // the cull and the sort: not asked for
+static void phPlanCompute(void *s, uint32_t kind, uint32_t runs) { (void)s; (void)kind; (void)runs; }
 static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHost *)s; if (!h->pf.flatDepth) [h drawMedia:h->planE over:after != 0 format:MTLPixelFormatBGRA8Unorm]; }
 - (id<MTLTexture>)frame:(CGSize)size scale:(CGFloat)scale dt:(float)dt wait:(BOOL)wait {
- if (closed) return screen;
+ if (closed || idlePaused) return screen;
  // Interactive callers must not block the UI while the previous GPU frame owns shared buffers.
  // The synchronous readback path still waits; no buffer is rewritten until completion.
  if (!wait && last && last.status < MTLCommandBufferStatusCompleted) return nil;
- phCurrent = self;
+ if (wantsRecovery && ![self recoverGPU]) return nil;
+ PH_SCOPE(self);
  // The share of the device pixels a frame draws: the realm's own pixel budget, and the kept quality's cap.
  points = size;
  double f = 1, budget = x.pixel_budget ? x.pixel_budget() : 0, cap = quality == 1 ? 1.5 : quality == 2 ? 1 : INFINITY;
@@ -1127,9 +1312,14 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  int w = MAX(1, (int)lround(size.width * scale * f)), h = MAX(1, (int)lround(size.height * scale * f));
  dpr = (float)(w / size.width);
  // The buffers below are shared with the GPU: the last frame is done with them before this one writes.
- [last waitUntilCompleted]; last = nil;
+ [last waitUntilCompleted];
+ if (last.error && last.error.code == MTLCommandBufferErrorDeviceRemoved) {
+  last = nil; wantsRecovery = YES;
+  if (![self recoverGPU]) return nil;
+ }
+ last = nil;
  [self drain];
- if (w != width || h != height || !screen) {
+ if (w != width || h != height || !screen || !light) {
   width = w; height = h;
   light = [self target:MTLPixelFormatRGBA16Float width:w height:h]; aux = [self target:MTLPixelFormatRGBA16Float width:w height:h];
   depth = [self target:MTLPixelFormatDepth32Float width:w height:h];
@@ -1137,6 +1327,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
   q0 = [self target:MTLPixelFormatRGBA16Float width:qw height:qh]; q1 = [self target:MTLPixelFormatRGBA16Float width:qw height:qh];
   e0 = [self target:MTLPixelFormatRGBA16Float width:ew height:eh]; e1 = [self target:MTLPixelFormatRGBA16Float width:ew height:eh];
   screen = [self target:MTLPixelFormatBGRA8Unorm width:w height:h];
+  [self updateGpuBudget];
  }
  double t0 = CACurrentMediaTime();
  uint32_t n = x.frame(state, (A)vertexBytes.mutableBytes, (A)uniformBytes.mutableBytes, (float)w, (float)h, dpr, dt, 0);
@@ -1304,9 +1495,8 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  [cmd commit]; last = cmd;
  if (wait) { [cmd waitUntilCompleted]; last = nil; }
  if ((getenv("ENGINE_PAGE_TIMES") ? getenv("ENGINE_PAGE_TIMES") : getenv("AETHYR_PAGE_TIMES"))) {   // a developer's look at where a frame's time goes
-  static double face, encode, gpu; static int frames;
-  face += t1 - t0; encode += t2 - t1; if (wait) gpu += cmd.GPUEndTime - cmd.GPUStartTime;
-  if (++frames == 120) { fprintf(stderr, "page host: %dx%d face %.2f ms, uploads and encoding %.2f ms, GPU %.2f ms a frame; the frame's order: %s (%d operations)\n", width, height, face / frames * 1000, encode / frames * 1000, gpu / frames * 1000, planned ? "the engine's plan" : "this host's own", planOps); face = encode = gpu = 0; frames = 0; }
+  timingFace += t1 - t0; timingEncode += t2 - t1; if (wait) timingGpu += cmd.GPUEndTime - cmd.GPUStartTime;
+  if (++timingFrames == 120) { fprintf(stderr, "page host: %dx%d face %.2f ms, uploads and encoding %.2f ms, GPU %.2f ms a frame; the frame's order: %s (%d operations)\n", width, height, timingFace / timingFrames * 1000, timingEncode / timingFrames * 1000, timingGpu / timingFrames * 1000, planned ? "the engine's plan" : "this host's own", planOps); timingFace = timingEncode = timingGpu = 0; timingFrames = 0; }
  }
  [self mediaSay];
  return screen;
@@ -1322,14 +1512,14 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
 
 // ---- input
 - (BOOL)key:(int32_t)key mods:(int32_t)mods down:(BOOL)down {
- if (closed) return NO; phCurrent = self;
+ if (closed) return NO; PH_SCOPE(self);
  uint32_t used = down ? (x.key ? x.key(state, key, mods) : 0) : (x.key_up ? x.key_up(state, key, mods) : 0);
  if (down) [self after];
  return used != 0;
 }
-- (void)text:(NSString *)typed { phCurrent = self; if (typed.length) [self message:1 text:typed]; }
+- (void)text:(NSString *)typed { PH_SCOPE(self); if (typed.length) [self message:1 text:typed]; }
 - (void)pointer:(CGPoint)at phase:(int32_t)phase button:(int32_t)button {
- if (closed) return; phCurrent = self;
+ if (closed) return; PH_SCOPE(self);
  if (x.pointer_buttons_v1) x.pointer_buttons_v1(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 0, 1, button);
  else if (x.pointer) x.pointer(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 0, 1);
  [self after];
@@ -1337,7 +1527,7 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
 // A finger, as host.js sends a touch: kind 1, its own number, and a cancel that ends a short, still
 // touch is that tap's end (iOS cancels a touch a system gesture takes).
 - (void)touch:(CGPoint)at phase:(int32_t)phase finger:(int32_t)finger {
- if (closed) return; phCurrent = self;
+ if (closed) return; PH_SCOPE(self);
  NSNumber *k = @(finger); double now = CACurrentMediaTime();
  if (phase == 0) { fingers[k] = [NSValue valueWithBytes:&at objCType:@encode(CGPoint)]; fingerDown[k] = @(now); }
  else if (phase == 3 && fingers[k]) {
@@ -1349,21 +1539,27 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
  else if (x.pointer) x.pointer(state, (float)(at.x * dpr), (float)(at.y * dpr), phase, 1, finger);
  [self after];
 }
-- (void)pinch:(float)ratio { if (!closed && x.pinch) { phCurrent = self; x.pinch(state, ratio); } }
-- (void)wheel:(float)dy { if (!closed && x.wheel) { phCurrent = self; x.wheel(state, dy); } }
-- (void)focus:(BOOL)focused { if (closed) return; phCurrent = self; if (focused) { if (x.focus) x.focus(state); } else if (x.blur) x.blur(state); }
+- (void)pinch:(float)ratio { if (!closed && x.pinch) { PH_SCOPE(self); x.pinch(state, ratio); } }
+- (void)wheel:(float)dy { if (!closed && x.wheel) { PH_SCOPE(self); x.wheel(state, dy); } }
+- (void)focus:(BOOL)focused {
+ if (closed) return; PH_SCOPE(self);
+ if (gpuBudget && budgetId) [gpuBudget setFocused:focused forInstance:budgetId];
+ if (focused) { if (x.focus) x.focus(state); } else if (x.blur) x.blur(state);
+}
 - (void)shown:(BOOL)shown {
- if (closed) return; phCurrent = self;
+ if (closed) return; PH_SCOPE(self);
+ idlePaused = !shown;
+ if (gpuBudget && budgetId) [gpuBudget setFocused:shown forInstance:budgetId];
  if (!shown && x.blur) x.blur(state);
  [self message:shown ? 602 : 601 bytes:NULL length:0];
  if (shown && x.focus) x.focus(state);
 }
-- (void)idle { if (closed) return; phCurrent = self; [self drain]; [self takeSounds]; }
+- (void)idle { if (closed) return; PH_SCOPE(self); [self drain]; [self takeSounds]; }
 // The agent driver (metaverse-engine/agent/drive.coax), as host.js's coaxial.drive: a command in as message
 // 700, the realm's answer out. nil for a realm that has no driver.
 - (NSString *)drive:(NSString *)command {
  if (closed || !x.drive_out || !x.drive_out_len) return nil;
- phCurrent = self; [self message:700 text:command];
+ PH_SCOPE(self); [self message:700 text:command];
  A p = x.drive_out(state); size_t n = x.drive_out_len(state);
  return p && n ? [[NSString alloc] initWithBytes:(void *)p length:n encoding:NSUTF8StringEncoding] : @"";
 }
@@ -1374,47 +1570,91 @@ static void phPlanMedia(void *s, int after) { AEPageHost *h = (__bridge AEPageHo
 - (void)look:(CGPoint)travel { if (!closed && x.look_delta) x.look_delta(state, (float)travel.x, (float)travel.y); }
 // The phone's turn (metaverse-engine/cam/gyro.coax), fed as touches are: the app reads CoreMotion while the page wants it.
 - (BOOL)wantsMotion { return !closed && x.gyro && x.gyro(state) == 1; }
-- (void)tilt:(float)yaw pitch:(float)pitch { if (!closed && x.tilt) { x.tilt(state, yaw, pitch); [self after]; } }
+- (void)tilt:(float)yaw pitch:(float)pitch { if (!closed && x.tilt) { PH_SCOPE(self); x.tilt(state, yaw, pitch); [self after]; } }
 - (void)motionStatus:(int32_t)status { if (!closed && x.gyro_status) x.gyro_status(state, status); }
 - (BOOL)wantsText { return !closed && x.wants_text && x.wants_text(state) == 1; }
 - (int32_t)cursor { return !closed && x.cursor ? x.cursor(state) : 0; }
 - (void)close {
  if (closed) return;
- closed = YES; [last waitUntilCompleted]; last = nil;
+ closed = YES; idlePaused = YES; [last waitUntilCompleted]; last = nil;
  for (int i = 0; i < 4; i++) { if (sockets[i]) [sockets[i]->task cancel]; sockets[i] = nil; }
  for (int i=0;i<8;i++) {PHHttp *request=http[i];if (request && request->cancel) request->cancel();http[i]=nil;}
  ht_reset((coax_v_t_HostTransport){&transport,1});
  [session invalidateAndCancel]; session = nil;
- if (phCurrent == self) phCurrent = nil;
+ if (gpuBudget && budgetId) { [gpuBudget unregisterInstance:budgetId]; budgetId = 0; }
+ gpuBytes = 0;
+ hostCtx.host = NULL;
+ if (phThreadHost == self) phThreadHost = nil;
  // the library stays loaded: its code may still be on a worker's stack, and a page opens once a run
 }
 - (void)dealloc { [self close]; }
 @end
 
-// ---- the face's imports (metaverse-engine/host/README.md, Sockets and HTTP): they reach the page that is open
+// ---- context-carrying aethyr.host.v2 imports (zero process globals, GitHub #14042)
 #define PH_IMPORT __attribute__((used, visibility("default")))
+static inline AEPageHost *phHostFromCtx(AethyrHostCtx *ctx) {
+ return (ctx && ctx->abi_version == AETHYR_HOST_ABI_V2 && ctx->host) ? (__bridge AEPageHost *)ctx->host : nil;
+}
+static int64_t phV2NowMs(AethyrHostCtx *ctx) { (void)ctx; return phMillis(); }
+static double phV2MeasureMs(AethyrHostCtx *ctx) { (void)ctx; return CACurrentMediaTime() * 1000.0; }
+PH_IMPORT int32_t coaxial_v2_socket_open(AethyrHostCtx *ctx, uintptr_t url, uint32_t length) {
+ AEPageHost *h = phHostFromCtx(ctx); if (!h || !url) return -1;
+ return [h socketOpen:[[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding]];
+}
+PH_IMPORT void coaxial_v2_socket_send(AethyrHostCtx *ctx, int32_t id, uintptr_t bytes, uint32_t length) {
+ AEPageHost *h = phHostFromCtx(ctx); if (!h || !bytes) return;
+ if (length && (*(const uint8_t *)bytes & 0xC0) == 0x80) { [h socketSend:id data:[NSData dataWithBytes:(void *)bytes length:length]]; return; }
+ [h socketSend:id text:[[NSString alloc] initWithBytes:(void *)bytes length:length encoding:NSUTF8StringEncoding]];
+}
+PH_IMPORT void coaxial_v2_socket_close(AethyrHostCtx *ctx, int32_t id) {
+ AEPageHost *h = phHostFromCtx(ctx); if (h) [h socketClose:id];
+}
+static int32_t phV2Http(AethyrHostCtx *ctx, uintptr_t url, uint32_t length, uintptr_t body, uint32_t body_length, int32_t flags, int64_t timeout_ms, bool bounded) {
+ AEPageHost *h = phHostFromCtx(ctx); if (!h || !url) return -1;
+ NSString *path = [[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
+ if (!path) return -1;
+ return [h http:path body:body && body_length ? [NSData dataWithBytes:(void *)body length:body_length] : nil flags:flags timeout:timeout_ms bounded:bounded ? YES : NO];
+}
+PH_IMPORT int32_t coaxial_v2_http(AethyrHostCtx *ctx, uintptr_t url, uint32_t length, uintptr_t body, uint32_t body_length, int32_t flags, int64_t timeout_ms, int32_t bounded) {
+ return phV2Http(ctx, url, length, body, body_length, flags, timeout_ms, bounded != 0);
+}
+PH_IMPORT int32_t coaxial_v2_http_cancel(AethyrHostCtx *ctx, int32_t slot) {
+ AEPageHost *h = phHostFromCtx(ctx);
+ if (!h || !ht_http_cancel((coax_v_t_HostTransport){&h->transport,1},slot)) return 0;
+ PHHttp *request = h->http[slot]; h->http[slot] = nil;
+ if (request && request->cancel) request->cancel();
+ return 1;
+}
+PH_IMPORT int32_t coaxial_v2_storage_get(AethyrHostCtx *ctx, int32_t slot, int32_t token, uintptr_t space, int32_t ns, int32_t version, uintptr_t key, int32_t nk) {
+ return phStorageForHost(phHostFromCtx(ctx), slot, token, space, ns, version, key, nk, 0, 0, NO);
+}
+PH_IMPORT int32_t coaxial_v2_storage_put(AethyrHostCtx *ctx, int32_t slot, int32_t token, uintptr_t space, int32_t ns, int32_t version, uintptr_t key, int32_t nk, uintptr_t bytes, int32_t count) {
+ return phStorageForHost(phHostFromCtx(ctx), slot, token, space, ns, version, key, nk, bytes, count, YES);
+}
+
+// ---- legacy aethyr-host-v1 imports: routed via thread-local PH_SCOPE(self)
 PH_IMPORT int32_t coaxial_socket_open(uintptr_t url, uint32_t length) {
- AEPageHost *h = phCurrent; if (!h || !url) return -1;
+ AEPageHost *h = phActiveHost(); if (!h || !url) return -1;
  return [h socketOpen:[[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding]];
 }
 PH_IMPORT void coaxial_socket_send(int32_t id, uintptr_t bytes, uint32_t length) {
- AEPageHost *h = phCurrent; if (!h || !bytes) return;
+ AEPageHost *h = phActiveHost(); if (!h || !bytes) return;
  // a frame whose first byte is 0x80..0xBF is binary (#13278): its bytes, copied, as a binary message
  if (length && (*(const uint8_t *)bytes & 0xC0) == 0x80) { [h socketSend:id data:[NSData dataWithBytes:(void *)bytes length:length]]; return; }
  [h socketSend:id text:[[NSString alloc] initWithBytes:(void *)bytes length:length encoding:NSUTF8StringEncoding]];
 }
-PH_IMPORT void coaxial_socket_close(int32_t id) { [phCurrent socketClose:id]; }
+PH_IMPORT void coaxial_socket_close(int32_t id) { [phActiveHost() socketClose:id]; }
 PH_IMPORT int32_t coaxial_http(uintptr_t url, uint32_t length, uintptr_t body, uint32_t body_length, int32_t flags) {
- AEPageHost *h = phCurrent; if (!h || !url) return -1;
+ AEPageHost *h = phActiveHost(); if (!h || !url) return -1;
  NSString *path = [[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
  if (!path) return -1;
  return [h http:path body:body && body_length ? [NSData dataWithBytes:(void *)body length:body_length] : nil flags:flags timeout:0 bounded:NO];
 }
 PH_IMPORT int32_t guard_http(uintptr_t url,uint32_t length,uintptr_t body,uint32_t body_length,uint32_t flags,int64_t timeout) {
- AEPageHost *h=phCurrent;if (!h || !url) return -1;NSString *path=[[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
+ AEPageHost *h=phActiveHost();if (!h || !url) return -1;NSString *path=[[NSString alloc] initWithBytes:(void *)url length:length encoding:NSUTF8StringEncoding];
  return path?[h http:path body:body && body_length?[NSData dataWithBytes:(void *)body length:body_length]:nil flags:(int32_t)flags timeout:timeout bounded:YES]:-1;
 }
-PH_IMPORT int32_t guard_cancel(int32_t slot) {AEPageHost *h=phCurrent;if (!h || !ht_http_cancel((coax_v_t_HostTransport){&h->transport,1},slot)) return 0;PHHttp *request=h->http[slot];h->http[slot]=nil;if(request && request->cancel)request->cancel();return 1;}
+PH_IMPORT int32_t guard_cancel(int32_t slot) {AEPageHost *h=phActiveHost();if (!h || !ht_http_cancel((coax_v_t_HostTransport){&h->transport,1},slot)) return 0;PHHttp *request=h->http[slot];h->http[slot]=nil;if(request && request->cancel)request->cancel();return 1;}
 PH_IMPORT int64_t guard_now_ms(void) {return phMillis();}
 PH_IMPORT int32_t coaxial_http_bounded(uintptr_t u,uint32_t n,uintptr_t b,uint32_t bn,uint32_t f,int64_t t) {return guard_http(u,n,b,bn,f,t);}
 PH_IMPORT int32_t coaxial_http_cancel(int32_t slot) {return guard_cancel(slot);}
@@ -1423,8 +1663,7 @@ PH_IMPORT double coaxial_measure_ms(void) {return CACurrentMediaTime()*1000.0;}
 
 // Native storage uses the browser's exact reply envelope. SDK byte copies and
 // atomic files only; namespaces/versions/content remain the realm's choices.
-static int32_t phStorage(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count,BOOL write) {
- AEPageHost *h=phCurrent;
+static int32_t phStorageForHost(AEPageHost *h,int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count,BOOL write) {
  if (!h || h->closed) return 2;
  if (slot<0 || slot>7 || !token || !space || !key || ns<1 || ns>64 || nk<1 || nk>128 || version<1 || count<0 || (count && !bytes)) return 5;
  if (count>1048576) return 4;
@@ -1450,14 +1689,14 @@ static int32_t phStorage(int32_t slot,int32_t token,uintptr_t space,int32_t ns,i
  int64_t n=bsw_reply((uint32_t)token,status,(coax_string){payload.bytes,(int64_t)payload.length},(int64_t)payload.length,(coax_v_u8){reply.mutableBytes,(int64_t)reply.length});
  if (n<0) return 9;reply.length=(NSUInteger)n;h->storageTokens[slot]=(uint32_t)token;[h push:768+slot bytes:reply owner:nil closes:NO];return 0;
 }
-PH_IMPORT int32_t coaxial_storage_get(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk) {return phStorage(slot,token,space,ns,version,key,nk,0,0,NO);}
-PH_IMPORT int32_t coaxial_storage_put(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count) {return phStorage(slot,token,space,ns,version,key,nk,bytes,count,YES);}
+PH_IMPORT int32_t coaxial_storage_get(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk) {return phStorageForHost(phActiveHost(),slot,token,space,ns,version,key,nk,0,0,NO);}
+PH_IMPORT int32_t coaxial_storage_put(int32_t slot,int32_t token,uintptr_t space,int32_t ns,int32_t version,uintptr_t key,int32_t nk,uintptr_t bytes,int32_t count) {return phStorageForHost(phActiveHost(),slot,token,space,ns,version,key,nk,bytes,count,YES);}
 
 // ---- the page's sound, for the Apple audio host (audio-host.h; PageAudio.swift): its bank and its packets
 const uint8_t *mf_sound_bank(void *host, size_t *count) {
  AEPageHost *h = (__bridge AEPageHost *)host; *count = 0;
  if (!h || h->closed || !h->x.sound_bank || !h->x.sound_bank_len || !h->x.sound_bank_capacity) return NULL;
- phCurrent = h;
+ PH_SCOPE(h);
  size_t n = h->x.sound_bank_len(h->state), capacity = h->x.sound_bank_capacity(h->state);
  A p = h->x.sound_bank(h->state);
  if (!p || n > capacity) return NULL;

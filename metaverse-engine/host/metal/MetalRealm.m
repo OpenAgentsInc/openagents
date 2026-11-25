@@ -74,7 +74,10 @@ typedef struct {int64_t slot,generation;} MFHandle;
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable width:(int64_t)width height:(int64_t)height;
 - (BOOL)present:(id<MTLCommandBuffer>)command drawable:(id<CAMetalDrawable>)drawable descriptor:(coax_t_RenderPresentation)p;
 @end
-static __weak MFRealm *activeRealm;
+static _Thread_local __unsafe_unretained MFRealm *mfThreadRealm = nil;
+static inline MFRealm *mfActiveRealm(void) { return mfThreadRealm; }
+static void mfScopeRestore(__unsafe_unretained MFRealm **prev) { mfThreadRealm = *prev; }
+#define MF_SCOPE(realmObj) __unsafe_unretained MFRealm *__mfPrevRealm __attribute__((cleanup(mfScopeRestore))) = mfThreadRealm; mfThreadRealm = (realmObj)
 static NSString *lastFailure;
 static int64_t lastClosedLive=-1,lastClosedWords=-1,lastClosedMediaBytes=-1;
 typedef struct {
@@ -167,6 +170,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
 @implementation MFRealm
 - (BOOL)fail:(NSString*)message {error=message?:@"Metal effect failed";return NO;}
 - (BOOL)open:(NSString*)resources producer:(NSString*)producer golden:(BOOL)isGolden fixture:(BOOL)isFixture {
+ MF_SCOPE(self);
  directory=resources;golden=isGolden;fixture=isFixture;effects=[NSMutableArray array];inflight=[NSMutableArray array];buffers=[NSMutableArray array];targets=[NSMutableDictionary dictionary];targetHandles=[NSMutableDictionary dictionary];pipelines=[NSMutableDictionary dictionary];depthStates=[NSMutableDictionary dictionary];samplers=[NSMutableDictionary dictionary];libraries=[NSMutableDictionary dictionary];reflectionBytes=[NSMutableArray array];textureImages=[NSMutableArray array];mediaCache=[NSMutableDictionary dictionary];screenFormat=COAX_RenderTextureFormat_rgba16f;
  image=dlopen(producer.fileSystemRepresentation,RTLD_NOW|RTLD_LOCAL);if(!image)return [self fail:[NSString stringWithUTF8String:dlerror()]];face.image=image;
  coax_default_t_HostTransport(&transport);
@@ -252,7 +256,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  memcpy(uniforms.mutableBytes,textureInput.uniforms.data,textureInput.uniforms.size);memcpy(vertices.mutableBytes,textureInput.hud.data,textureInput.hud.size);memcpy(indices.contents,textureInput.indices.data,textureInput.indices.size);
  return [self createTextures];
 }
-- (void)message:(int32_t)kind data:(NSData*)data {size_t n=MIN(data.length,face.inbox_cap());memcpy((void*)face.inbox(state),data.bytes,n);face.message(state,kind,(uint32_t)n);}
+- (void)message:(int32_t)kind data:(NSData*)data {MF_SCOPE(self);size_t n=MIN(data.length,face.inbox_cap());memcpy((void*)face.inbox(state),data.bytes,n);face.message(state,kind,(uint32_t)n);}
 - (void)deliverMediaNotice {if(mediaNotice){NSData *notice=mediaNotice;mediaNotice=nil;[self message:(int32_t)htn_kind() data:notice];lastMediaNotice=notice;}}
 - (BOOL)ensureTarget:(coax_t_RenderTarget)t width:(int64_t)width height:(int64_t)height {
  if(t==COAX_RenderTarget_none)return YES;coax_t_RenderTargetDescriptor d=engine_render_target_raw(t,width,height,false,screenFormat,16384);if(d.status!=COAX_RenderResourceStatus_ok)return [self fail:@"Coax refused the target extent"];
@@ -338,6 +342,7 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
  // Concrete presentation availability precedes both the admitted clock and
  // the producer. A temporarily unavailable drawable consumes neither.
  id<CAMetalDrawable> drawable=nil;if(layer){layer.drawableSize=CGSizeMake(width,height);drawable=[layer nextDrawable];if(!drawable)return YES;}
+ MF_SCOPE(self);
  if(clockedFrame){coax_t_HostFrameOffer offer=htl_offer((coax_v_t_HostLifecycle){&life,1},frameTime,pending);if(!offer.admit)return YES;dt=(float)offer.dt;}
  uint32_t count=replay?(uint32_t)textureInput.counts[3]:face.frame(state,(uintptr_t)vertices.mutableBytes,(uintptr_t)uniforms.mutableBytes,width,height,scale,dt,still?1:0);if(fixture){frames++;return YES;}
  lastHud=count;
@@ -454,13 +459,13 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
 }
 @end
 
-void *mf_open(const char *resources,const char *producer,bool golden,bool fixture){if(activeRealm){lastFailure=@"Only one active realm image is admitted";return NULL;}MFRealm *r=[MFRealm new];activeRealm=r;if(![r open:[NSString stringWithUTF8String:resources] producer:[NSString stringWithUTF8String:producer] golden:golden fixture:fixture]){lastFailure=r->error;activeRealm=nil;return NULL;}return (__bridge_retained void*)r;}
+void *mf_open(const char *resources,const char *producer,bool golden,bool fixture){MFRealm *r=[MFRealm new];if(![r open:[NSString stringWithUTF8String:resources] producer:[NSString stringWithUTF8String:producer] golden:golden fixture:fixture]){lastFailure=r->error;return NULL;}return (__bridge_retained void*)r;}
 const char *mf_error(void *host){return (host?((__bridge MFRealm*)host)->error:lastFailure).UTF8String;}
 void mf_message(void *host,int32_t kind,const uint8_t *bytes,size_t n){[(__bridge MFRealm*)host message:kind data:[NSData dataWithBytes:bytes length:n]];}
-bool mf_key(void *host,int32_t key,bool down,int32_t mods){MFRealm *r=(__bridge MFRealm*)host;if(r->measureRows){r->inputNS=nanoseconds();r->inputSequence++;}return down?r->face.key&&r->face.key(r->state,key,mods):r->face.key_up&&r->face.key_up(r->state,key,mods);}
-bool mf_pointer(void *host,float x,float y,int32_t phase,int32_t kind,int32_t id){MFRealm *r=(__bridge MFRealm*)host;return r->face.pointer&&r->face.pointer(r->state,x,y,phase,kind,id);}
-void mf_wheel(void *host,float dy){MFRealm *r=(__bridge MFRealm*)host;if(r->face.wheel)r->face.wheel(r->state,dy);}
-void mf_focus(void *host,bool focused){MFRealm *r=(__bridge MFRealm*)host;htl_event((coax_v_t_HostLifecycle){&r->life,1},focused?2:3,htl_tick((int64_t)(nanoseconds()/1000)),0);if(focused){if(r->face.focus)r->face.focus(r->state);}else if(r->face.blur)r->face.blur(r->state);}
+bool mf_key(void *host,int32_t key,bool down,int32_t mods){MFRealm *r=(__bridge MFRealm*)host;MF_SCOPE(r);if(r->measureRows){r->inputNS=nanoseconds();r->inputSequence++;}return down?r->face.key&&r->face.key(r->state,key,mods):r->face.key_up&&r->face.key_up(r->state,key,mods);}
+bool mf_pointer(void *host,float x,float y,int32_t phase,int32_t kind,int32_t id){MFRealm *r=(__bridge MFRealm*)host;MF_SCOPE(r);return r->face.pointer&&r->face.pointer(r->state,x,y,phase,kind,id);}
+void mf_wheel(void *host,float dy){MFRealm *r=(__bridge MFRealm*)host;MF_SCOPE(r);if(r->face.wheel)r->face.wheel(r->state,dy);}
+void mf_focus(void *host,bool focused){MFRealm *r=(__bridge MFRealm*)host;MF_SCOPE(r);htl_event((coax_v_t_HostLifecycle){&r->life,1},focused?2:3,htl_tick((int64_t)(nanoseconds()/1000)),0);if(focused){if(r->face.focus)r->face.focus(r->state);}else if(r->face.blur)r->face.blur(r->state);}
 int32_t mf_action(void *host){MFRealm *r=(__bridge MFRealm*)host;return r->face.action?r->face.action(r->state):0;}
 const uint8_t *mf_outbox(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;size_t bytes=r->face.outbox_len?r->face.outbox_len(r->state):0;uintptr_t at=bytes&&r->face.outbox?r->face.outbox(r->state):0;
  r->actionPacketChecked=YES;r->actionPacketValid=!(r->face.host_contract_version&&r->face.host_contract_version()==1)||hap_span(at,bytes&&r->face.outbox_capacity?r->face.outbox_capacity(r->state):0,bytes,UINTPTR_MAX,r->face.outbox_capacity!=NULL);
@@ -554,7 +559,7 @@ const uint8_t *mf_frame_jpeg(void *host,size_t *count){
  r->frameImage=[[jpeg base64EncodedStringWithOptions:0]dataUsingEncoding:NSUTF8StringEncoding];*count=r->frameImage.length;return r->frameImage.bytes;
 }
 int64_t mf_http_image(const uint8_t *body,size_t body_count,const uint8_t *image,size_t image_count,uint8_t *out,size_t out_count){return hpi_attach((coax_string){(const char*)body,(int64_t)body_count},(coax_string){(const char*)image,(int64_t)image_count},(coax_v_u8){out,(int64_t)out_count});}
-void mf_close(void *host){MFRealm *r=CFBridgingRelease(host);[r shutdown];if(activeRealm==r)activeRealm=nil;}
+void mf_close(void *host){MFRealm *r=CFBridgingRelease(host);[r shutdown];if(mfThreadRealm==r)mfThreadRealm=nil;}
 int64_t mf_closed_info(int32_t field){return field==0?lastClosedLive:field==1?lastClosedWords:field==2?lastClosedMediaBytes:-1;}
 void mf_network_config(void *host,const char *page,const char *local){MFRealm *r=(__bridge MFRealm*)host;r->pageOrigin=page?[NSString stringWithUTF8String:page]:nil;r->localOrigin=local?[NSString stringWithUTF8String:local]:nil;}
 void mf_network_cookie_storage(void *host,void *storage){MFRealm *r=(__bridge MFRealm*)host;r->cookieJar=(__bridge NSHTTPCookieStorage*)storage;}
@@ -572,7 +577,7 @@ int32_t mf_sound_probe(void *host,int32_t slot,float right,float ahead,float up)
 // network callbacks are queued by the platform and fenced again on delivery.
 int64_t guard_now_ms(void){const char *fixed=(getenv("METAVERSE_NATIVE_CLOCK_MS") ? getenv("METAVERSE_NATIVE_CLOCK_MS") : getenv("VERSE_NATIVE_CLOCK_MS"));int64_t observed;if(fixed&&parseNumber(fixed,&observed))return observed;return milliseconds();}
 double coaxial_measure_ms(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return(double)t.tv_sec*1000+(double)t.tv_nsec/1000000;}
-int32_t coaxial_socket_open(uintptr_t address,uint32_t length){MFRealm *r=activeRealm;if(!r)return -1;NSString *url=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding];if(!url)return -1;
+int32_t coaxial_socket_open(uintptr_t address,uint32_t length){MFRealm *r=mfActiveRealm();if(!r)return -1;NSString *url=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding];if(!url)return -1;
  if([url hasPrefix:@"local:"]){uint8_t target[8192];int64_t n=htr_local_target(cs(url),cs(r->localOrigin?:@""),(coax_v_u8){target,sizeof target});if(n<0)return -1;url=[[NSString alloc]initWithBytes:target length:(NSUInteger)n encoding:NSUTF8StringEncoding];}
  NSURL *base=r->pageOrigin?[NSURL URLWithString:r->pageOrigin]:nil,*resolved=[NSURL URLWithString:url relativeToURL:base];if(!resolved)return -1;NSURLComponents *parts=[NSURLComponents componentsWithURL:resolved resolvingAgainstBaseURL:YES];if([parts.scheme isEqual:@"http"])parts.scheme=@"ws";if([parts.scheme isEqual:@"https"])parts.scheme=@"wss";if(!parts.host.length||parts.fragment||(![parts.scheme isEqual:@"ws"]&&![parts.scheme isEqual:@"wss"])||!parts.URL)return -1;
  if(!socketSDK(r)||!r->pageOrigin)return -1;NSData *target=[parts.URL.absoluteString dataUsingEncoding:NSUTF8StringEncoding];if(!networkAPI.uri(target.bytes,target.length))return -1;
@@ -583,18 +588,18 @@ int32_t coaxial_socket_open(uintptr_t address,uint32_t length){MFRealm *r=active
  const uint8_t *origin=(const uint8_t*)r->pageOrigin.UTF8String,*selected=(const uint8_t*)cookie.UTF8String;
  if(!networkAPI.opening_context(origin,originBytes,selected,cookieBytes))return -1;
  coax_t_HostOwner o=ht_socket_reserve(net(r));if(o.id<0)return -1;r->socketOwners[o.id]=o;networkAPI.start_context(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},target.bytes,target.length,origin,originBytes,selected,cookieBytes);return(int32_t)o.id;}
-void coaxial_socket_send(int32_t id,uintptr_t address,uint32_t length){MFRealm *r=activeRealm;if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_send(net(r),o))networkAPI.send(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},(void*)address,length);}
-void coaxial_socket_close(int32_t id){MFRealm *r=activeRealm;if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_close(net(r),o))networkAPI.socket_close(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine});}
-static int32_t http_import(uintptr_t address,uint32_t length,uintptr_t body,uint32_t bodyLength,int32_t flags,int64_t timeout,BOOL bounded){MFRealm *r=activeRealm;if(!r)return -1;NSString *path=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding],*payload=[[NSString alloc]initWithBytes:(void*)body length:bodyLength encoding:NSUTF8StringEncoding];if(!path||!payload||!r->pageOrigin)return -1;
+void coaxial_socket_send(int32_t id,uintptr_t address,uint32_t length){MFRealm *r=mfActiveRealm();if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_send(net(r),o))networkAPI.send(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine},(void*)address,length);}
+void coaxial_socket_close(int32_t id){MFRealm *r=mfActiveRealm();if(!r||!r->socketContext||id<0||id>=4)return;coax_t_HostOwner o=r->socketOwners[id];if(ht_socket_close(net(r),o))networkAPI.socket_close(r->socketContext,(MNSocketOwner){o.id,o.generation,o.engine});}
+static int32_t http_import(uintptr_t address,uint32_t length,uintptr_t body,uint32_t bodyLength,int32_t flags,int64_t timeout,BOOL bounded){MFRealm *r=mfActiveRealm();if(!r)return -1;NSString *path=[[NSString alloc]initWithBytes:(void*)address length:length encoding:NSUTF8StringEncoding],*payload=[[NSString alloc]initWithBytes:(void*)body length:bodyLength encoding:NSUTF8StringEncoding];if(!path||!payload||!r->pageOrigin)return -1;
  uint8_t target[12288];int64_t n=htr_http_target(cs(path),(coax_v_u8){target,sizeof target});if(n<0)return -1;NSString *normalized=[[NSString alloc]initWithBytes:target length:(NSUInteger)n encoding:NSUTF8StringEncoding];
  NSURL *base=[NSURL URLWithString:r->pageOrigin],*url=[NSURL URLWithString:[r->pageOrigin stringByAppendingString:normalized]];if(!url||![url.scheme isEqual:base.scheme]||![url.host.lowercaseString isEqual:base.host.lowercaseString]||!(url.port==base.port||[url.port isEqual:base.port]))return -1;
  if((flags&16)&&[payload rangeOfString:@"\n"].location==NSNotFound)return -1;
  coax_t_HostOwner o=ht_http_reserve(net(r),flags,bounded,timeout,milliseconds(),r->face.inbox_cap());if(((flags&4)||bounded)&&o.id<0)return -1;effect(r,@"http",o,@{@"url":url.absoluteString,@"body":payload,@"flags":@(flags),@"bounded":@(bounded),@"timeout":@(timeout),@"capacity":@(r->face.inbox_cap())});return o.id<0?0:(int32_t)o.id;}
 int32_t coaxial_http(uintptr_t a,uint32_t b,uintptr_t c,uint32_t d,int32_t flags){return http_import(a,b,c,d,flags,0,NO);}
 int32_t guard_http(uintptr_t a,uint32_t b,uintptr_t c,uint32_t d,uint32_t flags,int64_t timeout){return http_import(a,b,c,d,(int32_t)flags,timeout,YES);}
-int32_t guard_cancel(int32_t id){MFRealm *r=activeRealm;if(!r||!ht_http_cancel(net(r),id))return 0;effect(r,@"http-cancel",(coax_t_HostOwner){.id=id},@{});return 1;}
+int32_t guard_cancel(int32_t id){MFRealm *r=mfActiveRealm();if(!r||!ht_http_cancel(net(r),id))return 0;effect(r,@"http-cancel",(coax_t_HostOwner){.id=id},@{});return 1;}
 int32_t coaxial_http_bounded(uintptr_t a,uint32_t b,uintptr_t c,uint32_t d,uint32_t flags,int64_t timeout){return guard_http(a,b,c,d,flags,timeout);}
-int32_t mf_http_request(void *host,const uint8_t *path,size_t count,const uint8_t *body,size_t bodyCount,int32_t flags,int64_t timeout){if((__bridge MFRealm*)host!=activeRealm||count>UINT32_MAX||bodyCount>UINT32_MAX||(!path&&count)||(!body&&bodyCount))return -1;return http_import((uintptr_t)path,(uint32_t)count,(uintptr_t)body,(uint32_t)bodyCount,flags,timeout,YES);}
+int32_t mf_http_request(void *host,const uint8_t *path,size_t count,const uint8_t *body,size_t bodyCount,int32_t flags,int64_t timeout){MFRealm *r=(__bridge MFRealm*)host;if(!r||count>UINT32_MAX||bodyCount>UINT32_MAX||(!path&&count)||(!body&&bodyCount))return -1;MF_SCOPE(r);return http_import((uintptr_t)path,(uint32_t)count,(uintptr_t)body,(uint32_t)bodyCount,flags,timeout,YES);}
 int32_t coaxial_http_cancel(int32_t id){return guard_cancel(id);}
 int64_t coaxial_now_ms(void){return guard_now_ms();}
 void host_line(int64_t h,double ax,double ay,double bx,double by,double a,double b,double w){(void)h;(void)ax;(void)ay;(void)bx;(void)by;(void)a;(void)b;(void)w;}

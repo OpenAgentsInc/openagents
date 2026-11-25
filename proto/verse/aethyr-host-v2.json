@@ -1,0 +1,29 @@
+{
+  "profile": "aethyr-host-v2",
+  "version": 2,
+  "title": "Context-safe multi-instance native host ABI and GPU budget policy (aethyr.host.v2)",
+  "id": "aethyr.host.v2",
+  "spec": "docs/desktop/metaverse-viewer-and-gamebuilder-pane-spec.md",
+  "abi_header": "metaverse-engine/host/aethyr-host-v2.h",
+  "codec": "metaverse-engine/host/aethyr-host-v2.coax",
+  "limits": {
+    "max_instances": 16,
+    "min_budget_bytes": 67108864,
+    "max_budget_bytes": 536870912,
+    "active_tab_budget_bytes": 402653184,
+    "inline_card_budget_bytes": 100663296,
+    "lru_evict_percent": 75,
+    "max_refresh_hz": 120,
+    "battery_refresh_hz": 60,
+    "idle_refresh_hz": 0
+  },
+  "imports": [
+    "coaxial_v2_socket_open",
+    "coaxial_v2_socket_send",
+    "coaxial_v2_socket_close",
+    "coaxial_v2_http",
+    "coaxial_v2_http_cancel",
+    "coaxial_v2_storage_get",
+    "coaxial_v2_storage_put"
+  ]
+}

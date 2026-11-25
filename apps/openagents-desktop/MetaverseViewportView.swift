@@ -6,7 +6,63 @@ import ModelIO
 import QuartzCore
 import ImageIO
 import UniformTypeIdentifiers
+import IOKit.ps
 import simd
+
+/// Process-wide shared Metal device, command queue, and #authority-bounded aggregate VRAM ledger
+/// across the right-side Metaverse pane, inline OA-SHOW-LIVE cards, and cached tabs (aethyr.host.v2, #14042).
+final class MetaverseGpuCoordinator {
+    static let shared = MetaverseGpuCoordinator()
+    let device: MTLDevice?
+    let queue: MTLCommandQueue?
+    let budgetLimitBytes: UInt64
+    private var tickCounter: UInt64 = 0
+
+    private init() {
+        let dev = MTLCreateSystemDefaultDevice()
+        self.device = dev
+        self.queue = dev?.makeCommandQueue()
+        let ram = Int64(ProcessInfo.processInfo.physicalMemory)
+        let cap = oa_mv_policy_budget_cap(ram)
+        self.budgetLimitBytes = UInt64(max(64 * 1024 * 1024, cap))
+    }
+
+    func nextTick() -> UInt64 {
+        tickCounter &+= 1
+        return tickCounter
+    }
+
+    /// Evicts GPU buffers/textures from least-recently-used background tabs when aggregate VRAM
+    /// exceeds the 75% watermark, keeping lightweight CPU state & camera pose intact.
+    func enforceBudget(scenes: [String: MetaverseTabScene], activePath: String) {
+        var total: UInt64 = 0
+        for sc in scenes.values { total &+= sc.gpuBytes }
+        let watermark = (budgetLimitBytes * 3) / 4
+        guard total > watermark else { return }
+        let victims = scenes.values
+            .filter { $0.path != activePath && $0.gpuBytes > 0 }
+            .sorted { $0.lastTouchedTick < $1.lastTouchedTick }
+        for v in victims {
+            total = total > v.gpuBytes ? total - v.gpuBytes : 0
+            v.evictGpuResources()
+            if total <= watermark { break }
+        }
+    }
+
+    static func isOnBatteryPower() -> Bool {
+        guard let snap = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let list = IOPSCopyPowerSourcesList(snap)?.takeRetainedValue() as? [CFTypeRef] else {
+            return false
+        }
+        for ps in list {
+            if let desc = IOPSGetPowerSourceDescription(snap, ps)?.takeUnretainedValue() as? [String: Any],
+               let state = desc[kIOPSPowerSourceStateKey as String] as? String {
+                if state == (kIOPSBatteryPowerValue as String) { return true }
+            }
+        }
+        return false
+    }
+}
 
 final class MetaverseTabScene {
     let path: String
@@ -16,11 +72,38 @@ final class MetaverseTabScene {
     var vertexCount: Int = 0
     var indexCount: Int = 0
     var zUp: Bool = false
+    var savedRev: Int = 0
     var boundsMin = SIMD3<Float>(-1, -1, -1)
     var boundsMax = SIMD3<Float>(1, 1, 1)
     var statsText: String = ""
     var errorText: String = ""
     var treeTSV: String = ""
+    var gpuBytes: UInt64 = 0
+    var lastTouchedTick: UInt64 = 0
+
+    struct JointInfo {
+        let index: Int
+        let name: String
+        let low: Float
+        let high: Float
+        let stand: Float
+        var current: Float
+    }
+
+    struct AnimClipInfo {
+        let index: Int
+        let name: String
+        let duration: Float
+    }
+
+    var hasAssembly: Bool = false
+    var joints: [JointInfo] = []
+    var activeJoint: Int = 0
+    var explodeFactor: Float = 0.0
+    var animClips: [AnimClipInfo] = []
+    var activeClip: Int = 0
+    var animTime: Float = 0.0
+    var animPlaying: Bool = false
 
     struct NodeDraw {
         let index: Int
@@ -61,6 +144,55 @@ final class MetaverseTabScene {
 
     deinit {
         if let h = handle { oa_mv_free(h) }
+    }
+
+    func recomputeGpuBytes() {
+        var b: UInt64 = 0
+        if let vb = vertexBuffer { b &+= UInt64(vb.length) }
+        if let ib = indexBuffer { b &+= UInt64(ib.length) }
+        for m in materials {
+            if let t = m.texture { b &+= UInt64(t.allocatedSize) }
+        }
+        gpuBytes = b
+    }
+
+    /// Evicts GPU buffers and textures while retaining Coax CPU state, camera pose, and node tree.
+    func evictGpuResources() {
+        vertexBuffer = nil
+        indexBuffer = nil
+        for i in 0..<materials.count { materials[i].texture = nil }
+        gpuBytes = 0
+    }
+
+    /// Re-uploads deformed vertices (after RBA1 joint/explode posing or animation clip scrubbing).
+    func reuploadVerticesToGpu(device: MTLDevice) {
+        guard let h = handle, vertexCount > 0 else { return }
+        var vbuf = [Float](repeating: 0, count: vertexCount * 12)
+        let written = Int(oa_mv_read_verts(h, &vbuf, Int32(vbuf.count)))
+        guard written > 0 else { return }
+        let byteLen = written * MemoryLayout<Float>.stride
+        if let existing = vertexBuffer, existing.length >= byteLen {
+            memcpy(existing.contents(), vbuf, byteLen)
+        } else {
+            vertexBuffer = device.makeBuffer(bytes: vbuf, length: byteLen, options: .storageModeShared)
+        }
+        var b = [Float](repeating: 0, count: 6)
+        if oa_mv_get_bounds(h, &b) != 0 {
+            boundsMin = SIMD3<Float>(b[0], b[1], b[2])
+            boundsMax = SIMD3<Float>(b[3], b[4], b[5])
+        }
+        recomputeGpuBytes()
+    }
+
+    /// Restores evicted GPU buffers transparently from retained Coax state on tab switch.
+    func ensureGpuBuffers(device: MTLDevice) {
+        if vertexBuffer != nil && indexBuffer != nil { return }
+        guard let h = handle, vertexCount > 0, indexCount > 0 else { return }
+        reuploadVerticesToGpu(device: device)
+        var ibuf = [UInt32](repeating: 0, count: indexCount)
+        _ = oa_mv_read_indices(h, &ibuf, Int32(ibuf.count))
+        indexBuffer = device.makeBuffer(bytes: ibuf, length: ibuf.count * MemoryLayout<UInt32>.stride, options: .storageModeShared)
+        recomputeGpuBytes()
     }
 
     var boundsCenter: SIMD3<Float> { (boundsMin + boundsMax) * 0.5 }
@@ -164,6 +296,21 @@ final class MetaverseViewportView: NSView {
     private let maskLayer = CAShapeLayer()
     private var holeRects: [NSRect] = []
 
+    // Phase 2 (#14042): RBA1 joint/explode + glTF/anim-scene/.aimport clip scrub overlay & 0 Hz idle timer
+    private let controlBar = NSStackView()
+    private let animPlayBtn = NSButton(title: "Play", target: nil, action: nil)
+    private let clipPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let animSlider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
+    private let animTimeLabel = NSTextField(labelWithString: "0.00s")
+    private let jointPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let jointSlider = NSSlider(value: 0, minValue: -3.14, maxValue: 3.14, target: nil, action: nil)
+    private let explodeLabel = NSTextField(labelWithString: "Explode")
+    private let explodeSlider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
+    private let resetPoseBtn = NSButton(title: "Reset", target: nil, action: nil)
+    private var animTimer: Timer?
+    private var animLastTick: CFTimeInterval = 0
+    private var idleEvictTimer: Timer?
+
     private(set) var activeScene: MetaverseTabScene?
     private var lastMouse: NSPoint = .zero
     private var downMouse: NSPoint = .zero
@@ -193,8 +340,8 @@ final class MetaverseViewportView: NSView {
         root.backgroundColor = NSColor(calibratedRed: 0.045, green: 0.052, blue: 0.065, alpha: 1.0).cgColor
         layer = root
 
-        device = MTLCreateSystemDefaultDevice()
-        queue = device?.makeCommandQueue()
+        device = MetaverseGpuCoordinator.shared.device
+        queue = MetaverseGpuCoordinator.shared.queue
 
         metalLayer.device = device
         metalLayer.pixelFormat = .bgra8Unorm
@@ -217,13 +364,248 @@ final class MetaverseViewportView: NSView {
         addSubview(hudLabel)
         NSLayoutConstraint.activate([
             hudLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            hudLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+            hudLabel.topAnchor.constraint(equalTo: topAnchor, constant: 10),
         ])
 
+        setupControlBar()
         registerForDraggedTypes([.fileURL])
         buildPipelines()
         buildDefaultResources()
         buildGridGeometry(zUp: false, radius: 5.0)
+    }
+
+    deinit {
+        animTimer?.invalidate()
+        idleEvictTimer?.invalidate()
+    }
+
+    private func setupControlBar() {
+        controlBar.orientation = .horizontal
+        controlBar.spacing = 8
+        controlBar.alignment = .centerY
+        controlBar.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
+        controlBar.wantsLayer = true
+        controlBar.layer?.backgroundColor = NSColor(calibratedRed: 0.07, green: 0.08, blue: 0.11, alpha: 0.88).cgColor
+        controlBar.layer?.cornerRadius = 7
+        controlBar.layer?.borderWidth = 1
+        controlBar.layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.12).cgColor
+        controlBar.translatesAutoresizingMaskIntoConstraints = false
+        controlBar.isHidden = true
+
+        animPlayBtn.bezelStyle = .rounded
+        animPlayBtn.controlSize = .small
+        animPlayBtn.target = self
+        animPlayBtn.action = #selector(toggleAnimPlay)
+
+        clipPopup.controlSize = .small
+        clipPopup.target = self
+        clipPopup.action = #selector(clipChanged)
+
+        animSlider.controlSize = .small
+        animSlider.target = self
+        animSlider.action = #selector(animScrubbed)
+        animSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 120).isActive = true
+
+        animTimeLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        animTimeLabel.textColor = NSColor(calibratedWhite: 0.85, alpha: 0.95)
+
+        jointPopup.controlSize = .small
+        jointPopup.target = self
+        jointPopup.action = #selector(jointChanged)
+
+        jointSlider.controlSize = .small
+        jointSlider.target = self
+        jointSlider.action = #selector(jointScrubbed)
+        jointSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
+
+        explodeLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        explodeLabel.textColor = NSColor(calibratedWhite: 0.78, alpha: 0.95)
+        explodeSlider.controlSize = .small
+        explodeSlider.target = self
+        explodeSlider.action = #selector(explodeScrubbed)
+        explodeSlider.widthAnchor.constraint(equalToConstant: 78).isActive = true
+
+        resetPoseBtn.bezelStyle = .rounded
+        resetPoseBtn.controlSize = .small
+        resetPoseBtn.target = self
+        resetPoseBtn.action = #selector(resetPoseClicked)
+
+        for v in [animPlayBtn, clipPopup, animSlider, animTimeLabel, jointPopup, jointSlider, explodeLabel, explodeSlider, resetPoseBtn] as [NSView] {
+            controlBar.addArrangedSubview(v)
+        }
+        addSubview(controlBar)
+        NSLayoutConstraint.activate([
+            controlBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 10),
+            controlBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            controlBar.centerXAnchor.constraint(equalTo: centerXAnchor),
+            controlBar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+    }
+
+    private func syncControlBar() {
+        guard let sc = activeScene else {
+            controlBar.isHidden = true
+            stopAnimTimer()
+            return
+        }
+        let showAnim = !sc.animClips.isEmpty
+        let showAsm = sc.hasAssembly && !sc.joints.isEmpty
+        controlBar.isHidden = !(showAnim || showAsm)
+
+        animPlayBtn.isHidden = !showAnim
+        clipPopup.isHidden = !showAnim
+        animSlider.isHidden = !showAnim
+        animTimeLabel.isHidden = !showAnim
+        if showAnim {
+            clipPopup.removeAllItems()
+            for cl in sc.animClips { clipPopup.addItem(withTitle: cl.name) }
+            let ci = min(max(0, sc.activeClip), sc.animClips.count - 1)
+            clipPopup.selectItem(at: ci)
+            let dur = max(0.01, sc.animClips[ci].duration)
+            animSlider.minValue = 0
+            animSlider.maxValue = Double(dur)
+            animSlider.doubleValue = Double(sc.animTime)
+            animPlayBtn.title = sc.animPlaying ? "Pause" : "Play"
+            animTimeLabel.stringValue = String(format: "%.2f / %.2fs", sc.animTime, dur)
+        }
+
+        jointPopup.isHidden = !showAsm
+        jointSlider.isHidden = !showAsm
+        explodeLabel.isHidden = !showAsm
+        explodeSlider.isHidden = !showAsm
+        resetPoseBtn.isHidden = !showAsm
+        if showAsm {
+            jointPopup.removeAllItems()
+            for j in sc.joints { jointPopup.addItem(withTitle: j.name) }
+            let ji = min(max(0, sc.activeJoint), sc.joints.count - 1)
+            jointPopup.selectItem(at: ji)
+            let j = sc.joints[ji]
+            jointSlider.minValue = Double(j.low)
+            jointSlider.maxValue = Double(j.high)
+            jointSlider.doubleValue = Double(j.current)
+            explodeSlider.doubleValue = Double(sc.explodeFactor)
+        }
+        updateAnimTimer()
+    }
+
+    @objc private func toggleAnimPlay() {
+        guard let sc = activeScene, !sc.animClips.isEmpty else { return }
+        sc.animPlaying.toggle()
+        animPlayBtn.title = sc.animPlaying ? "Pause" : "Play"
+        updateAnimTimer()
+    }
+
+    @objc private func clipChanged() {
+        guard let sc = activeScene, !sc.animClips.isEmpty else { return }
+        sc.activeClip = max(0, clipPopup.indexOfSelectedItem)
+        sc.animTime = 0
+        applyAnimTime(0)
+        syncControlBar()
+    }
+
+    @objc private func animScrubbed() {
+        applyAnimTime(Float(animSlider.doubleValue))
+    }
+
+    private func applyAnimTime(_ t: Float) {
+        guard let sc = activeScene, let h = sc.handle, let device, !sc.animClips.isEmpty else { return }
+        let ci = min(max(0, sc.activeClip), sc.animClips.count - 1)
+        let dur = max(0.01, sc.animClips[ci].duration)
+        sc.animTime = t.truncatingRemainder(dividingBy: dur)
+        if sc.animTime < 0 { sc.animTime += dur }
+        if oa_mv_apply_anim_time(h, Int32(ci), sc.animTime) != 0 {
+            sc.reuploadVerticesToGpu(device: device)
+            animSlider.doubleValue = Double(sc.animTime)
+            animTimeLabel.stringValue = String(format: "%.2f / %.2fs", sc.animTime, dur)
+            renderNow()
+        }
+    }
+
+    @objc private func jointChanged() {
+        guard let sc = activeScene, sc.hasAssembly, !sc.joints.isEmpty else { return }
+        sc.activeJoint = min(max(0, jointPopup.indexOfSelectedItem), sc.joints.count - 1)
+        let j = sc.joints[sc.activeJoint]
+        jointSlider.minValue = Double(j.low)
+        jointSlider.maxValue = Double(j.high)
+        jointSlider.doubleValue = Double(j.current)
+    }
+
+    @objc private func jointScrubbed() {
+        guard let sc = activeScene, sc.hasAssembly, let h = sc.handle, let device,
+              sc.activeJoint >= 0 && sc.activeJoint < sc.joints.count else { return }
+        let angle = Float(jointSlider.doubleValue)
+        if oa_mv_apply_joint(h, Int32(sc.activeJoint), angle) != 0 {
+            sc.joints[sc.activeJoint].current = angle
+            sc.reuploadVerticesToGpu(device: device)
+            renderNow()
+        }
+    }
+
+    @objc private func explodeScrubbed() {
+        guard let sc = activeScene, sc.hasAssembly, let h = sc.handle, let device else { return }
+        let e = Float(explodeSlider.doubleValue)
+        if oa_mv_apply_explode(h, e) != 0 {
+            sc.explodeFactor = e
+            sc.reuploadVerticesToGpu(device: device)
+            renderNow()
+        }
+    }
+
+    @objc private func resetPoseClicked() {
+        guard let sc = activeScene, sc.hasAssembly, let h = sc.handle, let device else { return }
+        if oa_mv_apply_reset_pose(h) != 0 {
+            for i in 0..<sc.joints.count { sc.joints[i].current = sc.joints[i].stand }
+            sc.explodeFactor = 0
+            sc.reuploadVerticesToGpu(device: device)
+            syncControlBar()
+            renderNow()
+        }
+    }
+
+    func updateAnimTimer() {
+        let visible = !isHidden && window != nil && !(window?.isMiniaturized ?? false)
+        let focused = window?.isKeyWindow ?? false
+        let animated = (activeScene?.animPlaying ?? false) && !(activeScene?.animClips.isEmpty ?? true)
+        let onBattery = MetaverseGpuCoordinator.isOnBatteryPower()
+        let displayHz = Int(window?.screen?.maximumFramesPerSecond ?? 60)
+        // Canonical #authority aethyr.host.v2 frame-rate / thermal policy: 0 Hz when idle/hidden!
+        let hz = Int(oa_mv_policy_frame_hz(visible ? 1 : 0, focused ? 1 : 0, animated ? 1 : 0, onBattery ? 1 : 0, Int32(displayHz)))
+        if hz <= 0 {
+            stopAnimTimer()
+            return
+        }
+        if animTimer != nil { return }
+        animLastTick = CACurrentMediaTime()
+        let interval = 1.0 / Double(hz)
+        animTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self, let sc = self.activeScene, sc.animPlaying else { self?.stopAnimTimer(); return }
+            let now = CACurrentMediaTime()
+            let dt = Float(min(0.1, max(0.0, now - self.animLastTick)))
+            self.animLastTick = now
+            self.applyAnimTime(sc.animTime + dt)
+        }
+    }
+
+    private func stopAnimTimer() {
+        animTimer?.invalidate()
+        animTimer = nil
+    }
+
+    /// Pauses animation tick immediately at 0 Hz when hidden, and releases transient depth target after 10 s idle.
+    func setPaneVisible(_ visible: Bool) {
+        if visible {
+            idleEvictTimer?.invalidate()
+            idleEvictTimer = nil
+            updateAnimTimer()
+        } else {
+            stopAnimTimer()
+            idleEvictTimer?.invalidate()
+            idleEvictTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+                guard let self, self.isHidden else { return }
+                self.depthTexture = nil
+                self.depthSize = .zero
+            }
+        }
     }
 
     private func buildPipelines() {
@@ -483,6 +865,31 @@ final class MetaverseViewportView: NSView {
                 label: String(cString: lbl)
             )
         }
+
+        // Phase 2 (#14042): realm saved_rev, RBA1 joints, and animation clip metadata
+        scene.savedRev = Int(oa_mv_get_saved_rev(h))
+        scene.hasAssembly = oa_mv_is_assembly(h) != 0
+        if scene.hasAssembly {
+            let jc = Int(oa_mv_get_joint_count(h))
+            scene.joints = (0..<jc).map { ji in
+                var rng = [Float](repeating: 0, count: 4)
+                var nm = [CChar](repeating: 0, count: 128)
+                _ = oa_mv_get_joint_info(h, Int32(ji), &rng, &nm, Int32(nm.count))
+                return MetaverseTabScene.JointInfo(
+                    index: ji, name: String(cString: nm),
+                    low: rng[0], high: rng[1], stand: rng[2], current: rng[3]
+                )
+            }
+        }
+        let ac = Int(oa_mv_get_anim_count(h))
+        scene.animClips = (0..<ac).map { ci in
+            var dur: Float = 1.0
+            var nm = [CChar](repeating: 0, count: 64)
+            _ = oa_mv_get_anim_info(h, Int32(ci), &dur, &nm, Int32(nm.count))
+            return MetaverseTabScene.AnimClipInfo(index: ci, name: String(cString: nm), duration: dur)
+        }
+        scene.lastTouchedTick = MetaverseGpuCoordinator.shared.nextTick()
+        scene.recomputeGpuBytes()
     }
 
     private func loadViaModelIO(url: URL, into scene: MetaverseTabScene) {
@@ -553,11 +960,15 @@ final class MetaverseViewportView: NSView {
         scene.statsText = "\(indices.count / 3) tris · \(scene.nodes.count) nodes · USD"
         scene.vertexBuffer = device.makeBuffer(bytes: verts, length: verts.count * MemoryLayout<Float>.stride, options: .storageModeShared)
         scene.indexBuffer = device.makeBuffer(bytes: indices, length: indices.count * MemoryLayout<UInt32>.stride, options: .storageModeShared)
+        scene.lastTouchedTick = MetaverseGpuCoordinator.shared.nextTick()
+        scene.recomputeGpuBytes()
     }
 
     func setActiveScene(_ scene: MetaverseTabScene?) {
         activeScene = scene
         if let scene {
+            if let device { scene.ensureGpuBuffers(device: device) }
+            scene.lastTouchedTick = MetaverseGpuCoordinator.shared.nextTick()
             buildGridGeometry(zUp: scene.zUp, radius: scene.boundsRadius)
             buildBoundsGeometry(minV: scene.boundsMin, maxV: scene.boundsMax)
             hudLabel.stringValue = " \(scene.statsText) "
@@ -565,6 +976,7 @@ final class MetaverseViewportView: NSView {
         } else {
             hudLabel.isHidden = true
         }
+        syncControlBar()
         renderNow()
     }
 

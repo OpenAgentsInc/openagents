@@ -780,6 +780,12 @@ extension CoderWindow {
             return
         }
         let path = String(cString: buf)
+        // Phase 2 (#14042): Deduplicate inline OA-SHOW-LIVE GPU view via #authority aethyr.host.v2
+        // when the exact same target is already visible in the right-side Metaverse pane (0 MiB duplicate cost).
+        if shouldDeduplicateInlineLiveCard(for: path) {
+            if let box = liveSceneBox, !box.isHidden { box.isHidden = true }
+            return
+        }
         let now = CACurrentMediaTime()
         if path != liveScenePath || now - liveSceneCheckedAt > 0.5 {
             liveSceneCheckedAt = now
@@ -788,6 +794,9 @@ extension CoderWindow {
         guard liveSceneStamp != nil, let panel = liveScenePanel, let box = liveSceneBox else {
             liveSceneBox?.isHidden = true
             return
+        }
+        if box.isHidden {
+            handoffCameraToLiveCard(for: path, panel: panel)
         }
         // the page's rects are top-left points; the canvas's, bottom-left
         let canvasH = canvas.bounds.height

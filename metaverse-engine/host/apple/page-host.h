@@ -10,10 +10,27 @@
 // The Mac and iOS hosts link it; a host on another GPU needs its own twin of PageHost.m.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include "../aethyr-host-v2.h"
+
+// Shared bounded GPU VRAM budget coordinator across concurrent AEPageHost / viewer instances
+// (aethyr.host.v2, GitHub #14042; default 512 MiB cap, LRU eviction at 75% watermark).
+@interface AEGpuBudget : NSObject
+- (instancetype)initWithLimitBytes:(uint64_t)limitBytes;
++ (instancetype)sharedDesktopBudget;
+@property (readonly) uint64_t limitBytes;
+@property (readonly) uint64_t totalBytes;
+- (uint32_t)registerInstance:(AethyrInstanceKind)kind;
+- (void)unregisterInstance:(uint32_t)instanceId;
+- (void)setFocused:(BOOL)focused forInstance:(uint32_t)instanceId;
+- (BOOL)recordBytes:(uint64_t)bytes forInstance:(uint32_t)instanceId;
+- (BOOL)needsEviction;
+- (uint32_t)lruVictimExcluding:(uint32_t)instanceId;
+@end
 
 // What a host says when it opens a page. Paths are files on this machine.
 @interface AEPageConfig : NSObject
 @property (copy) NSString *producer;   // the realm's library (the face and its Coax, natively)
+@property (strong) AEGpuBudget *gpuBudget; // optional shared VRAM coordinator across concurrent instances
 @property (copy) NSString *shaders;    // ROLE.metallib and ROLE.bind for bg, shadow, scene, bloom, post, fx, particle, particle_over; page.bindings
 @property (copy) NSString *pack;       // the realm's VPK1 pack, or that pack gzipped as the site serves it (NAME.pack.gz)
 @property (copy) NSString *fonts;      // the HUD's faces: READING.ttf and TITLE.ttf
@@ -50,6 +67,18 @@
 + (id<MTLTexture>)blockLayers:(NSData *)image device:(id<MTLDevice>)device;
 // nil when the page can't open; `why` then says what is missing.
 + (instancetype)open:(AEPageConfig *)config device:(id<MTLDevice>)device queue:(id<MTLCommandQueue>)queue why:(NSString **)why;
+// Context-safe multi-instance opener with explicit shared VRAM budget (aethyr.host.v2, #14042).
++ (instancetype)open:(AEPageConfig *)config device:(id<MTLDevice>)device queue:(id<MTLCommandQueue>)queue budget:(AEGpuBudget *)budget why:(NSString **)why;
+// Per-instance context passed to aethyr.host.v2 imports (zero process globals).
+- (AethyrHostCtx *)hostContext;
+// Current GPU buffer + texture bytes tracked against the shared AEGpuBudget.
+- (uint64_t)gpuBytesAllocated;
+// YES while hidden/idle at 0 Hz (no GPU submissions until shown again).
+- (BOOL)isIdlePaused;
+// Releases transient offscreen MSAA/bloom/depth targets while keeping CPU state and last screen.
+- (void)evictTransientTargets;
+// Recovers Metal resources after MTLCommandBufferErrorDeviceRemoved (parity with MetalRealm.m).
+- (BOOL)recoverGPU;
 // One frame of a view `points` in size at `scale` pixels a point. Returns the picture, drawn by
 // the time anything committed to the same queue afterwards reads it.
 - (id<MTLTexture>)frame:(CGSize)points scale:(CGFloat)scale dt:(float)dt wait:(BOOL)wait;

@@ -32,6 +32,21 @@ int oa_mv_get_tree_tsv(void *handle, char *out, int cap);
 int oa_mv_get_stats(void *handle, char *out, int cap);
 int oa_mv_get_err(void *handle, char *out, int cap);
 
+// Phase 2 (#14042): RBA1 rigid assembly, animation clip scrubbing, realm rev, & aethyr.host.v2 policy
+int oa_mv_get_saved_rev(void *handle);
+int oa_mv_is_assembly(void *handle);
+int oa_mv_get_joint_count(void *handle);
+int oa_mv_get_joint_info(void *handle, int idx, float out_range4[4], char *out_name, int name_cap);
+int oa_mv_apply_joint(void *handle, int idx, float angle);
+int oa_mv_apply_explode(void *handle, float explode);
+int oa_mv_apply_reset_pose(void *handle);
+int oa_mv_get_anim_count(void *handle);
+int oa_mv_get_anim_info(void *handle, int idx, float *out_duration, char *out_name, int name_cap);
+int oa_mv_apply_anim_time(void *handle, int clip_idx, float time_sec);
+int64_t oa_mv_policy_budget_cap(int64_t system_ram_bytes);
+int oa_mv_policy_inline_dedup(const char *inline_path, int pane_shown, int pane_hidden, const char *pane_active_path);
+int oa_mv_policy_frame_hz(int visible, int focused, int animated, int on_battery, int display_hz);
+
 #ifdef __cplusplus
 }
 #endif

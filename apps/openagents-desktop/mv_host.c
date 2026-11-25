@@ -108,3 +108,55 @@ int oa_mv_get_err(void *handle, char *out, int cap) {
   out[n] = '\0';
   return n;
 }
+
+int oa_mv_get_saved_rev(void *handle) { return handle ? (int)oa_mv_saved_rev(mv_view(handle)) : 0; }
+int oa_mv_is_assembly(void *handle) { return handle && oa_mv_has_assembly(mv_view(handle)) ? 1 : 0; }
+int oa_mv_get_joint_count(void *handle) { return handle ? (int)oa_mv_joint_count(mv_view(handle)) : 0; }
+
+int oa_mv_get_joint_info(void *handle, int idx, float out_range4[4], char *out_name, int name_cap) {
+  if (!handle || !out_range4 || !out_name || name_cap < 2) return 0;
+  int n = (int)oa_mv_joint_info(mv_view(handle), (int64_t)idx, (coax_v_f32){out_range4, 4}, (coax_v_u8){(uint8_t *)out_name, (int64_t)(name_cap - 1)});
+  if (n < 0) n = 0;
+  if (n >= name_cap) n = name_cap - 1;
+  out_name[n] = '\0';
+  return n;
+}
+
+int oa_mv_apply_joint(void *handle, int idx, float angle) {
+  return handle && oa_mv_set_joint(mv_view(handle), (int64_t)idx, angle) ? 1 : 0;
+}
+
+int oa_mv_apply_explode(void *handle, float explode) {
+  return handle && oa_mv_set_explode_val(mv_view(handle), explode) ? 1 : 0;
+}
+
+int oa_mv_apply_reset_pose(void *handle) {
+  return handle && oa_mv_reset_pose(mv_view(handle)) ? 1 : 0;
+}
+
+int oa_mv_get_anim_count(void *handle) { return handle ? (int)oa_mv_anim_count(mv_view(handle)) : 0; }
+
+int oa_mv_get_anim_info(void *handle, int idx, float *out_duration, char *out_name, int name_cap) {
+  if (!handle || !out_duration || !out_name || name_cap < 2) return 0;
+  int n = (int)oa_mv_anim_info(mv_view(handle), (int64_t)idx, (coax_v_f32){out_duration, 1}, (coax_v_u8){(uint8_t *)out_name, (int64_t)(name_cap - 1)});
+  if (n < 0) n = 0;
+  if (n >= name_cap) n = name_cap - 1;
+  out_name[n] = '\0';
+  return n;
+}
+
+int oa_mv_apply_anim_time(void *handle, int clip_idx, float time_sec) {
+  return handle && oa_mv_set_anim_time(mv_view(handle), (int64_t)clip_idx, time_sec) ? 1 : 0;
+}
+
+int64_t oa_mv_policy_budget_cap(int64_t system_ram_bytes) {
+  return (int64_t)oa_mv_budget_cap(system_ram_bytes);
+}
+
+int oa_mv_policy_inline_dedup(const char *inline_path, int pane_shown, int pane_hidden, const char *pane_active_path) {
+  return oa_mv_dedup_inline(mv_str(inline_path), pane_shown != 0, pane_hidden != 0, mv_str(pane_active_path)) ? 1 : 0;
+}
+
+int oa_mv_policy_frame_hz(int visible, int focused, int animated, int on_battery, int display_hz) {
+  return (int)oa_mv_policy_hz(visible != 0, focused != 0, animated != 0, on_battery != 0, (int64_t)display_hz);
+}

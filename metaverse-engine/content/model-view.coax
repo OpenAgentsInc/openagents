@@ -5,20 +5,47 @@
 // with raycast triangle picking and TSV scene tree export.
 #module "metaverse.engine.content.modelview";
 #load "../anim/gltf-access.coax";
+#load "../anim/assembly-wire.coax";
+#load "../anim/bundle.coax";
 #load "../import/ple-ifc.coax";
 #load "../host/pack-table.coax";
+#load "../host/aethyr-host-v2.coax";
 
-MV_FMT_UNKNOWN :: 0;
-MV_FMT_GLB     :: 1;
-MV_FMT_GLTF    :: 2;
-MV_FMT_OBJ     :: 3;
-MV_FMT_STL     :: 4;
-MV_FMT_GBM     :: 5;
-MV_FMT_PACK    :: 6;
-MV_FMT_PLE     :: 7;
-MV_FMT_IFC     :: 8;
+MV_FMT_UNKNOWN    :: 0;
+MV_FMT_GLB        :: 1;
+MV_FMT_GLTF       :: 2;
+MV_FMT_OBJ        :: 3;
+MV_FMT_STL        :: 4;
+MV_FMT_GBM        :: 5;
+MV_FMT_PACK       :: 6;
+MV_FMT_PLE        :: 7;
+MV_FMT_IFC        :: 8;
+MV_FMT_RBA        :: 9;
+MV_FMT_ANIM_SCENE :: 10;
+MV_FMT_AIMPORT    :: 11;
+MV_FMT_REALM      :: 12;
 
 MV_MAX_INPUT_BYTES :: 67108864; // 64 MiB hard cap
+MV_MAX_CLIPS       :: 16;
+MV_MAX_CHANNELS    :: 64;
+MV_MAX_KEYS        :: 32;
+
+MvAnimClip :: struct {
+  name: [48] u8; name_n: int;
+  duration: f32;
+  first_chan: int;
+  chan_count: int;
+}
+
+// path_kind: 0=translation (vec3), 1=rotation (quat xyzw), 2=scale (vec3)
+MvAnimChannel :: struct {
+  clip_idx: int;
+  node_idx: int;
+  path_kind: int;
+  nkeys: int;
+  times: [MV_MAX_KEYS] f32;
+  vals:  [MV_MAX_KEYS * 4] f32;
+}
 
 // 12 floats = 48 bytes; matches MvVertIn in metaverse-engine/gpu/model-view-shader.coax 1:1.
 MvVert :: struct {
@@ -55,12 +82,26 @@ MvDoc :: struct {
   ok: bool;
   format: int;
   verts: [] MvVert; nverts: int;
+  base_verts: [] MvVert;       // optional rest-pose snapshot for RBA1 / animation deformation
+  vert_node: [] s16;           // optional owning node/part index per vertex
   indices: [] u32;  nindices: int;
   nodes: [] MvNode; nnodes: int;
   mats: [] MvMat;   nmats: int;
   min_x: f32; min_y: f32; min_z: f32;
   max_x: f32; max_y: f32; max_z: f32;
   z_up: bool;
+  saved_rev: int;
+  // RBA1 rigid assembly state (#14042)
+  has_assembly: bool;
+  assembly: [1] RigidAssembly;
+  joint_angles: [ASSEMBLY_JOINTS] f32;
+  explode: f32;
+  // Animation clips & sampled channels (glTF / .aimport / anim.scene.v1, #14042)
+  nclips: int;
+  clips: [MV_MAX_CLIPS] MvAnimClip;
+  nchannels: int;
+  channels: [MV_MAX_CHANNELS] MvAnimChannel;
+  gltf_node_map: [256] int;    // maps glTF node index -> MvNode index (-1 if none)
   err: [256] u8; err_n: int;
   stats: [128] u8; stats_n: int;
 }
@@ -189,6 +230,14 @@ mv_doc_reset :: (doc: [] MvDoc) {
   doc[0].min_x = 1000000000.0f32; doc[0].min_y = 1000000000.0f32; doc[0].min_z = 1000000000.0f32;
   doc[0].max_x = -1000000000.0f32; doc[0].max_y = -1000000000.0f32; doc[0].max_z = -1000000000.0f32;
   doc[0].z_up = false;
+  doc[0].saved_rev = 0;
+  doc[0].has_assembly = false;
+  doc[0].assembly[0] = RigidAssembly.{};
+  for j: 0..<ASSEMBLY_JOINTS { doc[0].joint_angles[j] = 0.0f32; }
+  doc[0].explode = 0.0f32;
+  doc[0].nclips = 0;
+  doc[0].nchannels = 0;
+  for k: 0..<256 { doc[0].gltf_node_map[k] = -1; }
   doc[0].err_n = 0;
   doc[0].stats_n = 0;
 }
@@ -228,6 +277,7 @@ mv_push_vert :: (doc: [] MvDoc, node_idx: int, v: MvVert) -> int {
   if doc[0].nverts >= doc[0].verts.count { return -1; }
   i := doc[0].nverts;
   doc[0].verts[i] = v;
+  if i < doc[0].vert_node.count { doc[0].vert_node[i] = cast,trunc(s16) node_idx; }
   doc[0].nverts += 1;
   if v.px < doc[0].min_x { doc[0].min_x = v.px; }
   if v.py < doc[0].min_y { doc[0].min_y = v.py; }
@@ -279,13 +329,25 @@ mv_finalize :: (doc: [] MvDoc, fmt: int) -> bool {
   }
   doc[0].format = fmt;
   doc[0].ok = true;
-  fmt_names := [9] string.["3D", "GLB", "glTF", "OBJ", "STL", "GBM", "VPK", "PLE", "IFC"];
-  fn := ifx fmt >= 0 && fmt < 9 then fmt_names[fmt] else "3D";
+  if doc[0].base_verts.count >= doc[0].nverts {
+    for vi: 0..<doc[0].nverts { doc[0].base_verts[vi] = doc[0].verts[vi]; }
+  }
+  fmt_names := [13] string.["3D", "GLB", "glTF", "OBJ", "STL", "GBM", "VPK", "PLE", "IFC", "RBA1", "ANIM", "AIMP", "RLM"];
+  fn := ifx fmt >= 0 && fmt < 13 then fmt_names[fmt] else "3D";
   k := mv_put_int(doc[0].stats[..], 0, doc[0].nindices / 3);
   k = mv_put_str(doc[0].stats[..], k, " tris · ");
   k = mv_put_int(doc[0].stats[..], k, doc[0].nnodes);
   k = mv_put_str(doc[0].stats[..], k, " nodes · ");
   k = mv_put_str(doc[0].stats[..], k, fn);
+  if doc[0].has_assembly {
+    k = mv_put_str(doc[0].stats[..], k, " · ");
+    k = mv_put_int(doc[0].stats[..], k, doc[0].assembly[0].joints);
+    k = mv_put_str(doc[0].stats[..], k, " joints");
+  } else if doc[0].nclips > 0 {
+    k = mv_put_str(doc[0].stats[..], k, " · ");
+    k = mv_put_int(doc[0].stats[..], k, doc[0].nclips);
+    k = mv_put_str(doc[0].stats[..], k, " clips");
+  }
   doc[0].stats_n = k;
   return true;
 }
@@ -510,6 +572,9 @@ mv_gltf_walk_node :: (doc: [] MvDoc, gf: [] AgFile, node_idx: int, parent_m: MvM
     mv_gltf_emit_mesh(doc, gf, mesh_i, world, parent_row, depth, nstr);
     if doc[0].nnodes > before { my_row = before; }
   }
+  if node_idx >= 0 && node_idx < 256 && my_row >= 0 {
+    doc[0].gltf_node_map[node_idx] = my_row;
+  }
   kids := jv_get(d, nd, "children");
   kc := jv_len(d, kids);
   for ci: 0..<kc {
@@ -603,7 +668,86 @@ mv_load_gltf_core :: (doc: [] MvDoc, json_text: string, bin: [] u8, bin_base_off
     mc2 := jv_len(d, meshes);
     for mi: 0..<mc2 { mv_gltf_emit_mesh(doc, gf[..], mi, ident, -1, 0, ""); }
   }
+  mv_gltf_parse_animations(doc, gf[..]);
   return mv_finalize(doc, fmt);
+}
+
+mv_gltf_parse_animations :: (doc: [] MvDoc, gf: [] AgFile) {
+  d := gf[0].d;
+  anims := jv_get(d, 0, "animations");
+  ac := jv_len(d, anims);
+  if ac <= 0 { return; }
+  if ac > MV_MAX_CLIPS { ac = MV_MAX_CLIPS; }
+  for ai: 0..<ac {
+    an := jv_at(d, anims, ai);
+    clip_i := doc[0].nclips;
+    if clip_i >= MV_MAX_CLIPS { break; }
+    cl: MvAnimClip;
+    cl.first_chan = doc[0].nchannels;
+    nm_n := jv_get(d, an, "name");
+    nstr := ifx nm_n >= 0 then jv_raw(d, nm_n) else "";
+    if nstr.count >= 2 && nstr[0] == '"' && nstr[nstr.count - 1] == '"' { nstr = cast(string) nstr[1..<nstr.count - 1]; }
+    if nstr.count > 0 {
+      cl.name_n = mv_copy_str(cl.name[..], nstr);
+    } else {
+      nb: [32] u8; nk := mv_put_str(nb[..], 0, "clip-"); nk = mv_put_int(nb[..], nk, ai);
+      cl.name_n = mv_copy_str(cl.name[..], cast(string) nb[0..<nk]);
+    }
+    chans := jv_get(d, an, "channels");
+    samps := jv_get(d, an, "samplers");
+    cc := jv_len(d, chans);
+    dur: f32 = 0.0f32;
+    for ci: 0..<cc {
+      if doc[0].nchannels >= MV_MAX_CHANNELS { break; }
+      ch := jv_at(d, chans, ci);
+      tgt := jv_get(d, ch, "target");
+      gnode := ag_int(gf, tgt, "node", -1);
+      if gnode < 0 || gnode >= 256 { continue; }
+      mnode := doc[0].gltf_node_map[gnode];
+      if mnode < 0 { continue; }
+      pn := jv_get(d, tgt, "path");
+      pstr := ifx pn >= 0 then jv_raw(d, pn) else "";
+      if pstr.count >= 2 && pstr[0] == '"' && pstr[pstr.count - 1] == '"' { pstr = cast(string) pstr[1..<pstr.count - 1]; }
+      pkind := ifx pstr == "translation" then 0 else ifx pstr == "rotation" then 1 else ifx pstr == "scale" then 2 else -1;
+      if pkind < 0 { continue; }
+      si := ag_int(gf, ch, "sampler", -1);
+      samp := jv_at(d, samps, si);
+      if samp < 0 { continue; }
+      t_acc := ag_accessor(gf, ag_int(gf, samp, "input", -1));
+      v_acc := ag_accessor(gf, ag_int(gf, samp, "output", -1));
+      if !t_acc.ok || !v_acc.ok || t_acc.count < 1 || v_acc.count < 1 { continue; }
+      comp := ifx pkind == 1 then 4 else 3;
+      if v_acc.components < comp { continue; }
+      mc_ch: MvAnimChannel;
+      mc_ch.clip_idx = clip_i;
+      mc_ch.node_idx = mnode;
+      mc_ch.path_kind = pkind;
+      nk := ifx t_acc.count < v_acc.count then t_acc.count else v_acc.count;
+      step := 1;
+      if nk > MV_MAX_KEYS { step = (nk + MV_MAX_KEYS - 1) / MV_MAX_KEYS; }
+      out_k := 0;
+      k := 0;
+      while k < nk && out_k < MV_MAX_KEYS {
+        tv := mv_finite(ag_value(gf, t_acc, k, 0));
+        if tv > dur { dur = tv; }
+        mc_ch.times[out_k] = tv;
+        for c: 0..<comp {
+          mc_ch.vals[out_k * 4 + c] = mv_finite(ag_value(gf, v_acc, k, c));
+        }
+        out_k += 1;
+        k += step;
+      }
+      if out_k > 0 {
+        mc_ch.nkeys = out_k;
+        doc[0].channels[doc[0].nchannels] = mc_ch;
+        doc[0].nchannels += 1;
+        cl.chan_count += 1;
+      }
+    }
+    cl.duration = ifx dur > 0.001f32 then dur else 1.0f32;
+    doc[0].clips[clip_i] = cl;
+    doc[0].nclips += 1;
+  }
 }
 
 mv_load_glb :: (doc: [] MvDoc, raw: [] u8) -> bool {
@@ -879,6 +1023,47 @@ mv_load_pack :: (doc: [] MvDoc, raw: [] u8) -> bool {
   if stride == 0 { return mv_doc_fail(doc, "Unsupported VPK vertex stride."); }
   nv := v_len / stride;
   ni := i_len / 4;
+  // Detect optional RBA1 rigid assembly embedded inside the pack's catalog
+  if cat_off >= 0 && cat_len > 6 && cat_off + cat_len <= raw.count {
+    cat_str := cast(string) raw[cat_off..<cat_off + cat_len];
+    expected_src := mv_rba_catalog_source_id(cat_str);
+    if assembly_catalogue_read(cat_str, expected_src, doc[0].assembly[..]) {
+      doc[0].has_assembly = true;
+      for j: 0..<doc[0].assembly[0].joints { doc[0].joint_angles[j] = doc[0].assembly[0].joint[j].stand; }
+    }
+  }
+  if doc[0].has_assembly && doc[0].assembly[0].vertices == nv && doc[0].assembly[0].indices == ni {
+    for vi: 0..<nv {
+      vo := v_off + vi * stride;
+      _ = mv_push_vert(doc, -1, MvVert.{
+        px = mv_f32_le(raw, vo), py = mv_f32_le(raw, vo + 4), pz = mv_f32_le(raw, vo + 8),
+        nx = mv_f32_le(raw, vo + 12), ny = mv_f32_le(raw, vo + 16), nz = mv_f32_le(raw, vo + 20),
+        u = mv_f32_le(raw, vo + 24), v = mv_f32_le(raw, vo + 28),
+        r = 1, g = 1, b = 1, a = 1,
+      });
+    }
+    for pi: 0..<doc[0].assembly[0].parts {
+      pt := doc[0].assembly[0].part[pi];
+      pname := cast(string) doc[0].assembly[0].part[pi].name.bytes[0..<pt.name.n];
+      plabel := cast(string) doc[0].assembly[0].part[pi].label.bytes[0..<pt.label.n];
+      pnd := mv_begin_node(doc, -1, 0, 0, pname, plabel);
+      for vi: pt.first_vertex..<pt.first_vertex + pt.vertices {
+        if vi >= 0 && vi < doc[0].vert_node.count { doc[0].vert_node[vi] = cast,trunc(s16) pi; }
+      }
+      t := 0;
+      while t + 2 < pt.indices {
+        idx_at := pt.first_index + t;
+        k0 := mv_u32_le(raw, i_off + idx_at * 4);
+        k1 := mv_u32_le(raw, i_off + (idx_at + 1) * 4);
+        k2 := mv_u32_le(raw, i_off + (idx_at + 2) * 4);
+        if cast(int) k0 < nv && cast(int) k1 < nv && cast(int) k2 < nv {
+          mv_push_tri(doc, pnd, k0, k1, k2);
+        }
+        t += 3;
+      }
+    }
+    return mv_finalize(doc, MV_FMT_PACK);
+  }
   nd := mv_begin_node(doc, -1, 0, 0, "vpk_pack", "Asset Pack");
   for vi: 0..<nv {
     vo := v_off + vi * stride;
@@ -899,7 +1084,6 @@ mv_load_pack :: (doc: [] MvDoc, raw: [] u8) -> bool {
     }
     t += 3;
   }
-  _ = cat_off; _ = cat_len;
   return mv_finalize(doc, MV_FMT_PACK);
 }
 
@@ -1014,6 +1198,356 @@ mv_load_ifc :: (doc: [] MvDoc, raw: [] u8) -> bool {
   return mv_load_ple_scene(doc, sc[..], MV_FMT_IFC);
 }
 
+// ---- 7. RBA1 Rigid Assembly, .aimport, anim.scene.v1, & Realm world.doc.v1 Loaders (#14042)
+
+mv_rba_extract_source_id :: (raw: [] u8) -> AssetId {
+  id: AssetId;
+  if raw.count >= 60 && raw[0] == 'R' && raw[1] == 'B' && raw[2] == 'A' && raw[3] == '1' {
+    for i: 0..<8 { id.words[i] = cb_load_be32(raw, 28 + i * 4).value; }
+  }
+  return id;
+}
+
+mv_rba_catalog_source_id :: (catalogue: string) -> AssetId {
+  id: AssetId;
+  at := 0;
+  while at < catalogue.count {
+    end := at;
+    while end < catalogue.count && catalogue[end] != '\n' { end += 1; }
+    if end - at >= 5 && catalogue[at..<at + 5] == "RBA1 " {
+      rec: [ASSEMBLY_WIRE_MAX] u8;
+      n := b64_decode(cast(string) catalogue[at + 5..<end], rec[..]);
+      if n >= 60 { return mv_rba_extract_source_id(rec[0..<n]); }
+      break;
+    }
+    at = end + 1;
+  }
+  return id;
+}
+
+mv_load_rba :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  expected := mv_rba_extract_source_id(raw);
+  if !assembly_read(raw, expected, doc[0].assembly[..]) {
+    return mv_doc_fail(doc, "Failed to parse RBA1 rigid assembly.");
+  }
+  doc[0].has_assembly = true;
+  for j: 0..<doc[0].assembly[0].joints { doc[0].joint_angles[j] = doc[0].assembly[0].joint[j].stand; }
+  _ = mv_add_mat(doc, 0.88f32, 0.90f32, 0.94f32, 1.0f32, 0.2f32, 0.45f32, -1, 0, "rba1");
+  palette := [6] PleRgba.[
+    PleRgba.{r = 0.86f32, g = 0.45f32, b = 0.34f32, a = 1},
+    PleRgba.{r = 0.36f32, g = 0.68f32, b = 0.85f32, a = 1},
+    PleRgba.{r = 0.45f32, g = 0.78f32, b = 0.52f32, a = 1},
+    PleRgba.{r = 0.88f32, g = 0.72f32, b = 0.32f32, a = 1},
+    PleRgba.{r = 0.72f32, g = 0.54f32, b = 0.88f32, a = 1},
+    PleRgba.{r = 0.65f32, g = 0.70f32, b = 0.76f32, a = 1}
+  ];
+  for pi: 0..<doc[0].assembly[0].parts {
+    pt := doc[0].assembly[0].part[pi];
+    pname := cast(string) doc[0].assembly[0].part[pi].name.bytes[0..<pt.name.n];
+    plabel := cast(string) doc[0].assembly[0].part[pi].label.bytes[0..<pt.label.n];
+    pnd := mv_begin_node(doc, -1, 0, 0, pname, plabel);
+    cx := (pt.low.x + pt.high.x) * 0.5f32;
+    cy := (pt.low.y + pt.high.y) * 0.5f32;
+    cz := (pt.low.z + pt.high.z) * 0.5f32;
+    sx := pt.high.x - pt.low.x; if sx < 0.08f32 { sx = 0.08f32; }
+    sy := pt.high.y - pt.low.y; if sy < 0.08f32 { sy = 0.08f32; }
+    sz := pt.high.z - pt.low.z; if sz < 0.08f32 { sz = 0.08f32; }
+    mv_ple_emit_box(doc, pnd, cx, cy, cz, sx, sy, sz, 0.0f32, palette[pi % 6]);
+  }
+  return mv_finalize(doc, MV_FMT_RBA);
+}
+
+mv_apply_assembly_pose :: (doc: [] MvDoc) -> bool {
+  if !doc[0].ok || !doc[0].has_assembly || doc[0].base_verts.count < doc[0].nverts || doc[0].vert_node.count < doc[0].nverts {
+    return false;
+  }
+  pose: [1] AssemblyPose;
+  if !assembly_pose(doc[0].assembly[..], doc[0].joint_angles[..], pose[..]) { return false; }
+  doc[0].min_x = 1000000000.0f32; doc[0].min_y = 1000000000.0f32; doc[0].min_z = 1000000000.0f32;
+  doc[0].max_x = -1000000000.0f32; doc[0].max_y = -1000000000.0f32; doc[0].max_z = -1000000000.0f32;
+  for ni: 0..<doc[0].nnodes {
+    doc[0].nodes[ni].min_x = 1000000000.0f32; doc[0].nodes[ni].min_y = 1000000000.0f32; doc[0].nodes[ni].min_z = 1000000000.0f32;
+    doc[0].nodes[ni].max_x = -1000000000.0f32; doc[0].nodes[ni].max_y = -1000000000.0f32; doc[0].nodes[ni].max_z = -1000000000.0f32;
+  }
+  for vi: 0..<doc[0].nverts {
+    bv := doc[0].base_verts[vi];
+    pi := cast(int) doc[0].vert_node[vi];
+    if pi >= 0 && pi < doc[0].assembly[0].parts {
+      p := assembly_point(doc[0].assembly[..], pose[..], pi, v3(bv.px, bv.py, bv.pz), doc[0].explode);
+      j := doc[0].assembly[0].part[pi].joint;
+      nrm := v3(bv.nx, bv.ny, bv.nz);
+      if j >= 0 { nrm = quat_rotate(pose[0].rotation[j], nrm); }
+      bv.px = p.x; bv.py = p.y; bv.pz = p.z;
+      bv.nx = nrm.x; bv.ny = nrm.y; bv.nz = nrm.z;
+    }
+    doc[0].verts[vi] = bv;
+    if bv.px < doc[0].min_x { doc[0].min_x = bv.px; }
+    if bv.py < doc[0].min_y { doc[0].min_y = bv.py; }
+    if bv.pz < doc[0].min_z { doc[0].min_z = bv.pz; }
+    if bv.px > doc[0].max_x { doc[0].max_x = bv.px; }
+    if bv.py > doc[0].max_y { doc[0].max_y = bv.py; }
+    if bv.pz > doc[0].max_z { doc[0].max_z = bv.pz; }
+    if pi >= 0 && pi < doc[0].nnodes {
+      if bv.px < doc[0].nodes[pi].min_x { doc[0].nodes[pi].min_x = bv.px; }
+      if bv.py < doc[0].nodes[pi].min_y { doc[0].nodes[pi].min_y = bv.py; }
+      if bv.pz < doc[0].nodes[pi].min_z { doc[0].nodes[pi].min_z = bv.pz; }
+      if bv.px > doc[0].nodes[pi].max_x { doc[0].nodes[pi].max_x = bv.px; }
+      if bv.py > doc[0].nodes[pi].max_y { doc[0].nodes[pi].max_y = bv.py; }
+      if bv.pz > doc[0].nodes[pi].max_z { doc[0].nodes[pi].max_z = bv.pz; }
+    }
+  }
+  return true;
+}
+
+mv_set_joint_angle :: (doc: [] MvDoc, joint_idx: int, angle: f32) -> bool {
+  if !doc[0].has_assembly || joint_idx < 0 || joint_idx >= doc[0].assembly[0].joints { return false; }
+  j := doc[0].assembly[0].joint[joint_idx];
+  a := mv_finite(angle);
+  if a < j.low { a = j.low; }
+  if a > j.high { a = j.high; }
+  doc[0].joint_angles[joint_idx] = a;
+  return mv_apply_assembly_pose(doc);
+}
+
+mv_set_explode :: (doc: [] MvDoc, explode: f32) -> bool {
+  if !doc[0].has_assembly { return false; }
+  e := mv_finite(explode);
+  if e < 0.0f32 { e = 0.0f32; }
+  if e > 1.0f32 { e = 1.0f32; }
+  doc[0].explode = e;
+  return mv_apply_assembly_pose(doc);
+}
+
+mv_reset_assembly_pose :: (doc: [] MvDoc) -> bool {
+  if !doc[0].has_assembly { return false; }
+  for j: 0..<doc[0].assembly[0].joints { doc[0].joint_angles[j] = doc[0].assembly[0].joint[j].stand; }
+  doc[0].explode = 0.0f32;
+  return mv_apply_assembly_pose(doc);
+}
+
+// Evaluates animation clip `clip_idx` at `time_sec` (wrapping cleanly) and updates deformed vertices.
+mv_set_anim_time :: (doc: [] MvDoc, clip_idx: int, time_sec: f32) -> bool {
+  if !doc[0].ok || clip_idx < 0 || clip_idx >= doc[0].nclips || doc[0].base_verts.count < doc[0].nverts || doc[0].vert_node.count < doc[0].nverts {
+    return false;
+  }
+  cl := doc[0].clips[clip_idx];
+  t := mv_finite(time_sec);
+  if t < 0.0f32 { t = 0.0f32; }
+  if cl.duration > 0.001f32 && t > cl.duration {
+    cycles := floor(t / cl.duration);
+    t -= cycles * cl.duration;
+  }
+  has_xform: [256] bool;
+  tx: [256] f32; ty: [256] f32; tz: [256] f32;
+  qx: [256] f32; qy: [256] f32; qz: [256] f32; qw: [256] f32;
+  sx: [256] f32; sy: [256] f32; sz: [256] f32;
+  for ni: 0..<256 { qw[ni] = 1.0f32; sx[ni] = 1.0f32; sy[ni] = 1.0f32; sz[ni] = 1.0f32; }
+
+  for ci: cl.first_chan..<cl.first_chan + cl.chan_count {
+    if ci < 0 || ci >= doc[0].nchannels { break; }
+    ch := doc[0].channels[ci];
+    if ch.node_idx < 0 || ch.node_idx >= 256 || ch.nkeys < 1 { continue; }
+    ka := 0; kb := 0; alpha: f32 = 0.0f32;
+    if t >= ch.times[ch.nkeys - 1] {
+      ka = ch.nkeys - 1; kb = ka;
+    } else if t > ch.times[0] {
+      for k: 0..<ch.nkeys - 1 {
+        if t >= ch.times[k] && t <= ch.times[k + 1] {
+          ka = k; kb = k + 1;
+          dt := ch.times[kb] - ch.times[ka];
+          alpha = ifx dt > 0.00001f32 then (t - ch.times[ka]) / dt else 0.0f32;
+          break;
+        }
+      }
+    }
+    ni := ch.node_idx;
+    has_xform[ni] = true;
+    if ch.path_kind == 0 {
+      tx[ni] = ch.vals[ka * 4 + 0] + (ch.vals[kb * 4 + 0] - ch.vals[ka * 4 + 0]) * alpha;
+      ty[ni] = ch.vals[ka * 4 + 1] + (ch.vals[kb * 4 + 1] - ch.vals[ka * 4 + 1]) * alpha;
+      tz[ni] = ch.vals[ka * 4 + 2] + (ch.vals[kb * 4 + 2] - ch.vals[ka * 4 + 2]) * alpha;
+    } else if ch.path_kind == 1 {
+      qa := Quat.{x = ch.vals[ka * 4 + 0], y = ch.vals[ka * 4 + 1], z = ch.vals[ka * 4 + 2], w = ch.vals[ka * 4 + 3]};
+      qb := Quat.{x = ch.vals[kb * 4 + 0], y = ch.vals[kb * 4 + 1], z = ch.vals[kb * 4 + 2], w = ch.vals[kb * 4 + 3]};
+      q := slerp(qa, qb, alpha);
+      qx[ni] = q.x; qy[ni] = q.y; qz[ni] = q.z; qw[ni] = q.w;
+    } else if ch.path_kind == 2 {
+      sx[ni] = ch.vals[ka * 4 + 0] + (ch.vals[kb * 4 + 0] - ch.vals[ka * 4 + 0]) * alpha;
+      sy[ni] = ch.vals[ka * 4 + 1] + (ch.vals[kb * 4 + 1] - ch.vals[ka * 4 + 1]) * alpha;
+      sz[ni] = ch.vals[ka * 4 + 2] + (ch.vals[kb * 4 + 2] - ch.vals[ka * 4 + 2]) * alpha;
+    }
+  }
+  mats: [256] MvMat4;
+  for ni: 0..<doc[0].nnodes {
+    if ni < 256 && has_xform[ni] {
+      mats[ni] = mv_m4_trs(tx[ni], ty[ni], tz[ni], qx[ni], qy[ni], qz[ni], qw[ni], sx[ni], sy[ni], sz[ni]);
+    }
+  }
+  pt: [3] f32; nm: [3] f32;
+  for vi: 0..<doc[0].nverts {
+    bv := doc[0].base_verts[vi];
+    ni := cast(int) doc[0].vert_node[vi];
+    if ni >= 0 && ni < 256 && has_xform[ni] {
+      mv_m4_pt(mats[ni], bv.px, bv.py, bv.pz, pt[..]);
+      mv_m4_dir(mats[ni], bv.nx, bv.ny, bv.nz, nm[..]);
+      bv.px = pt[0]; bv.py = pt[1]; bv.pz = pt[2];
+      bv.nx = nm[0]; bv.ny = nm[1]; bv.nz = nm[2];
+    }
+    doc[0].verts[vi] = bv;
+  }
+  return true;
+}
+
+// Loads .aimport (ANIM_BUNDLE) via metaverse-engine/anim/bundle.coax, emitting articulated skeleton bones & clips.
+mv_load_aimport :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  lib: [1] AnimLibrary;
+  if anim_bundle_load(raw, lib[..]) != ANIM_OK {
+    return mv_doc_fail(doc, "Failed to parse .aimport animation bundle.");
+  }
+  rig := lib[0].rig[0];
+  _ = mv_add_mat(doc, 0.45f32, 0.78f32, 0.92f32, 1.0f32, 0.1f32, 0.4f32, -1, 0, "rig");
+  world_r: [ANIM_JOINTS] Quat;
+  world_p: [ANIM_JOINTS] Point;
+  for j: 0..<rig.joints {
+    pose_chain(world_r[..], world_p[..], rig.parents[j], j, rig.rest[j]);
+  }
+  bone_col := PleRgba.{r = 0.40f32, g = 0.76f32, b = 0.95f32, a = 1};
+  for j: 0..<rig.joints {
+    jname := cast(string) rig.names[j].bytes[0..<rig.names[j].n];
+    pnd := mv_begin_node(doc, rig.parents[j], ifx rig.parents[j] < 0 then 0 else 1, 0, jname, jname);
+    p := world_p[j];
+    mv_ple_emit_box(doc, pnd, p.x, p.y, p.z, 0.08f32, 0.08f32, 0.08f32, 0.0f32, bone_col);
+  }
+  // Extract clip metadata & joint translation/rotation channels from bundle pack
+  nc := lib[0].count;
+  if nc > MV_MAX_CLIPS { nc = MV_MAX_CLIPS; }
+  for ci: 0..<nc {
+    ac := lib[0].clips[ci];
+    cl: MvAnimClip;
+    cl.name_n = mv_copy_str(cl.name[..], cast(string) ac.name.bytes[0..<ac.name.n]);
+    cl.duration = ifx ac.length > 0.001f32 then ac.length else 1.0f32;
+    cl.first_chan = doc[0].nchannels;
+    if ac.body.pack >= 0 && ac.joint_count > 0 && ac.frames > 0 {
+      pb := lib[0].packs[ac.body.pack].bytes;
+      step := 1;
+      if ac.frames > MV_MAX_KEYS { step = (ac.frames + MV_MAX_KEYS - 1) / MV_MAX_KEYS; }
+      for tj: 0..<ac.joint_count {
+        if doc[0].nchannels >= MV_MAX_CHANNELS { break; }
+        ji := ac.joints[tj];
+        if ji < 0 || ji >= doc[0].nnodes { continue; }
+        ch: MvAnimChannel;
+        ch.clip_idx = ci; ch.node_idx = ji; ch.path_kind = 0;
+        ok_k := 0; f := 0;
+        while f < ac.frames && ok_k < MV_MAX_KEYS {
+          at := ac.body.offset + (f * ac.joint_count + tj) * ac.body.stride;
+          if at + 28 <= pb.count {
+            loc := anim_local(pb, at);
+            ch.times[ok_k] = ifx ac.rate > 0.001f32 then cast(f32) f / ac.rate else 0.0f32;
+            ch.vals[ok_k * 4 + 0] = loc.t.x - rig.rest[ji].t.x;
+            ch.vals[ok_k * 4 + 1] = loc.t.y - rig.rest[ji].t.y;
+            ch.vals[ok_k * 4 + 2] = loc.t.z - rig.rest[ji].t.z;
+            ok_k += 1;
+          }
+          f += step;
+        }
+        if ok_k > 0 {
+          ch.nkeys = ok_k;
+          doc[0].channels[doc[0].nchannels] = ch;
+          doc[0].nchannels += 1;
+          cl.chan_count += 1;
+        }
+      }
+    }
+    doc[0].clips[doc[0].nclips] = cl;
+    doc[0].nclips += 1;
+  }
+  return mv_finalize(doc, MV_FMT_AIMPORT);
+}
+
+// Loads anim.scene.v1 JSON documents (actors/joints/clips).
+mv_load_anim_scene :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  jnodes: [PLE_MAX_JSON_NODES] JvNode;
+  jdoc: [1] Jv;
+  if !jv_parse(jdoc[..], cast(string) raw[0..<raw.count], jnodes[..]) {
+    return mv_doc_fail(doc, "Failed to parse anim.scene.v1 JSON.");
+  }
+  d := jdoc[0];
+  _ = mv_add_mat(doc, 0.55f32, 0.80f32, 0.92f32, 1.0f32, 0.1f32, 0.5f32, -1, 0, "anim_scene");
+  actors := jv_get(d, 0, "actors");
+  ac := jv_len(d, actors);
+  col := PleRgba.{r = 0.42f32, g = 0.78f32, b = 0.90f32, a = 1};
+  if ac > 0 {
+    for ai: 0..<ac {
+      an := jv_at(d, actors, ai);
+      nb: [48] u8; nn := jv_str(d, jv_get(d, an, "name"), nb[..]);
+      lbl := ifx nn > 0 then cast(string) nb[0..<nn] else "actor";
+      pnd := mv_begin_node(doc, -1, 0, 0, lbl, lbl);
+      pos := jv_get(d, an, "position");
+      px := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 0), cast(f32) ai * 1.5f32) else cast(f32) ai * 1.5f32;
+      py := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 1), 0.9f32) else 0.9f32;
+      pz := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 2), 0.0f32) else 0.0f32;
+      mv_ple_emit_box(doc, pnd, px, py, pz, 0.6f32, 1.8f32, 0.4f32, 0.0f32, col);
+    }
+  } else {
+    pnd := mv_begin_node(doc, -1, 0, 0, "anim_root", "Anim Scene");
+    mv_ple_emit_box(doc, pnd, 0, 0.9f32, 0, 0.6f32, 1.8f32, 0.4f32, 0.0f32, col);
+  }
+  clips := jv_get(d, 0, "clips");
+  cc := jv_len(d, clips);
+  if cc > MV_MAX_CLIPS { cc = MV_MAX_CLIPS; }
+  for ci: 0..<cc {
+    cn := jv_at(d, clips, ci);
+    cl: MvAnimClip;
+    nb: [48] u8; nn := jv_str(d, jv_get(d, cn, "name"), nb[..]);
+    cl.name_n = mv_copy_str(cl.name[..], ifx nn > 0 then cast(string) nb[0..<nn] else "clip");
+    cl.duration = mv_jv_f32(d, jv_get(d, cn, "duration"), 1.0f32);
+    doc[0].clips[doc[0].nclips] = cl;
+    doc[0].nclips += 1;
+  }
+  return mv_finalize(doc, MV_FMT_ANIM_SCENE);
+}
+
+// Loads world.doc.v1 / .world.json realm preview documents, capturing saved_rev for revision truthfulness.
+mv_load_realm_world :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  jnodes: [PLE_MAX_JSON_NODES] JvNode;
+  jdoc: [1] Jv;
+  if !jv_parse(jdoc[..], cast(string) raw[0..<raw.count], jnodes[..]) {
+    return mv_doc_fail(doc, "Failed to parse world.doc.v1 realm JSON.");
+  }
+  d := jdoc[0];
+  doc[0].saved_rev = jv_int(d, jv_get(d, 0, "rev"), jv_int(d, jv_get(d, 0, "revision"), 1));
+  _ = mv_add_mat(doc, 0.85f32, 0.88f32, 0.92f32, 1.0f32, 0.1f32, 0.55f32, -1, 0, "realm");
+  // Support entities / objects / shapes arrays cleanly
+  arr := jv_get(d, 0, "entities");
+  if arr < 0 { arr = jv_get(d, 0, "objects"); }
+  if arr < 0 { arr = jv_get(d, 0, "shapes"); }
+  ec := jv_len(d, arr);
+  col := PleRgba.{r = 0.58f32, g = 0.78f32, b = 0.62f32, a = 1};
+  if ec > 0 {
+    for ei: 0..<ec {
+      if doc[0].nnodes >= doc[0].nodes.count { break; }
+      en := jv_at(d, arr, ei);
+      nb: [48] u8; nn := jv_str(d, jv_get(d, en, "id"), nb[..]);
+      if nn == 0 { nn = jv_str(d, jv_get(d, en, "name"), nb[..]); }
+      lbl := ifx nn > 0 then cast(string) nb[0..<nn] else "entity";
+      pnd := mv_begin_node(doc, -1, 0, 0, lbl, lbl);
+      pos := jv_get(d, en, "pos"); if pos < 0 { pos = jv_get(d, en, "position"); }
+      sz := jv_get(d, en, "size"); if sz < 0 { sz = jv_get(d, en, "scale"); }
+      px := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 0), 0) else cast(f32) ei * 2.0f32;
+      py := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 1), 0.5f32) else 0.5f32;
+      pz := ifx pos >= 0 && jv_len(d, pos) >= 3 then mv_jv_f32(d, jv_at(d, pos, 2), 0) else 0.0f32;
+      sx := ifx sz >= 0 && jv_len(d, sz) >= 3 then mv_jv_f32(d, jv_at(d, sz, 0), 1.0f32) else 1.0f32;
+      sy := ifx sz >= 0 && jv_len(d, sz) >= 3 then mv_jv_f32(d, jv_at(d, sz, 1), 1.0f32) else 1.0f32;
+      szv := ifx sz >= 0 && jv_len(d, sz) >= 3 then mv_jv_f32(d, jv_at(d, sz, 2), 1.0f32) else 1.0f32;
+      mv_ple_emit_box(doc, pnd, px, py, pz, sx, sy, szv, 0.0f32, col);
+    }
+  } else {
+    pnd := mv_begin_node(doc, -1, 0, 0, "realm_ground", "Realm Ground");
+    mv_ple_emit_box(doc, pnd, 0, -0.1f32, 0, 12.0f32, 0.2f32, 12.0f32, 0.0f32, col);
+  }
+  return mv_finalize(doc, MV_FMT_REALM);
+}
+
 // ---- Universal Entry Point
 
 mv_load :: (doc: [] MvDoc, path: string, raw: [] u8, extra_bin: [] u8) -> bool {
@@ -1032,11 +1566,19 @@ mv_load :: (doc: [] MvDoc, path: string, raw: [] u8, extra_bin: [] u8) -> bool {
   if mv_ends_ci_mv(path, ".gbm") || (raw.count >= 4 && raw[0] == 'G' && raw[1] == 'B' && raw[2] == 'M' && raw[3] == '1') {
     return mv_load_gbm(doc, raw);
   }
+  if mv_ends_ci_mv(path, ".rba") || mv_ends_ci_mv(path, ".rba1") || (raw.count >= 4 && raw[0] == 'R' && raw[1] == 'B' && raw[2] == 'A' && raw[3] == '1') {
+    return mv_load_rba(doc, raw);
+  }
+  if mv_ends_ci_mv(path, ".aimport") || (raw.count >= 4 && raw[0] == 'A' && raw[1] == 'N' && raw[2] == 'I' && raw[3] == 'M') {
+    return mv_load_aimport(doc, raw);
+  }
   if mv_ends_ci_mv(path, ".pack") || (raw.count >= 4 && raw[0] == 'V' && raw[1] == 'P' && raw[2] == 'K') {
     return mv_load_pack(doc, raw);
   }
   if mv_ends_ci_mv(path, ".ifc") { return mv_load_ifc(doc, raw); }
   if mv_ends_ci_mv(path, ".ple-scene.json") { return mv_load_ple(doc, raw); }
+  if mv_ends_ci_mv(path, ".anim-scene.json") { return mv_load_anim_scene(doc, raw); }
+  if mv_ends_ci_mv(path, ".world.json") || mv_ends_ci_mv(path, ".realm.json") { return mv_load_realm_world(doc, raw); }
   return mv_doc_fail(doc, "Unsupported 3D format in model-view loader.");
 }
 
@@ -1160,4 +1702,31 @@ mv_write_tree_tsv :: (doc: [] MvDoc, out: [] u8) -> int {
   bad_gltf := "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"uri\":\"../secret.bin\",\"byteLength\":12}]}";
   gb: [256] u8; gn := mv_copy_str(gb[..], bad_gltf);
   #assert !mv_load(doc[..], "/tmp/bad.gltf", gb[0..<gn], empty[0..<0]);
+}
+
+#test "model-view: loads RBA1 rigid assembly with joint/explode posing and world.doc.v1 rev" {
+  verts: [512] MvVert; base_v: [512] MvVert; vnode: [512] s16; idxs: [1024] u32; nodes: [16] MvNode; mats: [8] MvMat;
+  doc := [1] MvDoc.[MvDoc.{verts = verts[..], base_verts = base_v[..], vert_node = vnode[..], indices = idxs[..], nodes = nodes[..], mats = mats[..]}];
+  empty: [1] u8;
+
+  // RBA1 fixture round-trip + explode & joint displacement
+  a: [1] RigidAssembly; a[0] = assembly_fixture();
+  rba_buf: [2048] u8;
+  rn := assembly_write(a[..], rba_buf[0..<1564]);
+  #assert rn == 1564;
+  #assert mv_load(doc[..], "/tmp/duck.rba1", rba_buf[0..<rn], empty[0..<0]);
+  #assert doc[0].ok && doc[0].format == MV_FMT_RBA && doc[0].has_assembly && doc[0].assembly[0].joints == 2 && doc[0].nnodes == 3;
+  // Part 1 starts at base y; explode=1 shifts part 1 along its explode vector (0, 2, 0)
+  v_idx_p1 := 24; // second part starts after first 24-vertex box
+  y_rest := doc[0].verts[v_idx_p1].py;
+  #assert mv_set_explode(doc[..], 1.0f32);
+  #assert abs(doc[0].verts[v_idx_p1].py - (y_rest + 2.0f32)) < 0.01f32;
+  #assert mv_reset_assembly_pose(doc[..]);
+  #assert abs(doc[0].verts[v_idx_p1].py - y_rest) < 0.01f32;
+
+  // Realm world.doc.v1 preserves saved_rev
+  wjson := "{\"rev\":14,\"entities\":[{\"id\":\"tower\",\"pos\":[2,1,0],\"size\":[1,2,1]}]}";
+  wb: [256] u8; wn := mv_copy_str(wb[..], wjson);
+  #assert mv_load(doc[..], "/tmp/demo.world.json", wb[0..<wn], empty[0..<0]);
+  #assert doc[0].ok && doc[0].format == MV_FMT_REALM && doc[0].saved_rev == 14 && doc[0].nnodes == 1;
 }

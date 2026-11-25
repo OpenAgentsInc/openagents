@@ -10,11 +10,13 @@ MV_HOST_NODES   :: 256;
 MV_HOST_MATS    :: 64;
 
 MvHostState :: struct {
-  verts:   [MV_HOST_VERTS] MvVert;
-  indices: [MV_HOST_INDICES] u32;
-  nodes:   [MV_HOST_NODES] MvNode;
-  mats:    [MV_HOST_MATS] MvMat;
-  doc:     [1] MvDoc;
+  verts:      [MV_HOST_VERTS] MvVert;
+  base_verts: [MV_HOST_VERTS] MvVert;
+  vert_node:  [MV_HOST_VERTS] s16;
+  indices:    [MV_HOST_INDICES] u32;
+  nodes:      [MV_HOST_NODES] MvNode;
+  mats:       [MV_HOST_MATS] MvMat;
+  doc:        [1] MvDoc;
 }
 
 oa_mv_state_size :: () -> int #export_c #effects(all) {
@@ -25,6 +27,8 @@ oa_mv_init :: (st: [] MvHostState) #export_c #effects(all) {
   if st.count < 1 { return; }
   st[0].doc[0] = MvDoc.{
     verts = st[0].verts[..],
+    base_verts = st[0].base_verts[..],
+    vert_node = st[0].vert_node[..],
     indices = st[0].indices[..],
     nodes = st[0].nodes[..],
     mats = st[0].mats[..],
@@ -35,6 +39,8 @@ oa_mv_init :: (st: [] MvHostState) #export_c #effects(all) {
 oa_mv_load :: (st: [] MvHostState, path: string, raw: [] u8, extra_bin: [] u8) -> bool #export_c #effects(all) {
   if st.count < 1 { return false; }
   st[0].doc[0].verts = st[0].verts[..];
+  st[0].doc[0].base_verts = st[0].base_verts[..];
+  st[0].doc[0].vert_node = st[0].vert_node[..];
   st[0].doc[0].indices = st[0].indices[..];
   st[0].doc[0].nodes = st[0].nodes[..];
   st[0].doc[0].mats = st[0].mats[..];
@@ -159,4 +165,74 @@ oa_mv_stats :: (st: [] MvHostState, out: [] u8) -> int #export_c #effects(all) {
 oa_mv_err :: (st: [] MvHostState, out: [] u8) -> int #export_c #effects(all) {
   if st.count < 1 { return 0; }
   return mv_copy_str(out, cast(string) st[0].doc[0].err[0..<st[0].doc[0].err_n]);
+}
+
+// ---- Phase 2 (#14042): RBA1 rigid assemblies, animation clips, realm rev, & aethyr.host.v2 #authority policy
+
+oa_mv_saved_rev :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].saved_rev else 0;
+}
+
+oa_mv_has_assembly :: (st: [] MvHostState) -> bool #export_c #effects(all) {
+  return st.count > 0 && st[0].doc[0].has_assembly;
+}
+
+oa_mv_joint_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 && st[0].doc[0].has_assembly then st[0].doc[0].assembly[0].joints else 0;
+}
+
+// out_range[0..3] = low, high, stand, current
+oa_mv_joint_info :: (st: [] MvHostState, idx: int, out_range: [] f32, out_name: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 || !st[0].doc[0].has_assembly || idx < 0 || idx >= st[0].doc[0].assembly[0].joints { return 0; }
+  j := st[0].doc[0].assembly[0].joint[idx];
+  if out_range.count >= 4 {
+    out_range[0] = j.low;
+    out_range[1] = j.high;
+    out_range[2] = j.stand;
+    out_range[3] = st[0].doc[0].joint_angles[idx];
+  }
+  return mv_copy_str(out_name, cast(string) st[0].doc[0].assembly[0].joint[idx].name.bytes[0..<j.name.n]);
+}
+
+oa_mv_set_joint :: (st: [] MvHostState, idx: int, angle: f32) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return mv_set_joint_angle(st[0].doc[..], idx, angle);
+}
+
+oa_mv_set_explode_val :: (st: [] MvHostState, explode: f32) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return mv_set_explode(st[0].doc[..], explode);
+}
+
+oa_mv_reset_pose :: (st: [] MvHostState) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return mv_reset_assembly_pose(st[0].doc[..]);
+}
+
+oa_mv_anim_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].nclips else 0;
+}
+
+oa_mv_anim_info :: (st: [] MvHostState, idx: int, out_duration: [] f32, out_name: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 || idx < 0 || idx >= st[0].doc[0].nclips { return 0; }
+  cl := st[0].doc[0].clips[idx];
+  if out_duration.count >= 1 { out_duration[0] = cl.duration; }
+  return mv_copy_str(out_name, cast(string) st[0].doc[0].clips[idx].name[0..<cl.name_n]);
+}
+
+oa_mv_set_anim_time :: (st: [] MvHostState, clip_idx: int, time_sec: f32) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return mv_set_anim_time(st[0].doc[..], clip_idx, time_sec);
+}
+
+oa_mv_budget_cap :: (system_ram_bytes: int) -> int #export_c #effects(all) {
+  return aethyr_effective_cap(system_ram_bytes);
+}
+
+oa_mv_dedup_inline :: (inline_path: string, pane_shown: bool, pane_hidden: bool, pane_active_path: string) -> bool #export_c #effects(all) {
+  return aethyr_inline_dedup(inline_path, pane_shown, pane_hidden, pane_active_path);
+}
+
+oa_mv_policy_hz :: (visible: bool, focused: bool, animated: bool, on_battery: bool, display_hz: int) -> int #export_c #effects(all) {
+  return aethyr_frame_hz(visible, focused, animated, on_battery, display_hz);
 }

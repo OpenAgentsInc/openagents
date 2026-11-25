@@ -294,6 +294,22 @@
       "note": "Consented bounded opaque document open/share over existing action/inbox; no account or hardware authority."
     },
     {
+      "id": "aethyr.host.v2",
+      "kind": "profile",
+      "owner": "engine",
+      "schema": "proto/verse/aethyr-host-v2.json",
+      "codec": "metaverse-engine/host/aethyr-host-v2.coax",
+      "check": "coax/bin/coax test metaverse-engine/host/aethyr-host-v2.coax --library",
+      "step": "new",
+      "files": [
+        "metaverse-engine/host/aethyr-host-v2.h",
+        "metaverse-engine/host/apple/PageHost.m",
+        "metaverse-engine/host/apple/page-host.h",
+        "metaverse-engine/host/metal/MetalRealm.m"
+      ],
+      "note": "Context-safe multi-instance native host ABI and aggregate GPU VRAM / LRU eviction / thermal refresh / inline-card deduplication policy (#14042)."
+    },
+    {
       "id": "psionic.robotics.servo-run.v1",
       "kind": "profile",
       "owner": "psionic",

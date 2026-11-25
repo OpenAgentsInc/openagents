@@ -412,9 +412,29 @@ final class PleSceneMetalView: NSView {
         renderTimer?.invalidate()
     }
 
+    /// Exports spherical orbit camera pose for right-pane <-> OA-SHOW-LIVE handoff (#14042).
+    func exportOrbitPose() -> (target: SIMD3<Float>, distance: Float, azimuth: Float, elevation: Float) {
+        (camera.target, camera.distance, camera.azimuth, camera.elevation)
+    }
+
+    /// Imports spherical orbit camera pose handed off from the right-side Metaverse pane (#14042).
+    func importOrbitPose(target: SIMD3<Float>, distance: Float, azimuth: Float, elevation: Float) {
+        cameraAnim = nil
+        camera.target = target
+        camera.distance = distance
+        camera.azimuth = azimuth
+        camera.elevation = elevation
+        needsRedraw = true
+    }
+
     private func setupMetal() {
+        #if OA_FULL
+        guard let dev = MetaverseGpuCoordinator.shared.device,
+              let queue = MetaverseGpuCoordinator.shared.queue else { return }
+        #else
         guard let dev = MTLCreateSystemDefaultDevice(),
               let queue = dev.makeCommandQueue() else { return }
+        #endif
         self.device = dev
         self.commandQueue = queue
 

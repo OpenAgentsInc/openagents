@@ -1,0 +1,258 @@
+// Canonical #authority policy for context-safe multi-instance native hosts (aethyr.host.v2, #14042).
+// Owns aggregate GPU VRAM budgeting (512 MiB ceiling / 10% RAM), LRU eviction at 75% watermark,
+// dirty-gated 0 Hz idle & ProMotion/battery refresh policy, and right-pane <-> OA-SHOW-LIVE dedup.
+// coax/bin/coax test metaverse-engine/host/aethyr-host-v2.coax --library
+#module "metaverse.engine.host.aethyrhostv2";
+#authority;
+
+AETHYR_ABI_V2          :: 2;
+AETHYR_MAX_INSTANCES   :: 16;
+AETHYR_MIN_BUDGET      :: 67108864;   // 64 MiB
+AETHYR_MAX_BUDGET      :: 536870912;  // 512 MiB
+AETHYR_ACTIVE_TAB_CAP  :: 384 * 1024 * 1024;
+AETHYR_INLINE_CARD_CAP :: 96 * 1024 * 1024;
+
+AETHYR_KIND_VIEWER      :: 0;
+AETHYR_KIND_REALM       :: 1;
+AETHYR_KIND_GAMEBUILDER :: 2;
+AETHYR_KIND_INLINE      :: 3;
+
+AethyrSlot :: struct {
+  used: bool;
+  focused: bool;
+  kind: int;
+  bytes: int;
+  last_tick: int;
+}
+
+AethyrBudget :: struct {
+  cap_bytes: int;
+  total_bytes: int;
+  active_count: int;
+  slots: [AETHYR_MAX_INSTANCES] AethyrSlot;
+}
+
+aethyr_clamp_int :: (v: int, lo: int, hi: int) -> int #effects(all) {
+  if v < lo { return lo; } // mutant: equivalent (at v == lo returning lo or v yields the same integer)
+  if v > hi { return hi; } // mutant: equivalent (at v == hi returning hi or v yields the same integer)
+  return v;
+}
+
+// Effective aggregate GPU ceiling: min(512 MiB, 10% of system RAM), clamped to at least 64 MiB.
+aethyr_effective_cap :: (system_ram_bytes: int) -> int #effects(all) {
+  if system_ram_bytes <= 0 { return AETHYR_MAX_BUDGET; }
+  return aethyr_clamp_int(system_ram_bytes / 10, AETHYR_MIN_BUDGET, AETHYR_MAX_BUDGET);
+}
+
+aethyr_budget_init :: (b: [] AethyrBudget, cap_bytes: int) #effects(all) {
+  if b.count < 1 { return; }
+  b[0] = AethyrBudget.{ cap_bytes = aethyr_clamp_int(cap_bytes, AETHYR_MIN_BUDGET, AETHYR_MAX_BUDGET) };
+}
+
+aethyr_budget_register :: (b: [] AethyrBudget, kind: int, tick: int) -> int #effects(all) {
+  if b.count < 1 || kind < AETHYR_KIND_VIEWER || kind > AETHYR_KIND_INLINE { return -1; }
+  for i: 0..<AETHYR_MAX_INSTANCES {
+    if !b[0].slots[i].used {
+      b[0].slots[i] = AethyrSlot.{ used = true, kind = kind, last_tick = tick };
+      b[0].active_count += 1;
+      return i;
+    }
+  }
+  return -1;
+}
+
+aethyr_budget_unregister :: (b: [] AethyrBudget, slot: int) -> bool #effects(all) {
+  if b.count < 1 || slot < 0 || slot >= AETHYR_MAX_INSTANCES || !b[0].slots[slot].used { return false; }
+  b[0].total_bytes -= b[0].slots[slot].bytes;
+  b[0].slots[slot] = AethyrSlot.{};
+  b[0].active_count -= 1;
+  return true;
+}
+
+aethyr_budget_set_focus :: (b: [] AethyrBudget, slot: int, focused: bool, tick: int) -> bool #effects(all) {
+  if b.count < 1 || slot < 0 || slot >= AETHYR_MAX_INSTANCES || !b[0].slots[slot].used { return false; }
+  b[0].slots[slot].focused = focused;
+  b[0].slots[slot].last_tick = tick;
+  return true;
+}
+
+aethyr_slot_limit :: (b: [] AethyrBudget, slot: int) -> int #effects(all) {
+  if b.count < 1 || slot < 0 || slot >= AETHYR_MAX_INSTANCES || !b[0].slots[slot].used { return 0; }
+  lim := ifx b[0].slots[slot].kind == AETHYR_KIND_INLINE then AETHYR_INLINE_CARD_CAP else AETHYR_ACTIVE_TAB_CAP;
+  if lim > b[0].cap_bytes { return b[0].cap_bytes; } // mutant: equivalent (at lim == cap_bytes both branches return the same integer)
+  return lim;
+}
+
+// Updates a slot's GPU byte reservation. Refuses negative sizes, per-slot ceiling violations, or aggregate cap overflow.
+aethyr_budget_charge :: (b: [] AethyrBudget, slot: int, bytes: int, tick: int) -> bool #effects(all) {
+  if b.count < 1 || slot < 0 || slot >= AETHYR_MAX_INSTANCES || !b[0].slots[slot].used || bytes < 0 { return false; }
+  if bytes > aethyr_slot_limit(b, slot) { return false; }
+  next_total := b[0].total_bytes - b[0].slots[slot].bytes + bytes;
+  if next_total > b[0].cap_bytes { return false; }
+  b[0].total_bytes = next_total;
+  b[0].slots[slot].bytes = bytes;
+  b[0].slots[slot].last_tick = tick;
+  return true;
+}
+
+// True when aggregate VRAM exceeds the 75% LRU eviction watermark.
+aethyr_budget_needs_evict :: (b: [] AethyrBudget) -> bool #effects(all) {
+  if b.count < 1 { return false; }
+  return b[0].total_bytes * 4 > b[0].cap_bytes * 3;
+}
+
+// Selects the oldest unfocused slot holding GPU bytes, excluding `exclude_slot`. Returns -1 if none.
+aethyr_budget_evict_victim :: (b: [] AethyrBudget, exclude_slot: int) -> int #effects(all) {
+  if b.count < 1 { return -1; }
+  best := -1;
+  best_tick := 0; // mutant: equivalent (only read after best >= 0, which writes best_tick first)
+  for i: 0..<AETHYR_MAX_INSTANCES {
+    sl := b[0].slots[i];
+    if sl.focused || i == exclude_slot || sl.bytes <= 0 { continue; }
+    if best < 0 || sl.last_tick < best_tick {
+      best = i;
+      best_tick = sl.last_tick;
+    }
+  }
+  return best;
+}
+
+// Canonical inline OA-SHOW-LIVE deduplication rule: yields inline GPU view (0 MiB) when the exact
+// same path is already open and visible in the right-side Metaverse pane.
+aethyr_inline_dedup :: (inline_path: string, pane_shown: bool, pane_hidden: bool, pane_active_path: string) -> bool #effects(all) {
+  if !pane_shown || pane_hidden || inline_path.count == 0 { return false; }
+  return inline_path == pane_active_path;
+}
+
+// Canonical dirty-gated frame-rate & thermal policy (Spec §7.5):
+// - Hidden or non-animated static scene: 0 Hz (event-driven redraw only)
+// - On battery or unfocused: capped at 60 Hz
+// - Focused & animated on AC power: up to display refresh (capped at 120 Hz)
+aethyr_frame_hz :: (visible: bool, focused: bool, animated: bool, on_battery: bool, display_hz: int) -> int #effects(all) {
+  if !visible || !animated { return 0; }
+  hi := ifx on_battery || !focused then 60 else 120;
+  return aethyr_clamp_int(display_hz, 60, hi);
+}
+
+#test "aethyr-host-v2 effective cap clamps to [64 MiB, 512 MiB] at 10% RAM" {
+  #assert aethyr_effective_cap(0) == AETHYR_MAX_BUDGET;
+  #assert aethyr_effective_cap(-1) == AETHYR_MAX_BUDGET;
+  #assert aethyr_effective_cap(1) == AETHYR_MIN_BUDGET;
+  #assert aethyr_effective_cap(640 * 1024 * 1024) == AETHYR_MIN_BUDGET;
+  #assert aethyr_effective_cap((AETHYR_MIN_BUDGET + 1) * 10) == AETHYR_MIN_BUDGET + 1;
+  #assert aethyr_effective_cap(2000 * 1024 * 1024) == 200 * 1024 * 1024;
+  #assert aethyr_effective_cap((AETHYR_MAX_BUDGET - 1) * 10) == AETHYR_MAX_BUDGET - 1;
+  #assert aethyr_effective_cap(5120 * 1024 * 1024) == AETHYR_MAX_BUDGET;
+  #assert aethyr_effective_cap(16 * 1024 * 1024 * 1024) == AETHYR_MAX_BUDGET;
+}
+
+#test "aethyr-host-v2 budget registration, charging, ceilings, and LRU eviction" {
+  one: [1] AethyrBudget;
+  empty := one[0..<0];
+  aethyr_budget_init(empty, AETHYR_MAX_BUDGET);
+  #assert aethyr_budget_register(empty, AETHYR_KIND_VIEWER, 1) == -1;
+  #assert !aethyr_budget_unregister(empty, 0);
+  #assert !aethyr_budget_set_focus(empty, 0, true, 1);
+  #assert aethyr_slot_limit(empty, 0) == 0;
+  #assert !aethyr_budget_charge(empty, 0, 1024, 1);
+  #assert !aethyr_budget_needs_evict(empty);
+  #assert aethyr_budget_evict_victim(empty, -1) == -1;
+
+  b: [1] AethyrBudget;
+  aethyr_budget_init(b[..], 1024); // clamps up to 64 MiB
+  #assert b[0].cap_bytes == AETHYR_MIN_BUDGET;
+  aethyr_budget_init(b[..], AETHYR_MIN_BUDGET + 1);
+  #assert b[0].cap_bytes == AETHYR_MIN_BUDGET + 1;
+  aethyr_budget_init(b[..], AETHYR_MAX_BUDGET - 1);
+  #assert b[0].cap_bytes == AETHYR_MAX_BUDGET - 1;
+  b[0].total_bytes = 99;
+  aethyr_budget_init(b[..], AETHYR_MAX_BUDGET * 2); // clamps down to 512 MiB and resets total
+  #assert b[0].cap_bytes == AETHYR_MAX_BUDGET && b[0].total_bytes == 0;
+
+  // Invalid kinds rejected
+  #assert aethyr_budget_register(b[..], -1, 1) == -1;
+  #assert aethyr_budget_register(b[..], 4, 1) == -1;
+
+  // Register viewer (0), realm (1), inline card (2), gamebuilder (3)
+  s0 := aethyr_budget_register(b[..], AETHYR_KIND_VIEWER, 10);
+  s1 := aethyr_budget_register(b[..], AETHYR_KIND_REALM, 20);
+  s2 := aethyr_budget_register(b[..], AETHYR_KIND_INLINE, 30);
+  s3 := aethyr_budget_register(b[..], AETHYR_KIND_GAMEBUILDER, 5);
+  #assert s0 == 0 && s1 == 1 && s2 == 2 && s3 == 3 && b[0].active_count == 4;
+  #assert aethyr_slot_limit(b[..], s0) == AETHYR_ACTIVE_TAB_CAP;
+  #assert aethyr_slot_limit(b[..], s2) == AETHYR_INLINE_CARD_CAP;
+  #assert aethyr_slot_limit(b[..], -1) == 0 && aethyr_slot_limit(b[..], 16) == 0 && aethyr_slot_limit(b[..], 4) == 0;
+
+  // Inline card cap enforced at 96 MiB; negative/OOB rejected
+  #assert !aethyr_budget_charge(b[..], s2, AETHYR_INLINE_CARD_CAP + 1, 31);
+  #assert aethyr_budget_charge(b[..], s2, AETHYR_INLINE_CARD_CAP, 31);
+  #assert !aethyr_budget_charge(b[..], s0, -1, 32);
+  #assert !aethyr_budget_charge(b[..], -1, 0, 32) && !aethyr_budget_charge(b[..], 16, 0, 32) && !aethyr_budget_charge(b[..], 4, 0, 32);
+
+  // Exact 75% watermark boundary (384 MiB of 512 MiB -> NOT > 75%; +1 byte -> > 75%)
+  #assert aethyr_budget_charge(b[..], s0, 288 * 1024 * 1024, 15);
+  #assert b[0].total_bytes == 384 * 1024 * 1024 && !aethyr_budget_needs_evict(b[..]);
+  #assert aethyr_budget_charge(b[..], s1, 1, 25); // 1 byte > 0 triggers eviction + tests bytes <= 0 vs <= 1
+  #assert aethyr_budget_needs_evict(b[..]);
+  // Verify exact aggregate cap (512 MiB) is admitted while 512 MiB + 1 is refused
+  #assert aethyr_budget_charge(b[..], s1, 128 * 1024 * 1024, 25);
+  #assert b[0].total_bytes == AETHYR_MAX_BUDGET;
+  #assert !aethyr_budget_charge(b[..], s3, 1, 26);
+
+  // Slot 0 unfocused with tick 15 is evicted before s1 (tick 25) and s2 (tick 31)
+  #assert aethyr_budget_evict_victim(b[..], -1) == s0;
+  // Focusing s0 protects it and bumps its tick; unfocusing s0 puts s1 first (tick 25 < 40)
+  #assert aethyr_budget_set_focus(b[..], s0, true, 40);
+  #assert b[0].slots[s0].focused && b[0].slots[s0].last_tick == 40;
+  #assert !aethyr_budget_set_focus(b[..], -1, true, 40) && !aethyr_budget_set_focus(b[..], 16, true, 40) && !aethyr_budget_set_focus(b[..], 4, true, 40);
+  #assert aethyr_budget_evict_victim(b[..], -1) == s1;
+  // Tie-break keeps lower index when last_tick is equal; strictly older higher index wins!
+  #assert aethyr_budget_charge(b[..], s1, 64 * 1024 * 1024, 25);
+  #assert aethyr_budget_charge(b[..], s3, 1, 25); // same tick as s1 -> s1 stays victim
+  #assert aethyr_budget_evict_victim(b[..], -1) == s1;
+  #assert aethyr_budget_charge(b[..], s3, 1, 10); // strictly older tick (10 < 25) -> s3 wins over s1 and s2!
+  #assert aethyr_budget_evict_victim(b[..], -1) == s3;
+  // Exclude s3 -> falls back to s1; exclude s1 & zero s3 -> s2; also verify unused slots skipped even when focused/bytes checked
+  #assert aethyr_budget_evict_victim(b[..], s3) == s1;
+  #assert aethyr_budget_charge(b[..], s3, 0, 41);
+  #assert aethyr_budget_charge(b[..], s1, 0, 41);
+  #assert aethyr_budget_evict_victim(b[..], s0) == s2;
+  // Unfocus s0 (tick 40 > s2 tick 31 -> s2 still older); touch s2 to 50 -> s0 (tick 40) now oldest!
+  #assert aethyr_budget_set_focus(b[..], s0, false, 40);
+  #assert aethyr_budget_charge(b[..], s2, AETHYR_INLINE_CARD_CAP, 50);
+  #assert aethyr_budget_evict_victim(b[..], -1) == s0;
+
+  // Unregister frees bytes and slot
+  #assert aethyr_budget_unregister(b[..], s0);
+  #assert b[0].total_bytes == AETHYR_INLINE_CARD_CAP && b[0].active_count == 3;
+  #assert !aethyr_budget_unregister(b[..], s0) && !aethyr_budget_unregister(b[..], -1) && !aethyr_budget_unregister(b[..], 16);
+
+  // Fill remaining 13 slots (up to 16 total), then 17th fails
+  for k: 0..<13 { #assert aethyr_budget_register(b[..], AETHYR_KIND_GAMEBUILDER, 60 + k) >= 0; }
+  #assert aethyr_budget_register(b[..], AETHYR_KIND_VIEWER, 99) == -1;
+
+  // Low-cap clamps slot limit down to cap_bytes
+  low: [1] AethyrBudget;
+  aethyr_budget_init(low[..], AETHYR_MIN_BUDGET);
+  ls := aethyr_budget_register(low[..], AETHYR_KIND_INLINE, 1);
+  #assert aethyr_slot_limit(low[..], ls) == AETHYR_MIN_BUDGET;
+}
+
+#test "aethyr-host-v2 inline dedup and thermal frame-rate policy" {
+  #assert !aethyr_inline_dedup("", true, false, "");
+  #assert !aethyr_inline_dedup("/a.ple-scene.json", false, false, "/a.ple-scene.json");
+  #assert !aethyr_inline_dedup("/a.ple-scene.json", true, true, "/a.ple-scene.json");
+  #assert !aethyr_inline_dedup("/a.ple-scene.json", true, false, "/b.ple-scene.json");
+  #assert aethyr_inline_dedup("/a.ple-scene.json", true, false, "/a.ple-scene.json");
+
+  #assert aethyr_frame_hz(false, true, true, false, 120) == 0;
+  #assert aethyr_frame_hz(true, true, false, false, 120) == 0;
+  #assert aethyr_frame_hz(true, true, true, false, 30) == 60;
+  #assert aethyr_frame_hz(true, true, true, false, 61) == 61;
+  #assert aethyr_frame_hz(true, true, true, false, 119) == 119;
+  #assert aethyr_frame_hz(true, true, true, false, 120) == 120;
+  #assert aethyr_frame_hz(true, true, true, false, 240) == 120;
+  #assert aethyr_frame_hz(true, true, true, true, 120) == 60;
+  #assert aethyr_frame_hz(true, false, true, false, 120) == 60;
+  #assert aethyr_frame_hz(true, false, true, false, 60) == 60;
+}
