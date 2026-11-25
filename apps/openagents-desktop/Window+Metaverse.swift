@@ -412,6 +412,10 @@ extension CoderWindow {
         if vp.isHidden {
             vp.isHidden = false
             vp.setPaneVisible(true)
+            if vp.activeGtaWorkbench != nil {
+                _ = cd_mv_focus_viewport(page)
+                window.makeFirstResponder(vp)
+            }
             vp.requestRender()
         } else if sizeChanged {
             vp.requestRender()

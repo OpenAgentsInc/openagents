@@ -340,9 +340,10 @@ final class MetaverseViewportView: NSView {
     private var lastRenderWall: CFTimeInterval = 0
     private var smoothFps: Double = 0
 
-    // GTA VI Key Lento Metal 4 Workbench bottom HUD bar
+    // GTA VI Key Lento Metal 4 Workbench bottom HUD bar (compact 2-row floating glass pill — never clips on narrow panes)
     private let gtaBar = NSStackView()
-    private let gtaAutoCamBtn = NSButton(title: "Auto-Cam: Orbit ●", target: nil, action: nil)
+    private let gtaAnimPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let gtaAutoCamBtn = NSButton(title: "Auto: Orbit ●", target: nil, action: nil)
     private let gtaMoveBtn = NSButton(title: "Drag Mandy ●", target: nil, action: nil)
     private let gtaResetPosBtn = NSButton(title: "Reset Pos", target: nil, action: nil)
     private let gtaPlayBtn = NSButton(title: "Converge", target: nil, action: nil)
@@ -559,13 +560,13 @@ final class MetaverseViewportView: NSView {
     }
 
     private func setupGtaBar() {
-        gtaBar.orientation = .horizontal
-        gtaBar.spacing = 6
-        gtaBar.alignment = .centerY
+        gtaBar.orientation = .vertical
+        gtaBar.spacing = 4
+        gtaBar.alignment = .centerX
         gtaBar.edgeInsets = NSEdgeInsets(top: 5, left: 8, bottom: 5, right: 8)
         gtaBar.wantsLayer = true
         gtaBar.layer?.backgroundColor = NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.88).cgColor
-        gtaBar.layer?.cornerRadius = 7
+        gtaBar.layer?.cornerRadius = 8
         gtaBar.layer?.borderWidth = 1
         gtaBar.layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.14).cgColor
         gtaBar.translatesAutoresizingMaskIntoConstraints = false
@@ -586,15 +587,24 @@ final class MetaverseViewportView: NSView {
         gtaExprBtn.action = #selector(gtaCycleExpr)
         gtaSnapBtn.action = #selector(gtaSnapClicked)
 
+        gtaAnimPopup.controlSize = .small
+        gtaAnimPopup.target = self
+        gtaAnimPopup.action = #selector(gtaAnimChanged)
+        gtaAnimPopup.removeAllItems()
+        for a in GtaWorkbenchSession.customAnims { gtaAnimPopup.addItem(withTitle: a.label) }
+
         gtaPresetPopup.controlSize = .small
         gtaPresetPopup.target = self
         gtaPresetPopup.action = #selector(gtaPresetChanged)
         gtaPresetPopup.removeAllItems()
         for p in GtaWorkbenchSession.presets { gtaPresetPopup.addItem(withTitle: p.label) }
 
-        for v in [gtaAutoCamBtn, gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
-            gtaBar.addArrangedSubview(v)
-        }
+        let row1 = NSStackView(views: [gtaAnimPopup, gtaAutoCamBtn, gtaMoveBtn, gtaResetPosBtn])
+        row1.orientation = .horizontal; row1.spacing = 6; row1.alignment = .centerY
+        let row2 = NSStackView(views: [gtaPresetPopup, gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaExprBtn, gtaSnapBtn])
+        row2.orientation = .horizontal; row2.spacing = 6; row2.alignment = .centerY
+        gtaBar.addArrangedSubview(row1)
+        gtaBar.addArrangedSubview(row2)
         addSubview(gtaBar)
         NSLayoutConstraint.activate([
             gtaBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 8),
@@ -607,6 +617,9 @@ final class MetaverseViewportView: NSView {
     func syncGtaBar() {
         guard let gta = activeGtaWorkbench else { gtaBar.isHidden = true; return }
         gtaBar.isHidden = false
+        if let aIdx = GtaWorkbenchSession.customAnims.firstIndex(where: { $0.id == gta.state.customAnim }) {
+            gtaAnimPopup.selectItem(at: aIdx)
+        }
         switch gta.state.autoCamMode {
         case 1: gtaAutoCamBtn.title = "Auto: Orbit ●"
         case 2: gtaAutoCamBtn.title = "Auto: Tour ●"
@@ -626,21 +639,31 @@ final class MetaverseViewportView: NSView {
         }
     }
 
-    @objc private func gtaCycleAutoCam() { activeGtaWorkbench?.cycleAutoCam(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaToggleMoveMode() { gtaDragMandyEnabled.toggle(); syncGtaBar() }
-    @objc private func gtaResetPosClicked() { activeGtaWorkbench?.resetMandyPosition(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaTogglePaused() { activeGtaWorkbench?.togglePaused(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaToggleCam() { activeGtaWorkbench?.toggleRockstarCam(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaToggleFx() { activeGtaWorkbench?.toggleDenoiser(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaCycleClip() { activeGtaWorkbench?.cycleClip(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaCycleExpr() { activeGtaWorkbench?.cycleExpr(); syncGtaBar(); onNeedsDisplay?() }
-    @objc private func gtaSnapClicked() { onGtaSnapshotRequested?() }
+    private func reclaimViewportFocus() {
+        window?.makeFirstResponder(self)
+        onFocusRequested?()
+    }
+
+    @objc private func gtaAnimChanged() {
+        let idx = gtaAnimPopup.indexOfSelectedItem
+        guard idx >= 0 && idx < GtaWorkbenchSession.customAnims.count else { return }
+        activeGtaWorkbench?.setCustomAnim(GtaWorkbenchSession.customAnims[idx].id)
+        syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?()
+    }
+    @objc private func gtaCycleAutoCam() { activeGtaWorkbench?.cycleAutoCam(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaToggleMoveMode() { gtaDragMandyEnabled.toggle(); syncGtaBar(); reclaimViewportFocus() }
+    @objc private func gtaResetPosClicked() { activeGtaWorkbench?.resetMandyPosition(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaTogglePaused() { activeGtaWorkbench?.togglePaused(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaToggleCam() { activeGtaWorkbench?.toggleRockstarCam(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaToggleFx() { activeGtaWorkbench?.toggleDenoiser(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaCycleClip() { activeGtaWorkbench?.cycleClip(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaCycleExpr() { activeGtaWorkbench?.cycleExpr(); syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?() }
+    @objc private func gtaSnapClicked() { onGtaSnapshotRequested?(); reclaimViewportFocus() }
     @objc private func gtaPresetChanged() {
         let idx = gtaPresetPopup.indexOfSelectedItem
         guard idx >= 0 && idx < GtaWorkbenchSession.presets.count else { return }
         activeGtaWorkbench?.applyPreset(GtaWorkbenchSession.presets[idx].id)
-        syncGtaBar()
-        onNeedsDisplay?()
+        syncGtaBar(); reclaimViewportFocus(); onNeedsDisplay?()
     }
 
     private func syncControlBar() {
@@ -2107,6 +2130,7 @@ final class MetaverseViewportView: NSView {
             case "0": gta.applyPreset("showcase"); syncGtaBar(); onNeedsDisplay?(); return
             case "p": gta.applyPreset("portrait_live"); syncGtaBar(); onNeedsDisplay?(); return
             case "o": gta.cycleAutoCam(); syncGtaBar(); onNeedsDisplay?(); return
+            case "n": gta.cycleCustomAnim(); syncGtaBar(); onNeedsDisplay?(); return
             case "g": gtaDragMandyEnabled.toggle(); syncGtaBar(); return
             case "[": gta.rotateMandy(deltaYaw: -0.18); syncGtaBar(); onNeedsDisplay?(); return
             case "]": gta.rotateMandy(deltaYaw: 0.18); syncGtaBar(); onNeedsDisplay?(); return
