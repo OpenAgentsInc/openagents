@@ -75,7 +75,7 @@ final class GtaWorkbenchSession {
     private static var fnSetCustomAnim: FnSetInt?
 
     private static let buildLock = NSLock()
-    private static let abiVersionTag = "oa_mandy_abi_v9"
+    private static let abiVersionTag = "oa_mandy_abi_v11"
 
     let key: String
     let rootDir: String
@@ -336,6 +336,12 @@ final class GtaWorkbenchSession {
                 }
                 return q_unit(simd_make_float4(qx, qy, qz, qw));
             }
+            // Shortest-arc bone-local +X axial twist angle relative to bind (exact mandy.coax RAGE9 crExpressions formula!)
+            static inline float oa_local_x_twist(simd_float4 bind_q, simd_float4 live_q) {
+                simd_float4 dq = q_unit(q_mul(q_conj(bind_q), live_q));
+                if (dq.w < 0.0f) dq = -dq;
+                return mn_clamp(2.0f * atan2f(dq.x, std::max(dq.w, 0.001f)), -1.45f, 1.45f);
+            }
             struct MandyRig {
             """
             guard src.contains(rigDeclNeedle) else {
@@ -347,7 +353,23 @@ final class GtaWorkbenchSession {
             // true local-Z finger curl + contrapposto hip sway directly into MandyRig::eval_pose!
             let paletteNeedle = "        // Write 3x4 skinning matrix palette (3 float4 rows per bone!)"
             let customAnimBody = """
-                    // ---- OpenAgents Anatomical Custom Procedural Animation Layer (1-DOF Hinge Arm IK + Roll Bones + Contrapposto) ----
+                    // ---- OpenAgents RAGE9-Parity Custom Procedural Animation + crExpressions Roll-Bone Layer ----
+                    if (!is_jason && !is_druid && mode != MODE_BIND && g_oa_custom_anim == 0) {
+                        // Port mandy.coax RAGE9 crExpressions forearm/shoulder twist distribution to Original Rockstar Mocap too!
+                        float ltw = (bi_l_hand >= 0) ? oa_local_x_twist(joints[bi_l_hand].lq, live_lq[bi_l_hand]) : 0.0f;
+                        float rtw = (bi_r_hand >= 0) ? oa_local_x_twist(joints[bi_r_hand].lq, live_lq[bi_r_hand]) : 0.0f;
+                        float lsh = (bi_l_uarm >= 0) ? oa_local_x_twist(joints[bi_l_uarm].lq, live_lq[bi_l_uarm]) : 0.0f;
+                        float rsh = (bi_r_uarm >= 0) ? oa_local_x_twist(joints[bi_r_uarm].lq, live_lq[bi_r_uarm]) : 0.0f;
+                        auto apply_rb = [&](int bi, float tw) {
+                            if (bi >= 0 && bi < (int)nb && fabsf(tw) > 0.0005f)
+                                live_lq[bi] = q_unit(q_mul(joints[bi].lq, q_axis(f3(1, 0, 0), tw)));
+                        };
+                        apply_rb(97,  ltw * 0.72f); apply_rb(96,  ltw * 0.44f); apply_rb(95,  ltw * 0.18f);
+                        apply_rb(236, rtw * 0.72f); apply_rb(240, rtw * 0.44f); apply_rb(241, rtw * 0.18f);
+                        apply_rb(101, -lsh * 0.50f); apply_rb(105, -lsh * 0.25f);
+                        apply_rb(242, -rsh * 0.50f); apply_rb(246, -rsh * 0.25f);
+                        run_fk();
+                    }
                     if (!is_jason && !is_druid && mode != MODE_BIND && g_oa_custom_anim > 0 && bi_pelvis >= 0 && bi_head >= 0) {
                         phone_active = false;
                         cigar_active = false;
@@ -362,32 +384,122 @@ final class GtaWorkbenchSession {
                         }
                         run_fk();
 
+                        // Capture exact bind-pose foot height & floor stance anchors BEFORE hip motion!
+                        float l_foot_z0 = (bi_l_foot >= 0) ? live_wp[bi_l_foot].z : -0.920f;
+                        float r_foot_z0 = (bi_r_foot >= 0) ? live_wp[bi_r_foot].z : -0.920f;
+
                         // Stand clearly in front of the Key Lento counter with wide room for hair-combing & hip sway.
                         char_x = 0.22f;
                         char_y = 0.0f;
                         char_z = 0.16f;
                         char_yaw = 0.08f;
 
-                        float bind_foot_z = (bi_l_foot >= 0 && bi_r_foot >= 0)
-                            ? std::min(live_wp[bi_l_foot].z, live_wp[bi_r_foot].z) : -0.92f;
+                        // Foot-Planted 1-DOF Hinge 2-Bone Leg IK (locks both slippers cleanly to tile floor with zero skating!)
+                        // Verified from mandy-meta.bin & mandy-anims.bin: Thigh +X=down, +Y=fwd(-Y), +Z=right(-X); Calf bends around -Z!
+                        auto solve_leg_aaa = [&](int side, simd_float3 ankle_tgt, float turnout) {
+                            int th_bi  = (side > 0) ? bi_l_thigh : bi_r_thigh;
+                            int cf_bi  = (side > 0) ? bi_l_calf  : bi_r_calf;
+                            int ft_bi  = (side > 0) ? bi_l_foot  : bi_r_foot;
+                            int rth_bi = (side > 0) ? 15 : 32; // RB_L/R_Thigh01 (owns 4k thigh verts via BM_*_Thigh!)
+                            if (th_bi < 0 || cf_bi < 0 || ft_bi < 0) return;
 
-                        // AAA 1-DOF Hinge 2-Bone Arm IK with RB_Wrist / RB_Shoulder roll distribution & explicit palm orientation!
-                        // `fingertip_target`: where her FINGERTIPS go (wrist is placed 10.5cm back along the approach!)
-                        // `palm_dir_des`: desired world/char direction her PALM faces (e.g. inward toward skull/hair or hip!)
+                            simd_float3 hip = live_wp[th_bi];
+                            float L1 = std::max(0.15f, simd_length(joints[cf_bi].rest_wp - joints[th_bi].rest_wp));
+                            float L2 = std::max(0.15f, simd_length(joints[ft_bi].rest_wp - joints[cf_bi].rest_wp));
+
+                            simd_float3 to_a = ankle_tgt - hip;
+                            float raw_d = simd_length(to_a);
+                            float d = mn_clamp(raw_d, fabsf(L1 - L2) + 0.05f, (L1 + L2) * 0.992f);
+                            simd_float3 dir_a = (raw_d > 1e-5f) ? (to_a / raw_d) : f3(0, 0, -1);
+
+                            float cos_a = mn_clamp((L1 * L1 + d * d - L2 * L2) / (2.0f * L1 * d), -1.0f, 1.0f);
+                            float sin_a = sqrtf(std::max(0.0f, 1.0f - cos_a * cos_a));
+                            simd_float3 k_pole = f3(sinf(turnout), -cosf(turnout), 0.0f);
+                            simd_float3 bend = k_pole - dir_a * simd_dot(k_pole, dir_a);
+                            float bl = simd_length(bend);
+                            bend = (bl > 1e-5f) ? (bend / bl) : f3(0, -1, 0);
+                            simd_float3 kn = hip + dir_a * (L1 * cos_a) + bend * (L1 * sin_a);
+
+                            simd_float3 u_x = simd_normalize(kn - hip);
+                            simd_float3 f_x = simd_normalize((hip + dir_a * d) - kn);
+                            simd_float3 hz = simd_cross(f_x, u_x); // -cross(u_x, f_x) points RIGHT (-X) = Thigh +Z!
+                            float hl = simd_length(hz);
+                            simd_float3 u_z = (hl > 1e-4f) ? (hz / hl) : simd_normalize(simd_cross(u_x, bend));
+                            simd_float3 u_y = simd_normalize(simd_cross(u_z, u_x));
+                            simd_float4 q_thw = oa_quat_from_basis(u_x, u_y, u_z);
+
+                            int th_par = joints[th_bi].par;
+                            simd_float4 pq = (th_par >= 0) ? live_wq[th_par] : simd_make_float4(0, 0, 0, 1);
+                            live_lq[th_bi] = q_unit(q_mul(q_conj(pq), q_thw));
+
+                            float knee_bend = mn_clamp(acosf(mn_clamp(simd_dot(u_x, f_x), -1.0f, 1.0f)), 0.06f, 2.05f);
+                            live_lq[cf_bi] = q_axis(f3(0, 0, 1), -knee_bend);
+
+                            // Smooth upper-thigh / glute counter-roll on RB_*_Thigh01
+                            float th_tw = oa_local_x_twist(joints[th_bi].lq, live_lq[th_bi]);
+                            if (rth_bi < (int)nb && joints[rth_bi].par == th_bi)
+                                live_lq[rth_bi] = q_unit(q_mul(joints[rth_bi].lq, q_axis(f3(1, 0, 0), -th_tw * 0.40f)));
+
+                            run_fk();
+                            // Lock slipper flush & parallel to the tile floor with exact turnout yaw!
+                            simd_float4 q_ft_w = q_unit(q_mul(q_axis(f3(0, 0, 1), turnout), joints[ft_bi].rest_wq));
+                            live_lq[ft_bi] = q_unit(q_mul(q_conj(live_wq[cf_bi]), q_ft_w));
+                            run_fk();
+                        };
+
+                        // True Anatomical Hand & Finger Cascade (accounts for bind pose's built-in -65 deg curl + Thumb Finger00!)
+                        // `openness`: +0.22 = soft flat hand on hip, +0.10 = relaxed dancer lift, -0.14 = soft hair-combing rake!
+                        // `splay`: subtle finger fan spread (0.04 on hip, 0.09 while combing hair!)
+                        auto pose_hand_aaa = [&](int side, float openness, float splay, float thumb_opp) {
+                            float s = float(side);
+                            // Thumb base metacarpal opposition (SKEL_L/R_Finger00 = 60 / 202 — exact Rockstar clip4 mirror!)
+                            int th0 = (side > 0) ? 60 : 202;
+                            int th1 = (side > 0) ? 61 : 203;
+                            int th2 = (side > 0) ? 62 : 204;
+                            if (th0 < (int)nb)
+                                live_lq[th0] = q_unit(q_mul(joints[th0].lq, q_axis(f3(0.82f * s, -0.18f * s, 0.54f), thumb_opp)));
+                            if (th1 < (int)nb)
+                                live_lq[th1] = q_unit(q_mul(joints[th1].lq, q_axis(f3(0, 0, 1), openness * 0.65f + 0.14f)));
+                            if (th2 < (int)nb)
+                                live_lq[th2] = q_unit(q_mul(joints[th2].lq, q_axis(f3(0, 0, 1), openness * 0.85f + 0.18f)));
+
+                            // 4 fingers (Index -> Pinky) phalanges ONLY — NEVER touch metacarpals Finger10/20/30/40!
+                            static const int lf[4][3] = { {65,66,67}, {72,73,74}, {78,79,80}, {84,85,86} };
+                            static const int rf[4][3] = { {207,208,209}, {214,215,216}, {220,221,222}, {226,227,228} };
+                            // Natural feminine finger cascade: index most open/graceful, pinky slightly softer-curled!
+                            static const float casc[4]  = { +0.12f, +0.03f, -0.05f, -0.13f };
+                            static const float fan_y[4] = { -1.0f,  -0.25f, +0.45f, +1.15f };
+                            const int (*fb)[3] = (side > 0) ? lf : rf;
+                            for (int f = 0; f < 4; ++f) {
+                                float ang = openness + casc[f];
+                                int b1 = fb[f][0], b2 = fb[f][1], b3 = fb[f][2];
+                                if (b1 < (int)nb) {
+                                    simd_float4 qd = q_mul(q_axis(f3(0, 0, 1), ang * 1.15f), q_axis(f3(0, 1, 0), s * fan_y[f] * splay));
+                                    live_lq[b1] = q_unit(q_mul(joints[b1].lq, qd));
+                                }
+                                if (b2 < (int)nb)
+                                    live_lq[b2] = q_unit(q_mul(joints[b2].lq, q_axis(f3(0, 0, 1), ang * 0.90f)));
+                                if (b3 < (int)nb)
+                                    live_lq[b3] = q_unit(q_mul(joints[b3].lq, q_axis(f3(0, 0, 1), ang * 0.65f)));
+                            }
+                        };
+
+                        // AAA RAGE9-Parity 1-DOF Hinge 2-Bone Arm IK + Scapulohumeral Rhythm + crExpressions Roll Bones!
                         auto solve_arm_aaa = [&](int side, simd_float3 wrist_target, simd_float3 elbow_pole,
-                                                 simd_float3 palm_dir_des, float wrist_flex, float finger_curl) {
+                                                 simd_float3 palm_dir_des, float wrist_flex, float finger_open,
+                                                 float finger_splay, float thumb_opp) {
                             int clav_bi = (side > 0) ? bi_l_clav : bi_r_clav;
                             int u_bi    = (side > 0) ? bi_l_uarm : bi_r_uarm;
                             int f_bi    = (side > 0) ? bi_l_farm : bi_r_farm;
                             int h_bi    = (side > 0) ? bi_l_hand : bi_r_hand;
                             if (u_bi < 0 || f_bi < 0 || h_bi < 0) return;
 
-                            // 1. Natural clavicle elevation & protraction so shoulders rise organically when hands go up!
+                            // 1. 2:1 Scapulohumeral Clavicle Elevation & Retraction (prevents shoulder collapse on overhead hair poses!)
+                            float dz = wrist_target.z - live_wp[u_bi].z;
+                            float lift = mn_clamp((dz + 0.08f) * 0.65f, -0.06f, 0.42f);
                             if (clav_bi >= 0) {
-                                float dz = wrist_target.z - live_wp[u_bi].z;
-                                float lift = mn_clamp((dz + 0.06f) * 0.42f, -0.05f, 0.26f);
                                 rot_char(clav_bi, f3(0, -1, 0), float(side) * lift);
-                                float pro = mn_clamp((live_wp[u_bi].y - wrist_target.y) * 0.25f, -0.08f, 0.14f);
+                                float pro = mn_clamp((live_wp[u_bi].y - wrist_target.y) * 0.28f, -0.14f, 0.14f);
                                 rot_char(clav_bi, f3(0, 0, 1), -float(side) * pro);
                                 run_fk();
                             }
@@ -398,10 +510,11 @@ final class GtaWorkbenchSession {
                             float L1 = std::max(0.10f, simd_length(el0 - sh));
                             float L2 = std::max(0.10f, simd_length(ha0 - el0));
 
-                            // 2. Law of Cosines in the exact shoulder->wrist->pole plane
+                            // 2. Law of Cosines in exact shoulder->wrist->pole plane (keeps elbow <= 124 deg for silky skin!)
                             simd_float3 to_t = wrist_target - sh;
                             float raw_d = simd_length(to_t);
-                            float d = mn_clamp(raw_d, fabsf(L1 - L2) + 0.045f, (L1 + L2) * 0.965f);
+                            float min_d_124 = sqrtf(std::max(0.01f, L1 * L1 + L2 * L2 - 2.0f * L1 * L2 * cosf(MN_PI - 2.16f)));
+                            float d = mn_clamp(raw_d, std::max(fabsf(L1 - L2) + 0.055f, min_d_124), (L1 + L2) * 0.965f);
                             simd_float3 dir_t = (raw_d > 1e-5f) ? (to_t / raw_d) : f3(float(side) * 0.5f, -0.5f, -0.7f);
 
                             float cos_a = mn_clamp((L1 * L1 + d * d - L2 * L2) / (2.0f * L1 * d), -1.0f, 1.0f);
@@ -425,33 +538,47 @@ final class GtaWorkbenchSession {
                             simd_float4 pq = (u_par >= 0) ? live_wq[u_par] : simd_make_float4(0, 0, 0, 1);
                             live_lq[u_bi] = q_unit(q_mul(q_conj(pq), q_uarm_w));
 
-                            // 3b. Smooth Shoulder/Deltoid Roll Distribution across RB_Shoulder01/02/03 (exact swing-twist around humerus +X!)
-                            // Eliminates bicep/deltoid creasing when arms lift behind head or overhead.
+                            // 3b. Exact RAGE9 crExpressions Shortest-Arc Shoulder Twist Distribution (fixes 162-deg dq.w flip!)
+                            // Matches mandy.coax: RB_Shoulder01 (-0.50), RB_Shoulder02 (-0.25), RB_Shoulder03 stays 0.0!
+                            float arm_roll = oa_local_x_twist(joints[u_bi].lq, live_lq[u_bi]);
+                            int rs1 = (side > 0) ? 101 : 242; // RB_*_Shoulder01
+                            int rs2 = (side > 0) ? 105 : 246; // RB_*_Shoulder02
+                            if (rs1 < (int)nb && joints[rs1].par == u_bi)
+                                live_lq[rs1] = q_unit(q_mul(joints[rs1].lq, q_axis(f3(1, 0, 0), -arm_roll * 0.50f)));
+                            if (rs2 < (int)nb && joints[rs2].par == u_bi)
+                                live_lq[rs2] = q_unit(q_mul(joints[rs2].lq, q_axis(f3(1, 0, 0), -arm_roll * 0.25f)));
+
+                            // 3c. Scapulohumeral Deltoid / Armpit / Scapula / Pec Helper Swing Follow!
+                            // Lifts BM_Deltoid (520v), MH_ArmPit (400v), SKEL_Scapula (1.5k v), MH_Pec (427v) smoothly with raised arms!
                             {
-                                simd_float4 dq = q_unit(q_mul(q_conj(joints[u_bi].lq), live_lq[u_bi]));
-                                float arm_roll = 2.0f * atan2f(dq.x, dq.w);
-                                if (arm_roll >  MN_PI) arm_roll -= 2.0f * MN_PI;
-                                if (arm_roll < -MN_PI) arm_roll += 2.0f * MN_PI;
-                                arm_roll = mn_clamp(arm_roll, -1.65f, 1.65f);
-                                int rs1 = (side > 0) ? 101 : 242; // RB_*_Shoulder01 (x=0.000, deltoid cap)
-                                int rs2 = (side > 0) ? 105 : 246; // RB_*_Shoulder02 (x=0.091, upper bicep)
-                                int rs3 = (side > 0) ? 102 : 243; // RB_*_Shoulder03 (x=0.181, lower bicep)
-                                if (rs1 < (int)nb && joints[rs1].par == u_bi)
-                                    live_lq[rs1] = q_unit(q_mul(joints[rs1].lq, q_axis(f3(1, 0, 0), -arm_roll * 0.72f)));
-                                if (rs2 < (int)nb && joints[rs2].par == u_bi)
-                                    live_lq[rs2] = q_unit(q_mul(joints[rs2].lq, q_axis(f3(1, 0, 0), -arm_roll * 0.42f)));
-                                if (rs3 < (int)nb && joints[rs3].par == u_bi)
-                                    live_lq[rs3] = q_unit(q_mul(joints[rs3].lq, q_axis(f3(1, 0, 0), -arm_roll * 0.16f)));
+                                simd_float4 dq_u = q_unit(q_mul(q_conj(joints[u_bi].lq), live_lq[u_bi]));
+                                if (dq_u.w < 0.0f) dq_u = -dq_u;
+                                simd_float4 q_sw = q_unit(q_mul(dq_u, q_conj(q_axis(f3(1, 0, 0), arm_roll))));
+                                simd_float4 q_sw_c = q_unit(q_mul(q_mul(joints[u_bi].lq, q_sw), q_conj(joints[u_bi].lq)));
+                                simd_float4 q_id = simd_make_float4(0, 0, 0, 1);
+                                int ac_bi  = (side > 0) ? 111 : 252; // SKEL_*_Acromion -> BM_*_Deltoid
+                                int ap_bi  = (side > 0) ? 108 : 249; // BM_*_Armpit     -> MH_*_ArmPit
+                                int sc_bi  = (side > 0) ? 113 : 254; // SKEL_*_Scapula  -> MH_*_Tricep
+                                int pec_bi = (side > 0) ? 267 : 270; // MH_*_Pec (blends front chest into deltoid!)
+                                if (ac_bi < (int)nb)
+                                    live_lq[ac_bi] = q_unit(q_mul(q_slerp(q_id, q_sw_c, 0.45f), joints[ac_bi].lq));
+                                if (ap_bi < (int)nb)
+                                    live_lq[ap_bi] = q_unit(q_mul(q_slerp(q_id, q_sw_c, 0.40f), joints[ap_bi].lq));
+                                if (sc_bi < (int)nb)
+                                    live_lq[sc_bi] = q_unit(q_mul(q_slerp(q_id, q_sw_c, 0.18f), joints[sc_bi].lq));
+                                if (pec_bi < (int)nb && lift > 0.02f)
+                                    live_lq[pec_bi] = q_unit(q_mul(joints[pec_bi].lq, q_axis(f3(0, 0, 1), -float(side) * lift * 0.22f)));
                             }
 
-                            // 4. Pure 1-DOF Hinge Bend on Forearm around local +Z (ZERO sideways/backward elbow distortion!)
-                            float elbow_bend = acosf(mn_clamp(simd_dot(u_x, f_x), -1.0f, 1.0f));
-                            elbow_bend = mn_clamp(elbow_bend, 0.08f, 2.38f);
+                            // 4. Pure 1-DOF Hinge Bend on Forearm around local +Z + gentle half-angle elbow skin split!
+                            float elbow_bend = mn_clamp(acosf(mn_clamp(simd_dot(u_x, f_x), -1.0f, 1.0f)), 0.08f, 2.16f);
                             live_lq[f_bi] = q_axis(f3(0, 0, 1), elbow_bend);
+                            int bmf = (side > 0) ? 92 : 233; // BM_*_Forearm -> MH_*_OuterElbow & MH_*_InnerElbow
+                            if (bmf < (int)nb && joints[bmf].par == f_bi)
+                                live_lq[bmf] = q_unit(q_mul(joints[bmf].lq, q_axis(f3(0, 0, 1), -(elbow_bend - 0.48f) * 0.22f)));
                             run_fk();
 
-                            // 5. Distribute Forearm Pronation/Supination smoothly across RB_Wrist03/02/01 -> Hand!
-                            // Verified from mandy-meta.bin: Left palm normal = local +Z, Right palm normal = local -Z!
+                            // 5. Anatomical Forearm Pronation distributed via exact mandy.coax RB_Wrist01/02/03 (72% / 44% / 18%)!
                             simd_float3 cur_fx   = q_rot(live_wq[f_bi], f3(1, 0, 0));
                             simd_float3 cur_palm = q_rot(live_wq[f_bi], f3(0, 0, float(side)));
                             simd_float3 des_p = palm_dir_des - cur_fx * simd_dot(palm_dir_des, cur_fx);
@@ -461,37 +588,24 @@ final class GtaWorkbenchSession {
                                 des_p /= dpl;
                                 float c_ang = mn_clamp(simd_dot(cur_palm, des_p), -1.0f, 1.0f);
                                 float s_ang = simd_dot(cur_fx, simd_cross(cur_palm, des_p));
-                                pronation = mn_clamp(atan2f(s_ang, c_ang), -1.55f, 1.55f);
+                                pronation = mn_clamp(atan2f(s_ang, c_ang), -1.12f, 1.12f);
                             }
 
-                            // Roll-bone indices verified from mandy-joints.txt:
-                            // Left:  RB_L_Wrist03=95 (25%), RB_L_Wrist02=96 (50%), RB_L_Wrist01=97 (75%)
-                            // Right: RB_R_Wrist03=241 (25%), RB_R_Wrist02=240 (50%), RB_R_Wrist01=236 (75%)
-                            int rw3 = (side > 0) ? 95 : 241;
-                            int rw2 = (side > 0) ? 96 : 240;
-                            int rw1 = (side > 0) ? 97 : 236;
+                            int rw3 = (side > 0) ? 95 : 241; // 18%
+                            int rw2 = (side > 0) ? 96 : 240; // 44%
+                            int rw1 = (side > 0) ? 97 : 236; // 72%
                             if (rw3 < (int)nb && joints[rw3].par == f_bi)
-                                live_lq[rw3] = q_unit(q_mul(joints[rw3].lq, q_axis(f3(1, 0, 0), pronation * 0.25f)));
+                                live_lq[rw3] = q_unit(q_mul(joints[rw3].lq, q_axis(f3(1, 0, 0), pronation * 0.18f)));
                             if (rw2 < (int)nb && joints[rw2].par == f_bi)
-                                live_lq[rw2] = q_unit(q_mul(joints[rw2].lq, q_axis(f3(1, 0, 0), pronation * 0.50f)));
+                                live_lq[rw2] = q_unit(q_mul(joints[rw2].lq, q_axis(f3(1, 0, 0), pronation * 0.44f)));
                             if (rw1 < (int)nb && joints[rw1].par == f_bi)
-                                live_lq[rw1] = q_unit(q_mul(joints[rw1].lq, q_axis(f3(1, 0, 0), pronation * 0.75f)));
+                                live_lq[rw1] = q_unit(q_mul(joints[rw1].lq, q_axis(f3(1, 0, 0), pronation * 0.72f)));
 
-                            // Hand gets full pronation + soft anatomical wrist flexion (strictly clamped <= 26 deg!)
-                            float wf = mn_clamp(wrist_flex, -0.42f, 0.45f);
+                            float wf = mn_clamp(wrist_flex, -0.35f, 0.38f);
                             live_lq[h_bi] = q_unit(q_mul(q_axis(f3(1, 0, 0), pronation), q_axis(f3(0, 1, 0), float(side) * wf)));
 
-                            // 6. Natural Finger Curl strictly around BONE-LOCAL -Z (verified from mandy-meta.bin!)
-                            int f_role  = (side > 0) ? ROLE_L_FINGER : ROLE_R_FINGER;
-                            int th_role = (side > 0) ? ROLE_L_THUMB  : ROLE_R_THUMB;
-                            for (size_t i = 0; i < nb; ++i) {
-                                if (joints[i].role == f_role) {
-                                    // Local Z curl curls fingertips cleanly into the palm on both L and R hands!
-                                    live_lq[i] = q_unit(q_mul(joints[i].lq, q_axis(f3(0, 0, 1), -finger_curl)));
-                                } else if (joints[i].role == th_role) {
-                                    live_lq[i] = q_unit(q_mul(joints[i].lq, q_axis(f3(0, 0, 1), -finger_curl * 0.35f)));
-                                }
-                            }
+                            // 6. Natural Finger Cascade & Thumb Opposition
+                            pose_hand_aaa(side, finger_open, finger_splay, thumb_opp);
                             run_fk();
                         };
 
@@ -508,104 +622,105 @@ final class GtaWorkbenchSession {
                             float cyc = fmodf(t, 12.0f);
                             float sway = sinf(t * 1.15f);
                             float fig8 = sinf(t * 2.30f);
-                            hip_x     =  0.072f * sway;
-                            hip_y     = -0.020f * cosf(t * 2.30f);
-                            hip_z     = -0.022f - 0.010f * fabsf(sway);
-                            pel_roll  = -0.155f * sway;
-                            pel_yaw   =  0.125f * sinf(t * 1.15f + 0.55f);
-                            pel_pitch = -0.045f + 0.028f * fig8;
-                            sp_roll   =  0.175f * sway;
-                            sp_yaw    = -0.140f * sinf(t * 1.15f + 0.45f);
-                            sp_pitch  = -0.060f - 0.028f * breath;
+                            hip_x     =  0.068f * sway;
+                            hip_y     = -0.018f * cosf(t * 2.30f);
+                            hip_z     = -0.022f - 0.008f * fabsf(sway);
+                            pel_roll  = -0.140f * sway;
+                            pel_yaw   =  0.115f * sinf(t * 1.15f + 0.55f);
+                            pel_pitch = -0.038f + 0.022f * fig8;
+                            sp_roll   =  0.160f * sway;
+                            sp_yaw    = -0.125f * sinf(t * 1.15f + 0.45f);
+                            sp_pitch  = -0.048f - 0.024f * breath;
 
                             if (cyc < 4.5f) {
                                 float b = sinf((cyc / 4.5f) * MN_PI);
-                                head_roll  = -0.14f * b;
-                                head_yaw   =  0.12f * b;
-                                head_pitch = -0.08f * b;
+                                head_roll  = -0.13f * b;
+                                head_yaw   =  0.11f * b;
+                                head_pitch = -0.07f * b;
                             } else if (cyc < 9.0f) {
                                 float b = sinf(((cyc - 4.5f) / 4.5f) * MN_PI);
-                                head_roll  =  0.14f * b;
-                                head_yaw   = -0.12f * b;
-                                head_pitch = -0.08f * b;
+                                head_roll  =  0.13f * b;
+                                head_yaw   = -0.11f * b;
+                                head_pitch = -0.07f * b;
                             } else {
                                 float b = sinf(((cyc - 9.0f) / 3.0f) * MN_PI);
                                 head_roll  =  0.06f * sinf(t * 2.2f) * b;
-                                head_pitch = -0.12f * b;
-                                sp_pitch  -=  0.065f * b;
+                                head_pitch = -0.11f * b;
+                                sp_pitch  -=  0.055f * b;
                             }
                         } else if (g_oa_custom_anim == 2) {
                             // 2. HIP ROLL & GROOVE (sensual slow-tempo figure-8 hip circles + shoulder groove!)
                             float w = t * 1.95f;
                             float sx = sinf(w), cx = cosf(w);
-                            hip_x     =  0.092f * sx;
-                            hip_y     = -0.036f * sinf(2.0f * w);
-                            hip_z     = -0.028f - 0.014f * fabsf(sx);
-                            pel_roll  = -0.210f * sx;
-                            pel_yaw   =  0.185f * cx;
-                            pel_pitch = -0.055f + 0.052f * cosf(2.0f * w);
-                            sp_roll   =  0.230f * sinf(w - 0.35f);
-                            sp_yaw    = -0.200f * cosf(w - 0.35f);
-                            sp_pitch  = -0.048f - 0.042f * sinf(2.0f * w - 0.5f);
-                            head_roll = -0.11f * sinf(w - 0.65f);
-                            head_yaw  =  0.10f * cosf(w - 0.65f);
-                            head_pitch = -0.03f + 0.04f * sinf(2.0f * w);
+                            hip_x     =  0.082f * sx;
+                            hip_y     = -0.030f * sinf(2.0f * w);
+                            hip_z     = -0.026f - 0.012f * fabsf(sx);
+                            pel_roll  = -0.185f * sx;
+                            pel_yaw   =  0.165f * cx;
+                            pel_pitch = -0.045f + 0.044f * cosf(2.0f * w);
+                            sp_roll   =  0.205f * sinf(w - 0.35f);
+                            sp_yaw    = -0.180f * cosf(w - 0.35f);
+                            sp_pitch  = -0.042f - 0.036f * sinf(2.0f * w - 0.5f);
+                            head_roll = -0.10f * sinf(w - 0.65f);
+                            head_yaw  =  0.09f * cosf(w - 0.65f);
+                            head_pitch = -0.03f + 0.035f * sinf(2.0f * w);
                         } else if (g_oa_custom_anim == 3) {
                             // 3. HAIR FLIP & EDITORIAL POSE (6.5s dramatic slow-mo hair whip + tuck behind ear!)
                             float cyc = fmodf(t, 6.5f);
                             float dip  = oa_smoothstep(0.0f, 1.3f, cyc) * (1.0f - oa_smoothstep(1.3f, 2.3f, cyc));
                             float whip = oa_smoothstep(1.3f, 2.5f, cyc) * (1.0f - oa_smoothstep(4.8f, 6.4f, cyc));
-                            hip_x     = -0.048f * dip + 0.082f * whip;
-                            hip_z     = -0.032f * dip - 0.018f * whip;
-                            pel_roll  =  0.10f * dip - 0.18f * whip;
-                            pel_yaw   = -0.14f * dip + 0.22f * whip;
-                            sp_roll   = -0.22f * dip + 0.19f * whip;
-                            sp_pitch  =  0.24f * dip - 0.12f * whip;
-                            sp_yaw    = -0.16f * dip - 0.18f * whip;
-                            head_roll = -0.34f * dip + 0.20f * whip;
-                            head_pitch = 0.32f * dip - 0.15f * whip;
-                            head_yaw  = -0.20f * dip + 0.22f * whip;
+                            hip_x     = -0.042f * dip + 0.075f * whip;
+                            hip_z     = -0.030f * dip - 0.020f * whip;
+                            pel_roll  =  0.09f * dip - 0.16f * whip;
+                            pel_yaw   = -0.12f * dip + 0.19f * whip;
+                            sp_roll   = -0.19f * dip + 0.17f * whip;
+                            sp_pitch  =  0.20f * dip - 0.10f * whip;
+                            sp_yaw    = -0.14f * dip - 0.16f * whip;
+                            head_roll = -0.30f * dip + 0.18f * whip;
+                            head_pitch = 0.28f * dip - 0.13f * whip;
+                            head_yaw  = -0.18f * dip + 0.20f * whip;
                         } else if (g_oa_custom_anim == 4) {
                             // 4. LATE-NIGHT KITCHEN STRETCH (7.5s arms-high cozy stretch + back arch)
                             float cyc = fmodf(t, 7.5f);
                             float st = oa_smoothstep(0.4f, 2.2f, cyc) * (1.0f - oa_smoothstep(4.6f, 6.6f, cyc));
                             float sway = sinf(t * 0.9f);
-                            hip_x     =  0.045f * sway;
-                            hip_y     = -0.030f * st;
-                            hip_z     = -0.012f + 0.016f * st;
-                            pel_roll  = -0.090f * sway;
-                            pel_pitch = -0.090f * st;
-                            sp_pitch  = -0.180f * st - 0.025f * breath;
-                            sp_roll   =  0.110f * sway;
-                            head_pitch = -0.20f * st;
-                            head_roll  =  0.09f * sinf(t * 1.1f) * st;
+                            hip_x     =  0.042f * sway;
+                            hip_y     = -0.026f * st;
+                            hip_z     = -0.018f + 0.014f * st;
+                            pel_roll  = -0.080f * sway;
+                            pel_pitch = -0.078f * st;
+                            sp_pitch  = -0.155f * st - 0.024f * breath;
+                            sp_roll   =  0.095f * sway;
+                            head_pitch = -0.17f * st;
+                            head_roll  =  0.08f * sinf(t * 1.1f) * st;
                         } else if (g_oa_custom_anim == 5) {
                             // 5. KITCHEN TWIRL (7.0s smooth playful 360-degree spin!)
                             float cyc = fmodf(t, 7.0f);
                             float spin_u = oa_smoothstep(0.6f, 5.2f, cyc);
                             float spin_vel = (cyc > 0.6f && cyc < 5.2f) ? sinf(((cyc - 0.6f) / 4.6f) * MN_PI) : 0.0f;
                             extra_yaw = spin_u * (2.0f * MN_PI);
-                            hip_x     = 0.052f * sinf(t * 1.6f);
-                            hip_z     = -0.018f + 0.014f * spin_vel;
-                            pel_roll  = -0.12f * sinf(t * 1.6f);
-                            sp_yaw    =  0.18f * spin_vel;
-                            sp_pitch  = -0.07f * spin_vel;
-                            head_yaw  =  0.22f * spin_vel;
-                            head_roll = -0.09f * spin_vel;
+                            hip_x     = 0.048f * sinf(t * 1.6f);
+                            hip_z     = -0.020f + 0.014f * spin_vel;
+                            pel_roll  = -0.11f * sinf(t * 1.6f);
+                            sp_yaw    =  0.16f * spin_vel;
+                            sp_pitch  = -0.06f * spin_vel;
+                            head_yaw  =  0.20f * spin_vel;
+                            head_roll = -0.08f * spin_vel;
                         }
 
                         char_yaw += extra_yaw;
 
-                        // Pelvis translation + contrapposto rotations
+                        // 1. Apply pelvis translation & contrapposto rotations to SKEL_ROOT (an_root_idx=0), NEVER SKEL_Pelvis!
+                        // Keeps SKEL_Pelvis (BM_Stomach_low) and SKEL_Spine_Root (BM_Spine0/BM_Stomach) 100% locked together with ZERO waist shear!
                         live_lt[an_root_idx].x += hip_x;
                         live_lt[an_root_idx].y += hip_y;
                         live_lt[an_root_idx].z += hip_z;
-                        rot_char(bi_pelvis, f3(0, 1, 0), pel_roll);
-                        rot_char(bi_pelvis, f3(0, 0, 1), pel_yaw);
-                        rot_char(bi_pelvis, f3(1, 0, 0), pel_pitch);
+                        rot_char(an_root_idx, f3(0, 1, 0), pel_roll);
+                        rot_char(an_root_idx, f3(0, 0, 1), pel_yaw);
+                        rot_char(an_root_idx, f3(1, 0, 0), pel_pitch);
                         run_fk();
 
-                        // S-curve counter-rotation distributed cleanly across Spine0..Spine5
+                        // 2. Smooth S-curve counter-rotation distributed across ALL 6 spine vertebrae (Spine0..Spine5)
                         const int sp_bones[6] = { bi_spine0, bi_spine1, bi_spine2, bi_spine3, bi_spine4, bi_spine5 };
                         const float sp_w[6]   = { 0.14f, 0.16f, 0.18f, 0.20f, 0.18f, 0.14f };
                         for (int k = 0; k < 6; ++k) {
@@ -616,182 +731,175 @@ final class GtaWorkbenchSession {
                             run_fk();
                         }
 
-                        // Expressive Neck & Head
-                        int nk = (bi_neck1 >= 0) ? bi_neck1 : bi_neck0;
-                        if (nk >= 0) {
-                            rot_char(nk, f3(0, 0, 1), head_yaw   * 0.35f);
-                            rot_char(nk, f3(1, 0, 0), head_pitch * 0.35f);
-                            rot_char(nk, f3(0, 1, 0), head_roll  * 0.35f);
-                            run_fk();
-                        }
-                        rot_char(bi_head, f3(0, 0, 1), head_yaw   * 0.65f);
-                        rot_char(bi_head, f3(1, 0, 0), head_pitch * 0.65f);
-                        rot_char(bi_head, f3(0, 1, 0), head_roll  * 0.65f);
-                        run_fk();
-
-                        // Graceful natural contrapposto stance (subtle staggered weight shift, soft knees, slight toe turnout!)
-                        float l_unload = mn_clamp((-hip_x / 0.085f) * 0.5f + 0.5f, 0.0f, 1.0f);
-                        float r_unload = mn_clamp(( hip_x / 0.085f) * 0.5f + 0.5f, 0.0f, 1.0f);
-                        for (int side = 0; side < 2; ++side) {
-                            float sgn = (side == 0) ? 1.0f : -1.0f;
-                            float unl = (side == 0) ? l_unload : r_unload;
-                            int bi_th = (side == 0) ? bi_l_thigh : bi_r_thigh;
-                            int bi_cf = (side == 0) ? bi_l_calf  : bi_r_calf;
-                            int bi_ft = (side == 0) ? bi_l_foot  : bi_r_foot;
-                            float stagger = (side == 0) ? -0.06f : 0.04f; // left foot slightly forward for natural feminine silhouette!
-                            rot_char(bi_th, f3(0, 1, 0), -pel_roll * 0.88f + sgn * 0.035f);
-                            rot_char(bi_th, f3(0, 0, 1), -pel_yaw  * 0.72f + sgn * 0.11f);
-                            rot_char(bi_th, f3(1, 0, 0), stagger - 0.06f - 0.22f * unl);
-                            run_fk();
-                            rot_char(bi_cf, f3(1, 0, 0),  0.10f + 0.34f * unl);
-                            run_fk();
-                            rot_char(bi_ft, f3(1, 0, 0), -0.04f - 0.11f * unl);
-                        }
-                        run_fk();
-
-                        if (bi_l_foot >= 0 && bi_r_foot >= 0) {
-                            float min_fz = std::min(live_wp[bi_l_foot].z, live_wp[bi_r_foot].z);
-                            live_lt[an_root_idx].z += (bind_foot_z - min_fz);
+                        // 3. Full 4-joint Neck0/1/2 + Head chain (zero neck creasing!)
+                        const int nk_bones[4] = { bi_neck0, bi_neck1, bi_neck2, bi_head };
+                        const float nk_w[4]   = { 0.18f, 0.22f, 0.24f, 0.36f };
+                        for (int k = 0; k < 4; ++k) {
+                            if (nk_bones[k] < 0) continue;
+                            rot_char(nk_bones[k], f3(0, 0, 1), head_yaw   * nk_w[k]);
+                            rot_char(nk_bones[k], f3(1, 0, 0), head_pitch * nk_w[k]);
+                            rot_char(nk_bones[k], f3(0, 1, 0), head_roll  * nk_w[k]);
                             run_fk();
                         }
 
-                        // Live anatomical landmarks AFTER pelvis/spine/head motion
+                        // 4. Subtle living secondary breathing & phase-lagged chest motion on BM_L/R_Breast (278/280)
+                        if (280 < (int)nb) {
+                            float b_lag = sinf(t * 1.15f - 0.35f);
+                            float b_lift = 0.018f * breath - 0.045f * std::min(0.0f, sp_pitch);
+                            live_lq[278] = q_unit(q_mul(joints[278].lq, q_mul(q_axis(f3(0, 0, 1), b_lift), q_axis(f3(0, 1, 0), -0.024f * b_lag))));
+                            live_lq[280] = q_unit(q_mul(joints[280].lq, q_mul(q_axis(f3(0, 0, 1), b_lift), q_axis(f3(0, 1, 0), -0.024f * b_lag))));
+                            run_fk();
+                        }
+
+                        // 5. Foot-Planted 2-Bone Leg IK: BOTH slippers stay 100% locked flat on the kitchen tiles (zero skating!)
+                        solve_leg_aaa( 1, f3( 0.132f, -0.032f, l_foot_z0),  0.14f);
+                        solve_leg_aaa(-1, f3(-0.132f,  0.068f, r_foot_z0), -0.09f);
+
+                        // Live anatomical landmarks AFTER pelvis/spine/head/leg solve
                         simd_float3 pel_p  = live_wp[bi_pelvis];
                         simd_float3 head_p = live_wp[bi_head];
                         simd_float3 l_sh   = (bi_l_uarm >= 0) ? live_wp[bi_l_uarm] : (pel_p + f3( 0.16f, 0, 0.42f));
                         simd_float3 r_sh   = (bi_r_uarm >= 0) ? live_wp[bi_r_uarm] : (pel_p + f3(-0.16f, 0, 0.42f));
 
-                        // Natural relaxed hip-rest WRIST positions (wrist sits outside hip so fingertips rest cleanly on hip!)
-                        simd_float3 l_hip_w = pel_p + f3( 0.245f,  0.025f, 0.105f);
-                        simd_float3 r_hip_w = pel_p + f3(-0.245f,  0.025f, 0.105f);
-                        simd_float3 l_hip_p = l_sh  + f3( 0.46f,   0.22f, -0.16f);
-                        simd_float3 r_hip_p = r_sh  + f3(-0.46f,   0.22f, -0.16f);
-                        simd_float3 l_hip_palm = f3(-0.85f, -0.25f, -0.45f);
-                        simd_float3 r_hip_palm = f3( 0.85f, -0.25f, -0.45f);
+                        // Exact Rockstar clip4-calibrated hip-rest wrist & palm orientation (thumb up-back, soft fingers resting flat on hip!)
+                        simd_float3 l_hip_w = pel_p + f3( 0.215f,  0.015f, 0.125f);
+                        simd_float3 r_hip_w = pel_p + f3(-0.215f,  0.015f, 0.125f);
+                        simd_float3 l_hip_p = l_sh  + f3( 0.42f,   0.18f, -0.16f);
+                        simd_float3 r_hip_p = r_sh  + f3(-0.42f,   0.18f, -0.16f);
+                        simd_float3 l_hip_palm = f3(-0.75f,  0.35f, -0.55f);
+                        simd_float3 r_hip_palm = f3( 0.75f,  0.35f, -0.55f);
 
                         simd_float3 l_w = l_hip_w, r_w = r_hip_w;
                         simd_float3 l_p = l_hip_p, r_p = r_hip_p;
                         simd_float3 l_palm = l_hip_palm, r_palm = r_hip_palm;
                         float l_flex = 0.24f, r_flex = 0.24f;
-                        float l_curl = 0.34f, r_curl = 0.34f;
+                        float l_open = 0.20f, r_open = 0.20f;
+                        float l_splay = 0.04f, r_splay = 0.04f;
+                        float l_thumb = 0.44f, r_thumb = 0.44f;
 
-                        // Smooth, anatomically calibrated WRIST trajectory for combing fingers through hair:
-                        // Hand glides UP close along her ribcage/shoulder (never poking sideways!) and WRIST stays
-                        // 11-13cm outward/below temple/crown so FINGERTIPS comb right through her hair waves!
+                        // Smooth anatomical WRIST trajectory for combing fingertips gracefully through hair:
                         auto hair_comb_wrist = [&](int side, float u, simd_float3 hip_w, simd_float3 sh_p,
                                                    simd_float3 &out_w, simd_float3 &out_p, simd_float3 &out_palm,
-                                                   float &out_flex, float &out_curl) {
+                                                   float &out_flex, float &out_open, float &out_splay, float &out_thumb) {
                             float s = float(side);
                             simd_float3 w_hip    = hip_w;
-                            simd_float3 w_lift   = sh_p   + f3(s * 0.145f, -0.110f, -0.165f); // close, graceful upward glide along ribcage!
-                            simd_float3 w_cheek  = head_p + f3(s * 0.180f, -0.055f, -0.070f); // fingertips graze cheek/jawline into hair!
-                            simd_float3 w_temple = head_p + f3(s * 0.178f, -0.010f,  0.000f); // fingertips comb right through temple waves!
-                            simd_float3 w_back   = head_p + f3(s * 0.182f,  0.085f,  0.010f); // fingertips sweep back behind ear!
-                            simd_float3 w_drop   = sh_p   + f3(s * 0.195f,  0.030f, -0.085f); // soft feminine float back down to hip!
+                            simd_float3 w_lift   = sh_p   + f3(s * 0.185f, -0.075f, -0.185f); // relaxed low glide past ribs (elbow stays down!)
+                            simd_float3 w_cheek  = head_p + f3(s * 0.188f, -0.050f, -0.088f); // fingertips sweep smoothly past jawline into hair!
+                            simd_float3 w_temple = head_p + f3(s * 0.184f, -0.005f, -0.030f); // fingertips comb deep through temple waves!
+                            simd_float3 w_back   = head_p + f3(s * 0.186f,  0.085f, -0.018f); // fingertips sweep behind ear through hair!
+                            simd_float3 w_drop   = sh_p   + f3(s * 0.195f,  0.020f, -0.125f); // soft feminine float back down to hip!
 
                             if (u < 0.22f) {
-                                float k = oa_smoothstep(0.0f, 0.22f, u);
-                                out_w = oa_lerp3(w_hip, w_lift, k);
+                                out_w = oa_lerp3(w_hip, w_lift, oa_smoothstep(0.0f, 0.22f, u));
                             } else if (u < 0.42f) {
-                                float k = oa_smoothstep(0.22f, 0.42f, u);
-                                out_w = oa_lerp3(w_lift, w_cheek, k);
+                                out_w = oa_lerp3(w_lift, w_cheek, oa_smoothstep(0.22f, 0.42f, u));
                             } else if (u < 0.62f) {
-                                float k = oa_smoothstep(0.42f, 0.62f, u);
-                                out_w = oa_lerp3(w_cheek, w_temple, k);
+                                out_w = oa_lerp3(w_cheek, w_temple, oa_smoothstep(0.42f, 0.62f, u));
                             } else if (u < 0.80f) {
-                                float k = oa_smoothstep(0.62f, 0.80f, u);
-                                out_w = oa_lerp3(w_temple, w_back, k);
+                                out_w = oa_lerp3(w_temple, w_back, oa_smoothstep(0.62f, 0.80f, u));
                             } else {
                                 simd_float3 m = oa_lerp3(w_back, w_drop, oa_smoothstep(0.80f, 0.90f, u));
                                 out_w = oa_lerp3(m, w_hip, oa_smoothstep(0.86f, 1.0f, u));
                             }
-                            // Elbow stays relaxed & low during initial lift, rising smoothly ONLY as hand nears cheek/hair!
-                            float high = oa_smoothstep(0.22f, 0.48f, u) * (1.0f - oa_smoothstep(0.80f, 0.98f, u));
-                            out_p = oa_lerp3(sh_p + f3(s * 0.40f, 0.20f, -0.22f), sh_p + f3(s * 0.54f, -0.05f, -0.03f), high);
-                            // Palm faces INWARD toward her ribcage/head/hair throughout the entire motion!
-                            out_palm = oa_lerp3(f3(-s * 0.85f, -0.25f, -0.45f), f3(-s * 0.92f, 0.22f, -0.18f), high);
-                            out_flex = 0.20f - 0.08f * high;
-                            out_curl = 0.24f + 0.18f * high; // soft open fingertips during lift, gentle comb curl in hair!
+                            // Elbow drops gracefully low during the mid-lift transition, rising only as hand reaches cheek/hair!
+                            float mid  = oa_smoothstep(0.05f, 0.22f, u) * (1.0f - oa_smoothstep(0.26f, 0.44f, u));
+                            float high = oa_smoothstep(0.24f, 0.50f, u) * (1.0f - oa_smoothstep(0.78f, 0.98f, u));
+                            simd_float3 p_low  = sh_p + f3(s * 0.42f, 0.18f, -0.18f);
+                            simd_float3 p_mid  = sh_p + f3(s * 0.34f, 0.14f, -0.32f);
+                            simd_float3 p_high = sh_p + f3(s * 0.56f, -0.06f, -0.04f);
+                            out_p = oa_lerp3(oa_lerp3(p_low, p_mid, mid), p_high, high);
+                            // Palm stays softly inward toward ribs during lift, then cradles temple/hair (zero awkward flip!)
+                            simd_float3 palm_mid = f3(-s * 0.92f, -0.12f, -0.36f);
+                            simd_float3 palm_hi  = f3(-s * 0.88f,  0.18f, -0.42f);
+                            out_palm  = oa_lerp3(oa_lerp3(f3(-s * 0.75f, 0.35f, -0.55f), palm_mid, mid), palm_hi, high);
+                            out_flex  = 0.22f - 0.20f * mid - 0.10f * high;
+                            out_open  = 0.20f - 0.14f * mid - 0.30f * high; // flat on hip -> relaxed dancer curve -> soft comb rake!
+                            out_splay = 0.04f + 0.05f * high;
+                            out_thumb = 0.44f - 0.16f * std::max(mid, high);
                         };
 
                         if (g_oa_custom_anim == 1) {
-                            // 1. HAIR TOUSLE & HIP SWAY: Beat A (R combs hair) -> Beat B (L combs hair) -> Beat C (Both lift behind nape!)
+                            // 1. HAIR TOUSLE & HIP SWAY: Beat A (R combs hair) -> Beat B (L combs hair) -> Beat C (Both behind nape!)
                             float cyc = fmodf(t, 12.0f);
                             if (cyc < 4.5f) {
-                                hair_comb_wrist(-1, cyc / 4.5f, r_hip_w, r_sh, r_w, r_p, r_palm, r_flex, r_curl);
-                                l_w = l_hip_w + f3(0.012f * sinf(t * 1.6f), 0.0f, 0.012f * cosf(t * 1.6f));
+                                hair_comb_wrist(-1, cyc / 4.5f, r_hip_w, r_sh, r_w, r_p, r_palm, r_flex, r_open, r_splay, r_thumb);
+                                l_w = l_hip_w + f3(0.008f * sinf(t * 1.6f), 0.0f, 0.010f * cosf(t * 1.6f));
                             } else if (cyc < 9.0f) {
-                                hair_comb_wrist( 1, (cyc - 4.5f) / 4.5f, l_hip_w, l_sh, l_w, l_p, l_palm, l_flex, l_curl);
-                                r_w = r_hip_w + f3(-0.012f * sinf(t * 1.6f), 0.0f, 0.012f * cosf(t * 1.6f));
+                                hair_comb_wrist( 1, (cyc - 4.5f) / 4.5f, l_hip_w, l_sh, l_w, l_p, l_palm, l_flex, l_open, l_splay, l_thumb);
+                                r_w = r_hip_w + f3(-0.008f * sinf(t * 1.6f), 0.0f, 0.010f * cosf(t * 1.6f));
                             } else {
                                 // Beat C: Both wrists glide up close along sides & cradle behind nape/hair!
                                 float u = (cyc - 9.0f) / 3.0f;
                                 float lift = oa_smoothstep(0.0f, 0.32f, u) * (1.0f - oa_smoothstep(0.68f, 1.0f, u));
                                 float mid_arc = lift * (1.0f - lift) * 4.0f;
-                                float tousle = sinf(u * 3.0f * MN_PI) * 0.018f * lift;
-                                simd_float3 l_nape_w = head_p + f3( 0.185f + tousle, 0.075f, -0.020f + 0.022f * lift);
-                                simd_float3 r_nape_w = head_p + f3(-0.185f - tousle, 0.075f, -0.020f + 0.022f * lift);
-                                l_w = oa_lerp3(l_hip_w, l_nape_w, lift) + f3(-0.03f * mid_arc, -0.07f * mid_arc, 0.0f);
-                                r_w = oa_lerp3(r_hip_w, r_nape_w, lift) + f3( 0.03f * mid_arc, -0.07f * mid_arc, 0.0f);
+                                float tousle = sinf(u * 3.0f * MN_PI) * 0.016f * lift;
+                                simd_float3 l_nape_w = head_p + f3( 0.195f + tousle, 0.075f, -0.020f + 0.022f * lift);
+                                simd_float3 r_nape_w = head_p + f3(-0.195f - tousle, 0.075f, -0.020f + 0.022f * lift);
+                                l_w = oa_lerp3(l_hip_w, l_nape_w, lift) + f3(-0.02f * mid_arc, -0.07f * mid_arc, 0.0f);
+                                r_w = oa_lerp3(r_hip_w, r_nape_w, lift) + f3( 0.02f * mid_arc, -0.07f * mid_arc, 0.0f);
                                 float el_hi = oa_smoothstep(0.25f, 0.78f, lift);
-                                l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.54f, -0.04f, 0.04f), el_hi);
-                                r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.54f, -0.04f, 0.04f), el_hi);
-                                l_palm = oa_lerp3(l_hip_palm, f3(-0.85f, -0.45f, -0.15f), lift);
-                                r_palm = oa_lerp3(r_hip_palm, f3( 0.85f, -0.45f, -0.15f), lift);
-                                l_flex = 0.18f; r_flex = 0.18f;
-                                l_curl = 0.28f + 0.18f * lift; r_curl = 0.28f + 0.18f * lift;
+                                l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.56f, -0.05f, 0.04f), el_hi);
+                                r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.56f, -0.05f, 0.04f), el_hi);
+                                l_palm = oa_lerp3(l_hip_palm, f3(-0.82f, -0.35f, -0.42f), lift);
+                                r_palm = oa_lerp3(r_hip_palm, f3( 0.82f, -0.35f, -0.42f), lift);
+                                l_flex = 0.16f; r_flex = 0.16f;
+                                l_open = 0.16f - 0.28f * lift; r_open = 0.16f - 0.28f * lift;
+                                l_splay = 0.04f + 0.06f * lift; r_splay = 0.04f + 0.06f * lift;
+                                l_thumb = 0.44f - 0.16f * lift; r_thumb = 0.44f - 0.16f * lift;
                             }
                         } else if (g_oa_custom_anim == 2) {
-                            // 2. HIP ROLL & GROOVE: sensual hands gliding gracefully along waist & lower ribs!
+                            // 2. HIP ROLL & GROOVE: sensual open hands gliding gracefully along hips, waist & lower ribs!
                             float w = t * 1.95f;
                             float l_u = 0.5f + 0.5f * sinf(w * 0.5f);
                             float r_u = 0.5f + 0.5f * cosf(w * 0.5f);
-                            l_w = oa_lerp3(l_hip_w, pel_p + f3( 0.215f, -0.045f, 0.21f + 0.05f * sinf(w)), l_u * 0.75f);
-                            r_w = oa_lerp3(r_hip_w, pel_p + f3(-0.215f, -0.045f, 0.21f + 0.05f * cosf(w)), r_u * 0.75f);
-                            l_p = l_sh + f3( 0.42f, 0.20f, -0.22f);
-                            r_p = r_sh + f3(-0.42f, 0.20f, -0.22f);
-                            l_curl = 0.28f; r_curl = 0.28f;
+                            l_w = oa_lerp3(l_hip_w, pel_p + f3( 0.210f, -0.045f, 0.22f + 0.045f * sinf(w)), l_u * 0.75f);
+                            r_w = oa_lerp3(r_hip_w, pel_p + f3(-0.210f, -0.045f, 0.22f + 0.045f * cosf(w)), r_u * 0.75f);
+                            l_p = l_sh + f3( 0.42f, 0.18f, -0.20f);
+                            r_p = r_sh + f3(-0.42f, 0.18f, -0.20f);
+                            l_open = 0.22f; r_open = 0.22f;
                         } else if (g_oa_custom_anim == 3) {
                             // 3. HAIR FLIP & EDITORIAL POSE: right fingertips gracefully brush hair behind ear!
                             float cyc = fmodf(t, 6.5f);
                             float tuck = oa_smoothstep(2.0f, 3.0f, cyc) * (1.0f - oa_smoothstep(5.0f, 6.3f, cyc));
                             float arc = tuck * (1.0f - tuck) * 4.0f;
-                            r_w = oa_lerp3(r_hip_w, head_p + f3(-0.180f, 0.030f, -0.020f), tuck) + f3(0.03f * arc, -0.07f * arc, 0.0f);
-                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.54f, -0.04f, -0.02f), oa_smoothstep(0.25f, 0.75f, tuck));
-                            r_palm = oa_lerp3(r_hip_palm, f3(0.92f, 0.18f, -0.20f), tuck);
-                            r_curl = 0.26f + 0.16f * tuck;
+                            r_w = oa_lerp3(r_hip_w, head_p + f3(-0.192f, 0.032f, -0.015f), tuck) + f3(0.02f * arc, -0.07f * arc, 0.0f);
+                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.55f, -0.05f, -0.02f), oa_smoothstep(0.25f, 0.75f, tuck));
+                            r_palm = oa_lerp3(r_hip_palm, f3(0.88f, 0.18f, -0.40f), tuck);
+                            r_open = 0.18f - 0.26f * tuck;
+                            r_splay = 0.04f + 0.05f * tuck;
                         } else if (g_oa_custom_anim == 4) {
                             // 4. LATE-NIGHT STRETCH: both arms sweep smoothly overhead (graceful arc, relaxed wrists!)
                             float cyc = fmodf(t, 7.5f);
                             float st = oa_smoothstep(0.4f, 2.2f, cyc) * (1.0f - oa_smoothstep(4.6f, 6.6f, cyc));
                             float arc = st * (1.0f - st) * 4.0f;
-                            simd_float3 l_hi = head_p + f3( 0.22f, -0.02f, 0.25f);
-                            simd_float3 r_hi = head_p + f3(-0.22f, -0.02f, 0.25f);
+                            simd_float3 l_hi = head_p + f3( 0.24f, -0.02f, 0.24f);
+                            simd_float3 r_hi = head_p + f3(-0.24f, -0.02f, 0.24f);
                             l_w = oa_lerp3(l_hip_w, l_hi, st) + f3( 0.04f * arc, -0.08f * arc, 0.0f);
                             r_w = oa_lerp3(r_hip_w, r_hi, st) + f3(-0.04f * arc, -0.08f * arc, 0.0f);
                             float el_hi = oa_smoothstep(0.25f, 0.80f, st);
-                            l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.50f, -0.10f, 0.24f), el_hi);
-                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.50f, -0.10f, 0.24f), el_hi);
-                            l_palm = oa_lerp3(l_hip_palm, f3(-0.7f, -0.6f, 0.3f), st);
-                            r_palm = oa_lerp3(r_hip_palm, f3( 0.7f, -0.6f, 0.3f), st);
-                            l_curl = 0.26f * (1.0f - 0.5f * st); r_curl = 0.26f * (1.0f - 0.5f * st);
+                            l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.52f, -0.08f, 0.22f), el_hi);
+                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.52f, -0.08f, 0.22f), el_hi);
+                            l_palm = oa_lerp3(l_hip_palm, f3(-0.75f, -0.55f, 0.20f), st);
+                            r_palm = oa_lerp3(r_hip_palm, f3( 0.75f, -0.55f, 0.20f), st);
+                            l_open = 0.18f + 0.14f * st; r_open = 0.18f + 0.14f * st;
+                            l_splay = 0.05f + 0.05f * st; r_splay = 0.05f + 0.05f * st;
                         } else if (g_oa_custom_anim == 5) {
                             // 5. KITCHEN TWIRL: graceful arms-out spin then brushing right hair back!
                             float cyc = fmodf(t, 7.0f);
                             float flare = oa_smoothstep(0.5f, 2.0f, cyc) * (1.0f - oa_smoothstep(4.0f, 5.4f, cyc));
                             float brush = oa_smoothstep(4.8f, 5.6f, cyc) * (1.0f - oa_smoothstep(6.2f, 7.0f, cyc));
-                            simd_float3 l_out = l_sh + f3( 0.34f, -0.06f, -0.16f);
-                            simd_float3 r_out = r_sh + f3(-0.34f, -0.06f, -0.16f);
+                            simd_float3 l_out = l_sh + f3( 0.34f, -0.07f, -0.17f);
+                            simd_float3 r_out = r_sh + f3(-0.34f, -0.07f, -0.17f);
                             l_w = oa_lerp3(l_hip_w, l_out, flare);
-                            r_w = oa_lerp3(oa_lerp3(r_hip_w, r_out, flare), head_p + f3(-0.180f, 0.03f, -0.02f), brush);
-                            l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.44f, 0.14f, -0.18f), flare);
-                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.52f, -0.04f, 0.02f), std::max(flare * 0.5f, brush));
-                            r_palm = oa_lerp3(r_hip_palm, f3(0.92f, 0.18f, -0.20f), brush);
-                            l_curl = 0.24f; r_curl = 0.28f + 0.12f * brush;
+                            r_w = oa_lerp3(oa_lerp3(r_hip_w, r_out, flare), head_p + f3(-0.192f, 0.03f, -0.015f), brush);
+                            l_p = oa_lerp3(l_hip_p, l_sh + f3( 0.44f, 0.16f, -0.18f), flare);
+                            r_p = oa_lerp3(r_hip_p, r_sh + f3(-0.54f, -0.05f, 0.01f), std::max(flare * 0.45f, brush));
+                            r_palm = oa_lerp3(r_hip_palm, f3(0.88f, 0.18f, -0.40f), brush);
+                            l_open = 0.22f; r_open = 0.20f - 0.26f * brush;
                         }
 
-                        solve_arm_aaa( 1, l_w, l_p, l_palm, l_flex, l_curl);
-                        solve_arm_aaa(-1, r_w, r_p, r_palm, r_flex, r_curl);
+                        solve_arm_aaa( 1, l_w, l_p, l_palm, l_flex, l_open, l_splay, l_thumb);
+                        solve_arm_aaa(-1, r_w, r_p, r_palm, r_flex, r_open, r_splay, r_thumb);
                     }
 
                     // Write 3x4 skinning matrix palette (3 float4 rows per bone!)
