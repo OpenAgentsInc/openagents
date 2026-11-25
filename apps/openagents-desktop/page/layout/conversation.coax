@@ -69,6 +69,16 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
                         failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
     }
   }
+  // Typed TK_WORLD rows for GameBuilder & 3D scene commands (#14039)
+  if cp_flag(s, DC_FLAG_GAMEBUILDER) || cp_flag(s, DC_FLAG_METAVERSE) || cp_flag(s, DC_FLAG_SCENES) {
+    wtb: [256] u8; wbb: [32] u8;
+    ww := cp_world_cmd(text, output, wtb[..], wbb[..]);
+    if ww.verb.count > 0 && (!ww.is_gb || cp_flag(s, DC_FLAG_GAMEBUILDER)) {
+      return AppActRow.{kind = APP_ACT_EXEC, verb = ww.verb, target = sheet_single_line(sh, ww.target), call = text, output = output,
+                        badge = ifx ww.badge.count > 0 then sheet_pool(sh, ww.badge) else "", badge_bad = s[0].calls[q].failed,
+                        failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
+    }
+  }
   pbad := [1] bool.[false];
   pill := ifx cp_flag(s, DC_FLAG_MODELS_EXECUTOR) then cp_exec_replay_pill(output, pbad[..]) else "";
   return AppActRow.{kind = APP_ACT_EXEC, verb = ifx s[0].calls[q].running then "Running" else "Ran", target = sheet_single_line(sh, text), call = text, output = output,

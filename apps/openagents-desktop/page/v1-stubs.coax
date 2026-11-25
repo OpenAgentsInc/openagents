@@ -532,3 +532,6 @@ coder_page_lean_search_set :: (s: [] CoderPage, json_str: string) -> bool #expor
 coder_page_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> int #export_c #effects(all) { return 0; }
 coder_page_lean_verify_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) { return false; }
 coder_page_lean_view_set :: (s: [] CoderPage, view: int) #export_c #effects(all) {}
+
+// ---- metaverse-route.coax minimal stub (#14039) ----
+mv_route_is_3d :: (raw: string) -> bool { return false; }

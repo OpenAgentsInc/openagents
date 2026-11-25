@@ -5,14 +5,16 @@
 //   OA-SHOW-CAPTION: words               under it (optional; it follows its OA-SHOW)
 //   OA-SHOW-OPEN: /abs/path/file          what a press on it opens (optional; a .ple-scene.json
 //                                         opens in the 3D pane, as a file a reply names does)
-//   OA-SHOW-LIVE: on                      the card is the scene itself (optional; with a
-//                                         .ple-scene.json OA-SHOW-OPEN, while Experimental is on)
+//   OA-SHOW-LIVE: on                      the card is the scene itself (optional; with any 3D
+//                                         OA-SHOW-OPEN while scenes/metaverse/gamebuilder is on)
+//   OA-SHOW-KIND: model|ple|realm|gamebuilder  optional 3D target hint (#14039)
+//   OA-SHOW-REV: 14                            optional authoritative revision (#14039)
 // A live card (#13812): the newest one on screen gets the host's 3D viewport over it
 // (coder_page_live_scene), which follows the file as it changes; the picture is under it, and
 // shows wherever the host has no viewport.
 // The pictures stand under the message's activity group and over its reply, so they show while
 // the group is folded; at most CP_SHOWS a message, the newest kept. ple-run (../ple-run.coax)
-// prints them; any command may. The host decodes a picture as it does an attachment's
+// and gamebuilder print them; any command may. The host decodes a picture as it does an attachment's
 // (cp_image_request), and until it has, the card holds its place with an icon.
 
 CP_SHOWS :: 4;                 // pictures a message shows at most
@@ -21,7 +23,7 @@ CP_SHOW_RATIO :: 0.625f32;     // its height over its width until the host has d
 CP_SHOW_R :: 10.0f32;
 CP_SHOW :: 73;                 // a press on a picture: its OA-SHOW-OPEN, else the picture itself
 
-CpShow :: struct { pic: string; caption: string; open: string; live: bool; }
+CpShow :: struct { pic: string; caption: string; open: string; kind: string; rev: string; live: bool; }
 
 // After prefix at the start of line: the rest, trimmed; "" when line does not start with it.
 cp_show_field :: (line: string, prefix: string) -> string {
@@ -49,7 +51,11 @@ cp_shows_parse :: (text: string, out: [] CpShow, n0: int) -> int {
     cap := cp_show_field(line, "OA-SHOW-CAPTION:");
     if cap.count > 0 { out[n - 1].caption = cap; continue; }
     op := cp_show_field(line, "OA-SHOW-OPEN:");
-    if op.count > 0 && op[0] == '/' { out[n - 1].open = op; continue; }
+    if op.count > 0 && (op[0] == '/' || (op.count > 13 && cast(string) op[0..<13] == "openagents://")) { out[n - 1].open = op; continue; }
+    knd := cp_show_field(line, "OA-SHOW-KIND:");
+    if knd.count > 0 { out[n - 1].kind = knd; continue; }
+    rv := cp_show_field(line, "OA-SHOW-REV:");
+    if rv.count > 0 { out[n - 1].rev = rv; continue; }
     if cp_show_field(line, "OA-SHOW-LIVE:") == "on" { out[n - 1].live = true; }
   }
   return n;
@@ -97,18 +103,21 @@ cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
     yy += h + a.gap_small;
     // the caption, and what a press opens
     tb: [512] u8; tn := el_put(tb[..], 0, label);
+    if shows[j].rev.count > 0 { tn = el_put(tb[..], tn, " · rev "); tn = el_put(tb[..], tn, shows[j].rev); }
+    has_3d_flag := cp_flag(s, DC_FLAG_SCENES) || cp_flag(s, DC_FLAG_METAVERSE) || cp_flag(s, DC_FLAG_GAMEBUILDER);
     if live { tn = el_put(tb[..], tn, " · live 3D: drag to turn it, Option-scroll to zoom"); }
-    else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_flag(s, DC_FLAG_SCENES) && cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
+    else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx has_3d_flag && cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
     cn := cp_id(cb[..], i, ".showc").count; cn = el_put_i(cb[..], cn, j);
     yy += app_meta(f, sheet_pool(sh, cast(string) cb[0..<cn]), x, yy, w, sheet_pool(sh, cast(string) tb[0..<tn]), false) + a.gap;
   }
   return yy - y;
 }
-// Whether show, drawn at (x, y) w by h, is the live 3D card: a live scene, while scenes flag is on,
+// Whether show, drawn at (x, y) w by h, is the live 3D card: a live scene, while scenes/metaverse/gamebuilder flag is on,
 // at least partly in the conversation's clip (cp_conversation keeps it in live_r[4..8]). It then
 // becomes the one the host mounts its viewport over; a later card on screen takes it.
 cp_show_live :: (s: [] CoderPage, show: CpShow, x: f32, y: f32, w: f32, h: f32) -> bool {
-  if !show.live || !cp_flag(s, DC_FLAG_SCENES) || !cp_show_scene(show.open) || show.open.count > CP_IMG_PATH { return false; }
+  has_3d := cp_flag(s, DC_FLAG_SCENES) || cp_flag(s, DC_FLAG_METAVERSE) || cp_flag(s, DC_FLAG_GAMEBUILDER);
+  if !show.live || !has_3d || !cp_show_scene(show.open) || show.open.count > CP_IMG_PATH { return false; }
   sc := cp_scale(s);
   if y * sc >= s[0].live_r[5] + s[0].live_r[7] || (y + h) * sc <= s[0].live_r[5] { return false; }
   s[0].live_r[0] = x * sc; s[0].live_r[1] = y * sc; s[0].live_r[2] = w * sc; s[0].live_r[3] = h * sc;
@@ -117,7 +126,102 @@ cp_show_live :: (s: [] CoderPage, show: CpShow, x: f32, y: f32, w: f32, h: f32) 
   s[0].live_on = true;
   return true;
 }
-cp_show_scene :: (path: string) -> bool { return path.count > 15 && cast(string) path[path.count - 15..<path.count] == ".ple-scene.json"; }
+cp_show_scene :: (path: string) -> bool { return mv_route_is_3d(path); }
+
+// ---- Typed TK_WORLD transcript recognizer for GameBuilder, PLE & Realm commands (#14039) ----
+
+CpWorldWords :: struct { verb: string; target: string; badge: string; is_gb: bool; }
+
+cp_world_tok :: (text: string, idx: int) -> string {
+  i := 0; cur := 0;
+  while i < text.count {
+    while i < text.count && (text[i] == ' ' || text[i] == '\t') { i += 1; }
+    if i >= text.count { break; }
+    st := i;
+    while i < text.count && text[i] != ' ' && text[i] != '\t' && text[i] != '\n' { i += 1; }
+    if cur == idx { return cast(string) text[st..<i]; }
+    cur += 1;
+  }
+  return "";
+}
+
+cp_world_rest :: (text: string, skip_tokens: int) -> string {
+  i := 0; cur := 0;
+  while i < text.count && cur < skip_tokens {
+    while i < text.count && (text[i] == ' ' || text[i] == '\t') { i += 1; }
+    while i < text.count && text[i] != ' ' && text[i] != '\t' && text[i] != '\n' { i += 1; }
+    cur += 1;
+  }
+  while i < text.count && (text[i] == ' ' || text[i] == '\t') { i += 1; }
+  e := i; while e < text.count && text[e] != '\n' && text[e] != '\r' { e += 1; }
+  return cast(string) text[i..<e];
+}
+
+// Extracts `"rev": N` or `OA-SHOW-REV: N` from command output into bb ("rev N").
+cp_world_rev_badge :: (output: string, bb: [] u8) -> string {
+  i := 0;
+  while i + 6 < output.count {
+    if output[i] == '"' && output[i + 1] == 'r' && output[i + 2] == 'e' && output[i + 3] == 'v' && output[i + 4] == '"' {
+      j := i + 5;
+      while j < output.count && (output[j] == ' ' || output[j] == ':') { j += 1; }
+      d0 := j;
+      while j < output.count && output[j] >= '0' && output[j] <= '9' { j += 1; }
+      if j > d0 && j - d0 <= 10 {
+        n := el_put(bb, 0, "rev ");
+        n = el_put(bb, n, cast(string) output[d0..<j]);
+        return cast(string) bb[0..<n];
+      }
+    }
+    i += 1;
+  }
+  return "";
+}
+
+// Recognizes gamebuilder / gb / ple-run / mcp__gamebuilder__* tool calls for TK_WORLD transcript rows.
+cp_world_cmd :: (text: string, output: string, tb: [] u8, bb: [] u8) -> CpWorldWords {
+  prog := cp_world_tok(text, 0);
+  if prog.count == 0 { return CpWorldWords.{}; }
+  base := 0;
+  for i: 0..<prog.count { if prog[i] == '/' && i + 1 < prog.count { base = i + 1; } }
+  name := cast(string) prog[base..<prog.count];
+  rev := cp_world_rev_badge(output, bb);
+
+  // MCP tool name form: mcp__gamebuilder__<verb>
+  mcp_pfx := "mcp__gamebuilder__";
+  is_mcp_gb := name.count > mcp_pfx.count && cast(string) name[0..<mcp_pfx.count] == mcp_pfx;
+  if name == "gamebuilder" || name == "gb" || is_mcp_gb {
+    sub_idx := ifx is_mcp_gb then 0 else 1;
+    sub := ifx is_mcp_gb then cast(string) name[mcp_pfx.count..<name.count] else cp_world_tok(text, 1);
+    // Skip leading --attach / --dir flags when invoking CLI
+    while !is_mcp_gb && sub.count > 0 && sub[0] == '-' {
+      if sub == "--dir" || sub == "--profile" || sub == "--as-agent" || sub == "--server" || sub == "--remote" { sub_idx += 2; }
+      else { sub_idx += 1; }
+      sub = cp_world_tok(text, sub_idx);
+    }
+    rest := cp_world_rest(text, ifx is_mcp_gb then 1 else sub_idx + 1);
+    tn := el_put(tb, 0, rest);
+    tgt := cast(string) tb[0..<tn];
+    badge := ifx rev.count > 0 then rev else "GB";
+    if sub == "add" { return CpWorldWords.{verb = "GameBuilder · Added", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "apply-edits" { return CpWorldWords.{verb = "GameBuilder · Applied edits", target = ifx tgt.count > 0 then tgt else "level", badge = badge, is_gb = true}; }
+    if sub == "set-field" { return CpWorldWords.{verb = "GameBuilder · Updated", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "delete" { return CpWorldWords.{verb = "GameBuilder · Deleted", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "play-test" { return CpWorldWords.{verb = "GameBuilder · Play-tested", target = ifx tgt.count > 0 then tgt else "level", badge = badge, is_gb = true}; }
+    if sub == "new-game" { return CpWorldWords.{verb = "GameBuilder · Created game", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "new-level" { return CpWorldWords.{verb = "GameBuilder · Created level", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "publish" { return CpWorldWords.{verb = "GameBuilder · Published", target = ifx tgt.count > 0 then tgt else "game", badge = badge, is_gb = true}; }
+    if sub == "pictures" || sub == "picture" { return CpWorldWords.{verb = "GameBuilder · Captured world", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "undo" || sub == "undo-turn" { return CpWorldWords.{verb = "GameBuilder · Undid turn", target = tgt, badge = badge, is_gb = true}; }
+    if sub == "decide" { return CpWorldWords.{verb = "GameBuilder · Decided edit", target = tgt, badge = badge, is_gb = true}; }
+    return CpWorldWords.{verb = "GameBuilder", target = ifx sub.count > 0 then sub else rest, badge = badge, is_gb = true};
+  }
+  if name == "ple-run" {
+    rest := cp_world_rest(text, 1);
+    tn := el_put(tb, 0, rest);
+    return CpWorldWords.{verb = "3D Scene · PLE", target = cast(string) tb[0..<tn], badge = ifx rev.count > 0 then rev else "PLE", is_gb = false};
+  }
+  return CpWorldWords.{};
+}
 // What a press on turn i's nth picture opens: its OA-SHOW-OPEN, else the picture.
 cp_show_open_path :: (s: [] CoderPage, i: int, n: int) -> string {
   if i < 0 || i >= s[0].nturns || n < 0 { return ""; }

@@ -275,6 +275,8 @@ vbc_scan_link_output :: (platform: int, stage: int, output: string, label: strin
   #assert !vbc_resource_allowed(VBC_MAC, "tbench-harbor");
   #assert !vbc_resource_allowed(VBC_MAC, "tbench-policies");
   #assert !vbc_resource_allowed(VBC_MAC, "lean-checker");
+  #assert !vbc_resource_allowed(VBC_MAC, "gamebuilder");
+  #assert !vbc_resource_allowed(VBC_MAC, "Metaverse");
 
   // Linux & Windows allowlists
   #assert vbc_resource_allowed(VBC_LINUX, "OpenAgents") && vbc_resource_allowed(VBC_LINUX, "inky") && vbc_resource_allowed(VBC_LINUX, "psionic-inkling-serve");

@@ -1065,6 +1065,21 @@ extension CoderWindow {
             env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
             env["OA_SIM_ENGINE"] = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
+        // Bundled GameBuilder CLI & per-session MCP registration (#14039)
+        if FeatureFlags.isOn(.gamebuilder) {
+            env["OA_GB_MCP"] = "1"
+            env["OA_GB_CHAT"] = (r === run ? chat : r.chat) ?? ""
+            env["OA_GB_ENGINE"] = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+            if let res = Bundle.main.resourcePath {
+                let gbPath = res + "/gamebuilder"
+                if FileManager.default.isExecutableFile(atPath: gbPath) {
+                    env["OA_GAMEBUILDER"] = gbPath
+                }
+                if env["PATH"] == nil {
+                    env["PATH"] = res + ":" + CoderWorker.path
+                }
+            }
+        }
         #else
         if cd_model_inkling(r.page) != 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL

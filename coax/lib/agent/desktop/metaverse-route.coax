@@ -98,7 +98,7 @@ mv_starts_ci :: (s: string, pfx: string) -> bool #effects(reads, traps) {
 }
 
 mv_ends_ci :: (s: string, sfx: string) -> bool #effects(reads, traps) {
-  if s.count < sfx.count { return false; }
+  if s.count <= sfx.count { return false; }
   off := s.count - sfx.count;
   for i: 0..<sfx.count {
     if mv_lower(s[off + i]) != mv_lower(sfx[i]) { return false; }
@@ -490,6 +490,8 @@ mv_tab_state_write_json :: (ts: MvTabState, out: [] u8) -> int #effects(reads, w
   r_json := mv_route_classify("/work/package.json", all);
   #assert r_coax.pane == MV_PANE_FILE && r_coax.reason == "not_3d";
   #assert r_json.pane == MV_PANE_FILE && !mv_route_is_3d("/work/package.json");
+  #assert !mv_route_is_3d(".ple-scene.json") && !mv_route_is_3d(".glb");
+  #assert !mv_route_is_3d("/tmp/foo_glb") && !mv_route_is_3d("/tmp/not_world");
   #assert mv_route_is_3d("/tmp/a.glb") && mv_route_is_3d("/tmp/a.world");
 }
 

@@ -15,7 +15,29 @@
   // past CP_SHOWS the newest are kept
   many := "OA-SHOW: /a.jpg\nOA-SHOW: /b.jpg\nOA-SHOW: /c.jpg\nOA-SHOW: /d.jpg\nOA-SHOW: /e.jpg\n";
   #assert cp_shows_parse(many, out[..], 0) == CP_SHOWS && out[0].pic == "/b.jpg" && out[CP_SHOWS - 1].pic == "/e.jpg";
-  #assert cp_show_scene("/r/run.ple-scene.json") && !cp_show_scene("/r/after.jpg");
+  #assert cp_show_scene("/r/run.ple-scene.json") && cp_show_scene("/r/quail.glb") && cp_show_scene("/r/level-1.world") && !cp_show_scene("/r/after.jpg");
+  // OA-SHOW-KIND and OA-SHOW-REV metadata (#14039)
+  kout: [CP_SHOWS] CpShow;
+  kn := cp_shows_parse("OA-SHOW: /r/after.jpg\nOA-SHOW-CAPTION: Added pad\nOA-SHOW-OPEN: /r/level-1.world\nOA-SHOW-KIND: gamebuilder\nOA-SHOW-REV: 14\nOA-SHOW-LIVE: on\n", kout[..], 0);
+  #assert kn == 1 && kout[0].kind == "gamebuilder" && kout[0].rev == "14" && kout[0].live && kout[0].open == "/r/level-1.world";
+}
+
+#test "TK_WORLD: gamebuilder and ple-run commands format typed world activity rows with rev badges" {
+  tb: [256] u8; bb: [32] u8;
+  w1 := cp_world_cmd("gamebuilder --attach add pad 450 0 120", "{\"ok\":true,\"rev\":14,\"id\":\"shape-22\"}", tb[..], bb[..]);
+  #assert w1.is_gb && w1.verb == "GameBuilder · Added" && w1.target == "pad 450 0 120" && w1.badge == "rev 14";
+
+  w2 := cp_world_cmd("/Applications/OpenAgents.app/Contents/Resources/gamebuilder play-test --seed 7", "{\"ok\":true,\"rev\":15}", tb[..], bb[..]);
+  #assert w2.is_gb && w2.verb == "GameBuilder · Play-tested" && w2.badge == "rev 15";
+
+  w3 := cp_world_cmd("mcp__gamebuilder__apply-edits level-1", "{\"ok\":true,\"rev\":16}", tb[..], bb[..]);
+  #assert w3.is_gb && w3.verb == "GameBuilder · Applied edits" && w3.badge == "rev 16";
+
+  w4 := cp_world_cmd("ple-run feeders", "Routed 4", tb[..], bb[..]);
+  #assert !w4.is_gb && w4.verb == "3D Scene · PLE" && w4.target == "feeders" && w4.badge == "PLE";
+
+  w5 := cp_world_cmd("git status", "", tb[..], bb[..]);
+  #assert w5.verb.count == 0;
 }
 
 #test "shows: a command's pictures stand over the reply, and a press opens the run's scene" {

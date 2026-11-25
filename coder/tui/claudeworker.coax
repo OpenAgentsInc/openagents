@@ -242,25 +242,39 @@ cw_sim_servers :: (oasim: string, out: [] u8) -> string {
   n = json_raw(out, n, "\",\"args\":[\"mcp\"]}}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
-// Combines optional simulator (`oasim mcp`) and Lean 4 / RH (`lean-run mcp`, #13947) stdio MCP servers.
-cw_mcp_servers :: (oasim: string, lean_run: string, out: [] u8) -> string {
+// Combines optional simulator (`oasim mcp`), Lean 4 / RH (`lean-run mcp`, #13947),
+// and GameBuilder (`gamebuilder mcp --attach`, #14039) stdio MCP servers.
+cw_mcp_servers_all :: (oasim: string, lean_run: string, gamebuilder: string, out: [] u8) -> string {
   has_sim := cw_valid_abs_mcp(oasim);
   has_lean := cw_valid_abs_mcp(lean_run);
-  if !has_sim && !has_lean { return ""; }
+  has_gb := cw_valid_abs_mcp(gamebuilder);
+  if !has_sim && !has_lean && !has_gb { return ""; }
   n := json_raw(out, 0, "{");
+  wrote := false;
   if has_sim {
     n = json_raw(out, n, "\"simulator\":{\"type\":\"stdio\",\"command\":\"");
     n = json_raw(out, n, oasim);
     n = json_raw(out, n, "\",\"args\":[\"mcp\"]}");
+    wrote = true;
   }
   if has_lean {
-    if has_sim { n = json_raw(out, n, ","); }
+    if wrote { n = json_raw(out, n, ","); }
     n = json_raw(out, n, "\"lean\":{\"type\":\"stdio\",\"command\":\"");
     n = json_raw(out, n, lean_run);
     n = json_raw(out, n, "\",\"args\":[\"mcp\"]}");
+    wrote = true;
+  }
+  if has_gb {
+    if wrote { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "\"gamebuilder\":{\"type\":\"stdio\",\"command\":\"");
+    n = json_raw(out, n, gamebuilder);
+    n = json_raw(out, n, "\",\"args\":[\"mcp\",\"--attach\"]}");
   }
   n = json_raw(out, n, "}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+cw_mcp_servers :: (oasim: string, lean_run: string, out: [] u8) -> string {
+  return cw_mcp_servers_all(oasim, lean_run, "", out);
 }
 #test "the simulator's MCP server is oasim beside the worker" {
   b: [512] u8; s: [1024] u8;
@@ -269,6 +283,8 @@ cw_mcp_servers :: (oasim: string, lean_run: string, out: [] u8) -> string {
   #assert cw_sim_servers("/A/Contents/Resources/oasim", s[..]) == "{\"simulator\":{\"type\":\"stdio\",\"command\":\"/A/Contents/Resources/oasim\",\"args\":[\"mcp\"]}}";
   #assert cw_mcp_servers("/A/oasim", "/A/lean-run", s[..]) == "{\"simulator\":{\"type\":\"stdio\",\"command\":\"/A/oasim\",\"args\":[\"mcp\"]},\"lean\":{\"type\":\"stdio\",\"command\":\"/A/lean-run\",\"args\":[\"mcp\"]}}";
   #assert cw_mcp_servers("", "/A/lean-run", s[..]) == "{\"lean\":{\"type\":\"stdio\",\"command\":\"/A/lean-run\",\"args\":[\"mcp\"]}}";
+  #assert cw_mcp_servers_all("/A/oasim", "", "/A/gamebuilder", s[..]) == "{\"simulator\":{\"type\":\"stdio\",\"command\":\"/A/oasim\",\"args\":[\"mcp\"]},\"gamebuilder\":{\"type\":\"stdio\",\"command\":\"/A/gamebuilder\",\"args\":[\"mcp\",\"--attach\"]}}";
+  #assert cw_mcp_servers_all("", "", "/A/gamebuilder", s[..]) == "{\"gamebuilder\":{\"type\":\"stdio\",\"command\":\"/A/gamebuilder\",\"args\":[\"mcp\",\"--attach\"]}}";
   #assert cw_sim_servers("oasim", s[..]) == "" && cw_sim_servers("", s[..]) == "" && cw_sim_servers("/a\"b", s[..]) == "" && cw_sim_servers("/a\\b", s[..]) == "" && cw_sim_servers("/a\nb", s[..]) == "";
   #assert cw_sim_servers("/a b/oasim", s[..]).count > 0;
   small: [8] u8; #assert cw_sim_servers("/A/oasim", small[..]) == "";
@@ -1032,15 +1048,21 @@ tool_main :: () -> int #export_c #effects(all) {
         continue;
       }
       o[0].settings = hooks;
-      // the iOS Simulator's tools (oasim mcp, #13811) and Lean 4 / RH tools (lean-run mcp, #13947)
-      simb: [FS_PATH_MAX] u8; leanb: [FS_PATH_MAX] u8; simsv: [FS_PATH_MAX * 2 + 256] u8;
+      // the iOS Simulator's tools (oasim mcp, #13811), Lean 4 / RH tools (lean-run mcp, #13947),
+      // and GameBuilder studio tools (gamebuilder mcp --attach, #14039)
+      simb: [FS_PATH_MAX] u8; leanb: [FS_PATH_MAX] u8; gbb: [FS_PATH_MAX] u8; gbonb: [16] u8; simsv: [FS_PATH_MAX * 3 + 384] u8;
       sim := cl_getenv("OA_SIMHOST", simb[..]);
       if sim.count == 0 { sim = cw_beside(tool_self(selfb[..]), "oasim", simb[..]); }
       if sim.count > 0 && fs_kind(sim) != FS_FILE { sim = ""; }
       lean_mcp := cl_getenv("OA_LEANRUN", leanb[..]);
       if lean_mcp.count == 0 { lean_mcp = cw_beside(tool_self(selfb[..]), "lean-run", leanb[..]); }
       if lean_mcp.count > 0 && fs_kind(lean_mcp) != FS_FILE { lean_mcp = ""; }
-      o[0].mcp_servers = cw_mcp_servers(sim, lean_mcp, simsv[..]);
+      gb_mcp := cl_getenv("OA_GAMEBUILDER", gbb[..]);
+      if gb_mcp.count == 0 && cl_getenv("OA_GB_MCP", gbonb[..]) == "1" {
+        gb_mcp = cw_beside(tool_self(selfb[..]), "gamebuilder", gbb[..]);
+      }
+      if gb_mcp.count > 0 && fs_kind(gb_mcp) != FS_FILE { gb_mcp = ""; }
+      o[0].mcp_servers = cw_mcp_servers_all(sim, lean_mcp, gb_mcp, simsv[..]);
       uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
       cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
       if main {

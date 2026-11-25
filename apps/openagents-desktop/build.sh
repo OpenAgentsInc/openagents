@@ -42,7 +42,7 @@ if [[ "$minimal" == "1" ]]; then
     "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" "$res/gbench-run" \
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
-    "$res/foreman-ctl"
+    "$res/foreman-ctl" "$res/gamebuilder" "$res/Metaverse"
 fi
 source "$here/sign.sh"
 sign_prepare "$work"
@@ -230,6 +230,7 @@ if [[ "$minimal" != "1" ]]; then
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/capability-eval.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/agents-catalog.coax" < /dev/null > /dev/null & full_pids+=($!)
   COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/apps/shared/tester/cli.coax" < /dev/null > /dev/null & full_pids+=($!)
+  COAX="$coax" "$repo/gamebuilder/cli/build.sh" < /dev/null > /dev/null & full_pids+=($!)
   # Bundle Tier 2 + Tier 4 coding eval specs and fixtures for Gym Benchmarks so it runs from any workspace.
   if [[ -d "$repo/evals/openagents-desktop/tier2/tasks" && -d "$repo/evals/openagents-desktop/tier4/tasks" ]]; then
     rm -rf "$res/gym-evals"
@@ -263,6 +264,10 @@ if [[ "$minimal" != "1" ]]; then
   cp "$repo/coax/web/build/tools/capability-eval-$coax_hash" "$res/capability-eval"
   cp "$repo/coax/web/build/tools/agents-catalog-$coax_hash" "$res/agents-catalog"
   cp "$repo/coax/web/build/tools/cli-$coax_hash" "$res/tester-cli"
+  if [[ -x "$repo/gamebuilder/build/cli/gamebuilder" ]]; then
+    cp "$repo/gamebuilder/build/cli/gamebuilder" "$res/gamebuilder"
+    chmod +x "$res/gamebuilder"
+  fi
   cp "$here/foreman-ctl" "$res/foreman-ctl"
   chmod +x "$res/foreman-ctl"
   mkdir -p "$res/fixtures"
