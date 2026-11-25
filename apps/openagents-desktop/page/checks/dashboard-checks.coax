@@ -117,3 +117,46 @@ cp_dash_has_text :: (s: [] CoderPage, needle: string) -> bool {
   mn = coder_page_last_message(s, mb[..]);
   #assert cast(string) mb[0..<mn] == "Found the race condition in timer.";
 }
+
+#test "dashboard: renders tall side-by-side live windows with thinking, tool calls, prompt, and reply" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_sb_now_ms(s, 1763600125000);
+
+  // Verify live snapshot extracts prompt, thought, tool calls, and reply from an active turn.
+  #assert coder_page_set_text(s, "Refactor the dashboard grid layout");
+  #assert coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Checking vertical height budget for 2 cards.\"}") == MWW_THOUGHT;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"coax test dashboard-checks.coax\",\"exit\":0,\"timed_out\":false,\"output\":\"ok\"}") == MWW_COMMAND;
+  sb: [2048] u8;
+  sn := coder_page_dash_snapshot(s, sb[..]);
+  snap := cast(string) sb[0..<sn];
+  #assert cp_contains(snap, "Thinking");
+  #assert cp_contains(snap, "Refactor the dashboard grid layout");
+  #assert cp_contains(snap, "Checking vertical height budget");
+  #assert cp_contains(snap, "Ran coax test dashboard-checks.coax");
+
+  // Push two rich active chats and render in a 1280x760 window:
+  // should lay out 2 side-by-side tall windows filling the vertical viewport.
+  fb: [1024] u8; fn := 0;
+  fn = el_put(fb[..], fn, "c1\tBuild release\t1763600000000\t125\tflawed\tCompiling Swift targets now\tapps · main\tResponding\t2\t3\tBuild and verify macOS bundle\tChecking universal codesign flags\t+Read build.sh");
+  fb[fn] = 30; fn += 1;
+  fn = el_put(fb[..], fn, ">Running swiftc\nc2\tRefactor auth\t1763600083000\t42\tclaude\t\tcore · feat/auth\tThinking\t1\t1\tFix JWT refresh race\tTracing concurrent token refresh calls in middleware\t+Read auth.coax\n");
+  coder_page_dashboard_items(s, cast(string) fb[0..<fn]);
+  coder_page_dashboard_open(s, true);
+
+  f: [1] UiFrame;
+  #assert cp_dash_test_frame(s, f[..], 0.0f32);
+  r0 := surface_find(s[0].surface[..], "coder.dash.0");
+  r1 := surface_find(s[0].surface[..], "coder.dash.1");
+  #assert r0 >= 0 && r1 >= 0;
+  row0 := surface_rows(s[0].surface[..]).rows[r0];
+  row1 := surface_rows(s[0].surface[..]).rows[r1];
+  // Side-by-side in 2 columns (same y, r1 to the right of r0) and tall (> 300pt).
+  #assert row0.y == row1.y && row1.x > row0.x + row0.w;
+  #assert row0.h >= 300.0f32 && row1.h >= 300.0f32;
+  #assert cp_dash_has_text(s, "Thinking");
+  #assert cp_dash_has_text(s, "Tracing concurrent token refresh");
+  #assert cp_dash_has_text(s, "Running swiftc");
+  #assert cp_dash_has_text(s, "apps · main");
+}

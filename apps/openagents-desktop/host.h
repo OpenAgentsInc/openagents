@@ -86,6 +86,7 @@ int cd_dashboard_shown(void *page);
 void cd_dashboard_items(void *page, const char *list);
 int cd_elapsed_s(void *page);
 int cd_last_message(void *page, char *out, int cap);
+int cd_dash_snapshot(void *page, char *out, int cap);
 // Update the persistent Foreman sidebar row's running spinner and permission tier (0=Observe, 1=Assist, 2=Auto).
 void cd_foreman(void *page, int busy, int tier);
 // Show or hide the sidebar keyboard shortcut badges when Command is held.

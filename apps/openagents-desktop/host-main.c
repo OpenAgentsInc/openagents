@@ -247,15 +247,28 @@ static void refresh_chats(DesktopApp *a) {
 }
 
 static void refresh_dashboard(DesktopApp *a) {
-  char out[4096];
+  char out[6144];
   out[0] = '\0';
   if (cd_running(a->page)) {
     char title[256] = "New chat";
     if (cd_title(a->page, title, (int)sizeof title) <= 0) snprintf(title, sizeof title, "New chat");
-    char msg[512] = "";
-    cd_last_message(a->page, msg, (int)sizeof msg);
+    char snap[4096] = "";
     int elapsed = cd_elapsed_s(a->page);
-    snprintf(out, sizeof out, "%s\t%s\t0\t%d\tpsionic\t%s", a->chat_id, title, elapsed, msg);
+    const char *base = a->folder;
+    for (const char *p = a->folder; *p; p++) if (*p == '/' && p[1]) base = p + 1;
+    if (cd_dash_snapshot(a->page, snap, (int)sizeof snap) > 0) {
+      char *tab = strchr(snap, '\t');
+      if (tab) {
+        *tab = '\0';
+        snprintf(out, sizeof out, "%s\t%s\t0\t%d\tpsionic\t%s\t%s\t%s", a->chat_id, title, elapsed, snap, base, tab + 1);
+      } else {
+        snprintf(out, sizeof out, "%s\t%s\t0\t%d\tpsionic\t%s\t%s", a->chat_id, title, elapsed, snap, base);
+      }
+    } else {
+      char msg[512] = "";
+      cd_last_message(a->page, msg, (int)sizeof msg);
+      snprintf(out, sizeof out, "%s\t%s\t0\t%d\tpsionic\t%s\t%s", a->chat_id, title, elapsed, msg, base);
+    }
   }
   cd_dashboard_items(a->page, out);
 }

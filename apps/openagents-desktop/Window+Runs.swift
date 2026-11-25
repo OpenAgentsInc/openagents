@@ -987,18 +987,59 @@ extension CoderWindow {
         guard cd_last_message(p, &buf, Int32(buf.count)) > 0 else { return "" }
         return cleanDashField(String(cString: buf))
     }
-    private func lastMessageFromSaved(_ saved: String?) -> String {
+    private func pageDashSnapshot(_ p: UnsafeMutableRawPointer) -> (lastMsg: String, status: String, nturns: String, ncalls: String, ask: String, thought: String, acts: String) {
+        var buf = [CChar](repeating: 0, count: 4096)
+        guard cd_dash_snapshot(p, &buf, Int32(buf.count)) > 0 else {
+            return (pageLastMessage(p), "Running", "0", "0", "", "", "")
+        }
+        let raw = String(cString: buf)
+        let parts = raw.split(separator: "\t", maxSplits: 6, omittingEmptySubsequences: false).map(String.init)
+        let p0 = parts.count > 0 ? parts[0] : ""
+        let p1 = parts.count > 1 ? parts[1] : ""
+        let p2 = parts.count > 2 ? parts[2] : "0"
+        let p3 = parts.count > 3 ? parts[3] : "0"
+        let p4 = parts.count > 4 ? parts[4] : ""
+        let p5 = parts.count > 5 ? parts[5] : ""
+        let p6 = parts.count > 6 ? parts[6] : ""
+        return (p0, p1, p2, p3, p4, p5, p6)
+    }
+    private func dashMeta(folderURL: URL?, chatID: String?, branchCache: inout [String: String]) -> String {
+        let dir = folderURL?.path ?? (chatID.flatMap { store.folder($0) }) ?? ""
+        let repo = dir.isEmpty ? "" : URL(fileURLWithPath: dir).lastPathComponent
+        var br = ""
+        if let cid = chatID, let wb = store.meta(cid)?.worktreeBranch, !wb.isEmpty, !CoderWindow.isAutoWorktreeBranch(wb) {
+            br = wb
+        } else if !dir.isEmpty {
+            if let cached = branchCache[dir] {
+                br = cached
+            } else {
+                let b = CoderWindow.quickGitBranch(at: dir)
+                branchCache[dir] = b
+                br = b
+            }
+        }
+        if !repo.isEmpty && !br.isEmpty { return cleanDashField("\(repo) · \(br)") }
+        if !repo.isEmpty { return cleanDashField(repo) }
+        return cleanDashField(br)
+    }
+    private func savedDashSnapshot(_ saved: String?) -> (lastMsg: String, status: String, nturns: String, ncalls: String, ask: String, thought: String, acts: String) {
         guard let saved, let data = saved.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let turns = obj["turns"] as? [[String: Any]],
-              let last = turns.last else { return "" }
-        if let reply = last["reply"] as? String, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return cleanDashField(reply)
+              let last = turns.last else {
+            return ("", "Running", "0", "0", "", "", "")
         }
-        if let ask = last["ask"] as? String, !ask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return cleanDashField(ask)
+        let encodeML: (String) -> String = { s in
+            s.replacingOccurrences(of: "\r", with: "")
+                .replacingOccurrences(of: "\t", with: " ")
+                .replacingOccurrences(of: "\u{1E}", with: " ")
+                .replacingOccurrences(of: "\n", with: "\u{1F}")
+                .trimmingCharacters(in: .whitespaces)
         }
-        return ""
+        let reply = (last["reply"] as? String).map { encodeML(String($0.suffix(768))) } ?? ""
+        let ask = cleanDashField((last["ask"] as? String) ?? "")
+        let status = reply.isEmpty ? "Running" : "Responding"
+        return (reply, status, String(turns.count), "0", ask, "", "")
     }
     private func harnessForRun(_ r: CoderRun, chatID: String?) -> String {
         let prog = r.worker.program
@@ -1011,11 +1052,12 @@ extension CoderWindow {
         if let id = chatID { return store.harness(id) }
         return "psionic"
     }
-    /// Syncs the Dashboard home screen's active chats list: id, title, started_ms, elapsed_s, harness, last_msg.
+    /// Syncs the Dashboard home screen's live active chat windows.
     func syncDashboard() {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         cd_sb_now_ms(page, nowMs)
         var seen: Set<String> = []
+        var branchCache: [String: String] = [:]
         var entries: [(startedMs: Int64, id: String, line: String)] = []
         if cd_running(page) != 0 {
             let cid = chat ?? ""
@@ -1024,8 +1066,9 @@ extension CoderWindow {
             let elapsed = max(0, Int(cd_elapsed_s(page)))
             let started = run.startedAtMs > 0 ? run.startedAtMs : (nowMs - Int64(elapsed) * 1000)
             let harness = harnessForRun(run, chatID: chat)
-            let lastMsg = pageLastMessage(page)
-            let line = "\(cid)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(lastMsg)"
+            let snap = pageDashSnapshot(page)
+            let meta = dashMeta(folderURL: folder, chatID: chat, branchCache: &branchCache)
+            let line = "\(cid)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(snap.lastMsg)\t\(meta)\t\(snap.status)\t\(snap.nturns)\t\(snap.ncalls)\t\(snap.ask)\t\(snap.thought)\t\(snap.acts)"
             entries.append((started, cid, line))
         }
         for (id, back) in runs {
@@ -1035,8 +1078,9 @@ extension CoderWindow {
             let elapsed = max(0, Int(cd_elapsed_s(back.page)))
             let started = back.startedAtMs > 0 ? back.startedAtMs : (nowMs - Int64(elapsed) * 1000)
             let harness = harnessForRun(back, chatID: id)
-            let lastMsg = pageLastMessage(back.page)
-            let line = "\(id)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(lastMsg)"
+            let snap = pageDashSnapshot(back.page)
+            let meta = dashMeta(folderURL: back.folder, chatID: id, branchCache: &branchCache)
+            let line = "\(id)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(snap.lastMsg)\t\(meta)\t\(snap.status)\t\(snap.nturns)\t\(snap.ncalls)\t\(snap.ask)\t\(snap.thought)\t\(snap.acts)"
             entries.append((started, id, line))
         }
         for id in phoneBusyChats {
@@ -1045,8 +1089,9 @@ extension CoderWindow {
             let title = cleanDashField(store.title(id) ?? "New chat")
             let started = Int64((store.meta(id)?.updated ?? 0) * 1000)
             let harness = store.harness(id)
-            let lastMsg = lastMessageFromSaved(store.text(id))
-            let line = "\(id)\t\(title)\t\(started)\t0\t\(harness)\t\(lastMsg)"
+            let snap = savedDashSnapshot(store.text(id))
+            let meta = dashMeta(folderURL: nil, chatID: id, branchCache: &branchCache)
+            let line = "\(id)\t\(title)\t\(started)\t0\t\(harness)\t\(snap.lastMsg)\t\(meta)\t\(snap.status)\t\(snap.nturns)\t\(snap.ncalls)\t\(snap.ask)\t\(snap.thought)\t\(snap.acts)"
             entries.append((started, id, line))
         }
         entries.sort { a, b in
