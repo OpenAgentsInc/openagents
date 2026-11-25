@@ -342,13 +342,19 @@ final class MetaverseViewportView: NSView {
 
     // GTA VI Key Lento Metal 4 Workbench bottom HUD bar
     private let gtaBar = NSStackView()
+    private let gtaMoveBtn = NSButton(title: "Drag Mandy ●", target: nil, action: nil)
+    private let gtaResetPosBtn = NSButton(title: "Reset Pos", target: nil, action: nil)
     private let gtaPlayBtn = NSButton(title: "Converge", target: nil, action: nil)
     private let gtaPresetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let gtaCamBtn = NSButton(title: "R* Cam", target: nil, action: nil)
-    private let gtaFxBtn = NSButton(title: "MetalFX", target: nil, action: nil)
+    private let gtaFxBtn = NSButton(title: "SVGF 2x ●", target: nil, action: nil)
     private let gtaClipBtn = NSButton(title: "Clip", target: nil, action: nil)
     private let gtaExprBtn = NSButton(title: "Expr", target: nil, action: nil)
     private let gtaSnapBtn = NSButton(title: "128-SPP", target: nil, action: nil)
+    private var gtaDragMandyEnabled = true
+    private var gtaDraggingMandy = false
+    private var gtaHoveringMandy = false
+    private var gtaTrackArea: NSTrackingArea?
 
     var onNodePicked: ((Int, String, SIMD3<Float>) -> Void)?
     var onFocusRequested: (() -> Void)?
@@ -564,11 +570,13 @@ final class MetaverseViewportView: NSView {
         gtaBar.translatesAutoresizingMaskIntoConstraints = false
         gtaBar.isHidden = true
 
-        for b in [gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] {
+        for b in [gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] {
             b.bezelStyle = .rounded
             b.controlSize = .small
             b.target = self
         }
+        gtaMoveBtn.action = #selector(gtaToggleMoveMode)
+        gtaResetPosBtn.action = #selector(gtaResetPosClicked)
         gtaPlayBtn.action = #selector(gtaTogglePaused)
         gtaCamBtn.action = #selector(gtaToggleCam)
         gtaFxBtn.action = #selector(gtaToggleFx)
@@ -582,7 +590,7 @@ final class MetaverseViewportView: NSView {
         gtaPresetPopup.removeAllItems()
         for p in GtaWorkbenchSession.presets { gtaPresetPopup.addItem(withTitle: p.label) }
 
-        for v in [gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
+        for v in [gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
             gtaBar.addArrangedSubview(v)
         }
         addSubview(gtaBar)
@@ -597,6 +605,9 @@ final class MetaverseViewportView: NSView {
     func syncGtaBar() {
         guard let gta = activeGtaWorkbench else { gtaBar.isHidden = true; return }
         gtaBar.isHidden = false
+        gtaMoveBtn.title = gtaDragMandyEnabled ? "Drag Mandy ●" : "Orbit Cam"
+        let moved = abs(gta.state.offsetX) > 0.005 || abs(gta.state.offsetY) > 0.005 || abs(gta.state.offsetZ) > 0.005 || abs(gta.state.offsetYaw) > 0.01
+        gtaResetPosBtn.isHidden = !moved
         gtaPlayBtn.title = gta.state.paused ? "Live" : "Converge"
         gtaCamBtn.title = gta.state.rockstarCam ? "R* Cam ●" : "R* Cam"
         gtaFxBtn.title = gta.state.denoiserOn ? "SVGF 2x ●" : "Raw PT"
@@ -608,6 +619,8 @@ final class MetaverseViewportView: NSView {
         }
     }
 
+    @objc private func gtaToggleMoveMode() { gtaDragMandyEnabled.toggle(); syncGtaBar() }
+    @objc private func gtaResetPosClicked() { activeGtaWorkbench?.resetMandyPosition(); syncGtaBar(); onNeedsDisplay?() }
     @objc private func gtaTogglePaused() { activeGtaWorkbench?.togglePaused(); syncGtaBar(); onNeedsDisplay?() }
     @objc private func gtaToggleCam() { activeGtaWorkbench?.toggleRockstarCam(); syncGtaBar(); onNeedsDisplay?() }
     @objc private func gtaToggleFx() { activeGtaWorkbench?.toggleDenoiser(); syncGtaBar(); onNeedsDisplay?() }
@@ -1780,16 +1793,58 @@ final class MetaverseViewportView: NSView {
         return m
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = gtaTrackArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        gtaTrackArea = area
+    }
+
+    private func gtaNdc(from p: NSPoint) -> (Float, Float) {
+        let w = max(1.0, Float(bounds.width))
+        let h = max(1.0, Float(bounds.height))
+        return ((Float(p.x) / w) * 2.0 - 1.0, (Float(p.y) / h) * 2.0 - 1.0)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let gta = activeGtaWorkbench, gtaDragMandyEnabled, !gtaDraggingMandy else {
+            if gtaHoveringMandy { gtaHoveringMandy = false; NSCursor.arrow.set() }
+            super.mouseMoved(with: event)
+            return
+        }
+        let p = convert(event.locationInWindow, from: nil)
+        let (nx, ny) = gtaNdc(from: p)
+        let hit = gta.hitTestMandy(ndcX: nx, ndcY: ny)
+        if hit != gtaHoveringMandy {
+            gtaHoveringMandy = hit
+            (hit ? NSCursor.openHand : NSCursor.arrow).set()
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if gtaHoveringMandy { gtaHoveringMandy = false; NSCursor.arrow.set() }
+        super.mouseExited(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         onFocusRequested?()
         optionClickPending = event.modifierFlags.contains(.option)
-        if activeGtaWorkbench != nil {
+        if let gta = activeGtaWorkbench {
             let p = convert(event.locationInWindow, from: nil)
             downMouse = p
             lastMouse = p
             dragging = true
-            dragPanning = event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option)
+            let (nx, ny) = gtaNdc(from: p)
+            if gtaDragMandyEnabled && gta.beginDragMandy(ndcX: nx, ndcY: ny, forceGrab: false) {
+                gtaDraggingMandy = true
+                dragPanning = false
+                NSCursor.closedHand.set()
+            } else {
+                gtaDraggingMandy = false
+                dragPanning = event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option)
+            }
             return
         }
         if let gb = activeGameBuilder, let h = gb.handle {
@@ -1815,7 +1870,9 @@ final class MetaverseViewportView: NSView {
             downMouse = p
             lastMouse = p
             dragging = true
-            dragPanning = true
+            gtaDraggingMandy = false
+            // Right-drag orbits camera (Shift+Right-drag pans camera), always available even over Mandy.
+            dragPanning = event.modifierFlags.contains(.shift)
             return
         }
         if let gb = activeGameBuilder, let h = gb.handle {
@@ -1883,7 +1940,12 @@ final class MetaverseViewportView: NSView {
         lastMouse = p
 
         if let gta = activeGtaWorkbench {
-            if dragPanning {
+            if gtaDraggingMandy {
+                let (nx, ny) = gtaNdc(from: p)
+                let mode: Int32 = event.modifierFlags.contains(.option) ? 2 : (event.modifierFlags.contains(.shift) ? 1 : 0)
+                gta.dragMandyTo(ndcX: nx, ndcY: ny, dx: dx, dy: dy, mode: mode)
+                syncGtaBar()
+            } else if dragPanning {
                 gta.pan(dx: dx, dy: dy)
             } else {
                 gta.orbit(dx: dx, dy: dy)
@@ -1911,7 +1973,16 @@ final class MetaverseViewportView: NSView {
     override func mouseUp(with event: NSEvent) {
         let wasOption = optionClickPending
         optionClickPending = false
-        if activeGtaWorkbench != nil {
+        if let gta = activeGtaWorkbench {
+            if gtaDraggingMandy {
+                gta.endDragMandy()
+                gtaDraggingMandy = false
+                let p = convert(event.locationInWindow, from: nil)
+                let (nx, ny) = gtaNdc(from: p)
+                let over = gtaDragMandyEnabled && gta.hitTestMandy(ndcX: nx, ndcY: ny)
+                gtaHoveringMandy = over
+                (over ? NSCursor.openHand : NSCursor.arrow).set()
+            }
             dragging = false; dragPanning = false
             return
         }
@@ -2027,6 +2098,10 @@ final class MetaverseViewportView: NSView {
             case "7": gta.applyPreset("jason_cu"); syncGtaBar(); onNeedsDisplay?(); return
             case "0": gta.applyPreset("showcase"); syncGtaBar(); onNeedsDisplay?(); return
             case "p": gta.applyPreset("portrait_live"); syncGtaBar(); onNeedsDisplay?(); return
+            case "g": gtaDragMandyEnabled.toggle(); syncGtaBar(); return
+            case "[": gta.rotateMandy(deltaYaw: -0.18); syncGtaBar(); onNeedsDisplay?(); return
+            case "]": gta.rotateMandy(deltaYaw: 0.18); syncGtaBar(); onNeedsDisplay?(); return
+            case "r": gta.resetMandyPosition(); syncGtaBar(); onNeedsDisplay?(); return
             case "c": gta.toggleRockstarCam(); syncGtaBar(); onNeedsDisplay?(); return
             case "m": gta.cycleClip(); syncGtaBar(); onNeedsDisplay?(); return
             case "x": gta.cycleExpr(); syncGtaBar(); onNeedsDisplay?(); return
