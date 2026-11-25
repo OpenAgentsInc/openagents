@@ -60,13 +60,23 @@ extension CoderWindow {
     }
 
     func openMetaverseTarget(path: String, kind: Int, mode: Int, readOnly: Bool = false, title: String = "", gameId: String = "", levelId: String = "", autoOpened: Bool = false) {
-        let shownTitle = title.isEmpty ? URL(fileURLWithPath: path).lastPathComponent : title
-        let tabIdx = cd_mv_open_tab(page, Int32(kind), path, shownTitle, gameId, levelId, Int32(mode), autoOpened ? 1 : 0)
+        let resolvedGb = kind == 7 ? parseGbIds(from: path) : (game: "", level: "")
+        let resolvedGameId = gameId.isEmpty ? resolvedGb.game : gameId
+        let resolvedLevelId = levelId.isEmpty ? resolvedGb.level : levelId
+        let shownTitle: String
+        if !title.isEmpty {
+            shownTitle = title
+        } else if kind == 7 && !resolvedGameId.isEmpty {
+            shownTitle = resolvedGameId
+        } else {
+            shownTitle = URL(fileURLWithPath: path).lastPathComponent
+        }
+        let tabIdx = cd_mv_open_tab(page, Int32(kind), path, shownTitle, resolvedGameId, resolvedLevelId, Int32(mode), autoOpened ? 1 : 0)
         guard tabIdx >= 0 else { return }
         if kind != 7 { // Non-GameBuilder 3D files load immediately into MetaverseViewportView
             loadMetaverseTab(tabIdx: Int(tabIdx), path: path, preserveCamera: false)
         } else {
-            activateGameBuilderTab(tabIdx: Int(tabIdx), path: path, gameId: gameId, levelId: levelId)
+            activateGameBuilderTab(tabIdx: Int(tabIdx), path: path, gameId: resolvedGameId, levelId: resolvedLevelId)
         }
         wake()
     }
@@ -97,10 +107,17 @@ extension CoderWindow {
     }
 
     private func parseGbIds(from path: String) -> (game: String, level: String) {
-        let stripped = path.hasPrefix("gb:") ? String(path.dropFirst(3)) : path
-        let parts = stripped.split(separator: "/").map(String.init)
+        var stripped = path
+        for pfx in ["openagents://gamebuilder/", "openagents://metaverse/gamebuilder/", "gb:"] {
+            if stripped.lowercased().hasPrefix(pfx) {
+                stripped = String(stripped.dropFirst(pfx.count))
+                break
+            }
+        }
+        if let q = stripped.firstIndex(of: "?") { stripped = String(stripped[..<q]) }
+        let parts = stripped.split(separator: "/").map(String.init).filter { !$0.isEmpty && $0 != "new" }
         if parts.count >= 2 { return (parts[0], parts[1]) }
-        if parts.count == 1 && !parts[0].isEmpty { return (parts[0], "level-1") }
+        if parts.count == 1 { return (parts[0], "level-1") }
         return ("scrappers-arena", "level-1")
     }
 
@@ -315,9 +332,16 @@ extension CoderWindow {
 
     func openGameBuilderStudio() {
         cd_mv_show(page, 1, 0)
-        if cd_mv_tab_count(page) == 0 {
-            openMetaverseTarget(path: "gb:scrappers-arena/level-1", kind: 7, mode: 1, title: "Scrappers Arena", gameId: "scrappers-arena", levelId: "level-1", autoOpened: false)
+        let n = Int(cd_mv_tab_count(page))
+        for i in 0..<n where cd_mv_tab_kind(page, Int32(i)) == 7 {
+            var pbuf = [CChar](repeating: 0, count: 1024)
+            if cd_mv_tab_path(page, Int32(i), &pbuf, Int32(pbuf.count)) > 0 {
+                let path = String(cString: pbuf)
+                openMetaverseTarget(path: path, kind: 7, mode: 1, autoOpened: false)
+                return
+            }
         }
+        openMetaverseTarget(path: "gb:scrappers-arena/level-1", kind: 7, mode: 1, title: "Scrappers Arena", gameId: "scrappers-arena", levelId: "level-1", autoOpened: false)
         wake()
     }
 

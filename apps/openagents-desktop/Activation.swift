@@ -139,7 +139,7 @@ final class DesktopActivation {
                     delegate.main?.openFolderURL(url)
                 } else {
                     delegate.main?.show()
-                    delegate.main?.openFileInPane(url)
+                    delegate.main?.openNamedFile(url)
                 }
             }
         case "chat":

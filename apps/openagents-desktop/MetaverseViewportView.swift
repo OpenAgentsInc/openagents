@@ -222,7 +222,7 @@ final class MetaverseTabScene {
         let c = boundsCenter
         let r = boundsRadius
         target = c
-        distance = r * 2.35
+        distance = r * 2.55
         switch name {
         case "front":
             azimuth = 0.0
@@ -264,8 +264,11 @@ final class MetaverseTabScene {
         let fovY: Float = 45.0 * .pi / 180.0
         let nearZ = max(0.02, boundsRadius * 0.004)
         let farZ = max(250.0, boundsRadius * 30.0)
-        let ys = 1.0 / tan(fovY * 0.5)
-        let xs = ys / max(0.01, aspect)
+        let baseYs = 1.0 / tan(fovY * 0.5)
+        // Preserve at least 45° horizontal FOV in narrow docked portrait panes so models aren't clipped.
+        let safeAspect = max(0.01, aspect)
+        let ys = safeAspect < 1.0 ? baseYs * max(0.30, safeAspect) : baseYs
+        let xs = ys / safeAspect
         let zs = farZ / (nearZ - farZ)
         return simd_float4x4(
             SIMD4<Float>(xs, 0, 0, 0),
