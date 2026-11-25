@@ -77,9 +77,10 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
     cp_sidebar(s, f[..], 272.5f32, 800.0f32, false);
     #assert uiframe_end(f[..], s[0].surface[..]);
     sh := surface_sheet(s[0].surface[..]);
-    #assert sh.nu >= 2;
+    #assert sh.nu >= 3;
     bg_p := sh.under[0];
     edge_p := sh.under[1];
+    bar_p := sh.under[2];
     #assert bg_p.fill.r == 0 && bg_p.fill.g == 0 && bg_p.fill.b == 0 && bg_p.fill.a == 1;
     #assert abs(edge_p.fill.r - k.menu_divider.r) < 0.001f32 && edge_p.fill.a == 1;
     // Rasterized width in device pixels must be exactly 1.0 physical pixel.
@@ -87,6 +88,12 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
     dev_x1 := snap(edge_p.x + edge_p.w, d);
     #assert dev_x1 - dev_x0 == 1.0f32;
     #assert snap(bg_p.x + bg_p.w, d) == dev_x0;
+    // Sidebar header bar bottom border sits at the exact same physical pixel row as cp_header_bar.
+    #assert abs(bar_p.fill.r - k.menu_divider.r) < 0.001f32 && bar_p.fill.a == 1;
+    dev_y0 := snap(bar_p.y, d);
+    dev_y1 := snap(bar_p.y + bar_p.h, d);
+    #assert dev_y1 - dev_y0 == 1.0f32 && dev_y1 == snap(cp_bar(s), d);
+    #assert bar_p.x == 0.0f32 && snap(bar_p.x + bar_p.w, d) == dev_x0;
   }
 }
 
@@ -427,11 +434,21 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar_draw(s, f[..], 1400, 900);
   hd = cp_bar_row(s, "coder.header.title");
   #assert cast(string) hd.label[0..<hd.label_n] == "Refactor auth middleware";
-  // With sidebar collapsed, title shifts past cp_bar_clear so it never overlaps the island.
+  // With sidebar collapsed, title shifts past cp_bar_clear and no dark-gray island pill is drawn behind the traffic lights.
   s[0].side_collapsed = true;
   #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60 && s[0].side == 0;
   hd = cp_bar_row(s, "coder.header.title");
   #assert hd.x == cp_bar_clear(s) && hd.x > 0;
+  collapsed_sh := surface_sheet(s[0].surface[..]);
+  isl := cp_island(s, true);
+  has_island_pill := false;
+  for pi: 0..<collapsed_sh.nu {
+    pr := collapsed_sh.under[pi];
+    if abs(pr.x - isl.x) < 0.5f32 && abs(pr.y - isl.y) < 0.5f32 && abs(pr.w - isl.w) < 0.5f32 && abs(pr.h - isl.h) < 0.5f32 {
+      has_island_pill = true;
+    }
+  }
+  #assert !has_island_pill;
   // Dashboard shows "Dashboard" in the header bar.
   s[0].side_collapsed = false;
   coder_page_dashboard_open(s, true);

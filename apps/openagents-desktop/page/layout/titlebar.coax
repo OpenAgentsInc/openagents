@@ -84,19 +84,11 @@ cp_island :: (s: [] CoderPage, toggle: bool) -> CpIsland {
   return CpIsland.{x = x, y = cp_bar_y(s, h), w = end - x, h = h};
 }
 
-// The bar over the page: with the sidebar open (left its width) the toggle and search icon stand on
-// it, and with it collapsed (left 0) the island gathers behind the lights, the toggle (when the
-// window is wide enough to show the sidebar), and the search icon. Drawn after the page's parts.
+// The bar over the page: the toggle (when the sidebar is open or the window can show it) and search
+// icon stand on the full-width pure black header bar, with no floating gray island pill behind the
+// traffic lights when the sidebar is collapsed. Drawn after the page's parts.
 cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
-  k := f[0].skin; sh := f[0].sheet;
-  if left == 0 {
-    i := cp_island(s, toggle);
-    if i.w > 0 {
-      th := cp_theme();
-      sheet_under(sh, uiskin_shadow(sh[0].under, sh[0].nu, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, k.shadows.sm));
-      sheet_fill(sh, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, th.menu);
-    }
-  }
+  k := f[0].skin;
   has_toggle := toggle || left > 0;
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   // left-cluster controls: the app's icon buttons at the island's control size

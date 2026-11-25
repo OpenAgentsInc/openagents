@@ -132,6 +132,8 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   if sw < 0.0f32 { sw = 0.0f32; }
   if sw > 0.0f32 && h > 0.0f32 { sheet_fill(sh, 0, 0, sw, h, 0, bg); }
   _ := cp_side_border(s, sh, left, 0, h, edge_c);
+  // Header bar bottom border across the sidebar at the exact same level as the main header bar.
+  cp_bar_border(s, sh, 0, sw, cp_bar(s), k.menu_divider);
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
