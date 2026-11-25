@@ -18,6 +18,7 @@
 #load "../../coax/lib/gateway/card.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/agent/engine/mcworker-queue.coax";
+#load "../../coax/lib/agent/engine/cache-policy.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../flawed/core.coax";
@@ -31,11 +32,21 @@ FWW_SLAB :: 2097152;
 FWW_MAX_MSGS :: 160;
 FWW_MAX_BLOCKS :: 16;
 FWW_MAX_TOOLS_CALL :: 12;
-FWW_FILE_MAX :: 262144;
-FWW_TOOL_OUT_MAX :: 32768;
+FWW_FILE_MAX :: 524288;
+FWW_TOOL_OUT_MAX :: 49152;
 FWW_LOCAL_TOOL_OUT_MAX :: 12288;
 FWW_FC_ENTRIES :: 128;
 FWW_FC_SLAB :: 1048576;
+FWW_READ_DEDUP_SLOTS :: 32;
+FWW_READ_CLOUD_LINES :: 600;
+FWW_READ_LOCAL_LINES :: 300;
+FWW_READ_CLOUD_BYTES :: 32768;
+FWW_GREP_MAX_BYTES :: 16384;
+FWW_GREP_LINE_MAX :: 240;
+FWW_TURN_TOOLS_BUDGET_CLOUD :: 65536;
+FWW_TURN_TOOLS_BUDGET_LOCAL :: 16384;
+FWW_CMD_HEAD_MAX :: 8192;
+FWW_CMD_TAIL_MAX :: 16384;
 
 FWW_SRC_MESSAGE :: 0;
 FWW_SRC_QUEUE :: 1;
@@ -705,6 +716,8 @@ FwHist :: struct {
   total_cost_micros: int;
   last_in_tok: int;
   last_in_bytes: int;
+  last_cached_tok: int;
+  last_cloud_turn_ms: int;
   compact_count: int;
 }
 
@@ -1302,6 +1315,27 @@ fww_hist_sanitize :: (h: [] FwHist, tmp_buf: [] u8) {
   }
 }
 
+// Surgical Gemini thoughtSignature repair: if Vertex/Gemini rejects a corrupted/missing signature,
+// preserve the ENTIRE conversation intact and swap tool_use signatures to Gemini's official
+// skip_thought_signature_validator sentinel instead of wiping 50K+ tokens of history!
+fww_hist_strip_thought_sigs :: (h: [] FwHist) {
+  a0 := [1] int.[0];
+  skip_n := fww_slab_put(h, "skip_thought_signature_validator", a0[..]);
+  skip_at := a0[0];
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role != FWW_MROLE_ASSISTANT { continue; }
+    for b: 0..<h[0].msgs[i].nblocks {
+      if h[0].msgs[i].blocks[b].kind == FWW_MB_TOOL_USE {
+        h[0].msgs[i].blocks[b].sig_at = skip_at;
+        h[0].msgs[i].blocks[b].sig_n = skip_n;
+      } else {
+        h[0].msgs[i].blocks[b].sig_at = 0;
+        h[0].msgs[i].blocks[b].sig_n = 0;
+      }
+    }
+  }
+}
+
 // Hydrate persisted turns from MWW_RECALL JSON array [{"task":...,"reply":...},...].
 fww_hist_recall :: (h: [] FwHist, recall_json: string) {
   fww_hist_clear(h);
@@ -1325,6 +1359,83 @@ fww_hist_recall :: (h: [] FwHist, recall_json: string) {
 
 // ---------------------------------------------------------------- system prompt & memory loader (Ch 04 + Ch 10)
 
+// Run a fast, read-only, bounded git command inside `cwd` (never acquires optional locks).
+fww_git_quick :: (cwd: string, a1: string, a2: string, a3: string, a4: string, out: [] u8) -> int {
+  h := proc_new();
+  if h < 0 { return 0; }
+  ok := proc_arg(h, "git") && proc_arg(h, "--no-optional-locks");
+  if a1.count > 0 { ok = ok && proc_arg(h, a1); }
+  if a2.count > 0 { ok = ok && proc_arg(h, a2); }
+  if a3.count > 0 { ok = ok && proc_arg(h, a3); }
+  if a4.count > 0 { ok = ok && proc_arg(h, a4); }
+  ok = ok && proc_cwd(h, cwd);
+  n := 0;
+  if ok && proc_start(h) == 0 {
+    _ = proc_close_stdin(h);
+    lbuf: [1024] u8;
+    deadline := proc_now_ms() + 1200;
+    while proc_now_ms() < deadline && n + 64 < out.count {
+      r := proc_line(h, 100, lbuf[..]);
+      if r == PROC_EOF || r < 0 { break; }
+      if r == PROC_TIMEOUT { continue; }
+      n = fww_cat(out, n, cast(string) lbuf[0..<r]);
+      n = fww_cat(out, n, "\n");
+    }
+    ec := proc_wait(h, 400);
+    if ec != 0 { n = 0; }
+  }
+  _ = proc_release(h);
+  return n;
+}
+
+// Claude Code context.ts pattern: capture a one-time, cache-stable git snapshot at session start
+// so the model never wastes Turn 1 running `git status && git log`.
+fww_capture_git_snapshot :: (cwd: string, out: [] u8) -> int {
+  if cwd.count == 0 { return 0; }
+  br_b: [128] u8;
+  bn := fww_git_quick(cwd, "rev-parse", "--abbrev-ref", "HEAD", "", br_b[..]);
+  if bn <= 0 { return 0; }
+  st_b: [1024] u8;
+  sn := fww_git_quick(cwd, "status", "--short", "", "", st_b[..]);
+  lg_b: [768] u8;
+  ln := fww_git_quick(cwd, "log", "--oneline", "-n", "5", lg_b[..]);
+  n := fww_cat(out, 0, "\n\n# Workspace Git Snapshot (captured at session start)\nBranch: ");
+  n = fww_cat(out, n, fww_trim(cast(string) br_b[0..<bn]));
+  n = fww_cat(out, n, "\nStatus: ");
+  st_s := fww_trim(cast(string) st_b[0..<sn]);
+  if st_s.count == 0 {
+    n = fww_cat(out, n, "(clean)");
+  } else {
+    n = fww_cat(out, n, "\n");
+    n = fww_cat(out, n, st_s);
+    if sn + 64 >= st_b.count { n = fww_cat(out, n, "\n... (truncated)"); }
+  }
+  if ln > 0 {
+    n = fww_cat(out, n, "\nRecent commits:\n");
+    n = fww_cat(out, n, fww_trim(cast(string) lg_b[0..<ln]));
+  }
+  return n;
+}
+
+fww_append_instr_capped :: (out: [] u8, at: int, heading: string, path: string, max_bytes: int) -> int {
+  if path.count == 0 || !fs_exists(path) { return at; }
+  fbuf: [8192] u8;
+  rn := fs_read(path, fbuf[..]);
+  if rn <= 0 { return at; }
+  n := fww_cat(out, at, heading);
+  body := cast(string) fbuf[0..<rn];
+  if body.count > max_bytes {
+    cut := fww_utf8_cut(body, max_bytes);
+    n = fww_cat(out, n, cast(string) body[0..<cut]);
+    n = fww_cat(out, n, "\n... [truncated; use Read on ");
+    n = fww_cat(out, n, path);
+    n = fww_cat(out, n, " for more]");
+  } else {
+    n = fww_cat(out, n, body);
+  }
+  return n;
+}
+
 fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: [] u8) -> int {
   n := 0;
   n = fww_cat(out, n, "You are Flawed, an autonomous software engineering coding agent running natively inside OpenAgents Desktop.\n");
@@ -1332,14 +1443,22 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   n = fww_cat(out, n, cwd);
   n = fww_cat(out, n, "\nPlatform: ");
   n = fww_cat(out, n, ifx tool_os() == TOOL_LINUX then "Linux" else "macOS");
-  n = fww_cat(out, n, "\n\nGuidelines:\n");
-  n = fww_cat(out, n, "- Use Read, Edit, Write, Glob, Grep, Bash, TodoWrite, and WebFetch tools to inspect and modify the codebase directly.\n");
-  n = fww_cat(out, n, "- Answer conversational greetings or general questions directly without running tools unless workspace inspection is actually needed.\n");
-  n = fww_cat(out, n, "- Always Read a file before using Edit on it.\n");
-  n = fww_cat(out, n, "- Verify code changes by running relevant tests/builds before claiming completion.\n");
+
+  n = fww_cat(out, n, "\n\n# Working Efficiently & Using Tools\n");
+  n = fww_cat(out, n, "- Go straight to the point. Try the simplest direct implementation first without going in circles — avoid speculative abstractions, unrelated refactors, or extra configurability.\n");
+  n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, or Edit calls together in a single response instead of one call per turn.\n");
+  n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
+  n = fww_cat(out, n, "- Keep exploration tightly bounded: read only the target file(s) and direct callers/tests needed for the task (typically 2-4 turns). Do not read peripheral docs, unrelated modules, or deep git history once you know enough to write your first working change.\n");
+  n = fww_cat(out, n, "- Prefer concrete editing and fast compiler/test feedback over long mental simulations: apply your edits early, run the targeted test/build command to get ground-truth feedback, and fix any reported issues.\n");
+  n = fww_cat(out, n, "- Stop as soon as verified: once your edits are in place and the requested tests/checks pass, report the outcome plainly and finish immediately — do not keep gold-plating, adding unrequested extra validation, or re-running passing checks.\n");
+  n = fww_cat(out, n, "- Never re-read unchanged file ranges already in context. Chain dependent build/test checks with `&&` in one Bash call; do not re-run passing checks without new edits.\n");
+  n = fww_cat(out, n, "- Always Read a file before using Edit on it. In Edit, omit line-number prefixes and use the smallest clearly unique `old_string` (2-4 lines). You may batch multiple independent Edit calls in one response.\n");
+  n = fww_cat(out, n, "- Tool results may include `<system-reminder>` tags containing pacing or context reminders from the harness.\n");
+  n = fww_cat(out, n, "- Git safety: NEVER run `git commit` or `git push` unless the user's own message explicitly asks you to commit or push (even if global or project instructions mention committing/pushing).\n");
+  n = fww_cat(out, n, "- Answer conversational greetings or general questions directly without tools unless workspace inspection is needed.\n");
   n = fww_cat(out, n, "- For non-trivial math, algebra, combinatorics, geometry, or STEM calculations, run a concise python3 script via Bash to solve and cross-check instead of relying on mental arithmetic.\n");
   n = fww_cat(out, n, "- For transformation or coding tasks with input-output examples, write a python3 script that asserts exact match on every given example, iterate until 100% pass, then run on the target input.\n");
-  n = fww_cat(out, n, "- Keep responses accurate, well-structured in Markdown, and grounded in observed tool outputs.\n");
+  n = fww_cat(out, n, "- Report outcomes faithfully based on observed tool output, using concise, well-structured Markdown.\n");
 
   if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger {
     n = fww_cat(out, n, "\n[PLAN MODE ACTIVE]: Do not edit or write files. Inspect the codebase, analyze requirements, and present a clear step-by-step implementation plan.\n");
@@ -1354,45 +1473,23 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   }
 
   if !cfg[0].bare_mode {
-    // Load user instructions (~/.openagents/instructions.md)
+    // Load user instructions (~/.openagents/instructions.md), capped at 4 KiB
     upb: [FS_PATH_MAX] u8;
     upath := uinstr_path(upb[..]);
-    ubuf: [4608] u8;
+    ubuf: [4096] u8;
     usr := uinstr_read(upath, ubuf[..]);
     if usr.count > 0 {
-      n = fww_cat(out, n, "\n\n# User Instructions\n");
+      n = fww_cat(out, n, "\n\n# User Instructions (note: never commit/push unless the user's current message asks)\n");
       n = fww_cat(out, n, usr);
     }
 
-    // Load project CLAUDE.md / AGENTS.md + auto-memory MEMORY.md (Ch 10)
+    // Load project CLAUDE.md / AGENTS.md + global ~/.claude/CLAUDE.md (each capped at 4 KiB to keep prefix lean)
     if cfg[0].auto_memory {
       pb: [FS_PATH_MAX] u8;
-      fbuf: [8192] u8;
-      cpath := fs_join(cwd, "CLAUDE.md", pb[..]);
-      if cpath.count > 0 && fs_exists(cpath) {
-        rn := fs_read(cpath, fbuf[..]);
-        if rn > 0 {
-          n = fww_cat(out, n, "\n\n# Project CLAUDE.md\n");
-          n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
-        }
-      }
-      apath := fs_join(cwd, "AGENTS.md", pb[..]);
-      if apath.count > 0 && fs_exists(apath) {
-        rn := fs_read(apath, fbuf[..]);
-        if rn > 0 {
-          n = fww_cat(out, n, "\n\n# Project AGENTS.md\n");
-          n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
-        }
-      }
+      n = fww_append_instr_capped(out, n, "\n\n# Project CLAUDE.md\n", fs_join(cwd, "CLAUDE.md", pb[..]), 4096);
+      n = fww_append_instr_capped(out, n, "\n\n# Project AGENTS.md\n", fs_join(cwd, "AGENTS.md", pb[..]), 4096);
       if home.count > 0 {
-        mpath := fs_join(home, ".claude/CLAUDE.md", pb[..]);
-        if mpath.count > 0 && fs_exists(mpath) {
-          rn := fs_read(mpath, fbuf[..]);
-          if rn > 0 {
-            n = fww_cat(out, n, "\n\n# Global ~/.claude/CLAUDE.md\n");
-            n = fww_cat(out, n, cast(string) fbuf[0..<rn]);
-          }
-        }
+        n = fww_append_instr_capped(out, n, "\n\n# Global ~/.claude/CLAUDE.md\n", fs_join(home, ".claude/CLAUDE.md", pb[..]), 4096);
       }
     }
   }
@@ -1485,19 +1582,25 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
       jo_end(o[..]);
       last_emitted_role = 2;
     } else if msg.role == FWW_MROLE_TOOL_RESULTS {
-      nparts := 0;
+      last_tr_idx := -1;
+      has_extra_txt := false;
       for b: 0..<msg.nblocks {
         bk := msg.blocks[b];
-        if bk.kind == FWW_MB_TOOL_RES || (bk.kind == FWW_MB_TEXT && bk.text_n > 0) { nparts += 1; }
+        if bk.kind == FWW_MB_TOOL_RES { last_tr_idx = b; }
+        else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 { has_extra_txt = true; }
       }
-      if nparts == 0 { continue; }
+      if last_tr_idx < 0 && !has_extra_txt { continue; }
       jo_obj(o[..]);
       jo_key(o[..], "role"); jo_str(o[..], "user");
       jo_key(o[..], "parts");
       jo_arr(o[..]);
-      for b: 0..<msg.nblocks {
-        bk := msg.blocks[b];
-        if bk.kind == FWW_MB_TOOL_RES {
+      if last_tr_idx >= 0 {
+        // Vertex AI / Gemini strictly forbids mixing sibling {"text":...} parts inside a functionResponse turn.
+        // Fold any trailing FWW_MB_TEXT blocks (steers, <system-reminder> pacing nudges, wrap-up prompts)
+        // cleanly into the last functionResponse's output payload so part counts match functionCall 1-to-1!
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind != FWW_MB_TOOL_RES { continue; }
           jo_obj(o[..]);
           jo_key(o[..], "functionResponse");
           jo_obj(o[..]);
@@ -1506,15 +1609,34 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
           if bk.id_n > 0 { jo_key(o[..], "id"); jo_str(o[..], fww_slab_str(h, bk.id_at, bk.id_n)); }
           jo_key(o[..], "response");
           jo_obj(o[..]);
-          jo_key(o[..], "output"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          jo_key(o[..], "output");
+          if b == last_tr_idx && has_extra_txt {
+            comb: [FWW_TOOL_OUT_MAX + 4096] u8;
+            cn := fww_cat(comb[..], 0, fww_slab_str(h, bk.text_at, bk.text_n));
+            for tb_i: 0..<msg.nblocks {
+              tbk := msg.blocks[tb_i];
+              if tbk.kind == FWW_MB_TEXT && tbk.text_n > 0 {
+                if cn > 0 { cn = fww_cat(comb[..], cn, "\n\n"); }
+                cn = fww_cat(comb[..], cn, fww_slab_str(h, tbk.text_at, tbk.text_n));
+              }
+            }
+            jo_str(o[..], cast(string) comb[0..<cn]);
+          } else {
+            jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+          }
           if bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
           jo_end(o[..]);
           jo_end(o[..]);
           jo_end(o[..]);
-        } else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
-          jo_obj(o[..]);
-          jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
-          jo_end(o[..]);
+        }
+      } else {
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+            jo_obj(o[..]);
+            jo_key(o[..], "text"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
+            jo_end(o[..]);
+          }
         }
       }
       jo_end(o[..]);
@@ -1737,7 +1859,209 @@ fww_format_diff :: (old_s: string, new_s: string, out: [] u8) -> int {
   return n;
 }
 
-fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+FwReadDedup :: struct {
+  path_hash: int;
+  offset: int;
+  end_line: int;
+  file_sz: int;
+  content_hash: int;
+  compact_epoch: int;
+}
+
+fww_str_hash :: (s: string) -> int {
+  h := 2166136261;
+  mod := 4294967291;
+  for c: s { h = ((h * 131) + cast(int) c) % mod; }
+  return ifx h == 0 then 1 else h;
+}
+
+// Hits when the exact range OR any sub-range is already covered by an earlier unchanged Read in this compaction epoch!
+fww_read_dedup_hit :: (slots: [] FwReadDedup, path_hash: int, offset: int, req_end: int, file_sz: int, content_hash: int, compact_epoch: int) -> bool {
+  for i: 0..<slots.count {
+    if slots[i].path_hash == path_hash
+       && slots[i].end_line > 0
+       && offset >= slots[i].offset
+       && req_end <= slots[i].end_line
+       && slots[i].file_sz == file_sz
+       && slots[i].content_hash == content_hash
+       && slots[i].compact_epoch == compact_epoch {
+      return true;
+    }
+  }
+  return false;
+}
+
+fww_read_dedup_put :: (slots: [] FwReadDedup, cursor: [] int, path_hash: int, offset: int, end_line: int, file_sz: int, content_hash: int, compact_epoch: int) {
+  for i: 0..<slots.count {
+    if slots[i].path_hash == path_hash && slots[i].offset == offset {
+      slots[i] = FwReadDedup.{path_hash = path_hash, offset = offset, end_line = end_line, file_sz = file_sz, content_hash = content_hash, compact_epoch = compact_epoch};
+      return;
+    }
+  }
+  idx := cursor[0] % slots.count;
+  slots[idx] = FwReadDedup.{path_hash = path_hash, offset = offset, end_line = end_line, file_sz = file_sz, content_hash = content_hash, compact_epoch = compact_epoch};
+  cursor[0] = (cursor[0] + 1) % slots.count;
+}
+
+fww_read_dedup_invalidate :: (slots: [] FwReadDedup, path_hash: int) {
+  for i: 0..<slots.count {
+    if slots[i].path_hash == path_hash { slots[i].path_hash = 0; }
+  }
+}
+
+fww_count_lines :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 1;
+  for i: 0..<s.count {
+    if s[i] == '\n' && i + 1 < s.count { n += 1; }
+  }
+  return n;
+}
+
+fww_line_num_at :: (s: string, byte_pos: int) -> int {
+  ln := 1;
+  lim := ifx byte_pos < s.count then byte_pos else s.count;
+  for i: 0..<lim { if s[i] == '\n' { ln += 1; } }
+  return ln;
+}
+
+fww_append_numbered_window :: (out: [] u8, at: int, content: string, from_line: int, to_line: int) -> int {
+  n := at;
+  ln := 1;
+  i := 0;
+  while i < content.count {
+    e := i;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    if ln >= from_line && ln <= to_line {
+      if n + 64 >= out.count { break; }
+      n = fww_put_int(out, n, ln);
+      n = fww_cat(out, n, "\t");
+      n = fww_cat(out, n, cast(string) content[i..<e]);
+      n = fww_cat(out, n, "\n");
+    }
+    if ln > to_line { break; }
+    ln += 1;
+    i = e + 1;
+  }
+  return n;
+}
+
+// Trim trailing spaces/tabs/CR from a single line slice (for fallback edit matching).
+fww_trim_line_end :: (s: string) -> string {
+  b := s.count;
+  while b > 0 && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[0..<b];
+}
+
+// Fallback edit matcher: matches `old_s` against `content` allowing trailing whitespace / CRLF differences per line.
+// Returns count of matches, and writes the exact byte span [out_start[0]..<out_end[0]] in `content` of the first match.
+fww_find_trimmed_match :: (content: string, old_s: string, out_start: [] int, out_end: [] int) -> int {
+  // Extract old_s lines (up to 64 lines)
+  ol_from: [64] int; ol_to: [64] int;
+  nol := 0;
+  p := 0;
+  while p <= old_s.count && nol < 64 {
+    e := p;
+    while e < old_s.count && old_s[e] != '\n' { e += 1; }
+    ol_from[nol] = p; ol_to[nol] = e;
+    nol += 1;
+    if e >= old_s.count { break; }
+    p = e + 1;
+  }
+  if nol == 0 { return 0; }
+  // If old_s ended with '\n', drop the empty trailing sentinel line
+  has_trail_nl := old_s.count > 0 && old_s[old_s.count - 1] == '\n';
+  if has_trail_nl && nol > 1 { nol -= 1; }
+
+  // Walk lines of content and test window starting at each line
+  matches := 0;
+  ci := 0;
+  while ci < content.count {
+    ce := ci;
+    while ce < content.count && content[ce] != '\n' { ce += 1; }
+    t0 := fww_trim_line_end(cast(string) old_s[ol_from[0]..<ol_to[0]]);
+    if fww_trim_line_end(cast(string) content[ci..<ce]) == t0 {
+      ok := true;
+      cur := ce;
+      for k: 1..<nol {
+        if cur >= content.count { ok = false; break; }
+        ls := cur + 1;
+        le := ls;
+        while le < content.count && content[le] != '\n' { le += 1; }
+        tk := fww_trim_line_end(cast(string) old_s[ol_from[k]..<ol_to[k]]);
+        if fww_trim_line_end(cast(string) content[ls..<le]) != tk { ok = false; break; }
+        cur = le;
+      }
+      if ok {
+        end_b := ifx has_trail_nl && cur < content.count && content[cur] == '\n' then cur + 1 else cur;
+        if matches == 0 { out_start[0] = ci; out_end[0] = end_b; }
+        matches += 1;
+      }
+    }
+    if ce >= content.count { break; }
+    ci = ce + 1;
+  }
+  return matches;
+}
+
+// Find the closest matching line in `content` to lines in `old_s` (for actionable Edit diagnostics).
+fww_find_nearest_line :: (content: string, old_s: string) -> int {
+  best_from := 0; best_to := 0; best_len := 0;
+  p := 0;
+  while p < old_s.count {
+    e := p;
+    while e < old_s.count && old_s[e] != '\n' { e += 1; }
+    t := fww_trim(cast(string) old_s[p..<e]);
+    if t.count > best_len { best_from = p; best_to = e; best_len = t.count; }
+    p = e + 1;
+  }
+  if best_len < 4 { return 0; }
+  needle := fww_trim(cast(string) old_s[best_from..<best_to]);
+  if needle.count > 64 { needle = cast(string) needle[0..<64]; }
+  ln := 1;
+  i := 0;
+  while i < content.count {
+    e := i;
+    while e < content.count && content[e] != '\n' { e += 1; }
+    if fww_contains_ci(cast(string) content[i..<e], needle) { return ln; }
+    ln += 1;
+    i = e + 1;
+  }
+  // Fallback 1: try any other non-trivial line in old_s (in case the longest line had the typo)
+  p = 0;
+  while p < old_s.count {
+    e := p;
+    while e < old_s.count && old_s[e] != '\n' { e += 1; }
+    cand := fww_trim(cast(string) old_s[p..<e]);
+    if cand.count >= 4 {
+      if cand.count > 64 { cand = cast(string) cand[0..<64]; }
+      ln = 1; i = 0;
+      while i < content.count {
+        ce := i;
+        while ce < content.count && content[ce] != '\n' { ce += 1; }
+        if fww_contains_ci(cast(string) content[i..<ce], cand) { return ln; }
+        ln += 1;
+        i = ce + 1;
+      }
+    }
+    p = e + 1;
+  }
+  // Fallback 2: try first 20 chars of longest line
+  if needle.count > 20 {
+    short_n := cast(string) needle[0..<20];
+    ln = 1; i = 0;
+    while i < content.count {
+      e := i;
+      while e < content.count && content[e] != '\n' { e += 1; }
+      if fww_contains_ci(cast(string) content[i..<e], short_n) { return ln; }
+      ln += 1;
+      i = e + 1;
+    }
+  }
+  return 0;
+}
+
+fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, dedup_cur: [] int, compact_epoch: int, is_local: bool, fbuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
   nodes: [128] JvNode; d: [1] Jv;
   if !jv_parse(d[..], args_json, nodes[..]) {
@@ -1748,11 +2072,12 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] 
   if pn <= 0 { pn = jv_str(d[0], jv_get(d[0], 0, "path"), pb_raw[..]); }
   if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Read requires file_path."); }
   raw_path := cast(string) pb_raw[0..<pn];
+  def_lim := ifx is_local then FWW_READ_LOCAL_LINES else FWW_READ_CLOUD_LINES;
   offset := jv_int(d[0], jv_get(d[0], 0, "offset"), 1);
-  limit := jv_int(d[0], jv_get(d[0], 0, "limit"), 250);
+  limit := jv_int(d[0], jv_get(d[0], 0, "limit"), def_lim);
   if offset < 1 { offset = 1; }
-  if limit < 1 { limit = 250; }
-  if limit > 1000 { limit = 1000; }
+  if limit < 1 { limit = def_lim; }
+  if limit > 2000 { limit = 2000; }
 
   rval := flawed_read_validate_input(raw_path, false, offset, limit);
   if rval == FLAWED_RVAL_BLOCKED_DEVICE {
@@ -1774,21 +2099,50 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] 
     return fww_keep(out_res, "Failed to read file.");
   }
   content := cast(string) fbuf[0..<sz];
-  // Cache read into Ch 01/12 FileStateCache for edit staleness check!
+  total_lines := fww_count_lines(content);
   _ = flawed_fc_put(fc, full, content, 1, cast(u64) sz, proc_now_ms(), offset, limit, false);
   fww_send(wire_out, mww_view(wire_out, raw_path, true));
 
-  // Emit numbered lines from offset..<offset+limit
-  n := 0;
+  // Claude Code FILE_UNCHANGED_STUB dedup (exact OR sub-range coverage): avoid burning tokens re-reading unchanged ranges!
+  ph := fww_str_hash(full);
+  ch := fww_str_hash(content);
+  req_end := offset + limit - 1;
+  if req_end > total_lines { req_end = total_lines; }
+  if dedup.count > 0 && total_lines > 0 && offset <= total_lines && fww_read_dedup_hit(dedup, ph, offset, req_end, sz, ch, compact_epoch) {
+    rn := fww_cat(out_res, 0, "File unchanged since last read (");
+    rn = fww_cat(out_res, rn, raw_path);
+    rn = fww_cat(out_res, rn, ", lines ");
+    rn = fww_put_int(out_res, rn, offset);
+    rn = fww_cat(out_res, rn, "-");
+    rn = fww_put_int(out_res, rn, req_end);
+    rn = fww_cat(out_res, rn, " of ");
+    rn = fww_put_int(out_res, rn, total_lines);
+    rn = fww_cat(out_res, rn, "). The content from the earlier Read tool_result in this conversation is still current — refer to that instead of re-reading.");
+    return rn;
+  }
+
+  // Emit range header + numbered lines from offset..<offset+limit + explicit continuation hint if truncated
+  max_read_b := ifx is_local then FWW_LOCAL_TOOL_OUT_MAX else FWW_READ_CLOUD_BYTES;
+  if max_read_b > out_res.count { max_read_b = out_res.count; }
+  n := fww_cat(out_res, 0, "[File: ");
+  n = fww_cat(out_res, n, raw_path);
+  n = fww_cat(out_res, n, " | total lines: ");
+  n = fww_put_int(out_res, n, total_lines);
+  n = fww_cat(out_res, n, " | showing from line ");
+  n = fww_put_int(out_res, n, offset);
+  n = fww_cat(out_res, n, "]\n");
+
   line_no := 1;
   shown := 0;
+  last_shown := 0;
+  byte_capped := false;
   i := 0;
   while i < content.count {
     e := i;
     while e < content.count && content[e] != '\n' { e += 1; }
     if line_no >= offset && shown < limit {
-      if n + 32 >= out_res.count {
-        n = fww_cat(out_res, n, "\n... [output truncated]");
+      if n + (e - i) + 128 >= max_read_b {
+        byte_capped = true;
         break;
       }
       n = fww_put_int(out_res, n, line_no);
@@ -1796,19 +2150,36 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] 
       n = fww_cat(out_res, n, cast(string) content[i..<e]);
       n = fww_cat(out_res, n, "\n");
       shown += 1;
+      last_shown = line_no;
     }
     line_no += 1;
     i = e + 1;
   }
   if shown == 0 {
     n = fww_cat(out_res, 0, "(empty file or offset past EOF; total lines: ");
-    n = fww_put_int(out_res, n, line_no - 1);
+    n = fww_put_int(out_res, n, total_lines);
     n = fww_cat(out_res, n, ")");
+  } else {
+    if last_shown < total_lines {
+      n = fww_cat(out_res, n, "... [showing lines ");
+      n = fww_put_int(out_res, n, offset);
+      n = fww_cat(out_res, n, "-");
+      n = fww_put_int(out_res, n, last_shown);
+      n = fww_cat(out_res, n, " of ");
+      n = fww_put_int(out_res, n, total_lines);
+      if byte_capped { n = fww_cat(out_res, n, " (size limit reached)"); }
+      n = fww_cat(out_res, n, "; pass offset=");
+      n = fww_put_int(out_res, n, last_shown + 1);
+      n = fww_cat(out_res, n, " to read more]");
+    }
+    if dedup.count > 0 && dedup_cur.count > 0 {
+      fww_read_dedup_put(dedup, dedup_cur, ph, offset, last_shown, sz, ch, compact_epoch);
+    }
   }
   return n;
 }
 
-fww_tool_edit :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] u8, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+fww_tool_edit :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, fbuf: [] u8, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
   nodes: [128] JvNode; d: [1] Jv;
   if !jv_parse(d[..], args_json, nodes[..]) {
@@ -1852,65 +2223,125 @@ fww_tool_edit :: (cwd: string, args_json: string, fc: FlawedFileCache, fbuf: [] 
     fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string cannot be empty."));
     return fww_keep(out_res, "old_string cannot be empty.");
   }
+  if old_s == new_s {
+    is_err[0] = true;
+    fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string and new_string are identical."));
+    return fww_keep(out_res, "No changes to make: old_string and new_string are identical.");
+  }
 
-  // Count matches of old_s in content
+  // Count exact matches of old_s in content (recording match line numbers for actionable multi-match errors)
   matches := 0;
   first_pos := -1;
+  match_lines: [8] int;
+  nml := 0;
   pos := 0;
   while pos + old_s.count <= content.count {
     if cast(string) content[pos..<pos + old_s.count] == old_s {
       if first_pos < 0 { first_pos = pos; }
+      if nml < 8 { match_lines[nml] = fww_line_num_at(content, pos); nml += 1; }
       matches += 1;
       pos += old_s.count;
     } else {
       pos += 1;
     }
   }
+
+  // Smart fallback (Claude Code FileEditTool pattern): if exact match failed, try trailing-whitespace/CRLF-normalized match!
+  used_trimmed := false;
+  trim_from := [1] int.[0];
+  trim_to := [1] int.[0];
+  if matches == 0 && !rep_all {
+    tm := fww_find_trimmed_match(content, old_s, trim_from[..], trim_to[..]);
+    if tm == 1 {
+      used_trimmed = true;
+      matches = 1;
+      first_pos = trim_from[0];
+    }
+  }
+
   if matches == 0 {
     is_err[0] = true;
     fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string not found in file."));
-    return fww_keep(out_res, "old_string not found in file. Read the file to verify exact text.");
+    en_m := fww_cat(out_res, 0, "old_string not found in ");
+    en_m = fww_cat(out_res, en_m, raw_path);
+    en_m = fww_cat(out_res, en_m, ". Verify exact indentation and omit line-number prefixes.");
+    near_ln := fww_find_nearest_line(content, old_s);
+    if near_ln > 0 {
+      w_from := ifx near_ln > 5 then near_ln - 5 else 1;
+      w_to := near_ln + 5;
+      en_m = fww_cat(out_res, en_m, "\nNearest lines in file (around line ");
+      en_m = fww_put_int(out_res, en_m, near_ln);
+      en_m = fww_cat(out_res, en_m, "):\n");
+      en_m = fww_append_numbered_window(out_res, en_m, content, w_from, w_to);
+    }
+    return en_m;
   }
   if matches > 1 && !rep_all {
     is_err[0] = true;
     fww_send(wire_out, mww_command(wire_out, label, 1, false, "old_string matched multiple times."));
-    return fww_keep(out_res, "old_string matched multiple times; provide more surrounding context or set replace_all: true.");
+    en_m := fww_cat(out_res, 0, "old_string matched ");
+    en_m = fww_put_int(out_res, en_m, matches);
+    en_m = fww_cat(out_res, en_m, " times (lines ");
+    for k: 0..<nml {
+      if k > 0 { en_m = fww_cat(out_res, en_m, ", "); }
+      en_m = fww_put_int(out_res, en_m, match_lines[k]);
+    }
+    en_m = fww_cat(out_res, en_m, "); provide more surrounding context or set replace_all: true.");
+    return en_m;
   }
 
   // Build updated file contents into ebuf
   en := 0;
-  pos = 0;
   replaced := 0;
-  while pos < content.count {
-    if (rep_all || replaced == 0) && pos + old_s.count <= content.count && cast(string) content[pos..<pos + old_s.count] == old_s {
-      en = fww_cat(ebuf, en, new_s);
-      pos += old_s.count;
-      replaced += 1;
-    } else {
-      if en < ebuf.count { ebuf[en] = content[pos]; en += 1; }
-      pos += 1;
+  if used_trimmed {
+    en = fww_cat(ebuf, en, cast(string) content[0..<trim_from[0]]);
+    en = fww_cat(ebuf, en, new_s);
+    en = fww_cat(ebuf, en, cast(string) content[trim_to[0]..<content.count]);
+    replaced = 1;
+  } else {
+    pos = 0;
+    while pos < content.count {
+      if (rep_all || replaced == 0) && pos + old_s.count <= content.count && cast(string) content[pos..<pos + old_s.count] == old_s {
+        en = fww_cat(ebuf, en, new_s);
+        pos += old_s.count;
+        replaced += 1;
+      } else {
+        if en < ebuf.count { ebuf[en] = content[pos]; en += 1; }
+        pos += 1;
+      }
     }
   }
-  if !fs_write(full, cast(string) ebuf[0..<en]) {
+  updated := cast(string) ebuf[0..<en];
+  if !fs_write(full, updated) {
     is_err[0] = true;
     fww_send(wire_out, mww_command(wire_out, label, 1, false, "Failed to write edited file."));
     return fww_keep(out_res, "Failed to write edited file.");
   }
-  _ = flawed_fc_put(fc, full, cast(string) ebuf[0..<en], 1, cast(u64) en, proc_now_ms(), -1, -1, false);
+  _ = flawed_fc_put(fc, full, updated, 1, cast(u64) en, proc_now_ms(), -1, -1, false);
+  if dedup.count > 0 { fww_read_dedup_invalidate(dedup, fww_str_hash(full)); }
 
   diff_b: [4096] u8;
   dn := fww_format_diff(old_s, new_s, diff_b[..]);
   fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) diff_b[0..<dn]));
 
+  edit_line := fww_line_num_at(content, first_pos);
+  new_lines := fww_count_lines(new_s);
   rn := fww_cat(out_res, 0, "Edited ");
   rn = fww_cat(out_res, rn, raw_path);
   rn = fww_cat(out_res, rn, " (");
   rn = fww_put_int(out_res, rn, replaced);
-  rn = fww_cat(out_res, rn, " replacement(s)).");
+  rn = fww_cat(out_res, rn, " replacement(s) at line ");
+  rn = fww_put_int(out_res, rn, edit_line);
+  rn = fww_cat(out_res, rn, ").\n");
+  if !rep_all && new_lines <= 32 {
+    w_from := ifx edit_line > 2 then edit_line - 2 else 1;
+    w_to := edit_line + new_lines + 2;
+    rn = fww_append_numbered_window(out_res, rn, updated, w_from, w_to);
+  }
   return rn;
 }
 
-fww_tool_write :: (cwd: string, args_json: string, fc: FlawedFileCache, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
+fww_tool_write :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, ebuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
   nodes: [128] JvNode; d: [1] Jv;
   if !jv_parse(d[..], args_json, nodes[..]) {
@@ -1946,13 +2377,16 @@ fww_tool_write :: (cwd: string, args_json: string, fc: FlawedFileCache, ebuf: []
     return fww_keep(out_res, "Failed to write file.");
   }
   _ = flawed_fc_put(fc, full, body, 1, cast(u64) cn, proc_now_ms(), -1, -1, false);
+  if dedup.count > 0 { fww_read_dedup_invalidate(dedup, fww_str_hash(full)); }
   diff_b: [4096] u8;
   dn := fww_format_diff("", body, diff_b[..]);
   fww_send(wire_out, mww_command(wire_out, label, 0, false, cast(string) diff_b[0..<dn]));
 
   rn := fww_cat(out_res, 0, "Wrote ");
   rn = fww_put_int(out_res, rn, cn);
-  rn = fww_cat(out_res, rn, " bytes to ");
+  rn = fww_cat(out_res, rn, " bytes (");
+  rn = fww_put_int(out_res, rn, fww_count_lines(body));
+  rn = fww_cat(out_res, rn, " lines) to ");
   rn = fww_cat(out_res, rn, raw_path);
   return rn;
 }
@@ -1964,7 +2398,7 @@ fww_glob_walk :: (dir: string, rel_prefix: string, pattern: string, depth: int, 
   for i: 0..<n {
     if hits[0] >= max_hits || at[0] + 64 >= out.count { break; }
     name := fs_entry(lst[..], i);
-    if name.count == 0 || name == "." || name == ".." || name == ".git" || name == "node_modules" || name == ".build" { continue; }
+    if name.count == 0 || name == "." || name == ".." || name == ".git" || name == "node_modules" || name == ".build" || name == "build" || name == "target" || name == "dist" || name == ".venv" || name == ".cache" || name == "DerivedData" { continue; }
     fb: [FS_PATH_MAX] u8;
     full := fs_join(dir, name, fb[..]);
     rb: [FS_PATH_MAX] u8;
@@ -2017,43 +2451,113 @@ fww_tool_grep :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] boo
   if !jv_parse(d[..], args_json, nodes[..]) {
     is_err[0] = true; return fww_keep(out_res, "Invalid JSON arguments for Grep.");
   }
-  pat_b: [512] u8; sub_b: [1024] u8; glob_b: [256] u8;
+  pat_b: [512] u8; sub_b: [1024] u8; glob_b: [256] u8; type_b: [64] u8; mode_b: [32] u8;
   pn := jv_str(d[0], jv_get(d[0], 0, "pattern"), pat_b[..]);
   if pn <= 0 { is_err[0] = true; return fww_keep(out_res, "Grep requires pattern."); }
   pat := cast(string) pat_b[0..<pn];
   sn := jv_str(d[0], jv_get(d[0], 0, "path"), sub_b[..]);
   gn := jv_str(d[0], jv_get(d[0], 0, "glob"), glob_b[..]);
-  hlim := jv_int(d[0], jv_get(d[0], 0, "head_limit"), 80);
-  if hlim < 1 { hlim = 80; }
-  if hlim > 300 { hlim = 300; }
+  tn := jv_str(d[0], jv_get(d[0], 0, "type"), type_b[..]);
+  mn := jv_str(d[0], jv_get(d[0], 0, "output_mode"), mode_b[..]);
+  mode := ifx mn > 0 then cast(string) mode_b[0..<mn] else "content";
+  ci := jv_bool(d[0], jv_get(d[0], 0, "-i")) || jv_bool(d[0], jv_get(d[0], 0, "case_insensitive"));
+  ctx_c := jv_int(d[0], jv_get(d[0], 0, "context"), -1);
+  if ctx_c < 0 { ctx_c = jv_int(d[0], jv_get(d[0], 0, "-C"), 0); }
+  ctx_a := jv_int(d[0], jv_get(d[0], 0, "-A"), 0);
+  ctx_b := jv_int(d[0], jv_get(d[0], 0, "-B"), 0);
+  if ctx_c > 12 { ctx_c = 12; }
+  if ctx_a > 12 { ctx_a = 12; }
+  if ctx_b > 12 { ctx_b = 12; }
+  def_hlim := ifx mode == "content" then 60 else 100;
+  hlim := jv_int(d[0], jv_get(d[0], 0, "head_limit"), def_hlim);
+  if hlim <= 0 { hlim = 250; }
+  if hlim > 250 { hlim = 250; }
+  skip_n := jv_int(d[0], jv_get(d[0], 0, "offset"), 0);
+  if skip_n < 0 { skip_n = 0; }
 
-  base_b: [FS_PATH_MAX] u8;
-  base := ifx sn > 0 then fww_resolve_path(cwd, cast(string) sub_b[0..<sn], base_b[..]) else cwd;
+  // Run rg inside cwd with relative paths (eliminates 90-char /var/folders/... prefix noise on every line!)
+  search_target := ".";
+  if sn > 0 {
+    raw_sub := cast(string) sub_b[0..<sn];
+    if raw_sub.count > cwd.count + 1 && flawed_aw_starts(raw_sub, cwd) && raw_sub[cwd.count] == '/' {
+      search_target = cast(string) raw_sub[cwd.count + 1..<raw_sub.count];
+    } else if raw_sub == cwd {
+      search_target = ".";
+    } else {
+      search_target = raw_sub;
+    }
+  }
 
   h := proc_new();
   n := 0;
+  truncated := false;
+  max_grep_b := ifx FWW_GREP_MAX_BYTES < out_res.count then FWW_GREP_MAX_BYTES else out_res.count;
   if h >= 0 {
-    ok := proc_arg(h, "rg") && proc_arg(h, "--no-heading") && proc_arg(h, "--line-number") && proc_arg(h, "--color=never") && proc_arg(h, "--max-count=10");
+    ok := proc_arg(h, "rg") && proc_arg(h, "--color=never") && proc_cwd(h, cwd);
+    if mode == "files_with_matches" {
+      ok = ok && proc_arg(h, "--files-with-matches");
+    } else if mode == "count" {
+      ok = ok && proc_arg(h, "--count");
+    } else {
+      ok = ok && proc_arg(h, "--no-heading") && proc_arg(h, "--line-number") && proc_arg(h, "--max-count=15");
+      num_b: [16] u8;
+      if ctx_c > 0 {
+        nn := fww_put_int(num_b[..], 0, ctx_c);
+        ok = ok && proc_arg(h, "-C") && proc_arg(h, cast(string) num_b[0..<nn]);
+      } else {
+        if ctx_b > 0 {
+          nn := fww_put_int(num_b[..], 0, ctx_b);
+          ok = ok && proc_arg(h, "-B") && proc_arg(h, cast(string) num_b[0..<nn]);
+        }
+        if ctx_a > 0 {
+          nn := fww_put_int(num_b[..], 0, ctx_a);
+          ok = ok && proc_arg(h, "-A") && proc_arg(h, cast(string) num_b[0..<nn]);
+        }
+      }
+    }
+    if ci { ok = ok && proc_arg(h, "-i"); }
     if gn > 0 { ok = ok && proc_arg(h, "--glob") && proc_arg(h, cast(string) glob_b[0..<gn]); }
-    ok = ok && proc_arg(h, "--") && proc_arg(h, pat) && proc_arg(h, base) && proc_err_to_out(h);
+    if tn > 0 { ok = ok && proc_arg(h, "--type") && proc_arg(h, cast(string) type_b[0..<tn]); }
+    ok = ok && proc_arg(h, "--") && proc_arg(h, pat) && proc_arg(h, search_target) && proc_err_to_out(h);
     if ok && proc_start(h) == 0 {
       _ = proc_close_stdin(h);
       lbuf: [4096] u8;
+      seen := 0;
       lines := 0;
       deadline := proc_now_ms() + 15000;
-      while lines < hlim && proc_now_ms() < deadline {
+      while proc_now_ms() < deadline {
         r := proc_line(h, 200, lbuf[..]);
         if r == PROC_EOF { break; }
         if r == PROC_TIMEOUT { continue; }
         if r < 0 { break; }
-        if n + r + 2 >= out_res.count { break; }
-        n = fww_cat(out_res, n, cast(string) lbuf[0..<r]);
+        if seen < skip_n { seen += 1; continue; }
+        line_s := cast(string) lbuf[0..<r];
+        if line_s.count >= 2 && line_s[0] == '.' && line_s[1] == '/' {
+          line_s = cast(string) line_s[2..<line_s.count];
+        }
+        line_clipped := false;
+        if line_s.count > FWW_GREP_LINE_MAX {
+          cut := fww_utf8_cut(line_s, FWW_GREP_LINE_MAX);
+          line_s = cast(string) line_s[0..<cut];
+          line_clipped = true;
+        }
+        if lines >= hlim || n + line_s.count + 128 >= max_grep_b {
+          truncated = true;
+          break;
+        }
+        n = fww_cat(out_res, n, line_s);
+        if line_clipped { n = fww_cat(out_res, n, "..."); }
         n = fww_cat(out_res, n, "\n");
         lines += 1;
+        seen += 1;
       }
+      if truncated { _ = proc_kill(h, PROC_SIGTERM); }
       _ = proc_wait(h, 1000);
     }
     _ = proc_release(h);
+  }
+  if truncated {
+    n = fww_cat(out_res, n, "... [truncated; narrow with path/glob or output_mode=files_with_matches]");
   }
   if n == 0 { n = fww_keep(out_res, "No matches found."); }
   lbl_b: [600] u8;
@@ -2155,14 +2659,96 @@ FwAsyncCmd :: struct {
   deadline_ms: int;
   timed_out: bool;
   cmd: [8192] u8; ncmd: int;
+  head: [FWW_CMD_HEAD_MAX] u8; nhead: int;
+  tail: [FWW_CMD_TAIL_MAX] u8; tail_pos: int; tail_len: int;
+  omitted_bytes: int;
   out: [FWW_TOOL_OUT_MAX] u8; nout: int;
+}
+
+fww_cmd_ring_byte :: (c: [] FwAsyncCmd, ch: u8) {
+  cap := c[0].tail.count;
+  c[0].tail[c[0].tail_pos] = ch;
+  c[0].tail_pos = (c[0].tail_pos + 1) % cap;
+  if c[0].tail_len < cap {
+    c[0].tail_len += 1;
+  } else {
+    c[0].omitted_bytes += 1;
+  }
+}
+
+fww_cmd_push_line :: (c: [] FwAsyncCmd, line: string) {
+  need := line.count + 1;
+  if c[0].tail_len == 0 && c[0].omitted_bytes == 0 && c[0].nhead + need <= c[0].head.count {
+    c[0].nhead = fww_cat(c[0].head[..], c[0].nhead, line);
+    c[0].nhead = fww_cat(c[0].head[..], c[0].nhead, "\n");
+    return;
+  }
+  for ch: line { fww_cmd_ring_byte(c, ch); }
+  fww_cmd_ring_byte(c, '\n');
+}
+
+// Assemble streaming head + omitted-byte marker + circular tail into c[0].out (UTF-8 safe).
+fww_cmd_finalize :: (c: [] FwAsyncCmd) -> int {
+  n := 0;
+  if c[0].nhead > 0 {
+    n = fww_cat(c[0].out[..], n, cast(string) c[0].head[0..<c[0].nhead]);
+  }
+  if c[0].omitted_bytes > 0 {
+    n = fww_cat(c[0].out[..], n, "\n... [");
+    n = fww_put_int(c[0].out[..], n, c[0].omitted_bytes);
+    n = fww_cat(c[0].out[..], n, " bytes omitted in middle; showing head and tail] ...\n");
+  }
+  if c[0].tail_len > 0 {
+    cap := c[0].tail.count;
+    start := ifx c[0].tail_len < cap then 0 else c[0].tail_pos;
+    skip := 0;
+    if c[0].omitted_bytes > 0 {
+      while skip < c[0].tail_len && skip < 4 && (c[0].tail[(start + skip) % cap] & 0xC0) == 0x80 {
+        skip += 1;
+      }
+    }
+    for i: skip..<c[0].tail_len {
+      if n >= c[0].out.count { break; }
+      c[0].out[n] = c[0].tail[(start + i) % cap];
+      n += 1;
+    }
+  }
+  c[0].nout = n;
+  return n;
+}
+
+// Format finalized command output for the model's tool_result (preserving head+tail and explicit exit status).
+fww_cmd_tool_result :: (c: [] FwAsyncCmd, exit_c: int, timed_out: bool, dst: [] u8) -> int {
+  out_s := cast(string) c[0].out[0..<c[0].nout];
+  if timed_out {
+    n := 0;
+    if out_s.count > 0 {
+      lim := ifx out_s.count < dst.count - 128 then out_s.count else fww_utf8_cut(out_s, dst.count - 128);
+      n = fww_cat(dst, n, cast(string) out_s[0..<lim]);
+      n = fww_cat(dst, n, "\n");
+    }
+    return fww_cat(dst, n, "[Command timed out (exit 124). Optimize your command/script and avoid unbounded runs.]");
+  }
+  if out_s.count == 0 {
+    if exit_c == 0 { return fww_keep(dst, "(command succeeded with no output)"); }
+    n := fww_cat(dst, 0, "[Exit code: ");
+    n = fww_put_int(dst, n, exit_c);
+    return fww_cat(dst, n, "] (no output)");
+  }
+  if exit_c == 0 { return fww_keep(dst, out_s); }
+  max_body := ifx dst.count > 48 then dst.count - 48 else dst.count;
+  body_n := ifx out_s.count <= max_body then out_s.count else fww_utf8_cut(out_s, max_body);
+  n := fww_cat(dst, 0, cast(string) out_s[0..<body_n]);
+  n = fww_cat(dst, n, "\n[Exit code: ");
+  n = fww_put_int(dst, n, exit_c);
+  return fww_cat(dst, n, "]");
 }
 
 FwStreamAccum :: struct {
   text: [131072] u8; ntext: int;
   think: [65536] u8; nthink: int;
-  sig: [32768] u8; nsig: int;
-  tool_sig_slab: [65536] u8; ntool_sig_slab: int;
+  sig: [131072] u8; nsig: int;
+  tool_sig_slab: [262144] u8; ntool_sig_slab: int;
   tools: [FWW_MAX_TOOLS_CALL] FwPendingTool;
   ntools: int;
   cur_block_kind: int;
@@ -2210,6 +2796,16 @@ FwRun :: struct {
   ctx_recoveries: int;
   effective_ctx_cap: int;
   last_req_est_bytes: int;
+  read_only_steps: int;
+  post_edit_steps: int;
+  turn_tool_bytes: int;
+  nudge_stage: int;
+  has_edited: bool;
+  finish_nudged: bool;
+  read_dedup: [FWW_READ_DEDUP_SLOTS] FwReadDedup;
+  read_dedup_cur: [1] int;
+  git_snap: [2560] u8; ngit_snap: int;
+  git_snap_cwd: [FS_PATH_MAX] u8; ngit_snap_cwd: int;
 }
 
 fww_tool_sig_hash :: (name: string, args: string) -> int {
@@ -2237,10 +2833,10 @@ FwFollow :: struct {
 }
 
 FwBufs :: struct {
-  req_body: [524288] u8;
-  sse_line: [131072] u8;
+  req_body: [1048576] u8;
+  sse_line: [262144] u8;
   ev_txt: [65536] u8;
-  sig_buf: [32768] u8;
+  sig_buf: [131072] u8;
   file_buf: [FWW_FILE_MAX] u8;
   edit_buf: [FWW_FILE_MAX] u8;
   compact_buf: [524288] u8;
@@ -2458,7 +3054,7 @@ fww_tool_target :: (name: string, args_json: string, out: [] u8) -> string {
 }
 
 // Execute one tool call (after permission check passed). Returns true if async (Bash running).
-fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, b: [] FwBufs, idx: int, out: [] u8) -> bool {
+fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, b: [] FwBufs, idx: int, out: [] u8) -> bool {
   name := cast(string) r[0].acc[0].tools[idx].name[0..<r[0].acc[0].tools[idx].nname];
   args := cast(string) r[0].acc[0].tools[idx].args[0..<r[0].acc[0].tools[idx].nargs];
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
@@ -2489,9 +3085,10 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, b: [] FwBufs, idx: int, out
   }
 
   rn := 0;
-  if name == "Read" { rn = fww_tool_read(cwd, args, fww_fc(b), b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
-  else if name == "Edit" { rn = fww_tool_edit(cwd, args, fww_fc(b), b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
-  else if name == "Write" { rn = fww_tool_write(cwd, args, fww_fc(b), b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  is_local := auth[0].backend == FLAWED_BE_LOCAL;
+  if name == "Read" { rn = fww_tool_read(cwd, args, fww_fc(b), r[0].read_dedup[..], r[0].read_dedup_cur[..], h[0].compact_count, is_local, b[0].file_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Edit" { rn = fww_tool_edit(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].file_buf[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
+  else if name == "Write" { rn = fww_tool_write(cwd, args, fww_fc(b), r[0].read_dedup[..], b[0].edit_buf[..], r[0].acc[0].tools[idx].res[..], is_err[..], out); }
   else if name == "Glob" { rn = fww_tool_glob(cwd, args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
   else if name == "Grep" { rn = fww_tool_grep(cwd, args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
   else if name == "TodoWrite" { rn = fww_tool_todos(args, r[0].acc[0].tools[idx].res[..], is_err[..], out); }
@@ -2539,7 +3136,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       return "";
     }
     r[0].next_tool_idx += 1;
-    if fww_exec_tool_now(r, cfg, b, idx, out) {
+    if fww_exec_tool_now(r, cfg, auth, h, b, idx, out) {
       return ""; // async Bash running
     }
   }
@@ -2570,6 +3167,29 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   hit_dup_limit := r[0].dup_tool_streak >= 2;
   need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit;
 
+  // Track edit progress & Stage-B per-turn aggregate tool-result budget (Claude Code toolResultStorage.ts pattern:
+  // Read ALWAYS opts out — maxResultSizeChars: Infinity — so Stage B never truncates Read content and breaks dedup!)
+  step_had_edit := false;
+  step_tot_bytes := 0;
+  non_read_bytes := 0;
+  non_read_cnt := 0;
+  for ti: 0..<r[0].acc[0].ntools {
+    nm_ti := cast(string) r[0].acc[0].tools[ti].name[0..<r[0].acc[0].tools[ti].nname];
+    if (nm_ti == "Edit" || nm_ti == "Write") && !r[0].acc[0].tools[ti].is_error {
+      step_had_edit = true;
+    }
+    nb_ti := r[0].acc[0].tools[ti].nres;
+    step_tot_bytes += nb_ti;
+    if nm_ti != "Read" {
+      non_read_bytes += nb_ti;
+      non_read_cnt += 1;
+    }
+  }
+  if step_had_edit { r[0].has_edited = true; }
+  else if !r[0].has_edited { r[0].read_only_steps += 1; }
+  if r[0].has_edited { r[0].post_edit_steps += 1; }
+  r[0].turn_tool_bytes += step_tot_bytes;
+
   // All tool calls finished! Ensure message slot & slab headroom exist before committing tool_results.
   if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab >= FWW_SLAB - 131072 {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
@@ -2579,14 +3199,24 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS};
     nb := 0;
     is_local_tr := auth[0].backend == FLAWED_BE_LOCAL;
+    turn_budget := ifx is_local_tr then FWW_TURN_TOOLS_BUDGET_LOCAL else FWW_TURN_TOOLS_BUDGET_CLOUD;
+    per_non_read_cap := ifx is_local_tr then FWW_LOCAL_TOOL_OUT_MAX else FWW_TOOL_OUT_MAX;
+    if non_read_bytes > turn_budget && non_read_cnt > 1 {
+      share := turn_budget / non_read_cnt;
+      min_share := ifx is_local_tr then 4096 else 10240;
+      if share < min_share { share = min_share; }
+      if share < per_non_read_cap { per_non_read_cap = share; }
+    }
     for i: 0..<r[0].acc[0].ntools {
       if nb >= FWW_MAX_BLOCKS { break; }
       a0 := [1] int.[0];
       id_s := cast(string) r[0].acc[0].tools[i].id[0..<r[0].acc[0].tools[i].nid];
       nm_s := cast(string) r[0].acc[0].tools[i].name[0..<r[0].acc[0].tools[i].nname];
       res_s := cast(string) r[0].acc[0].tools[i].res[0..<r[0].acc[0].tools[i].nres];
-      if is_local_tr && res_s.count > FWW_LOCAL_TOOL_OUT_MAX {
-        sn := fww_shrink_head_tail(b[0].compact_buf[..], 0, res_s, FWW_LOCAL_TOOL_OUT_MAX, "truncated for 32K local context; use Read offset/limit or Grep;");
+      // Claude Code invariant: Read is self-bounded (FWW_READ_CLOUD_BYTES / FWW_LOCAL_TOOL_OUT_MAX) and opts out of Stage B!
+      if nm_s != "Read" && res_s.count > per_non_read_cap {
+        why_s := ifx is_local_tr then "truncated for 32K local context; use targeted filters;" else "trimmed by per-turn tool-result budget; use narrower Grep path/glob or concise Bash output;";
+        sn := fww_shrink_head_tail(b[0].compact_buf[..], 0, res_s, per_non_read_cap, why_s);
         res_s = cast(string) b[0].compact_buf[0..<sn];
       }
       bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = r[0].acc[0].tools[i].is_error};
@@ -2595,6 +3225,29 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       bk.text_n = fww_slab_put(h, res_s, a0[..]); bk.text_at = a0[0];
       h[0].msgs[mi].blocks[nb] = bk;
       nb += 1;
+    }
+    // Cache-safe <system-reminder> pacing nudges: (1) transition from read-only exploration to editing, (2) finish once verified
+    if !cfg[0].bare_mode && !need_wrapup && nb < FWW_MAX_BLOCKS {
+      nudge := "";
+      if !r[0].has_edited {
+        if r[0].nudge_stage == 0 && (r[0].read_only_steps >= 4 || (r[0].read_only_steps >= 3 && r[0].turn_tool_bytes >= 98304)) {
+          r[0].nudge_stage = 1;
+          nudge = "<system-reminder>Exploration checkpoint: you have gathered substantial context across multiple read-only turns without editing any files yet. If this task requires code changes, stop reading tangential files or git history, make your first concrete Edit/Write now, and let the compiler/tests verify edge cases. (If the user only asked a question, answer concisely now.)</system-reminder>";
+        } else if r[0].nudge_stage == 1 && r[0].read_only_steps >= 7 {
+          r[0].nudge_stage = 2;
+          nudge = "<system-reminder>7 read-only turns elapsed without an edit. Stop exploring and immediately apply your implementation changes with Edit/Write (batching independent edits in one turn), then run the targeted verification command.</system-reminder>";
+        }
+      } else if !r[0].finish_nudged && r[0].post_edit_steps >= 7 {
+        r[0].finish_nudged = true;
+        nudge = "<system-reminder>You have made edits and completed several follow-up steps. If the requested changes are in place and your targeted tests/checks pass, stop polishing and deliver your concise final response now.</system-reminder>";
+      }
+      if nudge.count > 0 {
+        a0 := [1] int.[0];
+        nb_rem := FwBlock.{kind = FWW_MB_TEXT};
+        nb_rem.text_n = fww_slab_put(h, nudge, a0[..]); nb_rem.text_at = a0[0];
+        h[0].msgs[mi].blocks[nb] = nb_rem;
+        nb += 1;
+      }
     }
     // Inject any pending mid-turn steers right into this user turn!
     if st[0].n > 0 && nb < FWW_MAX_BLOCKS {
@@ -2679,11 +3332,13 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].nerr = fww_extract_err_msg(cast(string) r[0].acc[0].err_body[0..<r[0].acc[0].nerr_body], r[0].acc[0].err_msg[..]);
     }
     err_s := cast(string) r[0].acc[0].err_msg[0..<r[0].acc[0].nerr];
-    is_struct_err := fww_contains_ci(err_s, "ending with a model turn")
+    is_sig_err := fww_contains_ci(err_s, "thought signature")
+               || fww_contains_ci(err_s, "thought_signature")
+               || fww_contains_ci(err_s, "thoughtsignature");
+    is_struct_err := is_sig_err
+                  || fww_contains_ci(err_s, "ending with a model turn")
                   || fww_contains_ci(err_s, "function call turn")
                   || fww_contains_ci(err_s, "function response turn")
-                  || fww_contains_ci(err_s, "thought signature")
-                  || fww_contains_ci(err_s, "thought_signature")
                   || fww_contains_ci(err_s, "must alternate")
                   || fww_contains_ci(err_s, "tool_call_id");
     if (fww_is_context_overflow_err(err_s) || is_struct_err) && r[0].ctx_recoveries < 3 {
@@ -2694,8 +3349,11 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
           r[0].effective_ctx_cap = parsed_lim;
         }
         _ = fww_emergency_compact(h, r[0].ctx_recoveries, r[0].effective_ctx_cap, b[0].compact_buf[..]);
+      } else if is_sig_err && r[0].ctx_recoveries == 1 {
+        // Surgical signature repair: preserve full conversation history instead of wiping 50K+ tokens!
+        fww_hist_strip_thought_sigs(h);
       } else {
-        // Structural turn/signature mismatch: collapse to clean summary USER turn so retry is 100% valid!
+        // Structural turn mismatch: collapse to clean summary USER turn so retry is 100% valid!
         _ = fww_emergency_compact(h, 3, r[0].effective_ctx_cap, b[0].compact_buf[..]);
       }
       fww_hist_sanitize(h, b[0].compact_buf[..]);
@@ -2757,6 +3415,10 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if r[0].acc[0].in_tok > 0 {
     h[0].last_in_tok = r[0].acc[0].in_tok;
     h[0].last_in_bytes = r[0].last_req_est_bytes;
+  }
+  if auth[0].backend != FLAWED_BE_LOCAL {
+    h[0].last_cloud_turn_ms = proc_now_ms();
+    if r[0].acc[0].cache_read > 0 { h[0].last_cached_tok = r[0].acc[0].cache_read; }
   }
   fww_emit_attempt(r, auth, "done", status, cost, out);
 
@@ -2876,19 +3538,17 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
         r[0].cmd[0].active = false;
         ti := r[0].cmd[0].tool_idx;
         cmd_s := cast(string) r[0].cmd[0].cmd[0..<r[0].cmd[0].ncmd];
+        _ = fww_cmd_finalize(r[0].cmd[..]);
         out_s := cast(string) r[0].cmd[0].out[0..<r[0].cmd[0].nout];
         fww_send(out, mww_command(out, cmd_s, exit_c, r[0].cmd[0].timed_out, out_s));
-        r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], ifx out_s.count > 0 then out_s else "(no output)");
+        r[0].acc[0].tools[ti].nres = fww_cmd_tool_result(r[0].cmd[..], exit_c, r[0].cmd[0].timed_out, r[0].acc[0].tools[ti].res[..]);
         r[0].acc[0].tools[ti].is_error = exit_c != 0 || r[0].cmd[0].timed_out;
         r[0].acc[0].tools[ti].done = true;
         active_io[0] = true;
         return fww_advance_tools(r, cfg, auth, h, b, st, out);
       }
       active_io[0] = true;
-      if r[0].cmd[0].nout + ln + 2 < r[0].cmd[0].out.count {
-        r[0].cmd[0].nout = fww_cat(r[0].cmd[0].out[..], r[0].cmd[0].nout, cast(string) lbuf[0..<ln]);
-        r[0].cmd[0].nout = fww_cat(r[0].cmd[0].out[..], r[0].cmd[0].nout, "\n");
-      }
+      fww_cmd_push_line(r[0].cmd[..], cast(string) lbuf[0..<ln]);
     }
     if proc_now_ms() >= r[0].cmd[0].deadline_ms {
       r[0].cmd[0].timed_out = true;
@@ -2899,9 +3559,10 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
       r[0].cmd[0].active = false;
       ti := r[0].cmd[0].tool_idx;
       cmd_s := cast(string) r[0].cmd[0].cmd[0..<r[0].cmd[0].ncmd];
+      _ = fww_cmd_finalize(r[0].cmd[..]);
       out_s := cast(string) r[0].cmd[0].out[0..<r[0].cmd[0].nout];
       fww_send(out, mww_command(out, cmd_s, 124, true, out_s));
-      r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], "Command timed out. Optimize your script (avoid unbounded brute force) and try a faster approach.");
+      r[0].acc[0].tools[ti].nres = fww_cmd_tool_result(r[0].cmd[..], 124, true, r[0].acc[0].tools[ti].res[..]);
       r[0].acc[0].tools[ti].is_error = true;
       r[0].acc[0].tools[ti].done = true;
       return fww_advance_tools(r, cfg, auth, h, b, st, out);
@@ -3068,6 +3729,8 @@ fww_handle_slash :: (tk: string, r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth,
   cmd := fww_trim(tk);
   if cmd == "/clear" {
     fww_hist_clear(h);
+    for di: 0..<r[0].read_dedup.count { r[0].read_dedup[di] = FwReadDedup.{}; }
+    r[0].ngit_snap = 0; r[0].ngit_snap_cwd = 0;
     fww_send(out, mww_ended(out, "finished", "Cleared Flawed conversation history."));
     return true;
   }
@@ -3341,6 +4004,8 @@ tool_main :: () -> int #export_c #effects(all) {
     if what == MWW_FORGET {
       if !run[0].active {
         fww_hist_clear(hist[..]);
+        for di: 0..<run[0].read_dedup.count { run[0].read_dedup[di] = FwReadDedup.{}; }
+        run[0].ngit_snap = 0; run[0].ngit_snap_cwd = 0;
         run[0].session_allow = false;
       }
       continue;
@@ -3362,7 +4027,7 @@ tool_main :: () -> int #export_c #effects(all) {
           if req[0].allow {
             if req[0].option == "allow_session" { run[0].session_allow = true; }
             run[0].next_tool_idx = ti + 1;
-            if !fww_exec_tool_now(run[..], cfg[..], bufs[..], ti, out[..]) {
+            if !fww_exec_tool_now(run[..], cfg[..], auth[..], hist[..], bufs[..], ti, out[..]) {
               e := fww_advance_tools(run[..], cfg[..], auth[..], hist[..], bufs[..], st[..], out[..]);
               if e.count > 0 { fww_turn_end(e, st[..], q[..], f[..], out[..]); }
             }
@@ -3421,6 +4086,12 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].soft_deadline_ms = 0;
     run[0].last_tool_hash = 0;
     run[0].dup_tool_streak = 0;
+    run[0].read_only_steps = 0;
+    run[0].post_edit_steps = 0;
+    run[0].turn_tool_bytes = 0;
+    run[0].nudge_stage = 0;
+    run[0].has_edited = false;
+    run[0].finish_nudged = false;
 
     // Handle local slash commands instantaneously
     if fww_handle_slash(tk, run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]) {
@@ -3435,6 +4106,21 @@ tool_main :: () -> int #export_c #effects(all) {
     }
 
     run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+    if !cfg[0].bare_mode {
+      if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
+        run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
+        run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
+      }
+      if run[0].ngit_snap > 0 {
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+      }
+    }
+    if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
+      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
+      if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
+        _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
+      }
+    }
     if hist[0].nmsgs >= FWW_MAX_MSGS - 4 {
       _ = fww_hist_compact(hist[..], bufs[0].compact_buf[..]);
     }
@@ -3754,4 +4440,101 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert ml2 >= 2;
   om_last := jv_str(d[0], jv_get(d[0], jv_at(d[0], ms2, ml2 - 1), "role"), rb[..]);
   #assert cast(string) rb[0..<om_last] == "user";
+}
+
+#test "flawedworker: v1 harness primitives (Read dedup/range, Edit fallback/diagnostics, Bash head+tail, signature repair)" #steps 200000000 {
+  // 1. Line helpers + trimmed whitespace fallback + nearest-line diagnostics
+  sample := "alpha\nbeta  \ngamma\r\ndelta\nalpha\n";
+  #assert fww_count_lines(sample) == 5 && fww_count_lines("") == 0 && fww_count_lines("one") == 1;
+  #assert fww_line_num_at(sample, 0) == 1 && fww_line_num_at(sample, 6) == 2;
+  tf := [1] int.[0]; tt := [1] int.[0];
+  #assert fww_find_trimmed_match(sample, "beta\ngamma\n", tf[..], tt[..]) == 1;
+  #assert cast(string) sample[tf[0]..<tt[0]] == "beta  \ngamma\r\n";
+  #assert fww_find_trimmed_match(sample, "alpha\n", tf[..], tt[..]) == 2;
+  #assert fww_find_nearest_line(sample, "something_delta_missing\ngamma") == 3;
+
+  // 2. Read dedup slot hit/miss/sub-range/epoch/invalidation
+  slots: [4] FwReadDedup;
+  cur := [1] int.[0];
+  ph := fww_str_hash("/tmp/a.coax");
+  ch := fww_str_hash("hello world");
+  #assert !fww_read_dedup_hit(slots[..], ph, 1, 500, 11, ch, 0);
+  fww_read_dedup_put(slots[..], cur[..], ph, 1, 500, 11, ch, 0);
+  #assert fww_read_dedup_hit(slots[..], ph, 1, 500, 11, ch, 0);
+  #assert fww_read_dedup_hit(slots[..], ph, 120, 320, 11, ch, 0); // sub-range covered!
+  #assert !fww_read_dedup_hit(slots[..], ph, 1, 600, 11, ch, 0); // extends past cached end_line
+  #assert !fww_read_dedup_hit(slots[..], ph, 1, 500, 11, ch, 1); // invalidated by compaction epoch
+  #assert !fww_read_dedup_hit(slots[..], ph, 1, 500, 12, ch, 0); // invalidated by size change
+  fww_read_dedup_invalidate(slots[..], ph);
+  #assert !fww_read_dedup_hit(slots[..], ph, 1, 500, 11, ch, 0);
+
+  // 3. Streaming Bash head+tail buffer preserves BOTH first lines and final summary lines + exit code!
+  cmd: [1] FwAsyncCmd;
+  for i: 0..<1200 {
+    lb: [96] u8;
+    ln := fww_cat(lb[..], 0, "line_");
+    ln = fww_put_int(lb[..], ln, i);
+    ln = fww_cat(lb[..], ln, "_012345678901234567890123456789012345678901234567890123456789");
+    fww_cmd_push_line(cmd[..], cast(string) lb[0..<ln]);
+  }
+  fn := fww_cmd_finalize(cmd[..]);
+  out_s := cast(string) cmd[0].out[0..<fn];
+  #assert cmd[0].omitted_bytes > 0;
+  #assert fww_contains_ci(out_s, "line_0_");
+  #assert fww_contains_ci(out_s, "bytes omitted in middle");
+  #assert fww_contains_ci(out_s, "line_1199_");
+  res_b: [FWW_TOOL_OUT_MAX] u8;
+  rn1 := fww_cmd_tool_result(cmd[..], 2, false, res_b[..]);
+  #assert fww_contains_ci(cast(string) res_b[0..<rn1], "[Exit code: 2]");
+  empty_cmd: [1] FwAsyncCmd;
+  rn2 := fww_cmd_tool_result(empty_cmd[..], 0, false, res_b[..]);
+  #assert cast(string) res_b[0..<rn2] == "(command succeeded with no output)";
+
+  // 4. Surgical thoughtSignature repair preserves all messages & swaps tool_use sig to Gemini skip sentinel
+  h: [1] FwHist;
+  fww_hist_push_user(h[..], "fix bug");
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 2};
+  a0 := [1] int.[0];
+  b0 := FwBlock.{kind = FWW_MB_TEXT};
+  b0.text_n = fww_slab_put(h[..], "checking", a0[..]); b0.text_at = a0[0];
+  b0.sig_n = fww_slab_put(h[..], "bad_sig_text", a0[..]); b0.sig_at = a0[0];
+  b1 := FwBlock.{kind = FWW_MB_TOOL_USE};
+  b1.id_n = fww_slab_put(h[..], "c1", a0[..]); b1.id_at = a0[0];
+  b1.name_n = fww_slab_put(h[..], "Read", a0[..]); b1.name_at = a0[0];
+  b1.text_n = fww_slab_put(h[..], "{\"file_path\":\"a.coax\"}", a0[..]); b1.text_at = a0[0];
+  b1.sig_n = fww_slab_put(h[..], "corrupted_sig", a0[..]); b1.sig_at = a0[0];
+  h[0].msgs[1].blocks[0] = b0;
+  h[0].msgs[1].blocks[1] = b1;
+  h[0].nmsgs = 2;
+  fww_hist_strip_thought_sigs(h[..]);
+  #assert h[0].nmsgs == 2;
+  #assert h[0].msgs[1].blocks[0].sig_n == 0;
+  #assert fww_slab_str(h[..], h[0].msgs[1].blocks[1].sig_at, h[0].msgs[1].blocks[1].sig_n) == "skip_thought_signature_validator";
+
+  // 5. Gemini wire serialization folds trailing FWW_MB_TEXT (<system-reminder>/steer) into last functionResponse.output
+  //    so parts[] contains ONLY functionResponse parts (1-to-1 with functionCall, never HTTP 400 on Vertex AI!)
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 2};
+  tr0 := FwBlock.{kind = FWW_MB_TOOL_RES};
+  tr0.id_n = fww_slab_put(h[..], "c1", a0[..]); tr0.id_at = a0[0];
+  tr0.name_n = fww_slab_put(h[..], "Read", a0[..]); tr0.name_at = a0[0];
+  tr0.text_n = fww_slab_put(h[..], "1\tline one", a0[..]); tr0.text_at = a0[0];
+  tr1 := FwBlock.{kind = FWW_MB_TEXT};
+  tr1.text_n = fww_slab_put(h[..], "<system-reminder>Edit now.</system-reminder>", a0[..]); tr1.text_at = a0[0];
+  h[0].msgs[2].blocks[0] = tr0;
+  h[0].msgs[2].blocks[1] = tr1;
+  h[0].nmsgs = 3;
+  cfg: [1] FwConfig;
+  gbody: [32768] u8;
+  gn := fww_build_gemini_body(cfg[..], h[..], "high", "sys", false, gbody[..]);
+  nodes: [1024] JvNode; gd: [1] Jv;
+  #assert gn > 0 && jv_parse(gd[..], cast(string) gbody[0..<gn], nodes[..]);
+  cts := jv_get(gd[0], 0, "contents");
+  #assert jv_len(gd[0], cts) == 3;
+  tr_parts := jv_get(gd[0], jv_at(gd[0], cts, 2), "parts");
+  #assert jv_len(gd[0], tr_parts) == 1; // strictly 1 functionResponse part, zero sibling text parts!
+  fr0 := jv_get(gd[0], jv_at(gd[0], tr_parts, 0), "functionResponse");
+  #assert jv_kind(gd[0], fr0) == JV_OBJECT;
+  out_b: [512] u8;
+  on := jv_str(gd[0], jv_get(gd[0], jv_get(gd[0], fr0, "response"), "output"), out_b[..]);
+  #assert on > 0 && fww_contains_ci(cast(string) out_b[0..<on], "line one") && fww_contains_ci(cast(string) out_b[0..<on], "<system-reminder>Edit now.");
 }

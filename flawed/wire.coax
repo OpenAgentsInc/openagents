@@ -445,12 +445,12 @@ FLAWED_WIRE_NTOOLS :: 8;
 flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, disallowed_csv: string) -> int #effects(all) {
   names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
-    "Read a file from the filesystem with optional 1-based offset and line limit.",
-    "Perform exact string replacement inside an existing file (read the file first).",
-    "Create a new file or overwrite an existing file with complete contents.",
-    "Execute a shell command in the working directory and return stdout/stderr and exit code.",
-    "Find files matching a glob pattern (e.g. **/*.coax, src/*.swift).",
-    "Search file contents for a regex or literal pattern across the workspace.",
+    "Read a file with 1-based line numbers (default 600 lines on cloud, 300 local). Pass offset and limit for larger files. Prefer Read over cat/head/tail/sed.",
+    "Exact string replacement in an existing file (read the file first). Preserve exact indentation after the line-number tab prefix; never include line numbers. Use the smallest unique old_string (2-4 lines) or set replace_all: true. You may batch multiple independent Edit calls in one response.",
+    "Create a new file or overwrite an existing file with complete contents. Prefer Edit when modifying existing files.",
+    "Execute a shell command in the working directory; returns head+tail output and exit code. Chain dependent commands with &&; reserve Bash for builds, tests, git, and scripts rather than reading/editing/searching files.",
+    "Find files matching a glob pattern (e.g. **/*.coax, src/*.swift). Prefer Glob over find/ls.",
+    "Search file contents with ripgrep using compact relative paths. Use output_mode: files_with_matches for broad file discovery, or content (with path/glob filter) for matching lines with -C/-A/-B context and -i case-insensitive matching.",
     "Update the task checklist displayed to the user.",
     "Fetch text content from an http(s) URL (SSRF-protected).",
   ];
@@ -460,7 +460,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
     "{\"type\":\"object\",\"properties\":{\"file_path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"file_path\",\"content\"]}",
     "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"},\"timeout\":{\"type\":\"integer\"},\"description\":{\"type\":\"string\"}},\"required\":[\"command\"]}",
     "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"}},\"required\":[\"pattern\"]}",
-    "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"glob\":{\"type\":\"string\"},\"head_limit\":{\"type\":\"integer\"}},\"required\":[\"pattern\"]}",
+    "{\"type\":\"object\",\"properties\":{\"pattern\":{\"type\":\"string\"},\"path\":{\"type\":\"string\"},\"glob\":{\"type\":\"string\"},\"type\":{\"type\":\"string\"},\"output_mode\":{\"type\":\"string\",\"enum\":[\"content\",\"files_with_matches\",\"count\"]},\"context\":{\"type\":\"integer\"},\"-C\":{\"type\":\"integer\"},\"-A\":{\"type\":\"integer\"},\"-B\":{\"type\":\"integer\"},\"case_insensitive\":{\"type\":\"boolean\"},\"-i\":{\"type\":\"boolean\"},\"head_limit\":{\"type\":\"integer\"},\"offset\":{\"type\":\"integer\"}},\"required\":[\"pattern\"]}",
     "{\"type\":\"object\",\"properties\":{\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\"},\"activeForm\":{\"type\":\"string\"}},\"required\":[\"content\",\"status\"]}}},\"required\":[\"todos\"]}",
     "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}",
   ];
@@ -707,11 +707,11 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_stop_reason("other") == FLAWED_STOP_NONE;
 
   // Tool schema serialization: Gemini functionDeclarations vs OpenAI function wrapper
-  buf: [8192] u8;
+  buf: [12288] u8;
   o: [1] Jo;
   nodes: [512] JvNode;
   d: [1] Jv;
-  sb: [128] u8;
+  sb: [512] u8;
 
   // Gemini format with 1 tool disallowed -> 7 declarations inside [{"functionDeclarations":[...]}]
   jo_start(o[..], buf[..]);
