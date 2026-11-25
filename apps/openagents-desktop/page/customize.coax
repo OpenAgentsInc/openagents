@@ -630,6 +630,7 @@ cp_keymap_init :: (km: [] CpKeymap) {
   if km.count < 1 { return; }
   km[0] = CpKeymap.{};
   cp_kb_add_default(km, "new_chat", "New Chat", "Cmd+N", "!settingsFocus");
+  cp_kb_add_default(km, "dashboard", "Dashboard", "Cmd+D", "!settingsFocus");
   cp_kb_add_default(km, "command_palette", "Command Palette", "Cmd+K", "");
   cp_kb_add_default(km, "find_in_thread", "Find in Thread", "Cmd+F", "!settingsFocus");
   cp_kb_add_default(km, "search_settings", "Search Settings", "Cmd+F", "settingsFocus");
@@ -746,10 +747,11 @@ CpTrEntry :: struct {
   v: [CP_LOCALE_COUNT] string;
 }
 
-CP_TR_COUNT :: 22;
+CP_TR_COUNT :: 23;
 cp_tr_catalog :: () -> [CP_TR_COUNT] CpTrEntry {
   return [CP_TR_COUNT] CpTrEntry.[
     CpTrEntry.{key = "new_chat", v = [CP_LOCALE_COUNT] string.["New chat", "Nuevo chat", "Nouveau chat", "Neuer Chat", "新しいチャット"]},
+    CpTrEntry.{key = "dashboard", v = [CP_LOCALE_COUNT] string.["Dashboard", "Panel", "Tableau de bord", "Übersicht", "ダッシュボード"]},
     CpTrEntry.{key = "search", v = [CP_LOCALE_COUNT] string.["Search", "Buscar", "Rechercher", "Suchen", "検索"]},
     CpTrEntry.{key = "settings", v = [CP_LOCALE_COUNT] string.["Settings", "Ajustes", "Paramètres", "Einstellungen", "設定"]},
     CpTrEntry.{key = "back_to_chats", v = [CP_LOCALE_COUNT] string.["Back to chats", "Volver a chats", "Retour aux chats", "Zurück zu Chats", "チャットに戻る"]},

@@ -134,6 +134,7 @@ extension CoderWindow {
         guard !r.startingWorker else { return }
         r.stopRequestedAt = 0
         r.stopGen &+= 1
+        r.startedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let shown = r === run
         let needsRecall: Bool
         if shown {
@@ -969,6 +970,91 @@ extension CoderWindow {
             return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0") + "\t" + (isUnread ? "1" : "0") + "\t" + (isArchived ? "1" : "0") + "\t" + String(snoozeMs) + "\t" + dir + "\t" + String(updatedMs) + "\t" + cleanBranch + "\t" + harness
         }.joined(separator: "\n")
     }
+    private func cleanDashField(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+    }
+    private func pageTitle(_ p: UnsafeMutableRawPointer) -> String? {
+        var buf = [CChar](repeating: 0, count: 256)
+        guard cd_title(p, &buf, Int32(buf.count)) > 0 else { return nil }
+        let s = String(cString: buf)
+        return s.isEmpty ? nil : s
+    }
+    private func pageLastMessage(_ p: UnsafeMutableRawPointer) -> String {
+        var buf = [CChar](repeating: 0, count: 512)
+        guard cd_last_message(p, &buf, Int32(buf.count)) > 0 else { return "" }
+        return cleanDashField(String(cString: buf))
+    }
+    private func lastMessageFromSaved(_ saved: String?) -> String {
+        guard let saved, let data = saved.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let turns = obj["turns"] as? [[String: Any]],
+              let last = turns.last else { return "" }
+        if let reply = last["reply"] as? String, !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return cleanDashField(reply)
+        }
+        if let ask = last["ask"] as? String, !ask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return cleanDashField(ask)
+        }
+        return ""
+    }
+    private func harnessForRun(_ r: CoderRun, chatID: String?) -> String {
+        let prog = r.worker.program
+        let codexEnv = r.worker.extraEnv["CODER_PROVIDER"] == "codex"
+        if prog == "flawedworker" { return "flawed" }
+        if prog == "claudeworker" { return "claude" }
+        if prog == "agyworker" { return "agy" }
+        if prog == "codex" || codexEnv { return "codex" }
+        if prog == "inky" { return "psionic" }
+        if let id = chatID { return store.harness(id) }
+        return "psionic"
+    }
+    /// Syncs the Dashboard home screen's active chats list: id, title, started_ms, elapsed_s, harness, last_msg.
+    func syncDashboard() {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        cd_sb_now_ms(page, nowMs)
+        var seen: Set<String> = []
+        var entries: [(startedMs: Int64, id: String, line: String)] = []
+        if cd_running(page) != 0 {
+            let cid = chat ?? ""
+            if !cid.isEmpty { seen.insert(cid) }
+            let title = cleanDashField((chat.flatMap { store.title($0) }) ?? pageTitle(page) ?? "New chat")
+            let elapsed = max(0, Int(cd_elapsed_s(page)))
+            let started = run.startedAtMs > 0 ? run.startedAtMs : (nowMs - Int64(elapsed) * 1000)
+            let harness = harnessForRun(run, chatID: chat)
+            let lastMsg = pageLastMessage(page)
+            let line = "\(cid)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(lastMsg)"
+            entries.append((started, cid, line))
+        }
+        for (id, back) in runs {
+            if seen.contains(id) { continue }
+            seen.insert(id)
+            let title = cleanDashField(store.title(id) ?? pageTitle(back.page) ?? "New chat")
+            let elapsed = max(0, Int(cd_elapsed_s(back.page)))
+            let started = back.startedAtMs > 0 ? back.startedAtMs : (nowMs - Int64(elapsed) * 1000)
+            let harness = harnessForRun(back, chatID: id)
+            let lastMsg = pageLastMessage(back.page)
+            let line = "\(id)\t\(title)\t\(started)\t\(elapsed)\t\(harness)\t\(lastMsg)"
+            entries.append((started, id, line))
+        }
+        for id in phoneBusyChats {
+            if seen.contains(id) { continue }
+            seen.insert(id)
+            let title = cleanDashField(store.title(id) ?? "New chat")
+            let started = Int64((store.meta(id)?.updated ?? 0) * 1000)
+            let harness = store.harness(id)
+            let lastMsg = lastMessageFromSaved(store.text(id))
+            let line = "\(id)\t\(title)\t\(started)\t0\t\(harness)\t\(lastMsg)"
+            entries.append((started, id, line))
+        }
+        entries.sort { a, b in
+            if a.startedMs != b.startedMs { return a.startedMs > b.startedMs }
+            return a.id < b.id
+        }
+        cd_dashboard_items(page, entries.map(\.line).joined(separator: "\n"))
+    }
     var isForemanShown: Bool { chat == Foreman.chatID }
     func syncFromDaemon() {
         #if OA_FULL
@@ -1172,6 +1258,7 @@ extension CoderWindow {
         notifyTurnCompleted(chatID: id, isActiveChat: id == chat)
         maybeRefineTitleAfterTurn(chatID: id)
         cd_chats(page, chatLines)
+        if cd_dashboard_shown(page) != 0 { syncDashboard() }
         #if OA_FULL
         syncForemanUI()
         #endif

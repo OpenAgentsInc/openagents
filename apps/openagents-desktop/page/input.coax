@@ -193,7 +193,11 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
       if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
         if cp_sb_chat_click(s, q) { return true; }
         s[0].side_drawer = false;
-        if id == cast(string) s[0].current[0..<s[0].current_n] { return false; }
+        if id == cast(string) s[0].current[0..<s[0].current_n] {
+          if s[0].dash[0].open { s[0].dash[0].open = false; return true; }
+          return false;
+        }
+        s[0].dash[0].open = false;
         s[0].open = q; s[0].ask = CP_ASK_OPEN; return true;
       }
     }
@@ -219,9 +223,11 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return cp_send(s);
   }
   if act == CP_NEW { s[0].side_drawer = false; return cp_new(s); }
+  if act == CP_DASHBOARD { return cp_dashboard_open(s); }
+  if act == CP_DASH_CHAT { return cp_dash_press(s, surface_id(s[0].surface[..], row)); }
   if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
-  if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].ask = CP_ASK_FOREMAN; return true; }
-  if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].ask = CP_ASK_GYM; return true; }
+  if act == CP_FOREMAN { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } s[0].dash[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
+  if act == CP_GYM { if !cp_flag(s, DC_FLAG_GYM) { return false; } s[0].dash[0].open = false; s[0].ask = CP_ASK_GYM; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
   if act == CP_SIDE_TOGGLE {
     if s[0].win_w > 0 && s[0].win_w < cast(f32) CP_SIDE_FROM {
@@ -618,6 +624,7 @@ CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3; CP_S
 cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if s[0].dash[0].open { return CP_SCR_DASH; }
   if s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN { return CP_SCR_LEAN; }
   if cp_forge_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FORGE; }
   if cp_side_chat_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_SIDE_CHAT; }
@@ -643,6 +650,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
     return;
   }
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
+  if view == CP_SCR_DASH { cp_dash_scroll(s, delta); return; }
   // the code review moves as the deltas come, the platform's own coast included
   if view == CP_SCR_FORGE { cp_forge_scroll(s, delta); return; }
   if view == CP_SCR_LEAN { _ = cp_lean_wheel(s, -delta); return; }

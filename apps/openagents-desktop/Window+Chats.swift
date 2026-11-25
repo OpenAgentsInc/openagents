@@ -136,6 +136,16 @@ extension CoderWindow {
         if cd_new(page) != 0 { _ = cd_set_text(page, ""); focusComposer() }
         wake()
     }
+    /// File > Dashboard (Command-D / Control-D): empty home screen listing active running chats.
+    func openDashboard() {
+        if settingsOpen { closeSettings() }
+        #if OA_FULL
+        closeGym()
+        #endif
+        cd_dashboard_open(page, 1)
+        syncDashboard()
+        wake()
+    }
     /// Opens the Nth chat from the top of the sidebar list (1 is the first).
     func openChat(at index: Int) {
         let ordered = store.orderedList
@@ -146,6 +156,7 @@ extension CoderWindow {
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
     /// with its run.
     func open(_ id: String) {
+        cd_dashboard_open(page, 0)
         if id == Foreman.chatID {
             #if OA_FULL
             openForeman()

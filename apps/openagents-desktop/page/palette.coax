@@ -10,6 +10,7 @@
 // settings entry, a model, a Foreman tier.
 CP_PAL_CHAT :: 1000; CP_PAL_FOREMAN :: 999; CP_PAL_SET :: 2000; CP_PAL_MODEL :: 3000; CP_PAL_TIER :: 4000;
 CP_PC_NEW :: 1; CP_PC_FOREMAN :: 2; CP_PC_FOLDER :: 3; CP_PC_SIDEBAR :: 4; CP_PC_MODEL :: 5; CP_PC_TIER :: 6; CP_PC_SETTINGS :: 7;
+CP_PC_DASHBOARD :: 45;
 CP_PC_BUDGET :: 8; CP_PC_GOAL :: 9; CP_PC_COPY :: 10; CP_PC_STOP :: 11; CP_PC_REVIEW :: 12; CP_PC_BIGGER :: 13; CP_PC_SMALLER :: 14;
 CP_PC_UPDATES :: 15; CP_PC_RENAME :: 16; CP_PC_DELETE :: 17; CP_PC_STOP_ALL :: 18; CP_PC_NEXT :: 19; CP_PC_PREV :: 20; CP_PC_AUDIT :: 21; CP_PC_ACTUAL :: 22; CP_PC_FORK :: 23; CP_PC_SIM :: 24; CP_PC_TERM :: 25; CP_PC_TERM_NEW :: 26;
 // the palette's own pages
@@ -39,6 +40,7 @@ cp_palette_fill :: (s: [] CoderPage) {
   // the commands that work now
   running := cp_running(s); shown := !s[0].set_open;
   cp_pal_cmd(p, "New chat", "new start fresh", "⌘ N", ICON_COMPOSE, CP_PC_NEW, 0);
+  cp_pal_cmd(p, "Dashboard", "dashboard home active chats running", "⌘ D", ICON_WIDGET, CP_PC_DASHBOARD, 0);
   if has_foreman { cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0); }
   if !running { cp_pal_cmd(p, "Open folder…", "working folder directory project cwd", "⌘ O", ICON_FOLDER, CP_PC_FOLDER, 0); }
   if shown { cp_pal_cmd(p, ifx s[0].side_collapsed then "Show sidebar" else "Hide sidebar", "toggle sidebar chats", "⌘ B", ICON_SIDEBAR, CP_PC_SIDEBAR, 0); }
@@ -147,10 +149,15 @@ cp_pal_leave_settings :: (s: [] CoderPage) { if s[0].set_open { s[0].set_open = 
 cp_pal_open_chat :: (s: [] CoderPage, q: int) -> bool {
   cur := cast(string) s[0].current[0..<s[0].current_n];
   if q < 0 && !cp_flag(s, DC_FLAG_FOREMAN) { return false; }
-  if q < 0 { if cur == "chat.foreman" && !s[0].set_open { return false; } cp_pal_leave_settings(s); s[0].ask = CP_ASK_FOREMAN; return true; }
+  if q < 0 { if cur == "chat.foreman" && !s[0].set_open && !s[0].dash[0].open { return false; } cp_pal_leave_settings(s); s[0].dash[0].open = false; s[0].ask = CP_ASK_FOREMAN; return true; }
   if q >= s[0].nchats { return false; }
-  if cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { if s[0].set_open { cp_settings_show(s, false, -1); return true; } return false; }
+  if cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+    if s[0].set_open { cp_settings_show(s, false, -1); s[0].dash[0].open = false; return true; }
+    if s[0].dash[0].open { s[0].dash[0].open = false; return true; }
+    return false;
+  }
   cp_pal_leave_settings(s);
+  s[0].dash[0].open = false;
   s[0].open = q; s[0].ask = CP_ASK_OPEN;
   return true;
 }
@@ -183,6 +190,7 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     s[0].find[0].jump_chat_n = cp_out(s[0].find[0].jump_chat[..], cast(string) s[0].find[0].content_hits[idx].chat_id[0..<h.chat_id_n]);
     s[0].find[0].jump_turn = h.turn;
     cp_pal_leave_settings(s);
+    s[0].dash[0].open = false;
     s[0].ask = CP_ASK_PALETTE_JUMP;
     return true;
   }
@@ -197,6 +205,7 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   }
   if c >= CP_PAL_TIER { if !cp_flag(s, DC_FLAG_FOREMAN) { return false; } t := c - CP_PAL_TIER; if t > CP_FOREMAN_TIER_AUTO { return false; } s[0].set_tier = t; s[0].ask = CP_ASK_TIER; return true; }
   if c == CP_PC_NEW { cp_pal_leave_settings(s); return cp_new(s); }
+  if c == CP_PC_DASHBOARD { cp_pal_leave_settings(s); return cp_dashboard_open(s); }
   if c == CP_PC_FOREMAN { return cp_pal_open_chat(s, -1); }
   if c == CP_PC_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if c == CP_PC_SIDEBAR {

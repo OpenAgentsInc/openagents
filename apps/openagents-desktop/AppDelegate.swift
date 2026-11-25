@@ -191,6 +191,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         TestLaunch.stopHost()
     }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
+    @objc func openDashboard(_ sender: Any?) { main?.openDashboard() }
     @objc func search(_ sender: Any?) { main?.togglePalette() }
     @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
     @objc func editUndo(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("z").value), mods: 8) != true { NSApp.sendAction(Selector(("undo:")), to: nil, from: sender) } }
@@ -560,6 +561,7 @@ enum TestLaunch {
         let appMenu = NSMenu(), edit = NSMenu(title: "Edit")
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
+        file.addItem(withTitle: "Dashboard", action: #selector(CoderDelegate.openDashboard(_:)), keyEquivalent: "d").target = delegate
         let newWinItem = file.addItem(withTitle: "New Window", action: #selector(CoderDelegate.newWindow(_:)), keyEquivalent: "N")
         newWinItem.keyEquivalentModifierMask = [.command, .shift]
         newWinItem.target = delegate

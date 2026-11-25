@@ -81,6 +81,11 @@ int cd_stop_agent(void *page);
 // cd_recall_line: the line that tells the worker the opened chat's turns, 0 for none.
 void cd_chats(void *page, const char *list);
 void cd_current(void *page, const char *id);
+void cd_dashboard_open(void *page, int open);
+int cd_dashboard_shown(void *page);
+void cd_dashboard_items(void *page, const char *list);
+int cd_elapsed_s(void *page);
+int cd_last_message(void *page, char *out, int cap);
 // Update the persistent Foreman sidebar row's running spinner and permission tier (0=Observe, 1=Assist, 2=Auto).
 void cd_foreman(void *page, int busy, int tier);
 // Show or hide the sidebar keyboard shortcut badges when Command is held.

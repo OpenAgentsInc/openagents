@@ -1,0 +1,119 @@
+// Dashboard home screen checks (../dashboard.coax).
+//   coax/bin/coax test apps/openagents-desktop/page/checks/dashboard-checks.coax --library
+
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_dash_test_frame :: (s: [] CoderPage, f: [] UiFrame, dt: f32) -> bool {
+  s[0].clock += dt;
+  k := cp_skin_for(s);
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), s[0].clock, dt, true, false);
+  cp_layout(s, f, 1280.0f32, 760.0f32);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+cp_dash_has_text :: (s: [] CoderPage, needle: string) -> bool {
+  sh := surface_sheet(s[0].surface[..]);
+  for i: 0..<sh.nu {
+    if sh.under[i].kind == PRIM_TEXT && cp_contains(sh.under[i].text, needle) { return true; }
+  }
+  for i: 0..<sh.no {
+    if sh.over[i].kind == PRIM_TEXT && cp_contains(sh.over[i].text, needle) { return true; }
+  }
+  return false;
+}
+
+#test "dashboard: sidebar button sits under New chat with Cmd/Ctrl+D shortcut and opens empty home screen" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  f: [1] UiFrame;
+  #assert cp_dash_test_frame(s, f[..], 0.0f32);
+
+  new_idx := surface_find(s[0].surface[..], "coder.new");
+  dash_idx := surface_find(s[0].surface[..], "coder.dashboard");
+  #assert new_idx >= 0 && dash_idx >= 0;
+  #assert surface_action(s[0].surface[..], dash_idx) == CP_DASHBOARD;
+  // Dashboard sits directly underneath New chat in the sidebar.
+  new_row := surface_rows(s[0].surface[..]).rows[new_idx];
+  dash_row := surface_rows(s[0].surface[..]).rows[dash_idx];
+  #assert dash_row.y >= new_row.y + new_row.h - 0.5f32 && dash_row.y <= new_row.y + new_row.h + 2.0f32;
+  #assert cp_dash_has_text(s, "Dashboard") && cp_dash_has_text(s, "D");
+
+  // Pressing Dashboard opens the empty home screen and asks host (CP_ASK_DASHBOARD).
+  #assert cp_press(s, dash_idx);
+  #assert coder_page_dashboard_shown(s);
+  #assert coder_page_action(s) == CP_ASK_DASHBOARD;
+
+  // Empty dashboard shows empty state and hides the chat composer.
+  #assert cp_dash_test_frame(s, f[..], 0.02f32);
+  #assert surface_find(s[0].surface[..], "coder.dash.empty") >= 0;
+  #assert surface_find(s[0].surface[..], "coder.composer") < 0;
+
+  // Ctrl+D opens dashboard when ctrl_keys is enabled (Linux/Windows parity with Ctrl+N).
+  coder_page_dashboard_open(s, false);
+  #assert !coder_page_dashboard_shown(s);
+  s[0].ctrl_keys = true;
+  #assert coder_page_key(s, 'd', MOD_CTRL);
+  #assert coder_page_dashboard_shown(s);
+  #assert coder_page_action(s) == CP_ASK_DASHBOARD;
+
+  // New chat (Ctrl+N) leaves dashboard.
+  #assert coder_page_key(s, 'n', MOD_CTRL);
+  #assert !coder_page_dashboard_shown(s);
+}
+
+#test "dashboard: lists active chats with running duration and last message, and clicking opens that chat" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  coder_page_sb_now_ms(s, 1763600125000);
+  coder_page_chats(s, "c1\tBuild release\t1\t0\t0\t0\t0\t0\t/tmp/repo\t1763600000000\nc2\tIdle chat\t0\t0\t0\t0\t0\t0\t/tmp/repo\t1763599000000\nc3\tRefactor auth\t1\t0\t0\t0\t0\t0\t/tmp/repo\t1763600050000\n");
+  coder_page_dashboard_items(s, "c1\tBuild release\t1763600000000\t125\tflawed\tCompiling Swift targets now...\nc3\tRefactor auth\t1763600083000\t42\tclaude\tUpdated token refresh middleware\n");
+  coder_page_dashboard_open(s, true);
+
+  f: [1] UiFrame;
+  #assert cp_dash_test_frame(s, f[..], 0.0f32);
+  #assert surface_find(s[0].surface[..], "coder.dash.empty") < 0;
+  row0 := surface_find(s[0].surface[..], "coder.dash.0");
+  row1 := surface_find(s[0].surface[..], "coder.dash.1");
+  #assert row0 >= 0 && row1 >= 0;
+  #assert surface_action(s[0].surface[..], row0) == CP_DASH_CHAT;
+  #assert cp_dash_has_text(s, "2 active chats");
+  #assert cp_dash_has_text(s, "Build release");
+  #assert cp_dash_has_text(s, "2m 5s");
+  #assert cp_dash_has_text(s, "Compiling Swift targets now...");
+  #assert cp_dash_has_text(s, "Refactor auth");
+  #assert cp_dash_has_text(s, "42s");
+  #assert cp_dash_has_text(s, "Updated token refresh middleware");
+
+  // Clicking an active chat opens it and exits Dashboard.
+  #assert cp_press(s, row1);
+  #assert !coder_page_dashboard_shown(s);
+  #assert coder_page_action(s) == CP_ASK_OPEN;
+  ob: [64] u8;
+  on := coder_page_open_id(s, ob[..]);
+  #assert cast(string) ob[0..<on] == "c3";
+}
+
+#test "dashboard: formats durations and extracts last message from live page turns" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  b: [32] u8;
+  #assert cp_dash_format_elapsed(0, b[..]) == "0s";
+  #assert cp_dash_format_elapsed(45, b[..]) == "45s";
+  #assert cp_dash_format_elapsed(125, b[..]) == "2m 5s";
+  #assert cp_dash_format_elapsed(3665, b[..]) == "1h 01m";
+
+  // Send a prompt and verify live last message + elapsed seconds.
+  #assert coder_page_set_text(s, "Fix the flaky test suite\nright away");
+  #assert coder_page_submit(s);
+  s[0].clock += 19.0f32;
+  #assert coder_page_elapsed_s(s) == 19;
+  mb: [256] u8;
+  mn := coder_page_last_message(s, mb[..]);
+  #assert cast(string) mb[0..<mn] == "Fix the flaky test suite right away";
+
+  // Once a streaming reply arrives, last message switches to the reply.
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Found the race condition in timer.\"}") == MWW_REPLY;
+  mn = coder_page_last_message(s, mb[..]);
+  #assert cast(string) mb[0..<mn] == "Found the race condition in timer.";
+}

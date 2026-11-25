@@ -432,6 +432,7 @@ cp_cust_settings_press :: (s: [] CoderPage, id: string) -> bool { return false; 
 cp_cust_theme :: (s: [] CoderPage) -> Theme { return coder_noir(); }
 cp_tr :: (locale: int, key: string) -> string {
   if key == "new_chat" { return "New chat"; }
+  if key == "dashboard" { return "Dashboard"; }
   if key == "search" { return "Search"; }
   if key == "send" { return "Send"; }
   if key == "stop" { return "Stop"; }

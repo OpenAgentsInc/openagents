@@ -1,0 +1,453 @@
+// Coder Desktop page (../page.coax): Dashboard home screen (⌘D / Ctrl+D).
+// An empty home screen showing a live list of all currently active (running) chats,
+// how long each has been running, and the last message of each.
+
+CP_DASH_MAX :: 64;
+CP_DASH_MSG :: 240;
+CP_SCR_DASH :: 12;
+
+CpDashItem :: struct {
+  id: [CP_CHAT_ID] u8; id_n: int;
+  title: [CP_CHAT_TITLE] u8; title_n: int;
+  last_msg: [CP_DASH_MSG] u8; last_msg_n: int;
+  started_ms: int;            // epoch ms when this run began (0: fall back to elapsed_s)
+  elapsed_s: int;             // elapsed seconds at sync time (fallback when started_ms == 0)
+  harness: int;               // provider icon id (ICON_PSIONIC, ICON_CLAUDE, etc.)
+}
+
+CpDash :: struct {
+  open: bool;
+  has_host_feed: bool;
+  synced_clock: f32;
+  items: [CP_DASH_MAX] CpDashItem;
+  n: int;
+  scroll: f32; content: f32; view: f32;
+  open_id: [CP_CHAT_ID] u8; open_id_n: int;
+}
+
+cp_dash_init :: (s: [] CoderPage) {
+  s[0].dash[0] = CpDash.{};
+}
+
+cp_dashboard_open :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  s[0].set_open = false;
+  s[0].model_menu = false;
+  s[0].effort_menu = false;
+  s[0].side_drawer = false;
+  s[0].dash[0].open = true;
+  s[0].dash[0].scroll = 0.0f32;
+  s[0].ask = CP_ASK_DASHBOARD;
+  return true;
+}
+
+cp_dashboard_close :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].dash[0].open = false;
+}
+
+// Collapse newlines/tabs/runs of spaces into a single clean line, UTF-8 safe.
+cp_dash_single_line :: (text: string, out: [] u8) -> int {
+  n := 0;
+  gap := false;
+  for c: text {
+    if n >= out.count { break; }
+    if c == 10 || c == 13 || c == 9 || c == 32 {
+      if n > 0 { gap = true; }
+      continue;
+    }
+    if gap {
+      out[n] = 32; n += 1; gap = false;
+      if n >= out.count { break; }
+    }
+    out[n] = c; n += 1;
+  }
+  if n < text.count {
+    while n > 0 && (out[n - 1] & 0xC0) == 0x80 { n -= 1; }
+    if n > 0 && out[n - 1] >= 0xC0 { n -= 1; }
+  }
+  return n;
+}
+
+// Extract the latest message preview from a page:
+// newest streaming/final assistant reply -> newest interim agent message (said) -> newest user prompt.
+cp_dash_last_message :: (s: [] CoderPage, out: [] u8) -> int {
+  if s.count < 1 || s[0].nturns < 1 { return 0; }
+  i := s[0].nturns - 1;
+  if s[0].turns[i].reply_n > 0 {
+    return cp_dash_single_line(cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n], out);
+  }
+  // Check for the latest interim agent message ("said" call) in the active turn.
+  last_said := -1;
+  q := s[0].turns[i].head - 1;
+  while q >= 0 && q < s[0].calls_n {
+    if s[0].calls[q].said && (s[0].calls[q].out_n > 0 || s[0].calls[q].long_n > 0) { last_said = q; }
+    q = s[0].calls[q].next - 1;
+  }
+  if last_said >= 0 {
+    return cp_dash_single_line(cp_call_text(s, last_said), out);
+  }
+  if s[0].turns[i].ask_n > 0 {
+    return cp_dash_single_line(cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], out);
+  }
+  if i > 0 {
+    prev := i - 1;
+    if s[0].turns[prev].reply_n > 0 {
+      return cp_dash_single_line(cast(string) s[0].turns[prev].reply[0..<s[0].turns[prev].reply_n], out);
+    }
+    if s[0].turns[prev].ask_n > 0 {
+      return cp_dash_single_line(cast(string) s[0].turns[prev].ask[0..<s[0].turns[prev].ask_n], out);
+    }
+  }
+  return 0;
+}
+
+// Format elapsed running duration: "0s", "42s", "3m 12s", "1h 04m".
+cp_dash_format_elapsed :: (secs_raw: int, out: [] u8) -> string {
+  secs := ifx secs_raw < 0 then 0 else secs_raw;
+  n := 0;
+  if secs < 60 {
+    n = el_put_i(out, n, secs);
+    n = el_put(out, n, "s");
+  } else if secs < 3600 {
+    mins := secs / 60;
+    rem := secs % 60;
+    n = el_put_i(out, n, mins);
+    n = el_put(out, n, "m ");
+    n = el_put_i(out, n, rem);
+    n = el_put(out, n, "s");
+  } else {
+    hrs := secs / 3600;
+    mins := (secs % 3600) / 60;
+    n = el_put_i(out, n, hrs);
+    n = el_put(out, n, "h ");
+    if mins < 10 { n = el_put(out, n, "0"); }
+    n = el_put_i(out, n, mins);
+    n = el_put(out, n, "m");
+  }
+  return cast(string) out[0..<n];
+}
+
+// Resolve a dashboard item's current elapsed seconds.
+cp_dash_item_elapsed :: (s: [] CoderPage, item: CpDashItem) -> int {
+  if item.started_ms > 0 && s[0].sb[0].now_ms > 0 {
+    diff := (s[0].sb[0].now_ms - item.started_ms) / 1000;
+    return ifx diff > 0 then diff else 0;
+  }
+  dt := s[0].clock - s[0].dash[0].synced_clock;
+  extra := ifx dt > 0.0f32 then cast(int) dt else 0;
+  total := item.elapsed_s + extra;
+  return ifx total > 0 then total else 0;
+}
+
+// Build fallback active-chat entries from local CoderPage state when host has not pushed a feed.
+cp_dash_collect_fallback :: (s: [] CoderPage, out: [] CpDashItem) -> int {
+  n := 0;
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  fg_running := cp_running(s);
+  cur_seen := false;
+  for q: 0..<s[0].nchats {
+    if n >= out.count { break; }
+    cid := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+    is_cur := cur.count > 0 && cid == cur;
+    active := (is_cur && fg_running) || s[0].chats[q].busy;
+    if !active { continue; }
+    if is_cur { cur_seen = true; }
+    item := CpDashItem.{};
+    raw_id := ifx cid.count > 5 && cast(string) cid[0..<5] == "chat." then cast(string) cid[5..<cid.count] else cid;
+    item.id_n = cp_out(item.id[..], raw_id);
+    item.title_n = cp_out(item.title[..], cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n]);
+    item.harness = ifx s[0].chats[q].harness >= 0 then s[0].chats[q].harness else ICON_PSIONIC;
+    if is_cur && fg_running {
+      last_i := s[0].nturns - 1;
+      dt := s[0].clock - s[0].turns[last_i].began;
+      item.elapsed_s = ifx dt > 0.0f32 then cast(int) dt else 0;
+      item.last_msg_n = cp_dash_last_message(s, item.last_msg[..]);
+    } else if s[0].chats[q].updated_ms > 0 {
+      item.started_ms = s[0].chats[q].updated_ms;
+    }
+    out[n] = item;
+    n += 1;
+  }
+  if fg_running && !cur_seen && n < out.count {
+    item := CpDashItem.{};
+    raw_cur := ifx cur.count > 5 && cast(string) cur[0..<5] == "chat." then cast(string) cur[5..<cur.count] else cur;
+    item.id_n = cp_out(item.id[..], raw_cur);
+    item.title_n = coder_page_title(s, item.title[..]);
+    if item.title_n == 0 { item.title_n = cp_out(item.title[..], "New chat"); }
+    last_i := s[0].nturns - 1;
+    dt := s[0].clock - s[0].turns[last_i].began;
+    item.elapsed_s = ifx dt > 0.0f32 then cast(int) dt else 0;
+    item.last_msg_n = cp_dash_last_message(s, item.last_msg[..]);
+    item.harness = ICON_PSIONIC;
+    out[n] = item;
+    n += 1;
+  }
+  return n;
+}
+
+cp_dash_active_count :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return 0; }
+  if s[0].dash[0].has_host_feed { return s[0].dash[0].n; }
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  fg_running := cp_running(s);
+  cnt := 0;
+  cur_seen := false;
+  for q: 0..<s[0].nchats {
+    cid := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+    is_cur := cur.count > 0 && cid == cur;
+    if (is_cur && fg_running) || s[0].chats[q].busy {
+      cnt += 1;
+      if is_cur { cur_seen = true; }
+    }
+  }
+  if fg_running && !cur_seen { cnt += 1; }
+  return cnt;
+}
+
+cp_dash_scroll :: (s: [] CoderPage, delta: f32) {
+  if s.count < 1 { return; }
+  s[0].dash[0].scroll = scroll_clamp(s[0].dash[0].scroll + delta, s[0].dash[0].content, s[0].dash[0].view);
+}
+
+// Click on an active chat row in the Dashboard opens that chat and closes the Dashboard.
+cp_dash_press :: (s: [] CoderPage, id: string) -> bool {
+  idx := cp_number(id, "coder.dash.");
+  if idx < 0 { return false; }
+  raw_id := "";
+  fb: [CP_DASH_MAX] CpDashItem;
+  if s[0].dash[0].has_host_feed {
+    if idx >= s[0].dash[0].n { return false; }
+    raw_id = cast(string) s[0].dash[0].items[idx].id[0..<s[0].dash[0].items[idx].id_n];
+  } else {
+    fn := cp_dash_collect_fallback(s, fb[..]);
+    if idx >= fn { return false; }
+    raw_id = cast(string) fb[idx].id[0..<fb[idx].id_n];
+  }
+  s[0].dash[0].open = false;
+  if raw_id.count == 0 {
+    // Active unsaved foreground chat: closing dashboard returns straight to it.
+    return true;
+  }
+  cb: [CP_CHAT_ID] u8;
+  cn := cp_out(cb[..], "chat.");
+  cn += cp_out(cb[cn..<CP_CHAT_ID], raw_id);
+  full_id := cast(string) cb[0..<cn];
+  if full_id == cast(string) s[0].current[0..<s[0].current_n] {
+    return true;
+  }
+  for q: 0..<s[0].nchats {
+    if full_id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+      s[0].open = q;
+      s[0].dash[0].open_id_n = 0;
+      s[0].ask = CP_ASK_OPEN;
+      return true;
+    }
+  }
+  s[0].open = -1;
+  s[0].dash[0].open_id_n = cp_out(s[0].dash[0].open_id[..], raw_id);
+  s[0].ask = CP_ASK_OPEN;
+  return true;
+}
+
+// Render the Dashboard empty home screen with the list of active chats.
+cp_dashboard :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; m := f[0].m;
+  col := app_shell_column(left, w, CP_COLUMN, CP_PAD);
+  x := col.x; cw := col.w;
+  s[0].col_x = x; s[0].col_w = cw;
+  top := cp_bar(s) + 20.0f32;
+
+  fb: [CP_DASH_MAX] CpDashItem;
+  use_host := s[0].dash[0].has_host_feed;
+  count := ifx use_host then s[0].dash[0].n else cp_dash_collect_fallback(s, fb[..]);
+
+  s[0].anim = count > 0;
+
+  // Header row: "Dashboard" title + active count subtitle.
+  hy := top;
+  head_f := k.title;
+  _ := uiframe_semantic(f, "coder.dash.title", EL_TEXT, "Dashboard", x, hy, cw, head_f.line, 0, 0);
+  _ := sheet_text(sh, m, -1, x, hy, head_f.line, head_f.face, k.ink, "Dashboard");
+  cb: [48] u8; cn := 0;
+  if count == 0 {
+    cn = el_put(cb[..], cn, "No active chats");
+  } else if count == 1 {
+    cn = el_put(cb[..], cn, "1 active chat");
+  } else {
+    cn = el_put_i(cb[..], cn, count);
+    cn = el_put(cb[..], cn, " active chats");
+  }
+  cnt_str := sheet_pool(sh, cast(string) cb[0..<cn]);
+  cnt_w := ceil(measure_width(m, k.small.face, cnt_str));
+  _ := uiframe_semantic(f, "coder.dash.count", EL_TEXT, cnt_str, x + cw - cnt_w, hy + (head_f.line - k.small.line) / 2.0f32, cnt_w, k.small.line, 0, 0);
+  _ := sheet_text(sh, m, -1, x + cw - cnt_w, hy + (head_f.line - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, cnt_str);
+  hy += head_f.line + 16.0f32;
+
+  list_top := hy;
+  list_h := h - list_top - 24.0f32;
+  if list_h < 0.0f32 { list_h = 0.0f32; }
+  s[0].dash[0].view = list_h;
+
+  if count == 0 {
+    s[0].dash[0].content = 0.0f32;
+    s[0].dash[0].scroll = 0.0f32;
+    empty_y := list_top + (list_h - 80.0f32) * 0.35f32;
+    if empty_y < list_top + 16.0f32 { empty_y = list_top + 16.0f32; }
+    _ := app_empty(f, "coder.dash.empty", x, empty_y, cw, ICON_WIDGET, "No active chats", "Chats currently running will appear here with elapsed time and their last message.");
+    return;
+  }
+
+  // Measure and render active chat cards.
+  card_pad_x := 14.0f32;
+  card_pad_y := 12.0f32;
+  card_gap := 8.0f32;
+  row_r := 10.0f32;
+  inner_w := cw - 2.0f32 * card_pad_x;
+  if inner_w < 80.0f32 { inner_w = 80.0f32; }
+
+  // First pass: total content height for clean scroll clamping.
+  total_h: f32 = 0.0f32;
+  for i: 0..<count {
+    item := ifx use_host then s[0].dash[0].items[i] else fb[i];
+    has_msg := item.last_msg_n > 0;
+    ch := card_pad_y * 2.0f32 + k.body.line + (ifx has_msg then 6.0f32 + k.small.line else 0.0f32);
+    total_h += ch + (ifx i + 1 < count then card_gap else 0.0f32);
+  }
+  s[0].dash[0].content = total_h;
+  sc := scroll_clamp(s[0].dash[0].scroll, total_h, list_h);
+  s[0].dash[0].scroll = sc;
+
+  uiframe_clip(f, x - 2.0f32, list_top, x + cw + 2.0f32, list_top + list_h);
+  cy := list_top - sc;
+  for i: 0..<count {
+    item := ifx use_host then s[0].dash[0].items[i] else fb[i];
+    has_msg := item.last_msg_n > 0;
+    ch := card_pad_y * 2.0f32 + k.body.line + (ifx has_msg then 6.0f32 + k.small.line else 0.0f32);
+
+    if cy + ch > list_top && cy < list_top + list_h {
+      idb: [32] u8;
+      idn := el_put(idb[..], 0, "coder.dash.");
+      idn = el_put_i(idb[..], idn, i);
+      row_id := sheet_pool(sh, cast(string) idb[0..<idn]);
+
+      title_raw := ifx item.title_n > 0 then cast(string) item.title[0..<item.title_n] else "New chat";
+      title_s := sheet_pool(sh, title_raw);
+
+      kk := uiframe_key(f, row_id);
+      hv := uiframe_hover(f, kk, row_id);
+      pr := uiframe_press(f, kk, row_id);
+
+      bg_c := rgba_mix(k.surface, k.raised, hv);
+      if pr > 0.0f32 { bg_c = rgba_mix(bg_c, k.hover, pr); }
+      _ := sheet_box(sh, x, cy, cw, ch, row_r, k.border, bg_c, rgba_mix(k.hairline, k.muted, 0.25f32 * hv));
+
+      row := uiframe_semantic(f, row_id, EL_BUTTON, title_s, x, cy, cw, ch, EL_S_BUSY, CP_DASH_CHAT);
+      sheet_hit(sh, UIFRAME_HIT, row, 0, x, cy, cw, ch);
+
+      // Top line: spinner + title on the left, live running duration on the right.
+      ty := cy + card_pad_y;
+      tx := x + card_pad_x;
+      spin_sz := a.icon;
+      activity(sh, k, tx, ty + (k.body.line - spin_sz) / 2.0f32, spin_sz, f[0].clock, f[0].reduced_motion);
+      tx += spin_sz + 8.0f32;
+
+      eb: [32] u8;
+      elapsed_s := ifx use_host then cp_dash_item_elapsed(s, item) else (ifx item.started_ms > 0 && s[0].sb[0].now_ms > 0 then (ifx (s[0].sb[0].now_ms - item.started_ms) / 1000 > 0 then (s[0].sb[0].now_ms - item.started_ms) / 1000 else 0) else item.elapsed_s);
+      dur_str := sheet_pool(sh, cp_dash_format_elapsed(elapsed_s, eb[..]));
+      dur_w := ceil(measure_width(m, k.small.face, dur_str));
+      dur_x := x + cw - card_pad_x - dur_w;
+      dur_y := ty + (k.body.line - k.small.line) / 2.0f32;
+      _ := sheet_text(sh, m, -1, dur_x, dur_y, k.small.line, k.small.face, k.muted, dur_str);
+
+      title_room := dur_x - 12.0f32 - tx;
+      if title_room > 20.0f32 {
+        _ := sheet_text(sh, m, -1, tx, ty, k.body.line, k.body.face, k.ink, app_fit(f, k.body.face, title_s, title_room));
+      }
+
+      // Second line: last message preview.
+      if has_msg {
+        msg_s := sheet_pool(sh, cast(string) item.last_msg[0..<item.last_msg_n]);
+        my := ty + k.body.line + 6.0f32;
+        msg_x := x + card_pad_x + spin_sz + 8.0f32;
+        msg_room := x + cw - card_pad_x - msg_x;
+        if msg_room > 20.0f32 {
+          _ := sheet_text(sh, m, -1, msg_x, my, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, msg_s, msg_room));
+        }
+      }
+    }
+    cy += ch + card_gap;
+  }
+  uiframe_unclip(f);
+}
+
+// ---------------------------------------------------------------- host C exports
+
+coder_page_dashboard_open :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if open {
+    s[0].set_open = false;
+    s[0].model_menu = false;
+    s[0].effort_menu = false;
+    s[0].side_drawer = false;
+    s[0].dash[0].open = true;
+    s[0].dash[0].scroll = 0.0f32;
+  } else {
+    s[0].dash[0].open = false;
+  }
+}
+
+coder_page_dashboard_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].dash[0].open;
+}
+
+// Host pushes active chats for the Dashboard: one line per active chat:
+//   id \t title \t started_ms \t elapsed_s \t harness \t last_msg
+coder_page_dashboard_items :: (s: [] CoderPage, list: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].dash[0].n = 0;
+  s[0].dash[0].has_host_feed = true;
+  s[0].dash[0].synced_clock = s[0].clock;
+  i := 0;
+  while i < list.count && s[0].dash[0].n < CP_DASH_MAX {
+    e := i; while e < list.count && list[e] != 10 { e += 1; }
+    t1 := i; while t1 < e && list[t1] != 9 { t1 += 1; }
+    t2 := ifx t1 < e then t1 + 1 else e; while t2 < e && list[t2] != 9 { t2 += 1; }
+    t3 := ifx t2 < e then t2 + 1 else e; while t3 < e && list[t3] != 9 { t3 += 1; }
+    t4 := ifx t3 < e then t3 + 1 else e; while t4 < e && list[t4] != 9 { t4 += 1; }
+    t5 := ifx t4 < e then t4 + 1 else e; while t5 < e && list[t5] != 9 { t5 += 1; }
+    if t1 > i || t1 + 1 < t2 {
+      k := s[0].dash[0].n;
+      item := CpDashItem.{};
+      item.id_n = cp_out(item.id[..], cast(string) list[i..<t1]);
+      item.title_n = ifx t1 + 1 < t2 then cp_out(item.title[..], cast(string) list[t1 + 1..<t2]) else cp_out(item.title[..], "New chat");
+      item.started_ms = ifx t2 + 1 < t3 then cp_sb_parse_int(cast(string) list[t2 + 1..<t3]) else 0;
+      item.elapsed_s = ifx t3 + 1 < t4 then cp_sb_parse_int(cast(string) list[t3 + 1..<t4]) else 0;
+      h_str := ifx t4 + 1 < t5 then cast(string) list[t4 + 1..<t5] else "";
+      item.harness = ifx h_str == "claude" then ICON_CLAUDE
+                   else ifx h_str == "codex" then ICON_OPENAI
+                   else ifx h_str == "agy" then ICON_ANTIGRAVITY
+                   else ifx h_str == "foreman" then ICON_BOT
+                   else ICON_PSIONIC;
+      if t5 + 1 < e {
+        item.last_msg_n = cp_dash_single_line(cast(string) list[t5 + 1..<e], item.last_msg[..]);
+      }
+      s[0].dash[0].items[k] = item;
+      s[0].dash[0].n += 1;
+    }
+    i = e + 1;
+  }
+}
+
+// How many seconds the currently running turn on this page has been running (0 when idle).
+coder_page_elapsed_s :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return 0; }
+  i := s[0].nturns - 1;
+  dt := s[0].clock - s[0].turns[i].began;
+  return ifx dt > 0.0f32 then cast(int) dt else 0;
+}
+
+// Latest message preview from this page (assistant reply, interim agent message, or user prompt).
+coder_page_last_message :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  return cp_dash_last_message(s, out);
+}

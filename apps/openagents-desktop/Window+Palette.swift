@@ -145,6 +145,11 @@ extension CoderWindow {
                     self.focusFind()
                     return nil
                 }
+                // Ctrl+D opens the Dashboard home screen (matching Cmd+D and Ctrl+N/Cmd+N).
+                if flags == .control && ch == "d" {
+                    self.openDashboard()
+                    return nil
+                }
             }
             guard event.keyCode == 48 else { return event }
             guard flags.contains(.control), !flags.contains(.command), !flags.contains(.option) else { return event }

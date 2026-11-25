@@ -32,6 +32,7 @@ final class CoderRun {
     var lastPermitOpen = false
     var lastGoalStatus: Int32 = 0
     var lastProviderKind: Int32 = -1
+    var startedAtMs: Int64 = 0
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         stopRequestedAt = 0; stopGen &+= 1
@@ -129,6 +130,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     #endif
     let daemonClient = CoderDaemonClient()
     private var lastForegroundRunning = false
+    private var lastDashSyncAt = 0.0
     struct PhoneRunStamp: Equatable {
         let stateMtime: Double
         let inSize: UInt64
@@ -608,6 +610,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 61: notificationModeChanged()
         case 62: sidebarAsked()
+        case 190:
+            #if OA_FULL
+            closeGym()
+            #endif
+            syncDashboard()
+            wake()
         case 63: focusFind()
         case 64: searchPaletteContent()
         case 65: jumpToPaletteHit()
@@ -762,6 +770,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 wake()
             }
         }
+        if cd_dashboard_shown(page) != 0 && now - lastDashSyncAt >= 0.25 {
+            lastDashSyncAt = now
+            syncDashboard()
+        }
         let fgRunning = cd_running(page) != 0
         let wasForegroundRunning = lastForegroundRunning
         KeepAwakeManager.shared.update(active: KeepAwakeManager.enabled && (fgRunning || !runs.isEmpty))
@@ -773,6 +785,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 notifyTurnCompleted(chatID: chat, isActiveChat: true)
                 if let cid = chat { maybeRefineTitleAfterTurn(chatID: cid) }
             }
+            if cd_dashboard_shown(page) != 0 { syncDashboard() }
             #if OA_FULL
             if FeatureFlags.isOn(.foreman), let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [

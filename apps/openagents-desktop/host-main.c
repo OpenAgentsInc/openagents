@@ -245,6 +245,20 @@ static void refresh_chats(DesktopApp *a) {
   cd_current(a->page, a->chat_id);
 }
 
+static void refresh_dashboard(DesktopApp *a) {
+  char out[4096];
+  out[0] = '\0';
+  if (cd_running(a->page)) {
+    char title[256] = "New chat";
+    if (cd_title(a->page, title, (int)sizeof title) <= 0) snprintf(title, sizeof title, "New chat");
+    char msg[512] = "";
+    cd_last_message(a->page, msg, (int)sizeof msg);
+    int elapsed = cd_elapsed_s(a->page);
+    snprintf(out, sizeof out, "%s\t%s\t0\t%d\tpsionic\t%s", a->chat_id, title, elapsed, msg);
+  }
+  cd_dashboard_items(a->page, out);
+}
+
 enum { OA_DIALOG_NONE, OA_DIALOG_CLAUDE, OA_DIALOG_OPENROUTER, OA_DIALOG_BUDGET, OA_DIALOG_GOAL, OA_DIALOG_RENAME, OA_DIALOG_DELETE, OA_DIALOG_AGY, OA_DIALOG_CLEAR_FOREMAN, OA_DIALOG_LOCAL, OA_DIALOG_LOCAL_DELETE, OA_DIALOG_AGY_CODE, OA_DIALOG_LOCAL_PICK };
 static void local_sync(DesktopApp *a);
 static void ask_local_models(DesktopApp *a);
@@ -2511,6 +2525,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 161: local_cancel_download(a); break;
     case 162: agy_connect_start(a); break;
     case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
+    case 190: refresh_dashboard(a); break;
     case 52: {
       int op = cd_term_op(a->page);
       int tid = cd_term_op_tab(a->page);

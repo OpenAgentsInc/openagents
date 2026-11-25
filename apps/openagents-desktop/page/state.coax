@@ -140,6 +140,7 @@ CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding / composer bar: cancel Ink
 CP_ASK_AGY_CONNECT :: 162;    // First-run onboarding where Inkling cannot run: install agy if needed, sign in, use Antigravity
 CP_ASK_WORKTREE_TOGGLE :: 163; // New-chat composer foot checkbox: persist sticky new-chat worktree preference (coder_page_worktree)
 CP_ASK_SHOW_OTHER_MODELS :: 189; // Composer model picker footer: persist Show/Hide other models toggle (coder_page_show_other_models)
+CP_ASK_DASHBOARD :: 190;      // Dashboard home screen opened: host refreshes active chats list and closes native overlays
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)
@@ -193,6 +194,8 @@ CP_EFFORT_MENU :: 403;      // composer thinking-level chip: toggles the thinkin
 CP_EFFORT_PICK :: 404;      // thinking-level menu option (coder.effort.1..5): selects that level and closes the menu
 CP_AGY_CONNECT :: 405;      // first-run onboarding on a machine that cannot run Inkling: Connect Google Antigravity / Try again
 CP_WORKTREE_TOGGLE :: 406;  // new-chat composer foot checkbox: toggle sticky new-chat git worktree preference
+CP_DASHBOARD :: 407;        // sidebar Dashboard row (Cmd/Ctrl+D): open Dashboard empty home screen
+CP_DASH_CHAT :: 408;        // Dashboard active chat row: open that chat and leave Dashboard
 CP_AGY_IDLE :: 0; CP_AGY_BUSY :: 1; CP_AGY_FAILED :: 2;   // agy_conn: the onboarding's Antigravity connection
 CP_LOCAL_NOT_INSTALLED :: 0; CP_LOCAL_DOWNLOADING :: 1; CP_LOCAL_VERIFYING :: 2; CP_LOCAL_READY :: 3; CP_LOCAL_ERROR :: 4; CP_LOCAL_STARTING :: 5; CP_LOCAL_SERVER_ERROR :: 6;
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
@@ -504,6 +507,7 @@ CoderPage :: struct {
   preview: [1] CpPreview;      // Embedded Web Preview Pane & SnapShot region capture (preview.coax; #13888)
   forge: [1] CpForge;          // Pull Requests inbox, multi-forge source control, AI review tours & Issues view (forge.coax; #13886)
   lean: [1] CpLeanRh;          // Lean 4 & Riemann Hypothesis Proof Workbench (gym-lean*.coax; #13946)
+  dash: [1] CpDash;            // Dashboard empty home screen showing active running chats (dashboard.coax)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -670,6 +674,7 @@ cp_init :: (s: [] CoderPage) {
   cp_lean_init(s);
   cp_ps_init(s);
   cp_mv_init(s);
+  cp_dash_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

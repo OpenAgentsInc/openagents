@@ -3,7 +3,7 @@
 
 cp_side_chat_row :: (s: [] CoderPage, f: [] UiFrame, q: int, cur: string, running: bool) -> AppSideRow {
   id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
-  is := !(cp_flag(s, DC_FLAG_GYM) && s[0].gym_open) && cur.count > 0 && id == cur;
+  is := !s[0].dash[0].open && !(cp_flag(s, DC_FLAG_GYM) && s[0].gym_open) && cur.count > 0 && id == cur;
   sel := s[0].sb[0].sel[q];
   t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
   if cp_flag(s, DC_FLAG_FOREMAN) && s[0].chats[q].managed {
@@ -74,11 +74,13 @@ cp_side_border_left :: (s: [] CoderPage, sh: [] Sheet, edge_x: f32, y: f32, h: f
 cp_side_action_keys :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, title: string, key: string, ctrl: bool, state: int, action: int) -> f32 {
   k := f[0].skin; a := k.app; t := k.set; sh := f[0].sheet; m := f[0].m;
   off := (state & EL_S_DISABLED) != 0;
+  current := (state & EL_S_CURRENT) != 0;
   h := a.side_row;
   kk := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, kk, id);
   hv := ifx off then 0.0f32 else uiframe_hover(f, kk, id);
-  if hv > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, h, a.row_radius, opacity(k.raised, 0.75f32 * hv)); }
+  if current { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, h, a.row_radius, k.raised); }
+  else if hv > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, h, a.row_radius, opacity(k.raised, 0.75f32 * hv)); }
   if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2.0f32 * a.row_inset, h, a.row_radius, opacity(k.hover, p)); }
   row := uiframe_semantic(f, id, EL_BUTTON, title, x, y, w, h, state, ifx off then 0 else action);
   tf := ifx a.side_text.line > 0 then a.side_text else k.body;
@@ -134,6 +136,8 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy := cp_bar(s);
   loc := ifx cp_flag(s, DC_FLAG_CUSTOMIZE) then s[0].cust[0].locale.active else CP_LOCALE_EN;
   sy += cp_side_action_keys(f, "coder.new", 0, sy, sw, ICON_COMPOSE, cp_tr(loc, "new_chat"), "N", s[0].ctrl_keys, 0, CP_NEW);
+  dash_st := ifx s[0].dash[0].open then EL_S_CURRENT else 0;
+  sy += cp_side_action_keys(f, "coder.dashboard", 0, sy, sw, ICON_WIDGET, cp_tr(loc, "dashboard"), "D", s[0].ctrl_keys, dash_st, CP_DASHBOARD);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Flag-gated sidebar destinations: Foreman stays at top; Gym and PRs & Issues live in the icon-only footer bar.
   if cp_flag(s, DC_FLAG_FOREMAN) {

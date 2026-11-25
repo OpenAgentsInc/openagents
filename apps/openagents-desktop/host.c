@@ -503,6 +503,11 @@ int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_
 static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0; out[n] = 0; return n; }
 void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }
 void cd_current(void *page, const char *id) { CoderHost *c = page; if (c) { coder_page_current(cd_state(c), cd_string(id)); cd_changed(c); } }
+void cd_dashboard_open(void *page, int open) { CoderHost *c = page; if (c) { coder_page_dashboard_open(cd_state(c), open != 0); cd_changed(c); } }
+int cd_dashboard_shown(void *page) { CoderHost *c = page; return c ? (int)coder_page_dashboard_shown(cd_state(c)) : 0; }
+void cd_dashboard_items(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_dashboard_items(cd_state(c), cd_string(list)); cd_changed(c); } }
+int cd_elapsed_s(void *page) { CoderHost *c = page; return c ? (int)coder_page_elapsed_s(cd_state(c)) : 0; }
+int cd_last_message(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_last_message(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void cd_foreman(void *page, int busy, int tier) { CoderHost *c = page; if (c) { coder_page_foreman(cd_state(c), busy != 0, tier); cd_changed(c); } }
 void cd_cmd_hints(void *page, int shown) { CoderHost *c = page; if (c) { coder_page_cmd_hints(cd_state(c), shown != 0); cd_changed(c); } }
 void cd_toast(void *page, const char *text, int tone) { CoderHost *c = page; if (c) { coder_page_toast(cd_state(c), cd_string(text), tone); cd_changed(c); } }

@@ -36,6 +36,7 @@
 #load "page/goal.coax";
 #load "page/transcript.coax";
 #load "page/chats.coax";
+#load "page/dashboard.coax";
 #load "page/sidebar_groups.coax";
 #load "page/persist.coax";
 #load "page/input.coax";
