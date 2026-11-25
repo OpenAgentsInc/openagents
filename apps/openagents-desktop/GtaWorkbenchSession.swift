@@ -22,6 +22,7 @@ struct GtaWorkbenchState {
     var offsetY: Float = 0
     var offsetZ: Float = 0
     var offsetYaw: Float = 0
+    var autoCamMode: Int32 = 1 // 0 = Off, 1 = Orbit, 2 = Kitchen Tour
 }
 
 final class GtaWorkbenchSession {
@@ -69,9 +70,10 @@ final class GtaWorkbenchSession {
     private static var fnRotate: FnRotate?
     private static var fnResetPos: FnVoid?
     private static var fnGetOffset: FnGetOffset?
+    private static var fnSetAutoCam: FnSetInt?
 
     private static let buildLock = NSLock()
-    private static let abiVersionTag = "oa_mandy_abi_v5"
+    private static let abiVersionTag = "oa_mandy_abi_v6"
 
     let key: String
     let rootDir: String
@@ -395,7 +397,57 @@ final class GtaWorkbenchSession {
                 float drag_plane_y = 0.9f;
                 simd_float3 drag_start_hit = { 0.0f, 0.0f, 0.0f };
                 float drag_start_off[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+                int auto_cam_mode = 1;   // 0=Off, 1=Steadicam Orbit, 2=Key Lento Kitchen Tour
+                float auto_cam_t = 0.0f;
             };
+
+            static void oa_mandy_step_auto_cam(OaMandyCtx *c, float dt) {
+                if (c->auto_cam_mode == 0 || c->engine->use_rockstar_cam || c->engine->paused) return;
+                c->auto_cam_t += std::min(std::max(dt, 0.0f), 0.05f);
+                auto &cam = c->engine->cam;
+                if (c->auto_cam_mode == 1) {
+                    // Smooth wall-safe Steadicam sweep around Mandy inside real ky34_hse kitchen!
+                    float t = c->auto_cam_t;
+                    float s1 = sinf(t * 0.42f);
+                    float c1 = cosf(t * 0.27f);
+                    float s2 = sinf(t * 0.19f + 0.6f);
+                    cam.yaw      = 0.22f + 0.72f * s1;           // wide -0.50 .. +0.94 rad arc
+                    cam.pitch    = 0.07f + 0.11f * c1;           // gentle boom up/down
+                    cam.dist     = 1.82f + 0.38f * s2;           // smooth dolly in/out
+                    cam.tx       = -0.14f - 0.16f * s1;          // subtle counter parallax
+                    cam.ty       = 1.10f + 0.14f * (1.0f - s2) * 0.5f;
+                    cam.tz       = 0.06f + 0.18f * std::max(0.0f, s1);
+                    cam.fov_deg  = 43.0f + 5.0f * s2;
+                    cam.aperture = 0.0045f + 0.0030f * (1.0f - s2) * 0.5f;
+                } else if (c->auto_cam_mode == 2) {
+                    // Full Key Lento Kitchen Tour: smooth cosine-interpolated dolly across 6 interior viewpoints!
+                    static const CameraState wp[6] = {
+                        {  0.42f,  0.06f, 2.05f, -0.08f, 1.02f, -0.02f, 44.0f, 0.0040f }, // Kitchen Counter Wide
+                        {  0.14f,  0.03f, 1.24f,  0.02f, 1.44f, -0.02f, 32.0f, 0.0085f }, // Hero Portrait Close-Up
+                        { -0.44f,  0.04f, 1.98f, -0.16f, 1.16f,  0.14f, 41.0f, 0.0055f }, // Over-Counter Lean
+                        { -0.46f, -0.06f, 1.88f, -0.04f, 0.94f,  0.10f, 52.0f, 0.0030f }, // Low Wide Archway
+                        {  0.94f,  0.20f, 2.08f, -0.52f, 0.90f,  0.92f, 54.0f, 0.0030f }, // Two-Shot (Mandy + Jason)
+                        {  0.58f,  0.16f, 2.18f, -0.26f, 1.14f,  0.34f, 46.0f, 0.0040f }, // High Chandelier Sweep
+                    };
+                    float seg_dur = 4.5f;
+                    float total = seg_dur * 6.0f;
+                    float u = fmodf(c->auto_cam_t, total) / seg_dur;
+                    int i0 = ((int)floorf(u)) % 6;
+                    int i1 = (i0 + 1) % 6;
+                    float frac = u - floorf(u);
+                    float a = 0.5f - 0.5f * cosf(frac * MN_PI); // C1 smooth ease in/out
+                    auto lerp = [&](float p0, float p1) { return p0 + (p1 - p0) * a; };
+                    cam.yaw      = lerp(wp[i0].yaw, wp[i1].yaw);
+                    cam.pitch    = lerp(wp[i0].pitch, wp[i1].pitch);
+                    cam.dist     = lerp(wp[i0].dist, wp[i1].dist);
+                    cam.tx       = lerp(wp[i0].tx, wp[i1].tx);
+                    cam.ty       = lerp(wp[i0].ty, wp[i1].ty);
+                    cam.tz       = lerp(wp[i0].tz, wp[i1].tz);
+                    cam.fov_deg  = lerp(wp[i0].fov_deg, wp[i1].fov_deg);
+                    cam.aperture = lerp(wp[i0].aperture, wp[i1].aperture);
+                }
+                c->engine->cam_dirty = true;
+            }
 
             static void oa_mandy_camera_ray(OaMandyCtx *c, float ndc_x, float ndc_y,
                                             simd_float3 &out_eye, simd_float3 &out_dir,
@@ -588,6 +640,7 @@ final class GtaWorkbenchSession {
                 @autoreleasepool {
                     OaMandyCtx *c = (OaMandyCtx *)raw;
                     if (c->in_flight.load(std::memory_order_acquire) >= 2) return 0;
+                    oa_mandy_step_auto_cam(c, dt);
                     for (int i = 0; i < 4; ++i) g_oa_mandy_off[i] = c->off[i];
                     oa_mandy_ensure_ring(c, c->engine->rt_w, c->engine->rt_h);
                     id<MTLTexture> dst = c->ring[c->ring_idx % 3u];
@@ -699,12 +752,25 @@ final class GtaWorkbenchSession {
             }
 
             extern "C" __attribute__((visibility("default")))
+            void oa_mandy_set_auto_cam(void *raw, int mode) {
+                if (!raw) return;
+                OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = std::max(0, std::min(2, mode));
+                if (c->auto_cam_mode != 0) {
+                    c->engine->use_rockstar_cam = false;
+                    c->engine->paused = false;
+                }
+                c->engine->cam_dirty = true;
+            }
+
+            extern "C" __attribute__((visibility("default")))
             void oa_mandy_orbit(void *raw, float dx, float dy) {
                 if (!raw) return;
                 OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = 0;
                 c->engine->use_rockstar_cam = false;
-                c->engine->cam.yaw -= dx * 0.007f;
-                c->engine->cam.pitch = mn_clamp(c->engine->cam.pitch - dy * 0.005f, -0.55f, 0.95f);
+                c->engine->cam.yaw -= dx * 0.0075f;
+                c->engine->cam.pitch = mn_clamp(c->engine->cam.pitch - dy * 0.006f, -1.25f, 1.30f);
                 c->engine->cam_dirty = true;
             }
 
@@ -712,13 +778,14 @@ final class GtaWorkbenchSession {
             void oa_mandy_pan(void *raw, float dx, float dy) {
                 if (!raw) return;
                 OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = 0;
                 c->engine->use_rockstar_cam = false;
                 auto &cam = c->engine->cam;
                 float cp = cosf(cam.pitch), sp = sinf(cam.pitch), cy = cosf(cam.yaw), sy = sinf(cam.yaw);
                 simd_float3 fwd = simd_normalize(f3(-cp * sy, -sp, -cp * cy));
                 simd_float3 right = simd_normalize(simd_cross(fwd, f3(0, 1, 0)));
                 simd_float3 up = simd_cross(right, fwd);
-                float sc = cam.dist * 0.0018f;
+                float sc = cam.dist * 0.0022f;
                 cam.tx -= right.x * dx * sc + up.x * dy * sc;
                 cam.ty -= right.y * dx * sc + up.y * dy * sc;
                 cam.tz -= right.z * dx * sc + up.z * dy * sc;
@@ -729,11 +796,12 @@ final class GtaWorkbenchSession {
             void oa_mandy_zoom(void *raw, float delta) {
                 if (!raw) return;
                 OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = 0;
                 c->engine->use_rockstar_cam = false;
                 auto &cam = c->engine->cam;
-                cam.dist = mn_clamp(cam.dist * (1.0f - delta * 0.004f), 0.50f, 6.0f);
+                cam.dist = mn_clamp(cam.dist * (1.0f - delta * 0.0045f), 0.35f, 9.0f);
                 float zt = mn_clamp((1.8f - cam.dist) / 0.9f, 0.0f, 1.0f);
-                cam.fov_deg = 42.0f - 12.0f * zt;
+                cam.fov_deg = 44.0f - 14.0f * zt;
                 cam.aperture = 0.003f + 0.009f * zt;
                 c->engine->cam_dirty = true;
             }
@@ -742,12 +810,13 @@ final class GtaWorkbenchSession {
             void oa_mandy_move_wasd(void *raw, float fwd_in, float right_in, float up_in, float dt) {
                 if (!raw) return;
                 OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = 0;
                 c->engine->use_rockstar_cam = false;
                 auto &cam = c->engine->cam;
                 float cp = cosf(cam.pitch), sp = sinf(cam.pitch), cy = cosf(cam.yaw), sy = sinf(cam.yaw);
                 simd_float3 fwd = simd_normalize(f3(-cp * sy, -sp, -cp * cy));
                 simd_float3 right = simd_normalize(simd_cross(fwd, f3(0, 1, 0)));
-                float spd = std::max(0.45f, cam.dist * 0.85f) * dt;
+                float spd = std::max(0.75f, cam.dist * 1.15f) * dt;
                 simd_float3 mv = fwd * (fwd_in * spd) + right * (right_in * spd) + f3(0, up_in * spd, 0);
                 cam.tx += mv.x; cam.ty += mv.y; cam.tz += mv.z;
                 c->engine->cam_dirty = true;
@@ -757,6 +826,7 @@ final class GtaWorkbenchSession {
             void oa_mandy_set_preset(void *raw, const char *name) {
                 if (!raw || !name) return;
                 OaMandyCtx *c = (OaMandyCtx *)raw;
+                c->auto_cam_mode = 0;
                 std::string s(name);
                 if (s == "kitchen_live") {
                     oa_mandy_apply_kitchen_live(c->engine);
@@ -828,7 +898,7 @@ final class GtaWorkbenchSession {
                 out_d[0] = c->engine->gpu_ms_smooth;
                 out_d[1] = c->engine->clock_s;
                 out_d[2] = c->engine->anim_t;
-                out_d[3] = (double)c->engine->frame_idx;
+                out_d[3] = (double)c->auto_cam_mode;
             }
 
             extern "C" __attribute__((visibility("default")))
@@ -906,6 +976,7 @@ final class GtaWorkbenchSession {
         fnRotate = sym("oa_mandy_rotate", as: FnRotate.self)
         fnResetPos = sym("oa_mandy_reset_pos", as: FnVoid.self)
         fnGetOffset = sym("oa_mandy_get_offset", as: FnGetOffset.self)
+        fnSetAutoCam = sym("oa_mandy_set_auto_cam", as: FnSetInt.self)
         return fnCreate != nil ? nil : "Missing oa_mandy_* symbols in \(dylibPath)"
     }
 
@@ -968,6 +1039,7 @@ final class GtaWorkbenchSession {
         state.width = UInt32(max(0, iv[6]))
         state.height = UInt32(max(0, iv[7]))
         state.gpuMs = dv[0]
+        state.autoCamMode = Int32(dv[3].rounded())
         if let fnOff = Self.fnGetOffset {
             var ov = [Float](repeating: 0, count: 4)
             fnOff(c, &ov)
@@ -1022,28 +1094,49 @@ final class GtaWorkbenchSession {
         state.offsetYaw = ov[3]
     }
 
+    func cycleAutoCam() {
+        guard let c = ctx else { return }
+        let next = (state.autoCamMode + 1) % 3
+        Self.fnSetAutoCam?(c, next)
+        state.autoCamMode = next
+        if next != 0 { state.rockstarCam = false; state.paused = false }
+        onStateChanged?()
+    }
+
+    func setAutoCamMode(_ mode: Int32) {
+        guard let c = ctx else { return }
+        Self.fnSetAutoCam?(c, mode)
+        state.autoCamMode = mode
+        if mode != 0 { state.rockstarCam = false; state.paused = false }
+        onStateChanged?()
+    }
+
     func orbit(dx: Float, dy: Float) {
         guard let c = ctx else { return }
         Self.fnOrbit?(c, dx, dy)
         state.rockstarCam = false
+        if state.autoCamMode != 0 { state.autoCamMode = 0; onStateChanged?() }
     }
 
     func pan(dx: Float, dy: Float) {
         guard let c = ctx else { return }
         Self.fnPan?(c, dx, dy)
         state.rockstarCam = false
+        if state.autoCamMode != 0 { state.autoCamMode = 0; onStateChanged?() }
     }
 
     func zoom(delta: Float) {
         guard let c = ctx else { return }
         Self.fnZoom?(c, delta)
         state.rockstarCam = false
+        if state.autoCamMode != 0 { state.autoCamMode = 0; onStateChanged?() }
     }
 
     func moveWasd(fwd: Float, right: Float, up: Float, dt: Float) {
         guard let c = ctx else { return }
         Self.fnMoveWasd?(c, fwd, right, up, dt)
         state.rockstarCam = false
+        if state.autoCamMode != 0 { state.autoCamMode = 0; onStateChanged?() }
     }
 
     func applyPreset(_ name: String) {
@@ -1103,7 +1196,7 @@ final class GtaWorkbenchSession {
         if loading { return " GTA VI Key Lento · Initializing Metal 4 RT + 6 BLASes… " }
         if !errorText.isEmpty { return " GTA VI Workbench: \(errorText) " }
         let modeStr = state.paused ? "CONVERGE \(state.accumSpp) SPP" : (state.denoiserOn ? "SVGF 2x" : "RAW PT")
-        let camStr = state.rockstarCam ? "R* CAM" : state.presetName
+        let camStr = state.rockstarCam ? "R* CAM" : (state.autoCamMode == 1 ? "AUTO-ORBIT" : (state.autoCamMode == 2 ? "KITCHEN TOUR" : state.presetName))
         let clipName = (state.clipIndex >= 0 && Int(state.clipIndex) < Self.clipNames.count) ? Self.clipNames[Int(state.clipIndex)] : "stage"
         let moved = abs(state.offsetX) > 0.005 || abs(state.offsetY) > 0.005 || abs(state.offsetZ) > 0.005 || abs(state.offsetYaw) > 0.01
         let posStr = moved

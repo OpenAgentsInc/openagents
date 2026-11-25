@@ -342,6 +342,7 @@ final class MetaverseViewportView: NSView {
 
     // GTA VI Key Lento Metal 4 Workbench bottom HUD bar
     private let gtaBar = NSStackView()
+    private let gtaAutoCamBtn = NSButton(title: "Auto-Cam: Orbit ●", target: nil, action: nil)
     private let gtaMoveBtn = NSButton(title: "Drag Mandy ●", target: nil, action: nil)
     private let gtaResetPosBtn = NSButton(title: "Reset Pos", target: nil, action: nil)
     private let gtaPlayBtn = NSButton(title: "Converge", target: nil, action: nil)
@@ -570,11 +571,12 @@ final class MetaverseViewportView: NSView {
         gtaBar.translatesAutoresizingMaskIntoConstraints = false
         gtaBar.isHidden = true
 
-        for b in [gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] {
+        for b in [gtaAutoCamBtn, gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] {
             b.bezelStyle = .rounded
             b.controlSize = .small
             b.target = self
         }
+        gtaAutoCamBtn.action = #selector(gtaCycleAutoCam)
         gtaMoveBtn.action = #selector(gtaToggleMoveMode)
         gtaResetPosBtn.action = #selector(gtaResetPosClicked)
         gtaPlayBtn.action = #selector(gtaTogglePaused)
@@ -590,7 +592,7 @@ final class MetaverseViewportView: NSView {
         gtaPresetPopup.removeAllItems()
         for p in GtaWorkbenchSession.presets { gtaPresetPopup.addItem(withTitle: p.label) }
 
-        for v in [gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
+        for v in [gtaAutoCamBtn, gtaMoveBtn, gtaResetPosBtn, gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
             gtaBar.addArrangedSubview(v)
         }
         addSubview(gtaBar)
@@ -605,6 +607,11 @@ final class MetaverseViewportView: NSView {
     func syncGtaBar() {
         guard let gta = activeGtaWorkbench else { gtaBar.isHidden = true; return }
         gtaBar.isHidden = false
+        switch gta.state.autoCamMode {
+        case 1: gtaAutoCamBtn.title = "Auto: Orbit ●"
+        case 2: gtaAutoCamBtn.title = "Auto: Tour ●"
+        default: gtaAutoCamBtn.title = "Auto-Cam"
+        }
         gtaMoveBtn.title = gtaDragMandyEnabled ? "Drag Mandy ●" : "Orbit Cam"
         let moved = abs(gta.state.offsetX) > 0.005 || abs(gta.state.offsetY) > 0.005 || abs(gta.state.offsetZ) > 0.005 || abs(gta.state.offsetYaw) > 0.01
         gtaResetPosBtn.isHidden = !moved
@@ -619,6 +626,7 @@ final class MetaverseViewportView: NSView {
         }
     }
 
+    @objc private func gtaCycleAutoCam() { activeGtaWorkbench?.cycleAutoCam(); syncGtaBar(); onNeedsDisplay?() }
     @objc private func gtaToggleMoveMode() { gtaDragMandyEnabled.toggle(); syncGtaBar() }
     @objc private func gtaResetPosClicked() { activeGtaWorkbench?.resetMandyPosition(); syncGtaBar(); onNeedsDisplay?() }
     @objc private func gtaTogglePaused() { activeGtaWorkbench?.togglePaused(); syncGtaBar(); onNeedsDisplay?() }
@@ -2098,6 +2106,7 @@ final class MetaverseViewportView: NSView {
             case "7": gta.applyPreset("jason_cu"); syncGtaBar(); onNeedsDisplay?(); return
             case "0": gta.applyPreset("showcase"); syncGtaBar(); onNeedsDisplay?(); return
             case "p": gta.applyPreset("portrait_live"); syncGtaBar(); onNeedsDisplay?(); return
+            case "o": gta.cycleAutoCam(); syncGtaBar(); onNeedsDisplay?(); return
             case "g": gtaDragMandyEnabled.toggle(); syncGtaBar(); return
             case "[": gta.rotateMandy(deltaYaw: -0.18); syncGtaBar(); onNeedsDisplay?(); return
             case "]": gta.rotateMandy(deltaYaw: 0.18); syncGtaBar(); onNeedsDisplay?(); return

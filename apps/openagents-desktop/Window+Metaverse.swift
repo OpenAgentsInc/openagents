@@ -119,7 +119,8 @@ extension CoderWindow {
         vp.setActiveGtaWorkbench(session)
         let tree = "0\t1\t0\tKey Lento Kitchen (ky34_hse)\tky34_hse\n0\t1\t0\tMandy (320-bone + 24K Curves)\tmandy\n0\t1\t0\tJason (427-bone + 7K Curves)\tjason\n0\t1\t0\tRockstar Cameras (ig5-cams)\tig5_cams\n"
         _ = cd_mv_set_tree(page, tree)
-        cd_mv_tab_status(page, Int32(tabIdx), 1, 1, 0, 0, 0, 0, 0, "Metal 4 RT · 6 BLAS · MetalFX 2x", "")
+        cd_mv_tab_status(page, Int32(tabIdx), 1, 1, 0, 0, 0, 0, 0, "Metal 4 RT · 6 BLAS · SVGF 2x", "")
+        window.makeFirstResponder(vp)
         wake()
     }
 
