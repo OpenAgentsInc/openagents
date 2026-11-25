@@ -28,7 +28,7 @@ cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 FWW_LINE :: 1048576;
 FWW_SLAB :: 2097152;
-FWW_MAX_MSGS :: 96;
+FWW_MAX_MSGS :: 160;
 FWW_MAX_BLOCKS :: 16;
 FWW_MAX_TOOLS_CALL :: 12;
 FWW_FILE_MAX :: 262144;
@@ -1180,6 +1180,128 @@ fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bo
   return did;
 }
 
+// Structural conversation sanitizer: enforces strict protocol invariants BEFORE every API call so
+// neither Gemini ("Requests ending with a model turn are not supported", unmatched functionCall/Response,
+// consecutive same-role turns) nor OpenAI/Psionic can EVER receive malformed turn history — even after
+// mid-tool stop, prior turn failure, recall of interrupted turns, compaction, or FWW_MAX_MSGS pressure.
+fww_msg_count_tool_use :: (m: FwMsg) -> int {
+  n := 0;
+  for b: 0..<m.nblocks { if m.blocks[b].kind == FWW_MB_TOOL_USE { n += 1; } }
+  return n;
+}
+
+fww_msg_count_tool_res :: (m: FwMsg) -> int {
+  n := 0;
+  for b: 0..<m.nblocks { if m.blocks[b].kind == FWW_MB_TOOL_RES { n += 1; } }
+  return n;
+}
+
+fww_msg_has_visible_model_part :: (m: FwMsg) -> bool {
+  for b: 0..<m.nblocks {
+    bk := m.blocks[b];
+    if bk.kind == FWW_MB_TOOL_USE { return true; }
+    if bk.kind == FWW_MB_TEXT && (bk.text_n > 0 || bk.sig_n > 0) { return true; }
+  }
+  return false;
+}
+
+fww_hist_sanitize :: (h: [] FwHist, tmp_buf: [] u8) {
+  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab >= FWW_SLAB - 32768 {
+    _ = fww_hist_compact(h, tmp_buf);
+  }
+  out_n := 0;
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    // 1. Conversation MUST start with USER.
+    if out_n == 0 && msg.role != FWW_MROLE_USER { continue; }
+
+    if msg.role == FWW_MROLE_TOOL_RESULTS {
+      // 2. TOOL_RESULTS MUST immediately follow ASSISTANT with matching TOOL_USE count > 0.
+      if out_n == 0 || h[0].msgs[out_n - 1].role != FWW_MROLE_ASSISTANT { continue; }
+      prev_tu := fww_msg_count_tool_use(h[0].msgs[out_n - 1]);
+      cur_tr := fww_msg_count_tool_res(msg);
+      if prev_tu <= 0 || cur_tr != prev_tu { continue; }
+      h[0].msgs[out_n] = msg;
+      out_n += 1;
+    } else if msg.role == FWW_MROLE_ASSISTANT {
+      // 3. Never emit two consecutive ASSISTANT messages.
+      if out_n > 0 && h[0].msgs[out_n - 1].role == FWW_MROLE_ASSISTANT { continue; }
+      // 4. An ASSISTANT message with TOOL_USE MUST be immediately followed by TOOL_RESULTS with the exact same count;
+      //    if it is dangling/mismatched (e.g. from a stopped/failed mid-tool turn), strip TOOL_USE blocks cleanly.
+      ntu := fww_msg_count_tool_use(msg);
+      next_matches_tr := (i + 1 < h[0].nmsgs)
+                      && h[0].msgs[i + 1].role == FWW_MROLE_TOOL_RESULTS
+                      && fww_msg_count_tool_res(h[0].msgs[i + 1]) == ntu;
+      if ntu > 0 && !next_matches_tr {
+        nb := 0;
+        for b: 0..<msg.nblocks {
+          if msg.blocks[b].kind == FWW_MB_TEXT && msg.blocks[b].text_n > 0 {
+            msg.blocks[nb] = msg.blocks[b];
+            nb += 1;
+          }
+        }
+        if nb == 0 {
+          a0 := [1] int.[0];
+          n0 := fww_slab_put(h, "(Previous tool step was interrupted.)", a0[..]);
+          msg.blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = a0[0], text_n = n0};
+          nb = 1;
+        }
+        msg.nblocks = nb;
+      }
+      // 4b. Drop thought-only or empty ASSISTANT turns (Gemini skips them, which would expose consecutive user turns!).
+      if !fww_msg_has_visible_model_part(msg) { continue; }
+      h[0].msgs[out_n] = msg;
+      out_n += 1;
+    } else if msg.role == FWW_MROLE_USER {
+      // 5. Never emit two consecutive USER-side messages (USER+USER or TOOL_RESULTS+USER -> merge into preceding turn!).
+      if out_n > 0 && h[0].msgs[out_n - 1].role == FWW_MROLE_TOOL_RESULTS {
+        prev := h[0].msgs[out_n - 1];
+        if msg.nblocks > 0 && msg.blocks[0].text_n > 0 {
+          if prev.nblocks < FWW_MAX_BLOCKS {
+            h[0].msgs[out_n - 1].blocks[prev.nblocks] = msg.blocks[0];
+            h[0].msgs[out_n - 1].nblocks = prev.nblocks + 1;
+          } else {
+            last_b := prev.nblocks - 1;
+            prev_txt := fww_slab_str(h, prev.blocks[last_b].text_at, prev.blocks[last_b].text_n);
+            cur_txt := fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n);
+            mn := fww_cat(tmp_buf, 0, prev_txt);
+            if prev_txt.count > 0 { mn = fww_cat(tmp_buf, mn, "\n\n"); }
+            mn = fww_cat(tmp_buf, mn, cur_txt);
+            a0 := [1] int.[0];
+            sn := fww_slab_put(h, cast(string) tmp_buf[0..<mn], a0[..]);
+            h[0].msgs[out_n - 1].blocks[last_b].text_at = a0[0];
+            h[0].msgs[out_n - 1].blocks[last_b].text_n = sn;
+          }
+        }
+        continue;
+      }
+      if out_n > 0 && h[0].msgs[out_n - 1].role == FWW_MROLE_USER {
+        prev_txt := ifx h[0].msgs[out_n - 1].nblocks > 0 then fww_slab_str(h, h[0].msgs[out_n - 1].blocks[0].text_at, h[0].msgs[out_n - 1].blocks[0].text_n) else "";
+        cur_txt := ifx msg.nblocks > 0 then fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n) else "";
+        mn := fww_cat(tmp_buf, 0, prev_txt);
+        if prev_txt.count > 0 && cur_txt.count > 0 { mn = fww_cat(tmp_buf, mn, "\n\n"); }
+        mn = fww_cat(tmp_buf, mn, cur_txt);
+        a0 := [1] int.[0];
+        sn := fww_slab_put(h, cast(string) tmp_buf[0..<mn], a0[..]);
+        h[0].msgs[out_n - 1].blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = a0[0], text_n = sn};
+        h[0].msgs[out_n - 1].nblocks = 1;
+        continue;
+      }
+      h[0].msgs[out_n] = msg;
+      out_n += 1;
+    }
+  }
+  h[0].nmsgs = out_n;
+
+  // 6. Ironclad invariant: history sent to the model MUST NEVER be empty and MUST NEVER end with ASSISTANT ("model")!
+  if h[0].nmsgs == 0 || h[0].msgs[h[0].nmsgs - 1].role == FWW_MROLE_ASSISTANT {
+    if h[0].nmsgs >= FWW_MAX_MSGS || h[0].nslab >= FWW_SLAB - 1024 {
+      _ = fww_hist_compact(h, tmp_buf);
+    }
+    fww_hist_push_user(h, "Continue and complete the user's request based on the steps above.");
+  }
+}
+
 // Hydrate persisted turns from MWW_RECALL JSON array [{"task":...,"reply":...},...].
 fww_hist_recall :: (h: [] FwHist, recall_json: string) {
   fww_hist_clear(h);
@@ -1188,14 +1310,16 @@ fww_hist_recall :: (h: [] FwHist, recall_json: string) {
   ab: [65536] u8;
   ar := [1] ClArena.[ClArena.{buf = ab[..]}];
   for i: 0..<cnt {
-    if h[0].nmsgs + 2 >= FWW_MAX_MSGS { break; }
+    if h[0].nmsgs + 8 >= FWW_MAX_MSGS { break; }
     ar[0].at = 0; ar[0].full = false;
     item := cl_json(recall_json, cl_item(recall_json, i));
     if item.count == 0 { continue; }
     tk := cl_str(ar[..], item, "task");
     rp := cl_str(ar[..], item, "reply");
-    if tk.count > 0 { fww_hist_push_user(h, tk); }
-    if rp.count > 0 { fww_hist_push_assistant_text(h, rp); }
+    if tk.count > 0 {
+      fww_hist_push_user(h, tk);
+      fww_hist_push_assistant_text(h, ifx rp.count > 0 then rp else "(interrupted)");
+    }
   }
 }
 
@@ -1305,11 +1429,13 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
     jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
   }
 
-  // Contents
+  // Contents (enforce strict non-empty user-started, user-terminated sequence on the wire too!)
   jo_key(o[..], "contents");
   jo_arr(o[..]);
+  last_emitted_role := 0; // 0=none, 1=user, 2=model
   for i: 0..<h[0].nmsgs {
     msg := h[0].msgs[i];
+    if last_emitted_role == 0 && msg.role != FWW_MROLE_USER { continue; }
     if msg.role == FWW_MROLE_USER {
       jo_obj(o[..]);
       jo_key(o[..], "role"); jo_str(o[..], "user");
@@ -1317,10 +1443,11 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
       jo_arr(o[..]);
       txt := ifx msg.nblocks > 0 then fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n) else "";
       jo_obj(o[..]);
-      jo_key(o[..], "text"); jo_str(o[..], txt);
+      jo_key(o[..], "text"); jo_str(o[..], ifx txt.count > 0 then txt else "Continue.");
       jo_end(o[..]);
       jo_end(o[..]);
       jo_end(o[..]);
+      last_emitted_role = 1;
     } else if msg.role == FWW_MROLE_ASSISTANT {
       // Count model parts (text + tool_use; skip thought-only blocks without text/tool)
       nparts := 0;
@@ -1356,7 +1483,14 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
       }
       jo_end(o[..]);
       jo_end(o[..]);
+      last_emitted_role = 2;
     } else if msg.role == FWW_MROLE_TOOL_RESULTS {
+      nparts := 0;
+      for b: 0..<msg.nblocks {
+        bk := msg.blocks[b];
+        if bk.kind == FWW_MB_TOOL_RES || (bk.kind == FWW_MB_TEXT && bk.text_n > 0) { nparts += 1; }
+      }
+      if nparts == 0 { continue; }
       jo_obj(o[..]);
       jo_key(o[..], "role"); jo_str(o[..], "user");
       jo_key(o[..], "parts");
@@ -1385,7 +1519,19 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
       }
       jo_end(o[..]);
       jo_end(o[..]);
+      last_emitted_role = 1;
     }
+  }
+  if last_emitted_role != 1 {
+    jo_obj(o[..]);
+    jo_key(o[..], "role"); jo_str(o[..], "user");
+    jo_key(o[..], "parts");
+    jo_arr(o[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "text"); jo_str(o[..], "Continue and complete the user's request.");
+    jo_end(o[..]);
+    jo_end(o[..]);
+    jo_end(o[..]);
   }
   jo_end(o[..]);
 
@@ -1450,6 +1596,7 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
   jo_key(o[..], "content"); jo_str(o[..], sys_prompt);
   jo_end(o[..]);
 
+  last_oai_role := 0; // 0=none, 1=user/tool, 2=assistant
   for i: 0..<h[0].nmsgs {
     msg := h[0].msgs[i];
     if msg.role == FWW_MROLE_USER {
@@ -1458,6 +1605,7 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
       txt := ifx msg.nblocks > 0 then fww_slab_str(h, msg.blocks[0].text_at, msg.blocks[0].text_n) else "";
       jo_key(o[..], "content"); jo_str(o[..], txt);
       jo_end(o[..]);
+      last_oai_role = 1;
     } else if msg.role == FWW_MROLE_ASSISTANT {
       jo_obj(o[..]);
       jo_key(o[..], "role"); jo_str(o[..], "assistant");
@@ -1510,6 +1658,7 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
         jo_end(o[..]);
       }
       jo_end(o[..]);
+      last_oai_role = 2;
     } else if msg.role == FWW_MROLE_TOOL_RESULTS {
       for b: 0..<msg.nblocks {
         bk := msg.blocks[b];
@@ -1521,14 +1670,22 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
           jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
           if is_local && bk.is_error { jo_key(o[..], "is_error"); jo_bool(o[..], true); }
           jo_end(o[..]);
+          last_oai_role = 1;
         } else if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
           jo_obj(o[..]);
           jo_key(o[..], "role"); jo_str(o[..], "user");
           jo_key(o[..], "content"); jo_str(o[..], fww_slab_str(h, bk.text_at, bk.text_n));
           jo_end(o[..]);
+          last_oai_role = 1;
         }
       }
     }
+  }
+  if last_oai_role != 1 {
+    jo_obj(o[..]);
+    jo_key(o[..], "role"); jo_str(o[..], "user");
+    jo_key(o[..], "content"); jo_str(o[..], "Continue and complete the user's request.");
+    jo_end(o[..]);
   }
   jo_end(o[..]);
   jo_end(o[..]);
@@ -2179,8 +2336,9 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
-  // Multi-layer pre-flight compaction & hard context-fit guarantee (works inside multi-tool turns too!).
+  // Multi-layer pre-flight compaction, hard context-fit guarantee, & structural history sanitizer!
   _ = fww_ensure_context_fits(h, sys.count, ctx_win, is_local, no_tools, cfg[0].auto_compact, b[0].compact_buf[..]);
+  fww_hist_sanitize(h, b[0].compact_buf[..]);
   r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
 
   bn := ifx is_gem
@@ -2188,6 +2346,7 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
   if bn <= 0 {
     _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
+    fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
          then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
@@ -2195,6 +2354,7 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   if bn <= 0 {
     _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
+    fww_hist_sanitize(h, b[0].compact_buf[..]);
     r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
     bn = ifx is_gem
          then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
@@ -2410,8 +2570,8 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   hit_dup_limit := r[0].dup_tool_streak >= 2;
   need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit;
 
-  // All tool calls finished! Ensure message slot exists before committing tool_results.
-  if h[0].nmsgs >= FWW_MAX_MSGS - 1 {
+  // All tool calls finished! Ensure message slot & slab headroom exist before committing tool_results.
+  if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab >= FWW_SLAB - 131072 {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
   }
   if h[0].nmsgs < FWW_MAX_MSGS {
@@ -2519,13 +2679,26 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].acc[0].nerr = fww_extract_err_msg(cast(string) r[0].acc[0].err_body[0..<r[0].acc[0].nerr_body], r[0].acc[0].err_msg[..]);
     }
     err_s := cast(string) r[0].acc[0].err_msg[0..<r[0].acc[0].nerr];
-    if fww_is_context_overflow_err(err_s) && r[0].ctx_recoveries < 3 {
+    is_struct_err := fww_contains_ci(err_s, "ending with a model turn")
+                  || fww_contains_ci(err_s, "function call turn")
+                  || fww_contains_ci(err_s, "function response turn")
+                  || fww_contains_ci(err_s, "thought signature")
+                  || fww_contains_ci(err_s, "thought_signature")
+                  || fww_contains_ci(err_s, "must alternate")
+                  || fww_contains_ci(err_s, "tool_call_id");
+    if (fww_is_context_overflow_err(err_s) || is_struct_err) && r[0].ctx_recoveries < 3 {
       r[0].ctx_recoveries += 1;
-      parsed_lim := fww_parse_ctx_limit_from_err(err_s);
-      if parsed_lim >= 2048 && (r[0].effective_ctx_cap == 0 || parsed_lim < r[0].effective_ctx_cap) {
-        r[0].effective_ctx_cap = parsed_lim;
+      if fww_is_context_overflow_err(err_s) {
+        parsed_lim := fww_parse_ctx_limit_from_err(err_s);
+        if parsed_lim >= 2048 && (r[0].effective_ctx_cap == 0 || parsed_lim < r[0].effective_ctx_cap) {
+          r[0].effective_ctx_cap = parsed_lim;
+        }
+        _ = fww_emergency_compact(h, r[0].ctx_recoveries, r[0].effective_ctx_cap, b[0].compact_buf[..]);
+      } else {
+        // Structural turn/signature mismatch: collapse to clean summary USER turn so retry is 100% valid!
+        _ = fww_emergency_compact(h, 3, r[0].effective_ctx_cap, b[0].compact_buf[..]);
       }
-      _ = fww_emergency_compact(h, r[0].ctx_recoveries, r[0].effective_ctx_cap, b[0].compact_buf[..]);
+      fww_hist_sanitize(h, b[0].compact_buf[..]);
       r[0].retry[0] = FlawedRetryState.{};
       fww_emit_attempt(r, auth, "retried", status, 0, out);
       err2 := fww_start_request(r, cfg, auth, h, b, out);
@@ -2587,8 +2760,8 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   fww_emit_attempt(r, auth, "done", status, cost, out);
 
-  // Append assistant message to history (compact first if near FWW_MAX_MSGS so history never silently drops turns)
-  if h[0].nmsgs >= FWW_MAX_MSGS - 1 {
+  // Append assistant message to history (compact first if near FWW_MAX_MSGS or FWW_SLAB so ASSISTANT + TOOL_RESULTS never drop!)
+  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab >= FWW_SLAB - 131072 {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
   }
   if h[0].nmsgs < FWW_MAX_MSGS {
@@ -3241,6 +3414,13 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].retry[0] = FlawedRetryState.{max_retries = 3};
     run[0].retry_at_ms = 0;
     run[0].waiting_permit = false;
+    run[0].recoveries = 0;
+    run[0].ctx_recoveries = 0;
+    run[0].force_wrapup_once = false;
+    run[0].force_no_think_once = false;
+    run[0].soft_deadline_ms = 0;
+    run[0].last_tool_hash = 0;
+    run[0].dup_tool_streak = 0;
 
     // Handle local slash commands instantaneously
     if fww_handle_slash(tk, run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]) {
@@ -3255,7 +3435,11 @@ tool_main :: () -> int #export_c #effects(all) {
     }
 
     run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+    if hist[0].nmsgs >= FWW_MAX_MSGS - 4 {
+      _ = fww_hist_compact(hist[..], bufs[0].compact_buf[..]);
+    }
     fww_hist_push_user(hist[..], tk);
+    fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
     mc_steer_clear(st[..]); st[0].nd = 0;
 
     err := fww_start_request(run[..], cfg[..], auth[..], hist[..], bufs[..], out[..]);
@@ -3439,4 +3623,135 @@ tool_main :: () -> int #export_c #effects(all) {
   // 6. Reactive emergency compaction level 3 collapses any history cleanly to fit even an 8K context window
   #assert fww_emergency_compact(h[..], 3, 8192, tmp[..]);
   #assert h[0].nmsgs == 1 && fww_estimate_prompt_tokens(h[..], 1024, true, true) < 4096;
+}
+
+#test "flawedworker: structural sanitizer and wire guards make model-terminated or mismatched Gemini/OpenAI requests impossible" #steps 200000000 {
+  h: [1] FwHist;
+  cfg: [1] FwConfig;
+  tmp: [262144] u8;
+  body: [131072] u8;
+  nodes: [2048] JvNode;
+  d: [1] Jv;
+  rb: [64] u8;
+
+  // 1. Exact FWW_MAX_MSGS saturation ending on ASSISTANT(tool_use) (build 34337 screenshot crash!)
+  fww_hist_push_user(h[..], "Move the archive button to the top of the sidebar.");
+  while h[0].nmsgs < FWW_MAX_MSGS {
+    if h[0].nmsgs % 2 == 1 {
+      mi := h[0].nmsgs;
+      h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+      a0 := [1] int.[0];
+      ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+      ub.id_n = fww_slab_put(h[..], "c1", a0[..]); ub.id_at = a0[0];
+      ub.name_n = fww_slab_put(h[..], "Edit", a0[..]); ub.name_at = a0[0];
+      ub.text_n = fww_slab_put(h[..], "{\"file_path\":\"zeron.coax\"}", a0[..]); ub.text_at = a0[0];
+      h[0].msgs[mi].blocks[0] = ub;
+      h[0].nmsgs += 1;
+    } else {
+      mi := h[0].nmsgs;
+      h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+      a0 := [1] int.[0];
+      tb := FwBlock.{kind = FWW_MB_TOOL_RES};
+      tb.id_n = fww_slab_put(h[..], "c1", a0[..]); tb.id_at = a0[0];
+      tb.name_n = fww_slab_put(h[..], "Edit", a0[..]); tb.name_at = a0[0];
+      tb.text_n = fww_slab_put(h[..], "ok", a0[..]); tb.text_at = a0[0];
+      h[0].msgs[mi].blocks[0] = tb;
+      h[0].nmsgs += 1;
+    }
+  }
+  #assert h[0].nmsgs == FWW_MAX_MSGS && h[0].msgs[h[0].nmsgs - 1].role == FWW_MROLE_ASSISTANT;
+  fww_hist_sanitize(h[..], tmp[..]);
+  #assert h[0].nmsgs > 0 && h[0].nmsgs < FWW_MAX_MSGS;
+  #assert h[0].msgs[0].role == FWW_MROLE_USER && h[0].msgs[h[0].nmsgs - 1].role != FWW_MROLE_ASSISTANT;
+  g1 := fww_build_gemini_body(cfg[..], h[..], "high", "sys", false, body[..]);
+  #assert g1 > 0 && jv_parse(d[..], cast(string) body[0..<g1], nodes[..]);
+  c1 := jv_get(d[0], 0, "contents");
+  cl1 := jv_len(d[0], c1);
+  #assert cl1 >= 1;
+  prev_r := "";
+  for i: 0..<cl1 {
+    rn := jv_str(d[0], jv_get(d[0], jv_at(d[0], c1, i), "role"), rb[..]);
+    cur_r := cast(string) rb[0..<rn];
+    if i == 0 { #assert cur_r == "user"; }
+    if i == cl1 - 1 { #assert cur_r == "user"; }
+    if i > 0 { #assert cur_r != prev_r; }
+    prev_r = ifx cur_r == "user" then "user" else "model";
+  }
+
+  // 2. Dangling ASSISTANT(tool_use) after mid-tool stop + new USER prompt -> tool_use stripped, strict alternation
+  fww_hist_clear(h[..]);
+  fww_hist_push_user(h[..], "First task");
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  a1 := [1] int.[0];
+  d_ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+  d_ub.id_n = fww_slab_put(h[..], "call_dangling", a1[..]); d_ub.id_at = a1[0];
+  d_ub.name_n = fww_slab_put(h[..], "Bash", a1[..]); d_ub.name_at = a1[0];
+  d_ub.text_n = fww_slab_put(h[..], "{\"command\":\"ls\"}", a1[..]); d_ub.text_at = a1[0];
+  h[0].msgs[1].blocks[0] = d_ub;
+  h[0].nmsgs = 2;
+  fww_hist_push_user(h[..], "Second task after stop");
+  fww_hist_sanitize(h[..], tmp[..]);
+  #assert h[0].nmsgs == 3;
+  #assert h[0].msgs[0].role == FWW_MROLE_USER && h[0].msgs[1].role == FWW_MROLE_ASSISTANT && h[0].msgs[2].role == FWW_MROLE_USER;
+  #assert fww_msg_count_tool_use(h[0].msgs[1]) == 0;
+
+  // 3. Mismatched functionCall (2) vs functionResponse (1) -> stripped cleanly
+  fww_hist_clear(h[..]);
+  fww_hist_push_user(h[..], "Run two tools");
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 2};
+  h[0].msgs[1].blocks[0] = d_ub;
+  h[0].msgs[1].blocks[1] = d_ub;
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  m_tr := FwBlock.{kind = FWW_MB_TOOL_RES};
+  m_tr.id_n = fww_slab_put(h[..], "call_dangling", a1[..]); m_tr.id_at = a1[0];
+  m_tr.name_n = fww_slab_put(h[..], "Bash", a1[..]); m_tr.name_at = a1[0];
+  m_tr.text_n = fww_slab_put(h[..], "only one", a1[..]); m_tr.text_at = a1[0];
+  h[0].msgs[2].blocks[0] = m_tr;
+  h[0].nmsgs = 3;
+  fww_hist_sanitize(h[..], tmp[..]);
+  #assert h[0].nmsgs == 3 && fww_msg_count_tool_use(h[0].msgs[1]) == 0 && h[0].msgs[2].role == FWW_MROLE_USER;
+
+  // 4. Thought-only ASSISTANT between two USER turns (H1 recovery) -> dropped & USERs merged (no [user, user]!)
+  fww_hist_clear(h[..]);
+  fww_hist_push_user(h[..], "Solve hard math");
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  th_b := FwBlock.{kind = FWW_MB_THINK};
+  th_b.text_n = fww_slab_put(h[..], "internal scratchpad", a1[..]); th_b.text_at = a1[0];
+  h[0].msgs[1].blocks[0] = th_b;
+  h[0].nmsgs = 2;
+  fww_hist_push_user(h[..], "Now write final answer.");
+  fww_hist_sanitize(h[..], tmp[..]);
+  #assert h[0].nmsgs == 1 && h[0].msgs[0].role == FWW_MROLE_USER;
+  m_txt := fww_slab_str(h[..], h[0].msgs[0].blocks[0].text_at, h[0].msgs[0].blocks[0].text_n);
+  #assert fww_contains_ci(m_txt, "Solve hard math") && fww_contains_ci(m_txt, "Now write final answer.");
+
+  // 5. Recall of interrupted turn (empty reply) + new user turn -> balanced user/model/user
+  fww_hist_recall(h[..], "[{\"task\":\"old interrupted\",\"reply\":\"\"},{\"task\":\"done turn\",\"reply\":\"all set\"}]");
+  #assert h[0].nmsgs == 4 && h[0].msgs[1].role == FWW_MROLE_ASSISTANT && h[0].msgs[3].role == FWW_MROLE_ASSISTANT;
+  fww_hist_push_user(h[..], "new turn");
+  fww_hist_sanitize(h[..], tmp[..]);
+  #assert h[0].nmsgs == 5 && h[0].msgs[4].role == FWW_MROLE_USER;
+
+  // 6. Wire-level last-line-of-defense: calling Gemini/OpenAI body builders DIRECTLY on model-terminated history STILL ends with "user"!
+  fww_hist_clear(h[..]);
+  fww_hist_push_assistant_text(h[..], "stray leading assistant");
+  fww_hist_push_user(h[..], "hello");
+  fww_hist_push_assistant_text(h[..], "world");
+  g2 := fww_build_gemini_body(cfg[..], h[..], "low", "sys", false, body[..]);
+  #assert g2 > 0 && jv_parse(d[..], cast(string) body[0..<g2], nodes[..]);
+  c2 := jv_get(d[0], 0, "contents");
+  cl2 := jv_len(d[0], c2);
+  #assert cl2 == 3;
+  r0n := jv_str(d[0], jv_get(d[0], jv_at(d[0], c2, 0), "role"), rb[..]);
+  #assert cast(string) rb[0..<r0n] == "user";
+  r2n := jv_str(d[0], jv_get(d[0], jv_at(d[0], c2, 2), "role"), rb[..]);
+  #assert cast(string) rb[0..<r2n] == "user";
+
+  o2 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-maple", "low", "sys", true, 32768, false, false, body[..]);
+  #assert o2 > 0 && jv_parse(d[..], cast(string) body[0..<o2], nodes[..]);
+  ms2 := jv_get(d[0], 0, "messages");
+  ml2 := jv_len(d[0], ms2);
+  #assert ml2 >= 2;
+  om_last := jv_str(d[0], jv_get(d[0], jv_at(d[0], ms2, ml2 - 1), "role"), rb[..]);
+  #assert cast(string) rb[0..<om_last] == "user";
 }
