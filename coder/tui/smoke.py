@@ -232,7 +232,7 @@ def verbs(check):
         check("usage: Claude's, Codex's, and Antigravity's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
               len(urows) == 3 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
               and [w["used_percent"] for w in urows[1]["windows"]] == [3, 4] and [w["label"] for w in urows[1]["windows"]] == ["Session", "Week"]
-              and urows[2].get("agent") == "antigravity" and urows[2].get("windows") == [] and "signed_out" in urows[2].get("error", "")
+              and urows[2].get("agent") == "antigravity" and urows[2].get("windows") == [] and "unavailable" in urows[2].get("error", "")
               and ("/api/oauth/usage", "Bearer tok-claude", "oauth-2025-04-20", None) in seen_auth
               and ("/backend-api/wham/usage", "Bearer tok-codex", None, "acct-1") in seen_auth
               and "Week" in ut.stdout and "84%" in ut.stdout and "tok-" not in uj.stdout + ut.stdout + uj.stderr + ut.stderr
@@ -768,7 +768,7 @@ def verbs(check):
             for i, r in enumerate(rs):
                 with open(os.path.join(ed, "%d.http" % (i + 1)), "w") as f:
                     f.write(r)
-            ep = subprocess.run([coder, "run", "do it", "--engine", "micro", "--json", "--cwd", ed], cwd=REPO, env=dict(renv, GW_REPLAY=ed), capture_output=True, text=True, timeout=300)
+            ep = subprocess.run([coder, "run", "do it", "--engine", "micro", "--json", "--cwd", ed], cwd=REPO, env=dict(renv, HOME=tempfile.mkdtemp(prefix="coder-ending-home-"), GW_REPLAY=ed), capture_output=True, text=True, timeout=300)
             el = [json.loads(l) for l in ep.stdout.splitlines() if l.startswith("{")]
             endings[name] = (ep.returncode, el[-1].get("ending") if el else "", el[-1].get("text", "") if el else "", [l["text"] for l in el if l["kind"] == "reply"])
         ends_ok = (endings["asked"] == (0, "finished", "", ["Which file?"])
