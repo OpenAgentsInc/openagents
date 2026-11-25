@@ -140,7 +140,7 @@ CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding / composer bar: cancel Ink
 CP_ASK_AGY_CONNECT :: 162;    // First-run onboarding where Inkling cannot run: install agy if needed, sign in, use Antigravity
 CP_ASK_WORKTREE_TOGGLE :: 163; // New-chat composer foot checkbox: persist sticky new-chat worktree preference (coder_page_worktree)
 CP_ASK_SHOW_OTHER_MODELS :: 189; // Composer model picker footer: persist Show/Hide other models toggle (coder_page_show_other_models)
-CP_ASK_DASHBOARD :: 190;      // Dashboard home screen opened: host refreshes active chats list and closes native overlays
+CP_ASK_DASHBOARD :: 216;      // Dashboard home screen opened: host refreshes active chats list and closes native overlays
 CP_ASK_EXECUTOR_MODELS :: 146; // Settings > Models > Executor Models & Weight Modules manager UI (#13924)
 CP_ASK_PYLON_EXECUTOR :: 147;  // Settings > Models > Pylon & Executor Network / Shadow Rollout dialog (#13928)
 CP_ASK_ANSWER :: 48;        // interactive permission or question card answered (permit.coax; #13831)

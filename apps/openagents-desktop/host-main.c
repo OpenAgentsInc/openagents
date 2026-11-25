@@ -1223,6 +1223,10 @@ static int ensure_worker(DesktopApp *a) {
   int started = oa_core_worker_start(vc(a), cs(bin), cs(effective_cwd(a)), cs(extra), vu(err, (int)sizeof(err)));
   memset(extra, 0, sizeof extra);
   if (!started) {
+    // A resident host service starts the workers, and one from an older build refuses a worker it
+    // does not know and gives no reason: say so, since "could not start worker" names no fix.
+    if (!err[0] && want_flawed && oa_core_daemon_owns_runs(vc(a)))
+      snprintf(err, sizeof err, "The background host service did not start Flawed. It may be an older build: update and restart coder-host, then send again.");
     cd_failed(a->page, err[0] ? err : "could not start worker");
     return 0;
   }
@@ -2578,7 +2582,7 @@ static void handle_action(DesktopApp *a, int act) {
     case 161: local_cancel_download(a); break;
     case 162: agy_connect_start(a); break;
     case 163: oa_core_worktrees_set(cs("newChatWorktree"), cd_worktree(a->page) != 0 ? 1 : 0); break;
-    case 190: refresh_dashboard(a); break;
+    case 216: refresh_dashboard(a); break;   // CP_ASK_DASHBOARD
     case 52: {
       int op = cd_term_op(a->page);
       int tid = cd_term_op_tab(a->page);
