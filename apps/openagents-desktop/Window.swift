@@ -616,7 +616,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         #endif
         case 61: notificationModeChanged()
         case 62: sidebarAsked()
-        case 190:
+        case 216:   // CP_ASK_DASHBOARD (190 is CP_ASK_FLAWED_PREFS, which this case used to shadow)
             #if OA_FULL
             closeGym()
             #endif

@@ -7,6 +7,7 @@
 #load "../../coax/lib/agent/desktop/update.coax";
 #load "../../coax/lib/agent/desktop/flags.coax";
 #load "../../coax/lib/agent/desktop/local-model.coax";
+#load "../../coax/lib/agent/desktop/metaverse-route.coax";
 
 OA_MAX_SUBAGENTS :: 8;
 
@@ -21,6 +22,24 @@ OaCore :: struct {
   store_open: bool;
   store_dir: bool;
   daemon_open: bool;
+}
+
+// The Metaverse pane's route for a path under the feature flags, as the Mac's desktop-core.coax
+// exports it: [pane, kind, mode, read_only, required_flag] into out_meta, the badge, and the
+// openagents.desktop.metaverse-route.v1 JSON. Returns the JSON's length.
+oa_dc_mv_route :: (path: string, flags_mask: int, out_meta: [] int, out_badge: [] u8, out_json: [] u8) -> int #export_c #effects(all) {
+  r := mv_route_classify(path, flags_mask);
+  if out_meta.count >= 5 {
+    out_meta[0] = r.pane;
+    out_meta[1] = r.kind;
+    out_meta[2] = r.mode;
+    out_meta[3] = ifx r.read_only then 1 else 0;
+    out_meta[4] = r.required_flag;
+  }
+  _ := oa_copy_out(r.badge, out_badge);
+  n := mv_route_write_json(r, out_json);
+  if n >= 0 && n < out_json.count { out_json[n] = 0; }
+  return ifx n > 0 then n else 0;
 }
 
 oa_copy_out :: (s: string, out: [] u8) -> int {
