@@ -729,7 +729,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             } else if bgAct == 48 {
                 pump(back)
             }
-            if cd_save_due(back.page) != 0 { keep(back) }
+            if cd_save_due(back.page) != 0 { keep(back, touchUpdated: cd_running(back.page) == 0) }
             checkRunNotifications(back)
             if cd_running(back.page) == 0 && cd_queue_waiting(back.page) == 0 { finish(id) }   // a waiting queue starts its next message
         }
@@ -754,6 +754,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
         }
         let fgRunning = cd_running(page) != 0
+        let wasForegroundRunning = lastForegroundRunning
         KeepAwakeManager.shared.update(active: KeepAwakeManager.enabled && (fgRunning || !runs.isEmpty))
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
@@ -776,7 +777,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
         // not while a new chat's first message waits on its worktree: kept now, the chat would take an id
         // of its own and the worktree made for it would be thrown away with the message left running (#13771)
-        if !run.preparingWorktree, cd_save_due(page) != 0 { keep(); wake() }
+        if !run.preparingWorktree, cd_save_due(page) != 0 { keep(touchUpdated: !fgRunning || !wasForegroundRunning); wake() }
         var sides = [Float](repeating: 0, count: 2)
         if cd_sides(page, &sides) != 0 { UserDefaults.standard.set(sides[0], forKey: "sideWidth"); UserDefaults.standard.set(sides[1], forKey: "paneWidth") }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }

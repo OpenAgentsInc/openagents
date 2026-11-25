@@ -222,7 +222,7 @@ final class CoderStore {
         reload()
     }
 
-    func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil, worktree: ChatWorktree? = nil) {
+    func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil, worktree: ChatWorktree? = nil, touchUpdated: Bool = true) {
         let wtPath = (worktree?.chat == id ? worktree?.path : nil) ?? ""
         let wtBranch = (worktree?.chat == id ? worktree?.branch : nil) ?? ""
         let repo = (worktree?.chat == id ? worktree?.source : nil) ?? ""
@@ -236,7 +236,9 @@ final class CoderStore {
                                 DesktopCore.withCoaxString(wtPath) { wp in
                                     DesktopCore.withCoaxString(wtBranch) { wb in
                                         DesktopCore.withCoaxString(repo) { rp in
-                                            oa_dc_store_keep(d, cid, t, f, tx, m, wp, wb, rp)
+                                            touchUpdated
+                                                ? oa_dc_store_keep(d, cid, t, f, tx, m, wp, wb, rp)
+                                                : oa_dc_store_keep_quiet(d, cid, t, f, tx, m, wp, wb, rp)
                                         }
                                     }
                                 }

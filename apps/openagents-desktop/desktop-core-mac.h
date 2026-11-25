@@ -52,6 +52,7 @@ int64_t oa_dc_coder_file(coax_string name, coax_v_u8 out);
 int64_t oa_dc_clean_title(coax_string raw, coax_v_u8 out);
 int64_t oa_dc_store_text(coax_string dir, coax_string id, coax_v_u8 out);
 int64_t oa_dc_store_keep(coax_string dir, coax_string id, coax_string title, coax_string folder, coax_string text, coax_string managed, coax_string wt_path, coax_string wt_branch, coax_string repo);
+int64_t oa_dc_store_keep_quiet(coax_string dir, coax_string id, coax_string title, coax_string folder, coax_string text, coax_string managed, coax_string wt_path, coax_string wt_branch, coax_string repo);
 int64_t oa_dc_store_register(coax_string dir, coax_string id, coax_string title, coax_string folder, coax_string managed);
 int64_t oa_dc_store_rename(coax_string dir, coax_string id, coax_string title);
 int64_t oa_dc_store_toggle_pin(coax_string dir, coax_string id);

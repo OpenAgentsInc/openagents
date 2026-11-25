@@ -281,3 +281,43 @@ cp_sb_click_id :: (s: [] CoderPage, id: string, mods: int) -> bool {
   #assert coder_page_key(s, 'z', MOD_CMD);
   #assert !s[0].sb[0].undo[0].active && s[0].sb[0].op == CP_SB_OP_UNDO && s[0].ask == CP_ASK_SIDEBAR;
 }
+
+#test "working shelf keeps stable row order when clicking between two working chats or receiving mid-turn updates" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  // Two working chats: c1 (first, updated=2000) and c2 (second, updated=1000). c2 is currently shown.
+  coder_page_chats(s, "c1\tFirst working\t1\t0\t0\t0\t0\t0\t/tmp/repo\t2000\nc2\tSecond working\t1\t0\t0\t0\t0\t0\t/tmp/repo\t1000\n");
+  coder_page_current(s, "c2");
+  f: [1] UiFrame;
+  s[0].clock = 1.0f32;
+  #assert cp_sb_test_frame(s, f[..], 1.0f32);
+  rows := surface_rows(s[0].surface[..]).rows;
+  i1 := surface_find(s[0].surface[..], "chat.c1");
+  i2 := surface_find(s[0].surface[..], "chat.c2");
+  #assert i1 >= 0 && i2 >= 0 && rows[i1].y < rows[i2].y;
+  // Click the first working chat (c1).
+  #assert cp_sb_click_id(s, "chat.c1", 0);
+  #assert coder_page_action(s) == CP_ASK_OPEN;
+  oid: [64] u8;
+  on := coder_page_open_id(s, oid[..]);
+  #assert cast(string) oid[0..<on] == "c1";
+  // Even if the host refreshes the list with c2's updated_ms bumped above c1, c1 MUST stay above c2.
+  coder_page_current(s, "c1");
+  coder_page_chats(s, "c1\tFirst working\t1\t0\t0\t0\t0\t0\t/tmp/repo\t2000\nc2\tSecond working\t1\t0\t0\t0\t0\t0\t/tmp/repo\t5000\n");
+  s[0].clock = 1.05f32;
+  #assert cp_sb_test_frame(s, f[..], 1.05f32);
+  rows = surface_rows(s[0].surface[..]).rows;
+  i1 = surface_find(s[0].surface[..], "chat.c1");
+  i2 = surface_find(s[0].surface[..], "chat.c2");
+  #assert i1 >= 0 && i2 >= 0 && rows[i1].y < rows[i2].y;
+  // ShiftGuard must NOT arm when the visual Working order stayed unchanged.
+  #assert s[0].sb[0].shift_until <= s[0].clock;
+  // Clicking the first row (c1) again does NOT toggle to c2 (c1 is already current -> no CP_ASK_OPEN).
+  #assert !cp_sb_click_id(s, "chat.c1", 0);
+  #assert coder_page_action(s) == CP_ASK_NONE;
+  // Clicking the second row (c2) immediately opens c2 without being swallowed by ShiftGuard.
+  #assert cp_sb_click_id(s, "chat.c2", 0);
+  #assert coder_page_action(s) == CP_ASK_OPEN;
+  on = coder_page_open_id(s, oid[..]);
+  #assert cast(string) oid[0..<on] == "c2";
+}

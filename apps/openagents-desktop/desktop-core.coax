@@ -393,6 +393,25 @@ oa_dc_store_keep :: (
   return ifx dc_store_keep(s[..], id, title, folder, text, managed, wt_path, wt_branch, repo, dcos_now_us()) then 1 else 0;
 }
 
+oa_dc_store_keep_quiet :: (
+  dir: string,
+  id: string,
+  title: string,
+  folder: string,
+  text: string,
+  managed: string,
+  wt_path: string,
+  wt_branch: string,
+  repo: string
+) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
+  now := ifx dk_find(s[0].x[..], id) >= 0 then 0 else dcos_now_us();
+  return ifx dc_store_keep(s[..], id, title, folder, text, managed, wt_path, wt_branch, repo, now) then 1 else 0;
+}
+
 oa_dc_store_register :: (
   dir: string,
   id: string,

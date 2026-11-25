@@ -522,14 +522,14 @@ extension CoderWindow {
     }
     /// Keeps a chat: its file, and its entry in the list (at the top when new, in place when updated).
     /// The shown one, or one whose reply runs out of view.
-    func keep(_ which: CoderRun? = nil, closing: Bool = false) {
+    func keep(_ which: CoderRun? = nil, closing: Bool = false, touchUpdated: Bool = true) {
         guard closing || !retired else { return }
         let r = which ?? run, shown = r === run
         let id = (shown ? chat : r.chat) ?? pendingChatID(r) ?? UUID().uuidString.lowercased()
         guard let text = savedChat(r.page) else { return }
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
-        store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text, worktree: madeWorktree(r, for: id))
+        store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text, worktree: madeWorktree(r, for: id), touchUpdated: touchUpdated && !closing)
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)

@@ -114,7 +114,7 @@ dc_store_keep :: (s: [] DcStore, id: string, title: string, folder: string, text
     c := x[0].chats[i];
     if c.created_n == 0 { c.created_n = dk_copy(c.created[..], dk_updated(x, i)); }
     if !c.renamed && id != DK_FOREMAN_ID { c.title_n = dk_copy(c.title[..], title); }
-    c.updated_n = dk_copy(c.updated[..], when);
+    if now > 0 { c.updated_n = dk_copy(c.updated[..], when); }
     c.folder_n = dk_copy(c.folder[..], folder);
     if managed.count > 0 { c.managed_n = dk_copy(c.managed[..], managed); }
     x[0].chats[i] = c;

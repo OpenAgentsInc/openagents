@@ -1116,10 +1116,10 @@ extension CoderWindow {
     /// window gets a new run. True when nothing runs in the window now.
     @discardableResult func detach() -> Bool {
         if cd_running(page) == 0 {
-            if !run.preparingWorktree, cd_save_due(page) != 0 { keep() }
+            if !run.preparingWorktree, cd_save_due(page) != 0 { keep(touchUpdated: false) }
             return true
         }
-        keep()
+        keep(touchUpdated: false)
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
         FlawedSettings.apply(to: back)

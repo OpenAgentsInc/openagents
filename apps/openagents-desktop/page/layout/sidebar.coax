@@ -147,7 +147,8 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   s[0].sb[0].vis_n = 0;
   now_ms := s[0].sb[0].now_ms;
   is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
-  nworking := ifx is_arch then 0 else cp_sb_working_count(s, cur, running);
+  work_q: [CP_CHATS] int;
+  nworking := ifx is_arch then 0 else cp_sb_sync_working(s, cur, running, work_q[..]);
   npinned := 0;
   if !is_arch {
     for q: 0..<s[0].nchats {
@@ -181,8 +182,8 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
                                 action = CP_SB_WORKING_TOGGLE};
       nrows += 1;
       if !w_collapsed {
-        for q: 0..<s[0].nchats {
-          if !cp_sb_is_working(s, q, cur, running) { continue; }
+        for wi: 0..<nworking {
+          q := work_q[wi];
           if visible_chats >= limit { hidden_chats += 1; continue; }
           rows[nrows] = cp_side_chat_row(s, f, q, cur, running);
           nrows += 1; visible_chats += 1;
@@ -246,7 +247,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sh_h := (s[0].sb[0].vis_n * 31 + nworking * 7 + 17) & 0x3FFFFFF;
   for i: 0..<s[0].sb[0].vis_n {
     q := s[0].sb[0].vis_order[i];
-    sh_h = (sh_h * 131 + q + 1) & 0x3FFFFFF;
+    sh_h = (sh_h * 131 + i + 1) & 0x3FFFFFF;
     if q >= 0 && q < s[0].nchats {
       for b: 0..<s[0].chats[q].id_n {
         sh_h = (sh_h * 31 + cast(int) s[0].chats[q].id[b]) & 0x3FFFFFF;
