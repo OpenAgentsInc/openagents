@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.metaverse-tab-state.v1",
+  "title": "OpenAgents Desktop Metaverse Tab Persisted State",
+  "note": "Pinned profile for coax/lib/agent/desktop/metaverse-route.coax (GitHub #14038).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "mode", "path", "title", "expanded", "drawer_open", "cam_fly", "shading", "overlay_mask", "camera"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.metaverse-tab-state.v1" },
+    "kind": { "enum": ["home", "model", "pack", "ple", "splat", "scene", "realm", "gamebuilder"] },
+    "mode": { "enum": ["inspect", "build", "play"] },
+    "path": { "type": "string", "maxLength": 2048 },
+    "title": { "type": "string", "maxLength": 128 },
+    "expanded": { "type": "boolean" },
+    "drawer_open": { "type": "boolean" },
+    "cam_fly": { "type": "boolean" },
+    "shading": { "type": "integer", "minimum": 0, "maximum": 16 },
+    "overlay_mask": { "type": "integer", "minimum": 0 },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eye_cm", "at_cm"],
+      "properties": {
+        "eye_cm": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "at_cm": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 }
+      }
+    }
+  },
+  "golden": {
+    "schema": "openagents.desktop.metaverse-tab-state.v1",
+    "kind": "model",
+    "mode": "inspect",
+    "path": "/tmp/quail.glb",
+    "title": "quail.glb",
+    "expanded": true,
+    "drawer_open": false,
+    "cam_fly": false,
+    "shading": 0,
+    "overlay_mask": 1,
+    "camera": {
+      "eye_cm": [300, 200, 300],
+      "at_cm": [0, 50, 0]
+    }
+  }
+}

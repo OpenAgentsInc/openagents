@@ -46,6 +46,45 @@
       "note": "OpenAgents Desktop's signed release manifest (d70adfccf3): the release script writes it, the Mac app's updater verifies it in Swift, and the desktop core (#13787) verifies it with the same rules in Coax. The fixture is signed with a test key (CryptoKit) that no release trusts."
     },
     {
+      "id": "openagents.desktop.metaverse-route.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-metaverse-route-v1.json",
+      "codec": "coax/lib/agent/desktop/metaverse-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/metaverse-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Canonical #authority 3D scene, model, realm, and GameBuilder routing decision for OpenAgents Desktop (#14038)."
+    },
+    {
+      "id": "openagents.desktop.metaverse-selection.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-metaverse-selection-v1.json",
+      "codec": "coax/lib/agent/desktop/metaverse-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/metaverse-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Structured 3D viewport selection and picked-point context chip attached to OpenAgents Desktop chat composer (#14038)."
+    },
+    {
+      "id": "openagents.desktop.metaverse-tab-state.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/desktop-metaverse-tab-state-v1.json",
+      "codec": "coax/lib/agent/desktop/metaverse-route.coax",
+      "check": "coax/bin/coax test coax/lib/agent/desktop/metaverse-route.coax --library",
+      "step": "new",
+      "files": [
+        "apps/openagents-desktop/desktop-core.coax"
+      ],
+      "note": "Persisted Metaverse Viewer & GameBuilder right-side pane tab state (#14038)."
+    },
+    {
       "id": "splice.run.v1",
       "kind": "local",
       "owner": "splice",

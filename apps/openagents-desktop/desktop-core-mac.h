@@ -95,3 +95,7 @@ int64_t oa_dc_flag_find(coax_string name);
 int64_t oa_dc_flags_all(void);
 int64_t oa_dc_flags_any_extra_model(int64_t mask);
 int64_t oa_dc_flags_resolve(int64_t experimental, int64_t defaults_mask, coax_string env_flags, coax_string env_experimental, coax_string args_nl);
+int64_t oa_dc_mv_is_3d(coax_string path);
+int64_t oa_dc_mv_gltf_uri_safe(coax_string uri);
+int64_t oa_dc_mv_route(coax_string path, int64_t flags_mask, coax_v_s64 out_meta, coax_v_u8 out_badge, coax_v_u8 out_json);
+int64_t oa_dc_mv_selection_json(coax_string kind, coax_string path, coax_string game, coax_string level, int64_t rev, coax_string selected_id, coax_v_s64 coords_cm, coax_v_u8 out_json);

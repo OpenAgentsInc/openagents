@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.metaverse-route.v1",
+  "title": "OpenAgents Desktop Metaverse & GameBuilder 3D Route Decision",
+  "note": "Pinned profile for coax/lib/agent/desktop/metaverse-route.coax (GitHub #14038, docs/desktop/metaverse-viewer-and-gamebuilder-pane-spec.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "target_pane", "tab_kind", "default_mode", "badge", "read_only", "requires_flag", "reason"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.metaverse-route.v1" },
+    "target_pane": { "enum": ["file", "metaverse", "reject"] },
+    "tab_kind": { "enum": ["home", "model", "pack", "ple", "splat", "scene", "realm", "gamebuilder"] },
+    "default_mode": { "enum": ["inspect", "build", "play"] },
+    "badge": { "type": "string", "maxLength": 4 },
+    "read_only": { "type": "boolean" },
+    "requires_flag": { "type": "string", "maxLength": 32 },
+    "reason": { "type": "string", "maxLength": 64 }
+  },
+  "golden": {
+    "schema": "openagents.desktop.metaverse-route.v1",
+    "target_pane": "metaverse",
+    "tab_kind": "model",
+    "default_mode": "inspect",
+    "badge": "GLB",
+    "read_only": false,
+    "requires_flag": "metaverse",
+    "reason": "ok"
+  }
+}

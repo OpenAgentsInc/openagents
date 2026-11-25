@@ -70,10 +70,12 @@ enum DesktopFlag: Int64, CaseIterable {
     case agents = 25
     case scenes = 26
     case rich = 27
+    case metaverse = 28
+    case gamebuilder = 29
 }
 
 /// Resolved desktop feature flag mask backed by #authority coax/lib/agent/desktop/flags.coax.
-/// All 28 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
+/// All 30 flags default OFF for the Inkling-first release (single-model Inkling 2 Mini).
 enum FeatureFlags {
     #if OA_FULL
     private static let flagNames: [String] = {

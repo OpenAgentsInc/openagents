@@ -1,0 +1,562 @@
+// Canonical 3D scene, model, realm, and GameBuilder routing policy & wire codecs
+// for OpenAgents Desktop (macOS, Linux, Windows).
+// Spec: docs/desktop/metaverse-viewer-and-gamebuilder-pane-spec.md (§4.1, §8.6).
+// Issues: #14037 (master), #14038 (Phase 0A).
+//
+// Wire shapes owned by this file (registered in proto/registry.json):
+//   - openagents.desktop.metaverse-route.v1       (proto/coder/desktop-metaverse-route-v1.json)
+//   - openagents.desktop.metaverse-selection.v1   (proto/coder/desktop-metaverse-selection-v1.json)
+//   - openagents.desktop.metaverse-tab-state.v1   (proto/coder/desktop-metaverse-tab-state-v1.json)
+//
+//   coax/bin/coax test coax/lib/agent/desktop/metaverse-route.coax --library
+#authority;
+#load "flags.coax";
+
+MV_ROUTE_SCHEMA :: "openagents.desktop.metaverse-route.v1";
+MV_SELECTION_SCHEMA :: "openagents.desktop.metaverse-selection.v1";
+MV_TAB_STATE_SCHEMA :: "openagents.desktop.metaverse-tab-state.v1";
+
+// Target pane classification
+MV_PANE_FILE :: 0;       // Standard File Viewer (page/filepane.coax)
+MV_PANE_METAVERSE :: 1;  // Expandable Metaverse Viewer & GameBuilder pane (page/metaversepane.coax)
+MV_PANE_REJECT :: 2;     // Refused by security boundary (e.g. path traversal or untrusted external URI)
+
+// Tab kinds (shared with page/metaversepane.coax CP_MV_KIND_*)
+MV_KIND_HOME :: 0;
+MV_KIND_MODEL :: 1;       // .glb, .gltf, .obj, .stl, .usdz/.usd*, .gbm
+MV_KIND_PACK :: 2;        // .pack, .pack.gz, .aimport
+MV_KIND_PLE :: 3;         // .ple-scene.json, .ifc
+MV_KIND_SPLAT :: 4;       // .splat, .ply
+MV_KIND_SCENE :: 5;       // .anim-scene.json
+MV_KIND_REALM :: 6;       // openagents.com/realms/... or openagents://metaverse/realm/...
+MV_KIND_GAMEBUILDER :: 7; // .world, .game, gamebuilder/worlds/*, openagents://gamebuilder..., gamebuilder.org/g/CODE
+
+// Active modes (shared with page/metaversepane.coax CP_MV_MODE_*)
+MV_MODE_INSPECT :: 0;
+MV_MODE_BUILD :: 1;
+MV_MODE_PLAY :: 2;
+
+MvRoute :: struct {
+  pane: int;          // MV_PANE_*
+  kind: int;          // MV_KIND_*
+  mode: int;          // MV_MODE_*
+  read_only: bool;    // true for shared /g/CODE games and remote read-only views
+  required_flag: int; // DC_FLAG_* required for MV_PANE_METAVERSE (-1 if rejected or none)
+  badge: string;      // 2-3 char uppercase badge: "GLB", "3D", "USD", "GBM", "VPK", "UE", "PLE", "IFC", "SPL", "ANM", "RLM", "GB"
+  reason: string;     // diagnostic reason when rejected or downgraded
+}
+
+MvSelection :: struct {
+  kind: string;        // "model" | "pack" | "ple" | "splat" | "scene" | "realm" | "gamebuilder"
+  path: string;        // file path, realm URL, or "gb:<game>/<level>"
+  game: string;        // GameBuilder game id ("" if not gamebuilder)
+  level: string;       // GameBuilder level id ("" if not gamebuilder)
+  rev: int;            // authoritative revision rendered (0 if file-backed static)
+  selected_id: string; // picked entity/node id ("" if point-only)
+  hit_cm_x: int;       // world hit point in whole centimetres
+  hit_cm_y: int;
+  hit_cm_z: int;
+  cam_eye_cm_x: int;   // camera eye in whole centimetres
+  cam_eye_cm_y: int;
+  cam_eye_cm_z: int;
+  cam_at_cm_x: int;    // camera look-at target in whole centimetres
+  cam_at_cm_y: int;
+  cam_at_cm_z: int;
+}
+
+MvTabState :: struct {
+  kind: int;
+  mode: int;
+  path: string;
+  title: string;
+  expanded: bool;
+  drawer_open: bool;
+  cam_fly: bool;
+  shading: int;
+  overlay_mask: int;
+  cam_eye_cm_x: int;
+  cam_eye_cm_y: int;
+  cam_eye_cm_z: int;
+  cam_at_cm_x: int;
+  cam_at_cm_y: int;
+  cam_at_cm_z: int;
+}
+
+// ---- ASCII helpers ----
+
+mv_lower :: (c: u8) -> u8 #effects() {
+  if c >= 'A' && c <= 'Z' { return c | 32; }
+  return c;
+}
+
+mv_starts_ci :: (s: string, pfx: string) -> bool #effects(reads, traps) {
+  if s.count < pfx.count { return false; }
+  for i: 0..<pfx.count {
+    if mv_lower(s[i]) != mv_lower(pfx[i]) { return false; }
+  }
+  return true;
+}
+
+mv_ends_ci :: (s: string, sfx: string) -> bool #effects(reads, traps) {
+  if s.count < sfx.count { return false; }
+  off := s.count - sfx.count;
+  for i: 0..<sfx.count {
+    if mv_lower(s[off + i]) != mv_lower(sfx[i]) { return false; }
+  }
+  return true;
+}
+
+mv_contains_ci :: (s: string, needle: string) -> bool #effects(reads, traps) {
+  if needle.count == 0 { return true; }
+  if s.count < needle.count { return false; }
+  lim := s.count - needle.count + 1;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<needle.count {
+      if mv_lower(s[i + j]) != mv_lower(needle[j]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+mv_strip_query :: (s: string) -> string #effects(reads, traps) {
+  for i: 0..<s.count {
+    if s[i] == '?' || s[i] == '#' { return cast(string) s[0..<i]; }
+  }
+  return s;
+}
+
+mv_trim_slash :: (s: string) -> string #effects(reads, traps) {
+  e := s.count;
+  while e > 1 && (s[e - 1] == '/' || s[e - 1] == '\\') { e -= 1; }
+  return cast(string) s[0..<e];
+}
+
+// Reject NUL/CR/LF control bytes and ".." path-traversal segments anywhere in a path/URI.
+mv_path_safe :: (raw: string) -> bool #effects(reads, traps) {
+  if raw.count == 0 || raw.count > 2048 { return false; }
+  for i: 0..<raw.count {
+    c := raw[i];
+    if c == 0 || c == '\r' || c == '\n' { return false; }
+  }
+  // Check for ".." as a path segment (start/slash before and end/slash/query after)
+  i := 0;
+  while i < raw.count {
+    while i < raw.count && (raw[i] == '/' || raw[i] == '\\') { i += 1; }
+    seg_start := i;
+    while i < raw.count && raw[i] != '/' && raw[i] != '\\' && raw[i] != '?' && raw[i] != '#' { i += 1; }
+    seg_len := i - seg_start;
+    if seg_len == 2 && raw[seg_start] == '.' && raw[seg_start + 1] == '.' { return false; }
+    if i < raw.count && (raw[i] == '?' || raw[i] == '#') { break; }
+  }
+  return true;
+}
+
+// Validate a relative external resource URI inside a .gltf/.mtl file:
+// MUST be relative, contain no scheme ("http:", "https:", "file:", "data:"), and have no "..".
+mv_gltf_external_uri_safe :: (uri: string) -> bool #effects(reads, traps) {
+  if uri.count == 0 || uri.count > 512 { return false; }
+  if uri[0] == '/' || uri[0] == '\\' { return false; }
+  if mv_starts_ci(uri, "http:") || mv_starts_ci(uri, "https:") || mv_starts_ci(uri, "file:") || mv_starts_ci(uri, "data:") || mv_starts_ci(uri, "ftp:") { return false; }
+  for i: 0..<uri.count {
+    if uri[i] == ':' { return false; }
+  }
+  return mv_path_safe(uri);
+}
+
+mv_is_gamebuilder_world_path :: (clean: string) -> bool #effects(reads, traps) {
+  if !mv_contains_ci(clean, "gamebuilder/worlds/") { return false; }
+  return mv_contains_ci(clean, "gamebuilder/worlds/fated-dragon") ||
+         mv_contains_ci(clean, "gamebuilder/worlds/splicebots") ||
+         mv_contains_ci(clean, "gamebuilder/worlds/whispering-spring") ||
+         mv_contains_ci(clean, "gamebuilder/worlds/scrappers-arena") ||
+         mv_contains_ci(clean, "gamebuilder/worlds/ice-cream-man");
+}
+
+// Returns true when raw names a 3D model, scene, pack, realm, or GameBuilder target
+// (independent of whether the user has enabled the desktop feature flag).
+mv_route_is_3d :: (raw: string) -> bool #effects(reads, traps) {
+  r := mv_route_classify(raw, DC_FLAGS_ALL);
+  return r.pane == MV_PANE_METAVERSE;
+}
+
+// Canonical #authority route classifier shared across macOS, Linux, and Windows hosts.
+mv_route_classify :: (raw_in: string, flags_mask: int) -> MvRoute #effects(reads, traps) {
+  raw := dc_flag_trim(raw_in);
+  if raw.count == 0 {
+    return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_HOME, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_NONE, badge = "", reason = "empty"};
+  }
+  if !mv_path_safe(raw) {
+    return MvRoute.{pane = MV_PANE_REJECT, kind = MV_KIND_HOME, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_NONE, badge = "", reason = "unsafe_path"};
+  }
+
+  has_mv := dc_flag_on(flags_mask, DC_FLAG_METAVERSE);
+  has_gb := dc_flag_on(flags_mask, DC_FLAG_GAMEBUILDER);
+  has_sc := dc_flag_on(flags_mask, DC_FLAG_SCENES);
+  mv_any := has_mv || has_gb;
+  ple_any := has_sc || has_mv || has_gb;
+
+  // Custom URI schemes: openagents://gamebuilder... and openagents://metaverse...
+  if mv_starts_ci(raw, "openagents://gamebuilder") {
+    if !has_gb {
+      return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_GAMEBUILDER, mode = MV_MODE_BUILD, required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = "flag_off"};
+    }
+    is_play := mv_contains_ci(raw, "/play/") || mv_contains_ci(raw, "mode=play");
+    return MvRoute.{pane = MV_PANE_METAVERSE, kind = MV_KIND_GAMEBUILDER, mode = ifx is_play then MV_MODE_PLAY else MV_MODE_BUILD, read_only = mv_contains_ci(raw, "/play/"), required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = "ok"};
+  }
+  if mv_starts_ci(raw, "openagents://metaverse") {
+    if !mv_any {
+      return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_REALM, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "RLM", reason = "flag_off"};
+    }
+    if mv_contains_ci(raw, "/realm/") {
+      return MvRoute.{pane = MV_PANE_METAVERSE, kind = MV_KIND_REALM, mode = MV_MODE_INSPECT, read_only = false, required_flag = DC_FLAG_METAVERSE, badge = "RLM", reason = "ok"};
+    }
+    return MvRoute.{pane = MV_PANE_METAVERSE, kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, read_only = false, required_flag = DC_FLAG_METAVERSE, badge = "3D", reason = "ok"};
+  }
+
+  // First-party HTTPS URLs: gamebuilder.org/g/CODE and openagents.com/realms/SLUG
+  if mv_starts_ci(raw, "https://gamebuilder.org/g/") || mv_starts_ci(raw, "http://gamebuilder.org/g/") {
+    if !has_gb {
+      return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_GAMEBUILDER, mode = MV_MODE_PLAY, read_only = true, required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = "flag_off"};
+    }
+    return MvRoute.{pane = MV_PANE_METAVERSE, kind = MV_KIND_GAMEBUILDER, mode = MV_MODE_PLAY, read_only = true, required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = "ok"};
+  }
+  if mv_starts_ci(raw, "https://openagents.com/realms/") || mv_starts_ci(raw, "http://openagents.com/realms/") {
+    if !mv_any {
+      return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_REALM, mode = MV_MODE_INSPECT, read_only = true, required_flag = DC_FLAG_METAVERSE, badge = "RLM", reason = "flag_off"};
+    }
+    return MvRoute.{pane = MV_PANE_METAVERSE, kind = MV_KIND_REALM, mode = MV_MODE_INSPECT, read_only = true, required_flag = DC_FLAG_METAVERSE, badge = "RLM", reason = "ok"};
+  }
+
+  // Reject arbitrary external http(s):// model URLs (zero remote fetches on local viewer open)
+  if mv_starts_ci(raw, "http://") || mv_starts_ci(raw, "https://") {
+    return MvRoute.{pane = MV_PANE_REJECT, kind = MV_KIND_HOME, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_NONE, badge = "", reason = "untrusted_external_url"};
+  }
+
+  clean := mv_trim_slash(mv_strip_query(raw));
+
+  // GameBuilder files and standalone worlds
+  if mv_ends_ci(clean, ".world") || mv_ends_ci(clean, ".game") {
+    return MvRoute.{pane = ifx has_gb then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_GAMEBUILDER, mode = MV_MODE_BUILD, required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = ifx has_gb then "ok" else "flag_off"};
+  }
+  if mv_is_gamebuilder_world_path(clean) {
+    return MvRoute.{pane = ifx has_gb then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_GAMEBUILDER, mode = MV_MODE_PLAY, required_flag = DC_FLAG_GAMEBUILDER, badge = "GB", reason = ifx has_gb then "ok" else "flag_off"};
+  }
+
+  // PLE / IFC facility scenes
+  if mv_ends_ci(clean, ".ple-scene.json") {
+    return MvRoute.{pane = ifx ple_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_PLE, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_SCENES, badge = "PLE", reason = ifx ple_any then "ok" else "flag_off"};
+  }
+  if mv_ends_ci(clean, ".ifc") {
+    return MvRoute.{pane = ifx ple_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_PLE, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_SCENES, badge = "IFC", reason = ifx ple_any then "ok" else "flag_off"};
+  }
+
+  // Animation scene documents
+  if mv_ends_ci(clean, ".anim-scene.json") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_SCENE, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "ANM", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+
+  // Static & skeletal 3D models
+  if mv_ends_ci(clean, ".glb") || mv_ends_ci(clean, ".gltf") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "GLB", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+  if mv_ends_ci(clean, ".obj") || mv_ends_ci(clean, ".stl") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "3D", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+  if mv_ends_ci(clean, ".usdz") || mv_ends_ci(clean, ".usd") || mv_ends_ci(clean, ".usda") || mv_ends_ci(clean, ".usdc") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "USD", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+  if mv_ends_ci(clean, ".gbm") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "GBM", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+
+  // Metaverse engine packs & Unreal bundles
+  if mv_ends_ci(clean, ".pack") || mv_ends_ci(clean, ".pack.gz") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_PACK, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "VPK", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+  if mv_ends_ci(clean, ".aimport") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_PACK, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "UE", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+
+  // Gaussian splats & PLY
+  if mv_ends_ci(clean, ".splat") || mv_ends_ci(clean, ".ply") {
+    return MvRoute.{pane = ifx mv_any then MV_PANE_METAVERSE else MV_PANE_FILE, kind = MV_KIND_SPLAT, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_METAVERSE, badge = "SPL", reason = ifx mv_any then "ok" else "flag_off"};
+  }
+
+  return MvRoute.{pane = MV_PANE_FILE, kind = MV_KIND_HOME, mode = MV_MODE_INSPECT, required_flag = DC_FLAG_NONE, badge = "", reason = "not_3d"};
+}
+
+// ---- Canonical JSON wire writers (no allocations, bounds-checked) ----
+
+mv_j_put :: (out: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+mv_j_str :: (out: [] u8, at: int, s: string) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, at, "\"");
+  if n < 0 { return -1; }
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '"' { n = mv_j_put(out, n, "\\\""); }
+    else if c == '\\' { n = mv_j_put(out, n, "\\\\"); }
+    else if c == '\n' { n = mv_j_put(out, n, "\\n"); }
+    else if c == '\r' { n = mv_j_put(out, n, "\\r"); }
+    else if c == '\t' { n = mv_j_put(out, n, "\\t"); }
+    else if c < 32 { continue; }
+    else {
+      if n >= out.count { return -1; }
+      out[n] = c; n += 1;
+    }
+    if n < 0 { return -1; }
+  }
+  return mv_j_put(out, n, "\"");
+}
+
+mv_j_int :: (out: [] u8, at: int, v: int) -> int #effects(reads, writes, traps) {
+  if at < 0 { return -1; }
+  n := at;
+  x := v;
+  if x < 0 {
+    n = mv_j_put(out, n, "-");
+    if n < 0 { return -1; }
+    x = -x;
+  }
+  buf: [24] u8; k := 0;
+  if x == 0 { buf[0] = '0'; k = 1; }
+  else {
+    while x > 0 && k < 24 {
+      buf[k] = cast(u8) ('0' + (x % 10));
+      x = x / 10;
+      k += 1;
+    }
+  }
+  if n + k > out.count { return -1; }
+  for i: 0..<k { out[n + i] = buf[k - 1 - i]; }
+  return n + k;
+}
+
+mv_j_bool :: (out: [] u8, at: int, b: bool) -> int #effects(reads, writes, traps) {
+  return mv_j_put(out, at, ifx b then "true" else "false");
+}
+
+mv_pane_name :: (pane: int) -> string #effects() {
+  if pane == MV_PANE_METAVERSE { return "metaverse"; }
+  if pane == MV_PANE_REJECT { return "reject"; }
+  return "file";
+}
+
+mv_kind_name :: (kind: int) -> string #effects() {
+  if kind == MV_KIND_MODEL { return "model"; }
+  if kind == MV_KIND_PACK { return "pack"; }
+  if kind == MV_KIND_PLE { return "ple"; }
+  if kind == MV_KIND_SPLAT { return "splat"; }
+  if kind == MV_KIND_SCENE { return "scene"; }
+  if kind == MV_KIND_REALM { return "realm"; }
+  if kind == MV_KIND_GAMEBUILDER { return "gamebuilder"; }
+  return "home";
+}
+
+mv_mode_name :: (mode: int) -> string #effects() {
+  if mode == MV_MODE_BUILD { return "build"; }
+  if mode == MV_MODE_PLAY { return "play"; }
+  return "inspect";
+}
+
+// Writes openagents.desktop.metaverse-route.v1 JSON into out. Returns byte length, or -1 on overflow.
+mv_route_write_json :: (r: MvRoute, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, MV_ROUTE_SCHEMA);
+  n = mv_j_put(out, n, ",\"target_pane\":"); n = mv_j_str(out, n, mv_pane_name(r.pane));
+  n = mv_j_put(out, n, ",\"tab_kind\":"); n = mv_j_str(out, n, mv_kind_name(r.kind));
+  n = mv_j_put(out, n, ",\"default_mode\":"); n = mv_j_str(out, n, mv_mode_name(r.mode));
+  n = mv_j_put(out, n, ",\"badge\":"); n = mv_j_str(out, n, r.badge);
+  n = mv_j_put(out, n, ",\"read_only\":"); n = mv_j_bool(out, n, r.read_only);
+  n = mv_j_put(out, n, ",\"requires_flag\":"); n = mv_j_str(out, n, dc_flag_name(r.required_flag));
+  n = mv_j_put(out, n, ",\"reason\":"); n = mv_j_str(out, n, r.reason);
+  return mv_j_put(out, n, "}");
+}
+
+// Writes openagents.desktop.metaverse-selection.v1 JSON into out (viewport -> chat context chip).
+mv_selection_write_json :: (sel: MvSelection, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, MV_SELECTION_SCHEMA);
+  n = mv_j_put(out, n, ",\"kind\":"); n = mv_j_str(out, n, sel.kind);
+  n = mv_j_put(out, n, ",\"path\":"); n = mv_j_str(out, n, sel.path);
+  n = mv_j_put(out, n, ",\"game\":"); n = mv_j_str(out, n, sel.game);
+  n = mv_j_put(out, n, ",\"level\":"); n = mv_j_str(out, n, sel.level);
+  n = mv_j_put(out, n, ",\"rev\":"); n = mv_j_int(out, n, sel.rev);
+  n = mv_j_put(out, n, ",\"selected_id\":"); n = mv_j_str(out, n, sel.selected_id);
+  n = mv_j_put(out, n, ",\"hit_cm\":[");
+  n = mv_j_int(out, n, sel.hit_cm_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.hit_cm_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.hit_cm_z);
+  n = mv_j_put(out, n, "],\"camera\":{\"eye_cm\":[");
+  n = mv_j_int(out, n, sel.cam_eye_cm_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.cam_eye_cm_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.cam_eye_cm_z);
+  n = mv_j_put(out, n, "],\"at_cm\":[");
+  n = mv_j_int(out, n, sel.cam_at_cm_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.cam_at_cm_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, sel.cam_at_cm_z);
+  return mv_j_put(out, n, "]}}");
+}
+
+// Writes openagents.desktop.metaverse-tab-state.v1 JSON into out (workspace session persistence).
+mv_tab_state_write_json :: (ts: MvTabState, out: [] u8) -> int #effects(reads, writes, traps) {
+  n := mv_j_put(out, 0, "{\"schema\":");
+  n = mv_j_str(out, n, MV_TAB_STATE_SCHEMA);
+  n = mv_j_put(out, n, ",\"kind\":"); n = mv_j_str(out, n, mv_kind_name(ts.kind));
+  n = mv_j_put(out, n, ",\"mode\":"); n = mv_j_str(out, n, mv_mode_name(ts.mode));
+  n = mv_j_put(out, n, ",\"path\":"); n = mv_j_str(out, n, ts.path);
+  n = mv_j_put(out, n, ",\"title\":"); n = mv_j_str(out, n, ts.title);
+  n = mv_j_put(out, n, ",\"expanded\":"); n = mv_j_bool(out, n, ts.expanded);
+  n = mv_j_put(out, n, ",\"drawer_open\":"); n = mv_j_bool(out, n, ts.drawer_open);
+  n = mv_j_put(out, n, ",\"cam_fly\":"); n = mv_j_bool(out, n, ts.cam_fly);
+  n = mv_j_put(out, n, ",\"shading\":"); n = mv_j_int(out, n, ts.shading);
+  n = mv_j_put(out, n, ",\"overlay_mask\":"); n = mv_j_int(out, n, ts.overlay_mask);
+  n = mv_j_put(out, n, ",\"camera\":{\"eye_cm\":[");
+  n = mv_j_int(out, n, ts.cam_eye_cm_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, ts.cam_eye_cm_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, ts.cam_eye_cm_z);
+  n = mv_j_put(out, n, "],\"at_cm\":[");
+  n = mv_j_int(out, n, ts.cam_at_cm_x); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, ts.cam_at_cm_y); n = mv_j_put(out, n, ",");
+  n = mv_j_int(out, n, ts.cam_at_cm_z);
+  return mv_j_put(out, n, "]}}");
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "metaverse-route: classifies all 3D models, packs, PLE/IFC, splats, realms, and GameBuilder targets" {
+  all := DC_FLAGS_ALL;
+  r_glb := mv_route_classify("/tmp/models/Quail.GLB", all);
+  #assert r_glb.pane == MV_PANE_METAVERSE && r_glb.kind == MV_KIND_MODEL && r_glb.mode == MV_MODE_INSPECT && r_glb.badge == "GLB";
+
+  r_gltf := mv_route_classify("/work/scene/duck.gltf", all);
+  #assert r_gltf.pane == MV_PANE_METAVERSE && r_gltf.kind == MV_KIND_MODEL && r_gltf.badge == "GLB";
+
+  r_obj := mv_route_classify("/tmp/chair.obj", all);
+  r_stl := mv_route_classify("/tmp/bracket.STL", all);
+  #assert r_obj.pane == MV_PANE_METAVERSE && r_obj.kind == MV_KIND_MODEL && r_obj.badge == "3D";
+  #assert r_stl.pane == MV_PANE_METAVERSE && r_stl.kind == MV_KIND_MODEL && r_stl.badge == "3D";
+
+  r_usd := mv_route_classify("/tmp/toy.usdz", all);
+  r_gbm := mv_route_classify("/work/gamebuilder/assets/scrappers.gbm", all);
+  #assert r_usd.pane == MV_PANE_METAVERSE && r_usd.badge == "USD";
+  #assert r_gbm.pane == MV_PANE_METAVERSE && r_gbm.badge == "GBM";
+
+  r_pack := mv_route_classify("/work/gamebuilder/web/assets/village.pack", all);
+  r_ue := mv_route_classify("/tmp/level.aimport/", all);
+  #assert r_pack.pane == MV_PANE_METAVERSE && r_pack.kind == MV_KIND_PACK && r_pack.badge == "VPK";
+  #assert r_ue.pane == MV_PANE_METAVERSE && r_ue.kind == MV_KIND_PACK && r_ue.badge == "UE";
+
+  r_ple := mv_route_classify("/work/hall.ple-scene.json", all);
+  r_ifc := mv_route_classify("/work/building.ifc", all);
+  #assert r_ple.pane == MV_PANE_METAVERSE && r_ple.kind == MV_KIND_PLE && r_ple.badge == "PLE";
+  #assert r_ifc.pane == MV_PANE_METAVERSE && r_ifc.kind == MV_KIND_PLE && r_ifc.badge == "IFC";
+
+  r_spl := mv_route_classify("/tmp/scan.splat", all);
+  r_ply := mv_route_classify("/tmp/cloud.ply", all);
+  r_anm := mv_route_classify("/tmp/cutscene.anim-scene.json", all);
+  #assert r_spl.pane == MV_PANE_METAVERSE && r_spl.kind == MV_KIND_SPLAT && r_spl.badge == "SPL";
+  #assert r_ply.pane == MV_PANE_METAVERSE && r_ply.kind == MV_KIND_SPLAT;
+  #assert r_anm.pane == MV_PANE_METAVERSE && r_anm.kind == MV_KIND_SCENE && r_anm.badge == "ANM";
+
+  r_world := mv_route_classify("/Users/u/.openagents/gamebuilder/level-1.world", all);
+  r_game := mv_route_classify("/Users/u/.openagents/gamebuilder/game-1.game", all);
+  r_ws := mv_route_classify("/work/gamebuilder/worlds/whispering-spring", all);
+  r_sa := mv_route_classify("/work/gamebuilder/worlds/scrappers-arena/", all);
+  r_ic := mv_route_classify("/work/gamebuilder/worlds/ice-cream-man", all);
+  #assert r_world.pane == MV_PANE_METAVERSE && r_world.kind == MV_KIND_GAMEBUILDER && r_world.mode == MV_MODE_BUILD && r_world.badge == "GB";
+  #assert r_game.pane == MV_PANE_METAVERSE && r_game.kind == MV_KIND_GAMEBUILDER;
+  #assert r_ws.pane == MV_PANE_METAVERSE && r_ws.kind == MV_KIND_GAMEBUILDER && r_ws.mode == MV_MODE_PLAY;
+  #assert r_sa.pane == MV_PANE_METAVERSE && r_sa.kind == MV_KIND_GAMEBUILDER && r_sa.mode == MV_MODE_PLAY;
+  #assert r_ic.pane == MV_PANE_METAVERSE && r_ic.kind == MV_KIND_GAMEBUILDER && r_ic.mode == MV_MODE_PLAY;
+
+  r_uri_gb := mv_route_classify("openagents://gamebuilder/play/abc234", all);
+  r_uri_mv := mv_route_classify("openagents://metaverse/realm/everglade?lane=dev", all);
+  r_web_gb := mv_route_classify("https://gamebuilder.org/g/23abxy", all);
+  r_web_rlm := mv_route_classify("https://openagents.com/realms/everglade", all);
+  #assert r_uri_gb.pane == MV_PANE_METAVERSE && r_uri_gb.kind == MV_KIND_GAMEBUILDER && r_uri_gb.mode == MV_MODE_PLAY && r_uri_gb.read_only;
+  #assert r_uri_mv.pane == MV_PANE_METAVERSE && r_uri_mv.kind == MV_KIND_REALM && r_uri_mv.badge == "RLM";
+  #assert r_web_gb.pane == MV_PANE_METAVERSE && r_web_gb.kind == MV_KIND_GAMEBUILDER && r_web_gb.mode == MV_MODE_PLAY && r_web_gb.read_only;
+  #assert r_web_rlm.pane == MV_PANE_METAVERSE && r_web_rlm.kind == MV_KIND_REALM && r_web_rlm.read_only;
+
+  // Non-3D code/text files stay on File Viewer
+  r_coax := mv_route_classify("/work/apps/openagents-desktop/page.coax", all);
+  r_json := mv_route_classify("/work/package.json", all);
+  #assert r_coax.pane == MV_PANE_FILE && r_coax.reason == "not_3d";
+  #assert r_json.pane == MV_PANE_FILE && !mv_route_is_3d("/work/package.json");
+  #assert mv_route_is_3d("/tmp/a.glb") && mv_route_is_3d("/tmp/a.world");
+}
+
+#test "metaverse-route: feature flag gating and security confinement" {
+  // With all flags off (v1.0 Inkling release), 3D files fall back cleanly to File Viewer
+  #assert mv_route_classify("/tmp/duck.glb", 0).pane == MV_PANE_FILE;
+  #assert mv_route_classify("/tmp/level-1.world", 0).pane == MV_PANE_FILE;
+  #assert mv_route_classify("/tmp/hall.ple-scene.json", 0).pane == MV_PANE_FILE;
+
+  // DC_FLAG_SCENES unlocks PLE/IFC only
+  sc := dc_flag_bit(DC_FLAG_SCENES);
+  #assert mv_route_classify("/tmp/hall.ple-scene.json", sc).pane == MV_PANE_METAVERSE;
+  #assert mv_route_classify("/tmp/duck.glb", sc).pane == MV_PANE_FILE;
+
+  // DC_FLAG_METAVERSE unlocks models/packs/PLE/realms, but not GameBuilder editing
+  mv := dc_flag_bit(DC_FLAG_METAVERSE);
+  #assert mv_route_classify("/tmp/duck.glb", mv).pane == MV_PANE_METAVERSE;
+  #assert mv_route_classify("/tmp/hall.ple-scene.json", mv).pane == MV_PANE_METAVERSE;
+  #assert mv_route_classify("/tmp/level-1.world", mv).pane == MV_PANE_FILE;
+
+  // DC_FLAG_GAMEBUILDER unlocks GameBuilder AND viewer tabs
+  gb := dc_flag_bit(DC_FLAG_GAMEBUILDER);
+  #assert mv_route_classify("/tmp/level-1.world", gb).pane == MV_PANE_METAVERSE;
+  #assert mv_route_classify("/tmp/duck.glb", gb).pane == MV_PANE_METAVERSE;
+
+  // Security: path traversal and untrusted external URLs are refused
+  #assert mv_route_classify("/tmp/../etc/passwd.glb", DC_FLAGS_ALL).pane == MV_PANE_REJECT;
+  #assert mv_route_classify("https://evil.example/payload.glb", DC_FLAGS_ALL).pane == MV_PANE_REJECT;
+  #assert mv_route_classify("http://127.0.0.1:9999/a.glb", DC_FLAGS_ALL).pane == MV_PANE_REJECT;
+
+  // glTF external URI safety
+  #assert mv_gltf_external_uri_safe("textures/albedo.png");
+  #assert mv_gltf_external_uri_safe("mesh.bin");
+  #assert !mv_gltf_external_uri_safe("../secret.png");
+  #assert !mv_gltf_external_uri_safe("/etc/passwd");
+  #assert !mv_gltf_external_uri_safe("https://evil.example/tex.png");
+  #assert !mv_gltf_external_uri_safe("file:///etc/passwd");
+}
+
+#test "metaverse-route: canonical JSON codecs match pinned schemas" {
+  buf: [1024] u8;
+  r := mv_route_classify("/tmp/quail.glb", DC_FLAGS_ALL);
+  n1 := mv_route_write_json(r, buf[..]);
+  #assert n1 > 0;
+  s1 := cast(string) buf[0..<n1];
+  #assert s1 == "{\"schema\":\"openagents.desktop.metaverse-route.v1\",\"target_pane\":\"metaverse\",\"tab_kind\":\"model\",\"default_mode\":\"inspect\",\"badge\":\"GLB\",\"read_only\":false,\"requires_flag\":\"metaverse\",\"reason\":\"ok\"}";
+
+  sel := MvSelection.{
+    kind = "gamebuilder", path = "gb:scrappers-arena/level-1", game = "scrappers-arena", level = "level-1",
+    rev = 14, selected_id = "shape-22",
+    hit_cm_x = 450, hit_cm_y = 0, hit_cm_z = 120,
+    cam_eye_cm_x = 1240, cam_eye_cm_y = 820, cam_eye_cm_z = 1500,
+    cam_at_cm_x = 450, cam_at_cm_y = 0, cam_at_cm_z = 120
+  };
+  n2 := mv_selection_write_json(sel, buf[..]);
+  #assert n2 > 0;
+  s2 := cast(string) buf[0..<n2];
+  #assert s2 == "{\"schema\":\"openagents.desktop.metaverse-selection.v1\",\"kind\":\"gamebuilder\",\"path\":\"gb:scrappers-arena/level-1\",\"game\":\"scrappers-arena\",\"level\":\"level-1\",\"rev\":14,\"selected_id\":\"shape-22\",\"hit_cm\":[450,0,120],\"camera\":{\"eye_cm\":[1240,820,1500],\"at_cm\":[450,0,120]}}";
+
+  ts := MvTabState.{
+    kind = MV_KIND_MODEL, mode = MV_MODE_INSPECT, path = "/tmp/quail.glb", title = "quail.glb",
+    expanded = true, drawer_open = false, cam_fly = false, shading = 0, overlay_mask = 1,
+    cam_eye_cm_x = 300, cam_eye_cm_y = 200, cam_eye_cm_z = 300,
+    cam_at_cm_x = 0, cam_at_cm_y = 50, cam_at_cm_z = 0
+  };
+  n3 := mv_tab_state_write_json(ts, buf[..]);
+  #assert n3 > 0;
+  s3 := cast(string) buf[0..<n3];
+  #assert s3 == "{\"schema\":\"openagents.desktop.metaverse-tab-state.v1\",\"kind\":\"model\",\"mode\":\"inspect\",\"path\":\"/tmp/quail.glb\",\"title\":\"quail.glb\",\"expanded\":true,\"drawer_open\":false,\"cam_fly\":false,\"shading\":0,\"overlay_mask\":1,\"camera\":{\"eye_cm\":[300,200,300],\"at_cm\":[0,50,0]}}";
+}

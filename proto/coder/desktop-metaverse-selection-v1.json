@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "openagents.desktop.metaverse-selection.v1",
+  "title": "OpenAgents Desktop 3D Viewport Selection Context Chip",
+  "note": "Pinned profile for coax/lib/agent/desktop/metaverse-route.coax (GitHub #14038). Attached to Desktop chat composer for bidirectional 3D <-> chat editing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kind", "path", "game", "level", "rev", "selected_id", "hit_cm", "camera"],
+  "properties": {
+    "schema": { "const": "openagents.desktop.metaverse-selection.v1" },
+    "kind": { "enum": ["model", "pack", "ple", "splat", "scene", "realm", "gamebuilder"] },
+    "path": { "type": "string", "maxLength": 2048 },
+    "game": { "type": "string", "maxLength": 64 },
+    "level": { "type": "string", "maxLength": 64 },
+    "rev": { "type": "integer", "minimum": 0 },
+    "selected_id": { "type": "string", "maxLength": 128 },
+    "hit_cm": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eye_cm", "at_cm"],
+      "properties": {
+        "eye_cm": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 },
+        "at_cm": { "type": "array", "items": { "type": "integer" }, "minItems": 3, "maxItems": 3 }
+      }
+    }
+  },
+  "golden": {
+    "schema": "openagents.desktop.metaverse-selection.v1",
+    "kind": "gamebuilder",
+    "path": "gb:scrappers-arena/level-1",
+    "game": "scrappers-arena",
+    "level": "level-1",
+    "rev": 14,
+    "selected_id": "shape-22",
+    "hit_cm": [450, 0, 120],
+    "camera": {
+      "eye_cm": [1240, 820, 1500],
+      "at_cm": [450, 0, 120]
+    }
+  }
+}

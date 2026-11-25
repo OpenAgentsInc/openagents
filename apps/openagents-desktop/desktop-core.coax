@@ -13,6 +13,7 @@
 #load "../../coax/lib/lean/gym.coax";
 #load "../../coax/lib/agent/desktop/executor-store.coax";
 #load "../../coax/lib/agent/desktop/flags.coax";
+#load "../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../psionic/lib/peer/executor-release-store.coax";
 
@@ -687,4 +688,52 @@ oa_dc_flags_any_extra_model :: (mask: int) -> int #export_c #effects(all) {
 
 oa_dc_flags_resolve :: (experimental: int, defaults_mask: int, env_flags: string, env_experimental: string, args_nl: string) -> int #export_c #effects(all) {
   return dc_flags_resolve(experimental != 0, defaults_mask, env_flags, env_experimental, args_nl);
+}
+
+// --- Canonical Metaverse / GameBuilder 3D route classifier (#14038) ---
+
+oa_dc_mv_is_3d :: (path: string) -> int #export_c #effects(all) {
+  return ifx mv_route_is_3d(path) then 1 else 0;
+}
+
+oa_dc_mv_gltf_uri_safe :: (uri: string) -> int #export_c #effects(all) {
+  return ifx mv_gltf_external_uri_safe(uri) then 1 else 0;
+}
+
+// Classifies path under flags_mask; writes [pane, kind, mode, read_only, required_flag] into out_meta[0..5],
+// badge into out_badge, and openagents.desktop.metaverse-route.v1 JSON into out_json. Returns out_json len.
+oa_dc_mv_route :: (
+  path: string,
+  flags_mask: int,
+  out_meta: [] int,
+  out_badge: [] u8,
+  out_json: [] u8
+) -> int #export_c #effects(all) {
+  r := mv_route_classify(path, flags_mask);
+  if out_meta.count >= 5 {
+    out_meta[0] = r.pane;
+    out_meta[1] = r.kind;
+    out_meta[2] = r.mode;
+    out_meta[3] = ifx r.read_only then 1 else 0;
+    out_meta[4] = r.required_flag;
+  }
+  _ := oa_dc_copy(r.badge, out_badge);
+  n := mv_route_write_json(r, out_json);
+  if n >= 0 && n < out_json.count { out_json[n] = 0; }
+  return ifx n > 0 then n else 0;
+}
+
+oa_dc_mv_selection_json :: (
+  kind: string, path: string, game: string, level: string, rev: int, selected_id: string,
+  coords_cm: [] int, out_json: [] u8
+) -> int #export_c #effects(all) {
+  sel := MvSelection.{kind = kind, path = path, game = game, level = level, rev = rev, selected_id = selected_id};
+  if coords_cm.count >= 9 {
+    sel.hit_cm_x = coords_cm[0]; sel.hit_cm_y = coords_cm[1]; sel.hit_cm_z = coords_cm[2];
+    sel.cam_eye_cm_x = coords_cm[3]; sel.cam_eye_cm_y = coords_cm[4]; sel.cam_eye_cm_z = coords_cm[5];
+    sel.cam_at_cm_x = coords_cm[6]; sel.cam_at_cm_y = coords_cm[7]; sel.cam_at_cm_z = coords_cm[8];
+  }
+  n := mv_selection_write_json(sel, out_json);
+  if n >= 0 && n < out_json.count { out_json[n] = 0; }
+  return ifx n > 0 then n else 0;
 }
