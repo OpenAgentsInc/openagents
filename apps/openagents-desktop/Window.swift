@@ -352,6 +352,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if self.window.firstResponder === self.canvas && (cd_wants_text(self.page) != 0 || cd_has_selection(self.page) != 0), let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
             }
+            // Command+Up / Command+Down jump the chat transcript to top/bottom (or composer start/end) without AppKit beeping
+            let navFlags = event.modifierFlags.intersection([.shift, .control, .option, .command])
+            if self.window.firstResponder === self.canvas && cd_overlay_open(self.page) == 0 && navFlags == .command && (event.keyCode == 126 || event.keyCode == 125) {
+                let code: Int32 = event.keyCode == 126 ? -6 : -7
+                if cd_key(self.page, code, 8) != 0 { self.wake(); return nil }
+            }
             // Esc clears an active transcript selection before stopping a reply
             if event.keyCode == 53 && cd_overlay_open(self.page) == 0 && cd_has_selection(self.page) != 0 {
                 if cd_key(self.page, -1, 0) != 0 { self.wake(); return nil }

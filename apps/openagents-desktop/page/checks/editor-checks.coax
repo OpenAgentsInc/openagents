@@ -157,3 +157,41 @@ cp_test_draft :: (s: [] CoderPage) -> string { return eb_text(s[0].draft[..]); }
   coder_page_file_close(s);
   #assert cp_ed_which(s) == CP_ED_COMPOSER;
 }
+#test "Command+Up/Down (macOS) and Control+Up/Down (Linux/Windows) jump the chat transcript to top and bottom" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_editing(s, f[..]);
+  s[0].content = 4000; s[0].view = 500; s[0].scroll = 2100; s[0].stick = false; s[0].at_end = false;
+  s[0].glide_on = true; s[0].scr[0].coasting = true; s[0].unseen = true;
+  // macOS (ctrl_keys == false): Cmd+Up jumps to top, Cmd+Down jumps to bottom and sticks
+  #assert !coder_page_key(s, KEY_UP, MOD_CTRL) && s[0].scroll == 2100;
+  #assert coder_page_key(s, KEY_UP, MOD_CMD);
+  #assert s[0].scroll == 0 && !s[0].stick && !s[0].at_end && !s[0].glide_on && !s[0].scr[0].coasting;
+  #assert coder_page_key(s, KEY_DOWN, MOD_CMD);
+  #assert s[0].scroll == 3500 && s[0].stick && s[0].at_end && !s[0].unseen && !s[0].glide_on;
+  // Works even when no field has focus (CP_KB_NONE)
+  coder_page_focus(s, CP_KB_NONE);
+  #assert coder_page_key(s, KEY_UP, MOD_CMD) && s[0].scroll == 0 && !s[0].stick;
+  #assert coder_page_key(s, KEY_DOWN, MOD_CMD) && s[0].scroll == 3500 && s[0].stick;
+  // macOS with non-empty composer draft: Cmd+Up first moves caret to start, second Cmd+Up jumps transcript to top; Shift+Cmd+Down still selects
+  coder_page_focus(s, CP_KB_COMPOSER);
+  coder_page_ime_replace(s, -1, -1, "hello world");
+  #assert coder_page_key(s, KEY_UP, MOD_CMD);
+  #assert s[0].fld[0].ed[CP_ED_COMPOSER].body[0].ed[0].caret == 0 && s[0].scroll == 3500;
+  #assert coder_page_key(s, KEY_UP, MOD_CMD) && s[0].scroll == 0 && !s[0].stick;
+  #assert coder_page_key(s, KEY_DOWN, MOD_CMD | MOD_SHIFT) && selected(s[0].fld[0].ed[CP_ED_COMPOSER].body[..]) == "hello world" && s[0].scroll == 0;
+  // Linux/Windows (ctrl_keys == true): Ctrl+Up/Down jump transcript directly even with draft text
+  coder_page_ctrl_keys(s, true);
+  s[0].scroll = 1500; s[0].stick = false;
+  #assert coder_page_key(s, KEY_UP, MOD_CTRL) && s[0].scroll == 0 && !s[0].stick;
+  #assert coder_page_key(s, KEY_DOWN, MOD_CTRL) && s[0].scroll == 3500 && s[0].stick;
+  // Does not hijack when Settings or File editor is active
+  s[0].scroll = 1200; s[0].stick = false;
+  coder_page_settings_open(s, 0, "");
+  #assert !coder_page_key(s, KEY_UP, MOD_CTRL) && s[0].scroll == 1200;
+  coder_page_settings_open(s, -2, "");
+  b: [64] u8; src := "a\nb\n";
+  #assert coder_page_file_open(s, "~/a.txt", b[0..<cp_out(b[..], src)], src.count);
+  #assert coder_page_file_set_edit(s, true);
+  coder_page_ctrl_keys(s, false);
+  #assert coder_page_key(s, KEY_UP, MOD_CMD) && s[0].scroll == 1200;
+  coder_page_file_close(s);
+}

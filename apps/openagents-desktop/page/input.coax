@@ -680,6 +680,27 @@ cp_glide_end :: (s: [] CoderPage) {
   if s[0].reduced || s[0].view <= 0 || end - s[0].scroll <= 0.5 || end - s[0].scroll > 3 * s[0].view { s[0].stick = true; s[0].glide_on = false; return; }
   s[0].glide_on = true; s[0].glide_from = s[0].scroll; s[0].glide_t = 0; s[0].stick = false;
 }
+// Jump the transcript immediately to the top or bottom of the conversation.
+cp_scroll_top :: (s: [] CoderPage) {
+  s[0].glide_on = false;
+  s[0].scr[0].coasting = false;
+  s[0].scr[0].spring = false;
+  s[0].scr[0].stretch = 0;
+  s[0].scroll = 0;
+  s[0].stick = s[0].content <= s[0].view;
+  s[0].at_end = s[0].stick;
+}
+cp_scroll_bottom :: (s: [] CoderPage) {
+  end := scroll_max(s[0].content, s[0].view);
+  s[0].glide_on = false;
+  s[0].scr[0].coasting = false;
+  s[0].scr[0].spring = false;
+  s[0].scr[0].stretch = 0;
+  s[0].scroll = end;
+  s[0].stick = true;
+  s[0].unseen = false;
+  s[0].at_end = true;
+}
 // A chat shown afresh: no glide, at its end, nothing unseen.
 cp_glide_reset :: (s: [] CoderPage) { s[0].glide_on = false; s[0].away_t = 0; s[0].unseen = false; s[0].at_end = true; }
 // Each view's coast and spring for a refresh shown at `shows`; whether any still moves.
