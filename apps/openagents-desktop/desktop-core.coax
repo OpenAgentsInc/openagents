@@ -15,6 +15,7 @@
 #load "../../coax/lib/agent/desktop/flags.coax";
 #load "../../coax/lib/agent/desktop/metaverse-route.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
+#load "../../coax/lib/agent/custom-system-prompt.coax";
 #load "../../psionic/lib/peer/executor-release-store.coax";
 
 oa_dc_copy :: (s: string, out: [] u8) -> int {
@@ -630,6 +631,37 @@ oa_dc_instructions_words :: (out: [] u8) -> int #export_c #effects(all) {
 }
 // The most the editor holds (and an agent is told), in bytes.
 oa_dc_instructions_max :: () -> int #export_c #effects(all) { return UINSTR_MAX_BYTES; }
+
+// --- The person's custom system prompt (~/.openagents/system-prompt.md) ---
+// Appended to every single system prompt across all agents (Flawed, Inky, Microcoder,
+// Claude Code, Antigravity). Edited in Settings > General > Custom system prompt.
+
+oa_dc_custom_prompt_path :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return oa_dc_copy(csys_path(pb[..]), out);
+}
+oa_dc_custom_prompt_read :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8; p := csys_path(pb[..]);
+  if fs_kind(p) == FS_FILE && fs_size(p) >= out.count { return -1; }
+  tb: [CSYS_MAX_BYTES + 1] u8;
+  if fs_kind(p) != FS_FILE { return 0; }
+  n := fs_read_at(p, 0, tb[..]);
+  if n < 0 { return -1; }
+  return oa_dc_copy(cast(string) tb[0..<n], out);
+}
+oa_dc_custom_prompt_write :: (text: string) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return ifx csys_write(csys_path(pb[..]), text) then 1 else 0;
+}
+oa_dc_custom_prompt_clear :: () -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return ifx csys_clear(csys_path(pb[..])) then 1 else 0;
+}
+oa_dc_custom_prompt_words :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return oa_dc_copy(csys_state_words(csys_state(csys_path(pb[..]))), out);
+}
+oa_dc_custom_prompt_max :: () -> int #export_c #effects(all) { return CSYS_MAX_BYTES; }
 
 // --- Executor Models & Compiled Weight-Module Store (GitHub #13924) ---
 // Scans ~/.openagents/modules/ and ~/.openagents/models/inkling-2-mini/, verifies

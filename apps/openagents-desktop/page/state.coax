@@ -132,6 +132,8 @@ CP_ASK_FORK :: 37;          // fork the shown chat into a new independent copy (
 CP_ASK_GEMINI_KEY :: 38;    // Settings > Models > Gemini API key dialog
 CP_ASK_INSTRUCTIONS :: 44;  // Settings > General > Agent instructions: the editor (~/.openagents/instructions.md, #13808)
 CP_ASK_INSTRUCTIONS_RESET :: 45;  // Settings > General > Agent instructions: Reset to default (#13808)
+CP_ASK_CUSTOM_PROMPT :: 198;      // Settings > General > Custom system prompt: the editor (~/.openagents/system-prompt.md)
+CP_ASK_CUSTOM_PROMPT_CLEAR :: 199; // Settings > General > Custom system prompt: Clear custom system prompt
 CP_ASK_LOCAL_MODELS :: 47;  // Settings > Models > Local Models downloader and manager UI (#13826)
 CP_ASK_LOCAL_DOWNLOAD :: 160; // First-run onboarding / composer picker: start downloading active Inkling variant
 CP_ASK_LOCAL_CANCEL :: 161;   // First-run onboarding / composer bar: cancel Inkling download
@@ -456,6 +458,8 @@ CoderPage :: struct {
   set_wallet_history: [512] u8; set_wallet_history_n: int;// Settings > Wallet recent payments summary (#13900)
   set_wallet_ready: bool;                                 // true only when Spark wallet is live-connected (#13900)
   set_instr: [48] u8; set_instr_n: int;   // the agent instructions' state: "Default", "Edited" (#13808)
+  set_sysprompt: [48] u8; set_sysprompt_n: int; // custom system prompt state: "Off", "Active", "Active (over 8 KB)"
+  set_sysprompt_preview: [160] u8; set_sysprompt_preview_n: int; // first-line preview of active custom system prompt
   set_gauth: [96] u8; set_gauth_n: int;   // the sign-in Gemini models run on, as mcworker --auth reports it ("Vertex AI (service account, project P)", "API key ending 1a2b (Settings)"); "" none
   gauth_vertex: bool;                     // that sign-in is Vertex AI (Microcoder tries it before any API key)
   set_orkey: [48] u8; set_orkey_n: int;

@@ -1,0 +1,213 @@
+// The person's custom system prompt (~/.openagents/system-prompt.md, or the file
+// OPENAGENTS_CUSTOM_SYSTEM_PROMPT_PATH names): instructions appended to every single
+// system prompt across every agent OpenAgents runs (Flawed, Inky, Microcoder, Claude Code,
+// and Antigravity), in every chat and every workspace.
+//
+// OpenAgents Desktop edits and clears it in Settings > General > Custom system prompt
+// (and from Settings > Flawed), through apps/openagents-desktop/desktop-core.coax.
+//
+// The rules:
+//   - No file, or a file with only whitespace: nothing is appended (off).
+//   - A non-blank file: appended to every system prompt (even in bare mode), up to
+//     CSYS_MAX_BYTES cut on a UTF-8 character boundary with a truncation note.
+//   - Each run/turn reads the file again, so edits apply immediately on the next message
+//     without restarting the app or worker.
+//
+//   coax/bin/coax test coax/lib/agent/custom-system-prompt.coax --library
+
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+
+CSYS_ENV :: "OPENAGENTS_CUSTOM_SYSTEM_PROMPT_PATH";
+CSYS_DIR :: ".openagents";
+CSYS_FILE :: "system-prompt.md";
+CSYS_MAX_BYTES :: 8192;       // maximum bytes read and appended (Desktop's editor holds as much)
+CSYS_BLOCK_BYTES :: 8704;     // lead + header + text + truncation note
+CSYS_HEADER :: "Custom system prompt (from Settings > Custom system prompt; applies to every chat and agent):\n";
+CSYS_TRUNC_NOTE :: "\n[... truncated; the rest of ~/.openagents/system-prompt.md is not shown ...]\n";
+
+CSYS_EMPTY :: 0;
+CSYS_ACTIVE :: 1;
+CSYS_LARGE :: 2;
+
+csys_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 { return -1; }
+  if at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+csys_find :: (s: string, needle: string) -> int {
+  if needle.count == 0 { return 0; }
+  if needle.count > s.count { return -1; }
+  for i: 0..<s.count - needle.count + 1 { if cast(string) s[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+
+csys_blank :: (s: string) -> bool {
+  for c: s { if c != ' ' && c != '\n' && c != '\r' && c != '\t' { return false; } }
+  return true;
+}
+
+csys_cut :: (s: string, limit: int) -> int {
+  if limit <= 0 { return 0; }
+  if limit >= s.count { return s.count; }
+  n := limit;
+  while n > 0 && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+
+// Where the file is: override when set, else HOME/.openagents/system-prompt.md.
+csys_path_for :: (home: string, override: string, out: [] u8) -> string {
+  if override.count > 0 {
+    n := csys_put(out, 0, override);
+    return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  h := home;
+  while h.count > 1 && h[h.count - 1] == '/' { h = h[0..<h.count - 1]; }
+  if h.count == 0 { return ""; }
+  n := csys_put(out, 0, h);
+  if h != "/" { n = csys_put(out, n, "/"); }
+  n = csys_put(out, n, CSYS_DIR); n = csys_put(out, n, "/"); n = csys_put(out, n, CSYS_FILE);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The file for this process: OPENAGENTS_CUSTOM_SYSTEM_PROMPT_PATH, else under HOME.
+csys_path :: (out: [] u8) -> string {
+  hb: [FS_PATH_MAX] u8; ob: [FS_PATH_MAX] u8;
+  return csys_path_for(proc_getenv("HOME", hb[..]), proc_getenv(CSYS_ENV, ob[..]), out);
+}
+
+// What agents receive from raw file contents: "" when missing or blank, else raw.
+csys_text_of :: (exists: bool, raw: string) -> string {
+  if !exists || csys_blank(raw) { return ""; }
+  return raw;
+}
+
+// Reads up to out.count bytes from path; returns "" when missing, blank, or unreadable.
+csys_read :: (path: string, out: [] u8) -> string {
+  if path.count == 0 { return ""; }
+  if fs_kind(path) != FS_FILE { return ""; }
+  n := fs_read_at(path, 0, out);
+  if n <= 0 { return ""; }
+  return csys_text_of(true, cast(string) out[0..<n]);
+}
+
+// Formats lead + CSYS_HEADER + text (UTF-8-safe capped at CSYS_MAX_BYTES with note).
+// Returns "" for blank text or if out is too small.
+csys_block :: (lead: string, text: string, out: [] u8) -> string {
+  if csys_blank(text) { return ""; }
+  trunc := text.count > CSYS_MAX_BYTES;
+  take := ifx trunc then csys_cut(text, CSYS_MAX_BYTES) else text.count;
+  n := csys_put(out, 0, lead);
+  n = csys_put(out, n, CSYS_HEADER);
+  n = csys_put(out, n, text[0..<take]);
+  if trunc { n = csys_put(out, n, CSYS_TRUNC_NOTE); }
+  else if take > 0 && text[take - 1] != '\n' { n = csys_put(out, n, "\n"); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// Loads the formatted block from path ("" for this process's default path) into out.
+csys_load :: (path: string, lead: string, out: [] u8) -> string {
+  pb: [FS_PATH_MAX] u8;
+  p := ifx path.count > 0 then path else csys_path(pb[..]);
+  tb: [CSYS_MAX_BYTES + 1] u8;
+  return csys_block(lead, csys_read(p, tb[..]), out);
+}
+
+csys_mkdirs :: (path: string) -> bool {
+  dir := fs_dir(path);
+  if dir.count == 0 || dir == "." { return true; }
+  for i: 1..<dir.count + 1 {
+    if i == dir.count || dir[i] == '/' {
+      part := dir[0..<i];
+      if fs_kind(part) == FS_NONE { _ := fs_mkdir(part); }
+    }
+  }
+  return fs_kind(dir) == FS_DIR;
+}
+
+// Atomically writes text to path. Writing blank text clears the custom prompt cleanly.
+csys_write :: (path: string, text: string) -> bool {
+  if path.count == 0 { return false; }
+  if csys_blank(text) { return csys_clear(path); }
+  if !csys_mkdirs(path) { return false; }
+  return fs_replace_durable(path, text);
+}
+
+// Clears the custom system prompt (writes an empty file if it exists, or succeeds if already absent).
+csys_clear :: (path: string) -> bool {
+  if path.count == 0 { return false; }
+  k := fs_kind(path);
+  if k == FS_NONE { return true; }
+  if k != FS_FILE { return false; }
+  return fs_replace_durable(path, "");
+}
+
+csys_state_of :: (exists: bool, raw: string, size: int) -> int {
+  if !exists { return CSYS_EMPTY; }
+  if size > CSYS_MAX_BYTES { return CSYS_LARGE; }
+  if csys_blank(raw) { return CSYS_EMPTY; }
+  return CSYS_ACTIVE;
+}
+
+csys_state :: (path: string) -> int {
+  if fs_kind(path) != FS_FILE { return CSYS_EMPTY; }
+  size := fs_size(path);
+  tb: [CSYS_MAX_BYTES] u8;
+  n := ifx size > CSYS_MAX_BYTES then 0 else fs_read_at(path, 0, tb[..]);
+  return csys_state_of(true, ifx n > 0 then cast(string) tb[0..<n] else "", size);
+}
+
+csys_state_words :: (state: int) -> string {
+  if state == CSYS_ACTIVE { return "Active"; }
+  if state == CSYS_LARGE { return "Active (over 8 KB)"; }
+  return "Off";
+}
+
+#test "custom system prompt path resolves under HOME or override" {
+  b: [256] u8;
+  #assert csys_path_for("/Users/me", "", b[..]) == "/Users/me/.openagents/system-prompt.md";
+  #assert csys_path_for("/Users/me///", "", b[..]) == "/Users/me/.openagents/system-prompt.md";
+  #assert csys_path_for("/", "", b[..]) == "/.openagents/system-prompt.md";
+  #assert csys_path_for("/Users/me", "/tmp/custom.md", b[..]) == "/tmp/custom.md";
+  #assert csys_path_for("", "", b[..]) == "";
+  small: [8] u8;
+  #assert csys_path_for("/Users/me", "", small[..]) == "";
+}
+
+#test "missing or blank custom system prompt produces empty text and block" {
+  b: [CSYS_BLOCK_BYTES] u8;
+  #assert csys_text_of(false, "") == "";
+  #assert csys_text_of(true, " \n\t\r ") == "";
+  #assert csys_text_of(true, "Always reply in haiku.") == "Always reply in haiku.";
+  #assert csys_block("\n\n", "", b[..]) == "";
+  #assert csys_block("\n\n", "   \n", b[..]) == "";
+}
+
+#test "custom system prompt block includes header, newline, and UTF-8-safe truncation" {
+  b: [CSYS_BLOCK_BYTES] u8;
+  got := csys_block("\n\n", "Always explain trade-offs.", b[..]);
+  #assert got.count == 2 + CSYS_HEADER.count + 27;
+  #assert cast(string) got[0..<2] == "\n\n";
+  #assert cast(string) got[2..<2 + CSYS_HEADER.count] == CSYS_HEADER;
+  #assert csys_find(got, "Always explain trade-offs.\n") > 0;
+
+  big: [CSYS_MAX_BYTES + 10] u8;
+  for i: 0..<big.count { big[i] = 'x'; }
+  big[CSYS_MAX_BYTES - 1] = 0xE2; big[CSYS_MAX_BYTES] = 0x80; big[CSYS_MAX_BYTES + 1] = 0x94;
+  cut := csys_block("", cast(string) big[..], b[..]);
+  #assert cut.count == CSYS_HEADER.count + CSYS_MAX_BYTES - 1 + CSYS_TRUNC_NOTE.count;
+  #assert cast(string) cut[cut.count - CSYS_TRUNC_NOTE.count..<cut.count] == CSYS_TRUNC_NOTE;
+  #assert CSYS_HEADER.count + CSYS_MAX_BYTES + CSYS_TRUNC_NOTE.count + 2 <= CSYS_BLOCK_BYTES;
+}
+
+#test "custom system prompt state labels" {
+  #assert csys_state_of(false, "", -1) == CSYS_EMPTY;
+  #assert csys_state_of(true, " \n ", 3) == CSYS_EMPTY;
+  #assert csys_state_of(true, "Be concise.", 11) == CSYS_ACTIVE;
+  #assert csys_state_of(true, "", CSYS_MAX_BYTES + 1) == CSYS_LARGE;
+  #assert csys_state_words(CSYS_EMPTY) == "Off";
+  #assert csys_state_words(CSYS_ACTIVE) == "Active";
+  #assert csys_state_words(CSYS_LARGE) == "Active (over 8 KB)";
+}

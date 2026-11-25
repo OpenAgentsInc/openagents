@@ -18,6 +18,7 @@
 #load "tools.coax";
 #load "instructions.coax";
 #load "../agent/user-instructions.coax";
+#load "../agent/custom-system-prompt.coax";
 #load "image.coax";
 #load "aware.coax";
 #load "steer.coax";
@@ -315,6 +316,9 @@ mc_run_load_instructions_from :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string
   ub: [UINSTR_BLOCK_BYTES] u8;
   user := uinstr_load(user_path, "\n\n", ub[..]);
   ok := mc_instructions(l, b, user);
+  cb: [CSYS_BLOCK_BYTES] u8;
+  custom := csys_load("", "\n\n", cb[..]);
+  if custom.count > 0 { ok = mc_instructions(l, b, custom) && ok; }
   if cwd.count == 0 { return ok; }
   room := b[0].system.count - l[0].system.count;
   if room > MC_INSTR_MAX_BYTES { room = MC_INSTR_MAX_BYTES; }

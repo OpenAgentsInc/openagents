@@ -342,8 +342,8 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   // 5. Context, Compaction & Memory (Chapters 04, 09–10)
   y += set_section_head(f, "set.flawed.ctx.head", x, y, w, "Context, Compaction & Memory",
-    "Prefix KV/context caching, automatic context compaction before overflow, and CLAUDE.md / AGENTS.md instruction discovery.") + t.section_gap;
-  crows: [4] SetRow;
+    "Prefix KV/context caching, automatic context compaction before overflow, CLAUDE.md / AGENTS.md discovery, and global custom system prompt.") + t.section_gap;
+  crows: [5] SetRow;
   pc := cp_flawed_clamp(fl[0].prompt_cache, 0, 2);
   crows[0] = SetRow.{id = "set.flawed.cache", name = "Prompt caching",
     desc = "Maintain stable system prompt, tool definitions, and conversation prefix ordering for maximum cache hit rates.",
@@ -361,9 +361,15 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   crows[2].options[0] = "On"; crows[2].options[1] = "Off";
 
   crows[3] = SetRow.{id = "set.flawed.bare", name = "Bare / simple mode",
-    desc = "Minimal prompt mode (equivalent to --bare): skips AGENTS.md, CLAUDE.md, auto-memory, and hooks.",
+    desc = "Minimal prompt mode (equivalent to --bare): skips AGENTS.md, CLAUDE.md, auto-memory, and hooks (still appends Custom system prompt).",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].bare_mode then 1 else 0, action = CP_SET_ACT};
   crows[3].options[0] = "Off"; crows[3].options[1] = "On";
+
+  sp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
+  sp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Instructions in ~/.openagents/system-prompt.md appended to every single system prompt across all agents.";
+  crows[4] = SetRow.{id = "set.flawed.sysprompt", name = "Custom system prompt",
+    desc = sp_desc,
+    value = sp_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
   y += cp_set_group(s, f, "set.flawed.ctx.group", x, y, w, crows[..]) + t.block_gap;
 
   // 6. Behavior, Extensions & Limits (Chapters 08, 13–19, 24)
@@ -422,6 +428,7 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if id == "set.flawed.limits.a" || id == "set.flawed.limits" { s[0].ask = CP_ASK_FLAWED_LIMITS; return true; }
   if id == "set.flawed.auth.a" || id == "set.flawed.auth" { s[0].ask = CP_ASK_FLAWED_AUTH_CHECK; return true; }
   if id == "set.flawed.reset.a" || id == "set.flawed.reset" { s[0].ask = CP_ASK_FLAWED_RESET; return true; }
+  if id == "set.flawed.sysprompt.a" || id == "set.flawed.sysprompt" { s[0].ask = CP_ASK_CUSTOM_PROMPT; return true; }
 
   // Segmented choices
   v := cp_number(id, "set.flawed.agent.");

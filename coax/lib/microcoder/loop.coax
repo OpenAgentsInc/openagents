@@ -106,7 +106,7 @@ McLoopBuffers :: struct {
   raw: [MC_REPLY_BYTES] u8;
   arena: [MC_REPLY_BYTES] u8;
   norm: [MC_REPLY_BYTES] u8;     // a text reply's action, rewritten whole
-  system: [24576] u8;            // the system prompt of a run with modes, user and workspace instructions; no bigger, since
+  system: [32768] u8;            // the system prompt of a run with modes, user, custom and workspace instructions; no bigger, since
                                  // mcworker's journal context frame (AJ_PAYLOAD, 32 KB) carries it escaped with the schema
                                  // (run.coax mc_run_load_instructions gives the workspace's what is left, GitHub #13808)
   schema: [8192] u8;            // with every mode and the device member (device.coax) last

@@ -20,6 +20,7 @@
 #load "../../coax/lib/agent/engine/mcworker-queue.coax";
 #load "../../coax/lib/agent/engine/cache-policy.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
+#load "../../coax/lib/agent/custom-system-prompt.coax";
 #load "../../coax/lib/microcoder/steer.coax";
 #load "../../flawed/core.coax";
 
@@ -1492,6 +1493,16 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
         n = fww_append_instr_capped(out, n, "\n\n# Global ~/.claude/CLAUDE.md\n", fs_join(home, ".claude/CLAUDE.md", pb[..]), 4096);
       }
     }
+  }
+
+  // Always append Custom System Prompt (~/.openagents/system-prompt.md), even in bare mode.
+  cspb: [FS_PATH_MAX] u8;
+  cspath := csys_path(cspb[..]);
+  csbuf: [CSYS_MAX_BYTES + 1] u8;
+  csblk: [CSYS_BLOCK_BYTES] u8;
+  cs := csys_block("\n\n# ", csys_read(cspath, csbuf[..]), csblk[..]);
+  if cs.count > 0 {
+    n = fww_cat(out, n, cs);
   }
   return n;
 }

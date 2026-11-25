@@ -16,6 +16,7 @@
 #load "../sys/proc.coax";
 #load "../agent/journal-file.coax";
 #load "../agent/user-instructions.coax";
+#load "../agent/custom-system-prompt.coax";
 #load "../agent/native-profile.coax";
 #load "../microcoder/git-guard.coax";
 #load "../microcoder/steer.coax";
@@ -76,6 +77,7 @@ IkRunBufs :: struct {
   sys_buf: [IK_PROMPT_MAX] u8;
   ws_instr: [4096] u8;
   usr_instr: [4608] u8;
+  csys_buf: [CSYS_BLOCK_BYTES] u8;
 }
 
 IkCmdState :: struct {
@@ -221,6 +223,11 @@ ik_run_build_system :: (cwd: string, os_name: string, is_goal: bool, hybrid_exec
   // Workspace instructions (native Inky AGENTS.md / CLAUDE.md loader with 2.5 KB budget + read_file cursors).
   ws := ik_ws_instructions_load(cwd, b[0].ws_instr[..]);
   n := ik_prompt_build_mode(os_name, cwd, git_info, usr, ws, is_goal, hybrid_exec, b[0].sys_buf[..]);
+  // Always append Custom System Prompt (~/.openagents/system-prompt.md) if set.
+  cs := csys_load("", "\n", b[0].csys_buf[..]);
+  if cs.count > 0 {
+    n = ik_fmt_put(b[0].sys_buf[..], n, cs);
+  }
   return cast(string) b[0].sys_buf[0..<n];
 }
 

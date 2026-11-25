@@ -283,6 +283,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // the agent instructions every agent is told (~/.openagents/instructions.md): the default on first run, never over a file there (#13808)
         AgentInstructions.seed()
         cd_settings_instructions(page, AgentInstructions.words)
+        cd_settings_custom_prompt(page, CustomSystemPrompt.words, CustomSystemPrompt.preview)
         CoderProbes.apply(page)
         // ProviderInstancesStore.shared.refreshAll() in setupProvidersSettings() probes enabled
         // Antigravity instances and updates both loaded models and legacy CoderProbes cache.
@@ -663,6 +664,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
         case 190...197: flawedAsked(what)
+        case 198: editCustomSystemPrompt()
+        case 199: clearCustomSystemPrompt()
         case 189:
             let on = cd_show_other_models(page) != 0
             ComposerModelVisibility.showOtherModels = on

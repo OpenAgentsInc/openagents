@@ -1,0 +1,67 @@
+// End-to-end filesystem selftest for Custom System Prompt (coax/lib/agent/custom-system-prompt.coax).
+// Run: coax/web/tool.sh coax/lib/agent/custom-system-prompt-selftest.coax
+
+#import "Basic";
+#load "custom-system-prompt.coax";
+
+CsysCheck :: struct { ok: int; fail: int; }
+
+cs_check :: (s: [] CsysCheck, cond: bool, name: string) {
+  if cond { s[0].ok += 1; return; }
+  s[0].fail += 1;
+  print("FAIL: %\n", name);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] CsysCheck;
+  tb: [FS_PATH_MAX] u8;
+  root := fs_temp("oa-csys-", tb[..]);
+  if root.count == 0 {
+    print("custom-system-prompt-selftest: failed to create temp dir\n");
+    return 1;
+  }
+  pb: [FS_PATH_MAX] u8;
+  path := csys_path_for(root, "", pb[..]);
+  rb: [CSYS_MAX_BYTES + 1] u8;
+  bb: [CSYS_BLOCK_BYTES] u8;
+
+  // 1. Missing file -> Off, empty read and empty block.
+  cs_check(s[..], csys_read(path, rb[..]) == "", "missing file reads empty");
+  cs_check(s[..], csys_state(path) == CSYS_EMPTY, "missing file state is CSYS_EMPTY");
+  cs_check(s[..], csys_state_words(csys_state(path)) == "Off", "missing file words is Off");
+  cs_check(s[..], csys_load(path, "\n\n", bb[..]) == "", "missing file block is empty");
+
+  // 2. Write custom system prompt -> Active, readable, and formatted into prompt block.
+  cs_check(s[..], csys_write(path, "Always reply with bullet points.\n"), "write custom prompt succeeds");
+  cs_check(s[..], fs_kind(path) == FS_FILE, "custom prompt file exists after write");
+  cs_check(s[..], csys_read(path, rb[..]) == "Always reply with bullet points.\n", "read returns written text");
+  cs_check(s[..], csys_state(path) == CSYS_ACTIVE, "written file state is CSYS_ACTIVE");
+  cs_check(s[..], csys_state_words(csys_state(path)) == "Active", "written file words is Active");
+  blk := csys_load(path, "\n\n", bb[..]);
+  cs_check(s[..], csys_find(blk, CSYS_HEADER) == 2 && csys_find(blk, "Always reply with bullet points.\n") > 0, "load builds formatted block");
+
+  // 3. Edit replaces atomically and takes effect immediately on next read.
+  cs_check(s[..], csys_write(path, "Prefer Rust-style explicit error handling.\n"), "overwrite succeeds");
+  cs_check(s[..], csys_read(path, rb[..]) == "Prefer Rust-style explicit error handling.\n", "read reflects updated text immediately");
+
+  // 4. Clear turns it off cleanly.
+  cs_check(s[..], csys_clear(path), "clear succeeds");
+  cs_check(s[..], csys_read(path, rb[..]) == "", "cleared file reads empty");
+  cs_check(s[..], csys_state(path) == CSYS_EMPTY, "cleared file state is CSYS_EMPTY");
+  cs_check(s[..], csys_load(path, "", bb[..]) == "", "cleared file block is empty");
+
+  // 5. Over-8KB file -> Active (over 8 KB) and safely truncated.
+  big: [CSYS_MAX_BYTES + 64] u8;
+  for i: 0..<big.count { big[i] = 'z'; }
+  cs_check(s[..], csys_write(path, cast(string) big[..]), "write >8KB file succeeds");
+  cs_check(s[..], csys_state(path) == CSYS_LARGE, ">8KB state is CSYS_LARGE");
+  cs_check(s[..], csys_state_words(csys_state(path)) == "Active (over 8 KB)", ">8KB words is Active (over 8 KB)");
+  big_blk := csys_load(path, "", bb[..]);
+  cs_check(s[..], csys_find(big_blk, CSYS_TRUNC_NOTE) > 0, ">8KB block includes truncation note");
+
+  // Clean up
+  _ = csys_clear(path);
+  _ = fs_remove(root);
+  print("custom-system-prompt-selftest: % passed, % failed\n", s[0].ok, s[0].fail);
+  return ifx s[0].fail == 0 then 0 else 1;
+}

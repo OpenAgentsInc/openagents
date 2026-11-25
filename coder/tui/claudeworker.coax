@@ -78,6 +78,7 @@
 #load "../../coax/lib/agent/engine/mcworker-queue.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
+#load "../../coax/lib/agent/custom-system-prompt.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -208,6 +209,18 @@ cw_options :: (o: [] ClOptions, model: string, cwd: string) {
 // (uinstr_read, read again for each run: coax/lib/agent/user-instructions.coax). out holds them.
 cw_user_instructions :: (o: [] ClOptions, text: string, out: [] u8) {
   o[0].append_system_prompt = uinstr_block("", text, out);
+}
+
+// Combines user instructions (~/.openagents/instructions.md) and custom system prompt
+// (~/.openagents/system-prompt.md) into o[0].append_system_prompt.
+cw_system_instructions :: (o: [] ClOptions, user_text: string, custom_text: string, out: [] u8) {
+  ub: [UINSTR_BLOCK_BYTES] u8;
+  cb: [CSYS_BLOCK_BYTES] u8;
+  u := uinstr_block("", user_text, ub[..]);
+  c := csys_block(ifx u.count > 0 then "\n\n" else "", custom_text, cb[..]);
+  n := json_raw(out, 0, u);
+  n = json_raw(out, n, c);
+  o[0].append_system_prompt = ifx n > 0 then cast(string) out[0..<n] else "";
 }
 
 // The guard hook beside the worker at self: gitguard for claudeworker, gitguard-HASH for
@@ -749,7 +762,7 @@ tool_main :: () -> int #export_c #effects(all) {
   held: [65536] u8; held_n := 0;   // the newest thing Claude said, not sent yet (a sub-agent's)
   keyb: [4096] u8; kentry: [4200] u8; keyed := false;   // a key passed in CODER_CLAUDE_KEY
   gpath: [4096] u8; selfb: [4096] u8; gsettings: [4400] u8;   // the guard hook (GitHub #13771)
-  uib: [UINSTR_BLOCK_BYTES] u8;   // the user instructions (GitHub #13808)
+  uib: [UINSTR_BLOCK_BYTES + CSYS_BLOCK_BYTES] u8;   // user instructions + custom system prompt
   ticket := 0;
   // the run: main is a chat's orchestrator, which lives across turns; alive, its claude process
   // runs; ready, it answered initialize; turn_on, a turn (or a sub-agent's one task) runs
@@ -758,7 +771,7 @@ tool_main :: () -> int #export_c #effects(all) {
   prompt: [CW_TASK + CW_HIST + 512] u8; pn := 0; prompt_due := false;
   hist: [CW_HIST] u8; hn := 0; told := false;   // the conversation so far, and whether this session was told it
   s_claude := false; orb: [512] u8; orn := 0;   // the session's sub-agent levels: Claude's, and the OpenRouter model
-  schema: [1024] u8; noteb: [4096] u8; sysb: [UINSTR_BLOCK_BYTES + 4096] u8;
+  schema: [1024] u8; noteb: [4096] u8; sysb: [UINSTR_BLOCK_BYTES + CSYS_BLOCK_BYTES + 4096] u8;
   later: [1] ClToolLater; wait_ticket := 0; wait_asked := 0;   // the delegate call that waits for its results
   dl: [CW_TASK] u8; dab: [CW_TASK] u8; rab: [CW_LINE] u8; rtext: [CW_RESULTS + 4096] u8;
   spent := 0;                                   // the session's cost so far, in millionths of a dollar
@@ -1064,7 +1077,8 @@ tool_main :: () -> int #export_c #effects(all) {
       if gb_mcp.count > 0 && fs_kind(gb_mcp) != FS_FILE { gb_mcp = ""; }
       o[0].mcp_servers = cw_mcp_servers_all(sim, lean_mcp, gb_mcp, simsv[..]);
       uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
-      cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
+      cspb: [FS_PATH_MAX] u8; cstb: [CSYS_MAX_BYTES + 1] u8;
+      cw_system_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), csys_read(csys_path(cspb[..]), cstb[..]), uib[..]);
       if main {
         // the delegate tool, and what the orchestrator is told of it after the person's instructions
         cw_main_options(o[..], cast(string) effort[0..<en], cw_delegate_schema(s_claude, orn > 0, schema[..]));

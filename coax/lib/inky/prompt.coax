@@ -7,7 +7,7 @@
 
 #load "format.coax";
 
-IK_PROMPT_MAX :: 12288;
+IK_PROMPT_MAX :: 20480;
 IK_INSTR_CAP :: 4096;
 
 // Default stock ~/.openagents/instructions.md template (coax/lib/agent/user-instructions.coax).

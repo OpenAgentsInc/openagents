@@ -70,7 +70,7 @@ CuEngine :: struct {
   bg_usage_since: int;            // owner's clock (ms) when bg_usage_settled was first observed (-1 until first cue_watch)
   bg_idle_since: int;             // owner's clock (ms) when held_bg became idle awaiting reactive wakeup (-1 while active)
   bg_no_wake: bool;               // true when held work ended with no reactive wakeup expected (e.g. SUBAGENT_STATE_KILLED)
-  system_append: [4608] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
+  system_append: [14336] u8; system_append_n: int; // optional _meta.antigravity.systemPrompt.append for session/new
   add_dirs: [2048] u8; add_dirs_n: int;           // optional additionalDirectories JSON string items (#14009)
   ag_meta: [1024] u8; ag_meta_n: int;             // optional _meta.antigravity inner fields (#14010)
   agy_meta: [1024] u8; agy_meta_n: int;           // optional _meta.agy inner fields (#14010)

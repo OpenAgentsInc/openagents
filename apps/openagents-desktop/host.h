@@ -395,6 +395,8 @@ int cd_show_other_models(void *page);
 void cd_hybrid_exec(void *page, int on);
 // cd_settings_instructions: the agent instructions' state General shows ("Default", "Edited"; #13808).
 void cd_settings_instructions(void *page, const char *words);
+// cd_settings_custom_prompt: the custom system prompt's state ("Off", "Active") and 1-line preview.
+void cd_settings_custom_prompt(void *page, const char *words, const char *preview);
 // The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its words.
 void cd_settings_gauth(void *page, const char *kind, const char *text);
 // The model agy opens a session on with the current settings (agyworker --probe): its id and name.

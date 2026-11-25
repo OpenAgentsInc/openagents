@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 97;
+CP_SET_ENTRIES :: 99;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -129,7 +129,9 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "flawed allowedTools disallowedTools additionalDirs tools"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "flawed prompt cache auto compact memory claude.md bare mode"},
     CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "flawed concise explanatory learning hooks defer toolsearch"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "flawed max turns budget usd cap remote bridge"}];
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "flawed max turns budget usd cap remote bridge"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt", name = "Custom system prompt", terms = "custom system prompt global rules persona tone prepend append every chat"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt.clear", name = "Clear custom system prompt", terms = "clear remove reset custom system prompt"}];
 }
 // Whether a settings page is visible for the active flag bitmask.
 // Core release pages (flags == 0): General, Flawed, Providers, Models (Local), and About & updates.
@@ -246,6 +248,8 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if ex == 0 || ex == 1 { coder_page_experimental_set(s, ex == 1); s[0].ask = CP_ASK_EXPERIMENTAL; return true; }
   if id == "set.instr.a" { s[0].ask = CP_ASK_INSTRUCTIONS; return true; }
   if id == "set.instr.reset.a" { s[0].ask = CP_ASK_INSTRUCTIONS_RESET; return true; }
+  if id == "set.sysprompt.a" || id == "set.sysprompt" { s[0].ask = CP_ASK_CUSTOM_PROMPT; return true; }
+  if id == "set.sysprompt.clear.a" || id == "set.sysprompt.clear" { s[0].ask = CP_ASK_CUSTOM_PROMPT_CLEAR; return true; }
   if id == "set.local.a" { s[0].ask = CP_ASK_LOCAL_MODELS; return true; }
   if id == "set.gemini.a" { if !cp_flag(s, DC_FLAG_MODELS_GEMINI) { return false; } s[0].ask = CP_ASK_GEMINI_KEY; return true; }
   if id == "set.exec.hybrid.a" || id == "set.exec.modules.a" { if !cp_flag(s, DC_FLAG_MODELS_EXECUTOR) { return false; } s[0].ask = CP_ASK_EXECUTOR_MODELS; return true; }
@@ -465,8 +469,18 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].experimental then 1 else 0, action = CP_SET_ACT};
     rows[3].options[0] = "Off"; rows[3].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
+    // Custom system prompt appended to every single system prompt (~/.openagents/system-prompt.md)
+    y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every single system prompt across all agents (Flawed, Inky, Microcoder, Claude, and Antigravity) in every chat and folder.") + t.section_gap;
+    sysp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
+    sysp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Kept in ~/.openagents/system-prompt.md. Leave empty to disable; edits apply from the very next message.";
+    sprows: [2] SetRow;
+    sprows[0] = SetRow.{id = "set.sysprompt", name = "Custom system prompt", desc = sysp_desc,
+      value = sysp_val, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
+    sprows[1] = SetRow.{id = "set.sysprompt.clear", name = "Clear custom system prompt", desc = "Removes your custom system prompt instructions so nothing extra is appended.",
+      kind = SET_ROW_BUTTON, button = "Clear…", action = CP_SET_ACT, danger = true};
+    y += cp_set_group(s, f, "set.sysprompt.group", x, y, w, sprows[..]) + t.block_gap;
     // what every agent is told in every chat (~/.openagents/instructions.md, GitHub #13808)
-    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
+    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What Flawed, Inky, Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
     instr := ifx s[0].set_instr_n > 0 then sheet_pool(sh, cast(string) s[0].set_instr[0..<s[0].set_instr_n]) else "Default";
     irows: [2] SetRow;
     irows[0] = SetRow.{id = "set.instr", name = "Agent instructions", desc = "Kept in ~/.openagents/instructions.md. The default: commit finished work and push it in a git repository.",
@@ -855,6 +869,12 @@ coder_page_settings_instructions :: (s: [] CoderPage, words: string) #export_c #
   if s.count < 1 { return; }
   s[0].set_instr_n = cp_out(s[0].set_instr[..], words);
 }
+// The custom system prompt's state and 1-line preview ("Off", "Active", "Active (over 8 KB)").
+coder_page_settings_custom_prompt :: (s: [] CoderPage, words: string, preview: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].set_sysprompt_n = cp_out(s[0].set_sysprompt[..], words);
+  s[0].set_sysprompt_preview_n = cp_out(s[0].set_sysprompt_preview[..], preview);
+}
 // Antigravity status, review mode (0 Auto, 1 Default, 2 Plan), model/effort and auth/profile summary (#13803).
 coder_page_settings_agy :: (s: [] CoderPage, status: string, mode: int, model: string, auth: string) #export_c #effects(all) {
   if s.count < 1 { return; }
@@ -986,6 +1006,25 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   n = cp_set_hits_in("push", hits[..], false);
   #assert n >= 1 && es[hits[0]].id == "set.instr" && es[hits[0]].page == CP_PG_GENERAL;
   coder_page_search_set(s, "agent instructions");
+  #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_GENERAL;
+}
+#test "settings: General's Custom system prompt section renders, dispatches editor/clear, and matches search" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_settings_custom_prompt(s, "Active", "Always answer concisely.");
+  coder_page_settings_open(s, CP_PG_GENERAL, "");
+  #assert cp_set_test_frame(s, 1200, 1000);
+  #assert cp_set_test_row(s, "set.sysprompt.head").w > 0;
+  #assert cp_set_test_row(s, "set.sysprompt.a").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.sysprompt.clear.a").action == CP_SET_ACT;
+  #assert cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n] == "Active";
+  #assert cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n] == "Always answer concisely.";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sysprompt.a") && coder_page_action(s) == CP_ASK_CUSTOM_PROMPT;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sysprompt.clear.a") && coder_page_action(s) == CP_ASK_CUSTOM_PROMPT_CLEAR;
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  n := cp_set_hits_in("custom system prompt", hits[..], false);
+  #assert n >= 1 && es[hits[0]].id == "set.sysprompt" && es[hits[0]].page == CP_PG_GENERAL;
+  coder_page_search_set(s, "system prompt");
   #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_GENERAL;
 }
 #test "settings: Antigravity rows render under Models, dispatch actions, and match search for antigravity and agy" #steps 40000000 {

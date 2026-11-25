@@ -45,6 +45,7 @@
 #load "../../coax/lib/agent/observe/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
+#load "../../coax/lib/agent/custom-system-prompt.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -1205,11 +1206,17 @@ agyw_build_attachment_blocks :: (prompt: string, attachments_json: string, ar: [
   return cast(string) out[0..<o[0].len];
 }
 
-// Refresh _meta.antigravity.systemPrompt.append from ~/.openagents/instructions.md (#13998).
+// Refresh _meta.antigravity.systemPrompt.append from ~/.openagents/instructions.md (#13998)
+// and ~/.openagents/system-prompt.md (Custom system prompt).
 agyw_load_system_instructions :: (x: [] CuEngine) {
   uib: [UINSTR_BLOCK_BYTES] u8; uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
-  blk := uinstr_block("", uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
-  cue_set_system_append(x, blk);
+  csb: [CSYS_BLOCK_BYTES] u8; cspb: [FS_PATH_MAX] u8; cstb: [CSYS_MAX_BYTES + 1] u8;
+  comb: [UINSTR_BLOCK_BYTES + CSYS_BLOCK_BYTES] u8;
+  ublk := uinstr_block("", uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
+  cblk := csys_block(ifx ublk.count > 0 then "\n\n" else "", csys_read(csys_path(cspb[..]), cstb[..]), csb[..]);
+  n := agyw_copy(comb[..], ublk);
+  if cblk.count > 0 && n < comb.count { n += agyw_copy(comb[n..<comb.count], cblk); }
+  cue_set_system_append(x, cast(string) comb[0..<n]);
 }
 
 // Append text to the turn's accumulated reply buffer.

@@ -158,6 +158,37 @@ enum AgentInstructions {
     static var words: String { DesktopCore.callString(64) { oa_dc_instructions_words($0) } }
 }
 
+/// The person's custom system prompt (~/.openagents/system-prompt.md), appended to every single
+/// system prompt across all agents (Flawed, Inky, Microcoder, Claude, and Antigravity).
+enum CustomSystemPrompt {
+    static var path: String { DesktopCore.callString(4096) { oa_dc_custom_prompt_path($0) } }
+    static var limit: Int { Int(DesktopCore.onCoreStack { oa_dc_custom_prompt_max() }) }
+    /// The file's text ("" when absent); nil when it is longer than the editor holds.
+    static func read() -> String? {
+        var buf = [UInt8](repeating: 0, count: limit + 1)
+        let n = DesktopCore.withByteBuf(&buf) { oa_dc_custom_prompt_read($0) }
+        if n < 0 { return nil }
+        return String(decoding: buf[0..<min(Int(n), buf.count)], as: UTF8.self)
+    }
+    static func write(_ text: String) -> Bool { DesktopCore.withCoaxString(text) { oa_dc_custom_prompt_write($0) } == 1 }
+    static func clear() -> Bool { DesktopCore.onCoreStack { oa_dc_custom_prompt_clear() } == 1 }
+    /// What Settings shows: "Off", "Active", or "Active (over 8 KB)".
+    static var words: String { DesktopCore.callString(64) { oa_dc_custom_prompt_words($0) } }
+    /// Short single-line preview for the Settings row description, or "" when off.
+    static var preview: String {
+        guard let raw = read() else {
+            return "Active in ~/.openagents/system-prompt.md (over \(limit / 1024) KB; first \(limit / 1024) KB appended)."
+        }
+        let first = raw
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+        if first.isEmpty { return "" }
+        if first.count <= 110 { return "Appended to every system prompt: \"\(first)\"" }
+        return "Appended to every system prompt: \"\(first.prefix(107))…\""
+    }
+}
+
 extension CoderWindow {
     /// Settings > General > Agent instructions > Edit…: the file in a box; Save writes it whole, and
     /// the next message of every chat is told it. A file too long for the box opens in the editor.
@@ -210,6 +241,64 @@ extension CoderWindow {
             guard let self else { return }
             if answer == 1 && !AgentInstructions.reset() {
                 self.present(.notice("The instructions could not be reset.", "Coder could not write " + AgentInstructions.path + "."))
+                return
+            }
+            self.syncSettingsInfo()
+            self.refocus()
+        }
+    }
+
+    /// Settings > General > Custom system prompt > Edit…: edits ~/.openagents/system-prompt.md,
+    /// which is appended to every single system prompt across all agents starting on the next turn.
+    func editCustomSystemPrompt() {
+        guard let current = CustomSystemPrompt.read() else {
+            var d = CoderDialog(size: .md, title: "Custom System Prompt", body: "The file is longer than " + String(CustomSystemPrompt.limit / 1024) + " KB, more than this box holds, and agents are told only its first " + String(CustomSystemPrompt.limit / 1024) + " KB. Open it in your text editor to change it:\n\n" + CustomSystemPrompt.path)
+            d.buttons = [.init(title: "Open File", aside: true)]
+            d.cancel = d.buttons.count; d.buttons.append(.init(title: "OK", kind: .primary)); d.confirm = d.cancel
+            present(d) { [weak self] answer, _ in
+                if answer == 0 { NSWorkspace.shared.open(URL(fileURLWithPath: CustomSystemPrompt.path)) }
+                self?.refocus()
+            }
+            return
+        }
+        var d = CoderDialog(size: .lg, title: "Custom System Prompt", body: "Added to every single system prompt across Flawed, Inky, Microcoder, Claude, and Antigravity in every chat and folder. Edits apply from the next message. Leave empty to turn off. Kept in ~/.openagents/system-prompt.md.")
+        d.fields = [.init(value: current, hint: "e.g., Always be concise, show exact commands, and explain architectural trade-offs.", lines: 14)]
+        d.buttons = [.init(title: "Clear", kind: .danger, aside: true)]
+        let clearBtn = 0
+        d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+        let save = d.buttons.count; d.buttons.append(.init(title: "Save", kind: .primary))
+        d.confirm = save
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            switch answer {
+            case save:
+                var text = values.first ?? ""
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !text.hasSuffix("\n") { text += "\n" }
+                if !CustomSystemPrompt.write(text) {
+                    self.present(.notice("The custom system prompt could not be saved.", "Coder could not write " + CustomSystemPrompt.path + "."))
+                    return
+                }
+            case clearBtn:
+                self.clearCustomSystemPrompt()
+                return
+            default:
+                self.refocus()
+                return
+            }
+            self.syncSettingsInfo()
+            self.refocus()
+        }
+    }
+
+    /// Settings > General > Custom system prompt > Clear…: removes custom system prompt text.
+    func clearCustomSystemPrompt() {
+        var d = CoderDialog(size: .sm, title: "Clear Custom System Prompt?", body: "Your custom system prompt instructions will be cleared so nothing extra is appended to system prompts.")
+        d.buttons = [.init(title: "Cancel"), .init(title: "Clear", kind: .danger)]
+        d.cancel = 0; d.confirm = 0
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == 1 && !CustomSystemPrompt.clear() {
+                self.present(.notice("The custom system prompt could not be cleared.", "Coder could not write " + CustomSystemPrompt.path + "."))
                 return
             }
             self.syncSettingsInfo()
@@ -391,6 +480,7 @@ extension CoderWindow {
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
+        cd_settings_custom_prompt(page, CustomSystemPrompt.words, CustomSystemPrompt.preview)
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         syncLocalModels()
         syncProvidersSettingsPage()

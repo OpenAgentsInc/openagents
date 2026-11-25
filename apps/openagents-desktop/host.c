@@ -1046,6 +1046,7 @@ void cd_show_other_models_set(void *page, int on) { CoderHost *c = page; if (c) 
 int cd_show_other_models(void *page) { CoderHost *c = page; return c && coder_page_show_other_models(cd_state(c)); }
 void cd_hybrid_exec(void *page, int on) { CoderHost *c = page; if (c) { coder_page_set_hybrid_exec(cd_state(c), on != 0); cd_changed(c); } }
 void cd_settings_instructions(void *page, const char *words) { CoderHost *c = page; if (c) { coder_page_settings_instructions(cd_state(c), cd_string(words)); cd_changed(c); } }
+void cd_settings_custom_prompt(void *page, const char *words, const char *preview) { CoderHost *c = page; if (c) { coder_page_settings_custom_prompt(cd_state(c), cd_string(words), cd_string(preview)); cd_changed(c); } }
 void cd_settings_gauth(void *page, const char *kind, const char *text) { CoderHost *c = page; if (c) { coder_page_settings_gauth(cd_state(c), cd_string(kind), cd_string(text)); cd_changed(c); } }
 void cd_agy_seen(void *page, const char *id, const char *name) { CoderHost *c = page; if (c) { coder_page_agy_seen(cd_state(c), cd_string(id), cd_string(name)); cd_changed(c); } }
 void cd_settings_agy(void *page, const char *status, int mode, const char *model, const char *auth) { CoderHost *c = page; if (c) { coder_page_settings_agy(cd_state(c), cd_string(status), mode, cd_string(model), cd_string(auth)); cd_changed(c); } }
