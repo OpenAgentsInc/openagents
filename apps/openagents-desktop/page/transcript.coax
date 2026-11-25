@@ -463,11 +463,17 @@ cp_call_out :: (s: [] CoderPage, q: int, output: string) {
   if n < output.count { n += cp_out(s[0].calls[q].out[n..<CP_CMD_OUT + 64], "\n[The output is cut at 2,000 bytes.]"); }
   s[0].calls[q].out_n = n;
 }
-// An edit's row is named "edit PATH" or "write PATH" (Microcoder's edits, Claude Code's Edit and
-// Write): where its path starts, 0 for any other row.
+// An edit's row is named "edit PATH", "Edit PATH", "write PATH", or "Write PATH" (Microcoder's
+// edits, Claude Code's Edit and Write, Flawed's and ACP workers' Edit and Write): where its path
+// starts, 0 for any other row.
 cp_edit_at :: (text: string) -> int {
-  if text.count > 5 && cast(string) text[0..<5] == "edit " { return 5; }
-  if text.count > 6 && cast(string) text[0..<6] == "write " { return 6; }
+  if text.count > 5 && (cast(string) text[0..<5] == "edit " || cast(string) text[0..<5] == "Edit ") { return 5; }
+  if text.count > 6 && (cast(string) text[0..<6] == "write " || cast(string) text[0..<6] == "Write ") { return 6; }
+  return 0;
+}
+// A read command emitted by an ACP worker ("Read PATH"): where its path starts, 0 otherwise.
+cp_read_at :: (text: string) -> int {
+  if text.count > 5 && cast(string) text[0..<5] == "Read " { return 5; }
   return 0;
 }
 // Where row q's path starts when it is an edit that changed a file and its output is the diff; 0 otherwise.

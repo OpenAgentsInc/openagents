@@ -557,9 +557,9 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   else if row >= 0 && took.count > 0 { elt_value(f[0].rows, row, took); }
   if opens { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, rh); }
   if link_id.count > 0 {
-    // made after the row, so a press on the target reaches the link
-    link := uiframe_semantic(f, link_id, EL_LINK, r.path, px, py, pw, s.mono_small.line, 0, action);
-    sheet_hit(sh, UIFRAME_HIT, link, 0, px, py, pw, s.mono_small.line);
+    // made after the row, so a press anywhere vertically on the target filename reaches the link
+    link := uiframe_semantic(f, link_id, EL_LINK, r.path, px, y, pw, rh, 0, action);
+    sheet_hit(sh, UIFRAME_HIT, link, 0, px, y, pw, rh);
   }
   h := rh;
   if open { h += app_act_detail(f, id, k, tx, y + rh, w - a.gutter, r, action); }

@@ -14,7 +14,12 @@ cp_open_path :: (s: [] CoderPage) -> string {
   if s[0].open_term_path { return cp_term_click_path(s); }   // a file path clicked in the terminal pane (termpane.coax)
   if s[0].open_show >= 0 { return cp_show_open_path(s, i, s[0].open_show); }   // a picture a command showed (shows.coax)
   if s[0].open_cargo >= 0 && s[0].open_cargo < cp_cargo_n(s) { return at_path(s[0].cargo[0].files[..], s[0].open_cargo); }   // an attachment's chip (attach.coax)
-  if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
+  if q >= 0 && q < s[0].calls_n {
+    t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n];
+    at := cp_edit_at(t);
+    if at == 0 && !s[0].calls[q].read { at = cp_read_at(t); }
+    return cast(string) t[at..<t.count];
+  }
   if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_file); }
   return "";
 }

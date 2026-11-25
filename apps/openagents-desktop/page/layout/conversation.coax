@@ -71,13 +71,15 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
     }
     return r;
   }
-  if s[0].calls[q].read {
+  read_at := ifx s[0].calls[q].read then 0 else cp_read_at(text);
+  if s[0].calls[q].read || read_at > 0 {
     // a file by its name; the row opens onto its whole path and what was read
+    path := cast(string) text[read_at..<text.count];
     base := 0;
-    for c, ci: text { if c == '/' && ci + 1 < text.count { base = ci + 1; } }
-    return AppActRow.{kind = APP_ACT_READ, verb = "Read", target = sheet_pool(sh, cast(string) text[base..<text.count]),
-                      call = ifx base > 0 then text else "", output = output, failed = s[0].calls[q].failed,
-                      timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q), path = ifx s[0].calls[q].failed then "" else text};
+    for c, ci: path { if c == '/' && ci + 1 < path.count { base = ci + 1; } }
+    return AppActRow.{kind = APP_ACT_READ, verb = "Read", target = sheet_pool(sh, cast(string) path[base..<path.count]),
+                      call = ifx base > 0 then path else "", output = output, failed = s[0].calls[q].failed,
+                      timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q), path = ifx s[0].calls[q].failed then "" else path};
   }
   if cp_edit_at(text) > 0 { return cp_act_edit(s, f, q); }
   // an oasim command says what it did to the simulator (spec 7.5): "Tapped (201, 640)"
@@ -109,6 +111,7 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
 cp_row_act :: (s: [] CoderPage, q: int, row: int) -> int {
   if s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
   text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n];
+  if cp_edit_at(text) > 0 || cp_read_at(text) > 0 { return row; }
   if cp_flag(s, DC_FLAG_SIMULATOR) {
     tb: [256] u8;
     if cp_sim_cmd(text, tb[..]).verb.count > 0 { return CP_SIM_ROW; }
@@ -204,8 +207,9 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   q := head - 1;
   while q >= 0 {
     if s[0].calls[q].said { q = s[0].calls[q].next - 1; continue; }
-    edit := cp_edit_at(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]);
-    kind := ifx s[0].calls[q].thought then APP_ACT_THOUGHT else ifx s[0].calls[q].read then APP_ACT_READ
+    txt := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n];
+    edit := cp_edit_at(txt);
+    kind := ifx s[0].calls[q].thought then APP_ACT_THOUGHT else ifx s[0].calls[q].read || cp_read_at(txt) > 0 then APP_ACT_READ
             else ifx edit == 5 then APP_ACT_EDIT else ifx edit == 6 then APP_ACT_WRITE else APP_ACT_EXEC;
     app_act_count(c[..], kind, s[0].calls[q].failed);
     q = s[0].calls[q].next - 1;
