@@ -65,9 +65,9 @@ ICON_SIM_HOME :: 53; ICON_SIM_ROTATE :: 54; ICON_SIM_CAMERA :: 55; ICON_SIM_ZOOM
 ICON_SIM_FIT :: 58; ICON_SIM_MORE :: 59; ICON_SIM_RECORD :: 60;
 ICON_FOLDER_ADD :: 61; ICON_BRAIN :: 62; ICON_FOLDER_11 :: 63; ICON_ANTIGRAVITY :: 64;
 ICON_RELOAD :: 65; ICON_MORE_V :: 66; ICON_SIDEBAR_RIGHT :: 67; ICON_PLUS :: 68; ICON_COLLAPSE :: 69;
-ICON_PSIONIC_14 :: 70; ICON_ANTIGRAVITY_14 :: 71; ICON_BOT_14 :: 72;
-ICON_COUNT :: 73;
-ICON_NAMES :: [73] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+ICON_CLAUDE_12 :: 70; ICON_OPENAI_12 :: 71; ICON_PSIONIC_12 :: 72; ICON_ANTIGRAVITY_12 :: 73; ICON_BOT_12 :: 74;
+ICON_COUNT :: 75;
+ICON_NAMES :: [75] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
@@ -78,14 +78,14 @@ ICON_NAMES :: [73] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-do
                            "sim-home", "sim-rotate", "sim-camera", "sim-zoom-out", "sim-zoom-in", "sim-fit", "sim-more", "sim-record",
                            "folder-add", "brain", "folder-with-files", "antigravity-mark",
                            "reload", "dots-vertical", "sidebar-right", "plus", "collapse-pane",
-                           "psionic-mark", "antigravity-mark", "bot"];
-ICON_SIZES :: [73] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                           "claude-mark", "openai-mark", "psionic-mark", "antigravity-mark", "bot"];
+ICON_SIZES :: [75] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
                         14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
                         16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11,
                         16, 16, 16, 16, 16, 16, 16, 16,
                         16, 16, 11, 16,
                         14, 14, 18, 14, 15,
-                        14, 14, 14];
+                        12, 12, 12, 12, 12];
 
 // Zeron Dark: zgx's themes/zeron-dark.json (Zeron e393c4a8), the one source of its colours. A
 // skin reads its roles from here, and so does a page that draws a part the skin has no role for

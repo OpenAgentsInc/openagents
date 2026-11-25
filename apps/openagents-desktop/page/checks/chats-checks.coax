@@ -266,10 +266,10 @@
   saw_brain := false;
   for i: 0..<sh.nu {
     if sh.under[i].kind == PRIM_ICON {
-      if sh.under[i].id == ICON_ANTIGRAVITY_14 { saw_agy = true; }
+      if sh.under[i].id == ICON_ANTIGRAVITY_12 { saw_agy = true; }
       if sh.under[i].id == ICON_BRAIN { saw_brain = true; }
     }
   }
   #assert saw_agy && !saw_brain;
-  #assert coder_page_icon_size(ICON_ANTIGRAVITY_14) == 14.0f32 && coder_page_icon_size(ICON_PSIONIC_14) == 14.0f32 && coder_page_icon_size(ICON_CLAUDE_14) == 14.0f32 && coder_page_icon_size(ICON_OPENAI_14) == 14.0f32 && coder_page_icon_size(ICON_BOT_14) == 14.0f32;
+  #assert coder_page_icon_size(ICON_ANTIGRAVITY_12) == 12.0f32 && coder_page_icon_size(ICON_PSIONIC_12) == 12.0f32 && coder_page_icon_size(ICON_CLAUDE_12) == 12.0f32 && coder_page_icon_size(ICON_OPENAI_12) == 12.0f32 && coder_page_icon_size(ICON_BOT_12) == 12.0f32;
 }

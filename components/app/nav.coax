@@ -167,16 +167,16 @@ AppSideRow :: struct {
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
-APP_SIDE_CARD_HARNESS_ICON :: 14.0f32;
+APP_SIDE_CARD_HARNESS_ICON :: 12.0f32;
 APP_SIDE_CARD_FOLDER_ICON :: 11.0f32;
 APP_SIDE_CARD_FOLDER_GAP :: 6.0f32;
-// Map 16pt harness/model icons to their 14pt atlas slots so sidebar cards render them 2pt smaller.
+// Map 16pt harness/model icons to their 12pt atlas slots so sidebar cards render them smaller.
 app_side_card_harness_icon :: (icon: int) -> int {
-  if icon == ICON_CLAUDE { return ICON_CLAUDE_14; }
-  if icon == ICON_OPENAI { return ICON_OPENAI_14; }
-  if icon == ICON_PSIONIC { return ICON_PSIONIC_14; }
-  if icon == ICON_ANTIGRAVITY { return ICON_ANTIGRAVITY_14; }
-  if icon == ICON_BOT { return ICON_BOT_14; }
+  if icon == ICON_CLAUDE { return ICON_CLAUDE_12; }
+  if icon == ICON_OPENAI { return ICON_OPENAI_12; }
+  if icon == ICON_PSIONIC { return ICON_PSIONIC_12; }
+  if icon == ICON_ANTIGRAVITY { return ICON_ANTIGRAVITY_12; }
+  if icon == ICON_BOT { return ICON_BOT_12; }
   return icon;
 }
 // Compact 2-line sidebar chat card painter:
