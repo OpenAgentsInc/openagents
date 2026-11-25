@@ -145,7 +145,7 @@ final class AgentsPageController: NSObject {
                 btn.title = "Run Tester"
                 btn.action = #selector(launchTester(_:))
             } else if def.agent_id == "game-builder" {
-                btn.title = "Open 3D Viewport"
+                btn.title = "Open GameBuilder"
                 btn.action = #selector(launchGameBuilder(_:))
             } else {
                 btn.title = "Launch"
@@ -214,15 +214,26 @@ final class AgentsPageController: NSObject {
 
     @objc private func launchGameBuilder(_ sender: Any?) {
         guard let win = hostWindow else { return }
-        if let fixture = Bundle.main.resourceURL?.appendingPathComponent("fixtures/ple-data-hall-sample.ple-scene.json"),
-           FileManager.default.fileExists(atPath: fixture.path) {
-            win.openSceneInPane(fixture, shown: "Game Builder — Live 3D Scene")
-            win.show()
-            appendLog("[game-builder] Opened live 120 Hz Metal 3D viewport: \(fixture.lastPathComponent)\n")
-        } else {
-            win.chooseSceneFile()
-            appendLog("[game-builder] Prompted for .ple-scene.json to open in live 3D viewport.\n")
+        let target = "gamebuilder:scrappers-arena/level-1"
+        if let active = activeLeaseTarget, checkLeaseConflict(targetA: active, targetB: target) {
+            appendLog("[game-builder] BLOCKED by #authority lease policy: target '\(target)' overlaps active lease '\(active)'.\n")
+            return
         }
+        let invID = "gb-\(Int(Date().timeIntervalSince1970))"
+        activeLeaseTarget = target
+        stopButton?.isEnabled = true
+        statusLabel?.stringValue = "Active lease: \(target)"
+        invocations.append(DesktopAgentInvocation(
+            id: invID,
+            agentID: "game-builder",
+            target: target,
+            startedAt: Date(),
+            state: "running",
+            artifactPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/gamebuilder/Levels").path
+        ))
+        win.openGameBuilderStudio()
+        win.show()
+        appendLog("[game-builder] Acquired #authority target lease '\(target)' (\(invID)) and opened GameBuilder Studio pane.\n")
     }
 
     @objc private func launchTester(_ sender: Any?) {
@@ -280,8 +291,16 @@ final class AgentsPageController: NSObject {
     }
 
     @objc private func stopTester(_ sender: Any?) {
-        guard let proc = activeTesterProcess else { return }
-        appendLog("[simulated-app-tester] Stopping active invocation (cascading cancel)…\n")
-        proc.terminate()
+        if let proc = activeTesterProcess {
+            appendLog("[simulated-app-tester] Stopping active invocation (cascading cancel)…\n")
+            proc.terminate()
+            return
+        }
+        if let lease = activeLeaseTarget {
+            activeLeaseTarget = nil
+            stopButton?.isEnabled = false
+            statusLabel?.stringValue = "Idle — no active target leases"
+            appendLog("[agents] Released active target lease '\(lease)'.\n")
+        }
     }
 }

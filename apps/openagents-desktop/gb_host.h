@@ -19,6 +19,7 @@ void oa_gb_account(void *handle, const char *email);
 int oa_gb_exec_verb(void *handle, const char *verb, const char *args_json, const int32_t *levels, int nlevels, char *out_json, int out_cap);
 int oa_gb_exec_ctrl(void *handle, const char *ctrl_id, const char *args_json, const int32_t *levels, int nlevels, char *out_json, int out_cap);
 int oa_gb_get_table_digest(char out_hex9[9]);
+int oa_gb_get_verb_approval(const char *verb);
 
 // Persistence
 int oa_gb_load_level_buf(void *handle, int32_t level_n, const uint8_t *bytes, int len);
@@ -79,7 +80,12 @@ int oa_gb_poll_attach(void *handle, const int32_t *levels, int nlevels);
 void oa_gb_close_attach(void *handle);
 void oa_gb_set_claims_clock(void *handle, int64_t now_sec);
 int oa_gb_get_pic_due(void *handle);
+int oa_gb_stage_pic(void *handle, float w, float h);
+int oa_gb_get_pic_camera(void *handle, float out20[20]);
+int oa_gb_get_pic_draw_instances(void *handle, float *out, int float_cap);
 int oa_gb_submit_pic(void *handle, const uint8_t *px, int len, int32_t w, int32_t h, int32_t stride, int bgra, int64_t made);
+void oa_gb_discard_pic(void *handle);
+int oa_gb_get_pic_jpeg(void *handle, int32_t rev, int32_t which, uint8_t *out, int cap);
 int oa_gb_snapshot_ui(void *handle, int32_t out_i26[26], int64_t out_cam9[9], char *out_label, int label_cap, char *out_note, int note_cap);
 int oa_gb_get_tree_tsv(void *handle, char *out, int cap);
 

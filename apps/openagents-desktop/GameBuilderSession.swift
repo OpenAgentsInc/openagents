@@ -131,6 +131,14 @@ final class GameBuilderSession {
     static let levelsDir: URL = {
         baseDir.appendingPathComponent("Levels", isDirectory: true)
     }()
+    static let picturesDir: URL = {
+        baseDir.appendingPathComponent("Pictures", isDirectory: true)
+    }()
+
+    // Latest before/after JPEG pictures captured by pictures.coax (#14044)
+    var lastBeforePictureURL: URL?
+    var lastAfterPictureURL: URL?
+    var lastPictureRev: Int32 = 0
 
     init(key: String, gameId: String, levelId: String, viewportSize: CGSize) {
         self.key = key
@@ -457,6 +465,60 @@ final class GameBuilderSession {
             return true
         }
         return false
+    }
+
+    /// Drains pending pictures.coax before/after capture jobs using offscreen Metal rendering
+    /// and writes JPEG files to ~/.openagents/gamebuilder/Pictures/ for TK_WORLD cards (#14044).
+    func drainPendingPictures(using viewport: MetaverseViewportView) -> (rev: Int32, beforeURL: URL?, afterURL: URL?)? {
+        guard let h = handle, oa_gb_get_pic_due(h) > 0 else { return nil }
+        let picW: Float = 160
+        let picH: Float = 96
+        let drawW = 320
+        let drawH = 192
+        let nowSec = Int64(Date().timeIntervalSince1970)
+        var capturedAny = false
+        var guardCount = 0
+        while oa_gb_get_pic_due(h) > 0 && guardCount < 8 {
+            guardCount += 1
+            let mode = oa_gb_stage_pic(h, picW, picH)
+            if mode == 0 {
+                oa_gb_discard_pic(h)
+                break
+            }
+            if let bgra = viewport.renderGameBuilderStagedPictureBGRA(session: self, width: drawW, height: drawH) {
+                let ok = bgra.withUnsafeBufferPointer { ptr in
+                    oa_gb_submit_pic(h, ptr.baseAddress, Int32(ptr.count), Int32(drawW), Int32(drawH), Int32(drawW * 4), 1, nowSec)
+                }
+                if ok != 0 { capturedAny = true } else { oa_gb_discard_pic(h) }
+            } else {
+                oa_gb_discard_pic(h)
+                break
+            }
+        }
+        guard capturedAny else { return nil }
+        let snap = snapshotUi()
+        let rev = max(1, snap.savedRev)
+        var jpg = [UInt8](repeating: 0, count: 16384)
+        try? FileManager.default.createDirectory(at: Self.picturesDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        var beforeURL: URL?
+        var afterURL: URL?
+        // PIC_BEFORE = 1, PIC_AFTER = 2, PIC_PLAYTEST = 3 (gamebuilder/core/pictures.coax)
+        let bn = Int(oa_gb_get_pic_jpeg(h, rev, 1, &jpg, Int32(jpg.count)))
+        if bn > 0 {
+            let u = Self.picturesDir.appendingPathComponent("level-\(snap.levelNum)-rev-\(rev)-before.jpg")
+            try? Data(jpg[0..<bn]).write(to: u, options: .atomic)
+            beforeURL = u
+        }
+        let an = Int(oa_gb_get_pic_jpeg(h, rev, 2, &jpg, Int32(jpg.count)))
+        if an > 0 {
+            let u = Self.picturesDir.appendingPathComponent("level-\(snap.levelNum)-rev-\(rev)-after.jpg")
+            try? Data(jpg[0..<an]).write(to: u, options: .atomic)
+            afterURL = u
+        }
+        lastBeforePictureURL = beforeURL
+        lastAfterPictureURL = afterURL
+        lastPictureRev = rev
+        return (rev, beforeURL, afterURL)
     }
 
     func stopAttachServer() {

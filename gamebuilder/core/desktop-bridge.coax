@@ -9,6 +9,7 @@
 
 GbDesktopState :: struct {
   e: [1] Editor;
+  pic_stage: [1] Editor;
   f: [1] Farm;
   farm_loaded: bool;
   pics: [1] PicStore;
@@ -68,6 +69,17 @@ oa_gb_table_digest :: (out_hex: [] u8) -> int #export_c #effects(all) {
   s := gb_hex8(gb_table_digest(), hb[..]);
   for i: 0..<s.count { out_hex[i] = s[i]; }
   return s.count;
+}
+
+// Returns GB_APPROVALS index from canonical GB_COMMANDS (0=none, 1=owner, 2=confirm, 3=person, -1=unknown).
+oa_gb_verb_approval :: (verb_name: string) -> s32 #export_c #effects(all) {
+  v := gb_find(verb_name);
+  if v < 0 || v >= GB_COMMANDS.count { return -1; }
+  ap := GB_COMMANDS[v].approval;
+  for k: 0..<GB_APPROVALS.count {
+    if GB_APPROVALS[k] == ap { return cast(s32) k; }
+  }
+  return 0;
 }
 
 // ---- Level / Game Files & Persistence
@@ -286,8 +298,28 @@ oa_gb_pic_due :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
   return ifx st.count > 0 then ed_pic_due(st[0].e[..]) else 0;
 }
 
+oa_gb_pic_stage :: (st: [] GbDesktopState, w: f32, h: f32) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_pic_stage(st[0].e[..], st[0].pic_stage[..], w, h) else 0;
+}
+
+oa_gb_pic_camera :: (st: [] GbDesktopState, out: [] f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_camera(st[0].pic_stage[..], out);
+}
+
+oa_gb_pic_draw :: (st: [] GbDesktopState, out: [] f32) -> s64 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_draw(st[0].pic_stage[..], out) else 0;
+}
+
 oa_gb_pic_put :: (st: [] GbDesktopState, px: [] u8, w: s32, h: s32, stride: s32, bgra: bool, made: s64) -> bool #export_c #effects(all) {
   return st.count > 0 && ed_pic_put(st[0].e[..], px, w, h, stride, bgra, made);
+}
+
+oa_gb_pic_drop :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_pic_drop(st[0].e[..]); }
+}
+
+oa_gb_pic_jpeg :: (st: [] GbDesktopState, rev: s32, which: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_pic_jpeg(st[0].e[..], rev, which, out) else 0;
 }
 
 // Packs full UI state snapshot for cd_gb_sync_ui & cd_mv_tab_status:

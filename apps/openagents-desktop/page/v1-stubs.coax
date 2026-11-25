@@ -535,7 +535,7 @@ coder_page_lean_view_set :: (s: [] CoderPage, view: int) #export_c #effects(all)
 
 // ---- metaverse-route.coax & metaversepane.coax minimal stubs (#14039, #14040) ----
 mv_route_is_3d :: (raw: string) -> bool { return false; }
-CP_MV_ACT_FIRST :: 470; CP_MV_TOGGLE :: 470; CP_MV_EXPAND :: 472; CP_MV_MODE :: 477; CP_GB_PLAYTEST :: 501; CP_MV_ACT_LAST :: 509;
+CP_MV_ACT_FIRST :: 470; CP_MV_TOGGLE :: 470; CP_MV_EXPAND :: 472; CP_MV_MODE :: 477; CP_GB_PLAYTEST :: 501; CP_WORLD_CARD_ACT :: 509; CP_MV_ACT_LAST :: 509;
 CP_MV_MODE_PLAY :: 2;
 CP_ASK_MV_OPEN_DIALOG :: 200;
 CP_PC_METAVERSE :: 39; CP_PC_MV_OPEN :: 40; CP_PC_MV_EXPAND :: 41;

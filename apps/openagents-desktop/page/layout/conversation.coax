@@ -88,9 +88,18 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
 // What a press on row q does: an oasim command that went brings the simulator pane to the front
 // (spec 7.5, GitHub #13811); any other row does what its group's rows do.
 cp_row_act :: (s: [] CoderPage, q: int, row: int) -> int {
-  if !cp_flag(s, DC_FLAG_SIMULATOR) || s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
-  tb: [256] u8;
-  return ifx cp_sim_cmd(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n], tb[..]).verb.count > 0 then CP_SIM_ROW else row;
+  if s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
+  text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n];
+  if cp_flag(s, DC_FLAG_SIMULATOR) {
+    tb: [256] u8;
+    if cp_sim_cmd(text, tb[..]).verb.count > 0 { return CP_SIM_ROW; }
+  }
+  if cp_flag(s, DC_FLAG_METAVERSE) || cp_flag(s, DC_FLAG_GAMEBUILDER) {
+    wtb: [256] u8; wbb: [32] u8;
+    ww := cp_world_cmd(text, "", wtb[..], wbb[..]);
+    if ww.verb.count > 0 && (!ww.is_gb || cp_flag(s, DC_FLAG_GAMEBUILDER)) { return CP_WORLD_CARD_ACT; }
+  }
+  return row;
 }
 // An edit's row (#13696): "Edited" or "Wrote" and the file's name, a link to the file; its lines
 // added and removed at its end, and it opens onto its diff.

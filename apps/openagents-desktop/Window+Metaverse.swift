@@ -140,11 +140,12 @@ extension CoderWindow {
     private func startAttachPollTimer() {
         guard mv.attachPollTimer == nil else { return }
         mv.attachPollTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
-            guard let self, let gb = self.mvViewport?.activeGameBuilder else { return }
+            guard let self, let vp = self.mvViewport, let gb = vp.activeGameBuilder else { return }
             if gb.pollAttach() {
+                _ = gb.drainPendingPictures(using: vp)
                 let idx = Int(cd_mv_active_tab(self.page))
                 if idx >= 0 { self.syncGameBuilderChrome(session: gb, tabIdx: idx) }
-                self.mvViewport?.renderNow()
+                vp.renderNow()
                 self.wake()
             }
         }
@@ -261,6 +262,9 @@ extension CoderWindow {
             let idx = Int(cd_mv_active_tab(self.page))
             if idx >= 0 { self.syncGameBuilderChrome(session: gb, tabIdx: idx) }
             self.wake()
+        }
+        vp.onAttachSelectionRequested = { [weak self] in
+            self?.attachMetaverseSelectionToChat()
         }
         canvas.addSubview(vp)
         mvViewport = vp
@@ -439,8 +443,25 @@ extension CoderWindow {
         return nil
     }
 
+    /// Enforces canonical GB_APPROVALS ("confirm" / destructive actions require explicit user approval).
+    private func confirmGameBuilderActionIfRequired(cmd: String) -> Bool {
+        let approval = oa_gb_get_verb_approval(cmd)
+        let destructive: Set<String> = ["delete-game", "delete-level", "unpublish", "remove-published"]
+        guard approval == 2 || destructive.contains(cmd) else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = destructive.contains(cmd) ? .warning : .informational
+        alert.messageText = "Confirm GameBuilder Action: \(cmd)"
+        alert.informativeText = approval == 2
+            ? "GameBuilder marks '\(cmd)' as requiring confirmation (asks the person first). Proceed?"
+            : "This action ('\(cmd)') modifies or deletes GameBuilder state. Proceed?"
+        alert.addButton(withTitle: "Proceed")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     private func handleGameBuilderCommand(cmd: String, arg: String) {
         guard let (gb, tabIdx) = activeOrDefaultGameBuilderSession() else { return }
+        guard confirmGameBuilderActionIfRequired(cmd: cmd) else { return }
         switch cmd {
         case "open-game":
             let gid = arg.isEmpty ? "scrappers-arena" : arg
@@ -492,6 +513,9 @@ extension CoderWindow {
             } else {
                 cd_gb_playtest_status(page, 0, 0, "Play-test refused")
             }
+        case "undo-turn":
+            let r = gb.runVerb("undo-turn", argsJson: "")
+            if !r.ok { _ = gb.runVerb("undo", argsJson: "") }
         case "copy-share-url":
             if !arg.isEmpty {
                 NSPasteboard.general.clearContents()

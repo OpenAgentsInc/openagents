@@ -49,13 +49,13 @@ ac_builtin_defs :: () -> [3] ArDefRecord {
     ArDefRecord.{
       agent_id = "game-builder",
       name = "Game Builder",
-      description = "Native 120 Hz Metal/Vulkan 3D creation environment wired to the folded GameBuilder / PLE scene core with live interactive side-pane viewport.",
+      description = "Native 120 Hz Metal/Vulkan GameBuilder Studio embedded in OpenAgents Desktop with 12 game templates, Build/Play/Play-Test, and live --attach CLI/MCP round-trip.",
       version = 1,
       kind = "creator",
       execution_mode = "hybrid",
-      runtime = "coax-metal:SceneView",
-      input_contract = "ple.scene.edit.v1",
-      output_contract = "ple.scene.document.v1",
+      runtime = "coax-metaverse:gamebuilder-core",
+      input_contract = "desktop.metaverse.edit.v1",
+      output_contract = "desktop.metaverse.session.v1",
       max_depth = 2,
       max_concurrency = 1,
       budget = ArBudget.{wall_ms = 600000, turns = 24, tokens = 200000, cost_usd_e6 = 3000000},
@@ -112,12 +112,20 @@ tool_main :: () -> int #export_c #effects(all) {
       n := ar_write_def(defs[i], buf[..]);
       if n <= 0 { tool_errln("selftest: ar_write_def failed"); return 1; }
     }
-    // Verify #authority lease conflict detection on overlapping device_lease
+    if defs[2].runtime != "coax-metaverse:gamebuilder-core" || defs[2].input_contract != "desktop.metaverse.edit.v1" || defs[2].output_contract != "desktop.metaverse.session.v1" {
+      tool_errln("selftest: game-builder definition contract mismatch"); return 1;
+    }
+    // Verify #authority lease conflict detection on overlapping device_lease (including GameBuilder targets)
     l1 := ArBinding.{device_lease = "sim-udid-1", workspace_dir = "/tmp/ws1"};
     l2 := ArBinding.{device_lease = "sim-udid-1", workspace_dir = "/tmp/ws2"};
     l3 := ArBinding.{device_lease = "chrome-2", workspace_dir = "/tmp/ws3"};
+    g1 := ArBinding.{device_lease = "gamebuilder:scrappers-arena/level-1", workspace_dir = "gamebuilder:scrappers-arena/level-1"};
+    g2 := ArBinding.{device_lease = "gamebuilder:scrappers-arena/level-1", workspace_dir = "gamebuilder:scrappers-arena/level-1"};
+    g3 := ArBinding.{device_lease = "gamebuilder:splicebots/level-1", workspace_dir = "gamebuilder:splicebots/level-1"};
     if !ar_bindings_conflict(l1, l2) { tool_errln("selftest: overlapping lease should conflict"); return 1; }
     if ar_bindings_conflict(l1, l3) { tool_errln("selftest: disjoint leases should not conflict"); return 1; }
+    if !ar_bindings_conflict(g1, g2) { tool_errln("selftest: overlapping gamebuilder lease should conflict"); return 1; }
+    if ar_bindings_conflict(g1, g3) { tool_errln("selftest: disjoint gamebuilder leases should not conflict"); return 1; }
     print("agents-catalog selftest: PASS (definitions=3 lease_policy=ok)\n");
     return 0;
   }

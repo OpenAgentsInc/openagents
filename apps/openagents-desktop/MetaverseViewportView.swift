@@ -327,11 +327,13 @@ final class MetaverseViewportView: NSView {
     private var downMouse: NSPoint = .zero
     private var dragging = false
     private var dragPanning = false
+    private var optionClickPending = false
     private var needsRedraw = true
 
     var onNodePicked: ((Int, String, SIMD3<Float>) -> Void)?
     var onFocusRequested: (() -> Void)?
     var onFilesDropped: (([URL]) -> Void)?
+    var onAttachSelectionRequested: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1257,12 +1259,16 @@ final class MetaverseViewportView: NSView {
     /// Encodes GameBuilder's Coax instance stream (unit cube + .gbm meshes + selection/claims/changes/playtest lines)
     /// using our triple-target Coax Metal shader (Components/gb-instances.metal).
     private func encodeGameBuilder(into enc: MTLRenderCommandEncoder, session: GameBuilderSession) {
-        guard let gbPipeline, let depthState, let cubeBuf = gbCubeBuffer, let instBuf = gbInstanceBuffer, let h = session.handle else { return }
+        guard let h = session.handle else { return }
         var cam = [Float](repeating: 0, count: 20)
         guard oa_gb_get_camera(h, &cam) != 0 else { return }
-
         let instCount = Int(oa_gb_get_draw_instances(h, &gbInstanceFloats, Int32(gbInstanceFloats.count)))
         guard instCount > 0 else { return }
+        encodeGameBuilderCore(into: enc, session: session, cam: cam, instFloats: gbInstanceFloats, instCount: instCount, updateHud: true)
+    }
+
+    private func encodeGameBuilderCore(into enc: MTLRenderCommandEncoder, session: GameBuilderSession, cam: [Float], instFloats: [Float], instCount: Int, updateHud: Bool) {
+        guard let gbPipeline, let depthState, let cubeBuf = gbCubeBuffer, let instBuf = gbInstanceBuffer, let h = session.handle else { return }
 
         // Group instances by mesh_id (0 = unit cube, >0 = hydrated .gbm mesh) for batched instanced drawing
         var orderedFloats: [Float] = []
@@ -1270,7 +1276,7 @@ final class MetaverseViewportView: NSView {
         var batches: [(meshId: Int32, start: Int, count: Int)] = []
         var byMesh: [Int32: [Int]] = [:]
         for i in 0..<instCount {
-            let mid = Int32(gbInstanceFloats[i * 20 + 19].rounded())
+            let mid = Int32(instFloats[i * 20 + 19].rounded())
             byMesh[mid, default: []].append(i)
         }
         for mid in byMesh.keys.sorted() {
@@ -1278,7 +1284,7 @@ final class MetaverseViewportView: NSView {
             let start = orderedFloats.count / 20
             for idx in idxs {
                 let base = idx * 20
-                for k in 0..<20 { orderedFloats.append(gbInstanceFloats[base + k]) }
+                for k in 0..<20 { orderedFloats.append(instFloats[base + k]) }
             }
             batches.append((mid, start, idxs.count))
         }
@@ -1314,6 +1320,7 @@ final class MetaverseViewportView: NSView {
             }
         }
 
+        guard updateHud else { return }
         // Update Play HUD badge when playing
         var hud = [Float](repeating: 0, count: 80)
         if oa_gb_get_play_hud(h, &hud, Int32(hud.count)) != 0 && hud[0] > 0.5 {
@@ -1327,6 +1334,46 @@ final class MetaverseViewportView: NSView {
         } else {
             gbHudLabel.isHidden = true
         }
+    }
+
+    /// Renders GameBuilder's staged pictures.coax camera + instances into an offscreen BGRA8 buffer
+    /// for before/after JPEG encoding via oa_gb_submit_pic (#14044).
+    func renderGameBuilderStagedPictureBGRA(session: GameBuilderSession, width: Int = 320, height: Int = 192) -> [UInt8]? {
+        guard let device, let queue, let h = session.handle else { return nil }
+        var cam = [Float](repeating: 0, count: 20)
+        guard oa_gb_get_pic_camera(h, &cam) != 0 else { return nil }
+        let instCount = Int(oa_gb_get_pic_draw_instances(h, &gbInstanceFloats, Int32(gbInstanceFloats.count)))
+        guard instCount > 0 else { return nil }
+
+        let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        cd.usage = [.renderTarget, .shaderRead]
+        cd.storageMode = .shared
+        let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
+        dd.usage = .renderTarget
+        dd.storageMode = .private
+        guard let colorTex = device.makeTexture(descriptor: cd),
+              let dTex = device.makeTexture(descriptor: dd),
+              let cb = queue.makeCommandBuffer() else { return nil }
+        let rp = MTLRenderPassDescriptor()
+        rp.colorAttachments[0].texture = colorTex
+        rp.colorAttachments[0].loadAction = .clear
+        rp.colorAttachments[0].storeAction = .store
+        rp.colorAttachments[0].clearColor = MTLClearColor(red: 0.055, green: 0.062, blue: 0.078, alpha: 1.0)
+        rp.depthAttachment.texture = dTex
+        rp.depthAttachment.loadAction = .clear
+        rp.depthAttachment.storeAction = .dontCare
+        rp.depthAttachment.clearDepth = 1.0
+        if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
+            enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(width), height: Double(height), znear: 0, zfar: 1))
+            encodeGameBuilderCore(into: enc, session: session, cam: cam, instFloats: gbInstanceFloats, instCount: instCount, updateHud: false)
+            enc.endEncoding()
+        }
+        cb.commit()
+        cb.waitUntilCompleted()
+
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        colorTex.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        return bytes
     }
 
     func renderNow() {
@@ -1434,8 +1481,10 @@ final class MetaverseViewportView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onFocusRequested?()
+        optionClickPending = event.modifierFlags.contains(.option)
         if let gb = activeGameBuilder, let h = gb.handle {
             window?.makeFirstResponder(self)
+            oa_gb_set_claims_clock(h, Int64(Date().timeIntervalSince1970))
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_down(h, 0, x, y, gbMods(from: event.modifierFlags))
             if gb.snapshotUi().playing { oa_gb_set_play_fire(h, 1) }
@@ -1532,12 +1581,17 @@ final class MetaverseViewportView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        let wasOption = optionClickPending
+        optionClickPending = false
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_up(h, 0, x, y)
             if gb.snapshotUi().playing { oa_gb_set_play_fire(h, 0) }
             gb.flushSaveIfDue()
             onGameBuilderMutated?()
+            if wasOption && !gb.snapshotUi().playing {
+                onAttachSelectionRequested?()
+            }
             renderNow()
             return
         }
@@ -1545,6 +1599,7 @@ final class MetaverseViewportView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         if hypot(p.x - downMouse.x, p.y - downMouse.y) < 4.0 {
             performPick(at: p)
+            if wasOption { onAttachSelectionRequested?() }
         }
     }
 

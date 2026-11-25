@@ -109,6 +109,13 @@ cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
     else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx has_3d_flag && cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
     cn := cp_id(cb[..], i, ".showc").count; cn = el_put_i(cb[..], cn, j);
     yy += app_meta(f, sheet_pool(sh, cast(string) cb[0..<cn]), x, yy, w, sheet_pool(sh, cast(string) tb[0..<tn]), false) + a.gap;
+    if shows[j].kind == "gamebuilder" && cp_flag(s, DC_FLAG_GAMEBUILDER) {
+      sw := app_button_width(f, -1, "Show in 3D");
+      uw := app_button_width(f, -1, "Undo");
+      _ := app_button(f, "coder.gb.card.show", x, yy, sw, -1, "Show in 3D", APP_BUTTON_DEFAULT, 0, CP_WORLD_CARD_ACT);
+      _ := app_button(f, "coder.gb.card.undo", x + sw + 6.0f32, yy, uw, -1, "Undo", APP_BUTTON_DEFAULT, 0, CP_WORLD_CARD_ACT);
+      yy += k.control_h + a.gap;
+    }
   }
   return yy - y;
 }

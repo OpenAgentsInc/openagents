@@ -64,6 +64,11 @@ int oa_gb_get_table_digest(char out_hex9[9]) {
   return n;
 }
 
+int oa_gb_get_verb_approval(const char *verb) {
+  if (!verb) return -1;
+  return (int)oa_gb_verb_approval(gb_str(verb));
+}
+
 int oa_gb_load_level_buf(void *handle, int32_t level_n, const uint8_t *bytes, int len) {
   if (!handle) return 0;
   return oa_gb_open_level(gb_view(handle), level_n, (coax_v_u8){(uint8_t *)bytes, (bytes && len > 0) ? (int64_t)len : 0}) ? 1 : 0;
@@ -181,10 +186,26 @@ int oa_gb_poll_attach(void *handle, const int32_t *levels, int nlevels) {
 void oa_gb_close_attach(void *handle) { if (handle) oa_gb_attach_close(gb_view(handle)); }
 void oa_gb_set_claims_clock(void *handle, int64_t now_sec) { if (handle) oa_gb_claims_clock(gb_view(handle), now_sec); }
 int oa_gb_get_pic_due(void *handle) { return handle ? (int)oa_gb_pic_due(gb_view(handle)) : 0; }
+int oa_gb_stage_pic(void *handle, float w, float h) { return handle ? (int)oa_gb_pic_stage(gb_view(handle), w, h) : 0; }
+int oa_gb_get_pic_camera(void *handle, float out20[20]) {
+  if (!handle || !out20) return 0;
+  return oa_gb_pic_camera(gb_view(handle), (coax_v_f32){out20, 20}) ? 1 : 0;
+}
+int oa_gb_get_pic_draw_instances(void *handle, float *out, int float_cap) {
+  if (!handle || !out || float_cap <= 0) return 0;
+  return (int)oa_gb_pic_draw(gb_view(handle), (coax_v_f32){out, (int64_t)float_cap});
+}
 
 int oa_gb_submit_pic(void *handle, const uint8_t *px, int len, int32_t w, int32_t h, int32_t stride, int bgra, int64_t made) {
   if (!handle || !px || len <= 0) return 0;
   return oa_gb_pic_put(gb_view(handle), (coax_v_u8){(uint8_t *)px, (int64_t)len}, w, h, stride, bgra != 0, made) ? 1 : 0;
+}
+
+void oa_gb_discard_pic(void *handle) { if (handle) oa_gb_pic_drop(gb_view(handle)); }
+
+int oa_gb_get_pic_jpeg(void *handle, int32_t rev, int32_t which, uint8_t *out, int cap) {
+  if (!handle || !out || cap <= 0) return 0;
+  return (int)oa_gb_pic_jpeg(gb_view(handle), rev, which, (coax_v_u8){out, (int64_t)cap});
 }
 
 int oa_gb_snapshot_ui(void *handle, int32_t out_i26[26], int64_t out_cam9[9], char *out_label, int label_cap, char *out_note, int note_cap) {

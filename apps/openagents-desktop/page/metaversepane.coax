@@ -866,6 +866,18 @@ cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     cp_mv_set_cmd(s, "copy-level", "", CP_ASK_GB_CMD);
     return true;
   }
+  if act == CP_WORLD_CARD_ACT {
+    cp_mv_bring_front(s);
+    if id == "coder.gb.card.undo" {
+      cp_mv_set_cmd(s, "undo-turn", "", CP_ASK_GB_CMD);
+      return true;
+    }
+    if id == "coder.gb.card.show" {
+      cp_mv_set_cmd(s, "show-changes", "", CP_ASK_GB_CMD);
+      return true;
+    }
+    return true;
+  }
   return false;
 }
 
@@ -1123,8 +1135,11 @@ cp_mv_draw_bar3 :: (s: [] CoderPage, f: [] UiFrame, px: f32, y3: f32, pw: f32) -
   if cx + 52.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.delete", "Del", cx, py, ph, false, CP_GB_CTRL) + 4.0f32; }
   if cx + 72.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.decide", "✦ Decide", cx, py, ph, false, CP_GB_CTRL) + 4.0f32; }
   if t.change_count > 0 && cx + 88.0f32 < px + pw {
-    cb: [32] u8; cn := el_put(cb[..], 0, "Changes ("); cn = el_put_i(cb[..], cn, t.change_count); cn = el_put(cb[..], cn, ")");
-    _ = cp_mv_pill_btn(f, "coder.gb.show_changes", sheet_pool(sh, cast(string) cb[0..<cn]), cx, py, ph, true, CP_GB_CTRL);
+    cb: [32] u8; cn := el_put(cb[..], 0, "Show me ("); cn = el_put_i(cb[..], cn, t.change_count); cn = el_put(cb[..], cn, ")");
+    cx += cp_mv_pill_btn(f, "coder.gb.show_changes", sheet_pool(sh, cast(string) cb[0..<cn]), cx, py, ph, true, CP_GB_CTRL) + 2.0f32;
+    if cx + 56.0f32 < px + pw {
+      _ = cp_mv_pill_btn(f, "coder.gb.dismiss_changes", "Dismiss", cx, py, ph, false, CP_GB_CTRL);
+    }
   }
   return y3 + bh;
 }
