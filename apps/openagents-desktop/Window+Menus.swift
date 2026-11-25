@@ -81,11 +81,13 @@ extension CoderWindow {
         var items: [Item] = [
             Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"),
             Item(label: "Rename Chat…"),
+            Item(label: "Regenerate Title"),
             Item(label: "Fork Chat"),
         ]
         var acts: [() -> Void] = [
             { [weak self] in self?.togglePin(id) },
             { [weak self] in self?.rename(id) },
+            { [weak self] in self?.regenerateTitle(id) },
             { [weak self] in self?.fork(id) },
         ]
         #if OA_FULL

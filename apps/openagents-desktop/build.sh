@@ -128,7 +128,7 @@ core_swift=(
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
-  "$here/FlawedSettings.swift"
+  "$here/FlawedSettings.swift" "$here/TitleGenerator.swift"
 )
 swift_files=("${core_swift[@]}")
 

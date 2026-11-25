@@ -590,6 +590,10 @@ extension CoderWindow {
                     let isNewChat = (existingMeta == nil)
                     let gainedTurn = mergedTurns.count > existingTurns.count
                     self.store.keep(id: snap.uuid, title: snap.title, folder: snap.cwd, text: jsonText)
+                    if isNewChat, !self.autoTitledChats.contains(snap.uuid) {
+                        let firstAsk = (mergedTurns.first?["ask"] as? String) ?? snap.title
+                        self.maybeGenerateInitialTitle(chatID: snap.uuid, firstMessage: firstAsk, folderPath: snap.cwd)
+                    }
                     self.phoneRunStamps[snap.runID] = snap.stamp
                     sidebarChanged = true
                     if self.chat == snap.uuid && cd_running(self.page) == 0 {
@@ -1166,6 +1170,7 @@ extension CoderWindow {
         if id != chat { unread.insert(id) }
         needsAttention.remove(id)
         notifyTurnCompleted(chatID: id, isActiveChat: id == chat)
+        maybeRefineTitleAfterTurn(chatID: id)
         cd_chats(page, chatLines)
         #if OA_FULL
         syncForemanUI()

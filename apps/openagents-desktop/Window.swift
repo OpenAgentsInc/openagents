@@ -182,6 +182,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     #endif
     var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871, #14026)
     var sidebarUndo: SidebarUndoSnapshot? // last archive/delete for Undo toast restore (#13875)
+    var autoTitledChats: Set<String> = []
+    var titleNeedsRefinement: [String: String] = [:]
+    var manuallyRenamedChats: Set<String> = []
+    var titleGenVersion: [String: Int] = [:]
+    var pendingForkSource: [String: (source: ThreadTitleForkSource, baseTurns: Int)] = [:]
     private var lastSnoozeCheckAt: CFTimeInterval = 0
     private var lastTimestampMinute: Int64 = 0
     #if OA_FULL
@@ -266,6 +271,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_notify_mode_set(page, CoderNotifyMode.current.rawValue)
         CoderNotifications.shared.install()
         CoderNotifications.shared.onSelectChat = { [weak self] chatID in self?.openFromNotification(chatID) }
+        configureTitleGenerator()
         if CoderNotifyMode.current.needsOS { CoderNotifications.shared.requestAuthorizationIfNeeded() }
         #if OA_FULL
         cd_cloud_authed_set(page, (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn) ? 1 : 0)
@@ -762,6 +768,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 run.endTurn()
                 if FeatureFlags.isOn(.git) { captureTurnCheckpoint(for: run); refreshBranch(); refreshGitDiff() }
                 notifyTurnCompleted(chatID: chat, isActiveChat: true)
+                if let cid = chat { maybeRefineTitleAfterTurn(chatID: cid) }
             }
             #if OA_FULL
             if FeatureFlags.isOn(.foreman), let cid = chat {

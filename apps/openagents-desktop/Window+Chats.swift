@@ -239,6 +239,12 @@ extension CoderWindow {
         let newID = UUID().uuidString.lowercased()
         let newTitle = baseTitle.hasSuffix(" (fork)") ? baseTitle : baseTitle + " (fork)"
         store.keep(id: newID, title: newTitle, folder: baseFolder, text: text)
+        if let extracted = ThreadTitlePrompts.extractConversation(fromChatJSON: text) {
+            pendingForkSource[newID] = (
+                source: ThreadTitleForkSource(title: baseTitle, history: extracted.transcript),
+                baseTurns: extracted.turnCount
+            )
+        }
         cd_chats(page, chatLines)
         open(newID)
     }
@@ -277,6 +283,10 @@ extension CoderWindow {
             guard answer == 1 else { return }
             let title = CoderStore.cleanTitle(values.first ?? "")
             guard !title.isEmpty else { return }
+            self.manuallyRenamedChats.insert(id)
+            self.titleNeedsRefinement.removeValue(forKey: id)
+            self.pendingForkSource.removeValue(forKey: id)
+            self.titleGenVersion[id, default: 0] += 1
             self.store.rename(id, to: title)
             self.daemonClient.updateSessionMeta(sessionID: id, title: title)
             cd_chats(self.page, self.chatLines)
@@ -313,6 +323,7 @@ extension CoderWindow {
             self.cleanupCheckpoints(for: id, in: delFolder)
             if let w = self.store.worktree(id) { self.removeWorktree(w, title: title) }
             if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { self.store.markPhoneRunDeleted(runID, true) }
+            self.forgetTitleState(for: id)
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
             if let snapMeta, let snapText {
@@ -484,6 +495,7 @@ extension CoderWindow {
                 cleanupCheckpoints(for: id, in: delFolder)
                 if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "Chat") }
                 if let runID = CoderWorker.hexRunID(from: id), CoderWorker.isPhoneRun(runID) { store.markPhoneRunDeleted(runID, true) }
+                forgetTitleState(for: id)
                 store.remove(id)
                 daemonClient.updateSessionMeta(sessionID: id, archived: true)
             }
@@ -527,9 +539,11 @@ extension CoderWindow {
         let r = which ?? run, shown = r === run
         let id = (shown ? chat : r.chat) ?? pendingChatID(r) ?? UUID().uuidString.lowercased()
         guard let text = savedChat(r.page) else { return }
+        let existingMeta = store.meta(id)
+        let chatFolder = (shown ? folder : r.folder).path
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
-        store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text, worktree: madeWorktree(r, for: id), touchUpdated: touchUpdated && !closing)
+        store.keep(id: id, title: title, folder: chatFolder, text: text, worktree: madeWorktree(r, for: id), touchUpdated: touchUpdated && !closing)
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)
@@ -538,5 +552,180 @@ extension CoderWindow {
         #if OA_FULL
         syncForemanUI()
         #endif
+        if !closing && id != Foreman.chatID {
+            if existingMeta == nil && !autoTitledChats.contains(id) {
+                let firstAsk = ThreadTitlePrompts.extractConversation(fromChatJSON: text)?.firstAsk ?? title
+                maybeGenerateInitialTitle(chatID: id, firstMessage: firstAsk, folderPath: chatFolder)
+            } else if let pending = pendingForkSource[id],
+                      let extracted = ThreadTitlePrompts.extractConversation(fromChatJSON: text),
+                      extracted.turnCount > pending.baseTurns {
+                pendingForkSource.removeValue(forKey: id)
+                maybeGenerateInitialTitle(
+                    chatID: id,
+                    firstMessage: extracted.lastAsk,
+                    folderPath: chatFolder,
+                    forkSource: pending.source,
+                    allowOverwriteRenamed: true
+                )
+            }
+        }
+    }
+
+    // MARK: - Automatic & Manual Conversation Title Generation (T3-parity, Gemini-credits-first)
+
+    func configureTitleGenerator() {
+        ChatTitleGenerator.shared.localServerProvider = {
+            guard LocalModelServer.shared.isReady else { return nil }
+            return (LocalModelServer.baseURL, LocalModelStore.entry.id)
+        }
+        #if OA_FULL
+        ChatTitleGenerator.shared.hostedGatewayProvider = { url, body in
+            guard FeatureFlags.isOn(.account),
+                  MacAccount.shared.loggedIn,
+                  var key = MacKey.load(MacKey.file()) else {
+                return nil
+            }
+            defer { MacKey.wipe(&key) }
+            return try? MacKey.nip98(key: key, url: url, body: body, now: Date())
+        }
+        #endif
+    }
+
+    func forgetTitleState(for id: String) {
+        autoTitledChats.remove(id)
+        titleNeedsRefinement.removeValue(forKey: id)
+        manuallyRenamedChats.remove(id)
+        pendingForkSource.removeValue(forKey: id)
+        titleGenVersion[id, default: 0] += 1
+    }
+
+    func maybeGenerateInitialTitle(
+        chatID: String,
+        firstMessage: String,
+        folderPath: String,
+        forkSource: ThreadTitleForkSource? = nil,
+        allowOverwriteRenamed: Bool = false
+    ) {
+        guard chatID != Foreman.chatID,
+              !manuallyRenamedChats.contains(chatID),
+              !firstMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        if !allowOverwriteRenamed, store.meta(chatID)?.renamed == true {
+            return
+        }
+        autoTitledChats.insert(chatID)
+        let version = titleGenVersion[chatID, default: 0] + 1
+        titleGenVersion[chatID] = version
+        ChatTitleGenerator.shared.generateInitialTitle(
+            message: firstMessage,
+            folderPath: folderPath,
+            forkSource: forkSource
+        ) { [weak self] result in
+            guard let self, let result else { return }
+            self.applyGeneratedTitle(
+                chatID: chatID,
+                result: result,
+                expectedVersion: version,
+                expectedCurrentTitle: nil,
+                allowOverwriteRenamed: allowOverwriteRenamed
+            )
+        }
+    }
+
+    func maybeRefineTitleAfterTurn(chatID: String) {
+        guard chatID != Foreman.chatID,
+              !manuallyRenamedChats.contains(chatID),
+              let previousAutoTitle = titleNeedsRefinement.removeValue(forKey: chatID),
+              let meta = store.meta(chatID),
+              meta.title == previousAutoTitle,
+              let chatJSON = store.text(chatID) else {
+            return
+        }
+        let version = titleGenVersion[chatID, default: 0] + 1
+        titleGenVersion[chatID] = version
+        ChatTitleGenerator.shared.regenerateTitle(
+            previousTitle: previousAutoTitle,
+            chatJSON: chatJSON,
+            folderPath: meta.folder
+        ) { [weak self] result in
+            guard let self, let result else { return }
+            self.applyGeneratedTitle(
+                chatID: chatID,
+                result: result,
+                expectedVersion: version,
+                expectedCurrentTitle: previousAutoTitle,
+                allowOverwriteRenamed: true
+            )
+        }
+    }
+
+    /// Sidebar right-click > Regenerate Title: regenerates the title from the full conversation.
+    func regenerateTitle(_ id: String) {
+        guard id != Foreman.chatID,
+              let meta = store.meta(id),
+              let chatJSON = store.text(id) else {
+            return
+        }
+        manuallyRenamedChats.remove(id)
+        titleNeedsRefinement.removeValue(forKey: id)
+        autoTitledChats.insert(id)
+        let version = titleGenVersion[id, default: 0] + 1
+        titleGenVersion[id] = version
+        cd_toast(page, "Generating title…", 0)
+        wake()
+        ChatTitleGenerator.shared.regenerateTitle(
+            previousTitle: meta.title,
+            chatJSON: chatJSON,
+            folderPath: meta.folder
+        ) { [weak self] result in
+            guard let self else { return }
+            guard let result else {
+                cd_toast(self.page, "Couldn’t generate title (no Gemini or local model available)", 0)
+                self.wake()
+                return
+            }
+            self.applyGeneratedTitle(
+                chatID: id,
+                result: result,
+                expectedVersion: version,
+                expectedCurrentTitle: nil,
+                allowOverwriteRenamed: true,
+                trackRefinement: false
+            )
+        }
+    }
+
+    private func applyGeneratedTitle(
+        chatID: String,
+        result: TitleGenerationResult,
+        expectedVersion: Int,
+        expectedCurrentTitle: String?,
+        allowOverwriteRenamed: Bool,
+        trackRefinement: Bool = true
+    ) {
+        guard titleGenVersion[chatID] == expectedVersion,
+              !manuallyRenamedChats.contains(chatID),
+              let meta = store.meta(chatID) else {
+            return
+        }
+        if !allowOverwriteRenamed && meta.renamed == true { return }
+        if let expectedCurrentTitle, meta.title != expectedCurrentTitle { return }
+        let cleaned = CoderStore.cleanTitle(result.title)
+        guard !cleaned.isEmpty else { return }
+        if trackRefinement && result.needsRefinement {
+            titleNeedsRefinement[chatID] = cleaned
+        } else {
+            titleNeedsRefinement.removeValue(forKey: chatID)
+        }
+        if cleaned != meta.title {
+            store.rename(chatID, to: cleaned)
+            daemonClient.updateSessionMeta(sessionID: chatID, title: cleaned)
+            cd_chats(page, chatLines)
+            #if OA_FULL
+            syncForemanUI()
+            #endif
+            wake()
+        }
     }
 }

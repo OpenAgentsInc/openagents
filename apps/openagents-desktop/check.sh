@@ -19,4 +19,9 @@ xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-librar
   "$here/LocalModels.swift" "$here/tests/local-models-check.swift" -framework CryptoKit -o "$local_bin"
 "$local_bin"
 rm -f "$local_bin"
+title_bin="$(mktemp -t oa-title-gen)"
+xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 \
+  "$here/TitleGenerator.swift" "$here/tests/title-generator-check.swift" -o "$title_bin"
+"$title_bin"
+rm -f "$title_bin"
 echo "openagents-desktop check: ok"
