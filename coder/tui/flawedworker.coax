@@ -33,6 +33,7 @@ FWW_MAX_BLOCKS :: 16;
 FWW_MAX_TOOLS_CALL :: 12;
 FWW_FILE_MAX :: 262144;
 FWW_TOOL_OUT_MAX :: 32768;
+FWW_LOCAL_TOOL_OUT_MAX :: 12288;
 FWW_FC_ENTRIES :: 128;
 FWW_FC_SLAB :: 1048576;
 
@@ -702,6 +703,9 @@ FwHist :: struct {
   total_out: int;
   total_cached: int;
   total_cost_micros: int;
+  last_in_tok: int;
+  last_in_bytes: int;
+  compact_count: int;
 }
 
 fww_slab_put :: (h: [] FwHist, s: string, out_at: [] int) -> int {
@@ -725,6 +729,8 @@ fww_slab_str :: (h: [] FwHist, at: int, n: int) -> string {
 fww_hist_clear :: (h: [] FwHist) {
   h[0].nmsgs = 0;
   h[0].nslab = 0;
+  h[0].last_in_tok = 0;
+  h[0].last_in_bytes = 0;
 }
 
 fww_hist_push_user :: (h: [] FwHist, text: string) {
@@ -749,53 +755,312 @@ fww_hist_push_assistant_text :: (h: [] FwHist, text: string) {
   h[0].nmsgs += 1;
 }
 
-// Compacts oldest turns when history grows large (Ch 09 5-layer compaction policy).
-fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
-  if h[0].nmsgs <= 4 { return false; }
-  // Preserve the last 4 messages (ending cleanly on a user turn boundary when possible).
-  keep_from := h[0].nmsgs - 4;
-  while keep_from > 0 && h[0].msgs[keep_from].role != FWW_MROLE_USER { keep_from -= 1; }
-  if keep_from <= 0 { return false; }
+// UTF-8 safe prefix length <= max_b.
+fww_utf8_cut :: (s: string, max_b: int) -> int {
+  if max_b <= 0 { return 0; }
+  n := ifx s.count < max_b then s.count else max_b;
+  while n > 0 && n < s.count && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
 
-  // Build concise summary of compacted messages into tmp_buf[0..<sum_n].
-  sum_n := fww_cat(tmp_buf, 0, "[Compacted earlier conversation context — ");
-  sum_n = fww_put_int(tmp_buf, sum_n, keep_from);
-  sum_n = fww_cat(tmp_buf, sum_n, " earlier messages summarized]\n");
-  for i: 0..<keep_from {
-    if sum_n + 256 >= tmp_buf.count { break; }
-    role_lbl := ifx h[0].msgs[i].role == FWW_MROLE_USER then "User: " else ifx h[0].msgs[i].role == FWW_MROLE_ASSISTANT then "Assistant: " else "Tools: ";
-    sum_n = fww_cat(tmp_buf, sum_n, role_lbl);
-    for b: 0..<h[0].msgs[i].nblocks {
-      bk := h[0].msgs[i].blocks[b];
-      if bk.kind == FWW_MB_TEXT {
-        txt := fww_slab_str(h, bk.text_at, bk.text_n);
-        take := ifx txt.count > 160 then 160 else txt.count;
-        while take > 0 && take < txt.count && (txt[take] & 0xC0) == 0x80 { take -= 1; }
-        sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
-        break;
+// UTF-8 safe suffix start >= s.count - max_b.
+fww_utf8_tail_start :: (s: string, max_b: int) -> int {
+  if max_b <= 0 || max_b >= s.count { return ifx max_b <= 0 then s.count else 0; }
+  at := s.count - max_b;
+  while at < s.count && (s[at] & 0xC0) == 0x80 { at += 1; }
+  return at;
+}
+
+// Writes src into dst[at..], compacting middle with head+tail marker when src.count > max_b.
+fww_shrink_head_tail :: (dst: [] u8, at: int, src: string, max_b: int, tag: string) -> int {
+  if max_b <= 0 || src.count <= max_b { return fww_cat(dst, at, src); }
+  if max_b < 160 {
+    k := fww_utf8_cut(src, max_b);
+    return fww_cat(dst, at, cast(string) src[0..<k]);
+  }
+  budget := max_b - 96;
+  head_b := (budget * 7) / 10;
+  tail_b := budget - head_b;
+  hc := fww_utf8_cut(src, head_b);
+  ts := fww_utf8_tail_start(src, tail_b);
+  if ts <= hc { return fww_cat(dst, at, src); }
+  omitted := ts - hc;
+  n := fww_cat(dst, at, cast(string) src[0..<hc]);
+  n = fww_cat(dst, n, "\n... [");
+  n = fww_cat(dst, n, tag);
+  n = fww_cat(dst, n, " ");
+  n = fww_put_int(dst, n, omitted);
+  n = fww_cat(dst, n, " bytes] ...\n");
+  n = fww_cat(dst, n, cast(string) src[ts..<src.count]);
+  return n;
+}
+
+// Case-insensitive ASCII substring search.
+fww_contains_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  lim := hay.count - needle.count + 1;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<needle.count {
+      a := hay[i + j]; b := needle[j];
+      if a >= 'A' && a <= 'Z' { a += 32; }
+      if b >= 'A' && b <= 'Z' { b += 32; }
+      if a != b { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Detects context-length / prompt-too-long errors across Psionic, OpenAI, Vertex/Gemini, and OpenRouter.
+fww_is_context_overflow_err :: (msg: string) -> bool {
+  if msg.count == 0 { return false; }
+  return fww_contains_ci(msg, "context length")
+      || fww_contains_ci(msg, "context_length_exceeded")
+      || fww_contains_ci(msg, "too long")
+      || fww_contains_ci(msg, "maximum context")
+      || fww_contains_ci(msg, "token limit")
+      || fww_contains_ci(msg, "exceeds the maximum")
+      || fww_contains_ci(msg, "exceeded the context");
+}
+
+// Extracts N from "...context length is N..." when reported by server (0 if absent).
+fww_parse_ctx_limit_from_err :: (msg: string) -> int {
+  key := "context length is ";
+  if msg.count <= key.count { return 0; }
+  lim := msg.count - key.count;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<key.count {
+      a := msg[i + j];
+      if a >= 'A' && a <= 'Z' { a += 32; }
+      if a != key[j] { ok = false; break; }
+    }
+    if !ok { continue; }
+    p := i + key.count;
+    v := 0; digits := 0;
+    while p < msg.count && msg[p] >= '0' && msg[p] <= '9' && digits < 8 {
+      v = v * 10 + cast(int) (msg[p] - '0');
+      p += 1; digits += 1;
+    }
+    if digits > 0 { return v; }
+  }
+  return 0;
+}
+
+// Estimates serialized prompt bytes matching what fww_build_openai_body / fww_build_gemini_body actually send.
+fww_estimate_prompt_bytes :: (h: [] FwHist, sys_n: int, is_local: bool, no_tools: bool) -> int {
+  total := sys_n + (ifx no_tools then 256 else 5600);
+  for i: 0..<h[0].nmsgs {
+    msg := h[0].msgs[i];
+    total += 96;
+    for b: 0..<msg.nblocks {
+      bk := msg.blocks[b];
+      if bk.kind == FWW_MB_THINK {
+        if !is_local || i + 2 < h[0].nmsgs { continue; }
+      }
+      total += bk.id_n + bk.name_n + bk.text_n + 48;
+      if !is_local { total += bk.sig_n; }
+    }
+  }
+  return total;
+}
+
+// Conservative token estimate (~3 B/tok for code/JSON/paths), calibrated upward against server-reported prompt_tokens.
+fww_estimate_prompt_tokens :: (h: [] FwHist, sys_n: int, is_local: bool, no_tools: bool) -> int {
+  bytes := fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools);
+  est := (bytes + 2) / 3;
+  if h[0].last_in_tok > 0 {
+    delta := bytes - h[0].last_in_bytes;
+    cal := h[0].last_in_tok + (ifx delta > 0 then (delta + 2) / 3 else delta / 4);
+    if cal > est { est = cal; }
+  }
+  return est;
+}
+
+// Finds active user request text inside msgs[0..<limit], unwrapping any prior compaction header so the goal is never lost.
+fww_find_active_user_goal :: (h: [] FwHist, limit: int) -> string {
+  marker := "Current user request:\n";
+  i := limit - 1;
+  while i >= 0 {
+    if h[0].msgs[i].role == FWW_MROLE_USER && h[0].msgs[i].nblocks > 0 {
+      txt := fww_slab_str(h, h[0].msgs[i].blocks[0].text_at, h[0].msgs[i].blocks[0].text_n);
+      if txt.count > 0 {
+        if !flawed_aw_starts(txt, "[Compacted earlier") { return txt; }
+        if txt.count > marker.count {
+          mlim := txt.count - marker.count;
+          for p: 0..<mlim {
+            ok := true;
+            for j: 0..<marker.count { if txt[p + j] != marker[j] { ok = false; break; } }
+            if ok { return cast(string) txt[p + marker.count..<txt.count]; }
+          }
+        }
+        return txt;
       }
     }
-    sum_n = fww_cat(tmp_buf, sum_n, "\n");
+    i -= 1;
+  }
+  return "";
+}
+
+// Unified multi-layer compaction engine (microcompact old tool results, intra-turn full compaction, & emergency trim).
+//   drop_to_tail: 0 = microcompact/trim in-place without dropping messages; >0 = keep at most drop_to_tail tail msgs; -1 = collapse ALL msgs into 1 summary USER msg.
+//   keep_recent_tools: number of newest TOOL_RESULTS messages exempt from old_tool_cap.
+//   old_tool_cap: max bytes for older TOOL_RES blocks (0 = no cap).
+//   recent_block_cap: max bytes for kept TOOL_RES / TEXT blocks (0 = no cap).
+//   max_sum_bytes: max bytes for compacted summary header (0 = default 10240).
+fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int, old_tool_cap: int, recent_block_cap: int, max_sum_bytes: int, tmp_buf: [] u8) -> bool {
+  if h[0].nmsgs <= 0 { return false; }
+  old_nslab := h[0].nslab;
+  old_nmsgs := h[0].nmsgs;
+
+  keep_from := 0;
+  if drop_to_tail < 0 {
+    keep_from = h[0].nmsgs;
+  } else if drop_to_tail > 0 {
+    if h[0].nmsgs <= drop_to_tail { return false; }
+    keep_from = h[0].nmsgs - drop_to_tail;
+    // Never leave an orphaned TOOL_RESULTS message at index 0 of kept tail: step back to include its ASSISTANT tool_use!
+    if keep_from > 0 && keep_from < h[0].nmsgs && h[0].msgs[keep_from].role == FWW_MROLE_TOOL_RESULTS {
+      keep_from -= 1;
+    }
+    if keep_from <= 0 { return false; }
   }
 
-  // Copy kept messages' strings into tail half of tmp_buf, reset slab, re-insert cleanly.
+  sum_cap := ifx max_sum_bytes > 0 then max_sum_bytes else 10240;
+  if sum_cap > tmp_buf.count / 3 { sum_cap = tmp_buf.count / 3; }
+  sum_n := 0;
+
+  if keep_from > 0 {
+    goal := fww_find_active_user_goal(h, keep_from);
+    goal_cap := ifx sum_cap >= 4096 then 2400 else sum_cap / 2;
+    body_lim := sum_cap - (ifx goal.count > 0 then (ifx goal.count < goal_cap then goal.count else goal_cap) + 64 else 0);
+    if body_lim < 512 { body_lim = 512; }
+
+    sum_n = fww_cat(tmp_buf, 0, "[Compacted earlier conversation context — ");
+    sum_n = fww_put_int(tmp_buf, sum_n, keep_from);
+    sum_n = fww_cat(tmp_buf, sum_n, " earlier messages summarized]\n");
+    for i: 0..<keep_from {
+      if sum_n + 160 >= body_lim { break; }
+      msg := h[0].msgs[i];
+      if msg.role == FWW_MROLE_USER {
+        sum_n = fww_cat(tmp_buf, sum_n, "User: ");
+        for b: 0..<msg.nblocks {
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+            txt := fww_slab_str(h, bk.text_at, bk.text_n);
+            take := fww_utf8_cut(txt, 220);
+            sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
+            break;
+          }
+        }
+        sum_n = fww_cat(tmp_buf, sum_n, "\n");
+      } else if msg.role == FWW_MROLE_ASSISTANT {
+        sum_n = fww_cat(tmp_buf, sum_n, "Assistant: ");
+        wrote := false;
+        for b: 0..<msg.nblocks {
+          if sum_n + 120 >= body_lim { break; }
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TEXT && bk.text_n > 0 {
+            txt := fww_slab_str(h, bk.text_at, bk.text_n);
+            take := fww_utf8_cut(txt, 220);
+            sum_n = fww_cat(tmp_buf, sum_n, cast(string) txt[0..<take]);
+            sum_n = fww_cat(tmp_buf, sum_n, " ");
+            wrote = true;
+          } else if bk.kind == FWW_MB_TOOL_USE {
+            nm := fww_slab_str(h, bk.name_at, bk.name_n);
+            ag := fww_slab_str(h, bk.text_at, bk.text_n);
+            take := fww_utf8_cut(ag, 96);
+            sum_n = fww_cat(tmp_buf, sum_n, "[");
+            sum_n = fww_cat(tmp_buf, sum_n, nm);
+            sum_n = fww_cat(tmp_buf, sum_n, "(");
+            sum_n = fww_cat(tmp_buf, sum_n, cast(string) ag[0..<take]);
+            sum_n = fww_cat(tmp_buf, sum_n, ")] ");
+            wrote = true;
+          }
+        }
+        if !wrote { sum_n = fww_cat(tmp_buf, sum_n, "(step)"); }
+        sum_n = fww_cat(tmp_buf, sum_n, "\n");
+      } else if msg.role == FWW_MROLE_TOOL_RESULTS {
+        for b: 0..<msg.nblocks {
+          if sum_n + 120 >= body_lim { break; }
+          bk := msg.blocks[b];
+          if bk.kind == FWW_MB_TOOL_RES {
+            nm := fww_slab_str(h, bk.name_at, bk.name_n);
+            res := fww_slab_str(h, bk.text_at, bk.text_n);
+            take := fww_utf8_cut(res, 140);
+            sum_n = fww_cat(tmp_buf, sum_n, "ToolResult(");
+            sum_n = fww_cat(tmp_buf, sum_n, ifx nm.count > 0 then nm else "tool");
+            if bk.is_error { sum_n = fww_cat(tmp_buf, sum_n, ",err"); }
+            sum_n = fww_cat(tmp_buf, sum_n, "): ");
+            sum_n = fww_cat(tmp_buf, sum_n, cast(string) res[0..<take]);
+            sum_n = fww_cat(tmp_buf, sum_n, "\n");
+          }
+        }
+      }
+    }
+    if goal.count > 0 && sum_n + 64 < sum_cap {
+      sum_n = fww_cat(tmp_buf, sum_n, "\nCurrent user request:\n");
+      rem := sum_cap - sum_n;
+      take := fww_utf8_cut(goal, ifx rem < goal_cap then rem else goal_cap);
+      sum_n = fww_cat(tmp_buf, sum_n, cast(string) goal[0..<take]);
+    }
+  }
+
+  // Copy kept messages into kept_msgs and identify the last keep_recent_tools TOOL_RESULTS messages.
   kept_msgs: [FWW_MAX_MSGS] FwMsg;
   nkept := h[0].nmsgs - keep_from;
   for k: 0..<nkept { kept_msgs[k] = h[0].msgs[keep_from + k]; }
 
-  // Relocate slab bytes for kept messages by copying into a scratch window in tmp_buf[sum_n..].
-  reloc_base := sum_n;
-  reloc_at := reloc_base;
+  total_tr := 0;
+  for k: 0..<nkept { if kept_msgs[k].role == FWW_MROLE_TOOL_RESULTS { total_tr += 1; } }
+  recent_tr_from := total_tr - keep_recent_tools;
+
+  // Guard tmp_buf headroom so relocated blocks NEVER clip a TOOL_USE JSON argument string.
+  avail_reloc := tmp_buf.count - sum_n - 4096;
+  eff_recent_cap := recent_block_cap;
+  if nkept > 0 && avail_reloc > 0 {
+    raw_kept := 0;
+    for k: 0..<nkept {
+      for b: 0..<kept_msgs[k].nblocks {
+        bk := kept_msgs[k].blocks[b];
+        raw_kept += bk.id_n + bk.name_n + bk.text_n + bk.sig_n;
+      }
+    }
+    if raw_kept > avail_reloc {
+      per_msg := avail_reloc / (nkept + 1);
+      if per_msg < 512 { per_msg = 512; }
+      if eff_recent_cap == 0 || per_msg < eff_recent_cap { eff_recent_cap = per_msg; }
+    }
+  }
+
+  // Relocate kept slab bytes into tmp_buf[sum_n..], applying microcompact & recent block caps.
+  reloc_at := sum_n;
+  tr_seen := 0;
   for k: 0..<nkept {
+    is_old_tr := false;
+    if kept_msgs[k].role == FWW_MROLE_TOOL_RESULTS {
+      is_old_tr = tr_seen < recent_tr_from;
+      tr_seen += 1;
+    }
     for b: 0..<kept_msgs[k].nblocks {
       bk := kept_msgs[k].blocks[b];
-      // Copy id, name, text, sig
       id_s := fww_slab_str(h, bk.id_at, bk.id_n);
       id_new := reloc_at; id_n := fww_cat(tmp_buf, reloc_at, id_s) - reloc_at; reloc_at += id_n;
       nm_s := fww_slab_str(h, bk.name_at, bk.name_n);
       nm_new := reloc_at; nm_n := fww_cat(tmp_buf, reloc_at, nm_s) - reloc_at; reloc_at += nm_n;
       tx_s := fww_slab_str(h, bk.text_at, bk.text_n);
-      tx_new := reloc_at; tx_n := fww_cat(tmp_buf, reloc_at, tx_s) - reloc_at; reloc_at += tx_n;
+      tx_new := reloc_at;
+      cap_b := 0;
+      if bk.kind == FWW_MB_TOOL_RES {
+        if is_old_tr && old_tool_cap > 0 { cap_b = old_tool_cap; }
+        if eff_recent_cap > 0 && (cap_b == 0 || eff_recent_cap < cap_b) { cap_b = eff_recent_cap; }
+      } else if bk.kind == FWW_MB_TEXT || bk.kind == FWW_MB_THINK {
+        if eff_recent_cap > 0 { cap_b = eff_recent_cap; }
+      }
+      tx_end := ifx cap_b > 0 then fww_shrink_head_tail(tmp_buf, reloc_at, tx_s, cap_b, "compacted") else fww_cat(tmp_buf, reloc_at, tx_s);
+      tx_n := tx_end - reloc_at; reloc_at = tx_end;
       sg_s := fww_slab_str(h, bk.sig_at, bk.sig_n);
       sg_new := reloc_at; sg_n := fww_cat(tmp_buf, reloc_at, sg_s) - reloc_at; reloc_at += sg_n;
       kept_msgs[k].blocks[b].id_at = id_new; kept_msgs[k].blocks[b].id_n = id_n;
@@ -805,9 +1070,18 @@ fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
     }
   }
 
+  // If microcompact-only made zero reduction, skip rewriting slab.
+  if keep_from == 0 && (reloc_at - sum_n) >= old_nslab { return false; }
+
   fww_hist_clear(h);
-  fww_hist_push_user(h, cast(string) tmp_buf[0..<sum_n]);
-  fww_hist_push_assistant_text(h, "Understood. I have the compacted context and will continue seamlessly.");
+  if sum_n > 0 {
+    fww_hist_push_user(h, cast(string) tmp_buf[0..<sum_n]);
+    // Keep strict user/assistant role alternation for both OpenAI/Psionic and Gemini:
+    // only insert an Assistant ack when the next kept message is also USER (NOT when it's ASSISTANT tool_use!).
+    if nkept > 0 && kept_msgs[0].role == FWW_MROLE_USER {
+      fww_hist_push_assistant_text(h, "Understood. I have the compacted context and will continue seamlessly.");
+    }
+  }
   for k: 0..<nkept {
     if h[0].nmsgs >= FWW_MAX_MSGS { break; }
     mi := h[0].nmsgs;
@@ -825,7 +1099,85 @@ fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
     h[0].msgs[mi].nblocks = kept_msgs[k].nblocks;
     h[0].nmsgs += 1;
   }
-  return true;
+  h[0].compact_count += 1;
+  return h[0].nmsgs < old_nmsgs || h[0].nslab < old_nslab || keep_from > 0;
+}
+
+// Standard compaction entry point (/compact slash command & normal auto-compact).
+fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
+  if fww_hist_compact_ex(h, 4, 2, 512, 0, 10240, tmp_buf) { return true; }
+  if fww_hist_compact_ex(h, 2, 1, 512, 0, 8192, tmp_buf) { return true; }
+  return fww_hist_compact_ex(h, 0, 1, 512, 0, 0, tmp_buf);
+}
+
+// Progressive emergency compaction when approaching hard ceiling or recovering from HTTP 400 context overflow.
+fww_emergency_compact :: (h: [] FwHist, level: int, ctx_win: int, tmp_buf: [] u8) -> bool {
+  cwin := ifx ctx_win > 0 then ctx_win else 32768;
+  if level <= 1 {
+    return fww_hist_compact_ex(h, 2, 1, 256, 3072, 6144, tmp_buf)
+        || fww_hist_compact_ex(h, 0, 1, 256, 3072, 0, tmp_buf);
+  }
+  if level == 2 {
+    return fww_hist_compact_ex(h, 2, 1, 160, 1024, 3072, tmp_buf)
+        || fww_hist_compact_ex(h, 0, 0, 160, 1024, 0, tmp_buf);
+  }
+  // Level 3+: total collapse into a single concise USER message guaranteed to fit any context >= 2048 tokens.
+  cap := cwin / 2;
+  if cap > 4096 { cap = 4096; }
+  if cap < 1024 { cap = 1024; }
+  return fww_hist_compact_ex(h, -1, 0, 0, 0, cap, tmp_buf)
+      || fww_hist_compact_ex(h, 0, 0, 0, cap, 0, tmp_buf);
+}
+
+// Pre-flight context budget guard: guarantees prompt fits inside ctx_win BEFORE sending HTTP request.
+fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bool, no_tools: bool, auto_compact: bool, tmp_buf: [] u8) -> bool {
+  auto_th := ifx is_local then (ctx_win * 60) / 100 else flawed_auto_compact_threshold(flawed_effective_context_window(ctx_win, 32768, 0), 0);
+  hard_lim := ifx is_local then ctx_win - (ifx ctx_win >= 16384 then 3584 else ctx_win / 4) else ctx_win - 49152;
+  if hard_lim < 1536 { hard_lim = 1536; }
+  if auto_th > hard_lim { auto_th = hard_lim; }
+
+  near_cap := h[0].nmsgs >= FWW_MAX_MSGS - 6 || h[0].nslab >= FWW_SLAB - 131072;
+  est := fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
+  need_auto := auto_compact && est >= auto_th;
+  need_hard := est >= hard_lim || near_cap;
+  if !need_auto && !need_hard { return false; }
+
+  did := false;
+  // Layer 1: Microcompact old tool results in-place (keeps full turn timeline intact).
+  if fww_hist_compact_ex(h, 0, 2, 512, 0, 0, tmp_buf) {
+    did = true;
+    est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
+    if est < auto_th && !near_cap { return true; }
+  }
+  // Layer 2: Intra-turn full compaction keeping last 4 messages.
+  max_sum := ifx is_local then (ctx_win * 3) / 10 else 16384;
+  if max_sum > 10240 { max_sum = 10240; }
+  if fww_hist_compact_ex(h, 4, 2, 512, 0, max_sum, tmp_buf) {
+    did = true;
+    est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
+    if est < hard_lim && h[0].nmsgs < FWW_MAX_MSGS - 6 { return true; }
+  }
+  // Layer 3: Aggressive compaction keeping last 2 messages + capping kept tool/text blocks.
+  if est >= hard_lim || h[0].nmsgs >= FWW_MAX_MSGS - 6 {
+    if fww_hist_compact_ex(h, 2, 1, 256, 4096, max_sum / 2, tmp_buf) {
+      did = true;
+      est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
+      if est < hard_lim { return true; }
+    }
+  }
+  // Layer 4: Hard safety trim on remaining oversized blocks so a single giant paste/output can NEVER exceed ctx_win.
+  if est >= hard_lim {
+    rem_tok := hard_lim - ((sys_n + (ifx no_tools then 256 else 5600) + 512) / 3);
+    if rem_tok < 512 { rem_tok = 512; }
+    max_blk := (rem_tok * 2) / (ifx h[0].nmsgs > 0 then h[0].nmsgs else 1);
+    if max_blk < 512 { max_blk = 512; }
+    if fww_hist_compact_ex(h, 0, 0, max_blk, max_blk, 0, tmp_buf) { did = true; }
+    est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
+    if est >= hard_lim {
+      if fww_emergency_compact(h, 3, ctx_win, tmp_buf) { did = true; }
+    }
+  }
+  return did;
 }
 
 // Hydrate persisted turns from MWW_RECALL JSON array [{"task":...,"reply":...},...].
@@ -1698,6 +2050,9 @@ FwRun :: struct {
   soft_deadline_ms: int;
   last_tool_hash: int;
   dup_tool_streak: int;
+  ctx_recoveries: int;
+  effective_ctx_cap: int;
+  last_req_est_bytes: int;
 }
 
 fww_tool_sig_hash :: (name: string, args: string) -> int {
@@ -1731,7 +2086,7 @@ FwBufs :: struct {
   sig_buf: [32768] u8;
   file_buf: [FWW_FILE_MAX] u8;
   edit_buf: [FWW_FILE_MAX] u8;
-  compact_buf: [262144] u8;
+  compact_buf: [524288] u8;
   fc_entries: [FWW_FC_ENTRIES] FlawedFileEntry;
   fc_slab: [FWW_FC_SLAB] u8;
   fc_state: [1] FlawedFileCacheState;
@@ -1785,17 +2140,10 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   local_ctx := fww_env_int("PSIONIC_CTX", 32768);
   if local_ctx < 4096 { local_ctx = 4096; }
   if local_ctx > 131072 { local_ctx = 131072; }
-
-  // Auto-compaction check (Ch 09) before request when enabled
-  if cfg[0].auto_compact && h[0].nmsgs > 6 {
-    est_tok := h[0].nslab / 4;
-    ctx_win := ifx is_local then local_ctx else 1048576;
-    res_tok := ifx is_local then local_ctx / 4 else 32768;
-    eff_win := flawed_effective_context_window(ctx_win, res_tok, 0);
-    if flawed_should_auto_compact(FLAWED_QSRC_MAIN_OR_SDK, false, true, false, false, 0, est_tok, 0, eff_win, 0) {
-      _ = fww_hist_compact(h, b[0].compact_buf[..]);
-    }
+  if r[0].effective_ctx_cap > 0 && r[0].effective_ctx_cap < local_ctx {
+    local_ctx = r[0].effective_ctx_cap;
   }
+  ctx_win := ifx is_local then local_ctx else (ifx r[0].effective_ctx_cap > 0 then r[0].effective_ctx_cap else 1048576);
 
   raw_m := cast(string) r[0].model[0..<r[0].nmodel];
   mdl_b: [128] u8;
@@ -1818,14 +2166,40 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], wire_model);
   eff := cast(string) r[0].effort[0..<r[0].neffort];
-  sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
+  full_sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
+  sys := full_sys;
+  if is_local && ctx_win <= 32768 {
+    max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 8192;
+    if sys.count > max_sys {
+      sc := fww_utf8_cut(sys, max_sys);
+      sys = cast(string) sys[0..<sc];
+    }
+  }
   no_tools := r[0].force_wrapup_once;
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
+  // Multi-layer pre-flight compaction & hard context-fit guarantee (works inside multi-tool turns too!).
+  _ = fww_ensure_context_fits(h, sys.count, ctx_win, is_local, no_tools, cfg[0].auto_compact, b[0].compact_buf[..]);
+  r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
+
   bn := ifx is_gem
         then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+  if bn <= 0 {
+    _ = fww_emergency_compact(h, 2, ctx_win, b[0].compact_buf[..]);
+    r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
+    bn = ifx is_gem
+         then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
+         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+  }
+  if bn <= 0 {
+    _ = fww_emergency_compact(h, 3, ctx_win, b[0].compact_buf[..]);
+    r[0].last_req_est_bytes = fww_estimate_prompt_bytes(h, sys.count, is_local, no_tools);
+    bn = ifx is_gem
+         then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
+         else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
+  }
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
   ub: [512] u8;
@@ -2036,17 +2410,25 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   hit_dup_limit := r[0].dup_tool_streak >= 2;
   need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit;
 
-  // All tool calls finished! Commit tool_results message to history.
+  // All tool calls finished! Ensure message slot exists before committing tool_results.
+  if h[0].nmsgs >= FWW_MAX_MSGS - 1 {
+    _ = fww_hist_compact(h, b[0].compact_buf[..]);
+  }
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
     h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS};
     nb := 0;
+    is_local_tr := auth[0].backend == FLAWED_BE_LOCAL;
     for i: 0..<r[0].acc[0].ntools {
       if nb >= FWW_MAX_BLOCKS { break; }
       a0 := [1] int.[0];
       id_s := cast(string) r[0].acc[0].tools[i].id[0..<r[0].acc[0].tools[i].nid];
       nm_s := cast(string) r[0].acc[0].tools[i].name[0..<r[0].acc[0].tools[i].nname];
       res_s := cast(string) r[0].acc[0].tools[i].res[0..<r[0].acc[0].tools[i].nres];
+      if is_local_tr && res_s.count > FWW_LOCAL_TOOL_OUT_MAX {
+        sn := fww_shrink_head_tail(b[0].compact_buf[..], 0, res_s, FWW_LOCAL_TOOL_OUT_MAX, "truncated for 32K local context; use Read offset/limit or Grep;");
+        res_s = cast(string) b[0].compact_buf[0..<sn];
+      }
       bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = r[0].acc[0].tools[i].is_error};
       bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
       bk.name_n = fww_slab_put(h, nm_s, a0[..]); bk.name_at = a0[0];
@@ -2131,10 +2513,23 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   gw_close(r[0].gw[..]);
   r[0].streaming = false;
 
-  // Check transport / HTTP error with Ch 05 retry policy
+  // Check transport / HTTP error with reactive context-overflow compaction + Ch 05 retry policy
   if status < 200 || status >= 300 || r[0].acc[0].saw_error {
     if r[0].acc[0].nerr == 0 && r[0].acc[0].nerr_body > 0 {
       r[0].acc[0].nerr = fww_extract_err_msg(cast(string) r[0].acc[0].err_body[0..<r[0].acc[0].nerr_body], r[0].acc[0].err_msg[..]);
+    }
+    err_s := cast(string) r[0].acc[0].err_msg[0..<r[0].acc[0].nerr];
+    if fww_is_context_overflow_err(err_s) && r[0].ctx_recoveries < 3 {
+      r[0].ctx_recoveries += 1;
+      parsed_lim := fww_parse_ctx_limit_from_err(err_s);
+      if parsed_lim >= 2048 && (r[0].effective_ctx_cap == 0 || parsed_lim < r[0].effective_ctx_cap) {
+        r[0].effective_ctx_cap = parsed_lim;
+      }
+      _ = fww_emergency_compact(h, r[0].ctx_recoveries, r[0].effective_ctx_cap, b[0].compact_buf[..]);
+      r[0].retry[0] = FlawedRetryState.{};
+      fww_emit_attempt(r, auth, "retried", status, 0, out);
+      err2 := fww_start_request(r, cfg, auth, h, b, out);
+      if err2.count == 0 { return ""; }
     }
     ri := FlawedRetryInput.{
       status = ifx status > 0 then status else 503,
@@ -2180,14 +2575,22 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       cost = gw_card_cost(rf.rate, r[0].acc[0].in_tok, r[0].acc[0].cache_read, 0, r[0].acc[0].out_tok);
     }
   }
+  r[0].ctx_recoveries = 0;
   r[0].turn_cost_micros += cost;
   h[0].total_in += r[0].acc[0].in_tok;
   h[0].total_out += r[0].acc[0].out_tok;
   h[0].total_cached += r[0].acc[0].cache_read;
   h[0].total_cost_micros += cost;
+  if r[0].acc[0].in_tok > 0 {
+    h[0].last_in_tok = r[0].acc[0].in_tok;
+    h[0].last_in_bytes = r[0].last_req_est_bytes;
+  }
   fww_emit_attempt(r, auth, "done", status, cost, out);
 
-  // Append assistant message to history (preserving per-tool thoughtSignature for Gemini 4 and reasoning for Local Psionic)
+  // Append assistant message to history (compact first if near FWW_MAX_MSGS so history never silently drops turns)
+  if h[0].nmsgs >= FWW_MAX_MSGS - 1 {
+    _ = fww_hist_compact(h, b[0].compact_buf[..]);
+  }
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
     h[0].msgs[mi] = FwMsg.{role = FWW_MROLE_ASSISTANT};
@@ -2530,6 +2933,8 @@ fww_handle_slash :: (tk: string, r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth,
     n = fww_cat(rb[..], n, cast(string) auth[0].label[0..<auth[0].nlabel]);
     n = fww_cat(rb[..], n, "\n- Messages in context: ");
     n = fww_put_int(rb[..], n, h[0].nmsgs);
+    n = fww_cat(rb[..], n, "\n- Auto-compactions this session: ");
+    n = fww_put_int(rb[..], n, h[0].compact_count);
     fww_send(out, mww_ended(out, "finished", cast(string) rb[0..<n]));
     return true;
   }
@@ -2929,4 +3334,109 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert jv_kind(d[0], jv_get(d[0], 0, "toolConfig")) == JV_OBJECT;
   #assert fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}") == fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}");
   #assert fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}") != fww_tool_sig_hash("Bash", "{\"command\":\"python3 b.py\"}");
+}
+
+#test "flawedworker: multi-layer compaction handles 17-command intra-turn 32K overflow, huge pastes, and HTTP 400 recovery" #steps 200000000 {
+  // 1. UTF-8 safe head/tail truncation and overflow error detection + limit parsing
+  #assert fww_utf8_cut("hello", 0) == 0 && fww_utf8_cut("hello", 10) == 5 && fww_utf8_cut("aéb", 2) == 1;
+  #assert fww_utf8_tail_start("aéb", 2) == 3 && fww_utf8_tail_start("hello", 10) == 0;
+  #assert fww_is_context_overflow_err("This model's maximum context length is 32768 tokens. However, your messages exceeded the context length.");
+  #assert fww_is_context_overflow_err("prompt is too long: 41000 tokens > 32768 maximum") && fww_is_context_overflow_err("context_length_exceeded");
+  #assert !fww_is_context_overflow_err("Authentication failed (HTTP 401)") && !fww_is_context_overflow_err("");
+  #assert fww_parse_ctx_limit_from_err("This model's maximum context length is 32768 tokens. However, your messages exceeded the context length.") == 32768;
+  #assert fww_parse_ctx_limit_from_err("Maximum context length is 8192 tokens") == 8192;
+  #assert fww_parse_ctx_limit_from_err("generic error") == 0;
+
+  // 2. Reproduce exact 17-command single-user-turn 32K local overflow scenario (>180 KB tool outputs in Turn 2)
+  h: [1] FwHist;
+  tmp: [524288] u8;
+  fww_hist_push_user(h[..], "Look through ~/Desktop/GTA and summarize the project.");
+  fww_hist_push_assistant_text(h[..], "Summary: reverse-engineered GTA VI mocap + WebGPU scenes.");
+  fww_hist_push_user(h[..], "Create a new document specking out their mocap system and how to author animations.");
+
+  big_chunk: [10240] u8;
+  for i: 0..<big_chunk.count { big_chunk[i] = cast(u8) ('a' + (i % 26)); }
+  big_s := cast(string) big_chunk[..];
+
+  for step: 0..<17 {
+    // Assistant tool_use
+    am := h[0].nmsgs;
+    h[0].msgs[am] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+    a0 := [1] int.[0];
+    ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+    ub.id_n = fww_slab_put(h[..], "call_1", a0[..]); ub.id_at = a0[0];
+    ub.name_n = fww_slab_put(h[..], "Read", a0[..]); ub.name_at = a0[0];
+    ub.text_n = fww_slab_put(h[..], "{\"file_path\":\"mocap.c\"}", a0[..]); ub.text_at = a0[0];
+    h[0].msgs[am].blocks[0] = ub;
+    h[0].nmsgs += 1;
+    // Tool result (10 KB each -> 170 KB = ~57K tokens > 32768!)
+    tm := h[0].nmsgs;
+    h[0].msgs[tm] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+    rb := FwBlock.{kind = FWW_MB_TOOL_RES};
+    rb.id_n = fww_slab_put(h[..], "call_1", a0[..]); rb.id_at = a0[0];
+    rb.name_n = fww_slab_put(h[..], "Read", a0[..]); rb.name_at = a0[0];
+    rb.text_n = fww_slab_put(h[..], big_s, a0[..]); rb.text_at = a0[0];
+    h[0].msgs[tm].blocks[0] = rb;
+    h[0].nmsgs += 1;
+  }
+  #assert h[0].nmsgs == 37;
+  #assert fww_estimate_prompt_tokens(h[..], 4000, true, false) > 32768;
+
+  // Pre-flight guard MUST compact inside Turn 2 down below 32K while preserving strict role alternation & active user goal!
+  #assert fww_ensure_context_fits(h[..], 4000, 32768, true, false, true, tmp[..]);
+  post_tok := fww_estimate_prompt_tokens(h[..], 4000, true, false);
+  #assert post_tok < 29184;
+  #assert h[0].compact_count >= 1;
+  #assert h[0].msgs[0].role == FWW_MROLE_USER;
+  for i: 0..<h[0].nmsgs {
+    // Never an orphaned TOOL_RESULTS at index 0 or after USER; never two consecutive ASSISTANT messages
+    if h[0].msgs[i].role == FWW_MROLE_TOOL_RESULTS {
+      #assert i > 0 && h[0].msgs[i - 1].role == FWW_MROLE_ASSISTANT;
+    }
+    if i > 0 && h[0].msgs[i].role == FWW_MROLE_ASSISTANT {
+      #assert h[0].msgs[i - 1].role != FWW_MROLE_ASSISTANT;
+    }
+  }
+  // Active user goal MUST still be present verbatim after compaction!
+  found_goal := false;
+  for i: 0..<h[0].nmsgs {
+    if h[0].msgs[i].role == FWW_MROLE_USER && h[0].msgs[i].nblocks > 0 {
+      ut := fww_slab_str(h[..], h[0].msgs[i].blocks[0].text_at, h[0].msgs[i].blocks[0].text_n);
+      if fww_contains_ci(ut, "specking out their mocap system") { found_goal = true; }
+    }
+  }
+  #assert found_goal;
+
+  // Both OpenAI/Psionic and Gemini request bodies MUST serialize cleanly to valid JSON after intra-turn compaction!
+  cfg: [1] FwConfig;
+  body: [131072] u8;
+  ob := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-maple", "high", "sys", true, 32768, false, false, body[..]);
+  #assert ob > 0 && json_valid(cast(string) body[0..<ob]);
+  gb := fww_build_gemini_body(cfg[..], h[..], "high", "sys", false, body[..]);
+  #assert gb > 0 && json_valid(cast(string) body[0..<gb]);
+
+  // 3. Double intra-turn compaction (run full compact again) MUST keep preserving the active user goal!
+  #assert fww_hist_compact_ex(h[..], 2, 1, 512, 0, 8192, tmp[..]);
+  u0 := fww_slab_str(h[..], h[0].msgs[0].blocks[0].text_at, h[0].msgs[0].blocks[0].text_n);
+  #assert fww_contains_ci(u0, "specking out their mocap system") && fww_contains_ci(u0, "Read");
+
+  // 4. Server-calibrated token estimation triggers compaction even if byte heuristic alone looks small
+  h[0].last_in_tok = 29500;
+  h[0].last_in_bytes = fww_estimate_prompt_bytes(h[..], 4000, true, false);
+  #assert fww_estimate_prompt_tokens(h[..], 4000, true, false) >= 29500;
+  #assert fww_ensure_context_fits(h[..], 4000, 32768, true, false, true, tmp[..]);
+  #assert h[0].last_in_tok == 0;
+
+  // 5. Giant single-message paste (150 KB in 1 USER message) MUST shrink below 32K even when auto_compact=false!
+  fww_hist_clear(h[..]);
+  huge: [150000] u8;
+  for i: 0..<huge.count { huge[i] = cast(u8) ('A' + (i % 26)); }
+  fww_hist_push_user(h[..], cast(string) huge[..]);
+  #assert fww_estimate_prompt_tokens(h[..], 2000, true, false) > 45000;
+  #assert fww_ensure_context_fits(h[..], 2000, 32768, true, false, false, tmp[..]);
+  #assert fww_estimate_prompt_tokens(h[..], 2000, true, false) < 29184;
+
+  // 6. Reactive emergency compaction level 3 collapses any history cleanly to fit even an 8K context window
+  #assert fww_emergency_compact(h[..], 3, 8192, tmp[..]);
+  #assert h[0].nmsgs == 1 && fww_estimate_prompt_tokens(h[..], 1024, true, true) < 4096;
 }
