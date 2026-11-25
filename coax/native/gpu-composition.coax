@@ -134,6 +134,11 @@ uc_build :: (s:[]UcPlan,out:[]f32,a:[]Atlas,list:[]Prim,images:[]UcImage,w:int,h
    if slot<0 {return false;}source=64+slot;
    s[0].v=emit(out,first,p.x*d,p.y*d,(p.x+p.w)*d,(p.y+p.h)*d,11,0,0,0,0,0,0,0,0,0,1,1,rgba(1,1,1,1),rgba(0,0,0,0));
    if s[0].v!=first+6 {return false;}
+  } else if p.kind==PRIM_EXT_TEXTURE {
+   if !(p.w>0 && p.h>0) || !uc_ext_slot(p.id) {return false;}
+   source=UC_EXT_BASE+p.id;
+   s[0].v=emit(out,first,p.x*d,p.y*d,(p.x+p.w)*d,(p.y+p.h)*d,12,0,p.x*d,p.y*d,p.w*d,p.h*d,p.radius*d,0,0,0,1,1,rgba(1,1,1,1),rgba(0,0,0,0));
+   if s[0].v!=first+6 {return false;}
   } else {
    // A pessimistic six-vertex spare catches truncated primitives, including
    // text and polygons: lower once into the remaining view, never publish
@@ -192,4 +197,13 @@ uc_build :: (s:[]UcPlan,out:[]f32,a:[]Atlas,list:[]Prim,images:[]UcImage,w:int,h
  #assert out[c+2]==8 && out[c+4]==8 && out[c+5]==12 && out[c+6]==40 && out[c+7]==20 && out[c+8]==6;
  o:=(plan[0].v-6)*28;#assert out[o+2]==8 && out[o+4]==0 && out[o+6]==32 && out[o+8]==0;
  #assert out[2]==8 && out[6]==32 && out[8]==0;
+}
+
+#test "composition-v2 external GPU texture slot emits kind 12 with source 80..95 and rounded mask (#14046)" {
+ p:[1]Prim;_:=prim_ext_texture(p[..],0,3,4,6,20,12,5);a:[1]Atlas;out:[336]f32;plan:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(plan[..],out[..],a[..],p[..],images[0..<0],64,64,2);
+ #assert plan[0].ops[9]==83 && out[2]==12 && out[4]==8 && out[5]==12 && out[6]==40 && out[7]==24 && out[8]==10;
+ p[0].id=16;#assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],64,64,1) && !plan[0].ok;
+ p[0].id=-1;#assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],64,64,1) && !plan[0].ok;
+ p[0].id=0;p[0].w=0;#assert !uc_build(plan[..],out[..],a[..],p[..],images[0..<0],64,64,1) && !plan[0].ok;
 }

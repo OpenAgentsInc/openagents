@@ -1,0 +1,8 @@
+u 0 0
+pos 0 1
+keys 0 2 rw
+vals 0 3 rw
+hist 0 4 atomic
+offsets 0 5 atomic
+keys_out 0 6 rw
+vals_out 0 7 rw

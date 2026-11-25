@@ -2345,6 +2345,13 @@ void cd_gb_sync_studio(void *page, const int64_t metrics16[16], const char *ag_t
   coder_page_gb_sync_studio(cd_state(c), (coax_v_s64){(int64_t *)metrics16, 16}, cd_string(ag_tsv), cd_string(pub_tsv), cd_string(lob_tsv), cd_string(note));
   cd_woke(c);
 }
+void cd_mv_set_ext_texture(void *page, int slot, void *native_tex) {
+  CoderHost *c = page;
+  if (!c || !c->app.host) return;
+  ui_host_set_ext_texture(c->app.host, slot, native_tex);
+  if (slot == 0) coder_page_mv_ext_tex_ready(cd_state(c), native_tex != NULL);
+  cd_woke(c);
+}
 int cd_mv_focus_viewport(void *page) {
   CoderHost *c = page; if (!c) return 0;
   int r = coder_page_mv_focus_viewport(cd_state(c)) ? 1 : 0;

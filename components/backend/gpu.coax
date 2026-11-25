@@ -453,12 +453,12 @@ paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32
 // Arcs lower through the shared antialiased segment path. Images need a texture
 // owner: gpu_draw_with draws the ones its host binds, composition-v1 the rest.
 gpu_draws :: (p: Prim) -> bool {
-  if p.kind == PRIM_IMAGE || p.kind == PRIM_LAYER { return false; }
+  if p.kind == PRIM_IMAGE || p.kind == PRIM_LAYER || p.kind == PRIM_EXT_TEXTURE { return false; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
 }
 #test "gpu_draws accepts every primitive kind except images and layers" {
   #assert gpu_draws(Prim.{kind = 0}) && gpu_draws(Prim.{kind = PRIM_IMAGE + 1});
-  #assert !gpu_draws(Prim.{kind = PRIM_IMAGE}) && !gpu_draws(Prim.{kind = PRIM_LAYER});
+  #assert !gpu_draws(Prim.{kind = PRIM_IMAGE}) && !gpu_draws(Prim.{kind = PRIM_LAYER}) && !gpu_draws(Prim.{kind = PRIM_EXT_TEXTURE});
   #assert !gpu_draws(Prim.{kind = -1}) && !gpu_draws(Prim.{kind = PRIM_KINDS});
 }
 

@@ -32,11 +32,11 @@ uc_fs :: (v:ChatZV,gpui_atlas:Tex2D,gpui_color:Tex2D,source:Tex2D)->V4 {
    c=uc_add(c,uc_mul(uc_sample(source,uv,false),weight));sum+=weight;
   }
   c=uc_mul(c,1/sum);
- } else {c=uc_sample(source,v.uv,kind>10.5f32);}
+ } else {c=uc_sample(source,v.uv,kind>10.5f32 && kind<11.5f32);}
  alpha:=v.fill.w;
- // A composite's rounded mask (uc_mask): a backdrop shows only inside its
- // curve. The full canvas at radius 0, every other composite, covers all.
- if kind<8.5f32 {
+ // A composite's rounded mask (uc_mask): a backdrop (kind 8) or external GPU
+ // texture (kind 12, composition-v2) shows only inside its rounded curve.
+ if kind<8.5f32 || kind>11.5f32 {
   half:=v2(v.bounds.z*0.5f32,v.bounds.w*0.5f32);
   q:=v2(abs(v.pos.x-v.bounds.x-half.x)-half.x+v.shape.x,abs(v.pos.y-v.bounds.y-half.y)-half.y+v.shape.x);
   alpha*=saturate(0.5f32-chat_quad_sdf_impl(q,v.shape.x));

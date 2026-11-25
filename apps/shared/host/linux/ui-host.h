@@ -149,6 +149,9 @@ typedef struct UiIme {
 UiHost *ui_open(const UiApp *app, int offscreen);
 // The atlas: an R8 image and an RGBA8 one (straight alpha). Called again, it uploads them again (a new size makes new images).
 void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t w, uint32_t rows, const uint8_t *color, uint32_t cw, uint32_t crows);
+// composition-v2 (#14046): registers a host-owned external GPU texture in slot 0..15 (UcPlan source 80..95).
+// Apple Metal expects a bridged id<MTLTexture>; Linux/Windows Vulkan expects a VksImage*. Pass NULL to unbind.
+void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex);
 // What the compositor sent, one frame, presented. 0 once the window is closed.
 int ui_frame(UiHost *h);
 // Offscreen: one frame of w by rows pixels, dt seconds after the last, drawn and kept. 0 if it could not.

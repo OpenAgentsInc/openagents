@@ -1,0 +1,119 @@
+// GPU Compute 2-Pass 8-Bit Radix Sort for 3D Gaussian Splats (.splat / 3DGS .ply; GitHub #14046).
+// Single Coax source verified across CPU #test, WGSL compute (`coax wgsl --computes`),
+// and Metal compute, bounded within the RenderRegistry VRAM budget (262,144 splats = 12 MiB).
+#load "shader.coax";
+
+SPLAT_MAX        :: 262144;   // bounded within 128 MiB RenderRegistry budget
+SPLAT_RADIX_BINS :: 256;      // 8-bit radix pass (2 passes = 16-bit depth key)
+
+// Uniform block u[0..11]:
+//   0:count, 1:shift (0 or 8), 2:near_z, 3:far_z,
+//   4..6:eye xyz, 7:reserved, 8..10:forward xyz, 11:reserved
+SU_COUNT :: 0;
+SU_SHIFT :: 1;
+SU_NEAR  :: 2;
+SU_FAR   :: 3;
+SU_EX    :: 4;
+SU_EY    :: 5;
+SU_EZ    :: 6;
+SU_FX    :: 8;
+SU_FY    :: 9;
+SU_FZ    :: 10;
+
+// Quantizes camera-space depth into a descending 16-bit key:
+// 0 = farthest splat (drawn first), 65535 = nearest splat (drawn last) for back-to-front blending.
+splat_depth_key :: (px: f32, py: f32, pz: f32, ex: f32, ey: f32, ez: f32, fx: f32, fy: f32, fz: f32, near_z: f32, far_z: f32) -> u32 {
+  depth := (px - ex) * fx + (py - ey) * fy + (pz - ez) * fz;
+  span := far_z - near_z;
+  if span < 0.0001f32 { span = 0.0001f32; }
+  t := clampf((depth - near_z) / span, 0.0f32, 1.0f32);
+  inv := 1.0f32 - t;
+  return cast(u32) cast(int) (inv * 65535.0f32 + 0.5f32);
+}
+
+// Pass 0: Project each splat center onto camera forward axis and emit initial (key, index) pair.
+splat_keys :: (i: u32, u: [] f32, pos: [] f32, keys: [] u32, vals: [] u32) {
+  idx := cast(int) i;
+  n := cast(int) u[SU_COUNT];
+  if idx >= n { return; }
+  b := idx * 4;
+  keys[idx] = splat_depth_key(pos[b], pos[b + 1], pos[b + 2], u[SU_EX], u[SU_EY], u[SU_EZ], u[SU_FX], u[SU_FY], u[SU_FZ], u[SU_NEAR], u[SU_FAR]);
+  vals[idx] = i;
+}
+
+// Pass 1: Accumulate 256-bin 8-bit radix histogram for current bit shift (0 or 8).
+splat_hist :: (i: u32, u: [] f32, keys: [] u32, hist: [] u32) {
+  idx := cast(int) i;
+  n := cast(int) u[SU_COUNT];
+  if idx >= n { return; }
+  k := keys[idx];
+  bin := cast(int) (ifx u[SU_SHIFT] > 4.0f32 then ((k / 256) % 256) else (k % 256));
+  _ := gpu_atomic_add(hist, bin, 1);
+}
+
+// Pass 2: Exclusive prefix sum over the 256 histogram bins (thread 0 computes exact offsets).
+// Expects offsets[] zero-cleared before dispatch; uses atomic ops so WGSL/Metal/Vulkan share one binding.
+splat_prefix :: (i: u32, hist: [] u32, offsets: [] u32) {
+  if i != 0 { return; }
+  acc: u32 = 0;
+  for b: 0..<SPLAT_RADIX_BINS {
+    cnt := gpu_atomic_add(hist, b, 0);
+    _ := gpu_atomic_add(offsets, b, acc);
+    acc = acc + cnt;
+  }
+}
+
+// Pass 3: Scatter (key, val) into back-to-front radix-sorted output buffers.
+splat_scatter :: (i: u32, u: [] f32, keys: [] u32, vals: [] u32, offsets: [] u32, keys_out: [] u32, vals_out: [] u32) {
+  idx := cast(int) i;
+  n := cast(int) u[SU_COUNT];
+  if idx >= n { return; }
+  k := keys[idx];
+  bin := cast(int) (ifx u[SU_SHIFT] > 4.0f32 then ((k / 256) % 256) else (k % 256));
+  dst := cast(int) gpu_atomic_add(offsets, bin, 1);
+  if dst < n {
+    keys_out[dst] = k;
+    vals_out[dst] = vals[idx];
+  }
+}
+
+// Metal compute entry (`coax metal-compute`): projects splat centers into back-to-front depth keys.
+splat_keys_mtl :: (tid: int, u: [] f32, pos: [] f32, keys: [] u32, vals: [] u32) #export_c #effects(all) {
+  n := cast(int) u[SU_COUNT];
+  if tid < 0 || tid >= n { return; }
+  b := tid * 4;
+  keys[tid] = splat_depth_key(pos[b], pos[b + 1], pos[b + 2], u[SU_EX], u[SU_EY], u[SU_EZ], u[SU_FX], u[SU_FY], u[SU_FZ], u[SU_NEAR], u[SU_FAR]);
+  vals[tid] = cast(u32) tid;
+}
+
+#test "splat compute radix sort orders 3D Gaussian splats strictly back-to-front" {
+  // 5 splats at distances 2m, 18m, 5m, 12m, 1m along +Z from camera at origin looking +Z
+  pos := [20] f32.[
+    0, 0, 2, 1,
+    0, 0, 18, 1,
+    0, 0, 5, 1,
+    0, 0, 12, 1,
+    0, 0, 1, 1
+  ];
+  u := [12] f32.[5, 0, 0.5f32, 20.0f32, 0, 0, 0, 0, 0, 0, 1, 0];
+  k0: [5] u32; v0: [5] u32; k1: [5] u32; v1: [5] u32;
+  hist: [SPLAT_RADIX_BINS] u32; off: [SPLAT_RADIX_BINS] u32;
+
+  for i: 0..<5 { splat_keys(cast(u32) i, u[..], pos[..], k0[..], v0[..]); }
+  // Pass A: low 8 bits (shift = 0)
+  for b: 0..<SPLAT_RADIX_BINS { hist[b] = 0; off[b] = 0; }
+  for i: 0..<5 { splat_hist(cast(u32) i, u[..], k0[..], hist[..]); }
+  splat_prefix(0, hist[..], off[..]);
+  for i: 0..<5 { splat_scatter(cast(u32) i, u[..], k0[..], v0[..], off[..], k1[..], v1[..]); }
+
+  // Pass B: high 8 bits (shift = 8)
+  u[SU_SHIFT] = 8.0f32;
+  for b: 0..<SPLAT_RADIX_BINS { hist[b] = 0; off[b] = 0; }
+  for i: 0..<5 { splat_hist(cast(u32) i, u[..], k1[..], hist[..]); }
+  splat_prefix(0, hist[..], off[..]);
+  for i: 0..<5 { splat_scatter(cast(u32) i, u[..], k1[..], v1[..], off[..], k0[..], v0[..]); }
+
+  // Expected back-to-front order: idx 1 (18m), idx 3 (12m), idx 2 (5m), idx 0 (2m), idx 4 (1m)
+  #assert v0[0] == 1 && v0[1] == 3 && v0[2] == 2 && v0[3] == 0 && v0[4] == 4;
+  #assert k0[0] <= k0[1] && k0[1] <= k0[2] && k0[2] <= k0[3] && k0[3] <= k0[4];
+}

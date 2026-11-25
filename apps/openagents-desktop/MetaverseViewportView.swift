@@ -334,6 +334,10 @@ final class MetaverseViewportView: NSView {
     var onFocusRequested: (() -> Void)?
     var onFilesDropped: (([URL]) -> Void)?
     var onAttachSelectionRequested: (() -> Void)?
+    // composition-v2 (#14046): offscreen GPU render target composited directly inside UcPlan (slot 0)
+    var useCompositionV2: Bool = true
+    private var extColorTexture: MTLTexture?
+    var onExternalTextureUpdated: ((MTLTexture?) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1376,10 +1380,59 @@ final class MetaverseViewportView: NSView {
         return bytes
     }
 
+    private func ensureExtColorTexture(width: Int, height: Int) -> MTLTexture? {
+        guard let device, width >= 1, height >= 1, width <= 4096, height <= 4096 else { return nil }
+        if let t = extColorTexture, t.width == width, t.height == height { return t }
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        d.usage = [.renderTarget, .shaderRead]
+        d.storageMode = .private
+        extColorTexture = device.makeTexture(descriptor: d)
+        return extColorTexture
+    }
+
     func renderNow() {
         guard !isHidden, bounds.width > 1, bounds.height > 1,
-              let queue, (activeScene != nil || activeGameBuilder != nil),
-              let drawable = metalLayer.nextDrawable() else { return }
+              let queue, (activeScene != nil || activeGameBuilder != nil) else { return }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let reqW = max(1, Int((bounds.width * scale).rounded()))
+        let reqH = max(1, Int((bounds.height * scale).rounded()))
+
+        // composition-v2 (#14046): render directly into private GPU-only external texture for UcPlan slot 0
+        // (retiring CAShapeLayer hole masks and enabling native rounded corners + frosted popovers over 3D).
+        if useCompositionV2, reqW <= 4096, reqH <= 4096, let extTex = ensureExtColorTexture(width: reqW, height: reqH) {
+            ensureDepthTexture(width: reqW, height: reqH)
+            guard let depthTexture, let cb = queue.makeCommandBuffer() else { return }
+            let rp = MTLRenderPassDescriptor()
+            rp.colorAttachments[0].texture = extTex
+            rp.colorAttachments[0].loadAction = .clear
+            rp.colorAttachments[0].storeAction = .store
+            rp.colorAttachments[0].clearColor = MTLClearColor(red: 0.055, green: 0.062, blue: 0.078, alpha: 1.0)
+            rp.depthAttachment.texture = depthTexture
+            rp.depthAttachment.loadAction = .clear
+            rp.depthAttachment.storeAction = .dontCare
+            rp.depthAttachment.clearDepth = 1.0
+            if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
+                enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(reqW), height: Double(reqH), znear: 0, zfar: 1))
+                if let gb = activeGameBuilder {
+                    encodeGameBuilder(into: enc, session: gb)
+                } else if let scene = activeScene {
+                    encodeScene(into: enc, scene: scene, aspect: Float(reqW) / max(1, Float(reqH)))
+                }
+                enc.endEncoding()
+            }
+            cb.commit()
+            metalLayer.isHidden = true
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.mask = nil
+            onExternalTextureUpdated?(extTex)
+            updateHudLabel()
+            return
+        }
+
+        // Fallback when window > 4096px or composition-v2 disabled: present directly on CAMetalLayer
+        metalLayer.isHidden = false
+        onExternalTextureUpdated?(nil)
+        guard let drawable = metalLayer.nextDrawable() else { return }
         let w = drawable.texture.width, h = drawable.texture.height
         ensureDepthTexture(width: w, height: h)
         guard let depthTexture, let cb = queue.makeCommandBuffer() else { return }
@@ -1405,6 +1458,10 @@ final class MetaverseViewportView: NSView {
         }
         cb.present(drawable)
         cb.commit()
+        updateHudLabel()
+    }
+
+    private func updateHudLabel() {
         if let scene = activeScene {
             hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
         } else if let gb = activeGameBuilder {

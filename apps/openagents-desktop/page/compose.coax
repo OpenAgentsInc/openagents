@@ -61,8 +61,12 @@ cp_has_image :: (list: [] Prim) -> bool {
   for p: list { if p.kind == PRIM_IMAGE { return true; } }
   return false;
 }
+cp_has_ext_texture :: (list: [] Prim) -> bool {
+  for p: list { if p.kind == PRIM_EXT_TEXTURE { return true; } }
+  return false;
+}
 cp_needs_compose :: (s: [] CoderPage, under: [] Prim, over: [] Prim) -> bool {
-  return cp_glass(s) && cp_has_layer(over) || cp_composes(s) && (cp_has_image(under) || cp_has_image(over));
+  return cp_glass(s) && cp_has_layer(over) || cp_composes(s) && (cp_has_image(under) || cp_has_image(over) || cp_has_ext_texture(under) || cp_has_ext_texture(over));
 }
 // Look up a file path in the image slot table, queuing it for the host to decode if not yet seen.
 // Returns UcImage.{id = slot + 1, w, h} when ready, or zero UcImage while pending or failed, and

@@ -72,5 +72,6 @@ book metaverse-engine/fx/flat.coax metaverse-engine/book/ch072-effects-made-of-p
 book metaverse-engine/ui/settings.coax metaverse-engine/book/ch085-everyone-can-play.md
 built metaverse-engine/gpu/model-view-shader.coax apps/openagents-desktop/build.sh
 built metaverse-engine/gpu/ple-shader.coax apps/openagents-desktop/build.sh
+built metaverse-engine/gpu/splat-sort.coax apps/openagents-desktop/build.sh
 built metaverse-engine/content/desktop-viewer-bridge.coax apps/openagents-desktop/build.sh
 built metaverse-engine/content/model-view.coax metaverse-engine/content/desktop-viewer-bridge.coax

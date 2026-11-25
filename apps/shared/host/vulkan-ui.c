@@ -119,6 +119,16 @@ static uint32_t *ui_slurp(const char *path, size_t *words) {
   *words = (size_t)size / 4;
   return p;
 }
+void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex) {
+  if (!h || slot < 0 || slot >= 16) return;
+  VksImage *img = (VksImage *)native_tex;
+  if (h->ext_textures[slot] != img) {
+    h->ext_textures[slot] = img;
+    h->compose_signature ^= 0x9e3779b97f4a7c15ull ^ (uint64_t)(slot + 1);
+    h->stale = 1;
+  }
+}
+
 // Executes only the admitted shared Coax plan. Cached SDK pipelines own
 // immutable descriptor sets; all prior work completes before an atlas, image,
 // target or vertex buffer can be replaced. No per-frame readback.
@@ -133,18 +143,18 @@ static int ui_comp_prepare(UiHost*h) {
  int changed=h->ncompose_targets!=(int)p.targets||h->image_mask!=image_mask;
  if(h->compose_signature!=signature){for(int i=0;i<h->ncp;i++)vks_pipe_close(&h->v,&h->cp[i].pipe);h->ncp=0;h->compose_signature=signature;}
  h->image_mask=image_mask;
- for(uint32_t i=0;i<p.count;i++){int src=(int)p.ops[i*8+1];if(src>=64){if(src>=80)return 0;UiImage image={0};int k=src-64;
+ for(uint32_t i=0;i<p.count;i++){int src=(int)p.ops[i*8+1];if(src>=80){if(src>=96||!h->ext_textures[src-80])return 0;}else if(src>=64){UiImage image={0};int k=src-64;
   if(!h->app.image||!h->app.image(h->app.user,k,&image)||!image.rgba||!image.width||!image.height||image.width>4096||image.height>4096)return 0;
   if(!h->images[k].image||h->image_generation[k]!=image.generation||h->images[k].w!=image.width||h->images[k].h!=image.height)changed=1;}}
  if(changed){ui_comp_reset(h);for(uint32_t i=0;i<p.targets;i++)h->compose_targets[i]=vks_image(&h->v,h->w,h->rows,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TARGET|VKS_TEXTURE);h->ncompose_targets=p.targets;
-  for(uint32_t i=0;i<p.count;i++){int src=(int)p.ops[i*8+1];if(src>=64){int k=src-64;if(!h->images[k].image){UiImage image={0};h->app.image(h->app.user,k,&image);
+  for(uint32_t i=0;i<p.count;i++){int src=(int)p.ops[i*8+1];if(src>=64&&src<80){int k=src-64;if(!h->images[k].image){UiImage image={0};h->app.image(h->app.user,k,&image);
    h->images[k]=vks_image(&h->v,image.width,image.height,1,0,VK_FORMAT_R8G8B8A8_UNORM,VKS_TEXTURE);vks_upload(&h->v,&h->images[k],image.rgba,(size_t)image.width*image.height*4);h->image_generation[k]=image.generation;}}}h->stale=1;}
  for(uint32_t i=0;i<p.count;i++){
   const float*r=p.ops+i*8;int dst=(int)r[0],src=(int)r[1],clear=r[4]!=0;
-  if(dst< -1||dst>=(int)p.targets||src< -1||(src>=0&&src<64&&src>=(int)p.targets)||src>=80||dst==src||r[2]<0||r[3]<0||(uint64_t)r[2]+(uint64_t)r[3]>h->pass.vertex_count)return 0;
+  if(dst< -1||dst>=(int)p.targets||src< -1||(src>=0&&src<64&&src>=(int)p.targets)||src>=96||dst==src||r[2]<0||r[3]<0||(uint64_t)r[2]+(uint64_t)r[3]>h->pass.vertex_count)return 0;
   int k=0;while(k<h->ncp&&(h->cp[k].target!=dst||h->cp[k].source!=src||h->cp[k].clear!=clear))k++;
   if(k==h->ncp){if(k==64)return 0;UiCompPipe*c=&h->cp[h->ncp++];c->target=dst;c->source=src;c->clear=clear;
-   c->binds[0]=(VksBinding){.kind=VKS_STORAGE,.buffer=&h->uniform};c->binds[1]=(VksBinding){.kind=VKS_IMAGE,.image=&h->mono};c->binds[2]=(VksBinding){.kind=VKS_IMAGE,.image=&h->color};c->binds[3]=(VksBinding){.kind=VKS_IMAGE,.image=src<0?&h->color:src>=64?&h->images[src-64]:&h->compose_targets[src]};
+   c->binds[0]=(VksBinding){.kind=VKS_STORAGE,.buffer=&h->uniform};c->binds[1]=(VksBinding){.kind=VKS_IMAGE,.image=&h->mono};c->binds[2]=(VksBinding){.kind=VKS_IMAGE,.image=&h->color};c->binds[3]=(VksBinding){.kind=VKS_IMAGE,.image=src<0?&h->color:src>=80?h->ext_textures[src-80]:src>=64?&h->images[src-64]:&h->compose_targets[src]};
    c->pass=h->pass;c->pass.words=h->comp_words;c->pass.count=h->comp_nwords;c->pass.bindings=c->binds;c->pass.nb=4;c->pass.targets[0]=dst<0?&h->target:&h->compose_targets[dst];c->pass.vertex_count=0;c->pass.blend=VKS_OVER;c->pass.alpha_blend=VKS_OVER;c->pass.keep=!clear;
    for(int lane=0;lane<4;lane++)c->pass.clear[lane]=0;vks_pipe_open(&h->v,&c->pipe,&c->pass);
   }

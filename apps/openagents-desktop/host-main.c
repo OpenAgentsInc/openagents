@@ -24,6 +24,7 @@
 #define OA_APP_BUILD 1
 #define OA_PORTAL_FOLDER 1
 #define OA_PORTAL_ATTACH 2
+#define OA_PORTAL_METAVERSE 3
 #define OA_LINE_CAP (1024 * 1024)
 #define OA_SAVE_CAP (4 * 1024 * 1024)
 #define OA_SUBAGENTS 8
@@ -1345,6 +1346,20 @@ static void on_portal_chosen(void *user, int request, const char *path) {
     set_folder(a, path);
   } else if (request == OA_PORTAL_ATTACH) {
     cd_attach(a->page, path);
+  } else if (request == OA_PORTAL_METAVERSE) {
+    int64_t flags = cd_flags(a->page);
+    int64_t meta[5] = {0};
+    uint8_t badge[16] = {0}, json[512] = {0};
+    coax_string ps = {path, (int64_t)strlen(path)};
+    (void)oa_dc_mv_route(ps, flags, (coax_v_s64){meta, 5}, (coax_v_u8){badge, sizeof badge}, (coax_v_u8){json, sizeof json});
+    int kind = meta[0] == 1 ? (int)meta[1] : 1;
+    int mode = meta[0] == 1 ? (int)meta[2] : 0;
+    const char *base = strrchr(path, '/');
+    const char *title = (base && base[1]) ? base + 1 : path;
+    int idx = cd_mv_open_tab(a->page, kind, path, title, "", "", mode, 0);
+    if (idx >= 0) {
+      cd_mv_tab_status(a->page, idx, 1, 1, 0, 0, meta[3] != 0 ? 1 : 0, 0, 0, "Vulkan 3D ready", "");
+    }
   }
 }
 
@@ -1448,6 +1463,22 @@ static void handle_file_open(DesktopApp *a, const char *raw) {
   oa_parse_file_link(raw, clean, sizeof clean, &start_line, &end_line);
   if (!clean[0]) return;
   resolve_file_path(a, clean, full, sizeof full);
+  // Route 3D models, scenes, packs & GameBuilder worlds to the Metaverse pane when enabled (#14046).
+  {
+    int64_t flags = cd_flags(a->page);
+    int64_t meta[5] = {0};
+    uint8_t badge[16] = {0}, json[512] = {0};
+    coax_string ps = {full, (int64_t)strlen(full)};
+    if (oa_dc_mv_route(ps, flags, (coax_v_s64){meta, 5}, (coax_v_u8){badge, sizeof badge}, (coax_v_u8){json, sizeof json}) > 0 && meta[0] == 1) {
+      const char *base = strrchr(full, '/');
+      const char *title = (base && base[1]) ? base + 1 : full;
+      int idx = cd_mv_open_tab(a->page, (int)meta[1], full, title, "", "", (int)meta[2], 0);
+      if (idx >= 0) {
+        cd_mv_tab_status(a->page, idx, 1, 1, 0, 0, meta[3] != 0 ? 1 : 0, 0, 0, "Vulkan 3D ready", "");
+      }
+      return;
+    }
+  }
   a->file_watch_path[0] = '\0';
   struct stat st;
   if (stat(full, &st) != 0) {
@@ -2534,6 +2565,64 @@ static void handle_action(DesktopApp *a, int act) {
             if (f) { fwrite(sel, 1, (size_t)sn, f); fclose(f); cd_attach(a->page, path); }
           }
         }
+      }
+      break;
+    }
+    case 200: { // CP_ASK_MV_OPEN_DIALOG (Linux Wayland & Windows Win32 Vulkan parity, #14046)
+      if (a->portal) portal_pick(a->portal, OA_PORTAL_METAVERSE, 0, "Open 3D File in Metaverse", a->folder);
+      break;
+    }
+    case 201: case 203: { // CP_ASK_MV_LOAD_TAB / CP_ASK_MV_RELOAD
+      int idx = cd_mv_active_tab(a->page);
+      char pbuf[OA_PATH] = {0};
+      if (idx >= 0 && cd_mv_tab_path(a->page, idx, pbuf, (int)sizeof pbuf) > 0) {
+        int kind = cd_mv_tab_kind(a->page, idx);
+        cd_mv_tab_status(a->page, idx, 1, 1, 0, 0, 0, 0, 0, kind == 7 ? "GameBuilder Vulkan ready" : "Vulkan 3D ready", "");
+      }
+      break;
+    }
+    case 202: { // CP_ASK_MV_CLOSE_TAB
+      if (cd_mv_tab_count(a->page) == 0) cd_mv_set_ext_texture(a->page, 0, NULL);
+      break;
+    }
+    case 208: { // CP_ASK_MV_EXTERNAL
+      int idx = cd_mv_active_tab(a->page);
+      char pbuf[OA_PATH] = {0};
+      if (idx >= 0 && cd_mv_tab_path(a->page, idx, pbuf, (int)sizeof pbuf) > 0) oa_open_external(pbuf);
+      break;
+    }
+    case 209: { // CP_ASK_MV_OPEN_AS_TEXT
+      int idx = cd_mv_active_tab(a->page);
+      char pbuf[OA_PATH] = {0};
+      if (idx >= 0 && cd_mv_tab_path(a->page, idx, pbuf, (int)sizeof pbuf) > 0) {
+        cd_mv_hide(a->page);
+        struct stat st;
+        if (stat(pbuf, &st) == 0 && !S_ISDIR(st.st_mode)) {
+          FILE *f = fopen(pbuf, "rb");
+          if (f) {
+            size_t cap = 262144;
+            char *buf = (char *)malloc(cap + 1);
+            if (buf) {
+              size_t got = fread(buf, 1, cap, f);
+              buf[got] = '\0';
+              cd_file_open(a->page, pbuf, buf, (int)got, 0);
+              free(buf);
+            }
+            fclose(f);
+          }
+        }
+      }
+      break;
+    }
+    case 211: case 212: case 213: case 214: case 215: { // CP_ASK_GB_* (GameBuilder Vulkan pane actions)
+      char cmd[256] = {0}, arg[512] = {0};
+      int tab_out = -1, val_out = 0;
+      (void)cd_mv_pending_cmd(a->page, cmd, (int)sizeof cmd, arg, (int)sizeof arg, &tab_out, &val_out);
+      if (act == 213) {
+        const char *tid = arg[0] ? arg : "arena";
+        char gb_path[256]; snprintf(gb_path, sizeof gb_path, "gb:%s/level-1", tid);
+        int idx = cd_mv_open_tab(a->page, 7, gb_path, tid, tid, "level-1", 1, 0);
+        if (idx >= 0) cd_mv_tab_status(a->page, idx, 1, 1, 0, 0, 0, 0, 0, "GameBuilder Vulkan ready", "");
       }
       break;
     }

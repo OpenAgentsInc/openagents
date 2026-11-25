@@ -807,5 +807,6 @@ void cd_gb_sync_ui(void *page, int tool, int snap_idx, int can_undo, int can_red
 void cd_gb_playtest_status(void *page, int running, int stuck_count, const char *summary);
 void cd_gb_hydrate_progress(void *page, int active, int pct);
 void cd_gb_sync_studio(void *page, const int64_t metrics16[16], const char *ag_tsv, const char *pub_tsv, const char *lob_tsv, const char *note);
+void cd_mv_set_ext_texture(void *page, int slot, void *native_tex);
 int cd_mv_focus_viewport(void *page);
 #endif

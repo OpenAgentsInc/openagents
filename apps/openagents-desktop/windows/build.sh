@@ -85,6 +85,14 @@ fi
   -o "$work/res/components.spv" 2> "$work/res/components.spv.bindings"
 "$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs \
   -o "$work/res/composition.spv" 2> "$work/res/composition.spv.bindings"
+if [[ "$minimal" == 0 ]]; then
+  "$coax" spirv "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs \
+    -o "$work/res/metaverse-model.spv" 2> "$work/res/metaverse-model.spv.bindings"
+  "$coax" spirv "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs \
+    -o "$work/res/metaverse-ple.spv" 2> "$work/res/metaverse-ple.spv.bindings"
+  "$coax" spirv "$repo/gamebuilder/core/gpu/gb-instances.coax" --vertex gb_vs --fragment gb_fs \
+    -o "$work/res/gb-instances.spv" 2> "$work/res/gb-instances.spv.bindings"
+fi
 
 # 2. The icon (from the Mac app's), the manifest and the version, as Windows resources.
 iconset="$work/res/OpenAgents.iconset"
@@ -210,6 +218,11 @@ for arch in "${arches[@]}"; do
     fi
   done
   cp "$work/res/components.spv" "$work/res/composition.spv" "$out/resources/"
+  if [[ "$minimal" == 0 ]]; then
+    for spv in metaverse-model.spv metaverse-ple.spv gb-instances.spv; do
+      [[ -f "$work/res/$spv" ]] && cp "$work/res/$spv" "$out/resources/"
+    done
+  fi
   mkdir -p "$out/resources/fonts" "$out/resources/icons"
   cp "$repo/components/fonts/"Geist* "$out/resources/fonts/"
   cp "$repo/components/icons/"*.svg "$out/resources/icons/"

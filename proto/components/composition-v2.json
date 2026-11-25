@@ -1,0 +1,43 @@
+{
+  "id": "openagents.components.composition.v2",
+  "version": 2,
+  "kind": "in-process GPU frame profile",
+  "vertex": {
+    "stride_f32": 28,
+    "legacy_kinds": "0..11 unchanged (composition-v1)",
+    "12": "external GPU texture slot (premultiplied Metal MTLTexture or Vulkan VkImageView) with rounded-corner SDF mask"
+  },
+  "record": {
+    "stride_f32": 8,
+    "fields": [
+      "target",
+      "source",
+      "first",
+      "count",
+      "clear",
+      "width",
+      "height",
+      "reserved"
+    ],
+    "integer_fields": "all; finite exactly representable",
+    "target": "-1 output; 0..15 owned local viewport texture",
+    "source": "-1 atlases; 0..15 prior target; 64..79 immutable image slot; 80..95 external GPU texture slot",
+    "clear": "0 load; 1 transparent clear",
+    "reserved": 0
+  },
+  "limits": {
+    "dimension": 4096,
+    "targets": 16,
+    "images": 16,
+    "external_textures": 16,
+    "passes": 4096,
+    "depth": 16,
+    "blur_radius_device_pixels": 32,
+    "gpu_words": 33554432,
+    "unfinished_frames": 1,
+    "binding_sets": 64
+  },
+  "alpha": "external GPU textures (kind 12, source 80..95) are sampled premultiplied with the exact same rounded-corner SDF mask, clip, fade, and group opacity as isolated layer composites, enabling frosted glass popovers over live 3D viewports without CAShapeLayer cutouts.",
+  "ownership": "host registers live external GPU textures via ui_host_set_ext_texture(host, slot, tex) on Apple Metal (MTLTexture) and Linux/Windows Vulkan (VksImage); components/ never imports metaverse-engine/ or gamebuilder/.",
+  "contract": "superset of openagents.components.composition.v1; preserves all composition-v1 and flat AFP1 behavior."
+}

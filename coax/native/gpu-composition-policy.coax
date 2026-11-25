@@ -2,15 +2,17 @@
 // sole allocator; a host creates objects only after these leases are granted.
 #load "../lib/gpu/registry.coax";
 #authority;
-UC_SIDE :: 4096; UC_TARGETS :: 16; UC_IMAGES :: 16; UC_OPS :: 4096;
+UC_SIDE :: 4096; UC_TARGETS :: 16; UC_IMAGES :: 16; UC_EXT_TEXTURES :: 16; UC_EXT_BASE :: 80; UC_OPS :: 4096;
 UC_WORDS :: 33554432; // 128 MiB, including targets, images and frame vertices
 uc_extent :: (w:int,h:int)->bool #effects(all) {return w>=1 && h>=1 && w<=UC_SIDE && h<=UC_SIDE;}
+uc_ext_slot :: (slot:int)->bool #effects(all) {return slot>=0 && slot<UC_EXT_TEXTURES;}
 uc_lease :: (ledger:[]RenderRegistry,w:int,h:int)->RrGrant #effects(all) {
  if !uc_extent(w,h) {return RrGrant.{status=RrStatus.bad_words};}
  return rr_acquire(ledger,RR_TEXTURE,w*h);
 }
 #test "composition extent and physical allocation admission share the existing ledger" {
  #assert uc_extent(1,4096) && !uc_extent(1,4097);
+ #assert uc_ext_slot(0) && uc_ext_slot(15) && !uc_ext_slot(-1) && !uc_ext_slot(16);
  r:[1]RenderRegistry;#assert rr_open(r[..],RrLimits.{slots=2,words=32})==RrStatus.ok;
  a:=uc_lease(r[..],4,4);#assert a.status==RrStatus.ok && r[0].words==16;
  #assert uc_lease(r[..],0,4).status==RrStatus.bad_words && uc_lease(r[..],4097,1).status==RrStatus.bad_words;

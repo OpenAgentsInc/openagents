@@ -277,12 +277,18 @@ extension CoderWindow {
         vp.onAttachSelectionRequested = { [weak self] in
             self?.attachMetaverseSelectionToChat()
         }
+        vp.onExternalTextureUpdated = { [weak self] tex in
+            guard let self else { return }
+            let ptr = tex.map { Unmanaged.passUnretained($0).toOpaque() }
+            cd_mv_set_ext_texture(self.page, 0, ptr)
+        }
         canvas.addSubview(vp)
         mvViewport = vp
         return vp
     }
 
     func hideMetaverseViewport() {
+        cd_mv_set_ext_texture(page, 0, nil)
         if let vp = mvViewport, !vp.isHidden {
             vp.isHidden = true
             vp.setPaneVisible(false)
@@ -325,7 +331,7 @@ extension CoderWindow {
         let canvasH = canvas.bounds.height
         let frame = Self.snapped(CGFloat(r[0]), canvasH - CGFloat(r[1]) - CGFloat(r[3]), CGFloat(r[2]), CGFloat(r[3]))
         if vp.frame != frame { vp.frame = frame }
-        vp.setHoles(pageOverRects(in: vp))
+        if !vp.useCompositionV2 { vp.setHoles(pageOverRects(in: vp)) }
         if vp.isHidden {
             vp.isHidden = false
             vp.setPaneVisible(true)

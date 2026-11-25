@@ -575,4 +575,5 @@ coder_page_gb_sync_ui :: (s: [] CoderPage, tool: int, snap_idx: int, can_undo: b
 coder_page_gb_playtest_status :: (s: [] CoderPage, running: bool, stuck_count: int, summary: string) #export_c #effects(all) {}
 coder_page_gb_hydrate_progress :: (s: [] CoderPage, active: bool, pct: int) #export_c #effects(all) {}
 coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_ext_tex_ready :: (s: [] CoderPage, on: bool) #export_c #effects(all) {}
 coder_page_gb_sync_studio :: (s: [] CoderPage, metrics: [] int, ag_tsv: string, pub_tsv: string, lob_tsv: string, note: string) #export_c #effects(all) {}

@@ -281,6 +281,7 @@ CpMetaversePane :: struct {
   ntabs: int;
   active: int;
   vp_x: f32; vp_y: f32; vp_w: f32; vp_h: f32;
+  ext_tex_ready: bool;        // composition-v2 external GPU texture registered in slot 0 (#14046)
   gb: [1] CpGbUiState;
   tree: [CP_MV_TREE_MAX] CpMvTreeRow;
   ntree: int;
@@ -1611,6 +1612,9 @@ cp_mvpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     mv[0].vp_w = vp_w * sc;
     mv[0].vp_h = vp_h * sc;
     sheet_fill(sh, px, y, vp_w, vp_h, 0, hex(0x0B0D10, 1.0f32));
+    if mv[0].ext_tex_ready && cp_composes(s) {
+      sheet_under(sh, prim_ext_texture(sh[0].under, sh[0].nu, 0, px, y, vp_w, vp_h, 6.0f32));
+    }
     _ := uiframe_semantic(f, "coder.mv.viewport", EL_REGION, "3D Viewport", px, y, vp_w, vp_h, 0, 0);
   } else {
     mv[0].vp_x = 0; mv[0].vp_y = 0; mv[0].vp_w = 0; mv[0].vp_h = 0;
@@ -1792,6 +1796,9 @@ coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all
   if s.count < 1 || !cp_mv_shown(s) { return false; }
   cp_ed_focus(s, CP_KB_MV);
   return true;
+}
+coder_page_mv_ext_tex_ready :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count > 0 { s[0].mv[0].ext_tex_ready = on; }
 }
 
 cp_gb_parse_studio_rows :: (tsv: string, out: [] CpGbStudioRow) -> int {

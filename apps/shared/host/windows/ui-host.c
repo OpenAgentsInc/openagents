@@ -53,6 +53,7 @@ struct UiHost {
   int has_atlas, has_target, has_pipe;
   UiComposition composition;int composed;
   VksImage compose_targets[16],images[16];int ncompose_targets;
+  VksImage *ext_textures[16];
   uint64_t image_generation[16];
   UiCompPipe cp[64];int ncp;uint64_t compose_signature;uint32_t image_mask;uint32_t *comp_words;size_t comp_nwords;
   VksPipe pipe;

@@ -43,7 +43,7 @@ if [[ "$minimal" == "1" ]]; then
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
     "$res/foreman-ctl" "$res/gamebuilder" "$res/Metaverse" \
-    "$res/Components/metaverse-model.metal" "$res/Components/metaverse-ple.metal" "$res/Components/gb-instances.metal"
+    "$res/Components/metaverse-model.metal" "$res/Components/metaverse-ple.metal" "$res/Components/gb-instances.metal" "$res/Components/splat-sort.metal"
 fi
 source "$here/sign.sh"
 sign_prepare "$work"
@@ -151,6 +151,7 @@ if [[ "$minimal" != "1" ]]; then
   "$coax" metal "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs -o "$res/Components/metaverse-model.metal" 2> "$work/c/metaverse-model.metal.bind"
   "$coax" metal "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs -o "$res/Components/metaverse-ple.metal" 2> "$work/c/metaverse-ple.metal.bind"
   "$coax" metal "$repo/gamebuilder/core/gpu/gb-instances.coax" --vertex gb_vs --fragment gb_fs -o "$res/Components/gb-instances.metal" 2> "$work/c/gb-instances.metal.bind"
+  "$coax" metal-compute "$repo/metaverse-engine/gpu/splat-sort.coax" > "$res/Components/splat-sort.metal"
   "$coax" c "$repo/metaverse-engine/content/desktop-viewer-bridge.coax" --library --header "$work/c/metaverse-viewer.h" > "$work/c/metaverse-viewer.c"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/metaverse-viewer.c" -o "$work/c/metaverse-viewer-all.o"
   ld -r "$work/c/metaverse-viewer-all.o" -exported_symbol '_oa_mv_*' -o "$work/c/metaverse-viewer.o"

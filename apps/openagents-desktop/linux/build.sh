@@ -76,9 +76,14 @@ fi
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"
 
-# 2. Emit the shared component and composition SPIR-V shaders.
+# 2. Emit the shared component, composition-v2, and Metaverse/GameBuilder SPIR-V shaders.
 "$coax" spirv "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/resources/components.spv" 2> "$work/resources/components.spv.bindings"
 "$coax" spirv "$repo/components/backend/composition-shader.coax" --vertex uc_vs --fragment uc_fs -o "$work/resources/composition.spv" 2> "$work/resources/composition.spv.bindings"
+if [[ "$minimal" == 0 ]]; then
+  "$coax" spirv "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs -o "$work/resources/metaverse-model.spv" 2> "$work/resources/metaverse-model.spv.bindings"
+  "$coax" spirv "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs -o "$work/resources/metaverse-ple.spv" 2> "$work/resources/metaverse-ple.spv.bindings"
+  "$coax" spirv "$repo/gamebuilder/core/gpu/gb-instances.coax" --vertex gb_vs --fragment gb_fs -o "$work/resources/gb-instances.spv" 2> "$work/resources/gb-instances.spv.bindings"
+fi
 
 # 3. Generate Wayland protocol C bindings.
 protocols="$(pkg-config --variable=pkgdatadir wayland-protocols)"
@@ -203,6 +208,11 @@ if [[ "$minimal" == 1 || -n "$stage_dir" ]]; then
     fi
   done
   cp "$work/resources/components.spv" "$work/resources/composition.spv" "$out_stage/resources/"
+  if [[ "$minimal" == 0 ]]; then
+    for spv in metaverse-model.spv metaverse-ple.spv gb-instances.spv; do
+      [[ -f "$work/resources/$spv" ]] && cp "$work/resources/$spv" "$out_stage/resources/"
+    done
+  fi
   cp "$work/resources/fonts/"Geist* "$out_stage/resources/fonts/"
   cp "$work/resources/icons/"*.svg "$out_stage/resources/icons/"
   cp "$work/resources/NOTICE" "$out_stage/resources/NOTICE"

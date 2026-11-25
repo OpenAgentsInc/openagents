@@ -88,7 +88,7 @@ struct UiHost {
   id<MTLLibrary> lib;
   id<MTLTexture> depth;
   id<MTLRenderPipelineState> compose_pipe;
-  id<MTLTexture> compose_targets[16], images[16];
+  id<MTLTexture> compose_targets[16], images[16], ext_textures[16];
   uint64_t image_generations[16];
   int flat_pictures;   // this flat frame has pictures (GP_IMAGE vertices) drawn through compose_pipe
   UiComposition composition;
@@ -898,6 +898,15 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
   [e endEncoding];
 }
 
+void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex) {
+  if (!h || slot < 0 || slot >= 16) return;
+  id<MTLTexture> tex = native_tex ? (__bridge id<MTLTexture>)native_tex : nil;
+  if (h->ext_textures[slot] != tex) {
+    h->ext_textures[slot] = tex;
+    h->stale = 1;
+  }
+}
+
 // Effects only: topology, limits, matrices and kernels are the admitted Coax
 // plan. No readback occurs in a frame. Retained CPU image bytes are replayed on
 // a new device/host by the same upload callback.
@@ -924,8 +933,11 @@ static int ui_compose_prepare(UiHost *h) {
   int used[16]={0};
   for (uint32_t op=0;op<p.count;op++) {
     const float *r=p.ops+op*8;int dst=(int)r[0],src=(int)r[1];
-    if(dst< -1 || dst>=(int)p.targets || src< -1 || (src>=0 && src<64 && src>=(int)p.targets) || src>=80 || dst==src || r[2]<0 || r[3]<0 || (uint64_t)r[2]+(uint64_t)r[3]>h->count) return 0;
-    if(src>=64) {
+    if(dst< -1 || dst>=(int)p.targets || src< -1 || (src>=0 && src<64 && src>=(int)p.targets) || src>=96 || dst==src || r[2]<0 || r[3]<0 || (uint64_t)r[2]+(uint64_t)r[3]>h->count) return 0;
+    if(src>=80) {
+      int eslot=src-80;
+      if(!h->ext_textures[eslot]) return 0;
+    } else if(src>=64) {
       int slot=src-64;used[slot]=1;UiImage image={0};if(!h->app.image || !h->app.image(h->app.user,slot,&image) || !image.rgba || !image.width || !image.height || image.width>4096 || image.height>4096)return 0;
       if(!h->images[slot] || h->image_generations[slot]!=image.generation || h->images[slot].width!=image.width || h->images[slot].height!=image.height) {
         MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:image.width height:image.height mipmapped:NO];
@@ -952,7 +964,7 @@ static void ui_compose_draw(UiHost *h,id<MTLTexture> into,id<MTLCommandBuffer> c
       [e setVertexBytes:u length:sizeof u atIndex:0];[e setFragmentBytes:u length:sizeof u atIndex:0];
       [e setVertexBytes:lengths length:sizeof lengths atIndex:29];[e setFragmentBytes:lengths length:sizeof lengths atIndex:29];
       [e setFragmentTexture:h->mono atIndex:0];[e setFragmentTexture:h->color atIndex:1];
-      [e setFragmentTexture:src<0 ? h->color:src>=64 ? h->images[src-64]:h->compose_targets[src] atIndex:2];
+      [e setFragmentTexture:src<0 ? h->color : src>=80 ? h->ext_textures[src-80] : src>=64 ? h->images[src-64] : h->compose_targets[src] atIndex:2];
       [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:(NSUInteger)r[2] vertexCount:(NSUInteger)r[3]];
     }
     [e endEncoding];

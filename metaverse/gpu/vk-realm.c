@@ -113,7 +113,11 @@ static void vt_leave(int to) {
   close(vt_fd);
   vt_fd = -1;
 }
-static RealmHost H;
+// Context-safe multi-instance host (aethyr.host.v2 / GitHub #14046): zero process-global
+// RealmHost instance; each realm allocates its own RealmHost on the heap and routes callbacks
+// through explicit `void *user` plus thread-local scope for legacy C extern hooks.
+static _Thread_local RealmHost *vk_realm_tls;
+static inline RealmHost *vk_realm_of(void *user) { return user ? (RealmHost *)user : vk_realm_tls; }
 static uint64_t producer_calls;
 static Vkw *text_window;
 static int to_text_rect(void *,float[4]);
@@ -151,14 +155,14 @@ static double now_s(void) {
   return t.tv_sec + t.tv_nsec / 1e9;
 }
 static int64_t now_us(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (int64_t)t.tv_sec*1000000+t.tv_nsec/1000;}
-static int to_focus(void *user,int focused){(void)user;if(rh_host_version()!=1)return 0;if(!focused&&text_window)vkw_text_invalidate(text_window);rh_lifecycle_event(&H,focused?2:3,now_us(),0);return 1;}
-static uint32_t to_realm_key(void *user,int key,int mods,int down){(void)user;touched = 1;return rh_key(&H,key,mods,down);}
-static void to_text(void *user,const char *bytes,size_t length){(void)user;(void)rh_text(&H,bytes,length);}
-static int to_wants_text(void *user){(void)user;return coaxial_wants_text?coaxial_wants_text(H.state):0;}
-static uint64_t to_text_owner(void *user){return to_wants_text(user)?(uint64_t)H.state:0;}
-static void to_text_error(void *user,const char *message){(void)user;(void)message;rh_refuse(&H);}
+static int to_focus(void *user,int focused){RealmHost *rh=vk_realm_of(user);if(!rh||rh_host_version()!=1)return 0;if(!focused&&text_window)vkw_text_invalidate(text_window);rh_lifecycle_event(rh,focused?2:3,now_us(),0);return 1;}
+static uint32_t to_realm_key(void *user,int key,int mods,int down){RealmHost *rh=vk_realm_of(user);touched = 1;return rh?rh_key(rh,key,mods,down):0;}
+static void to_text(void *user,const char *bytes,size_t length){RealmHost *rh=vk_realm_of(user);if(rh)(void)rh_text(rh,bytes,length);}
+static int to_wants_text(void *user){RealmHost *rh=vk_realm_of(user);return (rh&&coaxial_wants_text)?coaxial_wants_text(rh->state):0;}
+static uint64_t to_text_owner(void *user){RealmHost *rh=vk_realm_of(user);return (rh&&to_wants_text(user))?(uint64_t)rh->state:0;}
+static void to_text_error(void *user,const char *message){RealmHost *rh=vk_realm_of(user);(void)message;if(rh)rh_refuse(rh);}
 static int to_clipboard(void *user,const char *bytes,size_t length){return vkw_clipboard_set(user,bytes,length);}
-static void to_shown(void *user,int shown){(void)user;if(!shown&&text_window)vkw_text_invalidate(text_window);rh_lifecycle_event(&H,shown?5:4,now_us(),0);rh_send(&H,shown?602:601,"",0);}
+static void to_shown(void *user,int shown){RealmHost *rh=vk_realm_of(user);if(!shown&&text_window)vkw_text_invalidate(text_window);if(!rh)return;rh_lifecycle_event(rh,shown?5:4,now_us(),0);rh_send(rh,shown?602:601,"",0);}
 
 // 16 random hex digits from the kernel.
 static void random_id(char out[17]) {
@@ -231,35 +235,35 @@ static void agents_poll(double now) {
   char *text = slurp(agents_file, &n);
   if (!text) return;
   agents_mtime = m;
-  rh_send(&H, RH_AGENTS_KIND, text, n);
+  if (vk_realm_tls) rh_send(vk_realm_tls, RH_AGENTS_KIND, text, n);
   free(text);
 }
 // evdev's keys (metaverse/kms/evdev.h) into the face; the codes are host.js's KEYS.
-bool realm_key(void *state, int key) { (void)state; touched = 1; rh_key(&H,key,0,1); return true; }
-bool realm_key_up(void *state, int key) { (void)state; touched = 1; rh_key(&H,key,0,0); return true; }
+bool realm_key(void *state, int key) { RealmHost *rh = vk_realm_of(state); touched = 1; if (rh) rh_key(rh,key,0,1); return true; }
+bool realm_key_up(void *state, int key) { RealmHost *rh = vk_realm_of(state); touched = 1; if (rh) rh_key(rh,key,0,0); return true; }
 
 // The spec's files that are the realm's: its uniforms, stores and particles (with their
 // capacities, so the buffers hold what they grow to) and the pack's indices.
 #ifndef ENGINE_RENDER_TYPED
 static const void *file(void *user, const char *name, size_t *size, size_t *cap) {
-  (void)user;
-  if (!strcmp(name, "u.bin")) { *size = *cap = (size_t)H.uniform_floats * 4; return rh_ptr(H.uniforms); }
-  if (!strcmp(name, "hud.bin")) { *size = 16; *cap = (size_t)H.max_vertices * H.floats * 4; return rh_ptr(H.vertices); }
+  RealmHost *rh = vk_realm_of(user); if (!rh) return NULL;
+  if (!strcmp(name, "u.bin")) { *size = *cap = (size_t)rh->uniform_floats * 4; return rh_ptr(rh->uniforms); }
+  if (!strcmp(name, "hud.bin")) { *size = 16; *cap = (size_t)rh->max_vertices * rh->floats * 4; return rh_ptr(rh->vertices); }
   if (name[0] == 's' && name[1] >= '0' && name[1] <= '9' && !strcmp(name + 2, ".bin")) {
     int k = name[1] - '0';
-    *size = coaxial_store_bytes(H.state, k) & ~3u;
+    *size = coaxial_store_bytes(rh->state, k) & ~3u;
     *cap = coaxial_store_cap(k);
     if (*size > *cap) *size = *cap;
-    return rh_ptr(coaxial_store(H.state, k));
+    return rh_ptr(coaxial_store(rh->state, k));
   }
   if (!strcmp(name, "puffs.bin")) {
-    *size = coaxial_particle_bytes(H.state) & ~3u;
+    *size = coaxial_particle_bytes(rh->state) & ~3u;
     *cap = coaxial_particle_cap();
     if (*cap < 16) *cap = 16;
     if (*size > *cap) *size = *cap;
-    return rh_ptr(coaxial_particles(H.state));
+    return rh_ptr(coaxial_particles(rh->state));
   }
-  const RhEntry *e = !strcmp(name, "index.bin") ? rh_entry(&H, RH_INDICES) : !strcmp(name, "vertices.bin") ? rh_entry(&H, RH_VERTICES) : NULL;
+  const RhEntry *e = !strcmp(name, "index.bin") ? rh_entry(rh, RH_INDICES) : !strcmp(name, "vertices.bin") ? rh_entry(rh, RH_VERTICES) : NULL;
   if (e) { *size = *cap = e->length; return e->bytes; }
   return NULL;  // the rest from the directory (the layers, the draw list's first frame)
 }
@@ -268,8 +272,8 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
 // The pointer: the mice into the face, as host.js's pointer and wheel events, and drawn as a
 // dot after the frame's own vertices (fx_vs's 16 floats: the place in device pixels and the
 // place in the stroke, its shape, tint and bar; a stroke of length 0 is a round glow).
-static void to_pointer(void *user, float x, float y, int phase) { (void)user; touched = 1; rh_pointer(&H,x,y,phase,0,1); }
-static void to_wheel(void *user, float dy) { (void)user; touched = 1; rh_wheel(&H,dy); }
+static void to_pointer(void *user, float x, float y, int phase) { RealmHost *rh = vk_realm_of(user); touched = 1; if (rh) rh_pointer(rh,x,y,phase,0,1); }
+static void to_wheel(void *user, float dy) { RealmHost *rh = vk_realm_of(user); touched = 1; if (rh) rh_wheel(rh,dy); }
 static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
@@ -281,15 +285,15 @@ __attribute__((weak)) int64_t rhn_socket_queue_info(int32_t);
 __attribute__((weak)) void rhn_socket_pool_shutdown(void);
 static void session_snapshot(int row,Vkp *p,RhgRealm *s,uint64_t presented){
  int64_t *q=session_observed+row*16;
- q[0]=producer_calls;q[1]=presented;q[2]=coaxial_net_probe?coaxial_net_probe(H.state,0):-1;q[3]=coaxial_net_probe?coaxial_net_probe(H.state,1):-1;
- q[4]=coaxial_field_probe?coaxial_field_probe(H.state,0):0;q[5]=coaxial_field_probe?coaxial_field_probe(H.state,2):0;
- q[6]=rh_audio_info(&H,0);q[7]=rh_audio_info(&H,23);q[8]=rh_audio_info(&H,9);q[9]=rh_audio_info(&H,30);
- q[10]=p->w;q[11]=p->h;q[12]=rhgr_info(s,1);q[13]=rhg_ledger_info(1);q[14]=rhg_ledger_info(2);q[15]=coaxial_net_probe?coaxial_net_probe(H.state,6):-1;
- if(rhn_socket_queue_info)fprintf(stderr,"vk-realm: window network row=%d local=%d emitted=%lld delivered=%lld waiting=%lld outgoing=%lld\n",row,coaxial_net_probe?coaxial_net_probe(H.state,98):-1,(long long)rhn_socket_queue_info(7),(long long)rhn_socket_queue_info(8),(long long)rhn_socket_queue_info(6),(long long)rhn_socket_queue_info(2));
+ q[0]=producer_calls;q[1]=presented;q[2]=coaxial_net_probe?coaxial_net_probe(vk_realm_tls->state,0):-1;q[3]=coaxial_net_probe?coaxial_net_probe(vk_realm_tls->state,1):-1;
+ q[4]=coaxial_field_probe?coaxial_field_probe(vk_realm_tls->state,0):0;q[5]=coaxial_field_probe?coaxial_field_probe(vk_realm_tls->state,2):0;
+ q[6]=rh_audio_info(vk_realm_tls,0);q[7]=rh_audio_info(vk_realm_tls,23);q[8]=rh_audio_info(vk_realm_tls,9);q[9]=rh_audio_info(vk_realm_tls,30);
+ q[10]=p->w;q[11]=p->h;q[12]=rhgr_info(s,1);q[13]=rhg_ledger_info(1);q[14]=rhg_ledger_info(2);q[15]=coaxial_net_probe?coaxial_net_probe(vk_realm_tls->state,6):-1;
+ if(rhn_socket_queue_info)fprintf(stderr,"vk-realm: window network row=%d local=%d emitted=%lld delivered=%lld waiting=%lld outgoing=%lld\n",row,coaxial_net_probe?coaxial_net_probe(vk_realm_tls->state,98):-1,(long long)rhn_socket_queue_info(7),(long long)rhn_socket_queue_info(8),(long long)rhn_socket_queue_info(6),(long long)rhn_socket_queue_info(2));
 }
 #endif
-static int to_text_rect(void *user,float rect[4]){(void)user;if(!text_window||!window_p||!draw_w||!draw_h||!coaxial_field||!coaxial_host_copy_span)return 0;
- cx_face_addr at=coaxial_field(H.state);if(!coaxial_host_copy_span(at,16,16,rh_address_limit()))return 0;float source[4];memcpy(source,rh_ptr(at),sizeof source);
+static int to_text_rect(void *user,float rect[4]){RealmHost *rh=vk_realm_of(user);if(!rh||!text_window||!window_p||!draw_w||!draw_h||!coaxial_field||!coaxial_host_copy_span)return 0;
+ cx_face_addr at=coaxial_field(rh->state);if(!coaxial_host_copy_span(at,16,16,rh_address_limit()))return 0;float source[4];memcpy(source,rh_ptr(at),sizeof source);
  for(int i=0;i<4;i++)rect[i]=source[i]*(i%2?(float)window_p->h/draw_h:(float)window_p->w/draw_w);return 1;
 }
 static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
@@ -299,7 +303,7 @@ __attribute__((weak)) float coaxial_panel_rect(cx_face_addr state, int32_t k);
 __attribute__((weak)) int32_t coaxial_os_request(cx_face_addr state);
 static void os_requests(void) {
   if (!coaxial_os_request || desk.pid <= 0) return;
-  int32_t a = coaxial_os_request(H.state);
+  int32_t a = coaxial_os_request(vk_realm_tls->state);
   if (a < 0) return;
   const char *run = (getenv("METAVERSE_RUN") ? getenv("METAVERSE_RUN") : getenv("VERSE_RUN"));
   if (!run) return;
@@ -313,21 +317,21 @@ static void os_requests(void) {
 static float panel_draw_w, panel_draw_h;
 // the world's screen's four corners (the face's k 5..12), in the swapchain's pixels
 static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
-  if (!coaxial_panel_rect || coaxial_panel_rect(H.state, 4) <= 0 || panel_draw_w <= 0) return 0;
+  if (!coaxial_panel_rect || coaxial_panel_rect(vk_realm_tls->state, 4) <= 0 || panel_draw_w <= 0) return 0;
   float sx = (float)w / panel_draw_w, sy = (float)h / panel_draw_h;
-  for (int k = 0; k < 8; k++) c[k] = (int32_t)(coaxial_panel_rect(H.state, 5 + k) * (k % 2 ? sy : sx));
+  for (int k = 0; k < 8; k++) c[k] = (int32_t)(coaxial_panel_rect(vk_realm_tls->state, 5 + k) * (k % 2 ? sy : sx));
   // what stands in front of the screen, from the realm (its k 13, 14 + 4i ..)
-  int n = (int)coaxial_panel_rect(H.state, 13);
+  int n = (int)coaxial_panel_rect(vk_realm_tls->state, 13);
   desk.occ_n = 0;
   for (int i = 0; i < n && i < 16; i++) {
-    for (int j = 0; j < 4; j++) desk.occ[i][j] = (int32_t)(coaxial_panel_rect(H.state, 14 + 4 * i + j) * (j % 2 ? sy : sx));
+    for (int j = 0; j < 4; j++) desk.occ[i][j] = (int32_t)(coaxial_panel_rect(vk_realm_tls->state, 14 + 4 * i + j) * (j % 2 ? sy : sx));
     desk.occ_n++;
   }
   return 1;
 }
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
 static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }
-static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); if(coaxial_hover)coaxial_hover(H.state,window_p&&window_p->w?x*draw_w/window_p->w:x,window_p&&window_p->h?y*draw_h/window_p->h:y); }
+static void to_moved(void *user, float x, float y) { RealmHost *rh = vk_realm_of(user); touched = 1; vkdesk_pointer(x, y, -1); if(rh&&coaxial_hover)coaxial_hover(rh->state,window_p&&window_p->w?x*draw_w/window_p->w:x,window_p&&window_p->h?y*draw_h/window_p->h:y); }
 static int to_extra_button(void *user,float x,float y,uint32_t code,int pressed) {
   (void)user;touched=1;return vkdesk_button(x,y,code,pressed);
 }
@@ -361,8 +365,8 @@ static void to_pointer_window(void *user, float x, float y, int phase) {
   to_pointer(user, mice.x, mice.y, phase);
 }
 static uint32_t with_cursor(uint32_t n) {
-  if (!cursor || H.floats != 16 || n > (uint32_t)H.max_vertices || 6 > (uint32_t)H.max_vertices-n) return n;
-  float *v = (float *)rh_ptr(H.vertices) + (size_t)n * 16, r = 14;
+  if (!cursor || vk_realm_tls->floats != 16 || n > (uint32_t)vk_realm_tls->max_vertices || 6 > (uint32_t)vk_realm_tls->max_vertices-n) return n;
+  float *v = (float *)rh_ptr(vk_realm_tls->vertices) + (size_t)n * 16, r = 14;
   static const float corner[6][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, -1}, {1, 1}, {-1, 1}};
   for (int i = 0; i < 6; i++, v += 16) {
     float dx = corner[i][0] * r, dy = corner[i][1] * r;
@@ -376,9 +380,9 @@ static uint32_t produce_frame(float width,float height,float scale,float dt){
 #ifdef ENGINE_RENDER_TYPED
   // Preserve the producer's requested count for Coax admission. The legacy
   // rh_frame helper clips it and is retained only by the legacy spec path.
-  return coaxial_frame(H.state,H.vertices,H.uniforms,width,height,scale,dt,0);
+  return coaxial_frame(vk_realm_tls->state,vk_realm_tls->vertices,vk_realm_tls->uniforms,width,height,scale,dt,0);
 #else
-  return rh_frame(&H,width,height,scale,dt);
+  return rh_frame(vk_realm_tls,width,height,scale,dt);
 #endif
 }
 
@@ -390,39 +394,39 @@ static VkcBuffer *uniforms, *puffs, *hud;
 
 // The frame's data into the spec, as host.js writes its buffers.
 static void update(VkSpec *s) {
-  memcpy(uniforms->map, rh_ptr(H.uniforms), (size_t)H.uniform_floats * 4);
-  if (hud) memcpy(hud->map, rh_ptr(H.vertices), (size_t)hud_vertices * H.floats * 4);
+  memcpy(uniforms->map, rh_ptr(vk_realm_tls->uniforms), (size_t)vk_realm_tls->uniform_floats * 4);
+  if (hud) memcpy(hud->map, rh_ptr(vk_realm_tls->vertices), (size_t)hud_vertices * vk_realm_tls->floats * 4);
   vk_spec_let(s, "hud", hud ? hud_vertices : 0);
-  vk_spec_let(s, "surface", coaxial_surface_vertices(H.state));   // the water lab's sea
-  vk_spec_let(s, "cv", coaxial_caster_vertices(H.state));          // the fixture's casters, when painterly
-  vk_spec_let(s, "ci", coaxial_caster_instances(H.state));
+  vk_spec_let(s, "surface", coaxial_surface_vertices(vk_realm_tls->state));   // the water lab's sea
+  vk_spec_let(s, "cv", coaxial_caster_vertices(vk_realm_tls->state));          // the fixture's casters, when painterly
+  vk_spec_let(s, "ci", coaxial_caster_instances(vk_realm_tls->state));
   for (int k = 0; k < 4; k++) {
     Store *st = &stores[k];
     if (!st->buf) continue;
-    uint32_t version = coaxial_store_version(H.state, k);
+    uint32_t version = coaxial_store_version(vk_realm_tls->state, k);
     if (version == st->version) continue;
-    size_t at = 0, bytes = coaxial_store_bytes(H.state, k) & ~3u;
+    size_t at = 0, bytes = coaxial_store_bytes(vk_realm_tls->state, k) & ~3u;
     if (bytes > st->cap) bytes = st->cap;
     // a store with a span sends only the rows that changed once its buffer was sent whole
     // (host.js, metaverse-engine/render/graph/retained-rows.coax)
     if (coaxial_store_span_v1) {
-      uint32_t from = coaxial_store_span_v1(H.state, k, 0), length = coaxial_store_span_v1(H.state, k, 1);
+      uint32_t from = coaxial_store_span_v1(vk_realm_tls->state, k, 0), length = coaxial_store_span_v1(vk_realm_tls->state, k, 1);
       if (length != 0xFFFFFFFFu && st->sent) { at = from & ~3u; if (at > st->cap) at = st->cap; bytes = length; if (bytes > st->cap - at) bytes = st->cap - at; bytes &= ~(size_t)3; }
     }
-    if (bytes) memcpy((uint8_t *)st->buf->map + at, (const uint8_t *)rh_ptr(coaxial_store(H.state, k)) + at, bytes);
+    if (bytes) memcpy((uint8_t *)st->buf->map + at, (const uint8_t *)rh_ptr(coaxial_store(vk_realm_tls->state, k)) + at, bytes);
     st->version = version; st->sent = true;
   }
   if (puffs) {
-    size_t bytes = coaxial_particle_bytes(H.state) & ~3u, cap = coaxial_particle_cap();
-    memcpy(puffs->map, rh_ptr(coaxial_particles(H.state)), bytes < cap ? bytes : cap);
+    size_t bytes = coaxial_particle_bytes(vk_realm_tls->state) & ~3u, cap = coaxial_particle_cap();
+    memcpy(puffs->map, rh_ptr(coaxial_particles(vk_realm_tls->state)), bytes < cap ? bytes : cap);
   }
-  uint32_t all = coaxial_draw_count(H.state), water = coaxial_water_draws(H.state);
+  uint32_t all = coaxial_draw_count(vk_realm_tls->state), water = coaxial_water_draws(vk_realm_tls->state);
   if (water > all) water = all;
   vk_spec_let(s, "all", all);
   vk_spec_let(s, "scene", all - water);
-  vk_spec_let(s, "blades", coaxial_grass_instances(H.state));
-  vk_spec_let(s, "sparks", coaxial_particle_instances(H.state));
-  vk_spec_draws(s, all ? rh_ptr(coaxial_draws(H.state)) : NULL);
+  vk_spec_let(s, "blades", coaxial_grass_instances(vk_realm_tls->state));
+  vk_spec_let(s, "sparks", coaxial_particle_instances(vk_realm_tls->state));
+  vk_spec_draws(s, all ? rh_ptr(coaxial_draws(vk_realm_tls->state)) : NULL);
 }
 static void record(VkCommandBuffer cmd, void *user) {
   if(benchmark_queries){vkCmdResetQueryPool(cmd,benchmark_queries,0,2);vkCmdWriteTimestamp(cmd,VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,benchmark_queries,0);}
@@ -495,7 +499,7 @@ static void press_keys(const char *keys, int frame) {
     int key = (int)strtol(p + 1, (char **)&p, 10);
     if (*p != ':') return;
     int down = (int)strtol(p + 1, (char **)&p, 10);
-    if (at == frame) rh_key(&H,key,0,down);
+    if (at == frame) rh_key(vk_realm_tls,key,0,down);
     if (*p == ',') p++;
   }
 }
@@ -508,23 +512,23 @@ static int world_replacement(RhgRealm *s,Vkc *v,uint32_t w,uint32_t h,float scal
   VksImage *graph=rhgr_graph(s),*display=rhgr_screen(s);
   if(!graph||!display||graph->format!=VK_FORMAT_R16G16B16A16_SFLOAT||display->format!=VK_FORMAT_R8G8B8A8_UNORM)return 0;
   size_t graph_bytes=(size_t)w*h*8,display_bytes=(size_t)w*h*4;
-  uint8_t *before=malloc(graph_bytes),*after=malloc(graph_bytes),*display_before=malloc(display_bytes),*display_after=malloc(display_bytes),*arena=malloc(H.arena_size);
+  uint8_t *before=malloc(graph_bytes),*after=malloc(graph_bytes),*display_before=malloc(display_bytes),*display_after=malloc(display_bytes),*arena=malloc(vk_realm_tls->arena_size);
   if(!before||!after||!display_before||!display_after||!arena){free(before);free(after);free(display_before);free(display_after);free(arena);return 0;}
-  vks_read(v,graph,before,graph_bytes);vks_read(v,display,display_before,display_bytes);memcpy(arena,H.arena,H.arena_size);
-  RhgHandle old=rhgr_vertex_handle(s);int old_live=rhg_ledger_live(&old);uint64_t calls=producer_calls;void *old_arena=H.arena;cx_face_addr old_state=H.state;
+  vks_read(v,graph,before,graph_bytes);vks_read(v,display,display_before,display_bytes);memcpy(arena,vk_realm_tls->arena,vk_realm_tls->arena_size);
+  RhgHandle old=rhgr_vertex_handle(s);int old_live=rhg_ledger_live(&old);uint64_t calls=producer_calls;void *old_arena=vk_realm_tls->arena;cx_face_addr old_state=vk_realm_tls->state;
   recovery_observed[0]=1;recovery_observed[1]=sizeof(cx_face_addr)*8;recovery_observed[2]=(int64_t)calls;
   recovery_observed[3]=rhgr_info(s,2);recovery_observed[4]=rhgr_info(s,1);recovery_observed[5]=rhgr_info(s,4)>0;
-  rh_lifecycle_event(&H,8,now_us(),0);rhgr_drop_gpu(s);recovery_observed[6]=rhg_ledger_info(1);recovery_observed[7]=rhgr_info(s,0);recovery_observed[8]=rhgr_info(s,1);
+  rh_lifecycle_event(vk_realm_tls,8,now_us(),0);rhgr_drop_gpu(s);recovery_observed[6]=rhg_ledger_info(1);recovery_observed[7]=rhgr_info(s,0);recovery_observed[8]=rhgr_info(s,1);
   vkc_close(v);vkc_open(v);
   int ok=rhgr_device(s,v,error,error_bytes)&&rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,error,error_bytes)&&rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,error,error_bytes);
   if(ok){
     vks_read(v,rhgr_graph(s),after,graph_bytes);vks_read(v,rhgr_screen(s),display_after,display_bytes);
-    recovery_observed[9]=H.arena==old_arena&&H.state==old_state&&!memcmp(arena,H.arena,H.arena_size);
+    recovery_observed[9]=vk_realm_tls->arena==old_arena&vk_realm_tls.state==old_state&&!memcmp(arena,vk_realm_tls->arena,vk_realm_tls->arena_size);
     recovery_observed[10]=!memcmp(before,after,graph_bytes);recovery_observed[11]=!memcmp(display_before,display_after,display_bytes);
     recovery_observed[12]=producer_calls==calls;recovery_observed[13]=rhgr_info(s,5)>0;recovery_observed[14]=old_live&&!rhg_ledger_live(&old);
-    rhgr_deliver_media(s);rh_lifecycle_event(&H,9,now_us(),0);
+    rhgr_deliver_media(s);rh_lifecycle_event(vk_realm_tls,9,now_us(),0);
     ok=rhgr_prepare(s,w,h,COAX_RenderTextureFormat_rgba8,error,error_bytes);
-    if(ok){hud_vertices=produce_frame((float)w,(float)h,scale,1.0f/60);ok=rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,error,error_bytes);if(ok){rhgr_deliver_media(s);rh_after(&H,0);}}
+    if(ok){hud_vertices=produce_frame((float)w,(float)h,scale,1.0f/60);ok=rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,error,error_bytes);if(ok){rhgr_deliver_media(s);rh_after(vk_realm_tls,0);}}
     recovery_observed[15]=ok&&producer_calls==calls+1;recovery_observed[16]=v->validating;recovery_observed[17]=vkc_validation_errors;recovery_observed[18]=vkc_validation_warnings;
   }
   free(before);free(after);free(display_before);free(display_after);free(arena);return ok;
@@ -619,13 +623,16 @@ int main(int argc, char **argv) {
   if (film_multi && film_view < 0) { fprintf(stderr, "vk-realm: the film profile needs --film-view U, where the realm's view-projection starts in its uniforms\n"); return 2; }
   signal(SIGTERM, on_signal);
 
-  // The realm: as realm-run starts it (the page's facts, the viewer, the pack's parts).
-  rh_open(&H, golden);
+  // Context-safe heap-allocated RealmHost (aethyr.host.v2 / #14046): zero process-global RealmHost.
+  RealmHost *rh = (RealmHost *)calloc(1, sizeof(RealmHost));
+  if (!rh) return 1;
+  vk_realm_tls = rh;
+  rh_open(rh, golden);
   if(replay_path&&rh_replay_open(replay_path)){fprintf(stderr,"vk-realm: refused room replay\n");return 1;}
-  if(benchmark_path){benchmark_file=fopen(benchmark_path,"w");if(!benchmark_file)return 1;fprintf(benchmark_file,"{\"schema\":\"everglade.native-benchmark.v1\",\"rowColumns\":[\"replay_seconds\",\"frame_interval_ms\",\"controller_river_wall_ms\",\"scene_hud_wall_ms\",\"tail_wall_ms\",\"pre_submit_wall_ms\",\"gpu_span_ms\",\"input_to_gpu_complete_ms\",\"host_encode_cpu_ms\",\"frame_thread_cpu_ms\"],\"rows\":[");if(coaxial_frame_parts)coaxial_frame_parts(H.state,-1);}
-  rh_page(&H, page);
+  if(benchmark_path){benchmark_file=fopen(benchmark_path,"w");if(!benchmark_file)return 1;fprintf(benchmark_file,"{\"schema\":\"everglade.native-benchmark.v1\",\"rowColumns\":[\"replay_seconds\",\"frame_interval_ms\",\"controller_river_wall_ms\",\"scene_hud_wall_ms\",\"tail_wall_ms\",\"pre_submit_wall_ms\",\"gpu_span_ms\",\"input_to_gpu_complete_ms\",\"host_encode_cpu_ms\",\"frame_thread_cpu_ms\"],\"rows\":[");if(coaxial_frame_parts)coaxial_frame_parts(rh->state,-1);}
+  rh_page(rh, page);
 #ifndef ENGINE_RENDER_TYPED
-  if (rh_pack(&H, pack)) return 1;
+  if (rh_pack(rh, pack)) return 1;
 #else
   // The compiled Coax asset profile selects the typed route's staged pack.
   // A legacy CLI argument must never substitute another VPK for that URL.
@@ -637,12 +644,12 @@ int main(int argc, char **argv) {
     if (facts_once) unlink(facts);
     if (!text) { fprintf(stderr, "vk-realm: cannot read %s\n", facts); return 1; }
     if (net_dir) text = online_facts(text, &n, net_dir);
-    rh_send(&H, RH_PAGE_KIND, text, n);
+    rh_send(rh, RH_PAGE_KIND, text, n);
     // secret facts: the realm has taken what it keeps; the host's copy and the inbox are wiped
-    if (facts_once) { explicit_bzero(text, n); explicit_bzero(rh_ptr(coaxial_inbox(H.state)), n < coaxial_inbox_cap() ? n : coaxial_inbox_cap()); }
+    if (facts_once) { explicit_bzero(text, n); explicit_bzero(rh_ptr(coaxial_inbox(rh->state)), n < coaxial_inbox_cap() ? n : coaxial_inbox_cap()); }
     free(text);
   }
-  rh_send(&H, RH_VIEWER_KIND, "", 0);
+  rh_send(rh, RH_VIEWER_KIND, "", 0);
   if (net_dir) {
     // HOST or HOST:PORT; the helper beside this program
     char host[256];
@@ -655,10 +662,10 @@ int main(int argc, char **argv) {
     snprintf(helper, sizeof helper, "%s/net", dir);
     if (access(helper, X_OK)) snprintf(helper, sizeof helper, "./net");
     char *full = realpath(helper, NULL);
-    if (!full || rh_net_open(&H, full, host, port, net_dir, name)) return 1;
+    if (!full || rh_net_open(rh, full, host, port, net_dir, name)) return 1;
     fprintf(stderr, "vk-realm: online: %s:%d through %s, kept in %s\n", host, port, full, net_dir);
     free(full);
-    if(rh_host_version()!=1)rh_restore(&H);
+    if(rh_host_version()!=1)rh_restore(rh);
   }
   uint32_t sizes[8];
   int nextra = 0;
@@ -668,12 +675,12 @@ int main(int argc, char **argv) {
   }
 #ifdef ENGINE_RENDER_TYPED
   if(chdir(dir)){fprintf(stderr,"vk-realm: no directory %s\n",dir);return 1;}
-  char asset_error[256];if(!rhgr_deliver(&H,ENGINE_RENDER_PROFILE_ID,asset_error,sizeof asset_error)){fprintf(stderr,"vk-realm: %s\n",asset_error);return 1;}
+  char asset_error[256];if(!rhgr_deliver(rh,ENGINE_RENDER_PROFILE_ID,asset_error,sizeof asset_error)){fprintf(stderr,"vk-realm: %s\n",asset_error);return 1;}
 #else
-  rh_deliver(&H, nextra, sizes);
+  rh_deliver(rh, nextra, sizes);
 #endif
-  if(net_dir&&rh_host_version()==1)rh_restore(&H);
-  if(rh_host_version()==1&&(!headless||headless_audio)&&rh_audio_enable(&H,audio_muted)<0)fprintf(stderr,"vk-realm: audio device or bank admission unavailable\n");
+  if(net_dir&&rh_host_version()==1)rh_restore(rh);
+  if(rh_host_version()==1&&(!headless||headless_audio)&&rh_audio_enable(rh,audio_muted)<0)fprintf(stderr,"vk-realm: audio device or bank admission unavailable\n");
   // one frame so the stores exist at their sizes before the spec's buffers are made
   if(rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
 #ifndef ENGINE_RENDER_TYPED
@@ -687,9 +694,9 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {.pointer=to_pointer_window,.wheel=to_wheel,.moved=to_moved,.key=vkdesk_key,.button=to_extra_button,.focus=to_focus,.shown=to_shown,.realm_key=to_realm_key,.text=to_text,.wants_text=to_wants_text,.text_rect=to_text_rect,.text_owner=to_text_owner,.text_error=to_text_error};
+    VkwTo wto = {.user=rh,.pointer=to_pointer_window,.wheel=to_wheel,.moved=to_moved,.key=vkdesk_key,.button=to_extra_button,.focus=to_focus,.shown=to_shown,.realm_key=to_realm_key,.text=to_text,.wants_text=to_wants_text,.text_rect=to_text_rect,.text_owner=to_text_owner,.text_error=to_text_error};
     vkw_open(&v, &win, coaxial_window_title?coaxial_window_title():"Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
-    text_window=&win;rh_set_clipboard(&H,to_clipboard,&win);
+    text_window=&win;rh_set_clipboard(rh,to_clipboard,&win);
     if(coaxial_window_app_id)xdg_toplevel_set_app_id(win.toplevel,coaxial_window_app_id());
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
@@ -705,12 +712,12 @@ int main(int argc, char **argv) {
   double t_open = now_s();
 #ifdef ENGINE_RENDER_TYPED
   if(!w)w=320;if(!h)h=180;char render_error[256];
-  RhgRealm *s=rhgr_open(&v,&H,ENGINE_RENDER_PROFILE_ID,ENGINE_RENDER_PACKAGE_FILE,render_error,sizeof render_error);
+  RhgRealm *s=rhgr_open(&v,rh,ENGINE_RENDER_PROFILE_ID,ENGINE_RENDER_PACKAGE_FILE,render_error,sizeof render_error);
   if(!s){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}
   int nlast=1;VksImage *typed_last[1]={NULL};VksImage **last=typed_last;
   fprintf(stderr,"vk-realm: canonical profile%lld at %ux%u, package made in %.0f ms\n",(long long)ENGINE_RENDER_PROFILE_ID,w,h,(now_s()-t_open)*1000);
 #else
-  VkSpecFiles files = {file, NULL, w, h};
+  VkSpecFiles files = {file, rh, w, h};
   VkSpec *s = vk_spec_open(&v, "spec.txt", &files);
   if (!s) return 1;
   w = vk_spec_width(s); h = vk_spec_height(s);
@@ -722,7 +729,7 @@ int main(int argc, char **argv) {
     char store_file[16];
     snprintf(store_file, sizeof store_file, "s%d.bin", k);
     stores[k].buf = vk_spec_buffer_of(s, store_file);
-    stores[k].version = coaxial_store_version(H.state, k);
+    stores[k].version = coaxial_store_version(rh->state, k);
     stores[k].cap = coaxial_store_cap(k);
     stores[k].sent = false;
   }
@@ -770,14 +777,14 @@ int main(int argc, char **argv) {
         if (!film_acc) { fprintf(stderr, "vk-realm: no memory for the film's accumulation\n"); return 1; }
       }
       if (film_audio) {
-        if (rh_audio_offline(&H)) { fprintf(stderr, "vk-realm: the realm's mixer is unavailable for --film-audio\n"); return 1; }
+        if (rh_audio_offline(rh)) { fprintf(stderr, "vk-realm: the realm's mixer is unavailable for --film-audio\n"); return 1; }
         film_wav = fopen(film_audio, "wb");
         if (!film_wav || fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x03\0\x02\0\x80\xbb\0\0\0\xdc\x05\0\x08\0\x20\0data\0\0\0\0", 1, 44, film_wav) != 44) { fprintf(stderr, "vk-realm: cannot write %s\n", film_audio); return 1; }
       }
     }
     for (frames = rh_host_version()==1?0:1; frames < headless && frames < MAX_FRAMES && !stopping; frames++) {
       double t0 = now_s();
-      if (net_dir) rh_net_poll(&H);
+      if (net_dir) rh_net_poll(rh);
       press_keys(keys, frames);
       int film_in = frames_dir && frames >= film_start && (film_end < 0 || frames <= film_end);
       int samples_now = film_multi && film_in ? film_n : 1;
@@ -801,9 +808,9 @@ int main(int argc, char **argv) {
         float jy = film_jitter ? film_host_jitter(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 1) : 0;
         float lu = film_host_lens(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 0);
         float lv = film_host_lens(film_n, (float)film_shutter, film_position, film_seed, frames + 1, sample, 1);
-        if ((size_t)film_view + 16 > (size_t)H.uniform_floats ||
-            !film_host_matrix((coax_v_f32){(float *)rh_ptr(H.uniforms) + film_view, 16}, (float)w, (float)h, jx, jy, lu, lv, (float)film_fstop, (float)film_focus)) {
-          fprintf(stderr, "vk-realm: --film-view %d is not a view-projection in the realm's %u uniforms\n", film_view, (unsigned)H.uniform_floats); return 1;
+        if ((size_t)film_view + 16 > (size_t)rh->uniform_floats ||
+            !film_host_matrix((coax_v_f32){(float *)rh_ptr(rh->uniforms) + film_view, 16}, (float)w, (float)h, jx, jy, lu, lv, (float)film_fstop, (float)film_focus)) {
+          fprintf(stderr, "vk-realm: --film-view %d is not a view-projection in the realm's %u uniforms\n", film_view, (unsigned)rh->uniform_floats); return 1;
         }
       }
 #ifdef ENGINE_RENDER_TYPED
@@ -811,7 +818,7 @@ int main(int argc, char **argv) {
 #else
       update(s);
 #endif
-      rh_after(&H, net_dir != NULL);
+      rh_after(rh, net_dir != NULL);
 #ifndef ENGINE_RENDER_TYPED
       if (film_acc && film_in) vks_submit(&v, record, s);
 #endif
@@ -830,7 +837,7 @@ int main(int argc, char **argv) {
         float block[2 * 4096];
         while (n > 0) {
           int64_t k = n < 4096 ? n : 4096;
-          if (rh_audio_take(&H, block, (size_t)k) || fwrite(block, 8, (size_t)k, film_wav) != (size_t)k) { fprintf(stderr, "vk-realm: the film's sound failed\n"); return 1; }
+          if (rh_audio_take(rh, block, (size_t)k) || fwrite(block, 8, (size_t)k, film_wav) != (size_t)k) { fprintf(stderr, "vk-realm: the film's sound failed\n"); return 1; }
           n -= k; film_audio_frames += k;
         }
       }
@@ -911,7 +918,7 @@ int main(int argc, char **argv) {
         if (desk_mode && !strcmp(desk_mode, "docked")) desk.mode = metaverse_panel_next(desk.mode, 67);
         if (desk_mode && !strcmp(desk_mode, "flat")) desk.mode = metaverse_panel_next(desk.mode, 68);
         // the realm learns it has a desk, so a realm with a screen for it shows that screen
-        rh_send(&H, 611, "desk=1\n", 7);
+        rh_send(rh, 611, "desk=1\n", 7);
         panel_draw_w = (float)w; panel_draw_h = (float)h; desk.world = world_rect;
         if (desk_mode && !strcmp(desk_mode, "world")) desk.mode = metaverse_panel_next(desk.mode, 66);
         p.overlay = vkdesk_overlay; p.overlay_user = &desk; fprintf(stderr, "vk-realm: the desk is up (%ux%u); F9 shows it, F10 is flat mode\n", ddw, ddh); }
@@ -936,7 +943,7 @@ int main(int argc, char **argv) {
       if(benchmark_file&&rh_replay_seconds()>=70)break;
       if (t - start >= seconds) break;
       if (stopping) { why = "a signal stopped it"; break; }
-      if (coaxial_should_close && coaxial_should_close(H.state)) { why = "the app requested close"; break; }
+      if (coaxial_should_close && coaxial_should_close(rh->state)) { why = "the app requested close"; break; }
       if (windowed) {
         vkw_pump(&win);
         if (win.closed) {
@@ -944,7 +951,7 @@ int main(int argc, char **argv) {
           else { why = "the window was closed"; break; }
         }
         // a new size from the compositor: a new swapchain; the realm keeps drawing at its size
-        if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) {rh_lifecycle_event(&H,1,now_us(),0);vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);}
+        if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) {rh_lifecycle_event(rh,1,now_us(),0);vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);}
       } else {
         if (keyboards_read(NULL)) { why = "Escape was held"; break; }
         mice_read(&mice, (float)w, (float)h, &to);
@@ -955,18 +962,18 @@ int main(int argc, char **argv) {
         int phase = (int)((t - start) / 3) % 3;
         static int held;
         int want = phase == 0 ? 'w' : phase == 1 ? 'd' : 'w';
-        if (held != want) { if (held) rh_key(&H,held,0,0);rh_key(&H,want,0,1); held = want; }
+        if (held != want) { if (held) rh_key(rh,held,0,0);rh_key(rh,want,0,1); held = want; }
       }
       // Platform/network work continues even when the compositor has no
       // image or the preceding submission still owns the mutable buffers.
       touch_activity(t);agents_poll(t);vkdesk_pump(&desk,t);os_requests();
-      vkhands_poll(&hands,t,p.w,p.h,hand_to);rh_net_poll(&H);rh_replay_poll(&H);
+      vkhands_poll(&hands,t,p.w,p.h,hand_to);rh_net_poll(rh);rh_replay_poll(rh);
 #ifdef ENGINE_RENDER_TYPED
-      if(host_window){session.messages=coaxial_net_probe?coaxial_net_probe(H.state,6):-1;int effect=(int)hlws_offer((coax_v_t_HostLinuxWindowSession){&session,1},(int64_t)((now_s()-start)*1000),(int64_t)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1);
-       if(effect<0){fprintf(stderr,"vk-realm: window schedule refused: phase=%lld started=%lld last=%lld at=%lld now=%lld frames=%llu net=%d seat=%d; fence=%d reserved=%d suspended=%d life=%lld,%lld,%lld,%lld clock=%lld\n",(long long)session.phase,(long long)session.started,(long long)session.last,(long long)session.at,(long long)((now_s()-start)*1000),(unsigned long long)producer_calls,coaxial_net_probe?coaxial_net_probe(H.state,0):-1,coaxial_net_probe?coaxial_net_probe(H.state,1):-1,(int)vkGetFenceStatus(v.dev,p.fence),p.reserved,win.suspended,(long long)rh_lifecycle_info(0),(long long)rh_lifecycle_info(1),(long long)rh_lifecycle_info(2),(long long)rh_lifecycle_info(3),(long long)rh_lifecycle_info(4));why="window diagnostic refused";break;}
-       if(effect==1){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);}
-       if(effect==2){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);rh_key(&H,-1,0,1);rh_key(&H,-1,0,0);session_snapshot(0,&p,s,live_frames);rh_key(&H,'w',0,1);}
-       if(effect==3){if(coaxial_field_probe)fprintf(stderr,"vk-realm: window held input: held=%d y=%d busy=%d typing=%d stopped=%d\n",coaxial_field_probe(H.state,10),coaxial_field_probe(H.state,11),coaxial_field_probe(H.state,12),coaxial_field_probe(H.state,13),coaxial_field_probe(H.state,14));rh_key(&H,'w',0,0);}
+      if(host_window){session.messages=coaxial_net_probe?coaxial_net_probe(rh->state,6):-1;int effect=(int)hlws_offer((coax_v_t_HostLinuxWindowSession){&session,1},(int64_t)((now_s()-start)*1000),(int64_t)producer_calls,coaxial_net_probe?coaxial_net_probe(rh->state,0):-1,coaxial_net_probe?coaxial_net_probe(rh->state,1):-1);
+       if(effect<0){fprintf(stderr,"vk-realm: window schedule refused: phase=%lld started=%lld last=%lld at=%lld now=%lld frames=%llu net=%d seat=%d; fence=%d reserved=%d suspended=%d life=%lld,%lld,%lld,%lld clock=%lld\n",(long long)session.phase,(long long)session.started,(long long)session.last,(long long)session.at,(long long)((now_s()-start)*1000),(unsigned long long)producer_calls,coaxial_net_probe?coaxial_net_probe(rh->state,0):-1,coaxial_net_probe?coaxial_net_probe(rh->state,1):-1,(int)vkGetFenceStatus(v.dev,p.fence),p.reserved,win.suspended,(long long)rh_lifecycle_info(0),(long long)rh_lifecycle_info(1),(long long)rh_lifecycle_info(2),(long long)rh_lifecycle_info(3),(long long)rh_lifecycle_info(4));why="window diagnostic refused";break;}
+       if(effect==1){rh_key(rh,-2,0,1);rh_key(rh,-2,0,0);}
+       if(effect==2){rh_key(rh,-2,0,1);rh_key(rh,-2,0,0);rh_key(rh,-1,0,1);rh_key(rh,-1,0,0);session_snapshot(0,&p,s,live_frames);rh_key(rh,'w',0,1);}
+       if(effect==3){if(coaxial_field_probe)fprintf(stderr,"vk-realm: window held input: held=%d y=%d busy=%d typing=%d stopped=%d\n",coaxial_field_probe(rh->state,10),coaxial_field_probe(rh->state,11),coaxial_field_probe(rh->state,12),coaxial_field_probe(rh->state,13),coaxial_field_probe(rh->state,14));rh_key(rh,'w',0,0);}
        if(effect==4){session_snapshot(1,&p,s,live_frames);to_shown(NULL,0);session_hidden=1;session_snapshot(2,&p,s,live_frames);}
        if(effect==5){session_snapshot(3,&p,s,live_frames);to_shown(NULL,1);session_hidden=0;}
        if(effect==6){win.want_w=640;win.want_h=360;}
@@ -992,11 +999,11 @@ int main(int argc, char **argv) {
       double replay_s=rh_replay_seconds(),input_started=0;
       static double next_input=40,release_input;
       if(benchmark_file){
-        if(coaxial_net_probe&&coaxial_net_probe(H.state,0)!=2){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);}
-        if(replay_s>=next_input&&replay_s<70){input_started=now_s();rh_key(&H,'w',0,1);release_input=replay_s+.04;next_input+=5;}
-        if(release_input>0&&replay_s>=release_input){rh_key(&H,'w',0,0);release_input=0;}
+        if(coaxial_net_probe&&coaxial_net_probe(rh->state,0)!=2){rh_key(rh,-2,0,1);rh_key(rh,-2,0,0);}
+        if(replay_s>=next_input&&replay_s<70){input_started=now_s();rh_key(rh,'w',0,1);release_input=replay_s+.04;next_input+=5;}
+        if(release_input>0&&replay_s>=release_input){rh_key(rh,'w',0,0);release_input=0;}
       }
-      uint32_t requested=0;int offer=rh_frame_at(&H,(float)w,(float)h,scale,now_us(),0,0,&requested);
+      uint32_t requested=0;int offer=rh_frame_at(rh,(float)w,(float)h,scale,now_us(),0,0,&requested);
       if(!offer){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
       if(offer>0)producer_calls++;
       hud_vertices = with_cursor(offer<0?produce_frame((float)w,(float)h,scale,(float)dt):requested);
@@ -1005,7 +1012,7 @@ int main(int argc, char **argv) {
 #else
       update(s);
 #endif
-      rh_after(&H, 0);   // keeps the player, place and bar (--net); a copy a bare screen ignores
+      rh_after(rh, 0);   // keeps the player, place and bar (--net); a copy a bare screen ignores
       if (go && went_to(go)) { why = "it went to another realm"; travelled = 1; break; }
       double t1 = now_s();
       if (shot && !p.shoot && !p.shot_ready && t - start >= shot_at) p.shoot = 1;
@@ -1022,7 +1029,7 @@ int main(int argc, char **argv) {
         if(replay_s>=40&&replay_s<70){
           if(!benchmark_rows){benchmark_cpu_begin=benchmark_process_cpu();benchmark_replay_begin=replay_s;}benchmark_replay_end=replay_s;
           fprintf(benchmark_file,"%s[%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f]",benchmark_rows++?",":"",replay_s,benchmark_interval*1000,
-            coaxial_frame_parts?coaxial_frame_parts(H.state,0):0,coaxial_frame_parts?coaxial_frame_parts(H.state,1):0,coaxial_frame_parts?coaxial_frame_parts(H.state,2):0,
+            coaxial_frame_parts?coaxial_frame_parts(rh->state,0):0,coaxial_frame_parts?coaxial_frame_parts(rh->state,1):0,coaxial_frame_parts?coaxial_frame_parts(rh->state,2):0,
             (t1-t)*1000,(double)(stamps[1]-stamps[0])*v.props.limits.timestampPeriod/1e6,input_started?(now_s()-input_started)*1000:0,
             (benchmark_cpu_end-benchmark_encode_start)*1000,(benchmark_cpu_end-benchmark_cpu_start)*1000);
         }
@@ -1039,7 +1046,7 @@ int main(int argc, char **argv) {
 
   // the realm's step and the GPU's time (headless) or the fence wait (on the screen), as medians and 99th percentiles
   if(benchmark_file){struct rusage usage;getrusage(RUSAGE_SELF,&usage);fprintf(benchmark_file,"],\"firstFrameSeconds\":%.6f,\"peakRSSBytes\":%lld,\"processCPUSeconds\":%.6f,\"measurementSeconds\":%.6f,\"timestampInstrumented\":%s,\"roomSeated\":%s}",benchmark_first,(long long)usage.ru_maxrss*1024,benchmark_process_cpu()-benchmark_cpu_begin,benchmark_replay_end-benchmark_replay_begin,benchmark_timestamps?"true":"false",
-    coaxial_net_probe&&coaxial_net_probe(H.state,0)==2?"true":"false");fclose(benchmark_file);if(benchmark_queries)vkDestroyQueryPool(v.dev,benchmark_queries,NULL);}
+    coaxial_net_probe&&coaxial_net_probe(rh->state,0)==2?"true":"false");fclose(benchmark_file);if(benchmark_queries)vkDestroyQueryPool(v.dev,benchmark_queries,NULL);}
   if (!headless) printf("vk-realm: lifetime %llu presented frames; timing sample %d frames\n", (unsigned long long)live_frames, frames);
   static double sorted[MAX_FRAMES];
   int skip = frames > 120 ? 60 : headless ? 1 : 0, n = frames - skip;
@@ -1105,16 +1112,18 @@ int main(int argc, char **argv) {
     }
   }
   rh_net_close();
-  if(coaxial_close)coaxial_close(H.state);
-  rh_close(&H);
+  if(coaxial_close)coaxial_close(rh->state);
+  rh_close(rh);
 #ifdef ENGINE_RENDER_TYPED
   // Join process-owned workers before global TLS teardown. Engine retirement
   // alone does not wait for a worker's immutable job and thread-local state.
   if(rhn_socket_pool_shutdown)rhn_socket_pool_shutdown();
 #endif
 #ifdef ENGINE_RENDER_TYPED
-  if(host_window){session_observed[86]=rh_audio_info(&H,42);session_observed[87]=rh_audio_info(&H,43);FILE *f=fopen(host_window,"wb");if(!f)return 1;int ok=fwrite(session_observed,sizeof session_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
+  if(host_window){session_observed[86]=rh_audio_info(rh,42);session_observed[87]=rh_audio_info(rh,43);FILE *f=fopen(host_window,"wb");if(!f)return 1;int ok=fwrite(session_observed,sizeof session_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
   if(host_recovery){FILE *f=fopen(host_recovery,"wb");if(!f)return 1;int ok=fwrite(recovery_observed,sizeof recovery_observed,1,f)==1;if(fclose(f)||!ok)return 1;}
 #endif
+  vk_realm_tls = NULL;
+  free(rh);
   return (vkc_validation_errors || vkc_validation_warnings) ? 1 : travelled ? 3 : 0;
 }

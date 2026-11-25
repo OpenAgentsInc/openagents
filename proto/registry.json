@@ -186,6 +186,27 @@
       "note": "Bounded GPU-only isolated layers, affine, image and separable blur profile; old flat shader and AFP1 preserved (#13645)."
     },
     {
+      "id": "openagents.components.composition.v2",
+      "kind": "profile",
+      "owner": "toolchain",
+      "schema": "proto/components/composition-v2.json",
+      "codec": "coax/native/gpu-composition.coax",
+      "check": "coax/bin/coax test coax/native/gpu-composition.coax",
+      "step": "new",
+      "tests": [
+        "coax/native/gpu-composition.coax",
+        "coax/native/gpu-composition-policy.coax"
+      ],
+      "files": [
+        "components/paint/list.coax",
+        "components/backend/composition-shader.coax",
+        "apps/shared/host/apple/ui-host.m",
+        "apps/shared/host/vulkan-ui.c",
+        "apps/shared/host/linux/ui-host.h"
+      ],
+      "note": "composition-v2 external GPU texture slots (PRIM_EXT_TEXTURE kind 12, source 80..95) for zero-cutout 3D viewport compositing (#14046)."
+    },
+    {
       "id": "openagents.chat.library.local.v1",
       "kind": "local",
       "owner": "coder",
