@@ -1,0 +1,162 @@
+// Relocatable C-ABI bridge for the Desktop Universal 3D Model Viewer (GitHub #14041).
+// Compiled into metaverse-viewer.o via `coax c ... --library` + `ld -r -exported_symbol '_oa_mv_*'`,
+// keeping apps/openagents-desktop/ -> metaverse-engine/ acyclic in contexts.txt.
+#module "metaverse.engine.content.desktopviewerbridge";
+#load "model-view.coax";
+
+MV_HOST_VERTS   :: 262144;
+MV_HOST_INDICES :: 786432;
+MV_HOST_NODES   :: 256;
+MV_HOST_MATS    :: 64;
+
+MvHostState :: struct {
+  verts:   [MV_HOST_VERTS] MvVert;
+  indices: [MV_HOST_INDICES] u32;
+  nodes:   [MV_HOST_NODES] MvNode;
+  mats:    [MV_HOST_MATS] MvMat;
+  doc:     [1] MvDoc;
+}
+
+oa_mv_state_size :: () -> int #export_c #effects(all) {
+  return size_of(MvHostState);
+}
+
+oa_mv_init :: (st: [] MvHostState) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  st[0].doc[0] = MvDoc.{
+    verts = st[0].verts[..],
+    indices = st[0].indices[..],
+    nodes = st[0].nodes[..],
+    mats = st[0].mats[..],
+  };
+  mv_doc_reset(st[0].doc[..]);
+}
+
+oa_mv_load :: (st: [] MvHostState, path: string, raw: [] u8, extra_bin: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  st[0].doc[0].verts = st[0].verts[..];
+  st[0].doc[0].indices = st[0].indices[..];
+  st[0].doc[0].nodes = st[0].nodes[..];
+  st[0].doc[0].mats = st[0].mats[..];
+  return mv_load(st[0].doc[..], path, raw, extra_bin);
+}
+
+oa_mv_ok :: (st: [] MvHostState) -> bool #export_c #effects(all) {
+  return st.count > 0 && st[0].doc[0].ok;
+}
+
+oa_mv_format :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].format else MV_FMT_UNKNOWN;
+}
+
+oa_mv_z_up :: (st: [] MvHostState) -> bool #export_c #effects(all) {
+  return st.count > 0 && st[0].doc[0].z_up;
+}
+
+oa_mv_vert_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].nverts else 0;
+}
+
+oa_mv_index_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].nindices else 0;
+}
+
+oa_mv_node_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].nnodes else 0;
+}
+
+oa_mv_mat_count :: (st: [] MvHostState) -> int #export_c #effects(all) {
+  return ifx st.count > 0 then st[0].doc[0].nmats else 0;
+}
+
+// Copies packed interleaved 12-float (48B) vertices into caller buffer. Returns float count written.
+oa_mv_copy_verts :: (st: [] MvHostState, out: [] f32) -> int #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  nv := st[0].doc[0].nverts;
+  if nv * 12 > out.count { nv = out.count / 12; }
+  for i: 0..<nv {
+    v := st[0].verts[i];
+    o := i * 12;
+    out[o] = v.px; out[o + 1] = v.py; out[o + 2] = v.pz;
+    out[o + 3] = v.nx; out[o + 4] = v.ny; out[o + 5] = v.nz;
+    out[o + 6] = v.u;  out[o + 7] = v.v;
+    out[o + 8] = v.r;  out[o + 9] = v.g; out[o + 10] = v.b; out[o + 11] = v.a;
+  }
+  return nv * 12;
+}
+
+oa_mv_copy_indices :: (st: [] MvHostState, out: [] u32) -> int #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  ni := st[0].doc[0].nindices;
+  if ni > out.count { ni = out.count; }
+  for i: 0..<ni { out[i] = st[0].indices[i]; }
+  return ni;
+}
+
+// out[0..5] = min_x, min_y, min_z, max_x, max_y, max_z
+oa_mv_bounds :: (st: [] MvHostState, out: [] f32) -> bool #export_c #effects(all) {
+  if st.count < 1 || out.count < 6 || !st[0].doc[0].ok { return false; }
+  d := st[0].doc[0];
+  out[0] = d.min_x; out[1] = d.min_y; out[2] = d.min_z;
+  out[3] = d.max_x; out[4] = d.max_y; out[5] = d.max_z;
+  return true;
+}
+
+// out_meta[0..4] = first_idx, idx_count, mat_idx, visible(0|1), selected(0|1)
+oa_mv_node_info :: (st: [] MvHostState, idx: int, out_meta: [] int, out_label: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 || idx < 0 || idx >= st[0].doc[0].nnodes { return 0; }
+  nd := st[0].nodes[idx];
+  if out_meta.count >= 5 {
+    out_meta[0] = nd.first_idx;
+    out_meta[1] = nd.idx_count;
+    out_meta[2] = nd.mat_idx;
+    out_meta[3] = ifx nd.visible then 1 else 0;
+    out_meta[4] = ifx nd.selected then 1 else 0;
+  }
+  return mv_copy_str(out_label, cast(string) st[0].nodes[idx].label[0..<nd.label_n]);
+}
+
+oa_mv_node_set_visible :: (st: [] MvHostState, idx: int, visible: bool) #export_c #effects(all) {
+  if st.count < 1 || idx < 0 || idx >= st[0].doc[0].nnodes { return; }
+  st[0].nodes[idx].visible = visible;
+}
+
+oa_mv_node_select :: (st: [] MvHostState, idx: int) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  for i: 0..<st[0].doc[0].nnodes { st[0].nodes[i].selected = i == idx; }
+}
+
+// out_rgba_mr[0..5] = r, g, b, a, metallic, roughness; out_tex[0..1] = tex_off, tex_len
+oa_mv_mat_info :: (st: [] MvHostState, idx: int, out_rgba_mr: [] f32, out_tex: [] int) -> bool #export_c #effects(all) {
+  if st.count < 1 || idx < 0 || idx >= st[0].doc[0].nmats { return false; }
+  mt := st[0].mats[idx];
+  if out_rgba_mr.count >= 6 {
+    out_rgba_mr[0] = mt.r; out_rgba_mr[1] = mt.g; out_rgba_mr[2] = mt.b; out_rgba_mr[3] = mt.a;
+    out_rgba_mr[4] = mt.metallic; out_rgba_mr[5] = mt.roughness;
+  }
+  if out_tex.count >= 2 {
+    out_tex[0] = mt.tex_off;
+    out_tex[1] = mt.tex_len;
+  }
+  return true;
+}
+
+oa_mv_pick :: (st: [] MvHostState, ox: f32, oy: f32, oz: f32, dx: f32, dy: f32, dz: f32, out_hit: [] f32) -> int #export_c #effects(all) {
+  if st.count < 1 || !st[0].doc[0].ok { return -1; }
+  return mv_pick_ray(st[0].doc[..], ox, oy, oz, dx, dy, dz, out_hit);
+}
+
+oa_mv_tree_tsv :: (st: [] MvHostState, out: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  return mv_write_tree_tsv(st[0].doc[..], out);
+}
+
+oa_mv_stats :: (st: [] MvHostState, out: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  return mv_copy_str(out, cast(string) st[0].doc[0].stats[0..<st[0].doc[0].stats_n]);
+}
+
+oa_mv_err :: (st: [] MvHostState, out: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  return mv_copy_str(out, cast(string) st[0].doc[0].err[0..<st[0].doc[0].err_n]);
+}

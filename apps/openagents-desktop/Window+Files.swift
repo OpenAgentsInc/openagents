@@ -12,6 +12,9 @@ extension CoderWindow {
     /// images, PDFs, binary hex).
     func openNamedFile(_ url: URL, jumpRange: (Int, Int)? = nil) {
         #if OA_FULL
+        if (FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder)) && openInMetaverseIfApplicable(url, autoOpened: false) {
+            return
+        }
         if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
             openFileInPane(url, jumpRange: nil)
             return

@@ -1,0 +1,892 @@
+// Firm reason: 6 (AppKit/Metal/ModelIO 3D viewport over CAMetalLayer running Coax-emitted Metal shaders and metaverse-viewer.o).
+// Unified native macOS Metal viewport for the expandable right-side Metaverse Viewer & GameBuilder pane (GitHub #14041).
+import AppKit
+import Metal
+import ModelIO
+import QuartzCore
+import ImageIO
+import UniformTypeIdentifiers
+import simd
+
+final class MetaverseTabScene {
+    let path: String
+    var handle: UnsafeMutableRawPointer?
+    var vertexBuffer: MTLBuffer?
+    var indexBuffer: MTLBuffer?
+    var vertexCount: Int = 0
+    var indexCount: Int = 0
+    var zUp: Bool = false
+    var boundsMin = SIMD3<Float>(-1, -1, -1)
+    var boundsMax = SIMD3<Float>(1, 1, 1)
+    var statsText: String = ""
+    var errorText: String = ""
+    var treeTSV: String = ""
+
+    struct NodeDraw {
+        let index: Int
+        let firstIndex: Int
+        let indexCount: Int
+        let matIndex: Int
+        var visible: Bool
+        var selected: Bool
+        let label: String
+    }
+
+    struct MatInfo {
+        let baseColor: SIMD4<Float>
+        let metallic: Float
+        let roughness: Float
+        var texture: MTLTexture?
+    }
+
+    var nodes: [NodeDraw] = []
+    var materials: [MatInfo] = []
+
+    // Per-tab camera & view state
+    var target = SIMD3<Float>(0, 0, 0)
+    var distance: Float = 5.0
+    var azimuth: Float = .pi * 0.25
+    var elevation: Float = 0.45
+    var flyMode: Bool = false
+    var flyPos = SIMD3<Float>(0, 2, 5)
+    var shadingMode: Int = 0          // 0 Lit PBR, 1 Clay, 2 Normals, 3 Unlit, 4 Wire
+    var overlayMask: Int = 1 | 16     // Grid + Stats by default
+    var zSliceNormalized: Float = 1.0 // 1.0 = full height
+    var selectedNode: Int = -1
+    var lastHitWorld = SIMD3<Float>(0, 0, 0)
+
+    init(path: String) {
+        self.path = path
+    }
+
+    deinit {
+        if let h = handle { oa_mv_free(h) }
+    }
+
+    var boundsCenter: SIMD3<Float> { (boundsMin + boundsMax) * 0.5 }
+    var boundsExtent: SIMD3<Float> { max(boundsMax - boundsMin, SIMD3<Float>(repeating: 0.05)) }
+    var boundsRadius: Float { max(0.25, simd_length(boundsExtent) * 0.5) }
+
+    var eyePosition: SIMD3<Float> {
+        if flyMode { return flyPos }
+        let ce = cos(elevation)
+        if zUp {
+            return target + SIMD3<Float>(cos(azimuth) * ce, sin(azimuth) * ce, sin(elevation)) * distance
+        } else {
+            return target + SIMD3<Float>(sin(azimuth) * ce, sin(elevation), cos(azimuth) * ce) * distance
+        }
+    }
+
+    var lookTarget: SIMD3<Float> {
+        if !flyMode { return target }
+        let ce = cos(elevation)
+        let fwd = zUp
+            ? SIMD3<Float>(-cos(azimuth) * ce, -sin(azimuth) * ce, -sin(elevation))
+            : SIMD3<Float>(-sin(azimuth) * ce, -sin(elevation), -cos(azimuth) * ce)
+        return flyPos + fwd
+    }
+
+    func applyPreset(_ name: String) {
+        let c = boundsCenter
+        let r = boundsRadius
+        target = c
+        distance = r * 2.35
+        switch name {
+        case "front":
+            azimuth = 0.0
+            elevation = 0.08
+        case "right":
+            azimuth = .pi * 0.5
+            elevation = 0.08
+        case "top":
+            azimuth = 0.0
+            elevation = 1.54
+        case "under":
+            azimuth = .pi * 0.25
+            elevation = -0.35
+        default: // "iso", "focus"
+            azimuth = .pi * 0.25
+            elevation = 0.48
+        }
+        flyPos = eyePosition
+    }
+
+    func viewMatrix() -> simd_float4x4 {
+        let e = eyePosition
+        let t = lookTarget
+        let f = simd_normalize(t - e)
+        let upHint = zUp
+            ? (abs(f.z) > 0.995 ? SIMD3<Float>(0, 1, 0) : SIMD3<Float>(0, 0, 1))
+            : (abs(f.y) > 0.995 ? SIMD3<Float>(0, 0, -1) : SIMD3<Float>(0, 1, 0))
+        let r = simd_normalize(simd_cross(f, upHint))
+        let u = simd_cross(r, f)
+        return simd_float4x4(
+            SIMD4<Float>(r.x, u.x, -f.x, 0),
+            SIMD4<Float>(r.y, u.y, -f.y, 0),
+            SIMD4<Float>(r.z, u.z, -f.z, 0),
+            SIMD4<Float>(-simd_dot(r, e), -simd_dot(u, e), simd_dot(f, e), 1)
+        )
+    }
+
+    func projMatrix(aspect: Float) -> simd_float4x4 {
+        let fovY: Float = 45.0 * .pi / 180.0
+        let nearZ = max(0.02, boundsRadius * 0.004)
+        let farZ = max(250.0, boundsRadius * 30.0)
+        let ys = 1.0 / tan(fovY * 0.5)
+        let xs = ys / max(0.01, aspect)
+        let zs = farZ / (nearZ - farZ)
+        return simd_float4x4(
+            SIMD4<Float>(xs, 0, 0, 0),
+            SIMD4<Float>(0, ys, 0, 0),
+            SIMD4<Float>(0, 0, zs, -1),
+            SIMD4<Float>(0, 0, nearZ * zs, 0)
+        )
+    }
+}
+
+final class MetaverseViewportView: NSView {
+    private let metalLayer = CAMetalLayer()
+    private var device: MTLDevice?
+    private var queue: MTLCommandQueue?
+    private var triPipeline: MTLRenderPipelineState?
+    private var linePipeline: MTLRenderPipelineState?
+    private var depthState: MTLDepthStencilState?
+    private var depthTexture: MTLTexture?
+    private var depthSize: CGSize = .zero
+    private var defaultWhiteTex: MTLTexture?
+    private var linearSampler: MTLSamplerState?
+
+    private var gridVertexBuffer: MTLBuffer?
+    private var gridVertexCount: Int = 0
+    private var boundsVertexBuffer: MTLBuffer?
+
+    private let hudLabel = NSTextField(labelWithString: "")
+    private let maskLayer = CAShapeLayer()
+    private var holeRects: [NSRect] = []
+
+    private(set) var activeScene: MetaverseTabScene?
+    private var lastMouse: NSPoint = .zero
+    private var downMouse: NSPoint = .zero
+    private var dragging = false
+    private var dragPanning = false
+    private var needsRedraw = true
+
+    var onNodePicked: ((Int, String, SIMD3<Float>) -> Void)?
+    var onFocusRequested: (() -> Void)?
+    var onFilesDropped: (([URL]) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    private func setupView() {
+        wantsLayer = true
+        let root = CALayer()
+        root.backgroundColor = NSColor(calibratedRed: 0.045, green: 0.052, blue: 0.065, alpha: 1.0).cgColor
+        layer = root
+
+        device = MTLCreateSystemDefaultDevice()
+        queue = device?.makeCommandQueue()
+
+        metalLayer.device = device
+        metalLayer.pixelFormat = .bgra8Unorm
+        metalLayer.framebufferOnly = false
+        metalLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        root.addSublayer(metalLayer)
+
+        maskLayer.fillRule = .evenOdd
+
+        hudLabel.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        hudLabel.textColor = NSColor(calibratedWhite: 0.80, alpha: 0.92)
+        hudLabel.backgroundColor = NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.09, alpha: 0.72)
+        hudLabel.drawsBackground = true
+        hudLabel.isBezeled = false
+        hudLabel.isEditable = false
+        hudLabel.wantsLayer = true
+        hudLabel.layer?.cornerRadius = 5
+        hudLabel.layer?.masksToBounds = true
+        hudLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hudLabel)
+        NSLayoutConstraint.activate([
+            hudLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            hudLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+
+        registerForDraggedTypes([.fileURL])
+        buildPipelines()
+        buildDefaultResources()
+        buildGridGeometry(zUp: false, radius: 5.0)
+    }
+
+    private func buildPipelines() {
+        guard let device else { return }
+        let metalPath = Bundle.main.resourceURL?.appendingPathComponent("Components/metaverse-model.metal").path
+        guard let path = metalPath, let src = try? String(contentsOfFile: path, encoding: .utf8) else {
+            fputs("MetaverseViewportView: missing Components/metaverse-model.metal\n", stderr)
+            return
+        }
+        let opts = MTLCompileOptions()
+        opts.fastMathEnabled = false
+        opts.languageVersion = .version2_3
+        guard let lib = try? device.makeLibrary(source: src, options: opts),
+              let vs = lib.makeFunction(name: "mv_vs"),
+              let fs = lib.makeFunction(name: "mv_fs") else {
+            fputs("MetaverseViewportView: failed to compile Coax metaverse-model.metal\n", stderr)
+            return
+        }
+
+        // Exact layout reflected by coax metal model-view-shader.coax:
+        // vertex-buffer 30, stride 48: attr0 float3@0, attr1 float3@12, attr2 float2@24, attr3 float4@32
+        let vd = MTLVertexDescriptor()
+        vd.attributes[0].format = .float3; vd.attributes[0].offset = 0;  vd.attributes[0].bufferIndex = 30
+        vd.attributes[1].format = .float3; vd.attributes[1].offset = 12; vd.attributes[1].bufferIndex = 30
+        vd.attributes[2].format = .float2; vd.attributes[2].offset = 24; vd.attributes[2].bufferIndex = 30
+        vd.attributes[3].format = .float4; vd.attributes[3].offset = 32; vd.attributes[3].bufferIndex = 30
+        vd.layouts[30].stride = 48
+        vd.layouts[30].stepFunction = .perVertex
+
+        let desc = MTLRenderPipelineDescriptor()
+        desc.vertexFunction = vs
+        desc.fragmentFunction = fs
+        desc.vertexDescriptor = vd
+        desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+        desc.colorAttachments[0].isBlendingEnabled = true
+        desc.colorAttachments[0].rgbBlendOperation = .add
+        desc.colorAttachments[0].alphaBlendOperation = .add
+        desc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        desc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        desc.colorAttachments[0].sourceAlphaBlendFactor = .one
+        desc.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        desc.depthAttachmentPixelFormat = .depth32Float
+
+        triPipeline = try? device.makeRenderPipelineState(descriptor: desc)
+        linePipeline = triPipeline
+
+        let ds = MTLDepthStencilDescriptor()
+        ds.depthCompareFunction = .lessEqual
+        ds.isDepthWriteEnabled = true
+        depthState = device.makeDepthStencilState(descriptor: ds)
+    }
+
+    private func buildDefaultResources() {
+        guard let device else { return }
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
+        td.usage = .shaderRead
+        if let tex = device.makeTexture(descriptor: td) {
+            var white: [UInt8] = [255, 255, 255, 255]
+            tex.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &white, bytesPerRow: 4)
+            defaultWhiteTex = tex
+        }
+        let sd = MTLSamplerDescriptor()
+        sd.minFilter = .linear
+        sd.magFilter = .linear
+        sd.sAddressMode = .repeat
+        sd.tAddressMode = .repeat
+        linearSampler = device.makeSamplerState(descriptor: sd)
+    }
+
+    private func decodeTexture(_ data: Data) -> MTLTexture? {
+        guard let device,
+              let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+        let w = min(cg.width, 2048), h = min(cg.height, 2048)
+        guard w > 0, h > 0 else { return nil }
+        var rgba = [UInt8](repeating: 255, count: w * h * 4)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: &rgba, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            return nil
+        }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+        td.usage = .shaderRead
+        guard let tex = device.makeTexture(descriptor: td) else { return nil }
+        tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: rgba, bytesPerRow: w * 4)
+        return tex
+    }
+
+    private func buildGridGeometry(zUp: Bool, radius: Float) {
+        guard let device else { return }
+        let step = max(0.5, pow(10.0, floor(log10(max(0.5, radius * 0.4)))))
+        let halfLines = 12
+        let extent = step * Float(halfLines)
+        var verts: [Float] = []
+        verts.reserveCapacity((halfLines * 2 + 1) * 4 * 12)
+        func push(_ x: Float, _ y: Float, _ z: Float, _ r: Float, _ g: Float, _ b: Float, _ a: Float) {
+            verts.append(contentsOf: [x, y, z, 0, 1, 0, 0, 0, r, g, b, a])
+        }
+        for i in -halfLines...halfLines {
+            let p = Float(i) * step
+            let major = (i == 0)
+            let c: Float = major ? 0.38 : 0.20
+            let a: Float = major ? 0.65 : 0.35
+            if zUp {
+                push(-extent, p, 0, major ? 0.72 : c, c, c, a)
+                push( extent, p, 0, major ? 0.72 : c, c, c, a)
+                push(p, -extent, 0, c, major ? 0.72 : c, c, a)
+                push(p,  extent, 0, c, major ? 0.72 : c, c, a)
+            } else {
+                push(-extent, 0, p, major ? 0.72 : c, c, c, a)
+                push( extent, 0, p, major ? 0.72 : c, c, c, a)
+                push(p, 0, -extent, c, c, major ? 0.78 : c, a)
+                push(p, 0,  extent, c, c, major ? 0.78 : c, a)
+            }
+        }
+        gridVertexCount = verts.count / 12
+        gridVertexBuffer = device.makeBuffer(bytes: verts, length: verts.count * MemoryLayout<Float>.stride, options: .storageModeShared)
+    }
+
+    private func buildBoundsGeometry(minV: SIMD3<Float>, maxV: SIMD3<Float>) {
+        guard let device else { return }
+        let x0 = minV.x, y0 = minV.y, z0 = minV.z
+        let x1 = maxV.x, y1 = maxV.y, z1 = maxV.z
+        let corners: [SIMD3<Float>] = [
+            SIMD3(x0,y0,z0), SIMD3(x1,y0,z0), SIMD3(x1,y1,z0), SIMD3(x0,y1,z0),
+            SIMD3(x0,y0,z1), SIMD3(x1,y0,z1), SIMD3(x1,y1,z1), SIMD3(x0,y1,z1),
+        ]
+        let edges: [(Int,Int)] = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
+        var verts: [Float] = []
+        verts.reserveCapacity(24 * 12)
+        for (a, b) in edges {
+            let pa = corners[a], pb = corners[b]
+            verts.append(contentsOf: [pa.x, pa.y, pa.z, 0, 1, 0, 0, 0, 0.22, 0.83, 0.75, 0.85])
+            verts.append(contentsOf: [pb.x, pb.y, pb.z, 0, 1, 0, 0, 0, 0.22, 0.83, 0.75, 0.85])
+        }
+        boundsVertexBuffer = device.makeBuffer(bytes: verts, length: verts.count * MemoryLayout<Float>.stride, options: .storageModeShared)
+    }
+
+    /// Loads any 3D file using pure-Coax `metaverse-viewer.o` (with ModelIO fallback for USD/USDZ).
+    func loadScene(from url: URL, preserveCameraFrom prev: MetaverseTabScene? = nil) -> MetaverseTabScene {
+        let scene = MetaverseTabScene(path: url.path)
+        let ext = url.pathExtension.lowercased()
+
+        if ext == "usdz" || ext == "usd" || ext == "usda" || ext == "usdc" {
+            loadViaModelIO(url: url, into: scene)
+        } else {
+            loadViaCoaxCore(url: url, into: scene)
+        }
+
+        if let prev, prev.path == scene.path {
+            scene.target = prev.target
+            scene.distance = prev.distance
+            scene.azimuth = prev.azimuth
+            scene.elevation = prev.elevation
+            scene.flyMode = prev.flyMode
+            scene.flyPos = prev.flyPos
+            scene.shadingMode = prev.shadingMode
+            scene.overlayMask = prev.overlayMask
+            scene.zSliceNormalized = prev.zSliceNormalized
+        } else {
+            scene.applyPreset("iso")
+        }
+        return scene
+    }
+
+    private func loadViaCoaxCore(url: URL, into scene: MetaverseTabScene) {
+        guard let device else { scene.errorText = "Metal GPU device unavailable."; return }
+        guard let raw = try? Data(contentsOf: url) else {
+            scene.errorText = "Could not read \(url.lastPathComponent)."
+            return
+        }
+        // For text .gltf, resolve a safe sibling .bin buffer if referenced.
+        var extraBin = Data()
+        if url.pathExtension.lowercased() == "gltf",
+           let obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
+           let bufs = obj["buffers"] as? [[String: Any]],
+           let uri = bufs.first?["uri"] as? String {
+            let safe = DesktopCore.withCoaxString(uri) { oa_dc_mv_gltf_uri_safe($0) } != 0
+            if safe {
+                let sib = url.deletingLastPathComponent().appendingPathComponent(uri).standardizedFileURL
+                if sib.path.hasPrefix(url.deletingLastPathComponent().standardizedFileURL.path),
+                   let bd = try? Data(contentsOf: sib) {
+                    extraBin = bd
+                }
+            }
+        }
+        guard let h = oa_mv_alloc() else { scene.errorText = "Out of memory allocating 3D viewer state."; return }
+        scene.handle = h
+        let ok: Int32 = raw.withUnsafeBytes { rptr in
+            extraBin.withUnsafeBytes { eptr in
+                oa_mv_load_buf(
+                    h, url.path,
+                    rptr.bindMemory(to: UInt8.self).baseAddress, Int32(raw.count),
+                    eptr.bindMemory(to: UInt8.self).baseAddress, Int32(extraBin.count)
+                )
+            }
+        }
+        if ok == 0 {
+            var errBuf = [CChar](repeating: 0, count: 256)
+            _ = oa_mv_get_err(h, &errBuf, Int32(errBuf.count))
+            scene.errorText = String(cString: errBuf)
+            return
+        }
+
+        let nv = Int(oa_mv_get_vert_count(h))
+        let ni = Int(oa_mv_get_index_count(h))
+        let nn = Int(oa_mv_get_node_count(h))
+        let nm = Int(oa_mv_get_mat_count(h))
+        scene.vertexCount = nv
+        scene.indexCount = ni
+        scene.zUp = oa_mv_is_z_up(h) != 0
+
+        var vbuf = [Float](repeating: 0, count: nv * 12)
+        _ = oa_mv_read_verts(h, &vbuf, Int32(vbuf.count))
+        scene.vertexBuffer = device.makeBuffer(bytes: vbuf, length: vbuf.count * MemoryLayout<Float>.stride, options: .storageModeShared)
+
+        var ibuf = [UInt32](repeating: 0, count: ni)
+        _ = oa_mv_read_indices(h, &ibuf, Int32(ibuf.count))
+        scene.indexBuffer = device.makeBuffer(bytes: ibuf, length: ibuf.count * MemoryLayout<UInt32>.stride, options: .storageModeShared)
+
+        var b = [Float](repeating: 0, count: 6)
+        if oa_mv_get_bounds(h, &b) != 0 {
+            scene.boundsMin = SIMD3<Float>(b[0], b[1], b[2])
+            scene.boundsMax = SIMD3<Float>(b[3], b[4], b[5])
+        }
+
+        var statsBuf = [CChar](repeating: 0, count: 128)
+        _ = oa_mv_get_stats(h, &statsBuf, Int32(statsBuf.count))
+        scene.statsText = String(cString: statsBuf)
+
+        var tsvBuf = [CChar](repeating: 0, count: 16384)
+        _ = oa_mv_get_tree_tsv(h, &tsvBuf, Int32(tsvBuf.count))
+        scene.treeTSV = String(cString: tsvBuf)
+
+        scene.materials = (0..<nm).map { mi in
+            var mr = [Float](repeating: 0, count: 6)
+            var tx = [Int64](repeating: -1, count: 2)
+            _ = oa_mv_get_mat_info(h, Int32(mi), &mr, &tx)
+            var mtlTex: MTLTexture?
+            if tx[0] >= 0 && tx[1] > 0 && Int(tx[0] + tx[1]) <= raw.count {
+                let slice = raw.subdata(in: Int(tx[0])..<Int(tx[0] + tx[1]))
+                mtlTex = decodeTexture(slice)
+            }
+            return MetaverseTabScene.MatInfo(
+                baseColor: SIMD4<Float>(mr[0], mr[1], mr[2], mr[3]),
+                metallic: mr[4], roughness: mr[5], texture: mtlTex
+            )
+        }
+
+        scene.nodes = (0..<nn).map { i in
+            var meta = [Int64](repeating: 0, count: 5)
+            var lbl = [CChar](repeating: 0, count: 64)
+            _ = oa_mv_get_node_info(h, Int32(i), &meta, &lbl, Int32(lbl.count))
+            return MetaverseTabScene.NodeDraw(
+                index: i, firstIndex: Int(meta[0]), indexCount: Int(meta[1]),
+                matIndex: Int(meta[2]), visible: meta[3] != 0, selected: meta[4] != 0,
+                label: String(cString: lbl)
+            )
+        }
+    }
+
+    private func loadViaModelIO(url: URL, into scene: MetaverseTabScene) {
+        guard let device else { scene.errorText = "Metal GPU device unavailable."; return }
+        let asset = MDLAsset(url: url)
+        asset.loadTextures()
+        guard let meshes = asset.childObjects(of: MDLMesh.self) as? [MDLMesh], !meshes.isEmpty else {
+            scene.errorText = "ModelIO found no meshes in \(url.lastPathComponent)."
+            return
+        }
+        var verts: [Float] = []
+        var indices: [UInt32] = []
+        var minV = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var maxV = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+        var tsv = ""
+        scene.materials = [MetaverseTabScene.MatInfo(baseColor: SIMD4<Float>(0.84, 0.86, 0.90, 1), metallic: 0.1, roughness: 0.45, texture: nil)]
+
+        for (mi, mesh) in meshes.enumerated() {
+            if mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributeNormal) == nil {
+                mesh.addNormals(withAttributeNamed: MDLVertexAttributeNormal, creaseThreshold: 0.5)
+            }
+            guard let posAttr = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributePosition) else { continue }
+            let nrmAttr = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributeNormal)
+            let uvAttr = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributeTextureCoordinate)
+            let baseVert = UInt32(verts.count / 12)
+            let vcount = min(mesh.vertexCount, 100_000)
+            for vi in 0..<vcount {
+                let pPtr = posAttr.dataStart.advanced(by: vi * posAttr.stride).assumingMemoryBound(to: Float.self)
+                let p = SIMD3<Float>(pPtr[0], pPtr[1], pPtr[2])
+                minV = min(minV, p); maxV = max(maxV, p)
+                var n = SIMD3<Float>(0, 1, 0)
+                if let nrmAttr {
+                    let nPtr = nrmAttr.dataStart.advanced(by: vi * nrmAttr.stride).assumingMemoryBound(to: Float.self)
+                    n = SIMD3<Float>(nPtr[0], nPtr[1], nPtr[2])
+                }
+                var uv = SIMD2<Float>(0, 0)
+                if let uvAttr {
+                    let uPtr = uvAttr.dataStart.advanced(by: vi * uvAttr.stride).assumingMemoryBound(to: Float.self)
+                    uv = SIMD2<Float>(uPtr[0], uPtr[1])
+                }
+                verts.append(contentsOf: [p.x, p.y, p.z, n.x, n.y, n.z, uv.x, uv.y, 1, 1, 1, 1])
+            }
+            let firstIdx = indices.count
+            if let subs = mesh.submeshes as? [MDLSubmesh] {
+                for sub in subs where sub.geometryType == .triangles {
+                    let map = sub.indexBuffer.map()
+                    let count = sub.indexCount
+                    if sub.indexType == .uInt16 {
+                        let ptr = map.bytes.assumingMemoryBound(to: UInt16.self)
+                        for k in 0..<count { indices.append(baseVert + UInt32(ptr[k])) }
+                    } else if sub.indexType == .uInt32 {
+                        let ptr = map.bytes.assumingMemoryBound(to: UInt32.self)
+                        for k in 0..<count { indices.append(baseVert + ptr[k]) }
+                    }
+                }
+            }
+            let ic = indices.count - firstIdx
+            let name = mesh.name.isEmpty ? "mesh_\(mi)" : mesh.name
+            scene.nodes.append(.init(index: mi, firstIndex: firstIdx, indexCount: ic, matIndex: 0, visible: true, selected: false, label: name))
+            tsv += "0\t1\t0\t\(name)\t\(name)\n"
+        }
+        guard !indices.isEmpty else { scene.errorText = "USD asset has no triangles."; return }
+        scene.vertexCount = verts.count / 12
+        scene.indexCount = indices.count
+        scene.boundsMin = minV
+        scene.boundsMax = maxV
+        scene.treeTSV = tsv
+        scene.statsText = "\(indices.count / 3) tris · \(scene.nodes.count) nodes · USD"
+        scene.vertexBuffer = device.makeBuffer(bytes: verts, length: verts.count * MemoryLayout<Float>.stride, options: .storageModeShared)
+        scene.indexBuffer = device.makeBuffer(bytes: indices, length: indices.count * MemoryLayout<UInt32>.stride, options: .storageModeShared)
+    }
+
+    func setActiveScene(_ scene: MetaverseTabScene?) {
+        activeScene = scene
+        if let scene {
+            buildGridGeometry(zUp: scene.zUp, radius: scene.boundsRadius)
+            buildBoundsGeometry(minV: scene.boundsMin, maxV: scene.boundsMax)
+            hudLabel.stringValue = " \(scene.statsText) "
+            hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
+        } else {
+            hudLabel.isHidden = true
+        }
+        renderNow()
+    }
+
+    func setHoles(_ rects: [NSRect]) {
+        holeRects = rects
+        let path = CGMutablePath()
+        path.addRect(bounds)
+        for r in rects { path.addRect(r) }
+        maskLayer.frame = bounds
+        maskLayer.path = path
+        layer?.mask = rects.isEmpty ? nil : maskLayer
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        for h in holeRects where h.contains(local) { return nil }
+        return super.hitTest(point)
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        metalLayer.frame = bounds
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        metalLayer.contentsScale = scale
+        let pw = max(1, Int((bounds.width * scale).rounded()))
+        let ph = max(1, Int((bounds.height * scale).rounded()))
+        if Int(metalLayer.drawableSize.width) != pw || Int(metalLayer.drawableSize.height) != ph {
+            metalLayer.drawableSize = CGSize(width: pw, height: ph)
+        }
+        CATransaction.commit()
+        if !holeRects.isEmpty { setHoles(holeRects) }
+        renderNow()
+    }
+
+    private func ensureDepthTexture(width: Int, height: Int) {
+        guard let device else { return }
+        if Int(depthSize.width) == width && Int(depthSize.height) == height && depthTexture != nil { return }
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
+        td.storageMode = .private
+        td.usage = .renderTarget
+        depthTexture = device.makeTexture(descriptor: td)
+        depthSize = CGSize(width: width, height: height)
+    }
+
+    private func encodeScene(into enc: MTLRenderCommandEncoder, scene: MetaverseTabScene, aspect: Float) {
+        guard let triPipeline, let depthState, let whiteTex = defaultWhiteTex, let linearSampler else { return }
+        let viewM = scene.viewMatrix()
+        let projM = scene.projMatrix(aspect: aspect)
+        let mvp = projM * viewM
+        let model = matrix_identity_float4x4
+        let eye = scene.eyePosition
+        var lengths: [UInt32] = [48]
+
+        func fillUniforms(baseColor: SIMD4<Float>, metallic: Float, roughness: Float, hasTex: Bool, selected: Bool, modeOverride: Int? = nil) -> [Float] {
+            var u = [Float](repeating: 0, count: 48)
+            withUnsafeBytes(of: mvp) { ptr in
+                let f = ptr.bindMemory(to: Float.self)
+                for k in 0..<16 { u[k] = f[k] }
+            }
+            withUnsafeBytes(of: model) { ptr in
+                let f = ptr.bindMemory(to: Float.self)
+                for k in 0..<16 { u[16 + k] = f[k] }
+            }
+            u[32] = eye.x; u[33] = eye.y; u[34] = eye.z
+            u[35] = Float(modeOverride ?? scene.shadingMode)
+            u[36] = 0.45; u[37] = scene.zUp ? 0.55 : 0.82; u[38] = scene.zUp ? 0.70 : 0.35
+            let sliceEnabled = (scene.overlayMask & 4) != 0
+            u[39] = sliceEnabled ? (scene.boundsMin.z + scene.boundsExtent.z * scene.zSliceNormalized) : 100000.0
+            u[40] = baseColor.x; u[41] = baseColor.y; u[42] = baseColor.z; u[43] = baseColor.w
+            u[44] = metallic; u[45] = roughness
+            u[46] = hasTex ? 1.0 : 0.0
+            u[47] = selected ? 1.0 : 0.0
+            return u
+        }
+
+        enc.setRenderPipelineState(triPipeline)
+        enc.setDepthStencilState(depthState)
+        enc.setFragmentSamplerState(linearSampler, index: 0)
+        enc.setVertexBytes(&lengths, length: 4, index: 29)
+        enc.setFragmentBytes(&lengths, length: 4, index: 29)
+
+        // Optional studio ground grid
+        if (scene.overlayMask & 1) != 0, let gridBuf = gridVertexBuffer, gridVertexCount > 0 {
+            var gu = fillUniforms(baseColor: SIMD4<Float>(1, 1, 1, 1), metallic: 0, roughness: 1, hasTex: false, selected: false, modeOverride: 4)
+            enc.setTriangleFillMode(.fill)
+            enc.setVertexBuffer(gridBuf, offset: 0, index: 30)
+            enc.setVertexBytes(&gu, length: gu.count * 4, index: 0)
+            enc.setFragmentBytes(&gu, length: gu.count * 4, index: 0)
+            enc.setFragmentTexture(whiteTex, index: 0)
+            enc.drawPrimitives(type: .line, vertexStart: 0, vertexCount: gridVertexCount)
+        }
+
+        // Optional bounding box wireframe
+        if (scene.overlayMask & 2) != 0, let bBuf = boundsVertexBuffer {
+            var bu = fillUniforms(baseColor: SIMD4<Float>(1, 1, 1, 1), metallic: 0, roughness: 1, hasTex: false, selected: false, modeOverride: 4)
+            enc.setTriangleFillMode(.fill)
+            enc.setVertexBuffer(bBuf, offset: 0, index: 30)
+            enc.setVertexBytes(&bu, length: bu.count * 4, index: 0)
+            enc.setFragmentBytes(&bu, length: bu.count * 4, index: 0)
+            enc.setFragmentTexture(whiteTex, index: 0)
+            enc.drawPrimitives(type: .line, vertexStart: 0, vertexCount: 24)
+        }
+
+        // Scene mesh nodes
+        guard let vb = scene.vertexBuffer, let ib = scene.indexBuffer, scene.indexCount > 0 else { return }
+        enc.setVertexBuffer(vb, offset: 0, index: 30)
+        enc.setTriangleFillMode(scene.shadingMode == 4 ? .lines : .fill)
+
+        for nd in scene.nodes where nd.visible && nd.indexCount >= 3 {
+            let mat = nd.matIndex >= 0 && nd.matIndex < scene.materials.count
+                ? scene.materials[nd.matIndex]
+                : MetaverseTabScene.MatInfo(baseColor: SIMD4<Float>(0.85, 0.87, 0.90, 1), metallic: 0.05, roughness: 0.55, texture: nil)
+            let tex = mat.texture ?? whiteTex
+            var u = fillUniforms(
+                baseColor: mat.baseColor, metallic: mat.metallic, roughness: mat.roughness,
+                hasTex: mat.texture != nil, selected: nd.selected || nd.index == scene.selectedNode
+            )
+            enc.setVertexBytes(&u, length: u.count * 4, index: 0)
+            enc.setFragmentBytes(&u, length: u.count * 4, index: 0)
+            enc.setFragmentTexture(tex, index: 0)
+            enc.drawIndexedPrimitives(
+                type: .triangle,
+                indexCount: nd.indexCount,
+                indexType: .uint32,
+                indexBuffer: ib,
+                indexBufferOffset: nd.firstIndex * MemoryLayout<UInt32>.stride
+            )
+        }
+    }
+
+    func renderNow() {
+        guard !isHidden, bounds.width > 1, bounds.height > 1,
+              let queue, let scene = activeScene,
+              let drawable = metalLayer.nextDrawable() else { return }
+        let w = drawable.texture.width, h = drawable.texture.height
+        ensureDepthTexture(width: w, height: h)
+        guard let depthTexture, let cb = queue.makeCommandBuffer() else { return }
+
+        let rp = MTLRenderPassDescriptor()
+        rp.colorAttachments[0].texture = drawable.texture
+        rp.colorAttachments[0].loadAction = .clear
+        rp.colorAttachments[0].storeAction = .store
+        rp.colorAttachments[0].clearColor = MTLClearColor(red: 0.055, green: 0.062, blue: 0.078, alpha: 1.0)
+        rp.depthAttachment.texture = depthTexture
+        rp.depthAttachment.loadAction = .clear
+        rp.depthAttachment.storeAction = .dontCare
+        rp.depthAttachment.clearDepth = 1.0
+
+        if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
+            enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(w), height: Double(h), znear: 0, zfar: 1))
+            encodeScene(into: enc, scene: scene, aspect: Float(w) / max(1, Float(h)))
+            enc.endEncoding()
+        }
+        cb.present(drawable)
+        cb.commit()
+        hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
+    }
+
+    /// Renders an offscreen PNG snapshot of the active 3D scene for Snapshot-to-Chat.
+    func capturePNG(width: Int = 1280, height: Int = 800) -> Data? {
+        guard let device, let queue, let scene = activeScene else { return nil }
+        let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        cd.usage = [.renderTarget, .shaderRead]
+        cd.storageMode = .shared
+        let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
+        dd.usage = .renderTarget
+        dd.storageMode = .private
+        guard let colorTex = device.makeTexture(descriptor: cd),
+              let dTex = device.makeTexture(descriptor: dd),
+              let cb = queue.makeCommandBuffer() else { return nil }
+        let rp = MTLRenderPassDescriptor()
+        rp.colorAttachments[0].texture = colorTex
+        rp.colorAttachments[0].loadAction = .clear
+        rp.colorAttachments[0].storeAction = .store
+        rp.colorAttachments[0].clearColor = MTLClearColor(red: 0.055, green: 0.062, blue: 0.078, alpha: 1.0)
+        rp.depthAttachment.texture = dTex
+        rp.depthAttachment.loadAction = .clear
+        rp.depthAttachment.storeAction = .dontCare
+        rp.depthAttachment.clearDepth = 1.0
+        if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
+            enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(width), height: Double(height), znear: 0, zfar: 1))
+            encodeScene(into: enc, scene: scene, aspect: Float(width) / Float(height))
+            enc.endEncoding()
+        }
+        cb.commit()
+        cb.waitUntilCompleted()
+
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        colorTex.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+        guard let prov = CGDataProvider(data: Data(bytes) as CFData),
+              let cg = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4, space: cs, bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo), provider: prov, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
+            return nil
+        }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cg, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return out as Data
+    }
+
+    // MARK: - Pointer Orbit / Pan / Zoom / Raycast Pick
+
+    override func mouseDown(with event: NSEvent) {
+        onFocusRequested?()
+        let p = convert(event.locationInWindow, from: nil)
+        downMouse = p
+        lastMouse = p
+        dragging = true
+        dragPanning = event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onFocusRequested?()
+        let p = convert(event.locationInWindow, from: nil)
+        downMouse = p
+        lastMouse = p
+        dragging = true
+        dragPanning = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        handleDrag(event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        handleDrag(event)
+    }
+
+    private func handleDrag(_ event: NSEvent) {
+        guard dragging, let scene = activeScene else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        let dx = Float(p.x - lastMouse.x)
+        let dy = Float(p.y - lastMouse.y)
+        lastMouse = p
+
+        if dragPanning && !scene.flyMode {
+            let e = scene.eyePosition
+            let f = simd_normalize(scene.target - e)
+            let upHint = scene.zUp ? SIMD3<Float>(0, 0, 1) : SIMD3<Float>(0, 1, 0)
+            let r = simd_normalize(simd_cross(f, upHint))
+            let u = simd_cross(r, f)
+            let scale = scene.distance * 0.0018
+            scene.target -= r * (dx * scale)
+            scene.target -= u * (dy * scale)
+        } else {
+            scene.azimuth -= dx * 0.008
+            scene.elevation = max(-1.52, min(1.52, scene.elevation - dy * 0.008))
+        }
+        renderNow()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { dragging = false; dragPanning = false }
+        let p = convert(event.locationInWindow, from: nil)
+        if hypot(p.x - downMouse.x, p.y - downMouse.y) < 4.0 {
+            performPick(at: p)
+        }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        dragging = false; dragPanning = false
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let scene = activeScene else { return }
+        let factor: Float = exp(Float(-event.scrollingDeltaY) * 0.012)
+        if scene.flyMode {
+            let dir = simd_normalize(scene.lookTarget - scene.flyPos)
+            scene.flyPos += dir * Float(event.scrollingDeltaY) * scene.boundsRadius * 0.02
+        } else {
+            scene.distance = max(scene.boundsRadius * 0.15, min(scene.boundsRadius * 20.0, scene.distance * factor))
+        }
+        renderNow()
+    }
+
+    override func magnify(with event: NSEvent) {
+        guard let scene = activeScene else { return }
+        scene.distance = max(scene.boundsRadius * 0.15, min(scene.boundsRadius * 20.0, scene.distance / max(0.2, Float(1.0 + event.magnification))))
+        renderNow()
+    }
+
+    private func performPick(at p: NSPoint) {
+        guard let scene = activeScene, let h = scene.handle, bounds.width > 1, bounds.height > 1 else { return }
+        let nx = Float(p.x / bounds.width) * 2.0 - 1.0
+        let ny = Float(p.y / bounds.height) * 2.0 - 1.0
+        let aspect = Float(bounds.width / bounds.height)
+        let invVP = simd_inverse(scene.projMatrix(aspect: aspect) * scene.viewMatrix())
+        let nearW = invVP * SIMD4<Float>(nx, ny, 0.0, 1.0)
+        let farW  = invVP * SIMD4<Float>(nx, ny, 1.0, 1.0)
+        guard abs(nearW.w) > 1e-6, abs(farW.w) > 1e-6 else { return }
+        let o = SIMD3<Float>(nearW.x, nearW.y, nearW.z) / nearW.w
+        let f = SIMD3<Float>(farW.x, farW.y, farW.z) / farW.w
+        let d = simd_normalize(f - o)
+        var hit = [Float](repeating: 0, count: 3)
+        let idx = Int(oa_mv_ray_pick(h, o.x, o.y, o.z, d.x, d.y, d.z, &hit))
+        scene.selectedNode = idx
+        oa_mv_select_node(h, Int32(idx))
+        for i in 0..<scene.nodes.count { scene.nodes[i].selected = (i == idx) }
+        if idx >= 0 && idx < scene.nodes.count {
+            scene.lastHitWorld = SIMD3<Float>(hit[0], hit[1], hit[2])
+            onNodePicked?(idx, scene.nodes[idx].label, scene.lastHitWorld)
+        } else {
+            onNodePicked?(-1, "", .zero)
+        }
+        renderNow()
+    }
+
+    // MARK: - Drag and Drop 3D Files
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty else {
+            return false
+        }
+        onFilesDropped?(urls)
+        return true
+    }
+}

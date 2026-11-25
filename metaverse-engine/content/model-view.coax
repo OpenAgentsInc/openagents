@@ -1,0 +1,1163 @@
+// Bounded pure-Coax Universal 3D Model & Scene Loader (GitHub #14041).
+// Parses .glb, .gltf, .obj, .stl (binary + ASCII), .gbm (GBM1), .pack (VPK1/2/3),
+// .ple-scene.json, and .ifc (native Coax STEP via ple-ifc.coax) into one unified
+// 48-byte interleaved vertex stream + scene node hierarchy + embedded texture spans,
+// with raycast triangle picking and TSV scene tree export.
+#module "metaverse.engine.content.modelview";
+#load "../anim/gltf-access.coax";
+#load "../import/ple-ifc.coax";
+#load "../host/pack-table.coax";
+
+MV_FMT_UNKNOWN :: 0;
+MV_FMT_GLB     :: 1;
+MV_FMT_GLTF    :: 2;
+MV_FMT_OBJ     :: 3;
+MV_FMT_STL     :: 4;
+MV_FMT_GBM     :: 5;
+MV_FMT_PACK    :: 6;
+MV_FMT_PLE     :: 7;
+MV_FMT_IFC     :: 8;
+
+MV_MAX_INPUT_BYTES :: 67108864; // 64 MiB hard cap
+
+// 12 floats = 48 bytes; matches MvVertIn in metaverse-engine/gpu/model-view-shader.coax 1:1.
+MvVert :: struct {
+  px: f32; py: f32; pz: f32;
+  nx: f32; ny: f32; nz: f32;
+  u: f32;  v: f32;
+  r: f32;  g: f32;  b: f32;  a: f32;
+}
+
+MvMat :: struct {
+  r: f32; g: f32; b: f32; a: f32;
+  metallic: f32;
+  roughness: f32;
+  tex_off: int;   // byte offset in source buffer (GLB embedded image), -1 if none
+  tex_len: int;
+  name: [48] u8; name_n: int;
+}
+
+MvNode :: struct {
+  parent: int;
+  depth: int;
+  first_idx: int;
+  idx_count: int;
+  mat_idx: int;
+  visible: bool;
+  selected: bool;
+  min_x: f32; min_y: f32; min_z: f32;
+  max_x: f32; max_y: f32; max_z: f32;
+  id: [48] u8; id_n: int;
+  label: [64] u8; label_n: int;
+}
+
+MvDoc :: struct {
+  ok: bool;
+  format: int;
+  verts: [] MvVert; nverts: int;
+  indices: [] u32;  nindices: int;
+  nodes: [] MvNode; nnodes: int;
+  mats: [] MvMat;   nmats: int;
+  min_x: f32; min_y: f32; min_z: f32;
+  max_x: f32; max_y: f32; max_z: f32;
+  z_up: bool;
+  err: [256] u8; err_n: int;
+  stats: [128] u8; stats_n: int;
+}
+
+MvMat4 :: struct { m: [16] f32; } // column-major 4x4
+
+mv_m4_ident :: () -> MvMat4 {
+  r: MvMat4;
+  r.m[0] = 1; r.m[5] = 1; r.m[10] = 1; r.m[15] = 1;
+  return r;
+}
+
+mv_m4_mul :: (a: MvMat4, b: MvMat4) -> MvMat4 {
+  r: MvMat4;
+  for col: 0..<4 {
+    for row: 0..<4 {
+      s: f32 = 0;
+      for k: 0..<4 { s += a.m[k * 4 + row] * b.m[col * 4 + k]; }
+      r.m[col * 4 + row] = s;
+    }
+  }
+  return r;
+}
+
+mv_m4_trs :: (tx: f32, ty: f32, tz: f32, qx: f32, qy: f32, qz: f32, qw: f32, sx: f32, sy: f32, sz: f32) -> MvMat4 {
+  qxx := qx * qx; qyy := qy * qy; qzz := qz * qz;
+  xy := qx * qy; xz := qx * qz; yz := qy * qz;
+  wx := qw * qx; wy := qw * qy; wz := qw * qz;
+  r: MvMat4;
+  r.m[0]  = (1.0f32 - 2.0f32 * (qyy + qzz)) * sx;
+  r.m[1]  = (2.0f32 * (xy + wz)) * sx;
+  r.m[2]  = (2.0f32 * (xz - wy)) * sx;
+  r.m[3]  = 0;
+  r.m[4]  = (2.0f32 * (xy - wz)) * sy;
+  r.m[5]  = (1.0f32 - 2.0f32 * (qxx + qzz)) * sy;
+  r.m[6]  = (2.0f32 * (yz + wx)) * sy;
+  r.m[7]  = 0;
+  r.m[8]  = (2.0f32 * (xz + wy)) * sz;
+  r.m[9]  = (2.0f32 * (yz - wx)) * sz;
+  r.m[10] = (1.0f32 - 2.0f32 * (qxx + qyy)) * sz;
+  r.m[11] = 0;
+  r.m[12] = tx; r.m[13] = ty; r.m[14] = tz; r.m[15] = 1;
+  return r;
+}
+
+mv_m4_pt :: (m: MvMat4, x: f32, y: f32, z: f32, out: [] f32) {
+  out[0] = m.m[0] * x + m.m[4] * y + m.m[8]  * z + m.m[12];
+  out[1] = m.m[1] * x + m.m[5] * y + m.m[9]  * z + m.m[13];
+  out[2] = m.m[2] * x + m.m[6] * y + m.m[10] * z + m.m[14];
+}
+
+mv_m4_dir :: (m: MvMat4, x: f32, y: f32, z: f32, out: [] f32) {
+  nx := m.m[0] * x + m.m[4] * y + m.m[8]  * z;
+  ny := m.m[1] * x + m.m[5] * y + m.m[9]  * z;
+  nz := m.m[2] * x + m.m[6] * y + m.m[10] * z;
+  nlen := sqrt(nx * nx + ny * ny + nz * nz);
+  if nlen > 0.000001f32 { out[0] = nx / nlen; out[1] = ny / nlen; out[2] = nz / nlen; }
+  else { out[0] = 0; out[1] = 1; out[2] = 0; }
+}
+
+// ---- small helpers
+
+mv_finite :: (v: f32) -> f32 { return ifx v - v == 0.0f32 then v else 0.0f32; }
+
+mv_copy_str :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+mv_put_str :: (dst: [] u8, at: int, src: string) -> int {
+  k := at;
+  for c: src { if k >= dst.count { break; } dst[k] = c; k += 1; }
+  return k;
+}
+
+mv_put_int :: (dst: [] u8, at: int, v: int) -> int {
+  k := at;
+  n := v;
+  if n < 0 { if k < dst.count { dst[k] = '-'; k += 1; } n = -n; }
+  if n == 0 { if k < dst.count { dst[k] = '0'; k += 1; } return k; }
+  tmp: [24] u8; tn := 0;
+  while n > 0 && tn < 24 { tmp[tn] = cast(u8) ('0' + (n % 10)); n /= 10; tn += 1; }
+  while tn > 0 { tn -= 1; if k < dst.count { dst[k] = tmp[tn]; k += 1; } }
+  return k;
+}
+
+mv_u32_le :: (b: [] u8, at: int) -> u32 {
+  if at < 0 || at + 4 > b.count { return 0; }
+  return cast(u32) b[at] | (cast(u32) b[at + 1] << 8) | (cast(u32) b[at + 2] << 16) | (cast(u32) b[at + 3] << 24);
+}
+
+mv_f32_le :: (b: [] u8, at: int) -> f32 {
+  return mv_finite(f32_from_bits(mv_u32_le(b, at)));
+}
+
+mv_ends_ci_mv :: (s: string, sfx: string) -> bool {
+  if s.count <= sfx.count { return false; }
+  off := s.count - sfx.count;
+  for i: 0..<sfx.count {
+    a := s[off + i]; b := sfx[i];
+    if a >= 'A' && a <= 'Z' { a = a | 32; }
+    if b >= 'A' && b <= 'Z' { b = b | 32; }
+    if a != b { return false; }
+  }
+  return true;
+}
+
+mv_uri_safe :: (uri: string) -> bool {
+  if uri.count == 0 || uri[0] == '/' || uri[0] == '\\' { return false; }
+  for i: 0..<uri.count {
+    if uri[i] == '\\' || uri[i] == 0 { return false; }
+    if uri[i] == ':' { return false; }
+    if i + 1 < uri.count && uri[i] == '.' && uri[i + 1] == '.' { return false; }
+  }
+  return true;
+}
+
+mv_doc_reset :: (doc: [] MvDoc) {
+  doc[0].ok = false;
+  doc[0].format = MV_FMT_UNKNOWN;
+  doc[0].nverts = 0;
+  doc[0].nindices = 0;
+  doc[0].nnodes = 0;
+  doc[0].nmats = 0;
+  doc[0].min_x = 1000000000.0f32; doc[0].min_y = 1000000000.0f32; doc[0].min_z = 1000000000.0f32;
+  doc[0].max_x = -1000000000.0f32; doc[0].max_y = -1000000000.0f32; doc[0].max_z = -1000000000.0f32;
+  doc[0].z_up = false;
+  doc[0].err_n = 0;
+  doc[0].stats_n = 0;
+}
+
+mv_doc_fail :: (doc: [] MvDoc, msg: string) -> bool {
+  doc[0].ok = false;
+  doc[0].err_n = mv_copy_str(doc[0].err[..], msg);
+  return false;
+}
+
+mv_add_mat :: (doc: [] MvDoc, r: f32, g: f32, b: f32, a: f32, met: f32, rough: f32, tex_off: int, tex_len: int, name: string) -> int {
+  if doc[0].nmats >= doc[0].mats.count { return 0; }
+  idx := doc[0].nmats;
+  doc[0].mats[idx] = MvMat.{r = r, g = g, b = b, a = a, metallic = met, roughness = rough, tex_off = tex_off, tex_len = tex_len};
+  doc[0].mats[idx].name_n = mv_copy_str(doc[0].mats[idx].name[..], name);
+  doc[0].nmats += 1;
+  return idx;
+}
+
+mv_begin_node :: (doc: [] MvDoc, parent: int, depth: int, mat_idx: int, id: string, label: string) -> int {
+  if doc[0].nnodes >= doc[0].nodes.count { return -1; }
+  idx := doc[0].nnodes;
+  doc[0].nodes[idx] = MvNode.{
+    parent = parent, depth = depth,
+    first_idx = doc[0].nindices, idx_count = 0,
+    mat_idx = mat_idx, visible = true, selected = false,
+    min_x = 1000000000.0f32, min_y = 1000000000.0f32, min_z = 1000000000.0f32,
+    max_x = -1000000000.0f32, max_y = -1000000000.0f32, max_z = -1000000000.0f32,
+  };
+  doc[0].nodes[idx].id_n = mv_copy_str(doc[0].nodes[idx].id[..], id);
+  doc[0].nodes[idx].label_n = mv_copy_str(doc[0].nodes[idx].label[..], ifx label.count > 0 then label else id);
+  doc[0].nnodes += 1;
+  return idx;
+}
+
+mv_push_vert :: (doc: [] MvDoc, node_idx: int, v: MvVert) -> int {
+  if doc[0].nverts >= doc[0].verts.count { return -1; }
+  i := doc[0].nverts;
+  doc[0].verts[i] = v;
+  doc[0].nverts += 1;
+  if v.px < doc[0].min_x { doc[0].min_x = v.px; }
+  if v.py < doc[0].min_y { doc[0].min_y = v.py; }
+  if v.pz < doc[0].min_z { doc[0].min_z = v.pz; }
+  if v.px > doc[0].max_x { doc[0].max_x = v.px; }
+  if v.py > doc[0].max_y { doc[0].max_y = v.py; }
+  if v.pz > doc[0].max_z { doc[0].max_z = v.pz; }
+  if node_idx >= 0 && node_idx < doc[0].nnodes {
+    nd := doc[0].nodes[node_idx..<node_idx + 1];
+    if v.px < nd[0].min_x { nd[0].min_x = v.px; }
+    if v.py < nd[0].min_y { nd[0].min_y = v.py; }
+    if v.pz < nd[0].min_z { nd[0].min_z = v.pz; }
+    if v.px > nd[0].max_x { nd[0].max_x = v.px; }
+    if v.py > nd[0].max_y { nd[0].max_y = v.py; }
+    if v.pz > nd[0].max_z { nd[0].max_z = v.pz; }
+  }
+  return i;
+}
+
+mv_push_tri :: (doc: [] MvDoc, node_idx: int, i0: u32, i1: u32, i2: u32) {
+  if doc[0].nindices + 3 > doc[0].indices.count { return; }
+  at := doc[0].nindices;
+  doc[0].indices[at] = i0;
+  doc[0].indices[at + 1] = i1;
+  doc[0].indices[at + 2] = i2;
+  doc[0].nindices += 3;
+  if node_idx >= 0 && node_idx < doc[0].nnodes {
+    doc[0].nodes[node_idx].idx_count += 3;
+  }
+}
+
+mv_compute_flat_normal :: (a: MvVert, b: MvVert, c: MvVert, out: [] f32) {
+  e1x := b.px - a.px; e1y := b.py - a.py; e1z := b.pz - a.pz;
+  e2x := c.px - a.px; e2y := c.py - a.py; e2z := c.pz - a.pz;
+  nx := e1y * e2z - e1z * e2y;
+  ny := e1z * e2x - e1x * e2z;
+  nz := e1x * e2y - e1y * e2x;
+  nlen := sqrt(nx * nx + ny * ny + nz * nz);
+  if nlen > 0.000001f32 { out[0] = nx / nlen; out[1] = ny / nlen; out[2] = nz / nlen; }
+  else { out[0] = 0; out[1] = 1; out[2] = 0; }
+}
+
+mv_finalize :: (doc: [] MvDoc, fmt: int) -> bool {
+  if doc[0].nverts == 0 || doc[0].nindices == 0 {
+    return mv_doc_fail(doc, "3D file contains no renderable triangles.");
+  }
+  if doc[0].nmats == 0 {
+    _ = mv_add_mat(doc, 0.82f32, 0.84f32, 0.87f32, 1.0f32, 0.05f32, 0.55f32, -1, 0, "default");
+  }
+  doc[0].format = fmt;
+  doc[0].ok = true;
+  fmt_names := [9] string.["3D", "GLB", "glTF", "OBJ", "STL", "GBM", "VPK", "PLE", "IFC"];
+  fn := ifx fmt >= 0 && fmt < 9 then fmt_names[fmt] else "3D";
+  k := mv_put_int(doc[0].stats[..], 0, doc[0].nindices / 3);
+  k = mv_put_str(doc[0].stats[..], k, " tris · ");
+  k = mv_put_int(doc[0].stats[..], k, doc[0].nnodes);
+  k = mv_put_str(doc[0].stats[..], k, " nodes · ");
+  k = mv_put_str(doc[0].stats[..], k, fn);
+  doc[0].stats_n = k;
+  return true;
+}
+
+// ---- JSON float helper for glTF 2.0
+
+mv_jv_f32 :: (d: Jv, node: int, fallback: f32) -> f32 {
+  if node < 0 { return fallback; }
+  raw := jv_raw(d, node);
+  if raw.count == 0 { return fallback; }
+  return mv_parse_f32(raw, fallback);
+}
+
+mv_parse_f32 :: (s: string, fallback: f32) -> f32 {
+  i := 0;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n') { i += 1; }
+  if i >= s.count { return fallback; }
+  neg := false;
+  if s[i] == '-' { neg = true; i += 1; } else if s[i] == '+' { i += 1; }
+  val: f64 = 0.0;
+  any := false;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    val = val * 10.0 + cast(f64) (s[i] - '0');
+    i += 1; any = true;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    frac: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      val += cast(f64) (s[i] - '0') * frac;
+      frac *= 0.1;
+      i += 1; any = true;
+    }
+  }
+  if !any { return fallback; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1;
+    eneg := false;
+    if i < s.count && s[i] == '-' { eneg = true; i += 1; } else if i < s.count && s[i] == '+' { i += 1; }
+    ev := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      if ev < 40 { ev = ev * 10 + cast(int) (s[i] - '0'); }
+      i += 1;
+    }
+    p: f64 = 1.0;
+    for k: 0..<ev { p *= 10.0; }
+    if eneg { val /= p; } else { val *= p; }
+  }
+  if neg { val = -val; }
+  return mv_finite(cast(f32) val);
+}
+
+mv_parse_int :: (s: string, fallback: int) -> int {
+  i := 0;
+  while i < s.count && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  if i >= s.count { return fallback; }
+  neg := false;
+  if s[i] == '-' { neg = true; i += 1; } else if s[i] == '+' { i += 1; }
+  val := 0; any := false;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    val = val * 10 + cast(int) (s[i] - '0');
+    i += 1; any = true;
+  }
+  if !any { return fallback; }
+  return ifx neg then -val else val;
+}
+
+// ---- 1. GLB / glTF 2.0 Loader
+
+mv_gltf_node_local :: (d: Jv, n_idx: int) -> MvMat4 {
+  mat_n := jv_get(d, n_idx, "matrix");
+  if mat_n >= 0 && jv_len(d, mat_n) == 16 {
+    m: MvMat4;
+    for k: 0..<16 { m.m[k] = mv_jv_f32(d, jv_at(d, mat_n, k), ifx k % 5 == 0 then 1.0f32 else 0.0f32); }
+    return m;
+  }
+  tx: f32 = 0; ty: f32 = 0; tz: f32 = 0;
+  tn := jv_get(d, n_idx, "translation");
+  if tn >= 0 && jv_len(d, tn) >= 3 {
+    tx = mv_jv_f32(d, jv_at(d, tn, 0), 0);
+    ty = mv_jv_f32(d, jv_at(d, tn, 1), 0);
+    tz = mv_jv_f32(d, jv_at(d, tn, 2), 0);
+  }
+  qx: f32 = 0; qy: f32 = 0; qz: f32 = 0; qw: f32 = 1;
+  rn := jv_get(d, n_idx, "rotation");
+  if rn >= 0 && jv_len(d, rn) >= 4 {
+    qx = mv_jv_f32(d, jv_at(d, rn, 0), 0);
+    qy = mv_jv_f32(d, jv_at(d, rn, 1), 0);
+    qz = mv_jv_f32(d, jv_at(d, rn, 2), 0);
+    qw = mv_jv_f32(d, jv_at(d, rn, 3), 1);
+  }
+  sx: f32 = 1; sy: f32 = 1; sz: f32 = 1;
+  sn := jv_get(d, n_idx, "scale");
+  if sn >= 0 && jv_len(d, sn) >= 3 {
+    sx = mv_jv_f32(d, jv_at(d, sn, 0), 1);
+    sy = mv_jv_f32(d, jv_at(d, sn, 1), 1);
+    sz = mv_jv_f32(d, jv_at(d, sn, 2), 1);
+  }
+  return mv_m4_trs(tx, ty, tz, qx, qy, qz, qw, sx, sy, sz);
+}
+
+mv_gltf_emit_mesh :: (doc: [] MvDoc, gf: [] AgFile, mesh_idx: int, world: MvMat4, parent_row: int, depth: int, node_name: string) {
+  d := gf[0].d;
+  meshes := jv_get(d, 0, "meshes");
+  m_node := jv_at(d, meshes, mesh_idx);
+  if m_node < 0 { return; }
+  prims := jv_get(d, m_node, "primitives");
+  pcount := jv_len(d, prims);
+  if pcount <= 0 { return; }
+
+  for pi: 0..<pcount {
+    pr := jv_at(d, prims, pi);
+    mode := ag_int(gf, pr, "mode", 4);
+    if mode != 4 { continue; } // TRIANGLES only
+    attrs := jv_get(d, pr, "attributes");
+    pos_i := ag_int(gf, attrs, "POSITION", -1);
+    if pos_i < 0 { continue; }
+    pos_a := ag_accessor(gf, pos_i);
+    if !pos_a.ok || pos_a.components < 3 { continue; }
+
+    nrm_i := ag_int(gf, attrs, "NORMAL", -1);
+    nrm_a := ifx nrm_i >= 0 then ag_accessor(gf, nrm_i) else AgAccess.{};
+    uv_i := ag_int(gf, attrs, "TEXCOORD_0", -1);
+    uv_a := ifx uv_i >= 0 then ag_accessor(gf, uv_i) else AgAccess.{};
+    col_i := ag_int(gf, attrs, "COLOR_0", -1);
+    col_a := ifx col_i >= 0 then ag_accessor(gf, col_i) else AgAccess.{};
+    mat_i := ag_int(gf, pr, "material", 0);
+    if mat_i < 0 || mat_i >= doc[0].nmats { mat_i = 0; }
+
+    ib: [48] u8; in_ := mv_put_str(ib[..], 0, "mesh_"); in_ = mv_put_int(ib[..], in_, mesh_idx);
+    if pcount > 1 { in_ = mv_put_str(ib[..], in_, "_"); in_ = mv_put_int(ib[..], in_, pi); }
+    lbl := ifx node_name.count > 0 then node_name else cast(string) ib[0..<in_];
+    nd := mv_begin_node(doc, parent_row, depth, mat_i, cast(string) ib[0..<in_], lbl);
+
+    base_v := doc[0].nverts;
+    if base_v + pos_a.count > doc[0].verts.count { continue; }
+    pt: [3] f32; nm: [3] f32;
+    for vi: 0..<pos_a.count {
+      px := ag_value(gf, pos_a, vi, 0);
+      py := ag_value(gf, pos_a, vi, 1);
+      pz := ag_value(gf, pos_a, vi, 2);
+      mv_m4_pt(world, px, py, pz, pt[..]);
+      if nrm_a.ok && nrm_a.components >= 3 {
+        mv_m4_dir(world, ag_value(gf, nrm_a, vi, 0), ag_value(gf, nrm_a, vi, 1), ag_value(gf, nrm_a, vi, 2), nm[..]);
+      } else {
+        nm[0] = 0; nm[1] = 1; nm[2] = 0;
+      }
+      u0: f32 = ifx uv_a.ok && uv_a.components >= 2 then ag_value(gf, uv_a, vi, 0) else 0.0f32;
+      v0: f32 = ifx uv_a.ok && uv_a.components >= 2 then ag_value(gf, uv_a, vi, 1) else 0.0f32;
+      cr: f32 = ifx col_a.ok && col_a.components >= 3 then ag_value(gf, col_a, vi, 0) else 1.0f32;
+      cg: f32 = ifx col_a.ok && col_a.components >= 3 then ag_value(gf, col_a, vi, 1) else 1.0f32;
+      cb: f32 = ifx col_a.ok && col_a.components >= 3 then ag_value(gf, col_a, vi, 2) else 1.0f32;
+      ca: f32 = ifx col_a.ok && col_a.components >= 4 then ag_value(gf, col_a, vi, 3) else 1.0f32;
+      _ = mv_push_vert(doc, nd, MvVert.{
+        px = mv_finite(pt[0]), py = mv_finite(pt[1]), pz = mv_finite(pt[2]),
+        nx = mv_finite(nm[0]), ny = mv_finite(nm[1]), nz = mv_finite(nm[2]),
+        u = mv_finite(u0), v = mv_finite(v0),
+        r = mv_finite(cr), g = mv_finite(cg), b = mv_finite(cb), a = mv_finite(ca),
+      });
+    }
+
+    idx_i := ag_int(gf, pr, "indices", -1);
+    if idx_i >= 0 {
+      ia := ag_accessor(gf, idx_i);
+      if ia.ok && ia.components == 1 {
+        t := 0;
+        while t + 2 < ia.count {
+          k0 := cast(int) ag_value(gf, ia, t, 0);
+          k1 := cast(int) ag_value(gf, ia, t + 1, 0);
+          k2 := cast(int) ag_value(gf, ia, t + 2, 0);
+          if k0 >= 0 && k0 < pos_a.count && k1 >= 0 && k1 < pos_a.count && k2 >= 0 && k2 < pos_a.count {
+            mv_push_tri(doc, nd, cast(u32) (base_v + k0), cast(u32) (base_v + k1), cast(u32) (base_v + k2));
+          }
+          t += 3;
+        }
+      }
+    } else {
+      t := 0;
+      while t + 2 < pos_a.count {
+        mv_push_tri(doc, nd, cast(u32) (base_v + t), cast(u32) (base_v + t + 1), cast(u32) (base_v + t + 2));
+        t += 3;
+      }
+    }
+
+    // Compute flat face normals if NORMAL attribute was absent
+    if !nrm_a.ok && nd >= 0 {
+      f0 := doc[0].nodes[nd].first_idx;
+      cnt := doc[0].nodes[nd].idx_count;
+      t := 0;
+      fn: [3] f32;
+      while t + 2 < cnt {
+        i0 := cast(int) doc[0].indices[f0 + t];
+        i1 := cast(int) doc[0].indices[f0 + t + 1];
+        i2 := cast(int) doc[0].indices[f0 + t + 2];
+        mv_compute_flat_normal(doc[0].verts[i0], doc[0].verts[i1], doc[0].verts[i2], fn[..]);
+        doc[0].verts[i0].nx = fn[0]; doc[0].verts[i0].ny = fn[1]; doc[0].verts[i0].nz = fn[2];
+        doc[0].verts[i1].nx = fn[0]; doc[0].verts[i1].ny = fn[1]; doc[0].verts[i1].nz = fn[2];
+        doc[0].verts[i2].nx = fn[0]; doc[0].verts[i2].ny = fn[1]; doc[0].verts[i2].nz = fn[2];
+        t += 3;
+      }
+    }
+  }
+}
+
+mv_gltf_walk_node :: (doc: [] MvDoc, gf: [] AgFile, node_idx: int, parent_m: MvMat4, parent_row: int, depth: int) {
+  if depth > 16 || doc[0].nnodes >= doc[0].nodes.count { return; }
+  d := gf[0].d;
+  nodes := jv_get(d, 0, "nodes");
+  nd := jv_at(d, nodes, node_idx);
+  if nd < 0 { return; }
+  world := mv_m4_mul(parent_m, mv_gltf_node_local(d, nd));
+  nm_n := jv_get(d, nd, "name");
+  nstr := ifx nm_n >= 0 then jv_raw(d, nm_n) else "";
+  // Strip surrounding quotes if jv_raw returns quoted string
+  if nstr.count >= 2 && nstr[0] == '"' && nstr[nstr.count - 1] == '"' {
+    nstr = cast(string) nstr[1..<nstr.count - 1];
+  }
+  mesh_i := ag_int(gf, nd, "mesh", -1);
+  my_row := parent_row;
+  if mesh_i >= 0 {
+    before := doc[0].nnodes;
+    mv_gltf_emit_mesh(doc, gf, mesh_i, world, parent_row, depth, nstr);
+    if doc[0].nnodes > before { my_row = before; }
+  }
+  kids := jv_get(d, nd, "children");
+  kc := jv_len(d, kids);
+  for ci: 0..<kc {
+    ch := anim_integer(d, jv_at(d, kids, ci), 0, 65536);
+    if ch >= 0 { mv_gltf_walk_node(doc, gf, ch, world, my_row, depth + 1); }
+  }
+}
+
+mv_load_gltf_core :: (doc: [] MvDoc, json_text: string, bin: [] u8, bin_base_off: int, fmt: int) -> bool {
+  jnodes: [PLE_MAX_JSON_NODES] JvNode;
+  jdoc: [1] Jv;
+  if !jv_parse(jdoc[..], json_text, jnodes[..]) { return mv_doc_fail(doc, "glTF JSON failed to parse or exceeded node budget."); }
+  d := jdoc[0];
+
+  // Validate external buffer/image URIs for path-traversal & remote-URL confinement
+  bufs := jv_get(d, 0, "buffers");
+  bc := jv_len(d, bufs);
+  for bi: 0..<bc {
+    u_n := jv_get(d, jv_at(d, bufs, bi), "uri");
+    if u_n >= 0 {
+      ur := jv_raw(d, u_n);
+      if ur.count >= 2 && ur[0] == '"' && ur[ur.count - 1] == '"' { ur = cast(string) ur[1..<ur.count - 1]; }
+      if !mv_uri_safe(ur) { return mv_doc_fail(doc, "Refused unsafe external glTF buffer URI."); }
+    }
+  }
+
+  gf := [1] AgFile.[AgFile.{d = d, binary = bin}];
+
+  // Extract PBR materials + embedded GLB albedo texture spans
+  mats := jv_get(d, 0, "materials");
+  mc := jv_len(d, mats);
+  texs := jv_get(d, 0, "textures");
+  imgs := jv_get(d, 0, "images");
+  bvs := jv_get(d, 0, "bufferViews");
+  for mi: 0..<mc {
+    mn := jv_at(d, mats, mi);
+    r: f32 = 1; g: f32 = 1; b: f32 = 1; a: f32 = 1;
+    met: f32 = 0.0f32; rough: f32 = 0.6f32;
+    tex_off := -1; tex_len := 0;
+    pbr := jv_get(d, mn, "pbrMetallicRoughness");
+    if pbr >= 0 {
+      bcf := jv_get(d, pbr, "baseColorFactor");
+      if bcf >= 0 && jv_len(d, bcf) >= 4 {
+        r = mv_jv_f32(d, jv_at(d, bcf, 0), 1);
+        g = mv_jv_f32(d, jv_at(d, bcf, 1), 1);
+        b = mv_jv_f32(d, jv_at(d, bcf, 2), 1);
+        a = mv_jv_f32(d, jv_at(d, bcf, 3), 1);
+      }
+      met = mv_jv_f32(d, jv_get(d, pbr, "metallicFactor"), 0.0f32);
+      rough = mv_jv_f32(d, jv_get(d, pbr, "roughnessFactor"), 0.6f32);
+      bct := jv_get(d, pbr, "baseColorTexture");
+      if bct >= 0 && bin_base_off >= 0 {
+        ti := ag_int(gf[..], bct, "index", -1);
+        if ti >= 0 {
+          src_i := ag_int(gf[..], jv_at(d, texs, ti), "source", -1);
+          if src_i >= 0 {
+            bv_i := ag_int(gf[..], jv_at(d, imgs, src_i), "bufferView", -1);
+            if bv_i >= 0 {
+              bv := jv_at(d, bvs, bv_i);
+              bo := ag_int(gf[..], bv, "byteOffset", 0);
+              bl := ag_int(gf[..], bv, "byteLength", 0);
+              if bo >= 0 && bl > 0 && bo + bl <= bin.count {
+                tex_off = bin_base_off + bo;
+                tex_len = bl;
+              }
+            }
+          }
+        }
+      }
+    }
+    _ = mv_add_mat(doc, r, g, b, a, met, rough, tex_off, tex_len, "mat");
+  }
+  if doc[0].nmats == 0 {
+    _ = mv_add_mat(doc, 0.85f32, 0.86f32, 0.88f32, 1.0f32, 0.05f32, 0.55f32, -1, 0, "default");
+  }
+
+  // Walk active scene nodes (or all meshes if no scene/nodes)
+  scenes := jv_get(d, 0, "scenes");
+  def_sc := ag_int(gf[..], 0, "scene", 0);
+  sc_node := jv_at(d, scenes, def_sc);
+  roots := ifx sc_node >= 0 then jv_get(d, sc_node, "nodes") else -1;
+  rc := jv_len(d, roots);
+  ident := mv_m4_ident();
+  if rc > 0 {
+    for ri: 0..<rc {
+      ni := anim_integer(d, jv_at(d, roots, ri), 0, 65536);
+      if ni >= 0 { mv_gltf_walk_node(doc, gf[..], ni, ident, -1, 0); }
+    }
+  } else {
+    meshes := jv_get(d, 0, "meshes");
+    mc2 := jv_len(d, meshes);
+    for mi: 0..<mc2 { mv_gltf_emit_mesh(doc, gf[..], mi, ident, -1, 0, ""); }
+  }
+  return mv_finalize(doc, fmt);
+}
+
+mv_load_glb :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  if raw.count < 20 { return mv_doc_fail(doc, "GLB file is truncated."); }
+  if mv_u32_le(raw, 0) != 0x46546C67 || mv_u32_le(raw, 4) != 2 {
+    return mv_doc_fail(doc, "Invalid GLB 2.0 header.");
+  }
+  jlen := cast(int) mv_u32_le(raw, 12);
+  jtype := mv_u32_le(raw, 16);
+  if jtype != 0x4E4F534A || 20 + jlen > raw.count {
+    return mv_doc_fail(doc, "Missing or truncated GLB JSON chunk.");
+  }
+  json_text := cast(string) raw[20..<20 + jlen];
+  bin_off := 20 + jlen;
+  bin := raw[0..<0];
+  bin_data_off := -1;
+  if bin_off + 8 <= raw.count {
+    blen := cast(int) mv_u32_le(raw, bin_off);
+    btype := mv_u32_le(raw, bin_off + 4);
+    if btype == 0x004E4942 && bin_off + 8 + blen <= raw.count {
+      bin = raw[bin_off + 8..<bin_off + 8 + blen];
+      bin_data_off = bin_off + 8;
+    }
+  }
+  return mv_load_gltf_core(doc, json_text, bin, bin_data_off, MV_FMT_GLB);
+}
+
+// ---- 2. Wavefront OBJ Loader
+
+mv_obj_tok :: (line: string, at: [] int) -> string {
+  i := at[0];
+  while i < line.count && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') { i += 1; }
+  st := i;
+  while i < line.count && line[i] != ' ' && line[i] != '\t' && line[i] != '\r' { i += 1; }
+  at[0] = i;
+  return cast(string) line[st..<i];
+}
+
+mv_obj_parse_ref :: (tok: string, np: int, nt: int, nn: int, out: [] int) {
+  // Parse v, v/vt, v//vn, v/vt/vn
+  out[0] = -1; out[1] = -1; out[2] = -1;
+  s1 := -1; s2 := -1;
+  for i: 0..<tok.count {
+    if tok[i] == '/' { if s1 < 0 { s1 = i; } else if s2 < 0 { s2 = i; break; } }
+  }
+  p_s := ifx s1 >= 0 then cast(string) tok[0..<s1] else tok;
+  vi := mv_parse_int(p_s, 0);
+  if vi > 0 { out[0] = vi - 1; } else if vi < 0 { out[0] = np + vi; }
+  if s1 >= 0 {
+    t_end := ifx s2 >= 0 then s2 else tok.count;
+    if t_end > s1 + 1 {
+      ti := mv_parse_int(cast(string) tok[s1 + 1..<t_end], 0);
+      if ti > 0 { out[1] = ti - 1; } else if ti < 0 { out[1] = nt + ti; }
+    }
+    if s2 >= 0 && s2 + 1 < tok.count {
+      ni := mv_parse_int(cast(string) tok[s2 + 1..<tok.count], 0);
+      if ni > 0 { out[2] = ni - 1; } else if ni < 0 { out[2] = nn + ni; }
+    }
+  }
+}
+
+MV_OBJ_TMP_MAX :: 65536;
+
+mv_load_obj :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  text := cast(string) raw[0..<raw.count];
+  pos: [MV_OBJ_TMP_MAX * 3] f32; np := 0;
+  uvs: [MV_OBJ_TMP_MAX * 2] f32; nt := 0;
+  nrm: [MV_OBJ_TMP_MAX * 3] f32; nn := 0;
+  _ = mv_add_mat(doc, 0.84f32, 0.85f32, 0.87f32, 1.0f32, 0.05f32, 0.55f32, -1, 0, "default");
+  cur_node := mv_begin_node(doc, -1, 0, 0, "obj_root", "Model");
+
+  i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[i..<e];
+    i = e + 1;
+    at := [1] int.[0];
+    tag := mv_obj_tok(line, at[..]);
+    if tag.count == 0 || tag[0] == '#' { continue; }
+    if tag == "v" && np < MV_OBJ_TMP_MAX {
+      x := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      y := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      z := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      pos[np * 3] = x; pos[np * 3 + 1] = y; pos[np * 3 + 2] = z; np += 1;
+    } else if tag == "vt" && nt < MV_OBJ_TMP_MAX {
+      u := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      v := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      uvs[nt * 2] = u; uvs[nt * 2 + 1] = v; nt += 1;
+    } else if tag == "vn" && nn < MV_OBJ_TMP_MAX {
+      nx := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      ny := mv_parse_f32(mv_obj_tok(line, at[..]), 1);
+      nz := mv_parse_f32(mv_obj_tok(line, at[..]), 0);
+      nrm[nn * 3] = nx; nrm[nn * 3 + 1] = ny; nrm[nn * 3 + 2] = nz; nn += 1;
+    } else if (tag == "o" || tag == "g") {
+      nm := mv_obj_tok(line, at[..]);
+      if nm.count > 0 && (cur_node < 0 || doc[0].nodes[cur_node].idx_count > 0) {
+        cur_node = mv_begin_node(doc, -1, 0, 0, nm, nm);
+      } else if nm.count > 0 && cur_node >= 0 {
+        doc[0].nodes[cur_node].id_n = mv_copy_str(doc[0].nodes[cur_node].id[..], nm);
+        doc[0].nodes[cur_node].label_n = mv_copy_str(doc[0].nodes[cur_node].label[..], nm);
+      }
+    } else if tag == "f" {
+      fverts: [32] int; fcount := 0;
+      had_nrm := true;
+      rf: [3] int;
+      while fcount < 32 {
+        tk := mv_obj_tok(line, at[..]);
+        if tk.count == 0 { break; }
+        mv_obj_parse_ref(tk, np, nt, nn, rf[..]);
+        if rf[0] < 0 || rf[0] >= np { continue; }
+        vx := pos[rf[0] * 3]; vy := pos[rf[0] * 3 + 1]; vz := pos[rf[0] * 3 + 2];
+        vu: f32 = ifx rf[1] >= 0 && rf[1] < nt then uvs[rf[1] * 2] else 0.0f32;
+        vv: f32 = ifx rf[1] >= 0 && rf[1] < nt then uvs[rf[1] * 2 + 1] else 0.0f32;
+        nx: f32 = 0; ny: f32 = 1; nz: f32 = 0;
+        if rf[2] >= 0 && rf[2] < nn {
+          nx = nrm[rf[2] * 3]; ny = nrm[rf[2] * 3 + 1]; nz = nrm[rf[2] * 3 + 2];
+        } else {
+          had_nrm = false;
+        }
+        vi := mv_push_vert(doc, cur_node, MvVert.{px = vx, py = vy, pz = vz, nx = nx, ny = ny, nz = nz, u = vu, v = vv, r = 1, g = 1, b = 1, a = 1});
+        if vi < 0 { break; }
+        fverts[fcount] = vi; fcount += 1;
+      }
+      if fcount >= 3 {
+        if !had_nrm {
+          fn: [3] f32;
+          mv_compute_flat_normal(doc[0].verts[fverts[0]], doc[0].verts[fverts[1]], doc[0].verts[fverts[2]], fn[..]);
+          for k: 0..<fcount {
+            doc[0].verts[fverts[k]].nx = fn[0];
+            doc[0].verts[fverts[k]].ny = fn[1];
+            doc[0].verts[fverts[k]].nz = fn[2];
+          }
+        }
+        for k: 1..<(fcount - 1) {
+          mv_push_tri(doc, cur_node, cast(u32) fverts[0], cast(u32) fverts[k], cast(u32) fverts[k + 1]);
+        }
+      }
+    }
+  }
+  return mv_finalize(doc, MV_FMT_OBJ);
+}
+
+// ---- 3. Binary & ASCII STL Loader
+
+mv_load_stl :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  _ = mv_add_mat(doc, 0.80f32, 0.83f32, 0.88f32, 1.0f32, 0.12f32, 0.45f32, -1, 0, "stl");
+  nd := mv_begin_node(doc, -1, 0, 0, "stl_mesh", "STL Mesh");
+
+  // Binary STL exact-length check first
+  if raw.count >= 84 {
+    ntri := cast(int) mv_u32_le(raw, 80);
+    if ntri > 0 && 84 + ntri * 50 == raw.count {
+      for ti: 0..<ntri {
+        off := 84 + ti * 50;
+        nx := mv_f32_le(raw, off); ny := mv_f32_le(raw, off + 4); nz := mv_f32_le(raw, off + 8);
+        v0 := MvVert.{px = mv_f32_le(raw, off + 12), py = mv_f32_le(raw, off + 16), pz = mv_f32_le(raw, off + 20), nx = nx, ny = ny, nz = nz, r = 1, g = 1, b = 1, a = 1};
+        v1 := MvVert.{px = mv_f32_le(raw, off + 24), py = mv_f32_le(raw, off + 28), pz = mv_f32_le(raw, off + 32), nx = nx, ny = ny, nz = nz, r = 1, g = 1, b = 1, a = 1};
+        v2 := MvVert.{px = mv_f32_le(raw, off + 36), py = mv_f32_le(raw, off + 40), pz = mv_f32_le(raw, off + 44), nx = nx, ny = ny, nz = nz, r = 1, g = 1, b = 1, a = 1};
+        if nx * nx + ny * ny + nz * nz < 0.0001f32 {
+          fn: [3] f32; mv_compute_flat_normal(v0, v1, v2, fn[..]);
+          v0.nx = fn[0]; v0.ny = fn[1]; v0.nz = fn[2];
+          v1.nx = fn[0]; v1.ny = fn[1]; v1.nz = fn[2];
+          v2.nx = fn[0]; v2.ny = fn[1]; v2.nz = fn[2];
+        }
+        i0 := mv_push_vert(doc, nd, v0);
+        i1 := mv_push_vert(doc, nd, v1);
+        i2 := mv_push_vert(doc, nd, v2);
+        if i0 < 0 || i1 < 0 || i2 < 0 { break; }
+        mv_push_tri(doc, nd, cast(u32) i0, cast(u32) i1, cast(u32) i2);
+      }
+      return mv_finalize(doc, MV_FMT_STL);
+    }
+  }
+
+  // ASCII STL fallback
+  text := cast(string) raw[0..<raw.count];
+  tri_v: [3] MvVert; tv_n := 0;
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[i..<e];
+    i = e + 1;
+    at := [1] int.[0];
+    t0 := mv_obj_tok(line, at[..]);
+    if t0 == "vertex" && tv_n < 3 {
+      tri_v[tv_n] = MvVert.{
+        px = mv_parse_f32(mv_obj_tok(line, at[..]), 0),
+        py = mv_parse_f32(mv_obj_tok(line, at[..]), 0),
+        pz = mv_parse_f32(mv_obj_tok(line, at[..]), 0),
+        r = 1, g = 1, b = 1, a = 1,
+      };
+      tv_n += 1;
+      if tv_n == 3 {
+        fn: [3] f32; mv_compute_flat_normal(tri_v[0], tri_v[1], tri_v[2], fn[..]);
+        for k: 0..<3 { tri_v[k].nx = fn[0]; tri_v[k].ny = fn[1]; tri_v[k].nz = fn[2]; }
+        i0 := mv_push_vert(doc, nd, tri_v[0]);
+        i1 := mv_push_vert(doc, nd, tri_v[1]);
+        i2 := mv_push_vert(doc, nd, tri_v[2]);
+        if i0 >= 0 && i1 >= 0 && i2 >= 0 { mv_push_tri(doc, nd, cast(u32) i0, cast(u32) i1, cast(u32) i2); }
+        tv_n = 0;
+      }
+    }
+  }
+  return mv_finalize(doc, MV_FMT_STL);
+}
+
+// ---- 4. GameBuilder .gbm (GBM1) Loader
+
+mv_load_gbm :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  if raw.count < 8 || raw[0] != 'G' || raw[1] != 'B' || raw[2] != 'M' || raw[3] != '1' {
+    return mv_doc_fail(doc, "Not a valid GBM1 file.");
+  }
+  n := cast(int) mv_u32_le(raw, 4);
+  entry_sz := 16 + 8 + 8 * 4; // 56 bytes (matches gamebuilder/core/meshes.coax MESH_ENTRY)
+  if n < 1 || n > 128 || 8 + n * entry_sz > raw.count {
+    return mv_doc_fail(doc, "GBM1 mesh table out of bounds.");
+  }
+  _ = mv_add_mat(doc, 0.90f32, 0.92f32, 0.95f32, 1.0f32, 0.15f32, 0.45f32, -1, 0, "gbm");
+  data_off := 8 + n * entry_sz;
+  for k: 0..<n {
+    at := 8 + k * entry_sz;
+    nm_len := 0;
+    while nm_len < 16 && raw[at + nm_len] != 0 { nm_len += 1; }
+    name := cast(string) raw[at..<at + nm_len];
+    first := cast(int) mv_u32_le(raw, at + 16);
+    count := cast(int) mv_u32_le(raw, at + 20);
+    if first < 0 || count < 3 || data_off + (first + count) * 28 > raw.count { continue; }
+    nd := mv_begin_node(doc, -1, 0, 0, name, name);
+    base_v := doc[0].nverts;
+    for vi: 0..<count {
+      vo := data_off + (first + vi) * 28;
+      ao := mv_f32_le(raw, vo + 24);
+      shade := 0.45f32 + 0.55f32 * (ifx ao > 0.0f32 && ao <= 1.0f32 then ao else 1.0f32);
+      _ = mv_push_vert(doc, nd, MvVert.{
+        px = mv_f32_le(raw, vo), py = mv_f32_le(raw, vo + 4), pz = mv_f32_le(raw, vo + 8),
+        nx = mv_f32_le(raw, vo + 12), ny = mv_f32_le(raw, vo + 16), nz = mv_f32_le(raw, vo + 20),
+        u = 0, v = 0, r = shade, g = shade, b = shade, a = 1,
+      });
+    }
+    t := 0;
+    while t + 2 < count {
+      mv_push_tri(doc, nd, cast(u32) (base_v + t), cast(u32) (base_v + t + 1), cast(u32) (base_v + t + 2));
+      t += 3;
+    }
+  }
+  return mv_finalize(doc, MV_FMT_GBM);
+}
+
+// ---- 5. Metaverse Asset Pack (.pack VPK1/VPK2/VPK3) Loader
+
+mv_load_pack :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  if raw.count < 32 { return mv_doc_fail(doc, "Pack file is truncated."); }
+  pr: [1] PackTable;
+  ok := pack_table(cast(string) raw[0..<raw.count], raw.count, pr[..]);
+  if !ok { return mv_doc_fail(doc, ifx pr[0].why.count > 0 then pr[0].why else "Invalid VPK asset pack."); }
+
+  cat_off := -1; cat_len := 0;
+  v_off := -1; v_len := 0;
+  i_off := -1; i_len := 0;
+  for k: 0..<pr[0].count {
+    e := pr[0].entries[k];
+    if e.kind == 1 { cat_off = e.at; cat_len = e.n; }
+    else if e.kind == 2 { v_off = e.at; v_len = e.n; }
+    else if e.kind == 3 { i_off = e.at; i_len = e.n; }
+  }
+  if v_off < 0 || i_off < 0 || v_off + v_len > raw.count || i_off + i_len > raw.count {
+    return mv_doc_fail(doc, "Pack lacks vertex/index buffers.");
+  }
+  _ = mv_add_mat(doc, 0.80f32, 0.84f32, 0.90f32, 1.0f32, 0.1f32, 0.55f32, -1, 0, "vpk");
+  // Standard VPK vertex is 12 floats (48 bytes): pos(3), nrm(3), uv(2), col/tan(4) or 8 floats (32 bytes)
+  stride := ifx v_len % 48 == 0 then 48 else ifx v_len % 32 == 0 then 32 else 0;
+  if stride == 0 { return mv_doc_fail(doc, "Unsupported VPK vertex stride."); }
+  nv := v_len / stride;
+  ni := i_len / 4;
+  nd := mv_begin_node(doc, -1, 0, 0, "vpk_pack", "Asset Pack");
+  for vi: 0..<nv {
+    vo := v_off + vi * stride;
+    _ = mv_push_vert(doc, nd, MvVert.{
+      px = mv_f32_le(raw, vo), py = mv_f32_le(raw, vo + 4), pz = mv_f32_le(raw, vo + 8),
+      nx = mv_f32_le(raw, vo + 12), ny = mv_f32_le(raw, vo + 16), nz = mv_f32_le(raw, vo + 20),
+      u = mv_f32_le(raw, vo + 24), v = mv_f32_le(raw, vo + 28),
+      r = 1, g = 1, b = 1, a = 1,
+    });
+  }
+  t := 0;
+  while t + 2 < ni {
+    k0 := mv_u32_le(raw, i_off + t * 4);
+    k1 := mv_u32_le(raw, i_off + (t + 1) * 4);
+    k2 := mv_u32_le(raw, i_off + (t + 2) * 4);
+    if cast(int) k0 < nv && cast(int) k1 < nv && cast(int) k2 < nv {
+      mv_push_tri(doc, nd, k0, k1, k2);
+    }
+    t += 3;
+  }
+  _ = cat_off; _ = cat_len;
+  return mv_finalize(doc, MV_FMT_PACK);
+}
+
+// ---- 6. PLE Scene (.ple-scene.json) & IFC (.ifc) Loader (pure Coax)
+
+mv_ple_emit_box :: (doc: [] MvDoc, nd: int, cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32, rz: f32, col: PleRgba) {
+  hx := sx * 0.5f32; hy := sy * 0.5f32; hz := sz * 0.5f32;
+  c := cos(rz); s := sin(rz);
+  // 6 faces * 4 verts = 24 verts, 12 tris
+  fn := [6] [3] f32.[
+    [3] f32.[1, 0, 0], [3] f32.[-1, 0, 0],
+    [3] f32.[0, 1, 0], [3] f32.[0, -1, 0],
+    [3] f32.[0, 0, 1], [3] f32.[0, 0, -1]
+  ];
+  fc := [6] [4] [3] f32.[
+    [4] [3] f32.[[3] f32.[1,-1,-1], [3] f32.[1,1,-1], [3] f32.[1,1,1], [3] f32.[1,-1,1]],
+    [4] [3] f32.[[3] f32.[-1,1,-1], [3] f32.[-1,-1,-1], [3] f32.[-1,-1,1], [3] f32.[-1,1,1]],
+    [4] [3] f32.[[3] f32.[1,1,-1], [3] f32.[-1,1,-1], [3] f32.[-1,1,1], [3] f32.[1,1,1]],
+    [4] [3] f32.[[3] f32.[-1,-1,-1], [3] f32.[1,-1,-1], [3] f32.[1,-1,1], [3] f32.[-1,-1,1]],
+    [4] [3] f32.[[3] f32.[-1,-1,1], [3] f32.[1,-1,1], [3] f32.[1,1,1], [3] f32.[-1,1,1]],
+    [4] [3] f32.[[3] f32.[-1,1,-1], [3] f32.[1,1,-1], [3] f32.[1,-1,-1], [3] f32.[-1,-1,-1]]
+  ];
+  for fi: 0..<6 {
+    nx := fn[fi][0] * c - fn[fi][1] * s;
+    ny := fn[fi][0] * s + fn[fi][1] * c;
+    nz := fn[fi][2];
+    b0 := doc[0].nverts;
+    for ci: 0..<4 {
+      lx := fc[fi][ci][0] * hx; ly := fc[fi][ci][1] * hy; lz := fc[fi][ci][2] * hz;
+      wx := cx + lx * c - ly * s;
+      wy := cy + lx * s + ly * c;
+      wz := cz + lz;
+      _ = mv_push_vert(doc, nd, MvVert.{px = wx, py = wy, pz = wz, nx = nx, ny = ny, nz = nz, u = 0, v = 0, r = col.r, g = col.g, b = col.b, a = col.a});
+    }
+    if doc[0].nverts == b0 + 4 {
+      mv_push_tri(doc, nd, cast(u32) b0, cast(u32) (b0 + 1), cast(u32) (b0 + 2));
+      mv_push_tri(doc, nd, cast(u32) b0, cast(u32) (b0 + 2), cast(u32) (b0 + 3));
+    }
+  }
+}
+
+mv_ple_emit_cyl :: (doc: [] MvDoc, nd: int, cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32, rz: f32, axis: PleAxis, col: PleRgba) {
+  segs := 12;
+  hx := sx * 0.5f32; hy := sy * 0.5f32; hz := sz * 0.5f32;
+  c := cos(rz); s := sin(rz);
+  for si: 0..<segs {
+    a0 := cast(f32) si * 6.2831853f32 / cast(f32) segs;
+    a1 := cast(f32) (si + 1) * 6.2831853f32 / cast(f32) segs;
+    c0 := cos(a0); s0 := sin(a0); c1 := cos(a1); s1 := sin(a1);
+    pts := [4] [3] f32.[[3] f32.[c0, s0, -1], [3] f32.[c1, s1, -1], [3] f32.[c1, s1, 1], [3] f32.[c0, s0, 1]];
+    b0 := doc[0].nverts;
+    for pi: 0..<4 {
+      ux := pts[pi][0]; uy := pts[pi][1]; uz := pts[pi][2];
+      // Orient unit cylinder along axis
+      lx := ifx axis == PleAxis.x then uz * hx else ifx axis == PleAxis.y then uy * hx else ux * hx;
+      ly := ifx axis == PleAxis.x then ux * hy else ifx axis == PleAxis.y then uz * hy else uy * hy;
+      lz := ifx axis == PleAxis.x then uy * hz else ifx axis == PleAxis.y then ux * hz else uz * hz;
+      nx0 := ifx axis == PleAxis.x then 0.0f32 else ifx axis == PleAxis.y then uy else ux;
+      ny0 := ifx axis == PleAxis.x then ux else ifx axis == PleAxis.y then 0.0f32 else uy;
+      nz0 := ifx axis == PleAxis.x then uy else ifx axis == PleAxis.y then ux else 0.0f32;
+      wx := cx + lx * c - ly * s; wy := cy + lx * s + ly * c; wz := cz + lz;
+      wnx := nx0 * c - ny0 * s; wny := nx0 * s + ny0 * c;
+      _ = mv_push_vert(doc, nd, MvVert.{px = wx, py = wy, pz = wz, nx = wnx, ny = wny, nz = nz0, u = 0, v = 0, r = col.r, g = col.g, b = col.b, a = col.a});
+    }
+    if doc[0].nverts == b0 + 4 {
+      mv_push_tri(doc, nd, cast(u32) b0, cast(u32) (b0 + 1), cast(u32) (b0 + 2));
+      mv_push_tri(doc, nd, cast(u32) b0, cast(u32) (b0 + 2), cast(u32) (b0 + 3));
+    }
+  }
+}
+
+mv_load_ple_scene :: (doc: [] MvDoc, sc: [] PleScene, fmt: int) -> bool {
+  _ = mv_add_mat(doc, 1.0f32, 1.0f32, 1.0f32, 1.0f32, 0.05f32, 0.55f32, -1, 0, "ple");
+  doc[0].z_up = true;
+  for ei: 0..<sc[0].element_count {
+    el := sc[0].elements[ei];
+    id_s := cast(string) sc[0].elements[ei].id.bytes[0..<el.id.n];
+    col := ple_layer_color(el.layer);
+    nd := mv_begin_node(doc, -1, 0, 0, id_s, id_s);
+    if el.shape == PleShape.cylinder {
+      mv_ple_emit_cyl(doc, nd, el.center.x, el.center.y, el.center.z, el.size.x, el.size.y, el.size.z, el.rot_z, el.axis, col);
+    } else {
+      mv_ple_emit_box(doc, nd, el.center.x, el.center.y, el.center.z, el.size.x, el.size.y, el.size.z, el.rot_z, col);
+    }
+  }
+  for ci: 0..<sc[0].clash_count {
+    cl := sc[0].clashes[ci];
+    cb: [32] u8; cn := mv_put_str(cb[..], 0, "clash_"); cn = mv_put_int(cb[..], cn, ci);
+    nd := mv_begin_node(doc, -1, 0, 0, cast(string) cb[0..<cn], cast(string) cb[0..<cn]);
+    mv_ple_emit_box(doc, nd, cl.point.x, cl.point.y, cl.point.z, 0.4f32, 0.4f32, 0.4f32, 0.0f32, ple_layer_color(PleLayer.clashes));
+  }
+  return mv_finalize(doc, fmt);
+}
+
+mv_load_ple :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  sc: [1] PleScene;
+  if !ple_scene_parse(cast(string) raw[0..<raw.count], sc[..]) {
+    return mv_doc_fail(doc, "Failed to parse ple-scene.v1 JSON.");
+  }
+  return mv_load_ple_scene(doc, sc[..], MV_FMT_PLE);
+}
+
+mv_load_ifc :: (doc: [] MvDoc, raw: [] u8) -> bool {
+  ents: [8192] PleIfcEnt;
+  table: [16384] int;
+  ifc: [1] PleIfc;
+  sc: [1] PleScene;
+  st: [1] PleIfcStats;
+  if !ple_ifc_index(cast(string) raw[0..<raw.count], ents[..], table[..], ifc[..]) || !ple_ifc_scene(ifc[..], "ifc", sc[..], st[..]) {
+    return mv_doc_fail(doc, "Failed to parse IFC STEP file.");
+  }
+  return mv_load_ple_scene(doc, sc[..], MV_FMT_IFC);
+}
+
+// ---- Universal Entry Point
+
+mv_load :: (doc: [] MvDoc, path: string, raw: [] u8, extra_bin: [] u8) -> bool {
+  mv_doc_reset(doc);
+  if raw.count <= 0 || raw.count > MV_MAX_INPUT_BYTES {
+    return mv_doc_fail(doc, "3D file is empty or exceeds the 64 MiB viewer cap.");
+  }
+  if mv_ends_ci_mv(path, ".glb") || (raw.count >= 4 && mv_u32_le(raw, 0) == 0x46546C67) {
+    return mv_load_glb(doc, raw);
+  }
+  if mv_ends_ci_mv(path, ".gltf") {
+    return mv_load_gltf_core(doc, cast(string) raw[0..<raw.count], extra_bin, -1, MV_FMT_GLTF);
+  }
+  if mv_ends_ci_mv(path, ".obj") { return mv_load_obj(doc, raw); }
+  if mv_ends_ci_mv(path, ".stl") { return mv_load_stl(doc, raw); }
+  if mv_ends_ci_mv(path, ".gbm") || (raw.count >= 4 && raw[0] == 'G' && raw[1] == 'B' && raw[2] == 'M' && raw[3] == '1') {
+    return mv_load_gbm(doc, raw);
+  }
+  if mv_ends_ci_mv(path, ".pack") || (raw.count >= 4 && raw[0] == 'V' && raw[1] == 'P' && raw[2] == 'K') {
+    return mv_load_pack(doc, raw);
+  }
+  if mv_ends_ci_mv(path, ".ifc") { return mv_load_ifc(doc, raw); }
+  if mv_ends_ci_mv(path, ".ple-scene.json") { return mv_load_ple(doc, raw); }
+  return mv_doc_fail(doc, "Unsupported 3D format in model-view loader.");
+}
+
+// ---- Raycast Picking (AABB prefilter + exact Moller-Trumbore triangle intersection)
+
+mv_ray_aabb :: (ox: f32, oy: f32, oz: f32, dx: f32, dy: f32, dz: f32, bmin_x: f32, bmin_y: f32, bmin_z: f32, bmax_x: f32, bmax_y: f32, bmax_z: f32) -> bool {
+  tmin: f32 = 0.0001f32;
+  tmax: f32 = 1000000000.0f32;
+  axes := [3] [4] f32.[
+    [4] f32.[ox, dx, bmin_x, bmax_x],
+    [4] f32.[oy, dy, bmin_y, bmax_y],
+    [4] f32.[oz, dz, bmin_z, bmax_z]
+  ];
+  for a: 0..<3 {
+    o := axes[a][0]; d := axes[a][1]; mn := axes[a][2]; mx := axes[a][3];
+    if abs(d) < 0.0000001f32 {
+      if o < mn || o > mx { return false; }
+    } else {
+      inv := 1.0f32 / d;
+      t0 := (mn - o) * inv;
+      t1 := (mx - o) * inv;
+      if t0 > t1 { tmp := t0; t0 = t1; t1 = tmp; }
+      if t0 > tmin { tmin = t0; }
+      if t1 < tmax { tmax = t1; }
+      if tmin > tmax { return false; }
+    }
+  }
+  return true;
+}
+
+mv_pick_ray :: (doc: [] MvDoc, ox: f32, oy: f32, oz: f32, dx: f32, dy: f32, dz: f32, out_hit: [] f32) -> int {
+  best_t: f32 = 1000000000.0f32;
+  best_node := -1;
+  for ni: 0..<doc[0].nnodes {
+    nd := doc[0].nodes[ni];
+    if !nd.visible || nd.idx_count < 3 { continue; }
+    if !mv_ray_aabb(ox, oy, oz, dx, dy, dz, nd.min_x, nd.min_y, nd.min_z, nd.max_x, nd.max_y, nd.max_z) { continue; }
+    t := 0;
+    while t + 2 < nd.idx_count {
+      v0 := doc[0].verts[cast(int) doc[0].indices[nd.first_idx + t]];
+      v1 := doc[0].verts[cast(int) doc[0].indices[nd.first_idx + t + 1]];
+      v2 := doc[0].verts[cast(int) doc[0].indices[nd.first_idx + t + 2]];
+      e1x := v1.px - v0.px; e1y := v1.py - v0.py; e1z := v1.pz - v0.pz;
+      e2x := v2.px - v0.px; e2y := v2.py - v0.py; e2z := v2.pz - v0.pz;
+      hx := dy * e2z - dz * e2y; hy := dz * e2x - dx * e2z; hz := dx * e2y - dy * e2x;
+      det := e1x * hx + e1y * hy + e1z * hz;
+      if abs(det) > 0.0000001f32 {
+        inv := 1.0f32 / det;
+        sx := ox - v0.px; sy := oy - v0.py; sz := oz - v0.pz;
+        u := inv * (sx * hx + sy * hy + sz * hz);
+        if u >= 0.0f32 && u <= 1.0f32 {
+          qx := sy * e1z - sz * e1y; qy := sz * e1x - sx * e1z; qz := sx * e1y - sy * e1x;
+          v := inv * (dx * qx + dy * qy + dz * qz);
+          if v >= 0.0f32 && u + v <= 1.0f32 {
+            hit_t := inv * (e2x * qx + e2y * qy + e2z * qz);
+            if hit_t > 0.0001f32 && hit_t < best_t {
+              best_t = hit_t;
+              best_node = ni;
+            }
+          }
+        }
+      }
+      t += 3;
+    }
+  }
+  if best_node >= 0 && out_hit.count >= 3 {
+    out_hit[0] = ox + dx * best_t;
+    out_hit[1] = oy + dy * best_t;
+    out_hit[2] = oz + dz * best_t;
+  }
+  return best_node;
+}
+
+// Emits "depth\tvisible\tselected\tid\tlabel\n" directly consumable by coder_page_mv_set_tree.
+mv_write_tree_tsv :: (doc: [] MvDoc, out: [] u8) -> int {
+  k := 0;
+  for i: 0..<doc[0].nnodes {
+    nd := doc[0].nodes[i];
+    k = mv_put_int(out, k, nd.depth);
+    k = mv_put_str(out, k, ifx nd.visible then "\t1\t" else "\t0\t");
+    k = mv_put_str(out, k, ifx nd.selected then "1\t" else "0\t");
+    k = mv_put_str(out, k, cast(string) doc[0].nodes[i].id[0..<nd.id_n]);
+    k = mv_put_str(out, k, "\t");
+    k = mv_put_str(out, k, cast(string) doc[0].nodes[i].label[0..<nd.label_n]);
+    k = mv_put_str(out, k, "\n");
+  }
+  return k;
+}
+
+// ---- #test checks
+
+#test "model-view: loads OBJ, ASCII STL, PLE scene, raycasts, and rejects unsafe glTF URIs" {
+  verts: [256] MvVert; idxs: [512] u32; nodes: [16] MvNode; mats: [8] MvMat;
+  doc := [1] MvDoc.[MvDoc.{verts = verts[..], indices = idxs[..], nodes = nodes[..], mats = mats[..]}];
+  empty: [1] u8;
+
+  // OBJ triangle + quad -> 3 tris
+  obj := "o tri_obj\nv 0 0 0\nv 2 0 0\nv 2 2 0\nv 0 2 0\nf 1 2 3 4\n";
+  ob: [256] u8; on := mv_copy_str(ob[..], obj);
+  #assert mv_load(doc[..], "/tmp/box.obj", ob[0..<on], empty[0..<0]);
+  #assert doc[0].ok && doc[0].format == MV_FMT_OBJ && doc[0].nindices == 6 && doc[0].nnodes == 1;
+
+  // Raycast hit at (1, 1, 0) from (1, 1, 5) looking -Z
+  hit: [3] f32;
+  #assert mv_pick_ray(doc[..], 1, 1, 5, 0, 0, -1, hit[..]) == 0;
+  #assert abs(hit[0] - 1.0f32) < 0.01f32 && abs(hit[1] - 1.0f32) < 0.01f32 && abs(hit[2]) < 0.01f32;
+  // Miss far away
+  #assert mv_pick_ray(doc[..], 10, 10, 5, 0, 0, -1, hit[..]) == -1;
+
+  // Tree TSV export
+  tsv: [256] u8; tn := mv_write_tree_tsv(doc[..], tsv[..]);
+  #assert cast(string) tsv[0..<tn] == "0\t1\t0\ttri_obj\ttri_obj\n";
+
+  // ASCII STL
+  stl := "solid s\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid s\n";
+  sb: [256] u8; sn := mv_copy_str(sb[..], stl);
+  #assert mv_load(doc[..], "/tmp/t.stl", sb[0..<sn], empty[0..<0]);
+  #assert doc[0].ok && doc[0].format == MV_FMT_STL && doc[0].nindices == 3;
+
+  // Unsafe external glTF URI refused
+  bad_gltf := "{\"asset\":{\"version\":\"2.0\"},\"buffers\":[{\"uri\":\"../secret.bin\",\"byteLength\":12}]}";
+  gb: [256] u8; gn := mv_copy_str(gb[..], bad_gltf);
+  #assert !mv_load(doc[..], "/tmp/bad.gltf", gb[0..<gn], empty[0..<0]);
+}

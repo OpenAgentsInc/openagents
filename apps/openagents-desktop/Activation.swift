@@ -179,9 +179,19 @@ final class DesktopActivation {
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
                 delegate.main?.openFolderURL(target)
             } else {
-                delegate.main?.openFileInPane(target)
+                delegate.main?.openNamedFile(target)
             }
             return true
+        case "metaverse", "gamebuilder":
+            #if OA_FULL
+            if let qPath = query["path"], !qPath.isEmpty {
+                let target = URL(fileURLWithPath: qPath)
+                if delegate.main?.openInMetaverseIfApplicable(target, autoOpened: false) == true { return true }
+            }
+            return delegate.main?.openMetaverseURI(url.absoluteString, autoOpened: false) ?? false
+            #else
+            return false
+            #endif
         case "chat":
             let trimmed = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let id = !trimmed.isEmpty ? trimmed : (query["id"] ?? "")

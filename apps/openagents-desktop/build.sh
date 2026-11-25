@@ -42,7 +42,8 @@ if [[ "$minimal" == "1" ]]; then
     "$res/gym-evals" "$res/ple-run" "$res/lean-run" "$res/tbench-run" "$res/gbench-run" \
     "$res/tbench-harbor" "$res/tbench-policies" "$res/lean-checker" "$res/fixtures" \
     "$res/proof-export" "$res/capability-eval" "$res/agents-catalog" "$res/tester-cli" \
-    "$res/foreman-ctl" "$res/gamebuilder" "$res/Metaverse"
+    "$res/foreman-ctl" "$res/gamebuilder" "$res/Metaverse" \
+    "$res/Components/metaverse-model.metal" "$res/Components/metaverse-ple.metal"
 fi
 source "$here/sign.sh"
 sign_prepare "$work"
@@ -147,6 +148,12 @@ if [[ "$minimal" != "1" ]]; then
   "$coax" c "$repo/metaverse/rh-flythrough.coax" --library --header "$work/c/rh-flythrough.h" > "$work/c/rh-flythrough.c"
   /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/rh-flythrough.c" -o "$work/c/rh-flythrough-all.o"
   ld -r "$work/c/rh-flythrough-all.o" -exported_symbol '_oa_dc_rh3d_*' -o "$work/c/rh-flythrough.o"
+  "$coax" metal "$repo/metaverse-engine/gpu/model-view-shader.coax" --vertex mv_vs --fragment mv_fs -o "$res/Components/metaverse-model.metal" 2> "$work/c/metaverse-model.metal.bind"
+  "$coax" metal "$repo/metaverse-engine/gpu/ple-shader.coax" --vertex ple_vs --fragment ple_fs -o "$res/Components/metaverse-ple.metal" 2> "$work/c/metaverse-ple.metal.bind"
+  "$coax" c "$repo/metaverse-engine/content/desktop-viewer-bridge.coax" --library --header "$work/c/metaverse-viewer.h" > "$work/c/metaverse-viewer.c"
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/metaverse-viewer.c" -o "$work/c/metaverse-viewer-all.o"
+  ld -r "$work/c/metaverse-viewer-all.o" -exported_symbol '_oa_mv_*' -o "$work/c/metaverse-viewer.o"
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$here" -c "$here/mv_host.c" -o "$work/c/mv_host.o"
   spark_sdk="$("$repo/apps/shared/host/apple/spark-sdk.sh")"
   mkdir -p "$app/Contents/Frameworks"
   rm -rf "$app/Contents/Frameworks/breez_sdk_sparkFFI.framework"
@@ -154,12 +161,14 @@ if [[ "$minimal" != "1" ]]; then
   c_objs+=(
     "$work/c/lab-sign.o" "$work/c/pay-wallet.o" "$work/c/pay-wallet-backup.o"
     "$work/c/pay-wallet-rpc.o" "$work/c/rh-flythrough.o"
+    "$work/c/metaverse-viewer.o" "$work/c/mv_host.o"
   )
   full_swift=(
     "$here/ScheduledTasks.swift" "$here/ThreadProof.swift" "$here/CapabilityStudio.swift" "$here/AgentsPage.swift"
     "$here/Window+Foreman.swift" "$here/Window+Customize.swift" "$here/Window+Environments.swift"
     "$here/Window+McpSkills.swift" "$here/Window+Providers.swift"
     "$here/Window+Simulator.swift" "$here/Window+Terminal.swift"
+    "$here/MetaverseViewportView.swift" "$here/Window+Metaverse.swift"
     "$here/SceneModel.swift" "$here/SceneView.swift" "$here/ScenePanelView.swift"
     "$here/GymDiscovery.swift" "$here/GymBenchmarkView.swift" "$here/GymTerminalBenchView.swift" "$here/GymGBenchView.swift"
     "$here/RhFlythroughView.swift" "$here/GymWorkbenchView.swift" "$here/GymWorkbenchView+Plan.swift" "$here/Window+Gym.swift"
@@ -177,7 +186,7 @@ if [[ "$minimal" != "1" ]]; then
     "$spark_sdk/libBreezSdkSpark.a" "$spark_sdk/libBigNumber.a"
     -framework breez_sdk_sparkFFI -Xlinker -rpath -Xlinker @executable_path/../Frameworks
     -framework AuthenticationServices -framework Speech -framework AVFoundation
-    -framework CoreMedia -framework CoreVideo -framework WebKit
+    -framework CoreMedia -framework CoreVideo -framework WebKit -framework ModelIO
   )
 fi
 

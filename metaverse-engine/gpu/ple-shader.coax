@@ -1,0 +1,59 @@
+// Single-source PLE & studio grid/overlay shader (GitHub #14041).
+// Compiles cleanly to Metal (`coax metal`), SPIR-V (`coax spirv`), and WGSL (`coax wgsl`).
+//
+// Uniform layout u[0..36]:
+//   u[0..15]  : mvp matrix (column-major 4x4)
+//   u[16..31] : model matrix (column-major 4x4)
+//   u[32..34] : light direction (unit xyz)
+//   u[35]     : z-slice clip height (>= 99999.0 disables)
+#module "metaverse.engine.gpu.ple";
+#load "shader.coax";
+
+PleVertIn :: struct {
+  pos: V3;
+  normal: V3;
+  color: V4;
+}
+
+PleVary :: struct {
+  clip: V4;
+  wpos: V3;
+  wnorm: V3;
+  color: V4;
+}
+
+ple_norm :: (n: V3) -> V3 {
+  d := dot3(n, n);
+  return ifx d > 0.0000001f32 then scale3(n, 1.0f32 / sqrt(d)) else v3(0.0f32, 0.0f32, 1.0f32);
+}
+
+ple_vs :: (vertex: u32, instance: u32, v: PleVertIn, u: [] f32) -> PleVary {
+  mvp := m4_at(u, 0);
+  mdl := m4_at(u, 16);
+  p4 := v4_of(v.pos, 1.0f32);
+  clip := m4_apply(mvp, p4);
+  wp := v3_of(m4_apply(mdl, p4));
+  wn := ple_norm(v3_of(m4_apply(mdl, v4_of(v.normal, 0.0f32))));
+  return PleVary.{clip = clip, wpos = wp, wnorm = wn, color = v.color};
+}
+
+ple_fs :: (v: PleVary, u: [] f32) -> V4 {
+  if u[35] < 99990.0f32 && v.wpos.z > u[35] { gpu_discard(); }
+  n := ple_norm(v.wnorm);
+  l := ple_norm(v3(u[32], u[33], u[34]));
+  ndotl := fmax(dot3(n, l), 0.0f32);
+  hemi := 0.28f32 + 0.18f32 * (n.z * 0.5f32 + 0.5f32);
+  gain := hemi + ndotl * 0.62f32;
+  return v4(saturate(v.color.x * gain), saturate(v.color.y * gain), saturate(v.color.z * gain), clampf(v.color.w, 0.0f32, 1.0f32));
+}
+
+#test "ple-shader: transforms PLE vertices and applies studio directional shading" {
+  u: [36] f32;
+  u[0] = 1; u[5] = 1; u[10] = 1; u[15] = 1;
+  u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
+  u[32] = 0.4; u[33] = 0.5; u[34] = 0.75; u[35] = 100000.0f32;
+  vo := ple_vs(0, 0, PleVertIn.{pos = v3(2, 3, 4), normal = v3(0, 0, 1), color = v4(0.2, 0.6, 0.9, 1.0)}, u[..]);
+  #assert vo.wpos.x == 2 && vo.wpos.z == 4;
+  c := ple_fs(vo, u[..]);
+  #assert c.z > c.x && c.w == 1.0f32;
+}

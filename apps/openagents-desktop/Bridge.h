@@ -4,6 +4,7 @@
 #include "../shared/native/tailnet-codec.h"
 #ifdef OA_FULL
 #include "account-mac.h"
+#include "mv_host.h"
 #endif
 #ifdef OA_WALLET
 #include "../shared/host/apple/wallet-core.h"

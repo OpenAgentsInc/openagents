@@ -1,0 +1,169 @@
+// Single-source universal 3D model viewer shader (GitHub #14041).
+// Compiles cleanly to Metal (`coax metal`), SPIR-V (`coax spirv`), and WGSL (`coax wgsl`),
+// and executes directly on the CPU under `#test`.
+//
+// Uniform layout u[0..48]:
+//   u[0..15]  : mvp matrix (column-major 4x4)
+//   u[16..31] : model matrix (column-major 4x4)
+//   u[32..34] : camera eye world xyz
+//   u[35]     : shading mode (0 Lit PBR, 1 Studio Clay, 2 Normals, 3 Unlit, 4 Wireframe)
+//   u[36..38] : key light direction (unit xyz)
+//   u[39]     : z-slice clip plane (>= 99999.0 disables)
+//   u[40..43] : material baseColorFactor rgba
+//   u[44]     : metallic [0..1]
+//   u[45]     : roughness [0.04..1]
+//   u[46]     : has_albedo_tex (> 0.5 samples albedo_tex)
+//   u[47]     : selected (> 0.5 adds selection rim glow)
+#module "metaverse.engine.gpu.modelview";
+#load "shader.coax";
+
+MvVertIn :: struct {
+  pos: V3;
+  normal: V3;
+  uv: V2;
+  color: V4;
+}
+
+MvVary :: struct {
+  clip: V4;
+  wpos: V3;
+  wnorm: V3;
+  uv: V2;
+  color: V4;
+}
+
+mv_safe_norm :: (n: V3) -> V3 {
+  d := dot3(n, n);
+  return ifx d > 0.0000001f32 then scale3(n, 1.0f32 / sqrt(d)) else v3(0.0f32, 1.0f32, 0.0f32);
+}
+
+mv_vs :: (vertex: u32, instance: u32, v: MvVertIn, u: [] f32) -> MvVary {
+  mvp := m4_at(u, 0);
+  mdl := m4_at(u, 16);
+  p4 := v4_of(v.pos, 1.0f32);
+  clip := m4_apply(mvp, p4);
+  wp := v3_of(m4_apply(mdl, p4));
+  wn := mv_safe_norm(v3_of(m4_apply(mdl, v4_of(v.normal, 0.0f32))));
+  return MvVary.{clip = clip, wpos = wp, wnorm = wn, uv = v.uv, color = v.color};
+}
+
+mv_fs :: (v: MvVary, u: [] f32, albedo_tex: Tex2D, smp: Sampler) -> V4 {
+  z_slice := u[39];
+  if z_slice < 99990.0f32 && v.wpos.z > z_slice { gpu_discard(); }
+
+  n := mv_safe_norm(v.wnorm);
+  eye := v3(u[32], u[33], u[34]);
+  view := mv_safe_norm(sub3(eye, v.wpos));
+  mode := u[35];
+
+  // Mode 4: Wireframe / overlay tint
+  if mode > 3.5f32 {
+    return v4(u[40] * v.color.x, u[41] * v.color.y, u[42] * v.color.z, clampf(u[43] * v.color.w, 0.0f32, 1.0f32));
+  }
+
+  // Mode 2: World-space normals debug view
+  if mode > 1.5f32 && mode < 2.5f32 {
+    return v4(n.x * 0.5f32 + 0.5f32, n.y * 0.5f32 + 0.5f32, n.z * 0.5f32 + 0.5f32, 1.0f32);
+  }
+
+  tex := gpu_sample_level(albedo_tex, smp, v.uv, 0.0f32);
+  use_tex := ifx u[46] > 0.5f32 then 1.0f32 else 0.0f32;
+  t_rgb := mix3(v3(1.0f32, 1.0f32, 1.0f32), v3(tex.x, tex.y, tex.z), use_tex);
+  t_a := mix(1.0f32, tex.w, use_tex);
+  base := v3(u[40] * v.color.x * t_rgb.x, u[41] * v.color.y * t_rgb.y, u[42] * v.color.z * t_rgb.z);
+  alpha := clampf(u[43] * v.color.w * t_a, 0.0f32, 1.0f32);
+
+  // Mode 3: Unlit albedo
+  if mode > 2.5f32 {
+    return v4(base.x, base.y, base.z, alpha);
+  }
+
+  // Mode 1: Studio clay neutral matte albedo
+  is_clay := ifx mode > 0.5f32 && mode < 1.5f32 then 1.0f32 else 0.0f32;
+  albedo := mix3(base, v3(0.76f32, 0.77f32, 0.79f32), is_clay);
+  metallic := mix(clampf(u[44], 0.0f32, 1.0f32), 0.0f32, is_clay);
+  rough := mix(clampf(u[45], 0.06f32, 1.0f32), 0.65f32, is_clay);
+
+  // Three-point studio lighting + hemisphere fill + GGX-like Blinn-Phong highlight
+  l_key := mv_safe_norm(v3(u[36], u[37], u[38]));
+  l_fill := mv_safe_norm(v3(-0.6f32, 0.35f32, -0.72f32));
+  ndotl := fmax(dot3(n, l_key), 0.0f32);
+  ndotl_fill := fmax(dot3(n, l_fill), 0.0f32);
+  ndotv := fmax(dot3(n, view), 0.0f32);
+
+  hemi := mix3(v3(0.14f32, 0.16f32, 0.20f32), v3(0.32f32, 0.35f32, 0.40f32), n.y * 0.5f32 + 0.5f32);
+  h_vec := mv_safe_norm(add3(l_key, view));
+  ndoth := fmax(dot3(n, h_vec), 0.0f32);
+  shininess := mix(96.0f32, 6.0f32, rough * rough);
+  spec_pow := pow(ndoth, shininess);
+  f0 := mix3(v3(0.04f32, 0.04f32, 0.04f32), albedo, metallic);
+  fresnel := pow(1.0f32 - ndotv, 5.0f32);
+  spec_col := add3(f0, scale3(sub3(v3(1.0f32, 1.0f32, 1.0f32), f0), fresnel));
+  spec_gain := mix(0.65f32, 0.12f32, rough);
+
+  diff_weight := 1.0f32 - metallic * 0.85f32;
+  diff := add3(mul3(albedo, hemi), add3(scale3(albedo, ndotl * 0.92f32 * diff_weight), scale3(albedo, ndotl_fill * 0.28f32 * diff_weight)));
+  spec := scale3(spec_col, spec_pow * spec_gain * (0.25f32 + 0.75f32 * ndotl));
+  rim := scale3(v3(0.45f32, 0.55f32, 0.70f32), pow(1.0f32 - ndotv, 3.0f32) * 0.18f32);
+  lit := add3(add3(diff, spec), rim);
+
+  // Selection coral rim highlight when u[47] > 0.5
+  sel := ifx u[47] > 0.5f32 then 1.0f32 else 0.0f32;
+  sel_rim := scale3(v3(0.98f32, 0.45f32, 0.09f32), (0.25f32 + 0.75f32 * pow(1.0f32 - ndotv, 2.0f32)) * sel);
+  out_c := add3(lit, sel_rim);
+
+  // Simple Reinhard filmic roll-off
+  mapped := v3(out_c.x / (1.0f32 + out_c.x * 0.35f32), out_c.y / (1.0f32 + out_c.y * 0.35f32), out_c.z / (1.0f32 + out_c.z * 0.35f32));
+  return v4(saturate(mapped.x), saturate(mapped.y), saturate(mapped.z), alpha);
+}
+
+#test "model-view-shader: vertex projection and all 5 shading modes run cleanly on CPU" {
+  u: [48] f32;
+  // Identity MVP & model
+  u[0] = 1; u[5] = 1; u[10] = 1; u[15] = 1;
+  u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
+  u[32] = 0; u[33] = 2; u[34] = 5;    // eye
+  u[36] = 0.5; u[37] = 0.8; u[38] = 0.3; // light
+  u[39] = 100000.0f32;                // z-slice disabled
+  u[40] = 0.8; u[41] = 0.4; u[42] = 0.2; u[43] = 1.0; // base color
+  u[44] = 0.1; u[45] = 0.4; u[46] = 0.0; u[47] = 0.0;
+
+  vin := MvVertIn.{pos = v3(1, 2, 3), normal = v3(0, 1, 0), uv = v2(0.5, 0.5), color = v4(1, 1, 1, 1)};
+  vo := mv_vs(0, 0, vin, u[..]);
+  #assert vo.clip.x == 1 && vo.clip.y == 2 && vo.clip.z == 3 && vo.clip.w == 1;
+  #assert abs(vo.wnorm.y - 1.0f32) < 0.001f32;
+
+  px := [1] V4.[v4(0.2, 0.9, 0.4, 1.0)];
+  tex := Tex2D.{width = 1, height = 1, texels = px[..]};
+  smp := Sampler.{linear = true};
+
+  // Mode 0: Lit PBR
+  u[35] = 0.0f32;
+  c_lit := mv_fs(vo, u[..], tex, smp);
+  #assert c_lit.x > c_lit.z && c_lit.w == 1.0f32;
+
+  // Mode 1: Studio Clay (desaturated neutral grey)
+  u[35] = 1.0f32;
+  c_clay := mv_fs(vo, u[..], tex, smp);
+  #assert abs(c_clay.x - c_clay.y) < 0.05f32 && c_clay.x > 0.2f32;
+
+  // Mode 2: Normals (0, 1, 0) -> (0.5, 1.0, 0.5)
+  u[35] = 2.0f32;
+  c_nrm := mv_fs(vo, u[..], tex, smp);
+  #assert abs(c_nrm.x - 0.5f32) < 0.001f32 && abs(c_nrm.y - 1.0f32) < 0.001f32;
+
+  // Mode 3: Unlit with texture sampling
+  u[35] = 3.0f32; u[46] = 1.0f32;
+  c_unlit := mv_fs(vo, u[..], tex, smp);
+  #assert abs(c_unlit.x - 0.16f32) < 0.001f32 && abs(c_unlit.y - 0.36f32) < 0.001f32;
+
+  // Mode 4: Wireframe tint
+  u[35] = 4.0f32;
+  c_wire := mv_fs(vo, u[..], tex, smp);
+  #assert abs(c_wire.x - 0.8f32) < 0.001f32;
+
+  // Selection highlight brightens red/orange channel
+  u[35] = 0.0f32; u[46] = 0.0f32; u[47] = 1.0f32;
+  c_sel := mv_fs(vo, u[..], tex, smp);
+  #assert c_sel.x > c_lit.x;
+}

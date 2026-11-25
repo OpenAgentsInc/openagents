@@ -58,7 +58,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             if url.scheme?.lowercased() == "openagents" {
                 _ = DesktopActivation.shared.handleURL(url)
             } else if url.isFileURL {
-                main.openFileInPane(url)
+                main.openNamedFile(url)
             }
         }
     }
@@ -78,7 +78,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         guard let main else { opened += files; return }
         NSApp.activate(ignoringOtherApps: true)
         main.show()
-        for url in files { main.openFileInPane(url) }
+        for url in files { main.openNamedFile(url) }
     }
     func openNewWindow(folderPath: String? = nil) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path,
@@ -203,6 +203,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleSimulator(_ sender: Any?) { guard FeatureFlags.isOn(.simulator) else { return }; main?.toggleSimulator() }
     @objc func toggleTerminal(_ sender: Any?) { guard FeatureFlags.isOn(.terminal) else { return }; main?.toggleTerminal() }
     @objc func toggleWebPreview(_ sender: Any?) { guard FeatureFlags.isOn(.preview) else { return }; main?.toggleWebPreview() }
+    @objc func toggleMetaverse(_ sender: Any?) { guard FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) else { return }; main?.toggleMetaversePane() }
+    @objc func toggleMetaverseExpand(_ sender: Any?) { guard FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) else { return }; main?.toggleMetaverseExpanded() }
+    @objc func openGameBuilder(_ sender: Any?) { guard FeatureFlags.isOn(.gamebuilder) else { return }; main?.openGameBuilderStudio() }
     @objc func triggerSnapShot(_ sender: Any?) { guard FeatureFlags.isOn(.preview) else { return }; main?.triggerRegionSnapshot() }
     @objc func openThreadProof(_ sender: Any?) { guard FeatureFlags.isOn(.proof) else { return }; ThreadProofDrawer.shared.present(window: main) }
     @objc func openAgentsPage(_ sender: Any?) { guard FeatureFlags.isOn(.agents) else { return }; AgentsPageController.shared.present(window: main) }
@@ -259,6 +262,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(toggleSimulator(_:)) { return FeatureFlags.isOn(.simulator) }
         if item.action == #selector(toggleTerminal(_:)) { return FeatureFlags.isOn(.terminal) }
         if item.action == #selector(toggleWebPreview(_:)) { return FeatureFlags.isOn(.preview) }
+        if item.action == #selector(toggleMetaverse(_:)) || item.action == #selector(toggleMetaverseExpand(_:)) { return FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }
+        if item.action == #selector(openGameBuilder(_:)) { return FeatureFlags.isOn(.gamebuilder) }
         if item.action == #selector(triggerSnapShot(_:)) { return FeatureFlags.isOn(.preview) }
         if item.action == #selector(openThreadProof(_:)) { return FeatureFlags.isOn(.proof) }
         if item.action == #selector(openAgentsPage(_:)) { return FeatureFlags.isOn(.agents) }
@@ -602,6 +607,15 @@ enum TestLaunch {
         let webPrev = view.addItem(withTitle: "Toggle Web Preview", action: #selector(CoderDelegate.toggleWebPreview(_:)), keyEquivalent: "p")
         webPrev.target = delegate; webPrev.keyEquivalentModifierMask = [.command, .option]
         delegate.gatedMenuItems.append((webPrev, { FeatureFlags.isOn(.preview) }))
+        let mvItem = view.addItem(withTitle: "Toggle Metaverse Viewer", action: #selector(CoderDelegate.toggleMetaverse(_:)), keyEquivalent: "m")
+        mvItem.target = delegate; mvItem.keyEquivalentModifierMask = [.command, .option]
+        delegate.gatedMenuItems.append((mvItem, { FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }))
+        let mvExp = view.addItem(withTitle: "Expand / Restore Metaverse Viewer", action: #selector(CoderDelegate.toggleMetaverseExpand(_:)), keyEquivalent: "M")
+        mvExp.target = delegate; mvExp.keyEquivalentModifierMask = [.command, .shift]
+        delegate.gatedMenuItems.append((mvExp, { FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }))
+        let gbItem = view.addItem(withTitle: "Open GameBuilder", action: #selector(CoderDelegate.openGameBuilder(_:)), keyEquivalent: "g")
+        gbItem.target = delegate; gbItem.keyEquivalentModifierMask = [.command, .option]
+        delegate.gatedMenuItems.append((gbItem, { FeatureFlags.isOn(.gamebuilder) }))
         let snapItem = view.addItem(withTitle: "SnapShot Region", action: #selector(CoderDelegate.triggerSnapShot(_:)), keyEquivalent: "6")
         snapItem.target = delegate; snapItem.keyEquivalentModifierMask = [.command, .shift]
         delegate.gatedMenuItems.append((snapItem, { FeatureFlags.isOn(.preview) }))

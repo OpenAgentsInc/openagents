@@ -155,6 +155,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var fileWatchSize: Int64 = -1
     #if OA_FULL
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
+    var mvViewport: MetaverseViewportView? // unified right-side Metaverse Viewer & GameBuilder Metal viewport (#14041)
+    var mvState: MetaverseWindowState?     // per-window Metaverse tabs & file watcher state (#14041)
     var liveSceneBox: NSView?            // the live 3D card in the transcript: the conversation's clip (Window+Files.swift, #13812)
     var liveScenePanel: PleScenePanelView?   // its viewport, within the clip at the card's rect
     var liveScenePath = ""               // the scene it shows, and that file's size and time as loaded (nil: it failed)
@@ -650,6 +652,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 146: if FeatureFlags.isOn(.modelsExecutor) { manageExecutorModels() }
         case 147: if FeatureFlags.isOn(.modelsExecutor) { managePylonExecutorNetwork() }
         case 150...158: if FeatureFlags.isOn(.gym) { leanGymAsked(what) }
+        case 200...215: if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) { metaverseAsked(what) }
         #endif
         case 170...187: providersSettingsAsked(what)
         case 188: focusProvidersField()
@@ -782,6 +785,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
         #if OA_FULL
+        if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) {
+            syncMetaverseFrame()
+        }
         if FeatureFlags.isOn(.scenes) {
             syncScenePanelFrame()
             syncLiveScene()
