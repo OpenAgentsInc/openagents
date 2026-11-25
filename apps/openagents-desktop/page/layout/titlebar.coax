@@ -32,6 +32,44 @@ cp_bar_clear :: (s: [] CoderPage) -> f32 { return cp_bar_search_x(s, true) + CP_
 // A control on the bar's line, size tall, from the top: never above the window's edge.
 cp_bar_y :: (s: [] CoderPage, size: f32) -> f32 { y := cp_bar_line(s) - size / 2; return ifx y < 0 then 0.0f32 else y; }
 
+// Crisp single-physical-pixel horizontal border whose bottom edge aligns with edge_y (matching cp_side_border).
+cp_bar_border :: (s: [] CoderPage, sh: [] Sheet, x: f32, w: f32, edge_y: f32, color: Rgba) {
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  ey := snap(edge_y, d);
+  y0 := (ey - 1.0f32) / d;
+  if y0 < 0.0f32 { y0 = 0.0f32; }
+  y1 := ey / d;
+  if y1 > y0 && w > 0.0f32 { sheet_fill(sh, x, y0, w, y1 - y0, 0, color); }
+}
+
+// Full-width main-area header bar from `left` to `w`: opaque surface, crisp 1-physical-pixel bottom
+// border matching the sidebar divider, and the page or thread title on the top-left clear of controls.
+cp_header_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, title: string, right_limit: f32) {
+  k := f[0].skin; sh := f[0].sheet;
+  bar_h := cp_bar(s);
+  bw := w - left;
+  if bw <= 0.0f32 || bar_h <= 0.0f32 { return; }
+  bg := k.canvas;
+  d := ifx s.count > 0 && s[0].d > 0.0f32 then s[0].d else 1.0f32;
+  bh := (snap(bar_h, d) - 1.0f32) / d;
+  if bh < 0.0f32 { bh = 0.0f32; }
+  if bh > 0.0f32 { sheet_fill(sh, left, 0, bw, bh, 0, bg); }
+  cp_bar_border(s, sh, left, bw, bar_h, k.menu_divider);
+  if title.count > 0 {
+    tx := ifx left > 0.0f32 then left + 16.0f32 else cp_bar_clear(s);
+    room := right_limit - tx;
+    if room > 16.0f32 {
+      tf := k.title;
+      fit := app_fit(f, tf.face, title, room);
+      tw := ceil(measure_width(f[0].m, tf.face, fit));
+      if tw > room { tw = room; }
+      ty := cp_bar_y(s, tf.line);
+      _ := uiframe_semantic(f, "coder.header.title", EL_TEXT, fit, tx, ty, tw, tf.line, 0, 0);
+      _ := sheet_text(sh, f[0].m, -1, tx, ty, tf.line, tf.face, k.ink, fit);
+    }
+  }
+}
+
 // The island behind the bar's controls at the window's top left (zeron.island), toggle or not:
 // from its inset to the row's end, a control and its padding tall, on the bar's line. Opaque:
 // zeron.menu.solid and shadow.sm, Zeron's island with its glass turned solid (island.luau `glass`),

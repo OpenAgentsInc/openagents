@@ -388,8 +388,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   voice_tray := ifx cp_flag(s, DC_FLAG_VOICE) then s[0].voice[0].pill_h else 0.0f32;
   rich_tray := ifx cp_flag(s, DC_FLAG_RICH) then s[0].rich[0].tray_h else 0.0f32;
   bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - git_tray - s[0].permit[0].tray_h - oauth_tray - voice_tray - rich_tray - 10.0f32;   // what scrolls stops 10pt above the trays and the composer
-  if bottom < 0.0f32 { bottom = 0.0f32; }
-  top: f32 = 0;
+  top := cp_bar(s);
+  if bottom < top { bottom = top; }
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
   cp_follow(s, f[0].dt);
@@ -401,8 +401,6 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   s[0].live_r[4] = left * sc; s[0].live_r[5] = top * sc; s[0].live_r[6] = (w - left) * sc; s[0].live_r[7] = (bottom - top) * sc;
   in_view := s[0].px >= x && s[0].px <= x + cw && s[0].py >= top && s[0].py < bottom;
   y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
-  // the first message starts under the window's title bar, which holds the corners' buttons (titlebar.coax)
-  y += cp_bar(s);
   is_foreman := cp_flag(s, DC_FLAG_FOREMAN) && cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
   if is_foreman { y += cp_foreman_hud(s, f, x, y, cw, running, exceeded); }
   // an empty chat's heading stands over its composer (cp_composer); Foreman's here, its composer at the foot
@@ -637,8 +635,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   uiframe_unclip(f);
   s[0].content = new_content;
   app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
-  cp_minimap_draw(s, f, w, top, bottom);
-  cp_find_bar(s, f, left, w, top);
+  cp_minimap_draw(s, f, w, 0.0f32, bottom);
+  cp_find_bar(s, f, left, w, 0.0f32);
   // away from the end long enough to mean it: the way back floats over the transcript's foot,
   // "New reply" while one is written or came meanwhile (#13745)
   s[0].at_end = s[0].stick || s[0].glide_on || s[0].scroll >= s[0].content - s[0].view - 2;
@@ -704,9 +702,26 @@ cp_foreman_hud :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, runn
   }
   return fhud_hud(f, x, y, cw, hud[..]) + a.gap;
 }
-// The buttons in the window's top corners (the chat's cost and goal are in the composer's foot): Copy chat
-// (only when the chat has messages), gated tool toggles, and with no sidebar New chat.
-cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32, exceeded: bool) {
+// The active thread's title for the chat header bar's top-left.
+cp_chat_title :: (s: [] CoderPage, f: [] UiFrame) -> string {
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  if cp_flag(s, DC_FLAG_FOREMAN) && cur == "chat.foreman" { return "Foreman"; }
+  if cur.count > 0 {
+    for q: 0..<s[0].nchats {
+      id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+      if id == cur && s[0].chats[q].title_n > 0 {
+        return sheet_pool(f[0].sheet, cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n]);
+      }
+    }
+  }
+  if s[0].nturns > 0 && s[0].turns[0].ask_n > 0 {
+    return sheet_single_line(f[0].sheet, cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n]);
+  }
+  return "New chat";
+}
+// The full-width chat header bar: opaque surface + crisp bottom border, thread title top-left,
+// New worktree toggle on new chats, optional Git toolbar, and right-side corner icon buttons.
+cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32, running: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
   side := a.icon_button;
   // the corners' buttons stand on the window's title bar, on its line, clear of its controls at the left
@@ -727,9 +742,36 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   if has_term  { rx -= side; term_x = rx; }
   if has_mv    { rx -= side; mv_x = rx; }
   rx -= side; ft_x = rx;
+  // New worktree checkbox sits in the header bar on new chats, left of the corner icons.
+  home := s[0].nturns == 0 && cast(string) s[0].current[0..<s[0].current_n] != "chat.foreman";
+  show_wt := home && !running;
+  w_wt := ifx show_wt then cp_foot_checkbox_width(f, "New worktree") else 0.0f32;
+  min_left := ifx left > 0 then left + 16.0f32 else cp_bar_clear(s);
+  wt_x: f32 = 0;
+  wt_drawn := false;
+  right_for_title := rx - a.gap;
+  if show_wt && rx - a.gap_small - w_wt >= min_left {
+    wt_x = rx - a.gap_small - w_wt;
+    wt_drawn = true;
+    right_for_title = wt_x - a.gap;
+  }
+  git_right := ifx wt_drawn then wt_x - a.gap_small else rx - a.gap_small;
+  title := cp_chat_title(s, f);
+  // Reserve room for the header's title before drawing Git toolbar chips when Git is enabled.
+  title_w := ceil(measure_width(f[0].m, k.title.face, title));
+  if title_w > 220.0f32 { title_w = 220.0f32; }
+  git_min := min_left + title_w + a.gap;
+  if cp_flag(s, DC_FLAG_GIT) && s[0].git[0].in_repo && git_right - git_min >= 120.0f32 {
+    right_for_title = git_min - a.gap;
+  }
+  cp_header_bar(s, f, left, w, title, right_for_title);
+  if wt_drawn {
+    wy := cp_bar_y(s, k.cmp.chip_h);
+    _ := cp_foot_checkbox(f, "coder.worktree", "Create a new git worktree for this chat", wt_x, wy, w_wt, "New worktree", s[0].new_chat_worktree, CP_WORKTREE_TOGGLE);
+  }
   // Reserve space for visible corner buttons so Git toolbar chips never overlap them.
   if cp_flag(s, DC_FLAG_GIT) {
-    cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), rx - a.gap_small, cy);
+    cp_git_toolbar(s, f, git_min, git_right, cy);
   }
   if review {
     shown := cp_review_shown(s);
@@ -1352,16 +1394,10 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
     if need <= room { break; }
     if show_usage { show_usage = false; } else if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
   }
-  // the left side: New worktree checkbox on new chats, Steer & Queue (while a reply runs with a
-  // draft), Fresh & Fan-out when enabled. Model and Effort live inside the composer card's bottom bar.
+  // the left side: Steer & Queue (while a reply runs with a draft), Fresh & Fan-out when enabled.
+  // Model and Effort live inside the composer card's bottom bar; New worktree lives in the header bar.
   fx := x + side;
   end_x := x + cw - side;
-  if home && !running {
-    w_wt := cp_foot_checkbox_width(f, "New worktree");
-    if fx + w_wt <= end_x {
-      fx += cp_foot_checkbox(f, "coder.worktree", "Create a new git worktree for this chat", fx, y, w_wt, "New worktree", s[0].new_chat_worktree, CP_WORKTREE_TOGGLE);
-    }
-  }
   if show_fu_draft {
     sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
     if fx + sw + qw + gap <= end_x {

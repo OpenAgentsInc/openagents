@@ -388,7 +388,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   jump := surface_find(s[0].surface[..], "coder.jump");
   #assert jump >= 0 && surface_say(s[0].surface[..], jump) == "Jump to latest";
   pill := cp_test_row(s, "coder.jump");
-  #assert pill.h == cp_skin().app.pill_h && pill.y + pill.h <= s[0].view;
+  #assert pill.h == cp_skin().app.pill_h && pill.y + pill.h <= cp_bar(s) + s[0].view;
   // pressed: it glides from far up at once, from near over 380 ms
   far := s[0].content - s[0].view;
   s[0].scroll = far - s[0].view;
@@ -885,7 +885,7 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
     #assert cp_test_frame(s, f[..], 1200, 500, false);
     want := s[0].content - s[0].view; if want < 0 { want = 0; }
     #assert abs(s[0].scroll - want) < 0.5f32;
-    #assert s[0].turns[last].ay + s[0].turns[last].ah <= s[0].view + 1.0f32;
+    #assert s[0].turns[last].ay + s[0].turns[last].ah <= cp_bar(s) + s[0].view + 1.0f32;
   }
 }
 

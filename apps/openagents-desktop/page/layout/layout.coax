@@ -91,6 +91,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     gw := window_w - left;
     gh := h - gy;
     if gw > 0 && gh > 0 {
+      cp_header_bar(s, f, left, window_w, "Gym", window_w - CP_CORNER);
       cp_gym_bar(s, f, left, gy, gw);
       if s[0].gym_mode == CP_GYM_LEAN {
         s[0].gym_w = 0; s[0].gym_h = 0;
@@ -142,7 +143,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].col_x = x; s[0].col_w = cw;
   running := cp_running(s); full := cp_full(s); exceeded := cp_flag(s, DC_FLAG_USAGE) && cp_budget_exceeded(s);
   cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
-  cp_corners(s, f, left, w, window_w, exceeded);
+  cp_corners(s, f, left, w, window_w, running, exceeded);
   // the sidebar at its whole width, slid out to the left as it shuts; on narrow viewports (< CP_SIDE_FROM),
   // render an overlay drawer with scrim when s[0].side_drawer is open (#14025).
   if left > 0 {

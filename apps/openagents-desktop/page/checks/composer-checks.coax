@@ -255,19 +255,21 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   s[0].effort = CP_EFFORT_HIGH; #assert cp_task_effort(s, cp_model_index(s)) == "high";
 }
 
-#test "new chat composer foot shows New worktree checkbox defaulting to false, persisting across new chats until unchecked, and hiding after send" {
+#test "new chat header bar shows New worktree checkbox defaulting to false, persisting across new chats until unchecked, and hiding after send" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
   #assert !coder_page_worktree(s);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
   comp := elt_find(t[..], "coder.composer");
   wt := elt_find(t[..], "coder.worktree");
-  folder := elt_find(t[..], "coder.folder");
+  title := elt_find(t[..], "coder.header.title");
   #assert wt >= 0 && t[0].rows[wt].role == EL_TOGGLE && elt_has(t[..], wt, EL_S_CHECKS) && !elt_has(t[..], wt, EL_S_CHECKED);
   #assert elt_value_of(t[..], wt) == "off";
-  // Sits under the input bar on the left, left of the working folder chip on the right.
-  #assert t[0].rows[wt].y >= t[0].rows[comp].y + t[0].rows[comp].h;
-  #assert t[0].rows[wt].x + t[0].rows[wt].w < t[0].rows[folder].x;
+  // Sits in the top header bar (above the composer), with the thread title top-left.
+  #assert t[0].rows[wt].y >= 0 && t[0].rows[wt].y + t[0].rows[wt].h <= cp_bar(s);
+  #assert t[0].rows[wt].y < t[0].rows[comp].y;
+  #assert title >= 0 && t[0].rows[title].y >= 0 && t[0].rows[title].y + t[0].rows[title].h <= cp_bar(s);
+  #assert t[0].rows[title].x + t[0].rows[title].w < t[0].rows[wt].x;
   // Clicking toggles ON and asks the host to persist it.
   #assert cp_press(s, wt) && coder_page_worktree(s) && coder_page_action(s) == CP_ASK_WORKTREE_TOGGLE;
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);

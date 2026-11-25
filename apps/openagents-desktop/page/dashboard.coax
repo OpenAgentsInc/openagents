@@ -264,11 +264,7 @@ cp_dashboard :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32) {
 
   s[0].anim = count > 0;
 
-  // Header row: "Dashboard" title + active count subtitle.
-  hy := top;
-  head_f := k.title;
-  _ := uiframe_semantic(f, "coder.dash.title", EL_TEXT, "Dashboard", x, hy, cw, head_f.line, 0, 0);
-  _ := sheet_text(sh, m, -1, x, hy, head_f.line, head_f.face, k.ink, "Dashboard");
+  // Full-width header bar with bottom border, "Dashboard" page title top-left, and active count top-right.
   cb: [48] u8; cn := 0;
   if count == 0 {
     cn = el_put(cb[..], cn, "No active chats");
@@ -280,11 +276,13 @@ cp_dashboard :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, h: f32) {
   }
   cnt_str := sheet_pool(sh, cast(string) cb[0..<cn]);
   cnt_w := ceil(measure_width(m, k.small.face, cnt_str));
-  _ := uiframe_semantic(f, "coder.dash.count", EL_TEXT, cnt_str, x + cw - cnt_w, hy + (head_f.line - k.small.line) / 2.0f32, cnt_w, k.small.line, 0, 0);
-  _ := sheet_text(sh, m, -1, x + cw - cnt_w, hy + (head_f.line - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, cnt_str);
-  hy += head_f.line + 16.0f32;
+  cnt_x := w - CP_CORNER - cnt_w;
+  cp_header_bar(s, f, left, w, "Dashboard", cnt_x - a.gap);
+  cnt_y := cp_bar_y(s, k.small.line);
+  _ := uiframe_semantic(f, "coder.dash.count", EL_TEXT, cnt_str, cnt_x, cnt_y, cnt_w, k.small.line, 0, 0);
+  _ := sheet_text(sh, m, -1, cnt_x, cnt_y, k.small.line, k.small.face, k.muted, cnt_str);
 
-  list_top := hy;
+  list_top := top;
   list_h := h - list_top - 24.0f32;
   if list_h < 0.0f32 { list_h = 0.0f32; }
   s[0].dash[0].view = list_h;

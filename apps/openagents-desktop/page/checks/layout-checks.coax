@@ -387,3 +387,55 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert cp_bar_draw(s, f[..], 1400, 900) && s[0].side == 340.0f32;
   #assert cp_pointer_with(s, 340.0f32, 300.0f32, 0, 2, 0) && s[0].side_w == 0.0f32 && s[0].sides_due;
 }
+
+#test "chat header bar draws full-width bottom border matching sidebar, top-left thread title, and New worktree toggle" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].ready = true;
+  k := cp_skin();
+  f: [1] UiFrame;
+  // Crisp 1-physical-pixel dark gray bottom border across DPR scales, matching cp_side_border.
+  scales := [3] f32.[1.0f32, 2.0f32, 2.2f32];
+  for d: scales {
+    s[0].d = d;
+    uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+    cp_header_bar(s, f[..], 272.0f32, 1200.0f32, "Build release", 1100.0f32);
+    #assert uiframe_end(f[..], s[0].surface[..]);
+    sh := surface_sheet(s[0].surface[..]);
+    #assert sh.nu >= 2;
+    bg_p := sh.under[0];
+    edge_p := sh.under[1];
+    #assert bg_p.fill.r == 0 && bg_p.fill.g == 0 && bg_p.fill.b == 0 && bg_p.fill.a == 1;
+    #assert abs(edge_p.fill.r - k.menu_divider.r) < 0.001f32 && edge_p.fill.a == 1;
+    dev_y0 := snap(edge_p.y, d);
+    dev_y1 := snap(edge_p.y + edge_p.h, d);
+    #assert dev_y1 - dev_y0 == 1.0f32;
+    #assert snap(bg_p.y + bg_p.h, d) == dev_y0;
+  }
+  s[0].d = 1.0f32;
+  // New chat: top-left title is "New chat" and New worktree checkbox sits in the header bar.
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  hd := cp_bar_row(s, "coder.header.title");
+  wt := cp_bar_row(s, "coder.worktree");
+  #assert hd.x == s[0].side + 16.0f32 && hd.y >= 0 && hd.y + hd.h <= cp_bar(s);
+  #assert cast(string) hd.label[0..<hd.label_n] == "New chat";
+  #assert wt.y >= 0 && wt.y + wt.h <= cp_bar(s) && wt.x > hd.x + hd.w;
+  // Header title allows window dragging; clicking the worktree toggle does not drag.
+  #assert coder_page_bar_drags(s, hd.x + 4, hd.y + 4);
+  #assert !coder_page_bar_drags(s, wt.x + 4, wt.y + 4);
+  // Active saved chat shows its thread title top-left.
+  coder_page_chats(s, "c1\tRefactor auth middleware\t0\t0\t0\t0\t0\t0\t/w\t1000\tmain\t0\n");
+  coder_page_current(s, "c1");
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  hd = cp_bar_row(s, "coder.header.title");
+  #assert cast(string) hd.label[0..<hd.label_n] == "Refactor auth middleware";
+  // With sidebar collapsed, title shifts past cp_bar_clear so it never overlaps the island.
+  s[0].side_collapsed = true;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) <= 60 && s[0].side == 0;
+  hd = cp_bar_row(s, "coder.header.title");
+  #assert hd.x == cp_bar_clear(s) && hd.x > 0;
+  // Dashboard shows "Dashboard" in the header bar.
+  s[0].side_collapsed = false;
+  coder_page_dashboard_open(s, true);
+  #assert cp_bar_draw(s, f[..], 1400, 900);
+  hd = cp_bar_row(s, "coder.header.title");
+  #assert cast(string) hd.label[0..<hd.label_n] == "Dashboard";
+}
