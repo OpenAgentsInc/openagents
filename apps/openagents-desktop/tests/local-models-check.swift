@@ -128,13 +128,18 @@ struct LocalModelsCheck {
         check(LocalModelStore.formatETA(154) == "2m 34s", "formatETA 2m 34s")
         check(LocalModelStore.progressBar(pct: 50, width: 10) == "[█████░░░░░] 50%", "progressBar")
 
-        // 12. Multi-variant catalog (Official + AtomicChat Uncensored LoRA & 3 quants + OrcaRouter Abliterated Mix-16G/12G + Custom).
+        // 12. Multi-variant catalog (Official + AtomicChat Uncensored LoRA & 3 quants + Maple AI Uncensored + OrcaRouter Abliterated Mix-16G/12G + Custom).
         LocalModelStore.catalogOverride = nil
         LocalModelStore.activeVariantIdOverride = LocalModelCatalogEntry.inkling2Mini.id
-        check(LocalModelStore.catalog.count == 8, "8 catalog variants")
+        check(LocalModelStore.catalog.count == 9, "9 catalog variants")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredLora.expectedBytes == 43_805_184, "lora bytes")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredLora.expectedSHA256 == "42914b85c874e7fe249e93f0ac6e8abf08dc0bdf32aa1ec46c72714e64808f12", "lora sha256")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredLora.baseVariantId == "inkling-2-mini", "lora base id")
+        check(LocalModelCatalogEntry.inkling2MiniUncensoredMaple.expectedBytes == 2_287_385_184, "maple bytes")
+        check(LocalModelCatalogEntry.inkling2MiniUncensoredMaple.expectedSHA256 == "de1ab65c04db287320bdda55f6fb070cecf2e6a589870f08c48a65fac41e03fe", "maple sha256")
+        check(LocalModelCatalogEntry.inkling2MiniUncensoredMaple.baseVariantId == "inkling-2-mini", "maple base id")
+        check(LocalModelCatalogEntry.inkling2MiniUncensoredMaple.httpRangeEnd == 2_287_385_183, "maple range end")
+        check(LocalModelCatalogEntry.inkling2MiniUncensoredMaple.isSafetensorsOverlay, "maple safetensors flag")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredQ4K.minRamGB == 24 && LocalModelCatalogEntry.inkling2MiniUncensoredQ4K.expectedBytes == 16_525_559_776, "AD-Q4_K meta")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredIQ3S.minRamGB == 16 && LocalModelCatalogEntry.inkling2MiniUncensoredIQ3S.expectedBytes == 13_340_510_176, "AD-IQ3_S meta")
         check(LocalModelCatalogEntry.inkling2MiniUncensoredIQ2M.minRamGB == 12 && LocalModelCatalogEntry.inkling2MiniUncensoredIQ2M.expectedBytes == 8_665_091_680, "AD-IQ2_M meta")

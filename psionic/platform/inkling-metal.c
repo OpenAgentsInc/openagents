@@ -3952,12 +3952,17 @@ int ink_open_lora(const char *gguf_path, const char *metal_path, const char *lor
     if (!s) { snprintf(err, err_bytes, "out of memory"); return 1; }
     s->dspark.fd = -1;
 
-    if (ink_gguf_open(gguf_path, &s->gguf, err, err_bytes) != 0) {
+    int is_sf_overlay = (lora_path && lora_path[0] && ink_file_is_safetensors(lora_path));
+    if (ink_gguf_open_ex(gguf_path, is_sf_overlay, &s->gguf, err, err_bytes) != 0) {
         free(s); return 1;
     }
     InkHParams *hp = &s->gguf.hp;
     float *ablate_host = NULL;
-    if (lora_path && lora_path[0]) {
+    if (is_sf_overlay) {
+        if (ink_gguf_apply_safetensors_attn_overlay(&s->gguf, lora_path, &s->lora.fp, err, err_bytes) != 0) {
+            ink_close(s); return 1;
+        }
+    } else if (lora_path && lora_path[0]) {
         if (ink_lora_open(lora_path, &s->lora, err, err_bytes) != 0) {
             ink_close(s); return 1;
         }

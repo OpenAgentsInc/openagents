@@ -147,7 +147,11 @@ typedef struct {
 } InkLora;
 
 int  ink_gguf_open(const char *path, InkGGUF *g, char *err, size_t err_bytes);
+int  ink_gguf_open_ex(const char *path, int copy_on_write, InkGGUF *g, char *err, size_t err_bytes);
 void ink_gguf_close(InkGGUF *g);
+int  ink_file_is_safetensors(const char *path);
+int  ink_gguf_apply_safetensors_attn_overlay(InkGGUF *g, const char *path, uint64_t *out_fp,
+                                             char *err, size_t err_bytes);
 
 int  ink_ggml_block_elems(uint32_t type);
 int  ink_ggml_block_bytes(uint32_t type);

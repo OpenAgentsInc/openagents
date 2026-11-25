@@ -20,7 +20,7 @@
    heap copy is made on either system. Returns 0 and fills base/file_size/
    map_size, or writes why not into err. */
 #ifdef _WIN32
-static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+static int ink_map_file_ex(const char *path, int copy_on_write, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
     /* Share like POSIX open(): a downloader, sync client or scanner holding
        the file must not make the open fail. */
     HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -30,12 +30,12 @@ static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, siz
         snprintf(err, err_bytes, "stat %s failed", path);
         CloseHandle(file); return 1;
     }
-    HANDLE mapping = CreateFileMappingA(file, NULL, PAGE_READONLY, 0, 0, NULL);
+    HANDLE mapping = CreateFileMappingA(file, NULL, copy_on_write ? PAGE_WRITECOPY : PAGE_READONLY, 0, 0, NULL);
     if (!mapping) {
         snprintf(err, err_bytes, "mmap %s: Windows error %lu", path, (unsigned long)GetLastError());
         CloseHandle(file); return 1;
     }
-    void *view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    void *view = MapViewOfFile(mapping, copy_on_write ? FILE_MAP_COPY : FILE_MAP_READ, 0, 0, 0);
     unsigned long why = GetLastError();
     /* The view keeps the mapping and the file alive. */
     CloseHandle(mapping);
@@ -46,9 +46,12 @@ static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, siz
     *map_size = (size_t)size.QuadPart;
     return 0;
 }
+static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+    return ink_map_file_ex(path, 0, base, file_size, map_size, err, err_bytes);
+}
 static void ink_unmap_file(uint8_t *base, size_t map_size) { (void)map_size; UnmapViewOfFile(base); }
 #else
-static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+static int ink_map_file_ex(const char *path, int copy_on_write, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) { snprintf(err, err_bytes, "open %s: %s", path, strerror(errno)); return 1; }
     struct stat st;
@@ -59,7 +62,8 @@ static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, siz
     size_t page = (size_t)sysconf(_SC_PAGESIZE);
     size_t fsize = (size_t)st.st_size;
     size_t msize = (fsize + page - 1) & ~(page - 1);
-    void *map = mmap(NULL, msize, PROT_READ, MAP_PRIVATE, fd, 0);
+    int prot = copy_on_write ? (PROT_READ | PROT_WRITE) : PROT_READ;
+    void *map = mmap(NULL, msize, prot, MAP_PRIVATE, fd, 0);
     /* The mapping outlives the descriptor. */
     int why = errno;
     close(fd);
@@ -68,6 +72,9 @@ static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, siz
     *file_size = fsize;
     *map_size = msize;
     return 0;
+}
+static int ink_map_file(const char *path, uint8_t **base, size_t *file_size, size_t *map_size, char *err, size_t err_bytes) {
+    return ink_map_file_ex(path, 0, base, file_size, map_size, err, err_bytes);
 }
 static void ink_unmap_file(uint8_t *base, size_t map_size) { munmap(base, map_size); }
 #endif
@@ -366,10 +373,10 @@ static void bind_tensor(InkGGUF *g, const char *name, uint64_t nlen, const InkTe
     else if (!strcmp(s, "loop_ffn_ctrl_forget.weight")) L->loop_ctrl_forget[3] = *t;
 }
 
-int ink_gguf_open(const char *path, InkGGUF *g, char *err, size_t err_bytes) {
+int ink_gguf_open_ex(const char *path, int copy_on_write, InkGGUF *g, char *err, size_t err_bytes) {
     memset(g, 0, sizeof *g);
     g->fd = -1;
-    if (ink_map_file(path, &g->map, &g->file_size, &g->map_size, err, err_bytes) != 0) return 1;
+    if (ink_map_file_ex(path, copy_on_write, &g->map, &g->file_size, &g->map_size, err, err_bytes) != 0) return 1;
 
     Reader r = { g->map, g->map + g->file_size };
     uint32_t magic = 0, ver = 0;
@@ -636,6 +643,10 @@ fail_kv:
     if (!err[0]) snprintf(err, err_bytes, "failed parsing GGUF KV");
     ink_gguf_close(g);
     return 1;
+}
+
+int ink_gguf_open(const char *path, InkGGUF *g, char *err, size_t err_bytes) {
+    return ink_gguf_open_ex(path, 0, g, err, err_bytes);
 }
 
 void ink_gguf_close(InkGGUF *g) {
@@ -2038,5 +2049,219 @@ int ink_lora_extract_ablate(const InkLora *l, int n_phys, int n_embd, int n_expe
         snprintf(err, err_bytes, "LoRA contains no supported Inkling 2 Mini direction-ablation tensors");
         return 1;
     }
+    return 0;
+}
+
+static uint16_t ggml_f32_to_f16(float x) {
+    uint32_t b;
+    memcpy(&b, &x, 4);
+    uint32_t sign = (b >> 16) & 0x8000u;
+    uint32_t exp = (b >> 23) & 0xffu;
+    uint32_t mant = b & 0x7fffffu;
+    if (exp == 255u) return (uint16_t)(sign | 0x7c00u | (mant ? 0x0200u : 0u));
+    int32_t e = (int32_t)exp - 127 + 15;
+    if (e >= 31) return (uint16_t)(sign | 0x7bffu);
+    if (e <= 0) {
+        if (e < -10) return (uint16_t)sign;
+        mant |= 0x800000u;
+        uint32_t shift = (uint32_t)(14 - e);
+        uint32_t round_bit = 1u << (shift - 1);
+        uint32_t m = (mant + round_bit - 1u + ((mant >> shift) & 1u)) >> shift;
+        return (uint16_t)(sign | m);
+    }
+    uint32_t m = mant + 0x0fffu + ((mant >> 13) & 1u);
+    if (m & 0x800000u) {
+        m = 0;
+        e++;
+        if (e >= 31) return (uint16_t)(sign | 0x7bffu);
+    }
+    return (uint16_t)(sign | ((uint32_t)e << 10) | (m >> 13));
+}
+
+static void bf16_to_q8_0(const uint8_t *src, uint8_t *dst, uint64_t nelems) {
+    uint64_t nb = nelems / 32;
+    for (uint64_t b = 0; b < nb; b++) {
+        float v[32];
+        float max_a = 0.0f;
+        const uint8_t *sb = src + b * 64;
+        for (int i = 0; i < 32; i++) {
+            float f = ggml_bf16_to_f32(rd_le16(sb + (size_t)i * 2));
+            v[i] = f;
+            float a = f < 0.0f ? -f : f;
+            if (a > max_a) max_a = a;
+        }
+        float d = (max_a > 0.0f) ? (max_a / 127.0f) : 0.0f;
+        uint16_t dh = ggml_f32_to_f16(d);
+        uint8_t *db = dst + b * 34;
+        db[0] = (uint8_t)(dh & 0xffu);
+        db[1] = (uint8_t)(dh >> 8);
+        float d_act = ggml_fp16_to_f32(dh);
+        float inv = (d_act != 0.0f) ? (1.0f / d_act) : 0.0f;
+        int8_t *qs = (int8_t *)(db + 2);
+        for (int i = 0; i < 32; i++) {
+            int q = (int)lrintf(v[i] * inv);
+            if (q < -127) q = -127; else if (q > 127) q = 127;
+            qs[i] = (int8_t)q;
+        }
+    }
+}
+
+int ink_file_is_safetensors(const char *path) {
+    if (!path || !path[0]) return 0;
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    uint8_t hdr[9];
+    size_t n = fread(hdr, 1, sizeof hdr, f);
+    fclose(f);
+    if (n < sizeof hdr) return 0;
+    if (rd_le32(hdr) == GGUF_MAGIC) return 0;
+    uint64_t hlen = (uint64_t)rd_le32(hdr) | ((uint64_t)rd_le32(hdr + 4) << 32);
+    return (hlen >= 2 && hlen <= 64ULL * 1024 * 1024 && hdr[8] == '{') ? 1 : 0;
+}
+
+static const char *sf_skip_ws(const char *p) {
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    return p;
+}
+
+static int sf_parse_u64_pair(const char *obj, const char *end, const char *key, uint64_t *a, uint64_t *b) {
+    const char *p = strstr(obj, key);
+    if (!p || p >= end) return 1;
+    p += strlen(key);
+    p = sf_skip_ws(p);
+    if (*p != ':') return 1;
+    p = sf_skip_ws(p + 1);
+    if (*p != '[') return 1;
+    p = sf_skip_ws(p + 1);
+    if (*p < '0' || *p > '9') return 1;
+    char *ep = NULL;
+    unsigned long long v0 = strtoull(p, &ep, 10);
+    if (!ep || ep == p || ep >= end) return 1;
+    p = sf_skip_ws(ep);
+    if (*p != ',') return 1;
+    p = sf_skip_ws(p + 1);
+    if (*p < '0' || *p > '9') return 1;
+    unsigned long long v1 = strtoull(p, &ep, 10);
+    if (!ep || ep == p || ep >= end) return 1;
+    p = sf_skip_ws(ep);
+    if (*p != ']') return 1;
+    *a = (uint64_t)v0;
+    *b = (uint64_t)v1;
+    return 0;
+}
+
+static int sf_find_bf16_tensor(const char *hdr, const char *key_quoted, uint64_t *rows, uint64_t *cols,
+                               uint64_t *off0, uint64_t *off1) {
+    const char *p = hdr;
+    size_t klen = strlen(key_quoted);
+    while ((p = strstr(p, key_quoted)) != NULL) {
+        const char *q = sf_skip_ws(p + klen);
+        if (*q == ':') {
+            q = sf_skip_ws(q + 1);
+            if (*q == '{') {
+                const char *end = strchr(q + 1, '}');
+                if (!end) return 1;
+                const char *dt = strstr(q, "\"dtype\"");
+                if (!dt || dt >= end) return 1;
+                dt = sf_skip_ws(dt + 7);
+                if (*dt != ':') return 1;
+                dt = sf_skip_ws(dt + 1);
+                if (strncmp(dt, "\"BF16\"", 6) != 0) return 1;
+                if (sf_parse_u64_pair(q, end, "\"shape\"", rows, cols) != 0) return 1;
+                if (sf_parse_u64_pair(q, end, "\"data_offsets\"", off0, off1) != 0) return 1;
+                return 0;
+            }
+        }
+        p += klen;
+    }
+    return 1;
+}
+
+int ink_gguf_apply_safetensors_attn_overlay(InkGGUF *g, const char *path, uint64_t *out_fp,
+                                            char *err, size_t err_bytes) {
+    if (!g || !g->map || !path || !path[0]) {
+        snprintf(err, err_bytes, "invalid arguments to safetensors attention overlay");
+        return 1;
+    }
+    uint8_t *sf_map = NULL;
+    size_t sf_fsize = 0, sf_msize = 0;
+    if (ink_map_file_ex(path, 0, &sf_map, &sf_fsize, &sf_msize, err, err_bytes) != 0) return 1;
+    if (sf_fsize < 16) {
+        snprintf(err, err_bytes, "safetensors overlay %s is too small", path);
+        ink_unmap_file(sf_map, sf_msize);
+        return 1;
+    }
+    uint64_t hlen = (uint64_t)rd_le32(sf_map) | ((uint64_t)rd_le32(sf_map + 4) << 32);
+    if (hlen < 2 || hlen > 64ULL * 1024 * 1024 || 8ULL + hlen > sf_fsize || sf_map[8] != '{') {
+        snprintf(err, err_bytes, "invalid safetensors header in %s", path);
+        ink_unmap_file(sf_map, sf_msize);
+        return 1;
+    }
+    char *hdr = (char *)malloc((size_t)hlen + 1);
+    if (!hdr) {
+        snprintf(err, err_bytes, "oom reading safetensors header");
+        ink_unmap_file(sf_map, sf_msize);
+        return 1;
+    }
+    memcpy(hdr, sf_map + 8, (size_t)hlen);
+    hdr[hlen] = '\0';
+
+    static const char *const sf_names[5] = { "wq_du", "wk_dv", "wv_dv", "wo_ud", "gate_attn" };
+    uint64_t data_base = 8ULL + hlen;
+    uint64_t fp = 14695981039346656037ULL ^ hlen;
+    fp *= 1099511628211ULL;
+
+    int n_phys = (int)g->hp.n_phys;
+    if (n_phys <= 0 || n_phys > 32) {
+        free(hdr); ink_unmap_file(sf_map, sf_msize);
+        snprintf(err, err_bytes, "unsupported layer count %d for safetensors overlay", n_phys);
+        return 1;
+    }
+
+    for (int il = 0; il < n_phys; il++) {
+        InkLayerTensors *L = &g->layers[il];
+        InkTensor *targets[5] = { &L->attn_q, &L->attn_k, &L->attn_v, &L->attn_output, &L->attn_gate };
+        for (int k = 0; k < 5; k++) {
+            InkTensor *t = targets[k];
+            if (!t->present || t->type != INK_GGML_Q8_0 || t->ndims != 2) {
+                free(hdr); ink_unmap_file(sf_map, sf_msize);
+                snprintf(err, err_bytes, "safetensors attention overlay requires a base GGUF with Q8_0 attention weights (layer %d %s)", il, sf_names[k]);
+                return 1;
+            }
+            char key[128];
+            snprintf(key, sizeof key, "\"model.llm.layers.%d.attn.%s.weight\"", il, sf_names[k]);
+            uint64_t rows = 0, cols = 0, s0 = 0, s1 = 0;
+            if (sf_find_bf16_tensor(hdr, key, &rows, &cols, &s0, &s1) != 0) {
+                free(hdr); ink_unmap_file(sf_map, sf_msize);
+                snprintf(err, err_bytes, "missing or non-BF16 tensor %s in %s", key, path);
+                return 1;
+            }
+            uint64_t nelems = rows * cols;
+            if (cols != t->dims[0] || rows != t->dims[1] || (nelems % 32) != 0 ||
+                s1 <= s0 || (s1 - s0) != nelems * 2 || data_base + s1 > sf_fsize ||
+                t->nbytes != (nelems / 32) * 34 || t->offset + t->nbytes > g->file_size) {
+                free(hdr); ink_unmap_file(sf_map, sf_msize);
+                snprintf(err, err_bytes, "shape/bounds mismatch for %s in %s", key, path);
+                return 1;
+            }
+            const uint8_t *src = sf_map + data_base + s0;
+            uint64_t src_bytes = s1 - s0;
+            for (uint64_t i = 0; i < src_bytes; i += 4096) {
+                fp ^= src[i];
+                fp *= 1099511628211ULL;
+            }
+            bf16_to_q8_0(src, g->map + t->offset, nelems);
+#ifndef _WIN32
+            size_t ps = (size_t)sysconf(_SC_PAGESIZE);
+            uintptr_t lo = ((uintptr_t)src + ps - 1) & ~(uintptr_t)(ps - 1);
+            uintptr_t hi = ((uintptr_t)(src + src_bytes)) & ~(uintptr_t)(ps - 1);
+            if (hi > lo) madvise((void *)lo, hi - lo, MADV_DONTNEED);
+#endif
+        }
+    }
+
+    free(hdr);
+    ink_unmap_file(sf_map, sf_msize);
+    if (out_fp) *out_fp = fp ? fp : 1ULL;
     return 0;
 }

@@ -20,6 +20,7 @@ struct LocalModelCatalogEntry: Equatable {
     let hfRepoURL: String?
     let isCustom: Bool
     let sourceLabel: String
+    let httpRangeEnd: Int64?
 
     init(
         id: String,
@@ -37,7 +38,8 @@ struct LocalModelCatalogEntry: Equatable {
         requiresHFToken: Bool = false,
         hfRepoURL: String? = nil,
         isCustom: Bool = false,
-        sourceLabel: String = "Hugging Face"
+        sourceLabel: String = "Hugging Face",
+        httpRangeEnd: Int64? = nil
     ) {
         self.id = id
         self.name = name
@@ -55,9 +57,11 @@ struct LocalModelCatalogEntry: Equatable {
         self.hfRepoURL = hfRepoURL
         self.isCustom = isCustom
         self.sourceLabel = sourceLabel
+        self.httpRangeEnd = httpRangeEnd
     }
 
     var isLoraOverlay: Bool { baseVariantId != nil }
+    var isSafetensorsOverlay: Bool { fileName.lowercased().hasSuffix(".safetensors") }
 
     static let inkling2Mini = LocalModelCatalogEntry(
         id: "inkling-2-mini",
@@ -90,6 +94,24 @@ struct LocalModelCatalogEntry: Equatable {
         baseVariantId: "inkling-2-mini",
         hfRepoURL: "https://huggingface.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF",
         sourceLabel: "AtomicChat (LoRA)"
+    )
+
+    static let inkling2MiniUncensoredMaple = LocalModelCatalogEntry(
+        id: "inkling-2-mini-uncensored-maple",
+        name: "Inkling 2 Mini Uncensored (Maple)",
+        shortLabel: "Uncensored (Maple)",
+        architecture: "2.29 GB on-policy BF16 attention overlay (120 tensors) over official IQ4_NL base · Sponsored by Maple AI",
+        quantization: "Safetensors Attn Overlay",
+        fileName: "Inkling-2-Mini-Uncensored-Maple-Attn.safetensors",
+        downloadURL: "https://huggingface.co/benthecarman/Inkling-2-Mini-uncensored/resolve/main/model-00001-of-00001.safetensors",
+        expectedBytes: 2_287_385_184,
+        expectedSHA256: "de1ab65c04db287320bdda55f6fb070cecf2e6a589870f08c48a65fac41e03fe",
+        minRamGB: 32,
+        diskHeadroomBytes: 268_435_456,
+        baseVariantId: "inkling-2-mini",
+        hfRepoURL: "https://huggingface.co/benthecarman/Inkling-2-Mini-uncensored",
+        sourceLabel: "Maple AI (benthecarman)",
+        httpRangeEnd: 2_287_385_183
     )
 
     static let inkling2MiniUncensoredQ4K = LocalModelCatalogEntry(
@@ -192,6 +214,7 @@ struct LocalModelCatalogEntry: Equatable {
 
     static let allVariants: [LocalModelCatalogEntry] = [
         .inkling2MiniUncensoredLora,
+        .inkling2MiniUncensoredMaple,
         .inkling2MiniUncensoredQ4K,
         .inkling2MiniUncensoredIQ3S,
         .inkling2MiniUncensoredIQ2M,
@@ -671,6 +694,18 @@ enum LocalModelStore {
         guard head.count >= 24 else {
             return "\(url.lastPathComponent) is too small to be a valid GGUF file."
         }
+        if expectLora && url.pathExtension.lowercased() == "safetensors" {
+            var hlen: UInt64 = 0
+            for i in 0..<8 { hlen |= UInt64(head[i]) << UInt64(i * 8) }
+            if hlen < 2 || hlen > 67_108_864 || head[8] != 0x7B {
+                return "\(url.lastPathComponent) is not a valid safetensors attention overlay."
+            }
+            let attnMarker = Data("model.llm.layers.0.attn.wq_du.weight".utf8)
+            if head.range(of: attnMarker) == nil {
+                return "\(url.lastPathComponent) is missing Inkling 2 Mini attention overlay tensors."
+            }
+            return nil
+        }
         // Magic "GGUF"
         if head[0] != 0x47 || head[1] != 0x47 || head[2] != 0x55 || head[3] != 0x46 {
             return "\(url.lastPathComponent) is not a valid GGUF file (bad magic header)."
@@ -1067,6 +1102,9 @@ enum LocalModelStore {
             if serverStarting {
                 return "Loading model… · Psionic Metal"
             }
+            if entry.isSafetensorsOverlay {
+                return "Psionic Metal · IQ4_NL + Maple Attn · Local"
+            }
             if entry.isLoraOverlay {
                 return "Psionic Metal · IQ4_NL + LoRA · Local"
             }
@@ -1089,6 +1127,9 @@ enum LocalModelStore {
         case .paused:
             return "Paused \(downloadPct)% · Click to resume"
         case .installed:
+            if entry.isSafetensorsOverlay {
+                return "Psionic Metal · IQ4_NL + Maple Attn · Local"
+            }
             return entry.isLoraOverlay
                 ? "Psionic Metal · IQ4_NL + LoRA · Local"
                 : "Psionic Metal · \(entry.quantization) · Local"
@@ -1220,9 +1261,14 @@ enum LocalModelStore {
             lines.append("Unavailable on this Mac: \(entry.name) requires at least \(entry.minRamGB) GB of Apple Silicon unified memory. Click 'Switch Variant…' to pick a smaller quant (down to 12 GB).")
         case .installed:
             lines.append("")
-            let modeNote = entry.isLoraOverlay
-                ? "Base IQ4_NL + 43.8 MB LoRA overlay active"
-                : "Psionic Metal 4, \(ctxK)K context"
+            let modeNote: String
+            if entry.isSafetensorsOverlay {
+                modeNote = "Base IQ4_NL + \(formatBytes(entry.expectedBytes)) attention overlay active"
+            } else if entry.isLoraOverlay {
+                modeNote = "Base IQ4_NL + \(formatBytes(entry.expectedBytes)) LoRA overlay active"
+            } else {
+                modeNote = "Psionic Metal 4, \(ctxK)K context"
+            }
             lines.append("Status: Installed & SHA-256 verified · Ready in composer model picker (\(modeNote)).")
         case .verifying:
             lines.append("")
@@ -1247,9 +1293,9 @@ enum LocalModelStore {
             if entry.isCustom {
                 lines.append("Status: No custom .gguf imported yet. Click 'Import Local .gguf…' to load any Inkling 2 Mini GGUF checkpoint.")
             } else if entry.isLoraOverlay && isFileInstalled && needsBaseModel {
-                lines.append("Status: LoRA adapter is verified on disk, but the Official IQ4_NL base (17.63 GB) is not installed yet. Click Download Base to install it while keeping Uncensored LoRA active.")
+                lines.append("Status: \(entry.shortLabel) overlay is verified on disk, but the Official IQ4_NL base (17.63 GB) is not installed yet. Click Download Base to install it while keeping \(entry.shortLabel) active.")
             } else if entry.isLoraOverlay && needsBaseModel {
-                lines.append("Status: Ready to download Official IQ4_NL base (17.63 GB) + 43.8 MB Uncensored LoRA adapter (resumable, SHA-256 verified).")
+                lines.append("Status: Ready to download Official IQ4_NL base (17.63 GB) + \(formatBytes(entry.expectedBytes)) \(entry.shortLabel) overlay (resumable, SHA-256 verified).")
             } else if hasUnverifiedWeights {
                 lines.append("Status: Checkpoint found on disk without a verified SHA-256 manifest. Click Verify SHA-256 to authenticate it.")
             } else if !hasEnoughDiskForDownload {
@@ -1356,16 +1402,66 @@ enum LocalModelStore {
         }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        var args = ["-fsSL", "-C", "-", "--retry", "3", "--retry-delay", "2"]
+        var args: [String]
+        var rangeOutHandle: FileHandle?
+        if let rangeEnd = target.httpRangeEnd {
+            var cur = partialBytes(for: target)
+            if cur > target.expectedBytes {
+                try? FileManager.default.removeItem(at: targetPart)
+                cur = 0
+            }
+            if cur == target.expectedBytes && target.expectedBytes > 0 {
+                isVerifying = true
+                verifyPct = 0
+                onUpdate()
+                verifyQueue.async {
+                    let res = finalizeDownloadedPart(for: target) { pct in
+                        DispatchQueue.main.async {
+                            verifyPct = pct
+                            onUpdate()
+                        }
+                    }
+                    DispatchQueue.main.async {
+                        isVerifying = false
+                        verifyPct = res.ok ? 100 : 0
+                        onUpdate()
+                        if res.ok && target.id != entry.id && !isFileInstalled(for: entry) {
+                            startDownload(onUpdate: onUpdate)
+                        }
+                    }
+                }
+                return
+            }
+            if !FileManager.default.fileExists(atPath: targetPart.path) {
+                FileManager.default.createFile(atPath: targetPart.path, contents: nil)
+            }
+            do {
+                let fh = try FileHandle(forWritingTo: targetPart)
+                fh.seekToEndOfFile()
+                rangeOutHandle = fh
+            } catch {
+                lastError = "Could not open \(targetPart.lastPathComponent) for append: \(error.localizedDescription)"
+                onUpdate()
+                return
+            }
+            args = ["-fsSL", "--retry", "3", "--retry-delay", "2", "-r", "\(cur)-\(rangeEnd)"]
+        } else {
+            args = ["-fsSL", "-C", "-", "--retry", "3", "--retry-delay", "2"]
+        }
         var stdinPipe: Pipe?
         if hfToken != nil {
             args.append(contentsOf: ["-K", "-"])
             stdinPipe = Pipe()
             proc.standardInput = stdinPipe
         }
-        args.append(contentsOf: ["-o", targetPart.path, target.downloadURL])
+        if let outHandle = rangeOutHandle {
+            args.append(target.downloadURL)
+            proc.standardOutput = outHandle
+        } else {
+            args.append(contentsOf: ["-o", targetPart.path, target.downloadURL])
+            proc.standardOutput = FileHandle.nullDevice
+        }
         proc.arguments = args
-        proc.standardOutput = FileHandle.nullDevice
         let errPipe = Pipe()
         proc.standardError = errPipe
         proc.terminationHandler = { p in
@@ -1422,6 +1518,7 @@ enum LocalModelStore {
         }
         do {
             try proc.run()
+            if let outHandle = rangeOutHandle { try? outHandle.close() }
             if let token = hfToken, let pipe = stdinPipe {
                 let cfg = "header = \"Authorization: Bearer \(token)\"\n"
                 if let data = cfg.data(using: .utf8) {
@@ -1442,6 +1539,7 @@ enum LocalModelStore {
             progressTimer = t
             onUpdate()
         } catch {
+            if let outHandle = rangeOutHandle { try? outHandle.close() }
             if let pipe = stdinPipe { try? pipe.fileHandleForWriting.close() }
             lastError = "Could not launch curl: \(error.localizedDescription)"
             onUpdate()

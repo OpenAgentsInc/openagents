@@ -41,7 +41,9 @@ GB_VAR_FLAWED_GEMINI_NEON :: 16;
 GB_VAR_FLAWED_GEMINI_CARBON :: 17;
 GB_VAR_FLAWED_GEMINI_HYDROGEN :: 18;
 GB_VAR_FLAWED_GEMINI_ARGON :: 19;
-GB_VAR_COUNT :: 20;
+GB_VAR_INKLING_MAPLE :: 20;
+GB_VAR_FLAWED_INKLING_MAPLE :: 21;
+GB_VAR_COUNT :: 22;
 
 GB_LOCAL_FAST_SUITES :: [6] string.[
   "gsm8k",
@@ -129,6 +131,7 @@ gb_variant_is_cloud :: (backend: string) -> bool #effects(reads, traps) {
 gb_variant_upstream_model :: (id: int) -> string {
   if id == GB_VAR_FLAWED_INKLING_BASE { return "inkling-2-mini"; }
   if id == GB_VAR_FLAWED_INKLING_LORA { return "inkling-2-mini-uncensored-lora"; }
+  if id == GB_VAR_FLAWED_INKLING_MAPLE { return "inkling-2-mini-uncensored-maple"; }
   if id == GB_VAR_FLAWED_INKLING_Q4K { return "inkling-2-mini-uncensored-q4k"; }
   if id == GB_VAR_FLAWED_GEMINI_NEON { return "gemini-4-neon"; }
   if id == GB_VAR_FLAWED_GEMINI_CARBON { return "gemini-4-carbon"; }
@@ -485,22 +488,49 @@ gb_variant_info :: (id: int) -> GbVariantInfo {
       min_ram_gb = 0,
     };
   }
+  if id == GB_VAR_FLAWED_GEMINI_ARGON {
+    return GbVariantInfo.{
+      id = GB_VAR_FLAWED_GEMINI_ARGON,
+      slug = "flawed-gemini-4-argon",
+      label = "Flawed Harness · Gemini 4 Argon",
+      backend = "flawed-cloud",
+      model_id = "flawed-gemini-4-argon",
+      rel_gguf = "",
+      rel_lora = "",
+      quant = "Agent+Cloud",
+      min_ram_gb = 0,
+    };
+  }
+  if id == GB_VAR_INKLING_MAPLE {
+    return GbVariantInfo.{
+      id = GB_VAR_INKLING_MAPLE,
+      slug = "inkling-2-mini-uncensored-maple",
+      label = "Inkling 2 Mini · Psionic IQ4_NL + Maple Uncensored",
+      backend = "psionic-metal",
+      model_id = "inkling-2-mini-uncensored-maple",
+      rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+      rel_lora = "inkling-2-mini-uncensored-maple/Inkling-2-Mini-Uncensored-Maple-Attn.safetensors",
+      quant = "IQ4_NL+Maple",
+      min_ram_gb = 32,
+    };
+  }
   return GbVariantInfo.{
-    id = GB_VAR_FLAWED_GEMINI_ARGON,
-    slug = "flawed-gemini-4-argon",
-    label = "Flawed Harness · Gemini 4 Argon",
-    backend = "flawed-cloud",
-    model_id = "flawed-gemini-4-argon",
-    rel_gguf = "",
-    rel_lora = "",
-    quant = "Agent+Cloud",
-    min_ram_gb = 0,
+    id = GB_VAR_FLAWED_INKLING_MAPLE,
+    slug = "flawed-inkling-uncensored-maple",
+    label = "Flawed Harness · Inkling Uncensored (Maple)",
+    backend = "flawed-local",
+    model_id = "flawed-inkling-uncensored-maple",
+    rel_gguf = "inkling-2-mini/Inkling-2-Mini-IQ4_NL.gguf",
+    rel_lora = "inkling-2-mini-uncensored-maple/Inkling-2-Mini-Uncensored-Maple-Attn.safetensors",
+    quant = "Agent+Maple",
+    min_ram_gb = 32,
   };
 }
 
 gb_variant_by_slug :: (slug: string) -> int {
   if slug == "inkling-2-mini" || slug == "psionic" || slug == "base" { return GB_VAR_INKLING_BASE; }
   if slug == "inkling-2-mini-uncensored-lora" || slug == "lora" || slug == "uncensored-lora" { return GB_VAR_INKLING_LORA; }
+  if slug == "inkling-2-mini-uncensored-maple" || slug == "maple" || slug == "uncensored-maple" { return GB_VAR_INKLING_MAPLE; }
   if slug == "inkling-2-mini-uncensored-q4k" || slug == "q4k" || slug == "uncensored-q4k" { return GB_VAR_INKLING_Q4K; }
   if slug == "inkling-2-mini-uncensored-iq3s" || slug == "iq3s" { return GB_VAR_INKLING_IQ3S; }
   if slug == "inkling-2-mini-uncensored-iq2m" || slug == "iq2m" { return GB_VAR_INKLING_IQ2M; }
@@ -514,6 +544,7 @@ gb_variant_by_slug :: (slug: string) -> int {
   if slug == "gemini-4-argon" || slug == "argon" { return GB_VAR_GEMINI_ARGON; }
   if slug == "flawed-inkling-2-mini" || slug == "flawed-inkling" || slug == "flawed:inkling-2-mini" { return GB_VAR_FLAWED_INKLING_BASE; }
   if slug == "flawed-inkling-uncensored-lora" || slug == "flawed-lora" || slug == "flawed:inkling-2-mini-uncensored-lora" { return GB_VAR_FLAWED_INKLING_LORA; }
+  if slug == "flawed-inkling-uncensored-maple" || slug == "flawed-maple" || slug == "flawed:inkling-2-mini-uncensored-maple" { return GB_VAR_FLAWED_INKLING_MAPLE; }
   if slug == "flawed-inkling-uncensored-q4k" || slug == "flawed-q4k" || slug == "flawed:inkling-2-mini-uncensored-q4k" { return GB_VAR_FLAWED_INKLING_Q4K; }
   if slug == "flawed-gemini-4-neon" || slug == "flawed-neon" || slug == "flawed:gemini-4-neon" { return GB_VAR_FLAWED_GEMINI_NEON; }
   if slug == "flawed-gemini-4-carbon" || slug == "flawed-carbon" || slug == "flawed:gemini-4-carbon" { return GB_VAR_FLAWED_GEMINI_CARBON; }
@@ -543,7 +574,7 @@ gb_variant_by_slug :: (slug: string) -> int {
   #assert gb_profile_info(GB_PROF_LOCAL_CORE).count == 16;
   #assert gb_profile_info(GB_PROF_TEMPLATE_SMOKE).count == 16;
 
-  expected_ram := [GB_VAR_COUNT] int.[32, 32, 24, 16, 12, 24, 16, 32, 24, 0, 0, 0, 0, 32, 32, 24, 0, 0, 0, 0];
+  expected_ram := [GB_VAR_COUNT] int.[32, 32, 24, 16, 12, 24, 16, 32, 24, 0, 0, 0, 0, 32, 32, 24, 0, 0, 0, 0, 32, 32];
   for vid: 0..<GB_VAR_COUNT {
     v := gb_variant_info(vid);
     #assert v.id == vid;
@@ -558,7 +589,13 @@ gb_variant_by_slug :: (slug: string) -> int {
     }
   }
   #assert gb_variant_info(GB_VAR_INKLING_LORA).rel_lora.count > 0;
+  #assert gb_variant_info(GB_VAR_INKLING_MAPLE).rel_lora.count > 0;
+  #assert gb_variant_info(GB_VAR_FLAWED_INKLING_MAPLE).rel_lora.count > 0;
   #assert gb_variant_info(GB_VAR_INKLING_BASE).rel_lora.count == 0;
+  #assert gb_variant_by_slug("maple") == GB_VAR_INKLING_MAPLE;
+  #assert gb_variant_by_slug("uncensored-maple") == GB_VAR_INKLING_MAPLE;
+  #assert gb_variant_by_slug("flawed-maple") == GB_VAR_FLAWED_INKLING_MAPLE;
+  #assert gb_variant_by_slug("flawed:inkling-2-mini-uncensored-maple") == GB_VAR_FLAWED_INKLING_MAPLE;
   #assert gb_variant_by_slug("neon") == GB_VAR_GEMINI_NEON;
   #assert gb_variant_by_slug("carbon") == GB_VAR_GEMINI_CARBON;
   #assert gb_variant_by_slug("hydrogen") == GB_VAR_GEMINI_HYDROGEN;
@@ -566,8 +603,10 @@ gb_variant_by_slug :: (slug: string) -> int {
   #assert gb_variant_by_slug("flawed-neon") == GB_VAR_FLAWED_GEMINI_NEON;
   #assert gb_variant_by_slug("flawed-lora") == GB_VAR_FLAWED_INKLING_LORA;
   #assert gb_variant_upstream_model(GB_VAR_INKLING_BASE) == "inkling-2-mini";
+  #assert gb_variant_upstream_model(GB_VAR_INKLING_MAPLE) == "inkling-2-mini-uncensored-maple";
   #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_BASE) == "inkling-2-mini";
   #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_LORA) == "inkling-2-mini-uncensored-lora";
+  #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_MAPLE) == "inkling-2-mini-uncensored-maple";
   #assert gb_variant_upstream_model(GB_VAR_FLAWED_INKLING_Q4K) == "inkling-2-mini-uncensored-q4k";
   #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_NEON) == "gemini-4-neon";
   #assert gb_variant_upstream_model(GB_VAR_FLAWED_GEMINI_CARBON) == "gemini-4-carbon";

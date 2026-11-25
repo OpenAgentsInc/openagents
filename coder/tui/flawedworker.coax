@@ -483,6 +483,7 @@ fww_local_installed :: (home: string) -> bool {
 
 fww_local_variant_short :: (pm: string) -> string {
   if pm == "inkling-2-mini-uncensored-lora" { return "Uncensored LoRA"; }
+  if pm == "inkling-2-mini-uncensored-maple" { return "Uncensored (Maple)"; }
   if pm == "inkling-2-mini-uncensored-q4k" { return "Uncensored AD-Q4_K"; }
   if pm == "inkling-2-mini-uncensored-iq3s" { return "Uncensored AD-IQ3_S"; }
   if pm == "inkling-2-mini-uncensored-iq2m" { return "Uncensored AD-IQ2_M"; }
@@ -2879,9 +2880,15 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_parse_permission_mode("ask") == FLAWED_PMODE_DEFAULT && fww_parse_permission_mode("accept_edits") == FLAWED_PMODE_ACCEPT_EDITS;
   #assert fww_parse_permission_mode("plan") == FLAWED_PMODE_PLAN && fww_parse_permission_mode("dont_ask") == FLAWED_PMODE_DONT_ASK;
   #assert fww_local_variant_short("inkling-2-mini-uncensored-lora") == "Uncensored LoRA";
+  #assert fww_local_variant_short("inkling-2-mini-uncensored-maple") == "Uncensored (Maple)";
   #assert fww_local_variant_short("inkling-2-mini-uncensored-q4k") == "Uncensored AD-Q4_K";
+  #assert fww_local_variant_short("inkling-2-mini-uncensored-iq3s") == "Uncensored AD-IQ3_S";
+  #assert fww_local_variant_short("inkling-2-mini-uncensored-iq2m") == "Uncensored AD-IQ2_M";
   #assert fww_local_variant_short("inkling-2-mini-abliterated-mix16g") == "Abliterated Mix-16G";
+  #assert fww_local_variant_short("inkling-2-mini-abliterated-mix12g") == "Abliterated Mix-12G";
   #assert fww_local_variant_short("inkling-2-mini-custom") == "Custom Local .gguf";
+  #assert fww_local_variant_short("inkling-2-mini") == "Official IQ4_NL";
+  #assert fww_local_variant_short("other-id") == "other-id";
 
   cfg: [1] FwConfig;
   h: [1] FwHist;

@@ -589,6 +589,10 @@
   #assert cp_model_desc(s, ink_i) == "Not downloaded (17.67 GB) · Click to download";
   #assert cp_model_meta(s, ink_i) == "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)";
   #assert cp_model_known_label("inkling-2-mini-uncensored-lora") == "Inkling 2 Mini Uncensored (LoRA)";
+  #assert cp_model_known_label("inkling-2-mini-uncensored-maple") == "Inkling 2 Mini Uncensored (Maple)";
+  #assert cp_model_known_meta("inkling-2-mini-uncensored-maple") == "Psionic Metal · Inkling 2 Mini Uncensored (Maple)";
+  #assert cp_model_known_label("flawed:inkling-2-mini-uncensored-maple") == "Flawed · Inkling 2 Mini Uncensored (Maple)";
+  #assert cp_model_known_meta("flawed:inkling-2-mini-uncensored-maple") == "Flawed Agent · Inkling 2 Mini Uncensored (Maple)";
   #assert cp_model_known_label("inkling-2-mini-uncensored-q4k") == "Inkling 2 Mini Uncensored (AD-Q4_K)";
 
   // 2. Composer & model picker chip are visible even before download, showing Flawed + active Inkling variant!

@@ -388,6 +388,7 @@ cp_model_known_label :: (name: string) -> string {
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return flabels[i]; } }
   if name == "flawed" { return "Flawed · Inkling 2 Mini"; }
   if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "flawed:inkling-2-mini-uncensored-maple" { return "Flawed · Inkling 2 Mini Uncensored (Maple)"; }
   if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "flawed:inkling-2-mini-uncensored-iq3s" { return "Flawed · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
   if name == "flawed:inkling-2-mini-uncensored-iq2m" { return "Flawed · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
@@ -398,6 +399,7 @@ cp_model_known_label :: (name: string) -> string {
     return cast(string) name[CP_FLAWED_PREFIX.count..<name.count];
   }
   if name == "inkling-2-mini-uncensored-lora" { return "Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "inkling-2-mini-uncensored-maple" { return "Inkling 2 Mini Uncensored (Maple)"; }
   if name == "inkling-2-mini-uncensored-q4k" { return "Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "inkling-2-mini-uncensored-iq3s" { return "Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
   if name == "inkling-2-mini-uncensored-iq2m" { return "Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
@@ -435,6 +437,7 @@ cp_model_known_meta :: (name: string) -> string {
   for i: 0..<CP_FLAWED_MODELS { if name == fids[i] { return fmetas[i]; } }
   if name == "flawed" { return "Flawed Agent · Inkling 2 Mini"; }
   if name == "flawed:inkling-2-mini-uncensored-lora" { return "Flawed Agent · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "flawed:inkling-2-mini-uncensored-maple" { return "Flawed Agent · Inkling 2 Mini Uncensored (Maple)"; }
   if name == "flawed:inkling-2-mini-uncensored-q4k" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "flawed:inkling-2-mini-uncensored-iq3s" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
   if name == "flawed:inkling-2-mini-uncensored-iq2m" { return "Flawed Agent · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
@@ -442,6 +445,7 @@ cp_model_known_meta :: (name: string) -> string {
   if name == "flawed:inkling-2-mini-abliterated-mix12g" { return "Flawed Agent · Inkling 2 Mini Abliterated (Mix-12G)"; }
   if name == "flawed:inkling-2-mini-custom" { return "Flawed Agent · Inkling 2 Mini (Custom Local .gguf)"; }
   if name == "inkling-2-mini-uncensored-lora" { return "Psionic Metal · Inkling 2 Mini Uncensored (LoRA)"; }
+  if name == "inkling-2-mini-uncensored-maple" { return "Psionic Metal · Inkling 2 Mini Uncensored (Maple)"; }
   if name == "inkling-2-mini-uncensored-q4k" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-Q4_K)"; }
   if name == "inkling-2-mini-uncensored-iq3s" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ3_S)"; }
   if name == "inkling-2-mini-uncensored-iq2m" { return "Psionic Metal · Inkling 2 Mini Uncensored (AD-IQ2_M)"; }
