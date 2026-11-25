@@ -524,6 +524,7 @@ int cd_pin_move(void *page, char *id_out, int cap, int *to_out) {
   return n;
 }
 int cd_chat_at(void *page, float x, float y, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_chat_at(cd_state(c), x, y, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_chat_slot(void *page, int slot, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_chat_slot(cd_state(c), slot, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_foreman_at(void *page, float x, float y) { CoderHost *c = page; return c ? (int)coder_page_foreman_at(cd_state(c), x, y) : 0; }
 int cd_title(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_title(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_save_due(void *page) { CoderHost *c = page; return c && coder_page_save_due(cd_state(c)); }

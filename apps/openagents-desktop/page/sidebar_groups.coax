@@ -562,3 +562,66 @@ coder_page_sb_sel_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   return s[0].sb[0].sel_count;
 }
+
+// Compute the sidebar's current visual chat order (indices q into s[0].chats), matching cp_sidebar:
+// Archived view when active, otherwise Working (if expanded) -> Pinned -> Recents (up to chat_limit)
+// -> Snoozed (if expanded). Keeps Cmd+1..9 aligned with the visible sidebar rows and shortcut badges
+// even before a frame repaints or while the sidebar is collapsed.
+cp_sb_visible_order :: (s: [] CoderPage, out_q: [] int) -> int {
+  if s.count < 1 || out_q.count < 1 { return 0; }
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  running := cp_running(s);
+  now_ms := s[0].sb[0].now_ms;
+  is_arch := s[0].sb[0].view_mode == CP_SB_VIEW_ARCHIVED;
+  limit := cp_sb_chat_limit(s);
+  n := 0;
+  visible := 0;
+  if is_arch {
+    for q: 0..<s[0].nchats {
+      if !s[0].chats[q].archived { continue; }
+      if visible >= limit { break; }
+      if n < out_q.count { out_q[n] = q; n += 1; }
+      visible += 1;
+    }
+    return n;
+  }
+  work_q: [CP_CHATS] int;
+  nworking := cp_sb_sync_working(s, cur, running, work_q[..]);
+  if nworking > 0 && !s[0].sb[0].working_collapsed {
+    for wi: 0..<nworking {
+      if visible >= limit { break; }
+      if n < out_q.count { out_q[n] = work_q[wi]; n += 1; }
+      visible += 1;
+    }
+  }
+  for q: 0..<s[0].nchats {
+    if !s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
+    if visible >= limit { break; }
+    if n < out_q.count { out_q[n] = q; n += 1; }
+    visible += 1;
+  }
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].pinned || !cp_sb_is_visible_active(s[0].chats[q], now_ms) || cp_sb_is_working(s, q, cur, running) { continue; }
+    if visible >= limit { break; }
+    if n < out_q.count { out_q[n] = q; n += 1; }
+    visible += 1;
+  }
+  if !s[0].sb[0].snoozed_collapsed {
+    for q: 0..<s[0].nchats {
+      if s[0].chats[q].archived || !cp_sb_is_snoozed(s[0].chats[q], now_ms) { continue; }
+      if n < out_q.count { out_q[n] = q; n += 1; }
+    }
+  }
+  return n;
+}
+
+// The bare id of the chat at 1-based sidebar visual slot (Cmd+1..9). Returns length in out, 0 if none.
+coder_page_chat_slot :: (s: [] CoderPage, slot: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || slot < 1 { return 0; }
+  order: [CP_CHATS] int;
+  n := cp_sb_visible_order(s, order[..]);
+  if slot > n { return 0; }
+  q := order[slot - 1];
+  if q < 0 || q >= s[0].nchats || s[0].chats[q].id_n <= 5 { return 0; }
+  return cp_out(out, cast(string) s[0].chats[q].id[5..<s[0].chats[q].id_n]);
+}

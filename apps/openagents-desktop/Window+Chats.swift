@@ -146,11 +146,15 @@ extension CoderWindow {
         syncDashboard()
         wake()
     }
-    /// Opens the Nth chat from the top of the sidebar list (1 is the first).
+    /// Opens the Nth chat from the top of the sidebar list (1 is the first), matching the sidebar's
+    /// live visual order (Working, Pinned, Recents, expanded Snoozed, or Archived view) and ⌘1..9 badges.
     func openChat(at index: Int) {
-        let ordered = store.orderedList
-        guard index >= 1, index <= ordered.count else { return }
-        open(ordered[index - 1].id)
+        guard index >= 1 else { return }
+        cd_sb_now_ms(page, Int64(Date().timeIntervalSince1970 * 1000))
+        var out = [CChar](repeating: 0, count: 128)
+        let n = cd_chat_slot(page, Int32(index), &out, Int32(out.count))
+        guard n > 0 else { return }
+        open(String(cString: out))
     }
     /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had. A reply
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back

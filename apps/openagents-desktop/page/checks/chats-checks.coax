@@ -273,3 +273,34 @@
   #assert saw_agy && !saw_brain;
   #assert coder_page_icon_size(ICON_ANTIGRAVITY_12) == 12.0f32 && coder_page_icon_size(ICON_PSIONIC_12) == 12.0f32 && coder_page_icon_size(ICON_CLAUDE_12) == 12.0f32 && coder_page_icon_size(ICON_OPENAI_12) == 12.0f32 && coder_page_icon_size(ICON_BOT_12) == 12.0f32;
 }
+
+#test "coder_page_chat_slot follows live sidebar visual order across Working, Pinned, Recents, archived, and snoozed" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_sb_now_ms(s, 10000);
+  // Columns: id, title, busy, pinned, managed, unread, archived, snoozed_until_ms, folder, updated_ms
+  // Initially: r1 and r2 are slots 1 and 2; r3 and r4 are slots 3 and 4; arch and snz are hidden.
+  coder_page_chats(s, "arch\tArchived\t0\t0\t0\t0\t1\t0\t/r\t5000\nsnz\tSnoozed\t0\t0\t0\t0\t0\t99999\t/r\t4500\nr1\tRecent 1\t0\t0\t0\t0\t0\t0\t/r\t4000\nr2\tRecent 2\t0\t0\t0\t0\t0\t0\t/r\t3000\nr3\tRecent 3\t0\t0\t0\t0\t0\t0\t/r\t2000\nr4\tRecent 4\t0\t0\t0\t0\t0\t0\t/r\t1000\n");
+  b: [64] u8;
+  n1 := coder_page_chat_slot(s, 1, b[..]); #assert cast(string) b[0..<n1] == "r1";
+  n2 := coder_page_chat_slot(s, 2, b[..]); #assert cast(string) b[0..<n2] == "r2";
+  n3 := coder_page_chat_slot(s, 3, b[..]); #assert cast(string) b[0..<n3] == "r3";
+  n4 := coder_page_chat_slot(s, 4, b[..]); #assert cast(string) b[0..<n4] == "r4";
+  #assert coder_page_chat_slot(s, 5, b[..]) == 0;
+
+  // Now r3 and r4 become busy (move to Working shelf at top of sidebar): slots 1..4 must be r3, r4, r1, r2.
+  coder_page_chats(s, "arch\tArchived\t0\t0\t0\t0\t1\t0\t/r\t5000\nsnz\tSnoozed\t0\t0\t0\t0\t0\t99999\t/r\t4500\nr1\tRecent 1\t0\t0\t0\t0\t0\t0\t/r\t4000\nr2\tRecent 2\t0\t0\t0\t0\t0\t0\t/r\t3000\nr3\tRecent 3\t1\t0\t0\t0\t0\t0\t/r\t2000\nr4\tRecent 4\t1\t0\t0\t0\t0\t0\t/r\t1000\n");
+  f: [1] UiFrame;
+  #assert cp_test_draw_side(s, f[..]);
+  n1 = coder_page_chat_slot(s, 1, b[..]); #assert cast(string) b[0..<n1] == "r3";
+  n2 = coder_page_chat_slot(s, 2, b[..]); #assert cast(string) b[0..<n2] == "r4";
+  n3 = coder_page_chat_slot(s, 3, b[..]); #assert cast(string) b[0..<n3] == "r1";
+  n4 = coder_page_chat_slot(s, 4, b[..]); #assert cast(string) b[0..<n4] == "r2";
+
+  // Switching to Archived view maps slot 1 to the archived chat.
+  coder_page_sb_set_view(s, CP_SB_VIEW_ARCHIVED);
+  n1 = coder_page_chat_slot(s, 1, b[..]); #assert cast(string) b[0..<n1] == "arch";
+  #assert coder_page_chat_slot(s, 2, b[..]) == 0;
+}

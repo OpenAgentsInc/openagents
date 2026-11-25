@@ -238,6 +238,8 @@ int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);
 // The id of the chat whose sidebar row is at (x, y) device pixels, 0 when none is there.
 int cd_chat_at(void *page, float x, float y, char *out, int cap);
+// The id of the chat at 1-based sidebar visual slot (Cmd+1..9), 0 when none is there.
+int cd_chat_slot(void *page, int slot, char *out, int cap);
 // Nonzero when the persistent Foreman sidebar row is at (x, y) device pixels.
 int cd_foreman_at(void *page, float x, float y);
 int cd_save_due(void *page);

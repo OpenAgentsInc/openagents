@@ -296,7 +296,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       rh := app_side_height(f, r);
       ry := stop + cursor - at;
       cursor += rh;
-      if r.heading || r.action == CP_SB_WORKING_TOGGLE || r.action == CP_SB_LOAD_MORE_ACT { continue; }
+      if r.heading || r.action == CP_SB_WORKING_TOGGLE || r.action == CP_SB_SNOOZED_TOGGLE || r.action == CP_SB_LOAD_MORE_ACT { continue; }
       slot += 1;
       if slot > 9 { break; }
       if ry + rh <= stop || ry >= stop + s[0].side_view { continue; }
