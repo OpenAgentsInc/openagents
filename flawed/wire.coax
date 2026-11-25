@@ -446,7 +446,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   names := [FLAWED_WIRE_NTOOLS] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
   descs := [FLAWED_WIRE_NTOOLS] string.[
     "Read a file with 1-based line numbers (default 600 lines on cloud, 300 local). Pass offset and limit for larger files. Prefer Read over cat/head/tail/sed.",
-    "Exact string replacement in an existing file (read the file first). Preserve exact indentation after the line-number tab prefix; never include line numbers. Use the smallest unique old_string (2-4 lines) or set replace_all: true. You may batch multiple independent Edit calls in one response.",
+    "Exact string replacement in an existing file (read the file first). Preserve exact indentation after the line-number tab prefix; never include line numbers. Keep each Edit surgical: use only the changed lines plus 2-3 unique context lines (avoid replacing large unmodified blocks; split multi-hunk refactors into multiple small parallel Edit calls) or set replace_all: true.",
     "Create a new file or overwrite an existing file with complete contents. Prefer Edit when modifying existing files.",
     "Execute a shell command in the working directory; returns head+tail output and exit code. Chain dependent commands with &&; reserve Bash for builds, tests, git, and scripts rather than reading/editing/searching files.",
     "Find files matching a glob pattern (e.g. **/*.coax, src/*.swift). Prefer Glob over find/ls.",

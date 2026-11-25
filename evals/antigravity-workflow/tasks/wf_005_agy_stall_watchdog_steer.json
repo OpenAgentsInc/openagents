@@ -1,0 +1,29 @@
+{
+  "id": "wf_005_agy_stall_watchdog_steer",
+  "category": "antigravity-workflow",
+  "bucket": "W5_runtime_concurrency",
+  "description": "Prevent Antigravity stall-watchdog false kills on large write batches (raise AGY_STALL_S to 900s) and fix superseded-steer end_turn desync across cursor/antigravity/agyworker (from chats 099f2a5a & 2aa782a6).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "099f2a5a",
+    "project": "work/openagents",
+    "base_sha": "e4ff3130f795ca6f54f961aea4a2856d0c903cf6",
+    "target_sha": "6a1acd6ea665c9a44c9eeb48637a10b7de3ce3c0"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Fix two Antigravity worker reliability bugs across `coax/lib/agent/cursor/client.coax`, `coax/lib/agent/engine/cursor.coax`, `coax/lib/agent/engine/antigravity.coax`, and `coder/tui/agyworker.coax`: 1) Raise `AGY_STALL_S` from `120` to `900` (15-minute prompt inactivity ceiling) so large multi-file parallel write_file generations are never falsely killed mid-stream, keep background wake_grace capped, and surface `cue_watch_notice` as a thought in `agyworker.coax` on `CUE_WATCH_RECOVERING`/`CUE_WATCH_GAVE_UP`. 2) Track active prompt id on mid-turn `cue_steer` so a superseded prompt's immediate empty `end_turn` response is swallowed instead of failing the turn with 'ended the turn without a reply' and desynchronizing the session, and reject `MWW_STEER` in `agyworker.coax` when no turn is active. Add unit tests covering superseded-steer synchronization and verify with `coax/bin/coax test coax/lib/agent/engine/cursor.coax --library && coax/bin/coax test coax/lib/agent/engine/antigravity.coax --library && coax/bin/coax test coder/tui/agyworker.coax --library`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'AGY_STALL_S :: 900;' coax/lib/agent/engine/antigravity.coax && grep -q 'cue_watch_notice' coder/tui/agyworker.coax && grep -q 'active_prompt_id\\|superseded' coax/lib/agent/engine/cursor.coax && coax/bin/coax test coax/lib/agent/engine/cursor.coax --library && coax/bin/coax test coax/lib/agent/engine/antigravity.coax --library && coax/bin/coax test coder/tui/agyworker.coax --library"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

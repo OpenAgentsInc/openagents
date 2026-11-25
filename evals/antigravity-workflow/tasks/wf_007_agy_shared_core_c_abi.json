@@ -1,0 +1,29 @@
+{
+  "id": "wf_007_agy_shared_core_c_abi",
+  "category": "antigravity-workflow",
+  "bucket": "W7_shared_c_abi",
+  "description": "Export #authority remote-reliability and route-policy functions across the shared C ABI boundary in apps/shared/antigravity/client-core.{coax,bridge.{h,c}} (#14032, from chat ba6d40e0).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "ba6d40e0",
+    "project": "work/openagents",
+    "base_sha": "a583dd7e5331d8ba1deab4443cc2be734c96c838",
+    "target_sha": "6d0966f4de81c11b90066118933dc82e53d49c43"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Export the `#authority` remote-reliability and route-policy functions across the shared C ABI (#14032): 1) In `apps/shared/antigravity/client-core.coax`, load `coax/lib/agent/environment/route-policy.coax` and add `#export_c` wrappers `mc_rr_sync_action`, `mc_rr_request_liveness`, `mc_route_select`, and `mc_cred_audience_ok` delegating to `rr_sync_action`, `rr_request_liveness`, `route_select`, and `cred_audience_ok`, with `#test` checks. 2) Add matching C ABI wrappers `oa_mobile_rr_sync_action`, `oa_mobile_rr_request_liveness`, `oa_mobile_route_select`, and `oa_mobile_cred_audience_ok` in `apps/shared/antigravity/client-core-bridge.h` and `apps/shared/antigravity/client-core-bridge.c`. 3) Verify with `coax/bin/coax test apps/shared/antigravity/client-core.coax --library` and verify the generated C header + `client-core-bridge.c` compile cleanly under `clang -Wall -Werror`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'mc_rr_sync_action' apps/shared/antigravity/client-core.coax && grep -q 'mc_route_select' apps/shared/antigravity/client-core.coax && grep -q 'oa_mobile_rr_sync_action' apps/shared/antigravity/client-core-bridge.h && grep -q 'oa_mobile_route_select' apps/shared/antigravity/client-core-bridge.c && grep -q 'oa_mobile_cred_audience_ok' apps/shared/antigravity/client-core-bridge.c && coax/bin/coax test apps/shared/antigravity/client-core.coax --library && mkdir -p /tmp/wf007-abi && coax/bin/coax c apps/shared/antigravity/client-core.coax --library --header /tmp/wf007-abi/client_core.h > /tmp/wf007-abi/client_core.c && /usr/bin/clang -std=gnu11 -Wall -Werror -I/tmp/wf007-abi -Iapps/shared/antigravity -c apps/shared/antigravity/client-core-bridge.c -o /tmp/wf007-abi/bridge.o && rm -rf /tmp/wf007-abi"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

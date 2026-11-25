@@ -1,0 +1,29 @@
+{
+  "id": "wf_008_agy_desktop_sidebar_polish",
+  "category": "antigravity-workflow",
+  "bucket": "W8_desktop_ux_polish",
+  "description": "Implement desktop sidebar multi-select distinct fill, 1.5pt EL_S_FOCUSED focus ring, quiet receding inactive titles (0.72 ink opacity), and Cmd+Z undo toast when composer is empty (#14029).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "ba6d40e0",
+    "project": "work/openagents",
+    "base_sha": "41b951ae682984011ac570575481958439e95d3d",
+    "target_sha": "128d4a64d447138a5a61dbbb8f0809b20c9efd52"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement desktop sidebar polish (#14029) across `components/app/nav.coax`, `apps/openagents-desktop/page/layout/sidebar.coax`, `apps/openagents-desktop/page/editor.coax`, and `apps/openagents-desktop/page/checks/sidebar-groups-checks.coax`: 1) Add `selected: bool` to `AppSideRow` and pass `selected = sel` in `cp_side_chat_row` (keeping `EL_S_CURRENT` exclusively for the active chat), rendering multi-selected rows with a distinct tinted accent pill + border instead of the `EL_S_CURRENT` fill. 2) Paint a `1.5f32` focus ring on `EL_S_FOCUSED` sidebar cards without increasing card height. 3) Quietly recede already-read/inactive card titles (0.72 ink opacity, brightening on hover). 4) Wire `Cmd+Z` in `apps/openagents-desktop/page/editor.coax` to trigger the active sidebar Undo toast (`CP_SB_UNDO_ACT`) when no overlay/settings is open and the composer is empty. 5) Add checks in `sidebar-groups-checks.coax` and verify with `coax/bin/coax test components/app/nav.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only sidebar && coax/bin/coax test apps/openagents-desktop/app-v1.coax --library`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'selected: bool' components/app/nav.coax && grep -q 'EL_S_FOCUSED' components/app/nav.coax && grep -q '0.72f32' components/app/nav.coax && grep -q 'CP_SB_UNDO_ACT' apps/openagents-desktop/page/editor.coax && coax/bin/coax test components/app/nav.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only sidebar && coax/bin/coax test apps/openagents-desktop/app-v1.coax --library"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

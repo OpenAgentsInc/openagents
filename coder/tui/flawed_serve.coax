@@ -14,7 +14,7 @@
 //                   with automatic wire passthrough for external benchmark tools, multi-turn template
 //                   checks, and tiny single-token choice prompts (max_tokens <= 32).
 
-FWS_REQ_BUF :: 524288;
+FWS_REQ_BUF :: 1048576;
 FWS_RESP_BUF :: 524288;
 FWS_NODES_MAX :: 4096;
 
@@ -30,6 +30,8 @@ FwServeOpts :: struct {
 FwServeWork :: struct {
   raw_req: [FWS_REQ_BUF] u8;
   resp_buf: [FWS_RESP_BUF] u8;
+  msg_tmp: [FWS_REQ_BUF] u8;
+  usr_tmp: [FWS_REQ_BUF] u8;
   nodes: [FWS_NODES_MAX] JvNode;
   run: [1] FwRun;
   hist: [1] FwHist;
@@ -189,7 +191,6 @@ fws_extract_msg_content :: (d: Jv, cnode: int, out: [] u8, has_mm: [] bool) -> i
   n := 0;
   np := jv_len(d, cnode);
   tb: [32] u8;
-  pb: [16384] u8;
   for i: 0..<np {
     p := jv_at(d, cnode, i);
     if jv_kind(d, p) != JV_OBJECT { continue; }
@@ -200,10 +201,11 @@ fws_extract_msg_content :: (d: Jv, cnode: int, out: [] u8, has_mm: [] bool) -> i
       continue;
     }
     if ts == "text" || ts == "input_text" || ts.count == 0 {
-      pn := jv_str(d, jv_get(d, p, "text"), pb[..]);
-      if pn > 0 {
-        if n > 0 { n = fww_cat(out, n, "\n"); }
-        n = fww_cat(out, n, cast(string) pb[0..<pn]);
+      if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+      if n < out.count {
+        pn := jv_str(d, jv_get(d, p, "text"), out[n..<out.count]);
+        if pn > 0 { n += pn; }
+        else if n > 0 && out[n - 1] == '\n' { n -= 1; }
       }
     }
   }
@@ -323,6 +325,7 @@ fws_build_gemini_from_oai :: (
   req_max_tok: int,
   think_on: bool,
   effort: string,
+  cb: [] u8,
   out: [] u8
 ) -> int {
   o: [1] Jo; jo_start(o[..], out);
@@ -332,14 +335,13 @@ fws_build_gemini_from_oai :: (
   nm := ifx jv_kind(d, msgs) == JV_ARRAY then jv_len(d, msgs) else 0;
   sys_b: [65536] u8; nsys := 0;
   rb: [32] u8;
-  cb: [65536] u8;
   mm := [1] bool.[false];
   for i: 0..<nm {
     m := jv_at(d, msgs, i);
     rn := jv_str(d, jv_get(d, m, "role"), rb[..]);
     role := ifx rn > 0 then cast(string) rb[0..<rn] else "";
     if role == "system" || role == "developer" {
-      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb, mm[..]);
       if cn > 0 {
         if nsys > 0 { nsys = fww_cat(sys_b[..], nsys, "\n\n"); }
         nsys = fww_cat(sys_b[..], nsys, cast(string) cb[0..<cn]);
@@ -475,12 +477,12 @@ fws_build_gemini_from_oai :: (
   if open_role != 0 { jo_end(o[..]); jo_end(o[..]); }
   jo_end(o[..]);
 
-  // 4. generationConfig (with Gemini 4 thinking-token allowance so max_tokens=1 never returns empty text!)
+  // 4. generationConfig (with fair Gemini 4 thinking-token allowance so high-effort raw evals never truncate!)
   jo_key(o[..], "generationConfig");
   jo_obj(o[..]);
   lvl := ifx !think_on then "low" else flawed_wire_gemini_level(effort);
   is_perf := jv_bool(d, jv_get(d, 0, "ignore_eos"));
-  headroom := ifx is_perf && !think_on then 256 else ifx !think_on || lvl == "low" then 1024 else 4096;
+  headroom := ifx is_perf && !think_on then 256 else ifx !think_on || lvl == "low" then 1024 else ifx lvl == "high" then 16384 else 4096;
   base_tok := ifx req_max_tok > 0 then req_max_tok else 4096;
   max_out := base_tok + headroom;
   if max_out > 65536 { max_out = 65536; }
@@ -729,7 +731,7 @@ fws_exec_raw :: (
   }
 
   bn := ifx is_gem
-        then fws_build_gemini_from_oai(d, msgs, tools_node, resp_fmt, temp_raw, req_max_tok, think_on, effort, w[0].bufs[0].req_body[..])
+        then fws_build_gemini_from_oai(d, msgs, tools_node, resp_fmt, temp_raw, req_max_tok, think_on, effort, w[0].msg_tmp[..], w[0].bufs[0].req_body[..])
         else fws_build_oai_forward(d, msgs, tools_node, tool_choice, resp_fmt, wire_model, temp_raw, req_max_tok, think_on, effort, is_local, w[0].bufs[0].req_body[..]);
   if bn <= 0 {
     fws_send_error(fd, 400, "Bad Request", "invalid_request_error", "request body exceeded Flawed server buffer");
@@ -978,13 +980,15 @@ fws_exec_harness :: (
   r[0].neffort = fww_keep(r[0].effort[..], norm_eff);
   r[0].step_num = 1;
   r[0].retry[0] = FlawedRetryState.{max_retries = 3};
-  // H8: Soft wrap-up deadline at 135s inside the 240s hard cap so multi-step tasks emit a clean HTTP 200 answer instead of 502.
-  r[0].soft_deadline_ms = proc_now_ms() + 135000;
+  // H8: Soft wrap-up deadline (135s local, 210s cloud) inside 300s hard cap so multi-step tasks emit a clean HTTP 200 answer.
+  soft_ms := ifx flawed_wire_is_local_model(upstream_model) then 135000 else 210000;
+  r[0].soft_deadline_ms = proc_now_ms() + soft_ms;
 
   // Build Flawed autonomous harness system prompt + H4 programmatic verification workflow
   sn := fww_build_system_prompt(hcfg[..], ws, home, r[0].sys_prompt[..]);
   sn = fww_cat(r[0].sys_prompt[..], sn, "\n# Verification Discipline\n");
   sn = fww_cat(r[0].sys_prompt[..], sn, "- Answer straightforward factual, trivia, or translation prompts directly without calling tools.\n");
+  sn = fww_cat(r[0].sys_prompt[..], sn, "- For long code-comprehension or QA prompts where all source code/context is already inside the prompt, analyze it directly (or run a quick python3 verification script if exact execution/calculation helps) rather than scanning the empty temp workspace.\n");
   sn = fww_cat(r[0].sys_prompt[..], sn, "- For math, algebra, geometry, combinatorics, or STEM calculations, run a short python3 script via Bash to solve and cross-check your answer instead of relying on mental math.\n");
   sn = fww_cat(r[0].sys_prompt[..], sn, "- For pattern/grid/code tasks with input-output examples, write a python3 function in Bash, assert exact equality on EVERY training example until 100% pass, then run it on the test input.\n");
   sn = fww_cat(r[0].sys_prompt[..], sn, "- When a prompt imposes strict countable formatting rules (exact/min/max word, sentence, paragraph, keyword, XML, or JSON constraints), check your candidate draft with a quick python3 script in Bash before replying (leave clear margin on '< N' / '> N' bounds, and avoid adding markdown code fences or extra prose around raw XML/JSON unless asked).\n");
@@ -1104,9 +1108,9 @@ fws_handle_conn :: (fd: int, opts: [] FwServeOpts, w: [] FwServeWork, cfg: [] Fw
     jo_key(o[..], "id"); jo_str(o[..], served_model);
     jo_key(o[..], "object"); jo_str(o[..], "model");
     jo_key(o[..], "owned_by"); jo_str(o[..], "openagents-flawed");
-    // In --mode harness, Flawed manages auto-compaction and per-step token budgets (6144 clamp inside local 32K),
-    // so advertise 65536 to allow MMLU-Pro's upstream 32K+prompt window check to execute cleanly.
-    mml := ifx !flawed_wire_is_local_model(upstream_model) then 1048576 else ifx opts[0].harness_mode then 65536 else 32768;
+    // Match advertised max_model_len to server buffer capacity: cloud serves up to 131072 tokens (~450 KiB inside 1 MiB
+    // HTTP & Gemini request buffers, so longbench_v2_code middle-truncates cleanly for BOTH raw and harness arms!).
+    mml := ifx !flawed_wire_is_local_model(upstream_model) then 131072 else ifx opts[0].harness_mode then 65536 else 32768;
     jo_key(o[..], "max_model_len"); jo_int(o[..], mml);
     jo_end(o[..]);
     jo_end(o[..]);
@@ -1171,26 +1175,26 @@ fws_handle_conn :: (fd: int, opts: [] FwServeOpts, w: [] FwServeWork, cfg: [] Fw
             else ifx opts[0].neffort > 0 then cast(string) opts[0].effort[0..<opts[0].neffort]
             else "low";
 
-  // Count non-system turns and extract system + last user text for harness routing
+  // Count non-system turns and extract system + last user text for harness routing (up to 1 MiB for longbench_v2_code!)
   non_sys := 0;
   sys_b: [32768] u8; nsys := 0;
-  usr_b: [65536] u8; nusr := 0;
-  rb: [32] u8; cb: [65536] u8; mm := [1] bool.[false];
+  nusr := 0;
+  rb: [32] u8; mm := [1] bool.[false];
   nm_msgs := jv_len(d, msgs);
   for i: 0..<nm_msgs {
     m := jv_at(d, msgs, i);
     rn := jv_str(d, jv_get(d, m, "role"), rb[..]);
     role := ifx rn > 0 then cast(string) rb[0..<rn] else "user";
     if role == "system" || role == "developer" {
-      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), cb[..], mm[..]);
+      cn := fws_extract_msg_content(d, jv_get(d, m, "content"), w[0].msg_tmp[..], mm[..]);
       if cn > 0 {
         if nsys > 0 { nsys = fww_cat(sys_b[..], nsys, "\n\n"); }
-        nsys = fww_cat(sys_b[..], nsys, cast(string) cb[0..<cn]);
+        nsys = fww_cat(sys_b[..], nsys, cast(string) w[0].msg_tmp[0..<cn]);
       }
     } else {
       non_sys += 1;
       if role == "user" {
-        nusr = fws_extract_msg_content(d, jv_get(d, m, "content"), usr_b[..], mm[..]);
+        nusr = fws_extract_msg_content(d, jv_get(d, m, "content"), w[0].usr_tmp[..], mm[..]);
       }
     }
   }
@@ -1204,7 +1208,7 @@ fws_handle_conn :: (fd: int, opts: [] FwServeOpts, w: [] FwServeWork, cfg: [] Fw
               && jv_kind(d, resp_fmt) != JV_OBJECT;
 
   if use_harness {
-    fws_exec_harness(fd, w, cfg, auth, home, served_model, upstream_model, cast(string) sys_b[0..<nsys], cast(string) usr_b[0..<nusr], think_on, effort, want_stream);
+    fws_exec_harness(fd, w, cfg, auth, home, served_model, upstream_model, cast(string) sys_b[0..<nsys], cast(string) w[0].usr_tmp[0..<nusr], think_on, effort, want_stream);
   } else {
     fws_exec_raw(fd, w, cfg, auth, home, served_model, upstream_model, d, msgs, tools_node, tool_choice, resp_fmt, temp_raw, req_max_tok, think_on, effort, want_stream);
   }
@@ -1266,7 +1270,8 @@ fws_serve_main :: (opts: [] FwServeOpts, cfg: [] FwConfig, auth: [] FwAuth, home
   req_ok := "{\"messages\":[{\"role\":\"system\",\"content\":\"Be exact.\"},{\"role\":\"user\",\"content\":\"What is 2+2?\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"calc\",\"description\":\"math\",\"parameters\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"x\":{\"type\":[\"string\",\"null\"]}}}}}]}";
   #assert jv_parse(d[..], req_ok, nodes[..]) && !fws_msgs_have_multimodal(d[0], jv_get(d[0], 0, "messages"));
   out: [8192] u8;
-  n := fws_build_gemini_from_oai(d[0], jv_get(d[0], 0, "messages"), jv_get(d[0], 0, "tools"), -1, "0.0", 1, false, "low", out[..]);
+  cb_t: [4096] u8;
+  n := fws_build_gemini_from_oai(d[0], jv_get(d[0], 0, "messages"), jv_get(d[0], 0, "tools"), -1, "0.0", 1, false, "low", cb_t[..], out[..]);
   #assert n > 0;
   s := cast(string) out[0..<n];
   #assert jv_parse(d[..], s, nodes[..]);

@@ -1,0 +1,29 @@
+{
+  "id": "wf_004_agy_inky_tool_json_leak",
+  "category": "antigravity-workflow",
+  "bucket": "W4_psionic_cross_lang",
+  "description": "Prevent Inkling/Psionic from leaking raw native tool-call JSON into user-visible text when tool_choice=none or tool calls are exhausted across coax/lib/inky/loop.coax and psionic/platform/inkling-serve.c.",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "fe80b00c",
+    "project": "work/openagents",
+    "base_sha": "8ac80b40d571e6a69bc71bc894476029bcc666bc",
+    "target_sha": "e7c3a80ae860dfa2aaa4919f504f091022008cb0"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Fix raw native tool-call JSON leaks under `tool_choice=\"none\"` / disabled tools across Psionic and Inky: 1) In `psionic/platform/inkling-serve.c`, when tools are forbidden (`tool_choice=\"none\"` or empty tools), intercept tool-name header tokens while `in_header` is active (before stepping them into the KV cache) and redirect cleanly to text (allowing at most one initial thinking block) instead of only catching `<|content_invoke_tool_json|>`. 2) In `coax/lib/inky/loop.coax`, add a closing notice right before `tool_choice=\"none\"` takes effect and add defense-in-depth detection in `ik_loop_stream_end` so a bare leaked native tool-call JSON object (`{\"name\":\"run_command\",\"args\":...}`) emitted after tools are disabled does not finish as a normal reply or poison history, with `#test` coverage. Verify with `coax/bin/coax test coax/lib/inky/loop.coax --library && coax/bin/coax test coax/lib/inky/run.coax --library` and verify `psionic/platform/inkling-serve.c` still builds cleanly."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'in_header' psionic/platform/inkling-serve.c && grep -q 'tools_forbidden\\|bad_header\\|saw_think' psionic/platform/inkling-serve.c && grep -q 'Tool calls are now disabled\\|tools were disabled\\|leaked' coax/lib/inky/loop.coax && coax/bin/coax test coax/lib/inky/loop.coax --library && coax/bin/coax test coax/lib/inky/run.coax --library && ./psionic/platform/inkling-build.sh /tmp/wf004-psionic-check >/dev/null && rm -rf /tmp/wf004-psionic-check"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

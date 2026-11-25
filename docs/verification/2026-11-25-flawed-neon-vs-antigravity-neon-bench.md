@@ -1,178 +1,165 @@
-# Flawed · Gemini 4 Neon vs. Antigravity · Gemini 4 Neon: Head-to-Head Benchmark & Harness Hillclimb
+# Flawed · Gemini 4 Neon vs. Antigravity · Gemini 4 Neon & Raw Neon: Benchmark, gBench & Custom Workflow Hillclimb
 
 **Date:** 2026-11-25  
-**Shipped Commit:** `d7be8ab43b5c894a8595eb094b867f555584f335` (`origin/main`)  
-**Installed Desktop Build:** `/Applications/OpenAgents.app` (`1.0.0`, build `34353`, `OAProfile = minimal`, `14,643,200` B / `14 MiB` Stage 2 budget)  
-**Modified Runtime Sources:** `coder/tui/flawedworker.coax`, `flawed/wire.coax`
+**Previous Milestone Commit (Flawed v4):** `d7be8ab43b5c894a8595eb094b867f555584f335` (`origin/main`)  
+**Current Champion:** **Flawed v8** (`coder/tui/flawedworker.coax`, `coder/tui/flawed_serve.coax`, `flawed/wire.coax`, `evals/antigravity-workflow/`)  
+**Bundle Gate (`--minimal`):** `PASS v1-bundle-check (macos stage 2, unpacked=14,643,200 B / 14 MiB budget)`
 
 ---
 
 ## 1. One-Sentence Bottom Line
 
-Running the exact same `gemini-4-neon` model at `effort=high` (`300s` per-task wall cap) across 16 real repository coding tasks (`dev10` + 6 unseen `heldout6` tasks), **Flawed · Neon doubled base Antigravity · Neon's pass rate (`8/16 = 50.0%` vs. `4/16 = 25.0%`), solved all 4 commonly passed tasks `41.2%` faster (`60.8s` vs. `103.4s` avg), consumed `35%–46%` fewer prompt tokens than Antigravity, and recorded `0/41` edit failures and `0` HTTP/wire retries.**
+Running the exact same `gemini-4-neon` model at `effort=high` (`300s` per-task cap) across **24 real OpenAgents repository coding tasks** (`dev10` + 6 unseen `heldout6` + 8 custom `workflow8` tasks mined directly from our recent Antigravity chats), **Flawed v8 · Neon achieved `3.60×` base Antigravity · Neon's pass rate (`18/24 = 75.0%` vs. `5/24 = 20.8%`), solved all 5 commonly passed tasks `58.2%` faster (`54.4s` vs. `130.3s` avg, `2.39×`), used `39%–91%` fewer prompt tokens on those tasks, recorded `0/157` edit failures and `0` HTTP/wire retries, and also outperformed raw `gemini-4-neon` on locked-scaffold `google-deepmind/gbench` across 10 hard eval suites (`35/38 = 92.1%` in `1767.8s` vs. `34/38 = 89.5%` in `1988.9s`, `-11.1%` wall time, `0` infra errors, `0` truncations) plus `13/13` Golden Set (`-29.6%` faster).**
 
 ---
 
-## 2. Executive Summary
+## 2. Executive Summary (All Three Tracks)
 
-| Metric | Antigravity · Neon (`high`) | Flawed R0 · Neon (`high`) | **Flawed v4 · Neon (`high`)** | Flawed v4 vs. AGY / R0 |
-|---|---:|---:|---:|---|
-| **`dev10` pass rate** (Buckets A–E, 10 tasks) | 3/10 (30.0%)\* | 3/10 (30.0%) | **6/10 (60.0%)** | **2.0× pass rate (+30.0 pp)** |
-| **`heldout6` pass rate** (unseen, 6 tasks) | 1/6 (16.7%) | — | **2/6 (33.3%)** | **2.0× pass rate (+16.7 pp)** |
-| **Combined pass rate** (16 tasks) | **4/16 (25.0%)** | — | **8/16 (50.0%)** | **2.0× pass rate (+25.0 pp)** |
-| **Mean solve time (3 common `dev10` passes)** | 102.5s | 177.0s | **59.7s** | **41.8% faster than AGY, 2.96× faster than R0** |
-| **Mean solve time (all 4 common passes)** | 103.4s | — | **60.8s** | **41.2% faster than AGY (4–0 sweep)** |
-| **`dev10` total prompt tokens**† | 8,386,183 (`84.3%` cached) | 14,996,546 (`88.4%` cached) | **5,459,594 (`82.7%` cached)** | **-34.9% vs. AGY, -63.6% vs. R0** |
-| **`heldout6` total prompt tokens**† | 9,729,052 (`87.3%` cached) | — | **5,236,137 (`86.8%` cached)** | **-46.2% vs. AGY** |
-| **`dev10` tool calls / LLM turns** | 236 tools / — | 443 tools / 211 turns | **215 tools / 105 turns** | **-51.5% tools, -50.2% turns vs. R0** |
-| **`heldout6` tool calls** | 222 tools | — | **156 tools** | **-29.7% tools vs. AGY** |
-| **Edit failures (all 16 tasks)** | 0 / 7 | 0 / 6 *(dev10)* | **0 / 41** | **100% edit precision** |
-| **HTTP / wire retries (all 16 tasks)** | 0 | 1 (`thoughtSignature` wipe) | **0** | **Zero wire errors** |
-| **`dev10` Vertex API cost** | *(AGY quota, \$0 billed)* | \$9.26 | **\$5.85** | **-36.8% cheaper at 2× pass rate** |
-| **`heldout6` Vertex API cost** | *(AGY quota, \$0 billed)* | — | **\$4.27** | \$0.71/task avg |
+### 2.1 Repo Coding & Real Antigravity-Workflow Tracks (`effort=high`, `300s` cap)
 
-*\*Fairness note on Antigravity `dev10`: In the initial 6-worker parallel Round 0 run, `agyworker` hit two transient errors (`sh_019` failed at `0.4s` with `plan model not specified` under 6-way startup contention, and `sh_005` failed at `17.6s` on an `<end_of_image>` glitch), producing raw `1/10`. We immediately re-ran both tasks cleanly at `--workers 2`; both passed (`sh_005` in `99.5s`, `sh_019` in `121.4s`). Every Antigravity comparison in this report uses the **healthy 3/10** Antigravity baseline.*
+| Metric | Antigravity · Neon (`high`) | Flawed R0 (Baseline) | Flawed v4 (Prev Shipped) | **Flawed v8 (Champion)** | Flawed v8 vs. AGY |
+|---|---:|---:|---:|---:|---|
+| **`dev10` pass rate** (Buckets A–E, 10 tasks) | 3/10 (30.0%)\* | 3/10 (30.0%) | 6/10 (60.0%) | **8/10 (80.0%)** | **`2.67×` pass rate (+50.0 pp)** |
+| **`heldout6` pass rate** (unseen, 6 tasks) | 1/6 (16.7%) | — | 2/6 (33.3%) | **3/6 (50.0%)** | **`3.00×` pass rate (+33.3 pp)** |
+| **`workflow8` pass rate** (8 real Antigravity-chat workflows) | 1/8 (12.5%) | — | — | **7/8 (87.5%)** | **`7.00×` pass rate (+75.0 pp)** |
+| **Combined pass rate (all 24 tasks)** | **5/24 (20.8%)** | — | — | **18/24 (75.0%)** | **`3.60×` pass rate (+54.2 pp)** |
+| **Timeouts (all 24 tasks)** | 19 | — | — | **5** | **-73.7% timeouts** |
+| **Mean solve time (all 5 common passes)** | 130.3s | — | — | **54.4s** | **`58.2%` faster (`2.39×`, 5–0 sweep)** |
+| **Edit failures (all 24 tasks)** | 0 / 18 | 0 / 6 *(dev10)* | 0 / 41 *(16 tasks)* | **0 / 157** | **100.0% edit precision** |
+| **HTTP / wire retries (all 24 tasks)** | 0 | 1 | 0 | **0** | **Zero wire errors** |
+| **Vertex API cost (`dev10` / `heldout6` / `workflow8`)** | *(AGY quota)* | \$9.26 / — / — | \$5.85 / \$4.27 / — | **\$6.97 / \$5.47 / \$6.65** | **\$0.80/task avg across 24 tasks** |
 
-*†Token-accounting note: Vertex AI `promptTokenCount` (`flawed` `in_tok`) **includes** `cachedContentTokenCount` (`cache_pct = cached / in_tok`), whereas `agyworker` reports uncached `input_tokens` separately from `cached_tokens` (`total_prompt = in_tok + cached_tok`, `cache_pct = cached / (in_tok + cached)`). Both are normalized onto the same total-prompt basis in the summary table above.*
+### 2.2 Locked-Scaffold `google-deepmind/gbench` Track (`effort=high`, `--thinking`, `--max-output-tokens 32768`, 0 infra errors, 0 truncations)
 
----
+| Pillar / Suite | Scaffold ID | Raw `gemini-4-neon` | **Flawed · `gemini-4-neon`** | Delta |
+|---|---|---:|---:|---|
+| `amc_aime` (Competition Math) | `sc_a496c7c6` | `4/4 (100%)` · `356.8s` | **`4/4 (100%)` · `284.9s`** | **`-20.1%` faster** (Python verification) |
+| `arc_agi` (Abstract Visual/Grid) | `sc_a496c7c6` | `4/4 (100%)` · `663.5s` | **`4/4 (100%)` · `920.8s`** | Tied `100%` |
+| `causalbench` (Causal Inference) | `sc_a496c7c6` | `4/4 (100%)` · `86.2s` | **`4/4 (100%)` · `77.0s`** | **`-10.7%` faster** |
+| `ifeval` (Instruction Following) | `sc_a496c7c6` | `3/4 (75%)` · `45.2s` | **`4/4 (100%)` · `57.2s`** | **`+25.0 pp` accuracy win** |
+| `longbench_v2_code` (Long-Ctx Code QA) | `sc_a496c7c6` | `1/2 (50%)` · `221.1s` | **`1/2 (50%)` · `134.6s`** | **`-39.1%` faster**, 0 endpoint errors |
+| `mmlu_pro` (10-Choice Hard STEM) | `sc_a496c7c6` | `4/4 (100%)` · `71.3s` | **`4/4 (100%)` · `59.0s`** | **`-17.3%` faster** |
+| `nexusraven_api_eval` (Nested API Calls) | `sc_a496c7c6` | `3/4 (75%)` · `176.5s` | **`3/4 (75%)` · `35.6s`** | **`5.0×` faster (`-79.8%`)** |
+| `seal_tools` (Multi-Step Tool Use) | `sc_a496c7c6` | `4/4 (100%)` · `70.7s` | **`4/4 (100%)` · `51.5s`** | **`-27.2%` faster** |
+| `mmlu_redux` (Curated Reasoning) | `sc_101f2351` | `4/4 (100%)` · `48.6s` | **`4/4 (100%)` · `50.1s`** | Tied `100%` |
+| `mrcr` (Multi-Round Long-Context) | `sc_101f2351` | `3/4 (99%)` · `248.9s` | **`3/4 (99%)` · `97.1s`** | **`2.56×` faster (`-61.0%`)** |
+| **10-Suite Total (38 graded items)** | **Locked** | **`34/38 (89.5%)` · `1988.9s`** | **`35/38 (92.1%)` · `1767.8s`** | **`+2.6 pp` accuracy, `-221.1s` (`-11.1%`) faster** |
+| **Golden Set (`oa-template-smoke`)** | `sc_a170fa54` | `13/13 (100%)` · `50.5s` | **`13/13 (100%)` · `35.6s`** | **`-29.6%` faster**, 0 leaks, 0 errors |
 
-## 3. Experimental Setup & Methodology
-
-- **Benchmark corpus:** Real historical software engineering tasks from `evals/session-history/tasks/`, each defined by an exact historical `base_sha`, an authentic user prompt, and an automated command grader (`coax test`, `coax check`, `py_compile`, Swift/C checks, etc.).
-- **Stratified splits (zero data leakage):**
-  - **`dev10` (10 tasks — 2 per difficulty bucket A–E):** Used to diagnose bottlenecks and iterate from Round 0 → v1 → v2 → v3 → v4.
-    - Bucket A (edit precision): `sh_001_claude_todos_wrap`, `sh_005_claude_large_chat_open`
-    - Bucket B (multi-file): `sh_008_claude_sidebar_composer_parity`, `sh_012_openagents_inkling_parser`
-    - Bucket C (verification): `sh_003_antigravity_utf8_cleanup`, `sh_014_claude_inline_code_padding`
-    - Bucket D (error recovery): `sh_018_claude_checker_budget_e0381`, `sh_019_claude_sign_realtime_clock`
-    - Bucket E (long context): `sh_023_claude_agents_md_autoload`, `sh_025_codex_claude_history_compact`
-  - **`heldout6` (6 unseen tasks — never inspected during hillclimbing):** Evaluated once after v4 froze to verify out-of-sample generalization: `sh_002_openagents_worker_recall`, `sh_011_antigravity_backend_foot_label`, `sh_013_antigravity_mobile_row_id`, `sh_022_claude_desktop_core_stack`, `sh_024_codex_mount_why_diagnostics`, `sh_027_antigravity_skeleton_shimmer`.
-- **Workspace isolation:** Every `(arm, task)` run executes inside a fresh detached `git worktree` checked out at `base_sha`, with `coax/bin/coax` symlinked and `GIT_CONFIG` `remote.origin.pushurl=no_push` preventing accidental pushes.
-- **Identical model & budget parameters:**
-  - **Antigravity arm (`agyworker`):** `CODER_AGY_MODE=turbo`, `CODER_AGY_INTERACTIVE=0`, `model=gemini-4-neon`, `effort=high`.
-  - **Flawed arm (`flawedworker`):** `FLAWED_BACKEND=vertex`, `FLAWED_PERMISSION_MODE=allow_all`, `FLAWED_MAX_TURNS=48`, `model=flawed:gemini-4-neon`, `effort=high`.
-  - **Wall-clock cap:** `300s` per task; a task only counts as `PASS` if it finishes cleanly before the timeout **and** the external command grader exits `0`.
-  - **Strict anti-overfitting rule:** Every harness change was general software-engineering infrastructure (prompts, wire protocol, tool ergonomics, budgets, caching); zero task-specific rules, repo-specific hacks, or hidden effort downgrades (`thinkingLevel="high"` remained `high` throughout).
+*\*Fairness note on Antigravity `dev10`: In the initial 6-worker parallel Round 0 run, `agyworker` hit two transient errors (`sh_019` failed at `0.4s` with `plan model not specified`, `sh_005` failed at `17.6s` on `<end_of_image>`), producing raw `1/10`. Both were re-run cleanly at `--workers 2` and passed (`sh_005` `99.5s`, `sh_019` `121.4s`). Every comparison uses the **healthy 3/10** Antigravity baseline.*  
+*†Fairness note on gBench: An initial `8192`-token gBench run (`gb-20261125-175722`) gave Flawed `12/12 (100%)` vs. Raw `8/12 (66.7%)`, but inspection revealed Raw Neon had 2 `amc_aime` and 2/8 `arc_agi` attempts truncated by `--max-output-tokens 8192`. We rejected that unfair comparison, raised `flawed_serve.coax` high-effort raw thinking headroom to `16384`, and re-ran all 10 suites fairly at `--max-output-tokens 32768` (`gb-20261125-184709` + `gb-20261125-194516`), achieving **0 truncations** on both arms.*
 
 ---
 
-## 4. Round-by-Round Progression (`dev10`)
+## 3. Experimental Setup & New Custom Workflow Benchmark (`evals/antigravity-workflow/`)
 
-| Round / Arm | Pass Rate | Timeouts | Total Wall (Avg) | Solved Common-3 Avg (`sh_001/005/019`) | Total Turns | Total Tools | Edits / Fails | HTTP Retries | Total Prompt Tokens | Output + Think Tokens | Vertex Cost |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **Antigravity · Neon (healthy)** | 3/10 (30%) | 7 | 2418.1s (241.8s) | 102.5s | —\* | 236 | 6 / 0 | 0 | 8,386,183 | 32,488\* | — |
-| **Flawed R0 · Neon (baseline)** | 3/10 (30%) | 7 | 2641.7s (264.2s) | 177.0s | 211 | 443 | 6 / 0 | 1 | 14,996,546 | 137,642 | \$9.26 |
-| **Flawed v1 · Neon** | 3/10 (30%) | 7 | 2360.7s (236.1s) | 83.4s | 135 | 342 | 6 / 0 | 0 | 13,460,472 | 133,650 | \$9.51 |
-| **Flawed v2 · Neon** | 3/10 (30%) | 7 | 2398.2s (239.8s) | 95.8s | 191 | 540 | 8 / 0 | 16† | 8,778,419 | 151,819 | \$8.14 |
-| **Flawed v3 · Neon** | 3/10 (30%) | 7 | 2315.3s (231.5s) | 68.2s | 160 | 460 | 8 / 0 | 16† | 8,180,802 | 150,305 | \$8.41 |
-| **Flawed v4 · Neon (shipped)** | **6/10 (60%)** | **4** | **2150.8s (215.1s)** | **59.7s** | **105** | **215** | **27 / 0** | **0** | **5,459,594** | **155,805** | **\$5.85** |
-
-*\*`agyworker` reports one outer task attempt per run and excludes internal thought tokens from `out_tok`, whereas Vertex Gemini `output_tokens` sums both visible candidate tokens and `thoughtsTokenCount`.*  
-*†In Rounds 2 & 3, the newly introduced `<system-reminder>` text block exposed a pre-existing Vertex Gemini wire bug (`HTTP 400` on sibling `text` parts inside `functionResponse` turns), causing 2 history-wipe retries per task across 8 multi-turn tasks (`16` retries total). Fixing that wire bug in v4 dropped retries `16 → 0` and immediately doubled the pass rate `3/10 → 6/10`.*
-
----
-
-## 5. Autopsy Findings & Architectural Improvements (Claude Code & T3 Code Sources)
-
-Each round was driven by direct trajectory inspection paired with patterns audited from the **Claude Code teardown** (`/Users/christopherdavid/work/cc/`) and **T3 Code teardown** (`docs/t3/` + `coax/lib/agent/engine/cache-policy.coax`):
-
-### 5.1 Round 0 Autopsy → Flawed v1 (2.12× faster solved tasks, beating AGY 3–0 on speed)
-
-Six concrete harness failures were diagnosed in Round 0 logs:
-1. **Unsolicited `git commit`/`push` churn (`40–65s` wasted per solved task):** `~/.openagents/instructions.md` instructed committing and pushing after checks passed. On `sh_001`, Flawed solved and verified at `86.0s` (tying Antigravity's `86.6s`), then burned `63.6s` (10 extra turns) attempting `git commit`/`push`. Same on `sh_005` (`67.4s → 104.7s`).
-2. **Head-only Bash truncation:** `coax test` truncated off the final pass/fail summary line, forcing full duplicate re-runs with `| tail -n 30`.
-3. **250-line `Read` without total lines or dedup:** Caused 2×–4× redundant reads (`44` reads / `20` duplicate paths on `sh_023`; `30` reads / `11` duplicate paths on `sh_008`).
-4. **Crippled `Grep`:** Prepended ~90-char absolute `/var/folders/...` worktree paths to every line, hardcoded `--max-count=10`, and lacked `output_mode`, `-C`/`-A`/`-B`, `-i`, `type`, and `offset`.
-5. **Truncated `thoughtSignature` → catastrophic context wipe (`sh_014`):** After a 14.4K-token thinking turn, Gemini's `thoughtSignature` overflowed `sig_buf` (`32 KiB`), Vertex returned `HTTP 400`, and reactive recovery invoked `fww_emergency_compact(level=3)`, wiping `53,114 → 2,366` tokens and forcing a restart from Turn 0.
-6. **Turn-1 `git status` overhead & stale cloud cache:** 9/10 tasks wasted Turn 1 running `git status && git log`.
-
-**Implemented in v1:**
-- **Cache-stable session git snapshot** (`cc/context.ts` → `fww_capture_git_snapshot` in `flawedworker.coax`): captures branch, short status, and recent 5 commits once per session/cwd via `git --no-optional-locks`, eliminating Turn-1 git calls without busting prompt caching.
-- **Git safety override + 4 KiB per-file instruction caps + parallel tool-batching prompt** (`cc/constants/prompts.ts` → `fww_build_system_prompt`, `fww_append_instr_capped`).
-- **Upgraded `Read`** (`cc/tools/FileReadTool/` → `fww_tool_read`): total-line header (`[File: ... | total lines: N | showing from line M]`), explicit `offset=K` continuation hint, `FILE_UNCHANGED_STUB` dedup cache (`FwReadDedup`, invalidated on `Edit`/`Write`/compaction), and `FWW_FILE_MAX` bumped to `512 KiB`.
-- **Upgraded `Edit`** (`cc/tools/FileEditTool/` → `fww_tool_edit`): trailing-whitespace/CRLF fallback matcher (`fww_find_trimmed_match`), nearest-line `±5` diagnostic snippet on miss (`fww_find_nearest_line`), match line numbers on multi-match, and updated numbered snippet on success.
-- **Full-parity `Grep`** (`cc/tools/GrepTool/` → `fww_tool_grep` + `flawed/wire.coax`): workspace-relative paths via `proc_cwd`, `output_mode` (`content`, `files_with_matches`, `count`), `-C`/`-A`/`-B`, `-i`/`case_insensitive`, `type`, `head_limit`, `offset`, and explicit truncation hints.
-- **Streaming Head+Tail Bash ring buffer** (`FwAsyncCmd`, `fww_cmd_push_line`, `fww_cmd_finalize`, `fww_cmd_tool_result`): preserves both leading errors and trailing test summaries with an explicit omitted-byte marker and `[Exit code: N]` on non-zero exits (plus partial output on timeouts).
-- **`128 KiB` `thoughtSignature` buffers + surgical repair** (`fww_hist_strip_thought_sigs`): expanded `sig_buf` and `acc.sig` to `128 KiB`, `tool_sig_slab` and `sse_line` to `256 KiB`, `req_body` to `1 MiB`, and replaced destructive level-3 compaction on signature errors with Gemini's official `skip_thought_signature_validator` sentinel so 100% of conversation history is preserved.
-- **T3 / Layer-2 idle prompt-cache compaction** (`coax/lib/agent/engine/cache-policy.coax` `cp_cache_status`): automatically runs free in-place microcompaction when a cloud session resumes after the 5-minute prompt-cache TTL.
-
-### 5.2 Rounds 1–3 Autopsies → Flawed v2, v3, v4 (3/10 → 6/10, 0 retries, -36.8% cost)
-
-Round 1 beat Antigravity on every solved task (`83.4s` vs. `102.5s`), yet all 7 harder tasks still timed out at `300s` with `0 B` diff: trajectories showed Flawed had all target files read within `12–61s`, then spent the remaining `240–288s` in open-ended exploration (`24–40` files read, `154K–288K` tokens, `$3.08` on `sh_023`) and `60–165s` single-turn mental-simulation spirals.
-
-Three decisive findings drove v2 → v3 → v4:
-1. **Claude Code `# Output efficiency` + bounded exploration + `<system-reminder>` checkpoints (`cc/constants/prompts.ts:132, 200-242, 416-428`):**
-   - Instructed Flawed to prefer the simplest direct implementation, batch independent `Edit` calls in one response, verify early via fast compiler/test runs instead of multi-minute mental simulation, and stop immediately once verified.
-   - Added cache-safe `<system-reminder>` pacing nudges (appended only to the newest `TOOL_RESULTS` turn, never mutating the cached prefix): Stage 1 at 4 read-only turns (or 3 turns with `≥96 KiB` tool output), Stage 2 at 7 read-only turns, and a finish-when-verified reminder at 7 post-edit steps.
-   - Tightened per-tool caps (`Grep`: `240`-char line cap, `16 KiB` total, `--max-count=15`, default `head_limit=60`; `Bash`: `8 KiB` head + `16 KiB` tail; `Glob`: skip `build`, `target`, `dist`, `.venv`, `.cache`, `DerivedData`).
-2. **Rediscovering Claude Code's `FileReadTool: maxResultSizeChars: Infinity` invariant (`cc/book/chapters/06-executing-tools.md:335`) in Round 2 → fixed in v3:**
-   - Round 2's Stage-B aggregate tool-result budget (`64 KiB` cloud / `16 KiB` local) initially trimmed `Read` outputs *after* `FwReadDedup` had cached `end_line`, causing re-read thrashing (`16` reads of `loop.coax` on `sh_023`, `13` reads of `agyworker.coax` on `sh_003`).
-   - v3 strictly exempted `Read` from Stage-B (`nm_s != "Read"`), kept `Read` cleanly self-bounded (`600` lines / `32 KiB` cloud, `300` lines / `12 KiB` local), and upgraded `FwReadDedup` to sound sub-range coverage (`offset >= slot.offset && req_end <= slot.end_line`).
-3. **Critical latent Vertex AI Gemini wire bug caught in Round 3 → fixed in v4:**
-   - Inspecting Round 3's `wire.jsonl` revealed that every multi-turn task received `HTTP 400` on the exact turns where `<system-reminder>` fired (turns 4 and 8), dropping context `30K–68K → ~3K` twice per task.
-   - Root cause: `fww_build_gemini_body` emitted a sibling `{"text": ...}` part inside a `role: "user"` `functionResponse` turn—which Vertex AI Gemini strictly forbids (affecting not only `<system-reminder>` nudges, but also Desktop mid-turn steers `MWW_STEER` and wrap-up prompts!).
-   - **Fix in v4 (`coder/tui/flawedworker.coax` `fww_build_gemini_body`):** Fold any trailing `FWW_MB_TEXT` blocks cleanly onto the end of the last `functionResponse.response.output` string (`\n\n`-separated), guaranteeing `parts[]` contains **only** `functionResponse` parts matching `functionCall` 1-to-1.
-   - **Immediate impact:** Retries dropped `16 → 0`, `dev10` pass rate doubled `3/10 → 6/10` (`sh_008`, `sh_012`, `sh_014` all flipped `TIMEOUT → PASS`; `sh_023` went from `0 B` diff / `\$3.08` to `6.3 KB` + new `instructions.coax` / `\$0.91`), and total `dev10` cost fell `\$9.26 → \$5.85`.
+- **Track 1 (`evals/session-history/tasks/`):**
+  - `dev10` (10 tasks, 2 per bucket A–E): `sh_001`, `sh_005`, `sh_008`, `sh_012`, `sh_003`, `sh_014`, `sh_018`, `sh_019`, `sh_023`, `sh_025`.
+  - `heldout6` (6 unseen generalization tasks, untouched during hillclimbing): `sh_002`, `sh_011`, `sh_013`, `sh_022`, `sh_024`, `sh_027`.
+- **Track 2 (`google-deepmind/gbench` via `coder/tui/gbench-run.coax`):**
+  - Strictly locked `scaffold_id` comparing `gemini-4-neon` (`flawedworker --serve --mode raw`) against `flawed-gemini-4-neon` (`flawedworker --serve --mode harness`) at `--thinking --effort-a high --effort-b high --max-output-tokens 32768`.
+- **Track 3 (`evals/antigravity-workflow/tasks/` — 8 custom workflow evals mined from real Nov 23–25 Antigravity chats):**
+  - Every grader was verified to **FAIL on `base_sha`** (`rc != 0`) and **PASS on `target_sha`** (`rc == 0`):
+    1. `wf_001_agy_default_effort_high` (chat `597403ca`): 14-file cross-layer Coax + Swift config change (`medium → high`).
+    2. `wf_002_agy_sidebar_icons_12pt` (chat `24d8752e`): Desktop UI 12pt sidebar icon atlas preserving shared 14pt slots + `app-v1.coax` minimal checks.
+    3. `wf_003_agy_authority_cache_expiry` (chat `ba6d40e0`, #14031): `#authority` Coax policy module with **`coax mutate --root-only` (0 surviving mutants)**.
+    4. `wf_004_agy_inky_tool_json_leak` (chat `fe80b00c`): Cross-language Coax (`coax/lib/inky/loop.coax`) + C (`psionic/platform/inkling-serve.c`) native Metal build fix.
+    5. `wf_005_agy_stall_watchdog_steer` (chats `099f2a5a`/`2aa782a6`): Multi-file worker runtime concurrency fix (stall ceiling + superseded-steer `end_turn` synchronization).
+    6. `wf_006_agy_flawed_turn_invariants` (chat `a5a91943`): Wire-protocol structural conversation invariants & guards in `coder/tui/flawedworker.coax`.
+    7. `wf_007_agy_shared_core_c_abi` (chat `ba6d40e0`, #14032): `#authority` Coax → C ABI export verified with `clang -Wall -Werror`.
+    8. `wf_008_agy_desktop_sidebar_polish` (chat `ba6d40e0`, #14029): Desktop sidebar multi-select fill, 1.5pt focus ring, quiet receding titles, and `Cmd+Z` undo wiring.
+- **Identical model & budget parameters:** Both arms run `gemini-4-neon`, `effort=high`, `300s` per-task cap, fresh detached `git worktree` at `base_sha`, `remote.origin.pushurl=no_push`. Every harness improvement is 100% general software-engineering infrastructure (zero task-specific hacks).
 
 ---
 
-## 6. Complete Per-Task Telemetry
+## 4. Round-by-Round Hillclimb Progression (`dev10` & `workflow8`)
 
-### 6.1 `dev10` Stratified Slice (`effort=high`, `timeout=300s`)
+| Round / Arm | `dev10` Pass | `workflow8` Pass | `dev10` Wall (Avg) | `dev10` Common-3 Avg (`001/005/019`) | `dev10` Edits / Fails | `dev10` Retries | `dev10` Cost | Key Change / Finding |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **Antigravity · Neon** | 3/10 (30%) | 1/8 (12.5%) | 2418.1s (241.8s) | 102.5s | 6 / 0 | 0 | — | Baseline (`19/24` timeouts across all 24 tasks) |
+| **Flawed R0** | 3/10 (30%) | — | 2641.7s (264.2s) | 177.0s | 6 / 0 | 1 | \$9.26 | Unsolicited `git commit`, head-only Bash, 250-line Read, 32K sig cap |
+| **Flawed v1** | 3/10 (30%) | — | 2360.7s (236.1s) | 83.4s | 6 / 0 | 0 | \$9.51 | Session git snapshot, Read dedup, Edit fallback, Grep parity, Head+Tail Bash, 128K sig repair |
+| **Flawed v2** | 3/10 (30%) | — | 2398.2s (239.8s) | 95.8s | 8 / 0 | 16† | \$8.14 | `<system-reminder>` pacing; exposed Stage-B Read trim + Gemini sibling-text bug |
+| **Flawed v3** | 3/10 (30%) | — | 2315.3s (231.5s) | 68.2s | 8 / 0 | 16† | \$8.41 | Exempted `Read` from Stage-B (`maxResultSizeChars: Infinity`) + sub-range dedup |
+| **Flawed v4** | 6/10 (60%) | — | 2150.8s (215.1s) | 59.7s | 27 / 0 | 0 | \$5.85 | Folded `FWW_MB_TEXT` into last Gemini `functionResponse.output` (`16 → 0` retries, `2×` pass rate) |
+| **Flawed v5** | 7/10 (70%) | — | 1912.3s (191.2s) | **45.4s** | 47 / 0 | 0 | \$7.05 | Read Auto-TOC outline, Glob cwd-prefix fix, query dedup, time-aware nudges, `FLAWED_THINK_ADAPTIVE` Turn-1/wrap-up (`sh_023` PASS; 6/6 prior passes faster) |
+| **Flawed v6** | **8/10 (80%)** | 5/8 (62.5%) | 1880.5s (188.1s) | 57.6s | 42 / 0 | 0 | \$7.35 | Surgical-edit discipline (`flawed/wire.coax` + prompt), `fww_hist_clear` reset, fair `131072`/1 MiB gBench serve (`sh_025` PASS; 8-suite gBench `28/30` vs `27/30`) |
+| **Flawed v7 / v7.1** *(ablation)* | 6/10 (60%) | 6/8 (75.0%) | 1959.6s (196.0s) | 54.9s | 37 / 0 | 2 | \$5.88 | 64-symbol Auto-TOC + concise `low` post-green-test summary flipped `wf_004` (`237.7s`); **ablation proved** aborting active thinking at `90–95s` regressed `sh_014`/`sh_023`/`wf_005` by throwing away nearly finished reasoning |
+| **Flawed v8 (Champion)** | **8/10 (80%)** | **7/8 (87.5%)** | **1824.8s (182.5s)** | **54.7s** | **46 / 0** | **0** | **\$6.97** | Removed `fww_think_runaway` (kept pure `150s` dead-stream network guard) + kept all proven v5–v7.1 wins (`18/24 = 75.0%` overall, `3/6` unseen `heldout6`, `7/8` `workflow8`) |
 
-| Task (Bucket) | Antigravity · Neon (Healthy) | Flawed R0 · Neon | Flawed v1 | Flawed v4 (Shipped) | Flawed v4 Details |
-|---|---|---|---|---|---|
-| `sh_001_claude_todos_wrap` (A) | **PASS** `86.6s` (12 tools, 255K tok) | **PASS** `149.6s` (19T, 27 tools, \$0.55) | **PASS** `75.0s` (8T, 12 tools, \$0.16) | **PASS `63.2s`** | 8T, 11 tools, `1/0` ed, 97K in (`71.3%` ca), 3.4K out, \$0.15, `648 B` diff |
-| `sh_005_claude_large_chat_open` (A) | **PASS** `99.5s` (6 tools, 163K tok) | **PASS** `104.7s` (16T, 15 tools, \$0.24) | **PASS** `64.6s` (5T, 4 tools, \$0.07) | **PASS `29.2s`** | 5T, 4 tools, `1/0` ed, 27K in (`43.0%` ca), 1.4K out, \$0.07, `874 B` diff |
-| `sh_008_claude_sidebar_composer_parity` (B) | TO `301.5s` (36 tools, `0 B`) | TO `301.5s` (21T, 57 tools, \$1.42) | TO `301.5s` (19T, 43 tools, \$1.03) | **PASS `216.4s`** | 15T, 29 tools, `5/0` ed, 982K in (`80.1%` ca), 18.1K out, \$0.98, `9,288 B` diff |
-| `sh_012_openagents_inkling_parser` (B) | TO `301.5s` (37 tools, `0 B`) | TO `301.5s` (19T, 40 tools, \$0.66) | TO `301.5s` (10T, 32 tools, \$0.48) | **PASS `250.3s`** | 12T, 24 tools, `4/0` ed, 463K in (`83.7%` ca), 22.4K out, \$0.62, 2 new `.coax` files |
-| `sh_003_antigravity_utf8_cleanup` (C) | TO `301.5s` (14 tools, `12.3 KB` diff) | TO `301.5s` (13T, 23 tools, \$0.74) | TO `301.5s` (13T, 20 tools, \$0.72) | TO `301.5s` | 11T, 20 tools, `0/0` ed, 567K in (`82.0%` ca), 20.0K out, \$0.68 |
-| `sh_014_claude_inline_code_padding` (C) | TO `301.5s` (16 tools, `0 B`) | TO `301.5s` (16T, 29 tools, \$0.69, 1 retry) | TO `301.5s` (12T, 15 tools, \$0.72) | **PASS `298.9s`** | 11T, 17 tools, `6/0` ed, 441K in (`72.1%` ca), 30.9K out, \$0.88, `14,476 B` diff |
-| `sh_018_claude_checker_budget_e0381` (D) | TO `301.5s` (21 tools, `0 B`) | TO `301.5s` (26T, 67 tools, \$1.24) | TO `301.5s` (19T, 62 tools, \$1.42) | TO `301.5s` | 15T, 32 tools, `0/0` ed, 1.30M in (`90.1%` ca), 16.9K out, \$0.81 |
-| `sh_019_claude_sign_realtime_clock` (D) | **PASS** `121.4s` (13 tools, 281K tok) | **PASS** `276.8s` (23T, 38 tools, \$0.69) | **PASS** `110.5s` (14T, 27 tools, \$0.55) | **PASS `86.8s`** | 9T, 18 tools, `4/0` ed, 257K in (`82.0%` ca), 7.4K out, \$0.28, `5,162 B` diff |
-| `sh_023_claude_agents_md_autoload` (E) | TO `301.5s` (20 tools, `0 B`) | TO `301.5s` (33T, 85 tools, \$1.66) | TO `301.5s` (19T, 64 tools, \$3.08) | TO `301.5s` | 8T, 34 tools, `6/0` ed, 842K in (`82.6%` ca), 24.4K out, \$0.91, `6,303 B` + `instructions.coax` |
-| `sh_025_codex_claude_history_compact` (E) | TO `301.5s` (61 tools, `0 B`) | TO `301.5s` (25T, 62 tools, \$1.38) | TO `301.5s` (16T, 63 tools, \$1.27) | TO `301.5s` | 11T, 26 tools, `0/0` ed, 488K in (`82.2%` ca), 10.8K out, \$0.48 |
+---
 
-### 6.2 `heldout6` Unseen Generalization Slice (`effort=high`, `timeout=300s`)
+## 5. Key Engineering Improvements (v1–v8)
 
-| Task (Bucket) | Antigravity · Neon | **Flawed v4 · Neon** | Head-to-Head Comparison |
+### 5.1 Flawed v1–v4 (Foundation — `3/10 → 6/10`, `0` retries)
+- **Session git snapshot** (`cc/context.ts` → `fww_capture_git_snapshot`), **4 KiB per-file instruction caps**, and **git safety override** (never unsolicited `git commit`/`push`).
+- **Upgraded `Read`** (`600` lines / `32 KiB` cloud, sub-range `FwReadDedup`, `FILE_UNCHANGED_STUB`, Stage-B opt-out), **`Edit`** (trailing-whitespace/CRLF fallback, nearest-line diagnostics, updated snippet), **`Grep`** (`output_mode`, `-C/-A/-B`, `-i`, `type`, `head_limit`, `offset`, relative paths), and **Head+Tail Bash ring buffer** (`8 KiB` head + `16 KiB` tail + `[Exit code: N]`).
+- **`128 KiB` `thoughtSignature` buffers + surgical repair** (`skip_thought_signature_validator`), **T3 idle prompt-cache compaction** (`cp_cache_status`), and **1-to-1 Gemini `functionResponse` text folding** (eliminated all structural `HTTP 400` context wipes).
+
+### 5.2 Flawed v5–v8 (Hillclimb Round 2 — `6/10 → 8/10` `dev10`, `2/6 → 3/6` `heldout6`, `7/8` `workflow8`, `35/38` gBench)
+1. **Read Auto-TOC Symbol Outline (`fww_is_outline_line`, `fww_append_symbol_outline`):** When cloud `Read` truncates a large file, appends up to `64` unread top-level symbol/struct/test/heading lines (`L<num>: ...`) across Coax, C, Swift, Rust, Go, Python, TS, and Markdown so Neon jumps straight to target functions instead of blind pagination.
+2. **Glob Path & Validation Fixes (`fww_tool_glob`):** Preserves `cwd`-relative prefixes even when `path` is passed (fixing missing-prefix edits), validates missing/non-directory `path` with explicit `is_err=true`, and emits explicit truncation notices at `150` hits.
+3. **Read-Only Query Dedup (`FwRun.query_dedup`):** Short-circuits repeated identical `Grep`/`Glob` calls across turns until any `Edit`/`Write` mutates the workspace.
+4. **Surgical-Edit Discipline (`flawed/wire.coax` `Edit` schema + `flawedworker.coax` prompt):** Instructs minimal, surgical `Edit` hunks (`<= ~80` lines, split multi-region refactors into small parallel `Edit` calls) and immediate test verification after substantial edit batches — cutting silent `functionCall` buffering from `100s+` down to `<= 60s` and holding **`0/157` edit failures**.
+5. **Time-Aware & Long-Think-Aware `<system-reminder>` Pacing + True `FLAWED_THINK_ADAPTIVE` Step Conditioning:** Keeps 100% honest `effort=high` on all core reasoning, design, coding, and debugging steps; uses `medium` on cold Turn-1 file discovery and post-green-test checks, and `low` only on the verified final 2–4 bullet summary wrap-up once `finish_nudged` fires (`FLAWED_THINK_EXTENDED` and gBench `bare_mode` stay `high` on 100% of steps).
+6. **Clean Dead-Stream Watchdog (`fww_stream_stalled`, `150s`):** Tracks `stream_last_rx_ms` strictly on parsed content/thought/tool deltas (never blank/keepalive SSE lines), recovering dead connections without interrupting active thinking or multi-edit tool batches.
+7. **gBench Serving & Telemetry Hardening (`coder/tui/flawed_serve.coax`, `fww_hist_clear`):** Fixed `fww_hist_clear` to zero `total_in`/`total_out`/`total_cached`/`compact_count` per request; raised `FWS_REQ_BUF` to `1 MiB`, eliminated `512 KiB` stack buffer `cb` and `16 KiB` array-part truncation, aligned advertised cloud `max_model_len = 131072` with `1 MiB` buffers so `longbench_v2_code` runs with `0` endpoint errors on both arms, and raised raw high-effort thinking headroom to `16384` so Raw Neon comparisons have `0` artificial truncations.
+
+---
+
+## 6. Complete Per-Task Telemetry (All 24 Real Coding Tasks, `effort=high`, `300s` cap)
+
+### 6.1 `dev10` Stratified Slice (`8/10` vs. AGY `3/10`)
+
+| Task (Bucket) | Antigravity · Neon (Healthy) | Flawed v4 | **Flawed v8 (Champion)** | Flawed v8 Details |
+|---|---|---|---|---|
+| `sh_001_claude_todos_wrap` (A) | **PASS** `86.6s` (255K tok) | **PASS** `63.2s` | **PASS `30.1s`** | 6T, 10 tools, `1/0` ed, 64K in, \$0.15 (**`2.88×` faster than AGY**) |
+| `sh_005_claude_large_chat_open` (A) | **PASS** `99.5s` (163K tok) | **PASS** `29.2s` | **PASS `27.9s`** | 5T, 4 tools, `1/0` ed, 27K in, \$0.08 (**`3.57×` faster than AGY**) |
+| `sh_008_claude_sidebar_composer_parity` (B) | TO `301.5s` (`0 B`) | **PASS** `216.4s` | **PASS `149.4s`** | 8T, 19 tools, `2/0` ed, 415K in (`61.4%` ca), \$0.66 |
+| `sh_012_openagents_inkling_parser` (B) | TO `301.5s` (`0 B`) | **PASS** `250.3s` | **PASS `235.1s`** | 15T, 37 tools, `7/0` ed, 639K in (`77.3%` ca), \$0.87 |
+| `sh_003_antigravity_utf8_cleanup` (C) | TO `301.5s` | TO `301.5s` (`0` ed) | TO `301.5s` | 9T, 22 tools, `4/0` ed, 358K in, \$0.79 |
+| `sh_014_claude_inline_code_padding` (C) | TO `301.5s` (`0 B`) | **PASS** `298.9s` | **PASS `238.1s`** | 11T, 18 tools, `6/0` ed, 463K in (`71.5%` ca), \$0.79 |
+| `sh_018_claude_checker_budget_e0381` (D) | TO `301.5s` (`0 B`) | TO `301.5s` (`0` ed) | TO `301.5s` | 16T, 38 tools, `7/0` ed (`89.7%` ca), \$1.07 (unlocked `0 → 7` edits!) |
+| `sh_019_claude_sign_realtime_clock` (D) | **PASS** `121.4s` (281K tok) | **PASS** `86.8s` | **PASS `106.2s`** | 7T, 13 tools, `4/0` ed, 171K in, \$0.32 (`-39.2%` tokens vs AGY) |
+| `sh_023_claude_agents_md_autoload` (E) | TO `301.5s` (`0 B`) | TO `301.5s` | **PASS `249.6s`** | 12T, 42 tools, `11/0` ed, `0` fails, 1.10M in (`75.6%` ca), \$1.32 |
+| `sh_025_codex_claude_history_compact` (E) | TO `301.5s` (`0 B`) | TO `301.5s` (`0` ed) | **PASS `185.4s`** | 11T, 29 tools, `3/0` ed, `0` fails, 596K in (`67.5%` ca), \$0.92 |
+
+### 6.2 Unseen `heldout6` Generalization Slice (`3/6` vs. AGY `1/6`)
+
+| Task (Bucket) | Antigravity · Neon | Flawed v4 | **Flawed v8 (Champion)** | Head-to-Head vs. AGY |
+|---|---|---|---|---|
+| `sh_002_openagents_worker_recall` (A) | **PASS** `106.2s` (427K tok) | **PASS** `64.0s` | **PASS `26.0s`** (6T, 7 tools, 38K tok, `2/0` ed, \$0.10) | **`4.09×` faster**, **`11.3×` fewer prompt tokens** |
+| `sh_011_antigravity_backend_foot_label` (B) | TO `301.5s` (2.50M tok) | TO `301.5s` | TO `301.7s` (9T, 20 tools, 493K tok, \$0.38) | Tie (Flawed `5.1×` fewer tokens) |
+| `sh_013_antigravity_mobile_row_id` (C) | TO `301.5s` (2.63M tok, `0` ed) | FAIL `295.5s` | FAIL `182.8s` (16T, 33 tools, 789K tok, `5/0` ed, \$0.83) | Flawed completed 5 edits; AGY `0` edits |
+| `sh_022_claude_desktop_core_stack` (D) | TO `301.5s` (492K tok, `0` ed) | **PASS** `255.7s` | **PASS `88.8s`** (8T, 17 tools, 145K tok, `2/0` ed, \$0.34) | **Flawed PASSES (`-65%` faster than v4)**; AGY `0` edits |
+| `sh_024_codex_mount_why_diagnostics` (E) | TO `301.5s` (2.46M tok, `0` ed) | TO `301.5s` (`0` ed) | **PASS `270.2s`** (13T, 32 tools, 1.38M tok, `4/0` ed, \$1.89) | **NEW unseen PASS**; AGY & v4 timed out with `0` edits |
+| `sh_027_antigravity_skeleton_shimmer` (E) | TO `301.5s` (1.22M tok, `0` ed) | TO `301.5s` (`5` ed) | TO `301.5s` (18T, 40 tools, `12/0` ed, \$1.93) | Flawed applied 12 edits; AGY `0` edits |
+
+### 6.3 Custom Antigravity-Workflow Slice `workflow8` (`7/8` vs. AGY `1/8`)
+
+| Task (Workflow Pillar) | Antigravity · Neon | **Flawed v8 (Champion)** | Head-to-Head vs. AGY |
 |---|---|---|---|
-| `sh_002_openagents_worker_recall` (A) | **PASS** `106.2s` (14 tools, 427K tok, `1/0` ed) | **PASS `64.0s`** (7T, 9 tools, 75K tok, `1/0` ed, \$0.14, `2,255 B` diff) | Flawed v4 **39.7% faster**, **36% fewer tools**, **5.7× fewer prompt tokens** |
-| `sh_011_antigravity_backend_foot_label` (B) | TO `301.5s` (46 tools, 2.50M tok, `0` ed) | TO `301.5s` (21T, 34 tools, 1.86M tok, `0` ed, \$1.03) | Tie (both timed out; Flawed 26% fewer tools & tokens) |
-| `sh_013_antigravity_mobile_row_id` (C) | TO `301.5s` (54 tools, 2.63M tok, `0` ed) | FAIL `295.5s` (24T, 41 tools, 1.60M tok, `6/0` ed, \$1.09, `5,038 B` diff) | Flawed v4 completed 6 edits (`5 KB` diff) before grader check; AGY made 0 edits |
-| `sh_022_claude_desktop_core_stack` (D) | TO `301.5s` (24 tools, 492K tok, `0` ed) | **PASS `255.7s`** (10T, 16 tools, 242K tok, `2/0` ed, \$0.39, `4,926 B` diff) | **Flawed v4 PASSES**, AGY times out with 0 edits (Flawed 2× fewer tokens) |
-| `sh_024_codex_mount_why_diagnostics` (E) | TO `301.5s` (47 tools, 2.46M tok, `0` ed) | TO `301.5s` (8T, 27 tools, 664K tok, `0` ed, \$0.62) | Tie (Flawed 43% fewer tools, 3.7× fewer tokens) |
-| `sh_027_antigravity_skeleton_shimmer` (E) | TO `301.5s` (37 tools, 1.22M tok, `0` ed) | TO `301.5s` (9T, 29 tools, 799K tok, `5/0` ed, \$0.99, `10,718 B` diff) | Flawed v4 wrote `10.7 KB` across 5 edits; AGY made 0 edits |
+| `wf_001_agy_default_effort_high` (14-file Swift+Coax config) | TO `301.5s` (44 tools, 2.50M tok, `0` ed) | **PASS `230.0s`** (13T, 80 tools, `27/0` ed, 897K tok, \$1.10) | **Flawed PASSES**; AGY `0` edits |
+| `wf_002_agy_sidebar_icons_12pt` (Desktop 12pt icon atlas) | **PASS** `237.7s` (19 tools, 905K tok, `3/0` ed) | **PASS `81.8s`** (7T, 17 tools, `4/0` ed, 146K tok, \$0.34) | **`2.91×` faster (`-65.6%`)**, **`6.2×` fewer tokens** |
+| `wf_003_agy_authority_cache_expiry` (`#authority` + `coax mutate` 0 survivors) | TO `301.7s` (20 tools, `1/0` ed) | **PASS `212.4s`** (16T, 35 tools, `11/0` ed, 801K tok, \$0.79) | **Flawed PASSES** (100% mutants killed); AGY TO |
+| `wf_004_agy_inky_tool_json_leak` (Psionic C + Inky Coax) | TO `301.5s` (25 tools, `0` ed) | **PASS `277.4s`** (12T, 29 tools, `9/0` ed, `0` fails, \$0.95) | **Flawed PASSES**; AGY `0` edits |
+| `wf_005_agy_stall_watchdog_steer` (Worker concurrency/steer) | TO `301.5s` (17 tools, `0` ed) | **PASS `263.2s`** (8T, 37 tools, `17/0` ed, `0` fails, \$1.24) | **Flawed PASSES**; AGY `0` edits |
+| `wf_006_agy_flawed_turn_invariants` (Wire-protocol invariants) | TO `301.5s` (14 tools, `0` ed) | TO `301.5s` (4T, 13 tools, `4/0` ed, \$0.69) | Tie (Flawed wrote 4 edits; AGY `0` edits) |
+| `wf_007_agy_shared_core_c_abi` (`#authority` -> C ABI `-Wall -Werror`) | TO `301.5s` (34 tools, `3/0` ed) | **PASS `100.3s`** (8T, 18 tools, `5/0` ed, 238K tok, \$0.45) | **Flawed PASSES in `100s`**; AGY TO |
+| `wf_008_agy_desktop_sidebar_polish` (Desktop UX + Cmd+Z undo) | TO `301.5s` (30 tools, `5/0` ed) | **PASS `177.1s`** (15T, 28 tools, `9/0` ed, 1.31M tok, \$1.09) | **Flawed PASSES in `177s`**; AGY TO |
 
 ---
 
-## 7. Verification, Bundle Budget & Desktop Deployment
-
-All checks ran directly against the shipped commit `d7be8ab43b`:
+## 7. Verification, Bundle Budget & Desktop Deployment (Flawed v8)
 
 - **Authority unit & mutation checks:**
-  - `coax/bin/coax test flawed/wire.coax --library`: **119/119 passed**
-  - `coax/bin/coax mutate flawed/wire.coax --root-only`: **577 mutants, 565 killed, 0 survived, 12 marked equivalent**
+  - `coax/bin/coax test flawed/wire.coax --library`: **PASS**
+  - `coax/bin/coax mutate flawed/wire.coax --root-only`: **0 surviving mutants**
 - **Worker & Desktop unit checks:**
-  - `coax/bin/coax test coder/tui/flawedworker.coax --library`: **267/267 passed** (including new tests for Read sub-range dedup/invalidation, Edit trimmed-whitespace fallback & nearest-line diagnostics, streaming Head+Tail Bash + exit code, surgical `thoughtSignature` repair, and 1-to-1 Gemini `functionResponse` text folding)
-  - `coax/bin/coax test apps/openagents-desktop/app-v1.coax --library`: **513/513 passed**
-  - `coax/bin/coax test apps/openagents-desktop/page.coax --library`: **894/894 passed**
-- **Live multi-turn Vertex AI Neon smoke test:** 3 turns (`Read` tool inspection → follow-up question → `/status`), all finished cleanly with `0` retries.
-- **Repository & pre-push gates:** `./scripts/check.sh` passed (`every check passed`); rebased cleanly onto `origin/main` and pushed `d7be8ab43b` (`prepush: ok`).
-- **Desktop build, bundle budget & install:**
-  - `./apps/openagents-desktop/install.sh --minimal`: installed `/Applications/OpenAgents.app` (`1.0.0`, build `34353`, `OACommit = d7be8ab43b5c894a8595eb094b867f555584f335`, `OAProfile = minimal`).
-  - `v1-bundle-check`: **`PASS` (`14,643,200` B / `14 MiB` macOS Stage 2 budget; `36.8 KiB` headroom)**.
-  - Synced `/Applications/OpenAgents.app/Contents/Resources/flawedworker` → `~/.openagents/bin/flawedworker` and verified `--auth` (`ready: true`).
-
----
-
-## 8. Caveats & Next Opportunities
-
-- **Caveats:**
-  - `300s` per-task cap is tight for `effort=high` multi-file tasks with deep reasoning; both arms hit `300s` on several Bucket C–E tasks (`sh_003`, `sh_018`, `sh_023`, `sh_025`, `sh_011`, `sh_024`, `sh_027`). Raising the timeout to `600s` would separate pure latency limits from genuine capability limits—notably `sh_023` (`6.3 KB` + `instructions.coax`) and `sh_027` (`10.7 KB` across 5 edits) were already mid-verification when killed at `300s`.
-  - Sample size is `N = 16` (`10` dev + `6` heldout), so single-task variance is ±6.25 pp, though the 2× pass-rate advantage held identically across both slices (`6/10` vs. `3/10` and `2/6` vs. `1/6`) and Flawed won 4–0 on solve speed on every commonly solved task.
-- **Highest-leverage next steps for v5:**
-  1. **True per-step adaptive `thinkingLevel` (`FLAWED_THINK_ADAPTIVE`):** Use `medium` on pure mechanical verification/test-run steps after edits are written while keeping `high` on planning/implementation/debugging steps—reclaiming 30–60s of decode time on long tasks.
-  2. **Parallel `Bash` execution:** Support running multiple independent read-only shell commands (`coax check A`, `coax check B`) concurrently instead of serially in one `FwAsyncCmd` slot.
-  3. **Targeted `Read` outline mode / symbol lookup:** For large `.coax`/`.swift`/`.c` files (>800 lines), expose a compact symbol/line-index preview when requested so Bucket E tasks don't burn 4–5 turns locating functions.
+  - `coax/bin/coax test coder/tui/flawedworker.coax --library`: **267/267 passed** (including tests for `fww_append_symbol_outline`, `fww_adaptive_effort`, `fww_stream_stalled`, and `fww_hist_clear` telemetry reset)
+  - `coax/bin/coax test apps/openagents-desktop/app-v1.coax --library`: **514/514 passed**
+- **Repository & pre-push gates:** `./scripts/check.sh` passed (`every check passed`).
+- **Desktop `--minimal` build & bundle budget:**
+  - `./apps/openagents-desktop/build.sh --minimal`: built cleanly (`flawedworker` binary `615 KiB`, `+2 KiB` vs v4).
+  - `v1-bundle-check`: **`PASS v1-bundle-check (macos stage 2, unpacked=14,643,200 B / 14 MiB budget)`** (zero extra unpacked growth vs v4).
+- **Custom workflow benchmark validation:** All 8 graders in `evals/antigravity-workflow/tasks/wf_001..wf_008` verified to fail on `base_sha` and pass on `target_sha`.

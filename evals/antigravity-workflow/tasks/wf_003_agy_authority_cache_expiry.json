@@ -1,0 +1,29 @@
+{
+  "id": "wf_003_agy_authority_cache_expiry",
+  "category": "antigravity-workflow",
+  "bucket": "W3_authority_mutation",
+  "description": "Create #authority cloud prompt-cache expiry and idle compaction policy module with 0 surviving mutants and wire it into agyworker.coax (#14031, from chat ba6d40e0).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "ba6d40e0",
+    "project": "work/openagents",
+    "base_sha": "05c55029afce7e42c53d6b3e66b1828d581320a5",
+    "target_sha": "a583dd7e5331d8ba1deab4443cc2be734c96c838"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Implement Layer-2 cloud prompt-cache expiry and idle compaction policy (#14031): 1) Create an `#authority` Coax module `coax/lib/agent/engine/cache-policy.coax` modeling a default 5-minute (`300000` ms) and custom TTL prompt-cache expiry (`CP_CACHE_WARM`, `CP_CACHE_EXPIRED`, `CP_CACHE_EXPIRED_COMPACT`) that classifies whether a cloud session's prompt cache is still warm, expired, or expired and eligible for `/compact` (when `context_tokens >= 16000` and `can_compact` is true), with `#test` checks that kill 100% of mutants under `coax/bin/coax mutate coax/lib/agent/engine/cache-policy.coax --root-only`. 2) Load `cache-policy.coax` into `coder/tui/agyworker.coax` and add `#test` coverage verifying warm/expired/compact transitions. Verify with `coax/bin/coax test coax/lib/agent/engine/cache-policy.coax --library && coax/bin/coax mutate coax/lib/agent/engine/cache-policy.coax --root-only && coax/bin/coax test coder/tui/agyworker.coax --library`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "test -f coax/lib/agent/engine/cache-policy.coax && grep -q '^#authority;' coax/lib/agent/engine/cache-policy.coax && grep -q 'cache-policy.coax' coder/tui/agyworker.coax && coax/bin/coax test coax/lib/agent/engine/cache-policy.coax --library && coax/bin/coax mutate coax/lib/agent/engine/cache-policy.coax --root-only && coax/bin/coax test coder/tui/agyworker.coax --library"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

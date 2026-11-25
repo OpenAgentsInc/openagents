@@ -1,0 +1,29 @@
+{
+  "id": "wf_001_agy_default_effort_high",
+  "category": "antigravity-workflow",
+  "bucket": "W1_cross_layer_config",
+  "description": "Switch the default Antigravity reasoning effort from medium to high across Coax workers, Desktop UI/Swift provider, phone-agent #authority policy, and shared iOS/macOS Swift store (from chat 597403ca).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "597403ca",
+    "project": "work/openagents",
+    "base_sha": "def7c6ddc52cb0218d713ec798238b8c2820ce3f",
+    "target_sha": "7d0555b496fb86c0a8030db7593d43693e6c8d3d"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Find the default reasoning effort for Antigravity (default model Gemini 4 Neon) — it is currently set to `medium` by default across the worker, desktop app, phone-agent policy, and shared Swift Antigravity store/models (`coder/tui/agyworker.coax`, `coax/lib/agent/engine/antigravity.coax`, `coax/lib/agent/environment/phone-agent-policy.coax`, `coder/tui/host-phone.coax`, `apps/openagents-desktop/page/models.coax`, `apps/openagents-desktop/page/state.coax`, `apps/openagents-desktop/settings.coax`, `apps/openagents-desktop/AntigravityProvider.swift`, `apps/shared/antigravity/Swift/AntigravityModels.swift`, `apps/shared/antigravity/Swift/AntigravityStore.swift`, and their tests/checks). Change the default reasoning effort from `medium` to `high` across all of them, update affected checks, and verify with `coax/bin/coax test coax/lib/agent/environment/phone-agent-policy.coax --library && coax/bin/coax test coder/tui/agyworker.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only models`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'AGYW_EFFORT :: \"high\"' coder/tui/agyworker.coax && grep -q 'PA_AGY_EFFORT :: \"high\"' coax/lib/agent/environment/phone-agent-policy.coax && grep -q '\"high\"' apps/openagents-desktop/AntigravityProvider.swift && grep -q '\\.high' apps/shared/antigravity/Swift/AntigravityStore.swift && coax/bin/coax test coax/lib/agent/environment/phone-agent-policy.coax --library && coax/bin/coax test coder/tui/agyworker.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only models && coax/bin/coax test apps/openagents-desktop/page.coax --only composer && coax/bin/coax test apps/openagents-desktop/page.coax --only providers"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

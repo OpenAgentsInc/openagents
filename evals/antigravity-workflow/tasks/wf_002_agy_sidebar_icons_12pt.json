@@ -1,0 +1,29 @@
+{
+  "id": "wf_002_agy_sidebar_icons_12pt",
+  "category": "antigravity-workflow",
+  "bucket": "W2_desktop_ui_minimal",
+  "description": "Shrink sidebar model/harness icons from 14pt to 12pt using dedicated 12pt atlas slots in zeron.coax while preserving shared 14pt slots for other UI (from real desktop sidebar chat).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "24d8752e-f597-443b-b796-f956db393e0a",
+    "project": "work/openagents",
+    "base_sha": "9ac3c3a2d71a8b3784d8a49eaf735e8727f10bc6",
+    "target_sha": "9a0b2b8aa25508a0f00116fce66764c19788bc8b"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Shrink the OpenAgents Desktop sidebar chat-card model/harness icons from 14pt to 12pt: 1) In `components/skin/zeron.coax`, add dedicated 12pt atlas slots (`ICON_CLAUDE_12`, `ICON_OPENAI_12`, `ICON_PSIONIC_12`, `ICON_ANTIGRAVITY_12`, `ICON_BOT_12`) while keeping the shared `ICON_CLAUDE_14` and `ICON_OPENAI_14` slots untouched for other UI. 2) In `components/app/nav.coax`, update `APP_SIDE_CARD_HARNESS_ICON` to `12.0f32` and map `app_side_card_harness_icon` to the new 12pt slots. 3) Update `components/app/nav-checks.coax` and `apps/openagents-desktop/page/checks/chats-checks.coax` assertions to verify the 12pt slots and sizes. Verify with `coax/bin/coax test components/app/nav.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only chats && coax/bin/coax test apps/openagents-desktop/app-v1.coax --library`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'APP_SIDE_CARD_HARNESS_ICON :: 12.0f32' components/app/nav.coax && grep -q 'ICON_ANTIGRAVITY_12' components/skin/zeron.coax && grep -q 'ICON_CLAUDE_14' components/skin/zeron.coax && grep -q 'ICON_OPENAI_14' components/skin/zeron.coax && coax/bin/coax test components/app/nav.coax --library && coax/bin/coax test apps/openagents-desktop/page.coax --only chats && coax/bin/coax test apps/openagents-desktop/app-v1.coax --library"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}

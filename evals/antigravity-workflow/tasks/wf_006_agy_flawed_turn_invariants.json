@@ -1,0 +1,29 @@
+{
+  "id": "wf_006_agy_flawed_turn_invariants",
+  "category": "antigravity-workflow",
+  "bucket": "W6_protocol_invariants",
+  "description": "Fix Vertex AI HTTP 400 'Requests ending with a model turn are not supported' in coder/tui/flawedworker.coax by enforcing strict structural conversation invariants and wire-level guards (from chat a5a91943).",
+  "source": {
+    "harness": "antigravity",
+    "trajectory_id": "a5a91943",
+    "project": "work/openagents",
+    "base_sha": "284fcce9191b0e72c7764769219f569b015d0034",
+    "target_sha": "4a246e60290749544bb8cfc697fc15b645b1983c"
+  },
+  "timeout_s": 300,
+  "steps": [
+    {
+      "send": "Users on Flawed · Gemini 4 Neon are hitting Vertex AI HTTP 400: `Requests ending with a model turn are not supported.` in `coder/tui/flawedworker.coax`. Diagnose and fix all structural causes so this error can never occur: 1) Raise `FWW_MAX_MSGS` above 96 (e.g., 160) and pre-compact before appending ASSISTANT, TOOL_RESULTS, or USER turns when near `FWW_MAX_MSGS` or `FWW_SLAB` headroom so TOOL_RESULTS can never be silently dropped after ASSISTANT(tool_use). 2) Add a structural history sanitizer (`fww_hist_sanitize`) invoked before every request that enforces user-first ordering, exact TOOL_USE/TOOL_RESULTS pairing, strips dangling unanswered tool_use blocks (e.g. after mid-tool stop/failure), drops thought-only model turns, merges consecutive user turns, and guarantees history never ends on ASSISTANT. 3) Add wire-level guards in both `fww_build_gemini_body` and `fww_build_openai_body` so a model-terminated request is structurally impossible, balance interrupted turns in `fww_hist_recall`, reset per-turn run flags between turns, and auto-recover from structural HTTP 400 errors. 4) Add `#test` checks verifying all invariants and verify with `coax/bin/coax test coder/tui/flawedworker.coax --library`."
+    }
+  ],
+  "graders": [
+    {"type": "not_timed_out"},
+    {"type": "ended"},
+    {
+      "type": "command",
+      "run": "grep -q 'fww_hist_sanitize' coder/tui/flawedworker.coax && grep -q 'ending with a model turn' coder/tui/flawedworker.coax && ! grep -q '^FWW_MAX_MSGS :: 96;' coder/tui/flawedworker.coax && coax/bin/coax test coder/tui/flawedworker.coax --library"
+    },
+    {"type": "outside_unchanged"},
+    {"type": "no_guard_trips"}
+  ]
+}
