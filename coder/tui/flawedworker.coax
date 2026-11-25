@@ -156,6 +156,8 @@ FwConfig :: struct {
   remote_bridge: bool;
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
+  bash_timeout_s: int;        // 0 = default 120s (harness sets 20s fast-fail)
+  local_max_tokens: int;      // 0 = wire default (harness sets 6144 for local Inkling)
   base_url: [512] u8; nbase_url: int;
   allowed_tools: [512] u8; nallowed: int;
   disallowed_tools: [512] u8; ndisallowed: int;
@@ -858,6 +860,8 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   n = fww_cat(out, n, "- Answer conversational greetings or general questions directly without running tools unless workspace inspection is actually needed.\n");
   n = fww_cat(out, n, "- Always Read a file before using Edit on it.\n");
   n = fww_cat(out, n, "- Verify code changes by running relevant tests/builds before claiming completion.\n");
+  n = fww_cat(out, n, "- For non-trivial math, algebra, combinatorics, geometry, or STEM calculations, run a concise python3 script via Bash to solve and cross-check instead of relying on mental arithmetic.\n");
+  n = fww_cat(out, n, "- For transformation or coding tasks with input-output examples, write a python3 script that asserts exact match on every given example, iterate until 100% pass, then run on the target input.\n");
   n = fww_cat(out, n, "- Keep responses accurate, well-structured in Markdown, and grounded in observed tool outputs.\n");
 
   if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger {
@@ -920,7 +924,7 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
 
 // ---------------------------------------------------------------- request JSON builders (Gemini Native & OpenAI/Psionic)
 
-fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, out: [] u8) -> int {
+fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_prompt: string, no_tools: bool, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
@@ -938,11 +942,15 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
     jo_end(o[..]);
   }
 
-  // Tools (Gemini functionDeclarations)
+  // Tools (Gemini functionDeclarations; keep declarations when history has tool calls and enforce NONE on wrap-up turns)
   allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
   disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
   jo_key(o[..], "tools");
   _ = flawed_wire_write_tools(o[..], true, allowed, disallowed);
+  if no_tools {
+    jo_key(o[..], "toolConfig");
+    jo_raw(o[..], "{\"functionCallingConfig\":{\"mode\":\"NONE\"}}");
+  }
 
   // Contents
   jo_key(o[..], "contents");
@@ -1048,35 +1056,38 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
   return ifx o[0].bad then -1 else o[0].n;
 }
 
-fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, out: [] u8) -> int {
+fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort: string, sys_prompt: string, is_local: bool, local_ctx: int, no_tools: bool, force_no_think: bool, out: [] u8) -> int {
   o: [1] Jo;
   jo_start(o[..], out);
   jo_obj(o[..]);
   jo_key(o[..], "model"); jo_str(o[..], model);
-  mtok := flawed_wire_max_tokens(cfg[0].thinking_mode, effort, is_local);
+  eff_think_mode := ifx force_no_think then FLAWED_THINK_OFF else cfg[0].thinking_mode;
+  mtok := ifx is_local && cfg[0].local_max_tokens > 0 && !force_no_think then cfg[0].local_max_tokens else flawed_wire_max_tokens(eff_think_mode, effort, is_local);
   if is_local && local_ctx > 0 && mtok > local_ctx / 2 { mtok = local_ctx / 2; }
   jo_key(o[..], "max_tokens"); jo_int(o[..], mtok);
   if is_local {
-    if cfg[0].thinking_mode == FLAWED_THINK_OFF {
+    if eff_think_mode == FLAWED_THINK_OFF {
       jo_key(o[..], "enable_thinking"); jo_bool(o[..], false);
       jo_key(o[..], "reasoning_effort"); jo_str(o[..], "none");
     } else {
-      jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_local_effort(cfg[0].thinking_mode, effort));
+      jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_local_effort(eff_think_mode, effort));
     }
     // Match Inky's proven interactive sampling defaults for Inkling 2 Mini & uncensored LoRA / AD quants.
     jo_key(o[..], "temperature"); jo_raw(o[..], "0.6");
     jo_key(o[..], "top_p"); jo_raw(o[..], "0.95");
     jo_key(o[..], "top_k"); jo_int(o[..], 40);
-  } else if cfg[0].thinking_mode != FLAWED_THINK_OFF && effort.count > 0 {
+  } else if eff_think_mode != FLAWED_THINK_OFF && effort.count > 0 {
     jo_key(o[..], "reasoning_effort"); jo_str(o[..], flawed_wire_gemini_level(effort));
   }
   jo_key(o[..], "stream"); jo_bool(o[..], true);
   jo_key(o[..], "stream_options"); jo_raw(o[..], "{\"include_usage\":true}");
 
-  allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
-  disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
-  jo_key(o[..], "tools");
-  _ = flawed_wire_write_tools(o[..], false, allowed, disallowed);
+  if !no_tools {
+    allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
+    disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
+    jo_key(o[..], "tools");
+    _ = flawed_wire_write_tools(o[..], false, allowed, disallowed);
+  }
 
   jo_key(o[..], "messages");
   jo_arr(o[..]);
@@ -1116,7 +1127,8 @@ fww_build_openai_body :: (cfg: [] FwConfig, h: [] FwHist, model: string, effort:
       } else {
         jo_key(o[..], "content"); jo_raw(o[..], "null");
       }
-      if is_local && has_think {
+      // Only replay reasoning_content on the most recent assistant turn to prevent KV/prefill bloat across multi-turn tool loops.
+      if is_local && has_think && i + 2 >= h[0].nmsgs {
         jo_key(o[..], "reasoning_content");
         for b: 0..<msg.nblocks {
           if msg.blocks[b].kind == FWW_MB_THINK {
@@ -1679,6 +1691,21 @@ FwRun :: struct {
   acc: [1] FwStreamAccum;
   cmd: [1] FwAsyncCmd;
   next_tool_idx: int;
+  recoveries: int;
+  force_no_think_once: bool;
+  force_wrapup_once: bool;
+  soft_deadline_ms: int;
+  last_tool_hash: int;
+  dup_tool_streak: int;
+}
+
+fww_tool_sig_hash :: (name: string, args: string) -> int {
+  h := 2166136261;
+  mod := 4294967291;
+  for c: name { h = ((h * 131) + cast(int) c) % mod; }
+  h = ((h * 131) + 31) % mod;
+  for c: args { h = ((h * 131) + cast(int) c) % mod; }
+  return ifx h == 0 then 1 else h;
 }
 
 FwFollow :: struct {
@@ -1791,10 +1818,13 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], wire_model);
   eff := cast(string) r[0].effort[0..<r[0].neffort];
   sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
+  no_tools := r[0].force_wrapup_once;
+  no_think := r[0].force_no_think_once;
+  r[0].force_no_think_once = false;
 
   bn := ifx is_gem
-        then fww_build_gemini_body(cfg, h, eff, sys, b[0].req_body[..])
-        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, b[0].req_body[..]);
+        then fww_build_gemini_body(cfg, h, eff, sys, no_tools, b[0].req_body[..])
+        else fww_build_openai_body(cfg, h, wire_model, eff, sys, is_local, local_ctx, no_tools, no_think, b[0].req_body[..]);
   if bn <= 0 { return "Request body exceeded buffer capacity (try /compact)."; }
 
   ub: [512] u8;
@@ -1840,7 +1870,9 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 fww_start_bash :: (r: [] FwRun, cfg: [] FwConfig, tool_idx: int, cmd_str: string, timeout_s: int, out: [] u8) -> bool {
   r[0].cmd[0] = FwAsyncCmd.{h = -1, tool_idx = tool_idx};
   r[0].cmd[0].ncmd = fww_keep(r[0].cmd[0].cmd[..], cmd_str);
-  ts := ifx timeout_s > 0 && timeout_s <= 300 then timeout_s else 120;
+  def_t := ifx cfg[0].bash_timeout_s > 0 then cfg[0].bash_timeout_s else 120;
+  ts := ifx timeout_s > 0 && timeout_s <= 300 then timeout_s else def_t;
+  if cfg[0].bare_mode && cfg[0].bash_timeout_s > 0 && ts > cfg[0].bash_timeout_s { ts = cfg[0].bash_timeout_s; }
   r[0].cmd[0].deadline_ms = proc_now_ms() + ts * 1000;
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
 
@@ -1977,6 +2009,32 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     }
   }
 
+  // H3: Stuck / duplicate tool-call loop guard
+  if r[0].acc[0].ntools == 1 {
+    nm0 := cast(string) r[0].acc[0].tools[0].name[0..<r[0].acc[0].tools[0].nname];
+    ar0 := cast(string) r[0].acc[0].tools[0].args[0..<r[0].acc[0].tools[0].nargs];
+    th := fww_tool_sig_hash(nm0, ar0);
+    if th == r[0].last_tool_hash {
+      r[0].dup_tool_streak += 1;
+      r[0].acc[0].tools[0].nres = fww_cat(r[0].acc[0].tools[0].res[..], r[0].acc[0].tools[0].nres,
+        "\n[Flawed loop guard: you already ran this exact tool call above. Do not repeat it — try a genuinely different approach or synthesize your final answer now.]");
+    } else {
+      r[0].last_tool_hash = th;
+      r[0].dup_tool_streak = 0;
+    }
+  } else {
+    r[0].last_tool_hash = 0;
+    r[0].dup_tool_streak = 0;
+  }
+
+  // Decide before appending tool results whether the next step must be a graceful final wrap-up (H2 + H3 + H8)
+  r[0].step_num += 1;
+  max_t := ifx cfg[0].max_turns > 0 then cfg[0].max_turns else 64;
+  hit_last_turn := r[0].step_num >= max_t;
+  hit_soft_time := r[0].soft_deadline_ms > 0 && proc_now_ms() >= r[0].soft_deadline_ms;
+  hit_dup_limit := r[0].dup_tool_streak >= 2;
+  need_wrapup := hit_last_turn || hit_soft_time || hit_dup_limit;
+
   // All tool calls finished! Commit tool_results message to history.
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
@@ -2008,17 +2066,29 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         _ = mc_steer_take(st, r[0].step_num);
       }
     }
+    // Inject graceful wrap-up instruction on final turn / soft deadline / duplicate-loop cap
+    if need_wrapup && !r[0].force_wrapup_once && nb < FWW_MAX_BLOCKS {
+      a0 := [1] int.[0];
+      wb := FwBlock.{kind = FWW_MB_TEXT};
+      wmsg := "Wrap-up turn: do not call any more tools. Using all computations and tool outputs above, write your complete, concise final answer now in the exact format requested by the user.";
+      wb.text_n = fww_slab_put(h, wmsg, a0[..]); wb.text_at = a0[0];
+      h[0].msgs[mi].blocks[nb] = wb;
+      nb += 1;
+    }
     h[0].msgs[mi].nblocks = nb;
     h[0].nmsgs += 1;
   }
 
-  // Enforce max_turns / max_budget_micros limits
-  r[0].step_num += 1;
-  max_t := ifx cfg[0].max_turns > 0 then cfg[0].max_turns else 64;
-  if r[0].step_num > max_t {
-    r[0].active = false;
-    fww_send(out, mww_ended(out, "finished", "Reached Flawed max turns limit."));
-    return "finished";
+  if need_wrapup {
+    if r[0].force_wrapup_once {
+      r[0].active = false;
+      fww_send(out, mww_ended(out, "finished", "Reached Flawed max turns limit."));
+      return "finished";
+    }
+    r[0].force_wrapup_once = true;
+    if hit_soft_time && auth[0].backend == FLAWED_BE_LOCAL {
+      r[0].force_no_think_once = true;
+    }
   }
   if cfg[0].max_budget_micros > 0 && r[0].turn_cost_micros >= cfg[0].max_budget_micros {
     r[0].active = false;
@@ -2161,6 +2231,31 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     return fww_advance_tools(r, cfg, auth, h, b, st, out);
   }
 
+  // H1: Automatic bounded recovery when a turn ends with empty visible text (e.g. max_tokens exhausted inside thinking).
+  if r[0].acc[0].ntext == 0 && r[0].acc[0].stop_reason != FLAWED_STOP_REFUSAL && r[0].recoveries < 2 && h[0].nmsgs < FWW_MAX_MSGS {
+    r[0].recoveries += 1;
+    rb: [3072] u8;
+    rn := 0;
+    if r[0].acc[0].nthink > 0 {
+      tlen := r[0].acc[0].nthink;
+      tfrom := ifx tlen > 1800 then tlen - 1800 else 0;
+      rn = fww_cat(rb[..], rn, "Your previous step hit the output token limit while reasoning without producing a response. End of your scratchpad:\n\n");
+      rn = fww_cat(rb[..], rn, cast(string) r[0].acc[0].think[tfrom..<tlen]);
+      rn = fww_cat(rb[..], rn, "\n\nDo NOT repeat this derivation. Immediately either run a concise python3 script via Bash to finish computing/verifying the answer, or write your concise final answer in the exact requested format now.");
+    } else {
+      rn = fww_cat(rb[..], rn, "Your previous response was empty. Immediately write your complete, concise final answer in the exact format requested.");
+    }
+    fww_hist_push_user(h, cast(string) rb[0..<rn]);
+    if auth[0].backend == FLAWED_BE_LOCAL {
+      r[0].force_no_think_once = true;
+    }
+    if r[0].recoveries >= 2 {
+      r[0].force_wrapup_once = true;
+    }
+    err := fww_start_request(r, cfg, auth, h, b, out);
+    if err.count == 0 { return ""; }
+  }
+
   // Otherwise finish the turn!
   r[0].active = false;
   final_txt := cast(string) r[0].acc[0].text[0..<r[0].acc[0].ntext];
@@ -2220,6 +2315,8 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     }
     if proc_now_ms() >= r[0].cmd[0].deadline_ms {
       r[0].cmd[0].timed_out = true;
+      _ = proc_kill(r[0].cmd[0].h, PROC_SIGTERM);
+      if proc_wait(r[0].cmd[0].h, 400) < 0 { _ = proc_kill(r[0].cmd[0].h, PROC_SIGKILL); _ = proc_wait(r[0].cmd[0].h, 400); }
       _ = proc_release(r[0].cmd[0].h);
       r[0].cmd[0].h = -1;
       r[0].cmd[0].active = false;
@@ -2227,7 +2324,7 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
       cmd_s := cast(string) r[0].cmd[0].cmd[0..<r[0].cmd[0].ncmd];
       out_s := cast(string) r[0].cmd[0].out[0..<r[0].cmd[0].nout];
       fww_send(out, mww_command(out, cmd_s, 124, true, out_s));
-      r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], "Command timed out.");
+      r[0].acc[0].tools[ti].nres = fww_keep(r[0].acc[0].tools[ti].res[..], "Command timed out. Optimize your script (avoid unbounded brute force) and try a faster approach.");
       r[0].acc[0].tools[ti].is_error = true;
       r[0].acc[0].tools[ti].done = true;
       return fww_advance_tools(r, cfg, auth, h, b, st, out);
@@ -2377,6 +2474,8 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
 fww_stop_active :: (r: [] FwRun, out: [] u8) {
   if r[0].streaming { gw_close(r[0].gw[..]); r[0].streaming = false; }
   if r[0].cmd[0].active {
+    _ = proc_kill(r[0].cmd[0].h, PROC_SIGTERM);
+    if proc_wait(r[0].cmd[0].h, 400) < 0 { _ = proc_kill(r[0].cmd[0].h, PROC_SIGKILL); _ = proc_wait(r[0].cmd[0].h, 400); }
     _ = proc_release(r[0].cmd[0].h);
     r[0].cmd[0].h = -1;
     r[0].cmd[0].active = false;
@@ -2788,7 +2887,7 @@ tool_main :: () -> int #export_c #effects(all) {
   h: [1] FwHist;
   fww_hist_push_user(h[..], "hi");
   body: [16384] u8;
-  n1 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-lora", "xhigh", "sys", true, 8192, body[..]);
+  n1 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-lora", "xhigh", "sys", true, 8192, false, false, body[..]);
   s1 := cast(string) body[0..<n1];
   nodes: [512] JvNode; d: [1] Jv; eb: [64] u8;
   #assert n1 > 0 && jv_parse(d[..], s1, nodes[..]);
@@ -2796,12 +2895,31 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert jv_raw(d[0], jv_get(d[0], 0, "temperature")) == "0.6" && jv_int(d[0], jv_get(d[0], 0, "top_k"), 0) == 40;
   en1 := jv_str(d[0], jv_get(d[0], 0, "reasoning_effort"), eb[..]);
   #assert cast(string) eb[0..<en1] == "xhigh";
+  #assert jv_kind(d[0], jv_get(d[0], 0, "tools")) == JV_ARRAY;
 
   cfg[0].thinking_mode = FLAWED_THINK_OFF;
-  n2 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-q4k", "high", "sys", true, 32768, body[..]);
+  n2 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-q4k", "high", "sys", true, 32768, true, false, body[..]);
   s2 := cast(string) body[0..<n2];
   #assert n2 > 0 && jv_parse(d[..], s2, nodes[..]);
   #assert !jv_bool(d[0], jv_get(d[0], 0, "enable_thinking")) && jv_raw(d[0], jv_get(d[0], 0, "enable_thinking")) == "false";
   en2 := jv_str(d[0], jv_get(d[0], 0, "reasoning_effort"), eb[..]);
   #assert cast(string) eb[0..<en2] == "none";
+  #assert jv_get(d[0], 0, "tools") < 0;
+
+  // Verify H1/H2/H3/H7 harness primitives: local_max_tokens, force_no_think, Gemini NONE wrap-up, tool loop hash
+  cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+  cfg[0].local_max_tokens = 6144;
+  n3 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-lora", "low", "sys", true, 32768, false, false, body[..]);
+  #assert n3 > 0 && jv_parse(d[..], cast(string) body[0..<n3], nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], 0, "max_tokens"), 0) == 6144;
+
+  n4 := fww_build_openai_body(cfg[..], h[..], "inkling-2-mini-uncensored-lora", "low", "sys", true, 32768, true, true, body[..]);
+  #assert n4 > 0 && jv_parse(d[..], cast(string) body[0..<n4], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "enable_thinking")) == "false" && jv_get(d[0], 0, "tools") < 0;
+
+  ng := fww_build_gemini_body(cfg[..], h[..], "low", "sys", true, body[..]);
+  #assert ng > 0 && jv_parse(d[..], cast(string) body[0..<ng], nodes[..]);
+  #assert jv_kind(d[0], jv_get(d[0], 0, "toolConfig")) == JV_OBJECT;
+  #assert fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}") == fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}");
+  #assert fww_tool_sig_hash("Bash", "{\"command\":\"python3 a.py\"}") != fww_tool_sig_hash("Bash", "{\"command\":\"python3 b.py\"}");
 }

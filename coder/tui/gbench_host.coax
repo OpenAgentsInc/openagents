@@ -782,9 +782,9 @@ gbr_run_arm :: (
   t_start := proc_now_ms();
   g_exit := GB_EXIT_HARNESS_ERR;
   if ok && proc_start(gh) == 0 {
-    // Drain merged stdout+stderr lines into arm_dir/gbench.log while waiting up to 14 minutes
+    // Drain merged stdout+stderr lines into arm_dir/gbench.log while waiting up to 30 minutes
     lb: [2048] u8;
-    deadline := proc_now_ms() + 840000;
+    deadline := proc_now_ms() + 1800000;
     while proc_now_ms() < deadline {
       ln := proc_line(gh, 2000, lb[..]);
       if ln > 0 {
