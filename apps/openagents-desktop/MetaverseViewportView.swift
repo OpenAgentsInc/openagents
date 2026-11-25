@@ -282,6 +282,10 @@ final class MetaverseViewportView: NSView {
     private var queue: MTLCommandQueue?
     private var triPipeline: MTLRenderPipelineState?
     private var linePipeline: MTLRenderPipelineState?
+    private var gbPipeline: MTLRenderPipelineState?
+    private var gbCubeBuffer: MTLBuffer?
+    private var gbInstanceBuffer: MTLBuffer?
+    private var gbInstanceFloats: [Float] = []
     private var depthState: MTLDepthStencilState?
     private var depthTexture: MTLTexture?
     private var depthSize: CGSize = .zero
@@ -312,6 +316,13 @@ final class MetaverseViewportView: NSView {
     private var idleEvictTimer: Timer?
 
     private(set) var activeScene: MetaverseTabScene?
+    private(set) var activeGameBuilder: GameBuilderSession?
+    private let gbHudLabel = NSTextField(labelWithString: "")
+    private var gbTickTimer: Timer?
+    private var gbLastTick: CFTimeInterval = 0
+    private var gbRightDown = false
+    private var gbHeldKeys: Set<Int32> = []
+    var onGameBuilderMutated: (() -> Void)?
     private var lastMouse: NSPoint = .zero
     private var downMouse: NSPoint = .zero
     private var dragging = false
@@ -368,15 +379,80 @@ final class MetaverseViewportView: NSView {
         ])
 
         setupControlBar()
+        setupGbHudLabel()
         registerForDraggedTypes([.fileURL])
         buildPipelines()
+        buildGbPipeline()
         buildDefaultResources()
         buildGridGeometry(zUp: false, radius: 5.0)
     }
 
     deinit {
         animTimer?.invalidate()
+        gbTickTimer?.invalidate()
         idleEvictTimer?.invalidate()
+    }
+
+    private func setupGbHudLabel() {
+        gbHudLabel.font = .monospacedSystemFont(ofSize: 11.5, weight: .semibold)
+        gbHudLabel.textColor = NSColor(calibratedWhite: 0.96, alpha: 0.95)
+        gbHudLabel.backgroundColor = NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.09, alpha: 0.78)
+        gbHudLabel.drawsBackground = true
+        gbHudLabel.isBezeled = false
+        gbHudLabel.isEditable = false
+        gbHudLabel.wantsLayer = true
+        gbHudLabel.layer?.cornerRadius = 6
+        gbHudLabel.layer?.masksToBounds = true
+        gbHudLabel.translatesAutoresizingMaskIntoConstraints = false
+        gbHudLabel.isHidden = true
+        addSubview(gbHudLabel)
+        NSLayoutConstraint.activate([
+            gbHudLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            gbHudLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+        ])
+    }
+
+    private func buildGbPipeline() {
+        guard let device else { return }
+        if let path = Bundle.main.resourceURL?.appendingPathComponent("Components/gb-instances.metal").path,
+           let src = try? String(contentsOfFile: path, encoding: .utf8) {
+            let opts = MTLCompileOptions()
+            opts.fastMathEnabled = false
+            opts.languageVersion = .version2_3
+            if let lib = try? device.makeLibrary(source: src, options: opts),
+               let vs = lib.makeFunction(name: "gb_vs"),
+               let fs = lib.makeFunction(name: "gb_fs") {
+                // Reflected by coax metal gb-instances.coax: stride 28 (float3 pos@0, float3 nrm@12, float ao@24)
+                let vd = MTLVertexDescriptor()
+                vd.attributes[0].format = .float3; vd.attributes[0].offset = 0;  vd.attributes[0].bufferIndex = 30
+                vd.attributes[1].format = .float3; vd.attributes[1].offset = 12; vd.attributes[1].bufferIndex = 30
+                vd.attributes[2].format = .float;  vd.attributes[2].offset = 24; vd.attributes[2].bufferIndex = 30
+                vd.layouts[30].stride = 28
+                vd.layouts[30].stepFunction = .perVertex
+
+                let desc = MTLRenderPipelineDescriptor()
+                desc.vertexFunction = vs
+                desc.fragmentFunction = fs
+                desc.vertexDescriptor = vd
+                desc.colorAttachments[0].pixelFormat = .bgra8Unorm
+                desc.depthAttachmentPixelFormat = .depth32Float
+                gbPipeline = try? device.makeRenderPipelineState(descriptor: desc)
+            }
+        }
+        // Build 36-vertex unit cube padded to 7 floats (pos3, nrm3, ao=1.0) matching MESH_VERTEX_WORDS
+        var cube6 = [Float](repeating: 0, count: 36 * 6)
+        let nv = Int(oa_gb_get_cube(&cube6, Int32(cube6.count)))
+        if nv == 36 {
+            var cube7 = [Float](repeating: 1.0, count: 36 * 7)
+            for i in 0..<36 {
+                for k in 0..<6 { cube7[i * 7 + k] = cube6[i * 6 + k] }
+                cube7[i * 7 + 6] = 1.0
+            }
+            gbCubeBuffer = device.makeBuffer(bytes: cube7, length: cube7.count * MemoryLayout<Float>.stride, options: .storageModeShared)
+        }
+        let maxInst = max(1024, Int(oa_gb_get_instance_max()))
+        gbInstanceFloats = [Float](repeating: 0, count: maxInst * 20)
+        gbInstanceBuffer = device.makeBuffer(length: gbInstanceFloats.count * MemoryLayout<Float>.stride, options: .storageModeShared)
     }
 
     private func setupControlBar() {
@@ -597,8 +673,10 @@ final class MetaverseViewportView: NSView {
             idleEvictTimer?.invalidate()
             idleEvictTimer = nil
             updateAnimTimer()
+            updateGbTimer()
         } else {
             stopAnimTimer()
+            stopGbTimer()
             idleEvictTimer?.invalidate()
             idleEvictTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
                 guard let self, self.isHidden else { return }
@@ -965,6 +1043,9 @@ final class MetaverseViewportView: NSView {
     }
 
     func setActiveScene(_ scene: MetaverseTabScene?) {
+        activeGameBuilder = nil
+        gbHudLabel.isHidden = true
+        stopGbTimer()
         activeScene = scene
         if let scene {
             if let device { scene.ensureGpuBuffers(device: device) }
@@ -978,6 +1059,67 @@ final class MetaverseViewportView: NSView {
         }
         syncControlBar()
         renderNow()
+    }
+
+    func setActiveGameBuilder(_ session: GameBuilderSession?) {
+        activeScene = nil
+        stopAnimTimer()
+        controlBar.isHidden = true
+        activeGameBuilder = session
+        if let session, let h = session.handle {
+            if bounds.width > 1 && bounds.height > 1 {
+                oa_gb_set_size(h, Float(bounds.width), Float(bounds.height))
+            }
+            let snap = session.snapshotUi()
+            hudLabel.stringValue = " GameBuilder · \(snap.actorCount) actors · rev \(snap.savedRev) "
+            hudLabel.isHidden = false
+            updateGbTimer()
+        } else {
+            hudLabel.isHidden = true
+            gbHudLabel.isHidden = true
+            stopGbTimer()
+        }
+        renderNow()
+    }
+
+    func updateGbTimer() {
+        guard let session = activeGameBuilder, let h = session.handle else { stopGbTimer(); return }
+        let snap = session.snapshotUi()
+        let animated = snap.playing || gbRightDown || !gbHeldKeys.isEmpty
+        let visible = !isHidden && window != nil && !(window?.isMiniaturized ?? false)
+        let focused = window?.isKeyWindow ?? false
+        let onBattery = MetaverseGpuCoordinator.isOnBatteryPower()
+        let displayHz = Int(window?.screen?.maximumFramesPerSecond ?? 60)
+        // Canonical #authority aethyr.host.v2 frame-rate / thermal policy: 0 Hz when idle in Build mode!
+        let hz = Int(oa_mv_policy_frame_hz(visible ? 1 : 0, focused ? 1 : 0, animated ? 1 : 0, onBattery ? 1 : 0, Int32(displayHz)))
+        if hz <= 0 {
+            stopGbTimer()
+            return
+        }
+        if gbTickTimer != nil { return }
+        gbLastTick = CACurrentMediaTime()
+        gbTickTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / Double(hz), repeats: true) { [weak self] _ in
+            guard let self, let s = self.activeGameBuilder, let hnd = s.handle else { self?.stopGbTimer(); return }
+            let now = CACurrentMediaTime()
+            let dt = Float(min(0.05, max(0.001, now - self.gbLastTick)))
+            self.gbLastTick = now
+            let moved = oa_gb_step_tick(hnd, dt) != 0
+            if oa_gb_is_world_drawn(hnd) != 0 {
+                let scale = Float(self.window?.backingScaleFactor ?? 2.0)
+                _ = oa_gb_step_world(hnd, Float(max(1, self.bounds.width)), Float(max(1, self.bounds.height)), scale, dt)
+            }
+            GameBuilderAudioPlayer.shared.playEvents(from: hnd, muted: s.muted)
+            if moved || oa_gb_consume_dirty(hnd) != 0 {
+                self.renderNow()
+            } else {
+                self.updateGbTimer()
+            }
+        }
+    }
+
+    private func stopGbTimer() {
+        gbTickTimer?.invalidate()
+        gbTickTimer = nil
     }
 
     func setHoles(_ rects: [NSRect]) {
@@ -1009,6 +1151,9 @@ final class MetaverseViewportView: NSView {
             metalLayer.drawableSize = CGSize(width: pw, height: ph)
         }
         CATransaction.commit()
+        if let gb = activeGameBuilder, let h = gb.handle, bounds.width > 1, bounds.height > 1 {
+            oa_gb_set_size(h, Float(bounds.width), Float(bounds.height))
+        }
         if !holeRects.isEmpty { setHoles(holeRects) }
         renderNow()
     }
@@ -1109,9 +1254,84 @@ final class MetaverseViewportView: NSView {
         }
     }
 
+    /// Encodes GameBuilder's Coax instance stream (unit cube + .gbm meshes + selection/claims/changes/playtest lines)
+    /// using our triple-target Coax Metal shader (Components/gb-instances.metal).
+    private func encodeGameBuilder(into enc: MTLRenderCommandEncoder, session: GameBuilderSession) {
+        guard let gbPipeline, let depthState, let cubeBuf = gbCubeBuffer, let instBuf = gbInstanceBuffer, let h = session.handle else { return }
+        var cam = [Float](repeating: 0, count: 20)
+        guard oa_gb_get_camera(h, &cam) != 0 else { return }
+
+        let instCount = Int(oa_gb_get_draw_instances(h, &gbInstanceFloats, Int32(gbInstanceFloats.count)))
+        guard instCount > 0 else { return }
+
+        // Group instances by mesh_id (0 = unit cube, >0 = hydrated .gbm mesh) for batched instanced drawing
+        var orderedFloats: [Float] = []
+        orderedFloats.reserveCapacity(instCount * 20)
+        var batches: [(meshId: Int32, start: Int, count: Int)] = []
+        var byMesh: [Int32: [Int]] = [:]
+        for i in 0..<instCount {
+            let mid = Int32(gbInstanceFloats[i * 20 + 19].rounded())
+            byMesh[mid, default: []].append(i)
+        }
+        for mid in byMesh.keys.sorted() {
+            let idxs = byMesh[mid]!
+            let start = orderedFloats.count / 20
+            for idx in idxs {
+                let base = idx * 20
+                for k in 0..<20 { orderedFloats.append(gbInstanceFloats[base + k]) }
+            }
+            batches.append((mid, start, idxs.count))
+        }
+        let byteLen = min(instBuf.length, orderedFloats.count * MemoryLayout<Float>.stride)
+        memcpy(instBuf.contents(), orderedFloats, byteLen)
+
+        var sky = [Float](repeating: 0, count: 12)
+        let hasSky = oa_gb_get_sky(h, &sky) != 0
+        var u = [Float](repeating: 0, count: 32)
+        for k in 0..<20 { u[k] = cam[k] }
+        u[20] = hasSky ? sky[0] : 0.08
+        u[21] = hasSky ? sky[1] : 0.11
+        u[22] = hasSky ? sky[2] : 0.18
+        var lengths: [UInt32] = [32, UInt32(orderedFloats.count)]
+
+        enc.setRenderPipelineState(gbPipeline)
+        enc.setDepthStencilState(depthState)
+        enc.setTriangleFillMode(.fill)
+        enc.setVertexBuffer(instBuf, offset: 0, index: 1)
+        enc.setVertexBytes(&lengths, length: 8, index: 29)
+        enc.setFragmentBytes(&lengths, length: 8, index: 29)
+
+        for b in batches {
+            u[23] = Float(b.start)
+            enc.setVertexBytes(&u, length: u.count * 4, index: 0)
+            enc.setFragmentBytes(&u, length: u.count * 4, index: 0)
+            if b.meshId > 0, let gbmBuf = session.gbmVertexBuffer, let rng = session.gbmMeshRanges[b.meshId] {
+                enc.setVertexBuffer(gbmBuf, offset: 0, index: 30)
+                enc.drawPrimitives(type: .triangle, vertexStart: rng.first, vertexCount: rng.count, instanceCount: b.count)
+            } else {
+                enc.setVertexBuffer(cubeBuf, offset: 0, index: 30)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 36, instanceCount: b.count)
+            }
+        }
+
+        // Update Play HUD badge when playing
+        var hud = [Float](repeating: 0, count: 80)
+        if oa_gb_get_play_hud(h, &hud, Int32(hud.count)) != 0 && hud[0] > 0.5 {
+            let hp = Int(hud[2].rounded())
+            let maxHp = max(1, Int(hud[3].rounded()))
+            let mine = Int(hud[4].rounded())
+            let rival = Int(hud[5].rounded())
+            let secs = Int(max(0, hud[6]).rounded())
+            gbHudLabel.stringValue = "  PLAY  ·  Score \(mine)–\(rival)  ·  HP \(hp)/\(maxHp)  ·  \(secs)s  ·  Esc to Build  "
+            gbHudLabel.isHidden = false
+        } else {
+            gbHudLabel.isHidden = true
+        }
+    }
+
     func renderNow() {
         guard !isHidden, bounds.width > 1, bounds.height > 1,
-              let queue, let scene = activeScene,
+              let queue, (activeScene != nil || activeGameBuilder != nil),
               let drawable = metalLayer.nextDrawable() else { return }
         let w = drawable.texture.width, h = drawable.texture.height
         ensureDepthTexture(width: w, height: h)
@@ -1129,17 +1349,28 @@ final class MetaverseViewportView: NSView {
 
         if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
             enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(w), height: Double(h), znear: 0, zfar: 1))
-            encodeScene(into: enc, scene: scene, aspect: Float(w) / max(1, Float(h)))
+            if let gb = activeGameBuilder {
+                encodeGameBuilder(into: enc, session: gb)
+            } else if let scene = activeScene {
+                encodeScene(into: enc, scene: scene, aspect: Float(w) / max(1, Float(h)))
+            }
             enc.endEncoding()
         }
         cb.present(drawable)
         cb.commit()
-        hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
+        if let scene = activeScene {
+            hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
+        } else if let gb = activeGameBuilder {
+            let snap = gb.snapshotUi()
+            let suffix = gb.farmLoaded ? " · Farm" : (gb.gbmLoaded ? " · GBM" : "")
+            hudLabel.stringValue = " \(gb.gameId.isEmpty ? "GameBuilder" : gb.gameId) · \(snap.actorCount) actors · rev \(snap.savedRev)\(suffix) "
+            hudLabel.isHidden = false
+        }
     }
 
-    /// Renders an offscreen PNG snapshot of the active 3D scene for Snapshot-to-Chat.
+    /// Renders an offscreen PNG snapshot of the active 3D scene or GameBuilder viewport for Snapshot-to-Chat.
     func capturePNG(width: Int = 1280, height: Int = 800) -> Data? {
-        guard let device, let queue, let scene = activeScene else { return nil }
+        guard let device, let queue, (activeScene != nil || activeGameBuilder != nil) else { return nil }
         let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         cd.usage = [.renderTarget, .shaderRead]
         cd.storageMode = .shared
@@ -1160,7 +1391,11 @@ final class MetaverseViewportView: NSView {
         rp.depthAttachment.clearDepth = 1.0
         if let enc = cb.makeRenderCommandEncoder(descriptor: rp) {
             enc.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(width), height: Double(height), znear: 0, zfar: 1))
-            encodeScene(into: enc, scene: scene, aspect: Float(width) / Float(height))
+            if let gb = activeGameBuilder {
+                encodeGameBuilder(into: enc, session: gb)
+            } else if let scene = activeScene {
+                encodeScene(into: enc, scene: scene, aspect: Float(width) / Float(height))
+            }
             enc.endEncoding()
         }
         cb.commit()
@@ -1181,10 +1416,32 @@ final class MetaverseViewportView: NSView {
         return out as Data
     }
 
-    // MARK: - Pointer Orbit / Pan / Zoom / Raycast Pick
+    // MARK: - Pointer & Keyboard Forwarding (3D Viewer + Embedded GameBuilder Core)
+
+    private func gbPoint(from event: NSEvent) -> (Float, Float) {
+        let p = convert(event.locationInWindow, from: nil)
+        return (Float(p.x), Float(bounds.height - p.y))
+    }
+
+    private func gbMods(from flags: NSEvent.ModifierFlags) -> Int32 {
+        var m: Int32 = 0
+        if flags.contains(.shift)   { m |= 1 }
+        if flags.contains(.option)  { m |= 2 }
+        if flags.contains(.command) { m |= 4 }
+        if flags.contains(.control) { m |= 8 }
+        return m
+    }
 
     override func mouseDown(with event: NSEvent) {
         onFocusRequested?()
+        if let gb = activeGameBuilder, let h = gb.handle {
+            window?.makeFirstResponder(self)
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_down(h, 0, x, y, gbMods(from: event.modifierFlags))
+            if gb.snapshotUi().playing { oa_gb_set_play_fire(h, 1) }
+            renderNow()
+            return
+        }
         let p = convert(event.locationInWindow, from: nil)
         downMouse = p
         lastMouse = p
@@ -1194,6 +1451,15 @@ final class MetaverseViewportView: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         onFocusRequested?()
+        if let gb = activeGameBuilder, let h = gb.handle {
+            window?.makeFirstResponder(self)
+            gbRightDown = true
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_down(h, 1, x, y, gbMods(from: event.modifierFlags))
+            updateGbTimer()
+            renderNow()
+            return
+        }
         let p = convert(event.locationInWindow, from: nil)
         downMouse = p
         lastMouse = p
@@ -1201,12 +1467,45 @@ final class MetaverseViewportView: NSView {
         dragPanning = true
     }
 
+    override func otherMouseDown(with event: NSEvent) {
+        onFocusRequested?()
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_down(h, 2, x, y, gbMods(from: event.modifierFlags))
+            renderNow()
+        }
+    }
+
     override func mouseDragged(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            if gb.snapshotUi().playing {
+                oa_gb_set_play_look(h, Float(event.deltaX) * 0.004, Float(event.deltaY) * 0.004)
+            } else {
+                oa_gb_mouse_move(h, x, y)
+            }
+            renderNow()
+            return
+        }
         handleDrag(event)
     }
 
     override func rightMouseDragged(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_move(h, x, y)
+            renderNow()
+            return
+        }
         handleDrag(event)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_move(h, x, y)
+            renderNow()
+        }
     }
 
     private func handleDrag(_ event: NSEvent) {
@@ -1233,6 +1532,15 @@ final class MetaverseViewportView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_up(h, 0, x, y)
+            if gb.snapshotUi().playing { oa_gb_set_play_fire(h, 0) }
+            gb.flushSaveIfDue()
+            onGameBuilderMutated?()
+            renderNow()
+            return
+        }
         defer { dragging = false; dragPanning = false }
         let p = convert(event.locationInWindow, from: nil)
         if hypot(p.x - downMouse.x, p.y - downMouse.y) < 4.0 {
@@ -1241,10 +1549,31 @@ final class MetaverseViewportView: NSView {
     }
 
     override func rightMouseUp(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            gbRightDown = false
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_up(h, 1, x, y)
+            updateGbTimer()
+            renderNow()
+            return
+        }
         dragging = false; dragPanning = false
     }
 
+    override func otherMouseUp(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            let (x, y) = gbPoint(from: event)
+            oa_gb_mouse_up(h, 2, x, y)
+            renderNow()
+        }
+    }
+
     override func scrollWheel(with event: NSEvent) {
+        if let gb = activeGameBuilder, let h = gb.handle {
+            oa_gb_scroll_wheel(h, Float(event.scrollingDeltaY) * 0.15)
+            renderNow()
+            return
+        }
         guard let scene = activeScene else { return }
         let factor: Float = exp(Float(-event.scrollingDeltaY) * 0.012)
         if scene.flyMode {
@@ -1254,6 +1583,58 @@ final class MetaverseViewportView: NSView {
             scene.distance = max(scene.boundsRadius * 0.15, min(scene.boundsRadius * 20.0, scene.distance * factor))
         }
         renderNow()
+    }
+
+    private func mapGbKey(_ event: NSEvent) -> Int32? {
+        if event.keyCode == 51 { return 8 }   // Backspace
+        if event.keyCode == 117 { return 127 } // Forward delete
+        if event.keyCode == 49 { return 32 }  // Space (jump in Play)
+        guard let ch = event.charactersIgnoringModifiers?.lowercased().unicodeScalars.first else { return nil }
+        let v = Int32(ch.value)
+        if v >= 32 && v <= 126 { return v }
+        return nil
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard let gb = activeGameBuilder, let h = gb.handle else { super.keyDown(with: event); return }
+        if event.keyCode == 53 { // Esc -> stop Play or unfocus viewport
+            if gb.snapshotUi().playing {
+                _ = gb.runVerb("stop", argsJson: "")
+                gb.muted = true
+                onGameBuilderMutated?()
+                updateGbTimer()
+                renderNow()
+                return
+            }
+            super.keyDown(with: event)
+            return
+        }
+        if let k = mapGbKey(event) {
+            if k == Int32(Character("v").asciiValue!) && gb.snapshotUi().playing {
+                oa_gb_toggle_play_view(h)
+            } else {
+                gbHeldKeys.insert(k)
+                oa_gb_send_key(h, k, 1, gbMods(from: event.modifierFlags))
+            }
+            gb.flushSaveIfDue()
+            onGameBuilderMutated?()
+            updateGbTimer()
+            renderNow()
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        guard let gb = activeGameBuilder, let h = gb.handle else { super.keyUp(with: event); return }
+        if let k = mapGbKey(event) {
+            gbHeldKeys.remove(k)
+            oa_gb_send_key(h, k, 0, gbMods(from: event.modifierFlags))
+            updateGbTimer()
+            renderNow()
+            return
+        }
+        super.keyUp(with: event)
     }
 
     override func magnify(with event: NSEvent) {

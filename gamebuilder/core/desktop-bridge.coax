@@ -1,0 +1,368 @@
+// Relocatable C-ABI bridge embedding gamebuilder/core/ inside OpenAgents Desktop (GitHub #14043).
+// Compiled into gamebuilder-core.o via `coax c ... --library` + `ld -r -exported_symbol '_oa_gb_*'`,
+// keeping apps/openagents-desktop/ -> gamebuilder/ acyclic in contexts.txt.
+//
+// Invariant (gamebuilder/INVARIANTS.md): 100% of level/game mutations and UI button presses dispatch
+// strictly through GB_COMMANDS (gb_command) and GB_CONTROLS (ed_control_press_with).
+#run_steps 100000000;
+#load "app.coax";
+
+GbDesktopState :: struct {
+  e: [1] Editor;
+  f: [1] Farm;
+  farm_loaded: bool;
+  pics: [1] PicStore;
+  world_hud: [1] Hud;
+  world_attached: bool;
+  world_verts: [65536] f32;
+  world_uniforms: [256] f32;
+}
+
+oa_gb_state_size :: () -> int #export_c #effects(all) {
+  return size_of(GbDesktopState);
+}
+
+oa_gb_init :: (st: [] GbDesktopState, w: f32, h: f32) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  ed_init(st[0].e[..], w, h);
+  ed_pics_attach(st[0].e[..], st[0].pics[..]);
+  st[0].farm_loaded = false;
+  st[0].world_attached = false;
+}
+
+oa_gb_resize :: (st: [] GbDesktopState, w: f32, h: f32) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  ed_resize(st[0].e[..], w, h);
+}
+
+oa_gb_set_account :: (st: [] GbDesktopState, email: string) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  buf: [ACCOUNT_MAX] u8;
+  n := ifx email.count < ACCOUNT_MAX then email.count else ACCOUNT_MAX;
+  for i: 0..<n { buf[i] = email[i]; }
+  ed_set_account(st[0].e[..], buf[0..<n]);
+}
+
+// ---- Single Command Table Choke Point (GB_COMMANDS & GB_CONTROLS)
+
+oa_gb_run_verb :: (st: [] GbDesktopState, verb_name: string, args_json: string, levels: [] s32, out_json: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 || out_json.count < 2 { return 0; }
+  v := gb_find(verb_name);
+  if v < 0 { return 0; }
+  return gb_command(st[0].e[..], v, args_json, levels, out_json);
+}
+
+oa_gb_press_ctrl :: (st: [] GbDesktopState, ctrl_id: string, args_json: string, levels: [] s32, out_json: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 || out_json.count < 2 { return 0; }
+  idx := gb_control_find(ctrl_id);
+  if idx < 0 { return 0; }
+  abuf: [4096] u8;
+  an := ifx args_json.count < 4096 then args_json.count else 4096;
+  for i: 0..<an { abuf[i] = args_json[i]; }
+  return ed_control_press_with(st[0].e[..], cast(s32) idx, abuf[0..<an], levels, out_json);
+}
+
+oa_gb_table_digest :: (out_hex: [] u8) -> int #export_c #effects(all) {
+  if out_hex.count < 8 { return 0; }
+  hb: [8] u8;
+  s := gb_hex8(gb_table_digest(), hb[..]);
+  for i: 0..<s.count { out_hex[i] = s[i]; }
+  return s.count;
+}
+
+// ---- Level / Game Files & Persistence
+
+oa_gb_open_level :: (st: [] GbDesktopState, level_n: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return ed_open(st[0].e[..], level_n, text);
+}
+
+oa_gb_open_game :: (st: [] GbDesktopState, game_idx: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  return ed_open_game(st[0].e[..], game_idx, text);
+}
+
+oa_gb_save_level :: (st: [] GbDesktopState, out: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  return ed_save(st[0].e[..], out);
+}
+
+oa_gb_save_due :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_save_due(st[0].e[..]);
+}
+
+oa_gb_mark_saved :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_saved(st[0].e[..]); }
+}
+
+oa_gb_more_due :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_more_due(st[0].e[..]) else 0;
+}
+
+oa_gb_more_save :: (st: [] GbDesktopState, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_more_save(st[0].e[..], out) else 0;
+}
+
+oa_gb_open_due :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_open_due(st[0].e[..]) else -1;
+}
+
+oa_gb_open_game_due :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_open_game_due(st[0].e[..]) else -1;
+}
+
+// ---- Continuous Input & Simulation Tick
+
+oa_gb_down :: (st: [] GbDesktopState, button: s32, x: f32, y: f32, mods: s32) #export_c #effects(all) {
+  if st.count > 0 { ed_down(st[0].e[..], button, x, y, mods); }
+}
+
+oa_gb_move :: (st: [] GbDesktopState, x: f32, y: f32) #export_c #effects(all) {
+  if st.count > 0 { ed_move(st[0].e[..], x, y); }
+}
+
+oa_gb_up :: (st: [] GbDesktopState, button: s32, x: f32, y: f32) #export_c #effects(all) {
+  if st.count > 0 { ed_up(st[0].e[..], button, x, y); }
+}
+
+oa_gb_wheel :: (st: [] GbDesktopState, notches: f32) #export_c #effects(all) {
+  if st.count > 0 { ed_wheel(st[0].e[..], notches); }
+}
+
+oa_gb_key :: (st: [] GbDesktopState, key: s32, down: bool, mods: s32) #export_c #effects(all) {
+  if st.count > 0 { ed_key(st[0].e[..], key, down, mods); }
+}
+
+oa_gb_tick :: (st: [] GbDesktopState, dt: f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_tick(st[0].e[..], dt);
+}
+
+oa_gb_take_dirty :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_take_dirty(st[0].e[..]);
+}
+
+oa_gb_play_look :: (st: [] GbDesktopState, dx: f32, dy: f32) #export_c #effects(all) {
+  if st.count > 0 { ed_play_look(st[0].e[..], dx, dy); }
+}
+
+oa_gb_play_fire :: (st: [] GbDesktopState, down: bool) #export_c #effects(all) {
+  if st.count > 0 { ed_play_fire(st[0].e[..], down); }
+}
+
+oa_gb_play_use :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_play_use(st[0].e[..]); }
+}
+
+oa_gb_play_view :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_play_view(st[0].e[..]); }
+}
+
+oa_gb_play_setup :: (st: [] GbDesktopState, mode: s32, size: s32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_play_setup(st[0].e[..], mode, size);
+}
+
+oa_gb_focus_world_pos :: (st: [] GbDesktopState, x_cm: s32, z_cm: s32) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  ed_frame(st[0].e[..], WorldPoint.{x = cast(f32) x_cm / 100.0f32, y = 1.0f32, z = cast(f32) z_cm / 100.0f32}, 4.5f32);
+}
+
+// ---- Render Pipeline 1: Instance Stream (Unit Cube + .gbm Meshes)
+
+oa_gb_cube_verts :: (out: [] f32) -> s64 #export_c #effects(all) {
+  return ed_cube(out);
+}
+
+oa_gb_camera :: (st: [] GbDesktopState, out: [] f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_camera(st[0].e[..], out);
+}
+
+oa_gb_instance_max :: () -> s32 #export_c #effects(all) {
+  return ed_instance_capacity();
+}
+
+oa_gb_draw :: (st: [] GbDesktopState, out: [] f32) -> s64 #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  return ed_draw(st[0].e[..], out);
+}
+
+oa_gb_open_meshes :: (st: [] GbDesktopState, bytes: [] u8) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_meshes_open(st[0].e[..], bytes);
+}
+
+oa_gb_mesh_count :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_mesh_count(st[0].e[..]) else 0;
+}
+
+oa_gb_mesh_vertices_at :: (st: [] GbDesktopState) -> s64 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_mesh_vertices_at(st[0].e[..]) else 0;
+}
+
+oa_gb_mesh_range :: (st: [] GbDesktopState, id: s32, out: [] s32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_mesh_range(st[0].e[..], id, out);
+}
+
+oa_gb_play_hud :: (st: [] GbDesktopState, out: [] f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_play_hud(st[0].e[..], out);
+}
+
+oa_gb_sky :: (st: [] GbDesktopState, out: [] f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_sky(st[0].e[..], out);
+}
+
+// ---- Render Pipeline 2: SPLICEBOTS UE Farm Pack
+
+oa_gb_farm_open :: (st: [] GbDesktopState, pack: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  ok := ed_farm_open(st[0].f[..], pack);
+  st[0].farm_loaded = ok;
+  if ok { _ = ed_farm_bind(st[0].e[..], st[0].f[..]); }
+  return ok;
+}
+
+oa_gb_farm_shown :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && st[0].farm_loaded && ed_farm_shown(st[0].e[..]);
+}
+
+oa_gb_farm_draws :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 && st[0].farm_loaded then ed_farm_draws(st[0].f[..]) else 0;
+}
+
+oa_gb_farm_copy :: (st: [] GbDesktopState, draws: [] u32, objects: [] f32) -> bool #export_c #effects(all) {
+  return st.count > 0 && st[0].farm_loaded && ed_farm_copy(st[0].f[..], draws, objects);
+}
+
+// ---- Render Pipeline 3: world.coax -> web/hud.coax (9 Web Worlds)
+
+oa_gb_world_attach :: (st: [] GbDesktopState, on: bool) #export_c #effects(all) {
+  if st.count < 1 { return; }
+  st[0].world_attached = on;
+  ed_world_attach(st[0].e[..], on);
+}
+
+oa_gb_world_draws :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_world_draws(st[0].e[..]);
+}
+
+oa_gb_world_playing :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_world_playing(st[0].e[..]);
+}
+
+oa_gb_world_step :: (st: [] GbDesktopState, w: f32, h: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if st.count < 1 || !st[0].world_attached { return 0; }
+  return ed_world_frame(st[0].e[..], st[0].world_hud[..], st[0].world_verts[..], st[0].world_uniforms[..], w, h, dpr, dt);
+}
+
+// ---- Audio Synthesis (ed_play_sound / ed_play_events -> CoreAudio)
+
+oa_gb_sound_rate :: () -> s32 #export_c #effects(all) { return ed_play_sound_rate(); }
+oa_gb_sound_count :: () -> s32 #export_c #effects(all) { return ed_play_sounds(); }
+oa_gb_sound_pcm :: (id: s32, out: [] f32) -> s64 #export_c #effects(all) { return ed_play_sound(id, out); }
+oa_gb_take_events :: (st: [] GbDesktopState, out: [] s32) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_play_events(st[0].e[..], out) else 0;
+}
+
+// ---- Live --attach Socket, Claims, Pictures & UI Sync Snapshot
+
+oa_gb_attach_listen :: (st: [] GbDesktopState, path: string) -> bool #export_c #effects(all) {
+  if st.count < 1 || path.count < 1 || path.count > ATTACH_PATH { return false; }
+  buf: [ATTACH_PATH] u8;
+  for i: 0..<path.count { buf[i] = path[i]; }
+  return ed_attach_listen(st[0].e[..], buf[0..<path.count]);
+}
+
+oa_gb_attach_poll :: (st: [] GbDesktopState, levels: [] s32) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_attach_poll(st[0].e[..], levels);
+}
+
+oa_gb_attach_close :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_attach_close(st[0].e[..]); }
+}
+
+oa_gb_claims_clock :: (st: [] GbDesktopState, now_sec: s64) #export_c #effects(all) {
+  if st.count > 0 { ed_claims_clock(st[0].e[..], now_sec); }
+}
+
+oa_gb_pic_due :: (st: [] GbDesktopState) -> s32 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_pic_due(st[0].e[..]) else 0;
+}
+
+oa_gb_pic_put :: (st: [] GbDesktopState, px: [] u8, w: s32, h: s32, stride: s32, bgra: bool, made: s64) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_pic_put(st[0].e[..], px, w, h, stride, bgra, made);
+}
+
+// Packs full UI state snapshot for cd_gb_sync_ui & cd_mv_tab_status:
+// out_i[0..25]:
+//   0:tool, 1:can_undo, 2:can_redo, 3:template_id, 4:playing, 5:level_n, 6:saved_rev,
+//   7:save_due, 8:read_only, 9:change_count, 10:sel_count, 11:sel_id, 12:sel_kind,
+//   13..23: 11 ed_field values, 24:actor_count, 25:claims_count
+// out_cam[0..8]: hit/sel xyz (cm), eye xyz (cm), pivot xyz (cm)
+oa_gb_ui_sync :: (st: [] GbDesktopState, out_i: [] s32, out_cam: [] s64, out_label: [] u8, out_note: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 || out_i.count < 26 || out_cam.count < 9 { return false; }
+  e := st[0].e[..];
+  out_i[0] = ed_tool(e);
+  out_i[1] = ifx ed_can_undo(e) then 1 else 0;
+  out_i[2] = ifx ed_can_redo(e) then 1 else 0;
+  out_i[3] = ed_template(e);
+  out_i[4] = ifx e[0].play[0].on then 1 else 0;
+  out_i[5] = ed_level(e);
+  out_i[6] = cast(s32) ed_agent_rev(e);
+  out_i[7] = ifx ed_save_due(e) then 1 else 0;
+  out_i[8] = ifx !ed_may_edit(e) then 1 else 0;
+  out_i[9] = cast(s32) e[0].changes[0].n;
+  has_sel := ed_has_selection(e);
+  out_i[10] = ifx has_sel then 1 else 0;
+  out_i[11] = ifx has_sel then e[0].selected else 0;
+  out_i[12] = ifx has_sel then ed_field(e, 0) else -1;
+  for fi: 0..<11 { out_i[13 + fi] = ifx has_sel then ed_field(e, cast(s32) fi) else 0; }
+  out_i[24] = cast(s32) ed_count(e);
+  out_i[25] = cast(s32) claims_here(e)[0].n;
+
+  eye := ed_eye(e);
+  piv := e[0].pivot;
+  sel_x: s64 = cast(s64) (piv.x * 100.0f32);
+  sel_y: s64 = cast(s64) (piv.y * 100.0f32);
+  sel_z: s64 = cast(s64) (piv.z * 100.0f32);
+  if has_sel {
+    si := ed_index(e, e[0].selected);
+    if si >= 0 {
+      a := ed_actor(e, si);
+      sel_x = cast(s64) a.x; sel_y = cast(s64) a.y; sel_z = cast(s64) a.z;
+      t := [1] Text.[Text.{buf = out_label}];
+      if a.kind >= 0 && a.kind < KINDS { tx_put(t[..], KIND_NAME[a.kind]); } else { tx_put(t[..], "actor"); }
+      tx_put(t[..], " #"); tx_n(t[..], a.id);
+      if t[0].at < out_label.count { out_label[t[0].at] = 0; }
+    }
+  } else if out_label.count > 0 { out_label[0] = 0; }
+
+  out_cam[0] = sel_x; out_cam[1] = sel_y; out_cam[2] = sel_z;
+  out_cam[3] = cast(s64) (eye.x * 100.0f32); out_cam[4] = cast(s64) (eye.y * 100.0f32); out_cam[5] = cast(s64) (eye.z * 100.0f32);
+  out_cam[6] = cast(s64) (piv.x * 100.0f32); out_cam[7] = cast(s64) (piv.y * 100.0f32); out_cam[8] = cast(s64) (piv.z * 100.0f32);
+
+  if out_note.count > 0 {
+    nn := cast(int) e[0].note_len;
+    if nn >= out_note.count { nn = out_note.count - 1; }
+    for i: 0..<nn { out_note[i] = e[0].note[i]; }
+    out_note[nn] = 0;
+  }
+  return true;
+}
+
+// Emits "0\t1\t<sel>\t<id>\t<kind> #<id>\n" TSV for the right-side Drawer scene tree.
+oa_gb_tree_tsv :: (st: [] GbDesktopState, out: [] u8) -> int #export_c #effects(all) {
+  if st.count < 1 || out.count < 2 { return 0; }
+  e := st[0].e[..];
+  t := [1] Text.[Text.{buf = out}];
+  n := ed_count(e);
+  if n > 128 { n = 128; }
+  for i: 0..<n {
+    a := ed_actor(e, i);
+    sel := a.id == e[0].selected;
+    tx_put(t[..], ifx sel then "0\t1\t1\t" else "0\t1\t0\t");
+    tx_n(t[..], a.id);
+    tx_put(t[..], "\t");
+    if a.kind >= 0 && a.kind < KINDS { tx_put(t[..], KIND_NAME[a.kind]); } else { tx_put(t[..], "thing"); }
+    tx_put(t[..], " #"); tx_n(t[..], a.id);
+    tx_put(t[..], "\n");
+  }
+  return cast(int) t[0].at;
+}

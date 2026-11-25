@@ -1,0 +1,185 @@
+// Triple-target single-source Coax instanced renderer for GameBuilder (GitHub #14043).
+// Renders unit-cube actors, .gbm Scrapper/arena meshes, selection/claim/change/playtest lines,
+// procedural 1m/5m ground grid, arena floor plates, and dusk sky dome from ed_draw() & ed_camera().
+// Verified across coax metal, coax spirv, coax wgsl, and CPU #test.
+#module "gamebuilder.core.gpu.instances";
+#load "../../../metaverse-engine/gpu/shader.coax";
+
+// Matches MESH_VERTEX_WORDS = 7 (28 bytes): pos(3), nrm(3), ao(1).
+GbVertIn :: struct {
+  pos: V3;
+  nrm: V3;
+  ao:  f32;
+}
+
+GbVertOut :: struct {
+  clip:  V4;
+  wpos:  V3;
+  wnrm:  V3;
+  eye:   V3;
+  meta:  V4; // x=shade, y=look, z=tint, w=ao
+  gstep: f32;
+}
+
+gb_tint_color :: (tint: f32) -> V3 {
+  // Matches gamebuilder/core/play.coax (0..8, 17..18) & editor.coax (9..11)
+  if tint < 0.5f32  { return v3(0.76f32, 0.78f32, 0.82f32); } // 0 TINT_NONE (warm neutral stone)
+  if tint < 1.5f32  { return v3(0.24f32, 0.68f32, 0.96f32); } // 1 TINT_MINE (cyan)
+  if tint < 2.5f32  { return v3(0.94f32, 0.34f32, 0.30f32); } // 2 TINT_RIVAL (coral red)
+  if tint < 3.5f32  { return v3(0.45f32, 0.88f32, 1.00f32); } // 3 TINT_SHOT_MINE
+  if tint < 4.5f32  { return v3(1.00f32, 0.52f32, 0.42f32); } // 4 TINT_SHOT_RIVAL
+  if tint < 5.5f32  { return v3(0.26f32, 0.84f32, 0.52f32); } // 5 TINT_HEALTH (emerald)
+  if tint < 6.5f32  { return v3(0.18f32, 0.20f32, 0.25f32); } // 6 TINT_DARK
+  if tint < 7.5f32  { return v3(1.00f32, 0.78f32, 0.28f32); } // 7 TINT_SPARK (amber)
+  if tint < 8.5f32  { return v3(0.98f32, 0.86f32, 0.34f32); } // 8 TINT_GLOW (gold)
+  if tint < 9.5f32  { return v3(0.26f32, 0.62f32, 0.32f32); } // 9 TINT_LEAF (forest)
+  if tint < 10.5f32 { return v3(0.16f32, 0.52f32, 0.82f32); } // 10 TINT_WATER (azure)
+  if tint < 11.5f32 { return v3(0.68f32, 0.56f32, 0.40f32); } // 11 TINT_EARTH (sand)
+  if tint < 17.5f32 { return v3(0.32f32, 0.36f32, 0.44f32); } // 17 TINT_WALL (cool slate)
+  return v3(0.46f32, 0.52f32, 0.60f32);                       // 18 TINT_COVER (steel)
+}
+
+gb_vs :: (vi: u32, ii: u32, v: GbVertIn, u: [] f32, inst: [] f32) -> GbVertOut {
+  _ = vi;
+  base := cast(u32) u[23];
+  o := (ii + base) * 20;
+  // Column-major 4x4 instance model matrix -> world position & normal
+  wx := inst[o + 0] * v.pos.x + inst[o + 4] * v.pos.y + inst[o + 8]  * v.pos.z + inst[o + 12];
+  wy := inst[o + 1] * v.pos.x + inst[o + 5] * v.pos.y + inst[o + 9]  * v.pos.z + inst[o + 13];
+  wz := inst[o + 2] * v.pos.x + inst[o + 6] * v.pos.y + inst[o + 10] * v.pos.z + inst[o + 14];
+
+  nx := inst[o + 0] * v.nrm.x + inst[o + 4] * v.nrm.y + inst[o + 8]  * v.nrm.z;
+  ny := inst[o + 1] * v.nrm.x + inst[o + 5] * v.nrm.y + inst[o + 9]  * v.nrm.z;
+  nz := inst[o + 2] * v.nrm.x + inst[o + 6] * v.nrm.y + inst[o + 10] * v.nrm.z;
+  nlen := sqrt(nx * nx + ny * ny + nz * nz);
+  if nlen > 0.0001f32 { nx = nx / nlen; ny = ny / nlen; nz = nz / nlen; } else { nx = 0.0f32; ny = 1.0f32; nz = 0.0f32; }
+
+  // Multiply by column-major 4x4 view-projection matrix u[0..15]
+  cx := u[0] * wx + u[4] * wy + u[8]  * wz + u[12];
+  cy := u[1] * wx + u[5] * wy + u[9]  * wz + u[13];
+  cz := u[2] * wx + u[6] * wy + u[10] * wz + u[14];
+  cw := u[3] * wx + u[7] * wy + u[11] * wz + u[15];
+
+  return GbVertOut.{
+    clip  = v4(cx, cy, cz, cw),
+    wpos  = v3(wx, wy, wz),
+    wnrm  = v3(nx, ny, nz),
+    eye   = v3(u[16], u[17], u[18]),
+    meta  = v4(inst[o + 16], inst[o + 17], inst[o + 18], v.ao),
+    gstep = u[19],
+  };
+}
+
+gb_fs :: (v: GbVertOut, u: [] f32) -> V4 {
+  shade := v.meta.x;
+  look  := v.meta.y;
+  tint  := v.meta.z;
+  ao    := clampf(v.meta.w, 0.35f32, 1.0f32);
+
+  // LOOK_SKY (5): warm dusk / twilight gradient dome
+  if look > 4.5f32 {
+    dy := clampf((v.wpos.y - v.eye.y) * 0.004f32 + 0.25f32, 0.0f32, 1.0f32);
+    r := 0.14f32 * (1.0f32 - dy) + u[20] * dy;
+    g := 0.17f32 * (1.0f32 - dy) + u[21] * dy;
+    b := 0.24f32 * (1.0f32 - dy) + u[22] * dy;
+    return v4(r, g, b, 1.0f32);
+  }
+
+  // LOOK_LINE (3): crisp unlit selection / claim / change / playtest markers
+  if look > 2.5f32 && look < 3.5f32 {
+    if tint < 0.5f32 { return v4(0.98f32, 0.98f32, 1.00f32, 1.0f32); }
+    lc := gb_tint_color(tint);
+    return v4(lc.x, lc.y, lc.z, 1.0f32);
+  }
+
+  // Distance fog factor toward dusk horizon
+  dx := v.wpos.x - v.eye.x; dy := v.wpos.y - v.eye.y; dz := v.wpos.z - v.eye.z;
+  dist := sqrt(dx * dx + dy * dy + dz * dz);
+  fog := clampf((dist - 55.0f32) / 260.0f32, 0.0f32, 0.65f32);
+
+  // LOOK_GROUND (2) or LOOK_ARENA (4): procedural anti-aliased grid floor
+  if (look > 1.5f32 && look < 2.5f32) || (look > 3.5f32 && look < 4.5f32) {
+    step := ifx v.gstep > 0.1f32 then v.gstep else 1.0f32;
+    gx := abs(v.wpos.x / step - floor(v.wpos.x / step + 0.5f32));
+    gz := abs(v.wpos.z / step - floor(v.wpos.z / step + 0.5f32));
+    line_minor := ifx gx < 0.032f32 || gz < 0.032f32 then 1.0f32 else 0.0f32;
+    mx := abs(v.wpos.x / (step * 5.0f32) - floor(v.wpos.x / (step * 5.0f32) + 0.5f32));
+    mz := abs(v.wpos.z / (step * 5.0f32) - floor(v.wpos.z / (step * 5.0f32) + 0.5f32));
+    line_major := ifx mx < 0.018f32 || mz < 0.018f32 then 1.0f32 else 0.0f32;
+    grid_fade := clampf(1.0f32 - dist / 140.0f32, 0.0f32, 1.0f32);
+    base_r := ifx look > 3.5f32 then 0.13f32 else 0.085f32;
+    base_g := ifx look > 3.5f32 then 0.15f32 else 0.095f32;
+    base_b := ifx look > 3.5f32 then 0.19f32 else 0.115f32;
+    boost := (line_minor * 0.07f32 + line_major * 0.13f32) * grid_fade;
+    gr := (base_r + boost) * (1.0f32 - fog) + 0.07f32 * fog;
+    gg := (base_g + boost) * (1.0f32 - fog) + 0.08f32 * fog;
+    gb := (base_b + boost * 1.15f32) * (1.0f32 - fog) + 0.11f32 * fog;
+    return v4(gr, gg, gb, 1.0f32);
+  }
+
+  // LOOK_SOLID (0) & LOOK_SELECTED (1): studio hemisphere + key/fill PBR-style lighting
+  col := gb_tint_color(tint);
+  nlen := sqrt(v.wnrm.x * v.wnrm.x + v.wnrm.y * v.wnrm.y + v.wnrm.z * v.wnrm.z);
+  nx := ifx nlen > 0.0001f32 then v.wnrm.x / nlen else 0.0f32;
+  ny := ifx nlen > 0.0001f32 then v.wnrm.y / nlen else 1.0f32;
+  nz := ifx nlen > 0.0001f32 then v.wnrm.z / nlen else 0.0f32;
+
+  // Key sun directional light + cool sky hemisphere ambient
+  ndl := clampf(nx * 0.45f32 + ny * 0.80f32 + nz * 0.39f32, 0.0f32, 1.0f32);
+  fill := clampf(-nx * 0.50f32 + ny * 0.30f32 - nz * 0.80f32, 0.0f32, 1.0f32);
+  hemi := 0.34f32 + 0.22f32 * (ny * 0.5f32 + 0.5f32);
+  lit := (hemi + ndl * 0.72f32 + fill * 0.18f32) * ao * clampf(shade, 0.35f32, 1.6f32);
+
+  rr := col.x * lit;
+  gg := col.y * lit;
+  bb := col.z * lit;
+
+  // Selected rim highlight (LOOK_SELECTED == 1)
+  if look > 0.5f32 && look < 1.5f32 {
+    vlen := ifx dist > 0.0001f32 then dist else 1.0f32;
+    ndv := clampf(abs((nx * -dx + ny * -dy + nz * -dz) / vlen), 0.0f32, 1.0f32);
+    rim := (1.0f32 - ndv) * (1.0f32 - ndv);
+    rr = rr + 0.14f32 + rim * 0.55f32;
+    gg = gg + 0.10f32 + rim * 0.32f32;
+    bb = bb + 0.08f32 + rim * 0.22f32;
+  }
+
+  // Soft tone curve & fog
+  rr = clampf(rr / (1.0f32 + rr * 0.25f32), 0.0f32, 1.0f32) * (1.0f32 - fog) + 0.07f32 * fog;
+  gg = clampf(gg / (1.0f32 + gg * 0.25f32), 0.0f32, 1.0f32) * (1.0f32 - fog) + 0.08f32 * fog;
+  bb = clampf(bb / (1.0f32 + bb * 0.25f32), 0.0f32, 1.0f32) * (1.0f32 - fog) + 0.11f32 * fog;
+  return v4(rr, gg, bb, 1.0f32);
+}
+
+#test "gb-instances shader evaluates vertex transform, tints, ground grid, selected rim, and sky" {
+  u: [32] f32;
+  u[0] = 1; u[5] = 1; u[10] = 1; u[15] = 1;
+  u[16] = 0; u[17] = 4; u[18] = 8; u[19] = 1;
+  u[20] = 0.08f32; u[21] = 0.11f32; u[22] = 0.18f32; u[23] = 0;
+
+  inst: [40] f32;
+  inst[0] = 2; inst[5] = 2; inst[10] = 2; inst[15] = 1;
+  inst[12] = 3; inst[13] = 1; inst[14] = -2;
+  inst[16] = 0.8f32; inst[17] = 0; inst[18] = 1; // LOOK_SOLID, TINT_MINE
+
+  vo := gb_vs(0, 0, GbVertIn.{pos = v3(0.5f32, 0.5f32, 0), nrm = v3(0, 1, 0), ao = 1}, u[..], inst[..]);
+  #assert abs(vo.wpos.x - 4.0f32) < 0.001f32 && abs(vo.wpos.y - 2.0f32) < 0.001f32 && abs(vo.wpos.z + 2.0f32) < 0.001f32;
+  solid := gb_fs(vo, u[..]);
+  #assert solid.z > solid.x && solid.w == 1.0f32; // cyan mine tint
+
+  vo.meta.y = 1.0f32; // LOOK_SELECTED boosts highlight
+  sel := gb_fs(vo, u[..]);
+  #assert sel.x > solid.x;
+
+  vo.meta.y = 2.0f32; // LOOK_GROUND
+  grd := gb_fs(vo, u[..]);
+  #assert grd.w == 1.0f32 && grd.x >= 0.05f32;
+
+  vo.meta.y = 3.0f32; vo.meta.z = 0.0f32; // LOOK_LINE white selection edge
+  ln := gb_fs(vo, u[..]);
+  #assert ln.x > 0.9f32 && ln.y > 0.9f32 && ln.z > 0.9f32;
+
+  vo.meta.y = 5.0f32; // LOOK_SKY
+  sky := gb_fs(vo, u[..]);
+  #assert sky.z > sky.x && sky.w == 1.0f32;
+}

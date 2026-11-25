@@ -5,6 +5,7 @@
 #ifdef OA_FULL
 #include "account-mac.h"
 #include "mv_host.h"
+#include "gb_host.h"
 #endif
 #ifdef OA_WALLET
 #include "../shared/host/apple/wallet-core.h"
