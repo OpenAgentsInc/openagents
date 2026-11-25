@@ -55,6 +55,7 @@
 #load "filepane.coax";
 #load "filetree.coax";
 #load "simpane.coax";
+#load "metaversepane.coax";
 #load "termpane.coax";
 #load "layout/conversation.coax";
 #load "host-api.coax";

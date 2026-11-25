@@ -1,0 +1,125 @@
+// Checks for the expandable right-side Metaverse Viewer & GameBuilder pane (metaversepane.coax; #14040).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_mv_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].surface[..], id); }
+cp_mv_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_mv_test_find(s, id); return r >= 0 && cp_press(s, r); }
+cp_mv_test_label :: (s: [] CoderPage, id: string) -> string {
+  r := cp_mv_test_find(s, id);
+  if r < 0 { return ""; }
+  t := surface_rows(s[0].surface[..]);
+  return cast(string) t.rows[r].label[0..<t.rows[r].label_n];
+}
+
+cp_mv_test_page :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  #assert cp_test_draw_side(s, f);
+}
+
+#test "metaverse pane: split layout, expand/restore, hide preserving tabs, and closed_by_person etiquette" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]); f: [1] UiFrame; cp_mv_test_page(s, f[..]);
+  // Top-right corner toggle shows when flags are enabled
+  #assert cp_mv_test_find(s, "coder.mv.toggle") >= 0;
+
+  // Open a .glb model tab -> right split pane opens, viewport rect is non-empty, RGB range exempt
+  idx := coder_page_mv_open_tab(s, CP_MV_KIND_MODEL, "/tmp/quail.glb", "quail.glb", "", "", CP_MV_MODE_INSPECT, false);
+  #assert idx == 0 && coder_page_mv_shown(s) && coder_page_mv_tab_count(s) == 1;
+  #assert cp_test_draw_side(s, f[..]);
+  rect: [4] f32;
+  #assert coder_page_mv_rect(s, rect[..]) && rect[2] > 200.0f32 && rect[3] > 200.0f32;
+  #assert s[0].fp_color_u1 > s[0].fp_color_u0 && s[0].fp_color_o1 > s[0].fp_color_o0;
+  split_w := rect[2];
+
+  // Expand takes full main area beside sidebar
+  #assert cp_mv_test_press(s, "coder.mv.expand") && coder_page_mv_expanded(s);
+  #assert cp_test_draw_side(s, f[..]);
+  #assert coder_page_mv_rect(s, rect[..]) && rect[2] > split_w && s[0].col_w == 0;
+
+  // Hide preserves open tabs and sets closed_by_person so auto-open stays quiet
+  #assert cp_mv_test_press(s, "coder.mv.hide") && !coder_page_mv_shown(s) && coder_page_mv_hidden(s);
+  #assert coder_page_mv_tab_count(s) == 1 && s[0].mv[0].closed_by_person;
+
+  // Background auto-open adds tab without popping open when user explicitly hid pane
+  idx2 := coder_page_mv_open_tab(s, CP_MV_KIND_PLE, "/tmp/hall.ple-scene.json", "hall", "", "", CP_MV_MODE_INSPECT, true);
+  #assert idx2 == 1 && coder_page_mv_tab_count(s) == 2 && !coder_page_mv_shown(s);
+
+  // Explicit user toggle re-shows pane with both tabs intact
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_press(s, "coder.mv.toggle") && coder_page_mv_shown(s) && coder_page_mv_tab_count(s) == 2;
+}
+
+#test "metaverse pane: 12-tab cap, revision truthfulness pills, popovers, and drawer tabs" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]); f: [1] UiFrame; cp_mv_test_page(s, f[..]);
+  // Fill 13 tabs -> capped at CP_MV_TABS (12)
+  for i: 0..<13 {
+    pb: [64] u8; pn := el_put(pb[..], 0, "/tmp/m"); pn = el_put_i(pb[..], pn, i); pn = el_put(pb[..], pn, ".glb");
+    _ = coder_page_mv_open_tab(s, CP_MV_KIND_MODEL, cast(string) pb[0..<pn], "", "", "", CP_MV_MODE_INSPECT, false);
+  }
+  #assert coder_page_mv_tab_count(s) == CP_MV_TABS;
+
+  // Revision truthfulness pill never conflates saved rev vs rendered rev (Invariant I-4)
+  cur := coder_page_mv_active_tab(s);
+  coder_page_mv_tab_status(s, cur, 15, 14, CP_MV_REV_RENDERING, false, false, false, 0, "12k tris", "");
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_label(s, "coder.mv.rev") == "Saved rev 15 · rendering 14";
+
+  coder_page_mv_tab_status(s, cur, 15, 14, CP_MV_REV_UNAVAILABLE, false, false, false, 0, "12k tris", "");
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_label(s, "coder.mv.rev") == "Saved rev 15 · preview unavailable";
+
+  // Popover menus draw into sheet.over -> reported by cp_over_rects / coder_page_over_rects
+  #assert cp_mv_test_press(s, "coder.mv.cam") && cp_test_draw_side(s, f[..]);
+  over: [32] f32;
+  sh := f[0].sheet;
+  #assert cp_over_rects(sh[0].over[0..<sh[0].no], cp_scale(s), over[..]) > 0;
+  // Esc closes popover first
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && !s[0].mv[0].cam_menu;
+
+  // Tree TSV population and drawer toggle
+  #assert coder_page_mv_set_tree(s, "0\t1\t0\troot\tRoot\n1\t1\t1\tmesh0\tBody\n") == 2;
+  #assert cp_mv_test_press(s, "coder.mv.drawer") && s[0].mv[0].drawer_open;
+  #assert cp_mv_test_press(s, "coder.mv.expand") && cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_find(s, "coder.mv.tree.1") >= 0;
+}
+
+#test "metaverse pane: GameBuilder Build/Play/Home picker, Esc unwind stack, and Q/W/E/R/F hotkeys" {
+  p: [1] CoderPage; st: [1] CpCheckStore; s := cp_check_page(p[..], st[..]); f: [1] UiFrame; cp_mv_test_page(s, f[..]);
+  // Empty Metaverse pane shows 12-template GameBuilder picker
+  coder_page_mv_show(s, true, true);
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_find(s, "coder.gb.pick.0") >= 0;
+  #assert cp_mv_test_press(s, "coder.gb.pick.0") && coder_page_action(s) == CP_ASK_GB_NEW_GAME;
+  cmd: [64] u8; arg: [64] u8; meta: [4] int;
+  _ = coder_page_mv_pending_cmd(s, cmd[..], arg[..], meta[..]);
+  #assert cast(string) cmd[0..<meta[0]] == "new-game" && cast(string) arg[0..<meta[1]] == "arena";
+
+  // Open GameBuilder tab in Build mode -> Row 3 build toolbar & Build drawer render
+  idx := coder_page_mv_open_tab(s, CP_MV_KIND_GAMEBUILDER, "gb:scrappers-arena/level-1", "Scrappers Arena", "scrappers-arena", "level-1", CP_MV_MODE_BUILD, false);
+  #assert idx == 0 && coder_page_mv_tab_kind(s, 0) == CP_MV_KIND_GAMEBUILDER && coder_page_mv_tab_mode(s, 0) == CP_MV_MODE_BUILD;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_mv_test_find(s, "coder.gb.tool.1") >= 0 && cp_mv_test_find(s, "coder.gb.playtest") >= 0;
+
+  // Viewport focus -> Q/W/E/R/F hotkeys dispatch GB_COMMANDS
+  #assert coder_page_mv_focus_viewport(s) && s[0].fld[0].kb == CP_KB_MV;
+  #assert coder_page_key(s, 'w', 0) && coder_page_action(s) == CP_ASK_GB_CMD;
+  _ = coder_page_mv_pending_cmd(s, cmd[..], arg[..], meta[..]);
+  #assert cast(string) cmd[0..<meta[0]] == "set-tool" && cast(string) arg[0..<meta[1]] == "move";
+  #assert coder_page_key(s, 'z', MOD_CMD) && coder_page_action(s) == CP_ASK_GB_CMD;
+  _ = coder_page_mv_pending_cmd(s, cmd[..], arg[..], meta[..]);
+  #assert cast(string) cmd[0..<meta[0]] == "undo";
+
+  // Enter Play mode -> Esc #1 exits Play -> Build, Esc #2 restores Expanded -> Split, Esc #3 returns focus to Composer
+  #assert cp_mv_test_press(s, "coder.mv.mode.2") && coder_page_mv_tab_mode(s, 0) == CP_MV_MODE_PLAY;
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && coder_page_mv_tab_mode(s, 0) == CP_MV_MODE_BUILD;
+  #assert coder_page_expanded_check(s);
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && !coder_page_mv_expanded(s);
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && s[0].fld[0].kb == CP_KB_COMPOSER;
+
+  // Flags off hides Metaverse toggle and closes pane cleanly
+  coder_page_flags_set(s, 0);
+  #assert !coder_page_mv_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && cp_mv_test_find(s, "coder.mv.toggle") < 0;
+}
+
+coder_page_expanded_check :: (s: [] CoderPage) -> bool { return coder_page_mv_expanded(s); }

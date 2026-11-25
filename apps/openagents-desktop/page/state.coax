@@ -488,6 +488,7 @@ CoderPage :: struct {
   fp: [1] CpFilePane;          // a file in the pane on the right (filepane.coax; GitHub #13760)
   ft: [1] CpFileTree;          // File Explorer directory tree, multi-tab bar, previews & Open-in-Editor (filetree.coax; #13881)
   sim: [1] CpSimPane;          // the iOS Simulator in the pane on the right (simpane.coax; GitHub #13811)
+  mv: [1] CpMetaversePane;     // expandable right-side Metaverse Viewer & GameBuilder pane (metaversepane.coax; #14040)
   gd: [1] CpGitDiff;           // live Git diff, changed-files tree and inline review comments (gitdiff.coax; GitHub #13870)
   term: [1] CpTermPane;        // integrated multi-tab terminal pane on the right (termpane.coax; GitHub #13869)
   usage: [1] CpUsageState;     // Usage & quota limits dashboard, composer popover, pooling & recovery (usage.coax; #13877)
@@ -662,6 +663,7 @@ cp_init :: (s: [] CoderPage) {
   cp_forge_init(s);
   cp_lean_init(s);
   cp_ps_init(s);
+  cp_mv_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

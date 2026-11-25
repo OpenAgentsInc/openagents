@@ -786,4 +786,25 @@ int cd_ps_int(void *page, int which);
 int cd_ps_env_get(void *page, int idx, char *key_out, int key_cap, char *val_out, int val_cap, int *secret_out, int *has_secret_out);
 int cd_ps_model_get(void *page, int idx, char *slug_out, int slug_cap, char *name_out, int name_cap, int *enabled_out, int *fav_out, int *thinking_out, int *custom_out);
 void cd_ps_ui_set(void *page, int wiz_open, int wiz_step, float detail_scroll, int focus_field);
+// Expandable right-side Metaverse Viewer & GameBuilder pane (page/metaversepane.coax; #14040).
+int cd_mv_open_tab(void *page, int kind, const char *path, const char *title, const char *game_id, const char *level_id, int mode, int auto_opened);
+void cd_mv_show(void *page, int open, int expand);
+void cd_mv_hide(void *page);
+int cd_mv_shown(void *page);
+int cd_mv_expanded(void *page);
+int cd_mv_hidden(void *page);
+int cd_mv_active_tab(void *page);
+int cd_mv_tab_count(void *page);
+int cd_mv_tab_kind(void *page, int idx);
+int cd_mv_tab_mode(void *page, int idx);
+int cd_mv_tab_path(void *page, int idx, char *out, int cap);
+int cd_mv_drop_tab(void *page, int idx);
+int cd_mv_rect(void *page, float out[4]);
+void cd_mv_tab_status(void *page, int idx, int saved_rev, int rendered_rev, int rev_state, int dirty, int read_only, int agent_active, int change_count, const char *stats, const char *err);
+int cd_mv_set_tree(void *page, const char *tsv);
+int cd_mv_pending_cmd(void *page, char *cmd_out, int cmd_cap, char *arg_out, int arg_cap, int *tab_out, int *val_out);
+void cd_gb_sync_ui(void *page, int tool, int snap_idx, int can_undo, int can_redo, int template_id, int playing, int sel_count, int sel_kind, const int64_t *sel_fields, int sel_fields_n, const char *sel_label, const char *share_code, int attach_clients);
+void cd_gb_playtest_status(void *page, int running, int stuck_count, const char *summary);
+void cd_gb_hydrate_progress(void *page, int active, int pct);
+int cd_mv_focus_viewport(void *page);
 #endif

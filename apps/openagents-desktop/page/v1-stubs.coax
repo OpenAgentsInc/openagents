@@ -533,5 +533,45 @@ coder_page_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> i
 coder_page_lean_verify_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) { return false; }
 coder_page_lean_view_set :: (s: [] CoderPage, view: int) #export_c #effects(all) {}
 
-// ---- metaverse-route.coax minimal stub (#14039) ----
+// ---- metaverse-route.coax & metaversepane.coax minimal stubs (#14039, #14040) ----
 mv_route_is_3d :: (raw: string) -> bool { return false; }
+CP_MV_ACT_FIRST :: 470; CP_MV_TOGGLE :: 470; CP_MV_EXPAND :: 472; CP_MV_MODE :: 477; CP_GB_PLAYTEST :: 501; CP_MV_ACT_LAST :: 509;
+CP_MV_MODE_PLAY :: 2;
+CP_ASK_MV_OPEN_DIALOG :: 200;
+CP_PC_METAVERSE :: 39; CP_PC_MV_OPEN :: 40; CP_PC_MV_EXPAND :: 41;
+CP_PC_GAMEBUILDER :: 42; CP_PC_GB_NEW :: 43; CP_PC_GB_PLAY :: 44; CP_PC_GB_PLAYTEST :: 45;
+CP_KB_MV :: 8; CP_KB_GB_PANEL :: 9; CP_SCR_MV_TREE :: 12;
+CpMvTabStub :: struct { mode: int; }
+CpGbUiStub :: struct { picker_open: bool; }
+CpMetaversePane :: struct { open: bool; hidden: bool; expanded: bool; ntabs: int; active: int; tabs: [1] CpMvTabStub; gb: [1] CpGbUiStub; }
+cp_mv_enabled :: (s: [] CoderPage) -> bool { return false; }
+cp_mv_init :: (s: [] CoderPage) {}
+cp_mv_shown :: (s: [] CoderPage) -> bool { return false; }
+cp_mv_bring_front :: (s: [] CoderPage) {}
+cp_mv_yield :: (s: [] CoderPage, act: int) -> bool { return false; }
+cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
+cp_mv_dismiss_popovers :: (s: [] CoderPage, act: int, id: string) -> bool { return false; }
+cp_mv_scroll :: (s: [] CoderPage, delta: f32) {}
+cp_mv_escape :: (s: [] CoderPage) -> bool { return false; }
+cp_mv_key :: (s: [] CoderPage, key: int, mods: int) -> bool { return false; }
+cp_mvpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {}
+coder_page_mv_open_tab :: (s: [] CoderPage, kind: int, path: string, title: string, game_id: string, level_id: string, mode: int, auto_opened: bool) -> int #export_c #effects(all) { return -1; }
+coder_page_mv_show :: (s: [] CoderPage, open: bool, expand: bool) #export_c #effects(all) {}
+coder_page_mv_hide :: (s: [] CoderPage) #export_c #effects(all) {}
+coder_page_mv_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_expanded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_hidden :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_active_tab :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
+coder_page_mv_tab_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
+coder_page_mv_tab_kind :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) { return 0; }
+coder_page_mv_tab_mode :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) { return 0; }
+coder_page_mv_tab_path :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) { return 0; }
+coder_page_mv_drop_tab :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) { return false; }
+coder_page_mv_tab_status :: (s: [] CoderPage, idx: int, saved_rev: int, rendered_rev: int, rev_state: int, dirty: bool, read_only: bool, agent_active: bool, change_count: int, stats: string, err: string) #export_c #effects(all) {}
+coder_page_mv_set_tree :: (s: [] CoderPage, tsv: string) -> int #export_c #effects(all) { return 0; }
+coder_page_mv_pending_cmd :: (s: [] CoderPage, cmd_out: [] u8, arg_out: [] u8, meta: [] int) -> int #export_c #effects(all) { return 0; }
+coder_page_gb_sync_ui :: (s: [] CoderPage, tool: int, snap_idx: int, can_undo: bool, can_redo: bool, template_id: int, playing: bool, sel_count: int, sel_kind: int, sel_fields: [] int, sel_label: string, share_code: string, attach_clients: int) #export_c #effects(all) {}
+coder_page_gb_playtest_status :: (s: [] CoderPage, running: bool, stuck_count: int, summary: string) #export_c #effects(all) {}
+coder_page_gb_hydrate_progress :: (s: [] CoderPage, active: bool, pct: int) #export_c #effects(all) {}
+coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }

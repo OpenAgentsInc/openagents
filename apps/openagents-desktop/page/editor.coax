@@ -263,6 +263,12 @@ cp_key_in :: (s: [] CoderPage, key: int, mods: int) -> bool {
     s[0].ft[0].crumb_menu = false;
     return true;
   }
+  if !cp_overlay_open(s) && !s[0].set_open && cp_mv_shown(s) && key == KEY_ESCAPE && mods == 0 {
+    if cp_mv_escape(s) { return true; }
+  }
+  if !cp_overlay_open(s) && !s[0].set_open && cp_mv_shown(s) && s[0].fld[0].kb == CP_KB_MV {
+    if cp_mv_key(s, key, mods) { return true; }
+  }
   if !cp_overlay_open(s) && !s[0].set_open && key == 'g' && mods == MOD_CTRL && cp_fp_shown(s) && s[0].fp[0].open {
     cp_find_file_open(s, true);
     return true;
@@ -346,7 +352,7 @@ coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { ret
 // The keyboard goes to the composer (1) or settings' search (2), or leaves both (0).
 coder_page_focus :: (s: [] CoderPage, kb: int) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH || kb == CP_KB_PROV || (kb == CP_KB_TERM && cp_flag(s, DC_FLAG_TERMINAL)) || kb == CP_KB_FIND || kb == CP_KB_FT_FILTER then kb else CP_KB_NONE;
+  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH || kb == CP_KB_PROV || (kb == CP_KB_TERM && cp_flag(s, DC_FLAG_TERMINAL)) || kb == CP_KB_FIND || kb == CP_KB_FT_FILTER || (kb == CP_KB_MV && cp_mv_enabled(s)) || (kb == CP_KB_GB_PANEL && cp_mv_enabled(s)) then kb else CP_KB_NONE;
 }
 // Pasted text into the field with the keyboard, as its own undo step. False when none has it or it does not fit.
 coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {

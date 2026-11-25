@@ -1,0 +1,1638 @@
+// OpenAgents Desktop page (../page.coax): Expandable right-side Metaverse Viewer & GameBuilder Pane
+// (Spec: docs/desktop/metaverse-viewer-and-gamebuilder-pane-spec.md; GitHub #14037, #14040).
+// Mirrors page/filepane.coax (#13992): Row 1 (38pt) unified multi-tab strip with RGB badges,
+// '+' quick-open/New Game, Expand/Restore (⛶) taking full main area beside sidebar, Hide-preserving-
+// tabs (◫), collapsible Studio/Inspector drawer (◧); Row 2 (30pt) breadcrumbs, mode switcher
+// (Inspect | Build | Play or Orbit | Fly), revision truthfulness pill, camera/view menus, and
+// Snapshot-to-Chat; Row 3 (30pt) contextual Build toolbar (GB_CONTROLS) / Play bar / Read-Only banner.
+
+CP_MV_TABS      :: 12;
+CP_MV_PATH      :: 1024;
+CP_MV_TITLE     :: 96;
+CP_MV_STATUS    :: 128;
+CP_MV_BAR1_H    :: 38.0f32;
+CP_MV_BAR2_H    :: 30.0f32;
+CP_MV_BAR3_H    :: 30.0f32;
+CP_MV_DRAWER_W  :: 260.0f32;
+CP_MV_TREE_MAX  :: 128;
+CP_MV_FIELDS    :: 11;
+
+// Tab kinds (aligned with coax/lib/agent/desktop/metaverse-route.coax MV_KIND_*)
+CP_MV_KIND_HOME        :: 0;
+CP_MV_KIND_MODEL       :: 1;
+CP_MV_KIND_PACK        :: 2;
+CP_MV_KIND_PLE         :: 3;
+CP_MV_KIND_SPLAT       :: 4;
+CP_MV_KIND_SCENE       :: 5;
+CP_MV_KIND_REALM       :: 6;
+CP_MV_KIND_GAMEBUILDER :: 7;
+
+// Active modes (aligned with MV_MODE_*)
+CP_MV_MODE_INSPECT :: 0;
+CP_MV_MODE_BUILD   :: 1;
+CP_MV_MODE_PLAY    :: 2;
+
+// Drawer sub-tabs
+CP_MV_DRW_TREE    :: 0;
+CP_MV_DRW_INSPECT :: 1;
+CP_MV_DRW_BUILD   :: 2;
+CP_MV_DRW_LEVELS  :: 3;
+CP_MV_DRW_AGENTS  :: 4;
+CP_MV_DRW_SHARE   :: 5;
+CP_MV_DRW_LOBBY   :: 6;
+
+// Revision truthfulness state (Spec Invariant I-4)
+CP_MV_REV_SYNCED      :: 0;
+CP_MV_REV_RENDERING   :: 1;
+CP_MV_REV_UNAVAILABLE :: 2;
+CP_MV_REV_PROPOSAL    :: 3;
+
+// Overlay bitmask flags
+CP_MV_OV_GRID   :: 1;
+CP_MV_OV_BOUNDS :: 2;
+CP_MV_OV_SLICE  :: 4;
+CP_MV_OV_DIFF   :: 8;
+CP_MV_OV_STATS  :: 16;
+CP_MV_OV_CLAIMS :: 32;
+
+// Non-colliding host asks (origin/main highest is CP_ASK_FLAWED_RESET :: 197)
+CP_ASK_MV_OPEN_DIALOG   :: 200;
+CP_ASK_MV_LOAD_TAB      :: 201;
+CP_ASK_MV_CLOSE_TAB     :: 202;
+CP_ASK_MV_RELOAD        :: 203;
+CP_ASK_MV_SNAPSHOT      :: 204;
+CP_ASK_MV_ATTACH_SEL    :: 205;
+CP_ASK_MV_CAM_ACTION    :: 206;
+CP_ASK_MV_VIEW_OPT      :: 207;
+CP_ASK_MV_EXTERNAL      :: 208;
+CP_ASK_MV_OPEN_AS_TEXT  :: 209;
+CP_ASK_MV_HYDRATE       :: 210;
+CP_ASK_GB_CMD           :: 211;
+CP_ASK_GB_MODE          :: 212;
+CP_ASK_GB_NEW_GAME      :: 213;
+CP_ASK_GB_FOCUS_ISSUE   :: 214;
+CP_ASK_GB_NEW_CODE_AGENT :: 215;
+
+// Non-colliding UI action IDs (origin/main highest is CP_FP_EXT_LAST :: 459)
+CP_MV_ACT_FIRST    :: 470;
+CP_MV_TOGGLE       :: 470;
+CP_MV_HIDE         :: 471;
+CP_MV_EXPAND       :: 472;
+CP_MV_DRAWER       :: 473;
+CP_MV_ADD_TAB      :: 474;
+CP_MV_TAB          :: 475;
+CP_MV_TAB_CLOSE    :: 476;
+CP_MV_MODE         :: 477;
+CP_MV_CAM_MODE     :: 478;
+CP_MV_CAM_MENU     :: 479;
+CP_MV_CAM_PICK     :: 480;
+CP_MV_VIEW_MENU    :: 481;
+CP_MV_VIEW_PICK    :: 482;
+CP_MV_SNAPSHOT     :: 483;
+CP_MV_RELOAD       :: 484;
+CP_MV_MORE_MENU    :: 485;
+CP_MV_MORE_PICK    :: 486;
+CP_MV_DRAWER_TAB   :: 487;
+CP_MV_TREE_ROW     :: 488;
+CP_MV_TREE_EYE     :: 489;
+CP_MV_ATTACH_SEL   :: 490;
+CP_MV_ADD_PICK     :: 491;
+CP_MV_HYDRATE      :: 492;
+CP_GB_CTRL         :: 495;
+CP_GB_TOOL         :: 496;
+CP_GB_SNAP         :: 497;
+CP_GB_PALETTE_ADD  :: 498;
+CP_GB_FIELD_STEP   :: 499;
+CP_GB_PICKER_CARD  :: 500;
+CP_GB_PLAYTEST     :: 501;
+CP_GB_PLAYTEST_PIN :: 502;
+CP_GB_PUBLISH_ACT  :: 503;
+CP_GB_AGENT_ACT    :: 504;
+CP_GB_REPLAY_SCRUB :: 505;
+CP_GB_LOBBY_ACT    :: 506;
+CP_GB_HOTBAR_SLOT  :: 507;
+CP_GB_REMIX_COPY   :: 508;
+CP_WORLD_CARD_ACT  :: 509;
+CP_MV_ACT_LAST     :: 509;
+
+// Non-colliding Command Palette codes (origin/main highest is CP_PC_FORGE_ISSUES :: 38)
+CP_PC_METAVERSE   :: 39;
+CP_PC_MV_OPEN     :: 40;
+CP_PC_MV_EXPAND   :: 41;
+CP_PC_GAMEBUILDER :: 42;
+CP_PC_GB_NEW      :: 43;
+CP_PC_GB_PLAY     :: 44;
+CP_PC_GB_PLAYTEST :: 45;
+
+// Non-colliding keyboard & scroll targets (origin/main highest: CP_KB_PROV :: 7, CP_SCR_LEAN :: 10)
+CP_KB_MV        :: 8;
+CP_KB_GB_PANEL  :: 9;
+CP_SCR_MV_VIEW  :: 11;
+CP_SCR_MV_TREE  :: 12;
+CP_SCR_GB_PANEL :: 13;
+
+// GameBuilder 12 canonical templates (matching gamebuilder/shared/game-types.coax GT_TYPES)
+CP_GB_TEMPLATE_N :: 12;
+CP_GB_TEMPLATE_ID :: [CP_GB_TEMPLATE_N] string.[
+  "arena", "adventure", "field",
+  "third-person", "first-person", "top-down", "side-scroller",
+  "village", "crates", "platformer", "racing", "drift"
+];
+CP_GB_TEMPLATE_NAME :: [CP_GB_TEMPLATE_N] string.[
+  "Scrappers Arena", "SPLICEBOTS", "Open Field",
+  "Third-Person", "First-Person", "Top-Down", "Side-Scroller",
+  "Village", "Crates Puzzle", "Platformer", "Racing", "Drift"
+];
+CP_GB_TEMPLATE_DESC :: [CP_GB_TEMPLATE_N] string.[
+  "4 match modes · 3 classes · 1-5v5", "UE route maps · Director & Raiders", "Freeform 3D sandbox",
+  "3D meadow third-person world", "First-person explorer", "Top-down action world", "2.5D side-scrolling world",
+  "0 A.D. buildings & village", "Physics crate puzzles", "Pads, spikes, movers & shards", "Track, boosts & laps", "Arcade drift circuit"
+];
+
+CP_GB_PALETTE_N :: 10;
+CP_GB_PALETTE_KIND :: [CP_GB_PALETTE_N] string.[
+  "block", "start", "rival", "pad", "goal", "ball", "tree", "water", "pack", "target"
+];
+CP_GB_PALETTE_LABEL :: [CP_GB_PALETTE_N] string.[
+  "Block", "Start", "Rival", "Jump Pad", "Goal", "Ball", "Tree", "Water", "Health", "Target"
+];
+
+CP_GB_FIELD_LABEL :: [CP_MV_FIELDS] string.[
+  "Kind", "East (cm)", "Up (cm)", "North (cm)", "Turn (deg)",
+  "Scale (%)", "Width (cm)", "Height (cm)", "Depth (cm)", "Travel (cm)", "Period (ms)"
+];
+CP_GB_FIELD_KEY :: [CP_MV_FIELDS] string.[
+  "kind", "east", "up", "north", "turn",
+  "scale", "width", "height", "depth", "go", "every"
+];
+CP_GB_FIELD_STEP_AMT :: [CP_MV_FIELDS] int.[
+  1, 50, 50, 50, 15, 10, 50, 50, 50, 100, 500
+];
+
+CP_GB_SNAP_LABELS :: [5] string.["Free", "10 cm", "25 cm", "50 cm", "100 cm"];
+CP_GB_MODE_NAMES  :: [4] string.["Knockouts", "Last Stand", "Scrapball", "Hoops"];
+CP_GB_CLASS_NAMES :: [3] string.["Bolt", "Boulder", "Lumen"];
+
+CpMvTab :: struct {
+  used: bool;
+  kind: int;
+  mode: int;
+  path: [CP_MV_PATH] u8; path_n: int;
+  title: [CP_MV_TITLE] u8; title_n: int;
+  game_id: [64] u8; game_id_n: int;
+  level_id: [64] u8; level_id_n: int;
+  badge: [4] u8; badge_n: int;
+  saved_rev: int;
+  rendered_rev: int;
+  rev_state: int;
+  dirty: bool;
+  read_only: bool;
+  agent_active: bool;
+  change_count: int;
+  playing: bool;
+  muted: bool;
+  has_anim: bool;
+  has_assembly: bool;
+  cam_fly: bool;
+  shading: int;
+  overlay_mask: int;
+  z_slice: f32;
+  stats: [CP_MV_STATUS] u8; stats_n: int;
+  err: [256] u8; err_n: int;
+}
+
+CpMvTreeRow :: struct {
+  depth: int;
+  visible: bool;
+  selected: bool;
+  id: [48] u8; id_n: int;
+  label: [64] u8; label_n: int;
+}
+
+CpGbUiState :: struct {
+  tool: int;
+  snap_idx: int;
+  can_undo: bool;
+  can_redo: bool;
+  template_id: int;
+  match_mode: int;
+  fighter_class: int;
+  bot_team_size: int;
+  sel_count: int;
+  sel_kind: int;
+  sel_fields: [CP_MV_FIELDS] int;
+  sel_label: [64] u8; sel_label_n: int;
+  share_code: [16] u8; share_code_n: int;
+  attach_connected: int;
+  picker_open: bool;
+  hotbar_open: bool;
+  playtest_running: bool;
+  playtest_summary: [128] u8; playtest_summary_n: int;
+  playtest_stuck: int;
+  hydrating: bool;
+  hydrate_pct: int;
+}
+
+CpMetaversePane :: struct {
+  open: bool;
+  front: bool;
+  hidden: bool;
+  expanded: bool;
+  closed_by_person: bool;
+  drawer_open: bool;
+  drawer_tab: int;
+  drawer_scroll: f32; drawer_content: f32; drawer_view: f32;
+  add_menu: bool;
+  view_menu: bool;
+  cam_menu: bool;
+  more_menu: bool;
+  add_x: f32; add_y: f32;
+  cam_x: f32; cam_y: f32;
+  view_x: f32; view_y: f32;
+  more_x: f32; more_y: f32;
+  tabs: [CP_MV_TABS] CpMvTab;
+  ntabs: int;
+  active: int;
+  vp_x: f32; vp_y: f32; vp_w: f32; vp_h: f32;
+  gb: [1] CpGbUiState;
+  tree: [CP_MV_TREE_MAX] CpMvTreeRow;
+  ntree: int;
+  pending_cmd: [256] u8; pending_cmd_n: int;
+  pending_arg: [512] u8; pending_arg_n: int;
+  pending_tab: int;
+  pending_val: int;
+}
+
+// ---------------------------------------------------------------- predicates & lifecycle
+
+cp_mv_enabled :: (s: [] CoderPage) -> bool {
+  return cp_flag(s, DC_FLAG_METAVERSE) || cp_flag(s, DC_FLAG_GAMEBUILDER) || cp_flag(s, DC_FLAG_SCENES);
+}
+
+cp_mv_init :: (s: [] CoderPage) {
+  mv := s[0].mv[..];
+  mv[0].active = -1;
+  mv[0].pending_tab = -1;
+  mv[0].gb[0].snap_idx = 3; // 50 cm default
+  mv[0].gb[0].bot_team_size = 3;
+  mv[0].gb[0].sel_kind = -1;
+}
+
+cp_mv_close_popovers :: (s: [] CoderPage) {
+  mv := s[0].mv[..];
+  mv[0].add_menu = false;
+  mv[0].view_menu = false;
+  mv[0].cam_menu = false;
+  mv[0].more_menu = false;
+}
+
+cp_mv_dismiss_popovers :: (s: [] CoderPage, act: int, id: string) -> bool {
+  mv := s[0].mv[..];
+  if !(mv[0].add_menu || mv[0].view_menu || mv[0].cam_menu || mv[0].more_menu) { return false; }
+  if id == "coder.mv.popover" { return false; }
+  if act == CP_MV_ADD_TAB || act == CP_MV_ADD_PICK || act == CP_MV_CAM_MENU || act == CP_MV_CAM_PICK ||
+     act == CP_MV_VIEW_MENU || act == CP_MV_VIEW_PICK || act == CP_MV_MORE_MENU || act == CP_MV_MORE_PICK {
+    return false;
+  }
+  cp_mv_close_popovers(s);
+  return true;
+}
+
+cp_mv_shown :: (s: [] CoderPage) -> bool {
+  if !cp_mv_enabled(s) { return false; }
+  mv := s[0].mv[..];
+  if !mv[0].open || mv[0].hidden { return false; }
+  if cp_flag(s, DC_FLAG_FORGE) && cp_forge_shown(s) { return false; }
+  if cp_flag(s, DC_FLAG_RICH) && cp_side_chat_shown(s) { return false; }
+  if cp_flag(s, DC_FLAG_PREVIEW) && cp_preview_shown(s) { return false; }
+  if cp_flag(s, DC_FLAG_TERMINAL) && cp_term_shown(s) { return false; }
+  if cp_flag(s, DC_FLAG_SIMULATOR) && cp_sim_shown(s) { return false; }
+  if mv[0].front { return true; }
+  fp_vis := !s[0].fp[0].hidden && ((s[0].fp[0].open && (s[0].fp[0].mode != CP_FP_SCENE || cp_flag(s, DC_FLAG_SCENES))) || s[0].ft[0].open);
+  if fp_vis && (s[0].fp[0].front || s[0].ft[0].front) { return false; }
+  return !(s[0].pane_open || (cp_flag(s, DC_FLAG_GIT) && s[0].review));
+}
+
+cp_mv_front :: (s: [] CoderPage) -> bool {
+  return cp_mv_enabled(s) && s[0].mv[0].open && !s[0].mv[0].hidden && s[0].mv[0].front;
+}
+
+cp_mv_bring_front :: (s: [] CoderPage) {
+  mv := s[0].mv[..];
+  mv[0].open = true;
+  mv[0].hidden = false;
+  mv[0].front = true;
+  mv[0].closed_by_person = false;
+  // Yield other right-side panes without discarding their state or tabs
+  s[0].fp[0].front = false;
+  s[0].ft[0].front = false;
+  s[0].sim[0].front = false;
+  s[0].term[0].front = false;
+  s[0].preview[0].front = false;
+  s[0].forge[0].front = false;
+  s[0].rich[0].side_open = false;
+  if s[0].fp[0].expanded { s[0].fp[0].expanded = false; }
+  if s[0].set_open { s[0].set_open = false; }
+}
+
+cp_mv_yield :: (s: [] CoderPage, act: int) -> bool {
+  mv := s[0].mv[..];
+  if act == CP_FT_TOGGLE || act == CP_FT_TAB || act == CP_REVIEW || act == CP_AGENT || act == CP_SIM_TAB || act == CP_TERM_TOGGLE || act == CP_FORGE_TOGGLE {
+    mv[0].front = false;
+    mv[0].expanded = false;
+    cp_mv_close_popovers(s);
+  }
+  return false;
+}
+
+cp_mv_default_badge :: (kind: int, path: string) -> string {
+  if kind == CP_MV_KIND_GAMEBUILDER { return "GB"; }
+  if kind == CP_MV_KIND_REALM { return "RLM"; }
+  if kind == CP_MV_KIND_SPLAT { return "SPL"; }
+  if kind == CP_MV_KIND_SCENE { return "ANM"; }
+  if kind == CP_MV_KIND_PLE { return ifx mv_ends_ci(path, ".ifc") then "IFC" else "PLE"; }
+  if kind == CP_MV_KIND_PACK { return ifx mv_ends_ci(path, ".aimport") then "UE" else "VPK"; }
+  if kind == CP_MV_KIND_MODEL {
+    if mv_ends_ci(path, ".glb") || mv_ends_ci(path, ".gltf") { return "GLB"; }
+    if mv_ends_ci(path, ".usdz") || mv_ends_ci(path, ".usd") || mv_ends_ci(path, ".usda") || mv_ends_ci(path, ".usdc") { return "USD"; }
+    if mv_ends_ci(path, ".gbm") { return "GBM"; }
+    return "3D";
+  }
+  return "3D";
+}
+
+cp_mv_badge_color :: (kind: int) -> Rgba {
+  if kind == CP_MV_KIND_GAMEBUILDER { return hex(0xF97316, 1.0f32); } // coral/orange GB
+  if kind == CP_MV_KIND_REALM       { return hex(0x34D399, 1.0f32); } // emerald RLM
+  if kind == CP_MV_KIND_PLE         { return hex(0xF59E0B, 1.0f32); } // amber PLE/IFC
+  if kind == CP_MV_KIND_PACK        { return hex(0x818CF8, 1.0f32); } // indigo VPK/UE
+  if kind == CP_MV_KIND_SPLAT       { return hex(0xA78BFA, 1.0f32); } // violet SPL
+  if kind == CP_MV_KIND_SCENE       { return hex(0x38BDF8, 1.0f32); } // cyan ANM
+  return hex(0x2DD4BF, 1.0f32);                                       // teal GLB/3D
+}
+
+cp_mv_base_name :: (path: string) -> string {
+  if path.count == 0 { return "Untitled"; }
+  e := path.count;
+  while e > 1 && (path[e - 1] == '/' || path[e - 1] == '\\') { e -= 1; }
+  st := 0;
+  for i: 0..<e { if path[i] == '/' || path[i] == '\\' { st = i + 1; } }
+  return cast(string) path[st..<e];
+}
+
+cp_mv_find_tab :: (s: [] CoderPage, path: string) -> int {
+  mv := s[0].mv[..];
+  for i: 0..<mv[0].ntabs {
+    if mv[0].tabs[i].used && cast(string) mv[0].tabs[i].path[0..<mv[0].tabs[i].path_n] == path { return i; }
+  }
+  return -1;
+}
+
+cp_mv_set_cmd :: (s: [] CoderPage, cmd: string, arg: string, ask: int) {
+  mv := s[0].mv[..];
+  mv[0].pending_cmd_n = cp_out(mv[0].pending_cmd[..], cmd);
+  mv[0].pending_arg_n = cp_out(mv[0].pending_arg[..], arg);
+  s[0].ask = ask;
+}
+
+// Opens or focuses a 3D/GameBuilder tab. auto_opened respects closed_by_person etiquette.
+cp_mv_open_tab :: (s: [] CoderPage, kind: int, path: string, title: string, game_id: string, level_id: string, mode: int, auto_opened: bool) -> int {
+  if !cp_mv_enabled(s) { return -1; }
+  if kind == CP_MV_KIND_GAMEBUILDER && !cp_flag(s, DC_FLAG_GAMEBUILDER) { return -1; }
+  mv := s[0].mv[..];
+  idx := cp_mv_find_tab(s, path);
+  if idx < 0 {
+    if mv[0].ntabs < CP_MV_TABS {
+      idx = mv[0].ntabs;
+      mv[0].ntabs += 1;
+    } else {
+      // Evict oldest non-dirty inactive tab (or slot 0)
+      idx = 0;
+      for i: 0..<mv[0].ntabs {
+        if i != mv[0].active && !mv[0].tabs[i].dirty { idx = i; break; }
+      }
+    }
+    mv[0].tabs[idx] = CpMvTab.{
+      used = true,
+      kind = kind,
+      mode = mode,
+      overlay_mask = CP_MV_OV_GRID | CP_MV_OV_STATS,
+      z_slice = 1.0f32,
+      muted = mode != CP_MV_MODE_PLAY,
+      playing = mode == CP_MV_MODE_PLAY,
+    };
+    mv[0].tabs[idx].path_n = cp_out(mv[0].tabs[idx].path[..], path);
+    shown_title := ifx title.count > 0 then title else cp_mv_base_name(path);
+    mv[0].tabs[idx].title_n = cp_out(mv[0].tabs[idx].title[..], shown_title);
+    mv[0].tabs[idx].game_id_n = cp_out(mv[0].tabs[idx].game_id[..], game_id);
+    mv[0].tabs[idx].level_id_n = cp_out(mv[0].tabs[idx].level_id[..], level_id);
+    mv[0].tabs[idx].badge_n = cp_out(mv[0].tabs[idx].badge[..], cp_mv_default_badge(kind, path));
+  } else {
+    mv[0].tabs[idx].mode = mode;
+    if title.count > 0 { mv[0].tabs[idx].title_n = cp_out(mv[0].tabs[idx].title[..], title); }
+  }
+  mv[0].active = idx;
+  mv[0].gb[0].picker_open = false;
+  if kind == CP_MV_KIND_GAMEBUILDER {
+    if mv[0].drawer_tab < CP_MV_DRW_BUILD { mv[0].drawer_tab = CP_MV_DRW_BUILD; }
+  } else {
+    if mv[0].drawer_tab >= CP_MV_DRW_BUILD { mv[0].drawer_tab = CP_MV_DRW_TREE; }
+  }
+  if !auto_opened {
+    cp_mv_bring_front(s);
+  } else if !mv[0].closed_by_person {
+    mv[0].open = true;
+    mv[0].hidden = false;
+    mv[0].front = true;
+    s[0].fp[0].front = false;
+    s[0].ft[0].front = false;
+  } else {
+    // User explicitly hid the pane: keep tab updated in background without popping open
+    mv[0].open = true;
+  }
+  return idx;
+}
+
+cp_mv_drop_tab :: (s: [] CoderPage, idx: int) -> bool {
+  mv := s[0].mv[..];
+  if idx < 0 || idx >= mv[0].ntabs { return false; }
+  for i: idx..<(mv[0].ntabs - 1) { mv[0].tabs[i] = mv[0].tabs[i + 1]; }
+  mv[0].ntabs -= 1;
+  mv[0].tabs[mv[0].ntabs] = CpMvTab.{};
+  if mv[0].ntabs == 0 {
+    mv[0].active = -1;
+    mv[0].vp_w = 0; mv[0].vp_h = 0;
+  } else if mv[0].active >= mv[0].ntabs {
+    mv[0].active = mv[0].ntabs - 1;
+  }
+  return true;
+}
+
+// Explicit Esc unwind stack for Metaverse / GameBuilder pane (Spec §3.7).
+cp_mv_escape :: (s: [] CoderPage) -> bool {
+  if !cp_mv_shown(s) { return false; }
+  mv := s[0].mv[..];
+  if mv[0].add_menu || mv[0].view_menu || mv[0].cam_menu || mv[0].more_menu {
+    cp_mv_close_popovers(s);
+    return true;
+  }
+  if mv[0].active >= 0 && mv[0].active < mv[0].ntabs {
+    t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+    if t[0].kind == CP_MV_KIND_GAMEBUILDER && t[0].mode == CP_MV_MODE_PLAY {
+      t[0].mode = CP_MV_MODE_BUILD;
+      t[0].playing = false;
+      t[0].muted = true;
+      cp_mv_set_cmd(s, "stop", "", CP_ASK_GB_CMD);
+      return true;
+    }
+  }
+  if mv[0].gb[0].picker_open && mv[0].ntabs > 0 {
+    mv[0].gb[0].picker_open = false;
+    return true;
+  }
+  if mv[0].expanded {
+    mv[0].expanded = false;
+    return true;
+  }
+  if s[0].fld[0].kb == CP_KB_MV || s[0].fld[0].kb == CP_KB_GB_PANEL {
+    cp_ed_focus(s, CP_KB_COMPOSER);
+    return true;
+  }
+  return false;
+}
+
+// Viewport keyboard handling when CP_KB_MV has focus (Spec §3.7: Q/W/E/R/F/G/1..9/Esc).
+cp_mv_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  if !cp_mv_shown(s) || s[0].fld[0].kb != CP_KB_MV { return false; }
+  mv := s[0].mv[..];
+  if key == KEY_ESCAPE { return cp_mv_escape(s); }
+  if mv[0].active < 0 || mv[0].active >= mv[0].ntabs { return false; }
+  t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+  is_gb := t[0].kind == CP_MV_KIND_GAMEBUILDER;
+
+  // Cmd shortcuts in Build mode -> route through GB_COMMANDS
+  if (mods & MOD_CMD) != 0 && is_gb && t[0].mode == CP_MV_MODE_BUILD {
+    if key == 'z' || key == 'Z' {
+      cp_mv_set_cmd(s, ifx (mods & MOD_SHIFT) != 0 then "redo" else "undo", "", CP_ASK_GB_CMD);
+      return true;
+    }
+    if key == 'c' || key == 'C' { cp_mv_set_cmd(s, "copy", "", CP_ASK_GB_CMD); return true; }
+    if key == 'v' || key == 'V' { cp_mv_set_cmd(s, "paste", "", CP_ASK_GB_CMD); return true; }
+    if key == 'd' || key == 'D' { cp_mv_set_cmd(s, "duplicate", "", CP_ASK_GB_CMD); return true; }
+    return false;
+  }
+  if mods != 0 { return false; }
+
+  // Focus camera (F) in any mode
+  if key == 'f' || key == 'F' {
+    if is_gb { cp_mv_set_cmd(s, "focus", "", CP_ASK_GB_CMD); }
+    else { cp_mv_set_cmd(s, "focus", "", CP_ASK_MV_CAM_ACTION); }
+    return true;
+  }
+  // Build mode tool hotkeys (Q/W/E/R/G/Delete)
+  if is_gb && t[0].mode == CP_MV_MODE_BUILD {
+    if key == 'q' || key == 'Q' { mv[0].gb[0].tool = 0; cp_mv_set_cmd(s, "set-tool", "select", CP_ASK_GB_CMD); return true; }
+    if key == 'w' || key == 'W' { mv[0].gb[0].tool = 1; cp_mv_set_cmd(s, "set-tool", "move", CP_ASK_GB_CMD); return true; }
+    if key == 'e' || key == 'E' { mv[0].gb[0].tool = 2; cp_mv_set_cmd(s, "set-tool", "rotate", CP_ASK_GB_CMD); return true; }
+    if key == 'r' || key == 'R' { mv[0].gb[0].tool = 3; cp_mv_set_cmd(s, "set-tool", "scale", CP_ASK_GB_CMD); return true; }
+    if key == 'g' || key == 'G' { mv[0].gb[0].snap_idx = (mv[0].gb[0].snap_idx + 1) % 5; return true; }
+    if key == KEY_BACKSPACE || key == KEY_DELETE { cp_mv_set_cmd(s, "delete", "", CP_ASK_GB_CMD); return true; }
+  }
+  // Viewer camera presets 1..5
+  if !is_gb && key >= '1' && key <= '5' {
+    presets := [5] string.["iso", "front", "right", "top", "under"];
+    cp_mv_set_cmd(s, "preset", presets[key - '1'], CP_ASK_MV_CAM_ACTION);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- press dispatch
+
+cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  if !cp_mv_enabled(s) { return false; }
+  mv := s[0].mv[..];
+
+  if act == CP_MV_TOGGLE {
+    if cp_mv_shown(s) {
+      mv[0].hidden = true;
+      mv[0].expanded = false;
+      mv[0].closed_by_person = true;
+      cp_mv_close_popovers(s);
+    } else {
+      cp_mv_bring_front(s);
+    }
+    return true;
+  }
+  if act == CP_MV_HIDE {
+    mv[0].hidden = true;
+    mv[0].expanded = false;
+    mv[0].closed_by_person = true;
+    cp_mv_close_popovers(s);
+    if s[0].fld[0].kb == CP_KB_MV || s[0].fld[0].kb == CP_KB_GB_PANEL { cp_ed_focus(s, CP_KB_COMPOSER); }
+    return true;
+  }
+  if act == CP_MV_EXPAND {
+    mv[0].expanded = !mv[0].expanded;
+    if mv[0].expanded && mv[0].active >= 0 && mv[0].tabs[mv[0].active].kind == CP_MV_KIND_GAMEBUILDER {
+      mv[0].drawer_open = true;
+      mv[0].gb[0].hotbar_open = true;
+    }
+    cp_mv_close_popovers(s);
+    return true;
+  }
+  if act == CP_MV_DRAWER {
+    mv[0].drawer_open = !mv[0].drawer_open;
+    cp_mv_close_popovers(s);
+    return true;
+  }
+  if act == CP_MV_ADD_TAB {
+    was := mv[0].add_menu;
+    cp_mv_close_popovers(s);
+    mv[0].add_menu = !was;
+    return true;
+  }
+  if act == CP_MV_ADD_PICK {
+    cp_mv_close_popovers(s);
+    if id == "coder.mv.add.file" { s[0].ask = CP_ASK_MV_OPEN_DIALOG; return true; }
+    if id == "coder.mv.add.new_game" {
+      if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return false; }
+      mv[0].gb[0].picker_open = true;
+      return true;
+    }
+    if id == "coder.mv.add.scrappers" {
+      if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return false; }
+      _ = cp_mv_open_tab(s, CP_MV_KIND_GAMEBUILDER, "gb:scrappers-arena/level-1", "Scrappers Arena", "scrappers-arena", "level-1", CP_MV_MODE_BUILD, false);
+      cp_mv_set_cmd(s, "open-game", "scrappers-arena", CP_ASK_GB_CMD);
+      return true;
+    }
+    if id == "coder.mv.add.splicebots" {
+      if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return false; }
+      _ = cp_mv_open_tab(s, CP_MV_KIND_GAMEBUILDER, "gb:splicebots/level-1", "SPLICEBOTS", "splicebots", "level-1", CP_MV_MODE_BUILD, false);
+      cp_mv_set_cmd(s, "open-game", "splicebots", CP_ASK_GB_CMD);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_TAB {
+    idx := cp_number(id, "coder.mv.tab.");
+    if idx >= 0 && idx < mv[0].ntabs {
+      mv[0].active = idx;
+      mv[0].gb[0].picker_open = false;
+      cp_mv_close_popovers(s);
+      mv[0].pending_tab = idx;
+      if mv[0].tabs[idx].kind == CP_MV_KIND_GAMEBUILDER {
+        if mv[0].drawer_tab < CP_MV_DRW_BUILD { mv[0].drawer_tab = CP_MV_DRW_BUILD; }
+      } else {
+        if mv[0].drawer_tab >= CP_MV_DRW_BUILD { mv[0].drawer_tab = CP_MV_DRW_TREE; }
+      }
+      s[0].ask = CP_ASK_MV_LOAD_TAB;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_TAB_CLOSE {
+    idx := cp_number(id, "coder.mv.tabx.");
+    if idx >= 0 && idx < mv[0].ntabs {
+      cp_mv_close_popovers(s);
+      mv[0].pending_tab = idx;
+      if mv[0].tabs[idx].dirty {
+        s[0].ask = CP_ASK_MV_CLOSE_TAB;
+      } else {
+        _ = cp_mv_drop_tab(s, idx);
+        s[0].ask = CP_ASK_MV_CLOSE_TAB;
+      }
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_MODE {
+    m := cp_number(id, "coder.mv.mode.");
+    if mv[0].active >= 0 && mv[0].active < mv[0].ntabs && m >= CP_MV_MODE_INSPECT && m <= CP_MV_MODE_PLAY {
+      t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+      t[0].mode = m;
+      t[0].playing = m == CP_MV_MODE_PLAY;
+      t[0].muted = m != CP_MV_MODE_PLAY;
+      if m == CP_MV_MODE_PLAY { mv[0].drawer_open = false; }
+      mv[0].pending_val = m;
+      cp_mv_set_cmd(s, ifx m == CP_MV_MODE_PLAY then "play" else "stop", mv_mode_name(m), CP_ASK_GB_MODE);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_CAM_MODE {
+    if mv[0].active >= 0 && mv[0].active < mv[0].ntabs {
+      mv[0].tabs[mv[0].active].cam_fly = !mv[0].tabs[mv[0].active].cam_fly;
+      cp_mv_set_cmd(s, "cam_mode", ifx mv[0].tabs[mv[0].active].cam_fly then "fly" else "orbit", CP_ASK_MV_CAM_ACTION);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_CAM_MENU {
+    was := mv[0].cam_menu; cp_mv_close_popovers(s); mv[0].cam_menu = !was; return true;
+  }
+  if act == CP_MV_CAM_PICK {
+    cp_mv_close_popovers(s);
+    presets := [6] string.["iso", "front", "right", "top", "under", "focus"];
+    idx := cp_number(id, "coder.mv.cam.");
+    if idx >= 0 && idx < 6 {
+      cp_mv_set_cmd(s, "preset", presets[idx], CP_ASK_MV_CAM_ACTION);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_VIEW_MENU {
+    was := mv[0].view_menu; cp_mv_close_popovers(s); mv[0].view_menu = !was; return true;
+  }
+  if act == CP_MV_VIEW_PICK {
+    cp_mv_close_popovers(s);
+    if mv[0].active < 0 || mv[0].active >= mv[0].ntabs { return false; }
+    t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+    sh_idx := cp_number(id, "coder.mv.sh.");
+    if sh_idx >= 0 && sh_idx < 6 {
+      t[0].shading = sh_idx;
+      names := [6] string.["lit", "clay", "normals", "unlit", "wire", "lit_wire"];
+      cp_mv_set_cmd(s, "shading", names[sh_idx], CP_ASK_MV_VIEW_OPT);
+      return true;
+    }
+    ov_bit := cp_number(id, "coder.mv.ov.");
+    if ov_bit >= 0 && ov_bit < 6 {
+      bit := 1 << ov_bit;
+      t[0].overlay_mask = t[0].overlay_mask ^ bit;
+      cp_mv_set_cmd(s, "overlay", id, CP_ASK_MV_VIEW_OPT);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_SNAPSHOT {
+    cp_mv_close_popovers(s);
+    s[0].ask = CP_ASK_MV_SNAPSHOT;
+    return true;
+  }
+  if act == CP_MV_RELOAD {
+    cp_mv_close_popovers(s);
+    s[0].ask = CP_ASK_MV_RELOAD;
+    return true;
+  }
+  if act == CP_MV_MORE_MENU {
+    was := mv[0].more_menu; cp_mv_close_popovers(s); mv[0].more_menu = !was; return true;
+  }
+  if act == CP_MV_MORE_PICK {
+    cp_mv_close_popovers(s);
+    if id == "coder.mv.more.ext" { s[0].ask = CP_ASK_MV_EXTERNAL; return true; }
+    if id == "coder.mv.more.text" { s[0].ask = CP_ASK_MV_OPEN_AS_TEXT; return true; }
+    if id == "coder.mv.more.sel" { s[0].ask = CP_ASK_MV_ATTACH_SEL; return true; }
+    if id == "coder.mv.more.hotbar" { mv[0].gb[0].hotbar_open = !mv[0].gb[0].hotbar_open; return true; }
+    return false;
+  }
+  if act == CP_MV_DRAWER_TAB {
+    dt := cp_number(id, "coder.mv.drw.");
+    if dt >= CP_MV_DRW_TREE && dt <= CP_MV_DRW_LOBBY {
+      mv[0].drawer_open = true;
+      mv[0].drawer_tab = dt;
+      mv[0].drawer_scroll = 0;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_TREE_ROW {
+    ri := cp_number(id, "coder.mv.tree.");
+    if ri >= 0 && ri < mv[0].ntree {
+      for k: 0..<mv[0].ntree { mv[0].tree[k].selected = k == ri; }
+      cp_mv_set_cmd(s, "select_node", cast(string) mv[0].tree[ri].id[0..<mv[0].tree[ri].id_n], CP_ASK_MV_VIEW_OPT);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_TREE_EYE {
+    ri := cp_number(id, "coder.mv.eye.");
+    if ri >= 0 && ri < mv[0].ntree {
+      mv[0].tree[ri].visible = !mv[0].tree[ri].visible;
+      cp_mv_set_cmd(s, "toggle_node", cast(string) mv[0].tree[ri].id[0..<mv[0].tree[ri].id_n], CP_ASK_MV_VIEW_OPT);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_MV_ATTACH_SEL {
+    s[0].ask = CP_ASK_MV_ATTACH_SEL;
+    return true;
+  }
+  if act == CP_MV_HYDRATE {
+    mv[0].gb[0].hydrating = true;
+    s[0].ask = CP_ASK_MV_HYDRATE;
+    return true;
+  }
+  if act == CP_GB_TOOL {
+    ti := cp_number(id, "coder.gb.tool.");
+    if ti >= 0 && ti < 4 {
+      mv[0].gb[0].tool = ti;
+      tools := [4] string.["select", "move", "rotate", "scale"];
+      cp_mv_set_cmd(s, "set-tool", tools[ti], CP_ASK_GB_CMD);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_GB_SNAP {
+    mv[0].gb[0].snap_idx = (mv[0].gb[0].snap_idx + 1) % 5;
+    cp_mv_set_cmd(s, "snap", CP_GB_SNAP_LABELS[mv[0].gb[0].snap_idx], CP_ASK_GB_CMD);
+    return true;
+  }
+  if act == CP_GB_CTRL {
+    if id == "coder.gb.undo" { cp_mv_set_cmd(s, "undo", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.redo" { cp_mv_set_cmd(s, "redo", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.focus" { cp_mv_set_cmd(s, "focus", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.delete" { cp_mv_set_cmd(s, "delete", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.decide" { cp_mv_set_cmd(s, "decide", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.show_changes" { cp_mv_set_cmd(s, "show-changes", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.dismiss_changes" { cp_mv_set_cmd(s, "dismiss-changes", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.match_mode" {
+      mv[0].gb[0].match_mode = (mv[0].gb[0].match_mode + 1) % 4;
+      cp_mv_set_cmd(s, "match-mode", CP_GB_MODE_NAMES[mv[0].gb[0].match_mode], CP_ASK_GB_CMD);
+      return true;
+    }
+    if id == "coder.gb.class" {
+      mv[0].gb[0].fighter_class = (mv[0].gb[0].fighter_class + 1) % 3;
+      cp_mv_set_cmd(s, "fighter-class", CP_GB_CLASS_NAMES[mv[0].gb[0].fighter_class], CP_ASK_GB_CMD);
+      return true;
+    }
+    if id == "coder.gb.mute" && mv[0].active >= 0 {
+      mv[0].tabs[mv[0].active].muted = !mv[0].tabs[mv[0].active].muted;
+      cp_mv_set_cmd(s, "mute", ifx mv[0].tabs[mv[0].active].muted then "1" else "0", CP_ASK_GB_CMD);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_GB_PALETTE_ADD || act == CP_GB_HOTBAR_SLOT {
+    pi := cp_number(id, ifx act == CP_GB_HOTBAR_SLOT then "coder.gb.hb." else "coder.gb.pal.");
+    if pi >= 0 && pi < CP_GB_PALETTE_N {
+      cp_mv_set_cmd(s, "add", CP_GB_PALETTE_KIND[pi], CP_ASK_GB_CMD);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_GB_FIELD_STEP {
+    // id form: "coder.gb.fp.<fi>" (+step) or "coder.gb.fm.<fi>" (-step)
+    plus := cp_number(id, "coder.gb.fp.");
+    minus := cp_number(id, "coder.gb.fm.");
+    fi := ifx plus >= 0 then plus else minus;
+    if fi >= 0 && fi < CP_MV_FIELDS {
+      delta := ifx plus >= 0 then CP_GB_FIELD_STEP_AMT[fi] else -CP_GB_FIELD_STEP_AMT[fi];
+      nv := mv[0].gb[0].sel_fields[fi] + delta;
+      mv[0].gb[0].sel_fields[fi] = nv;
+      ab: [64] u8; an := el_put(ab[..], 0, CP_GB_FIELD_KEY[fi]); an = el_put(ab[..], an, " "); an = el_put_i(ab[..], an, nv);
+      cp_mv_set_cmd(s, "set-field", cast(string) ab[0..<an], CP_ASK_GB_CMD);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_GB_PICKER_CARD {
+    ci := cp_number(id, "coder.gb.pick.");
+    if ci >= 0 && ci < CP_GB_TEMPLATE_N {
+      mv[0].gb[0].template_id = ci;
+      mv[0].gb[0].picker_open = false;
+      cp_mv_set_cmd(s, "new-game", CP_GB_TEMPLATE_ID[ci], CP_ASK_GB_NEW_GAME);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_GB_PLAYTEST {
+    mv[0].gb[0].playtest_running = true;
+    cp_mv_set_cmd(s, "play-test", "", CP_ASK_GB_CMD);
+    return true;
+  }
+  if act == CP_GB_PLAYTEST_PIN {
+    cp_mv_set_cmd(s, "focus-stuck", "0", CP_ASK_GB_FOCUS_ISSUE);
+    return true;
+  }
+  if act == CP_GB_PUBLISH_ACT {
+    if id == "coder.gb.pub.go" { cp_mv_set_cmd(s, "publish", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.unpub" { cp_mv_set_cmd(s, "unpublish", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.copy" { cp_mv_set_cmd(s, "copy-share-url", cast(string) mv[0].gb[0].share_code[0..<mv[0].gb[0].share_code_n], CP_ASK_GB_CMD); return true; }
+    return false;
+  }
+  if act == CP_GB_AGENT_ACT {
+    if id == "coder.gb.ag.build" { cp_mv_set_cmd(s, "agent-new", "build", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.ag.playtest" { cp_mv_set_cmd(s, "agent-new", "playtest", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.ag.code" { cp_mv_set_cmd(s, "code-agent", "", CP_ASK_GB_NEW_CODE_AGENT); return true; }
+    if id == "coder.gb.ag.undo" { cp_mv_set_cmd(s, "undo-turn", "", CP_ASK_GB_CMD); return true; }
+    return false;
+  }
+  if act == CP_GB_LOBBY_ACT {
+    if id == "coder.gb.lob.join" { cp_mv_set_cmd(s, "lobby-read", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.party" { cp_mv_set_cmd(s, "party-start", "", CP_ASK_GB_CMD); return true; }
+    return false;
+  }
+  if act == CP_GB_REMIX_COPY {
+    cp_mv_set_cmd(s, "copy-level", "", CP_ASK_GB_CMD);
+    return true;
+  }
+  return false;
+}
+
+cp_mv_scroll :: (s: [] CoderPage, delta: f32) {
+  mv := s[0].mv[..];
+  mv[0].drawer_scroll = scroll_clamp(mv[0].drawer_scroll + delta, mv[0].drawer_content, mv[0].drawer_view);
+}
+
+// ---------------------------------------------------------------- drawing helpers
+
+cp_mv_draw_badge :: (f: [] UiFrame, kind: int, badge: string, x: f32, y: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bw := 22.0f32; bh := 15.0f32;
+  by := y + (h - bh) / 2.0f32;
+  col := cp_mv_badge_color(kind);
+  sheet_fill(sh, x, by, bw, bh, 3.5f32, opacity(col, 0.22f32));
+  _ := sheet_box(sh, x, by, bw, bh, 3.5f32, 1.0f32, Rgba.{}, opacity(col, 0.72f32));
+  tw := measure_width(m, k.small.face, badge);
+  tx := x + (bw - tw) / 2.0f32;
+  if tx < x + 1.0f32 { tx = x + 1.0f32; }
+  _ := sheet_text(sh, m, -1, tx, by + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, col, badge);
+}
+
+cp_mv_draw_tab_pill :: (f: [] UiFrame, x: f32, y: f32, h: f32, max_w: f32, t: [] CpMvTab, active: bool, tab_id: string, close_id: string) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  title := cast(string) t[0].title[0..<t[0].title_n];
+  badge := cast(string) t[0].badge[0..<t[0].badge_n];
+  nb: [128] u8;
+  nn := el_put(nb[..], 0, title);
+  if t[0].dirty { nn = el_put(nb[..], nn, " •"); }
+  shown := sheet_pool(sh, cast(string) nb[0..<nn]);
+  badge_w := 22.0f32;
+  close_slot := 18.0f32;
+  tw := measure_width(m, k.tool.face, shown);
+  if tw > 140.0f32 { tw = 140.0f32; }
+  w := 7.0f32 + badge_w + 5.0f32 + tw + 4.0f32 + close_slot + 4.0f32;
+  if w > max_w { w = max_w; }
+  if w < 58.0f32 { return 0.0f32; }
+
+  hov_tab := uiframe_hovered(f, tab_id);
+  hov_x := uiframe_hovered(f, close_id);
+  if active {
+    sheet_fill(sh, x, y, w, h, 8.0f32, ifx k.set.selected.a > 0 then k.set.selected else k.hover);
+  } else if hov_tab || hov_x {
+    sheet_fill(sh, x, y, w, h, 8.0f32, k.hover);
+  }
+
+  cp_mv_draw_badge(f, t[0].kind, badge, x + 6.0f32, y, h);
+  if t[0].agent_active || t[0].playing {
+    sheet_fill(sh, x + 4.0f32, y + 4.0f32, 5.0f32, 5.0f32, 2.5f32, hex(0x34D399, 1.0f32));
+  }
+  lx := x + 6.0f32 + badge_w + 5.0f32;
+  text_max := x + w - close_slot - 6.0f32 - lx;
+  if text_max > 8.0f32 {
+    fit := app_fit(f, k.tool.face, shown, text_max);
+    ink := ifx active || hov_tab then k.ink else k.muted;
+    _ := sheet_text(sh, m, -1, lx, y + (h - k.tool.line) / 2.0f32, k.tool.line, k.tool.face, ink, fit);
+  }
+  tab_row := uiframe_semantic(f, tab_id, EL_TAB, title, x, y, w - close_slot - 2.0f32, h, ifx active then EL_S_CURRENT else 0, ifx active then 0 else CP_MV_TAB);
+  sheet_hit(sh, UIFRAME_HIT, tab_row, 0, x, y, w - close_slot - 2.0f32, h);
+
+  cx := x + w - close_slot - 4.0f32;
+  cy := y + (h - close_slot) / 2.0f32;
+  if active || hov_tab || hov_x {
+    if hov_x { sheet_fill(sh, cx, cy, close_slot, close_slot, 4.0f32, k.hover); }
+    ic := 11.0f32;
+    sheet_icon(sh, ICON_CLOSE, cx + (close_slot - ic) / 2.0f32, cy + (close_slot - ic) / 2.0f32, ic, ifx hov_x then k.ink else k.muted);
+  }
+  xrow := uiframe_semantic(f, close_id, EL_BUTTON, "Close tab", cx, cy, close_slot, close_slot, 0, CP_MV_TAB_CLOSE);
+  sheet_hit(sh, UIFRAME_HIT, xrow, 0, cx, cy, close_slot, close_slot);
+  return w;
+}
+
+// Row 1 (38pt): Unified horizontal 3D/GameBuilder tab strip + '+' quick-open + Drawer (◧), Expand (⛶), Hide (◫).
+cp_mv_draw_bar1 :: (s: [] CoderPage, f: [] UiFrame, px: f32, top: f32, pw: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; mv := s[0].mv[..];
+  bh := CP_MV_BAR1_H;
+  sheet_fill(sh, px, top + bh - k.border, pw, k.border, 0, k.menu_divider);
+
+  side := k.app.icon_button;
+  by := top + (bh - side) / 2.0f32;
+  hide_x := px + pw - CP_CORNER - side;
+  exp_x := hide_x - 4.0f32 - side;
+  drw_x := exp_x - 4.0f32 - side;
+
+  _ := app_icon_button(f, "coder.mv.drawer", drw_x, by, ICON_CHECKLIST,
+                       ifx mv[0].drawer_open then "Hide inspector drawer" else "Show inspector drawer", APP_BUTTON_QUIET,
+                       ifx mv[0].drawer_open then EL_S_CURRENT else 0, CP_MV_DRAWER);
+  _ := app_icon_button(f, "coder.mv.expand", exp_x, by, ifx mv[0].expanded then ICON_COLLAPSE else ICON_SIM_FIT,
+                       ifx mv[0].expanded then "Restore split view" else "Expand 3D viewer", APP_BUTTON_QUIET,
+                       ifx mv[0].expanded then EL_S_CURRENT else 0, CP_MV_EXPAND);
+  _ := app_icon_button(f, "coder.mv.hide", hide_x, by, ICON_SIDEBAR_RIGHT, "Hide Metaverse pane", APP_BUTTON_QUIET, 0, CP_MV_HIDE);
+
+  cx := px + 8.0f32;
+  tabs_end := drw_x - 8.0f32;
+  add_w := 26.0f32;
+  tab_h := 28.0f32;
+  ty := top + (bh - tab_h) / 2.0f32;
+
+  if mv[0].ntabs == 0 {
+    w := app_pane_tab(f, cx, ty, ICON_WIDGET, "Metaverse", "coder.mv.hide", CP_MV_HIDE, 1.0f32);
+    cx += w + 4.0f32;
+  } else {
+    for i: 0..<mv[0].ntabs {
+      rem := tabs_end - cx - add_w - 4.0f32;
+      if rem < 58.0f32 { break; }
+      ib: [32] u8; tid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.mv.tab."), i)]);
+      xb: [32] u8; xid := sheet_pool(sh, cast(string) xb[0..<el_put_i(xb[..], el_put(xb[..], 0, "coder.mv.tabx."), i)]);
+      w := cp_mv_draw_tab_pill(f, cx, ty, tab_h, rem, mv[0].tabs[i..<i + 1], i == mv[0].active, tid, xid);
+      if w <= 0 { break; }
+      cx += w + 4.0f32;
+    }
+  }
+
+  if cx + add_w <= tabs_end {
+    mv[0].add_x = cx; mv[0].add_y = top + bh;
+    keep := f[0].skin;
+    f[0].skin.app.icon_button = add_w; f[0].skin.app.icon_well = add_w;
+    _ := app_icon_button(f, "coder.mv.add", cx, top + (bh - add_w) / 2.0f32, ICON_PLUS, "Open 3D model or New Game…",
+                         APP_BUTTON_QUIET, ifx mv[0].add_menu then EL_S_CURRENT else 0, CP_MV_ADD_TAB);
+    f[0].skin = keep;
+  }
+  return top + bh;
+}
+
+cp_mv_pill_btn :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, h: f32, active: bool, act: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  w := ceil(measure_width(m, k.small.face, label)) + 14.0f32;
+  hov := uiframe_hovered(f, id);
+  if active { sheet_fill(sh, x, y, w, h, 6.0f32, ifx k.set.selected.a > 0 then k.set.selected else k.hover); }
+  else if hov { sheet_fill(sh, x, y, w, h, 6.0f32, k.hover); }
+  ink := ifx active || hov then k.ink else k.muted;
+  _ := sheet_text(sh, m, -1, x + 7.0f32, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, label);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, ifx active then EL_S_CURRENT else 0, act);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  return w;
+}
+
+// Row 2 (30pt): Context breadcrumb, mode switcher (Inspect|Build|Play or Orbit|Fly), rev pill, View/Camera/Snapshot/More.
+cp_mv_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, px: f32, y2: f32, pw: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; mv := s[0].mv[..];
+  bh := CP_MV_BAR2_H;
+  sheet_fill(sh, px, y2 + bh - k.border, pw, k.border, 0, k.menu_divider);
+  if mv[0].active < 0 || mv[0].active >= mv[0].ntabs { return y2 + bh; }
+  t := mv[0].tabs[mv[0].active];
+  is_gb := t.kind == CP_MV_KIND_GAMEBUILDER;
+
+  bside := 24.0f32;
+  by := y2 + (bh - bside) / 2.0f32;
+  more_x := px + pw - CP_CORNER - bside;
+  rel_x := more_x - 2.0f32 - bside;
+  snap_x := rel_x - 2.0f32 - bside;
+  view_x := snap_x - 2.0f32 - bside;
+  cam_x := view_x - 2.0f32 - bside;
+  right := cam_x - 6.0f32;
+
+  mv[0].more_x = more_x; mv[0].more_y = y2 + bh;
+  mv[0].view_x = view_x; mv[0].view_y = y2 + bh;
+  mv[0].cam_x = cam_x; mv[0].cam_y = y2 + bh;
+
+  keep := f[0].skin;
+  f[0].skin.app.icon_button = bside; f[0].skin.app.icon_well = bside;
+  _ := app_icon_button(f, "coder.mv.cam", cam_x, by, ICON_GLOBAL, "Camera presets", APP_BUTTON_QUIET, ifx mv[0].cam_menu then EL_S_CURRENT else 0, CP_MV_CAM_MENU);
+  _ := app_icon_button(f, "coder.mv.view", view_x, by, ICON_WIDGET, "Shading & overlays", APP_BUTTON_QUIET, ifx mv[0].view_menu then EL_S_CURRENT else 0, CP_MV_VIEW_MENU);
+  _ := app_icon_button(f, "coder.mv.snap", snap_x, by, ICON_SIM_CAMERA, "Snapshot to Chat", APP_BUTTON_QUIET, 0, CP_MV_SNAPSHOT);
+  _ := app_icon_button(f, "coder.mv.reload", rel_x, by, ICON_RELOAD, "Reload scene", APP_BUTTON_QUIET, 0, CP_MV_RELOAD);
+  _ := app_icon_button(f, "coder.mv.more", more_x, by, ICON_MORE_V, "More 3D actions", APP_BUTTON_QUIET, ifx mv[0].more_menu then EL_S_CURRENT else 0, CP_MV_MORE_MENU);
+  f[0].skin = keep;
+
+  cx := px + 10.0f32;
+  ph := 22.0f32;
+  py := y2 + (bh - ph) / 2.0f32;
+
+  if is_gb {
+    // Inspect | Build | Play segmented mode pills
+    cx += cp_mv_pill_btn(f, "coder.mv.mode.0", "Inspect", cx, py, ph, t.mode == CP_MV_MODE_INSPECT, CP_MV_MODE) + 2.0f32;
+    cx += cp_mv_pill_btn(f, "coder.mv.mode.1", "Build", cx, py, ph, t.mode == CP_MV_MODE_BUILD, CP_MV_MODE) + 2.0f32;
+    cx += cp_mv_pill_btn(f, "coder.mv.mode.2", "Play", cx, py, ph, t.mode == CP_MV_MODE_PLAY, CP_MV_MODE) + 6.0f32;
+    if right - cx > 76.0f32 {
+      cx += cp_mv_pill_btn(f, "coder.gb.playtest", ifx mv[0].gb[0].playtest_running then "Testing…" else "▶ Test", cx, py, ph, mv[0].gb[0].playtest_running, CP_GB_PLAYTEST) + 6.0f32;
+    }
+  } else {
+    // Orbit | Fly toggle
+    cx += cp_mv_pill_btn(f, "coder.mv.cammode", ifx t.cam_fly then "Fly" else "Orbit", cx, py, ph, t.cam_fly, CP_MV_CAM_MODE) + 8.0f32;
+  }
+
+  // Revision truthfulness pill (Invariant I-4: never conflate saved rev vs rendered rev)
+  rb: [96] u8; rn := 0;
+  if t.agent_active {
+    rn = el_put(rb[..], 0, "Agent editing · rev "); rn = el_put_i(rb[..], rn, t.rendered_rev);
+  } else if t.rev_state == CP_MV_REV_UNAVAILABLE {
+    rn = el_put(rb[..], 0, "Saved rev "); rn = el_put_i(rb[..], rn, t.saved_rev); rn = el_put(rb[..], rn, " · preview unavailable");
+  } else if t.rev_state == CP_MV_REV_RENDERING {
+    rn = el_put(rb[..], 0, "Saved rev "); rn = el_put_i(rb[..], rn, t.saved_rev); rn = el_put(rb[..], rn, " · rendering "); rn = el_put_i(rb[..], rn, t.rendered_rev);
+  } else if t.rev_state == CP_MV_REV_PROPOSAL {
+    rn = el_put(rb[..], 0, "Proposal pending (202)");
+  } else if t.saved_rev > 0 {
+    rn = el_put(rb[..], 0, "rev "); rn = el_put_i(rb[..], rn, t.rendered_rev);
+    rn = el_put(rb[..], rn, ifx t.dirty then " · unsaved" else " · saved");
+  } else {
+    rn = el_put(rb[..], 0, cast(string) t.path[0..<t.path_n]);
+  }
+  rem := right - cx;
+  if rem > 24.0f32 && rn > 0 {
+    rtxt := sheet_pool(sh, cast(string) rb[0..<rn]);
+    fit := app_fit(f, k.small.face, rtxt, rem);
+    ink := ifx t.rev_state == CP_MV_REV_UNAVAILABLE then hex(0xF59E0B, 1.0f32) else ifx t.agent_active then hex(0x34D399, 1.0f32) else k.muted;
+    _ := sheet_text(sh, m, -1, cx, y2 + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, fit);
+    _ := uiframe_semantic(f, "coder.mv.rev", EL_TEXT, rtxt, cx, y2, rem, bh, 0, 0);
+  }
+  return y2 + bh;
+}
+
+// Row 3 (30pt): Contextual Build sub-toolbar (GB_CONTROLS), Play bar, or Read-Only remix banner.
+cp_mv_draw_bar3 :: (s: [] CoderPage, f: [] UiFrame, px: f32, y3: f32, pw: f32) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; mv := s[0].mv[..];
+  if mv[0].active < 0 || mv[0].active >= mv[0].ntabs { return y3; }
+  t := mv[0].tabs[mv[0].active];
+  if t.kind != CP_MV_KIND_GAMEBUILDER { return y3; }
+  if t.mode == CP_MV_MODE_INSPECT && !t.read_only { return y3; }
+
+  bh := CP_MV_BAR3_H;
+  sheet_fill(sh, px, y3, pw, bh, 0, opacity(k.hover, 0.45f32));
+  sheet_fill(sh, px, y3 + bh - k.border, pw, k.border, 0, k.menu_divider);
+  cx := px + 10.0f32;
+  ph := 22.0f32;
+  py := y3 + (bh - ph) / 2.0f32;
+
+  if t.read_only && t.mode != CP_MV_MODE_PLAY {
+    msg := "Official / shared game · Read-only";
+    _ := sheet_text(sh, f[0].m, -1, cx, y3 + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, msg);
+    bw := app_button_width(f, -1, "Make my own copy");
+    _ := app_button(f, "coder.gb.remix", px + pw - CP_CORNER - bw, y3 + (bh - k.control_h) / 2.0f32, bw, -1, "Make my own copy", APP_BUTTON_PRIMARY, 0, CP_GB_REMIX_COPY);
+    return y3 + bh;
+  }
+
+  if t.mode == CP_MV_MODE_PLAY {
+    cx += cp_mv_pill_btn(f, "coder.gb.match_mode", CP_GB_MODE_NAMES[mv[0].gb[0].match_mode], cx, py, ph, false, CP_GB_CTRL) + 4.0f32;
+    cx += cp_mv_pill_btn(f, "coder.gb.class", CP_GB_CLASS_NAMES[mv[0].gb[0].fighter_class], cx, py, ph, false, CP_GB_CTRL) + 4.0f32;
+    cx += cp_mv_pill_btn(f, "coder.gb.mute", ifx t.muted then "Muted" else "Audio On", cx, py, ph, !t.muted, CP_GB_CTRL) + 4.0f32;
+    sw := cp_mv_pill_btn(f, "coder.mv.mode.1", "■ Stop (Esc)", px + pw - CP_CORNER - 92.0f32, py, ph, true, CP_MV_MODE);
+    _ = sw;
+    return y3 + bh;
+  }
+
+  // Build sub-toolbar (GB_PLACE_TOOLBAR)
+  cx += cp_mv_pill_btn(f, "coder.gb.undo", "↶", cx, py, ph, false, CP_GB_CTRL) + 2.0f32;
+  cx += cp_mv_pill_btn(f, "coder.gb.redo", "↷", cx, py, ph, false, CP_GB_CTRL) + 6.0f32;
+  cx += cp_mv_pill_btn(f, "coder.gb.tool.0", "Q Sel", cx, py, ph, mv[0].gb[0].tool == 0, CP_GB_TOOL) + 2.0f32;
+  cx += cp_mv_pill_btn(f, "coder.gb.tool.1", "W Mov", cx, py, ph, mv[0].gb[0].tool == 1, CP_GB_TOOL) + 2.0f32;
+  cx += cp_mv_pill_btn(f, "coder.gb.tool.2", "E Rot", cx, py, ph, mv[0].gb[0].tool == 2, CP_GB_TOOL) + 2.0f32;
+  cx += cp_mv_pill_btn(f, "coder.gb.tool.3", "R Scl", cx, py, ph, mv[0].gb[0].tool == 3, CP_GB_TOOL) + 6.0f32;
+  if cx + 64.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.snap", CP_GB_SNAP_LABELS[mv[0].gb[0].snap_idx], cx, py, ph, mv[0].gb[0].snap_idx > 0, CP_GB_SNAP) + 4.0f32; }
+  if cx + 52.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.focus", "F", cx, py, ph, false, CP_GB_CTRL) + 2.0f32; }
+  if cx + 52.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.delete", "Del", cx, py, ph, false, CP_GB_CTRL) + 4.0f32; }
+  if cx + 72.0f32 < px + pw { cx += cp_mv_pill_btn(f, "coder.gb.decide", "✦ Decide", cx, py, ph, false, CP_GB_CTRL) + 4.0f32; }
+  if t.change_count > 0 && cx + 88.0f32 < px + pw {
+    cb: [32] u8; cn := el_put(cb[..], 0, "Changes ("); cn = el_put_i(cb[..], cn, t.change_count); cn = el_put(cb[..], cn, ")");
+    _ = cp_mv_pill_btn(f, "coder.gb.show_changes", sheet_pool(sh, cast(string) cb[0..<cn]), cx, py, ph, true, CP_GB_CTRL);
+  }
+  return y3 + bh;
+}
+
+// Responsive 12-template New GameBuilder Game card picker & Metaverse Home view (picker.coax).
+cp_mv_draw_home :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  pad := 16.0f32;
+  yy := y + pad;
+  _ := sheet_text(sh, m, -1, x + pad, yy, k.strong.line, k.strong.face, k.ink, "Metaverse Viewer & GameBuilder");
+  yy += k.strong.line + 4.0f32;
+  _ := sheet_text(sh, m, -1, x + pad, yy, k.small.line, k.small.face, k.muted, "Drop any .glb, .gltf, .obj, .stl, .usdz, .pack, .ple-scene.json, .ifc, or start a game below.");
+  yy += k.small.line + 12.0f32;
+
+  bx := x + pad;
+  ow := app_button_width(f, -1, "Open 3D File…");
+  _ := app_button(f, "coder.mv.add.file", bx, yy, ow, -1, "Open 3D File…", APP_BUTTON_PRIMARY, 0, CP_MV_ADD_PICK);
+  bx += ow + 8.0f32;
+  if cp_flag(s, DC_FLAG_GAMEBUILDER) {
+    sw := app_button_width(f, -1, "Open Scrappers Arena");
+    if bx + sw <= x + w - pad {
+      _ := app_button(f, "coder.mv.add.scrappers", bx, yy, sw, -1, "Open Scrappers Arena", APP_BUTTON_DEFAULT, 0, CP_MV_ADD_PICK);
+    }
+  }
+  yy += k.control_h + 16.0f32;
+
+  if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return; }
+  _ := sheet_text(sh, m, -1, x + pad, yy, k.label.line, k.label.face, k.ink, "New GameBuilder Game (12 templates)");
+  yy += k.label.line + 8.0f32;
+
+  cols := ifx w >= 780.0f32 then 4 else ifx w >= 540.0f32 then 3 else 2;
+  gap := 8.0f32;
+  cw := (w - 2.0f32 * pad - cast(f32) (cols - 1) * gap) / cast(f32) cols;
+  ch := 58.0f32;
+  for i: 0..<CP_GB_TEMPLATE_N {
+    r := i / cols; c := i % cols;
+    cx := x + pad + cast(f32) c * (cw + gap);
+    cy := yy + cast(f32) r * (ch + gap);
+    if cy + ch > y + h - 8.0f32 { break; }
+    ib: [32] u8; cid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.gb.pick."), i)]);
+    hov := uiframe_hovered(f, cid);
+    _ := sheet_box(sh, cx, cy, cw, ch, 8.0f32, 1.0f32, ifx hov then k.hover else k.surface, k.hairline);
+    _ := sheet_text(sh, m, -1, cx + 10.0f32, cy + 8.0f32, k.label.line, k.label.face, k.ink, app_fit(f, k.label.face, CP_GB_TEMPLATE_NAME[i], cw - 20.0f32));
+    _ := sheet_text(sh, m, -1, cx + 10.0f32, cy + 28.0f32, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, CP_GB_TEMPLATE_DESC[i], cw - 20.0f32));
+    row := uiframe_semantic(f, cid, EL_BUTTON, CP_GB_TEMPLATE_NAME[i], cx, cy, cw, ch, 0, CP_GB_PICKER_CARD);
+    sheet_hit(sh, UIFRAME_HIT, row, 0, cx, cy, cw, ch);
+  }
+}
+
+// Collapsible Studio / Inspector Drawer on the right edge inside the pane.
+cp_mv_draw_drawer :: (s: [] CoderPage, f: [] UiFrame, dx: f32, dy: f32, dw: f32, dh: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; mv := s[0].mv[..];
+  sheet_fill(sh, dx, dy, k.border, dh, 0, k.menu_divider);
+  t_is_gb := mv[0].active >= 0 && mv[0].active < mv[0].ntabs && mv[0].tabs[mv[0].active].kind == CP_MV_KIND_GAMEBUILDER;
+
+  // Drawer sub-tab strip
+  tx := dx + 8.0f32; ty := dy + 6.0f32; th := 22.0f32;
+  if t_is_gb {
+    tx += cp_mv_pill_btn(f, "coder.mv.drw.2", "Build", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_BUILD, CP_MV_DRAWER_TAB) + 2.0f32;
+    tx += cp_mv_pill_btn(f, "coder.mv.drw.4", "Agents", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_AGENTS, CP_MV_DRAWER_TAB) + 2.0f32;
+    tx += cp_mv_pill_btn(f, "coder.mv.drw.5", "Share", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_SHARE, CP_MV_DRAWER_TAB) + 2.0f32;
+    _ = cp_mv_pill_btn(f, "coder.mv.drw.6", "Lobby", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_LOBBY, CP_MV_DRAWER_TAB);
+  } else {
+    tx += cp_mv_pill_btn(f, "coder.mv.drw.0", "Tree", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_TREE, CP_MV_DRAWER_TAB) + 4.0f32;
+    _ = cp_mv_pill_btn(f, "coder.mv.drw.1", "Inspect", tx, ty, th, mv[0].drawer_tab == CP_MV_DRW_INSPECT, CP_MV_DRAWER_TAB);
+  }
+  cy := dy + 34.0f32;
+  sheet_fill(sh, dx, cy - 1.0f32, dw, k.border, 0, k.menu_divider);
+  mv[0].drawer_view = dh - 34.0f32;
+  yy := cy + 8.0f32 - mv[0].drawer_scroll;
+  pad := 10.0f32;
+
+  if !t_is_gb && mv[0].drawer_tab == CP_MV_DRW_TREE {
+    if mv[0].ntree == 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "No scene nodes loaded yet.");
+      mv[0].drawer_content = 32.0f32;
+    } else {
+      rh := 24.0f32;
+      for i: 0..<mv[0].ntree {
+        ry := yy + cast(f32) i * rh;
+        if ry + rh < cy || ry > dy + dh { continue; }
+        tr := mv[0].tree[i..<i + 1];
+        ib: [32] u8; rid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.mv.tree."), i)]);
+        eb: [32] u8; eid := sheet_pool(sh, cast(string) eb[0..<el_put_i(eb[..], el_put(eb[..], 0, "coder.mv.eye."), i)]);
+        indent := cast(f32) (ifx tr[0].depth > 6 then 6 else tr[0].depth) * 10.0f32;
+        if tr[0].selected { sheet_fill(sh, dx + 4.0f32, ry, dw - 8.0f32, rh - 2.0f32, 5.0f32, ifx k.set.selected.a > 0 then k.set.selected else k.hover); }
+        lbl := cast(string) tr[0].label[0..<tr[0].label_n];
+        _ := sheet_text(sh, m, -1, dx + pad + indent, ry + (rh - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx tr[0].visible then k.ink else k.faint, app_fit(f, k.small.face, lbl, dw - pad * 2.0f32 - indent - 24.0f32));
+        rrow := uiframe_semantic(f, rid, EL_BUTTON, lbl, dx + 4.0f32, ry, dw - 32.0f32, rh, ifx tr[0].selected then EL_S_CURRENT else 0, CP_MV_TREE_ROW);
+        sheet_hit(sh, UIFRAME_HIT, rrow, 0, dx + 4.0f32, ry, dw - 32.0f32, rh);
+        eye_lbl := ifx tr[0].visible then "●" else "○";
+        _ := sheet_text(sh, m, -1, dx + dw - 22.0f32, ry + (rh - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx tr[0].visible then k.muted else k.faint, eye_lbl);
+        erow := uiframe_semantic(f, eid, EL_BUTTON, "Toggle visibility", dx + dw - 26.0f32, ry, 22.0f32, rh, 0, CP_MV_TREE_EYE);
+        sheet_hit(sh, UIFRAME_HIT, erow, 0, dx + dw - 26.0f32, ry, 22.0f32, rh);
+      }
+      mv[0].drawer_content = cast(f32) mv[0].ntree * rh + 16.0f32;
+    }
+    return;
+  }
+
+  if !t_is_gb {
+    // Viewer Inspect tab
+    t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "STATS"); yy += k.small.line + 4.0f32;
+    st := ifx t[0].stats_n > 0 then cast(string) t[0].stats[0..<t[0].stats_n] else "Ready";
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, st, dw - 2.0f32 * pad)); yy += k.small.line + 12.0f32;
+    bw := dw - 2.0f32 * pad;
+    _ := app_button(f, "coder.mv.attach_sel", dx + pad, yy, bw, -1, "Reference in Chat", APP_BUTTON_PRIMARY, 0, CP_MV_ATTACH_SEL);
+    mv[0].drawer_content = 120.0f32;
+    return;
+  }
+
+  if mv[0].drawer_tab == CP_MV_DRW_BUILD {
+    // GameBuilder Add Palette (2-col grid) + 11-field Inspector steppers (panel.coax)
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "ADD PALETTE");
+    yy += k.small.line + 6.0f32;
+    pw2 := (dw - 2.0f32 * pad - 6.0f32) / 2.0f32;
+    for i: 0..<CP_GB_PALETTE_N {
+      r := i / 2; c := i % 2;
+      px0 := dx + pad + cast(f32) c * (pw2 + 6.0f32);
+      py0 := yy + cast(f32) r * 26.0f32;
+      ib: [32] u8; pid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.gb.pal."), i)]);
+      hov := uiframe_hovered(f, pid);
+      _ := sheet_box(sh, px0, py0, pw2, 22.0f32, 5.0f32, 1.0f32, ifx hov then k.hover else k.surface, k.hairline);
+      _ := sheet_text(sh, m, -1, px0 + 8.0f32, py0 + (22.0f32 - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, CP_GB_PALETTE_LABEL[i], pw2 - 14.0f32));
+      prow := uiframe_semantic(f, pid, EL_BUTTON, CP_GB_PALETTE_LABEL[i], px0, py0, pw2, 22.0f32, 0, CP_GB_PALETTE_ADD);
+      sheet_hit(sh, UIFRAME_HIT, prow, 0, px0, py0, pw2, 22.0f32);
+    }
+    yy += cast(f32) ((CP_GB_PALETTE_N + 1) / 2) * 26.0f32 + 10.0f32;
+
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "INSPECTOR");
+    yy += k.small.line + 6.0f32;
+    if mv[0].gb[0].sel_count == 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.faint, "Click an object in 3D to inspect.");
+      yy += 24.0f32;
+    } else {
+      for fi: 1..<CP_MV_FIELDS {
+        ry := yy + cast(f32) (fi - 1) * 24.0f32;
+        if ry > dy + dh { break; }
+        _ := sheet_text(sh, m, -1, dx + pad, ry + 3.0f32, k.small.line, k.small.face, k.muted, CP_GB_FIELD_LABEL[fi]);
+        vb: [24] u8; vn := el_put_i(vb[..], 0, mv[0].gb[0].sel_fields[fi]);
+        mb: [32] u8; mid := sheet_pool(sh, cast(string) mb[0..<el_put_i(mb[..], el_put(mb[..], 0, "coder.gb.fm."), fi)]);
+        pb: [32] u8; pid := sheet_pool(sh, cast(string) pb[0..<el_put_i(pb[..], el_put(pb[..], 0, "coder.gb.fp."), fi)]);
+        _ = cp_mv_pill_btn(f, mid, "-", dx + dw - 96.0f32, ry, 20.0f32, false, CP_GB_FIELD_STEP);
+        _ := sheet_text(sh, m, -1, dx + dw - 72.0f32, ry + 3.0f32, k.small.line, k.small.face, k.ink, sheet_pool(sh, cast(string) vb[0..<vn]));
+        _ = cp_mv_pill_btn(f, pid, "+", dx + dw - 30.0f32, ry, 20.0f32, false, CP_GB_FIELD_STEP);
+      }
+      yy += cast(f32) (CP_MV_FIELDS - 1) * 24.0f32 + 8.0f32;
+    }
+    _ := app_button(f, "coder.mv.attach_sel", dx + pad, yy, dw - 2.0f32 * pad, -1, "Reference in Chat", APP_BUTTON_DEFAULT, 0, CP_MV_ATTACH_SEL);
+    mv[0].drawer_content = yy + 48.0f32 - cy;
+    return;
+  }
+
+  if mv[0].drawer_tab == CP_MV_DRW_AGENTS {
+    bw := dw - 2.0f32 * pad;
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "GAMEBUILDER AGENTS"); yy += k.small.line + 6.0f32;
+    _ := app_button(f, "coder.gb.ag.build", dx + pad, yy, bw, -1, "+ New Builder Agent", APP_BUTTON_PRIMARY, 0, CP_GB_AGENT_ACT); yy += k.control_h + 6.0f32;
+    _ := app_button(f, "coder.gb.ag.playtest", dx + pad, yy, bw, -1, "+ New Playtester Agent", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 6.0f32;
+    _ := app_button(f, "coder.gb.ag.code", dx + pad, yy, bw, -1, "+ New Code Agent (⇧⌘K)", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 10.0f32;
+    _ := app_button(f, "coder.gb.ag.undo", dx + pad, yy, bw, -1, "Undo Last Agent Turn", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 8.0f32;
+    if mv[0].gb[0].playtest_summary_n > 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, cast(string) mv[0].gb[0].playtest_summary[0..<mv[0].gb[0].playtest_summary_n], bw));
+      yy += k.small.line + 6.0f32;
+      if mv[0].gb[0].playtest_stuck > 0 {
+        _ := app_button(f, "coder.gb.pt.pin", dx + pad, yy, bw, -1, "Jump to Stuck Bot", APP_BUTTON_DEFAULT, 0, CP_GB_PLAYTEST_PIN);
+      }
+    }
+    mv[0].drawer_content = 240.0f32;
+    return;
+  }
+
+  if mv[0].drawer_tab == CP_MV_DRW_SHARE {
+    bw := dw - 2.0f32 * pad;
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "PUBLISH & SHARE"); yy += k.small.line + 6.0f32;
+    _ := app_button(f, "coder.gb.pub.go", dx + pad, yy, bw, -1, "Publish to gamebuilder.org", APP_BUTTON_PRIMARY, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 8.0f32;
+    if mv[0].gb[0].share_code_n > 0 {
+      sb: [64] u8; sn := el_put(sb[..], 0, "gamebuilder.org/g/"); sn = el_put(sb[..], sn, cast(string) mv[0].gb[0].share_code[0..<mv[0].gb[0].share_code_n]);
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, hex(0x34D399, 1.0f32), sheet_pool(sh, cast(string) sb[0..<sn])); yy += k.small.line + 6.0f32;
+      _ := app_button(f, "coder.gb.pub.copy", dx + pad, yy, bw, -1, "Copy Share Link", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 6.0f32;
+      _ := app_button(f, "coder.gb.pub.unpub", dx + pad, yy, bw, -1, "Unpublish", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT);
+    }
+    mv[0].drawer_content = 180.0f32;
+    return;
+  }
+
+  // Lobby tab
+  bw := dw - 2.0f32 * pad;
+  _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "NOSTR LOBBY & PARTY"); yy += k.small.line + 6.0f32;
+  _ := app_button(f, "coder.gb.lob.join", dx + pad, yy, bw, -1, "Connect Global Lobby", APP_BUTTON_PRIMARY, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 6.0f32;
+  _ := app_button(f, "coder.gb.lob.party", dx + pad, yy, bw, -1, "Quick Match Party (4p)", APP_BUTTON_DEFAULT, 0, CP_GB_LOBBY_ACT);
+  mv[0].drawer_content = 120.0f32;
+}
+
+// Floating popover helper drawn into sheet.over (automatically cut out of native Metal view by cd_over_rects).
+cp_mv_draw_menu_row :: (f: [] UiFrame, id: string, label: string, checked: bool, x: f32, y: f32, w: f32, act: int) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  rh := 28.0f32;
+  hov := uiframe_hovered(f, id);
+  if hov { sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, x + 4.0f32, y + 1.0f32, w - 8.0f32, rh - 2.0f32, 6.0f32, 0, k.hover, Rgba.{})); }
+  _ := sheet_text(sh, m, -1, x + 12.0f32, y + (rh - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, label);
+  if checked {
+    sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, x + w - 22.0f32, y + (rh - 12.0f32) / 2.0f32, 12.0f32, 12.0f32, k.ink));
+  }
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x + 4.0f32, y, w - 8.0f32, rh, ifx checked then EL_S_CURRENT else 0, act);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x + 4.0f32, y, w - 8.0f32, rh);
+}
+
+cp_mv_draw_popovers :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32) {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme(); mv := s[0].mv[..];
+  if mv[0].add_menu {
+    mw := 210.0f32; rows := ifx cp_flag(s, DC_FLAG_GAMEBUILDER) then 4 else 1;
+    mh := 10.0f32 + cast(f32) rows * 28.0f32;
+    mx := mv[0].add_x; if mx + mw > px + pw - 8.0f32 { mx = px + pw - mw - 8.0f32; }
+    my := mv[0].add_y + 4.0f32;
+    sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, k.shadows.menu));
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, 1.0f32, th.menu, th.line));
+    card := uiframe_semantic(f, "coder.mv.popover", EL_REGION, "Menu", mx, my, mw, mh, 0, 0);
+    sheet_hit(sh, UIFRAME_HIT, card, 0, mx, my, mw, mh);
+    ry := my + 5.0f32;
+    cp_mv_draw_menu_row(f, "coder.mv.add.file", "Open 3D File…", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
+    if cp_flag(s, DC_FLAG_GAMEBUILDER) {
+      cp_mv_draw_menu_row(f, "coder.mv.add.new_game", "New GameBuilder Game…", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
+      cp_mv_draw_menu_row(f, "coder.mv.add.scrappers", "Open Scrappers Arena", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
+      cp_mv_draw_menu_row(f, "coder.mv.add.splicebots", "Open SPLICEBOTS", false, mx, ry, mw, CP_MV_ADD_PICK);
+    }
+    return;
+  }
+  if mv[0].cam_menu {
+    mw := 160.0f32; mh := 10.0f32 + 6.0f32 * 28.0f32;
+    mx := mv[0].cam_x - mw + 24.0f32; if mx < px + 8.0f32 { mx = px + 8.0f32; }
+    my := mv[0].cam_y + 4.0f32;
+    sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, k.shadows.menu));
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, 1.0f32, th.menu, th.line));
+    card := uiframe_semantic(f, "coder.mv.popover", EL_REGION, "Menu", mx, my, mw, mh, 0, 0);
+    sheet_hit(sh, UIFRAME_HIT, card, 0, mx, my, mw, mh);
+    labels := [6] string.["Isometric (1)", "Front (2)", "Right (3)", "Top (4)", "Under (5)", "Focus Bounds (F)"];
+    for i: 0..<6 {
+      ib: [32] u8; cid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.mv.cam."), i)]);
+      cp_mv_draw_menu_row(f, cid, labels[i], false, mx, my + 5.0f32 + cast(f32) i * 28.0f32, mw, CP_MV_CAM_PICK);
+    }
+    return;
+  }
+  if mv[0].view_menu && mv[0].active >= 0 {
+    t := mv[0].tabs[mv[0].active];
+    mw := 180.0f32; mh := 10.0f32 + 10.0f32 * 28.0f32;
+    mx := mv[0].view_x - mw + 24.0f32; if mx < px + 8.0f32 { mx = px + 8.0f32; }
+    my := mv[0].view_y + 4.0f32;
+    sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, k.shadows.menu));
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, 1.0f32, th.menu, th.line));
+    card := uiframe_semantic(f, "coder.mv.popover", EL_REGION, "Menu", mx, my, mw, mh, 0, 0);
+    sheet_hit(sh, UIFRAME_HIT, card, 0, mx, my, mw, mh);
+    sh_labels := [5] string.["Lit (PBR)", "Studio Clay", "Normals", "Unlit", "Wireframe"];
+    for i: 0..<5 {
+      ib: [32] u8; sid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.mv.sh."), i)]);
+      cp_mv_draw_menu_row(f, sid, sh_labels[i], t.shading == i, mx, my + 5.0f32 + cast(f32) i * 28.0f32, mw, CP_MV_VIEW_PICK);
+    }
+    ov_labels := [5] string.["Ground Grid", "Bounding Box", "Z-Slice Plane", "Diff Overlay", "Stats HUD"];
+    for i: 0..<5 {
+      ib: [32] u8; oid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.mv.ov."), i)]);
+      cp_mv_draw_menu_row(f, oid, ov_labels[i], (t.overlay_mask & (1 << i)) != 0, mx, my + 5.0f32 + cast(f32) (5 + i) * 28.0f32, mw, CP_MV_VIEW_PICK);
+    }
+    return;
+  }
+  if mv[0].more_menu {
+    mw := 196.0f32; mh := 10.0f32 + 4.0f32 * 28.0f32;
+    mx := mv[0].more_x - mw + 24.0f32; if mx < px + 8.0f32 { mx = px + 8.0f32; }
+    my := mv[0].more_y + 4.0f32;
+    sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, k.shadows.menu));
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, mx, my, mw, mh, 10.0f32, 1.0f32, th.menu, th.line));
+    card := uiframe_semantic(f, "coder.mv.popover", EL_REGION, "Menu", mx, my, mw, mh, 0, 0);
+    sheet_hit(sh, UIFRAME_HIT, card, 0, mx, my, mw, mh);
+    cp_mv_draw_menu_row(f, "coder.mv.more.sel", "Reference Selection in Chat", false, mx, my + 5.0f32, mw, CP_MV_MORE_PICK);
+    cp_mv_draw_menu_row(f, "coder.mv.more.text", "Open File as Text", false, mx, my + 33.0f32, mw, CP_MV_MORE_PICK);
+    cp_mv_draw_menu_row(f, "coder.mv.more.ext", "Open in External App", false, mx, my + 61.0f32, mw, CP_MV_MORE_PICK);
+    cp_mv_draw_menu_row(f, "coder.mv.more.hotbar", "Toggle Build Hotbar", mv[0].gb[0].hotbar_open, mx, my + 89.0f32, mw, CP_MV_MORE_PICK);
+  }
+}
+
+// ---------------------------------------------------------------- main pane draw
+
+cp_mvpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; sh := f[0].sheet; mv := s[0].mv[..];
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+
+  // Record color-exempt primitive range so RGB badges & status dots survive monochrome GPU pass.
+  s[0].fp_color_u0 = sh[0].nu;
+  s[0].fp_color_o0 = sh[0].no;
+
+  if px > 0 { cp_side_border_left(s, sh, px, 0, h, k.menu_divider); }
+
+  y := cp_mv_draw_bar1(s, f, px, top, pw);
+  if mv[0].ntabs == 0 || mv[0].active < 0 || mv[0].gb[0].picker_open {
+    mv[0].vp_x = 0; mv[0].vp_y = 0; mv[0].vp_w = 0; mv[0].vp_h = 0;
+    cp_mv_draw_home(s, f, px, y, pw, h - y);
+    cp_mv_draw_popovers(s, f, px, pw);
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
+    return;
+  }
+
+  y = cp_mv_draw_bar2(s, f, px, y, pw);
+  y = cp_mv_draw_bar3(s, f, px, y, pw);
+
+  show_drawer := mv[0].drawer_open && pw >= 500.0f32;
+  dw := ifx show_drawer then (ifx mv[0].expanded then 280.0f32 else CP_MV_DRAWER_W) else 0.0f32;
+  vp_w := pw - dw;
+  vp_h := h - y;
+  t := mv[0].tabs[mv[0].active..<mv[0].active + 1];
+
+  // Optional bottom quick-place hotbar in expanded GameBuilder Build mode
+  hb_h := ifx t[0].kind == CP_MV_KIND_GAMEBUILDER && t[0].mode == CP_MV_MODE_BUILD && mv[0].expanded && mv[0].gb[0].hotbar_open && vp_h > 140.0f32 then 36.0f32 else 0.0f32;
+  vp_h -= hb_h;
+
+  if mv[0].gb[0].hydrating {
+    mv[0].vp_x = 0; mv[0].vp_y = 0; mv[0].vp_w = 0; mv[0].vp_h = 0;
+    pb: [96] u8; pn := el_put(pb[..], 0, "Downloading GameBuilder packs (SHA-256 verified)… "); pn = el_put_i(pb[..], pn, mv[0].gb[0].hydrate_pct); pn = el_put(pb[..], pn, "%");
+    _ := app_notice(f, "coder.mv.hydrate", px + 16.0f32, y + 16.0f32, vp_w - 32.0f32, sheet_pool(sh, cast(string) pb[0..<pn]), APP_NOTICE_INFO);
+  } else if t[0].err_n > 0 {
+    mv[0].vp_x = 0; mv[0].vp_y = 0; mv[0].vp_w = 0; mv[0].vp_h = 0;
+    _ := app_notice(f, "coder.mv.error", px + 16.0f32, y + 16.0f32, vp_w - 32.0f32, cast(string) t[0].err[0..<t[0].err_n], APP_NOTICE_ERROR);
+    _ := app_button(f, "coder.mv.more.ext", px + 16.0f32, y + 76.0f32, app_button_width(f, -1, "Open in External App"), -1, "Open in External App", APP_BUTTON_DEFAULT, 0, CP_MV_MORE_PICK);
+  } else if vp_w > 1.0f32 && vp_h > 1.0f32 {
+    sc := cp_scale(s);
+    mv[0].vp_x = px * sc;
+    mv[0].vp_y = y * sc;
+    mv[0].vp_w = vp_w * sc;
+    mv[0].vp_h = vp_h * sc;
+    sheet_fill(sh, px, y, vp_w, vp_h, 0, hex(0x0B0D10, 1.0f32));
+    _ := uiframe_semantic(f, "coder.mv.viewport", EL_REGION, "3D Viewport", px, y, vp_w, vp_h, 0, 0);
+  } else {
+    mv[0].vp_x = 0; mv[0].vp_y = 0; mv[0].vp_w = 0; mv[0].vp_h = 0;
+  }
+
+  if hb_h > 0 {
+    hy := y + vp_h;
+    sheet_fill(sh, px, hy, vp_w, hb_h, 0, k.surface);
+    sheet_fill(sh, px, hy, vp_w, k.border, 0, k.menu_divider);
+    hx := px + 10.0f32;
+    for i: 0..<9 {
+      if hx + 64.0f32 > px + vp_w - 8.0f32 { break; }
+      ib: [32] u8; hid := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "coder.gb.hb."), i)]);
+      hx += cp_mv_pill_btn(f, hid, CP_GB_PALETTE_LABEL[i], hx, hy + 6.0f32, 24.0f32, false, CP_GB_HOTBAR_SLOT) + 4.0f32;
+    }
+  }
+
+  if show_drawer {
+    cp_mv_draw_drawer(s, f, px + vp_w, y, dw, h - y);
+  }
+
+  cp_mv_draw_popovers(s, f, px, pw);
+  s[0].fp_color_u1 = sh[0].nu;
+  s[0].fp_color_o1 = sh[0].no;
+}
+
+// ---------------------------------------------------------------- C-ABI exports
+
+coder_page_mv_open_tab :: (s: [] CoderPage, kind: int, path: string, title: string, game_id: string, level_id: string, mode: int, auto_opened: bool) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  return cp_mv_open_tab(s, kind, path, title, game_id, level_id, mode, auto_opened);
+}
+
+coder_page_mv_show :: (s: [] CoderPage, open: bool, expand: bool) #export_c #effects(all) {
+  if s.count < 1 || !cp_mv_enabled(s) { return; }
+  if open {
+    cp_mv_bring_front(s);
+    if expand { s[0].mv[0].expanded = true; }
+  } else {
+    s[0].mv[0].hidden = true;
+    s[0].mv[0].expanded = false;
+    s[0].mv[0].closed_by_person = true;
+  }
+}
+
+coder_page_mv_hide :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].mv[0].hidden = true;
+  s[0].mv[0].expanded = false;
+  s[0].mv[0].closed_by_person = true;
+}
+
+coder_page_mv_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_mv_shown(s); }
+coder_page_mv_expanded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_mv_shown(s) && s[0].mv[0].expanded; }
+coder_page_mv_hidden :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].mv[0].hidden; }
+coder_page_mv_active_tab :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].mv[0].active else -1; }
+coder_page_mv_tab_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].mv[0].ntabs else 0; }
+coder_page_mv_tab_kind :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].mv[0].ntabs { return CP_MV_KIND_HOME; }
+  return s[0].mv[0].tabs[idx].kind;
+}
+coder_page_mv_tab_mode :: (s: [] CoderPage, idx: int) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].mv[0].ntabs { return CP_MV_MODE_INSPECT; }
+  return s[0].mv[0].tabs[idx].mode;
+}
+coder_page_mv_tab_path :: (s: [] CoderPage, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].mv[0].ntabs { return 0; }
+  t := s[0].mv[0].tabs[idx];
+  return cp_out(out, cast(string) t.path[0..<t.path_n]);
+}
+coder_page_mv_drop_tab :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_mv_drop_tab(s, idx);
+}
+coder_page_mv_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 || s[0].set_open || !cp_mv_shown(s) { return false; }
+  mv := s[0].mv[..];
+  if mv[0].vp_w <= 1.0f32 || mv[0].vp_h <= 1.0f32 { return false; }
+  out[0] = mv[0].vp_x; out[1] = mv[0].vp_y; out[2] = mv[0].vp_w; out[3] = mv[0].vp_h;
+  return true;
+}
+coder_page_mv_tab_status :: (
+  s: [] CoderPage, idx: int, saved_rev: int, rendered_rev: int, rev_state: int,
+  dirty: bool, read_only: bool, agent_active: bool, change_count: int, stats: string, err: string
+) #export_c #effects(all) {
+  if s.count < 1 || idx < 0 || idx >= s[0].mv[0].ntabs { return; }
+  t := s[0].mv[0].tabs[idx..<idx + 1];
+  t[0].saved_rev = saved_rev;
+  t[0].rendered_rev = rendered_rev;
+  t[0].rev_state = rev_state;
+  t[0].dirty = dirty;
+  t[0].read_only = read_only;
+  t[0].agent_active = agent_active;
+  t[0].change_count = change_count;
+  t[0].stats_n = cp_out(t[0].stats[..], stats);
+  t[0].err_n = cp_out(t[0].err[..], err);
+}
+// TSV rows: "depth\tvisible(0|1)\tselected(0|1)\tid\tlabel\n"
+coder_page_mv_set_tree :: (s: [] CoderPage, tsv: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  mv := s[0].mv[..];
+  mv[0].ntree = 0;
+  i := 0;
+  while i < tsv.count && mv[0].ntree < CP_MV_TREE_MAX {
+    e := i; while e < tsv.count && tsv[e] != '\n' { e += 1; }
+    line := cast(string) tsv[i..<e];
+    i = e + 1;
+    if line.count == 0 { continue; }
+    // Parse 5 tab-separated fields
+    f0 := 0;
+    t1 := f0; while t1 < line.count && line[t1] != '\t' { t1 += 1; }
+    if t1 >= line.count { continue; }
+    t2 := t1 + 1; while t2 < line.count && line[t2] != '\t' { t2 += 1; }
+    if t2 >= line.count { continue; }
+    t3 := t2 + 1; while t3 < line.count && line[t3] != '\t' { t3 += 1; }
+    if t3 >= line.count { continue; }
+    t4 := t3 + 1; while t4 < line.count && line[t4] != '\t' { t4 += 1; }
+    if t4 >= line.count { continue; }
+    row := mv[0].tree[mv[0].ntree..<mv[0].ntree + 1];
+    row[0] = CpMvTreeRow.{
+      depth = ifx t1 > f0 && line[f0] >= '0' && line[f0] <= '9' then cast(int) (line[f0] - '0') else 0,
+      visible = t2 > t1 + 1 && line[t1 + 1] != '0',
+      selected = t3 > t2 + 1 && line[t2 + 1] != '0',
+    };
+    row[0].id_n = cp_out(row[0].id[..], cast(string) line[t3 + 1..<t4]);
+    row[0].label_n = cp_out(row[0].label[..], cast(string) line[t4 + 1..<line.count]);
+    mv[0].ntree += 1;
+  }
+  return mv[0].ntree;
+}
+coder_page_mv_pending_cmd :: (s: [] CoderPage, cmd_out: [] u8, arg_out: [] u8, meta: [] int) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  mv := s[0].mv[..];
+  cn := cp_out(cmd_out, cast(string) mv[0].pending_cmd[0..<mv[0].pending_cmd_n]);
+  an := cp_out(arg_out, cast(string) mv[0].pending_arg[0..<mv[0].pending_arg_n]);
+  if meta.count >= 4 {
+    meta[0] = cn;
+    meta[1] = an;
+    meta[2] = mv[0].pending_tab;
+    meta[3] = mv[0].pending_val;
+  }
+  return cn;
+}
+coder_page_gb_sync_ui :: (
+  s: [] CoderPage, tool: int, snap_idx: int, can_undo: bool, can_redo: bool, template_id: int,
+  playing: bool, sel_count: int, sel_kind: int, sel_fields: [] int, sel_label: string,
+  share_code: string, attach_clients: int
+) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  gb := s[0].mv[0].gb[..];
+  gb[0].tool = tool;
+  gb[0].snap_idx = ifx snap_idx >= 0 && snap_idx < 5 then snap_idx else 3;
+  gb[0].can_undo = can_undo;
+  gb[0].can_redo = can_redo;
+  gb[0].template_id = template_id;
+  gb[0].sel_count = sel_count;
+  gb[0].sel_kind = sel_kind;
+  lim := ifx sel_fields.count < CP_MV_FIELDS then sel_fields.count else CP_MV_FIELDS;
+  for i: 0..<lim { gb[0].sel_fields[i] = sel_fields[i]; }
+  gb[0].sel_label_n = cp_out(gb[0].sel_label[..], sel_label);
+  gb[0].share_code_n = cp_out(gb[0].share_code[..], share_code);
+  gb[0].attach_connected = attach_clients;
+  if s[0].mv[0].active >= 0 && s[0].mv[0].active < s[0].mv[0].ntabs {
+    s[0].mv[0].tabs[s[0].mv[0].active].playing = playing;
+  }
+}
+coder_page_gb_playtest_status :: (s: [] CoderPage, running: bool, stuck_count: int, summary: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  gb := s[0].mv[0].gb[..];
+  gb[0].playtest_running = running;
+  gb[0].playtest_stuck = stuck_count;
+  gb[0].playtest_summary_n = cp_out(gb[0].playtest_summary[..], summary);
+}
+coder_page_gb_hydrate_progress :: (s: [] CoderPage, active: bool, pct: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].mv[0].gb[0].hydrating = active;
+  s[0].mv[0].gb[0].hydrate_pct = pct;
+}
+coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || !cp_mv_shown(s) { return false; }
+  cp_ed_focus(s, CP_KB_MV);
+  return true;
+}

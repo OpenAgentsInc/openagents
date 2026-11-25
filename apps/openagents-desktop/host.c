@@ -2265,3 +2265,84 @@ void cd_ps_ui_set(void *page, int wiz_open, int wiz_step, float detail_scroll, i
   coder_page_ps_ui_set(cd_state(c), wiz_open != 0, wiz_step, detail_scroll, focus_field);
   cd_woke(c);
 }
+
+// Expandable right-side Metaverse Viewer & GameBuilder pane (page/metaversepane.coax; #14040).
+int cd_mv_open_tab(void *page, int kind, const char *path, const char *title, const char *game_id, const char *level_id, int mode, int auto_opened) {
+  CoderHost *c = page; if (!c) return -1;
+  int r = (int)coder_page_mv_open_tab(cd_state(c), kind, cd_string(path), cd_string(title), cd_string(game_id), cd_string(level_id), mode, auto_opened != 0);
+  cd_woke(c);
+  return r;
+}
+void cd_mv_show(void *page, int open, int expand) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_mv_show(cd_state(c), open != 0, expand != 0);
+  cd_woke(c);
+}
+void cd_mv_hide(void *page) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_mv_hide(cd_state(c));
+  cd_woke(c);
+}
+int cd_mv_shown(void *page) { CoderHost *c = page; return c && coder_page_mv_shown(cd_state(c)) ? 1 : 0; }
+int cd_mv_expanded(void *page) { CoderHost *c = page; return c && coder_page_mv_expanded(cd_state(c)) ? 1 : 0; }
+int cd_mv_hidden(void *page) { CoderHost *c = page; return c && coder_page_mv_hidden(cd_state(c)) ? 1 : 0; }
+int cd_mv_active_tab(void *page) { CoderHost *c = page; return c ? (int)coder_page_mv_active_tab(cd_state(c)) : -1; }
+int cd_mv_tab_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_mv_tab_count(cd_state(c)) : 0; }
+int cd_mv_tab_kind(void *page, int idx) { CoderHost *c = page; return c ? (int)coder_page_mv_tab_kind(cd_state(c), idx) : 0; }
+int cd_mv_tab_mode(void *page, int idx) { CoderHost *c = page; return c ? (int)coder_page_mv_tab_mode(cd_state(c), idx) : 0; }
+int cd_mv_tab_path(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_mv_tab_path(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_mv_drop_tab(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_mv_drop_tab(cd_state(c), idx) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}
+int cd_mv_rect(void *page, float out[4]) {
+  CoderHost *c = page; if (!c || !out) return 0;
+  return coder_page_mv_rect(cd_state(c), (coax_v_f32){out, 4}) ? 1 : 0;
+}
+void cd_mv_tab_status(void *page, int idx, int saved_rev, int rendered_rev, int rev_state, int dirty, int read_only, int agent_active, int change_count, const char *stats, const char *err) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_mv_tab_status(cd_state(c), idx, saved_rev, rendered_rev, rev_state, dirty != 0, read_only != 0, agent_active != 0, change_count, cd_string(stats), cd_string(err));
+  cd_woke(c);
+}
+int cd_mv_set_tree(void *page, const char *tsv) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = (int)coder_page_mv_set_tree(cd_state(c), cd_string(tsv));
+  cd_woke(c);
+  return r;
+}
+int cd_mv_pending_cmd(void *page, char *cmd_out, int cmd_cap, char *arg_out, int arg_cap, int *tab_out, int *val_out) {
+  CoderHost *c = page; if (!c || !cmd_out || cmd_cap < 2 || !arg_out || arg_cap < 2) return 0;
+  int64_t meta[4] = {0, 0, -1, 0};
+  int n = (int)coder_page_mv_pending_cmd(cd_state(c), (coax_v_u8){(uint8_t *)cmd_out, cmd_cap - 1}, (coax_v_u8){(uint8_t *)arg_out, arg_cap - 1}, (coax_v_s64){meta, 4});
+  cd_text_out((int)meta[0], cmd_out, cmd_cap);
+  cd_text_out((int)meta[1], arg_out, arg_cap);
+  if (tab_out) *tab_out = (int)meta[2];
+  if (val_out) *val_out = (int)meta[3];
+  return n;
+}
+void cd_gb_sync_ui(void *page, int tool, int snap_idx, int can_undo, int can_redo, int template_id, int playing, int sel_count, int sel_kind, const int64_t *sel_fields, int sel_fields_n, const char *sel_label, const char *share_code, int attach_clients) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_gb_sync_ui(cd_state(c), tool, snap_idx, can_undo != 0, can_redo != 0, template_id, playing != 0, sel_count, sel_kind, (coax_v_s64){(int64_t *)sel_fields, sel_fields && sel_fields_n > 0 ? sel_fields_n : 0}, cd_string(sel_label), cd_string(share_code), attach_clients);
+  cd_woke(c);
+}
+void cd_gb_playtest_status(void *page, int running, int stuck_count, const char *summary) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_gb_playtest_status(cd_state(c), running != 0, stuck_count, cd_string(summary));
+  cd_woke(c);
+}
+void cd_gb_hydrate_progress(void *page, int active, int pct) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_gb_hydrate_progress(cd_state(c), active != 0, pct);
+  cd_woke(c);
+}
+int cd_mv_focus_viewport(void *page) {
+  CoderHost *c = page; if (!c) return 0;
+  int r = coder_page_mv_focus_viewport(cd_state(c)) ? 1 : 0;
+  cd_woke(c);
+  return r;
+}

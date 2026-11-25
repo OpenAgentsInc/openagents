@@ -52,3 +52,4 @@
 #load "page/checks/forge-checks.coax" #test;
 #load "page/checks/lean-gym-checks.coax" #test;
 #load "page/checks/flags-checks.coax" #test;
+#load "page/checks/metaversepane-checks.coax" #test;
