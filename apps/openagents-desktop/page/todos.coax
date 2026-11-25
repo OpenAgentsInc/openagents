@@ -104,19 +104,17 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
   shown := ifx td[0].collapsed then 0 else n;
   text_x := x + pad + icon_sz + a.gap_small;
   avail_w := x + cw - pad - text_x;
-  cw_char := measure_width(m, tf.face, "0");
-  per := ifx cw_char > 0.0f32 then cast(int) (avail_w / cw_char) - 1 else 24;
-  if per < 8 { per = 8; }
-  wb: [CP_TODO_TEXT + 32] u8;
+  wrap_w := ifx avail_w > 1.0f32 then avail_w else 1.0f32;
+  faces := TextFaces.{plain = tf.face, bold = tf.face, code = tf.face};
+  lines: [32] TextLine;
   rows_h := 0.0f32;
   row_lines: [CP_TODOS] int;
   for i: 0..<shown {
     item := td[0].items[i];
-    wn := cp_wrap(wb[..], cp_todo_str(item.content[..], item.ncontent), per);
-    lines := 1;
-    for j: 0..<wn { if wb[j] == 10 { lines += 1; } }
-    row_lines[i] = lines;
-    rows_h += cast(f32) lines * line_h + row_pad;
+    nlines := text_wrap_lines(m, faces, cp_todo_str(item.content[..], item.ncontent), wrap_w, lines[..]);
+    if nlines < 1 { nlines = 1; }
+    row_lines[i] = nlines;
+    rows_h += cast(f32) nlines * line_h + row_pad;
   }
   h := 2 * a.gap_small + hh + rows_h;
   y := ifx up then at - h else at;
@@ -169,17 +167,16 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
       _ := sheet_text(sh, m, -1, gx + 2, ry + row_pad / 2 + (line_h - tf.line) / 2, tf.line, tf.face, sk.faint, "○");
       color = sk.muted;
     }
-    wn := cp_wrap(wb[..], text, per);
-    ls := 0;
+    nlines := text_wrap_lines(m, faces, text, wrap_w, lines[..]);
     ly := ry + row_pad / 2 + (line_h - tf.line) / 2;
-    for j: 0..<wn + 1 {
-      if j == wn || wb[j] == 10 {
-        if j > ls {
-          _ := sheet_text(sh, m, -1, text_x, ly, tf.line, tf.face, color, sheet_pool(sh, cast(string) wb[ls..<j]));
-        }
-        ly += line_h;
-        ls = j + 1;
+    for q: 0..<nlines {
+      from := lines[q].from;
+      to := lines[q].to;
+      while to > from && text[to - 1] == ' ' { to -= 1; }
+      if to > from {
+        _ := sheet_text(sh, m, -1, text_x, ly, tf.line, tf.face, color, sheet_pool(sh, cast(string) text[from..<to]));
       }
+      ly += line_h;
     }
     ry += rh;
   }

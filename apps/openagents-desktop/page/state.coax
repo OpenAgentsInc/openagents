@@ -52,6 +52,8 @@ CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one
 CP_SIDE :: 272;             // the sidebar's width until its edge is dragged (Zeron's)
 CP_SIDE_LEAST :: 242; CP_SIDE_MOST :: 400;     // how narrow and wide a drag makes the sidebar
 CP_PANE_LEAST :: 360; CP_PANE_MOST :: 1080;     // and a sub-agent's transcript
+CP_TODOS_PANE :: 320;                           // compact right sidebar width when showing only the live task checklist
+CP_TODOS_PANE_LEAST :: 240; CP_TODOS_PANE_MOST :: 420;
 CP_PANE_MARGIN :: 240;      // how far out of view a transcript's row is still drawn
 CP_EDGE :: 4;               // how near a sidebar's edge a press takes hold of it
 CP_SIDE_FROM :: 1080;       // the window width from which the sidebar shows; a narrower window has none
@@ -366,7 +368,7 @@ CoderPage :: struct {
   calls: [] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
   long_buf: [] u8; long_n: int;   // CP_LONG_POOL bytes in the page's store
   agent_buf: [] u8; agent_n: int; // CP_AGENT_POOL bytes in the page's store: the sub-agents' replies
-  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; side_drawer: bool; cmd_hints: bool;
+  side_w: f32; pane_user: f32; todos_pane_w: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; side_drawer: bool; cmd_hints: bool;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [] u8;             // CP_SCRATCH bytes in the page's store
   zoom: int;                  // the text size, a row of CP_ZOOMS

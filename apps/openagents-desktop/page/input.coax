@@ -410,7 +410,7 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
   if s.count < 1 || !(s[0].d > 0) { return false; }
   ux := x / s[0].d; uy := y / s[0].d;
   s[0].px = ux; s[0].py = uy; s[0].pointer_in = phase != 3;
-  if cp_minimap_pointer(s, ux, uy, phase) { return true; }
+  if s[0].drag == 0 && (phase != 0 || cp_edge(s, ux) == 0) && cp_minimap_pointer(s, ux, uy, phase) { return true; }
   row := surface_hit(s[0].surface[..], ux, uy);
   id := surface_id(s[0].surface[..], row);
   acts := surface_action(s[0].surface[..], row) != 0;
@@ -420,7 +420,9 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
     s[0].drag = cp_edge(s, ux);
     if s[0].drag != 0 {
       if clicks >= 2 {
-        if s[0].drag == 1 { s[0].side_w = 0.0f32; } else { s[0].pane_user = 0.0f32; }
+        if s[0].drag == 1 { s[0].side_w = 0.0f32; }
+        else if s[0].todos[0].n > 0 && !cp_other_pane_open(s) { s[0].todos_pane_w = 0.0f32; }
+        else { s[0].pane_user = 0.0f32; }
         s[0].sides_due = true; s[0].drag = 0; s[0].touching = false; s[0].pressed_n = 0;
         return true;
       }
@@ -431,6 +433,8 @@ cp_pointer_with :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mo
     if phase == 1 {
       if s[0].drag == 1 {
         s[0].side_w = app_sidebar_drag(ux, s[0].win_w, s[0].pane_w, cp_sidebar_spec());
+      } else if s[0].todos[0].n > 0 && !cp_other_pane_open(s) {
+        s[0].todos_pane_w = app_pane_drag(ux, s[0].win_w, s[0].side, cp_todos_pane_spec());
       } else {
         s[0].pane_user = app_pane_drag(ux, s[0].win_w, s[0].side, cp_pane_spec_for(s[0].win_w, s[0].side));
       }
