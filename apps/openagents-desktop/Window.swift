@@ -706,7 +706,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     @objc private func refresh(_ link: CADisplayLink) {
         let blinkDue = blinkAt > 0 && CACurrentMediaTime() >= blinkAt
-        if owed == 0 && !blinkDue && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
+        #if OA_FULL
+        let mvLive = mvViewport?.wantsContinuousFrame ?? false
+        #else
+        let mvLive = false
+        #endif
+        if owed == 0 && !blinkDue && !mvLive && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
         if blinkDue { owed = max(owed, 1) }
         tick()
     }
@@ -779,15 +784,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let active = window.isKeyWindow && window.firstResponder === canvas
         let ws = NSWorkspace.shared
         cd_env(page, active ? 1 : 0, (ws.accessibilityDisplayShouldReduceMotion ? 1 : 0) | (ws.accessibilityDisplayShouldReduceTransparency ? 2 : 0))
+        #if OA_FULL
+        if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) {
+            syncMetaverseFrame(dt: dt)
+        }
+        #endif
         if cd_moving(page) != 0 || owed > 0 {
             cd_frame(page); if owed > 0 { owed -= 1 }
             // the caret's next phase: one frame then (the page's clock is the system's uptime, as CACurrentMediaTime)
             let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
         #if OA_FULL
-        if FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) {
-            syncMetaverseFrame()
-        }
         if FeatureFlags.isOn(.scenes) {
             syncScenePanelFrame()
             syncLiveScene()

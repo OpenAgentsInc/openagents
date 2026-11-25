@@ -623,6 +623,11 @@ cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_MV_ADD_PICK {
     cp_mv_close_popovers(s);
     if id == "coder.mv.add.file" { s[0].ask = CP_ASK_MV_OPEN_DIALOG; return true; }
+    if id == "coder.mv.add.gta6_mandy" {
+      _ = cp_mv_open_tab(s, CP_MV_KIND_REALM, "gta6:mandy", "GTA VI · Mandy", "gta6-mandy", "key-lento", CP_MV_MODE_INSPECT, false);
+      s[0].ask = CP_ASK_MV_LOAD_TAB;
+      return true;
+    }
     if id == "coder.mv.add.new_game" {
       if !cp_flag(s, DC_FLAG_GAMEBUILDER) { return false; }
       mv[0].gb[0].picker_open = true;
@@ -1216,10 +1221,15 @@ cp_mv_draw_home :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f
   ow := app_button_width(f, -1, "Open 3D File…");
   _ := app_button(f, "coder.mv.add.file", bx, yy, ow, -1, "Open 3D File…", APP_BUTTON_PRIMARY, 0, CP_MV_ADD_PICK);
   bx += ow + 8.0f32;
+  gw := app_button_width(f, -1, "GTA 6 · Mandy");
+  if bx + gw <= x + w - pad {
+    _ := app_button(f, "coder.mv.add.gta6_mandy", bx, yy, gw, -1, "GTA 6 · Mandy", APP_BUTTON_DEFAULT, 0, CP_MV_ADD_PICK);
+    bx += gw + 8.0f32;
+  }
   if cp_flag(s, DC_FLAG_GAMEBUILDER) {
-    sw := app_button_width(f, -1, "Open Scrappers Arena");
+    sw := app_button_width(f, -1, "Scrappers Arena");
     if bx + sw <= x + w - pad {
-      _ := app_button(f, "coder.mv.add.scrappers", bx, yy, sw, -1, "Open Scrappers Arena", APP_BUTTON_DEFAULT, 0, CP_MV_ADD_PICK);
+      _ := app_button(f, "coder.mv.add.scrappers", bx, yy, sw, -1, "Scrappers Arena", APP_BUTTON_DEFAULT, 0, CP_MV_ADD_PICK);
     }
   }
   yy += k.control_h + 16.0f32;
@@ -1494,7 +1504,7 @@ cp_mv_draw_menu_row :: (f: [] UiFrame, id: string, label: string, checked: bool,
 cp_mv_draw_popovers :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32) {
   k := f[0].skin; sh := f[0].sheet; th := cp_theme(); mv := s[0].mv[..];
   if mv[0].add_menu {
-    mw := 210.0f32; rows := ifx cp_flag(s, DC_FLAG_GAMEBUILDER) then 4 else 1;
+    mw := 230.0f32; rows := ifx cp_flag(s, DC_FLAG_GAMEBUILDER) then 5 else 2;
     mh := 10.0f32 + cast(f32) rows * 28.0f32;
     mx := mv[0].add_x; if mx + mw > px + pw - 8.0f32 { mx = px + pw - mw - 8.0f32; }
     my := mv[0].add_y + 4.0f32;
@@ -1504,6 +1514,7 @@ cp_mv_draw_popovers :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32) {
     sheet_hit(sh, UIFRAME_HIT, card, 0, mx, my, mw, mh);
     ry := my + 5.0f32;
     cp_mv_draw_menu_row(f, "coder.mv.add.file", "Open 3D File…", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
+    cp_mv_draw_menu_row(f, "coder.mv.add.gta6_mandy", "GTA 6 Workbench (Mandy)", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
     if cp_flag(s, DC_FLAG_GAMEBUILDER) {
       cp_mv_draw_menu_row(f, "coder.mv.add.new_game", "New GameBuilder Game…", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;
       cp_mv_draw_menu_row(f, "coder.mv.add.scrappers", "Open Scrappers Arena", false, mx, ry, mw, CP_MV_ADD_PICK); ry += 28.0f32;

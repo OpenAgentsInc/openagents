@@ -901,7 +901,7 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
 void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex) {
   if (!h || slot < 0 || slot >= 16) return;
   id<MTLTexture> tex = native_tex ? (__bridge id<MTLTexture>)native_tex : nil;
-  if (h->ext_textures[slot] != tex) {
+  if (h->ext_textures[slot] != tex || tex != nil) {
     h->ext_textures[slot] = tex;
     h->stale = 1;
   }

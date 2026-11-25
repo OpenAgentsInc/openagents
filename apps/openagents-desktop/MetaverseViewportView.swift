@@ -164,17 +164,20 @@ final class MetaverseTabScene {
         gpuBytes = 0
     }
 
-    /// Re-uploads deformed vertices (after RBA1 joint/explode posing or animation clip scrubbing).
+    private var vertScratch: [Float] = []
+
+    /// Re-uploads deformed vertices (after RBA1 joint/explode posing or animation clip scrubbing) with zero per-frame allocation.
     func reuploadVerticesToGpu(device: MTLDevice) {
         guard let h = handle, vertexCount > 0 else { return }
-        var vbuf = [Float](repeating: 0, count: vertexCount * 12)
-        let written = Int(oa_mv_read_verts(h, &vbuf, Int32(vbuf.count)))
+        let need = vertexCount * 12
+        if vertScratch.count < need { vertScratch = [Float](repeating: 0, count: need) }
+        let written = Int(oa_mv_read_verts(h, &vertScratch, Int32(need)))
         guard written > 0 else { return }
         let byteLen = written * MemoryLayout<Float>.stride
         if let existing = vertexBuffer, existing.length >= byteLen {
-            memcpy(existing.contents(), vbuf, byteLen)
+            memcpy(existing.contents(), vertScratch, byteLen)
         } else {
-            vertexBuffer = device.makeBuffer(bytes: vbuf, length: byteLen, options: .storageModeShared)
+            vertexBuffer = device.makeBuffer(bytes: vertScratch, length: byteLen, options: .storageModeShared)
         }
         var b = [Float](repeating: 0, count: 6)
         if oa_mv_get_bounds(h, &b) != 0 {
@@ -320,26 +323,46 @@ final class MetaverseViewportView: NSView {
 
     private(set) var activeScene: MetaverseTabScene?
     private(set) var activeGameBuilder: GameBuilderSession?
+    private(set) var activeGtaWorkbench: GtaWorkbenchSession?
     private let gbHudLabel = NSTextField(labelWithString: "")
     private var gbTickTimer: Timer?
     private var gbLastTick: CFTimeInterval = 0
     private var gbRightDown = false
     private var gbHeldKeys: Set<Int32> = []
+    private var sceneHeldKeys: Set<String> = []
     var onGameBuilderMutated: (() -> Void)?
     private var lastMouse: NSPoint = .zero
     private var downMouse: NSPoint = .zero
     private var dragging = false
     private var dragPanning = false
     private var optionClickPending = false
-    private var needsRedraw = true
+    private var wantsRenderOnNextVsync = true
+    private var lastRenderWall: CFTimeInterval = 0
+    private var smoothFps: Double = 0
+
+    // GTA VI Key Lento Metal 4 Workbench bottom HUD bar
+    private let gtaBar = NSStackView()
+    private let gtaPlayBtn = NSButton(title: "Converge", target: nil, action: nil)
+    private let gtaPresetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let gtaCamBtn = NSButton(title: "R* Cam", target: nil, action: nil)
+    private let gtaFxBtn = NSButton(title: "MetalFX", target: nil, action: nil)
+    private let gtaClipBtn = NSButton(title: "Clip", target: nil, action: nil)
+    private let gtaExprBtn = NSButton(title: "Expr", target: nil, action: nil)
+    private let gtaSnapBtn = NSButton(title: "128-SPP", target: nil, action: nil)
 
     var onNodePicked: ((Int, String, SIMD3<Float>) -> Void)?
     var onFocusRequested: (() -> Void)?
+    var onReleaseFocusToComposer: (() -> Void)?
+    var onNeedsDisplay: (() -> Void)?
     var onFilesDropped: (([URL]) -> Void)?
     var onAttachSelectionRequested: (() -> Void)?
-    // composition-v2 (#14046): offscreen GPU render target composited directly inside UcPlan (slot 0)
+    var onGtaSnapshotRequested: (() -> Void)?
+    // composition-v2 (#14046): 3-slot ping-pong offscreen GPU render targets composited directly in UcPlan (slot 0)
     var useCompositionV2: Bool = true
-    private var extColorTexture: MTLTexture?
+    private var extColorTextures: [MTLTexture] = []
+    private var extColorRingIdx: Int = 0
+    private var extColorSize: CGSize = .zero
+    private let renderFlightSem = DispatchSemaphore(value: 2)
     var onExternalTextureUpdated: ((MTLTexture?) -> Void)?
 
     override init(frame frameRect: NSRect) {
@@ -388,6 +411,7 @@ final class MetaverseViewportView: NSView {
         ])
 
         setupControlBar()
+        setupGtaBar()
         setupGbHudLabel()
         registerForDraggedTypes([.fileURL])
         buildPipelines()
@@ -527,6 +551,77 @@ final class MetaverseViewportView: NSView {
         ])
     }
 
+    private func setupGtaBar() {
+        gtaBar.orientation = .horizontal
+        gtaBar.spacing = 6
+        gtaBar.alignment = .centerY
+        gtaBar.edgeInsets = NSEdgeInsets(top: 5, left: 8, bottom: 5, right: 8)
+        gtaBar.wantsLayer = true
+        gtaBar.layer?.backgroundColor = NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.88).cgColor
+        gtaBar.layer?.cornerRadius = 7
+        gtaBar.layer?.borderWidth = 1
+        gtaBar.layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.14).cgColor
+        gtaBar.translatesAutoresizingMaskIntoConstraints = false
+        gtaBar.isHidden = true
+
+        for b in [gtaPlayBtn, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] {
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            b.target = self
+        }
+        gtaPlayBtn.action = #selector(gtaTogglePaused)
+        gtaCamBtn.action = #selector(gtaToggleCam)
+        gtaFxBtn.action = #selector(gtaToggleFx)
+        gtaClipBtn.action = #selector(gtaCycleClip)
+        gtaExprBtn.action = #selector(gtaCycleExpr)
+        gtaSnapBtn.action = #selector(gtaSnapClicked)
+
+        gtaPresetPopup.controlSize = .small
+        gtaPresetPopup.target = self
+        gtaPresetPopup.action = #selector(gtaPresetChanged)
+        gtaPresetPopup.removeAllItems()
+        for p in GtaWorkbenchSession.presets { gtaPresetPopup.addItem(withTitle: p.label) }
+
+        for v in [gtaPlayBtn, gtaPresetPopup, gtaCamBtn, gtaFxBtn, gtaClipBtn, gtaExprBtn, gtaSnapBtn] as [NSView] {
+            gtaBar.addArrangedSubview(v)
+        }
+        addSubview(gtaBar)
+        NSLayoutConstraint.activate([
+            gtaBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 8),
+            gtaBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            gtaBar.centerXAnchor.constraint(equalTo: centerXAnchor),
+            gtaBar.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
+        ])
+    }
+
+    func syncGtaBar() {
+        guard let gta = activeGtaWorkbench else { gtaBar.isHidden = true; return }
+        gtaBar.isHidden = false
+        gtaPlayBtn.title = gta.state.paused ? "Live" : "Converge"
+        gtaCamBtn.title = gta.state.rockstarCam ? "R* Cam ●" : "R* Cam"
+        gtaFxBtn.title = gta.state.denoiserOn ? "SVGF 2x ●" : "Raw PT"
+        let exprName = (gta.state.exprIndex >= 0 && Int(gta.state.exprIndex) < GtaWorkbenchSession.exprNames.count)
+            ? GtaWorkbenchSession.exprNames[Int(gta.state.exprIndex)] : "Auto"
+        gtaExprBtn.title = "Expr: \(exprName)"
+        if let idx = GtaWorkbenchSession.presets.firstIndex(where: { $0.id == gta.state.presetName }) {
+            gtaPresetPopup.selectItem(at: idx)
+        }
+    }
+
+    @objc private func gtaTogglePaused() { activeGtaWorkbench?.togglePaused(); syncGtaBar(); onNeedsDisplay?() }
+    @objc private func gtaToggleCam() { activeGtaWorkbench?.toggleRockstarCam(); syncGtaBar(); onNeedsDisplay?() }
+    @objc private func gtaToggleFx() { activeGtaWorkbench?.toggleDenoiser(); syncGtaBar(); onNeedsDisplay?() }
+    @objc private func gtaCycleClip() { activeGtaWorkbench?.cycleClip(); syncGtaBar(); onNeedsDisplay?() }
+    @objc private func gtaCycleExpr() { activeGtaWorkbench?.cycleExpr(); syncGtaBar(); onNeedsDisplay?() }
+    @objc private func gtaSnapClicked() { onGtaSnapshotRequested?() }
+    @objc private func gtaPresetChanged() {
+        let idx = gtaPresetPopup.indexOfSelectedItem
+        guard idx >= 0 && idx < GtaWorkbenchSession.presets.count else { return }
+        activeGtaWorkbench?.applyPreset(GtaWorkbenchSession.presets[idx].id)
+        syncGtaBar()
+        onNeedsDisplay?()
+    }
+
     private func syncControlBar() {
         guard let sc = activeScene else {
             controlBar.isHidden = true
@@ -592,7 +687,7 @@ final class MetaverseViewportView: NSView {
         applyAnimTime(Float(animSlider.doubleValue))
     }
 
-    private func applyAnimTime(_ t: Float) {
+    private func applyAnimTime(_ t: Float, deferRender: Bool = false) {
         guard let sc = activeScene, let h = sc.handle, let device, !sc.animClips.isEmpty else { return }
         let ci = min(max(0, sc.activeClip), sc.animClips.count - 1)
         let dur = max(0.01, sc.animClips[ci].duration)
@@ -602,7 +697,7 @@ final class MetaverseViewportView: NSView {
             sc.reuploadVerticesToGpu(device: device)
             animSlider.doubleValue = Double(sc.animTime)
             animTimeLabel.stringValue = String(format: "%.2f / %.2fs", sc.animTime, dur)
-            renderNow()
+            if !deferRender { requestRender() }
         }
     }
 
@@ -648,26 +743,9 @@ final class MetaverseViewportView: NSView {
     }
 
     func updateAnimTimer() {
-        let visible = !isHidden && window != nil && !(window?.isMiniaturized ?? false)
-        let focused = window?.isKeyWindow ?? false
-        let animated = (activeScene?.animPlaying ?? false) && !(activeScene?.animClips.isEmpty ?? true)
-        let onBattery = MetaverseGpuCoordinator.isOnBatteryPower()
-        let displayHz = Int(window?.screen?.maximumFramesPerSecond ?? 60)
-        // Canonical #authority aethyr.host.v2 frame-rate / thermal policy: 0 Hz when idle/hidden!
-        let hz = Int(oa_mv_policy_frame_hz(visible ? 1 : 0, focused ? 1 : 0, animated ? 1 : 0, onBattery ? 1 : 0, Int32(displayHz)))
-        if hz <= 0 {
-            stopAnimTimer()
-            return
-        }
-        if animTimer != nil { return }
-        animLastTick = CACurrentMediaTime()
-        let interval = 1.0 / Double(hz)
-        animTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self, let sc = self.activeScene, sc.animPlaying else { self?.stopAnimTimer(); return }
-            let now = CACurrentMediaTime()
-            let dt = Float(min(0.1, max(0.0, now - self.animLastTick)))
-            self.animLastTick = now
-            self.applyAnimTime(sc.animTime + dt)
+        stopAnimTimer()
+        if (activeScene?.animPlaying ?? false) && !(activeScene?.animClips.isEmpty ?? true) {
+            onNeedsDisplay?()
         }
     }
 
@@ -681,11 +759,12 @@ final class MetaverseViewportView: NSView {
         if visible {
             idleEvictTimer?.invalidate()
             idleEvictTimer = nil
-            updateAnimTimer()
-            updateGbTimer()
+            onNeedsDisplay?()
         } else {
             stopAnimTimer()
             stopGbTimer()
+            sceneHeldKeys.removeAll()
+            gbHeldKeys.removeAll()
             idleEvictTimer?.invalidate()
             idleEvictTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
                 guard let self, self.isHidden else { return }
@@ -1053,8 +1132,11 @@ final class MetaverseViewportView: NSView {
 
     func setActiveScene(_ scene: MetaverseTabScene?) {
         activeGameBuilder = nil
+        activeGtaWorkbench = nil
+        gtaBar.isHidden = true
         gbHudLabel.isHidden = true
         stopGbTimer()
+        sceneHeldKeys.removeAll()
         activeScene = scene
         if let scene {
             if let device { scene.ensureGpuBuffers(device: device) }
@@ -1067,13 +1149,16 @@ final class MetaverseViewportView: NSView {
             hudLabel.isHidden = true
         }
         syncControlBar()
-        renderNow()
+        requestRender()
     }
 
     func setActiveGameBuilder(_ session: GameBuilderSession?) {
         activeScene = nil
+        activeGtaWorkbench = nil
+        gtaBar.isHidden = true
         stopAnimTimer()
         controlBar.isHidden = true
+        sceneHeldKeys.removeAll()
         activeGameBuilder = session
         if let session, let h = session.handle {
             if bounds.width > 1 && bounds.height > 1 {
@@ -1088,42 +1173,149 @@ final class MetaverseViewportView: NSView {
             gbHudLabel.isHidden = true
             stopGbTimer()
         }
-        renderNow()
+        requestRender()
+    }
+
+    func setActiveGtaWorkbench(_ session: GtaWorkbenchSession?) {
+        activeScene = nil
+        activeGameBuilder = nil
+        stopAnimTimer()
+        stopGbTimer()
+        controlBar.isHidden = true
+        gbHudLabel.isHidden = true
+        sceneHeldKeys.removeAll()
+        activeGtaWorkbench = session
+        if let session {
+            session.onFrameTextureReady = { [weak self, weak session] tex in
+                guard let self, self.activeGtaWorkbench === session else { return }
+                self.metalLayer.isHidden = true
+                self.layer?.backgroundColor = NSColor.clear.cgColor
+                self.layer?.mask = nil
+                self.onExternalTextureUpdated?(tex)
+                if let s = session { self.hudLabel.stringValue = s.hudSummary }
+            }
+            session.onReady = { [weak self, weak session] in
+                guard let self, self.activeGtaWorkbench === session else { return }
+                self.syncGtaBar()
+                if let s = session { self.hudLabel.stringValue = s.hudSummary }
+                self.onNeedsDisplay?()
+            }
+            session.onStateChanged = { [weak self, weak session] in
+                guard let self, self.activeGtaWorkbench === session else { return }
+                self.syncGtaBar()
+                if let s = session { self.hudLabel.stringValue = s.hudSummary }
+            }
+            if bounds.width > 1 && bounds.height > 1 {
+                session.requestResize(size: bounds.size)
+            }
+            hudLabel.stringValue = session.hudSummary
+            hudLabel.isHidden = false
+            syncGtaBar()
+            if let existing = session.latestTexture {
+                onExternalTextureUpdated?(existing)
+            }
+            onNeedsDisplay?()
+        } else {
+            gtaBar.isHidden = true
+            hudLabel.isHidden = true
+        }
+    }
+
+    /// True whenever the viewport needs the window's native CADisplayLink (60-120 Hz ProMotion).
+    var wantsContinuousFrame: Bool {
+        guard !isHidden, window != nil, !(window?.isMiniaturized ?? false) else { return false }
+        if let gta = activeGtaWorkbench, !gta.loading, gta.errorText.isEmpty { return true }
+        if wantsRenderOnNextVsync { return true }
+        if !sceneHeldKeys.isEmpty { return true }
+        if let sc = activeScene, sc.animPlaying, !sc.animClips.isEmpty { return true }
+        if let gb = activeGameBuilder {
+            if gb.snapshotUi().playing || gbRightDown || !gbHeldKeys.isEmpty { return true }
+        }
+        return false
+    }
+
+    func requestRender() {
+        wantsRenderOnNextVsync = true
+        onNeedsDisplay?()
+    }
+
+    /// Runs locked to CoderWindow's native ProMotion CADisplayLink (120 Hz) for zero-jitter rendering & WASD navigation.
+    func stepDisplayLink(dt rawDt: Float) {
+        guard !isHidden, bounds.width > 1, bounds.height > 1 else { return }
+        let dt = min(0.05, max(0.001, rawDt))
+
+        if let gta = activeGtaWorkbench {
+            if !gta.loading && gta.errorText.isEmpty {
+                if !sceneHeldKeys.isEmpty {
+                    let boost: Float = NSEvent.modifierFlags.contains(.shift) ? 2.2 : 1.0
+                    let fwd: Float = (sceneHeldKeys.contains("w") ? 1 : 0) - (sceneHeldKeys.contains("s") ? 1 : 0)
+                    let right: Float = (sceneHeldKeys.contains("d") ? 1 : 0) - (sceneHeldKeys.contains("a") ? 1 : 0)
+                    let up: Float = (sceneHeldKeys.contains("e") ? 1 : 0) - (sceneHeldKeys.contains("q") ? 1 : 0)
+                    if fwd != 0 || right != 0 || up != 0 {
+                        gta.moveWasd(fwd: fwd * boost, right: right * boost, up: up * boost, dt: dt)
+                    }
+                }
+                gta.stepAsync(dt: dt)
+            }
+            hudLabel.stringValue = gta.hudSummary
+            return
+        }
+
+        if let sc = activeScene {
+            var dirty = wantsRenderOnNextVsync
+            if !sceneHeldKeys.isEmpty {
+                let boost: Float = NSEvent.modifierFlags.contains(.shift) ? 2.4 : 1.0
+                let fwdIn: Float = (sceneHeldKeys.contains("w") ? 1 : 0) - (sceneHeldKeys.contains("s") ? 1 : 0)
+                let rightIn: Float = (sceneHeldKeys.contains("d") ? 1 : 0) - (sceneHeldKeys.contains("a") ? 1 : 0)
+                let upIn: Float = (sceneHeldKeys.contains("e") ? 1 : 0) - (sceneHeldKeys.contains("q") ? 1 : 0)
+                if fwdIn != 0 || rightIn != 0 || upIn != 0 {
+                    let e = sc.eyePosition
+                    let f = simd_normalize(sc.lookTarget - e)
+                    let upHint = sc.zUp ? SIMD3<Float>(0, 0, 1) : SIMD3<Float>(0, 1, 0)
+                    let r = simd_normalize(simd_cross(f, upHint))
+                    let spd = max(0.35, sc.boundsRadius * 1.35) * boost * dt
+                    let delta = f * (fwdIn * spd) + r * (rightIn * spd) + upHint * (upIn * spd)
+                    if sc.flyMode {
+                        sc.flyPos += delta
+                    } else {
+                        sc.target += delta
+                    }
+                    dirty = true
+                }
+            }
+            if sc.animPlaying && !sc.animClips.isEmpty {
+                applyAnimTime(sc.animTime + dt, deferRender: true)
+                dirty = true
+            }
+            if dirty {
+                wantsRenderOnNextVsync = false
+                renderNow()
+            }
+            return
+        }
+
+        if let gb = activeGameBuilder, let h = gb.handle {
+            var dirty = wantsRenderOnNextVsync
+            let snap = gb.snapshotUi()
+            if snap.playing || gbRightDown || !gbHeldKeys.isEmpty {
+                let moved = oa_gb_step_tick(h, dt) != 0
+                if oa_gb_is_world_drawn(h) != 0 {
+                    let scale = Float(window?.backingScaleFactor ?? 2.0)
+                    _ = oa_gb_step_world(h, Float(max(1, bounds.width)), Float(max(1, bounds.height)), scale, dt)
+                }
+                GameBuilderAudioPlayer.shared.playEvents(from: h, muted: gb.muted)
+                if moved || oa_gb_consume_dirty(h) != 0 { dirty = true }
+            }
+            if dirty {
+                wantsRenderOnNextVsync = false
+                renderNow()
+            }
+        }
     }
 
     func updateGbTimer() {
-        guard let session = activeGameBuilder, let h = session.handle else { stopGbTimer(); return }
-        let snap = session.snapshotUi()
-        let animated = snap.playing || gbRightDown || !gbHeldKeys.isEmpty
-        let visible = !isHidden && window != nil && !(window?.isMiniaturized ?? false)
-        let focused = window?.isKeyWindow ?? false
-        let onBattery = MetaverseGpuCoordinator.isOnBatteryPower()
-        let displayHz = Int(window?.screen?.maximumFramesPerSecond ?? 60)
-        // Canonical #authority aethyr.host.v2 frame-rate / thermal policy: 0 Hz when idle in Build mode!
-        let hz = Int(oa_mv_policy_frame_hz(visible ? 1 : 0, focused ? 1 : 0, animated ? 1 : 0, onBattery ? 1 : 0, Int32(displayHz)))
-        if hz <= 0 {
-            stopGbTimer()
-            return
-        }
-        if gbTickTimer != nil { return }
-        gbLastTick = CACurrentMediaTime()
-        gbTickTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / Double(hz), repeats: true) { [weak self] _ in
-            guard let self, let s = self.activeGameBuilder, let hnd = s.handle else { self?.stopGbTimer(); return }
-            let now = CACurrentMediaTime()
-            let dt = Float(min(0.05, max(0.001, now - self.gbLastTick)))
-            self.gbLastTick = now
-            let moved = oa_gb_step_tick(hnd, dt) != 0
-            if oa_gb_is_world_drawn(hnd) != 0 {
-                let scale = Float(self.window?.backingScaleFactor ?? 2.0)
-                _ = oa_gb_step_world(hnd, Float(max(1, self.bounds.width)), Float(max(1, self.bounds.height)), scale, dt)
-            }
-            GameBuilderAudioPlayer.shared.playEvents(from: hnd, muted: s.muted)
-            if moved || oa_gb_consume_dirty(hnd) != 0 {
-                self.renderNow()
-            } else {
-                self.updateGbTimer()
-            }
-        }
+        stopGbTimer()
+        if activeGameBuilder != nil { onNeedsDisplay?() }
     }
 
     private func stopGbTimer() {
@@ -1163,8 +1355,11 @@ final class MetaverseViewportView: NSView {
         if let gb = activeGameBuilder, let h = gb.handle, bounds.width > 1, bounds.height > 1 {
             oa_gb_set_size(h, Float(bounds.width), Float(bounds.height))
         }
+        if let gta = activeGtaWorkbench, bounds.width > 1, bounds.height > 1 {
+            gta.requestResize(size: bounds.size)
+        }
         if !holeRects.isEmpty { setHoles(holeRects) }
-        renderNow()
+        requestRender()
     }
 
     private func ensureDepthTexture(width: Int, height: Int) {
@@ -1383,28 +1578,50 @@ final class MetaverseViewportView: NSView {
         return bytes
     }
 
-    private func ensureExtColorTexture(width: Int, height: Int) -> MTLTexture? {
+    private func nextExtColorTexture(width: Int, height: Int) -> MTLTexture? {
         guard let device, width >= 1, height >= 1, width <= 4096, height <= 4096 else { return nil }
-        if let t = extColorTexture, t.width == width, t.height == height { return t }
-        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        d.usage = [.renderTarget, .shaderRead]
-        d.storageMode = .private
-        extColorTexture = device.makeTexture(descriptor: d)
-        return extColorTexture
+        let targetSize = CGSize(width: width, height: height)
+        if extColorTextures.count != 3 || extColorSize != targetSize {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+            d.usage = [.renderTarget, .shaderRead]
+            d.storageMode = .private
+            var ring: [MTLTexture] = []
+            for _ in 0..<3 {
+                guard let t = device.makeTexture(descriptor: d) else { return nil }
+                ring.append(t)
+            }
+            extColorTextures = ring
+            extColorSize = targetSize
+            extColorRingIdx = 0
+        }
+        let tex = extColorTextures[extColorRingIdx % extColorTextures.count]
+        extColorRingIdx = (extColorRingIdx + 1) % extColorTextures.count
+        return tex
     }
 
     func renderNow() {
-        guard !isHidden, bounds.width > 1, bounds.height > 1,
-              let queue, (activeScene != nil || activeGameBuilder != nil) else { return }
+        guard !isHidden, bounds.width > 1, bounds.height > 1 else { return }
+        if activeGtaWorkbench != nil {
+            onNeedsDisplay?()
+            return
+        }
+        guard let queue, (activeScene != nil || activeGameBuilder != nil) else { return }
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         let reqW = max(1, Int((bounds.width * scale).rounded()))
         let reqH = max(1, Int((bounds.height * scale).rounded()))
 
-        // composition-v2 (#14046): render directly into private GPU-only external texture for UcPlan slot 0
-        // (retiring CAShapeLayer hole masks and enabling native rounded corners + frosted popovers over 3D).
-        if useCompositionV2, reqW <= 4096, reqH <= 4096, let extTex = ensureExtColorTexture(width: reqW, height: reqH) {
+        // composition-v2 (#14046): render asynchronously into 3-slot ping-pong private GPU textures for UcPlan slot 0.
+        // Never stalls CPU; publishes completed texture via addCompletedHandler so ui-host.m composites at 120 Hz tear-free.
+        if useCompositionV2, reqW <= 4096, reqH <= 4096, let extTex = nextExtColorTexture(width: reqW, height: reqH) {
+            guard renderFlightSem.wait(timeout: .now()) == .success else {
+                wantsRenderOnNextVsync = true
+                return
+            }
             ensureDepthTexture(width: reqW, height: reqH)
-            guard let depthTexture, let cb = queue.makeCommandBuffer() else { return }
+            guard let depthTexture, let cb = queue.makeCommandBuffer() else {
+                renderFlightSem.signal()
+                return
+            }
             let rp = MTLRenderPassDescriptor()
             rp.colorAttachments[0].texture = extTex
             rp.colorAttachments[0].loadAction = .clear
@@ -1423,12 +1640,27 @@ final class MetaverseViewportView: NSView {
                 }
                 enc.endEncoding()
             }
+            let sem = renderFlightSem
+            cb.addCompletedHandler { [weak self] _ in
+                sem.signal()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.isHidden, self.activeGtaWorkbench == nil else { return }
+                    let now = CACurrentMediaTime()
+                    if self.lastRenderWall > 0 {
+                        let fdt = now - self.lastRenderWall
+                        if fdt > 0.001 && fdt < 0.5 {
+                            self.smoothFps = self.smoothFps > 0 ? (self.smoothFps * 0.85 + (1.0 / fdt) * 0.15) : (1.0 / fdt)
+                        }
+                    }
+                    self.lastRenderWall = now
+                    self.metalLayer.isHidden = true
+                    self.layer?.backgroundColor = NSColor.clear.cgColor
+                    self.layer?.mask = nil
+                    self.onExternalTextureUpdated?(extTex)
+                    self.updateHudLabel()
+                }
+            }
             cb.commit()
-            metalLayer.isHidden = true
-            layer?.backgroundColor = NSColor.clear.cgColor
-            layer?.mask = nil
-            onExternalTextureUpdated?(extTex)
-            updateHudLabel()
             return
         }
 
@@ -1465,18 +1697,27 @@ final class MetaverseViewportView: NSView {
     }
 
     private func updateHudLabel() {
-        if let scene = activeScene {
+        if let gta = activeGtaWorkbench {
+            hudLabel.stringValue = gta.hudSummary
+            hudLabel.isHidden = false
+        } else if let scene = activeScene {
+            let fpsStr = smoothFps >= 5.0 ? String(format: " · %.0f FPS", min(120.0, smoothFps)) : ""
+            hudLabel.stringValue = " \(scene.statsText)\(fpsStr) "
             hudLabel.isHidden = (scene.overlayMask & 16) == 0 || scene.statsText.isEmpty
         } else if let gb = activeGameBuilder {
             let snap = gb.snapshotUi()
             let suffix = gb.farmLoaded ? " · Farm" : (gb.gbmLoaded ? " · GBM" : "")
-            hudLabel.stringValue = " \(gb.gameId.isEmpty ? "GameBuilder" : gb.gameId) · \(snap.actorCount) actors · rev \(snap.savedRev)\(suffix) "
+            let fpsStr = smoothFps >= 5.0 ? String(format: " · %.0f FPS", min(120.0, smoothFps)) : ""
+            hudLabel.stringValue = " \(gb.gameId.isEmpty ? "GameBuilder" : gb.gameId) · \(snap.actorCount) actors · rev \(snap.savedRev)\(suffix)\(fpsStr) "
             hudLabel.isHidden = false
         }
     }
 
-    /// Renders an offscreen PNG snapshot of the active 3D scene or GameBuilder viewport for Snapshot-to-Chat.
+    /// Renders an offscreen PNG snapshot of the active 3D scene, GameBuilder, or GTA VI Metal 4 workbench for Snapshot-to-Chat.
     func capturePNG(width: Int = 1280, height: Int = 800) -> Data? {
+        if let gta = activeGtaWorkbench {
+            return gta.capturePngData(spp: 64)
+        }
         guard let device, let queue, (activeScene != nil || activeGameBuilder != nil) else { return nil }
         let cd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         cd.usage = [.renderTarget, .shaderRead]
@@ -1540,15 +1781,23 @@ final class MetaverseViewportView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         onFocusRequested?()
         optionClickPending = event.modifierFlags.contains(.option)
+        if activeGtaWorkbench != nil {
+            let p = convert(event.locationInWindow, from: nil)
+            downMouse = p
+            lastMouse = p
+            dragging = true
+            dragPanning = event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option)
+            return
+        }
         if let gb = activeGameBuilder, let h = gb.handle {
-            window?.makeFirstResponder(self)
             oa_gb_set_claims_clock(h, Int64(Date().timeIntervalSince1970))
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_down(h, 0, x, y, gbMods(from: event.modifierFlags))
             if gb.snapshotUi().playing { oa_gb_set_play_fire(h, 1) }
-            renderNow()
+            requestRender()
             return
         }
         let p = convert(event.locationInWindow, from: nil)
@@ -1559,14 +1808,22 @@ final class MetaverseViewportView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         onFocusRequested?()
+        if activeGtaWorkbench != nil {
+            let p = convert(event.locationInWindow, from: nil)
+            downMouse = p
+            lastMouse = p
+            dragging = true
+            dragPanning = true
+            return
+        }
         if let gb = activeGameBuilder, let h = gb.handle {
-            window?.makeFirstResponder(self)
             gbRightDown = true
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_down(h, 1, x, y, gbMods(from: event.modifierFlags))
             updateGbTimer()
-            renderNow()
+            requestRender()
             return
         }
         let p = convert(event.locationInWindow, from: nil)
@@ -1577,11 +1834,12 @@ final class MetaverseViewportView: NSView {
     }
 
     override func otherMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         onFocusRequested?()
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_down(h, 2, x, y, gbMods(from: event.modifierFlags))
-            renderNow()
+            requestRender()
         }
     }
 
@@ -1593,7 +1851,7 @@ final class MetaverseViewportView: NSView {
             } else {
                 oa_gb_mouse_move(h, x, y)
             }
-            renderNow()
+            requestRender()
             return
         }
         handleDrag(event)
@@ -1603,7 +1861,7 @@ final class MetaverseViewportView: NSView {
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_move(h, x, y)
-            renderNow()
+            requestRender()
             return
         }
         handleDrag(event)
@@ -1613,17 +1871,27 @@ final class MetaverseViewportView: NSView {
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_move(h, x, y)
-            renderNow()
+            requestRender()
         }
     }
 
     private func handleDrag(_ event: NSEvent) {
-        guard dragging, let scene = activeScene else { return }
+        guard dragging else { return }
         let p = convert(event.locationInWindow, from: nil)
         let dx = Float(p.x - lastMouse.x)
         let dy = Float(p.y - lastMouse.y)
         lastMouse = p
 
+        if let gta = activeGtaWorkbench {
+            if dragPanning {
+                gta.pan(dx: dx, dy: dy)
+            } else {
+                gta.orbit(dx: dx, dy: dy)
+            }
+            onNeedsDisplay?()
+            return
+        }
+        guard let scene = activeScene else { return }
         if dragPanning && !scene.flyMode {
             let e = scene.eyePosition
             let f = simd_normalize(scene.target - e)
@@ -1637,12 +1905,16 @@ final class MetaverseViewportView: NSView {
             scene.azimuth -= dx * 0.008
             scene.elevation = max(-1.52, min(1.52, scene.elevation - dy * 0.008))
         }
-        renderNow()
+        requestRender()
     }
 
     override func mouseUp(with event: NSEvent) {
         let wasOption = optionClickPending
         optionClickPending = false
+        if activeGtaWorkbench != nil {
+            dragging = false; dragPanning = false
+            return
+        }
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_up(h, 0, x, y)
@@ -1652,7 +1924,7 @@ final class MetaverseViewportView: NSView {
             if wasOption && !gb.snapshotUi().playing {
                 onAttachSelectionRequested?()
             }
-            renderNow()
+            requestRender()
             return
         }
         defer { dragging = false; dragPanning = false }
@@ -1669,7 +1941,7 @@ final class MetaverseViewportView: NSView {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_up(h, 1, x, y)
             updateGbTimer()
-            renderNow()
+            requestRender()
             return
         }
         dragging = false; dragPanning = false
@@ -1679,14 +1951,19 @@ final class MetaverseViewportView: NSView {
         if let gb = activeGameBuilder, let h = gb.handle {
             let (x, y) = gbPoint(from: event)
             oa_gb_mouse_up(h, 2, x, y)
-            renderNow()
+            requestRender()
         }
     }
 
     override func scrollWheel(with event: NSEvent) {
+        if let gta = activeGtaWorkbench {
+            gta.zoom(delta: Float(event.scrollingDeltaY))
+            onNeedsDisplay?()
+            return
+        }
         if let gb = activeGameBuilder, let h = gb.handle {
             oa_gb_scroll_wheel(h, Float(event.scrollingDeltaY) * 0.15)
-            renderNow()
+            requestRender()
             return
         }
         guard let scene = activeScene else { return }
@@ -1697,7 +1974,7 @@ final class MetaverseViewportView: NSView {
         } else {
             scene.distance = max(scene.boundsRadius * 0.15, min(scene.boundsRadius * 20.0, scene.distance * factor))
         }
-        renderNow()
+        requestRender()
     }
 
     private func mapGbKey(_ event: NSEvent) -> Int32? {
@@ -1710,52 +1987,138 @@ final class MetaverseViewportView: NSView {
         return nil
     }
 
+    private func navKeyName(_ event: NSEvent) -> String? {
+        switch event.keyCode {
+        case 126: return "w" // Up arrow
+        case 125: return "s" // Down arrow
+        case 123: return "a" // Left arrow
+        case 124: return "d" // Right arrow
+        default: break
+        }
+        guard let ch = event.charactersIgnoringModifiers?.lowercased(), ch.count == 1 else { return nil }
+        if ["w", "a", "s", "d", "q", "e"].contains(ch) { return ch }
+        return nil
+    }
+
     override func keyDown(with event: NSEvent) {
-        guard let gb = activeGameBuilder, let h = gb.handle else { super.keyDown(with: event); return }
-        if event.keyCode == 53 { // Esc -> stop Play or unfocus viewport
-            if gb.snapshotUi().playing {
-                _ = gb.runVerb("stop", argsJson: "")
-                gb.muted = true
-                onGameBuilderMutated?()
-                updateGbTimer()
-                renderNow()
+        // Never intercept Cmd-chords (menu shortcuts like Cmd+Shift+M, Cmd+Opt+G, Cmd+Q)
+        if event.modifierFlags.contains(.command) { super.keyDown(with: event); return }
+
+        if let gta = activeGtaWorkbench {
+            if event.keyCode == 53 { // Esc returns focus to chat composer
+                sceneHeldKeys.removeAll()
+                onReleaseFocusToComposer?()
                 return
             }
-            super.keyDown(with: event)
+            let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if let nav = navKeyName(event) {
+                sceneHeldKeys.insert(nav)
+                onNeedsDisplay?()
+                return
+            }
+            switch ch {
+            case " ": gta.togglePaused(); syncGtaBar(); onNeedsDisplay?(); return
+            case "1": gta.applyPreset("stg1"); syncGtaBar(); onNeedsDisplay?(); return
+            case "2": gta.applyPreset("stg2"); syncGtaBar(); onNeedsDisplay?(); return
+            case "3": gta.applyPreset("stg3"); syncGtaBar(); onNeedsDisplay?(); return
+            case "4": gta.applyPreset("stg4"); syncGtaBar(); onNeedsDisplay?(); return
+            case "5": gta.applyPreset("stg5"); syncGtaBar(); onNeedsDisplay?(); return
+            case "6": gta.applyPreset("two_shot"); syncGtaBar(); onNeedsDisplay?(); return
+            case "7": gta.applyPreset("jason_cu"); syncGtaBar(); onNeedsDisplay?(); return
+            case "0": gta.applyPreset("showcase"); syncGtaBar(); onNeedsDisplay?(); return
+            case "p": gta.applyPreset("portrait_live"); syncGtaBar(); onNeedsDisplay?(); return
+            case "c": gta.toggleRockstarCam(); syncGtaBar(); onNeedsDisplay?(); return
+            case "m": gta.cycleClip(); syncGtaBar(); onNeedsDisplay?(); return
+            case "x": gta.cycleExpr(); syncGtaBar(); onNeedsDisplay?(); return
+            case "f": gta.toggleDenoiser(); syncGtaBar(); onNeedsDisplay?(); return
+            case "k": onGtaSnapshotRequested?(); return
+            default: break
+            }
             return
         }
-        if let k = mapGbKey(event) {
-            if k == Int32(Character("v").asciiValue!) && gb.snapshotUi().playing {
-                oa_gb_toggle_play_view(h)
-            } else {
-                gbHeldKeys.insert(k)
-                oa_gb_send_key(h, k, 1, gbMods(from: event.modifierFlags))
+
+        if let gb = activeGameBuilder, let h = gb.handle {
+            if event.keyCode == 53 { // Esc -> stop Play or unfocus viewport
+                if gb.snapshotUi().playing {
+                    _ = gb.runVerb("stop", argsJson: "")
+                    gb.muted = true
+                    onGameBuilderMutated?()
+                    updateGbTimer()
+                    requestRender()
+                    return
+                }
+                gbHeldKeys.removeAll()
+                onReleaseFocusToComposer?()
+                return
             }
-            gb.flushSaveIfDue()
-            onGameBuilderMutated?()
-            updateGbTimer()
-            renderNow()
+            if let k = mapGbKey(event) {
+                if k == Int32(Character("v").asciiValue!) && gb.snapshotUi().playing {
+                    oa_gb_toggle_play_view(h)
+                } else {
+                    gbHeldKeys.insert(k)
+                    oa_gb_send_key(h, k, 1, gbMods(from: event.modifierFlags))
+                }
+                gb.flushSaveIfDue()
+                onGameBuilderMutated?()
+                updateGbTimer()
+                requestRender()
+                return
+            }
+            return
+        }
+
+        if let scene = activeScene {
+            if event.keyCode == 53 { // Esc returns keyboard focus to chat composer
+                sceneHeldKeys.removeAll()
+                onReleaseFocusToComposer?()
+                return
+            }
+            if let nav = navKeyName(event) {
+                sceneHeldKeys.insert(nav)
+                onNeedsDisplay?()
+                return
+            }
+            let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if ch == " " && !scene.animClips.isEmpty {
+                toggleAnimPlay()
+                return
+            }
+            if ch == "r" || ch == "f" {
+                scene.applyPreset("iso")
+                requestRender()
+                return
+            }
             return
         }
         super.keyDown(with: event)
     }
 
     override func keyUp(with event: NSEvent) {
-        guard let gb = activeGameBuilder, let h = gb.handle else { super.keyUp(with: event); return }
-        if let k = mapGbKey(event) {
-            gbHeldKeys.remove(k)
-            oa_gb_send_key(h, k, 0, gbMods(from: event.modifierFlags))
-            updateGbTimer()
-            renderNow()
-            return
+        if let nav = navKeyName(event) {
+            sceneHeldKeys.remove(nav)
         }
+        if let gb = activeGameBuilder, let h = gb.handle {
+            if let k = mapGbKey(event) {
+                gbHeldKeys.remove(k)
+                oa_gb_send_key(h, k, 0, gbMods(from: event.modifierFlags))
+                updateGbTimer()
+                requestRender()
+                return
+            }
+        }
+        if activeGtaWorkbench != nil || activeScene != nil { return }
         super.keyUp(with: event)
     }
 
     override func magnify(with event: NSEvent) {
+        if let gta = activeGtaWorkbench {
+            gta.zoom(delta: Float(event.magnification * 180.0))
+            onNeedsDisplay?()
+            return
+        }
         guard let scene = activeScene else { return }
         scene.distance = max(scene.boundsRadius * 0.15, min(scene.boundsRadius * 20.0, scene.distance / max(0.2, Float(1.0 + event.magnification))))
-        renderNow()
+        requestRender()
     }
 
     private func performPick(at p: NSPoint) {

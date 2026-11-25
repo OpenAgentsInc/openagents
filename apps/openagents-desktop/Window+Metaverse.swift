@@ -8,6 +8,7 @@ import simd
 final class MetaverseWindowState {
     var scenes: [String: MetaverseTabScene] = [:]
     var gbSessions: [String: GameBuilderSession] = [:]
+    var gtaSessions: [String: GtaWorkbenchSession] = [:]
     var activePath: String = ""
     var watchPath: String = ""
     var watchMtime: Date?
@@ -59,7 +60,20 @@ extension CoderWindow {
         return true
     }
 
+    private func isGtaWorkbenchPath(_ raw: String) -> Bool {
+        let low = raw.lowercased()
+        return low.hasPrefix("gta6:") || low.contains("gta6-mandy") || low.contains("mandy-meta.bin")
+    }
+
     func openMetaverseTarget(path: String, kind: Int, mode: Int, readOnly: Bool = false, title: String = "", gameId: String = "", levelId: String = "", autoOpened: Bool = false) {
+        if isGtaWorkbenchPath(path) {
+            let gtaTitle = title.isEmpty ? "GTA VI · Mandy" : title
+            let tabIdx = cd_mv_open_tab(page, 6, "gta6:mandy", gtaTitle, "gta6-mandy", "key-lento", 0, autoOpened ? 1 : 0)
+            guard tabIdx >= 0 else { return }
+            activateGtaWorkbenchTab(tabIdx: Int(tabIdx), path: "gta6:mandy")
+            wake()
+            return
+        }
         let resolvedGb = kind == 7 ? parseGbIds(from: path) : (game: "", level: "")
         let resolvedGameId = gameId.isEmpty ? resolvedGb.game : gameId
         let resolvedLevelId = levelId.isEmpty ? resolvedGb.level : levelId
@@ -78,6 +92,34 @@ extension CoderWindow {
         } else {
             activateGameBuilderTab(tabIdx: Int(tabIdx), path: path, gameId: resolvedGameId, levelId: resolvedLevelId)
         }
+        wake()
+    }
+
+    func openGtaWorkbench() {
+        cd_mv_show(page, 1, 0)
+        openMetaverseTarget(path: "gta6:mandy", kind: 6, mode: 0, title: "GTA VI · Mandy", autoOpened: false)
+    }
+
+    func activateGtaWorkbenchTab(tabIdx: Int, path: String) {
+        let vp = ensureMetaverseViewport()
+        let session: GtaWorkbenchSession
+        if let existing = mv.gtaSessions[path] {
+            session = existing
+        } else {
+            guard let root = GtaWorkbenchSession.locateMandyRoot(workspace: folder.path) else {
+                cd_mv_tab_status(page, Int32(tabIdx), 0, 0, 2, 0, 0, 0, 0, "", "GTA VI Mandy workbench not found (expected scratch/gta6-mandy or ~/Desktop/GTA/gta6-mandy)")
+                wake()
+                return
+            }
+            let initSize = (vp.bounds.width > 64 && vp.bounds.height > 64) ? vp.bounds.size : CGSize(width: 640, height: 840)
+            session = GtaWorkbenchSession(key: path, rootDir: root, initialSize: initSize)
+            mv.gtaSessions[path] = session
+        }
+        mv.activePath = path
+        vp.setActiveGtaWorkbench(session)
+        let tree = "0\t1\t0\tKey Lento Kitchen (ky34_hse)\tky34_hse\n0\t1\t0\tMandy (320-bone + 24K Curves)\tmandy\n0\t1\t0\tJason (427-bone + 7K Curves)\tjason\n0\t1\t0\tRockstar Cameras (ig5-cams)\tig5_cams\n"
+        _ = cd_mv_set_tree(page, tree)
+        cd_mv_tab_status(page, Int32(tabIdx), 1, 1, 0, 0, 0, 0, 0, "Metal 4 RT · 6 BLAS · MetalFX 2x", "")
         wake()
     }
 
@@ -265,8 +307,16 @@ extension CoderWindow {
         vp.onFocusRequested = { [weak self] in
             guard let self else { return }
             _ = cd_mv_focus_viewport(self.page)
-            self.window.makeFirstResponder(self.canvas)
             self.wake()
+        }
+        vp.onReleaseFocusToComposer = { [weak self] in
+            self?.focusComposer()
+        }
+        vp.onNeedsDisplay = { [weak self] in
+            self?.wake()
+        }
+        vp.onGtaSnapshotRequested = { [weak self] in
+            self?.snapshotMetaverseToChat()
         }
         vp.onNodePicked = { [weak self] idx, label, hit in
             guard let self else { return }
@@ -298,6 +348,7 @@ extension CoderWindow {
             guard let self else { return }
             let ptr = tex.map { Unmanaged.passUnretained($0).toOpaque() }
             cd_mv_set_ext_texture(self.page, 0, ptr)
+            self.wake()
         }
         canvas.addSubview(vp)
         mvViewport = vp
@@ -345,7 +396,7 @@ extension CoderWindow {
         wake()
     }
 
-    func syncMetaverseFrame() {
+    func syncMetaverseFrame(dt: Float = 0.016) {
         var r = [Float](repeating: 0, count: 4)
         guard cd_mv_rect(page, &r) != 0, r[2] > 1, r[3] > 1 else {
             hideMetaverseViewport()
@@ -354,13 +405,17 @@ extension CoderWindow {
         let vp = ensureMetaverseViewport()
         let canvasH = canvas.bounds.height
         let frame = Self.snapped(CGFloat(r[0]), canvasH - CGFloat(r[1]) - CGFloat(r[3]), CGFloat(r[2]), CGFloat(r[3]))
-        if vp.frame != frame { vp.frame = frame }
+        let sizeChanged = vp.frame != frame
+        if sizeChanged { vp.frame = frame }
         if !vp.useCompositionV2 { vp.setHoles(pageOverRects(in: vp)) }
         if vp.isHidden {
             vp.isHidden = false
             vp.setPaneVisible(true)
-            vp.renderNow()
+            vp.requestRender()
+        } else if sizeChanged {
+            vp.requestRender()
         }
+        vp.stepDisplayLink(dt: dt)
     }
 
     /// Handles CP_ASK_MV_* (200..215) requests raised by page/metaversepane.coax.
@@ -382,7 +437,9 @@ extension CoderWindow {
             var pbuf = [CChar](repeating: 0, count: 1024)
             guard cd_mv_tab_path(page, Int32(idx), &pbuf, Int32(pbuf.count)) > 0 else { return }
             let path = String(cString: pbuf)
-            if cd_mv_tab_kind(page, Int32(idx)) == 7 {
+            if isGtaWorkbenchPath(path) {
+                activateGtaWorkbenchTab(tabIdx: idx, path: path)
+            } else if cd_mv_tab_kind(page, Int32(idx)) == 7 {
                 activateGameBuilderTab(tabIdx: idx, path: path, gameId: "", levelId: "")
             } else if let existing = mv.scenes[path] {
                 mv.activePath = path
@@ -395,6 +452,7 @@ extension CoderWindow {
         case 202: // CP_ASK_MV_CLOSE_TAB
             if cd_mv_tab_count(page) == 0 {
                 mvViewport?.setActiveScene(nil)
+                mv.gtaSessions.removeAll()
                 hideMetaverseViewport()
             } else {
                 metaverseAsked(201)
@@ -404,16 +462,29 @@ extension CoderWindow {
             guard idx >= 0 else { return }
             var pbuf = [CChar](repeating: 0, count: 1024)
             guard cd_mv_tab_path(page, Int32(idx), &pbuf, Int32(pbuf.count)) > 0 else { return }
-            loadMetaverseTab(tabIdx: idx, path: String(cString: pbuf), preserveCamera: true)
+            let path = String(cString: pbuf)
+            if isGtaWorkbenchPath(path) {
+                mv.gtaSessions.removeValue(forKey: path)
+                activateGtaWorkbenchTab(tabIdx: idx, path: path)
+            } else {
+                loadMetaverseTab(tabIdx: idx, path: path, preserveCamera: true)
+            }
         case 204: // CP_ASK_MV_SNAPSHOT
             snapshotMetaverseToChat()
         case 205: // CP_ASK_MV_ATTACH_SEL
             attachMetaverseSelectionToChat()
         case 206: // CP_ASK_MV_CAM_ACTION
-            guard let vp = mvViewport, let sc = vp.activeScene else { return }
+            guard let vp = mvViewport else { return }
+            if let gta = vp.activeGtaWorkbench {
+                gta.applyPreset("portrait_live")
+                vp.syncGtaBar()
+                wake()
+                return
+            }
+            guard let sc = vp.activeScene else { return }
             if cmd == "cam_mode" { sc.flyMode = (arg == "fly") }
             else if cmd == "preset" || cmd == "focus" { sc.applyPreset(arg.isEmpty ? "iso" : arg) }
-            vp.renderNow()
+            vp.requestRender()
         case 207: // CP_ASK_MV_VIEW_OPT
             guard let vp = mvViewport, let sc = vp.activeScene else { return }
             if cmd == "shading" {

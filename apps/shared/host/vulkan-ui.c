@@ -126,6 +126,8 @@ void ui_host_set_ext_texture(UiHost *h, int slot, void *native_tex) {
     h->ext_textures[slot] = img;
     h->compose_signature ^= 0x9e3779b97f4a7c15ull ^ (uint64_t)(slot + 1);
     h->stale = 1;
+  } else if (img != NULL) {
+    h->stale = 1;
   }
 }
 

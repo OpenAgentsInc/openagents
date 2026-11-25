@@ -206,6 +206,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleMetaverse(_ sender: Any?) { guard FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) else { return }; main?.toggleMetaversePane() }
     @objc func toggleMetaverseExpand(_ sender: Any?) { guard FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) else { return }; main?.toggleMetaverseExpanded() }
     @objc func openGameBuilder(_ sender: Any?) { guard FeatureFlags.isOn(.gamebuilder) else { return }; main?.openGameBuilderStudio() }
+    @objc func openGtaWorkbench(_ sender: Any?) { guard FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) else { return }; main?.openGtaWorkbench() }
     @objc func triggerSnapShot(_ sender: Any?) { guard FeatureFlags.isOn(.preview) else { return }; main?.triggerRegionSnapshot() }
     @objc func openThreadProof(_ sender: Any?) { guard FeatureFlags.isOn(.proof) else { return }; ThreadProofDrawer.shared.present(window: main) }
     @objc func openAgentsPage(_ sender: Any?) { guard FeatureFlags.isOn(.agents) else { return }; AgentsPageController.shared.present(window: main) }
@@ -262,7 +263,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(toggleSimulator(_:)) { return FeatureFlags.isOn(.simulator) }
         if item.action == #selector(toggleTerminal(_:)) { return FeatureFlags.isOn(.terminal) }
         if item.action == #selector(toggleWebPreview(_:)) { return FeatureFlags.isOn(.preview) }
-        if item.action == #selector(toggleMetaverse(_:)) || item.action == #selector(toggleMetaverseExpand(_:)) { return FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }
+        if item.action == #selector(toggleMetaverse(_:)) || item.action == #selector(toggleMetaverseExpand(_:)) || item.action == #selector(openGtaWorkbench(_:)) { return FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }
         if item.action == #selector(openGameBuilder(_:)) { return FeatureFlags.isOn(.gamebuilder) }
         if item.action == #selector(triggerSnapShot(_:)) { return FeatureFlags.isOn(.preview) }
         if item.action == #selector(openThreadProof(_:)) { return FeatureFlags.isOn(.proof) }
@@ -616,6 +617,9 @@ enum TestLaunch {
         let gbItem = view.addItem(withTitle: "Open GameBuilder", action: #selector(CoderDelegate.openGameBuilder(_:)), keyEquivalent: "g")
         gbItem.target = delegate; gbItem.keyEquivalentModifierMask = [.command, .option]
         delegate.gatedMenuItems.append((gbItem, { FeatureFlags.isOn(.gamebuilder) }))
+        let gtaItem = view.addItem(withTitle: "GTA 6 Workbench (Mandy Key Lento)", action: #selector(CoderDelegate.openGtaWorkbench(_:)), keyEquivalent: "6")
+        gtaItem.target = delegate; gtaItem.keyEquivalentModifierMask = [.command, .option]
+        delegate.gatedMenuItems.append((gtaItem, { FeatureFlags.isOn(.metaverse) || FeatureFlags.isOn(.gamebuilder) || FeatureFlags.isOn(.scenes) }))
         let snapItem = view.addItem(withTitle: "SnapShot Region", action: #selector(CoderDelegate.triggerSnapShot(_:)), keyEquivalent: "6")
         snapItem.target = delegate; snapItem.keyEquivalentModifierMask = [.command, .shift]
         delegate.gatedMenuItems.append((snapItem, { FeatureFlags.isOn(.preview) }))
