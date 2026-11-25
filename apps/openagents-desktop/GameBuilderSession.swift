@@ -134,11 +134,24 @@ final class GameBuilderSession {
     static let picturesDir: URL = {
         baseDir.appendingPathComponent("Pictures", isDirectory: true)
     }()
+    static let publishStoreURL: URL = {
+        baseDir.appendingPathComponent("publish.store")
+    }()
+    static let lobbyKeyURL: URL = {
+        baseDir.appendingPathComponent("lobby.key")
+    }()
 
     // Latest before/after JPEG pictures captured by pictures.coax (#14044)
     var lastBeforePictureURL: URL?
     var lastAfterPictureURL: URL?
     var lastPictureRev: Int32 = 0
+
+    // Live Nostr Lobby WebSocket state (#14045)
+    private var lobbySocket: URLSessionWebSocketTask?
+    private var lobbySession: URLSession?
+    private var lobbyTimer: Timer?
+    var lobbyRelayURL: String = "wss://relay.openagents.com"
+    var onLobbyChanged: (() -> Void)?
 
     init(key: String, gameId: String, levelId: String, viewportSize: CGSize) {
         self.key = key
@@ -155,6 +168,11 @@ final class GameBuilderSession {
         if let hnd = self.handle {
             oa_gb_set_world_attached(hnd, 1)
             oa_gb_set_claims_clock(hnd, Int64(Date().timeIntervalSince1970))
+            if let pubData = try? Data(contentsOf: Self.publishStoreURL), !pubData.isEmpty {
+                pubData.withUnsafeBytes { ptr in
+                    _ = oa_gb_load_pub_buf(hnd, ptr.bindMemory(to: UInt8.self).baseAddress, Int32(pubData.count))
+                }
+            }
         }
         try? FileManager.default.createDirectory(at: Self.levelsDir, withIntermediateDirectories: true)
         loadInitialContent()
@@ -162,6 +180,7 @@ final class GameBuilderSession {
     }
 
     deinit {
+        disconnectLobby()
         stopAttachServer()
         if let h = handle { oa_gb_free(h) }
     }
@@ -352,6 +371,18 @@ final class GameBuilderSession {
             try? Data(buf[0..<n]).write(to: url, options: .atomic)
             oa_gb_clear_save_due(h)
         }
+        flushPublishIfDue()
+    }
+
+    func flushPublishIfDue() {
+        guard let h = handle, oa_gb_is_pub_due(h) != 0 else { return }
+        var pbuf = [UInt8](repeating: 0, count: 131072)
+        let n = Int(oa_gb_save_pub_buf(h, &pbuf, Int32(pbuf.count)))
+        if n > 0 {
+            try? FileManager.default.createDirectory(at: Self.baseDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try? Data(pbuf[0..<n]).write(to: Self.publishStoreURL, options: .atomic)
+            oa_gb_clear_pub_due(h)
+        }
     }
 
     func snapshotUi() -> GameBuilderUiSnapshot {
@@ -528,6 +559,193 @@ final class GameBuilderSession {
             try? FileManager.default.removeItem(atPath: attachSocketPath)
         }
         attachListening = false
+    }
+
+    // MARK: - Phase 4A Studio Drawer: Agents/Claims/Replay, Decide, Publish/Sync & Nostr Lobby (#14045)
+
+    private func loadOrCreateNostrKey32() -> [UInt8] {
+        if let d = try? Data(contentsOf: Self.lobbyKeyURL), d.count == 32 {
+            return Array(d)
+        }
+        var key = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, 32, &key)
+        try? FileManager.default.createDirectory(at: Self.baseDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? Data(key).write(to: Self.lobbyKeyURL, options: .atomic)
+        chmod(Self.lobbyKeyURL.path, 0o600)
+        return key
+    }
+
+    private func randomBytes(_ count: Int) -> [UInt8] {
+        var b = [UInt8](repeating: 0, count: count)
+        _ = SecRandomCopyBytes(kSecRandomDefault, count, &b)
+        return b
+    }
+
+    struct StudioSnapshot {
+        let metrics16: [Int64]
+        let shareCode: String
+        let pubGameId: Int32
+        let pubLiveVer: Int32
+        let agTsv: String
+        let pubTsv: String
+        let lobTsv: String
+    }
+
+    func snapshotStudio() -> StudioSnapshot {
+        var agI = [Int32](repeating: 0, count: 8)
+        var pubI = [Int32](repeating: 0, count: 4)
+        var lobI = [Int32](repeating: 0, count: 6)
+        var code = [CChar](repeating: 0, count: 16)
+        var agT = [CChar](repeating: 0, count: 4096)
+        var pubT = [CChar](repeating: 0, count: 4096)
+        var lobT = [CChar](repeating: 0, count: 4096)
+        if let h = handle {
+            let nowS = Int64(Date().timeIntervalSince1970)
+            _ = oa_gb_get_agents_state(h, nowS, &agI, &agT, Int32(agT.count))
+            _ = oa_gb_get_pub_state(h, &pubI, &code, &pubT, Int32(pubT.count))
+            _ = oa_gb_get_lobby_state(h, &lobI, &lobT, Int32(lobT.count))
+        }
+        let metrics: [Int64] = [
+            Int64(agI[0]), Int64(agI[1]), Int64(agI[2]), Int64(agI[3]), Int64(agI[4]), Int64(agI[5]),
+            Int64(pubI[0]), Int64(pubI[1]), Int64(pubI[2]), Int64(pubI[3]),
+            Int64(lobI[0]), Int64(lobI[1]), Int64(lobI[2]), Int64(lobI[3]), Int64(lobI[4]), Int64(lobI[5]),
+        ]
+        return StudioSnapshot(
+            metrics16: metrics,
+            shareCode: String(cString: code),
+            pubGameId: pubI[0],
+            pubLiveVer: pubI[1],
+            agTsv: String(cString: agT),
+            pubTsv: String(cString: pubT),
+            lobTsv: String(cString: lobT)
+        )
+    }
+
+    func ensureLobbyConnected() {
+        guard let h = handle else { return }
+        if lobbySocket == nil {
+            let key = loadOrCreateNostrKey32()
+            let aux = randomBytes(32)
+            var urlBuf = [CChar](repeating: 0, count: 256)
+            guard oa_gb_start_lobby(h, key, aux, &urlBuf, Int32(urlBuf.count)) != 0 else { return }
+            let raw = String(cString: urlBuf)
+            if !raw.isEmpty { lobbyRelayURL = raw }
+            guard let url = URL(string: lobbyRelayURL) else { return }
+            let sess = URLSession(configuration: .default)
+            let task = sess.webSocketTask(with: url)
+            self.lobbySession = sess
+            self.lobbySocket = task
+            task.resume()
+            let nowS = Int64(Date().timeIntervalSince1970)
+            oa_gb_notify_lobby_opened(h, nowS)
+            flushLobbyOutbound()
+            receiveNextLobbyFrame()
+            lobbyTimer?.invalidate()
+            lobbyTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+                guard let self, let h = self.handle else { return }
+                oa_gb_step_lobby(h, Int64(Date().timeIntervalSince1970))
+                self.flushLobbyOutbound()
+            }
+        }
+    }
+
+    private func flushLobbyOutbound() {
+        guard let h = handle, let ws = lobbySocket else { return }
+        var buf = [UInt8](repeating: 0, count: 16384)
+        var guardN = 0
+        while guardN < 16 {
+            let n = Int(oa_gb_take_lobby_frame(h, &buf, Int32(buf.count)))
+            if n <= 0 { break }
+            if let str = String(bytes: buf[0..<n], encoding: .utf8) {
+                ws.send(.string(str)) { _ in }
+            }
+            guardN += 1
+        }
+    }
+
+    private func receiveNextLobbyFrame() {
+        guard let ws = lobbySocket else { return }
+        ws.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let msg):
+                let data: Data?
+                switch msg {
+                case .string(let s): data = s.data(using: .utf8)
+                case .data(let d): data = d
+                @unknown default: data = nil
+                }
+                if let d = data, !d.isEmpty {
+                    DispatchQueue.main.async {
+                        if let h = self.handle {
+                            d.withUnsafeBytes { ptr in
+                                oa_gb_feed_lobby_frame(h, Int64(Date().timeIntervalSince1970), ptr.bindMemory(to: UInt8.self).baseAddress, Int32(d.count))
+                            }
+                            self.flushLobbyOutbound()
+                            self.onLobbyChanged?()
+                        }
+                    }
+                }
+                self.receiveNextLobbyFrame()
+            case .failure:
+                DispatchQueue.main.async {
+                    if let h = self.handle { oa_gb_notify_lobby_closed(h) }
+                    self.lobbySocket = nil
+                    self.onLobbyChanged?()
+                }
+            }
+        }
+    }
+
+    func disconnectLobby() {
+        lobbyTimer?.invalidate()
+        lobbyTimer = nil
+        lobbySocket?.cancel(with: .goingAway, reason: nil)
+        lobbySocket = nil
+        lobbySession?.invalidateAndCancel()
+        lobbySession = nil
+        if let h = handle { oa_gb_notify_lobby_closed(h) }
+    }
+
+    @discardableResult
+    func runLobbyVerb(_ verb: String, argsJson: String) -> (ok: Bool, json: String) {
+        ensureLobbyConnected()
+        guard let h = handle else { return (false, "") }
+        var out = [CChar](repeating: 0, count: 65536)
+        let rc = oa_gb_exec_lobby_verb(h, verb, argsJson, Int64(Date().timeIntervalSince1970), 1, &out, Int32(out.count))
+        flushLobbyOutbound()
+        return (rc > 0, String(cString: out))
+    }
+
+    func runDecideAsync(completion: @escaping (Bool) -> Void) {
+        guard let h = handle else { completion(false); return }
+        let key = loadOrCreateNostrKey32()
+        let aux = randomBytes(32)
+        let nonce = randomBytes(16)
+        var urlBuf = [CChar](repeating: 0, count: 256)
+        var authBuf = [CChar](repeating: 0, count: 4096)
+        var bodyBuf = [UInt8](repeating: 0, count: 65536)
+        let bn = Int(oa_gb_prepare_decide(h, key, aux, nonce, Int64(Date().timeIntervalSince1970), &urlBuf, Int32(urlBuf.count), &authBuf, Int32(authBuf.count), &bodyBuf, Int32(bodyBuf.count)))
+        guard bn > 0, let url = URL(string: String(cString: urlBuf)) else { completion(false); return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let auth = String(cString: authBuf)
+        if !auth.isEmpty { req.setValue(auth, forHTTPHeaderField: "Authorization") }
+        req.httpBody = Data(bodyBuf[0..<bn])
+        req.timeoutInterval = 20
+        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+            let code = Int32((resp as? HTTPURLResponse)?.statusCode ?? 0)
+            let bytes = data ?? Data()
+            DispatchQueue.main.async {
+                guard let self, let h = self.handle else { completion(false); return }
+                let changed = bytes.withUnsafeBytes { ptr in
+                    oa_gb_apply_decide(h, code, ptr.bindMemory(to: UInt8.self).baseAddress, Int32(bytes.count))
+                } != 0
+                if changed { self.flushSaveIfDue() }
+                completion(changed)
+            }
+        }.resume()
     }
 }
 

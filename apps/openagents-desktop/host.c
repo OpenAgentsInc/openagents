@@ -2340,6 +2340,11 @@ void cd_gb_hydrate_progress(void *page, int active, int pct) {
   coder_page_gb_hydrate_progress(cd_state(c), active != 0, pct);
   cd_woke(c);
 }
+void cd_gb_sync_studio(void *page, const int64_t metrics16[16], const char *ag_tsv, const char *pub_tsv, const char *lob_tsv, const char *note) {
+  CoderHost *c = page; if (!c || !metrics16) return;
+  coder_page_gb_sync_studio(cd_state(c), (coax_v_s64){(int64_t *)metrics16, 16}, cd_string(ag_tsv), cd_string(pub_tsv), cd_string(lob_tsv), cd_string(note));
+  cd_woke(c);
+}
 int cd_mv_focus_viewport(void *page) {
   CoderHost *c = page; if (!c) return 0;
   int r = coder_page_mv_focus_viewport(cd_state(c)) ? 1 : 0;

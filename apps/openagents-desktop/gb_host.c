@@ -223,3 +223,98 @@ int oa_gb_get_tree_tsv(void *handle, char *out, int cap) {
   out[n] = '\0';
   return n;
 }
+
+// ---- Phase 4A Studio Drawer C wrappers (#14045)
+
+int oa_gb_get_agents_state(void *handle, int64_t now_sec, int32_t out_i8[8], char *out_tsv, int tsv_cap) {
+  if (!handle || !out_i8) return 0;
+  coax_v_u8 tv = {(uint8_t *)out_tsv, (out_tsv && tsv_cap > 0) ? (int64_t)tsv_cap : 0};
+  return oa_gb_agents_state(gb_view(handle), now_sec, (coax_v_s32){out_i8, 8}, tv) ? 1 : 0;
+}
+void oa_gb_set_agents_account(void *handle, int on) { if (handle) oa_gb_agents_account_set(gb_view(handle), on != 0); }
+int32_t oa_gb_scrub_replay(void *handle, int32_t target_step) { return handle ? oa_gb_replay_to(gb_view(handle), target_step) : 0; }
+
+int oa_gb_prepare_decide(void *handle, const uint8_t key32[32], const uint8_t aux32[32], const uint8_t nonce16[16], int64_t now_s, char *out_url, int url_cap, char *out_auth, int auth_cap, uint8_t *out_body, int body_cap) {
+  if (!handle || !key32 || !aux32 || !nonce16 || !out_body || body_cap <= 0) return -1;
+  return (int)oa_gb_decide_prep(
+    gb_view(handle),
+    (coax_v_u8){(uint8_t *)key32, 32},
+    (coax_v_u8){(uint8_t *)aux32, 32},
+    (coax_v_u8){(uint8_t *)nonce16, 16},
+    now_s,
+    (coax_v_u8){(uint8_t *)out_url, (out_url && url_cap > 0) ? (int64_t)url_cap : 0},
+    (coax_v_u8){(uint8_t *)out_auth, (out_auth && auth_cap > 0) ? (int64_t)auth_cap : 0},
+    (coax_v_u8){out_body, (int64_t)body_cap}
+  );
+}
+int oa_gb_apply_decide(void *handle, int32_t status, const uint8_t *body, int len) {
+  if (!handle) return 0;
+  return oa_gb_decide_apply(gb_view(handle), status, (coax_v_u8){(uint8_t *)body, (body && len > 0) ? (int64_t)len : 0}) ? 1 : 0;
+}
+
+int oa_gb_load_pub_buf(void *handle, const uint8_t *bytes, int len) {
+  if (!handle || !bytes || len <= 0) return 0;
+  return oa_gb_pub_load_buf(gb_view(handle), (coax_v_u8){(uint8_t *)bytes, (int64_t)len}) ? 1 : 0;
+}
+int oa_gb_is_pub_due(void *handle) { return handle && oa_gb_pub_is_due(gb_view(handle)) ? 1 : 0; }
+int oa_gb_save_pub_buf(void *handle, uint8_t *out, int cap) {
+  if (!handle || !out || cap <= 0) return 0;
+  return (int)oa_gb_pub_save_buf(gb_view(handle), (coax_v_u8){out, (int64_t)cap});
+}
+void oa_gb_clear_pub_due(void *handle) { if (handle) oa_gb_pub_clear_due(gb_view(handle)); }
+int oa_gb_get_pub_state(void *handle, int32_t out_i4[4], char out_code16[16], char *out_tsv, int tsv_cap) {
+  if (!handle || !out_i4) return 0;
+  coax_v_u8 cv = {(uint8_t *)out_code16, out_code16 ? 16 : 0};
+  coax_v_u8 tv = {(uint8_t *)out_tsv, (out_tsv && tsv_cap > 0) ? (int64_t)tsv_cap : 0};
+  return oa_gb_pub_state(gb_view(handle), (coax_v_s32){out_i4, 4}, cv, tv) ? 1 : 0;
+}
+int oa_gb_begin_sync(void *handle, const int32_t *levels, int nlevels, const uint8_t *kept, int kept_len) {
+  if (!handle) return 0;
+  coax_v_s32 lv = {(int32_t *)levels, (levels && nlevels > 0) ? (int64_t)nlevels : 0};
+  coax_v_u8 kv = {(uint8_t *)kept, (kept && kept_len > 0) ? (int64_t)kept_len : 0};
+  return oa_gb_sync_start(gb_view(handle), lv, kv) ? 1 : 0;
+}
+int32_t oa_gb_poll_sync(void *handle, char *out_path, int path_cap, uint8_t *out_body, int body_cap) {
+  if (!handle) return 0;
+  return oa_gb_sync_step(
+    gb_view(handle),
+    (coax_v_u8){(uint8_t *)out_path, (out_path && path_cap > 0) ? (int64_t)path_cap : 0},
+    (coax_v_u8){out_body, (out_body && body_cap > 0) ? (int64_t)body_cap : 0}
+  );
+}
+void oa_gb_feed_sync_reply(void *handle, int32_t status, const uint8_t *body, int len) {
+  if (handle) oa_gb_sync_reply(gb_view(handle), status, (coax_v_u8){(uint8_t *)body, (body && len > 0) ? (int64_t)len : 0});
+}
+
+int oa_gb_start_lobby(void *handle, const uint8_t key32[32], const uint8_t aux32[32], char *out_url, int url_cap) {
+  if (!handle || !key32 || !aux32) return 0;
+  return oa_gb_lobby_init(
+    gb_view(handle),
+    (coax_v_u8){(uint8_t *)key32, 32},
+    (coax_v_u8){(uint8_t *)aux32, 32},
+    (coax_v_u8){(uint8_t *)out_url, (out_url && url_cap > 0) ? (int64_t)url_cap : 0}
+  ) ? 1 : 0;
+}
+void oa_gb_notify_lobby_opened(void *handle, int64_t now_s) { if (handle) oa_gb_lobby_opened(gb_view(handle), now_s); }
+void oa_gb_notify_lobby_closed(void *handle) { if (handle) oa_gb_lobby_closed(gb_view(handle)); }
+void oa_gb_step_lobby(void *handle, int64_t now_s) { if (handle) oa_gb_lobby_tick(gb_view(handle), now_s); }
+int oa_gb_take_lobby_frame(void *handle, uint8_t *out, int cap) {
+  if (!handle || !out || cap <= 0) return 0;
+  return (int)oa_gb_lobby_take(gb_view(handle), (coax_v_u8){out, (int64_t)cap});
+}
+void oa_gb_feed_lobby_frame(void *handle, int64_t now_s, const uint8_t *frame, int len) {
+  if (handle && frame && len > 0) oa_gb_lobby_input(gb_view(handle), now_s, (coax_v_u8){(uint8_t *)frame, (int64_t)len});
+}
+int oa_gb_exec_lobby_verb(void *handle, const char *verb, const char *args_json, int64_t now_s, int person, char *out_json, int out_cap) {
+  if (!handle || !verb || !out_json || out_cap < 2) return 0;
+  int64_t r = oa_gb_lobby_run(gb_view(handle), gb_str(verb), gb_str(args_json ? args_json : ""), now_s, person != 0, (coax_v_u8){(uint8_t *)out_json, (int64_t)(out_cap - 1)});
+  int64_t n = r < 0 ? -r : r;
+  if (n >= out_cap) n = out_cap - 1;
+  out_json[n] = '\0';
+  return (int)r;
+}
+int oa_gb_get_lobby_state(void *handle, int32_t out_i6[6], char *out_tsv, int tsv_cap) {
+  if (!handle || !out_i6) return 0;
+  coax_v_u8 tv = {(uint8_t *)out_tsv, (out_tsv && tsv_cap > 0) ? (int64_t)tsv_cap : 0};
+  return oa_gb_lobby_state(gb_view(handle), (coax_v_s32){out_i6, 6}, tv) ? 1 : 0;
+}

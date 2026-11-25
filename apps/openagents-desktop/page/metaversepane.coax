@@ -209,6 +209,12 @@ CpMvTreeRow :: struct {
   label: [64] u8; label_n: int;
 }
 
+CP_GB_STUDIO_ROWS :: 24;
+CpGbStudioRow :: struct {
+  tag: [4] u8; tag_n: int;
+  text: [88] u8; text_n: int;
+}
+
 CpGbUiState :: struct {
   tool: int;
   snap_idx: int;
@@ -231,6 +237,27 @@ CpGbUiState :: struct {
   playtest_stuck: int;
   hydrating: bool;
   hydrate_pct: int;
+  // Phase 4A Studio Drawer live state (#14045)
+  agents_count: int;
+  agents_running: int;
+  claims_count: int;
+  agents_account_on: bool;
+  replay_steps: int;
+  replay_at: int;
+  pub_game_id: int;
+  pub_live_ver: int;
+  pub_ver_count: int;
+  pub_fb_count: int;
+  lobby_connected: bool;
+  lobby_online: int;
+  lobby_msgs: int;
+  party_on: bool;
+  party_count: int;
+  party_looking: bool;
+  studio_note: [128] u8; studio_note_n: int;
+  ag_rows: [CP_GB_STUDIO_ROWS] CpGbStudioRow; ag_nrows: int;
+  pub_rows: [CP_GB_STUDIO_ROWS] CpGbStudioRow; pub_nrows: int;
+  lob_rows: [CP_GB_STUDIO_ROWS] CpGbStudioRow; lob_nrows: int;
 }
 
 CpMetaversePane :: struct {
@@ -847,6 +874,12 @@ cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_GB_PUBLISH_ACT {
     if id == "coder.gb.pub.go" { cp_mv_set_cmd(s, "publish", "", CP_ASK_GB_CMD); return true; }
     if id == "coder.gb.pub.unpub" { cp_mv_set_cmd(s, "unpublish", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.remove" { cp_mv_set_cmd(s, "remove-published", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.rollback" { cp_mv_set_cmd(s, "set-live", "prev", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.sync" { cp_mv_set_cmd(s, "sync", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.fb_hide" { cp_mv_set_cmd(s, "feedback-hide", "latest", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.fb_block" { cp_mv_set_cmd(s, "block", "latest", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.pub.fb_report" { cp_mv_set_cmd(s, "report", "latest", CP_ASK_GB_CMD); return true; }
     if id == "coder.gb.pub.copy" { cp_mv_set_cmd(s, "copy-share-url", cast(string) mv[0].gb[0].share_code[0..<mv[0].gb[0].share_code_n], CP_ASK_GB_CMD); return true; }
     return false;
   }
@@ -855,11 +888,35 @@ cp_mv_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     if id == "coder.gb.ag.playtest" { cp_mv_set_cmd(s, "agent-new", "playtest", CP_ASK_GB_CMD); return true; }
     if id == "coder.gb.ag.code" { cp_mv_set_cmd(s, "code-agent", "", CP_ASK_GB_NEW_CODE_AGENT); return true; }
     if id == "coder.gb.ag.undo" { cp_mv_set_cmd(s, "undo-turn", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.ag.decide" { cp_mv_set_cmd(s, "decide", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.ag.acct" {
+      mv[0].gb[0].agents_account_on = !mv[0].gb[0].agents_account_on;
+      cp_mv_set_cmd(s, "agents-account", ifx mv[0].gb[0].agents_account_on then "1" else "0", CP_ASK_GB_CMD);
+      return true;
+    }
     return false;
+  }
+  if act == CP_GB_REPLAY_SCRUB {
+    gb := mv[0].gb[..];
+    next_at := gb[0].replay_at;
+    if id == "coder.gb.rep.prev" && next_at > 0 { next_at -= 1; }
+    else if id == "coder.gb.rep.next" && next_at < gb[0].replay_steps { next_at += 1; }
+    else if id == "coder.gb.rep.start" { next_at = 0; }
+    else if id == "coder.gb.rep.end" { next_at = gb[0].replay_steps; }
+    gb[0].replay_at = next_at;
+    nb: [24] u8; nn := el_put_i(nb[..], 0, next_at);
+    cp_mv_set_cmd(s, "replay-scrub", cast(string) nb[0..<nn], CP_ASK_GB_CMD);
+    return true;
   }
   if act == CP_GB_LOBBY_ACT {
     if id == "coder.gb.lob.join" { cp_mv_set_cmd(s, "lobby-read", "", CP_ASK_GB_CMD); return true; }
-    if id == "coder.gb.lob.party" { cp_mv_set_cmd(s, "party-start", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.party" { cp_mv_set_cmd(s, "party-look", "1", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.start" { cp_mv_set_cmd(s, "party-start", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.leave" { cp_mv_set_cmd(s, "party-leave", "", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.say" { cp_mv_set_cmd(s, "lobby-say", "Ready to play!", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.invite" { cp_mv_set_cmd(s, "party-invite", "0", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.mute" { cp_mv_set_cmd(s, "lobby-mute", "0", CP_ASK_GB_CMD); return true; }
+    if id == "coder.gb.lob.report" { cp_mv_set_cmd(s, "lobby-report", "0", CP_ASK_GB_CMD); return true; }
     return false;
   }
   if act == CP_GB_REMIX_COPY {
@@ -1295,43 +1352,128 @@ cp_mv_draw_drawer :: (s: [] CoderPage, f: [] UiFrame, dx: f32, dy: f32, dw: f32,
   }
 
   if mv[0].drawer_tab == CP_MV_DRW_AGENTS {
+    gb := mv[0].gb[..];
     bw := dw - 2.0f32 * pad;
-    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "GAMEBUILDER AGENTS"); yy += k.small.line + 6.0f32;
-    _ := app_button(f, "coder.gb.ag.build", dx + pad, yy, bw, -1, "+ New Builder Agent", APP_BUTTON_PRIMARY, 0, CP_GB_AGENT_ACT); yy += k.control_h + 6.0f32;
-    _ := app_button(f, "coder.gb.ag.playtest", dx + pad, yy, bw, -1, "+ New Playtester Agent", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 6.0f32;
-    _ := app_button(f, "coder.gb.ag.code", dx + pad, yy, bw, -1, "+ New Code Agent (⇧⌘K)", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 10.0f32;
-    _ := app_button(f, "coder.gb.ag.undo", dx + pad, yy, bw, -1, "Undo Last Agent Turn", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 8.0f32;
-    if mv[0].gb[0].playtest_summary_n > 0 {
-      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, cast(string) mv[0].gb[0].playtest_summary[0..<mv[0].gb[0].playtest_summary_n], bw));
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "GAMEBUILDER AGENTS & CLAIMS"); yy += k.small.line + 4.0f32;
+    sb: [96] u8; sn := el_put(sb[..], 0, "Agents: "); sn = el_put_i(sb[..], sn, gb[0].agents_count);
+    sn = el_put(sb[..], sn, " ("); sn = el_put_i(sb[..], sn, gb[0].agents_running); sn = el_put(sb[..], sn, " active) · Claims: ");
+    sn = el_put_i(sb[..], sn, gb[0].claims_count);
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, sheet_pool(sh, cast(string) sb[0..<sn]), bw)); yy += k.small.line + 8.0f32;
+
+    _ := app_button(f, "coder.gb.ag.build", dx + pad, yy, bw, -1, "+ New Builder Agent", APP_BUTTON_PRIMARY, 0, CP_GB_AGENT_ACT); yy += k.control_h + 4.0f32;
+    _ := app_button(f, "coder.gb.ag.playtest", dx + pad, yy, bw, -1, "+ New Playtester Agent", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 4.0f32;
+    _ := app_button(f, "coder.gb.ag.code", dx + pad, yy, bw, -1, "+ New Code Agent (⇧⌘K)", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 4.0f32;
+    _ := app_button(f, "coder.gb.ag.decide", dx + pad, yy, bw, -1, "✦ Decide Next Edit", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 4.0f32;
+    _ := app_button(f, "coder.gb.ag.undo", dx + pad, yy, bw, -1, "Undo Last Agent Turn", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 6.0f32;
+    _ := app_button(f, "coder.gb.ag.acct", dx + pad, yy, bw, -1, ifx gb[0].agents_account_on then "Account Sync: On" else "Account Sync: Local Only", APP_BUTTON_DEFAULT, 0, CP_GB_AGENT_ACT); yy += k.control_h + 10.0f32;
+
+    // Revision Replay Scrubber (agent-replay.coax / EditorSceneState step_n & done)
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "REPLAY SCRUBBER"); yy += k.small.line + 4.0f32;
+    rb: [48] u8; rn := el_put(rb[..], 0, "Step "); rn = el_put_i(rb[..], rn, gb[0].replay_at);
+    rn = el_put(rb[..], rn, " / "); rn = el_put_i(rb[..], rn, gb[0].replay_steps);
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, sheet_pool(sh, cast(string) rb[0..<rn])); yy += k.small.line + 4.0f32;
+    sx := dx + pad;
+    sx += cp_mv_pill_btn(f, "coder.gb.rep.start", "|◀", sx, yy, 22.0f32, false, CP_GB_REPLAY_SCRUB) + 4.0f32;
+    sx += cp_mv_pill_btn(f, "coder.gb.rep.prev", "◀ Prev", sx, yy, 22.0f32, false, CP_GB_REPLAY_SCRUB) + 4.0f32;
+    sx += cp_mv_pill_btn(f, "coder.gb.rep.next", "Next ▶", sx, yy, 22.0f32, false, CP_GB_REPLAY_SCRUB) + 4.0f32;
+    _ = cp_mv_pill_btn(f, "coder.gb.rep.end", "▶|", sx, yy, 22.0f32, false, CP_GB_REPLAY_SCRUB);
+    yy += 30.0f32;
+
+    if gb[0].playtest_summary_n > 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, cast(string) gb[0].playtest_summary[0..<gb[0].playtest_summary_n], bw));
       yy += k.small.line + 6.0f32;
-      if mv[0].gb[0].playtest_stuck > 0 {
+      if gb[0].playtest_stuck > 0 {
         _ := app_button(f, "coder.gb.pt.pin", dx + pad, yy, bw, -1, "Jump to Stuck Bot", APP_BUTTON_DEFAULT, 0, CP_GB_PLAYTEST_PIN);
+        yy += k.control_h + 6.0f32;
       }
     }
-    mv[0].drawer_content = 240.0f32;
+    if gb[0].ag_nrows > 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "TIMELINE & CLAIMS"); yy += k.small.line + 4.0f32;
+      for i: 0..<gb[0].ag_nrows {
+        if yy > dy + dh { break; }
+        row_s := cast(string) gb[0].ag_rows[i].text[0..<gb[0].ag_rows[i].text_n];
+        _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, row_s, bw));
+        yy += k.small.line + 4.0f32;
+      }
+    }
+    mv[0].drawer_content = yy + 24.0f32 - cy;
     return;
   }
 
   if mv[0].drawer_tab == CP_MV_DRW_SHARE {
+    gb := mv[0].gb[..];
     bw := dw - 2.0f32 * pad;
-    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "PUBLISH & SHARE"); yy += k.small.line + 6.0f32;
-    _ := app_button(f, "coder.gb.pub.go", dx + pad, yy, bw, -1, "Publish to gamebuilder.org", APP_BUTTON_PRIMARY, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 8.0f32;
-    if mv[0].gb[0].share_code_n > 0 {
-      sb: [64] u8; sn := el_put(sb[..], 0, "gamebuilder.org/g/"); sn = el_put(sb[..], sn, cast(string) mv[0].gb[0].share_code[0..<mv[0].gb[0].share_code_n]);
-      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, hex(0x34D399, 1.0f32), sheet_pool(sh, cast(string) sb[0..<sn])); yy += k.small.line + 6.0f32;
-      _ := app_button(f, "coder.gb.pub.copy", dx + pad, yy, bw, -1, "Copy Share Link", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 6.0f32;
-      _ := app_button(f, "coder.gb.pub.unpub", dx + pad, yy, bw, -1, "Unpublish", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT);
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "PUBLISH, VERSIONS & SYNC"); yy += k.small.line + 6.0f32;
+    _ := app_button(f, "coder.gb.pub.go", dx + pad, yy, bw, -1, "Publish to gamebuilder.org", APP_BUTTON_PRIMARY, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 6.0f32;
+    _ := app_button(f, "coder.gb.pub.sync", dx + pad, yy, bw, -1, "Sync with Account", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 8.0f32;
+    if gb[0].share_code_n > 0 {
+      sb: [64] u8; sn := el_put(sb[..], 0, "gamebuilder.org/g/"); sn = el_put(sb[..], sn, cast(string) gb[0].share_code[0..<gb[0].share_code_n]);
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, hex(0x34D399, 1.0f32), sheet_pool(sh, cast(string) sb[0..<sn])); yy += k.small.line + 4.0f32;
+      vb: [64] u8; vn := el_put(vb[..], 0, "Live v"); vn = el_put_i(vb[..], vn, gb[0].pub_live_ver);
+      vn = el_put(vb[..], vn, " · "); vn = el_put_i(vb[..], vn, gb[0].pub_ver_count); vn = el_put(vb[..], vn, " versions · ");
+      vn = el_put_i(vb[..], vn, gb[0].pub_fb_count); vn = el_put(vb[..], vn, " feedback");
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, sheet_pool(sh, cast(string) vb[0..<vn])); yy += k.small.line + 6.0f32;
+      _ := app_button(f, "coder.gb.pub.copy", dx + pad, yy, bw, -1, "Copy Share Link", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 4.0f32;
+      if gb[0].pub_ver_count > 1 {
+        _ := app_button(f, "coder.gb.pub.rollback", dx + pad, yy, bw, -1, "Rollback Previous Version", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 4.0f32;
+      }
+      _ := app_button(f, "coder.gb.pub.unpub", dx + pad, yy, bw, -1, "Unpublish", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 4.0f32;
+      _ := app_button(f, "coder.gb.pub.remove", dx + pad, yy, bw, -1, "Remove Published", APP_BUTTON_DEFAULT, 0, CP_GB_PUBLISH_ACT); yy += k.control_h + 8.0f32;
     }
-    mv[0].drawer_content = 180.0f32;
+    if gb[0].pub_fb_count > 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "MODERATION"); yy += k.small.line + 4.0f32;
+      mx := dx + pad;
+      mx += cp_mv_pill_btn(f, "coder.gb.pub.fb_hide", "Hide", mx, yy, 22.0f32, false, CP_GB_PUBLISH_ACT) + 4.0f32;
+      mx += cp_mv_pill_btn(f, "coder.gb.pub.fb_block", "Block", mx, yy, 22.0f32, false, CP_GB_PUBLISH_ACT) + 4.0f32;
+      _ = cp_mv_pill_btn(f, "coder.gb.pub.fb_report", "Report", mx, yy, 22.0f32, false, CP_GB_PUBLISH_ACT);
+      yy += 28.0f32;
+    }
+    if gb[0].pub_nrows > 0 {
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "VERSIONS & FEEDBACK"); yy += k.small.line + 4.0f32;
+      for i: 0..<gb[0].pub_nrows {
+        if yy > dy + dh { break; }
+        row_s := cast(string) gb[0].pub_rows[i].text[0..<gb[0].pub_rows[i].text_n];
+        _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, row_s, bw));
+        yy += k.small.line + 4.0f32;
+      }
+    }
+    mv[0].drawer_content = yy + 24.0f32 - cy;
     return;
   }
 
-  // Lobby tab
+  // Lobby & 4-Player Party tab (lobby.coax, party.coax, wss://relay.openagents.com)
+  gb := mv[0].gb[..];
   bw := dw - 2.0f32 * pad;
-  _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "NOSTR LOBBY & PARTY"); yy += k.small.line + 6.0f32;
-  _ := app_button(f, "coder.gb.lob.join", dx + pad, yy, bw, -1, "Connect Global Lobby", APP_BUTTON_PRIMARY, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 6.0f32;
-  _ := app_button(f, "coder.gb.lob.party", dx + pad, yy, bw, -1, "Quick Match Party (4p)", APP_BUTTON_DEFAULT, 0, CP_GB_LOBBY_ACT);
-  mv[0].drawer_content = 120.0f32;
+  _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "NOSTR LOBBY & PARTY"); yy += k.small.line + 4.0f32;
+  lb: [96] u8; ln := el_put(lb[..], 0, ifx gb[0].lobby_connected then "Connected · " else "Offline · ");
+  ln = el_put_i(lb[..], ln, gb[0].lobby_online); ln = el_put(lb[..], ln, " online");
+  if gb[0].party_on { ln = el_put(lb[..], ln, " · Party "); ln = el_put_i(lb[..], ln, gb[0].party_count); ln = el_put(lb[..], ln, "/4"); }
+  else if gb[0].party_looking { ln = el_put(lb[..], ln, " · Matchmaking…"); }
+  _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, ifx gb[0].lobby_connected then hex(0x34D399, 1.0f32) else k.muted, sheet_pool(sh, cast(string) lb[0..<ln])); yy += k.small.line + 8.0f32;
+
+  _ := app_button(f, "coder.gb.lob.join", dx + pad, yy, bw, -1, ifx gb[0].lobby_connected then "Refresh Lobby" else "Connect Global Lobby", APP_BUTTON_PRIMARY, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 4.0f32;
+  _ := app_button(f, "coder.gb.lob.party", dx + pad, yy, bw, -1, ifx gb[0].party_looking then "Cancel Quick Match" else "Quick Match Party (4p)", APP_BUTTON_DEFAULT, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 4.0f32;
+  if gb[0].party_on {
+    _ := app_button(f, "coder.gb.lob.start", dx + pad, yy, bw, -1, "Start Party Match", APP_BUTTON_PRIMARY, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 4.0f32;
+    _ := app_button(f, "coder.gb.lob.leave", dx + pad, yy, bw, -1, "Leave Party", APP_BUTTON_DEFAULT, 0, CP_GB_LOBBY_ACT); yy += k.control_h + 4.0f32;
+  }
+  lx := dx + pad;
+  lx += cp_mv_pill_btn(f, "coder.gb.lob.say", "Say Hi", lx, yy, 22.0f32, false, CP_GB_LOBBY_ACT) + 4.0f32;
+  lx += cp_mv_pill_btn(f, "coder.gb.lob.invite", "Invite", lx, yy, 22.0f32, false, CP_GB_LOBBY_ACT) + 4.0f32;
+  lx += cp_mv_pill_btn(f, "coder.gb.lob.mute", "Mute", lx, yy, 22.0f32, false, CP_GB_LOBBY_ACT) + 4.0f32;
+  _ = cp_mv_pill_btn(f, "coder.gb.lob.report", "Report", lx, yy, 22.0f32, false, CP_GB_LOBBY_ACT);
+  yy += 30.0f32;
+
+  if gb[0].lob_nrows > 0 {
+    _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.muted, "PLAYERS & CHAT"); yy += k.small.line + 4.0f32;
+    for i: 0..<gb[0].lob_nrows {
+      if yy > dy + dh { break; }
+      row_s := cast(string) gb[0].lob_rows[i].text[0..<gb[0].lob_rows[i].text_n];
+      _ := sheet_text(sh, m, -1, dx + pad, yy, k.small.line, k.small.face, k.ink, app_fit(f, k.small.face, row_s, bw));
+      yy += k.small.line + 4.0f32;
+    }
+  }
+  mv[0].drawer_content = yy + 24.0f32 - cy;
 }
 
 // Floating popover helper drawn into sheet.over (automatically cut out of native Metal view by cd_over_rects).
@@ -1650,4 +1792,55 @@ coder_page_mv_focus_viewport :: (s: [] CoderPage) -> bool #export_c #effects(all
   if s.count < 1 || !cp_mv_shown(s) { return false; }
   cp_ed_focus(s, CP_KB_MV);
   return true;
+}
+
+cp_gb_parse_studio_rows :: (tsv: string, out: [] CpGbStudioRow) -> int {
+  n := 0; i := 0;
+  while i < tsv.count && n < out.count {
+    e := i; while e < tsv.count && tsv[e] != '\n' { e += 1; }
+    line := cast(string) tsv[i..<e];
+    i = e + 1;
+    if line.count == 0 { continue; }
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    r := out[n..<n + 1];
+    if tab < line.count {
+      r[0].tag_n = cp_out(r[0].tag[..], cast(string) line[0..<tab]);
+      r[0].text_n = cp_out(r[0].text[..], cast(string) line[tab + 1..<line.count]);
+    } else {
+      r[0].tag_n = 0;
+      r[0].text_n = cp_out(r[0].text[..], line);
+    }
+    n += 1;
+  }
+  return n;
+}
+
+// Syncs Phase 4A Studio Drawer state (Agents/Claims/Replay, Share/Publish/Feedback, Nostr Lobby/Party).
+// metrics[0..15]:
+//   0:agents_count, 1:agents_running, 2:claims_count, 3:agents_account_on, 4:replay_steps, 5:replay_at,
+//   6:pub_game_id, 7:pub_live_ver, 8:pub_ver_count, 9:pub_fb_count,
+//   10:lobby_connected, 11:lobby_online, 12:lobby_msgs, 13:party_on, 14:party_count, 15:party_looking
+coder_page_gb_sync_studio :: (s: [] CoderPage, metrics: [] int, ag_tsv: string, pub_tsv: string, lob_tsv: string, note: string) #export_c #effects(all) {
+  if s.count < 1 || metrics.count < 16 { return; }
+  gb := s[0].mv[0].gb[..];
+  gb[0].agents_count = metrics[0];
+  gb[0].agents_running = metrics[1];
+  gb[0].claims_count = metrics[2];
+  gb[0].agents_account_on = metrics[3] != 0;
+  gb[0].replay_steps = metrics[4];
+  gb[0].replay_at = metrics[5];
+  gb[0].pub_game_id = metrics[6];
+  gb[0].pub_live_ver = metrics[7];
+  gb[0].pub_ver_count = metrics[8];
+  gb[0].pub_fb_count = metrics[9];
+  gb[0].lobby_connected = metrics[10] != 0;
+  gb[0].lobby_online = metrics[11];
+  gb[0].lobby_msgs = metrics[12];
+  gb[0].party_on = metrics[13] != 0;
+  gb[0].party_count = metrics[14];
+  gb[0].party_looking = metrics[15] != 0;
+  gb[0].studio_note_n = cp_out(gb[0].studio_note[..], note);
+  gb[0].ag_nrows = cp_gb_parse_studio_rows(ag_tsv, gb[0].ag_rows[..]);
+  gb[0].pub_nrows = cp_gb_parse_studio_rows(pub_tsv, gb[0].pub_rows[..]);
+  gb[0].lob_nrows = cp_gb_parse_studio_rows(lob_tsv, gb[0].lob_rows[..]);
 }

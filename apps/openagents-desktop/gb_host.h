@@ -89,6 +89,31 @@ int oa_gb_get_pic_jpeg(void *handle, int32_t rev, int32_t which, uint8_t *out, i
 int oa_gb_snapshot_ui(void *handle, int32_t out_i26[26], int64_t out_cam9[9], char *out_label, int label_cap, char *out_note, int note_cap);
 int oa_gb_get_tree_tsv(void *handle, char *out, int cap);
 
+// Phase 4A Studio Drawer: Agents, Claims, Replay Scrubber, Decide, Publish/Sync & Nostr Lobby (#14045)
+int oa_gb_get_agents_state(void *handle, int64_t now_sec, int32_t out_i8[8], char *out_tsv, int tsv_cap);
+void oa_gb_set_agents_account(void *handle, int on);
+int32_t oa_gb_scrub_replay(void *handle, int32_t target_step);
+int oa_gb_prepare_decide(void *handle, const uint8_t key32[32], const uint8_t aux32[32], const uint8_t nonce16[16], int64_t now_s, char *out_url, int url_cap, char *out_auth, int auth_cap, uint8_t *out_body, int body_cap);
+int oa_gb_apply_decide(void *handle, int32_t status, const uint8_t *body, int len);
+
+int oa_gb_load_pub_buf(void *handle, const uint8_t *bytes, int len);
+int oa_gb_is_pub_due(void *handle);
+int oa_gb_save_pub_buf(void *handle, uint8_t *out, int cap);
+void oa_gb_clear_pub_due(void *handle);
+int oa_gb_get_pub_state(void *handle, int32_t out_i4[4], char out_code16[16], char *out_tsv, int tsv_cap);
+int oa_gb_begin_sync(void *handle, const int32_t *levels, int nlevels, const uint8_t *kept, int kept_len);
+int32_t oa_gb_poll_sync(void *handle, char *out_path, int path_cap, uint8_t *out_body, int body_cap);
+void oa_gb_feed_sync_reply(void *handle, int32_t status, const uint8_t *body, int len);
+
+int oa_gb_start_lobby(void *handle, const uint8_t key32[32], const uint8_t aux32[32], char *out_url, int url_cap);
+void oa_gb_notify_lobby_opened(void *handle, int64_t now_s);
+void oa_gb_notify_lobby_closed(void *handle);
+void oa_gb_step_lobby(void *handle, int64_t now_s);
+int oa_gb_take_lobby_frame(void *handle, uint8_t *out, int cap);
+void oa_gb_feed_lobby_frame(void *handle, int64_t now_s, const uint8_t *frame, int len);
+int oa_gb_exec_lobby_verb(void *handle, const char *verb, const char *args_json, int64_t now_s, int person, char *out_json, int out_cap);
+int oa_gb_get_lobby_state(void *handle, int32_t out_i6[6], char *out_tsv, int tsv_cap);
+
 #ifdef __cplusplus
 }
 #endif

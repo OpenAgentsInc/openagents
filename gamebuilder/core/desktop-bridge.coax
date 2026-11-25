@@ -17,6 +17,13 @@ GbDesktopState :: struct {
   world_attached: bool;
   world_verts: [65536] f32;
   world_uniforms: [256] f32;
+  lobby: [1] Lobby;
+  lobby_key: [32] u8;
+  lobby_aux: [32] u8;
+  lobby_ready: bool;
+  sync_st: [1] GbSync;
+  ag_store: [1] AgrStore;
+  now_ms: s64;
 }
 
 oa_gb_state_size :: () -> int #export_c #effects(all) {
@@ -50,7 +57,9 @@ oa_gb_run_verb :: (st: [] GbDesktopState, verb_name: string, args_json: string, 
   if st.count < 1 || out_json.count < 2 { return 0; }
   v := gb_find(verb_name);
   if v < 0 { return 0; }
-  return gb_command(st[0].e[..], v, args_json, levels, out_json);
+  r := gb_command_run_world(st[0].e[..], v, args_json, GbWorld.{levels = levels, agents = st[0].ag_store[..], now = st[0].now_ms}, out_json, 0);
+  if r.json.count == 0 { return 0; }
+  return ifx r.code == GB_DONE then r.json.count else -r.json.count;
 }
 
 oa_gb_press_ctrl :: (st: [] GbDesktopState, ctrl_id: string, args_json: string, levels: [] s32, out_json: [] u8) -> s64 #export_c #effects(all) {
@@ -397,4 +406,274 @@ oa_gb_tree_tsv :: (st: [] GbDesktopState, out: [] u8) -> int #export_c #effects(
     tx_put(t[..], "\n");
   }
   return cast(int) t[0].at;
+}
+
+// ---- Phase 4A Studio Drawer: Agents, Claims, Replay Scrubber, Decide, Publish/Sync & Nostr Lobby (#14045)
+
+// Reports Studio Agents/Claims/Replay/Decide summary:
+// out_i[0..7]: [agents_n, running_n, claims_n, account_sync_on, replay_steps, replay_at, changes_n, deciding]
+// out_tsv: human-readable rows (claims regions, agent records, change marks) for Coax drawer rendering.
+oa_gb_agents_state :: (st: [] GbDesktopState, now_sec: s64, out_i: [] s32, out_tsv: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 || out_i.count < 8 { return false; }
+  e := st[0].e[..];
+  st[0].now_ms = now_sec * 1000;
+  ed_claims_clock(e, now_sec);
+  cl := claims_here(e);
+  ag := st[0].ag_store[..];
+  out_i[0] = cast(s32) ag[0].n;
+  running: s32 = 0;
+  for i: 0..<ag[0].n {
+    s0 := ag[0].r[i].state;
+    if s0 == AGR_WORKING || s0 == AGR_WAITING || s0 == AGR_QUEUED { running += 1; }
+  }
+  out_i[1] = running;
+  out_i[2] = cast(s32) cl[0].n;
+  out_i[3] = ifx ed_agents_account(e) then 1 else 0;
+  out_i[4] = cast(s32) e[0].st[0].step_n;
+  out_i[5] = cast(s32) e[0].st[0].done;
+  out_i[6] = cast(s32) e[0].changes[0].n;
+  out_i[7] = ifx ed_asking(e) then 1 else 0;
+
+  if out_tsv.count > 2 {
+    t := [1] Text.[Text.{buf = out_tsv}];
+    // Agent roster & turn/cent budgets
+    for i: 0..<ag[0].n {
+      r := ag[0].r[i];
+      tx_put(t[..], "AG\t");
+      tx_put(t[..], cast(string) r.id[0..<r.id_n]);
+      tx_put(t[..], " · ");
+      if r.state >= 0 && r.state < AGR_STATES { tx_put(t[..], AGR_STATE_ID[r.state]); } else { tx_put(t[..], "idle"); }
+      tx_put(t[..], " · "); tx_int(t[..], cast(s64) r.turns); tx_put(t[..], "t/$");
+      tx_int(t[..], cast(s64) (r.cents / 100)); tx_put(t[..], ".");
+      c2 := r.cents % 100; if c2 < 10 { tx_put(t[..], "0"); } tx_int(t[..], cast(s64) c2);
+      tx_put(t[..], "\n");
+    }
+    // Active ground claims (claims.coax)
+    cn := ed_claims_count(e);
+    for i: 0..<cn {
+      box: [6] s32;
+      if ed_claim_box(e, i, box[..]) {
+        tx_put(t[..], "CL\tClaim #"); tx_int(t[..], cast(s64) (i + 1));
+        tx_put(t[..], " ["); tx_int(t[..], cast(s64) box[0]); tx_put(t[..], ","); tx_int(t[..], cast(s64) box[1]);
+        tx_put(t[..], " .. "); tx_int(t[..], cast(s64) box[2]); tx_put(t[..], ","); tx_int(t[..], cast(s64) box[3]);
+        tx_put(t[..], " cm]\n");
+      }
+    }
+    // Highlighted agent changes (changes.coax)
+    for i: 0..<cast(int) e[0].changes[0].n {
+      mk := e[0].changes[0].marks[i];
+      tx_put(t[..], "CH\t");
+      if mk.how >= 1 && mk.how <= 4 { tx_put(t[..], CH_HOW_WORD[mk.how]); } else { tx_put(t[..], "edited"); }
+      tx_put(t[..], " #"); tx_n(t[..], mk.id);
+      tx_put(t[..], "\n");
+    }
+    if t[0].at < out_tsv.count { out_tsv[t[0].at] = 0; }
+  }
+  return true;
+}
+
+oa_gb_agents_account_set :: (st: [] GbDesktopState, on: bool) #export_c #effects(all) {
+  if st.count > 0 { ed_agents_set_account(st[0].e[..], on); }
+}
+
+// Steps revision replay scrubber to an exact step in [0..step_n] via undo/redo.
+oa_gb_replay_to :: (st: [] GbDesktopState, target_step: s32) -> s32 #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  e := st[0].e[..];
+  if e[0].play[0].on { return cast(s32) e[0].st[0].done; }
+  t := cast(int) target_step;
+  if t < 0 { t = 0; }
+  if t > e[0].st[0].step_n { t = e[0].st[0].step_n; }
+  guard_n := 0;
+  while e[0].st[0].done > t && ed_can_undo(e) && guard_n < 256 {
+    ed_undo(e);
+    guard_n += 1;
+  }
+  while e[0].st[0].done < t && ed_can_redo(e) && guard_n < 256 {
+    ed_redo(e);
+    guard_n += 1;
+  }
+  return cast(s32) e[0].st[0].done;
+}
+
+// Prepares signed decide.coax POST request (URL, NIP-98 Authorization header, JSON body).
+oa_gb_decide_prep :: (st: [] GbDesktopState, key: [] u8, aux: [] u8, nonce: [] u8, now_s: s64, out_url: [] u8, out_auth: [] u8, out_body: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 || out_body.count < 64 { return -1; }
+  bn := ed_decide_body(st[0].e[..], out_body);
+  if bn <= 0 { return -1; }
+  if out_url.count > 0 {
+    un := ed_decide_url(out_url);
+    if un >= 0 && un < out_url.count { out_url[un] = 0; }
+  }
+  if out_auth.count > 0 && key.count == 32 && aux.count == 32 && nonce.count == 16 {
+    an := ed_decide_sign(key, aux, nonce, now_s, out_body[0..<bn], out_auth);
+    if an >= 0 && an < out_auth.count { out_auth[an] = 0; }
+  }
+  return bn;
+}
+
+oa_gb_decide_apply :: (st: [] GbDesktopState, status: s32, body: [] u8) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_decide_answer(st[0].e[..], status, body);
+}
+
+// Publish & Account Sync (publish.coax, sync.coax)
+oa_gb_pub_load_buf :: (st: [] GbDesktopState, text: [] u8) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_pub_load(st[0].e[..], text);
+}
+oa_gb_pub_is_due :: (st: [] GbDesktopState) -> bool #export_c #effects(all) {
+  return st.count > 0 && ed_pub_due(st[0].e[..]);
+}
+oa_gb_pub_save_buf :: (st: [] GbDesktopState, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx st.count > 0 then ed_pub_save(st[0].e[..], out) else 0;
+}
+oa_gb_pub_clear_due :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 { ed_pub_saved(st[0].e[..]); }
+}
+
+// Reports published game state for current level:
+// out_i[0..3]: [pub_game_id, live_ver, version_count, feedback_count]
+oa_gb_pub_state :: (st: [] GbDesktopState, out_i: [] s32, out_code: [] u8, out_tsv: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 || out_i.count < 4 { return false; }
+  e := st[0].e[..];
+  p := e[0].pub[..];
+  out_i[0] = 0; out_i[1] = 0; out_i[2] = 0; out_i[3] = 0;
+  if out_code.count > 0 { out_code[0] = 0; }
+  lv := ed_level(e);
+  gi := -1;
+  for i: 0..<cast(int) p[0].game_n {
+    if p[0].games[i].level == lv { gi = i; break; }
+  }
+  if gi < 0 && p[0].game_n > 0 { gi = cast(int) p[0].game_n - 1; }
+  if gi >= 0 {
+    g := p[0].games[gi];
+    out_i[0] = g.id;
+    out_i[1] = g.live;
+    out_i[2] = g.versions;
+    if out_code.count > PUB_CODE {
+      for k: 0..<PUB_CODE { out_code[k] = g.code[k]; }
+      out_code[PUB_CODE] = 0;
+    }
+    fb_n: s32 = 0;
+    for i: 0..<cast(int) p[0].feedback_n { if p[0].feedback[i].game == g.id && p[0].feedback[i].state != PUB_HIDDEN { fb_n += 1; } }
+    out_i[3] = fb_n;
+    if out_tsv.count > 2 {
+      t := [1] Text.[Text.{buf = out_tsv}];
+      for i: 0..<cast(int) p[0].version_n {
+        v := p[0].versions[i];
+        if v.game != g.id { continue; }
+        tx_put(t[..], "VER\tv"); tx_int(t[..], cast(s64) v.n);
+        if v.n == g.live { tx_put(t[..], " (live)"); }
+        tx_put(t[..], " · "); tx_int(t[..], cast(s64) v.size); tx_put(t[..], " B\n");
+      }
+      for i: 0..<cast(int) p[0].feedback_n {
+        fb := p[0].feedback[i];
+        if fb.game != g.id || fb.state == PUB_HIDDEN { continue; }
+        tx_put(t[..], "FB\t#"); tx_int(t[..], cast(s64) fb.id);
+        tx_put(t[..], ifx fb.up then " 👍 " else " 👎 ");
+        tx_put(t[..], cast(string) fb.text[0..<cast(int) fb.text_n]);
+        tx_put(t[..], "\n");
+      }
+      if t[0].at < out_tsv.count { out_tsv[t[0].at] = 0; }
+    }
+  } else if out_tsv.count > 0 { out_tsv[0] = 0; }
+  return true;
+}
+
+oa_gb_sync_start :: (st: [] GbDesktopState, levels: [] s32, kept: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 { return false; }
+  ed_sync_agents(st[0].sync_st[..], ed_agents_account(st[0].e[..]));
+  return ed_sync_begin(st[0].sync_st[..], levels, kept);
+}
+oa_gb_sync_step :: (st: [] GbDesktopState, out_path: [] u8, out_body: [] u8) -> s32 #export_c #effects(all) {
+  if st.count < 1 { return 0; }
+  ask := ed_sync_ask(st[0].sync_st[..]);
+  if out_path.count > 1 {
+    pn := ed_sync_path(st[0].sync_st[..], out_path);
+    if pn >= 0 && pn < out_path.count { out_path[pn] = 0; } else { out_path[0] = 0; }
+  }
+  if out_body.count > 1 {
+    bn := ed_sync_body(st[0].sync_st[..], out_body);
+    if bn >= 0 && bn < out_body.count { out_body[bn] = 0; } else { out_body[0] = 0; }
+  }
+  return ask;
+}
+oa_gb_sync_reply :: (st: [] GbDesktopState, status: s32, body: [] u8) #export_c #effects(all) {
+  if st.count > 0 { ed_sync_answer(st[0].sync_st[..], status, body); }
+}
+
+// Nostr Global Lobby & 4-Player Party (lobby.coax, party.coax, lobby-rows.coax)
+oa_gb_lobby_init :: (st: [] GbDesktopState, key32: [] u8, aux32: [] u8, out_url: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 || key32.count != 32 || aux32.count != 32 { return false; }
+  for i: 0..<32 { st[0].lobby_key[i] = key32[i]; st[0].lobby_aux[i] = aux32[i]; }
+  ok := ed_lobby_init(st[0].lobby[..], st[0].lobby_key[..]);
+  st[0].lobby_ready = ok;
+  if ok { ed_lobby_account(st[0].lobby[..], true); }
+  if out_url.count > 1 {
+    n := ed_lobby_relay(out_url);
+    if n >= 0 && n < out_url.count { out_url[n] = 0; } else { out_url[0] = 0; }
+  }
+  return ok;
+}
+oa_gb_lobby_opened :: (st: [] GbDesktopState, now_s: s64) #export_c #effects(all) {
+  if st.count > 0 && st[0].lobby_ready { ed_lobby_opened(st[0].lobby[..], now_s); }
+}
+oa_gb_lobby_closed :: (st: [] GbDesktopState) #export_c #effects(all) {
+  if st.count > 0 && st[0].lobby_ready { ed_lobby_closed(st[0].lobby[..]); }
+}
+oa_gb_lobby_tick :: (st: [] GbDesktopState, now_s: s64) #export_c #effects(all) {
+  if st.count > 0 && st[0].lobby_ready { ed_lobby_tick(st[0].lobby[..], st[0].lobby_key[..], st[0].lobby_aux[..], now_s); }
+}
+oa_gb_lobby_take :: (st: [] GbDesktopState, out_frame: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 || !st[0].lobby_ready { return 0; }
+  return ed_lobby_take(st[0].lobby[..], out_frame);
+}
+oa_gb_lobby_input :: (st: [] GbDesktopState, now_s: s64, frame: [] u8) #export_c #effects(all) {
+  if st.count > 0 && st[0].lobby_ready { ed_lobby_input(st[0].lobby[..], st[0].lobby_key[..], st[0].lobby_aux[..], now_s, frame); }
+}
+oa_gb_lobby_run :: (st: [] GbDesktopState, verb_name: string, args_json: string, now_s: s64, person: bool, out_json: [] u8) -> s64 #export_c #effects(all) {
+  if st.count < 1 || !st[0].lobby_ready || out_json.count < 2 { return 0; }
+  v := gb_find(verb_name);
+  if v < 0 { return 0; }
+  abuf: [4096] u8;
+  an := ifx args_json.count < 4096 then args_json.count else 4096;
+  for i: 0..<an { abuf[i] = args_json[i]; }
+  return ed_lobby_command(st[0].lobby[..], st[0].lobby_key[..], st[0].lobby_aux[..], now_s, cast(s32) v, abuf[0..<an], person, out_json);
+}
+// out_i[0..5]: [connected, online, messages, party_on, party_count, party_looking]
+oa_gb_lobby_state :: (st: [] GbDesktopState, out_i: [] s32, out_tsv: [] u8) -> bool #export_c #effects(all) {
+  if st.count < 1 || out_i.count < 6 { return false; }
+  if !st[0].lobby_ready {
+    for k: 0..<6 { out_i[k] = 0; }
+    if out_tsv.count > 0 { out_tsv[0] = 0; }
+    return true;
+  }
+  l := st[0].lobby[..];
+  out_i[0] = ifx ed_lobby_connected(l) then 1 else 0;
+  out_i[1] = ed_lobby_online(l);
+  out_i[2] = ed_lobby_messages(l);
+  out_i[3] = ifx ed_party_on(l) then 1 else 0;
+  out_i[4] = ed_party_count(l);
+  out_i[5] = ifx ed_party_looking(l) then 1 else 0;
+  if out_tsv.count > 2 {
+    t := [1] Text.[Text.{buf = out_tsv}];
+    nb: [256] u8;
+    for i: 0..<ed_lobby_online(l) {
+      pn := ed_lobby_player_name(l, i, nb[..]);
+      tx_put(t[..], "PL\t"); tx_put(t[..], cast(string) nb[0..<pn]);
+      if ed_lobby_player_me(l, i) { tx_put(t[..], " (you)"); }
+      else if ed_party_has(l, i) { tx_put(t[..], " · in party"); }
+      tx_put(t[..], "\n");
+    }
+    mn := ed_lobby_messages(l);
+    start_m := ifx mn > 10 then mn - 10 else 0;
+    for i: start_m..<mn {
+      nn := ed_lobby_message_name(l, i, nb[..]);
+      tx_put(t[..], "MS\t"); tx_put(t[..], cast(string) nb[0..<nn]); tx_put(t[..], ": ");
+      tn := ed_lobby_message_text(l, i, nb[..]);
+      tx_put(t[..], cast(string) nb[0..<tn]);
+      tx_put(t[..], "\n");
+    }
+    if t[0].at < out_tsv.count { out_tsv[t[0].at] = 0; }
+  }
+  return true;
 }

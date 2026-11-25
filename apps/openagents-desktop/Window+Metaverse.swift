@@ -80,6 +80,12 @@ extension CoderWindow {
             let gid = gameId.isEmpty ? parseGbIds(from: path).game : gameId
             let lid = levelId.isEmpty ? parseGbIds(from: path).level : levelId
             session = GameBuilderSession(key: path, gameId: gid, levelId: lid, viewportSize: vp.bounds.size)
+            session.onLobbyChanged = { [weak self] in
+                guard let self, let gb = self.mvViewport?.activeGameBuilder else { return }
+                let idx = Int(cd_mv_active_tab(self.page))
+                if idx >= 0 { self.syncGameBuilderChrome(session: gb, tabIdx: idx) }
+                self.wake()
+            }
             mv.gbSessions[path] = session
         }
         mv.activePath = path
@@ -100,6 +106,8 @@ extension CoderWindow {
 
     func syncGameBuilderChrome(session: GameBuilderSession, tabIdx: Int) {
         let snap = session.snapshotUi()
+        let studio = session.snapshotStudio()
+        if !studio.shareCode.isEmpty { mv.gbShareCode = studio.shareCode }
         let fields64 = snap.fields.map { Int64($0) }
         fields64.withUnsafeBufferPointer { buf in
             cd_gb_sync_ui(
@@ -118,6 +126,9 @@ extension CoderWindow {
                 mv.gbShareCode,
                 session.attachListening ? 1 : 0
             )
+        }
+        studio.metrics16.withUnsafeBufferPointer { mb in
+            cd_gb_sync_studio(page, mb.baseAddress, studio.agTsv, studio.pubTsv, studio.lobTsv, snap.statusNote)
         }
         let rev = max(1, snap.savedRev)
         let stats = "\(snap.actorCount) actors · rev \(rev)\(session.gbmLoaded ? " · GBM" : "")\(session.farmLoaded ? " · Farm" : "")"
@@ -516,6 +527,67 @@ extension CoderWindow {
         case "undo-turn":
             let r = gb.runVerb("undo-turn", argsJson: "")
             if !r.ok { _ = gb.runVerb("undo", argsJson: "") }
+        case "agents-account":
+            if let h = gb.handle { oa_gb_set_agents_account(h, arg == "1" ? 1 : 0) }
+            _ = gb.runVerb("agents-account", argsJson: "{\"on\":\(arg == "1" ? "true" : "false")}")
+        case "replay-scrub":
+            if let h = gb.handle, let step = Int32(arg) { _ = oa_gb_scrub_replay(h, step) }
+        case "decide":
+            gb.runDecideAsync { [weak self] _ in
+                guard let self else { return }
+                let idx = Int(cd_mv_active_tab(self.page))
+                if idx >= 0 { self.syncGameBuilderChrome(session: gb, tabIdx: idx) }
+                self.mvViewport?.renderNow()
+                self.wake()
+            }
+        case "agent-new":
+            let role = arg == "playtest" ? "playtest" : "build"
+            let job = role == "playtest" ? "Play-test the open level and report stuck bots" : "Improve arena layout and cover sightlines"
+            _ = gb.runVerb("agent-new", argsJson: "{\"game\":1,\"role\":\"\(role)\",\"job\":\"\(job)\"}")
+        case "publish":
+            let name = gb.gameId.isEmpty ? "Untitled Arena" : gb.gameId
+            _ = gb.runVerb("publish", argsJson: "{\"name\":\"\(name)\"}")
+            gb.flushPublishIfDue()
+        case "set-live":
+            let st = gb.snapshotStudio()
+            if st.pubGameId > 0 && st.pubLiveVer > 1 {
+                _ = gb.runVerb("set-live", argsJson: "{\"published\":\(st.pubGameId),\"version\":\(st.pubLiveVer - 1)}")
+                gb.flushPublishIfDue()
+            }
+        case "unpublish", "remove-published":
+            let st = gb.snapshotStudio()
+            if st.pubGameId > 0 {
+                _ = gb.runVerb(cmd, argsJson: "{\"published\":\(st.pubGameId)}")
+                gb.flushPublishIfDue()
+            }
+        case "feedback-hide", "block", "report":
+            _ = gb.runVerb(cmd, argsJson: "{\"feedback\":1}")
+            gb.flushPublishIfDue()
+        case "sync":
+            if let h = gb.handle {
+                let lv = gb.knownLevels()
+                _ = lv.withUnsafeBufferPointer { buf in
+                    oa_gb_begin_sync(h, buf.baseAddress, Int32(buf.count), nil, 0)
+                }
+            }
+        case "lobby-read", "party-read", "party-leave", "party-start":
+            _ = gb.runLobbyVerb(cmd, argsJson: "")
+        case "lobby-say":
+            let msg = arg.isEmpty ? "Ready to play!" : arg
+            _ = gb.runLobbyVerb("lobby-say", argsJson: "{\"say\":\"\(msg)\"}")
+        case "lobby-name":
+            let nm = arg.isEmpty ? "Builder" : arg
+            _ = gb.runLobbyVerb("lobby-name", argsJson: "{\"name\":\"\(nm)\"}")
+        case "lobby-mute", "lobby-report":
+            let line = Int(arg) ?? 0
+            _ = gb.runLobbyVerb(cmd, argsJson: "{\"line\":\(line)}")
+        case "party-invite":
+            let pl = Int(arg) ?? 0
+            _ = gb.runLobbyVerb("party-invite", argsJson: "{\"player\":\(pl)}")
+        case "party-look":
+            let st = gb.snapshotStudio()
+            let nextLook = st.metrics16[15] == 0 ? "on" : "off"
+            _ = gb.runLobbyVerb("party-look", argsJson: "{\"look\":\"\(nextLook)\"}")
         case "copy-share-url":
             if !arg.isEmpty {
                 NSPasteboard.general.clearContents()

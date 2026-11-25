@@ -806,5 +806,6 @@ int cd_mv_pending_cmd(void *page, char *cmd_out, int cmd_cap, char *arg_out, int
 void cd_gb_sync_ui(void *page, int tool, int snap_idx, int can_undo, int can_redo, int template_id, int playing, int sel_count, int sel_kind, const int64_t *sel_fields, int sel_fields_n, const char *sel_label, const char *share_code, int attach_clients);
 void cd_gb_playtest_status(void *page, int running, int stuck_count, const char *summary);
 void cd_gb_hydrate_progress(void *page, int active, int pct);
+void cd_gb_sync_studio(void *page, const int64_t metrics16[16], const char *ag_tsv, const char *pub_tsv, const char *lob_tsv, const char *note);
 int cd_mv_focus_viewport(void *page);
 #endif
