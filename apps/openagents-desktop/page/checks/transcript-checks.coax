@@ -1140,3 +1140,43 @@ cp_test_shown :: (s: [] CoderPage, text: string) -> int {
   #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]);
   #assert s[0].turns[0].ncmds == 8 && s[0].calls[cp_nth(s, 0, -1, 1)].said && cp_call_text(s, cp_nth(s, 0, -1, 1)) == "I'll check what's in the workspace.";
 }
+
+#test "bursty Gemini thought summaries stream progressively unclipped with veil fade and catch up cleanly" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; s[0].reduced = false; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "prove primes 3 mod 4") && coder_page_submit(s);
+  chunk1 := "**Developing Clear Proof**\n\nI'm focused on constructing a thoroughly structured elementary proof that there are infinitely many primes congruent to 3 mod 4 by considering N = 4p1...pk - 1 and checking its odd prime divisors.\n\n";
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"**Developing Clear Proof**\\n\\nI'm focused on constructing a thoroughly structured elementary proof that there are infinitely many primes congruent to 3 mod 4 by considering N = 4p1...pk - 1 and checking its odd prime divisors.\\n\\n\"}") == MWW_THOUGHT;
+  q := cp_nth(s, 0, -1, 0);
+  // Full chunk is stored immediately for persistence, while visual reveal starts with an initial prefix (0ms TTFT).
+  #assert q >= 0 && cp_call_text(s, q) == chunk1;
+  #assert s[0].thought_row == q && s[0].thought_shown > 0 && s[0].thought_shown < chunk1.count;
+  // First frame shows the initial prefix and activates thought_veil + moving.
+  #assert cp_test_frame(s, f[..], 1200, 900, false);
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  w0 := surface_find(s[0].surface[..], "t0.x0.words");
+  #assert w0 >= 0 && elt_value_of(tb[..], w0).count == s[0].thought_shown && elt_value_of(tb[..], w0).count < chunk1.count;
+  #assert s[0].thought_md_n > 0 && veil_is_fading(s[0].thought_veil[..], s[0].clock);
+  // Stepping frames progressively streams more words into the live thought row.
+  prev_shown := s[0].thought_shown;
+  coder_page_tick(s, 0.05f32); cp_thought_reveal_step(s, 0.05f32);
+  #assert s[0].thought_shown > prev_shown;
+  for step: 0..<60 { coder_page_tick(s, 0.05f32); cp_thought_reveal_step(s, 0.05f32); }
+  #assert s[0].thought_shown == chunk1.count;
+  // Second long Gemini summary arrives (> 6 lines total): stays UNCLIPPED while streaming so new lines appear live!
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"**Connecting Reciprocity**\\n\\nLine 1 of chunk two.\\n\\nLine 2 of chunk two.\\n\\nLine 3 of chunk two.\\n\\nLine 4 of chunk two.\\n\\nLine 5 of chunk two.\\n\\nLine 6 of chunk two.\\n\\n\"}") == MWW_THOUGHT;
+  #assert s[0].thought_shown > chunk1.count && s[0].thought_shown < cp_call_text(s, q).count;
+  for step: 0..<60 { coder_page_tick(s, 0.05f32); cp_thought_reveal_step(s, 0.05f32); }
+  #assert s[0].thought_shown == cp_call_text(s, q).count;
+  #assert cp_test_frame(s, f[..], 1200, 900, false);
+  // No "Show all N lines" fold button clipping the live streaming thought, and lines past row 6 actually paint!
+  #assert surface_find(s[0].surface[..], "t0.x0") < 0;
+  #assert cp_test_shown(s, "Line 6 of chunk two.") > 0;
+  // Once a command arrives and thought streaming settles, the finished >6-line thought folds cleanly.
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"ok\"}") == MWW_COMMAND;
+  #assert cp_test_frame(s, f[..], 1200, 900, true);
+  #assert surface_find(s[0].surface[..], "t0.x0") >= 0 && cp_test_shown(s, "Line 6 of chunk two.") == 0;
+  // MWW_ENDED resets thought reveal cleanly and saved JSON keeps the full thought text.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"DONE\"}") == MWW_ENDED;
+  #assert s[0].thought_row == -1;
+}

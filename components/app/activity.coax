@@ -53,6 +53,7 @@ AppActRow :: struct {
   diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones, or a unified diff's hunks (diff.coax) with its lines added and removed at the row's end; diff_cut: it was longer
   said: bool;                 // interim agent message (not internal reasoning): foreground ink and chat icon
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
+  veil: MdVeil;               // optional paint-only opacity veil for streaming thoughts
 }
 
 // ---------------------------------------------------------------- the summary
@@ -408,8 +409,13 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m;
   line := a.thought_line; folded_h := a.thought_lines * line;
   k := uiframe_key(f, id);
+  streaming := r.running;
   open := app_tool_is_open(f, k, false);
-  t := uiframe_spring(f, k, ifx open then 1.0f32 else 0.0f32);
+  t := uiframe_spring(f, k, ifx open || streaming then 1.0f32 else 0.0f32);
+  if streaming {
+    if keyed_ok(f[0].keyed, k) { keyed_spring_set(f[0].keyed, k, 1.0f32); }
+    t = 1.0f32;
+  }
   if t < 0 { t = 0; } else if t > 1 { t = 1; }
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
   text_ink := ifx r.said then s.ink else s.muted;
@@ -446,7 +452,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
     for b: r.block0..<r.block0 + r.blocks {
       if b > r.block0 { py += a.thought_gap; }
       if clipped && py >= shown { break; }
-      py += markdown_block(sh, m, ns, r.doc, b, tx, ty + py, tw);
+      py += markdown_block_veiled(sh, m, ns, r.doc, b, tx, ty + py, tw, r.veil);
     }
   } else {
     for q: 0..<lines {
@@ -464,7 +470,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   said := uiframe_semantic(f, app_id(wb[..], id, ".words"), EL_TEXT, ifx r.said then "Agent message" else "Thought process", tx, ty, tw, shown, 0, 0);
   elt_value(f[0].rows, said, r.output);
   h := 2 * pad + shown;
-  if long {
+  if long && !streaming {
     lb: [64] u8; ln := 0;
     if open { ln = el_put(lb[..], 0, "Show fewer lines"); } else { ln = el_put(lb[..], 0, "Show all "); ln = el_put_i(lb[..], ln, lines); ln = el_put(lb[..], ln, " lines"); }
     _ := app_act_fold_button(f, id, tx, ty + shown + a.fold_room - a.fold_h, sheet_pool(sh, cast(string) lb[0..<ln]), open, action);

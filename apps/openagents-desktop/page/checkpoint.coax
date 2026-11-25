@@ -99,6 +99,7 @@ cp_ckpt_rewind_to :: (s: [] CoderPage, turn: int) -> bool {
   if s[0].pane_open && s[0].pane_turn > turn { s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; }
   if s[0].copied_turn > turn { s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; }
   s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
+  cp_thought_reveal_reset(s);
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   cp_docs_reset(s);
   s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s);

@@ -38,16 +38,35 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
   sh := f[0].sheet;
   text := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; output := cp_call_text(s, q);
   if s[0].calls[q].thought || s[0].calls[q].said {
-    r := AppActRow.{kind = APP_ACT_THOUGHT, verb = ifx s[0].calls[q].said then "Agent message" else "Thought process", output = output, said = s[0].calls[q].said};
+    shown_out := output;
+    is_streaming := false;
+    if s[0].calls[q].thought {
+      revealing := s[0].thought_row == q && !s[0].reduced && s[0].thought_shown < output.count;
+      if revealing {
+        n_vis := ifx s[0].thought_shown < 0 then 0 else s[0].thought_shown;
+        shown_out = cast(string) output[0..<n_vis];
+      }
+      is_streaming = revealing || cp_call_thought_live(s, q);
+    }
+    r := AppActRow.{kind = APP_ACT_THOUGHT, verb = ifx s[0].calls[q].said then "Agent message" else "Thought process", output = shown_out, said = s[0].calls[q].said, running = is_streaming};
     // its words read as a reply does: its Markdown, parsed into this frame's document
-    at := s[0].think_at; b0 := s[0].think[at].nb;
-    r.blocks = md_parse(s[0].think[at..<at + 1], output, 0);
-    if r.blocks > 0 { r.doc = s[0].think[at..<at + 1]; r.block0 = b0; }
-    else {
+    at := s[0].think_at; b0 := s[0].think[at].nb; n0 := s[0].think[at].n;
+    r.blocks = md_parse(s[0].think[at..<at + 1], shown_out, 0);
+    if r.blocks > 0 {
+      r.doc = s[0].think[at..<at + 1]; r.block0 = b0;
+      if s[0].calls[q].thought && s[0].thought_row == q && !s[0].reduced {
+        cur_md := s[0].think[at].n - n0;
+        if cur_md > s[0].thought_md_n {
+          veil_push(s[0].thought_veil[..], s[0].thought_md_n, cur_md, s[0].clock);
+          s[0].thought_md_n = cur_md;
+        }
+        r.veil = MdVeil.{veil = s[0].thought_veil[..], now = s[0].clock, base = n0};
+      }
+    } else {
       // the document is full: its words as they are, wrapped to the row
       wb := s[0].scratch[..];
       per := cast(int) ((w - f[0].skin.act.gutter) / measure_width(f[0].m, f[0].skin.body.face, "0")) - 1; if per < 8 { per = 8; }
-      wn := cp_wrap(wb, output, per);
+      wn := cp_wrap(wb, shown_out, per);
       r.output = sheet_pool(sh, cast(string) wb[0..<wn]);
     }
     return r;

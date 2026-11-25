@@ -311,6 +311,7 @@ CoderPage :: struct {
   keys: [CP_KEYED] Keyed; keyed: [1] KeyedStore;
   turns: [] CpTurn; nturns: int;   // CP_TURNS of them, in the page's store (cp_store_bind)
   veil: [1] Veil; veil_turn: int;   // streaming opacity veil for the active reply turn (-1: none)
+  thought_veil: [1] Veil; thought_row: int; thought_shown: int; thought_md_n: int; thought_frac: f32;   // progressive reveal + opacity veil for the active streaming thought row (-1: none)
   draft: [1] EditBuf;
   fld: [1] CpFields;          // the composer's and settings' search's text fields, drawn here (editor.coax; GitHub #13742)
   reduced: bool;
@@ -650,6 +651,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].stick = true; s[0].at_end = true; s[0].copied_turn = -1; s[0].copied_block = -1;
   cp_docs_reset(s);
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1;
+  s[0].thought_veil[0] = Veil.{}; s[0].thought_row = -1; s[0].thought_shown = 0; s[0].thought_md_n = 0; s[0].thought_frac = 0.0f32;
   cp_sel_clear(s);
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].notify_mode = CP_NOTIFY_DEFAULT;

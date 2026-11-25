@@ -48,11 +48,13 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   input := uiinput(s[0].px, s[0].py, present, s[0].touching, cast(string) s[0].pressed[0..<s[0].pressed_n], ifx cp_composer_focused(s) then "coder.composer" else "");
   s[0].think_at = 1 - s[0].think_at;
   s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
+  cp_thought_reveal_step(s, t);
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
   copy_ticking := (s[0].copied_kind == CP_COPIED_ASK || s[0].copied_kind == CP_COPIED_REPLY) && s[0].clock - s[0].copied_at < 1.2f32;
   veil_ticking := !s[0].reduced && s[0].veil_turn >= 0 && veil_is_fading(s[0].veil[..], s[0].clock);
-  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due || s[0].anim || copy_ticking || veil_ticking;
+  thought_ticking := !s[0].reduced && s[0].thought_row >= 0 && (cp_thought_revealing(s) || veil_is_fading(s[0].thought_veil[..], s[0].clock));
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due || s[0].anim || copy_ticking || veil_ticking || thought_ticking;
   s[0].scr_live = live;
   s[0].set_due = false;
   if cp_overlay(s, f[..], w, h, t) { s[0].moving = true; }
@@ -335,6 +337,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
     }
     cp_cmds_end(s, i);
+    cp_thought_reveal_reset(s);
     cp_todos_reset(s);
     cp_permit_reset(s);
     s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
@@ -379,6 +382,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   s[0].turns[i].loading_model = false;
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
   if s[0].veil_turn == i { s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; }
+  cp_thought_reveal_reset(s);
   s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
   if s[0].sb[0].now_ms > 0 { s[0].turns[i].done_ms = s[0].sb[0].now_ms; }
   cp_cmds_end(s, i);

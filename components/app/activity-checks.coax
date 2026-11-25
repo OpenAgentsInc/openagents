@@ -263,3 +263,22 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   }
   #assert chat_icon && !brain_icon;
 }
+
+#test "app activity: a streaming thought stays unclipped past six lines and smoothly folds once settled" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  words := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten";
+  r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = words, running = true};
+  // While streaming (running = true), all 10 lines show live with no fold button clipping new lines.
+  app_test_begin(t[..], "", "", false);
+  live_h := app_act_row(f, "th.live", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && live_h == 4 + 10 * 20 + 4 && app_test_find(t[..], "th.live") < 0 && app_test_texts(t[..], "ten") == 1;
+  // Once settled (running = false), without reduced motion it smoothly springs down from full toward folded,
+  // and with reduced motion it folds cleanly to 6 lines under "Show all 10 lines".
+  r.running = false;
+  app_test_begin(t[..], "", "", false);
+  mid_h := app_act_row(f, "th.live", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && mid_h > 4 + 6 * 20 + 4 + 26 && keyed_moving(t[0].ks[..]);
+  app_test_begin(t[..], "", "", true);
+  done_h := app_act_row(f, "th.live", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && done_h == 4 + 6 * 20 + 4 + 26 && app_test_label(t[..], "th.live") == "Show all 10 lines" && app_test_texts(t[..], "ten") == 0;
+}

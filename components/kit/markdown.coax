@@ -20,14 +20,14 @@
 #load "../skin/skin.coax";
 
 // Optional paint-only opacity veil for streaming markdown (empty veil = full opacity).
-MdVeil :: struct { veil: [] Veil; now: f32; }
+MdVeil :: struct { veil: [] Veil; now: f32; base: int; }
 md_veil_alpha :: (vv: MdVeil, pos: int) -> f32 {
   if vv.veil.count == 0 { return 1.0f32; }
-  return veil_alpha_at(vv.veil, vv.now, pos);
+  return veil_alpha_at(vv.veil, vv.now, pos - vv.base);
 }
 md_veil_next :: (vv: MdVeil, pos: int, limit: int) -> int {
   if vv.veil.count == 0 { return limit; }
-  return veil_next_edge(vv.veil, pos, limit);
+  return veil_next_edge(vv.veil, pos - vv.base, limit - vv.base) + vv.base;
 }
 
 // The hits a code block's header leaves on the sheet: a = the block.

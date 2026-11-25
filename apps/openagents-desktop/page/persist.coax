@@ -253,7 +253,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     }
   }
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
-  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_sel_clear(s);
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_thought_reveal_reset(s); cp_sel_clear(s);
   s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].kept_model = s[0].model;
   s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
   po := cl_bool(text, "pane_open"); pt := cl_int(text, "pane_turn"); pa := cl_int(text, "pane_agent"); pm := cl_bool(text, "pane_manual");
@@ -309,7 +309,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   s[0].flawed[0].user_picked = false;
   s[0].model = cp_model_start(s); s[0].kept_model = s[0].model; s[0].model_menu = false; s[0].effort_menu = false; s[0].migrated_from_n = 0; s[0].effort = CP_EFFORT_DEFAULT; s[0].kept_effort = CP_EFFORT_DEFAULT;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
-  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_sel_clear(s);
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1; s[0].veil[0] = Veil.{}; s[0].veil_turn = -1; cp_thought_reveal_reset(s); cp_sel_clear(s);
   s[0].scroll = 0; s[0].stick = true; cp_glide_reset(s); s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_turn = 0; s[0].pane_agent = 0; s[0].pane_manual = false; s[0].kept_pane_open = false; s[0].kept_pane_turn = 0; s[0].kept_pane_agent = 0; s[0].kept_pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
@@ -368,8 +368,8 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].todos[0] = from[0].todos[0]; from[0].todos[0] = CpTodos.{};
   to[0].ckpt[0] = from[0].ckpt[0]; cp_ckpt_reset(from);
   to[0].permit[0] = from[0].permit[0]; cp_permit_new_chat(from);
-  to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1; to[0].veil[0] = Veil.{}; to[0].veil_turn = -1; cp_sel_clear(to);
-  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1; from[0].veil[0] = Veil.{}; from[0].veil_turn = -1; cp_sel_clear(from);
+  to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1; to[0].veil[0] = Veil.{}; to[0].veil_turn = -1; cp_thought_reveal_reset(to); cp_sel_clear(to);
+  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1; from[0].veil[0] = Veil.{}; from[0].veil_turn = -1; cp_thought_reveal_reset(from); cp_sel_clear(from);
   cp_docs_reset(to); cp_docs_reset(from);   // the replies' documents are parsed again where they now show
   if from[0].rev_n > to[0].rev_n { to[0].rev_n = from[0].rev_n; }   // a reply's mark stays its own
   to[0].scroll = 0; to[0].stick = true; cp_glide_reset(to); to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;

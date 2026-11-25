@@ -241,6 +241,84 @@ cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
     cp_long_set(s, q, text);
   }
 }
+// Small token-by-token thought deltas (e.g. local Inkling) reveal immediately; larger bursty
+// chunks (e.g. Gemini thought summary paragraphs) stream smoothly word-by-word via cp_thought_reveal_step.
+CP_THOUGHT_INSTANT :: 48;
+CP_THOUGHT_INITIAL :: 24;
+
+cp_thought_reveal_reset :: (s: [] CoderPage) {
+  s[0].thought_veil[0] = Veil.{};
+  s[0].thought_row = -1;
+  s[0].thought_shown = 0;
+  s[0].thought_md_n = 0;
+  s[0].thought_frac = 0.0f32;
+}
+
+// Advance target byte offset to a clean UTF-8 + word boundary (up to 16 bytes ahead) so streamed
+// thoughts never split a UTF-8 codepoint or jaggedly cut mid-word.
+cp_thought_snap :: (text: string, target: int) -> int {
+  if target >= text.count { return text.count; }
+  n := ifx target < 1 then 1 else target;
+  while n < text.count && (text[n] & 0xC0) == 0x80 { n += 1; }
+  lim := n + 16; if lim > text.count { lim = text.count; }
+  while n < lim && text[n] != ' ' && text[n] != '\n' && text[n] != '\t' {
+    n += 1;
+    while n < text.count && (text[n] & 0xC0) == 0x80 { n += 1; }
+  }
+  while n < text.count && (text[n] == ' ' || text[n] == '\t') { n += 1; }
+  return n;
+}
+
+// True while row q is the actively streaming tail thought row of the running turn or any running sub-agent.
+cp_call_thought_live :: (s: [] CoderPage, q: int) -> bool {
+  if q < 0 || q >= s[0].calls_n || !s[0].calls[q].thought || !cp_running(s) { return false; }
+  i := s[0].nturns - 1;
+  if s[0].turns[i].thought_open && s[0].turns[i].tail - 1 == q { return true; }
+  for j: 0..<s[0].turns[i].nagents {
+    if s[0].turns[i].agents[j].state == CP_RUNNING && s[0].turns[i].agents[j].thought_open && s[0].turns[i].agents[j].tail - 1 == q { return true; }
+  }
+  return false;
+}
+
+// True when the active streaming thought row still has unrevealed bytes queued to stream in.
+cp_thought_revealing :: (s: [] CoderPage) -> bool {
+  q := s[0].thought_row;
+  if q < 0 || q >= s[0].calls_n || !s[0].calls[q].thought { return false; }
+  return s[0].thought_shown < cp_call_text(s, q).count;
+}
+
+// Frame-rate-independent smooth reveal for bursty thought chunks (Gemini thought summaries).
+cp_thought_reveal_step :: (s: [] CoderPage, dt: f32) {
+  q := s[0].thought_row;
+  if q < 0 { return; }
+  if q >= s[0].calls_n || !s[0].calls[q].thought { cp_thought_reveal_reset(s); return; }
+  full := cp_call_text(s, q);
+  if s[0].thought_shown >= full.count { return; }
+  if s[0].reduced {
+    s[0].thought_shown = full.count;
+    s[0].thought_frac = 0.0f32;
+    s[0].calls[q].h = 0;
+    if s[0].nturns > 0 { s[0].turns[s[0].nturns - 1].h = 0; }
+    return;
+  }
+  if dt <= 0.0f32 { return; }
+  rem := full.count - s[0].thought_shown;
+  still_open := cp_call_thought_live(s, q);
+  // Crisp adaptive pacing: ~220 B/s base + backlog catch-up while thinking; 2.5x catch-up once the step moves on.
+  rate := ifx still_open then (220.0f32 + cast(f32) rem * 2.2f32) else (480.0f32 + cast(f32) rem * 5.0f32);
+  s[0].thought_frac += rate * dt;
+  if s[0].thought_frac < 1.0f32 { return; }
+  step := cast(int) s[0].thought_frac;
+  next_shown := cp_thought_snap(full, s[0].thought_shown + step);
+  moved := next_shown - s[0].thought_shown;
+  if moved <= 0 { return; }
+  s[0].thought_frac -= cast(f32) moved;
+  if s[0].thought_frac < -32.0f32 { s[0].thought_frac = -32.0f32; }
+  s[0].thought_shown = next_shown;
+  s[0].calls[q].h = 0;
+  if s[0].nturns > 0 { s[0].turns[s[0].nturns - 1].h = 0; }
+}
+
 // A streamed reasoning delta for turn i (or sub-agent j when j >= 0): appends into the currently
 // open thought row so tokens appear live without splitting into separate rows per chunk.
 cp_thought_stream :: (s: [] CoderPage, i: int, j: int, piece: string) {
@@ -250,10 +328,20 @@ cp_thought_stream :: (s: [] CoderPage, i: int, j: int, piece: string) {
   if !open || q < 0 || !s[0].calls[q].thought {
     cp_thought_add(s, i, j, piece, false);
     if j >= 0 { s[0].turns[i].agents[j].thought_open = true; } else { s[0].turns[i].thought_open = true; }
+    q2 := (ifx j >= 0 then s[0].turns[i].agents[j].tail else s[0].turns[i].tail) - 1;
+    if q2 >= 0 {
+      full := cp_call_text(s, q2);
+      s[0].thought_row = q2;
+      s[0].thought_md_n = 0;
+      s[0].thought_frac = 0.0f32;
+      s[0].thought_veil[0] = Veil.{};
+      s[0].thought_shown = ifx s[0].reduced || piece.count <= CP_THOUGHT_INSTANT then full.count else cp_thought_snap(full, CP_THOUGHT_INITIAL);
+    }
     return;
   }
   c := s[0].calls[q];
-  room := CP_THOUGHT_MAX - cp_call_text(s, q).count;
+  old_len := cp_call_text(s, q).count;
+  room := CP_THOUGHT_MAX - old_len;
   take := ifx piece.count < room then piece.count else room;
   while take > 0 && take < piece.count && piece[take] >= 128 && piece[take] < 192 { take -= 1; }
   if take <= 0 { return; }
@@ -268,7 +356,21 @@ cp_thought_stream :: (s: [] CoderPage, i: int, j: int, piece: string) {
     n := cp_out(jb[..], old); for k: 0..<take { if n < jb.count { jb[n] = piece[k]; n += 1; } }
     cp_long_set(s, q, cast(string) jb[0..<n]);
   }
-  hb: [CP_CMD] u8; hn := cp_row_head(cp_call_text(s, q), hb[..]);
+  full := cp_call_text(s, q);
+  if s[0].thought_row != q {
+    s[0].thought_row = q;
+    s[0].thought_shown = old_len;
+    s[0].thought_md_n = 0;
+    s[0].thought_frac = 0.0f32;
+    s[0].thought_veil[0] = Veil.{};
+  }
+  if s[0].reduced || (s[0].thought_shown >= old_len && piece.count <= CP_THOUGHT_INSTANT) {
+    s[0].thought_shown = full.count;
+  } else if s[0].thought_shown >= old_len {
+    // New bursty chunk arrived after previous text finished revealing: nudge first word immediately for 0ms visual latency.
+    s[0].thought_shown = cp_thought_snap(full, old_len + CP_THOUGHT_INITIAL);
+  }
+  hb: [CP_CMD] u8; hn := cp_row_head(full, hb[..]);
   s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], cast(string) hb[0..<hn]);
   s[0].calls[q].h = 0;
   s[0].turns[i].h = 0;
