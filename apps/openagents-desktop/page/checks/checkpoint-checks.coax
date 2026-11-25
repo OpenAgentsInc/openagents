@@ -68,6 +68,15 @@ cp_ckpt_add_done_turn :: (s: [] CoderPage, ask: string, reply: string) {
   #assert diff0 >= 0 && rev0 >= 0;
   #assert elt_find(t[..], "t1.ckd") < 0 && elt_find(t[..], "t1.ckr") < 0;
 
+  // Last turn with a checkpoint renders Turn diff but omits Revert to this turn
+  coder_page_ckpt_mark(s, 1, true);
+  #assert cp_ckpt_test_frame(s, f[..], 1280, 800);
+  t = [1] ElTable.[surface_rows(s[0].surface[..])];
+  diff0 = elt_find(t[..], "t0.ckd");
+  rev0 = elt_find(t[..], "t0.ckr");
+  #assert diff0 >= 0 && rev0 >= 0;
+  #assert elt_find(t[..], "t1.ckd") >= 0 && elt_find(t[..], "t1.ckr") < 0;
+
   // Clicking Turn diff dispatches CP_ASK_CHECKPOINT with CP_CKPT_OP_DIFF on turn 0
   #assert cp_press(s, diff0);
   #assert coder_page_action(s) == CP_ASK_CHECKPOINT;
@@ -87,7 +96,9 @@ cp_ckpt_add_done_turn :: (s: [] CoderPage, ask: string, reply: string) {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame;
   cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
   cp_ckpt_add_done_turn(s, "Add note", "Added note.txt");
+  cp_ckpt_add_done_turn(s, "Polish note", "Polished note.txt");
   coder_page_ckpt_mark(s, 0, true);
+  coder_page_ckpt_mark(s, 1, true);
 
   sample := "diff --git a/note.txt b/note.txt\nnew file mode 100644\n--- /dev/null\n+++ b/note.txt\n@@ -0,0 +1,2 @@\n+hello\n+world\n";
   diff_buf: [256] u8;
@@ -107,6 +118,13 @@ cp_ckpt_add_done_turn :: (s: [] CoderPage, ask: string, reply: string) {
   #assert coder_page_action(s) == CP_ASK_CHECKPOINT;
   #assert coder_page_ckpt_op(s) == CP_CKPT_OP_REWIND;
   #assert coder_page_ckpt_target(s) == 0;
+
+  // Viewing the last turn's diff omits Revert to this turn
+  #assert coder_page_ckpt_diff_set(s, 1, diff_buf[0..<dn], "Turn 2 checkpoint diff");
+  #assert cp_ckpt_test_frame(s, f[..], 1280, 800);
+  t = [1] ElTable.[surface_rows(s[0].surface[..])];
+  all_btn = elt_find(t[..], "coder.review.ckpt.all");
+  #assert all_btn >= 0 && elt_find(t[..], "coder.review.ckpt.rewind") < 0;
 
   // Clicking All edits clears the checkpoint diff filter
   #assert cp_press(s, all_btn);

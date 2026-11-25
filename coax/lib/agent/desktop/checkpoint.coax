@@ -181,9 +181,10 @@ dc_ckpt_diff_range :: (chat: string, turn: int, has_base: bool, has_prev_turn: b
   return from_ref.count > 0;
 }
 
-// Whether a turn can be rewound to right now: not running, valid turn index, and has a checkpoint.
+// Whether a turn can be rewound to right now: not running, strictly before the latest turn,
+// and has a checkpoint.
 dc_ckpt_can_rewind :: (turn: int, nturns: int, running: bool, has_ckpt: bool) -> bool {
-  return !running && turn >= 0 && turn < nturns && has_ckpt;
+  return !running && turn >= 0 && turn + 1 < nturns && has_ckpt;
 }
 
 // Whether rewinding requires a confirmation dialog: whenever uncommitted working-tree changes
@@ -273,7 +274,10 @@ dc_ckpt_orphans_after_rewind :: (turn: int, existing_turns: [] int, n: int, out_
   #assert cast(string) from_b3[0..<40] == DC_CKPT_EMPTY_TREE;
 
   // Rewind eligibility
+  #assert dc_ckpt_can_rewind(0, 3, false, true);
   #assert dc_ckpt_can_rewind(1, 3, false, true);
+  #assert !dc_ckpt_can_rewind(2, 3, false, true);
+  #assert !dc_ckpt_can_rewind(0, 1, false, true);
   #assert !dc_ckpt_can_rewind(1, 3, true, true);
   #assert !dc_ckpt_can_rewind(1, 3, false, false);
   #assert !dc_ckpt_can_rewind(-1, 3, false, true);
