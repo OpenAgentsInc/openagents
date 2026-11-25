@@ -167,8 +167,18 @@ AppSideRow :: struct {
 }
 APP_SIDE_CARD_H :: 54.0f32;
 APP_SIDE_CARD_ICON :: 11.0f32;
+APP_SIDE_CARD_HARNESS_ICON :: 14.0f32;
 APP_SIDE_CARD_FOLDER_ICON :: 11.0f32;
 APP_SIDE_CARD_FOLDER_GAP :: 6.0f32;
+// Map 16pt harness/model icons to their 14pt atlas slots so sidebar cards render them 2pt smaller.
+app_side_card_harness_icon :: (icon: int) -> int {
+  if icon == ICON_CLAUDE { return ICON_CLAUDE_14; }
+  if icon == ICON_OPENAI { return ICON_OPENAI_14; }
+  if icon == ICON_PSIONIC { return ICON_PSIONIC_14; }
+  if icon == ICON_ANTIGRAVITY { return ICON_ANTIGRAVITY_14; }
+  if icon == ICON_BOT { return ICON_BOT_14; }
+  return icon;
+}
 // Compact 2-line sidebar chat card painter:
 //   Line 1: Chat title (13pt Medium)                         [spinner | dot Done | relative time]
 //   Line 2: [small folder icon] repo · branch                                     [harness icon]
@@ -259,8 +269,8 @@ app_side_row_card :: (f: [] UiFrame, r: AppSideRow, x: f32, y: f32, w: f32, titl
   y2 := y1 + tf.line + 2.0f32;
   r2_right := irx;
   if r.harness_icon >= 0 {
-    hi := APP_SIDE_CARD_ICON;
-    sheet_icon(sh, r.harness_icon, r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.46f32));
+    hi := APP_SIDE_CARD_HARNESS_ICON;
+    sheet_icon(sh, app_side_card_harness_icon(r.harness_icon), r2_right - hi, y2 + (s.small.line - hi) / 2.0f32, hi, opacity(s.muted, 0.46f32));
     r2_right -= hi + 6.0f32;
   }
   lx2 := ix0;

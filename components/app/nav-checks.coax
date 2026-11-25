@@ -112,7 +112,7 @@
   #assert app_test_row(t[..], "chat.1").h == APP_SIDE_CARD_H && app_test_row(t[..], "chat.2").h == APP_SIDE_CARD_H;
   #assert app_test_texts(t[..], "Collapse sidebar card") == 1 && app_test_texts(t[..], "2m") == 1;
   #assert app_test_texts(t[..], "openagents") == 1 && app_test_texts(t[..], "main") == 1;
-  // Folder icon uses atlas slot ICON_FOLDER_11 (11pt) with 6pt right padding; harness icons are darker.
+  // Folder icon uses atlas slot ICON_FOLDER_11 (11pt) with 6pt right padding; harness icons use 14pt slots and are darker.
   sh := surface_sheet(t[0].sf[..]);
   folder_icons := 0;
   harness_icons := 0;
@@ -124,12 +124,12 @@
         folder_right = sh.under[i].x + sh.under[i].w;
         folder_icons += 1;
       } else {
-        #assert sh.under[i].w == APP_SIDE_CARD_ICON && sh.under[i].h == APP_SIDE_CARD_ICON && sh.under[i].fill.a < 0.5f32;
+        #assert sh.under[i].id == ICON_BOT_14 && sh.under[i].w == APP_SIDE_CARD_HARNESS_ICON && sh.under[i].h == APP_SIDE_CARD_HARNESS_ICON && sh.under[i].fill.a < 0.5f32;
         harness_icons += 1;
       }
     }
   }
-  #assert folder_icons == 1 && harness_icons == 2 && ICON_SIZES[ICON_FOLDER_11] == 11.0f32;
+  #assert folder_icons == 1 && harness_icons == 2 && ICON_SIZES[ICON_FOLDER_11] == 11.0f32 && ICON_SIZES[ICON_BOT_14] == 14.0f32;
   #assert app_test_text_x(t[..], "openagents") == folder_right + APP_SIDE_CARD_FOLDER_GAP;
 }
 
