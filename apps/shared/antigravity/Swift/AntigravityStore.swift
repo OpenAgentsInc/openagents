@@ -239,7 +239,13 @@ final class AntigravityStore: ObservableObject {
     }
 
     var workingSessions: [ChatSessionSummary] {
-        filteredSessions.filter(\.busy)
+        // Keep working chats in a stable order so streaming updatedAtMs ticks never swap rows under a tap (#188031e96f parity).
+        filteredSessions.filter(\.busy).sorted { a, b in
+            let pa = isPinned(a)
+            let pb = isPinned(b)
+            if pa != pb { return pa }
+            return a.id < b.id
+        }
     }
 
     var recentSessions: [ChatSessionSummary] {

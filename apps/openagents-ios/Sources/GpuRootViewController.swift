@@ -306,8 +306,52 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
 
         if let pending = store.pendingInteraction {
             oa_ios_set_approval(surface, 1, pending.prompt, pending.warning)
+            oa_ios_approval_options_clear(surface)
+            for opt in pending.options.prefix(6) {
+                oa_ios_approval_options_push(surface, opt.id, opt.label, opt.kind)
+            }
         } else {
             oa_ios_set_approval(surface, 0, "", "")
+            oa_ios_approval_options_clear(surface)
+        }
+
+        if let usage = store.activeUsage, usage.totalTokens > 0 {
+            let pct = Int32(max(0, min(100, Int(usage.contextPercent.rounded()))))
+            oa_ios_set_usage(surface, "\(pct)% · \(usage.summaryLabel)", pct)
+        } else {
+            oa_ios_set_usage(surface, "", 0)
+        }
+        oa_ios_set_queued(surface, store.queuedDraft ?? "")
+
+        // Slash (/) and @ mention autocomplete suggestions above composer
+        let mentions = store.matchingMentions
+        let slashes = mentions.isEmpty ? store.matchingSlashCommands : []
+        if !mentions.isEmpty {
+            oa_ios_suggestions_clear(surface, 1)
+            for m in mentions.prefix(8) {
+                oa_ios_suggestions_push(surface, m.id, m.label, m.subtitle)
+            }
+        } else if !slashes.isEmpty {
+            oa_ios_suggestions_clear(surface, 0)
+            for cmd in slashes.prefix(8) {
+                oa_ios_suggestions_push(surface, cmd.id, cmd.command, cmd.subtitle)
+            }
+        } else {
+            oa_ios_suggestions_clear(surface, 0)
+        }
+
+        // Inline Todos / Task Progress card
+        oa_ios_todos_clear(surface)
+        for todo in store.activeTodos.prefix(16) {
+            let st: Int32 = todo.isCompleted ? OA_IOS_TODO_COMPLETED : (todo.isInProgress ? OA_IOS_TODO_IN_PROGRESS : OA_IOS_TODO_PENDING)
+            oa_ios_todos_push(surface, todo.content, st)
+        }
+
+        // Workspace folders picker catalog
+        oa_ios_folders_clear(surface)
+        for folder in store.folders.prefix(32) {
+            let lbl = folder.isEmpty ? (workspaceName.isEmpty ? "Workspace root" : workspaceName) : folder
+            oa_ios_folders_push(surface, folder, lbl, folder == store.selectedFolder ? 1 : 0)
         }
 
         let modelOpt = store.selectedModelOption
@@ -355,13 +399,24 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
                 attention ? 1 : 0,
                 0
             )
+            if session.id == store.activeSessionID {
+                let lastAsk = store.items.last(where: { $0.role == .user }).map { ParsedUserMessage.parse($0.text).text } ?? ""
+                let lastTool = store.items.last(where: { $0.role == .tool }).map {
+                    let target = $0.path.isEmpty ? $0.text : $0.path
+                    return "\($0.toolName.isEmpty ? "Tool" : $0.toolName) \(target)"
+                } ?? ""
+                let lastReply = store.items.last(where: { $0.role == .assistant })?.text ?? ""
+                oa_ios_session_set_preview(surface, session.id, lastAsk, lastTool, lastReply)
+            } else if !session.note.isEmpty {
+                oa_ios_session_set_preview(surface, session.id, "", "", session.note)
+            }
         }
 
         // Transcript items
         let sessionChanged = store.activeSessionID != lastSyncedSessionID
         lastSyncedSessionID = store.activeSessionID
         oa_ios_items_clear(surface, sessionChanged ? 1 : 0)
-        for item in store.items.suffix(128) {
+        for item in store.items.suffix(192) {
             let roleCode: Int32
             let displayText: String
             switch item.role {
@@ -547,9 +602,106 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
             Task { await store.loadOlderMessages() }
         case OA_IOS_ACT_LOAD_MORE_SESSIONS:
             Task { await store.loadMoreSessions() }
+        case OA_IOS_ACT_APPLY_SUGGESTION:
+            if let mention = store.matchingMentions.first(where: { $0.id == arg }) {
+                applyMentionInsertion(mention.insertion, surface: surface)
+            } else if let cmd = store.matchingSlashCommands.first(where: { $0.id == arg }) {
+                store.applySlashCommand(cmd)
+                _ = oa_ios_draft_set(surface, store.draftText)
+                editor.set(store.draftText)
+                _ = focusComposer()
+            }
+        case OA_IOS_ACT_APPROVAL_OPTION:
+            let opt = store.pendingInteraction?.options.first(where: { $0.id == arg })
+            let kindLower = (opt?.kind ?? arg).lowercased()
+            let allow = !kindLower.contains("reject") && !kindLower.contains("deny")
+            Task { await store.respondToInteraction(allow: allow, optionID: arg) }
+        case OA_IOS_ACT_CLEAR_QUEUED:
+            store.clearQueuedDraft()
+        case OA_IOS_ACT_CHOSE_FOLDER:
+            store.selectedFolder = arg
+        case OA_IOS_ACT_DASHBOARD_CHANGED:
+            if arg == "1" {
+                dismissKeyboard(surface)
+            }
         default:
             break
         }
+        markDirtyAndWake()
+    }
+
+    private func applyMentionInsertion(_ insertion: String, surface: UnsafeMutableRawPointer) {
+        let current = store.draftText
+        if let range = current.range(of: "@[^\\s]*$", options: .regularExpression) {
+            store.draftText = current.replacingCharacters(in: range, with: "\(insertion) ")
+        } else {
+            store.draftText = current.isEmpty ? "\(insertion) " : "\(current) \(insertion) "
+        }
+        _ = oa_ios_draft_set(surface, store.draftText)
+        editor.set(store.draftText)
+        _ = focusComposer()
+    }
+
+    // MARK: - Hardware Keyboard Shortcuts (Desktop Parity: Cmd+D, Cmd+N, Cmd+Up/Down, Cmd+1..9)
+
+    override var keyCommands: [UIKeyCommand]? {
+        var cmds: [UIKeyCommand] = [
+            UIKeyCommand(title: "Dashboard", action: #selector(cmdToggleDashboard), input: "d", modifierFlags: .command),
+            UIKeyCommand(title: "New Chat", action: #selector(cmdNewChat), input: "n", modifierFlags: .command),
+            UIKeyCommand(title: "Toggle Sidebar", action: #selector(cmdToggleSidebar), input: "\\", modifierFlags: .command),
+            UIKeyCommand(title: "Jump to Top", action: #selector(cmdJumpTop), input: UIKeyCommand.inputUpArrow, modifierFlags: .command),
+            UIKeyCommand(title: "Jump to Bottom", action: #selector(cmdJumpBottom), input: UIKeyCommand.inputDownArrow, modifierFlags: .command),
+        ]
+        for n in 1...9 {
+            cmds.append(UIKeyCommand(title: "Chat \(n)", action: #selector(cmdSelectChatByIndex(_:)), input: "\(n)", modifierFlags: .command))
+        }
+        return cmds
+    }
+
+    @objc private func cmdToggleDashboard() {
+        guard let surface else { return }
+        let next: Int32 = oa_ios_dashboard_open(surface) != 0 ? 0 : 1
+        if next != 0 { dismissKeyboard(surface) }
+        oa_ios_dashboard_set(surface, next)
+        markDirtyAndWake()
+    }
+
+    @objc private func cmdNewChat() {
+        guard let surface else { return }
+        oa_ios_dashboard_set(surface, 0)
+        oa_ios_drawer_set(surface, 0)
+        store.startNewChat()
+        _ = focusComposer()
+        markDirtyAndWake()
+    }
+
+    @objc private func cmdToggleSidebar() {
+        guard let surface else { return }
+        let next: Int32 = oa_ios_drawer_open(surface) != 0 ? 0 : 1
+        if next != 0 { dismissKeyboard(surface) }
+        oa_ios_drawer_set(surface, next)
+        markDirtyAndWake()
+    }
+
+    @objc private func cmdJumpTop() {
+        guard let surface else { return }
+        oa_ios_scroll_top(surface)
+        wake()
+    }
+
+    @objc private func cmdJumpBottom() {
+        guard let surface else { return }
+        oa_ios_scroll_bottom(surface)
+        wake()
+    }
+
+    @objc private func cmdSelectChatByIndex(_ sender: UIKeyCommand) {
+        guard let surface, let input = sender.input, let idx = Int(input), idx >= 1 else { return }
+        let ordered = store.workingSessions + store.recentSessions
+        guard idx - 1 < ordered.count else { return }
+        oa_ios_dashboard_set(surface, 0)
+        oa_ios_drawer_set(surface, 0)
+        store.selectSession(ordered[idx - 1])
         markDirtyAndWake()
     }
 
@@ -575,6 +727,12 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         sheet.addAction(UIAlertAction(title: "Side Question (/btw)", style: .default) { [weak self] _ in
             self?.store.isSideQuestionPresented = true
         })
+        if (store.activeSession?.busy == true || store.isAwaitingTurnStart), !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sheet.addAction(UIAlertAction(title: "Queue Follow-Up", style: .default) { [weak self] _ in
+                self?.store.queueCurrentDraft()
+                self?.markDirtyAndWake()
+            })
+        }
         sheet.addAction(UIAlertAction(title: "Antigravity Hub", style: .default) { [weak self] _ in
             self?.store.isHubPresented = true
         })
@@ -673,6 +831,14 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         }
     }
 
+    func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        if let surface {
+            oa_ios_scroll_top(surface)
+            wake()
+        }
+        return false
+    }
+
     // MARK: - Platform Composer Editor (UITextView over GPU Composer)
 
     private func currentGpuDraft(_ surface: UnsafeMutableRawPointer) -> String {
@@ -763,7 +929,7 @@ final class GpuRootViewController: UIViewController, UITextViewDelegate, UIScrol
         if store.draftText != txt {
             store.draftText = txt
         }
-        wake()
+        markDirtyAndWake()
     }
 
     // MARK: - VoiceOver (KitAccessSource)

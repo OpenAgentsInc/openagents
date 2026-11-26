@@ -218,6 +218,10 @@ int oa_ios_action_arg(void *surface, char *out, int cap) { IosGpuHost *c = surfa
 int oa_ios_copy_get(void *surface, char *out, int cap) { IosGpuHost *c = surface; return c && cap > 0 ? oa_bytes(ios_copy_get(oa_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void oa_ios_drawer_set(void *surface, int open) { IosGpuHost *c = surface; if (c) { ios_drawer_set(oa_state(c), open != 0); oa_woke(c); } }
 int oa_ios_drawer_open(void *surface) { IosGpuHost *c = surface; return c ? (int)ios_drawer_open(oa_state(c)) : 0; }
+void oa_ios_dashboard_set(void *surface, int open) { IosGpuHost *c = surface; if (c) { ios_dashboard_set(oa_state(c), open != 0); oa_woke(c); } }
+int oa_ios_dashboard_open(void *surface) { IosGpuHost *c = surface; return c ? (int)ios_dashboard_open(oa_state(c)) : 0; }
+void oa_ios_scroll_top(void *surface) { IosGpuHost *c = surface; if (c) { ios_scroll_top(oa_state(c)); oa_woke(c); } }
+void oa_ios_scroll_bottom(void *surface) { IosGpuHost *c = surface; if (c) { ios_scroll_bottom(oa_state(c)); oa_woke(c); } }
 
 void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int paired_count, int has_active, int has_older, int has_more_sessions) {
   IosGpuHost *c = surface;
@@ -237,6 +241,13 @@ void oa_ios_set_approval(void *surface, int active, const char *prompt, const ch
   ios_set_approval(oa_state(c), active != 0, oa_str(prompt), oa_str(warning));
   oa_changed(c);
 }
+void oa_ios_approval_options_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_approval_options_clear(oa_state(c)); oa_changed(c); } }
+void oa_ios_approval_options_push(void *surface, const char *id, const char *label, const char *kind) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_approval_options_push(oa_state(c), oa_str(id), oa_str(label), oa_str(kind));
+  oa_changed(c);
+}
 void oa_ios_set_composer(void *surface, const char *model_label, const char *effort_label, const char *mode_label, int attachments, int mic_active) {
   IosGpuHost *c = surface;
   if (!c) return;
@@ -249,12 +260,54 @@ void oa_ios_set_working(void *surface, int busy, int awaiting, int secs, const c
   ios_set_working(oa_state(c), busy != 0, awaiting != 0, secs, oa_str(label));
   oa_changed(c);
 }
+void oa_ios_set_usage(void *surface, const char *summary, int context_pct) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_usage(oa_state(c), oa_str(summary), context_pct);
+  oa_changed(c);
+}
+void oa_ios_set_queued(void *surface, const char *text) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_set_queued(oa_state(c), oa_str(text));
+  oa_changed(c);
+}
+
+void oa_ios_suggestions_clear(void *surface, int is_mention) { IosGpuHost *c = surface; if (c) { ios_suggestions_clear(oa_state(c), is_mention != 0); oa_changed(c); } }
+void oa_ios_suggestions_push(void *surface, const char *id, const char *label, const char *detail) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_suggestions_push(oa_state(c), oa_str(id), oa_str(label), oa_str(detail));
+  oa_changed(c);
+}
+
+void oa_ios_todos_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_todos_clear(oa_state(c)); oa_changed(c); } }
+void oa_ios_todos_push(void *surface, const char *content, int status) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_todos_push(oa_state(c), oa_str(content), status);
+  oa_changed(c);
+}
+
+void oa_ios_folders_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_folders_clear(oa_state(c)); oa_changed(c); } }
+void oa_ios_folders_push(void *surface, const char *path, const char *label, int selected) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_folders_push(oa_state(c), oa_str(path), oa_str(label), selected != 0);
+  oa_changed(c);
+}
 
 void oa_ios_sessions_clear(void *surface) { IosGpuHost *c = surface; if (c) { ios_sessions_clear(oa_state(c)); oa_changed(c); } }
 void oa_ios_sessions_push(void *surface, const char *id, const char *title, const char *repo, const char *branch, const char *status, int busy, int current, int attention, int unread) {
   IosGpuHost *c = surface;
   if (!c) return;
   ios_sessions_push(oa_state(c), oa_str(id), oa_str(title), oa_str(repo), oa_str(branch), oa_str(status), busy != 0, current != 0, attention != 0, unread != 0);
+  oa_changed(c);
+}
+void oa_ios_session_set_preview(void *surface, const char *id, const char *ask, const char *activity, const char *reply) {
+  IosGpuHost *c = surface;
+  if (!c) return;
+  ios_session_set_preview(oa_state(c), oa_str(id), oa_str(ask), oa_str(activity), oa_str(reply));
   oa_changed(c);
 }
 

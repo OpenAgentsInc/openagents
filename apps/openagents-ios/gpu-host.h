@@ -42,6 +42,16 @@
 #define OA_IOS_ACT_OPEN_FILE 21
 #define OA_IOS_ACT_LOAD_OLDER 22
 #define OA_IOS_ACT_LOAD_MORE_SESSIONS 23
+#define OA_IOS_ACT_APPLY_SUGGESTION 24
+#define OA_IOS_ACT_APPROVAL_OPTION 25
+#define OA_IOS_ACT_CLEAR_QUEUED 26
+#define OA_IOS_ACT_CHOSE_FOLDER 27
+#define OA_IOS_ACT_DASHBOARD_CHANGED 28
+
+// Todo item status matching gpu-page.coax IOS_TODO_*
+#define OA_IOS_TODO_PENDING 0
+#define OA_IOS_TODO_IN_PROGRESS 1
+#define OA_IOS_TODO_COMPLETED 2
 
 void *oa_ios_open(const char *resources);
 void oa_ios_close(void *surface);
@@ -79,15 +89,33 @@ int oa_ios_action_arg(void *surface, char *out, int cap);
 int oa_ios_copy_get(void *surface, char *out, int cap);
 void oa_ios_drawer_set(void *surface, int open);
 int oa_ios_drawer_open(void *surface);
+void oa_ios_dashboard_set(void *surface, int open);
+int oa_ios_dashboard_open(void *surface);
+void oa_ios_scroll_top(void *surface);
+void oa_ios_scroll_bottom(void *surface);
 
 void oa_ios_set_header(void *surface, const char *computer, const char *session_title, const char *workspace, int reachability, int paired_count, int has_active, int has_older, int has_more_sessions);
 void oa_ios_set_banners(void *surface, const char *error, int outbox_count, const char *toast);
 void oa_ios_set_approval(void *surface, int active, const char *prompt, const char *warning);
+void oa_ios_approval_options_clear(void *surface);
+void oa_ios_approval_options_push(void *surface, const char *id, const char *label, const char *kind);
 void oa_ios_set_composer(void *surface, const char *model_label, const char *effort_label, const char *mode_label, int attachments, int mic_active);
 void oa_ios_set_working(void *surface, int busy, int awaiting, int secs, const char *label);
+void oa_ios_set_usage(void *surface, const char *summary, int context_pct);
+void oa_ios_set_queued(void *surface, const char *text);
+
+void oa_ios_suggestions_clear(void *surface, int is_mention);
+void oa_ios_suggestions_push(void *surface, const char *id, const char *label, const char *detail);
+
+void oa_ios_todos_clear(void *surface);
+void oa_ios_todos_push(void *surface, const char *content, int status);
+
+void oa_ios_folders_clear(void *surface);
+void oa_ios_folders_push(void *surface, const char *path, const char *label, int selected);
 
 void oa_ios_sessions_clear(void *surface);
 void oa_ios_sessions_push(void *surface, const char *id, const char *title, const char *repo, const char *branch, const char *status, int busy, int current, int attention, int unread);
+void oa_ios_session_set_preview(void *surface, const char *id, const char *ask, const char *activity, const char *reply);
 
 void oa_ios_items_clear(void *surface, int reset_scroll);
 void oa_ios_items_push(void *surface, int role, const char *id, const char *text, const char *tool, const char *path, const char *diff, int complete, int failed, int is_subagent, int diff_cut, int subagent_calls, int elapsed_secs);

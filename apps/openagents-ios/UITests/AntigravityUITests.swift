@@ -122,15 +122,24 @@ final class AntigravityUITests: XCTestCase {
         app.buttons["workspace.done"].tap()
         XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
 
-        // Open sidebar and verify zero legacy Login / Projects / Foreman controls exist.
+        // Open sidebar and verify Dashboard + zero legacy Login / Projects / Foreman controls exist.
         sidebarButton.tap()
         XCTAssertTrue(app.buttons["sidebar.newChat"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["sidebar.dashboard"].exists)
         XCTAssertTrue(app.buttons["sidebar.computers"].exists)
         for removed in ["drawer.projects", "drawer.foreman", "drawer.login", "settings.login", "usage.open"] {
             XCTAssertFalse(app.buttons[removed].exists, "Legacy control \(removed) must not exist")
         }
 
+        // Open Dashboard from sidebar and verify it renders cleanly, then return via New Chat.
+        app.buttons["sidebar.dashboard"].tap()
+        XCTAssertTrue(app.buttons["nav.newChat"].waitForExistence(timeout: 5))
+        app.buttons["nav.newChat"].tap()
+        XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5))
+
         // Open Computers sheet from sidebar and verify MagicDNS/IP manual entry & Pair UI.
+        sidebarButton.tap()
+        XCTAssertTrue(app.buttons["sidebar.computers"].waitForExistence(timeout: 5))
         app.buttons["sidebar.computers"].tap()
         let addressField = app.textFields["computers.addAddress"]
         XCTAssertTrue(addressField.waitForExistence(timeout: 5))
