@@ -120,7 +120,7 @@ ds_build :: (s: [] DocsStarter) {
   tr_begin(t);
   _ = k_set(t, "ds");
 
-  // Real <a class="row" href="..."> links work natively with 0 KB JS on static docs pages!
+  // Real <a class="row" href="..."> links work natively with 0 KB JS on static docs & book pages!
   _ = k_set_nav(t, "ds.nav", "Coax Web Docs");
   for k: 0..<DS_ROUTES {
     id := tr_join(buf[..], "ds.nav.", k);
@@ -131,6 +131,11 @@ ds_build :: (s: [] DocsStarter) {
     _ = tr_leaf(t, tr_cat(b3[..], id, ".n"), TG_SPAN, "meta", notes[k]);
     tr_close(t);
   }
+  bk_nav := tr_open(t, "ds.nav.books", TG_A, "row");
+  tr_attr(t, bk_nav, AT_HREF, "/books");
+  _ = tr_leaf(t, "ds.nav.books.t", TG_SPAN, "row-t", "Books");
+  _ = tr_leaf(t, "ds.nav.books.n", TG_SPAN, "meta", "/books · 8 books · 0 KB JS");
+  tr_close(t);
   tr_close(t);
 
   heading := ifx page >= 0 && page < DS_ROUTES then names[page] else "Page Not Found";
@@ -142,13 +147,17 @@ ds_build :: (s: [] DocsStarter) {
     _ = k_field(t, u, "ds.name", "Your name", "Type a name to greet");
     k_set_group_end(t);
 
-    _ = k_set_group(t, u, "ds.links", "Static Docs Routes (0 KB Wasm)");
+    _ = k_set_group(t, u, "ds.links", "Static Docs & Books (0 KB Wasm)");
     _ = tr_open(t, "ds.links.row", TG_DIV, "rowf");
     for k: 1..<DS_ROUTES {
       lid := tr_join(buf[..], "ds.link.", k);
       a := tr_leaf(t, lid, TG_A, "lk", names[k]);
       tr_attr(t, a, AT_HREF, routes[k]);
     }
+    lb := tr_leaf(t, "ds.link.books", TG_A, "lk", "Books Library");
+    tr_attr(t, lb, AT_HREF, "/books");
+    lc := tr_leaf(t, "ds.link.coax", TG_A, "lk", "The Coax Book");
+    tr_attr(t, lc, AT_HREF, "/books/coax");
     tr_close(t);
     k_set_group_end(t);
 
@@ -314,12 +323,16 @@ DsTest :: struct { s: [1] DocsStarter; }
   #assert tr_text_of(t, tr_find(t, "ds.body.t")) == "Hello World";
   #assert tr_text_of(t, tr_find(t, "ds.counter.greet")) == "Hello, World!";
   #assert tr_text_of(t, tr_find(t, "ds.counter.count")) == "Clicks: 0 (live Wasm state)";
-  // Sidebar nav uses real <a href> links for 0-KB-JS navigation across static docs routes
-  nav0 := tr_find(t, "ds.nav.0"); nav1 := tr_find(t, "ds.nav.1");
+  // Sidebar nav uses real <a href> links for 0-KB-JS navigation across static docs & book routes
+  nav0 := tr_find(t, "ds.nav.0"); nav1 := tr_find(t, "ds.nav.1"); navb := tr_find(t, "ds.nav.books");
   #assert t[0].nodes[nav0].tag == TG_A && tr_attr_of(t, nav0, AT_HREF) == "/" && tr_attr_of(t, nav0, AT_CURRENT) == "true";
   #assert t[0].nodes[nav1].tag == TG_A && tr_attr_of(t, nav1, AT_HREF) == "/docs/introduction" && !tr_has(t, nav1, AT_CURRENT);
+  #assert t[0].nodes[navb].tag == TG_A && tr_attr_of(t, navb, AT_HREF) == "/books";
+  #assert t[0].nodes[tr_find(t, "ds.nav.books.t")].tag == TG_SPAN && t[0].nodes[tr_find(t, "ds.nav.books.n")].tag == TG_SPAN;
   #assert t[0].nodes[tr_find(t, "ds.nav.0.t")].tag == TG_SPAN && t[0].nodes[tr_find(t, "ds.nav.0.n")].tag == TG_SPAN;
   #assert t[0].nodes[tr_find(t, "ds.links.row")].tag == TG_DIV && t[0].nodes[tr_find(t, "ds.link.1")].tag == TG_A && tr_attr_of(t, tr_find(t, "ds.link.1"), AT_HREF) == "/docs/introduction";
+  #assert t[0].nodes[tr_find(t, "ds.link.books")].tag == TG_A && tr_attr_of(t, tr_find(t, "ds.link.books"), AT_HREF) == "/books";
+  #assert t[0].nodes[tr_find(t, "ds.link.coax")].tag == TG_A && tr_attr_of(t, tr_find(t, "ds.link.coax"), AT_HREF) == "/books/coax";
   #assert coaxial_ds_frame(s, 0.016, true) == 0 && !coaxial_ds_busy(s);
 
   // Leaf click routes to "ds.counter" and flushes ONLY its subtree
@@ -367,7 +380,9 @@ DsTest :: struct { s: [1] DocsStarter; }
   coaxial_ds_size(s, dm_find(d, "ds.code"), 520, 96);
   n_sz := coaxial_ds_frame(s, 0.016, true);
   #assert n_sz > 0 && dm_test_count(d, n_sz, DC_FRAME) == 1;
+}
 
+#test "hybrid docs starter SSR emits hydrated Wasm on / and 0-KB-Wasm HTML with syntax highlighting on /docs/*" {
   // Hybrid SSR output:
   //   - page 0 (hydrate=true) includes dom-host.js bootstrap script + mono.coax CSS
   //   - page 1 (/docs/introduction, hydrate=false) has ZERO <script> tags, syntax-highlighted tokens, callout island, and mono.coax CSS!

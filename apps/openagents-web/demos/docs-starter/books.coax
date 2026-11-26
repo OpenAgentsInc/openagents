@@ -1,0 +1,915 @@
+// Pure-Coax static SSR book engine for docs-starter (/books and /books/<book>/<chapter>):
+//   - Parses every book's SUMMARY.md through the single shared Markdown parser
+//     (components/core/markdown.coax) in safe block chunks (zero competing Markdown parsing).
+//   - Renders arbitrarily large Markdown chapters (80 KB–200+ KB) losslessly by chunking at
+//     smd_safe_boundary and emitting block-by-block with build-time syntax highlighting
+//     (components/core/syntax.coax), heading anchor IDs, and cross-chapter/cross-book link rewriting.
+//   - Emits 0-KB-JS / 0-KB-Wasm HTML5 documents reusing components/skin/mono.coax CSS.
+// Test natively:
+//   coax/bin/coax test apps/openagents-web/demos/docs-starter/books.coax --library
+#load "../../../../components/skin/mono.coax";
+#load "../../../../components/ui/kit/stream_markdown.coax";
+#load "../../../../components/backend/html.coax";
+
+BK_MAX_ENTRIES :: 384;
+BK_TEXT_CAP :: 65536;
+BK_SUM_CHUNK :: 2048;
+BK_MD_CHUNK :: 16384;
+BK_MD_FALLBACK :: 49152;
+
+BK_BOOK_COUNT :: 8;
+BK_SLUGS :: [8] string.["coax", "openagents", "bitcoin", "nostr", "coder", "psionic", "metaverse-engine", "everglade"];
+BK_DIRS :: [8] string.["coax/book", "openagents/book", "bitcoin/book", "nostr/book", "coder/book", "psionic/book", "metaverse-engine/book", "everglade/book"];
+BK_TITLES :: [8] string.[
+  "The Coax Programming Language",
+  "The OpenAgents Book",
+  "Bitcoin From Scratch",
+  "Nostr From Scratch",
+  "Coder: Coding Agents From Scratch",
+  "Psionic: ML From Scratch",
+  "Building the OpenAgents Metaverse Engine",
+  "Building Everglade",
+];
+BK_DESCS :: [8] string.[
+  "Programs in Coax, the language every other OpenAgents book uses.",
+  "The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.",
+  "Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.",
+  "A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.",
+  "OpenAgents' coding agent, sandbox, harness, and lessons from other agents.",
+  "A machine-learning library in Coax that runs, serves, and trains models.",
+  "A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.",
+  "An MMORPG on the D&D 5E SRD, built on the OpenAgents Metaverse Engine.",
+];
+
+BK_CSS :: ".bk-nav{width:280px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}.bk-top{display:flex;flex-wrap:wrap;gap:6px 12px;padding:4px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--line-dim)}.bk-head{padding:8px 10px 10px;border-bottom:1px solid var(--line-dim);display:flex;flex-direction:column;gap:3px}.bk-head-t{margin:0;font:600 14px/1.35 var(--sans);color:#fff}.bk-part{margin:14px 0 4px;padding:0 10px;font:500 10px/1.4 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}.bk-body{max-width:860px}.bk-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding-bottom:12px;border-bottom:1px solid var(--line-dim)}.bk-crumb{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:500 11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}.bk-crumb a{color:var(--ink-muted);text-decoration:none}.bk-crumb a:hover{color:#fff}.bk-pager{display:flex;justify-content:space-between;gap:16px;padding-top:24px;margin-top:8px;border-top:1px solid var(--line-dim)}.bk-pg{display:flex;flex-direction:column;gap:3px;padding:10px 14px;border:1px solid var(--line-dim);text-decoration:none;color:var(--ink);max-width:48%;transition:border-color .15s,background .15s}.bk-pg:hover{border-color:var(--line-bright);background:var(--surface)}.bk-pg-next{margin-left:auto;text-align:right}.bk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}.bk-card{display:flex;flex-direction:column;gap:8px;padding:16px 18px;border:1px solid var(--line-dim);background:var(--surface);text-decoration:none;color:var(--ink);transition:border-color .15s}.bk-card:hover{border-color:var(--line-bright)}.bk-card-t{margin:0;font:600 15px/1.35 var(--sans);color:#fff}.bk-card-d{margin:0;color:var(--ink-muted);font-size:13px;line-height:1.5}.md h1.md-h{font-size:26px;line-height:1.25;margin:2px 0 8px}.md h2.md-h{font-size:19px;margin:18px 0 4px;padding-top:10px;border-top:1px solid var(--line-dim)}.md h3.md-h{font-size:15px;margin:12px 0 2px}.md hr.md-hr{border:0;border-top:1px solid var(--line-dim);margin:14px 0}.md table{display:block;overflow-x:auto;max-width:100%}@media (max-width:1060px){.bk-nav{width:auto;max-height:42vh;flex-direction:column;flex-wrap:nowrap;overflow-y:auto}}";
+
+BkEntry :: struct {
+  is_part: bool;
+  is_external: bool;
+  title_at: int; title_n: int;
+  file_at: int; file_n: int;
+  slug_at: int; slug_n: int;
+  href_at: int; href_n: int;
+  note_at: int; note_n: int;
+}
+
+BkToc :: struct {
+  entries: [BK_MAX_ENTRIES] BkEntry;
+  n: int;
+  chapters: int;
+  text: [BK_TEXT_CAP] u8;
+  tn: int;
+}
+
+bk_starts :: (s: string, pfx: string) -> bool {
+  return s.count >= pfx.count && cast(string) s[0..<pfx.count] == pfx;
+}
+
+bk_ends :: (s: string, suf: string) -> bool {
+  return s.count >= suf.count && cast(string) s[s.count - suf.count..<s.count] == suf;
+}
+
+bk_is_known_book :: (slug: string) -> bool {
+  slugs := BK_SLUGS;
+  for k: 0..<BK_BOOK_COUNT { if slugs[k] == slug { return true; } }
+  return false;
+}
+
+bk_pool_add :: (toc: [] BkToc, s: string) -> int {
+  at := toc[0].tn;
+  for c: s {
+    if toc[0].tn >= BK_TEXT_CAP { break; }
+    toc[0].text[toc[0].tn] = c;
+    toc[0].tn += 1;
+  }
+  return at;
+}
+
+bk_pool_str :: (toc: [] BkToc, at: int, n: int) -> string {
+  if n < 1 || at < 0 || at + n > toc[0].tn { return ""; }
+  return cast(string) toc[0].text[at..<at + n];
+}
+
+bk_entry_title :: (toc: [] BkToc, i: int) -> string { return bk_pool_str(toc, toc[0].entries[i].title_at, toc[0].entries[i].title_n); }
+bk_entry_file :: (toc: [] BkToc, i: int) -> string { return bk_pool_str(toc, toc[0].entries[i].file_at, toc[0].entries[i].file_n); }
+bk_entry_slug :: (toc: [] BkToc, i: int) -> string { return bk_pool_str(toc, toc[0].entries[i].slug_at, toc[0].entries[i].slug_n); }
+bk_entry_href :: (toc: [] BkToc, i: int) -> string { return bk_pool_str(toc, toc[0].entries[i].href_at, toc[0].entries[i].href_n); }
+bk_entry_note :: (toc: [] BkToc, i: int) -> string { return bk_pool_str(toc, toc[0].entries[i].note_at, toc[0].entries[i].note_n); }
+
+bk_copy_str :: (out: [] u8, at: int, s: string) -> int {
+  n := at;
+  for c: s {
+    if n >= out.count { break; }
+    out[n] = c;
+    n += 1;
+  }
+  return n;
+}
+
+// Rewrites book-internal and cross-book Markdown links to site URLs (or GitHub repo links).
+// Blocks unsafe schemes (javascript:, data:) by returning "".
+bk_rewrite_href :: (book_slug: string, raw: string, out: [] u8) -> string {
+  if raw.count == 0 { return ""; }
+  if raw[0] == '#' || bk_starts(raw, "https://") || bk_starts(raw, "http://") {
+    n := bk_copy_str(out, 0, raw);
+    return cast(string) out[0..<n];
+  }
+  if raw[0] == '/' {
+    if raw.count >= 2 && (raw[1] == '/' || raw[1] == '\\') { return ""; }
+    n := bk_copy_str(out, 0, raw);
+    return cast(string) out[0..<n];
+  }
+  hash := raw.count;
+  for i: 0..<raw.count { if raw[i] == '#' { hash = i; break; } } // mutant: equivalent (raw[0]=='#' already returned above)
+  base := cast(string) raw[0..<hash];
+  frag := cast(string) raw[hash..<raw.count];
+  for i: 0..<base.count {
+    if base[i] == ':' { return ""; }
+    if base[i] == '/' { break; }
+  }
+  if bk_starts(base, "./") { base = cast(string) base[2..<base.count]; }
+
+  // Cross-book link: ../../<other>/book/<rest> -> /books/<other>[/<slug>][#frag]
+  if bk_starts(base, "../../") {
+    rest := cast(string) base[6..<base.count];
+    sl := 0;
+    while sl < rest.count && rest[sl] != '/' { sl += 1; }
+    after := cast(string) rest[sl..<rest.count];
+    other := cast(string) rest[0..<sl];
+    if bk_is_known_book(other) && bk_starts(after, "/book/") {
+      tail := cast(string) after[6..<after.count];
+      n := bk_copy_str(out, 0, "/books/");
+      n = bk_copy_str(out, n, other);
+      if tail != "README.md" && tail != "SUMMARY.md" && bk_ends(tail, ".md") {
+        n = bk_copy_str(out, n, "/");
+        n = bk_copy_str(out, n, cast(string) tail[0..<tail.count - 3]);
+      }
+      n = bk_copy_str(out, n, frag);
+      return cast(string) out[0..<n];
+    }
+    n := bk_copy_str(out, 0, "https://github.com/OpenAgentsInc/openagents/blob/main/");
+    n = bk_copy_str(out, n, rest);
+    n = bk_copy_str(out, n, frag);
+    return cast(string) out[0..<n];
+  }
+
+  // Parent-of-book link: ../<rel> -> GitHub blob under <book_slug>/<rel>
+  if bk_starts(base, "../") {
+    rel := cast(string) base[3..<base.count];
+    n := bk_copy_str(out, 0, "https://github.com/OpenAgentsInc/openagents/blob/main/");
+    n = bk_copy_str(out, n, book_slug);
+    n = bk_copy_str(out, n, "/");
+    n = bk_copy_str(out, n, rel);
+    n = bk_copy_str(out, n, frag);
+    return cast(string) out[0..<n];
+  }
+
+  // Same-book Markdown link: README.md, SUMMARY.md, or ch01-foo.md -> /books/<book_slug>[/<slug>][#frag]
+  has_slash := false;
+  for c: base { if c == '/' { has_slash = true; break; } }
+  if !has_slash && bk_ends(base, ".md") {
+    n := bk_copy_str(out, 0, "/books/");
+    n = bk_copy_str(out, n, book_slug);
+    if base != "README.md" && base != "SUMMARY.md" {
+      n = bk_copy_str(out, n, "/");
+      n = bk_copy_str(out, n, cast(string) base[0..<base.count - 3]);
+    }
+    n = bk_copy_str(out, n, frag);
+    return cast(string) out[0..<n];
+  }
+  return "";
+}
+
+// Strips leading dash/em-dash separator from a SUMMARY.md trailing status note (" — planned" -> "planned").
+bk_clean_note :: (raw: string) -> string {
+  s := smd_trim(raw);
+  if s.count >= 3 && s[0] == 0xe2 && s[1] == 0x80 && s[2] == 0x94 {
+    s = smd_trim(cast(string) s[3..<s.count]);
+  } else if bk_starts(s, "--") {
+    s = smd_trim(cast(string) s[2..<s.count]);
+  } else if s.count >= 1 && s[0] == '-' {
+    s = smd_trim(cast(string) s[1..<s.count]);
+  }
+  return s;
+}
+
+// Next safe byte cut in `src` starting from `pos`, bounded by `limit` (falling back to `fallback` or newline).
+bk_next_cut :: (src: string, pos: int, limit: int, fallback: int) -> int {
+  win := pos + limit;
+  if win >= src.count { return src.count; }
+  cut := smd_safe_boundary(cast(string) src[0..<win], pos); // mutant: equivalent (smd_safe_boundary scans from pos)
+  if cut > pos { return cut; }
+  win2 := pos + fallback;
+  if win2 >= src.count { return src.count; }
+  cut2 := smd_safe_boundary(cast(string) src[0..<win2], pos); // mutant: equivalent (smd_safe_boundary scans from pos)
+  if cut2 > pos { return cut2; }
+  e := md_line_end(src, win2);
+  return ifx e < src.count then e + 1 else src.count;
+}
+
+bk_toc_push_part :: (toc: [] BkToc, text: string) {
+  if toc[0].n >= BK_MAX_ENTRIES { return; }
+  t := smd_trim(text);
+  if t.count == 0 { return; }
+  at := bk_pool_add(toc, t);
+  toc[0].entries[toc[0].n] = BkEntry.{is_part = true, title_at = at, title_n = toc[0].tn - at};
+  toc[0].n += 1;
+}
+
+// Parses a book's SUMMARY.md into `toc` using components/core/markdown.coax (single parser rule).
+bk_parse_summary :: (toc: [] BkToc, book_slug: string, src: string, doc: [] MdDoc) -> int {
+  toc[0].n = 0;
+  toc[0].chapters = 0;
+  toc[0].tn = 0;
+  pos := 0;
+  hbuf: [512] u8;
+  while pos < src.count {
+    cut := bk_next_cut(src, pos, BK_SUM_CHUNK, BK_SUM_CHUNK * 3); // mutant: equivalent (safe boundary chunking is invariant to 1-byte limit shifts)
+    seg := cast(string) src[pos..<cut];
+    pos = cut;
+    doc[0] = MdDoc.{};
+    _ = md_parse(doc, seg, 0); // mutant: equivalent (part tag is unused by bk_parse_summary)
+    for b: 0..<doc[0].nb {
+      blk := doc[0].blocks[b];
+      if blk.heading == 2 || blk.heading == 3 {
+        bk_toc_push_part(toc, md_block_text(doc, b));
+      } else if blk.kind == MB_PARA && blk.heading == 0 {
+        runs := md_block_runs(doc, b);
+        if runs.count == 1 && runs[0].style == MD_BOLD && (runs[0].marks & MD_LINK) == 0 {
+          bk_toc_push_part(toc, md_block_text(doc, b));
+        }
+      } else if blk.kind == MB_LIST {
+        for k: 0..<blk.items {
+          if toc[0].n >= BK_MAX_ENTRIES { break; }
+          idx := blk.item0 + k;
+          itext := md_item_text(doc, idx);
+          runs := md_item_runs(doc, idx);
+          for r: 0..<runs.count {
+            if (runs[r].marks & MD_LINK) == 0 { continue; }
+            lr := runs[r];
+            title := smd_trim(cast(string) itext[lr.from..<lr.to]);
+            target := smd_trim(md_link(doc, lr));
+            note := bk_clean_note(cast(string) itext[lr.to..<itext.count]);
+            if title.count == 0 || target.count == 0 { break; }
+
+            clean_target := ifx bk_starts(target, "./") then cast(string) target[2..<target.count] else target;
+            has_slash := false;
+            for c: clean_target { if c == '/' { has_slash = true; break; } }
+            is_local := !has_slash && bk_ends(clean_target, ".md");
+            href := bk_rewrite_href(book_slug, target, hbuf[..]);
+            if href.count == 0 { break; }
+
+            ent := BkEntry.{is_external = !is_local};
+            ent.title_at = bk_pool_add(toc, title);
+            ent.title_n = toc[0].tn - ent.title_at;
+            ent.href_at = bk_pool_add(toc, href);
+            ent.href_n = toc[0].tn - ent.href_at;
+            if is_local {
+              ent.file_at = bk_pool_add(toc, clean_target);
+              ent.file_n = toc[0].tn - ent.file_at;
+              slug := ifx clean_target == "README.md" then "" else cast(string) clean_target[0..<clean_target.count - 3];
+              ent.slug_at = bk_pool_add(toc, slug);
+              ent.slug_n = toc[0].tn - ent.slug_at;
+              toc[0].chapters += 1;
+            }
+            ent.note_at = bk_pool_add(toc, note);
+            ent.note_n = toc[0].tn - ent.note_at;
+            toc[0].entries[toc[0].n] = ent;
+            toc[0].n += 1;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return toc[0].chapters;
+}
+
+// Lowercase URL-safe heading anchor slug ("Building the compiler" -> "building-the-compiler").
+bk_heading_slug :: (text: string, out: [] u8) -> string {
+  n := 0;
+  prev_dash := true;
+  for c: text {
+    if n >= out.count { break; }
+    if c >= 'A' && c <= 'Z' {
+      out[n] = c + 32; n += 1; prev_dash = false;
+    } else if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+      out[n] = c; n += 1; prev_dash = false;
+    } else if !prev_dash && (c == ' ' || c == '-' || c == '_' || c == '.' || c == '/') {
+      out[n] = '-'; n += 1; prev_dash = true;
+    }
+  }
+  while n > 0 && out[n - 1] == '-' { n -= 1; } // mutant: equivalent (prev_dash starts true so out[0] is never '-')
+  return cast(string) out[0..<n];
+}
+
+// Maps code fence language to syntax.coax language ID, treating "jai" listings in coax/book as Coax.
+bk_lang_id :: (lang: string) -> int {
+  if lang == "jai" { return SYN_LANG_COAX; }
+  return smd_lang_id(lang);
+}
+
+// Emits a syntax-highlighted code block directly into HtBuf (handles arbitrarily long listings with 0 Tree nodes).
+bk_emit_code_html :: (b: [] HtBuf, lang: string, code: string) {
+  ht_put(b, "<div class=\"md-code-block\"");
+  if lang.count > 0 {
+    ht_put(b, " data-lang=\"");
+    ht_escape_attr(b, lang);
+    ht_put_u8(b, '"');
+  }
+  ht_put(b, "><div class=\"md-code-hdr\"><span class=\"md-code-lang\">");
+  ht_escape_text(b, ifx lang.count > 0 then lang else "text");
+  ht_put(b, "</span></div><pre class=\"md-pre\"><code class=\"md-code-body\">");
+
+  syn_lang := bk_lang_id(lang);
+  if syn_lang == SYN_LANG_PLAIN {
+    ht_escape_text(b, code);
+  } else {
+    blk_state: [1] int;
+    runs: [64] MdRun;
+    i := 0;
+    while i <= code.count {
+      e := md_line_end(code, i);
+      line := cast(string) code[i..<e];
+      ht_put(b, "<span class=\"md-code-line\">");
+      nr := syn_tokenize_line_state(syn_lang, line, blk_state[..], runs[..]);
+      pos := 0;
+      for k: 0..<nr {
+        ht_escape_text(b, cast(string) line[pos..<runs[k].from]);
+        cls := smd_syn_class(runs[k].style);
+        if cls == "syn-plain" {
+          ht_escape_text(b, cast(string) line[runs[k].from..<runs[k].to]);
+        } else {
+          ht_put(b, "<span class=\"");
+          ht_put(b, cls);
+          ht_put(b, "\">");
+          ht_escape_text(b, cast(string) line[runs[k].from..<runs[k].to]);
+          ht_put(b, "</span>");
+        }
+        pos = runs[k].to;
+      }
+      ht_escape_text(b, cast(string) line[pos..<line.count]);
+      ht_put(b, "</span>");
+      if e >= code.count { break; } // mutant: equivalent (when e == code.count, i = e + 1 exits while i <= code.count)
+      i = e + 1;
+    }
+  }
+  ht_put(b, "</code></pre></div>");
+}
+
+// Emits inline Markdown runs into Tree `t`, rewriting book-relative `.md` links via `bk_rewrite_href`.
+bk_emit_runs :: (t: [] Tree, doc: [] MdDoc, book_slug: string, base_id: string, text: string, runs: [] MdRun) {
+  if runs.count == 0 {
+    if text.count > 0 {
+      id_buf: [128] u8;
+      _ = tr_leaf(t, tr_cat(id_buf[..], base_id, ".t"), TG_SPAN, "", text);
+    }
+    return;
+  }
+  hbuf: [512] u8;
+  for k: 0..<runs.count {
+    r := runs[k];
+    if r.to <= r.from || r.to > text.count { continue; }
+    seg := cast(string) text[r.from..<r.to];
+    id_buf: [128] u8; p_buf: [128] u8;
+    rid := tr_join(id_buf[..], tr_cat(p_buf[..], base_id, ".r."), k);
+    if (r.marks & MD_LINK) != 0 {
+      raw_href := md_link(doc, r);
+      href := bk_rewrite_href(book_slug, raw_href, hbuf[..]);
+      a := tr_leaf(t, rid, TG_A, "md-link", seg);
+      if href.count > 0 { tr_attr(t, a, AT_HREF, href); } // bk_rewrite_href guarantees URL safety; ht_render_node re-checks ht_url_safe
+    } else if r.style == MD_CODE {
+      _ = tr_leaf(t, rid, TG_CODE, "md-code", seg);
+    } else if r.style == MD_BOLD {
+      _ = tr_leaf(t, rid, TG_STRONG, "", seg);
+    } else if (r.marks & MD_STRIKE) != 0 {
+      _ = tr_leaf(t, rid, TG_DEL, "", seg);
+    } else if (r.marks & MD_ITALIC) != 0 {
+      _ = tr_leaf(t, rid, TG_EM, "", seg);
+    } else {
+      _ = tr_leaf(t, rid, TG_SPAN, "", seg);
+    }
+  }
+}
+
+bk_is_html_comment :: (text: string) -> bool {
+  s := smd_trim(text);
+  return bk_starts(s, "<!--") && bk_ends(s, "-->");
+}
+
+bk_flush_tree :: (hb: [] HtBuf, t: [] Tree) {
+  for i: 0..<t[0].n {
+    if t[0].nodes[i].parent < 0 { ht_render_node(hb, t, i, 0); } // mutant: equivalent (block trees are 1..4 levels deep, well below TR_DEPTH)
+  }
+}
+
+// Renders one block `b` from parsed `doc` into `hb`, resetting Tree per block so TR_NODES never overflows.
+bk_render_block_html :: (hb: [] HtBuf, doc: [] MdDoc, b: int, t: [] Tree, book_slug: string, seq: int) -> int {
+  if hb[0].overflow { return seq; }
+  p1: [128] u8; p2: [128] u8; p3: [128] u8; sbuf: [96] u8;
+  blk := doc[0].blocks[b];
+  bid := tr_join(p1[..], "b.", seq);
+
+  if blk.kind == MB_CODE {
+    lang := md_lang(doc, b);
+    code := md_block_text(doc, b);
+    ik := smd_island_kind(lang);
+    if ik != SMD_ISLAND_NONE {
+      tr_begin(t);
+      smd_render_island(t, bid, ik, code);
+      bk_flush_tree(hb, t);
+    } else {
+      bk_emit_code_html(hb, lang, code);
+    }
+    return seq + 1;
+  }
+
+  if blk.kind == MB_PARA && blk.heading == 0 && bk_is_html_comment(md_block_text(doc, b)) {
+    return seq + 1;
+  }
+
+  tr_begin(t);
+  if blk.kind == MB_RULE {
+    _ = tr_open(t, bid, TG_HR, "md-hr");
+    tr_close(t);
+  } else if blk.kind == MB_LIST {
+    _ = tr_open(t, bid, ifx blk.ordered then TG_OL else TG_UL, "md-list");
+    for k: 0..<blk.items {
+      item := doc[0].items[blk.item0 + k];
+      iid := tr_join(p2[..], tr_cat(p3[..], bid, ".i."), k);
+      li := tr_open(t, iid, TG_LI, "md-li");
+      if item.task != MD_TASK_NONE {
+        tr_attr(t, li, AT_CHECKED, ifx item.task == MD_TASK_DONE then "true" else "false");
+      }
+      bk_emit_runs(t, doc, book_slug, iid, md_item_text(doc, blk.item0 + k), md_item_runs(doc, blk.item0 + k));
+      tr_close(t);
+    }
+    tr_close(t);
+  } else if blk.kind == MB_QUOTE {
+    _ = tr_open(t, bid, TG_BLOCKQUOTE, "md-quote");
+    for k: 0..<blk.items {
+      qid := tr_join(p2[..], tr_cat(p3[..], bid, ".q."), k);
+      _ = tr_open(t, qid, TG_P, "md-quote-p");
+      bk_emit_runs(t, doc, book_slug, qid, md_item_text(doc, blk.item0 + k), md_item_runs(doc, blk.item0 + k));
+      tr_close(t);
+    }
+    tr_close(t);
+  } else if blk.kind == MB_TABLE {
+    _ = tr_open(t, bid, TG_TABLE, "md-table");
+    rows := md_table_rows(doc, b);
+    for r: 0..<rows {
+      rid := tr_join(p2[..], tr_cat(p3[..], bid, ".tr."), r);
+      _ = tr_open(t, rid, TG_TR, "");
+      for c: 0..<blk.cols {
+        idx := blk.item0 + r * blk.cols + c;
+        cbuf: [128] u8; cpbuf: [128] u8;
+        cid := tr_join(cbuf[..], tr_cat(cpbuf[..], rid, ".c."), c);
+        _ = tr_open(t, cid, ifx r == 0 then TG_TH else TG_TD, "");
+        bk_emit_runs(t, doc, book_slug, cid, md_item_text(doc, idx), md_item_runs(doc, idx));
+        tr_close(t);
+      }
+      tr_close(t);
+    }
+    tr_close(t);
+  } else {
+    tag := ifx blk.heading > 0 then smd_heading_tag(blk.heading) else TG_P;
+    hid := bid;
+    if blk.heading > 0 {
+      sl := bk_heading_slug(md_block_text(doc, b), sbuf[..]);
+      if sl.count > 0 { hid = sl; }
+    }
+    _ = tr_open(t, hid, tag, ifx blk.heading > 0 then "md-h" else "md-p");
+    bk_emit_runs(t, doc, book_slug, bid, md_block_text(doc, b), md_block_runs(doc, b));
+    tr_close(t);
+  }
+  bk_flush_tree(hb, t);
+  return seq + 1;
+}
+
+// Renders one parsed MdDoc into HtBuf block-by-block.
+bk_render_doc_html :: (hb: [] HtBuf, doc: [] MdDoc, t: [] Tree, book_slug: string, seq0: int) -> int {
+  seq := seq0;
+  for b: 0..<doc[0].nb {
+    if hb[0].overflow { break; }
+    seq = bk_render_block_html(hb, doc, b, t, book_slug, seq);
+  }
+  return seq;
+}
+
+// Renders arbitrarily large Markdown `src` into HTML inside `out`, chunking safely at block boundaries.
+bk_render_md_html :: (src: string, book_slug: string, doc: [] MdDoc, t: [] Tree, out: [] u8) -> int {
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  pos := 0;
+  seq := 0;
+  while pos < src.count && !hb[0].overflow {
+    cut := bk_next_cut(src, pos, BK_MD_CHUNK, BK_MD_FALLBACK); // mutant: equivalent (safe boundary chunking is invariant to 1-byte limit shifts)
+    seg := cast(string) src[pos..<cut];
+    pos = cut;
+    doc[0] = MdDoc.{};
+    doc[0].keep_rules = true;
+    _ = md_parse(doc, seg, 0); // mutant: equivalent (part tag is unused by bk_render_doc_html)
+    seq = bk_render_doc_html(hb[..], doc, t, book_slug, seq);
+  }
+  return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+bk_put_int :: (hb: [] HtBuf, val: int) {
+  buf: [32] u8;
+  ht_put(hb, tr_join(buf[..], "", val));
+}
+
+// Finds previous/next local chapter entry index around `cur` in `toc`, or -1.
+bk_prev_chapter :: (toc: [] BkToc, cur: int) -> int {
+  i := cur - 1;
+  while i >= 0 {
+    if !toc[0].entries[i].is_part && !toc[0].entries[i].is_external { return i; }
+    i -= 1;
+  }
+  return -1;
+}
+
+bk_next_chapter :: (toc: [] BkToc, cur: int) -> int {
+  i := cur + 1;
+  while i < toc[0].n {
+    if !toc[0].entries[i].is_part && !toc[0].entries[i].is_external { return i; }
+    i += 1;
+  }
+  return -1;
+}
+
+// Writes the HTML5 document header + sticky book TOC sidebar + article opening `<div class="md">`.
+// Uses external `/books/mono.css` and emits ZERO <script> tags.
+bk_write_chapter_head :: (book_idx: int, toc: [] BkToc, active: int, out: [] u8) -> int {
+  titles := BK_TITLES;
+  slugs := BK_SLUGS;
+  book_title := titles[book_idx];
+  book_slug := slugs[book_idx];
+  ch_title := ifx active >= 0 && active < toc[0].n then bk_entry_title(toc, active) else book_title;
+
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
+  ht_escape_text(hb[..], ch_title);
+  if ch_title != book_title {
+    ht_put(hb[..], " — ");
+    ht_escape_text(hb[..], book_title);
+  }
+  ht_put(hb[..], "</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
+
+  // Sticky book TOC sidebar
+  ht_put(hb[..], "<nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\">");
+  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div>");
+  ht_put(hb[..], "<div class=\"bk-head\"><p class=\"bk-head-t\">");
+  ht_escape_text(hb[..], book_title);
+  ht_put(hb[..], "</p><span class=\"meta\">");
+  bk_put_int(hb[..], toc[0].chapters);
+  ht_put(hb[..], " chapters · 0 KB JS</span></div>");
+
+  for i: 0..<toc[0].n {
+    ent := toc[0].entries[i];
+    if ent.is_part {
+      ht_put(hb[..], "<p class=\"bk-part\">");
+      ht_escape_text(hb[..], bk_entry_title(toc, i));
+      ht_put(hb[..], "</p>");
+    } else {
+      href := bk_entry_href(toc, i);
+      ht_put(hb[..], "<a class=\"row\" href=\"");
+      ht_escape_attr(hb[..], href);
+      ht_put_u8(hb[..], '"');
+      if i == active { ht_put(hb[..], " aria-current=\"true\""); }
+      ht_put(hb[..], "><span class=\"row-t\">");
+      ht_escape_text(hb[..], bk_entry_title(toc, i));
+      ht_put(hb[..], "</span>");
+      note := bk_entry_note(toc, i);
+      if note.count > 0 {
+        ht_put(hb[..], "<span class=\"meta\">");
+        ht_escape_text(hb[..], note);
+        ht_put(hb[..], "</span>");
+      }
+      ht_put(hb[..], "</a>");
+    }
+  }
+  ht_put(hb[..], "</nav>");
+
+  // Main article body header + breadcrumb + raw Markdown link
+  ht_put(hb[..], "<article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/");
+  ht_escape_attr(hb[..], book_slug);
+  ht_put(hb[..], "\">");
+  ht_escape_text(hb[..], book_title);
+  ht_put(hb[..], "</a></div><a class=\"lk\" href=\"");
+  if active >= 0 && active < toc[0].n {
+    ht_escape_attr(hb[..], bk_entry_href(toc, active));
+  } else {
+    ht_put(hb[..], "/books/");
+    ht_escape_attr(hb[..], book_slug);
+  }
+  ht_put(hb[..], "/index.md\">Raw Markdown</a></div><div class=\"md\">");
+  return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+// Writes the article closing tags + Previous/Next chapter pager + `</main></body></html>`.
+bk_write_chapter_foot :: (toc: [] BkToc, active: int, out: [] u8) -> int {
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  ht_put(hb[..], "</div>");
+  prev := bk_prev_chapter(toc, active);
+  next := bk_next_chapter(toc, active);
+  if prev >= 0 || next >= 0 {
+    ht_put(hb[..], "<nav class=\"bk-pager\" aria-label=\"Chapter navigation\">");
+    if prev >= 0 {
+      ht_put(hb[..], "<a class=\"bk-pg\" href=\"");
+      ht_escape_attr(hb[..], bk_entry_href(toc, prev));
+      ht_put(hb[..], "\"><span class=\"meta\">Previous</span><span class=\"row-t\">");
+      ht_escape_text(hb[..], bk_entry_title(toc, prev));
+      ht_put(hb[..], "</span></a>");
+    }
+    if next >= 0 {
+      ht_put(hb[..], "<a class=\"bk-pg bk-pg-next\" href=\"");
+      ht_escape_attr(hb[..], bk_entry_href(toc, next));
+      ht_put(hb[..], "\"><span class=\"meta\">Next</span><span class=\"row-t\">");
+      ht_escape_text(hb[..], bk_entry_title(toc, next));
+      ht_put(hb[..], "</span></a>");
+    }
+    ht_put(hb[..], "</nav>");
+  }
+  ht_put(hb[..], "</article></div></main></body></html>");
+  return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+// Renders the `/books` library index page listing all 8 books with live chapter counts (0 KB JS).
+bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
+  slugs := BK_SLUGS;
+  dirs := BK_DIRS;
+  titles := BK_TITLES;
+  descs := BK_DESCS;
+  total := 0;
+  for k: 0..<BK_BOOK_COUNT {
+    if k < counts.count { total += counts[k]; }
+  }
+
+  hb := [1] HtBuf.[HtBuf.{bytes = out}];
+  ht_put(hb[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\">");
+
+  ht_put(hb[..], "<nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\">");
+  ht_put(hb[..], "<div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div>");
+  ht_put(hb[..], "<div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">");
+  bk_put_int(hb[..], total);
+  ht_put(hb[..], " chapters · 0 KB JS</span></div>");
+  for k: 0..<BK_BOOK_COUNT {
+    cnt := ifx k < counts.count then counts[k] else 0;
+    ht_put(hb[..], "<a class=\"row\" href=\"/books/");
+    ht_escape_attr(hb[..], slugs[k]);
+    ht_put(hb[..], "\"><span class=\"row-t\">");
+    ht_escape_text(hb[..], titles[k]);
+    ht_put(hb[..], "</span><span class=\"meta\">");
+    ht_escape_text(hb[..], dirs[k]);
+    ht_put(hb[..], " · ");
+    bk_put_int(hb[..], cnt);
+    ht_put(hb[..], " chapters</span></a>");
+  }
+  ht_put(hb[..], "</nav>");
+
+  ht_put(hb[..], "<article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header>");
+  ht_put(hb[..], "<p class=\"sec-n\">All eight OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p>");
+  ht_put(hb[..], "<div class=\"bk-grid\">");
+  for k: 0..<BK_BOOK_COUNT {
+    cnt := ifx k < counts.count then counts[k] else 0;
+    ht_put(hb[..], "<a class=\"bk-card\" href=\"/books/");
+    ht_escape_attr(hb[..], slugs[k]);
+    ht_put(hb[..], "\"><span class=\"meta\">");
+    ht_escape_text(hb[..], dirs[k]);
+    ht_put(hb[..], " · ");
+    bk_put_int(hb[..], cnt);
+    ht_put(hb[..], " chapters</span><h2 class=\"bk-card-t\">");
+    ht_escape_text(hb[..], titles[k]);
+    ht_put(hb[..], "</h2><p class=\"bk-card-d\">");
+    ht_escape_text(hb[..], descs[k]);
+    ht_put(hb[..], "</p></a>");
+  }
+  ht_put(hb[..], "</div></article></div></main></body></html>");
+  return ifx hb[0].overflow then -1 else hb[0].n;
+}
+
+// ---- checks
+
+#test "bk string helpers, pool bounds, link rewriting, heading slugs, notes, and chunk boundary cuts" {
+  // Exact-length and shorter boundary checks for bk_starts / bk_ends / bk_copy_str
+  #assert bk_starts("ab", "ab") && !bk_starts("a", "ab") && !bk_starts("ac", "ab");
+  #assert bk_ends("ab", "ab") && !bk_ends("a", "ab") && !bk_ends("ac", "ab");
+  b2: [2] u8;
+  #assert bk_copy_str(b2[..], 0, "abc") == 2 && cast(string) b2[0..<2] == "ab";
+
+  // Pool bounds and overflow clamping
+  ptoc: [1] BkToc;
+  ptoc[0].tn = BK_TEXT_CAP - 1;
+  at := bk_pool_add(ptoc[..], "xy");
+  #assert at == BK_TEXT_CAP - 1 && ptoc[0].tn == BK_TEXT_CAP && bk_pool_str(ptoc[..], at, 1) == "x";
+  #assert bk_pool_str(ptoc[..], at, 0) == "" && bk_pool_str(ptoc[..], -1, 1) == "" && bk_pool_str(ptoc[..], at, 2) == "";
+  ptoc[0].tn = 1; ptoc[0].text[0] = 'z';
+  #assert bk_pool_str(ptoc[..], 0, 1) == "z" && bk_pool_str(ptoc[..], 1, 1) == "";
+
+  // Link rewriting across every scheme, slash, cross-book, repo, and same-book boundary
+  buf: [512] u8;
+  #assert bk_is_known_book("coax") && bk_is_known_book("everglade") && !bk_is_known_book("unknown");
+  #assert bk_rewrite_href("coax", "", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "#intro", buf[..]) == "#intro";
+  #assert bk_rewrite_href("coax", "/", buf[..]) == "/";
+  #assert bk_rewrite_href("coax", "/docs/introduction", buf[..]) == "/docs/introduction";
+  #assert bk_rewrite_href("coax", "//", buf[..]) == "" && bk_rewrite_href("coax", "/\\", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "https://openagents.com", buf[..]) == "https://openagents.com";
+  #assert bk_rewrite_href("coax", "http://127.0.0.1:8820/", buf[..]) == "http://127.0.0.1:8820/";
+  #assert bk_rewrite_href("coax", ":bad.md", buf[..]) == "" && bk_rewrite_href("coax", "javascript:alert(1).md", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "a;b.md", buf[..]) == "/books/coax/a;b";
+  #assert bk_rewrite_href("coax", "sub/a:b.md", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "sub/a.md", buf[..]) == "" && bk_rewrite_href("coax", "a.txt", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "README.md", buf[..]) == "/books/coax";
+  #assert bk_rewrite_href("coax", "SUMMARY.md", buf[..]) == "/books/coax";
+  #assert bk_rewrite_href("coax", "./README.md#top", buf[..]) == "/books/coax#top";
+  #assert bk_rewrite_href("coax", "ch01-getting-started.md", buf[..]) == "/books/coax/ch01-getting-started";
+  #assert bk_rewrite_href("coax", "./ch02-first.md#sec", buf[..]) == "/books/coax/ch02-first#sec";
+  #assert bk_rewrite_href("nostr", "../../", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/";
+  #assert bk_rewrite_href("nostr", "../../docs/a:b.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/docs/a:b.md";
+  #assert bk_rewrite_href("nostr", "../../bitcoin/book/README.md", buf[..]) == "/books/bitcoin";
+  #assert bk_rewrite_href("nostr", "../../bitcoin/book/SUMMARY.md", buf[..]) == "/books/bitcoin";
+  #assert bk_rewrite_href("nostr", "../../bitcoin/book/", buf[..]) == "/books/bitcoin";
+  #assert bk_rewrite_href("nostr", "../../bitcoin/book/x.txt", buf[..]) == "/books/bitcoin";
+  #assert bk_rewrite_href("nostr", "../../bitcoin/book/ch004-sha-256.md#h", buf[..]) == "/books/bitcoin/ch004-sha-256#h";
+  #assert bk_rewrite_href("nostr", "../../coax", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax";
+  #assert bk_rewrite_href("nostr", "../../coax/other.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/other.md";
+  #assert bk_rewrite_href("nostr", "../../unknown/book/a.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/unknown/book/a.md";
+  #assert bk_rewrite_href("openagents", "../../docs/audits/x.md#p", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/docs/audits/x.md#p";
+  #assert bk_rewrite_href("psionic", "../README.md#s", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/psionic/README.md#s";
+  #assert bk_rewrite_href("coax", "../a:b.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/a:b.md";
+  #assert bk_rewrite_href("coax", "a0.md", buf[..]) == "/books/coax/a0";
+
+  // Heading slugs, note cleanup, HTML comment check, and language IDs
+  sb: [64] u8; sb3: [3] u8;
+  #assert bk_heading_slug("AZ az 09-a_b.c/d!:[{", sb[..]) == "az-az-09-a-b-c-d";
+  #assert bk_heading_slug("-a  b", sb[..]) == "a-b" && bk_heading_slug("a-", sb[..]) == "a" && bk_heading_slug("-", sb[..]) == "";
+  #assert bk_heading_slug("abcdef", sb3[..]) == "abc";
+  #assert bk_clean_note("—") == "" && bk_clean_note("—a") == "a" && bk_clean_note(" — ok") == "ok";
+  #assert bk_clean_note("--") == "" && bk_clean_note("--a") == "a" && bk_clean_note("-") == "" && bk_clean_note("-a") == "a" && bk_clean_note("  done  ") == "done";
+  #assert bk_is_html_comment("<!-- x -->") && !bk_is_html_comment("<!-- x") && !bk_is_html_comment("x -->");
+  #assert bk_lang_id("jai") == SYN_LANG_COAX && bk_lang_id("coax") == SYN_LANG_COAX && bk_lang_id("plain") == SYN_LANG_PLAIN;
+
+  // bk_next_cut: pos>=count, win>=count, cut within limit, fallback window, and hard newline/EOF fallback
+  s_cut := "p1\n\np2\n\np3\n";
+  #assert bk_next_cut(s_cut, s_cut.count, 4, 8) == s_cut.count;
+  #assert bk_next_cut(s_cut, 0, s_cut.count, s_cut.count) == s_cut.count;
+  #assert bk_next_cut(s_cut, 0, 5, 10) == 4;
+  // Inside a 1-block fence longer than limit (6) but ending inside fallback (22):
+  s_fb := "```\nabcdefghij\n```\nnext";
+  #assert bk_next_cut(s_fb, 0, 6, 20) == 19;
+  #assert bk_next_cut(s_fb, 0, 6, 23) == 23;
+  // Unclosed fence longer than fallback: cuts at next newline (e + 1), or EOF when no newline remains
+  s_long := "```\n0123456789\n0123456789\nend";
+  #assert bk_next_cut(s_long, 0, 5, 8) == 15;
+  #assert bk_next_cut("```\n0123456789", 0, 5, 8) == 14;
+}
+
+#test "bk_parse_summary handles headings, bold parts, caps, invalid items, multi-chunk, and prev/next" {
+  sum := "# Ignored H1\n\n* [Home](README.md)\n* [Fwd](./foreword.md)\n\n## Part I\n### Sub\n#### Deep\n##    \n\n* [1. Start](ch01.md) — a\n* [2. Two](ch02.md)\n* plain bullet\n* *it* [3. Pref](ch03.md)\n* [ ](empty.md)\n* [Bad](javascript:x)\n* [Top](#)\n\n***II. Bold Part***\n\n**Not** part\n\n[**LinkBold**](x.md)\n\n- [Bitcoin](../../bitcoin/book/README.md)\n- [4. End](ch04.md)\n";
+  toc: [1] BkToc;
+  doc: [1] MdDoc;
+  // Pre-dirty toc and doc to prove bk_parse_summary resets them cleanly
+  toc[0].n = 5; toc[0].chapters = 5; toc[0].tn = 5;
+  doc[0].nb = 3;
+  cnt := bk_parse_summary(toc[..], "coax", sum, doc[..]);
+  #assert cnt == 6 && toc[0].n == 11 && toc[0].entries[0].title_at == 0;
+  #assert !toc[0].entries[0].is_part && bk_entry_file(toc[..], 0) == "README.md" && bk_entry_slug(toc[..], 0) == "" && bk_entry_href(toc[..], 0) == "/books/coax";
+  #assert bk_entry_file(toc[..], 1) == "foreword.md" && bk_entry_slug(toc[..], 1) == "foreword" && bk_entry_href(toc[..], 1) == "/books/coax/foreword";
+  #assert toc[0].entries[2].is_part && bk_entry_title(toc[..], 2) == "Part I";
+  #assert toc[0].entries[3].is_part && bk_entry_title(toc[..], 3) == "Sub";
+  #assert bk_entry_title(toc[..], 4) == "1. Start" && bk_entry_note(toc[..], 4) == "a";
+  #assert bk_entry_title(toc[..], 5) == "2. Two" && bk_entry_note(toc[..], 5) == "";
+  #assert bk_entry_title(toc[..], 6) == "3. Pref" && bk_entry_slug(toc[..], 6) == "ch03";
+  #assert toc[0].entries[7].is_external && bk_entry_href(toc[..], 7) == "#";
+  #assert toc[0].entries[8].is_part && bk_entry_title(toc[..], 8) == "II. Bold Part";
+  #assert toc[0].entries[9].is_external && bk_entry_href(toc[..], 9) == "/books/bitcoin";
+  #assert !toc[0].entries[10].is_external && bk_entry_slug(toc[..], 10) == "ch04";
+
+  // Prev/next skip both parts AND external entries in both directions
+  #assert bk_prev_chapter(toc[..], 0) == -1 && bk_next_chapter(toc[..], 0) == 1;
+  #assert bk_prev_chapter(toc[..], 4) == 1 && bk_next_chapter(toc[..], 1) == 4;
+  #assert bk_prev_chapter(toc[..], 10) == 6 && bk_next_chapter(toc[..], 6) == 10;
+  #assert bk_next_chapter(toc[..], 10) == -1;
+
+  // BK_MAX_ENTRIES saturation cap on both parts and list items
+  cap_toc: [1] BkToc;
+  cap_toc[0].n = BK_MAX_ENTRIES;
+  bk_toc_push_part(cap_toc[..], "Ignored");
+  #assert cap_toc[0].n == BK_MAX_ENTRIES;
+  bk_toc_push_part(cap_toc[..], "   ");
+  #assert cap_toc[0].n == BK_MAX_ENTRIES;
+  // Build a >4096-byte SUMMARY with 390 list items across sections to test multi-chunk loop and BK_MAX_ENTRIES break
+  big: [6144] u8; bn := 0;
+  for k: 0..<390 {
+    if k > 0 && k % 50 == 0 { bn = bk_copy_str(big[..], bn, "\n"); }
+    bn = bk_copy_str(big[..], bn, "- [Ch](c.md)\n");
+  }
+  c_big := bk_parse_summary(cap_toc[..], "coax", cast(string) big[0..<bn], doc[..]);
+  #assert cap_toc[0].n == BK_MAX_ENTRIES && c_big == BK_MAX_ENTRIES;
+}
+
+#test "bk_render_md_html, bk_emit_code_html, and bk_emit_runs match exact HTML and overflow cleanly" {
+  doc: [1] MdDoc;
+  t: [1] Tree;
+  out: [32768] u8;
+
+  // Direct bk_emit_runs edge cases: 0 runs (empty & 1-char text), out-of-range runs, 1-char href, and blocked href
+  tr_begin(t[..]);
+  dummy_runs: [1] MdRun;
+  bk_emit_runs(t[..], doc[..], "coax", "e0", "", dummy_runs[0..<0]);
+  bk_emit_runs(t[..], doc[..], "coax", "e1", "a", dummy_runs[0..<0]);
+  bad_runs := [2] MdRun.[MdRun.{from = 2, to = 2}, MdRun.{from = 0, to = 9}];
+  bk_emit_runs(t[..], doc[..], "coax", "e2", "ab", bad_runs[..]);
+  #assert t[0].n == 1 && tr_id(t[..], 0) == "e1.t" && t[0].nodes[0].tag == TG_SPAN && tr_text_of(t[..], 0) == "a";
+  doc[0] = MdDoc.{}; _ = md_parse(doc[..], "[R](/) [X](javascript:1)", 0);
+  tr_begin(t[..]);
+  bk_emit_runs(t[..], doc[..], "coax", "lk", md_block_text(doc[..], 0), md_block_runs(doc[..], 0));
+  #assert tr_attr_of(t[..], tr_find(t[..], "lk.r.0"), AT_HREF) == "/" && !tr_has(t[..], tr_find(t[..], "lk.r.2"), AT_HREF);
+
+  // Direct bk_emit_code_html: empty lang (defaults to "text"), 1-char lang "c", and highlighted multi-line Coax (jai) with trailing newline
+  hb0 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bk_emit_code_html(hb0[..], "", "a<b");
+  #assert cast(string) out[0..<hb0[0].n] == "<div class=\"md-code-block\"><div class=\"md-code-hdr\"><span class=\"md-code-lang\">text</span></div><pre class=\"md-pre\"><code class=\"md-code-body\">a&lt;b</code></pre></div>";
+  hbc := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bk_emit_code_html(hbc[..], "c", "1\n");
+  #assert cast(string) out[0..<hbc[0].n] == "<div class=\"md-code-block\" data-lang=\"c\"><div class=\"md-code-hdr\"><span class=\"md-code-lang\">c</span></div><pre class=\"md-pre\"><code class=\"md-code-body\"><span class=\"md-code-line\"><span class=\"syn-num\">1</span></span><span class=\"md-code-line\"></span></code></pre></div>";
+
+  hb1 := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  bk_emit_code_html(hb1[..], "jai", "  return x\n$ ");
+  #assert cast(string) out[0..<hb1[0].n] == "<div class=\"md-code-block\" data-lang=\"jai\"><div class=\"md-code-hdr\"><span class=\"md-code-lang\">jai</span></div><pre class=\"md-pre\"><code class=\"md-code-body\"><span class=\"md-code-line\">  <span class=\"syn-kw\">return</span> <span class=\"syn-var\">x</span></span><span class=\"md-code-line\">$ </span></code></pre></div>";
+
+  // Full Markdown document exact HTML assertion covering every block and inline kind + per-block Tree depth balance
+  md := "# <!-- a -->\n\n## ---\n\n<!-- skip -->\n\n**b** *i* ~~s~~ `c` [L](ch02.md) [X](javascript:1) p\n\n```text\nhi\n```\n\n```island:callout\ntone: info\ntitle: T\nbody: B\n```\n\n1. one\n\n- [x] d\n- [ ] u\n- n\n\n> q1\n>\n> q2\n\n| H1 | H2 |\n| --- | --- |\n| C1 | C2 |\n\n---\n";
+  doc[0].nb = 7; // verify reset
+  n := bk_render_md_html(md, "coax", doc[..], t[..], out[..]);
+  #assert n > 0;
+  want := "<h1 id=\"a\" class=\"md-h\"><strong id=\"b.0.r.0\">&lt;!-- a --&gt;</strong></h1><h2 id=\"b.1\" class=\"md-h\"><strong id=\"b.1.r.0\">---</strong></h2><p id=\"b.3\" class=\"md-p\"><strong id=\"b.3.r.0\">b</strong><span id=\"b.3.r.1\"> </span><em id=\"b.3.r.2\">i</em><span id=\"b.3.r.3\"> </span><del id=\"b.3.r.4\">s</del><span id=\"b.3.r.5\"> </span><code id=\"b.3.r.6\" class=\"md-code\">c</code><span id=\"b.3.r.7\"> </span><a id=\"b.3.r.8\" class=\"md-link\" href=\"/books/coax/ch02\">L</a><span id=\"b.3.r.9\"> </span><a id=\"b.3.r.10\" class=\"md-link\">X</a><span id=\"b.3.r.11\"> p</span></p><div class=\"md-code-block\" data-lang=\"text\"><div class=\"md-code-hdr\"><span class=\"md-code-lang\">text</span></div><pre class=\"md-pre\"><code class=\"md-code-body\">hi</code></pre></div><section id=\"b.5\" class=\"md-island md-island-callout\" role=\"note\" data-state=\"info\"><h4 id=\"b.5.title\" class=\"md-island-title\">T</h4><p id=\"b.5.body\" class=\"md-island-body\">B</p></section><ol id=\"b.6\" class=\"md-list\"><li id=\"b.6.i.0\" class=\"md-li\"><span id=\"b.6.i.0.r.0\">one</span></li></ol><ul id=\"b.7\" class=\"md-list\"><li id=\"b.7.i.0\" class=\"md-li\" aria-checked=\"true\"><span id=\"b.7.i.0.r.0\">d</span></li><li id=\"b.7.i.1\" class=\"md-li\" aria-checked=\"false\"><span id=\"b.7.i.1.r.0\">u</span></li><li id=\"b.7.i.2\" class=\"md-li\"><span id=\"b.7.i.2.r.0\">n</span></li></ul><blockquote id=\"b.8\" class=\"md-quote\"><p id=\"b.8.q.0\" class=\"md-quote-p\"><span id=\"b.8.q.0.r.0\">q1</span></p><p id=\"b.8.q.1\" class=\"md-quote-p\"><span id=\"b.8.q.1.r.0\">q2</span></p></blockquote><table id=\"b.9\" class=\"md-table\"><tr id=\"b.9.tr.0\"><th id=\"b.9.tr.0.c.0\"><strong id=\"b.9.tr.0.c.0.r.0\">H1</strong></th><th id=\"b.9.tr.0.c.1\"><strong id=\"b.9.tr.0.c.1.r.0\">H2</strong></th></tr><tr id=\"b.9.tr.1\"><td id=\"b.9.tr.1.c.0\"><span id=\"b.9.tr.1.c.0.r.0\">C1</span></td><td id=\"b.9.tr.1.c.1\"><span id=\"b.9.tr.1.c.1.r.0\">C2</span></td></tr></table><hr id=\"b.10\" class=\"md-hr\">";
+  #assert cast(string) out[0..<n] == want;
+  // Verify every single block closes its Tree cleanly (depth == 0)
+  hb_chk := [1] HtBuf.[HtBuf.{bytes = out[..]}];
+  seq_chk := 0;
+  for b: 0..<doc[0].nb {
+    seq_chk = bk_render_block_html(hb_chk[..], doc[..], b, t[..], "coax", seq_chk);
+    #assert t[0].depth == 0;
+  }
+  #assert cast(string) out[0..<hb_chk[0].n] == want;
+
+  // Overflow stops cleanly and returns -1
+  tiny: [16] u8;
+  #assert bk_render_md_html(md, "coax", doc[..], t[..], tiny[..]) == -1;
+  hb_ov := [1] HtBuf.[HtBuf.{bytes = tiny[..], overflow = true}];
+  #assert bk_render_block_html(hb_ov[..], doc[..], 0, t[..], "coax", 5) == 5;
+}
+
+#test "bk_write_chapter_head, bk_write_chapter_foot, and bk_render_books_index match exact HTML" {
+  doc: [1] MdDoc;
+  toc: [1] BkToc;
+  out: [32768] u8;
+  tiny: [16] u8;
+
+  // 3-entry TOC with entry 0 having distinct title+href, a part, and chapter with 1-char note
+  _ = bk_parse_summary(toc[..], "coax", "* [Intro](intro.md)\n## P1\n* [The Coax Programming Language](README.md) — x\n", doc[..]);
+
+  // active == 0 (distinct title & href at index 0 -> kills active>=0->active>0 and 0->1!)
+  h0 := bk_write_chapter_head(0, toc[..], 0, out[..]);
+  w0 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Intro — The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\" aria-current=\"true\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/intro/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  #assert h0 > 0 && cast(string) out[0..<h0] == w0;
+
+  // active == 2 (title equals book_title: omits " — book_title" suffix)
+  h2 := bk_write_chapter_head(0, toc[..], 2, out[..]);
+  w2 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\" aria-current=\"true\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  #assert h2 > 0 && cast(string) out[0..<h2] == w2;
+
+  // active out of range (-1 and toc[0].n) falls back to book_title and /books/<slug>/index.md
+  h_neg := bk_write_chapter_head(0, toc[..], -1, out[..]);
+  h_end := bk_write_chapter_head(0, toc[..], toc[0].n, out[..]);
+  w_fb := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>The Coax Programming Language</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Book table of contents\"><div class=\"bk-top\"><a class=\"lk\" href=\"/books\">Books</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/\">Home</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">The Coax Programming Language</p><span class=\"meta\">2 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax/intro\"><span class=\"row-t\">Intro</span></a><p class=\"bk-part\">P1</p><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">x</span></a></nav><article class=\"st-b bk-body\"><div class=\"bk-bar\"><div class=\"bk-crumb\"><a href=\"/books\">Books</a><span>/</span><a href=\"/books/coax\">The Coax Programming Language</a></div><a class=\"lk\" href=\"/books/coax/index.md\">Raw Markdown</a></div><div class=\"md\">";
+  #assert h_neg > 0 && cast(string) out[0..<h_neg] == w_fb && h_end == h_neg;
+  #assert bk_write_chapter_head(0, toc[..], 0, tiny[..]) == -1;
+
+  // Chapter foot: active=-1 gives next==0 (kills next>=0->next>0!), active=0 next-only, active=2 prev-only, both, neither
+  fn0 := bk_write_chapter_foot(toc[..], -1, out[..]);
+  #assert cast(string) out[0..<fn0] == "</div><nav class=\"bk-pager\" aria-label=\"Chapter navigation\"><a class=\"bk-pg bk-pg-next\" href=\"/books/coax/intro\"><span class=\"meta\">Next</span><span class=\"row-t\">Intro</span></a></nav></article></div></main></body></html>";
+  f0 := bk_write_chapter_foot(toc[..], 0, out[..]);
+  #assert cast(string) out[0..<f0] == "</div><nav class=\"bk-pager\" aria-label=\"Chapter navigation\"><a class=\"bk-pg bk-pg-next\" href=\"/books/coax\"><span class=\"meta\">Next</span><span class=\"row-t\">The Coax Programming Language</span></a></nav></article></div></main></body></html>";
+  f2 := bk_write_chapter_foot(toc[..], 2, out[..]);
+  #assert cast(string) out[0..<f2] == "</div><nav class=\"bk-pager\" aria-label=\"Chapter navigation\"><a class=\"bk-pg\" href=\"/books/coax/intro\"><span class=\"meta\">Previous</span><span class=\"row-t\">Intro</span></a></nav></article></div></main></body></html>";
+  _ = bk_parse_summary(toc[..], "coax", "* [A](a.md)\n* [B](b.md)\n* [C](c.md)\n", doc[..]);
+  fb := bk_write_chapter_foot(toc[..], 1, out[..]);
+  #assert cast(string) out[0..<fb] == "</div><nav class=\"bk-pager\" aria-label=\"Chapter navigation\"><a class=\"bk-pg\" href=\"/books/coax/a\"><span class=\"meta\">Previous</span><span class=\"row-t\">A</span></a><a class=\"bk-pg bk-pg-next\" href=\"/books/coax/c\"><span class=\"meta\">Next</span><span class=\"row-t\">C</span></a></nav></article></div></main></body></html>";
+  _ = bk_parse_summary(toc[..], "coax", "* [Only](a.md)\n", doc[..]);
+  fl := bk_write_chapter_foot(toc[..], 0, out[..]);
+  #assert cast(string) out[0..<fl] == "</div></article></div></main></body></html>";
+  #assert bk_write_chapter_foot(toc[..], 0, tiny[..]) == -1;
+
+  // Books catalog index: exact full HTML with short counts slice + 9-element counts slice (kills 8->9!)
+  short_c := [1] int.[57];
+  in_n := bk_render_books_index(short_c[..], out[..]);
+  w_idx := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Books — OpenAgents</title><link rel=\"stylesheet\" href=\"/books/mono.css\"></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div class=\"st\"><nav class=\"st-nav bk-nav\" aria-label=\"Site navigation\"><div class=\"bk-top\"><a class=\"lk\" href=\"/\">Home</a><a class=\"lk\" href=\"/docs/introduction\">Docs</a><a class=\"lk\" href=\"/books\">Books</a></div><div class=\"bk-head\"><p class=\"bk-head-t\">OpenAgents Books</p><span class=\"meta\">57 chapters · 0 KB JS</span></div><a class=\"row\" href=\"/books/coax\"><span class=\"row-t\">The Coax Programming Language</span><span class=\"meta\">coax/book · 57 chapters</span></a><a class=\"row\" href=\"/books/openagents\"><span class=\"row-t\">The OpenAgents Book</span><span class=\"meta\">openagents/book · 0 chapters</span></a><a class=\"row\" href=\"/books/bitcoin\"><span class=\"row-t\">Bitcoin From Scratch</span><span class=\"meta\">bitcoin/book · 0 chapters</span></a><a class=\"row\" href=\"/books/nostr\"><span class=\"row-t\">Nostr From Scratch</span><span class=\"meta\">nostr/book · 0 chapters</span></a><a class=\"row\" href=\"/books/coder\"><span class=\"row-t\">Coder: Coding Agents From Scratch</span><span class=\"meta\">coder/book · 0 chapters</span></a><a class=\"row\" href=\"/books/psionic\"><span class=\"row-t\">Psionic: ML From Scratch</span><span class=\"meta\">psionic/book · 0 chapters</span></a><a class=\"row\" href=\"/books/metaverse-engine\"><span class=\"row-t\">Building the OpenAgents Metaverse Engine</span><span class=\"meta\">metaverse-engine/book · 0 chapters</span></a><a class=\"row\" href=\"/books/everglade\"><span class=\"row-t\">Building Everglade</span><span class=\"meta\">everglade/book · 0 chapters</span></a></nav><article class=\"st-b bk-body\"><header class=\"st-h\"><p class=\"meta\">OpenAgents Library · Pure Coax SSR</p><h1 class=\"st-t\">Books</h1></header><p class=\"sec-n\">All eight OpenAgents books rendered directly from repository Markdown with build-time syntax highlighting, shared mono.coax styling, and 0 KB JavaScript / 0 KB WebAssembly.</p><div class=\"bk-grid\"><a class=\"bk-card\" href=\"/books/coax\"><span class=\"meta\">coax/book · 57 chapters</span><h2 class=\"bk-card-t\">The Coax Programming Language</h2><p class=\"bk-card-d\">Programs in Coax, the language every other OpenAgents book uses.</p></a><a class=\"bk-card\" href=\"/books/openagents\"><span class=\"meta\">openagents/book · 0 chapters</span><h2 class=\"bk-card-t\">The OpenAgents Book</h2><p class=\"bk-card-d\">The OpenAgents apps, Bitcoin/Lightning wallet, and composable general agent.</p></a><a class=\"bk-card\" href=\"/books/bitcoin\"><span class=\"meta\">bitcoin/book · 0 chapters</span><h2 class=\"bk-card-t\">Bitcoin From Scratch</h2><p class=\"bk-card-d\">Bitcoin and Lightning in Coax, from SHA-256 and secp256k1 to channels.</p></a><a class=\"bk-card\" href=\"/books/nostr\"><span class=\"meta\">nostr/book · 0 chapters</span><h2 class=\"bk-card-t\">Nostr From Scratch</h2><p class=\"bk-card-d\">A Nostr client, a relay, and the NIPs OpenAgents uses, built from scratch.</p></a><a class=\"bk-card\" href=\"/books/coder\"><span class=\"meta\">coder/book · 0 chapters</span><h2 class=\"bk-card-t\">Coder: Coding Agents From Scratch</h2><p class=\"bk-card-d\">OpenAgents' coding agent, sandbox, harness, and lessons from other agents.</p></a><a class=\"bk-card\" href=\"/books/psionic\"><span class=\"meta\">psionic/book · 0 chapters</span><h2 class=\"bk-card-t\">Psionic: ML From Scratch</h2><p class=\"bk-card-d\">A machine-learning library in Coax that runs, serves, and trains models.</p></a><a class=\"bk-card\" href=\"/books/metaverse-engine\"><span class=\"meta\">metaverse-engine/book · 0 chapters</span><h2 class=\"bk-card-t\">Building the OpenAgents Metaverse Engine</h2><p class=\"bk-card-d\">A real-time engine: frame loop, world, renderer, physics, realms, and multiplayer.</p></a><a class=\"bk-card\" href=\"/books/everglade\"><span class=\"meta\">everglade/book · 0 chapters</span><h2 class=\"bk-card-t\">Building Everglade</h2><p class=\"bk-card-d\">An MMORPG on the D&amp;D 5E SRD, built on the OpenAgents Metaverse Engine.</p></a></div></article></div></main></body></html>";
+  #assert in_n > 0 && cast(string) out[0..<in_n] == w_idx;
+  nine_c := [9] int.[57, 0, 0, 0, 0, 0, 0, 0, 999];
+  in_n9 := bk_render_books_index(nine_c[..], out[..]);
+  #assert in_n9 == in_n && cast(string) out[0..<in_n9] == w_idx;
+  #assert bk_render_books_index(short_c[..], tiny[..]) == -1;
+}
