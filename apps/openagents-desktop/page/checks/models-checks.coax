@@ -22,6 +22,7 @@
   n = coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "openrouter:deepseek/deepseek-v4.1-flash-1017" && back[0].openrouter == "moonshotai/kimi-k3";
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"openrouter\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  s[0].flawed[0].allow_local_harnesses = true;
   #assert CP_LEVEL_NAME[s[0].turns[1].agents[0].level] == "OpenRouter" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
   #assert coder_page_agent_next(s) == 0;
   ar[0].at = 0;
@@ -491,6 +492,7 @@
   // the worker's lines read as Microcoder's: its reply, and a delegate call's sub-agents by level
   #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"model\":\"claude-opus-5-5\",\"outcome\":\"started\",\"status\":200,\"input_tokens\":1200,\"cached_tokens\":1000}") == MWW_ATTEMPT;
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"fable\",\"task\":\"prove it\"},{\"level\":\"haiku\",\"task\":\"count\"},{\"level\":\"sonnet\",\"task\":\"build\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  s[0].flawed[0].allow_local_harnesses = true;
   #assert s[0].turns[0].nagents == 4 && coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 3);
   #assert CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Claude Fable 5.2" && CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Haiku 5.5" && CP_LEVEL_NAME[s[0].turns[0].agents[2].level] == "Claude Sonnet 5.5" && CP_LEVEL_NAME[s[0].turns[0].agents[3].level] == "Claude Opus 5.5";
   ar[0].at = 0;

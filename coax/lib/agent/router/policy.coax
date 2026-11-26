@@ -628,11 +628,14 @@ rtr2_eligible :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible) #effects(all) {
     e[0].tier[RTR2_TIER_CLOUD_DEEP] = true; e[0].ntiers += 1;
   }
   if allow_cloud && q[0].remote_station_ready { e[0].tier[RTR2_TIER_REMOTE] = true; e[0].ntiers += 1; }
-  // Delegates: index 0 ("none") is always allowed
+  // Delegates: index 0 ("none") is always allowed; external local harnesses require
+  // explicit user opt-in via allow_local_harnesses == true (#14071).
   e[0].delegate[RTR2_DEL_NONE] = true;
-  for i: 0..<q[0].navailable_delegates {
-    k := rtr2_delegate_index(q[0].available_delegates[i]);
-    if k > 0 && !e[0].delegate[k] { e[0].delegate[k] = true; e[0].ndelegates += 1; } // mutant: equivalent (delegate[0] is already true, so !delegate[0] is false)
+  if q[0].allow_local_harnesses {
+    for i: 0..<q[0].navailable_delegates {
+      k := rtr2_delegate_index(q[0].available_delegates[i]);
+      if k > 0 && !e[0].delegate[k] { e[0].delegate[k] = true; e[0].ndelegates += 1; } // mutant: equivalent (delegate[0] is already true, so !delegate[0] is false)
+    }
   }
 }
 
@@ -837,8 +840,16 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
   rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
   #assert p[0].ok && p[0].compute_tier == "cloud_fast" && p[0].effort == "medium" && p[0].reasons[0] == "user_pref_cloud" && p[0].reasons[1] == "tier_fallback_cloud";
 
-  // Explicit delegate available vs unavailable
-  q[0] = Rtr2PlanRequest.{text = "use claude to fix this", local_inkling_ready = true, cloud_ready = true};
+  // Explicit delegate requires allow_local_harnesses opt-in (#14071): refused when false, allowed when true
+  q[0] = Rtr2PlanRequest.{text = "use claude to fix this", local_inkling_ready = true, cloud_ready = true, allow_local_harnesses = false};
+  q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1;
+  a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 900;
+  a.explicit_delegate = RTR2_DEL_CLAUDE; a.explicit_delegate_milli = 900;
+  rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
+  #assert p[0].ok && e[0].ndelegates == 0 && p[0].explicit_delegate == "none" && p[0].reasons[0] == "delegate_unavailable";
+
+  // Explicit delegate available vs unavailable when opted in
+  q[0] = Rtr2PlanRequest.{text = "use claude to fix this", local_inkling_ready = true, cloud_ready = true, allow_local_harnesses = true};
   q[0].available_delegates[0] = "claude"; q[0].available_delegates[1] = "claude"; q[0].navailable_delegates = 2;
   a = rtr2_no_answers(); a.has = true; a.primary_pack = RTR2_PACK_CODER; a.primary_pack_milli = 900;
   a.explicit_delegate = RTR2_DEL_CLAUDE; a.explicit_delegate_milli = 900;
@@ -849,8 +860,8 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
   rtr2_plan_clear(p[..]); rtr2_eligible(q[..], e[..]); rtr2_pick(q[..], e[..], a, p[..]);
   #assert p[0].ok && p[0].explicit_delegate == "none" && p[0].reasons[0] == "delegate_unavailable";
 
-  // Multi-turn continuation preserves active packs, compute tier, and delegate
-  q[0] = Rtr2PlanRequest.{text = "now run the tests", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "cloud_deep", active_delegate = "claude"};
+  // Multi-turn continuation preserves active packs, compute tier, and delegate (when opted in)
+  q[0] = Rtr2PlanRequest.{text = "now run the tests", local_inkling_ready = true, cloud_ready = true, active_compute_tier = "cloud_deep", active_delegate = "claude", allow_local_harnesses = true};
   q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1;
   q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1;
   a = rtr2_no_answers(); a.has = true; a.continue_milli = 850;
@@ -886,7 +897,7 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
   #assert p[0].ok && p[0].reasons[0] == "unsure_pack" && p[0].reasons[1] == "unsure_tier";
 
   // Boundary: exact RTR_SURE_MILLI = 500
-  q[0] = Rtr2PlanRequest.{text = "build a plugin", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true};
+  q[0] = Rtr2PlanRequest.{text = "build a plugin", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true, allow_local_harnesses = true};
   q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1;
   q[0].available_delegates[0] = "codex"; q[0].navailable_delegates = 1;
   a = rtr2_no_answers(); a.has = true; a.continue_milli = 500; a.primary_pack = RTR2_PACK_WALLET; a.primary_pack_milli = 500;
@@ -907,7 +918,8 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
     local_inkling_ready = rtr_fx_draw(v, 1, 2) != 0,
     cloud_ready = rtr_fx_draw(v, 2, 2) != 0,
     remote_station_ready = rtr_fx_draw(v, 3, 3) == 0,
-    user_compute_pref = ifx rtr_fx_draw(v, 4, 4) == 0 then "local" else ifx rtr_fx_draw(v, 4, 4) == 1 then "cloud" else "auto"
+    user_compute_pref = ifx rtr_fx_draw(v, 4, 4) == 0 then "local" else ifx rtr_fx_draw(v, 4, 4) == 1 then "cloud" else "auto",
+    allow_local_harnesses = rtr_fx_draw(v, 24, 2) == 0
   };
   if rtr_fx_draw(v, 5, 2) == 0 { q[0].active_packs[0] = "coder"; q[0].nactive_packs = 1; q[0].active_compute_tier = "cloud_deep"; }
   if rtr_fx_draw(v, 6, 2) == 0 { q[0].available_delegates[0] = "claude"; q[0].navailable_delegates = 1; }
@@ -935,6 +947,7 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
     if q[0].user_compute_pref == "cloud" { #assert tk != RTR2_TIER_LOCAL; }
     dk := rtr2_delegate_index(p[0].explicit_delegate);
     #assert dk >= 0 && e[0].delegate[dk];
+    if !q[0].allow_local_harnesses { #assert dk == RTR2_DEL_NONE; }
     #assert p[0].effort == "low" || p[0].effort == "medium" || p[0].effort == "high";
   } else {
     #assert p[0].error == "no_task" || p[0].error == "no_compute";
@@ -1001,8 +1014,11 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
   #assert na2.continue_milli == -1 && na2.missing_cap_milli == -1 && na2.missing_cap_kind == -1;
 
   q2: [1] Rtr2PlanRequest; e2: [1] Rtr2Eligible; p2: [1] Rtr2Plan;
-  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true};
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true, remote_station_ready = true, allow_local_harnesses = false};
   q2[0].available_delegates[0] = "none"; q2[0].available_delegates[1] = "claude"; q2[0].available_delegates[2] = "codex"; q2[0].navailable_delegates = 3;
+  rtr2_eligible(q2[..], e2[..]);
+  #assert e2[0].npacks == 8 && e2[0].ntiers == 4 && e2[0].ndelegates == 0;
+  q2[0].allow_local_harnesses = true;
   rtr2_eligible(q2[..], e2[..]);
   #assert e2[0].npacks == 8 && e2[0].ntiers == 4 && e2[0].ndelegates == 2;
   #assert rtr2_first_pack(e2[..]) == RTR2_PACK_GENERAL;
@@ -1104,7 +1120,7 @@ rtr2_pick :: (q: [] Rtr2PlanRequest, e: [] Rtr2Eligible, a: Rtr2Answers, p: [] R
   #assert rtr2_lower('Z') == 'z' && rtr2_lower('[') == '[' && rtr2_has_ci("abZ", "z") && rtr2_has_ci("Z", "z");
   #assert rtr2_fallback_pack("hi", "x") == RTR2_PACK_CODER;
   // rtr2_eligible: general (index 0) and bogus (-1) in available_packs; bogus (-1) in available_delegates
-  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true};
+  q2[0] = Rtr2PlanRequest.{text = "hi", local_inkling_ready = true, cloud_ready = true, allow_local_harnesses = true};
   q2[0].available_packs[0] = "general"; q2[0].available_packs[1] = "bogus"; q2[0].navailable_packs = 2;
   q2[0].available_delegates[0] = "bogus"; q2[0].available_delegates[1] = "claude"; q2[0].navailable_delegates = 2;
   rtr2_eligible(q2[..], e2[..]);

@@ -137,7 +137,23 @@
   #assert pv[0] == 0 && pv[1] == 0 && pv[4] == 2 && pv[6] == 0 && pv[9] == 0 && pv[11] == 1 && pv[12] == 1 && pv[16] == 1;
   #assert cp_flawed_settings_press(s[..], "set.flawed.pmode.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
   #assert cp_flawed_settings_press(s[..], "set.flawed.ctx1m.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
-  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[6] == 1 && pv[18] == 1;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[6] == 1 && pv[18] == 1 && pv[20] == 0;
+  // Opt-in local harness delegation toggle defaults Off and persists cleanly through prefs (#14071).
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 1;
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0") && coder_page_action(s[..]) == CP_ASK_FLAWED_PREFS;
+  #assert coder_page_flawed_prefs_get(s[..], pv[..]) == CP_FLAWED_PREFS_COUNT && pv[20] == 0;
+  // Sub-agent engine gating: external harnesses clamp to 0 (oa-worker) when Off and unlock only when On (#14071).
+  s[0].nturns = 1;
+  s[0].turns[0].nagents = 2;
+  s[0].turns[0].agents[0].level = CP_LEVEL_CLAUDE;
+  s[0].turns[0].agents[1].level = CP_LEVEL_CODEX;
+  #assert coder_page_agent_engine(s[..], 0) == 0 && coder_page_agent_engine(s[..], 1) == 0 && !coder_page_agent_claude(s[..], 0);
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.1");
+  #assert coder_page_agent_engine(s[..], 0) == 1 && coder_page_agent_engine(s[..], 1) == 3 && coder_page_agent_claude(s[..], 0);
+  #assert cp_flawed_settings_press(s[..], "set.flawed.harnesses.0");
+  #assert coder_page_agent_engine(s[..], 0) == 0 && coder_page_agent_engine(s[..], 1) == 0;
+  s[0].nturns = 0; s[0].turns[0].nagents = 0;
   coder_page_settings_open(s[..], CP_PG_PROVIDERS, "");
   #assert coder_page_settings_page(s[..]) == CP_PG_PROVIDERS;
   coder_page_settings_open(s[..], -2, "");

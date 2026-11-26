@@ -150,6 +150,7 @@
 #test "sub-agents: a neon task runs on Gemini 4 Neon, its row and wait line name Neon, and it is not a Claude level" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
+  s[0].flawed[0].allow_local_harnesses = true;
   #assert coder_page_set_text(s, "ship it") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "s", "/w", out[..]);
@@ -215,6 +216,7 @@
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
   coder_page_set_claude(s, true);
+  s[0].flawed[0].allow_local_harnesses = true;
   n = coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].claude;
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"opus\",\"task\":\"find the bug\"},{\"level\":\"fable\",\"task\":\"design it\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -633,6 +635,10 @@
   #assert coder_page_set_text(s, "have Claude Opus, Codex, Antigravity, and Cursor review this") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"opus\",\"task\":\"claude review\"},{\"level\":\"agy\",\"task\":\"agy review\"},{\"level\":\"codex\",\"task\":\"codex fix\"},{\"level\":\"cursor\",\"task\":\"cursor check\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 4;
+  // Default (allow_local_harnesses == false): every delegated sub-agent clamps to oa-worker (0) (#14071).
+  #assert coder_page_agent_engine(s, 0) == 0 && coder_page_agent_engine(s, 1) == 0 && coder_page_agent_engine(s, 2) == 0 && coder_page_agent_engine(s, 3) == 0;
+  // Opt-in (allow_local_harnesses == true): external local harnesses unlock strictly as delegated sub-agents.
+  s[0].flawed[0].allow_local_harnesses = true;
   #assert coder_page_agent_engine(s, 0) == 1 && coder_page_agent_claude(s, 0);
   #assert coder_page_agent_engine(s, 1) == 2 && !coder_page_agent_claude(s, 1);
   #assert coder_page_agent_engine(s, 2) == 3 && !coder_page_agent_claude(s, 2);

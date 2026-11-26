@@ -4,7 +4,7 @@ import AppKit
 /// Persisted settings, key storage, live auth probe, and worker environment
 /// builder for the built-in pure-Coax OpenAgents Core worker (`coder/tui/oa-worker.coax`).
 enum AgentSettings {
-    static let prefsCount = 20
+    static let prefsCount = 21
     private static let d = UserDefaults.standard
 
     private static let kDefaultAgent = "oa.agent.defaultAgent"
@@ -27,6 +27,7 @@ enum AgentSettings {
     private static let kFastMode = "oa.agent.fastMode"
     private static let kExtendedCtx = "oa.agent.extendedCtx"
     private static let kRemoteBridge = "oa.agent.remoteBridge"
+    private static let kAllowLocalHarnesses = "oa.agent.allowLocalHarnesses"
 
     private static let kBaseURL = "oa.agent.baseURL"
     private static let kCustomModel = "oa.agent.customModel"
@@ -204,6 +205,11 @@ enum AgentSettings {
     static var remoteBridge: Bool {
         get { getBool(kRemoteBridge, default: false) }
         set { d.set(newValue, forKey: kRemoteBridge) }
+    }
+    /// Opt-in (default Off): allow delegating sub-agents to other installed local harnesses (#14071).
+    static var allowLocalHarnesses: Bool {
+        get { getBool(kAllowLocalHarnesses, default: false) }
+        set { d.set(newValue, forKey: kAllowLocalHarnesses) }
     }
 
     static var baseURL: String {
@@ -486,6 +492,7 @@ enum AgentSettings {
         if maxTurns > 0 { env["OA_AGENT_MAX_TURNS"] = String(maxTurns) }
         if maxBudgetMicros > 0 { env["OA_AGENT_MAX_BUDGET_MICROS"] = String(maxBudgetMicros) }
         env["OA_FULL_AUTO"] = isFullAuto ? "1" : "0"
+        env["OA_ALLOW_LOCAL_HARNESSES"] = allowLocalHarnesses ? "1" : "0"
         env["OA_OPERATOR_VAULT_PATH"] = OperatorVault.vaultURL.path
         for (k, v) in cloudAuthEnv() { env[k] = v }
         return env
@@ -520,6 +527,7 @@ enum AgentSettings {
             fastMode ? 1 : 0,
             extendedCtx ? 1 : 0,
             remoteBridge ? 1 : 0,
+            allowLocalHarnesses ? 1 : 0,
         ]
     }
 
@@ -560,6 +568,7 @@ enum AgentSettings {
         fastMode = vec[17] != 0
         extendedCtx = vec[18] != 0
         remoteBridge = vec[19] != 0
+        allowLocalHarnesses = vec[20] != 0
     }
 
     static func resetAll() {
@@ -583,6 +592,7 @@ enum AgentSettings {
         fastMode = false
         extendedCtx = false
         remoteBridge = false
+        allowLocalHarnesses = false
         baseURL = ""
         customModel = ""
         allowedTools = ""

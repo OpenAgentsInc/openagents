@@ -175,6 +175,7 @@ FwConfig :: struct {
   fast_mode: bool;
   extended_ctx: bool;
   remote_bridge: bool;
+  allow_local_harnesses: bool; // Opt-in (default Off): allow external local harness sub-agent delegates (#14071)
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
   budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
@@ -282,6 +283,7 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].fast_mode = fww_env_bool2("OA_AGENT_FAST_MODE", "FLAWED_FAST_MODE", false);
   cfg[0].extended_ctx = fww_env_bool2("OA_AGENT_EXTENDED_CTX", "FLAWED_EXTENDED_CTX", false);
   cfg[0].remote_bridge = fww_env_bool2("OA_AGENT_REMOTE_BRIDGE", "FLAWED_REMOTE_BRIDGE", false);
+  cfg[0].allow_local_harnesses = fww_env_bool("OA_ALLOW_LOCAL_HARNESSES", false);
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
   cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
@@ -4821,9 +4823,9 @@ fww_think_spiral :: (streaming: bool, is_local: bool, recoveries: int, ntext: in
 // System One Front v2alpha1 routing for Auto mode (#14056):
 // Calls elephant-1 or gemini-decision-1 when configured via OA_AGENT_ROUTER_DOOR,
 // with deterministic offline #authority policy.coax fallback.
-fww_route_auto_plan :: (
+fww_route_auto_plan_ex :: (
   tk: string, repo: string, active_pack: string, active_tier: string,
-  local_ready: bool, cloud_ready: bool, door_pref: string, out_plan: [] Rtr2Plan
+  local_ready: bool, cloud_ready: bool, door_pref: string, allow_local_harnesses: bool, out_plan: [] Rtr2Plan
 ) {
   q: [1] Rtr2PlanRequest;
   q[0] = Rtr2PlanRequest.{
@@ -4831,7 +4833,8 @@ fww_route_auto_plan :: (
     repo = repo,
     local_inkling_ready = local_ready,
     cloud_ready = cloud_ready,
-    user_compute_pref = "auto"
+    user_compute_pref = "auto",
+    allow_local_harnesses = allow_local_harnesses
   };
   if active_pack.count > 0 {
     q[0].active_packs[0] = active_pack;
@@ -4865,6 +4868,13 @@ fww_route_auto_plan :: (
     }
   }
   rtr2_decide_offline(q[..], out_plan);
+}
+
+fww_route_auto_plan :: (
+  tk: string, repo: string, active_pack: string, active_tier: string,
+  local_ready: bool, cloud_ready: bool, door_pref: string, out_plan: [] Rtr2Plan
+) {
+  fww_route_auto_plan_ex(tk, repo, active_pack, active_tier, local_ready, cloud_ready, door_pref, false, out_plan);
 }
 
 // Pure check: scratch files under /tmp or /var/tmp do not count as deliverable workspace edits.
@@ -6484,7 +6494,7 @@ tool_main :: () -> int #export_c #effects(all) {
       plan: [1] Rtr2Plan;
       ap := cast(string) run[0].active_pack[0..<run[0].nactive_pack];
       at := cast(string) run[0].active_tier[0..<run[0].nactive_tier];
-      fww_route_auto_plan(tk, "", ap, at, local_ready, cloud_ready, door_pref, plan[..]);
+      fww_route_auto_plan_ex(tk, "", ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, plan[..]);
       if plan[0].ok {
         if plan[0].npacks > 0 { run[0].nactive_pack = fww_keep(run[0].active_pack[..], plan[0].capability_packs[0]); }
         run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);

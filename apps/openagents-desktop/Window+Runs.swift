@@ -132,10 +132,11 @@ extension CoderWindow {
         checkRunNotifications(r)
         wake()
     }
-    /// Configures a delegated sub-agent worker based on cd_agent_engine (#14053):
+    /// Configures a delegated sub-agent worker based on cd_agent_engine (#14053, opt-in gated #14071):
     /// 0 = oa-worker (default), 1 = claudeworker, 2 = agyworker, 3 = codex, 4 = cursor (agyworker ACP).
+    /// When AgentSettings.allowLocalHarnesses is Off, external harnesses are never spawned.
     private func configureSubagentWorker(_ one: CoderWorker, page: UnsafeMutableRawPointer, j: Int32, cwd: String) {
-        let engine = cd_agent_engine(page, j)
+        let engine: Int32 = AgentSettings.allowLocalHarnesses ? cd_agent_engine(page, j) : 0
         one.folder = cwd
         switch engine {
         case 1:

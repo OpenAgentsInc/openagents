@@ -634,6 +634,7 @@ Rtr2PlanRequest :: struct {
   available_packs: [RTR2_PACKS] string;
   navailable_packs: int;
   user_compute_pref: string; // "", "auto", "local", "cloud"
+  allow_local_harnesses: bool; // Opt-in (default false): allow external local harness delegates (#14071)
   now_ms: int;
 }
 

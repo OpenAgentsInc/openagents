@@ -661,13 +661,15 @@ coder_page_set_claude :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s[0].nturns == 0 && !cp_running(s) { s[0].model = cp_model_start(s); }
   s[0].model = cp_model_index(s);
 }
-// Sub-agent executor engine id for sub-agent j (Phase 1B, #14053):
+// Sub-agent executor engine id for sub-agent j (Phase 1B, #14053; opt-in gated #14071):
 // 0 = oa-worker (OpenAgents), 1 = claudeworker (Claude), 2 = agyworker (Antigravity),
 // 3 = codex, 4 = cursor (agyworker ACP).
+// When allow_local_harnesses is Off (default), every delegated sub-agent runs on oa-worker (0).
 coder_page_agent_engine :: (s: [] CoderPage, j: int) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].nturns < 1 { return 0; }
   i := s[0].nturns - 1;
   if j < 0 || j >= s[0].turns[i].nagents { return 0; }
+  if !cp_flawed_allow_local_harnesses(s) { return 0; }
   lvl := s[0].turns[i].agents[j].level;
   if lvl >= CP_LEVEL_CLAUDE && lvl < CP_LEVEL_CLAUDE_END { return 1; }
   if lvl == CP_LEVEL_AGY { return 2; }

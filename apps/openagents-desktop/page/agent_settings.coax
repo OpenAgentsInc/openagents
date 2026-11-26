@@ -70,7 +70,7 @@ CP_FLAWED_START_LOCAL :: 4;    // Inkling 2 Mini (opt-in local Psionic Metal slo
 CP_FLAWED_START :: 0;
 CP_FLAWED_EFFORTS :: 5;        // Low, Medium, High, X-High, Max
 CP_FLAWED_EFFORT_START :: 2;   // High
-CP_FLAWED_PREFS_COUNT :: 20;
+CP_FLAWED_PREFS_COUNT :: 21;
 
 // Host action codes (non-conflicting with state.coax 0..189).
 CP_ASK_FLAWED_PREFS :: 190;
@@ -115,6 +115,7 @@ CpFlawedSettings :: struct {
   fast_mode: bool;         // fast mode toggle
   extended_ctx: bool;      // 1M context window preference
   remote_bridge: bool;     // Remote Control session bridge
+  allow_local_harnesses: bool; // Opt-in (default Off): allow delegating sub-agents to other local harnesses (#14071)
   user_picked: bool;       // true after explicit user model pick or loaded chat
   // Host-supplied display strings for Settings -> Flawed.
   auth_status: [128] u8; auth_status_n: int;
@@ -142,6 +143,7 @@ cp_flawed_effort :: (s: [] CoderPage) -> int {
 }
 
 cp_flawed_git_guard :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].flawed[0].git_guard_on; }
+cp_flawed_allow_local_harnesses :: (s: [] CoderPage) -> bool { return s.count > 0 && s[0].flawed[0].allow_local_harnesses; }
 cp_flawed_auto_compact :: (s: [] CoderPage) -> bool { return s.count < 1 || !s[0].flawed[0].auto_compact_off; }
 cp_flawed_auto_memory :: (s: [] CoderPage) -> bool { return s.count < 1 || !s[0].flawed[0].auto_memory_off; }
 cp_flawed_mcp_defer :: (s: [] CoderPage) -> bool { return s.count < 1 || !s[0].flawed[0].mcp_defer_off; }
@@ -254,7 +256,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   // 1. Compute & Local Model
   y += set_section_head(f, "set.flawed.compute.head", x, y, w, "Compute & Local Model",
     "Auto uses cloud compute when available and falls back to on-device Inkling 2 Mini. Switch anytime in the composer.") + t.section_gap;
-  mrows: [5] SetRow;
+  mrows: [6] SetRow;
   cmode := cp_flawed_clamp(fl[0].default_agent, 0, CP_COMPUTE_MODES - 1);
   mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default compute",
     desc = ifx cmode == CP_COMPUTE_LOCAL
@@ -285,8 +287,13 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   key_val := ifx fl[0].key_label_n > 0 then sheet_pool(sh, cast(string) fl[0].key_label[0..<fl[0].key_label_n]) else "Not set";
   mrows[4] = SetRow.{id = "set.flawed.key", name = "Gemini / OpenRouter API key",
-    desc = "Optional key stored locally (0600, never logged). Not needed for on-device Inkling or Vertex AI service accounts.",
+    desc = "Optional key stored locally (0600, never logged). Not needed for on-device Inkling or OpenAgents Cloud.",
     value = key_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+
+  mrows[5] = SetRow.{id = "set.flawed.harnesses", name = "Allow delegating to other local harnesses",
+    desc = "Opt-in: allow OpenAgents Core to delegate sub-agent tasks to installed local harnesses (Claude Code, Codex, Antigravity, Cursor). Core chat always runs on OpenAgents.",
+    kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].allow_local_harnesses then 1 else 0, action = CP_SET_ACT};
+  mrows[5].options[0] = "Off"; mrows[5].options[1] = "On";
   y += cp_set_group(s, f, "set.flawed.compute.group", x, y, w, mrows[..]) + t.block_gap;
 
   // 2. Safety & Permissions
@@ -531,6 +538,8 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   if v == 0 || v == 1 { fl[0].mcp_defer_off = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.remote.");
   if v == 0 || v == 1 { fl[0].remote_bridge = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
+  v = cp_number(id, "set.flawed.harnesses.");
+  if v == 0 || v == 1 { fl[0].allow_local_harnesses = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   return false;
 }
 
@@ -570,6 +579,7 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
   fl[0].fast_mode = vals[17] != 0;
   fl[0].extended_ctx = vals[18] != 0;
   fl[0].remote_bridge = vals[19] != 0;
+  fl[0].allow_local_harnesses = vals[20] != 0;
   if prev_agent != fl[0].default_agent || prev_slot != fl[0].model_slot || prev_be != fl[0].backend {
     cp_flawed_sync_empty_chat(s);
   }
@@ -598,6 +608,7 @@ coder_page_flawed_prefs_get :: (s: [] CoderPage, out: [] int) -> int #export_c #
   out[17] = ifx fl[0].fast_mode then 1 else 0;
   out[18] = ifx fl[0].extended_ctx then 1 else 0;
   out[19] = ifx fl[0].remote_bridge then 1 else 0;
+  out[20] = ifx fl[0].allow_local_harnesses then 1 else 0;
   return CP_FLAWED_PREFS_COUNT;
 }
 

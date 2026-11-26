@@ -210,12 +210,24 @@ flawed_subagent_engine_program :: (engine: int) -> string #effects(traps) {
   return "oa-worker";
 }
 
-flawed_subagent_external_allowed :: (engine: int, explicit_user_request: bool, dev_flag_on: bool) -> bool #effects(traps) {
+// Opt-in gating for external local harness sub-agent executors (#14053, #14071).
+// Core chat always runs on oa-worker; external harnesses (Claude Code, Antigravity,
+// Codex, Cursor) are strictly sub-agents only and require allow_local_harnesses == true.
+flawed_subagent_external_allowed :: (engine: int, allow_local_harnesses: bool) -> bool #effects(traps) {
   if engine == FLAWED_SUB_ENGINE_OPENAGENTS { return true; }
-  return explicit_user_request || dev_flag_on;
+  return allow_local_harnesses && engine >= FLAWED_SUB_ENGINE_CLAUDE && engine <= FLAWED_SUB_ENGINE_CURSOR;
 }
 
-#test "subagent: external delegatable executor routing and gating (#14053)" {
+// Resolves a requested sub-agent engine against the user's allow_local_harnesses opt-in:
+// clamps any disallowed or unknown external engine cleanly back to FLAWED_SUB_ENGINE_OPENAGENTS.
+flawed_subagent_resolve_engine :: (requested_engine: int, allow_local_harnesses: bool) -> int #effects(traps) {
+  if flawed_subagent_external_allowed(requested_engine, allow_local_harnesses) {
+    return requested_engine;
+  }
+  return FLAWED_SUB_ENGINE_OPENAGENTS;
+}
+
+#test "subagent: external delegatable executor routing and opt-in gating (#14053, #14071)" {
   #assert flawed_subagent_engine_for_level("neon") == FLAWED_SUB_ENGINE_OPENAGENTS;
   #assert flawed_subagent_engine_for_level("carbon") == FLAWED_SUB_ENGINE_OPENAGENTS;
   #assert flawed_subagent_engine_for_level("claude") == FLAWED_SUB_ENGINE_CLAUDE;
@@ -230,12 +242,29 @@ flawed_subagent_external_allowed :: (engine: int, explicit_user_request: bool, d
   #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_CODEX) == "codex";
   #assert flawed_subagent_engine_program(FLAWED_SUB_ENGINE_CURSOR) == "agyworker";
 
-  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_OPENAGENTS, false, false);
-  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, false, false);
-  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, true, false);
-  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CODEX, false, true);
-  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, false, false);
-  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, true, false);
+  // OpenAgents Core is always allowed; external harnesses require allow_local_harnesses == true.
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_OPENAGENTS, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_OPENAGENTS, true);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CLAUDE, true);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_AGY, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_AGY, true);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CODEX, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CODEX, true);
+  #assert !flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, false);
+  #assert flawed_subagent_external_allowed(FLAWED_SUB_ENGINE_CURSOR, true);
+  #assert !flawed_subagent_external_allowed(-1, true);
+  #assert !flawed_subagent_external_allowed(5, true);
+
+  // Resolver clamps disallowed/unknown engines cleanly back to FLAWED_SUB_ENGINE_OPENAGENTS.
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_OPENAGENTS, false) == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_CLAUDE, false) == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_AGY, false) == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_CODEX, false) == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_CURSOR, false) == FLAWED_SUB_ENGINE_OPENAGENTS;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_CLAUDE, true) == FLAWED_SUB_ENGINE_CLAUDE;
+  #assert flawed_subagent_resolve_engine(FLAWED_SUB_ENGINE_CURSOR, true) == FLAWED_SUB_ENGINE_CURSOR;
+  #assert flawed_subagent_resolve_engine(99, true) == FLAWED_SUB_ENGINE_OPENAGENTS;
 }
 
 #test "subagent: context isolation, cache-exact forking, recursion guard, tool filtering & async launch" {
