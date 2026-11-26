@@ -147,4 +147,19 @@
   #assert coder_page_file_set_edit(s[..], true) && coder_page_file_mode(s[..]) == CP_FP_EDIT;
   coder_page_palette_set_mode(s[..], CP_PAL_MODE_FILES);
   #assert coder_page_palette_mode(s[..]) == CP_PAL_MODE_FILES;
+
+  // Full Auto mode auto-approves approvals, plans, and questions without popping modal cards (#14063).
+  coder_page_permit_approval_mode_set(s[..], true);
+  coder_page_permit_full_auto_set(s[..], true);
+  #assert coder_page_permit_full_auto(s[..]) && !cp_permit_should_gate(s[..]);
+  cp_permit_take_gated(s[..], -1, "", 77, "rm -rf /tmp/foo");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_ANSWER;
+  cp_permit_take_plan(s[..], -1, "", 78, "Plan", "Do all steps");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_ANSWER;
+  cp_permit_take_secret(s[..], -1, "", 79, "Token", "GITHUB_TOKEN", "Push PR");
+  #assert coder_page_permit_open(s[..]) == 0 && coder_page_action(s[..]) == CP_ASK_SECRET;
+  sn: [64] u8;
+  sn_len := coder_page_permit_secret_name(s[..], sn[..]);
+  #assert cast(string) sn[0..<sn_len] == "GITHUB_TOKEN";
+  #assert coder_page_permit_secret_done(s[..], true) && coder_page_action(s[..]) == CP_ASK_ANSWER;
 }

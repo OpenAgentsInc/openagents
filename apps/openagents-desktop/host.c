@@ -1245,6 +1245,8 @@ int cd_permit_kind(void *page) { CoderHost *c = page; return c ? (int)coder_page
 int cd_permit_pending(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_pending(cd_state(c)) : 0; }
 void cd_permit_approval_mode_set(void *page, int on) { CoderHost *c = page; if (c) { coder_page_permit_approval_mode_set(cd_state(c), on != 0); cd_woke(c); } }
 int cd_permit_approval_mode(void *page) { CoderHost *c = page; return c && coder_page_permit_approval_mode(cd_state(c)) ? 1 : 0; }
+void cd_permit_full_auto_set(void *page, int on) { CoderHost *c = page; if (c) { coder_page_permit_full_auto_set(cd_state(c), on != 0); cd_woke(c); } }
+int cd_permit_full_auto(void *page) { CoderHost *c = page; return c && coder_page_permit_full_auto(cd_state(c)) ? 1 : 0; }
 int cd_permit_secret_name(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || !out || cap < 2) return 0;

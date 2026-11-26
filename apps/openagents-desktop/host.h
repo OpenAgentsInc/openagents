@@ -528,6 +528,8 @@ int cd_permit_kind(void *page);
 int cd_permit_pending(void *page);
 void cd_permit_approval_mode_set(void *page, int on);
 int cd_permit_approval_mode(void *page);
+void cd_permit_full_auto_set(void *page, int on);
+int cd_permit_full_auto(void *page);
 int cd_permit_secret_name(void *page, char *out, int cap);
 int cd_permit_title(void *page, char *out, int cap);
 int cd_permit_body(void *page, char *out, int cap);

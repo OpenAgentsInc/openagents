@@ -137,6 +137,13 @@ ik_path_resolve :: (cwd: string, spill_dir: string, raw: string, allow_spill: bo
   return -1;
 }
 
+// Unrestricted Full Auto path resolution for danger-full-access workers (#14063).
+// Normalizes raw against cwd without confining to cwd (still rejects NUL bytes & overflow).
+ik_path_resolve_unrestricted :: (cwd: string, spill_dir: string, raw: string, allow_spill: bool, profile: string, out: [] u8) -> int #effects(all) {
+  if profile != "danger-full-access" { return ik_path_resolve(cwd, spill_dir, raw, allow_spill, out); }
+  return ik_path_normalize(cwd, raw, out);
+}
+
 ik_clamp :: (v: int, lo: int, hi: int) -> int #effects(all) {
   if v < lo { return lo; } // mutant: equivalent (when v == lo both branches return lo)
   if v > hi { return hi; } // mutant: equivalent (when v == hi both branches return hi)
@@ -421,6 +428,12 @@ ik_hash8 :: (data: string, out: [] u8) -> int #effects(all) {
   #assert ik_path_normalize("/a", "b", small[0..<0]) < 0;
   exact: [4] u8;
   #assert ik_path_normalize("/a", "b", exact[..]) == 4 && cast(string) exact[0..<4] == "/a/b";
+  // Full Auto unrestricted path resolution (#14063):
+  ubuf: [128] u8;
+  #assert ik_path_resolve_unrestricted("/repo", "/tmp/spill", "/etc/hosts", false, "danger-full-access", ubuf[..]) == 10 && cast(string) ubuf[0..<10] == "/etc/hosts";
+  #assert ik_path_resolve_unrestricted("/repo", "/tmp/spill", "/etc/hosts", false, "workspace-write", ubuf[..]) < 0;
+  #assert ik_path_resolve_unrestricted("/repo", "/tmp/spill", "/tmp/spill/out.txt", true, "workspace-write", ubuf[..]) == 18;
+  #assert ik_path_resolve_unrestricted("/repo", "/tmp/spill", "/tmp/spill/out.txt", false, "workspace-write", ubuf[..]) < 0;
 }
 
 #test "inky tools: strict JSON argument admission and boundary clamping" {

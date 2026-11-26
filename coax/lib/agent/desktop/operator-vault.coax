@@ -1,0 +1,158 @@
+// Autonomous Operator Vault & Autofill Profile authority rules (#14063).
+// Normalizes vault keys, classifies autofill categories (tokens, identity, address, billing/bank),
+// and redacts values for UI display so raw secrets are never logged or rendered in transcripts.
+// Pure, I/O-free, zero heap allocation.
+//
+// Checks: coax/bin/coax test coax/lib/agent/desktop/operator-vault.coax
+// Mutate: coax/bin/coax mutate coax/lib/agent/desktop/operator-vault.coax --root-only
+#authority;
+
+OV_CAT_CUSTOM :: 0;
+OV_CAT_TOKEN :: 1;
+OV_CAT_IDENTITY :: 2;
+OV_CAT_ADDRESS :: 3;
+OV_CAT_BILLING :: 4;
+
+ov_upper :: (c: u8) -> u8 #effects(traps) {
+  if c >= 'a' && c <= 'z' { return c - 32; }
+  return c;
+}
+
+ov_is_alnum :: (c: u8) -> bool #effects() {
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+}
+
+// Normalizes a requested secret/form key to uppercase SNAKE_CASE into out.
+// Returns length written, or 0 if empty/invalid.
+ov_norm_key :: (raw: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  prev_sep := true;
+  for c: raw {
+    if ov_is_alnum(c) {
+      if n < out.count { out[n] = ov_upper(c); n += 1; }
+      prev_sep = false;
+    } else if c == '_' || c == '-' || c == '.' || c == ' ' {
+      if !prev_sep && n < out.count { out[n] = '_'; n += 1; }
+      prev_sep = true;
+    }
+  }
+  // Leading separators are skipped (prev_sep starts true), so out[0] is never '_'.
+  while n > 1 && out[n - 1] == '_' { n -= 1; } // mutant: equivalent (out[0] is never '_' because prev_sep starts true)
+  return n;
+}
+
+ov_has_sub :: (hay: string, needle: string) -> bool #effects(reads, traps) {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  lim := hay.count - needle.count + 1;
+  for i: 0..<lim {
+    ok := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+// Classifies a normalized uppercase SNAKE_CASE key into an autofill category.
+ov_category :: (norm_key: string) -> int #effects(reads, traps) {
+  if ov_has_sub(norm_key, "TOKEN") || ov_has_sub(norm_key, "API_KEY") || ov_has_sub(norm_key, "SECRET") || ov_has_sub(norm_key, "PASSWORD") || ov_has_sub(norm_key, "AUTH") {
+    return OV_CAT_TOKEN;
+  }
+  if ov_has_sub(norm_key, "BANK") || ov_has_sub(norm_key, "ROUTING") || ov_has_sub(norm_key, "ACCOUNT_NUM") || ov_has_sub(norm_key, "CARD") || ov_has_sub(norm_key, "BILLING") || ov_has_sub(norm_key, "LIGHTNING") {
+    return OV_CAT_BILLING;
+  }
+  if ov_has_sub(norm_key, "ADDRESS") || ov_has_sub(norm_key, "STREET") || ov_has_sub(norm_key, "CITY") || ov_has_sub(norm_key, "POSTAL") || ov_has_sub(norm_key, "ZIP") || ov_has_sub(norm_key, "COUNTRY") {
+    return OV_CAT_ADDRESS;
+  }
+  if ov_has_sub(norm_key, "NAME") || ov_has_sub(norm_key, "EMAIL") || ov_has_sub(norm_key, "PHONE") || ov_has_sub(norm_key, "COMPANY") || ov_has_sub(norm_key, "GITHUB") {
+    return OV_CAT_IDENTITY;
+  }
+  return OV_CAT_CUSTOM;
+}
+
+// True when a key holds sensitive credentials or financial data that must be masked in UI.
+ov_is_sensitive :: (norm_key: string) -> bool #effects(reads, traps) {
+  cat := ov_category(norm_key);
+  return cat == OV_CAT_TOKEN || cat == OV_CAT_BILLING;
+}
+
+// Masks a sensitive value for UI display (shows only "****" + last 4 chars when len >= 8, else "****").
+ov_mask_value :: (val: string, out: [] u8) -> int #effects(all) {
+  if out.count < 4 { return 0; }
+  n := 0;
+  for _: 0..<4 {
+    out[n] = '*'; n += 1;
+  }
+  if val.count >= 8 {
+    start := val.count - 4;
+    for i: start..<val.count {
+      if n < out.count { out[n] = val[i]; n += 1; }
+    }
+  }
+  return n;
+}
+
+#forall "operator-vault: ov_upper and ov_is_alnum exact ASCII endpoints" b:0..<128 {
+  c := cast(u8) b;
+  is_lo := b >= 97 && b <= 122;
+  is_hi := b >= 65 && b <= 90;
+  is_dig := b >= 48 && b <= 57;
+  #assert ov_upper(c) == (ifx is_lo then cast(u8) (b - 32) else c);
+  #assert ov_is_alnum(c) == (is_lo || is_hi || is_dig);
+}
+
+#test "operator-vault: key normalization handles separators, truncation, and case" {
+  b: [64] u8;
+  n1 := ov_norm_key("github-token", b[..]);
+  #assert cast(string) b[0..<n1] == "GITHUB_TOKEN";
+  n2 := ov_norm_key("  billing.bank_routing!!a  ", b[..]);
+  #assert cast(string) b[0..<n2] == "BILLING_BANK_ROUTINGA";
+  n3 := ov_norm_key("a--b", b[..]);
+  #assert cast(string) b[0..<n3] == "A_B";
+  n4 := ov_norm_key("---", b[..]);
+  #assert n4 == 0;
+  n5 := ov_norm_key("a_", b[..]);
+  #assert cast(string) b[0..<n5] == "A";
+  tiny: [2] u8;
+  #assert ov_norm_key("abc", tiny[..]) == 2 && cast(string) tiny[0..<2] == "AB";
+  #assert ov_norm_key("ab-c", tiny[..]) == 2 && cast(string) tiny[0..<2] == "AB";
+  #assert ov_norm_key("a-b", tiny[..]) == 1 && cast(string) tiny[0..<1] == "A";
+  #assert ov_norm_key("_", tiny[..]) == 0;
+}
+
+#test "operator-vault: substring edge cases, category classification and sensitivity" {
+  #assert !ov_has_sub("ABC", "");
+  #assert !ov_has_sub("A", "AB");
+  #assert !ov_has_sub("AB", "BC");
+  #assert ov_has_sub("A", "A");
+  #assert !ov_has_sub("BA", "CA");
+  #assert ov_has_sub("XBANK", "BANK");
+  #assert ov_category("GITHUB_TOKEN") == OV_CAT_TOKEN && ov_is_sensitive("GITHUB_TOKEN");
+  #assert ov_category("OPENAI_API_KEY") == OV_CAT_TOKEN && ov_is_sensitive("OPENAI_API_KEY");
+  #assert ov_category("BANK_ID") == OV_CAT_BILLING && ov_is_sensitive("BANK_ID");
+  #assert ov_category("ROUTING_NUM") == OV_CAT_BILLING && ov_is_sensitive("ROUTING_NUM");
+  #assert ov_category("CARD_HOLDER") == OV_CAT_BILLING && ov_is_sensitive("CARD_HOLDER");
+  #assert ov_category("LIGHTNING_ADDR") == OV_CAT_BILLING && ov_is_sensitive("LIGHTNING_ADDR");
+  #assert ov_category("HOME_ADDRESS") == OV_CAT_ADDRESS && !ov_is_sensitive("HOME_ADDRESS");
+  #assert ov_category("MAIN_STREET") == OV_CAT_ADDRESS && !ov_is_sensitive("MAIN_STREET");
+  #assert ov_category("POSTAL_CODE") == OV_CAT_ADDRESS && !ov_is_sensitive("POSTAL_CODE");
+  #assert ov_category("FULL_NAME") == OV_CAT_IDENTITY && !ov_is_sensitive("FULL_NAME");
+  #assert ov_category("EMAIL") == OV_CAT_IDENTITY && !ov_is_sensitive("EMAIL");
+  #assert ov_category("X") == OV_CAT_CUSTOM && !ov_is_sensitive("X");
+  #assert ov_category("") == OV_CAT_CUSTOM && !ov_is_sensitive("");
+}
+
+#test "operator-vault: value masking exact boundaries" {
+  b: [32] u8;
+  n1 := ov_mask_value("12345678", b[..]);
+  #assert cast(string) b[0..<n1] == "****5678";
+  n2 := ov_mask_value("1234567", b[..]);
+  #assert cast(string) b[0..<n2] == "****";
+  exact4: [4] u8;
+  #assert ov_mask_value("12345678", exact4[..]) == 4 && cast(string) exact4[0..<4] == "****";
+  exact6: [6] u8;
+  #assert ov_mask_value("12345678", exact6[..]) == 6 && cast(string) exact6[0..<6] == "****56";
+  small3: [3] u8;
+  #assert ov_mask_value("12345678", small3[..]) == 0;
+}

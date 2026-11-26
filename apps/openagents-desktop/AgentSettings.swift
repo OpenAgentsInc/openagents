@@ -454,7 +454,14 @@ enum AgentSettings {
         if !additionalDirs.isEmpty { env["OA_AGENT_ADDITIONAL_DIRS"] = additionalDirs }
         if maxTurns > 0 { env["OA_AGENT_MAX_TURNS"] = String(maxTurns) }
         if maxBudgetMicros > 0 { env["OA_AGENT_MAX_BUDGET_MICROS"] = String(maxBudgetMicros) }
+        env["OA_FULL_AUTO"] = isFullAuto ? "1" : "0"
+        env["OA_OPERATOR_VAULT_PATH"] = OperatorVault.vaultURL.path
         return env
+    }
+
+    /// True when global Full Auto mode is active (default ON: Allow All or Bypass Danger).
+    static var isFullAuto: Bool {
+        permissionMode == 0 || bypassDanger
     }
 
     // ---- Page synchronization ----
@@ -491,6 +498,7 @@ enum AgentSettings {
             cd_flawed_prefs_set(page, buf.baseAddress, Int32(buf.count))
         }
         cd_flawed_info(page, authStatus, keyLabel, baseURLLabel, customModel, toolsSummary, limitsSummary)
+        cd_permit_full_auto_set(page, isFullAuto ? 1 : 0)
     }
 
     static func readBack(from page: UnsafeMutableRawPointer?) {
@@ -550,6 +558,107 @@ enum AgentSettings {
         additionalDirs = ""
         maxTurns = 0
         maxBudgetMicros = 0
+    }
+}
+
+/// Autonomous Operator Vault & Autofill Profile (#14063).
+/// Persists local-only (0600) tokens, API keys, identity/form fields, and billing/bank autofill
+/// entries at `~/.openagents/vault/operator-profile.json` so Full Auto resolves secret/form
+/// requests without interrupting the operator. Values are never logged to chat transcripts.
+final class OperatorVault {
+    static let shared = OperatorVault()
+
+    static var vaultURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/vault/operator-profile.json")
+    }
+
+    static func normalizeKey(_ raw: String) -> String {
+        var out = ""
+        var prevSep = true
+        for scalar in raw.unicodeScalars {
+            let v = scalar.value
+            if (v >= 65 && v <= 90) || (v >= 97 && v <= 122) || (v >= 48 && v <= 57) {
+                out.append(Character(scalar).uppercased())
+                prevSep = false
+            } else if v == 95 || v == 45 || v == 46 || v == 32 {
+                if !prevSep { out.append("_") }
+                prevSep = true
+            }
+        }
+        while out.hasSuffix("_") { out.removeLast() }
+        return out
+    }
+
+    func loadAll() -> [String: String] {
+        guard let data = try? Data(contentsOf: Self.vaultURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return [:]
+        }
+        var flat: [String: String] = [:]
+        for (k, v) in obj {
+            if let s = v as? String, !s.isEmpty {
+                flat[Self.normalizeKey(k)] = s
+            } else if let dict = v as? [String: Any] {
+                for (sk, sv) in dict {
+                    if let s = sv as? String, !s.isEmpty {
+                        flat[Self.normalizeKey(sk)] = s
+                    }
+                }
+            }
+        }
+        return flat
+    }
+
+    /// Resolves a requested secret/token/form key from:
+    /// 1. `~/.openagents/vault/operator-profile.json`
+    /// 2. `~/Library/Application Support/Coder/secrets/<slug>`
+    /// 3. Current process environment variables
+    func resolve(key rawKey: String) -> String? {
+        let norm = Self.normalizeKey(rawKey)
+        guard !norm.isEmpty else { return nil }
+        let vault = loadAll()
+        if let v = vault[norm], !v.isEmpty { return v }
+        let fm = FileManager.default
+        let slug = rawKey.lowercased().map { ch -> Character in
+            (ch.isASCII && (ch.isLetter || ch.isNumber || ch == "-" || ch == "_")) ? ch : "-"
+        }
+        let cleanSlug = String(slug).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        if !cleanSlug.isEmpty,
+           let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            let secURL = base.appendingPathComponent("Coder/secrets/\(cleanSlug)")
+            if let text = try? String(contentsOf: secURL, encoding: .utf8) {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        if let envVal = ProcessInfo.processInfo.environment[norm], !envVal.isEmpty {
+            return envVal
+        }
+        if let rawEnv = ProcessInfo.processInfo.environment[rawKey], !rawEnv.isEmpty {
+            return rawEnv
+        }
+        return nil
+    }
+
+    @discardableResult
+    func save(key rawKey: String, value: String) -> Bool {
+        let norm = Self.normalizeKey(rawKey)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !norm.isEmpty, !trimmed.isEmpty else { return false }
+        var map = loadAll()
+        map[norm] = trimmed
+        let fm = FileManager.default
+        let dir = Self.vaultURL.deletingLastPathComponent()
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let data = try JSONSerialization.data(withJSONObject: map, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: Self.vaultURL, options: .atomic)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.vaultURL.path)
+            return true
+        } catch {
+            return false
+        }
     }
 }
 

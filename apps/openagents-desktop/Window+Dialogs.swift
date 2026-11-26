@@ -1639,7 +1639,15 @@ extension CoderWindow {
         let secretName = nn > 0 ? String(cString: nameBuf) : "SECRET"
         let title = tn > 0 ? String(cString: titleBuf) : "Enter Secret"
         let reason = bn > 0 ? String(cString: bodyBuf) : "The agent requested a secret credential."
-        let body = reason + "\n\nStored in a 0600 file under ~/Library/Application Support/Coder/secrets/ and never logged or echoed into the chat transcript."
+        // Full Auto mode (#14063): auto-resolve from OperatorVault / local secrets / env without interrupting.
+        if AgentSettings.isFullAuto, let resolved = OperatorVault.shared.resolve(key: secretName) {
+            _ = Self.saveRequestedSecret(name: secretName, value: resolved)
+            _ = cd_permit_secret_done(self.page, 1)
+            self.pump(self.run)
+            self.wake()
+            return
+        }
+        let body = reason + "\n\nStored in a 0600 file under ~/.openagents/vault/operator-profile.json and ~/Library/Application Support/Coder/secrets/ (never logged or echoed into the chat transcript)."
         var d = CoderDialog(size: .md, title: title, body: body)
         d.fields = [.init(label: secretName, hint: "Paste secret value…", secure: true)]
         d.buttons = [.init(title: "Cancel"), .init(title: "Save & Continue", kind: .primary)]
@@ -1651,6 +1659,7 @@ extension CoderWindow {
             let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !raw.isEmpty else { return }
             let saved = Self.saveRequestedSecret(name: secretName, value: raw)
+            _ = OperatorVault.shared.save(key: secretName, value: raw)
             guard saved else {
                 self.present(.notice("Secret could not be saved.", "Coder could not write the 0600 secret file for \(secretName)."))
                 return

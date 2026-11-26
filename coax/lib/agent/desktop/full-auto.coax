@@ -1,0 +1,132 @@
+// Full Auto Mode authority policy (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.1, #14063).
+// Single source of truth for zero-nag execution across OpenAgents Desktop, iOS, and all workers.
+// Pure, I/O-free, zero heap allocation.
+//
+// Checks: coax/bin/coax test coax/lib/agent/desktop/full-auto.coax
+// Mutate: coax/bin/coax mutate coax/lib/agent/desktop/full-auto.coax --root-only
+#authority;
+
+// Prompt kinds matching apps/openagents-desktop/page/permit.coax (CP_PERMIT_KIND_*).
+FA_KIND_APPROVAL :: 0;
+FA_KIND_QUESTION :: 1;
+FA_KIND_PLAN :: 2;
+FA_KIND_SECRET :: 3;
+
+// Decision outcomes for a prompt arriving at the UI/worker boundary.
+FA_DECIDE_PROMPT :: 0;       // Show interactive card to the user
+FA_DECIDE_AUTO_ALLOW :: 1;   // Immediately allow without showing a card
+FA_DECIDE_AUTO_VAULT :: 2;   // Resolve from Operator Vault; only prompt if missing
+
+// Harness families for non-interactive CLI flag selection.
+FA_HARNESS_FLAWED :: 0;
+FA_HARNESS_INKY :: 1;
+FA_HARNESS_AGY :: 2;
+FA_HARNESS_CLAUDE :: 3;
+FA_HARNESS_CODEX :: 4;
+FA_HARNESS_CURSOR :: 5;
+
+FaPolicy :: struct {
+  full_auto: bool;               // Master switch (default true)
+  auto_answer_questions: bool;   // Auto-pick recommended/first option on structured questions (default true)
+  unrestricted_paths: bool;      // Bypass workspace path confinement in danger-full-access (default true)
+}
+
+fa_default_policy :: () -> FaPolicy #effects() {
+  return FaPolicy.{
+    full_auto = true,
+    auto_answer_questions = true,
+    unrestricted_paths = true,
+  };
+}
+
+// Decides how the harness handles an incoming permission/plan/secret/question request.
+fa_decide_prompt :: (pol: FaPolicy, kind: int) -> int #effects() {
+  if !pol.full_auto { return FA_DECIDE_PROMPT; }
+  if kind == FA_KIND_APPROVAL || kind == FA_KIND_PLAN { return FA_DECIDE_AUTO_ALLOW; }
+  if kind == FA_KIND_SECRET { return FA_DECIDE_AUTO_VAULT; }
+  if kind == FA_KIND_QUESTION {
+    return ifx pol.auto_answer_questions then FA_DECIDE_AUTO_ALLOW else FA_DECIDE_PROMPT;
+  }
+  return FA_DECIDE_PROMPT;
+}
+
+// True when gated tool/command execution should pause for interactive approval.
+fa_should_gate :: (pol: FaPolicy, approval_mode: bool, agy_mode: int, session_allow: bool) -> bool #effects() {
+  if pol.full_auto { return false; }
+  if session_allow { return false; }
+  return approval_mode || agy_mode != 0;
+}
+
+// True when danger-full-access workers may access normalized paths outside cwd.
+fa_allow_outside_cwd :: (pol: FaPolicy, profile: string) -> bool #effects(reads, traps) {
+  return pol.full_auto && pol.unrestricted_paths && profile == "danger-full-access";
+}
+
+// Worker sandbox profile string for a given Full Auto policy.
+fa_worker_profile :: (pol: FaPolicy, fallback: string) -> string #effects() {
+  if pol.full_auto { return "danger-full-access"; }
+  return fallback;
+}
+
+// Non-interactive CLI flag string for external/internal harnesses when Full Auto is active.
+fa_harness_cli_flag :: (pol: FaPolicy, harness: int) -> string #effects() {
+  if !pol.full_auto { return ""; }
+  if harness == FA_HARNESS_CLAUDE { return "--dangerously-skip-permissions"; }
+  if harness == FA_HARNESS_CODEX { return "--full-auto"; }
+  if harness == FA_HARNESS_AGY { return "--mode=auto"; }
+  if harness == FA_HARNESS_CURSOR { return "--force"; }
+  if harness == FA_HARNESS_FLAWED || harness == FA_HARNESS_INKY { return "--profile=danger-full-access"; }
+  return "";
+}
+
+#test "full-auto: default policy enables zero-nag execution" {
+  pol := fa_default_policy();
+  #assert pol.full_auto;
+  #assert pol.auto_answer_questions;
+  #assert pol.unrestricted_paths;
+  #assert fa_decide_prompt(pol, FA_KIND_APPROVAL) == FA_DECIDE_AUTO_ALLOW;
+  #assert fa_decide_prompt(pol, FA_KIND_PLAN) == FA_DECIDE_AUTO_ALLOW;
+  #assert fa_decide_prompt(pol, FA_KIND_SECRET) == FA_DECIDE_AUTO_VAULT;
+  #assert fa_decide_prompt(pol, FA_KIND_QUESTION) == FA_DECIDE_AUTO_ALLOW;
+  #assert fa_decide_prompt(pol, 99) == FA_DECIDE_PROMPT;
+}
+
+#test "full-auto: disabling full_auto or auto_answer_questions restores prompts" {
+  off := FaPolicy.{full_auto = false, auto_answer_questions = true, unrestricted_paths = true};
+  #assert fa_decide_prompt(off, FA_KIND_APPROVAL) == FA_DECIDE_PROMPT;
+  #assert fa_decide_prompt(off, FA_KIND_PLAN) == FA_DECIDE_PROMPT;
+  #assert fa_decide_prompt(off, FA_KIND_SECRET) == FA_DECIDE_PROMPT;
+  #assert fa_decide_prompt(off, FA_KIND_QUESTION) == FA_DECIDE_PROMPT;
+
+  ask_q := FaPolicy.{full_auto = true, auto_answer_questions = false, unrestricted_paths = true};
+  #assert fa_decide_prompt(ask_q, FA_KIND_QUESTION) == FA_DECIDE_PROMPT;
+  #assert fa_decide_prompt(ask_q, FA_KIND_APPROVAL) == FA_DECIDE_AUTO_ALLOW;
+}
+
+#test "full-auto: gating, path confinement, and harness CLI flags" {
+  on := fa_default_policy();
+  off := FaPolicy.{full_auto = false, auto_answer_questions = false, unrestricted_paths = false};
+  #assert !fa_should_gate(on, true, 1, false);
+  #assert !fa_should_gate(on, true, 2, false);
+  #assert fa_should_gate(off, true, 0, false);
+  #assert fa_should_gate(off, false, 1, false);
+  #assert !fa_should_gate(off, true, 1, true);
+  #assert !fa_should_gate(off, false, 0, false);
+
+  #assert fa_allow_outside_cwd(on, "danger-full-access");
+  #assert !fa_allow_outside_cwd(on, "workspace-write");
+  #assert !fa_allow_outside_cwd(off, "danger-full-access");
+  #assert !fa_allow_outside_cwd(FaPolicy.{full_auto = true, unrestricted_paths = false}, "danger-full-access");
+
+  #assert fa_worker_profile(on, "workspace-write") == "danger-full-access";
+  #assert fa_worker_profile(off, "workspace-write") == "workspace-write";
+
+  #assert fa_harness_cli_flag(on, FA_HARNESS_CLAUDE) == "--dangerously-skip-permissions";
+  #assert fa_harness_cli_flag(on, FA_HARNESS_CODEX) == "--full-auto";
+  #assert fa_harness_cli_flag(on, FA_HARNESS_AGY) == "--mode=auto";
+  #assert fa_harness_cli_flag(on, FA_HARNESS_CURSOR) == "--force";
+  #assert fa_harness_cli_flag(on, FA_HARNESS_FLAWED) == "--profile=danger-full-access";
+  #assert fa_harness_cli_flag(on, FA_HARNESS_INKY) == "--profile=danger-full-access";
+  #assert fa_harness_cli_flag(on, 99) == "";
+  #assert fa_harness_cli_flag(off, FA_HARNESS_CLAUDE) == "";
+}

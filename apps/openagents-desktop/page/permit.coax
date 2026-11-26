@@ -64,6 +64,7 @@ CpPermit :: struct {
   body: [CP_PERMIT_BODY] u8; nbody: int;
   opts: [CP_PERMIT_OPTS] CpPermitOpt; nopts: int;
   tray_h: f32;
+  full_auto: bool;                               // zero-nag Full Auto mode (#14063): auto-allow approvals, plans, questions & vault secrets
   approval_mode: bool;                           // route Microcoder gated MWW_ASK & sub-agent asks through permit card
   session_allow: bool;                           // user chose "Allow for session" for gated commands
   answer_due: bool;
@@ -83,24 +84,27 @@ cp_permit_put :: (dst: [] u8, src: string) -> int {
   return n;
 }
 
-// Clear active and queued prompts (e.g. turn ended), preserving approval_mode and session_allow.
+// Clear active and queued prompts (e.g. turn ended), preserving full_auto, approval_mode and session_allow.
 cp_permit_reset :: (s: [] CoderPage) {
   if s.count < 1 { return; }
+  fa := s[0].permit[0].full_auto;
   am := s[0].permit[0].approval_mode;
   sa := s[0].permit[0].session_allow;
-  s[0].permit[0] = CpPermit.{approval_mode = am, session_allow = sa, agent_idx = -1};
+  s[0].permit[0] = CpPermit.{full_auto = fa, approval_mode = am, session_allow = sa, agent_idx = -1};
 }
 
-// Reset for a new chat: clears prompts and session_allow, keeping approval_mode.
+// Reset for a new chat: clears prompts and session_allow, keeping full_auto and approval_mode.
 cp_permit_new_chat :: (s: [] CoderPage) {
   if s.count < 1 { return; }
+  fa := s[0].permit[0].full_auto;
   am := s[0].permit[0].approval_mode;
-  s[0].permit[0] = CpPermit.{approval_mode = am, agent_idx = -1};
+  s[0].permit[0] = CpPermit.{full_auto = fa, approval_mode = am, agent_idx = -1};
 }
 
 // True when Microcoder/sub-agent gated MWW_ASK commands should prompt interactively via permit.coax.
 cp_permit_should_gate :: (s: [] CoderPage) -> bool {
   if s.count < 1 { return false; }
+  if s[0].permit[0].full_auto { return false; }
   return (s[0].permit[0].approval_mode || s[0].set_agy_mode != 0) && !s[0].permit[0].session_allow;
 }
 
@@ -152,6 +156,23 @@ cp_permit_load_item :: (p: [] CpPermit, entry: CpPermitItem) {
 cp_permit_push_item :: (s: [] CoderPage, entry: CpPermitItem) {
   if s.count < 1 { return; }
   p := s[0].permit[..];
+  if p[0].full_auto {
+    if entry.kind == CP_PERMIT_KIND_APPROVAL || entry.kind == CP_PERMIT_KIND_PLAN || entry.kind == CP_PERMIT_KIND_QUESTION {
+      e := entry;
+      opt := ifx e.nopts > 0 then cast(string) e.opts[0].id[0..<e.opts[0].nid]
+             else ifx e.kind == CP_PERMIT_KIND_PLAN then "approve_plan"
+             else "allow_session";
+      cp_permit_record_answer(s, e.agent_idx, e.ticket, true, opt, "");
+      return;
+    }
+    if entry.kind == CP_PERMIT_KIND_SECRET {
+      // Load into permit metadata so host OperatorVault can auto-resolve without showing a modal card.
+      cp_permit_load_item(p, entry);
+      p[0].open = false;
+      s[0].ask = CP_ASK_SECRET;
+      return;
+    }
+  }
   if entry.kind == CP_PERMIT_KIND_APPROVAL && p[0].session_allow {
     cp_permit_record_answer(s, entry.agent_idx, entry.ticket, true, "allow_session", "");
     return;
@@ -359,10 +380,11 @@ cp_permit_secret_enter :: (s: [] CoderPage) -> bool {
   return true;
 }
 
-// Host finished the masked secret dialog (saved to 0600 file / Keychain) and notifies the page.
+// Host finished the masked secret dialog (saved to 0600 file / Keychain) or OperatorVault auto-resolve and notifies the page.
 // The secret value never enters CoderPage or the transcript.
 cp_permit_secret_done :: (s: [] CoderPage, saved: bool) -> bool {
-  if s.count < 1 || !s[0].permit[0].open || s[0].permit[0].kind != CP_PERMIT_KIND_SECRET { return false; }
+  if s.count < 1 || s[0].permit[0].kind != CP_PERMIT_KIND_SECRET { return false; }
+  if !s[0].permit[0].open && !s[0].permit[0].full_auto { return false; }
   p := s[0].permit[..];
   agent_idx := p[0].agent_idx;
   ticket := p[0].ticket;
@@ -540,16 +562,31 @@ coder_page_permit_approval_mode_set :: (s: [] CoderPage, on: bool) #export_c #ef
 coder_page_permit_approval_mode :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && s[0].permit[0].approval_mode;
 }
+coder_page_permit_full_auto_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].permit[0].full_auto = on;
+  if on {
+    while s[0].permit[0].open && s[0].permit[0].kind != CP_PERMIT_KIND_SECRET {
+      _ := cp_permit_choose(s, true, 0);
+    }
+  }
+}
+coder_page_permit_full_auto :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].permit[0].full_auto;
+}
 coder_page_permit_secret_name :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  if s.count < 1 { return 0; }
+  if !s[0].permit[0].open && !(s[0].permit[0].full_auto && s[0].permit[0].kind == CP_PERMIT_KIND_SECRET) { return 0; }
   return cp_out(out, cp_permit_str(s[0].permit[0].cmd[..], s[0].permit[0].ncmd));
 }
 coder_page_permit_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  if s.count < 1 { return 0; }
+  if !s[0].permit[0].open && !(s[0].permit[0].full_auto && s[0].permit[0].kind == CP_PERMIT_KIND_SECRET) { return 0; }
   return cp_out(out, cp_permit_str(s[0].permit[0].title[..], s[0].permit[0].ntitle));
 }
 coder_page_permit_body :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
-  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  if s.count < 1 { return 0; }
+  if !s[0].permit[0].open && !(s[0].permit[0].full_auto && s[0].permit[0].kind == CP_PERMIT_KIND_SECRET) { return 0; }
   return cp_out(out, cp_permit_str(s[0].permit[0].body[..], s[0].permit[0].nbody));
 }
 coder_page_permit_secret_done :: (s: [] CoderPage, saved: bool) -> bool #export_c #effects(all) {
