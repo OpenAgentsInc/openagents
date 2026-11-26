@@ -1,0 +1,130 @@
+// Coax Web structured LogContext policy & JSON emitter (Issue #14077):
+//   - Secret-key classification (hidden keys are never emitted to logs)
+//   - Bounded, valid JSON access-log line formatter with safe string escaping.
+#authority;
+
+lc_is_secret_key :: (key: string) -> bool #export_c #effects(all) {
+  if key == "token" || key == "secret" || key == "password" { return true; }
+  if key == "cookie" || key == "authorization" || key == "key" { return true; }
+  if key == "email" || key == "nsec" { return true; }
+  return false;
+}
+
+lc_put_byte :: (out: [] u8, pos: int, b: u8) -> int #effects(all) {
+  if pos < 0 || pos >= out.count { return -1; }
+  out[pos] = b;
+  return pos + 1;
+}
+
+lc_put_raw :: (out: [] u8, pos: int, s: string) -> int #effects(all) {
+  if pos < 0 || pos + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[pos + i] = s[i]; }
+  return pos + s.count;
+}
+
+lc_put_json_str :: (out: [] u8, pos: int, s: string) -> int #effects(all) {
+  p := lc_put_byte(out, pos, '"');
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '"' || c == '\\' {
+      p = lc_put_byte(out, p, '\\');
+      p = lc_put_byte(out, p, c);
+    } else if c == '\n' {
+      p = lc_put_raw(out, p, "\\n");
+    } else if c == '\r' {
+      p = lc_put_raw(out, p, "\\r");
+    } else if c == '\t' {
+      p = lc_put_raw(out, p, "\\t");
+    } else if c < 32 {
+      p = lc_put_byte(out, p, '?');
+    } else {
+      p = lc_put_byte(out, p, c);
+    }
+  }
+  return lc_put_byte(out, p, '"');
+}
+
+lc_put_int :: (out: [] u8, pos: int, v: int) -> int #effects(all) {
+  if pos < 0 { return -1; }
+  p := pos;
+  n := v;
+  if n < 0 {
+    p = lc_put_byte(out, p, '-');
+    if p == -1 { return -1; }
+    n = -n;
+  }
+  if n == 0 { return lc_put_byte(out, p, '0'); }
+  buf: [24] u8;
+  k := 0;
+  while n > 0 {
+    buf[k] = cast(u8) ('0' + (n % 10));
+    n = n / 10;
+    k += 1;
+  }
+  if p + k > out.count { return -1; }
+  for i: 0..<k { out[p + i] = buf[k - 1 - i]; }
+  return p + k;
+}
+
+lc_write_access_json :: (out: [] u8, req_id: string, method: string, path: string,
+                         route: string, status: int, duration_ms: int, pid: int) -> int #export_c #effects(all) {
+  p := lc_put_raw(out, 0, "{\"req_id\":");
+  p = lc_put_json_str(out, p, req_id);
+  p = lc_put_raw(out, p, ",\"method\":");
+  p = lc_put_json_str(out, p, method);
+  p = lc_put_raw(out, p, ",\"path\":");
+  p = lc_put_json_str(out, p, path);
+  p = lc_put_raw(out, p, ",\"route\":");
+  p = lc_put_json_str(out, p, route);
+  p = lc_put_raw(out, p, ",\"status\":");
+  p = lc_put_int(out, p, status);
+  p = lc_put_raw(out, p, ",\"duration_ms\":");
+  p = lc_put_int(out, p, duration_ms);
+  p = lc_put_raw(out, p, ",\"pid\":");
+  p = lc_put_int(out, p, pid);
+  p = lc_put_raw(out, p, "}");
+  return p;
+}
+
+#test "secret keys are classified and non-secret keys pass" {
+  #assert lc_is_secret_key("token") && lc_is_secret_key("secret") && lc_is_secret_key("password");
+  #assert lc_is_secret_key("cookie") && lc_is_secret_key("authorization") && lc_is_secret_key("key");
+  #assert lc_is_secret_key("email") && lc_is_secret_key("nsec");
+  #assert !lc_is_secret_key("req_id") && !lc_is_secret_key("route") && !lc_is_secret_key("status");
+}
+
+#test "access JSON formats cleanly, escapes control chars, and rejects overflow" {
+  buf: [256] u8;
+  n := lc_write_access_json(buf[..], "r1", "GET", "/up", "api", 200, 0, 42);
+  #assert n > 0;
+  #assert cast(string) buf[0..<n] == "{\"req_id\":\"r1\",\"method\":\"GET\",\"path\":\"/up\",\"route\":\"api\",\"status\":200,\"duration_ms\":0,\"pid\":42}";
+
+  // Escaping quotes, backslashes, newlines, tabs, CR, and control chars (< 32); space (32) and '!' (33) stay literal
+  ctrl := [8] u8.[ '/', 'p', '\n', '\r', '\t', 31, ' ', '!' ];
+  n2 := lc_write_access_json(buf[..], "a\"b\\c", "POST", cast(string) ctrl[..], "r", -1, 12, 7);
+  #assert n2 > 0;
+  #assert cast(string) buf[0..<n2] == "{\"req_id\":\"a\\\"b\\\\c\",\"method\":\"POST\",\"path\":\"/p\\n\\r\\t? !\",\"route\":\"r\",\"status\":-1,\"duration_ms\":12,\"pid\":7}";
+
+  // Exact-fit buffer (kills '>' -> '>=' mutants)
+  exact: [95] u8;
+  #assert lc_write_access_json(exact[..], "r1", "GET", "/up", "api", 200, 0, 42) == 95;
+
+  // Direct boundary checks at pos=0 and exact capacity
+  b1: [1] u8;
+  #assert lc_put_byte(b1[..], 0, 'x') == 1;
+  #assert lc_put_byte(b1[..], -1, 'x') == -1;
+  #assert lc_put_int(b1[..], 0, 0) == 1;
+  #assert lc_put_int(b1[..], 0, 7) == 1;
+  #assert lc_put_int(b1[..], 0, -5) == -1;
+  #assert lc_put_int(b1[..], -1, 5) == -1;
+  #assert lc_put_int(b1[..], 0, 12) == -1;
+  #assert lc_put_int(b1[0..<0], 0, -5) == -1;
+  b2: [2] u8;
+  #assert lc_put_json_str(b2[..], 0, "") == 2;
+  #assert lc_put_json_str(b2[..], 0, "a") == -1;
+  #assert lc_put_json_str(b1[..], 0, "a") == -1;
+  #assert lc_put_json_str(b1[..], 1, "a") == -1;
+  // Overflow returns -1
+  tiny: [16] u8;
+  #assert lc_write_access_json(tiny[..], "r1", "GET", "/up", "api", 200, 0, 42) == -1;
+}

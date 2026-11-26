@@ -51,6 +51,8 @@
 #include "api.h"
 #include "config.h"
 #include "error-wire.generated.h"
+#include "log-context.generated.h"
+#include "maintenance-policy.generated.h"
 #include "route-policy.generated.h"
 
 #include <arpa/inet.h>
@@ -116,9 +118,13 @@ static const char *reason(int status) {
 // that file's messages (routes-goldens.coax --read-all; Protocol, #13250).
 static const char *route_at;
 static int route_header = -1;
+static int last_status;
+static uint64_t req_seq;
+static int log_json_mode = -1;
 #define ROUTE(fn) do { route_at = #fn; if (fn(&q)) return; } while (0)
 void api_route_at(const char *name) { route_at = name; }
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n) {
+  last_status = status;
   char head[4096], named[96] = "";
   if (route_header < 0) { const char *v = getenv("OA_API_ROUTE_HEADER"); route_header = v && !strcmp(v, "1"); }
   if (route_header && route_at) snprintf(named, sizeof named, "X-OA-Route: %s\r\n", route_at);
@@ -393,20 +399,42 @@ static void fault_slow(const request *q) {
   api_json(q->fd, 200, out);
 }
 
-static void handle(client *cl, char *head_end, size_t body_len) {
-  request q = {0};
-  q.fd = cl->fd;
-  q.head = cl->buf;
-  q.body = head_end + 4;
-  q.body_len = body_len;
-  *head_end = 0;   // the head is a string now; headers are read before the body
-  if (sscanf(cl->buf, "%7s %2047s", q.method, q.target) != 2) { api_error(cl->fd, 400, "bad request"); return; }
-  *head_end = '\r';
-  snprintf(q.path, sizeof q.path, "%s", q.target);
-  char *mark = strchr(q.path, '?');
-  if (mark) { *mark = 0; q.query = q.target + (mark - q.path) + 1; }
-  else q.query = "";
-  auth_reset();
+static bool maintenance_bypass_ok(const request *q) {
+  const char *secret = getenv("OA_MAINTENANCE_BYPASS_SECRET");
+  if (!secret || !*secret) return false;
+  char hdr[256];
+  if (api_header(q, "X-OA-Maintenance-Bypass", hdr, sizeof hdr) && !strcmp(hdr, secret)) return true;
+  char ck[2048];
+  if (api_header(q, "Cookie", ck, sizeof ck)) {
+    const char *p = strstr(ck, "OA-Maintenance-Bypass=");
+    if (p) {
+      p += 22;
+      size_t slen = strlen(secret);
+      if (!strncmp(p, secret, slen) && (p[slen] == 0 || p[slen] == ';' || p[slen] == ' ')) return true;
+    }
+  }
+  return false;
+}
+
+static bool maintenance_gate(const request *q) {
+  const char *on = getenv("OA_MAINTENANCE_MODE");
+  bool enabled = on && !strcmp(on, "1");
+  if (!enabled) return false;
+  coax_string p = {q->path, (int64_t)strlen(q->path)};
+  if (mp_allow_request(true, p, false, maintenance_bypass_ok(q))) return false;
+  const char *until_env = getenv("OA_MAINTENANCE_UNTIL_MS");
+  int64_t until_ms = (until_env && *until_env) ? strtoll(until_env, NULL, 10) : 0;
+  int64_t retry_s = mp_retry_after_sec(until_ms, (int64_t)api_now_ms());
+  char hdr[64];
+  snprintf(hdr, sizeof hdr, "Retry-After: %lld\r\n", (long long)retry_s);
+  api_error_with(q->fd, 503, hdr, "service in maintenance");
+  return true;
+}
+
+static void dispatch(client *cl, request *qp) {
+  request q = *qp;
+  route_at = "maintenance_gate";
+  if (maintenance_gate(&q)) return;
   route_at = "auth_gate";
   if (auth_gate(&q)) return;
   route_at = "api";   // the route's rule (auth.c); a route with no rule is 404
@@ -459,6 +487,43 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   ROUTE(villa_route);
   ROUTE(admin_route);
   api_error(cl->fd, 404, "not found");
+}
+
+static void handle(client *cl, char *head_end, size_t body_len) {
+  double t0 = api_now_ms();
+  last_status = 0;
+  request q = {0};
+  q.fd = cl->fd;
+  q.head = cl->buf;
+  q.body = head_end + 4;
+  q.body_len = body_len;
+  *head_end = 0;   // the head is a string now; headers are read before the body
+  if (sscanf(cl->buf, "%7s %2047s", q.method, q.target) != 2) { api_error(cl->fd, 400, "bad request"); return; }
+  *head_end = '\r';
+  snprintf(q.path, sizeof q.path, "%s", q.target);
+  char *mark = strchr(q.path, '?');
+  if (mark) { *mark = 0; q.query = q.target + (mark - q.path) + 1; }
+  else q.query = "";
+  auth_reset();
+  dispatch(cl, &q);
+  if (log_json_mode < 0) {
+    const char *lf = getenv("OA_LOG_FORMAT");
+    log_json_mode = (lf && !strcmp(lf, "json")) ? 1 : 0;
+  }
+  if (log_json_mode == 1) {
+    char req_id[48];
+    snprintf(req_id, sizeof req_id, "r-%d-%llu", (int)getpid(), (unsigned long long)(++req_seq));
+    uint8_t line[1024];
+    const char *rt = route_at ? route_at : "api";
+    int64_t n = lc_write_access_json(
+        (coax_v_u8){line, (int64_t)(sizeof line - 1)},
+        (coax_string){req_id, (int64_t)strlen(req_id)},
+        (coax_string){q.method, (int64_t)strlen(q.method)},
+        (coax_string){q.path, (int64_t)strlen(q.path)},
+        (coax_string){rt, (int64_t)strlen(rt)},
+        last_status, (int64_t)(api_now_ms() - t0), (int64_t)getpid());
+    if (n > 0) { line[n] = 0; fprintf(stderr, "%s\n", (char *)line); }
+  }
 }
 
 // One connection: read until the head and its Content-Length of body are in, answer, close. A

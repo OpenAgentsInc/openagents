@@ -1,0 +1,51 @@
+// Coax Web front-gate maintenance policy (Issue #14077):
+//   - Decides whether a request bypasses maintenance mode (/up, health, admin
+//     flags, OpenAPI, authenticated admins, or a verified bypass cookie).
+//   - Computes bounded Retry-After seconds for 503 responses.
+#authority;
+
+MP_DEFAULT_RETRY :: 60;
+MP_MAX_RETRY :: 86400;
+
+mp_bypass_path :: (path: string) -> bool #export_c #effects(all) {
+  if path == "/up" { return true; }
+  if path == "/api/playtest/health" { return true; }
+  if path == "/api/admin/flags" { return true; }
+  if path == "/api/openapi.json" { return true; }
+  return false;
+}
+
+mp_allow_request :: (enabled: bool, path: string, is_admin: bool, has_valid_bypass: bool) -> bool #export_c #effects(all) {
+  if !enabled { return true; }
+  if mp_bypass_path(path) { return true; }
+  if is_admin { return true; }
+  return has_valid_bypass;
+}
+
+mp_retry_after_sec :: (until_ms: int, now_ms: int) -> int #export_c #effects(all) {
+  if until_ms <= now_ms { return MP_DEFAULT_RETRY; }
+  secs := (until_ms - now_ms) / 1000;
+  if secs == 0 { return 1; }
+  if secs > MP_MAX_RETRY { return MP_DEFAULT_RETRY; }
+  return secs;
+}
+
+#test "maintenance off allows everything; maintenance on blocks non-bypass callers" {
+  #assert mp_allow_request(false, "/api/chat/submit", false, false);
+  #assert !mp_allow_request(true, "/api/chat/submit", false, false);
+  #assert mp_allow_request(true, "/up", false, false);
+  #assert mp_allow_request(true, "/api/playtest/health", false, false);
+  #assert mp_allow_request(true, "/api/admin/flags", false, false);
+  #assert mp_allow_request(true, "/api/openapi.json", false, false);
+  #assert mp_allow_request(true, "/api/chat/submit", true, false);
+  #assert mp_allow_request(true, "/api/chat/submit", false, true);
+}
+
+#test "retry-after bounds to [1, 86400] and falls back to 60 when unknown, past, or absurd" {
+  #assert mp_retry_after_sec(0, 1000) == 60;
+  #assert mp_retry_after_sec(1000, 1000) == 60;
+  #assert mp_retry_after_sec(1500, 1000) == 1;
+  #assert mp_retry_after_sec(12000, 2000) == 10;
+  #assert mp_retry_after_sec(86400000, 0) == 86400;
+  #assert mp_retry_after_sec(86401000, 0) == 60;
+}
