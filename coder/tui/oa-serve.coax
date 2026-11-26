@@ -748,10 +748,9 @@ fws_exec_raw :: (
   sse_sent := false;
   acc := w[0].run[0].acc[..];
   for attempt: 0..<4 {
-    // Refresh Vertex token if near expiry
-    if auth[0].backend == FLAWED_BE_VERTEX {
-      _ = fww_vertex_mint(auth);
-      auth[0].nkey = fww_keep(auth[0].key[..], cast(string) auth[0].vx_tok[0..<auth[0].nvx_tok]);
+    // Refresh short-lived Vertex / OpenAgents Cloud tokens before each attempt
+    if !is_local {
+      _ = fww_refresh_request_auth(auth, false);
     }
     acc[0] = FwStreamAccum.{cur_tool_idx = -1};
     cli := GwClient.{url = url, connect_timeout_s = 20, max_time_s = 300};
@@ -882,6 +881,13 @@ fws_exec_raw :: (
 
     st := w[0].run[0].gw[0].status;
     gw_close(w[0].run[0].gw[..]);
+    err_peek := ifx acc[0].nerr > 0 then cast(string) acc[0].err_msg[0..<acc[0].nerr] else cast(string) acc[0].err_body[0..<acc[0].nerr_body];
+    if (st == 401 || st == 403 || fww_is_auth_err(st, err_peek)) && !sse_sent && attempt < 3 {
+      if fww_refresh_request_auth(auth, true) {
+        proc_sleep(500);
+        continue;
+      }
+    }
     if (st == 429 || st == 503 || st == 502 || st == 0) && !sse_sent && attempt < 3 {
       proc_sleep(1500 * (attempt + 1));
       continue;
