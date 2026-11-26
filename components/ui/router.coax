@@ -1,0 +1,136 @@
+// Coax UI URL Router: pure, zero-heap client & SSR route matching for Coax Web.
+// Pairs with coax/web/dom-host.js `dom_go` + event 13 (History API pushState / popstate)
+// and static/SSR routes served by coax/web/serve.sh and components/backend/html.coax.
+//   coax/bin/coax test components/ui/router.coax --library
+
+UI_ROUTE_PARAMS :: 8;
+
+UiRouteParam :: struct {
+  key_at: int; key_n: int;
+  val_at: int; val_n: int;
+}
+
+UiRouteMatch :: struct {
+  matched: bool;
+  params: [UI_ROUTE_PARAMS] UiRouteParam;
+  param_n: int;
+}
+
+// Strips `?query`, `#hash`, and trailing `/` (keeping root `"/"`).
+ui_route_path :: (raw: string) -> string {
+  end := 0;
+  while end < raw.count && raw[end] != '?' && raw[end] != '#' { end += 1; }
+  while end > 1 && raw[end - 1] == '/' { end -= 1; } // mutant: equivalent (if end drops to 0, the check below returns "/")
+  if end == 0 { return "/"; }
+  return cast(string) raw[0..<end];
+}
+
+// Returns the raw query substring after `?` (before `#`), or `""`.
+ui_route_query :: (raw: string) -> string {
+  q := 0;
+  end := raw.count;
+  for i: 0..<raw.count {
+    if raw[i] == '#' { end = i; break; }
+    if raw[i] == '?' && q == 0 { q = i + 1; }
+  }
+  if q == 0 || q >= end { return ""; } // mutant: equivalent (at q == end, raw[q..<end] is "")
+  return cast(string) raw[q..<end];
+}
+
+// Matches `raw_url` against `pattern` supporting static segments (`/docs/introduction`),
+// named params (`/docs/:slug`), and trailing catch-all wildcards (`/docs/*`).
+ui_route_match :: (pattern: string, raw_url: string) -> UiRouteMatch {
+  res := UiRouteMatch.{};
+  pat := ui_route_path(pattern);
+  path := ui_route_path(raw_url);
+  pi := ifx pat[0] == '/' then 1 else 0;
+  si := ifx path[0] == '/' then 1 else 0;
+
+  while pi < pat.count && si < path.count { // mutant: equivalent (at pi == pat.count, empty pseg cannot match any non-empty remaining segment)
+    pe := pi;
+    while pe < pat.count && pat[pe] != '/' { pe += 1; }
+    pseg := cast(string) pat[pi..<pe];
+
+    if pseg == "*" {
+      if res.param_n < UI_ROUTE_PARAMS {
+        res.params[res.param_n] = UiRouteParam.{key_at = pi, key_n = 1, val_at = si, val_n = path.count - si};
+        res.param_n += 1;
+      }
+      res.matched = true;
+      return res;
+    }
+
+    se := si;
+    while se < path.count && path[se] != '/' { se += 1; }
+    sseg := cast(string) path[si..<se];
+
+    if pseg.count > 1 && pseg[0] == ':' {
+      if res.param_n < UI_ROUTE_PARAMS {
+        res.params[res.param_n] = UiRouteParam.{key_at = pi + 1, key_n = pseg.count - 1, val_at = si, val_n = se - si};
+        res.param_n += 1;
+      }
+    } else if pseg != sseg {
+      return UiRouteMatch.{};
+    }
+
+    pi = ifx pe < pat.count then pe + 1 else pe;
+    si = ifx se < path.count then se + 1 else se;
+  }
+
+  if pi == pat.count && si == path.count {
+    res.matched = true;
+    return res;
+  }
+  return UiRouteMatch.{};
+}
+
+// Extracts a matched parameter value by name (or `"*"` for wildcard capture).
+ui_route_param :: (pattern: string, raw_url: string, m: UiRouteMatch, key: string) -> string {
+  pat := ui_route_path(pattern);
+  path := ui_route_path(raw_url);
+  for i: 0..<m.param_n {
+    p := m.params[i];
+    if cast(string) pat[p.key_at..<p.key_at + p.key_n] == key {
+      return cast(string) path[p.val_at..<p.val_at + p.val_n];
+    }
+  }
+  return "";
+}
+
+#test "ui_route_path and ui_route_query normalize paths, trailing slashes, queries, and hashes" {
+  #assert ui_route_path("") == "/" && ui_route_path("/") == "/" && ui_route_path("a/") == "a" && ui_route_path("/docs/introduction/") == "/docs/introduction";
+  #assert ui_route_path("/docs/introduction/?tab=api#top") == "/docs/introduction";
+  #assert ui_route_path("?only=1") == "/" && ui_route_path("#frag") == "/";
+  #assert ui_route_query("?a=1") == "a=1" && ui_route_query("?a?b") == "a?b" && ui_route_query("?") == "";
+  #assert ui_route_query("/docs/intro?a=1&b=2#sec") == "a=1&b=2";
+  #assert ui_route_query("/docs/intro?a=1?b=2") == "a=1?b=2";
+  #assert ui_route_query("/docs/intro") == "" && ui_route_query("/docs/intro?#x") == "" && ui_route_query("/docs/intro#?x") == "";
+}
+
+#test "ui_route_match matches static routes, named params, wildcards, and rejects mismatches" {
+  #assert ui_route_match("/", "/").matched && ui_route_match("/", "/?x=1").matched && !ui_route_match("/", "/docs").matched;
+  #assert ui_route_match("/docs/introduction", "/docs/introduction/").matched;
+  #assert !ui_route_match("/docs/introduction", "/docs/roadmap").matched;
+  #assert !ui_route_match("/docs/introduction", "/docs").matched;
+  #assert ui_route_match("docs/intro", "docs/intro").matched;
+
+  m := ui_route_match("/docs/:section/:slug", "/docs/guides/streaming?v=2#body");
+  #assert m.matched && m.param_n == 2;
+  #assert ui_route_param("/docs/:section/:slug", "/docs/guides/streaming?v=2#body", m, "section") == "guides";
+  #assert ui_route_param("/docs/:section/:slug", "/docs/guides/streaming?v=2#body", m, "slug") == "streaming";
+  #assert ui_route_param("/docs/:section/:slug", "/docs/guides/streaming?v=2#body", m, "missing") == "";
+  #assert !ui_route_match("/docs/:", "/docs/a").matched;
+
+  w := ui_route_match("/docs/*", "/docs/api/v2/stream");
+  #assert w.matched && w.param_n == 1 && ui_route_param("/docs/*", "/docs/api/v2/stream", w, "*") == "api/v2/stream";
+  #assert !ui_route_match("/docs/*", "/docs").matched;
+
+  // Bounded parameter cap (8 params max; 9th param still matches without overflowing)
+  pat9 := "/:a/:b/:c/:d/:e/:f/:g/:h/:i";
+  url9 := "/1/2/3/4/5/6/7/8/9";
+  m9 := ui_route_match(pat9, url9);
+  #assert m9.matched && m9.param_n == UI_ROUTE_PARAMS && ui_route_param(pat9, url9, m9, "h") == "8" && ui_route_param(pat9, url9, m9, "i") == "";
+  patw := "/:a/:b/:c/:d/:e/:f/:g/:h/*";
+  mw := ui_route_match(patw, url9);
+  #assert mw.matched && mw.param_n == UI_ROUTE_PARAMS && ui_route_param(patw, url9, mw, "*") == "";
+}

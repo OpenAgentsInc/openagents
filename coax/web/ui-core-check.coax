@@ -1,6 +1,7 @@
 // Suite entrypoint registering Coax UI Core (#14090) with coax/web/tool.sh suites.
 //   coax/bin/coax test coax/web/ui-core-check.coax --library
 #load "../../components/ui/runtime.coax";
+#load "../../components/ui/router.coax";
 
 #test "ui core suite loads policy, dom subtree patching, and component runtime" {
   #assert uip_flush_mode(false, 1, true) == UIP_FLUSH_SUBTREE;
