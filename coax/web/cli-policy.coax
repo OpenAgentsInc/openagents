@@ -1,0 +1,164 @@
+// Coax Web unified CLI policy & Prohibitable production safety guard (Issue #14081):
+//   - Subcommand classification across the unified `coax web <cmd>` surface
+//   - Prohibitable guard refusing destructive commands (`migrate --fresh`, `db:wipe`, `seed`)
+//     when APP_ENV=production (or OA_ENV=production)
+//   - Strict `make:<policy|wire|migration|page>` scaffold name validation.
+#authority;
+
+CLI_KIND_UNKNOWN :: 0;
+CLI_KIND_DEV :: 1;
+CLI_KIND_INSPECT :: 2;
+CLI_KIND_DATABASE :: 3;
+CLI_KIND_QUEUE :: 4;
+CLI_KIND_MAKE :: 5;
+CLI_KIND_OPS :: 6;
+
+CLI_GUARD_ALLOW :: 0;
+CLI_GUARD_PROHIBITED_PROD :: 1;
+CLI_GUARD_UNKNOWN_CMD :: 2;
+
+cli_starts_with :: (s: string, prefix: string) -> bool #effects(all) {
+  if s.count < prefix.count { return false; }
+  for i: 0..<prefix.count {
+    if s[i] != prefix[i] { return false; }
+  }
+  return true;
+}
+
+cli_classify_command :: (cmd: string) -> int #export_c #effects(all) {
+  if cmd == "setup" || cmd == "dev" || cmd == "build" || cmd == "test" || cmd == "doctor" {
+    return CLI_KIND_DEV;
+  }
+  if cmd == "routes" || cmd == "schema" || cmd == "policies" || cmd == "config" {
+    return CLI_KIND_INSPECT;
+  }
+  if cmd == "migrate" || cmd == "db:wipe" || cmd == "seed" {
+    return CLI_KIND_DATABASE;
+  }
+  if cmd == "work" || cmd == "schedule" {
+    return CLI_KIND_QUEUE;
+  }
+  if cmd == "make:policy" || cmd == "make:wire" || cmd == "make:migration" || cmd == "make:page" {
+    return CLI_KIND_MAKE;
+  }
+  if cmd == "release" || cmd == "rollback" || cmd == "down" || cmd == "up" {
+    return CLI_KIND_OPS;
+  }
+  return CLI_KIND_UNKNOWN;
+}
+
+// True when a command + flag combination is destructive to database state.
+cli_is_destructive :: (cmd: string, fresh_flag: bool) -> bool #export_c #effects(all) {
+  if cmd == "db:wipe" || cmd == "seed" { return true; }
+  if cmd == "migrate" && fresh_flag { return true; }
+  return false;
+}
+
+// Prohibitable production guard: refuses destructive commands when env is "production".
+cli_guard_decision :: (cmd: string, fresh_flag: bool, app_env: string) -> int #export_c #effects(all) {
+  if cli_classify_command(cmd) == CLI_KIND_UNKNOWN { return CLI_GUARD_UNKNOWN_CMD; }
+  if app_env == "production" && cli_is_destructive(cmd, fresh_flag) {
+    return CLI_GUARD_PROHIBITED_PROD;
+  }
+  return CLI_GUARD_ALLOW;
+}
+
+// Validates a scaffold identifier for `make:<policy|wire|migration|page>`:
+// 1..64 chars, lowercase ASCII letters/digits/hyphens/underscores, starting with a letter.
+cli_make_name_valid :: (name: string) -> bool #export_c #effects(all) {
+  if name.count < 1 || name.count > 64 { return false; }
+  first := name[0];
+  if first < 'a' || first > 'z' { return false; }
+  for i: 1..<name.count {
+    c := name[i];
+    ok := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// True when an introspection command supports `--json` output.
+cli_supports_json :: (cmd: string) -> bool #export_c #effects(all) {
+  return cli_classify_command(cmd) == CLI_KIND_INSPECT || cli_starts_with(cmd, "doctor");
+}
+
+// ---- tests
+
+#test "command classification covers every unified coax web subcommand" {
+  #assert cli_classify_command("setup") == CLI_KIND_DEV;
+  #assert cli_classify_command("dev") == CLI_KIND_DEV;
+  #assert cli_classify_command("build") == CLI_KIND_DEV;
+  #assert cli_classify_command("test") == CLI_KIND_DEV;
+  #assert cli_classify_command("doctor") == CLI_KIND_DEV;
+  #assert cli_classify_command("routes") == CLI_KIND_INSPECT;
+  #assert cli_classify_command("schema") == CLI_KIND_INSPECT;
+  #assert cli_classify_command("policies") == CLI_KIND_INSPECT;
+  #assert cli_classify_command("config") == CLI_KIND_INSPECT;
+  #assert cli_classify_command("migrate") == CLI_KIND_DATABASE;
+  #assert cli_classify_command("db:wipe") == CLI_KIND_DATABASE;
+  #assert cli_classify_command("seed") == CLI_KIND_DATABASE;
+  #assert cli_classify_command("work") == CLI_KIND_QUEUE;
+  #assert cli_classify_command("schedule") == CLI_KIND_QUEUE;
+  #assert cli_classify_command("make:policy") == CLI_KIND_MAKE;
+  #assert cli_classify_command("make:wire") == CLI_KIND_MAKE;
+  #assert cli_classify_command("make:migration") == CLI_KIND_MAKE;
+  #assert cli_classify_command("make:page") == CLI_KIND_MAKE;
+  #assert cli_classify_command("release") == CLI_KIND_OPS;
+  #assert cli_classify_command("rollback") == CLI_KIND_OPS;
+  #assert cli_classify_command("down") == CLI_KIND_OPS;
+  #assert cli_classify_command("up") == CLI_KIND_OPS;
+  #assert cli_classify_command("unknown") == CLI_KIND_UNKNOWN;
+  #assert cli_classify_command("") == CLI_KIND_UNKNOWN;
+}
+
+#test "prohibitable guard blocks destructive commands in production and allows safe/local commands" {
+  #assert cli_guard_decision("migrate", true, "production") == CLI_GUARD_PROHIBITED_PROD;
+  #assert cli_guard_decision("db:wipe", false, "production") == CLI_GUARD_PROHIBITED_PROD;
+  #assert cli_guard_decision("seed", false, "production") == CLI_GUARD_PROHIBITED_PROD;
+  // Non-destructive migrate (without --fresh) is allowed in production.
+  #assert cli_guard_decision("migrate", false, "production") == CLI_GUARD_ALLOW;
+  // Destructive commands are allowed in local/test/staging.
+  #assert cli_guard_decision("migrate", true, "local") == CLI_GUARD_ALLOW;
+  #assert cli_guard_decision("db:wipe", false, "test") == CLI_GUARD_ALLOW;
+  #assert cli_guard_decision("seed", false, "staging") == CLI_GUARD_ALLOW;
+  // Unknown commands are refused regardless of environment.
+  #assert cli_guard_decision("nuke", true, "local") == CLI_GUARD_UNKNOWN_CMD;
+  #assert cli_guard_decision("nuke", false, "production") == CLI_GUARD_UNKNOWN_CMD;
+  // Inspect & ops commands allowed in production.
+  #assert cli_guard_decision("routes", false, "production") == CLI_GUARD_ALLOW;
+  #assert cli_guard_decision("down", false, "production") == CLI_GUARD_ALLOW;
+}
+
+#test "make scaffold name validator enforces lowercase slug boundaries" {
+  #assert cli_make_name_valid("a");
+  #assert cli_make_name_valid("z");
+  #assert cli_make_name_valid("billing-09_az");
+  #assert !cli_make_name_valid("");
+  #assert !cli_make_name_valid("0abc");
+  #assert !cli_make_name_valid("Abc");
+  #assert !cli_make_name_valid("`abc");
+  #assert !cli_make_name_valid("{abc");
+  #assert !cli_make_name_valid("aB");
+  #assert !cli_make_name_valid("a`");
+  #assert !cli_make_name_valid("a{");
+  #assert !cli_make_name_valid("a/");
+  #assert !cli_make_name_valid("a:");
+  #assert !cli_make_name_valid("a b");
+  #assert !cli_make_name_valid("a/b");
+  max_name: [65] u8;
+  for i: 0..<65 { max_name[i] = 'a'; }
+  #assert cli_make_name_valid(cast(string) max_name[0..<64]);
+  #assert !cli_make_name_valid(cast(string) max_name[..]);
+}
+
+#test "json introspection support matches inspect commands and doctor" {
+  #assert cli_supports_json("routes");
+  #assert cli_supports_json("schema");
+  #assert cli_supports_json("policies");
+  #assert cli_supports_json("config");
+  #assert cli_supports_json("doctor");
+  #assert !cli_supports_json("doct");
+  #assert !cli_supports_json("xoctor");
+  #assert !cli_supports_json("dev");
+  #assert !cli_supports_json("migrate");
+}
