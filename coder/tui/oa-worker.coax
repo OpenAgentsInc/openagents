@@ -1945,34 +1945,11 @@ fww_append_instr_capped :: (out: [] u8, at: int, heading: string, path: string, 
   return n;
 }
 
-// Pure core of compact base conversational prompt (<25% of full coding prompt; #14054).
-fww_build_base_system_prompt_core :: (cfg: [] FwConfig, platform: string, out: [] u8) -> int {
-  n := 0;
-  n = fww_cat(out, n, "You are OpenAgents, an AI assistant running natively inside OpenAgents Desktop.\nPlatform: ");
-  n = fww_cat(out, n, platform);
-  n = fww_cat(out, n, "\nBe helpful, accurate, concise, and direct. Use clear Markdown when helpful.\n");
-  if cfg[0].output_style == FLAWED_STYLE_CONCISE {
-    n = fww_cat(out, n, "\n[Output Style: Concise]: Be brief and direct. Avoid unnecessary filler.\n");
-  } else if cfg[0].output_style == FLAWED_STYLE_EXPLANATORY {
-    n = fww_cat(out, n, "\n[Output Style: Explanatory]: Explain the reasoning and tradeoffs clearly.\n");
-  } else if cfg[0].output_style == FLAWED_STYLE_LEARNING {
-    n = fww_cat(out, n, "\n[Output Style: Learning]: Explain key concepts clearly and invite collaborative decisions.\n");
-  }
-  return n;
-}
-
-fww_build_base_system_prompt :: (cfg: [] FwConfig, out: [] u8) -> int {
-  platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
-  n := fww_build_base_system_prompt_core(cfg, platform, out);
-  cspb: [FS_PATH_MAX] u8;
-  cspath := csys_path(cspb[..]);
-  csbuf: [CSYS_MAX_BYTES + 1] u8;
-  csblk: [CSYS_BLOCK_BYTES] u8;
-  cs := csys_block("\n\n# ", csys_read(cspath, csbuf[..]), csblk[..]);
-  if cs.count > 0 {
-    n = fww_cat(out, n, cs);
-  }
-  return n;
+// Core tools and workspace context are UNCONDITIONAL on every normal turn:
+// only explicit forced wrap-up (max turns / soft deadline / loop cap) disables tool calling.
+// Never gate core tools or workspace `cwd` behind heuristic keyword matching on user messages.
+fww_turn_no_tools :: (force_wrapup_once: bool) -> bool {
+  return force_wrapup_once;
 }
 
 fww_hist_has_tools :: (h: [] FwHist) -> bool {
@@ -1983,78 +1960,86 @@ fww_hist_has_tools :: (h: [] FwHist) -> bool {
   return false;
 }
 
-fww_is_ident_byte :: (c: u8) -> bool {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+fww_path_basename :: (path: string) -> string {
+  end := path.count;
+  while end > 0 && path[end - 1] == '/' { end -= 1; }
+  if end == 0 { return ""; }
+  start := end;
+  while start > 0 && path[start - 1] != '/' { start -= 1; }
+  return cast(string) path[start..<end];
 }
 
-fww_has_word_ci :: (text: string, word: string) -> bool {
-  if word.count == 0 || text.count < word.count { return false; }
-  for i: 0..<text.count - word.count + 1 {
-    if i > 0 && fww_is_ident_byte(text[i - 1]) { continue; }
-    end := i + word.count;
-    if end < text.count && fww_is_ident_byte(text[end]) { continue; }
-    matched := true;
-    for j: 0..<word.count {
-      if flawed_aw_lower(text[i + j]) != flawed_aw_lower(word[j]) { matched = false; break; }
-    }
-    if matched { return true; }
-  }
-  return false;
+// Pure parent-directory step used when walking upward to locate `.git`; returns "" at filesystem root.
+fww_parent_dir :: (path: string) -> string {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  if end <= 1 { return ""; }
+  p := end;
+  while p > 0 && path[p - 1] != '/' { p -= 1; }
+  if p <= 1 { return ""; }
+  return cast(string) path[0..<(p - 1)];
 }
 
-// Classify whether a turn needs the coding/workspace/tool-use addendum (#14054).
-// Pure conversational greetings & general knowledge turns stay on the compact base prompt with no tool schemas.
-fww_is_coding_turn :: (cfg: [] FwConfig, h: [] FwHist) -> bool {
-  if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger { return true; }
-  if fww_hist_has_tools(h) { return true; }
-  // Inspect the latest user message (and any prior user message in the thread)
-  for ri: 0..<h[0].nmsgs {
-    idx := h[0].nmsgs - 1 - ri;
-    m := h[0].msgs[idx];
-    if m.role != FWW_MROLE_USER { continue; }
-    for bi: 0..<m.nblocks {
-      if m.blocks[bi].kind != FWW_MB_TEXT { continue; }
-      t := fww_slab_str(h, m.blocks[bi].text_at, m.blocks[bi].text_n);
-      if t.count == 0 { continue; }
-      // Code fences, inline code, file paths, or URLs
-      for ci: 0..<t.count {
-        if t[ci] == '`' { return true; }
-      }
-      if fww_contains_ci(t, ".coax") || fww_contains_ci(t, ".rs") || fww_contains_ci(t, ".py") ||
-         fww_contains_ci(t, ".ts") || fww_contains_ci(t, ".js") || fww_contains_ci(t, ".swift") ||
-         fww_contains_ci(t, ".json") || fww_contains_ci(t, ".md") || fww_contains_ci(t, ".sh") ||
-         fww_contains_ci(t, ".c") || fww_contains_ci(t, ".h") || fww_contains_ci(t, "http://") ||
-         fww_contains_ci(t, "https://") || fww_contains_ci(t, "::") || fww_contains_ci(t, "->") ||
-         fww_contains_ci(t, "./") || fww_contains_ci(t, "~/") || fww_contains_ci(t, "src/") ||
-         fww_contains_ci(t, "coax/") || fww_contains_ci(t, "openagents/") || fww_contains_ci(t, "apps/") ||
-         fww_contains_ci(t, "coder/") || fww_contains_ci(t, ".png") || fww_contains_ci(t, ".jpg") ||
-         fww_contains_ci(t, ".jpeg") || fww_contains_ci(t, ".webp") || fww_contains_ci(t, ".heic") ||
-         fww_contains_ci(t, ".gif") || fww_contains_ci(t, "/Users/") || fww_contains_ci(t, "/tmp/") {
-        return true;
-      }
-      // Coding, workspace, git, build, or symbol keywords (whole-word case-insensitive)
-      kws := [42] string.[
-        "file", "files", "repo", "repository", "workspace", "directory", "folder", "path",
-        "code", "codebase", "bug", "fix", "edit", "write", "read", "search", "grep", "glob",
-        "test", "tests", "build", "compile", "compiler", "check", "error", "crash", "debug",
-        "git", "commit", "diff", "branch", "push", "pull", "issue", "pr", "patch",
-        "bash", "shell", "command", "run", "refactor", "implement",
-      ];
-      for k: kws {
-        if fww_has_word_ci(t, k) { return true; }
-      }
-      kws2 := [28] string.[
-        "function", "proc", "struct", "symbol", "defines", "uses", "exports", "coax",
-        "cargo", "npm", "pytest", "selftest",
-        "wallet", "bitcoin", "lightning", "sats", "invoice", "spark", "nostr", "pylon",
-        "vault", "realm", "tasks", "dictate", "transcribe", "metaverse", "gamebuilder", "playtest",
-      ];
-      for k: kws2 {
-        if fww_has_word_ci(t, k) { return true; }
-      }
+// Recover the repository folder name from a linked git worktree's `.git` pointer file
+// ("gitdir: /path/to/<repo>/.git/worktrees/<worktree-name>"), avoiding opaque UUID worktree basenames.
+fww_repo_name_from_gitdir :: (git_file_body: string) -> string {
+  line_end := 0;
+  while line_end < git_file_body.count && git_file_body[line_end] != '\n' && git_file_body[line_end] != '\r' {
+    line_end += 1;
+  }
+  line := fww_trim(cast(string) git_file_body[0..<line_end]);
+  if !flawed_aw_starts(line, "gitdir:") { return ""; }
+  gd := fww_trim(cast(string) line[7..<line.count]);
+  marker := "/.git/worktrees/";
+  if gd.count <= marker.count { return ""; }
+  for i: 0..<(gd.count - marker.count + 1) {
+    if cast(string) gd[i..<(i + marker.count)] == marker {
+      return fww_path_basename(cast(string) gd[0..<i]);
     }
   }
-  return false;
+  return "";
+}
+
+// Detect the enclosing git repository name for `cwd` by walking upward looking for `.git`
+// (either a directory in a normal clone or a `gitdir:` file in a linked worktree).
+// Returns "" when `cwd` is outside any git repository.
+fww_detect_repo_name :: (cwd: string, out: [] u8) -> string {
+  if cwd.count == 0 { return ""; }
+  cur := cwd;
+  while cur.count > 1 && cur[cur.count - 1] == '/' { cur = cast(string) cur[0..<(cur.count - 1)]; }
+  gp: [FS_PATH_MAX] u8;
+  gbuf: [512] u8;
+  for _: 0..<12 {
+    if cur.count == 0 { break; }
+    dotgit := fs_join(cur, ".git", gp[..]);
+    kind := fs_kind(dotgit);
+    if kind == FS_DIR {
+      nm := fww_path_basename(cur);
+      if nm.count > 0 {
+        n := fww_keep(out, nm);
+        return cast(string) out[0..<n];
+      }
+      return "";
+    }
+    if kind == FS_FILE {
+      rn := fs_read(dotgit, gbuf[..]);
+      if rn > 0 {
+        wt_nm := fww_repo_name_from_gitdir(cast(string) gbuf[0..<rn]);
+        if wt_nm.count > 0 {
+          n := fww_keep(out, wt_nm);
+          return cast(string) out[0..<n];
+        }
+      }
+      nm := fww_path_basename(cur);
+      if nm.count > 0 {
+        n := fww_keep(out, nm);
+        return cast(string) out[0..<n];
+      }
+      return "";
+    }
+    cur = fww_parent_dir(cur);
+  }
+  return "";
 }
 
 fww_is_coax_repo :: (cwd: string) -> bool {
@@ -2126,6 +2111,7 @@ fww_build_local_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, pla
   n = fww_cat(out, n, "- Run the relevant test command after editing to verify your fix, then answer concisely.\n");
   n = fww_cat(out, n, "- Never repeat an identical tool call. If stuck, try a different approach or report clearly.\n");
   n = fww_cat(out, n, "- Never run `git commit`, `git push`, or destructive commands outside the workspace (e.g. `rm -rf ..`) unless explicitly asked; refuse destructive requests outside the workspace.\n");
+  n = fww_cat(out, n, "- Answer conversational greetings or general questions directly without tools unless workspace inspection is needed.\n");
   if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger {
     n = fww_cat(out, n, "\n[PLAN MODE ACTIVE]: Do not edit or write files. Present a concise plan.\n");
   }
@@ -2231,8 +2217,8 @@ fww_build_gemini_body_packs :: (cfg: [] FwConfig, h: [] FwHist, effort: string, 
     jo_end(o[..]);
   }
 
-  // Tools (Gemini functionDeclarations; omit completely on non-coding turns with no prior tool history,
-  // and keep declarations with toolConfig NONE on wrap-up turns that already contain tool history)
+  // Tools (Gemini functionDeclarations; always mounted on normal turns; on forced wrap-up turns,
+  // keep declarations with toolConfig NONE whenever history already contains tool calls)
   if !no_tools || fww_hist_has_tools(h) {
     allowed := cast(string) cfg[0].allowed_tools[0..<cfg[0].nallowed];
     disallowed := cast(string) cfg[0].disallowed_tools[0..<cfg[0].ndisallowed];
@@ -5063,28 +5049,27 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   r[0].force_low_once = false;
   if r[0].calm_steps > 0 { r[0].calm_steps -= 1; }
-  coding_turn := fww_is_coding_turn(cfg, h);
   base_sys_b: [4096] u8;
   full_sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
   sys := full_sys;
-  if !coding_turn {
-    bn_sys := fww_build_base_system_prompt(cfg, base_sys_b[..]);
-    sys = cast(string) base_sys_b[0..<bn_sys];
-  } else if is_local && ctx_win <= 32768 {
-    platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
-    ln_sys := fww_build_local_coding_system_prompt_core(cfg, cast(string) r[0].cwd[0..<r[0].ncwd], platform, base_sys_b[..]);
-    sys = cast(string) base_sys_b[0..<ln_sys];
-  }
+  cwd_now := cast(string) r[0].cwd[0..<r[0].ncwd];
   if is_local && ctx_win <= 32768 {
+    platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+    ln_sys := fww_build_local_coding_system_prompt_core(cfg, cwd_now, platform, base_sys_b[..]);
+    if r[0].nmissing_cap_hint > 0 {
+      ln_sys = fww_cat(base_sys_b[..], ln_sys, "\n\n[Missing Capability Detected: ");
+      ln_sys = fww_cat(base_sys_b[..], ln_sys, cast(string) r[0].missing_cap_hint[0..<r[0].nmissing_cap_hint]);
+      ln_sys = fww_cat(base_sys_b[..], ln_sys, "] This request needs an integration not currently mounted. Offer to author a new OpenAgents capability/skill with the user.\n");
+    }
+    sys = cast(string) base_sys_b[0..<ln_sys];
     max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 4096;
     if sys.count > max_sys {
       sc := fww_utf8_cut(sys, max_sys);
       sys = cast(string) sys[0..<sc];
     }
   }
-  no_tools := r[0].force_wrapup_once || !coding_turn;
-  cwd_now := cast(string) r[0].cwd[0..<r[0].ncwd];
-  include_coax_intel := coding_turn && !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
+  no_tools := fww_turn_no_tools(r[0].force_wrapup_once);
+  include_coax_intel := !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cwd_now);
   packs_mask := ifx no_tools then 0 else fww_active_packs(cwd_now, include_coax_intel);
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
@@ -6620,6 +6605,10 @@ tool_main :: () -> int #export_c #effects(all) {
                     else cast(string) cfg[0].model[0..<cfg[0].nmodel];
     picked_effort := ifx req[0].effort.count > 0 then req[0].effort else cast(string) cfg[0].effort[0..<cfg[0].neffort];
 
+    // Detect enclosing git repository for Auto routing and cached git-snapshot capture.
+    repo_b: [128] u8;
+    repo_name := fww_detect_repo_name(cd, repo_b[..]);
+
     // System One Front v2alpha1 routing in Auto mode (#14056)
     run[0].nmissing_cap_hint = 0;
     if (picked_model == "oa:auto" || picked_model == "auto") && cfg[0].ncustom_model == 0 && !(tk.count > 0 && tk[0] == '/') {
@@ -6634,7 +6623,7 @@ tool_main :: () -> int #export_c #effects(all) {
       plan: [1] Rtr2Plan;
       ap := cast(string) run[0].active_pack[0..<run[0].nactive_pack];
       at := cast(string) run[0].active_tier[0..<run[0].nactive_tier];
-      fww_route_auto_plan_ex(tk, "", ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, plan[..]);
+      fww_route_auto_plan_ex(tk, repo_name, ap, at, local_ready, cloud_ready, door_pref, cfg[0].allow_local_harnesses, plan[..]);
       if plan[0].ok {
         if plan[0].npacks > 0 { run[0].nactive_pack = fww_keep(run[0].active_pack[..], plan[0].capability_packs[0]); }
         run[0].nactive_tier = fww_keep(run[0].active_tier[..], plan[0].compute_tier);
@@ -6709,20 +6698,18 @@ tool_main :: () -> int #export_c #effects(all) {
     fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
     mc_steer_clear(st[..]); st[0].nd = 0;
 
-    // Non-coding turns skip git-snapshot capture and full coding prompt assembly (#14054).
-    if fww_is_coding_turn(cfg[..], hist[..]) {
-      run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
-      if !cfg[0].bare_mode {
-        if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
-          run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
-          run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
-        }
-        if run[0].ngit_snap > 0 {
-          run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
-        }
+    // Always assemble the workspace-aware system prompt (cwd, tool guidance, instructions, and
+    // cached git snapshot when inside a git repo). Never strip tools or workspace awareness via
+    // keyword heuristics on user messages.
+    run[0].nsys = fww_build_system_prompt(cfg[..], cd, home, run[0].sys_prompt[..]);
+    if !cfg[0].bare_mode && repo_name.count > 0 {
+      if run[0].ngit_snap_cwd != cd.count || cast(string) run[0].git_snap_cwd[0..<run[0].ngit_snap_cwd] != cd {
+        run[0].ngit_snap = fww_capture_git_snapshot(cd, run[0].git_snap[..]);
+        run[0].ngit_snap_cwd = fww_keep(run[0].git_snap_cwd[..], cd);
       }
-    } else {
-      run[0].nsys = fww_build_base_system_prompt(cfg[..], run[0].sys_prompt[..]);
+      if run[0].ngit_snap > 0 {
+        run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, cast(string) run[0].git_snap[0..<run[0].ngit_snap]);
+      }
     }
     if run[0].nmissing_cap_hint > 0 {
       run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "\n\n[Missing Capability Detected: ");
@@ -6730,7 +6717,7 @@ tool_main :: () -> int #export_c #effects(all) {
       run[0].nsys = fww_cat(run[0].sys_prompt[..], run[0].nsys, "] This request needs an integration not currently mounted. Offer to author a new OpenAgents capability/skill with the user.\n");
     }
     if auth[0].backend != FLAWED_BE_LOCAL && cfg[0].auto_compact && hist[0].nmsgs >= 6 {
-      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, !fww_is_coding_turn(cfg[..], hist[..]));
+      est_tok := fww_estimate_prompt_tokens(hist[..], run[0].nsys, false, false);
       if cp_cache_status(hist[0].last_cloud_turn_ms, proc_now_ms(), 0, hist[0].last_cached_tok, est_tok, true) == CP_CACHE_EXPIRED_COMPACT {
         _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
       }
@@ -7475,56 +7462,144 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert h[0].msgs[4].blocks[0].img_n == 8 && fww_slab_str(h[..], h[0].msgs[4].blocks[0].img_at, h[0].msgs[4].blocks[0].img_n) == "/9j/4AAQ"; // recent screenshot preserved!
 }
 
-#test "flawedworker: split system prompt <25% on non-coding turns (Inkling 2 Mini & Neon) and Coax intel tools (#14054)" {
+#test "flawedworker: Gemini native wire mounts all 8 core tools and cwd unconditionally on every normal turn" {
   cfg: [1] FwConfig;
   cfg[0].bare_mode = true;
   cfg[0].permission_mode = FLAWED_PMODE_BYPASS;
   cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
 
-  base_b: [4096] u8;
   full_b: [16384] u8;
-  base_n := fww_build_base_system_prompt_core(cfg[..], "macOS", base_b[..]);
   full_n := fww_build_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", full_b[..]);
-  base_sys := cast(string) base_b[0..<base_n];
   full_sys := cast(string) full_b[0..<full_n];
-  // Base conversational prompt alone is <25% of full coding system prompt
-  #assert base_n > 80 && full_n > 1500 && base_n * 4 < full_n;
+  #assert full_n > 1500 && fww_contains_ci(full_sys, "Working directory: /repo/openagents");
+  #assert fww_contains_ci(full_sys, "without tools unless workspace inspection is needed");
+  #assert !fww_turn_no_tools(false) && fww_turn_no_tools(true);
+
+  // Regression matrix: basic natural-language, plural, non-jargon, and conversational prompts MUST ALWAYS
+  // receive all 8 core tools in functionDeclarations and workspace cwd!
+  prompts := [9] string.[
+    "summarize the open issues",
+    "i had a 'condensed sidebar' setting in general thats no lnoger wher what the fuck happened to it",
+    "what the fuck are you talking aobut of course i mean openagents desktop WHERE EHT FUCK IS IT",
+    "summarize the open PRs",
+    "what changed since yesterday?",
+    "why is the sidebar broken?",
+    "show me the latest builds and commits",
+    "Hello! Can you explain the difference between TCP and UDP?",
+    "hi",
+  ];
+  b_wire: [32768] u8;
+  nodes: [512] JvNode;
+  d: [1] Jv;
+  h_p: [1] FwHist;
+  for pr, pi: prompts {
+    fww_hist_clear(h_p[..]);
+    fww_hist_push_user(h_p[..], pr);
+    gn := fww_build_gemini_body_packs(cfg[..], h_p[..], "high", full_sys, fww_turn_no_tools(false), 0, b_wire[..]);
+    #assert gn > 0 && jv_parse(d[..], cast(string) b_wire[0..<gn], nodes[..]);
+    g_tools := jv_get(d[0], 0, "tools");
+    g_decls := jv_get(d[0], jv_at(d[0], g_tools, 0), "functionDeclarations");
+    #assert jv_len(d[0], g_decls) == FLAWED_WIRE_NTOOLS;
+    if pi == 0 {
+      core_tools := [8] string.["Read", "Edit", "Write", "Bash", "Glob", "Grep", "TodoWrite", "WebFetch"];
+      sb: [64] u8;
+      for tn, ti: core_tools {
+        nn := jv_str(d[0], jv_get(d[0], jv_at(d[0], g_decls, ti), "name"), sb[..]);
+        #assert cast(string) sb[0..<nn] == tn;
+      }
+      #assert fww_contains_ci(cast(string) b_wire[0..<gn], "Working directory: /repo/openagents");
+    }
+  }
+
+  // Forced wrap-up (`force_wrapup_once = true`) still disables tool calling cleanly
+  fww_hist_clear(h_p[..]);
+  fww_hist_push_user(h_p[..], "summarize the open issues");
+  wrap_g := fww_build_gemini_body_packs(cfg[..], h_p[..], "high", full_sys, fww_turn_no_tools(true), 0, b_wire[..]);
+  #assert wrap_g > 0 && jv_parse(d[..], cast(string) b_wire[0..<wrap_g], nodes[..]) && jv_get(d[0], 0, "tools") < 0;
+}
+
+#test "flawedworker: local OpenAI wire mounts all 8 core tools unconditionally and auto-router detects git repos" {
+  cfg: [1] FwConfig;
+  cfg[0].bare_mode = true;
+  cfg[0].permission_mode = FLAWED_PMODE_BYPASS;
+  cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+
+  full_b: [16384] u8;
+  loc_b: [4096] u8;
+  full_n := fww_build_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", full_b[..]);
+  loc_n := fww_build_local_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", loc_b[..]);
+  loc_sys := cast(string) loc_b[0..<loc_n];
+  #assert loc_n > 200 && loc_n < 1024 && loc_n * 3 < full_n;
+  #assert fww_contains_ci(loc_sys, "Working directory: /repo/openagents");
+  #assert fww_contains_ci(loc_sys, "rm -rf ..") && fww_contains_ci(loc_sys, "git push");
+  #assert fww_contains_ci(loc_sys, "without tools unless workspace inspection is needed");
+
+  prompts := [5] string.[
+    "summarize the open issues",
+    "i had a 'condensed sidebar' setting in general thats no lnoger wher what the fuck happened to it",
+    "summarize the open PRs",
+    "Hello! Can you explain the difference between TCP and UDP?",
+    "hi",
+  ];
+  b_wire: [32768] u8;
+  nodes: [512] JvNode;
+  d: [1] Jv;
+  h_p: [1] FwHist;
+  for pr, pi: prompts {
+    fww_hist_clear(h_p[..]);
+    fww_hist_push_user(h_p[..], pr);
+    on := fww_build_openai_body_packs(cfg[..], h_p[..], "inkling-2-mini", "low", loc_sys, true, 32768, fww_turn_no_tools(false), false, 0, b_wire[..]);
+    #assert on > 0 && jv_parse(d[..], cast(string) b_wire[0..<on], nodes[..]);
+    o_tools := jv_get(d[0], 0, "tools");
+    #assert jv_len(d[0], o_tools) == FLAWED_WIRE_NTOOLS;
+    if pi == 0 {
+      #assert fww_contains_ci(cast(string) b_wire[0..<on], "Working directory: /repo/openagents");
+      #assert !fww_contains_ci(cast(string) b_wire[0..<on], "CoaxDefines");
+    }
+  }
+
+  fww_hist_clear(h_p[..]);
+  fww_hist_push_user(h_p[..], "summarize the open issues");
+  wrap_o := fww_build_openai_body_packs(cfg[..], h_p[..], "inkling-2-mini", "low", loc_sys, true, 32768, fww_turn_no_tools(true), false, 0, b_wire[..]);
+  #assert wrap_o > 0 && jv_parse(d[..], cast(string) b_wire[0..<wrap_o], nodes[..]) && jv_get(d[0], 0, "tools") < 0;
+
+  // Repo name detection helpers (normal clone, parent-dir walk, linked worktree gitdir pointer)
+  #assert fww_path_basename("/Users/a/work/openagents/") == "openagents";
+  #assert fww_path_basename("/repo") == "repo" && fww_path_basename("/") == "";
+  #assert fww_parent_dir("/Users/a/work/openagents/apps/") == "/Users/a/work/openagents";
+  #assert fww_parent_dir("/Users/a") == "/Users" && fww_parent_dir("/Users") == "" && fww_parent_dir("/") == "";
+  #assert fww_repo_name_from_gitdir("gitdir: /Users/chris/work/openagents/.git/worktrees/3030ab32-38a5\n") == "openagents";
+  #assert fww_repo_name_from_gitdir("not-a-gitdir") == "";
+
+  // Auto-routing with detected repo routes natural-language repo prompts to coder + cloud_fast, NOT general/local
+  p: [1] Rtr2Plan;
+  fww_route_auto_plan("Hello there!", "", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "general" && p[0].compute_tier == "local_inkling" && p[0].effort == "low";
+  fww_route_auto_plan("summarize the open issues", "openagents", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_fast";
+  fww_route_auto_plan("i had a 'condensed sidebar' setting in general thats no lnoger wher", "openagents", "", "", true, true, "", p[..]);
+  #assert p[0].ok && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_fast";
+}
+
+#test "flawedworker: Coax intel tools, auto-router continuation, member packs, and OpenAgents Cloud pricing (#14054-#14070)" {
+  cfg: [1] FwConfig;
+  cfg[0].bare_mode = true;
+  cfg[0].permission_mode = FLAWED_PMODE_BYPASS;
+  cfg[0].thinking_mode = FLAWED_THINK_ADAPTIVE;
+
+  full_b: [16384] u8;
+  full_n := fww_build_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", full_b[..]);
+  full_sys := cast(string) full_b[0..<full_n];
   #assert fww_contains_ci(full_sys, "CoaxDefines") && fww_contains_ci(full_sys, "CoaxUses") && fww_contains_ci(full_sys, "CoaxCheck");
 
-  // Turn classifier: conversational vs coding
-  h_chat: [1] FwHist;
-  fww_hist_push_user(h_chat[..], "Hello! Can you explain the difference between TCP and UDP?");
-  #assert !fww_is_coding_turn(cfg[..], h_chat[..]);
-
+  // Coax compiler-backed intelligence tools mount cleanly when OA_PACK_COAX_INTEL is active
   h_code: [1] FwHist;
   fww_hist_push_user(h_code[..], "Find where rp_put is defined in coax/lib/repo/lines.coax and check it.");
-  #assert fww_is_coding_turn(cfg[..], h_code[..]);
-
-  // Verify non-coding turn prompt token/byte count is <25% of full coding prompt on BOTH Inkling 2 Mini and Neon
-  b_chat: [32768] u8;
   b_code: [32768] u8;
-
-  // 1) Inkling 2 Mini (local OpenAI/Psionic wire body)
-  ink_chat_n := fww_build_openai_body_ex(cfg[..], h_chat[..], "inkling-2-mini", "high", base_sys, true, 32768, true, false, false, b_chat[..]);
-  ink_code_n := fww_build_openai_body_ex(cfg[..], h_code[..], "inkling-2-mini", "high", full_sys, true, 32768, false, false, true, b_code[..]);
-  ink_chat_tok := fww_estimate_prompt_tokens(h_chat[..], base_n, true, true);
-  ink_code_tok := fww_estimate_prompt_tokens(h_code[..], full_n, true, false);
-  #assert ink_chat_n > 0 && ink_code_n > 0 && ink_chat_n * 4 < ink_code_n;
-  #assert ink_chat_tok > 0 && ink_chat_tok * 4 < ink_code_tok;
-  #assert !fww_contains_ci(cast(string) b_chat[0..<ink_chat_n], "CoaxDefines");
-  #assert fww_contains_ci(cast(string) b_code[0..<ink_code_n], "CoaxDefines");
-
-  // 2) Neon (Gemini native wire body)
-  neon_chat_n := fww_build_gemini_body_ex(cfg[..], h_chat[..], "high", base_sys, true, false, b_chat[..]);
   neon_code_n := fww_build_gemini_body_ex(cfg[..], h_code[..], "high", full_sys, false, true, b_code[..]);
-  neon_chat_tok := fww_estimate_prompt_tokens(h_chat[..], base_n, false, true);
-  neon_code_tok := fww_estimate_prompt_tokens(h_code[..], full_n, false, false);
-  #assert neon_chat_n > 0 && neon_code_n > 0 && neon_chat_n * 4 < neon_code_n;
-  #assert neon_chat_tok > 0 && neon_chat_tok * 4 < neon_code_tok;
-  #assert !fww_contains_ci(cast(string) b_chat[0..<neon_chat_n], "functionDeclarations");
-  #assert fww_contains_ci(cast(string) b_code[0..<neon_code_n], "CoaxDefines");
+  #assert neon_code_n > 0 && fww_contains_ci(cast(string) b_code[0..<neon_code_n], "CoaxDefines");
 
-  // 3) All 12 Coax compiler-backed intelligence tools map cleanly & have proper permission tiers
+  // All 12 Coax compiler-backed intelligence tools map cleanly & have proper permission tiers
   #assert fww_is_coax_intel_tool("CoaxDefines") && fww_coax_intel_subcmd("CoaxDefines") == "defines";
   #assert fww_is_coax_intel_tool("CoaxUses") && fww_coax_intel_subcmd("CoaxUses") == "uses";
   #assert fww_is_coax_intel_tool("CoaxChecks") && fww_coax_intel_subcmd("CoaxChecks") == "checks";
@@ -7542,17 +7617,8 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
 
-  // 4) Local 32K Inkling 2 Mini compact coding prompt is <30% of full Neon prompt (#14055)
-  loc_b: [4096] u8;
-  loc_n := fww_build_local_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", loc_b[..]);
-  loc_sys := cast(string) loc_b[0..<loc_n];
-  #assert loc_n > 200 && loc_n < 1024 && loc_n * 3 < full_n;
-  #assert fww_contains_ci(loc_sys, "rm -rf ..") && fww_contains_ci(loc_sys, "git push");
-
-  // 5) Auto mode calls System One Front v2alpha1 policy with continuation & compute tier selection (#14056)
+  // Auto mode System One Front v2alpha1 continuation & compute tier selection (#14056)
   p: [1] Rtr2Plan;
-  fww_route_auto_plan("Hello there!", "", "", "", true, true, "", p[..]);
-  #assert p[0].ok && p[0].capability_packs[0] == "general" && p[0].compute_tier == "local_inkling" && p[0].effort == "low";
   fww_route_auto_plan("Fix the bug in policy.coax", "", "", "", true, true, "", p[..]);
   #assert p[0].ok && p[0].capability_packs[0] == "coder" && p[0].compute_tier == "cloud_fast";
   fww_route_auto_plan("Now run the tests", "", "coder", "cloud_deep", true, true, "", p[..]);
@@ -7560,14 +7626,13 @@ tool_main :: () -> int #export_c #effects(all) {
   fww_route_auto_plan("Check my Lightning wallet sats", "", "", "", true, true, "", p[..]);
   #assert p[0].ok && p[0].capability_packs[0] == "wallet";
 
-  // 6) Member tool packs (#14057): Wallet, CLI, Metaverse/GameBuilder target extraction, schema mounting, & non-bypassable policy
+  // Member tool packs (#14057): Wallet, CLI, Metaverse/GameBuilder target extraction, schema mounting, & non-bypassable policy
   tb: [512] u8;
   #assert fww_tool_target("WalletPay", "{\"destination\":\"alice@openagents.com\",\"amount_sats\":500,\"reason\":\"coffee\"}", tb[..]) == "alice@openagents.com (500 sats) — coffee";
   #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"vault\",\"args\":[\"get\",\"api_key\"]}", tb[..]) == "vault get";
   #assert fww_tool_target("OpenAgentsCli", "{\"subcommand\":\"tasks\",\"args\":[\"list\",\"--json\"]}", tb[..]) == "tasks list";
   #assert fww_tool_target("GameBuilder", "{\"action\":\"build\",\"target\":\"scrappers-arena/level-1\"}", tb[..]) == "build scrappers-arena/level-1";
 
-  // Wire serialization with all member packs includes WalletStatus, WalletPay, OpenAgentsCli, MetaverseRoute, GameBuilder
   packs_all := OA_PACK_COAX_INTEL | OA_PACK_WALLET | OA_PACK_CLI | OA_PACK_METAVERSE;
   mp_n := fww_build_gemini_body_packs(cfg[..], h_code[..], "high", full_sys, false, packs_all, b_code[..]);
   #assert mp_n > 0;
@@ -7575,7 +7640,6 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert fww_contains_ci(mp_s, "WalletStatus") && fww_contains_ci(mp_s, "WalletPay");
   #assert fww_contains_ci(mp_s, "OpenAgentsCli") && fww_contains_ci(mp_s, "MetaverseRoute") && fww_contains_ci(mp_s, "GameBuilder");
 
-  // In-process #authority MetaverseRoute tool execution returns canonical JSON for 3D assets and rejects traversal
   mr_out: [4096] u8;
   mr_err := [1] bool.[false];
   empty_w: [1] u8;
@@ -7584,23 +7648,15 @@ tool_main :: () -> int #export_c #effects(all) {
   mr_n2 := fww_tool_metaverse("/repo", "MetaverseRoute", "{\"path\":\"../../etc/passwd.glb\"}", mr_out[..], mr_err[..], empty_w[0..<0]);
   #assert !mr_err[0] && mr_n2 > 0 && fww_contains_ci(cast(string) mr_out[0..<mr_n2], "\"target_pane\":\"reject\"");
 
-  // OpenAgentsCli rejects disallowed subcommands & unsafe args even at executor layer
   cli_n := fww_tool_cli("/repo", "{\"subcommand\":\"rm\",\"args\":[\"-rf\",\"/\"]}", mr_out[..], mr_err[..], empty_w[0..<0]);
   #assert mr_err[0] && cli_n > 0 && fww_contains_ci(cast(string) mr_out[0..<cli_n], "allowlist");
 
-  // Wallet prompts activate tools on non-coding turns
-  h_wal: [1] FwHist;
-  fww_hist_push_user(h_wal[..], "What is my Bitcoin wallet balance?");
-  #assert fww_is_coding_turn(cfg[..], h_wal[..]);
-
-  // 7) OpenAgents Cloud (FLAWED_BE_OURS) retail pricing & $0 local Inkling enforcement (#14070)
+  // OpenAgents Cloud (FLAWED_BE_OURS) retail pricing & $0 local Inkling enforcement (#14070)
   #assert fww_gw_name(FLAWED_BE_OURS) == "ours";
   #assert fww_turn_cost_micros(FLAWED_BE_LOCAL, "inkling-2-mini", 100000, 50000, 10000) == 0;
   #assert fww_turn_cost_micros(FLAWED_BE_LOCAL, "google/gemini-4-neon", 100000, 0, 10000) == 0;
   #assert fww_turn_cost_micros(FLAWED_BE_OURS, "inkling-2-mini", 100000, 0, 10000) == 0;
-  // OpenAgents Cloud Neon retail (+25% over Vertex): 1M input (500k cached) + 100k output = $3.84375 = 3,843,750 micros
   #assert fww_turn_cost_micros(FLAWED_BE_OURS, "google/gemini-4-neon", 1000000, 500000, 100000) == 3843750;
-  // Vertex wholesale Neon for comparison: 500k*3 + 500k*0.15 + 100k*15 = 3,075,000 micros
   #assert fww_turn_cost_micros(FLAWED_BE_VERTEX, "google/gemini-4-neon", 1000000, 500000, 100000) == 3075000;
 }
 

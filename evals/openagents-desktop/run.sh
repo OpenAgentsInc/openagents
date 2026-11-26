@@ -12,7 +12,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 TIER="all"
 FILTER=""
-WORKER="inky"
+WORKER="oa-worker"
 T3_ARGS=""
 HERE="$ROOT/evals/openagents-desktop"
 
@@ -40,7 +40,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     --worker)
       if [ "$#" -lt 2 ]; then
-        echo "error: --worker requires an argument (mcworker or inky)" >&2
+        echo "error: --worker requires an argument (oa-worker, mcworker or inky)" >&2
         exit 2
       fi
       WORKER="$2"
@@ -297,6 +297,9 @@ PY
 
 if [ "$TIER" = "0" ] || [ "$TIER" = "all" ]; then
   run_case 0 "page_coax_tests" coax/bin/coax test apps/openagents-desktop/page.coax --library
+  run_case 0 "oa_worker_tests" coax/bin/coax test coder/tui/oa-worker.coax --library
+  run_case 0 "openagents_core_wire_tests" coax/bin/coax test openagents/core/wire.coax --library
+  run_case 0 "router_policy_tests" coax/bin/coax test coax/lib/agent/router/policy.coax --library
   run_case 0 "mcworker_wire_tests" coax/bin/coax test coax/lib/agent/engine/mcworker-wire.coax --library
   run_case 0 "microcoder_tools_smoke" bash coax/lib/microcoder/tools_smoke.sh
 fi

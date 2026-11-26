@@ -1,0 +1,56 @@
+{
+  "id": "f5_summarize_open_issues_no_jargon",
+  "category": "interactive_chat",
+  "fixture": "issues",
+  "description": "Regression guard: natural-language prompt without coding keywords ('summarize the open issues') must keep core tools and workspace awareness mounted and never refuse with 'I don't have access'",
+  "steps": [
+    {
+      "send": "summarize the open issues"
+    }
+  ],
+  "graders": [
+    {
+      "type": "not_timed_out"
+    },
+    {
+      "type": "ended"
+    },
+    {
+      "type": "reply_contains",
+      "last": true,
+      "text": [
+        "#401",
+        "#402",
+        "#403"
+      ],
+      "ci": true
+    },
+    {
+      "type": "reply_not_contains",
+      "text": [
+        "I don't have access",
+        "don't have access",
+        "do not have access",
+        "Please paste",
+        "can't see the open issues",
+        "cannot see the open issues"
+      ]
+    },
+    {
+      "type": "wire_count",
+      "dir": "from_worker",
+      "kind": "attempt",
+      "main_only": true,
+      "min": 2,
+      "max": 12
+    },
+    {
+      "type": "outside_unchanged"
+    },
+    {
+      "type": "no_guard_trips"
+    }
+  ],
+  "budget_usd_micros": 100000,
+  "timeout_s": 180
+}

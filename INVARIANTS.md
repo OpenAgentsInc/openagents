@@ -13,7 +13,7 @@ The repository's invariants are partitioned by context (#13845) so agents and hu
 | [everglade/INVARIANTS.md](everglade/INVARIANTS.md) | 63 | Everglade realm, SRD 5.2.1 combat, NPCs, mounts, world edits |
 | [metaverse-engine/INVARIANTS.md](metaverse-engine/INVARIANTS.md) | 37 | Metaverse Engine, render, physics, audio, anim, editor, scripts, net, session |
 | [coax/web/api/INVARIANTS.md](coax/web/api/INVARIANTS.md) | 2 | HTTP API, auth, NIP-98, Postgres schema/migrations, room-session API |
-| [apps/INVARIANTS.md](apps/INVARIANTS.md) | 4 | Desktop, iOS, web, CLI, Coder, components, Metaverse OS, Linux/Vulkan host contract |
+| [apps/INVARIANTS.md](apps/INVARIANTS.md) | 5 | Desktop, iOS, web, CLI, Coder, components, Metaverse OS, Linux/Vulkan host contract, oa-worker tool invariance |
 | [coax/INVARIANTS.md](coax/INVARIANTS.md) | 100 | Coax language, compiler, runtime, #authority, stdlib, coax/web host |
 | [gamebuilder/INVARIANTS.md](gamebuilder/INVARIANTS.md) | 4 | GameBuilder 3D creation core, command table, CLI/MCP, play loop, sync, publish |
 | [music/INVARIANTS.md](music/INVARIANTS.md) | 4 | Music Studio core, drift-free tempo map, SMF codec, programmatic remix, real-time transport |

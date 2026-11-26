@@ -1,6 +1,6 @@
 # Invariants — apps/INVARIANTS.md
 
-> Scope: Desktop, iOS, web, CLI, Coder, Zeron, components, Metaverse OS (3 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
+> Scope: Desktop, iOS, web, CLI, Coder, Zeron, components, Metaverse OS (5 invariants). Indexed from root [INVARIANTS.md](../INVARIANTS.md).
 
 ## Coder reads foreign conversations as bounded inert data
 
@@ -235,5 +235,23 @@ device with Vulkan validation, within the existing 810-second qualifier
 budget; earlier software submission/total-runtime failures remain retained.
 The product's submission fence is unchanged. See
 `docs/verification/host-contract-2026-11-05/linux-world-recovery.md`.
+
+## OpenAgents Desktop worker mounts core tools and workspace awareness unconditionally on every normal turn
+
+`coder/tui/oa-worker.coax` never strips the 8 core tools (`Read`, `Edit`, `Write`, `Bash`,
+`Glob`, `Grep`, `TodoWrite`, `WebFetch`) or the `Working directory:` workspace context based
+on heuristic keyword matching or message-text classification (`fww_turn_no_tools` returns
+`true` strictly for explicit `force_wrapup_once` wrap-up turns). Optional heavy packs
+(`Coax*` compiler-intel tools, `Wallet*`, `OpenAgentsCli`, `MetaverseRoute`, `GameBuilder`)
+remain conditionally mounted by workspace/environment availability, while conversational
+restraint is handled via system-prompt guidance rather than tool lobotomy. Auto-mode
+System One routing (`fww_route_auto_plan_ex`) always receives the detected enclosing git
+repository name (`fww_detect_repo_name`, resolving linked worktree `.git` pointer files) so
+natural-language workspace prompts inside a repo are never misrouted as non-repo general
+chat.
+Checks: `coax/bin/coax test coder/tui/oa-worker.coax --library` (wired into
+`evals/openagents-desktop/run.sh --tier 0`) and Tier 2 live regression task
+`evals/openagents-desktop/tier2/tasks/f5_summarize_open_issues_no_jargon.json`.
+
 
 
