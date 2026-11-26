@@ -38,7 +38,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "coder.forge") < 0;
   #assert surface_find(s[0].surface[..], "coder.term.toggle") < 0;
   #assert surface_find(s[0].surface[..], "coder.review") < 0;
-  #assert surface_find(s[0].surface[..], "coder.composer.mic") < 0;
+  #assert surface_find(s[0].surface[..], "coder.composer.mic") >= 0;
   #assert surface_find(s[0].surface[..], "coder.cost") < 0;
   #assert surface_find(s[0].surface[..], "coder.usage.ring") >= 0;
   #assert surface_find(s[0].surface[..], "coder.side.pill.usage") >= 0;
@@ -91,7 +91,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert surface_find(s[0].surface[..], "set.page.6") >= 0;
   #assert surface_find(s[0].surface[..], "set.page.7") < 0;
   #assert surface_find(s[0].surface[..], "set.page.8") < 0;
-  #assert surface_find(s[0].surface[..], "set.page.9") < 0;
+  #assert surface_find(s[0].surface[..], "set.page.9") >= 0;
   #assert surface_find(s[0].surface[..], "set.page.10") < 0;
   #assert surface_find(s[0].surface[..], "set.page.11") < 0;
   #assert surface_find(s[0].surface[..], "set.page.12") < 0;
@@ -107,15 +107,16 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
 
   // Settings search returns 0 hits for every disabled feature keyword, while keeping core settings (including Providers) searchable.
   hits: [CP_SET_HITS] int;
-  disabled_q := [16] string.[
+  disabled_q := [14] string.[
     "foreman", "account", "wallet", "bitcoin", "mcp", "skills",
-    "voice", "whisper", "tailscale", "ssh", "cron", "update everything",
+    "tailscale", "ssh", "cron", "update everything",
     "appearance", "keybindings", "openrouter", "pylon"
   ];
   for q: disabled_q {
     #assert cp_set_hits_flags(q, hits[..], 0) == 0;
   }
   #assert cp_set_hits_flags("usage", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("voice", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("providers", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("antigravity", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("inkling", hits[..], 0) >= 1;
@@ -288,7 +289,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.forge") >= 0 && surface_find(s[0].surface[..], "coder.gym") < 0;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_TERMINAL));
-  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.term.toggle") >= 0 && surface_find(s[0].surface[..], "coder.composer.mic") < 0;
+  #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.term.toggle") >= 0 && surface_find(s[0].surface[..], "coder.composer.mic") >= 0;
 
   coder_page_flags_set(s, dc_flag_bit(DC_FLAG_VOICE));
   #assert cp_flag_test_frame(s, 1200, 800) && surface_find(s[0].surface[..], "coder.composer.mic") >= 0 && surface_find(s[0].surface[..], "coder.term.toggle") < 0;

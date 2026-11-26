@@ -1,0 +1,164 @@
+// Bi-Directional Voice Duplex Policy (docs/desktop/2026-11-26-unfettered-harness-spec.md §3.6, #14065).
+// Pure Coax state machine for hands-free voice conversation: VAD auto-send, barge-in interruption,
+// and incremental Markdown-to-speech sentence chunking. Shared by Desktop and iOS.
+//
+// Checks: coax/bin/coax test coax/lib/agent/desktop/voice-duplex.coax
+// Mutate: coax/bin/coax mutate coax/lib/agent/desktop/voice-duplex.coax --root-only
+#authority;
+
+VD_STATE_OFF :: 0;
+VD_STATE_LISTENING :: 1;
+VD_STATE_THINKING :: 2;
+VD_STATE_SPEAKING :: 3;
+
+VD_EV_NONE :: 0;
+VD_EV_AUTO_SEND :: 1;
+VD_EV_BARGE_IN :: 2;
+
+VD_DEFAULT_SILENCE_MS :: 1200;
+VD_BARGE_IN_FRAMES :: 3;
+
+VdState :: struct {
+  state: int;
+  speech_seen: bool;
+  silence_ms: int;
+  barge_frames: int;
+  silence_commit_ms: int;
+  vad_floor_bp: int;       // 0..10000 normalized RMS threshold for speech (default 800 = 0.08)
+  barge_floor_bp: int;     // 0..10000 normalized RMS threshold for barge-in (default 2200 = 0.22)
+}
+
+vd_init :: () -> VdState #effects() {
+  return VdState.{
+    state = VD_STATE_OFF,
+    silence_commit_ms = VD_DEFAULT_SILENCE_MS,
+    vad_floor_bp = 800,
+    barge_floor_bp = 2200,
+  };
+}
+
+// Advances the duplex VAD state machine by dt_ms with current normalized audio level rms_bp (0..10000).
+// Returns VD_EV_AUTO_SEND when user finished speaking, VD_EV_BARGE_IN when user interrupts TTS, else VD_EV_NONE.
+vd_vad_step :: (st: [] VdState, rms_bp: int, dt_ms: int) -> int #effects(all) {
+  if st.count < 1 || dt_ms <= 0 { return VD_EV_NONE; }
+  s := st[0].state;
+  if s == VD_STATE_LISTENING {
+    if rms_bp >= st[0].vad_floor_bp {
+      st[0].speech_seen = true;
+      st[0].silence_ms = 0;
+      return VD_EV_NONE;
+    }
+    if st[0].speech_seen {
+      st[0].silence_ms += dt_ms;
+      if st[0].silence_ms >= st[0].silence_commit_ms {
+        st[0].state = VD_STATE_THINKING;
+        st[0].speech_seen = false;
+        st[0].silence_ms = 0;
+        return VD_EV_AUTO_SEND;
+      }
+    }
+    return VD_EV_NONE;
+  }
+  if s == VD_STATE_SPEAKING {
+    if rms_bp >= st[0].barge_floor_bp {
+      st[0].barge_frames += 1;
+      if st[0].barge_frames >= VD_BARGE_IN_FRAMES {
+        st[0].state = VD_STATE_LISTENING;
+        st[0].barge_frames = 0;
+        st[0].speech_seen = true;
+        st[0].silence_ms = 0;
+        return VD_EV_BARGE_IN;
+      }
+    } else {
+      st[0].barge_frames = 0;
+    }
+    return VD_EV_NONE;
+  }
+  return VD_EV_NONE;
+}
+
+// Strips Markdown formatting tokens (*, #, `, >) and collapses whitespace into speakable plain text.
+// Returns number of bytes written to out.
+vd_sanitize_speech :: (src: string, out: [] u8) -> int #effects(all) {
+  n := 0;
+  prev_sp := true;
+  for c: src {
+    if c == '*' || c == '#' || c == '`' || c == '>' { continue; }
+    if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+      if !prev_sp && n < out.count { out[n] = ' '; n += 1; }
+      prev_sp = true;
+    } else {
+      if n < out.count { out[n] = c; n += 1; }
+      prev_sp = false;
+    }
+  }
+  while n > 1 && out[n - 1] == ' ' { n -= 1; } // mutant: equivalent (out[0] is never ' ' because prev_sp starts true)
+  return n;
+}
+
+// Finds the end byte index (exclusive) of the first complete sentence in src ('.', '!', '?', or '\n'),
+// or 0 if no complete sentence boundary exists yet.
+vd_sentence_end :: (src: string) -> int #effects(reads, traps) {
+  for i: 0..<src.count {
+    c := src[i];
+    if c == '.' || c == '!' || c == '?' || c == '\n' {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+#test "voice-duplex: VAD auto-send triggers after speech followed by silence threshold" {
+  st: [1] VdState;
+  st[0] = vd_init();
+  #assert vd_vad_step(st[0..<0], 3000, 100) == VD_EV_NONE;
+  #assert vd_vad_step(st[..], 3000, 100) == VD_EV_NONE;
+  st[0].state = VD_STATE_LISTENING;
+  // Zero/negative dt_ms does not advance state even while listening.
+  #assert vd_vad_step(st[..], 3000, 0) == VD_EV_NONE && !st[0].speech_seen;
+  // Silence before speech does not trigger auto-send.
+  #assert vd_vad_step(st[..], 100, 2000) == VD_EV_NONE && !st[0].speech_seen;
+  // Speech at exact floor marks speech_seen and resets silence.
+  #assert vd_vad_step(st[..], 800, 100) == VD_EV_NONE && st[0].speech_seen;
+  #assert vd_vad_step(st[..], 200, 600) == VD_EV_NONE && st[0].silence_ms == 600;
+  // Another speech frame resets silence_ms.
+  #assert vd_vad_step(st[..], 900, 100) == VD_EV_NONE && st[0].silence_ms == 0;
+  // Reaching exact silence_commit_ms transitions to THINKING and emits AUTO_SEND.
+  #assert vd_vad_step(st[..], 100, 1199) == VD_EV_NONE && st[0].state == VD_STATE_LISTENING;
+  #assert vd_vad_step(st[..], 100, 1) == VD_EV_AUTO_SEND && st[0].state == VD_STATE_THINKING;
+  #assert !st[0].speech_seen && st[0].silence_ms == 0;
+  // Thinking state ignores audio frames.
+  #assert vd_vad_step(st[..], 5000, 100) == VD_EV_NONE;
+}
+
+#test "voice-duplex: barge-in requires consecutive frames above threshold and resets on drop" {
+  st: [1] VdState;
+  st[0] = vd_init();
+  st[0].state = VD_STATE_SPEAKING;
+  st[0].silence_ms = 500;
+  #assert vd_vad_step(st[..], 2200, 50) == VD_EV_NONE && st[0].barge_frames == 1;
+  #assert vd_vad_step(st[..], 2200, 50) == VD_EV_NONE && st[0].barge_frames == 2;
+  // Drop below floor resets counter.
+  #assert vd_vad_step(st[..], 2199, 50) == VD_EV_NONE && st[0].barge_frames == 0;
+  // 3 consecutive frames trigger barge-in and switch to LISTENING.
+  #assert vd_vad_step(st[..], 2500, 50) == VD_EV_NONE;
+  #assert vd_vad_step(st[..], 2500, 50) == VD_EV_NONE;
+  #assert vd_vad_step(st[..], 2500, 50) == VD_EV_BARGE_IN;
+  #assert st[0].state == VD_STATE_LISTENING && st[0].barge_frames == 0 && st[0].speech_seen && st[0].silence_ms == 0;
+}
+
+#test "voice-duplex: speech sanitizer and streaming sentence boundary chunker" {
+  b: [64] u8;
+  n1 := vd_sanitize_speech("  ## **Hello** `world`!\n>  Done.\r\t ", b[..]);
+  #assert cast(string) b[0..<n1] == "Hello world! Done.";
+  tiny: [3] u8;
+  #assert vd_sanitize_speech("a b c", tiny[..]) == 3 && cast(string) tiny[0..<3] == "a b";
+  tiny2: [2] u8;
+  #assert vd_sanitize_speech("ab c", tiny2[..]) == 2 && cast(string) tiny2[0..<2] == "ab";
+  #assert vd_sentence_end("hello world") == 0;
+  #assert vd_sentence_end(".") == 1;
+  #assert vd_sentence_end("Hi.") == 3;
+  #assert vd_sentence_end("Wait! Next") == 5;
+  #assert vd_sentence_end("Ready? Yes") == 6;
+  #assert vd_sentence_end("Line1\nLine2") == 6;
+}

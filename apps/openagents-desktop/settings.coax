@@ -142,7 +142,7 @@ cp_set_page_ok_flags :: (flags: int, page: int) -> bool {
   if page == CP_PG_WALLET { return dc_flag_on(flags, DC_FLAG_WALLET); }
   if page == CP_PG_USAGE { return true; }
   if page == CP_PG_MCP || page == CP_PG_SKILLS { return dc_flag_on(flags, DC_FLAG_MCP); }
-  if page == CP_PG_VOICE { return dc_flag_on(flags, DC_FLAG_VOICE); }
+  if page == CP_PG_VOICE { return true; }
   if page == CP_PG_CONNECTIONS { return dc_flag_on(flags, DC_FLAG_ENVIRONMENTS) || dc_flag_on(flags, DC_FLAG_PAIRING); }
   if page == CP_PG_SCHED { return dc_flag_on(flags, DC_FLAG_SCHEDULED); }
   if page == CP_PG_APPEARANCE || page == CP_PG_KEYBINDINGS { return dc_flag_on(flags, DC_FLAG_CUSTOMIZE); }
@@ -318,17 +318,15 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     if id == "set.cursor.a" || id == "set.cursor" { s[0].ask = CP_ASK_CURSOR; return true; }
     if id == "set.acp.a" || id == "set.acp" { s[0].ask = CP_ASK_ACP_REGISTRY; return true; }
   }
-  // Settings -> Voice (#13882)
-  if cp_flag(s, DC_FLAG_VOICE) {
-    vb := cp_number(id, "set.voice.backend.");
-    if vb == CP_VOICE_BACKEND_APPLE || vb == CP_VOICE_BACKEND_WHISPER { s[0].voice[0].backend = vb; s[0].ask = CP_ASK_VOICE_BACKEND; return true; }
-    vm := cp_number(id, "set.voice.mode.");
-    if vm == CP_VOICE_MODE_TOGGLE || vm == CP_VOICE_MODE_HOLD { s[0].voice[0].mode = vm; s[0].ask = CP_ASK_VOICE_PREFS; return true; }
-    vf := cp_number(id, "set.voice.fillers.");
-    if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
-    if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
-    if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
-  }
+  // Settings -> Voice (#13882, promoted to --minimal in #14065)
+  vb := cp_number(id, "set.voice.backend.");
+  if vb == CP_VOICE_BACKEND_APPLE || vb == CP_VOICE_BACKEND_WHISPER { s[0].voice[0].backend = vb; s[0].ask = CP_ASK_VOICE_BACKEND; return true; }
+  vm := cp_number(id, "set.voice.mode.");
+  if vm == CP_VOICE_MODE_TOGGLE || vm == CP_VOICE_MODE_HOLD { s[0].voice[0].mode = vm; s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+  vf := cp_number(id, "set.voice.fillers.");
+  if vf == 0 || vf == 1 { s[0].voice[0].strip_fillers = (vf == 1); s[0].ask = CP_ASK_VOICE_PREFS; return true; }
+  if id == "set.voice.mic.a" || id == "set.voice.mic" { s[0].ask = CP_ASK_VOICE_MIC; return true; }
+  if id == "set.voice.dict.a" || id == "set.voice.dict" { s[0].ask = CP_ASK_VOICE_DICT; return true; }
   // Settings -> Connections (#13883)
   if (cp_flag(s, DC_FLAG_ENVIRONMENTS) || cp_flag(s, DC_FLAG_PAIRING)) && cp_env_settings_press(s, id) { return true; }
   // Settings -> Scheduled Tasks & About -> Update Everything (#13885)

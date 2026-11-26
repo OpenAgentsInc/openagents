@@ -204,15 +204,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var usageTimer: Timer?               // periodic always-on usage & limit-recovery refresh (Window+Usage.swift, #14064)
     var localModelsDialogState: LocalModelState? = nil // tracks open Local Models dialog for live progress updates (#13826)
     var localModelsDialogGen = 0
+    let voice = CoderVoiceController()   // native & local voice dictation + bi-directional TTS (Window+Voice.swift, #14065)
+    let speech = CoderSpeechSynthesizer() // streaming sentence-chunked TTS & barge-in (#14065)
     #if OA_FULL
-    let voice = CoderVoiceController()   // native & local voice dictation (Window+Voice.swift, #13882)
     var appearanceObservation: NSKeyValueObservation? // live macOS Light/Dark appearance watcher (Window+Customize.swift, #13887)
     #endif
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
-    #if OA_FULL
-    private var keyUpMonitor: Any? // Push-to-talk release for ⌥Space voice dictation (#13882)
-    #endif
+    private var keyUpMonitor: Any? // Push-to-talk release for ⌥Space voice dictation (#13882, #14065)
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
     private var cmdHoldTimer: Timer?
     private var cmdHintsShown = false
@@ -315,8 +314,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         checkFlawedAuth(showToast: false)
         setupProvidersSettings()
         setupUsageDashboard()
+        setupVoiceDictation()
         #if OA_FULL
-        if FeatureFlags.isOn(.voice) { setupVoiceDictation() }
         if FeatureFlags.isOn(.customize) { setupCustomize() }
         #endif
         detectInstalledEditors()
@@ -327,17 +326,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self?.handleModifierFlags(event.modifierFlags)
             return event
         }
-        #if OA_FULL
         keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
-            guard let self, FeatureFlags.isOn(.voice), event.window === self.window, self.window.attachedSheet == nil else { return event }
+            guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
             return self.handleVoiceKeyUp(event) ? nil : event
         }
-        #endif
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.cancelCmdHold()
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            if !self.overlay.dialogOpen && self.handleVoiceKeyDown(event) { return nil }
             #if OA_FULL
-            if FeatureFlags.isOn(.voice) && !self.overlay.dialogOpen && self.handleVoiceKeyDown(event) { return nil }
             // Command-` opens Foreman when enabled (heard before macOS window cycling).
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if FeatureFlags.isOn(.foreman) && flags.contains(.command) && !flags.contains(.shift) && !flags.contains(.option) && !flags.contains(.control) && event.charactersIgnoringModifiers == "`" && (!self.overlay.dialogOpen || self.overlay.paletteUp) {
@@ -635,6 +632,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 67: editUsagePriceOverrides()
         case 68: handleUsagePoolChanged()
         case 69: handleUsageRecoveryAction()
+        case 80: toggleVoiceDictation()
+        case 81: cancelVoiceDictation()
+        case 82: voiceBackendChanged()
+        case 83: editVoiceDictionary()
+        case 84: chooseVoiceMicrophone()
+        case 85: voicePrefsChanged()
         #if OA_FULL
         case 70: if FeatureFlags.isOn(.mcp) { mcpAddDialog() }
         case 71: if FeatureFlags.isOn(.mcp) { mcpToggleSelected() }
@@ -646,12 +649,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 77: if FeatureFlags.isOn(.modelsExternal) { manageAcpRegistry() }
         case 78: if FeatureFlags.isOn(.modelsExternal) { runMultiModelFanout() }
         case 79: if FeatureFlags.isOn(.modelsExternal) { openFanoutPicker() }
-        case 80: if FeatureFlags.isOn(.voice) { toggleVoiceDictation() }
-        case 81: if FeatureFlags.isOn(.voice) { cancelVoiceDictation() }
-        case 82: if FeatureFlags.isOn(.voice) { voiceBackendChanged() }
-        case 83: if FeatureFlags.isOn(.voice) { editVoiceDictionary() }
-        case 84: if FeatureFlags.isOn(.voice) { chooseVoiceMicrophone() }
-        case 85: if FeatureFlags.isOn(.voice) { voicePrefsChanged() }
         case 90: if FeatureFlags.isOn(.environments) { envSelectChanged() }
         case 91: if FeatureFlags.isOn(.environments) || FeatureFlags.isOn(.pairing) { syncEnvironments() }
         case 92: if FeatureFlags.isOn(.environments) { envConnectOrFolder() }
@@ -893,8 +890,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         guard !retired else { return }
         retired = true
         gitProcess?.terminate(); gitProcess = nil
-        #if OA_FULL
         voice.stop(cancel: true)
+        speech.stopImmediate()
+        #if OA_FULL
         saveRichPersistence()
         #endif
         updater.stop()
@@ -917,9 +915,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cmdHoldTimer?.invalidate(); cmdHoldTimer = nil
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }; flagsMonitor = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
-        #if OA_FULL
         if let keyUpMonitor { NSEvent.removeMonitor(keyUpMonitor) }; keyUpMonitor = nil
-        #endif
         titleBar?.stop(); titleBar = nil
         cd_on_change(page, nil, nil); cd_close(page)
     }

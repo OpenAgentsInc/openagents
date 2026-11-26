@@ -572,15 +572,19 @@ extension CoderWindow {
         }
     }
 
-    /// ⌥Space shortcut for voice dictation (Toggle or Push-to-talk).
+    /// ⌥Space shortcut for voice dictation (Toggle or Push-to-talk),
+    /// and ⌥⇧Space shortcut for Bi-Directional Live Voice duplex mode (#14065).
     func handleVoiceKeyDown(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard event.keyCode == 49,
               flags.contains(.option),
               !flags.contains(.command),
-              !flags.contains(.control),
-              !flags.contains(.shift) else { return false }
+              !flags.contains(.control) else { return false }
         if event.isARepeat { return true }
+        if flags.contains(.shift) {
+            toggleBiDirectionalVoice()
+            return true
+        }
         if cd_voice_mode(page) == VoiceModeCode.hold {
             if cd_voice_state(page) != VoiceStateCode.listening {
                 refreshVoiceStatus()
@@ -600,5 +604,116 @@ extension CoderWindow {
         voice.stop(cancel: false)
         wake()
         return true
+    }
+
+    /// Toggles full-duplex bi-directional voice mode (auto-speak replies + barge-in + live dictation; #14065).
+    func toggleBiDirectionalVoice() {
+        speech.duplexEnabled.toggle()
+        if speech.duplexEnabled {
+            speech.stopImmediate()
+            refreshVoiceStatus()
+            voice.start(backend: cd_voice_backend(page))
+            cd_toast(page, "Live Voice ON (speak naturally; Opt+Shift+Space to stop)", 0)
+        } else {
+            speech.stopImmediate()
+            if voice.isListening { voice.stop(cancel: true) }
+            cd_toast(page, "Live Voice OFF", 0)
+        }
+        wake()
+    }
+}
+
+/// Streaming sentence-chunked TTS & barge-in synthesizer for bi-directional voice (#14065).
+final class CoderSpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate {
+    private let synth = AVSpeechSynthesizer()
+    private var pendingBuffer = ""
+    var duplexEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "voice.duplexEnabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "voice.duplexEnabled") }
+    }
+    var rate: Float = AVSpeechUtteranceDefaultSpeechRate
+    var onFinishedSpeaking: (() -> Void)?
+
+    var isSpeaking: Bool { synth.isSpeaking }
+
+    override init() {
+        super.init()
+        synth.delegate = self
+    }
+
+    /// Feeds streaming assistant Markdown text deltas; speaks each completed sentence immediately.
+    func feedDelta(_ delta: String) {
+        guard duplexEnabled, !delta.isEmpty else { return }
+        pendingBuffer.append(delta)
+        drainSentences(flushAll: false)
+    }
+
+    /// Flushes any trailing partial sentence when an assistant turn completes.
+    func finishTurn() {
+        guard duplexEnabled else {
+            pendingBuffer = ""
+            return
+        }
+        drainSentences(flushAll: true)
+    }
+
+    /// Immediate barge-in stop: halts active speech and clears pending sentence buffer.
+    func stopImmediate() {
+        pendingBuffer = ""
+        if synth.isSpeaking {
+            synth.stopSpeaking(at: .immediate)
+        }
+    }
+
+    static func sanitizeForSpeech(_ raw: String) -> String {
+        // Strip fenced code blocks and replace with a concise spoken cue.
+        var text = raw
+        while let start = text.range(of: "```") {
+            let afterStart = text[start.upperBound...]
+            if let end = afterStart.range(of: "```") {
+                text.replaceSubrange(start.lowerBound..<end.upperBound, with: " Code block omitted. ")
+            } else {
+                text.removeSubrange(start.lowerBound..<text.endIndex)
+                break
+            }
+        }
+        let cleaned = text.filter { ch in
+            ch != "*" && ch != "#" && ch != "`" && ch != ">"
+        }
+        return cleaned.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private func drainSentences(flushAll: Bool) {
+        let terminators: Set<Character> = [".", "!", "?", "\n"]
+        while !pendingBuffer.isEmpty {
+            if let idx = pendingBuffer.firstIndex(where: { terminators.contains($0) }) {
+                let end = pendingBuffer.index(after: idx)
+                let chunk = String(pendingBuffer[..<end])
+                pendingBuffer.removeSubrange(..<end)
+                enqueue(chunk)
+            } else if flushAll {
+                let chunk = pendingBuffer
+                pendingBuffer = ""
+                enqueue(chunk)
+            } else {
+                break
+            }
+        }
+    }
+
+    private func enqueue(_ raw: String) {
+        let speakable = Self.sanitizeForSpeech(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !speakable.isEmpty else { return }
+        let u = AVSpeechUtterance(string: speakable)
+        u.rate = rate
+        synth.speak(u)
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        if !synthesizer.isSpeaking {
+            DispatchQueue.main.async { [weak self] in
+                self?.onFinishedSpeaking?()
+            }
+        }
     }
 }

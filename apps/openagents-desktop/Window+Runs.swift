@@ -16,6 +16,16 @@ extension CoderWindow {
                 ProviderInstancesStore.shared.refreshAll()
             }
             cd_line(r.page, text)
+            if r === self.run && self.speech.duplexEnabled,
+               let data = text.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let kind = obj["kind"] as? String {
+                if kind == "delta", let chunk = obj["text"] as? String, !chunk.isEmpty {
+                    self.speech.feedDelta(chunk)
+                } else if kind == "ended" {
+                    self.speech.finishTurn()
+                }
+            }
             if cd_running(r.page) == 0 {
                 r.stopRequestedAt = 0
                 r.stopGen &+= 1

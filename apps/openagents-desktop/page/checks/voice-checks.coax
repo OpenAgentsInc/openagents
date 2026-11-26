@@ -134,7 +134,8 @@
   // Settings search hides Voice when voice flag is off and discovers it when on.
   hits: [CP_SET_HITS] int;
   es := cp_set_entries();
-  #assert cp_set_hits_in("voice", hits[..], false) == 0 && cp_set_hits_in("whisper", hits[..], false) == 0;
+  // Voice is unconditionally enabled in --minimal (#14065).
+  #assert cp_set_hits_in("voice", hits[..], false) >= 1 && cp_set_hits_in("whisper", hits[..], false) >= 1;
   vf := dc_flag_bit(DC_FLAG_VOICE);
   hn := cp_set_hits_flags("voice", hits[..], vf);
   #assert hn >= 1 && es[hits[0]].page == CP_PG_VOICE;

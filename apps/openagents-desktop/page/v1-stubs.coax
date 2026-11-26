@@ -208,42 +208,7 @@ coder_page_skills_load :: (s: [] CoderPage, lines: string) -> int #export_c #eff
 coder_page_skills_target :: (s: [] CoderPage) -> int #export_c #effects(all) { return -1; }
 coder_page_skills_toggle :: (s: [] CoderPage, idx: int) -> bool #export_c #effects(all) { return false; }
 
-// ---- voice.coax stubs ----
-CP_ASK_VOICE_BACKEND :: 82;
-CP_ASK_VOICE_DICT :: 83;
-CP_ASK_VOICE_MIC :: 84;
-CP_ASK_VOICE_PREFS :: 85;
-CP_VOICE_BACKEND_APPLE :: 0;
-CP_VOICE_BACKEND_WHISPER :: 1;
-CP_VOICE_MIC :: 255;
-CP_VOICE_CANCEL :: 257;
-CP_VOICE_MODE_TOGGLE :: 0;
-CP_VOICE_MODE_HOLD :: 1;
-CpVoiceState :: struct {
-  pill_h: f32;
-  backend: int;
-  mode: int;
-  strip_fillers: bool;
-}
-cp_settings_voice :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) -> f32 { return 0.0f32; }
-cp_voice_init :: (s: [] CoderPage) {}
-cp_voice_mic_button :: (s: [] CoderPage, f: [] UiFrame, bx: f32, by: f32, side: f32) {}
-cp_voice_pill :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f32) -> f32 { return 0.0f32; }
-cp_voice_press :: (s: [] CoderPage, act: int) -> bool { return false; }
-coder_page_voice_backend :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_voice_commit :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) { return false; }
-coder_page_voice_dict_get :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return 0; }
-coder_page_voice_dict_set :: (s: [] CoderPage, raw: string) -> int #export_c #effects(all) { return 0; }
-coder_page_voice_fillers :: (s: [] CoderPage) -> bool #export_c #effects(all) { return false; }
-coder_page_voice_level :: (s: [] CoderPage, rms: f32) #export_c #effects(all) {}
-coder_page_voice_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_voice_partial :: (s: [] CoderPage, text: string) #export_c #effects(all) {}
-coder_page_voice_set_backend :: (s: [] CoderPage, backend: int) #export_c #effects(all) {}
-coder_page_voice_set_fillers :: (s: [] CoderPage, on: bool) #export_c #effects(all) {}
-coder_page_voice_set_mode :: (s: [] CoderPage, mode: int) #export_c #effects(all) {}
-coder_page_voice_set_state :: (s: [] CoderPage, state: int, msg: string) #export_c #effects(all) {}
-coder_page_voice_state :: (s: [] CoderPage) -> int #export_c #effects(all) { return 0; }
-coder_page_voice_status_set :: (s: [] CoderPage, mic: string, whisper: string, apple_ready: bool, whisper_ready: bool) #export_c #effects(all) {}
+// (voice.coax promoted into --minimal; #14065)
 
 // ---- environments.coax stubs ----
 CpEnvState :: struct { unused: int; }

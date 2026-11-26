@@ -292,6 +292,10 @@ cp_voice_postprocess :: (s: [] CoderPage, raw: string, out: [] u8) -> int {
 
 // Post-processes and inserts dictated text into the composer at the current cursor
 // using apps/shared/dictation-join.coax spacing rules, as one undoable paste step.
+cp_voice_needs_gap :: (a: u8, b: u8) -> bool {
+  return !cp_voice_space_byte(a) && !cp_voice_space_byte(b) && !cp_voice_punct_byte(b);
+}
+
 cp_voice_insert :: (s: [] CoderPage, raw: string) -> bool {
   clean_buf: [CP_VOICE_POST_MAX] u8;
   cn := cp_voice_postprocess(s, raw, clean_buf[..]);
@@ -302,8 +306,8 @@ cp_voice_insert :: (s: [] CoderPage, raw: string) -> bool {
   cur := eb_text(ed);
   lo := eb_sel_lo(ed);
   hi := eb_sel_hi(ed);
-  need_pre := lo > 0 && dj_gap(cur[lo - 1], clean[0]);
-  need_post := hi < cur.count && dj_gap(clean[clean.count - 1], cur[hi]);
+  need_pre := lo > 0 && cp_voice_needs_gap(cur[lo - 1], clean[0]);
+  need_post := hi < cur.count && cp_voice_needs_gap(clean[clean.count - 1], cur[hi]);
   join_buf: [CP_VOICE_POST_MAX + 4] u8;
   jn := 0;
   if need_pre && jn < join_buf.count { join_buf[jn] = ' '; jn += 1; }
