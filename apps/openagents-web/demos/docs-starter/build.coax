@@ -147,6 +147,11 @@ ds_emit_all_books :: () -> bool {
     sn := fs_read(sum_path, w[0].raw[..]);
     if sn <= 0 { return false; }
     _ = bk_parse_summary(w[0].toc[..], book_slug, cast(string) w[0].raw[0..<sn], w[0].doc[..]);
+    if w[0].toc[0].overflow {
+      tool_err("docs-starter: TOC capacity overflow on ");
+      tool_errln(sum_path);
+      return false;
+    }
 
     bdir_buf: [4096] u8;
     book_out := fs_join(DS_BOOKS_DIR, book_slug, bdir_buf[..]);

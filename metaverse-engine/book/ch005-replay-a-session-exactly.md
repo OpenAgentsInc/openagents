@@ -541,8 +541,8 @@ coax/bin/coax run metaverse-engine/examples/replay-a-walk.coax
 
 ```text
 refused: 36 duplicate, 18 stale, 0 unknown
-recorded session: 662099296
-replayed session: 662099296
+recorded session: 3581155823
+replayed session: 3581155823
 fault planted at step 150, first divergent step: 150
 ```
 
@@ -626,7 +626,7 @@ coax/web/tool.sh replay-hosts
 | `metaverse-engine/core/replay.coax` mutants killed | 321 of 321 |
 | `metaverse-engine/core/rand.coax` mutants killed | 50 of 50 |
 | `metaverse-engine/core/math.coax` mutants killed | 154 of 154 |
-| Recorded walk, native and wasm session digests | equal (662099296) |
+| Recorded walk, native and wasm session digests | equal (`662099296` on 2026-10-31; `3581155823` after `#12921` math fix) |
 | Same walk with the host's `sin`, `cos` and `pow` | parts at step 105 |
 
 `coax/web/replay-hosts.coax` builds `metaverse-engine/tests/replay-walk.coax` to

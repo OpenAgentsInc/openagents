@@ -206,6 +206,10 @@ coax/bin/coax run metaverse-engine/examples/closeup-refuses-projection.coax
 coax/bin/coax run metaverse-engine/examples/closeup-refuses-projection.coax --release
 ```
 
+```text
+refused zero projection scale; no stale selection
+```
+
 ## Capture a staged page clip
 
 [metaverse-engine/tools/staged-clip.coax](../tools/staged-clip.coax) delegates frame capture and encoding

@@ -116,7 +116,7 @@ the press feel immediate; it doesn't make the result arrive sooner.
 ## Run it
 
 ```shell
-coax/bin/coax test --library apps/openagents-web/old/v1/everglade-cast-rules.coax
+coax/bin/coax test --library everglade/shared/cast-rules-checks.coax
 coax/web/room/build.sh
 coax/web/tool.sh coax/web/room/room-proof.coax cast coax/web/room/bin/room 8881 250 30 20
 ```
@@ -124,7 +124,7 @@ coax/web/tool.sh coax/web/room/room-proof.coax cast coax/web/room/bin/room 8881 
 The first command's last line:
 
 ```text
-4 checks, 4 passed, 0 failed
+781 checks, 781 passed, 0 failed
 ```
 
 `room-proof.coax cast` puts the shaping proxy between four players and the room at

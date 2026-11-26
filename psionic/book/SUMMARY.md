@@ -1,6 +1,7 @@
 # Contents
 
 - [Introduction](README.md)
+- [Full table of contents and prerequisites](PLAN.md)
 
 **I. Small numbers, real contracts**
 

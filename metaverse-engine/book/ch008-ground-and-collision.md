@@ -294,7 +294,20 @@ terrain landing: feet y 2.5, grounded true
 The refused 0.16 m move exceeds the 0.15 m declaration. Its feet remain at
 `z = 0.75`; it has not accepted a partly resolved candidate. The existing
 [push-out example](../examples/push-out.coax) also checks the 0.55/0.56 m step
-boundary, a post, a reversed box and the static thin wall.
+boundary, a post, a reversed box and the static thin wall ([fixture](../fixtures/push-out.out)):
+
+```shell
+coax/bin/coax run metaverse-engine/examples/push-out.coax
+```
+
+```text
+run into a 0.1 m wall: feet at (-1.2754847e-06, 0.0, 2.7), speed into it 0.0
+a step's travel at RUN: 0.1171875 m, the capsule's width: 0.6 m
+walk onto a 0.55 m step: feet at (-6.052999e-07, 0.54999983, 6.923828), speed into it 3.5
+walk into a 0.56 m step: feet at (-6.052999e-07, 0.0, 2.7), speed into it 0.0
+walk into a post: feet at (-0.00008809681, 0.0, 2.3), speed into it 5.9604645e-08
+run at a wall with reversed corners: feet at (-1.2754847e-06, 0.0, 14.589844), speed into it 7.5
+```
 
 ## Check the implementation
 

@@ -320,11 +320,11 @@ has the SRD's mounted-combat rules that the mounts follow.
   everything back; its Temporary Hit Points go"`.
 - `everglade/shapeshift.coax`, `#test "the fire cone: inside 18 m and its angle
   it hits, outside it misses; a flier aims down"`.
-- `apps/openagents-web/old/experimental/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "druid:
+- `everglade/zone.coax` runs `everglade/zone-shapechange.coax`'s `#test "druid:
   Fire Breath held and let go burns the monsters in its cone and none behind"`
   and `#test "druid: the dragon takes off with Jump, flies faster than it walks,
   and glides down to land"`.
-- `apps/openagents-web/old/experimental/fivelab.coax` runs `everglade/zone-shapechange.coax`'s `#test "dragon
+- `everglade/zone.coax` runs `everglade/zone-shapechange.coax`'s `#test "dragon
   lab: on the first frame you are the dragon, by the rules, with its change
   already done and its five actions on the bar"`, `#test "dragon lab: Jump
   takes off from the first frame"` and `#test "dragon lab: when Concentration
@@ -339,8 +339,8 @@ has the SRD's mounted-combat rules that the mounts follow.
 coax/bin/coax test --library metaverse-engine/action/flight.coax
 coax/bin/coax test --library rules/srd/battle.coax --only "Shapechange"
 coax/bin/coax test --library everglade/shapeshift.coax
-coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "druid"
-coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax --only "dragon lab"
+coax/bin/coax test --library everglade/zone.coax --only "druid"
+coax/bin/coax test --library everglade/zone.coax --only "dragon lab"
 coax/bin/coax run everglade/examples/dragon-flight-breath.coax
 ```
 

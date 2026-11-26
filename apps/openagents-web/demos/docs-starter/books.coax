@@ -11,8 +11,8 @@
 #load "../../../../components/ui/kit/stream_markdown.coax";
 #load "../../../../components/backend/html.coax";
 
-BK_MAX_ENTRIES :: 384;
-BK_TEXT_CAP :: 65536;
+BK_MAX_ENTRIES :: 512;
+BK_TEXT_CAP :: 131072;
 BK_SUM_CHUNK :: 2048;
 BK_MD_CHUNK :: 16384;
 BK_MD_FALLBACK :: 49152;
@@ -59,6 +59,7 @@ BkToc :: struct {
   chapters: int;
   text: [BK_TEXT_CAP] u8;
   tn: int;
+  overflow: bool;
 }
 
 bk_starts :: (s: string, pfx: string) -> bool {
@@ -78,7 +79,7 @@ bk_is_known_book :: (slug: string) -> bool {
 bk_pool_add :: (toc: [] BkToc, s: string) -> int {
   at := toc[0].tn;
   for c: s {
-    if toc[0].tn >= BK_TEXT_CAP { break; }
+    if toc[0].tn >= BK_TEXT_CAP { toc[0].overflow = true; break; }
     toc[0].text[toc[0].tn] = c;
     toc[0].tn += 1;
   }
@@ -129,7 +130,8 @@ bk_rewrite_href :: (book_slug: string, raw: string, out: [] u8) -> string {
   }
   if bk_starts(base, "./") { base = cast(string) base[2..<base.count]; }
 
-  // Cross-book link: ../../<other>/book/<rest> -> /books/<other>[/<slug>][#frag]
+  // Cross-book link: ../../<other>/book/<rest> -> /books/<other>[/<slug>][#frag] for top-level .md pages,
+  // otherwise GitHub blob URL for non-Markdown/nested files (e.g. check-structure.py).
   if bk_starts(base, "../../") {
     rest := cast(string) base[6..<base.count];
     sl := 0;
@@ -138,14 +140,18 @@ bk_rewrite_href :: (book_slug: string, raw: string, out: [] u8) -> string {
     other := cast(string) rest[0..<sl];
     if bk_is_known_book(other) && bk_starts(after, "/book/") {
       tail := cast(string) after[6..<after.count];
-      n := bk_copy_str(out, 0, "/books/");
-      n = bk_copy_str(out, n, other);
-      if tail != "README.md" && tail != "SUMMARY.md" && bk_ends(tail, ".md") {
-        n = bk_copy_str(out, n, "/");
-        n = bk_copy_str(out, n, cast(string) tail[0..<tail.count - 3]);
+      tail_slash := false;
+      for c: tail { if c == '/' { tail_slash = true; break; } }
+      if tail.count == 0 || tail == "README.md" || tail == "SUMMARY.md" || (!tail_slash && bk_ends(tail, ".md")) {
+        n := bk_copy_str(out, 0, "/books/");
+        n = bk_copy_str(out, n, other);
+        if tail != "README.md" && tail != "SUMMARY.md" && bk_ends(tail, ".md") {
+          n = bk_copy_str(out, n, "/");
+          n = bk_copy_str(out, n, cast(string) tail[0..<tail.count - 3]);
+        }
+        n = bk_copy_str(out, n, frag);
+        return cast(string) out[0..<n];
       }
-      n = bk_copy_str(out, n, frag);
-      return cast(string) out[0..<n];
     }
     n := bk_copy_str(out, 0, "https://github.com/OpenAgentsInc/openagents/blob/main/");
     n = bk_copy_str(out, n, rest);
@@ -174,6 +180,15 @@ bk_rewrite_href :: (book_slug: string, raw: string, out: [] u8) -> string {
       n = bk_copy_str(out, n, "/");
       n = bk_copy_str(out, n, cast(string) base[0..<base.count - 3]);
     }
+    n = bk_copy_str(out, n, frag);
+    return cast(string) out[0..<n];
+  }
+  // Same-book non-Markdown or nested file (e.g. chapters.json, examples/foo.coax) -> GitHub blob URL.
+  if base.count > 0 && base[0] != '\\' && !bk_starts(base, "..") {
+    n := bk_copy_str(out, 0, "https://github.com/OpenAgentsInc/openagents/blob/main/");
+    n = bk_copy_str(out, n, book_slug);
+    n = bk_copy_str(out, n, "/book/");
+    n = bk_copy_str(out, n, base);
     n = bk_copy_str(out, n, frag);
     return cast(string) out[0..<n];
   }
@@ -208,9 +223,9 @@ bk_next_cut :: (src: string, pos: int, limit: int, fallback: int) -> int {
 }
 
 bk_toc_push_part :: (toc: [] BkToc, text: string) {
-  if toc[0].n >= BK_MAX_ENTRIES { return; }
   t := smd_trim(text);
   if t.count == 0 { return; }
+  if toc[0].n >= BK_MAX_ENTRIES { toc[0].overflow = true; return; }
   at := bk_pool_add(toc, t);
   toc[0].entries[toc[0].n] = BkEntry.{is_part = true, title_at = at, title_n = toc[0].tn - at};
   toc[0].n += 1;
@@ -221,8 +236,10 @@ bk_parse_summary :: (toc: [] BkToc, book_slug: string, src: string, doc: [] MdDo
   toc[0].n = 0;
   toc[0].chapters = 0;
   toc[0].tn = 0;
+  toc[0].overflow = false;
   pos := 0;
   hbuf: [512] u8;
+  tbuf: [512] u8;
   while pos < src.count {
     cut := bk_next_cut(src, pos, BK_SUM_CHUNK, BK_SUM_CHUNK * 3); // mutant: equivalent (safe boundary chunking is invariant to 1-byte limit shifts)
     seg := cast(string) src[pos..<cut];
@@ -240,7 +257,7 @@ bk_parse_summary :: (toc: [] BkToc, book_slug: string, src: string, doc: [] MdDo
         }
       } else if blk.kind == MB_LIST {
         for k: 0..<blk.items {
-          if toc[0].n >= BK_MAX_ENTRIES { break; }
+          if toc[0].n >= BK_MAX_ENTRIES { toc[0].overflow = true; break; }
           idx := blk.item0 + k;
           itext := md_item_text(doc, idx);
           runs := md_item_runs(doc, idx);
@@ -259,8 +276,19 @@ bk_parse_summary :: (toc: [] BkToc, book_slug: string, src: string, doc: [] MdDo
             href := bk_rewrite_href(book_slug, target, hbuf[..]);
             if href.count == 0 { break; }
 
+            display_title := title;
+            if !is_local {
+              pfx := smd_trim(cast(string) itext[0..<lr.from]);
+              if pfx.count > 0 {
+                tn := bk_copy_str(tbuf[..], 0, pfx);
+                tn = bk_copy_str(tbuf[..], tn, " ");
+                tn = bk_copy_str(tbuf[..], tn, title);
+                display_title = cast(string) tbuf[0..<tn];
+              }
+            }
+
             ent := BkEntry.{is_external = !is_local};
-            ent.title_at = bk_pool_add(toc, title);
+            ent.title_at = bk_pool_add(toc, display_title);
             ent.title_n = toc[0].tn - ent.title_at;
             ent.href_at = bk_pool_add(toc, href);
             ent.href_n = toc[0].tn - ent.href_at;
@@ -701,9 +729,9 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   ptoc: [1] BkToc;
   ptoc[0].tn = BK_TEXT_CAP - 1;
   at := bk_pool_add(ptoc[..], "xy");
-  #assert at == BK_TEXT_CAP - 1 && ptoc[0].tn == BK_TEXT_CAP && bk_pool_str(ptoc[..], at, 1) == "x";
+  #assert at == BK_TEXT_CAP - 1 && ptoc[0].tn == BK_TEXT_CAP && ptoc[0].overflow && bk_pool_str(ptoc[..], at, 1) == "x";
   #assert bk_pool_str(ptoc[..], at, 0) == "" && bk_pool_str(ptoc[..], -1, 1) == "" && bk_pool_str(ptoc[..], at, 2) == "";
-  ptoc[0].tn = 1; ptoc[0].text[0] = 'z';
+  ptoc[0].tn = 1; ptoc[0].text[0] = 'z'; ptoc[0].overflow = false;
   #assert bk_pool_str(ptoc[..], 0, 1) == "z" && bk_pool_str(ptoc[..], 1, 1) == "";
 
   // Link rewriting across every scheme, slash, cross-book, repo, and same-book boundary
@@ -718,8 +746,12 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   #assert bk_rewrite_href("coax", "http://127.0.0.1:8820/", buf[..]) == "http://127.0.0.1:8820/";
   #assert bk_rewrite_href("coax", ":bad.md", buf[..]) == "" && bk_rewrite_href("coax", "javascript:alert(1).md", buf[..]) == "";
   #assert bk_rewrite_href("coax", "a;b.md", buf[..]) == "/books/coax/a;b";
-  #assert bk_rewrite_href("coax", "sub/a:b.md", buf[..]) == "";
-  #assert bk_rewrite_href("coax", "sub/a.md", buf[..]) == "" && bk_rewrite_href("coax", "a.txt", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "sub/a.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/sub/a.md";
+  #assert bk_rewrite_href("coax", "examples/ch01.coax", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/examples/ch01.coax";
+  #assert bk_rewrite_href("coax", "chapters.json#L1", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/chapters.json#L1";
+  #assert bk_rewrite_href("coax", "x", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/x";
+  #assert bk_rewrite_href("coax", "./#frag", buf[..]) == "";
+  #assert bk_rewrite_href("coax", "\\bad", buf[..]) == "" && bk_rewrite_href("coax", "..escape", buf[..]) == "";
   #assert bk_rewrite_href("coax", "README.md", buf[..]) == "/books/coax";
   #assert bk_rewrite_href("coax", "SUMMARY.md", buf[..]) == "/books/coax";
   #assert bk_rewrite_href("coax", "./README.md#top", buf[..]) == "/books/coax#top";
@@ -730,7 +762,8 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   #assert bk_rewrite_href("nostr", "../../bitcoin/book/README.md", buf[..]) == "/books/bitcoin";
   #assert bk_rewrite_href("nostr", "../../bitcoin/book/SUMMARY.md", buf[..]) == "/books/bitcoin";
   #assert bk_rewrite_href("nostr", "../../bitcoin/book/", buf[..]) == "/books/bitcoin";
-  #assert bk_rewrite_href("nostr", "../../bitcoin/book/x.txt", buf[..]) == "/books/bitcoin";
+  #assert bk_rewrite_href("nostr", "../../coax/book/sub/a.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/sub/a.md";
+  #assert bk_rewrite_href("nostr", "../../coax/book/check-structure.py", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/book/check-structure.py";
   #assert bk_rewrite_href("nostr", "../../bitcoin/book/ch004-sha-256.md#h", buf[..]) == "/books/bitcoin/ch004-sha-256#h";
   #assert bk_rewrite_href("nostr", "../../coax", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax";
   #assert bk_rewrite_href("nostr", "../../coax/other.md", buf[..]) == "https://github.com/OpenAgentsInc/openagents/blob/main/coax/other.md";
@@ -770,10 +803,10 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   toc: [1] BkToc;
   doc: [1] MdDoc;
   // Pre-dirty toc and doc to prove bk_parse_summary resets them cleanly
-  toc[0].n = 5; toc[0].chapters = 5; toc[0].tn = 5;
+  toc[0].n = 5; toc[0].chapters = 5; toc[0].tn = 5; toc[0].overflow = true;
   doc[0].nb = 3;
   cnt := bk_parse_summary(toc[..], "coax", sum, doc[..]);
-  #assert cnt == 6 && toc[0].n == 11 && toc[0].entries[0].title_at == 0;
+  #assert cnt == 6 && toc[0].n == 11 && !toc[0].overflow && toc[0].entries[0].title_at == 0;
   #assert !toc[0].entries[0].is_part && bk_entry_file(toc[..], 0) == "README.md" && bk_entry_slug(toc[..], 0) == "" && bk_entry_href(toc[..], 0) == "/books/coax";
   #assert bk_entry_file(toc[..], 1) == "foreword.md" && bk_entry_slug(toc[..], 1) == "foreword" && bk_entry_href(toc[..], 1) == "/books/coax/foreword";
   #assert toc[0].entries[2].is_part && bk_entry_title(toc[..], 2) == "Part I";
@@ -792,21 +825,27 @@ bk_render_books_index :: (counts: [] int, out: [] u8) -> int {
   #assert bk_prev_chapter(toc[..], 10) == 6 && bk_next_chapter(toc[..], 6) == 10;
   #assert bk_next_chapter(toc[..], 10) == -1;
 
-  // BK_MAX_ENTRIES saturation cap on both parts and list items
+  // External link with prefix text (like Psionic's moved chapters) preserves prefix in title
+  mtoc: [1] BkToc;
+  _ = bk_parse_summary(mtoc[..], "psionic", "- 200-214: moved to [Coder](../../coder/book/SUMMARY.md), ch 1-8\n- X [Bitcoin](../../bitcoin/book/README.md)\n- [Nostr](../../nostr/book/README.md)\n", doc[..]);
+  #assert mtoc[0].n == 3 && !mtoc[0].overflow && mtoc[0].entries[0].is_external;
+  #assert bk_entry_title(mtoc[..], 0) == "200-214: moved to Coder" && bk_entry_title(mtoc[..], 1) == "X Bitcoin" && bk_entry_title(mtoc[..], 2) == "Nostr";
+
+  // BK_MAX_ENTRIES saturation cap sets overflow on both parts and list items
   cap_toc: [1] BkToc;
   cap_toc[0].n = BK_MAX_ENTRIES;
-  bk_toc_push_part(cap_toc[..], "Ignored");
-  #assert cap_toc[0].n == BK_MAX_ENTRIES;
   bk_toc_push_part(cap_toc[..], "   ");
-  #assert cap_toc[0].n == BK_MAX_ENTRIES;
-  // Build a >4096-byte SUMMARY with 390 list items across sections to test multi-chunk loop and BK_MAX_ENTRIES break
-  big: [6144] u8; bn := 0;
-  for k: 0..<390 {
+  #assert cap_toc[0].n == BK_MAX_ENTRIES && !cap_toc[0].overflow;
+  bk_toc_push_part(cap_toc[..], "Ignored");
+  #assert cap_toc[0].n == BK_MAX_ENTRIES && cap_toc[0].overflow;
+  // Build a SUMMARY with 520 list items across sections to test multi-chunk loop and BK_MAX_ENTRIES overflow
+  big: [8192] u8; bn := 0;
+  for k: 0..<520 {
     if k > 0 && k % 50 == 0 { bn = bk_copy_str(big[..], bn, "\n"); }
     bn = bk_copy_str(big[..], bn, "- [Ch](c.md)\n");
   }
   c_big := bk_parse_summary(cap_toc[..], "coax", cast(string) big[0..<bn], doc[..]);
-  #assert cap_toc[0].n == BK_MAX_ENTRIES && c_big == BK_MAX_ENTRIES;
+  #assert cap_toc[0].n == BK_MAX_ENTRIES && c_big == BK_MAX_ENTRIES && cap_toc[0].overflow;
 }
 
 #test "bk_render_md_html, bk_emit_code_html, and bk_emit_runs match exact HTML and overflow cleanly" {

@@ -108,6 +108,25 @@ coax/bin/coax run metaverse-engine/examples/query-world.coax
 coax/web/tool.sh metaverse-engine/tools/query-world-hosts.coax
 ```
 
+Expected output of `query-world.coax` ([fixture](../fixtures/query-world.out)):
+
+```text
+1
+1074580684
+1083598438
+1072064102
+0
+2
+4
+9
+1065353216
+1073741824
+0
+1
+1
+12
+```
+
 The step height, the steepest slope you can stand on, and the floor pad are
 defined once, here. The walker reads them from this module.
 

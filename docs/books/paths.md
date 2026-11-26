@@ -144,7 +144,7 @@ Exact expected outputs are
 [frame-rates](../../metaverse-engine/fixtures/frame-rates.out),
 [one-press](../../metaverse-engine/fixtures/one-press.out) and
 [replay-a-walk](../../metaverse-engine/fixtures/replay-a-walk.out). The replay prints
-`662099296` for both recorded and replayed session digests, and reports the
+`3581155823` for both recorded and replayed session digests, and reports the
 planted fault's first divergence at step 150. The clock fixture also shows
 an eight-step stall cap; the input fixture shows one press consumed over
 frames containing zero, two and one simulation steps.

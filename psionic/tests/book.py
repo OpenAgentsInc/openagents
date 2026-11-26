@@ -227,6 +227,21 @@ def check(name="psionic"):
         reason = item.get("timeout_reason")
         assert reason is None or (limit and isinstance(reason, str) and reason), f"timeout_reason needs a timeout: {source}"
         platform_fixtures(item)
+        # Guard against silent inline prose-transcript drift right after `coax run <source>`.
+        chapter_text = chapter.read_text()
+        expected_lines = path(item["stdout"]).read_text().strip().splitlines()
+        run_pat = re.compile(
+            r"```(?:shell|sh)\n[^\n]*" + re.escape(item["source"]) + r"[^\n]*\n```\s*\n```text\n(.*?)\n```",
+            re.S,
+        )
+        for match in run_pat.finditer(chapter_text):
+            shown = match.group(1).strip()
+            if "..." in shown or "…" in shown:
+                continue
+            shown_lines = shown.splitlines()
+            assert shown_lines == expected_lines[:len(shown_lines)], (
+                f"inline transcript drift: {chapter.name} -> {item['source']} vs {item['stdout']}"
+            )
     for item in libraries:
         source, chapter = path(item["source"]), path(item["chapter"])
         assert source in linked and chapter in linked, f"unlinked library/chapter: {source}"
