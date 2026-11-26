@@ -168,7 +168,9 @@ cp_review_tree :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, file
 // pending review comments bar, summary head, collapsible changed-files tree, and each changed file's
 // row over its syntax-highlighted unified or split hunks. Rows out of view are not drawn.
 cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  k := f[0].skin; a := k.app; d := app_diff_look(k); gd := s[0].gd[..];
+  k := f[0].skin; a := k.app; d := app_diff_look(k); gd := s[0].gd[..]; sh := f[0].sheet;
+  s[0].fp_color_u0 = sh[0].nu;
+  s[0].fp_color_o0 = sh[0].no;
   stop := cp_pane_head(s, f, px, 0.0f32, pw, h, "");
   s[0].pane_view = h - stop;
   s[0].review_scroll = scroll_clamp(s[0].review_scroll, s[0].review_content, s[0].pane_view);
@@ -252,5 +254,7 @@ cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     }
   }
   uiframe_unclip(f);
+  s[0].fp_color_u1 = sh[0].nu;
+  s[0].fp_color_o1 = sh[0].no;
   s[0].review_content = y + s[0].review_scroll - stop;
 }

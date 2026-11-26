@@ -361,22 +361,9 @@ cp_gd_pick_edit :: (s: [] CoderPage, id: int) -> bool {
 
 // ---------------------------------------------------------------- syntax-highlighted diff paint
 
-// Paints one line of diff code using components/core/syntax.coax roles and the active skin's syntax palette.
-cp_gd_syntax_line :: (f: [] UiFrame, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, max_w: f32) {
-  if max_w <= 0 || code.count == 0 { return; }
-  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
-  fitted := app_fit(f, face, app_diff_detab(sh, code), max_w);
-  if fitted.count == 0 { return; }
-  runs: [96] MdRun;
-  nr := syn_rust(fitted, runs[..]);
-  ln := sheet_line(sh, x, y, lh, true);
-  pen := x; i := 0;
-  for r: 0..<nr {
-    if runs[r].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<runs[r].from]); }
-    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(k, runs[r].style, plain), cast(string) fitted[runs[r].from..<runs[r].to]);
-    i = runs[r].to;
-  }
-  if i < fitted.count { _ := sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<fitted.count]); }
+// Paints one line of diff code using multi-language components/core/syntax.coax roles and the active skin's syntax palette.
+cp_gd_syntax_line :: (f: [] UiFrame, lang: int, st: [] int, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, max_w: f32) {
+  app_diff_syntax_line(f, lang, st, x, y, lh, face, plain, code, max_w);
 }
 
 // Height of any inline review comments attached to (path, line_no, side).
@@ -456,11 +443,16 @@ cp_gd_hunks_unified :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: in
     else if kind == APP_DIFF_ADD || kind == APP_DIFF_CONTEXT { h += cp_gd_line_comments_h(s, f, path, nw[0], CP_GD_SIDE_NEW); }
   }
   if y + h < top || y > bottom { return h; }
+  eff_path := ifx path.count > 0 then path else app_diff_body_path(body);
+  lang := syn_lang_for_path(eff_path);
+  bar_w := 3.0f32 * (k.mono_small.line / 16.0f32);
   sheet_fill(sh, x, y, w, h, k.app.tool_radius, k.code_wash);
   ib: [EL_ID] u8;
   drow := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Diff", x, y, w, h, 0, 0);
   elt_value(f[0].rows, drow, body);
   wk := [1] AppDiffWalk.[AppDiffWalk.{}];
+  old_st := [1] int.[SYN_BLK_NONE]; new_st := [1] int.[SYN_BLK_NONE];
+  dummy_runs: [16] MdRun;
   ry := y + d.gap / 2; drawn := 0;
   code_x := x + 2 * d.num + d.sign; code_w := x + w - d.pad - code_x;
   while true {
@@ -475,35 +467,57 @@ cp_gd_hunks_unified :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: in
     row_idx := drawn;
     drawn += 1;
     rh := ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
+    l := ln[0];
+    if kind == APP_DIFF_HUNK {
+      old_st[0] = SYN_BLK_NONE; new_st[0] = SYN_BLK_NONE;
+      if ry + rh >= top && ry <= bottom {
+        ty := ry + (rh - tl) / 2;
+        sheet_fill(sh, x, ry, w, rh, 0, opacity(k.accent, 0.12));
+        _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, k.muted, app_fit(f, face, l, w - 2 * d.pad));
+      }
+      ry += rh; continue;
+    }
+    words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
     if ry + rh >= top && ry <= bottom {
-      ty := ry + (rh - tl) / 2; l := ln[0];
-      if kind == APP_DIFF_HUNK {
-        _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, k.faint, app_fit(f, face, l, w - 2 * d.pad));
+      ty := ry + (rh - tl) / 2;
+      if kind == APP_DIFF_ADD {
+        sheet_fill(sh, x, ry, w, rh, 0, opacity(k.success, 0.14));
+        sheet_fill(sh, x, ry, bar_w, rh, 0, opacity(k.success, 0.80));
+      } else if kind == APP_DIFF_DEL {
+        sheet_fill(sh, x, ry, w, rh, 0, opacity(k.danger, 0.14));
+        sheet_fill(sh, x, ry, bar_w, rh, 0, opacity(k.danger, 0.80));
+      }
+      // Clickable line hit target for adding an inline review comment
+      if kind != APP_DIFF_NOTE {
+        ln_n := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ln."), file_idx), "."), row_idx);
+        lid := sheet_pool(sh, cast(string) ib[0..<ln_n]);
+        if uiframe_hovered(f, lid) { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.accent, 0.08)); }
+        lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, w, rh, 0, CP_REVIEW_LINE);
+        sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, w, rh);
+      }
+      old_ink := ifx kind == APP_DIFF_DEL then opacity(k.danger, 0.85) else k.faint;
+      new_ink := ifx kind == APP_DIFF_ADD then opacity(k.success, 0.85) else k.faint;
+      app_diff_num_c(f, x + d.num - d.gap / 2, ty, tl, o[0], old_ink);
+      app_diff_num_c(f, x + 2 * d.num - d.gap / 2, ty, tl, nw[0], new_ink);
+      if kind == APP_DIFF_NOTE {
+        _ := sheet_text(sh, m, -1, code_x, ty, tl, face, k.faint, app_fit(f, face, l, code_w));
       } else {
-        if kind == APP_DIFF_ADD { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.success, 0.12)); }
-        else if kind == APP_DIFF_DEL { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.danger, 0.12)); }
-        // Clickable line hit target for adding an inline review comment
-        if kind != APP_DIFF_NOTE {
-          ln_n := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ln."), file_idx), "."), row_idx);
-          lid := sheet_pool(sh, cast(string) ib[0..<ln_n]);
-          if uiframe_hovered(f, lid) { sheet_fill(sh, x, ry, w, rh, 0, opacity(k.accent, 0.08)); }
-          lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, w, rh, 0, CP_REVIEW_LINE);
-          sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, w, rh);
+        sign := ifx kind == APP_DIFF_ADD then "+" else ifx kind == APP_DIFF_DEL then "−" else "";
+        if sign.count > 0 {
+          ink := ifx kind == APP_DIFF_ADD then k.success else k.danger;
+          _ := sheet_text(sh, m, -1, code_x - d.sign + (d.sign - measure_width(m, face, sign)) / 2, ty, tl, face, ink, sign);
         }
-        app_diff_num(f, x + d.num - d.gap / 2, ty, tl, o[0]);
-        app_diff_num(f, x + 2 * d.num - d.gap / 2, ty, tl, nw[0]);
-        if kind == APP_DIFF_NOTE {
-          _ := sheet_text(sh, m, -1, code_x, ty, tl, face, k.faint, app_fit(f, face, l, code_w));
+        if kind == APP_DIFF_DEL {
+          cp_gd_syntax_line(f, lang, old_st[..], code_x, ty, tl, face, k.ink, words, code_w);
         } else {
-          sign := ifx kind == APP_DIFF_ADD then "+" else ifx kind == APP_DIFF_DEL then "−" else "";
-          if sign.count > 0 {
-            ink := ifx kind == APP_DIFF_ADD then k.success else k.danger;
-            _ := sheet_text(sh, m, -1, code_x - d.sign + (d.sign - measure_width(m, face, sign)) / 2, ty, tl, face, ink, sign);
-          }
-          words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
-          cp_gd_syntax_line(f, code_x, ty, tl, face, k.ink, words, code_w);
+          cp_gd_syntax_line(f, lang, new_st[..], code_x, ty, tl, face, k.ink, words, code_w);
+          if kind == APP_DIFF_CONTEXT { old_st[0] = new_st[0]; }
         }
       }
+    } else if lang != SYN_LANG_PLAIN && kind != APP_DIFF_NOTE {
+      if kind == APP_DIFF_DEL { _ := syn_tokenize_line_state(lang, words, old_st[..], dummy_runs[..]); }
+      else if kind == APP_DIFF_ADD { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); }
+      else if kind == APP_DIFF_CONTEXT { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); old_st[0] = new_st[0]; }
     }
     ry += rh;
     if kind == APP_DIFF_DEL { ry += cp_gd_draw_line_comments(s, f, path, o[0], CP_GD_SIDE_OLD, x, ry, w, top, bottom); }
@@ -547,6 +561,11 @@ cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int,
     i += 1;
   }
   if y + h < top || y > bottom { return h; }
+  eff_path := ifx path.count > 0 then path else app_diff_body_path(body);
+  lang := syn_lang_for_path(eff_path);
+  bar_w := 3.0f32 * (k.mono_small.line / 16.0f32);
+  old_st := [1] int.[SYN_BLK_NONE]; new_st := [1] int.[SYN_BLK_NONE];
+  dummy_runs: [16] MdRun;
   sheet_fill(sh, x, y, w, h, k.app.tool_radius, k.code_wash);
   sheet_fill(sh, x + half, y, k.border, h, 0, k.menu_divider);
   ib: [EL_ID] u8;
@@ -558,8 +577,10 @@ cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int,
   i = 0;
   while i < nr {
     if kinds[i] == APP_DIFF_HUNK {
+      old_st[0] = SYN_BLK_NONE; new_st[0] = SYN_BLK_NONE;
       if ry + d.hunk >= top && ry <= bottom {
-        _ := sheet_text(sh, m, -1, x + d.pad, ry + (d.hunk - tl) / 2, tl, face, k.faint, app_fit(f, face, lines[i], w - 2 * d.pad));
+        sheet_fill(sh, x, ry, w, d.hunk, 0, opacity(k.accent, 0.12));
+        _ := sheet_text(sh, m, -1, x + d.pad, ry + (d.hunk - tl) / 2, tl, face, k.muted, app_fit(f, face, lines[i], w - 2 * d.pad));
       }
       ry += d.hunk; i += 1; continue;
     }
@@ -571,26 +592,37 @@ cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int,
         ty := ry + (d.line - tl) / 2;
         if ry + d.line >= top && ry <= bottom {
           if p < nd {
-            sheet_fill(sh, x, ry, half, d.line, 0, opacity(k.danger, 0.12));
+            sheet_fill(sh, x, ry, half, d.line, 0, opacity(k.danger, 0.14));
+            sheet_fill(sh, x, ry, bar_w, d.line, 0, opacity(k.danger, 0.80));
             rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ls."), file_idx), "."), d0 + p);
             lid := sheet_pool(sh, cast(string) ib[0..<rn]);
             lrow := uiframe_semantic(f, lid, EL_BUTTON, "Add review comment", x, ry, half, d.line, 0, CP_REVIEW_LINE);
             sheet_hit(sh, UIFRAME_HIT, lrow, 0, x, ry, half, d.line);
-            app_diff_num(f, x + d.num - d.gap / 2, ty, tl, olds[d0 + p]);
+            app_diff_num_c(f, x + d.num - d.gap / 2, ty, tl, olds[d0 + p], opacity(k.danger, 0.85));
             _ := sheet_text(sh, m, -1, x + d.num, ty, tl, face, k.danger, "−");
             w_old := ifx lines[d0 + p].count > 0 then cast(string) lines[d0 + p][1..<lines[d0 + p].count] else "";
-            cp_gd_syntax_line(f, lcode_x, ty, tl, face, k.ink, w_old, code_w);
+            cp_gd_syntax_line(f, lang, old_st[..], lcode_x, ty, tl, face, k.ink, w_old, code_w);
           }
           if p < na {
-            sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.12));
+            sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.14));
+            sheet_fill(sh, x + half, ry, bar_w, d.line, 0, opacity(k.success, 0.80));
             rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.rs."), file_idx), "."), a0 + p);
             rid := sheet_pool(sh, cast(string) ib[0..<rn]);
             rrow := uiframe_semantic(f, rid, EL_BUTTON, "Add review comment", x + half, ry, half, d.line, 0, CP_REVIEW_LINE);
             sheet_hit(sh, UIFRAME_HIT, rrow, 0, x + half, ry, half, d.line);
-            app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[a0 + p]);
+            app_diff_num_c(f, x + half + d.num - d.gap / 2, ty, tl, news[a0 + p], opacity(k.success, 0.85));
             _ := sheet_text(sh, m, -1, x + half + d.num, ty, tl, face, k.success, "+");
             w_new := ifx lines[a0 + p].count > 0 then cast(string) lines[a0 + p][1..<lines[a0 + p].count] else "";
-            cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, w_new, code_w);
+            cp_gd_syntax_line(f, lang, new_st[..], rcode_x, ty, tl, face, k.ink, w_new, code_w);
+          }
+        } else if lang != SYN_LANG_PLAIN {
+          if p < nd {
+            w_old := ifx lines[d0 + p].count > 0 then cast(string) lines[d0 + p][1..<lines[d0 + p].count] else "";
+            _ := syn_tokenize_line_state(lang, w_old, old_st[..], dummy_runs[..]);
+          }
+          if p < na {
+            w_new := ifx lines[a0 + p].count > 0 then cast(string) lines[a0 + p][1..<lines[a0 + p].count] else "";
+            _ := syn_tokenize_line_state(lang, w_new, new_st[..], dummy_runs[..]);
           }
         }
         ry += d.line;
@@ -602,15 +634,16 @@ cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int,
     ty := ry + (d.line - tl) / 2;
     if ry + d.line >= top && ry <= bottom {
       if kinds[i] == APP_DIFF_ADD {
-        sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.12));
+        sheet_fill(sh, x + half, ry, half, d.line, 0, opacity(k.success, 0.14));
+        sheet_fill(sh, x + half, ry, bar_w, d.line, 0, opacity(k.success, 0.80));
         rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.rs."), file_idx), "."), i);
         rid := sheet_pool(sh, cast(string) ib[0..<rn]);
         rrow := uiframe_semantic(f, rid, EL_BUTTON, "Add review comment", x + half, ry, half, d.line, 0, CP_REVIEW_LINE);
         sheet_hit(sh, UIFRAME_HIT, rrow, 0, x + half, ry, half, d.line);
-        app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[i]);
+        app_diff_num_c(f, x + half + d.num - d.gap / 2, ty, tl, news[i], opacity(k.success, 0.85));
         _ := sheet_text(sh, m, -1, x + half + d.num, ty, tl, face, k.success, "+");
         w_new := ifx lines[i].count > 0 then cast(string) lines[i][1..<lines[i].count] else "";
-        cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, w_new, code_w);
+        cp_gd_syntax_line(f, lang, new_st[..], rcode_x, ty, tl, face, k.ink, w_new, code_w);
       } else if kinds[i] == APP_DIFF_CONTEXT {
         rn := el_put_i(ib[..], el_put(ib[..], el_put_i(ib[..], el_put(ib[..], 0, "coder.review.ln."), file_idx), "."), i);
         lid := sheet_pool(sh, cast(string) ib[0..<rn]);
@@ -619,9 +652,14 @@ cp_gd_hunks_split :: (s: [] CoderPage, f: [] UiFrame, id: string, file_idx: int,
         app_diff_num(f, x + d.num - d.gap / 2, ty, tl, olds[i]);
         app_diff_num(f, x + half + d.num - d.gap / 2, ty, tl, news[i]);
         words := ifx lines[i].count > 0 then cast(string) lines[i][1..<lines[i].count] else "";
-        cp_gd_syntax_line(f, lcode_x, ty, tl, face, k.ink, words, code_w);
-        cp_gd_syntax_line(f, rcode_x, ty, tl, face, k.ink, words, code_w);
+        cp_gd_syntax_line(f, lang, old_st[..], lcode_x, ty, tl, face, k.ink, words, code_w);
+        cp_gd_syntax_line(f, lang, new_st[..], rcode_x, ty, tl, face, k.ink, words, code_w);
+        old_st[0] = new_st[0];
       }
+    } else if lang != SYN_LANG_PLAIN {
+      words := ifx lines[i].count > 0 then cast(string) lines[i][1..<lines[i].count] else "";
+      if kinds[i] == APP_DIFF_ADD { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); }
+      else if kinds[i] == APP_DIFF_CONTEXT { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); old_st[0] = new_st[0]; }
     }
     ry += d.line;
     if kinds[i] == APP_DIFF_ADD || kinds[i] == APP_DIFF_CONTEXT { ry += cp_gd_draw_line_comments(s, f, path, news[i], CP_GD_SIDE_NEW, x, ry, w, top, bottom); }

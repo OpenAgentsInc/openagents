@@ -163,3 +163,18 @@ cp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_test_find(s, id
   draft := eb_text(s[0].draft[..]);
   #assert cp_contains(draft, "Please address:") && cp_contains(draft, "Review comments:") && cp_contains(draft, "`src/app.coax:20`:") && cp_contains(draft, "Guard against c == 0 before dividing");
 }
+
+#test "review pane exempts syntax and diff colors from monochrome pass for both unified and split diffs" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  sample := "diff --git a/host.c b/host.c\n--- a/host.c\n+++ b/host.c\n@@ -10,2 +10,2 @@\n-int old_fn(void *p);\n+int new_fn(void *p);\n return 0;\n";
+  buf: [1024] u8; n := cp_out(buf[..], sample);
+  coder_page_git_diff_set(s, buf[0..<n]);
+  s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert s[0].fp_color_u1 > s[0].fp_color_u0 && s[0].fp_color_o1 > s[0].fp_color_o0;
+  // Split mode preserves color exemption too
+  s[0].gd[0].split = true;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert s[0].fp_color_u1 > s[0].fp_color_u0 && s[0].fp_color_o1 > s[0].fp_color_o0;
+}

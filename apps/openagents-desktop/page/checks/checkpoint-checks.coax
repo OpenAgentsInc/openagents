@@ -100,13 +100,27 @@ cp_ckpt_add_done_turn :: (s: [] CoderPage, ask: string, reply: string) {
   coder_page_ckpt_mark(s, 0, true);
   coder_page_ckpt_mark(s, 1, true);
 
-  sample := "diff --git a/note.txt b/note.txt\nnew file mode 100644\n--- /dev/null\n+++ b/note.txt\n@@ -0,0 +1,2 @@\n+hello\n+world\n";
+  sample := "diff --git a/host.c b/host.c\n--- a/host.c\n+++ b/host.c\n@@ -1,1 +1,2 @@\n int main(void) {\n+  return 0;\n";
   diff_buf: [256] u8;
   dn := cp_out(diff_buf[..], sample);
   #assert coder_page_ckpt_diff_set(s, 0, diff_buf[0..<dn], "Turn 1 checkpoint diff");
   #assert s[0].review && s[0].pane_tab == CP_TAB_CHANGES && s[0].ckpt[0].diff_turn == 0;
 
   #assert cp_ckpt_test_frame(s, f[..], 1280, 800);
+  #assert s[0].fp_color_u1 > s[0].fp_color_u0 && s[0].fp_color_o1 > s[0].fp_color_o0;
+  sh := surface_sheet(s[0].surface[..]);
+  sk := cp_skin();
+  kw_c := uiskin_syntax(sk, SYN_KEYWORD, sk.ink);
+  saw_kw := false; saw_add := false;
+  for i: s[0].fp_color_o0..<s[0].fp_color_o1 {
+    pr := sh.over[i];
+    if pr.kind == PRIM_TEXT && abs(pr.fill.r - kw_c.r) < 0.01 && abs(pr.fill.g - kw_c.g) < 0.01 && abs(pr.fill.b - kw_c.b) < 0.01 { saw_kw = true; }
+  }
+  for i: s[0].fp_color_u0..<s[0].fp_color_u1 {
+    pr := sh.under[i];
+    if pr.kind == PRIM_BOX && abs(pr.fill.r - sk.success.r) < 0.01 && abs(pr.fill.g - sk.success.g) < 0.01 && pr.fill.a > 0.1 { saw_add = true; }
+  }
+  #assert saw_kw && saw_add;
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   all_btn := elt_find(t[..], "coder.review.ckpt.all");
   rw_btn := elt_find(t[..], "coder.review.ckpt.rewind");

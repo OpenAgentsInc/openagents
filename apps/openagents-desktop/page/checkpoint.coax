@@ -214,7 +214,7 @@ cp_ckpt_review_body :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, cw: f32
     y += app_diff_file_row(f, fid, x, y, cw, files[i], open, CP_REVIEW_FILE);
     if !open { continue; }
     n := el_put(eb[..], 0, fid); n = el_put(eb[..], n, ".ck");
-    y += app_diff_hunks(f, cast(string) eb[0..<n], x, y, cw, files[i].body, stop, h) + d.gap;
+    y += app_diff_hunks_for(f, cast(string) eb[0..<n], x, y, cw, files[i].path, files[i].body, stop, h) + d.gap;
   }
   y += a.gap;
   return y - y0;

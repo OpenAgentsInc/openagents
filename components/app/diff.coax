@@ -23,6 +23,7 @@
 //   coax/bin/coax test components/app/diff.coax
 
 #load "base.coax";
+#load "../core/syntax.coax";
 
 // A line's kind in a diff.
 APP_DIFF_CONTEXT :: 0; APP_DIFF_ADD :: 1; APP_DIFF_DEL :: 2; APP_DIFF_HUNK :: 3;
@@ -229,28 +230,82 @@ app_diff_detab :: (sh: [] Sheet, text: string) -> string {
   }
   return sheet_pool(sh, cast(string) b[0..<n]);
 }
-// A number, right-aligned in its column ending at `right`.
-app_diff_num :: (f: [] UiFrame, right: f32, y: f32, lh: f32, v: int) {
+// A number, right-aligned in its column ending at `right`, in `ink`.
+app_diff_num_c :: (f: [] UiFrame, right: f32, y: f32, lh: f32, v: int, ink: Rgba) {
   if v <= 0 { return; }
   s := f[0].skin; sh := f[0].sheet; nb: [16] u8; nn := el_put_i(nb[..], 0, v);
   t := sheet_pool(sh, cast(string) nb[0..<nn]);
-  _ := sheet_text(sh, f[0].m, -1, right - measure_width(f[0].m, s.mono_small.face, t), y, lh, s.mono_small.face, s.faint, t);
+  _ := sheet_text(sh, f[0].m, -1, right - measure_width(f[0].m, s.mono_small.face, t), y, lh, s.mono_small.face, ink, t);
 }
-// A file's hunks at (x, y), w wide, on the code's ground, as Zeron's diff_view: each hunk's header
-// in the faint ink, each line its old and new numbers, its sign and its words, added lines on the
+// A number, right-aligned in its column ending at `right`.
+app_diff_num :: (f: [] UiFrame, right: f32, y: f32, lh: f32, v: int) {
+  app_diff_num_c(f, right, y, lh, v, f[0].skin.faint);
+}
+// Infers a file path from a unified diff body's leading headers ("diff --git", "+++ ", "--- ").
+app_diff_body_path :: (body: string) -> string {
+  at := 0;
+  for _: 0..<8 {
+    if at >= body.count { break; }
+    e := app_diff_eol(body, at); ln := cast(string) body[at..<e];
+    if app_diff_starts(ln, "@@ -") { break; }
+    if app_diff_starts(ln, "+++ ") {
+      nm := cast(string) ln[4..<ln.count];
+      if !app_diff_starts(nm, "/dev/null") { return app_diff_name(nm); }
+    } else if app_diff_starts(ln, "diff --git ") {
+      b := 0; i := 11;
+      while i + 3 <= ln.count { if cast(string) ln[i..<i + 3] == " b/" { b = i + 1; } i += 1; }
+      if b > 0 { return app_diff_name(cast(string) ln[b..<ln.count]); }
+    } else if app_diff_starts(ln, "--- ") {
+      nm := cast(string) ln[4..<ln.count];
+      if !app_diff_starts(nm, "/dev/null") { return app_diff_name(nm); }
+    }
+    at = e + 1;
+  }
+  return "";
+}
+// Paints one syntax-highlighted diff code line using components/core/syntax.coax roles and the
+// skin's syntax palette, carrying multi-line block state in `st`. Always opens a selectable SheetLine.
+app_diff_syntax_line :: (f: [] UiFrame, lang: int, st: [] int, x: f32, y: f32, lh: f32, face: int, plain: Rgba, code: string, max_w: f32) {
+  if max_w <= 0 { return; }
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  fitted := app_fit(f, face, app_diff_detab(sh, code), max_w);
+  ln := sheet_line(sh, x, y, lh, true);
+  if fitted.count == 0 { return; }
+  if lang == SYN_LANG_PLAIN {
+    _ := sheet_text(sh, m, ln, x, y, lh, face, plain, fitted);
+    return;
+  }
+  runs: [96] MdRun;
+  nr := syn_tokenize_line_state(lang, fitted, st, runs[..]);
+  pen := x; i := 0;
+  for r: 0..<nr {
+    if runs[r].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<runs[r].from]); }
+    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(s, runs[r].style, plain), cast(string) fitted[runs[r].from..<runs[r].to]);
+    i = runs[r].to;
+  }
+  if i < fitted.count { _ := sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) fitted[i..<fitted.count]); }
+}
+// A file's hunks at (x, y), w wide, on the code's ground, with multi-language syntax highlighting
+// inferred from `path` (or the diff body's headers): each hunk's header on a tinted band, each line
+// its accent bar, old and new numbers, sign, and syntax-highlighted code, added lines on the
 // success's wash and removed on the danger's. A line past the card's edge ends in an ellipsis.
 // Lines out of view between top and bottom are not drawn. Its row (id + ".diff") reads the body.
 // Returns its height.
-app_diff_hunks :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, body: string, top: f32, bottom: f32) -> f32 {
+app_diff_hunks_for :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, path: string, body: string, top: f32, bottom: f32) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(s);
   face := s.mono_small.face; tl := s.mono_small.line;
   h := app_diff_hunks_h(f, body);
   if y + h < top || y > bottom { return h; }
+  eff_path := ifx path.count > 0 then path else app_diff_body_path(body);
+  lang := syn_lang_for_path(eff_path);
+  bar_w := 3.0f32 * (s.mono_small.line / 16.0f32);
   sheet_fill(sh, x, y, w, h, s.app.tool_radius, s.code_wash);
   ib: [EL_ID] u8;
   row := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Diff", x, y, w, h, 0, 0);
   elt_value(f[0].rows, row, body);
   wk := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  old_st := [1] int.[SYN_BLK_NONE]; new_st := [1] int.[SYN_BLK_NONE];
+  dummy_runs: [16] MdRun;
   ry := y + d.gap / 2; drawn := 0;
   code_x := x + 2 * d.num + d.sign; code_w := x + w - d.pad - code_x;
   while true {
@@ -264,16 +319,37 @@ app_diff_hunks :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, body: stri
     }
     drawn += 1;
     rh := ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
-    if ry + rh < top || ry > bottom { ry += rh; continue; }
-    ty := ry + (rh - tl) / 2; l := ln[0];
+    l := ln[0];
     if kind == APP_DIFF_HUNK {
-      _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, s.faint, app_fit(f, face, l, w - 2 * d.pad));
+      old_st[0] = SYN_BLK_NONE; new_st[0] = SYN_BLK_NONE;
+      if ry + rh >= top && ry <= bottom {
+        ty := ry + (rh - tl) / 2;
+        sheet_fill(sh, x, ry, w, rh, 0, opacity(s.accent, 0.12));
+        _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, s.muted, app_fit(f, face, l, w - 2 * d.pad));
+      }
       ry += rh; continue;
     }
-    if kind == APP_DIFF_ADD { sheet_fill(sh, x, ry, w, rh, 0, opacity(s.success, 0.12)); }
-    else if kind == APP_DIFF_DEL { sheet_fill(sh, x, ry, w, rh, 0, opacity(s.danger, 0.12)); }
-    app_diff_num(f, x + d.num - d.gap / 2, ty, tl, o[0]);
-    app_diff_num(f, x + 2 * d.num - d.gap / 2, ty, tl, n[0]);
+    words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
+    if ry + rh < top || ry > bottom {
+      if lang != SYN_LANG_PLAIN && kind != APP_DIFF_NOTE {
+        if kind == APP_DIFF_DEL { _ := syn_tokenize_line_state(lang, words, old_st[..], dummy_runs[..]); }
+        else if kind == APP_DIFF_ADD { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); }
+        else if kind == APP_DIFF_CONTEXT { _ := syn_tokenize_line_state(lang, words, new_st[..], dummy_runs[..]); old_st[0] = new_st[0]; }
+      }
+      ry += rh; continue;
+    }
+    ty := ry + (rh - tl) / 2;
+    if kind == APP_DIFF_ADD {
+      sheet_fill(sh, x, ry, w, rh, 0, opacity(s.success, 0.14));
+      sheet_fill(sh, x, ry, bar_w, rh, 0, opacity(s.success, 0.80));
+    } else if kind == APP_DIFF_DEL {
+      sheet_fill(sh, x, ry, w, rh, 0, opacity(s.danger, 0.14));
+      sheet_fill(sh, x, ry, bar_w, rh, 0, opacity(s.danger, 0.80));
+    }
+    old_ink := ifx kind == APP_DIFF_DEL then opacity(s.danger, 0.85) else s.faint;
+    new_ink := ifx kind == APP_DIFF_ADD then opacity(s.success, 0.85) else s.faint;
+    app_diff_num_c(f, x + d.num - d.gap / 2, ty, tl, o[0], old_ink);
+    app_diff_num_c(f, x + 2 * d.num - d.gap / 2, ty, tl, n[0], new_ink);
     if kind == APP_DIFF_NOTE {
       _ := sheet_text(sh, m, -1, code_x, ty, tl, face, s.faint, app_fit(f, face, l, code_w));
       ry += rh; continue;
@@ -283,11 +359,18 @@ app_diff_hunks :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, body: stri
       ink := ifx kind == APP_DIFF_ADD then s.success else s.danger;
       _ := sheet_text(sh, m, -1, code_x - d.sign + (d.sign - measure_width(m, face, sign)) / 2, ty, tl, face, ink, sign);
     }
-    words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
-    _ := sheet_plain(sh, m, code_x, ty, tl, face, s.ink, app_fit(f, face, app_diff_detab(sh, words), code_w), true);
+    if kind == APP_DIFF_DEL {
+      app_diff_syntax_line(f, lang, old_st[..], code_x, ty, tl, face, s.ink, words, code_w);
+    } else {
+      app_diff_syntax_line(f, lang, new_st[..], code_x, ty, tl, face, s.ink, words, code_w);
+      if kind == APP_DIFF_CONTEXT { old_st[0] = new_st[0]; }
+    }
     ry += rh;
   }
   return h;
+}
+app_diff_hunks :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, body: string, top: f32, bottom: f32) -> f32 {
+  return app_diff_hunks_for(f, id, x, y, w, "", body, top, bottom);
 }
 // A file's row at (x, y), w wide, as Zeron's Changes list draws one: a chevron (down while open;
 // none with no action, when the row is only the file's heading),
@@ -348,13 +431,13 @@ app_diff_file_id :: (out: [] u8, id: string, i: int) -> string { n := el_put(out
 app_diff_view :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, path: string, top: f32, bottom: f32, action: int) -> f32 {
   files: [APP_DIFF_FILES] AppDiffFile; n := app_diff_files(text, files[..], path);
   if n == 0 { return 0; }
-  if n == 1 { return app_diff_hunks(f, id, x, y, w, files[0].body, top, bottom); }
+  if n == 1 { return app_diff_hunks_for(f, id, x, y, w, files[0].path, files[0].body, top, bottom); }
   d := app_diff_look(f[0].skin); h: f32 = 0; fb: [EL_ID] u8;
   for i: 0..<n {
     fid := app_diff_file_id(fb[..], id, i);
     open := action == 0 || app_diff_is_open(f, fid, true);
     h += app_diff_file_row(f, fid, x, y + h, w, files[i], open, action);
-    if open { h += app_diff_hunks(f, fid, x, y + h, w, files[i].body, top, bottom) + d.gap; }
+    if open { h += app_diff_hunks_for(f, fid, x, y + h, w, files[i].path, files[i].body, top, bottom) + d.gap; }
   }
   return h;
 }

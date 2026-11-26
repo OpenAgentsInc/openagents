@@ -78,3 +78,32 @@ APP_DIFF_T_GIT :: "diff --git a/src/a.coax b/src/a.coax\nindex 1..2 100644\n--- 
   #assert app_test_row(t[..], "w.f0").role == EL_HEADING && !app_test_has(t[..], "w.f0", EL_S_EXPANDS) && !app_test_pressable(t[..], "w.f0");
   #assert app_test_find(t[..], "w.f0.diff") >= 0 && app_test_find(t[..], "w.f1.diff") >= 0 && app_test_prims(t[..], PRIM_ICON) == 0;
 }
+
+#test "app diff: syntax highlights C and Coax hunks by path and paints colored add/del bars and hunk washes" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  s := arcade_phone_skin();
+  c_diff := "diff --git a/host.c b/host.c\n--- a/host.c\n+++ b/host.c\n@@ -10,2 +10,3 @@ int main()\n /* open\n-int old_val = 1;\n+int new_val = 2; */\n+return new_val;\n";
+  app_test_begin(t[..], "", "", true);
+  _ = app_diff_hunks_for(f, "c", 0, 0, 500, "host.c", c_diff, -1000, 1000);
+  #assert app_test_end(t[..]);
+  sh := surface_sheet(t[0].sf[..]);
+  // Verify distinct syntax token colors appear (e.g. keyword "return" and comment) plus green/red diff washes.
+  saw_kw := false; saw_cmt := false; saw_add_wash := false; saw_del_wash := false;
+  kw_c := uiskin_syntax(s, SYN_KEYWORD, s.ink);
+  cmt_c := uiskin_syntax(s, SYN_COMMENT, s.ink);
+  for i: 0..<sh.no {
+    pr := sh.over[i];
+    if pr.kind == PRIM_TEXT {
+      if abs(pr.fill.r - kw_c.r) < 0.01 && abs(pr.fill.g - kw_c.g) < 0.01 && abs(pr.fill.b - kw_c.b) < 0.01 { saw_kw = true; }
+      if abs(pr.fill.r - cmt_c.r) < 0.01 && abs(pr.fill.g - cmt_c.g) < 0.01 && abs(pr.fill.b - cmt_c.b) < 0.01 { saw_cmt = true; }
+    }
+  }
+  for i: 0..<sh.nu {
+    pr := sh.under[i];
+    if pr.kind == PRIM_BOX {
+      if abs(pr.fill.r - s.success.r) < 0.01 && abs(pr.fill.g - s.success.g) < 0.01 && pr.fill.a > 0.1 { saw_add_wash = true; }
+      if abs(pr.fill.r - s.danger.r) < 0.01 && abs(pr.fill.g - s.danger.g) < 0.01 && pr.fill.a > 0.1 { saw_del_wash = true; }
+    }
+  }
+  #assert saw_kw && saw_cmt && saw_add_wash && saw_del_wash;
+}
