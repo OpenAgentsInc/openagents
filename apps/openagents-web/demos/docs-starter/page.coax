@@ -1,10 +1,9 @@
-// Hello World + Routed Docs starter powered by Coax UI Core (#14090),
-// Coax UI Router (History API via dom_go + event 13), and Native Coax SSR (#14092).
-// Routes:
-//   /                      Hello World (interactive counter + Provider greeting)
-//   /docs/introduction     Introduction to Coax Web & Coax UI
-//   /docs/getting-started  Getting Started (dev server, routes, SSR & hydration)
-//   /docs/roadmap          Phase 3.5 Framework Status
+// Hybrid Coax Web starter:
+//   - `/` (Hello World): Native Coax SSR + in-place Wasm hydration (`dom-host.js` + `dom-hydrate.js`)
+//     powered by Coax UI Core (`runtime.coax` per-component MVU, Providers & leaf subtree patching).
+//   - `/docs/*` (Introduction, Getting Started, Framework Status) & `404.html`:
+//     Pure 0-KB-Wasm / 0-KB-JS static SSR HTML reusing `components/skin/mono.coax` CSS,
+//     real `<a href>` sidebar links, and build-time syntax highlighting via `stream_markdown.coax`.
 // Run locally with hot reload:
 //   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve
 // Test natively:
@@ -12,6 +11,7 @@
 #load "../../../../components/kit/settings.coax";
 #load "../../../../components/ui/runtime.coax";
 #load "../../../../components/ui/router.coax";
+#load "../../../../components/ui/kit/stream_markdown.coax";
 #load "../../../../components/backend/html.coax";
 
 DS_INBOX :: 4096;
@@ -25,15 +25,19 @@ DS_COMP_COUNTER :: 1;
 DS_ROUTES :: 4;
 DS_ROUTE_PATHS :: [4] string.["/", "/docs/introduction", "/docs/getting-started", "/docs/roadmap"];
 DS_NAV_NAMES :: [4] string.["Hello World", "Introduction", "Getting Started", "Framework Status"];
-DS_NAV_NOTES :: [4] string.["/", "/docs/introduction", "/docs/getting-started", "/docs/roadmap"];
+DS_NAV_NOTES :: [4] string.["/ · hydrated Wasm", "/docs/introduction · 0 KB JS", "/docs/getting-started · 0 KB JS", "/docs/roadmap · 0 KB JS"];
 
-DS_DOC_INTRO :: "Welcome to **Coax Web & Coax UI** — a pure-Coax web framework compiling to WebAssembly (`wasm32`) with native server/build-time SSR, in-place DOM hydration, and real History API routing.\n\n## Why Coax Web\n\nEvery page is authored in pure Coax with **zero npm, zero bundler, and zero JavaScript framework**:\n\n- **Real URL Routing:** `components/ui/router.coax` matches `/`, `/docs/introduction`, `/docs/getting-started`, `/docs/roadmap`, named `:params`, and `*` wildcards, synced with `history.pushState` / `popstate` via `dom_go`.\n- **Coax UI Core:** `components/ui/runtime.coax` provides per-component MVU, typed Commands, 16-slot keyed SSE Subscriptions, shared Query Cache, lexically scoped Providers, and leaf subtree patching (`dm_flush_subtree`).\n- **Native SSR + Hydration:** `components/backend/html.coax` prerenders every route to crawlable HTML with `data-coax-ssr=\"1\"`, adopted in place by `coax/web/dom-hydrate.js` with zero flicker.\n\n## Explore the Docs\n\nUse the sidebar or direct URLs: `/`, `/docs/introduction`, `/docs/getting-started`, and `/docs/roadmap`.";
+DS_DOC_INTRO :: "Welcome to **Coax Web & Coax UI** — a hybrid pure-Coax web framework.\n\n```island:callout\ntone: info\ntitle: Zero-Wasm Docs + Hydrated Wasm Apps\nbody: This page is 100% static HTML + mono.coax CSS (0 KB JavaScript, 0 KB WebAssembly). Click Hello World in the sidebar to jump into a live hydrated Coax Wasm app.\n```\n\n## How the Hybrid Architecture Works\n\nEvery route is authored once in pure Coax and rendered through the same `Tree` and `components/skin/mono.coax` stylesheet:\n\n- **Static Docs & Content (`/docs/*`):** Prerendered at build time via `components/backend/html.coax` with build-time syntax highlighting (`components/core/syntax.coax`), native `<a href>` navigation, and **0 KB JS/Wasm**.\n- **Interactive Apps (`/` and `/chat`):** Prerendered with `data-coax-ssr=\"1\"` and hydrated in place by `coax/web/dom-hydrate.js` + `coax/web/dom-host.js`, running Coax UI Core (`components/ui/runtime.coax`) with leaf subtree patching (`dm_flush_subtree`).\n\n## Authoring a Route in Coax\n\n```coax\n#load \"components/ui/router.coax\";\n\nds_route_index :: (raw_url: string) -> int {\n  if ui_route_match(\"/docs/introduction\", raw_url).matched { return 1; }\n  return 0;\n}\n```\n\nUse the sidebar links to move between `/docs/introduction`, `/docs/getting-started`, `/docs/roadmap`, and the interactive `/` Hello World page.";
 
-DS_DOC_START :: "This page is compiled from pure Coax to WebAssembly (`wasm32`) and prerendered to static SSR HTML per route by `build.coax`.\n\n## Edit-to-screen loop\n\nSave `apps/openagents-web/demos/docs-starter/page.coax` while the dev server is running. `coax/web/serve.sh` watches the source, rebuilds the Wasm module and prerendered route HTML, and reloads your tab over `/coaxial/live`.\n\n## Adding a new docs route\n\n1. Add the path (for example `/docs/components`) to `DS_ROUTE_PATHS` in `page.coax`.\n2. Map the route in `ds_route_index` and render its Markdown or interactive Coax UI tree.\n3. Rebuild with `build.coax` — it emits `docs/components/index.html` with full SSR HTML automatically.\n\n| Piece | File |\n| --- | --- |\n| Page state, routes & view | `apps/openagents-web/demos/docs-starter/page.coax` |\n| URL Router | `components/ui/router.coax` |\n| Native SSR HTML backend | `components/backend/html.coax` |\n| Wasm ABI bridge (`dom_go`) | `apps/openagents-web/demos/docs-starter/face.c` |\n| Build, SSR & serve tool | `apps/openagents-web/demos/docs-starter/build.coax` |";
+DS_DOC_START :: "This page is prerendered from pure Coax Markdown (`components/core/markdown.coax` + `components/ui/kit/stream_markdown.coax`) using the exact same `components/skin/mono.coax` styling as `/chat` — with **0 KB Wasm**.\n\n## Edit-to-Screen Loop\n\nRun the dev server locally:\n\n```sh\ncoax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve\n```\n\nSave `apps/openagents-web/demos/docs-starter/page.coax` while `serve.sh` is running. It rebuilds the Wasm module and re-renders every static SSR route automatically.\n\n## Adding a New Docs Route\n\n1. Add the path (for example `/docs/components`) to `DS_ROUTE_PATHS` in `page.coax`.\n2. Map the route in `ds_route_index` and add its Markdown content.\n3. Emit its route directory in `build.coax` with `hydrate = false` (0 KB JS) or `hydrate = true` (hydrated Wasm).\n\n| Piece | File |\n| --- | --- |\n| Page state, routes & docs | `apps/openagents-web/demos/docs-starter/page.coax` |\n| Mono skin CSS (`.md`, `.st`, `.row`) | `components/skin/mono.coax` |\n| Streaming Markdown & syntax highlight | `components/ui/kit/stream_markdown.coax` |\n| URL Router | `components/ui/router.coax` |\n| Native SSR HTML backend | `components/backend/html.coax` |\n| Build, SSR & serve tool | `apps/openagents-web/demos/docs-starter/build.coax` |";
 
-DS_DOC_ROADMAP :: "The Coax Web framework evolves **in place** on top of `serve.sh`, `dom-host.js`, `tree.coax`, `dom.coax`, `html.coax`, and `components/ui/`.\n\n## Phase 3.5 Milestones\n\n| Issue | Layer | Status |\n| --- | --- | --- |\n| `#14088` | Non-blocking SSE streaming plane (`kqueue`/`epoll`, `Last-Event-ID`, Postgres `LISTEN/NOTIFY`) | Done |\n| `#14089` | Multiplexed keyed streams, reconnect backoff, IME/caret-safe inputs & modal `<dialog>` in `dom-host.js` | Done |\n| `#14090` | Coax UI Core: per-component MVU, `Cmd`s, keyed `Sub`s, query cache, `Provider`s & subtree patching | Done |\n| `#14091` | Coax UI Kit & Streaming Markdown: headless `parts` primitives, `VirtualList` & incremental Markdown | Done |\n| `#14092` | Native Coax SSR/Hydration & zero-browser `Story`/`Scene`/`Play` harness | Done |\n| `#14093` | Unified Cloud Chat Store & Live Sync | Next |\n| `#14094` | Rebuild `openagents.com/chat` on Coax UI + Live Cloud Streaming | Next |";
+DS_DOC_ROADMAP :: "The Coax Web framework evolves **in place** on top of `serve.sh`, `dom-host.js`, `dom-hydrate.js`, `tree.coax`, `dom.coax`, `html.coax`, and `components/ui/`.\n\n## Phase 3.5 Milestones\n\n| Issue | Layer | Status |\n| --- | --- | --- |\n| `#14088` | Non-blocking SSE streaming plane (`kqueue`/`epoll`, `Last-Event-ID`, Postgres `LISTEN/NOTIFY`) | Done |\n| `#14089` | Multiplexed keyed streams, reconnect backoff, IME/caret-safe inputs & modal `<dialog>` in `dom-host.js` | Done |\n| `#14090` | Coax UI Core: per-component MVU, `Cmd`s, keyed `Sub`s, query cache, `Provider`s & subtree patching | Done |\n| `#14091` | Coax UI Kit & Streaming Markdown: headless `parts` primitives, `VirtualList` & incremental Markdown | Done |\n| `#14092` | Native Coax SSR/Hydration & zero-browser `Story`/`Scene`/`Play` harness | Done |\n| `#14093` | Unified Cloud Chat Store & Live Sync | Next |\n| `#14094` | Rebuild `openagents.com/chat` on Coax UI + Live Cloud Streaming | Next |";
 
 DS_SNIPPET :: "coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax --serve";
+
+// Minimal CSS addendum extending components/skin/mono.coax for 0-KB-Wasm static SSR frames,
+// real <a> nav rows, build-time syntax highlighting tokens, and Markdown callout islands.
+DS_HYBRID_CSS :: "a.row{text-decoration:none}a.row[aria-current=true]{border:1px solid var(--line-bright);background:var(--surface)}[data-frame]:not(:has(>svg.fr)){border:1px solid var(--line-dim);background:var(--surface)}.md .md-h{margin:10px 0 0;font:600 16px/1.35 var(--sans);color:#fff}.md .md-code-block{border:1px solid var(--line-dim);background:var(--surface);max-width:100%}.md .md-code-hdr{display:flex;justify-content:space-between;align-items:center;padding:5px 12px;border-bottom:1px solid var(--line-dim);font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}.md .md-code-copy{display:none}.md .md-pre{padding:12px 14px;overflow-x:auto;white-space:pre}.md .md-code-body{background:none;padding:0}.md .md-code-line{display:block;min-height:1.5em}.syn-com{color:var(--ink-faint);font-style:italic}.syn-kw{color:#fff;font-weight:600}.syn-fn{color:#e6e6e6}.syn-ty{color:#d4d4d4;text-decoration:underline;text-decoration-color:var(--line-dim);text-underline-offset:3px}.syn-str{color:#c8c8c8}.syn-num{color:#b8b8b8}.syn-attr{color:var(--ink-muted)}.syn-punc{color:var(--ink-faint)}.md-island-callout{border:1px solid var(--line);border-left:3px solid #fff;background:var(--surface);padding:12px 16px;display:flex;flex-direction:column;gap:4px}.md-island-title{margin:0;font:600 11px/1.4 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#fff}.md-island-body{margin:0;color:var(--ink-muted);font-size:13px}";
 
 DocsStarter :: struct {
   ready: bool;
@@ -53,7 +57,7 @@ DocsStarter :: struct {
   css: [DS_CSS] u8;
   ui: [1] Ui;
   rt: [1] UiRuntime;
-  doc: [1] MdDoc;
+  smd: [1] StreamMd;
   tree: [1] Tree;
   sub: [1] Tree;
   dom: [1] Dom;
@@ -68,13 +72,17 @@ ds_route_index :: (raw_url: string) -> int {
   return -1;
 }
 
-ds_navigate :: (s: [] DocsStarter, page: int, push_url: bool) {
-  routes := DS_ROUTE_PATHS;
-  _ = ui_provide_int(s[0].rt[..], s[0].shell_c, "page", page);
-  if push_url && page >= 0 && page < DS_ROUTES {
-    s[0].go_n = ui_copy(s[0].go[..], routes[page]);
-    s[0].go_push = true;
-  }
+// Returns the raw Markdown source for docs routes `1..3`, or `""`.
+ds_doc_source :: (page: int) -> string {
+  if page == 1 { return DS_DOC_INTRO; }
+  if page == 2 { return DS_DOC_START; }
+  if page == 3 { return DS_DOC_ROADMAP; }
+  return "";
+}
+
+ds_write_css :: (s: [] DocsStarter) -> int {
+  n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+  return mc(s[0].css[..], n, DS_HYBRID_CSS);
 }
 
 ds_greet :: (who: string, out: [] u8) -> string {
@@ -94,7 +102,7 @@ ds_counter_view :: (s: [] DocsStarter, t: [] Tree) {
   who := ui_read_str(s[0].rt[..], s[0].counter_c, "name", "");
   _ = tr_open(t, "ds.counter", TG_DIV, "st-c");
   _ = tr_leaf(t, "ds.counter.greet", TG_H2, "sec-h", ds_greet(who, gbuf[..]));
-  _ = tr_leaf(t, "ds.counter.lede", TG_P, "sec-n", "Per-component MVU leaf: clicking Count +1 patches only this subtree.");
+  _ = tr_leaf(t, "ds.counter.lede", TG_P, "sec-n", "Live hydrated Coax Wasm leaf: clicking Count +1 patches only this subtree.");
   _ = tr_open(t, "ds.counter.row", TG_DIV, "rowf");
   _ = k_button(t, u, "ds.counter.inc", "Count +1", BS_PRIMARY);
   _ = k_button(t, u, "ds.counter.reset", "Reset", ifx s[0].count > 0 then BS_PLAIN else BS_DISABLED);
@@ -105,17 +113,23 @@ ds_counter_view :: (s: [] DocsStarter, t: [] Tree) {
 
 ds_build :: (s: [] DocsStarter) {
   t := s[0].tree[..]; u := s[0].ui[..]; rt := s[0].rt[..];
-  buf: [UI_ID] u8;
+  buf: [UI_ID] u8; b2: [UI_ID] u8; b3: [UI_ID] u8;
   names := DS_NAV_NAMES; notes := DS_NAV_NOTES; routes := DS_ROUTE_PATHS;
   page := ui_read_int(rt, s[0].shell_c, "page", 0); // mutant: equivalent (ds_init always provides page)
 
   tr_begin(t);
   _ = k_set(t, "ds");
 
+  // Real <a class="row" href="..."> links work natively with 0 KB JS on static docs pages!
   _ = k_set_nav(t, "ds.nav", "Coax Web Docs");
   for k: 0..<DS_ROUTES {
     id := tr_join(buf[..], "ds.nav.", k);
-    _ = k_row(t, u, id, names[k], notes[k], k == page);
+    a := tr_open(t, id, TG_A, "row");
+    tr_attr(t, a, AT_HREF, routes[k]);
+    if k == page { tr_attr(t, a, AT_CURRENT, "true"); }
+    _ = tr_leaf(t, tr_cat(b2[..], id, ".t"), TG_SPAN, "row-t", names[k]);
+    _ = tr_leaf(t, tr_cat(b3[..], id, ".n"), TG_SPAN, "meta", notes[k]);
+    tr_close(t);
   }
   tr_close(t);
 
@@ -123,16 +137,16 @@ ds_build :: (s: [] DocsStarter) {
   _ = k_set_body(t, u, "ds.body", "Coax Web Starter", heading);
 
   if page == 0 {
-    _ = k_set_group(t, u, "ds.hello", "Interactive Hello World");
+    _ = k_set_group(t, u, "ds.hello", "Interactive Hello World (Hydrated Wasm)");
     ds_counter_view(s, t);
     _ = k_field(t, u, "ds.name", "Your name", "Type a name to greet");
     k_set_group_end(t);
 
-    _ = k_set_group(t, u, "ds.links", "Docs Routes");
+    _ = k_set_group(t, u, "ds.links", "Static Docs Routes (0 KB Wasm)");
     _ = tr_open(t, "ds.links.row", TG_DIV, "rowf");
     for k: 1..<DS_ROUTES {
       lid := tr_join(buf[..], "ds.link.", k);
-      a := tr_leaf(t, lid, TG_A, "btn", names[k]);
+      a := tr_leaf(t, lid, TG_A, "lk", names[k]);
       tr_attr(t, a, AT_HREF, routes[k]);
     }
     tr_close(t);
@@ -142,21 +156,19 @@ ds_build :: (s: [] DocsStarter) {
     _ = k_code(t, u, "ds.code", "sh", DS_SNIPPET);
     k_set_group_end(t);
   } else if page >= 1 && page < DS_ROUTES {
-    src := ifx page == 1 then DS_DOC_INTRO else ifx page == 2 then DS_DOC_START else DS_DOC_ROADMAP;
+    src := ds_doc_source(page);
     if s[0].doc_page != page {
-      s[0].doc[0] = MdDoc.{};
-      _ = md_parse(s[0].doc[..], src, 0);
+      smd_reset(s[0].smd[..], 0, true);
+      _ = smd_append(s[0].smd[..], src);
+      _ = smd_finish(s[0].smd[..]);
       s[0].doc_page = page;
     }
     doc_id := tr_join(buf[..], "ds.md.", page);
-    _ = k_agent(t, u, doc_id, s[0].doc[..]);
-    if page == 2 {
-      _ = k_code(t, u, "ds.start.code", "sh", DS_SNIPPET);
-    }
+    smd_render_tree(t, doc_id, "md", s[0].smd[..]);
   } else {
     _ = k_set_group(t, u, "ds.missing", "404 — Unknown Route");
     _ = tr_leaf(t, "ds.missing.msg", TG_P, "sec-n", "No docs page matches this URL. Try /docs/introduction or return to Hello World.");
-    home := tr_leaf(t, "ds.link.0", TG_A, "btn", "Back to Hello World");
+    home := tr_leaf(t, "ds.link.0", TG_A, "lk", "Back to Hello World");
     tr_attr(t, home, AT_HREF, "/");
     k_set_group_end(t);
   }
@@ -191,13 +203,9 @@ ds_drain_msgs :: (s: [] DocsStarter) {
       }
     } else if m[0].target == s[0].shell_c {
       if m[0].tag == DS_ROUTE {
-        ds_navigate(s, ds_route_index(payload), false);
+        _ = ui_provide_int(rt, s[0].shell_c, "page", ds_route_index(payload));
       } else if m[0].tag == DS_CLICK {
-        if payload == "ds.nav.0" || payload == "ds.link.0" { ds_navigate(s, 0, true); }
-        else if payload == "ds.nav.1" || payload == "ds.link.1" { ds_navigate(s, 1, true); }
-        else if payload == "ds.nav.2" || payload == "ds.link.2" { ds_navigate(s, 2, true); }
-        else if payload == "ds.nav.3" || payload == "ds.link.3" { ds_navigate(s, 3, true); }
-        else if payload == "ds.code.copy" || payload == "ds.start.code.copy" {
+        if payload == "ds.code.copy" {
           s[0].clip_n = ui_copy(s[0].clip[..], DS_SNIPPET);
         }
       } else if m[0].tag == DS_INPUT {
@@ -211,15 +219,17 @@ ds_drain_msgs :: (s: [] DocsStarter) {
 }
 
 // Prerenders a complete crawlable SSR HTML document for any route index (`0..3`, or `-1` for 404).
-ds_render_ssr :: (s: [] DocsStarter, page: int, out: [] u8) -> int {
+// When `hydrate == false` (pure docs routes), emits 0 KB JS and 0 KB Wasm!
+ds_render_ssr :: (s: [] DocsStarter, page: int, hydrate: bool, out: [] u8) -> int {
   ds_init(s);
-  ds_navigate(s, page, false);
-  css_n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+  _ = ui_provide_int(s[0].rt[..], s[0].shell_c, "page", page);
+  css_n := ds_write_css(s);
   ui_begin(s[0].ui[..], 0, true);
   ds_build(s);
   names := DS_NAV_NAMES;
   title := ifx page >= 0 && page < DS_ROUTES then names[page] else "Page Not Found";
-  return ht_render_document(s[0].tree[..], title, cast(string) s[0].css[0..<css_n], "", "docs-starter", out);
+  app := ifx hydrate then "docs-starter" else "";
+  return ht_render_document(s[0].tree[..], title, cast(string) s[0].css[0..<css_n], "", app, out);
 }
 
 coaxial_ds_frame :: (s: [] DocsStarter, dt: f32, reduced: bool) -> int #export_c #effects(all) {
@@ -233,7 +243,7 @@ coaxial_ds_frame :: (s: [] DocsStarter, dt: f32, reduced: bool) -> int #export_c
   if mode == UIP_FLUSH_NONE && !s[0].animating { return 0; }
   d := s[0].dom[..];
   if !d[0].styled {
-    n := mono_button_css(s[0].css[..], mono_page_css(s[0].css[..], mono_set_css(s[0].css[..], mono_css(s[0].css[..]))));
+    n := ds_write_css(s);
     dm_style(d, cast(string) s[0].css[0..<n]);
   }
   if mode == UIP_FLUSH_SUBTREE && !s[0].animating && !rt[0].comps[s[0].shell_c].dirty {
@@ -291,18 +301,25 @@ coaxial_ds_inbox_cap :: () -> int #export_c #effects(all) { return DS_INBOX; }
 
 DsTest :: struct { s: [1] DocsStarter; }
 
-#test "docs starter runs on Coax UI Core, routes real URLs, patches leaf counter subtree, and prerenders SSR HTML" {
+#test "hybrid docs starter runs hydrated Wasm on / and 0-KB-Wasm SSR with mono.coax CSS and syntax highlighting on /docs/*" {
   h: [1] DsTest; s := h[0].s[..];
   #assert coaxial_ds_inbox_cap() == DS_INBOX && !coaxial_ds_busy(s);
   #assert ds_route_index("/") == 0 && ds_route_index("/docs") == 1 && ds_route_index("/docs/introduction") == 1;
   #assert ds_route_index("/docs/getting-started") == 2 && ds_route_index("/docs/roadmap") == 3 && ds_route_index("/docs/nope") == -1;
+  #assert ds_doc_source(0) == "" && ds_doc_source(1) == DS_DOC_INTRO && ds_doc_source(2) == DS_DOC_START && ds_doc_source(3) == DS_DOC_ROADMAP && ds_doc_source(4) == "";
 
   n := coaxial_ds_frame(s, 0.016, true);
   t := s[0].tree[..]; d := s[0].dom[..];
   #assert n > 500 && t[0].lost == 0 && t[0].depth == 0;
+  #assert tr_text_of(t, tr_find(t, "ds.body.t")) == "Hello World";
   #assert tr_text_of(t, tr_find(t, "ds.counter.greet")) == "Hello, World!";
   #assert tr_text_of(t, tr_find(t, "ds.counter.count")) == "Clicks: 0 (live Wasm state)";
-  #assert tr_attr_of(t, tr_find(t, "ds.link.1"), AT_HREF) == "/docs/introduction";
+  // Sidebar nav uses real <a href> links for 0-KB-JS navigation across static docs routes
+  nav0 := tr_find(t, "ds.nav.0"); nav1 := tr_find(t, "ds.nav.1");
+  #assert t[0].nodes[nav0].tag == TG_A && tr_attr_of(t, nav0, AT_HREF) == "/" && tr_attr_of(t, nav0, AT_CURRENT) == "true";
+  #assert t[0].nodes[nav1].tag == TG_A && tr_attr_of(t, nav1, AT_HREF) == "/docs/introduction" && !tr_has(t, nav1, AT_CURRENT);
+  #assert t[0].nodes[tr_find(t, "ds.nav.0.t")].tag == TG_SPAN && t[0].nodes[tr_find(t, "ds.nav.0.n")].tag == TG_SPAN;
+  #assert t[0].nodes[tr_find(t, "ds.links.row")].tag == TG_DIV && t[0].nodes[tr_find(t, "ds.link.1")].tag == TG_A && tr_attr_of(t, tr_find(t, "ds.link.1"), AT_HREF) == "/docs/introduction";
   #assert coaxial_ds_frame(s, 0.016, true) == 0 && !coaxial_ds_busy(s);
 
   // Leaf click routes to "ds.counter" and flushes ONLY its subtree
@@ -336,70 +353,54 @@ DsTest :: struct { s: [1] DocsStarter; }
   coaxial_ds_event(s, DS_SUBMIT, dm_find(d, "ds.name"), 0);
   #assert coaxial_ds_frame(s, 0.016, true) > 0 && s[0].count == 1;
 
-  // Resize triggers structural redraw
-  coaxial_ds_size(s, dm_find(d, "ds.nav.0"), 120, 36);
-  n_sz := coaxial_ds_frame(s, 0.016, true);
-  #assert n_sz > 0 && dm_test_count(d, n_sz, DC_FRAME) == 1;
-
-  // Clicking nav items and <a href> links switches route AND emits dom_go pushState URL!
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.link.1"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert coaxial_ds_go_len(s) == 18 && coaxial_ds_go_push(s) && cast(string) s[0].go[0..<18] == "/docs/introduction";
-  coaxial_ds_go_done(s);
-  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s);
-  #assert s[0].doc[0].nb > 0 && tr_find(t, "ds.md.1.b0") >= 0;
-
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.2"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert cast(string) s[0].go[0..<coaxial_ds_go_len(s)] == "/docs/getting-started" && tr_find(t, "ds.start.code") >= 0;
-  coaxial_ds_go_done(s);
-
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.3"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert cast(string) s[0].go[0..<coaxial_ds_go_len(s)] == "/docs/roadmap" && tr_find(t, "ds.md.3.b0") >= 0;
-  coaxial_ds_go_done(s);
-
-  // Incoming DS_ROUTE (direct URL load / browser popstate) navigates WITHOUT calling dom_go push!
-  r_intro := "/docs/introduction";
-  for i: 0..<r_intro.count { s[0].inbox[i] = r_intro[i]; }
-  coaxial_ds_event(s, DS_ROUTE, 0, r_intro.count);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s) && s[0].doc_page == 1;
-  r_path := "/docs/missing";
-  for i: 0..<r_path.count { s[0].inbox[i] = r_path[i]; }
-  coaxial_ds_event(s, DS_ROUTE, 0, r_path.count);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert coaxial_ds_go_len(s) == 0 && t[0].depth == 0 && tr_find(t, "ds.missing") >= 0;
-  #assert t[0].nodes[tr_find(t, "ds.missing.msg")].tag == TG_P && t[0].nodes[tr_find(t, "ds.link.0")].tag == TG_A && tr_attr_of(t, tr_find(t, "ds.link.0"), AT_HREF) == "/";
-  // Back to "/" via <a id="ds.link.0"> link
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.link.0"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert cast(string) s[0].go[0..<coaxial_ds_go_len(s)] == "/" && tr_find(t, "ds.counter") >= 0;
-  #assert tr_text_of(t, tr_find(t, "ds.body.t")) == "Hello World";
-  #assert t[0].nodes[tr_find(t, "ds.links.row")].tag == TG_DIV && t[0].nodes[tr_find(t, "ds.link.1")].tag == TG_A;
-  coaxial_ds_go_done(s);
-
+  // Copy button copies DS_SNIPPET; clicking non-copy nav link leaves go_n == 0 so browser follows <a href> natively
   coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.code.copy"), 0);
   _ = coaxial_ds_frame(s, 0.016, true);
   #assert coaxial_ds_clip(s) == DS_SNIPPET.count;
   coaxial_ds_clip_done(s);
   #assert coaxial_ds_clip(s) == 0;
+  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
+  _ = coaxial_ds_frame(s, 0.016, true);
+  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s);
 
-  // Build-time SSR rendering produces crawlable HTML with data-coax-ssr="1" for page 0, page 1, page DS_ROUTES, and -1
+  // Resize on framed node OUTSIDE ds.counter triggers structural full redraw (not subtree!)
+  coaxial_ds_size(s, dm_find(d, "ds.code"), 520, 96);
+  n_sz := coaxial_ds_frame(s, 0.016, true);
+  #assert n_sz > 0 && dm_test_count(d, n_sz, DC_FRAME) == 1;
+
+  // Hybrid SSR output:
+  //   - page 0 (hydrate=true) includes dom-host.js bootstrap script + mono.coax CSS
+  //   - page 1 (/docs/introduction, hydrate=false) has ZERO <script> tags, syntax-highlighted tokens, callout island, and mono.coax CSS!
   h2: [1] DsTest; s2 := h2[0].s[..]; html_buf: [65536] u8;
-  hn0 := ds_render_ssr(s2, 0, html_buf[..]);
-  #assert hn0 > 500 && s2[0].ready && !s2[0].ui[0].busy && s2[0].go_n == 0;
-  #assert cast(string) html_buf[0..<15] == "<!doctype html>" && tr_find(s2[0].tree[..], "ds.counter") >= 0;
-  // Exact title "<title>Hello World</title><style id=\"coaxial-style\">" followed by css[0]
+  hn0 := ds_render_ssr(s2, 0, true, html_buf[..]);
+  #assert hn0 > 500 && s2[0].ready && !s2[0].ui[0].busy && s2[0].ui[0].reduced;
   pfx0 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Hello World</title><style id=\"coaxial-style\">";
-  #assert cast(string) html_buf[0..<pfx0.count] == pfx0 && html_buf[pfx0.count] == s2[0].css[0] && s2[0].ui[0].reduced;
-  hn1 := ds_render_ssr(s2, 1, html_buf[..]);
+  suf0 := "<script type=\"module\" src=\"/coaxial/dom-host.js\" data-app=\"docs-starter\" data-root=\"coaxial-root\"></script></body></html>";
+  #assert cast(string) html_buf[0..<pfx0.count] == pfx0 && html_buf[pfx0.count] == s2[0].css[0];
+  #assert cast(string) html_buf[hn0 - suf0.count..<hn0] == suf0;
+
+  hn1 := ds_render_ssr(s2, 1, false, html_buf[..]);
   pfx1 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Introduction</title>";
-  #assert hn1 > 500 && s2[0].go_n == 0 && tr_find(s2[0].tree[..], "ds.md.1.b0") >= 0 && cast(string) html_buf[0..<pfx1.count] == pfx1;
-  hn4 := ds_render_ssr(s2, DS_ROUTES, html_buf[..]);
+  suf1 := "</main></body></html>";
+  #assert hn1 > 500 && s2[0].doc_page == 1 && s2[0].smd[0].doc[0].blocks[0].part == 0 && s2[0].smd[0].finished;
+  #assert cast(string) html_buf[0..<pfx1.count] == pfx1 && cast(string) html_buf[hn1 - suf1.count..<hn1] == suf1;
+  #assert tr_find(s2[0].tree[..], "ds.md.1") >= 0 && tr_find(s2[0].tree[..], "ds.md.1.b.1.title") >= 0;
+  // Syntax highlighting tokens present in prerendered /docs/introduction Tree!
+  has_syn := false;
+  for i: 0..<s2[0].tree[0].n { if tr_class(s2[0].tree[..], i) == "syn-kw" { has_syn = true; } }
+  #assert has_syn;
+
+  // Verify /docs/getting-started, /docs/roadmap, and 404 (page == DS_ROUTES and -1)
+  hn2 := ds_render_ssr(s2, 2, false, html_buf[..]);
+  #assert hn2 > 500 && s2[0].doc_page == 2 && s2[0].smd[0].doc[0].keep_rules && tr_find(s2[0].tree[..], "ds.md.2") >= 0 && md_block_text(s2[0].smd[0].doc[..], 1) == "Edit-to-Screen Loop";
+  hn3 := ds_render_ssr(s2, 3, false, html_buf[..]);
+  #assert hn3 > 500 && s2[0].doc_page == 3 && tr_find(s2[0].tree[..], "ds.md.3") >= 0;
+  hn4 := ds_render_ssr(s2, DS_ROUTES, false, html_buf[..]);
   pfx4 := "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Page Not Found</title>";
-  #assert hn4 > 500 && tr_find(s2[0].tree[..], "ds.missing") >= 0 && tr_text_of(s2[0].tree[..], tr_find(s2[0].tree[..], "ds.body.t")) == "Page Not Found" && cast(string) html_buf[0..<pfx4.count] == pfx4;
-  hn404 := ds_render_ssr(s2, -1, html_buf[..]);
+  #assert hn4 > 500 && s2[0].tree[0].depth == 0 && tr_find(s2[0].tree[..], "ds.missing") >= 0;
+  #assert tr_text_of(s2[0].tree[..], tr_find(s2[0].tree[..], "ds.body.t")) == "Page Not Found" && cast(string) html_buf[0..<pfx4.count] == pfx4;
+  #assert s2[0].tree[0].nodes[tr_find(s2[0].tree[..], "ds.missing.msg")].tag == TG_P && s2[0].tree[0].nodes[tr_find(s2[0].tree[..], "ds.link.0")].tag == TG_A && tr_attr_of(s2[0].tree[..], tr_find(s2[0].tree[..], "ds.link.0"), AT_HREF) == "/";
+  hn404 := ds_render_ssr(s2, -1, false, html_buf[..]);
   #assert hn404 > 500 && cast(string) html_buf[0..<pfx4.count] == pfx4;
 }
 
@@ -411,6 +412,10 @@ DsTest :: struct { s: [1] DocsStarter; }
   coaxial_ds_event(empty, DS_CLICK, 0, 0);
   coaxial_ds_size(empty, 0, 10, 10);
   coaxial_ds_clip_done(empty);
+  s[0].go_n = 1; s[0].go_push = true;
+  #assert coaxial_ds_go_len(s) == 1 && coaxial_ds_go_push(s);
+  coaxial_ds_go_done(s);
+  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s);
 
   b3: [3] u8; b9: [9] u8; b12: [12] u8; b13: [13] u8;
   #assert ds_greet("", b3[..]) == "Hel" && ds_greet("A", b9[..]) == "Hello, A!";
@@ -430,39 +435,26 @@ DsTest :: struct { s: [1] DocsStarter; }
   #assert t[0].nodes[tr_find(t, "ds.counter.lede")].tag == TG_P && t[0].nodes[tr_find(t, "ds.counter.row")].tag == TG_DIV;
   #assert t[0].nodes[tr_find(t, "ds.counter.count")].tag == TG_P && tr_attr_of(t, tr_find(t, "ds.counter.inc"), AT_STATE) == "primary";
   #assert tr_has(t, tr_find(t, "ds.counter.reset"), AT_DISABLED);
-  #assert tr_attr_of(t, tr_find(t, "ds.nav.0"), AT_CURRENT) == "true" && !tr_has(t, tr_find(t, "ds.nav.1"), AT_CURRENT);
   births_p0 := s[0].ui[0].nb;
   ui_mark_dirty(s[0].rt[..], s[0].counter_c);
   _ = coaxial_ds_frame(s, 0.5, false);
   #assert s[0].time > 0.09 && s[0].time < 0.11;
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.3"), 0);
-  _ = coaxial_ds_frame(s, 0.016, false);
-  #assert s[0].ui[0].nb < births_p0;
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert !s[0].animating;
 
-  // Test nav.1, nav.2, nav.3 + link.2, link.3 + DS_ROUTE oversize length + ds_navigate out-of-range push
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.link.2"), 0);
-  _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].doc_page == 2 && s[0].doc[0].blocks[0].part == 0 && tr_find(t, "ds.start.code") >= 0 && md_block_text(s[0].doc[..], 1) == "Edit-to-screen loop";
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0); _ = coaxial_ds_frame(s, 0.016, true);
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.link.3"), 0); _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].doc_page == 3 && tr_find(t, "ds.start.code") < 0 && md_block_text(s[0].doc[..], 1) == "Phase 3.5 Milestones";
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0); _ = coaxial_ds_frame(s, 0.016, true);
-  #assert s[0].doc_page == 1 && md_block_text(s[0].doc[..], 1) == "Why Coax Web";
-  coaxial_ds_go_done(s);
-  ds_navigate(s, -1, true);
-  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s);
-  ds_navigate(s, DS_ROUTES, true);
-  #assert coaxial_ds_go_len(s) == 0 && !coaxial_ds_go_push(s);
+  // Switch via DS_ROUTE to /docs/introduction while non-reduced -> retires page-0 animation births
+  r_intro := "/docs/introduction";
+  for i: 0..<r_intro.count { s[0].inbox[i] = r_intro[i]; }
+  coaxial_ds_event(s, DS_ROUTE, 0, r_intro.count);
+  _ = coaxial_ds_frame(s, 0.016, false);
+  #assert s[0].doc_page == 1 && s[0].ui[0].nb < births_p0;
+  // Oversize DS_ROUTE length clamps safely to DS_INBOX and routes to 404
   for i: 0..<DS_INBOX { s[0].inbox[i] = 'a'; }
   coaxial_ds_event(s, DS_ROUTE, 0, DS_INBOX + 20);
   _ = coaxial_ds_frame(s, 0.016, true);
-  #assert tr_find(t, "ds.missing") >= 0;
+  #assert !s[0].animating && tr_find(t, "ds.missing") >= 0;
 
-  // Back to page 0, verify input clamping and overflow resets
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.0"), 0);
+  // Back to "/", verify input clamping and overflow resets
+  s[0].inbox[0] = '/';
+  coaxial_ds_event(s, DS_ROUTE, 0, 1);
   _ = coaxial_ds_frame(s, 0.016, true);
   #assert tr_find(t, "ds.counter") >= 0;
   coaxial_ds_event(s, DS_CLICK, -1, 0);
@@ -488,7 +480,8 @@ DsTest :: struct { s: [1] DocsStarter; }
   dm_keep(d);
   #assert coaxial_ds_frame(s, 0.016, true) == -1 && !d[0].styled && s[0].rt[0].structural_dirty;
   #assert coaxial_ds_frame(s, 0.016, true) > 500 && d[0].styled && !s[0].rt[0].structural_dirty;
-  coaxial_ds_event(s, DS_CLICK, dm_find(d, "ds.nav.1"), 0);
+  for i: 0..<r_intro.count { s[0].inbox[i] = r_intro[i]; }
+  coaxial_ds_event(s, DS_ROUTE, 0, r_intro.count);
   d[0].out_n = DM_OUT - 1;
   dm_keep(d);
   #assert coaxial_ds_frame(s, 0.016, true) == -1 && !d[0].styled && s[0].rt[0].structural_dirty;

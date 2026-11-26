@@ -1,6 +1,8 @@
-// Build, SSR-prerender, and serve tool for the Hello World + Routed Docs Coax Web starter.
-// Emits Wasm + native Coax SSR HTML (data-coax-ssr="1") for every route:
-//   /, /docs, /docs/introduction, /docs/getting-started, /docs/roadmap, and 404.html.
+// Build, hybrid SSR-prerender, and serve tool for the Hello World + Docs Coax Web starter.
+// Emits:
+//   - `/` (index.html): Native Coax SSR + hydrated Wasm (`docs-starter.wasm`)
+//   - `/docs`, `/docs/introduction`, `/docs/getting-started`, `/docs/roadmap`, `404.html`:
+//     Pure 0-KB-Wasm / 0-KB-JS static HTML using components/skin/mono.coax CSS + raw `.md` alternates.
 // Run from the repository root:
 //   coax/web/tool.sh apps/openagents-web/demos/docs-starter/build.coax [--serve] [--listen HOST:PORT]
 #import "Basic";
@@ -12,7 +14,7 @@
 DS_APP_DIR :: "apps/openagents-web/build/docs-starter";
 DS_BUILD_SRC :: "apps/openagents-web/demos/docs-starter/build.coax";
 
-DS_INDEX_MD :: "# Coax Web Starter\n\nRouted Hello World and Markdown docs starter running on `coax/web/dom-host.js`, `components/ui/router.coax`, `components/backend/html.coax`, and `coax/web/serve.sh`.\n\nRoutes:\n- `/`\n- `/docs/introduction`\n- `/docs/getting-started`\n- `/docs/roadmap`\n";
+DS_INDEX_MD :: "# Coax Web Starter\n\nHybrid starter: hydrated Coax Wasm on `/` and 0-KB-Wasm static SSR docs on `/docs/*` reusing `components/skin/mono.coax`.\n\nRoutes:\n- `/` (hydrated Wasm)\n- `/docs/introduction` (0 KB Wasm)\n- `/docs/getting-started` (0 KB Wasm)\n- `/docs/roadmap` (0 KB Wasm)\n";
 
 ds_quote :: (text: string, out: [] u8) -> string {
   need := 2;
@@ -41,16 +43,23 @@ ds_write :: (path: string, text: string) -> bool {
   return fs_write(path, text);
 }
 
-ds_emit_route :: (dir: string, file: string, page: int) -> bool {
+ds_emit_route :: (dir: string, file: string, page: int, hydrate: bool) -> bool {
   if !fs_mkdir(dir) { return false; }
   h: [1] DsTest;
   html: [131072] u8;
-  n := ds_render_ssr(h[0].s[..], page, html[..]);
+  n := ds_render_ssr(h[0].s[..], page, hydrate, html[..]);
   if n <= 0 { return false; }
   pbuf: [4096] u8;
   full := fs_join(dir, file, pbuf[..]);
   if full == "" { return false; }
-  return ds_write(full, cast(string) html[0..<n]);
+  if !ds_write(full, cast(string) html[0..<n]) { return false; }
+  md := ds_doc_source(page);
+  if md.count > 0 {
+    mbuf: [4096] u8;
+    mpath := fs_join(dir, "index.md", mbuf[..]);
+    if mpath == "" || !ds_write(mpath, md) { return false; }
+  }
+  return true;
 }
 
 ds_watch :: (root: string, src: string, name: string) -> bool {
@@ -90,15 +99,16 @@ tool_main :: () -> int #export_c #effects(all) {
                       "apps/openagents-web/build/docs-starter/build/docs-starter.wasm"];
   if !ds_run(wasm[..]) { return 1; }
 
-  // Prerender every route with native Coax SSR (components/backend/html.coax) for instant first paint & in-place hydration.
-  if !ds_emit_route(DS_APP_DIR, "index.html", 0) ||
-     !ds_emit_route("apps/openagents-web/build/docs-starter/docs", "index.html", 1) ||
-     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/introduction", "index.html", 1) ||
-     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/getting-started", "index.html", 2) ||
-     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/roadmap", "index.html", 3) ||
-     !ds_emit_route(DS_APP_DIR, "404.html", -1) ||
+  // Hybrid output:
+  //   `/` hydrates with docs-starter.wasm; `/docs/*` & `404.html` are 0-KB-Wasm static SSR HTML + raw index.md!
+  if !ds_emit_route(DS_APP_DIR, "index.html", 0, true) ||
+     !ds_emit_route("apps/openagents-web/build/docs-starter/docs", "index.html", 1, false) ||
+     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/introduction", "index.html", 1, false) ||
+     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/getting-started", "index.html", 2, false) ||
+     !ds_emit_route("apps/openagents-web/build/docs-starter/docs/roadmap", "index.html", 3, false) ||
+     !ds_emit_route(DS_APP_DIR, "404.html", -1, false) ||
      !ds_write("apps/openagents-web/build/docs-starter/index.md", DS_INDEX_MD) {
-    tool_errln("docs-starter: cannot write prerendered SSR HTML routes");
+    tool_errln("docs-starter: cannot write prerendered hybrid SSR routes");
     return 1;
   }
   if !ds_watch(root, "apps/openagents-web/demos/docs-starter/page.coax", "page.coax") ||
@@ -109,7 +119,7 @@ tool_main :: () -> int #export_c #effects(all) {
     return 1;
   }
   if !serve {
-    tool_errln("docs-starter: built Wasm + SSR routes (/, /docs/introduction, /docs/getting-started, /docs/roadmap)");
+    tool_errln("docs-starter: built hybrid site (/ hydrated Wasm + /docs/* 0-KB-Wasm static SSR)");
     return 0;
   }
   sa: [4096] u8; sb: [4096] u8; q1: [8192] u8; q2: [8192] u8; cmd_buf: [16384] u8;
