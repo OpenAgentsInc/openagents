@@ -255,7 +255,9 @@ dc_worker_take :: (w: [] DcWorker, out: [] u8) -> int {
 // same way and, with forget, its files go.
 dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
   if dc_worker_is_run(w) {
-    rb: [32] u8; id := dc_fits(rb[..], dc_copy(rb[..], dc_worker_run(w)));
+    // 33: dc_fits takes only text shorter than its buffer, and a run's id is 32 bytes. With [32] the
+    // id came out empty, StopRun named no run, and the worker ran on (GitHub #14104).
+    rb: [33] u8; id := dc_fits(rb[..], dc_copy(rb[..], dc_worker_run(w)));
     dc_worker_detach(w, d);
     _ := dc_daemon_stop_run(d, id);
     if forget { _ := dc_daemon_forget_run(d, id); }
