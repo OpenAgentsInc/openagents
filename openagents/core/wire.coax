@@ -209,8 +209,9 @@ flawed_wire_local_effort :: (thinking_mode: int, effort: string) -> string #effe
 
 flawed_wire_max_tokens :: (thinking_mode: int, effort: string, is_local: bool) -> int #effects(all) {
   if is_local {
-    if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 4096; }
-    return 8192;
+    if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 3072; }
+    if effort == "medium" { return 4096; }
+    return 6144;
   }
   if thinking_mode == FLAWED_THINK_OFF || effort == "low" || effort == "medium" { return 32768; }
   return 65536;
@@ -606,8 +607,8 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "high") == "high" && flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "xhigh") == "xhigh";
   #assert flawed_wire_local_effort(FLAWED_THINK_EXTENDED, "max") == "max" && flawed_wire_local_effort(FLAWED_THINK_ADAPTIVE, "") == "high";
 
-  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "high", true) == 4096 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", true) == 4096;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", true) == 8192;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "high", true) == 3072 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", true) == 3072;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium", true) == 4096 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", true) == 6144;
   #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "max", false) == 32768 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", false) == 32768;
   #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium", false) == 32768 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", false) == 65536;
   #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "xhigh", false) == 65536 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "max", false) == 65536;

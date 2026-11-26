@@ -420,15 +420,21 @@ class Sandbox:
         return dict(os.environ, HOME=str(self.home), GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                     GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
 
-    def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL) -> dict[str, str]:
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE", "PSIONIC_", "MC_DELEGATE_"))}
+    def worker_env(self, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = "") -> dict[str, str]:
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE", "PSIONIC_", "MC_DELEGATE_", "OA_", "FLAWED_"))}
         # no __pycache__ from the agent's own test runs: it would count as files the task changed
         env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"), PYTHONDONTWRITEBYTECODE="1")
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                    GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
+        if effort:
+            env["OA_AGENT_EFFORT"] = effort
         if psionic_base_url:
             env["PSIONIC_BASE_URL"] = psionic_base_url
             env["PSIONIC_MODEL"] = model
+            env["OA_AGENT_BACKEND"] = "local"
+            env["OA_AGENT_MODEL"] = model
+        elif model:
+            env["OA_AGENT_MODEL"] = model
         (self.root / "tmp").mkdir(exist_ok=True)
         return env
 
@@ -525,12 +531,12 @@ def snapshot(d: Path) -> dict[str, str]:
 # ---------------------------------------------------------------- driver
 
 class Driver:
-    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL):
+    def __init__(self, sb: Sandbox, worker: Path, claude_worker: Path | None, log_path: Path, psionic_base_url: str = "", model: str = DEFAULT_MODEL, effort: str = ""):
         args = [str(HOST_DRIVER_BIN), "--worker", str(worker)]
         if claude_worker:
             args += ["--claude-worker", str(claude_worker)]
         self.log = open(log_path, "w")
-        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.p = subprocess.Popen(args, cwd=str(sb.root), env=sb.worker_env(psionic_base_url, model, effort), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=self.log, text=True, bufsize=1)
 
     def cmd(self, line: str) -> dict[str, Any]:
@@ -612,7 +618,7 @@ def compute_ttft_ms(lines: list[dict[str, Any]]) -> int:
 
 def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: Path | None, gcloud_cache: Path,
              keep: bool, model: str = "", psionic_base_url: str = "", timeout_floor: int = 0,
-             include_na: bool = False) -> dict[str, Any]:
+             include_na: bool = False, effort: str = "") -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
     eff_model = model or DEFAULT_MODEL
     if eff_model in ("inkling-2-mini", "inkling") and not include_na and task["id"] in INKLING_NOT_APPLICABLE_TASKS:
@@ -664,7 +670,7 @@ def run_task(task: dict[str, Any], case_dir: Path, worker: Path, claude_worker: 
     error = None
     reloads = 0
     d = Driver(sb, worker, claude_worker if task.get("claude") else None, case_dir / "driver.log",
-               psionic_base_url=psionic_base_url, model=eff_model)
+               psionic_base_url=psionic_base_url, model=eff_model, effort=effort)
     try:
         must(d.cmd(f"WIRE_LOG {wire}"), "WIRE_LOG")
         open_slot(d, sb, task, session, bool(task.get("claude")), eff_model)
@@ -1046,7 +1052,8 @@ def main() -> int:
     ap.add_argument("--ctx", type=int, default=DEFAULT_LOCAL_CTX, help="context length for auto-launched psionic-inkling-serve (default 32768)")
     ap.add_argument("--timeout-floor", type=int, default=-1, help="minimum per-task timeout in seconds (default 600 for local Inkling, 0 for cloud)")
     ap.add_argument("--include-na", action="store_true", help="run even tasks marked not_applicable for single-model Inkling")
-    ap.add_argument("--worker", default="inky", choices=["mcworker", "inky"], help="worker binary to run (inky or mcworker; default inky)")
+    ap.add_argument("--worker", default="oa-worker", choices=["oa-worker", "mcworker", "inky"], help="worker binary to run (default oa-worker)")
+    ap.add_argument("--effort", default="", help="reasoning effort override (low|medium|high)")
     ap.add_argument("-j", "--workers", type=int, default=1, help="number of parallel task workers (default 1)")
     ap.add_argument("--allow-dirty-host", action="store_true", help="allow local Metal benchmarks even when competing GPU/LLM servers or host pressure are detected")
     args = ap.parse_args()
@@ -1130,7 +1137,7 @@ def main() -> int:
                 pre_procs = hc.sample_processes() if is_local else []
                 log_off0 = srv.log_offset() if is_local else 0
                 r = run_task(t, run_dir / "cases" / t["id"], worker, claude_worker, gcloud_cache, args.keep,
-                             eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na)
+                             eff_model, psionic_base_url=srv.base_url, timeout_floor=timeout_floor, include_na=args.include_na, effort=args.effort)
                 srv.sample_rss()
                 if is_local and not r.get("not_applicable"):
                     r["effective_tps"] = r.get("decode_tps", 0.0)

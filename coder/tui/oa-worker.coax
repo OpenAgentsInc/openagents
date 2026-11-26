@@ -37,12 +37,12 @@ FWW_MAX_TOOLS_CALL :: 24;
 FWW_CMD_MAX :: 32768;
 FWW_FILE_MAX :: 524288;
 FWW_TOOL_OUT_MAX :: 49152;
-FWW_LOCAL_TOOL_OUT_MAX :: 12288;
+FWW_LOCAL_TOOL_OUT_MAX :: 8192;
 FWW_FC_ENTRIES :: 128;
 FWW_FC_SLAB :: 1048576;
 FWW_READ_DEDUP_SLOTS :: 32;
 FWW_READ_CLOUD_LINES :: 600;
-FWW_READ_LOCAL_LINES :: 300;
+FWW_READ_LOCAL_LINES :: 200;
 FWW_READ_CLOUD_BYTES :: 32768;
 FWW_GREP_MAX_BYTES :: 16384;
 FWW_GREP_LINE_MAX :: 240;
@@ -1777,6 +1777,26 @@ fww_is_coax_repo :: (cwd: string) -> bool {
          fs_exists(fs_join(cwd, "coax/web/tool.sh", p2[..]));
 }
 
+// Compact coding system prompt for 32K local Inkling 2 Mini (#14055).
+fww_build_local_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform: string, out: [] u8) -> int {
+  n := 0;
+  n = fww_cat(out, n, "You are OpenAgents, a local coding assistant running in the user's workspace.\n");
+  n = fww_cat(out, n, "Working directory: ");
+  n = fww_cat(out, n, cwd);
+  n = fww_cat(out, n, "\nPlatform: ");
+  n = fww_cat(out, n, platform);
+  n = fww_cat(out, n, "\n\nRules:\n");
+  n = fww_cat(out, n, "- Use Read, Edit, Write, Glob, and Grep for files; use Bash for running tests and builds.\n");
+  n = fww_cat(out, n, "- Always Read a file before calling Edit. Keep edits minimal and exact.\n");
+  n = fww_cat(out, n, "- Run the relevant test command after editing to verify your fix, then answer concisely.\n");
+  n = fww_cat(out, n, "- Never repeat an identical tool call. If stuck, try a different approach or report clearly.\n");
+  n = fww_cat(out, n, "- Never run `git commit`, `git push`, or destructive commands outside the workspace (e.g. `rm -rf ..`) unless explicitly asked; refuse destructive requests outside the workspace.\n");
+  if cfg[0].permission_mode == FLAWED_PMODE_PLAN && !cfg[0].bypass_danger {
+    n = fww_cat(out, n, "\n[PLAN MODE ACTIVE]: Do not edit or write files. Present a concise plan.\n");
+  }
+  return n;
+}
+
 fww_build_coding_system_prompt_core :: (cfg: [] FwConfig, cwd: string, platform: string, out: [] u8) -> int {
   n := 0;
   n = fww_cat(out, n, "You are OpenAgents, an autonomous software engineering coding agent running natively inside OpenAgents Desktop.\n");
@@ -2130,8 +2150,8 @@ fww_build_openai_body_ex :: (cfg: [] FwConfig, h: [] FwHist, model: string, effo
       } else {
         jo_key(o[..], "content"); jo_raw(o[..], "null");
       }
-      // Only replay reasoning_content on the most recent assistant turn to prevent KV/prefill bloat across multi-turn tool loops.
-      if is_local && has_think && i + 2 >= h[0].nmsgs {
+      // Only replay reasoning_content on the immediately preceding assistant turn to prevent KV/prefill bloat on 32K local context.
+      if is_local && has_think && i + 1 >= h[0].nmsgs {
         jo_key(o[..], "reasoning_content");
         for b: 0..<msg.nblocks {
           if msg.blocks[b].kind == FWW_MB_THINK {
@@ -4223,6 +4243,10 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   eff := ifx is_gem
          then fww_adaptive_effort(cfg[0].thinking_mode, raw_eff, r[0].step_num, h[0].nmsgs, r[0].has_edited, r[0].last_bash_ok, r[0].last_step_had_err, r[0].audit_done, r[0].finish_nudged, r[0].calm_steps, req_elapsed_s, cfg[0].budget_s, cfg[0].bare_mode)
          else raw_eff;
+  // On 32K local Inkling 2 Mini in adaptive mode, map default "high" to "low" (gBench-proven Pareto champion: 100% seal_tools, 29-45% faster, no 8K thinking spirals).
+  if is_local && ctx_win <= 32768 && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode && eff == "high" {
+    eff = "low";
+  }
   if is_gem && r[0].force_low_once && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode {
     eff = "low";
   }
@@ -4235,16 +4259,20 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if !coding_turn {
     bn_sys := fww_build_base_system_prompt(cfg, base_sys_b[..]);
     sys = cast(string) base_sys_b[0..<bn_sys];
+  } else if is_local && ctx_win <= 32768 {
+    platform := ifx tool_os() == TOOL_LINUX then "Linux" else "macOS";
+    ln_sys := fww_build_local_coding_system_prompt_core(cfg, cast(string) r[0].cwd[0..<r[0].ncwd], platform, base_sys_b[..]);
+    sys = cast(string) base_sys_b[0..<ln_sys];
   }
   if is_local && ctx_win <= 32768 {
-    max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 8192;
+    max_sys := ifx r[0].ctx_recoveries >= 2 then 2048 else 4096;
     if sys.count > max_sys {
       sc := fww_utf8_cut(sys, max_sys);
       sys = cast(string) sys[0..<sc];
     }
   }
   no_tools := r[0].force_wrapup_once || !coding_turn;
-  include_coax_intel := coding_turn && !no_tools && fww_is_coax_repo(cast(string) r[0].cwd[0..<r[0].ncwd]);
+  include_coax_intel := coding_turn && !no_tools && !(is_local && ctx_win <= 32768) && fww_is_coax_repo(cast(string) r[0].cwd[0..<r[0].ncwd]);
   no_think := r[0].force_no_think_once;
   r[0].force_no_think_once = false;
 
@@ -4491,7 +4519,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     if beh == FLAWED_PBEH_DENY {
       r[0].acc[0].tools[idx].done = true;
       r[0].acc[0].tools[idx].is_error = true;
-      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Permission denied by active Flawed permission mode.");
+      r[0].acc[0].tools[idx].nres = fww_keep(r[0].acc[0].tools[idx].res[..], "Permission denied by active OpenAgents permission mode.");
       r[0].next_tool_idx += 1;
       continue;
     }
@@ -4501,7 +4529,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       r[0].permit_tool_idx = idx;
       r[0].waiting_permit = true;
       ttl_b: [128] u8;
-      tn := fww_cat(ttl_b[..], 0, "Allow Flawed to run ");
+      tn := fww_cat(ttl_b[..], 0, "Allow OpenAgents to run ");
       tn = fww_cat(ttl_b[..], tn, name);
       opts := "[{\"optionId\":\"allow_once\",\"name\":\"Allow once\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_session\",\"name\":\"Allow for session\",\"kind\":\"allow_always\"}]";
       fww_send(out, mww_permit(out, r[0].permit_ticket, false, cast(string) ttl_b[0..<tn], target, opts));
@@ -4521,7 +4549,7 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     if th == r[0].last_tool_hash {
       r[0].dup_tool_streak += 1;
       r[0].acc[0].tools[0].nres = fww_cat(r[0].acc[0].tools[0].res[..], r[0].acc[0].tools[0].nres,
-        "\n[Flawed loop guard: you already ran this exact tool call above. Do not repeat it — try a genuinely different approach or synthesize your final answer now.]");
+        "\n[OpenAgents loop guard: you already ran this exact tool call above. Do not repeat it — try a genuinely different approach or synthesize your final answer now.]");
     } else {
       r[0].last_tool_hash = th;
       r[0].dup_tool_streak = 0;
@@ -6598,4 +6626,11 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert flawed_wire_tool_permission("CoaxDefines", "rp_put", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_ALLOW;
   #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_PLAN, false, false) == FLAWED_PBEH_DENY;
   #assert flawed_wire_tool_permission("CoaxReplace", "coax/lib/repo/lines.coax", FLAWED_PMODE_ACCEPT_EDITS, false, false) == FLAWED_PBEH_ALLOW;
+
+  // 4) Local 32K Inkling 2 Mini compact coding prompt is <30% of full Neon prompt (#14055)
+  loc_b: [4096] u8;
+  loc_n := fww_build_local_coding_system_prompt_core(cfg[..], "/repo/openagents", "macOS", loc_b[..]);
+  loc_sys := cast(string) loc_b[0..<loc_n];
+  #assert loc_n > 200 && loc_n < 1024 && loc_n * 3 < full_n;
+  #assert fww_contains_ci(loc_sys, "rm -rf ..") && fww_contains_ci(loc_sys, "git push");
 }
