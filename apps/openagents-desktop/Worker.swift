@@ -27,7 +27,7 @@ final class CoderWorker {
 
     var alive: Bool { process?.isRunning == true || runID != nil }
     var isDaemonRun: Bool { runID != nil }
-    var program = "flawedworker"
+    var program = "oa-worker"
     var extraEnv: [String: String] = [:]
     var folder = ""
 
@@ -45,7 +45,7 @@ final class CoderWorker {
 
     private var defaultAgentID: String {
         switch program {
-        case "flawedworker": return "flawed"
+        case "oa-worker", "flawedworker": return "openagents"
         case "agyworker": return "antigravity"
         case "inky": return "inky"
         case "claudeworker": return "claude"

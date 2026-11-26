@@ -124,14 +124,15 @@ gbr_discover :: (e: [] GbEnv) #effects(all) {
     }
   }
 
-  // 3b. Flawed Agent Harness binary (FLAWED_WORKER_BIN -> sibling -> hashed tool.sh build -> cwd app -> ~/.openagents/bin -> /Applications)
+  // 3b. OpenAgents Core worker binary (OA_WORKER_BIN / FLAWED_WORKER_BIN -> sibling -> hashed tool.sh build -> cwd app -> ~/.openagents/bin -> /Applications)
   {
     f0: [FS_PATH_MAX] u8; f1: [FS_PATH_MAX] u8; f2: [FS_PATH_MAX] u8; f3: [FS_PATH_MAX] u8;
-    f_env := proc_getenv("FLAWED_WORKER_BIN", f0[..]);
-    f_sib := ifx self_dir.count > 0 then fs_join(self_dir, "flawedworker", f1[..]) else "";
-    f_cwd := ifx cwd.count > 0 then fs_join(cwd, "apps/openagents-desktop/build/OpenAgents.app/Contents/Resources/flawedworker", f2[..]) else "";
-    f_hom := fs_join(home, ".openagents/bin/flawedworker", f3[..]);
-    f_app := "/Applications/OpenAgents.app/Contents/Resources/flawedworker";
+    f_env := proc_getenv("OA_WORKER_BIN", f0[..]);
+    if f_env.count == 0 { f_env = proc_getenv("FLAWED_WORKER_BIN", f0[..]); }
+    f_sib := ifx self_dir.count > 0 then fs_join(self_dir, "oa-worker", f1[..]) else "";
+    f_cwd := ifx cwd.count > 0 then fs_join(cwd, "apps/openagents-desktop/build/OpenAgents.app/Contents/Resources/oa-worker", f2[..]) else "";
+    f_hom := fs_join(home, ".openagents/bin/oa-worker", f3[..]);
+    f_app := "/Applications/OpenAgents.app/Contents/Resources/oa-worker";
     if f_env.count > 0 && fs_kind(f_env) == FS_FILE {
       e[0].flawed_bin_n = gbw_put(e[0].flawed_bin[..], f_env);
       e[0].flawed_ok = true;
@@ -139,14 +140,14 @@ gbr_discover :: (e: [] GbEnv) #effects(all) {
       e[0].flawed_bin_n = gbw_put(e[0].flawed_bin[..], f_sib);
       e[0].flawed_ok = true;
     } else {
-      // When running via coax/web/tool.sh, pick up sibling coax/web/build/tools/flawedworker-<64hex>
+      // When running via coax/web/tool.sh, pick up sibling coax/web/build/tools/oa-worker-<64hex>
       found_hash := false;
       if self_dir.count > 0 {
         fl: [1] FsList;
         fn := fs_list(self_dir, fl[..]);
         for i: 0..<fn {
           nm := fs_entry(fl[..], i);
-          if gbr_starts(nm, "flawedworker-") && nm.count == 77 && !gbr_ends(nm, ".c") && !gbr_ends(nm, ".o") {
+          if gbr_starts(nm, "oa-worker-") && nm.count == 74 && !gbr_ends(nm, ".c") && !gbr_ends(nm, ".o") {
             fhb: [FS_PATH_MAX] u8;
             cand := fs_join(self_dir, nm, fhb[..]);
             if fs_kind(cand) == FS_FILE {

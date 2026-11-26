@@ -98,7 +98,7 @@ enum ExternalProviders {
         case providerCursor: return "Cursor"
         case providerAcp: return "ACP Agent"
         case providerClaude: return "Claude"
-        case providerFlawed: return "Flawed"
+        case providerFlawed: return "OpenAgents"
         default: return "Microcoder"
         }
     }
@@ -301,7 +301,7 @@ extension CoderWindow {
             program = "claudeworker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerFlawed:
-            program = "flawedworker"
+            program = "oa-worker"
             r.worker.extraEnv.removeValue(forKey: "CODER_PROVIDER")
         case ExternalProviders.providerInkling:
             program = "inky"
@@ -358,7 +358,7 @@ extension CoderWindow {
         var spawned = 0
         for (idx, modelID) in targets.enumerated() {
             guard let back = cd_headless() else { continue }
-            FlawedSettings.apply(to: back)
+            AgentSettings.apply(to: back)
             syncExternalProviders(on: back)
             coderApplyOpenRouter(back)
             coderApplyClaude(back)

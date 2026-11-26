@@ -923,9 +923,9 @@ extension CoderWindow {
 
     /// True when the foreground chat or any background chat is actively running a reply on Inkling 2 Mini, Flawed (local), or Hybrid Executor.
     private func isInklingReplyRunning() -> Bool {
-        if cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0 || FlawedSettings.pageNeedsLocal(page)) { return true }
+        if cd_running(page) != 0 && (cd_model_inkling(page) != 0 || cd_model_hybrid(page) != 0 || AgentSettings.pageNeedsLocal(page)) { return true }
         for r in runs.values where r.page != page {
-            if cd_running(r.page) != 0 && (cd_model_inkling(r.page) != 0 || cd_model_hybrid(r.page) != 0 || FlawedSettings.pageNeedsLocal(r.page)) { return true }
+            if cd_running(r.page) != 0 && (cd_model_inkling(r.page) != 0 || cd_model_hybrid(r.page) != 0 || AgentSettings.pageNeedsLocal(r.page)) { return true }
         }
         return false
     }
@@ -1177,9 +1177,9 @@ extension CoderWindow {
         if LocalModelStore.setActiveVariant(id) {
             LocalModelServer.shared.restartForVariantChange()
             configureWorkerEnv(run, isForeman: false)
-            FlawedSettings.probeAuth { [weak self] in
+            AgentSettings.probeAuth { [weak self] in
                 guard let self else { return }
-                FlawedSettings.apply(to: self.page)
+                AgentSettings.apply(to: self.page)
                 self.wake()
             }
         }

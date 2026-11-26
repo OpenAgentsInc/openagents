@@ -59,7 +59,7 @@ fi
 # Build independent Coax workers & Psionic Metal runtime in parallel with page C/Swift compiles.
 # COAX_TOOL_BUILD_ONLY=1 compiles without executing workers (prevents 0-byte .ajr leaks).
 worker_pids=()
-COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/flawedworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
+COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oa-worker.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/inky.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null & worker_pids+=($!)
 COAX_TOOL_BUILD_ONLY=1 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null & worker_pids+=($!)
@@ -128,7 +128,7 @@ core_swift=(
   "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Update.swift"
   "$here/Window+Worktrees.swift" "$here/Worker.swift" "$here/Worktree.swift" "$here/KeepAwake.swift"
   "$here/Window+GitDiff.swift" "$here/Window+GitActions.swift" "$here/Window+Checkpoints.swift"
-  "$here/FlawedSettings.swift" "$here/TitleGenerator.swift"
+  "$here/AgentSettings.swift" "$here/TitleGenerator.swift"
 )
 swift_files=("${core_swift[@]}")
 
@@ -222,7 +222,7 @@ fi
 cp "$here/resources/OpenAgents.icns" "$res/OpenAgents.icns"
 coax_hash="$(shasum -a 256 "$coax" | cut -d " " -f 1)"
 for p in "${worker_pids[@]}"; do wait "$p"; done
-cp "$repo/coax/web/build/tools/flawedworker-$coax_hash" "$res/flawedworker"
+cp "$repo/coax/web/build/tools/oa-worker-$coax_hash" "$res/oa-worker"
 cp "$repo/coax/web/build/tools/inky-$coax_hash" "$res/inky"
 cp "$repo/coax/web/build/tools/agyworker-$coax_hash" "$res/agyworker"
 cp "$repo/coax/web/build/tools/gitguard-$coax_hash" "$res/gitguard"

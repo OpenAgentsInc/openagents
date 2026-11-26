@@ -1,65 +1,103 @@
 // Firm reason: 6 (AppKit dialogs, UserDefaults persistence, and worker environment wiring over page/flawed_settings.coax).
 import AppKit
 
-/// Persisted Claude-Code-parity settings, key storage, live auth probe, and worker environment
-/// builder for the built-in pure-Coax Flawed Agent (`coder/tui/flawedworker.coax`).
-enum FlawedSettings {
+/// Persisted settings, key storage, live auth probe, and worker environment
+/// builder for the built-in pure-Coax OpenAgents Core worker (`coder/tui/oa-worker.coax`).
+enum AgentSettings {
     static let prefsCount = 20
     private static let d = UserDefaults.standard
 
-    private static let kDefaultAgent = "flawed.defaultAgent"
-    private static let kModelSlot = "flawed.modelSlot"
-    private static let kBackend = "flawed.backend"
-    private static let kThinkingMode = "flawed.thinkingMode"
-    private static let kEffort = "flawed.effort"
-    private static let kThinkingDisplay = "flawed.thinkingDisplay"
-    private static let kPermissionMode = "flawed.permissionMode"
-    private static let kBypassDanger = "flawed.bypassDanger"
-    private static let kSandboxMode = "flawed.sandboxMode"
-    private static let kGitGuard = "flawed.gitGuard"
-    private static let kPromptCache = "flawed.promptCache"
-    private static let kAutoCompact = "flawed.autoCompact"
-    private static let kAutoMemory = "flawed.autoMemory"
-    private static let kBareMode = "flawed.bareMode"
-    private static let kOutputStyle = "flawed.outputStyle"
-    private static let kHooksMode = "flawed.hooksMode"
-    private static let kMcpDefer = "flawed.mcpDefer"
-    private static let kFastMode = "flawed.fastMode"
-    private static let kExtendedCtx = "flawed.extendedCtx"
-    private static let kRemoteBridge = "flawed.remoteBridge"
+    private static let kDefaultAgent = "oa.agent.defaultAgent"
+    private static let kModelSlot = "oa.agent.modelSlot"
+    private static let kBackend = "oa.agent.backend"
+    private static let kThinkingMode = "oa.agent.thinkingMode"
+    private static let kEffort = "oa.agent.effort"
+    private static let kThinkingDisplay = "oa.agent.thinkingDisplay"
+    private static let kPermissionMode = "oa.agent.permissionMode"
+    private static let kBypassDanger = "oa.agent.bypassDanger"
+    private static let kSandboxMode = "oa.agent.sandboxMode"
+    private static let kGitGuard = "oa.agent.gitGuard"
+    private static let kPromptCache = "oa.agent.promptCache"
+    private static let kAutoCompact = "oa.agent.autoCompact"
+    private static let kAutoMemory = "oa.agent.autoMemory"
+    private static let kBareMode = "oa.agent.bareMode"
+    private static let kOutputStyle = "oa.agent.outputStyle"
+    private static let kHooksMode = "oa.agent.hooksMode"
+    private static let kMcpDefer = "oa.agent.mcpDefer"
+    private static let kFastMode = "oa.agent.fastMode"
+    private static let kExtendedCtx = "oa.agent.extendedCtx"
+    private static let kRemoteBridge = "oa.agent.remoteBridge"
 
-    private static let kBaseURL = "flawed.baseURL"
-    private static let kCustomModel = "flawed.customModel"
-    private static let kAllowedTools = "flawed.allowedTools"
-    private static let kDisallowedTools = "flawed.disallowedTools"
-    private static let kAdditionalDirs = "flawed.additionalDirs"
-    private static let kMaxTurns = "flawed.maxTurns"
-    private static let kMaxBudgetMicros = "flawed.maxBudgetMicros"
+    private static let kBaseURL = "oa.agent.baseURL"
+    private static let kCustomModel = "oa.agent.customModel"
+    private static let kAllowedTools = "oa.agent.allowedTools"
+    private static let kDisallowedTools = "oa.agent.disallowedTools"
+    private static let kAdditionalDirs = "oa.agent.additionalDirs"
+    private static let kMaxTurns = "oa.agent.maxTurns"
+    private static let kMaxBudgetMicros = "oa.agent.maxBudgetMicros"
 
-    private static let kSchemaVersion = "flawed.schemaVersion"
-    private static let currentSchemaVersion = 4
+    private static let kSchemaVersion = "oa.agent.schemaVersion"
+    private static let currentSchemaVersion = 5
     private static var didMigrate = false
+
+    private static let legacyKeyPairs: [(String, String)] = [
+        ("flawed.defaultAgent", kDefaultAgent),
+        ("flawed.modelSlot", kModelSlot),
+        ("flawed.backend", kBackend),
+        ("flawed.thinkingMode", kThinkingMode),
+        ("flawed.effort", kEffort),
+        ("flawed.thinkingDisplay", kThinkingDisplay),
+        ("flawed.permissionMode", kPermissionMode),
+        ("flawed.bypassDanger", kBypassDanger),
+        ("flawed.sandboxMode", kSandboxMode),
+        ("flawed.gitGuard", kGitGuard),
+        ("flawed.promptCache", kPromptCache),
+        ("flawed.autoCompact", kAutoCompact),
+        ("flawed.autoMemory", kAutoMemory),
+        ("flawed.bareMode", kBareMode),
+        ("flawed.outputStyle", kOutputStyle),
+        ("flawed.hooksMode", kHooksMode),
+        ("flawed.mcpDefer", kMcpDefer),
+        ("flawed.fastMode", kFastMode),
+        ("flawed.extendedCtx", kExtendedCtx),
+        ("flawed.remoteBridge", kRemoteBridge),
+        ("flawed.baseURL", kBaseURL),
+        ("flawed.customModel", kCustomModel),
+        ("flawed.allowedTools", kAllowedTools),
+        ("flawed.disallowedTools", kDisallowedTools),
+        ("flawed.additionalDirs", kAdditionalDirs),
+        ("flawed.maxTurns", kMaxTurns),
+        ("flawed.maxBudgetMicros", kMaxBudgetMicros),
+    ]
 
     private static func migrateIfNeeded() {
         guard !didMigrate else { return }
         didMigrate = true
-        let v = d.integer(forKey: kSchemaVersion)
+        // Seamless one-time migration from legacy flawed.* UserDefaults to oa.agent.*.
+        let v = max(d.integer(forKey: kSchemaVersion), d.integer(forKey: "flawed.schemaVersion"))
+        if d.object(forKey: kSchemaVersion) == nil {
+            for (oldKey, newKey) in legacyKeyPairs {
+                if d.object(forKey: newKey) == nil, let val = d.object(forKey: oldKey) {
+                    d.set(val, forKey: newKey)
+                }
+            }
+        }
         if v < 2 {
-            // Reset legacy Anthropic model slot / backend prefs to Auto + default Flawed slot.
             d.set(0, forKey: kModelSlot)
             d.set(0, forKey: kBackend)
         }
         if v < 3 {
-            // Default to Allow All (0) with zero permission checks and opt-in git guard.
             d.set(0, forKey: kPermissionMode)
             d.set(false, forKey: kBypassDanger)
             d.set(false, forKey: kGitGuard)
         }
         if v < 4 {
-            // Always start new chats on Flawed · Gemini 4 Neon (slot 0) with Auto backend.
+            // Always start new chats on OpenAgents · Gemini 4 Neon (slot 0) with Auto backend.
             d.set(0, forKey: kDefaultAgent)
             d.set(0, forKey: kModelSlot)
             d.set(0, forKey: kBackend)
+        }
+        if v < currentSchemaVersion || d.object(forKey: kSchemaVersion) == nil {
             d.set(currentSchemaVersion, forKey: kSchemaVersion)
         }
     }
@@ -197,19 +235,34 @@ enum FlawedSettings {
         set { d.set(max(0, newValue), forKey: kMaxBudgetMicros) }
     }
 
-    // ---- Key storage (0600 ~/Library/Application Support/Coder/flawed-key; never logged) ----
+    // ---- Key storage (0600 ~/Library/Application Support/Coder/agent-key; never logged) ----
 
     static var savedKey: String? {
-        let s = DesktopCore.withCoaxString("flawed-key") { cn in
+        let primary = DesktopCore.withCoaxString("agent-key") { cn in
             DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
         }
-        return s.isEmpty ? nil : s
+        if !primary.isEmpty { return primary }
+        // One-time seamless migration from legacy flawed-key.
+        let legacy = DesktopCore.withCoaxString("flawed-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
+        }
+        if !legacy.isEmpty {
+            _ = saveKey(legacy)
+            return legacy
+        }
+        return nil
     }
 
     @discardableResult
     static func saveKey(_ key: String) -> Bool {
-        DesktopCore.withCoaxString("flawed-key") { cn in
-            DesktopCore.withCoaxString(key.trimmingCharacters(in: .whitespacesAndNewlines)) { ck in
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            _ = DesktopCore.withCoaxString("flawed-key") { cn in
+                DesktopCore.withCoaxString("") { ck in oa_dc_key_save(cn, ck) }
+            }
+        }
+        return DesktopCore.withCoaxString("agent-key") { cn in
+            DesktopCore.withCoaxString(trimmed) { ck in
                 oa_dc_key_save(cn, ck) == 1
             }
         }
@@ -251,7 +304,7 @@ enum FlawedSettings {
         baseURL.isEmpty ? "Default endpoint" : baseURL
     }
 
-    // ---- Live credential probe via bundled flawedworker --auth ----
+    // ---- Live credential probe via bundled oa-worker --auth ----
 
     static var authStatus: String { cachedAuthStatus }
 
@@ -259,17 +312,17 @@ enum FlawedSettings {
         guard !probingAuth else { return }
         probingAuth = true
         var env: [String: String] = [
-            "FLAWED_BACKEND": backendWireName(backend),
+            "OA_AGENT_BACKEND": backendWireName(backend),
         ]
-        if !baseURL.isEmpty { env["FLAWED_BASE_URL"] = baseURL }
+        if !baseURL.isEmpty { env["OA_AGENT_BASE_URL"] = baseURL }
         if backend == 1 || backend == 0 {
             env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
             env["PSIONIC_MODEL"] = LocalModelStore.entry.id
             env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
         }
         DispatchQueue.global(qos: .userInitiated).async {
-            let line = CoderProbes.ask("flawedworker", ["--auth"], env: env, timeout: 8)
-            var status = "Unavailable (flawedworker missing)"
+            let line = CoderProbes.ask("oa-worker", ["--auth"], env: env, timeout: 8)
+            var status = "Unavailable (oa-worker missing)"
             if !line.isEmpty, let data = line.data(using: .utf8),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let ready = (obj["ready"] as? Bool) ?? false
@@ -374,33 +427,33 @@ enum FlawedSettings {
 
     static func workerEnv() -> [String: String] {
         var env: [String: String] = [
-            "FLAWED_BACKEND": backendWireName(backend),
-            "FLAWED_MODEL": modelWireName(modelSlot),
-            "FLAWED_EFFORT": effortWireName(effort),
-            "FLAWED_THINKING_MODE": thinkingModeWireName(thinkingMode),
-            "FLAWED_THINKING_DISPLAY": thinkingDisplay == 1 ? "omitted" : "summarized",
-            "FLAWED_PERMISSION_MODE": permissionModeWireName(permissionMode),
-            "FLAWED_BYPASS_PERMISSIONS": bypassDanger ? "1" : "0",
-            "FLAWED_SANDBOX_MODE": sandboxModeWireName(sandboxMode),
-            "FLAWED_GIT_GUARD": gitGuard ? "1" : "0",
-            "FLAWED_PROMPT_CACHE": promptCacheWireName(promptCache),
-            "FLAWED_AUTO_COMPACT": autoCompact ? "1" : "0",
-            "FLAWED_AUTO_MEMORY": autoMemory ? "1" : "0",
-            "FLAWED_BARE_MODE": bareMode ? "1" : "0",
-            "FLAWED_OUTPUT_STYLE": outputStyleWireName(outputStyle),
-            "FLAWED_HOOKS_MODE": hooksModeWireName(hooksMode),
-            "FLAWED_MCP_DEFER": mcpDefer ? "1" : "0",
-            "FLAWED_FAST_MODE": fastMode ? "1" : "0",
-            "FLAWED_EXTENDED_CTX": extendedCtx ? "1" : "0",
-            "FLAWED_REMOTE_BRIDGE": remoteBridge ? "1" : "0",
+            "OA_AGENT_BACKEND": backendWireName(backend),
+            "OA_AGENT_MODEL": modelWireName(modelSlot),
+            "OA_AGENT_EFFORT": effortWireName(effort),
+            "OA_AGENT_THINKING_MODE": thinkingModeWireName(thinkingMode),
+            "OA_AGENT_THINKING_DISPLAY": thinkingDisplay == 1 ? "omitted" : "summarized",
+            "OA_AGENT_PERMISSION_MODE": permissionModeWireName(permissionMode),
+            "OA_AGENT_BYPASS_PERMISSIONS": bypassDanger ? "1" : "0",
+            "OA_AGENT_SANDBOX_MODE": sandboxModeWireName(sandboxMode),
+            "OA_AGENT_GIT_GUARD": gitGuard ? "1" : "0",
+            "OA_AGENT_PROMPT_CACHE": promptCacheWireName(promptCache),
+            "OA_AGENT_AUTO_COMPACT": autoCompact ? "1" : "0",
+            "OA_AGENT_AUTO_MEMORY": autoMemory ? "1" : "0",
+            "OA_AGENT_BARE_MODE": bareMode ? "1" : "0",
+            "OA_AGENT_OUTPUT_STYLE": outputStyleWireName(outputStyle),
+            "OA_AGENT_HOOKS_MODE": hooksModeWireName(hooksMode),
+            "OA_AGENT_MCP_DEFER": mcpDefer ? "1" : "0",
+            "OA_AGENT_FAST_MODE": fastMode ? "1" : "0",
+            "OA_AGENT_EXTENDED_CTX": extendedCtx ? "1" : "0",
+            "OA_AGENT_REMOTE_BRIDGE": remoteBridge ? "1" : "0",
         ]
-        if !customModel.isEmpty { env["FLAWED_CUSTOM_MODEL"] = customModel }
-        if !baseURL.isEmpty { env["FLAWED_BASE_URL"] = baseURL }
-        if !allowedTools.isEmpty { env["FLAWED_ALLOWED_TOOLS"] = allowedTools }
-        if !disallowedTools.isEmpty { env["FLAWED_DISALLOWED_TOOLS"] = disallowedTools }
-        if !additionalDirs.isEmpty { env["FLAWED_ADDITIONAL_DIRS"] = additionalDirs }
-        if maxTurns > 0 { env["FLAWED_MAX_TURNS"] = String(maxTurns) }
-        if maxBudgetMicros > 0 { env["FLAWED_MAX_BUDGET_MICROS"] = String(maxBudgetMicros) }
+        if !customModel.isEmpty { env["OA_AGENT_CUSTOM_MODEL"] = customModel }
+        if !baseURL.isEmpty { env["OA_AGENT_BASE_URL"] = baseURL }
+        if !allowedTools.isEmpty { env["OA_AGENT_ALLOWED_TOOLS"] = allowedTools }
+        if !disallowedTools.isEmpty { env["OA_AGENT_DISALLOWED_TOOLS"] = disallowedTools }
+        if !additionalDirs.isEmpty { env["OA_AGENT_ADDITIONAL_DIRS"] = additionalDirs }
+        if maxTurns > 0 { env["OA_AGENT_MAX_TURNS"] = String(maxTurns) }
+        if maxBudgetMicros > 0 { env["OA_AGENT_MAX_BUDGET_MICROS"] = String(maxBudgetMicros) }
         return env
     }
 
@@ -503,9 +556,9 @@ enum FlawedSettings {
 extension CoderWindow {
     /// Mirrors Flawed settings onto the foreground page and every active background run.
     func syncFlawedSettingsAll() {
-        FlawedSettings.apply(to: page)
+        AgentSettings.apply(to: page)
         for r in runs.values where r.page != page {
-            FlawedSettings.apply(to: r.page)
+            AgentSettings.apply(to: r.page)
         }
         configureWorkerEnv(run, isForeman: isForemanShown)
         wake()
@@ -527,34 +580,34 @@ extension CoderWindow {
     }
 
     func flawedPrefsChanged() {
-        let prevBackend = FlawedSettings.backend
-        FlawedSettings.readBack(from: page)
+        let prevBackend = AgentSettings.backend
+        AgentSettings.readBack(from: page)
         syncFlawedSettingsAll()
-        if FlawedSettings.backend != prevBackend {
+        if AgentSettings.backend != prevBackend {
             checkFlawedAuth(showToast: false)
         }
     }
 
     func checkFlawedAuth(showToast: Bool) {
-        FlawedSettings.probeAuth { [weak self] in
+        AgentSettings.probeAuth { [weak self] in
             guard let self else { return }
             self.syncFlawedSettingsAll()
             if showToast {
-                cd_toast(self.page, "Flawed auth: \(FlawedSettings.authStatus)", 0)
+                cd_toast(self.page, "Agent auth: \(AgentSettings.authStatus)", 0)
                 self.wake()
             }
         }
     }
 
     func editFlawedKey() {
-        let hasSaved = FlawedSettings.savedKey != nil
+        let hasSaved = AgentSettings.savedKey != nil
         var d = CoderDialog(
             size: .md,
             title: "Gemini / OpenRouter API key",
-            body: "Optional key stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Not needed when using Local Inkling 2 Mini or Google Cloud Vertex AI service account credentials."
+            body: "Optional key stored in ~/Library/Application Support/Coder/agent-key (0600, never logged). Not needed when using Local Inkling 2 Mini or Google Cloud Vertex AI service account credentials."
         )
         d.fields = [
-            .init(label: "API key", value: "", hint: hasSaved ? "Currently \(FlawedSettings.keyLabel) — paste a new key to replace" : "AIza… (Gemini) or sk-or-v1-… (OpenRouter)", secure: true),
+            .init(label: "API key", value: "", hint: hasSaved ? "Currently \(AgentSettings.keyLabel) — paste a new key to replace" : "AIza… (Gemini) or sk-or-v1-… (OpenRouter)", secure: true),
         ]
         if hasSaved {
             d.buttons = [
@@ -573,17 +626,17 @@ extension CoderWindow {
         present(d) { [weak self] answer, values in
             guard let self else { return }
             if hasSaved && answer == 0 {
-                _ = FlawedSettings.saveKey("")
+                _ = AgentSettings.saveKey("")
                 self.syncFlawedSettingsAll()
                 self.checkFlawedAuth(showToast: false)
-                cd_toast(self.page, "Removed saved Flawed API key.", 0)
+                cd_toast(self.page, "Removed saved Agent API key.", 0)
             } else if answer == d.confirm {
                 let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !raw.isEmpty {
-                    _ = FlawedSettings.saveKey(raw)
+                    _ = AgentSettings.saveKey(raw)
                     self.syncFlawedSettingsAll()
                     self.checkFlawedAuth(showToast: false)
-                    cd_toast(self.page, "Saved Flawed API key.", 0)
+                    cd_toast(self.page, "Saved Agent API key.", 0)
                 }
             }
             self.refocus()
@@ -591,14 +644,14 @@ extension CoderWindow {
     }
 
     func editFlawedBaseURL() {
-        let hasURL = !FlawedSettings.baseURL.isEmpty
+        let hasURL = !AgentSettings.baseURL.isEmpty
         var d = CoderDialog(
             size: .md,
             title: "Custom API base URL",
             body: "Optional endpoint override for Vertex/Gemini proxies, OpenRouter mirrors, or remote Psionic Metal servers. Leave blank for the default endpoint."
         )
         d.fields = [
-            .init(label: "Base URL", value: FlawedSettings.baseURL, hint: "https://generativelanguage.googleapis.com"),
+            .init(label: "Base URL", value: AgentSettings.baseURL, hint: "https://generativelanguage.googleapis.com"),
         ]
         if hasURL {
             d.buttons = [
@@ -618,11 +671,11 @@ extension CoderWindow {
         present(d) { [weak self] answer, values in
             guard let self else { return }
             if hasURL && answer == 0 {
-                FlawedSettings.baseURL = ""
+                AgentSettings.baseURL = ""
                 self.syncFlawedSettingsAll()
                 self.checkFlawedAuth(showToast: false)
             } else if answer == d.confirm {
-                FlawedSettings.baseURL = values.first ?? ""
+                AgentSettings.baseURL = values.first ?? ""
                 self.syncFlawedSettingsAll()
                 self.checkFlawedAuth(showToast: false)
             }
@@ -631,14 +684,14 @@ extension CoderWindow {
     }
 
     func editFlawedCustomModel() {
-        let hasCustom = !FlawedSettings.customModel.isEmpty
+        let hasCustom = !AgentSettings.customModel.isEmpty
         var d = CoderDialog(
             size: .md,
             title: "Custom model override",
             body: "Override the model slug sent on the wire (e.g. gemini-4-neon, gemini-4-carbon, inkling-2-mini, google/gemini-4-hydrogen). Leave blank to use the model selected in the composer picker."
         )
         d.fields = [
-            .init(label: "Model slug", value: FlawedSettings.customModel, hint: "Leave empty to use picker selection"),
+            .init(label: "Model slug", value: AgentSettings.customModel, hint: "Leave empty to use picker selection"),
         ]
         if hasCustom {
             d.buttons = [
@@ -658,10 +711,10 @@ extension CoderWindow {
         present(d) { [weak self] answer, values in
             guard let self else { return }
             if hasCustom && answer == 0 {
-                FlawedSettings.customModel = ""
+                AgentSettings.customModel = ""
                 self.syncFlawedSettingsAll()
             } else if answer == d.confirm {
-                FlawedSettings.customModel = values.first ?? ""
+                AgentSettings.customModel = values.first ?? ""
                 self.syncFlawedSettingsAll()
             }
             self.refocus()
@@ -675,9 +728,9 @@ extension CoderWindow {
             body: "Comma-separated built-in tool names: Read, Edit, Write, Bash, Glob, Grep, TodoWrite, WebFetch. Disallowed tools always win over allowed tools."
         )
         d.fields = [
-            .init(label: "Allowed tools (empty = all)", value: FlawedSettings.allowedTools, hint: "e.g. Read,Glob,Grep,Edit"),
-            .init(label: "Disallowed tools", value: FlawedSettings.disallowedTools, hint: "e.g. Bash,WebFetch"),
-            .init(label: "Additional directories (CSV)", value: FlawedSettings.additionalDirs, hint: "e.g. ~/shared-lib,/opt/specs"),
+            .init(label: "Allowed tools (empty = all)", value: AgentSettings.allowedTools, hint: "e.g. Read,Glob,Grep,Edit"),
+            .init(label: "Disallowed tools", value: AgentSettings.disallowedTools, hint: "e.g. Bash,WebFetch"),
+            .init(label: "Additional directories (CSV)", value: AgentSettings.additionalDirs, hint: "e.g. ~/shared-lib,/opt/specs"),
         ]
         d.buttons = [
             .init(title: "Clear all", kind: .danger, aside: true),
@@ -688,14 +741,14 @@ extension CoderWindow {
         present(d) { [weak self] answer, values in
             guard let self else { return }
             if answer == 0 {
-                FlawedSettings.allowedTools = ""
-                FlawedSettings.disallowedTools = ""
-                FlawedSettings.additionalDirs = ""
+                AgentSettings.allowedTools = ""
+                AgentSettings.disallowedTools = ""
+                AgentSettings.additionalDirs = ""
                 self.syncFlawedSettingsAll()
             } else if answer == 2 {
-                FlawedSettings.allowedTools = values.count > 0 ? values[0] : ""
-                FlawedSettings.disallowedTools = values.count > 1 ? values[1] : ""
-                FlawedSettings.additionalDirs = values.count > 2 ? values[2] : ""
+                AgentSettings.allowedTools = values.count > 0 ? values[0] : ""
+                AgentSettings.disallowedTools = values.count > 1 ? values[1] : ""
+                AgentSettings.additionalDirs = values.count > 2 ? values[2] : ""
                 self.syncFlawedSettingsAll()
             }
             self.refocus()
@@ -703,9 +756,9 @@ extension CoderWindow {
     }
 
     func editFlawedLimits() {
-        let curTurns = FlawedSettings.maxTurns > 0 ? String(FlawedSettings.maxTurns) : ""
-        let curBudget = FlawedSettings.maxBudgetMicros > 0
-            ? String(format: "%.2f", Double(FlawedSettings.maxBudgetMicros) / 1_000_000.0)
+        let curTurns = AgentSettings.maxTurns > 0 ? String(AgentSettings.maxTurns) : ""
+        let curBudget = AgentSettings.maxBudgetMicros > 0
+            ? String(format: "%.2f", Double(AgentSettings.maxBudgetMicros) / 1_000_000.0)
             : ""
         var d = CoderDialog(
             size: .md,
@@ -725,18 +778,18 @@ extension CoderWindow {
         present(d) { [weak self] answer, values in
             guard let self else { return }
             if answer == 0 {
-                FlawedSettings.maxTurns = 0
-                FlawedSettings.maxBudgetMicros = 0
+                AgentSettings.maxTurns = 0
+                AgentSettings.maxBudgetMicros = 0
                 self.syncFlawedSettingsAll()
             } else if answer == 2 {
                 let tRaw = (values.count > 0 ? values[0] : "").trimmingCharacters(in: .whitespacesAndNewlines)
                 let bRaw = (values.count > 1 ? values[1] : "").trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "$", with: "")
-                FlawedSettings.maxTurns = max(0, Int(tRaw) ?? 0)
+                AgentSettings.maxTurns = max(0, Int(tRaw) ?? 0)
                 if let usd = Double(bRaw), usd > 0 {
-                    FlawedSettings.maxBudgetMicros = Int64((usd * 1_000_000.0).rounded())
+                    AgentSettings.maxBudgetMicros = Int64((usd * 1_000_000.0).rounded())
                 } else {
-                    FlawedSettings.maxBudgetMicros = 0
+                    AgentSettings.maxBudgetMicros = 0
                 }
                 self.syncFlawedSettingsAll()
             }
@@ -747,8 +800,8 @@ extension CoderWindow {
     func resetFlawedSettings() {
         var d = CoderDialog(
             size: .sm,
-            title: "Reset Flawed settings?",
-            body: "Restores Flawed's defaults (local Inkling 2 Mini, Allow All permissions, sandbox off, thinking adaptive, compaction & memory on). Your saved API key is kept."
+            title: "Reset Agent settings?",
+            body: "Restores Agent defaults (Gemini 4 Neon, Allow All permissions, sandbox off, thinking adaptive, compaction & memory on). Your saved API key is kept."
         )
         d.buttons = [
             .init(title: "Cancel"),
@@ -758,10 +811,10 @@ extension CoderWindow {
         present(d) { [weak self] answer, _ in
             guard let self else { return }
             if answer == 1 {
-                FlawedSettings.resetAll()
+                AgentSettings.resetAll()
                 self.syncFlawedSettingsAll()
                 self.checkFlawedAuth(showToast: false)
-                cd_toast(self.page, "Flawed settings reset to defaults.", 0)
+                cd_toast(self.page, "Agent settings reset to defaults.", 0)
             }
             self.refocus()
         }

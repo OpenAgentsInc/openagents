@@ -17,7 +17,7 @@
 
 CP_PG_GENERAL :: 0; CP_PG_MODELS :: 1; CP_PG_FOREMAN :: 2; CP_PG_ACCOUNT :: 3; CP_PG_ABOUT :: 4; CP_PG_WALLET :: 5; CP_PG_USAGE :: 6; CP_PG_MCP :: 7; CP_PG_SKILLS :: 8; CP_PG_VOICE :: 9; CP_PG_CONNECTIONS :: 10; CP_PG_SCHED :: 11; CP_PG_APPEARANCE :: 12; CP_PG_KEYBINDINGS :: 13; CP_PG_PROVIDERS :: 14; CP_PG_FLAWED :: 15;
 CP_SET_PAGES :: 16;
-CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks", "Appearance", "Keybindings", "Providers", "Flawed"];
+CP_SET_NAME :: [CP_SET_PAGES] string.["General", "Models", "Foreman", "Account", "About & updates", "Wallet", "Usage", "MCP", "Skills", "Voice", "Connections", "Scheduled Tasks", "Appearance", "Keybindings", "Providers", "Agent"];
 CP_SET_ICON :: [CP_SET_PAGES] int.[ICON_SET_GENERAL, ICON_SET_MODELS, ICON_SET_FOREMAN, ICON_SET_ACCOUNT, ICON_SET_ABOUT, ICON_SET_TAG, ICON_SET_FOREMAN, ICON_SET_MODELS, ICON_SET_TAG, ICON_SET_PHONE, ICON_SET_PHONE, ICON_SET_FOREMAN, ICON_SET_GENERAL, ICON_SET_GENERAL, ICON_WIDGET, ICON_BOT];
 // The list's groups, in order, and their pages (Zeron's names where they mean the same).
 CP_SET_GROUPS :: 3;
@@ -113,23 +113,23 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.reset", name = "Reset keybindings", terms = "reset default shortcuts keybindings"},
     CpSetEntry.{page = CP_PG_KEYBINDINGS, id = "set.cust.kb.0", name = "Customize shortcuts", terms = "rebind shortcut when editorFocus terminalFocus filePaneFocus settingsFocus"},
     CpSetEntry.{page = CP_PG_PROVIDERS, id = "", name = "Providers", terms = "antigravity claude codex cursor acp sign-in method gcp project location vertex ai gemini enterprise api key binary path managed runtime add provider"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "", name = "Flawed", terms = "flawed agent inkling neon carbon hydrogen argon vertex gemini default agent"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.agent", name = "Default agent", terms = "flawed inky inkling default agent new chat startup"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.model", name = "Default Flawed model", terms = "flawed inkling 2 mini gemini 4 neon carbon hydrogen argon model"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.custom", name = "Custom model override", terms = "flawed custom model slug proxy gateway router"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.ctx1m", name = "Extended 1M context", terms = "flawed 1m million context window long context"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.fast", name = "Fast mode", terms = "flawed fast mode speed output pricing"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.backend", name = "Inference backend", terms = "flawed backend auto local psionic vertex gemini router"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.key", name = "Gemini / Flawed API key", terms = "flawed gemini api key secret token credential"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.url", name = "Custom API base URL", terms = "flawed base url proxy endpoint gateway"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tmode", name = "Thinking mode", terms = "flawed adaptive extended thinking reasoning budget"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.effort", name = "Default effort", terms = "flawed effort low medium high xhigh max reasoning"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "flawed permission allow all ask accept edits plan auto dont ask bypass"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "flawed sandbox seatbelt sandbox-exec bash confinement"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "flawed allowedTools disallowedTools additionalDirs tools"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "flawed prompt cache auto compact memory claude.md bare mode"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "flawed concise explanatory learning hooks defer toolsearch"},
-    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "flawed max turns budget usd cap remote bridge"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "", name = "Agent", terms = "openagents agent core inkling neon carbon hydrogen argon vertex gemini default agent"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.agent", name = "Default agent", terms = "openagents inky inkling default agent new chat startup"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.model", name = "Default Agent model", terms = "openagents inkling 2 mini gemini 4 neon carbon hydrogen argon model"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.custom", name = "Custom model override", terms = "openagents custom model slug proxy gateway router"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.ctx1m", name = "Extended 1M context", terms = "openagents 1m million context window long context"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.fast", name = "Fast mode", terms = "openagents fast mode speed output pricing"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.backend", name = "Inference backend", terms = "openagents backend auto local psionic vertex gemini router"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.key", name = "Gemini / Agent API key", terms = "openagents gemini api key secret token credential"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.url", name = "Custom API base URL", terms = "openagents base url proxy endpoint gateway"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tmode", name = "Thinking mode", terms = "openagents adaptive extended thinking reasoning budget"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.effort", name = "Default effort", terms = "openagents effort low medium high xhigh max reasoning"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.pmode", name = "Permission mode", terms = "openagents permission allow all ask accept edits plan auto dont ask bypass"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.sandbox", name = "OS shell sandbox", terms = "openagents sandbox seatbelt sandbox-exec bash confinement"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.tools", name = "Tool rules & directories", terms = "openagents allowedTools disallowedTools additionalDirs tools"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.cache", name = "Prompt caching & compaction", terms = "openagents prompt cache auto compact memory claude.md bare mode"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.style", name = "Output style & hooks", terms = "openagents concise explanatory learning hooks defer toolsearch"},
+    CpSetEntry.{page = CP_PG_FLAWED, id = "set.flawed.limits", name = "Turn & budget limits", terms = "openagents max turns budget usd cap remote bridge"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt", name = "Custom system prompt", terms = "custom system prompt global rules persona tone prepend append every chat"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.sysprompt.clear", name = "Clear custom system prompt", terms = "clear remove reset custom system prompt"}];
 }
@@ -470,7 +470,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     rows[3].options[0] = "Off"; rows[3].options[1] = "On";
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
     // Custom system prompt appended to every single system prompt (~/.openagents/system-prompt.md)
-    y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every single system prompt across all agents (Flawed, Inky, Microcoder, Claude, and Antigravity) in every chat and folder.") + t.section_gap;
+    y += set_section_head(f, "set.sysprompt.head", x, y, w, "Custom system prompt", "Extra instructions appended to every single system prompt across all agents (OpenAgents, Inky, Microcoder, Claude, and Antigravity) in every chat and folder.") + t.section_gap;
     sysp_val := ifx s[0].set_sysprompt_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt[0..<s[0].set_sysprompt_n]) else "Off";
     sysp_desc := ifx s[0].set_sysprompt_preview_n > 0 then sheet_pool(sh, cast(string) s[0].set_sysprompt_preview[0..<s[0].set_sysprompt_preview_n]) else "Kept in ~/.openagents/system-prompt.md. Leave empty to disable; edits apply from the very next message.";
     sprows: [2] SetRow;
@@ -480,7 +480,7 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       kind = SET_ROW_BUTTON, button = "Clear…", action = CP_SET_ACT, danger = true};
     y += cp_set_group(s, f, "set.sysprompt.group", x, y, w, sprows[..]) + t.block_gap;
     // what every agent is told in every chat (~/.openagents/instructions.md, GitHub #13808)
-    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What Flawed, Inky, Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
+    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What OpenAgents, Inky, Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
     instr := ifx s[0].set_instr_n > 0 then sheet_pool(sh, cast(string) s[0].set_instr[0..<s[0].set_instr_n]) else "Default";
     irows: [2] SetRow;
     irows[0] = SetRow.{id = "set.instr", name = "Agent instructions", desc = "Kept in ~/.openagents/instructions.md. The default: commit finished work and push it in a git repository.",
@@ -1141,7 +1141,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator_model(s) == 0 && cp_model_id(s, cp_model_index(s)) == "claude-fable-5-2";
   #assert cp_settings_press(s, CP_SET_ACT, "set.orch.model.3") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && cp_model_id(s, cp_model_index(s)) == "claude-haiku-5-5";
   #assert !cp_settings_press(s, CP_SET_ACT, "set.orch.model.4");
-  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-neon";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.orch.0") && coder_page_action(s) == CP_ASK_ORCHESTRATOR && coder_page_orchestrator(s) == 0 && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-neon";
 }
 
 #test "settings: each Claude model has a thinking level, which a chat on it and a sub-agent on it run at" {
@@ -1210,7 +1210,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   // Switching default agent to Inkling moves an empty chat to Inkling; switching back moves to Flawed.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_inkling(s);
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.agent.0") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && coder_page_model_flawed(s);
-  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "flawed:gemini-4-carbon";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.model.1") && coder_page_action(s) == CP_ASK_FLAWED_PREFS && cp_model_id(s, cp_model_index(s)) == "oa:gemini-4-carbon";
   // Dialog actions dispatch cleanly.
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.key.a") && coder_page_action(s) == CP_ASK_FLAWED_KEY;
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.url.a") && coder_page_action(s) == CP_ASK_FLAWED_BASE_URL;
@@ -1219,8 +1219,8 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.limits.a") && coder_page_action(s) == CP_ASK_FLAWED_LIMITS;
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.auth.a") && coder_page_action(s) == CP_ASK_FLAWED_AUTH_CHECK;
   #assert cp_settings_press(s, CP_SET_ACT, "set.flawed.reset.a") && coder_page_action(s) == CP_ASK_FLAWED_RESET;
-  // Search finds Flawed settings even with flags == 0.
+  // Search finds Agent settings even with flags == 0.
   hits: [CP_SET_HITS] int;
-  #assert cp_set_hits_flags("flawed", hits[..], 0) >= 1;
+  #assert cp_set_hits_flags("agent", hits[..], 0) >= 1;
   #assert cp_set_hits_flags("sandbox", hits[..], 0) >= 1;
 }

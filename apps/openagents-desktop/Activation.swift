@@ -200,8 +200,8 @@ final class DesktopActivation {
             return true
         case "settings":
             let pageName = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
-            let pages = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers", "flawed"]
-            let idx = pages.firstIndex(of: pageName) ?? 0
+            let pages = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings", "providers", "agent"]
+            let idx = pages.firstIndex(of: pageName == "flawed" ? "agent" : pageName) ?? 0
             delegate.main?.openSettings(Int32(idx))
             return true
         case "new":

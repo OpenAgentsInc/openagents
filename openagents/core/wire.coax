@@ -7,7 +7,7 @@
 // Checks: coax/bin/coax test flawed/wire.coax --library
 // Mutate: coax/bin/coax mutate flawed/wire.coax --root-only
 #module "flawed.wire";
-#load "../coax/lib/json/json.coax";
+#load "../../coax/lib/json/json.coax";
 #load "permissions.coax";
 #load "perm_match.coax";
 #load "shell_sandbox.coax";

@@ -1157,10 +1157,10 @@ static size_t flawed_env(DesktopApp *a, char *out, size_t cap) {
   if (cd_flawed_prefs_get(a->page, v, 32) < 20) return 0;
 #define FL_PICK(T, i) T[(v[i] >= 0 && v[i] < (int)(sizeof T / sizeof T[0])) ? v[i] : 0]
   int n = snprintf(out, cap,
-    "FLAWED_MODEL=%s\nFLAWED_BACKEND=%s\nFLAWED_THINKING_MODE=%s\nFLAWED_EFFORT=%s\nFLAWED_THINKING_DISPLAY=%s\n"
-    "FLAWED_PERMISSION_MODE=%s\nFLAWED_BYPASS_PERMISSIONS=%d\nFLAWED_SANDBOX_MODE=%s\nFLAWED_GIT_GUARD=%d\n"
-    "FLAWED_PROMPT_CACHE=%s\nFLAWED_AUTO_COMPACT=%d\nFLAWED_AUTO_MEMORY=%d\nFLAWED_BARE_MODE=%d\n"
-    "FLAWED_OUTPUT_STYLE=%s\nFLAWED_HOOKS_MODE=%s\nFLAWED_MCP_DEFER=%d\nFLAWED_FAST_MODE=%d\nFLAWED_EXTENDED_CTX=%d\nFLAWED_REMOTE_BRIDGE=%d\n",
+    "OA_AGENT_MODEL=%s\nOA_AGENT_BACKEND=%s\nOA_AGENT_THINKING_MODE=%s\nOA_AGENT_EFFORT=%s\nOA_AGENT_THINKING_DISPLAY=%s\n"
+    "OA_AGENT_PERMISSION_MODE=%s\nOA_AGENT_BYPASS_PERMISSIONS=%d\nOA_AGENT_SANDBOX_MODE=%s\nOA_AGENT_GIT_GUARD=%d\n"
+    "OA_AGENT_PROMPT_CACHE=%s\nOA_AGENT_AUTO_COMPACT=%d\nOA_AGENT_AUTO_MEMORY=%d\nOA_AGENT_BARE_MODE=%d\n"
+    "OA_AGENT_OUTPUT_STYLE=%s\nOA_AGENT_HOOKS_MODE=%s\nOA_AGENT_MCP_DEFER=%d\nOA_AGENT_FAST_MODE=%d\nOA_AGENT_EXTENDED_CTX=%d\nOA_AGENT_REMOTE_BRIDGE=%d\n",
     FL_PICK(MODEL, 1), FL_PICK(BACKEND, 2), FL_PICK(THINK, 3), FL_PICK(EFFORT, 4), v[5] == 1 ? "omitted" : "summarized",
     FL_PICK(PERMIT, 6), v[7] ? 1 : 0, FL_PICK(SANDBOX, 8), v[9] ? 1 : 0,
     FL_PICK(CACHE, 10), v[11] ? 1 : 0, v[12] ? 1 : 0, v[13] ? 1 : 0,
@@ -1239,7 +1239,7 @@ static int ensure_worker(DesktopApp *a) {
     // A resident host service starts the workers, and one from an older build refuses a worker it
     // does not know and gives no reason: say so, since "could not start worker" names no fix.
     if (!err[0] && want_flawed && oa_core_daemon_owns_runs(vc(a)))
-      snprintf(err, sizeof err, "The background host service did not start Flawed. It may be an older build: update and restart coder-host, then send again.");
+      snprintf(err, sizeof err, "The background host service did not start OpenAgents. It may be an older build: update and restart coder-host, then send again.");
     cd_failed(a->page, err[0] ? err : "could not start worker");
     return 0;
   }

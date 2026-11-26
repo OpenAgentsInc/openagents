@@ -3,20 +3,21 @@
 // Uses Gemini 4 Neon (always first & default) and Local Inkling 2 Mini (Psionic Metal) — zero Anthropic.
 
 CP_FLAWED_MODELS :: 5;
-CP_FLAWED_PREFIX :: "flawed:";
+CP_FLAWED_PREFIX :: "oa:";
+CP_LEGACY_FLAWED_PREFIX :: "flawed:";
 CP_FLAWED_ID :: [CP_FLAWED_MODELS] string.[
-  "flawed:gemini-4-neon",
-  "flawed:gemini-4-carbon",
-  "flawed:gemini-4-hydrogen",
-  "flawed:gemini-4-argon",
-  "flawed:inkling-2-mini",
+  "oa:gemini-4-neon",
+  "oa:gemini-4-carbon",
+  "oa:gemini-4-hydrogen",
+  "oa:gemini-4-argon",
+  "oa:inkling-2-mini",
 ];
 CP_FLAWED_LABEL :: [CP_FLAWED_MODELS] string.[
-  "Flawed · Gemini 4 Neon",
-  "Flawed · Gemini 4 Carbon",
-  "Flawed · Gemini 4 Hydrogen",
-  "Flawed · Gemini 4 Argon",
-  "Flawed · Inkling 2 Mini",
+  "OpenAgents · Gemini 4 Neon",
+  "OpenAgents · Gemini 4 Carbon",
+  "OpenAgents · Gemini 4 Hydrogen",
+  "OpenAgents · Gemini 4 Argon",
+  "OpenAgents · Inkling 2 Mini",
 ];
 CP_FLAWED_SHORT :: [CP_FLAWED_MODELS] string.[
   "Neon",
@@ -30,14 +31,14 @@ CP_FLAWED_DESC :: [CP_FLAWED_MODELS] string.[
   "Deep coding · 1M context · Vertex / Gemini",
   "Fast & light · 1M context · Vertex / Gemini",
   "High precision · 1M context · Vertex / Gemini",
-  "Local Psionic Metal · Flawed Agent",
+  "Local Psionic Metal · OpenAgents",
 ];
 CP_FLAWED_META :: [CP_FLAWED_MODELS] string.[
-  "Flawed Agent · Gemini 4 Neon",
-  "Flawed Agent · Gemini 4 Carbon",
-  "Flawed Agent · Gemini 4 Hydrogen",
-  "Flawed Agent · Gemini 4 Argon",
-  "Flawed Agent · Inkling 2 Mini",
+  "OpenAgents · Gemini 4 Neon",
+  "OpenAgents · Gemini 4 Carbon",
+  "OpenAgents · Gemini 4 Hydrogen",
+  "OpenAgents · Gemini 4 Argon",
+  "OpenAgents · Inkling 2 Mini",
 ];
 CP_FLAWED_START_CLOUD :: 0;    // Gemini 4 Neon (always first & default for every new chat)
 CP_FLAWED_START_LOCAL :: 4;    // Inkling 2 Mini (opt-in local Psionic Metal slot)
@@ -131,7 +132,7 @@ cp_flawed_backend_label :: (be: int) -> string {
 cp_flawed_label_for :: (s: [] CoderPage, slot: int) -> string {
   labels := CP_FLAWED_LABEL;
   if slot == CP_FLAWED_START_LOCAL && s.count > 0 {
-    n := el_put(s[0].flawed[0].label_buf[..], 0, "Flawed · ");
+    n := el_put(s[0].flawed[0].label_buf[..], 0, "OpenAgents · ");
     n = el_put(s[0].flawed[0].label_buf[..], n, cp_inkling_label(s));
     return cast(string) s[0].flawed[0].label_buf[0..<n];
   }
@@ -141,7 +142,7 @@ cp_flawed_label_for :: (s: [] CoderPage, slot: int) -> string {
 cp_flawed_meta_for :: (s: [] CoderPage, slot: int) -> string {
   metas := CP_FLAWED_META;
   if slot == CP_FLAWED_START_LOCAL && s.count > 0 {
-    n := el_put(s[0].flawed[0].meta_buf[..], 0, "Flawed Agent · ");
+    n := el_put(s[0].flawed[0].meta_buf[..], 0, "OpenAgents · ");
     n = el_put(s[0].flawed[0].meta_buf[..], n, cp_inkling_label(s));
     return cast(string) s[0].flawed[0].meta_buf[0..<n];
   }
@@ -200,19 +201,19 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   fl := s[0].flawed[..];
   y := y0;
 
-  y += set_page_head(f, "set.title", x, y, w, "Flawed",
+  y += set_page_head(f, "set.title", x, y, w, "Agent",
     "Native pure-Coax autonomous coding agent powered by local Inkling 2 Mini (Psionic Metal) and Gemini 4 Neon models, with streaming, thinking, permissions, sandboxing, compaction, memory, and hooks.") + t.block_gap;
 
   // 1. Default Agent & Model
   y += set_section_head(f, "set.flawed.model.head", x, y, w, "Default Agent & Model",
-    "Defaults to Flawed · Gemini 4 Neon on every new chat. Switch freely between Gemini 4 models and local Inkling 2 Mini in the composer.") + t.section_gap;
+    "Defaults to OpenAgents · Gemini 4 Neon on every new chat. Switch freely between Gemini 4 models and local Inkling 2 Mini in the composer.") + t.section_gap;
   mrows: [5] SetRow;
   mrows[0] = SetRow.{id = "set.flawed.agent", name = "Default agent",
     desc = ifx fl[0].default_agent == 0
-           then "New chats start on Flawed Agent. Switch models anytime in the composer."
-           else "New chats start on standalone Inkling 2 Mini (Inky). Pick Flawed anytime in the composer.",
+           then "New chats start on OpenAgents. Switch models anytime in the composer."
+           else "New chats start on standalone Inkling 2 Mini (Inky). Pick OpenAgents anytime in the composer.",
     kind = SET_ROW_CHOICE, noptions = 2, chosen = cp_flawed_clamp(fl[0].default_agent, 0, 1), action = CP_SET_ACT};
-  mrows[0].options[0] = "Flawed";
+  mrows[0].options[0] = "OpenAgents";
   mrows[0].options[1] = "Inky";
 
   shorts := CP_FLAWED_SHORT;
@@ -220,7 +221,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
   mrows[1] = SetRow.{id = "set.flawed.model", name = "Default model",
     desc = ifx mslot == CP_FLAWED_START_LOCAL
            then "Starts on local Inkling 2 Mini when installed, automatically falling back to Gemini 4 Neon otherwise."
-           else "New Flawed chats start on this Gemini 4 Neon family model.",
+           else "New OpenAgents chats start on this Gemini 4 Neon family model.",
     kind = SET_ROW_CHOICE, noptions = CP_FLAWED_MODELS, chosen = mslot, action = CP_SET_ACT};
   for i: 0..<CP_FLAWED_MODELS { mrows[1].options[i] = shorts[i]; }
 
@@ -260,12 +261,12 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   auth_val := ifx fl[0].auth_status_n > 0 then sheet_pool(sh, cast(string) fl[0].auth_status[0..<fl[0].auth_status_n]) else "Not checked yet";
   arows[1] = SetRow.{id = "set.flawed.auth", name = "Active credentials",
-    desc = "Live probe from flawedworker --auth showing Local Psionic and Vertex AI / Gemini readiness.",
+    desc = "Live probe from oa-worker --auth showing Local Psionic and Vertex AI / Gemini readiness.",
     value = auth_val, kind = SET_ROW_BUTTON, button = "Check", action = CP_SET_ACT};
 
   key_val := ifx fl[0].key_label_n > 0 then sheet_pool(sh, cast(string) fl[0].key_label[0..<fl[0].key_label_n]) else "Not set";
   arows[2] = SetRow.{id = "set.flawed.key", name = "Gemini / OpenRouter API key",
-    desc = "Optional key stored in ~/Library/Application Support/Coder/flawed-key (0600, never logged). Not needed for Local Psionic or Vertex SA.",
+    desc = "Optional key stored in ~/Library/Application Support/Coder/agent-key (0600, never logged). Not needed for Local Psionic or Vertex SA.",
     value = key_val, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
 
   url_val := ifx fl[0].base_url_n > 0 then sheet_pool(sh, cast(string) fl[0].base_url[0..<fl[0].base_url_n]) else "Default endpoint";
@@ -288,7 +289,7 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
 
   elabels := CP_CLAUDE_EFFORT_LABEL;
   trows[1] = SetRow.{id = "set.flawed.effort", name = "Default effort",
-    desc = "Default reasoning depth for new Flawed chats. Override per chat from the composer effort menu.",
+    desc = "Default reasoning depth for new OpenAgents chats. Override per chat from the composer effort menu.",
     kind = SET_ROW_CHOICE, noptions = CP_FLAWED_EFFORTS, chosen = cp_flawed_effort(s), action = CP_SET_ACT};
   for ei: 0..<CP_FLAWED_EFFORTS { trows[1].options[ei] = elabels[ei]; }
 
@@ -406,8 +407,8 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx fl[0].remote_bridge then 1 else 0, action = CP_SET_ACT};
   erows[4].options[0] = "Off"; erows[4].options[1] = "On";
 
-  erows[5] = SetRow.{id = "set.flawed.reset", name = "Reset Flawed settings",
-    desc = "Restore all Flawed settings (default model, thinking, permissions, sandbox, limits) to defaults.",
+  erows[5] = SetRow.{id = "set.flawed.reset", name = "Reset Agent settings",
+    desc = "Restore all Agent settings (default model, thinking, permissions, sandbox, limits) to defaults.",
     kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
   y += cp_set_group(s, f, "set.flawed.ext.group", x, y, w, erows[..]);
 

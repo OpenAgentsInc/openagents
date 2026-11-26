@@ -650,8 +650,10 @@ final class ChatTitleGenerator: @unchecked Sendable {
         env: [String: String] = ProcessInfo.processInfo.environment,
         homeDir: String = FileManager.default.homeDirectoryForCurrentUser.path
     ) -> String? {
+        if let k = trimmedNonEmpty(env["OA_AGENT_API_KEY"]), !k.hasPrefix("sk-or-") { return k }
         if let k = trimmedNonEmpty(env["FLAWED_API_KEY"]), !k.hasPrefix("sk-or-") { return k }
         let appSupport = (homeDir as NSString).appendingPathComponent("Library/Application Support/Coder")
+        if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("agent-key")), !k.hasPrefix("sk-or-") { return k }
         if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("gemini-key")) { return k }
         if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("flawed-key")), !k.hasPrefix("sk-or-") { return k }
         if let k = readEnvFileKey((homeDir as NSString).appendingPathComponent("work/.secrets/openagents-gemini-provider.env"), key: "GEMINI_API_KEY") {
@@ -754,6 +756,7 @@ final class ChatTitleGenerator: @unchecked Sendable {
     ) -> String? {
         if let k = trimmedNonEmpty(env["OPENROUTER_API_KEY"]) { return k }
         let appSupport = (homeDir as NSString).appendingPathComponent("Library/Application Support/Coder")
+        if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("agent-key")), k.hasPrefix("sk-or-") { return k }
         if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("flawed-key")), k.hasPrefix("sk-or-") { return k }
         if let k = readTrimmedFile((appSupport as NSString).appendingPathComponent("openrouter-key")) { return k }
         if let k = readEnvFileKey((homeDir as NSString).appendingPathComponent("work/.secrets/openrouter.env"), key: "OPENROUTER_API_KEY") {

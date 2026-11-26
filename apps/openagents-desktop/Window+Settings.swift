@@ -261,7 +261,7 @@ extension CoderWindow {
             }
             return
         }
-        var d = CoderDialog(size: .lg, title: "Custom System Prompt", body: "Added to every single system prompt across Flawed, Inky, Microcoder, Claude, and Antigravity in every chat and folder. Edits apply from the next message. Leave empty to turn off. Kept in ~/.openagents/system-prompt.md.")
+        var d = CoderDialog(size: .lg, title: "Custom System Prompt", body: "Added to every single system prompt across OpenAgents, Inky, Microcoder, Claude, and Antigravity in every chat and folder. Edits apply from the next message. Leave empty to turn off. Kept in ~/.openagents/system-prompt.md.")
         d.fields = [.init(value: current, hint: "e.g., Always be concise, show exact commands, and explain architectural trade-offs.", lines: 14)]
         d.buttons = [.init(title: "Clear", kind: .danger, aside: true)]
         let clearBtn = 0
@@ -476,7 +476,7 @@ extension CoderWindow {
         let gemini = ""
         #endif
         cd_flags_set(page, FeatureFlags.mask)
-        FlawedSettings.apply(to: page)
+        AgentSettings.apply(to: page)
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
@@ -554,7 +554,7 @@ extension CoderWindow {
         for r in runs.values where r.page != page {
             syncLocalState(on: r.page)
         }
-        let wantsLocal = cd_model_inkling(page) != 0 || FlawedSettings.pageNeedsLocal(page)
+        let wantsLocal = cd_model_inkling(page) != 0 || AgentSettings.pageNeedsLocal(page)
         if prewarm && LocalModelStore.isSelectable && wantsLocal {
             LocalModelServer.shared.prewarmIfReady()
         }

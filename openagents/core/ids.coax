@@ -5,7 +5,7 @@
 //   coax/bin/coax mutate flawed/ids.coax --root-only
 #module "flawed.ids";
 #authority;
-#load "../coax/lib/handle.coax";
+#load "../../coax/lib/handle.coax";
 
 FLAWED_SESSION_ID_LEN :: 36;    // canonical lowercase UUID: 8-4-4-4-12
 FLAWED_AGENT_ID_MIN :: 17;      // "a" + 16 lowercase hex chars

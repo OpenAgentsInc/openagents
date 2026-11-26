@@ -36,7 +36,7 @@
 #load "editor.coax";
 #load "compose.coax";
 #load "skin.coax";
-#load "flawed_settings.coax";
+#load "agent_settings.coax";
 #load "models.coax";
 #load "providers.coax";
 #load "providers_settings.coax";

@@ -1577,7 +1577,7 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   // Flawed Settings shortcut row: opens Settings -> Flawed directly.
   if show_flawed_row {
     fhov := uiframe_hover(f, KEYED_LAZY, "coder.model.flawed");
-    flabel := "Flawed Settings…";
+    flabel := "Agent Settings…";
     fdesc := "Configure model, thinking, permissions & sandbox";
     frow := uiframe_semantic(f, "coder.model.flawed", EL_BUTTON, flabel, px + pad, fy, pw - 2 * pad, frh, 0, CP_MODEL_FLAWED);
     elt_value(f[0].rows, frow, fdesc);
@@ -1630,7 +1630,7 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   if show_others_row {
     ohov := uiframe_hover(f, KEYED_LAZY, "coder.model.others");
     olabel := ifx s[0].show_other_models then "Hide other models" else "Show other models…";
-    odesc := ifx s[0].show_other_models then "Show only Flawed & local Inkling" else "Antigravity, cloud & external CLI models";
+    odesc := ifx s[0].show_other_models then "Show only OpenAgents & local Inkling" else "Antigravity, cloud & external CLI models";
     orow := uiframe_semantic(f, "coder.model.others", EL_BUTTON, olabel, px + pad, fy, pw - 2 * pad, orh, 0, CP_MODEL_TOGGLE_OTHERS);
     elt_value(f[0].rows, orow, odesc);
     if ohov > 0 {

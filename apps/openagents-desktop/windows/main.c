@@ -40,7 +40,7 @@
 #define OA_INKY_WORKER "inky.exe"
 #define OA_CLAUDE_WORKER "claudeworker.exe"
 #define OA_AGY_WORKER "agyworker.exe"
-#define OA_FLAWED_WORKER "flawedworker.exe"
+#define OA_FLAWED_WORKER "oa-worker.exe"
 #define OA_DAEMON "coder-host.exe"
 #define OA_DAEMON_ALT "openagents-daemon.exe"
 

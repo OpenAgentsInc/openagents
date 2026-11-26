@@ -24,7 +24,7 @@ extension CoderWindow {
             self.markUnread(r)
             self.pump(r)
         }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; r.stopRequestedAt = 0; r.stopGen &+= 1; let label = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "inky" ? "Local agent worker" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"; cd_failed(r.page, "\(label) stopped running. Send the message again."); if r === self.run { self.recallDue = true }; self.markUnread(r); self.notifyTurnFailed(chatID: r === self.run ? self.chat : r.chat, detail: "\(label) stopped running.", isActiveChat: r === self.run); self.pump(r) }   // a new worker is told the chat so far
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -165,8 +165,8 @@ extension CoderWindow {
         let cloudOk = FeatureFlags.isOn(.modelsGemini) && (CoderGemini.saved != nil || CoderProbes.geminiReady || (FeatureFlags.isOn(.account) && MacAccount.shared.loggedIn))
         if !useFlawed && !useAgy && !useInkling && !useHybrid && !useExternal && !cloudOk {
             cd_failed(r.page, ProviderInstancesStore.shared.hasLoadedAntigravityModels
-                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Flawed or Antigravity."
-                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Flawed.")
+                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to OpenAgents or Antigravity."
+                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to OpenAgents.")
             wake()
             return
         }
@@ -174,7 +174,7 @@ extension CoderWindow {
         let useInkling = !useFlawed && !useAgy
         let useHybrid = false
         #endif
-        let flawedWantsLocal = FlawedSettings.pageNeedsLocal(r.page)
+        let flawedWantsLocal = AgentSettings.pageNeedsLocal(r.page)
         if useInkling || useHybrid || flawedWantsLocal {
             #if OA_FULL
             if useHybrid {
@@ -272,7 +272,7 @@ extension CoderWindow {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useFlawed ? ("flawedworker", 8, nil) : useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useFlawed ? ("oa-worker", 8, nil) : useAgy ? ("agyworker", 1, nil) : ("inky", 2, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind
@@ -306,7 +306,7 @@ extension CoderWindow {
             }
             guard ok else {
                 if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
-                let fallbackErr = r.worker.program == "flawedworker" ? "Flawed could not start." : r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
+                let fallbackErr = r.worker.program == "oa-worker" ? "OpenAgents worker could not start." : r.worker.program == "claudeworker" ? "Claude could not start." : r.worker.program == "agyworker" ? "Antigravity could not start." : r.worker.program == "inky" ? "Local agent worker could not start." : "Microcoder could not start."
                 cd_failed(r.page, r.worker.failure ?? fallbackErr)
                 self.wake()
                 return
@@ -370,7 +370,7 @@ extension CoderWindow {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
             cd_flags_set(back, FeatureFlags.mask)
-            FlawedSettings.apply(to: back)
+            AgentSettings.apply(to: back)
             syncLocalState(on: back)
             if ComposerModelVisibility.showOtherModels { syncAntigravityModels(on: back) }
             #if OA_FULL
@@ -958,7 +958,7 @@ extension CoderWindow {
             let activeRun: CoderRun? = runs[chat.id] ?? (chat.id == self.chat && (cd_running(page) != 0 || run.worker.alive) ? run : nil)
             let prog = activeRun?.worker.program ?? ""
             let codexEnv = activeRun?.worker.extraEnv["CODER_PROVIDER"] == "codex"
-            let activeHarness: String? = prog == "flawedworker" ? "flawed"
+            let activeHarness: String? = prog == "oa-worker" ? "openagents"
                 : prog == "claudeworker" ? "claude"
                 : prog == "agyworker" ? "agy"
                 : (prog == "codex" || codexEnv) ? "codex"
@@ -1044,7 +1044,7 @@ extension CoderWindow {
     private func harnessForRun(_ r: CoderRun, chatID: String?) -> String {
         let prog = r.worker.program
         let codexEnv = r.worker.extraEnv["CODER_PROVIDER"] == "codex"
-        if prog == "flawedworker" { return "flawed" }
+        if prog == "oa-worker" { return "openagents" }
         if prog == "claudeworker" { return "claude" }
         if prog == "agyworker" { return "agy" }
         if prog == "codex" || codexEnv { return "codex" }
@@ -1168,8 +1168,8 @@ extension CoderWindow {
             env = CoderAntigravity.workerEnv()
         }
         if cd_model_flawed(r.page) != 0 {
-            for (k, v) in FlawedSettings.workerEnv() { env[k] = v }
-            if FlawedSettings.pageNeedsLocal(r.page) || LocalModelServer.shared.isReady {
+            for (k, v) in AgentSettings.workerEnv() { env[k] = v }
+            if AgentSettings.pageNeedsLocal(r.page) || LocalModelServer.shared.isReady {
                 env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
                 env["PSIONIC_MODEL"] = LocalModelStore.entry.id
                 env["PSIONIC_CTX"] = String(LocalModelStore.recommendedContextTokens)
@@ -1198,13 +1198,13 @@ extension CoderWindow {
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
         if FeatureFlags.isOn(.simulator) {
             env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
-            env["OA_SIM_ENGINE"] = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+            env["OA_SIM_ENGINE"] = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         }
         // Bundled GameBuilder CLI & per-session MCP registration (#14039)
         if FeatureFlags.isOn(.gamebuilder) {
             env["OA_GB_MCP"] = "1"
             env["OA_GB_CHAT"] = (r === run ? chat : r.chat) ?? ""
-            env["OA_GB_ENGINE"] = r.worker.program == "flawedworker" ? "Flawed" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
+            env["OA_GB_ENGINE"] = r.worker.program == "oa-worker" ? "OpenAgents" : r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
             if let res = Bundle.main.resourcePath {
                 let gbPath = res + "/gamebuilder"
                 if FileManager.default.isExecutableFile(atPath: gbPath) {
@@ -1257,7 +1257,7 @@ extension CoderWindow {
         keep(touchUpdated: false)
         guard let id = chat, let back = cd_headless() else { return false }
         cd_flags_set(back, FeatureFlags.mask)
-        FlawedSettings.apply(to: back)
+        AgentSettings.apply(to: back)
         syncLocalState(on: back)
         if ComposerModelVisibility.showOtherModels {
             syncAntigravityModels(on: back)

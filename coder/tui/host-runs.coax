@@ -56,11 +56,11 @@ dr_dir :: () -> bool {
   return fs_exists(d);
 }
 
-// A worker program Coder may start: an absolute path ending in /inky, /flawedworker, /mcworker, /claudeworker or /agyworker.
+// A worker program Coder may start: an absolute path ending in /inky, /oa-worker, /flawedworker, /mcworker, /claudeworker or /agyworker.
 dr_program_ok :: (p: string) -> bool {
   if p.count < 2 || p[0] != '/' { return false; }
   for c: p { if c == 0 { return false; } }
-  return hs_ends(p, "/inky") || hs_ends(p, "/flawedworker") || hs_ends(p, "/mcworker") || hs_ends(p, "/claudeworker") || hs_ends(p, "/agyworker");
+  return hs_ends(p, "/inky") || hs_ends(p, "/oa-worker") || hs_ends(p, "/flawedworker") || hs_ends(p, "/mcworker") || hs_ends(p, "/claudeworker") || hs_ends(p, "/agyworker");
 }
 hs_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
 

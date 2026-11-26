@@ -42,7 +42,7 @@
   n := coder_page_queue_message_line(s, "add", "q1", "then fix b", "sess", "/w", out[..]);
   ar: [1] ClArena; ab: [2048] u8; ar[0].buf = ab[..]; req: [1] MwwRequest; back: [1] McTask;
   #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n - 1], req[..]) == MWW_QUEUE && req[0].op == "add" && req[0].id == "q1" && req[0].text == "then fix b";
-  #assert mww_task_read(ar[..], req[0].message, back[..]) && back[0].task == "then fix b" && back[0].cwd == "/w" && back[0].model == "flawed:gemini-4-neon" && !back[0].no_steer;
+  #assert mww_task_read(ar[..], req[0].message, back[..]) && back[0].task == "then fix b" && back[0].cwd == "/w" && back[0].model == "oa:gemini-4-neon" && !back[0].no_steer;
   #assert coder_page_queue_message_line(s, "delete", "q1", "x", "s", "/w", out[..]) == 0;
 }
 

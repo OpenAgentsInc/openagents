@@ -18,7 +18,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_set_inkling(s, true);
   coder_page_folder(s, "~/work/demo");
   coder_page_branch(s, "main");
-  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, 0) == "flawed:gemini-4-neon" && cp_model_id(s, CP_FLAWED_START_LOCAL) == "flawed:inkling-2-mini";
+  #assert cp_has_model_picker(s) && cp_models(s) == CP_FLAWED_MODELS + 1 && cp_model_id(s, 0) == "oa:gemini-4-neon" && cp_model_id(s, CP_FLAWED_START_LOCAL) == "oa:inkling-2-mini";
 
   // Main chat view: composer shows Inkling 2 Mini menu chip left of effort, core File Viewer toggle is present, without empty heading, mic, terminal, git, foreman, gym, forge, fresh, fanout, cost, usage, or copy on empty chat.
   #assert cp_flag_test_frame(s, 1200, 800);
@@ -60,7 +60,7 @@ cp_flag_test_frame :: (s: [] CoderPage, w: f32, h: f32) -> bool {
   coder_page_toggle_models(s);
   #assert s[0].model_menu && cp_flag_test_frame(s, 1200, 800);
   #assert surface_find(s[0].surface[..], "coder.model.menu") >= 0;
-  #assert surface_find(s[0].surface[..], "coder.model.0") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.0")) == "Flawed · Gemini 4 Neon";
+  #assert surface_find(s[0].surface[..], "coder.model.0") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.0")) == "OpenAgents · Gemini 4 Neon";
   #assert surface_find(s[0].surface[..], "coder.model.5") >= 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.model.5")) == "Inkling 2 Mini";
   #assert surface_find(s[0].surface[..], "coder.model.6") < 0 && surface_find(s[0].surface[..], "coder.model.flawed") >= 0 && surface_find(s[0].surface[..], "coder.model.local") >= 0 && surface_find(s[0].surface[..], "coder.model.others") >= 0 && surface_find(s[0].surface[..], "coder.model.providers") < 0;
   coder_page_toggle_models(s);

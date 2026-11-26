@@ -10,7 +10,7 @@
 //   coax/bin/coax test flawed/file_cache.coax --library
 //   coax/bin/coax mutate flawed/file_cache.coax --root-only
 #module "flawed.file_cache";
-#load "../coax/lib/crypto/sha256-kernel.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
 
 FLAWED_FC_PATH_MAX :: 256;
 FLAWED_FC_DEFAULT_ENTRIES :: 100;
