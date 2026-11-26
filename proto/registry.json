@@ -7386,6 +7386,24 @@
         "coax/lib/gbench/wire-checks.coax"
       ],
       "note": "Append-only #authority hillclimbing round ledger row recording scaffold lock, score/latency deltas, promotion verdict, and license-gated ATIF distillation count."
+    },
+    {
+      "id": "workos-authkit-v1",
+      "kind": "external",
+      "owner": "identity",
+      "schema": "",
+      "codec": "coax/lib/workos/adapters/c_unit.coax",
+      "check": "coax/bin/coax test coax/lib/workos/adapters/c_unit.coax --library",
+      "step": "14100",
+      "files": [
+        "coax/web/api/workos.c"
+      ],
+      "tests": [
+        "coax/lib/workos/adapters/c_unit.coax",
+        "coax/lib/workos/flow.coax",
+        "coax/lib/workos/verify.sh"
+      ],
+      "note": "WorkOS User Management, Magic Auth, OAuth/PKCE, Enterprise SSO, Events API, Webhooks, and AuthKit Actions external wire format (#14100). Anticorruption layer: coax/lib/workos/ builds requests and verifies signatures/JWTs through the #authority Coax SDK; coax/web/api/workos.c routes /api/auth/workos/* through workos-sdk-unit.c."
     }
   ]
 }

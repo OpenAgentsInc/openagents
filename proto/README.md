@@ -160,7 +160,7 @@ Owning contexts (`owner` slugs, from [`docs/architecture/contexts.md`](../docs/a
 | `quests` | Quests | `everglade/model/` |
 | `room-session` | Room session and replication | `metaverse-engine/session/` (except `ledger.coax`), `metaverse-engine/net/`, `coax/web/room/`, `everglade/shared/everglade-wire.coax`, `everglade/shared/everglade-link-wire.coax` |
 | `realm-authoring` | Realm authoring | `metaverse-engine/editor/`, `apps/metaverse-engine-desktop/`, `apps/openagents-web/worldbuilder*`, `coax/web/api/worldbuilder.c`, `coax/web/api/realms.c` |
-| `identity` | Identity and auth | `coax/web/api/auth*`, `coax/web/api/account-settings*`, `coax/native/account-*`, `coax/web/api/agent-wire.coax` |
+| `identity` | Identity and auth | `coax/web/api/auth*`, `coax/web/api/account-settings*`, `coax/native/account-*`, `coax/web/api/agent-wire.coax`, `coax/lib/workos/` |
 | `payments` | Payments and wallet | `pay/`, `coax/lib/bitcoin/`, `coax/lib/lightning/`, `coax/lib/lnaddr/`, `coax/lib/nostr/vault-wallet.coax` |
 | `coder` | Coder and agents | `coder/`, `apps/coder-desktop/`, `coax/lib/agent/`, `coax/lib/boat/`, `coax/lib/boat/`, `coax/lib/microcoder/`, `coax/lib/gateway/`, `coax/lib/repo/`, `coax/web/repo/`, `coax/web/agent/` |
 | `chat` | Chat | `components/zeron/`, `apps/openagents-web/chat.coax`, `coax/web/api/chat.c`, `coax/web/api/chat-history*`, `coax/web/api/account-chat*`, `coax/web/api/environment*`, `coax/web/api/router*` (the chat's route to the delegation router) |
