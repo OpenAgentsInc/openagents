@@ -1,0 +1,520 @@
+// Coax Web Server non-blocking streaming plane integration checks (#14088):
+//   - Auth, validation, cross-account isolation, and Last-Event-ID cursor errors
+//   - 60 concurrent SSE streams held open on a 4-worker API with zero blocking on /up & /api/*
+//   - Postgres LISTEN/NOTIFY fanout (<100ms end-to-end without polling)
+//   - Gapless, deduplicated Last-Event-ID replay (header precedence over ?after=) and terminal auto-close
+//   - Keepalive comments (: keepalive) and max connection lifetime on OA_API_WORKERS=1
+// tool.sh: tls
+#load "auth_harness.coax";
+#load "../../../lib/sys/args.coax";
+
+ST_HOLD_BATCH :: 20;
+ST_HOLD_PROCS :: 3;
+ST_PROBES :: 45;
+ST_BUF_MAX :: 32768;
+
+StConn :: struct {
+  h: int;
+  buf: [ST_BUF_MAX] u8;
+  n: int;
+  eof: bool;
+  status: int;
+  head_n: int;
+  head: [4096] u8;
+}
+
+st_parse_port :: (url: string) -> int {
+  colon := -1;
+  for i: 0..<url.count {
+    if url[i] == ':' { colon = i; }
+  }
+  if colon < 0 || colon + 1 >= url.count { return -1; }
+  end := colon + 1;
+  while end < url.count && url[end] >= '0' && url[end] <= '9' { end += 1; }
+  return ap_whole(url[colon + 1..<end]);
+}
+
+st_open :: (c: [] StConn, port: int, path: string, cookie: string, last_id: string, timeout_ms: int) -> bool {
+  c[0].h = -1; c[0].n = 0; c[0].eof = false; c[0].status = 0; c[0].head_n = 0;
+  host := "127.0.0.1";
+  for b: host { _ = cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(port, timeout_ms);
+  if h < 0 { return false; }
+  c[0].h = h;
+
+  req: [1] Sb;
+  sb(req[..], "GET "); sb(req[..], path); sb(req[..], " HTTP/1.1\r\nHost: 127.0.0.1:"); sb_int(req[..], port);
+  sb(req[..], "\r\nConnection: close\r\n");
+  if cookie.count > 0 { sb(req[..], "Cookie: __Host-oa_session="); sb(req[..], cookie); sb(req[..], "\r\n"); }
+  if last_id.count > 0 { sb(req[..], "Last-Event-ID: "); sb(req[..], last_id); sb(req[..], "\r\n"); }
+  sb(req[..], "\r\n");
+
+  for ch: sb_text(req[..]) {
+    if cxsock_write(h, cast(int) ch) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  }
+  if cxsock_flush(h, timeout_ms) != 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+
+  deadline := proc_now_ms() + timeout_ms;
+  head_end := -1;
+  while head_end < 0 && proc_now_ms() < deadline {
+    left := deadline - proc_now_ms();
+    if left < 1 { left = 1; }
+    got := cxsock_read(h, left);
+    if got == -2 { continue; }
+    if got <= 0 { c[0].eof = true; break; }
+    for i: 0..<got {
+      if c[0].n < ST_BUF_MAX { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(h, i); c[0].n += 1; }
+    }
+    if c[0].n >= 4 {
+      for i: 0..<c[0].n - 3 {
+        if c[0].buf[i] == '\r' && c[0].buf[i + 1] == '\n' && c[0].buf[i + 2] == '\r' && c[0].buf[i + 3] == '\n' {
+          head_end = i; break;
+        }
+      }
+    }
+  }
+  if head_end < 0 { _ = cxsock_close(h); c[0].h = -1; return false; }
+  hn := ifx head_end < c[0].head.count then head_end else c[0].head.count;
+  for i: 0..<hn { c[0].head[i] = c[0].buf[i]; }
+  c[0].head_n = hn;
+
+  // Parse status code from "HTTP/1.1 NNN ..."
+  head_str := cast(string) c[0].head[0..<hn];
+  if head_str.count >= 12 { c[0].status = ap_whole(head_str[9..<12]); }
+
+  // Shift leftover body bytes to start of buf
+  body_start := head_end + 4;
+  rem := c[0].n - body_start;
+  for i: 0..<rem { c[0].buf[i] = c[0].buf[body_start + i]; }
+  c[0].n = rem;
+  return true;
+}
+
+st_close :: (c: [] StConn) {
+  if c[0].h >= 0 { _ = cxsock_close(c[0].h); c[0].h = -1; }
+}
+
+st_head_text :: (c: [] StConn) -> string {
+  return cast(string) c[0].head[0..<c[0].head_n];
+}
+
+// Read until the next "\n\n" SSE frame into out; returns length, 0 on clean EOF, -1 on timeout/error.
+st_next_frame :: (c: [] StConn, out: [] u8, timeout_ms: int) -> int {
+  deadline := proc_now_ms() + timeout_ms;
+  while true {
+    sep := -1;
+    if c[0].n >= 2 {
+      for i: 0..<c[0].n - 1 {
+        if c[0].buf[i] == '\n' && c[0].buf[i + 1] == '\n' { sep = i; break; }
+      }
+    }
+    if sep >= 0 {
+      n := ifx sep < out.count then sep else out.count;
+      for i: 0..<n { out[i] = c[0].buf[i]; }
+      rem := c[0].n - (sep + 2);
+      for i: 0..<rem { c[0].buf[i] = c[0].buf[sep + 2 + i]; }
+      c[0].n = rem;
+      return n;
+    }
+    if c[0].eof { return 0; }
+    left := deadline - proc_now_ms();
+    if left <= 0 { return -1; }
+    got := cxsock_read(c[0].h, left);
+    if got == -2 { continue; }
+    if got == -1 { c[0].eof = true; return 0; }
+    if got < 0 { c[0].eof = true; return -1; }
+    if got == 0 { c[0].eof = true; return 0; }
+    for i: 0..<got {
+      if c[0].n < ST_BUF_MAX { c[0].buf[c[0].n] = cast,trunc(u8) cxsock_byte(c[0].h, i); c[0].n += 1; }
+    }
+  }
+  return -1;
+}
+
+st_p95 :: (v: [] int, n: int) -> int {
+  if n <= 0 { return -1; }
+  for i: 1..<n {
+    x := v[i]; j := i;
+    while j > 0 && v[j - 1] > x { v[j] = v[j - 1]; j -= 1; }
+    v[j] = x;
+  }
+  return v[(n * 95 + 99) / 100 - 1];
+}
+
+// Child worker mode: hold `count` simultaneous SSE connections open, mark ready,
+// wait for event id: 2 ("fanout-60") on all connections, record timestamps, and exit.
+st_hold_main :: (port: int, path: string, cookie: string, count: int, ready_file: string, out_file: string) -> int {
+  conns: [ST_HOLD_BATCH] StConn;
+  frame: [4096] u8;
+  n := ifx count > ST_HOLD_BATCH then ST_HOLD_BATCH else count;
+  ok := true;
+  for i: 0..<n {
+    if !st_open(conns[i..<i + 1], port, path, cookie, "", 5000) { ok = false; break; }
+    hd := st_head_text(conns[i..<i + 1]);
+    if conns[i].status != 200 || !ap_has(hd, "Content-Type: text/event-stream") ||
+       !ap_has(hd, "no-cache") || !ap_has(hd, "X-Accel-Buffering: no") { ok = false; break; }
+    fn := st_next_frame(conns[i..<i + 1], frame[..], 3000);
+    if fn <= 0 || cast(string) frame[0..<fn] != "retry: 3000" { ok = false; break; }
+    f1 := st_next_frame(conns[i..<i + 1], frame[..], 3000);
+    if f1 <= 0 || !ap_has(cast(string) frame[0..<f1], "id: 1\nevent: turn\n") { ok = false; break; }
+  }
+  if !ok {
+    for i: 0..<n { st_close(conns[i..<i + 1]); }
+    _ = fs_write(out_file, "fail|0|0");
+    _ = fs_write(ready_file, "fail");
+    return 1;
+  }
+  _ = fs_write(ready_file, "ok");
+
+  first_ms := 0;
+  all_ok := true;
+  for i: 0..<n {
+    f2 := st_next_frame(conns[i..<i + 1], frame[..], 5000);
+    now := proc_now_ms();
+    if first_ms == 0 { first_ms = now; }
+    if f2 <= 0 || !ap_has(cast(string) frame[0..<f2], "id: 2\nevent: turn\n") ||
+       !ap_has(cast(string) frame[0..<f2], "fanout-60") { all_ok = false; }
+  }
+  all_ms := proc_now_ms();
+  for i: 0..<n { st_close(conns[i..<i + 1]); }
+
+  res: [1] Sb;
+  sb(res[..], ifx all_ok then "ok|" else "fail|");
+  sb_int(res[..], first_ms); sb(res[..], "|"); sb_int(res[..], all_ms);
+  _ = fs_write(out_file, sb_text(res[..]));
+  return ifx all_ok then 0 else 1;
+}
+
+// Log in via POST /api/auth/nostr/challenge + POST /api/auth/nostr with keyfile.
+// Writes session cookie into cookie_out and account id into acct_out.
+st_nostr_login :: (t: [] Ap, keyfile: string, cookie_out: [] u8, acct_out: [] u8) -> bool {
+  st := ac_call(t, "POST", "/api/auth/nostr/challenge", "{}", "", "", "");
+  if st != 200 { return false; }
+  chb: [128] u8; ch := ap_member(ap_body(t), "challenge", chb[..]);
+  if ch.count != 64 { return false; }
+  body: [1] Sb; sb(body[..], "{\"challenge\":\""); sb(body[..], ch); sb(body[..], "\",\"label\":\"stream\"}");
+  url: [1] Sb; sb(url[..], t[0].api); sb(url[..], "/api/auth/nostr");
+  sigb: [4096] u8; sig := ap_nostr(t, keyfile, "POST", sb_text(url[..]), sb_text(body[..]), true, sigb[..]);
+  ah: [1] Sb; sb(ah[..], "Authorization: Nostr "); sb(ah[..], sig);
+  st = ac_call(t, "POST", "/api/auth/nostr", sb_text(body[..]), sb_text(ah[..]), "", "");
+  if st != 200 { return false; }
+  ck := ac_cookie(t, "__Host-oa_session", cookie_out);
+  ac := ap_member(ap_body(t), "account", acct_out);
+  return ck.count > 0 && ac.count > 0;
+}
+
+st_event_json :: (out: [] Sb, conv: string, turn: string, seq: int, kind: string, state: string, delta: string, stop_reason: string) {
+  sb_clear(out);
+  sb(out, "{\"schema\":\"openagents.chat.event.v2alpha1\",\"conversation_id\":\""); sb(out, conv);
+  sb(out, "\",\"turn_id\":\""); sb(out, turn);
+  sb(out, "\",\"sequence\":"); sb_int(out, seq);
+  sb(out, ",\"type\":\""); sb(out, kind);
+  sb(out, "\",\"state\":\""); sb(out, state);
+  sb(out, "\",\"stop_requested\":false,\"block_index\":");
+  if kind == "text_delta" { sb(out, "0"); } else { sb(out, "null"); }
+  sb(out, ",\"delta\":");
+  if delta.count > 0 { sb(out, "\""); sb(out, delta); sb(out, "\""); } else { sb(out, "null"); }
+  sb(out, ",\"usage\":null,\"stop_reason\":");
+  if stop_reason.count > 0 { sb(out, "\""); sb(out, stop_reason); sb(out, "\""); } else { sb(out, "null"); }
+  sb(out, ",\"error\":null}");
+}
+
+st_seed_turn :: (t: [] Ap, acct: string, conv: string, turn: string, op: string) {
+  ev1: [1] Sb; st_event_json(ev1[..], conv, turn, 1, "started", "running", "", "");
+  q: [1] Sb;
+  sb(q[..], "BEGIN; INSERT INTO chat.conversations_v2(id,account,revision,title,created_ms,updated_ms) VALUES('");
+  sb(q[..], conv); sb(q[..], "','"); sb(q[..], acct); sb(q[..], "',1,'stream test',1700000000000,1700000000000); ");
+  sb(q[..], "INSERT INTO chat.turns_v2(id,account,conversation,ordinal,operation,digest,request_json,input_json,state,sequence,model,provider,effort,created_ms,updated_ms,native_input_json,admitted_for) VALUES('");
+  sb(q[..], turn); sb(q[..], "','"); sb(q[..], acct); sb(q[..], "','"); sb(q[..], conv); sb(q[..], "',1,'"); sb(q[..], op);
+  sb(q[..], "','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{}','{}',2,1,'google/gemini-4-hydrogen','google','low',1700000000000,1700000000000,'{}',''); ");
+  sb(q[..], "INSERT INTO chat.turn_events_v2(account,turn,sequence,record) VALUES('");
+  sb(q[..], acct); sb(q[..], "','"); sb(q[..], turn); sb(q[..], "',1,'"); sb(q[..], sb_text(ev1[..])); sb(q[..], "'); COMMIT;");
+  ap_do(t, sb_text(q[..]));
+}
+
+st_append_event :: (t: [] Ap, acct: string, conv: string, turn: string, seq: int, kind: string, state_name: string, state_num: int, delta: string, stop_reason: string) {
+  ev: [1] Sb; st_event_json(ev[..], conv, turn, seq, kind, state_name, delta, stop_reason);
+  q: [1] Sb;
+  sb(q[..], "BEGIN; UPDATE chat.turns_v2 SET state="); sb_int(q[..], state_num);
+  sb(q[..], ", sequence="); sb_int(q[..], seq);
+  sb(q[..], " WHERE account='"); sb(q[..], acct); sb(q[..], "' AND id='"); sb(q[..], turn); sb(q[..], "'; ");
+  sb(q[..], "INSERT INTO chat.turn_events_v2(account,turn,sequence,record) VALUES('");
+  sb(q[..], acct); sb(q[..], "','"); sb(q[..], turn); sb(q[..], "',"); sb_int(q[..], seq);
+  sb(q[..], ",'"); sb(q[..], sb_text(ev[..])); sb(q[..], "'); COMMIT;");
+  ap_do(t, sb_text(q[..]));
+}
+
+st_part :: (s: string, idx: int) -> string {
+  cur := 0; start := 0;
+  for i: 0..<s.count + 1 {
+    if i == s.count || s[i] == '|' {
+      if cur == idx { return s[start..<i]; }
+      cur += 1; start = i + 1;
+    }
+  }
+  return "";
+}
+
+st_run_checks :: (t: [] Ap) {
+  port := st_parse_port(t[0].api);
+  okb: [2048] u8; other_key := proc_getenv("OTHER_KEY", okb[..]);
+  c1b: [256] u8; a1b: [64] u8; c2b: [256] u8; a2b: [64] u8;
+  logged1 := st_nostr_login(t, t[0].admin_key, c1b[..], a1b[..]);
+  logged2 := st_nostr_login(t, other_key, c2b[..], a2b[..]);
+  ap_check(t, "stream: two test accounts log in over /api/auth/nostr", logged1 && logged2, ap_body(t));
+  if !logged1 || !logged2 { return; }
+
+  // Trim NUL/trailing by re-reading lengths from exact login values via SQL/known prefixes
+  ck1_n := 0; while ck1_n < c1b.count && c1b[ck1_n] != 0 { ck1_n += 1; }
+  ck1 := cast(string) c1b[0..<ck1_n];
+  ac1_n := 0; while ac1_n < a1b.count && a1b[ac1_n] != 0 { ac1_n += 1; }
+  acct1 := cast(string) a1b[0..<ac1_n];
+  ck2_n := 0; while ck2_n < c2b.count && c2b[ck2_n] != 0 { ck2_n += 1; }
+  ck2 := cast(string) c2b[0..<ck2_n];
+
+  ck1_hdr: [1] Sb; ch1 := ac_cookie_header("__Host-oa_session", ck1, ck1_hdr[..]);
+  ck2_hdr: [1] Sb; ch2 := ac_cookie_header("__Host-oa_session", ck2, ck2_hdr[..]);
+
+  conv := "cnv_14088000000000000000000000000001";
+  turn := "trn_14088000000000000000000000000001";
+  st_seed_turn(t, acct1, conv, turn, "op_stream_14088_1");
+
+  stream_path: [1] Sb; sb(stream_path[..], "/api/chat/events/stream/v2alpha1?id="); sb(stream_path[..], turn);
+  spath := sb_text(stream_path[..]);
+
+  // ---- 1. Auth, validation, cross-account isolation, and cursor errors
+  ap_check(t, "stream: unauthenticated SSE request is 401",
+           ap_call(t, "GET", spath, "", t[0].no[0..<0]) == 401, ap_body(t));
+  ap_check(t, "stream: POST to SSE endpoint is 405",
+           ac_call(t, "POST", spath, "", ch1, "", "") == 405, ap_body(t));
+  ap_check(t, "stream: invalid turn id is 400",
+           ac_call(t, "GET", "/api/chat/events/stream/v2alpha1?id=bad", "", ch1, "", "") == 400, ap_body(t));
+  ap_check(t, "stream: invalid Last-Event-ID header is 400",
+           ac_call(t, "GET", spath, "", ch1, "Last-Event-ID: not-a-number", "") == 400, ap_body(t));
+  bad_after: [1] Sb; sb(bad_after[..], spath); sb(bad_after[..], "&after=01");
+  ap_check(t, "stream: leading-zero ?after= cursor is 400",
+           ac_call(t, "GET", sb_text(bad_after[..]), "", ch1, "", "") == 400, ap_body(t));
+  ap_check(t, "stream: another account cannot subscribe to an unowned turn (404)",
+           ac_call(t, "GET", spath, "", ch2, "", "") == 404, ap_body(t));
+  ap_check(t, "stream: cursor ahead of committed turn sequence is 409",
+           ac_call(t, "GET", spath, "", ch1, "Last-Event-ID: 99", "") == 409, ap_body(t));
+
+  // ---- 2. Hold 60 concurrent SSE streams (3 processes x 20 sockets) without blocking /up or /api/*
+  dir_buf: [1024] u8; work := fs_temp("stream-checks", dir_buf[..]);
+  kids: [ST_HOLD_PROCS] int;
+  rfiles: [ST_HOLD_PROCS * 256] u8; rlens: [ST_HOLD_PROCS] int;
+  ofiles: [ST_HOLD_PROCS * 256] u8; olens: [ST_HOLD_PROCS] int;
+  port_s: [16] u8; pstr := ap_num(port, port_s[..]);
+  cnt_s: [16] u8; cstr := ap_num(ST_HOLD_BATCH, cnt_s[..]);
+
+  started_all := true;
+  for i: 0..<ST_HOLD_PROCS {
+    kids[i] = -1;
+    rn: [1] Sb; sb(rn[..], "ready_"); sb_int(rn[..], i);
+    on: [1] Sb; sb(on[..], "out_"); sb_int(on[..], i);
+    rp := fs_join(work, sb_text(rn[..]), rfiles[i * 256..<(i + 1) * 256]); rlens[i] = rp.count;
+    op := fs_join(work, sb_text(on[..]), ofiles[i * 256..<(i + 1) * 256]); olens[i] = op.count;
+    h := proc_new();
+    ok := h >= 0 && proc_arg(h, "coax/web/tool.sh") && proc_arg(h, "coax/web/api/tests/stream_checks.coax") &&
+          proc_arg(h, "hold") && proc_arg(h, pstr) && proc_arg(h, spath) && proc_arg(h, ck1) &&
+          proc_arg(h, cstr) && proc_arg(h, rp) && proc_arg(h, op) && proc_quiet(h);
+    if ok && proc_start(h) == 0 { kids[i] = h; } else { started_all = false; if h >= 0 { _ = proc_release(h); } }
+  }
+
+  // Wait until all 60 SSE streams have connected, upgraded, and received retry + initial event 1.
+  ready_all := false;
+  dl := proc_now_ms() + 30000;
+  while started_all && proc_now_ms() < dl {
+    ready_count := 0;
+    for i: 0..<ST_HOLD_PROCS {
+      rp := cast(string) rfiles[i * 256..<i * 256 + rlens[i]];
+      if fs_exists(rp) { ready_count += 1; }
+    }
+    if ready_count == ST_HOLD_PROCS { ready_all = true; break; }
+    proc_sleep(20);
+  }
+  ap_check(t, "stream: 60 concurrent SSE connections upgrade with canonical headers and receive retry + event 1",
+           started_all && ready_all, "");
+
+  // Probe /up, /api/playtest/health, and /api/chat/turn/v2alpha1 while all 60 SSE streams stay open!
+  turn_path: [1] Sb; sb(turn_path[..], "/api/chat/turn/v2alpha1?id="); sb(turn_path[..], turn);
+  tpath := sb_text(turn_path[..]);
+  lats: [ST_PROBES] int;
+  probes_ok := true;
+  for i: 0..<ST_PROBES {
+    t0 := proc_now_ms();
+    st := 0;
+    if i % 3 == 0 { st = ap_call(t, "GET", "/up", "", t[0].no[0..<0]); }
+    else if i % 3 == 1 { st = ap_call(t, "GET", "/api/playtest/health", "", t[0].no[0..<0]); }
+    else { st = ac_call(t, "GET", tpath, "", ch1, "", ""); }
+    lats[i] = proc_now_ms() - t0;
+    if st != 200 { probes_ok = false; }
+  }
+  p95 := st_p95(lats[..], ST_PROBES);
+  p95_msg: [1] Sb; sb(p95_msg[..], "stream: 45 /up + /api/* probes stay 200 OK while 60 SSE streams are held open (p95="); sb_int(p95_msg[..], p95); sb(p95_msg[..], "ms)");
+  ap_check(t, sb_text(p95_msg[..]), ready_all && probes_ok && p95 >= 0 && p95 < 100, "");
+
+  // ---- 3. Real-time Postgres LISTEN/NOTIFY fanout to all 60 open SSE streams
+  t_emit := proc_now_ms();
+  st_append_event(t, acct1, conv, turn, 2, "text_delta", "running", 2, "fanout-60", "");
+  fanout_ok := ready_all;
+  min_first_ms := 999999;
+  max_all_ms := 0;
+  for i: 0..<ST_HOLD_PROCS {
+    if kids[i] < 0 { fanout_ok = false; continue; }
+    w := proc_wait(kids[i], 10000);
+    if w != 0 { _ = proc_kill(kids[i], PROC_SIGKILL); _ = proc_wait(kids[i], 2000); fanout_ok = false; }
+    _ = proc_release(kids[i]); kids[i] = -1;
+    op := cast(string) ofiles[i * 256..<i * 256 + olens[i]];
+    ob: [256] u8; on := fs_read(op, ob[..]);
+    if on <= 0 { fanout_ok = false; continue; }
+    txt := ap_trim(cast(string) ob[0..<on]);
+    if st_part(txt, 0) != "ok" { fanout_ok = false; continue; }
+    fms := ap_whole(st_part(txt, 1)) - t_emit;
+    ams := ap_whole(st_part(txt, 2)) - t_emit;
+    if fms < min_first_ms { min_first_ms = fms; }
+    if ams > max_all_ms { max_all_ms = ams; }
+  }
+  _ = fs_remove(work);
+  fan_msg: [1] Sb; sb(fan_msg[..], "stream: LISTEN/NOTIFY fans out committed row to all 60 SSE streams (first="); sb_int(fan_msg[..], min_first_ms); sb(fan_msg[..], "ms, all="); sb_int(fan_msg[..], max_all_ms); sb(fan_msg[..], "ms)");
+  ap_check(t, sb_text(fan_msg[..]), fanout_ok && min_first_ms < 100, "");
+
+  // ---- 4. Direct <100ms LISTEN/NOTIFY latency benchmark (5 sequential live events, no polling)
+  c_lat: [1] StConn;
+  frame: [4096] u8;
+  opened_lat := st_open(c_lat[..], port, spath, ck1, "2", 5000);
+  lat_ok := opened_lat && c_lat[0].status == 200;
+  if lat_ok {
+    fr := st_next_frame(c_lat[..], frame[..], 3000);
+    if fr <= 0 || cast(string) frame[0..<fr] != "retry: 3000" { lat_ok = false; }
+  }
+  max_live_ms := 0;
+  for seq: 3..<8 {
+    if !lat_ok { break; }
+    d: [1] Sb; sb(d[..], "tok-"); sb_int(d[..], seq);
+    want_id: [1] Sb; sb(want_id[..], "id: "); sb_int(want_id[..], seq); sb(want_id[..], "\nevent: turn\n");
+    t0 := proc_now_ms();
+    st_append_event(t, acct1, conv, turn, seq, "text_delta", "running", 2, sb_text(d[..]), "");
+    fn := st_next_frame(c_lat[..], frame[..], 2000);
+    dt := proc_now_ms() - t0;
+    if dt > max_live_ms { max_live_ms = dt; }
+    if fn <= 0 || !ap_has(cast(string) frame[0..<fn], sb_text(want_id[..])) || !ap_has(cast(string) frame[0..<fn], sb_text(d[..])) {
+      lat_ok = false;
+    }
+  }
+  st_close(c_lat[..]);
+  lat_msg: [1] Sb; sb(lat_msg[..], "stream: LISTEN/NOTIFY delivers 5 live chat.turn_events_v2 rows in <100ms each (max="); sb_int(lat_msg[..], max_live_ms); sb(lat_msg[..], "ms)");
+  ap_check(t, sb_text(lat_msg[..]), lat_ok && max_live_ms < 100, "");
+
+  // ---- 5. Last-Event-ID replay (header overrides ?after=0), exact order, zero gaps/dups, terminal auto-close
+  rep_path: [1] Sb; sb(rep_path[..], spath); sb(rep_path[..], "&after=0");
+  c_rep: [1] StConn;
+  rep_ok := st_open(c_rep[..], port, sb_text(rep_path[..]), ck1, "4", 5000) && c_rep[0].status == 200;
+  if rep_ok {
+    fr := st_next_frame(c_rep[..], frame[..], 3000);
+    if fr <= 0 || cast(string) frame[0..<fr] != "retry: 3000" { rep_ok = false; }
+  }
+  for seq: 5..<8 {
+    if !rep_ok { break; }
+    want: [1] Sb; sb(want[..], "id: "); sb_int(want[..], seq); sb(want[..], "\nevent: turn\n");
+    fn := st_next_frame(c_rep[..], frame[..], 3000);
+    if fn <= 0 || !ap_has(cast(string) frame[0..<fn], sb_text(want[..])) { rep_ok = false; }
+  }
+  // Emit terminal event seq=8 while attached: must deliver id: 8 and close socket cleanly (EOF).
+  if rep_ok {
+    st_append_event(t, acct1, conv, turn, 8, "completed", "completed", 3, "", "end_turn");
+    fn8 := st_next_frame(c_rep[..], frame[..], 3000);
+    if fn8 <= 0 || !ap_has(cast(string) frame[0..<fn8], "id: 8\nevent: turn\n") || !ap_has(cast(string) frame[0..<fn8], "\"completed\"") {
+      rep_ok = false;
+    }
+    eof_n := st_next_frame(c_rep[..], frame[..], 3000);
+    if eof_n != 0 || !c_rep[0].eof { rep_ok = false; }
+  }
+  st_close(c_rep[..]);
+  ap_check(t, "stream: Last-Event-ID replays exact missed events without gaps/dups and auto-closes on terminal event", rep_ok, "");
+
+  // Reconnect to completed turn with Last-Event-ID=6 -> replays [7, 8] and closes cleanly.
+  c_done2: [1] StConn;
+  d2_ok := st_open(c_done2[..], port, spath, ck1, "6", 5000) && c_done2[0].status == 200;
+  if d2_ok {
+    fr := st_next_frame(c_done2[..], frame[..], 3000);
+    if fr <= 0 { d2_ok = false; }
+    f7 := st_next_frame(c_done2[..], frame[..], 3000);
+    if f7 <= 0 || !ap_has(cast(string) frame[0..<f7], "id: 7\nevent: turn\n") { d2_ok = false; }
+    f8 := st_next_frame(c_done2[..], frame[..], 3000);
+    if f8 <= 0 || !ap_has(cast(string) frame[0..<f8], "id: 8\nevent: turn\n") { d2_ok = false; }
+    fe := st_next_frame(c_done2[..], frame[..], 3000);
+    if fe != 0 || !c_done2[0].eof { d2_ok = false; }
+  }
+  st_close(c_done2[..]);
+  ap_check(t, "stream: reconnecting to completed turn replays remaining events [7, 8] and closes cleanly", d2_ok, "");
+
+  // Reconnect at exact terminal cursor (Last-Event-ID=8) -> emits zero duplicate events and closes cleanly.
+  c_end: [1] StConn;
+  end_ok := st_open(c_end[..], port, spath, ck1, "8", 5000) && c_end[0].status == 200;
+  if end_ok {
+    fr := st_next_frame(c_end[..], frame[..], 3000);
+    fe := st_next_frame(c_end[..], frame[..], 3000);
+    end_ok = fr > 0 && cast(string) frame[0..<fr] == "retry: 3000" && fe == 0 && c_end[0].eof;
+  }
+  st_close(c_end[..]);
+  ap_check(t, "stream: reconnecting at terminal cursor emits zero duplicate events and closes cleanly", end_ok, "");
+
+  // ---- 6. OA_API_WORKERS=1 non-blocking check, : keepalive comments, and max connection lifetime
+  bb: [4096] u8; bin := proc_getenv("API_BIN", bb[..]);
+  if bin.count > 0 {
+    l := cxsock_listen(0); solo_port := cxsock_port(l); _ = cxsock_close(l);
+    la: [1] Sb; sb(la[..], "127.0.0.1:"); sb_int(la[..], solo_port);
+    solo_url: [1] Sb; sb(solo_url[..], "http://127.0.0.1:"); sb_int(solo_url[..], solo_port); sb(solo_url[..], "/up");
+    sh := proc_new();
+    s_started := sh >= 0 && proc_arg(sh, bin) && proc_arg(sh, "--listen") && proc_arg(sh, sb_text(la[..])) &&
+                 proc_env(sh, "OA_API_WORKERS=1") && proc_env(sh, "OA_STREAM_HEARTBEAT_MS=150") &&
+                 proc_env(sh, "OA_STREAM_MAX_LIFETIME_MS=650") && proc_quiet(sh) && proc_start(sh) == 0;
+    solo_up := false;
+    for k: 0..<100 {
+      if !s_started { break; }
+      if ap_call(t, "GET", sb_text(solo_url[..]), "", t[0].no[0..<0]) == 200 { solo_up = true; break; }
+      proc_sleep(50);
+    }
+
+    conv2 := "cnv_14088000000000000000000000000002";
+    turn2 := "trn_14088000000000000000000000000002";
+    st_seed_turn(t, acct1, conv2, turn2, "op_stream_14088_2");
+    sp2: [1] Sb; sb(sp2[..], "/api/chat/events/stream/v2alpha1?id="); sb(sp2[..], turn2);
+
+    c_ka: [1] StConn;
+    ka_open := solo_up && st_open(c_ka[..], solo_port, sb_text(sp2[..]), ck1, "", 3000) && c_ka[0].status == 200;
+    nonblock_ok := ka_open && ap_call(t, "GET", sb_text(solo_url[..]), "", t[0].no[0..<0]) == 200;
+    saw_ka := false;
+    closed_ok := false;
+    if ka_open {
+      for step: 0..<32 {
+        fn := st_next_frame(c_ka[..], frame[..], 2000);
+        if fn == 0 && c_ka[0].eof { closed_ok = true; break; }
+        if fn < 0 { break; }
+        if cast(string) frame[0..<fn] == ": keepalive" { saw_ka = true; }
+      }
+    }
+    st_close(c_ka[..]);
+    if s_started {
+      _ = proc_kill(sh, PROC_SIGTERM);
+      w := proc_wait(sh, 5000);
+      if w == PROC_RUNNING { _ = proc_kill(sh, PROC_SIGKILL); _ = proc_wait(sh, 2000); }
+      _ = proc_release(sh);
+    }
+    ap_check(t, "stream: OA_API_WORKERS=1 stays non-blocking, emits : keepalive, and closes at max lifetime",
+             solo_up && ka_open && nonblock_ok && saw_ka && closed_ok, "");
+  }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if args_load(a[..]) && args_count(a[..]) == 7 && args_at(a[..], 0) == "hold" {
+    return st_hold_main(ap_whole(args_at(a[..], 1)), args_at(a[..], 2), args_at(a[..], 3),
+                        ap_whole(args_at(a[..], 4)), args_at(a[..], 5), args_at(a[..], 6));
+  }
+  t: [1] Ap;
+  if !ap_open(t[..]) { return 2; }
+  st_run_checks(t[..]);
+  return ap_done(t[..], "stream checks");
+}

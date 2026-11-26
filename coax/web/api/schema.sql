@@ -3459,6 +3459,20 @@ CREATE FUNCTION chat.model_ok(m text) RETURNS boolean
 
 
 --
+-- Name: notify_turn_event_v2(); Type: FUNCTION; Schema: chat; Owner: -
+--
+
+CREATE FUNCTION chat.notify_turn_event_v2() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  PERFORM pg_notify('oa_turn_events_v2', NEW.turn || '|' || NEW.sequence::text);
+  RETURN NULL;
+END;
+$$;
+
+
+--
 -- Name: now_ms(); Type: FUNCTION; Schema: chat; Owner: -
 --
 
@@ -27377,6 +27391,13 @@ CREATE TRIGGER session_device_fixed BEFORE UPDATE OF device ON auth.sessions FOR
 --
 
 CREATE TRIGGER wallet_backup_forward BEFORE UPDATE OF epoch, slots, object, vault ON auth.wallet_backups FOR EACH ROW EXECUTE FUNCTION auth.wallet_backup_forward();
+
+
+--
+-- Name: turn_events_v2 turn_events_v2_notify; Type: TRIGGER; Schema: chat; Owner: -
+--
+
+CREATE TRIGGER turn_events_v2_notify AFTER INSERT ON chat.turn_events_v2 FOR EACH ROW EXECUTE FUNCTION chat.notify_turn_event_v2();
 
 
 --

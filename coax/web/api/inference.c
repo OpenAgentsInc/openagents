@@ -57,6 +57,7 @@
 //   OA_INFERENCE_DAILY_USD_MICROS  spend a day per account, in millionths of a dollar (2000000)
 #include "api.h"
 #include "nostr.h"
+#include "stream.h"
 #include "inference-upstream-policy.generated.h"
 #include <curl/curl.h>
 #include <fcntl.h>
@@ -143,8 +144,6 @@ static bool token(char *out, size_t cap) {
   return out[0] != 0;
 }
 bool inference_google_token(char *out, size_t cap) { return token(out, cap); }
-
-static bool send_all(int fd, const char *p, size_t n);
 
 // An identity token for a sibling Cloud Run service (its URL is the audience), from the metadata server,
 // or the token in the environment variable `given` (tests). Our Spark wallet and the compile service
@@ -251,8 +250,8 @@ static void x402_reply(int fd, int status, const char *name, const char *value, 
   memcpy(extra, start, (size_t)k);
   if (head) memcpy(extra + k, head, hn);
   memcpy(extra + k + hn, "Connection: close\r\n\r\n", 22);
-  send_all(fd, extra, (size_t)k + hn + 21);
-  send_all(fd, json, strlen(json));
+  api_stream_write_all(fd, extra, (size_t)k + hn + 21);
+  api_stream_write_all(fd, json, strlen(json));
   free(extra); free(head);
 }
 
@@ -411,17 +410,12 @@ static bool credit_route(const request *q) {
 // hold (the local serve mode): an answer that isn't a 200 is kept, not relayed (held), and answered in words.
 // upstream: the endpoint whose answer this is ("us", "global"), said in the answer's X-OA-Upstream.
 typedef struct { int fd; CURL *h; bool stream, started, gone, hold, held, deferred; buf all; const inference_observer *observer;void *context; const char *upstream; } relay_t;
-static bool send_all(int fd, const char *p, size_t n) {
-  while (n) { ssize_t k = write(fd, p, n); if (k <= 0) return false; p += k; n -= (size_t)k; }
-  return true;
-}
 static void start(relay_t *r, long status) {
-  char head[320];
+  char extra[160] = "";
   const char *type = r->stream && status == 200 ? "text/event-stream" : "application/json";
-  int n = snprintf(head, sizeof head, "HTTP/1.1 %ld %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\n%s%s%sConnection: close\r\n\r\n",
-                   status, status == 200 ? "OK" : "Upstream", type, r->upstream ? "X-OA-Upstream: " : "", r->upstream ? r->upstream : "", r->upstream ? "\r\n" : "");
+  if (r->upstream) snprintf(extra, sizeof extra, "X-OA-Upstream: %s\r\n", r->upstream);
   r->started = true;
-  if (!send_all(r->fd, head, (size_t)n)) r->gone = true;
+  if (!api_stream_begin(r->fd, (int)status, type, extra)) r->gone = true;
 }
 static size_t relay(char *data, size_t size, size_t n, void *user) {
   relay_t *r = user; size_t k = size * n;
@@ -432,7 +426,7 @@ static size_t relay(char *data, size_t size, size_t n, void *user) {
     if (r->hold && status != 200) r->held = true; else start(r, status ? status : 502);
   }
   if (r->held) { if (r->all.n < (1u << 16)) keep(&r->all, data, k); return k; }
-  if (!r->gone && !send_all(r->fd, data, k)) r->gone = true;   // the caller left: stop asking Vertex
+  if (!r->gone && !api_stream_write_all(r->fd, data, k)) r->gone = true;   // the caller left: stop asking Vertex
   if (r->all.n < (4u << 20)) keep(&r->all, data, k);
   return r->gone ? 0 : k;
 }
@@ -607,7 +601,7 @@ static bool local_sign(const char *url, const char *body, char *out, size_t cap)
   char path[] = "/tmp/oa-local-sign-XXXXXX";
   int bf = mkstemp(path);
   if (bf < 0) return false;
-  bool wrote = send_all(bf, body, strlen(body));
+  bool wrote = api_stream_write_all(bf, body, strlen(body));
   close(bf);
   int p[2];
   if (!wrote || pipe(p)) { unlink(path); return false; }

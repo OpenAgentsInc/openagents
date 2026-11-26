@@ -213,6 +213,7 @@ static const auth_rule RULES[] = {
   R("*", "/api/chat/native-input/v1alpha1", false, AP_ACCOUNT, "the owned turn's complete admitted native input"),
   R("*", "/api/chat/turn-task/v1alpha1", false, AP_ACCOUNT, "the owned turn's immutable native task association"),
   R("*", "/api/chat/events/v2alpha1", false, AP_ACCOUNT, "replay owned durable events after a cursor"),
+  R("GET", "/api/chat/events/stream/v2alpha1", false, AP_ACCOUNT, "stream owned durable turn events over SSE with Last-Event-ID replay"),
   R("*", "/api/chat/conversations/v2alpha1", false, AP_ACCOUNT, "owned durable conversation index"),
   R("*", "/api/chat/conversation/v2alpha1", false, AP_ACCOUNT, "paged owned durable conversation"),
   R("*", "/api/chat/runner/v2alpha1", false, AP_PUBLIC, "trusted signed runner only; fenced durable queue claims"),

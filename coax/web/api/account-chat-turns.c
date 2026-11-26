@@ -2,6 +2,8 @@
 // entropy and the existing runner/inference transports. All decisions and JSON
 // composition are the shared Coax codec/policy/reducer, never SQL functions.
 #include "api.h"
+#include "stream.h"
+#include "stream-policy.generated.h"
 #include "account-chat-wire.generated.h"
 #include "projects-wire.generated.h"
 #include "environment-process.h"
@@ -181,12 +183,33 @@ static void runner(const request *q,PGconn *db){
  coax_t_CtWorker r;unsigned char arena[232];if(!cwr_read(tn(q->body,q->body_len),(coax_v_t_CtWorker){&r,1},tb(arena,sizeof arena))){refuse(q,400,"Invalid durable worker request.");return;}char op[81],worker[81],id[37],fence[37];copy_string(op,sizeof op,r.id);copy_string(worker,sizeof worker,r.worker);copy_string(id,sizeof id,r.turn);copy_string(fence,sizeof fence,r.dispatch);
  if(r.operation==1)claim(q,db,key,op,worker);else dispatch_turn(q,db,key,id,fence,worker,r.operation==3);
 }
+static void stream_events(const request *q,PGconn *db,const auth_principal *p){
+ char id[64],after_text[32],last_id[64];
+ api_query(q,"id",id,sizeof id);
+ api_query(q,"after",after_text,sizeof after_text);
+ api_header(q,"Last-Event-ID",last_id,sizeof last_id);
+ int64_t after=sp_effective_cursor(ts(last_id),ts(after_text));
+ if(!sp_turn_id_valid(ts(id))||after<0){refuse(q,400,"Invalid turn or event cursor.");return;}
+ const char *args[]={p->account,id};
+ PGresult *r=PQexecParams(db,"SELECT state,sequence FROM chat.turns_v2 WHERE account=$1 AND id=$2",2,NULL,args,NULL,NULL,0);
+ if(!tuples(r)){PQclear(r);refuse(q,503,"Chat storage unavailable.");return;}
+ if(PQntuples(r)!=1){PQclear(r);refuse(q,404,"not found");return;}
+ int turn_state=(int)number(r,0,0);
+ int64_t turn_seq=(int64_t)number(r,0,1);
+ PQclear(r);
+ int64_t cs=sp_cursor_status(after,turn_seq);
+ if(cs==409){refuse(q,409,"The event cursor is ahead of this turn.");return;}
+ if(cs!=200){refuse(q,400,"Invalid turn or event cursor.");return;}
+ if(!stream_handoff_turn_events(q,p->account,id,after,turn_seq,turn_state)){
+  refuse(q,503,"Event stream unavailable.");
+ }
+}
 bool account_chat_turn_route(const request *q){
- const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:0;if(!op)return false;
+ const char *path=q->path;int op=!strcmp(path,"/api/chat/submit/v2alpha1")?1:!strcmp(path,"/api/chat/stop/v2alpha1")?2:!strcmp(path,"/api/chat/turn/v2alpha1")?3:!strcmp(path,"/api/chat/events/v2alpha1")?4:!strcmp(path,"/api/chat/conversations/v2alpha1")?5:!strcmp(path,"/api/chat/conversation/v2alpha1")?6:!strcmp(path,"/api/chat/runner/v2alpha1")?7:!strcmp(path,"/api/chat/context/v2alpha1")?8:!strcmp(path,"/api/chat/input/v2alpha1")?9:!strcmp(path,"/api/chat/native-input/v1alpha1")?10:!strcmp(path,"/api/chat/turn-task/v1alpha1")?11:!strcmp(path,"/api/chat/events/stream/v2alpha1")?12:0;if(!op)return false;
  PGconn *db=api_db();if(!db){refuse(q,503,"Chat storage unavailable.");return true;}if(op==7){runner(q,db);return true;}
  const auth_principal *p=auth_principal_of(q);if(!p||!ctw_owns(p->kind,p->level,ts(p->account),ts(p->account))){refuse(q,401,"Log in first.");return true;}
  bool post=op<=2;if(strcmp(q->method,post?"POST":"GET")){refuse(q,405,post?"POST this":"GET this");return true;}if(post&&!auth_same_site(q)){refuse(q,403,"Cross-site write refused.");return true;}
- if(op==1)submit(q,db,p,"");else if(op==2)stop_turn(q,db,p);else if(op==3||op==4)read_turn(q,db,p,op==4);else if(op==5)conversation_index(q,db,p);else if(op==6)conversation_read(q,db,p);else read_admitted(q,db,p,op);return true;
+ if(op==1)submit(q,db,p,"");else if(op==2)stop_turn(q,db,p);else if(op==3||op==4)read_turn(q,db,p,op==4);else if(op==5)conversation_index(q,db,p);else if(op==6)conversation_read(q,db,p);else if(op==12)stream_events(q,db,p);else read_admitted(q,db,p,op);return true;
 }
 typedef struct {
  request response;char account[41],turn[37],dispatch[37],worker[81],key[65];

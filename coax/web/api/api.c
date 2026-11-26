@@ -51,6 +51,7 @@
 #include "api.h"
 #include "config.h"
 #include "queue.h"
+#include "stream.h"
 #include "error-wire.generated.h"
 #include "log-context.generated.h"
 #include "maintenance-policy.generated.h"
@@ -124,6 +125,7 @@ static uint64_t req_seq;
 static int log_json_mode = -1;
 #define ROUTE(fn) do { route_at = #fn; if (fn(&q)) return; } while (0)
 void api_route_at(const char *name) { route_at = name; }
+void api_mark_status(int status) { last_status = status; }
 void api_respond(int fd, int status, const char *type, const char *extra_headers, const void *body, size_t n) {
   last_status = status;
   char head[4096], named[96] = "";
@@ -584,29 +586,52 @@ static int serve(int lfd, pid_t parent) {
   return 0;
 }
 
-// The supervisor: `count` workers, each started again a moment after it ends, until SIGTERM or
-// SIGINT, which it passes on.
-static int supervise(int lfd, int count) {
-  pid_t kids[WORKERS_MAX] = {0}, me = getpid();
+// The supervisor: `count` sync HTTP workers plus one dedicated non-blocking streaming
+// plane process (stream.c), each restarted if it ends, until SIGTERM or SIGINT.
+static int supervise(int lfd, int count, int stream_recv_fd, int stream_send_fd) {
+  pid_t kids[WORKERS_MAX] = {0}, stream_pid = 0, me = getpid();
   struct sigaction sa = {0}; sa.sa_handler = on_term;
   sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL);
   while (!stopping) {
+    if (stream_pid <= 0 && stream_recv_fd >= 0 && !stopping) {
+      pid_t pid = fork();
+      if (pid == 0) {
+        close(lfd);
+        if (stream_send_fd >= 0) close(stream_send_fd);
+        _exit(stream_plane_run(stream_recv_fd, me));
+      }
+      if (pid < 0) { perror("api: fork stream plane"); usleep(200000); }
+      else stream_pid = pid;
+    }
     for (int i = 0; i < count && !stopping; i++) {
       if (kids[i] > 0) continue;
       pid_t pid = fork();
-      if (pid == 0) _exit(serve(lfd, me));   // SIGTERM: it finishes the request it has, then ends
+      if (pid == 0) {
+        if (stream_recv_fd >= 0) close(stream_recv_fd);
+        stream_client_init(stream_send_fd);
+        _exit(serve(lfd, me));   // SIGTERM: it finishes the request it has, then ends
+      }
       if (pid < 0) { perror("api: fork"); usleep(200000); continue; }
       kids[i] = pid;
     }
     int st; pid_t gone = waitpid(-1, &st, 0);
     if (gone < 0) { if (errno == EINTR) continue; usleep(200000); continue; }
+    if (stream_pid > 0 && gone == stream_pid) {
+      stream_pid = 0;
+      if (!stopping) { api_log("stream plane %d ended (status %d); starting another", (int)gone, st); usleep(100000); }
+      continue;
+    }
     for (int i = 0; i < count; i++) if (kids[i] == gone) {
       kids[i] = 0;
       if (!stopping) { api_log("worker %d ended (status %d); starting another", (int)gone, st); usleep(100000); }
     }
   }
   for (int i = 0; i < count; i++) if (kids[i] > 0) kill(kids[i], SIGTERM);
+  if (stream_pid > 0) kill(stream_pid, SIGTERM);
   for (int i = 0; i < count; i++) if (kids[i] > 0) waitpid(kids[i], NULL, 0);
+  if (stream_pid > 0) waitpid(stream_pid, NULL, 0);
+  if (stream_recv_fd >= 0) close(stream_recv_fd);
+  if (stream_send_fd >= 0) close(stream_send_fd);
   return 0;
 }
 
@@ -685,8 +710,38 @@ int main(int argc, char **argv) {
   // no worker blocks in accept on a connection another one took
   fcntl(lfd, F_SETFL, fcntl(lfd, F_GETFL, 0) | O_NONBLOCK);
   inference_upstream_init();   // before the workers: they and their children share it
-  if (count == 1) return serve(lfd, 0);
-  // each worker opens its own database connection: the parent's goes before they start
+  // Each child process opens its own database connection: close the parent's before any fork.
   if (db) { PQfinish(db); db = NULL; }
-  return supervise(lfd, count);
+  int stream_sp[2] = {-1, -1};
+  if (socketpair(AF_UNIX, SOCK_DGRAM, 0, stream_sp) == 0) {
+    int buf_sz = 262144;
+    (void)setsockopt(stream_sp[0], SOL_SOCKET, SO_RCVBUF, &buf_sz, sizeof buf_sz);
+    (void)setsockopt(stream_sp[1], SOL_SOCKET, SO_SNDBUF, &buf_sz, sizeof buf_sz);
+    (void)fcntl(stream_sp[0], F_SETFD, FD_CLOEXEC);
+    (void)fcntl(stream_sp[1], F_SETFD, FD_CLOEXEC);
+  } else {
+    perror("api: stream socketpair");
+  }
+  if (count == 1) {
+    struct sigaction sa = {0}; sa.sa_handler = on_term;
+    sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL);
+    pid_t stream_pid = 0;
+    if (stream_sp[0] >= 0) {
+      pid_t me = getpid();
+      stream_pid = fork();
+      if (stream_pid == 0) {
+        close(lfd);
+        close(stream_sp[1]);
+        _exit(stream_plane_run(stream_sp[0], me));
+      }
+      close(stream_sp[0]);
+      if (stream_pid > 0) stream_client_init(stream_sp[1]);
+      else { close(stream_sp[1]); stream_sp[1] = -1; }
+    }
+    int rc = serve(lfd, 0);
+    if (stream_pid > 0) { kill(stream_pid, SIGTERM); waitpid(stream_pid, NULL, 0); }
+    if (stream_sp[1] >= 0) close(stream_sp[1]);
+    return rc;
+  }
+  return supervise(lfd, count, stream_sp[0], stream_sp[1]);
 }

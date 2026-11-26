@@ -29,6 +29,7 @@ void api_respond(int fd, int status, const char *type, const char *extra_headers
 void api_respond_immutable(int fd, const char *type, const void *body, size_t n);   // a 200 named by its bytes' hash: cached for good, no cookie
 void api_json(int fd, int status, const char *json);
 void api_route_at(const char *name);   // a route function called by another names itself (the checks' X-OA-Route header, api.c)
+void api_mark_status(int status);      // record HTTP status for routes that hand off the socket (e.g. SSE streaming plane)
 // A refusal, {"error":"WORDS"}: the one writer is error-wire.coax (api-wire.coax's ErrorReply; Protocol,
 // #13250). No route file spells the body itself. api_error_with adds headers; api_error_text writes
 // the body to out (NUL-ended) for a reply sent another way and returns its length. Words that do

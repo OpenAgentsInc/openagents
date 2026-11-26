@@ -1,0 +1,516 @@
+// Coax Web Server streaming policy (#14088):
+//   - Canonical SSE HTTP response headers and wire frames (id/event/data/retry/keepalive)
+//   - Last-Event-ID and ?after= cursor parsing, precedence, and bounds checks
+//   - Per-client outbound backpressure queue limits, heartbeat cadence, and max lifetime
+//   - Postgres LISTEN/NOTIFY channel validation and turn-event payload parsing.
+#authority;
+
+SP_HEARTBEAT_MS :: 15000;
+SP_MAX_LIFETIME_MS :: 1800000;
+SP_RETRY_MS :: 3000;
+SP_MAX_CLIENT_QUEUE_BYTES :: 262144;
+SP_MIN_CLIENT_QUEUE_BYTES :: 1024;
+SP_MAX_CLIENTS :: 1024;
+SP_MAX_REPLAY_BATCH :: 64;
+SP_CURSOR_MAX :: 2147483645;
+SP_MIN_HEARTBEAT_MS :: 100;
+SP_MIN_LIFETIME_MS :: 500;
+SP_MAX_TIMEOUT_MS :: 1000;
+
+SP_STATE_COMPLETED :: 3;
+SP_STATE_UNKNOWN :: 6;
+
+sp_append :: (out: [] u8, at: int, text: string) -> int #effects(all) {
+  if at < 0 { return -1; }
+  k := at;
+  for c: text {
+    if k >= out.count { return -1; }
+    out[k] = c;
+    k += 1;
+  }
+  return k;
+}
+
+sp_append_int :: (out: [] u8, at: int, value: int) -> int #effects(all) {
+  if at < 0 { return -1; }
+  if value == 0 { return sp_append(out, at, "0"); }
+  digits: [24] u8;
+  n := 0;
+  v := value;
+  while v > 0 {
+    digits[n] = cast(u8) ('0' + (v % 10));
+    v /= 10;
+    n += 1;
+  }
+  k := at;
+  i := n - 1;
+  while i >= 0 {
+    if k >= out.count { return -1; }
+    out[k] = digits[i];
+    k += 1;
+    i -= 1;
+  }
+  return k;
+}
+
+sp_is_digit :: (c: u8) -> bool #effects(all) {
+  return c >= '0' && c <= '9';
+}
+
+sp_is_lower_hex :: (c: u8) -> bool #effects(all) {
+  return sp_is_digit(c) || (c >= 'a' && c <= 'f');
+}
+
+sp_is_lower_alpha :: (c: u8) -> bool #effects(all) {
+  return c >= 'a' && c <= 'z';
+}
+
+sp_clamp :: (requested: int, lo: int, hi: int, def: int) -> int #effects(all) {
+  if requested <= 0 { return def; }
+  if requested < lo { return lo; } // mutant: equivalent (at boundary requested == lo, returning lo equals returning requested)
+  if requested > hi { return hi; } // mutant: equivalent (at boundary requested == hi, returning hi equals returning requested)
+  return requested;
+}
+
+// Parse a canonical non-negative decimal cursor in 0..SP_CURSOR_MAX.
+// Empty string defaults to 0. Leading zeros on multi-digit numbers, signs,
+// whitespace, non-digits, or overflow return -1.
+sp_parse_cursor :: (raw: string) -> int #export_c #effects(all) {
+  if raw.count == 0 { return 0; }
+  if raw.count > 1 && raw[0] == '0' { return -1; }
+  v := 0;
+  for c: raw {
+    if !sp_is_digit(c) { return -1; }
+    d := cast(int) (c - '0');
+    if v > (SP_CURSOR_MAX - d) / 10 { return -1; }
+    v = v * 10 + d;
+  }
+  return v;
+}
+
+// Last-Event-ID header takes precedence over the ?after= query parameter when non-empty.
+sp_effective_cursor :: (last_event_id: string, query_after: string) -> int #export_c #effects(all) {
+  if last_event_id.count > 0 { return sp_parse_cursor(last_event_id); }
+  return sp_parse_cursor(query_after);
+}
+
+// HTTP status for a parsed cursor against a turn's current committed sequence.
+sp_cursor_status :: (cursor: int, turn_sequence: int) -> int #export_c #effects(all) {
+  if cursor < 0 || turn_sequence < 0 { return 400; }
+  if cursor > turn_sequence { return 409; }
+  return 200;
+}
+
+sp_replay_limit :: (requested: int) -> int #export_c #effects(all) {
+  return sp_clamp(requested, 1, SP_MAX_REPLAY_BATCH, SP_MAX_REPLAY_BATCH);
+}
+
+sp_clamp_heartbeat_ms :: (requested: int) -> int #export_c #effects(all) {
+  return sp_clamp(requested, SP_MIN_HEARTBEAT_MS, SP_HEARTBEAT_MS, SP_HEARTBEAT_MS);
+}
+
+sp_clamp_lifetime_ms :: (requested: int) -> int #export_c #effects(all) {
+  return sp_clamp(requested, SP_MIN_LIFETIME_MS, SP_MAX_LIFETIME_MS, SP_MAX_LIFETIME_MS);
+}
+
+sp_clamp_queue_bytes :: (requested: int) -> int #export_c #effects(all) {
+  return sp_clamp(requested, SP_MIN_CLIENT_QUEUE_BYTES, SP_MAX_CLIENT_QUEUE_BYTES, SP_MAX_CLIENT_QUEUE_BYTES);
+}
+
+// Overflow-safe backpressure check for per-client outbound buffer queuing.
+sp_can_enqueue :: (queued_bytes: int, add_bytes: int, max_bytes: int) -> bool #export_c #effects(all) {
+  if queued_bytes < 0 || add_bytes < 0 || max_bytes <= 0 { return false; }
+  if add_bytes > max_bytes { return false; }
+  return queued_bytes <= max_bytes - add_bytes;
+}
+
+sp_heartbeat_due :: (now_ms: int, last_send_ms: int, cadence_ms: int) -> bool #export_c #effects(all) {
+  if cadence_ms <= 0 { return false; }
+  return now_ms - last_send_ms >= cadence_ms;
+}
+
+sp_lifetime_expired :: (now_ms: int, connected_ms: int, max_lifetime_ms: int) -> bool #export_c #effects(all) {
+  if max_lifetime_ms <= 0 { return false; }
+  return now_ms - connected_ms >= max_lifetime_ms;
+}
+
+// Bounded sleep interval (0..SP_MAX_TIMEOUT_MS) until the next heartbeat or lifetime deadline.
+sp_next_timeout_ms :: (now_ms: int, last_send_ms: int, connected_ms: int, cadence_ms: int, max_lifetime_ms: int) -> int #export_c #effects(all) {
+  wait := SP_MAX_TIMEOUT_MS;
+  if cadence_ms > 0 {
+    left := cadence_ms - (now_ms - last_send_ms);
+    if left < wait { wait = left; } // mutant: equivalent (at boundary left == wait, wait keeps the same value)
+  }
+  if max_lifetime_ms > 0 {
+    left := max_lifetime_ms - (now_ms - connected_ms);
+    if left < wait { wait = left; } // mutant: equivalent (at boundary left == wait, wait keeps the same value)
+  }
+  if wait < 0 { return 0; } // mutant: equivalent (at boundary wait == 0, returning 0 equals returning wait)
+  return wait;
+}
+
+sp_is_terminal_state :: (state: int) -> bool #export_c #effects(all) {
+  return state >= SP_STATE_COMPLETED && state <= SP_STATE_UNKNOWN;
+}
+
+sp_turn_id_valid :: (id: string) -> bool #export_c #effects(all) {
+  if id.count != 36 { return false; }
+  if id[0] != 't' || id[1] != 'r' || id[2] != 'n' || id[3] != '_' { return false; }
+  for i: 4..<36 {
+    if !sp_is_lower_hex(id[i]) { return false; }
+  }
+  return true;
+}
+
+// Postgres LISTEN/NOTIFY channel identifier: 1..63 chars, [a-z_][a-z0-9_]*.
+sp_channel_valid :: (channel: string) -> bool #export_c #effects(all) {
+  if channel.count < 1 || channel.count > 63 { return false; }
+  if !sp_is_lower_alpha(channel[0]) && channel[0] != '_' { return false; }
+  for i: 1..<channel.count {
+    c := channel[i];
+    if !sp_is_lower_alpha(c) && !sp_is_digit(c) && c != '_' { return false; }
+  }
+  return true;
+}
+
+// Parse Postgres NOTIFY payload "<turn_id>|<sequence>" where sequence >= 1.
+sp_notify_parse :: (payload: string, turn_out: [] u8, seq_out: [] int) -> bool #export_c #effects(all) {
+  if turn_out.count < 36 || seq_out.count < 1 { return false; }
+  if payload.count < 38 || payload[36] != '|' { return false; }
+  turn := cast(string) payload[0..<36];
+  if !sp_turn_id_valid(turn) { return false; }
+  seq := sp_parse_cursor(cast(string) payload[37..<payload.count]);
+  if seq < 1 { return false; }
+  for i: 0..<36 { turn_out[i] = turn[i]; }
+  seq_out[0] = seq;
+  return true;
+}
+
+sp_reason :: (status: int) -> string #effects(all) {
+  if status == 200 { return "OK"; }
+  if status == 400 { return "Bad Request"; }
+  if status == 401 { return "Unauthorized"; }
+  if status == 403 { return "Forbidden"; }
+  if status == 404 { return "Not Found"; }
+  if status == 409 { return "Conflict"; }
+  if status == 429 { return "Too Many Requests"; }
+  if status == 500 { return "Internal Server Error"; }
+  if status == 502 { return "Bad Gateway"; }
+  if status == 503 { return "Service Unavailable"; }
+  return "Upstream";
+}
+
+// Canonical HTTP/1.1 streaming response header block.
+// For text/event-stream, emits anti-buffering and no-cache directives.
+sp_sse_headers :: (out: [] u8, status: int, content_type: string, extra_headers: string) -> int #export_c #effects(all) {
+  if status < 100 || status > 599 || content_type.count < 1 { return -1; }
+  for c: content_type { if c == '\r' || c == '\n' || c == 0 { return -1; } }
+  for c: extra_headers { if c == 0 { return -1; } }
+  n := sp_append(out, 0, "HTTP/1.1 ");
+  n = sp_append_int(out, n, status);
+  n = sp_append(out, n, " ");
+  n = sp_append(out, n, sp_reason(status));
+  n = sp_append(out, n, "\r\nContent-Type: ");
+  n = sp_append(out, n, content_type);
+  if content_type == "text/event-stream" {
+    n = sp_append(out, n, "\r\nCache-Control: no-cache, no-store, private\r\nX-Content-Type-Options: nosniff\r\nX-Accel-Buffering: no\r\n");
+  } else {
+    n = sp_append(out, n, "\r\nCache-Control: no-store, private\r\nX-Content-Type-Options: nosniff\r\n");
+  }
+  n = sp_append(out, n, extra_headers);
+  n = sp_append(out, n, "Connection: close\r\n\r\n");
+  return n;
+}
+
+sp_sse_retry_frame :: (out: [] u8, retry_ms: int) -> int #export_c #effects(all) {
+  if retry_ms < 0 { return -1; }
+  n := sp_append(out, 0, "retry: ");
+  n = sp_append_int(out, n, retry_ms);
+  n = sp_append(out, n, "\n\n");
+  return n;
+}
+
+sp_sse_keepalive_frame :: (out: [] u8) -> int #export_c #effects(all) {
+  return sp_append(out, 0, ": keepalive\n\n");
+}
+
+// Canonical SSE event frame: optional id (>= 0), optional event name, and LF-split data lines.
+// Rejects CR or NUL anywhere, and LF in event_name.
+sp_sse_event_frame :: (out: [] u8, id: int, event_name: string, data: string) -> int #export_c #effects(all) {
+  for c: event_name { if c == '\r' || c == '\n' || c == 0 { return -1; } }
+  for c: data { if c == '\r' || c == 0 { return -1; } }
+  n := 0;
+  if id >= 0 {
+    n = sp_append(out, n, "id: ");
+    n = sp_append_int(out, n, id);
+    n = sp_append(out, n, "\n");
+  }
+  if event_name.count > 0 {
+    n = sp_append(out, n, "event: ");
+    n = sp_append(out, n, event_name);
+    n = sp_append(out, n, "\n");
+  }
+  from := 0;
+  for i: 0..<data.count + 1 {
+    if i == data.count || data[i] == '\n' {
+      n = sp_append(out, n, "data: ");
+      n = sp_append(out, n, cast(string) data[from..<i]);
+      n = sp_append(out, n, "\n");
+      from = i + 1;
+    }
+  }
+  n = sp_append(out, n, "\n");
+  return n;
+}
+
+// ---- tests & properties
+
+#test "cursor parsing validates canonical decimals and Last-Event-ID precedence" {
+  #assert sp_parse_cursor("") == 0;
+  #assert sp_parse_cursor("0") == 0;
+  #assert sp_parse_cursor("1") == 1;
+  #assert sp_parse_cursor("42") == 42;
+  #assert sp_parse_cursor("2147483645") == SP_CURSOR_MAX;
+  #assert sp_parse_cursor("2147483646") == -1;
+  #assert sp_parse_cursor("9999999999") == -1;
+  #assert sp_parse_cursor("10000000000") == -1;
+  #assert sp_parse_cursor("00") == -1;
+  #assert sp_parse_cursor("01") == -1;
+  #assert sp_parse_cursor("-1") == -1;
+  #assert sp_parse_cursor("+1") == -1;
+  #assert sp_parse_cursor(" 1") == -1;
+  #assert sp_parse_cursor("1a") == -1;
+  #assert sp_parse_cursor("/") == -1;
+  #assert sp_parse_cursor(":") == -1;
+
+  #assert sp_effective_cursor("7", "2") == 7;
+  #assert sp_effective_cursor("bad", "2") == -1;
+  #assert sp_effective_cursor("", "5") == 5;
+  #assert sp_effective_cursor("", "") == 0;
+  #assert sp_effective_cursor("", "bad") == -1;
+}
+
+#test "cursor status and replay/config clamps enforce exact boundaries" {
+  #assert sp_cursor_status(-1, 5) == 400;
+  #assert sp_cursor_status(0, -1) == 400;
+  #assert sp_cursor_status(0, 0) == 200;
+  #assert sp_cursor_status(5, 5) == 200;
+  #assert sp_cursor_status(6, 5) == 409;
+
+  #assert sp_replay_limit(-1) == SP_MAX_REPLAY_BATCH;
+  #assert sp_replay_limit(0) == SP_MAX_REPLAY_BATCH;
+  #assert sp_replay_limit(1) == 1;
+  #assert sp_replay_limit(64) == 64;
+  #assert sp_replay_limit(65) == SP_MAX_REPLAY_BATCH;
+
+  #assert sp_clamp_heartbeat_ms(-1) == SP_HEARTBEAT_MS;
+  #assert sp_clamp_heartbeat_ms(0) == SP_HEARTBEAT_MS;
+  #assert sp_clamp_heartbeat_ms(1) == SP_MIN_HEARTBEAT_MS;
+  #assert sp_clamp_heartbeat_ms(99) == SP_MIN_HEARTBEAT_MS;
+  #assert sp_clamp_heartbeat_ms(100) == 100;
+  #assert sp_clamp_heartbeat_ms(250) == 250;
+  #assert sp_clamp_heartbeat_ms(15000) == 15000;
+  #assert sp_clamp_heartbeat_ms(15001) == SP_HEARTBEAT_MS;
+
+  #assert sp_clamp_lifetime_ms(-1) == SP_MAX_LIFETIME_MS;
+  #assert sp_clamp_lifetime_ms(0) == SP_MAX_LIFETIME_MS;
+  #assert sp_clamp_lifetime_ms(1) == SP_MIN_LIFETIME_MS;
+  #assert sp_clamp_lifetime_ms(499) == SP_MIN_LIFETIME_MS;
+  #assert sp_clamp_lifetime_ms(500) == 500;
+  #assert sp_clamp_lifetime_ms(60000) == 60000;
+  #assert sp_clamp_lifetime_ms(1800000) == 1800000;
+  #assert sp_clamp_lifetime_ms(1800001) == SP_MAX_LIFETIME_MS;
+
+  #assert sp_clamp_queue_bytes(-1) == SP_MAX_CLIENT_QUEUE_BYTES;
+  #assert sp_clamp_queue_bytes(0) == SP_MAX_CLIENT_QUEUE_BYTES;
+  #assert sp_clamp_queue_bytes(1) == SP_MIN_CLIENT_QUEUE_BYTES;
+  #assert sp_clamp_queue_bytes(1023) == SP_MIN_CLIENT_QUEUE_BYTES;
+  #assert sp_clamp_queue_bytes(1024) == 1024;
+  #assert sp_clamp_queue_bytes(4096) == 4096;
+  #assert sp_clamp_queue_bytes(262144) == 262144;
+  #assert sp_clamp_queue_bytes(262145) == SP_MAX_CLIENT_QUEUE_BYTES;
+}
+
+#test "backpressure, heartbeat, lifetime, and timeout calculations hold exact bounds" {
+  #assert !sp_can_enqueue(-1, 1, 10);
+  #assert !sp_can_enqueue(0, -1, 10);
+  #assert !sp_can_enqueue(0, 0, 0);
+  #assert !sp_can_enqueue(0, 1, 0);
+  #assert !sp_can_enqueue(0, 1, -5);
+  #assert sp_can_enqueue(0, 1, 1);
+  #assert !sp_can_enqueue(0, 11, 10);
+  #assert sp_can_enqueue(0, 0, 10);
+  #assert sp_can_enqueue(0, 10, 10);
+  #assert sp_can_enqueue(4, 6, 10);
+  #assert !sp_can_enqueue(5, 6, 10);
+
+  #assert !sp_heartbeat_due(1000, 0, 0);
+  #assert !sp_heartbeat_due(1000, 0, -1);
+  #assert sp_heartbeat_due(10, 9, 1);
+  #assert !sp_heartbeat_due(100, 90, 150);
+  #assert sp_heartbeat_due(240, 90, 150);
+  #assert !sp_heartbeat_due(14999, 0, 15000);
+  #assert sp_heartbeat_due(15000, 0, 15000);
+  #assert sp_heartbeat_due(15001, 0, 15000);
+
+  #assert !sp_lifetime_expired(1000, 0, 0);
+  #assert !sp_lifetime_expired(1000, 0, -1);
+  #assert sp_lifetime_expired(10, 9, 1);
+  #assert !sp_lifetime_expired(100, 90, 150);
+  #assert sp_lifetime_expired(240, 90, 150);
+  #assert !sp_lifetime_expired(1799999, 0, 1800000);
+  #assert sp_lifetime_expired(1800000, 0, 1800000);
+  #assert sp_lifetime_expired(1800001, 0, 1800000);
+
+  #assert sp_next_timeout_ms(0, 0, 0, 0, 0) == SP_MAX_TIMEOUT_MS;
+  #assert sp_next_timeout_ms(0, 0, 0, 15000, 1800000) == SP_MAX_TIMEOUT_MS;
+  #assert sp_next_timeout_ms(100, 100, 100, 1, 0) == 1;
+  #assert sp_next_timeout_ms(100, 100, 100, 0, 1) == 1;
+  #assert sp_next_timeout_ms(1000, 1000, 500, 15000, 800) == 300;
+  #assert sp_next_timeout_ms(1000, 1000, 500, 15000, 501) == 1;
+  #assert sp_next_timeout_ms(1000, 1000, 500, 15000, 500) == 0;
+  #assert sp_next_timeout_ms(14700, 0, 0, 15000, 1800000) == 300;
+  #assert sp_next_timeout_ms(15100, 0, 0, 15000, 1800000) == 0;
+  #assert sp_next_timeout_ms(1799800, 1799700, 0, 15000, 1800000) == 200;
+  #assert sp_next_timeout_ms(1800050, 1800000, 0, 15000, 1800000) == 0;
+}
+
+#forall "terminal states match exact range 3..6" s: -1..<9 {
+  #assert sp_is_terminal_state(s) == (s >= SP_STATE_COMPLETED && s <= SP_STATE_UNKNOWN);
+}
+
+#forall "backpressure check is exact across small budgets" x: 0..<64 {
+  q := x % 8;
+  a := x / 8;
+  #assert sp_can_enqueue(q, a, 6) == (q + a <= 6);
+}
+
+#test "turn id, channel name, and Postgres NOTIFY payload parsing" {
+  good_turn := "trn_0123456789abcdef0123456789abcdef";
+  #assert sp_turn_id_valid(good_turn);
+  #assert !sp_turn_id_valid("trn_0123456789abcdef0123456789abcde");
+  #assert !sp_turn_id_valid("trn_0123456789abcdef0123456789abcdef0");
+  #assert !sp_turn_id_valid("xrn_0123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("txn_0123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("trx_0123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("trn-0123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("trn_0123456789ABCDEF0123456789abcdef");
+  #assert !sp_turn_id_valid("trn_0123456789abcdeg0123456789abcdef");
+  #assert !sp_turn_id_valid("trn_/123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("trn_:123456789abcdef0123456789abcdef");
+  #assert !sp_turn_id_valid("trn_`123456789abcdef0123456789abcdef");
+
+  #assert sp_channel_valid("oa_turn_events_v2");
+  #assert sp_channel_valid("_a09z");
+  #assert sp_channel_valid("a");
+  #assert sp_channel_valid("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert !sp_channel_valid("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert !sp_channel_valid("");
+  #assert !sp_channel_valid("0abc");
+  #assert !sp_channel_valid("Aabc");
+  #assert !sp_channel_valid("oa-turn");
+  #assert !sp_channel_valid("oa;drop");
+  #assert !sp_channel_valid("aA");
+  #assert !sp_channel_valid("a{");
+  #assert !sp_channel_valid("a`");
+  #assert !sp_channel_valid("a/");
+  #assert !sp_channel_valid("a:");
+
+  tout: [36] u8;
+  sout: [1] int;
+  #assert sp_notify_parse("trn_0123456789abcdef0123456789abcdef|1", tout[..], sout[..]);
+  #assert cast(string) tout[0..<36] == good_turn && sout[0] == 1;
+  #assert sp_notify_parse("trn_0123456789abcdef0123456789abcdef|42", tout[..], sout[..]);
+  #assert sout[0] == 42;
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|1", tout[0..<35], sout[..]);
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|1", tout[..], sout[0..<0]);
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|", tout[..], sout[..]);
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef:1", tout[..], sout[..]);
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|0", tout[..], sout[..]);
+  #assert !sp_notify_parse("trn_0123456789abcdef0123456789abcdef|abc", tout[..], sout[..]);
+  #assert !sp_notify_parse("cnv_0123456789abcdef0123456789abcdef|1", tout[..], sout[..]);
+}
+
+#test "SSE headers, retry, keepalive, and multi-line event framing" {
+  buf: [512] u8;
+  n := sp_sse_headers(buf[..], 200, "text/event-stream", "X-OA-Upstream: us\r\n");
+  #assert n > 0;
+  #assert cast(string) buf[0..<n] ==
+    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache, no-store, private\r\nX-Content-Type-Options: nosniff\r\nX-Accel-Buffering: no\r\nX-OA-Upstream: us\r\nConnection: close\r\n\r\n";
+
+  n2 := sp_sse_headers(buf[..], 429, "application/json", "");
+  #assert n2 > 0;
+  #assert cast(string) buf[0..<n2] ==
+    "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nCache-Control: no-store, private\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+
+  // Cover all status reason branches and bounds, including 1-byte content_type and CR-only rejection
+  #assert sp_sse_headers(buf[..], 200, "x", "") > 0;
+  #assert sp_sse_headers(buf[..], 100, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 599, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 400, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 401, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 403, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 404, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 409, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 500, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 502, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 503, "text/plain", "") > 0;
+  #assert sp_sse_headers(buf[..], 99, "text/plain", "") == -1;
+  #assert sp_sse_headers(buf[..], 600, "text/plain", "") == -1;
+  #assert sp_sse_headers(buf[..], 200, "", "") == -1;
+  #assert sp_sse_headers(buf[..], 200, "text/plain\rX: 1", "") == -1;
+  #assert sp_sse_headers(buf[..], 200, "text/plain\nX: 1", "") == -1;
+  #assert sp_sse_headers(buf[..], 200, "text\0plain", "") == -1;
+  #assert sp_sse_headers(buf[..], 200, "text/plain", "X: a\0b") == -1;
+  #assert sp_sse_headers(buf[0..<8], 200, "text/event-stream", "") == -1;
+  #assert sp_sse_headers(buf[0..<10], 200, "text/event-stream", "") == -1;
+  #assert sp_sse_headers(buf[0..<12], 200, "text/event-stream", "") == -1;
+
+  // Verify exact reason strings
+  #assert sp_reason(200) == "OK";
+  #assert sp_reason(400) == "Bad Request";
+  #assert sp_reason(401) == "Unauthorized";
+  #assert sp_reason(403) == "Forbidden";
+  #assert sp_reason(404) == "Not Found";
+  #assert sp_reason(409) == "Conflict";
+  #assert sp_reason(429) == "Too Many Requests";
+  #assert sp_reason(500) == "Internal Server Error";
+  #assert sp_reason(502) == "Bad Gateway";
+  #assert sp_reason(503) == "Service Unavailable";
+  #assert sp_reason(504) == "Upstream";
+
+  // Verify sp_append_int at offset 0 as well as propagation of -1
+  #assert sp_append_int(buf[..], 0, 7) == 1 && buf[0] == '7';
+  #assert sp_append_int(buf[..], -1, 7) == -1;
+
+  // Retry and keepalive frames
+  rn := sp_sse_retry_frame(buf[..], 3000);
+  #assert rn == 13 && cast(string) buf[0..<rn] == "retry: 3000\n\n";
+  rn0 := sp_sse_retry_frame(buf[..], 0);
+  #assert rn0 == 10 && cast(string) buf[0..<rn0] == "retry: 0\n\n";
+  #assert sp_sse_retry_frame(buf[..], -1) == -1;
+  #assert sp_sse_retry_frame(buf[0..<5], 3000) == -1;
+  #assert sp_sse_retry_frame(buf[0..<8], 3000) == -1;
+
+  kn := sp_sse_keepalive_frame(buf[..]);
+  #assert kn == 13 && cast(string) buf[0..<kn] == ": keepalive\n\n";
+  #assert sp_sse_keepalive_frame(buf[0..<5]) == -1;
+
+  // Event frames: with id + event + multi-line data, 1-char event, without id/event, and invalid chars
+  en := sp_sse_event_frame(buf[..], 12, "turn", "line1\nline2");
+  #assert en > 0 && cast(string) buf[0..<en] == "id: 12\nevent: turn\ndata: line1\ndata: line2\n\n";
+  en1 := sp_sse_event_frame(buf[..], 1, "e", "x");
+  #assert en1 > 0 && cast(string) buf[0..<en1] == "id: 1\nevent: e\ndata: x\n\n";
+  en0 := sp_sse_event_frame(buf[..], 0, "", "hello");
+  #assert en0 > 0 && cast(string) buf[0..<en0] == "id: 0\ndata: hello\n\n";
+  en_noid := sp_sse_event_frame(buf[..], -1, "", "");
+  #assert en_noid > 0 && cast(string) buf[0..<en_noid] == "data: \n\n";
+  #assert sp_sse_event_frame(buf[..], 1, "bad\nname", "ok") == -1;
+  #assert sp_sse_event_frame(buf[..], 1, "bad\rname", "ok") == -1;
+  #assert sp_sse_event_frame(buf[..], 1, "bad\0name", "ok") == -1;
+  #assert sp_sse_event_frame(buf[..], 1, "turn", "bad\rdata") == -1;
+  #assert sp_sse_event_frame(buf[..], 1, "turn", "bad\0data") == -1;
+  #assert sp_sse_event_frame(buf[0..<4], 1, "turn", "ok") == -1;
+  #assert sp_sse_event_frame(buf[0..<15], 1, "turn", "ok") == -1;
+  #assert sp_sse_event_frame(buf[0..<22], 1, "turn", "ok") == -1;
+}
