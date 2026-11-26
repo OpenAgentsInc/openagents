@@ -1,0 +1,284 @@
+// Native Coax HTML SSR backend (#14092):
+// Renders any Coax Tree (components/core/tree.coax) to escaped HTML strings with
+// SSR hydration markers (`data-coax-ssr="1"`) and optional serialized state JSON.
+// Usable both at build time for static prerendering and per-request in oa-api.
+//   coax/bin/coax test components/backend/html.coax --library
+#load "../core/tree.coax";
+
+HtBuf :: struct {
+  bytes: [] u8;
+  n: int;
+  overflow: bool;
+}
+
+ht_put_u8 :: (b: [] HtBuf, c: u8) {
+  if b[0].n >= b[0].bytes.count { b[0].overflow = true; return; }
+  b[0].bytes[b[0].n] = c;
+  b[0].n += 1;
+}
+
+ht_put :: (b: [] HtBuf, s: string) {
+  for c: s { ht_put_u8(b, c); }
+}
+
+ht_escape_text :: (b: [] HtBuf, s: string) {
+  for c: s {
+    if c == '&' { ht_put(b, "&amp;"); }
+    else if c == '<' { ht_put(b, "&lt;"); }
+    else if c == '>' { ht_put(b, "&gt;"); }
+    else { ht_put_u8(b, c); }
+  }
+}
+
+ht_escape_attr :: (b: [] HtBuf, s: string) {
+  for c: s {
+    if c == '&' { ht_put(b, "&amp;"); }
+    else if c == '<' { ht_put(b, "&lt;"); }
+    else if c == '>' { ht_put(b, "&gt;"); }
+    else if c == '"' { ht_put(b, "&quot;"); }
+    else if c == '\'' { ht_put(b, "&#39;"); }
+    else { ht_put_u8(b, c); }
+  }
+}
+
+// Escapes `</` -> `<\/` and `<!--` -> `<\!--` so JSON inside <script> cannot break out.
+ht_escape_json_script :: (b: [] HtBuf, s: string) {
+  i := 0;
+  while i < s.count {
+    if s[i] == '<' && i + 1 < s.count && (s[i + 1] == '/' || s[i + 1] == '!') {
+      ht_put(b, "<\\");
+      i += 1;
+    } else {
+      ht_put_u8(b, s[i]);
+      i += 1;
+    }
+  }
+}
+
+ht_is_void :: (tag: int) -> bool {
+  return tag == TG_INPUT || tag == TG_IMG || tag == TG_HR;
+}
+
+ht_is_bool_attr :: (key: int) -> bool {
+  return key == AT_DISABLED || key == AT_FOCUS;
+}
+
+// Matches dom-host.js URL safety: `src` must be same-origin relative `/...`;
+// `href` permits `/...`, `#...`, `https://`, `http://` (blocks javascript:/data:).
+ht_url_safe :: (key: int, val: string) -> bool {
+  if key == AT_SRC {
+    if val.count == 0 || val[0] != '/' { return false; }
+    if val.count >= 2 && (val[1] == '/' || val[1] == '\\') { return false; }
+    return true;
+  }
+  if key == AT_HREF {
+    if val.count == 0 { return false; }
+    if val[0] == '#' { return true; }
+    if val[0] == '/' { return !(val.count >= 2 && (val[1] == '/' || val[1] == '\\')); }
+    if val.count > 8 && cast(string) val[0..<8] == "https://" { return true; }
+    if val.count > 7 && cast(string) val[0..<7] == "http://" { return true; }
+    return false;
+  }
+  return true;
+}
+
+ht_render_node :: (b: [] HtBuf, t: [] Tree, idx: int, depth: int) {
+  if depth >= TR_DEPTH || b[0].overflow { return; }
+  node := t[0].nodes[idx];
+  tags := TG_NAMES;
+  names := AT_NAMES;
+  tag_s := tags[node.tag];
+
+  ht_put_u8(b, '<');
+  ht_put(b, tag_s);
+  ht_put(b, " id=\"");
+  ht_escape_attr(b, tr_id(t, idx));
+  ht_put_u8(b, '"');
+
+  cls := tr_class(t, idx);
+  if cls.count > 0 {
+    ht_put(b, " class=\"");
+    ht_escape_attr(b, cls);
+    ht_put_u8(b, '"');
+  }
+
+  for key: 0..<AT_COUNT { // mutant: equivalent (attribute bitmasks never set bits >= AT_COUNT)
+    if !tr_has(t, idx, key) { continue; }
+    val := tr_attr_of(t, idx, key);
+    if !ht_url_safe(key, val) { continue; }
+    ht_put_u8(b, ' ');
+    ht_put(b, names[key]);
+    if !ht_is_bool_attr(key) {
+      ht_put(b, "=\"");
+      ht_escape_attr(b, val);
+      ht_put_u8(b, '"');
+    }
+  }
+
+  ht_put_u8(b, '>');
+  if ht_is_void(node.tag) { return; }
+
+  if node.has_text {
+    ht_escape_text(b, tr_text_of(t, idx));
+  } else {
+    for c: idx + 1..<t[0].n {
+      if t[0].nodes[c].parent == idx {
+        ht_render_node(b, t, c, depth + 1);
+      }
+    }
+  }
+
+  ht_put(b, "</");
+  ht_put(b, tag_s);
+  ht_put_u8(b, '>');
+}
+
+// Renders all top-level nodes of Tree `t` into `out`. Returns byte count or -1 on overflow.
+ht_render :: (t: [] Tree, out: [] u8) -> int {
+  b := [1] HtBuf.[HtBuf.{bytes = out}];
+  for i: 0..<t[0].n {
+    if t[0].nodes[i].parent < 0 {
+      ht_render_node(b[..], t, i, 0);
+    }
+  }
+  return ifx b[0].overflow then -1 else b[0].n;
+}
+
+ht_write_root :: (b: [] HtBuf, t: [] Tree, root_id: string, state_json: string) {
+  rid := ifx root_id.count > 0 then root_id else "coaxial-root";
+  ht_put(b, "<main id=\"");
+  ht_escape_attr(b, rid);
+  ht_put(b, "\" data-coax-ssr=\"1\">");
+  for i: 0..<t[0].n {
+    if t[0].nodes[i].parent < 0 {
+      ht_render_node(b, t, i, 0);
+    }
+  }
+  ht_put(b, "</main>");
+  if state_json.count > 0 {
+    ht_put(b, "<script type=\"application/json\" id=\"coaxial-state\">");
+    ht_escape_json_script(b, state_json);
+    ht_put(b, "</script>");
+  }
+}
+
+// Renders `<main id="<root_id>" data-coax-ssr="1">...</main>` plus optional serialized state JSON.
+ht_render_root :: (t: [] Tree, root_id: string, state_json: string, out: [] u8) -> int {
+  b := [1] HtBuf.[HtBuf.{bytes = out}];
+  ht_write_root(b[..], t, root_id, state_json);
+  return ifx b[0].overflow then -1 else b[0].n;
+}
+
+// Renders a complete crawlable HTML5 document ready for in-place hydration by dom-host.js.
+ht_render_document :: (t: [] Tree, title: string, css: string, state_json: string, app_name: string, out: [] u8) -> int {
+  b := [1] HtBuf.[HtBuf.{bytes = out}];
+  ht_put(b[..], "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>");
+  ht_escape_text(b[..], title);
+  ht_put(b[..], "</title>");
+  if css.count > 0 {
+    ht_put(b[..], "<style id=\"coaxial-style\">");
+    ht_escape_json_script(b[..], css);
+    ht_put(b[..], "</style>");
+  }
+  ht_put(b[..], "</head><body>");
+  ht_write_root(b[..], t, "coaxial-root", state_json);
+  if app_name.count > 0 {
+    ht_put(b[..], "<script type=\"module\" src=\"/coaxial/dom-host.js\" data-app=\"");
+    ht_escape_attr(b[..], app_name);
+    ht_put(b[..], "\" data-root=\"coaxial-root\"></script>");
+  }
+  ht_put(b[..], "</body></html>");
+  return ifx b[0].overflow then -1 else b[0].n;
+}
+
+// ---- checks
+
+#test "html.coax renders nested trees, void tags, boolean attrs, XSS escaping, URL filtering, state script, and overflow" {
+  t: [1] Tree;
+  tr_begin(t[..]);
+  _ = tr_open(t[..], "app", TG_DIV, "x");
+  h := tr_leaf(t[..], "app.h", TG_H1, "", "A < B & C > D");
+  inp := tr_open(t[..], "app.in", TG_INPUT, "fld");
+  tr_attr(t[..], inp, AT_TYPE, "text");
+  tr_attr(t[..], inp, AT_VALUE, "a\"b'c&<>");
+  tr_attr(t[..], inp, AT_DISABLED, "");
+  tr_attr(t[..], inp, AT_FOCUS, "");
+  tr_close(t[..]);
+  _ = tr_open(t[..], "app.hr", TG_HR, ""); tr_close(t[..]);
+  bad_a := tr_leaf(t[..], "app.bad", TG_A, "", "evil"); tr_attr(t[..], bad_a, AT_HREF, "javascript:alert(1)");
+  ok_a := tr_leaf(t[..], "app.ok", TG_A, "", "docs"); tr_attr(t[..], ok_a, AT_HREF, "https://a");
+  bare_https := tr_leaf(t[..], "app.hs", TG_A, "", "hs"); tr_attr(t[..], bare_https, AT_HREF, "https://");
+  rel_a := tr_leaf(t[..], "app.rel", TG_A, "", "home"); tr_attr(t[..], rel_a, AT_HREF, "/home");
+  hash_a := tr_leaf(t[..], "app.hash", TG_A, "", "top"); tr_attr(t[..], hash_a, AT_HREF, "#top");
+  http_a := tr_leaf(t[..], "app.http", TG_A, "", "local"); tr_attr(t[..], http_a, AT_HREF, "http://a");
+  bare_http := tr_leaf(t[..], "app.ht", TG_A, "", "ht"); tr_attr(t[..], bare_http, AT_HREF, "http://");
+  proto_a := tr_leaf(t[..], "app.proto", TG_A, "", "proto"); tr_attr(t[..], proto_a, AT_HREF, "//");
+  bs_a := tr_leaf(t[..], "app.bs", TG_A, "", "bs"); tr_attr(t[..], bs_a, AT_HREF, "/\\");
+  empty_a := tr_leaf(t[..], "app.emp", TG_A, "", "emp"); tr_attr(t[..], empty_a, AT_HREF, "");
+  bad_img := tr_open(t[..], "app.bimg", TG_IMG, ""); tr_attr(t[..], bad_img, AT_SRC, "https://evil/x.png"); tr_close(t[..]);
+  bad_img2 := tr_open(t[..], "app.bimg2", TG_IMG, ""); tr_attr(t[..], bad_img2, AT_SRC, "//"); tr_close(t[..]);
+  bad_img3 := tr_open(t[..], "app.bimg3", TG_IMG, ""); tr_attr(t[..], bad_img3, AT_SRC, "/\\"); tr_close(t[..]);
+  bad_img4 := tr_open(t[..], "app.bimg4", TG_IMG, ""); tr_attr(t[..], bad_img4, AT_SRC, ""); tr_close(t[..]);
+  ok_img := tr_open(t[..], "app.img", TG_IMG, ""); tr_attr(t[..], ok_img, AT_SRC, "/logo.png"); tr_close(t[..]);
+  tr_close(t[..]);
+
+  buf: [4096] u8;
+  n := ht_render(t[..], buf[..]);
+  #assert n > 0 && h >= 0;
+  html := cast(string) buf[0..<n];
+  #assert html == "<div id=\"app\" class=\"x\"><h1 id=\"app.h\">A &lt; B &amp; C &gt; D</h1><input id=\"app.in\" class=\"fld\" disabled autofocus type=\"text\" value=\"a&quot;b&#39;c&amp;&lt;&gt;\"><hr id=\"app.hr\"><a id=\"app.bad\">evil</a><a id=\"app.ok\" href=\"https://a\">docs</a><a id=\"app.hs\">hs</a><a id=\"app.rel\" href=\"/home\">home</a><a id=\"app.hash\" href=\"#top\">top</a><a id=\"app.http\" href=\"http://a\">local</a><a id=\"app.ht\">ht</a><a id=\"app.proto\">proto</a><a id=\"app.bs\">bs</a><a id=\"app.emp\">emp</a><img id=\"app.bimg\"><img id=\"app.bimg2\"><img id=\"app.bimg3\"><img id=\"app.bimg4\"><img id=\"app.img\" src=\"/logo.png\"></div>";
+
+  // Root wrapper with nested child + escaped JSON state script (</, <!--, trailing <, a/b)
+  t2: [1] Tree; tr_begin(t2[..]);
+  _ = tr_open(t2[..], "box", TG_DIV, "");
+  _ = tr_leaf(t2[..], "p0", TG_P, "", "hi");
+  tr_close(t2[..]);
+  rn := ht_render_root(t2[..], "", "a/b</c<!<", buf[..]);
+  #assert rn > 0 && cast(string) buf[0..<rn] == "<main id=\"coaxial-root\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main><script type=\"application/json\" id=\"coaxial-state\">a/b<\\/c<\\!<</script>";
+
+  // 1-char root id, exact 2-byte "</" state (kills i+1 -> i+2), 1-char state, empty state
+  rn_end := ht_render_root(t2[..], "r", "</", buf[..]);
+  #assert cast(string) buf[0..<rn_end] == "<main id=\"r\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main><script type=\"application/json\" id=\"coaxial-state\"><\\/</script>";
+  rn2 := ht_render_root(t2[..], "r", "1", buf[..]);
+  #assert cast(string) buf[0..<rn2] == "<main id=\"r\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main><script type=\"application/json\" id=\"coaxial-state\">1</script>";
+  rn3 := ht_render_root(t2[..], "r", "", buf[..]);
+  #assert cast(string) buf[0..<rn3] == "<main id=\"r\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main>";
+
+  // Full document with 1-char CSS, state, and dom-host.js bootstrap
+  dn := ht_render_document(t2[..], "A & B", "a", "1", "x", buf[..]);
+  #assert dn > 0 && cast(string) buf[0..<dn] == "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>A &amp; B</title><style id=\"coaxial-style\">a</style></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main><script type=\"application/json\" id=\"coaxial-state\">1</script><script type=\"module\" src=\"/coaxial/dom-host.js\" data-app=\"x\" data-root=\"coaxial-root\"></script></body></html>";
+
+  // Document with empty css & empty app_name
+  dn2 := ht_render_document(t2[..], "T", "", "", "", buf[..]);
+  #assert cast(string) buf[0..<dn2] == "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>T</title></head><body><main id=\"coaxial-root\" data-coax-ssr=\"1\"><div id=\"box\"><p id=\"p0\">hi</p></div></main></body></html>";
+
+  // Overflow returns -1 cleanly on ht_render, ht_render_root, and ht_render_document
+  tiny: [8] u8;
+  #assert ht_render(t2[..], tiny[..]) == -1;
+  #assert ht_render_root(t2[..], "r", "", tiny[..]) == -1;
+  #assert ht_render_document(t2[..], "T", "", "", "", tiny[..]) == -1;
+
+  // Exact TR_DEPTH recursion boundary: 32 nested levels (0..31) all render, depth 32 is cut off
+  td: [1] Tree; tr_begin(td[..]);
+  for d: 0..<TR_DEPTH {
+    idb: [16] u8;
+    _ = tr_open(td[..], tr_join(idb[..], "n.", d), TG_DIV, "");
+  }
+  for d: 0..<TR_DEPTH { tr_close(td[..]); }
+  #assert td[0].n == TR_DEPTH;
+  full_n := ht_render(td[..], buf[..]);
+  #assert full_n > 0;
+  root_n := ht_render_root(td[..], "r", "", buf[..]);
+  #assert root_n == full_n + 38;
+  // Starting at TR_DEPTH - 2 renders both "box" (30) and "p0" (31); TR_DEPTH - 1 renders "box" only
+  b_two := [1] HtBuf.[HtBuf.{bytes = buf[..]}];
+  ht_render_node(b_two[..], t2[..], 0, TR_DEPTH - 2);
+  #assert cast(string) buf[0..<b_two[0].n] == "<div id=\"box\"><p id=\"p0\">hi</p></div>";
+  b_edge := [1] HtBuf.[HtBuf.{bytes = buf[..]}];
+  ht_render_node(b_edge[..], t2[..], 0, TR_DEPTH - 1);
+  #assert cast(string) buf[0..<b_edge[0].n] == "<div id=\"box\"></div>";
+  // Starting at TR_DEPTH renders nothing
+  b_deep := [1] HtBuf.[HtBuf.{bytes = buf[..]}];
+  ht_render_node(b_deep[..], t2[..], 0, TR_DEPTH);
+  #assert b_deep[0].n == 0;
+}

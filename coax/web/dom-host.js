@@ -47,6 +47,7 @@ import "./tree-commands.js";
 import { rememberAsset } from "./loader.js";
 import { shellTakes, shellHost, shellHeld, shellGo, shellDrawn } from "./shell.js";
 import { createStreamPool, createInputController, DOM_DIALOG_CANCEL } from "./dom-stream.js";
+import { createHydrator } from "./dom-hydrate.js";
 const named = new URL(import.meta.url).searchParams;
 const script = named.has("app") ? null : document.querySelector("script[data-app]");
 if (shellTakes(script)) await new Promise(() => {});   // this page is the shell's now: its own module never starts
@@ -69,7 +70,7 @@ const fixed = named.get("path");
 const NONE = 0xffff, SVG = "http://www.w3.org/2000/svg", LAYERS = ["fr-bg", "fr-line", "fr-deco"];
 const text = new TextDecoder(), bytes = new TextEncoder();
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
-let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0, pushed = false, wire = null, gone = false;
+let memory, x, state = 0, els = [], frames = new Map(), asked = false, last = 0, pushed = false, wire = null, gone = false, hydrator = null;
 const clipping = globalThis.coaxialClip === true || new URLSearchParams(location.search).has("clip");
 let clipNow = 0, clipReady = false;
 const clipBorn = new WeakMap();
@@ -98,11 +99,13 @@ function unframe(el) {
 }
 
 function apply(at, length) {
+  const hydrating = Boolean(hydrator?.active);
   for (const c of coaxTreeCommands(memory.buffer, at, length, b => text.decode(b))) {
     const [op, slot] = c;
     if (op === 1) {
       const [, , tag, id] = c;
-      const el = tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag);
+      const el = (hydrating ? hydrator.adopt(tag, id) : null) ||
+        (tag === "svg" || tag === "use" ? document.createElementNS(SVG, tag) : document.createElement(tag));
       el.id = id; el.dataset.slot = slot; els[slot] = el;
       if (tag === "iframe") el.allow = "fullscreen";
     } else if (op === 2) {
@@ -121,16 +124,23 @@ function apply(at, length) {
       if (a === NONE && before && before === frames.get(parent)) before = before.nextSibling;
       if (before === el && el.parentNode === parent) continue;
       parent.insertBefore(el, before);
-    } else if (op === 4) els[slot].textContent = c[2];
-    else if (op === 5) els[slot].setAttribute("class", c[2]);
-    else if (op === 6) {
+    } else if (op === 4) {
+      const el = els[slot];
+      if (!hydrating || el.childElementCount !== 0 || el.textContent !== c[2]) el.textContent = c[2];
+    } else if (op === 5) {
+      const el = els[slot];
+      if (!hydrating || el.getAttribute("class") !== c[2]) el.setAttribute("class", c[2]);
+    } else if (op === 6) {
       const el = els[slot], key = c[2], value = c[3];
       if (key === "src" && (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\"))) continue;
-      el.setAttribute(key, key === "src" || key === "href" || key === "poster" ? mounted(value) : value);
+      const resolved = key === "src" || key === "href" || key === "poster" ? mounted(value) : value;
+      if (!hydrating || el.getAttribute(key) !== resolved) el.setAttribute(key, resolved);
       // A user edit sets the browser's dirty-value flag. Updating the value
       // attribute then changes only defaultValue; an explicit Coax update owns
-      // the live control too (preserving focus selection and IME composition).
-      if (key === "value" && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && el.type !== "file") inputCtrl.setValue(el, value);
+      // the live control too (preserving focus selection, IME composition, and pre-hydration drafts).
+      if (key === "value" && (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && el.type !== "file" && !(hydrating && hydrator.hasDraft(el.id))) {
+        inputCtrl.setValue(el, value);
+      }
       if (key === "data-modal" && el.tagName === "DIALOG") queueMicrotask(() => inputCtrl.syncDialog(el, value !== "false"));
       if (key === "data-frame") frameOf(el);
       if (key === "autofocus") queueMicrotask(() => el.focus());
@@ -158,9 +168,16 @@ function apply(at, length) {
       const sheet = named.has("app") ? `coaxial-style-${app}` : "coaxial-style";
       let style = document.getElementById(sheet);
       if (!style) { style = document.createElement("style"); style.id = sheet; document.head.appendChild(style); }
-      style.textContent = mount ? c[1].replace(/url\(([\'"]?)\/(?!\/|api\/)/g, (_, quote) => `url(${quote}${mount}/`) : c[1];
-    } else if (op === 10) { inputCtrl.setValue(els[slot], c[2]); }
-    else if (op === 11) els[slot].focus();
+      const nextCss = mount ? c[1].replace(/url\(([\'"]?)\/(?!\/|api\/)/g, (_, quote) => `url(${quote}${mount}/`) : c[1];
+      if (style.textContent !== nextCss) style.textContent = nextCss;
+    } else if (op === 10) {
+      const el = els[slot];
+      if (!(hydrating && hydrator.hasDraft(el.id))) inputCtrl.setValue(el, c[2]);
+    } else if (op === 11) els[slot].focus();
+  }
+  if (hydrating) {
+    const drafts = hydrator.finish(els);
+    for (const d of drafts) queueMicrotask(() => send(2, d.slot, d.value));
   }
 }
 
@@ -457,7 +474,8 @@ async function start() {
   state = Math.ceil(Math.max(x.__heap_base?.value ?? 0, memory.buffer.byteLength) / 65536) * 65536;
   memory.grow(Math.ceil((size + 64) / 65536));
   x.coaxial_state_init(state);
-  root.replaceChildren();
+  hydrator = createHydrator(root);
+  if (!hydrator.active) root.replaceChildren();
   if (WebAssembly.Module.imports(module).some((i) => i.name === "dom_keep")) {
     let kept = ""; try { kept = localStorage.getItem(keptKey) || ""; } catch { /* refused */ }
     send(12, 0, kept);

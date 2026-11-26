@@ -1,0 +1,9 @@
+// Suite entrypoint registering Coax UI SSR/Hydration & Story/Scene/Play Test Harness (#14092).
+//   coax/bin/coax test coax/web/ui-ssr-harness-check.coax --library
+#load "../../components/ui/test_harness.coax";
+
+#test "ssr and zero-browser test harness suite loads html backend and story/scene/play runtime" {
+  t: [1] Tree; tr_begin(t[..]); _ = tr_leaf(t[..], "ok", TG_SPAN, "", "ready");
+  buf: [64] u8;
+  #assert ht_render(t[..], buf[..]) > 0 && sc_by_text(t[..], "ready") == 0;
+}
