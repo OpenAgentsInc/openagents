@@ -112,67 +112,69 @@ cp_fp_is_markdown :: (s: [] CoderPage) -> bool {
   return cp_ft_ends_ci(p, ".md") || cp_ft_ends_ci(p, ".markdown");
 }
 
-// Formats Markdown text into clean readable preview blocks inside ft[0].preview_buf (#13992).
-cp_fp_format_md_preview :: (src: string, out: [] u8) -> int {
-  n := 0; i := 0; in_fence := false;
-  while i < src.count && n + 16 < out.count {
-    end := i;
-    while end < src.count && src[end] != '\n' { end += 1; }
-    stop := ifx end > i && src[end - 1] == '\r' then end - 1 else end;
-    ln := cast(string) src[i..<stop];
-    i = end + 1;
-    if ln.count >= 3 && ln[0] == '`' && ln[1] == '`' && ln[2] == '`' {
-      in_fence = !in_fence;
-      if in_fence { n = el_put(out, n, "── code ────────────────────────────\n"); }
-      else { n = el_put(out, n, "────────────────────────────────────\n"); }
-      continue;
+// Detects leading YAML frontmatter (`---\nkey: val\n---\n`) and returns the byte offset after the closing fence, or 0.
+cp_fp_md_frontmatter_end :: (src: string) -> int {
+  if src.count < 7 { return 0; }
+  e0 := md_line_end(src, 0);
+  first := cp_trim(cast(string) src[0..<e0]);
+  if first != "---" { return 0; }
+  i := e0 + 1;
+  has_kv := false;
+  while i < src.count {
+    e := md_line_end(src, i);
+    ln := cast(string) src[i..<e];
+    t := cp_trim(ln);
+    if t == "---" || t == "..." {
+      if has_kv { return ifx e < src.count then e + 1 else e; }
+      return 0;
     }
-    if in_fence {
-      n = el_put(out, n, "  ");
-      n = el_put(out, n, ln);
-      n = cp_ft_put_ch(out, n, '\n');
-      continue;
-    }
-    if ln.count > 0 && ln[0] == '#' {
-      lvl := 0;
-      while lvl < ln.count && ln[lvl] == '#' { lvl += 1; }
-      t0 := lvl;
-      while t0 < ln.count && ln[t0] == ' ' { t0 += 1; }
-      title := cast(string) ln[t0..<ln.count];
-      if lvl == 1 {
-        n = el_put(out, n, "▸ ");
-        n = el_put(out, n, title);
-        n = el_put(out, n, "\n════════════════════════════════════\n");
-      } else {
-        n = el_put(out, n, "▪ ");
-        n = el_put(out, n, title);
-        n = cp_ft_put_ch(out, n, '\n');
+    if ln.count > 0 && ln[0] != ' ' && ln[0] != '\t' && ln[0] != '#' {
+      for k: 1..<ln.count {
+        if ln[k] == ':' { has_kv = true; break; }
       }
-      continue;
     }
-    if ln.count >= 2 && (ln[0] == '-' || ln[0] == '*') && ln[1] == ' ' {
-      n = el_put(out, n, "  • ");
-      n = el_put(out, n, cast(string) ln[2..<ln.count]);
-      n = cp_ft_put_ch(out, n, '\n');
-      continue;
-    }
-    if ln.count >= 2 && ln[0] == '>' && ln[1] == ' ' {
-      n = el_put(out, n, "│ ");
-      n = el_put(out, n, cast(string) ln[2..<ln.count]);
-      n = cp_ft_put_ch(out, n, '\n');
-      continue;
-    }
-    n = el_put(out, n, ln);
-    n = cp_ft_put_ch(out, n, '\n');
+    i = e + 1;
   }
-  return n;
+  return 0;
+}
+
+// Parses the active Markdown file (splitting optional YAML frontmatter) into s[0].fp_md_doc.
+cp_fp_md_parse :: (s: [] CoderPage) {
+  fp := s[0].fp[..];
+  raw := ifx fp[0].dirty && fp[0].text_n > 0 then cp_fp_text(s) else cast(string) fp[0].src;
+  fm_end := cp_fp_md_frontmatter_end(raw);
+  s[0].fp_md_fm_end = fm_end;
+  s[0].fp_md_doc[0] = MdDoc.{};
+  s[0].fp_md_doc[0].keep_rules = true;
+  body := ifx fm_end < raw.count then cast(string) raw[fm_end..<raw.count] else "";
+  s[0].fp_md_blocks = md_parse(s[0].fp_md_doc[..], body, 0);
+}
+
+// Maps a Markdown code fence language tag to SYN_LANG_* for multi-language syntax highlighting.
+cp_fp_md_fence_lang :: (tag: string) -> int {
+  if tag.count == 0 { return SYN_LANG_PLAIN; }
+  if cp_eq_ci(tag, "rust") || cp_eq_ci(tag, "rs") { return SYN_LANG_RUST; }
+  if cp_eq_ci(tag, "coax") || cp_eq_ci(tag, "jai") { return SYN_LANG_COAX; }
+  if cp_eq_ci(tag, "c") || cp_eq_ci(tag, "h") || cp_eq_ci(tag, "cpp") || cp_eq_ci(tag, "c++") ||
+     cp_eq_ci(tag, "cc") || cp_eq_ci(tag, "cxx") || cp_eq_ci(tag, "m") || cp_eq_ci(tag, "mm") ||
+     cp_eq_ci(tag, "objc") || cp_eq_ci(tag, "metal") || cp_eq_ci(tag, "cuda") || cp_eq_ci(tag, "cu") { return SYN_LANG_C; }
+  if cp_eq_ci(tag, "swift") { return SYN_LANG_SWIFT; }
+  if cp_eq_ci(tag, "py") || cp_eq_ci(tag, "python") { return SYN_LANG_PYTHON; }
+  if cp_eq_ci(tag, "js") || cp_eq_ci(tag, "javascript") || cp_eq_ci(tag, "jsx") ||
+     cp_eq_ci(tag, "ts") || cp_eq_ci(tag, "typescript") || cp_eq_ci(tag, "tsx") { return SYN_LANG_JS; }
+  if cp_eq_ci(tag, "json") || cp_eq_ci(tag, "jsonc") { return SYN_LANG_JSON; }
+  if cp_eq_ci(tag, "md") || cp_eq_ci(tag, "markdown") { return SYN_LANG_MD; }
+  if cp_eq_ci(tag, "sh") || cp_eq_ci(tag, "bash") || cp_eq_ci(tag, "zsh") ||
+     cp_eq_ci(tag, "shell") || cp_eq_ci(tag, "console") || cp_eq_ci(tag, "makefile") { return SYN_LANG_SH; }
+  if cp_eq_ci(tag, "lean") || cp_eq_ci(tag, "lean4") { return SYN_LANG_LEAN; }
+  if cp_eq_ci(tag, "toml") || cp_eq_ci(tag, "yaml") || cp_eq_ci(tag, "yml") || cp_eq_ci(tag, "ini") { return SYN_LANG_CONFIG; }
+  return SYN_LANG_PLAIN;
 }
 
 // Active text rendered & searched by the File Viewer (#13992).
 cp_fp_view_src :: (s: [] CoderPage) -> string {
   fp := s[0].fp[..]; ft := s[0].ft[..];
   if fp[0].mode == CP_FP_EDIT { return cp_fp_text(s); }
-  if fp[0].md_preview && ft[0].preview_n > 0 { return cast(string) ft[0].preview_buf[0..<ft[0].preview_n]; }
   if ft[0].preview_kind != CP_FT_PREV_NONE && !ft[0].preview_raw && ft[0].preview_n > 0 {
     return cast(string) ft[0].preview_buf[0..<ft[0].preview_n];
   }
@@ -636,13 +638,17 @@ cp_fp_press :: (s: [] CoderPage, act: int, id: string) -> bool {
     ft[0].editor_menu = false;
     if !cp_fp_is_markdown(s) { return false; }
     fp[0].md_preview = !fp[0].md_preview;
+    fp[0].scroll = 0.0f32;
+    fp[0].scroll_x = 0.0f32;
+    if s[0].sel[0].region == CP_SEL_FILE { cp_sel_clear(s); }
     if fp[0].md_preview {
       if fp[0].mode == CP_FP_EDIT { _ = cp_fp_set_edit(s, false); }
-      ft[0].preview_n = cp_fp_format_md_preview(cast(string) fp[0].src, ft[0].preview_buf[..]);
-      fp[0].wrap = true;
+      cp_fp_md_parse(s);
+    } else {
+      path := cast(string) fp[0].path[0..<fp[0].path_n];
+      cp_fp_build_index(s, cp_fp_view_src(s), cp_fp_lang(path, ft[0].preview_kind));
     }
-    path := cast(string) fp[0].path[0..<fp[0].path_n];
-    cp_fp_build_index(s, cp_fp_view_src(s), ifx fp[0].md_preview then SYN_LANG_PLAIN else cp_fp_lang(path, ft[0].preview_kind));
+    cp_ft_tab_save_active(s);
     return true;
   }
   if act == CP_FP_FOLD_TOGGLE {
@@ -1132,13 +1138,37 @@ cp_fp_draw_bar2 :: (s: [] CoderPage, f: [] UiFrame, fx: f32, y2: f32, fw: f32) -
     _ := app_button(f, "coder.file.save", right, y2 + (bh - k.control_h) / 2.0f32, bw, -1, "Save", APP_BUTTON_PRIMARY, 0, CP_FP_SAVE);
     right -= 6.0f32;
   }
-  st := cp_fp_state(s);
-  if st.count > 0 {
-    sw := measure_width(m, k.small.face, st) + 4.0f32;
-    if right - sw > fx + 80.0f32 {
-      right -= sw;
-      _ := app_meta(f, "coder.file.state", right, y2 + (bh - k.small.line) / 2.0f32, sw, st, false);
+  if cp_fp_is_markdown(s) && fp[0].mode == CP_FP_READ {
+    plbl := "Preview";
+    pw_btn := measure_width(m, k.small.face, plbl) + 16.0f32;
+    if right - pw_btn > fx + 80.0f32 {
+      right -= pw_btn;
+      py_btn := y2 + (bh - 22.0f32) / 2.0f32;
+      hov_p := uiframe_hovered(f, "coder.file.md_toggle");
+      dark_ui := k.canvas.r < 0.2f32;
+      act_col := ifx dark_ui then k.syntax[5] else k.accent;
+      bg_p := ifx fp[0].md_preview then opacity(act_col, 0.18f32) else ifx hov_p then k.hover else Rgba.{};
+      edge_p := ifx fp[0].md_preview then opacity(act_col, 0.55f32) else ifx hov_p then k.menu_divider else Rgba.{};
+      ink_p := ifx fp[0].md_preview then act_col else ifx hov_p then k.ink else k.muted;
+      if bg_p.a > 0.001f32 || edge_p.a > 0.001f32 {
+        _ = sheet_box(sh, right, py_btn, pw_btn, 22.0f32, 6.0f32, 1.0f32, bg_p, edge_p);
+      }
+      _ := sheet_text(sh, m, -1, right + 8.0f32, py_btn + (22.0f32 - k.small.line) / 2.0f32, k.small.line, k.small.face, ink_p, plbl);
+      prow := uiframe_semantic(f, "coder.file.md_toggle", EL_BUTTON,
+                               ifx fp[0].md_preview then "View Markdown Source" else "Preview Markdown",
+                               right, py_btn, pw_btn, 22.0f32, ifx fp[0].md_preview then EL_S_CURRENT else 0, CP_FP_MD_PREVIEW);
+      sheet_hit(sh, UIFRAME_HIT, prow, 0, right, py_btn, pw_btn, 22.0f32);
       right -= 6.0f32;
+    }
+  } else {
+    st := cp_fp_state(s);
+    if st.count > 0 {
+      sw := measure_width(m, k.small.face, st) + 4.0f32;
+      if right - sw > fx + 80.0f32 {
+        right -= sw;
+        _ := app_meta(f, "coder.file.state", right, y2 + (bh - k.small.line) / 2.0f32, sw, st, false);
+        right -= 6.0f32;
+      }
     }
   }
 
@@ -1320,6 +1350,22 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   body := y;
   show_lean_strip := cp_flag(s, DC_FLAG_GYM) && cp_fp_is_lean(s) && (h - body) > CP_FP_LEAN_STRIP_H + 80.0f32;
   bh := h - a.gap_small - body - (ifx show_lean_strip then CP_FP_LEAN_STRIP_H + 6.0f32 else 0.0f32);
+  if fp[0].mode == CP_FP_READ && fp[0].md_preview && cp_fp_is_markdown(s) {
+    if !(bh > 0) || !(fw > 0) {
+      s[0].fp_color_u1 = sh[0].nu;
+      s[0].fp_color_o1 = sh[0].no;
+      cp_ft_draw_editor_menu(s, f);
+      return;
+    }
+    fp[0].body_x = fx; fp[0].body_y = body; fp[0].body_w = fw; fp[0].body_h = bh;
+    _ := uiframe_semantic(f, "coder.file.body", EL_TEXT, cp_fp_name(s), fx, body, fw, bh, 0, 0);
+    cp_fp_md_view(s, f, fx, body, fw, bh);
+    s[0].fp_color_u1 = sh[0].nu;
+    s[0].fp_color_o1 = sh[0].no;
+    cp_find_file_bar(s, f, fx, body, fw);
+    cp_ft_draw_editor_menu(s, f);
+    return;
+  }
   if !(bh > 0) || !(tw > 0) {
     s[0].fp_color_u1 = sh[0].nu;
     s[0].fp_color_o1 = sh[0].no;
@@ -1492,6 +1538,398 @@ cp_fp_large_edit_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, 
   app_scroll_rail(f, fp[0].scr[..], tx + tw, body, fp[0].scroll, fp[0].content, fp[0].view, bh, s[0].now, s[0].reduced);
 }
 
+// ---------------------------------------------------------------- rich rendered Markdown preview
+
+// Renders leading YAML frontmatter (`---\nkey: value\n---`) as a styled metadata card.
+cp_fp_md_draw_frontmatter :: (f: [] UiFrame, raw: string, fm_end: int, x: f32, y: f32, w: f32,
+                              card_bg: Rgba, border_col: Rgba, key_col: Rgba, val_col: Rgba, muted_col: Rgba) -> f32 {
+  if fm_end <= 0 || fm_end > raw.count || !(w > 80.0f32) { return 0.0f32; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  keys_at: [16] int; keys_len: [16] int;
+  vals_at: [16] int; vals_len: [16] int;
+  val_buf: [2048] u8; vn := 0;
+  nk := 0;
+  // Skip opening `---` line
+  i := md_line_end(raw, 0) + 1;
+  while i < fm_end {
+    e := md_line_end(raw, i);
+    ln := cast(string) raw[i..<e];
+    i = e + 1;
+    t := cp_trim(ln);
+    if t.count == 0 || t == "---" || t == "..." || t[0] == '#' { continue; }
+    is_indented := ln.count > 0 && (ln[0] == ' ' || ln[0] == '\t');
+    colon := -1;
+    if !is_indented {
+      for q: 1..<ln.count {
+        if ln[q] == ':' { colon = q; break; }
+      }
+    }
+    if colon > 0 && nk < 16 {
+      ls := e - ln.count;
+      keys_at[nk] = ls; keys_len[nk] = colon;
+      vals_at[nk] = vn;
+      rest := cp_trim(cast(string) ln[colon + 1..<ln.count]);
+      if rest.count > 0 && rest != ">" && rest != ">-" && rest != "|" && rest != "|-" {
+        vn = el_put(val_buf[..], vn, rest);
+      }
+      vals_len[nk] = vn - vals_at[nk];
+      nk += 1;
+    } else if nk > 0 {
+      prev := nk - 1;
+      if vals_len[prev] > 0 && vn < val_buf.count {
+        vn = el_put(val_buf[..], vn, " ");
+      }
+      vn = el_put(val_buf[..], vn, t);
+      vals_len[prev] = vn - vals_at[prev];
+    }
+  }
+  if nk == 0 { return 0.0f32; }
+
+  pad_x := 14.0f32; pad_y := 10.0f32; row_gap := 6.0f32;
+  kface := k.mono_small.face; vface := k.small.face;
+  lh := ifx k.small.line > 18.0f32 then k.small.line else 18.0f32;
+  max_kw := 0.0f32;
+  for r: 0..<nk {
+    ks := cast(string) raw[keys_at[r]..<keys_at[r] + keys_len[r]];
+    kw := measure_width(m, kface, ks);
+    if kw > max_kw { max_kw = kw; }
+  }
+  if max_kw > w * 0.34f32 { max_kw = w * 0.34f32; }
+  key_col_w := max_kw + 14.0f32;
+  val_w := w - 2 * pad_x - key_col_w;
+  if val_w < 60.0f32 { val_w = 60.0f32; }
+
+  no_runs: [1] MdRun;
+  vfaces := TextFaces.{plain = vface, bold = vface, code = kface};
+  lines: [24] TextLine;
+  row_h: [16] f32;
+  total_h := 2 * pad_y;
+  for r: 0..<nk {
+    vs := cast(string) val_buf[vals_at[r]..<vals_at[r] + vals_len[r]];
+    nl := ifx vs.count > 0 then text_wrap(m, vfaces, vs, no_runs[0..<0], val_w, lines[..]) else 1;
+    if nl < 1 { nl = 1; }
+    row_h[r] = cast(f32) nl * lh;
+    if r > 0 { total_h += row_gap; }
+    total_h += row_h[r];
+  }
+
+  _ = sheet_box(sh, x, y, w, total_h, 8.0f32, 1.0f32, card_bg, border_col);
+  sheet_fill(sh, x, y + 7.0f32, 3.0f32, total_h - 14.0f32, 1.5f32, key_col);
+  ry := y + pad_y;
+  for r: 0..<nk {
+    if r > 0 {
+      sheet_rule(sh, x + pad_x, ry - row_gap * 0.5f32, w - 2 * pad_x, 1.0f32, opacity(border_col, 0.55f32));
+    }
+    ks := cast(string) raw[keys_at[r]..<keys_at[r] + keys_len[r]];
+    vs := sheet_pool(sh, cast(string) val_buf[vals_at[r]..<vals_at[r] + vals_len[r]]);
+    kln := sheet_line(sh, x + pad_x, ry, lh, vs.count == 0);
+    _ := sheet_text(sh, m, kln, x + pad_x, ry, lh, kface, key_col, app_fit(f, kface, ks, max_kw + 4.0f32));
+    if vs.count > 0 {
+      nl := text_wrap(m, vfaces, vs, no_runs[0..<0], val_w, lines[..]);
+      for q: 0..<nl {
+        seg := cast(string) vs[lines[q].from..<lines[q].to];
+        vln := sheet_line(sh, x + pad_x + key_col_w, ry + cast(f32) q * lh, lh, q + 1 == nl);
+        _ := sheet_text(sh, m, vln, x + pad_x + key_col_w, ry + cast(f32) q * lh, lh, vface, ifx r == 0 then val_col else muted_col, seg);
+      }
+    }
+    ry += row_h[r] + row_gap;
+  }
+  return total_h;
+}
+
+// Renders a fenced Markdown code block with language header and full multi-language syntax highlighting.
+cp_fp_md_draw_code :: (sh: [] Sheet, m: TextMeasure, k: UiSkin, doc: [] MdDoc, b: int,
+                       x: f32, y: f32, w: f32, card_bg: Rgba, head_bg: Rgba, border_col: Rgba) -> f32 {
+  code := md_block_text(doc, b);
+  raw_lang := md_lang(doc, b);
+  lang_lbl := ifx raw_lang.count > 0 then app_code_lang(raw_lang) else "code";
+  syn_lang := cp_fp_md_fence_lang(raw_lang);
+  face := k.mono.face;
+  lh := ifx k.md.block_line > 0 then k.md.block_line else 20.0f32;
+  head_h := 28.0f32;
+  pad_x := 14.0f32; pad_y := 10.0f32; bd := 1.0f32;
+  room := w - 2 * bd - 2 * pad_x;
+  if room < 40.0f32 { room = 40.0f32; }
+
+  wraps: [32] TextLine;
+  total_rows := 0;
+  ci := 0;
+  while ci <= code.count {
+    cj := ci; while cj < code.count && code[cj] != '\n' { cj += 1; }
+    total_rows += markdown_code_wrap(m, face, cast(string) code[ci..<cj], room, wraps[..]);
+    ci = cj + 1;
+  }
+  if total_rows < 1 { total_rows = 1; }
+  h := 2 * bd + head_h + 2 * pad_y + cast(f32) total_rows * lh;
+
+  _ = sheet_box(sh, x, y, w, h, 8.0f32, bd, card_bg, border_col);
+  sheet_fill(sh, x + bd, y + bd, w - 2 * bd, head_h - bd, 0, head_bg);
+  sheet_fill(sh, x + bd, y + head_h, w - 2 * bd, bd, 0, border_col);
+  lbl_col := ifx raw_lang.count > 0 && k.canvas.r < 0.2f32 then k.syntax[4] else k.muted;
+  _ := sheet_text(sh, m, -1, x + bd + pad_x, y + bd + (head_h - bd - k.small.line) / 2.0f32, k.small.line, k.small.face, lbl_col, lang_lbl);
+
+  top := y + bd + head_h + pad_y;
+  lx := x + bd + pad_x;
+  blk: [1] int;
+  runs: [128] MdRun;
+  i := 0; row := 0;
+  while i <= code.count {
+    j := i; while j < code.count && code[j] != '\n' { j += 1; }
+    line := cast(string) code[i..<j];
+    nw := markdown_code_wrap(m, face, line, room, wraps[..]);
+    nruns := ifx syn_lang != SYN_LANG_PLAIN && line.count > 0 then syn_tokenize_line_state(syn_lang, line, blk[..], runs[..]) else 0;
+    for wi: 0..<nw {
+      ly := top + cast(f32) row * lh;
+      wf := wraps[wi].from; wt := wraps[wi].to;
+      ln := sheet_line(sh, lx, ly, lh, wi + 1 == nw);
+      pen := lx; pos := wf;
+      for r: 0..<nruns {
+        rf := runs[r].from; rt := runs[r].to;
+        if rt <= wf { continue; }
+        if rf >= wt { break; }
+        if rf < wf { rf = wf; }
+        if rt > wt { rt = wt; }
+        if rf > pos { pen += sheet_text(sh, m, ln, pen, ly, lh, face, k.ink, cast(string) line[pos..<rf]); }
+        pen += sheet_text(sh, m, ln, pen, ly, lh, face, uiskin_syntax(k, runs[r].style, k.ink), cast(string) line[rf..<rt]);
+        pos = rt;
+      }
+      if pos < wt { pen += sheet_text(sh, m, ln, pen, ly, lh, face, k.ink, cast(string) line[pos..<wt]); }
+      row += 1;
+    }
+    i = j + 1;
+  }
+  return h;
+}
+
+// Renders a GFM Markdown table with rounded border, tinted header row, zebra stripes, gridlines, and rich inline cells.
+cp_fp_md_draw_table :: (sh: [] Sheet, m: TextMeasure, md_skin: UiSkin, doc: [] MdDoc, b: int,
+                        x: f32, y: f32, w: f32, card_bg: Rgba, head_bg: Rgba, stripe_bg: Rgba, border_col: Rgba) -> f32 {
+  L := markdown_table_measure(m, md_skin, doc, b, w);
+  if L.cols == 0 || L.rows == 0 { return 0.0f32; }
+  i0 := doc[0].blocks[b].item0;
+  faces := uiskin_faces(md_skin);
+  pad := md_skin.md.cell_pad; pad_y := md_skin.md.cell_pad_y; lh := md_skin.md.line;
+  bd := 1.0f32;
+  lines: [64] TextLine;
+
+  // First pass: compute exact height of every row
+  row_h: [128] f32;
+  nrows := ifx L.rows < 128 then L.rows else 128;
+  total_h := 2 * bd;
+  for r: 0..<nrows {
+    if r > 0 { total_h += bd; }
+    tall := 1;
+    for c: 0..<L.cols {
+      k_idx := i0 + r * L.cols + c;
+      iw := L.x[c + 1] - L.x[c] - 2 * pad;
+      if iw < 16.0f32 { iw = 16.0f32; }
+      n := text_wrap(m, faces, md_item_text(doc, k_idx), md_item_runs(doc, k_idx), iw, lines[..]);
+      if n > tall { tall = n; }
+    }
+    row_h[r] = cast(f32) tall * lh + 2 * pad_y;
+    total_h += row_h[r];
+  }
+
+  box_w := ifx L.total > w then w else L.total;
+  _ = sheet_box(sh, x, y, box_w, total_h, 8.0f32, bd, card_bg, border_col);
+  wider := L.total > w + 0.5f32;
+  if wider { sheet_clip_right(sh, x + w - bd); }
+
+  h := bd;
+  vv: MdVeil;
+  for r: 0..<nrows {
+    if r > 0 {
+      sheet_rule(sh, x + bd, y + h, box_w - 2 * bd, bd, border_col);
+      h += bd;
+    }
+    if r == 0 {
+      sheet_fill(sh, x + bd, y + h, box_w - 2 * bd, row_h[r], 0, head_bg);
+    } else if (r & 1) == 0 {
+      sheet_fill(sh, x + bd, y + h, box_w - 2 * bd, row_h[r], 0, stripe_bg);
+    }
+    for c: 0..<L.cols {
+      if c > 0 && L.x[c] < box_w - bd {
+        sheet_rule(sh, x + L.x[c], y + h, bd, row_h[r], opacity(border_col, 0.7f32));
+      }
+      k_idx := i0 + r * L.cols + c;
+      text := md_item_text(doc, k_idx);
+      runs := md_item_runs(doc, k_idx);
+      cx := x + L.x[c] + pad;
+      iw := L.x[c + 1] - L.x[c] - 2 * pad;
+      if iw < 16.0f32 { iw = 16.0f32; }
+      if text.count == 0 { continue; }
+      n := text_wrap(m, faces, text, runs, iw, lines[..]);
+      cell_col := ifx r == 0 then md_skin.ink else md_skin.ink;
+      for q: 0..<n {
+        lx := cx;
+        al := doc[0].items[k_idx].number;
+        if al != MA_LEFT {
+          end := lines[q].to;
+          if end > lines[q].from && text[end - 1] == ' ' { end -= 1; }
+          lw := text_run_width(m, faces, text, runs, lines[q].from, end);
+          lx = ifx al == MA_CENTER then cx + (iw - lw) / 2.0f32 else cx + iw - lw;
+        }
+        markdown_line_veiled(sh, m, md_skin, faces, text, runs, lines[q].from, lines[q].to,
+                             lx, y + h + pad_y + cast(f32) q * lh, lh, cell_col, q + 1 == n, doc[0].items[k_idx].at, vv);
+      }
+    }
+    h += row_h[r];
+  }
+  if wider { sheet_unclip(sh); }
+  return total_h;
+}
+
+// Rich GPU-rendered Markdown document preview (headings, typography, color inline code, GFM tables,
+// multi-language syntax-highlighted code cards, blockquotes, lists/tasks, rules, YAML frontmatter).
+cp_fp_md_view :: (s: [] CoderPage, f: [] UiFrame, fx: f32, body: f32, fw: f32, bh: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m; fp := s[0].fp[..];
+  if s[0].fp_md_blocks == 0 && s[0].fp_md_fm_end == 0 && fp[0].src.count > 0 {
+    cp_fp_md_parse(s);
+  }
+  dark_ui := k.canvas.r < 0.2f32;
+  md_skin := k;
+  if dark_ui {
+    md_skin.ink = hex(0xe6edf3, 1);
+    md_skin.muted = hex(0x9ca3af, 1);
+    md_skin.accent = hex(0x79c0ff, 1);
+    md_skin.code_wash = rgba(0.475f32, 0.753f32, 1.0f32, 0.13f32);
+    md_skin.quote_wash = rgba(0.388f32, 0.702f32, 0.929f32, 0.08f32);
+    md_skin.quote_rail = hex(0x58a6ff, 1);
+    md_skin.hairline = hex(0x2b313a, 1);
+    md_skin.sunk = hex(0x0d1117, 1);
+    md_skin.header_wash = hex(0x161b22, 1);
+  }
+  md_skin.md.line = 23.0f32;
+  md_skin.md.block_gap = 14.0f32;
+  md_skin.md.item_gap = 5.0f32;
+  md_skin.md.quote_rail = 3.0f32;
+  md_skin.md.quote_pad_l = 16.0f32;
+  md_skin.md.quote_pad_r = 14.0f32;
+  md_skin.md.quote_pad_y = 10.0f32;
+  md_skin.md.code_pad_x = 5.0f32;
+  md_skin.md.code_inset_y = 2.0f32;
+  md_skin.md.code_radius = 4.5f32;
+  md_skin.md.cell_pad = 10.0f32;
+  md_skin.md.cell_pad_y = 7.0f32;
+  md_skin.md.col_min_content = 36.0f32;
+  md_skin.md.col_min = 68.0f32;
+
+  card_bg := ifx dark_ui then hex(0x0d1117, 1) else k.surface;
+  head_bg := ifx dark_ui then hex(0x161b22, 1) else k.header_wash;
+  stripe_bg := ifx dark_ui then rgba(1, 1, 1, 0.028f32) else rgba(0, 0, 0, 0.025f32);
+  border_col := ifx dark_ui then hex(0x2b313a, 1) else k.hairline;
+  h1_col := ifx dark_ui then hex(0xffffff, 1) else k.ink;
+  h2_col := ifx dark_ui then hex(0xf0f6fc, 1) else k.ink;
+  h3_col := ifx dark_ui then hex(0x79c0ff, 1) else k.accent;
+  h4_col := ifx dark_ui then hex(0xe5c07b, 1) else k.muted;
+  fm_key_col := ifx dark_ui then hex(0xd2a8ff, 1) else k.accent;
+
+  pad_x := ifx fw >= 360.0f32 then 22.0f32 else 14.0f32;
+  pad_top := 12.0f32;
+  pad_bot := 32.0f32;
+  doc_w := fw - 2 * pad_x;
+  max_doc_w := 860.0f32;
+  doc_x := fx + pad_x;
+  if doc_w > max_doc_w {
+    doc_x = fx + (fw - max_doc_w) * 0.5f32;
+    doc_w = max_doc_w;
+  }
+  if doc_w < 80.0f32 { doc_w = 80.0f32; }
+
+  fp[0].view = bh;
+  fp[0].content_w = fw;
+  fp[0].scroll_x = 0.0f32;
+  fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+
+  l0 := sh[0].nl;
+  fp[0].sel_l0 = l0; fp[0].sel_line_n = 0;
+  uiframe_clip(f, fx, body, fx + fw, body + bh);
+
+  cur_y := body + pad_top - fp[0].scroll;
+  if s[0].fp_md_fm_end > 0 {
+    raw := ifx fp[0].dirty && fp[0].text_n > 0 then cp_fp_text(s) else cast(string) fp[0].src;
+    nu0 := sh[0].nu; no0 := sh[0].no; nl0 := sh[0].nl; nh0 := sh[0].nh; np0 := sh[0].np;
+    fm_h := cp_fp_md_draw_frontmatter(f, raw, s[0].fp_md_fm_end, doc_x, cur_y, doc_w,
+                                      card_bg, border_col, fm_key_col, md_skin.ink, md_skin.muted);
+    if cur_y + fm_h < body - 4.0f32 || cur_y > body + bh + 4.0f32 {
+      sh[0].nu = nu0; sh[0].no = no0; sh[0].nl = nl0; sh[0].nh = nh0; sh[0].np = np0;
+    }
+    if fm_h > 0.0f32 { cur_y += fm_h + 18.0f32; }
+  }
+
+  doc := s[0].fp_md_doc[..];
+  nb := s[0].fp_md_blocks;
+  for b: 0..<nb {
+    kind := doc[0].blocks[b].kind;
+    hlvl := doc[0].blocks[b].heading;
+    if b > 0 {
+      gap := md_skin.md.block_gap;
+      if kind == MB_PARA && hlvl == 1 { gap = 26.0f32; }
+      else if kind == MB_PARA && hlvl == 2 { gap = 22.0f32; }
+      else if kind == MB_PARA && hlvl >= 3 { gap = 18.0f32; }
+      cur_y += gap;
+    }
+    nu0 := sh[0].nu; no0 := sh[0].no; nl0 := sh[0].nl; nh0 := sh[0].nh; np0 := sh[0].np;
+    blk_h := 0.0f32;
+    if kind == MB_PARA && hlvl > 0 {
+      hs := md_skin;
+      h_lh := 24.0f32;
+      h_col := h3_col;
+      if hlvl == 1 {
+        hs.body.face = FONT_DISPLAY; hs.strong.face = FONT_DISPLAY;
+        h_lh = 32.0f32; h_col = h1_col;
+      } else if hlvl == 2 {
+        hs.body.face = FONT_SET_TITLE; hs.strong.face = FONT_SET_TITLE;
+        h_lh = 28.0f32; h_col = h2_col;
+      } else if hlvl == 3 {
+        hs.body.face = FONT_BOLD; hs.strong.face = FONT_BOLD;
+        h_lh = 24.0f32; h_col = h3_col;
+      } else {
+        hs.body.face = FONT_BOLD; hs.strong.face = FONT_BOLD;
+        h_lh = 22.0f32; h_col = h4_col;
+      }
+      blk_h = markdown_text(sh, m, hs, md_block_text(doc, b), md_block_runs(doc, b), doc_x, cur_y, doc_w, h_lh, h_col);
+      if hlvl == 1 {
+        sheet_rule(sh, doc_x, cur_y + blk_h + 6.0f32, doc_w, 1.0f32, border_col);
+        blk_h += 10.0f32;
+      } else if hlvl == 2 {
+        sheet_rule(sh, doc_x, cur_y + blk_h + 5.0f32, doc_w, 1.0f32, opacity(border_col, 0.75f32));
+        blk_h += 8.0f32;
+      }
+    } else if kind == MB_CODE {
+      blk_h = cp_fp_md_draw_code(sh, m, md_skin, doc, b, doc_x, cur_y, doc_w, card_bg, head_bg, border_col);
+    } else if kind == MB_TABLE {
+      blk_h = cp_fp_md_draw_table(sh, m, md_skin, doc, b, doc_x, cur_y, doc_w, card_bg, head_bg, stripe_bg, border_col);
+    } else if kind == MB_RULE {
+      sheet_rule(sh, doc_x, cur_y + 6.0f32, doc_w, 1.0f32, border_col);
+      blk_h = 13.0f32;
+    } else {
+      blk_h = markdown_block(sh, m, md_skin, doc, b, doc_x, cur_y, doc_w);
+    }
+    if cur_y + blk_h < body - 4.0f32 || cur_y > body + bh + 4.0f32 {
+      sh[0].nu = nu0; sh[0].no = no0; sh[0].nl = nl0; sh[0].nh = nh0; sh[0].np = np0;
+    }
+    cur_y += blk_h;
+  }
+
+  raw_len := ifx fp[0].dirty && fp[0].text_n > 0 then fp[0].text_n else fp[0].src.count;
+  if raw_len - s[0].fp_md_fm_end >= MD_TEXT || doc[0].nb >= MD_BLOCKS || doc[0].ni >= MD_ITEMS {
+    cur_y += 14.0f32;
+    if cur_y < body + bh + 4.0f32 && cur_y + k.small.line > body - 4.0f32 {
+      _ := sheet_text(sh, m, -1, doc_x, cur_y, k.small.line, k.small.face, md_skin.muted,
+                      "Preview truncated for large document — switch to Source to view all lines.");
+    }
+    cur_y += k.small.line;
+  }
+
+  fp[0].content = (cur_y + fp[0].scroll - body) + pad_bot;
+  l1 := sh[0].nl;
+  cp_sel_record(s, CP_SEL_FILE, l0, l1, fx, body, fx + fw, body + bh, fp[0].scroll);
+  cp_sel_paint(s, f, CP_SEL_FILE, l0, l1, fp[0].scroll);
+  uiframe_unclip(f);
+  app_scroll_rail(f, fp[0].scr[..], fx + fw - 4.0f32, body, fp[0].scroll, fp[0].content, fp[0].view, bh, s[0].now, s[0].reduced);
+}
+
 // Virtualized O(visible lines) read-only file & preview viewer: multi-language syntax color,
 // structural code folding (▾/▸ + … N lines pill), target-line highlight, in-file Find highlights,
 // CP_SEL_FILE GPU selection, horizontal scroll + Word Wrap toggle, and vertical/horizontal rails (#13992).
@@ -1503,7 +1941,7 @@ cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f3
   cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
   if cols < 1 { cols = 1; }
   path := cast(string) fp[0].path[0..<fp[0].path_n];
-  lang := ifx fp[0].md_preview then SYN_LANG_PLAIN else cp_fp_lang(path, s[0].ft[0].preview_kind);
+  lang := cp_fp_lang(path, s[0].ft[0].preview_kind);
   if fp[0].nlines <= 0 { cp_fp_build_index(s, src, lang); }
   nl := fp[0].nlines;
   wrap_on := fp[0].wrap;
@@ -1673,6 +2111,7 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
   saved_wrap_set := ifx has_saved then s[0].ft[0].tabs[prev_tab].wrap_set else false;
   saved_wrap := ifx has_saved then s[0].ft[0].tabs[prev_tab].wrap else false;
   saved_edit := ifx has_saved then s[0].ft[0].tabs[prev_tab].edit_mode else false;
+  saved_md_preview := ifx has_saved then s[0].ft[0].tabs[prev_tab].md_preview else false;
   saved_folds: [8] u64;
   if has_saved { for k: 0..<8 { saved_folds[k] = s[0].ft[0].tabs[prev_tab].fold_bits[k]; } }
 
@@ -1693,14 +2132,19 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
   fp[0].mode = CP_FP_READ;
   fp[0].wrap = ifx saved_wrap_set then saved_wrap else (syn_lang_for_path(path) == SYN_LANG_PLAIN);
   cp_fp_build_index(s, cast(string) bytes, cp_fp_lang(path, CP_FT_PREV_NONE));
-  if saved_edit { _ = cp_fp_set_edit(s, true); }
+  if saved_md_preview && cp_fp_is_markdown(s) {
+    fp[0].md_preview = true;
+    cp_fp_md_parse(s);
+  } else if saved_edit {
+    _ = cp_fp_set_edit(s, true);
+  }
   return true;
 }
 
 // Live reload of the active file from disk preserving scroll offset, horizontal scroll, folds, and target highlight (#13992).
 coder_page_file_reload :: (s: [] CoderPage, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].fp[0].open || bytes.count > CP_FP_MOST { return false; }
-  fp := s[0].fp[..]; ft := s[0].ft[..];
+  fp := s[0].fp[..];
   path := cast(string) fp[0].path[0..<fp[0].path_n];
   was_edit := fp[0].mode == CP_FP_EDIT;
   keep_sy := fp[0].scroll; keep_sx := fp[0].scroll_x;
@@ -1716,10 +2160,10 @@ coder_page_file_reload :: (s: [] CoderPage, bytes: [] u8, size: int) -> bool #ex
     fp[0].mode = CP_FP_READ;
     cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
   } else {
-    if fp[0].md_preview {
-      ft[0].preview_n = cp_fp_format_md_preview(cast(string) bytes, ft[0].preview_buf[..]);
+    if fp[0].md_preview && cp_fp_is_markdown(s) {
       fp[0].mode = CP_FP_READ;
-      cp_fp_build_index(s, cp_fp_view_src(s), SYN_LANG_PLAIN);
+      cp_fp_build_index(s, cast(string) bytes, cp_fp_lang(path, CP_FT_PREV_NONE));
+      cp_fp_md_parse(s);
     } else if was_edit && bytes.count <= CP_FP_EDIT_MOST && cp_fp_lines(cast(string) bytes) <= CP_FP_EDIT_LINES {
       fp[0].mode = CP_FP_EDIT;
       fp[0].text_n = cp_out(fp[0].text[..], cast(string) bytes);
@@ -1784,6 +2228,8 @@ cp_fp_begin :: (s: [] CoderPage, path: string) {
   s[0].ft[0].crumb_menu = false;
   s[0].ft[0].preview_kind = CP_FT_PREV_NONE;
   s[0].ft[0].preview_n = 0;
+  s[0].fp_md_blocks = 0;
+  s[0].fp_md_fm_end = 0;
   s[0].sim[0].front = false; s[0].term[0].front = false;   // the file comes in front of the simulator and terminal
   fp[0].path_n = cp_out(fp[0].path[..], path);
   if s[0].sel[0].region == CP_SEL_FILE { cp_sel_clear(s); }

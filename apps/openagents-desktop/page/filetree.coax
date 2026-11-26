@@ -81,6 +81,7 @@ CpFtTab :: struct {
   wrap: bool;
   wrap_set: bool;
   edit_mode: bool;
+  md_preview: bool;
   pinned: bool;
   last_used: int;
   fold_bits: [8] u64;
@@ -336,6 +337,7 @@ cp_ft_tab_save_active :: (s: [] CoderPage) {
   ft[0].tabs[idx].wrap = fp[0].wrap;
   ft[0].tabs[idx].wrap_set = true;
   ft[0].tabs[idx].edit_mode = (fp[0].mode == CP_FP_EDIT);
+  ft[0].tabs[idx].md_preview = fp[0].md_preview;
   ft[0].tabs[idx].dirty = fp[0].dirty;
   if fp[0].dirty || fp[0].mode == CP_FP_EDIT { ft[0].tabs[idx].pinned = true; }
   for k: 0..<8 { ft[0].tabs[idx].fold_bits[k] = fp[0].fold_bits[k]; }

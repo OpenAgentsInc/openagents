@@ -376,6 +376,7 @@ CoderPage :: struct {
   pane_open: bool; pane_turn: int; pane_agent: int; pane_manual: bool;
   pane_x: f32; pane_w: f32; pane_scroll: f32; pane_content: f32; pane_view: f32; pane_stick: bool;
   pane_doc: [1] MdDoc; pane_blocks: int; pane_parsed: int;
+  fp_md_doc: [1] MdDoc; fp_md_blocks: int; fp_md_fm_end: int;
   // the chat's edits as a code review in the pane (#13696): shown, which tab shows, its scroll
   review: bool; pane_tab: int; review_scroll: f32; review_content: f32;
   think: [2] MdDoc; think_at: int;   // the open thoughts' Markdown, parsed afresh each frame; two, so the frame before keeps its words

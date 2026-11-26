@@ -284,3 +284,55 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   req: [256] u8;
   #assert cast(string) req[0..<coder_page_filetree_req_path(s, req[..])] == "/Users/dev/openagents/psionic/platform/metal.m";
 }
+
+#test "Markdown preview renders real formatted Markdown (frontmatter, headings, tables, syntax-colored code, lists) in full RGB color" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  #assert cp_cust_is_monochrome(s);
+  #assert cp_fp_md_frontmatter_end("---\n\n# Not frontmatter\n") == 0;
+
+  b: [2048] u8;
+  src := "---\nname: coax-pitfalls\ndescription: >-\n  Diagnose Coax compiler errors cleanly.\n---\n\n# Coax Pitfalls\n\n## First 10 Seconds\nDo **not** guess. Run `coax explain` first:\n\n```sh\n./coax/bin/coax explain E0366\n```\n\n| Code | Cause | Exact Fix |\n| --- | --- | --- |\n| `E0216` | Closed range | Use `0..<n`. |\n| `E0323` | Ignored return | Assign `_ = f();`. |\n\n> Tip: check `coax/spec.md`.\n\n- First bullet\n- Second bullet\n\n---\n\n1. Step one\n2. Step two\n";
+  path := "/Users/dev/openagents/.agents/skills/coax-pitfalls/SKILL.md";
+  #assert coder_page_file_open(s, path, b[0..<cp_out(b[..], src)], src.count);
+  #assert !s[0].fp[0].md_preview;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.md_toggle") >= 0;
+
+  // Toggle Preview via Row 2 toolbar pill -> parses frontmatter + Markdown blocks
+  #assert cp_fp_test_press(s, "coder.file.md_toggle") && s[0].fp[0].md_preview;
+  #assert s[0].fp_md_fm_end > 0 && s[0].fp_md_blocks >= 8;
+  #assert s[0].fp_md_doc[0].blocks[0].heading == 1 && s[0].fp_md_doc[0].blocks[1].heading == 2;
+
+  // Render a full GPU frame under default monochrome T3 Noir: Markdown preview preserves full RGB colors
+  vbuf: [524288] f32;
+  nv := coder_page_frame(s, vbuf[..], 1280.0f32, 800.0f32, 1.0f32, 0.016f32);
+  #assert nv > 0 && s[0].refused == 0;
+  v_colored := 0;
+  for i: 0..<nv {
+    o := i * GP_VERTEX_FLOATS;
+    r := vbuf[o + 12]; g := vbuf[o + 13]; bl := vbuf[o + 14]; a := vbuf[o + 15];
+    if a > 0.1f32 && (abs(r - g) > 0.05f32 || abs(g - bl) > 0.05f32) { v_colored += 1; }
+  }
+  #assert v_colored >= 100;
+  #assert s[0].fp[0].content > 200.0f32;
+
+  // GPU text selection & copy works on rendered Markdown (no raw ** markers)
+  s[0].px = s[0].pane_x + 40.0f32; s[0].py = 200.0f32;
+  #assert cp_sel_select_all(s) && s[0].sel[0].region == CP_SEL_FILE;
+  copied: [2048] u8;
+  cn := coder_page_copy(s, false, copied[..]);
+  ctext := cast(string) copied[0..<cn];
+  #assert cn > 40 && cp_find(ctext, "Coax Pitfalls") >= 0 && cp_find(ctext, "**not**") < 0;
+  cp_sel_clear(s);
+
+  // Per-tab md_preview state persists across tab switch and live reload
+  b2: [64] u8; src2 := "main :: () {}\n";
+  #assert coder_page_file_open(s, "/Users/dev/openagents/main.coax", b2[0..<cp_out(b2[..], src2)], src2.count);
+  #assert !s[0].fp[0].md_preview;
+  #assert coder_page_file_open(s, path, b[0..<cp_out(b[..], src)], src.count);
+  #assert s[0].fp[0].md_preview && s[0].fp_md_blocks >= 8;
+  #assert coder_page_file_reload(s, b[0..<cp_out(b[..], src)], src.count);
+  #assert s[0].fp[0].md_preview && s[0].fp_md_blocks >= 8;
+
+  // Toggling back to Source clears md_preview and restores raw source view
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_press(s, "coder.file.md_toggle") && !s[0].fp[0].md_preview;
+}
