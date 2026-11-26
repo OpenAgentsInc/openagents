@@ -315,7 +315,9 @@ extension CoderWindow {
         #if OA_FULL
         let resolved = resolveProviderWorker(r)
         #else
-        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = useAgy ? ("agyworker", 1, nil) : ("oa-worker", 8, nil)
+        // Primary chat always runs on OpenAgents Core (oa-worker); no primary-turn agyworker escape hatch (#14070).
+        let _ = useAgy
+        let resolved: (program: String, providerKind: Int32, handoffJSON: String?) = ("oa-worker", 8, nil)
         #endif
         let wantProgram = resolved.program
         let switchedProvider = r.lastProviderKind >= 0 && r.lastProviderKind != resolved.providerKind

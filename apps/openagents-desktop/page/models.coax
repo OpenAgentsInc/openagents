@@ -82,7 +82,7 @@ cp_has_cloud_compute :: (s: [] CoderPage) -> bool {
   }
   if fl[0].auth_status_n > 0 {
     ast := cast(string) fl[0].auth_status[0..<fl[0].auth_status_n];
-    if cp_contains(ast, "Vertex") || cp_contains(ast, "Gemini") || cp_contains(ast, "OpenRouter") { return true; }
+    if cp_contains(ast, "OpenAgents Cloud") || cp_contains(ast, "Vertex") || cp_contains(ast, "Gemini") || cp_contains(ast, "OpenRouter") { return true; }
   }
   return false;
 }

@@ -20,6 +20,7 @@ FLAWED_BE_LOCAL :: 1;
 FLAWED_BE_VERTEX :: 2;
 FLAWED_BE_GEMINI :: 3;
 FLAWED_BE_OPENROUTER :: 4;
+FLAWED_BE_OURS :: 5;
 
 FLAWED_THINK_ADAPTIVE :: 0;
 FLAWED_THINK_EXTENDED :: 1;
@@ -141,6 +142,11 @@ flawed_wire_openrouter_model :: (raw: string, out: [] u8) -> int #effects(all) {
   return flawed_aw_cat(out, n, m);
 }
 
+// Canonical OpenAgents Cloud (/api/v1/inference) model slug (#14070).
+flawed_wire_ours_model :: (raw: string, out: [] u8) -> int #effects(all) {
+  return flawed_wire_openrouter_model(raw, out);
+}
+
 flawed_wire_endpoint_url :: (backend: int, base_url: string, local_base: string, project: string, location: string, model: string, out: [] u8) -> int #effects(all) {
   if backend == FLAWED_BE_LOCAL {
     b := flawed_aw_trim_slash(ifx local_base.count > 0 then local_base else "http://127.0.0.1:8080");
@@ -148,6 +154,12 @@ flawed_wire_endpoint_url :: (backend: int, base_url: string, local_base: string,
     n := flawed_aw_cat(out, 0, b);
     if flawed_aw_ends(b, "/v1") { return flawed_aw_cat(out, n, "/chat/completions"); }
     return flawed_aw_cat(out, n, "/v1/chat/completions");
+  }
+  if backend == FLAWED_BE_OURS {
+    b := flawed_aw_trim_slash(ifx base_url.count > 0 then base_url else "https://openagents.com");
+    if flawed_aw_ends(b, "/api/v1/inference") { return flawed_aw_copy(out, b); }
+    n := flawed_aw_cat(out, 0, b);
+    return flawed_aw_cat(out, n, "/api/v1/inference");
   }
   if backend == FLAWED_BE_OPENROUTER {
     b := flawed_aw_trim_slash(ifx base_url.count > 0 then base_url else "https://openrouter.ai/api/v1");
@@ -620,7 +632,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert !flawed_wire_is_local_model("flawed:gemini-4-neon") && !flawed_wire_is_local_model("");
 
   #assert flawed_wire_is_gemini(FLAWED_BE_VERTEX) && flawed_wire_is_gemini(FLAWED_BE_GEMINI);
-  #assert !flawed_wire_is_gemini(FLAWED_BE_LOCAL) && !flawed_wire_is_gemini(FLAWED_BE_OPENROUTER);
+  #assert !flawed_wire_is_gemini(FLAWED_BE_LOCAL) && !flawed_wire_is_gemini(FLAWED_BE_OPENROUTER) && !flawed_wire_is_gemini(FLAWED_BE_OURS);
 
   mb: [96] u8;
   #assert cast(string) mb[0..<flawed_wire_gemini_model("flawed:gemini-4-neon", mb[..])] == "gemini-4-neon";
@@ -637,11 +649,24 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("cloud", mb[..])] == "google/gemini-4-neon";
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("", mb[..])] == "google/gemini-4-neon";
 
+  #assert cast(string) mb[0..<flawed_wire_ours_model("oa:auto", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("oa:cloud", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("gemini-4-neon", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("oa:gemini-4-carbon", mb[..])] == "google/gemini-4-carbon";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("google/gemini-4-hydrogen", mb[..])] == "google/gemini-4-hydrogen";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("gemini-4-argon", mb[..])] == "google/gemini-4-argon";
+  #assert cast(string) mb[0..<flawed_wire_ours_model("oa:inkling-2-mini", mb[..])] == "google/gemini-4-neon";
+
   ub: [256] u8;
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:8080/v1/chat/completions";
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "x", "", "", "inkling-2-mini", ub[..])] == "x/v1/chat/completions";
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_LOCAL, "", "http://127.0.0.1:9000/v1/chat/completions", "", "", "inkling-2-mini", ub[..])] == "http://127.0.0.1:9000/v1/chat/completions";
+
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OURS, "", "", "", "", "gemini-4-neon", ub[..])] == "https://openagents.com/api/v1/inference";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OURS, "x", "", "", "", "gemini-4-neon", ub[..])] == "x/api/v1/inference";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OURS, "https://staging.openagents.com/", "", "", "", "gemini-4-neon", ub[..])] == "https://staging.openagents.com/api/v1/inference";
+  #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OURS, "http://127.0.0.1:7024/api/v1/inference", "", "", "", "gemini-4-neon", ub[..])] == "http://127.0.0.1:7024/api/v1/inference";
 
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "", "", "", "", "gemini-4-neon", ub[..])] == "https://openrouter.ai/api/v1/chat/completions";
   #assert cast(string) ub[0..<flawed_wire_endpoint_url(FLAWED_BE_OPENROUTER, "x", "", "", "", "gemini-4-neon", ub[..])] == "x/chat/completions";

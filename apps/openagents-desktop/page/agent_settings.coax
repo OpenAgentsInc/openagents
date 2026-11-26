@@ -52,10 +52,10 @@ CP_FLAWED_SHORT :: [CP_FLAWED_MODELS] string.[
   "Inkling 2 Mini",
 ];
 CP_FLAWED_DESC :: [CP_FLAWED_MODELS] string.[
-  "Frontier reasoning · 1M context · Vertex / Gemini",
-  "Deep coding · 1M context · Vertex / Gemini",
-  "Fast & light · 1M context · Vertex / Gemini",
-  "High precision · 1M context · Vertex / Gemini",
+  "Frontier reasoning · 1M context · OpenAgents Cloud",
+  "Deep coding · 1M context · OpenAgents Cloud",
+  "Fast & light · 1M context · OpenAgents Cloud",
+  "High precision · 1M context · OpenAgents Cloud",
   "Local Psionic Metal · OpenAgents",
 ];
 CP_FLAWED_META :: [CP_FLAWED_MODELS] string.[
@@ -151,6 +151,7 @@ cp_flawed_backend_label :: (be: int) -> string {
   if be == 2 { return "Vertex AI"; }
   if be == 3 { return "Gemini API"; }
   if be == 4 { return "OpenRouter"; }
+  if be == 5 { return "OpenAgents Cloud"; }
   return "Auto";
 }
 
@@ -371,15 +372,16 @@ cp_settings_flawed :: (s: [] CoderPage, f: [] UiFrame, x: f32, y0: f32, w: f32) 
     kind = SET_ROW_CHOICE, noptions = CP_FLAWED_MODELS, chosen = mslot, action = CP_SET_ACT};
   for i: 0..<CP_FLAWED_MODELS { drows[1].options[i] = shorts[i]; }
 
-  be := cp_flawed_clamp(fl[0].backend, 0, 4);
+  be := cp_flawed_clamp(fl[0].backend, 0, 5);
   drows[2] = SetRow.{id = "set.flawed.backend", name = "Inference backend",
     desc = ifx be == 1 then "Force Local Psionic Metal server (on-device Inkling 2 Mini)."
-           else ifx be == 2 then "Force Google Cloud Vertex AI (service account / ADC)."
-           else ifx be == 3 then "Force Gemini Developer API."
-           else ifx be == 4 then "Force OpenRouter Chat Completions API."
-           else "Auto-route by compute mode: Vertex AI -> Gemini API -> OpenRouter -> Local Psionic.",
-    kind = SET_ROW_CHOICE, noptions = 5, chosen = be, action = CP_SET_ACT};
-  drows[2].options[0] = "Auto"; drows[2].options[1] = "Local"; drows[2].options[2] = "Vertex"; drows[2].options[3] = "Gemini"; drows[2].options[4] = "OpenRouter";
+           else ifx be == 2 then "Force Google Cloud Vertex AI (developer override)."
+           else ifx be == 3 then "Force Gemini Developer API (developer override)."
+           else ifx be == 4 then "Force OpenRouter Chat Completions API (developer override)."
+           else ifx be == 5 then "Force OpenAgents Cloud gateway (openagents.com/api/v1/inference)."
+           else "Auto-route by compute mode: OpenAgents Cloud -> Local Psionic (or BYO developer keys).",
+    kind = SET_ROW_CHOICE, noptions = 6, chosen = be, action = CP_SET_ACT};
+  drows[2].options[0] = "Auto"; drows[2].options[1] = "Local"; drows[2].options[2] = "Vertex"; drows[2].options[3] = "Gemini"; drows[2].options[4] = "OpenRouter"; drows[2].options[5] = "Cloud";
 
   cmod := ifx fl[0].custom_model_n > 0 then sheet_pool(sh, cast(string) fl[0].custom_model[0..<fl[0].custom_model_n]) else "Default (from picker)";
   drows[3] = SetRow.{id = "set.flawed.custom", name = "Custom model override",
@@ -498,7 +500,7 @@ cp_flawed_settings_press :: (s: [] CoderPage, id: string) -> bool {
   v = cp_number(id, "set.flawed.fast.");
   if v == 0 || v == 1 { fl[0].fast_mode = (v == 1); s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.backend.");
-  if v >= 0 && v <= 4 { fl[0].backend = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
+  if v >= 0 && v <= 5 { fl[0].backend = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.tmode.");
   if v >= 0 && v <= 2 { fl[0].thinking_mode = v; s[0].ask = CP_ASK_FLAWED_PREFS; return true; }
   v = cp_number(id, "set.flawed.effort.");
@@ -550,7 +552,7 @@ coder_page_flawed_prefs_set :: (s: [] CoderPage, vals: [] int) #export_c #effect
   prev_be := fl[0].backend;
   fl[0].default_agent = cp_flawed_clamp(vals[0], 0, CP_COMPUTE_MODES - 1);
   fl[0].model_slot = cp_flawed_clamp(vals[1], 0, CP_FLAWED_MODELS - 1);
-  fl[0].backend = cp_flawed_clamp(vals[2], 0, 4);
+  fl[0].backend = cp_flawed_clamp(vals[2], 0, 5);
   fl[0].thinking_mode = cp_flawed_clamp(vals[3], 0, 2);
   fl[0].effort_off = cp_flawed_clamp(vals[4], 0, CP_FLAWED_EFFORTS - 1) - CP_FLAWED_EFFORT_START;
   fl[0].thinking_display = cp_flawed_clamp(vals[5], 0, 1);
@@ -578,7 +580,7 @@ coder_page_flawed_prefs_get :: (s: [] CoderPage, out: [] int) -> int #export_c #
   fl := s[0].flawed[..];
   out[0] = cp_flawed_clamp(fl[0].default_agent, 0, CP_COMPUTE_MODES - 1);
   out[1] = cp_flawed_clamp(fl[0].model_slot, 0, CP_FLAWED_MODELS - 1);
-  out[2] = cp_flawed_clamp(fl[0].backend, 0, 4);
+  out[2] = cp_flawed_clamp(fl[0].backend, 0, 5);
   out[3] = cp_flawed_clamp(fl[0].thinking_mode, 0, 2);
   out[4] = cp_flawed_effort(s);
   out[5] = cp_flawed_clamp(fl[0].thinking_display, 0, 1);

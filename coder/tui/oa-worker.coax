@@ -181,6 +181,7 @@ FwConfig :: struct {
   bash_timeout_s: int;        // 0 = default 120s (harness sets 20s fast-fail)
   local_max_tokens: int;      // 0 = wire default (harness sets 6144 for local Inkling)
   base_url: [512] u8; nbase_url: int;
+  cloud_origin: [512] u8; ncloud_origin: int;
   allowed_tools: [512] u8; nallowed: int;
   disallowed_tools: [512] u8; ndisallowed: int;
   additional_dirs: [1024] u8; nadd_dirs: int;
@@ -226,6 +227,7 @@ fww_load_config :: (cfg: [] FwConfig) {
   else if be == "vertex" || be == "2" { cfg[0].backend_pref = FLAWED_BE_VERTEX; }
   else if be == "gemini" || be == "3" { cfg[0].backend_pref = FLAWED_BE_GEMINI; }
   else if be == "openrouter" || be == "4" { cfg[0].backend_pref = FLAWED_BE_OPENROUTER; }
+  else if be == "ours" || be == "cloud" || be == "openagents" || be == "5" { cfg[0].backend_pref = FLAWED_BE_OURS; }
   else { cfg[0].backend_pref = FLAWED_BE_AUTO; }
 
   m := fww_getenv2("OA_AGENT_MODEL", "FLAWED_MODEL", b[..]);
@@ -286,6 +288,8 @@ fww_load_config :: (cfg: [] FwConfig) {
 
   bu := fww_getenv2("OA_AGENT_BASE_URL", "FLAWED_BASE_URL", b[..]);
   cfg[0].nbase_url = fww_keep(cfg[0].base_url[..], bu);
+  co := fww_getenv2("OA_CLOUD_ORIGIN", "OPENAGENTS_API_ORIGIN", b[..]);
+  cfg[0].ncloud_origin = fww_keep(cfg[0].cloud_origin[..], co);
 
   cfg[0].nallowed = fww_keep(cfg[0].allowed_tools[..], fww_getenv2("OA_AGENT_ALLOWED_TOOLS", "FLAWED_ALLOWED_TOOLS", b[..]));
   cfg[0].ndisallowed = fww_keep(cfg[0].disallowed_tools[..], fww_getenv2("OA_AGENT_DISALLOWED_TOOLS", "FLAWED_DISALLOWED_TOOLS", b[..]));
@@ -300,8 +304,11 @@ FWW_GCLOUDS_HOME :: 2;
 
 FwAuth :: struct {
   ok: bool;
-  backend: int;               // resolved FLAWED_BE_LOCAL / _VERTEX / _GEMINI / _OPENROUTER
+  backend: int;               // resolved FLAWED_BE_LOCAL / _OURS / _VERTEX / _GEMINI / _OPENROUTER
   key: [4096] u8; nkey: int;
+  ours_is_header: bool;       // true when key already holds full Authorization header ("Bearer ..." / "Nostr ...")
+  ours_cli: [1200] u8; nours_cli: int;
+  ours_profile: [64] u8; nours_profile: int;
   vx_project: [128] u8; nvx_project: int;
   vx_location: [64] u8; nvx_location: int;
   vx_keyfile: [1200] u8; nvx_keyfile: int;
@@ -562,7 +569,128 @@ fww_vertex_label :: (auth: [] FwAuth, out: [] u8) -> int {
   return n;
 }
 
-// Model-aware credential & backend resolution (Local Psionic Metal, Vertex AI, Gemini API, OpenRouter — zero Anthropic).
+// Discover OpenAgents Cloud (/api/v1/inference) credentials (#14070):
+// 1. OA_CLOUD_AUTH_HEADER (full "Bearer ..." or "Nostr ..." header value)
+// 2. OA_CLOUD_TOKEN (OpenAgents account Bearer access token)
+// 3. ~/.openagents/desktop/login.json ("access" token written by Desktop account sign-in)
+// 4. OpenAgents CLI signer + Nostr key (OA_CLOUD_KEY_PATH or ~/.openagents/cli/keys/<profile>)
+fww_try_ours_auth :: (home: string, auth: [] FwAuth) -> bool {
+  b: [4096] u8;
+  hdr := fww_trim(cl_getenv("OA_CLOUD_AUTH_HEADER", b[..]));
+  if hdr.count > 0 {
+    auth[0].nkey = fww_keep(auth[0].key[..], hdr);
+    auth[0].ours_is_header = true;
+    auth[0].nsource = fww_keep(auth[0].source[..], "ours_header");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "OpenAgents Cloud");
+    return true;
+  }
+  tok := fww_trim(cl_getenv("OA_CLOUD_TOKEN", b[..]));
+  if tok.count > 0 {
+    auth[0].nkey = fww_keep(auth[0].key[..], tok);
+    auth[0].ours_is_header = false;
+    auth[0].nsource = fww_keep(auth[0].source[..], "ours_token");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "OpenAgents Cloud");
+    return true;
+  }
+  if home.count > 0 {
+    lp: [1200] u8;
+    ln := fww_cat(lp[..], 0, home);
+    ln = fww_cat(lp[..], ln, "/.openagents/desktop/login.json");
+    login_path := cast(string) lp[0..<ln];
+    if fs_exists(login_path) {
+      raw: [8192] u8;
+      rn := fs_read(login_path, raw[..]);
+      if rn > 0 {
+        v: [1] Jv;
+        nd: [64] JvNode;
+        if jv_parse(v[..], cast(string) raw[0..<rn], nd[..]) {
+          ab: [4096] u8;
+          an := jv_str(v[0], jv_get(v[0], 0, "access"), ab[..]);
+          if an > 0 {
+            auth[0].nkey = fww_keep(auth[0].key[..], cast(string) ab[0..<an]);
+            auth[0].ours_is_header = false;
+            auth[0].nsource = fww_keep(auth[0].source[..], "ours_login");
+            auth[0].nlabel = fww_keep(auth[0].label[..], "OpenAgents Cloud");
+            for i: 0..<ab.count { ab[i] = 0; }
+            for i: 0..<raw.count { raw[i] = 0; }
+            return true;
+          }
+        }
+        for i: 0..<raw.count { raw[i] = 0; }
+      }
+    }
+  }
+  // Optional Nostr CLI signer fallback (openagents nostr auth) when a CLI key is present.
+  prof_b: [64] u8;
+  prof := fww_trim(cl_getenv("OPENAGENTS_PROFILE", prof_b[..]));
+  if prof.count == 0 { prof = "default"; }
+  cli_b: [1200] u8;
+  cli := fww_trim(cl_getenv("OA_CLOUD_SIGNER", cli_b[..]));
+  if cli.count == 0 && home.count > 0 {
+    cb: [1200] u8;
+    cn := fww_cat(cb[..], 0, home);
+    cn = fww_cat(cb[..], cn, "/.openagents/bin/openagents");
+    if fs_exists(cast(string) cb[0..<cn]) { cli = cast(string) cb[0..<cn]; }
+  }
+  if cli.count == 0 && fs_exists("/opt/homebrew/bin/openagents") { cli = "/opt/homebrew/bin/openagents"; }
+  if cli.count == 0 && fs_exists("/usr/local/bin/openagents") { cli = "/usr/local/bin/openagents"; }
+  if cli.count > 0 {
+    kp_b: [1200] u8;
+    kp := fww_trim(cl_getenv("OA_CLOUD_KEY_PATH", kp_b[..]));
+    has_key := kp.count > 0 && fs_exists(kp);
+    if !has_key && home.count > 0 {
+      kb: [1200] u8;
+      kn := fww_cat(kb[..], 0, home);
+      kn = fww_cat(kb[..], kn, "/.openagents/cli/keys/");
+      kn = fww_cat(kb[..], kn, prof);
+      has_key = fs_exists(cast(string) kb[0..<kn]);
+    }
+    if has_key {
+      auth[0].nours_cli = fww_keep(auth[0].ours_cli[..], cli);
+      auth[0].nours_profile = fww_keep(auth[0].ours_profile[..], prof);
+      auth[0].ours_is_header = true;
+      auth[0].nsource = fww_keep(auth[0].source[..], "ours_nostr");
+      auth[0].nlabel = fww_keep(auth[0].label[..], "OpenAgents Cloud (Nostr key)");
+      return true;
+    }
+  }
+  return false;
+}
+
+// Sign a POST request body for OpenAgents Cloud using the local openagents CLI (NIP-98).
+fww_sign_ours_nip98 :: (auth: [] FwAuth, url: string, body: string, out_hdr: [] u8) -> int {
+  if auth[0].nours_cli == 0 { return 0; }
+  cli := cast(string) auth[0].ours_cli[0..<auth[0].nours_cli];
+  prof := ifx auth[0].nours_profile > 0 then cast(string) auth[0].ours_profile[0..<auth[0].nours_profile] else "default";
+  tp: [128] u8;
+  tn := fww_cat(tp[..], 0, "/tmp/oa-worker-nip98-");
+  tn = fww_put_int(tp[..], tn, proc_now_ms());
+  tn = fww_cat(tp[..], tn, ".json");
+  tpath := cast(string) tp[0..<tn];
+  if !fs_write(tpath, body) { return 0; }
+
+  h := proc_new();
+  if h < 0 { _ = fs_remove(tpath); return 0; }
+  ok := proc_arg(h, cli) && proc_arg(h, "--profile") && proc_arg(h, prof) && proc_arg(h, "nostr") && proc_arg(h, "auth") &&
+        proc_arg(h, url) && proc_arg(h, "--method") && proc_arg(h, "POST") && proc_arg(h, "--body") && proc_arg(h, tpath);
+  if !ok || proc_start(h) != 0 {
+    _ = proc_release(h);
+    _ = fs_remove(tpath);
+    return 0;
+  }
+  _ = proc_close_stdin(h);
+  raw: [4096] u8;
+  nr := proc_line(h, 8000, raw[..]);
+  ex := proc_wait(h, 2000);
+  _ = proc_release(h);
+  _ = fs_remove(tpath);
+  if ex != 0 || nr <= 6 { return 0; }
+  signed := fww_trim(cast(string) raw[0..<nr]);
+  if !flawed_aw_starts(signed, "Nostr ") { return 0; }
+  return fww_keep(out_hdr, signed);
+}
+
+// Model-aware credential & backend resolution (OpenAgents Cloud, Local Psionic Metal, plus BYO developer overrides).
 // Keeps cached Vertex OAuth token intact across turns.
 fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: [] FwAuth, probe_only: bool) {
   // Preserve cached Vertex token across refreshes
@@ -585,41 +713,50 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
   lbase_b: [512] u8;
   lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
 
-  // Probe summary for --auth in Settings -> Flawed
+  // Probe summary for --auth in Settings -> Agent
   if probe_only && pref == FLAWED_BE_AUTO {
     has_local := fww_local_installed(home) || fww_local_reachable(lbase);
+    has_ours := fww_try_ours_auth(home, auth);
     has_vx := fww_vertex_has_creds(auth);
     src_b: [32] u8; nsrc := [1] int.[0];
     gm_b: [256] u8; gm_n := fww_try_gemini_key(home, gm_b[..], src_b[..], nsrc[..]);
     or_b: [256] u8; or_n := fww_try_openrouter_key(home, or_b[..]);
     n := 0;
+    if has_ours {
+      n = fww_cat(auth[0].label[..], n, "OpenAgents Cloud");
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_OURS;
+      auth[0].nsource = fww_keep(auth[0].source[..], "ours");
+    }
     if has_local {
+      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
       n = fww_cat_local_label(auth[0].label[..], n);
       auth[0].ok = true;
-      auth[0].backend = FLAWED_BE_LOCAL;
-      auth[0].nsource = fww_keep(auth[0].source[..], "local");
+      if !has_ours { auth[0].backend = FLAWED_BE_LOCAL; auth[0].nsource = fww_keep(auth[0].source[..], "local"); }
     }
-    if has_vx {
-      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
-      n = fww_cat(auth[0].label[..], n, "Vertex AI (");
-      n = fww_cat(auth[0].label[..], n, cast(string) auth[0].vx_project[0..<auth[0].nvx_project]);
-      n = fww_cat(auth[0].label[..], n, ")");
-      auth[0].ok = true;
-      if !has_local { auth[0].backend = FLAWED_BE_VERTEX; auth[0].nsource = fww_keep(auth[0].source[..], "vertex"); }
-    } else if gm_n > 0 {
-      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
-      n = fww_cat(auth[0].label[..], n, "Gemini API");
-      auth[0].ok = true;
-      if !has_local { auth[0].backend = FLAWED_BE_GEMINI; auth[0].nsource = fww_keep(auth[0].source[..], "gemini"); }
-    } else if or_n > 0 {
-      if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
-      n = fww_cat(auth[0].label[..], n, "OpenRouter");
-      auth[0].ok = true;
-      if !has_local { auth[0].backend = FLAWED_BE_OPENROUTER; auth[0].nsource = fww_keep(auth[0].source[..], "openrouter"); }
+    if !has_ours {
+      if has_vx {
+        if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+        n = fww_cat(auth[0].label[..], n, "Vertex AI (");
+        n = fww_cat(auth[0].label[..], n, cast(string) auth[0].vx_project[0..<auth[0].nvx_project]);
+        n = fww_cat(auth[0].label[..], n, ")");
+        auth[0].ok = true;
+        if !has_local { auth[0].backend = FLAWED_BE_VERTEX; auth[0].nsource = fww_keep(auth[0].source[..], "vertex"); }
+      } else if gm_n > 0 {
+        if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+        n = fww_cat(auth[0].label[..], n, "Gemini API");
+        auth[0].ok = true;
+        if !has_local { auth[0].backend = FLAWED_BE_GEMINI; auth[0].nsource = fww_keep(auth[0].source[..], "gemini"); }
+      } else if or_n > 0 {
+        if n > 0 { n = fww_cat(auth[0].label[..], n, " · "); }
+        n = fww_cat(auth[0].label[..], n, "OpenRouter");
+        auth[0].ok = true;
+        if !has_local { auth[0].backend = FLAWED_BE_OPENROUTER; auth[0].nsource = fww_keep(auth[0].source[..], "openrouter"); }
+      }
     }
     if n > 0 { auth[0].nlabel = n; return; }
     auth[0].nsource = fww_keep(auth[0].source[..], "none");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Install Inkling 2 Mini or configure Vertex AI / Gemini API");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Sign in to OpenAgents Cloud or install Inkling 2 Mini");
     return;
   }
 
@@ -633,7 +770,20 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
       return;
     }
     auth[0].nsource = fww_keep(auth[0].source[..], "local_offline");
-    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic server not running (start Inkling 2 Mini or switch to Gemini 4 Neon)");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Local Psionic server not running (start Inkling 2 Mini or switch to OpenAgents Cloud)");
+    return;
+  }
+
+  if pref == FLAWED_BE_OURS {
+    if fww_try_ours_auth(home, auth) || replaying {
+      auth[0].ok = true;
+      auth[0].backend = FLAWED_BE_OURS;
+      if auth[0].nsource == 0 { auth[0].nsource = fww_keep(auth[0].source[..], "ours"); }
+      if auth[0].nlabel == 0 { auth[0].nlabel = fww_keep(auth[0].label[..], "OpenAgents Cloud"); }
+      return;
+    }
+    auth[0].nsource = fww_keep(auth[0].source[..], "none");
+    auth[0].nlabel = fww_keep(auth[0].label[..], "Sign in to OpenAgents to use OpenAgents Cloud (OpenAgents → Log In…)");
     return;
   }
 
@@ -683,7 +833,13 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
   }
 
   // Auto cloud routing (for Gemini 4 Neon / Carbon / Hydrogen / Argon):
-  // 1. Vertex AI (service account / ADC / VERTEX_ACCESS_TOKEN)
+  // 1. OpenAgents Cloud (/api/v1/inference) is ALWAYS preferred first (#14070).
+  if fww_try_ours_auth(home, auth) {
+    auth[0].ok = true;
+    auth[0].backend = FLAWED_BE_OURS;
+    return;
+  }
+  // 2. Developer BYO fallback: Vertex AI (service account / ADC / VERTEX_ACCESS_TOKEN)
   if fww_vertex_has_creds(auth) && (probe_only || fww_vertex_mint(auth)) {
     auth[0].ok = true;
     auth[0].backend = FLAWED_BE_VERTEX;
@@ -692,7 +848,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     auth[0].nlabel = fww_vertex_label(auth, auth[0].label[..]);
     return;
   }
-  // 2. Gemini API key
+  // 3. Developer BYO fallback: Gemini API key
   src_b: [32] u8; nsrc := [1] int.[0];
   kn := fww_try_gemini_key(home, auth[0].key[..], src_b[..], nsrc[..]);
   if kn > 0 {
@@ -703,7 +859,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     auth[0].nlabel = fww_key_suffix_label("Gemini API key", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
     return;
   }
-  // 3. OpenRouter key
+  // 4. Developer BYO fallback: OpenRouter key
   kn = fww_try_openrouter_key(home, auth[0].key[..]);
   if kn > 0 {
     auth[0].ok = true;
@@ -713,7 +869,7 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
     auth[0].nlabel = fww_key_suffix_label("OpenRouter", cast(string) auth[0].key[0..<kn], auth[0].label[..]);
     return;
   }
-  // 4. Auto compute fallback to local Psionic Metal when no cloud credentials are configured
+  // 5. Auto compute fallback to local Psionic Metal when no cloud credentials are configured
   rm := flawed_wire_strip_model(req_model);
   if pref == FLAWED_BE_AUTO && (rm == "auto" || rm.count == 0) {
     if (probe_only && fww_local_installed(home)) || fww_local_reachable(lbase) {
@@ -724,16 +880,16 @@ fww_resolve_auth :: (cfg: [] FwConfig, home: string, req_model: string, auth: []
       return;
     }
   }
-  // 5. Replay fallback
+  // 6. Replay fallback
   if replaying {
     auth[0].ok = true;
-    auth[0].backend = FLAWED_BE_VERTEX;
+    auth[0].backend = FLAWED_BE_OURS;
     auth[0].nsource = fww_keep(auth[0].source[..], "replay");
     auth[0].nlabel = fww_keep(auth[0].label[..], "Replay");
     return;
   }
   auth[0].nsource = fww_keep(auth[0].source[..], "none");
-  auth[0].nlabel = fww_keep(auth[0].label[..], "No Vertex AI or Gemini API credentials configured (open Settings → Agent)");
+  auth[0].nlabel = fww_keep(auth[0].label[..], "Sign in to OpenAgents Cloud or configure credentials in Settings → Agent");
 }
 
 // ---------------------------------------------------------------- conversation history (zero-heap slab)
@@ -4570,9 +4726,24 @@ fww_fc :: (b: [] FwBufs) -> FlawedFileCache {
 
 fww_gw_name :: (backend: int) -> string {
   if backend == FLAWED_BE_LOCAL { return "psionic"; }
+  if backend == FLAWED_BE_OURS { return "ours"; }
   if backend == FLAWED_BE_VERTEX { return "vertex"; }
   if backend == FLAWED_BE_GEMINI { return "gemini"; }
   return "openrouter";
+}
+
+// Compute turn cost in micro-USD (#14070):
+// - Local Psionic Metal / Inkling models ALWAYS cost $0 unconditionally.
+// - OpenAgents Cloud (FLAWED_BE_OURS) uses OpenAgents retail pricing ("ours" rate card).
+// - Developer BYO backends use their gateway rate card (falling back to vertex).
+fww_turn_cost_micros :: (backend: int, model: string, in_tok: int, cache_read: int, out_tok: int) -> int {
+  if backend == FLAWED_BE_LOCAL || gw_is_local_model(model) { return 0; }
+  gwn := fww_gw_name(backend);
+  rf := gw_rate(gwn, model);
+  if !rf.ok && backend == FLAWED_BE_OURS { rf = gw_rate("ours", "google/gemini-4-neon"); }
+  if !rf.ok { rf = gw_rate("vertex", model); }
+  if !rf.ok { return 0; }
+  return gw_card_cost(rf.rate, in_tok, cache_read, 0, out_tok);
 }
 
 fww_emit_attempt :: (r: [] FwRun, auth: [] FwAuth, outcome: string, status: int, cost_micros: int, out: [] u8) {
@@ -4721,7 +4892,10 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   raw_m := cast(string) r[0].model[0..<r[0].nmodel];
   mdl_b: [128] u8;
   wire_model := "";
-  if auth[0].backend == FLAWED_BE_OPENROUTER {
+  if auth[0].backend == FLAWED_BE_OURS {
+    n := flawed_wire_ours_model(raw_m, mdl_b[..]);
+    wire_model = cast(string) mdl_b[0..<n];
+  } else if auth[0].backend == FLAWED_BE_OPENROUTER {
     n := flawed_wire_openrouter_model(raw_m, mdl_b[..]);
     wire_model = cast(string) mdl_b[0..<n];
   } else if is_local {
@@ -4809,13 +4983,33 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   lbase := fww_trim(cl_getenv("PSIONIC_BASE_URL", lbase_b[..]));
   vx_proj := cast(string) auth[0].vx_project[0..<auth[0].nvx_project];
   vx_loc := cast(string) auth[0].vx_location[0..<auth[0].nvx_location];
-  un := flawed_wire_endpoint_url(auth[0].backend, cast(string) cfg[0].base_url[0..<cfg[0].nbase_url], lbase, vx_proj, vx_loc, wire_model, ub[..]);
+  ep_base := cast(string) cfg[0].base_url[0..<cfg[0].nbase_url];
+  if auth[0].backend == FLAWED_BE_OURS && ep_base.count == 0 && cfg[0].ncloud_origin > 0 {
+    ep_base = cast(string) cfg[0].cloud_origin[0..<cfg[0].ncloud_origin];
+  }
+  un := flawed_wire_endpoint_url(auth[0].backend, ep_base, lbase, vx_proj, vx_loc, wire_model, ub[..]);
   url := cast(string) ub[0..<un];
 
   cli := GwClient.{url = url, connect_timeout_s = 15, max_time_s = 600};
+  nip98_hdr: [4096] u8;
   if is_local {
     cli.key_env = "";
     cli.key_value = "";
+  } else if auth[0].backend == FLAWED_BE_OURS {
+    cli.key_env = "FLAWED_REQ_KEY";
+    cli.key_header = "Authorization";
+    if cast(string) auth[0].source[0..<auth[0].nsource] == "ours_nostr" {
+      sn := fww_sign_ours_nip98(auth, url, cast(string) b[0].req_body[0..<bn], nip98_hdr[..]);
+      if sn <= 0 { return "Could not sign request for OpenAgents Cloud (run openagents login or sign in via Desktop)."; }
+      cli.key_value = cast(string) nip98_hdr[0..<sn];
+      cli.scheme = "";
+    } else if auth[0].ours_is_header {
+      cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+      cli.scheme = "";
+    } else {
+      cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
+      cli.scheme = "Bearer";
+    }
   } else if auth[0].backend == FLAWED_BE_GEMINI {
     cli.key_env = "FLAWED_REQ_KEY";
     cli.key_value = cast(string) auth[0].key[0..<auth[0].nkey];
@@ -5454,17 +5648,9 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     return "failed";
   }
 
-  // Account cost via coax/lib/gateway/card.coax ($0 for Local Psionic Metal)
-  cost := 0;
-  if auth[0].backend != FLAWED_BE_LOCAL {
-    gwn := fww_gw_name(auth[0].backend);
-    rm := ifx r[0].acc[0].nresp_model > 0 then cast(string) r[0].acc[0].resp_model[0..<r[0].acc[0].nresp_model] else flawed_wire_strip_model(cast(string) r[0].model[0..<r[0].nmodel]);
-    rf := gw_rate(gwn, rm);
-    if !rf.ok { rf = gw_rate("vertex", rm); }
-    if rf.ok {
-      cost = gw_card_cost(rf.rate, r[0].acc[0].in_tok, r[0].acc[0].cache_read, 0, r[0].acc[0].out_tok);
-    }
-  }
+  // Account cost via coax/lib/gateway/card.coax ($0 for Local Psionic Metal; OpenAgents retail for FLAWED_BE_OURS; #14070)
+  rm_cost := ifx r[0].acc[0].nresp_model > 0 then cast(string) r[0].acc[0].resp_model[0..<r[0].acc[0].nresp_model] else flawed_wire_strip_model(cast(string) r[0].model[0..<r[0].nmodel]);
+  cost := fww_turn_cost_micros(auth[0].backend, rm_cost, r[0].acc[0].in_tok, r[0].acc[0].cache_read, r[0].acc[0].out_tok);
   r[0].ctx_recoveries = 0;
   r[0].turn_cost_micros += cost;
   h[0].total_in += r[0].acc[0].in_tok;
@@ -7256,4 +7442,14 @@ tool_main :: () -> int #export_c #effects(all) {
   h_wal: [1] FwHist;
   fww_hist_push_user(h_wal[..], "What is my Bitcoin wallet balance?");
   #assert fww_is_coding_turn(cfg[..], h_wal[..]);
+
+  // 7) OpenAgents Cloud (FLAWED_BE_OURS) retail pricing & $0 local Inkling enforcement (#14070)
+  #assert fww_gw_name(FLAWED_BE_OURS) == "ours";
+  #assert fww_turn_cost_micros(FLAWED_BE_LOCAL, "inkling-2-mini", 100000, 50000, 10000) == 0;
+  #assert fww_turn_cost_micros(FLAWED_BE_LOCAL, "google/gemini-4-neon", 100000, 0, 10000) == 0;
+  #assert fww_turn_cost_micros(FLAWED_BE_OURS, "inkling-2-mini", 100000, 0, 10000) == 0;
+  // OpenAgents Cloud Neon retail (+25% over Vertex): 1M input (500k cached) + 100k output = $3.84375 = 3,843,750 micros
+  #assert fww_turn_cost_micros(FLAWED_BE_OURS, "google/gemini-4-neon", 1000000, 500000, 100000) == 3843750;
+  // Vertex wholesale Neon for comparison: 500k*3 + 500k*0.15 + 100k*15 = 3,075,000 micros
+  #assert fww_turn_cost_micros(FLAWED_BE_VERTEX, "google/gemini-4-neon", 1000000, 500000, 100000) == 3075000;
 }
