@@ -1,0 +1,15 @@
+// Suite entrypoint registering Coax UI Kit & Streaming Markdown (#14091) with coax/web/tool.sh suites.
+//   coax/bin/coax test coax/web/ui-kit-check.coax --library
+#load "../../components/ui/kit/parts.coax";
+#load "../../components/ui/kit/virtual_list.coax";
+#load "../../components/ui/kit/stream_markdown.coax";
+
+#test "ui kit suite integrates parts, virtual list, and incremental streaming markdown" {
+  vl: [1] VirtualList;
+  vl_init(vl[..], 400.0f32, 40.0f32);
+  _ = vl_append(vl[..], 40.0f32);
+  sm: [1] StreamMd;
+  smd_reset(sm[..], 0, true);
+  _ = smd_append(sm[..], "# Ready\n");
+  #assert vl_total_height(vl[..]) == 40.0f32 && sm[0].doc[0].nb == 1;
+}

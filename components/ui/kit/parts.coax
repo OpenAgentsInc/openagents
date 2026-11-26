@@ -1,0 +1,815 @@
+// Coax UI Kit headless `parts` primitives (#14091, inspired by @effect/ui-kit):
+// Behavior, keyboard navigation, roving tabindex, focus return, and WAI-ARIA attributes
+// decoupled completely from visual markup and skins.
+// Primitives: Button, Collapsible, Dialog/AlertDialog, Popover, Tooltip, Toast,
+//             Menu/ContextMenu, Select/Combobox, Tabs, Form/Field, ScrollArea.
+//   coax/bin/coax test components/ui/kit/parts.coax --library
+#load "../../core/tree.coax";
+#load "../../core/scroll.coax";
+
+// Normalized keyboard keys handled by headless parts state machines.
+UK_NONE :: 0;
+UK_ENTER :: 1;
+UK_SPACE :: 2;
+UK_ESC :: 3;
+UK_TAB :: 4;
+UK_UP :: 5;
+UK_DOWN :: 6;
+UK_LEFT :: 7;
+UK_RIGHT :: 8;
+UK_HOME :: 9;
+UK_END :: 10;
+
+UK_ID_MAX :: 64;
+UK_TOAST_MAX :: 8;
+UK_FILTER_MAX :: 64;
+
+// Field validation error codes.
+UK_ERR_NONE :: 0;
+UK_ERR_REQUIRED :: 1;
+UK_ERR_TOO_SHORT :: 2;
+UK_ERR_TOO_LONG :: 3;
+
+uk_bit :: (idx: int) -> int {
+  if idx < 0 || idx >= 60 { return 0; }
+  b := 1;
+  for k: 0..<idx { b *= 2; }
+  return b;
+}
+
+uk_disabled :: (mask: int, idx: int) -> bool {
+  return (mask & uk_bit(idx)) != 0;
+}
+
+uk_copy_id :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count > dst.count then dst.count else src.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+uk_id_str :: (buf: [] u8, n: int) -> string {
+  return cast(string) buf[0..<n];
+}
+
+uk_lower :: (c: u8) -> u8 {
+  return ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+}
+
+// First enabled index from start (step = +1 or -1), wrapping if wrap == true. Returns -1 if all disabled.
+uk_find_enabled :: (start: int, count: int, step: int, wrap: bool, disabled_mask: int) -> int {
+  if count <= 0 { return -1; }
+  idx := start;
+  for tries: 0..<count {
+    if idx < 0 {
+      if !wrap { return -1; }
+      idx = count - 1;
+    } else if idx >= count {
+      if !wrap { return -1; }
+      idx = 0;
+    }
+    if !uk_disabled(disabled_mask, idx) { return idx; }
+    idx += step;
+  }
+  return -1;
+}
+
+// Shared WAI-ARIA roving tabindex navigation step across horizontal or vertical item lists.
+uk_roving_step :: (cur: int, count: int, key: int, horizontal: bool, wrap: bool, disabled_mask: int) -> int {
+  if count <= 0 { return -1; }
+  prev_key := ifx horizontal then UK_LEFT else UK_UP;
+  next_key := ifx horizontal then UK_RIGHT else UK_DOWN;
+  if key == UK_HOME { return uk_find_enabled(0, count, 1, false, disabled_mask); }
+  if key == UK_END { return uk_find_enabled(count - 1, count, -1, false, disabled_mask); }
+  if key == next_key {
+    base := ifx cur < 0 || cur >= count then 0 else cur + 1;
+    nxt := uk_find_enabled(base, count, 1, wrap, disabled_mask);
+    return ifx nxt >= 0 then nxt else cur;
+  }
+  if key == prev_key {
+    base := ifx cur < 0 || cur >= count then count - 1 else cur - 1;
+    prv := uk_find_enabled(base, count, -1, wrap, disabled_mask);
+    return ifx prv >= 0 then prv else cur;
+  }
+  return cur;
+}
+
+// ---- 1. Button
+
+UkButton :: struct {
+  disabled: bool;
+  busy: bool;
+  toggle: bool;
+  pressed: bool;
+}
+
+uk_button_activate :: (b: [] UkButton) -> bool {
+  if b[0].disabled || b[0].busy { return false; }
+  if b[0].toggle { b[0].pressed = !b[0].pressed; }
+  return true;
+}
+
+uk_button_key :: (b: [] UkButton, key: int) -> bool {
+  if key == UK_ENTER || key == UK_SPACE { return uk_button_activate(b); }
+  return false;
+}
+
+uk_button_apply :: (t: [] Tree, node: int, b: UkButton) {
+  if b.disabled || b.busy { tr_attr(t, node, AT_DISABLED, ""); }
+  if b.busy { tr_attr(t, node, AT_STATE, "busy"); }
+  if b.toggle { tr_attr(t, node, AT_PRESSED, ifx b.pressed then "true" else "false"); }
+}
+
+// ---- 2. Collapsible (tool calls, thinking blocks, diff sections)
+
+UkCollapsible :: struct {
+  open: bool;
+  disabled: bool;
+}
+
+uk_collapsible_toggle :: (c: [] UkCollapsible) -> bool {
+  if c[0].disabled { return false; }
+  c[0].open = !c[0].open;
+  return true;
+}
+
+uk_collapsible_key :: (c: [] UkCollapsible, key: int) -> bool {
+  if key == UK_ENTER || key == UK_SPACE { return uk_collapsible_toggle(c); }
+  return false;
+}
+
+uk_collapsible_apply_trigger :: (t: [] Tree, node: int, c: UkCollapsible, content_id: string) {
+  tr_attr(t, node, AT_EXPANDED, ifx c.open then "true" else "false");
+  tr_attr(t, node, AT_STATE, ifx c.open then "open" else "closed");
+  if content_id.count > 0 { tr_attr(t, node, AT_CONTROLS, content_id); }
+  if c.disabled { tr_attr(t, node, AT_DISABLED, ""); }
+}
+
+uk_collapsible_apply_content :: (t: [] Tree, node: int, c: UkCollapsible) {
+  tr_attr(t, node, AT_STATE, ifx c.open then "open" else "closed");
+  if !c.open { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+// ---- 3. Dialog & AlertDialog (binds to TG_DIALOG + AT_MODAL from #14089)
+
+UkDialog :: struct {
+  open: bool;
+  alert_dialog: bool;
+  return_focus: [UK_ID_MAX] u8;
+  return_focus_n: int;
+  focus_restore_pending: bool;
+}
+
+uk_dialog_open :: (d: [] UkDialog, trigger_id: string) {
+  d[0].open = true;
+  d[0].focus_restore_pending = false;
+  d[0].return_focus_n = uk_copy_id(d[0].return_focus[..], trigger_id);
+}
+
+uk_dialog_close :: (d: [] UkDialog) -> bool {
+  if !d[0].open { return false; }
+  d[0].open = false;
+  d[0].focus_restore_pending = d[0].return_focus_n > 0;
+  return true;
+}
+
+uk_dialog_key :: (d: [] UkDialog, key: int) -> bool {
+  if !d[0].open { return false; }
+  // AlertDialog requires explicit confirmation/cancel action; Escape never dismisses it.
+  if key == UK_ESC && !d[0].alert_dialog { return uk_dialog_close(d); }
+  return false;
+}
+
+uk_dialog_take_return_focus :: (d: [] UkDialog) -> string {
+  if !d[0].focus_restore_pending { return ""; }
+  d[0].focus_restore_pending = false;
+  return uk_id_str(d[0].return_focus[..], d[0].return_focus_n);
+}
+
+uk_dialog_apply :: (t: [] Tree, node: int, d: UkDialog, label: string) {
+  tr_attr(t, node, AT_ROLE, ifx d.alert_dialog then "alertdialog" else "dialog");
+  if label.count > 0 { tr_attr(t, node, AT_LABEL, label); }
+  tr_attr(t, node, AT_STATE, ifx d.open then "open" else "closed");
+  if d.open { tr_attr(t, node, AT_MODAL, "true"); }
+}
+
+// ---- 4. Popover
+
+UkPopover :: struct {
+  open: bool;
+  return_focus: [UK_ID_MAX] u8;
+  return_focus_n: int;
+  focus_restore_pending: bool;
+}
+
+uk_popover_toggle :: (p: [] UkPopover, trigger_id: string) {
+  if p[0].open {
+    p[0].open = false;
+    p[0].focus_restore_pending = p[0].return_focus_n > 0;
+  } else {
+    p[0].open = true;
+    p[0].focus_restore_pending = false;
+    p[0].return_focus_n = uk_copy_id(p[0].return_focus[..], trigger_id);
+  }
+}
+
+uk_popover_key :: (p: [] UkPopover, key: int) -> bool {
+  if p[0].open && key == UK_ESC {
+    p[0].open = false;
+    p[0].focus_restore_pending = p[0].return_focus_n > 0;
+    return true;
+  }
+  return false;
+}
+
+uk_popover_take_return_focus :: (p: [] UkPopover) -> string {
+  if !p[0].focus_restore_pending { return ""; }
+  p[0].focus_restore_pending = false;
+  return uk_id_str(p[0].return_focus[..], p[0].return_focus_n);
+}
+
+uk_popover_apply_trigger :: (t: [] Tree, node: int, p: UkPopover, content_id: string) {
+  tr_attr(t, node, AT_HASPOPUP, "dialog");
+  tr_attr(t, node, AT_EXPANDED, ifx p.open then "true" else "false");
+  if content_id.count > 0 { tr_attr(t, node, AT_CONTROLS, content_id); }
+}
+
+uk_popover_apply_content :: (t: [] Tree, node: int, p: UkPopover) {
+  tr_attr(t, node, AT_ROLE, "dialog");
+  tr_attr(t, node, AT_STATE, ifx p.open then "open" else "closed");
+  if !p.open { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+// ---- 5. Tooltip
+
+UkTooltip :: struct {
+  open: bool;
+  hovering: bool;
+  focused: bool;
+  delay_ms: int;
+  hover_since_ms: int;
+}
+
+uk_tooltip_hover :: (tp: [] UkTooltip, now_ms: int) {
+  tp[0].hovering = true;
+  tp[0].hover_since_ms = now_ms;
+  if tp[0].delay_ms <= 0 { tp[0].open = true; }
+}
+
+uk_tooltip_leave :: (tp: [] UkTooltip) {
+  tp[0].hovering = false;
+  if !tp[0].focused { tp[0].open = false; }
+}
+
+uk_tooltip_focus :: (tp: [] UkTooltip) {
+  tp[0].focused = true;
+  tp[0].open = true;
+}
+
+uk_tooltip_blur :: (tp: [] UkTooltip) {
+  tp[0].focused = false;
+  if !tp[0].hovering { tp[0].open = false; }
+}
+
+uk_tooltip_key :: (tp: [] UkTooltip, key: int) -> bool {
+  if tp[0].open && key == UK_ESC {
+    tp[0].open = false;
+    tp[0].hovering = false;
+    return true;
+  }
+  return false;
+}
+
+uk_tooltip_tick :: (tp: [] UkTooltip, now_ms: int) -> bool {
+  if !tp[0].open && tp[0].hovering && now_ms - tp[0].hover_since_ms >= tp[0].delay_ms {
+    tp[0].open = true;
+    return true;
+  }
+  return false;
+}
+
+uk_tooltip_apply :: (t: [] Tree, node: int, tp: UkTooltip) {
+  tr_attr(t, node, AT_ROLE, "tooltip");
+  tr_attr(t, node, AT_STATE, ifx tp.open then "open" else "closed");
+  if !tp.open { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+// ---- 6. Toast Queue
+
+UK_TOAST_INFO :: 0;
+UK_TOAST_ALERT :: 1;
+
+UkToast :: struct {
+  live: bool;
+  id: int;
+  kind: int;
+  due_ms: int;
+  remaining_ms: int;
+  text: [128] u8; text_n: int;
+}
+
+UkToastQueue :: struct {
+  items: [UK_TOAST_MAX] UkToast;
+  next_id: int;
+  paused: bool;
+}
+
+uk_toast_push :: (q: [] UkToastQueue, kind: int, text: string, ttl_ms: int, now_ms: int) -> int {
+  slot := -1;
+  for i: 0..<UK_TOAST_MAX {
+    if !q[0].items[i].live { slot = i; break; }
+  }
+  if slot < 0 { slot = 0; }   // evict oldest slot when full
+  q[0].next_id += 1;
+  dur := ifx ttl_ms > 0 then ttl_ms else 4000;
+  item: UkToast;
+  item.live = true;
+  item.id = q[0].next_id;
+  item.kind = kind;
+  item.remaining_ms = dur;
+  item.due_ms = now_ms + dur;
+  item.text_n = uk_copy_id(item.text[..], text);
+  q[0].items[slot] = item;
+  return item.id;
+}
+
+uk_toast_dismiss :: (q: [] UkToastQueue, id: int) -> bool {
+  for i: 0..<UK_TOAST_MAX {
+    if q[0].items[i].live && q[0].items[i].id == id {
+      q[0].items[i].live = false;
+      return true;
+    }
+  }
+  return false;
+}
+
+uk_toast_pause :: (q: [] UkToastQueue, paused: bool, now_ms: int) {
+  if q[0].paused == paused { return; }
+  q[0].paused = paused;
+  for i: 0..<UK_TOAST_MAX {
+    if !q[0].items[i].live { continue; }
+    if paused {
+      rem := q[0].items[i].due_ms - now_ms;
+      q[0].items[i].remaining_ms = ifx rem > 0 then rem else 1;
+    } else {
+      q[0].items[i].due_ms = now_ms + q[0].items[i].remaining_ms;
+    }
+  }
+}
+
+uk_toast_tick :: (q: [] UkToastQueue, now_ms: int) -> int {
+  if q[0].paused { return 0; }
+  expired := 0;
+  for i: 0..<UK_TOAST_MAX {
+    if q[0].items[i].live && now_ms >= q[0].items[i].due_ms {
+      q[0].items[i].live = false;
+      expired += 1;
+    }
+  }
+  return expired;
+}
+
+uk_toast_apply :: (t: [] Tree, node: int, item: UkToast) {
+  is_alert := item.kind == UK_TOAST_ALERT;
+  tr_attr(t, node, AT_ROLE, ifx is_alert then "alert" else "status");
+  tr_attr(t, node, AT_LIVE, ifx is_alert then "assertive" else "polite");
+}
+
+// ---- 7. Menu & ContextMenu
+
+UkMenu :: struct {
+  open: bool;
+  count: int;
+  active_idx: int = -1;
+  disabled_mask: int;
+  context_menu: bool;
+  anchor_x: int;
+  anchor_y: int;
+  return_focus: [UK_ID_MAX] u8;
+  return_focus_n: int;
+  focus_restore_pending: bool;
+}
+
+uk_menu_open :: (m: [] UkMenu, trigger_id: string, count: int, disabled_mask: int) {
+  m[0].open = true;
+  m[0].context_menu = false;
+  m[0].count = count;
+  m[0].disabled_mask = disabled_mask;
+  m[0].active_idx = uk_find_enabled(0, count, 1, false, disabled_mask);
+  m[0].return_focus_n = uk_copy_id(m[0].return_focus[..], trigger_id);
+  m[0].focus_restore_pending = false;
+}
+
+uk_menu_open_context :: (m: [] UkMenu, trigger_id: string, count: int, disabled_mask: int, x: int, y: int) {
+  uk_menu_open(m, trigger_id, count, disabled_mask);
+  m[0].context_menu = true;
+  m[0].anchor_x = x;
+  m[0].anchor_y = y;
+}
+
+// Returns activated item index (>= 0), or -1 if navigation/close/no-op.
+uk_menu_key :: (m: [] UkMenu, key: int) -> int {
+  if !m[0].open {
+    if key == UK_ENTER || key == UK_SPACE || key == UK_DOWN {
+      m[0].open = true;
+      m[0].active_idx = uk_find_enabled(0, m[0].count, 1, false, m[0].disabled_mask);
+    } else if key == UK_UP {
+      m[0].open = true;
+      m[0].active_idx = uk_find_enabled(m[0].count - 1, m[0].count, -1, false, m[0].disabled_mask);
+    }
+    return -1;
+  }
+  if key == UK_ESC || key == UK_TAB {
+    m[0].open = false;
+    m[0].focus_restore_pending = m[0].return_focus_n > 0;
+    return -1;
+  }
+  if key == UK_ENTER || key == UK_SPACE {
+    picked := m[0].active_idx;
+    if picked >= 0 && picked < m[0].count && !uk_disabled(m[0].disabled_mask, picked) {
+      m[0].open = false;
+      m[0].focus_restore_pending = m[0].return_focus_n > 0;
+      return picked;
+    }
+    return -1;
+  }
+  m[0].active_idx = uk_roving_step(m[0].active_idx, m[0].count, key, false, true, m[0].disabled_mask);
+  return -1;
+}
+
+uk_menu_take_return_focus :: (m: [] UkMenu) -> string {
+  if !m[0].focus_restore_pending { return ""; }
+  m[0].focus_restore_pending = false;
+  return uk_id_str(m[0].return_focus[..], m[0].return_focus_n);
+}
+
+uk_menu_apply_trigger :: (t: [] Tree, node: int, m: UkMenu, menu_id: string) {
+  tr_attr(t, node, AT_HASPOPUP, "menu");
+  tr_attr(t, node, AT_EXPANDED, ifx m.open then "true" else "false");
+  if menu_id.count > 0 { tr_attr(t, node, AT_CONTROLS, menu_id); }
+}
+
+uk_menu_apply_list :: (t: [] Tree, node: int, m: UkMenu) {
+  tr_attr(t, node, AT_ROLE, "menu");
+  tr_attr(t, node, AT_STATE, ifx m.open then "open" else "closed");
+  if !m.open { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+uk_menu_apply_item :: (t: [] Tree, node: int, m: UkMenu, idx: int) {
+  tr_attr(t, node, AT_ROLE, "menuitem");
+  tr_attr(t, node, AT_TABINDEX, ifx m.active_idx == idx then "0" else "-1");
+  if uk_disabled(m.disabled_mask, idx) { tr_attr(t, node, AT_DISABLED, ""); }
+}
+
+// ---- 8. Select & Combobox (model/compute/workspace pickers)
+
+UkSelect :: struct {
+  open: bool;
+  combobox: bool;
+  count: int;
+  selected_idx: int = -1;
+  highlighted_idx: int = -1;
+  disabled_mask: int;
+  filter: [UK_FILTER_MAX] u8;
+  filter_n: int;
+}
+
+uk_select_matches :: (s: UkSelect, label: string) -> bool {
+  if s.filter_n == 0 { return true; }
+  if s.filter_n > label.count { return false; }
+  // Case-insensitive substring match for Combobox pickers.
+  for i: 0..<label.count - s.filter_n + 1 {
+    ok := true;
+    for k: 0..<s.filter_n {
+      if uk_lower(label[i + k]) != uk_lower(s.filter[k]) { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+uk_select_set_filter :: (s: [] UkSelect, query: string, labels: [] string) {
+  s[0].filter_n = uk_copy_id(s[0].filter[..], query);
+  s[0].open = true;
+  // Build effective disabled mask excluding non-matching items when filtering.
+  eff_mask := s[0].disabled_mask;
+  for i: 0..<labels.count {
+    if !uk_select_matches(s[0], labels[i]) { eff_mask = eff_mask | uk_bit(i); }
+  }
+  s[0].highlighted_idx = uk_find_enabled(0, s[0].count, 1, false, eff_mask);
+}
+
+// Returns true when `selected_idx` changed.
+uk_select_key :: (s: [] UkSelect, key: int, eff_disabled_mask: int) -> bool {
+  if !s[0].open {
+    if key == UK_ENTER || key == UK_SPACE || key == UK_DOWN || key == UK_UP {
+      s[0].open = true;
+      start := ifx s[0].selected_idx >= 0 then s[0].selected_idx else 0;
+      s[0].highlighted_idx = uk_find_enabled(start, s[0].count, 1, true, eff_disabled_mask);
+    }
+    return false;
+  }
+  if key == UK_ESC {
+    s[0].open = false;
+    return false;
+  }
+  if key == UK_ENTER || (key == UK_SPACE && !s[0].combobox) {
+    h := s[0].highlighted_idx;
+    if h >= 0 && h < s[0].count && !uk_disabled(eff_disabled_mask, h) {
+      changed := s[0].selected_idx != h;
+      s[0].selected_idx = h;
+      s[0].open = false;
+      return changed;
+    }
+    return false;
+  }
+  s[0].highlighted_idx = uk_roving_step(s[0].highlighted_idx, s[0].count, key, false, true, eff_disabled_mask);
+  return false;
+}
+
+uk_select_apply_trigger :: (t: [] Tree, node: int, s: UkSelect, listbox_id: string) {
+  tr_attr(t, node, AT_ROLE, "combobox");
+  tr_attr(t, node, AT_HASPOPUP, "listbox");
+  tr_attr(t, node, AT_EXPANDED, ifx s.open then "true" else "false");
+  if listbox_id.count > 0 { tr_attr(t, node, AT_CONTROLS, listbox_id); }
+}
+
+uk_select_apply_listbox :: (t: [] Tree, node: int, s: UkSelect) {
+  tr_attr(t, node, AT_ROLE, "listbox");
+  tr_attr(t, node, AT_STATE, ifx s.open then "open" else "closed");
+  if !s.open { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+uk_select_apply_option :: (t: [] Tree, node: int, s: UkSelect, idx: int) {
+  tr_attr(t, node, AT_ROLE, "option");
+  tr_attr(t, node, AT_SELECTED, ifx s.selected_idx == idx then "true" else "false");
+  tr_attr(t, node, AT_STATE, ifx s.highlighted_idx == idx then "highlighted" else "");
+  if uk_disabled(s.disabled_mask, idx) { tr_attr(t, node, AT_DISABLED, ""); }
+}
+
+// ---- 9. Tabs (horizontal/vertical, automatic or manual activation, roving tabindex)
+
+UkTabs :: struct {
+  count: int;
+  selected_idx: int;
+  focused_idx: int;
+  disabled_mask: int;
+  horizontal: bool = true;
+  manual: bool;
+}
+
+// Returns true when `selected_idx` changed.
+uk_tabs_key :: (tb: [] UkTabs, key: int) -> bool {
+  if key == UK_ENTER || key == UK_SPACE {
+    if tb[0].focused_idx >= 0 && tb[0].focused_idx < tb[0].count && !uk_disabled(tb[0].disabled_mask, tb[0].focused_idx) {
+      changed := tb[0].selected_idx != tb[0].focused_idx;
+      tb[0].selected_idx = tb[0].focused_idx;
+      return changed;
+    }
+    return false;
+  }
+  nxt := uk_roving_step(tb[0].focused_idx, tb[0].count, key, tb[0].horizontal, true, tb[0].disabled_mask);
+  if nxt == tb[0].focused_idx || nxt < 0 { return false; }
+  tb[0].focused_idx = nxt;
+  if !tb[0].manual {
+    changed := tb[0].selected_idx != nxt;
+    tb[0].selected_idx = nxt;
+    return changed;
+  }
+  return false;
+}
+
+uk_tabs_select :: (tb: [] UkTabs, idx: int) -> bool {
+  if idx < 0 || idx >= tb[0].count || uk_disabled(tb[0].disabled_mask, idx) { return false; }
+  changed := tb[0].selected_idx != idx;
+  tb[0].selected_idx = idx;
+  tb[0].focused_idx = idx;
+  return changed;
+}
+
+uk_tabs_apply_list :: (t: [] Tree, node: int, label: string) {
+  tr_attr(t, node, AT_ROLE, "tablist");
+  if label.count > 0 { tr_attr(t, node, AT_LABEL, label); }
+}
+
+uk_tabs_apply_tab :: (t: [] Tree, node: int, tb: UkTabs, idx: int, panel_id: string) {
+  tr_attr(t, node, AT_ROLE, "tab");
+  tr_attr(t, node, AT_SELECTED, ifx tb.selected_idx == idx then "true" else "false");
+  tr_attr(t, node, AT_TABINDEX, ifx tb.focused_idx == idx then "0" else "-1");
+  if panel_id.count > 0 { tr_attr(t, node, AT_CONTROLS, panel_id); }
+  if uk_disabled(tb.disabled_mask, idx) { tr_attr(t, node, AT_DISABLED, ""); }
+}
+
+uk_tabs_apply_panel :: (t: [] Tree, node: int, tb: UkTabs, idx: int) {
+  tr_attr(t, node, AT_ROLE, "tabpanel");
+  tr_attr(t, node, AT_TABINDEX, "0");
+  if tb.selected_idx != idx { tr_attr(t, node, AT_HIDDEN, "true"); }
+}
+
+// ---- 10. Form & Field
+
+UkField :: struct {
+  required: bool;
+  min_len: int;
+  max_len: int;
+  touched: bool;
+  dirty: bool;
+  error_code: int;
+}
+
+uk_field_validate :: (f: [] UkField, value: string) -> int {
+  err := UK_ERR_NONE;
+  if f[0].required && value.count == 0 { err = UK_ERR_REQUIRED; }
+  else if f[0].min_len > 0 && value.count < f[0].min_len { err = UK_ERR_TOO_SHORT; }
+  else if f[0].max_len > 0 && value.count > f[0].max_len { err = UK_ERR_TOO_LONG; }
+  f[0].error_code = err;
+  return err;
+}
+
+uk_field_change :: (f: [] UkField, value: string) -> int {
+  f[0].dirty = true;
+  return uk_field_validate(f, value);
+}
+
+uk_field_blur :: (f: [] UkField, value: string) -> int {
+  f[0].touched = true;
+  return uk_field_validate(f, value);
+}
+
+uk_field_apply :: (t: [] Tree, node: int, f: UkField) {
+  if f.touched && f.error_code != UK_ERR_NONE {
+    tr_attr(t, node, AT_INVALID, "true");
+    tr_attr(t, node, AT_STATE, "invalid");
+  }
+}
+
+uk_form_valid :: (fields: [] UkField) -> bool {
+  for f: fields { if f.error_code != UK_ERR_NONE { return false; } }
+  return true;
+}
+
+// ---- 11. ScrollArea (reuses components/core/scroll.coax)
+
+UkScrollArea :: struct {
+  viewport_h: f32;
+  content_h: f32;
+  offset_y: f32;
+  slack: f32 = 24.0f32;
+  pinned_bottom: bool = true;
+}
+
+uk_scroll_area_sync :: (sa: [] UkScrollArea, viewport_h: f32, content_h: f32) {
+  sa[0].viewport_h = viewport_h;
+  sa[0].content_h = content_h;
+  if sa[0].pinned_bottom {
+    sa[0].offset_y = scroll_max(content_h, viewport_h);
+  } else {
+    sa[0].offset_y = scroll_clamp(sa[0].offset_y, content_h, viewport_h);
+  }
+}
+
+uk_scroll_area_scroll :: (sa: [] UkScrollArea, next_y: f32) {
+  sa[0].offset_y = scroll_clamp(next_y, sa[0].content_h, sa[0].viewport_h);
+  sa[0].pinned_bottom = scroll_at_end(sa[0].content_h, sa[0].viewport_h, sa[0].offset_y, sa[0].slack);
+}
+
+uk_scroll_area_apply :: (t: [] Tree, node: int, sa: UkScrollArea, label: string) {
+  tr_attr(t, node, AT_ROLE, "region");
+  if label.count > 0 { tr_attr(t, node, AT_LABEL, label); }
+  tr_attr(t, node, AT_STATE, ifx sa.pinned_bottom then "pinned" else "scrolled");
+  tr_attr(t, node, AT_TABINDEX, "0");
+}
+
+// ---- tests
+
+#test "Button and Collapsible enforce disabled/busy guards, keyboard activation, and ARIA attributes" {
+  t: [1] Tree; tr_begin(t[..]);
+  b: [1] UkButton; b[0].toggle = true;
+  #assert uk_button_key(b[..], UK_SPACE) && b[0].pressed;
+  #assert uk_button_key(b[..], UK_ENTER) && !b[0].pressed;
+  #assert !uk_button_key(b[..], UK_ESC);
+  b[0].busy = true;
+  #assert !uk_button_activate(b[..]) && !b[0].pressed;
+  bn := tr_leaf(t[..], "b", TG_BUTTON, "btn", "Toggle");
+  uk_button_apply(t[..], bn, b[0]);
+  #assert tr_has(t[..], bn, AT_DISABLED) && tr_attr_of(t[..], bn, AT_STATE) == "busy" && tr_attr_of(t[..], bn, AT_PRESSED) == "false";
+
+  c: [1] UkCollapsible;
+  #assert uk_collapsible_key(c[..], UK_ENTER) && c[0].open;
+  #assert uk_collapsible_key(c[..], UK_SPACE) && !c[0].open;
+  c[0].disabled = true;
+  #assert !uk_collapsible_toggle(c[..]) && !c[0].open;
+  ct := tr_leaf(t[..], "tool.h", TG_BUTTON, "", "Thinking");
+  cc := tr_leaf(t[..], "tool.b", TG_DIV, "", "Details");
+  uk_collapsible_apply_trigger(t[..], ct, c[0], "tool.b");
+  uk_collapsible_apply_content(t[..], cc, c[0]);
+  #assert tr_attr_of(t[..], ct, AT_EXPANDED) == "false" && tr_attr_of(t[..], ct, AT_CONTROLS) == "tool.b" && tr_has(t[..], ct, AT_DISABLED);
+  #assert tr_attr_of(t[..], cc, AT_HIDDEN) == "true" && tr_attr_of(t[..], cc, AT_STATE) == "closed";
+}
+
+#test "Dialog, AlertDialog, Popover, Tooltip and Toast enforce Escape, focus return, ARIA roles, and timed expiration" {
+  t: [1] Tree; tr_begin(t[..]);
+  // Dialog closes on Escape and returns focus to trigger; AlertDialog ignores Escape
+  d: [1] UkDialog;
+  uk_dialog_open(d[..], "open.btn");
+  #assert d[0].open && uk_dialog_key(d[..], UK_ESC) && !d[0].open;
+  #assert uk_dialog_take_return_focus(d[..]) == "open.btn" && uk_dialog_take_return_focus(d[..]) == "";
+  ad: [1] UkDialog; ad[0].alert_dialog = true;
+  uk_dialog_open(ad[..], "del.btn");
+  #assert !uk_dialog_key(ad[..], UK_ESC) && ad[0].open;
+  dn := tr_leaf(t[..], "dlg", TG_DIALOG, "", "");
+  uk_dialog_apply(t[..], dn, ad[0], "Confirm delete");
+  #assert tr_attr_of(t[..], dn, AT_ROLE) == "alertdialog" && tr_attr_of(t[..], dn, AT_MODAL) == "true" && tr_attr_of(t[..], dn, AT_LABEL) == "Confirm delete";
+  #assert uk_dialog_close(ad[..]) && uk_dialog_take_return_focus(ad[..]) == "del.btn";
+
+  // Popover toggles, dismisses on Escape, restores focus
+  p: [1] UkPopover;
+  uk_popover_toggle(p[..], "pop.btn");
+  #assert p[0].open && uk_popover_key(p[..], UK_ESC) && !p[0].open && uk_popover_take_return_focus(p[..]) == "pop.btn";
+  pt := tr_leaf(t[..], "pop.btn", TG_BUTTON, "", "Info");
+  uk_popover_apply_trigger(t[..], pt, p[0], "pop.box");
+  #assert tr_attr_of(t[..], pt, AT_HASPOPUP) == "dialog" && tr_attr_of(t[..], pt, AT_EXPANDED) == "false" && tr_attr_of(t[..], pt, AT_CONTROLS) == "pop.box";
+
+  // Tooltip respects hover delay, immediate focus show, and Escape dismiss
+  tp: [1] UkTooltip; tp[0].delay_ms = 300;
+  uk_tooltip_hover(tp[..], 1000);
+  #assert !tp[0].open && !uk_tooltip_tick(tp[..], 1299) && uk_tooltip_tick(tp[..], 1300) && tp[0].open;
+  #assert uk_tooltip_key(tp[..], UK_ESC) && !tp[0].open;
+  uk_tooltip_focus(tp[..]); #assert tp[0].open;
+  uk_tooltip_blur(tp[..]); #assert !tp[0].open;
+
+  // Toast queue pushes, pauses/resumes timers, expires on tick, and emits status/alert live roles
+  tq: [1] UkToastQueue;
+  id1 := uk_toast_push(tq[..], UK_TOAST_INFO, "Copied", 2000, 100);
+  id2 := uk_toast_push(tq[..], UK_TOAST_ALERT, "Disconnected", 5000, 100);
+  #assert id1 == 1 && id2 == 2;
+  uk_toast_pause(tq[..], true, 1100);
+  #assert uk_toast_tick(tq[..], 9000) == 0;   // paused: nothing expires
+  uk_toast_pause(tq[..], false, 9000);
+  #assert uk_toast_tick(tq[..], 9999) == 0 && uk_toast_tick(tq[..], 10000) == 1 && !tq[0].items[0].live && tq[0].items[1].live;
+  tn := tr_leaf(t[..], "toast.2", TG_DIV, "", "Disconnected");
+  uk_toast_apply(t[..], tn, tq[0].items[1]);
+  #assert tr_attr_of(t[..], tn, AT_ROLE) == "alert" && tr_attr_of(t[..], tn, AT_LIVE) == "assertive";
+  #assert uk_toast_dismiss(tq[..], id2) && !tq[0].items[1].live;
+}
+
+#test "Menu, ContextMenu, Select/Combobox, Tabs, Form/Field and ScrollArea enforce roving tabindex, filtering, validation, and bottom-pin" {
+  t: [1] Tree; tr_begin(t[..]);
+  // Menu skips disabled index 1, wraps around, activates item 2, restores focus
+  m: [1] UkMenu;
+  uk_menu_open(m[..], "menu.btn", 4, uk_bit(1));
+  #assert m[0].open && m[0].active_idx == 0;
+  #assert uk_menu_key(m[..], UK_DOWN) == -1 && m[0].active_idx == 2;   // skipped disabled 1
+  #assert uk_menu_key(m[..], UK_END) == -1 && m[0].active_idx == 3;
+  #assert uk_menu_key(m[..], UK_DOWN) == -1 && m[0].active_idx == 0;   // wrapped
+  #assert uk_menu_key(m[..], UK_UP) == -1 && m[0].active_idx == 3;     // reverse wrapped
+  #assert uk_menu_key(m[..], UK_ENTER) == 3 && !m[0].open && uk_menu_take_return_focus(m[..]) == "menu.btn";
+  uk_menu_open_context(m[..], "row.0", 3, 0, 120, 240);
+  #assert m[0].context_menu && m[0].anchor_x == 120 && m[0].anchor_y == 240;
+
+  // Combobox filters case-insensitively and selects matching option
+  sel: [1] UkSelect; sel[0].combobox = true; sel[0].count = 3;
+  labels := [3] string.["Claude Sonnet", "GPT-5", "Gemini Pro"];
+  uk_select_set_filter(sel[..], "gem", labels[..]);
+  #assert sel[0].open && sel[0].highlighted_idx == 2;
+  #assert uk_select_key(sel[..], UK_ENTER, uk_bit(0) | uk_bit(1)) && sel[0].selected_idx == 2 && !sel[0].open;
+  sn := tr_leaf(t[..], "opt.2", TG_DIV, "", "Gemini Pro");
+  uk_select_apply_option(t[..], sn, sel[0], 2);
+  #assert tr_attr_of(t[..], sn, AT_ROLE) == "option" && tr_attr_of(t[..], sn, AT_SELECTED) == "true";
+
+  // Tabs roving tabindex in automatic vs manual mode, skipping disabled tab 1
+  tb: [1] UkTabs; tb[0].count = 3; tb[0].disabled_mask = uk_bit(1); tb[0].manual = true;
+  #assert !uk_tabs_key(tb[..], UK_RIGHT) && tb[0].focused_idx == 2 && tb[0].selected_idx == 0;   // manual: focus moved, selection kept
+  #assert uk_tabs_key(tb[..], UK_ENTER) && tb[0].selected_idx == 2;
+  tb[0].manual = false;
+  #assert uk_tabs_key(tb[..], UK_HOME) && tb[0].selected_idx == 0 && tb[0].focused_idx == 0;
+  tn0 := tr_leaf(t[..], "tab.0", TG_BUTTON, "", "Chat");
+  tn2 := tr_leaf(t[..], "tab.2", TG_BUTTON, "", "Docs");
+  uk_tabs_apply_tab(t[..], tn0, tb[0], 0, "panel.0");
+  uk_tabs_apply_tab(t[..], tn2, tb[0], 2, "panel.2");
+  #assert tr_attr_of(t[..], tn0, AT_TABINDEX) == "0" && tr_attr_of(t[..], tn0, AT_SELECTED) == "true";
+  #assert tr_attr_of(t[..], tn2, AT_TABINDEX) == "-1" && tr_attr_of(t[..], tn2, AT_SELECTED) == "false";
+
+  // Form / Field validation & aria-invalid only after touched
+  fields: [2] UkField;
+  fields[0].required = true; fields[0].min_len = 3; fields[0].max_len = 10;
+  #assert uk_field_change(fields[0..<1], "") == UK_ERR_REQUIRED && !uk_form_valid(fields[..]);
+  #assert uk_field_blur(fields[0..<1], "ab") == UK_ERR_TOO_SHORT;
+  fn := tr_leaf(t[..], "f.email", TG_INPUT, "", "");
+  uk_field_apply(t[..], fn, fields[0]);
+  #assert tr_attr_of(t[..], fn, AT_INVALID) == "true";
+  #assert uk_field_change(fields[0..<1], "abcdefghijk") == UK_ERR_TOO_LONG;
+  #assert uk_field_change(fields[0..<1], "valid") == UK_ERR_NONE && uk_form_valid(fields[..]);
+
+  // ScrollArea stays bottom-pinned as content grows, unpins on scroll-up, re-pins near bottom
+  sa: [1] UkScrollArea;
+  uk_scroll_area_sync(sa[..], 400, 1200);
+  #assert sa[0].pinned_bottom && sa[0].offset_y == 800;
+  uk_scroll_area_sync(sa[..], 400, 1500);
+  #assert sa[0].pinned_bottom && sa[0].offset_y == 1100;
+  uk_scroll_area_scroll(sa[..], 500);
+  #assert !sa[0].pinned_bottom && sa[0].offset_y == 500;
+  uk_scroll_area_sync(sa[..], 400, 1800);
+  #assert !sa[0].pinned_bottom && sa[0].offset_y == 500;   // user scrolled up: stays put!
+  uk_scroll_area_scroll(sa[..], 1390);
+  #assert sa[0].pinned_bottom;                              // within slack (24px): re-pinned!
+}

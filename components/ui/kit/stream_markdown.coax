@@ -1,0 +1,643 @@
+// Coax UI Kit Incremental Streaming Markdown & Typed Islands (#14091):
+// Streams arbitrary token chunks into the single shared Markdown parser
+// (components/core/markdown.coax) without re-parsing committed prefix blocks,
+// highlights fenced code via components/core/syntax.coax, and projects typed
+// Markdown islands (`island:callout`, `island:counter`, `island:collapsible`,
+// `island:tabs`) directly into Coax Tree nodes.
+//   coax/bin/coax test components/ui/kit/stream_markdown.coax --library
+#load "../../core/tree.coax";
+#load "../../core/markdown.coax";
+#load "../../core/syntax.coax";
+
+SMD_SRC :: 65536;
+
+SMD_ISLAND_NONE :: 0;
+SMD_ISLAND_CALLOUT :: 1;
+SMD_ISLAND_COUNTER :: 2;
+SMD_ISLAND_COLLAPSIBLE :: 3;
+SMD_ISLAND_TABS :: 4;
+
+StreamMd :: struct {
+  src: [SMD_SRC] u8;
+  src_n: int;
+  part: int;
+  finished: bool;
+  // Committed safe prefix cursor in src + matching MdDoc high-water mark.
+  stable_src_n: int;
+  stable_nb: int;
+  stable_n: int;
+  stable_nr: int;
+  stable_ni: int;
+  stable_nlink: int;
+  // Metrics for verifying incremental O(tail) re-parse behavior.
+  reparsed_bytes: int;
+  last_tail_bytes: int;
+  doc: [1] MdDoc;
+}
+
+smd_reset :: (sm: [] StreamMd, part: int, keep_rules: bool) {
+  sm[0].src_n = 0;
+  sm[0].part = part;
+  sm[0].finished = false;
+  sm[0].stable_src_n = 0;
+  sm[0].stable_nb = 0;
+  sm[0].stable_n = 0;
+  sm[0].stable_nr = 0;
+  sm[0].stable_ni = 0;
+  sm[0].stable_nlink = 0;
+  sm[0].reparsed_bytes = 0;
+  sm[0].last_tail_bytes = 0;
+  sm[0].doc[0] = MdDoc.{};
+  sm[0].doc[0].keep_rules = keep_rules;
+}
+
+smd_rollback_to_stable :: (sm: [] StreamMd) {
+  sm[0].doc[0].nb = sm[0].stable_nb;
+  sm[0].doc[0].n = sm[0].stable_n;
+  sm[0].doc[0].nr = sm[0].stable_nr;
+  sm[0].doc[0].ni = sm[0].stable_ni;
+  sm[0].doc[0].nlink = sm[0].stable_nlink;
+}
+
+smd_snapshot_stable :: (sm: [] StreamMd, src_cut: int) {
+  sm[0].stable_src_n = src_cut;
+  sm[0].stable_nb = sm[0].doc[0].nb;
+  sm[0].stable_n = sm[0].doc[0].n;
+  sm[0].stable_nr = sm[0].doc[0].nr;
+  sm[0].stable_ni = sm[0].doc[0].ni;
+  sm[0].stable_nlink = sm[0].doc[0].nlink;
+}
+
+// Finds the furthest byte offset >= from in `src` whose prefix is guaranteed
+// block-complete regardless of any bytes appended later.
+// Uses only line predicates from components/core/markdown.coax (single parser rule).
+smd_safe_boundary :: (src: string, from: int) -> int {
+  safe := from;
+  i := from;
+  in_fence := false;
+  fence_ch: u8 = 0;
+  fence_len := 0;
+  in_list := false;
+  after_list_blank := false;
+  list_blank_end := from;
+
+  while i < src.count {
+    e := md_line_end(src, i);
+    // An incomplete line (no terminating '\n' yet) can never close a block safely.
+    if e >= src.count { break; }
+    line := cast(string) src[i..<e];
+    tline := md_trim_left(line);
+
+    if in_fence {
+      if md_fence_char(tline) == fence_ch {
+        cq := 3;
+        while cq < tline.count && tline[cq] == fence_ch { cq += 1; }
+        if cq >= fence_len && md_blank(cast(string) tline[cq..<tline.count]) {
+          in_fence = false;
+          in_list = false;
+          after_list_blank = false;
+          safe = e + 1;
+        }
+      }
+      i = e + 1;
+      continue;
+    }
+
+    if md_blank(line) {
+      if in_list {
+        if !after_list_blank {
+          after_list_blank = true;
+          list_blank_end = e + 1;
+        } else {
+          list_blank_end = e + 1;
+        }
+      } else {
+        safe = e + 1;
+      }
+      i = e + 1;
+      continue;
+    }
+
+    if in_list && after_list_blank {
+      if md_marker(line) > 0 && md_indent(line) > 0 {
+        after_list_blank = false;
+        i = e + 1;
+        continue;
+      }
+      // A non-indented or non-list line after a blank line closes the preceding list.
+      safe = list_blank_end;
+      in_list = false;
+      after_list_blank = false;
+    }
+
+    fc := md_fence_char(tline);
+    if fc != 0 {
+      // A code fence interrupts every block kind in md_parse, so everything before `i` is closed.
+      safe = i;
+      in_list = false;
+      after_list_blank = false;
+      in_fence = true;
+      fence_ch = fc;
+      q0 := 3;
+      while q0 < tline.count && tline[q0] == fc { q0 += 1; }
+      fence_len = q0;
+      i = e + 1;
+      continue;
+    }
+
+    if !in_list && md_marker(line) > 0 {
+      in_list = true;
+      after_list_blank = false;
+      i = e + 1;
+      continue;
+    }
+
+    if !in_list && md_heading(line) > 0 {
+      // An unindented heading interrupts any preceding block and ends at its own '\n'.
+      safe = e + 1;
+      i = e + 1;
+      continue;
+    }
+
+    if !in_list && i == safe && md_rule(line) {
+      // A thematic break at the start of a fresh block ends at its own '\n'.
+      safe = e + 1;
+      i = e + 1;
+      continue;
+    }
+
+    i = e + 1;
+  }
+  return safe;
+}
+
+// Appends a streaming chunk and incrementally commits any newly closed blocks,
+// re-parsing ONLY the uncommitted tail block(s).
+smd_append :: (sm: [] StreamMd, chunk: string) -> int {
+  if chunk.count == 0 { return sm[0].doc[0].nb; }
+  for c: chunk {
+    if sm[0].src_n >= SMD_SRC { break; }
+    sm[0].src[sm[0].src_n] = c;
+    sm[0].src_n += 1;
+  }
+  full := cast(string) sm[0].src[0..<sm[0].src_n];
+  smd_rollback_to_stable(sm);
+  cut := smd_safe_boundary(full, sm[0].stable_src_n);
+  if cut > sm[0].stable_src_n {
+    seg := cast(string) full[sm[0].stable_src_n..<cut];
+    _ = md_parse(sm[0].doc[..], seg, sm[0].part);
+    sm[0].reparsed_bytes += seg.count;
+    smd_snapshot_stable(sm, cut);
+  }
+  tail_n := sm[0].src_n - sm[0].stable_src_n;
+  sm[0].last_tail_bytes = tail_n;
+  if tail_n > 0 {
+    tail := cast(string) full[sm[0].stable_src_n..<sm[0].src_n];
+    _ = md_parse(sm[0].doc[..], tail, sm[0].part);
+    sm[0].reparsed_bytes += tail.count;
+  }
+  return sm[0].doc[0].nb;
+}
+
+// Commits any remaining uncommitted tail when the stream finishes.
+smd_finish :: (sm: [] StreamMd) -> int {
+  if sm[0].finished { return sm[0].doc[0].nb; }
+  sm[0].finished = true;
+  if sm[0].stable_src_n < sm[0].src_n {
+    smd_rollback_to_stable(sm);
+    tail := cast(string) sm[0].src[sm[0].stable_src_n..<sm[0].src_n];
+    _ = md_parse(sm[0].doc[..], tail, sm[0].part);
+    sm[0].reparsed_bytes += tail.count;
+    smd_snapshot_stable(sm, sm[0].src_n);
+  }
+  sm[0].last_tail_bytes = 0;
+  return sm[0].doc[0].nb;
+}
+
+// ---- Typed Markdown Islands (` ```island:<kind> `)
+
+smd_island_kind :: (lang: string) -> int {
+  if lang == "island:callout" { return SMD_ISLAND_CALLOUT; }
+  if lang == "island:counter" { return SMD_ISLAND_COUNTER; }
+  if lang == "island:collapsible" { return SMD_ISLAND_COLLAPSIBLE; }
+  if lang == "island:tabs" { return SMD_ISLAND_TABS; }
+  return SMD_ISLAND_NONE;
+}
+
+smd_trim :: (s: string) -> string {
+  a := 0;
+  while a < s.count && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r') { a += 1; }
+  b := s.count;
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+// Extracts the trimmed value for `key: value` from an island fence body.
+smd_island_prop :: (body: string, key: string) -> string {
+  i := 0;
+  while i < body.count {
+    e := md_line_end(body, i);
+    line := cast(string) body[i..<e];
+    i = e + 1;
+    t := smd_trim(line);
+    if t.count <= key.count { continue; }
+    match := true;
+    for k: 0..<key.count {
+      if t[k] != key[k] { match = false; break; }
+    }
+    if match && t[key.count] == ':' {
+      return smd_trim(cast(string) t[key.count + 1..<t.count]);
+    }
+  }
+  return "";
+}
+
+smd_render_island :: (t: [] Tree, id: string, kind: int, body: string) {
+  b1: [128] u8; b2: [128] u8;
+  if kind == SMD_ISLAND_CALLOUT {
+    tone := smd_island_prop(body, "tone");
+    if tone.count == 0 { tone = "info"; }
+    title := smd_island_prop(body, "title");
+    text := smd_island_prop(body, "body");
+    sec := tr_open(t, id, TG_SECTION, "md-island md-island-callout");
+    tr_attr(t, sec, AT_ROLE, "note");
+    tr_attr(t, sec, AT_STATE, tone);
+    if title.count > 0 { _ = tr_leaf(t, tr_cat(b1[..], id, ".title"), TG_H4, "md-island-title", title); }
+    _ = tr_leaf(t, tr_cat(b2[..], id, ".body"), TG_P, "md-island-body", ifx text.count > 0 then text else body);
+    tr_close(t);
+    return;
+  }
+  if kind == SMD_ISLAND_COUNTER {
+    label := smd_island_prop(body, "label");
+    if label.count == 0 { label = "Counter"; }
+    init_val := smd_island_prop(body, "initial");
+    if init_val.count == 0 { init_val = "0"; }
+    _ = tr_open(t, id, TG_DIV, "md-island md-island-counter");
+    _ = tr_leaf(t, tr_cat(b1[..], id, ".label"), TG_SPAN, "md-island-label", label);
+    _ = tr_leaf(t, tr_cat(b1[..], id, ".val"), TG_SPAN, "md-island-val", init_val);
+    _ = tr_leaf(t, tr_cat(b1[..], id, ".dec"), TG_BUTTON, "md-island-btn", "-");
+    _ = tr_leaf(t, tr_cat(b1[..], id, ".inc"), TG_BUTTON, "md-island-btn", "+");
+    tr_close(t);
+    return;
+  }
+  if kind == SMD_ISLAND_COLLAPSIBLE {
+    title := smd_island_prop(body, "title");
+    if title.count == 0 { title = "Details"; }
+    text := smd_island_prop(body, "body");
+    is_open := smd_island_prop(body, "open") == "true";
+    body_id := tr_cat(b2[..], id, ".body");
+    _ = tr_open(t, id, TG_DIV, "md-island md-island-collapsible");
+    btn := tr_leaf(t, tr_cat(b1[..], id, ".toggle"), TG_BUTTON, "md-island-trigger", title);
+    tr_attr(t, btn, AT_EXPANDED, ifx is_open then "true" else "false");
+    tr_attr(t, btn, AT_CONTROLS, body_id);
+    pan := tr_leaf(t, body_id, TG_DIV, "md-island-body", text);
+    tr_attr(t, pan, AT_STATE, ifx is_open then "open" else "closed");
+    if !is_open { tr_attr(t, pan, AT_HIDDEN, "true"); }
+    tr_close(t);
+    return;
+  }
+  if kind == SMD_ISLAND_TABS {
+    tabs_raw := smd_island_prop(body, "tabs");
+    _ = tr_open(t, id, TG_DIV, "md-island md-island-tabs");
+    tl := tr_open(t, tr_cat(b1[..], id, ".list"), TG_DIV, "md-island-tablist");
+    tr_attr(t, tl, AT_ROLE, "tablist");
+    i := 0; idx := 0;
+    while i < tabs_raw.count {
+      j := i;
+      while j < tabs_raw.count && tabs_raw[j] != '|' { j += 1; }
+      lbl := smd_trim(cast(string) tabs_raw[i..<j]);
+      if lbl.count > 0 {
+        tb := tr_leaf(t, tr_join(b2[..], tr_cat(b1[..], id, ".tab."), idx), TG_BUTTON, "md-island-tab", lbl);
+        tr_attr(t, tb, AT_ROLE, "tab");
+        tr_attr(t, tb, AT_SELECTED, ifx idx == 0 then "true" else "false");
+        tr_attr(t, tb, AT_TABINDEX, ifx idx == 0 then "0" else "-1");
+        idx += 1;
+      }
+      i = j + 1;
+    }
+    tr_close(t);
+    tr_close(t);
+  }
+}
+
+// ---- Syntax-highlighted code & Markdown Tree renderer
+
+smd_lang_id :: (lang: string) -> int {
+  if lang.count == 0 { return SYN_LANG_PLAIN; }
+  if lang == "coax" { return SYN_LANG_COAX; }
+  if lang == "rust" || lang == "rs" { return SYN_LANG_RUST; }
+  if lang == "c" || lang == "cpp" || lang == "cc" || lang == "h" || lang == "metal" { return SYN_LANG_C; }
+  if lang == "swift" { return SYN_LANG_SWIFT; }
+  if lang == "python" || lang == "py" { return SYN_LANG_PYTHON; }
+  if lang == "js" || lang == "jsx" || lang == "ts" || lang == "tsx" || lang == "javascript" || lang == "typescript" { return SYN_LANG_JS; }
+  if lang == "json" || lang == "jsonc" { return SYN_LANG_JSON; }
+  if lang == "md" || lang == "markdown" { return SYN_LANG_MD; }
+  if lang == "sh" || lang == "bash" || lang == "zsh" || lang == "shell" { return SYN_LANG_SH; }
+  if lang == "lean" { return SYN_LANG_LEAN; }
+  if lang == "toml" || lang == "yaml" || lang == "yml" { return SYN_LANG_CONFIG; }
+  return syn_lang_for_path(lang);
+}
+
+smd_syn_class :: (role: int) -> string {
+  if role == SYN_COMMENT { return "syn-com"; }
+  if role == SYN_KEYWORD { return "syn-kw"; }
+  if role == SYN_STRING { return "syn-str"; }
+  if role == SYN_NUMBER { return "syn-num"; }
+  if role == SYN_TYPE { return "syn-ty"; }
+  if role == SYN_FUNCTION { return "syn-fn"; }
+  if role == SYN_PROPERTY { return "syn-prop"; }
+  if role == SYN_VARIABLE { return "syn-var"; }
+  if role == SYN_PUNCTUATION { return "syn-punc"; }
+  if role == SYN_TAG { return "syn-tag"; }
+  if role == SYN_ATTRIBUTE { return "syn-attr"; }
+  if role == SYN_INVALID { return "syn-err"; }
+  return "syn-plain";
+}
+
+smd_emit_runs :: (t: [] Tree, doc: [] MdDoc, base_id: string, text: string, runs: [] MdRun) {
+  if runs.count == 0 {
+    if text.count > 0 {
+      id_buf: [128] u8;
+      _ = tr_leaf(t, tr_cat(id_buf[..], base_id, ".t"), TG_SPAN, "", text);
+    }
+    return;
+  }
+  for k: 0..<runs.count {
+    r := runs[k];
+    if r.to <= r.from || r.to > text.count { continue; }
+    seg := cast(string) text[r.from..<r.to];
+    id_buf: [128] u8; p_buf: [128] u8;
+    rid := tr_join(id_buf[..], tr_cat(p_buf[..], base_id, ".r."), k);
+    if (r.marks & MD_LINK) != 0 {
+      href := md_link(doc, r);
+      a := tr_leaf(t, rid, TG_A, "md-link", seg);
+      if md_url_openable(href) { tr_attr(t, a, AT_HREF, href); }
+    } else if r.style == MD_CODE {
+      _ = tr_leaf(t, rid, TG_CODE, "md-code", seg);
+    } else if r.style == MD_BOLD {
+      _ = tr_leaf(t, rid, TG_STRONG, "", seg);
+    } else if (r.marks & MD_STRIKE) != 0 {
+      _ = tr_leaf(t, rid, TG_DEL, "", seg);
+    } else if (r.marks & MD_ITALIC) != 0 {
+      _ = tr_leaf(t, rid, TG_EM, "", seg);
+    } else {
+      _ = tr_leaf(t, rid, TG_SPAN, "", seg);
+    }
+  }
+}
+
+smd_emit_code_block :: (t: [] Tree, bid: string, lang: string, code: string) {
+  b1: [128] u8; b2: [128] u8; b3: [128] u8;
+  wrap := tr_open(t, bid, TG_DIV, "md-code-block");
+  if lang.count > 0 { tr_attr(t, wrap, AT_LANG, lang); }
+  _ = tr_open(t, tr_cat(b1[..], bid, ".hdr"), TG_DIV, "md-code-hdr");
+  _ = tr_leaf(t, tr_cat(b1[..], bid, ".lang"), TG_SPAN, "md-code-lang", ifx lang.count > 0 then lang else "text");
+  cpy := tr_leaf(t, tr_cat(b1[..], bid, ".copy"), TG_BUTTON, "md-code-copy", "Copy");
+  tr_attr(t, cpy, AT_LABEL, "Copy code");
+  tr_close(t);
+
+  _ = tr_open(t, tr_cat(b1[..], bid, ".pre"), TG_PRE, "md-pre");
+  _ = tr_open(t, tr_cat(b1[..], bid, ".code"), TG_CODE, "md-code-body");
+  syn_lang := smd_lang_id(lang);
+  if syn_lang == SYN_LANG_PLAIN {
+    _ = tr_leaf(t, tr_cat(b1[..], bid, ".raw"), TG_SPAN, "syn-plain", code);
+  } else {
+    blk_state: [1] int;
+    runs: [64] MdRun;
+    i := 0; line_idx := 0;
+    while i <= code.count {
+      e := md_line_end(code, i);
+      line := cast(string) code[i..<e];
+      lid := tr_join(b2[..], tr_cat(b1[..], bid, ".l."), line_idx);
+      _ = tr_open(t, lid, TG_SPAN, "md-code-line");
+      nr := syn_tokenize_line_state(syn_lang, line, blk_state[..], runs[..]);
+      pos := 0; tok := 0;
+      for k: 0..<nr {
+        if runs[k].from > pos {
+          _ = tr_leaf(t, tr_join(b3[..], tr_cat(b1[..], lid, ".t."), tok), TG_SPAN, "syn-plain", cast(string) line[pos..<runs[k].from]);
+          tok += 1;
+        }
+        _ = tr_leaf(t, tr_join(b3[..], tr_cat(b1[..], lid, ".t."), tok), TG_SPAN, smd_syn_class(runs[k].style), cast(string) line[runs[k].from..<runs[k].to]);
+        tok += 1;
+        pos = runs[k].to;
+      }
+      if pos < line.count {
+        _ = tr_leaf(t, tr_join(b3[..], tr_cat(b1[..], lid, ".t."), tok), TG_SPAN, "syn-plain", cast(string) line[pos..<line.count]);
+      }
+      tr_close(t);
+      if e >= code.count { break; }
+      i = e + 1;
+      line_idx += 1;
+    }
+  }
+  tr_close(t);
+  tr_close(t);
+  tr_close(t);
+}
+
+smd_heading_tag :: (level: int) -> int {
+  if level == 1 { return TG_H1; }
+  if level == 2 { return TG_H2; }
+  if level == 3 { return TG_H3; }
+  if level == 4 { return TG_H4; }
+  if level == 5 { return TG_H5; }
+  return TG_H6;
+}
+
+// Projects `sm.doc` into Coax Tree nodes under container `id`.
+smd_render_tree :: (t: [] Tree, id: string, cls: string, sm: [] StreamMd) {
+  doc := sm[0].doc[..];
+  _ = tr_open(t, id, TG_DIV, cls);
+  p1: [128] u8; p2: [128] u8; p3: [128] u8; p4: [128] u8;
+  for b: 0..<doc[0].nb {
+    blk := doc[0].blocks[b];
+    bid := tr_join(p1[..], tr_cat(p2[..], id, ".b."), b);
+    if blk.kind == MB_RULE {
+      _ = tr_open(t, bid, TG_HR, "md-hr");
+      tr_close(t);
+    } else if blk.kind == MB_CODE {
+      lang := md_lang(doc, b);
+      code := md_block_text(doc, b);
+      ik := smd_island_kind(lang);
+      if ik != SMD_ISLAND_NONE {
+        smd_render_island(t, bid, ik, code);
+      } else {
+        smd_emit_code_block(t, bid, lang, code);
+      }
+    } else if blk.kind == MB_LIST {
+      _ = tr_open(t, bid, ifx blk.ordered then TG_OL else TG_UL, "md-list");
+      for k: 0..<blk.items {
+        item := doc[0].items[blk.item0 + k];
+        iid := tr_join(p3[..], tr_cat(p4[..], bid, ".i."), k);
+        li := tr_open(t, iid, TG_LI, "md-li");
+        if item.task != MD_TASK_NONE {
+          tr_attr(t, li, AT_CHECKED, ifx item.task == MD_TASK_DONE then "true" else "false");
+        }
+        smd_emit_runs(t, doc, iid, md_item_text(doc, blk.item0 + k), md_item_runs(doc, blk.item0 + k));
+        tr_close(t);
+      }
+      tr_close(t);
+    } else if blk.kind == MB_QUOTE {
+      _ = tr_open(t, bid, TG_BLOCKQUOTE, "md-quote");
+      for k: 0..<blk.items {
+        qid := tr_join(p3[..], tr_cat(p4[..], bid, ".q."), k);
+        _ = tr_open(t, qid, TG_P, "md-quote-p");
+        smd_emit_runs(t, doc, qid, md_item_text(doc, blk.item0 + k), md_item_runs(doc, blk.item0 + k));
+        tr_close(t);
+      }
+      tr_close(t);
+    } else if blk.kind == MB_TABLE {
+      _ = tr_open(t, bid, TG_TABLE, "md-table");
+      rows := md_table_rows(doc, b);
+      for r: 0..<rows {
+        rid := tr_join(p3[..], tr_cat(p4[..], bid, ".tr."), r);
+        _ = tr_open(t, rid, TG_TR, "");
+        for c: 0..<blk.cols {
+          idx := blk.item0 + r * blk.cols + c;
+          c_buf: [128] u8; cp_buf: [128] u8;
+          cid := tr_join(c_buf[..], tr_cat(cp_buf[..], rid, ".c."), c);
+          _ = tr_open(t, cid, ifx r == 0 then TG_TH else TG_TD, "");
+          smd_emit_runs(t, doc, cid, md_item_text(doc, idx), md_item_runs(doc, idx));
+          tr_close(t);
+        }
+        tr_close(t);
+      }
+      tr_close(t);
+    } else {
+      tag := ifx blk.heading > 0 then smd_heading_tag(blk.heading) else TG_P;
+      _ = tr_open(t, bid, tag, ifx blk.heading > 0 then "md-h" else "md-p");
+      smd_emit_runs(t, doc, bid, md_block_text(doc, b), md_block_runs(doc, b));
+      tr_close(t);
+    }
+  }
+  tr_close(t);
+}
+
+// ---- tests
+
+smd_docs_equal :: (a: [] MdDoc, b: [] MdDoc) -> bool {
+  if a[0].nb != b[0].nb || a[0].n != b[0].n || a[0].nr != b[0].nr || a[0].ni != b[0].ni || a[0].nlink != b[0].nlink {
+    return false;
+  }
+  for i: 0..<a[0].n { if a[0].text[i] != b[0].text[i] { return false; } }
+  for i: 0..<a[0].nlink { if a[0].links[i] != b[0].links[i] { return false; } }
+  for i: 0..<a[0].nb {
+    x := a[0].blocks[i]; y := b[0].blocks[i];
+    if x.kind != y.kind || x.at != y.at || x.n != y.n || x.run0 != y.run0 || x.runs != y.runs ||
+       x.item0 != y.item0 || x.items != y.items || x.ordered != y.ordered || x.cols != y.cols ||
+       x.lang_at != y.lang_at || x.lang_n != y.lang_n || x.heading != y.heading {
+      return false;
+    }
+  }
+  for i: 0..<a[0].nr {
+    x := a[0].runs[i]; y := b[0].runs[i];
+    if x.from != y.from || x.to != y.to || x.style != y.style || x.marks != y.marks ||
+       x.link_at != y.link_at || x.link_n != y.link_n {
+      return false;
+    }
+  }
+  for i: 0..<a[0].ni {
+    x := a[0].items[i]; y := b[0].items[i];
+    if x.at != y.at || x.n != y.n || x.run0 != y.run0 || x.runs != y.runs ||
+       x.number != y.number || x.depth != y.depth || x.ordered != y.ordered || x.task != y.task {
+      return false;
+    }
+  }
+  return true;
+}
+
+#test "StreamMd matches one-shot md_parse across 1-byte and 3-byte splits and never re-parses committed blocks" {
+  sample := "# Architecture\n\nIntro paragraph with **bold**, `inline_code`, and [link](https://openagents.com).\n\n- [x] Done item\n  - Nested child\n- [ ] Open item\n\n| Name | Status |\n| :--- | ---: |\n| Core | Ready |\n| Kit | Live |\n\n```coax\nx :: (n: int) -> int {\n  return n + 1;\n}\n```\n\n> Quoted summary line.\n\nFinal tail paragraph.";
+  ref: [1] MdDoc;
+  ref[0].keep_rules = true;
+  _ = md_parse(ref[..], sample, 0);
+
+  // 1-byte streaming (worst-case mid-fence, mid-table, mid-inline-code, mid-token splits)
+  s1: [1] StreamMd;
+  smd_reset(s1[..], 0, true);
+  for i: 0..<sample.count {
+    _ = smd_append(s1[..], cast(string) sample[i..<i + 1]);
+  }
+  _ = smd_finish(s1[..]);
+  #assert smd_docs_equal(s1[0].doc[..], ref[..]);
+
+  // 3-byte streaming parity
+  s3: [1] StreamMd;
+  smd_reset(s3[..], 0, true);
+  p := 0;
+  while p < sample.count {
+    end := ifx p + 3 <= sample.count then p + 3 else sample.count;
+    _ = smd_append(s3[..], cast(string) sample[p..<end]);
+    p = end;
+  }
+  _ = smd_finish(s3[..]);
+  #assert smd_docs_equal(s3[0].doc[..], ref[..]);
+
+  // Verify committed prefix blocks are NOT re-parsed when a new tail streams in:
+  // Stream 20 closed paragraphs (~500 bytes), then stream 10 short tokens on paragraph 21.
+  inc: [1] StreamMd;
+  smd_reset(inc[..], 0, true);
+  for k: 0..<20 {
+    _ = smd_append(inc[..], "Committed paragraph block with steady content.\n\n");
+  }
+  committed_src := inc[0].stable_src_n;
+  committed_blocks := inc[0].stable_nb;
+  #assert committed_blocks == 20 && committed_src == inc[0].src_n;
+  before_reparsed := inc[0].reparsed_bytes;
+  _ = smd_append(inc[..], "Live ");
+  _ = smd_append(inc[..], "streaming ");
+  _ = smd_append(inc[..], "tokens");
+  // Only the small live tail ("Live ", "Live streaming ", "Live streaming tokens") was reparsed — NEVER the 960-byte committed prefix!
+  delta_reparsed := inc[0].reparsed_bytes - before_reparsed;
+  #assert delta_reparsed == 5 + 15 + 21 && inc[0].last_tail_bytes == 21 && inc[0].doc[0].nb == 21;
+}
+
+#test "StreamMd renders syntax-highlighted code blocks and typed Markdown islands into Tree" {
+  src := "## Demo\n\n```coax\n#load \"tree.coax\";\nadd :: (a: int) -> int { return a + 1; }\n```\n\n```island:callout\ntone: warn\ntitle: Heads Up\nbody: Streaming active.\n```\n\n```island:counter\nlabel: Hits\ninitial: 7\n```\n\n```island:collapsible\ntitle: Tool Trace\nopen: false\nbody: Hidden details\n```\n\n```island:tabs\ntabs: Chat | Diff | Logs\n```\n";
+  sm: [1] StreamMd;
+  smd_reset(sm[..], 0, true);
+  _ = smd_append(sm[..], src);
+  _ = smd_finish(sm[..]);
+
+  t: [1] Tree;
+  tr_begin(t[..]);
+  smd_render_tree(t[..], "md", "md-root", sm[..]);
+  #assert t[0].depth == 0 && t[0].lost == 0;
+
+  // Heading
+  h := tr_find(t[..], "md.b.0");
+  #assert h >= 0 && t[0].nodes[h].tag == TG_H2;
+
+  // Syntax-highlighted Coax block with copy button and syn-attr / syn-kw / syn-ty tokens
+  cb := tr_find(t[..], "md.b.1");
+  #assert cb >= 0 && tr_attr_of(t[..], cb, AT_LANG) == "coax" && tr_find(t[..], "md.b.1.copy") >= 0;
+  has_attr_tok := false; has_kw_tok := false; has_ty_tok := false;
+  for i: 0..<t[0].n {
+    cls := tr_class(t[..], i);
+    if cls == "syn-attr" { has_attr_tok = true; }
+    if cls == "syn-kw" { has_kw_tok = true; }
+    if cls == "syn-ty" { has_ty_tok = true; }
+  }
+  #assert has_attr_tok && has_kw_tok && has_ty_tok;
+
+  // Typed Markdown Islands: callout, counter, collapsible, tabs
+  cal := tr_find(t[..], "md.b.2");
+  #assert cal >= 0 && tr_attr_of(t[..], cal, AT_ROLE) == "note" && tr_attr_of(t[..], cal, AT_STATE) == "warn";
+  #assert tr_text_of(t[..], tr_find(t[..], "md.b.2.title")) == "Heads Up";
+  #assert tr_text_of(t[..], tr_find(t[..], "md.b.2.body")) == "Streaming active.";
+
+  cnt := tr_find(t[..], "md.b.3.val");
+  #assert cnt >= 0 && tr_text_of(t[..], cnt) == "7" && tr_find(t[..], "md.b.3.inc") >= 0 && tr_find(t[..], "md.b.3.dec") >= 0;
+
+  col_btn := tr_find(t[..], "md.b.4.toggle");
+  col_body := tr_find(t[..], "md.b.4.body");
+  #assert col_btn >= 0 && tr_attr_of(t[..], col_btn, AT_EXPANDED) == "false" && tr_attr_of(t[..], col_btn, AT_CONTROLS) == "md.b.4.body";
+  #assert col_body >= 0 && tr_attr_of(t[..], col_body, AT_HIDDEN) == "true";
+
+  t0 := tr_find(t[..], "md.b.5.tab.0");
+  t1 := tr_find(t[..], "md.b.5.tab.1");
+  t2 := tr_find(t[..], "md.b.5.tab.2");
+  #assert t0 >= 0 && tr_text_of(t[..], t0) == "Chat" && tr_attr_of(t[..], t0, AT_SELECTED) == "true";
+  #assert t1 >= 0 && tr_text_of(t[..], t1) == "Diff" && tr_attr_of(t[..], t1, AT_SELECTED) == "false";
+  #assert t2 >= 0 && tr_text_of(t[..], t2) == "Logs";
+}

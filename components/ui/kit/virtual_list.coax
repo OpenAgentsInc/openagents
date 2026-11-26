@@ -1,0 +1,317 @@
+// Coax UI Kit VirtualList (#14091):
+// Fixed-layout virtualized list for 2,000+ chat messages with bounded DOM node count,
+// dynamic item height measurement, scroll-anchor preservation when reading history,
+// and sticky-to-bottom streaming follow (reusing components/core/scroll.coax).
+//   coax/bin/coax test components/ui/kit/virtual_list.coax --library
+#load "../../core/tree.coax";
+#load "../../core/scroll.coax";
+
+VL_MAX_ITEMS :: 4096;
+
+VirtualList :: struct {
+  count: int;
+  default_h: f32 = 48.0f32;
+  viewport_h: f32 = 600.0f32;
+  offset_y: f32;
+  slack: f32 = 24.0f32;
+  pinned_bottom: bool = true;
+  heights: [VL_MAX_ITEMS] f32;
+  measured: [VL_MAX_ITEMS] bool;
+  offsets: [VL_MAX_ITEMS + 1] f32;
+  dirty_from: int;
+}
+
+VlRange :: struct {
+  first: int;
+  last: int;
+  top_pad: f32;
+  bottom_pad: f32;
+  total_h: f32;
+  rendered: int;
+}
+
+vl_init :: (vl: [] VirtualList, viewport_h: f32, default_h: f32) {
+  vl[0] = VirtualList.{};
+  vl[0].viewport_h = ifx viewport_h > 0 then viewport_h else 600.0f32;
+  vl[0].default_h = ifx default_h > 0 then default_h else 48.0f32;
+  vl[0].slack = 24.0f32;
+  vl[0].pinned_bottom = true;
+  vl[0].dirty_from = 0;
+}
+
+vl_sync_offsets :: (vl: [] VirtualList) {
+  if vl[0].dirty_from >= vl[0].count {
+    if vl[0].count == 0 { vl[0].offsets[0] = 0; }
+    return;
+  }
+  start := vl[0].dirty_from;
+  if start <= 0 {
+    vl[0].offsets[0] = 0;
+    start = 0;
+  }
+  for i: start..<vl[0].count {
+    vl[0].offsets[i + 1] = vl[0].offsets[i] + vl[0].heights[i];
+  }
+  vl[0].dirty_from = vl[0].count;
+}
+
+vl_total_height :: (vl: [] VirtualList) -> f32 {
+  vl_sync_offsets(vl);
+  return vl[0].offsets[vl[0].count];
+}
+
+vl_set_viewport :: (vl: [] VirtualList, viewport_h: f32) {
+  if viewport_h <= 0 { return; }
+  vl[0].viewport_h = viewport_h;
+  total := vl_total_height(vl);
+  if vl[0].pinned_bottom {
+    vl[0].offset_y = scroll_max(total, vl[0].viewport_h);
+  } else {
+    vl[0].offset_y = scroll_clamp(vl[0].offset_y, total, vl[0].viewport_h);
+  }
+}
+
+vl_set_count :: (vl: [] VirtualList, next_count: int) {
+  clamped := ifx next_count < 0 then 0 else ifx next_count > VL_MAX_ITEMS then VL_MAX_ITEMS else next_count;
+  old := vl[0].count;
+  if clamped > old {
+    for i: old..<clamped {
+      vl[0].heights[i] = vl[0].default_h;
+      vl[0].measured[i] = false;
+    }
+    if vl[0].dirty_from > old { vl[0].dirty_from = old; }
+  } else if clamped < old {
+    if vl[0].dirty_from > clamped { vl[0].dirty_from = clamped; }
+  }
+  vl[0].count = clamped;
+  total := vl_total_height(vl);
+  if vl[0].pinned_bottom {
+    vl[0].offset_y = scroll_max(total, vl[0].viewport_h);
+  } else {
+    vl[0].offset_y = scroll_clamp(vl[0].offset_y, total, vl[0].viewport_h);
+  }
+}
+
+// O(1) append for live chat messages; sticks to bottom when pinned_bottom is true.
+vl_append :: (vl: [] VirtualList, est_h: f32) -> int {
+  if vl[0].count >= VL_MAX_ITEMS { return -1; }
+  vl_sync_offsets(vl);
+  idx := vl[0].count;
+  h := ifx est_h > 0 then est_h else vl[0].default_h;
+  vl[0].heights[idx] = h;
+  vl[0].measured[idx] = false;
+  vl[0].offsets[idx + 1] = vl[0].offsets[idx] + h;
+  vl[0].count = idx + 1;
+  vl[0].dirty_from = vl[0].count;
+  total := vl[0].offsets[vl[0].count];
+  if vl[0].pinned_bottom {
+    vl[0].offset_y = scroll_max(total, vl[0].viewport_h);
+  }
+  return idx;
+}
+
+// Applies a host-reported rendered height for item `idx`.
+// - When pinned at bottom (streaming reply growing), stays locked to the bottom edge.
+// - When scrolled up reading older history and an item ABOVE the viewport resizes, shifts
+//   `offset_y` by `delta` so visible items do not jump.
+// Returns the height delta applied.
+vl_measure :: (vl: [] VirtualList, idx: int, measured_h: f32) -> f32 {
+  if idx < 0 || idx >= vl[0].count || !(measured_h > 0) { return 0; }
+  vl_sync_offsets(vl);
+  old_top := vl[0].offsets[idx];
+  old_h := vl[0].heights[idx];
+  delta := measured_h - old_h;
+  vl[0].heights[idx] = measured_h;
+  vl[0].measured[idx] = true;
+  if delta == 0 { return 0; }
+  if vl[0].dirty_from > idx { vl[0].dirty_from = idx; }
+  total := vl_total_height(vl);
+  if vl[0].pinned_bottom {
+    vl[0].offset_y = scroll_max(total, vl[0].viewport_h);
+  } else if old_top + old_h <= vl[0].offset_y {
+    vl[0].offset_y = scroll_clamp(vl[0].offset_y + delta, total, vl[0].viewport_h);
+  } else {
+    vl[0].offset_y = scroll_clamp(vl[0].offset_y, total, vl[0].viewport_h);
+  }
+  return delta;
+}
+
+vl_on_scroll :: (vl: [] VirtualList, next_y: f32) {
+  total := vl_total_height(vl);
+  vl[0].offset_y = scroll_clamp(next_y, total, vl[0].viewport_h);
+  vl[0].pinned_bottom = scroll_at_end(total, vl[0].viewport_h, vl[0].offset_y, vl[0].slack);
+}
+
+vl_scroll_to_bottom :: (vl: [] VirtualList) {
+  total := vl_total_height(vl);
+  vl[0].pinned_bottom = true;
+  vl[0].offset_y = scroll_max(total, vl[0].viewport_h);
+}
+
+vl_scroll_to_index :: (vl: [] VirtualList, idx: int) {
+  if vl[0].count == 0 { return; }
+  clamped := ifx idx < 0 then 0 else ifx idx >= vl[0].count then vl[0].count - 1 else idx;
+  total := vl_total_height(vl);
+  top := vl[0].offsets[clamped];
+  bot := vl[0].offsets[clamped + 1];
+  vl[0].offset_y = scroll_reveal(vl[0].offset_y, total, vl[0].viewport_h, top, bot);
+  vl[0].pinned_bottom = scroll_at_end(total, vl[0].viewport_h, vl[0].offset_y, vl[0].slack);
+}
+
+// O(log N) binary search for the first item whose bottom edge exceeds y.
+vl_find_index_at :: (vl: [] VirtualList, y: f32) -> int {
+  n := vl[0].count;
+  if n <= 0 { return 0; }
+  vl_sync_offsets(vl);
+  if y <= 0 { return 0; }
+  if y >= vl[0].offsets[n] { return n - 1; }
+  lo := 0;
+  hi := n - 1;
+  while lo < hi {
+    mid := lo + (hi - lo) / 2;
+    if vl[0].offsets[mid + 1] <= y {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+// Computes the bounded visible item range [first, last) plus top/bottom spacer heights.
+vl_window :: (vl: [] VirtualList, overscan: int) -> VlRange {
+  r := VlRange.{};
+  n := vl[0].count;
+  if n <= 0 { return r; }
+  total := vl_total_height(vl);
+  r.total_h = total;
+  os := ifx overscan < 0 then 0 else overscan;
+  first := vl_find_index_at(vl, vl[0].offset_y) - os;
+  if first < 0 { first = 0; }
+  view_bot := vl[0].offset_y + vl[0].viewport_h;
+  last := vl_find_index_at(vl, view_bot) + 1 + os;
+  if last > n { last = n; }
+  if last < first { last = first; }
+  r.first = first;
+  r.last = last;
+  r.rendered = last - first;
+  r.top_pad = vl[0].offsets[first];
+  r.bottom_pad = total - vl[0].offsets[last];
+  if r.bottom_pad < 0 { r.bottom_pad = 0; }
+  return r;
+}
+
+vl_format_style_h :: (out: [] u8, px: f32) -> string {
+  prefix := "height:";
+  n := 0;
+  for c: prefix { if n < out.count { out[n] = c; n += 1; } }
+  whole := cast(int) (ifx px < 0 then 0.0f32 else px + 0.5f32);
+  digits: [20] u8; d := 0;
+  if whole == 0 { digits[0] = '0'; d = 1; }
+  while whole > 0 && d < digits.count {
+    digits[d] = cast(u8) ('0' + whole % 10);
+    whole /= 10;
+    d += 1;
+  }
+  while d > 0 && n < out.count { d -= 1; out[n] = digits[d]; n += 1; }
+  if n + 2 <= out.count { out[n] = 'p'; out[n + 1] = 'x'; n += 2; }
+  return cast(string) out[0..<n];
+}
+
+// Opens a virtualized list container in Tree and emits its top spacer.
+// Caller renders only `r.first..<r.last`, then calls `vl_close_shell`.
+vl_open_shell :: (t: [] Tree, id: string, cls: string, label: string, vl: [] VirtualList, overscan: int) -> VlRange {
+  r := vl_window(vl, overscan);
+  box := tr_open(t, id, TG_DIV, cls);
+  tr_attr(t, box, AT_ROLE, "list");
+  if label.count > 0 { tr_attr(t, box, AT_LABEL, label); }
+  tr_attr(t, box, AT_STATE, ifx vl[0].pinned_bottom then "pinned" else "scrolled");
+  tr_attr(t, box, AT_TABINDEX, "0");
+  if r.top_pad > 0 {
+    id_buf: [96] u8; st_buf: [32] u8;
+    top_n := tr_open(t, tr_cat(id_buf[..], id, ".top"), TG_DIV, "vl-pad");
+    tr_attr(t, top_n, AT_HIDDEN, "true");
+    tr_attr(t, top_n, AT_VARS, vl_format_style_h(st_buf[..], r.top_pad));
+    tr_close(t);
+  }
+  return r;
+}
+
+vl_close_shell :: (t: [] Tree, id: string, r: VlRange) {
+  if r.bottom_pad > 0 {
+    id_buf: [96] u8; st_buf: [32] u8;
+    bot_n := tr_open(t, tr_cat(id_buf[..], id, ".bot"), TG_DIV, "vl-pad");
+    tr_attr(t, bot_n, AT_HIDDEN, "true");
+    tr_attr(t, bot_n, AT_VARS, vl_format_style_h(st_buf[..], r.bottom_pad));
+    tr_close(t);
+  }
+  tr_close(t);
+}
+
+// ---- tests
+
+#test "VirtualList bounds DOM window on a 2000-message transcript and preserves exact spacer math" {
+  vl: [1] VirtualList;
+  vl_init(vl[..], 600.0f32, 48.0f32);
+  vl_set_count(vl[..], 2000);
+  #assert vl_total_height(vl[..]) == 96000.0f32;
+  #assert vl[0].pinned_bottom && vl[0].offset_y == 95400.0f32;
+
+  // At bottom: bounded DOM window (600/48 = 12.5 visible + 3 overscan -> <= 20 rendered)
+  r := vl_window(vl[..], 3);
+  #assert r.last == 2000 && r.rendered <= 20 && r.rendered >= 14;
+  #assert r.bottom_pad == 0.0f32 && r.top_pad == vl[0].offsets[r.first];
+
+  // Build actual DOM Tree shell + visible items: total nodes stay under 30 for 2,000 items!
+  t: [1] Tree;
+  tr_begin(t[..]);
+  wr := vl_open_shell(t[..], "chat", "transcript", "Messages", vl[..], 3);
+  for i: wr.first..<wr.last {
+    id_buf: [32] u8;
+    row := tr_leaf(t[..], tr_join(id_buf[..], "chat.m.", i), TG_DIV, "msg", "hello");
+    tr_attr(t[..], row, AT_ROLE, "listitem");
+  }
+  vl_close_shell(t[..], "chat", wr);
+  #assert t[0].depth == 0 && t[0].n == wr.rendered + 2 && t[0].n <= 24;
+  #assert tr_find(t[..], "chat.m.1999") >= 0 && tr_find(t[..], "chat.m.0") < 0;
+
+  // Mid-transcript window has both top and bottom spacers summing cleanly with rendered slice
+  vl_on_scroll(vl[..], 24000.0f32);   // exact top of item 500
+  #assert !vl[0].pinned_bottom;
+  rm := vl_window(vl[..], 2);
+  #assert rm.first == 498 && rm.rendered <= 18;
+  vis_h := vl[0].offsets[rm.last] - vl[0].offsets[rm.first];
+  #assert rm.top_pad + vis_h + rm.bottom_pad == rm.total_h;
+}
+
+#test "VirtualList sticks to bottom while streaming and preserves scroll anchor when scrolled up" {
+  vl: [1] VirtualList;
+  vl_init(vl[..], 500.0f32, 50.0f32);
+  for i: 0..<100 { _ = vl_append(vl[..], 50.0f32); }
+  #assert vl_total_height(vl[..]) == 5000.0f32 && vl[0].offset_y == 4500.0f32 && vl[0].pinned_bottom;
+
+  // Live streaming reply appends and grows from 50px -> 320px: stays locked to bottom edge
+  last_idx := vl_append(vl[..], 50.0f32);
+  #assert last_idx == 100 && vl[0].offset_y == 4550.0f32;
+  #assert vl_measure(vl[..], last_idx, 320.0f32) == 270.0f32;
+  #assert vl[0].pinned_bottom && vl_total_height(vl[..]) == 5320.0f32 && vl[0].offset_y == 4820.0f32;
+
+  // User scrolls up to read item 40 (y = 2000): unpins
+  vl_on_scroll(vl[..], 2000.0f32);
+  #assert !vl[0].pinned_bottom && vl[0].offset_y == 2000.0f32;
+  // Earlier item 10 (above viewport) expands by +180px: offset shifts by +180 so item 40 stays fixed on screen!
+  #assert vl_measure(vl[..], 10, 230.0f32) == 180.0f32;
+  #assert !vl[0].pinned_bottom && vl[0].offset_y == 2180.0f32 && vl[0].offsets[40] == 2180.0f32;
+  // Item 80 (below viewport) expands by +100px: offset does NOT move!
+  #assert vl_measure(vl[..], 80, 150.0f32) == 100.0f32;
+  #assert vl[0].offset_y == 2180.0f32;
+  // New streaming message arrives while scrolled up: stays at reader's position
+  _ = vl_append(vl[..], 60.0f32);
+  #assert !vl[0].pinned_bottom && vl[0].offset_y == 2180.0f32;
+
+  // Scrolling back within slack re-pins to bottom
+  vl_scroll_to_bottom(vl[..]);
+  #assert vl[0].pinned_bottom && vl[0].offset_y == scroll_max(vl_total_height(vl[..]), 500.0f32);
+  vl_scroll_to_index(vl[..], 0);
+  #assert !vl[0].pinned_bottom && vl[0].offset_y == 0.0f32;
+}

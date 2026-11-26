@@ -44,10 +44,16 @@ AT_SRC :: 23;        // where a picture or a document is (k_image, k_document): 
 AT_LEVEL :: 24; AT_VALUE :: 25; AT_CHECKED :: 26;
 AT_MODULE :: 27;     // a module held in this node (k_module): "APP PATH", which the browser's host opens there
 AT_MODAL :: 28;      // a modal <dialog> managed via showModal()/close() in dom-host.js (#14089)
-AT_COUNT :: 29;
-AT_NAMES :: [29] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
+AT_TABINDEX :: 29;   // roving tabindex ("0" or "-1") for headless parts primitives (#14091)
+AT_SELECTED :: 30;   // aria-selected for Tabs / Select / Combobox (#14091)
+AT_CONTROLS :: 31;   // aria-controls binding triggers to panels/popups (#14091)
+AT_HASPOPUP :: 32;   // aria-haspopup ("menu", "listbox", "dialog") (#14091)
+AT_INVALID :: 33;    // aria-invalid for Form / Field validation (#14091)
+AT_COUNT :: 34;
+AT_NAMES :: [34] string.["href", "aria-label", "placeholder", "role", "aria-hidden", "aria-expanded", "aria-pressed",
   "disabled", "data-state", "data-frame", "aria-current", "rows", "data-lang", "aria-live", "autofocus", "title", "type", "autocomplete", "style", "data-drop",
-  "min", "max", "step", "src", "aria-level", "value", "aria-checked", "data-module", "data-modal"];
+  "min", "max", "step", "src", "aria-level", "value", "aria-checked", "data-module", "data-modal",
+  "tabindex", "aria-selected", "aria-controls", "aria-haspopup", "aria-invalid"];
 
 TrNode :: struct {
   id_at: int; id_n: int;
