@@ -153,7 +153,7 @@ Lessons we keep from that history:
 | [Build order](build-order.md) | What to build first, the crypto we must write in Coax, the outside services we can't avoid, and the old code to delete |
 | [Decisions](decisions.md) | Every owner decision, the options weighed, and what was decided |
 | [Realm invites and accounts](2026-10-31-realm-invites-and-auth.md) | The invite gate (kept, moved onto new accounts); its account model is superseded |
-| [WorkOS and a Coax SDK](2026-11-26-workos-coax-sdk.md) | Exploration (2026-11-26): reconsidering WorkOS for web, mobile, and desktop auth with a Sans-I/O Coax SDK (`coax/lib/workos/`) |
+| [WorkOS and a Coax SDK](2026-11-26-workos-coax-sdk.md) | Locked design (2026-11-26, [#14103](https://github.com/OpenAgentsInc/openagents/issues/14103)): WorkOS Hybrid `acct_` spine, Custom Coax UI, Option A1 opaque sessions, `coax/lib/workos/` SDK & `tools/oagen-coax/` emitter |
 
 ## Owner decisions
 

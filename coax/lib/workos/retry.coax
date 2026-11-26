@@ -1,0 +1,99 @@
+// WorkOS retry & exponential-backoff policy (matching workos-rust/src/client.rs).
+// Pure #authority decision module; no timers or sockets.
+#authority;
+
+WOS_METHOD_GET :: 1;
+WOS_METHOD_HEAD :: 2;
+WOS_METHOD_OPTIONS :: 3;
+WOS_METHOD_POST :: 4;
+WOS_METHOD_PUT :: 5;
+WOS_METHOD_PATCH :: 6;
+WOS_METHOD_DELETE :: 7;
+
+WOS_RETRY_BASE_MS :: 100;
+WOS_RETRY_CAP_MS :: 5000;
+WOS_RETRY_AFTER_CAP_MS :: 60000;
+
+#test "retry eligibility only retries safe methods or idempotent requests on 429/5xx" {
+  // Safe methods: GET, HEAD, OPTIONS
+  #assert wos_method_safe(WOS_METHOD_GET) && wos_method_safe(WOS_METHOD_HEAD) && wos_method_safe(WOS_METHOD_OPTIONS);
+  #assert !wos_method_safe(WOS_METHOD_POST) && !wos_method_safe(WOS_METHOD_PUT) && !wos_method_safe(WOS_METHOD_PATCH) && !wos_method_safe(WOS_METHOD_DELETE);
+  #assert !wos_method_safe(0) && !wos_method_safe(8);
+
+  // Retryable statuses: 429 and 500..599 (plus 0 for network error)
+  #assert wos_status_retryable(0) && wos_status_retryable(429) && wos_status_retryable(500) && wos_status_retryable(599);
+  #assert !wos_status_retryable(200) && !wos_status_retryable(400) && !wos_status_retryable(401) && !wos_status_retryable(422) && !wos_status_retryable(499) && !wos_status_retryable(600);
+
+  // POST without Idempotency-Key never auto-retries; with key retries up to max_retries.
+  #assert !wos_retry_allowed(WOS_METHOD_POST, false, 429, 0, 3);
+  #assert !wos_retry_allowed(WOS_METHOD_POST, false, 503, 0, 3);
+  #assert wos_retry_allowed(WOS_METHOD_POST, true, 429, 0, 3);
+  #assert wos_retry_allowed(WOS_METHOD_POST, true, 503, 2, 3);
+  #assert !wos_retry_allowed(WOS_METHOD_POST, true, 503, 3, 3);
+  #assert !wos_retry_allowed(WOS_METHOD_POST, true, 401, 0, 3);
+
+  // GET retries up to max_retries, never with negative attempt or max_retries <= 0.
+  #assert wos_retry_allowed(WOS_METHOD_GET, false, 502, 0, 1);
+  #assert !wos_retry_allowed(WOS_METHOD_GET, false, 502, 1, 1);
+  #assert !wos_retry_allowed(WOS_METHOD_GET, false, 502, -1, 3);
+  #assert !wos_retry_allowed(WOS_METHOD_GET, false, 502, 0, 0);
+}
+
+#test "exponential backoff honors Retry-After, caps at 5s, and applies equal jitter" {
+  // Retry-After overrides backoff (0 allowed, capped at 60s).
+  #assert wos_backoff_ms(0, 0, 0, false) == 0;
+  #assert wos_backoff_ms(0, 7, 0, true) == 7000;
+  #assert wos_backoff_ms(0, 59, 0, true) == 59000;
+  #assert wos_backoff_ms(0, 60, 0, true) == WOS_RETRY_AFTER_CAP_MS;
+  #assert wos_backoff_ms(0, 61, 0, true) == WOS_RETRY_AFTER_CAP_MS;
+  #assert wos_backoff_ms(0, 120, 0, true) == WOS_RETRY_AFTER_CAP_MS;
+
+  // Without jitter: 100 * 2^(attempt+1) capped at 5000 (matching workos-rust backoff_delay(attempt+1)).
+  #assert wos_backoff_ms(-2, -1, 0, false) == 100;
+  #assert wos_backoff_ms(-1, -1, 0, false) == 100;
+  #assert wos_backoff_ms(0, -1, 0, false) == 200;
+  #assert wos_backoff_ms(1, -1, 0, false) == 400;
+  #assert wos_backoff_ms(2, -1, 0, false) == 800;
+  #assert wos_backoff_ms(3, -1, 0, false) == 1600;
+  #assert wos_backoff_ms(4, -1, 0, false) == 3200;
+  #assert wos_backoff_ms(5, -1, 0, false) == 5000;
+  #assert wos_backoff_ms(6, -1, 0, false) == 5000;
+  #assert wos_backoff_ms(20, -1, 0, false) == 5000;
+
+  // Equal jitter: [half, bounded].
+  #assert wos_backoff_ms(0, -1, 0, true) == 100;
+  #assert wos_backoff_ms(0, -1, 100, true) == 200;
+  #assert wos_backoff_ms(0, -1, 101, true) == 100;
+  #assert wos_backoff_ms(5, -1, 2500, true) == 5000;
+  #assert wos_backoff_ms(5, -1, 0, true) == 2500;
+}
+
+wos_method_safe :: (method: int) -> bool #export_c #effects(all) {
+  return method == WOS_METHOD_GET || method == WOS_METHOD_HEAD || method == WOS_METHOD_OPTIONS;
+}
+
+wos_status_retryable :: (status: int) -> bool #export_c #effects(all) {
+  return status == 0 || status == 429 || (status >= 500 && status <= 599);
+}
+
+wos_retry_allowed :: (method: int, has_idempotency_key: bool, status: int, attempt: int, max_retries: int) -> bool #export_c #effects(all) {
+  if attempt < 0 || max_retries < 1 || attempt >= max_retries { return false; }
+  if !wos_method_safe(method) && !has_idempotency_key { return false; }
+  return wos_status_retryable(status);
+}
+
+// Compute sleep duration in ms before retry `attempt` (0-indexed).
+// Pass retry_after_sec < 0 when no Retry-After header was present.
+wos_backoff_ms :: (attempt: int, retry_after_sec: int, rand_val: u64, jitter: bool) -> int #export_c #effects(all) {
+  if retry_after_sec >= 0 {
+    if retry_after_sec > 60 { return WOS_RETRY_AFTER_CAP_MS; } // mutant: equivalent (60 * 1000 == WOS_RETRY_AFTER_CAP_MS)
+    return retry_after_sec * 1000;
+  }
+  bounded := ifx attempt < 0 then WOS_RETRY_BASE_MS
+             else ifx attempt >= 5 then WOS_RETRY_CAP_MS
+             else WOS_RETRY_BASE_MS << (attempt + 1);
+  if !jitter { return bounded; }
+  half := bounded / 2;
+  span := cast(u64) (half + 1);
+  return half + cast(int) (rand_val % span);
+}

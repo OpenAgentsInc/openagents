@@ -1,14 +1,32 @@
 # WorkOS authentication and a Coax SDK
 
-Status: exploration, 2026-11-26. Part of [OpenAgents authentication](README.md).
+Status: **decided, 2026-11-26** (master tracking: [#14103](https://github.com/OpenAgentsInc/openagents/issues/14103);
+updated decisions in [decisions.md](decisions.md)). Part of [OpenAgents authentication](README.md).
 Reference clones live outside this repo at `~/work/projects/repos/workos/`.
 
-This document explores reconsidering [WorkOS](https://github.com/workos) for OpenAgents'
-web, mobile (iOS, Android), and desktop (macOS, Linux) authentication — and writing our
-own WorkOS SDK in **Coax**. It audits the current `openagents` codebase (Coax libraries,
-`coax/web/api`, and native app hosts), examines 18 cloned WorkOS repositories in depth,
-reconciles WorkOS against the 2026-11-11 decisions in [decisions.md](decisions.md), and
-proposes a concrete Sans-I/O Coax SDK architecture and build plan.
+This document specifies how OpenAgents adopts [WorkOS](https://github.com/workos) for web,
+mobile (iOS, Android), desktop (macOS, Linux), and CLI authentication using our own
+**Custom Coax UI** and an in-repo **Coax WorkOS SDK** (`coax/lib/workos/` +
+`tools/oagen-coax/`). It audits the current `openagents` codebase, examines 18 cloned
+WorkOS repositories, reconciles WorkOS against [decisions.md](decisions.md), and records
+the locked architecture and phased build plan (`#14097`–`#14103`).
+
+## Locked architecture (decided 2026-11-26)
+
+Every design choice below was locked on 2026-11-26:
+
+| Decision | Locked choice |
+| --- | --- |
+| **Identity spine** | **Hybrid `acct_` spine (Option A):** WorkOS handles human login, social OAuth, Enterprise SSO, and Optional Organizations (`user_01...`, mapped via `external_id = acct_...` and `auth.workos_identities`). Our opaque `acct_...` in Cloud SQL Postgres stays canonical for all product tables, Nostr-only accounts (D8), self-custodial wallets & NIP-VAULT backups (D4–D5), Lightning Addresses (D6), and sat-capped agent grants (`#13211`). |
+| **Custom Coax UI & methods** | **Custom Coax UI everywhere** (no Hosted AuthKit login redirect): **Email Magic Auth** (6-digit code sent by WorkOS, entered inline), **Google / GitHub / Apple OAuth** (satisfies iOS Guideline 4.8 natively; reverses D1), **Enterprise SSO** (domain detection via `GET /connections?domain=...`), **Nostr**, and **first-party Coax WebAuthn Passkeys** (`passkeys.c` + `passkey-verify.coax`, since WorkOS has no headless passkey API and this preserves NIP-VAULT PRF). **No passwords; no phone/SMS (D3 stays).** |
+| **Sessions & tokens** | **Option A1 — OpenAgents opaque sessions everywhere:** `oa-api` mediates WorkOS logins and mints `__Host-oa_session` (`oas_`) on web and device-bound `oa_at_`/`oa_rt_` (`OA-Device-Proof`) on iOS, macOS, and Android. Instant revocation, zero JWT revocation lag, one unified `auth_resolve` middleware. |
+| **Linking & assurance** | **Auto-link only on `email_verified=true`** (with audit row + multi-channel security notice; never auto-link unverified emails). All WorkOS logins enter at **`L1`** — wallet backups, spend limits, key removal, and agent grants still require our own Passkey/Nostr `L2`/`L2-fresh` step-up. |
+| **Native OAuth/SSO & CLI** | **Native PKCE + `oa-api` exchange:** iOS & macOS use `ASWebAuthenticationSession` (`openagents://auth/callback`, non-ephemeral); Android uses Custom Tabs + verified App Link. Apps verify `state` in Coax `flow.coax` and POST `(code, code_verifier, redirect_uri)` + `OA-Device-Key` to `oa-api`, which exchanges with WorkOS (`client_secret` + `code_verifier`), verifies the RS256 JWT via Coax JWKS + token-confusion guard, and mints `oa_at_`/`oa_rt_`. CLI uses WorkOS **RFC 8628 device flow** (or NIP-98 key). |
+| **Organizations** | **Optional Organizations:** `org_id = null` for individual users; Custom Coax UI shows an org picker only on `403 organization_selection_required` or B2B workspace switching. |
+| **Data mirroring & backups** | **Pure Coax/C Events API poller (`GET /events`) + verified webhook handler inside `oa-api`** (zero Node sidecar), mirroring WorkOS data into a `workos` Postgres schema (`_raw jsonb`, generated columns, tombstones, `*_live` views — `sync-engine` pattern), covered by our 6-hourly `age`-encrypted locked dumps. |
+| **Radar, Actions & lifecycle** | Pass Radar context (`ip_address`, `user_agent`, `radar_auth_attempt_id`); propagate freeze/logout-everywhere (`POST /user_management/sessions/revoke`) and 30-day `auth.purge_due()` deletes (`DELETE /user_management/users/{id}`); wire synchronous **AuthKit Actions** (`authentication` + `user_registration` HMAC verify ±30s & signed verdicts) in v1 so WorkOS blocks frozen accounts and enforces invite gates before creating users. |
+| **Coax SDK & `oagen` emitter** | **In-repo `oagen` Coax emitter (`tools/oagen-coax/`)** generating checked-in Sans-I/O Coax files into `coax/lib/workos/gen/` covering all **269 OpenAPI endpoints** (zero Node in normal builds). Generated models use **borrowed `Jv` views + typed `*_get_<field>` presence getters + array/list iterators + open enums + direct-to-buffer request encoders** (matching `coax/proto.md`). Hand-written `#authority` core helpers live alongside in `coax/lib/workos/`, mutation-tested (zero survivors) and verified offline against `workos/emulate`. |
+| **Rollout** | Cut over `openagents.com` (web, iOS, Android, macOS desktop, CLI) behind `OA_WORKOS_ENABLED` first; leave `gamebuilder.org` on existing first-party Resend email codes until Phase 5 (`#14102`). |
 
 ## Executive summary
 
@@ -529,45 +547,38 @@ Every piece of `coax/lib/workos/` can follow Coax's existing high-assurance veri
 
 ---
 
-## 9. Phased build plan
+## 9. Phased build plan & GitHub tracking
 
-Sizes are rough agent-days once owner decisions (§10) are made:
+Master tracking issue: **[#14103](https://github.com/OpenAgentsInc/openagents/issues/14103)**.
 
-| Phase | Scope | Exit criteria | Size |
+| Phase | Issue | Scope | Exit criteria |
 | --- | --- | --- | --- |
-| **0. Decisions & env** | Resolve §10 decisions; configure WorkOS staging/prod env (disable SMS/phone per D3; configure redirect/logout URIs; store secrets in Secret Manager) | Decisions recorded in `decisions.md`; staging env returns JWKS | 0.5 |
-| **1. Pure crypto & protocol primitives** | `base64url_encode`, `url.coax`, `pkce.coax`, `jwt.coax`, `seal.coax`, `webhook.coax` in `coax/lib/workos/` | All RFC & WorkOS vectors pass; `coax mutate` zero survivors; ASan/UBSan + Wasm builds clean | 3 |
-| **2. Wire codecs, flow machine & `emulate` E2E** | `error.coax`, `retry.coax`, `wire.coax`, `flow.coax`, `adapters/http_native.coax`, `tests/emulate_e2e.sh` | Full PKCE, Magic Auth, refresh, device flow, JWKS verify, webhook, and Events flows pass offline against `workos/emulate` | 3 |
-| **3. Web BFF & `acct_` spine (`coax/web/api`)** | `auth.workos_identities` migration, `/api/auth/workos/{start,callback,logout,webhook}` routes, `external_id = acct_...` linking, optional `workos/sync-engine` job into Cloud SQL (`workos` schema) | Staging web login works end-to-end on `staging.openagents.com` (and `gamebuilder.org`); `sync-engine` mirrors users/events into Postgres; existing Nostr/wallet/agent checks stay green | 3–4 |
-| **4. Mobile & desktop adapters** | `adapters/app_unit.coax` wired into `AppAuth.swift` (`ASWebAuthenticationSession` on iOS + macOS), `app-login.c` (Android Custom Tabs + Keystore), and `openagents-cli` (RFC 8628 device flow) | Login, token refresh, 429/offline resilience, and logout verified on iOS Simulator, macOS desktop, Android emulator, and CLI | 3–4 |
-| **5. Enterprise & optional codegen** | Enterprise SSO domain routing, org picker (`organization_selection_required`), AuthKit Actions (invite gate), and evaluate `oagen` Coax emitter only if >30 additional CRUD endpoints are needed | Multi-org + SSO + invite-gated registration pass against `emulate` and staging | 2–3 |
+| **0. Env & Secret Manager** | [#14097](https://github.com/OpenAgentsInc/openagents/issues/14097) | Provision staging/prod WorkOS envs; enable Magic Auth, Google/GitHub/Apple OAuth (4.8), Enterprise SSO, Optional Orgs; disable passwords & SMS (D3); register web/Apple/Android redirect URIs; configure Radar & Actions secrets in Secret Manager | Staging env serves JWKS; secrets bound only to runtime API account |
+| **1. Pure `#authority` primitives** | [#14098](https://github.com/OpenAgentsInc/openagents/issues/14098) | Hand-written `#authority` Coax core in `coax/lib/workos/`: `pkce.coax`, `url.coax`, `webhook.coax` (incl. AuthKit Actions), `seal.coax` (`wos2.` + `workos-rust` compat), `jwt.coax` (duplicate-key guard + RS256 JWKS + token-confusion guard), `error.coax`, `retry.coax` | All RFC & WorkOS vectors pass; `coax mutate` **zero surviving mutants**; ASan/UBSan C unit & Wasm build clean |
+| **2. `oagen` emitter, 269 endpoints & `emulate` E2E** | [#14099](https://github.com/OpenAgentsInc/openagents/issues/14099) | In-repo `tools/oagen-coax/` emitter generating checked-in Sans-I/O borrowed-`Jv` Coax files into `coax/lib/workos/gen/` for all 269 endpoints (zero Node in normal builds; omits `client_secret` on public ops); Sans-I/O `flow.coax`; `adapters/{http_native,c_unit,app_unit}.coax`; offline `tests/emulate_e2e.sh` | All 269 generated endpoints compile cleanly; `flow.coax` zero surviving mutants; full offline E2E passes against `workos/emulate` |
+| **3. `oa-api`, Custom Coax web `/login`, Mirror & Actions** | [#14100](https://github.com/OpenAgentsInc/openagents/issues/14100) | `auth.workos_identities` + `workos.*` mirror schema; Option A1 routes behind `OA_WORKOS_ENABLED` (Magic Auth, OAuth/SSO, `/api/auth/workos/exchange`, multi-org, `email_verified=true` auto-link at `L1`, Radar forwarding, webhooks, synchronous AuthKit Actions, Coax/C `GET /events` poller, freeze/purge propagation); Custom Coax web `/login` UI (`gamebuilder.org` untouched) | Staging web login, Actions, webhooks, Events mirror pass in headless Chrome & `test.sh`; Nostr/Passkey/wallet/agent/`gamebuilder.org` checks stay green |
+| **4. Native iOS, macOS, Android & CLI** | [#14101](https://github.com/OpenAgentsInc/openagents/issues/14101) | Wire `app_unit.coax` + `flow.coax` into `AppAuth.swift` (`ASWebAuthenticationSession` on iOS/macOS + Keychain / `0600` file), Android `app-login.c` (Custom Tabs + App Link + Keystore), and `openagents-cli` (RFC 8628 device flow + NIP-98) with `OA-Device-Proof` preserved | Magic Auth, OAuth/SSO PKCE exchange, org picker, refresh, transient 429/offline preservation, and logout verified on iOS Simulator, macOS, Android emulator, and CLI |
+| **5. Prod cutover & `gamebuilder.org` follow-up** | [#14102](https://github.com/OpenAgentsInc/openagents/issues/14102) | Enable `OA_WORKOS_ENABLED=1` on production `openagents.com`; verify monthly restore drill includes `workos.*`; B2B org switcher & Enterprise SSO polish; follow-up cutover of `gamebuilder.org` & retirement of legacy first-party login-code routes (Resend stays for security notices) | Production `openagents.com` green across all platforms; locked backup drill passes; `gamebuilder.org` migrated |
 
----
+## 10. Resolved owner decisions (2026-11-26)
 
-## 10. Open owner decisions before writing code
+All six decisions from the original exploration were resolved on 2026-11-26 (and reflected
+in [decisions.md](decisions.md)):
 
-Nothing in this doc changes production auth or overturns [decisions.md](decisions.md) until
-the owner decides:
-
-1. **Revisit D7 (adopt WorkOS)?** Confirm we are adopting WorkOS for human authentication
-   and accept a third-party auth vendor in the human login path (mitigated by `acct_` spine
-   + `workos/sync-engine` local Postgres mirror + locked dumps).
-2. **Integration architecture (Option A1 vs A2 vs B vs C):**
-   - **Recommend Option A1** (Hybrid `acct_` spine + Hosted AuthKit on web/mobile/desktop,
-     exchanging into our opaque `oas_`/`oa_at_`/`oa_rt_` sessions with `OA-Device-Proof`
-     and instant revocation) if we want maximum continuity with already-built `coax/web/api`
-     and `AppAuth.swift`, **or Option A2** (Hybrid `acct_` spine + direct WorkOS PKCE RS256
-     JWTs on mobile/desktop verified by Coax JWKS) if we want zero extra token-exchange hop
-     and parity with Zeron's mobile/edge pattern.
-3. **Hosted AuthKit vs Custom Coax UI (Option C):** Are we okay handing the interactive
-   login screen to Hosted AuthKit (browser redirect / `ASWebAuthenticationSession` / Custom
-   Tabs) to get turnkey passkeys, SSO, orgs, and Radar — or do we want to keep our custom
-   Coax `/login` screen via WorkOS Magic Auth APIs?
-4. **Revisit D1 (Social OAuth & Sign in with Apple on iOS):** If we enable Google or GitHub
-   login in WorkOS AuthKit, confirm we will also enable **Sign in with Apple** in WorkOS
-   before shipping to the iOS App Store (Guideline 4.8).
-5. **Confirm D3 stays unchanged:** Keep phone numbers / SMS login / SMS MFA disabled in
-   WorkOS.
-6. **Confirm Nostr & Agent boundaries stay unchanged:** Keep Nostr-only accounts (D8),
-   self-custodial wallet step-up (D4–D6), and OpenAgents' sat-capped agent grants (`#13211`)
-   in our own `auth` schema regardless of WorkOS adoption.
+1. **D7 reversed:** Adopt WorkOS for human auth on `openagents.com` (fresh staging/prod
+   environments, `#14097`), mitigated by the Hybrid `acct_` spine and pure Coax/C `workos.*`
+   Events mirror into Cloud SQL + locked backups.
+2. **Architecture:** **Option A1** (Hybrid `acct_` spine + OpenAgents opaque sessions
+   everywhere with `OA-Device-Proof` and instant revocation; auto-link only on
+   `email_verified=true`; all WorkOS logins at `L1`).
+3. **UI:** **Custom Coax UI** everywhere (Magic Auth inline + direct OAuth/SSO redirects +
+   optional org picker + Nostr + first-party Coax WebAuthn Passkeys).
+4. **D1 reversed:** Offer Google, GitHub, and **Sign in with Apple** OAuth (satisfying iOS
+   Guideline 4.8 natively) plus Enterprise SSO.
+5. **D3 unchanged:** No phone numbers or SMS anywhere (disabled in WorkOS Dashboard).
+6. **Nostr, wallets, agents & rollout:** Nostr-only accounts (D8), self-custodial wallet
+   `L2-fresh` step-up (D4–D6), and sat-capped agent grants (`#13211`) stay first-class in
+   our `auth` schema. Build the in-repo `oagen` Coax emitter (`tools/oagen-coax/`) for all
+   269 endpoints alongside `#authority` helpers (`#14098`, `#14099`), wire Radar + AuthKit
+   Actions + freeze/delete propagation in v1 (`#14100`), and cut over `openagents.com` first
+   before migrating `gamebuilder.org` (`#14102`).

@@ -1,0 +1,415 @@
+// WorkOS RS256 access-token JWT & JWKS verification (matching
+// workos-rust/src/helpers/session.rs and authkit-session/AuthKitCore.ts).
+//
+// Security invariants enforced here (#authority):
+//  1. Duplicate JSON keys are rejected in both JWT header and payload.
+//  2. Only alg="RS256" with a non-empty kid is accepted.
+//  3. JWKS must contain a unique matching kid with kty="RSA", e="AQAB" (65537),
+//     alg absent or "RS256", use absent or "sig", and key_ops (if present)
+//     containing "verify".
+//  4. RS256 signature is verified BEFORE evaluating exp so WOS_JWT_EXPIRED
+//     (needs_refresh) is only ever returned for genuinely signed tokens.
+//  5. Mandatory human-session token-confusion guard: sid non-empty, auth_time
+//     present, sub_profile absent or "user", and sub_type absent (rejects
+//     WorkOS widget and agent tokens signed by the same environment JWKS).
+#load "../crypto/rsa_verify.coax";
+#load "../encoding/fi-base64url.coax";
+#load "../json/json.coax";
+#authority;
+
+WOS_JWT_MAX_LEN :: 8192;
+WOS_JWT_MAX_PART :: 4096;
+WOS_JWT_MAX_NODES :: 256;
+WOS_JWKS_MAX_NODES :: 512;
+WOS_JWT_CLAIM_STR :: 256;
+
+WOS_JWT_OK :: 0;
+WOS_JWT_EXPIRED :: 1;        // signature & all invariants passed, but now_sec >= exp (trigger refresh)
+WOS_JWT_MALFORMED :: 2;
+WOS_JWT_DUP_KEY :: 3;
+WOS_JWT_BAD_ALG :: 4;
+WOS_JWT_KID_UNKNOWN :: 5;    // caller may force-refresh JWKS once and retry
+WOS_JWT_BAD_KEY :: 6;
+WOS_JWT_BAD_SIG :: 7;
+WOS_JWT_NOT_YET_VALID :: 8;
+WOS_JWT_BAD_ISSUER :: 9;
+WOS_JWT_TOKEN_CONFUSION :: 10;
+WOS_JWT_BAD_CLAIMS :: 11;
+
+WosJwtClaims :: struct {
+  error: u32;
+  sub: [WOS_JWT_CLAIM_STR] u8; sub_n: int;
+  sid: [WOS_JWT_CLAIM_STR] u8; sid_n: int;
+  org_id: [WOS_JWT_CLAIM_STR] u8; org_id_n: int;
+  role: [WOS_JWT_CLAIM_STR] u8; role_n: int;
+  iss: [WOS_JWT_CLAIM_STR] u8; iss_n: int;
+  exp: int;
+  nbf: int; has_nbf: bool;
+  auth_time: int;
+}
+
+WOS_T_JWKS :: "{\"keys\":[{\"alg\":\"RS256\",\"kty\":\"RSA\",\"use\":\"sig\",\"kid\":\"key_01TEST\",\"n\":\"lOzQ9acbvUPnJraDqkdXc8kvoPPIWk4mwMiO1qYNazGhYvf6WBJI22krMim9uUSFBC5_QxgBtfWxVffX-_xGQKHhsqBnGee1JfQlK32c6NQqoudElOVR5PIwRmkog2qmAJWLD6lnVQ7pNVtZbI8qSF1Euvr_zWLw125WWNa-ws2c0VDuwOQKi2RRWlmwhsiDp3_JLLXHJXqEedBUoNkSqZIMJMbUqEa-SEq-tTS5qbnha13lWn9TEWAH43-o0MGZBAYRBZaS3yxTIyZ38SeO82Dl4OAJA1amC9gMRWcrr6DjuIxHCbDwuTheaADs6RKYps3c4ST_AFumIk79phXvPQ\",\"e\":\"AQAB\"}]}";
+WOS_T_USER_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJpc3MiOiJodHRwczovL2F1dGgub3BlbmFnZW50cy5jb20iLCJzdWIiOiJ1c2VyXzAxQUJDIiwic2lkIjoic2Vzc2lvbl8wMVhZWiIsIm9yZ19pZCI6Im9yZ18wMSIsInJvbGUiOiJhZG1pbiIsImF1dGhfdGltZSI6MTcwMDAwMDAwMCwiaWF0IjoxNzAwMDAwMDAwLCJuYmYiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMzYwMH0.fOXKkytZ-7hYCo1ULQF7dg4eeRz_KXyJW3X4HoynYEwhmwUIyoTnD_c-V773Y1jz1FixO5UDjQ3B7iOcFrdAWiCWiIbsotiihn7J2_Vt4MEDF-yxZSKSwZrtfYkxuZsMgUHOT-bwKd59BdLqY8x2JtuLfBtiBFvu4a1paPqRHHWitsdt1KKXo131R27TIocZ6iyOpDfaeeS57JJwnb-PtyYqvrK6Nrku_GOxx13aIMEryibvFhx8RTqIwMACB_2lEB5h5koVn2mVyxzgpyKFpfE_zb7sQGAB1Ep7hdSFcKfUOvrW9u_RFEgWiwRuXh95jyTZcPX1VPZN5uv0qvSeEQ";
+WOS_T_EXPIRED_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJpc3MiOiJodHRwczovL2F1dGgub3BlbmFnZW50cy5jb20iLCJzdWIiOiJ1c2VyXzAxQUJDIiwic2lkIjoic2Vzc2lvbl8wMVhZWiIsImF1dGhfdGltZSI6MTcwMDAwMDAwMCwiZXhwIjoxNjk5OTk5MDAwfQ.NC2hUQICXAjQjXDYojAGfPkA8wg3Lh2GHlR1fbdRUdQolWgXoMG3bJWEyRKBK-t6J0in7c-i_98vmA8nzoYmZelqek8QgVRqYjyB-PovsFG0o0k5ZGctksOgE2HfSdaCENJwR-Hbbh-Ky_GTObJKzDKNx5aAeXseP-9RxnvSNCDLt3YphF-GnltyC62SSTFihik-jdvvN7S3W8JxnkqICod3lgGsVon4PJe_iQpu-CpRCcQb0j0kJCNbRlnSck-BRfPnncvwiQTRLr6HO9gmMk8jdWhkanBlzahyA6VwO8HognolvBMivJjtsplfMEBted0yIF9pP8neOx5AJx5x9g";
+WOS_T_WIDGET_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJzdWIiOiJ1c2VyXzAxQUJDIiwic2lkIjoic2Vzc2lvbl8wMVhZWiIsImF1dGhfdGltZSI6MTcwMDAwMDAwMCwic3ViX3Byb2ZpbGUiOiJ3aWRnZXQiLCJleHAiOjE3MDAwMDM2MDB9.EUA3z8BYZy6FQzE49kGgYjhXaYSNxggIXCFylnnTXB2mxMT07EwobHvYTexBTVCUcZYRCM3bCev9oY1fFXztfpwGPwf49i8QtNdsm40Glpk1rGW3jOYgF3NXhfYSM2wtwNBcRl6Dlio_lYMK6dzNVG-tG1l7JXH_HFdMkNc639mtkxGxvEbQ32gzil-T-0BvsN1RAOMXbMBG6ymg1MtD6koW47D0KpGgUALb5-idWFERHKlguFAR_vcdgDH8QHLG9T7ssHp0jTtxtrDd1f7XuV0qNFu8oWwV7h-BwzIoO-cBcPs50E0H-kzSRoBGDQIXYRdNWcupXs6E6pUk2p__8w";
+WOS_T_AGENT_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJzdWIiOiJhZ2VudF8wMSIsInNpZCI6InNlc3Npb25fMDFYWVoiLCJhdXRoX3RpbWUiOjE3MDAwMDAwMDAsInN1Yl90eXBlIjoiYWdlbnQiLCJleHAiOjE3MDAwMDM2MDB9.K2NEPM1Fc3pt5oPgV0D7sA3azBjIG0cs1cxX79Kl7zAH-U_ehvRoSFCWzX0Uai4ACrXGAKGwIHsLEbLcjjxqHTlYOatiaT8TX-0xfAqxD4grA7z0aOEtYg-Ica1BljTtJeGgvzcUGymkGLpaKLGnWtLXgzl9ZgApD7ikeFZg07wn9xjcSx2wwz8DHMPvpH3S7vxY7e_82o068-j6wIJQavtHiv8kezaAR725jwtNfZm093JbUDhfsHwRdYIzUOXWoA4_0MFzxtEyLTFL341F7PUS18HJGvfMyKBY3u7Qn5vfeIQkCrMhIIoINco0uktj7iPEk5V3YGUgl0xAk120rA";
+WOS_T_NO_SID_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJzdWIiOiJ1c2VyXzAxQUJDIiwiYXV0aF90aW1lIjoxNzAwMDAwMDAwLCJleHAiOjE3MDAwMDM2MDB9.do3Jf5iiWXvtAAIWhDbEBNmAtrGyoH2e51u7MvEqxRmo6Sa9Rzl3SaTeXABtot6KKyXKG_jmiRCCphs4DexZ8alqE4he4Ng0esqdckPfVXgUODJc0SeHFw0wFrP7KNFUuzzh_mVsfUkKTV36DxWNjWI8K7xO3qMZWcTV3gTdlZljU5xLGJ33FDT2yeXV1xcolk3y5AbgWrRkD7ihi2UlnWxIjiSnF8er2hH6m9OSiQp8_XVVf3wIZp_X9L4gPuXJhw2u-iCEhxEHDUFWrERrnovLUw0pzgdOrWi-tVchGFKq7A1VSaiz_sEbogp5RzGMH6ppzhSNtYI6JNHtMd25_A";
+WOS_T_DUP_JWT :: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.eyJzdWIiOiJ1c2VyXzAxQUJDIiwic2lkIjoiczEiLCJhdXRoX3RpbWUiOjEsImV4cCI6MTAsImV4cCI6MTcwMDAwMzYwMH0.Zil0uOubVPozvP_9deMi3TTTFjcmI60iUmhsMYYSHT7lB2G_FIQ53je6mSjYGirpRTN9wCq2yKmeAt6VdGubAoMFmPGALusbRVcQKUUnc14xiPts7sdfYP_kuKOroy2eX8MJGR6jYb6dpdBLDWgrbi69i8urEq0BCEJ7zV_HukZyQznrJa_2RMiZNy2S8ipTFZ_GJgGxBvlCVX2pN2CZt-Ot9uI2etVovygzkqqUHQFcnJKngICROgY2zNbvzy6Vhfr5TxnIR7J3QVTYHCvwaHkkAnhfzjMWtZxHg5D-Hm_tS7aw1LRn2qh7h_3CmlZr8qdsIF10gH96Oqwnbd4cYw";
+
+#test "duplicate JSON key check catches literal, unicode-escaped, empty, and overlong keys" {
+  nodes: [32] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], "{\"a\":1,\"b\":2}", nodes[..]) && wos_json_no_dup_keys(d[0], 0);
+  #assert jv_parse(d[..], "{\"\":1,\"a\":2}", nodes[..]) && wos_json_no_dup_keys(d[0], 0);
+  #assert jv_parse(d[..], "{\"a\":1,\"\":2}", nodes[..]) && wos_json_no_dup_keys(d[0], 0);
+  #assert jv_parse(d[..], "{\"a\":1,\"a\":2}", nodes[..]) && !wos_json_no_dup_keys(d[0], 0);
+  #assert jv_parse(d[..], "{\"exp\":1,\"\\u0065xp\":2}", nodes[..]) && !wos_json_no_dup_keys(d[0], 0);
+  #assert jv_parse(d[..], "[]", nodes[..]) && !wos_json_no_dup_keys(d[0], 0);
+  // Keys exceeding 128 bytes fail closed on both outer (na) and inner (nb) positions.
+  big1: [200] u8; o := 0;
+  p1 := "{\""; for ch: p1 { big1[o] = ch; o += 1; }
+  for i: 0..<129 { big1[o] = 'k'; o += 1; }
+  p2 := "\":1,\"b\":2}"; for ch: p2 { big1[o] = ch; o += 1; }
+  #assert jv_parse(d[..], cast(string) big1[0..<o], nodes[..]) && !wos_json_no_dup_keys(d[0], 0);
+  big2: [200] u8; o2 := 0;
+  q1 := "{\"a\":1,\""; for ch: q1 { big2[o2] = ch; o2 += 1; }
+  for i: 0..<129 { big2[o2] = 'k'; o2 += 1; }
+  q2 := "\":2}"; for ch: q2 { big2[o2] = ch; o2 += 1; }
+  #assert jv_parse(d[..], cast(string) big2[0..<o2], nodes[..]) && !wos_json_no_dup_keys(d[0], 0);
+}
+
+#test "real 2048-bit RS256 JWT verification enforces signature, expiry, issuer, and token-confusion guards" #steps 500000000 {
+  c: [1] WosJwtClaims;
+  // Valid signed user session JWT at now=1700000100 and exact nbf=1700000000.
+  #assert wos_jwt_verify_session(WOS_T_USER_JWT, WOS_T_JWKS, "https://auth.openagents.com", 1700000000, c[..]) == WOS_JWT_OK;
+  #assert c[0].error == WOS_JWT_OK;
+  #assert cast(string) c[0].sub[0..<c[0].sub_n] == "user_01ABC";
+  #assert cast(string) c[0].sid[0..<c[0].sid_n] == "session_01XYZ";
+  #assert cast(string) c[0].org_id[0..<c[0].org_id_n] == "org_01";
+  #assert cast(string) c[0].role[0..<c[0].role_n] == "admin";
+  #assert cast(string) c[0].iss[0..<c[0].iss_n] == "https://auth.openagents.com";
+  #assert c[0].exp == 1700003600 && c[0].has_nbf && c[0].nbf == 1700000000 && c[0].auth_time == 1700000000;
+
+  // Zero-leeway nbf and exp checks + issuer mismatch.
+  #assert wos_jwt_verify_session(WOS_T_USER_JWT, WOS_T_JWKS, "", 1699999999, c[..]) == WOS_JWT_NOT_YET_VALID && c[0].error == WOS_JWT_NOT_YET_VALID;
+  #assert wos_jwt_verify_session(WOS_T_USER_JWT, WOS_T_JWKS, "https://wrong.example", 1700000100, c[..]) == WOS_JWT_BAD_ISSUER && c[0].error == WOS_JWT_BAD_ISSUER;
+  #assert wos_jwt_verify_session(WOS_T_USER_JWT, WOS_T_JWKS, "", 1700003600, c[..]) == WOS_JWT_EXPIRED && c[0].error == WOS_JWT_EXPIRED;
+  #assert wos_jwt_verify_session(WOS_T_EXPIRED_JWT, WOS_T_JWKS, "https://auth.openagents.com", 1700000100, c[..]) == WOS_JWT_EXPIRED && c[0].error == WOS_JWT_EXPIRED;
+  #assert cast(string) c[0].sid[0..<c[0].sid_n] == "session_01XYZ";
+
+  // Tampered signature byte fails closed (never WOS_JWT_EXPIRED).
+  tampered: [1024] u8;
+  for i: 0..<WOS_T_EXPIRED_JWT.count { tampered[i] = WOS_T_EXPIRED_JWT[i]; }
+  tampered[WOS_T_EXPIRED_JWT.count - 2] = ifx tampered[WOS_T_EXPIRED_JWT.count - 2] == 'A' then cast(u8) 'B' else cast(u8) 'A';
+  #assert wos_jwt_verify_session(cast(string) tampered[0..<WOS_T_EXPIRED_JWT.count], WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_SIG && c[0].error == WOS_JWT_BAD_SIG;
+
+  // Token-confusion guards: widget token, agent token, missing sid, duplicate exp key.
+  #assert wos_jwt_verify_session(WOS_T_WIDGET_JWT, WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_TOKEN_CONFUSION && c[0].error == WOS_JWT_TOKEN_CONFUSION;
+  #assert wos_jwt_verify_session(WOS_T_AGENT_JWT, WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_TOKEN_CONFUSION && c[0].error == WOS_JWT_TOKEN_CONFUSION;
+  #assert wos_jwt_verify_session(WOS_T_NO_SID_JWT, WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_TOKEN_CONFUSION && c[0].error == WOS_JWT_TOKEN_CONFUSION;
+  #assert wos_jwt_verify_session(WOS_T_DUP_JWT, WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_DUP_KEY && c[0].error == WOS_JWT_DUP_KEY;
+}
+
+#test "JWKS lookup, header guards, and claim edge cases fail closed on every malformed shape" {
+  mod: [512] u8;
+  mod_n := [1] int.[99];
+  #assert wos_jwks_find_rsa(WOS_T_JWKS, "", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY && mod_n[0] == 0;
+  #assert wos_jwks_find_rsa(WOS_T_JWKS, "key_01TEST", mod[0..<255], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa(WOS_T_JWKS, "key_01TEST", mod[0..<256], mod_n[..]) == WOS_JWT_OK && mod_n[0] == 256;
+  #assert wos_jwks_find_rsa(WOS_T_JWKS, "key_MISSING", mod[..], mod_n[..]) == WOS_JWT_KID_UNKNOWN;
+  #assert wos_jwks_find_rsa("{\"keys\":{}}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"AQAB\",\"n\":\"AA\"},{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"EC\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"alg\":\"HS256\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"use\":\"enc\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"Aw\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"key_ops\":\"verify\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"key_ops\":[\"sign\"],\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"AQAB\",\"n\":\"\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"AQAB\",\"n\":\"A\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("{\"keys\":[{\"kid\":\"k1\",\"kty\":\"RSA\",\"e\":\"AQAB\",\"n\":\"AA\"}]}", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+  #assert wos_jwks_find_rsa("not json", "k1", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+
+  // Optional alg/use omitted + key_ops containing "verify" + 1-char kid + 4096-bit (512-byte) modulus succeed; 513-byte modulus & non-verify key_ops with valid 512-byte modulus fail.
+  j512: [900] u8; j513: [900] u8; jbad_ops: [900] u8;
+  jp1 := "{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"key_ops\":[\"sign\",\"verify\"],\"e\":\"AQAB\",\"n\":\"";
+  jp_bad := "{\"keys\":[{\"kid\":\"k\",\"kty\":\"RSA\",\"key_ops\":[\"sign\"],\"e\":\"AQAB\",\"n\":\"";
+  jp2 := "\"}]}";
+  // 512 bytes base64url = 683 chars (starts with 'g' so top byte 0x80 has no leading zero); 513 bytes = 684 chars.
+  o1 := 0; for ch: jp1 { j512[o1] = ch; o1 += 1; }
+  j512[o1] = 'g'; o1 += 1;
+  for i: 1..<683 { j512[o1] = 'A'; o1 += 1; }
+  for ch: jp2 { j512[o1] = ch; o1 += 1; }
+  #assert wos_jwks_find_rsa(cast(string) j512[0..<o1], "k", mod[..], mod_n[..]) == WOS_JWT_OK && mod_n[0] == 512;
+
+  ob := 0; for ch: jp_bad { jbad_ops[ob] = ch; ob += 1; }
+  jbad_ops[ob] = 'g'; ob += 1;
+  for i: 1..<683 { jbad_ops[ob] = 'A'; ob += 1; }
+  for ch: jp2 { jbad_ops[ob] = ch; ob += 1; }
+  #assert wos_jwks_find_rsa(cast(string) jbad_ops[0..<ob], "k", mod[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+
+  mod520: [520] u8;
+  o2 := 0; for ch: jp1 { j513[o2] = ch; o2 += 1; }
+  j513[o2] = 'g'; o2 += 1;
+  for i: 1..<684 { j513[o2] = 'A'; o2 += 1; }
+  for ch: jp2 { j513[o2] = ch; o2 += 1; }
+  #assert wos_jwks_find_rsa(cast(string) j513[0..<o2], "k", mod520[..], mod_n[..]) == WOS_JWT_BAD_KEY;
+
+  // Framing split boundaries: 4 chars rejected, 5 chars accepted, leading/adjacent/trailing/3 dots rejected, max len accepted, max+1 rejected.
+  d1 := [1] int.[0]; d2 := [1] int.[0];
+  #assert !wos_jwt_split("a.b.", d1[..], d2[..]);
+  #assert wos_jwt_split("a.b.c", d1[..], d2[..]) && d1[0] == 1 && d2[0] == 3;
+  #assert !wos_jwt_split(".b.cc", d1[..], d2[..]);
+  #assert !wos_jwt_split(".b.c.d", d1[..], d2[..]);
+  #assert !wos_jwt_split("aa..c", d1[..], d2[..]);
+  #assert !wos_jwt_split("aa.b.", d1[..], d2[..]);
+  #assert !wos_jwt_split("a.b.c.d", d1[..], d2[..]);
+  over_tok: [WOS_JWT_MAX_LEN + 1] u8;
+  for i: 0..<over_tok.count { over_tok[i] = 'a'; }
+  over_tok[1] = '.'; over_tok[3] = '.';
+  #assert wos_jwt_split(cast(string) over_tok[0..<WOS_JWT_MAX_LEN], d1[..], d2[..]);
+  #assert !wos_jwt_split(cast(string) over_tok[..], d1[..], d2[..]);
+
+  // Malformed JWT shapes, header checks, and signature length/b64 checks.
+  c: [1] WosJwtClaims;
+  #assert wos_jwt_verify_session("a.b.", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_MALFORMED && c[0].error == WOS_JWT_MALFORMED;
+  #assert wos_jwt_verify_session("@@@.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_MALFORMED && c[0].error == WOS_JWT_MALFORMED;
+  #assert wos_jwt_verify_session("YWJj.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_MALFORMED && c[0].error == WOS_JWT_MALFORMED;
+  // Duplicate key in header: {"alg":"RS256","alg":"RS256","kid":"k"} -> eyJhbGciOiJSUzI1NiIsImFsZyI6IlJTMjU2Iiwia2lkIjoiayJ9
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzI1NiIsImFsZyI6IlJTMjU2Iiwia2lkIjoiayJ9.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_DUP_KEY && c[0].error == WOS_JWT_DUP_KEY;
+  // alg=none & alg=RS384 (same length as RS256) & non-string alg.
+  #assert wos_jwt_verify_session("eyJhbGciOiJub25lIiwia2lkIjoia2V5XzAxVEVTVCJ9.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_ALG && c[0].error == WOS_JWT_BAD_ALG;
+  // {"alg":"RS384","kid":"k"} -> eyJhbGciOiJSUzM4NCIsImtpZCI6ImsifQ
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzM4NCIsImtpZCI6ImsifQ.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_ALG;
+  // {"alg":123,"kid":"k"} -> eyJhbGciOjEyMywia2lkIjoiayJ9
+  #assert wos_jwt_verify_session("eyJhbGciOjEyMywia2lkIjoiayJ9.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_ALG;
+  // Missing kid & 1-char kid reaching JWKS lookup.
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzI1NiJ9.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_MALFORMED;
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzI1NiIsImtpZCI6ImsifQ.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_KID_UNKNOWN && c[0].error == WOS_JWT_KID_UNKNOWN;
+  // Valid kid + invalid base64 sig & valid base64 wrong-len sig.
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.e30.@@@", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_SIG && c[0].error == WOS_JWT_BAD_SIG;
+  #assert wos_jwt_verify_session("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImtleV8wMVRFU1QifQ.e30.AA", WOS_T_JWKS, "", 1700000100, c[..]) == WOS_JWT_BAD_SIG && c[0].error == WOS_JWT_BAD_SIG;
+
+  // Payload decode & claims validation edge cases (1-char claims, 0 timestamps, negative/non-int/missing claims, empty iss).
+  c[0].error = WOS_JWT_OK;
+  #assert wos_jwt_decode_payload("@@@", "", 0, c[..]) == WOS_JWT_MALFORMED && c[0].error == WOS_JWT_MALFORMED;
+  c[0].error = WOS_JWT_OK;
+  #assert wos_jwt_decode_payload("YWJj", "", 0, c[..]) == WOS_JWT_MALFORMED && c[0].error == WOS_JWT_MALFORMED;
+  #assert wos_jwt_validate_claims("{\"sub\":\"\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS && c[0].error == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"sub_profile\":\"user\",\"exp\":1,\"nbf\":0,\"iss\":\"i\",\"org_id\":\"o\",\"role\":\"r\"}", "i", 0, c[..]) == WOS_JWT_OK;
+  #assert c[0].sub_n == 1 && c[0].sid_n == 1 && c[0].org_id_n == 1 && c[0].role_n == 1 && c[0].iss_n == 1 && c[0].auth_time == 0 && c[0].nbf == 0;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"iss\":\"\"}", "", 0, c[..]) == WOS_JWT_OK && c[0].iss_n == 0;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"iss\":\"i\"}", "j", 0, c[..]) == WOS_JWT_BAD_ISSUER;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"iss\":123}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":-1,\"exp\":1}", "", 0, c[..]) == WOS_JWT_TOKEN_CONFUSION;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"exp\":1}", "", 0, c[..]) == WOS_JWT_TOKEN_CONFUSION;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":-1}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":0}", "", 0, c[..]) == WOS_JWT_EXPIRED;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"nbf\":-1}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"nbf\":\"bad\"}", "", 0, c[..]) == WOS_JWT_BAD_CLAIMS;
+  #assert wos_jwt_validate_claims("{\"sub\":\"u\",\"sid\":\"s\",\"auth_time\":0,\"exp\":1,\"org_id\":\"\",\"role\":\"\"}", "", 0, c[..]) == WOS_JWT_OK && c[0].org_id_n == 0 && c[0].role_n == 0;
+}
+
+wos_jwt_set_err :: (out: [] WosJwtClaims, err: u32) -> u32 #effects(all) {
+  out[0].error = err;
+  return err;
+}
+
+wos_json_no_dup_keys :: (d: Jv, obj_node: int) -> bool #effects(all) {
+  if jv_kind(d, obj_node) != JV_OBJECT { return false; }
+  ka: [128] u8; kb: [128] u8;
+  i := d.nodes[obj_node].first;
+  while i != -1 {
+    na := jv_unescape(jv_key(d, i), ka[..]);
+    if na < 0 { return false; }
+    j := d.nodes[i].next;
+    while j != -1 {
+      nb := jv_unescape(jv_key(d, j), kb[..]);
+      if nb < 0 { return false; }
+      if na == nb && cast(string) ka[0..<na] == cast(string) kb[0..<nb] { return false; }
+      j = d.nodes[j].next;
+    }
+    i = d.nodes[i].next;
+  }
+  return true;
+}
+
+wos_jwt_str_eq :: (d: Jv, node: int, want: string) -> bool #effects(all) {
+  if jv_kind(d, node) != JV_STRING { return false; }
+  buf: [128] u8;
+  n := jv_str(d, node, buf[..]);
+  return n == want.count && cast(string) buf[0..<n] == want;
+}
+
+wos_jwt_copy_str :: (d: Jv, node: int, out: [] u8) -> int #effects(all) {
+  if jv_kind(d, node) != JV_STRING { return -1; }
+  return jv_str(d, node, out);
+}
+
+wos_jwks_find_rsa :: (jwks_json: string, kid: string, mod_out: [] u8, mod_len: [] int) -> u32 #effects(all) {
+  mod_len[0] = 0;
+  if kid.count < 1 || mod_out.count < 256 { return WOS_JWT_BAD_KEY; }
+  nodes: [WOS_JWKS_MAX_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], jwks_json, nodes[..]) { return WOS_JWT_BAD_KEY; }
+  keys := jv_get(d[0], 0, "keys");
+  if jv_kind(d[0], keys) != JV_ARRAY { return WOS_JWT_BAD_KEY; }
+  found := -1;
+  cur := d[0].nodes[keys].first;
+  while cur != -1 {
+    if jv_kind(d[0], cur) == JV_OBJECT {
+      kn := jv_get(d[0], cur, "kid");
+      if wos_jwt_str_eq(d[0], kn, kid) {
+        if found != -1 { return WOS_JWT_BAD_KEY; }   // duplicate kid fails closed
+        found = cur;
+      }
+    }
+    cur = d[0].nodes[cur].next;
+  }
+  if found == -1 { return WOS_JWT_KID_UNKNOWN; }
+  if !wos_jwt_str_eq(d[0], jv_get(d[0], found, "kty"), "RSA") { return WOS_JWT_BAD_KEY; }
+  alg_n := jv_get(d[0], found, "alg");
+  if alg_n != -1 && !wos_jwt_str_eq(d[0], alg_n, "RS256") { return WOS_JWT_BAD_KEY; }
+  use_n := jv_get(d[0], found, "use");
+  if use_n != -1 && !wos_jwt_str_eq(d[0], use_n, "sig") { return WOS_JWT_BAD_KEY; }
+  ops_n := jv_get(d[0], found, "key_ops");
+  if ops_n != -1 {
+    if jv_kind(d[0], ops_n) != JV_ARRAY { return WOS_JWT_BAD_KEY; }
+    has_verify := false;
+    op := d[0].nodes[ops_n].first;
+    while op != -1 {
+      if wos_jwt_str_eq(d[0], op, "verify") { has_verify = true; }
+      op = d[0].nodes[op].next;
+    }
+    if !has_verify { return WOS_JWT_BAD_KEY; }
+  }
+  // rsa_verify.coax fixes e = 65537 (base64url "AQAB").
+  if !wos_jwt_str_eq(d[0], jv_get(d[0], found, "e"), "AQAB") { return WOS_JWT_BAD_KEY; }
+  n_node := jv_get(d[0], found, "n");
+  nb64: [768] u8;
+  n_str_len := wos_jwt_copy_str(d[0], n_node, nb64[..]);
+  if n_str_len < 0 { return WOS_JWT_BAD_KEY; } // mutant: equivalent (empty n also fails fi_b64url_uint below)
+  r := fi_b64url_uint(cast(string) nb64[0..<n_str_len], mod_out);
+  if r.written < 256 { return WOS_JWT_BAD_KEY; }
+  mod_len[0] = r.written;
+  return WOS_JWT_OK;
+}
+
+wos_jwt_validate_claims :: (payload_json: string, expected_issuer: string, now_sec: int, out: [] WosJwtClaims) -> u32 #effects(all) {
+  out[0] = WosJwtClaims.{error = WOS_JWT_MALFORMED};
+  pnodes: [WOS_JWT_MAX_NODES] JvNode; pd: [1] Jv;
+  if !jv_parse(pd[..], payload_json, pnodes[..]) { return WOS_JWT_MALFORMED; }
+  if !wos_json_no_dup_keys(pd[0], 0) { return wos_jwt_set_err(out, WOS_JWT_DUP_KEY); }
+
+  sub_n := wos_jwt_copy_str(pd[0], jv_get(pd[0], 0, "sub"), out[0].sub[..]);
+  if sub_n < 1 { return wos_jwt_set_err(out, WOS_JWT_BAD_CLAIMS); }
+  out[0].sub_n = sub_n;
+
+  // Token-confusion guard: sid non-empty, auth_time present, sub_profile absent or "user", sub_type absent.
+  sid_n := wos_jwt_copy_str(pd[0], jv_get(pd[0], 0, "sid"), out[0].sid[..]);
+  auth_node := jv_get(pd[0], 0, "auth_time");
+  auth_time := jv_int(pd[0], auth_node, -1);
+  sub_prof := jv_get(pd[0], 0, "sub_profile");
+  sub_type := jv_get(pd[0], 0, "sub_type");
+  if sid_n < 1 || auth_time < 0 || sub_type != -1 {
+    return wos_jwt_set_err(out, WOS_JWT_TOKEN_CONFUSION);
+  }
+  if sub_prof != -1 && !wos_jwt_str_eq(pd[0], sub_prof, "user") {
+    return wos_jwt_set_err(out, WOS_JWT_TOKEN_CONFUSION);
+  }
+  out[0].sid_n = sid_n;
+  out[0].auth_time = auth_time;
+
+  exp_v := jv_int(pd[0], jv_get(pd[0], 0, "exp"), -1);
+  if exp_v < 0 { return wos_jwt_set_err(out, WOS_JWT_BAD_CLAIMS); }
+  out[0].exp = exp_v;
+
+  nbf_node := jv_get(pd[0], 0, "nbf");
+  if nbf_node != -1 {
+    nbf_v := jv_int(pd[0], nbf_node, -1);
+    if nbf_v < 0 { return wos_jwt_set_err(out, WOS_JWT_BAD_CLAIMS); }
+    out[0].has_nbf = true;
+    out[0].nbf = nbf_v;
+    if now_sec < nbf_v { return wos_jwt_set_err(out, WOS_JWT_NOT_YET_VALID); }
+  }
+
+  iss_node := jv_get(pd[0], 0, "iss");
+  if iss_node != -1 {
+    in_n := wos_jwt_copy_str(pd[0], iss_node, out[0].iss[..]);
+    if in_n < 0 { return wos_jwt_set_err(out, WOS_JWT_BAD_CLAIMS); }
+    out[0].iss_n = in_n;
+  }
+  if expected_issuer.count > 0 {
+    if out[0].iss_n != expected_issuer.count || cast(string) out[0].iss[0..<out[0].iss_n] != expected_issuer {
+      return wos_jwt_set_err(out, WOS_JWT_BAD_ISSUER);
+    }
+  }
+
+  org_n := wos_jwt_copy_str(pd[0], jv_get(pd[0], 0, "org_id"), out[0].org_id[..]);
+  if org_n > 0 { out[0].org_id_n = org_n; } // mutant: equivalent (org_n==0 leaves org_id_n==0)
+  role_n := wos_jwt_copy_str(pd[0], jv_get(pd[0], 0, "role"), out[0].role[..]);
+  if role_n > 0 { out[0].role_n = role_n; } // mutant: equivalent (role_n==0 leaves role_n==0)
+
+  // Zero-leeway expiry check (matching workos-rust/src/helpers/session.rs:191).
+  if now_sec >= exp_v { return wos_jwt_set_err(out, WOS_JWT_EXPIRED); }
+  return wos_jwt_set_err(out, WOS_JWT_OK);
+}
+
+wos_jwt_decode_payload :: (payload_b64: string, expected_issuer: string, now_sec: int, out: [] WosJwtClaims) -> u32 #effects(all) {
+  out[0] = WosJwtClaims.{error = WOS_JWT_MALFORMED};
+  pbuf: [WOS_JWT_MAX_PART] u8;
+  pr := fi_b64url_decode(payload_b64, pbuf[..]);
+  if pr.error != NC_OK { return WOS_JWT_MALFORMED; }
+  return wos_jwt_validate_claims(cast(string) pbuf[0..<pr.written], expected_issuer, now_sec, out);
+}
+
+wos_jwt_split :: (token: string, d1: [] int, d2: [] int) -> bool #effects(all) {
+  if token.count < 5 || token.count > WOS_JWT_MAX_LEN { return false; }
+  dot1 := -1; dot2 := -1;
+  for i: 0..<token.count {
+    if token[i] == '.' {
+      if dot1 == -1 { dot1 = i; }
+      else if dot2 == -1 { dot2 = i; }
+      else { return false; }
+    }
+  }
+  if dot1 < 1 || dot2 <= dot1 + 1 || dot2 + 1 >= token.count { return false; }
+  d1[0] = dot1; d2[0] = dot2;
+  return true;
+}
+
+wos_jwt_verify_session :: (token: string, jwks_json: string, expected_issuer: string, now_sec: int, out: [] WosJwtClaims) -> u32 #export_c #effects(all) {
+  out[0] = WosJwtClaims.{error = WOS_JWT_MALFORMED};
+  d1: [1] int; d2: [1] int;
+  if !wos_jwt_split(token, d1[..], d2[..]) { return WOS_JWT_MALFORMED; }
+  dot1 := d1[0]; dot2 := d2[0];
+
+  // Decode header JSON and check duplicate keys, alg == RS256, kid non-empty.
+  hbuf: [WOS_JWT_MAX_PART] u8;
+  hr := fi_b64url_decode(token[0..<dot1], hbuf[..]);
+  if hr.error != NC_OK { return WOS_JWT_MALFORMED; }
+  hnodes: [WOS_JWT_MAX_NODES] JvNode; hd: [1] Jv;
+  if !jv_parse(hd[..], cast(string) hbuf[0..<hr.written], hnodes[..]) { return WOS_JWT_MALFORMED; }
+  if !wos_json_no_dup_keys(hd[0], 0) { return wos_jwt_set_err(out, WOS_JWT_DUP_KEY); }
+  if !wos_jwt_str_eq(hd[0], jv_get(hd[0], 0, "alg"), "RS256") { return wos_jwt_set_err(out, WOS_JWT_BAD_ALG); }
+  kid_buf: [128] u8;
+  kid_n := wos_jwt_copy_str(hd[0], jv_get(hd[0], 0, "kid"), kid_buf[..]);
+  if kid_n < 1 { return WOS_JWT_MALFORMED; }
+
+  // Look up unique matching RSA public key in JWKS.
+  mod: [512] u8;
+  mod_len: [1] int;
+  kerr := wos_jwks_find_rsa(jwks_json, cast(string) kid_buf[0..<kid_n], mod[..], mod_len[..]);
+  if kerr != WOS_JWT_OK { return wos_jwt_set_err(out, kerr); }
+
+  // Decode signature and verify RS256 over "<hdr>.<pay>" BEFORE checking exp.
+  sig: [512] u8;
+  sr := fi_b64url_decode(token[dot2 + 1..<token.count], sig[..]);
+  if sr.written != mod_len[0] { return wos_jwt_set_err(out, WOS_JWT_BAD_SIG); }
+  signing_in: [WOS_JWT_MAX_LEN] u8;
+  for i: 0..<dot2 { signing_in[i] = token[i]; }
+  if !rsa_verify_sha256(mod[0..<mod_len[0]], sig[0..<sr.written], signing_in[0..<dot2]) {
+    return wos_jwt_set_err(out, WOS_JWT_BAD_SIG);
+  }
+
+  return wos_jwt_decode_payload(token[dot1 + 1..<dot2], expected_issuer, now_sec, out);
+}

@@ -31,6 +31,14 @@ Passkeys give the one-tap login people want from OAuth buttons. Affects
 **Decided 2026-11-11: A.** No OAuth login; GitHub and Google are
 connections.
 
+**Updated 2026-11-26: C (via WorkOS Custom Coax UI, [#14103](https://github.com/OpenAgentsInc/openagents/issues/14103)).**
+Offer Google, GitHub, and **Sign in with Apple** OAuth (satisfying iOS Guideline 4.8
+natively) plus Enterprise SSO alongside WorkOS Email Magic Auth, Nostr, and first-party
+Coax WebAuthn Passkeys. All WorkOS logins enter at `L1` and auto-link only on
+`email_verified = true`, so self-custodial wallets, spend step-up, key removal, and agent
+grants continue to require our own Passkey/Nostr `L2`/`L2-fresh` proof
+([WorkOS and a Coax SDK](2026-11-26-workos-coax-sdk.md)).
+
 ## D2. Launch methods and the mobile default
 
 | Option | Effect |
@@ -122,6 +130,14 @@ Nothing logs in with WorkOS today. These remain:
 
 **Decided 2026-11-11: delete them.** The owner's yes covers the two
 environments and the five secrets named above, and nothing else.
+
+**Updated 2026-11-26: adopt WorkOS on a Hybrid `acct_` spine ([#14103](https://github.com/OpenAgentsInc/openagents/issues/14103)).**
+Provision fresh WorkOS staging/production environments (`#14097`), build our own Sans-I/O
+Coax WorkOS SDK (`coax/lib/workos/` + `tools/oagen-coax/` emitter, `#14098`/`#14099`),
+keep Custom Coax UI and OpenAgents opaque sessions with `OA-Device-Proof` (Option A1),
+and mirror WorkOS users/orgs/events into Cloud SQL via a pure Coax/C Events API poller +
+webhooks (`#14100`) so our locked backups and `acct_` identity graph stay complete. See
+[WorkOS and a Coax SDK](2026-11-26-workos-coax-sdk.md).
 
 ## D8. Accounts with only a Nostr key
 

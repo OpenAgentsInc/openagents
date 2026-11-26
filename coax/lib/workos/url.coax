@@ -1,0 +1,358 @@
+// WorkOS URL helpers: RFC 3986 percent-encoding, strict path-segment traversal
+// guard (matching workos-rust/src/client.rs), and AuthKit / OAuth / SSO /
+// Logout / JWKS URL builders. Pure caller-buffer #authority module.
+#authority;
+
+WOS_DEFAULT_BASE_URL :: "https://api.workos.com";
+WOS_URL_MAX :: 2048;
+WOS_HEX_UPPER :: "0123456789ABCDEF";
+
+WosAuthUrlParams :: struct {
+  client_id: string;
+  redirect_uri: string;
+  provider: string;
+  connection_id: string;
+  organization_id: string;
+  domain_hint: string;
+  login_hint: string;
+  state: string;
+  code_challenge: string;
+  code_challenge_method: string;
+  screen_hint: string;
+  invitation_token: string;
+}
+
+WosUrlBuf :: struct {
+  buf: [] u8;
+  n: int;
+  bad: bool;
+}
+
+#forall "RFC 3986 unreserved classification matches exact byte table" b: 0..<256 {
+  expected := (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 46 || b == 95 || b == 126;
+  #assert wos_url_unreserved(cast(u8) b) == expected;
+}
+
+#test "percent encoding encodes reserved bytes uppercase and preserves unreserved bytes" {
+  out: [64] u8;
+  for i: 0..<64 { out[i] = 77; }
+  n := wos_percent_encode("https://app.example/cb?a=1&b=2 3~", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https%3A%2F%2Fapp.example%2Fcb%3Fa%3D1%26b%3D2%203~";
+  #assert wos_percent_encode("abc-_.~09", out[..]) == 9;
+  #assert cast(string) out[0..<9] == "abc-_.~09";
+  #assert wos_percent_encode("", out[0..<0]) == 0;
+  // Capacity refusal does not write past bounds and reports -1.
+  #assert wos_percent_encode("a b", out[0..<4]) == -1;
+  #assert wos_percent_encode("a b", out[0..<5]) == 5 && cast(string) out[0..<5] == "a%20b";
+  hi := [1] u8.[255];
+  #assert wos_percent_encode(cast(string) hi[..], out[0..<3]) == 3 && cast(string) out[0..<3] == "%FF";
+  // Exact WOS_URL_MAX (2048) fits; 2049 refuses even in larger output buffers.
+  big_in: [WOS_URL_MAX + 1] u8;
+  big_out: [WOS_URL_MAX + 16] u8;
+  for i: 0..<big_in.count { big_in[i] = 'a'; }
+  #assert wos_percent_encode(cast(string) big_in[0..<WOS_URL_MAX], big_out[..]) == WOS_URL_MAX;
+  #assert wos_percent_encode(cast(string) big_in[..], big_out[..]) == -1;
+}
+
+#test "path validation rejects empty segments and WHATWG dot-segment traversal spellings" {
+  // ASCII case-folding boundaries.
+  #assert wos_ascii_lower('A') == 'a' && wos_ascii_lower('Z') == 'z' && wos_ascii_lower('@') == '@' && wos_ascii_lower('[') == '[';
+  #assert wos_ascii_eq_ci("AZ", "az") && !wos_ascii_eq_ci("az", "bz");
+
+  bad := [18] string.["", ".", "..", "%2e", "%2E", ".%2e", ".%2E", "%2e.", "%2E.", "%2e%2e", "%2e%2E", "%2E%2e", "%2E%2E", "a/b", "a\\b", "a b", "a?b", "a#b"];
+  for seg: bad { #assert !wos_path_segment_ok(seg); }
+  del_seg := [1] u8.[127];
+  #assert !wos_path_segment_ok(cast(string) del_seg[..]);
+  good := [8] string.["a", "!~]", "user_01ABC", "user_01.x", "a-z_~", "...", "%252e%252e", "org_1"];
+  for seg: good { #assert wos_path_segment_ok(seg); }
+
+  #assert wos_path_ok("/a");
+  #assert wos_path_ok("/user_management/users/user_01ABC");
+  #assert wos_path_ok("/sso/jwks/client_01");
+  #assert !wos_path_ok("");
+  #assert !wos_path_ok("user_management/users");
+  #assert !wos_path_ok("/");
+  #assert !wos_path_ok("//a");
+  #assert !wos_path_ok("/a//b");
+  #assert !wos_path_ok("/a/b/");
+  #assert !wos_path_ok("/a/../b");
+  #assert !wos_path_ok("/a/%2e%2E/b");
+  #assert !wos_path_ok("/a/b?c=1");
+  #assert !wos_path_ok("/a/b#c");
+}
+
+#test "JWKS and logout URL builders validate inputs and encode query values" {
+  out: [512] u8;
+  n := wos_jwks_url("", "client_01ABC", out[..]);
+  #assert n == 44 && cast(string) out[0..<n] == "https://api.workos.com/sso/jwks/client_01ABC";
+  #assert wos_jwks_url("", "client_01ABC", out[0..<44]) == 44;
+  #assert wos_jwks_url("", "client_01ABC", out[0..<43]) == -1;
+  #assert wos_jwks_url("", "client_01ABC", out[0..<22]) == -1;
+  #assert wos_jwks_url("", "client_01ABC", out[0..<32]) == -1;
+  n = wos_jwks_url("http://127.0.0.1:4100/", "client_01", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://127.0.0.1:4100/sso/jwks/client_01";
+  #assert wos_jwks_url("https://a", "c", out[..]) > 0;
+  #assert wos_jwks_url("http://a", "c", out[..]) > 0;
+  #assert wos_jwks_url("https://a!~@$", "c", out[..]) > 0;
+  #assert wos_jwks_url("https://", "c", out[..]) == -1;
+  #assert wos_jwks_url("https:///", "c", out[..]) == -1;
+  #assert wos_jwks_url("http://", "c", out[..]) == -1;
+  #assert wos_jwks_url("http:///", "c", out[..]) == -1;
+  #assert wos_jwks_url("/", "c", out[..]) == -1;
+  #assert wos_jwks_url("https://a b", "c", out[..]) == -1;
+  #assert wos_jwks_url("https://a?x", "c", out[..]) == -1;
+  #assert wos_jwks_url("https://a#x", "c", out[..]) == -1;
+  del_base := [10] u8.['h','t','t','p','s',':','/','/','a',127];
+  #assert wos_jwks_url(cast(string) del_base[..], "c", out[..]) == -1;
+  #assert wos_jwks_url("", "", out[..]) == -1;
+  #assert wos_jwks_url("", "..", out[..]) == -1;
+  #assert wos_jwks_url("", "a/b", out[..]) == -1;
+  #assert wos_jwks_url("ftp://bad", "client_01", out[..]) == -1;
+  #assert wos_jwks_url("", "client_01", out[0..<10]) == -1;
+  // WOS_URL_MAX enforcement in wos_ub_put.
+  long_base: [WOS_URL_MAX] u8;
+  long_out: [WOS_URL_MAX + 64] u8;
+  pfx := "https://";
+  for i: 0..<pfx.count { long_base[i] = pfx[i]; }
+  for i: pfx.count..<long_base.count { long_base[i] = 'a'; }
+  #assert wos_jwks_url(cast(string) long_base[0..<WOS_URL_MAX - 11], "c", long_out[..]) == WOS_URL_MAX;
+  #assert wos_jwks_url(cast(string) long_base[0..<WOS_URL_MAX - 10], "c", long_out[..]) == -1;
+  // Direct wos_ub_put exact-fit buffer and WOS_URL_MAX boundaries (including multi-put addition).
+  ub_exact: [4] u8;
+  ue := [1] WosUrlBuf.[WosUrlBuf.{buf = ub_exact[..]}];
+  wos_ub_put(ue[..], "abcd");
+  #assert !ue[0].bad && ue[0].n == 4;
+  um := [1] WosUrlBuf.[WosUrlBuf.{buf = long_out[..]}];
+  wos_ub_put(um[..], cast(string) long_base[0..<1024]);
+  wos_ub_put(um[..], cast(string) long_base[0..<1024]);
+  #assert !um[0].bad && um[0].n == WOS_URL_MAX;
+  wos_ub_put(um[..], "x");
+  #assert um[0].bad;
+
+  n = wos_logout_url("", "session_01", "https://openagents.com/login?x=1", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://api.workos.com/user_management/sessions/logout?session_id=session_01&return_to=https%3A%2F%2Fopenagents.com%2Flogin%3Fx%3D1";
+  n = wos_logout_url("http://localhost:4100", "s", "x", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://localhost:4100/user_management/sessions/logout?session_id=s&return_to=x";
+  n = wos_logout_url("http://localhost:4100", "session_01", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://localhost:4100/user_management/sessions/logout?session_id=session_01";
+  #assert wos_logout_url("", "", "", out[..]) == -1;
+  #assert wos_logout_url("bad://x", "session_01", "", out[..]) == -1;
+  #assert wos_logout_url("", "s", "", out[0..<10]) == -1;
+}
+
+#test "authorize URL builder enforces selector, PKCE S256, and screen_hint rules" {
+  out: [1024] u8;
+  p := WosAuthUrlParams.{
+    client_id = "client_01",
+    redirect_uri = "openagents://auth/callback",
+    provider = "GoogleOAuth",
+    state = "st_123",
+    code_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    code_challenge_method = "S256",
+  };
+  n := wos_authorize_url("", p, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://api.workos.com/user_management/authorize?client_id=client_01&redirect_uri=openagents%3A%2F%2Fauth%2Fcallback&response_type=code&provider=GoogleOAuth&state=st_123&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256";
+
+  // Missing selector (provider/connection_id/organization_id) refuses.
+  no_sel := p; no_sel.provider = "";
+  #assert wos_authorize_url("", no_sel, out[..]) == -1;
+  // Connection selector works without provider.
+  sso := no_sel; sso.connection_id = "conn_01"; sso.domain_hint = "acme.com"; sso.login_hint = "a@acme.com";
+  n = wos_authorize_url("http://127.0.0.1:4100", sso, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "http://127.0.0.1:4100/user_management/authorize?client_id=client_01&redirect_uri=openagents%3A%2F%2Fauth%2Fcallback&response_type=code&connection_id=conn_01&domain_hint=acme.com&login_hint=a%40acme.com&state=st_123&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256";
+  // Org selector + invitation_token + screen_hint on authkit.
+  orgp := WosAuthUrlParams.{
+    client_id = "client_01",
+    redirect_uri = "https://openagents.com/api/auth/workos/callback",
+    provider = "authkit",
+    organization_id = "org_01",
+    screen_hint = "sign-in",
+    invitation_token = "inv_1",
+  };
+  n = wos_authorize_url("", orgp, out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://api.workos.com/user_management/authorize?client_id=client_01&redirect_uri=https%3A%2F%2Fopenagents.com%2Fapi%2Fauth%2Fworkos%2Fcallback&response_type=code&provider=authkit&organization_id=org_01&screen_hint=sign-in&invitation_token=inv_1";
+
+  // screen_hint disallowed for non-authkit provider or invalid value.
+  bad_hint := p; bad_hint.screen_hint = "sign-in";
+  #assert wos_authorize_url("", bad_hint, out[..]) == -1;
+  bad_hint2 := orgp; bad_hint2.screen_hint = "other";
+  #assert wos_authorize_url("", bad_hint2, out[..]) == -1;
+  orgp.screen_hint = "sign-up";
+  #assert wos_authorize_url("", orgp, out[..]) > 0;
+
+  // PKCE method must be S256 when challenge is present, and challenge required if method set.
+  bad_pkce := p; bad_pkce.code_challenge_method = "plain";
+  #assert wos_authorize_url("", bad_pkce, out[..]) == -1;
+  bad_pkce2 := p; bad_pkce2.code_challenge = "";
+  #assert wos_authorize_url("", bad_pkce2, out[..]) == -1;
+
+  // Missing client_id or redirect_uri or too-small buffer refuses.
+  bad_cid := p; bad_cid.client_id = "";
+  #assert wos_authorize_url("", bad_cid, out[..]) == -1;
+  bad_uri := p; bad_uri.redirect_uri = "";
+  #assert wos_authorize_url("", bad_uri, out[..]) == -1;
+  #assert wos_authorize_url("", p, out[0..<32]) == -1;
+
+  // 1-char values for every field exercise all > 0 and < 1 boundaries.
+  tiny := WosAuthUrlParams.{
+    client_id = "c", redirect_uri = "r", provider = "p", connection_id = "k",
+    organization_id = "o", domain_hint = "d", login_hint = "l", state = "s",
+    code_challenge = "x", code_challenge_method = "S256", invitation_token = "i",
+  };
+  nt := wos_authorize_url("", tiny, out[..]);
+  #assert nt > 0 && cast(string) out[0..<nt] == "https://api.workos.com/user_management/authorize?client_id=c&redirect_uri=r&response_type=code&provider=p&connection_id=k&organization_id=o&domain_hint=d&login_hint=l&state=s&code_challenge=x&code_challenge_method=S256&invitation_token=i";
+  bad_sh1 := tiny; bad_sh1.screen_hint = "x";
+  #assert wos_authorize_url("", bad_sh1, out[..]) == -1;
+  bad_cm1 := tiny; bad_cm1.code_challenge = ""; bad_cm1.code_challenge_method = "x";
+  #assert wos_authorize_url("", bad_cm1, out[..]) == -1;
+  bad_cc1 := tiny; bad_cc1.code_challenge = "x"; bad_cc1.code_challenge_method = "";
+  #assert wos_authorize_url("", bad_cc1, out[..]) == -1;
+}
+
+wos_url_unreserved :: (c: u8) -> bool #effects(all) {
+  if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') { return true; }
+  return c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+wos_ascii_lower :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+}
+
+wos_ascii_eq_ci :: (a: string, b: string) -> bool #effects(all) {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if wos_ascii_lower(a[i]) != wos_ascii_lower(b[i]) { return false; } }
+  return true;
+}
+
+wos_ub_put :: (o: [] WosUrlBuf, s: string) #effects(all) {
+  if o[0].bad || o[0].n + s.count > o[0].buf.count || o[0].n + s.count > WOS_URL_MAX { o[0].bad = true; return; }
+  for i: 0..<s.count { o[0].buf[o[0].n + i] = s[i]; }
+  o[0].n += s.count;
+}
+
+wos_ub_byte :: (o: [] WosUrlBuf, b: u8) #effects(all) {
+  if o[0].bad || o[0].n + 1 > o[0].buf.count || o[0].n + 1 > WOS_URL_MAX { o[0].bad = true; return; }
+  o[0].buf[o[0].n] = b;
+  o[0].n += 1;
+}
+
+wos_ub_pct :: (o: [] WosUrlBuf, s: string) #effects(all) {
+  for c: s {
+    if wos_url_unreserved(c) {
+      wos_ub_byte(o, c);
+    } else {
+      wos_ub_byte(o, '%');
+      wos_ub_byte(o, WOS_HEX_UPPER[cast(int) c >> 4]);
+      wos_ub_byte(o, WOS_HEX_UPPER[cast(int) c & 15]);
+    }
+  }
+}
+
+wos_ub_query :: (o: [] WosUrlBuf, first: bool, key: string, val: string) #effects(all) {
+  wos_ub_byte(o, ifx first then cast(u8) '?' else cast(u8) '&');
+  wos_ub_put(o, key);
+  wos_ub_byte(o, '=');
+  wos_ub_pct(o, val);
+}
+
+wos_percent_encode :: (text: string, out: [] u8) -> int #export_c #effects(all) {
+  o: [1] WosUrlBuf;
+  o[0] = WosUrlBuf.{buf = out};
+  wos_ub_pct(o[..], text);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Reject empty segments, slashes, query/fragment delimiters, and WHATWG dot segments.
+wos_path_segment_ok :: (seg: string) -> bool #export_c #effects(all) {
+  if seg.count < 1 { return false; }
+  for c: seg { if c == '/' || c == '?' || c == '#' || c == '\\' || c < 33 || c > 126 { return false; } }
+  dots := [6] string.[".", "..", "%2e", ".%2e", "%2e.", "%2e%2e"];
+  for d: dots { if wos_ascii_eq_ci(seg, d) { return false; } }
+  return true;
+}
+
+wos_path_ok :: (path: string) -> bool #export_c #effects(all) {
+  if path.count < 2 || path[0] != '/' { return false; }
+  start := 1;
+  for i: 1..<path.count { // mutant: equivalent (path[1] == '/' leaves '/' in first segment which wos_path_segment_ok rejects)
+    if path[i] == '/' {
+      if !wos_path_segment_ok(path[start..<i]) { return false; }
+      start = i + 1;
+    }
+  }
+  return wos_path_segment_ok(path[start..<path.count]);
+}
+
+wos_base_clean :: (base_url: string) -> string #effects(all) {
+  b := ifx base_url.count == 0 then WOS_DEFAULT_BASE_URL else base_url;
+  if b[b.count - 1] == '/' { b = b[0..<b.count - 1]; }
+  return b;
+}
+
+wos_base_ok :: (b: string) -> bool #effects(all) {
+  https := b.count > 8 && b[0..<8] == "https://";
+  http := b.count > 7 && b[0..<7] == "http://";
+  if !https && !http { return false; }
+  for c: b { if c < 33 || c > 126 || c == '?' || c == '#' { return false; } }
+  return true;
+}
+
+wos_jwks_url :: (base_url: string, client_id: string, out: [] u8) -> int #export_c #effects(all) {
+  b := wos_base_clean(base_url);
+  if !wos_base_ok(b) || !wos_path_segment_ok(client_id) { return -1; }
+  o: [1] WosUrlBuf;
+  o[0] = WosUrlBuf.{buf = out};
+  wos_ub_put(o[..], b);
+  wos_ub_put(o[..], "/sso/jwks/");
+  wos_ub_pct(o[..], client_id);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+wos_logout_url :: (base_url: string, session_id: string, return_to: string, out: [] u8) -> int #export_c #effects(all) {
+  b := wos_base_clean(base_url);
+  if !wos_base_ok(b) || session_id.count < 1 { return -1; }
+  o: [1] WosUrlBuf;
+  o[0] = WosUrlBuf.{buf = out};
+  wos_ub_put(o[..], b);
+  wos_ub_put(o[..], "/user_management/sessions/logout");
+  wos_ub_query(o[..], true, "session_id", session_id);
+  if return_to.count > 0 { wos_ub_query(o[..], false, "return_to", return_to); }
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+wos_authorize_url :: (base_url: string, p: WosAuthUrlParams, out: [] u8) -> int #export_c #effects(all) {
+  b := wos_base_clean(base_url);
+  if !wos_base_ok(b) || p.client_id.count < 1 || p.redirect_uri.count < 1 { return -1; }
+  if p.provider.count == 0 && p.connection_id.count == 0 && p.organization_id.count == 0 { return -1; }
+  if p.screen_hint.count > 0 {
+    if p.provider != "authkit" { return -1; }
+    if p.screen_hint != "sign-in" && p.screen_hint != "sign-up" { return -1; }
+  }
+  if p.code_challenge.count > 0 || p.code_challenge_method.count > 0 {
+    if p.code_challenge.count == 0 || p.code_challenge_method != "S256" { return -1; }
+  }
+  o: [1] WosUrlBuf;
+  o[0] = WosUrlBuf.{buf = out};
+  wos_ub_put(o[..], b);
+  wos_ub_put(o[..], "/user_management/authorize");
+  wos_ub_query(o[..], true, "client_id", p.client_id);
+  wos_ub_query(o[..], false, "redirect_uri", p.redirect_uri);
+  wos_ub_query(o[..], false, "response_type", "code");
+  if p.provider.count > 0 { wos_ub_query(o[..], false, "provider", p.provider); }
+  if p.connection_id.count > 0 { wos_ub_query(o[..], false, "connection_id", p.connection_id); }
+  if p.organization_id.count > 0 { wos_ub_query(o[..], false, "organization_id", p.organization_id); }
+  if p.domain_hint.count > 0 { wos_ub_query(o[..], false, "domain_hint", p.domain_hint); }
+  if p.login_hint.count > 0 { wos_ub_query(o[..], false, "login_hint", p.login_hint); }
+  if p.state.count > 0 { wos_ub_query(o[..], false, "state", p.state); }
+  if p.code_challenge.count > 0 {
+    wos_ub_query(o[..], false, "code_challenge", p.code_challenge);
+    wos_ub_query(o[..], false, "code_challenge_method", p.code_challenge_method);
+  }
+  if p.screen_hint.count > 0 { wos_ub_query(o[..], false, "screen_hint", p.screen_hint); } // mutant: equivalent (screen_hint is validated above as empty, "sign-in", or "sign-up")
+  if p.invitation_token.count > 0 { wos_ub_query(o[..], false, "invitation_token", p.invitation_token); }
+  if o[0].bad { return -1; }
+  return o[0].n;
+}

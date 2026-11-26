@@ -1,0 +1,283 @@
+// WorkOS AES-256-GCM session sealing:
+//  - Raw format (workos-rust compat): base64(nonce(12) || ct || tag(16)), empty AAD.
+//  - Versioned wos2. format (workos-ios compat):
+//      "wos2." + base64(salt(16) || nonce(12) || ct || tag(16)), AAD "wos2.",
+//      master key via PBKDF2-HMAC-SHA256 (600,000 rounds, domain salt
+//      "workos-ios/session-seal/wos2"), per-seal key via HKDF-SHA256
+//      (salt, info "wos2.aes-256-gcm").
+// Pure caller-buffer #authority module.
+#load "../crypto/aes_gcm.coax";
+#load "../crypto/hkdf.coax";
+#load "../crypto/pbkdf2.coax";
+#load "../encoding/base64.coax";
+#load "../encoding/hex.coax";
+#authority;
+
+WOS_SEAL_KEY_LEN :: 32;
+WOS_SEAL_NONCE_LEN :: 12;
+WOS_SEAL_SALT_LEN :: 16;
+WOS_SEAL_TAG_LEN :: 16;
+WOS_SEAL_MAX_PLAIN :: 8192;
+WOS_SEAL_WOS2_MIN_PWD :: 32;
+WOS_SEAL_WOS2_ROUNDS :: 600000;
+WOS_SEAL_WOS2_PREFIX :: "wos2.";
+WOS_SEAL_WOS2_DOMAIN_SALT :: "workos-ios/session-seal/wos2";
+WOS_SEAL_WOS2_HKDF_INFO :: "wos2.aes-256-gcm";
+
+#test "raw AES-256-GCM unseals published workos-rust compatibility vectors" #steps 300000000 {
+  // Exact vectors from workos-rust/src/helpers/session.rs:528,563-573.
+  key: [32] u8;
+  hex64 := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  key33: [33] u8;
+  #assert wos_seal_hex_key(hex64, key[..]);
+  #assert !wos_seal_hex_key(hex64, key[0..<31]);
+  #assert !wos_seal_hex_key(hex64, key33[..]);
+  #assert !wos_seal_hex_key("short", key[..]);
+  #assert !wos_seal_hex_key("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", key[..]);
+
+  plain: [256] u8;
+  n1 := wos_unseal_raw(key[..], "ms90j8PXlOvPsTVmy5wo9CYORhGStOYteDBgDFe4/Opv3NEZWUACvlBE", plain[..]);
+  #assert n1 == 14 && cast(string) plain[0..<n1] == "\"compat-check\"";
+
+  n2 := wos_unseal_raw(key[..], "wAR4QhPUo3v2n7hGlDGSyMHGYuRzavYm74i9bHLuyaISPeMBWg6ZSbPDsRI3n2S0kSfpi2QaKlq0x0IxzHwdjzkzwxeOh2XmPW8=", plain[..]);
+  #assert n2 == 46 && cast(string) plain[0..<n2] == "{\"access_token\":\"at_1\",\"refresh_token\":\"rt_1\"}";
+
+  // Round-trip raw seal (empty, 5-byte, exact-fit out, max 8192, oversize 8193) + tamper + wrong key.
+  nonce := [12] u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  msg := [5] u8.['h', 'e', 'l', 'l', 'o'];
+  sealed: [128] u8;
+  sn := wos_seal_raw(key[..], nonce[..], msg[..], sealed[..]);
+  #assert sn > 0 && wos_seal_raw(key[..], nonce[..], msg[..], sealed[0..<sn]) == sn;
+  #assert wos_unseal_raw(key[..], cast(string) sealed[0..<sn], plain[0..<5]) == 5 && cast(string) plain[0..<5] == "hello";
+  #assert wos_unseal_raw(key[..], cast(string) sealed[0..<sn], plain[0..<4]) == -1;
+  #assert wos_unseal_raw(key[0..<31], cast(string) sealed[0..<sn], plain[..]) == -1;
+  #assert wos_seal_raw(key[..], nonce[..], msg[..], sealed[0..<sn - 1]) == -1;
+  #assert wos_seal_raw(key[0..<31], nonce[..], msg[..], sealed[..]) == -1;
+  #assert wos_seal_raw(key[..], nonce[0..<11], msg[..], sealed[..]) == -1;
+
+  // Empty plaintext (raw_len == 28 == nonce + tag).
+  sealed0: [64] u8;
+  sn0 := wos_seal_raw(key[..], nonce[..], msg[0..<0], sealed0[..]);
+  #assert sn0 == 40 && wos_unseal_raw(key[..], cast(string) sealed0[0..<sn0], plain[0..<0]) == 0;
+  // 27 decoded bytes (36 base64 chars) is 1 byte short of nonce + tag.
+  #assert wos_unseal_raw(key[..], "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", plain[..]) == -1;
+
+  // Exact WOS_SEAL_MAX_PLAIN (8192) succeeds; 8193 refuses on both seal and unseal.
+  big_pt: [WOS_SEAL_MAX_PLAIN + 1] u8;
+  big_out: [12000] u8;
+  big_dec: [WOS_SEAL_MAX_PLAIN + 16] u8;
+  for i: 0..<big_pt.count { big_pt[i] = cast(u8) (i & 255); }
+  #assert wos_seal_raw(key[..], nonce[..], big_pt[..], big_out[..]) == -1;
+  bn := wos_seal_raw(key[..], nonce[..], big_pt[0..<WOS_SEAL_MAX_PLAIN], big_out[..]);
+  #assert bn > 0 && wos_unseal_raw(key[..], cast(string) big_out[0..<bn], big_dec[0..<WOS_SEAL_MAX_PLAIN]) == WOS_SEAL_MAX_PLAIN;
+  // Base64 of 8221 bytes (== 28 + 8193) is 10964 chars ending in "=="; pass 8208-byte out so plain_len > MAX trips independently.
+  over_b64: [10964] u8;
+  for i: 0..<10962 { over_b64[i] = 'A'; }
+  over_b64[10962] = '=';
+  over_b64[10963] = '=';
+  #assert wos_unseal_raw(key[..], cast(string) over_b64[..], big_dec[..]) == -1;
+
+  key[0] ^= 1;
+  #assert wos_unseal_raw(key[..], cast(string) sealed[0..<sn], plain[..]) == -1;
+  key[0] ^= 1;
+  #assert wos_unseal_raw(key[..], "not-valid-base64@@@", plain[..]) == -1;
+  #assert wos_unseal_raw(key[..], "AAAA", plain[..]) == -1;
+}
+
+#test "wos2 PBKDF2 master key, HKDF per-seal derivation, and AES-GCM AAD match Python oracle" #steps 800000000 {
+  #assert WOS_SEAL_WOS2_ROUNDS == 600000;
+  master: [32] u8;
+  pwd := "0123456789abcdef0123456789abcdef";
+  #assert !wos_seal_wos2_master("too-short-31-chars-0123456789ab", 2, master[..]);
+  #assert !wos_seal_wos2_master(pwd, 0, master[..]);
+  #assert !wos_seal_wos2_master(pwd, PB_MAX_WORK + 1, master[..]);
+  #assert !wos_seal_wos2_master(pwd, 2, master[0..<31]);
+  #assert wos_seal_wos2_master(pwd, 1, master[..]);
+  #assert wos_seal_wos2_master(pwd, PB_MAX_STEP + 1, master[..]);
+  max_pwd: [PB_MAX_INPUT + 1] u8;
+  for i: 0..<max_pwd.count { max_pwd[i] = 'p'; }
+  #assert wos_seal_wos2_master(cast(string) max_pwd[0..<PB_MAX_INPUT], 1, master[..]);
+  #assert !wos_seal_wos2_master(cast(string) max_pwd[..], 1, master[..]);
+  #assert wos_seal_wos2_master(pwd, 2, master[..]);
+  want_master: [32] u8;
+  #assert hex_decode_checked("959c1f6a60c61aedfce1b81e5d37ebd994cd796b3cf2ad3b611b6f2d532ec332", want_master[..], false).error == NC_OK;
+  for i: 0..<32 { #assert master[i] == want_master[i]; }
+
+  salt := [16] u8.[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+  derived: [32] u8;
+  #assert !wos_seal_wos2_derive(master[0..<31], salt[..], derived[..]);
+  #assert !wos_seal_wos2_derive(master[..], salt[0..<15], derived[..]);
+  #assert !wos_seal_wos2_derive(master[..], salt[..], derived[0..<31]);
+  #assert wos_seal_wos2_derive(master[..], salt[..], derived[..]);
+  want_key: [32] u8;
+  #assert hex_decode_checked("77a8e9cbca1d1c5c79d741c8ca7ca84c1b0e798e4d8dccdd0ff502a8d81be91e", want_key[..], false).error == NC_OK;
+  for i: 0..<32 { #assert derived[i] == want_key[i]; }
+
+  nonce := [12] u8.[21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+  msg := [10] u8.['{', '"', 's', '"', ':', '"', 'o', 'k', '"', '}'];
+  sealed: [256] u8;
+  plain: [64] u8;
+  sn := wos_seal_wos2(master[..], salt[..], nonce[..], msg[..], sealed[..]);
+  #assert sn > 5 && cast(string) sealed[0..<5] == "wos2.";
+  #assert wos_seal_wos2(master[..], salt[..], nonce[..], msg[..], sealed[0..<sn]) == sn;
+  #assert wos_seal_wos2(master[0..<31], salt[..], nonce[..], msg[..], sealed[..]) == -1;
+  #assert wos_seal_wos2(master[..], salt[0..<15], nonce[..], msg[..], sealed[..]) == -1;
+  #assert wos_seal_wos2(master[..], salt[..], nonce[0..<11], msg[..], sealed[..]) == -1;
+  #assert wos_unseal_wos2(master[..], cast(string) sealed[0..<sn], plain[0..<10]) == 10;
+  #assert cast(string) plain[0..<10] == "{\"s\":\"ok\"}";
+
+  // Empty plaintext (raw_len == 44 == salt + nonce + tag) and 43-byte truncated payload.
+  sealed0: [128] u8;
+  sn0 := wos_seal_wos2(master[..], salt[..], nonce[..], msg[0..<0], sealed0[..]);
+  #assert sn0 == 65 && wos_unseal_wos2(master[..], cast(string) sealed0[0..<sn0], plain[0..<0]) == 0;
+  #assert wos_unseal_wos2(master[..], "wos2.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==", plain[..]) == -1;
+
+  // Exact WOS_SEAL_MAX_PLAIN (8192) succeeds; 8193 refuses on both seal and unseal.
+  big_pt: [WOS_SEAL_MAX_PLAIN + 1] u8;
+  big_out: [12000] u8;
+  big_dec: [WOS_SEAL_MAX_PLAIN + 16] u8;
+  #assert wos_seal_wos2(master[..], salt[..], nonce[..], big_pt[..], big_out[..]) == -1;
+  bn := wos_seal_wos2(master[..], salt[..], nonce[..], big_pt[0..<WOS_SEAL_MAX_PLAIN], big_out[..]);
+  #assert bn > 5 && wos_unseal_wos2(master[..], cast(string) big_out[0..<bn], big_dec[0..<WOS_SEAL_MAX_PLAIN]) == WOS_SEAL_MAX_PLAIN;
+  // Base64 of 8237 bytes (> 44 + 8192) is 10984 chars + 5 prefix = 10989; pass 8208-byte out.
+  over_w2: [10989] u8;
+  pfx := "wos2.";
+  for i: 0..<5 { over_w2[i] = pfx[i]; }
+  for i: 5..<10988 { over_w2[i] = 'A'; }
+  over_w2[10988] = '=';
+  #assert wos_unseal_wos2(master[..], cast(string) over_w2[..], big_dec[..]) == -1;
+
+  // Tampering prefix, short prefix, wrong master len, wrong master key, bad base64, short output.
+  #assert wos_unseal_wos2(master[0..<31], cast(string) sealed[0..<sn], plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], "wos2", plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], "wos2.", plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], "wos2.x", plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], cast(string) sealed[5..<sn], plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], "wos2.AAAA", plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], "wos2.@@@", plain[..]) == -1;
+  #assert wos_unseal_wos2(master[..], cast(string) sealed[0..<sn], plain[0..<9]) == -1;
+  #assert wos_seal_wos2(master[..], salt[..], nonce[..], msg[..], sealed[0..<sn - 1]) == -1;
+  master[31] ^= 1;
+  #assert wos_unseal_wos2(master[..], cast(string) sealed[0..<sn], plain[..]) == -1;
+}
+
+wos_seal_hex_key :: (hex_password: string, key_out: [] u8) -> bool #export_c #effects(all) {
+  if hex_password.count != 64 || key_out.count != WOS_SEAL_KEY_LEN { return false; }
+  r := hex_decode_checked(hex_password, key_out, false);
+  return r.error == NC_OK;
+}
+
+// workos-rust compatible raw seal: base64(nonce(12) || ct || tag(16)), empty AAD.
+wos_seal_raw :: (key: [] u8, nonce: [] u8, plain: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if key.count != WOS_SEAL_KEY_LEN || nonce.count != WOS_SEAL_NONCE_LEN || plain.count > WOS_SEAL_MAX_PLAIN { return -1; }
+  raw_len := WOS_SEAL_NONCE_LEN + plain.count + WOS_SEAL_TAG_LEN;
+  b64_len := base64_encode_size(raw_len);
+  if out.count < b64_len { return -1; }
+  raw: [WOS_SEAL_NONCE_LEN + WOS_SEAL_MAX_PLAIN + WOS_SEAL_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  for i: 0..<WOS_SEAL_NONCE_LEN { raw[i] = nonce[i]; }
+  empty: [1] u8;
+  cn := aes256_gcm_seal(key, nonce, empty[0..<0], plain, raw[WOS_SEAL_NONCE_LEN..<raw_len]);
+  #assert cn == plain.count + WOS_SEAL_TAG_LEN;
+  r := base64_encode_checked(cast(string) raw[0..<raw_len], out[0..<b64_len], false);
+  #assert r.error == NC_OK;
+  return r.written;
+}
+
+wos_unseal_raw :: (key: [] u8, sealed_b64: string, out: [] u8) -> int #export_c #effects(all) {
+  if key.count != WOS_SEAL_KEY_LEN { return -1; }
+  raw_len := base64_decode_size(sealed_b64);
+  if raw_len < WOS_SEAL_NONCE_LEN + WOS_SEAL_TAG_LEN { return -1; }
+  plain_len := raw_len - WOS_SEAL_NONCE_LEN - WOS_SEAL_TAG_LEN;
+  if plain_len > WOS_SEAL_MAX_PLAIN || out.count < plain_len { return -1; }
+  raw: [WOS_SEAL_NONCE_LEN + WOS_SEAL_MAX_PLAIN + WOS_SEAL_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  dec := base64_decode_checked(sealed_b64, raw[0..<raw_len], false);
+  #assert dec.error == NC_OK;
+  #assert dec.written == raw_len;
+  empty: [1] u8;
+  return aes256_gcm_open(key, raw[0..<WOS_SEAL_NONCE_LEN], empty[0..<0], raw[WOS_SEAL_NONCE_LEN..<raw_len], out[0..<plain_len]);
+}
+
+// Derive the cached wos2. master key using PBKDF2-HMAC-SHA256 over the fixed
+// domain salt. Pass rounds = WOS_SEAL_WOS2_ROUNDS (600,000) in production.
+wos_seal_wos2_master :: (password: string, rounds: int, out_master: [] u8) -> bool #export_c #effects(all) {
+  if password.count < WOS_SEAL_WOS2_MIN_PWD || password.count > PB_MAX_INPUT { return false; }
+  if out_master.count != WOS_SEAL_KEY_LEN { return false; }
+  pbuf: [PB_MAX_INPUT] u8;
+  defer { secure_zero(pbuf[..]); #assert crypto_zeroed(pbuf[..]); }
+  for i: 0..<password.count { pbuf[i] = password[i]; }
+  sbuf: [32] u8;
+  ds := WOS_SEAL_WOS2_DOMAIN_SALT;
+  for i: 0..<ds.count { sbuf[i] = ds[i]; }
+  st: [PB_STATE_BYTES] u8;
+  defer { secure_zero(st[..]); #assert crypto_zeroed(st[..]); }
+  if pb_init_checked(st[..], pbuf[0..<password.count], sbuf[0..<ds.count], rounds, WOS_SEAL_KEY_LEN, false) != PB_OK { return false; }
+  left := rounds;
+  while left > 0 {
+    step := ifx left > PB_MAX_STEP then PB_MAX_STEP else left; // mutant: equivalent (equal yields PB_MAX_STEP)
+    prog := pb_step_checked(st[..], step);
+    #assert prog.error == PB_OK;
+    left -= step;
+  }
+  #assert pb_result_checked(st[..], out_master, false) == PB_OK;
+  return true;
+}
+
+wos_seal_wos2_derive :: (master: [] u8, salt: [] u8, out_key: [] u8) -> bool #export_c #effects(all) {
+  if master.count != WOS_SEAL_KEY_LEN || salt.count != WOS_SEAL_SALT_LEN || out_key.count != WOS_SEAL_KEY_LEN { return false; }
+  prk: [32] u8;
+  defer { secure_zero(prk[..]); #assert crypto_zeroed(prk[..]); }
+  #assert hkdf_extract_checked(salt, master, prk[..], false) == SHA_OK;
+  info_s := WOS_SEAL_WOS2_HKDF_INFO;
+  ibuf: [24] u8;
+  for i: 0..<info_s.count { ibuf[i] = info_s[i]; }
+  #assert hkdf_expand_checked(prk[..], ibuf[0..<info_s.count], out_key, WOS_SEAL_KEY_LEN, false) == SHA_OK;
+  return true;
+}
+
+// workos-ios wos2. seal: "wos2." + base64(salt(16) || nonce(12) || ct || tag(16)), AAD "wos2.".
+wos_seal_wos2 :: (master: [] u8, salt: [] u8, nonce: [] u8, plain: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if master.count != WOS_SEAL_KEY_LEN || salt.count != WOS_SEAL_SALT_LEN || nonce.count != WOS_SEAL_NONCE_LEN || plain.count > WOS_SEAL_MAX_PLAIN { return -1; }
+  raw_len := WOS_SEAL_SALT_LEN + WOS_SEAL_NONCE_LEN + plain.count + WOS_SEAL_TAG_LEN;
+  b64_len := base64_encode_size(raw_len);
+  total := 5 + b64_len;
+  if out.count < total { return -1; }
+  dkey: [32] u8;
+  defer { secure_zero(dkey[..]); #assert crypto_zeroed(dkey[..]); }
+  #assert wos_seal_wos2_derive(master, salt, dkey[..]);
+  raw: [WOS_SEAL_SALT_LEN + WOS_SEAL_NONCE_LEN + WOS_SEAL_MAX_PLAIN + WOS_SEAL_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  for i: 0..<WOS_SEAL_SALT_LEN { raw[i] = salt[i]; }
+  for i: 0..<WOS_SEAL_NONCE_LEN { raw[WOS_SEAL_SALT_LEN + i] = nonce[i]; }
+  aad := [5] u8.['w', 'o', 's', '2', '.'];
+  ct_start := WOS_SEAL_SALT_LEN + WOS_SEAL_NONCE_LEN;
+  cn := aes256_gcm_seal(dkey[..], nonce, aad[..], plain, raw[ct_start..<raw_len]);
+  #assert cn == plain.count + WOS_SEAL_TAG_LEN;
+  for i: 0..<5 { out[i] = aad[i]; }
+  r := base64_encode_checked(cast(string) raw[0..<raw_len], out[5..<total], false);
+  #assert r.error == NC_OK;
+  return 5 + r.written;
+}
+
+wos_unseal_wos2 :: (master: [] u8, sealed: string, out: [] u8) -> int #export_c #effects(all) {
+  if master.count != WOS_SEAL_KEY_LEN { return -1; }
+  if sealed.count < 5 { return -1; } // mutant: equivalent (len 5 has empty body which fails raw_len < 44)
+  if sealed[0..<5] != WOS_SEAL_WOS2_PREFIX { return -1; }
+  body := sealed[5..<sealed.count];
+  raw_len := base64_decode_size(body);
+  hdr_len := WOS_SEAL_SALT_LEN + WOS_SEAL_NONCE_LEN;
+  if raw_len < hdr_len + WOS_SEAL_TAG_LEN { return -1; }
+  plain_len := raw_len - hdr_len - WOS_SEAL_TAG_LEN;
+  if plain_len > WOS_SEAL_MAX_PLAIN || out.count < plain_len { return -1; }
+  raw: [WOS_SEAL_SALT_LEN + WOS_SEAL_NONCE_LEN + WOS_SEAL_MAX_PLAIN + WOS_SEAL_TAG_LEN] u8;
+  defer { secure_zero(raw[..]); #assert crypto_zeroed(raw[..]); }
+  dec := base64_decode_checked(body, raw[0..<raw_len], false);
+  #assert dec.error == NC_OK;
+  #assert dec.written == raw_len;
+  dkey: [32] u8;
+  defer { secure_zero(dkey[..]); #assert crypto_zeroed(dkey[..]); }
+  #assert wos_seal_wos2_derive(master, raw[0..<WOS_SEAL_SALT_LEN], dkey[..]);
+  aad := [5] u8.['w', 'o', 's', '2', '.'];
+  return aes256_gcm_open(dkey[..], raw[WOS_SEAL_SALT_LEN..<hdr_len], aad[..], raw[hdr_len..<raw_len], out[0..<plain_len]);
+}

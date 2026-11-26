@@ -1,0 +1,18 @@
+// Combined Phase 1 C/Wasm compilation unit for coax/lib/workos/ (#14098).
+// Loads every Phase 1 #authority module together to guarantee zero symbol
+// collisions and expose one cohesive C ABI header via `coax lib` / `coax header`.
+#load "pkce.coax";
+#load "url.coax";
+#load "webhook.coax";
+#load "seal.coax";
+#load "jwt.coax";
+#load "error.coax";
+#load "retry.coax";
+
+#test "all seven Phase 1 WorkOS modules compose with zero symbol collisions" {
+  ch: [WOS_PKCE_CHALLENGE_LEN] u8;
+  #assert wos_pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", ch[..]) == 43;
+  u: [512] u8;
+  #assert wos_jwks_url("", "client_01", u[..]) > 0;
+  #assert wos_retry_allowed(WOS_METHOD_GET, false, 429, 0, 3);
+}

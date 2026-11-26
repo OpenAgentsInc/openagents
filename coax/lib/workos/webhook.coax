@@ -1,0 +1,344 @@
+// WorkOS webhook signature verification (WorkOS-Signature: t=<ms>, v1=<hex>)
+// and AuthKit Actions request verification + HMAC verdict signing, matching
+// workos-rust/src/helpers/{webhook_verification,actions}.rs.
+// Pure caller-buffer #authority module.
+#load "../crypto/hmac.coax";
+#load "../encoding/hex.coax";
+#load "../json/json.coax";
+#authority;
+
+WOS_WEBHOOK_TOLERANCE_MS :: 180000;
+WOS_ACTION_TOLERANCE_MS :: 30000;
+WOS_SIG_HEX_LEN :: 64;
+WOS_SIG_MAX_BODY :: 65536;
+WOS_SIG_MAX_SECRET :: 512;
+
+WOS_SIG_OK :: 0;
+WOS_SIG_MISSING :: 1;
+WOS_SIG_MALFORMED :: 2;
+WOS_SIG_UNKNOWN_PART :: 3;
+WOS_SIG_BAD_TIMESTAMP :: 4;
+WOS_SIG_SKEW :: 5;
+WOS_SIG_MISMATCH :: 6;
+WOS_SIG_TOO_BIG :: 7;
+
+WOS_ACTION_AUTH :: 1;
+WOS_ACTION_REG :: 2;
+
+WosSigHeader :: struct {
+  error: u32;
+  timestamp_ms: int;
+  ts_from: int;
+  ts_to: int;
+  sig_from: int;
+  sig_to: int;
+}
+
+#test "WorkOS-Signature header parser handles valid headers and rejects unknown or duplicate parts" {
+  h := "t=1700000000000, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea";
+  p := wos_sig_parse(h);
+  #assert p.error == WOS_SIG_OK && p.timestamp_ms == 1700000000000;
+  #assert h[p.ts_from..<p.ts_to] == "1700000000000";
+  #assert h[p.sig_from..<p.sig_to] == "32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea";
+
+  // Compact spacing, tabs, trailing whitespace, and reversed order also parse cleanly.
+  h2 := "v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea,t=1234";
+  p2 := wos_sig_parse(h2);
+  #assert p2.error == WOS_SIG_OK && p2.timestamp_ms == 1234;
+  h3 := " \t t \t = \t 0 \t , \t v1 \t = \t 32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea \t ";
+  p3 := wos_sig_parse(h3);
+  #assert p3.error == WOS_SIG_OK && p3.timestamp_ms == 0;
+  h4 := "t=999999999999999999,v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea";
+  p4 := wos_sig_parse(h4);
+  #assert p4.error == WOS_SIG_OK && p4.timestamp_ms == 999999999999999999;
+
+  // Empty, missing parts, bad syntax, unknown v2= (downgrade guard), duplicates, bad hex, bad ts.
+  #assert wos_sig_parse("").error == WOS_SIG_MISSING;
+  #assert wos_sig_parse("t=1234").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=1234,").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=1700000000000, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea,").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_trim_right("   ", 3, 3) == 3;
+  #assert wos_sig_parse("=1234").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("   ").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("noequals").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=1234, v1=deadbeef").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=1234, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea, v2=abcd").error == WOS_SIG_UNKNOWN_PART;
+  #assert wos_sig_parse("t=1234, t=1234, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=1234, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_MALFORMED;
+  #assert wos_sig_parse("t=12a4, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_BAD_TIMESTAMP;
+  #assert wos_sig_parse("t=:, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_BAD_TIMESTAMP;
+  #assert wos_sig_parse("t=, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_BAD_TIMESTAMP;
+  #assert wos_sig_parse("\nt=1234, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_UNKNOWN_PART;
+  #assert wos_sig_parse("t\n=1234, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_UNKNOWN_PART;
+  #assert wos_sig_parse("t=9999999999999999999, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_BAD_TIMESTAMP;
+  #assert wos_sig_parse("t=1234, v1=ZZZZ0522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea").error == WOS_SIG_MALFORMED;
+}
+
+#test "webhook HMAC-SHA256 matches workos-rust reference vector and enforces tolerance" {
+  // Exact vector from workos-rust/src/helpers/webhook_verification.rs:154.
+  out: [WOS_SIG_HEX_LEN] u8;
+  #assert wos_sig_compute("secret", "1700000000000", "body", out[..]);
+  #assert cast(string) out[..] == "32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea";
+  #assert !wos_sig_compute("", "1700000000000", "body", out[..]);
+  #assert !wos_sig_compute("secret", "", "body", out[..]);
+  #assert !wos_sig_compute("secret", "1700000000000", "body", out[0..<63]);
+  // Length edges for secret (1, 512, 513), timestamp (1, 24, 25), and body (300-byte multi-chunk, max, max+1).
+  #assert wos_sig_compute("s", "1", "", out[..]);
+  sec513: [WOS_SIG_MAX_SECRET + 1] u8;
+  for i: 0..<sec513.count { sec513[i] = 'k'; }
+  #assert wos_sig_compute(cast(string) sec513[0..<WOS_SIG_MAX_SECRET], "123456789012345678901234", "b", out[..]);
+  #assert !wos_sig_compute(cast(string) sec513[..], "1", "b", out[..]);
+  #assert !wos_sig_compute("s", "1234567890123456789012345", "b", out[..]);
+  chunk_body: [300] u8;
+  for i: 0..<300 { chunk_body[i] = cast(u8) ('a' + (i % 26)); }
+  c1: [64] u8; c2: [64] u8;
+  #assert wos_sig_compute("s", "1", cast(string) chunk_body[..], c1[..]);
+  #assert wos_sig_compute("s", "1", cast(string) chunk_body[0..<256], c2[..]);
+  #assert cast(string) c1[..] != cast(string) c2[..];
+  big_body: [WOS_SIG_MAX_BODY + 1] u8;
+  #assert wos_sig_compute("s", "1", cast(string) big_body[0..<WOS_SIG_MAX_BODY], out[..]);
+  #assert !wos_sig_compute("s", "1", cast(string) big_body[..], out[..]);
+
+  hdr := "t=1700000000000, v1=32850522003ebbce01a416e5d5df8ec8354a96e921cac7d0ebbaeef5732bdaea";
+  hdr_up := "t=1700000000000, v1=32850522003EBBCE01A416E5D5DF8EC8354A96E921CAC7D0EBBAEEF5732BDAEA";
+  #assert wos_sig_verify("secret", hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_OK;
+  #assert wos_sig_verify("secret", hdr_up, "body", 1700000000000, 0) == WOS_SIG_OK;
+  #assert wos_sig_verify("secret", hdr, "body", 1700000000001, 0) == WOS_SIG_SKEW;
+  #assert wos_sig_verify("secret", hdr, "body", 1700000180000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_OK;
+  #assert wos_sig_verify("secret", hdr, "body", 1699999820000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_OK;
+  #assert wos_sig_verify("secret", hdr, "body", 1700000180001, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_SKEW;
+  #assert wos_sig_verify("secret", hdr, "body", 1699999819999, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_SKEW;
+  #assert wos_sig_verify("secret", hdr, "body", 1700000030001, WOS_ACTION_TOLERANCE_MS) == WOS_SIG_SKEW;
+  #assert wos_sig_verify("secret", hdr, "body", 1700000000000, -1) == WOS_SIG_SKEW;
+  #assert wos_sig_verify("wrong", hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISMATCH;
+  #assert wos_sig_verify("secret", hdr, "bodx", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISMATCH;
+  #assert wos_sig_verify("", hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISSING;
+  #assert wos_sig_verify("s", hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISMATCH;
+  #assert wos_sig_verify(cast(string) sec513[0..<WOS_SIG_MAX_SECRET], hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISMATCH;
+  #assert wos_sig_verify(cast(string) sec513[..], hdr, "body", 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_TOO_BIG;
+  #assert wos_sig_verify("s", hdr, cast(string) big_body[0..<WOS_SIG_MAX_BODY], 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_MISMATCH;
+  #assert wos_sig_verify("s", hdr, cast(string) big_body[..], 1700000000000, WOS_WEBHOOK_TOLERANCE_MS) == WOS_SIG_TOO_BIG;
+}
+
+#test "AuthKit Action response signing matches workos-rust Allow and Deny wire format" {
+  // Matches workos-rust/src/helpers/actions.rs:268-302.
+  out: [2048] u8;
+  n := wos_action_sign_response(WOS_ACTION_AUTH, true, "ignored_on_allow", 1700000000000, "shh", out[..]);
+  #assert n > 0;
+  allow_json := cast(string) out[0..<n];
+  expected_sig: [64] u8;
+  #assert wos_sig_compute("shh", "1700000000000", "{\"timestamp\":1700000000000,\"verdict\":\"Allow\"}", expected_sig[..]);
+  nodes: [16] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], allow_json, nodes[..]);
+  tmp: [128] u8;
+  #assert jv_str(d[0], jv_get(d[0], 0, "object"), tmp[..]) == 30 && cast(string) tmp[0..<30] == "authentication_action_response";
+  #assert jv_str(d[0], jv_path(d[0], 0, "payload.verdict"), tmp[..]) == 5 && cast(string) tmp[0..<5] == "Allow";
+  #assert jv_path(d[0], 0, "payload.error_message") == -1;
+  #assert jv_str(d[0], jv_get(d[0], 0, "signature"), tmp[..]) == 64 && cast(string) tmp[0..<64] == cast(string) expected_sig[..];
+
+  // Deny with error_message on user_registration action, plus timestamp 0, 1-byte secret/msg, empty deny msg.
+  n2 := wos_action_sign_response(WOS_ACTION_REG, false, "Account frozen", 1700000000000, "shh", out[..]);
+  #assert n2 > 0;
+  deny_json := cast(string) out[0..<n2];
+  #assert wos_sig_compute("shh", "1700000000000", "{\"timestamp\":1700000000000,\"verdict\":\"Deny\",\"error_message\":\"Account frozen\"}", expected_sig[..]);
+  #assert jv_parse(d[..], deny_json, nodes[..]);
+  #assert jv_str(d[0], jv_get(d[0], 0, "object"), tmp[..]) == 33 && cast(string) tmp[0..<33] == "user_registration_action_response";
+  #assert jv_str(d[0], jv_path(d[0], 0, "payload.verdict"), tmp[..]) == 4 && cast(string) tmp[0..<4] == "Deny";
+  #assert jv_str(d[0], jv_path(d[0], 0, "payload.error_message"), tmp[..]) == 14 && cast(string) tmp[0..<14] == "Account frozen";
+  #assert jv_str(d[0], jv_get(d[0], 0, "signature"), tmp[..]) == 64 && cast(string) tmp[0..<64] == cast(string) expected_sig[..];
+
+  n0 := wos_action_sign_response(WOS_ACTION_AUTH, false, "e", 0, "s", out[..]);
+  #assert n0 > 0;
+  #assert wos_sig_compute("s", "0", "{\"timestamp\":0,\"verdict\":\"Deny\",\"error_message\":\"e\"}", expected_sig[..]);
+  #assert jv_parse(d[..], cast(string) out[0..<n0], nodes[..]);
+  #assert jv_str(d[0], jv_get(d[0], 0, "signature"), tmp[..]) == 64 && cast(string) tmp[0..<64] == cast(string) expected_sig[..];
+  ne := wos_action_sign_response(WOS_ACTION_AUTH, false, "", 0, "s", out[..]);
+  #assert ne > 0 && jv_parse(d[..], cast(string) out[0..<ne], nodes[..]) && jv_path(d[0], 0, "payload.error_message") == -1;
+
+  // Secret & error_message upper limits, plus JSON-escaped payload overflow.
+  sec513: [WOS_SIG_MAX_SECRET + 1] u8;
+  for i: 0..<sec513.count { sec513[i] = 'k'; }
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, true, "", 1, cast(string) sec513[0..<WOS_SIG_MAX_SECRET], out[..]) > 0;
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, true, "", 1, cast(string) sec513[..], out[..]) == -1;
+  msg1025: [1025] u8;
+  for i: 0..<msg1025.count { msg1025[i] = 'm'; }
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, false, cast(string) msg1025[0..<1024], 1, "s", out[..]) > 0;
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, false, cast(string) msg1025[..], 1, "s", out[..]) == -1;
+  quotes: [800] u8;
+  for i: 0..<quotes.count { quotes[i] = '"'; }
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, false, cast(string) quotes[..], 1, "s", out[..]) == -1;
+
+  // Invalid action kind, negative timestamp, empty secret, or tiny buffer refuses.
+  #assert wos_action_sign_response(0, true, "", 1700000000000, "shh", out[..]) == -1;
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, true, "", -1, "shh", out[..]) == -1;
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, true, "", 1700000000000, "", out[..]) == -1;
+  #assert wos_action_sign_response(WOS_ACTION_AUTH, true, "", 1700000000000, "shh", out[0..<20]) == -1;
+}
+
+wos_sig_trim_left :: (s: string, a: int, b: int) -> int #effects(all) {
+  i := a;
+  while i < b && (s[i] == ' ' || s[i] == '\t') { i += 1; }
+  return i;
+}
+
+wos_sig_trim_right :: (s: string, a: int, b: int) -> int #effects(all) {
+  j := b;
+  while j > a && (s[j - 1] == ' ' || s[j - 1] == '\t') { j -= 1; }
+  return j;
+}
+
+wos_sig_parse_u63 :: (s: string) -> int #effects(all) {
+  if s.count < 1 || s.count > 18 { return -1; }
+  v := 0;
+  for c: s {
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+wos_sig_parse :: (header: string) -> WosSigHeader #export_c #effects(all) {
+  out: WosSigHeader;
+  if header.count == 0 { out.error = WOS_SIG_MISSING; return out; }
+  has_t := false;
+  has_v1 := false;
+  pos := 0;
+  while pos <= header.count {
+    end := pos;
+    while end < header.count && header[end] != ',' { end += 1; }
+    a := wos_sig_trim_left(header, pos, end);
+    b := wos_sig_trim_right(header, a, end);
+    eq := 0;
+    for i: a..<b { if header[i] == '=' { eq = i; break; } }
+    if eq <= 0 { out.error = WOS_SIG_MALFORMED; return out; }
+    k_to := wos_sig_trim_right(header, a, eq);
+    v_from := wos_sig_trim_left(header, eq + 1, b);
+    key := header[a..<k_to];
+    val := header[v_from..<b];
+    if key == "t" {
+      if has_t { out.error = WOS_SIG_MALFORMED; return out; }
+      ts := wos_sig_parse_u63(val);
+      if ts < 0 { out.error = WOS_SIG_BAD_TIMESTAMP; return out; }
+      has_t = true;
+      out.timestamp_ms = ts;
+      out.ts_from = v_from;
+      out.ts_to = b;
+    } else if key == "v1" {
+      if has_v1 || val.count != WOS_SIG_HEX_LEN { out.error = WOS_SIG_MALFORMED; return out; }
+      for c: val { if hex_digit(c) < 0 { out.error = WOS_SIG_MALFORMED; return out; } }
+      has_v1 = true;
+      out.sig_from = v_from;
+      out.sig_to = b;
+    } else {
+      out.error = WOS_SIG_UNKNOWN_PART;
+      return out;
+    }
+    if end == header.count { break; }
+    pos = end + 1;
+  }
+  if !has_t || !has_v1 { out.error = WOS_SIG_MALFORMED; return out; }
+  return out;
+}
+
+wos_sig_compute :: (secret: string, timestamp: string, body: string, out_hex: [] u8) -> bool #export_c #effects(all) {
+  if secret.count < 1 || secret.count > WOS_SIG_MAX_SECRET || timestamp.count < 1 || timestamp.count > 24 { return false; }
+  if body.count > WOS_SIG_MAX_BODY || out_hex.count < WOS_SIG_HEX_LEN { return false; }
+  kbuf: [WOS_SIG_MAX_SECRET] u8;
+  defer { secure_zero(kbuf[..]); #assert crypto_zeroed(kbuf[..]); }
+  for i: 0..<secret.count { kbuf[i] = secret[i]; }
+  st: [224] u8;
+  defer { secure_zero(st[..]); #assert crypto_zeroed(st[..]); }
+  #assert hmac_sha256_init_checked(st[..], kbuf[0..<secret.count], false) == SHA_OK;
+  tbuf: [25] u8;
+  for i: 0..<timestamp.count { tbuf[i] = timestamp[i]; }
+  tbuf[timestamp.count] = '.';
+  #assert hmac_sha256_update_checked(st[..], tbuf[0..<timestamp.count + 1], false) == SHA_OK;
+  // Stream body in bounded 256-byte chunks so large webhook payloads never need a 64 KiB stack copy.
+  chunk: [256] u8;
+  at := 0;
+  while at < body.count {
+    step := body.count - at;
+    if step > 256 { step = 256; } // mutant: equivalent (step == 256 sets step to 256)
+    for i: 0..<step { chunk[i] = body[at + i]; }
+    #assert hmac_sha256_update_checked(st[..], chunk[0..<step], false) == SHA_OK;
+    at += step;
+  }
+  mac: [32] u8;
+  defer { secure_zero(mac[..]); #assert crypto_zeroed(mac[..]); }
+  #assert hmac_sha256_final_checked(st[..], mac[..], false) == SHA_OK;
+  enc := hex_encode_checked(cast(string) mac[..], out_hex[0..<WOS_SIG_HEX_LEN], false);
+  #assert enc.error == NC_OK;
+  #assert enc.written == WOS_SIG_HEX_LEN;
+  return true;
+}
+
+wos_sig_verify :: (secret: string, sig_header: string, body: string, now_ms: int, tolerance_ms: int) -> u32 #export_c #effects(all) {
+  if secret.count < 1 { return WOS_SIG_MISSING; }
+  if secret.count > WOS_SIG_MAX_SECRET || body.count > WOS_SIG_MAX_BODY { return WOS_SIG_TOO_BIG; }
+  p := wos_sig_parse(sig_header);
+  if p.error != WOS_SIG_OK { return p.error; }
+  if tolerance_ms < 0 { return WOS_SIG_SKEW; }
+  diff := ifx now_ms >= p.timestamp_ms then now_ms - p.timestamp_ms else p.timestamp_ms - now_ms; // mutant: equivalent (equal gives 0)
+  if diff > tolerance_ms { return WOS_SIG_SKEW; }
+  expected: [WOS_SIG_HEX_LEN] u8;
+  defer { secure_zero(expected[..]); #assert crypto_zeroed(expected[..]); }
+  #assert wos_sig_compute(secret, sig_header[p.ts_from..<p.ts_to], body, expected[..]);
+  got: [WOS_SIG_HEX_LEN] u8;
+  for i: 0..<WOS_SIG_HEX_LEN {
+    c := sig_header[p.sig_from + i];
+    got[i] = ifx c >= 'A' && c <= 'F' then c + 32 else c; // mutant: equivalent (wos_sig_parse verified hex_digit(c) >= 0, so no byte in 71..96)
+  }
+  if cb_ct_equal(expected[..], got[..]) != CB_MAX64 { return WOS_SIG_MISMATCH; }
+  return WOS_SIG_OK;
+}
+
+wos_action_fmt_int :: (v: int, out: [] u8) -> int #effects(all) {
+  tmp: [24] u8; k := 0; x := v;
+  if x == 0 { out[0] = '0'; return 1; }
+  while x > 0 { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for i: 0..<k { out[i] = tmp[k - 1 - i]; }
+  return k;
+}
+
+// Build and HMAC-sign a synchronous AuthKit Action response JSON body.
+// Returns bytes written into out, or -1 on invalid input / capacity failure.
+wos_action_sign_response :: (action_kind: int, allow: bool, error_message: string, now_ms: int, secret: string, out: [] u8) -> int #export_c #effects(all) {
+  obj := ifx action_kind == WOS_ACTION_AUTH then "authentication_action_response"
+         else ifx action_kind == WOS_ACTION_REG then "user_registration_action_response"
+         else "";
+  if obj.count == 0 || now_ms < 0 || secret.count < 1 || secret.count > WOS_SIG_MAX_SECRET { return -1; }
+  if error_message.count > 1024 { return -1; }
+
+  // 1. Serialize compact payload JSON first so signature covers the exact payload bytes.
+  pbuf: [1408] u8;
+  po: [1] Jo;
+  jo_start(po[..], pbuf[..]);
+  jo_obj(po[..]);
+  jo_key(po[..], "timestamp"); jo_int(po[..], now_ms);
+  jo_key(po[..], "verdict"); jo_str(po[..], ifx allow then "Allow" else "Deny");
+  if !allow && error_message.count > 0 {
+    jo_key(po[..], "error_message"); jo_str(po[..], error_message);
+  }
+  jo_end(po[..]);
+  if po[0].bad { return -1; }
+  payload_json := jo_text(po[..]);
+
+  // 2. Sign "<timestamp>.<JSON(payload)>".
+  tsbuf: [24] u8;
+  tsn := wos_action_fmt_int(now_ms, tsbuf[..]);
+  sig: [WOS_SIG_HEX_LEN] u8;
+  defer { secure_zero(sig[..]); #assert crypto_zeroed(sig[..]); }
+  #assert wos_sig_compute(secret, cast(string) tsbuf[0..<tsn], payload_json, sig[..]);
+
+  // 3. Emit outer envelope {"object":...,"payload":...,"signature":...}.
+  eo: [1] Jo;
+  jo_start(eo[..], out);
+  jo_obj(eo[..]);
+  jo_key(eo[..], "object"); jo_str(eo[..], obj);
+  jo_key(eo[..], "payload"); jo_raw(eo[..], payload_json);
+  jo_key(eo[..], "signature"); jo_str(eo[..], cast(string) sig[..]);
+  jo_end(eo[..]);
+  if eo[0].bad { return -1; }
+  return eo[0].n;
+}

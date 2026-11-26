@@ -1,0 +1,184 @@
+// WorkOS structured API error parser & refresh/device-poll classifier.
+// Handles both Management API ({code, message}) and OAuth/AuthKit
+// ({error, error_description}) error shapes, multi-step 403 auth codes
+// (organization_selection_required, sso_required), and Retry-After parsing.
+// Pure caller-buffer #authority module.
+#load "../json/json.coax";
+#authority;
+
+WOS_ERR_CODE_MAX :: 96;
+WOS_ERR_MSG_MAX :: 384;
+WOS_ERR_TOK_MAX :: 256;
+WOS_ERR_REQID_MAX :: 96;
+
+WOS_ERR_KIND_GENERIC :: 0;
+WOS_ERR_KIND_ORG_SELECT :: 1;
+WOS_ERR_KIND_SSO_REQUIRED :: 2;
+WOS_ERR_KIND_AUTH_PENDING :: 3;
+WOS_ERR_KIND_SLOW_DOWN :: 4;
+WOS_ERR_KIND_INVALID_GRANT :: 5;
+
+WOS_REFRESH_TRANSIENT :: 1;   // preserve refresh token (0/408/429/5xx)
+WOS_REFRESH_REVOKED :: 2;     // clear stored session (401 or invalid_grant)
+WOS_REFRESH_FAILED :: 3;      // non-transient error; surface to caller
+
+WosApiError :: struct {
+  status: int;
+  kind: u32;
+  retry_after_sec: int;       // -1 when absent or non-integer
+  code: [WOS_ERR_CODE_MAX] u8; code_n: int;
+  message: [WOS_ERR_MSG_MAX] u8; message_n: int;
+  pending_auth_token: [WOS_ERR_TOK_MAX] u8; pending_n: int;
+  request_id: [WOS_ERR_REQID_MAX] u8; request_id_n: int;
+}
+
+#test "error parser normalizes Management API, OAuth, multi-step 403, and plain text errors" {
+  e: [1] WosApiError;
+  // Management API {code, message} + Retry-After + x-request-id.
+  wos_parse_api_error(404, "{\"code\":\"user_not_found\",\"message\":\"User not found\"}", " 30 ", "req_abc", e[..]);
+  #assert e[0].status == 404 && e[0].kind == WOS_ERR_KIND_GENERIC && e[0].retry_after_sec == 30;
+  #assert cast(string) e[0].code[0..<e[0].code_n] == "user_not_found";
+  #assert cast(string) e[0].message[0..<e[0].message_n] == "User not found";
+  #assert cast(string) e[0].request_id[0..<e[0].request_id_n] == "req_abc";
+
+  // OAuth {error, error_description} -> invalid_grant.
+  wos_parse_api_error(401, "{\"error\":\"invalid_grant\",\"error_description\":\"refresh token expired\"}", "bad", "", e[..]);
+  #assert e[0].status == 401 && e[0].kind == WOS_ERR_KIND_INVALID_GRANT && e[0].retry_after_sec == -1;
+  #assert cast(string) e[0].code[0..<e[0].code_n] == "invalid_grant";
+  #assert cast(string) e[0].message[0..<e[0].message_n] == "refresh token expired";
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_REVOKED;
+
+  // Multi-org 403 organization_selection_required extracts pending_authentication_token.
+  wos_parse_api_error(403, "{\"code\":\"organization_selection_required\",\"message\":\"Select an org\",\"pending_authentication_token\":\"pat_01XYZ\"}", "", "", e[..]);
+  #assert e[0].kind == WOS_ERR_KIND_ORG_SELECT;
+  #assert cast(string) e[0].pending_auth_token[0..<e[0].pending_n] == "pat_01XYZ";
+
+  // SSO required and RFC 8628 device poll states.
+  wos_parse_api_error(403, "{\"code\":\"sso_required\",\"message\":\"Use SSO\"}", "", "", e[..]);
+  #assert e[0].kind == WOS_ERR_KIND_SSO_REQUIRED;
+  wos_parse_api_error(400, "{\"error\":\"authorization_pending\"}", "", "", e[..]);
+  #assert e[0].kind == WOS_ERR_KIND_AUTH_PENDING && cast(string) e[0].message[0..<e[0].message_n] == "authorization_pending";
+  wos_parse_api_error(400, "{\"error\":\"slow_down\"}", "", "", e[..]);
+  #assert e[0].kind == WOS_ERR_KIND_SLOW_DOWN;
+
+  // Plain-text 502 fallback and refresh classification (transient vs revoked vs failed).
+  wos_parse_api_error(502, "upstream timeout", "", "", e[..]);
+  #assert e[0].code_n == 0 && cast(string) e[0].message[0..<e[0].message_n] == "upstream timeout";
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+
+  wos_parse_api_error(429, "", "5", "", e[..]);
+  #assert e[0].retry_after_sec == 5 && e[0].message_n == 0 && wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+  wos_parse_api_error(408, "", "", "", e[..]);
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+  wos_parse_api_error(0, "", "", "", e[..]);
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+  wos_parse_api_error(400, "{\"error\":\"bad_request\"}", "", "", e[..]);
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_FAILED;
+
+  // Retry-After boundaries: tabs, newlines, empty, digits 0/9, 9 vs 10 digits, non-digit ':'.
+  #assert wos_retry_after_parse("") == -1 && wos_retry_after_parse("   ") == -1;
+  #assert wos_retry_after_parse("\t30\t") == 30 && wos_retry_after_parse("\n30") == -1 && wos_retry_after_parse("30\n") == -1;
+  #assert wos_retry_after_parse("     12345") == 12345;
+  #assert wos_retry_after_parse("0") == 0 && wos_retry_after_parse("9") == 9 && wos_retry_after_parse(":") == -1;
+  #assert wos_retry_after_parse("999999999") == 999999999 && wos_retry_after_parse("1000000000") == -1;
+
+  // 1-byte body, non-object JSON, object without message/error, empty message fallback, 1-char fields.
+  wos_parse_api_error(500, "x", "", "", e[..]);
+  #assert e[0].message_n == 1 && cast(string) e[0].message[0..<1] == "x" && wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+  wos_parse_api_error(599, "[]", "", "", e[..]);
+  #assert cast(string) e[0].message[0..<e[0].message_n] == "[]" && wos_refresh_classify(e[0]) == WOS_REFRESH_TRANSIENT;
+  wos_parse_api_error(600, "{\"foo\":1}", "", "", e[..]);
+  #assert cast(string) e[0].message[0..<e[0].message_n] == "{\"foo\":1}" && wos_refresh_classify(e[0]) == WOS_REFRESH_FAILED;
+  wos_parse_api_error(499, "{\"message\":\"\"}", "", "", e[..]);
+  #assert cast(string) e[0].message[0..<e[0].message_n] == "{\"message\":\"\"}" && wos_refresh_classify(e[0]) == WOS_REFRESH_FAILED;
+  wos_parse_api_error(401, "{\"code\":\"a\",\"message\":\"b\",\"pending_authentication_token\":\"c\"}", "", "", e[..]);
+  #assert e[0].code_n == 1 && e[0].message_n == 1 && e[0].pending_n == 1 && wos_refresh_classify(e[0]) == WOS_REFRESH_REVOKED;
+  wos_parse_api_error(400, "{\"error\":\"invalid_grant\"}", "", "", e[..]);
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_REVOKED;
+  wos_parse_api_error(402, "{\"code\":\"other\"}", "", "", e[..]);
+  #assert wos_refresh_classify(e[0]) == WOS_REFRESH_FAILED;
+  // Oversized request_id clips cleanly to WOS_ERR_REQID_MAX.
+  long_id: [WOS_ERR_REQID_MAX + 4] u8;
+  for i: 0..<long_id.count { long_id[i] = 'r'; }
+  wos_parse_api_error(500, "", "", cast(string) long_id[..], e[..]);
+  #assert e[0].request_id_n == WOS_ERR_REQID_MAX;
+}
+
+wos_err_copy_clip :: (s: string, out: [] u8) -> int #effects(all) {
+  n := ifx s.count > out.count then out.count else s.count; // mutant: equivalent (equal counts yield same n)
+  for i: 0..<n { out[i] = s[i]; }
+  return n;
+}
+
+wos_retry_after_parse :: (raw: string) -> int #export_c #effects(all) {
+  a := 0; b := raw.count;
+  while a < b && (raw[a] == ' ' || raw[a] == '\t') { a += 1; }
+  while b > a && (raw[b - 1] == ' ' || raw[b - 1] == '\t') { b -= 1; }
+  if b <= a || b - a > 9 { return -1; }
+  v := 0;
+  for i: a..<b {
+    c := raw[i];
+    if c < '0' || c > '9' { return -1; }
+    v = v * 10 + cast(int) (c - '0');
+  }
+  return v;
+}
+
+wos_err_classify_code :: (code: string) -> u32 #effects(all) {
+  if code == "organization_selection_required" { return WOS_ERR_KIND_ORG_SELECT; }
+  if code == "sso_required" { return WOS_ERR_KIND_SSO_REQUIRED; }
+  if code == "authorization_pending" { return WOS_ERR_KIND_AUTH_PENDING; }
+  if code == "slow_down" { return WOS_ERR_KIND_SLOW_DOWN; }
+  if code == "invalid_grant" { return WOS_ERR_KIND_INVALID_GRANT; }
+  return WOS_ERR_KIND_GENERIC;
+}
+
+wos_parse_api_error :: (status: int, body: string, retry_after_hdr: string, request_id_hdr: string, out: [] WosApiError) #export_c #effects(all) {
+  out[0] = WosApiError.{status = status, retry_after_sec = wos_retry_after_parse(retry_after_hdr)};
+  out[0].request_id_n = wos_err_copy_clip(request_id_hdr, out[0].request_id[..]);
+  if body.count == 0 { return; }
+
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) {
+    out[0].message_n = wos_err_copy_clip(body, out[0].message[..]);
+    return;
+  }
+
+  code_node := jv_get(d[0], 0, "code");
+  if code_node == -1 { code_node = jv_get(d[0], 0, "error"); }
+  if jv_kind(d[0], code_node) == JV_STRING {
+    cn := jv_str(d[0], code_node, out[0].code[..]);
+    if cn > 0 { // mutant: equivalent (cn==0 leaves code_n==0 and kind==GENERIC)
+      out[0].code_n = cn;
+      out[0].kind = wos_err_classify_code(cast(string) out[0].code[0..<cn]);
+    }
+  }
+
+  msg_node := jv_get(d[0], 0, "message");
+  if msg_node == -1 { msg_node = jv_get(d[0], 0, "error_description"); }
+  if msg_node == -1 { msg_node = jv_get(d[0], 0, "error"); }
+  if jv_kind(d[0], msg_node) == JV_STRING {
+    mn := jv_str(d[0], msg_node, out[0].message[..]);
+    if mn > 0 { out[0].message_n = mn; } else { out[0].message_n = wos_err_copy_clip(body, out[0].message[..]); }
+  } else {
+    out[0].message_n = wos_err_copy_clip(body, out[0].message[..]);
+  }
+
+  pat_node := jv_get(d[0], 0, "pending_authentication_token");
+  if jv_kind(d[0], pat_node) == JV_STRING {
+    pn := jv_str(d[0], pat_node, out[0].pending_auth_token[..]);
+    if pn > 0 { out[0].pending_n = pn; } // mutant: equivalent (pn==0 leaves pending_n==0)
+  }
+}
+
+// Classify refresh failures so callers preserve stored refresh tokens on
+// transient failures (0, 408, 429, 5xx) and clear only on 401 / invalid_grant.
+wos_refresh_classify :: (e: WosApiError) -> u32 #export_c #effects(all) {
+  if e.status == 0 || e.status == 408 || e.status == 429 || (e.status >= 500 && e.status <= 599) {
+    return WOS_REFRESH_TRANSIENT;
+  }
+  if e.status == 401 || e.kind == WOS_ERR_KIND_INVALID_GRANT {
+    return WOS_REFRESH_REVOKED;
+  }
+  return WOS_REFRESH_FAILED;
+}

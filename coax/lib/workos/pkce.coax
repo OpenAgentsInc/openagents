@@ -1,0 +1,218 @@
+// WorkOS PKCE (RFC 7636 S256), canonical unpadded base64url encoding, and
+// constant-time OAuth state helpers. Pure caller-buffer #authority module.
+#load "../crypto/sha256.coax";
+#load "../encoding/fi-base64url.coax";
+#authority;
+
+WOS_B64URL_ALPHABET :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+WOS_B64_MAX_IN :: 16384;
+WOS_PKCE_VERIFIER_MIN :: 43;
+WOS_PKCE_VERIFIER_MAX :: 128;
+WOS_PKCE_CHALLENGE_LEN :: 43;
+WOS_STATE_ENTROPY_LEN :: 32;
+WOS_STATE_LEN :: 43;
+WOS_PKCE_ENTROPY_MIN :: 32;
+WOS_PKCE_ENTROPY_MAX :: 96;
+
+#test "base64url encode matches RFC 4648 unpadded vectors and refuses bad room" {
+  plain := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  codes := [7] string.["", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"];
+  for i: 0..<7 {
+    out: [16] u8;
+    for k: 0..<16 { out[k] = 77; }
+    inb: [8] u8;
+    for k: 0..<plain[i].count { inb[k] = plain[i][k]; }
+    r := wos_b64url_encode(inb[0..<plain[i].count], out[..]);
+    #assert r.error == NC_OK && r.written == codes[i].count;
+    #assert cast(string) out[0..<r.written] == codes[i];
+    #assert wos_b64url_encode_size(plain[i].count) == codes[i].count;
+    if r.written > 0 {
+      #assert wos_b64url_encode(inb[0..<plain[i].count], out[0..<r.written - 1]).error == NC_CAPACITY;
+    }
+    back: [8] u8;
+    dec := fi_b64url_decode(cast(string) out[0..<r.written], back[..]);
+    #assert dec.error == NC_OK && dec.written == plain[i].count;
+    for k: 0..<plain[i].count { #assert back[k] == inb[k]; }
+  }
+  url_bytes := [2] u8.[251, 255];
+  uout: [4] u8;
+  ur := wos_b64url_encode(url_bytes[..], uout[..]);
+  #assert ur.error == NC_OK && ur.written == 3 && cast(string) uout[0..<3] == "-_8";
+  #assert wos_b64url_encode_size(-1) == -1 && wos_b64url_encode_size(WOS_B64_MAX_IN + 1) == -1;
+  #assert wos_b64url_encode_size(WOS_B64_MAX_IN) == 21846;
+  over: [WOS_B64_MAX_IN + 1] u8;
+  #assert wos_b64url_encode(over[..], uout[..]).error == NC_LIMIT;
+  guard := [4] u8.[77, 77, 77, 77];
+  #assert wos_b64url_encode(url_bytes[..], guard[0..<2]).error == NC_CAPACITY;
+  for g: guard { #assert g == 77; }
+}
+
+#forall "every byte value round-trips across all 1..3 block remainders" b: 0..<256 {
+  raw := [3] u8.[cast(u8) b, cast(u8) (255 - b), cast(u8) (b / 2)];
+  for n: 1..<4 {
+    enc: [4] u8; back: [3] u8;
+    r := wos_b64url_encode(raw[0..<n], enc[..]);
+    #assert r.error == NC_OK && r.written == n + 1;
+    d := fi_b64url_decode(cast(string) enc[0..<r.written], back[..]);
+    #assert d.error == NC_OK && d.written == n;
+    for i: 0..<n { #assert back[i] == raw[i]; }
+  }
+}
+
+#forall "PKCE verifier unreserved byte classification is exact across ASCII" b: 0..<256 {
+  expected := (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 46 || b == 95 || b == 126;
+  #assert wos_pkce_unreserved(cast(u8) b) == expected;
+}
+
+#test "PKCE S256 matches RFC 7636 Appendix B and enforces exact verifier bounds" {
+  // RFC 7636 Appendix B test vector.
+  v := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+  want := "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+  ch: [WOS_PKCE_CHALLENGE_LEN] u8;
+  for i: 0..<WOS_PKCE_CHALLENGE_LEN { ch[i] = 77; }
+  #assert wos_pkce_verifier_ok(v);
+  #assert wos_pkce_challenge(v, ch[..]) == WOS_PKCE_CHALLENGE_LEN;
+  #assert cast(string) ch[..] == want;
+  // Short output buffer refuses without modifying bytes.
+  short: [WOS_PKCE_CHALLENGE_LEN - 1] u8;
+  for i: 0..<short.count { short[i] = 77; }
+  #assert wos_pkce_challenge(v, short[..]) == -1;
+  for b: short { #assert b == 77; }
+  // Length boundaries: 42 rejected, 43 accepted, 128 accepted, 129 rejected.
+  long: [129] u8;
+  for i: 0..<129 { long[i] = 'a'; }
+  #assert !wos_pkce_verifier_ok(cast(string) long[0..<42]);
+  #assert wos_pkce_verifier_ok(cast(string) long[0..<43]);
+  #assert wos_pkce_verifier_ok(cast(string) long[0..<128]);
+  #assert !wos_pkce_verifier_ok(cast(string) long[..]);
+  #assert wos_pkce_challenge(cast(string) long[0..<42], ch[..]) == -1;
+  #assert wos_pkce_challenge(cast(string) long[0..<128], ch[..]) == WOS_PKCE_CHALLENGE_LEN;
+  // Invalid character inside verifier is rejected.
+  long[20] = '+';
+  #assert !wos_pkce_verifier_ok(cast(string) long[0..<43]);
+  long[20] = '~';
+  #assert wos_pkce_verifier_ok(cast(string) long[0..<43]);
+}
+
+#test "PKCE verifier from entropy and state helpers enforce exact entropy lengths" {
+  ent: [97] u8;
+  for i: 0..<97 { ent[i] = cast(u8) ((i * 7 + 3) & 255); }
+  vout: [140] u8;
+  #assert wos_pkce_verifier_from_entropy(ent[0..<31], vout[..]) == -1;
+  #assert wos_pkce_verifier_from_entropy(ent[0..<97], vout[..]) == -1;
+  n32 := wos_pkce_verifier_from_entropy(ent[0..<32], vout[..]);
+  #assert n32 == 43 && wos_pkce_verifier_ok(cast(string) vout[0..<n32]);
+  #assert wos_pkce_verifier_from_entropy(ent[0..<32], vout[0..<42]) == -1;
+  n96 := wos_pkce_verifier_from_entropy(ent[0..<96], vout[..]);
+  #assert n96 == 128 && wos_pkce_verifier_ok(cast(string) vout[0..<n96]);
+
+  st: [WOS_STATE_LEN] u8;
+  #assert wos_state_from_entropy(ent[0..<31], st[..]) == -1;
+  #assert wos_state_from_entropy(ent[0..<33], st[..]) == -1;
+  #assert wos_state_from_entropy(ent[0..<32], st[0..<42]) == -1;
+  #assert wos_state_from_entropy(ent[0..<32], st[..]) == WOS_STATE_LEN;
+  s := cast(string) st[..];
+  #assert wos_state_equal(s, s);
+  #assert wos_state_equal("x", "x");
+  #assert !wos_state_equal("", "");
+  #assert !wos_state_equal(s, s[0..<42]);
+  other := st;
+  other[42] ^= 1;
+  #assert !wos_state_equal(s, cast(string) other[..]);
+  first := st;
+  first[0] ^= 1;
+  #assert !wos_state_equal(s, cast(string) first[..]);
+  max_s: [513] u8;
+  for i: 0..<513 { max_s[i] = 's'; }
+  #assert wos_state_equal(cast(string) max_s[0..<512], cast(string) max_s[0..<512]);
+  #assert !wos_state_equal(cast(string) max_s[..], cast(string) max_s[..]);
+}
+
+wos_b64url_encode_size :: (count: int) -> int #export_c #effects(all) {
+  if count < 0 || count > WOS_B64_MAX_IN { return -1; }
+  full := count / 3;
+  rem := count % 3;
+  extra := ifx rem == 0 then 0 else rem + 1;
+  return full * 4 + extra;
+}
+
+wos_b64url_encode :: (input: [] u8, out: [] u8) -> NC_Result #effects(all) {
+  need := wos_b64url_encode_size(input.count);
+  if need < 0 { return NC_Result.{error = NC_LIMIT}; }
+  if out.count < need { return NC_Result.{error = NC_CAPACITY}; }
+  i := 0; o := 0;
+  while i + 3 <= input.count {
+    a := cast(int) input[i];
+    b := cast(int) input[i + 1];
+    c := cast(int) input[i + 2];
+    out[o] = WOS_B64URL_ALPHABET[a >> 2];
+    out[o + 1] = WOS_B64URL_ALPHABET[((a & 3) << 4) | (b >> 4)];
+    out[o + 2] = WOS_B64URL_ALPHABET[((b & 15) << 2) | (c >> 6)];
+    out[o + 3] = WOS_B64URL_ALPHABET[c & 63];
+    i += 3; o += 4;
+  }
+  rem := input.count - i;
+  if rem == 1 {
+    a := cast(int) input[i];
+    out[o] = WOS_B64URL_ALPHABET[a >> 2];
+    out[o + 1] = WOS_B64URL_ALPHABET[(a & 3) << 4];
+    o += 2;
+  } else if rem == 2 {
+    a := cast(int) input[i];
+    b := cast(int) input[i + 1];
+    out[o] = WOS_B64URL_ALPHABET[a >> 2];
+    out[o + 1] = WOS_B64URL_ALPHABET[((a & 3) << 4) | (b >> 4)];
+    out[o + 2] = WOS_B64URL_ALPHABET[(b & 15) << 2];
+    o += 3;
+  }
+  return NC_Result.{written = o, error = NC_OK};
+}
+
+wos_pkce_unreserved :: (c: u8) -> bool #effects(all) {
+  if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') { return true; }
+  return c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+wos_pkce_verifier_ok :: (verifier: string) -> bool #export_c #effects(all) {
+  if verifier.count < WOS_PKCE_VERIFIER_MIN || verifier.count > WOS_PKCE_VERIFIER_MAX { return false; }
+  for c: verifier { if !wos_pkce_unreserved(c) { return false; } }
+  return true;
+}
+
+wos_pkce_verifier_from_entropy :: (entropy: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if entropy.count < WOS_PKCE_ENTROPY_MIN || entropy.count > WOS_PKCE_ENTROPY_MAX { return -1; }
+  r := wos_b64url_encode(entropy, out);
+  if r.error != NC_OK { return -1; }
+  return r.written;
+}
+
+// Compute the 43-byte S256 PKCE code_challenge for verifier. Returns 43 or -1.
+wos_pkce_challenge :: (verifier: string, out: [] u8) -> int #export_c #effects(all) {
+  if !wos_pkce_verifier_ok(verifier) || out.count < WOS_PKCE_CHALLENGE_LEN { return -1; }
+  vbuf: [WOS_PKCE_VERIFIER_MAX] u8;
+  defer { secure_zero(vbuf[..]); #assert crypto_zeroed(vbuf[..]); }
+  for i: 0..<verifier.count { vbuf[i] = verifier[i]; }
+  digest: [32] u8;
+  defer { secure_zero(digest[..]); #assert crypto_zeroed(digest[..]); }
+  hs := sha256_hash_checked(vbuf[0..<verifier.count], digest[..], false);
+  #assert hs == SHA_OK;
+  r := wos_b64url_encode(digest[..], out);
+  #assert r.error == NC_OK;
+  return r.written;
+}
+
+wos_state_from_entropy :: (entropy: [] u8, out: [] u8) -> int #export_c #effects(all) {
+  if entropy.count != WOS_STATE_ENTROPY_LEN { return -1; }
+  r := wos_b64url_encode(entropy, out);
+  if r.error != NC_OK { return -1; }
+  return r.written;
+}
+
+// Constant-time state comparison; rejects empty strings and inputs above 512 bytes.
+wos_state_equal :: (a: string, b: string) -> bool #export_c #effects(all) {
+  if a.count < 1 || a.count > 512 || a.count != b.count { return false; }
+  ab: [512] u8; bb: [512] u8;
+  defer { secure_zero(ab[..]); secure_zero(bb[..]); #assert crypto_zeroed(ab[..]); #assert crypto_zeroed(bb[..]); }
+  for i: 0..<a.count { ab[i] = a[i]; bb[i] = b[i]; }
+  return cb_ct_equal(ab[0..<a.count], bb[0..<b.count]) == CB_MAX64;
+}
