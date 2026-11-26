@@ -4,16 +4,35 @@
 //   coax/bin/coax c apps/shared/host/android/app-login-unit.coax --run-steps 250000000 --library --header app-login-unit.h
 #load "../../app-login-flow.coax";
 #load "../../../../coax/lib/nostr/nip98_sign.coax";
+#load "../../../../coax/lib/workos/adapters/app_unit.coax";
 
 alu_size :: () -> int #export_c #effects(all) { return size_of(AlFlow); }
 alu_open :: (f: [] AlFlow, record: string) #export_c #effects(all) { alf_open(f, record); }
+alu_workos_config :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_workos_config(f); }
 alu_email :: (f: [] AlFlow, text: string) -> bool #export_c #effects(all) { return alf_email(f, text); }
 alu_code :: (f: [] AlFlow, text: string) -> bool #export_c #effects(all) { return alf_code(f, text); }
+alu_workos_org :: (f: [] AlFlow, org_id: string) -> bool #export_c #effects(all) { return alf_workos_org(f, org_id); }
+alu_workos_exchange :: (f: [] AlFlow, code: string, verifier: string, redirect_uri: string) -> bool #export_c #effects(all) { return alf_workos_exchange(f, code, verifier, redirect_uri); }
+alu_workos_sso :: (f: [] AlFlow, email: string) -> bool #export_c #effects(all) { return alf_workos_sso(f, email); }
 alu_back :: (f: [] AlFlow) #export_c #effects(all) { alf_back(f); }
 alu_key :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_key(f); }
 alu_who :: (f: [] AlFlow, now_ms: int) -> bool #export_c #effects(all) { return alf_who(f, now_ms); }
 alu_logout :: (f: [] AlFlow) -> bool #export_c #effects(all) { return alf_logout(f); }
 alu_answer :: (f: [] AlFlow, status: int, answer: string, now_ms: int) -> bool #export_c #effects(all) { return alf_answer(f, status, answer, now_ms); }
+
+alu_workos_enabled :: (f: [] AlFlow) -> bool #export_c #effects(all) { return f[0].workos_enabled; }
+alu_workos_client_id :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_workos_client_id(f), out); }
+alu_workos_sso_conn :: (f: [] AlFlow, out: [] u8) -> int #export_c #effects(all) { return alu_copy(alf_sso_conn(f), out); }
+alu_workos_flow_size :: () -> int #export_c #effects(all) { return size_of(WosAuthFlow); }
+alu_workos_pkce_start :: (
+  wf: [] WosAuthFlow, client_id: string, redirect_uri: string, provider: string, connection_id: string,
+  login_hint: string, verifier_entropy: [] u8, state_entropy: [] u8, url_out: [] u8,
+) -> int #export_c #effects(all) {
+  return wos_app_pkce_start(wf, "", client_id, redirect_uri, provider, connection_id, "", "", login_hint, verifier_entropy, state_entropy, url_out);
+}
+alu_workos_pkce_finish :: (wf: [] WosAuthFlow, got_state: string, error_param: string, verifier_out: [] u8) -> int #export_c #effects(all) {
+  return wos_app_pkce_finish_for_oa_api(wf, got_state, error_param, verifier_out);
+}
 
 alu_copy :: (s: string, out: [] u8) -> int #effects(all) { n := al_put(out, s); return ifx n < 0 then 0 else n; }
 // The request to send now.

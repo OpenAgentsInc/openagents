@@ -32,6 +32,8 @@ import CoreText
     private var canvas:UIView?
     private var display:CADisplayLink?
     private var pending=""
+    private var workosConfig=AppAuth.WorkOSConfig(enabled:false,clientID:"",providers:[])
+    private var pendingWorkOS=false
     private var work:Task<Void,Never>?
     private var keyboard:CGFloat=0
     private var stamp:Int32 = -1
@@ -71,6 +73,13 @@ import CoreText
         #if OA_NEXT
         lg_keys(owner,0)   // the lean app has no key login yet
         #endif
+        if mode != .demo {
+            Task { [weak self] in
+                guard let self,let cfg=try? await self.auth.workosConfig(),!self.finished else {return}
+                self.workosConfig=cfg
+                if cfg.enabled,let o=self.owner {lg_workos(o,1);self.wake()}
+            }
+        }
         // A touch lands on the Metal view, not here: the surface says when one changed something.
         lg_on_change(owner,{ context in
             guard let context else {return}
@@ -169,21 +178,79 @@ import CoreText
         work?.cancel()
         if action==1 {
             let email=text(1)
+            let useWorkOS=workosConfig.enabled
             work=Task { [weak self] in
-                do {let handle=try await self?.auth.emailStart(email) ?? "";guard !Task.isCancelled,let self else {return};self.pending=handle;self.reply(1,true,"")}
+                do {
+                    let handle=useWorkOS ? (try await self?.auth.workosMagicStart(email) ?? "") : (try await self?.auth.emailStart(email) ?? "")
+                    guard !Task.isCancelled,let self else {return}
+                    self.pending=handle;self.pendingWorkOS=useWorkOS;self.reply(1,true,"")
+                }
                 catch {guard !Task.isCancelled else {return};self?.reply(1,false,error.localizedDescription)}
             }
         } else if action==2 {
-            let code=text(2),handle=pending
+            let code=text(2),handle=pending,useWorkOS=pendingWorkOS
             work=Task { [weak self] in
                 do {
-                    _ = try await self?.auth.emailVerify(code:code,pending:handle);guard !Task.isCancelled,let self else {return}
-                    // The adapter keeps the session. If it could not, say so: the screen must not wait for an app that will not open.
-                    guard self.auth.loggedIn else {self.reply(2,false,"The login could not be saved on this device. Try again.");return}
-                    self.reply(2,true,"");self.finish()
+                    if useWorkOS {
+                        guard let res=try await self?.auth.workosMagicVerify(code:code,pending:handle) else {return}
+                        guard !Task.isCancelled,let self else {return}
+                        await self.handleWorkOSResult(res,action:2)
+                    } else {
+                        _ = try await self?.auth.emailVerify(code:code,pending:handle);guard !Task.isCancelled,let self else {return}
+                        guard self.auth.loggedIn else {self.reply(2,false,"The login could not be saved on this device. Try again.");return}
+                        self.reply(2,true,"");self.finish()
+                    }
                 }
                 catch {guard !Task.isCancelled else {return};self?.reply(2,false,error.localizedDescription)}
             }
+        } else if action==5 || action==6 || action==7 || action==8 {
+            let cid=workosConfig.clientID,emailHint=text(1).trimmingCharacters(in:.whitespacesAndNewlines)
+            work=Task { [weak self] in
+                guard let self else {return}
+                do {
+                    var provider:String?=nil;var connID:String?=nil
+                    if action==5 {provider="AppleOAuth"}
+                    else if action==6 {provider="GoogleOAuth"}
+                    else if action==7 {provider="GitHubOAuth"}
+                    else {
+                        guard !emailHint.isEmpty else {self.reply(action,false,"Enter your work email first, then tap SSO.");return}
+                        let disc=try await self.auth.workosDiscoverSSO(email:emailHint)
+                        guard disc.sso,!disc.connectionID.isEmpty else {self.reply(action,false,"No Enterprise SSO found for that email domain.");return}
+                        connID=disc.connectionID
+                    }
+                    let pkce=try AppAuth.workosPKCEStart(clientID:cid,provider:provider,connectionID:connID,loginHint:emailHint.isEmpty ? nil:emailHint)
+                    let code=try await AppAuth.workosWebAuthorize(pkce:pkce,anchor:self.view.window)
+                    let res=try await self.auth.workosExchangePKCE(code:code,pkce:pkce)
+                    guard !Task.isCancelled else {return}
+                    await self.handleWorkOSResult(res,action:action)
+                } catch {
+                    guard !Task.isCancelled else {return}
+                    let msg=error.localizedDescription
+                    self.reply(action,false,msg=="Sign-in cancelled." ? "":msg)
+                }
+            }
+        }
+    }
+    private func handleWorkOSResult(_ res:AppAuth.WorkOSAuthResult,action:Int32) async {
+        switch res {
+        case .loggedIn:
+            guard auth.loggedIn else {reply(action,false,"The login could not be saved on this device. Try again.");return}
+            reply(action,true,"");finish()
+        case .needOrg(let orgPending,let orgs):
+            guard !orgs.isEmpty else {reply(action,false,"No organization available for this account.");return}
+            let picked:String?=await withCheckedContinuation { cont in
+                let sheet=UIAlertController(title:"Choose an organization",message:nil,preferredStyle:.actionSheet)
+                for org in orgs {sheet.addAction(UIAlertAction(title:org.name,style:.default) { _ in cont.resume(returning:org.id) })}
+                sheet.addAction(UIAlertAction(title:"Cancel",style:.cancel) { _ in cont.resume(returning:nil) })
+                if let pop=sheet.popoverPresentationController {pop.sourceView=self.view;pop.sourceRect=CGRect(x:self.view.bounds.midX,y:self.view.bounds.midY,width:1,height:1)}
+                self.present(sheet,animated:true)
+            }
+            guard let orgID=picked else {reply(action,false,"");return}
+            do {
+                _ = try await auth.workosSelectOrg(pending:orgPending,organizationID:orgID)
+                guard auth.loggedIn else {reply(action,false,"The login could not be saved on this device. Try again.");return}
+                reply(action,true,"");finish()
+            } catch {reply(action,false,error.localizedDescription)}
         }
     }
     private func reply(_ action:Int32,_ ok:Bool,_ message:String) {guard let owner else {return};lg_reply(owner,action,ok ? 1:0,message);wake()}

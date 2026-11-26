@@ -6,6 +6,8 @@
 #load "../../coax/lib/net/http.coax";
 #load "../../coax/lib/nostr/nip98_sign.coax";
 #load "../../coax/lib/qr/qr-memory.coax";
+#load "../../coax/lib/workos/flow.coax";
+#load "../../coax/lib/workos/adapters/http_native.coax";
 #load "account_rules.coax";
 
 CLI_HTTP_MS :: 15000;
@@ -65,6 +67,7 @@ cli_http :: (a: [] Args, r: [] Rep) -> int {
 account_usage :: () {
   print("%\n", "Account (https://openagents.com, or --origin; a login keeps its origin for the profile):");
   print("%\n", "  login [--machine NAME] [--poll SECONDS]   approve this computer in a browser: a link and a QR code");
+  print("%\n", "  login --workos [--poll SECONDS]           sign in with WorkOS (RFC 8628 device authorization)");
   print("%\n", "  login --words | --key-stdin              log in with your 12 words or a secret, from stdin");
   print("%\n", "  logout [--yes]                           unlink this computer's key, then forget it here");
   print("%\n", "  whoami                                   the account and its keys, as the server sees this key");
@@ -132,6 +135,271 @@ save_origin :: (profile: string, origin: string) -> bool {
   line[n] = '\n';
   path := origin_file(profile, p[..]);
   return path.count > 0 && cxcli_write_private(p[0..<path.count], line[0..<n + 1]) == 0;
+}
+
+// ---- WorkOS Option A1 CLI token store (~/.openagents/cli/tokens/<profile>, mode 0600) ----
+
+WosCliTokens :: struct {
+  access: [128] u8; access_n: int;
+  refresh: [128] u8; refresh_n: int;
+  account: [64] u8; account_n: int;
+  expires_at: int;
+}
+
+wos_token_file :: (profile: string, out: [] u8) -> string {
+  d: [1024] u8; td: [1024] u8;
+  return fs_join(fs_join(cli_dir(d[..]), "tokens", td[..]), profile, out);
+}
+
+wos_save_tokens :: (profile: string, access: string, refresh: string, account: string, expires_at: int) -> bool {
+  d: [1024] u8; td: [1024] u8; p: [1024] u8; buf: [1024] u8;
+  base := cli_dir(d[..]);
+  dir := fs_join(base, "tokens", td[..]);
+  if base.count == 0 || dir.count == 0 || cxcli_mkdir_private(d[0..<base.count]) != 0 || cxcli_mkdir_private(td[0..<dir.count]) != 0 { return false; }
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "access_token"); jo_str(o[..], access);
+  jo_key(o[..], "refresh_token"); jo_str(o[..], refresh);
+  jo_key(o[..], "account"); jo_str(o[..], account);
+  jo_key(o[..], "expires_at"); jo_int(o[..], expires_at);
+  jo_end(o[..]);
+  if o[0].bad { return false; }
+  path := wos_token_file(profile, p[..]);
+  return path.count > 0 && cxcli_write_private(p[0..<path.count], buf[0..<o[0].n]) == 0;
+}
+
+wos_load_tokens :: (profile: string, out: [] WosCliTokens) -> bool {
+  empty: WosCliTokens; out[0] = empty;
+  p: [1024] u8; raw: [2048] u8;
+  path := wos_token_file(profile, p[..]);
+  if fs_kind(path) != FS_FILE { return false; }
+  rn := fs_read(path, raw[..]);
+  if rn <= 0 { return false; }
+  text := cast(string) raw[0..<rn];
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  an := jv_str(d[0], jv_get(d[0], 0, "access_token"), out[0].access[..]);
+  rfn := jv_str(d[0], jv_get(d[0], 0, "refresh_token"), out[0].refresh[..]);
+  acn := jv_str(d[0], jv_get(d[0], 0, "account"), out[0].account[..]);
+  if an <= 6 || rfn <= 6 { return false; }
+  if cast(string) out[0].access[0..<6] != "oa_at_" || cast(string) out[0].refresh[0..<6] != "oa_rt_" { return false; }
+  out[0].access_n = an; out[0].refresh_n = rfn;
+  out[0].account_n = ifx acn > 0 then acn else 0;
+  out[0].expires_at = jv_int(d[0], jv_get(d[0], 0, "expires_at"), 0);
+  return true;
+}
+
+wos_delete_tokens :: (profile: string) -> bool {
+  p: [1024] u8;
+  path := wos_token_file(profile, p[..]);
+  if fs_kind(path) != FS_FILE { return true; }
+  return fs_remove(path);
+}
+
+wos_cli_http_oa :: (origin: string, method: string, path: string, bearer: string, body: string, out: [] u8, out_n: [] int) -> int {
+  url: [2400] u8;
+  u := copy(origin, url[..]);
+  v := copy(path, url[u..<url.count]);
+  if u < 0 || v < 0 { out_n[0] = 0; return 0; }
+  full := cast(string) url[0..<u + v];
+  auth: [256] u8; hs: [3] string; hn := 0;
+  hs[hn] = "Accept: application/json"; hn += 1;
+  if body.count > 0 { hs[hn] = "Content-Type: application/json"; hn += 1; }
+  if bearer.count > 0 {
+    pre := copy("Authorization: Bearer ", auth[..]);
+    bn := copy(bearer, auth[pre..<auth.count]);
+    if bn > 0 { hs[hn] = cast(string) auth[0..<pre + bn]; hn += 1; }
+  }
+  w: [1] HttpWork;
+  res := http_do(w[..], method, full, hs[0..<hn], body, CLI_HTTP_MS, 0, out);
+  wipe(auth[..]);
+  if res.error != HTTP_OK { out_n[0] = 0; return 0; }
+  out_n[0] = res.n;
+  return res.code;
+}
+
+// Refresh Option A1 tokens if expired/expiring within 60s. Preserves tokens on transient 0/429/5xx, deletes on 401.
+wos_cli_ensure_fresh :: (origin: string, profile: string, t: [] WosCliTokens, r: [] Rep) -> int {
+  now_s := cxcli_now_s();
+  if t[0].expires_at > now_s + 60 { return EXIT_OK; }
+  rb: [512] u8; o: [1] Jo; jo_start(o[..], rb[..]);
+  jo_obj(o[..]); jo_key(o[..], "refresh_token"); jo_str(o[..], cast(string) t[0].refresh[0..<t[0].refresh_n]); jo_end(o[..]);
+  if o[0].bad { return fail(r, EXIT_FAIL, "could not build refresh request"); }
+  out: [HTTP_BODY_MAX] u8; on: [1] int;
+  st := wos_cli_http_oa(origin, "POST", "/api/auth/refresh", "", cast(string) rb[0..<o[0].n], out[..], on[..]);
+  wipe(rb[..]);
+  if st == 401 {
+    _ := wos_delete_tokens(profile);
+    return fail(r, EXIT_AUTH, "session ended: run `openagents login --workos`");
+  }
+  if st < 200 || st >= 300 {
+    // Transient (0 / 429 / 5xx): keep stored tokens untouched.
+    return cli_fail_from(r, ifx st == 429 then EXIT_SLOW else EXIT_FAIL, origin, "could not refresh session (tokens preserved)");
+  }
+  nodes: [64] JvNode; d: [1] Jv;
+  body := cast(string) out[0..<on[0]];
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return fail(r, EXIT_FAIL, "bad refresh response"); }
+  na: [128] u8; nr: [128] u8;
+  nan := jv_str(d[0], jv_get(d[0], 0, "access_token"), na[..]);
+  nrn := jv_str(d[0], jv_get(d[0], 0, "refresh_token"), nr[..]);
+  expires_in := jv_int(d[0], jv_get(d[0], 0, "expires_in"), 3600);
+  if nan <= 6 || nrn <= 6 { return fail(r, EXIT_FAIL, "bad refresh response"); }
+  acct := cast(string) t[0].account[0..<t[0].account_n];
+  new_exp := cxcli_now_s() + expires_in;
+  if !wos_save_tokens(profile, cast(string) na[0..<nan], cast(string) nr[0..<nrn], acct, new_exp) {
+    return fail(r, EXIT_FAIL, "could not save refreshed tokens");
+  }
+  for i: 0..<nan { t[0].access[i] = na[i]; } t[0].access_n = nan;
+  for i: 0..<nrn { t[0].refresh[i] = nr[i]; } t[0].refresh_n = nrn;
+  t[0].expires_at = new_exp;
+  return EXIT_OK;
+}
+
+// WorkOS RFC 8628 device authorization login -> POST /api/auth/workos/exchange -> Option A1 0600 tokens.
+cli_login_workos :: (a: [] Args, r: [] Rep, profile: string, origin: string) -> int {
+  wos_env: [300] u8; cid_buf: [128] u8;
+  wos_base := args_value(a, "--workos-url", "");
+  if wos_base == "" { wos_base = proc_getenv("OA_WORKOS_BASE_URL", wos_env[..]); }
+  if wos_base == "" { wos_base = WOS_DEFAULT_BASE_URL; }
+  client_id := args_value(a, "--client-id", "");
+  if client_id == "" {
+    cfg_out: [8192] u8; cfg_n: [1] int;
+    cst := wos_cli_http_oa(origin, "GET", "/api/auth/workos/config?as=lines", "", "", cfg_out[..], cfg_n[..]);
+    if cst != 200 { return cli_fail_from(r, EXIT_FAIL, origin, "could not read /api/auth/workos/config"); }
+    cfg_txt := cast(string) cfg_out[0..<cfg_n[0]];
+    if ar_line(cfg_txt, "enabled") != "1" { return cli_fail_from(r, EXIT_FAIL, origin, "WorkOS login is not enabled on this server"); }
+    cid_s := ar_line(cfg_txt, "client_id");
+    cn := copy(cid_s, cid_buf[..]);
+    if cn <= 0 { return cli_fail_from(r, EXIT_FAIL, origin, "WorkOS client_id is missing on this server"); }
+    client_id = cast(string) cid_buf[0..<cn];
+  }
+
+  wf: [1] WosAuthFlow;
+  scratch: [8192] u8;
+  body_out: [32768] u8;
+  hw: [1] HttpWork;
+  opts: WosHttpOpts;
+  opts.timeout_ms = CLI_HTTP_MS;
+  opts.max_retries = 1;
+
+  // Start RFC 8628 device authorization via oa-api (server holds OA_WORKOS_API_KEY; zero secrets in CLI),
+  // then advance flow.coax state machine and poll WorkOS's public /user_management/authenticate directly.
+  _ := wos_flow_device_start(wf[..], wos_base, client_id, scratch[..]);
+  dstart_n: [1] int;
+  dstart_st := wos_cli_http_oa(origin, "POST", "/api/auth/workos/device/start", "", "{}", body_out[..], dstart_n[..]);
+  if dstart_st < 200 || dstart_st >= 300 {
+    return cli_fail_from(r, cli_exit_of(dstart_st), origin, "could not start WorkOS device authorization");
+  }
+  now_s := cxcli_now_s();
+  if wos_flow_device_on_init(wf[..], dstart_st, cast(string) body_out[0..<dstart_n[0]], now_s) != WOS_FLOW_POLLING_DEVICE {
+    return fail(r, EXIT_FAIL, "unexpected WorkOS device authorization response");
+  }
+  uri_c := cast(string) wf[0].verification_uri_complete[0..<wf[0].verification_uri_complete_n];
+  uri := cast(string) wf[0].verification_uri[0..<wf[0].verification_uri_n];
+  ucode := cast(string) wf[0].user_code[0..<wf[0].user_code_n];
+  show_uri := ifx uri_c.count > 0 then uri_c else uri;
+
+  tool_errln("");
+  tool_err("Open this link in a browser to sign in with WorkOS:\n\n  ");
+  tool_errln(show_uri);
+  if ucode.count > 0 { tool_err("\nCode: "); tool_errln(ucode); }
+  q: [ACCT_QR_GRID] u8; qt: [ACCT_QR_TEXT] u8;
+  ub: [512] u8; ubn := copy(show_uri, ub[..]);
+  if ubn > 0 {
+    qr := qr_encode(ub[0..<ubn], q[..]);
+    if qr.status == 0 {
+      tn := ar_qr_text(q[0..<qr.size * qr.size], qr.size, qt[..]);
+      if tn > 0 { tool_errln(""); tool_err(cast(string) qt[0..<tn]); }
+    }
+  }
+  tool_errln("\nWaiting for browser approval (Ctrl-C stops)...");
+
+  limit_s := text_int(args_value(a, "--poll", "600"));
+  if limit_s < 1 { limit_s = 600; }
+  poll_override_ms := text_int(args_value(a, "--poll-ms", "0"));
+  deadline_s := cxcli_now_s() + limit_s;
+  if wf[0].poll_deadline_sec > 0 && wf[0].poll_deadline_sec < deadline_s { deadline_s = wf[0].poll_deadline_sec; }
+  if poll_override_ms > 0 { wf[0].poll_next_sec = cxcli_now_s(); }
+
+  wos_jwt: [8192] u8; wos_jwt_n := 0;
+  preq: [1] WosReq;
+  while wf[0].state == WOS_FLOW_POLLING_DEVICE {
+    sleep_ms := ifx poll_override_ms > 0 then poll_override_ms else wf[0].poll_interval_sec * 1000;
+    if sleep_ms < 50 { sleep_ms = 50; }
+    proc_sleep(sleep_ms);
+    cur_s := cxcli_now_s();
+    if cur_s >= deadline_s {
+      wos_flow_clear(wf[..]);
+      return fail(r, EXIT_AUTH, "not approved in time: run `openagents login --workos` again");
+    }
+    poll_now := ifx poll_override_ms > 0 && cur_s < wf[0].poll_next_sec then wf[0].poll_next_sec else cur_s;
+    pready := wos_flow_device_poll_req(wf[..], wos_base, client_id, poll_now, scratch[..], preq[..]);
+    if pready == WOS_DPOLL_WAIT { continue; }
+    if pready == WOS_DPOLL_EXPIRED {
+      wos_flow_clear(wf[..]);
+      return fail(r, EXIT_AUTH, "device code expired: run `openagents login --workos` again");
+    }
+    if pready != WOS_DPOLL_READY {
+      wos_flow_clear(wf[..]);
+      return fail(r, EXIT_FAIL, "WorkOS device authorization failed");
+    }
+    presp := wos_http_exec(hw[..], preq[0], scratch[..], opts, body_out[..]);
+    pbody := ifx presp.transport_error == HTTP_OK then cast(string) body_out[0..<presp.body_n] else "";
+    pstat := ifx presp.transport_error == HTTP_OK then presp.status else 0;
+    st_next := wos_flow_device_on_poll(wf[..], pstat, pbody, poll_now);
+    if st_next == WOS_FLOW_AUTHENTICATED {
+      jn := copy(cast(string) wf[0].access_token[0..<wf[0].access_token_n], wos_jwt[..]);
+      if jn > 0 { wos_jwt_n = jn; }
+      break;
+    }
+    if st_next == WOS_FLOW_FAILED {
+      ec := cast(string) wf[0].last_error.code[0..<wf[0].last_error.code_n];
+      is_denied := ec == "access_denied";
+      is_expired := ec == "expired_token";
+      wos_flow_clear(wf[..]);
+      if is_denied { return fail(r, EXIT_AUTH, "sign-in was denied in the browser"); }
+      if is_expired { return fail(r, EXIT_AUTH, "device code expired: run `openagents login --workos` again"); }
+      return fail(r, EXIT_FAIL, "WorkOS device authorization failed");
+    }
+  }
+  wos_flow_clear(wf[..]);
+  if wos_jwt_n <= 0 { return fail(r, EXIT_FAIL, "WorkOS did not return an access_token"); }
+
+  // Exchange WorkOS RS256 access_token at oa-api -> Option A1 oa_at_/oa_rt_ tokens.
+  ex_req: [10240] u8; eo: [1] Jo; jo_start(eo[..], ex_req[..]);
+  jo_obj(eo[..]);
+  jo_key(eo[..], "access_token"); jo_str(eo[..], cast(string) wos_jwt[0..<wos_jwt_n]);
+  jo_key(eo[..], "client"); jo_str(eo[..], "app");
+  jo_end(eo[..]);
+  wipe(wos_jwt[..]);
+  if eo[0].bad { return fail(r, EXIT_FAIL, "could not build exchange request"); }
+
+  ex_out: [HTTP_BODY_MAX] u8; ex_n: [1] int;
+  ex_st := wos_cli_http_oa(origin, "POST", "/api/auth/workos/exchange", "", cast(string) ex_req[0..<eo[0].n], ex_out[..], ex_n[..]);
+  wipe(ex_req[..]);
+  ex_body := cast(string) ex_out[0..<ex_n[0]];
+  if ex_st != 200 {
+    why: [512] u8;
+    w := api_why(ex_body, why[..]);
+    return cli_fail_from(r, cli_exit_of(ex_st), origin, ifx w.count > 0 then w else "exchanging WorkOS login");
+  }
+  nodes: [128] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], ex_body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return fail(r, EXIT_FAIL, "unexpected exchange response"); }
+  at: [128] u8; rt: [128] u8; ac: [64] u8;
+  atn := jv_str(d[0], jv_get(d[0], 0, "access_token"), at[..]);
+  rtn := jv_str(d[0], jv_get(d[0], 0, "refresh_token"), rt[..]);
+  acn := jv_str(d[0], jv_get(d[0], 0, "account"), ac[..]);
+  expires_in := jv_int(d[0], jv_get(d[0], 0, "expires_in"), 3600);
+  if atn <= 6 || rtn <= 6 || acn <= 0 { return fail(r, EXIT_FAIL, "exchange response missing Option A1 tokens"); }
+  if !wos_save_tokens(profile, cast(string) at[0..<atn], cast(string) rt[0..<rtn], cast(string) ac[0..<acn], cxcli_now_s() + expires_in) {
+    wipe(at[..]); wipe(rt[..]);
+    return fail(r, EXIT_FAIL, "could not keep tokens in ~/.openagents/cli/tokens");
+  }
+  wipe(at[..]); wipe(rt[..]);
+  if !save_origin(profile, origin) { return fail(r, EXIT_FAIL, "logged in, but could not keep the origin"); }
+  rep_str(r, "account", cast(string) ac[0..<acn]);
+  rep_str(r, "origin", origin); rep_str(r, "profile", profile); rep_str(r, "via", "workos");
+  return rep_done(r, EXIT_OK);
 }
 
 // One request to origin + path, signed with secret (a NIP-98 header bound to the body unless a GET).
@@ -202,7 +470,31 @@ cli_whoami :: (a: [] Args, r: [] Rep, profile: string, keys: bool) -> int {
   origin := acct_origin(a, profile, ob[..]);
   if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
   k: [1] Key;
-  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`"); }
+  wt: [1] WosCliTokens;
+  prefer_wos := args_has(a, "--workos");
+  if prefer_wos || !load_key(profile, k[..]) {
+    if !keys && wos_load_tokens(profile, wt[..]) {
+      fc := wos_cli_ensure_fresh(origin, profile, wt[..], r);
+      if fc != EXIT_OK { wipe(wt[0].access[..]); wipe(wt[0].refresh[..]); return fc; }
+      wout: [HTTP_BODY_MAX] u8; wn: [1] int;
+      wst := wos_cli_http_oa(origin, "GET", "/api/auth/account", cast(string) wt[0].access[0..<wt[0].access_n], "", wout[..], wn[..]);
+      wipe(wt[0].access[..]); wipe(wt[0].refresh[..]);
+      if wst == 401 { return fail(r, EXIT_AUTH, "session ended: run `openagents login --workos`"); }
+      if wst != 200 { return cli_fail_from(r, cli_exit_of(wst), origin, "asking who is logged in"); }
+      nodes: [128] JvNode; d: [1] Jv;
+      wb := cast(string) wout[0..<wn[0]];
+      if !jv_parse(d[..], wb, nodes[..]) || !jv_bool(d[0], jv_get(d[0], 0, "logged_in")) {
+        return fail(r, EXIT_AUTH, "not logged in: run `openagents login --workos`");
+      }
+      ac: [64] u8; acn := jv_str(d[0], jv_get(d[0], 0, "account"), ac[..]);
+      rep_str(r, "origin", origin);
+      rep_str(r, "profile", profile);
+      rep_str(r, "account", ifx acn > 0 then cast(string) ac[0..<acn] else "");
+      rep_str(r, "via", "workos");
+      return rep_done(r, EXIT_OK);
+    }
+    return fail(r, EXIT_AUTH, "not logged in on this profile: run `openagents login`");
+  }
   c: [1] AcctCall;
   st := acct_call(c[..], k[0].secret[..], origin, "GET", "/api/auth/ways?as=lines", "");
   np: [80] u8; npn := npub_of(k[0].secret[..], np[..]); hx: [64] u8; ok := pubkey_hex(k[0].secret[..], hx[..]);
@@ -260,6 +552,10 @@ cli_login :: (a: [] Args, r: [] Rep, profile: string) -> int {
   origin := acct_origin(a, profile, ob[..]);
   if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
   words := args_has(a, "--words"); stdin := args_has(a, "--key-stdin");
+  if args_has(a, "--workos") {
+    if words || stdin { return fail(r, EXIT_USAGE, "--workos cannot be combined with --words or --key-stdin"); }
+    return cli_login_workos(a, r, profile, origin);
+  }
   if words && stdin { return fail(r, EXIT_USAGE, "--words or --key-stdin, not both"); }
   c: [1] AcctCall;
   if words || stdin {
@@ -343,7 +639,22 @@ cli_logout :: (a: [] Args, r: [] Rep, profile: string) -> int {
   origin := acct_origin(a, profile, ob[..]);
   if origin == "" { return fail(r, EXIT_USAGE, "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"); }
   k: [1] Key;
-  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "not logged in on this profile"); }
+  wt: [1] WosCliTokens;
+  prefer_wos := args_has(a, "--workos");
+  if prefer_wos || !load_key(profile, k[..]) {
+    if wos_load_tokens(profile, wt[..]) {
+      wout: [4096] u8; wn: [1] int;
+      _ := wos_cli_http_oa(origin, "POST", "/api/auth/logout", cast(string) wt[0].access[0..<wt[0].access_n], "{}", wout[..], wn[..]);
+      wipe(wt[0].access[..]); wipe(wt[0].refresh[..]);
+      if !wos_delete_tokens(profile) { return fail(r, EXIT_FAIL, "could not delete the WorkOS token file"); }
+      rep_bool(r, "unlinked", false);
+      rep_bool(r, "forgot", true);
+      rep_str(r, "via", "workos");
+      rep_str(r, "profile", profile);
+      return rep_done(r, EXIT_OK);
+    }
+    return fail(r, EXIT_AUTH, "not logged in on this profile");
+  }
   if k[0].from == "env" { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "OPENAGENTS_NSEC is set: nothing is kept to log out of"); }
   hx: [64] u8; body: [120] u8;
   if !pubkey_hex(k[0].secret[..], hx[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "this profile's key is not a good key"); }

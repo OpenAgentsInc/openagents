@@ -17,8 +17,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* What the screen asks for: account.coax's AC_* codes. */
-enum { OA_LOGIN_EMAIL = 1, OA_LOGIN_CODE = 2, OA_LOGIN_KEY = 3, OA_LOGIN_LOGOUT = 4, OA_LOGIN_BACK = 5, OA_LOGIN_WHO = 6 };
+/* What the screen asks for: account.coax's AC_* codes, plus WorkOS PKCE/App Link/Org/SSO (#14101). */
+enum {
+  OA_LOGIN_EMAIL = 1, OA_LOGIN_CODE = 2, OA_LOGIN_KEY = 3, OA_LOGIN_LOGOUT = 4, OA_LOGIN_BACK = 5, OA_LOGIN_WHO = 6,
+  OA_LOGIN_WORKOS_OAUTH = 7, OA_LOGIN_WORKOS_CALLBACK = 8, OA_LOGIN_WORKOS_ORG = 9, OA_LOGIN_WORKOS_SSO = 10,
+};
 
 /* Starts the login's thread. dir: the app's files folder (ANativeActivity's internalDataPath);
    origin: "https://openagents.com", or another for development. Reads the kept login and, when
@@ -26,7 +29,10 @@ enum { OA_LOGIN_EMAIL = 1, OA_LOGIN_CODE = 2, OA_LOGIN_KEY = 3, OA_LOGIN_LOGOUT 
 bool oa_app_login_start(JavaVM *vm, const char *dir, const char *origin);
 /* Asks for one thing; ignored while another is under way (the screen shows busy). */
 void oa_app_login_ask(int kind, const char *text, int length);
-/* What the screen shows: state (0 logged out, 1 code sent, 2 logged in), busy, the server's words
+/* Reads the latest WorkOS PKCE authorize URL built by OA_LOGIN_WORKOS_OAUTH for Android Custom Tabs
+   (redirect URI https://openagents.com/app/auth/callback), returning its length (0 when none). */
+int oa_app_login_workos_url(char *out, int cap);
+/* What the screen shows: state (0 logged out, 1 code sent, 2 logged in, 3 choose org), busy, the server's words
    and who is logged in, into the caller's buffers (NUL-ended). Returns a count that changes
    whenever any of it does. */
 uint32_t oa_app_login_status(int *state, bool *busy, char *words, int words_cap, char *who, int who_cap);

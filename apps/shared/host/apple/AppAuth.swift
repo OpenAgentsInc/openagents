@@ -1,3 +1,5 @@
+import AuthenticationServices
+import CryptoKit
 import Foundation
 import Security
 
@@ -144,6 +146,201 @@ final class AppAuth: @unchecked Sendable {
     @discardableResult
     func emailVerify(code: String, pending: String) async throws -> Tokens {
         try keep(try await said { try await self.post("/api/auth/email/verify", ["code": code, "pending": pending]) })
+    }
+
+    // MARK: WorkOS authentication (docs/auth/2026-11-26-workos-coax-sdk.md, #14101)
+
+    struct WorkOSConfig: Equatable { let enabled: Bool; let clientID: String; let providers: [String] }
+    struct WorkOSOrg: Equatable { let id: String; let name: String }
+    enum WorkOSAuthResult: Equatable {
+        case loggedIn(Tokens)
+        case needOrg(pending: String, organizations: [WorkOSOrg])
+    }
+    struct WorkOSDiscovery: Equatable { let sso: Bool; let connectionID: String; let organizationID: String; let organizationName: String }
+    struct WorkOSPKCE: Equatable {
+        let verifier: String
+        let challenge: String
+        let state: String
+        let redirectURI: String
+        let authorizeURL: URL
+    }
+
+    /// Reads whether WorkOS is enabled on this API origin and its public client_id.
+    func workosConfig() async throws -> WorkOSConfig {
+        guard let url = URL(string: origin + "/api/auth/workos/config") else { throw Failure.unreachable }
+        let r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+        let data: Data, status: Int
+        do { (data, status) = try await send(r) } catch { throw Failure.unreachable }
+        guard (200..<300).contains(status), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return WorkOSConfig(enabled: false, clientID: "", providers: [])
+        }
+        let enabled = (o["enabled"] as? Bool) == true
+        let cid = o["client_id"] as? String ?? ""
+        let providers = o["providers"] as? [String] ?? []
+        return WorkOSConfig(enabled: enabled && !cid.isEmpty, clientID: cid, providers: providers)
+    }
+
+    /// Sends a 6-digit WorkOS Magic Auth code; returns the pending handle for workosMagicVerify.
+    func workosMagicStart(_ email: String) async throws -> String {
+        let answer = try await said { try await self.post("/api/auth/workos/magic/start", ["email": email, "client": "app"]) }
+        guard let pending = answer["pending"] as? String, !pending.isEmpty else { throw Failure.said("That didn't work. Try again.") }
+        return pending
+    }
+
+    /// Verifies a 6-digit WorkOS Magic Auth code, binding the Option A1 session to this device key.
+    func workosMagicVerify(code: String, pending: String) async throws -> WorkOSAuthResult {
+        let answer = try await said { try await self.post("/api/auth/workos/magic/verify", ["code": code, "pending": pending, "client": "app"]) }
+        return try parseWorkOSAuthResult(answer)
+    }
+
+    /// Completes multi-organization selection after a `needOrg` response.
+    @discardableResult
+    func workosSelectOrg(pending: String, organizationID: String) async throws -> Tokens {
+        try keep(try await said { try await self.post("/api/auth/workos/org/select", ["pending": pending, "organization_id": organizationID, "client": "app"]) })
+    }
+
+    /// Discovers whether an email domain has an active WorkOS Enterprise SSO connection.
+    func workosDiscoverSSO(email: String) async throws -> WorkOSDiscovery {
+        let answer = try await said { try await self.post("/api/auth/workos/sso/discover", ["email": email]) }
+        return WorkOSDiscovery(
+            sso: (answer["sso"] as? Bool) == true,
+            connectionID: answer["connection_id"] as? String ?? "",
+            organizationID: answer["organization_id"] as? String ?? "",
+            organizationName: answer["organization_name"] as? String ?? ""
+        )
+    }
+
+    /// Builds a fresh RFC 7636 PKCE S256 challenge, CSRF state, and WorkOS authorize URL for native Apple OAuth/SSO.
+    static func workosPKCEStart(
+        clientID: String,
+        provider: String? = nil,
+        connectionID: String? = nil,
+        organizationID: String? = nil,
+        loginHint: String? = nil,
+        redirectURI: String = "openagents://auth/callback",
+        workosOrigin: String = "https://api.workos.com"
+    ) throws -> WorkOSPKCE {
+        guard !clientID.isEmpty, !redirectURI.isEmpty else { throw Failure.said("WorkOS sign-in is not configured.") }
+        var vBytes = Data(count: 32), sBytes = Data(count: 32)
+        let r1 = vBytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        let r2 = sBytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        guard r1 == errSecSuccess, r2 == errSecSuccess else { throw Failure.said("Could not generate sign-in randomness.") }
+        let verifier = b64url(vBytes)
+        let challenge = b64url(Data(SHA256.hash(data: Data(verifier.utf8))))
+        let state = b64url(sBytes)
+        let base = workosOrigin.hasSuffix("/") ? String(workosOrigin.dropLast()) : workosOrigin
+        guard var comps = URLComponents(string: base + "/user_management/authorize") else { throw Failure.said("Invalid WorkOS origin.") }
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "redirect_uri", value: redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "code_challenge", value: challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "state", value: state),
+        ]
+        if let p = provider, !p.isEmpty { items.append(URLQueryItem(name: "provider", value: p)) }
+        if let c = connectionID, !c.isEmpty { items.append(URLQueryItem(name: "connection_id", value: c)) }
+        if let o = organizationID, !o.isEmpty { items.append(URLQueryItem(name: "organization_id", value: o)) }
+        if let h = loginHint, !h.isEmpty { items.append(URLQueryItem(name: "login_hint", value: h)) }
+        comps.queryItems = items
+        guard let url = comps.url else { throw Failure.said("Could not construct WorkOS sign-in URL.") }
+        return WorkOSPKCE(verifier: verifier, challenge: challenge, state: state, redirectURI: redirectURI, authorizeURL: url)
+    }
+
+    /// Constant-time state verification and authorization code extraction from a native OAuth callback URL.
+    static func workosCallbackCode(callbackURL: URL, expectedState: String) throws -> String {
+        guard let items = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems else {
+            throw Failure.said("Sign-in did not return an authorization code.")
+        }
+        let map = Dictionary(items.compactMap { item in item.value.map { (item.name, $0) } }, uniquingKeysWith: { first, _ in first })
+        if let err = map["error"], !err.isEmpty {
+            throw Failure.said(map["error_description"] ?? "Sign-in was cancelled or denied.")
+        }
+        guard let gotState = map["state"], !gotState.isEmpty, constantTimeEqual(gotState, expectedState) else {
+            throw Failure.said("Sign-in state did not match. Try again.")
+        }
+        guard let code = map["code"], !code.isEmpty else {
+            throw Failure.said("Sign-in did not return an authorization code.")
+        }
+        return code
+    }
+
+    /// Constant-time ASCII/UTF-8 string comparison for CSRF state validation.
+    private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
+        let ab = Array(a.utf8), bb = Array(b.utf8)
+        guard ab.count == bb.count, !ab.isEmpty else { return false }
+        var diff: UInt8 = 0
+        for i in 0..<ab.count { diff |= ab[i] ^ bb[i] }
+        return diff == 0
+    }
+
+    /// Exchanges a native PKCE (code, code_verifier) at oa-api for Option A1 device-bound oa_at_/oa_rt_ tokens.
+    func workosExchangePKCE(code: String, pkce: WorkOSPKCE) async throws -> WorkOSAuthResult {
+        let answer = try await said {
+            try await self.post("/api/auth/workos/exchange", [
+                "code": code,
+                "code_verifier": pkce.verifier,
+                "redirect_uri": pkce.redirectURI,
+                "client": "app",
+            ])
+        }
+        return try parseWorkOSAuthResult(answer)
+    }
+
+    /// Lists WorkOS organizations linked to the signed-in account.
+    func workosOrgs() async throws -> [WorkOSOrg] {
+        let o = try await get("/api/auth/workos/orgs")
+        let raw = o["organizations"] as? [[String: Any]] ?? []
+        return raw.compactMap { row in
+            guard let id = row["id"] as? String, !id.isEmpty else { return nil }
+            return WorkOSOrg(id: id, name: (row["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id)
+        }
+    }
+
+    /// Switches the active WorkOS organization context for the signed-in account.
+    @discardableResult
+    func workosSwitchOrg(_ organizationID: String) async throws -> String {
+        let answer = try await said { try await self.authed("/api/auth/workos/orgs/switch", ["organization_id": organizationID]) }
+        return (answer["organization_id"] as? String) ?? organizationID
+    }
+
+    /// Opens ASWebAuthenticationSession with prefersEphemeralWebBrowserSession = false (shared SSO cookies)
+    /// and returns the validated authorization code for `workosExchangePKCE`.
+    @MainActor
+    static func workosWebAuthorize(pkce: WorkOSPKCE, anchor: ASPresentationAnchor?) async throws -> String {
+        let scheme = URL(string: pkce.redirectURI)?.scheme ?? "openagents"
+        let callbackURL: URL = try await withCheckedThrowingContinuation { cont in
+            let provider = WorkOSWebAnchor(anchor: anchor)
+            let session = ASWebAuthenticationSession(url: pkce.authorizeURL, callbackURLScheme: scheme) { url, error in
+                _ = provider // keep strong reference until completion fires
+                if let url {
+                    cont.resume(returning: url)
+                } else if let nsErr = error as NSError?, nsErr.domain == ASWebAuthenticationSessionErrorDomain,
+                          nsErr.code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                    cont.resume(throwing: Failure.said("Sign-in cancelled."))
+                } else {
+                    cont.resume(throwing: Failure.said(error?.localizedDescription ?? "Sign-in did not complete."))
+                }
+            }
+            session.presentationContextProvider = provider
+            session.prefersEphemeralWebBrowserSession = false
+            if !session.start() {
+                cont.resume(throwing: Failure.said("Could not open the sign-in browser."))
+            }
+        }
+        return try workosCallbackCode(callbackURL: callbackURL, expectedState: pkce.state)
+    }
+
+    private func parseWorkOSAuthResult(_ answer: [String: Any]) throws -> WorkOSAuthResult {
+        if (answer["state"] as? String) == "need-org", let pending = answer["pending"] as? String, !pending.isEmpty {
+            let raw = answer["organizations"] as? [[String: Any]] ?? []
+            let orgs: [WorkOSOrg] = raw.compactMap { row in
+                guard let id = row["id"] as? String, !id.isEmpty else { return nil }
+                return WorkOSOrg(id: id, name: (row["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? id)
+            }
+            return .needOrg(pending: pending, organizations: orgs)
+        }
+        return .loggedIn(try keep(answer))
     }
 
     /// Logs in with this device's key: a challenge, signed (NIP-98) over the login route and body.
@@ -623,3 +820,17 @@ struct FileTokenStore: TokenStore {
     func clear() { try? FileManager.default.removeItem(at: url) }
 }
 #endif
+
+@MainActor
+private final class WorkOSWebAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let anchor: ASPresentationAnchor?
+    init(anchor: ASPresentationAnchor?) { self.anchor = anchor }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        if let anchor { return anchor }
+        #if os(iOS)
+        return ASPresentationAnchor()
+        #else
+        return NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+        #endif
+    }
+}

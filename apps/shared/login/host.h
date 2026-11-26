@@ -12,6 +12,8 @@
 void *lg_open(const char *resources, int scene, int card);
 // Whether the host has a key login to open: 0 leaves the form's key link out.
 void lg_keys(void *login, int offered);
+// Whether WorkOS OAuth/Apple/SSO links are shown on the email step (#14101).
+void lg_workos(void *login, int offered);
 void *lg_view(void *login);
 // One frame. Call it while lg_moving says 1, and once after anything changes.
 void lg_frame(void *login);

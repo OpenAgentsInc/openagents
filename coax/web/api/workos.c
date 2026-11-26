@@ -546,6 +546,31 @@ static bool discover_sso_connection(PGconn *db, const char *domain, char conn_id
   return found;
 }
 
+static void route_device_start(const request *q, PGconn *db) {
+  if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
+  char ipk[65]; auth_visitor_key(q, ipk);
+  long long left_ms = 0;
+  if (!api_limit(db, "workos_magic_ip", ipk, 30, &left_ms)) {
+    auth_refuse(q, 429, "Too many login attempts from here. Try again in a minute.");
+    return;
+  }
+  char url[512], req_b[256], cid_esc[200];
+  auth_json_esc(workos_client_id(), cid_esc, sizeof cid_esc);
+  snprintf(url, sizeof url, "%s/user_management/authorize/device", workos_base_url());
+  int bn = snprintf(req_b, sizeof req_b, "{\"client_id\":\"%s\"}", cid_esc);
+  http_client_res res;
+  workos_http("POST", url, req_b, (size_t)bn, true, &res);
+  if (res.status < 200 || res.status >= 300 || !res.body) {
+    long st = res.status;
+    http_client_res_free(&res);
+    auth_refuse(q, st == 429 ? 429 : 502, "Could not start WorkOS device authorization.");
+    return;
+  }
+  auth_audit(db, NULL, NULL, "workos.device_start", "ok", NULL);
+  auth_answer(q, 200, NULL, res.body, NULL);
+  http_client_res_free(&res);
+}
+
 static void route_sso_discover(const request *q, PGconn *db, const char *body) {
   if (!workos_enabled_for_request(q) || !workos_configured()) { auth_refuse(q, 503, "WorkOS login isn't enabled here."); return; }
   char email[300] = "", domain[200] = "";
@@ -1329,6 +1354,7 @@ bool workos_route(const request *q, PGconn *db, const char *op) {
   else if (!strcmp(sub, "magic/verify")) route_magic_verify(q, db, body);
   else if (!strcmp(sub, "org/select")) route_org_select(q, db, body);
   else if (!strcmp(sub, "sso/discover")) route_sso_discover(q, db, body);
+  else if (!strcmp(sub, "device/start")) route_device_start(q, db);
   else if (!strcmp(sub, "exchange")) route_exchange(q, db, body);
   else if (!strcmp(sub, "orgs/switch")) route_orgs_switch(q, db, body);
   else if (!strcmp(sub, "webhook")) route_webhook(q, db, body);

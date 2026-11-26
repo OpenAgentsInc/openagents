@@ -136,6 +136,7 @@ static const auth_rule RULES[] = {
   R("GET",  "/api/auth/workos/org/pending", false, AP_PUBLIC, "list organizations for a pending organization_selection_required login"),
   R("POST", "/api/auth/workos/org/select", false, AP_PUBLIC, "complete organization selection for a pending WorkOS login"),
   R("POST", "/api/auth/workos/sso/discover", false, AP_PUBLIC, "discover an active WorkOS Enterprise SSO connection by email domain"),
+  R("POST", "/api/auth/workos/device/start", false, AP_PUBLIC, "start WorkOS RFC 8628 device authorization for CLI login (server-side API key)"),
   R("POST", "/api/auth/workos/exchange", false, AP_PUBLIC, "native PKCE code or CLI device access_token exchange into device-bound Option A1 tokens"),
   R("GET",  "/api/auth/workos/orgs", false, AP_ACCOUNT, "list the account's WorkOS organizations and active organization"),
   R("POST", "/api/auth/workos/orgs/switch", false, AP_HUMAN, "switch the active WorkOS organization for this account"),

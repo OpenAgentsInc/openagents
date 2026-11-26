@@ -72,6 +72,7 @@ void *lg_open(const char *resources, int scene, int card) {
   return l;
 }
 void lg_keys(void *login, int offered) { Login *l = login; if (l) { login_keys(lg_state(l), offered != 0); lg_changed(l); } }
+void lg_workos(void *login, int offered) { Login *l = login; if (l) { login_workos(lg_state(l), offered != 0); lg_changed(l); } }
 void *lg_view(void *login) { return login ? ui_view(((Login *)login)->app.host) : NULL; }
 void lg_frame(void *login) { if (login) ui_frame(((Login *)login)->app.host); }
 void lg_on_change(void *login, void (*changed)(void *context), void *context) { Login *l = login; if (l) { l->changed = changed; l->context = context; } }

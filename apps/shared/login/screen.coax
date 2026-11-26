@@ -42,7 +42,7 @@
 LG_SCALE :: ARCADE_PHONE_SCALE;   // points per layout unit: the atlas is made at the screen's scale times this
 LG_MAX_VERTICES :: 16384;
 // The surface's declared capacity, a generation: primitives, runs of text, hits, pooled bytes, semantic rows; and keyed ids.
-LG_UNDER :: 256; LG_OVER :: 128; LG_HITS :: 16; LG_POOL :: 512; LG_ROWS :: 16; LG_KEYED :: 16;
+LG_UNDER :: 256; LG_OVER :: 160; LG_HITS :: 24; LG_POOL :: 768; LG_ROWS :: 24; LG_KEYED :: 24;
 LG_EMAIL_MAX :: 254; LG_CODE_MAX :: 32; LG_NOTE_MAX :: 240;
 LG_PANEL_MAX :: 340.0;       // the form's widest, units
 LG_MARGIN :: 14.0;           // the form from the screen's sides, units
@@ -55,8 +55,10 @@ LG_STEP_EMAIL :: 0; LG_STEP_CODE :: 1;
 LG_FIELD_NONE :: 0; LG_FIELD_EMAIL :: 1; LG_FIELD_CODE :: 2;
 // What a row dispatches when pressed (its action in the semantic table).
 LG_HIT_EMAIL :: 1; LG_HIT_CODE :: 2; LG_HIT_SEND :: 3; LG_HIT_VERIFY :: 4; LG_HIT_RESEND :: 5; LG_HIT_CHANGE :: 6; LG_HIT_KEY :: 7; LG_HIT_CLOSE :: 8;
+LG_HIT_APPLE :: 9; LG_HIT_GOOGLE :: 10; LG_HIT_GITHUB :: 11; LG_HIT_SSO :: 12;
 // What the host is asked to do.
 LG_ACT_NONE :: 0; LG_ACT_START :: 1; LG_ACT_VERIFY :: 2; LG_ACT_KEY :: 3; LG_ACT_CLOSE :: 4;
+LG_ACT_APPLE :: 5; LG_ACT_GOOGLE :: 6; LG_ACT_GITHUB :: 7; LG_ACT_SSO :: 8;
 
 // One generation of the surface's arrays.
 LgGeneration :: struct { under: [LG_UNDER] Prim; over: [LG_OVER] Prim; hits: [LG_HITS] SheetHit; pool: [LG_POOL] u8; rows: [LG_ROWS] El; }
@@ -67,6 +69,7 @@ LoginScreen :: struct {
   // the window's facts, in points
   safe_top: f32; safe_bottom: f32; keyboard: f32; reduced: bool; scene: bool;
   no_key: bool;                         // the host has no key login: the form does not offer one
+  workos: bool;                         // WorkOS OAuth/Apple/SSO row offered on the email step (#14101)
   card: bool;                           // a card over another screen: the view is clear, a scrim dims what is behind, and it can be closed
   step: int; busy: int;                 // busy: the action in flight (LG_ACT_*), or 0
   done: bool;                           // the code was accepted: the host is opening the app
@@ -139,7 +142,8 @@ lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
   detail := ifx code_step then lg_email(s) else "";
   note := cast(string) s[0].note[0..<s[0].note_n];
   heading_h := k.title.line + (ifx detail.count > 0 then k.body.line else 0.0f32);
-  ph := 2 * k.pad + heading_h + k.space + form_field_height(k) + k.space + k.control_h + k.control_h;
+  wos_row := !code_step && s[0].workos;
+  ph := 2 * k.pad + heading_h + k.space + form_field_height(k) + k.space + k.control_h + k.control_h + (ifx wos_row then k.control_h else 0.0f32);
   note_h: f32 = 0;
   if note.count > 0 {
     // measured on a scratch sheet, so the panel is as tall as its notice
@@ -177,6 +181,21 @@ lg_layout :: (s: [] LoginScreen, f: [] UiFrame, w: f32, h: f32) -> f32 {
   if code_step { bh = ctx_action(f, "login.verify", x, y, cw, label, true, work, LG_HIT_VERIFY); }
   else { bh = ctx_action(f, "login.send", x, y, cw, label, true, work, LG_HIT_SEND); }
   y += bh;
+  if wos_row {
+    // WorkOS OAuth/SSO row: Sign in with Apple (Guideline 4.8), Google, GitHub, Enterprise SSO.
+    wa := form_link_width(m, k, "Apple");
+    wg := form_link_width(m, k, "Google");
+    wh := form_link_width(m, k, "GitHub");
+    ws := form_link_width(m, k, "SSO");
+    gap := (cw - (wa + wg + wh + ws)) / 3.0f32;
+    if gap < 2.0f32 { gap = 2.0f32; }
+    ox := x;
+    _ := ctx_link(f, "login.apple", ox, y, "Apple", "Sign in with Apple", state, LG_HIT_APPLE); ox += wa + gap;
+    _ := ctx_link(f, "login.google", ox, y, "Google", "Continue with Google", state, LG_HIT_GOOGLE); ox += wg + gap;
+    _ := ctx_link(f, "login.github", ox, y, "GitHub", "Continue with GitHub", state, LG_HIT_GITHUB); ox += wh + gap;
+    _ := ctx_link(f, "login.sso", ox, y, "SSO", "Enterprise SSO", state, LG_HIT_SSO);
+    y += k.control_h;
+  }
   // the quiet actions under it
   if code_step {
     _ := ctx_link(f, "login.resend", x - k.space, y, "Resend code", "Resend email code", state, LG_HIT_RESEND);
@@ -230,6 +249,10 @@ lg_press :: (s: [] LoginScreen, kind: int) -> bool {
     s[0].step = LG_STEP_EMAIL; eb_clear(s[0].code[..]); lg_note(s, "", false); s[0].focus = LG_FIELD_EMAIL; return true;
   }
   if kind == LG_HIT_KEY && s[0].step == LG_STEP_EMAIL { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_KEY; return true; }
+  if kind == LG_HIT_APPLE && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_APPLE; s[0].action = LG_ACT_APPLE; return true; }
+  if kind == LG_HIT_GOOGLE && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_GOOGLE; s[0].action = LG_ACT_GOOGLE; return true; }
+  if kind == LG_HIT_GITHUB && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_GITHUB; s[0].action = LG_ACT_GITHUB; return true; }
+  if kind == LG_HIT_SSO && s[0].step == LG_STEP_EMAIL && s[0].workos { s[0].focus = LG_FIELD_NONE; lg_note(s, "", false); s[0].busy = LG_ACT_SSO; s[0].action = LG_ACT_SSO; return true; }
   if kind == LG_HIT_CLOSE && s[0].card { s[0].focus = LG_FIELD_NONE; s[0].action = LG_ACT_CLOSE; return true; }
   return false;
 }
@@ -259,6 +282,8 @@ lg_moving :: (s: [] LoginScreen) -> bool {
 login_card :: (s: [] LoginScreen, card: bool) #export_c #effects(all) { if s.count > 0 { s[0].card = card; } }
 // A host with no key login: the form leaves the key link out.
 login_keys :: (s: [] LoginScreen, offered: bool) #export_c #effects(all) { if s.count > 0 { s[0].no_key = !offered; } }
+// Enables WorkOS OAuth/Apple/SSO choices on the email step (#14101).
+login_workos :: (s: [] LoginScreen, offered: bool) #export_c #effects(all) { if s.count > 0 { s[0].workos = offered; } }
 login_env :: (s: [] LoginScreen, safe_top: f32, safe_bottom: f32, keyboard: f32, reduced: bool, scene: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].safe_top = ifx safe_top > 0 then safe_top else 0.0f32; s[0].safe_bottom = ifx safe_bottom > 0 then safe_bottom else 0.0f32;
@@ -338,6 +363,11 @@ login_reply :: (s: [] LoginScreen, action: int, ok: bool, message: string) #expo
   }
   if action == LG_ACT_VERIFY {
     if !ok { eb_clear(s[0].code[..]); lg_note(s, ifx message.count > 0 then message else "The code was not accepted. Try again.", true); s[0].focus = LG_FIELD_CODE; return; }
+    s[0].done = true; s[0].focus = LG_FIELD_NONE; lg_note(s, "", false);
+    return;
+  }
+  if action == LG_ACT_APPLE || action == LG_ACT_GOOGLE || action == LG_ACT_GITHUB || action == LG_ACT_SSO {
+    if !ok { lg_note(s, ifx message.count > 0 then message else "Sign-in did not complete. Try again.", message.count > 0); return; }
     s[0].done = true; s[0].focus = LG_FIELD_NONE; lg_note(s, "", false);
   }
 }
@@ -679,4 +709,23 @@ lg_test_has :: (s: [] LoginScreen, id: string, state: int) -> bool { t := [1] El
   t: [1] LoginScreen; lg_test_atlas(t[0].atlas[..]); login_env(t[..], 59, 34, 0, true, true);
   _ := lg_test_frame(t[..], o[..]);
   #assert lg_find(t[..], "login.close") < 0; _ := login_pointer(t[..], 30, 300, 0); #assert !login_pointer(t[..], 30, 300, 2) && login_action(t[..]) == LG_ACT_NONE;
+}
+
+#test "login: WorkOS mode renders Apple, Google, GitHub, and SSO links cleanly without overlap" #steps 900000000 {
+  s: [1] LoginScreen; o: [1] LgOut; lg_test_atlas(s[0].atlas[..]);
+  login_workos(s[..], true); login_env(s[..], 59, 34, 0, true, true);
+  _ := lg_test_frame(s[..], o[..]);
+  #assert s[0].refused == 0;
+  ia := lg_find(s[..], "login.apple"); ig := lg_find(s[..], "login.google"); ih := lg_find(s[..], "login.github"); is := lg_find(s[..], "login.sso");
+  #assert ia >= 0 && ig >= 0 && ih >= 0 && is >= 0;
+  rows := lg_rows(s[..]);
+  #assert rows.rows[ia].x + rows.rows[ia].w <= rows.rows[ig].x;
+  #assert rows.rows[ig].x + rows.rows[ig].w <= rows.rows[ih].x;
+  #assert rows.rows[ih].x + rows.rows[ih].w <= rows.rows[is].x;
+  #assert lg_test_tap(s[..], "login.apple") && login_action(s[..]) == LG_ACT_APPLE;
+  login_reply(s[..], LG_ACT_APPLE, false, "Sign-in cancelled.");
+  #assert !s[0].done && s[0].busy == LG_ACT_NONE;
+  #assert lg_test_tap(s[..], "login.google") && login_action(s[..]) == LG_ACT_GOOGLE;
+  login_reply(s[..], LG_ACT_GOOGLE, true, "");
+  #assert s[0].done && s[0].busy == LG_ACT_NONE;
 }

@@ -134,7 +134,65 @@ func offline(_ dir: URL) async {
     guard let again = try? await me.auth.emailStart("ada@example.com"), (try? await me.auth.emailVerify(code: "482913", pending: again)) != nil, me.loggedIn else { fail("the login after a freeze") }
     fake.answers["/api/auth/logout"] = [(200, "{}")]
     await me.logout()
-    print("account-check: offline ok (key file, NIP-98, key login, email code, title, tokens 0600, security, push target, freeze, logout)")
+
+    // WorkOS Phase 4 (#14101): config, Magic Auth + multi-org selection, PKCE S256 + state guard +
+    // /api/auth/workos/exchange (OA-Device-Key + 0600 file), SSO discovery, orgs switch, and
+    // single-flight refresh preserving tokens on 429/503/offline while revoking on 401.
+    fake.answers["/api/auth/workos/config"] = [(200, "{\"enabled\":true,\"client_id\":\"client_01TEST\",\"providers\":[\"magic\",\"google\",\"github\",\"apple\",\"sso\"]}")]
+    guard let wcfg = try? await me.auth.workosConfig(), wcfg.enabled, wcfg.clientID == "client_01TEST", wcfg.providers.contains("apple") else { fail("workos config") }
+
+    fake.answers["/api/auth/workos/magic/start"] = [(200, "{\"state\":\"sent\",\"pending\":\"wp_1\"}")]
+    fake.answers["/api/auth/workos/magic/verify"] = [(200, "{\"state\":\"need-org\",\"pending\":\"wo_1\",\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"},{\"id\":\"org_2\",\"name\":\"Beta\"}]}")]
+    fake.answers["/api/auth/workos/org/select"] = [(200, "{\"state\":\"logged-in\",\"account\":\"acct_w1\",\"access_token\":\"oa_at_W1\",\"refresh_token\":\"oa_rt_W1\",\"expires_in\":3600,\"device_bound\":true}")]
+    guard let wp = try? await me.auth.workosMagicStart("alice@acme.test"), wp == "wp_1" else { fail("workos magic start") }
+    guard case .needOrg(let orgPend, let orgs) = try? await me.auth.workosMagicVerify(code: "123456", pending: wp),
+          orgPend == "wo_1", orgs.count == 2, orgs[0].id == "org_1" else { fail("workos need-org") }
+    guard (try? await me.auth.workosSelectOrg(pending: orgPend, organizationID: "org_1")) != nil,
+          me.loggedIn, mode(tokens) == 0o600 else { fail("workos org select") }
+    let orgSelReq = fake.asked.last { $0.url?.path == "/api/auth/workos/org/select" }
+    guard orgSelReq?.value(forHTTPHeaderField: "OA-Device-Platform") == "mac",
+          orgSelReq?.value(forHTTPHeaderField: "OA-Device-Key")?.count == 130 else { fail("workos org select missing OA-Device-Key") }
+
+    // WorkOS PKCE S256 start, callback constant-time state guard, and /exchange
+    guard let pkce = try? AppAuth.workosPKCEStart(clientID: "client_01TEST", provider: "AppleOAuth", loginHint: "alice@acme.test"),
+          pkce.authorizeURL.absoluteString.contains("code_challenge_method=S256"),
+          pkce.authorizeURL.absoluteString.contains("provider=AppleOAuth"),
+          pkce.verifier.count == 43, pkce.state.count == 43 else { fail("workos pkce start") }
+    let goodCB = URL(string: "openagents://auth/callback?code=code_99&state=\(pkce.state)")!
+    let badStateCB = URL(string: "openagents://auth/callback?code=code_99&state=wrong_state")!
+    let errCB = URL(string: "openagents://auth/callback?error=access_denied&state=\(pkce.state)")!
+    guard (try? AppAuth.workosCallbackCode(callbackURL: goodCB, expectedState: pkce.state)) == "code_99" else { fail("workos callback valid") }
+    guard (try? AppAuth.workosCallbackCode(callbackURL: badStateCB, expectedState: pkce.state)) == nil else { fail("workos callback accepted bad state") }
+    guard (try? AppAuth.workosCallbackCode(callbackURL: errCB, expectedState: pkce.state)) == nil else { fail("workos callback accepted error") }
+    fake.answers["/api/auth/workos/exchange"] = [(200, "{\"state\":\"logged-in\",\"account\":\"acct_w2\",\"access_token\":\"oa_at_W2\",\"refresh_token\":\"oa_rt_W2\",\"expires_in\":3600,\"device_bound\":true}")]
+    guard case .loggedIn(let exTok) = try? await me.auth.workosExchangePKCE(code: "code_99", pkce: pkce),
+          exTok.account == "acct_w2", exTok.deviceBound == true else { fail("workos pkce exchange") }
+    let exReq = fake.asked.last { $0.url?.path == "/api/auth/workos/exchange" }
+    guard exReq?.value(forHTTPHeaderField: "OA-Device-Key")?.count == 130 else { fail("workos exchange missing OA-Device-Key") }
+
+    // Enterprise SSO discovery + orgs list & switch
+    fake.answers["/api/auth/workos/sso/discover"] = [(200, "{\"sso\":true,\"connection_id\":\"conn_1\",\"organization_id\":\"org_1\",\"organization_name\":\"Acme\"}")]
+    guard let disc = try? await me.auth.workosDiscoverSSO(email: "alice@acme.test"), disc.sso, disc.connectionID == "conn_1" else { fail("workos sso discover") }
+    fake.answers["/api/auth/workos/orgs"] = [(200, "{\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"},{\"id\":\"org_2\",\"name\":\"Beta\"}]}")]
+    guard let myOrgs = try? await me.auth.workosOrgs(), myOrgs.count == 2 else { fail("workos orgs") }
+    fake.answers["/api/auth/workos/orgs/switch"] = [(200, "{\"organization_id\":\"org_2\"}")]
+    guard (try? await me.auth.workosSwitchOrg("org_2")) == "org_2" else { fail("workos org switch") }
+
+    // Transient 429 / 503 during refresh MUST preserve tokens; 401 MUST clear tokens and device key.
+    var staleW = exTok; staleW.accessUntil = Date(timeIntervalSince1970: 0); me.store.save(staleW)
+    fake.answers["/api/auth/refresh"] = [
+        (429, "{\"error\":\"Slow down.\"}"),
+        (503, "{\"error\":\"Temporarily unavailable.\"}"),
+        (401, "{\"error\":\"Log in again.\"}"),
+    ]
+    do { _ = try await me.auth.refreshed(); fail("429 refreshed") } catch {}
+    guard me.loggedIn, me.store.load()?.refresh == "oa_rt_W2" else { fail("429 cleared tokens") }
+    do { _ = try await me.auth.refreshed(); fail("503 refreshed") } catch {}
+    guard me.loggedIn, me.store.load()?.refresh == "oa_rt_W2" else { fail("503 cleared tokens") }
+    do { _ = try await me.auth.refreshed(); fail("401 refreshed") } catch {}
+    guard !me.loggedIn, !FileManager.default.fileExists(atPath: tokens.path) else { fail("401 left tokens") }
+
+    print("account-check: offline ok (key file, NIP-98, key login, email code, title, tokens 0600, security, push target, freeze, WorkOS magic/PKCE/SSO/orgs/transient-refresh, logout)")
 }
 
 func live(_ dir: URL, origin: String) async {

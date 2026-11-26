@@ -222,35 +222,151 @@ final class MacAccount: @unchecked Sendable {
     // MARK: the sheets
 
     @MainActor func showLogin() async {
+        let wos = (try? await auth.workosConfig()) ?? AppAuth.WorkOSConfig(enabled: false, clientID: "", providers: [])
         let alert = NSAlert()
         alert.messageText = "Log in to OpenAgents"
-        alert.informativeText = "Enter your email and we'll send you a code."
+        alert.informativeText = wos.enabled
+            ? "Enter your email for a 6-digit code, or continue with Google, GitHub, Apple, Enterprise SSO, Passkey, or this Mac's key."
+            : "Enter your email and we'll send you a code."
         let email = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         email.placeholderString = "you@example.com"
         email.setAccessibilityIdentifier("account.email")
         alert.accessoryView = email
         alert.addButton(withTitle: "Send Code")
+        if wos.enabled { alert.addButton(withTitle: "Google / GitHub / Apple / SSO…") }
         alert.addButton(withTitle: "Log In with Passkey")
         alert.addButton(withTitle: "Log In with This Mac's Key")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = email
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:
+        let resp = alert.runModal()
+        let idx = resp.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        if idx == 0 {
             let address = email.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !address.isEmpty else { return await showLogin() }
             do {
-                let pending = try await auth.emailStart(address)
-                await askCode(address: address, pending: pending)
+                if wos.enabled {
+                    let pending = try await auth.workosMagicStart(address)
+                    await askCode(address: address, pending: pending, workos: true)
+                } else {
+                    let pending = try await auth.emailStart(address)
+                    await askCode(address: address, pending: pending, workos: false)
+                }
             } catch { say(error) }
-        case .alertSecondButtonReturn:
-            await loginWithPasskey()
-        case .alertThirdButtonReturn:
-            await loginWithKey()
+            return
+        }
+        if wos.enabled && idx == 1 {
+            await showWorkOSProviders(clientID: wos.clientID, emailHint: email.stringValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            return
+        }
+        let passkeyIdx = wos.enabled ? 2 : 1
+        let keyIdx = wos.enabled ? 3 : 2
+        if idx == passkeyIdx { await loginWithPasskey() }
+        else if idx == keyIdx { await loginWithKey() }
+    }
+
+    @MainActor private func showWorkOSProviders(clientID: String, emailHint: String) async {
+        let alert = NSAlert()
+        alert.messageText = "Continue with…"
+        alert.informativeText = "Choose a provider. Sign-in opens in a system browser sheet (ASWebAuthenticationSession) using PKCE."
+        alert.addButton(withTitle: "Google")
+        alert.addButton(withTitle: "GitHub")
+        alert.addButton(withTitle: "Apple")
+        alert.addButton(withTitle: "Enterprise SSO")
+        alert.addButton(withTitle: "Cancel")
+        let idx = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        switch idx {
+        case 0: await loginWithWorkOSOAuth(clientID: clientID, provider: "GoogleOAuth", connectionID: nil, loginHint: emailHint)
+        case 1: await loginWithWorkOSOAuth(clientID: clientID, provider: "GitHubOAuth", connectionID: nil, loginHint: emailHint)
+        case 2: await loginWithWorkOSOAuth(clientID: clientID, provider: "AppleOAuth", connectionID: nil, loginHint: emailHint)
+        case 3:
+            var addr = emailHint
+            if addr.isEmpty {
+                let ask = NSAlert()
+                ask.messageText = "Enterprise SSO"
+                ask.informativeText = "Enter your work email address."
+                let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+                field.placeholderString = "you@company.com"
+                ask.accessoryView = field
+                ask.addButton(withTitle: "Continue")
+                ask.addButton(withTitle: "Cancel")
+                guard ask.runModal() == .alertFirstButtonReturn else { return }
+                addr = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !addr.isEmpty else { return }
+            do {
+                let disc = try await auth.workosDiscoverSSO(email: addr)
+                guard disc.sso, !disc.connectionID.isEmpty else {
+                    say(AppAuth.Failure.said("No Enterprise SSO connection found for that email domain."))
+                    return
+                }
+                await loginWithWorkOSOAuth(clientID: clientID, provider: nil, connectionID: disc.connectionID, loginHint: addr)
+            } catch { say(error) }
         default: return
         }
     }
 
-    @MainActor private func askCode(address: String, pending: String) async {
+    @MainActor func loginWithWorkOSOAuth(clientID: String, provider: String?, connectionID: String?, loginHint: String?) async {
+        do {
+            let pkce = try AppAuth.workosPKCEStart(
+                clientID: clientID, provider: provider, connectionID: connectionID,
+                loginHint: (loginHint?.isEmpty == false) ? loginHint : nil
+            )
+            let anchor = NSApp?.keyWindow ?? NSApp?.mainWindow
+            let code = try await AppAuth.workosWebAuthorize(pkce: pkce, anchor: anchor)
+            switch try await auth.workosExchangePKCE(code: code, pkce: pkce) {
+            case .loggedIn:
+                forgetShown()
+                await look()
+            case .needOrg(let pending, let orgs):
+                await pickWorkOSOrg(pending: pending, organizations: orgs)
+            }
+        } catch {
+            if case AppAuth.Failure.said(let msg) = error, msg == "Sign-in cancelled." { return }
+            say(error)
+        }
+    }
+
+    @MainActor private func pickWorkOSOrg(pending: String, organizations: [AppAuth.WorkOSOrg]) async {
+        guard !organizations.isEmpty else { say(AppAuth.Failure.said("No organization available.")); return }
+        let alert = NSAlert()
+        alert.messageText = "Choose an organization"
+        alert.informativeText = "Select the organization to sign into."
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+        for org in organizations { popup.addItem(withTitle: org.name) }
+        alert.accessoryView = popup
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let i = max(0, min(popup.indexOfSelectedItem, organizations.count - 1))
+        do {
+            _ = try await auth.workosSelectOrg(pending: pending, organizationID: organizations[i].id)
+            forgetShown()
+            await look()
+        } catch { say(error) }
+    }
+
+    @MainActor func switchOrganization() async {
+        guard loggedIn else { return await showLogin() }
+        do {
+            let orgs = try await auth.workosOrgs()
+            guard !orgs.isEmpty else { note("No organizations linked to this account."); return }
+            let alert = NSAlert()
+            alert.messageText = "Switch organization"
+            alert.informativeText = "Choose the active organization."
+            let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26))
+            for org in orgs { popup.addItem(withTitle: org.name) }
+            alert.accessoryView = popup
+            alert.addButton(withTitle: "Switch")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let i = max(0, min(popup.indexOfSelectedItem, orgs.count - 1))
+            _ = try await auth.workosSwitchOrg(orgs[i].id)
+            note("Switched to \(orgs[i].name).")
+            tell()
+        } catch { say(error) }
+    }
+
+    @MainActor private func askCode(address: String, pending: String, workos: Bool = false) async {
         let alert = NSAlert()
         alert.messageText = "Enter your code"
         alert.informativeText = "We sent a 6-digit code to \(address)."
@@ -262,14 +378,27 @@ final class MacAccount: @unchecked Sendable {
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = code
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let entered = code.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            try await auth.emailVerify(code: code.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), pending: pending)
-            forgetShown()
-            await look()
+            if workos {
+                switch try await auth.workosMagicVerify(code: entered, pending: pending) {
+                case .loggedIn:
+                    forgetShown()
+                    await look()
+                case .needOrg(let orgPending, let orgs):
+                    await pickWorkOSOrg(pending: orgPending, organizations: orgs)
+                }
+            } else {
+                try await auth.emailVerify(code: entered, pending: pending)
+                forgetShown()
+                await look()
+            }
         } catch {
             say(error)
             // A wrong code leaves the code good for its other tries; a dead one says so and stops.
-            if case AppAuth.Failure.said(let words)? = error as? AppAuth.Failure, words.contains("tries left") { await askCode(address: address, pending: pending) }
+            if case AppAuth.Failure.said(let words)? = error as? AppAuth.Failure, words.contains("tries left") {
+                await askCode(address: address, pending: pending, workos: workos)
+            }
         }
     }
 

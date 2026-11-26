@@ -22,19 +22,22 @@
 #define SAY(...) __android_log_print(ANDROID_LOG_INFO, "oa-login", __VA_ARGS__)
 #define STORE_ALIAS "oa-app-login-store"
 #define DEVICE_ALIAS "oa-app-login-device"
+#define WORKOS_ANDROID_REDIRECT "https://openagents.com/app/auth/callback"
 #define ANSWER_MAX (64 << 10)
 
 static struct {
   JavaVM *vm; JNIEnv *env;
   char dir[512], origin[256];
   pthread_mutex_t lock; pthread_cond_t wake;
-  int asked; char text[256]; int text_n;          /* what the screen asked, waiting */
-  int state; bool busy; char words[400]; char who[160]; uint32_t gen;
+  int asked; char text[512]; int text_n;          /* what the screen asked, waiting */
+  int state; bool busy; char words[400]; char who[160]; char oauth_url[1024]; uint32_t gen;
   coax_t_AlFlow *flow;
+  coax_t_WosAuthFlow *wos;
   uint8_t answer[ANSWER_MAX];
 } L = { .lock = PTHREAD_MUTEX_INITIALIZER, .wake = PTHREAD_COND_INITIALIZER };
 
 static coax_v_t_AlFlow F(void) { return (coax_v_t_AlFlow){L.flow, 1}; }
+static coax_v_t_WosAuthFlow W(void) { return (coax_v_t_WosAuthFlow){L.wos, 1}; }
 static coax_string S(const char *s, int64_t n) { return (coax_string){s, n}; }
 static coax_v_u8 V(void *p, int64_t n) { return (coax_v_u8){(uint8_t *)p, n}; }
 static int64_t now_ms(void) { struct timespec t; clock_gettime(CLOCK_REALTIME, &t); return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
@@ -243,6 +246,69 @@ static void publish(bool busy) {
   pthread_mutex_unlock(&L.lock);
 }
 
+/* Extracts a URL query parameter value (percent-unencoded ASCII token) from query string q. */
+static int query_param(const char *q, const char *key, char *out, int cap) {
+  const char *p = strchr(q, '?');
+  p = p ? p + 1 : q;
+  size_t klen = strlen(key);
+  while (*p) {
+    const char *amp = strchr(p, '&');
+    size_t seg = amp ? (size_t)(amp - p) : strlen(p);
+    if (seg > klen && !strncmp(p, key, klen) && p[klen] == '=') {
+      const char *val = p + klen + 1;
+      size_t vlen = seg - klen - 1;
+      if ((int)vlen >= cap) vlen = (size_t)(cap - 1);
+      memcpy(out, val, vlen); out[vlen] = 0;
+      return (int)vlen;
+    }
+    if (!amp) break;
+    p = amp + 1;
+  }
+  if (cap > 0) out[0] = 0;
+  return 0;
+}
+
+static void workos_start_oauth(const char *arg, int arg_n) {
+  char cid[128], conn[128] = "", provider[64] = "", url[1024] = "";
+  int cn = (int)alu_workos_client_id(F(), V(cid, sizeof cid - 1)); cid[cn] = 0;
+  if (cn <= 0) return;
+  if (arg_n > 0 && !strncmp(arg, "sso:", 4)) {
+    int cl = arg_n - 4; if (cl >= (int)sizeof conn) cl = (int)sizeof conn - 1;
+    memcpy(conn, arg + 4, (size_t)cl); conn[cl] = 0;
+  } else if (arg_n > 0) {
+    int pl = arg_n; if (pl >= (int)sizeof provider) pl = (int)sizeof provider - 1;
+    memcpy(provider, arg, (size_t)pl); provider[pl] = 0;
+  }
+  uint8_t ve[32], se[32];
+  arc4random_buf(ve, sizeof ve); arc4random_buf(se, sizeof se);
+  int un = (int)alu_workos_pkce_start(
+      W(), S(cid, cn), S(WORKOS_ANDROID_REDIRECT, (int64_t)strlen(WORKOS_ANDROID_REDIRECT)),
+      S(provider, (int64_t)strlen(provider)), S(conn, (int64_t)strlen(conn)), S("", 0),
+      V(ve, 32), V(se, 32), V(url, sizeof url - 1));
+  memset(ve, 0, sizeof ve); memset(se, 0, sizeof se);
+  if (un > 0) {
+    url[un] = 0;
+    pthread_mutex_lock(&L.lock);
+    snprintf(L.oauth_url, sizeof L.oauth_url, "%s", url);
+    L.gen++;
+    pthread_mutex_unlock(&L.lock);
+  }
+}
+
+static void workos_handle_callback(const char *cb_url) {
+  char code[256] = "", state[256] = "", err[128] = "", verifier[128] = "";
+  int coden = query_param(cb_url, "code", code, sizeof code);
+  int staten = query_param(cb_url, "state", state, sizeof state);
+  int errn = query_param(cb_url, "error", err, sizeof err);
+  int vn = (int)alu_workos_pkce_finish(W(), S(state, staten), S(err, errn), V(verifier, sizeof verifier - 1));
+  if (vn > 0 && coden > 0) {
+    verifier[vn] = 0;
+    run(alu_workos_exchange(F(), S(code, coden), S(verifier, vn), S(WORKOS_ANDROID_REDIRECT, (int64_t)strlen(WORKOS_ANDROID_REDIRECT))));
+  }
+  memset(verifier, 0, sizeof verifier);
+  memset(code, 0, sizeof code);
+}
+
 static void *main_loop(void *unused) {
   (void)unused;
   if ((*L.vm)->AttachCurrentThread(L.vm, &L.env, NULL) != JNI_OK) return NULL;
@@ -250,12 +316,13 @@ static void *main_loop(void *unused) {
   alu_open(F(), S((const char *)rec, n > 0 ? n : 0));
   memset(rec, 0, sizeof rec);
   publish(true);
+  run(alu_workos_config(F()));
   run(alu_who(F(), now_ms()));
   publish(false);
   for (;;) {
     pthread_mutex_lock(&L.lock);
     while (!L.asked) pthread_cond_wait(&L.wake, &L.lock);
-    int kind = L.asked; char text[256]; int tn = L.text_n; memcpy(text, L.text, sizeof text);
+    int kind = L.asked; char text[512]; int tn = L.text_n; memcpy(text, L.text, sizeof text);
     L.asked = 0; memset(L.text, 0, sizeof L.text);
     pthread_mutex_unlock(&L.lock);
     publish(true);
@@ -266,6 +333,18 @@ static void *main_loop(void *unused) {
     else if (kind == OA_LOGIN_LOGOUT) run(alu_logout(F()));
     else if (kind == OA_LOGIN_BACK) alu_back(F());
     else if (kind == OA_LOGIN_WHO) run(alu_who(F(), now_ms()));
+    else if (kind == OA_LOGIN_WORKOS_OAUTH) workos_start_oauth(text, tn);
+    else if (kind == OA_LOGIN_WORKOS_CALLBACK) workos_handle_callback(text);
+    else if (kind == OA_LOGIN_WORKOS_ORG) run(alu_workos_org(F(), t));
+    else if (kind == OA_LOGIN_WORKOS_SSO) {
+      run(alu_workos_sso(F(), t));
+      char conn[128] = "";
+      int cn = (int)alu_workos_sso_conn(F(), V(conn, sizeof conn - 1));
+      if (cn > 0) {
+        char arg[140]; snprintf(arg, sizeof arg, "sso:%.*s", cn, conn);
+        workos_start_oauth(arg, (int)strlen(arg));
+      }
+    }
     memset(text, 0, sizeof text);
     publish(false);
   }
@@ -275,7 +354,8 @@ static void *main_loop(void *unused) {
 bool oa_app_login_start(JavaVM *vm, const char *dir, const char *origin) {
   if (L.flow || !vm || !dir || !origin) return false;
   L.flow = calloc(1, (size_t)alu_size());
-  if (!L.flow) return false;
+  L.wos = calloc(1, (size_t)alu_workos_flow_size());
+  if (!L.flow || !L.wos) return false;
   L.vm = vm;
   snprintf(L.dir, sizeof L.dir, "%s", dir); snprintf(L.origin, sizeof L.origin, "%s", origin);
   mkdir(L.dir, 0700);
@@ -286,6 +366,15 @@ bool oa_app_login_start(JavaVM *vm, const char *dir, const char *origin) {
   if (pthread_attr_setstacksize(&a, (size_t)16 << 20) != 0 || pthread_create(&t, &a, main_loop, NULL) != 0) { SAY("no thread for the login"); return false; }
   pthread_detach(t);
   return true;
+}
+
+int oa_app_login_workos_url(char *out, int cap) {
+  if (!out || cap < 1) return 0;
+  pthread_mutex_lock(&L.lock);
+  int n = snprintf(out, (size_t)cap, "%s", L.oauth_url);
+  L.oauth_url[0] = 0;
+  pthread_mutex_unlock(&L.lock);
+  return n < 0 ? 0 : (n >= cap ? cap - 1 : n);
 }
 
 void oa_app_login_ask(int kind, const char *text, int length) {

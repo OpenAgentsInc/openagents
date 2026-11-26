@@ -24,18 +24,25 @@
 ALF_GET :: 0; ALF_POST :: 1;
 ALF_AUTH_NONE :: 0; ALF_AUTH_BEARER :: 1; ALF_AUTH_NOSTR :: 2;
 // Where the login is, as the screen shows it.
-ALF_OUT :: 0; ALF_CODE :: 1; ALF_IN :: 2;
+ALF_OUT :: 0; ALF_CODE :: 1; ALF_IN :: 2; ALF_ORG :: 3;
 // The answer the flow waits for.
 ALF_S_NONE :: 0; ALF_S_EMAIL_START :: 1; ALF_S_EMAIL_VERIFY :: 2; ALF_S_CHALLENGE :: 3; ALF_S_KEY_LOGIN :: 4;
 ALF_S_REFRESH :: 5; ALF_S_WHO :: 6; ALF_S_LOGOUT :: 7;
+ALF_S_WORKOS_CONFIG :: 8; ALF_S_WORKOS_MAGIC_START :: 9; ALF_S_WORKOS_MAGIC_VERIFY :: 10;
+ALF_S_WORKOS_ORG_SELECT :: 11; ALF_S_WORKOS_EXCHANGE :: 12; ALF_S_WORKOS_SSO :: 13;
 ALF_PATH :: 64; ALF_BODY :: 512; ALF_WORDS :: 400; ALF_WHO :: 160; ALF_PENDING :: 160;
 ALF_SENT :: "We sent a 6-digit code to your email. Type it here.";
+ALF_CHOOSE_ORG :: "Choose an organization to finish signing in.";
 
 AlFlow :: struct {
   t: [1] AlTokens;
-  state: int;                       // ALF_OUT, ALF_CODE, ALF_IN
+  state: int;                       // ALF_OUT, ALF_CODE, ALF_IN, ALF_ORG
   step: int;                        // ALF_S_*
   pending: [ALF_PENDING] u8; pending_n: int;
+  // WorkOS configuration & SSO discovery (Phase 4, #14101).
+  workos_enabled: bool;
+  workos_client_id: [128] u8; workos_client_id_n: int;
+  sso_conn: [128] u8; sso_conn_n: int;
   // The request to send now.
   method: int; path: [ALF_PATH] u8; path_n: int; body: [ALF_BODY] u8; body_n: int;
   auth: int; device: bool; proof_ms: int;
@@ -55,6 +62,8 @@ alf_words :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].w
 alf_who_text :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].who[0..<f[0].who_n]; }
 alf_access :: (f: [] AlFlow) -> string #effects(all) { return al_access(f[0].t[..]); }
 alf_proof_hash :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].proof_hash[..]; }
+alf_workos_client_id :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].workos_client_id[0..<f[0].workos_client_id_n]; }
+alf_sso_conn :: (f: [] AlFlow) -> string #effects(all) { return cast(string) f[0].sso_conn[0..<f[0].sso_conn_n]; }
 
 // A flow over a kept record (or none): logged in when the record is one.
 alf_open :: (f: [] AlFlow, record: string) #effects(all) {
@@ -75,23 +84,59 @@ alf_request :: (f: [] AlFlow, step: int, method: int, path: string, body_n: int,
 
 // ---- what a person starts
 
-// "Send code": the code goes to the email. false when there is no email to send to.
+// Query GET /api/auth/workos/config to detect WorkOS mode and public client_id.
+alf_workos_config :: (f: [] AlFlow) -> bool #effects(all) {
+  f[0].keep = false; f[0].forget_device = false;
+  return alf_request(f, ALF_S_WORKOS_CONFIG, ALF_GET, "/api/auth/workos/config", 0, ALF_AUTH_NONE, false);
+}
+// "Send code": routes through WorkOS Magic Auth when enabled, else legacy /api/auth/email/start.
 alf_email :: (f: [] AlFlow, email: string) -> bool #effects(all) {
   f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
-  ok := alf_request(f, ALF_S_EMAIL_START, ALF_POST, "/api/auth/email/start", al_email_start_body(email, f[0].body[..]), ALF_AUTH_NONE, false);
+  step := ifx f[0].workos_enabled then ALF_S_WORKOS_MAGIC_START else ALF_S_EMAIL_START;
+  path := ifx f[0].workos_enabled then "/api/auth/workos/magic/start" else "/api/auth/email/start";
+  ok := alf_request(f, step, ALF_POST, path, al_email_start_body(email, f[0].body[..]), ALF_AUTH_NONE, false);
   if !ok { alf_say(f, "Type your email."); }
   return ok;
 }
 // "Log in" with the code from the email.
 alf_code :: (f: [] AlFlow, code: string) -> bool #effects(all) {
   f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
-  ok := f[0].state == ALF_CODE && alf_request(f, ALF_S_EMAIL_VERIFY, ALF_POST, "/api/auth/email/verify", al_email_verify_body(code, cast(string) f[0].pending[0..<f[0].pending_n], f[0].body[..]), ALF_AUTH_NONE, true);
+  pend := cast(string) f[0].pending[0..<f[0].pending_n];
+  ok := false;
+  if f[0].state == ALF_CODE {
+    if f[0].workos_enabled {
+      ok = alf_request(f, ALF_S_WORKOS_MAGIC_VERIFY, ALF_POST, "/api/auth/workos/magic/verify", al_workos_verify_body(code, pend, f[0].body[..]), ALF_AUTH_NONE, true);
+    } else {
+      ok = alf_request(f, ALF_S_EMAIL_VERIFY, ALF_POST, "/api/auth/email/verify", al_email_verify_body(code, pend, f[0].body[..]), ALF_AUTH_NONE, true);
+    }
+  }
   if !ok { alf_say(f, "Type the 6-digit code from the email."); }
   return ok;
 }
-// "Use another email": back to the email, the code forgotten.
+// Complete WorkOS multi-organization selection after a `need-org` response.
+alf_workos_org :: (f: [] AlFlow, org_id: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  ok := f[0].state == ALF_ORG && alf_request(f, ALF_S_WORKOS_ORG_SELECT, ALF_POST, "/api/auth/workos/org/select", al_workos_org_select_body(org_id, cast(string) f[0].pending[0..<f[0].pending_n], f[0].body[..]), ALF_AUTH_NONE, true);
+  if !ok { alf_say(f, ALF_CHOOSE_ORG); }
+  return ok;
+}
+// Exchange a native PKCE (code, code_verifier, redirect_uri) at oa-api for Option A1 device-bound tokens.
+alf_workos_exchange :: (f: [] AlFlow, code: string, verifier: string, redirect_uri: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false;
+  ok := alf_request(f, ALF_S_WORKOS_EXCHANGE, ALF_POST, "/api/auth/workos/exchange", al_workos_exchange_body(code, verifier, redirect_uri, f[0].body[..]), ALF_AUTH_NONE, true);
+  if !ok { alf_say(f, AL_FALLBACK); }
+  return ok;
+}
+// Discover WorkOS Enterprise SSO connection for an email domain.
+alf_workos_sso :: (f: [] AlFlow, email: string) -> bool #effects(all) {
+  f[0].words_n = 0; f[0].keep = false; f[0].forget_device = false; f[0].sso_conn_n = 0;
+  ok := alf_request(f, ALF_S_WORKOS_SSO, ALF_POST, "/api/auth/workos/sso/discover", al_workos_sso_body(email, f[0].body[..]), ALF_AUTH_NONE, false);
+  if !ok { alf_say(f, "Type your work email."); }
+  return ok;
+}
+// "Use another email": back to the email, the code/org selection forgotten.
 alf_back :: (f: [] AlFlow) #effects(all) {
-  if f[0].state == ALF_CODE { f[0].state = ALF_OUT; f[0].pending_n = 0; f[0].words_n = 0; }
+  if f[0].state == ALF_CODE || f[0].state == ALF_ORG { f[0].state = ALF_OUT; f[0].pending_n = 0; f[0].words_n = 0; }
 }
 // "Log in with a key": the server's challenge first.
 alf_key :: (f: [] AlFlow) -> bool #effects(all) {
@@ -140,14 +185,36 @@ alf_refresh :: (f: [] AlFlow, ms: int) -> bool #effects(all) {
 alf_answer :: (f: [] AlFlow, status: int, answer: string, now_ms: int) -> bool #effects(all) {
   step := f[0].step; f[0].step = ALF_S_NONE;
   ok := status >= 200 && status < 300;
-  if step == ALF_S_EMAIL_START {
+  if step == ALF_S_WORKOS_CONFIG {
+    if ok {
+      n := al_workos_config(answer, f[0].workos_client_id[..]);
+      if n > 0 { f[0].workos_enabled = true; f[0].workos_client_id_n = n; return false; }
+    }
+    f[0].workos_enabled = false; f[0].workos_client_id_n = 0;
+    return false;
+  }
+  if step == ALF_S_EMAIL_START || step == ALF_S_WORKOS_MAGIC_START {
     if ok { n := al_field(answer, "pending", f[0].pending[..]); if n > 0 { f[0].pending_n = n; f[0].state = ALF_CODE; alf_say(f, ALF_SENT); return false; } }
     alf_refused(f, status, answer); return false;
   }
-  if step == ALF_S_EMAIL_VERIFY || step == ALF_S_KEY_LOGIN {
-    if ok && al_read_login(answer, now_ms, "", false, f[0].t[..]) {
-      f[0].state = ALF_IN; f[0].pending_n = 0; f[0].keep = true; f[0].words_n = 0;
-      return alf_request(f, ALF_S_WHO, ALF_GET, "/api/auth/account", 0, ALF_AUTH_BEARER, false);
+  if step == ALF_S_EMAIL_VERIFY || step == ALF_S_KEY_LOGIN || step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_ORG_SELECT || step == ALF_S_WORKOS_EXCHANGE {
+    if ok {
+      if (step == ALF_S_WORKOS_MAGIC_VERIFY || step == ALF_S_WORKOS_EXCHANGE) {
+        on := al_workos_need_org(answer, f[0].pending[..]);
+        if on > 0 { f[0].pending_n = on; f[0].state = ALF_ORG; alf_say(f, ALF_CHOOSE_ORG); return false; }
+      }
+      if al_read_login(answer, now_ms, "", false, f[0].t[..]) {
+        f[0].state = ALF_IN; f[0].pending_n = 0; f[0].keep = true; f[0].words_n = 0;
+        return alf_request(f, ALF_S_WHO, ALF_GET, "/api/auth/account", 0, ALF_AUTH_BEARER, false);
+      }
+    }
+    alf_refused(f, status, answer); return false;
+  }
+  if step == ALF_S_WORKOS_SSO {
+    if ok {
+      cn := al_workos_sso_conn(answer, f[0].sso_conn[..]);
+      if cn > 0 { f[0].sso_conn_n = cn; return false; }
+      alf_say(f, "No Enterprise SSO connection found for that email domain."); return false;
     }
     alf_refused(f, status, answer); return false;
   }
@@ -267,4 +334,26 @@ ALF_T_ME :: "{\"logged_in\":true,\"account\":\"acct_7\",\"emails\":[\"m...@b.co\
   #assert !alf_answer(f[..], 500, "", 0) && alf_access(f[..]) == "" && f[0].state == ALF_OUT;
   #assert !alf_logout(f[..]) && f[0].step == ALF_S_NONE;
   #assert !alf_answer(f[..], 200, "", 0);
+}
+
+#test "workos: config switches email to Magic Auth, handles need-org, PKCE exchange, and SSO discovery" {
+  f: [1] AlFlow; alf_open(f[..], "");
+  #assert alf_workos_config(f[..]) && alf_path(f[..]) == "/api/auth/workos/config";
+  #assert !alf_answer(f[..], 200, "{\"enabled\":true,\"client_id\":\"client_01ANDROID\"}", 0);
+  #assert f[0].workos_enabled && alf_workos_client_id(f[..]) == "client_01ANDROID";
+  // Magic Auth + need-org -> org select -> Option A1 tokens with device binding
+  #assert alf_email(f[..], "alice@acme.test") && alf_path(f[..]) == "/api/auth/workos/magic/start";
+  #assert !alf_answer(f[..], 200, "{\"state\":\"sent\",\"pending\":\"wp_a\"}", 0) && f[0].state == ALF_CODE;
+  #assert alf_code(f[..], "123456") && alf_path(f[..]) == "/api/auth/workos/magic/verify" && f[0].device;
+  #assert !alf_answer(f[..], 200, "{\"state\":\"need-org\",\"pending\":\"wo_a\",\"organizations\":[{\"id\":\"org_1\",\"name\":\"Acme\"}]}", 0) && f[0].state == ALF_ORG;
+  #assert alf_workos_org(f[..], "org_1") && alf_path(f[..]) == "/api/auth/workos/org/select" && f[0].device;
+  #assert alf_answer(f[..], 200, ALF_T_LOGIN, 1000) && f[0].state == ALF_IN && f[0].keep && f[0].t[0].bound;
+  #assert !alf_answer(f[..], 200, ALF_T_ME, 1000) && alf_who_text(f[..]) == "m...@b.co";
+  // PKCE exchange with verified Android App Link callback
+  g: [1] AlFlow; alf_open(g[..], "");
+  #assert alf_workos_exchange(g[..], "code_abc", "verifier_xyz", "https://openagents.com/app/auth/callback") && alf_path(g[..]) == "/api/auth/workos/exchange" && g[0].device;
+  #assert alf_answer(g[..], 200, ALF_T_LOGIN, 2000) && g[0].state == ALF_IN && g[0].keep;
+  // Enterprise SSO domain discovery
+  #assert alf_workos_sso(g[..], "alice@acme.test") && alf_path(g[..]) == "/api/auth/workos/sso/discover";
+  #assert !alf_answer(g[..], 200, "{\"sso\":true,\"connection_id\":\"conn_acme\"}", 0) && alf_sso_conn(g[..]) == "conn_acme";
 }
