@@ -6,7 +6,8 @@
 //   - tb2-cross-section (12 tasks: 8 train, 4 held-out)
 //   - tb2-full          (89 official Terminal-Bench 2.0 tasks: 60 train, 29 held-out)
 //   - tb21-oos          (89 official Terminal-Bench 2.1 tasks: 24 dev, 65 held-out)
-//   - tb4-full          (66 official Terminal-Bench 4.0 tasks: 42 train, 24 held-out)
+//   - tb4-full          (66 official Terminal-Bench 4.0 tasks: 44 train, 22 held-out)
+//   - tb41-full         (66 official Terminal-Bench 4.1 tasks: 44 train, 22 held-out)
 //
 //   coax/bin/coax test coax/lib/tbench/suites.coax --library
 #load "policy.coax";
@@ -19,7 +20,8 @@ TB_SUITE_CROSS :: 1;
 TB_SUITE_TB2_FULL :: 2;
 TB_SUITE_TB21_OOS :: 3;
 TB_SUITE_TB4_FULL :: 4;
-TB_SUITE_COUNT :: 5;
+TB_SUITE_TB41_FULL :: 5;
+TB_SUITE_COUNT :: 6;
 
 TB2_SMOKE_TASKS :: [3] string.[
   "fix-git",
@@ -88,7 +90,10 @@ tb_suite_info :: (id: int) -> TbSuiteInfo {
   if id == TB_SUITE_TB21_OOS {
     return TbSuiteInfo.{id = TB_SUITE_TB21_OOS, slug = "tb21-oos", title = "Terminal-Bench 2.1 — Full + OOS Split (89 Tasks)", dataset = "terminal-bench@2.1", count = 89};
   }
-  return TbSuiteInfo.{id = TB_SUITE_TB4_FULL, slug = "tb4-full", title = "Terminal-Bench 4.0 — Full Official Suite (66 Tasks)", dataset = "terminal-bench@4.0", count = 66};
+  if id == TB_SUITE_TB4_FULL {
+    return TbSuiteInfo.{id = TB_SUITE_TB4_FULL, slug = "tb4-full", title = "Terminal-Bench 4.0 — Full Official Suite (66 Tasks)", dataset = "terminal-bench@4.0", count = 66};
+  }
+  return TbSuiteInfo.{id = TB_SUITE_TB41_FULL, slug = "tb41-full", title = "Terminal-Bench 4.1 — Full Official Suite (66 Tasks)", dataset = "terminal-bench@4.1", count = 66};
 }
 
 tb_suite_by_slug :: (slug: string) -> int {
@@ -97,6 +102,7 @@ tb_suite_by_slug :: (slug: string) -> int {
   if slug == "tb2-full" || slug == "tb2" || slug == "full" { return TB_SUITE_TB2_FULL; }
   if slug == "tb21-oos" || slug == "tb21" { return TB_SUITE_TB21_OOS; }
   if slug == "tb4-full" || slug == "tb4" { return TB_SUITE_TB4_FULL; }
+  if slug == "tb41-full" || slug == "tb41" || slug == "tb4.1" { return TB_SUITE_TB41_FULL; }
   return -1;
 }
 
@@ -105,7 +111,7 @@ tb_suite_task :: (suite_id: int, idx: int) -> string {
   if suite_id == TB_SUITE_SMOKE && idx < 3 { return TB2_SMOKE_TASKS[idx]; }
   if suite_id == TB_SUITE_CROSS && idx < 12 { return TB2_CROSS_TASKS[idx]; }
   if (suite_id == TB_SUITE_TB2_FULL || suite_id == TB_SUITE_TB21_OOS) && idx < 89 { return TB2_FULL_TASKS[idx]; }
-  if suite_id == TB_SUITE_TB4_FULL && idx < 66 { return TB4_FULL_TASKS[idx]; }
+  if (suite_id == TB_SUITE_TB4_FULL || suite_id == TB_SUITE_TB41_FULL) && idx < 66 { return TB4_FULL_TASKS[idx]; }
   return "";
 }
 
@@ -132,10 +138,13 @@ tb_partition_name :: (part: int) -> string {
   #assert tb_suite_by_slug("tb2-full") == TB_SUITE_TB2_FULL;
   #assert tb_suite_by_slug("tb21-oos") == TB_SUITE_TB21_OOS;
   #assert tb_suite_by_slug("tb4-full") == TB_SUITE_TB4_FULL;
+  #assert tb_suite_by_slug("tb41-full") == TB_SUITE_TB41_FULL;
+  #assert tb_suite_by_slug("tb4.1") == TB_SUITE_TB41_FULL;
   #assert tb_suite_by_slug("nope") == -1;
 
   for sid: 0..<TB_SUITE_COUNT {
     info := tb_suite_info(sid);
+    #assert info.id == sid;
     #assert tb_valid_dataset(info.dataset);
     #assert tb_valid_slug(info.slug);
     tr := 0; ho := 0;
@@ -145,9 +154,13 @@ tb_partition_name :: (part: int) -> string {
       if tb_suite_partition(sid, i) == TB_PART_TRAIN { tr += 1; } else { ho += 1; }
     }
     #assert tr > 0 && ho > 0 && tr + ho == info.count;
+    #assert tb_suite_task(sid, -1) == "";
+    #assert tb_suite_task(sid, info.count) == "";
   }
+  #assert tb_suite_task(99, 0) == "";
   #assert tb_suite_info(TB_SUITE_TB2_FULL).count == 89;
-  #assert tb_suite_info(TB_SUITE_TB4_FULL).count == 66;
+  #assert tb_suite_info(TB_SUITE_TB4_FULL).count == 66 && tb_suite_info(TB_SUITE_TB4_FULL).slug == "tb4-full";
+  #assert tb_suite_info(TB_SUITE_TB41_FULL).count == 66 && tb_suite_info(TB_SUITE_TB41_FULL).slug == "tb41-full";
   #assert tb_suite_task(TB_SUITE_SMOKE, 0) == "fix-git";
   #assert tb_suite_partition(TB_SUITE_SMOKE, 2) == TB_PART_HELDOUT;
 }

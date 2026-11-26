@@ -212,11 +212,8 @@ flawed_wire_max_tokens :: (thinking_mode: int, effort: string, is_local: bool) -
     if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 4096; }
     return 8192;
   }
-  if thinking_mode == FLAWED_THINK_OFF || effort == "low" { return 16384; }
-  if effort == "medium" { return 24576; }
-  if effort == "xhigh" { return 49152; }
-  if effort == "max" { return 65536; }
-  return 32768;
+  if thinking_mode == FLAWED_THINK_OFF || effort == "low" || effort == "medium" { return 32768; }
+  return 65536;
 }
 
 flawed_wire_csv_has :: (csv: string, name: string) -> bool #effects(all) {
@@ -295,7 +292,7 @@ flawed_wire_parse_gemini_sse :: (data_json: string, part_idx: int, out_ev: [] Fl
   if out_ev.count < 1 || out_sig_n.count < 1 { return -1; }
   out_ev[0] = FlawedWireSseEvent.{};
   out_sig_n[0] = 0;
-  nodes: [512] JvNode;
+  nodes: [1024] JvNode;
   d: [1] Jv;
   if !jv_parse(d[..], data_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; } // mutant: equivalent (jv_parse fails -> jv_kind == 0 != JV_OBJECT)
   v := d[0];
@@ -504,6 +501,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert flawed_aw_eq_ci("Ab", "aB") && !flawed_aw_eq_ci("Ab", "xb") && !flawed_aw_eq_ci("a", "ab");
   #assert flawed_aw_trim_slash("/") == "/" && flawed_aw_trim_slash("a//") == "a" && flawed_aw_trim_slash("a/") == "a";
 
+  #assert flawed_wire_strip_model("oa:gemini-4-neon") == "gemini-4-neon";
   #assert flawed_wire_strip_model("flawed:gemini-4-neon") == "gemini-4-neon";
   #assert flawed_wire_strip_model("flawed:gemini-4-carbon[1m]") == "gemini-4-carbon";
   #assert flawed_wire_strip_model("inkling-2-mini") == "inkling-2-mini";
@@ -518,11 +516,15 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   #assert cast(string) mb[0..<flawed_wire_gemini_model("flawed:gemini-4-neon", mb[..])] == "gemini-4-neon";
   #assert cast(string) mb[0..<flawed_wire_gemini_model("google/gemini-4-carbon", mb[..])] == "gemini-4-carbon";
   #assert cast(string) mb[0..<flawed_wire_gemini_model("flawed:inkling-2-mini", mb[..])] == "gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("auto", mb[..])] == "gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_gemini_model("cloud", mb[..])] == "gemini-4-neon";
   #assert cast(string) mb[0..<flawed_wire_gemini_model("", mb[..])] == "gemini-4-neon";
 
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("flawed:gemini-4-neon", mb[..])] == "google/gemini-4-neon";
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("z-ai/glm-5.3-flash", mb[..])] == "z-ai/glm-5.3-flash";
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("flawed:inkling-2-mini", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("auto", mb[..])] == "google/gemini-4-neon";
+  #assert cast(string) mb[0..<flawed_wire_openrouter_model("cloud", mb[..])] == "google/gemini-4-neon";
   #assert cast(string) mb[0..<flawed_wire_openrouter_model("", mb[..])] == "google/gemini-4-neon";
 
   ub: [256] u8;
@@ -558,9 +560,9 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
 
   #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "high", true) == 4096 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", true) == 4096;
   #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", true) == 8192;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "max", false) == 16384 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", false) == 16384;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium", false) == 24576 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", false) == 32768;
-  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "xhigh", false) == 49152 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "max", false) == 65536;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_OFF, "max", false) == 32768 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "low", false) == 32768;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "medium", false) == 32768 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "high", false) == 65536;
+  #assert flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "xhigh", false) == 65536 && flawed_wire_max_tokens(FLAWED_THINK_ADAPTIVE, "max", false) == 65536;
 
   #assert !flawed_wire_csv_has("", "Read") && !flawed_wire_csv_has("Read", "");
   #assert flawed_wire_csv_has(",\tA\t, B ", "a") && flawed_wire_csv_has(" , , ", "x") == false;
@@ -710,7 +712,7 @@ flawed_wire_write_tools :: (o: [] Jo, gemini_fmt: bool, allowed_csv: string, dis
   // Tool schema serialization: Gemini functionDeclarations vs OpenAI function wrapper
   buf: [12288] u8;
   o: [1] Jo;
-  nodes: [512] JvNode;
+  nodes: [1024] JvNode;
   d: [1] Jv;
   sb: [512] u8;
 

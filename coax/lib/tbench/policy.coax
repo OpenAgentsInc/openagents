@@ -85,7 +85,7 @@ tb_valid_task_id :: (s: string) -> bool #effects(reads, traps) {
 
 // Validates an official Harbor Terminal-Bench dataset identifier.
 tb_valid_dataset :: (ds: string) -> bool #effects(reads, traps) {
-  return ds == "terminal-bench@2.0" || ds == "terminal-bench@2.1" || ds == "terminal-bench@4.0";
+  return ds == "terminal-bench@2.0" || ds == "terminal-bench@2.1" || ds == "terminal-bench@4.0" || ds == "terminal-bench@4.1";
 }
 
 // Classifies one Terminal-Bench trial strictly from Harbor's authoritative verifier output.
@@ -237,6 +237,7 @@ tb_gate_reason :: (code: int) -> string #effects() {
   #assert tb_valid_dataset("terminal-bench@2.0");
   #assert tb_valid_dataset("terminal-bench@2.1");
   #assert tb_valid_dataset("terminal-bench@4.0");
+  #assert tb_valid_dataset("terminal-bench@4.1");
   #assert !tb_valid_dataset("terminal-bench@1.0");
   #assert !tb_valid_dataset("");
 

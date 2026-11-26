@@ -29,10 +29,11 @@ cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 
 FWW_LINE :: 1048576;
-FWW_SLAB :: 2097152;
-FWW_MAX_MSGS :: 160;
-FWW_MAX_BLOCKS :: 16;
-FWW_MAX_TOOLS_CALL :: 12;
+FWW_SLAB :: 4194304;
+FWW_MAX_MSGS :: 256;
+FWW_MAX_BLOCKS :: 28;
+FWW_MAX_TOOLS_CALL :: 24;
+FWW_CMD_MAX :: 32768;
 FWW_FILE_MAX :: 524288;
 FWW_TOOL_OUT_MAX :: 49152;
 FWW_LOCAL_TOOL_OUT_MAX :: 12288;
@@ -169,6 +170,7 @@ FwConfig :: struct {
   remote_bridge: bool;
   max_turns: int;             // 0 = unlimited (capped at 64 safety)
   max_budget_micros: int;     // 0 = unlimited
+  budget_s: int;              // 0 = no wall-clock pacing budget (set via FLAWED_BUDGET_S)
   bash_timeout_s: int;        // 0 = default 120s (harness sets 20s fast-fail)
   local_max_tokens: int;      // 0 = wire default (harness sets 6144 for local Inkling)
   base_url: [512] u8; nbase_url: int;
@@ -273,6 +275,7 @@ fww_load_config :: (cfg: [] FwConfig) {
   cfg[0].remote_bridge = fww_env_bool2("OA_AGENT_REMOTE_BRIDGE", "FLAWED_REMOTE_BRIDGE", false);
   cfg[0].max_turns = fww_env_int2("OA_AGENT_MAX_TURNS", "FLAWED_MAX_TURNS", 0);
   cfg[0].max_budget_micros = fww_env_int2("OA_AGENT_MAX_BUDGET_MICROS", "FLAWED_MAX_BUDGET_MICROS", 0);
+  cfg[0].budget_s = fww_env_int2("OA_AGENT_BUDGET_S", "FLAWED_BUDGET_S", 0);
 
   bu := fww_getenv2("OA_AGENT_BASE_URL", "FLAWED_BASE_URL", b[..]);
   cfg[0].nbase_url = fww_keep(cfg[0].base_url[..], bu);
@@ -882,6 +885,22 @@ fww_is_context_overflow_err :: (msg: string) -> bool {
       || fww_contains_ci(msg, "exceeded the context");
 }
 
+// Detects transient mid-stream SSE errors (e.g. Gemini HTTP 200 stream ending with 503/UNAVAILABLE
+// "high demand" or 429 rate-limit JSON) so Ch 05 exponential backoff retries instead of hard-failing.
+fww_is_transient_sse_err :: (msg: string) -> bool {
+  if msg.count == 0 { return false; }
+  return fww_contains_ci(msg, "high demand")
+      || fww_contains_ci(msg, "overloaded")
+      || fww_contains_ci(msg, "unavailable")
+      || fww_contains_ci(msg, "temporarily")
+      || fww_contains_ci(msg, "try again")
+      || fww_contains_ci(msg, "rate limit")
+      || fww_contains_ci(msg, "resource exhausted")
+      || fww_contains_ci(msg, "resource_exhausted")
+      || fww_contains_ci(msg, "internal error")
+      || fww_contains_ci(msg, "deadline exceeded");
+}
+
 // Extracts N from "...context length is N..." when reported by server (0 if absent).
 fww_parse_ctx_limit_from_err :: (msg: string) -> int {
   key := "context length is ";
@@ -1074,27 +1093,41 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
   for k: 0..<nkept { if kept_msgs[k].role == FWW_MROLE_TOOL_RESULTS { total_tr += 1; } }
   recent_tr_from := total_tr - keep_recent_tools;
 
-  // Guard tmp_buf headroom so relocated blocks NEVER clip a TOOL_USE JSON argument string.
+  // Guard tmp_buf headroom so relocated blocks NEVER clip an id, tool name, thoughtSignature, or TOOL_USE JSON argument string.
   avail_reloc := tmp_buf.count - sum_n - 4096;
+  if nkept > 0 && avail_reloc <= 0 { return false; }
   eff_recent_cap := recent_block_cap;
   if nkept > 0 && avail_reloc > 0 {
-    raw_kept := 0;
+    fixed_kept := 0;
+    shrink_kept := 0;
+    shrink_blks := 0;
     for k: 0..<nkept {
       for b: 0..<kept_msgs[k].nblocks {
         bk := kept_msgs[k].blocks[b];
-        raw_kept += bk.id_n + bk.name_n + bk.text_n + bk.sig_n;
+        fixed_kept += bk.id_n + bk.name_n + bk.sig_n;
+        if bk.kind == FWW_MB_TOOL_USE {
+          fixed_kept += bk.text_n;
+        } else {
+          shrink_kept += bk.text_n;
+          if bk.text_n > 0 { shrink_blks += 1; }
+        }
       }
     }
-    if raw_kept > avail_reloc {
-      per_msg := avail_reloc / (nkept + 1);
-      if per_msg < 512 { per_msg = 512; }
-      if eff_recent_cap == 0 || per_msg < eff_recent_cap { eff_recent_cap = per_msg; }
+    if fixed_kept > avail_reloc { return false; }
+    if fixed_kept + shrink_kept > avail_reloc {
+      if shrink_blks == 0 { return false; }
+      per_blk := (avail_reloc - fixed_kept) / shrink_blks;
+      if per_blk < 128 { return false; }
+      if eff_recent_cap == 0 || per_blk < eff_recent_cap { eff_recent_cap = per_blk; }
     }
   }
 
   // Relocate kept slab bytes into tmp_buf[sum_n..], applying microcompact & recent block caps.
+  // Atomic overflow check: if ANY id, name, signature, or uncapped block does not fit in tmp_buf
+  // (or won't fit back into h[0].slab), abort without mutating h so the caller can escalate cleanly.
   reloc_at := sum_n;
   tr_seen := 0;
+  overflowed := false;
   for k: 0..<nkept {
     is_old_tr := false;
     if kept_msgs[k].role == FWW_MROLE_TOOL_RESULTS {
@@ -1104,9 +1137,13 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
     for b: 0..<kept_msgs[k].nblocks {
       bk := kept_msgs[k].blocks[b];
       id_s := fww_slab_str(h, bk.id_at, bk.id_n);
+      if reloc_at + id_s.count > tmp_buf.count { overflowed = true; break; }
       id_new := reloc_at; id_n := fww_cat(tmp_buf, reloc_at, id_s) - reloc_at; reloc_at += id_n;
+      if id_n != id_s.count { overflowed = true; break; }
       nm_s := fww_slab_str(h, bk.name_at, bk.name_n);
+      if reloc_at + nm_s.count > tmp_buf.count { overflowed = true; break; }
       nm_new := reloc_at; nm_n := fww_cat(tmp_buf, reloc_at, nm_s) - reloc_at; reloc_at += nm_n;
+      if nm_n != nm_s.count { overflowed = true; break; }
       tx_s := fww_slab_str(h, bk.text_at, bk.text_n);
       tx_new := reloc_at;
       cap_b := 0;
@@ -1116,21 +1153,38 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
       } else if bk.kind == FWW_MB_TEXT || bk.kind == FWW_MB_THINK {
         if eff_recent_cap > 0 { cap_b = eff_recent_cap; }
       }
+      if cap_b == 0 && reloc_at + tx_s.count > tmp_buf.count { overflowed = true; break; }
       tx_end := ifx cap_b > 0 then fww_shrink_head_tail(tmp_buf, reloc_at, tx_s, cap_b, "compacted") else fww_cat(tmp_buf, reloc_at, tx_s);
       tx_n := tx_end - reloc_at; reloc_at = tx_end;
+      if cap_b == 0 && tx_n != tx_s.count { overflowed = true; break; }
+      if cap_b > 0 && tx_s.count > 0 && reloc_at >= tmp_buf.count { overflowed = true; break; }
       sg_s := fww_slab_str(h, bk.sig_at, bk.sig_n);
+      if reloc_at + sg_s.count > tmp_buf.count { overflowed = true; break; }
       sg_new := reloc_at; sg_n := fww_cat(tmp_buf, reloc_at, sg_s) - reloc_at; reloc_at += sg_n;
+      if sg_n != sg_s.count { overflowed = true; break; }
       kept_msgs[k].blocks[b].id_at = id_new; kept_msgs[k].blocks[b].id_n = id_n;
       kept_msgs[k].blocks[b].name_at = nm_new; kept_msgs[k].blocks[b].name_n = nm_n;
       kept_msgs[k].blocks[b].text_at = tx_new; kept_msgs[k].blocks[b].text_n = tx_n;
       kept_msgs[k].blocks[b].sig_at = sg_new; kept_msgs[k].blocks[b].sig_n = sg_n;
     }
+    if overflowed { break; }
   }
+  if overflowed || reloc_at + 4096 > h[0].slab.count { return false; }
 
   // If microcompact-only made zero reduction, skip rewriting slab.
   if keep_from == 0 && (reloc_at - sum_n) >= old_nslab { return false; }
 
+  saved_total_in := h[0].total_in;
+  saved_total_out := h[0].total_out;
+  saved_total_cached := h[0].total_cached;
+  saved_total_cost := h[0].total_cost_micros;
+  saved_compact_count := h[0].compact_count;
   fww_hist_clear(h);
+  h[0].total_in = saved_total_in;
+  h[0].total_out = saved_total_out;
+  h[0].total_cached = saved_total_cached;
+  h[0].total_cost_micros = saved_total_cost;
+  h[0].compact_count = saved_compact_count;
   if sum_n > 0 {
     fww_hist_push_user(h, cast(string) tmp_buf[0..<sum_n]);
     // Keep strict user/assistant role alternation for both OpenAI/Psionic and Gemini:
@@ -1164,7 +1218,8 @@ fww_hist_compact_ex :: (h: [] FwHist, drop_to_tail: int, keep_recent_tools: int,
 fww_hist_compact :: (h: [] FwHist, tmp_buf: [] u8) -> bool {
   if fww_hist_compact_ex(h, 4, 2, 512, 0, 10240, tmp_buf) { return true; }
   if fww_hist_compact_ex(h, 2, 1, 512, 0, 8192, tmp_buf) { return true; }
-  return fww_hist_compact_ex(h, 0, 1, 512, 0, 0, tmp_buf);
+  if fww_hist_compact_ex(h, 0, 1, 512, 0, 0, tmp_buf) { return true; }
+  return fww_hist_compact_ex(h, -1, 0, 0, 0, 4096, tmp_buf);
 }
 
 // Progressive emergency compaction when approaching hard ceiling or recovering from HTTP 400 context overflow.
@@ -1193,18 +1248,22 @@ fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bo
   if hard_lim < 1536 { hard_lim = 1536; }
   if auto_th > hard_lim { auto_th = hard_lim; }
 
-  near_cap := h[0].nmsgs >= FWW_MAX_MSGS - 6 || h[0].nslab >= FWW_SLAB - 131072;
+  near_msgs := h[0].nmsgs >= FWW_MAX_MSGS - 6;
+  near_slab := h[0].nslab >= FWW_SLAB - 262144;
+  near_body := fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304;
   est := fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
   need_auto := auto_compact && est >= auto_th;
-  need_hard := est >= hard_lim || near_cap;
+  need_hard := est >= hard_lim || near_msgs || near_slab || near_body;
   if !need_auto && !need_hard { return false; }
 
   did := false;
-  // Layer 1: Microcompact old tool results in-place (keeps full turn timeline intact).
-  if fww_hist_compact_ex(h, 0, 2, 512, 0, 0, tmp_buf) {
+  // Layer 1: Microcompact old tool results in-place (only when not already at message-slot limit).
+  if !near_msgs && fww_hist_compact_ex(h, 0, 2, 512, 0, 0, tmp_buf) {
     did = true;
     est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
-    if est < auto_th && !near_cap { return true; }
+    near_slab = h[0].nslab >= FWW_SLAB - 262144;
+    near_body = fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304;
+    if est < auto_th && !near_slab && !near_body { return true; }
   }
   // Layer 2: Intra-turn full compaction keeping last 4 messages.
   max_sum := ifx is_local then (ctx_win * 3) / 10 else 16384;
@@ -1212,25 +1271,27 @@ fww_ensure_context_fits :: (h: [] FwHist, sys_n: int, ctx_win: int, is_local: bo
   if fww_hist_compact_ex(h, 4, 2, 512, 0, max_sum, tmp_buf) {
     did = true;
     est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
-    if est < hard_lim && h[0].nmsgs < FWW_MAX_MSGS - 6 { return true; }
+    near_slab = h[0].nslab >= FWW_SLAB - 262144;
+    near_body = fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304;
+    if est < hard_lim && h[0].nmsgs < FWW_MAX_MSGS - 6 && !near_slab && !near_body { return true; }
   }
   // Layer 3: Aggressive compaction keeping last 2 messages + capping kept tool/text blocks.
-  if est >= hard_lim || h[0].nmsgs >= FWW_MAX_MSGS - 6 {
+  if est >= hard_lim || h[0].nmsgs >= FWW_MAX_MSGS - 6 || h[0].nslab >= FWW_SLAB - 262144 || fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304 {
     if fww_hist_compact_ex(h, 2, 1, 256, 4096, max_sum / 2, tmp_buf) {
       did = true;
       est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
-      if est < hard_lim { return true; }
+      if est < hard_lim && h[0].nslab < FWW_SLAB - 262144 && fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) < 4194304 { return true; }
     }
   }
   // Layer 4: Hard safety trim on remaining oversized blocks so a single giant paste/output can NEVER exceed ctx_win.
-  if est >= hard_lim {
+  if est >= hard_lim || h[0].nmsgs >= FWW_MAX_MSGS - 6 || h[0].nslab >= FWW_SLAB - 262144 || fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304 {
     rem_tok := hard_lim - ((sys_n + (ifx no_tools then 256 else 5600) + 512) / 3);
     if rem_tok < 512 { rem_tok = 512; }
     max_blk := (rem_tok * 2) / (ifx h[0].nmsgs > 0 then h[0].nmsgs else 1);
     if max_blk < 512 { max_blk = 512; }
     if fww_hist_compact_ex(h, 0, 0, max_blk, max_blk, 0, tmp_buf) { did = true; }
     est = fww_estimate_prompt_tokens(h, sys_n, is_local, no_tools);
-    if est >= hard_lim {
+    if est >= hard_lim || h[0].nmsgs >= FWW_MAX_MSGS - 6 || h[0].nslab >= FWW_SLAB - 262144 || fww_estimate_prompt_bytes(h, sys_n, is_local, no_tools) >= 4194304 {
       if fww_emergency_compact(h, 3, ctx_win, tmp_buf) { did = true; }
     }
   }
@@ -1262,6 +1323,36 @@ fww_msg_has_visible_model_part :: (m: FwMsg) -> bool {
   return false;
 }
 
+// Verifies an ASSISTANT(TOOL_USE) + TOOL_RESULTS(TOOL_RES) exchange has 1-to-1 matching non-empty tool names & IDs
+// so Vertex AI can NEVER receive empty functionCall.name or mismatched functionCall/functionResponse pairs (HTTP 400).
+fww_msg_tools_valid :: (h: [] FwHist, asst: FwMsg, tr: FwMsg) -> bool {
+  tu_idx: [FWW_MAX_BLOCKS] int; ntu := 0;
+  for b: 0..<asst.nblocks {
+    if asst.blocks[b].kind == FWW_MB_TOOL_USE {
+      bk := asst.blocks[b];
+      if bk.name_n <= 0 || bk.name_at < 0 || bk.name_at + bk.name_n > h[0].slab.count { return false; }
+      tu_idx[ntu] = b; ntu += 1;
+    }
+  }
+  if ntu <= 0 { return false; }
+  tr_idx: [FWW_MAX_BLOCKS] int; ntr := 0;
+  for b: 0..<tr.nblocks {
+    if tr.blocks[b].kind == FWW_MB_TOOL_RES {
+      bk := tr.blocks[b];
+      if bk.name_n <= 0 || bk.name_at < 0 || bk.name_at + bk.name_n > h[0].slab.count { return false; }
+      tr_idx[ntr] = b; ntr += 1;
+    }
+  }
+  if ntr != ntu { return false; }
+  for k: 0..<ntu {
+    tb := asst.blocks[tu_idx[k]];
+    rb := tr.blocks[tr_idx[k]];
+    if fww_slab_str(h, tb.name_at, tb.name_n) != fww_slab_str(h, rb.name_at, rb.name_n) { return false; }
+    if tb.id_n > 0 && rb.id_n > 0 && fww_slab_str(h, tb.id_at, tb.id_n) != fww_slab_str(h, rb.id_at, rb.id_n) { return false; }
+  }
+  return true;
+}
+
 fww_hist_sanitize :: (h: [] FwHist, tmp_buf: [] u8) {
   if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab >= FWW_SLAB - 32768 {
     _ = fww_hist_compact(h, tmp_buf);
@@ -1273,22 +1364,56 @@ fww_hist_sanitize :: (h: [] FwHist, tmp_buf: [] u8) {
     if out_n == 0 && msg.role != FWW_MROLE_USER { continue; }
 
     if msg.role == FWW_MROLE_TOOL_RESULTS {
-      // 2. TOOL_RESULTS MUST immediately follow ASSISTANT with matching TOOL_USE count > 0.
-      if out_n == 0 || h[0].msgs[out_n - 1].role != FWW_MROLE_ASSISTANT { continue; }
-      prev_tu := fww_msg_count_tool_use(h[0].msgs[out_n - 1]);
-      cur_tr := fww_msg_count_tool_res(msg);
-      if prev_tu <= 0 || cur_tr != prev_tu { continue; }
+      // 2. TOOL_RESULTS MUST immediately follow ASSISTANT with matching, valid non-empty TOOL_USE/TOOL_RES pairs.
+      valid_pair := out_n > 0
+                 && h[0].msgs[out_n - 1].role == FWW_MROLE_ASSISTANT
+                 && fww_msg_tools_valid(h, h[0].msgs[out_n - 1], msg);
+      if !valid_pair {
+        // Preserve any trailing user text (steers / merged follow-up prompt) as a clean USER turn instead of dropping it.
+        mn := 0;
+        for b: 0..<msg.nblocks {
+          if msg.blocks[b].kind == FWW_MB_TEXT && msg.blocks[b].text_n > 0 {
+            if mn > 0 { mn = fww_cat(tmp_buf, mn, "\n\n"); }
+            mn = fww_cat(tmp_buf, mn, fww_slab_str(h, msg.blocks[b].text_at, msg.blocks[b].text_n));
+          }
+        }
+        if mn > 0 {
+          if out_n > 0 && h[0].msgs[out_n - 1].role == FWW_MROLE_USER {
+            prev_txt := ifx h[0].msgs[out_n - 1].nblocks > 0 then fww_slab_str(h, h[0].msgs[out_n - 1].blocks[0].text_at, h[0].msgs[out_n - 1].blocks[0].text_n) else "";
+            if prev_txt.count > 0 && prev_txt.count + 2 + mn <= tmp_buf.count {
+              // Shift mn text rightward or copy into tail? Combine via slab safely:
+              a0 := [1] int.[0];
+              new_n := fww_slab_put(h, cast(string) tmp_buf[0..<mn], a0[..]);
+              new_s := fww_slab_str(h, a0[0], new_n);
+              cn := fww_cat(tmp_buf, 0, prev_txt);
+              cn = fww_cat(tmp_buf, cn, "\n\n");
+              cn = fww_cat(tmp_buf, cn, new_s);
+              a1 := [1] int.[0];
+              sn := fww_slab_put(h, cast(string) tmp_buf[0..<cn], a1[..]);
+              h[0].msgs[out_n - 1].blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = a1[0], text_n = sn};
+              h[0].msgs[out_n - 1].nblocks = 1;
+            }
+          } else if out_n < FWW_MAX_MSGS {
+            a0 := [1] int.[0];
+            sn := fww_slab_put(h, cast(string) tmp_buf[0..<mn], a0[..]);
+            h[0].msgs[out_n] = FwMsg.{role = FWW_MROLE_USER, nblocks = 1};
+            h[0].msgs[out_n].blocks[0] = FwBlock.{kind = FWW_MB_TEXT, text_at = a0[0], text_n = sn};
+            out_n += 1;
+          }
+        }
+        continue;
+      }
       h[0].msgs[out_n] = msg;
       out_n += 1;
     } else if msg.role == FWW_MROLE_ASSISTANT {
       // 3. Never emit two consecutive ASSISTANT messages.
       if out_n > 0 && h[0].msgs[out_n - 1].role == FWW_MROLE_ASSISTANT { continue; }
-      // 4. An ASSISTANT message with TOOL_USE MUST be immediately followed by TOOL_RESULTS with the exact same count;
-      //    if it is dangling/mismatched (e.g. from a stopped/failed mid-tool turn), strip TOOL_USE blocks cleanly.
+      // 4. An ASSISTANT message with TOOL_USE MUST be immediately followed by TOOL_RESULTS with exact valid matching pairs;
+      //    if it is dangling/mismatched/corrupted (e.g. stopped/failed mid-tool or truncated name), strip TOOL_USE cleanly.
       ntu := fww_msg_count_tool_use(msg);
       next_matches_tr := (i + 1 < h[0].nmsgs)
                       && h[0].msgs[i + 1].role == FWW_MROLE_TOOL_RESULTS
-                      && fww_msg_count_tool_res(h[0].msgs[i + 1]) == ntu;
+                      && fww_msg_tools_valid(h, msg, h[0].msgs[i + 1]);
       if ntu > 0 && !next_matches_tr {
         nb := 0;
         for b: 0..<msg.nblocks {
@@ -1493,8 +1618,10 @@ fww_build_system_prompt :: (cfg: [] FwConfig, cwd: string, home: string, out: []
   n = fww_cat(out, n, "- Maximize parallel tool calls: emit ALL independent Read, Grep, Glob, or Edit calls together in a single response instead of one call per turn.\n");
   n = fww_cat(out, n, "- Prefer dedicated tools over Bash: Read (not cat/head/tail/sed), Edit (not sed/awk), Write (not heredoc), Glob (not find/ls), Grep (not rg/grep). Reserve Bash for builds, tests, git, and scripts.\n");
   n = fww_cat(out, n, "- Keep exploration tightly bounded: read only the target file(s) and direct callers/tests needed for the task (typically 2-4 turns). Do not read peripheral docs, unrelated modules, or deep git history once you know enough to write your first working change.\n");
-  n = fww_cat(out, n, "- Keep internal reasoning tight and action-oriented: do NOT spend long multi-step derivations trying to mentally prove every edge case or draft an entire multi-file patch in your head before editing. Apply a focused first edit on the core file early, run the targeted test/build command immediately for fast ground-truth feedback (before piling on more speculative edits), and iterate from real errors.\n");
-  n = fww_cat(out, n, "- Stop as soon as verified: once your edits are in place and the requested tests/checks pass, finish immediately and report the outcome plainly — do not run extra `git diff`/`git status` checks, gold-plate, or re-run passing checks.\n");
+  n = fww_cat(out, n, "- Derive root causes and general invariants thoroughly before patching: fix the underlying invariant across multiple sequential, concurrent, or interleaved operations and edge cases (never just a single repro symptom). Batch independent edits cleanly, run targeted build/test checks right after editing, and fuzz boundary/malformed/stress inputs before finishing.\n");
+  n = fww_cat(out, n, "- Think concisely and iterate from real execution: do not spend long blocks mentally simulating every case in isolation before running code. Once you have the core model, write your deliverable implementation and a comprehensive test script early so real execution exposes subtle edge cases with plenty of time left to fix them. For search or optimization tasks, write the first valid working output to the target path immediately before running slower refinement passes, and keep scripts fast (<30s).\n");
+  n = fww_cat(out, n, "- Avoid multi-turn probe-by-probe scripting: when exploring data, reverse-engineering behavior, or prototyping an algorithm, write ONE comprehensive script (e.g. in /tmp) that tests multiple hypotheses and prints all needed diagnostics in a single Bash call instead of running 6-15 tiny sequential python3 -c / node -e / bun -e turns. Move to writing the actual deliverable files and running end-to-end verification early.\n");
+  n = fww_cat(out, n, "- Thorough verification before stopping: once core edits compile and pass initial smoke tests, audit every explicit requirement, generalize beyond the default fixture (testing varied configurations, boundary/malformed values, and multi-step state transitions), clean up any temporary files inside the workspace, and finish concisely without gold-plating or extra git diff/status chatter.\n");
   n = fww_cat(out, n, "- Never re-read unchanged file ranges or repeat identical Grep/Glob/git-log queries already in context. Chain dependent build/test checks with `&&` in one Bash call.\n");
   n = fww_cat(out, n, "- Always Read a file before using Edit on it. In Edit, omit line-number prefixes and keep each hunk minimal and surgical (only the changed lines plus 2-3 context lines, <= ~80 lines per Edit). For multi-region refactors, batch multiple small parallel Edit calls rather than replacing huge unmodified blocks.\n");
   n = fww_cat(out, n, "- Tool results may include `<system-reminder>` tags containing pacing or context reminders from the harness.\n");
@@ -1622,7 +1749,8 @@ fww_build_gemini_body :: (cfg: [] FwConfig, h: [] FwHist, effort: string, sys_pr
           jo_obj(o[..]);
           jo_key(o[..], "functionCall");
           jo_obj(o[..]);
-          jo_key(o[..], "name"); jo_str(o[..], fww_slab_str(h, bk.name_at, bk.name_n));
+          fc_nm := fww_slab_str(h, bk.name_at, bk.name_n);
+          jo_key(o[..], "name"); jo_str(o[..], ifx fc_nm.count > 0 then fc_nm else "tool");
           inp := fww_slab_str(h, bk.text_at, bk.text_n);
           jo_key(o[..], "args");
           jo_raw(o[..], ifx inp.count > 0 && json_valid(inp) && inp[0] == '{' then inp else "{}");
@@ -2186,6 +2314,76 @@ fww_append_symbol_outline :: (out: [] u8, at: int, content: string, from_line: i
   return n;
 }
 
+// Detect binary files (NUL byte or >15% non-text control/invalid-UTF-8 bytes in first 4 KiB).
+fww_is_binary_bytes :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  lim := ifx s.count < 4096 then s.count else 4096;
+  bad := 0;
+  i := 0;
+  while i < lim {
+    b := s[i];
+    if b == 0 { return true; }
+    if b == 9 || b == 10 || b == 13 || (b >= 32 && b <= 126) {
+      i += 1; continue;
+    }
+    if b >= 0xC2 && b <= 0xDF && i + 1 < lim && (s[i + 1] & 0xC0) == 0x80 {
+      if b == 0xC2 && s[i + 1] < 0xA0 { bad += 2; }
+      i += 2; continue;
+    }
+    if b >= 0xE0 && b <= 0xEF && i + 2 < lim && (s[i + 1] & 0xC0) == 0x80 && (s[i + 2] & 0xC0) == 0x80 {
+      i += 3; continue;
+    }
+    if b >= 0xF0 && b <= 0xF4 && i + 3 < lim && (s[i + 1] & 0xC0) == 0x80 && (s[i + 2] & 0xC0) == 0x80 && (s[i + 3] & 0xC0) == 0x80 {
+      i += 4; continue;
+    }
+    bad += 1;
+    i += 1;
+  }
+  return lim >= 64 && bad * 100 > lim * 15;
+}
+
+// Sanitize arbitrary subprocess output into valid UTF-8, stripping CR/C0/C1 control noise and
+// collapsing raw binary runs (>=4 invalid/control bytes) into `[binary]` so JSONL wire logs stay
+// 100% valid and binary dumps never inflate LLM context with thousands of byte-fallback tokens.
+fww_sanitize_text_line :: (src: string, dst: [] u8) -> int {
+  n := 0;
+  i := 0;
+  bad_run := 0;
+  while i < src.count && n + 16 < dst.count {
+    b := src[i];
+    if b == 13 {
+      i += 1; continue;
+    }
+    if b == 9 || b == 10 || (b >= 32 && b <= 126) {
+      bad_run = 0;
+      dst[n] = b; n += 1; i += 1; continue;
+    }
+    if b >= 0xC2 && b <= 0xDF && i + 1 < src.count && (src[i + 1] & 0xC0) == 0x80 {
+      if !(b == 0xC2 && src[i + 1] < 0xA0) {
+        bad_run = 0;
+        dst[n] = b; dst[n + 1] = src[i + 1]; n += 2; i += 2; continue;
+      }
+      i += 2;
+    } else if b >= 0xE0 && b <= 0xEF && i + 2 < src.count && (src[i + 1] & 0xC0) == 0x80 && (src[i + 2] & 0xC0) == 0x80 {
+      bad_run = 0;
+      dst[n] = b; dst[n + 1] = src[i + 1]; dst[n + 2] = src[i + 2]; n += 3; i += 3; continue;
+    } else if b >= 0xF0 && b <= 0xF4 && i + 3 < src.count && (src[i + 1] & 0xC0) == 0x80 && (src[i + 2] & 0xC0) == 0x80 && (src[i + 3] & 0xC0) == 0x80 {
+      bad_run = 0;
+      dst[n] = b; dst[n + 1] = src[i + 1]; dst[n + 2] = src[i + 2]; dst[n + 3] = src[i + 3]; n += 4; i += 4; continue;
+    } else {
+      i += 1;
+    }
+    bad_run += 1;
+    if bad_run == 1 {
+      dst[n] = '?'; n += 1;
+    } else if bad_run == 4 {
+      if n > 0 && dst[n - 1] == '?' { n -= 1; }
+      n = fww_cat(dst, n, "[binary]");
+    }
+  }
+  return n;
+}
+
 fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: [] FwReadDedup, dedup_cur: [] int, compact_epoch: int, is_local: bool, fbuf: [] u8, out_res: [] u8, is_err: [] bool, wire_out: [] u8) -> int {
   is_err[0] = false;
   nodes: [128] JvNode; d: [1] Jv;
@@ -2224,6 +2422,14 @@ fww_tool_read :: (cwd: string, args_json: string, fc: FlawedFileCache, dedup: []
     return fww_keep(out_res, "Failed to read file.");
   }
   content := cast(string) fbuf[0..<sz];
+  if fww_is_binary_bytes(content) {
+    fww_send(wire_out, mww_view(wire_out, raw_path, true));
+    bn := fww_cat(out_res, 0, "[Binary file: ");
+    bn = fww_cat(out_res, bn, raw_path);
+    bn = fww_cat(out_res, bn, " (");
+    bn = fww_put_int(out_res, bn, sz);
+    return fww_cat(out_res, bn, " bytes). Use Bash with python3/file/xxd to inspect binary formats instead of Read.]");
+  }
   total_lines := fww_count_lines(content);
   _ = flawed_fc_put(fc, full, content, 1, cast(u64) sz, proc_now_ms(), offset, limit, false);
   fww_send(wire_out, mww_view(wire_out, raw_path, true));
@@ -2646,73 +2852,119 @@ fww_tool_grep :: (cwd: string, args_json: string, out_res: [] u8, is_err: [] boo
     }
   }
 
-  h := proc_new();
+  // Helper: try ripgrep (`rg`) first; if `rg` is not installed (PROC_ENOENT), transparently fall back to POSIX `grep -r -E -I`.
   n := 0;
   truncated := false;
   max_grep_b := ifx FWW_GREP_MAX_BYTES < out_res.count then FWW_GREP_MAX_BYTES else out_res.count;
-  if h >= 0 {
-    ok := proc_arg(h, "rg") && proc_arg(h, "--color=never") && proc_cwd(h, cwd);
-    if mode == "files_with_matches" {
-      ok = ok && proc_arg(h, "--files-with-matches");
-    } else if mode == "count" {
-      ok = ok && proc_arg(h, "--count");
-    } else {
-      ok = ok && proc_arg(h, "--no-heading") && proc_arg(h, "--line-number") && proc_arg(h, "--max-count=15");
-      num_b: [16] u8;
-      if ctx_c > 0 {
-        nn := fww_put_int(num_b[..], 0, ctx_c);
-        ok = ok && proc_arg(h, "-C") && proc_arg(h, cast(string) num_b[0..<nn]);
+  for backend_try: 0..<2 {
+    use_rg := backend_try == 0;
+    h := proc_new();
+    if h < 0 { break; }
+    ok := false;
+    if use_rg {
+      ok = proc_arg(h, "rg") && proc_arg(h, "--color=never") && proc_cwd(h, cwd);
+      if mode == "files_with_matches" {
+        ok = ok && proc_arg(h, "--files-with-matches");
+      } else if mode == "count" {
+        ok = ok && proc_arg(h, "--count");
       } else {
-        if ctx_b > 0 {
-          nn := fww_put_int(num_b[..], 0, ctx_b);
-          ok = ok && proc_arg(h, "-B") && proc_arg(h, cast(string) num_b[0..<nn]);
-        }
-        if ctx_a > 0 {
-          nn := fww_put_int(num_b[..], 0, ctx_a);
-          ok = ok && proc_arg(h, "-A") && proc_arg(h, cast(string) num_b[0..<nn]);
+        ok = ok && proc_arg(h, "--no-heading") && proc_arg(h, "--line-number") && proc_arg(h, "--max-count=15");
+        num_b: [16] u8;
+        if ctx_c > 0 {
+          nn := fww_put_int(num_b[..], 0, ctx_c);
+          ok = ok && proc_arg(h, "-C") && proc_arg(h, cast(string) num_b[0..<nn]);
+        } else {
+          if ctx_b > 0 {
+            nn := fww_put_int(num_b[..], 0, ctx_b);
+            ok = ok && proc_arg(h, "-B") && proc_arg(h, cast(string) num_b[0..<nn]);
+          }
+          if ctx_a > 0 {
+            nn := fww_put_int(num_b[..], 0, ctx_a);
+            ok = ok && proc_arg(h, "-A") && proc_arg(h, cast(string) num_b[0..<nn]);
+          }
         }
       }
-    }
-    if ci { ok = ok && proc_arg(h, "-i"); }
-    if gn > 0 { ok = ok && proc_arg(h, "--glob") && proc_arg(h, cast(string) glob_b[0..<gn]); }
-    if tn > 0 { ok = ok && proc_arg(h, "--type") && proc_arg(h, cast(string) type_b[0..<tn]); }
-    ok = ok && proc_arg(h, "--") && proc_arg(h, pat) && proc_arg(h, search_target) && proc_err_to_out(h);
-    if ok && proc_start(h) == 0 {
-      _ = proc_close_stdin(h);
-      lbuf: [4096] u8;
-      seen := 0;
-      lines := 0;
-      deadline := proc_now_ms() + 15000;
-      while proc_now_ms() < deadline {
-        r := proc_line(h, 200, lbuf[..]);
-        if r == PROC_EOF { break; }
-        if r == PROC_TIMEOUT { continue; }
-        if r < 0 { break; }
-        if seen < skip_n { seen += 1; continue; }
-        line_s := cast(string) lbuf[0..<r];
-        if line_s.count >= 2 && line_s[0] == '.' && line_s[1] == '/' {
-          line_s = cast(string) line_s[2..<line_s.count];
+      if ci { ok = ok && proc_arg(h, "-i"); }
+      if gn > 0 { ok = ok && proc_arg(h, "--glob") && proc_arg(h, cast(string) glob_b[0..<gn]); }
+      if tn > 0 { ok = ok && proc_arg(h, "--type") && proc_arg(h, cast(string) type_b[0..<tn]); }
+      ok = ok && proc_arg(h, "--") && proc_arg(h, pat) && proc_arg(h, search_target) && proc_err_to_out(h);
+    } else {
+      ok = proc_arg(h, "grep") && proc_arg(h, "-r") && proc_arg(h, "-E") && proc_arg(h, "-I") && proc_arg(h, "-H")
+           && proc_arg(h, "--exclude-dir=.git") && proc_arg(h, "--exclude-dir=node_modules")
+           && proc_arg(h, "--exclude-dir=__pycache__") && proc_arg(h, "--exclude-dir=.venv")
+           && proc_arg(h, "--exclude-dir=build") && proc_arg(h, "--exclude-dir=target")
+           && proc_arg(h, "--exclude-dir=dist") && proc_cwd(h, cwd);
+      if mode == "files_with_matches" {
+        ok = ok && proc_arg(h, "-l");
+      } else if mode == "count" {
+        ok = ok && proc_arg(h, "-c");
+      } else {
+        ok = ok && proc_arg(h, "-n") && proc_arg(h, "-m") && proc_arg(h, "15");
+        num_b: [16] u8;
+        if ctx_c > 0 {
+          nn := fww_put_int(num_b[..], 0, ctx_c);
+          ok = ok && proc_arg(h, "-C") && proc_arg(h, cast(string) num_b[0..<nn]);
+        } else {
+          if ctx_b > 0 {
+            nn := fww_put_int(num_b[..], 0, ctx_b);
+            ok = ok && proc_arg(h, "-B") && proc_arg(h, cast(string) num_b[0..<nn]);
+          }
+          if ctx_a > 0 {
+            nn := fww_put_int(num_b[..], 0, ctx_a);
+            ok = ok && proc_arg(h, "-A") && proc_arg(h, cast(string) num_b[0..<nn]);
+          }
         }
-        line_clipped := false;
-        if line_s.count > FWW_GREP_LINE_MAX {
-          cut := fww_utf8_cut(line_s, FWW_GREP_LINE_MAX);
-          line_s = cast(string) line_s[0..<cut];
-          line_clipped = true;
-        }
-        if lines >= hlim || n + line_s.count + 128 >= max_grep_b {
-          truncated = true;
-          break;
-        }
-        n = fww_cat(out_res, n, line_s);
-        if line_clipped { n = fww_cat(out_res, n, "..."); }
-        n = fww_cat(out_res, n, "\n");
-        lines += 1;
-        seen += 1;
       }
-      if truncated { _ = proc_kill(h, PROC_SIGTERM); }
-      _ = proc_wait(h, 1000);
+      if ci { ok = ok && proc_arg(h, "-i"); }
+      if gn > 0 {
+        inc_b: [300] u8;
+        in_n := fww_cat(inc_b[..], 0, "--include=");
+        in_n = fww_cat(inc_b[..], in_n, cast(string) glob_b[0..<gn]);
+        ok = ok && proc_arg(h, cast(string) inc_b[0..<in_n]);
+      }
+      ok = ok && proc_arg(h, "-e") && proc_arg(h, pat) && proc_arg(h, "--") && proc_arg(h, search_target) && proc_err_to_out(h);
     }
+    st := ifx ok then proc_start(h) else -1;
+    if st != 0 {
+      _ = proc_release(h);
+      if use_rg && st == PROC_ENOENT { continue; }
+      break;
+    }
+    _ = proc_close_stdin(h);
+    lbuf: [4096] u8;
+    seen := 0;
+    lines := 0;
+    deadline := proc_now_ms() + 15000;
+    while proc_now_ms() < deadline {
+      r := proc_line(h, 200, lbuf[..]);
+      if r == PROC_EOF { break; }
+      if r == PROC_TIMEOUT { continue; }
+      if r < 0 { break; }
+      if seen < skip_n { seen += 1; continue; }
+      line_s := cast(string) lbuf[0..<r];
+      if line_s.count >= 2 && line_s[0] == '.' && line_s[1] == '/' {
+        line_s = cast(string) line_s[2..<line_s.count];
+      }
+      line_clipped := false;
+      if line_s.count > FWW_GREP_LINE_MAX {
+        cut := fww_utf8_cut(line_s, FWW_GREP_LINE_MAX);
+        line_s = cast(string) line_s[0..<cut];
+        line_clipped = true;
+      }
+      if lines >= hlim || n + line_s.count + 128 >= max_grep_b {
+        truncated = true;
+        break;
+      }
+      n = fww_cat(out_res, n, line_s);
+      if line_clipped { n = fww_cat(out_res, n, "..."); }
+      n = fww_cat(out_res, n, "\n");
+      lines += 1;
+      seen += 1;
+    }
+    if truncated { _ = proc_kill(h, PROC_SIGTERM); }
+    _ = proc_wait(h, 1000);
     _ = proc_release(h);
+    break;
   }
   if truncated {
     n = fww_cat(out_res, n, "... [truncated; narrow with path/glob or output_mode=files_with_matches]");
@@ -2816,7 +3068,7 @@ FwAsyncCmd :: struct {
   tool_idx: int;
   deadline_ms: int;
   timed_out: bool;
-  cmd: [8192] u8; ncmd: int;
+  cmd: [FWW_CMD_MAX] u8; ncmd: int;
   head: [FWW_CMD_HEAD_MAX] u8; nhead: int;
   tail: [FWW_CMD_TAIL_MAX] u8; tail_pos: int; tail_len: int;
   omitted_bytes: int;
@@ -2835,13 +3087,16 @@ fww_cmd_ring_byte :: (c: [] FwAsyncCmd, ch: u8) {
 }
 
 fww_cmd_push_line :: (c: [] FwAsyncCmd, line: string) {
-  need := line.count + 1;
+  clean_b: [4096] u8;
+  cn := fww_sanitize_text_line(line, clean_b[..]);
+  clean := cast(string) clean_b[0..<cn];
+  need := clean.count + 1;
   if c[0].tail_len == 0 && c[0].omitted_bytes == 0 && c[0].nhead + need <= c[0].head.count {
-    c[0].nhead = fww_cat(c[0].head[..], c[0].nhead, line);
+    c[0].nhead = fww_cat(c[0].head[..], c[0].nhead, clean);
     c[0].nhead = fww_cat(c[0].head[..], c[0].nhead, "\n");
     return;
   }
-  for ch: line { fww_cmd_ring_byte(c, ch); }
+  for ch: clean { fww_cmd_ring_byte(c, ch); }
   fww_cmd_ring_byte(c, '\n');
 }
 
@@ -2881,11 +3136,11 @@ fww_cmd_tool_result :: (c: [] FwAsyncCmd, exit_c: int, timed_out: bool, dst: [] 
   if timed_out {
     n := 0;
     if out_s.count > 0 {
-      lim := ifx out_s.count < dst.count - 128 then out_s.count else fww_utf8_cut(out_s, dst.count - 128);
+      lim := ifx out_s.count < dst.count - 192 then out_s.count else fww_utf8_cut(out_s, dst.count - 192);
       n = fww_cat(dst, n, cast(string) out_s[0..<lim]);
       n = fww_cat(dst, n, "\n");
     }
-    return fww_cat(dst, n, "[Command timed out (exit 124). Optimize your command/script and avoid unbounded runs.]");
+    return fww_cat(dst, n, "[Command timed out (exit 124). Check for deadlocks, infinite loops, or slow inner loops — bound/optimize the command or pass an explicit timeout if a legitimate run needs longer.]");
   }
   if out_s.count == 0 {
     if exit_c == 0 { return fww_keep(dst, "(command succeeded with no output)"); }
@@ -2966,7 +3221,12 @@ FwRun :: struct {
   has_edited: bool;
   last_bash_ok: bool;
   last_step_had_err: bool;
+  audit_nudged: bool;
+  audit_done: bool;
   finish_nudged: bool;
+  time_warn_stage: int;
+  calm_steps: int;
+  force_low_once: bool;
   query_dedup: [16] int;
   query_dedup_cur: int;
   read_dedup: [FWW_READ_DEDUP_SLOTS] FwReadDedup;
@@ -3000,13 +3260,13 @@ FwFollow :: struct {
 }
 
 FwBufs :: struct {
-  req_body: [1048576] u8;
+  req_body: [6291456] u8;
   sse_line: [262144] u8;
   ev_txt: [65536] u8;
   sig_buf: [131072] u8;
   file_buf: [FWW_FILE_MAX] u8;
   edit_buf: [FWW_FILE_MAX] u8;
-  compact_buf: [524288] u8;
+  compact_buf: [4194304] u8;
   fc_entries: [FWW_FC_ENTRIES] FlawedFileEntry;
   fc_slab: [FWW_FC_SLAB] u8;
   fc_state: [1] FlawedFileCacheState;
@@ -3049,15 +3309,22 @@ fww_emit_attempt :: (r: [] FwRun, auth: [] FwAuth, outcome: string, status: int,
   }
 }
 
-// True FLAWED_THINK_ADAPTIVE step effort: keeps full requested effort ("high") on all core coding/design/debug
-// steps, and only dials down to "medium" on cold Turn-1 file discovery and post-green-test final summary (zero cache cost!).
-fww_adaptive_effort :: (thinking_mode: int, raw_effort: string, step_num: int, nmsgs: int, has_edited: bool, last_bash_ok: bool, last_step_had_err: bool, finish_nudged: bool, bare_mode: bool) -> string {
+// True FLAWED_THINK_ADAPTIVE step effort: keeps full requested effort ("high") across all core
+// coding, debugging, and first post-edit audit steps; steps down to "medium" on cold Turn-1
+// discovery, calm_steps cooldown after a heavy (>=90s) thinking turn or spiral, post-audit green
+// follow-up steps, or once >=65% of an optional wall-clock budget has elapsed; and "low" once the
+// anti-runaway finish guard triggers or >=85% of budget elapsed while already green.
+fww_adaptive_effort :: (thinking_mode: int, raw_effort: string, step_num: int, nmsgs: int, has_edited: bool, last_bash_ok: bool, last_step_had_err: bool, audit_done: bool, finish_nudged: bool, calm_steps: int, elapsed_s: int, budget_s: int, bare_mode: bool) -> string {
   if thinking_mode != FLAWED_THINK_ADAPTIVE || bare_mode { return raw_effort; }
   if raw_effort == "high" || raw_effort == "xhigh" || raw_effort == "max" {
     if step_num == 1 && nmsgs <= 1 { return "medium"; }
     if has_edited && last_bash_ok && !last_step_had_err {
-      return ifx finish_nudged then "low" else "medium";
+      if finish_nudged { return "low"; }
+      if budget_s >= 120 && elapsed_s * 100 >= budget_s * 85 { return "low"; }
+      if audit_done { return "medium"; }
     }
+    if calm_steps > 0 { return "medium"; }
+    if budget_s >= 120 && elapsed_s * 100 >= budget_s * 65 { return "medium"; }
   }
   return raw_effort;
 }
@@ -3067,6 +3334,30 @@ fww_adaptive_effort :: (thinking_mode: int, raw_effort: string, step_num: int, n
 fww_stream_stalled :: (streaming: bool, is_local: bool, stall_recoveries: int, last_rx_ms: int, now_ms: int) -> bool {
   if !streaming || is_local || stall_recoveries >= 1 || last_rx_ms <= 0 { return false; }
   return now_ms - last_rx_ms >= 150000;
+}
+
+// Pure check for cloud pure-thinking runaway spiral guard: triggers ONLY when zero visible text and
+// zero tool calls have been emitted while active thinking (>=16K summarized thought chars) exceeds
+// >=38K thought chars or the dynamic decode-time cap measured strictly from first_tok_ms (immune to
+// API queueing/TTFT spikes: 205s default so healthy first-turn deep design up to ~180s completes
+// uninterrupted, tightened to 40% of remaining wall budget clamped to [90s, 205s] when FLAWED_BUDGET_S
+// is active). Preserves scratchpad conclusions and sets calm_steps=2 on recovery.
+fww_think_spiral :: (streaming: bool, is_local: bool, recoveries: int, ntext: int, ntools: int, nthink: int, first_tok_ms: int, turn_start_ms: int, budget_s: int, now_ms: int) -> bool {
+  if !streaming || is_local || recoveries >= 2 || ntext > 0 || ntools > 0 || nthink < 16000 { return false; }
+  if nthink >= 38000 { return true; }
+  cap_ms := 205000;
+  if budget_s >= 120 && turn_start_ms > 0 && first_tok_ms >= turn_start_ms {
+    rem_ms := budget_s * 1000 - (first_tok_ms - turn_start_ms);
+    dyn_ms := (rem_ms * 40) / 100;
+    if dyn_ms < 90000 { dyn_ms = 90000; }
+    if dyn_ms < cap_ms { cap_ms = dyn_ms; }
+  }
+  return first_tok_ms > 0 && now_ms - first_tok_ms >= cap_ms;
+}
+
+// Pure check: scratch files under /tmp or /var/tmp do not count as deliverable workspace edits.
+fww_is_scratch_path :: (path: string) -> bool {
+  return flawed_aw_starts(path, "/tmp/") || flawed_aw_starts(path, "/var/tmp/") || flawed_aw_starts(path, "/private/tmp/");
 }
 
 // Launch one streaming LLM request for the current history. Returns "" on success or error reason.
@@ -3107,9 +3398,15 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
   r[0].acc[0].nresp_model = fww_keep(r[0].acc[0].resp_model[..], wire_model);
   raw_eff := cast(string) r[0].effort[0..<r[0].neffort];
+  req_elapsed_s := ifx r[0].turn_start_ms > 0 then (r[0].req_start_ms - r[0].turn_start_ms) / 1000 else 0;
   eff := ifx is_gem
-         then fww_adaptive_effort(cfg[0].thinking_mode, raw_eff, r[0].step_num, h[0].nmsgs, r[0].has_edited, r[0].last_bash_ok, r[0].last_step_had_err, r[0].finish_nudged, cfg[0].bare_mode)
+         then fww_adaptive_effort(cfg[0].thinking_mode, raw_eff, r[0].step_num, h[0].nmsgs, r[0].has_edited, r[0].last_bash_ok, r[0].last_step_had_err, r[0].audit_done, r[0].finish_nudged, r[0].calm_steps, req_elapsed_s, cfg[0].budget_s, cfg[0].bare_mode)
          else raw_eff;
+  if is_gem && r[0].force_low_once && cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode {
+    eff = "low";
+  }
+  r[0].force_low_once = false;
+  if r[0].calm_steps > 0 { r[0].calm_steps -= 1; }
   full_sys := cast(string) r[0].sys_prompt[0..<r[0].nsys];
   sys := full_sys;
   if is_local && ctx_win <= 32768 {
@@ -3192,15 +3489,22 @@ fww_start_request :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 fww_start_bash :: (r: [] FwRun, cfg: [] FwConfig, tool_idx: int, cmd_str: string, timeout_s: int, out: [] u8) -> bool {
   r[0].cmd[0] = FwAsyncCmd.{h = -1, tool_idx = tool_idx};
   r[0].cmd[0].ncmd = fww_keep(r[0].cmd[0].cmd[..], cmd_str);
-  def_t := ifx cfg[0].bash_timeout_s > 0 then cfg[0].bash_timeout_s else 120;
+  def_t := ifx cfg[0].bash_timeout_s > 0 then cfg[0].bash_timeout_s else 60;
   ts := ifx timeout_s > 0 && timeout_s <= 300 then timeout_s else def_t;
   if cfg[0].bare_mode && cfg[0].bash_timeout_s > 0 && ts > cfg[0].bash_timeout_s { ts = cfg[0].bash_timeout_s; }
+  if cfg[0].budget_s >= 120 && r[0].turn_start_ms > 0 {
+    rem_s := cfg[0].budget_s - (proc_now_ms() - r[0].turn_start_ms) / 1000;
+    max_cmd_s := rem_s - 25;
+    if max_cmd_s < 15 { max_cmd_s = 15; }
+    if ts > max_cmd_s { ts = max_cmd_s; }
+  }
   r[0].cmd[0].deadline_ms = proc_now_ms() + ts * 1000;
   cwd := cast(string) r[0].cwd[0..<r[0].ncwd];
 
   h := proc_new();
   if h < 0 { return false; }
 
+  shell_bin := ifx fs_exists("/bin/bash") then "/bin/bash" else "/bin/sh";
   use_sb := flawed_should_use_sandbox(cfg[0].sandbox_mode != FLAWED_SANDBOX_OFF, false, false, false, tool_os() == TOOL_MAC, true);
   ok := true;
   if use_sb && fs_exists("/usr/bin/sandbox-exec") {
@@ -3209,11 +3513,11 @@ fww_start_bash :: (r: [] FwRun, cfg: [] FwConfig, tool_idx: int, cmd_str: string
     sn := fww_cat(sb_b[..], 0, "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"");
     sn = fww_cat(sb_b[..], sn, cwd);
     sn = fww_cat(sb_b[..], sn, "\") (subpath \"/tmp\") (subpath \"/private/tmp\") (subpath \"/var/folders\") (literal \"/dev/null\") (literal \"/dev/tty\"))");
-    ok = proc_arg(h, "/usr/bin/sandbox-exec") && proc_arg(h, "-p") && proc_arg(h, cast(string) sb_b[0..<sn]) && proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd_str);
+    ok = proc_arg(h, "/usr/bin/sandbox-exec") && proc_arg(h, "-p") && proc_arg(h, cast(string) sb_b[0..<sn]) && proc_arg(h, shell_bin) && proc_arg(h, "-c") && proc_arg(h, cmd_str);
   } else {
-    ok = proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, cmd_str);
+    ok = proc_arg(h, shell_bin) && proc_arg(h, "-c") && proc_arg(h, cmd_str);
   }
-  ok = ok && proc_cwd(h, cwd) && proc_err_to_out(h);
+  ok = ok && proc_cwd(h, cwd) && proc_err_to_out(h) && proc_env(h, "PYTHONUNBUFFERED=1");
   if cfg[0].git_guard {
     ok = ok && proc_env(h, "CODER_GIT_GUARD=1");
   }
@@ -3253,11 +3557,11 @@ fww_exec_tool_now :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
 
   if name == "Bash" {
     nodes: [128] JvNode; d: [1] Jv;
-    cb: [8192] u8;
-    cn := 0; timeout_s := 120;
+    cb: [FWW_CMD_MAX] u8;
+    cn := 0; timeout_s := 0;
     if jv_parse(d[..], args, nodes[..]) {
       cn = jv_str(d[0], jv_get(d[0], 0, "command"), cb[..]);
-      timeout_s = jv_int(d[0], jv_get(d[0], 0, "timeout"), 120);
+      timeout_s = jv_int(d[0], jv_get(d[0], 0, "timeout"), 0);
       if timeout_s > 1000 { timeout_s = timeout_s / 1000; } // accept ms or seconds
     }
     if cn <= 0 {
@@ -3394,7 +3698,12 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     err_ti := r[0].acc[0].tools[ti].is_error;
     if err_ti { step_had_err = true; }
     if (nm_ti == "Edit" || nm_ti == "Write") && !err_ti {
-      step_had_edit = true;
+      ar_ti := cast(string) r[0].acc[0].tools[ti].args[0..<r[0].acc[0].tools[ti].nargs];
+      pt_b: [512] u8;
+      tgt_ti := fww_tool_target(nm_ti, ar_ti, pt_b[..]);
+      if !fww_is_scratch_path(tgt_ti) {
+        step_had_edit = true;
+      }
     }
     if nm_ti == "Bash" {
       step_had_bash = true;
@@ -3414,9 +3723,16 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   if r[0].has_edited { r[0].post_edit_steps += 1; }
   r[0].turn_tool_bytes += step_tot_bytes;
 
-  // All tool calls finished! Ensure message slot & slab headroom exist before committing tool_results.
-  if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab >= FWW_SLAB - 131072 {
+  // All tool calls finished! Compute exact slab bytes needed so TOOL_RESULTS NEVER truncates id/name/output.
+  tr_need := 16384;
+  for ti: 0..<r[0].acc[0].ntools {
+    tr_need += r[0].acc[0].tools[ti].nid + r[0].acc[0].tools[ti].nname + r[0].acc[0].tools[ti].nres;
+  }
+  if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab + tr_need >= FWW_SLAB {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
+  }
+  if h[0].nmsgs >= FWW_MAX_MSGS - 1 || h[0].nslab + tr_need >= FWW_SLAB {
+    _ = fww_emergency_compact(h, 2, 0, b[0].compact_buf[..]);
   }
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
@@ -3443,6 +3759,15 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         sn := fww_shrink_head_tail(b[0].compact_buf[..], 0, res_s, per_non_read_cap, why_s);
         res_s = cast(string) b[0].compact_buf[0..<sn];
       }
+      // Hard slab guard: reserve space for remaining tools' id+name+metadata so name/id can NEVER be clipped.
+      rem_tools := r[0].acc[0].ntools - i;
+      reserve := rem_tools * 512 + 8192;
+      avail_res := FWW_SLAB - h[0].nslab - id_s.count - nm_s.count - reserve;
+      if avail_res < 256 { avail_res = 256; }
+      if res_s.count > avail_res {
+        sn := fww_shrink_head_tail(b[0].compact_buf[..], 0, res_s, avail_res, "trimmed for history slab;");
+        res_s = cast(string) b[0].compact_buf[0..<sn];
+      }
       bk := FwBlock.{kind = FWW_MB_TOOL_RES, is_error = r[0].acc[0].tools[i].is_error};
       bk.id_n = fww_slab_put(h, id_s, a0[..]); bk.id_at = a0[0];
       bk.name_n = fww_slab_put(h, nm_s, a0[..]); bk.name_at = a0[0];
@@ -3450,27 +3775,90 @@ fww_advance_tools :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       h[0].msgs[mi].blocks[nb] = bk;
       nb += 1;
     }
-    // Cache-safe time-aware & long-think-aware <system-reminder> pacing nudges (folded into last functionResponse on Gemini)
+    // Cache-safe time-aware & wall-budget-aware <system-reminder> pacing nudges (folded into last functionResponse on Gemini)
     if !cfg[0].bare_mode && !need_wrapup && nb < FWW_MAX_BLOCKS {
       elapsed_s := ifx r[0].turn_start_ms > 0 then (proc_now_ms() - r[0].turn_start_ms) / 1000 else 0;
+      bs := cfg[0].budget_s;
       nudge := "";
-      if !r[0].has_edited {
-        if r[0].nudge_stage == 2 && (r[0].read_only_steps >= 10 || (elapsed_s >= 140 && r[0].read_only_steps >= 6)) {
-          r[0].nudge_stage = 3;
-          nudge = "<system-reminder>Urgent pacing alert: stop all Read/Grep/Glob/git-log calls now. Keep reasoning brief, emit your concrete Edit/Write in THIS turn, and run the targeted verification command.</system-reminder>";
-        } else if r[0].nudge_stage == 1 && (r[0].read_only_steps >= 7 || (elapsed_s >= 85 && r[0].read_only_steps >= 5)) {
-          r[0].nudge_stage = 2;
-          nudge = "<system-reminder>Pacing alert: stop searching and reading git history. Keep reasoning concise, immediately apply your first concrete Edit/Write on the target file(s) in this turn (batching independent edits), and let tests verify details.</system-reminder>";
-        } else if r[0].nudge_stage == 0 && (r[0].read_only_steps >= 4 || (r[0].read_only_steps >= 3 && (elapsed_s >= 40 || r[0].turn_tool_bytes >= 98304))) {
-          r[0].nudge_stage = 1;
-          nudge = "<system-reminder>Exploration checkpoint: you have gathered enough context across multiple read-only turns without editing yet. Keep reasoning brief — apply your first focused Edit/Write now and iterate from compiler/test feedback. (If the user only asked a question, answer concisely now.)</system-reminder>";
-        } else if r[0].last_req_dur_ms >= 35000 && r[0].long_think_nudges < 2 {
-          r[0].long_think_nudges += 1;
-          nudge = "<system-reminder>Your previous reasoning pass took over 35s without making any file edits. Avoid long mental derivations — keep your next reasoning step brief and immediately apply a concrete Edit/Write, then run the targeted test.</system-reminder>";
+      nbuf: [512] u8;
+      // Optional wall-budget checkpoints (when FLAWED_BUDGET_S > 0, e.g. timed CI/benchmark runs)
+      if bs >= 120 {
+        rem_s := ifx bs > elapsed_s then bs - elapsed_s else 0;
+        if r[0].time_warn_stage < 4 && elapsed_s * 100 >= bs * 90 {
+          r[0].time_warn_stage = 4;
+          r[0].calm_steps = 2;
+          nn := fww_cat(nbuf[..], 0, "<system-reminder>FINAL time checkpoint (~");
+          nn = fww_put_int(nbuf[..], nn, rem_s);
+          if r[0].has_edited && r[0].last_bash_ok && !r[0].last_step_had_err {
+            r[0].finish_nudged = true;
+            nn = fww_cat(nbuf[..], nn, "s left): your checks are green. Stop here and reply concisely NOW — do NOT run sleeps, slow commands, or extra checks.</system-reminder>");
+          } else {
+            nn = fww_cat(nbuf[..], nn, "s left): write/finalize your deliverable outputs IMMEDIATELY, run at most one quick (<15s) smoke check (no long sleeps), and conclude now.</system-reminder>");
+          }
+          nudge = cast(string) nbuf[0..<nn];
+        } else if r[0].time_warn_stage < 3 && elapsed_s * 100 >= bs * 80 {
+          r[0].time_warn_stage = 3;
+          r[0].calm_steps = 2;
+          nn := fww_cat(nbuf[..], 0, "<system-reminder>Time budget checkpoint (~");
+          nn = fww_put_int(nbuf[..], nn, rem_s);
+          if r[0].has_edited && r[0].last_bash_ok && !r[0].last_step_had_err {
+            if !r[0].audit_nudged {
+              r[0].audit_nudged = true;
+              nn = fww_cat(nbuf[..], nn, "s left): your initial check passed. Run ONE fast adversarial/edge-case test checking every explicit requirement and varied inputs (not just default fixtures), fix any gap immediately, clean up temp files, and conclude before the deadline.</system-reminder>");
+            } else {
+              r[0].finish_nudged = true;
+              nn = fww_cat(nbuf[..], nn, "s left): your workspace edits and post-audit checks are green. Clean up any stray temporary files if needed and conclude concisely now.</system-reminder>");
+            }
+          } else if !r[0].has_edited {
+            nn = fww_cat(nbuf[..], nn, "s left): stop all exploration/probing immediately, write your complete deliverable solution files (or apply live target changes) in THIS turn, and run one fast end-to-end verification check.</system-reminder>");
+          } else {
+            nn = fww_cat(nbuf[..], nn, "s left): prioritize fixing the remaining failing check directly in this turn and re-run fast verification immediately.</system-reminder>");
+          }
+          nudge = cast(string) nbuf[0..<nn];
+        } else if !r[0].has_edited && r[0].time_warn_stage < 2 && elapsed_s * 100 >= bs * 60 {
+          r[0].time_warn_stage = 2;
+          r[0].calm_steps = 2;
+          nn := fww_cat(nbuf[..], 0, "<system-reminder>Urgent time checkpoint (");
+          nn = fww_put_int(nbuf[..], nn, elapsed_s);
+          nn = fww_cat(nbuf[..], nn, "s elapsed, ~");
+          nn = fww_put_int(nbuf[..], nn, rem_s);
+          nn = fww_cat(nbuf[..], nn, "s remaining, zero deliverable workspace files edited yet): stop incremental probe scripts now. Immediately write/apply your deliverable solution in THIS turn and verify end-to-end.</system-reminder>");
+          nudge = cast(string) nbuf[0..<nn];
+        } else if !r[0].has_edited && r[0].time_warn_stage < 1 && elapsed_s * 100 >= bs * 35 {
+          r[0].time_warn_stage = 1;
+          r[0].calm_steps = 1;
+          nn := fww_cat(nbuf[..], 0, "<system-reminder>Time checkpoint (");
+          nn = fww_put_int(nbuf[..], nn, elapsed_s);
+          nn = fww_cat(nbuf[..], nn, "s elapsed, ~");
+          nn = fww_put_int(nbuf[..], nn, rem_s);
+          nn = fww_cat(nbuf[..], nn, "s remaining, no workspace edits yet): stop running probe-by-probe commands. Synthesize what you know, apply your concrete deliverable edits/writes (or target changes) now, and iterate from end-to-end test output.</system-reminder>");
+          nudge = cast(string) nbuf[0..<nn];
         }
-      } else if !r[0].finish_nudged && (r[0].post_edit_steps >= 6 || (r[0].last_bash_ok && !r[0].last_step_had_err && (r[0].post_edit_steps >= 2 || elapsed_s >= 150))) {
-        r[0].finish_nudged = true;
-        nudge = "<system-reminder>Your edits are applied and your verification command succeeded. Stop here and reply immediately in 2-4 concise bullet points — do NOT run extra checks on unrelated files, git diff, or git status unless explicitly requested.</system-reminder>";
+      }
+      if nudge.count == 0 {
+        if !r[0].has_edited {
+          if r[0].nudge_stage == 2 && (r[0].read_only_steps >= 13 || (elapsed_s >= 320 && r[0].read_only_steps >= 9)) {
+            r[0].nudge_stage = 3;
+            nudge = "<system-reminder>Urgent pacing alert: stop further read-only exploration now. Emit your concrete Edit/Write in THIS turn and run the targeted verification command.</system-reminder>";
+          } else if r[0].nudge_stage == 1 && (r[0].read_only_steps >= 10 || (elapsed_s >= 220 && r[0].read_only_steps >= 7)) {
+            r[0].nudge_stage = 2;
+            nudge = "<system-reminder>Pacing alert: stop searching peripheral files or running tiny probe scripts. Apply your concrete Edit/Write on the target file(s) in this turn (batching independent edits) and test against real execution.</system-reminder>";
+          } else if r[0].nudge_stage == 0 && (r[0].read_only_steps >= 6 || (r[0].read_only_steps >= 4 && elapsed_s >= 120)) {
+            r[0].nudge_stage = 1;
+            nudge = "<system-reminder>Exploration checkpoint: you have inspected the relevant files across multiple read-only turns. Synthesize the general invariant, apply your Edit/Write changes now, and validate with automated tests. (If the user only asked a question, answer concisely now.)</system-reminder>";
+          }
+        } else if r[0].last_bash_ok && !r[0].last_step_had_err {
+          if !r[0].audit_nudged {
+            r[0].audit_nudged = true;
+            nudge = "<system-reminder>Your initial check passed. Before finishing, critically challenge your patch from first principles: (1) does it hold for the general invariant across multiple sequential, concurrent, or interleaved operations and edge cases (such as multi-step state transitions, deletions, and boundary or malformed inputs), not only the minimal repro? (2) are all explicit specification constraints and error paths verified by an automated check (re-running your full test suite after any edit and cleaning up temporary test files inside the workspace afterward)? If everything holds, conclude concisely.</system-reminder>";
+          } else {
+            r[0].audit_done = true;
+            if !r[0].finish_nudged && (r[0].post_edit_steps >= 7 || elapsed_s >= 420) {
+              r[0].finish_nudged = true;
+              nudge = "<system-reminder>Your edits and post-audit verification checks are green. Stop here and reply concisely — do NOT run redundant extra checks or gold-plate.</system-reminder>";
+            }
+          }
+        }
       }
       if nudge.count > 0 {
         a0 := [1] int.[0];
@@ -3567,12 +3955,16 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     is_sig_err := fww_contains_ci(err_s, "thought signature")
                || fww_contains_ci(err_s, "thought_signature")
                || fww_contains_ci(err_s, "thoughtsignature");
+    is_invalid_arg := (status == 400 || r[0].acc[0].saw_error)
+                   && (fww_contains_ci(err_s, "invalid argument")
+                    || fww_contains_ci(err_s, "proto is invalid"));
     is_struct_err := is_sig_err
                   || fww_contains_ci(err_s, "ending with a model turn")
                   || fww_contains_ci(err_s, "function call turn")
                   || fww_contains_ci(err_s, "function response turn")
                   || fww_contains_ci(err_s, "must alternate")
-                  || fww_contains_ci(err_s, "tool_call_id");
+                  || fww_contains_ci(err_s, "tool_call_id")
+                  || (is_invalid_arg && h[0].nmsgs > 1);
     if (fww_is_context_overflow_err(err_s) || is_struct_err) && r[0].ctx_recoveries < 3 {
       r[0].ctx_recoveries += 1;
       if fww_is_context_overflow_err(err_s) {
@@ -3583,9 +3975,10 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
         _ = fww_emergency_compact(h, r[0].ctx_recoveries, r[0].effective_ctx_cap, b[0].compact_buf[..]);
       } else if is_sig_err && r[0].ctx_recoveries == 1 {
         // Surgical signature repair: preserve full conversation history instead of wiping 50K+ tokens!
+        if h[0].nslab + 64 >= FWW_SLAB { _ = fww_hist_compact(h, b[0].compact_buf[..]); }
         fww_hist_strip_thought_sigs(h);
       } else {
-        // Structural turn mismatch: collapse to clean summary USER turn so retry is 100% valid!
+        // Structural turn mismatch / Vertex INVALID_ARGUMENT on multi-turn history: collapse to clean summary USER turn!
         _ = fww_emergency_compact(h, 3, r[0].effective_ctx_cap, b[0].compact_buf[..]);
       }
       fww_hist_sanitize(h, b[0].compact_buf[..]);
@@ -3594,14 +3987,16 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
       err2 := fww_start_request(r, cfg, auth, h, b, out);
       if err2.count == 0 { return ""; }
     }
+    transient_sse := r[0].acc[0].saw_error && fww_is_transient_sse_err(err_s);
+    eff_status := ifx transient_sse then 503 else (ifx status > 0 then status else 503);
     ri := FlawedRetryInput.{
-      status = ifx status > 0 then status else 503,
+      status = eff_status,
       is_foreground = true,
       retry_after_ms = -1,
     };
     dec := flawed_eval_retry(r[0].retry[..], ri);
-    if dec.action == FLAWED_RETRY_SLEEP && !r[0].acc[0].saw_error {
-      fww_emit_attempt(r, auth, "retried", status, 0, out);
+    if dec.action == FLAWED_RETRY_SLEEP && (!r[0].acc[0].saw_error || transient_sse) {
+      fww_emit_attempt(r, auth, "retried", eff_status, 0, out);
       r[0].retry_at_ms = proc_now_ms() + dec.delay_ms;
       return "";
     }
@@ -3649,14 +4044,32 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
     h[0].last_in_bytes = r[0].last_req_est_bytes;
   }
   if auth[0].backend != FLAWED_BE_LOCAL {
-    h[0].last_cloud_turn_ms = proc_now_ms();
+    now_fin := proc_now_ms();
+    h[0].last_cloud_turn_ms = now_fin;
     if r[0].acc[0].cache_read > 0 { h[0].last_cached_tok = r[0].acc[0].cache_read; }
+    // Adaptive thinking cooldown: measured strictly on actual decode duration (excluding TTFT queue wait).
+    // After a heavy (>=120s decode) deep-reasoning step, run the next 2 execution/testing steps at medium
+    // effort so back-to-back 150-185s rumination loops don't starve edit-test-fix iteration.
+    dec_fin_ms := ifx r[0].first_tok_ms > 0 && now_fin > r[0].first_tok_ms then now_fin - r[0].first_tok_ms else 0;
+    if cfg[0].thinking_mode == FLAWED_THINK_ADAPTIVE && !cfg[0].bare_mode && dec_fin_ms >= 120000 && r[0].calm_steps < 2 {
+      r[0].calm_steps = 2;
+    }
   }
   fww_emit_attempt(r, auth, "done", status, cost, out);
 
-  // Append assistant message to history (compact first if near FWW_MAX_MSGS or FWW_SLAB so ASSISTANT + TOOL_RESULTS never drop!)
-  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab >= FWW_SLAB - 131072 {
+  // Append assistant message to history (compute exact slab headroom so ASSISTANT + TOOL_USE names/args/sigs never clip!)
+  asst_need := r[0].acc[0].nthink + r[0].acc[0].ntext + r[0].acc[0].nsig * 2 + 8192;
+  for t: 0..<r[0].acc[0].ntools {
+    asst_need += r[0].acc[0].tools[t].nid + r[0].acc[0].tools[t].nname + r[0].acc[0].tools[t].nargs + r[0].acc[0].tools[t].nsig;
+  }
+  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab + asst_need >= FWW_SLAB {
     _ = fww_hist_compact(h, b[0].compact_buf[..]);
+  }
+  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab + asst_need >= FWW_SLAB {
+    _ = fww_emergency_compact(h, 2, 0, b[0].compact_buf[..]);
+  }
+  if h[0].nmsgs >= FWW_MAX_MSGS - 2 || h[0].nslab + asst_need >= FWW_SLAB {
+    _ = fww_emergency_compact(h, 3, 0, b[0].compact_buf[..]);
   }
   if h[0].nmsgs < FWW_MAX_MSGS {
     mi := h[0].nmsgs;
@@ -3703,24 +4116,29 @@ fww_finish_stream :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHi
   }
 
   // H1: Automatic bounded recovery when a turn ends with empty visible text (e.g. max_tokens exhausted inside thinking).
-  if r[0].acc[0].ntext == 0 && r[0].acc[0].stop_reason != FLAWED_STOP_REFUSAL && r[0].recoveries < 2 && h[0].nmsgs < FWW_MAX_MSGS {
+  if r[0].acc[0].ntext == 0 && r[0].acc[0].stop_reason != FLAWED_STOP_REFUSAL && r[0].recoveries < 3 && h[0].nmsgs < FWW_MAX_MSGS {
     r[0].recoveries += 1;
+    hit_think_cap := r[0].acc[0].stop_reason == FLAWED_STOP_MAX_TOKENS || r[0].acc[0].nthink > 8192;
+    if hit_think_cap && auth[0].backend != FLAWED_BE_LOCAL {
+      // Step down thinkingLevel one notch for the next 2 steps to break consecutive 32K thinking spirals.
+      r[0].calm_steps = 2;
+    }
     rb: [3072] u8;
     rn := 0;
     if r[0].acc[0].nthink > 0 {
       tlen := r[0].acc[0].nthink;
       tfrom := ifx tlen > 1800 then tlen - 1800 else 0;
-      rn = fww_cat(rb[..], rn, "Your previous step hit the output token limit while reasoning without producing a response. End of your scratchpad:\n\n");
+      rn = fww_cat(rb[..], rn, "Your previous step hit the output token limit while reasoning without emitting tool calls or a reply. End of your scratchpad:\n\n");
       rn = fww_cat(rb[..], rn, cast(string) r[0].acc[0].think[tfrom..<tlen]);
-      rn = fww_cat(rb[..], rn, "\n\nDo NOT repeat this derivation. Immediately either run a concise python3 script via Bash to finish computing/verifying the answer, or write your concise final answer in the exact requested format now.");
+      rn = fww_cat(rb[..], rn, "\n\nDo NOT re-derive from scratch. Keep reasoning brief and immediately emit your concrete Edit/Write/Bash tool calls to implement and test your changes (or, if already verified, write your concise final answer now).");
     } else {
-      rn = fww_cat(rb[..], rn, "Your previous response was empty. Immediately write your complete, concise final answer in the exact format requested.");
+      rn = fww_cat(rb[..], rn, "Your previous response was empty. Immediately emit your next concrete tool call or write your concise final answer.");
     }
     fww_hist_push_user(h, cast(string) rb[0..<rn]);
     if auth[0].backend == FLAWED_BE_LOCAL {
       r[0].force_no_think_once = true;
     }
-    if r[0].recoveries >= 2 {
+    if r[0].recoveries >= 3 || (r[0].recoveries >= 2 && r[0].has_edited && r[0].last_bash_ok) {
       r[0].force_wrapup_once = true;
     }
     err := fww_start_request(r, cfg, auth, h, b, out);
@@ -3836,7 +4254,7 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     ev: [1] FlawedWireSseEvent;
     if is_gem {
       sig_n := [1] int.[0];
-      for pi: 0..<16 {
+      for pi: 0..<FWW_MAX_BLOCKS {
         nparts := flawed_wire_parse_gemini_sse(data, pi, ev[..], b[0].ev_txt[..], b[0].sig_buf[..], sig_n[..]);
         if nparts < 0 { break; }
         if ev[0].stop_reason != FLAWED_STOP_NONE { r[0].acc[0].stop_reason = ev[0].stop_reason; }
@@ -3949,6 +4367,51 @@ fww_poll_step :: (r: [] FwRun, cfg: [] FwConfig, auth: [] FwAuth, h: [] FwHist, 
     } else if k == FLAWED_SSE_MSG_STOP {
       return fww_finish_stream(r, cfg, auth, h, b, st, out);
     }
+  }
+  // Cloud pure-thinking runaway spiral guard: break out of pathological zero-tool thinking loops
+  // while preserving the tail of the model's analysis (folded cleanly into the active user/tool_results turn)
+  // and stepping down calm_steps so it emits concrete edits now!
+  if fww_think_spiral(r[0].streaming, auth[0].backend == FLAWED_BE_LOCAL, r[0].recoveries, r[0].acc[0].ntext, r[0].acc[0].ntools, r[0].acc[0].nthink, r[0].first_tok_ms, r[0].turn_start_ms, cfg[0].budget_s, proc_now_ms()) {
+    gw_close(r[0].gw[..]);
+    r[0].streaming = false;
+    r[0].recoveries += 1;
+    r[0].calm_steps = 2;
+    if r[0].recoveries >= 2 { r[0].force_low_once = true; }
+    fww_emit_attempt(r, auth, "retried", 499, 0, out);
+    if h[0].nmsgs > 0 {
+      rb: [4096] u8;
+      rn := 0;
+      tlen := r[0].acc[0].nthink;
+      tfrom := ifx tlen > 2800 then tlen - 2800 else 0;
+      rn = fww_cat(rb[..], rn, "<system-reminder>Your internal thinking ran very long without emitting any tool calls. End of your analysis:\n\n");
+      rn = fww_cat(rb[..], rn, cast(string) r[0].acc[0].think[tfrom..<tlen]);
+      rn = fww_cat(rb[..], rn, "\n\nStop re-deriving from scratch. Immediately emit your concrete Edit/Write/Bash tool calls now and iterate from real test output.</system-reminder>");
+      snudge := cast(string) rb[0..<rn];
+      li := h[0].nmsgs - 1;
+      if h[0].msgs[li].role == FWW_MROLE_TOOL_RESULTS && h[0].msgs[li].nblocks < FWW_MAX_BLOCKS {
+        a0 := [1] int.[0];
+        nb_sp := FwBlock.{kind = FWW_MB_TEXT};
+        nb_sp.text_n = fww_slab_put(h, snudge, a0[..]); nb_sp.text_at = a0[0];
+        h[0].msgs[li].blocks[h[0].msgs[li].nblocks] = nb_sp;
+        h[0].msgs[li].nblocks += 1;
+      } else if h[0].msgs[li].role == FWW_MROLE_USER && h[0].msgs[li].nblocks > 0 {
+        prev := fww_slab_str(h, h[0].msgs[li].blocks[0].text_at, h[0].msgs[li].blocks[0].text_n);
+        cn := fww_cat(b[0].compact_buf[..], 0, prev);
+        cn = fww_cat(b[0].compact_buf[..], cn, "\n\n");
+        cn = fww_cat(b[0].compact_buf[..], cn, snudge);
+        a0 := [1] int.[0];
+        h[0].msgs[li].blocks[0].text_n = fww_slab_put(h, cast(string) b[0].compact_buf[0..<cn], a0[..]);
+        h[0].msgs[li].blocks[0].text_at = a0[0];
+      }
+    }
+    err := fww_start_request(r, cfg, auth, h, b, out);
+    if err.count > 0 {
+      r[0].active = false;
+      fww_send(out, mww_ended(out, "failed", err));
+      return "failed";
+    }
+    active_io[0] = true;
+    return "";
   }
   // Cloud SSE dead-stream watchdog: recover cleanly only if a stream goes completely silent for >=150s
   // with zero parsed content/thought/tool deltas (never aborts active reasoning or multi-edit batches).
@@ -4376,7 +4839,12 @@ tool_main :: () -> int #export_c #effects(all) {
     run[0].has_edited = false;
     run[0].last_bash_ok = false;
     run[0].last_step_had_err = false;
+    run[0].audit_nudged = false;
+    run[0].audit_done = false;
     run[0].finish_nudged = false;
+    run[0].time_warn_stage = 0;
+    run[0].calm_steps = 0;
+    run[0].force_low_once = false;
     for qi: 0..<run[0].query_dedup.count { run[0].query_dedup[qi] = 0; }
 
     // Handle local slash commands instantaneously
@@ -4407,8 +4875,11 @@ tool_main :: () -> int #export_c #effects(all) {
         _ = fww_hist_compact_ex(hist[..], 0, 2, 512, 0, 0, bufs[0].compact_buf[..]);
       }
     }
-    if hist[0].nmsgs >= FWW_MAX_MSGS - 4 {
+    if hist[0].nmsgs >= FWW_MAX_MSGS - 4 || hist[0].nslab + tk.count + 8192 >= FWW_SLAB {
       _ = fww_hist_compact(hist[..], bufs[0].compact_buf[..]);
+    }
+    if hist[0].nmsgs >= FWW_MAX_MSGS - 4 || hist[0].nslab + tk.count + 8192 >= FWW_SLAB {
+      _ = fww_emergency_compact(hist[..], 3, 0, bufs[0].compact_buf[..]);
     }
     fww_hist_push_user(hist[..], tk);
     fww_hist_sanitize(hist[..], bufs[0].compact_buf[..]);
@@ -4830,21 +5301,183 @@ tool_main :: () -> int #export_c #effects(all) {
   oun := fww_append_symbol_outline(ob[..], 0, code, 2, 10);
   os := cast(string) ob[0..<oun];
   #assert fww_contains_ci(os, "L2: foo_bar ::") && fww_contains_ci(os, "L5: MyRec :: struct") && fww_contains_ci(os, "L8: #test");
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 1, 1, false, false, false, false, false) == "medium";
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 3, 5, false, false, false, false, false) == "high";
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, true, true, false, false, false) == "medium";
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, true, true, false, true, false) == "low";
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, true, false, true, false, false) == "high";
-  #assert fww_adaptive_effort(FLAWED_THINK_EXTENDED, "high", 1, 1, false, false, false, false, false) == "high";
-  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 1, 1, false, false, false, false, true) == "high";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 1, 1, false, false, false, false, false, 0, 0, 0, false) == "medium";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 3, 5, false, false, false, false, false, 0, 120, 600, false) == "high";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, true, true, false, false, false, 0, 300, 600, false) == "high";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 7, 13, true, true, false, true, false, 0, 300, 600, false) == "medium";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 8, 15, true, true, false, true, true, 0, 300, 600, false) == "low";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 5, 9, false, false, false, false, false, 2, 100, 600, false) == "medium";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, true, false, true, true, false, 0, 200, 600, false) == "high";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 6, 11, false, false, false, false, false, 0, 390, 600, false) == "medium";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 9, 17, true, true, false, false, false, 0, 510, 600, false) == "low";
+  #assert fww_adaptive_effort(FLAWED_THINK_EXTENDED, "high", 1, 1, false, false, false, false, false, 0, 500, 600, false) == "high";
+  #assert fww_adaptive_effort(FLAWED_THINK_ADAPTIVE, "high", 1, 1, false, false, false, false, false, 0, 500, 600, true) == "high";
 
-  // 7. SSE dead-stream watchdog + fww_hist_clear telemetry reset
+  // 7. SSE dead-stream watchdog + dynamic pure-thought spiral guard + binary/UTF-8 sanitizer + fww_hist_clear telemetry reset
   #assert !fww_stream_stalled(false, false, 0, 1000, 200000);
   #assert !fww_stream_stalled(true, true, 0, 1000, 200000);
   #assert !fww_stream_stalled(true, false, 1, 1000, 200000);
   #assert !fww_stream_stalled(true, false, 0, 1000, 150999);
   #assert fww_stream_stalled(true, false, 0, 1000, 151000);
+  #assert !fww_think_spiral(false, false, 0, 0, 0, 60000, 1000, 1000, 600, 300000);
+  #assert !fww_think_spiral(true, true, 0, 0, 0, 60000, 1000, 1000, 600, 300000);
+  #assert !fww_think_spiral(true, false, 2, 0, 0, 60000, 1000, 1000, 600, 300000);
+  #assert fww_is_transient_sse_err("This model is currently experiencing high demand. Spikes in demand are usually temporary.");
+  #assert fww_is_transient_sse_err("Service UNAVAILABLE: please try again") && fww_is_transient_sse_err("RESOURCE_EXHAUSTED");
+  #assert !fww_is_transient_sse_err("API key not valid") && !fww_is_transient_sse_err("");
+  #assert !fww_think_spiral(true, false, 0, 1, 0, 60000, 1000, 1000, 600, 300000);
+  #assert !fww_think_spiral(true, false, 0, 0, 1, 60000, 1000, 1000, 600, 300000);
+  #assert !fww_think_spiral(true, false, 0, 0, 0, 15999, 1000, 1000, 600, 300000);
+  #assert !fww_think_spiral(true, false, 0, 0, 0, 34000, 1000, 1000, 600, 186000);
+  #assert fww_think_spiral(true, false, 0, 0, 0, 38000, 1000, 1000, 0, 100000);
+  #assert fww_think_spiral(true, false, 0, 0, 0, 18000, 1000, 1000, 0, 206000);
+  // Tight remaining budget (350s elapsed of 600s -> 250s left -> 40% = 100s cap from first_tok_ms) breaks spiral early!
+  #assert !fww_think_spiral(true, false, 0, 0, 0, 18000, 351000, 1000, 600, 441000);
+  #assert fww_think_spiral(true, false, 0, 0, 0, 18000, 351000, 1000, 600, 452000);
+  // Binary / UTF-8 sanitization preserves valid text & UTF-8 while collapsing binary/C1-control streams
+  #assert !fww_is_binary_bytes("hello café 123\nworld\t!");
+  bin_raw := [8] u8.['A', 0x00, 0x80, 0xFF, 0x1B, 0xC2, 0x85, 'Z'];
+  #assert fww_is_binary_bytes(cast(string) bin_raw[..]);
+  san_out: [128] u8;
+  sn := fww_sanitize_text_line("ok\rcafé\t1", san_out[..]);
+  #assert cast(string) san_out[0..<sn] == "okcafé\t1";
+  sn2 := fww_sanitize_text_line(cast(string) bin_raw[..], san_out[..]);
+  #assert cast(string) san_out[0..<sn2] == "A[binary]Z";
+  #assert fww_is_scratch_path("/tmp/test.py") && fww_is_scratch_path("/var/tmp/x.cc") && fww_is_scratch_path("/private/tmp/a");
+  #assert !fww_is_scratch_path("/app/src/main.cc") && !fww_is_scratch_path("src/lib.ts") && !fww_is_scratch_path("");
   h[0].total_in = 999; h[0].total_out = 888; h[0].compact_count = 3;
   fww_hist_clear(h[..]);
   #assert h[0].total_in == 0 && h[0].total_out == 0 && h[0].compact_count == 0;
+}
+
+#test "flawedworker: atomic compaction never corrupts TOOL_USE names/sigs on tmp_buf overflow and sanitizer rejects invalid tool pairs" #steps 200000000 {
+  h: [1] FwHist;
+  cfg: [1] FwConfig;
+  small_tmp: [131072] u8;
+  body: [262144] u8;
+  nodes: [2048] JvNode;
+  d: [1] Jv;
+  nb: [64] u8;
+
+  // 1. Reproduce GTA CLEANROOM: many Write TOOL_USE messages whose total TOOL_USE JSON args exceed tmp_buf (128 KiB)
+  //    AND hit FWW_MAX_MSGS - 6. Layer 1 (drop_to_tail=0) MUST fail atomically without corrupting trailing blocks,
+  //    and fww_ensure_context_fits MUST escalate cleanly to Layer 2 keeping intact Write names, IDs, args, and sigs!
+  fww_hist_push_user(h[..], "Implement Milestone 1 issues in order.");
+  h[0].total_in = 317119;
+  h[0].total_cost_micros = 13734794;
+
+  // Build a ~4 KB valid JSON Write arg string
+  warg: [4096] u8;
+  wn := fww_cat(warg[..], 0, "{\"file_path\":\"src/render/frame_graph.mm\",\"content\":\"");
+  while wn + 16 < warg.count { wn = fww_cat(warg[..], wn, "float x = 1.0f; "); }
+  wn = fww_cat(warg[..], wn, "\"}");
+  warg_s := cast(string) warg[0..<wn];
+
+  // Fill to FWW_MAX_MSGS - 5 (251 msgs -> 125 Write steps -> ~500 KB of TOOL_USE args >> 128 KiB small_tmp!)
+  for step: 0..<125 {
+    a0 := [1] int.[0];
+    am := h[0].nmsgs;
+    h[0].msgs[am] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+    ub := FwBlock.{kind = FWW_MB_TOOL_USE};
+    ub.id_n = fww_slab_put(h[..], "call_w", a0[..]); ub.id_at = a0[0];
+    ub.name_n = fww_slab_put(h[..], "Write", a0[..]); ub.name_at = a0[0];
+    ub.text_n = fww_slab_put(h[..], warg_s, a0[..]); ub.text_at = a0[0];
+    ub.sig_n = fww_slab_put(h[..], "SIG_VALID_TOKEN_XYZ", a0[..]); ub.sig_at = a0[0];
+    h[0].msgs[am].blocks[0] = ub;
+    h[0].nmsgs += 1;
+
+    tm := h[0].nmsgs;
+    h[0].msgs[tm] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+    rb := FwBlock.{kind = FWW_MB_TOOL_RES};
+    rb.id_n = fww_slab_put(h[..], "call_w", a0[..]); rb.id_at = a0[0];
+    rb.name_n = fww_slab_put(h[..], "Write", a0[..]); rb.name_at = a0[0];
+    rb.text_n = fww_slab_put(h[..], "Wrote 4000 bytes.", a0[..]); rb.text_at = a0[0];
+    h[0].msgs[tm].blocks[0] = rb;
+    h[0].nmsgs += 1;
+  }
+  #assert h[0].nmsgs == 251;
+  last_before := h[0].nmsgs - 2;
+  #assert fww_slab_str(h[..], h[0].msgs[last_before].blocks[0].name_at, h[0].msgs[last_before].blocks[0].name_n) == "Write";
+
+  // Layer 1 in-place microcompact MUST refuse cleanly without mutating h when fixed TOOL_USE bytes exceed tmp_buf!
+  #assert !fww_hist_compact_ex(h[..], 0, 2, 512, 0, 0, small_tmp[..]);
+  #assert h[0].nmsgs == 251;
+  #assert fww_slab_str(h[..], h[0].msgs[last_before].blocks[0].name_at, h[0].msgs[last_before].blocks[0].name_n) == "Write";
+  #assert fww_slab_str(h[..], h[0].msgs[last_before].blocks[0].sig_at, h[0].msgs[last_before].blocks[0].sig_n) == "SIG_VALID_TOKEN_XYZ";
+
+  // Full pre-flight guard MUST escalate cleanly to Layer 2, keeping intact Write calls, preserving session telemetry,
+  // and serializing a valid Vertex/Gemini request with zero empty tool names!
+  #assert fww_ensure_context_fits(h[..], 4000, 1048576, false, false, true, small_tmp[..]);
+  #assert h[0].nmsgs == 5 && h[0].compact_count == 1 && h[0].total_in == 317119 && h[0].total_cost_micros == 13734794;
+  fww_hist_sanitize(h[..], small_tmp[..]);
+  #assert h[0].nmsgs == 5;
+  gn := fww_build_gemini_body(cfg[..], h[..], "high", "sys", false, body[..]);
+  #assert gn > 0 && jv_parse(d[..], cast(string) body[0..<gn], nodes[..]);
+  cts := jv_get(d[0], 0, "contents");
+  #assert jv_len(d[0], cts) == 5;
+  fc1 := jv_get(d[0], jv_at(d[0], jv_get(d[0], jv_at(d[0], cts, 1), "parts"), 0), "functionCall");
+  fr2 := jv_get(d[0], jv_at(d[0], jv_get(d[0], jv_at(d[0], cts, 2), "parts"), 0), "functionResponse");
+  n1 := jv_str(d[0], jv_get(d[0], fc1, "name"), nb[..]);
+  #assert n1 == 5 && cast(string) nb[0..<n1] == "Write";
+  n2 := jv_str(d[0], jv_get(d[0], fr2, "name"), nb[..]);
+  #assert n2 == 5 && cast(string) nb[0..<n2] == "Write";
+  sig1 := jv_str(d[0], jv_get(d[0], jv_at(d[0], jv_get(d[0], jv_at(d[0], cts, 1), "parts"), 0), "thoughtSignature"), nb[..]);
+  #assert cast(string) nb[0..<sig1] == "SIG_VALID_TOKEN_XYZ";
+
+  // 2. Sanitizer rejects empty functionCall.name & mismatched functionCall/functionResponse names (Vertex 400 INVALID_ARGUMENT)
+  //    while preserving any merged trailing user message ("continue")!
+  fww_hist_clear(h[..]);
+  fww_hist_push_user(h[..], "Original goal");
+  a1 := [1] int.[0];
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  bad_tu := FwBlock.{kind = FWW_MB_TOOL_USE};
+  bad_tu.id_n = fww_slab_put(h[..], "call_bad", a1[..]); bad_tu.id_at = a1[0];
+  bad_tu.name_n = 0; // simulated empty corrupted tool name
+  bad_tu.text_n = fww_slab_put(h[..], "{}", a1[..]); bad_tu.text_at = a1[0];
+  h[0].msgs[1].blocks[0] = bad_tu;
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 2};
+  bad_tr := FwBlock.{kind = FWW_MB_TOOL_RES};
+  bad_tr.id_n = fww_slab_put(h[..], "call_bad", a1[..]); bad_tr.id_at = a1[0];
+  bad_tr.name_n = fww_slab_put(h[..], "Bash", a1[..]); bad_tr.name_at = a1[0];
+  bad_tr.text_n = fww_slab_put(h[..], "ok", a1[..]); bad_tr.text_at = a1[0];
+  cont_b := FwBlock.{kind = FWW_MB_TEXT};
+  cont_b.text_n = fww_slab_put(h[..], "continue", a1[..]); cont_b.text_at = a1[0];
+  h[0].msgs[2].blocks[0] = bad_tr;
+  h[0].msgs[2].blocks[1] = cont_b;
+  h[0].nmsgs = 3;
+
+  // Wire-level defense even if called directly before sanitize: never emits empty functionCall.name!
+  gn_raw := fww_build_gemini_body(cfg[..], h[..], "low", "sys", false, body[..]);
+  #assert gn_raw > 0 && jv_parse(d[..], cast(string) body[0..<gn_raw], nodes[..]);
+  raw_fc := jv_get(d[0], jv_at(d[0], jv_get(d[0], jv_at(d[0], jv_get(d[0], 0, "contents"), 1), "parts"), 0), "functionCall");
+  rn_raw := jv_str(d[0], jv_get(d[0], raw_fc, "name"), nb[..]);
+  #assert rn_raw == 4 && cast(string) nb[0..<rn_raw] == "tool";
+
+  // Sanitizer strips the corrupted empty-name tool pair and preserves "continue" as a clean USER turn!
+  #assert !fww_msg_tools_valid(h[..], h[0].msgs[1], h[0].msgs[2]);
+  fww_hist_sanitize(h[..], small_tmp[..]);
+  #assert h[0].nmsgs == 3;
+  #assert h[0].msgs[0].role == FWW_MROLE_USER && h[0].msgs[1].role == FWW_MROLE_ASSISTANT && h[0].msgs[2].role == FWW_MROLE_USER;
+  #assert fww_msg_count_tool_use(h[0].msgs[1]) == 0;
+  #assert fww_slab_str(h[..], h[0].msgs[2].blocks[0].text_at, h[0].msgs[2].blocks[0].text_n) == "continue";
+
+  // 3. Mismatched functionCall.name ("Bash") vs functionResponse.name ("tool") with matching id is also rejected!
+  fww_hist_clear(h[..]);
+  fww_hist_push_user(h[..], "Run build");
+  h[0].msgs[1] = FwMsg.{role = FWW_MROLE_ASSISTANT, nblocks = 1};
+  tu_m := FwBlock.{kind = FWW_MB_TOOL_USE};
+  tu_m.id_n = fww_slab_put(h[..], "c1", a1[..]); tu_m.id_at = a1[0];
+  tu_m.name_n = fww_slab_put(h[..], "Bash", a1[..]); tu_m.name_at = a1[0];
+  tu_m.text_n = fww_slab_put(h[..], "{\"command\":\"ls\"}", a1[..]); tu_m.text_at = a1[0];
+  h[0].msgs[1].blocks[0] = tu_m;
+  h[0].msgs[2] = FwMsg.{role = FWW_MROLE_TOOL_RESULTS, nblocks = 1};
+  tr_m := FwBlock.{kind = FWW_MB_TOOL_RES};
+  tr_m.id_n = fww_slab_put(h[..], "c1", a1[..]); tr_m.id_at = a1[0];
+  tr_m.name_n = fww_slab_put(h[..], "tool", a1[..]); tr_m.name_at = a1[0];
+  tr_m.text_n = fww_slab_put(h[..], "ok", a1[..]); tr_m.text_at = a1[0];
+  h[0].msgs[2].blocks[0] = tr_m;
+  h[0].nmsgs = 3;
+  #assert !fww_msg_tools_valid(h[..], h[0].msgs[1], h[0].msgs[2]);
+  fww_hist_sanitize(h[..], small_tmp[..]);
+  #assert h[0].nmsgs == 3 && fww_msg_count_tool_use(h[0].msgs[1]) == 0 && h[0].msgs[2].role == FWW_MROLE_USER;
 }
